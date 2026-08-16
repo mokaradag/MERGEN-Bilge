@@ -1,4 +1,5 @@
 # ==============================================================================
+# Dosya Yolu: R/helpers_pk_sql_execute.R
 # Faz 6: fiziksel bağlantı, duvar-saati timeout ve bellek tavanlı SQL getirimi.
 # ==============================================================================
 
