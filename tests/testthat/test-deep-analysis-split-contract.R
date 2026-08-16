@@ -56,24 +56,24 @@ test_that("ayrılan saf yardımcı dosyalar mevcut ve kendi sorumluluklarını t
 })
 
 test_that("orkestratör dosyası taşınan sorumlulukları geri almaz", {
-  orkestratör <- .read_repo_text_deep_split("R/helpers_deep_analysis.R")
+  orkestrator <- .read_repo_text_deep_split("R/helpers_deep_analysis.R")
 
   # Taşınan tanımlar geri gelirse ratchet bütçesi yeniden aşılır.
-  expect_false(grepl("ANALYSIS_DETAIL_LEVELS <- list(", orkestratör, fixed = TRUE))
-  expect_false(grepl("get_analysis_detail_config <- function(", orkestratör, fixed = TRUE))
-  expect_false(grepl("get_analysis_detail_instruction <- function(", orkestratör, fixed = TRUE))
-  expect_false(grepl("build_deep_analysis_context <- function(", orkestratör, fixed = TRUE))
+  expect_false(grepl("ANALYSIS_DETAIL_LEVELS <- list(", orkestrator, fixed = TRUE))
+  expect_false(grepl("get_analysis_detail_config <- function(", orkestrator, fixed = TRUE))
+  expect_false(grepl("get_analysis_detail_instruction <- function(", orkestrator, fixed = TRUE))
+  expect_false(grepl("build_deep_analysis_context <- function(", orkestrator, fixed = TRUE))
 
   # v1 ÇOKLU seçici de ratchet bütçesi nedeniyle taşındı; v1 TEKİL seçicisinin
   # (helpers_pk_analysis_ai_selector.R) tam karşılığı olarak
   # helpers_deep_analysis_selector.R içindedir. Orkestratöre geri alınmamalıdır.
-  expect_false(grepl("find_multiple_queries_with_ai <- function(", orkestratör, fixed = TRUE))
+  expect_false(grepl("find_multiple_queries_with_ai <- function(", orkestrator, fixed = TRUE))
   secici <- .read_repo_text_deep_split("R/helpers_deep_analysis_selector.R")
   expect_true(grepl("find_multiple_queries_with_ai <- function(", secici, fixed = TRUE))
 
   # Orkestrasyon sorumluluğu burada KALMALIDIR.
-  expect_true(grepl("execute_single_deep_query <- function(", orkestratör, fixed = TRUE))
-  expect_true(grepl("pk_deep_analysis_process <- function(", orkestratör, fixed = TRUE))
+  expect_true(grepl("execute_single_deep_query <- function(", orkestrator, fixed = TRUE))
+  expect_true(grepl("pk_deep_analysis_process <- function(", orkestrator, fixed = TRUE))
 })
 
 test_that("ayrılan yardımcılar saftır: Shiny/reactive/DB/ağ bağımlılığı yoktur", {
