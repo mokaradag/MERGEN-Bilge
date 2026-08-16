@@ -19,6 +19,21 @@
 
 pk_select_source_chain_for_tests()
 
+# Kaynak dosyayı BAYT olarak okur ve satır sonlarını LF'e indirger.
+#
+# NEDEN: bu dosyadaki statik sözleşmeler çok satırlı kod parçalarını
+# `fixed = TRUE` ile arar. Windows VM çalışma kopyası dosyayı CRLF ile
+# tutabilir (`.gitattributes` yalnızca YENİ checkout'u normalleştirir; diskteki
+# mevcut dosyayı geri yazmaz). Normalleştirme olmadan `"...(\n      prompt,"`
+# deseni CRLF'li kopyada ASLA eşleşmez ve sözleşme, kod doğru olduğu hâlde
+# başarısız olur. Sözleşmenin konusu çağrı yapısıdır, satır sonu biçimi değil.
+.pk_sel_read_source <- function(yol) {
+  ham <- readBin(yol, "raw", file.info(yol)$size)
+  txt <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
+  txt <- gsub("\r\n", "\n", txt, fixed = TRUE, useBytes = TRUE)
+  gsub("\r", "\n", txt, fixed = TRUE, useBytes = TRUE)
+}
+
 .pk_sel_lib <- function() pk_select_test_library()
 
 # Yetenek kayıt defteri testte AÇIKÇA kurulur; checkout'taki gerçek defter
@@ -216,8 +231,7 @@ test_that("hiçbir geçişte LİTERAL BEŞ yoktur (§5.2)", {
   kok <- resolve_repo_root_for_tests()
   for (dosya in PK_SELECT_RUNTIME_FILES) {
     yol <- file.path(kok, "R", dosya)
-    ham <- readBin(yol, "raw", file.info(yol)$size)
-    txt <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
+    txt <- .pk_sel_read_source(yol)
 
     # Yorum satırları hariç tutulur: açıklama metninde "5" geçebilir.
     satirlar <- unlist(strsplit(txt, "\n", fixed = TRUE))
@@ -1023,8 +1037,7 @@ test_that("v2 yolu v1 SEZGİSEL skorlayıcısını KARAR için çağırmaz (D10)
   kok <- resolve_repo_root_for_tests()
   for (dosya in PK_SELECT_RUNTIME_FILES) {
     yol <- file.path(kok, "R", dosya)
-    ham <- readBin(yol, "raw", file.info(yol)$size)
-    txt <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
+    txt <- .pk_sel_read_source(yol)
 
     for (desen in c("pk_compute_heuristic_query_scores", "pk_score_query_relevance")) {
       expect_false(
@@ -1044,8 +1057,7 @@ test_that("v2 yolu v1 SEZGİSEL skorlayıcısını KARAR için çağırmaz (D10)
 
 test_that("select_smart_query içinde v2 dalı VARDIR ve motor bayrağına bağlıdır", {
   yol <- file.path(resolve_repo_root_for_tests(), "R", "module_proje_kaynak_analizi.R")
-  ham <- readBin(yol, "raw", file.info(yol)$size)
-  txt <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
+  txt <- .pk_sel_read_source(yol)
 
   expect_true(
     grepl("pk_select_query_v2(\n      prompt, library, chat_history,", txt, fixed = TRUE, useBytes = TRUE),
@@ -1084,11 +1096,7 @@ test_that("v2 dalının KAPISI motor bayrağıdır (v1 davranışı değişmez, 
   # Modüldeki çağrı GERÇEKTEN bu kapının içinde olmalıdır: kapı satırı ile
   # çağrı satırı arasında kapatan bir `}` bulunmamalıdır.
   yol <- file.path(resolve_repo_root_for_tests(), "R", "module_proje_kaynak_analizi.R")
-  ham <- readBin(yol, "raw", file.info(yol)$size)
-  satirlar <- strsplit(
-    iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte"),
-    "\n", fixed = TRUE
-  )[[1]]
+  satirlar <- strsplit(.pk_sel_read_source(yol), "\n", fixed = TRUE)[[1]]
 
   kapi <- grep("isTRUE(pk_engine_is_v2())", satirlar, fixed = TRUE)
   kapi <- c(kapi, grep("if (pk_engine_v2_request &&", satirlar, fixed = TRUE))
@@ -1163,8 +1171,7 @@ test_that("seçim hattı SAF kalır: motor bayrağını kendisi okumaz", {
 
   for (dosya in saf_dosyalar) {
     yol <- file.path(kok, "R", dosya)
-    ham <- readBin(yol, "raw", file.info(yol)$size)
-    txt <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
+    txt <- .pk_sel_read_source(yol)
 
     for (desen in c("pk_engine_is_v2", "MERGEN_PK_ENGINE", "mergen.pk.engine")) {
       expect_false(
@@ -1177,8 +1184,7 @@ test_that("seçim hattı SAF kalır: motor bayrağını kendisi okumaz", {
 
 test_that("Faz 5 dosyaları manifestte DOĞRU SIRADA kayıtlıdır", {
   yol <- file.path(resolve_repo_root_for_tests(), "R", "config_source_manifest.R")
-  ham <- readBin(yol, "raw", file.info(yol)$size)
-  txt <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
+  txt <- .pk_sel_read_source(yol)
 
   konumlar <- vapply(PK_SELECT_RUNTIME_FILES, function(d) {
     regexpr(paste0("R/", d), txt, fixed = TRUE, useBytes = TRUE)[1]

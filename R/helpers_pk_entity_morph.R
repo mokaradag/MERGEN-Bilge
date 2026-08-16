@@ -23,10 +23,24 @@
 # Dosya saftır: Shiny/reactive/DB/ağ bağımlılığı yoktur, worker güvenlidir.
 # ==============================================================================
 
+# TÜRKÇE SABİTLER YÜKLEME ANINDA UTF-8'E SABİTLENİR (`enc2utf8`).
+#
+# NEDEN: Windows VM'de `source(dosya, encoding = "UTF-8")` içeriği YERELE
+# (WINDOWS-1254) çevirir, sabitler "native" işaretli olur; karşılaştırılan metin
+# ise `pk_tr_fold()`/`stringi` yolundan UTF-8 işaretli gelir. `identical()` ve
+# `%in%` bu durumda native tarafı GÜNCEL yerele göre çevirir; yerel `C` iken
+# çeviri BAŞARISIZ olur, ek eşleşmesi sessizce kaybolur ve "ANKA'nın" -> "anka"
+# yerine "anka nın" üretilir. Yükleme anında yerel DOĞRU olduğu için dönüşümü
+# burada bir kez yapmak sabitleri sonraki yerel değişikliklerinden bağımsız
+# kılar; UTF-8 işaretli dizelerde `enc2utf8()` işlemsizdir (bayt düzeyinde AYNI).
+
 # Türkçe ünlüler; ünlü uyumu denetimi için gereklidir.
-.PK_MORPH_BACK_VOWELS  <- c("a", "ı", "o", "u")            # a, ı, o, u
-.PK_MORPH_FRONT_VOWELS <- c("e", "i", "ö", "ü")       # e, i, ö, ü
+.PK_MORPH_BACK_VOWELS  <- enc2utf8(c("a", "ı", "o", "u"))   # a, ı, o, u
+.PK_MORPH_FRONT_VOWELS <- enc2utf8(c("e", "i", "ö", "ü"))   # e, i, ö, ü
 .PK_MORPH_VOWELS <- c(.PK_MORPH_BACK_VOWELS, .PK_MORPH_FRONT_VOWELS)
+
+# Türkçe'ye ÖZGÜ harfler; girdinin saf ASCII olup olmadığını sınamak için.
+.PK_MORPH_TR_ONLY_CHARS <- enc2utf8(c("ı", "ş", "ğ", "ü", "ö", "ç"))
 
 # Eşleştirme amaçlı sonek listesi; UZUNDAN KISAYA sıralıdır ki "sinde" soneki
 # "de"den, "deki" soneki "de"den önce denensin.
@@ -45,7 +59,7 @@
 # Bu dışarıda bırakmalar ölçülerek seçildi; listeyi genişletmeden önce
 # tests/testthat/test-pk-entity-normalize-behavior.R içindeki yanlış-soyma
 # vakalarını genişletin.
-.PK_ENTITY_SUFFIXES <- c(
+.PK_ENTITY_SUFFIXES <- enc2utf8(c(
   # 1./2. kişi iyelik zincirleri (uzun, üretken, görece tekil).
   "ımız", "imiz", "umuz", "ümüz",   # -ımız/-imiz/-umuz/-ümüz
   "ınız", "iniz", "unuz", "ünüz",   # -ınız/-iniz/-unuz/-ünüz
@@ -77,23 +91,29 @@
   "yle", "yla",
   # Yönelme ve vasıta.
   "ye", "ya", "le", "la"
-)
+))
 
 # Sözlük doğrulamalı yolda denenen TEK HARFLİ ekler. Genel listede yoktur;
 # yalnızca sonuç gövdesi kapalı sözlükte gerçekten bulunursa kabul edilir.
-.PK_MORPH_VOCAB_ONLY_SUFFIXES <- c("i", "ı", "u", "ü", "e", "a")
+.PK_MORPH_VOCAB_ONLY_SUFFIXES <- enc2utf8(c("i", "ı", "u", "ü", "e", "a"))
 
 # Türkçe ünsüz yumuşaması: son ünsüz ünlüyle başlayan ek aldığında yumuşar
 # (kitap -> kitabı, ağaç -> ağacı, kanat -> kanadı, ekmek -> ekmeği).
 # Soyma YÖNÜ terstir: yumuşamış biçimden sert biçime geri döneriz.
-.PK_MORPH_SOFTENED <- c("b", "c", "d", "ğ", "g")
-.PK_MORPH_HARDENED <- list(
-  b = "p",
-  c = "ç",
-  d = "t",
-  "ğ" = c("k", "g"),
-  g = "k"
+.PK_MORPH_SOFTENED <- enc2utf8(c("b", "c", "d", "ğ", "g"))
+.PK_MORPH_HARDENED <- lapply(
+  list(
+    b = "p",
+    c = "ç",
+    d = "t",
+    "ğ" = c("k", "g"),
+    g = "k"
+  ),
+  enc2utf8
 )
+# AD da katalog anahtarıdır: `[[son]]` araması ADLARI karşılaştırır, bu yüzden
+# adlar da UTF-8'e sabitlenmelidir.
+names(.PK_MORPH_HARDENED) <- enc2utf8(names(.PK_MORPH_HARDENED))
 
 # Soyma sonrası gövde bu uzunluğun altına düşerse sonek SÖZLÜK DOĞRULAMASI
 # OLMADAN soyulmaz. "hatta" -> "hat" (3) ve "yolda" -> "yol" (3) gibi yıkıcı
@@ -146,7 +166,7 @@
 
   # Girdide Türkçe'ye özgü hiçbir harf yoksa uyum bilgisi yoktur.
   saf_ascii <- !any(vapply(
-    c("ı", "ş", "ğ", "ü", "ö", "ç"),
+    .PK_MORPH_TR_ONLY_CHARS,
     function(ch) grepl(ch, token, fixed = TRUE),
     logical(1)
   ))

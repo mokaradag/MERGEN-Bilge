@@ -58,8 +58,16 @@ test_that("single-analysis DB failures do not reconnect for telemetry", {
   env$observed_conn <- "not-called"
   env$.pk_filter_observation_state <- new.env(parent = emptyenv())
 
+  # KAÇIŞ ve LİTERAL Türkçe AYNI dize sabitinde BİRLEŞTİRİLMEZ.
+  #
+  # Windows VM'de test dosyaları ayrıştırılırken kaynak UTF-8 olarak
+  # BİLDİRİLMEZ. Bir dize sabiti `\U` kaçışı içerdiğinde R o sabiti UTF-8'e
+  # yükseltmek zorunda kalır ve aynı sabitteki LİTERAL Türkçe baytları YEREL
+  # (WINDOWS-1254) sanarak yeniden çevirir: sonuç `Veritabanı` yerine
+  # `VeritabanÄ±` olur. Kaçış ve literal ayrı sabitlerde tutulunca her iki
+  # parça da kendi doğru yolundan geçer.
   core <- function(user_prompt, chat_history, session, stop_check = NULL) {
-    "\U000026A0\U0000FE0F **Veritabanı Hatası:** SQLSTATE 08001"
+    paste0("\U000026A0\U0000FE0F", " **Veritabanı Hatası:** SQLSTATE 08001")
   }
   environment(core) <- env
   env$pk_analiz_process_request <- core
