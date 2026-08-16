@@ -1,5 +1,5 @@
 # ==============================================================================
-# Dosya Yolu: R/helpers_pk_telemetry.R
+# Dosya Yolu: R/helpers_pk_telemetry_base.R
 # Açıklama: Proje ve Kaynak Analizi kullanım/bozulma telemetrisi
 #           (MB_Analiz_Log yazımı).
 #
