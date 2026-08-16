@@ -53,7 +53,7 @@ score_turkish_decoding_candidate <- function(aday) {
   mojibake_deseni <- paste(
     c(
       "\u00c3[\u00a7\u0178\u00bc\u00b6\u00b1\u00bd]",  # Ã§, ÃŸ, Ã¼, Ã¶, Ã±, Ã½
-      "\u00c5[\u0178\u009e]",                            # ÅŸ, Åž
+      "\u00c5[\u0178\u009e]",                            # \u00c5\u0178, \u00c5\u017e
       "\u00c4\u00b1",                                     # Ä±
       "\u00ef\u00bf\u00bd",                               # U+FFFD replacement
       "\u00c2[\u00a0-\u00bf]"                             # Â followed by control

@@ -54,7 +54,7 @@ vm_encoding_preflight_has_mojibake <- function(value) {
     "Ã‡",
     "Ä°",
     "Ã–",
-    "Åž",
+    "\u00c5\u017e",
     "Ãœ",
     "TÃ¼rkiye",
     "NasÄ±l",

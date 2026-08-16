@@ -13,7 +13,7 @@
 #             5  0.60 <= J < 1 ......................... min(84, 60 + floor(25*(J-0.60)/0.40))
 #             6  0 < d <= 0.20 ......................... max(50, 69 - floor(19*d/0.20))
 #
-#           J = |U ∩ C| / |U ∪ C| (katlanmış belirteç kümeleri)
+#           J = |U kesisim C| / |U birlesim C| (katlanmış belirteç kümeleri)
 #           d = Levenshtein(U, C) / max(nchar(U), nchar(C))
 #
 #           TAM SAYI SÖZLEŞMESİ: 4/5/6 formülleri KESİRLİ ARA DEĞER ÜRETMEZ.

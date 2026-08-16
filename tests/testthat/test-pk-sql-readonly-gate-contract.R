@@ -56,7 +56,7 @@ test_that("Turkce koseli/tirnakli sutun adlari yanlis pozitif uretmez", {
   # Koseli tanimlayici icindeki "Silme"/"Guncelleme" gibi kelimeler ve
   # "]]" kacisi anahtar kelime taramasina GIRMEMELIDIR.
   sqls <- c(
-    "SELECT [Silme Tarihi], [Güncelleme Zamani] FROM [Proje Özeti]",
+    "SELECT [Silme Tarihi], [Gu\u0308ncelleme Zamani] FROM [Proje Özeti]",
     "SELECT \"Insert Tarihi\" FROM t",
     "SELECT [A]]B] FROM t"
   )

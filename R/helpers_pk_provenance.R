@@ -177,7 +177,7 @@ pk_degradations_from_filter_status <- function(status) {
   }
 
   sprintf(
-    "%s (yetkiniz dâhilinde) → %s (filtre sonrası)",
+    "%s (yetkiniz dâhilinde) \u2192 %s (filtre sonrası)",
     .pk_format_count(authorized),
     .pk_format_count(filtered)
   )

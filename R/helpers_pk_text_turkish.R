@@ -22,8 +22,10 @@
 # `İ` (U+0130) NFC ile yeniden birleşir, ancak KÜÇÜK `i` + U+0307 dizisinin
 # önceden birleşmiş bir karşılığı yoktur; NFC onu olduğu gibi bırakır. Bu
 # yüzden katlamadan sonra `i`yi takip eden bu işaret ayrıca temizlenir, aksi
-# hâlde "İSTANBUL" ile zaten küçük harfe çevrilmiş ayrışık "i̇stanbul" farklı
-# anahtarlar üretir ve alias eşleşmesi sessizce kaçar.
+# hâlde "İSTANBUL" ile zaten küçük harfe çevrilmiş ayrışık biçim ("i" + U+0307
+# ile yazılmış "istanbul") farklı anahtarlar üretir ve alias eşleşmesi sessizce
+# kaçar. (Ayrışık biçim burada BİLEREK harfi harfine yazılmaz: U+0307
+# WINDOWS-1254'te temsil edilemez ve Windows VM'de dosyayı bozar.)
 .PK_TR_COMBINING_DOT_ABOVE <- intToUtf8(0x0307L)
 
 # stringi olmadan Türkçe katlama YAPILMAZ. Sessiz/yanlış bir yedek yol,
