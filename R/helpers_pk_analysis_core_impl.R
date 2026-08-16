@@ -1,5 +1,5 @@
 # ==============================================================================
-# Dosya Yolu: R/helpers_pk_analysis_core.R
+# Dosya Yolu: R/helpers_pk_analysis_core_impl.R
 # Açıklama: Proje ve Kaynak Analizi modülünün saf / düşük yan etkili yardımcıları.
 #           Bu dosya bilinçli olarak Shiny observer, LLM çağrısı veya canlı DB
 #           bağlantısı başlatmaz. module_proje_kaynak_analizi.R dosyasını küçültmek
