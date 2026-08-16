@@ -1,3 +1,7 @@
+# ==============================================================================
+# Dosya Yolu: tests/testthat/test-pk-p1-runtime-guards.R
+# ==============================================================================
+
 test_that("v2 Derin Dusunme kanonik paket ve olgulari kullanir", {
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
