@@ -1,4 +1,5 @@
 # ==============================================================================
+# Dosya Yolu: R/helpers_pk_async_apply.R
 # Faz 6: PK async sonuç uygulama, senkron fallback ve ana-süreç yardımcıları.
 # ==============================================================================
 
