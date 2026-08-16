@@ -38,8 +38,8 @@ MERGEN_DB_POOL_WRITE_TEST=FALSE
 # ODBC LOGIN ZAMAN ASIMI (saniye). Asili bir DSN/login, dosya tabanli iptal
 # jetonu ile kesilemez ve isciyi (bagli DB oturumuyla birlikte) sert analiz son
 # tarihinin otesinde mesgul tutar. Bos birakilirsa surucu varsayilani gecerlidir.
-# MERGEN_DB_LOGIN_TIMEOUT_SEC=15
-#
+MERGEN_DB_LOGIN_TIMEOUT_SEC=15
+
 #   KAPSAM (PR #703): bos birakildiginda DOGRUDAN baglantilar surucu
 #   varsayilanini korur (PK disi davranis DEGISMEZ). HAVUZ ise acikca opt-in ve
 #   PAYLASIMLI oldugu icin bos birakilsa da 30 sn'lik yerlesik sinirla kurulur.
@@ -520,7 +520,7 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 # --- Tanılama (varsayılan KAPALI) ---
 #   Grep-dostu, sır-redakteli ilk-token/akış perf işaretleri için: MERGEN_PERF_LOG=1.
 # MERGEN_PERF_LOG=0
-#
+
 # =============================================================================
 # PROJE VE KAYNAK ANALİZİ (Faz 0: telemetri, köken alt bilgisi, bozulma)
 # =============================================================================
@@ -530,51 +530,51 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #
 #   Hangi işlem hattının çalıştığı. Faz 0 yalnızca GÖZLEM yapar; bu değer
 #   telemetriye etiket olarak yazılır, dağıtım kararı vermez.
-# MERGEN_PK_ENGINE=v1
-#
+MERGEN_PK_ENGINE=v1
+
 #   MB_Analiz_Log yazımı. Tablo YOKSA araç tam çalışmaya devam eder; telemetri
 #   tek bir uyarı satırıyla o süreç için devre dışı kalır (fail-soft).
 #   DDL: docs/sql/2026-08-pk-analiz-log.sql (DBA tarafından ELLE uygulanır).
-# MERGEN_PK_TELEMETRY=true
-#
+MERGEN_PK_TELEMETRY=true
+
 #   GİZLİLİK: ham soru metnini sakla (true) veya yalnızca anahtarlı parmak izi
 #   (false, varsayılan). Sorular proje adı içerebilir.
-# MERGEN_PK_LOG_QUESTION_TEXT=false
-#
+MERGEN_PK_LOG_QUESTION_TEXT=false
+
 #   Parmak izi için SUNUCU ANAHTARI (HMAC-SHA256). Düz/anahtarsız özet YETMEZ:
 #   sorular sonlu bir proje sözlüğünden geldiği için düşük entropilidir ve
 #   tabloyu okuyabilen biri aday soruları özetleyip eşleştirebilir.
 #   Anahtar tanımlı değilse parmak izi HİÇ yazılmaz. Bu değer bir SIRDIR:
 #   loglanmaz, raporlanmaz, PR/dokümana yazılmaz.
-# MERGEN_PK_TELEMETRY_HMAC_KEY=
-#
+MERGEN_PK_TELEMETRY_HMAC_KEY=
+
 #   Anahtar rotasyon etiketi; parmak izinin yanında saklanır ki rotasyondan
 #   sonra eski satırlar hangi anahtarla üretildiği bilinerek yorumlanabilsin.
-# MERGEN_PK_TELEMETRY_HMAC_KEY_ID=k1
-#
+MERGEN_PK_TELEMETRY_HMAC_KEY_ID=k1
+
 #   Faz 3a — SATIR TAVANI. Sorgu metadata'sındaki `row_cap` alanı bu global
 #   değeri EZER (öncelik: sorgu metadata -> .Renviron -> options() -> varsayılan),
 #   böylece ağır bir sorgu kod değişikliği olmadan kendi tavanını taşıyabilir.
 #   Sorgu `row_cap` bildirmiyorsa metadata katmanının Tier-0 geri düşüşü budur.
-# MERGEN_PK_ROW_CAP=50000
-#
+MERGEN_PK_ROW_CAP=50000
+
 #   Faz 1 — FİLTRE PLANI LLM ZAMAN AŞIMI (saniye). v1 motorunda sabit 8 saniye
 #   kullanılır ve bu değer OKUNMAZ; ayar yalnızca MERGEN_PK_ENGINE=v2 iken
 #   tüketilir. v1'in 8 saniyesi fazla agresifti ve zaman aşımı "filtre
 #   gerekmedi" durumundan ayırt edilemiyordu (D9).
-# MERGEN_PK_FILTER_TIMEOUT_SEC=20
-#
+MERGEN_PK_FILTER_TIMEOUT_SEC=20
+
 #   Faz 1 — ETKİSİZ FİLTRE ORANI. Bir filtre satırların bu oranından fazlasını
 #   koruyorsa "etkisiz" kabul edilir ve köken kaydında öyle raporlanır.
 #   Yalnızca v2 motoru tüketir.
-# MERGEN_PK_NOOP_FILTER_RATIO=0.95
-#
+MERGEN_PK_NOOP_FILTER_RATIO=0.95
+
 #   Faz 1 — İSTEM KARAKTER BÜTÇESİ. Modele giden TÜM yükü kapsar: istatistiksel
 #   özet + tablolar + örnek satır JSON'u. v1'de yalnızca özet metni ölçülüyor,
 #   yüzlerce KB'lık örnek satır JSON'u bütçe kontrolünün dışında kalıyordu (D7).
 #   Yalnızca v2 motoru tüketir.
-# MERGEN_PK_PROMPT_CHAR_BUDGET=120000
-#
+MERGEN_PK_PROMPT_CHAR_BUDGET=120000
+
 #   ---- Faz 2: deterministik analiz ve dışa aktarım (yalnızca v2) ----
 #
 #   ANALİZ PAKETİ. İstatistikler TÜM satırlar üzerinden hesaplanır; aşağıdaki
@@ -582,46 +582,46 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #   Kategorik sütun başına gösterilen ilk-K değer (adet ve pay ile birlikte).
 #   Eski özet yalnızca ilk beş kategorik sütunu ve her birinin ilk değerini
 #   veriyordu (D17); artık TÜM boyut sütunları özetlenir.
-# MERGEN_PK_TOPK_CATEGORIES=10
+MERGEN_PK_TOPK_CATEGORIES=10
 #
 #   "Diğer" toplamasından önce gösterilen grup sayısı.
-# MERGEN_PK_GROUP_TOPN=15
-#
+MERGEN_PK_GROUP_TOPN=15
+
 #   Pakete giren temsilî örnek satır sayısı: en yüksek/en düşük + uç değer +
 #   sabit tohumlu tabakalı örnek. Eski yol `head(data, 500)` ile SQL'in dönüş
 #   sırasına bağlı, konumsal yanlı bir örnekti (D18).
-# MERGEN_PK_SAMPLE_ROWS=30
-#
+MERGEN_PK_SAMPLE_ROWS=30
+
 #   Tabakalı örneğin sabit tohumu; aynı veri için aynı örnek üretilir.
-# MERGEN_PK_SAMPLE_SEED=42
-#
+MERGEN_PK_SAMPLE_SEED=42
+
 #   YANIT KOMPOZİSYONU eşikleri. Kurallar SIRALIDIR ve ilk eşleşen kazanır:
 #   (1) kullanıcı açıkça liste/döküm/rapor/excel istedi -> ek + önizleme,
 #   (2) satır > DT_MAX_ROWS veya sütun > INLINE_MAX_COLS_DT -> ek + önizleme,
 #   (3) satır <= INLINE_MAX_ROWS ve sütun <= INLINE_MAX_COLS -> satır içi tablo,
 #   (4) diğer her şey -> kaydırılabilir tablo görünümü.
-# MERGEN_PK_INLINE_MAX_ROWS=15
-# MERGEN_PK_INLINE_MAX_COLS=8
-# MERGEN_PK_DT_MAX_ROWS=200
-# MERGEN_PK_INLINE_MAX_COLS_DT=12
-#
+MERGEN_PK_INLINE_MAX_ROWS=15
+MERGEN_PK_INLINE_MAX_COLS=8
+MERGEN_PK_DT_MAX_ROWS=200
+MERGEN_PK_INLINE_MAX_COLS_DT=12
+
 #   Ek yolunda baloncukta gösterilen önizleme satırı sayısı.
-# MERGEN_PK_PREVIEW_ROWS=10
-#
+MERGEN_PK_PREVIEW_ROWS=10
+
 #   DIŞA AKTARIM. Tek bir sayfa/parçadaki azami satır sayısı. Daha büyük bir
 #   sonuç ya doğrulanmış numaralı parçalara bölünür ya da AÇIKÇA reddedilir;
 #   sessizce kırpılmış bir dosya "eksiksiz" diye SUNULMAZ.
-# MERGEN_PK_EXPORT_MAX_ROWS=100000
-#
+MERGEN_PK_EXPORT_MAX_ROWS=100000
+
 #   Parça tavanı. Aşılırsa dışa aktarım reddedilir ve kullanıcıdan sorusunu
 #   daraltması istenir.
-# MERGEN_PK_EXPORT_MAX_PARTS=20
-#
+MERGEN_PK_EXPORT_MAX_PARTS=20
+
 #   XLSX bellek tavanı (hücre = satır x sütun). writexl tüm sayfaları AYNI ANDA
 #   ister; tavan aşılırsa XLSX hiç denenmez ve parçaları teker teker yazan
 #   akışlı CSV yoluna geçilir. Sessiz kırpma DEĞİLDİR: tüm satırlar aktarılır.
-# MERGEN_PK_EXPORT_MAX_CELLS=2000000
-#
+MERGEN_PK_EXPORT_MAX_CELLS=2000000
+
 #   SAYISAL KÖKEN DOĞRULAMASI. Modelin ürettiği her sayı, R'nin hesapladığı
 #   yapılandırılmış olguya karşı denetlenir (değer + birim + kullanılabilirlik).
 #     off   -> kapalı
@@ -630,8 +630,8 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #     block -> düzyazı reddedilir, R'nin hesapladığı değerler gösterilir
 #   `log` ile başlanır; gerçek yanlış-pozitif oranı VM'de ölçülmeden `warn`
 #   veya `block` kipine GEÇİLMEZ.
-# MERGEN_PK_NUMERIC_PROVENANCE_MODE=log
-#
+MERGEN_PK_NUMERIC_PROVENANCE_MODE=log
+
 #   Faz 4 — VARLIK ÇÖZÜMLEME EŞİKLERİ (master plan §5.4). Kullanıcının yazdığı
 #   ifade, sütunun GERÇEK ayrık değerlerinden oluşan kapalı sözlüğe karşı altı
 #   katmanlı bir şelaleyle puanlanır (kesin katlama 100 / alias 95 / ASCII
@@ -647,39 +647,39 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #   Çözümleme hattının filtre yoluna BAĞLANMASI. Kapatılırsa v2 motoru LLM'in
 #   ürettiği ham yaprak değerleriyle filtreler (Faz 4 öncesi davranış).
 #   v1 motoru bu anahtardan BAĞIMSIZDIR ve hiçbir koşulda etkilenmez.
-# MERGEN_PK_RESOLVE_ENABLED=TRUE
-#
+MERGEN_PK_RESOLVE_ENABLED=TRUE
+
 #   Tek adayın kullanıcıya sorulmadan otomatik kabul edildiği eşik.
-# MERGEN_PK_RESOLVE_AUTO_SCORE=85
-#
+MERGEN_PK_RESOLVE_AUTO_SCORE=85
+
 #   Çoğul bir istekte adayın "güçlü" sayıldığı eşik. Bu eşiği geçen birden çok
 #   aday sessizce BİRLEŞTİRİLMEZ; kullanıcıya onaylatılır.
-# MERGEN_PK_RESOLVE_MULTI_SCORE=70
-#
+MERGEN_PK_RESOLVE_MULTI_SCORE=70
+
 #   Bu eşiğin altındaki tepe puan "çözümlenemedi" sayılır. Varlık sorunun
 #   ÖZNESİYSE analiz hiç yapılmaz; ikincil bir daraltmaysa analiz filtresiz
 #   sürer ve durum kullanıcıya AÇIKÇA bildirilir.
-# MERGEN_PK_RESOLVE_MIN_SCORE=40
-#
+MERGEN_PK_RESOLVE_MIN_SCORE=40
+
 #   Tepe aday ile ikinci aday arasındaki fark bu değerin altındaysa tahmin
 #   yürütülmez, netleştirme çipleri gösterilir.
-# MERGEN_PK_RESOLVE_AMBIGUITY_MARGIN=10
-#
+MERGEN_PK_RESOLVE_AMBIGUITY_MARGIN=10
+
 #   Tek bir OR grubunda TAMAMEN görünür ve onaylanabilir azami kanonik değer
 #   (1..5). Küme bu sınırı aşarsa yalnızca ilk N aday gösterilir, "N aday daha
 #   var" uyarısı eklenir, "Tümü" seçeneği KAPATILIR ve sorgu ÇALIŞTIRILMAZ;
 #   gizli adaylar asla "Tümü" arkasına saklanamaz.
-# MERGEN_PK_RESOLVE_MAX_CANDIDATES=5
-#
+MERGEN_PK_RESOLVE_MAX_CANDIDATES=5
+
 #   GÜVENLİK SINIRLARI (eşik değil, kaynak tavanı). Puanlamaya giren varlık
 #   ifadesinin azami uzunluğu ve belirteç/mesafe katmanlarına giren azami aday
 #   sayısı. Sınırsız ifade ya da 50 bin değerli bir sütun, aday başına iki
 #   Levenshtein hesabıyla PAYLAŞILAN Shiny sürecini kilitleyebilir. Kesin ve
 #   alias katmanları bu tavanlardan ETKİLENMEZ (karma araması ile çözülür) ve
 #   tavan aşıldığında karar `scan_truncated` taşır; sessiz "eşleşme yok" olmaz.
-# MERGEN_PK_RESOLVE_MAX_PHRASE_CHARS=160
-# MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES=2000
-#
+MERGEN_PK_RESOLVE_MAX_PHRASE_CHARS=160
+MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES=2000
+
 # --- Faz 5 (§5.2): İKİ GEÇİŞLİ SORGU SEÇİMİ -----------------------------------
 #   Seçim iki geçiştir: Geçiş A (recall) TÜM kütüphaneyi kompakt satırlarla
 #   tarar, Geçiş B (precision) yalnızca o adayları tam ayrıntıyla değerlendirir.
@@ -687,41 +687,41 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #
 #   Her GEÇİŞ için ayrı ayrı uygulanan LLM zaman aşımı. v1'de bu alan HİÇ
 #   YOKTU (D14) ve asılı bir uç nokta Shiny olay döngüsünü bloke ediyordu.
-# MERGEN_PK_SELECT_TIMEOUT_SEC=20
-#
+MERGEN_PK_SELECT_TIMEOUT_SEC=20
+
 #   Geçiş A'nın isteyeceği ve Geçiş B'ye DEĞİŞMEDEN taşınacak aday sayısı.
 #   ASGARİ 2'dir ve bu bir GÜVENLİK sözleşmesidir: tek adaylık getirim, ikinci
 #   adayın güvenini üretemez ve aşağıdaki marj kapısı uygulanamaz hâle gelir.
 #   1 verilirse sessizce varsayılana düşülmez; otomatik seçim KAPATILIR.
-# MERGEN_PK_SELECT_RECALL_N=5
-#
+MERGEN_PK_SELECT_RECALL_N=5
+
 #   Bu güvenin altında sorgu ÇALIŞTIRILMAZ; kullanıcıya netleştirme seçenekleri
 #   gösterilir. Yanlış bir finansal sorguyu çalıştırmaktansa sormak yeğdir.
-# MERGEN_PK_SELECT_MIN_CONFIDENCE=50
-#
+MERGEN_PK_SELECT_MIN_CONFIDENCE=50
+
 #   Tepe aday ile ikinci aday arasındaki asgari fark. Altında kalırsa yakın
 #   beraberlik sayılır ve yine sorulur. MIN_CONFIDENCE ile MIN_MARGIN farklı
 #   nicelikleri sınırlar; toplamlarının 100'ü aşması geçersiz DEĞİLDİR. Her iki
 #   kapının da 0 olması otomatik seçimi korumasız bırakacağı için reddedilir.
-# MERGEN_PK_SELECT_MIN_MARGIN=15
-#
+MERGEN_PK_SELECT_MIN_MARGIN=15
+
 #   Sözlüksel getirim (3-gram + IDF) LLM'in seçtiği sorguyu ilk-N dışında
 #   görürse güvenden düşülen puan. Sözlüksel katman KARAR VERMEZ (D10);
 #   yalnızca zayıflatır. 0 verilirse sinyal sadece raporlanır.
-# MERGEN_PK_SELECT_DISAGREE_PENALTY=15
-#
+MERGEN_PK_SELECT_DISAGREE_PENALTY=15
+
 #   Geçiş A satır bütçeleri. Alanlar KÜRESEL olarak düşürülmez (kullanıcının
 #   terminolojisi çoğu zaman yalnızca açıklamada ya da örnek soruda geçer);
 #   yalnızca tek tek ve deterministik biçimde kırpılır.
-# MERGEN_PK_SELECT_DESC_CHARS=220
-# MERGEN_PK_SELECT_SAMPLE_CHARS=120
-# MERGEN_PK_SELECT_SAMPLE_N=2
-#
+MERGEN_PK_SELECT_DESC_CHARS=220
+MERGEN_PK_SELECT_SAMPLE_CHARS=120
+MERGEN_PK_SELECT_SAMPLE_N=2
+
 #   Takip bağlamı zarfına giren konuşma turu sayısı. Eksiltili takip
 #   sorularında ("peki 2024 için?") önceki kararlı sorgu kimliği de Geçiş A'ya
 #   tohumlanır ve recall sınırı UYGULANMADAN ÖNCE korunur.
-# MERGEN_PK_SELECT_HISTORY_TURNS=2
-#
+MERGEN_PK_SELECT_HISTORY_TURNS=2
+
 # ------------------------------------------------------------------------------
 # FAZ 6 (§5.10): BLOKLAMAYAN YÜRÜTME VE PERFORMANS
 # ------------------------------------------------------------------------------
@@ -733,47 +733,47 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #   Açmadan ÖNCE en az operasyonel soak kapısının fake-lane smoke profili
 #   geçmelidir (docs/operational-soak-gate.md). Geri alma: bu satırı false yapıp
 #   R sürecini TAMAMEN yeniden başlatmak (tarayıcı yenilemek YETMEZ).
-# MERGEN_PK_ASYNC=false
-#
+MERGEN_PK_ASYNC=false
+
 #   ODBC ifade zaman aşımı (saniye). Asılı kalan bir sorgu bağlantıyı sonsuza
 #   kadar tutmasın. Ağır bir sorgu metadata ile bu değeri YÜKSELTEBİLİR, ancak
 #   asla kalan analiz bütçesinin ötesine geçemez.
-# MERGEN_PK_SQL_TIMEOUT_SEC=120
-#
+MERGEN_PK_SQL_TIMEOUT_SEC=120
+
 #   TÜM analizin duvar-saati bütçesi (saniye). İşçi bu bütçe tükendiğinde durur
 #   ve bağlantısını serbest bırakır. Ardışık geçerli SQL zaman aşımlarının
 #   toplamı bu bütçeyi AŞAMAZ; sonraki derin sorgu yalnızca KALAN bütçeyi alır.
-# MERGEN_PK_ANALYSIS_DEADLINE_SEC=300
-#
+MERGEN_PK_ANALYSIS_DEADLINE_SEC=300
+
 #   Sonuç önbelleği (query_id + yetki imzası + filtre imzası). TTL TEK BAŞINA
 #   yeterli değildir; bu yüzden giriş sayısı VE toplam bayt bütçesi birlikte
 #   uygulanır. Tek giriş tavanını aşan sonuç HİÇ önbelleğe alınmaz (diğer her
 #   şeyi tahliye ederek kendine yer açması YASAKTIR).
 #   Önbellek SÜREÇ-YERELDİR: her future işçisi kendi deposunu taşır.
-# MERGEN_PK_CACHE_MAX_ENTRIES=50
-# MERGEN_PK_CACHE_MAX_MB=512
-# MERGEN_PK_CACHE_MAX_ENTRY_MB=128
-# MERGEN_PK_CACHE_TTL_SEC=300
-#
+MERGEN_PK_CACHE_MAX_ENTRIES=50
+MERGEN_PK_CACHE_MAX_MB=512
+MERGEN_PK_CACHE_MAX_ENTRY_MB=128
+MERGEN_PK_CACHE_TTL_SEC=300
+
 #   Derin Düşünme sıralı-küme tavanı. Her aday KENDİ güven eşiğini geçmek
 #   zorundadır; eşiğin altındakiler çalıştırılmaz, düşürülür.
-# MERGEN_PK_DEEP_MAX_QUERIES=5
-#
+MERGEN_PK_DEEP_MAX_QUERIES=5
+
 #   TEK bir materyalize sonucun aktif bellek tavanı (MB). Karar frame
 #   YÜKLENMEDEN ÖNCE verilir. Kanıtlanmış bir genişlik üst sınırı yoksa
 #   (ör. nvarchar(max)) zorunlu sınırlı-parça getirim yolu kullanılır.
-# MERGEN_PK_MAX_RESULT_MB=512
-# MERGEN_PK_RESULT_OVERHEAD_FACTOR=2.5
-# MERGEN_PK_FETCH_CHUNK_ROWS=5000
-#
+MERGEN_PK_MAX_RESULT_MB=512
+MERGEN_PK_RESULT_OVERHEAD_FACTOR=2.5
+MERGEN_PK_FETCH_CHUNK_ROWS=5000
+
 #   OPERATOR KACIS KAPISI. Kanitlanmis genislik ust siniri OLMAYAN bir sutun
 #   (nvarchar(max)/varbinary(max)/text/xml, ya da bildirilmemis uzunluk) iceren
 #   sonuclarin getirilmesine izin verir. VARSAYILAN KAPALIDIR: acik olsa bile
 #   MERGEN_PK_MAX_RESULT_MB tavani KALDIRILMAZ; yalnizca dusuk-granulariteli
 #   parcali getirim yolu kullanilir. Yalnizca ilgili sorgunun LOB sutununun
 #   pratikte kucuk oldugu BILINIYORSA acin.
-# MERGEN_PK_ALLOW_UNBOUNDED_LOB=FALSE
-#
+MERGEN_PK_ALLOW_UNBOUNDED_LOB=FALSE
+
 #   PR #703 GUNCELLEMESI: bu bayrak artik SORGU METADATA'SINDAN da cozulur
 #   (`allow_unbounded_lob`) ve sorgu duzeyindeki deger EN YUKSEK onceliklidir.
 #   Ayrica surucunun BEYAN ETMEDIGI degisken genislikli sutunlar (varchar(max)
@@ -789,4 +789,4 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #   baglantilarinda ve sorgu GONDERILMEDEN ONCE calisir (tek ek gidis-donus).
 #   Kapatirsaniz, beyani olmayan degisken genislikli sutunlar kanitlanmamis
 #   sayilir ve MERGEN_PK_ALLOW_UNBOUNDED_LOB acik degilse reddedilir.
-# MERGEN_PK_RESULT_SCHEMA_PROBE=TRUE
+MERGEN_PK_RESULT_SCHEMA_PROBE=TRUE
