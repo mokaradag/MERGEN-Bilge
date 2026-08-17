@@ -4641,6 +4641,94 @@ SQL Server query-timeout behavior; DB connection release under real ODBC; SSO
 identity/RLS correctness for the worker surrogate; and Deep Thinking producing the
 same answer as before the reconciliation.
 
+### Proje ve Kaynak Analizi query-metadata generator contract (Faz 3b, VM-only tooling)
+
+`tools/pk/generate_query_meta.R` is the OPERATOR-RUN, VM-only generator that produces
+the gitignored `R/library_query_meta_local.R` plus a query-library health report. It is
+NOT application code. Operator runbook: `docs/pk-phase3b-operator-runbook.md`; design:
+`docs/proje-kaynak-analizi-master-plan.md` §5.1.
+
+Non-negotiable rules:
+
+- **Not runtime code.** These files must NEVER be added to `R/config_source_manifest.R`
+  (they live under `tools/`, so the seam registry's `R/` orphan check does not apply,
+  but the CP1254 source-safety scan DOES walk `tools/` — keep them WINDOWS-1254 safe).
+  The public operator entry point is exactly `tools/pk/generate_query_meta.R`; the five
+  `tools/pk/helpers_meta_generator_*.R` files are its internals. All are
+  `source(...)`-safe and must never call `quit()`.
+- **Writes exactly one file.** `R/library_query_meta_local.R` only.
+  `pkgr_assert_writable_target()` is a RUNTIME GATE, not a comment: it rejects
+  `R/library_query_aliases_local.R` (operator-owned), `R/library_query_meta.R`
+  (curated), `R/library_query_meta_auto.R` (tracked scaffold) and `R/library_queries.R`.
+  Do not weaken `PKG_META_FORBIDDEN_TARGETS`.
+- **Read-only, and the executed text is the gated text.** Every SQL passes the SAME
+  `pk_sql_classify_readonly()` gate production uses; a rejected query is never executed.
+  Sampling does NOT wrap the SQL (`SELECT TOP n FROM (...)` is forbidden — production
+  SQL has `ORDER BY`/CTE/`OPTION(...)`, and wrapping would also separate the gated text
+  from the executed text). It opens the cursor and fetches N rows via
+  `dbSendQuery` + `dbFetch(n=)` + guaranteed `dbClearResult`. No `dbExecute`/
+  `dbWriteTable`/DDL/EXEC anywhere in the generator.
+- **`result_schema` carries R CLASS names, never raw SQL type names.**
+  `.pk_meta_role_from_class()` and `pk_meta_tier0_column_meta()` are written against R
+  classes; emitting `datetime2`/`bigint` verbatim silently degrades a date and a measure
+  to `dimension`. It also keeps `describe` and `sample` producing the SAME
+  representation, so switching mode cannot change roles. An unmapped SQL type degrades
+  to the CONSERVATIVE `character`/`dimension` and is reported as `unmapped_sql_type` —
+  never guessed into a measure.
+- **Structure only; semantics are NEVER inferred.** The generator emits no `capability`,
+  `grain`, `additive`, `unit`, `percent_scale`, `primary_entity`, `intents` or
+  `default_measures`. A column named `KalanIscilik_sa` does not prove remaining-vs-planned
+  labor. The v2 `unknown_no_semantic_metadata` fail-closed gate stays intact: the
+  generator makes it SATISFIABLE by curation, it does not bypass it. Curated
+  `R/library_query_meta.R` always wins the merge.
+- **Prefix-sample evidence is ONE-SIDED.** `sample_method` is honestly `prefix`. An
+  observed duplicate disproves uniqueness; more than `MERGEN_PK_META_HIGH_CARD_MIN`
+  distinct values proves `high_cardinality = TRUE`. NOT seeing a duplicate/null, or
+  seeing few distinct values, proves NOTHING and leaves the field `NA`. A row-cap
+  pass/fail is never claimed from a sample (`cardinality_claim = "unknown"`,
+  `row_count_is_lower_bound`).
+- **Per-query withholding — do not "fix" this into all-or-nothing.** Once
+  `result_schema` exists, schema-dependent startup checks go live for that query and a
+  declared-but-absent RLS column is an ERROR. A query with any blocking finding is
+  therefore WITHHELD from the generated layer and reported as `withheld`; it keeps
+  today's Tier-0 `pending_no_schema` behavior and request-time
+  `pk_meta_validate_actual_columns()` enforcement is UNCHANGED, so nothing is weakened.
+  Before writing, the generator re-runs `pk_query_meta_attach()` over the WHOLE
+  candidate layer; if that fails, nothing is written. A generator run must never be able
+  to break application startup.
+- **Never destroy good metadata.** Zero entries produced while a previous generated
+  layer exists is a DB-outage signature: refuse to write, warn loudly. A
+  smaller-than-before count writes but warns with the delta.
+- **Emitted R source is PURE ASCII** (`\uXXXX` escapes for every non-ASCII codepoint)
+  and written ATOMICALLY (temp file -> `parse()` -> rename). This closes the §1G
+  WINDOWS-1254 `source()` truncation class by construction for a file that will contain
+  real Turkish column names; the round-trip is byte-identical.
+- **Secret- and data-safe.** No DSN/credential/endpoint in the report or logs (driver
+  errors pass through the redaction helper); the raw text of a rejected SQL never enters
+  the report; production ROW VALUES never enter the report. `artifacts/pk-meta/`,
+  `R/library_query_meta_local.R` and `R/library_query_aliases_local.R` are gitignored and
+  must stay untracked.
+- The generator must never repair SQL, remove an `rls_columns` declaration, auto-curate
+  semantics, or write aliases derived from real project/person values.
+
+Protected by:
+
+- `tests/testthat/test-pk-meta-generator-behavior.R`
+- `tests/testthat/test-pk-meta-generator-contract.R`
+- `tests/testthat/test-pk-query-meta-contract.R`
+- `tests/testthat/test-windows-cp1254-source-safety-contract.R`
+
+Focused validation:
+
+- `testthat::test_file("tests/testthat/test-pk-meta-generator-behavior.R")`
+- `testthat::test_file("tests/testthat/test-pk-meta-generator-contract.R")`
+- `testthat::test_file("tests/testthat/test-pk-query-meta-contract.R")`
+
+VM-only proof (NOT provable in cloud): running the generator at all (it needs the real
+~169-query library and a live DB), `sys.dm_exec_describe_first_result_set` behavior
+against real production SQL, the SQL-type-to-R-class mapping against real driver output,
+the actual RLS-mismatch count, and the resulting `R/library_query_meta_local.R`.
+
 ### File Manager modularization contract
 
 The File Manager layer is intentionally split to keep the large runtime module from growing again. Preserve this source order in `R/config_source_manifest.R`:

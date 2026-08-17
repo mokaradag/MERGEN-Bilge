@@ -18,7 +18,8 @@ reads only one of the two will make avoidable mistakes.
 | 2 | Deterministic analysis + export | `merged_to_rebuild` | `e3893dd` (PR #698) |
 | 4 | Entity resolution | `merged_to_rebuild` | `6ad9c55` (PR #699) |
 | 5 | Selection rebuild | `merged_to_rebuild` | `d8c33f0` (PR #700) + `b1e379e` (PR #701 follow-up) |
-| 6 | Non-blocking + performance | `in_review` | — (this PR, branch `claude/pk-phase-6-async`) |
+| 6 | Non-blocking + performance | `in_review` | — (branch `claude/pk-phase-6-async`) |
+| 3b | Metadata generator + health report (**tooling**) | `in_review` | — (this PR, branch `claude/charming-wozniak-zmh4ta`) |
 
 Planned order (§11): **0 → 3a → 1 → 2 → 4 → 5 → 6**, with **3b on the VM**.
 
@@ -2360,6 +2361,88 @@ encountered during the sweep was `test-pk-entity-history-behavior.R`, caused by
 this phase adding a fourth `chat_history` site; it was resolved by extending the
 allowed set, as documented under "Intentional test change". No other test needed
 modification.
+
+---
+
+## Phase 3b — metadata generator and library health report (tooling half)
+
+**What shipped.** The VM-only generator, built offline. The *population* half of
+Phase 3b (running it, triaging the report, curating the top ~30 queries) still
+requires the operator's Windows VM and is **not** claimed here.
+
+| File | Role |
+|---|---|
+| `tools/pk/generate_query_meta.R` | operator entry point (the exact path the plan and runbook promise) |
+| `tools/pk/helpers_meta_generator_config.R` | mode/env resolution, output path, **forbidden-target list** |
+| `tools/pk/helpers_meta_generator_schema.R` | SQL-type -> R-class mapping, one-sided sample evidence rules |
+| `tools/pk/helpers_meta_generator_render.R` | ASCII R-source emission, forbidden-target gate, atomic write |
+| `tools/pk/helpers_meta_generator_health.R` | findings, summary, JSON/text report, resume state |
+| `tools/pk/helpers_meta_generator_run.R` | inventory loop with **injected** DB access |
+| `docs/pk-phase3b-operator-runbook.md` | the VM runbook |
+
+### Decisions worth carrying forward
+
+* **DB access is injected** (`connect_fn` / `describe_fn` / `sample_fn`). That is what
+  makes the entire decision path — read-only gate, schema inference, merge, withhold
+  decision, health record — provable offline with a stubbed connection. Do not inline
+  `get_connection()` into the loop; the defaults live at the bottom of the run file.
+
+* **`result_schema` carries R class names, not raw SQL type names.** The consumers
+  (`.pk_meta_role_from_class()`, `pk_meta_tier0_column_meta()`) are written against R
+  classes. Emitting `datetime2` / `bigint` verbatim would silently degrade a date
+  column and a measure column to `dimension`. It also makes `describe` and `sample`
+  produce the *same* representation, so changing mode cannot change roles.
+
+* **Per-query withholding, not all-or-nothing.** Once `result_schema` exists the
+  schema-dependent startup checks go live for that query, and a D6 RLS hole is an
+  *error*. Writing schema for a library that still has holes would stop the app from
+  booting. So a query with any blocking finding is withheld; it keeps today's Tier-0
+  `pending_no_schema` behavior and request-time RLS enforcement is untouched. Healthy
+  queries still gain real schema. See the master plan §5.1 addition.
+
+* **A whole-library `pk_query_meta_attach()` dry run happens before the write.** If it
+  fails, nothing is written. A generator run therefore cannot break startup.
+
+* **Never destroy good metadata.** Zero entries produced while a previous layer exists
+  is treated as a DB-outage signature: no write, loud warning. A smaller-than-before
+  count writes but warns with the delta.
+
+* **The emitted file is pure ASCII** (`\uXXXX` escapes for every non-ASCII codepoint).
+  This closes the `CLAUDE.md` §1G WINDOWS-1254 truncation class *by construction* for
+  a file that will contain real Turkish column names. Round-trip is byte-identical and
+  asserted in the tests.
+
+* **Sampling never rewrites the SQL.** No `SELECT TOP n FROM (...)` wrapper: production
+  SQL has `ORDER BY` / CTEs / `OPTION(...)`, and wrapping would also mean the text that
+  passed the read-only gate is not the text that runs. Instead the cursor is opened and
+  only N rows are fetched. The method is therefore honestly recorded as `prefix`.
+
+* **Prefix evidence is one-sided and stays that way.** An observed duplicate disproves
+  uniqueness; more than `MERGEN_PK_META_HIGH_CARD_MIN` distinct values proves
+  `high_cardinality = TRUE`. *Not* seeing a duplicate/null, or seeing few distinct
+  values, proves nothing and leaves the field `NA`. `row_cap` pass/fail is never
+  claimed from a sample.
+
+* **Semantics are never inferred.** No `capability`, `grain`, `additive`, `unit`,
+  `primary_entity`, `default_measures`. A column named `KalanIscilik_sa` does not prove
+  it is *remaining* rather than *planned* labor. The v2 fail-closed
+  `unknown_no_semantic_metadata` gate is deliberately left intact — the generator makes
+  that gate *satisfiable* by curation, it does not bypass it.
+
+### Bug found while building this
+
+`.PKGS_SQL_TYPE_TO_R_CLASS[[missing_name]]` on a **named character vector** raises
+`subscript out of bounds` — it does not return `NULL` the way a list does. Same trap
+already documented in `CLAUDE.md` for `local_model_endpoint_map`. Fixed with an
+explicit `%in% names(...)` check; every unmapped SQL type now degrades to
+`character`/`dimension` and is reported as `unmapped_sql_type`.
+
+### What the operator will actually hit first (prediction, not evidence)
+
+`gen_pro_per_01` already failed on the VM with *"Beyan edilen RLS sutunu gercek
+sonucda yok: ProjeKodu, ProgMd1Kodu"*. That query will come back as `withheld` with a
+`rls_column_missing` **security** finding. The count of similar queries across the real
+169 is unknown until the VM run.
 
 ---
 
