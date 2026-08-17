@@ -4,15 +4,15 @@ Bu belge, MERGEN Bilge'nin en son **başarılı Windows VM evidence gate** koşu
 
 ## Son başarılı koşum
 
-- **Tarih:** 28 Temmuz 2026
+- **Tarih:** 17 Ağustos 2026
 - **Profil:** `vm/vm`
 - **Komut:** `Rscript --vanilla tests/scripts/run_vm_evidence_gate.R`
 - **Sonuç:** `Toplam: 13 passed, 0 failed, 0 skipped`
-- **Artifact dizini:** `artifacts/vm-evidence/20260728-184747`
-- **Makine-okunur kanıt:** `artifacts/vm-evidence/20260728-184747/evidence.json`
+- **Artifact dizini:** `artifacts/vm-evidence/20260817-065352`
+- **Makine-okunur kanıt:** `artifacts/vm-evidence/20260817-065352/evidence.json`
 - **Browser external-app URL:** `http://127.0.0.1:8009`
 - **Browser smoke zorlaması:** `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true`
-- **Kayıt kaynağı:** 28 Temmuz 2026 tarihli Windows VM konsol çıktısı ve operatör ekran görüntüsü
+- **Kayıt kaynağı:** 17 Ağustos 2026 tarihli Windows VM konsol çıktısı ve operatör ekran görüntüsü
 
 Koşum sonunda `OK: VM kanit kapisi basariyla tamamlandi.` mesajı alınmıştır.
 
@@ -21,20 +21,20 @@ Koşum sonunda `OK: VM kanit kapisi basariyla tamamlandi.` mesajı alınmıştı
 | Adım | Sonuç | Koşum süresi |
 |---|---|---:|
 | `env_config` | PASSED | 0.0 sn |
-| `parse_sanity` | PASSED | 9.0 sn |
-| `app_boot_smoke` | PASSED | 26.6 sn |
-| `full_testthat` | PASSED | 3878.0 sn |
-| `maintainability_report` | PASSED | 7.0 sn |
-| `frontend_ratchet` | PASSED | 899.5 sn |
-| `seam_doctor` | PASSED | 0.8 sn |
-| `source_manifest_contracts` | PASSED | 7.9 sn |
-| `ui_asset_manifest_contracts` | PASSED | 7.0 sn |
-| `browser_ux_smoke` | PASSED | 234.0 sn |
-| `vm_preflight_real` | PASSED | 39.4 sn |
-| `db_encoding_preflight` | PASSED | 28.7 sn |
+| `parse_sanity` | PASSED | 15.1 sn |
+| `app_boot_smoke` | PASSED | 43.8 sn |
+| `full_testthat` | PASSED | 5280.7 sn |
+| `maintainability_report` | PASSED | 19.6 sn |
+| `frontend_ratchet` | PASSED | 1071.3 sn |
+| `seam_doctor` | PASSED | 1.1 sn |
+| `source_manifest_contracts` | PASSED | 12.6 sn |
+| `ui_asset_manifest_contracts` | PASSED | 8.8 sn |
+| `browser_ux_smoke` | PASSED | 234.5 sn |
+| `vm_preflight_real` | PASSED | 56.4 sn |
+| `db_encoding_preflight` | PASSED | 40.5 sn |
 | `renv_status` | PASSED | 0.0 sn |
 
-Süreler, 28 Temmuz 2026 tarihli konsol çıktısında görülen koşum süreleridir; başka VM koşumlarında değişebilir.
+Süreler, 17 Ağustos 2026 tarihli konsol çıktısında görülen koşum süreleridir; başka VM koşumlarında değişebilir.
 
 ## Browser UX smoke koşumu
 
@@ -47,7 +47,7 @@ $env:MERGEN_REQUIRE_BROWSER_UX_SMOKE = "true"
 & $rscript --vanilla tests/scripts/run_vm_evidence_gate.R
 ```
 
-`MERGEN_BROWSER_UX_BASE_URL` çalışmakta olan uygulamanın gerçek yerel URL'siyle eşleşmelidir. 28 Temmuz 2026 koşumunda uygulama `8009` portunda çalışıyordu.
+`MERGEN_BROWSER_UX_BASE_URL` çalışmakta olan uygulamanın gerçek yerel URL'siyle eşleşmelidir. 17 Ağustos 2026 koşumunda uygulama `8009` portunda çalışıyordu.
 
 ## Bu koşum neyi kanıtlar?
 
