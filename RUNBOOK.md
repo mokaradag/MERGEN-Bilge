@@ -188,7 +188,7 @@ MERGEN_REQUIRE_BROWSER_UX_SMOKE=true bash tools/ai_validate.sh full --boot-smoke
 
 ### 7.6 VM evidence gate (güncel release kanıtı)
 
-28 Temmuz 2026 tarihli son VM evidence gate koşumu başarılıdır: `Toplam: 13 passed, 0 failed, 0 skipped`. Son kanıt `artifacts/vm-evidence/20260728-184747/evidence.json` altında beklenir; genel düzen `artifacts/vm-evidence/<timestamp>/evidence.json` olarak kalır. Ayrıntılı son koşum kaydı için [`docs/vm-evidence-status.md`](docs/vm-evidence-status.md) izlenir.
+17 Ağustos 2026 tarihli son VM evidence gate koşumu başarılıdır: `Toplam: 13 passed, 0 failed, 0 skipped`. Son kanıt `artifacts/vm-evidence/20260817-065352/evidence.json` altında beklenir; genel düzen `artifacts/vm-evidence/<timestamp>/evidence.json` olarak kalır. Ayrıntılı son koşum kaydı için [`docs/vm-evidence-status.md`](docs/vm-evidence-status.md) izlenir.
 
 Son başarılı external-app koşumunda uygulama zaten `http://127.0.0.1:8009` üzerinde çalışırken gate şu ortamla koşturuldu:
 
@@ -199,7 +199,7 @@ $env:MERGEN_REQUIRE_BROWSER_UX_SMOKE = "true"
 & $rscript --vanilla tests/scripts/run_vm_evidence_gate.R
 ```
 
-Geçerli release kanıtı sayılması için özet satırında `Toplam: 13 passed, 0 failed, 0 skipped` görülmeli ve hiçbir adım `FAILED` veya `SKIPPED` olmamalıdır. 28 Temmuz 2026 koşumunda `full_testthat`, `maintainability_report`, `frontend_ratchet`, `seam_doctor`, `source_manifest_contracts`, `ui_asset_manifest_contracts`, `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight` ve diğer gate adımlarının tümü `PASSED` olmuştur.
+Geçerli release kanıtı sayılması için özet satırında `Toplam: 13 passed, 0 failed, 0 skipped` görülmeli ve hiçbir adım `FAILED` veya `SKIPPED` olmamalıdır. 17 Ağustos 2026 koşumunda `full_testthat`, `maintainability_report`, `frontend_ratchet`, `seam_doctor`, `source_manifest_contracts`, `ui_asset_manifest_contracts`, `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight` ve diğer gate adımlarının tümü `PASSED` olmuştur.
 
 ### 7.7 Operasyonel soak / yük kapısı (dayanıklılık kanıtı)
 
@@ -838,7 +838,7 @@ operasyonu için normal tam koşum repo kökünden doğrudan Rscript ile çalı�
 
 #### Milestone: tam Windows VM evidence gate geçti
 
-2026-06-12 tarihinde Windows VM üzerinde tam evidence gate milestone'u kaydedildi; sonraki başarılı yeniden doğrulamalar 2026-06-15, 2026-07-21 ve 2026-07-26 tarihlerinde, en son başarılı yeniden doğrulama ise 2026-07-28 tarihinde alındı:
+2026-06-12 tarihinde Windows VM üzerinde tam evidence gate milestone'u kaydedildi; sonraki başarılı yeniden doğrulamalar 2026-06-15, 2026-07-21, 2026-07-26 ve 2026-07-28 tarihlerinde, en son başarılı yeniden doğrulama ise 2026-08-17 tarihinde alındı:
 
 - `Toplam: 13 passed, 0 failed, 0 skipped`
 - `full_testthat PASSED` — tam izole testthat suite geçti.
@@ -846,7 +846,7 @@ operasyonu için normal tam koşum repo kökünden doğrudan Rscript ile çalı�
 - `vm_preflight_real PASSED` — VM/SSO/DB/LLM üretim-benzeri preflight geçti.
 - `db_encoding_preflight PASSED` — transactional Türkçe DB encoding preflight geçti.
 - Önceki başarılı koşum örneği: `artifacts/vm-evidence/20260615-130127/evidence.json`.
-- En son başarılı koşum: `artifacts/vm-evidence/20260728-184747/evidence.json`.
+- En son başarılı koşum: `artifacts/vm-evidence/20260817-065352/evidence.json`.
 
 Bu, MERGEN Bilge'nin on-prem Windows VM readiness/release doğrulaması için önemli bir
 kilometre taşıdır. Kanıt kapısı yalnızca `evidence.json` içinde `passed` görünen adımlar
