@@ -1,218 +1,54 @@
 # ==============================================================================
 # Dosya Yolu: tools/pk/helpers_meta_generator_health.R
-# Aciklama: Faz 3b metadata ureticisi -- SORGU KUTUPHANESI SAGLIK RAPORU.
+# Açıklama: Faz 3b metadata üreticisi -- SORGU KÜTÜPHANESİ SAĞLIK RAPORU.
 #
-# BU DOSYA CALISMA ZAMANI KODU DEGILDIR; kaynak manifestine EKLENMEZ.
+# BU DOSYA ÇALIŞMA ZAMANI KODU DEĞİLDİR; kaynak manifestine EKLENMEZ.
 #
-# Rapor iki okuyucu icindir:
-#   * MAKINE: artifacts/pk-meta/<zaman>/health.json
-#   * INSAN : ayni dizinde health.txt + konsol ozeti
+# Rapor iki okuyucu içindir:
+#   * MAKİNE: artifacts/pk-meta/<koşu>/health.json
+#   * İNSAN : aynı dizinde health.txt + konsol özeti
 #
-# GIZLI DEGER SIZDIRMAZ: DSN, kimlik bilgisi, jeton, baglanti dizesi ve
-# URETIM SATIR DEGERLERI rapora GIRMEZ. Sema/sutun ADLARI operatorun kendi
-# VM'inde beklenen ve gerekli bilgidir; satir ICERIGI degildir.
+# Bulgu ÜRETİMİ ayrı dosyadadır (helpers_meta_generator_findings.R); burada
+# yalnızca KAYIT, SAYIM, BİÇİMLENDİRME ve ARTEFAKT YAZMA vardır.
 # ==============================================================================
 
 PKG_HEALTH_STATUS <- c("ok", "withheld", "failed", "skipped")
 
-# Bulgu siddetleri:
-#   blocking  -> uretilen sema ILE baslangic dogrulamasini DUSURURDU; sorgu
-#                bu kosuda uretilen katmandan GERI CEKILIR (withheld).
-#   attention -> operator eylemi gerekir ama baslangici dusurmez.
-#   info      -> bilgilendirme.
-PKG_HEALTH_SEVERITIES <- c("blocking", "attention", "info")
+# ŞEMA ALINAMAMASINA özgü başarısızlık kodları. `failed` durumu bundan DAHA
+# GENİŞTİR (örneğin `missing_query_id` hiçbir DB çağrısı yapılmadan üretilir);
+# hepsini "şema alınamadı" saymak kusuru yanlış katmana atfeder.
+PKG_HEALTH_SCHEMA_FAILURE_CODES <- c(
+  "no_connection", "describe_failed", "describe_unavailable",
+  "describe_empty_schema", "describe_invalid_schema",
+  "sample_failed", "sample_not_dataframe", "sample_no_columns",
+  "sample_invalid_schema", "sample_not_normalized", "schema_unavailable"
+)
 
-.pkgh_redact <- function(x) {
-  metin <- as.character(x %||% "")[1]
-  if (is.na(metin)) return("")
-  if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
-    metin <- tryCatch(redact_sensitive_text(metin), error = function(e) metin)
-  }
-  # Yerel yedek: DSN/uc nokta bicimlerini kaba bicimde maskele.
-  metin <- gsub("(?i)(dsn|uid|pwd|password|server|database)\\s*=\\s*[^;\\s]+",
-                "\\1=<gizli>", metin, perl = TRUE)
-  metin <- gsub("(?i)(https?://)[^\\s;'\"]+", "\\1<gizli>", metin, perl = TRUE)
-  metin
+# `health.json` içinde HER ZAMAN dizi olarak kalması gereken alanlar.
+#
+# `auto_unbox = TRUE` atomik vektörleri KARDİNALİTEYE göre farklı JSON türüne
+# çevirir: tek ögeli `columns` bir dize, iki ögeli ise dizi olur. Makine
+# okuyucusu böylece her alan için skaler-ya-da-dizi özel durumu yazmak zorunda
+# kalır ve bir sorgu tek eksik sütundan iki eksik sütuna geçtiğinde KIRILIR.
+PKG_HEALTH_ARRAY_FIELDS <- c(
+  "queries", "findings", "columns", "unmapped", "unbounded", "invalid",
+  "entries", "records", "problem_query_ids", "curation_query_ids"
+)
+
+.pkgh_status_of <- function(record) as.character(record$status %||% "")[1]
+
+.pkgh_finding_codes <- function(findings) {
+  if (!length(findings)) return(character(0))
+  vapply(findings, function(f) as.character(f$code %||% "")[1], character(1))
 }
 
-#' Tek bir bulgu kaydi
-pkgh_finding <- function(code, severity, detail, columns = character(0),
-                         security = FALSE) {
-  if (!(severity %in% PKG_HEALTH_SEVERITIES)) severity <- "attention"
-  list(
-    code = as.character(code)[1],
-    severity = severity,
-    security_relevant = isTRUE(security),
-    detail = .pkgh_redact(detail),
-    columns = as.character(columns %||% character(0))
-  )
-}
-
-#' Sorgu icin YAPISAL saglik bulgularini uret
+#' Sorgu sağlık kaydı oluştur
 #'
-#' Girdi:
-#'   query   : query_library ogesi (id, name, db_target, rls_columns, ...)
-#'   merged  : uretilen yerel katman + kuresyon birlesmis metadata
-#'   schema  : uretilen sema (adlandirilmis karakter vektoru) veya NULL
-#'   blocking: `pk_meta_validate_schema_dependent()` ciktisi (mesaj vektoru)
-#'
-#' `pk_meta_validate_actual_columns()` CALISMA ZAMANI kapisidir ve burada AYNEN
-#' kullanilir: rapor ile istek zamani zorlamasi ayni mantigi paylasir, boylece
-#' rapor "temiz" derken uretimde patlayan bir uyusmazlik kalmaz.
-pkgh_structural_findings <- function(query, merged, schema, blocking = character(0)) {
-  bulgular <- list()
-  sema_sutunlari <- if (is.null(schema)) character(0) else names(schema)
-  sema_sutunlari <- sema_sutunlari[!is.na(sema_sutunlari) & nzchar(trimws(sema_sutunlari))]
-
-  # --- 1) RLS: GUVENLIK KRITIK -------------------------------------------------
-  # Beyan edilen bir RLS sutunu gercek sonucda yoksa, o sorgu istek zamaninda
-  # KAPALI BASARISIZ olur (D6). Otomatik olarak KALDIRILMAZ/DEVRE DISI
-  # BIRAKILMAZ; operator ya SQL'i ya beyani duzeltir.
-  rls <- if (is.list(query)) query$rls_columns else NULL
-  rls_beyan <- character(0)
-  if (is.list(rls)) {
-    for (alan in names(rls)) {
-      deger <- rls[[alan]]
-      if (is.null(deger)) next
-      if (is.character(deger) && length(deger) == 1L && !is.na(deger) && nzchar(trimws(deger))) {
-        rls_beyan <- c(rls_beyan, trimws(deger))
-      }
-    }
-  }
-  rls_beyan <- unique(rls_beyan)
-
-  if (length(sema_sutunlari) && length(rls_beyan)) {
-    eksik_rls <- setdiff(rls_beyan, sema_sutunlari)
-    if (length(eksik_rls)) {
-      bulgular <- c(bulgular, list(pkgh_finding(
-        "rls_column_missing", "blocking",
-        sprintf(
-          paste0(
-            "Beyan edilen RLS sutunu gercek sonucda yok: %s. ",
-            "Ya SQL bu guvenlik sutununu dondurmeli ya da rls_columns beyani yanlis. ",
-            "Beyan OTOMATIK KALDIRILMAZ; istek zamaninda sorgu kapali basarisiz olur."
-          ),
-          paste(eksik_rls, collapse = ", ")
-        ),
-        columns = eksik_rls, security = TRUE
-      )))
-    }
-  }
-
-  if (!length(rls_beyan)) {
-    bulgular <- c(bulgular, list(pkgh_finding(
-      "rls_not_declared", "info",
-      "Sorgu icin RLS sutunu beyan edilmemis (yetki filtresi uygulanmayacak)."
-    )))
-  }
-
-  # --- 2) Metadata atiflari semada var mi? -------------------------------------
-  if (length(sema_sutunlari)) {
-    cmeta_adlari <- names(merged$column_meta %||% list())
-    eksik_cmeta <- setdiff(cmeta_adlari, sema_sutunlari)
-    if (length(eksik_cmeta)) {
-      bulgular <- c(bulgular, list(pkgh_finding(
-        "column_meta_missing_in_schema", "blocking",
-        sprintf("column_meta sutunu semada yok: %s", paste(eksik_cmeta, collapse = ", ")),
-        columns = eksik_cmeta
-      )))
-    }
-
-    atif_alanlari <- list(
-      grain_columns = merged$grain_columns,
-      default_group_by = merged$default_group_by,
-      default_measures = merged$default_measures,
-      primary_entity = merged$primary_entity
-    )
-    for (alan in names(atif_alanlari)) {
-      deger <- atif_alanlari[[alan]]
-      if (!is.character(deger) || !length(deger)) next
-      eksik <- setdiff(deger[!is.na(deger) & nzchar(trimws(deger))], sema_sutunlari)
-      if (length(eksik)) {
-        bulgular <- c(bulgular, list(pkgh_finding(
-          sprintf("%s_missing_in_schema", alan), "blocking",
-          sprintf("%s beyan edilen sutun semada yok: %s", alan, paste(eksik, collapse = ", ")),
-          columns = eksik
-        )))
-      }
-    }
-  }
-
-  # --- 3) Rol / tip uyusmazliklari ---------------------------------------------
-  # Kuresyon "measure" derken semadaki tip metin ise, sessizce yanlis toplam
-  # uretilmeden ONCE yakalanmalidir.
-  if (length(sema_sutunlari) &&
-      exists(".pk_meta_role_from_class", mode = "function", inherits = TRUE)) {
-    uyusmaz <- character(0)
-    for (sutun in intersect(names(merged$column_meta %||% list()), sema_sutunlari)) {
-      cmeta <- merged$column_meta[[sutun]]
-      if (!is.list(cmeta) || is.null(cmeta$role)) next
-      yapisal <- .pk_meta_role_from_class(schema[[sutun]])
-      if (identical(cmeta$role, "date") && !identical(yapisal, "date")) {
-        uyusmaz <- c(uyusmaz, sprintf("%s (role=date, sema=%s)", sutun, schema[[sutun]]))
-      }
-      if (identical(cmeta$role, "measure") && !identical(yapisal, "measure")) {
-        uyusmaz <- c(uyusmaz, sprintf("%s (role=measure, sema=%s)", sutun, schema[[sutun]]))
-      }
-    }
-    if (length(uyusmaz)) {
-      bulgular <- c(bulgular, list(pkgh_finding(
-        "role_type_mismatch", "blocking",
-        sprintf("Beyan edilen role semadaki tiple uyusmuyor: %s", paste(uyusmaz, collapse = "; "))
-      )))
-    }
-  }
-
-  # --- 4) Anlamsal yetenek durumu ----------------------------------------------
-  yetenekler <- character(0)
-  for (cmeta in (merged$column_meta %||% list())) {
-    if (is.list(cmeta) && is.character(cmeta$capability) && length(cmeta$capability) == 1L &&
-        !is.na(cmeta$capability) && nzchar(trimws(cmeta$capability))) {
-      yetenekler <- c(yetenekler, trimws(cmeta$capability))
-    }
-  }
-  yetenekler <- unique(yetenekler)
-
-  if (!length(yetenekler)) {
-    bulgular <- c(bulgular, list(pkgh_finding(
-      "no_semantic_capability", "attention",
-      paste0(
-        "Sorguda anlamsal yetenek (capability) beyani YOK. Olcu/tarih/boyut ",
-        "gerektiren istekler bu sorgu icin SQL'den ONCE ",
-        "'unknown_no_semantic_metadata' ile durur. Uretici bunu KENDILIGINDEN ",
-        "dolduramaz: hangi sayinin planlanan hangisinin kalan isgucu oldugu ",
-        "insan kuresyonudur (R/library_query_meta.R)."
-      )
-    )))
-  }
-
-  if (is.null(merged$primary_entity)) {
-    bulgular <- c(bulgular, list(pkgh_finding(
-      "no_primary_entity", "attention",
-      "primary_entity beyan edilmemis; Tier-0 geri dususu uygulanir (tek filtre yapragi birincil)."
-    )))
-  }
-  if (is.null(merged$grain)) {
-    bulgular <- c(bulgular, list(pkgh_finding(
-      "no_grain", "info",
-      "grain beyan edilmemis; mukerrer satir elemesi YAPILMAZ."
-    )))
-  }
-
-  # --- 5) Baslangici dusurecek ham bulgular (otoriter) --------------------------
-  # `pk_meta_validate_schema_dependent()` baslangicta CALISAN dogrulayicidir.
-  # Yukaridaki yapisal bulgular okunabilirlik icindir; KARAR bu listeden verilir.
-  if (length(blocking)) {
-    bulgular <- c(bulgular, list(pkgh_finding(
-      "startup_validation_would_fail", "blocking",
-      paste(blocking, collapse = " | ")
-    )))
-  }
-
-  bulgular
-}
-
-#' Sorgu saglik kaydi olustur
+#' HAZIRLIK DURUMU ŞEMANIN VARLIĞINDAN DEĞİL, DAHİL EDİLME KARARINDAN türer.
+#' Bloklayıcı bir bulgu yüzünden geri çekilen bir sorgunun şeması ELDE olsa da
+#' üretilen katmana GİRMEZ; çalışma zamanı onu Tier-0/`pending_no_schema`
+#' olarak görür. Rapor bunu `validated` diye bildirseydi operatöre YANLIŞ bir
+#' hazırlık tablosu sunardı.
 pkgh_query_record <- function(query, status, mode, schema = NULL, findings = list(),
                               error = NULL, sample_info = list()) {
   if (!(status %in% PKG_HEALTH_STATUS)) status <- "failed"
@@ -220,49 +56,71 @@ pkgh_query_record <- function(query, status, mode, schema = NULL, findings = lis
   sutun_adlari <- if (is.null(schema)) character(0) else names(schema)
   siddetler <- vapply(findings, function(f) as.character(f$severity)[1], character(1))
   guvenlik <- vapply(findings, function(f) isTRUE(f$security_relevant), logical(1))
+  kodlar <- .pkgh_finding_codes(findings)
+
+  dahil <- identical(status, "ok")
+  sema_var <- !is.null(schema) && length(sutun_adlari) > 0L
+
+  # Kararlı kimlik: `query_library` sözleşmesi boşluklu bir id'yi kabul edip
+  # `trimws()` ile kanonik hâle getirir. Rapor da AYNI kanonik kimliği
+  # kullanmalıdır, aksi hâlde JSON kaydı ile üretilen metadata anahtarı farklı
+  # olur ve makine korelasyonu kırılır.
+  ham_id <- as.character(query$id %||% NA_character_)[1]
+  kimlik <- if (is.na(ham_id)) NA_character_ else trimws(ham_id)
 
   list(
-    query_id = as.character(query$id %||% NA_character_)[1],
+    query_id = kimlik,
     query_name = as.character(query$name %||% NA_character_)[1],
     db_target = as.character(query$db_target %||% "primary")[1],
     status = status,
     mode = as.character(mode)[1],
-    schema_obtained = !is.null(schema) && length(sutun_adlari) > 0L,
+    schema_obtained = sema_var,
+    from_cache = isTRUE(sample_info$from_cache),
     column_count = length(sutun_adlari),
-    schema_validation = if (!is.null(schema) && length(sutun_adlari)) {
-      "validated"
-    } else {
-      "pending_no_schema"
-    },
-    tier0 = is.null(schema) || !length(sutun_adlari),
+    schema_validation = if (dahil && sema_var) "validated" else "pending_no_schema",
+    tier0 = !(dahil && sema_var),
     blocking_count = sum(siddetler == "blocking"),
     attention_count = sum(siddetler == "attention"),
     security_finding_count = sum(guvenlik),
-    needs_curation = any(vapply(findings, function(f) {
-      identical(f$code, "no_semantic_capability")
-    }, logical(1))),
+    schema_failure = identical(status, "failed") &&
+      any(kodlar %in% PKG_HEALTH_SCHEMA_FAILURE_CODES),
+    # Anlamsal küresyon kontrolü YALNIZCA dahil edilen sorgular için ÇALIŞIR;
+    # başarısız/atlanan bir sorguda kontrol hiç yapılmadığı için ne "küresyon
+    # gerekiyor" ne de "anlamsal metadata var" denebilir.
+    semantics_checked = dahil,
+    needs_curation = dahil && any(kodlar == "no_semantic_capability"),
     error = if (is.null(error)) NA_character_ else .pkgh_redact(error),
     sample = sample_info,
     findings = findings
   )
 }
 
-#' Rapor ozetini hesapla
+#' Rapor özetini hesapla
 pkgh_summarize <- function(records) {
   say <- function(pred) sum(vapply(records, pred, logical(1)))
 
   list(
     total_queries = length(records),
-    described_or_sampled = say(function(r) isTRUE(r$schema_obtained)),
-    schema_failures = say(function(r) identical(r$status, "failed")),
-    withheld = say(function(r) identical(r$status, "withheld")),
-    skipped = say(function(r) identical(r$status, "skipped")),
-    included = say(function(r) identical(r$status, "ok")),
+    # DB'ye BU KOŞUDA gidilen sorgular. Önbellekten gelenler ayrı sayılır;
+    # aksi hâlde tamamen devam önbelleğinden çalışan bir koşu "hepsi
+    # describe/sample edildi" der ve üretilen kanıtı ABARTIR.
+    described_or_sampled = say(function(r) isTRUE(r$schema_obtained) && !isTRUE(r$from_cache)),
+    from_cache = say(function(r) isTRUE(r$from_cache)),
+    schema_failures = say(function(r) isTRUE(r$schema_failure)),
+    failed_queries = say(function(r) identical(.pkgh_status_of(r), "failed")),
+    withheld = say(function(r) identical(.pkgh_status_of(r), "withheld")),
+    skipped = say(function(r) identical(.pkgh_status_of(r), "skipped")),
+    # `included` = bu koşuda ADAY katmana giren sorgu sayısı. Bütün kütüphane
+    # kapısı düşerse hiçbir şey YAZILMAZ; yazılan sayı ayrıca raporlanır.
+    included = say(function(r) identical(.pkgh_status_of(r), "ok")),
     rls_mismatches = say(function(r) r$security_finding_count > 0L),
     blocking_queries = say(function(r) r$blocking_count > 0L),
+    attention_queries = say(function(r) r$attention_count > 0L),
     tier0_queries = say(function(r) isTRUE(r$tier0)),
     queries_needing_curation = say(function(r) isTRUE(r$needs_curation)),
-    queries_with_semantics = say(function(r) !isTRUE(r$needs_curation))
+    queries_with_semantics = say(function(r) {
+      isTRUE(r$semantics_checked) && !isTRUE(r$needs_curation)
+    })
   )
 }
 
@@ -276,7 +134,18 @@ pkgh_summarize <- function(records) {
   )
 }
 
-#' Insan tarafindan okunabilir rapor metni
+# Operatör EYLEMİ gerektiren kayıtlar. `attention` tanımı gereği eylem
+# gerektirir; yalnızca bloklayıcı/başarısız kayıtları listelemek, örneğin tek
+# bulgusu `unmapped_sql_type` olan bir sorguyu insan raporundan TAMAMEN
+# gizlerdi (ve yalnızca böyle bulgular varken rapor "BULGU YOK" derdi).
+.pkgh_needs_attention <- function(r) {
+  r$blocking_count > 0L || r$attention_count > 0L ||
+    identical(.pkgh_status_of(r), "failed") ||
+    identical(.pkgh_status_of(r), "skipped") ||
+    r$security_finding_count > 0L
+}
+
+#' İnsan tarafından okunabilir rapor metni
 pkgh_render_text <- function(summary, records, config_summary) {
   satirlar <- c(
     "===============================================================================",
@@ -285,32 +154,38 @@ pkgh_render_text <- function(summary, records, config_summary) {
     "===============================================================================",
     "",
     sprintf("Kip                        : %s", config_summary$mode),
+    sprintf("Kosu kimligi               : %s", config_summary$run_id %||% "?"),
     sprintf("Ornek satir siniri         : %s", format(config_summary$sample_rows)),
     sprintf("Yuksek kardinalite esigi   : %s", format(config_summary$high_cardinality_threshold)),
     sprintf("Uretilen katman            : %s", config_summary$output_rel),
     "",
     "-- SAYIMLAR --------------------------------------------------------------",
     sprintf("Toplam sorgu               : %d", summary$total_queries),
-    sprintf("Sema alinan                : %d", summary$described_or_sampled),
-    sprintf("Uretilen katmana dahil     : %d", summary$included),
+    sprintf("Bu kosuda sema alinan      : %d", summary$described_or_sampled),
+    sprintf("Devam onbelleginden gelen  : %d", summary$from_cache %||% 0L),
+    sprintf("Aday katmana dahil         : %d", summary$included),
     sprintf("GERI CEKILEN (bloklayici)  : %d", summary$withheld),
-    sprintf("Sema alinamayan (hata)     : %d", summary$schema_failures),
+    sprintf("Sema alinamayan            : %d", summary$schema_failures),
+    sprintf("Basarisiz (tum nedenler)   : %d", summary$failed_queries %||% 0L),
     sprintf("Atlanan (guvenlik/gate)    : %d", summary$skipped),
-    sprintf("RLS UYUSMAZLIGI olan       : %d", summary$rls_mismatches),
+    sprintf("RLS/GUVENLIK bulgusu olan  : %d", summary$rls_mismatches),
     sprintf("Tier-0 kalan               : %d", summary$tier0_queries),
     sprintf("Anlamsal kuresyon gereken  : %d", summary$queries_needing_curation),
     ""
   )
 
-  sorunlu <- Filter(function(r) {
-    r$blocking_count > 0L || identical(r$status, "failed") ||
-      identical(r$status, "skipped") || r$security_finding_count > 0L
-  }, records)
+  if (!is.null(summary$written_entries)) {
+    satirlar <- c(satirlar, sprintf(
+      "Uretilen katmana YAZILAN   : %d", summary$written_entries
+    ), "")
+  }
+
+  sorunlu <- Filter(.pkgh_needs_attention, records)
 
   if (!length(sorunlu)) {
     satirlar <- c(satirlar,
       "-- BULGU YOK -------------------------------------------------------------",
-      "Bloklayici bulgu yok. Anlamsal kuresyon listesi asagidadir.",
+      "Bloklayici ya da eylem gerektiren bulgu yok.",
       ""
     )
   } else {
@@ -339,7 +214,7 @@ pkgh_render_text <- function(summary, records, config_summary) {
     }
   }
 
-  kuresyon <- Filter(function(r) isTRUE(r$needs_curation) && identical(r$status, "ok"), records)
+  kuresyon <- Filter(function(r) isTRUE(r$needs_curation), records)
   if (length(kuresyon)) {
     satirlar <- c(satirlar,
       "-- ANLAMSAL KURESYON BEKLEYEN SORGULAR -----------------------------------",
@@ -367,12 +242,72 @@ pkgh_render_text <- function(summary, records, config_summary) {
   paste(satirlar, collapse = "\n")
 }
 
-#' Saglik raporu artefaktlarini yaz
+#' Raporu JSON tür kararlılığı için hazırla
 #'
-#' Giris betiginden AYRILMISTIR ki artefakt yazma yolu (JSON + metin + dizin
-#' olusturma) uygulama bootstrap'i OLMADAN test edilebilsin.
+#' Koleksiyon alanları `I(...)` ile işaretlenir; böylece tek ögeli bir alan da
+#' JSON dizisi olarak yazılır.
+pkgh_stabilize_report <- function(x, array_fields = PKG_HEALTH_ARRAY_FIELDS) {
+  if (is.list(x)) {
+    adlar <- names(x)
+    for (i in seq_along(x)) {
+      x[[i]] <- pkgh_stabilize_report(x[[i]], array_fields)
+      ad <- if (is.null(adlar)) "" else as.character(adlar[i])
+      if (nzchar(ad) && ad %in% array_fields && is.atomic(x[[i]])) {
+        x[[i]] <- I(unname(x[[i]]))
+      }
+    }
+    return(x)
+  }
+  x
+}
+
+# Metin/JSON artefaktını geçici dosyaya yazıp yerine taşı. Yarım bir rapor
+# operatörü yanıltır; ayrıca RStudio sürecinde açık kalan bir tutamaç Windows'ta
+# sonraki koşuyu engelleyebilir.
+.pkgh_atomic_write_bytes <- function(bytes, path) {
+  gecici <- paste0(path, ".tmp-", Sys.getpid())
+  basarili <- FALSE
+  on.exit(if (!basarili && file.exists(gecici)) unlink(gecici), add = TRUE)
+
+  con <- file(gecici, open = "wb")
+  acik <- TRUE
+  on.exit(if (acik) tryCatch(close(con), error = function(e) NULL), add = TRUE)
+  writeBin(bytes, con)
+  close(con)
+  acik <- FALSE
+
+  if (!isTRUE(tryCatch(file.rename(gecici, path), error = function(e) FALSE))) {
+    if (!isTRUE(tryCatch(file.copy(gecici, path, overwrite = TRUE), error = function(e) FALSE))) {
+      stop(sprintf("[PK_META_GEN] Artefakt yazilamadi: %s", path), call. = FALSE)
+    }
+    unlink(gecici)
+  }
+
+  basarili <- TRUE
+  invisible(path)
+}
+
+#' Koşuya özel artefakt dizinini ÇARPIŞMASIZ ayır
 #'
-#' @return Yazilan dosya yollari.
+#' `run_id` milisaniye + süreç kimliği taşıdığı için çarpışma pratikte olanaksız
+#' olsa da, var olan bir rapor dizini ASLA üzerine yazılmaz.
+pkgh_allocate_artifact_dir <- function(artifact_dir, max_suffix = 50L) {
+  aday <- artifact_dir
+  i <- 1L
+  while (dir.exists(aday) && length(list.files(aday)) > 0L && i <= max_suffix) {
+    i <- i + 1L
+    aday <- sprintf("%s-%d", artifact_dir, i)
+  }
+  dir.create(aday, recursive = TRUE, showWarnings = FALSE)
+  aday
+}
+
+#' Sağlık raporu artefaktlarını yaz
+#'
+#' Giriş betiğinden AYRILMIŞTIR ki artefakt yazma yolu (JSON + metin + dizin
+#' oluşturma) uygulama bootstrap'i OLMADAN test edilebilsin.
+#'
+#' @return Yazılan dosya yolları.
 pkgh_write_artifacts <- function(report, artifact_dir, records, summary,
                                  config_summary) {
   if (!dir.exists(artifact_dir)) {
@@ -382,111 +317,32 @@ pkgh_write_artifacts <- function(report, artifact_dir, records, summary,
   json_yolu <- file.path(artifact_dir, "health.json")
   metin_yolu <- file.path(artifact_dir, "health.txt")
 
-  if (exists("atomic_write_json", mode = "function", inherits = TRUE)) {
-    atomic_write_json(report, json_yolu)
-  } else {
-    con <- file(json_yolu, open = "wb")
-    on.exit(close(con), add = TRUE)
-    writeBin(charToRaw(enc2utf8(as.character(jsonlite::toJSON(
-      report, auto_unbox = TRUE, pretty = TRUE, null = "null"
-    )))), con)
-  }
+  kararli <- pkgh_stabilize_report(report)
+
+  json_metin <- as.character(jsonlite::toJSON(
+    kararli, auto_unbox = TRUE, pretty = TRUE, null = "null"
+  ))
+  .pkgh_atomic_write_bytes(charToRaw(enc2utf8(json_metin)), json_yolu)
 
   metin <- pkgh_render_text(summary, records, config_summary)
-  con2 <- file(metin_yolu, open = "wb")
-  writeBin(charToRaw(enc2utf8(metin)), con2)
-  close(con2)
+  .pkgh_atomic_write_bytes(charToRaw(enc2utf8(metin)), metin_yolu)
 
   list(json = json_yolu, text = metin_yolu)
 }
 
-#' Devam (resume) onbellegi durumunu yaz
-#'
-#' Onbellek YALNIZCA DB gozlemlerini tasir; karar/kuresyon her kosuda YENIDEN
-#' hesaplanir, boylece kuresyon degisikligi onbellek yuzunden kacirilmaz.
-pkgh_write_state <- function(cache, state_path, mode, timestamp) {
-  girdiler <- unname(lapply(names(cache %||% list()), function(id) {
-    girdi <- cache[[id]]
-    sema <- girdi$columns
-    tipler <- girdi$source_types %||% character(0)
-    list(
-      query_id = id,
-      columns = unname(lapply(names(sema), function(sutun) list(
-        name = sutun,
-        r_class = unname(sema[[sutun]]),
-        source_type = if (sutun %in% names(tipler)) {
-          unname(tipler[[sutun]])
-        } else {
-          NA_character_
-        }
-      )))
-    )
-  }))
-
-  durum <- list(mode = mode, timestamp = timestamp, entries = girdiler)
-
-  dizin <- dirname(state_path)
-  if (!dir.exists(dizin)) dir.create(dizin, recursive = TRUE, showWarnings = FALSE)
-
-  tryCatch({
-    con <- file(state_path, open = "wb")
-    on.exit(close(con), add = TRUE)
-    writeBin(charToRaw(enc2utf8(as.character(jsonlite::toJSON(
-      durum, auto_unbox = TRUE, pretty = TRUE, null = "null"
-    )))), con)
-    invisible(state_path)
-  }, error = function(e) invisible(NULL))
-}
-
-#' Devam onbellegini geri oku
-#'
-#' Kip DEGISTIYSE onbellek YOK SAYILIR: `describe` ile alinmis bir sema
-#' `sample` kosusunun gozlemlerini tasimaz.
-pkgh_read_state <- function(state_path, mode) {
-  if (!file.exists(state_path)) return(list())
-
-  tryCatch({
-    ham <- jsonlite::fromJSON(state_path, simplifyVector = FALSE)
-    if (!identical(as.character(ham$mode)[1], as.character(mode)[1])) return(list())
-
-    cikti <- list()
-    for (girdi in (ham$entries %||% list())) {
-      id <- as.character(girdi$query_id %||% "")[1]
-      sutunlar <- girdi$columns %||% list()
-      if (!nzchar(id) || !length(sutunlar)) next
-
-      adlar <- vapply(sutunlar, function(s) as.character(s$name)[1], character(1))
-      siniflar <- vapply(sutunlar, function(s) as.character(s$r_class)[1], character(1))
-      tipler <- vapply(sutunlar, function(s) {
-        as.character(s$source_type %||% NA_character_)[1]
-      }, character(1))
-
-      sema <- stats::setNames(siniflar, adlar)
-      kaynak <- stats::setNames(tipler, adlar)
-
-      cikti[[id]] <- list(
-        ok = TRUE, schema = sema, source_types = kaynak,
-        unmapped = character(0), unbounded = character(0), observations = list(),
-        sample_info = list(mode = mode, from_cache = TRUE),
-        cache = list(mode = mode, columns = sema, source_types = kaynak)
-      )
-    }
-    cikti
-  }, error = function(e) list())
-}
-
-#' Konsol ozeti (kisa)
+#' Konsol özeti (kısa)
 pkgh_render_console <- function(summary, records) {
   satirlar <- c(
     "",
     "[PK_META_GEN] ---------------- SAGLIK OZETI ----------------",
     sprintf("[PK_META_GEN] Toplam sorgu            : %d", summary$total_queries),
-    sprintf("[PK_META_GEN] Sema alinan             : %d", summary$described_or_sampled),
-    sprintf("[PK_META_GEN] Uretilen katmana dahil  : %d", summary$included),
+    sprintf("[PK_META_GEN] Bu kosuda sema alinan   : %d", summary$described_or_sampled),
+    sprintf("[PK_META_GEN] Onbellekten gelen       : %d", summary$from_cache %||% 0L),
+    sprintf("[PK_META_GEN] Aday katmana dahil      : %d", summary$included),
     sprintf("[PK_META_GEN] GERI CEKILEN            : %d", summary$withheld),
     sprintf("[PK_META_GEN] Sema alinamayan         : %d", summary$schema_failures),
     sprintf("[PK_META_GEN] Atlanan                 : %d", summary$skipped),
-    sprintf("[PK_META_GEN] RLS UYUSMAZLIGI         : %d", summary$rls_mismatches),
+    sprintf("[PK_META_GEN] RLS/GUVENLIK bulgusu    : %d", summary$rls_mismatches),
     sprintf("[PK_META_GEN] Tier-0 kalan            : %d", summary$tier0_queries),
     sprintf("[PK_META_GEN] Kuresyon bekleyen       : %d", summary$queries_needing_curation)
   )

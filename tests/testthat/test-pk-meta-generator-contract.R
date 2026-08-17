@@ -67,18 +67,52 @@ test_that("uretici dosyalari parse edilebilir", {
   }
 })
 
-test_that("uretici source(...) guvenlidir: quit() cagirmaz", {
+# AYRIŞTIRILMIŞ ifade ağacındaki HER çağrı başını topla.
+#
+# Metin taraması `q()`, `q("no")`, `q(runLast = FALSE)` gibi biçimleri kaçırır;
+# oysa hepsi `quit()` ile AYNI şeyi yapar ve operatörün RStudio oturumunu
+# kapatır. Çağrı başını ayrıştırılmış ağaçtan okumak bu sınıfın tamamını kapar.
+# `f(x[, 1])` gibi biçimlerde bir argüman BOŞ SEMBOLDÜR; onu bir fonksiyona
+# geçirmek "argument is missing" hatası verir. Boş sembol NULL'a indirgenir.
+.pkgc_arg_at <- function(x, i) {
+  oge <- tryCatch(x[[i]], error = function(e) NULL)
+  if (missing(oge)) return(NULL)
+  if (is.symbol(oge) && identical(as.character(oge), "")) return(NULL)
+  oge
+}
+
+.pkgc_call_heads <- function(path) {
+  ifadeler <- tryCatch(parse(path, encoding = "UTF-8", keep.source = FALSE),
+                       error = function(e) NULL)
+  if (is.null(ifadeler)) return(character(0))
+
+  basliklar <- character(0)
+  gez <- function(x) {
+    if (is.call(x)) {
+      bas <- x[[1]]
+      if (is.name(bas)) basliklar <<- c(basliklar, as.character(bas))
+      for (i in seq_along(x)) gez(.pkgc_arg_at(x, i))
+    } else if (is.pairlist(x) || is.list(x)) {
+      for (i in seq_along(x)) gez(.pkgc_arg_at(x, i))
+    }
+  }
+
+  for (ifade in ifadeler) gez(ifade)
+  unique(basliklar)
+}
+
+test_that("uretici source(...) guvenlidir: quit()/q() cagirmaz", {
   for (dosya in .pkgc_tool_files()) {
-    metin <- .pkgc_code_only(dosya)
+    basliklar <- .pkgc_call_heads(dosya)
     # `quit()` bir RStudio oturumunu kapatır; depo kuralı gereği
     # `source(...)` ile çalıştırılan operatör betikleri bunu ASLA yapmaz.
     expect_false(
-      grepl("quit(", metin, fixed = TRUE, useBytes = TRUE),
+      "quit" %in% basliklar,
       info = sprintf("%s icinde quit() bulundu", basename(dosya))
     )
     expect_false(
-      grepl("q(save", metin, fixed = TRUE, useBytes = TRUE),
-      info = sprintf("%s icinde q(save=...) bulundu", basename(dosya))
+      "q" %in% basliklar,
+      info = sprintf("%s icinde q(...) bulundu", basename(dosya))
     )
   }
 })
@@ -111,6 +145,22 @@ test_that("uretilen ve operator-yerel dosyalar gitignore'ludur", {
 
 test_that("uretimden turetilen dosyalar depoda IZLENMEZ", {
   kok <- .pkgc_root()
+
+  # ÖNCE GIT'İN CEVAP VEREBİLDİĞİ KANITLANIR.
+  #
+  # `git ls-files --error-unmatch` yolun izlenmediğinde sıfır olmayan bir durum
+  # döndürür — ama `git` yokken, `-C` dizini geçersizken ya da `.git` içermeyen
+  # bir arşiv checkout'unda da AYNI şeyi yapar. Bu güvenlik/provenans
+  # sözleşmesi o hâlde hiçbir şeyi sınamadan SESSİZCE geçerdi.
+  git_var <- nzchar(Sys.which("git"))
+  skip_if_not(git_var, "git kullanilamiyor")
+
+  calisma_agaci <- suppressWarnings(system2(
+    "git", c("-C", shQuote(kok), "rev-parse", "--is-inside-work-tree"),
+    stdout = TRUE, stderr = FALSE
+  ))
+  skip_if_not(identical(trimws(paste(calisma_agaci, collapse = "")), "true"),
+              "depo koku bir Git calisma agaci degil")
 
   # Bulut checkout'unda yoklukları NORMALDİR (renv.lock ile aynı provenans
   # kalıbı). Buradaki sözleşme "izlenmiyor olmalı"dır, "var olmalı" değil.
@@ -200,26 +250,91 @@ test_that("uretici SALT-OKUNUR kapisini kullanir ve veri degistiren ifade calist
   # Üretimin kullandığı AYNI sınıflandırıcı; ayrı bir kapı YAZILMAZ.
   expect_true(grepl("pk_sql_classify_readonly", metin, fixed = TRUE, useBytes = TRUE))
 
-  # Veri değiştiren DBI çağrıları üretici içinde bulunmamalıdır.
-  for (yasak in c("dbExecute(", "dbWriteTable(", "dbRemoveTable(", "dbCreateTable(",
-                  "dbAppendTable(", "sqlAppendTable(")) {
-    expect_false(
-      grepl(yasak, metin, fixed = TRUE, useBytes = TRUE),
-      info = sprintf("uretici %s cagrisi iceriyor", yasak)
+  # Veri değiştiren DBI çağrıları üreticinin HİÇBİR dosyasında bulunmamalıdır.
+  # Tek dosyayı taramak, çağrının komşu bir yardımcıya taşınmasıyla sınırı
+  # sessizce açardı.
+  for (dosya in .pkgc_tool_files()) {
+    kod <- .pkgc_code_only(dosya)
+    for (yasak in c("dbExecute(", "dbWriteTable(", "dbRemoveTable(", "dbCreateTable(",
+                    "dbAppendTable(", "sqlAppendTable(")) {
+      expect_false(
+        grepl(yasak, kod, fixed = TRUE, useBytes = TRUE),
+        info = sprintf("%s icinde %s cagrisi var", basename(dosya), yasak)
+      )
+    }
+  }
+})
+
+test_that("tek izinli EXEC uretimin UNICODE PARAMETRE sarmalayicisidir", {
+  kok <- .pkgc_root()
+
+  for (dosya in .pkgc_tool_files()) {
+    kod <- .pkgc_code_only(dosya)
+    if (!grepl("sp_executesql", kod, fixed = TRUE, useBytes = TRUE)) next
+
+    # `sp_executesql` yalnızca DB katmanında ve yalnızca üretimin de kullandığı
+    # NVARCHAR(MAX) PARAMETRE yolu olarak geçebilir: kapıdan GEÇEN metin
+    # PARAMETRE olarak gider, batch olarak DEĞİL.
+    expect_identical(
+      basename(dosya), "helpers_meta_generator_db.R",
+      info = sprintf("%s icinde beklenmeyen sp_executesql", basename(dosya))
     )
+    expect_true(grepl("sp_executesql", kod, fixed = TRUE, useBytes = TRUE))
+    expect_true(grepl("NVARCHAR(MAX)", kod, fixed = TRUE, useBytes = TRUE))
   }
 })
 
 test_that("ornekleme SQL metnini DEGISTIRMEZ", {
   kok <- .pkgc_root()
-  metin <- .pkgc_code_only(file.path(kok, "tools", "pk", "helpers_meta_generator_run.R"))
+  db_metin <- .pkgc_code_only(file.path(kok, "tools", "pk", "helpers_meta_generator_db.R"))
 
   # SQL sarmalamak (SELECT TOP n FROM (...)) hem üretim sorgularını bozar
   # (ORDER BY / CTE / OPTION), hem de salt-okunur kapısından GEÇEN metin ile
   # ÇALIŞAN metni ayırır. Sınırlama imleçten N satır çekerek yapılır.
-  expect_true(grepl("dbFetch(", metin, fixed = TRUE, useBytes = TRUE))
-  expect_true(grepl("dbClearResult(", metin, fixed = TRUE, useBytes = TRUE))
-  expect_false(grepl("SELECT TOP", metin, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("dbFetch(", db_metin, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("dbClearResult(", db_metin, fixed = TRUE, useBytes = TRUE))
+
+  for (dosya in .pkgc_tool_files()) {
+    expect_false(
+      grepl("SELECT TOP", .pkgc_code_only(dosya), fixed = TRUE, useBytes = TRUE),
+      info = sprintf("%s SQL sarmalama izi iceriyor", basename(dosya))
+    )
+  }
+})
+
+test_that("giris noktasi TUM yardimcilari yukler", {
+  kok <- .pkgc_root()
+  metin <- .pkgc_read_bytes(file.path(kok, "tools", "pk", "generate_query_meta.R"))
+
+  yardimcilar <- setdiff(basename(.pkgc_tool_files()), "generate_query_meta.R")
+  expect_gt(length(yardimcilar), 0L)
+
+  # Yardımcı dosya eklenip giriş noktasında source EDİLMEZSE, üretici VM'de
+  # "fonksiyon bulunamadi" ile düşer; bu ancak operatör koşusunda görülürdü.
+  for (dosya in yardimcilar) {
+    expect_true(
+      grepl(dosya, metin, fixed = TRUE, useBytes = TRUE),
+      info = sprintf("%s giris noktasinda source edilmiyor", dosya)
+    )
+  }
+})
+
+test_that("uretici yapilandirma anahtarlari .Renviron.example icinde belgelenir", {
+  kok <- .pkgc_root()
+  ornek <- .pkgc_read_bytes(file.path(kok, ".Renviron.example"))
+
+  # Depo sözleşmesi: her yeni ayar şablonda görünmelidir; aksi hâlde depodan
+  # sağlanan/denetlenen bir VM bu ayarları KEŞFEDEMEZ.
+  for (anahtar in c(
+    "MERGEN_PK_META_MODE", "MERGEN_PK_META_SAMPLE_ROWS",
+    "MERGEN_PK_META_HIGH_CARD_MIN", "MERGEN_PK_META_SQL_TIMEOUT_SEC",
+    "MERGEN_PK_META_MAX_RESULT_MB", "MERGEN_PK_META_RESUME"
+  )) {
+    expect_true(
+      grepl(anahtar, ornek, fixed = TRUE, useBytes = TRUE),
+      info = sprintf("%s .Renviron.example icinde yok", anahtar)
+    )
+  }
 })
 
 test_that("uretici ANLAMSAL alan uretmedigini sozlesmede belgeler", {

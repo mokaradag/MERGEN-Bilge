@@ -54,8 +54,20 @@ PK_SQL_READONLY_REASONS <- list(
   not_select           = "Ifade SELECT (veya CTE+SELECT) ile baslamiyor.",
   cte_not_select       = "CTE zincirinin son ifadesi SELECT degil.",
   forbidden_keyword    = "Yan etkili SQL anahtar kelimesi tespit edildi.",
-  forbidden_prefix     = "Sakli yordam oneki (sp_/xp_) tespit edildi."
+  forbidden_prefix     = "Sakli yordam oneki (sp_/xp_) tespit edildi.",
+  sequence_mutation    = "Sequence ilerleten ifade (NEXT VALUE FOR) durum degistirir."
 )
+
+# SEQUENCE ILERLETEN IFADE.
+#
+# `SELECT NEXT VALUE FOR dbo.SomeSequence` sozdizimsel olarak bir SELECT'tir ve
+# yasakli anahtar kelimelerin HICBIRINI icermez; ancak SQL Server'da her
+# `NEXT VALUE FOR` cagrisi sequence degerini AYIRIR/ILERLETIR. Deger hicbir yere
+# yazilmasa bile URETIM DURUMU DEGISIR. "Salt-okunur SELECT" sozu bunu
+# kapsayamaz; bu yuzden kapi acikca reddeder. (Faz 3b metadata ureticisi bu
+# ayni kapiyi kullandigi icin duzeltme burada yapilir ve TUM tuketiciler
+# kazanir.)
+PK_SQL_SEQUENCE_MUTATION_PATTERN <- "(^|[^A-Za-z0-9_@#$])NEXT[ \t\r\n]+VALUE[ \t\r\n]+FOR($|[^A-Za-z0-9_@#$])"
 
 # Kullanıcıya gösterilen genel mesaj: sürücü/DSN/şema ayrıntısı içermez.
 PK_SQL_READONLY_USER_MESSAGE <- paste0(
@@ -313,6 +325,12 @@ pk_sql_classify_readonly <- function(sql) {
               ignore.case = TRUE, perl = TRUE, useBytes = TRUE)) {
       return(sonuc(FALSE, "forbidden_prefix", kind = onek, count = 1L))
     }
+  }
+
+  # Sequence ilerleten ifade: sozdizimi SELECT olsa da uretim durumunu degistirir.
+  if (grepl(PK_SQL_SEQUENCE_MUTATION_PATTERN, ifade,
+            ignore.case = TRUE, perl = TRUE, useBytes = TRUE)) {
+    return(sonuc(FALSE, "sequence_mutation", kind = "next_value_for", count = 1L))
   }
 
   if (.pk_sql_starts_with_word(ifade, "SELECT")) {
