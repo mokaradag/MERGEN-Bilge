@@ -1322,6 +1322,16 @@ Rules:
 
 Report-path corollary: `tests/scripts/maintainability_report.R` builds its `file` column by stripping the repo-root prefix. On the VM the repo root is a UNC share containing Turkish characters, so a PCRE-based strip can silently fail to match and leave an ABSOLUTE path in `file`, which breaks every `report$file == "R/x.R"` exact-equality lookup while suffix lookups (`grepl("(^|/)R/x\\.R$", ...)`) keep working. Both reports now use the same regex-free `relative_path()` helper (`enc2utf8()` on both sides, then `startsWith()`/`substring()` with a case-insensitive fallback). Keep that helper; prefer the `(^|/)…$` suffix form in new tests.
 
+Escape/literal corollary (test sources): NEVER mix a `\u`/`\U` escape and a LITERAL non-ASCII character in the SAME string literal. Runtime `R/` files are loaded through `source(..., encoding = "UTF-8")`, which tells the parser the source is UTF-8, so the mixed form is safe there (and it is used widely). Test files are parsed by testthat WITHOUT that declaration on the VM: when a literal contains a `\U` escape the parser must promote the whole literal to UTF-8 and re-encodes the literal Turkish bytes as if they were WINDOWS-1254, so `Veritabanı Hatası` silently becomes `VeritabanÄ± HatasÄ±`. The emoji keeps rendering correctly, which is why the defect hides until a contract compares only the Turkish part — and only on the VM. Write the two parts as separate literals joined with `paste0()` (`paste0("\U000026A0\U0000FE0F", " **Veritabanı Hatası:** ...")`); the value stays byte-identical. Enforced by the `kaçış ve literal Türkçe aynı dizede birleşmez` block in `tests/testthat/test-windows-cp1254-source-safety-contract.R`.
+
+Repo-scope corollary: repository scans must look at REPOSITORY files, not at whatever sits in the working copy. The CP1254 scan walks `R/`, `tests/testthat`, `tests/scripts` and `tools` recursively, but at the repo ROOT it uses the closed list `app.R`, `global.R`, `server.R`, `ui.R`, `welcome_screen.R`, `run_mergen_prod.R` (same boundary as the seam registry's `extra_runtime_files`). Operator scratch scripts left in the VM working copy are not sourced by the app and must not turn the suite red. Add a new root runtime file to that list consciously. The seam registry's orphan check is DIFFERENT and stays strict: an unowned file under `R/` is a real finding, and the fix is to delete the stray copy (or register it), never to loosen the check.
+
+Locale corollary: a test that changes `LC_CTYPE` MUST restore it through `on.exit(...)` and then ASSERT the restore succeeded. testthat runs every file in ONE session, and a failing `expect_*` aborts the rest of the test body — a restore written after the loop is simply never reached. A leaked `LC_CTYPE = "C"` then breaks Turkish comparisons and `source(..., encoding = "UTF-8")` translation in unrelated later files, turning one real failure into a scattered cascade. Locale NAMES are platform-specific: try the POSIX spellings AND the Windows ones (`Turkish_Turkey.1254`, `Turkish`) before skipping, otherwise a Windows-motivated contract skips on the exact platform it exists to protect.
+
+CRLF corollary: a static contract that matches a MULTI-LINE source snippet with `fixed = TRUE` must normalize line endings first (`gsub("\r\n", "\n", ...)` then `gsub("\r", "\n", ...)`). `.gitattributes` `eol=lf` only normalizes a FRESH checkout; it does not rewrite a file already on disk in the VM working copy. The contract's subject is the call structure, not the line-ending style.
+
+Configuration-isolation corollary: `pk_config_resolve()` resolves `query_meta -> ENVIRONMENT -> options() -> default`, so the environment WINS over `options()`. `.Renviron.example` ships real values for many `MERGEN_PK_*` keys (including `MERGEN_PK_CACHE_MAX_ENTRIES/MAX_MB/MAX_ENTRY_MB/TTL_SEC`), so on a configured VM a test that sets only `options()` silently measures the DEPLOYMENT's values and reports the limit as unenforced. Test helpers that pin such a key must isolate BOTH channels and restore both (see `pk_select_with_env()`, `pk_entity_with_resolve_env()`, `.pk_cache_with_limits()`).
+
 Scoping corollary: never pass `exists` DIRECTLY as the `FUN` of `vapply`/`sapply` when relying on `inherits = TRUE`. `exists()` defaults to `where = -1`, which under `*apply` resolves to the apply frame (enclosed by `namespace:base`), so the CALLER's lexical environment is skipped and only the search path/`globalenv()` is scanned. This looks correct in production (everything is in `globalenv()`) but reports every helper as missing inside an isolated test or worker-bootstrap environment. Wrap it: `vapply(names, function(ad) exists(ad, mode = "function", inherits = TRUE), logical(1))`.
 
 Protected by:
@@ -4585,7 +4595,7 @@ PR #703 review hardening (these are now part of the same contract):
   breaks NO offline test; it kills a clean PSOCK worker with a raw
   "object not found" and silently degrades production to synchronous. The
   closure is enforced by walking the call graph from the pre-bootstrap entry
-  points in `tests/testthat/test-pk-review-703-hardening-behavior.R`, and a
+  points in `tests/testthat/test-pk-async-hardening-behavior.R`, and a
   failed fingerprint now carries the underlying error text so the operator can
   tell a hung path from a missing symbol.
 - **Artifacts are request-scoped.** `pk_artifact_track()` records nothing unless
@@ -4608,7 +4618,7 @@ PR #703 review hardening (these are now part of the same contract):
 
 Protected by:
 
-- `tests/testthat/test-pk-review-703-hardening-behavior.R`
+- `tests/testthat/test-pk-async-hardening-behavior.R`
 - `tests/testthat/test-pk-async-contract.R`
 - `tests/testthat/test-pk-async-cancel-behavior.R`
 - `tests/testthat/test-pk-async-request-behavior.R`

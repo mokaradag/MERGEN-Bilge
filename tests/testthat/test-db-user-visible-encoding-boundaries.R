@@ -90,7 +90,7 @@ test_that("chat visible DB normalization repairs observed Turkish AI-answer moji
   )
 
   expect_false(
-    grepl("Ã|Ä|Å|Â|\uFFFD", repaired, perl = TRUE),
+    grepl(paste0("Ã|Ä|Å|Â|", "\uFFFD"), repaired, perl = TRUE),
     info = "Kullanıcıya görünen AI yanıtı DB yazımı öncesinde mojibake içermemelidir."
   )
 })

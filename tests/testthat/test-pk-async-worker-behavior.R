@@ -221,7 +221,7 @@ test_that("boru hattı İÇİNDE iptal edilirse durum cancelled olur (ok değil)
     env$pk_cancel_token_signal(jeton)
     expect_true(isTRUE(stop_check()))
     # Boru hattı kullanıcıya görünen durdurma metnini döner (mevcut davranış).
-    "\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz iptal edildi."
+    paste0("\U000026A0\U0000FE0F", " **İşlem Durduruldu:** Analiz iptal edildi.")
   }
 
   sonuc <- env$pk_async_run_analysis(.pk_worker_request(env, cancel_token = jeton))

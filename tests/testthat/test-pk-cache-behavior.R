@@ -29,7 +29,24 @@ local({
          encoding = "UTF-8", local = globalenv())
 })
 
-# Önbellek limitlerini options() üzerinden ayarlayan yardımcı (env'e dokunmaz).
+# Önbellek limitlerini AYARLAYAN yardımcı.
+#
+# ORTAM DEĞİŞKENİ DE İZOLE EDİLİR. `pk_config_resolve()` önceliği bilinçli
+# olarak `query_meta -> ORTAM -> options() -> varsayılan` şeklindedir: ortam,
+# operatörün kanalıdır ve `options()`'ı EZER. `.Renviron.example` bu dört
+# anahtarı (`MERGEN_PK_CACHE_MAX_ENTRIES/MAX_MB/MAX_ENTRY_MB/TTL_SEC`) ayarlar;
+# üretim `.Renviron`'ı kurulu bir Windows VM'de yalnızca `options()` yazan bir
+# test SESSİZCE ortamın değerlerini ölçerdi. Sınırlar o zaman hiç uygulanmaz
+# görünür (TTL dolmaz, tahliye olmaz, tek giriş tavanı aşılır) ve sözleşme
+# üretim kodu doğru olduğu hâlde başarısız olur.
+#
+# Bu yüzden her iki kanal da testin değerine sabitlenir ve çıkışta ÖNCEKİ
+# durumlarına geri alınır (bkz. `pk_select_with_env()` aynı desendir).
+.PK_CACHE_ENV_KEYS <- c(
+  "MERGEN_PK_CACHE_MAX_ENTRIES", "MERGEN_PK_CACHE_MAX_MB",
+  "MERGEN_PK_CACHE_MAX_ENTRY_MB", "MERGEN_PK_CACHE_TTL_SEC"
+)
+
 .pk_cache_with_limits <- function(entries = 50L, mb = 512L, entry_mb = 128L,
                                   ttl = 300L, code) {
   eski <- list(
@@ -38,13 +55,26 @@ local({
     mergen.pk.cache_max_entry_mb = getOption("mergen.pk.cache_max_entry_mb", NULL),
     mergen.pk.cache_ttl_sec = getOption("mergen.pk.cache_ttl_sec", NULL)
   )
+  eski_env <- Sys.getenv(.PK_CACHE_ENV_KEYS, unset = NA_character_, names = TRUE)
+
   on.exit({
     for (nm in names(eski)) {
       do.call(options, stats::setNames(list(eski[[nm]]), nm))
     }
+    for (ad in names(eski_env)) {
+      if (is.na(eski_env[[ad]])) {
+        Sys.unsetenv(ad)
+      } else {
+        do.call(Sys.setenv, stats::setNames(list(eski_env[[ad]]), ad))
+      }
+    }
     pk_cache_reset()
   }, add = TRUE)
 
+  do.call(Sys.setenv, stats::setNames(
+    as.list(as.character(c(entries, mb, entry_mb, ttl))),
+    .PK_CACHE_ENV_KEYS
+  ))
   options(
     mergen.pk.cache_max_entries = entries,
     mergen.pk.cache_max_mb = mb,

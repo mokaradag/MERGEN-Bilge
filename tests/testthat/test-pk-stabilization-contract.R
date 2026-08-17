@@ -1,6 +1,6 @@
 # ==============================================================================
-# Dosya Yolu: tests/testthat/test-pk-705-stabilization-contract.R
-# Açıklama: PR #705 inceleme borcunun KÖK NEDEN düzeltmeleri için odaklı
+# Dosya Yolu: tests/testthat/test-pk-stabilization-contract.R
+# Açıklama: Faz 6 kararlilik incelemesinin KÖK NEDEN düzeltmeleri için odaklı
 #           regresyon sözleşmeleri. Tümü çevrimdışı ve deterministiktir:
 #           gerçek DB, LLM, tarayıcı, SSO, ağ veya gerçek sır KULLANILMAZ.
 #
@@ -8,7 +8,7 @@
 #           inceleme bulgusunun paylaştığı TEK sözleşmeyi korur.
 # ==============================================================================
 
-.pk705_env <- function(files) {
+.pk_stab_env <- function(files) {
   kok <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
@@ -16,7 +16,7 @@
   env
 }
 
-.pk705_kaynak <- function(rel_path) {
+.pk_stab_kaynak <- function(rel_path) {
   yol <- file.path(resolve_repo_root_for_tests(), rel_path)
   boyut <- suppressWarnings(file.info(yol)$size[1])
   if (is.na(boyut) || boyut <= 0) return("")
@@ -41,7 +41,7 @@ test_that("P0: hicbir filtre yolunda eval(parse()) kalmadi", {
   )
 
   for (dosya in dosyalar) {
-    kod <- .pk705_kaynak(dosya)
+    kod <- .pk_stab_kaynak(dosya)
     expect_false(grepl("eval(parse(", kod, fixed = TRUE, useBytes = TRUE),
                  info = paste(dosya, "icinde eval(parse()) yeniden getirilmis."))
     expect_false(grepl("subset(dt, eval", kod, fixed = TRUE, useBytes = TRUE),
@@ -50,7 +50,7 @@ test_that("P0: hicbir filtre yolunda eval(parse()) kalmadi", {
 })
 
 test_that("P0: cikarim istemi artik calistirilabilir ifade ISTEMEZ", {
-  kod <- .pk705_kaynak("R/helpers_pk_analysis_filters_base.R")
+  kod <- .pk_stab_kaynak("R/helpers_pk_analysis_filters_base.R")
 
   # Model'e "R data.table filtreleme stringi uret" demek, RCE yolunun girdi
   # ucudur. Istem yerine INERT grup yapisini ogretmelidir.
@@ -63,12 +63,12 @@ test_that("P0: cikarim istemi artik calistirilabilir ifade ISTEMEZ", {
 # FILTRE ANLAMBILIMI — TEK DERLEYICI SOZLESMESI
 # ==============================================================================
 
-.pk705_filtre_env <- function() {
-  .pk705_env(c("helpers_pk_ascii_tokens.R", "helpers_pk_text_turkish.R",
+.pk_stab_filtre_env <- function() {
+  .pk_stab_env(c("helpers_pk_ascii_tokens.R", "helpers_pk_text_turkish.R",
                "helpers_pk_filter_compile.R", "helpers_pk_filter_group.R"))
 }
 
-.pk705_veri <- function() {
+.pk_stab_veri <- function() {
   data.frame(
     Ad = c("SENTETIK ALFA", "SENTETIK BETA", "SENTETIK GAMA"),
     Durum = c("Aktif", "Pasif", "Aktif"),
@@ -78,8 +78,8 @@ test_that("P0: cikarim istemi artik calistirilabilir ifade ISTEMEZ", {
 }
 
 test_that("bilinmeyen islem ve cevrilemeyen deger SESSIZCE esitlige dusmez", {
-  env <- .pk705_filtre_env()
-  veri <- .pk705_veri()
+  env <- .pk_stab_filtre_env()
+  veri <- .pk_stab_veri()
 
   bilinmeyen <- env$pk_filter_compile(veri, list(
     list(column = "Tutar", value = "100", operation = "regex_match")
@@ -96,7 +96,7 @@ test_that("bilinmeyen islem ve cevrilemeyen deger SESSIZCE esitlige dusmez", {
 
 test_that("integer64 filtre degerleri double uzerinden KAYBEDILMEZ", {
   skip_if_not_installed("bit64")
-  env <- .pk705_filtre_env()
+  env <- .pk_stab_filtre_env()
 
   # 2^53 ustunde ARDISIK iki kimlik: double'a dusurulurse ikisi de ayni
   # degere cokerdi ve filtre YANLIS satiri secerdi.
@@ -112,9 +112,9 @@ test_that("integer64 filtre degerleri double uzerinden KAYBEDILMEZ", {
 })
 
 test_that("politika: uygulanamayan filtre TUM kume uzerinden devam ETTIRMEZ", {
-  env <- .pk705_env(c("helpers_pk_ascii_tokens.R", "helpers_pk_text_turkish.R",
+  env <- .pk_stab_env(c("helpers_pk_ascii_tokens.R", "helpers_pk_text_turkish.R",
                       "helpers_pk_filter_compile.R", "helpers_pk_filter_group.R", "helpers_pk_filter_policy.R"))
-  veri <- .pk705_veri()
+  veri <- .pk_stab_veri()
 
   filtreler <- list(list(column = "Ad", value = "SENTETIK ALFA", operation = "regex_match"))
   derleme <- env$pk_filter_compile(veri, filtreler)
@@ -129,7 +129,7 @@ test_that("politika: uygulanamayan filtre TUM kume uzerinden devam ETTIRMEZ", {
 # ==============================================================================
 
 test_that("bekleyen koken kaydi YALNIZCA sahibi istek tarafindan tuketilir", {
-  env <- .pk705_env(c("helpers_pk_provenance.R"))
+  env <- .pk_stab_env(c("helpers_pk_provenance.R"))
 
   oturum <- list(userData = new.env(parent = emptyenv()))
   env$pk_provenance_clear(oturum, request_id = "A")
@@ -148,7 +148,7 @@ test_that("bekleyen koken kaydi YALNIZCA sahibi istek tarafindan tuketilir", {
 })
 
 test_that("block kipinde dekorasyon hatasi HAM model metnini yayimlamaz", {
-  env <- .pk705_env(c("helpers_pk_provenance.R"))
+  env <- .pk_stab_env(c("helpers_pk_provenance.R"))
 
   oturum <- list(userData = new.env(parent = emptyenv()))
   env$pk_provenance_clear(oturum, request_id = "R1")
@@ -174,7 +174,7 @@ test_that("block kipinde dekorasyon hatasi HAM model metnini yayimlamaz", {
 # ==============================================================================
 
 test_that("uygulanamayan yetki kapsami analizi DURDURUR", {
-  env <- .pk705_env(c("helpers_pk_rls.R"))
+  env <- .pk_stab_env(c("helpers_pk_rls.R"))
 
   plan <- env$pk_rls_plan(
     list(Yetki = "PY", allowed_projects = "P1", scope_state_projects = "available"),
@@ -191,7 +191,7 @@ test_that("uygulanamayan yetki kapsami analizi DURDURUR", {
 # ==============================================================================
 
 test_that("makine belirtecleri Turkce yerelde de ASCII katlanir", {
-  env <- .pk705_env(c("helpers_pk_ascii_tokens.R"))
+  env <- .pk_stab_env(c("helpers_pk_ascii_tokens.R"))
 
   # Turkce yerelde `tolower("I")` noktasiz `i` (U+0131) uretir; protokol
   # belirtecleri bundan ETKILENMEMELIDIR.
@@ -199,18 +199,45 @@ test_that("makine belirtecleri Turkce yerelde de ASCII katlanir", {
   expect_identical(env$pk_ascii_lower("POSIXct"), "posixct")
   expect_identical(env$pk_ascii_token("  TRUE  "), "true")
 
-  denendi <- tryCatch({
-    eski <- Sys.getlocale("LC_CTYPE")
-    on.exit(try(Sys.setlocale("LC_CTYPE", eski), silent = TRUE), add = TRUE)
-    kuruldu <- suppressWarnings(Sys.setlocale("LC_CTYPE", "tr_TR.UTF-8"))
-    if (!nzchar(kuruldu)) FALSE else {
-      expect_identical(env$pk_ascii_lower("CONTAINS"), "contains")
-      expect_identical(env$pk_ascii_lower("POSIXct"), "posixct")
-      TRUE
-    }
-  }, error = function(e) FALSE)
+  # YEREL ADI PLATFORMA GOREDIR.
+  #
+  # Bu sozlesmenin var olma nedeni Windows VM'dir (Turkce yerel, `tolower("I")`
+  # -> noktasiz `i`). Ancak Windows POSIX adlandirmasini ("tr_TR.UTF-8") KABUL
+  # ETMEZ; yalnizca bu adin denenmesi, sozlesmenin TAM OLARAK korumasi gereken
+  # platformda her calistirmada ATLANMASINA yol acardi. Adaylar sirayla
+  # denenir; ilki kurulan kullanilir.
+  turkce_adaylar <- c(
+    "tr_TR.UTF-8", "tr_TR.utf8", "tr_TR",          # POSIX (Linux/macOS)
+    "Turkish_Turkey.utf8", "Turkish_Turkey.1254",  # Windows (acik kod sayfasi)
+    "Turkish", "turkish"                           # Windows (kisa ad)
+  )
 
-  skip_if(!denendi, "Turkce yerel bu ortamda ayarlanamadi.")
+  eski <- Sys.getlocale("LC_CTYPE")
+  on.exit(try(Sys.setlocale("LC_CTYPE", eski), silent = TRUE), add = TRUE)
+
+  kurulan <- ""
+  for (aday in turkce_adaylar) {
+    kurulan <- tryCatch(
+      suppressWarnings(Sys.setlocale("LC_CTYPE", aday)),
+      error = function(e) ""
+    )
+    if (nzchar(kurulan)) break
+  }
+
+  skip_if(
+    !nzchar(kurulan),
+    paste0("Turkce yerel bu ortamda ayarlanamadi (denenen: ",
+           paste(turkce_adaylar, collapse = ", "), ").")
+  )
+
+  expect_identical(env$pk_ascii_lower("CONTAINS"), "contains")
+  expect_identical(env$pk_ascii_lower("POSIXct"), "posixct")
+  expect_identical(env$pk_ascii_token("  TRUE  "), "true")
+
+  # Yerel GERCEKTEN geri alinmalidir; sizan yerel sonraki test DOSYALARINDA
+  # Turkce metin karsilastirmalarini ve UTF-8 cevirilerini bozar.
+  try(Sys.setlocale("LC_CTYPE", eski), silent = TRUE)
+  expect_identical(Sys.getlocale("LC_CTYPE"), eski)
 })
 
 # ==============================================================================
@@ -218,7 +245,7 @@ test_that("makine belirtecleri Turkce yerelde de ASCII katlanir", {
 # ==============================================================================
 
 test_that("redaksiyon hatasi HAM hata metnine geri dusmez", {
-  env <- .pk705_env(c("helpers_pk_safe_errors.R"))
+  env <- .pk_stab_env(c("helpers_pk_safe_errors.R"))
   env$redact_sensitive_text <- function(x) stop("sentetik redaktor cokmesi")
 
   # Sentetik/sahte bir sir; gercek bir deger DEGILDIR.

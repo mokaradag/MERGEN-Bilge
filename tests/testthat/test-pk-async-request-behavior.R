@@ -343,7 +343,7 @@ test_that("globals paketi KÜÇÜK kalır ve memoize edilir", {
   # globals kaydı). Explicit-mode özyinelemeli genişletme YAPMADIĞI için bunlar
   # açıkça taşınmalıdır; eksik biri offline hiçbir testi kırmaz ama TEMİZ bir
   # PSOCK işçisi ham "could not find function" ile ölür.
-  # PAKET KAPALILIĞI ayrıca `test-pk-review-703-hardening-behavior.R` içinde
+  # PAKET KAPALILIĞI ayrıca `test-pk-async-hardening-behavior.R` içinde
   # çağrı grafiği gezilerek kanıtlanır; buradaki sınır yalnızca "boru hattının
   # tamamı taşınmasın" korumasıdır.
   expect_true(length(ilk) < 56L)

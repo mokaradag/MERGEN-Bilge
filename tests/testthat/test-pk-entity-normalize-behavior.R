@@ -148,6 +148,36 @@ test_that("çoğulluk sezgiseli çoğul ekleri ve belirteçleri yakalar", {
   expect_false(pk_entity_phrase_is_plural("tünel"))
 })
 
+# Yerel bağımsızlığının KÖK NEDENİ: karşılaştırılan iki tarafın da UTF-8
+# işaretli olması. Windows VM'de `source(..., encoding = "UTF-8")` sabitleri
+# YEREL kodlamaya (WINDOWS-1254) çevirir; `identical()` böyle bir sabiti UTF-8
+# metinle karşılaştırırken native tarafı GÜNCEL yerele göre çevirmek zorunda
+# kalır ve yerel `C` iken bu çeviri başarısız olur. Bu sözleşme, sabitlerin
+# yükleme anında UTF-8'e sabitlendiğini (yani sonraki yerel değişikliklerinden
+# etkilenmediğini) DOĞRUDAN sınar; davranış testi yalnızca sonucu görür.
+test_that("Türkçe ek/ünlü sabitleri UTF-8 işaretlidir", {
+  sabitler <- c(
+    .PK_ENTITY_SUFFIXES, .PK_MORPH_VOCAB_ONLY_SUFFIXES,
+    .PK_MORPH_BACK_VOWELS, .PK_MORPH_FRONT_VOWELS,
+    .PK_MORPH_SOFTENED, .PK_MORPH_TR_ONLY_CHARS,
+    unlist(.PK_MORPH_HARDENED, use.names = FALSE),
+    names(.PK_MORPH_HARDENED)
+  )
+
+  # Saf ASCII ögelerde `Encoding()` "unknown" kalır ve bu DOĞRUDUR; sınanması
+  # gereken yalnızca Türkçe karakter taşıyan ögelerdir.
+  turkce <- sabitler[grepl("[^ -~]", sabitler, useBytes = TRUE)]
+
+  expect_gt(length(turkce), 0L)
+  expect_true(
+    all(Encoding(turkce) == "UTF-8"),
+    info = paste(
+      "Türkçe sabitler yükleme anında `enc2utf8()` ile sabitlenmelidir;",
+      "aksi hâlde yerel değiştiğinde ek eşleşmesi sessizce kaybolur."
+    )
+  )
+})
+
 test_that("normalleştirme yerelden bağımsızdır", {
   testthat::skip_if_not_installed("stringi")
 
@@ -159,7 +189,20 @@ test_that("normalleştirme yerelden bağımsızdır", {
   # karakter sınıflandırması ona bağlıdır. Yalnızca `LC_COLLATE` (sıralama)
   # değiştirmek bu bağımlılığı HİÇ sınamaz; ileride kazara eklenen bir
   # `tolower()` yolu testten geçmeye devam ederdi.
+  # GERİ YÜKLEME `on.exit` İLE GARANTİ EDİLİR.
+  #
+  # Bir `expect_*` başarısız olduğunda testthat testin geri kalanını atlar;
+  # döngüden sonra yazılan bir geri yükleme satırına HİÇ ULAŞILMAZDI ve süreç
+  # `LC_CTYPE = "C"` olarak kalırdı. testthat tüm dosyaları AYNI oturumda
+  # çalıştırdığı için bu, sonraki dosyalarda Türkçe metin karşılaştırmalarını
+  # ve `source(..., encoding = "UTF-8")` çevirilerini bozar: tek bir hata
+  # ilgisiz dosyalarda ardıl hatalara dönüşür.
   eski <- Sys.getlocale("LC_CTYPE")
+  on.exit(
+    tryCatch(Sys.setlocale("LC_CTYPE", eski), warning = function(w) NULL),
+    add = TRUE
+  )
+
   for (yerel in c("C", "C.UTF-8", "tr_TR.UTF-8")) {
     denendi <- tryCatch({
       Sys.setlocale("LC_CTYPE", yerel)
@@ -172,5 +215,9 @@ test_that("normalleştirme yerelden bağımsızdır", {
     expect_equal(simdiki, beklenen,
                  info = sprintf("Yerel '%s' altında katlama değişti.", yerel))
   }
+
+  # Geri yükleme `on.exit` ile yapılır; burada GERÇEKTEN geri alındığı sınanır.
+  # Aksi hâlde sızan yerel sessizce sonraki dosyalara taşınır.
   tryCatch(Sys.setlocale("LC_CTYPE", eski), warning = function(w) NULL)
+  expect_identical(Sys.getlocale("LC_CTYPE"), eski)
 })

@@ -429,7 +429,8 @@ test_that("Proje/Kaynak Analizi köprüsü tekil oturum sözleşmesini taşır",
 test_that("oda güvenli yanıt süzgeci ham SQL/ODBC tanılamasını genelleştirir (P2-A)", {
   # Ham DB hata gövdesi (tekil oturumun Veritabanı Hatası şekli) odaya sızmaz.
   ham_db <- paste0(
-    "\U000026A0\U0000FE0F **Veritabanı Hatası:** Sorgu çalıştırılırken hata oluştu.\n`",
+    "\U000026A0\U0000FE0F",
+    " **Veritabanı Hatası:** Sorgu çalıştırılırken hata oluştu.\n`",
     "nanodbc/nanodbc.cpp:1021: 42S02 [Microsoft][ODBC Driver][SQL Server]",
     "Invalid object name 'GIZLI_TABLO'. SELECT * FROM GIZLI_TABLO`"
   )
@@ -492,7 +493,8 @@ test_that("Proje/Kaynak Analizi köprüsü ham tanılamayı odaya taşımaz (P2-
   # Karakter dönüşü ham DB hatası taşıyorsa doğrudan yanıt genelleştirilir.
   assign("pk_analiz_process_request", function(user_prompt, chat_history, session, stop_check = NULL) {
     paste0(
-      "\U000026A0\U0000FE0F **Veritabanı Hatası:** Sorgu çalıştırılırken hata oluştu.\n",
+      "\U000026A0\U0000FE0F",
+      " **Veritabanı Hatası:** Sorgu çalıştırılırken hata oluştu.\n",
       "`42S02 Invalid object name 'MB_GIZLI'`"
     )
   }, envir = globalenv())

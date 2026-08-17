@@ -1,8 +1,8 @@
 # ==============================================================================
-# Dosya Yolu: tests/testthat/test-pk-review-703-hardening-behavior.R
-# Açıklama: PR #703 incelemesindeki P0/P1/P2 bulgularının DAVRANIŞ regresyon
-#           testleri. Tamamen ÇEVRİMDIŞI: gerçek DB, LLM, tarayıcı, SSO veya
-#           ağ YOKTUR.
+# Dosya Yolu: tests/testthat/test-pk-async-hardening-behavior.R
+# Açıklama: Faz 6 async sertleştirme incelemesindeki P0/P1/P2 bulgularının
+#           DAVRANIŞ regresyon testleri. Tamamen ÇEVRİMDIŞI: gerçek DB, LLM,
+#           tarayıcı, SSO veya ağ YOKTUR.
 #
 # Bu dosya bulguları KÖK NEDENE göre gruplar; her grup, bulgunun tarif ettiği
 # YANLIŞ davranışın artık üretilemediğini kanıtlar.
@@ -48,7 +48,7 @@ local({
 })
 
 # Yazılabilir sahte oturum: `userData` gerçek bir ORTAMDIR.
-.h703_session <- function(writable = TRUE) {
+.pk_hard_session <- function(writable = TRUE) {
   ud <- new.env(parent = emptyenv())
   # Kancalar ORTAMDA tutulur: liste kopyalama semantiği yüzünden çağıranın
   # gördüğü nesne aksi hâlde güncellenmezdi.
@@ -56,7 +56,7 @@ local({
   kanca_deposu$liste <- list()
   oturum <- list(
     token = paste0("tok_", sample.int(1e6, 1L)),
-    userData = if (isTRUE(writable)) ud else .h703_readonly_userdata(),
+    userData = if (isTRUE(writable)) ud else .pk_hard_readonly_userdata(),
     .kancalar = kanca_deposu
   )
   oturum$onSessionEnded <- function(fn) {
@@ -69,7 +69,7 @@ local({
 # YAZILAMAYAN `userData`: gerçek dünyada yıkılmakta olan oturumlar ve bazı
 # sahte/salt-okunur uygulamalar yazımı reddeder veya yutar. KİLİTLİ bir ortam
 # bunu S3 hilesi olmadan, gerçek R semantiğiyle üretir.
-.h703_readonly_userdata <- function() {
+.pk_hard_readonly_userdata <- function() {
   ud <- new.env(parent = emptyenv())
   lockEnvironment(ud, bindings = TRUE)
   ud
@@ -151,17 +151,17 @@ test_that("sıradan sayısal tek işçi REDDEDİLİR, AsIs I(1) kabul edilir", {
 # ------------------------------------------------------------------------------
 
 test_that("pk_session_state_write yazımı GERİ OKUYARAK doğrular", {
-  ok_oturum <- .h703_session(writable = TRUE)
+  ok_oturum <- .pk_hard_session(writable = TRUE)
   expect_true(pk_session_state_write(ok_oturum, "x", c("a", "b")))
   expect_identical(ok_oturum$userData[["x"]], c("a", "b"))
 
-  yutan <- .h703_session(writable = FALSE)
+  yutan <- .pk_hard_session(writable = FALSE)
   expect_false(pk_session_state_write(yutan, "x", "deger"))
 })
 
 test_that("jeton sahipliği KALICI DEĞİLSE kayıt BAŞARISIZ döner", {
   pk_request_markers_reset()
-  yutan <- .h703_session(writable = FALSE)
+  yutan <- .pk_hard_session(writable = FALSE)
   expect_false(isTRUE(mergen_pk_register_cancel_token(yutan, "req-A")))
   # Sahiplik görünmediği için Durdur gözlemcisi bu istek için jeton YAZMAZ.
   expect_false(mergen_pk_request_has_cancel_token(yutan, "req-A"))
@@ -169,7 +169,7 @@ test_that("jeton sahipliği KALICI DEĞİLSE kayıt BAŞARISIZ döner", {
 
 test_that("sahiplik kaldırma YAZILAMASA BİLE veto eder", {
   pk_request_markers_reset()
-  oturum <- .h703_session(writable = TRUE)
+  oturum <- .pk_hard_session(writable = TRUE)
   expect_true(isTRUE(mergen_pk_register_cancel_token(oturum, "req-B")))
   expect_true(mergen_pk_request_has_cancel_token(oturum, "req-B"))
 
@@ -181,17 +181,17 @@ test_that("sahiplik kaldırma YAZILAMASA BİLE veto eder", {
 
 test_that("terk işareti oturuma yazılamasa da GEÇERSİZLEME kaybolmaz", {
   pk_request_markers_reset()
-  yutan <- .h703_session(writable = FALSE)
+  yutan <- .pk_hard_session(writable = FALSE)
   mergen_pk_invalidate_requests(yutan, "req-C")
   expect_true(mergen_pk_request_abandoned(yutan, "req-C"))
   # Farklı bir oturumun aynı istek kimliği ETKİLENMEZ (ayna oturum kapsamlıdır).
-  expect_false(mergen_pk_request_abandoned(.h703_session(TRUE), "req-C"))
+  expect_false(mergen_pk_request_abandoned(.pk_hard_session(TRUE), "req-C"))
 })
 
 test_that("oturum-sonu kancası OTURUM BAŞINA TEK kalır", {
   pk_request_markers_reset()
-  oturum <- .h703_session(writable = TRUE)
-  jeton <- file.path(tempdir(), "h703_tok.flag")
+  oturum <- .pk_hard_session(writable = TRUE)
+  jeton <- file.path(tempdir(), "pk_hard_tok.flag")
 
   expect_true(isTRUE(mergen_pk_register_active_request(oturum, "r1", jeton)))
   expect_true(isTRUE(mergen_pk_register_active_request(oturum, "r2", jeton)))
@@ -201,13 +201,13 @@ test_that("oturum-sonu kancası OTURUM BAŞINA TEK kalır", {
 
 test_that("kanca işareti oturuma yazılamasa da SÜREÇ-YEREL ayna TEKliği korur", {
   pk_request_markers_reset()
-  oturum <- .h703_session(writable = TRUE)
+  oturum <- .pk_hard_session(writable = TRUE)
   expect_false(isTRUE(.pk_session_hook_installed(oturum)))
   expect_true(isTRUE(.pk_session_hook_mark(oturum)))
   expect_true(isTRUE(.pk_session_hook_installed(oturum)))
 
   # `userData` yazımı MÜMKÜN OLMAYAN oturumda da işaret KAYBOLMAZ.
-  yutan <- .h703_session(writable = FALSE)
+  yutan <- .pk_hard_session(writable = FALSE)
   expect_false(isTRUE(.pk_session_hook_installed(yutan)))
   expect_true(isTRUE(.pk_session_hook_mark(yutan)))
   expect_true(isTRUE(.pk_session_hook_installed(yutan)))
@@ -545,13 +545,13 @@ test_that("commit KISMİ yazımda BAŞARISIZ döner", {
 test_that("artifact kaydı KAPSAM DIŞINDA no-op'tur", {
   pk_artifact_release_tracked()
   expect_false(pk_artifact_scope_active())
-  pk_artifact_track(c("/tmp/h703_a.xlsx"))
+  pk_artifact_track(c("/tmp/pk_hard_a.xlsx"))
   # Kapsam yokken hiçbir şey kaydedilmez (senkron dışa aktarımlar BİRİKMEZ).
   expect_equal(length(pk_artifact_release_tracked()), 0L)
 
   pk_artifact_scope_begin("req-1")
   expect_true(pk_artifact_scope_active())
-  pk_artifact_track("/tmp/h703_b.xlsx")
+  pk_artifact_track("/tmp/pk_hard_b.xlsx")
   expect_equal(length(pk_artifact_release_tracked()), 1L)
   expect_false(pk_artifact_scope_active())
 })
@@ -632,7 +632,7 @@ test_that("registerDataObj adı her artefakt için BENZERSİZDİR", {
 test_that("oturum-sonu temizlik işareti YALNIZCA kayıt başarılıysa konur", {
   ud <- new.env(parent = emptyenv())
   basarisiz_oturum <- list(userData = ud, onSessionEnded = function(fn) stop("kurulamadi"))
-  yol <- file.path(tempdir(), "h703_export.xlsx")
+  yol <- file.path(tempdir(), "pk_hard_export.xlsx")
 
   expect_false(isTRUE(.pk_export_register_cleanup(basarisiz_oturum, yol)))
   # İşaret KONMAMALIDIR: sonraki dışa aktarım yeniden denemelidir.
