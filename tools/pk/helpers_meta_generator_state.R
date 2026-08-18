@@ -8,12 +8,13 @@
 # hesaplanır, böylece küresyon değişikliği önbellek yüzünden kaçırılmaz.
 #
 # İKİ SERT KURAL:
-#   1) PARMAK İZİ. Bir girdi yalnızca SQL metni + db_target + (yalnızca `sample`
-#      kipinde) KANIT ÜRETEN AYARLAR parmak izi AYNI kaldığında kabul edilir.
-#      Aksi hâlde SELECT listesi değiştirilmiş bir sorgu eski şemasıyla sonsuza
-#      dek yeniden kullanılır, ya da eşik değiştiği hâlde eski `high_cardinality`
-#      kanıtı yeniden yayımlanır; üreticiyi tekrar çalıştırmak bayat metadata'yı
-#      ONARAMAZ.
+#   1) PARMAK İZİ. Bir girdi yalnızca SQL metni + db_target + sonucu çalışma
+#      zamanından ÖNCE yapısal olarak değiştiren sorgu beyanları + (yalnızca
+#      `sample` kipinde) KANIT/GÜVENLİ ÖRNEKLEME ayarları parmak izi AYNI
+#      kaldığında kabul edilir. Aksi hâlde SELECT listesi ya da `date_columns`
+#      değiştirilmiş bir sorgu eski şemasıyla sonsuza dek yeniden kullanılır,
+#      ya da eşik değiştiği hâlde eski `high_cardinality` kanıtı yeniden
+#      yayımlanır; üreticiyi tekrar çalıştırmak bayat metadata'yı ONARAMAZ.
 #   2) ATOMİK YAZMA. Durum dosyası geçici dosyaya yazılıp yerine taşınır ve
 #      yazma hatası SESSİZCE YUTULMAZ; aksi hâlde kesinti yarım JSON bırakır ve
 #      bir disk/izin hatası başarı gibi raporlanır.
@@ -90,12 +91,46 @@
   )
 }
 
-#' Bir sorgunun KAYNAK parmak izi (SQL + hedef)
+# Sorgunun ÇALIŞMA ZAMANI sonucunu metadata kapısından ÖNCE değiştiren yapısal
+# beyanlarının imzası. `convert_date_columns()` SQL fetch'ten hemen sonra bu
+# tam isimleri Date'e çevirir; dolayısıyla `date_columns` değişikliği aynı SQL
+# metni için bile ETKİN `result_schema` değerini değiştirebilir.
+.pkgh_runtime_schema_signature <- function(query) {
+  tarih <- query$date_columns
+  if (is.null(tarih)) return("date_columns=<null>")
+
+  if (!is.character(tarih)) {
+    deger <- tryCatch(as.character(tarih), error = function(e) character(0))
+    deger[is.na(deger)] <- "<NA>"
+    return(paste0(
+      "date_columns=<", typeof(tarih), ">:",
+      paste(enc2utf8(deger), collapse = "\u001e")
+    ))
+  }
+
+  deger <- tarih
+  deger[is.na(deger)] <- "<NA>"
+  paste0("date_columns=", paste(enc2utf8(deger), collapse = "\u001e"))
+}
+
+# `sample` kipinde gerçek DB yürütmesi yalnızca açıkça güvenli kürasyonla
+# yapılabilir. Bu bayrak önbellek girdisinde `sample_info` içine de taşındığı
+# için değiştiğinde eski cache'i yeniden yayımlamak raporu mevcut politikadan
+# farklı gösterir. Describe kipinde bu beyan ilgisizdir.
+.pkgh_sample_policy_signature <- function(query, config) {
+  kip <- as.character((config %||% list())$mode %||% "")[1]
+  if (!identical(kip, "sample")) return("")
+  paste0("meta_sample_safe=", if (isTRUE(query$meta_sample_safe)) "true" else "false")
+}
+
+#' Bir sorgunun KAYNAK parmak izi (SQL + hedef + etkin şema beyanı)
 #'
 #' YAYIMLANAN katman girdilerine damgalanır. Sorunun cevapladığı şey tektir:
-#' "bu girdi HÂLÂ güncel SQL'i mi anlatıyor?". KANIT ÜRETEN ayarlar buraya
-#' GİRMEZ: `MERGEN_PK_META_HIGH_CARD_MIN` değişmesi, yayımlanmış bir
-#' `result_schema` değerini geçersiz KILMAZ.
+#' "bu girdi HÂLÂ güncel sorgu sonucunu mu anlatıyor?". `date_columns` da
+#' buraya girer, çünkü runtime metadata kapısından ÖNCE bu sütunları Date'e
+#' dönüştürür. KANIT ÜRETEN örnekleme ayarları ise buraya GİRMEZ:
+#' `MERGEN_PK_META_HIGH_CARD_MIN` değişmesi, yayımlanmış bir `result_schema`
+#' değerini geçersiz KILMAZ.
 pkgh_source_fingerprint <- function(query) {
   sql <- as.character(query$sql %||% "")[1]
   hedef <- as.character(query$db_target %||% "primary")[1]
@@ -104,7 +139,9 @@ pkgh_source_fingerprint <- function(query) {
   # AYIRICI ZORUNLUDUR: ayirici olmadan alan sinirlari kayabilir ve farkli iki
   # girdi ayni metne cozulebilir. `\u001f` (unit separator) ASCII'dir, kaynak
   # dosyada KACIS olarak yazilir ve uretim SQL metninde bulunmaz.
-  .pkgh_hash_text(paste(hedef, sql, sep = "\u001f"))
+  .pkgh_hash_text(paste(
+    hedef, sql, .pkgh_runtime_schema_signature(query), sep = "\u001f"
+  ))
 }
 
 #' Bütün kütüphane için KAYNAK parmak izi haritası
@@ -115,16 +152,21 @@ pkgh_source_fingerprints <- function(query_library) {
 #' Bir sorgunun devam-önbelleği parmak izi
 #'
 #' KAYNAK parmak izinin üstüne (yalnızca `sample` kipinde) KANIT ÜRETEN
-#' ayarların imzası eklenir. Önbellek yalnızca şema değil TÜRETİLMİŞ GÖZLEM de
-#' taşıdığı için, eşik/satır sınırı değiştiğinde eski gözlem artık KANITLANMIŞ
-#' değildir.
+#' ayarların ve açık örnekleme güvenlik kürasyonunun imzası eklenir. Önbellek
+#' yalnızca şema değil TÜRETİLMİŞ GÖZLEM ve örnekleme kanıtı da taşıdığı için,
+#' eşik/satır sınırı ya da güvenli-örnekleme beyanı değiştiğinde eski kayıt
+#' artık mevcut koşunun kanıtı değildir.
 #'
 #' @param config `pkg_meta_resolve_config()` çıktısı. `NULL` verildiğinde kanıt
 #'   imzası boş kalır; bu yalnızca izole test/teşhis içindir, üretici giriş
 #'   noktası HER ZAMAN gerçek yapılandırmayı geçirir.
 pkgh_state_fingerprint <- function(query, config = NULL) {
-  .pkgh_hash_text(paste(pkgh_source_fingerprint(query),
-                        .pkgh_evidence_signature(config), sep = "\u001f"))
+  .pkgh_hash_text(paste(
+    pkgh_source_fingerprint(query),
+    .pkgh_evidence_signature(config),
+    .pkgh_sample_policy_signature(query, config),
+    sep = "\u001f"
+  ))
 }
 
 #' Bütün kütüphane için devam-önbelleği parmak izi haritası
@@ -259,8 +301,8 @@ pkgh_read_state <- function(state_path, mode, fingerprints = NULL,
       if (!is.null(fingerprints)) {
         beklenen <- fingerprints[[id]]
         kayitli <- as.character(girdi$fingerprint %||% NA_character_)[1]
-        # Sorgu kütüphaneden kalkmış ya da SQL'i değişmişse eski şema o sorguyu
-        # TEMSİL ETMEZ; girdi atlanır ve sorgu yeniden sorgulanır.
+        # Sorgu kütüphaneden kalkmış ya da SQL'i/yapısal sonucu değişmişse eski
+        # şema o sorguyu TEMSİL ETMEZ; girdi atlanır ve sorgu yeniden sorgulanır.
         if (is.null(beklenen) || is.na(kayitli) || !identical(kayitli, beklenen)) next
       }
 
