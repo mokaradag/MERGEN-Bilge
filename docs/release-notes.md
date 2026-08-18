@@ -14,7 +14,7 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
-### (Yayınlanmadı) 2026-08-17 Windows VM evidence gate yeniden doğrulaması
+### (Yayınlanmadı) 2026-08-18 Windows VM evidence gate yeniden doğrulaması
 
 - Windows VM'deki tam `tests/scripts/run_vm_evidence_gate.R` koşumu
   `Toplam: 13 passed, 0 failed, 0 skipped` sonucu ile yeniden başarıyla
@@ -23,9 +23,10 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   frontend ratchet, seam doctor ve source/UI asset manifest adımlarının tümü
   `PASSED` oldu.
 - Browser proof, ayrı pencerede çalışan uygulamaya external-app modunda
-  `http://127.0.0.1:8009` üzerinden bağlanılarak ve
-  `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` zorlanarak alındı. Son makine-okunur
-  kanıt yolu `artifacts/vm-evidence/20260817-065352/evidence.json` olarak
+  `http://127.0.0.1:8009` üzerinden bağlanılarak,
+  `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` zorlanarak ve yavaş VM bütçesi için
+  `MERGEN_BROWSER_UX_VIRTUAL_TIME_MS=180000` verilerek alındı. Son makine-okunur
+  kanıt yolu `artifacts/vm-evidence/20260818-163559/evidence.json` olarak
   kaydedildi.
 - Bu sonuç yalnızca artifact'ta geçen kapılar için VM readiness/release
   kanıtıdır; uzun süreli saha yükünü, gerçek upstream LLM kapasitesini, bütün
