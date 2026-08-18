@@ -21,7 +21,8 @@ PKG_HEALTH_SCHEMA_FAILURE_CODES <- c(
   "no_connection", "describe_failed", "describe_unavailable",
   "describe_empty_schema", "describe_invalid_schema",
   "sample_failed", "sample_not_dataframe", "sample_no_columns",
-  "sample_invalid_schema", "sample_not_normalized", "schema_unavailable"
+  "sample_invalid_schema", "sample_not_normalized", "sample_not_server_bounded",
+  "schema_unavailable"
 )
 
 # `health.json` içinde HER ZAMAN dizi olarak kalması gereken alanlar.
@@ -325,6 +326,41 @@ pkgh_stabilize_report <- function(x, array_fields = PKG_HEALTH_ARRAY_FIELDS) {
   x
 }
 
+# Aynı dizindeki iki dosyayı, canlı hedefin üzerine KOPYALAMADAN, yedekli
+# `file.rename()` takasıyla değiştir. Bu yardımcı hem JSON hem insan raporu için
+# kullanılır; süreç ortasında düşse bile eski dosyanın baytları yarım kalmaz.
+.pkgh_replace_with_backup <- function(staged, path, attempts = 3L) {
+  if (!file.exists(path)) return(FALSE)
+
+  yedek <- paste0(path, ".bak-", Sys.getpid(), "-", format(Sys.time(), "%Y%m%d%H%M%OS6"))
+  yedek <- gsub(":", "", yedek, fixed = TRUE)
+  if (file.exists(yedek)) unlink(yedek)
+
+  tasi <- function(from, to) {
+    deneme <- max(1L, suppressWarnings(as.integer(attempts)[1]))
+    for (i in seq_len(deneme)) {
+      if (isTRUE(tryCatch(file.rename(from, to), error = function(e) FALSE))) return(TRUE)
+      if (i < deneme) Sys.sleep(0.05)
+    }
+    FALSE
+  }
+
+  if (!tasi(path, yedek)) return(FALSE)
+  if (!tasi(staged, path)) {
+    geri <- tasi(yedek, path)
+    if (!geri) {
+      stop(sprintf(
+        "[PK_META_GEN] Artefakt atomik takasi basarisiz; onceki dosya YEDEKTE: %s",
+        yedek
+      ), call. = FALSE)
+    }
+    return(FALSE)
+  }
+
+  if (file.exists(yedek)) unlink(yedek)
+  TRUE
+}
+
 # Metin/JSON artefaktını geçici dosyaya yazıp yerine taşı. Yarım bir rapor
 # operatörü yanıltır; ayrıca RStudio sürecinde açık kalan bir tutamaç Windows'ta
 # sonraki koşuyu engelleyebilir.
@@ -341,10 +377,9 @@ pkgh_stabilize_report <- function(x, array_fields = PKG_HEALTH_ARRAY_FIELDS) {
   acik <- FALSE
 
   if (!isTRUE(tryCatch(file.rename(gecici, path), error = function(e) FALSE))) {
-    if (!isTRUE(tryCatch(file.copy(gecici, path, overwrite = TRUE), error = function(e) FALSE))) {
+    if (!.pkgh_replace_with_backup(gecici, path)) {
       stop(sprintf("[PK_META_GEN] Artefakt yazilamadi: %s", path), call. = FALSE)
     }
-    unlink(gecici)
   }
 
   basarili <- TRUE
