@@ -748,7 +748,7 @@ test_that("uretilen kaynak SAF ASCII'dir ve Turkce sutun adlari bozulmadan geri 
   sema <- c("ProjeAdı" = "character", "Tamamlanma_Yüzdesi" = "numeric",
             "Şube" = "character")
   girdi <- pkgn_build_local_entry(sema, NULL, "describe")
-  metin <- pkgr_render_local_meta_file(list(q_türkçe = girdi),
+  metin <- pkgr_render_local_meta_file(list(q_turkce = girdi),
                                        list(mode = "describe", timestamp = "T",
                                             artifact_rel = "A"))
   pkgr_write_local_meta_file(metin, hedef)
@@ -760,7 +760,7 @@ test_that("uretilen kaynak SAF ASCII'dir ve Turkce sutun adlari bozulmadan geri 
 
   ortam <- new.env()
   source(hedef, local = ortam, encoding = "UTF-8")
-  geri <- ortam$pk_query_meta_local[["q_türkçe"]]$result_schema
+  geri <- ortam$pk_query_meta_local[["q_turkce"]]$result_schema
 
   expect_identical(geri, sema)
   expect_identical(names(geri)[1], "ProjeAdı")
