@@ -33,6 +33,91 @@
 PKG_META_LOCK_OWNER_FILE <- "owner.txt"
 PKG_META_LOCK_HEARTBEAT_FILE <- "heartbeat.txt"
 
+# Kaynaklanan app.R/global.R kalıcı RStudio sürecinin seçeneklerini, yerelini,
+# MERGEN_LOG_DIR değerini ve Shiny resource path kayıtlarını değiştirir. Koşu
+# kilidi bootstrap'ten hemen önce alındığı ve her çıkışta bırakıldığı için aynı
+# nesne, SOURCE-GÜVENLİ süreç anlık görüntüsünü de taşır. Böylece hata yolu da
+# başarı yolu da operatörün süreç durumunu başlangıçtaki hâline döndürür.
+.pkgc_capture_process_state <- function() {
+  kaynaklar <- NULL
+  if (requireNamespace("shiny", quietly = TRUE)) {
+    kaynaklar <- tryCatch(shiny::resourcePaths(), error = function(e) NULL)
+  }
+
+  yerel_kategoriler <- c(
+    "LC_COLLATE", "LC_CTYPE", "LC_TIME", "LC_NUMERIC", "LC_MONETARY", "LC_MESSAGES"
+  )
+  yerel <- vapply(yerel_kategoriler, function(kategori) {
+    tryCatch(Sys.getlocale(kategori), error = function(e) "")
+  }, character(1))
+
+  list(
+    options = options(),
+    locale = yerel,
+    mergen_log_dir = Sys.getenv("MERGEN_LOG_DIR", unset = NA_character_),
+    resource_paths = kaynaklar
+  )
+}
+
+.pkgc_restore_process_state <- function(state) {
+  if (is.null(state) || !is.list(state)) return(invisible(FALSE))
+
+  # Bootstrap'ın normalize ettiği log dizini ortam değişkenini geri al.
+  onceki_log <- state$mergen_log_dir %||% NA_character_
+  if (is.na(onceki_log)) {
+    Sys.unsetenv("MERGEN_LOG_DIR")
+  } else {
+    Sys.setenv(MERGEN_LOG_DIR = onceki_log)
+  }
+
+  # global.R'nin eklediği/yeniden bağladığı Shiny kaynak öneklerini eski
+  # eşlemeye döndür. Başlangıçta olmayan önekler kaldırılır.
+  if (requireNamespace("shiny", quietly = TRUE)) {
+    onceki <- state$resource_paths
+    if (is.null(onceki)) onceki <- character(0)
+    simdiki <- tryCatch(shiny::resourcePaths(), error = function(e) character(0))
+
+    tum <- union(names(simdiki), names(onceki))
+    for (onek in tum) {
+      eski <- if (onek %in% names(onceki)) unname(onceki[[onek]]) else NA_character_
+      yeni <- if (onek %in% names(simdiki)) unname(simdiki[[onek]]) else NA_character_
+      if (identical(eski, yeni)) next
+
+      if (!is.na(yeni)) {
+        tryCatch(shiny::removeResourcePath(onek), error = function(e) NULL)
+      }
+      if (!is.na(eski)) {
+        tryCatch(shiny::addResourcePath(onek, eski), error = function(e) NULL)
+      }
+    }
+  }
+
+  # Yalnızca seçilmiş birkaç option değil, bootstrap'ten önceki TÜM option
+  # kümesi geri yüklenir; global.R'nin eklediği seçenekler de silinir.
+  onceki_options <- state$options
+  if (is.list(onceki_options)) {
+    eklenen <- setdiff(names(options()), names(onceki_options))
+    for (ad in eklenen) {
+      tryCatch(options(stats::setNames(list(NULL), ad)), error = function(e) NULL)
+    }
+    tryCatch(options(onceki_options), error = function(e) NULL)
+  }
+
+  # Yerel en sonda geri alınır; option/resource işlemlerinin hata mesajı veya
+  # biçimlendirmesi operatörün eski yereline sızmaz.
+  onceki_yerel <- state$locale
+  if (is.character(onceki_yerel) && length(onceki_yerel)) {
+    for (kategori in names(onceki_yerel)) {
+      deger <- onceki_yerel[[kategori]]
+      if (!is.na(deger) && nzchar(deger)) {
+        try(suppressWarnings(Sys.setlocale(kategori, deger)), silent = TRUE)
+      }
+    }
+  }
+
+  invisible(TRUE)
+}
+
 # Benzersiz sahiplik jetonu. Süreç kimliği TEK BAŞINA yetmez: işletim sistemi
 # pid'leri geri dönüştürür ve iki farklı makine aynı paylaşımda aynı pid'i
 # kullanabilir.
@@ -155,6 +240,10 @@ pkgc_acquire_run_lock <- function(lock_path, stale_sec = 3600) {
     )))
   }
 
+  # Anlık görüntü kilit BAŞARILI alındıktan sonra, fakat app.R bootstrap'inden
+  # ÖNCE alınır. Başarısız kilit edinimi operatör sürecine dokunmaz.
+  surec_durumu <- .pkgc_capture_process_state()
+
   tryCatch(
     writeLines(.pkgc_lock_owner_text(jeton),
                file.path(lock_path, PKG_META_LOCK_OWNER_FILE)),
@@ -163,7 +252,7 @@ pkgc_acquire_run_lock <- function(lock_path, stale_sec = 3600) {
   .pkgc_lock_touch(lock_path)
 
   list(ok = TRUE, path = lock_path, token = jeton, reason = gerekce,
-       detail = NA_character_)
+       detail = NA_character_, process_state = surec_durumu)
 }
 
 #' Kilidin KALP ATIŞINI tazele
@@ -185,6 +274,11 @@ pkgc_refresh_run_lock <- function(lock) {
 #' temizliği), koşullar sonrası silme YENİ koşunun kilidini silerdi.
 pkgc_release_run_lock <- function(lock) {
   if (is.null(lock) || !isTRUE(lock$ok)) return(invisible(FALSE))
+
+  # Sahiplik değişmiş olsa bile BU koşunun bootstrap yan etkileri geri alınır.
+  # on.exit kullanmak, aşağıdaki sahiplik erken dönüşlerinde de restorasyonu
+  # garanti eder.
+  on.exit(.pkgc_restore_process_state(lock$process_state %||% NULL), add = TRUE)
 
   diskteki <- .pkgc_lock_read_token(lock$path)
   if (!is.na(diskteki) && !identical(diskteki, lock$token)) {
