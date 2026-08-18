@@ -60,6 +60,9 @@ artifacts/vm-evidence/
 artifacts/soak/
 artifacts/sqlserver-pool-preflight/
 artifacts/browser-concurrency/
+# Faz 3b metadata üreticisi çıktısı: üretimden türetilmiş sütun envanteri ve
+# sorgu adları içerir; VM-yereldir ve ASLA commit edilmez.
+artifacts/pk-meta/
 .ai/proposed_answer.md
 .ai/*.tmp.md
 .ai/*.log

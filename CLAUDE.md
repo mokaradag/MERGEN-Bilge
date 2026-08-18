@@ -4641,6 +4641,347 @@ SQL Server query-timeout behavior; DB connection release under real ODBC; SSO
 identity/RLS correctness for the worker surrogate; and Deep Thinking producing the
 same answer as before the reconciliation.
 
+### Proje ve Kaynak Analizi query-metadata generator contract (Faz 3b, VM-only tooling)
+
+`tools/pk/generate_query_meta.R` is the OPERATOR-RUN, VM-only generator that produces
+the gitignored `R/library_query_meta_local.R` plus a query-library health report. It is
+NOT application code. Operator runbook: `docs/pk-phase3b-operator-runbook.md`; design:
+`docs/proje-kaynak-analizi-master-plan.md` §5.1.
+
+Non-negotiable rules:
+
+- **Not runtime code.** These files must NEVER be added to `R/config_source_manifest.R`
+  (they live under `tools/`, so the seam registry's `R/` orphan check does not apply,
+  but the CP1254 source-safety scan DOES walk `tools/` — keep them WINDOWS-1254 safe).
+  The public operator entry point is exactly `tools/pk/generate_query_meta.R`; the
+  `tools/pk/helpers_meta_generator_*.R` files are its internals, loaded in this
+  dependency order: `config` → `schema` → `render` → `redact` → `findings` → `health` →
+  `state` → `db` → `fetch` → `run` → `lock` → `commit`. The order encodes real
+  dependencies: `redact` owns secret masking + DB-error classification and must load
+  before `findings` (which redacts every finding detail); `fetch` owns schema
+  acquisition and must load before `run` (the inventory loop). Adding a helper without
+  sourcing it from the entry point fails only on the operator's VM, so
+  `test-pk-meta-generator-contract.R` asserts every helper appears there — and the two
+  behavior test files source the SAME list in the SAME order. All are `source(...)`-safe
+  and must never call `quit()` **or `q()` in any form** (the contract test inspects
+  parsed call heads, not text; the AST walker detects an empty argument with
+  `identical(x[[i]], quote(expr = ))` rather than calling `missing()` on a local
+  binding, which is neither documented for locals nor safe to force).
+- **Writes exactly one METADATA-LAYER file under `R/`:**
+  `R/library_query_meta_local.R`. `pkgr_assert_writable_target()` is a RUNTIME GATE,
+  not a comment: it rejects `R/library_query_aliases_local.R` (operator-owned),
+  `R/library_query_meta.R` (curated), `R/library_query_meta_auto.R` (tracked scaffold)
+  and `R/library_queries.R`. It also checks the FULL PATH, not just `basename()` — the
+  target must sit in an `R/` directory, and when `repo_root` is supplied the normalized
+  path must match `<repo_root>/R/library_query_meta_local.R` exactly. Do not weaken
+  `PKG_META_FORBIDDEN_TARGETS`. A normal run additionally writes the gitignored audit
+  artifacts (`artifacts/pk-meta/<run>/health.json`, `health.txt`) and resume state
+  (`artifacts/pk-meta/generator-state.json`); those are REQUIRED outputs (audit +
+  interrupt resilience), not incidental, and must not be removed to satisfy a
+  "one file" reading.
+- **Writing is STAGE-then-PUBLISH, and audit artifacts come first.**
+  `pkgr_stage_local_meta_file()` writes a temp file, `parse()`s it and verifies pure
+  ASCII without touching the live file; `pkgr_publish_staged_file()` moves it into
+  place (atomic `file.rename` with bounded retries, then a BACKUP-SWAP fallback — never
+  a bare `file.copy(overwrite = TRUE)` over the live file). The entry point publishes
+  ONLY after `health.json`/`health.txt` are durable: otherwise a failed report write
+  could leave the operator running new production-derived metadata with no health
+  report to review.
+- **Read-only, and the executed text is the gated text.** Every SQL passes the SAME
+  `pk_sql_classify_readonly()` gate production uses; a rejected query is never executed.
+  That gate also rejects `SELECT NEXT VALUE FOR <sequence>` (`sequence_mutation`): the
+  statement is syntactically a SELECT but every call ALLOCATES/ADVANCES the sequence, so
+  production state changes even when the value is discarded. The fix lives in
+  `R/helpers_pk_sql_readonly.R` so every consumer benefits.
+  Sampling does NOT wrap the SQL (`SELECT TOP n FROM (...)` is forbidden — production
+  SQL has `ORDER BY`/CTE/`OPTION(...)`, and wrapping would also separate the gated text
+  from the executed text). It opens the cursor and fetches N rows via
+  `dbSendQuery` + chunked `dbFetch(n=)` + guaranteed `dbClearResult`. No `dbExecute`/
+  `dbWriteTable`/`dbRemoveTable`/`dbCreateTable`/`dbAppendTable`/DDL anywhere in the
+  generator. The ONE permitted `EXEC` is production's own `sp_executesql` UNICODE
+  PARAMETER wrapper in `helpers_meta_generator_db.R`: the gated SQL travels as an
+  `NVARCHAR(MAX)` PARAMETER (never as a batch), which is what keeps Turkish/bracketed
+  identifiers from failing in the generator but working in the app. Opt out with
+  `MERGEN_PK_META_SAMPLE_UNICODE=false` for diagnosis only.
+- **`sample_rows` is a TRANSFER cap, not a server-work cap.** `dbSendQuery()` runs the
+  SELECT; a large join or `ORDER BY` can complete on the server before those rows are
+  fetched. The real bounds are `MERGEN_PK_META_SQL_TIMEOUT_SEC` (applied to EVERY
+  blocking driver call) and `MERGEN_PK_META_MAX_RESULT_MB` (byte budget enforced WHILE
+  fetching). The health record states this honestly: `server_bounded = FALSE`,
+  `bound_kind = "transfer_only"`. Do not describe the row limit as a production-load
+  bound.
+- **`result_schema` carries R CLASS names, never raw SQL type names.**
+  `.pk_meta_role_from_class()` and `pk_meta_tier0_column_meta()` are written against R
+  classes; emitting `datetime2`/`bigint` verbatim silently degrades a date and a measure
+  to `dimension`. It also keeps `describe` and `sample` producing the SAME
+  representation, so switching mode cannot change roles — which is why the map targets
+  what `odbc` ACTUALLY returns: `bigint` → `integer64` (odbc's default; `get_connection()`
+  does not override `bigint`), `time` → `hms`, `rowversion`/`timestamp` → `raw` (an
+  8-byte BINARY type, never a date). An unmapped SQL type degrades to the CONSERVATIVE
+  `character`/`dimension` and is reported as `unmapped_sql_type` WITH the native type
+  name — never guessed into a measure. `sql_variant` has a PROVEN 8,016-byte bound and
+  must NOT be listed as an unbounded LOB; a descriptor `max_length < 0` IS unbounded
+  even when the type name carries no `(max)` (spatial/CLR UDTs).
+- **Descriptor column names are preserved EXACTLY and an unnamed column FAILS CLOSED.**
+  Names are `enc2utf8()`-marked (so `describe` and `sample` key the same bytes on the
+  Turkish client-encoding path) but never trimmed, and a `name = NULL`/blank result
+  column produces `describe_invalid_schema` instead of a silently PARTIAL schema that
+  would pass startup validation while disagreeing with the real DBI result.
+- **Structure only; semantics are NEVER inferred.** The generator emits no `capability`,
+  `grain`, `additive`, `unit`, `percent_scale`, `primary_entity`, `intents` or
+  `default_measures`. A column named `KalanIscilik_sa` does not prove remaining-vs-planned
+  labor. The v2 `unknown_no_semantic_metadata` fail-closed gate stays intact: the
+  generator makes it SATISFIABLE by curation, it does not bypass it. Curated
+  `R/library_query_meta.R` always wins the merge.
+- **Prefix-sample evidence is ONE-SIDED.** `sample_method` is honestly `prefix`. An
+  observed duplicate disproves uniqueness; more than `MERGEN_PK_META_HIGH_CARD_MIN`
+  distinct values proves `high_cardinality = TRUE`. NOT seeing a duplicate/null, or
+  seeing few distinct values, proves NOTHING and leaves the field `NA`. A row-cap
+  pass/fail is never claimed from a sample (`cardinality_claim = "unknown"`,
+  `row_count_is_lower_bound`).
+- **Per-query withholding — do not "fix" this into all-or-nothing.** Once
+  `result_schema` exists, schema-dependent startup checks go live for that query and a
+  declared-but-absent RLS column is an ERROR. A query with any blocking finding is
+  therefore WITHHELD from the generated layer and reported as `withheld`; it keeps
+  today's Tier-0 `pending_no_schema` behavior and request-time
+  `pk_meta_validate_actual_columns()` enforcement is UNCHANGED, so nothing is weakened.
+  Before writing, the generator re-runs `pk_query_meta_attach()` over the WHOLE
+  candidate layer; if that fails, nothing is written. A generator run must never be able
+  to break application startup.
+- **Never destroy good metadata — a PARTIAL inventory MERGES.** `pkgc_merge_local_layers()`
+  is the commit rule: `ok` replaces the previous entry, `withheld` REMOVES it (keeping a
+  blocking query's stale schema would leave a contract that can break startup),
+  `failed`/`skipped` KEEP the previous entry (this run learned nothing about that query —
+  "I don't know" is not "it's gone"), and ids no longer in the library are dropped.
+  Writing `kosu$local_meta` straight over the previous layer would push queries hit by a
+  transient driver error back to Tier-0. Zero entries produced while a previous generated
+  layer exists is still a DB-outage signature: refuse to write, warn loudly. A
+  smaller-than-before count writes but warns with the delta.
+- **One generator run at a time.** The output file and resume state are process-global
+  paths, so `pkgc_acquire_run_lock()` takes `artifacts/pk-meta/generator.lock` (atomic
+  `dir.create`, stale after 1h) and a second concurrent run is REFUSED. Unique artifact
+  directories do not fix a shared-output last-writer-wins race. Artifact directories are
+  additionally collision-safe (`run_id` = timestamp + milliseconds + pid, plus a
+  never-overwrite allocation step).
+- **Resume is fingerprinted and checkpointed.** Each cached entry stores an
+  SQL + `db_target` fingerprint plus the state-format version; a changed `SELECT` list
+  (or a removed query) makes the entry UNACCEPTABLE, so rerunning the generator can
+  actually repair stale metadata. Evidence fields (`unmapped`, `unbounded`,
+  `observations`, `sample_info`) round-trip through the state file instead of being
+  rebuilt empty. State is written atomically AFTER EVERY QUERY (`checkpoint_fn`) and a
+  write failure is surfaced, never swallowed — writing only at the end made the
+  advertised "resume an interrupted run" useless for an actually interrupted run.
+- **Unknown `db_target` never opens a connection**, and the primary DSN must be
+  explicitly configured. `get_connection()` silently falls back to `DB_DSN` for an
+  unknown target and inherits `.DEFAULT_DSN = Sys.getenv("DB_DSN", "TestConnection")`;
+  either would let the generator inventory the WRONG database while the health record
+  still labels the typo'd target. `pkg_meta_validate_db_target()` gates the target
+  before connecting and `pkg_default_connect_fn()` refuses a missing DSN env var.
+  When DB pooling is active it borrows a REAL connection via
+  `db_acquire_tx_connection()` — `pk_sql_describe_result_schema()` returns `NULL` for a
+  `Pool` object, which would mark every primary query `describe_unavailable`.
+- **Connection caching is success-only and self-healing.** A failed `connect_fn()` is
+  NOT memoized (one transient checkout failure would poison the rest of the run for that
+  target), and a connection-level execution failure RELEASES the cached handle so the
+  next query gets a fresh one. `connect_fn` may return a raw `DBIConnection` or the
+  app's `list(conn = ...)` wrapper; check the wrapper shape before dereferencing `$conn`.
+- **The generator overrides the runtime probe flag, and separates probe failure from
+  "not describable".** `MERGEN_PK_RESULT_SCHEMA_PROBE` gates the app's OPTIONAL runtime
+  probe; an operator running `MERGEN_PK_META_MODE=describe` still expects the inventory,
+  so `pkg_default_describe_fn()` forces the flag on for its own call and restores it.
+  It also RAISES the captured driver error instead of letting
+  `pk_sql_describe_result_schema()` swallow it into `NULL`, so `describe_failed` stays
+  distinguishable from `describe_unavailable`. In `sample` mode the descriptor is
+  consulted FIRST (it does not execute the query) purely to recover NATIVE type names —
+  an R class cannot tell `nvarchar(max)` from `nvarchar(200)`, so the structural
+  unbounded/unmapped findings would otherwise never fire in the default mode.
+- **Report readiness comes from the INCLUSION decision, not from schema presence.** A
+  withheld query has a schema in hand but is Tier-0/`pending_no_schema` at runtime, so
+  `schema_validation`/`tier0` derive from status. Cached entries do not count toward
+  `described_or_sampled` (a fully resumed run must not claim it probed the DB), failed
+  and skipped records are excluded from semantic coverage (the check never ran), and
+  `schema_failures` counts only schema-fetch codes — `missing_query_id` is a catalog
+  defect, not a database one. Query ids are canonicalized with `trimws()` so the report
+  points at the same identifier as the artifact it audits. `attention` records appear in
+  `health.txt` (they are, by definition, operator action), `unbounded_lob_column` is
+  `attention` (the runbook lists it as requiring action), a zero-row sample and a
+  prefix-PROVEN `row_cap` breach are reported, and collection fields are `I()`-wrapped so
+  `health.json` arrays stay arrays at any cardinality. The summary distinguishes
+  `included` (per-query candidates) from `written_entries` (what the final gate actually
+  published).
+- **A specific defect is counted ONCE.** When a specific blocking finding already covers
+  a validator error, the `pk_meta_validate_schema_dependent()` payload is recorded as the
+  `info`-level `startup_validation_detail` instead of a second blocking
+  `startup_validation_would_fail`. The DECISION is unchanged; only double counting is
+  removed. When no specific finding covers it, the payload stays blocking.
+- **Secret- and data-safety is enforced at three boundaries.** `.pkgh_redact()` masks the
+  WHOLE connection-string value (braced/quoted/`;`-delimited), `pkgh_db_error_summary()`
+  replaces raw driver text with a stable class + SQLSTATE/error-number (a read-only query
+  can fail with a conversion error that embeds a PRODUCTION ROW VALUE), and
+  `pkgh_sanitize_validation_error()` collapses alias-overlay error lines (whose canonical
+  targets are real project/program names) to a fixed sentence keeping only the query id.
+  The bootstrap failure message goes through the same sanitizer.
+- **RLS findings mirror the runtime gate exactly.** `pk_meta_validate_actual_columns()`
+  treats a malformed `rls_columns` declaration and a DUPLICATED declared RLS column as
+  `fail_closed = TRUE`; the report emits `rls_declaration_invalid` and
+  `rls_column_duplicated` as `security = TRUE` blocking findings so `rls_mismatches` and
+  the console DURDURUCU warning cannot read zero while runtime fails closed.
+- **Legacy query-level column declarations are audited.** `query$date_columns` and
+  `query$pre_aggregated_columns` live on the query object, not in metadata; a renamed
+  column there is reported as `attention` (runtime skips/passes them rather than
+  failing). A `role = "date"` column listed in `date_columns` downgrades the generator's
+  OWN `role_type_mismatch` to the explanatory `role_type_mismatch_declared_date` — but
+  the query is STILL withheld, because `pk_meta_validate_query()` requires a date-typed
+  schema for `role = "date"` and the generated layer must match the startup gate exactly.
+- **Alias overlay is applied PER QUERY.** `pkgn_validate_candidate()` runs
+  `pk_meta_apply_alias_overlay()` for that query, so one broken operator-local alias
+  withholds one query instead of failing the whole-library gate and writing nothing. The
+  generator READS `R/library_query_aliases_local.R`; the invariant is that it never
+  WRITES it.
+- **A bootstrap failure still produces an audit.** Catalog defects (duplicate/missing
+  query ids, missing SQL) stop `pk_query_meta_attach()` during bootstrap, which is
+  exactly the coverage the health report promises. On bootstrap failure the entry point
+  loads the raw `R/library_queries.R` WITHOUT the metadata gate, writes a catalog
+  diagnostic report, clears any stale in-memory `pk_query_meta_local` (deleting the file
+  alone does not help — the manifest just skips the missing file while the loaded object
+  survives), and only then stops with the sanitized reason. It also restores the caller's
+  `future` PLAN, not just the env var: `global.R` runs `future::plan(sequential)` under
+  `MERGEN_DISABLE_FUTURES=true`, which would otherwise leave the operator's RStudio
+  session sequential.
+- **Config cross-validation.** `MERGEN_PK_META_HIGH_CARD_MIN` must be strictly below
+  `MERGEN_PK_META_SAMPLE_ROWS`; otherwise `distinct_observed` can never exceed it and
+  the high-cardinality proof is unreachable for every sampled column. The default mode
+  is `describe` (see above), and every `MERGEN_PK_META_*` key is documented in
+  `.Renviron.example` (asserted by the contract test).
+- **Emitted R source is PURE ASCII** (`\uXXXX` escapes for every non-ASCII codepoint)
+  and written ATOMICALLY (temp file -> `parse()` -> rename). This closes the §1G
+  WINDOWS-1254 `source()` truncation class by construction for a file that will contain
+  real Turkish column names; the round-trip is byte-identical.
+- **Secret- and data-safe.** No DSN/credential/endpoint in the report or logs (driver
+  errors pass through the redaction helper); the raw text of a rejected SQL never enters
+  the report; production ROW VALUES never enter the report. `artifacts/pk-meta/`,
+  `R/library_query_meta_local.R` and `R/library_query_aliases_local.R` are gitignored and
+  must stay untracked.
+- The generator must never repair SQL, remove an `rls_columns` declaration, auto-curate
+  semantics, or write aliases derived from real project/person values.
+
+Review-hardening boundaries (each one closed a real defect; do not regress):
+
+- **Two fingerprints, two questions.** `pkgh_source_fingerprint(query)` hashes
+  `db_target` + SQL (explicit `\u001f` separator) and answers "does this PUBLISHED
+  entry still describe the current SQL?"; every generated entry is STAMPED with it
+  (`pkgn_build_local_entry(source_fingerprint =)`) and `pkgc_merge_local_layers()`
+  checks it — an UNSTAMPED entry cannot be verified, so it is dropped rather than
+  kept. `pkgh_state_fingerprint(query, config)` layers an EVIDENCE SIGNATURE on top
+  and answers "is this RESUME CACHE entry still valid?": in `sample` mode the
+  signature carries `sample_rows` + `high_cardinality_threshold`, because the cache
+  persists DERIVED observations (`high_cardinality_proved`) and raising the threshold
+  must not let an old `TRUE` be republished. `describe` mode uses an EMPTY signature —
+  it reads neither knob, so a leftover sample setting must not invalidate a safe
+  describe cache. Keep the two separate: a changed sampling threshold must NOT
+  invalidate an already-published `result_schema`. The pure-R fallback hash folds
+  state through `.pkgh_to_signed32()` before `bitwXor()` (the FNV seed is above
+  `.Machine$integer.max`, so the raw value coerced to `NA`).
+- **Run lock.** `helpers_meta_generator_lock.R` owns it, separately from the merge
+  layer. Every acquisition carries a unique OWNER TOKEN; `pkgc_release_run_lock()`
+  unlinks only while that token still matches on disk, `pkgc_refresh_run_lock()`
+  writes a HEARTBEAT (a long `sample` run must not age its OWN lock past
+  `stale_sec`), stale takeover goes through an ATOMIC `file.rename()` so two
+  starters cannot both reclaim it, and a lock directory that cannot be created at
+  all is reported as `io_error`, never as contention.
+- **Layer merge.** Generated entries carry `source_fingerprint`;
+  `pkgc_merge_local_layers(..., fingerprints = pkgh_source_fingerprints(...))`
+  preserves a previous entry ONLY on a transient failure AND only while the
+  fingerprint still matches. Deterministic
+  catalog/config/read-only defects (`PKG_META_DETERMINISTIC_BLOCK_CODES`) REMOVE the
+  previous entry like `withheld` — the whole-library gate cannot catch a stale
+  contract because it never executes the SQL.
+- **Empty-layer guard.** Blocking every `0 <- nonzero` transition also blocked
+  LEGITIMATE emptying (last generated query removed, or every query withheld),
+  leaving an id in the file that no longer exists in the library and breaking the
+  next bootstrap. The guard now keys on `summary$schema_failures` — real evidence
+  that this run learned nothing.
+- **Staged vs published.** Audit artifacts are written BEFORE publish (the operator
+  must be able to read the report before new metadata goes live), so they record
+  `local_layer_status = "staged"` and `written_entries = 0`; only a SUCCESSFUL
+  `pkgr_publish_staged_file()` rewrites them as `published` with the real count. A
+  failed publish rewrites them as `publish_failed`.
+- **Redaction.** `helpers_meta_generator_redact.R` is the single masking boundary.
+  SQLSTATE is captured from a COMPLETE bracketed token (`\[([0-9A-Z]{5})\]`) — the
+  old lookahead matched `osoft` inside `[Microsoft]`. A driver error number is read
+  only from the structurally anchored `Msg <n>, Level <k>` header, never from free
+  text (`error 12345` can be a production ROW VALUE). Error classes fold ASCII-only
+  (`tolower()` is locale-dependent and drops matches on the Turkish VM), `42S02`/
+  `42S22` are `object_missing`, and `driver_unavailable` no longer matches the bare
+  word `driver` present in every standard ODBC prefix. `pkgh_sanitize_bootstrap_error()`
+  additionally strips free-form usernames/paths and caps length.
+- **Validator messages.** `blocking` may carry several INDEPENDENT validator
+  failures; downgrading the whole payload to `info` hid the second one from
+  `health.txt`. `.pkgh_split_validator_messages()` demotes only messages already
+  represented by a specialized finding (`.PKGH_VALIDATOR_COVERAGE`) and keeps the
+  rest BLOCKING.
+- **Evidence honesty.** Prefix observations record only OBSERVED counterexamples:
+  `null_observed` / `unique_disproved` are set only when TRUE, never `FALSE`
+  (absence in a prefix is not a negative conclusion). A zero-length `raw(0)` is a
+  legitimate empty `varbinary`, not SQL NULL. Legacy `date_columns` /
+  `pre_aggregated_columns` are compared EXACTLY (runtime does not trim them).
+- **Sample mode parity.** `pkgs_schema_from_dataframe()` applies the descriptor's
+  native-type mapping to the SCHEMA (not just to findings), forcing `character` for
+  an unmapped type — otherwise the `unmapped_sql_type` promise of "downgraded to the
+  conservative structure" was not kept and a driver-specific numeric survived as a
+  `measure`. Descriptor `widths` are carried too, so `max_length = -1` still yields
+  `unbounded_lob_column` in `sample` mode. A STRUCTURALLY INVALID descriptor (for
+  example an unnamed result column) fails the query instead of silently falling back
+  to sampling, and a genuinely unavailable descriptor raises an explicit
+  `native_types_unavailable` attention finding.
+- **Bounded driver calls.** `MERGEN_PK_META_SQL_TIMEOUT_SEC` becomes ONE absolute
+  per-query deadline (`.pkgd_deadline()` / `.pkgd_bounded_until()`); each
+  `dbSendQuery`/`dbFetch` receives only the REMAINING budget instead of a fresh full
+  window per chunk. `dbClearResult()`, connection acquisition and release are bounded
+  too (cleanup keeps a `.PKGD_CLEANUP_MIN_SEC` floor so an exhausted budget still
+  gets a chance to close the result).
+- **Inventory loop.** Deterministic gates (`pkgn_precheck_query()`) run BEFORE any
+  connection is opened; the resume cache SEEDS the checkpoint cache so an interrupted
+  resumed run cannot delete still-unvisited entries; connection-acquisition errors are
+  preserved as safe summaries in the health record; `HYT00` (query timeout) no longer
+  evicts a usable connection while `HYT01` still does; and the alias overlay is looked
+  up with the CANONICAL trimmed id.
+- **Reporting.** `pkgh_query_record()` stores the CANONICAL `db_target` and emits
+  `null` (not `[]`) for an empty `sample` — and `pkgh_stabilize_report()` therefore
+  assigns with `x[i] <- list(value)`, because `x[[i]] <- NULL` DELETES a list element,
+  shifts the remainder and makes the loop run off the end; `pkgh_reconcile_records_with_layer()`
+  derives readiness from the FINAL merged layer so a preserved previous schema is not
+  reported as Tier-0; `pkgh_allocate_artifact_dir()` ERRORS rather than reusing an
+  occupied directory; the bootstrap-failure report keeps the real catalog total; and a
+  failed final state write QUARANTINES the previous snapshot (`pkgh_quarantine_state()`)
+  so the next run cannot accept it and republish pre-fix schema.
+- **Bootstrap isolation.** The entry point forces `MERGEN_SQL_LOADER_STRICT=true`
+  (a placeholder SELECT must never be described and persisted under a real query id)
+  and restores the operator's env vars, future plan, locale categories and the
+  options `global.R` changes.
+
+Protected by:
+
+- `tests/testthat/test-pk-meta-generator-behavior.R`
+- `tests/testthat/test-pk-meta-generator-hardening-behavior.R`
+- `tests/testthat/test-pk-meta-generator-contract.R`
+- `tests/testthat/test-pk-query-meta-contract.R`
+- `tests/testthat/test-pk-sql-readonly-gate-contract.R`
+- `tests/testthat/test-windows-cp1254-source-safety-contract.R`
+
+Focused validation:
+
+- `testthat::test_file("tests/testthat/test-pk-meta-generator-behavior.R")`
+- `testthat::test_file("tests/testthat/test-pk-meta-generator-hardening-behavior.R")`
+- `testthat::test_file("tests/testthat/test-pk-meta-generator-contract.R")`
+- `testthat::test_file("tests/testthat/test-pk-query-meta-contract.R")`
+- `testthat::test_file("tests/testthat/test-pk-sql-readonly-gate-contract.R")`
+
+VM-only proof (NOT provable in cloud): running the generator at all (it needs the real
+~169-query library and a live DB), `sys.dm_exec_describe_first_result_set` behavior
+against real production SQL, the SQL-type-to-R-class mapping against real driver output,
+the actual RLS-mismatch count, and the resulting `R/library_query_meta_local.R`.
+
 ### File Manager modularization contract
 
 The File Manager layer is intentionally split to keep the large runtime module from growing again. Preserve this source order in `R/config_source_manifest.R`:

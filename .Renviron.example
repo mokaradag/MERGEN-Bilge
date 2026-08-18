@@ -790,3 +790,48 @@ MERGEN_PK_ALLOW_UNBOUNDED_LOB=FALSE
 #   Kapatirsaniz, beyani olmayan degisken genislikli sutunlar kanitlanmamis
 #   sayilir ve MERGEN_PK_ALLOW_UNBOUNDED_LOB acik degilse reddedilir.
 MERGEN_PK_RESULT_SCHEMA_PROBE=TRUE
+
+# ------------------------------------------------------------------------------
+# FAZ 3b (§5.1): SORGU METADATA URETICISI (YALNIZCA OPERATOR / WINDOWS VM)
+# ------------------------------------------------------------------------------
+#   Bu ayarlar YALNIZCA `tools/pk/generate_query_meta.R` tarafindan okunur.
+#   Uretici CALISMA ZAMANI KODU DEGILDIR: uygulama acilisinda YUKLENMEZ ve bu
+#   degiskenler uygulamanin davranisini DEGISTIRMEZ.
+#
+#   Kip. `describe` sorguyu CALISTIRMAZ (SQL Server'in kendi tanimlayicisini
+#   sorar); `sample` imlecten yalnizca N satir ceker. VARSAYILAN `describe`'dir:
+#   ortam degiskenini ayarlamayi unutan bir kosu, tum uretim sorgu kutuphanesini
+#   CALISTIRMAMALIDIR. Gecersiz bir deger SESSIZCE varsayilana dusmez, hata verir.
+MERGEN_PK_META_MODE=describe
+
+#   `sample` kipinde sorgu basina getirilecek EN FAZLA satir. Bu bir AKTARIM
+#   siniridir, sunucu is yuku siniri DEGILDIR: SELECT calisir ve buyuk bir
+#   birlestirme/ORDER BY bu satirlar cekilmeden once sunucuda tamamlanabilir.
+#   Gercek koruma MERGEN_PK_META_SQL_TIMEOUT_SEC ve MERGEN_PK_META_MAX_RESULT_MB'dir.
+MERGEN_PK_META_SAMPLE_ROWS=500
+
+#   Yuksek kardinalite KANITI icin gereken farkli deger sayisi. TEK YONLUDUR:
+#   bu esigin USTUNE cikmak `high_cardinality = TRUE` kanitlar; altinda kalmak
+#   HICBIR SEY kanitlamaz. MERGEN_PK_META_SAMPLE_ROWS degerinden KUCUK olmalidir,
+#   aksi halde kanit hicbir sutun icin uretilemez ve uretici reddeder.
+MERGEN_PK_META_HIGH_CARD_MIN=50
+
+#   Uretici sorgu basina zaman asimi (saniye). Her bloklayan surucu cagrisina
+#   (describe sondasi, gonderim, parcali getirim) uygulanir.
+MERGEN_PK_META_SQL_TIMEOUT_SEC=120
+
+#   `sample` kipinde TEK bir sorgu sonucunun bayt tavani (MB). Birkac buyuk LOB
+#   satiri, satir sinirinin ALTINDA kalirken bellegi tuketebilir; getirim bu
+#   tavan asildiginda DURDURULUR ve sorgu basarisiz raporlanir.
+MERGEN_PK_META_MAX_RESULT_MB=64
+
+#   Kesintiye ugrayan bir kosuyu kaldigi yerden surdurur. Devam onbellegi her
+#   sorgudan SONRA yazilir ve her girdi SQL+hedef PARMAK IZI tasir: sorgunun
+#   SELECT listesi degistiginde eski sema KABUL EDILMEZ. Temiz bir kosu icin
+#   FALSE yapin.
+MERGEN_PK_META_RESUME=TRUE
+
+#   `sample` kipinde SQL metni, uretimin de kullandigi NVARCHAR(MAX) parametre
+#   yolu (sp_executesql) ile gonderilir; boylece Turkce/koseli parantezli sutun
+#   adlari ODBC ayrisma hatasi vermez. Yalnizca teshis icin FALSE yapin.
+MERGEN_PK_META_SAMPLE_UNICODE=TRUE
