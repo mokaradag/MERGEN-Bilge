@@ -83,7 +83,7 @@ kurumsal ağ dışına **çıkarılmaz**.
 |---|---|---|
 | `DAHIL` (`ok`) | Şema alındı, doğrulama geçti, üretilen katmana girdi | Yok |
 | `GERI CEKILDI` (`withheld`) | Şema alındı **ama** bloklayıcı bulgu var; sorgu üretilen katmana **alınmadı** | **Düzeltin** |
-| `BASARISIZ` (`failed`) | Sorgu envanterlenemedi. İki ayrı sınıf: **(a)** şema alınamadı (tanımlayıcı dönmedi / sürücü hatası / bağlantı kurulamadı), **(b)** katalog/yapılandırma kusuru (`missing_query_id`, `missing_sql`, `invalid_db_target`, `malformed_library_entry`) | Yalnızca **(a)** için `sample` kipi yardımcı olabilir; **(b)** kesin bir kusurdur ve kip değiştirmek **çözmez** — katalog beyanını düzeltin |
+| `BASARISIZ` (`failed`) | Sorgu envanterlenemedi. İki ayrı sınıf: **(a)** şema alınamadı (tanımlayıcı dönmedi / sürücü hatası / bağlantı kurulamadı / güvenli örnekleme izni yok), **(b)** katalog/yapılandırma kusuru (`missing_query_id`, `missing_sql`, `invalid_db_target`, `malformed_library_entry`) | Yalnızca **(a)** sınıfındaki gerçekten örneklenmesi gereken sorgular için §5'teki güvenli `sample` kürasyonu yardımcı olabilir; **(b)** kesin bir kusurdur ve kip değiştirmek **çözmez** |
 | `ATLANDI` (`skipped`) | SQL salt-okunur kapısından geçemedi; **çalıştırılmadı** | SQL'i inceleyin |
 
 `BASARISIZ` durumu "şema alınamadı"dan **daha geniştir**; bu yüzden sağlık özeti
@@ -96,10 +96,11 @@ bulgu koduna bakarak görürsünüz.
 değişmez**. Yalnızca gerçek şemasını kazanmamış olur.
 
 Geçici bir hata yüzünden `BASARISIZ` olan bir sorgunun **önceki geçerli**
-metadata'sı, SQL'i değişmediği sürece katmanda **korunur**; rapor bunu
-`preserved_previous` olarak işaretler ve o sorguyu `Tier-0` **saymaz**. SQL
-değiştiyse eski girdi **kaldırılır** (`removed_stale_fingerprint`): bayat bir
-sözleşmeyi canlı bırakmak, bütün-kütüphane kapısının **yakalayamayacağı** bir
+metadata'sı, sorgunun kaynak parmak izi değişmediği sürece katmanda **korunur**;
+rapor bunu `preserved_previous` olarak işaretler ve o sorguyu `Tier-0`
+**saymaz**. SQL, hedef veya runtime'da etkin şemayı değiştiren `date_columns`
+beyanı değiştiyse eski girdi **kaldırılır** (`removed_stale_fingerprint`): bayat
+bir sözleşmeyi canlı bırakmak, bütün-kütüphane kapısının **yakalayamayacağı** bir
 hatadır, çünkü o kapı SQL'i çalıştırmaz.
 
 ### İLERLEMEYİ DURDURAN bulgular
@@ -159,20 +160,38 @@ Bloklayıcı bulguları düzelttikçe geri çekilen sorgular `DAHIL` durumuna ge
 
 ---
 
-## 5. `sample` kipi (İKİNCİ GEÇİŞ, isteğe bağlı)
+## 5. `sample` kipi (İKİNCİ GEÇİŞ, isteğe bağlı ve AÇIK İZİNLİ)
 
 `describe` bazı sorgular için şema döndüremez (geçici tablo, dinamik SQL,
-belirsiz sonuç kümesi). `sample` kipi o sorguları imleçten **yalnızca N satır**
-çekerek çözer.
+belirsiz sonuç kümesi). `sample` kipi yalnızca bu istisnalar için vardır.
+
+**Önemli güvenlik kuralı:** `dbFetch(n=...)` sunucu işini sınırlamaz; yalnızca
+istemciye aktarılacak satır sayısını sınırlar. Büyük `JOIN`, agregasyon veya
+`ORDER BY` işlemi ilk N satır gelmeden önce üretim sunucusunda tamamlanabilir.
+Bu yüzden üretici, bir sorguyu `sample` kipinde **varsayılan olarak çalıştırmaz**.
+Gerçek üretim örneklemesi ancak ilgili `query_library` girdisi insan tarafından
+incelenip açıkça şu beyanı taşıyorsa çalışır:
+
+```r
+meta_sample_safe = TRUE
+```
+
+Bu beyan **toplu eklenmez**. Yalnızca sorgunun üretim sunucusundaki maliyetinin
+kabul edilebilir olduğu kod/DB incelemesiyle doğrulandıktan sonra eklenir. Beyan
+yoksa üretici sorguyu **çalıştırmadan** `sample_not_server_bounded` olarak
+başarısız raporlar. `MERGEN_PK_META_SAMPLE_ROWS`, timeout veya sonuç-bayt tavanı
+bu açık izin yerine geçmez.
+
+Örnek komut:
 
 ```r
 Sys.setenv(MERGEN_PK_META_MODE = "sample")
 source("tools/pk/generate_query_meta.R", encoding = "UTF-8")
 ```
 
-**Kanıt sınırını bilerek kullanın.** Örnekleme yöntemi `prefix`'tir (veritabanı
-dönüş sırasındaki ilk N satır) ve **temsili değildir**. Bu yüzden yalnızca
-**tek yönlü** sonuçlar kaydedilir:
+**Kanıt sınırını bilerek kullanın.** İzin verilmiş bir sorguda örnekleme yöntemi
+`prefix`'tir (veritabanı dönüş sırasındaki ilk N satır) ve **temsili değildir**.
+Bu yüzden yalnızca **tek yönlü** sonuçlar kaydedilir:
 
 | Gözlem | Sonuç |
 |---|---|
@@ -183,8 +202,7 @@ dönüş sırasındaki ilk N satır) ve **temsili değildir**. Bu yüzden yalnı
 | Eşikten az farklı değer görüldü | **Hiçbir şey kanıtlanmaz** (düşük kardinalite varsayılmaz) |
 
 500 satırlık bir örnek 501 satırlık sonucu 5 milyondan **ayırt edemez**; bu
-yüzden `row_cap` **geçti** iddiası hiçbir zaman üretilmez ve önek karar
-veremediğinde alan `cardinality_claim: "unknown"` kalır.
+yüzden önek karar veremediğinde `cardinality_claim: "unknown"` kalır.
 
 Tek istisna **kanıtlanmış aşımdır**: gözlenen önek satır sayısı etkin `row_cap`
 değerini **geçmişse**, önek tek başına aşımı kanıtlar. Bu durumda
@@ -194,7 +212,11 @@ gizlemek doğru olmazdı.
 
 Üretici SQL'i **sarmalamaz** (`SELECT TOP n FROM (...)` yok): üretim sorguları
 `ORDER BY` / CTE / `OPTION(...)` içerebilir ve sarmalamak hem sorguyu bozar hem
-de salt-okunur kapısından geçen metin ile çalışan metni ayırırdı.
+de salt-okunur kapısından geçen metin ile çalışan metni ayırırdı. Bu nedenle
+sağlık kaydı izin verilmiş örneklerde de `server_bounded: false` ve
+`bound_kind: "explicit_safe_query_gate"` bildirir; güvenlik iddiası SQL'in
+yapay biçimde sınırlandığı değil, **yalnızca önceden küratörlenmiş sorguların
+çalıştırıldığıdır**.
 
 ---
 
@@ -292,7 +314,7 @@ yazmaz** — orası tamamen sizindir.
 | Anahtar | Varsayılan | Anlamı |
 |---|---|---|
 | `MERGEN_PK_META_MODE` | `describe` | `describe` veya `sample`. Varsayılan **`describe`**'dir: ortam değişkenini ayarlamayı unutan bir koşu üretim sorgularını **çalıştırmamalıdır**. Geçersiz değer sessizce varsayılana düşmez, hata verir |
-| `MERGEN_PK_META_SAMPLE_ROWS` | `500` | `sample` kipinde sorgu başına en fazla satır (**aktarım** sınırı — aşağıya bakın) |
+| `MERGEN_PK_META_SAMPLE_ROWS` | `500` | `sample` kipinde sorgu başına en fazla satır (**yalnızca istemci aktarım** sınırı) |
 | `MERGEN_PK_META_HIGH_CARD_MIN` | `50` | Bu sayıdan fazla farklı değer `high_cardinality = TRUE` kanıtlar (tek yönlü). `SAMPLE_ROWS` değerinden **küçük olmalıdır**; aksi hâlde kanıt hiçbir sütun için üretilemez ve üretici reddeder |
 | `MERGEN_PK_META_SQL_TIMEOUT_SEC` | `120` | Sorgu başına zaman aşımı. Her bloklayan sürücü çağrısına uygulanır |
 | `MERGEN_PK_META_MAX_RESULT_MB` | `64` | Örnekleme sonuç **bayt** tavanı; aşıldığında getirim durdurulur ve sorgu başarısız raporlanır |
@@ -301,23 +323,34 @@ yazmaz** — orası tamamen sizindir.
 
 Tümü `.Renviron.example` içinde belgelenmiştir.
 
+`meta_sample_safe` bir ortam değişkeni **değildir**; sorgu başına açık kürasyon
+alanıdır. Yok/`FALSE` ise gerçek üretim `sample` yürütmesi yapılmaz. `TRUE`
+yalnızca §5'teki inceleme yapıldıktan sonra ilgili `query_library` girdisine
+eklenir.
+
 ### Satır sınırı bir **aktarım** sınırıdır
 
 `dbSendQuery()` SELECT'i **çalıştırır**; `dbFetch(n = )` yalnızca kaç satırın
 istemciye aktarılacağını sınırlar. Büyük bir birleştirme veya `ORDER BY`, bu 500
-satır çekilmeden **önce** sunucuda tamamlanabilir. Bu yüzden gerçek koruma
-`MERGEN_PK_META_SQL_TIMEOUT_SEC` ve `MERGEN_PK_META_MAX_RESULT_MB`'dir; sağlık
-kaydı bunu `server_bounded: false` / `bound_kind: "transfer_only"` olarak
-**açıkça bildirir**.
+satır çekilmeden **önce** sunucuda tamamlanabilir. Timeout ve sonuç-bayt tavanı
+zararı sınırlar ama satır tavanını bir **sunucu iş yükü tavanına dönüştürmez**.
+Bu yüzden gerçek üretim `sample` yolu ayrıca sorgu başına
+`meta_sample_safe = TRUE` kapısından geçer; sağlık kaydı bunu
+`server_bounded: false` / `bound_kind: "explicit_safe_query_gate"` olarak
+açıkça bildirir.
 
 ### Devam (resume) durumu
 
 Devam durumu `artifacts/pk-meta/generator-state.json` içinde tutulur ve
-**yalnızca DB gözlemlerini** taşır; karar/küresyon her koşuda yeniden hesaplanır,
-böylece bir küresyon değişikliği önbellek yüzünden kaçırılmaz. Ek olarak:
+**yalnızca DB gözlemlerini** taşır; karar/küresyon her koşuda yeniden hesaplanır.
+Ek olarak:
 
-* her girdi **SQL + hedef parmak izi** taşır: bir sorgunun `SELECT` listesi
-  değiştiğinde eski şema **kabul edilmez** ve sorgu yeniden sorgulanır,
+* her girdi **SQL + hedef + etkin `date_columns` sözleşmesi** parmak izi taşır:
+  bunlardan biri değiştiğinde eski şema **kabul edilmez** ve sorgu yeniden
+  sorgulanır,
+* `sample` önbelleğinde örnek satır/eşik ayarları ve `meta_sample_safe` politikası
+  da parmak izine girer; güvenli örnekleme izni değiştiğinde eski sample kanıtı
+  sessizce yeniden kullanılmaz,
 * durum dosyası **her sorgudan sonra** atomik olarak yazılır; gerçekten kesilen
   bir koşu o ana kadarki ilerlemeyi korur,
 * kip ya da durum dosyası **biçim sürümü** değişirse önbellek tamamen yok sayılır.
@@ -327,7 +360,8 @@ böylece bir küresyon değişikliği önbellek yüzünden kaçırılmaz. Ek ola
 Üretici `artifacts/pk-meta/generator.lock` dizinini alır. İkinci bir koşu
 başlatılırsa açık bir hata ile **reddedilir**: iki koşu aynı çıktı dosyasını
 "son yazan kazanır" biçiminde ezebilirdi. Bir koşu çöktüyse kilit 1 saat sonra
-bayat sayılıp kırılır; emin olduğunuzda dizini elle de silebilirsiniz.
+bayat sayılıp atomik olarak devralınabilir; canlı koşu kalp atışıyla kilidi taze
+tutar. Emin olduğunuzda dizini elle de silebilirsiniz.
 
 ---
 
@@ -336,14 +370,18 @@ bayat sayılıp kırılır; emin olduğunuzda dizini elle de silebilirsiniz.
 * Üretici **yalnızca okur**: her SQL üretimin kullandığı **aynı**
   `pk_sql_classify_readonly()` kapısından geçer; reddedilen SQL çalıştırılmaz.
   `dbExecute`/`dbWriteTable` gibi veri değiştiren çağrılar üreticide **yoktur**.
+* `sample` yürütmesi ayrıca sorgu başına **açık güvenlik kürasyonu** gerektirir
+  (`meta_sample_safe = TRUE`); `dbFetch(n)` hiçbir zaman sunucu iş yükü sınırı
+  olarak sunulmaz.
 * Rapora ve loglara **DSN, kimlik bilgisi, parola, uç nokta** girmez; sürücü
   hata metinleri maskelenir. Reddedilen SQL'in **ham metni** rapora girmez.
 * Rapora **üretim satır değerleri** girmez; yalnızca şema/sütun adları ve sayımlar.
 * Üretilen dosya **saf ASCII**'dir (ASCII dışı karakterler `\uXXXX` kaçışıyla
   yazılır), böylece Windows/WINDOWS-1254 kod sayfasında `source()` kesilmesi
   sınıfı tamamen kapanır. Türkçe sütun adları bozulmadan geri okunur.
-* Yazma **atomiktir**: geçici dosyaya yaz → parse et → yalnızca başarılıysa
-  yerine taşı. Yarım/bozuk dosya asla yerine geçmez.
+* Yazma **atomiktir**: geçici dosyaya yaz → parse et → aynı dizinde atomik
+  rename/backup takasıyla yerine taşı. Canlı hedefin üzerine `file.copy()` ile
+  yazılmaz; yarım/bozuk dosya yerine geçmez.
 * Bu koşu **hiçbir** fail-closed kapıyı zayıflatmaz. Geri çekilen bir sorgu
   bugünkü Tier-0 davranışında kalır ve istek zamanı RLS doğrulaması koşulsuzdur.
 
