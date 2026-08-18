@@ -237,7 +237,6 @@ pkgs_schema_from_dataframe <- function(df, column_types = NULL, column_widths = 
   adlar <- names(df)
   if (is.null(adlar) || any(is.na(adlar) | !nzchar(trimws(adlar)))) return(NULL)
   adlar <- vapply(adlar, .pkgs_utf8, character(1), USE.NAMES = FALSE)
-
   siniflar <- vapply(df, function(s) class(s)[1], character(1), USE.NAMES = FALSE)
   sema <- stats::setNames(as.character(siniflar), adlar)
 
@@ -319,7 +318,7 @@ pkgs_schema_from_dataframe <- function(df, column_types = NULL, column_widths = 
     kalan <- deger[!eksik]
     if (is.list(kalan)) {
       return(length(unique(vapply(kalan, function(o) {
-        paste(as.character(o), collapse = "")
+        paste(as.character(o), collapse = "\u0001")
       }, character(1)))))
     }
     length(unique(kalan))
