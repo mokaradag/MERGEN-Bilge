@@ -79,6 +79,37 @@
   handle
 }
 
+# Runtime `convert_date_columns()` çağrısını metadata kapısından ÖNCE yapar.
+# Dolayısıyla query$date_columns içinde AÇIKÇA beyan edilen bir sütunun ham SQL
+# tipi varchar/character olsa bile metadata kapısının gördüğü etkin sınıf Date
+# olur. Üretici ham şemayı kalıcılaştırırsa çalışma zamanı sözleşmesine göre
+# geçerli bir role=date küresyonunu yanlışlıkla geri çeker. Burada yalnızca
+# sorguda birebir adı geçen sütunlar dönüştürülür; isimler trimlenmez/uydurulmaz.
+.pkgn_apply_declared_date_schema <- function(query, schema) {
+  sonuc <- schema
+  if (is.null(sonuc) || !length(sonuc) || is.null(names(sonuc))) return(sonuc)
+
+  tarih <- query$date_columns %||% character(0)
+  if (!is.character(tarih) || !length(tarih)) return(sonuc)
+  tarih <- tarih[!is.na(tarih) & nzchar(tarih)]
+
+  for (sutun in intersect(tarih, names(sonuc))) {
+    sonuc[[sutun]] <- "Date"
+  }
+  sonuc
+}
+
+# Üretim örneklemesi `dbFetch(n=...)` ile yalnızca AKTARIMI sınırlar; SQL Server
+# JOIN/ORDER BY çalışmasını n satırdan önce tamamlamak zorunda değildir. Bu
+# nedenle GERÇEK varsayılan sample yolu yalnızca sorgu kütüphanesinde açıkça
+# güvenli olarak küratörlenmiş sorgularda çalıştırılır. Test enjeksiyonları bu
+# operatör kapısından etkilenmez; onlar DB iş yükü çalıştırmaz.
+.pkgn_default_sample_is_explicitly_safe <- function(query, sample_fn) {
+  varsayilan <- exists("pkg_default_sample_fn", mode = "function", inherits = TRUE) &&
+    identical(sample_fn, get("pkg_default_sample_fn", mode = "function", inherits = TRUE))
+  !varsayilan || isTRUE(query$meta_sample_safe)
+}
+
 # `describe` çağrısını yap ve SONUCU ile HATASINI AYIR.
 #
 # Üretim tanımlayıcı işlevi hataları yutup `NULL` döndürebildiği için varsayılan
@@ -160,16 +191,17 @@ pkgn_fetch_schema <- function(query, config, conn, describe_fn, sample_fn,
     return(hata_sonucu("describe_invalid_schema", .pkgn_invalid_schema_detail(cikarim)))
   }
 
+  etkin_sema <- .pkgn_apply_declared_date_schema(query, cikarim$schema)
   ornek_bilgi <- list(mode = "describe", executed = FALSE)
   list(
     ok = TRUE,
-    schema = cikarim$schema,
+    schema = etkin_sema,
     source_types = cikarim$source_types,
     unmapped = cikarim$unmapped,
     unbounded = cikarim$unbounded,
     observations = list(),
     sample_info = ornek_bilgi,
-    cache = list(mode = "describe", columns = cikarim$schema,
+    cache = list(mode = "describe", columns = etkin_sema,
                  source_types = cikarim$source_types,
                  unmapped = cikarim$unmapped, unbounded = cikarim$unbounded,
                  observations = list(), sample_info = ornek_bilgi)
@@ -211,6 +243,21 @@ pkgn_fetch_schema <- function(query, config, conn, describe_fn, sample_fn,
     }
   }
 
+  # Gerçek üretim sample yolu, sunucu iş yükü açıkça güvenli olarak
+  # küratörlenmedikçe ÇALIŞTIRILMAZ. `sample_rows` yalnızca dbFetch aktarım
+  # tavanıdır; bunu iş yükü sınırı gibi yorumlamak güvenli değildir.
+  if (!.pkgn_default_sample_is_explicitly_safe(query, sample_fn)) {
+    return(hata_sonucu(
+      "sample_not_server_bounded",
+      paste0(
+        "Sample kipi bu sorgu icin CALISTIRILMADI: dbFetch(n) yalnizca aktarimi ",
+        "sinirlar; tam SELECT sunucuda buyuk JOIN/ORDER BY calismasi yapabilir. ",
+        "Yalnizca query$meta_sample_safe = TRUE olarak ACIKCA kure edilmis ",
+        "sorgular uretim veritabaninda orneklenebilir."
+      )
+    ))
+  }
+
   cerceve <- tryCatch(
     .pkgn_call_injected(
       sample_fn,
@@ -241,6 +288,7 @@ pkgn_fetch_schema <- function(query, config, conn, describe_fn, sample_fn,
     return(hata_sonucu("sample_invalid_schema", "Ornek sonucundan gecerli sema cikarilamadi."))
   }
 
+  etkin_sema <- .pkgn_apply_declared_date_schema(query, cikarim$schema)
   gozlemler <- pkgs_sample_observations(
     cerceve, config$high_cardinality_threshold, method = "prefix"
   )
@@ -252,11 +300,11 @@ pkgn_fetch_schema <- function(query, config, conn, describe_fn, sample_fn,
     method = "prefix",
     rows_seen = satir,
     native_types_available = !is.null(natif),
-    # DÜRÜSTLÜK: `dbFetch(n = )` bir AKTARIM sınırdır. `dbSendQuery()` SELECT'i
-    # çalıştırır; büyük bir birleştirme/ORDER BY bu satırlar çekilmeden ÖNCE
-    # sunucuda tamamlanabilir. Gerçek koruma zaman aşımı ve bayt tavanıdır.
+    # Satır sayısı hâlâ AKTARIM sınırıdır; güvenlik, üretim sample yolunun
+    # yalnızca açıkça güvenli diye küratörlenmiş sorgularda çalışmasıdır.
     server_bounded = FALSE,
-    bound_kind = "transfer_only",
+    bound_kind = "explicit_safe_query_gate",
+    explicitly_sample_safe = isTRUE(query$meta_sample_safe),
     # 500 satırlık bir örnek 501 satırlık sonucu 5 milyondan AYIRT EDEMEZ.
     # Bu yüzden satır sayısı tavana değdiğinde yalnızca ALT SINIR bildirilir
     # ve row_cap geçti/kaldı iddiası ÜRETİLMEZ.
@@ -266,13 +314,13 @@ pkgn_fetch_schema <- function(query, config, conn, describe_fn, sample_fn,
 
   list(
     ok = TRUE,
-    schema = cikarim$schema,
+    schema = etkin_sema,
     source_types = cikarim$source_types,
     unmapped = cikarim$unmapped,
     unbounded = cikarim$unbounded,
     observations = gozlemler,
     sample_info = ornek_bilgi,
-    cache = list(mode = "sample", columns = cikarim$schema,
+    cache = list(mode = "sample", columns = etkin_sema,
                  source_types = cikarim$source_types, rows_seen = satir,
                  unmapped = cikarim$unmapped, unbounded = cikarim$unbounded,
                  observations = gozlemler, sample_info = ornek_bilgi)
