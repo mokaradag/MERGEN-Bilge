@@ -1399,8 +1399,7 @@ test_that("ozel bulgu yokken dogrulayici yuku BLOKLAYICI kalir", {
 test_that("BOZUK rls_columns beyani GUVENLIK bulgusudur", {
   cfg <- .gen_test_config("describe")
   lib <- list(list(id = "q1", name = "S", db_target = "primary",
-                   sql = "SELECT ProjeKodu FROM T",
-                   rls_columns = list(bilinmeyen_alan = "ProjeKodu")))
+                   sql = "SELECT ProjeKodu FROM T", rls_columns = list(bilinmeyen_alan = "ProjeKodu")))
 
   sonuc <- .gen_run(lib, cfg,
                     describe_fn = function(conn, sql) .gen_desc(ProjeKodu = "nvarchar(50)"))
@@ -1574,16 +1573,20 @@ test_that("onek row_cap asimini KANITLADIGINDA bildirilir", {
   expect_identical(kayit$sample$cardinality_claim, "row_cap_exceeded")
 })
 
-test_that("ornek satir siniri bir AKTARIM siniri olarak raporlanir", {
+test_that("ornek satir siniri SUNUCU siniri DEGILDIR; guvenlik acik sample kapisidir", {
   cfg <- .gen_test_config("sample")
   lib <- list(list(id = "q1", name = "S", db_target = "primary",
-                   sql = "SELECT A FROM T", rls_columns = list()))
+                   sql = "SELECT A FROM T", rls_columns = list(),
+                   meta_sample_safe = TRUE))
 
   sonuc <- .gen_run(lib, cfg, sample_fn = function(conn, sql, n) data.frame(A = 1))
 
   # `dbSendQuery()` SELECT'i çalıştırır; `dbFetch(n=)` yalnızca aktarımı sınırlar.
+  # Üretim sample yolundaki güvenlik iddiası, sorgunun açıkça incelenip
+  # `meta_sample_safe = TRUE` kapısından geçirilmiş olmasıdır.
   expect_false(sonuc$records[[1]]$sample$server_bounded)
-  expect_identical(sonuc$records[[1]]$sample$bound_kind, "transfer_only")
+  expect_identical(sonuc$records[[1]]$sample$bound_kind, "explicit_safe_query_gate")
+  expect_true(sonuc$records[[1]]$sample$explicitly_sample_safe)
 })
 
 test_that("blob NULL degerleri EKSIK sayilir", {
@@ -1851,7 +1854,7 @@ test_that("query$date_columns / pre_aggregated_columns semaya karsi denetlenir",
   expect_identical(sonuc$records[[1]]$status, "ok")
 })
 
-test_that("date_columns beyani rol uyusmazligini ACIKLAR ama KARARI degistirmez", {
+test_that("date_columns beyani runtime-etkin semayi DATE yapar ve sorguyu geri CEKMEZ", {
   cfg <- .gen_test_config("describe")
   lib <- list(list(id = "q1", name = "S", db_target = "primary",
                    sql = "SELECT Tarih FROM T", rls_columns = list(),
@@ -1865,17 +1868,15 @@ test_that("date_columns beyani rol uyusmazligini ACIKLAR ama KARARI degistirmez"
   kayit <- sonuc$records[[1]]
   kodlar <- vapply(kayit$findings, function(f) f$code, character(1))
 
-  # `convert_date_columns()` istek yolunda metadata kapısından ÖNCE çalışır, bu
-  # yüzden üreticinin KENDİ uyuşmazlık bulgusu açıklayıcı bir nota düşer.
+  # Runtime `convert_date_columns()` çağrısını metadata kapısından ÖNCE yapar.
+  # Üretici de aynı etkin şemayı kullanmalı; aksi halde çalışan bir varchar tarih
+  # sorgusunu yanlışlıkla geri çeker ve üretim metadata'sını yazamaz.
   expect_false("role_type_mismatch" %in% kodlar)
-  expect_true("role_type_mismatch_declared_date" %in% kodlar)
-
-  # ANCAK karar DEĞİŞMEZ: `pk_meta_validate_query()` role='date' için TARİH
-  # tipli bir şema bekler. Üretici bunu "bloklamıyor" sayarsa, yazacağı katman
-  # `pk_query_meta_attach()` kapısında düşer ve TÜM koşu hiçbir şey yazamaz.
-  expect_identical(kayit$status, "withheld")
-  expect_identical(kayit$blocking_count, 1L)
-  expect_true("startup_validation_would_fail" %in% kodlar)
+  expect_false("role_type_mismatch_declared_date" %in% kodlar)
+  expect_identical(kayit$status, "ok")
+  expect_identical(kayit$blocking_count, 0L)
+  expect_false("startup_validation_would_fail" %in% kodlar)
+  expect_identical(unname(sonuc$local_meta$q1$result_schema[["Tarih"]]), "Date")
 })
 
 # ------------------------------------------------------------------------------
