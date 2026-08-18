@@ -39,9 +39,15 @@ PKG_META_LOCK_HEARTBEAT_FILE <- "heartbeat.txt"
 # nesne, SOURCE-GÜVENLİ süreç anlık görüntüsünü de taşır. Böylece hata yolu da
 # başarı yolu da operatörün süreç durumunu başlangıçtaki hâline döndürür.
 .pkgc_capture_process_state <- function() {
-  kaynaklar <- NULL
-  if (requireNamespace("shiny", quietly = TRUE)) {
-    kaynaklar <- tryCatch(shiny::resourcePaths(), error = function(e) NULL)
+  # Snapshot almak için Shiny'yi YÜKLEME: requireNamespace() bile kalıcı süreç
+  # yan etkisi yaratabilir. Namespace zaten yüklüyse mevcut kaynak eşlemeleri
+  # okunur; değilse başlangıç eşlemesi boş kabul edilir.
+  onceki_options <- options()
+  shiny_yuklu <- "shiny" %in% loadedNamespaces()
+  kaynaklar <- if (shiny_yuklu) {
+    tryCatch(shiny::resourcePaths(), error = function(e) character(0))
+  } else {
+    character(0)
   }
 
   yerel_kategoriler <- c(
@@ -52,7 +58,7 @@ PKG_META_LOCK_HEARTBEAT_FILE <- "heartbeat.txt"
   }, character(1))
 
   list(
-    options = options(),
+    options = onceki_options,
     locale = yerel,
     mergen_log_dir = Sys.getenv("MERGEN_LOG_DIR", unset = NA_character_),
     resource_paths = kaynaklar
@@ -63,7 +69,9 @@ PKG_META_LOCK_HEARTBEAT_FILE <- "heartbeat.txt"
   if (is.null(state) || !is.list(state)) return(invisible(FALSE))
 
   # Bootstrap'ın normalize ettiği log dizini ortam değişkenini geri al.
-  onceki_log <- state$mergen_log_dir %||% NA_character_
+  onceki_log <- state$mergen_log_dir
+  if (is.null(onceki_log) || !length(onceki_log)) onceki_log <- NA_character_
+  onceki_log <- as.character(onceki_log)[1]
   if (is.na(onceki_log)) {
     Sys.unsetenv("MERGEN_LOG_DIR")
   } else {
@@ -72,7 +80,7 @@ PKG_META_LOCK_HEARTBEAT_FILE <- "heartbeat.txt"
 
   # global.R'nin eklediği/yeniden bağladığı Shiny kaynak öneklerini eski
   # eşlemeye döndür. Başlangıçta olmayan önekler kaldırılır.
-  if (requireNamespace("shiny", quietly = TRUE)) {
+  if ("shiny" %in% loadedNamespaces()) {
     onceki <- state$resource_paths
     if (is.null(onceki)) onceki <- character(0)
     simdiki <- tryCatch(shiny::resourcePaths(), error = function(e) character(0))
@@ -278,7 +286,8 @@ pkgc_release_run_lock <- function(lock) {
   # Sahiplik değişmiş olsa bile BU koşunun bootstrap yan etkileri geri alınır.
   # on.exit kullanmak, aşağıdaki sahiplik erken dönüşlerinde de restorasyonu
   # garanti eder.
-  on.exit(.pkgc_restore_process_state(lock$process_state %||% NULL), add = TRUE)
+  surec_durumu <- if (!is.null(lock$process_state)) lock$process_state else NULL
+  on.exit(.pkgc_restore_process_state(surec_durumu), add = TRUE)
 
   diskteki <- .pkgc_lock_read_token(lock$path)
   if (!is.na(diskteki) && !identical(diskteki, lock$token)) {
