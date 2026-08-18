@@ -66,7 +66,7 @@
   "datetimeoffset" = "POSIXct",
   # Gün içi saat bir TARİH DEĞİLDİR; bilinçli olarak "date" rolüne girmez.
   # `odbc` SQL TIME değerlerini `hms` olarak döndürür; sample kipi de bunu
-  # görür, bu yüzden describe kipi de "hms" yazar.
+# görür, bu yüzden describe kipi de "hms" yazar.
   "time" = "hms",
   # Metin
   "char" = "character", "varchar" = "character", "nchar" = "character",
@@ -237,6 +237,7 @@ pkgs_schema_from_dataframe <- function(df, column_types = NULL, column_widths = 
   adlar <- names(df)
   if (is.null(adlar) || any(is.na(adlar) | !nzchar(trimws(adlar)))) return(NULL)
   adlar <- vapply(adlar, .pkgs_utf8, character(1), USE.NAMES = FALSE)
+
   siniflar <- vapply(df, function(s) class(s)[1], character(1), USE.NAMES = FALSE)
   sema <- stats::setNames(as.character(siniflar), adlar)
 
