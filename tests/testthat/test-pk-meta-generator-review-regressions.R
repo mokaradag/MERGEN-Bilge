@@ -1,6 +1,7 @@
 # ==============================================================================
-# PR #711 — kalan inceleme bulgulari icin cerrahi regresyon testleri.
-# Tamamen cevrimdisidir; gercek DB/ODBC/LLM gerektirmez.
+# Dosya Yolu: tests/testthat/test-pk-meta-generator-review-regressions.R
+# Açıklama: Regresyon testleri, tamamen cevrimdisidir; gercek DB/ODBC/LLM
+#			gerektirmez.
 # ==============================================================================
 
 local({
