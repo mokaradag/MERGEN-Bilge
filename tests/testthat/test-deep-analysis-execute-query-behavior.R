@@ -57,6 +57,11 @@
     env$.sql_exec_calls <- env$.sql_exec_calls + 1L
     list(status = "ok", data = data.frame(), rows = 0L, error = NA_character_)
   }
+  # Tam test paketinde daha önce yüklenmiş global bounded executor bu testin
+  # özet stub'ını başka yürütme bağlamına taşımamalı; burada çağrı senkron ve yereldir.
+  env$pk_async_bounded_fs <- function(fn, deadline_at = NULL) {
+    list(ok = TRUE, value = fn())
+  }
   env$convert_date_columns <- function(df, cols) df
   env$apply_rls_to_data <- function(df, rls_info, cols) df
   env$generate_statistical_summary <- function(df, ...) {
