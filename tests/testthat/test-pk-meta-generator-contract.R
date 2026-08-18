@@ -156,32 +156,34 @@ test_that("uretilen ve operator-yerel dosyalar gitignore'ludur", {
 test_that("uretimden turetilen dosyalar depoda IZLENMEZ", {
   kok <- .pkgc_root()
 
-  # ÖNCE GIT'İN CEVAP VEREBİLDİĞİ KANITLANIR.
-  #
-  # `git ls-files --error-unmatch` yolun izlenmediğinde sıfır olmayan bir durum
-  # döndürür — ama `git` yokken, `-C` dizini geçersizken ya da `.git` içermeyen
-  # bir arşiv checkout'unda da AYNI şeyi yapar. Bu güvenlik/provenans
-  # sözleşmesi o hâlde hiçbir şeyi sınamadan SESSİZCE geçerdi.
-  git_var <- nzchar(Sys.which("git"))
-  skip_if_not(git_var, "git kullanilamiyor")
+  # ÖNCE Git'in gerçekten çalışabildiği KANITLANIR. Bu güvenlik/provenans
+  # sözleşmesi Git yokken ya da kaynak bir çalışma ağacı değilken SKIP edilmez:
+  # kontrolün yapılmadığı durum BAŞARI değildir.
+  if (!nzchar(Sys.which("git"))) {
+    fail("git kullanilamiyor; izlenme/provenans sozlesmesi dogrulanamadi")
+  }
 
   calisma_agaci <- suppressWarnings(system2(
     "git", c("-C", shQuote(kok), "rev-parse", "--is-inside-work-tree"),
-    stdout = TRUE, stderr = FALSE
+    stdout = TRUE, stderr = TRUE
   ))
-  skip_if_not(identical(trimws(paste(calisma_agaci, collapse = "")), "true"),
-              "depo koku bir Git calisma agaci degil")
+  if (!identical(trimws(paste(calisma_agaci, collapse = "")), "true")) {
+    fail("depo koku bir Git calisma agaci degil; izlenme/provenans sozlesmesi dogrulanamadi")
+  }
 
-  # Bulut checkout'unda yoklukları NORMALDİR (renv.lock ile aynı provenans
-  # kalıbı). Buradaki sözleşme "izlenmiyor olmalı"dır, "var olmalı" değil.
+  # `git ls-files --error-unmatch` için 0=IZLENIYOR, 1=eslesme yok. 128 gibi
+  # başka bir durum Git'in kontrolü yapamadığını gösterir ve BAŞARI sayılmaz.
   for (dosya in c("R/library_query_meta_local.R", "R/library_query_aliases_local.R")) {
     izlenen <- suppressWarnings(system2(
       "git", c("-C", shQuote(kok), "ls-files", "--error-unmatch", shQuote(dosya)),
       stdout = FALSE, stderr = FALSE
     ))
-    expect_false(
-      identical(izlenen, 0L),
-      info = sprintf("%s Git tarafindan IZLENIYOR; uretimden turetilmis veri sizabilir", dosya)
+    expect_identical(
+      as.integer(izlenen), 1L,
+      info = sprintf(
+        "%s izlenmiyor diye kanitlanamadi (git ls-files durum=%s; beklenen=1)",
+        dosya, as.character(izlenen)
+      )
     )
   }
 })
