@@ -33,6 +33,10 @@
 
   source(file.path(kok, "R", "helpers_deep_analysis.R"), encoding = "UTF-8", local = env)
 
+  # Tam test paketinde daha önce yüklenmiş global v2 motor durumu bu v1
+  # orkestrasyon testlerini yön değiştirmemeli; testin motor seçimi isteğe-yereldir.
+  env$pk_engine_is_v2 <- function(...) FALSE
+
   # D16 kimlik kapısı: ana yolun çözümleyicisi stub'lanır (SSO/DB yok).
   env$resolve_pk_analysis_username <- function(session) {
     list(ready = TRUE, username = "kullanici1", reason = "ok")
