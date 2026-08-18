@@ -119,6 +119,63 @@ test_that("DESCRIBE kipinde ornekleme ayarlari parmak izini ETKILEMEZ", {
   expect_identical(a, b)
 })
 
+test_that("KAYNAK parmak izi kanit ayarlarindan BAGIMSIZDIR", {
+  # Yayimlanmis bir `result_schema`, ornekleme esigi degisti diye GECERSIZ
+  # OLMAZ; yalnizca SQL/hedef degistiginde gecersiz olur. Devam onbellegi ise
+  # TURETILMIS gozlem tasidigi icin esige BAGLIDIR.
+  q <- list(id = "q1", sql = "SELECT 1", db_target = "primary")
+
+  kaynak <- pkgh_source_fingerprint(q)
+  expect_identical(kaynak, pkgh_source_fingerprint(q))
+  expect_false(identical(
+    kaynak,
+    pkgh_source_fingerprint(list(id = "q1", sql = "SELECT 2", db_target = "primary"))
+  ))
+
+  a <- pkgh_state_fingerprint(q, .pkh_cfg("sample", high_cardinality_threshold = 10L))
+  b <- pkgh_state_fingerprint(q, .pkh_cfg("sample", high_cardinality_threshold = 50L))
+  expect_false(identical(a, b))
+  # Kaynak damgasi ikisinden de FARKLI ve ikisi arasinda DEGISMEZ.
+  expect_false(identical(kaynak, a))
+})
+
+test_that("URETILEN girdi KAYNAK parmak izini DAMGALAR", {
+  cfg <- .pkh_cfg("describe")
+  sorgu <- list(id = "q1", name = "A", sql = "SELECT 1", db_target = "primary")
+
+  sonuc <- pkgn_inventory_one(
+    query = sorgu, config = cfg, conn = structure(list(), class = "fake_conn"),
+    describe_fn = function(conn, sql) .pkh_desc(Tutar = "int"),
+    sample_fn = function(conn, sql, n) stop("ornekleme beklenmiyordu")
+  )
+
+  expect_identical(sonuc$record$status, "ok")
+  # DAMGA OLMADAN bir sonraki kosunun birlestirme kapisi girdiyi
+  # DOGRULAYAMAZ ve gecici bir hatada onu (dogru bicimde) DUSURURDU.
+  expect_identical(sonuc$local_entry$source_fingerprint, pkgh_source_fingerprint(sorgu))
+
+  # Damgali girdi, SQL degismedigi surece gecici hatada KORUNUR.
+  parmak <- pkgh_source_fingerprints(list(sorgu))
+  birlesme <- pkgc_merge_local_layers(
+    list(q1 = sonuc$local_entry), list(),
+    list(.pkh_kayit("q1", "failed", "describe_failed")),
+    fingerprints = parmak
+  )
+  expect_identical(birlesme$kept, "q1")
+})
+
+test_that("DAMGASIZ eski girdi gecici hatada KORUNMAZ", {
+  # Bu surumden ONCE uretilmis girdilerde damga yoktur; dogrulanamayan bir
+  # sozlesmeyi canli birakmak yerine DUSURMEK guvenli yondur.
+  onceki <- list(q1 = list(result_schema = c(A = "numeric")))
+  birlesme <- pkgc_merge_local_layers(
+    onceki, list(), list(.pkh_kayit("q1", "failed", "describe_failed")),
+    fingerprints = list(q1 = "fp1")
+  )
+  expect_identical(birlesme$stale_removed, "q1")
+  expect_null(birlesme$meta$q1)
+})
+
 test_that("SQL degisimi parmak izini DEGISTIRIR (alan ayirici korunur)", {
   cfg <- .pkh_cfg("describe")
   a <- pkgh_state_fingerprint(list(id = "q", sql = "SELECT A", db_target = "primary"), cfg)

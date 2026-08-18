@@ -90,16 +90,13 @@
   )
 }
 
-#' Bir sorgunun devam-önbelleği parmak izi
+#' Bir sorgunun KAYNAK parmak izi (SQL + hedef)
 #'
-#' SQL metni, hedef veritabanı ve (yalnızca `sample` kipinde) KANIT ÜRETEN
-#' ayarlar girer. Bunlardan biri değiştiğinde eski şema/gözlem artık o sorguyu
-#' TEMSİL ETMEZ.
-#'
-#' @param config `pkg_meta_resolve_config()` çıktısı. `NULL` verildiğinde kanıt
-#'   imzası boş kalır; bu yalnızca izole test/teşhis içindir, üretici giriş
-#'   noktası HER ZAMAN gerçek yapılandırmayı geçirir.
-pkgh_state_fingerprint <- function(query, config = NULL) {
+#' YAYIMLANAN katman girdilerine damgalanır. Sorunun cevapladığı şey tektir:
+#' "bu girdi HÂLÂ güncel SQL'i mi anlatıyor?". KANIT ÜRETEN ayarlar buraya
+#' GİRMEZ: `MERGEN_PK_META_HIGH_CARD_MIN` değişmesi, yayımlanmış bir
+#' `result_schema` değerini geçersiz KILMAZ.
+pkgh_source_fingerprint <- function(query) {
   sql <- as.character(query$sql %||% "")[1]
   hedef <- as.character(query$db_target %||% "primary")[1]
   if (is.na(sql)) sql <- ""
@@ -107,18 +104,42 @@ pkgh_state_fingerprint <- function(query, config = NULL) {
   # AYIRICI ZORUNLUDUR: ayirici olmadan alan sinirlari kayabilir ve farkli iki
   # girdi ayni metne cozulebilir. `\u001f` (unit separator) ASCII'dir, kaynak
   # dosyada KACIS olarak yazilir ve uretim SQL metninde bulunmaz.
-  .pkgh_hash_text(paste(hedef, .pkgh_evidence_signature(config), sql, sep = "\u001f"))
+  .pkgh_hash_text(paste(hedef, sql, sep = "\u001f"))
 }
 
-#' Bütün kütüphane için parmak izi haritası
+#' Bütün kütüphane için KAYNAK parmak izi haritası
+pkgh_source_fingerprints <- function(query_library) {
+  .pkgh_fingerprint_map(query_library, function(q) pkgh_source_fingerprint(q))
+}
+
+#' Bir sorgunun devam-önbelleği parmak izi
+#'
+#' KAYNAK parmak izinin üstüne (yalnızca `sample` kipinde) KANIT ÜRETEN
+#' ayarların imzası eklenir. Önbellek yalnızca şema değil TÜRETİLMİŞ GÖZLEM de
+#' taşıdığı için, eşik/satır sınırı değiştiğinde eski gözlem artık KANITLANMIŞ
+#' değildir.
+#'
+#' @param config `pkg_meta_resolve_config()` çıktısı. `NULL` verildiğinde kanıt
+#'   imzası boş kalır; bu yalnızca izole test/teşhis içindir, üretici giriş
+#'   noktası HER ZAMAN gerçek yapılandırmayı geçirir.
+pkgh_state_fingerprint <- function(query, config = NULL) {
+  .pkgh_hash_text(paste(pkgh_source_fingerprint(query),
+                        .pkgh_evidence_signature(config), sep = "\u001f"))
+}
+
+#' Bütün kütüphane için devam-önbelleği parmak izi haritası
 pkgh_state_fingerprints <- function(query_library, config = NULL) {
+  .pkgh_fingerprint_map(query_library, function(q) pkgh_state_fingerprint(q, config))
+}
+
+.pkgh_fingerprint_map <- function(query_library, fn) {
   cikti <- list()
   if (!is.list(query_library)) return(cikti)
   for (q in query_library) {
     if (!is.list(q)) next
     id <- as.character(q$id %||% "")[1]
     if (is.na(id) || !nzchar(trimws(id))) next
-    cikti[[trimws(id)]] <- pkgh_state_fingerprint(q, config)
+    cikti[[trimws(id)]] <- fn(q)
   }
   cikti
 }

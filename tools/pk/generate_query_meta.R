@@ -359,8 +359,11 @@ local({
   )
 
   # --- 8) ADAY KATMAN: önceki içerikle BİRLEŞTİR -------------------------------
+  # BİRLEŞTİRME KAYNAK parmak izini kullanır (kanıt imzası HARİÇ): yayımlanmış
+  # bir `result_schema`, örnekleme eşiği değişti diye geçersiz OLMAZ; yalnızca
+  # SQL/hedef değiştiğinde geçersiz olur.
   birlesme <- pkgc_merge_local_layers(onceki_katman, kosu$local_meta, kosu$records,
-                                     fingerprints = parmak_izleri)
+                                     fingerprints = pkgh_source_fingerprints(query_library))
   aday_katman <- birlesme$meta
 
   # KAYITLAR SON KATMANLA UZLAŞTIRILIR: geçici bir hatada önceki geçerli

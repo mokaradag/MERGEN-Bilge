@@ -4867,15 +4867,21 @@ Non-negotiable rules:
 
 Review-hardening boundaries (each one closed a real defect; do not regress):
 
-- **Resume cache validity.** `pkgh_state_fingerprint(query, config)` hashes
-  `db_target` + an EVIDENCE SIGNATURE + SQL, joined by an explicit `\u001f`
-  separator. In `sample` mode the signature carries `sample_rows` +
-  `high_cardinality_threshold`, because the cache persists DERIVED observations
-  (`high_cardinality_proved`): raising the threshold must not let an old `TRUE`
-  be republished. `describe` mode uses an EMPTY signature — it reads neither knob,
-  so a leftover sample setting must not invalidate a safe describe cache. The
-  pure-R fallback hash folds state through `.pkgh_to_signed32()` before `bitwXor()`
-  (the FNV seed is above `.Machine$integer.max`, so the raw value coerced to `NA`).
+- **Two fingerprints, two questions.** `pkgh_source_fingerprint(query)` hashes
+  `db_target` + SQL (explicit `\u001f` separator) and answers "does this PUBLISHED
+  entry still describe the current SQL?"; every generated entry is STAMPED with it
+  (`pkgn_build_local_entry(source_fingerprint =)`) and `pkgc_merge_local_layers()`
+  checks it — an UNSTAMPED entry cannot be verified, so it is dropped rather than
+  kept. `pkgh_state_fingerprint(query, config)` layers an EVIDENCE SIGNATURE on top
+  and answers "is this RESUME CACHE entry still valid?": in `sample` mode the
+  signature carries `sample_rows` + `high_cardinality_threshold`, because the cache
+  persists DERIVED observations (`high_cardinality_proved`) and raising the threshold
+  must not let an old `TRUE` be republished. `describe` mode uses an EMPTY signature —
+  it reads neither knob, so a leftover sample setting must not invalidate a safe
+  describe cache. Keep the two separate: a changed sampling threshold must NOT
+  invalidate an already-published `result_schema`. The pure-R fallback hash folds
+  state through `.pkgh_to_signed32()` before `bitwXor()` (the FNV seed is above
+  `.Machine$integer.max`, so the raw value coerced to `NA`).
 - **Run lock.** `helpers_meta_generator_lock.R` owns it, separately from the merge
   layer. Every acquisition carries a unique OWNER TOKEN; `pkgc_release_run_lock()`
   unlinks only while that token still matches on disk, `pkgc_refresh_run_lock()`
@@ -4884,8 +4890,9 @@ Review-hardening boundaries (each one closed a real defect; do not regress):
   starters cannot both reclaim it, and a lock directory that cannot be created at
   all is reported as `io_error`, never as contention.
 - **Layer merge.** Generated entries carry `source_fingerprint`;
-  `pkgc_merge_local_layers(..., fingerprints =)` preserves a previous entry ONLY on
-  a transient failure AND only while the fingerprint still matches. Deterministic
+  `pkgc_merge_local_layers(..., fingerprints = pkgh_source_fingerprints(...))`
+  preserves a previous entry ONLY on a transient failure AND only while the
+  fingerprint still matches. Deterministic
   catalog/config/read-only defects (`PKG_META_DETERMINISTIC_BLOCK_CODES`) REMOVE the
   previous entry like `withheld` — the whole-library gate cannot catch a stale
   contract because it never executes the SQL.
@@ -4940,7 +4947,9 @@ Review-hardening boundaries (each one closed a real defect; do not regress):
   evicts a usable connection while `HYT01` still does; and the alias overlay is looked
   up with the CANONICAL trimmed id.
 - **Reporting.** `pkgh_query_record()` stores the CANONICAL `db_target` and emits
-  `null` (not `[]`) for an empty `sample`; `pkgh_reconcile_records_with_layer()`
+  `null` (not `[]`) for an empty `sample` — and `pkgh_stabilize_report()` therefore
+  assigns with `x[i] <- list(value)`, because `x[[i]] <- NULL` DELETES a list element,
+  shifts the remainder and makes the loop run off the end; `pkgh_reconcile_records_with_layer()`
   derives readiness from the FINAL merged layer so a preserved previous schema is not
   reported as Tier-0; `pkgh_allocate_artifact_dir()` ERRORS rather than reusing an
   occupied directory; the bootstrap-failure report keeps the real catalog total; and a

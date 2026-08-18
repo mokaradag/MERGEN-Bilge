@@ -35,7 +35,14 @@
 #' `primary_entity`, `intents`, `default_measures` gibi ANLAMSAL alanlar
 #' BİLİNÇLİ OLARAK ÜRETİLMEZ: onlar insan küresyonudur ve yokluğunda anlamsal
 #' istekler SQL'den önce fail-closed durur.
-pkgn_build_local_entry <- function(schema, source_types, mode, observations = list()) {
+#' @param source_fingerprint Girdinin türetildiği SQL'in KAYNAK parmak izi.
+#'   Bir sonraki koşuda `pkgc_merge_local_layers()` bu damgayı güncel sorguyla
+#'   karşılaştırır: damgasız bir girdi doğrulanamaz, bu yüzden geçici bir hatada
+#'   KORUNMAZ. Aksi hâlde SELECT listesi değişmiş bir sorgunun eski
+#'   `result_schema` değeri canlı kalırdı ve bütün-kütüphane kapısı bunu
+#'   YAKALAYAMAZDI (o kapı SQL'i çalıştırmaz).
+pkgn_build_local_entry <- function(schema, source_types, mode, observations = list(),
+                                   source_fingerprint = NA_character_) {
   cmeta <- pkgs_build_column_meta(schema, source_types = source_types, mode = mode)
   cmeta <- pkgs_apply_observations(cmeta, observations)
 
@@ -44,6 +51,7 @@ pkgn_build_local_entry <- function(schema, source_types, mode, observations = li
     column_meta = cmeta,
     generated_mode = as.character(mode)[1],
     generated_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"),
+    source_fingerprint = as.character(source_fingerprint %||% NA_character_)[1],
     tier = 1L
   )
 }
@@ -228,7 +236,13 @@ pkgn_inventory_one <- function(query, config, conn = NULL,
 
   sema <- sema_sonucu$schema
   yerel <- pkgn_build_local_entry(
-    sema, sema_sonucu$source_types, config$mode, sema_sonucu$observations %||% list()
+    sema, sema_sonucu$source_types, config$mode, sema_sonucu$observations %||% list(),
+    source_fingerprint = if (exists("pkgh_source_fingerprint", mode = "function",
+                                    inherits = TRUE)) {
+      pkgh_source_fingerprint(query)
+    } else {
+      NA_character_
+    }
   )
 
   dogrulama <- pkgn_validate_candidate(query, yerel, auto_entry, curated_entry, registry,
