@@ -155,6 +155,7 @@ pkgs_schema_from_descriptor <- function(descriptor) {
   adlar <- character(0)
   siniflar <- character(0)
   ham_tipler <- character(0)
+  genislikler <- numeric(0)
   eslenmeyen <- list()
   sinirsiz <- character(0)
   gecersiz <- character(0)
@@ -184,6 +185,7 @@ pkgs_schema_from_descriptor <- function(descriptor) {
     siniflar <- c(siniflar, tip$r_class)
     ham_tip <- .pkgs_utf8(satir$system_type_name %||% NA_character_)
     ham_tipler <- c(ham_tipler, ham_tip)
+    genislikler <- c(genislikler, suppressWarnings(as.numeric(satir$max_length %||% NA)[1]))
     if (!isTRUE(tip$mapped)) {
       # Hangi NATİF tipin eşlenemediği sağlık raporunda görünmelidir; yalnızca
       # sütun adı yazmak operatöre hangi eşlemenin ekleneceğini SÖYLEMEZ.
@@ -208,6 +210,10 @@ pkgs_schema_from_descriptor <- function(descriptor) {
     invalid = character(0),
     schema = sema,
     source_types = kaynak,
+    # BEYAN EDİLEN GENİŞLİK KANITI. `sample` kipi natif tip ADINI alsa bile
+    # `max_length = -1` ile bildirilen (tip adında `(max)` TAŞIMAYAN)
+    # sınırsızlığı yeniden kuramaz; bu yüzden genişlik AYRI taşınır.
+    widths = stats::setNames(genislikler, adlar),
     unmapped = eslenmeyen,
     unbounded = unique(sinirsiz)
   )
@@ -220,7 +226,12 @@ pkgs_schema_from_descriptor <- function(descriptor) {
 #' @param column_types Varsa sürücü tanımlayıcısından gelen NATİF tip adları
 #'   (ad = sütun). R sınıfı `nvarchar(max)`, `xml` ya da eşlenmeyen bir tipi
 #'   AYIRT EDEMEZ; bu yüzden yapısal bulgular natif tipten türetilir.
-pkgs_schema_from_dataframe <- function(df, column_types = NULL) {
+#' @param column_widths Varsa tanımlayıcıdan gelen `max_length` değerleri
+#'   (ad = sütun). SQL Server'da `-1` "MAX/sınırsız" demektir ve bazı tipler
+#'   (spatial/CLR UDT) bunu tip ADLARINDA `(max)` TAŞIMADAN bildirir. Yalnızca
+#'   `source_types` taşınırsa aynı sütun `describe` kipinde
+#'   `unbounded_lob_column` üretip `sample` kipinde bu bulguyu KAYBEDERDİ.
+pkgs_schema_from_dataframe <- function(df, column_types = NULL, column_widths = NULL) {
   if (!is.data.frame(df) || !ncol(df)) return(NULL)
 
   adlar <- names(df)
@@ -234,15 +245,36 @@ pkgs_schema_from_dataframe <- function(df, column_types = NULL) {
   sinirsiz <- character(0)
   kaynak <- stats::setNames(as.character(siniflar), adlar)
 
+  genislik <- function(sutun) {
+    if (!is.null(column_widths) && sutun %in% names(column_widths)) {
+      return(suppressWarnings(as.numeric(column_widths[[sutun]])[1]))
+    }
+    NA_real_
+  }
+
   if (is.character(column_types) && length(column_types) && !is.null(names(column_types))) {
     for (sutun in adlar) {
       if (!(sutun %in% names(column_types))) next
       natif <- .pkgs_utf8(column_types[[sutun]])
       if (is.na(natif) || !nzchar(natif)) next
       kaynak[[sutun]] <- natif
-      tip <- pkgs_sql_type_to_r_class(natif)
+      tip <- pkgs_sql_type_to_r_class(natif, genislik(sutun))
       if (!isTRUE(tip$mapped)) {
         eslenmeyen[[length(eslenmeyen) + 1L]] <- list(column = sutun, source_type = natif)
+        # EŞLENMEYEN TİP GERÇEKTEN MUHAFAZAKÂR YAPIYA DÜŞÜRÜLÜR.
+        #
+        # `unmapped_sql_type` bulgusu "en muhafazakar yapiya (character/dimension)
+        # dusuldu" der; ama şema sürücünün R sınıfından kurulup bir daha
+        # GÜNCELLENMEZSE bu söz TUTULMAZ: sürücüye özgü sayısal bir temsil
+        # `measure` olarak hayatta kalır ve küresyondaki ölçü doğrulaması bile
+        # geçebilir. Bu yüzden eşlenmeyen sütunun sınıfı burada düşürülür.
+        sema[[sutun]] <- "character"
+      } else {
+        # DESCRIBE/SAMPLE EŞLİĞİ: eşlenen tipte de KAYNAK OTORİTE natif tiptir.
+        # Aksi hâlde yalnızca kip değiştirmek `result_schema` değerlerini
+        # değiştirir (örneğin `bigint` sürücüde `numeric` görünürken describe
+        # kipinde `integer64` yazılır).
+        sema[[sutun]] <- tip$r_class
       }
       if (isTRUE(tip$unbounded)) sinirsiz <- c(sinirsiz, sutun)
     }
@@ -266,8 +298,15 @@ pkgs_schema_from_dataframe <- function(df, column_types = NULL) {
 .pkgs_missing_mask <- function(deger) {
   if (is.list(deger)) {
     return(vapply(deger, function(oge) {
-      is.null(oge) || (length(oge) == 1L && is.atomic(oge) && is.na(oge)) ||
-        length(oge) == 0L
+      # SIFIR UZUNLUKLU HAM DEĞER EKSİK DEĞİLDİR.
+      #
+      # `raw(0)` MEŞRU bir boş `varbinary` değeridir; SQL NULL ise DBI blob
+      # sütununda `NULL` ÖGESİ olarak gelir. Her sıfır uzunluklu ögeyi eksik
+      # saymak, boş ikili değer döndüren sorgularda `null_observed = TRUE`
+      # üretir ve o değerleri farklı/mükerrer kanıtından da düşürür.
+      if (is.null(oge)) return(TRUE)
+      if (is.raw(oge)) return(FALSE)
+      (length(oge) == 1L && is.atomic(oge) && is.na(oge)) || length(oge) == 0L
     }, logical(1)))
   }
   eksik <- tryCatch(is.na(deger), error = function(e) rep(FALSE, length(deger)))
@@ -326,17 +365,22 @@ pkgs_sample_observations <- function(df, high_cardinality_threshold = 50L,
 
     if (n > 0L) {
       eksik <- .pkgs_missing_mask(deger)
-      gozlem$null_observed <- any(eksik)
 
       farkli <- .pkgs_distinct_count(deger, eksik)
       gozlem$distinct_observed <- farkli
 
+      # TEK YÖNLÜ KANIT: YALNIZCA GÖZLENEN KARŞI ÖRNEK YAZILIR.
+      #
+      # `null_observed = FALSE` ya da `unique_disproved = FALSE` yazmak, önekte
+      # GÖRÜLMEMİŞ olmayı OLUMSUZ BİR SONUÇ gibi kaydeder: alanlar `observed`
+      # altında kalıcılaştığı için sonraki okuyucu "bu önekte gözlenmedi" ile
+      # "gerçekten yok" arasındaki farkı GÖREMEZ. Bu yüzden alanlar yalnızca
+      # TRUE olduklarında yazılır; aksi hâlde tanımsız (bilinmiyor) kalırlar.
+      if (any(eksik)) gozlem$null_observed <- TRUE
+
       if (!is.na(farkli)) {
-        gozlem$unique_disproved <- farkli < sum(!eksik)
-        # TEK YÖNLÜ: yalnızca TRUE'ya yükselir.
-        if (farkli > esik) {
-          gozlem$high_cardinality_proved <- TRUE
-        }
+        if (farkli < sum(!eksik)) gozlem$unique_disproved <- TRUE
+        if (farkli > esik) gozlem$high_cardinality_proved <- TRUE
       }
     }
 

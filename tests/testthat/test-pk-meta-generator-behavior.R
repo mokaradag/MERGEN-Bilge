@@ -43,15 +43,23 @@ local({
   }
 
   # VM aracı (kaynak manifestinde DEĞİLDİR; elle source edilir).
+  #
+  # SIRA, GİRİŞ NOKTASININ SIRASIYLA AYNIDIR (tools/pk/generate_query_meta.R):
+  # maskeleme bulgu üretiminden, şema getirme envanter döngüsünden ÖNCE gelir.
+  # Bir yardımcı buraya EKLENMEZSE testler VM'de görülmeyen bir "fonksiyon
+  # bulunamadi" hatasıyla düşer.
   for (dosya in c(
     "helpers_meta_generator_config.R",
     "helpers_meta_generator_schema.R",
     "helpers_meta_generator_render.R",
+    "helpers_meta_generator_redact.R",
     "helpers_meta_generator_findings.R",
     "helpers_meta_generator_health.R",
     "helpers_meta_generator_state.R",
     "helpers_meta_generator_db.R",
+    "helpers_meta_generator_fetch.R",
     "helpers_meta_generator_run.R",
+    "helpers_meta_generator_lock.R",
     "helpers_meta_generator_commit.R"
   )) {
     source(file.path(repo_root, "tools", "pk", dosya), encoding = "UTF-8", local = globalenv())
@@ -282,9 +290,13 @@ test_that("gozlenen NULL kaydedilir; NULL gormemek 'null yok' KANITLAMAZ", {
   gozlem <- pkgs_sample_observations(df)
 
   expect_true(gozlem$A$null_observed)
-  expect_false(gozlem$B$null_observed)
-  # `null_observed = FALSE` "bu sütunda NULL yok" DEMEK DEĞİLDİR; sözleşme
-  # alanlarına (örn. bir NOT NULL iddiası) terfi ettirilmemelidir.
+  # TEK YÖNLÜ KANIT: gözlenmemek KAYDEDİLMEZ. `null_observed = FALSE` yazmak,
+  # "bu önekte görülmedi" ile "gerçekten yok" arasındaki farkı SİLER; alan
+  # `observed` altında kalıcılaştığı için sonraki okuyucu ikisini AYIRT EDEMEZ.
+  # Bu yüzden karşı örnek yoksa alan TANIMSIZ kalır.
+  expect_null(gozlem$B$null_observed)
+  # Alan hiçbir durumda sözleşme alanlarına (örn. bir NOT NULL iddiası) terfi
+  # ettirilmemelidir.
   cmeta <- pkgs_apply_observations(
     pkgs_build_column_meta(c(A = "numeric", B = "numeric"), NULL, "sample"), gozlem
   )
@@ -902,8 +914,8 @@ test_that("saglik artefaktlari yazilir ve gizli deger tasimaz", {
   expect_setequal(
     names(geri$config),
     c("mode", "mode_defaulted", "sample_rows", "high_cardinality_threshold",
-      "sql_timeout_sec", "max_result_mb", "resume", "output_rel", "artifact_rel",
-      "run_id")
+      "sql_timeout_sec", "max_result_mb", "sample_unicode", "resume",
+      "output_rel", "artifact_rel", "run_id")
   )
 
   metin <- paste(readLines(yollar$text, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
@@ -1596,10 +1608,26 @@ test_that("belgelenen varsayilan kip 'describe'tir", {
   expect_identical(PKG_META_DEFAULT_MODE, "describe")
 })
 
-test_that("ULASILAMAZ yuksek kardinalite esigi reddedilir", {
-  withr::with_envvar(c(MERGEN_PK_META_SAMPLE_ROWS = "50",
+test_that("ULASILAMAZ yuksek kardinalite esigi SAMPLE kipinde reddedilir", {
+  withr::with_envvar(c(MERGEN_PK_META_MODE = "sample",
+                       MERGEN_PK_META_SAMPLE_ROWS = "50",
                        MERGEN_PK_META_HIGH_CARD_MIN = "50"), {
     expect_error(pkg_meta_resolve_config(repo_root = tempdir()), "KUCUK olmalidir")
+  })
+})
+
+test_that("DESCRIBE kipi ornekleme ayarlari yuzunden REDDEDILMEZ", {
+  # `describe` kipi ne `sample_rows` ne de kardinalite esigini KULLANIR. Capraz
+  # kontrol kosulsuz calistiginda, onceki bir ornekleme kosusundan kalan ayar
+  # cifti, uretim sorgularini CALISTIRMAYAN guvenli envanteri de imkansiz
+  # kilardi.
+  withr::with_envvar(c(MERGEN_PK_META_MODE = "describe",
+                       MERGEN_PK_META_SAMPLE_ROWS = "10",
+                       MERGEN_PK_META_HIGH_CARD_MIN = "50"), {
+    cfg <- pkg_meta_resolve_config(repo_root = tempdir())
+    expect_identical(cfg$mode, "describe")
+    expect_identical(cfg$sample_rows, 10L)
+    expect_identical(cfg$high_cardinality_threshold, 50L)
   })
 })
 
