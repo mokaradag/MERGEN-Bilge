@@ -132,8 +132,16 @@ kapalı başarısız olur. Sağlık raporu artık bunu kullanıcı bir soru sorm
 Üretici **idempotent**'tir. Aynı komutu tekrar çalıştırmak güvenlidir:
 
 * küre edilmiş metadata (`R/library_query_meta.R`) **ezilmez** — küresyon kazanır,
-* operatör alias dosyası (`R/library_query_aliases_local.R`) **hiç açılmaz**,
-* yalnızca `R/library_query_meta_local.R` yeniden yazılır.
+* operatör alias dosyası (`R/library_query_aliases_local.R`) **asla yazılmaz**
+  (üretici onu başlangıç kapısını simüle ederken **okur**: bindirme
+  `pk_query_meta_attach()` tarafından uygulanır. Bir alias/şema uyuşmazlığı aday
+  katmanın doğrulamayı geçememesine yol açabilir; bu yüzden "hiç açılmaz" değil,
+  "hiç **yazılmaz**" doğru ifadedir),
+* yalnızca `R/library_query_meta_local.R` yeniden yazılır,
+* bu koşuda **sorgulanamayan** sorguların **önceki geçerli metadata'sı korunur**:
+  geçici bir sürücü hatası sağlam metadata'yı Tier-0'a düşürmez. Bloklayıcı bulgu
+  nedeniyle **geri çekilen** bir sorgunun eski girdisi ise kaldırılır (bayat bir
+  sözleşme bırakılmaz).
 
 Bloklayıcı bulguları düzelttikçe geri çekilen sorgular `DAHIL` durumuna geçer.
 
@@ -205,6 +213,19 @@ adlandırın/silin ve üreticiyi tekrar çalıştırın. (Üretici bunu önlemek
 yazmadan önce aynı açılış kapısını simüle eder; buna rağmen bir açılış hatası
 görürseniz sağlık raporundaki bloklayıcı bulgular listesi çıkış noktanızdır.)
 
+Aynı R oturumunda tekrar denerken dikkat: düşen bootstrap bu dosyayı `.GlobalEnv`
+içine **zaten yüklemiş** olabilir. Dosyayı silmek yetmez — kaynak manifesti eksik
+dosyayı yalnızca atlar ve `pk_query_meta_attach()` **hâlâ bellekteki bayat
+katmanı** görür. Üretici bootstrap hatasında bu nesneyi kendisi temizler; sorun
+sürerse **R sürecini yeniden başlatın**.
+
+### Bootstrap katalog kusurunda düşerse
+
+Mükerrer/eksik sorgu kimliği gibi **katalog** kusurları açılışı bu noktadan önce
+durdurur. Üretici bu durumda ham sorgu kütüphanesini metadata kapısı olmadan okur
+ve `artifacts/pk-meta/<koşu>/health.txt` içine bir **katalog teşhisi** yazar;
+böylece sağlık raporunun vaat ettiği mükerrer/eksik kimlik kapsaması kaybolmaz.
+
 ---
 
 ## 8. v2'yi SENKRON test edin
@@ -252,17 +273,43 @@ yazmaz** — orası tamamen sizindir.
 
 | Anahtar | Varsayılan | Anlamı |
 |---|---|---|
-| `MERGEN_PK_META_MODE` | `sample` | `describe` veya `sample`. **İlk geçişi `describe` yapın.** Geçersiz değer sessizce varsayılana düşmez, hata verir |
-| `MERGEN_PK_META_SAMPLE_ROWS` | `500` | `sample` kipinde sorgu başına en fazla satır |
-| `MERGEN_PK_META_HIGH_CARD_MIN` | `50` | Bu sayıdan fazla farklı değer `high_cardinality = TRUE` kanıtlar (tek yönlü) |
-| `MERGEN_PK_META_SQL_TIMEOUT_SEC` | `120` | Sorgu başına zaman aşımı |
-| `MERGEN_PK_META_MAX_RESULT_MB` | `64` | Örnekleme sonuç tavanı |
+| `MERGEN_PK_META_MODE` | `describe` | `describe` veya `sample`. Varsayılan **`describe`**'dir: ortam değişkenini ayarlamayı unutan bir koşu üretim sorgularını **çalıştırmamalıdır**. Geçersiz değer sessizce varsayılana düşmez, hata verir |
+| `MERGEN_PK_META_SAMPLE_ROWS` | `500` | `sample` kipinde sorgu başına en fazla satır (**aktarım** sınırı — aşağıya bakın) |
+| `MERGEN_PK_META_HIGH_CARD_MIN` | `50` | Bu sayıdan fazla farklı değer `high_cardinality = TRUE` kanıtlar (tek yönlü). `SAMPLE_ROWS` değerinden **küçük olmalıdır**; aksi hâlde kanıt hiçbir sütun için üretilemez ve üretici reddeder |
+| `MERGEN_PK_META_SQL_TIMEOUT_SEC` | `120` | Sorgu başına zaman aşımı. Her bloklayan sürücü çağrısına uygulanır |
+| `MERGEN_PK_META_MAX_RESULT_MB` | `64` | Örnekleme sonuç **bayt** tavanı; aşıldığında getirim durdurulur ve sorgu başarısız raporlanır |
 | `MERGEN_PK_META_RESUME` | `TRUE` | Kesilen koşuyu kaldığı yerden sürdür. Temiz koşu için `FALSE` |
+| `MERGEN_PK_META_SAMPLE_UNICODE` | `TRUE` | `sample` kipinde SQL metnini üretimin de kullandığı `NVARCHAR(MAX)` parametre yolu ile gönder. Yalnızca teşhis için kapatın |
+
+Tümü `.Renviron.example` içinde belgelenmiştir.
+
+### Satır sınırı bir **aktarım** sınırıdır
+
+`dbSendQuery()` SELECT'i **çalıştırır**; `dbFetch(n = )` yalnızca kaç satırın
+istemciye aktarılacağını sınırlar. Büyük bir birleştirme veya `ORDER BY`, bu 500
+satır çekilmeden **önce** sunucuda tamamlanabilir. Bu yüzden gerçek koruma
+`MERGEN_PK_META_SQL_TIMEOUT_SEC` ve `MERGEN_PK_META_MAX_RESULT_MB`'dir; sağlık
+kaydı bunu `server_bounded: false` / `bound_kind: "transfer_only"` olarak
+**açıkça bildirir**.
+
+### Devam (resume) durumu
 
 Devam durumu `artifacts/pk-meta/generator-state.json` içinde tutulur ve
 **yalnızca DB gözlemlerini** taşır; karar/küresyon her koşuda yeniden hesaplanır,
-böylece bir küresyon değişikliği önbellek yüzünden kaçırılmaz. Kip değişirse
-önbellek yok sayılır.
+böylece bir küresyon değişikliği önbellek yüzünden kaçırılmaz. Ek olarak:
+
+* her girdi **SQL + hedef parmak izi** taşır: bir sorgunun `SELECT` listesi
+  değiştiğinde eski şema **kabul edilmez** ve sorgu yeniden sorgulanır,
+* durum dosyası **her sorgudan sonra** atomik olarak yazılır; gerçekten kesilen
+  bir koşu o ana kadarki ilerlemeyi korur,
+* kip ya da durum dosyası **biçim sürümü** değişirse önbellek tamamen yok sayılır.
+
+### Eşzamanlı koşu kilidi
+
+Üretici `artifacts/pk-meta/generator.lock` dizinini alır. İkinci bir koşu
+başlatılırsa açık bir hata ile **reddedilir**: iki koşu aynı çıktı dosyasını
+"son yazan kazanır" biçiminde ezebilirdi. Bir koşu çöktüyse kilit 1 saat sonra
+bayat sayılıp kırılır; emin olduğunuzda dizini elle de silebilirsiniz.
 
 ---
 

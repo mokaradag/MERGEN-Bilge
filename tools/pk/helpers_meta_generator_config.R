@@ -1,42 +1,50 @@
 # ==============================================================================
 # Dosya Yolu: tools/pk/helpers_meta_generator_config.R
-# Aciklama: Faz 3b metadata ureticisi -- yapilandirma cozumleme (SAF).
+# Açıklama: Faz 3b metadata üreticisi -- yapılandırma çözümleme (SAF).
 #
-# BU DOSYA CALISMA ZAMANI KODU DEGILDIR. Kaynak manifestine EKLENMEZ; yalnizca
-# operatorun VM'de elle calistirdigi `tools/pk/generate_query_meta.R` tarafindan
+# BU DOSYA ÇALIŞMA ZAMANI KODU DEĞİLDİR. Kaynak manifestine EKLENMEZ; yalnızca
+# operatörün VM'de elle çalıştırdığı `tools/pk/generate_query_meta.R` tarafından
 # source edilir.
 #
-# SAFTIR: DB'ye baglanmaz, SQL calistirmaz, dosya yazmaz, Shiny/reaktif okumaz.
-# Yalnizca ortam degiskenlerini okur ve dogrulanmis bir yapilandirma listesi
-# dondurur; bu sayede tamami cevrimdisi test edilebilir.
+# SAFTIR: DB'ye bağlanmaz, SQL çalıştırmaz, dosya yazmaz, Shiny/reaktif okumaz.
+# Yalnızca ortam değişkenlerini okur ve doğrulanmış bir yapılandırma listesi
+# döndürür; bu sayede tamamı çevrimdışı test edilebilir.
 # ==============================================================================
 
-# `%||%` calisma zamaninda R/utils_common.R icinde tanimlidir. Bu dosya izole
-# testlerde ve operator oturumunda tek basina source edilebildigi icin yalnizca
-# YOKSA tanimlanir; mevcut tanim ASLA ezilmez.
+# `%||%` çalışma zamanında R/utils_common.R içinde tanımlıdır. Bu dosya izole
+# testlerde ve operatör oturumunda tek başına source edilebildiği için yalnızca
+# YOKSA tanımlanır; mevcut tanım ASLA ezilmez.
 if (!exists("%||%", mode = "function", inherits = TRUE)) {
   `%||%` <- function(a, b) if (is.null(a)) b else a
 }
 
-# Yerelden BAGIMSIZ ASCII kucuk harf. Kip adi bir PROTOKOL BELIRTECIDIR:
-# Turkce yerelde `tolower("DESCRIBE")` sorunsuzdur ama `tolower("SAMPLE_I")`
-# gibi girdilerde noktasiz i uretebilir. Depo kurali geregi protokol
-# belirtecleri asla yerele bagli katlanmaz.
+# Yerelden BAĞIMSIZ ASCII küçük harf. Kip adı bir PROTOKOL BELİRTECİDİR:
+# Türkçe yerelde `tolower("DESCRIBE")` sorunsuzdur ama `tolower("SAMPLE_I")`
+# gibi girdilerde noktasız i üretebilir. Depo kuralı gereği protokol
+# belirteçleri asla yerele bağlı katlanmaz.
 .pkg_ascii_lower <- function(x) {
   if (exists("pk_ascii_lower", mode = "function", inherits = TRUE)) return(pk_ascii_lower(x))
   chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", as.character(x))
 }
 
-# Master plan §9: gecerli kipler ve BELGELENMIS varsayilan.
+# Master plan §9: geçerli kipler ve BELGELENMİŞ varsayılan.
 PKG_META_MODES <- c("describe", "sample")
-PKG_META_DEFAULT_MODE <- "sample"
 
-# Uretici YALNIZCA bu dosyaya yazar. Izlenen hicbir dosyaya ve operatorun
-# alias dosyasina ASLA dokunmaz.
+# VARSAYILAN `describe`'DIR.
+#
+# Operatör kılavuzu İLK geçişin her zaman `describe` olmasını söyler: o kip
+# üretim sorgularını ÇALIŞTIRMAZ. Varsayılan `sample` olduğunda, ortam
+# değişkenini ayarlamayı UNUTAN bir `source(...)` çağrısı tüm üretim sorgu
+# kütüphanesini çalıştırırdı. Belgelenen güvenli ilk geçiş ile çalışma
+# zamanındaki varsayılan AYNI olmalıdır.
+PKG_META_DEFAULT_MODE <- "describe"
+
+# Üretici YALNIZCA bu dosyaya yazar. İzlenen hiçbir dosyaya ve operatörün
+# alias dosyasına ASLA dokunmaz.
 PKG_META_OUTPUT_FILE <- "R/library_query_meta_local.R"
 
-# Uretici tarafindan ASLA yazilmayacak dosyalar. Bu liste bir yorum degil,
-# calisma zamaninda uygulanan bir kapidir (bkz. helpers_meta_generator_render.R).
+# Üretici tarafından ASLA yazılmayacak dosyalar. Bu liste bir yorum değil,
+# çalışma zamanında uygulanan bir kapıdır (bkz. helpers_meta_generator_render.R).
 PKG_META_FORBIDDEN_TARGETS <- c(
   "R/library_query_aliases_local.R",
   "R/library_query_meta.R",
@@ -45,6 +53,28 @@ PKG_META_FORBIDDEN_TARGETS <- c(
 )
 
 PKG_META_ARTIFACT_DIR <- "artifacts/pk-meta"
+
+# DESTEKLENEN VERİTABANI HEDEFLERİ.
+#
+# `get_connection()` BİLİNMEYEN bir hedefi sessizce `DB_DSN`'e düşürür; bu
+# yüzden hedef, bağlantı AÇILMADAN önce bu listeye karşı doğrulanır. Aksi hâlde
+# `secondaryy` gibi bir yazım hatası sorguyu BİRİNCİL veritabanında çalıştırır
+# ve sağlık kaydı yine de yanlış hedefi etiketler.
+PKG_META_DB_TARGETS <- c("primary", "secondary", "tertiary")
+
+# Hedef -> zorunlu DSN ortam değişkeni. Üretici, uygulamanın geliştirme
+# yedeğini (`TestConnection`) DEVRALMAZ: birincil DSN tanımsızken üretim
+# metadata'sı üretmek YANLIŞ veritabanını belgelemek demektir.
+PKG_META_DB_TARGET_ENV <- c(
+  primary   = "DB_DSN",
+  secondary = "DB_DSN_2",
+  tertiary  = "DB_DSN_3"
+)
+
+# Devam (resume) durum dosyası biçim sürümü. Üretici mantığı değiştiğinde eski
+# önbellek YOK SAYILIR; böylece eski bir koşunun kanıt alanları yeni sürümün
+# sözleşmesine sessizce taşınmaz.
+PKG_META_STATE_VERSION <- 2L
 
 .pkg_env_text <- function(name, default = "") {
   ham <- Sys.getenv(name, unset = "")
@@ -81,11 +111,11 @@ PKG_META_ARTIFACT_DIR <- "artifacts/pk-meta"
   ), call. = FALSE)
 }
 
-#' Uretici kipini coz
+#' Üretici kipini çöz
 #'
-#' Gecersiz bir kip SESSIZCE varsayilana DUSMEZ; acikca hata verir. Yanlis
-#' yazilmis bir kip ile beklenmeyen bir kipte calismak (ornegin `describe`
-#' yazmak isterken `sample` calistirmak) uretim veritabaninda gereksiz yuk
+#' Geçersiz bir kip SESSİZCE varsayılana DÜŞMEZ; açıkça hata verir. Yanlış
+#' yazılmış bir kip ile beklenmeyen bir kipte çalışmak (örneğin `describe`
+#' yazmak isterken `sample` çalıştırmak) üretim veritabanında gereksiz yük
 #' demektir.
 #'
 #' @return list(mode, defaulted)
@@ -111,15 +141,77 @@ pkg_meta_resolve_mode <- function(raw = NULL) {
   list(mode = kip, defaulted = FALSE)
 }
 
-#' Tum uretici yapilandirmasini coz
+#' Hedefin desteklenip desteklenmediğini söyle
 #'
-#' Gizli deger OKUNMAZ ve RAPORLANMAZ: burada yalnizca kip, satir sinirlari ve
-#' zaman asimi gibi calisma parametreleri vardir. DSN/kimlik bilgisi
-#' `get_connection()` icinde kalir ve bu listeye ASLA girmez.
+#' @return list(ok, target, env_var, detail)
+pkg_meta_validate_db_target <- function(target) {
+  ham <- if (length(target) == 1L && !is.na(target)) trimws(as.character(target)) else ""
+  if (!nzchar(ham)) {
+    return(list(ok = FALSE, target = NA_character_, env_var = NA_character_,
+                detail = "db_target bos; hedef veritabani belirsiz."))
+  }
+
+  kucuk <- .pkg_ascii_lower(ham)
+  if (!(kucuk %in% PKG_META_DB_TARGETS)) {
+    return(list(
+      ok = FALSE, target = ham, env_var = NA_character_,
+      detail = sprintf(
+        paste0(
+          "Desteklenmeyen db_target: '%s'. Izinli hedefler: %s. ",
+          "Bilinmeyen hedef BIRINCIL veritabanina dusebilecegi icin baglanti ACILMADI."
+        ),
+        ham, paste(PKG_META_DB_TARGETS, collapse = ", ")
+      )
+    ))
+  }
+
+  list(ok = TRUE, target = kucuk,
+       env_var = unname(PKG_META_DB_TARGET_ENV[[kucuk]]), detail = NA_character_)
+}
+
+#' Koşuya ÖZGÜ, çarpışma güvenli çalıştırma kimliği
+#'
+#' Saniye çözünürlüğü YETMEZ: aynı saniyede başlatılan iki üretici süreci aynı
+#' `artifacts/pk-meta/<zaman>` yoluna çözülür ve birbirinin sağlık raporunu
+#' EZERDİ. Milisaniye + süreç kimliği bu çarpışmayı yapısal olarak kapatır.
+pkg_meta_run_id <- function(now = Sys.time(), pid = Sys.getpid()) {
+  an <- as.POSIXct(now)
+  damga <- format(an, "%Y%m%d-%H%M%S")
+  kesir <- suppressWarnings(as.numeric(an) %% 1)
+  if (length(kesir) != 1L || is.na(kesir) || !is.finite(kesir)) kesir <- 0
+  sprintf("%s-%03d-p%d", damga, as.integer(floor(kesir * 1000)), as.integer(pid))
+}
+
+#' Tüm üretici yapılandırmasını çöz
+#'
+#' Gizli değer OKUNMAZ ve RAPORLANMAZ: burada yalnızca kip, satır sınırları ve
+#' zaman aşımı gibi çalışma parametreleri vardır. DSN/kimlik bilgisi
+#' `get_connection()` içinde kalır ve bu listeye ASLA girmez.
 pkg_meta_resolve_config <- function(repo_root = ".", now = Sys.time()) {
   kip <- pkg_meta_resolve_mode()
 
   zaman_damgasi <- format(as.POSIXct(now), "%Y%m%d-%H%M%S")
+  kosu_kimligi <- pkg_meta_run_id(now)
+
+  # `sample` kipinde sorgu başına getirilecek EN FAZLA satır. Bu bir kanıt
+  # sınırı değildir: 500 satır 501 satırlık sonucu 5 milyondan AYIRT EDEMEZ.
+  ornek_satir <- .pkg_env_whole("MERGEN_PK_META_SAMPLE_ROWS", 500L, min = 1L)
+  # Yüksek kardinalite KANITI için gereken farklı değer sayısı (tek yönlü:
+  # bu eşiğin ÜSTÜNE çıkmak TRUE kanıtlar; altında kalmak hiçbir şey kanıtlamaz).
+  kardinalite_esigi <- .pkg_env_whole("MERGEN_PK_META_HIGH_CARD_MIN", 50L, min = 2L)
+
+  # ULAŞILAMAZ EŞİK REDDEDİLİR.
+  #
+  # `distinct_observed` en fazla `sample_rows` olabilir; eşik ona eşit ya da
+  # ondan büyükse `high_cardinality = TRUE` KANITI hiçbir sütun için
+  # üretilemez. Bu, sessizce "kanıt yok" üretmek yerine açıkça reddedilir.
+  if (kardinalite_esigi >= ornek_satir) {
+    stop(sprintf(paste0(
+      "[PK_META_GEN] MERGEN_PK_META_HIGH_CARD_MIN (%d) ",
+      "MERGEN_PK_META_SAMPLE_ROWS (%d) degerinden KUCUK olmalidir; aksi halde ",
+      "yuksek kardinalite kaniti hicbir sutun icin uretilemez."
+    ), kardinalite_esigi, ornek_satir), call. = FALSE)
+  }
 
   list(
     mode = kip$mode,
@@ -128,28 +220,25 @@ pkg_meta_resolve_config <- function(repo_root = ".", now = Sys.time()) {
     output_path = file.path(repo_root, PKG_META_OUTPUT_FILE),
     output_rel = PKG_META_OUTPUT_FILE,
     state_path = file.path(repo_root, PKG_META_ARTIFACT_DIR, "generator-state.json"),
-    artifact_dir = file.path(repo_root, PKG_META_ARTIFACT_DIR, zaman_damgasi),
-    artifact_rel = file.path(PKG_META_ARTIFACT_DIR, zaman_damgasi),
+    lock_path = file.path(repo_root, PKG_META_ARTIFACT_DIR, "generator.lock"),
+    artifact_dir = file.path(repo_root, PKG_META_ARTIFACT_DIR, kosu_kimligi),
+    artifact_rel = file.path(PKG_META_ARTIFACT_DIR, kosu_kimligi),
     timestamp = zaman_damgasi,
-    # `sample` kipinde sorgu basina getirilecek EN FAZLA satir. Bu bir kanit
-    # siniri degildir: 500 satir 501 satirlik sonucu 5 milyondan AYIRT EDEMEZ.
-    sample_rows = .pkg_env_whole("MERGEN_PK_META_SAMPLE_ROWS", 500L, min = 1L),
-    # Yuksek kardinalite KANITI icin gereken farkli deger sayisi (tek yonlu:
-    # bu esigin USTUNE cikmak TRUE kanitlar; altinda kalmak hicbir sey kanitlamaz).
-    high_cardinality_threshold = .pkg_env_whole(
-      "MERGEN_PK_META_HIGH_CARD_MIN", 50L, min = 2L
-    ),
+    run_id = kosu_kimligi,
+    state_version = PKG_META_STATE_VERSION,
+    sample_rows = ornek_satir,
+    high_cardinality_threshold = kardinalite_esigi,
     sql_timeout_sec = .pkg_env_whole("MERGEN_PK_META_SQL_TIMEOUT_SEC", 120L, min = 1L),
     max_result_mb = .pkg_env_whole("MERGEN_PK_META_MAX_RESULT_MB", 64L, min = 1L),
-    # Kesintiye ugrayan bir kosuyu kaldigi yerden surdurur. Operator temiz bir
-    # kosu istediginde FALSE yapar.
+    # Kesintiye uğrayan bir koşuyu kaldığı yerden sürdürür. Operatör temiz bir
+    # koşu istediğinde FALSE yapar.
     resume = .pkg_env_flag("MERGEN_PK_META_RESUME", TRUE)
   )
 }
 
-#' Yapilandirmayi gizli-guvenli ozetle
+#' Yapılandırmayı gizli-güvenli özetle
 #'
-#' Ciktida DSN, kimlik bilgisi, uc nokta veya jeton BULUNMAZ.
+#' Çıktıda DSN, kimlik bilgisi, uç nokta veya jeton BULUNMAZ.
 pkg_meta_config_summary <- function(config) {
   list(
     mode = config$mode,
@@ -160,6 +249,7 @@ pkg_meta_config_summary <- function(config) {
     max_result_mb = config$max_result_mb,
     resume = isTRUE(config$resume),
     output_rel = config$output_rel,
-    artifact_rel = config$artifact_rel
+    artifact_rel = config$artifact_rel,
+    run_id = as.character(config$run_id %||% NA_character_)[1]
   )
 }

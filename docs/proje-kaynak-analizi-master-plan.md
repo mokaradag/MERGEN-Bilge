@@ -577,7 +577,7 @@ or that a numeric column means planned rather than remaining labor. Therefore:
 RStudio on the Windows VM, matching the existing `tests/scripts/*.R` convention:
 
 ```r
-Sys.setenv(MERGEN_PK_META_MODE = "sample")   # or "describe"
+Sys.setenv(MERGEN_PK_META_MODE = "describe")   # first pass; "sample" is the second
 source("tools/pk/generate_query_meta.R", encoding = "UTF-8")
 ```
 
@@ -588,7 +588,7 @@ Two modes, because some production queries are expensive:
 
 * **`describe`** — uses `sys.dm_exec_describe_first_result_set` to obtain column
   names and types **without executing** the query. Fast, zero DB load, no cardinality.
-* **`sample`** (default) — obtains up to `<MERGEN_PK_META_SAMPLE_ROWS>` rows through a
+* **`sample`** — obtains up to `<MERGEN_PK_META_SAMPLE_ROWS>` rows through a
   representative bounded strategy when the query can be sampled safely (for example a
   deterministic hash/reservoir or metadata-declared stratification), and records the
   exact `sample_method` and seed. A bare `TOP n` prefix in database return order is not
@@ -1878,12 +1878,13 @@ by serializing a helper closure (same rule as `MERGEN_LLM_TIMEOUT_SEC`).
 | `MERGEN_PK_TELEMETRY` | `true` | Write `MB_Analiz_Log`. Applies to **both** engines — see §10 |
 | `MERGEN_PK_LOG_QUESTION_TEXT` | `false` | **Privacy:** store the raw question, or only a keyed fingerprint. With `false`, the fingerprint MUST be a normalized, server-keyed **HMAC** with key rotation — a plain unsalted hash does not protect low-entropy prompts drawn from a finite project vocabulary, since anyone who can read the table can hash the candidate questions and recover matches. If no key can be managed, omit the fingerprint entirely |
 | `MERGEN_PK_NUMERIC_PROVENANCE_MODE` | `log` | `off` / `log` / `warn` / `block` — enforcement level for answer facts that are absent or semantically mis-cited (§5.11). Ship in `log`, move to `warn` once the false-positive rate is calibrated on the VM |
-| `MERGEN_PK_META_MODE` | `sample` | Generator mode: `sample` or `describe`. An invalid value is **rejected**, never silently defaulted. Run `describe` first |
-| `MERGEN_PK_META_SAMPLE_ROWS` | `500` | Maximum rows fetched per query in `sample` mode; the sample method and evidentiary limits must be recorded |
-| `MERGEN_PK_META_HIGH_CARD_MIN` | `50` | Distinct-value count above which `high_cardinality = TRUE` is **proved** (one-sided; below it proves nothing) |
+| `MERGEN_PK_META_MODE` | `describe` | Generator mode: `describe` or `sample`. An invalid value is **rejected**, never silently defaulted. The default is the **non-executing** mode: an unset variable must never make a bare `source(...)` run the whole production query library |
+| `MERGEN_PK_META_SAMPLE_ROWS` | `500` | Maximum rows **transferred** per query in `sample` mode; the sample method and evidentiary limits must be recorded. This is not a server-work bound (`dbSendQuery()` runs the SELECT) — the real bounds are the timeout and the byte ceiling below |
+| `MERGEN_PK_META_HIGH_CARD_MIN` | `50` | Distinct-value count above which `high_cardinality = TRUE` is **proved** (one-sided; below it proves nothing). Must be strictly below `MERGEN_PK_META_SAMPLE_ROWS`, otherwise the proof is unreachable and the generator rejects the configuration |
 | `MERGEN_PK_META_SQL_TIMEOUT_SEC` | `120` | Generator per-query timeout |
 | `MERGEN_PK_META_MAX_RESULT_MB` | `64` | Generator sample-result ceiling |
-| `MERGEN_PK_META_RESUME` | `true` | Resume an interrupted run from `artifacts/pk-meta/generator-state.json`; the cache holds **DB observations only** and is discarded when the mode changes |
+| `MERGEN_PK_META_RESUME` | `true` | Resume an interrupted run from `artifacts/pk-meta/generator-state.json`; the cache holds **DB observations only**, is checkpointed after every query, carries an SQL + `db_target` fingerprint per entry, and is discarded when the mode, the state-format version or a query's SQL changes |
+| `MERGEN_PK_META_SAMPLE_UNICODE` | `true` | Send the sampled SQL through production's `NVARCHAR(MAX)` parameter path (`sp_executesql`) so Turkish/bracketed identifiers behave identically in the app and the generator. Diagnostic opt-out only |
 
 **SQL timeout precedence is bounded by the remaining whole-analysis budget.** At
 analysis start compute an absolute deadline. Immediately before every ODBC statement —
