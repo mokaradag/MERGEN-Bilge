@@ -52,15 +52,20 @@ local({
   cat("[PK_META_GEN] ==============================================================\n")
 
   # --- 1) Yardımcıları yükle ---------------------------------------------------
+  # SIRA BAĞIMLIDIR: maskeleme bulgu üretiminden, şema getirme envanter
+  # döngüsünden ÖNCE yüklenir.
   for (dosya in c(
     "helpers_meta_generator_config.R",
     "helpers_meta_generator_schema.R",
     "helpers_meta_generator_render.R",
+    "helpers_meta_generator_redact.R",
     "helpers_meta_generator_findings.R",
     "helpers_meta_generator_health.R",
     "helpers_meta_generator_state.R",
     "helpers_meta_generator_db.R",
+    "helpers_meta_generator_fetch.R",
     "helpers_meta_generator_run.R",
+    "helpers_meta_generator_lock.R",
     "helpers_meta_generator_commit.R"
   )) {
     source(file.path(kok, "tools", "pk", dosya), encoding = "UTF-8", local = FALSE)
@@ -77,6 +82,30 @@ local({
     cat("[PK_META_GEN]   Sys.setenv(MERGEN_PK_META_MODE = \"sample\")\n")
   }
 
+  # --- 2) KOŞU KİLİDİ ----------------------------------------------------------
+  # İki eş zamanlı koşu aynı çıktı dosyasını SON YAZAN KAZANIR biçimde ezerdi.
+  kilit <- pkgc_acquire_run_lock(yapilandirma$lock_path)
+  if (!isTRUE(kilit$ok)) {
+    stop(paste0("[PK_META_GEN] ", kilit$detail), call. = FALSE)
+  }
+  if (identical(kilit$reason, "takeover")) {
+    cat("[PK_META_GEN] BILGI: BAYAT bir kosu kilidi atomik olarak devralindi.\n")
+  }
+  on.exit(pkgc_release_run_lock(kilit), add = TRUE)
+
+  # --- 2b) ARTEFAKT DİZİNİ ve KOŞU KİMLİĞİ (kilit ALINDIKTAN sonra) ------------
+  #
+  # KİLİTTEN SONRA: engellenen (çekişme/G-Ç) bir koşu artefakt dizini yaratmaz.
+  #
+  # `pkgh_allocate_artifact_dir()` var olan DOLU bir dizin için `-2`, `-3` ...
+  # soneki ekler. Yalnızca `artifact_dir`/`artifact_rel` güncellenirse `run_id`
+  # ilk temel ad olarak KALIR ve `health.json`/`health.txt` içine öyle yazılır:
+  # çarpışan bir koşuda makine tarafından görülen koşu kimliği artık kanıtı
+  # taşıyan dizini TANIMLAMAZ ve önceki koşunun kimliğiyle ÇAKIŞIR.
+  yapilandirma$artifact_dir <- pkgh_allocate_artifact_dir(yapilandirma$artifact_dir)
+  yapilandirma$run_id <- basename(yapilandirma$artifact_dir)
+  yapilandirma$artifact_rel <- file.path(PKG_META_ARTIFACT_DIR, yapilandirma$run_id)
+
   cat(sprintf("[PK_META_GEN] Kip: %s | Kosu: %s\n",
               yapilandirma$mode, yapilandirma$run_id))
   if (identical(yapilandirma$mode, "sample")) {
@@ -86,17 +115,37 @@ local({
     ))
   }
 
-  # --- 2) KOŞU KİLİDİ ----------------------------------------------------------
-  # İki eş zamanlı koşu aynı çıktı dosyasını SON YAZAN KAZANIR biçimde ezerdi.
-  kilit <- pkgc_acquire_run_lock(yapilandirma$lock_path)
-  if (!isTRUE(kilit$ok)) {
-    stop(paste0("[PK_META_GEN] ", kilit$detail), call. = FALSE)
-  }
-  on.exit(pkgc_release_run_lock(kilit), add = TRUE)
-
   # --- 3) Uygulama bootstrap'i (Shiny BAŞLATILMAZ) -----------------------------
   onceki_run <- Sys.getenv("MERGEN_RUN_APP", unset = NA_character_)
   onceki_fut <- Sys.getenv("MERGEN_DISABLE_FUTURES", unset = NA_character_)
+  # KATI SQL YÜKLEME ZORUNLUDUR.
+  #
+  # `MERGEN_SQL_LOADER_STRICT=false` iken `config_sql_loader.R` eksik/okunamayan
+  # bir `sql_file` yerine PLACEHOLDER bir SELECT koyar ve devam eder. Üretici o
+  # placeholder'ı describe/sample edip şemasını GERÇEK sorgu kimliği altında
+  # kalıcılaştırırdı; dosya geri geldiğinde metadata artık gerçek SQL'i
+  # ANLATMIYOR olurdu. Operatörün oturumundaki değer NE OLURSA OLSUN, üretim
+  # metadata'sı yalnızca GERÇEK SQL'den üretilir.
+  onceki_strict <- Sys.getenv("MERGEN_SQL_LOADER_STRICT", unset = NA_character_)
+
+  # SÜREÇ DURUMU GERİ YÜKLENİR.
+  #
+  # Bu betik operatörün KALICI RStudio oturumunda `source(...)` edilir; `app.R`
+  # -> `global.R` yolu ise SÜREÇ GENELİ yerel ayarı ve kodlama seçeneklerini
+  # değiştirir. Yalnızca ortam değişkenlerini geri almak, operatörü betikten
+  # ÖNCEKİNDEN FARKLI bir yerelde/seçenek kümesinde bırakırdı.
+  onceki_yerel <- vapply(
+    c("LC_COLLATE", "LC_CTYPE", "LC_TIME", "LC_NUMERIC", "LC_MONETARY"),
+    function(kategori) tryCatch(Sys.getlocale(kategori), error = function(e) ""),
+    character(1)
+  )
+  onceki_secenekler <- list(
+    encoding = getOption("encoding"),
+    stringsAsFactors = getOption("stringsAsFactors"),
+    scipen = getOption("scipen"),
+    OutDec = getOption("OutDec"),
+    warn = getOption("warn")
+  )
   # `global.R` MERGEN_DISABLE_FUTURES=true iken `future::plan(sequential)`
   # ÇALIŞTIRIR. Yalnızca ortam değişkenini geri almak YETMEZ: operatörün
   # RStudio süreci, betik bittikten sonra da sıralı planda kalır ve aynı süreçte
@@ -107,17 +156,26 @@ local({
     NULL
   }
 
-  Sys.setenv(MERGEN_RUN_APP = "false", MERGEN_DISABLE_FUTURES = "true")
+  Sys.setenv(MERGEN_RUN_APP = "false", MERGEN_DISABLE_FUTURES = "true",
+             MERGEN_SQL_LOADER_STRICT = "true")
   on.exit({
-    if (is.na(onceki_run)) Sys.unsetenv("MERGEN_RUN_APP") else Sys.setenv(MERGEN_RUN_APP = onceki_run)
-    if (is.na(onceki_fut)) {
-      Sys.unsetenv("MERGEN_DISABLE_FUTURES")
-    } else {
-      Sys.setenv(MERGEN_DISABLE_FUTURES = onceki_fut)
+    geri_al <- function(ad, deger) {
+      if (is.na(deger)) Sys.unsetenv(ad) else do.call(Sys.setenv, stats::setNames(list(deger), ad))
     }
+    geri_al("MERGEN_RUN_APP", onceki_run)
+    geri_al("MERGEN_DISABLE_FUTURES", onceki_fut)
+    geri_al("MERGEN_SQL_LOADER_STRICT", onceki_strict)
+
     if (!is.null(onceki_plan)) {
       tryCatch(future::plan(onceki_plan), error = function(e) NULL)
     }
+
+    for (kategori in names(onceki_yerel)) {
+      deger <- onceki_yerel[[kategori]]
+      if (!nzchar(deger)) next
+      try(suppressWarnings(Sys.setlocale(kategori, deger)), silent = TRUE)
+    }
+    tryCatch(options(onceki_secenekler), error = function(e) NULL)
   }, add = TRUE)
 
   cat("[PK_META_GEN] Uygulama bootstrap'i yukleniyor (Shiny BASLATILMAZ)...\n")
@@ -129,7 +187,12 @@ local({
   if (!isTRUE(boot)) {
     # BOOTSTRAP HATASI MASKELENİR: yapılandırma/bağlantı hataları DSN, sunucu,
     # kullanıcı ve yol ayrıntısı taşıyabilir; bunlar operatör loguna GİRMEZ.
-    guvenli_hata <- pkgh_sanitize_validation_error(as.character(boot)[1])
+    #
+    # İSTİSNA KEYFİ NESİRDİR: `pkgh_sanitize_validation_error()`
+    # yalnızca alias satırlarını ve `anahtar=deger` biçimindeki bağlantı dizesi
+    # parçalarını kapatır. Serbest metindeki `Login failed for user '...'`,
+    # `C:/Users/...` ya da bir DSN adı bu yoldan SAĞ ÇIKARDI.
+    guvenli_hata <- pkgh_sanitize_bootstrap_error(as.character(boot)[1])
 
     # BAYAT YEREL KATMANI TEMİZLE: bootstrap düşmeden ÖNCE bu dosyayı
     # `.GlobalEnv` içine YÜKLEMİŞ olabilir. Nesne kaldırılmazsa, dosya silinip
@@ -149,12 +212,21 @@ local({
     if (length(katalog)) {
       dir.create(yapilandirma$artifact_dir, recursive = TRUE, showWarnings = FALSE)
       ozet <- pkgh_summarize(katalog)
+      # KATALOG TOPLAMI KORUNUR. `pkgc_catalog_findings()` YALNIZCA kusurlu
+      # ögeleri döndürür; özeti bu listeden almak `total_queries` değerini
+      # KUSUR SAYISINA eşitler (169 sorgulu bir katalogda tek bozuk id için
+      # "Toplam sorgu: 1"). Katalog toplamı ham kütüphaneden gelir.
+      ozet$total_queries <- length(ham_kutuphane %||% list())
+      ozet$defective_queries <- length(katalog)
+
+      artefakt_hatasi <- NULL
       tryCatch(pkgh_write_artifacts(
         report = list(
           generator = "tools/pk/generate_query_meta.R", phase = "3b",
           run_id = yapilandirma$run_id, timestamp = yapilandirma$timestamp,
           config = pkg_meta_config_summary(yapilandirma),
           local_layer_written = FALSE,
+          local_layer_status = "not_attempted",
           startup_validation = "bootstrap_failed",
           startup_validation_error = guvenli_hata,
           summary = ozet, queries = katalog
@@ -162,12 +234,23 @@ local({
         artifact_dir = yapilandirma$artifact_dir,
         records = katalog, summary = ozet,
         config_summary = pkg_meta_config_summary(yapilandirma)
-      ), error = function(e) NULL)
+      ), error = function(e) artefakt_hatasi <<- conditionMessage(e))
 
-      cat(sprintf(
-        "[PK_META_GEN] KATALOG TESHISI yazildi (%d kusurlu sorgu): %s/health.txt\n",
-        length(katalog), yapilandirma$artifact_rel
-      ))
+      # YAZILDIĞI SÖYLENMEDEN ÖNCE GERÇEKTEN YAZILDIĞI DOĞRULANIR. Salt okunur
+      # bir artefakt dizini ya da dolu disk durumunda hiçbir teşhis dosyası
+      # olmayabilir; operatöre var olmayan bir raporun yolunu vermek yanlış
+      # yönlendirmedir.
+      if (is.null(artefakt_hatasi)) {
+        cat(sprintf(
+          "[PK_META_GEN] KATALOG TESHISI yazildi (%d kusurlu sorgu): %s/health.txt\n",
+          length(katalog), yapilandirma$artifact_rel
+        ))
+      } else {
+        cat(sprintf(
+          "[PK_META_GEN] !!! KATALOG TESHISI YAZILAMADI (%d kusurlu sorgu): %s\n",
+          length(katalog), pkgh_sanitize_bootstrap_error(artefakt_hatasi)
+        ))
+      }
     }
 
     stop(paste0(
@@ -223,7 +306,7 @@ local({
   }
 
   # --- 5) Devam (resume) önbelleği --------------------------------------------
-  parmak_izleri <- pkgh_state_fingerprints(query_library)
+  parmak_izleri <- pkgh_state_fingerprints(query_library, yapilandirma)
   onbellek <- if (isTRUE(yapilandirma$resume)) {
     pkgh_read_state(yapilandirma$state_path, yapilandirma$mode,
                     fingerprints = parmak_izleri,
@@ -237,12 +320,6 @@ local({
                 length(onbellek)))
   }
 
-  # --- 6) Artefakt dizini (çarpışmasız) ---------------------------------------
-  yapilandirma$artifact_dir <- pkgh_allocate_artifact_dir(yapilandirma$artifact_dir)
-  yapilandirma$artifact_rel <- file.path(
-    PKG_META_ARTIFACT_DIR, basename(yapilandirma$artifact_dir)
-  )
-
   # --- 7) Envanter koşusu ------------------------------------------------------
   cat("[PK_META_GEN] Envanter cikariliyor...\n")
   ilerleme <- function(i, n, id) {
@@ -255,6 +332,11 @@ local({
   # devam önbelleğinde KALIR. Yalnızca koşu sonunda yazmak, ilan edilen
   # "kaldığı yerden devam" davranışını gerçek bir kesinti için İŞLEVSİZ bırakır.
   ara_kayit <- function(cache) {
+    # KİLİT KALP ATIŞI. Kilit dizininin `mtime` değeri hiç tazelenmezse, tam bir
+    # envanter (özellikle `sample` kipinde) varsayılan bayatlama süresini
+    # aştığında KENDİ kilidini bayat gösterir; ikinci bir koşu canlı kilidi
+    # devralır ve iki koşu aynı çıktı/durum dosyalarına yazar.
+    pkgc_refresh_run_lock(kilit)
     pkgh_write_state(cache, yapilandirma$state_path, yapilandirma$mode,
                      yapilandirma$timestamp, yapilandirma$state_version)
   }
@@ -277,8 +359,18 @@ local({
   )
 
   # --- 8) ADAY KATMAN: önceki içerikle BİRLEŞTİR -------------------------------
-  birlesme <- pkgc_merge_local_layers(onceki_katman, kosu$local_meta, kosu$records)
+  # BİRLEŞTİRME KAYNAK parmak izini kullanır (kanıt imzası HARİÇ): yayımlanmış
+  # bir `result_schema`, örnekleme eşiği değişti diye geçersiz OLMAZ; yalnızca
+  # SQL/hedef değiştiğinde geçersiz olur.
+  birlesme <- pkgc_merge_local_layers(onceki_katman, kosu$local_meta, kosu$records,
+                                     fingerprints = pkgh_source_fingerprints(query_library))
   aday_katman <- birlesme$meta
+
+  # KAYITLAR SON KATMANLA UZLAŞTIRILIR: geçici bir hatada önceki geçerli
+  # metadata KORUNMUŞSA, o sorgu raporda Tier-0/`pending_no_schema` diye
+  # görünmemelidir.
+  kosu$records <- pkgh_reconcile_records_with_layer(kosu$records, aday_katman)
+  kosu$summary <- pkgh_summarize(kosu$records)
 
   if (length(birlesme$kept)) {
     cat(sprintf(paste0(
@@ -288,9 +380,15 @@ local({
   }
   if (length(birlesme$withheld_removed)) {
     cat(sprintf(paste0(
-      "[PK_META_GEN] %d sorgu bloklayici bulgu nedeniyle geri cekildi; onceki",
-      " girdileri KALDIRILDI (bayat sozlesme birakilmaz).\n"
+      "[PK_META_GEN] %d sorgu bloklayici/kesin kusur nedeniyle katmandan",
+      " CIKARILDI (bayat sozlesme birakilmaz).\n"
     ), length(birlesme$withheld_removed)))
+  }
+  if (length(birlesme$stale_removed)) {
+    cat(sprintf(paste0(
+      "[PK_META_GEN] %d sorgunun SQL'i degistigi icin onceki uretilen girdisi",
+      " KALDIRILDI (parmak izi uyusmuyor); taze sema alinana kadar Tier-0.\n"
+    ), length(birlesme$stale_removed)))
   }
 
   # --- 9) BÜTÜN KÜTÜPHANE DOĞRULAMASI -----------------------------------------
@@ -311,6 +409,9 @@ local({
 
   onceki_sayi <- length(onceki_katman)
   yeni_sayi <- length(aday_katman)
+  # "Bu kosu hicbir sey ogrenemedi" KANITI: sema alinamayan sorgu sayisi.
+  sema_alinamayan <- as.integer(kosu$summary$schema_failures %||% 0L)[1]
+  if (is.na(sema_alinamayan)) sema_alinamayan <- 0L
 
   # --- 10) Çıktı dosyasını HAZIRLA (henüz YAYIMLAMA) ---------------------------
   # Zorunlu denetim artefaktları YAZILMADAN üretimden türetilmiş metadata
@@ -325,17 +426,25 @@ local({
     cat("[PK_META_GEN] !!! Dosya YAZILMADI; onceki durum korundu.\n")
     cat(sprintf("[PK_META_GEN] !!! Gerekce: %s\n",
                 pkgh_sanitize_validation_error(as.character(dogrulama)[1])))
-  } else if (yeni_sayi == 0L && onceki_sayi > 0L) {
+  } else if (yeni_sayi == 0L && onceki_sayi > 0L && sema_alinamayan > 0L) {
     # FELAKET SİNYALİ: bu koşu HİÇBİR şema öğrenemedi ama önceki koşuda
     # geçerli metadata VARDI (DB erişilemez, DSN değişmiş, yetki kalkmış...).
     # Boş bir katman yazmak o metadata'yı YOK ETMEK olurdu.
+    #
+    # KESİNTİ ile BİLİNÇLİ DÜŞÜRME AYRILIR. `0 <- sifir olmayan` her geçişi
+    # kesinti saymak MEŞRU boşalmaları da bloklardı: son üretilen sorgu
+    # kütüphaneden kaldırıldığında ya da tüm sorgular bloklayıcı bulguyla geri
+    # çekildiğinde aday katman DOĞRU biçimde boştur. O durumda dosyayı yazmamak,
+    # kütüphanede artık BULUNMAYAN bir kimliği canlı bırakır ve sonraki
+    # bootstrap'te metadata eklemesi DÜŞER; operatör dosyayı elle silmek
+    # zorunda kalırdı. Bu yüzden kapı yalnızca ŞEMA ALINAMAMASI kanıtına bakar.
     yazma_engeli <- "empty_layer_guard"
     cat(sprintf(paste0(
-      "[PK_META_GEN] !!! Bu kosu HICBIR sorgu semasi cikaramadi, ancak onceki\n",
-      "[PK_META_GEN] !!! uretilen katmanda %d sorgu vardi. Dosya YAZILMADI;\n",
-      "[PK_META_GEN] !!! onceki GECERLI metadata korundu.\n",
+      "[PK_META_GEN] !!! Bu kosu HICBIR sorgu semasi cikaramadi (%d sorguda sema\n",
+      "[PK_META_GEN] !!! ALINAMADI), ancak onceki uretilen katmanda %d sorgu vardi.\n",
+      "[PK_META_GEN] !!! Dosya YAZILMADI; onceki GECERLI metadata korundu.\n",
       "[PK_META_GEN] !!! Once DB erisimini/DSN'i kontrol edin, sonra tekrar deneyin.\n"
-    ), onceki_sayi))
+    ), sema_alinamayan, onceki_sayi))
   } else {
     metin <- pkgr_render_local_meta_file(aday_katman, list(
       mode = yapilandirma$mode,
@@ -357,10 +466,21 @@ local({
   # ADAY ile GERÇEKTEN YAZILAN aynı şey DEĞİLDİR: bütün kütüphane kapısı
   # düşerse hiçbir şey yazılmaz, ama sorgu bazında `ok` kayıtları yine vardır.
   ozet$candidate_layer_entries <- yeni_sayi
-  ozet$written_entries <- if (is.null(hazirlanan)) 0L else yeni_sayi
+  # HAZIRLANMIŞ (staged) ile YAYIMLANMIŞ (published) AYNI ŞEY DEĞİLDİR.
+  #
+  # Denetim artefaktları YAYIMDAN ÖNCE yazılır (operatör, yeni metadata devreye
+  # girmeden raporu görebilmelidir). Bu noktada `hazirlanan` YALNIZCA geçici
+  # dosyanın hazır olduğunu söyler; `pkgr_publish_staged_file()` HÂLÂ düşebilir.
+  # `written_entries` burada dolu yazılsaydı, yayım başarısız olduğunda diskte
+  # KALICI bir `health.json` "N girdi yazildi" derken canlı dosya HİÇ
+  # değişmemiş olurdu. Bu yüzden yayımdan önce 0, yayımdan sonra gerçek sayı
+  # yazılır ve artefaktlar YENİDEN yayımlanır.
+  ozet$staged_entries <- if (is.null(hazirlanan)) 0L else yeni_sayi
+  ozet$written_entries <- 0L
   ozet$previous_layer_entries <- onceki_sayi
   ozet$preserved_from_previous <- length(birlesme$kept)
   ozet$removed_withheld <- length(birlesme$withheld_removed)
+  ozet$removed_stale_fingerprint <- length(birlesme$stale_removed)
   ozet$dropped_missing_from_library <- length(birlesme$dropped)
 
   ozet_yapilandirma <- pkg_meta_config_summary(yapilandirma)
@@ -370,7 +490,8 @@ local({
     run_id = yapilandirma$run_id,
     timestamp = yapilandirma$timestamp,
     config = ozet_yapilandirma,
-    local_layer_written = !is.null(hazirlanan),
+    local_layer_written = FALSE,
+    local_layer_status = if (is.null(hazirlanan)) "blocked" else "staged",
     local_layer_write_block = yazma_engeli,
     startup_validation = if (isTRUE(dogrulama)) "passed" else "failed",
     # Doğrulama hatası, üretimden türetilmiş alias bindirmesinden gelen KANONİK
@@ -392,20 +513,26 @@ local({
     queries = kosu$records
   )
 
-  artefakt_ok <- TRUE
-  tryCatch(
-    pkgh_write_artifacts(
-      report = rapor,
-      artifact_dir = yapilandirma$artifact_dir,
-      records = kosu$records,
-      summary = ozet,
-      config_summary = ozet_yapilandirma
-    ),
-    error = function(e) {
-      artefakt_ok <<- FALSE
-      cat(sprintf("[PK_META_GEN] !!! Saglik raporu YAZILAMADI: %s\n", conditionMessage(e)))
-    }
-  )
+  artefaktlari_yaz <- function() {
+    artefakt_durumu <- TRUE
+    tryCatch(
+      pkgh_write_artifacts(
+        report = rapor,
+        artifact_dir = yapilandirma$artifact_dir,
+        records = kosu$records,
+        summary = ozet,
+        config_summary = ozet_yapilandirma
+      ),
+      error = function(e) {
+        artefakt_durumu <<- FALSE
+        cat(sprintf("[PK_META_GEN] !!! Saglik raporu YAZILAMADI: %s\n",
+                    pkgh_sanitize_bootstrap_error(conditionMessage(e))))
+      }
+    )
+    artefakt_durumu
+  }
+
+  artefakt_ok <- artefaktlari_yaz()
 
   # --- 12) Çıktı dosyasını YAYIMLA --------------------------------------------
   yazildi <- FALSE
@@ -419,11 +546,24 @@ local({
         pkgr_publish_staged_file(hazirlanan, yapilandirma$output_path)
         TRUE
       }, error = function(e) {
-        cat(sprintf("[PK_META_GEN] !!! Cikti yayimlanamadi: %s\n", conditionMessage(e)))
+        cat(sprintf("[PK_META_GEN] !!! Cikti yayimlanamadi: %s\n",
+                    pkgh_sanitize_bootstrap_error(conditionMessage(e))))
         FALSE
       }))
 
+      if (!yazildi) {
+        rapor$local_layer_status <- "publish_failed"
+        artefaktlari_yaz()
+      }
+
       if (yazildi) {
+        # YAYIM BAŞARILI: denetim artefaktları ARTIK gerçek durumu yazar.
+        ozet$written_entries <- yeni_sayi
+        rapor$summary <- ozet
+        rapor$local_layer_written <- TRUE
+        rapor$local_layer_status <- "published"
+        artefaktlari_yaz()
+
         cat(sprintf("[PK_META_GEN] YAZILDI: %s (%d sorgu)\n",
                     yapilandirma$output_rel, yeni_sayi))
         if (onceki_sayi > yeni_sayi) {
@@ -444,7 +584,24 @@ local({
   if (!isTRUE(pkgh_write_state(kosu$cache, yapilandirma$state_path,
                                yapilandirma$mode, yapilandirma$timestamp,
                                yapilandirma$state_version))) {
-    cat("[PK_META_GEN] UYARI: devam durumu YAZILAMADI; sonraki kosu bastan baslar.\n")
+    # BAYAT ANLIK GÖRÜNTÜ KARANTİNAYA ALINIR.
+    #
+    # Yazma ATOMİK olduğu için başarısız değiştirme, ÖNCEKİ geçerli durum
+    # dosyasını yerinde bırakır. O dosya aynı kip/sürüm/parmak izlerini
+    # taşıdığından SONRAKİ koşu tarafından KABUL EDİLİR: koşu DB'ye hiç gitmez
+    # ve bu BAŞARILI koşudan ÖNCE öğrenilmiş şema/kanıtı yeniden yayımlar.
+    # "Sonraki koşu bastan baslar" ancak eski görüntü kullanılamaz hâle
+    # getirilirse DOĞRUDUR.
+    karantina <- pkgh_quarantine_state(yapilandirma$state_path)
+    if (isTRUE(karantina$ok)) {
+      cat("[PK_META_GEN] UYARI: devam durumu YAZILAMADI; ONCEKI durum dosyasi\n")
+      cat("[PK_META_GEN]   KARANTINAYA ALINDI, sonraki kosu bastan baslar.\n")
+    } else {
+      cat("[PK_META_GEN] !!! Devam durumu YAZILAMADI ve ONCEKI durum dosyasi da\n")
+      cat("[PK_META_GEN] !!! kullanilamaz hale GETIRILEMEDI. Sonraki kosu BAYAT\n")
+      cat(sprintf("[PK_META_GEN] !!! semayi yeniden yayimlayabilir; elle silin: %s\n",
+                  yapilandirma$state_path))
+    }
   }
 
   # --- 14) Konsol özeti ve sonraki adım ----------------------------------------

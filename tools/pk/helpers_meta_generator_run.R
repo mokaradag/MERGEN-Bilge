@@ -9,6 +9,9 @@
 # geri çekme kararı, sağlık kaydı -- gerçek bir veritabanı OLMADAN test edilir.
 # Varsayılan enjeksiyonlar `helpers_meta_generator_db.R` içindedir.
 #
+# ŞEMA GETİRME AYRI DOSYADADIR: helpers_meta_generator_fetch.R (bu dosyadan
+# ÖNCE yüklenir). Burada yalnızca envanter DÖNGÜSÜ ve KARARLAR vardır.
+#
 # SERT KURALLAR:
 #   * SALT OKUNUR. Her SQL, üretimin kullandığı AYNI `pk_sql_classify_readonly()`
 #     kapısından geçer. Kapı reddederse sorgu ÇALIŞTIRILMAZ.
@@ -26,61 +29,20 @@
   is.character(x) && length(x) == 1L && !is.na(x) && nzchar(trimws(x))
 }
 
-# Enjekte edilen işlevler FARKLI ARİTEDE olabilir: testler `function(conn, sql)`
-# geçirir, üretim enjeksiyonu zaman aşımı/tavan gibi ek argümanlar kabul eder.
-# Ek argümanlar YALNIZCA hedef işlev onları beyan ettiğinde geçirilir; böylece
-# hem belgelenen sade sözleşme hem de üretim sınırları çalışır.
-.pkgn_call_injected <- function(fn, positional = list(), optional = list()) {
-  arglar <- tryCatch(names(formals(fn)), error = function(e) NULL)
-  if (is.null(arglar)) arglar <- character(0)
-  if (length(optional)) {
-    kabul <- if ("..." %in% arglar) {
-      rep(TRUE, length(optional))
-    } else {
-      names(optional) %in% arglar
-    }
-    optional <- optional[kabul]
-  }
-  # `quote = TRUE`: argümanlar ZATEN değerlerdir (bağlantı nesnesi, metin, sayı).
-  # Tırnaksız `do.call` bunları çağrı içine gömüp yeniden değerlendirir; bir
-  # bağlantı nesnesi için bu gereksiz ve kırılgandır.
-  do.call(fn, c(positional, optional), quote = TRUE)
-}
-
-# Bağlantı seviyesinde OLDUĞU anlaşılan hata kalıpları. Böyle bir hatadan sonra
-# önbelleğe alınmış tutamaç ARTIK GEÇERSİZDİR; bırakılıp yenisi açılmalıdır,
-# aksi hâlde aynı hedefteki TÜM sonraki sorgular da düşer.
-.PKGN_CONNECTION_ERROR_PATTERN <- paste(
-  "08s01", "08001", "08003", "08004", "hyt00", "hyt01",
-  "communication link", "connection is closed", "connection was closed",
-  "not connected", "server is not found", "login timeout", "broken pipe",
-  sep = "|"
-)
-
-.pkgn_is_connection_error <- function(message) {
-  ham <- as.character(message %||% "")[1]
-  if (is.na(ham) || !nzchar(ham)) return(FALSE)
-  grepl(.PKGN_CONNECTION_ERROR_PATTERN, tolower(ham), perl = TRUE, useBytes = TRUE)
-}
-
-# Enjekte edilen `connect_fn` sözleşmesi "bağlantı nesnesi ya da NULL" der.
-# Uygulamanın `get_connection()` işlevi `list(conn = , pooled = )` sarmalayıcısı
-# döndürür; ham bir `DBIConnection` ise LİSTE DEĞİLDİR ve `$conn` erişimi
-# üzerinde HATA verir. Bu yüzden sarmalayıcı olup olmadığı ÖNCE sınanır.
-.pkgn_unwrap_connection <- function(handle) {
-  if (is.null(handle)) return(NULL)
-  if (inherits(handle, "DBIConnection")) return(handle)
-  if (is.list(handle) && !is.null(handle$conn)) return(handle$conn)
-  handle
-}
-
 #' Üretilen yerel katman girdisi oluştur
 #'
 #' YALNIZCA YAPISAL alanlar yazılır. `capability`, `grain`, `additive`, `unit`,
 #' `primary_entity`, `intents`, `default_measures` gibi ANLAMSAL alanlar
 #' BİLİNÇLİ OLARAK ÜRETİLMEZ: onlar insan küresyonudur ve yokluğunda anlamsal
 #' istekler SQL'den önce fail-closed durur.
-pkgn_build_local_entry <- function(schema, source_types, mode, observations = list()) {
+#' @param source_fingerprint Girdinin türetildiği SQL'in KAYNAK parmak izi.
+#'   Bir sonraki koşuda `pkgc_merge_local_layers()` bu damgayı güncel sorguyla
+#'   karşılaştırır: damgasız bir girdi doğrulanamaz, bu yüzden geçici bir hatada
+#'   KORUNMAZ. Aksi hâlde SELECT listesi değişmiş bir sorgunun eski
+#'   `result_schema` değeri canlı kalırdı ve bütün-kütüphane kapısı bunu
+#'   YAKALAYAMAZDI (o kapı SQL'i çalıştırmaz).
+pkgn_build_local_entry <- function(schema, source_types, mode, observations = list(),
+                                   source_fingerprint = NA_character_) {
   cmeta <- pkgs_build_column_meta(schema, source_types = source_types, mode = mode)
   cmeta <- pkgs_apply_observations(cmeta, observations)
 
@@ -89,6 +51,7 @@ pkgn_build_local_entry <- function(schema, source_types, mode, observations = li
     column_meta = cmeta,
     generated_mode = as.character(mode)[1],
     generated_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"),
+    source_fingerprint = as.character(source_fingerprint %||% NA_character_)[1],
     tier = 1L
   )
 }
@@ -113,7 +76,13 @@ pkgn_validate_candidate <- function(query, local_entry, auto_entry = NULL,
     curated = if (is.null(curated_entry)) list() else stats::setNames(list(curated_entry), "x")
   )[["x"]]
 
-  id <- as.character(query$id %||% "?")[1]
+  # KANONİK KİMLİK. `query_library` sözleşmesi boşluklu bir id'yi kabul edip
+  # `trimws()` ile kanonikleştirir; üretilen katman da `q1` olarak anahtarlanır.
+  # Ham `" q1 "` ile bakmak, `alias_overlay[[" q1 "]]` bulunamadığı için sorguya
+  # özgü alias kusurunu KAÇIRIR ve kusur yalnızca BÜTÜN KÜTÜPHANE kapısında
+  # patlar; o zaman da tek bir bozuk sorgu TÜM üretilen katmanı bloklar.
+  ham_id <- as.character(query$id %||% "?")[1]
+  id <- if (is.na(ham_id)) "?" else trimws(ham_id)
 
   # Alias katlama: birleşmiş metadata üzerinde başlangıçta da çalışır.
   normal <- pk_meta_normalize_aliases(stats::setNames(list(birlesik), id))
@@ -172,6 +141,61 @@ pkgn_validate_candidate <- function(query, local_entry, auto_entry = NULL,
   )
 }
 
+#' YEREL (DB GEREKTİRMEYEN) KAPILAR
+#'
+#' Kimlik, hedef, SQL varlığı ve salt-okunur sınıflandırması BİR VERİTABANI
+#' GEREKTİRMEZ. Bunlar bağlantıdan ÖNCE çalıştırılabildiği için envanter
+#' döngüsü de aynı sırayı kullanır: aksi hâlde bozuk ya da reddedilmiş bir
+#' yazma sorgusu için bile GERÇEK bir üretim oturumu açılır (ve erişilemeyen
+#' bir DSN'de bu, hiç ihtiyaç duyulmayan bir bloklamaya dönüşür).
+#'
+#' @return Karar verilmişse `list(record, local_entry, cache)`; aksi hâlde NULL.
+pkgn_precheck_query <- function(query, config, target_error = NULL) {
+  reddet <- function(status, finding) {
+    list(
+      record = pkgh_query_record(query, status, config$mode, findings = list(finding)),
+      local_entry = NULL, cache = NULL
+    )
+  }
+
+  if (!.pkgn_is_text(query$id)) {
+    return(reddet("failed", pkgh_finding(
+      "missing_query_id", "blocking",
+      "Sorgu KARARLI bir id tasimiyor; metadata liste konumuna baglanamaz."
+    )))
+  }
+
+  # --- HEDEF KAPISI (bağlantı AÇILMADAN önce) ---------------------------------
+  if (!is.null(target_error)) {
+    return(reddet("failed", pkgh_finding("invalid_db_target", "blocking", target_error)))
+  }
+
+  # --- SALT-OKUNUR KAPISI (üretimle AYNI sınıflandırıcı) -----------------------
+  if (!.pkgn_is_text(query$sql)) {
+    return(reddet("failed", pkgh_finding(
+      "missing_sql", "blocking",
+      "Sorgu icin SQL metni yok (sql_file yuklenmemis olabilir)."
+    )))
+  }
+
+  kapi <- pk_sql_classify_readonly(query$sql)
+  if (!isTRUE(kapi$allowed)) {
+    # HAM SQL RAPORA GİRMEZ; yalnızca gerekçe.
+    return(reddet("skipped", pkgh_finding(
+      "sql_not_readonly", "blocking",
+      sprintf(
+        paste0(
+          "SQL salt-okunur kapisindan gecemedi (gerekce=%s, tur=%s). ",
+          "Sorgu CALISTIRILMADI. Uretici asla DDL/yazma/EXEC calistirmaz."
+        ),
+        kapi$reason %||% "?", kapi$statement_kind %||% "?"
+      )
+    )))
+  }
+
+  NULL
+}
+
 #' Tek bir sorgunun envanterini çıkar
 #'
 #' @return list(record, local_entry, cache) -- `local_entry` NULL ise sorgu
@@ -180,74 +204,19 @@ pkgn_inventory_one <- function(query, config, conn = NULL,
                                describe_fn = NULL, sample_fn = NULL,
                                auto_entry = NULL, curated_entry = NULL,
                                registry = NULL, cached = NULL,
-                               alias_overlay = NULL, target_error = NULL) {
-  id <- if (.pkgn_is_text(query$id)) trimws(query$id) else NA_character_
-
-  if (is.na(id)) {
-    return(list(
-      record = pkgh_query_record(
-        query, "failed", config$mode,
-        findings = list(pkgh_finding(
-          "missing_query_id", "blocking",
-          "Sorgu KARARLI bir id tasimiyor; metadata liste konumuna baglanamaz."
-        ))
-      ),
-      local_entry = NULL, cache = NULL
-    ))
-  }
-
-  # --- HEDEF KAPISI (bağlantı AÇILMADAN önce) ---------------------------------
-  if (!is.null(target_error)) {
-    return(list(
-      record = pkgh_query_record(
-        query, "failed", config$mode,
-        findings = list(pkgh_finding("invalid_db_target", "blocking", target_error))
-      ),
-      local_entry = NULL, cache = NULL
-    ))
-  }
-
-  # --- SALT-OKUNUR KAPISI (üretimle AYNI sınıflandırıcı) -----------------------
-  sql <- query$sql
-  if (!.pkgn_is_text(sql)) {
-    return(list(
-      record = pkgh_query_record(
-        query, "failed", config$mode,
-        findings = list(pkgh_finding(
-          "missing_sql", "blocking",
-          "Sorgu icin SQL metni yok (sql_file yuklenmemis olabilir)."
-        ))
-      ),
-      local_entry = NULL, cache = NULL
-    ))
-  }
-
-  kapi <- pk_sql_classify_readonly(sql)
-  if (!isTRUE(kapi$allowed)) {
-    # HAM SQL RAPORA GİRMEZ; yalnızca gerekçe.
-    return(list(
-      record = pkgh_query_record(
-        query, "skipped", config$mode,
-        findings = list(pkgh_finding(
-          "sql_not_readonly", "blocking",
-          sprintf(
-            paste0(
-              "SQL salt-okunur kapisindan gecemedi (gerekce=%s, tur=%s). ",
-              "Sorgu CALISTIRILMADI. Uretici asla DDL/yazma/EXEC calistirmaz."
-            ),
-            kapi$reason %||% "?", kapi$statement_kind %||% "?"
-          )
-        ))
-      ),
-      local_entry = NULL, cache = NULL
-    ))
-  }
+                               alias_overlay = NULL, target_error = NULL,
+                               connect_error = NULL) {
+  # Yerel kapılar burada da çalışır: `pkgn_inventory_one()` tek başına da
+  # çağrılabilen bir sözleşmedir ve kapılar İDEMPOTENTTİR.
+  onkontrol <- pkgn_precheck_query(query, config, target_error)
+  if (!is.null(onkontrol)) return(onkontrol)
 
   # --- ŞEMA (önbellekten ya da DB'den) ----------------------------------------
   sema_sonucu <- if (!is.null(cached)) {
     cached
   } else {
-    pkgn_fetch_schema(query, config, conn, describe_fn, sample_fn)
+    pkgn_fetch_schema(query, config, conn, describe_fn, sample_fn,
+                      connect_error = connect_error)
   }
 
   if (!isTRUE(sema_sonucu$ok)) {
@@ -267,7 +236,13 @@ pkgn_inventory_one <- function(query, config, conn = NULL,
 
   sema <- sema_sonucu$schema
   yerel <- pkgn_build_local_entry(
-    sema, sema_sonucu$source_types, config$mode, sema_sonucu$observations %||% list()
+    sema, sema_sonucu$source_types, config$mode, sema_sonucu$observations %||% list(),
+    source_fingerprint = if (exists("pkgh_source_fingerprint", mode = "function",
+                                    inherits = TRUE)) {
+      pkgh_source_fingerprint(query)
+    } else {
+      NA_character_
+    }
   )
 
   dogrulama <- pkgn_validate_candidate(query, yerel, auto_entry, curated_entry, registry,
@@ -287,14 +262,50 @@ pkgn_inventory_one <- function(query, config, conn = NULL,
   # SIFIR SATIRLI SONUÇ: sütunları olduğu için şema GEÇERLİDİR, ama sağlık
   # sözleşmesi böyle bir sorgunun BİLDİRİLMESİNİ gerektirir (SQL yaşayan veriyi
   # döndürmüyor olabilir).
-  if (identical(config$mode, "sample") && !isTRUE(ornek_bilgi$from_cache) &&
+  #
+  # ÖNBELLEKTEN GELEN KANIT DA BİLDİRİLİR. Devam önbelleği `rows_seen` değerini
+  # taşır; bulguyu yalnızca taze koşularda üretmek, ilk sıfır satırlı örneklemeden
+  # sonraki HER varsayılan (resume açık) koşuda aynı sorguyu `health.txt` içindeki
+  # eylem listesinden SESSİZCE düşürürdü -- üstelik durumun düzeldiğine dair
+  # HİÇBİR yeni kanıt olmadan.
+  if (identical(config$mode, "sample") &&
       identical(as.integer(ornek_bilgi$rows_seen %||% NA_integer_), 0L)) {
+    onbellekten <- isTRUE(ornek_bilgi$from_cache)
     bulgular <- c(bulgular, list(pkgh_finding(
       "sample_zero_rows", "attention",
       paste0(
         "Ornekleme SIFIR satir dondurdu. Sema gecerli, ancak sorgu su an veri ",
         "uretmiyor; kanit gerektiren gozlemler (null/benzersizlik/kardinalite) ",
-        "URETILEMEDI."
+        "URETILEMEDI.",
+        if (onbellekten) {
+          paste0(
+            " (Bu kanit DEVAM ONBELLEGINDEN gelmektedir; bu kosuda yeniden ",
+            "orneklenmedi. Taze kanit icin MERGEN_PK_META_RESUME=false ile ",
+            "calistirin.)"
+          )
+        } else {
+          ""
+        }
+      )
+    )))
+  }
+
+  # NATİF TİP KANITI YOKKEN YAPISAL KONTROLLER ÇALIŞMAZ.
+  #
+  # Tanımlayıcı gerçekten alınamadığında -- yani `sample` kipine EN ÇOK ihtiyaç
+  # duyulan durumda -- `pkgs_schema_from_dataframe()` eşlenmeyen SQL tipini ve
+  # sınırsız LOB genişliğini GÖREMEZ. Bunu yalnızca makine alanı
+  # `native_types_available = FALSE` ile bildirmek, `health.txt` içinde
+  # "eylem gerektiren bulgu yok" denmesine yol açardı; oysa o kontroller HİÇ
+  # çalışmamıştır.
+  if (identical(config$mode, "sample") && !isTRUE(ornek_bilgi$from_cache) &&
+      isTRUE(ornek_bilgi$executed) && !isTRUE(ornek_bilgi$native_types_available)) {
+    bulgular <- c(bulgular, list(pkgh_finding(
+      "native_types_unavailable", "attention",
+      paste0(
+        "Sonuc kumesi tanimlayicisi ALINAMADI; sema yalnizca surucunun R ",
+        "siniflarindan kuruldu. Bu sorgu icin ESLENMEYEN SQL TIPI ve SINIRSIZ ",
+        "LOB GENISLIGI kontrolleri CALISTIRILAMADI (yok demek DEGILDIR)."
       )
     )))
   }
@@ -340,175 +351,12 @@ pkgn_inventory_one <- function(query, config, conn = NULL,
   )
 }
 
-# `describe` çağrısını yap ve SONUCU ile HATASINI AYIR.
-#
-# Üretim tanımlayıcı işlevi hataları yutup `NULL` döndürebildiği için varsayılan
-# enjeksiyon (helpers_meta_generator_db.R) gerçek hatayı YÜKSELTİR; böylece
-# "bu sorgu tanımlanamıyor" ile "sonda BAŞARISIZ oldu" ayrı kalır.
-.pkgn_describe <- function(query, config, conn, describe_fn) {
-  tryCatch(
-    .pkgn_call_injected(
-      describe_fn,
-      positional = list(conn, query$sql),
-      optional = list(timeout_sec = config$sql_timeout_sec)
-    ),
-    error = function(e) e
-  )
-}
-
-#' Şema getir (kip bazlı)
-pkgn_fetch_schema <- function(query, config, conn, describe_fn, sample_fn) {
-  hata_sonucu <- function(code, detail, error = NULL, connection_error = FALSE) {
-    list(ok = FALSE, code = code, detail = detail,
-         error = if (is.null(error)) NULL else pkgh_db_error_summary(error),
-         connection_error = isTRUE(connection_error))
-  }
-
-  if (is.null(conn)) {
-    return(hata_sonucu(
-      "no_connection",
-      sprintf("'%s' hedefi icin DB baglantisi kurulamadi; sorgu Tier-0 kaldi.",
-              as.character(query$db_target %||% "primary")[1])
-    ))
-  }
-
-  if (identical(config$mode, "describe")) {
-    tanimlayici <- .pkgn_describe(query, config, conn, describe_fn)
-    if (inherits(tanimlayici, "condition")) {
-      return(hata_sonucu("describe_failed",
-                         paste0(
-                           "Sonuc kumesi tanimlayicisi ALINAMADI (sonda hatasi). ",
-                           "Bu, 'bu sorgu tanimlanamiyor' ile AYNI SEY DEGILDIR."
-                         ),
-                         conditionMessage(tanimlayici),
-                         connection_error = .pkgn_is_connection_error(
-                           conditionMessage(tanimlayici))))
-    }
-    if (is.null(tanimlayici) || !length(tanimlayici)) {
-      return(hata_sonucu(
-        "describe_unavailable",
-        paste0(
-          "sys.dm_exec_describe_first_result_set bu sorgu icin sema donduremedi ",
-          "(gecici tablo, dinamik SQL ya da belirsiz sonuc kumesi olabilir). ",
-          "'sample' kipi bu sorgu icin gerekebilir."
-        )
-      ))
-    }
-
-    cikarim <- pkgs_schema_from_descriptor(tanimlayici)
-    if (is.null(cikarim)) {
-      return(hata_sonucu("describe_empty_schema",
-                         "Tanimlayici bos/gecersiz sema dondurdu."))
-    }
-    if (!isTRUE(cikarim$ok)) {
-      return(hata_sonucu(
-        "describe_invalid_schema",
-        sprintf(paste0(
-          "Tanimlayici KULLANILAMAZ sutun(lar) bildirdi: %s. Adsiz bir sonuc ",
-          "sutunu dusurulup 'kismi' sema yazmak, baslangic dogrulamasini gecen ",
-          "ama gercek sonucla UYUSMAYAN metadata uretirdi."
-        ), paste(cikarim$invalid, collapse = ", "))
-      ))
-    }
-
-    return(list(
-      ok = TRUE,
-      schema = cikarim$schema,
-      source_types = cikarim$source_types,
-      unmapped = cikarim$unmapped,
-      unbounded = cikarim$unbounded,
-      observations = list(),
-      sample_info = list(mode = "describe", executed = FALSE),
-      cache = list(mode = "describe", columns = cikarim$schema,
-                   source_types = cikarim$source_types,
-                   unmapped = cikarim$unmapped, unbounded = cikarim$unbounded,
-                   observations = list(),
-                   sample_info = list(mode = "describe", executed = FALSE))
-    ))
-  }
-
-  # --- sample kipi ------------------------------------------------------------
-  # NATİF TİPLER: R sınıfı `nvarchar(max)`, `xml` ya da eşlenmeyen bir tipi
-  # AYIRT EDEMEZ. Tanımlayıcı (sorguyu ÇALIŞTIRMAYAN) bu bilgiyi verir; bu
-  # yüzden önce denenir. Alınamazsa örnekleme yine yapılır, yalnızca yapısal
-  # tip bulguları üretilemez ve bu AÇIKÇA bildirilir.
-  natif <- NULL
-  tanimlayici <- .pkgn_describe(query, config, conn, describe_fn)
-  if (!inherits(tanimlayici, "condition") && is.list(tanimlayici) && length(tanimlayici)) {
-    aday <- pkgs_schema_from_descriptor(tanimlayici)
-    if (!is.null(aday) && isTRUE(aday$ok)) natif <- aday$source_types
-  }
-
-  cerceve <- tryCatch(
-    .pkgn_call_injected(
-      sample_fn,
-      positional = list(conn, query$sql, config$sample_rows),
-      optional = list(timeout_sec = config$sql_timeout_sec,
-                      max_result_mb = config$max_result_mb)
-    ),
-    error = function(e) e
-  )
-
-  if (inherits(cerceve, "condition")) {
-    return(hata_sonucu("sample_failed", "Sorgu orneklenemedi.",
-                       conditionMessage(cerceve),
-                       connection_error = .pkgn_is_connection_error(
-                         conditionMessage(cerceve))))
-  }
-  if (!is.data.frame(cerceve)) {
-    return(hata_sonucu("sample_not_dataframe", "Ornekleme data.frame dondurmedi."))
-  }
-  if (!ncol(cerceve)) {
-    return(hata_sonucu("sample_no_columns", "Ornek sonucunda sutun yok."))
-  }
-
-  cikarim <- pkgs_schema_from_dataframe(cerceve, column_types = natif)
-  if (is.null(cikarim)) {
-    return(hata_sonucu("sample_invalid_schema", "Ornek sonucundan gecerli sema cikarilamadi."))
-  }
-
-  gozlemler <- pkgs_sample_observations(
-    cerceve, config$high_cardinality_threshold, method = "prefix"
-  )
-
-  satir <- nrow(cerceve)
-  ornek_bilgi <- list(
-    mode = "sample",
-    executed = TRUE,
-    method = "prefix",
-    rows_seen = satir,
-    native_types_available = !is.null(natif),
-    # DÜRÜSTLÜK: `dbFetch(n = )` bir AKTARIM sınırdır. `dbSendQuery()` SELECT'i
-    # çalıştırır; büyük bir birleştirme/ORDER BY bu satırlar çekilmeden ÖNCE
-    # sunucuda tamamlanabilir. Gerçek koruma zaman aşımı ve bayt tavanıdır.
-    server_bounded = FALSE,
-    bound_kind = "transfer_only",
-    # 500 satırlık bir örnek 501 satırlık sonucu 5 milyondan AYIRT EDEMEZ.
-    # Bu yüzden satır sayısı tavana değdiğinde yalnızca ALT SINIR bildirilir
-    # ve row_cap geçti/kaldı iddiası ÜRETİLMEZ.
-    row_count_is_lower_bound = satir >= config$sample_rows,
-    cardinality_claim = "unknown"
-  )
-
-  list(
-    ok = TRUE,
-    schema = cikarim$schema,
-    source_types = cikarim$source_types,
-    unmapped = cikarim$unmapped,
-    unbounded = cikarim$unbounded,
-    observations = gozlemler,
-    sample_info = ornek_bilgi,
-    cache = list(mode = "sample", columns = cikarim$schema,
-                 source_types = cikarim$source_types, rows_seen = satir,
-                 unmapped = cikarim$unmapped, unbounded = cikarim$unbounded,
-                 observations = gozlemler, sample_info = ornek_bilgi)
-  )
-}
-
 #' Tüm kütüphane için envanter koşusu
 #'
-#' @param connect_fn `function(target)` -> bağlantı nesnesi ya da NULL.
-#' @param release_fn `function(handle)` -> serbest bırak.
+#' @param connect_fn `function(target, timeout_sec)` -> bağlantı nesnesi ya da
+#'   NULL. `timeout_sec` YALNIZCA işlev onu beyan ettiğinde geçirilir, böylece
+#'   testlerin sade `function(target)` sözleşmesi korunur.
+#' @param release_fn `function(handle, timeout_sec)` -> serbest bırak.
 #' @param fingerprints Devam önbelleği parmak izleri (yalnızca önbellek
 #'   girdisinin kaydedilmesi için; kabul kararı `pkgh_read_state()` içindedir).
 #' @param checkpoint_fn `function(cache)` -> her sorgudan SONRA çağrılır.
@@ -524,32 +372,82 @@ pkg_meta_run_inventory <- function(query_library, config,
                                    fingerprints = NULL, checkpoint_fn = NULL) {
   kayitlar <- list()
   yerel <- list()
+
+  # ARA KAYIT ÖNBELLEĞİ, KABUL EDİLEN GİRDİ ÖNBELLEĞİYLE TOHUMLANIR.
+  #
+  # Boş başlatıldığında, ilk sorgudan sonraki `checkpoint_fn(yeni_cache)` çağrısı
+  # `generator-state.json` dosyasını YALNIZCA o ana kadar gezilen girdilerle
+  # yeniden yazar ve HENÜZ GEZİLMEMİŞ tüm önbellek girdilerini SİLER. Koşu tam
+  # o noktada kesilirse, "kaldığı yerden devam" özelliği önceki koşunun
+  # tamamlanmış işini KAYBETTİRİRDİ. Girdi önbelleği zaten `pkgh_read_state()`
+  # tarafından parmak izi/kip/sürüm kapılarından geçirilerek KABUL edilmiştir.
+  #
+  # ŞEKİL ÖNEMLİDİR: `pkgh_read_state()` girdi başına TAM sonuç nesnesini döner
+  # (`ok`, `schema`, ... ve içinde `cache`). Durum yazıcısı ise DURUM ŞEKLİNİ
+  # (`columns`, `source_types`, `fingerprint`, ...) bekler. Tam nesneyi olduğu
+  # gibi tohumlamak `columns = NULL` yazar ve girdi sonraki okumada SESSİZCE
+  # düşerdi -- yani koruma hiç işlemezdi. Bu yüzden yalnızca `$cache` alt
+  # nesnesi taşınır; koşu içinde üretilen girdiler de aynı şekildedir.
   yeni_cache <- list()
+  if (isTRUE(config$resume) && is.list(cache)) {
+    for (onbellek_id in names(cache)) {
+      girdi <- cache[[onbellek_id]]$cache
+      if (is.list(girdi) && length(girdi)) yeni_cache[[onbellek_id]] <- girdi
+    }
+  }
 
   baglantilar <- list()
+  baglanti_hatalari <- list()
+
   baglanti_birak <- function(hedef) {
     tutamac <- baglantilar[[hedef]]
     if (is.null(tutamac)) return(invisible(NULL))
-    tryCatch(release_fn(tutamac$handle), error = function(e) NULL)
+    tryCatch(
+      .pkgn_call_injected(release_fn, positional = list(tutamac$handle),
+                          optional = list(timeout_sec = config$sql_timeout_sec)),
+      error = function(e) NULL
+    )
     baglantilar[[hedef]] <<- NULL
     invisible(NULL)
   }
 
   on.exit({
     for (hedef in names(baglantilar)) {
-      tryCatch(release_fn(baglantilar[[hedef]]$handle), error = function(e) NULL)
+      tryCatch(
+        .pkgn_call_injected(release_fn, positional = list(baglantilar[[hedef]]$handle),
+                            optional = list(timeout_sec = config$sql_timeout_sec)),
+        error = function(e) NULL
+      )
     }
   }, add = TRUE)
 
   # BAŞARISIZ BAĞLANTI ÖNBELLEĞE ALINMAZ. Tek bir geçici checkout/ağ hatası
   # önbelleğe NULL yazsaydı, o hedefteki BÜTÜN sonraki sorgular yeniden deneme
   # şansı bulamadan düşerdi.
+  #
+  # EDİNİM HATASI KORUNUR: `connect_fn()` düştüğünde koşul düz `NULL`'a
+  # çevrilirse, sağlık kaydında yalnızca genel `no_connection` kalır ve kimlik
+  # doğrulama hatası / eksik ODBC sürücüsü / oturum açma zaman aşımı / havuz
+  # checkout hatası AYIRT EDİLEMEZ olur.
   baglanti_al <- function(hedef) {
     if (!is.null(baglantilar[[hedef]])) return(baglantilar[[hedef]]$conn)
 
-    tutamac <- tryCatch(connect_fn(hedef), error = function(e) e)
-    if (inherits(tutamac, "condition") || is.null(tutamac)) return(NULL)
+    tutamac <- tryCatch(
+      .pkgn_call_injected(connect_fn, positional = list(hedef),
+                          optional = list(timeout_sec = config$sql_timeout_sec)),
+      error = function(e) e
+    )
 
+    if (inherits(tutamac, "condition")) {
+      baglanti_hatalari[[hedef]] <<- pkgh_db_error_summary(conditionMessage(tutamac))
+      return(NULL)
+    }
+    if (is.null(tutamac)) {
+      baglanti_hatalari[[hedef]] <<- NULL
+      return(NULL)
+    }
+
+    baglanti_hatalari[[hedef]] <<- NULL
     baglantilar[[hedef]] <<- list(handle = tutamac,
                                   conn = .pkgn_unwrap_connection(tutamac))
     baglantilar[[hedef]]$conn
@@ -576,43 +474,52 @@ pkg_meta_run_inventory <- function(query_library, config,
     hedef_ham <- as.character(q$db_target %||% "primary")[1]
     hedef_dogrulama <- pkg_meta_validate_db_target(hedef_ham)
     hedef <- if (isTRUE(hedef_dogrulama$ok)) hedef_dogrulama$target else hedef_ham
+    hedef_hatasi <- if (isTRUE(hedef_dogrulama$ok)) NULL else hedef_dogrulama$detail
 
     if (is.function(progress_fn)) {
       progress_fn(i, length(query_library), id %||% sprintf("index_%d", i))
     }
 
-    onbellek <- if (isTRUE(config$resume) && !is.na(id)) cache[[id]] else NULL
-    # BİLİNMEYEN HEDEFE BAĞLANILMAZ.
-    baglanti <- if (!is.null(onbellek) || !isTRUE(hedef_dogrulama$ok)) {
-      NULL
-    } else {
-      baglanti_al(hedef)
-    }
+    # YEREL KAPILAR ÖNCE ÇALIŞIR (BAĞLANTI AÇILMADAN).
+    #
+    # Kimlik/SQL/salt-okunur kararları DB GEREKTİRMEZ. Önce bağlanmak, asla
+    # veritabanına ihtiyaç duymayacak bozuk ya da reddedilmiş bir yazma sorgusu
+    # için bile gerçek bir üretim oturumu açar; erişilemeyen bir DSN'de bu, hiç
+    # gerekmeyen bir bloklamaya dönüşür.
+    onkontrol <- pkgn_precheck_query(q, config, hedef_hatasi)
 
-    sonuc <- tryCatch(
-      pkgn_inventory_one(
-        query = q, config = config, conn = baglanti,
-        describe_fn = describe_fn, sample_fn = sample_fn,
-        auto_entry = if (!is.na(id)) auto_layer[[id]] else NULL,
-        curated_entry = if (!is.na(id)) curated_layer[[id]] else NULL,
-        registry = registry,
-        cached = onbellek,
-        alias_overlay = alias_overlay,
-        target_error = if (isTRUE(hedef_dogrulama$ok)) NULL else hedef_dogrulama$detail
-      ),
-      # TEK BİR SORGU KOŞUYU DÜŞÜRMEZ.
-      error = function(e) list(
-        record = pkgh_query_record(
-          q, "failed", config$mode, error = pkgh_db_error_summary(conditionMessage(e)),
-          findings = list(pkgh_finding(
-            "inventory_exception", "attention",
-            "Envanter cikarimi sirasinda beklenmeyen hata; sorgu Tier-0 kaldi."
-          ))
+    onbellek <- if (isTRUE(config$resume) && !is.na(id)) cache[[id]] else NULL
+    baglanti <- if (!is.null(onkontrol) || !is.null(onbellek)) NULL else baglanti_al(hedef)
+
+    sonuc <- if (!is.null(onkontrol)) {
+      onkontrol
+    } else {
+      tryCatch(
+        pkgn_inventory_one(
+          query = q, config = config, conn = baglanti,
+          describe_fn = describe_fn, sample_fn = sample_fn,
+          auto_entry = if (!is.na(id)) auto_layer[[id]] else NULL,
+          curated_entry = if (!is.na(id)) curated_layer[[id]] else NULL,
+          registry = registry,
+          cached = onbellek,
+          alias_overlay = alias_overlay,
+          target_error = hedef_hatasi,
+          connect_error = baglanti_hatalari[[hedef]]
         ),
-        local_entry = NULL, cache = NULL,
-        connection_error = .pkgn_is_connection_error(conditionMessage(e))
+        # TEK BİR SORGU KOŞUYU DÜŞÜRMEZ.
+        error = function(e) list(
+          record = pkgh_query_record(
+            q, "failed", config$mode, error = pkgh_db_error_summary(conditionMessage(e)),
+            findings = list(pkgh_finding(
+              "inventory_exception", "attention",
+              "Envanter cikarimi sirasinda beklenmeyen hata; sorgu Tier-0 kaldi."
+            ))
+          ),
+          local_entry = NULL, cache = NULL,
+          connection_error = .pkgn_is_connection_error(conditionMessage(e))
+        )
       )
-    )
+    }
 
     # ÖLÜ BAĞLANTIYI BIRAK. Bağlantı seviyesinde bir hata olduysa önbellekteki
     # tutamaç artık geçersizdir; bırakılmazsa aynı hedefteki sonraki her sorgu
@@ -627,7 +534,7 @@ pkg_meta_run_inventory <- function(query_library, config,
         girdi$fingerprint <- if (!is.null(fingerprints) && !is.null(fingerprints[[id]])) {
           fingerprints[[id]]
         } else if (exists("pkgh_state_fingerprint", mode = "function", inherits = TRUE)) {
-          pkgh_state_fingerprint(q)
+          pkgh_state_fingerprint(q, config)
         } else {
           NA_character_
         }

@@ -83,12 +83,24 @@ kurumsal ağ dışına **çıkarılmaz**.
 |---|---|---|
 | `DAHIL` (`ok`) | Şema alındı, doğrulama geçti, üretilen katmana girdi | Yok |
 | `GERI CEKILDI` (`withheld`) | Şema alındı **ama** bloklayıcı bulgu var; sorgu üretilen katmana **alınmadı** | **Düzeltin** |
-| `BASARISIZ` (`failed`) | Şema alınamadı (tanımlayıcı dönmedi / sürücü hatası) | İnceleyin; `sample` kipi yardımcı olabilir |
+| `BASARISIZ` (`failed`) | Sorgu envanterlenemedi. İki ayrı sınıf: **(a)** şema alınamadı (tanımlayıcı dönmedi / sürücü hatası / bağlantı kurulamadı), **(b)** katalog/yapılandırma kusuru (`missing_query_id`, `missing_sql`, `invalid_db_target`, `malformed_library_entry`) | Yalnızca **(a)** için `sample` kipi yardımcı olabilir; **(b)** kesin bir kusurdur ve kip değiştirmek **çözmez** — katalog beyanını düzeltin |
 | `ATLANDI` (`skipped`) | SQL salt-okunur kapısından geçemedi; **çalıştırılmadı** | SQL'i inceleyin |
+
+`BASARISIZ` durumu "şema alınamadı"dan **daha geniştir**; bu yüzden sağlık özeti
+`failed_queries` (tüm nedenler) ile `schema_failures` (yalnızca şema
+alınamayanlar) sayımlarını **ayrı** raporlar. Hangi sınıfa düştüğünü sorgunun
+bulgu koduna bakarak görürsünüz.
 
 `GERI CEKILDI` bir gerileme **değildir**: o sorgu bugünkü davranışında
 (`Tier-0`, `pending_no_schema`) kalır ve istek zamanı RLS zorlaması **hiç
 değişmez**. Yalnızca gerçek şemasını kazanmamış olur.
+
+Geçici bir hata yüzünden `BASARISIZ` olan bir sorgunun **önceki geçerli**
+metadata'sı, SQL'i değişmediği sürece katmanda **korunur**; rapor bunu
+`preserved_previous` olarak işaretler ve o sorguyu `Tier-0` **saymaz**. SQL
+değiştiyse eski girdi **kaldırılır** (`removed_stale_fingerprint`): bayat bir
+sözleşmeyi canlı bırakmak, bütün-kütüphane kapısının **yakalayamayacağı** bir
+hatadır, çünkü o kapı SQL'i çalıştırmaz.
 
 ### İLERLEMEYİ DURDURAN bulgular
 
@@ -171,8 +183,14 @@ dönüş sırasındaki ilk N satır) ve **temsili değildir**. Bu yüzden yalnı
 | Eşikten az farklı değer görüldü | **Hiçbir şey kanıtlanmaz** (düşük kardinalite varsayılmaz) |
 
 500 satırlık bir örnek 501 satırlık sonucu 5 milyondan **ayırt edemez**; bu
-yüzden `row_cap` geçti/kaldı iddiası **üretilmez** (`cardinality_claim:
-"unknown"`).
+yüzden `row_cap` **geçti** iddiası hiçbir zaman üretilmez ve önek karar
+veremediğinde alan `cardinality_claim: "unknown"` kalır.
+
+Tek istisna **kanıtlanmış aşımdır**: gözlenen önek satır sayısı etkin `row_cap`
+değerini **geçmişse**, önek tek başına aşımı kanıtlar. Bu durumda
+`cardinality_claim: "row_cap_exceeded"` yazılır ve `row_cap_exceeded` bir
+**dikkat** bulgusu olarak raporlanır. Elde olan kanıtı "bilinmiyor" diye
+gizlemek doğru olmazdı.
 
 Üretici SQL'i **sarmalamaz** (`SELECT TOP n FROM (...)` yok): üretim sorguları
 `ORDER BY` / CTE / `OPTION(...)` içerebilir ve sarmalamak hem sorguyu bozar hem

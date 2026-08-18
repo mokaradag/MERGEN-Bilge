@@ -71,7 +71,12 @@ pkgh_query_record <- function(query, status, mode, schema = NULL, findings = lis
   list(
     query_id = kimlik,
     query_name = as.character(query$name %||% NA_character_)[1],
-    db_target = as.character(query$db_target %||% "primary")[1],
+    # KANONİK HEDEF: envanter, hedefi büyük/küçük harf ve boşluktan bağımsız
+    # doğrular ve BAĞLANTIYI kanonik `primary`/`secondary`/`tertiary` değeriyle
+    # açar. Ham alanı yeniden serileştirmek, `" Secondary "` gibi geçerli bir
+    # beyanda `health.json` içinde ÇALIŞTIRILANDAN FARKLI bir hedef bildirir ve
+    # makine tarafında kararlı gruplama/korelasyonu kırar.
+    db_target = .pkgh_canonical_db_target(query$db_target),
     status = status,
     mode = as.character(mode)[1],
     schema_obtained = sema_var,
@@ -90,9 +95,53 @@ pkgh_query_record <- function(query, status, mode, schema = NULL, findings = lis
     semantics_checked = dahil,
     needs_curation = dahil && any(kodlar == "no_semantic_capability"),
     error = if (is.null(error)) NA_character_ else .pkgh_redact(error),
-    sample = sample_info,
+    # TÜR KARARLILIĞI: `auto_unbox = TRUE` altında BOŞ ADSIZ liste `[]` (dizi),
+    # dolu liste ise `{...}` (nesne) olur. Aynı alanın sorgu durumuna göre tür
+    # değiştirmesi, şema kararlı makine tüketicilerini KIRAR. Boş durum bu
+    # yüzden `null` olarak yazılır.
+    sample = if (is.list(sample_info) && length(sample_info)) sample_info else NULL,
     findings = findings
   )
+}
+
+# Envanter ile AYNI kanonikleştirme. Doğrulayıcı yoksa (izole test) ham değer
+# korunur; bir teşhis alanı için sessiz bir varsayılan uydurmak yanlış olurdu.
+.pkgh_canonical_db_target <- function(raw) {
+  ham <- as.character(raw %||% "primary")[1]
+  if (is.na(ham) || !nzchar(trimws(ham))) return("primary")
+
+  if (exists("pkg_meta_validate_db_target", mode = "function", inherits = TRUE)) {
+    dogrulama <- tryCatch(pkg_meta_validate_db_target(ham), error = function(e) NULL)
+    if (is.list(dogrulama) && isTRUE(dogrulama$ok)) return(as.character(dogrulama$target)[1])
+  }
+  trimws(ham)
+}
+
+# ÜRETİLEN KATMANLA UZLAŞTIRMA.
+#
+# `pkgc_merge_local_layers()` GEÇİCİ bir başarısızlıkta önceki GEÇERLİ girdiyi
+# KORUR. Kayıt yalnızca BU KOŞUNUN getirme durumuna baktığı için, o sorgu son
+# katmanda gerçek bir şemayla dururken raporda `pending_no_schema`/Tier-0 diye
+# görünürdü. Hazırlık durumu SON ADAY KATMANDAN türetilir.
+#
+# `withheld` ve `ok` durumları DEĞİŞMEZ: `ok` zaten `validated`, `withheld` ise
+# bilinçli olarak katmandan çıkarılmıştır.
+pkgh_reconcile_records_with_layer <- function(records, layer) {
+  katman <- if (is.list(layer)) layer else list()
+  if (!length(records)) return(records)
+
+  lapply(records, function(r) {
+    durum <- .pkgh_status_of(r)
+    if (!(durum %in% c("failed", "skipped"))) return(r)
+
+    id <- as.character(r$query_id %||% NA_character_)[1]
+    if (is.na(id) || is.null(katman[[id]])) return(r)
+
+    r$schema_validation <- "preserved_previous"
+    r$tier0 <- FALSE
+    r$preserved_previous <- TRUE
+    r
+  })
 }
 
 #' Rapor özetini hesapla
@@ -117,6 +166,10 @@ pkgh_summarize <- function(records) {
     blocking_queries = say(function(r) r$blocking_count > 0L),
     attention_queries = say(function(r) r$attention_count > 0L),
     tier0_queries = say(function(r) isTRUE(r$tier0)),
+    # Bu koşuda sorgulanamayan ama ÖNCEKİ geçerli metadata'sı katmanda KALAN
+    # sorgular. Tier-0 sayısından ayrı raporlanır, aksi hâlde operatör bunları
+    # şemasız sanır.
+    preserved_previous = say(function(r) isTRUE(r$preserved_previous)),
     queries_needing_curation = say(function(r) isTRUE(r$needs_curation)),
     queries_with_semantics = say(function(r) {
       isTRUE(r$semantics_checked) && !isTRUE(r$needs_curation)
@@ -170,6 +223,7 @@ pkgh_render_text <- function(summary, records, config_summary) {
     sprintf("Atlanan (guvenlik/gate)    : %d", summary$skipped),
     sprintf("RLS/GUVENLIK bulgusu olan  : %d", summary$rls_mismatches),
     sprintf("Tier-0 kalan               : %d", summary$tier0_queries),
+    sprintf("Onceki metadata KORUNAN    : %d", summary$preserved_previous %||% 0L),
     sprintf("Anlamsal kuresyon gereken  : %d", summary$queries_needing_curation),
     ""
   )
@@ -250,11 +304,21 @@ pkgh_stabilize_report <- function(x, array_fields = PKG_HEALTH_ARRAY_FIELDS) {
   if (is.list(x)) {
     adlar <- names(x)
     for (i in seq_along(x)) {
-      x[[i]] <- pkgh_stabilize_report(x[[i]], array_fields)
+      oge <- pkgh_stabilize_report(x[[i]], array_fields)
+
       ad <- if (is.null(adlar)) "" else as.character(adlar[i])
-      if (nzchar(ad) && ad %in% array_fields && is.atomic(x[[i]])) {
-        x[[i]] <- I(unname(x[[i]]))
+      if (nzchar(ad) && ad %in% array_fields && !is.null(oge) && is.atomic(oge)) {
+        oge <- I(unname(oge))
       }
+
+      # NULL ATAMASI ÖGEYİ SİLER.
+      #
+      # `x[[i]] <- NULL` bir liste ögesini KALDIRIR ve kalan ögeleri KAYDIRIR;
+      # döngü de sonraki turda "subscript out of bounds" ile düşer. Rapor
+      # kayıtları bilinçli olarak `NULL` alan taşır (örneğin boş `sample`,
+      # `null = "null"` ile JSON `null` olarak yazılır), bu yüzden değer
+      # `x[i] <- list(oge)` ile KORUNARAK atanır.
+      x[i] <- list(oge)
     }
     return(x)
   }
@@ -292,13 +356,35 @@ pkgh_stabilize_report <- function(x, array_fields = PKG_HEALTH_ARRAY_FIELDS) {
 #' `run_id` milisaniye + süreç kimliği taşıdığı için çarpışma pratikte olanaksız
 #' olsa da, var olan bir rapor dizini ASLA üzerine yazılmaz.
 pkgh_allocate_artifact_dir <- function(artifact_dir, max_suffix = 50L) {
+  dolu <- function(yol) dir.exists(yol) && length(list.files(yol)) > 0L
+
   aday <- artifact_dir
   i <- 1L
-  while (dir.exists(aday) && length(list.files(aday)) > 0L && i <= max_suffix) {
+  while (dolu(aday) && i <= max_suffix) {
     i <- i + 1L
     aday <- sprintf("%s-%d", artifact_dir, i)
   }
+
+  # SON ADAY DA DOLUYSA HATA VERİLİR.
+  #
+  # Döngü yalnızca `i > max_suffix` olduğu için de sonlanabilir; o durumda son
+  # aday SINANMAMIŞTIR. `dir.create(showWarnings = FALSE)` var olan dizin için
+  # SESSİZCE başarısız olur ve fonksiyon DOLU dizini döndürürdü; artefakt
+  # yazıcısı da önceki koşunun `health.json`/`health.txt` dosyalarını EZERDİ --
+  # bu, ilan edilen "asla üzerine yazma" sözleşmesinin tam tersidir.
+  if (dolu(aday)) {
+    stop(sprintf(paste0(
+      "[PK_META_GEN] Artefakt dizini AYRILAMADI: '%s' ve %d sonek adayinin ",
+      "tamami DOLU. Onceki kosu raporlarinin uzerine YAZILMAMASI icin kosu ",
+      "durduruldu; artifacts dizinini temizleyin."
+    ), artifact_dir, max_suffix), call. = FALSE)
+  }
+
   dir.create(aday, recursive = TRUE, showWarnings = FALSE)
+  if (!dir.exists(aday)) {
+    stop(sprintf("[PK_META_GEN] Artefakt dizini OLUSTURULAMADI: '%s'.", aday),
+         call. = FALSE)
+  }
   aday
 }
 
@@ -344,6 +430,7 @@ pkgh_render_console <- function(summary, records) {
     sprintf("[PK_META_GEN] Atlanan                 : %d", summary$skipped),
     sprintf("[PK_META_GEN] RLS/GUVENLIK bulgusu    : %d", summary$rls_mismatches),
     sprintf("[PK_META_GEN] Tier-0 kalan            : %d", summary$tier0_queries),
+    sprintf("[PK_META_GEN] Onceki metadata korunan : %d", summary$preserved_previous %||% 0L),
     sprintf("[PK_META_GEN] Kuresyon bekleyen       : %d", summary$queries_needing_curation)
   )
 

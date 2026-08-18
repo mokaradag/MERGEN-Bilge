@@ -74,7 +74,7 @@ PKG_META_DB_TARGET_ENV <- c(
 # Devam (resume) durum dosyası biçim sürümü. Üretici mantığı değiştiğinde eski
 # önbellek YOK SAYILIR; böylece eski bir koşunun kanıt alanları yeni sürümün
 # sözleşmesine sessizce taşınmaz.
-PKG_META_STATE_VERSION <- 2L
+PKG_META_STATE_VERSION <- 3L
 
 .pkg_env_text <- function(name, default = "") {
   ham <- Sys.getenv(name, unset = "")
@@ -200,12 +200,18 @@ pkg_meta_resolve_config <- function(repo_root = ".", now = Sys.time()) {
   # bu eşiğin ÜSTÜNE çıkmak TRUE kanıtlar; altında kalmak hiçbir şey kanıtlamaz).
   kardinalite_esigi <- .pkg_env_whole("MERGEN_PK_META_HIGH_CARD_MIN", 50L, min = 2L)
 
-  # ULAŞILAMAZ EŞİK REDDEDİLİR.
+  # ULAŞILAMAZ EŞİK REDDEDİLİR -- YALNIZCA `sample` KİPİNDE.
   #
   # `distinct_observed` en fazla `sample_rows` olabilir; eşik ona eşit ya da
   # ondan büyükse `high_cardinality = TRUE` KANITI hiçbir sütun için
   # üretilemez. Bu, sessizce "kanıt yok" üretmek yerine açıkça reddedilir.
-  if (kardinalite_esigi >= ornek_satir) {
+  #
+  # KİP KAPISI ZORUNLUDUR: `describe` kipi ne `sample_rows` ne de kardinalite
+  # eşiğini KULLANIR. Çapraz kontrol koşulsuz çalıştığında, önceki bir örnekleme
+  # koşusundan kalan `MERGEN_PK_META_SAMPLE_ROWS=10` +
+  # `MERGEN_PK_META_HIGH_CARD_MIN=50` çifti, üretim sorgularını ÇALIŞTIRMAYAN
+  # güvenli describe envanterini de imkânsız kılardı.
+  if (identical(kip$mode, "sample") && kardinalite_esigi >= ornek_satir) {
     stop(sprintf(paste0(
       "[PK_META_GEN] MERGEN_PK_META_HIGH_CARD_MIN (%d) ",
       "MERGEN_PK_META_SAMPLE_ROWS (%d) degerinden KUCUK olmalidir; aksi halde ",
@@ -230,6 +236,12 @@ pkg_meta_resolve_config <- function(repo_root = ".", now = Sys.time()) {
     high_cardinality_threshold = kardinalite_esigi,
     sql_timeout_sec = .pkg_env_whole("MERGEN_PK_META_SQL_TIMEOUT_SEC", 120L, min = 1L),
     max_result_mb = .pkg_env_whole("MERGEN_PK_META_MAX_RESULT_MB", 64L, min = 1L),
+    # ÖRNEKLEME UNICODE PARAMETRE YOLU. Doğrudan çalıştırma anında okunsaydı
+    # iki sorun doğardı: (1) değer koşu yapılandırma özetine GİRMEZ, dolayısıyla
+    # iki örnekleme koşusu FARKLI ODBC yolları kullanırken raporlarda AYIRT
+    # EDİLEMEZ olurdu; (2) yalnızca birebir `false` metni kapatırdı, oysa
+    # üreticinin diğer bayrakları `0`/`no`/`kapali` biçimlerini de kabul eder.
+    sample_unicode = .pkg_env_flag("MERGEN_PK_META_SAMPLE_UNICODE", TRUE),
     # Kesintiye uğrayan bir koşuyu kaldığı yerden sürdürür. Operatör temiz bir
     # koşu istediğinde FALSE yapar.
     resume = .pkg_env_flag("MERGEN_PK_META_RESUME", TRUE)
@@ -247,6 +259,7 @@ pkg_meta_config_summary <- function(config) {
     high_cardinality_threshold = config$high_cardinality_threshold,
     sql_timeout_sec = config$sql_timeout_sec,
     max_result_mb = config$max_result_mb,
+    sample_unicode = isTRUE(config$sample_unicode),
     resume = isTRUE(config$resume),
     output_rel = config$output_rel,
     artifact_rel = config$artifact_rel,

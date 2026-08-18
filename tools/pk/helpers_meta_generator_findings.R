@@ -1,6 +1,9 @@
 # ==============================================================================
 # Dosya Yolu: tools/pk/helpers_meta_generator_findings.R
-# Açıklama: Faz 3b metadata üreticisi -- BULGU ÜRETİMİ ve GİZLİLİK MASKELEME.
+# Açıklama: Faz 3b metadata üreticisi -- YAPISAL BULGU ÜRETİMİ.
+#
+#           GİZLİLİK MASKELEME ve HATA SINIFLANDIRMA AYRI DOSYADADIR:
+#           helpers_meta_generator_redact.R (bu dosyadan ÖNCE yüklenir).
 #
 # BU DOSYA ÇALIŞMA ZAMANI KODU DEĞİLDİR; kaynak manifestine EKLENMEZ.
 #
@@ -21,32 +24,6 @@
 #   info      -> bilgilendirme.
 PKG_HEALTH_SEVERITIES <- c("blocking", "attention", "info")
 
-# Bağlantı dizesi anahtarları. Değer, `;` görünene KADAR ya da süslü/tırnaklı
-# bir blok olarak maskelenir: `DSN={Prod SQL};UID={DOMAIN User};` biçimi
-# boşluktan kesildiğinde `SQL}` / `User}` artıkları raporda KALIRDI.
-.PKGH_SECRET_KEYS <- paste(
-  c("dsn", "uid", "pwd", "password", "server", "database", "driver",
-    "address", "addr", "app", "user", "user id", "uid", "trusted_connection",
-    "authentication", "encrypt", "token", "apikey", "api_key", "secret"),
-  collapse = "|"
-)
-
-.pkgh_redact <- function(x) {
-  metin <- as.character(x %||% "")[1]
-  if (is.na(metin)) return("")
-  if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
-    metin <- tryCatch(redact_sensitive_text(metin), error = function(e) metin)
-  }
-  # Yerel yedek: bağlantı dizesi değerinin TAMAMINI maskele (süslü/tırnaklı
-  # bloklar dahil), sonraki anahtar/değer çiftlerine dokunmadan.
-  metin <- gsub(
-    sprintf("(?i)\\b(%s)\\s*=\\s*(\\{[^}]*\\}|\"[^\"]*\"|'[^']*'|[^;]*)", .PKGH_SECRET_KEYS),
-    "\\1=<gizli>", metin, perl = TRUE
-  )
-  metin <- gsub("(?i)(https?://)[^\\s;'\"]+", "\\1<gizli>", metin, perl = TRUE)
-  metin
-}
-
 #' Tek bir bulgu kaydı
 pkgh_finding <- function(code, severity, detail, columns = character(0),
                          security = FALSE) {
@@ -58,88 +35,6 @@ pkgh_finding <- function(code, severity, detail, columns = character(0),
     detail = .pkgh_redact(detail),
     columns = as.character(columns %||% character(0))
   )
-}
-
-# Sürücü hatası metni SATIR DEĞERİ TAŞIYABİLİR.
-#
-# Salt-okunur bir SQL Server sorgusu bile "Conversion failed when converting
-# the nvarchar value 'Ahmet Yılmaz' to data type int" gibi bir hata verebilir;
-# bu metin ÜRETİM SATIR DEĞERİ içerir ve `.pkgh_redact()` yalnızca gizli anahtar
-# kalıplarını temizler. Bu yüzden ham sürücü metni ASLA rapora yazılmaz;
-# yerine KARARLI bir sınıflandırma kodu ve (varsa) SQLSTATE/hata numarası
-# yazılır. Bunların ikisi de operatörün teşhis için ihtiyaç duyduğu, satır
-# değeri TAŞIMAYAN bilgilerdir.
-.PKGH_ERROR_CLASSES <- list(
-  timeout             = "timeout|zaman asimi|query timeout|hywat|hyt00|hyt01",
-  connection_lost     = "08s01|08001|08003|communication link|connection is closed|connection was closed|not connected|baglanti",
-  permission_denied   = "permission|denied|unauthorized|login failed|28000|42000.*permission",
-  object_missing      = "invalid object name|invalid column name|could not find|does not exist",
-  conversion_failed   = "conversion failed|arithmetic overflow|cannot convert|out-of-range",
-  syntax_error        = "incorrect syntax|syntax error|42s02|42s22",
-  driver_unavailable  = "driver|im002|im003|data source name"
-)
-
-#' Sürücü/DB hatasını GÜVENLİ bir özet metnine indir
-#'
-#' @return Rapora yazılabilir, satır değeri TAŞIMAYAN metin.
-pkgh_db_error_summary <- function(message) {
-  ham <- as.character(message %||% "")[1]
-  if (is.na(ham) || !nzchar(trimws(ham))) {
-    return("DB hatasi (sinif=unknown). Ham surucu metni rapora GIRMEZ.")
-  }
-
-  kucuk <- tolower(ham)
-  sinif <- "unknown"
-  for (ad in names(.PKGH_ERROR_CLASSES)) {
-    if (grepl(.PKGH_ERROR_CLASSES[[ad]], kucuk, perl = TRUE, useBytes = TRUE)) {
-      sinif <- ad
-      break
-    }
-  }
-
-  # SQLSTATE ve sürücü hata numarası kararlı tanımlayıcılardır; satır değeri
-  # içermezler ve operatörün araması için en değerli iki alandır.
-  durum <- regmatches(ham, regexpr("[0-9A-Za-z]{5}(?=\\])", ham, perl = TRUE))
-  numara <- regmatches(ham, regexpr("(?i)(?<=error )[0-9]{3,6}", ham, perl = TRUE))
-
-  parcalar <- c(
-    sprintf("sinif=%s", sinif),
-    if (length(durum) == 1L && nzchar(durum)) sprintf("sqlstate=%s", durum),
-    if (length(numara) == 1L && nzchar(numara)) sprintf("hata_no=%s", numara)
-  )
-
-  sprintf(paste0(
-    "DB hatasi (%s). Ham surucu metni URETIM SATIR DEGERI tasiyabildigi icin ",
-    "rapora YAZILMAZ; tam metin yalnizca operatorun kendi oturum konsolundadir."
-  ), paste(parcalar, collapse = ", "))
-}
-
-#' Başlangıç doğrulama hatasını rapora GÜVENLİ biçimde hazırla
-#'
-#' `pk_query_meta_attach()` çıktısı, üretimden türetilmiş
-#' `R/library_query_aliases_local.R` bindirmesini de uygular; alias hataları
-#' KANONİK HEDEF değerleri (gerçek proje/program adları) taşıyabilir. Bu yüzden
-#' alias ile ilgili satırlar sabit bir metne indirgenir; sorgu kimliği
-#' (kararlı tanımlayıcı) korunur.
-pkgh_sanitize_validation_error <- function(message) {
-  ham <- as.character(message %||% "")[1]
-  if (is.na(ham) || !nzchar(ham)) return(NA_character_)
-
-  satirlar <- strsplit(ham, "\n", fixed = TRUE)[[1]]
-  temiz <- vapply(satirlar, function(satir) {
-    if (grepl("alias", satir, ignore.case = TRUE, useBytes = TRUE)) {
-      kimlik <- regmatches(satir, regexpr("^\\s*-?\\s*\\[[^]]+\\]", satir))
-      onek <- if (length(kimlik) == 1L) trimws(kimlik) else "-"
-      return(paste0(
-        onek, " alias bindirmesi dogrulamasi basarisiz. Ayrinti operator ",
-        "oturumundadir; kanonik hedef degerleri (uretim proje/program adlari) ",
-        "rapora YAZILMAZ."
-      ))
-    }
-    satir
-  }, character(1), USE.NAMES = FALSE)
-
-  .pkgh_redact(paste(temiz, collapse = "\n"))
 }
 
 # Beyan edilen RLS sütun adlarını topla (biçimi GEÇERLİ olduğunda).
@@ -160,6 +55,15 @@ pkgh_sanitize_validation_error <- function(message) {
 # `query_library` ögesinin kendisinde yaşar; runtime bunları SESSİZCE atlar
 # (`date_columns`) ya da bayat listeyi istatistik özetine GEÇİRİR
 # (`pre_aggregated_columns`). Bu yüzden sağlık denetimine dahil edilirler.
+#
+# BEYAN EDİLEN AD AYNEN KARŞILAŞTIRILIR (KIRPILMAZ).
+#
+# `convert_date_columns()` beyan edilen dizeleri OLDUĞU GİBİ gezer ve her birini
+# tam `%in% names(data)` eşleşmesiyle sınar; kırpma YAPMAZ. Burada `trimws()`
+# uygulamak, `" Tarih "` gibi bozuk bir beyanı `"Tarih"` sonuç sütunuyla
+# EŞLEŞMİŞ sayar ve hiçbir bulgu üretilmez -- oysa runtime o tarih çevrimini
+# SESSİZCE ATLAR. Rapor, uygulamanın KULLANMAYACAĞI bir beyanı "temiz" diye
+# onaylayamaz.
 .pkgh_query_column_refs <- function(query) {
   if (!is.list(query)) return(list())
   cikti <- list()
@@ -167,9 +71,59 @@ pkgh_sanitize_validation_error <- function(message) {
     deger <- query[[alan]]
     if (!is.character(deger) || !length(deger)) next
     temiz <- deger[!is.na(deger) & nzchar(trimws(deger))]
-    if (length(temiz)) cikti[[alan]] <- unique(trimws(temiz))
+    if (length(temiz)) cikti[[alan]] <- unique(temiz)
   }
   cikti
+}
+
+# ÖZEL BULGULARIN ZATEN KAPSADIĞI DOĞRULAYICI MESAJ İMZALARI.
+#
+# `pk_meta_validate_schema_dependent()` / `.pk_meta_validate_rls_columns()`
+# mesajları KARARLI metin şablonlarıdır; her şablon yukarıdaki özel bulgulardan
+# BİRİNE karşılık gelir. Eşleşme bu şablon parçaları üzerinden yapılır, böylece
+# yeni bir doğrulayıcı hatası (henüz özel bulgusu olmayan) SESSİZCE
+# bilgilendirmeye düşmez, bloklayıcı kalır.
+.PKGH_VALIDATOR_COVERAGE <- list(
+  rls_declaration_invalid = c(
+    "rls_columns adlandirilmis liste olmalidir",
+    "rls_columns icinde tekrar eden alan",
+    "rls_columns bilinmeyen alan iceriyor",
+    "ya NULL ya tek bos olmayan sutun adi olmalidir"
+  ),
+  rls_column_missing = "D6 fail-open deligi",
+  duplicate_result_column = "result_schema icinde tekrar eden sutun adi",
+  column_meta_missing_in_schema = "column_meta sutunu semada yok",
+  grain_columns_missing_in_schema = "metadata atifi semada yok",
+  default_group_by_missing_in_schema = "metadata atifi semada yok",
+  default_measures_missing_in_schema = "metadata atifi semada yok",
+  primary_entity_missing_in_schema = "metadata atifi semada yok",
+  role_type_mismatch = c("role='date' ama semadaki tip", "role='measure' ama semadaki tip"),
+  role_type_mismatch_declared_date = "role='date' ama semadaki tip"
+)
+
+# Doğrulayıcı mesajlarını, ZATEN bloklayıcı bir özel bulguyla temsil edilenler
+# ve edilmeyenler olarak ayır.
+.pkgh_split_validator_messages <- function(blocking, findings) {
+  imzalar <- character(0)
+  for (f in findings) {
+    if (!identical(f$severity, "blocking")) next
+    kod <- as.character(f$code %||% "")[1]
+    if (!nzchar(kod)) next
+    imzalar <- c(imzalar, .PKGH_VALIDATOR_COVERAGE[[kod]] %||% character(0))
+  }
+  imzalar <- unique(imzalar)
+
+  mesajlar <- as.character(blocking)
+  mesajlar <- mesajlar[!is.na(mesajlar) & nzchar(mesajlar)]
+  if (!length(imzalar)) return(list(covered = character(0), uncovered = mesajlar))
+
+  kapsanan <- vapply(mesajlar, function(m) {
+    any(vapply(imzalar, function(imza) {
+      grepl(imza, m, fixed = TRUE, useBytes = TRUE)
+    }, logical(1)))
+  }, logical(1), USE.NAMES = FALSE)
+
+  list(covered = mesajlar[kapsanan], uncovered = mesajlar[!kapsanan])
 }
 
 #' Sorgu için YAPISAL sağlık bulgularını üret
@@ -415,20 +369,33 @@ pkgh_structural_findings <- function(query, merged, schema, blocking = character
 
   # --- 5) Başlangıcı düşürecek ham bulgular (otoriter) --------------------------
   # `pk_meta_validate_schema_dependent()` başlangıçta ÇALIŞAN doğrulayıcıdır.
-  # KARAR bu listeden verilir; ancak yukarıdaki ÖZEL bulgular aynı kusuru zaten
-  # bloklayıcı saydıysa, aynı kusuru İKİNCİ KEZ bloklayıcı saymak
-  # `blocking_count` değerini ve insan raporunu ŞİŞİRİR. Bu yüzden özel bir
-  # bloklayıcı bulgu varken doğrulayıcı yükü TEŞHİS ayrıntısı olarak saklanır.
+  # KARAR bu listeden verilir.
+  #
+  # YİNELEME YALNIZCA MESAJ BAZINDA ELENİR, TOPLU DEĞİL.
+  #
+  # Eskiden herhangi bir özel bloklayıcı bulgu varken doğrulayıcı yükünün
+  # TAMAMI `info` şiddetine düşürülüyordu. `blocking` birden çok BAĞIMSIZ
+  # doğrulayıcı hatası taşıyabilir; `health.txt` `info` bulgularını atladığı
+  # için (örneğin) RLS uyuşmazlığı + ayrı bir metadata kusuru olan bir sorguda
+  # operatör yalnızca RLS'i görür, onu düzeltir, yeniden koşar ve İKİNCİ
+  # bloklayıcıyı ancak o zaman keşfeder. Bu yüzden yalnızca ÖZEL bir bulguyla
+  # ZATEN temsil edilen mesajlar ayrıntıya indirilir; temsil edilmeyenler
+  # BLOKLAYICI kalır.
   if (length(blocking)) {
-    zaten_bloklayici <- any(vapply(bulgular, function(f) {
-      identical(f$severity, "blocking")
-    }, logical(1)))
+    bolunmus <- .pkgh_split_validator_messages(blocking, bulgular)
 
-    bulgular <- c(bulgular, list(pkgh_finding(
-      if (zaten_bloklayici) "startup_validation_detail" else "startup_validation_would_fail",
-      if (zaten_bloklayici) "info" else "blocking",
-      paste(blocking, collapse = " | ")
-    )))
+    if (length(bolunmus$uncovered)) {
+      bulgular <- c(bulgular, list(pkgh_finding(
+        "startup_validation_would_fail", "blocking",
+        paste(bolunmus$uncovered, collapse = " | ")
+      )))
+    }
+    if (length(bolunmus$covered)) {
+      bulgular <- c(bulgular, list(pkgh_finding(
+        "startup_validation_detail", "info",
+        paste(bolunmus$covered, collapse = " | ")
+      )))
+    }
   }
 
   bulgular

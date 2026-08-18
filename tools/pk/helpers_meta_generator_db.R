@@ -42,6 +42,46 @@
   fn()
 }
 
+# SORGU BAŞINA MUTLAK SON TARİH.
+#
+# `MERGEN_PK_META_SQL_TIMEOUT_SEC` SORGU BAŞINA bir tavandır. Her `dbFetch()`
+# çağrısına TAM bütçeyi vermek, `dbSendQuery()` zaten aynı tam bütçeyi almışken,
+# tek bir örneklemenin (varsayılan 500 satır / 200'lük parça) yaklaşık DÖRT
+# zaman aşımı penceresi tüketmesine yol açar; `sample_rows` büyüdükçe bu katsayı
+# da büyür. Bu yüzden bütçe koşunun BAŞINDA mutlak bir son tarihe çevrilir ve
+# her bloklayan çağrıya YALNIZCA KALAN süre verilir.
+.pkgd_deadline <- function(timeout_sec) {
+  sinir <- suppressWarnings(as.numeric(timeout_sec)[1])
+  if (length(sinir) != 1L || is.na(sinir) || !is.finite(sinir) || sinir <= 0) {
+    return(NULL)
+  }
+  Sys.time() + sinir
+}
+
+.pkgd_remaining <- function(deadline) {
+  if (is.null(deadline)) return(NULL)
+  kalan <- suppressWarnings(as.numeric(difftime(deadline, Sys.time(), units = "secs")))
+  if (length(kalan) != 1L || is.na(kalan)) return(NULL)
+  # Bütçe tükendiyse çağrı BAŞLATILMAZ; sıfır/negatif bir sınır `setTimeLimit()`
+  # için anlamsızdır ve "sınırsız" gibi davranırdı.
+  if (kalan <= 0) {
+    stop(paste0(
+      "[PK_META_GEN] Sorgu basina zaman butcesi TUKENDI ",
+      "(MERGEN_PK_META_SQL_TIMEOUT_SEC). Kalan surucu cagrisi BASLATILMADI."
+    ), call. = FALSE)
+  }
+  kalan
+}
+
+# Kalan bütçeyle sınırlı çağrı.
+.pkgd_bounded_until <- function(fn, deadline) {
+  .pkgd_bounded(fn, .pkgd_remaining(deadline))
+}
+
+# Sonuç temizliği için TABAN süre. Bütçe tükenmiş olsa bile açık bir ODBC
+# sonucunu iptal etmeye kısa bir şans tanınır; aksi hâlde bağlantı kirli kalır.
+.PKGD_CLEANUP_MIN_SEC <- 5
+
 .pkgd_is_sql_server <- function(conn) {
   inherits(conn, "OdbcConnection") || inherits(conn, "Microsoft SQL Server")
 }
@@ -53,7 +93,14 @@
 #' `.DEFAULT_DSN = Sys.getenv("DB_DSN", "TestConnection")` geliştirme yedeği,
 #' `DB_DSN` tanımsızken üreticiyi YANLIŞ bir veritabanını envanterlemeye
 #' götürebilirdi. Üretimden türetilmiş metadata için bu KAPALI BAŞARISIZ olur.
-pkg_default_connect_fn <- function(target = "primary") {
+#' @param timeout_sec Yapılandırılmış üretici zaman aşımı. BAĞLANTI EDİNİMİ DE
+#'   SINIRLANIR: `get_connection()` / `db_acquire_tx_connection()` bir PK isteği
+#'   dışında üreticinin bütçesini BİLMEZ ve kendi sürücü/oturum açma/havuz
+#'   bekleme politikasını uygular. Erişilemeyen bir DSN ya da tıkanmış bir havuz
+#'   checkout'u, sınırlı hiçbir describe/fetch çağrısı BAŞLAMADAN koşuyu
+#'   kilitleyebilirdi -- oysa operatör sözleşmesi "her bloklayan sürücü çağrısı
+#'   sınırlıdır" der.
+pkg_default_connect_fn <- function(target = "primary", timeout_sec = NULL) {
   dogrulama <- pkg_meta_validate_db_target(target)
   if (!isTRUE(dogrulama$ok)) {
     stop(sprintf("[PK_META_GEN] %s", dogrulama$detail), call. = FALSE)
@@ -77,26 +124,40 @@ pkg_default_connect_fn <- function(target = "primary") {
   if (exists("db_acquire_tx_connection", mode = "function", inherits = TRUE) &&
       exists("is_db_pool_enabled", mode = "function", inherits = TRUE) &&
       isTRUE(tryCatch(is_db_pool_enabled(), error = function(e) FALSE))) {
-    return(db_acquire_tx_connection(dogrulama$target))
+    return(.pkgd_bounded(function() db_acquire_tx_connection(dogrulama$target), timeout_sec))
   }
 
   if (!exists("get_connection", mode = "function", inherits = TRUE)) {
     stop("[PK_META_GEN] get_connection bulunamadi; uygulama bootstrap'i yuklenmedi.",
          call. = FALSE)
   }
-  get_connection(dogrulama$target)
+  .pkgd_bounded(function() get_connection(dogrulama$target), timeout_sec)
 }
 
-pkg_default_release_fn <- function(handle) {
+#' @param timeout_sec Bırakma da SINIRLIDIR: havuza iade ya da `dbDisconnect()`
+#'   kirli/ölü bir tutamaçta bloklayabilir. Bütçe verilmediğinde taban temizlik
+#'   süresi uygulanır; sonsuza dek beklemek koşuyu kilitlerdi.
+pkg_default_release_fn <- function(handle, timeout_sec = NULL) {
   if (is.null(handle)) return(invisible(NULL))
+
+  sinir <- suppressWarnings(as.numeric(timeout_sec)[1])
+  if (length(sinir) != 1L || is.na(sinir) || !is.finite(sinir) || sinir <= 0) {
+    sinir <- .PKGD_CLEANUP_MIN_SEC
+  }
 
   if (is.list(handle) && isTRUE(handle$checked_out) &&
       exists("db_release_tx_connection", mode = "function", inherits = TRUE)) {
-    return(invisible(tryCatch(db_release_tx_connection(handle), error = function(e) NULL)))
+    return(invisible(tryCatch(
+      .pkgd_bounded(function() db_release_tx_connection(handle), sinir),
+      error = function(e) NULL
+    )))
   }
 
   if (exists("release_connection", mode = "function", inherits = TRUE)) {
-    return(invisible(tryCatch(release_connection(handle), error = function(e) NULL)))
+    return(invisible(tryCatch(
+      .pkgd_bounded(function() release_connection(handle), sinir),
+      error = function(e) NULL
+    )))
   }
   invisible(NULL)
 }
@@ -150,11 +211,8 @@ pkg_default_describe_fn <- function(conn, sql, timeout_sec = NULL) {
 # gönderir. Üretici aynı yolu kullanır, böylece uygulamada ÇALIŞAN bir sorgu
 # yalnızca üreticide başarısız olmaz. Metin DEĞİŞTİRİLMEZ: kapıdan geçen metin
 # ile parametre olarak gönderilen metin AYNIDIR.
-.pkgd_send_sample_query <- function(conn, sql) {
-  unicode_acik <- !identical(
-    tolower(trimws(Sys.getenv("MERGEN_PK_META_SAMPLE_UNICODE", unset = "true"))),
-    "false"
-  )
+.pkgd_send_sample_query <- function(conn, sql, unicode = TRUE) {
+  unicode_acik <- isTRUE(unicode)
 
   if (unicode_acik && .pkgd_is_sql_server(conn)) {
     sarmalayici <- paste(
@@ -185,7 +243,7 @@ pkg_default_describe_fn <- function(conn, sql, timeout_sec = NULL) {
 #' koruma bu yüzden ZAMAN AŞIMI ve BAYT TAVANIDIR; ikisi de burada uygulanır ve
 #' sağlık kaydında `server_bounded = FALSE` olarak BİLDİRİLİR.
 pkg_default_sample_fn <- function(conn, sql, sample_rows = 500L, timeout_sec = NULL,
-                                  max_result_mb = NULL) {
+                                  max_result_mb = NULL, sample_unicode = TRUE) {
   if (!requireNamespace("DBI", quietly = TRUE)) {
     stop("[PK_META_GEN] DBI paketi gerekli.", call. = FALSE)
   }
@@ -199,9 +257,26 @@ pkg_default_sample_fn <- function(conn, sql, sample_rows = 500L, timeout_sec = N
   }
   tavan_bayt <- tavan_mb * 1024 * 1024
 
-  sonuc <- .pkgd_bounded(function() .pkgd_send_sample_query(conn, sql), timeout_sec)
+  son_tarih <- .pkgd_deadline(timeout_sec)
+
+  sonuc <- .pkgd_bounded_until(function() .pkgd_send_sample_query(conn, sql, unicode = sample_unicode),
+                               son_tarih)
   # Sonuç kümesi HER DURUMDA kapatılır; aksi hâlde bağlantı kirli kalır.
-  on.exit(tryCatch(DBI::dbClearResult(sonuc), error = function(e) NULL), add = TRUE)
+  #
+  # TEMİZLİK DE SINIRLIDIR. `dbClearResult()` tamamlanmamış bir ODBC sonucunu
+  # iptal ederken KENDİSİ bloklayabilir -- özellikle zaman aşımına uğramış ya da
+  # bayt tavanı yüzünden erken kesilmiş bir getirimden sonra. Sınırsız bırakılan
+  # bu çağrı, "her bloklayan sürücü çağrısı sınırlıdır" sözünü çürütürdü.
+  #
+  # Bütçe tükenmiş olabileceği için temizliğe HER ZAMAN kısa bir taban süre
+  # tanınır: sıfır bütçeyle temizliği hiç denememek sonucu açık bırakırdı.
+  on.exit({
+    temizlik_sinir <- tryCatch(.pkgd_remaining(son_tarih), error = function(e) NULL)
+    if (is.null(temizlik_sinir)) temizlik_sinir <- .PKGD_CLEANUP_MIN_SEC
+    temizlik_sinir <- max(as.numeric(temizlik_sinir), .PKGD_CLEANUP_MIN_SEC)
+    tryCatch(.pkgd_bounded(function() DBI::dbClearResult(sonuc), temizlik_sinir),
+             error = function(e) NULL)
+  }, add = TRUE)
 
   # BAYT TAVANI İÇİN PARÇALI GETİRİM: birkaç büyük LOB satırı, satır sayısı
   # sınırının altında kalırken yapılandırılmış bellek bütçesini kat kat aşabilir.
@@ -212,7 +287,7 @@ pkg_default_sample_fn <- function(conn, sql, sample_rows = 500L, timeout_sec = N
 
   while (toplam_satir < n) {
     istenen <- min(parca, n - toplam_satir)
-    blok <- .pkgd_bounded(function() DBI::dbFetch(sonuc, n = istenen), timeout_sec)
+    blok <- .pkgd_bounded_until(function() DBI::dbFetch(sonuc, n = istenen), son_tarih)
     if (!is.data.frame(blok) || nrow(blok) == 0L) break
 
     toplam_bayt <- toplam_bayt + suppressWarnings(as.numeric(utils::object.size(blok)))
@@ -230,7 +305,7 @@ pkg_default_sample_fn <- function(conn, sql, sample_rows = 500L, timeout_sec = N
 
   cerceve <- if (!length(parcalar)) {
     # Sütun yapısını korumak için boş bir getirim yine de yapılır.
-    .pkgd_bounded(function() DBI::dbFetch(sonuc, n = 0L), timeout_sec)
+    .pkgd_bounded_until(function() DBI::dbFetch(sonuc, n = 0L), son_tarih)
   } else if (length(parcalar) == 1L) {
     parcalar[[1]]
   } else {

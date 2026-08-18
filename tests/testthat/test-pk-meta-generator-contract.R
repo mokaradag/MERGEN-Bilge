@@ -75,10 +75,20 @@ test_that("uretici dosyalari parse edilebilir", {
 # `f(x[, 1])` gibi biçimlerde bir argüman BOŞ SEMBOLDÜR; onu bir fonksiyona
 # geçirmek "argument is missing" hatası verir. Boş sembol NULL'a indirgenir.
 .pkgc_arg_at <- function(x, i) {
-  oge <- tryCatch(x[[i]], error = function(e) NULL)
-  if (missing(oge)) return(NULL)
-  if (is.symbol(oge) && identical(as.character(oge), "")) return(NULL)
-  oge
+  # BOŞ ARGÜMAN, DEĞER BİR YEREL DEĞİŞKENE BAĞLANMADAN saptanır.
+  #
+  # `missing()` BELGELENMİŞ olarak yalnızca BİÇİMSEL ARGÜMANLAR içindir; bir
+  # yerel değişken üzerinde çalışması R'nin iç temsiline bağlı bir yan etkidir.
+  # Öte yandan boş sembolü bir değişkene bağlayıp SONRA incelemek de olmaz:
+  # `is.symbol(oge)` değeri zorlar ve "argument is missing" hatası verir.
+  #
+  # `identical(x[[i]], quote(expr = ))` ifadesi ikisini de kapar: ara bağlama
+  # YAPILMAZ, dolayısıyla ne belgesiz `missing()` davranışına ne de zorlamaya
+  # ihtiyaç kalır.
+  if (isTRUE(tryCatch(identical(x[[i]], quote(expr = )), error = function(e) FALSE))) {
+    return(NULL)
+  }
+  tryCatch(x[[i]], error = function(e) NULL)
 }
 
 .pkgc_call_heads <- function(path) {

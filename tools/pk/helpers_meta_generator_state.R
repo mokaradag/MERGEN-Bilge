@@ -8,10 +8,12 @@
 # hesaplanır, böylece küresyon değişikliği önbellek yüzünden kaçırılmaz.
 #
 # İKİ SERT KURAL:
-#   1) PARMAK İZİ. Bir girdi yalnızca SQL metni + db_target parmak izi AYNI
-#      kaldığında kabul edilir. Aksi hâlde SELECT listesi değiştirilmiş bir
-#      sorgu, eski şemasıyla sonsuza dek yeniden kullanılır ve üreticiyi tekrar
-#      çalıştırmak bayat metadata'yı ONARAMAZ.
+#   1) PARMAK İZİ. Bir girdi yalnızca SQL metni + db_target + (yalnızca `sample`
+#      kipinde) KANIT ÜRETEN AYARLAR parmak izi AYNI kaldığında kabul edilir.
+#      Aksi hâlde SELECT listesi değiştirilmiş bir sorgu eski şemasıyla sonsuza
+#      dek yeniden kullanılır, ya da eşik değiştiği hâlde eski `high_cardinality`
+#      kanıtı yeniden yayımlanır; üreticiyi tekrar çalıştırmak bayat metadata'yı
+#      ONARAMAZ.
 #   2) ATOMİK YAZMA. Durum dosyası geçici dosyaya yazılıp yerine taşınır ve
 #      yazma hatası SESSİZCE YUTULMAZ; aksi hâlde kesinti yarım JSON bırakır ve
 #      bir disk/izin hatası başarı gibi raporlanır.
@@ -31,40 +33,113 @@
   .pkgh_fallback_hash(ham)
 }
 
+# FNV-1a benzeri yedek karma.
+#
+# BITWISE DURUM ISARETLI 32 BIT ARALIKTA TUTULUR. `bitwXor()` sayisal
+# islenenleri `integer` turune ZORLAR; `2166136261` R'nin isaretli tam sayi
+# ust siniri olan `2147483647` degerinin USTUNDE oldugu icin dogrudan
+# verildiginde `NA` uretir (ve uyari basar). `digest` yoksa karmanin ilk
+# bileseni bu yuzden GECERSIZ kalirdi. Bu nedenle durum, XOR'dan ONCE
+# isaretli 32 bit temsile indirilir; carpma yine `%%` ile isaretsiz 32 bit
+# alana geri tasinir.
+.PKGH_UINT32 <- 4294967296
+
+.pkgh_to_signed32 <- function(x) {
+  kalan <- x %% .PKGH_UINT32
+  if (kalan >= 2147483648) kalan <- kalan - .PKGH_UINT32
+  as.integer(kalan)
+}
+
 .pkgh_fallback_hash <- function(ham) {
   baytlar <- as.integer(charToRaw(ham))
   if (!length(baytlar)) return("empty-0")
   h1 <- 2166136261
   h2 <- 5381
   for (b in baytlar) {
-    h1 <- (bitwXor(h1 %% 4294967296, b) * 16777619) %% 4294967296
-    h2 <- (h2 * 33 + b) %% 4294967296
+    karisik <- bitwXor(.pkgh_to_signed32(h1), .pkgh_to_signed32(b))
+    h1 <- (as.numeric(karisik) %% .PKGH_UINT32 * 16777619) %% .PKGH_UINT32
+    h2 <- (h2 * 33 + b) %% .PKGH_UINT32
   }
   sprintf("%08x%08x-%d", as.integer(h1 %% 2147483647), as.integer(h2 %% 2147483647),
           length(baytlar))
 }
 
-#' Bir sorgunun devam-önbelleği parmak izi
+# KANIT URETEN AYARLARIN IMZASI.
+#
+# `sample` kipinde onbellek yalnizca sema degil, TURETILMIS GOZLEM de tasir
+# (`high_cardinality_proved`, `distinct_observed`). Bu gozlemler
+# `MERGEN_PK_META_HIGH_CARD_MIN` ve `MERGEN_PK_META_SAMPLE_ROWS` degerlerine
+# BAGLIDIR: esik 10'dan 50'ye cikarildiginda eski `TRUE` artik KANITLANMIS
+# degildir; esik dusuruldugunde ise yeni kanitlanabilir sutunlar hesaplanmaz.
+# Bu yuzden kanit ureten ayarlar parmak izine girer ve degistiklerinde ilgili
+# onbellek girdileri REDDEDILIR.
+#
+# `describe` kipi bu ayarlarin HICBIRINI kullanmaz; imza bilerek bostur,
+# boylece kalintili bir ornekleme ayari describe onbellegini gecersiz kilmaz.
+.pkgh_evidence_signature <- function(config) {
+  yap <- if (is.list(config)) config else list()
+  kip <- as.character(yap$mode %||% "")[1]
+  if (!identical(kip, "sample")) return("")
+
+  satir <- suppressWarnings(as.integer(yap$sample_rows %||% NA_integer_)[1])
+  esik <- suppressWarnings(as.integer(yap$high_cardinality_threshold %||% NA_integer_)[1])
+  sprintf(
+    "rows=%s;hc=%s",
+    if (is.na(satir)) "?" else format(satir),
+    if (is.na(esik)) "?" else format(esik)
+  )
+}
+
+#' Bir sorgunun KAYNAK parmak izi (SQL + hedef)
 #'
-#' SQL metni ve hedef veritabanı girer. Bunlardan biri değiştiğinde eski şema
-#' artık o sorguyu TEMSİL ETMEZ.
-pkgh_state_fingerprint <- function(query) {
+#' YAYIMLANAN katman girdilerine damgalanır. Sorunun cevapladığı şey tektir:
+#' "bu girdi HÂLÂ güncel SQL'i mi anlatıyor?". KANIT ÜRETEN ayarlar buraya
+#' GİRMEZ: `MERGEN_PK_META_HIGH_CARD_MIN` değişmesi, yayımlanmış bir
+#' `result_schema` değerini geçersiz KILMAZ.
+pkgh_source_fingerprint <- function(query) {
   sql <- as.character(query$sql %||% "")[1]
   hedef <- as.character(query$db_target %||% "primary")[1]
   if (is.na(sql)) sql <- ""
   if (is.na(hedef)) hedef <- "primary"
-  .pkgh_hash_text(paste0(hedef, "", sql))
+  # AYIRICI ZORUNLUDUR: ayirici olmadan alan sinirlari kayabilir ve farkli iki
+  # girdi ayni metne cozulebilir. `\u001f` (unit separator) ASCII'dir, kaynak
+  # dosyada KACIS olarak yazilir ve uretim SQL metninde bulunmaz.
+  .pkgh_hash_text(paste(hedef, sql, sep = "\u001f"))
 }
 
-#' Bütün kütüphane için parmak izi haritası
-pkgh_state_fingerprints <- function(query_library) {
+#' Bütün kütüphane için KAYNAK parmak izi haritası
+pkgh_source_fingerprints <- function(query_library) {
+  .pkgh_fingerprint_map(query_library, function(q) pkgh_source_fingerprint(q))
+}
+
+#' Bir sorgunun devam-önbelleği parmak izi
+#'
+#' KAYNAK parmak izinin üstüne (yalnızca `sample` kipinde) KANIT ÜRETEN
+#' ayarların imzası eklenir. Önbellek yalnızca şema değil TÜRETİLMİŞ GÖZLEM de
+#' taşıdığı için, eşik/satır sınırı değiştiğinde eski gözlem artık KANITLANMIŞ
+#' değildir.
+#'
+#' @param config `pkg_meta_resolve_config()` çıktısı. `NULL` verildiğinde kanıt
+#'   imzası boş kalır; bu yalnızca izole test/teşhis içindir, üretici giriş
+#'   noktası HER ZAMAN gerçek yapılandırmayı geçirir.
+pkgh_state_fingerprint <- function(query, config = NULL) {
+  .pkgh_hash_text(paste(pkgh_source_fingerprint(query),
+                        .pkgh_evidence_signature(config), sep = "\u001f"))
+}
+
+#' Bütün kütüphane için devam-önbelleği parmak izi haritası
+pkgh_state_fingerprints <- function(query_library, config = NULL) {
+  .pkgh_fingerprint_map(query_library, function(q) pkgh_state_fingerprint(q, config))
+}
+
+.pkgh_fingerprint_map <- function(query_library, fn) {
   cikti <- list()
   if (!is.list(query_library)) return(cikti)
   for (q in query_library) {
     if (!is.list(q)) next
     id <- as.character(q$id %||% "")[1]
     if (is.na(id) || !nzchar(trimws(id))) next
-    cikti[[trimws(id)]] <- pkgh_state_fingerprint(q)
+    cikti[[trimws(id)]] <- fn(q)
   }
   cikti
 }
@@ -124,6 +199,35 @@ pkgh_write_state <- function(cache, state_path, mode, timestamp,
   }, error = function(e) FALSE)
 
   isTRUE(sonuc)
+}
+
+#' Devam durumunu KARANTİNAYA AL (kullanılamaz yap)
+#'
+#' NEDEN GEREKLİ: `pkgh_write_state()` ATOMİK yazar; SON durum yazımı
+#' başarısız olduğunda diskte ÖNCEKİ GEÇERLİ anlık görüntü kalır. O anlık
+#' görüntü hâlâ aynı kip/sürüm/parmak izlerini taşıdığı için SONRAKİ koşu
+#' tarafından KABUL EDİLİR: koşu DB'ye hiç gitmez ve BAŞARILI koşudan ÖNCE
+#' öğrenilmiş şemayı/kanıtı yeniden yayımlar. Bu, araya giren bir DB şema
+#' değişikliğinde bayat metadata demektir.
+#'
+#' Dosya SİLİNMEZ, yeniden adlandırılır: operatör isterse inceleyebilir.
+#'
+#' @return list(ok, path) -- `path` karantina dosyası ya da NA.
+pkgh_quarantine_state <- function(state_path) {
+  if (!file.exists(state_path)) return(list(ok = TRUE, path = NA_character_))
+
+  karantina <- sprintf("%s.stale-%s", state_path, format(Sys.time(), "%Y%m%d%H%M%S"))
+  tasindi <- isTRUE(tryCatch(file.rename(state_path, karantina), error = function(e) FALSE))
+  if (tasindi) return(list(ok = TRUE, path = karantina))
+
+  # Yeniden adlandırma da düşerse SİLMEK, bayat bir anlık görüntüyü canlı
+  # bırakmaktan daha güvenlidir: en kötü ihtimalle sonraki koşu bastan baslar.
+  silindi <- isTRUE(tryCatch({
+    unlink(state_path, force = TRUE)
+    !file.exists(state_path)
+  }, error = function(e) FALSE))
+
+  list(ok = silindi, path = NA_character_)
 }
 
 #' Devam önbelleğini geri oku
