@@ -66,7 +66,7 @@
   "datetimeoffset" = "POSIXct",
   # Gün içi saat bir TARİH DEĞİLDİR; bilinçli olarak "date" rolüne girmez.
   # `odbc` SQL TIME değerlerini `hms` olarak döndürür; sample kipi de bunu
-# görür, bu yüzden describe kipi de "hms" yazar.
+  # görür, bu yüzden describe kipi de "hms" yazar.
   "time" = "hms",
   # Metin
   "char" = "character", "varchar" = "character", "nchar" = "character",
