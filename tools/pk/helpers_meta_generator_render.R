@@ -301,31 +301,42 @@ pkgr_stage_local_meta_file <- function(text, path, forbidden = PKG_META_FORBIDDE
   gecici
 }
 
-# Kilitli/kirli bir hedef için YEDEKLİ TAKAS.
+# Kilitli/kirli bir hedef için YEDEKLİ ATOMİK TAKAS.
 #
-# `file.copy(overwrite = TRUE)` ATOMİK DEĞİLDİR: kopyalama ortasında bir kesinti
-# canlı dosyayı YARIM bırakır. Bu yüzden önce mevcut dosya yedeklenir, kopyalama
-# denenir ve kopyalama düşerse yedek GERİ YÜKLENİR.
-.pkgr_replace_with_backup <- function(staged, path) {
-  yedek <- paste0(path, ".bak-", Sys.getpid())
-  yedeklendi <- FALSE
+# Canlı dosyanın üzerine `file.copy(overwrite = TRUE)` YAPILMAZ: kopyalama
+# ortasında süreç düşerse hedef yarım kalabilir. Aynı dizindeki dosyalar yalnızca
+# `file.rename()` ile taşınır. Önceki geçerli dosya ayrı bir yedek adında bütün
+# hâliyle tutulur; yeni dosya yerleştirilemezse yedek geri taşınır.
+.pkgr_replace_with_backup <- function(staged, path, attempts = 3L) {
+  if (!file.exists(path)) return(FALSE)
 
-  if (file.exists(path)) {
-    yedeklendi <- isTRUE(tryCatch(file.copy(path, yedek, overwrite = TRUE),
-                                  error = function(e) FALSE))
-    if (!yedeklendi) return(FALSE)
+  yedek <- paste0(path, ".bak-", Sys.getpid(), "-", format(Sys.time(), "%Y%m%d%H%M%OS6"))
+  yedek <- gsub(":", "", yedek, fixed = TRUE)
+  if (file.exists(yedek)) unlink(yedek)
+
+  tasi <- function(from, to) {
+    deneme <- max(1L, suppressWarnings(as.integer(attempts)[1]))
+    for (i in seq_len(deneme)) {
+      if (isTRUE(tryCatch(file.rename(from, to), error = function(e) FALSE))) return(TRUE)
+      if (i < deneme) Sys.sleep(0.05)
+    }
+    FALSE
   }
 
-  kopyalandi <- isTRUE(tryCatch(file.copy(staged, path, overwrite = TRUE),
-                                error = function(e) FALSE))
+  if (!tasi(path, yedek)) return(FALSE)
 
-  if (!kopyalandi) {
-    if (yedeklendi) tryCatch(file.copy(yedek, path, overwrite = TRUE), error = function(e) NULL)
-    if (yedeklendi) unlink(yedek)
+  if (!tasi(staged, path)) {
+    geri <- tasi(yedek, path)
+    if (!geri) {
+      stop(sprintf(
+        "[PK_META_GEN] Atomik takas basarisiz; onceki dosya YEDEKTE korundu: %s",
+        yedek
+      ), call. = FALSE)
+    }
     return(FALSE)
   }
 
-  if (yedeklendi) unlink(yedek)
+  if (file.exists(yedek)) unlink(yedek)
   TRUE
 }
 
@@ -349,7 +360,7 @@ pkgr_publish_staged_file <- function(staged, path, attempts = 3L) {
     if (i < deneme) Sys.sleep(0.05)
   }
 
-  if (!.pkgr_replace_with_backup(staged, path)) {
+  if (!.pkgr_replace_with_backup(staged, path, attempts = deneme)) {
     stop(sprintf("[PK_META_GEN] Cikti dosyasi yazilamadi: %s", path), call. = FALSE)
   }
 
