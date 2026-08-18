@@ -1062,3 +1062,57 @@ test_that("envanter -> birlestirme -> uzlastirma -> rapor -> yayim zinciri CALIS
   onbellek <- pkgh_read_state(durum_yolu, cfg$mode, fingerprints = parmak)
   expect_true("saglikli" %in% names(onbellek))
 })
+
+# ------------------------------------------------------------------------------
+# 14) Giriş betiğinin çağırdığı HER işlev gerçekten çözülür
+# ------------------------------------------------------------------------------
+
+test_that("giris betigindeki TUM islev cagrilari cozulur", {
+  # Giriş betiği yalnızca operatörün VM'inde çalışır; oradaki bir yazım hatası
+  # ("fonksiyon bulunamadi") ancak gerçek koşuda görülürdü. Bu test, betiğin
+  # AYRIŞTIRILMIŞ ağacındaki her çağrı başını, yardımcılar yüklendikten sonra
+  # çözülebilirlik açısından sınar -- betiği ÇALIŞTIRMADAN.
+  kok <- resolve_repo_root_for_tests()
+  ifadeler <- parse(file.path(kok, "tools", "pk", "generate_query_meta.R"),
+                    encoding = "UTF-8")
+
+  arg_at <- function(x, i) {
+    if (isTRUE(tryCatch(identical(x[[i]], quote(expr = )), error = function(e) FALSE))) {
+      return(NULL)
+    }
+    tryCatch(x[[i]], error = function(e) NULL)
+  }
+
+  cagrilar <- character(0)
+  gez <- function(x) {
+    if (is.call(x)) {
+      bas <- x[[1]]
+      if (is.name(bas)) cagrilar <<- c(cagrilar, as.character(bas))
+      for (i in seq_along(x)) gez(arg_at(x, i))
+    } else if (is.pairlist(x) || is.list(x)) {
+      for (i in seq_along(x)) gez(arg_at(x, i))
+    }
+  }
+  for (ifade in ifadeler) gez(ifade)
+  cagrilar <- unique(cagrilar)
+
+  # Betiğin KENDİ içinde tanımladığı yerel kapamalar.
+  yereller <- c("geri_al", "ilerleme", "ara_kayit", "artefaktlari_yaz")
+
+  eksik <- Filter(function(ad) {
+    !(ad %in% yereller) && !exists(ad, mode = "function", inherits = TRUE)
+  }, cagrilar)
+
+  expect_gt(length(cagrilar), 40L)
+  expect_identical(
+    eksik, character(0),
+    info = sprintf("Giris betiginde cozulemeyen islev(ler): %s",
+                   paste(eksik, collapse = ", "))
+  )
+
+  # Betiğin kullandığı sözleşme sabitleri de tanımlı olmalıdır.
+  for (sabit in c("PKG_META_ARTIFACT_DIR", "PKG_META_OUTPUT_FILE",
+                  "PKG_META_STATE_VERSION")) {
+    expect_true(exists(sabit, inherits = TRUE), info = sabit)
+  }
+})
