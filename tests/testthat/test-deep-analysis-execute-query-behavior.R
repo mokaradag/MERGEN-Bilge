@@ -32,6 +32,10 @@
   }
   source(file.path(kok, "R", "helpers_deep_analysis.R"), encoding = "UTF-8", local = env)
 
+  # VM/app oturumunda global v2 motoru açık olsa bile legacy orkestrasyon testleri
+  # v1 yolundan sapmamalı. v2 testleri sorgudaki `pk_engine_v2=TRUE` ile açıktır.
+  env$pk_engine_is_v2 <- function(...) FALSE
+
   # v2 regresyonları gerçek paket/fact sahiplerini yükler. Legacy özet
   # implementation'ı yeniden taklit edilmez; üretim ile aynı helper'lar çağrılır.
   if (isTRUE(v2_packets)) {
