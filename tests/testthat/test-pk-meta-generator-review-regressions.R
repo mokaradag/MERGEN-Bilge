@@ -80,6 +80,26 @@ test_that("declared date_columns are applied to the effective schema", {
   expect_match(sonuc$source_types[["Tarih"]], "varchar", ignore.case = TRUE)
 })
 
+test_that("date and sample-safety policy changes invalidate stale fingerprints", {
+  query <- list(
+    id = "q_fp",
+    db_target = "primary",
+    sql = "SELECT Tarih FROM T",
+    date_columns = "Tarih",
+    meta_sample_safe = FALSE
+  )
+
+  kaynak_once <- pkgh_source_fingerprint(query)
+  durum_once <- pkgh_state_fingerprint(query, .pk711_cfg("sample"))
+
+  query$date_columns <- "BaskaTarih"
+  expect_false(identical(pkgh_source_fingerprint(query), kaynak_once))
+
+  query$date_columns <- "Tarih"
+  query$meta_sample_safe <- TRUE
+  expect_false(identical(pkgh_state_fingerprint(query, .pk711_cfg("sample")), durum_once))
+})
+
 test_that("production sample mode fails closed without explicit safe curation", {
   query <- list(
     id = "q_unsafe",
