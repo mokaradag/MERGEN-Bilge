@@ -107,9 +107,12 @@ print(utils::head(report, 30), row.names = FALSE)
 
 cat("\nRefactor adayları:\n")
 
-# library_queries.R bilgi tabanı niteliğinde olduğu için maintainability
-# skorundan hariç tutulur; bu dosya bilinçli olarak büyük kalabilir.
-score_report <- subset(report, !grepl("(^|/)library_queries\\.R$", file, perl = TRUE))
+# library_queries.R bilgi tabanı, library_query_meta_local.R ise yerelde
+# üretilen metadata artefaktıdır; ikisi de bilinçli olarak büyük kalabilir.
+score_report <- subset(
+  report,
+  !grepl("(^|/)(library_queries|library_query_meta_local)\\.R$", file, perl = TRUE)
+)
 
 candidates <- subset(score_report, lines >= 800 | functions >= 25)
 print(candidates, row.names = FALSE)
