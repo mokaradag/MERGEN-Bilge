@@ -1,6 +1,7 @@
 # ==============================================================================
-# Faz 3b metadata ureticisi -- statik tanimlayici ad kurtarma regresyon testleri.
-# Tamamen cevrimdisidir; SQL Server/ODBC gerektirmez.
+# Dosya Yolu: tests/testthat/test-pk-meta-descriptor-name-recovery.R
+# Açıklama:Faz 3b metadata ureticisi -- statik tanimlayici ad kurtarma regresyon testleri.
+#          Tamamen cevrimdisidir; SQL Server/ODBC gerektirmez.
 # ==============================================================================
 
 local({
