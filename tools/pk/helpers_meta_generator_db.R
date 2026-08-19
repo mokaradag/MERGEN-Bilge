@@ -93,18 +93,13 @@
 #' `.DEFAULT_DSN = Sys.getenv("DB_DSN", "TestConnection")` geliştirme yedeği,
 #' `DB_DSN` tanımsızken üreticiyi YANLIŞ bir veritabanını envanterlemeye
 #' götürebilirdi. Üretimden türetilmiş metadata için bu KAPALI BAŞARISIZ olur.
-#'
-#' Metadata üreticisi uygulamanın uzun ömürlü havuzundan bağlantı ÖDÜNÇ ALMAZ.
-#' Faz 3b aynı RStudio sürecinde uygulamadan sonra tekrar tekrar çalıştırılabilir;
-#' havuzdan gelen fiziksel bir oturum önceki kullanımından farklı bir SQL Server
-#' current-database/session bağlamı taşıyabilir. Bu, aynı query_library için
-#' koşudan koşuya değişen `object_missing` descriptor hataları üretir. Üretici
-#' bu nedenle doğrulanmış hedef DSN'inden kendi taze ODBC bağlantısını açar;
-#' envanter döngüsü bu bağlantıyı hedef başına yeniden kullanır ve koşu sonunda
-#' mevcut `pkg_default_release_fn()` ile kapatır. Uygulama havuzu DEĞİŞMEZ.
-#'
-#' @param timeout_sec Yapılandırılmış üretici zaman aşımı; hem dış sınırlayıcıya
-#'   hem de ODBC login timeout'a uygulanır.
+#' @param timeout_sec Yapılandırılmış üretici zaman aşımı. BAĞLANTI EDİNİMİ DE
+#'   SINIRLANIR: `get_connection()` / `db_acquire_tx_connection()` bir PK isteği
+#'   dışında üreticinin bütçesini BİLMEZ ve kendi sürücü/oturum açma/havuz
+#'   bekleme politikasını uygular. Erişilemeyen bir DSN ya da tıkanmış bir havuz
+#'   checkout'u, sınırlı hiçbir describe/fetch çağrısı BAŞLAMADAN koşuyu
+#'   kilitleyebilirdi -- oysa operatör sözleşmesi "her bloklayan sürücü çağrısı
+#'   sınırlıdır" der.
 pkg_default_connect_fn <- function(target = "primary", timeout_sec = NULL) {
   dogrulama <- pkg_meta_validate_db_target(target)
   if (!isTRUE(dogrulama$ok)) {
@@ -121,45 +116,22 @@ pkg_default_connect_fn <- function(target = "primary", timeout_sec = NULL) {
     ), dogrulama$target, dsn_degiskeni, dsn_degiskeni), call. = FALSE)
   }
 
-  if (!requireNamespace("DBI", quietly = TRUE) ||
-      !requireNamespace("odbc", quietly = TRUE)) {
-    stop("[PK_META_GEN] Metadata baglantisi icin DBI ve odbc paketleri gerekli.",
+  # HAVUZ AKTİFSE GERÇEK BİR BAĞLANTI ÖDÜNÇ ALINIR.
+  #
+  # `get_connection("primary")` havuz açıkken canlı `Pool` NESNESİNİ döndürür;
+  # `pk_sql_describe_result_schema()` ise Pool'u OdbcConnection saymadığı için
+  # doğrudan NULL döner ve TÜM birincil sorgular "describe_unavailable" olurdu.
+  if (exists("db_acquire_tx_connection", mode = "function", inherits = TRUE) &&
+      exists("is_db_pool_enabled", mode = "function", inherits = TRUE) &&
+      isTRUE(tryCatch(is_db_pool_enabled(), error = function(e) FALSE))) {
+    return(.pkgd_bounded(function() db_acquire_tx_connection(dogrulama$target), timeout_sec))
+  }
+
+  if (!exists("get_connection", mode = "function", inherits = TRUE)) {
+    stop("[PK_META_GEN] get_connection bulunamadi; uygulama bootstrap'i yuklenmedi.",
          call. = FALSE)
   }
-
-  istemci_kodlama <- get0(
-    ".DEFAULT_DB_CLIENT_ENCODING", inherits = TRUE, ifnotfound = "UTF-8"
-  )
-  ad_kodlama <- get0(
-    ".DEFAULT_DB_NAME_ENCODING", inherits = TRUE, ifnotfound = "UTF-8"
-  )
-
-  baglanti_args <- list(
-    odbc::odbc(),
-    dsn = dsn,
-    encoding = istemci_kodlama,
-    name_encoding = ad_kodlama,
-    interruptible = TRUE
-  )
-
-  sinir <- suppressWarnings(as.numeric(timeout_sec)[1])
-  if (length(sinir) == 1L && !is.na(sinir) && is.finite(sinir) && sinir > 0) {
-    # ODBC login timeout saniye çözünürlüğündedir; 0 sürücüde sınırsızdır.
-    baglanti_args$timeout <- max(1L, as.integer(floor(sinir)))
-  }
-
-  conn <- .pkgd_bounded(
-    function() do.call(DBI::dbConnect, baglanti_args),
-    timeout_sec
-  )
-
-  list(
-    conn = conn,
-    pooled = FALSE,
-    pool = NULL,
-    checked_out = FALSE,
-    target = dogrulama$target
-  )
+  .pkgd_bounded(function() get_connection(dogrulama$target), timeout_sec)
 }
 
 #' @param timeout_sec Bırakma da SINIRLIDIR: havuza iade ya da `dbDisconnect()`

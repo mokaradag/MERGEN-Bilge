@@ -146,43 +146,6 @@ test_that("her write/DDL/DCL/backup/execute ailesi reddedilir", {
   }
 })
 
-test_that("yalniz SET NOCOUNT ON + tek salt-okunur ifade batch olarak kabul edilir", {
-  env <- .pk_sql_gate_env()
-
-  guvenli <- c(
-    "SET NOCOUNT ON;\nSELECT * FROM t",
-    paste0(
-      "-- sentetik baslik\r\n",
-      "SET NOCOUNT ON;\r\n",
-      "WITH c AS (SELECT 1 AS a) SELECT * FROM c OPTION (RECOMPILE);"
-    )
-  )
-
-  for (sql in guvenli) {
-    sonuc <- env$pk_sql_classify_readonly(sql)
-    expect_true(
-      isTRUE(sonuc$allowed),
-      info = sprintf("Guvenli NOCOUNT oneki reddedildi: gerekce=%s", sonuc$reason %||% "-")
-    )
-  }
-
-  guvensiz <- c(
-    "SET NOCOUNT OFF;\nSELECT * FROM t",
-    "SET ANSI_NULLS ON;\nSELECT * FROM t",
-    "SET NOCOUNT ON;\nDELETE FROM t",
-    "SET NOCOUNT ON;\nSELECT 1; SELECT 2",
-    "SET NOCOUNT ON;\nEXEC dbo.BirYordam"
-  )
-
-  for (sql in guvensiz) {
-    sonuc <- env$pk_sql_classify_readonly(sql)
-    expect_false(
-      isTRUE(sonuc$allowed),
-      info = sprintf("NOCOUNT istisnasi guvensiz batch'i acti: %s", sql)
-    )
-  }
-})
-
 test_that("cok ifadeli batch ve GO ayirici reddedilir", {
   env <- .pk_sql_gate_env()
 
@@ -190,6 +153,13 @@ test_that("cok ifadeli batch ve GO ayirici reddedilir", {
   expect_false(isTRUE(cok$allowed))
   expect_identical(cok$reason, "multiple_statements")
   expect_identical(cok$statement_count, 2L)
+
+  # Operator tanilamasi icin onemli: uretimdeki bir SQL dosyasi basinda
+  # "SET NOCOUNT ON;" tasiyorsa bu KAPALI BASARISIZ olur ve gerekce
+  # multiple_statements olarak raporlanir.
+  ayar <- env$pk_sql_classify_readonly("SET NOCOUNT ON;\nSELECT * FROM t")
+  expect_false(isTRUE(ayar$allowed))
+  expect_identical(ayar$reason, "multiple_statements")
 
   go <- env$pk_sql_classify_readonly("SELECT * FROM t\nGO\nSELECT * FROM u")
   expect_false(isTRUE(go$allowed))

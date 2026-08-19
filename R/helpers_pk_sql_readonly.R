@@ -8,9 +8,7 @@
 #           sp_ / xp_ / çok ifadeli batch serbest kalıyordu. Bu dosya bunun
 #           yerine tam tersini yapar: yalnızca TEK bir salt-okunur SELECT
 #           (veya son ifadesi SELECT olan bir CTE) kabul edilir; ayrıştırma
-#           belirsizliği veya tanınmayan yapı REDDEDİLİR. SQL Server sorgu
-#           kütüphanesi uyumluluğu için yalnızca tam `SET NOCOUNT ON;`
-#           öneki, arkasında tek bir salt-okunur SELECT/CTE varsa kabul edilir.
+#           belirsizliği veya tanınmayan yapı REDDEDİLİR.
 #
 #           Dosya bilerek SAFTIR: Shiny/reactive/DB/ağ bağımlılığı yoktur.
 #           Böylece v1, v2, derin mod ve (Faz 3b'de yazılacak) metadata
@@ -42,12 +40,6 @@ PK_SQL_FORBIDDEN_KEYWORDS <- c(
 
 # Saklı yordam öneki aileleri (sp_/xp_) kelime sınırıyla değil önekle aranır.
 PK_SQL_FORBIDDEN_PREFIXES <- c("sp_", "xp_")
-
-# SQL Server'da sonuç satırlarını değiştirmeyen ve sorgu kütüphanesinde yaygın
-# olan TEK güvenli batch öneki. Başka SET biçimleri veya ek ifadeler bu istisnaya
-# girmez; normal çok-ifade kapısı tarafından kapalı başarısız reddedilir.
-PK_SQL_SAFE_NOCOUNT_PREAMBLE_PATTERN <-
-  "^SET[ \t\r\n]+NOCOUNT[ \t\r\n]+ON$"
 
 # Sınıflandırıcı gerekçelerinin tek kaynağı: makine kodu -> kullanıcıya
 # gösterilmeyen Türkçe operatör açıklaması. Kullanıcıya yalnızca genel mesaj
@@ -288,8 +280,7 @@ pk_sql_split_statements <- function(masked_sql) {
 #'
 #' @return list(allowed, reason, detail, statement_kind, statement_count)
 #'   `allowed = TRUE` yalnızca metin TEK bir salt-okunur SELECT (ya da son
-#'   ifadesi SELECT olan bir CTE) olduğunda döner. Bunun önünde yalnızca tam
-#'   `SET NOCOUNT ON;` öneki bulunabilir; başka batch yapıları reddedilir.
+#'   ifadesi SELECT olan bir CTE) olduğunda döner. Belirsizlik reddir.
 pk_sql_classify_readonly <- function(sql) {
   sonuc <- function(allowed, reason, kind = NA_character_, count = NA_integer_) {
     list(
@@ -312,14 +303,6 @@ pk_sql_classify_readonly <- function(sql) {
   }
 
   ifadeler <- pk_sql_split_statements(maske$masked)
-  if (length(ifadeler) == 2L &&
-      grepl(PK_SQL_SAFE_NOCOUNT_PREAMBLE_PATTERN, ifadeler[[1L]],
-            ignore.case = TRUE, perl = TRUE, useBytes = TRUE)) {
-    # Yalnızca tam SET NOCOUNT ON öneki tüketilir. İkinci ifade aşağıdaki
-    # SELECT/CTE ve yan-etki kapılarının TAMAMINDAN geçmek zorundadır.
-    ifadeler <- ifadeler[2L]
-  }
-
   if (length(ifadeler) == 0L) {
     return(sonuc(FALSE, "no_statement", count = 0L))
   }
