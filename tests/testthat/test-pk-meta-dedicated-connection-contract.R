@@ -1,6 +1,7 @@
 # ==============================================================================
-# Faz 3b metadata DB izolasyonu ve NOCOUNT descriptor uyumlulugu regresyonlari.
-# Gercek DB/ODBC baglantisi acmaz.
+# Dosya Yolu: tests/testthat/test-pk-meta-dedicated-connection-contract.R
+# Açıklama: Faz 3b metadata DB izolasyonu ve NOCOUNT descriptor uyumlulugu regresyonlari.
+#           Gercek DB/ODBC baglantisi acmaz.
 # ==============================================================================
 
 local({
