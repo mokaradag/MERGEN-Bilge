@@ -8,7 +8,9 @@
 #           sp_ / xp_ / çok ifadeli batch serbest kalıyordu. Bu dosya bunun
 #           yerine tam tersini yapar: yalnızca TEK bir salt-okunur SELECT
 #           (veya son ifadesi SELECT olan bir CTE) kabul edilir; ayrıştırma
-#           belirsizliği veya tanınmayan yapı REDDEDİLİR.
+#           belirsizliği veya tanınmayan yapı REDDEDİLİR. SQL Server sorgu
+#           kütüphanesi uyumluluğu için yalnızca tam `SET NOCOUNT ON;`
+#           öneki, arkasında tek bir salt-okunur SELECT/CTE varsa kabul edilir.
 #
 #           Dosya bilerek SAFTIR: Shiny/reactive/DB/ağ bağımlılığı yoktur.
 #           Böylece v1, v2, derin mod ve (Faz 3b'de yazılacak) metadata
@@ -41,6 +43,12 @@ PK_SQL_FORBIDDEN_KEYWORDS <- c(
 # Saklı yordam öneki aileleri (sp_/xp_) kelime sınırıyla değil önekle aranır.
 PK_SQL_FORBIDDEN_PREFIXES <- c("sp_", "xp_")
 
+# SQL Server'da sonuç satırlarını değiştirmeyen ve sorgu kütüphanesinde yaygın
+# olan TEK güvenli batch öneki. Başka SET biçimleri veya ek ifadeler bu istisnaya
+# girmez; normal çok-ifade kapısı tarafından kapalı başarısız reddedilir.
+PK_SQL_SAFE_NOCOUNT_PREAMBLE_PATTERN <-
+  "^SET[ \\t\\r\\n]+NOCOUNT[ \\t\\r\\n]+ON$"
+
 # Sınıflandırıcı gerekçelerinin tek kaynağı: makine kodu -> kullanıcıya
 # gösterilmeyen Türkçe operatör açıklaması. Kullanıcıya yalnızca genel mesaj
 # gider; ayrıntı sunucu logunda kalır.
@@ -67,11 +75,11 @@ PK_SQL_READONLY_REASONS <- list(
 # kapsayamaz; bu yuzden kapi acikca reddeder. (Faz 3b metadata ureticisi bu
 # ayni kapiyi kullandigi icin duzeltme burada yapilir ve TUM tuketiciler
 # kazanir.)
-PK_SQL_SEQUENCE_MUTATION_PATTERN <- "(^|[^A-Za-z0-9_@#$])NEXT[ \t\r\n]+VALUE[ \t\r\n]+FOR($|[^A-Za-z0-9_@#$])"
+PK_SQL_SEQUENCE_MUTATION_PATTERN <- "(^|[^A-Za-z0-9_@#$])NEXT[ \\t\\r\\n]+VALUE[ \\t\\r\\n]+FOR($|[^A-Za-z0-9_@#$])"
 
 # Kullanıcıya gösterilen genel mesaj: sürücü/DSN/şema ayrıntısı içermez.
 PK_SQL_READONLY_USER_MESSAGE <- paste0(
-  "\U000026A0\U0000FE0F **Güvenlik Kontrolü:** Seçilen sorgu ",
+  "\\U000026A0\\U0000FE0F **Güvenlik Kontrolü:** Seçilen sorgu ",
   "salt-okunur bir SELECT olarak doğrulanamadığı için ",
   "çalıştırılmadı. Lütfen sistem ",
   "yöneticisiyle iletişime geçin."
@@ -233,7 +241,7 @@ pk_sql_split_statements <- function(masked_sql) {
 
   # Kendi satırındaki GO -> ifade ayırıcı (CR, LF ve CRLF için).
   masked_sql <- gsub(
-    "(^|\r\n|\n|\r)[ \t]*GO[ \t]*(?=\r\n|\n|\r|$)", "\\1;", masked_sql,
+    "(^|\\r\\n|\\n|\\r)[ \\t]*GO[ \\t]*(?=\\r\\n|\\n|\\r|$)", "\\\\1;", masked_sql,
     ignore.case = TRUE, perl = TRUE, useBytes = TRUE
   )
 
@@ -280,7 +288,8 @@ pk_sql_split_statements <- function(masked_sql) {
 #'
 #' @return list(allowed, reason, detail, statement_kind, statement_count)
 #'   `allowed = TRUE` yalnızca metin TEK bir salt-okunur SELECT (ya da son
-#'   ifadesi SELECT olan bir CTE) olduğunda döner. Belirsizlik reddir.
+#'   ifadesi SELECT olan bir CTE) olduğunda döner. Bunun önünde yalnızca tam
+#'   `SET NOCOUNT ON;` öneki bulunabilir; başka batch yapıları reddedilir.
 pk_sql_classify_readonly <- function(sql) {
   sonuc <- function(allowed, reason, kind = NA_character_, count = NA_integer_) {
     list(
@@ -303,6 +312,14 @@ pk_sql_classify_readonly <- function(sql) {
   }
 
   ifadeler <- pk_sql_split_statements(maske$masked)
+  if (length(ifadeler) == 2L &&
+      grepl(PK_SQL_SAFE_NOCOUNT_PREAMBLE_PATTERN, ifadeler[[1L]],
+            ignore.case = TRUE, perl = TRUE, useBytes = TRUE)) {
+    # Yalnızca tam SET NOCOUNT ON öneki tüketilir. İkinci ifade aşağıdaki
+    # SELECT/CTE ve yan-etki kapılarının TAMAMINDAN geçmek zorundadır.
+    ifadeler <- ifadeler[2L]
+  }
+
   if (length(ifadeler) == 0L) {
     return(sonuc(FALSE, "no_statement", count = 0L))
   }
@@ -349,7 +366,7 @@ pk_sql_classify_readonly <- function(sql) {
   }
 
   # Parantezle başlayan `(SELECT ...) UNION ...` gibi biçimler de kabul edilir.
-  if (grepl("^\\(\\s*SELECT($|[^A-Za-z0-9_@#$])", ifade,
+  if (grepl("^\\\\(\\\\s*SELECT($|[^A-Za-z0-9_@#$])", ifade,
             ignore.case = TRUE, perl = TRUE, useBytes = TRUE)) {
     return(sonuc(TRUE, NULL, kind = "select", count = 1L))
   }
@@ -372,7 +389,7 @@ pk_sql_readonly_guard <- function(sql, context_label = "PK_ANALIZ") {
 
   try(
     cat(sprintf(
-      "[%s] SQL SALT-OKUNUR KAPISI REDDETTI | gerekce=%s | tur=%s | ifade_sayisi=%s | aciklama=%s\n",
+      "[%s] SQL SALT-OKUNUR KAPISI REDDETTI | gerekce=%s | tur=%s | ifade_sayisi=%s | aciklama=%s\\n",
       context_label,
       siniflandirma$reason %||% "?",
       siniflandirma$statement_kind %||% "?",
