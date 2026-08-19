@@ -1,7 +1,7 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-maintainability-ratchet-contract.R
 # Açıklama: Büyük dosyaların daha da büyümesini engelleyen bakım borcu ratchet
-#           sözleşmesini doğrular. library_queries.R bilinçli olarak hariçtir.
+#           sözleşmesini doğrular. Üretilen büyük veri/metadata dosyaları hariçtir.
 # ==============================================================================
 
 .read_repo_text_maintainability <- function(path) {
@@ -131,8 +131,13 @@
   report$path <- sub("^/+", "", report$path)
   report$path <- enc2utf8(report$path)
 
-  # library_queries.R bilgi tabanı olduğu için ratchet kapsamına alınmaz.
-  keep <- !grepl("(^|/)library_queries\\.R$", report$path, perl = TRUE)
+  # library_queries.R bilgi tabanı, library_query_meta_local.R ise yerelde
+  # üretilen metadata artefaktıdır; ikisi de ratchet kapsamına alınmaz.
+  keep <- !grepl(
+    "(^|/)(library_queries|library_query_meta_local)\\.R$",
+    report$path,
+    perl = TRUE
+  )
   report <- report[keep, , drop = FALSE]
 
   report[order(report$lines, decreasing = TRUE), , drop = FALSE]
