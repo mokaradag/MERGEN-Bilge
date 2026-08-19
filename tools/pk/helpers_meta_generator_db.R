@@ -162,47 +162,144 @@ pkg_default_release_fn <- function(handle, timeout_sec = NULL) {
   invisible(NULL)
 }
 
-#' Varsayılan `describe` çağrısı
-#'
-#' `sys.dm_exec_describe_first_result_set` sorguyu ÇALIŞTIRMAZ; metni parametre
-#' olarak alır ve sonuç kümesi şemasını döndürür.
-#'
-#' İKİ DAVRANIŞ FARKI:
-#'   1) `MERGEN_PK_RESULT_SCHEMA_PROBE` uygulamanın İSTEĞE BAĞLI çalışma zamanı
-#'      sondasını kapatır. Operatör `MERGEN_PK_META_MODE=describe` dediğinde
-#'      üreticinin envanteri BU BAYRAKTAN BAĞIMSIZ olarak yapması beklenir;
-#'      aksi hâlde sondası kapalı bir VM'de HİÇBİR şema üretilmez.
-#'   2) Tanımlayıcı işlevi hataları YUTAR ve `NULL` döner. `NULL`, "bu sorgu
-#'      tanımlanamıyor" ile "sonda BAŞARISIZ oldu" arasındaki farkı siler; bu
-#'      yüzden gerçek hata YAKALANIR ve YÜKSELTİLİR, çağıran ikisini ayırır.
-pkg_default_describe_fn <- function(conn, sql, timeout_sec = NULL) {
-  if (!exists("pk_sql_describe_result_schema", mode = "function", inherits = TRUE)) {
-    stop("[PK_META_GEN] pk_sql_describe_result_schema bulunamadi.", call. = FALSE)
+.pkgd_descriptor_params <- function(sql) {
+  if (exists("normalize_db_params", mode = "function", inherits = TRUE)) {
+    return(tryCatch(normalize_db_params(list(sql)), error = function(e) list(sql)))
+  }
+  list(sql)
+}
+
+.pkgd_descriptor_error_detail <- function(cerceve) {
+  if (!is.data.frame(cerceve) || !nrow(cerceve) || !("error_number" %in% names(cerceve))) {
+    return(NULL)
+  }
+  idx <- which(!is.na(cerceve$error_number))
+  if (!length(idx)) return(NULL)
+  i <- idx[[1L]]
+  no <- suppressWarnings(as.integer(cerceve$error_number[i]))
+  tur <- if ("error_type_desc" %in% names(cerceve)) as.character(cerceve$error_type_desc[i]) else NA_character_
+  mesaj <- if ("error_message" %in% names(cerceve)) as.character(cerceve$error_message[i]) else NA_character_
+  paste0(
+    "SQL Server sonuc tanimlayicisi hata bildirdi",
+    if (!is.na(no)) sprintf(" (hata_no=%d)", no) else "",
+    if (!is.na(tur) && nzchar(tur)) sprintf(" (tur=%s)", tur) else "",
+    if (!is.na(mesaj) && nzchar(mesaj)) paste0(": ", mesaj) else "."
+  )
+}
+
+.pkgd_repair_descriptor_names <- function(cerceve, runtime_names) {
+  if (!is.data.frame(cerceve) || !nrow(cerceve) || !("name" %in% names(cerceve))) {
+    stop("[PK_META_GEN] Tanimlayici ad onarimi icin gecerli bir cerceve yok.", call. = FALSE)
+  }
+  adlar <- as.character(cerceve$name)
+  eksik <- is.na(adlar) | !nzchar(adlar)
+  if (!any(eksik)) return(cerceve)
+
+  runtime_names <- as.character(runtime_names)
+  if (length(runtime_names) != nrow(cerceve)) {
+    stop(sprintf(
+      paste0(
+        "[PK_META_GEN] Runtime kolon metadata'si tanimlayici ile AYNI sayida sutun ",
+        "dondurmedi (tanimlayici=%d, runtime=%d); sema uydurulmadi."
+      ),
+      nrow(cerceve), length(runtime_names)
+    ), call. = FALSE)
+  }
+  if (any(is.na(runtime_names[eksik]) | !nzchar(runtime_names[eksik]))) {
+    stop(paste0(
+      "[PK_META_GEN] SQL Server statik tanimlayicisinin adini belirleyemedigi ",
+      "sutunlar runtime sonuc metadata'sinda da ADSIZ; sema uydurulmadi."
+    ), call. = FALSE)
   }
 
-  onceki_sonda <- Sys.getenv("MERGEN_PK_RESULT_SCHEMA_PROBE", unset = NA_character_)
-  Sys.setenv(MERGEN_PK_RESULT_SCHEMA_PROBE = "true")
+  cerceve$name[eksik] <- runtime_names[eksik]
+  cerceve
+}
+
+# Statik SQL Server tanımlayıcısı bazen çalışan bir SELECT'in sonuç adını NULL
+# bırakabilir. Bu durumda 170 sorgu tanımına tek tek özel metadata eklemek yerine
+# yalnızca sorunlu sorgu için GERÇEK sonuç imleci açılır, HİÇ SATIR ÇEKİLMEDEN
+# `dbColumnInfo()` ile sürücünün gördüğü kolon adları alınır ve imleç kapatılır.
+# Bu yol yalnızca eksik ad onarımıdır: tip/genişlik kanıtı hâlâ SQL Server'ın
+# statik tanımlayıcısından gelir ve kolon sayısı birebir uyuşmazsa fail-closed.
+.pkgd_runtime_column_names <- function(conn, sql, timeout_sec = NULL) {
+  son_tarih <- .pkgd_deadline(timeout_sec)
+  sonuc <- .pkgd_bounded_until(
+    function() .pkgd_send_sample_query(conn, sql, unicode = TRUE),
+    son_tarih
+  )
   on.exit({
-    if (is.na(onceki_sonda)) {
-      Sys.unsetenv("MERGEN_PK_RESULT_SCHEMA_PROBE")
-    } else {
-      Sys.setenv(MERGEN_PK_RESULT_SCHEMA_PROBE = onceki_sonda)
-    }
+    temizlik_sinir <- tryCatch(.pkgd_remaining(son_tarih), error = function(e) NULL)
+    if (is.null(temizlik_sinir)) temizlik_sinir <- .PKGD_CLEANUP_MIN_SEC
+    temizlik_sinir <- max(as.numeric(temizlik_sinir), .PKGD_CLEANUP_MIN_SEC)
+    tryCatch(.pkgd_bounded(function() DBI::dbClearResult(sonuc), temizlik_sinir),
+             error = function(e) NULL)
   }, add = TRUE)
 
-  yakalanan <- NULL
-  cagri <- function(fn) {
-    deger <- tryCatch(.pkgd_bounded(fn, timeout_sec), error = function(e) e)
-    if (inherits(deger, "condition")) {
-      yakalanan <<- deger
-      return(list(ok = FALSE, value = NULL))
+  bilgi <- .pkgd_bounded_until(function() DBI::dbColumnInfo(sonuc), son_tarih)
+  if (!is.data.frame(bilgi) || !("name" %in% names(bilgi))) {
+    stop("[PK_META_GEN] Runtime sonuc metadata'si kolon adlarini dondurmedi.", call. = FALSE)
+  }
+  as.character(bilgi$name)
+}
+
+#' Varsayılan `describe` çağrısı
+#'
+#' Normal yol `sys.dm_exec_describe_first_result_set` ile sorguyu çalıştırmadan
+#' şemayı çıkarır. SQL Server statik analizinin yalnızca KOLON ADINI
+#' belirleyemediği istisnada, gerçek SQL aynı Unicode yoldan açılır ve HİÇ SATIR
+#' çekilmeden `dbColumnInfo()` ile yalnızca eksik adlar doğrulanır. Böylece çalışan
+#' sql_file sorguları yanlış "adsiz sonuc sutunu" diye reddedilmez; kolon sayısı
+#' veya adlar runtime ile doğrulanamazsa sistem yine fail-closed kalır.
+pkg_default_describe_fn <- function(conn, sql, timeout_sec = NULL) {
+  if (!requireNamespace("DBI", quietly = TRUE)) {
+    stop("[PK_META_GEN] DBI paketi gerekli.", call. = FALSE)
+  }
+  if (!.pkgd_is_sql_server(conn)) {
+    if (!exists("pk_sql_describe_result_schema", mode = "function", inherits = TRUE)) {
+      stop("[PK_META_GEN] pk_sql_describe_result_schema bulunamadi.", call. = FALSE)
     }
-    list(ok = TRUE, value = deger)
+    return(pk_sql_describe_result_schema(conn, sql))
   }
 
-  sonuc <- pk_sql_describe_result_schema(conn, sql, call_fn = cagri)
-  if (!is.null(yakalanan)) stop(yakalanan)
-  sonuc
+  tanim_sql <- paste(
+    paste0(
+      "SELECT column_ordinal, name, system_type_name, max_length, ",
+      "error_number, error_type, error_type_desc, error_message"
+    ),
+    "FROM sys.dm_exec_describe_first_result_set(CAST(? AS NVARCHAR(MAX)), NULL, 0)",
+    "ORDER BY column_ordinal"
+  )
+
+  cerceve <- .pkgd_bounded(
+    function() DBI::dbGetQuery(conn, tanim_sql, params = .pkgd_descriptor_params(sql)),
+    timeout_sec
+  )
+  if (!is.data.frame(cerceve) || nrow(cerceve) == 0L) return(NULL)
+
+  descriptor_error <- .pkgd_descriptor_error_detail(cerceve)
+  if (!is.null(descriptor_error)) {
+    stop(paste0("[PK_META_GEN] ", descriptor_error), call. = FALSE)
+  }
+
+  adlar <- as.character(cerceve$name)
+  eksik <- is.na(adlar) | !nzchar(adlar)
+  if (any(eksik)) {
+    runtime_adlari <- .pkgd_runtime_column_names(conn, sql, timeout_sec)
+    cerceve <- .pkgd_repair_descriptor_names(cerceve, runtime_adlari)
+    cat(sprintf(
+      "[PK_META_GEN] BILGI: statik tanimlayicinin belirleyemedigi %d kolon adi runtime metadata ile dogrulandi.\n",
+      sum(eksik)
+    ))
+  }
+
+  lapply(seq_len(nrow(cerceve)), function(i) {
+    list(
+      name = as.character(cerceve$name[i]),
+      system_type_name = as.character(cerceve$system_type_name[i]),
+      max_length = suppressWarnings(as.numeric(cerceve$max_length[i]))
+    )
+  })
 }
 
 # Örnek getirimini başlat. Türkçe/köşeli parantezli sütun adları içeren üretim
@@ -234,7 +331,7 @@ pkg_default_describe_fn <- function(conn, sql, timeout_sec = NULL) {
 #'
 #' SQL SARMALANMAZ (`SELECT TOP n FROM (...)` YOK): üretim sorguları `ORDER BY`,
 #' CTE ve `OPTION(...)` içerebilir; sarmalamak hem sorguyu bozar hem de
-#' salt-okunur kapısından GEÇEN metin ile ÇALIŞAN metni ayırır. Bunun yerine
+#' salt-okunur kapısından GEÇEN metin ile çalışan metni ayırır. Bunun yerine
 #' imleç açılır ve yalnızca N satır çekilir; kalan sonuç sunucuda bırakılır.
 #'
 #' DÜRÜSTLÜK: `dbFetch(n = )` bir AKTARIM sınırdır, SUNUCU İŞ YÜKÜ sınırı
