@@ -16,6 +16,14 @@ Amaç iki tanedir:
 Üretici **yalnızca okur**. Üretim verisini değiştirmez, SQL'i onarmaz, RLS
 beyanını kaldırmaz, anlamsal metadata uydurmaz.
 
+SQL Server sorgu kütüphanesi uyumluluğu için salt-okunur kapısı tek bir dar
+istisna tanır: sorgunun başında tam olarak `SET NOCOUNT ON;` bulunabilir ve
+arkasından **yalnızca bir** salt-okunur `SELECT` veya `CTE + SELECT` gelebilir.
+Sorgu dosyası değiştirilmez; kapıdan geçen batch ile SQL Server'a gönderilen
+batch aynıdır. `SET NOCOUNT OFF`, başka `SET` seçenekleri, `DECLARE`, `EXEC`,
+`SELECT ... INTO`, veri değiştiren CTE'ler ve ilave ifadeler bu istisnaya girmez
+ve kapalı başarısız olarak reddedilir.
+
 ---
 
 ## 0. Önkoşullar
@@ -114,7 +122,7 @@ sayılmaz:
 | `column_meta_missing_in_schema` | Küre edilmiş metadata var olmayan bir sütuna atıf yapıyor | `R/library_query_meta.R` içindeki sütun adını düzeltin |
 | `role_type_mismatch` | Küre edilmiş `role="measure"` ama sütun metin (ya da `role="date"` ama tarih değil) | Rolü veya SQL'i düzeltin |
 | `grain_columns_missing_in_schema` vb. | `grain_columns` / `default_group_by` / `default_measures` / `primary_entity` var olmayan sütuna atıf yapıyor | Küresyonu düzeltin |
-| `sql_not_readonly` | SQL tek bir salt-okunur SELECT değil | Sorguyu inceleyin |
+| `sql_not_readonly` | SQL, izin verilen salt-okunur sözleşmeyi geçmedi | Sorguyu inceleyin. `SET NOCOUNT ON;` + tek `SELECT`/`CTE+SELECT` desteklenir; başka session ayarı, ikinci ifade veya yazma/DDL/EXEC biçimi desteklenmez |
 
 Operatörün VM'de gördüğü gerçek örnek:
 
@@ -375,7 +383,10 @@ tutar. Emin olduğunuzda dizini elle de silebilirsiniz.
 
 * Üretici **yalnızca okur**: her SQL üretimin kullandığı **aynı**
   `pk_sql_classify_readonly()` kapısından geçer; reddedilen SQL çalıştırılmaz.
-  `dbExecute`/`dbWriteTable` gibi veri değiştiren çağrılar üreticide **yoktur**.
+  Kapı yalnızca tam `SET NOCOUNT ON;` önekini, arkasında tek bir salt-okunur
+  `SELECT`/`CTE+SELECT` varsa kabul eder. Batch metni değiştirilmez ve aynı metin
+  yürütülür. `dbExecute`/`dbWriteTable` gibi veri değiştiren çağrılar üreticide
+  **yoktur**.
 * `sample` yürütmesi ayrıca sorgu başına **açık güvenlik kürasyonu** gerektirir
   (`meta_sample_safe = TRUE`); `dbFetch(n)` hiçbir zaman sunucu iş yükü sınırı
   olarak sunulmaz.
