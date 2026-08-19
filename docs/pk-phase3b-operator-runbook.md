@@ -156,6 +156,12 @@ kapalı başarısız olur. Sağlık raporu artık bunu kullanıcı bir soru sorm
   nedeniyle **geri çekilen** bir sorgunun eski girdisi ise kaldırılır (bayat bir
   sözleşme bırakılmaz).
 
+`R/library_query_meta_local.R` üretimden türetilen otomatik metadata artefaktıdır
+ve meşru biçimde on binlerce satıra çıkabilir. `R/library_queries.R` gibi backend
+maintainability skoru ile büyük-dosya ratchet'lerinden bilinçli olarak hariç
+tutulur; bu dosyanın boyutu kaynak kodu bakım borcu sayılmaz. Bu istisna ratchet
+eşiklerini gevşetme gerekçesi değildir.
+
 Bloklayıcı bulguları düzelttikçe geri çekilen sorgular `DAHIL` durumuna geçer.
 
 ---
