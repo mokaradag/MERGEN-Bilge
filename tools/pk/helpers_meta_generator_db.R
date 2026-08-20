@@ -93,13 +93,9 @@
 #' `.DEFAULT_DSN = Sys.getenv("DB_DSN", "TestConnection")` geliştirme yedeği,
 #' `DB_DSN` tanımsızken üreticiyi YANLIŞ bir veritabanını envanterlemeye
 #' götürebilirdi. Üretimden türetilmiş metadata için bu KAPALI BAŞARISIZ olur.
-#' @param timeout_sec Yapılandırılmış üretici zaman aşımı. BAĞLANTI EDİNİMİ DE
-#'   SINIRLANIR: `get_connection()` / `db_acquire_tx_connection()` bir PK isteği
-#'   dışında üreticinin bütçesini BİLMEZ ve kendi sürücü/oturum açma/havuz
-#'   bekleme politikasını uygular. Erişilemeyen bir DSN ya da tıkanmış bir havuz
-#'   checkout'u, sınırlı hiçbir describe/fetch çağrısı BAŞLAMADAN koşuyu
-#'   kilitleyebilirdi -- oysa operatör sözleşmesi "her bloklayan sürücü çağrısı
-#'   sınırlıdır" der.
+#' @param timeout_sec Yapılandırılmış üretici zaman aşımı. Metadata üreticisi
+#'   uygulamanın havuzunu devralmaz; kendi fiziksel ODBC bağlantısını açar ve
+#'   release aşamasında yine kendisi kapatır.
 pkg_default_connect_fn <- function(target = "primary", timeout_sec = NULL) {
   dogrulama <- pkg_meta_validate_db_target(target)
   if (!isTRUE(dogrulama$ok)) {
@@ -115,51 +111,68 @@ pkg_default_connect_fn <- function(target = "primary", timeout_sec = NULL) {
       "veritabanindan uretilemez. .Renviron dosyasina %s ekleyin."
     ), dogrulama$target, dsn_degiskeni, dsn_degiskeni), call. = FALSE)
   }
-
-  # HAVUZ AKTİFSE GERÇEK BİR BAĞLANTI ÖDÜNÇ ALINIR.
-  #
-  # `get_connection("primary")` havuz açıkken canlı `Pool` NESNESİNİ döndürür;
-  # `pk_sql_describe_result_schema()` ise Pool'u OdbcConnection saymadığı için
-  # doğrudan NULL döner ve TÜM birincil sorgular "describe_unavailable" olurdu.
-  if (exists("db_acquire_tx_connection", mode = "function", inherits = TRUE) &&
-      exists("is_db_pool_enabled", mode = "function", inherits = TRUE) &&
-      isTRUE(tryCatch(is_db_pool_enabled(), error = function(e) FALSE))) {
-    return(.pkgd_bounded(function() db_acquire_tx_connection(dogrulama$target), timeout_sec))
+  if (!requireNamespace("DBI", quietly = TRUE) || !requireNamespace("odbc", quietly = TRUE)) {
+    stop("[PK_META_GEN] DBI ve odbc paketleri gerekli.", call. = FALSE)
   }
 
-  if (!exists("get_connection", mode = "function", inherits = TRUE)) {
-    stop("[PK_META_GEN] get_connection bulunamadi; uygulama bootstrap'i yuklenmedi.",
-         call. = FALSE)
+  baglanti_args <- list(odbc::odbc(), dsn = dsn, interruptible = TRUE)
+  if (exists(".DEFAULT_DB_CLIENT_ENCODING", inherits = TRUE)) {
+    baglanti_args$encoding <- get(".DEFAULT_DB_CLIENT_ENCODING", inherits = TRUE)
   }
-  .pkgd_bounded(function() get_connection(dogrulama$target), timeout_sec)
+  if (exists(".DEFAULT_DB_NAME_ENCODING", inherits = TRUE)) {
+    baglanti_args$name_encoding <- get(".DEFAULT_DB_NAME_ENCODING", inherits = TRUE)
+  }
+  surucu_siniri <- suppressWarnings(as.integer(floor(as.numeric(timeout_sec)[1])))
+  if (length(surucu_siniri) == 1L && !is.na(surucu_siniri) && surucu_siniri >= 1L) {
+    baglanti_args$timeout <- surucu_siniri
+  }
+
+  conn <- .pkgd_bounded(function() do.call(DBI::dbConnect, baglanti_args), timeout_sec)
+  list(conn = conn, pooled = FALSE, pkq_meta_dedicated = TRUE)
 }
 
-#' @param timeout_sec Bırakma da SINIRLIDIR: havuza iade ya da `dbDisconnect()`
-#'   kirli/ölü bir tutamaçta bloklayabilir. Bütçe verilmediğinde taban temizlik
-#'   süresi uygulanır; sonsuza dek beklemek koşuyu kilitlerdi.
+#' @param timeout_sec Fiziksel `dbDisconnect()` çağrısı da SINIRLIDIR. Yalnızca
+#'   bu üreticinin `pkq_meta_dedicated` işaretli bağlantısı kapatılır; uygulama
+#'   havuzundan ödünç alınmış bir tutamaç bu yol üzerinden kapatılamaz.
 pkg_default_release_fn <- function(handle, timeout_sec = NULL) {
-  if (is.null(handle)) return(invisible(NULL))
+  if (is.null(handle) || !is.list(handle) || !isTRUE(handle$pkq_meta_dedicated) ||
+      is.null(handle$conn)) return(invisible(NULL))
 
   sinir <- suppressWarnings(as.numeric(timeout_sec)[1])
   if (length(sinir) != 1L || is.na(sinir) || !is.finite(sinir) || sinir <= 0) {
     sinir <- .PKGD_CLEANUP_MIN_SEC
   }
+  if (!requireNamespace("DBI", quietly = TRUE)) return(invisible(NULL))
 
-  if (is.list(handle) && isTRUE(handle$checked_out) &&
-      exists("db_release_tx_connection", mode = "function", inherits = TRUE)) {
-    return(invisible(tryCatch(
-      .pkgd_bounded(function() db_release_tx_connection(handle), sinir),
-      error = function(e) NULL
-    )))
+  invisible(tryCatch(
+    .pkgd_bounded(function() DBI::dbDisconnect(handle$conn), sinir),
+    error = function(e) NULL
+  ))
+}
+
+# SQL Server descriptor yalnizca kapidan gecen SQL'i gorur. D23'ün izin verdigi
+# tek cok-ifadeli on ek olan `SET NOCOUNT ON;` statik descriptor'a verilmeden
+# once kaldirilir; baska hicbir SET/batch normalizasyonu yapilmaz.
+.pkgd_descriptor_sql <- function(sql) {
+  metin <- as.character(sql %||% "")[1]
+  if (is.na(metin)) metin <- ""
+  if (!exists("pk_sql_classify_readonly", mode = "function", inherits = TRUE)) {
+    stop("[PK_META_GEN] pk_sql_classify_readonly bulunamadi.", call. = FALSE)
+  }
+  kapi <- pk_sql_classify_readonly(metin)
+  if (!isTRUE(kapi$allowed)) {
+    stop("[PK_META_GEN] Descriptor SQL salt-okunur kapisindan gecemedi.", call. = FALSE)
   }
 
-  if (exists("release_connection", mode = "function", inherits = TRUE)) {
-    return(invisible(tryCatch(
-      .pkgd_bounded(function() release_connection(handle), sinir),
-      error = function(e) NULL
-    )))
+  on_ek <- regexpr(
+    "^[ \\t\\r\\n]*SET[ \\t\\r\\n]+NOCOUNT[ \\t\\r\\n]+ON[ \\t\\r\\n]*;[ \\t\\r\\n]*",
+    metin, ignore.case = TRUE, perl = TRUE, useBytes = TRUE
+  )
+  if (length(on_ek) == 1L && identical(as.integer(on_ek[1]), 1L)) {
+    uzunluk <- as.integer(attr(on_ek, "match.length")[1])
+    return(substr(metin, uzunluk + 1L, nchar(metin, type = "chars")))
   }
-  invisible(NULL)
+  metin
 }
 
 .pkgd_descriptor_params <- function(sql) {
@@ -262,6 +275,7 @@ pkg_default_describe_fn <- function(conn, sql, timeout_sec = NULL) {
     return(pk_sql_describe_result_schema(conn, sql))
   }
 
+  descriptor_sql <- .pkgd_descriptor_sql(sql)
   tanim_sql <- paste(
     paste0(
       "SELECT column_ordinal, name, system_type_name, max_length, ",
@@ -272,7 +286,8 @@ pkg_default_describe_fn <- function(conn, sql, timeout_sec = NULL) {
   )
 
   cerceve <- .pkgd_bounded(
-    function() DBI::dbGetQuery(conn, tanim_sql, params = .pkgd_descriptor_params(sql)),
+    function() DBI::dbGetQuery(conn, tanim_sql,
+                               params = .pkgd_descriptor_params(descriptor_sql)),
     timeout_sec
   )
   if (!is.data.frame(cerceve) || nrow(cerceve) == 0L) return(NULL)
