@@ -112,8 +112,7 @@ test_that("SSMS tipi indeksli yerel-temp batch kabul edilir", {
   expect_identical(plan$temp_names,
                    c("#AktifProjeler", "#Atamalar", "#ProjeYillikOzet"))
   expect_identical(length(plan$staging_sql), 3L)
-  expect_true(grepl("WITH SonucHazirlik", plan$result_sql,
-                    ignore.case = TRUE, fixed = TRUE))
+  expect_true(grepl("WITH SonucHazirlik", plan$result_sql, fixed = TRUE))
 
   sonuc <- env$pk_sql_classify_readonly(sql)
   expect_true(isTRUE(sonuc$allowed))
