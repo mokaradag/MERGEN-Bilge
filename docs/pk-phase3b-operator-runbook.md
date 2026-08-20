@@ -16,8 +16,9 @@ Amaç iki tanedir:
 
 Üretici **yalnızca okur**. Üretim verisini değiştirmez, SQL'i onarmaz, RLS
 beyanını kaldırmaz, anlamsal metadata uydurmaz. 20 Ağustos 2026 itibarıyla
-Windows VM'de `SET NOCOUNT ON` ve doğrulanmış yerel `#temp` staging kullanan
-sorgular için uyumluluk yolu da doğrulanmıştır.
+Windows VM'de `SET NOCOUNT ON`, doğrulanmış yerel `#temp` staging ve aynı batch
+içindeki güvenli yerel-temp indeksleri kullanan sorgular için uyumluluk yolu
+doğrulanmıştır.
 
 ---
 
@@ -105,36 +106,56 @@ tamamından geçmek zorundadır. Başka `SET` biçimleri veya ek ifadeler redded
 ### 2.2 Yerel `#temp` analitik batch uyumluluğu
 
 Bazı üretim sorguları bir veya daha fazla yerel `#temp` tabloyu staging için
-kullanır. Çok ifadeli batch yalnızca şu yapı eksiksiz kanıtlanabiliyorsa kabul
-edilir:
+kullanır. Çok ifadeli batch yalnızca yapısı eksiksiz kanıtlanabiliyorsa kabul
+edilir. Güncel sözleşme hem klasik ön-temizlikli biçimi hem de SSMS'te yaygın
+olan doğrudan staging + indeks biçimini kapsar:
 
 ```sql
+-- İsteğe bağlı ön-temizlik; varsa staging ile aynı adı hedeflemelidir.
 IF OBJECT_ID('tempdb..#T') IS NOT NULL DROP TABLE #T;
 SELECT ... INTO #T ...;
 
--- Gerekirse başka yerel #temp staging çiftleri.
+-- İsteğe bağlı; yalnızca bu batch içinde daha önce oluşturulmuş #temp üzerinde.
+CREATE CLUSTERED INDEX IX_T ON #T(...);
+CREATE NONCLUSTERED INDEX IX_T_2 ON #T(...) INCLUDE (...);
 
-SELECT ...
+SELECT ... INTO #T2
 FROM #T ...;
 
-DROP TABLE #T;
+WITH Sonuc AS (...)
+SELECT ...
+FROM Sonuc;
+
+DROP TABLE IF EXISTS #T, #T2;
 ```
 
 Kuralların özeti:
 
 - yalnız yerel `#temp`; `##global` kabul edilmez,
-- her staging tablosunun korumalı ön-temizliği ve son temizliği birebir eşleşir,
+- `OBJECT_ID('tempdb..#T') ... DROP TABLE #T` ön-temizliği isteğe bağlıdır;
+  kullanılırsa hemen sonraki staging ile aynı `#temp` adını hedeflemelidir,
 - staging `SELECT`'i `INTO #temp` bölümü çıkarıldıktan sonra mevcut read-only
   kapının bütün yasaklarından tekrar geçer,
-- staging bittikten sonra tam olarak bir sonuç `SELECT`/CTE bulunur,
-- `GO`, kalıcı DDL/yazma, `EXEC`, ek sonuç `SELECT`'i veya belirsiz yapı
-  batch'i reddeder.
+- `CREATE [UNIQUE] [CLUSTERED|NONCLUSTERED] INDEX` yalnızca daha önce aynı batch
+  içinde oluşturulmuş yerel `#temp` tabloyu hedefleyebilir,
+- staging bittikten sonra tam olarak bir sonuç `SELECT` veya `WITH ... SELECT`
+  bulunur,
+- final temizlik hem `DROP TABLE #T` hem de
+  `DROP TABLE IF EXISTS #T, #T2, ...` olabilir; yalnızca aynı batch'in
+  oluşturduğu temp tablolar birer kez temizlenebilir,
+- `GO`, kalıcı DDL/yazma, kalıcı `CREATE INDEX`, `EXEC`, ek sonuç `SELECT`'i,
+  sequence mutasyonu veya belirsiz yapı batch'i reddeder.
 
 SQL Server statik tanımlayıcısı aynı batch içinde oluşturulan `#temp` tabloları
 her durumda çözemediği için **yalnızca metadata tanımı sırasında** doğrulanmış
-staging zinciri eşdeğer CTE'lere dönüştürülür. Faz 3b bunun için `#temp` tablo
-oluşturmaz ve `DBI::dbExecute()` kullanmaz. Gerçek uygulama ve `sample` yolu
-**orijinal SQL'i değiştirmeden** çalıştırır.
+staging zinciri eşdeğer CTE'lere dönüştürülür. Fiziksel temp indeksleri sonuç
+şemasını değiştirmediği için `describe` dönüşümünde çalıştırılmaz. Final sonuç
+zaten `WITH ... SELECT` ise üretilen staging CTE'leri aynı CTE zincirine güvenli
+biçimde eklenir.
+
+Faz 3b bunun için `#temp` tablo oluşturmaz, `CREATE INDEX` çalıştırmaz ve
+`DBI::dbExecute()` kullanmaz. Gerçek uygulama ve `sample` yolu **orijinal SQL'i
+değiştirmeden** çalıştırır.
 
 Ayrıntılı sözleşme:
 [`pk-sql-readonly-gate.md`](pk-sql-readonly-gate.md).
@@ -183,7 +204,9 @@ beyanı değiştiyse eski girdi `removed_stale_fingerprint` ile kaldırılır.
 
 `sql_not_readonly` artık "her çok ifadeli SQL reddedilir" demek değildir. Tam
 `SET NOCOUNT ON;` öneki ve yalnızca kuralları eksiksiz sağlayan yerel `#temp`
-analitik batch istisnadır. Diğer çok ifadeli yapılar kapalı-başarısız reddedilir.
+analitik batch istisnadır. Bu istisna, daha önce oluşturulmuş yerel temp tablolar
+üzerindeki performans indekslerini ve güvenli toplu `DROP TABLE IF EXISTS`
+temizliğini de kapsar. Diğer çok ifadeli yapılar kapalı-başarısız reddedilir.
 
 ### Eylem gerektiren ama İLERLEMEYİ DURDURMAYAN bulgular
 
@@ -215,8 +238,9 @@ ratchet'lerinden hariç tutulması ratchet eşiklerini gevşetme gerekçesi değ
 ## 5. `sample` kipi (İKİNCİ GEÇİŞ, isteğe bağlı ve AÇIK İZİNLİ)
 
 `describe` hâlâ bazı desteklenmeyen/dinamik/belirsiz sorgular için şema
-döndüremeyebilir. **Doğrulanmış yerel `#temp` staging artık sırf temp tablo
-kullandığı için `sample` gerektirmez**; metadata-only CTE yolu önce denenir.
+döndüremeyebilir. **Doğrulanmış yerel `#temp` staging, yerel-temp indeksleri veya
+final CTE kullanımı artık sırf bu yapılar nedeniyle `sample` gerektirmez**;
+metadata-only CTE yolu önce denenir.
 
 `sample` yalnızca kalan gerçek istisnalar için düşünülmelidir.
 
@@ -279,11 +303,21 @@ Sağlık raporunda özellikle şunları kontrol edin:
    artık `DAHIL`/normal doğrulama yoluna girmiş mi?
 2. Kuralları sağlayan yerel `#temp` analitik sorgular artık sırf çok ifadeli
    oldukları için `ATLANDI` oluyor mu? Olmamalı.
-3. Yeni `BASARISIZ`/`GERI CEKILDI` sayısı oluşmuş mu?
-4. Diğer yan etkili veya belirsiz çok ifadeli SQL'ler hâlâ `ATLANDI` mı?
+3. `SELECT ... INTO #temp` sonrasında yalnızca aynı batch'in oluşturduğu temp
+   tabloları hedefleyen `CREATE CLUSTERED/NONCLUSTERED INDEX` kullanan sorgular
+   normal doğrulama yoluna girmiş mi?
+4. Final sonucu `WITH ... SELECT` olan sorgular metadata-only CTE dönüşümünde
+   başarılı mı?
+5. `DROP TABLE IF EXISTS #A, #B, ...` kullanan güvenli toplu temizlik yanlış
+   pozitif üretmeden kabul edilmiş mi?
+6. Yeni `BASARISIZ`/`GERI CEKILDI` sayısı oluşmuş mu?
+7. Kalıcı DDL/DML, `##global`, `EXEC`, `GO` veya belirsiz çok ifadeli SQL'ler
+   hâlâ `ATLANDI` mı?
 
-20 Ağustos 2026'da operatör, hedef sorgular için bu düzeltmenin Windows VM'de
-çalıştığını doğruladı. Sabit toplam/success sayısı yerine her koşunun kendi
+20 Ağustos 2026'da operatör, SSMS'te çalışan ancak yerel temp staging + indeks +
+final CTE + `DROP TABLE IF EXISTS` kullandığı için önce `multiple_statements`
+olarak reddedilen gerçek sorgunun güncel `pk/rebuild` ile düzeldiğini Windows
+VM'de doğruladı. Sabit toplam/success sayısı yerine her koşunun kendi
 `health.txt`/`health.json` çıktısını kanıt olarak saklayın.
 
 ---
@@ -357,56 +391,3 @@ Gerçek üretim proje/program adları yalnız gitignore'lu
 | `MERGEN_PK_META_SAMPLE_UNICODE` | `TRUE` | `sample` SQL'ini üretimin Unicode parametre yolu ile gönder |
 
 Tümü `.Renviron.example` içinde belgelenmiştir.
-
-`meta_sample_safe` ortam değişkeni değil, sorgu başına açık kürasyon alanıdır.
-
-### Satır sınırı bir aktarım sınırıdır
-
-`dbSendQuery()` SELECT'i çalıştırır; `dbFetch(n=)` yalnızca kaç satırın istemciye
-aktarılacağını sınırlar. Timeout ve bayt tavanı koruma sağlar ama sunucu iş yükü
-tavanı değildir. Bu yüzden gerçek `sample` yolu ayrıca
-`meta_sample_safe = TRUE` ister.
-
-### Devam (resume) durumu
-
-`artifacts/pk-meta/generator-state.json` yalnız DB gözlemlerini taşır. SQL,
-hedef veya etkin `date_columns` sözleşmesi değişirse eski parmak izi kabul
-edilmez. `sample` politikasındaki değişiklikler de eski sample kanıtını geçersiz
-kılar. Durum dosyası her sorgudan sonra atomik yazılır.
-
-### Eşzamanlı koşu kilidi
-
-Üretici `artifacts/pk-meta/generator.lock` kullanır. İkinci eşzamanlı koşu
-reddedilir; çökmüş kilit bayatlama politikasına göre devralınabilir.
-
----
-
-## 11. Güvenlik ve gizlilik özeti
-
-- Üretici her SQL'i üretimin kullandığı aynı `pk_sql_classify_readonly()`
-  kapısından geçirir.
-- `SET NOCOUNT ON` istisnası yalnızca tam önek + tek read-only sorgudur.
-- Yerel `#temp` istisnası yalnızca
-  `pk_sql_analyze_local_temp_batch()` tarafından eksiksiz kanıtlanan staging
-  biçimidir; genel `SELECT INTO` izni değildir.
-- Faz 3b yerel temp tabloları **çalıştırmaz**; `describe` için metadata-only CTE
-  üretir.
-- Üreticide `dbExecute`/`dbWriteTable`/`dbCreateTable` gibi veri değiştiren DBI
-  çağrıları yoktur ve bu ratchet değiştirilmemiştir.
-- Metadata generator DB bağlantı/pool mimarisi bu düzeltmede değiştirilmemiştir.
-- `sample` ayrıca `meta_sample_safe = TRUE` ister.
-- Rapora DSN, parola, kimlik bilgisi veya ham reddedilmiş SQL girmez.
-- Rapora üretim satır değerleri girmez; yalnız şema/sütun adları ve sayımlar.
-- Üretilen metadata dosyası ASCII-güvenli biçimde yazılır; Türkçe adlar
-  kayıpsız geri okunur.
-- Yazma atomiktir ve fail-closed RLS/metadata kapıları zayıflatılmaz.
-- Maintainability veya SQL güvenlik ratchet eşikleri bu uyumluluk için
-  gevşetilmemiştir.
-
----
-
-## 12. Kanıt sınırı
-
-Faz 3b koşusu yalnızca kendi sağlık raporunun kanıtıdır. Tarayıcı UX, SSO,
-LLM seçim doğruluğu, Excel çıktısı, çok kullanıcılı yanıt süresi veya Faz 6
-asenkron davranışı için ayrı `RUNBOOK.md` / VM evidence kapıları gerekir.
