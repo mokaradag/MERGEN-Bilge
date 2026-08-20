@@ -47,6 +47,45 @@
   )
 }
 
+.pk_indexed_local_temp_batch <- function() {
+  paste(
+    paste0(
+      "SELECT e.ObjectId AS EPSObjectId, p.ObjectId AS ProjectObjectId ",
+      "INTO #AktifProjeler FROM dbo.EPS e ",
+      "INNER JOIN dbo.Project p ON e.ObjectId=p.ParentEPSObjectId;"
+    ),
+    "CREATE CLUSTERED INDEX IX_Aktif_ProjectObjectId ON #AktifProjeler(ProjectObjectId);",
+    paste0(
+      "CREATE NONCLUSTERED INDEX IX_Aktif_EPS ON #AktifProjeler(EPSObjectId) ",
+      "INCLUDE (ProjectObjectId);"
+    ),
+    paste0(
+      "SELECT r.ObjectId AS AssignmentObjectId, ap.ProjectObjectId, ap.EPSObjectId ",
+      "INTO #Atamalar FROM dbo.resourceAssignment r ",
+      "INNER JOIN #AktifProjeler ap ON r.ProjectObjectId=ap.ProjectObjectId;"
+    ),
+    "CREATE CLUSTERED INDEX IX_Atama_AssignmentId ON #Atamalar(AssignmentObjectId);",
+    paste0(
+      "SELECT a.ProjectObjectId, a.EPSObjectId, YEAR(s.StartDate) AS Yil, ",
+      "SUM(s.ActualUnits) AS ToplamIscilik_Ham INTO #ProjeYillikOzet ",
+      "FROM dbo.spread s INNER JOIN #Atamalar a ",
+      "ON s.ResourceAssignmentObjectId=a.AssignmentObjectId ",
+      "GROUP BY a.ProjectObjectId, a.EPSObjectId, YEAR(s.StartDate);"
+    ),
+    paste0(
+      "CREATE NONCLUSTERED INDEX IX_Ozet_EPS_Yil ON #ProjeYillikOzet(EPSObjectId, Yil) ",
+      "INCLUDE (ToplamIscilik_Ham);"
+    ),
+    paste0(
+      "WITH SonucHazirlik AS (SELECT EPSObjectId, ProjectObjectId, Yil, ",
+      "ToplamIscilik_Ham FROM #ProjeYillikOzet) ",
+      "SELECT EPSObjectId, ProjectObjectId, Yil, ToplamIscilik_Ham FROM SonucHazirlik;"
+    ),
+    "DROP TABLE IF EXISTS #AktifProjeler, #Atamalar, #ProjeYillikOzet;",
+    sep = "\n"
+  )
+}
+
 test_that("kanitlanmis yerel #temp analitik batch kabul edilir", {
   env <- .pk_local_temp_env()
   sql <- .pk_safe_local_temp_batch()
@@ -62,6 +101,24 @@ test_that("kanitlanmis yerel #temp analitik batch kabul edilir", {
   expect_true(isTRUE(sonuc$allowed))
   expect_identical(sonuc$statement_kind, "local_temp_batch")
   expect_identical(sonuc$statement_count, 7L)
+})
+
+test_that("SSMS tipi indeksli yerel-temp batch kabul edilir", {
+  env <- .pk_local_temp_env()
+  sql <- .pk_indexed_local_temp_batch()
+
+  plan <- env$pk_sql_analyze_local_temp_batch(sql)
+  expect_true(isTRUE(plan$ok))
+  expect_identical(plan$temp_names,
+                   c("#AktifProjeler", "#Atamalar", "#ProjeYillikOzet"))
+  expect_identical(length(plan$staging_sql), 3L)
+  expect_true(grepl("WITH SonucHazirlik", plan$result_sql,
+                    ignore.case = TRUE, fixed = TRUE))
+
+  sonuc <- env$pk_sql_classify_readonly(sql)
+  expect_true(isTRUE(sonuc$allowed))
+  expect_identical(sonuc$statement_kind, "local_temp_batch")
+  expect_identical(sonuc$statement_count, 9L)
 })
 
 test_that("mevcut D23 yasak anahtar kelime ratchet'i aynen korunur", {
@@ -121,6 +178,31 @@ test_that("yerel staging kalici DML EXEC veya sequence mutasyonunu gizleyemez", 
     sonuc <- env$pk_sql_classify_readonly(paste(guvensiz[[ad]], collapse = "\n"))
     expect_false(isTRUE(sonuc$allowed), info = ad)
   }
+})
+
+test_that("yerel-temp indeks istisnasi kalici DDL veya hatali temizligi acamaz", {
+  env <- .pk_local_temp_env()
+  iyi <- .pk_indexed_local_temp_batch()
+
+  kalici_indeks <- sub(
+    "CREATE CLUSTERED INDEX IX_Aktif_ProjectObjectId ON #AktifProjeler\\(ProjectObjectId\\);",
+    "CREATE CLUSTERED INDEX IX_Aktif_ProjectObjectId ON dbo.RealTable(ProjectObjectId);",
+    iyi, perl = TRUE
+  )
+  global_indeks <- sub(
+    "CREATE CLUSTERED INDEX IX_Aktif_ProjectObjectId ON #AktifProjeler\\(ProjectObjectId\\);",
+    "CREATE CLUSTERED INDEX IX_Aktif_ProjectObjectId ON ##GlobalT(ProjectObjectId);",
+    iyi, perl = TRUE
+  )
+  kalici_temizlik <- sub(
+    "DROP TABLE IF EXISTS #AktifProjeler, #Atamalar, #ProjeYillikOzet;",
+    "DROP TABLE IF EXISTS #AktifProjeler, #Atamalar, dbo.RealTable;",
+    iyi, fixed = TRUE
+  )
+
+  expect_false(isTRUE(env$pk_sql_classify_readonly(kalici_indeks)$allowed))
+  expect_false(isTRUE(env$pk_sql_classify_readonly(global_indeks)$allowed))
+  expect_false(isTRUE(env$pk_sql_classify_readonly(kalici_temizlik)$allowed))
 })
 
 test_that("kurulum ve temizlik isimleri birebir yerel #temp plani olmalidir", {
@@ -189,6 +271,23 @@ test_that("Faz 3b yerel-temp metadata'sini sorguyu calistirmadan CTE'ye cevirir"
   expect_false(grepl("DROP TABLE", donusen, ignore.case = TRUE, perl = TRUE))
   expect_true(grepl("FROM __pk_meta_local_temp_001", donusen, fixed = TRUE))
   expect_true(grepl("JOIN __pk_meta_local_temp_002", donusen, fixed = TRUE))
+})
+
+test_that("indeksli yerel-temp metadata CTE'ye doner ve indeksleri calistirmaz", {
+  env <- .pk_local_temp_env()
+  sql <- .pk_indexed_local_temp_batch()
+  donusen <- env$.pkgn_local_temp_describe_sql(sql)
+
+  expect_true(grepl("^WITH __pk_meta_local_temp_001 AS", donusen, perl = TRUE))
+  expect_true(grepl("__pk_meta_local_temp_003 AS", donusen, fixed = TRUE))
+  expect_true(grepl("SonucHazirlik AS", donusen, fixed = TRUE))
+  expect_false(grepl("#AktifProjeler", donusen, fixed = TRUE))
+  expect_false(grepl("#Atamalar", donusen, fixed = TRUE))
+  expect_false(grepl("#ProjeYillikOzet", donusen, fixed = TRUE))
+  expect_false(grepl("CREATE[ \\t\\r\\n]+(?:CLUSTERED|NONCLUSTERED)[ \\t\\r\\n]+INDEX",
+                     donusen, ignore.case = TRUE, perl = TRUE))
+  expect_false(grepl("DROP TABLE", donusen, ignore.case = TRUE, perl = TRUE))
+  expect_true(grepl("FROM __pk_meta_local_temp_003", donusen, fixed = TRUE))
 })
 
 test_that("describe enjeksiyonu CTE metnini, sample yolu ise orijinal SQL'i korur", {

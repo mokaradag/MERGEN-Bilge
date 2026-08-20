@@ -193,8 +193,14 @@
   if (!length(plan$temp_names) || length(plan$temp_names) != length(plan$staging_sql)) {
     stop("[PK_META_GEN] Yerel #temp metadata plani tutarsiz.", call. = FALSE)
   }
-  if (!.pk_sql_starts_with_word(plan$result_sql, "SELECT")) {
-    stop("[PK_META_GEN] Yerel #temp metadata donusumu final SELECT gerektirir.", call. = FALSE)
+
+  sonuc_turu <- if (.pk_sql_starts_with_word(plan$result_sql, "SELECT")) {
+    "select"
+  } else if (.pk_sql_starts_with_word(plan$result_sql, "WITH")) {
+    "cte"
+  } else {
+    stop("[PK_META_GEN] Yerel #temp metadata donusumu final SELECT/CTE gerektirir.",
+         call. = FALSE)
   }
 
   # CTE adlari sabittir ama SQL'de zaten kullaniliyorsa semantigi degistirmemek
@@ -230,7 +236,19 @@
     paste0(cte_adlari[[i]], " AS (\n", staging[[i]], "\n)")
   }, character(1))
 
-  paste0("WITH ", paste(cte, collapse = ",\n"), "\n", sonuc)
+  if (identical(sonuc_turu, "select")) {
+    return(paste0("WITH ", paste(cte, collapse = ",\n"), "\n", sonuc))
+  }
+
+  # Final sorgu zaten WITH ile basliyorsa ikinci bir WITH yazmak T-SQL'i bozar.
+  # Staging CTE'leri mevcut CTE zincirinin BASINA virgulle eklenir. Bu yalnizca
+  # describe metnidir; runtime ve sample orijinal batch'i kullanmaya devam eder.
+  sonuc_cte <- sub("^WITH[ \\t\\r\\n]+", "", sonuc,
+                   ignore.case = TRUE, perl = TRUE)
+  if (!nzchar(trimws(sonuc_cte)) || identical(sonuc_cte, sonuc)) {
+    stop("[PK_META_GEN] Yerel #temp final CTE govdesi ayristirilamadi.", call. = FALSE)
+  }
+  paste0("WITH ", paste(cte, collapse = ",\n"), ",\n", sonuc_cte)
 }
 
 # `describe` çağrısını yap ve SONUCU ile HATASINI AYIR.

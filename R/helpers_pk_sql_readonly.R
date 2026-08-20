@@ -411,11 +411,12 @@ pk_sql_readonly_guard <- function(sql, context_label = "PK_ANALIZ") {
 #
 # Mevcut D23 yasaklari DEGISTIRILMEZ. Asagidaki dar istisna yalnizca su sekli
 # kanitlayabilen cok-ifadeli batch'leri kabul eder:
-#   IF OBJECT_ID('tempdb..#T') ... DROP TABLE #T;
+#   [istege bagli IF OBJECT_ID('tempdb..#T') ... DROP TABLE #T;]
 #   SELECT ... INTO #T ...;
-#   [ayni kurulum cifti baska yerel #temp tablolar icin tekrarlanabilir]
+#   [yalnizca olusturulmus #T uzerinde CREATE [NON]CLUSTERED INDEX ...;]
+#   [ayni yerel #temp staging zinciri tekrarlanabilir]
 #   tek bir salt-okunur sonuc SELECT/CTE;
-#   DROP TABLE #T; [...]
+#   DROP TABLE [IF EXISTS] #T [, #T2 ...];
 # Kalici tablo yazimi/DDL, ##global temp, EXEC, ek sonuc SELECT'i veya belirsiz
 # herhangi bir sekil mevcut kapali-basarisiz davranisinda kalir.
 # ==============================================================================
@@ -477,12 +478,22 @@ pk_sql_readonly_guard <- function(sql, context_label = "PK_ANALIZ") {
   parca[2]
 }
 
+# Son temizlik hem klasik `DROP TABLE #T` hem de SQL Server 2016+ biçimi
+# `DROP TABLE IF EXISTS #A, #B` olabilir. Her hedef MUTLAKA yerel #temp'tir.
 .pk_sql_local_temp_cleanup <- function(raw_statement) {
-  kalip <- "^DROP[ \\t\\r\\n]+TABLE[ \\t\\r\\n]+(#[A-Za-z_][A-Za-z0-9_]*)$"
+  kalip <- paste0(
+    "^DROP[ \\t\\r\\n]+TABLE",
+    "(?:[ \\t\\r\\n]+IF[ \\t\\r\\n]+EXISTS)?",
+    "[ \\t\\r\\n]+(.+)$"
+  )
   m <- regexec(kalip, raw_statement, ignore.case = TRUE, perl = TRUE)
   parca <- regmatches(raw_statement, m)[[1]]
   if (length(parca) != 2L) return(NULL)
-  parca[2]
+
+  adlar <- trimws(strsplit(parca[2], ",", fixed = TRUE)[[1]])
+  if (!length(adlar) || any(!nzchar(adlar))) return(NULL)
+  if (any(!grepl("^#[A-Za-z_][A-Za-z0-9_]*$", adlar, perl = TRUE))) return(NULL)
+  adlar
 }
 
 .pk_sql_local_temp_stage <- function(pair) {
@@ -527,6 +538,46 @@ pk_sql_readonly_guard <- function(sql, context_label = "PK_ANALIZ") {
   any(vapply(names, function(x) .pk_sql_local_temp_name_equal(x, name), logical(1)))
 }
 
+# CREATE INDEX genel olarak yasaktir. Bu istisna yalnizca batch'in DAHA ONCE
+# olusturdugu yerel #temp uzerindeki fiziksel indeksleri kabul eder. Kalici
+# tablo, ##global temp veya baska yasakli SQL ailesi hedeflenirse NULL doner.
+.pk_sql_local_temp_index <- function(pair, temp_names) {
+  if (!is.list(pair) || !.pk_sql_starts_with_word(pair$masked %||% "", "CREATE")) {
+    return(NULL)
+  }
+
+  metin <- trimws(as.character(pair$masked %||% "")[1])
+  if (is.na(metin) || !nzchar(metin) || grepl("##", metin, fixed = TRUE)) return(NULL)
+
+  m <- regexec(
+    paste0(
+      "^CREATE[ \\t\\r\\n]+",
+      "(?:UNIQUE[ \\t\\r\\n]+)?",
+      "(?:(?:CLUSTERED|NONCLUSTERED)[ \\t\\r\\n]+)?",
+      "INDEX(?=$|[^A-Za-z0-9_@#$]).*?",
+      "(?<![A-Za-z0-9_@#$])ON[ \\t\\r\\n]+",
+      "(#[A-Za-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_@#$])"
+    ),
+    metin, ignore.case = TRUE, perl = TRUE
+  )
+  parca <- regmatches(metin, m)[[1]]
+  if (length(parca) != 2L) return(NULL)
+  hedef <- parca[2]
+  if (!.pk_sql_local_temp_has_name(temp_names, hedef)) return(NULL)
+
+  for (kelime in setdiff(PK_SQL_FORBIDDEN_KEYWORDS, "CREATE")) {
+    if (.pk_sql_has_word(metin, kelime)) return(NULL)
+  }
+  for (onek in PK_SQL_FORBIDDEN_PREFIXES) {
+    if (grepl(paste0("(^|[^A-Za-z0-9_])", onek), metin,
+              ignore.case = TRUE, perl = TRUE, useBytes = TRUE)) return(NULL)
+  }
+  if (grepl(PK_SQL_SEQUENCE_MUTATION_PATTERN, metin,
+            ignore.case = TRUE, perl = TRUE, useBytes = TRUE)) return(NULL)
+
+  hedef
+}
+
 #' Yalnizca kanitlanmis yerel-#temp analitik batch planini dondur
 #'
 #' @return `list(ok, temp_names, staging_sql, result_sql, statement_count)`.
@@ -550,7 +601,7 @@ pk_sql_analyze_local_temp_batch <- function(sql) {
   )) return(bos())
 
   ifadeler <- .pk_sql_local_temp_statement_pairs(sql_text, maske$masked)
-  if (is.null(ifadeler) || length(ifadeler) < 4L) return(bos())
+  if (is.null(ifadeler) || length(ifadeler) < 3L) return(bos())
 
   temp_adlari <- character(0)
   staging <- character(0)
@@ -562,6 +613,8 @@ pk_sql_analyze_local_temp_batch <- function(sql) {
     pair <- ifadeler[[i]]
 
     if (is.null(sonuc_sql)) {
+      # Eski guvenli biçim korunur: predrop varsa hemen arkasindaki staging ile
+      # birebir ayni #temp adini hedeflemelidir.
       on_drop <- .pk_sql_local_temp_predrop(pair$raw)
       if (!is.null(on_drop)) {
         if (i >= length(ifadeler) || .pk_sql_local_temp_has_name(temp_adlari, on_drop)) {
@@ -577,6 +630,25 @@ pk_sql_analyze_local_temp_batch <- function(sql) {
         next
       }
 
+      # SSMS'te yaygin olan ikinci guvenli biçim: dinamik batch kapsami zaten
+      # yerel #temp'i yalittigi icin predrop ZORUNLU degildir.
+      stage <- .pk_sql_local_temp_stage(pair)
+      if (!is.null(stage)) {
+        if (.pk_sql_local_temp_has_name(temp_adlari, stage$temp_name)) return(bos())
+        temp_adlari <- c(temp_adlari, stage$temp_name)
+        staging <- c(staging, stage$sql)
+        i <- i + 1L
+        next
+      }
+
+      # Performans icin CREATE INDEX yalnizca daha once kanitlanmis yerel #temp
+      # uzerinde olabilir. Metadata CTE donusumunde indeksler bilerek atlanir.
+      index_hedef <- .pk_sql_local_temp_index(pair, temp_adlari)
+      if (!is.null(index_hedef)) {
+        i <- i + 1L
+        next
+      }
+
       # Kurulum bittikten sonra TAM OLARAK bir sonuc SELECT/CTE kabul edilir.
       if (!length(temp_adlari)) return(bos())
       sonuc_kapi <- .pk_sql_classify_readonly_base(pair$raw)
@@ -587,13 +659,16 @@ pk_sql_analyze_local_temp_batch <- function(sql) {
     }
 
     # Sonuc SELECT'inden sonra yalnizca ayni batch'in yarattigi #temp DROP'lari.
-    silinecek <- .pk_sql_local_temp_cleanup(pair$raw)
-    if (is.null(silinecek) ||
-        !.pk_sql_local_temp_has_name(temp_adlari, silinecek) ||
-        .pk_sql_local_temp_has_name(temizlik, silinecek)) {
-      return(bos())
+    silinecekler <- .pk_sql_local_temp_cleanup(pair$raw)
+    if (is.null(silinecekler) || !length(silinecekler)) return(bos())
+
+    for (silinecek in silinecekler) {
+      if (!.pk_sql_local_temp_has_name(temp_adlari, silinecek) ||
+          .pk_sql_local_temp_has_name(temizlik, silinecek)) {
+        return(bos())
+      }
+      temizlik <- c(temizlik, silinecek)
     }
-    temizlik <- c(temizlik, silinecek)
     i <- i + 1L
   }
 
