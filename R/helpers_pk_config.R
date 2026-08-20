@@ -246,7 +246,7 @@ pk_config_spec <- list(
   # hatası (`86400`) her geçişi bir güne kadar bloke ederek D14'ü geri getirir.
   MERGEN_PK_SELECT_TIMEOUT_SEC = list(
     type = "integer",
-    default = 20L,
+    default = 60L,
     min = 1L,
     max = 120L
   ),
@@ -368,7 +368,7 @@ pk_config_spec <- list(
   # AÇIK kapalı-başarısız rapor üretilir.
   MERGEN_PK_SELECT_PASS_A_CHARS = list(
     type = "integer",
-    default = 60000L,
+    default = 200000L,
     min = 2000L,
     max = 400000L
   ),
