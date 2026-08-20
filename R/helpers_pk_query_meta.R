@@ -617,7 +617,8 @@ pk_meta_tracked_alias_audit <- function(curated) {
   unique(out)
 }
 
-.pk_meta_validate_query_library <- function(query_library, metadata_ids = character(0)) {
+.pk_meta_validate_query_library <- function(query_library, metadata_ids = character(0),
+                                            optional_metadata_ids = character(0)) {
   if (!is.list(query_library)) return("query_library liste olmalidir.")
 
   hatalar <- character(0)
@@ -648,10 +649,11 @@ pk_meta_tracked_alias_audit <- function(curated) {
   }
 
   bilinmeyen <- setdiff(metadata_ids, unique(ids))
-  if (length(bilinmeyen)) {
+  zorunlu_bilinmeyen <- setdiff(bilinmeyen, optional_metadata_ids)
+  if (length(zorunlu_bilinmeyen)) {
     hatalar <- c(hatalar, sprintf(
       "metadata katmaninda query_library icinde bulunmayan sorgu id: %s",
-      paste(bilinmeyen, collapse = ", ")
+      paste(zorunlu_bilinmeyen, collapse = ", ")
     ))
   }
 
@@ -697,7 +699,14 @@ pk_query_meta_attach <- function(query_library,
   registry_safe <- if (is.list(registry)) registry else list()
 
   birlesik <- pk_meta_merge_layers(auto_safe, local_safe, curated_safe)
-  hatalar <- c(hatalar, .pk_meta_validate_query_library(query_library, names(birlesik)))
+  optional_curated_ids <- names(curated_safe)[vapply(
+    curated_safe,
+    function(meta) is.list(meta) && isTRUE(meta$optional_when_absent),
+    logical(1)
+  )]
+  hatalar <- c(hatalar, .pk_meta_validate_query_library(
+    query_library, names(birlesik), optional_curated_ids
+  ))
 
   normal <- pk_meta_normalize_aliases(birlesik)
   birlesik <- normal$meta
