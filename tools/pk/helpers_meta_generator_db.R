@@ -135,7 +135,8 @@ pkg_default_connect_fn <- function(target = "primary", timeout_sec = NULL) {
 #'   bu üreticinin `pkq_meta_dedicated` işaretli bağlantısı kapatılır; uygulama
 #'   havuzundan ödünç alınmış bir tutamaç bu yol üzerinden kapatılamaz.
 pkg_default_release_fn <- function(handle, timeout_sec = NULL) {
-  if (is.null(handle) || !is.list(handle) || !isTRUE(handle$pkq_meta_dedicated) ||
+  dedicated_field <- "pkq_meta_dedicated"
+  if (is.null(handle) || !is.list(handle) || !isTRUE(handle[[dedicated_field]]) ||
       is.null(handle$conn)) return(invisible(NULL))
 
   sinir <- suppressWarnings(as.numeric(timeout_sec)[1])
@@ -152,27 +153,33 @@ pkg_default_release_fn <- function(handle, timeout_sec = NULL) {
 
 # SQL Server descriptor yalnizca kapidan gecen SQL'i gorur. D23'ün izin verdigi
 # tek cok-ifadeli on ek olan `SET NOCOUNT ON;` statik descriptor'a verilmeden
-# once kaldirilir; baska hicbir SET/batch normalizasyonu yapilmaz.
+# once kaldirilir; baska hicbir SET/batch normalizasyonu yapilmaz. Kapı sorguyu
+# reddederse metin DEĞİŞTİRİLMEDEN geri döner; yürütme kararı yine mevcut D23
+# çağrı yerinde verilir ve bu yardımcı tek başına kapıyı aşamaz.
 .pkgd_descriptor_sql <- function(sql) {
   metin <- as.character(sql %||% "")[1]
   if (is.na(metin)) metin <- ""
   if (!exists("pk_sql_classify_readonly", mode = "function", inherits = TRUE)) {
     stop("[PK_META_GEN] pk_sql_classify_readonly bulunamadi.", call. = FALSE)
   }
+
   kapi <- pk_sql_classify_readonly(metin)
-  if (!isTRUE(kapi$allowed)) {
-    stop("[PK_META_GEN] Descriptor SQL salt-okunur kapisindan gecemedi.", call. = FALSE)
+  if (!isTRUE(kapi$allowed)) return(metin)
+
+  maske <- pk_sql_mask_literals(metin)
+  if (!isTRUE(maske$ok)) return(metin)
+  ifadeler <- pk_sql_split_statements(maske$masked)
+  if (length(ifadeler) != 2L ||
+      !grepl(PK_SQL_SAFE_NOCOUNT_PREAMBLE_PATTERN, ifadeler[[1L]],
+             ignore.case = TRUE, perl = TRUE, useBytes = TRUE)) {
+    return(metin)
   }
 
-  on_ek <- regexpr(
-    "^[ \\t\\r\\n]*SET[ \\t\\r\\n]+NOCOUNT[ \\t\\r\\n]+ON[ \\t\\r\\n]*;[ \\t\\r\\n]*",
-    metin, ignore.case = TRUE, perl = TRUE, useBytes = TRUE
-  )
-  if (length(on_ek) == 1L && identical(as.integer(on_ek[1]), 1L)) {
-    uzunluk <- as.integer(attr(on_ek, "match.length")[1])
-    return(substr(metin, uzunluk + 1L, nchar(metin, type = "chars")))
-  }
-  metin
+  # Maskelenmiş ve ham metin aynı uzunluktadır. Literal/yorum içindeki ';'
+  # maskelendiği için ilk gerçek ayırıcı, onaylı NOCOUNT önekinin sonudur.
+  ayirici <- regexpr(";", maske$masked, fixed = TRUE)[1]
+  if (is.na(ayirici) || ayirici < 1L) return(metin)
+  trimws(substr(metin, ayirici + 1L, nchar(metin, type = "chars")))
 }
 
 .pkgd_descriptor_params <- function(sql) {
