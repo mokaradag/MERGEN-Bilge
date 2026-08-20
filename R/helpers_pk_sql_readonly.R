@@ -697,12 +697,36 @@ pk_sql_classify_readonly <- function(sql) {
   }
 
   plan <- pk_sql_analyze_local_temp_batch(sql)
-  if (!isTRUE(plan$ok)) return(temel)
+  if (isTRUE(plan$ok)) {
+    temel$statement_kind <- "local_temp_batch"
+    temel$statement_count <- as.integer(plan$statement_count)
+  } else {
+    maske <- pk_sql_mask_literals(sql)
+    ifadeler <- if (isTRUE(maske$ok)) pk_sql_split_statements(maske$masked) else character(0)
+    if (length(ifadeler) > 1L &&
+        grepl(PK_SQL_SAFE_NOCOUNT_PREAMBLE_PATTERN, ifadeler[[1L]],
+              ignore.case = TRUE, perl = TRUE, useBytes = TRUE)) {
+      ifadeler <- ifadeler[-1L]
+    }
+    if (length(ifadeler) < 2L ||
+        !isTRUE(.pk_sql_classify_readonly_base(ifadeler[[length(ifadeler)]])$allowed)) {
+      return(temel)
+    }
+    for (bildirim in ifadeler[-length(ifadeler)]) {
+      denetim <- .pk_sql_classify_readonly_base(sub(
+        "^DECLARE", "SELECT", bildirim,
+        ignore.case = TRUE, perl = TRUE, useBytes = TRUE
+      ))
+      if (!grepl("^DECLARE[ \\t\\r\\n]+@[A-Za-z_][A-Za-z0-9_]*", bildirim,
+                 ignore.case = TRUE, perl = TRUE, useBytes = TRUE) ||
+          .pk_sql_has_word(bildirim, "TABLE") || .pk_sql_has_word(bildirim, "CURSOR") ||
+          !isTRUE(denetim$allowed)) return(temel)
+    }
+    temel$statement_kind <- "declare_select_batch"
+  }
 
   temel$allowed <- TRUE
   temel$reason <- NULL
   temel$detail <- NA_character_
-  temel$statement_kind <- "local_temp_batch"
-  temel$statement_count <- as.integer(plan$statement_count)
   temel
 }

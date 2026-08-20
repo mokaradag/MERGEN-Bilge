@@ -1,0 +1,54 @@
+# ==============================================================================
+# Dosya Yolu: tests/testthat/test-pk-sql-declare-batch-contract.R
+# Aciklama: Salt-okunur scalar DECLARE oneki icin dar regresyon sozlesmesi.
+# ==============================================================================
+
+.pk_declare_gate_env <- function() {
+  repo_root <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
+  source(file.path(repo_root, "R", "helpers_pk_sql_readonly.R"),
+         encoding = "UTF-8", local = env)
+  env
+}
+
+test_that("scalar DECLARE oneki + tek SELECT salt-okunur kabul edilir", {
+  env <- .pk_declare_gate_env()
+  sql <- paste(
+    "DECLARE @CutoffDate DATE = DATEADD(day, -90, GETDATE());",
+    "DECLARE @Today DATE = CAST(GETDATE() AS date);",
+    "SELECT DATEDIFF(day, @CutoffDate, @Today) AS GecenSureGun;",
+    sep = "\n"
+  )
+
+  sonuc <- env$pk_sql_classify_readonly(sql)
+  expect_true(isTRUE(sonuc$allowed))
+  expect_identical(sonuc$statement_kind, "declare_select_batch")
+  expect_identical(sonuc$statement_count, 3L)
+
+  nocount <- env$pk_sql_classify_readonly(paste(
+    "SET NOCOUNT ON;",
+    "DECLARE @Today DATE = CAST(GETDATE() AS date);",
+    "SELECT @Today AS Bugun;",
+    sep = "\n"
+  ))
+  expect_true(isTRUE(nocount$allowed))
+  expect_identical(nocount$statement_kind, "declare_select_batch")
+})
+
+test_that("DECLARE istisnasi mevcut fail-closed ratchetleri gevsetmez", {
+  env <- .pk_declare_gate_env()
+  guvensiz <- c(
+    "DECLARE @x BIGINT = NEXT VALUE FOR dbo.S; SELECT @x;",
+    "DECLARE @t TABLE (x INT); SELECT x FROM @t;",
+    "DECLARE @c CURSOR; SELECT 1;",
+    "DECLARE @x INT = 1; UPDATE SentetikTablo SET x = 2; SELECT @x;",
+    "DECLARE @x INT = 1; SELECT 1; SELECT 2;",
+    "DECLARE @x INT = 1; EXEC dbo.SentetikYordam;"
+  )
+
+  for (sql in guvensiz) {
+    sonuc <- env$pk_sql_classify_readonly(sql)
+    expect_false(isTRUE(sonuc$allowed), info = sql)
+  }
+})
