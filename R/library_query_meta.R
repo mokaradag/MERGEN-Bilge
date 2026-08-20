@@ -15,13 +15,13 @@
 #   * üreticinin (generator) çıkardığı sütun envanteri
 #     -> yalnızca gitignore'lu R/library_query_meta_local.R içinde.
 #
-# NEDEN `pk_query_meta` BOŞ:
-#   Bu checkout'ta yalnızca 4 adet YER TUTUCU sorgu vardır (q001..q_ornek_id);
-#   üretimde ~169 gerçek sorgu bulunur. Aynı id'ler için burada metadata
-#   uydurmak, VM'deki GERÇEK sorguya uydurulmuş anlam bilgisi bağlamak
-#   demektir. Bu, master plan §11'in "Never invent query metadata" kuralının
-#   tam olarak yasakladığı şeydir. Gerçek metadata VM'de, Faz 3b üreticisiyle
-#   ve insan küresyonuyla doldurulur.
+# ÜRETİM-SORGUSU KÜRESYONU:
+#   GitHub checkout'unda yer tutucu sorgular bulunurken üretim VM'inde daha
+#   geniş gerçek sorgu kütüphanesi vardır. VM'de DOĞRULANMIŞ, şema/kanonik
+#   değer sızdırmayan salt anlamsal bir kayıt bu dosyaya alınabilir. Böyle bir
+#   kayıt `optional_when_absent = TRUE` taşır: sorgu bu checkout'ta yoksa boot'u
+#   düşürmez; üretim VM'inde aynı kararlı id mevcutsa normal sözleşmeyle
+#   doğrulanır ve uygulanır. Bu bayrak metadata UYDURMA izni değildir.
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
@@ -50,7 +50,7 @@ pk_capability_registry <- list(
 # ------------------------------------------------------------------------------
 # KÜRE EDİLMİŞ SORGU METADATA'SI
 # ------------------------------------------------------------------------------
-# Sorgu id -> metadata. Yukarıdaki gerekçeyle Git'te BİLİNÇLİ olarak boştur.
+# Sorgu id -> metadata.
 #
 # Şablon (VM'de doldurulacak — master plan §5.1'deki "q042" örneği):
 #
@@ -78,4 +78,13 @@ pk_capability_registry <- list(
 # `alias_provenance = "synthetic"` ya da `alias_provenance = "approved"`
 # taşımak ZORUNDADIR. Üretimden gelen kanonik hedefler buraya değil,
 # gitignore'lu R/library_query_aliases_local.R dosyasına yazılır.
-pk_query_meta <- list()
+pk_query_meta <- list(
+  # 2026-08-20 Windows VM doğrulaması:
+  # "projeleri özetle" doğru biçimde gen_00'a seçildi; Geçiş B gereksinimi
+  # entity="project" idi. Bu anlamsal beyan eklendiğinde seçim kapısı
+  # capability_missing yerine AUTO/ok verdi.
+  "gen_00" = list(
+    optional_when_absent = TRUE,
+    entity = "project"
+  )
+)
