@@ -128,14 +128,14 @@ pkg_default_connect_fn <- function(target = "primary", timeout_sec = NULL) {
   }
 
   conn <- .pkgd_bounded(function() do.call(DBI::dbConnect, baglanti_args), timeout_sec)
-  list(conn = conn, pooled = FALSE, pkq_meta_dedicated = TRUE)
+  list(conn = conn, pooled = FALSE, pkg_meta_dedicated = TRUE)
 }
 
 #' @param timeout_sec Fiziksel `dbDisconnect()` çağrısı da SINIRLIDIR. Yalnızca
-#'   bu üreticinin `pkq_meta_dedicated` işaretli bağlantısı kapatılır; uygulama
+#'   bu üreticinin `pkg_meta_dedicated` işaretli bağlantısı kapatılır; uygulama
 #'   havuzundan ödünç alınmış bir tutamaç bu yol üzerinden kapatılamaz.
 pkg_default_release_fn <- function(handle, timeout_sec = NULL) {
-  dedicated_field <- "pkq_meta_dedicated"
+  dedicated_field <- "pkg_meta_dedicated"
   if (is.null(handle) || !is.list(handle) || !isTRUE(handle[[dedicated_field]]) ||
       is.null(handle$conn)) return(invisible(NULL))
 
