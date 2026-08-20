@@ -3,7 +3,8 @@
 Bu belge **Windows VM'de elle yürütülen** Faz 3b adımını anlatır. Tasarım
 gerekçesi ve sözleşme için ana kaynak
 [`docs/proje-kaynak-analizi-master-plan.md`](proje-kaynak-analizi-master-plan.md)
-§5.1'dir; burada yalnızca **ne yapacağınız** vardır.
+§5.1'dir. SQL salt-okunur kapısının güncel teknik sözleşmesi için ayrıca
+[`pk-sql-readonly-gate.md`](pk-sql-readonly-gate.md) okunmalıdır.
 
 Amaç iki tanedir:
 
@@ -14,7 +15,9 @@ Amaç iki tanedir:
    üretmek.
 
 Üretici **yalnızca okur**. Üretim verisini değiştirmez, SQL'i onarmaz, RLS
-beyanını kaldırmaz, anlamsal metadata uydurmaz.
+beyanını kaldırmaz, anlamsal metadata uydurmaz. 20 Ağustos 2026 itibarıyla
+Windows VM'de `SET NOCOUNT ON` ve doğrulanmış yerel `#temp` staging kullanan
+sorgular için uyumluluk yolu da doğrulanmıştır.
 
 ---
 
@@ -41,35 +44,106 @@ file.exists("tools/pk/generate_query_meta.R")
 
 `TRUE` dönmelidir. `FALSE` ise `pk/rebuild` dalını çekmemişsiniz demektir.
 
+20 Ağustos 2026 SQL uyumluluk düzeltmelerini Windows VM'e elle taşıyorsanız en
+az şu iki dosyanın güncel olması gerekir:
+
+```text
+R/helpers_pk_sql_readonly.R
+tools/pk/helpers_meta_generator_fetch.R
+```
+
+`tools/pk/helpers_meta_generator_db.R` için bu uyumluluk adına ayrı bir bağlantı
+veya pool değişikliği gerekmez.
+
 ---
 
 ## 2. `describe` kipi (ÖNCE BU)
 
-`describe` kipi sorguları **çalıştırmaz**. SQL Server'ın kendi
-`sys.dm_exec_describe_first_result_set` tanımlayıcısını sorar; DB yükü yok
-denecek kadar azdır. İlk geçiş her zaman bu olmalıdır.
+`describe` kipi sorguları veri örneklemek amacıyla **çalıştırmaz**. Normal
+sorgularda SQL Server'ın
+`sys.dm_exec_describe_first_result_set` tanımlayıcısını kullanır. İlk geçiş her
+zaman bu olmalıdır.
+
+Temiz bir doğrulama koşusu için:
 
 ```r
-Sys.setenv(MERGEN_PK_META_MODE = "describe")
+Sys.setenv(
+  MERGEN_PK_META_MODE = "describe",
+  MERGEN_PK_META_RESUME = "false"
+)
 source("tools/pk/generate_query_meta.R", encoding = "UTF-8")
 ```
 
-Konsolda göreceğiniz özet:
+Daha sonra kaldığınız yerden devam etmek istiyorsanız
+`MERGEN_PK_META_RESUME=true` kullanılabilir.
 
+Konsol özetindeki toplamları sabit bir sayı olarak belgelemeyin: üretim sorgu
+kütüphanesi zamanla değişebilir. Kanonik sonuç her koşunun kendi sağlık
+artefaktıdır.
+
+### 2.1 `SET NOCOUNT ON` uyumluluğu
+
+Salt-okunur kapısı şu SQL Server biçimini kabul eder:
+
+```sql
+SET NOCOUNT ON;
+SELECT ...
 ```
-[PK_META_GEN] Toplam sorgu            : 169
-[PK_META_GEN] Sema alinan             : 165
-[PK_META_GEN] Uretilen katmana dahil  : 158
-[PK_META_GEN] GERI CEKILEN            : 7
-[PK_META_GEN] RLS UYUSMAZLIGI         : 3
-...
+
+veya:
+
+```sql
+SET NOCOUNT ON;
+WITH ...
+SELECT ...
 ```
+
+Bu, genel bir `SET` izni değildir. **Yalnızca tam `SET NOCOUNT ON` öneki**
+tüketilir; arkasındaki tek sorgu mevcut SELECT/CTE ve yan-etki kapılarının
+tamamından geçmek zorundadır. Başka `SET` biçimleri veya ek ifadeler reddedilir.
+
+### 2.2 Yerel `#temp` analitik batch uyumluluğu
+
+Bazı üretim sorguları bir veya daha fazla yerel `#temp` tabloyu staging için
+kullanır. Çok ifadeli batch yalnızca şu yapı eksiksiz kanıtlanabiliyorsa kabul
+edilir:
+
+```sql
+IF OBJECT_ID('tempdb..#T') IS NOT NULL DROP TABLE #T;
+SELECT ... INTO #T ...;
+
+-- Gerekirse başka yerel #temp staging çiftleri.
+
+SELECT ...
+FROM #T ...;
+
+DROP TABLE #T;
+```
+
+Kuralların özeti:
+
+- yalnız yerel `#temp`; `##global` kabul edilmez,
+- her staging tablosunun korumalı ön-temizliği ve son temizliği birebir eşleşir,
+- staging `SELECT`'i `INTO #temp` bölümü çıkarıldıktan sonra mevcut read-only
+  kapının bütün yasaklarından tekrar geçer,
+- staging bittikten sonra tam olarak bir sonuç `SELECT`/CTE bulunur,
+- `GO`, kalıcı DDL/yazma, `EXEC`, ek sonuç `SELECT`'i veya belirsiz yapı
+  batch'i reddeder.
+
+SQL Server statik tanımlayıcısı aynı batch içinde oluşturulan `#temp` tabloları
+her durumda çözemediği için **yalnızca metadata tanımı sırasında** doğrulanmış
+staging zinciri eşdeğer CTE'lere dönüştürülür. Faz 3b bunun için `#temp` tablo
+oluşturmaz ve `DBI::dbExecute()` kullanmaz. Gerçek uygulama ve `sample` yolu
+**orijinal SQL'i değiştirmeden** çalıştırır.
+
+Ayrıntılı sözleşme:
+[`pk-sql-readonly-gate.md`](pk-sql-readonly-gate.md).
 
 ---
 
 ## 3. Sağlık raporunu okuyun
 
-```
+```text
 artifacts/pk-meta/<zaman-damgasi>/health.txt    <- insan tarafından okunur
 artifacts/pk-meta/<zaman-damgasi>/health.json   <- makine tarafından okunur
 ```
@@ -83,58 +157,40 @@ kurumsal ağ dışına **çıkarılmaz**.
 |---|---|---|
 | `DAHIL` (`ok`) | Şema alındı, doğrulama geçti, üretilen katmana girdi | Yok |
 | `GERI CEKILDI` (`withheld`) | Şema alındı **ama** bloklayıcı bulgu var; sorgu üretilen katmana **alınmadı** | **Düzeltin** |
-| `BASARISIZ` (`failed`) | Sorgu envanterlenemedi. İki ayrı sınıf: **(a)** şema alınamadı (tanımlayıcı dönmedi / sürücü hatası / bağlantı kurulamadı / güvenli örnekleme izni yok), **(b)** katalog/yapılandırma kusuru (`missing_query_id`, `missing_sql`, `invalid_db_target`, `malformed_library_entry`) | Yalnızca **(a)** sınıfındaki gerçekten örneklenmesi gereken sorgular için §5'teki güvenli `sample` kürasyonu yardımcı olabilir; **(b)** kesin bir kusurdur ve kip değiştirmek **çözmez** |
-| `ATLANDI` (`skipped`) | SQL salt-okunur kapısından geçemedi; **çalıştırılmadı** | SQL'i inceleyin |
+| `BASARISIZ` (`failed`) | Sorgu envanterlenemedi. Şema/sürücü/bağlantı sorunu veya katalog/yapılandırma kusuru olabilir | Bulgu koduna göre düzeltin; her `failed` için `sample` çözüm değildir |
+| `ATLANDI` (`skipped`) | SQL salt-okunur kapısından geçemedi; **çalıştırılmadı** | SQL'i ve [`pk-sql-readonly-gate.md`](pk-sql-readonly-gate.md) sözleşmesini inceleyin |
 
 `BASARISIZ` durumu "şema alınamadı"dan **daha geniştir**; bu yüzden sağlık özeti
-`failed_queries` (tüm nedenler) ile `schema_failures` (yalnızca şema
-alınamayanlar) sayımlarını **ayrı** raporlar. Hangi sınıfa düştüğünü sorgunun
-bulgu koduna bakarak görürsünüz.
+`failed_queries` ile `schema_failures` sayımlarını ayrı raporlar.
 
 `GERI CEKILDI` bir gerileme **değildir**: o sorgu bugünkü davranışında
-(`Tier-0`, `pending_no_schema`) kalır ve istek zamanı RLS zorlaması **hiç
-değişmez**. Yalnızca gerçek şemasını kazanmamış olur.
+(`Tier-0`, `pending_no_schema`) kalır ve istek zamanı RLS zorlaması değişmez.
 
 Geçici bir hata yüzünden `BASARISIZ` olan bir sorgunun **önceki geçerli**
-metadata'sı, sorgunun kaynak parmak izi değişmediği sürece katmanda **korunur**;
-rapor bunu `preserved_previous` olarak işaretler ve o sorguyu `Tier-0`
-**saymaz**. SQL, hedef veya runtime'da etkin şemayı değiştiren `date_columns`
-beyanı değiştiyse eski girdi **kaldırılır** (`removed_stale_fingerprint`): bayat
-bir sözleşmeyi canlı bırakmak, bütün-kütüphane kapısının **yakalayamayacağı** bir
-hatadır, çünkü o kapı SQL'i çalıştırmaz.
+metadata'sı, kaynak parmak izi değişmediği sürece katmanda korunur; rapor bunu
+`preserved_previous` olarak işaretler. SQL, hedef veya etkin `date_columns`
+beyanı değiştiyse eski girdi `removed_stale_fingerprint` ile kaldırılır.
 
 ### İLERLEMEYİ DURDURAN bulgular
 
-Bunlar düzeltilmeden `MERGEN_PK_ENGINE=v2` anlamsal/filtreli sorularda güvenilir
-sayılmaz:
-
 | Bulgu kodu | Anlamı | Düzeltme |
 |---|---|---|
-| `rls_column_missing` **(GÜVENLİK)** | Beyan edilen RLS sütunu sorgu sonucunda **yok** — D6 fail-open deliği | **Ya** SQL o güvenlik sütununu döndürsün, **ya** `rls_columns` beyanı düzeltilsin. Beyanı silerek "çözmeyin" |
-| `column_meta_missing_in_schema` | Küre edilmiş metadata var olmayan bir sütuna atıf yapıyor | `R/library_query_meta.R` içindeki sütun adını düzeltin |
-| `role_type_mismatch` | Küre edilmiş `role="measure"` ama sütun metin (ya da `role="date"` ama tarih değil) | Rolü veya SQL'i düzeltin |
-| `grain_columns_missing_in_schema` vb. | `grain_columns` / `default_group_by` / `default_measures` / `primary_entity` var olmayan sütuna atıf yapıyor | Küresyonu düzeltin |
-| `sql_not_readonly` | SQL tek bir salt-okunur SELECT değil | Sorguyu inceleyin |
+| `rls_column_missing` **(GÜVENLİK)** | Beyan edilen RLS sütunu sorgu sonucunda yok | SQL veya `rls_columns` beyanını düzeltin; beyanı silerek "çözmeyin" |
+| `column_meta_missing_in_schema` | Küre edilmiş metadata var olmayan sütuna atıf yapıyor | `R/library_query_meta.R` içindeki sütun adını düzeltin |
+| `role_type_mismatch` | Küre edilmiş rol gerçek sütun tipiyle uyuşmuyor | Rolü veya SQL'i düzeltin |
+| `grain_columns_missing_in_schema` vb. | Grain/default/primary-entity atfı gerçek sonuçta yok | Küresyonu düzeltin |
+| `sql_not_readonly` | SQL mevcut read-only sözleşmesine uymuyor | SQL'i ve güvenlik sözleşmesini inceleyin |
 
-Operatörün VM'de gördüğü gerçek örnek:
-
-```
-[GERI CEKILDI] gen_pro_per_01 -- ... (db=primary)
-    - [blocking/GUVENLIK] rls_column_missing: Beyan edilen RLS sutunu gercek
-      sonucda yok: ProjeKodu, ProgMd1Kodu.
-```
-
-Bu, v2'nin SQL döndükten sonra durmasının **tam sebebidir**: sorgu satır
-döndürür, ancak yetki filtresi uygulanacak sütun sonuçta yoktur, bu yüzden
-kapalı başarısız olur. Sağlık raporu artık bunu kullanıcı bir soru sormadan
-**önce** listeler.
+`sql_not_readonly` artık "her çok ifadeli SQL reddedilir" demek değildir. Tam
+`SET NOCOUNT ON;` öneki ve yalnızca kuralları eksiksiz sağlayan yerel `#temp`
+analitik batch istisnadır. Diğer çok ifadeli yapılar kapalı-başarısız reddedilir.
 
 ### Eylem gerektiren ama İLERLEMEYİ DURDURMAYAN bulgular
 
 | Bulgu kodu | Anlamı |
 |---|---|
-| `no_semantic_capability` | Sorguda `capability` beyanı yok. Ölçü/tarih/boyut gerektiren istekler bu sorgu için SQL'den **önce** `unknown_no_semantic_metadata` ile durur. **Bu doğru davranıştır** (fail-closed) — üretici bunu doldurmaz; Tier-3 insan küresyonudur |
-| `unmapped_sql_type` | SQL tipi eşlenemedi; en muhafazakâr yapıya (`character`/`dimension`) düşüldü. O sütunda toplama yapılmaz |
+| `no_semantic_capability` | Sorguda `capability` beyanı yok; semantik istek SQL'den önce fail-closed durur. Tier-3 insan küresyonudur |
+| `unmapped_sql_type` | SQL tipi eşlenemedi; en muhafazakâr yapıya (`character`/`dimension`) düşüldü |
 | `unbounded_lob_column` | Kanıtlanmış genişlik üst sınırı olmayan sütun (`nvarchar(max)`, `xml`, ...) |
 | `no_primary_entity`, `no_grain`, `rls_not_declared` | Bilgilendirme / Tier-0 geri düşüşü |
 
@@ -142,51 +198,39 @@ kapalı başarısız olur. Sağlık raporu artık bunu kullanıcı bir soru sorm
 
 ## 4. Bulguları düzeltin ve `describe`'ı yeniden çalıştırın
 
-Üretici **idempotent**'tir. Aynı komutu tekrar çalıştırmak güvenlidir:
+Üretici **idempotent**'tir:
 
-* küre edilmiş metadata (`R/library_query_meta.R`) **ezilmez** — küresyon kazanır,
-* operatör alias dosyası (`R/library_query_aliases_local.R`) **asla yazılmaz**
-  (üretici onu başlangıç kapısını simüle ederken **okur**: bindirme
-  `pk_query_meta_attach()` tarafından uygulanır. Bir alias/şema uyuşmazlığı aday
-  katmanın doğrulamayı geçememesine yol açabilir; bu yüzden "hiç açılmaz" değil,
-  "hiç **yazılmaz**" doğru ifadedir),
-* yalnızca `R/library_query_meta_local.R` yeniden yazılır,
-* bu koşuda **sorgulanamayan** sorguların **önceki geçerli metadata'sı korunur**:
-  geçici bir sürücü hatası sağlam metadata'yı Tier-0'a düşürmez. Bloklayıcı bulgu
-  nedeniyle **geri çekilen** bir sorgunun eski girdisi ise kaldırılır (bayat bir
-  sözleşme bırakılmaz).
+- küre edilmiş metadata (`R/library_query_meta.R`) ezilmez — küresyon kazanır,
+- `R/library_query_aliases_local.R` üretici tarafından asla yazılmaz,
+- yalnızca `R/library_query_meta_local.R` yeniden yazılır,
+- geçici DB/sürücü hatasında önceki geçerli metadata korunur,
+- bloklayıcı bulgu nedeniyle geri çekilen sorgunun bayat girdisi bırakılmaz.
 
-`R/library_query_meta_local.R` üretimden türetilen otomatik metadata artefaktıdır
-ve meşru biçimde on binlerce satıra çıkabilir. `R/library_queries.R` gibi backend
-maintainability skoru ile büyük-dosya ratchet'lerinden bilinçli olarak hariç
-tutulur; bu dosyanın boyutu kaynak kodu bakım borcu sayılmaz. Bu istisna ratchet
-eşiklerini gevşetme gerekçesi değildir.
-
-Bloklayıcı bulguları düzelttikçe geri çekilen sorgular `DAHIL` durumuna geçer.
+`R/library_query_meta_local.R` üretimden türetilen otomatik metadata
+artefaktıdır ve meşru biçimde çok büyüyebilir. Büyük-dosya/maintainability
+ratchet'lerinden hariç tutulması ratchet eşiklerini gevşetme gerekçesi değildir.
 
 ---
 
 ## 5. `sample` kipi (İKİNCİ GEÇİŞ, isteğe bağlı ve AÇIK İZİNLİ)
 
-`describe` bazı sorgular için şema döndüremez (geçici tablo, dinamik SQL,
-belirsiz sonuç kümesi). `sample` kipi yalnızca bu istisnalar için vardır.
+`describe` hâlâ bazı desteklenmeyen/dinamik/belirsiz sorgular için şema
+döndüremeyebilir. **Doğrulanmış yerel `#temp` staging artık sırf temp tablo
+kullandığı için `sample` gerektirmez**; metadata-only CTE yolu önce denenir.
+
+`sample` yalnızca kalan gerçek istisnalar için düşünülmelidir.
 
 **Önemli güvenlik kuralı:** `dbFetch(n=...)` sunucu işini sınırlamaz; yalnızca
-istemciye aktarılacak satır sayısını sınırlar. Büyük `JOIN`, agregasyon veya
-`ORDER BY` işlemi ilk N satır gelmeden önce üretim sunucusunda tamamlanabilir.
-Bu yüzden üretici, bir sorguyu `sample` kipinde **varsayılan olarak çalıştırmaz**.
-Gerçek üretim örneklemesi ancak ilgili `query_library` girdisi insan tarafından
-incelenip açıkça şu beyanı taşıyorsa çalışır:
+istemciye aktarılacak satır sayısını sınırlar. Bu yüzden gerçek üretim
+örneklemesi ancak ilgili sorgu insan tarafından incelenip açıkça şu beyanı
+taşıyorsa çalışır:
 
 ```r
 meta_sample_safe = TRUE
 ```
 
-Bu beyan **toplu eklenmez**. Yalnızca sorgunun üretim sunucusundaki maliyetinin
-kabul edilebilir olduğu kod/DB incelemesiyle doğrulandıktan sonra eklenir. Beyan
-yoksa üretici sorguyu **çalıştırmadan** `sample_not_server_bounded` olarak
-başarısız raporlar. `MERGEN_PK_META_SAMPLE_ROWS`, timeout veya sonuç-bayt tavanı
-bu açık izin yerine geçmez.
+Bu beyan **toplu eklenmez**. Yoksa üretici sorguyu çalıştırmadan
+`sample_not_server_bounded` olarak başarısız raporlar.
 
 Örnek komut:
 
@@ -195,34 +239,23 @@ Sys.setenv(MERGEN_PK_META_MODE = "sample")
 source("tools/pk/generate_query_meta.R", encoding = "UTF-8")
 ```
 
-**Kanıt sınırını bilerek kullanın.** İzin verilmiş bir sorguda örnekleme yöntemi
-`prefix`'tir (veritabanı dönüş sırasındaki ilk N satır) ve **temsili değildir**.
-Bu yüzden yalnızca **tek yönlü** sonuçlar kaydedilir:
+İzin verilmiş örnekleme `prefix` yöntemidir ve temsili değildir. Bu yüzden
+yalnızca tek yönlü kanıtlar güvenlidir:
 
 | Gözlem | Sonuç |
 |---|---|
-| Mükerrer değer görüldü | Benzersizlik **çürütülür** |
-| Eşikten (`50`) fazla farklı değer görüldü | `high_cardinality = TRUE` **kanıtlanır** |
-| NULL görüldü | "NULL yok" **çürütülür** |
-| Mükerrer/NULL **görülmedi** | **Hiçbir şey kanıtlanmaz** (alan `NA` kalır) |
-| Eşikten az farklı değer görüldü | **Hiçbir şey kanıtlanmaz** (düşük kardinalite varsayılmaz) |
+| Mükerrer değer görüldü | Benzersizlik çürütülür |
+| Eşikten fazla farklı değer görüldü | `high_cardinality = TRUE` kanıtlanır |
+| NULL görüldü | "NULL yok" iddiası çürütülür |
+| Mükerrer/NULL görülmedi | Hiçbir şey kanıtlanmaz |
+| Eşikten az farklı değer görüldü | Düşük kardinalite kanıtlanmaz |
 
-500 satırlık bir örnek 501 satırlık sonucu 5 milyondan **ayırt edemez**; bu
-yüzden önek karar veremediğinde `cardinality_claim: "unknown"` kalır.
+Önek satır sayısı etkin `row_cap` değerini gerçekten geçtiyse bu aşım tek başına
+kanıttır ve `row_cap_exceeded` olarak raporlanabilir. Bunun dışındaki tam
+kardinalite iddiaları örnekten çıkarılmaz.
 
-Tek istisna **kanıtlanmış aşımdır**: gözlenen önek satır sayısı etkin `row_cap`
-değerini **geçmişse**, önek tek başına aşımı kanıtlar. Bu durumda
-`cardinality_claim: "row_cap_exceeded"` yazılır ve `row_cap_exceeded` bir
-**dikkat** bulgusu olarak raporlanır. Elde olan kanıtı "bilinmiyor" diye
-gizlemek doğru olmazdı.
-
-Üretici SQL'i **sarmalamaz** (`SELECT TOP n FROM (...)` yok): üretim sorguları
-`ORDER BY` / CTE / `OPTION(...)` içerebilir ve sarmalamak hem sorguyu bozar hem
-de salt-okunur kapısından geçen metin ile çalışan metni ayırırdı. Bu nedenle
-sağlık kaydı izin verilmiş örneklerde de `server_bounded: false` ve
-`bound_kind: "explicit_safe_query_gate"` bildirir; güvenlik iddiası SQL'in
-yapay biçimde sınırlandığı değil, **yalnızca önceden küratörlenmiş sorguların
-çalıştırıldığıdır**.
+Üretici SQL'i `SELECT TOP n FROM (...)` biçiminde sarmalamaz. `sample` yolu
+orijinal SQL'i üretimin kullandığı Unicode parametre yolu üzerinden çalıştırır.
 
 ---
 
@@ -232,45 +265,47 @@ yapay biçimde sınırlandığı değil, **yalnızca önceden küratörlenmiş s
 file.exists("R/library_query_meta_local.R")
 ```
 
-`TRUE` olmalıdır. Ve **izlenmediğini** doğrulayın:
+`TRUE` olmalıdır. İzlenmediğini doğrulayın:
 
 ```r
 system("git status --short R/library_query_meta_local.R")
 ```
 
-Hiçbir şey yazmamalıdır (`.gitignore`'lu). Bu dosyayı **asla commit etmeyin**:
-üretimden türetilmiş sütun envanteri ve şema istatistikleri içerir.
+Hiçbir şey yazmamalıdır. Bu dosyayı **asla commit etmeyin**.
+
+Sağlık raporunda özellikle şunları kontrol edin:
+
+1. Önceden `multiple_statements` nedeniyle atlanan tam `SET NOCOUNT ON` sorgular
+   artık `DAHIL`/normal doğrulama yoluna girmiş mi?
+2. Kuralları sağlayan yerel `#temp` analitik sorgular artık sırf çok ifadeli
+   oldukları için `ATLANDI` oluyor mu? Olmamalı.
+3. Yeni `BASARISIZ`/`GERI CEKILDI` sayısı oluşmuş mu?
+4. Diğer yan etkili veya belirsiz çok ifadeli SQL'ler hâlâ `ATLANDI` mı?
+
+20 Ağustos 2026'da operatör, hedef sorgular için bu düzeltmenin Windows VM'de
+çalıştığını doğruladı. Sabit toplam/success sayısı yerine her koşunun kendi
+`health.txt`/`health.json` çıktısını kanıt olarak saklayın.
 
 ---
 
 ## 7. MERGEN Bilge'yi yeniden başlatın
 
-Metadata **açılışta** yüklenir. Tarayıcı yenilemesi **yetmez**; R süreci
-yeniden başlamalıdır.
+Metadata açılışta yüklenir. Tarayıcı yenilemesi yetmez; R süreci yeniden
+başlamalıdır.
 
 Açılış logunda şunu görmelisiniz:
 
-```
+```text
 [SQL_LOADER] PK metadata sozlesmesi dogrulandi: <N> sorgu.
 ```
 
-Açılış **düşerse**, `R/library_query_meta_local.R` dosyasını yeniden
-adlandırın/silin ve üreticiyi tekrar çalıştırın. (Üretici bunu önlemek için
-yazmadan önce aynı açılış kapısını simüle eder; buna rağmen bir açılış hatası
-görürseniz sağlık raporundaki bloklayıcı bulgular listesi çıkış noktanızdır.)
+Açılış düşerse `R/library_query_meta_local.R` dosyasını yeniden adlandırın/silin,
+sağlık raporundaki bloklayıcı bulguları inceleyin ve R sürecini yeniden başlatın.
+Aynı oturumda bellekte bayat metadata nesnesi kalabileceği için yalnızca dosyayı
+silmek her zaman yeterli değildir.
 
-Aynı R oturumunda tekrar denerken dikkat: düşen bootstrap bu dosyayı `.GlobalEnv`
-içine **zaten yüklemiş** olabilir. Dosyayı silmek yetmez — kaynak manifesti eksik
-dosyayı yalnızca atlar ve `pk_query_meta_attach()` **hâlâ bellekteki bayat
-katmanı** görür. Üretici bootstrap hatasında bu nesneyi kendisi temizler; sorun
-sürerse **R sürecini yeniden başlatın**.
-
-### Bootstrap katalog kusurunda düşerse
-
-Mükerrer/eksik sorgu kimliği gibi **katalog** kusurları açılışı bu noktadan önce
-durdurur. Üretici bu durumda ham sorgu kütüphanesini metadata kapısı olmadan okur
-ve `artifacts/pk-meta/<koşu>/health.txt` içine bir **katalog teşhisi** yazar;
-böylece sağlık raporunun vaat ettiği mükerrer/eksik kimlik kapsaması kaybolmaz.
+Mükerrer/eksik sorgu kimliği gibi katalog kusurları ayrı teşhis edilir; `sample`
+kipi bunları çözmez.
 
 ---
 
@@ -281,37 +316,31 @@ MERGEN_PK_ENGINE=v2
 MERGEN_PK_ASYNC=false
 ```
 
-R sürecini yeniden başlatın, sonra Proje ve Kaynak Analizi'nde şunları deneyin:
+R sürecini yeniden başlatın, sonra Proje ve Kaynak Analizi'nde:
 
-1. Geniş bir soru (ör. "projeleri özetle") — Faz 3b öncesinde de çalışıyordu.
-2. **Filtreli/özel bir soru** — Faz 3b'nin düzeltmeyi hedeflediği durum.
-3. Belirli bir kişi/proje soran bir soru — RLS yolunu tetikler.
+1. geniş bir soru,
+2. filtreli/özel bir soru,
+3. belirli bir kişi/proje soran RLS kapsamlı bir soru
 
-Hâlâ `capability_missing` / `unknown_no_semantic_metadata` alıyorsanız bu bir
-hata **değildir**: o sorgunun anlamsal küresyonu (`capability`, `grain`,
-`additive`, `unit`, `primary_entity`) henüz yapılmamıştır. Üretici bunu
-kasıtlı olarak uydurmaz.
+deneyin.
 
-**`MERGEN_PK_ASYNC` bu aşamada `false` kalır.** Faz 6 ayrı bir kapıdır.
+`capability_missing` / `unknown_no_semantic_metadata` alıyorsanız bu tek başına
+Faz 3b hatası değildir; ilgili sorgunun anlamsal Tier-3 küresyonu henüz yok
+olabilir. Üretici semantik capability/grain/additive/unit bilgisi uydurmaz.
+
+`MERGEN_PK_ASYNC=false` bu aşamada korunur.
 
 ---
 
 ## 9. Anlamsal küresyon (Tier-3, elle)
 
-Telemetriye göre en çok kullanılan ~30 sorguyu `R/library_query_meta.R` içinde
-küre edin. Sağlık raporunun "ANLAMSAL KURESYON BEKLEYEN SORGULAR" bölümü listeyi
-verir.
+Telemetriye göre en çok kullanılan sorguları `R/library_query_meta.R` içinde
+küre edin. Buraya yalnız kararlı anlamsal yetenek kimlikleri, onaylı sentetik
+alias'lar ve `grain`, `additive`, `unit`, `primary_entity`, `intents`,
+`default_measures`, `row_cap` gibi insan kararı gereken alanlar girer.
 
-`R/library_query_meta.R` **izlenir**, bu yüzden içine yalnızca şunlar girer:
-
-* kararlı, anlamsal yetenek kimlikleri (sütun adı **değil**),
-* sentetik ya da dışa aktarımı onaylanmış alias'lar,
-* `grain`, `additive`, `unit`, `percent_scale`, `primary_entity`, `intents`,
-  `default_measures`, `row_cap`.
-
-Gerçek üretim proje/program adları **yalnızca** gitignore'lu
-`R/library_query_aliases_local.R` içine girer ve o dosyayı **üretici asla
-yazmaz** — orası tamamen sizindir.
+Gerçek üretim proje/program adları yalnız gitignore'lu
+`R/library_query_aliases_local.R` içinde tutulur ve üretici bu dosyayı yazmaz.
 
 ---
 
@@ -319,83 +348,65 @@ yazmaz** — orası tamamen sizindir.
 
 | Anahtar | Varsayılan | Anlamı |
 |---|---|---|
-| `MERGEN_PK_META_MODE` | `describe` | `describe` veya `sample`. Varsayılan **`describe`**'dir: ortam değişkenini ayarlamayı unutan bir koşu üretim sorgularını **çalıştırmamalıdır**. Geçersiz değer sessizce varsayılana düşmez, hata verir |
-| `MERGEN_PK_META_SAMPLE_ROWS` | `500` | `sample` kipinde sorgu başına en fazla satır (**yalnızca istemci aktarım** sınırı) |
-| `MERGEN_PK_META_HIGH_CARD_MIN` | `50` | Bu sayıdan fazla farklı değer `high_cardinality = TRUE` kanıtlar (tek yönlü). `SAMPLE_ROWS` değerinden **küçük olmalıdır**; aksi hâlde kanıt hiçbir sütun için üretilemez ve üretici reddeder |
-| `MERGEN_PK_META_SQL_TIMEOUT_SEC` | `120` | Sorgu başına zaman aşımı. Her bloklayan sürücü çağrısına uygulanır |
-| `MERGEN_PK_META_MAX_RESULT_MB` | `64` | Örnekleme sonuç **bayt** tavanı; aşıldığında getirim durdurulur ve sorgu başarısız raporlanır |
-| `MERGEN_PK_META_RESUME` | `TRUE` | Kesilen koşuyu kaldığı yerden sürdür. Temiz koşu için `FALSE` |
-| `MERGEN_PK_META_SAMPLE_UNICODE` | `TRUE` | `sample` kipinde SQL metnini üretimin de kullandığı `NVARCHAR(MAX)` parametre yolu ile gönder. Yalnızca teşhis için kapatın |
+| `MERGEN_PK_META_MODE` | `describe` | `describe` veya `sample`; geçersiz değer hata verir |
+| `MERGEN_PK_META_SAMPLE_ROWS` | `500` | `sample` kipinde sorgu başına istemci aktarım satır tavanı |
+| `MERGEN_PK_META_HIGH_CARD_MIN` | `50` | Bu sayıdan fazla farklı değer `high_cardinality = TRUE` kanıtlar |
+| `MERGEN_PK_META_SQL_TIMEOUT_SEC` | `120` | Sorgu başına zaman aşımı |
+| `MERGEN_PK_META_MAX_RESULT_MB` | `64` | Örnekleme sonuç bayt tavanı |
+| `MERGEN_PK_META_RESUME` | `TRUE` | Kesilen koşuyu sürdür; temiz koşu için `FALSE` |
+| `MERGEN_PK_META_SAMPLE_UNICODE` | `TRUE` | `sample` SQL'ini üretimin Unicode parametre yolu ile gönder |
 
 Tümü `.Renviron.example` içinde belgelenmiştir.
 
-`meta_sample_safe` bir ortam değişkeni **değildir**; sorgu başına açık kürasyon
-alanıdır. Yok/`FALSE` ise gerçek üretim `sample` yürütmesi yapılmaz. `TRUE`
-yalnızca §5'teki inceleme yapıldıktan sonra ilgili `query_library` girdisine
-eklenir.
+`meta_sample_safe` ortam değişkeni değil, sorgu başına açık kürasyon alanıdır.
 
-### Satır sınırı bir **aktarım** sınırıdır
+### Satır sınırı bir aktarım sınırıdır
 
-`dbSendQuery()` SELECT'i **çalıştırır**; `dbFetch(n = )` yalnızca kaç satırın
-istemciye aktarılacağını sınırlar. Büyük bir birleştirme veya `ORDER BY`, bu 500
-satır çekilmeden **önce** sunucuda tamamlanabilir. Timeout ve sonuç-bayt tavanı
-zararı sınırlar ama satır tavanını bir **sunucu iş yükü tavanına dönüştürmez**.
-Bu yüzden gerçek üretim `sample` yolu ayrıca sorgu başına
-`meta_sample_safe = TRUE` kapısından geçer; sağlık kaydı bunu
-`server_bounded: false` / `bound_kind: "explicit_safe_query_gate"` olarak
-açıkça bildirir.
+`dbSendQuery()` SELECT'i çalıştırır; `dbFetch(n=)` yalnızca kaç satırın istemciye
+aktarılacağını sınırlar. Timeout ve bayt tavanı koruma sağlar ama sunucu iş yükü
+tavanı değildir. Bu yüzden gerçek `sample` yolu ayrıca
+`meta_sample_safe = TRUE` ister.
 
 ### Devam (resume) durumu
 
-Devam durumu `artifacts/pk-meta/generator-state.json` içinde tutulur ve
-**yalnızca DB gözlemlerini** taşır; karar/küresyon her koşuda yeniden hesaplanır.
-Ek olarak:
-
-* her girdi **SQL + hedef + etkin `date_columns` sözleşmesi** parmak izi taşır:
-  bunlardan biri değiştiğinde eski şema **kabul edilmez** ve sorgu yeniden
-  sorgulanır,
-* `sample` önbelleğinde örnek satır/eşik ayarları ve `meta_sample_safe` politikası
-  da parmak izine girer; güvenli örnekleme izni değiştiğinde eski sample kanıtı
-  sessizce yeniden kullanılmaz,
-* durum dosyası **her sorgudan sonra** atomik olarak yazılır; gerçekten kesilen
-  bir koşu o ana kadarki ilerlemeyi korur,
-* kip ya da durum dosyası **biçim sürümü** değişirse önbellek tamamen yok sayılır.
+`artifacts/pk-meta/generator-state.json` yalnız DB gözlemlerini taşır. SQL,
+hedef veya etkin `date_columns` sözleşmesi değişirse eski parmak izi kabul
+edilmez. `sample` politikasındaki değişiklikler de eski sample kanıtını geçersiz
+kılar. Durum dosyası her sorgudan sonra atomik yazılır.
 
 ### Eşzamanlı koşu kilidi
 
-Üretici `artifacts/pk-meta/generator.lock` dizinini alır. İkinci bir koşu
-başlatılırsa açık bir hata ile **reddedilir**: iki koşu aynı çıktı dosyasını
-"son yazan kazanır" biçiminde ezebilirdi. Bir koşu çöktüyse kilit 1 saat sonra
-bayat sayılıp atomik olarak devralınabilir; canlı koşu kalp atışıyla kilidi taze
-tutar. Emin olduğunuzda dizini elle de silebilirsiniz.
+Üretici `artifacts/pk-meta/generator.lock` kullanır. İkinci eşzamanlı koşu
+reddedilir; çökmüş kilit bayatlama politikasına göre devralınabilir.
 
 ---
 
 ## 11. Güvenlik ve gizlilik özeti
 
-* Üretici **yalnızca okur**: her SQL üretimin kullandığı **aynı**
-  `pk_sql_classify_readonly()` kapısından geçer; reddedilen SQL çalıştırılmaz.
-  `dbExecute`/`dbWriteTable` gibi veri değiştiren çağrılar üreticide **yoktur**.
-* `sample` yürütmesi ayrıca sorgu başına **açık güvenlik kürasyonu** gerektirir
-  (`meta_sample_safe = TRUE`); `dbFetch(n)` hiçbir zaman sunucu iş yükü sınırı
-  olarak sunulmaz.
-* Rapora ve loglara **DSN, kimlik bilgisi, parola, uç nokta** girmez; sürücü
-  hata metinleri maskelenir. Reddedilen SQL'in **ham metni** rapora girmez.
-* Rapora **üretim satır değerleri** girmez; yalnızca şema/sütun adları ve sayımlar.
-* Üretilen dosya **saf ASCII**'dir (ASCII dışı karakterler `\uXXXX` kaçışıyla
-  yazılır), böylece Windows/WINDOWS-1254 kod sayfasında `source()` kesilmesi
-  sınıfı tamamen kapanır. Türkçe sütun adları bozulmadan geri okunur.
-* Yazma **atomiktir**: geçici dosyaya yaz → parse et → aynı dizinde atomik
-  rename/backup takasıyla yerine taşı. Canlı hedefin üzerine `file.copy()` ile
-  yazılmaz; yarım/bozuk dosya yerine geçmez.
-* Bu koşu **hiçbir** fail-closed kapıyı zayıflatmaz. Geri çekilen bir sorgu
-  bugünkü Tier-0 davranışında kalır ve istek zamanı RLS doğrulaması koşulsuzdur.
+- Üretici her SQL'i üretimin kullandığı aynı `pk_sql_classify_readonly()`
+  kapısından geçirir.
+- `SET NOCOUNT ON` istisnası yalnızca tam önek + tek read-only sorgudur.
+- Yerel `#temp` istisnası yalnızca
+  `pk_sql_analyze_local_temp_batch()` tarafından eksiksiz kanıtlanan staging
+  biçimidir; genel `SELECT INTO` izni değildir.
+- Faz 3b yerel temp tabloları **çalıştırmaz**; `describe` için metadata-only CTE
+  üretir.
+- Üreticide `dbExecute`/`dbWriteTable`/`dbCreateTable` gibi veri değiştiren DBI
+  çağrıları yoktur ve bu ratchet değiştirilmemiştir.
+- Metadata generator DB bağlantı/pool mimarisi bu düzeltmede değiştirilmemiştir.
+- `sample` ayrıca `meta_sample_safe = TRUE` ister.
+- Rapora DSN, parola, kimlik bilgisi veya ham reddedilmiş SQL girmez.
+- Rapora üretim satır değerleri girmez; yalnız şema/sütun adları ve sayımlar.
+- Üretilen metadata dosyası ASCII-güvenli biçimde yazılır; Türkçe adlar
+  kayıpsız geri okunur.
+- Yazma atomiktir ve fail-closed RLS/metadata kapıları zayıflatılmaz.
+- Maintainability veya SQL güvenlik ratchet eşikleri bu uyumluluk için
+  gevşetilmemiştir.
 
 ---
 
-## 12. Kanıt sınırı (dürüstlük)
+## 12. Kanıt sınırı
 
-Bu koşu **yalnızca** raporun `passed`/`ok` dediği adımların kanıtıdır. Şunları
-**kanıtlamaz**: tarayıcı UX, SSO kimlik zamanlaması, LLM seçim doğruluğu,
-gerçek Excel çıktısı, eşzamanlı oturum yanıt hızı ya da Faz 6 asenkron
-davranışı. Bunlar `RUNBOOK.md` ve `bash tools/vm_evidence_gate.sh` kapılarıdır.
+Faz 3b koşusu yalnızca kendi sağlık raporunun kanıtıdır. Tarayıcı UX, SSO,
+LLM seçim doğruluğu, Excel çıktısı, çok kullanıcılı yanıt süresi veya Faz 6
+asenkron davranışı için ayrı `RUNBOOK.md` / VM evidence kapıları gerekir.
