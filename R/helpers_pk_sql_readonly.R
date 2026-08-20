@@ -405,3 +405,229 @@ pk_sql_readonly_guard <- function(sql, context_label = "PK_ANALIZ") {
     reason = siniflandirma$reason
   )
 }
+
+# ==============================================================================
+# SQL Server yerel #temp analitik batch uyumlulugu
+#
+# Mevcut D23 yasaklari DEGISTIRILMEZ. Asagidaki dar istisna yalnizca su sekli
+# kanitlayabilen cok-ifadeli batch'leri kabul eder:
+#   IF OBJECT_ID('tempdb..#T') ... DROP TABLE #T;
+#   SELECT ... INTO #T ...;
+#   [ayni kurulum cifti baska yerel #temp tablolar icin tekrarlanabilir]
+#   tek bir salt-okunur sonuc SELECT/CTE;
+#   DROP TABLE #T; [...]
+# Kalici tablo yazimi/DDL, ##global temp, EXEC, ek sonuc SELECT'i veya belirsiz
+# herhangi bir sekil mevcut kapali-basarisiz davranisinda kalir.
+# ==============================================================================
+
+# Normal tek-SELECT/NOCOUNT siniflandiricisini aynen sakla. Yerel-temp denetimi
+# staging SELECT'lerinin guvenligini de AYNI yasaklarla yeniden kanitlar.
+.pk_sql_classify_readonly_base <- pk_sql_classify_readonly
+
+.pk_sql_local_temp_name_equal <- function(a, b) {
+  a <- as.character(a %||% "")[1]
+  b <- as.character(b %||% "")[1]
+  if (is.na(a) || is.na(b) || !nzchar(a) || !nzchar(b)) return(FALSE)
+  grepl(paste0("^", a, "$"), b,
+        ignore.case = TRUE, perl = TRUE, useBytes = TRUE)
+}
+
+# Maskelenmis metindeki noktalivirguller ham metinle AYNI konumdadir; literal ve
+# yorum icindeki noktalivirguller maskelendigi icin ifade siniri sayilmaz.
+.pk_sql_local_temp_statement_pairs <- function(raw_sql, masked_sql) {
+  raw_chars <- strsplit(as.character(raw_sql)[1], "", fixed = TRUE)[[1]]
+  masked_chars <- strsplit(as.character(masked_sql)[1], "", fixed = TRUE)[[1]]
+  if (length(raw_chars) != length(masked_chars)) return(NULL)
+  if (!length(masked_chars)) return(list())
+
+  ayiricilar <- which(masked_chars == ";")
+  baslar <- c(1L, ayiricilar + 1L)
+  biter <- c(ayiricilar - 1L, length(masked_chars))
+  sonuc <- list()
+
+  for (i in seq_along(baslar)) {
+    if (baslar[i] > biter[i]) next
+    idx <- seq.int(baslar[i], biter[i])
+    parca_mask <- masked_chars[idx]
+    dolu <- which(!(parca_mask %in% c(" ", "\t", "\r", "\n")))
+    if (!length(dolu)) next
+
+    lo <- baslar[i] + min(dolu) - 1L
+    hi <- baslar[i] + max(dolu) - 1L
+    sec <- seq.int(lo, hi)
+    sonuc[[length(sonuc) + 1L]] <- list(
+      raw = paste(raw_chars[sec], collapse = ""),
+      masked = paste(masked_chars[sec], collapse = "")
+    )
+  }
+  sonuc
+}
+
+.pk_sql_local_temp_predrop <- function(raw_statement) {
+  kalip <- paste0(
+    "^IF[ \\t\\r\\n]+OBJECT_ID[ \\t\\r\\n]*\\([ \\t\\r\\n]*N?'tempdb\\.\\.",
+    "(#[A-Za-z_][A-Za-z0-9_]*)'[ \\t\\r\\n]*\\)[ \\t\\r\\n]+",
+    "IS[ \\t\\r\\n]+NOT[ \\t\\r\\n]+NULL[ \\t\\r\\n]+",
+    "DROP[ \\t\\r\\n]+TABLE[ \\t\\r\\n]+(#[A-Za-z_][A-Za-z0-9_]*)$"
+  )
+  m <- regexec(kalip, raw_statement, ignore.case = TRUE, perl = TRUE)
+  parca <- regmatches(raw_statement, m)[[1]]
+  if (length(parca) != 3L) return(NULL)
+  if (!.pk_sql_local_temp_name_equal(parca[2], parca[3])) return(NULL)
+  parca[2]
+}
+
+.pk_sql_local_temp_cleanup <- function(raw_statement) {
+  kalip <- "^DROP[ \\t\\r\\n]+TABLE[ \\t\\r\\n]+(#[A-Za-z_][A-Za-z0-9_]*)$"
+  m <- regexec(kalip, raw_statement, ignore.case = TRUE, perl = TRUE)
+  parca <- regmatches(raw_statement, m)[[1]]
+  if (length(parca) != 2L) return(NULL)
+  parca[2]
+}
+
+.pk_sql_local_temp_stage <- function(pair) {
+  if (!is.list(pair) || !.pk_sql_starts_with_word(pair$masked %||% "", "SELECT")) {
+    return(NULL)
+  }
+
+  into_word <- gregexpr(
+    "(?<![A-Za-z0-9_@#$])INTO(?![A-Za-z0-9_@#$])",
+    pair$masked, ignore.case = TRUE, perl = TRUE
+  )[[1]]
+  if (length(into_word) != 1L || identical(into_word[1], -1L)) return(NULL)
+
+  kalip <- paste0(
+    "(?<![A-Za-z0-9_@#$])INTO[ \\t\\r\\n]+",
+    "(#[A-Za-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_@#$])"
+  )
+  m <- regexec(kalip, pair$masked, ignore.case = TRUE, perl = TRUE)
+  parca <- regmatches(pair$masked, m)[[1]]
+  if (length(parca) != 2L) return(NULL)
+
+  bas <- m[[1]][1]
+  uzunluk <- attr(m[[1]], "match.length")[1]
+  if (is.na(bas) || bas < 1L || is.na(uzunluk) || uzunluk < 1L) return(NULL)
+
+  ham_uzunluk <- nchar(pair$raw, type = "chars")
+  once <- if (bas > 1L) substr(pair$raw, 1L, bas - 1L) else ""
+  sonraki <- bas + uzunluk
+  sonra <- if (sonraki <= ham_uzunluk) substr(pair$raw, sonraki, ham_uzunluk) else ""
+  salt_okunur_karsilik <- paste0(once, " ", sonra)
+
+  # Yalniz `INTO #YerelTemp` parcasi cikarilir; geri kalan SELECT mevcut D23
+  # siniflandiricisinin BUTUN yasaklarindan tekrar gecmek zorundadir.
+  kapi <- .pk_sql_classify_readonly_base(salt_okunur_karsilik)
+  if (!isTRUE(kapi$allowed)) return(NULL)
+
+  list(temp_name = parca[2], sql = pair$raw)
+}
+
+.pk_sql_local_temp_has_name <- function(names, name) {
+  if (!length(names)) return(FALSE)
+  any(vapply(names, function(x) .pk_sql_local_temp_name_equal(x, name), logical(1)))
+}
+
+#' Yalnizca kanitlanmis yerel-#temp analitik batch planini dondur
+#'
+#' @return `list(ok, temp_names, staging_sql, result_sql, statement_count)`.
+#'   `ok=FALSE` durumunda hicbir SQL parcasi yurutulmek icin guvenilir sayilmaz.
+pk_sql_analyze_local_temp_batch <- function(sql) {
+  bos <- function() list(
+    ok = FALSE, temp_names = character(0), staging_sql = character(0),
+    result_sql = NULL, statement_count = 0L
+  )
+
+  sql_text <- as.character(sql %||% "")[1]
+  if (is.na(sql_text) || !nzchar(trimws(sql_text))) return(bos())
+
+  maske <- pk_sql_mask_literals(sql_text)
+  if (!isTRUE(maske$ok)) return(bos())
+
+  # Yerel-temp istisnasi GO ile coklu batch'e ASLA genislemez.
+  if (grepl(
+    "(^|\\r\\n|\\n|\\r)[ \\t]*GO[ \\t]*(?=\\r\\n|\\n|\\r|$)",
+    maske$masked, ignore.case = TRUE, perl = TRUE, useBytes = TRUE
+  )) return(bos())
+
+  ifadeler <- .pk_sql_local_temp_statement_pairs(sql_text, maske$masked)
+  if (is.null(ifadeler) || length(ifadeler) < 4L) return(bos())
+
+  temp_adlari <- character(0)
+  staging <- character(0)
+  sonuc_sql <- NULL
+  temizlik <- character(0)
+  i <- 1L
+
+  while (i <= length(ifadeler)) {
+    pair <- ifadeler[[i]]
+
+    if (is.null(sonuc_sql)) {
+      on_drop <- .pk_sql_local_temp_predrop(pair$raw)
+      if (!is.null(on_drop)) {
+        if (i >= length(ifadeler) || .pk_sql_local_temp_has_name(temp_adlari, on_drop)) {
+          return(bos())
+        }
+        stage <- .pk_sql_local_temp_stage(ifadeler[[i + 1L]])
+        if (is.null(stage) || !.pk_sql_local_temp_name_equal(on_drop, stage$temp_name)) {
+          return(bos())
+        }
+        temp_adlari <- c(temp_adlari, on_drop)
+        staging <- c(staging, stage$sql)
+        i <- i + 2L
+        next
+      }
+
+      # Kurulum bittikten sonra TAM OLARAK bir sonuc SELECT/CTE kabul edilir.
+      if (!length(temp_adlari)) return(bos())
+      sonuc_kapi <- .pk_sql_classify_readonly_base(pair$raw)
+      if (!isTRUE(sonuc_kapi$allowed)) return(bos())
+      sonuc_sql <- pair$raw
+      i <- i + 1L
+      next
+    }
+
+    # Sonuc SELECT'inden sonra yalnizca ayni batch'in yarattigi #temp DROP'lari.
+    silinecek <- .pk_sql_local_temp_cleanup(pair$raw)
+    if (is.null(silinecek) ||
+        !.pk_sql_local_temp_has_name(temp_adlari, silinecek) ||
+        .pk_sql_local_temp_has_name(temizlik, silinecek)) {
+      return(bos())
+    }
+    temizlik <- c(temizlik, silinecek)
+    i <- i + 1L
+  }
+
+  if (is.null(sonuc_sql) || !length(temp_adlari) || length(temizlik) != length(temp_adlari)) {
+    return(bos())
+  }
+  for (ad in temp_adlari) {
+    if (!.pk_sql_local_temp_has_name(temizlik, ad)) return(bos())
+  }
+
+  list(
+    ok = TRUE,
+    temp_names = temp_adlari,
+    staging_sql = staging,
+    result_sql = sonuc_sql,
+    statement_count = as.integer(length(ifadeler))
+  )
+}
+
+# Mevcut siniflandiriciyi yalnizca `multiple_statements` sonucu icin daralt.
+# Diger HER ret gerekcesi ve butun yasak anahtar kelime ratchet'leri aynen kalir.
+pk_sql_classify_readonly <- function(sql) {
+  temel <- .pk_sql_classify_readonly_base(sql)
+  if (isTRUE(temel$allowed) || !identical(temel$reason, "multiple_statements")) {
+    return(temel)
+  }
+
+  plan <- pk_sql_analyze_local_temp_batch(sql)
+  if (!isTRUE(plan$ok)) return(temel)
+
+  temel$allowed <- TRUE
+  temel$reason <- NULL
+  temel$detail <- NA_character_
+  temel$statement_kind <- "local_temp_batch"
+  temel$statement_count <- as.integer(plan$statement_count)
+  temel
+}

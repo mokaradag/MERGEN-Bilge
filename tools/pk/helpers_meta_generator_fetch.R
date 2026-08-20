@@ -110,16 +110,144 @@
   !varsayilan || isTRUE(query$meta_sample_safe)
 }
 
+# SQL Server'in statik sonuc tanimlayicisi ayni batch icinde olusturulan #temp
+# tablolarini cozumleyemez. D23 kapisi batch'in YALNIZCA yerel #temp staging
+# yaptigini kanitladiysa metadata icin sorgu CALISTIRILMADAN esdeger bir CTE
+# zinciri kurulur. Uygulama ve sample yolu her zaman ORIJINAL SQL'i kullanir.
+.pkgn_local_temp_replace_token <- function(sql, token, replacement) {
+  metin <- as.character(sql %||% "")[1]
+  if (is.na(metin)) metin <- ""
+
+  maske <- pk_sql_mask_literals(metin)
+  if (!isTRUE(maske$ok)) {
+    stop("[PK_META_GEN] Yerel #temp metadata donusumunde SQL maskelenemedi.", call. = FALSE)
+  }
+
+  kalip <- paste0(
+    "(?<![A-Za-z0-9_@#$])", token,
+    "(?![A-Za-z0-9_@#$])"
+  )
+  yerler <- gregexpr(kalip, maske$masked, ignore.case = TRUE, perl = TRUE)[[1]]
+  if (length(yerler) == 1L && identical(yerler[1], -1L)) return(metin)
+  uzunluklar <- attr(yerler, "match.length")
+
+  sonuc <- metin
+  for (j in rev(seq_along(yerler))) {
+    bas <- as.integer(yerler[j])
+    uzunluk <- as.integer(uzunluklar[j])
+    if (is.na(bas) || bas < 1L || is.na(uzunluk) || uzunluk < 1L) {
+      stop("[PK_META_GEN] Yerel #temp metadata token konumu belirsiz.", call. = FALSE)
+    }
+    son <- bas + uzunluk - 1L
+    oncesi <- if (bas > 1L) substr(sonuc, 1L, bas - 1L) else ""
+    sonrasi <- if (son < nchar(sonuc, type = "chars")) {
+      substr(sonuc, son + 1L, nchar(sonuc, type = "chars"))
+    } else {
+      ""
+    }
+    sonuc <- paste0(oncesi, replacement, sonrasi)
+  }
+  sonuc
+}
+
+.pkgn_local_temp_strip_into <- function(stage_sql, temp_name) {
+  metin <- as.character(stage_sql %||% "")[1]
+  if (is.na(metin) || !nzchar(trimws(metin))) {
+    stop("[PK_META_GEN] Yerel #temp staging SQL bos.", call. = FALSE)
+  }
+
+  maske <- pk_sql_mask_literals(metin)
+  if (!isTRUE(maske$ok)) {
+    stop("[PK_META_GEN] Yerel #temp staging SQL maskelenemedi.", call. = FALSE)
+  }
+
+  kalip <- paste0(
+    "(?<![A-Za-z0-9_@#$])INTO[ \\t\\r\\n]+",
+    temp_name,
+    "(?![A-Za-z0-9_@#$])"
+  )
+  yerler <- gregexpr(kalip, maske$masked, ignore.case = TRUE, perl = TRUE)[[1]]
+  if (length(yerler) != 1L || identical(yerler[1], -1L)) {
+    stop("[PK_META_GEN] Yerel #temp staging INTO hedefi tekil degil.", call. = FALSE)
+  }
+  uzunluk <- as.integer(attr(yerler, "match.length")[1])
+  bas <- as.integer(yerler[1])
+  son <- bas + uzunluk - 1L
+
+  oncesi <- if (bas > 1L) substr(metin, 1L, bas - 1L) else ""
+  sonrasi <- if (son < nchar(metin, type = "chars")) {
+    substr(metin, son + 1L, nchar(metin, type = "chars"))
+  } else {
+    ""
+  }
+  trimws(paste0(oncesi, " ", sonrasi))
+}
+
+.pkgn_local_temp_describe_sql <- function(sql) {
+  if (!exists("pk_sql_analyze_local_temp_batch", mode = "function", inherits = TRUE)) {
+    return(sql)
+  }
+
+  plan <- pk_sql_analyze_local_temp_batch(sql)
+  if (!is.list(plan) || !isTRUE(plan$ok)) return(sql)
+  if (!length(plan$temp_names) || length(plan$temp_names) != length(plan$staging_sql)) {
+    stop("[PK_META_GEN] Yerel #temp metadata plani tutarsiz.", call. = FALSE)
+  }
+  if (!.pk_sql_starts_with_word(plan$result_sql, "SELECT")) {
+    stop("[PK_META_GEN] Yerel #temp metadata donusumu final SELECT gerektirir.", call. = FALSE)
+  }
+
+  # CTE adlari sabittir ama SQL'de zaten kullaniliyorsa semantigi degistirmemek
+  # icin fail-closed. Arama literal/yorum disindaki maskelenmis kodda yapilir.
+  tum_sql <- paste(c(plan$staging_sql, plan$result_sql), collapse = "\n")
+  tum_maske <- pk_sql_mask_literals(tum_sql)
+  if (!isTRUE(tum_maske$ok)) {
+    stop("[PK_META_GEN] Yerel #temp metadata plani maskelenemedi.", call. = FALSE)
+  }
+
+  cte_adlari <- sprintf("__pk_meta_local_temp_%03d", seq_along(plan$temp_names))
+  for (ad in cte_adlari) {
+    if (.pk_sql_has_word(tum_maske$masked, ad)) {
+      stop("[PK_META_GEN] Yerel #temp metadata CTE adi sorguyla cakisti.", call. = FALSE)
+    }
+  }
+
+  staging <- character(length(plan$staging_sql))
+  for (i in seq_along(plan$staging_sql)) {
+    parca <- .pkgn_local_temp_strip_into(plan$staging_sql[[i]], plan$temp_names[[i]])
+    for (j in seq_along(plan$temp_names)) {
+      parca <- .pkgn_local_temp_replace_token(parca, plan$temp_names[[j]], cte_adlari[[j]])
+    }
+    staging[[i]] <- parca
+  }
+
+  sonuc <- plan$result_sql
+  for (j in seq_along(plan$temp_names)) {
+    sonuc <- .pkgn_local_temp_replace_token(sonuc, plan$temp_names[[j]], cte_adlari[[j]])
+  }
+
+  cte <- vapply(seq_along(staging), function(i) {
+    paste0(cte_adlari[[i]], " AS (\n", staging[[i]], "\n)")
+  }, character(1))
+
+  paste0("WITH ", paste(cte, collapse = ",\n"), "\n", sonuc)
+}
+
 # `describe` çağrısını yap ve SONUCU ile HATASINI AYIR.
 #
 # Üretim tanımlayıcı işlevi hataları yutup `NULL` döndürebildiği için varsayılan
 # enjeksiyon (helpers_meta_generator_db.R) gerçek hatayı YÜKSELTİR; böylece
 # "bu sorgu tanımlanamıyor" ile "sonda BAŞARISIZ oldu" ayrı kalır.
+# Yerel #temp batch'lerde yalnızca TANIMLAMA metni esdeger CTE'ye donusturulur;
+# DB'de #temp olusturulmaz ve örnekleme/çalışma zamanı SQL'i değiştirilmez.
 .pkgn_describe <- function(query, config, conn, describe_fn) {
+  describe_sql <- tryCatch(.pkgn_local_temp_describe_sql(query$sql), error = function(e) e)
+  if (inherits(describe_sql, "condition")) return(describe_sql)
+
   tryCatch(
     .pkgn_call_injected(
       describe_fn,
-      positional = list(conn, query$sql),
+      positional = list(conn, describe_sql),
       optional = list(timeout_sec = config$sql_timeout_sec)
     ),
     error = function(e) e
