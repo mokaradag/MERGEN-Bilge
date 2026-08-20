@@ -16,9 +16,9 @@ Amaç iki tanedir:
 
 Üretici **yalnızca okur**. Üretim verisini değiştirmez, SQL'i onarmaz, RLS
 beyanını kaldırmaz, anlamsal metadata uydurmaz. 20 Ağustos 2026 itibarıyla
-Windows VM'de `SET NOCOUNT ON`, doğrulanmış yerel `#temp` staging ve aynı batch
-içindeki güvenli yerel-temp indeksleri kullanan sorgular için uyumluluk yolu
-doğrulanmıştır.
+Windows VM'de `SET NOCOUNT ON`, güvenli scalar `DECLARE` önekleri, doğrulanmış
+yerel `#temp` staging ve aynı batch içindeki güvenli yerel-temp indeksleri
+kullanan sorgular için uyumluluk yolu doğrulanmıştır.
 
 ---
 
@@ -45,8 +45,10 @@ file.exists("tools/pk/generate_query_meta.R")
 
 `TRUE` dönmelidir. `FALSE` ise `pk/rebuild` dalını çekmemişsiniz demektir.
 
-20 Ağustos 2026 SQL uyumluluk düzeltmelerini Windows VM'e elle taşıyorsanız en
-az şu iki dosyanın güncel olması gerekir:
+20 Ağustos 2026 SQL uyumluluk düzeltmelerini Windows VM'e elle taşıyorsanız
+scalar `DECLARE` desteği için `R/helpers_pk_sql_readonly.R` güncel olmalıdır.
+Yerel-temp uyumluluğu da kullanılacaksa aşağıdaki iki dosyanın birlikte güncel
+kalması gerekir:
 
 ```text
 R/helpers_pk_sql_readonly.R
@@ -100,10 +102,51 @@ SELECT ...
 ```
 
 Bu, genel bir `SET` izni değildir. **Yalnızca tam `SET NOCOUNT ON` öneki**
-tüketilir; arkasındaki tek sorgu mevcut SELECT/CTE ve yan-etki kapılarının
-tamamından geçmek zorundadır. Başka `SET` biçimleri veya ek ifadeler reddedilir.
+tüketilir; arkasındaki sorgu mevcut SELECT/CTE ve yan-etki kapılarının
+tamamından geçmek zorundadır. `SET NOCOUNT ON` aşağıdaki güvenli scalar
+`DECLARE` öneklerinin önünde de bulunabilir; başka `SET` biçimleri reddedilir.
 
-### 2.2 Yerel `#temp` analitik batch uyumluluğu
+### 2.2 Scalar `DECLARE` + tek sonuç sorgusu uyumluluğu
+
+Bazı SSMS sorguları yalnızca tarih/eşik gibi scalar değerleri başta hesaplayıp
+sonraki tek sonuç sorgusunda kullanır. Örneğin:
+
+```sql
+DECLARE @CutoffDate DATE = DATEADD(day, -90, GETDATE());
+DECLARE @Today DATE = CAST(GETDATE() AS date);
+
+SELECT ...
+FROM ...
+WHERE SomeDate < @CutoffDate;
+```
+
+Bu biçim güncel kapıda kabul edilir. Final ifade CTE de olabilir:
+
+```sql
+DECLARE @Today DATE = CAST(GETDATE() AS date);
+WITH x AS (...)
+SELECT ...
+FROM x;
+```
+
+Kurallar:
+
+- sonuçtan önce bir veya daha fazla `DECLARE @degisken ...` ifadesi olabilir;
+- `DECLARE ... TABLE` ve `DECLARE ... CURSOR` reddedilir;
+- `NEXT VALUE FOR`, DML/DDL, `EXEC` veya başka bir yan etkili/yasaklı aile
+  bildirimlerden birinde görünürse batch reddedilir;
+- bildirimlerden sonra **tam olarak bir** salt-okunur `SELECT` veya
+  `WITH ... SELECT` bulunmalıdır;
+- ek sonuç `SELECT`'leri genel çok-ifade kapısına geri düşer ve reddedilir;
+- isteğe bağlı `SET NOCOUNT ON;` yalnız batch'in en başında kabul edilir.
+
+Bu uyumluluk için üretim SQL'ini değiştirmeyin. `describe` yolu scalar
+`DECLARE` batch'ini **orijinal metniyle** SQL Server tanımlayıcısına verir;
+gerçek uygulama da aynı orijinal SQL'i Unicode/ODBC yolu üzerinden çalıştırır.
+Dolayısıyla SSMS'te çalışan bu sorgu biçimi R tarafından da çalıştırılabilir ve
+metadata üretimi için CTE'ye ya da başka bir sorguya çevrilmesi gerekmez.
+
+### 2.3 Yerel `#temp` analitik batch uyumluluğu
 
 Bazı üretim sorguları bir veya daha fazla yerel `#temp` tabloyu staging için
 kullanır. Çok ifadeli batch yalnızca yapısı eksiksiz kanıtlanabiliyorsa kabul
@@ -203,8 +246,9 @@ beyanı değiştiyse eski girdi `removed_stale_fingerprint` ile kaldırılır.
 | `sql_not_readonly` | SQL mevcut read-only sözleşmesine uymuyor | SQL'i ve güvenlik sözleşmesini inceleyin |
 
 `sql_not_readonly` artık "her çok ifadeli SQL reddedilir" demek değildir. Tam
-`SET NOCOUNT ON;` öneki ve yalnızca kuralları eksiksiz sağlayan yerel `#temp`
-analitik batch istisnadır. Bu istisna, daha önce oluşturulmuş yerel temp tablolar
+`SET NOCOUNT ON;` öneki, güvenli scalar `DECLARE` önekleri + tek sonuç sorgusu ve
+yalnızca kuralları eksiksiz sağlayan yerel `#temp` analitik batch dar
+istisnalardır. Yerel-temp istisnası daha önce oluşturulmuş temp tablolar
 üzerindeki performans indekslerini ve güvenli toplu `DROP TABLE IF EXISTS`
 temizliğini de kapsar. Diğer çok ifadeli yapılar kapalı-başarısız reddedilir.
 
@@ -238,9 +282,10 @@ ratchet'lerinden hariç tutulması ratchet eşiklerini gevşetme gerekçesi değ
 ## 5. `sample` kipi (İKİNCİ GEÇİŞ, isteğe bağlı ve AÇIK İZİNLİ)
 
 `describe` hâlâ bazı desteklenmeyen/dinamik/belirsiz sorgular için şema
-döndüremeyebilir. **Doğrulanmış yerel `#temp` staging, yerel-temp indeksleri veya
-final CTE kullanımı artık sırf bu yapılar nedeniyle `sample` gerektirmez**;
-metadata-only CTE yolu önce denenir.
+döndüremeyebilir. **Güvenli scalar `DECLARE` + tek sonuç sorgusu ile doğrulanmış
+yerel `#temp` staging, yerel-temp indeksleri veya final CTE kullanımı artık sırf
+bu yapılar nedeniyle `sample` gerektirmez**; scalar `DECLARE` normal tanımlayıcı
+yolunu, yerel-temp ise metadata-only CTE yolunu kullanır.
 
 `sample` yalnızca kalan gerçek istisnalar için düşünülmelidir.
 
@@ -299,25 +344,32 @@ Hiçbir şey yazmamalıdır. Bu dosyayı **asla commit etmeyin**.
 
 Sağlık raporunda özellikle şunları kontrol edin:
 
-1. Önceden `multiple_statements` nedeniyle atlanan tam `SET NOCOUNT ON` sorgular
+1. Güvenli scalar `DECLARE` önekleri + tek final `SELECT`/CTE kullanan sorgular
+   artık `multiple_statements` nedeniyle `ATLANDI` oluyor mu? Olmamalı.
+2. Önceden `multiple_statements` nedeniyle atlanan tam `SET NOCOUNT ON` sorgular
    artık `DAHIL`/normal doğrulama yoluna girmiş mi?
-2. Kuralları sağlayan yerel `#temp` analitik sorgular artık sırf çok ifadeli
+3. Kuralları sağlayan yerel `#temp` analitik sorgular artık sırf çok ifadeli
    oldukları için `ATLANDI` oluyor mu? Olmamalı.
-3. `SELECT ... INTO #temp` sonrasında yalnızca aynı batch'in oluşturduğu temp
+4. `SELECT ... INTO #temp` sonrasında yalnızca aynı batch'in oluşturduğu temp
    tabloları hedefleyen `CREATE CLUSTERED/NONCLUSTERED INDEX` kullanan sorgular
    normal doğrulama yoluna girmiş mi?
-4. Final sonucu `WITH ... SELECT` olan sorgular metadata-only CTE dönüşümünde
+5. Final sonucu `WITH ... SELECT` olan sorgular metadata-only CTE dönüşümünde
    başarılı mı?
-5. `DROP TABLE IF EXISTS #A, #B, ...` kullanan güvenli toplu temizlik yanlış
+6. `DROP TABLE IF EXISTS #A, #B, ...` kullanan güvenli toplu temizlik yanlış
    pozitif üretmeden kabul edilmiş mi?
-6. Yeni `BASARISIZ`/`GERI CEKILDI` sayısı oluşmuş mu?
-7. Kalıcı DDL/DML, `##global`, `EXEC`, `GO` veya belirsiz çok ifadeli SQL'ler
-   hâlâ `ATLANDI` mı?
+7. Yeni `BASARISIZ`/`GERI CEKILDI` sayısı oluşmuş mu?
+8. `TABLE`/`CURSOR` declaration, sequence mutasyonu, kalıcı DDL/DML, `##global`,
+   `EXEC`, `GO` veya belirsiz çok ifadeli SQL'ler hâlâ `ATLANDI` mı?
 
-20 Ağustos 2026'da operatör, SSMS'te çalışan ancak yerel temp staging + indeks +
-final CTE + `DROP TABLE IF EXISTS` kullandığı için önce `multiple_statements`
-olarak reddedilen gerçek sorgunun güncel `pk/rebuild` ile düzeldiğini Windows
-VM'de doğruladı. Sabit toplam/success sayısı yerine her koşunun kendi
+20 Ağustos 2026'daki son Windows VM `describe` doğrulamasında daha önce iki
+scalar `DECLARE` nedeniyle `multiple_statements` olarak atlanan SSMS sorgusu SQL
+metni değiştirilmeden düzeldi. Aynı temiz koşuda sağlık özeti **170 toplam / 170
+şema alınan / 170 üretilen**, **0 güvenlik-gate atlama**, **0 başarısız**, **0
+geri çekilen** ve **0 Tier-0 kalan** gösterdi. Rapordaki 170 anlamsal kürasyon
+uyarısı beklenen Tier-3 işidir; yapısal metadata başarısızlığı değildir.
+
+Bu sayılar yalnızca o koşunun kanıtıdır, kalıcı bir ratchet değildir. Sorgu
+kütüphanesi zamanla değişebileceği için her koşunun kendi
 `health.txt`/`health.json` çıktısını kanıt olarak saklayın.
 
 ---
