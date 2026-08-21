@@ -617,6 +617,19 @@ pk_meta_tracked_alias_audit <- function(curated) {
   unique(out)
 }
 
+# GitHub checkout'undaki sorgu kütüphanesi yalnızca bu dört yer tutucu kaydı
+# taşır. `optional_when_absent` yalnızca BU kesin envanter için üretim-only
+# küre edilmiş bir kaydın yokluğunu tolere edebilir; başka her envanterde stale
+# bir üretim metadata kimliği başlangıcı fail-closed düşürmeye devam eder.
+PK_META_CHECKOUT_PLACEHOLDER_IDS <- c("q001", "q002", "q003", "q_ornek_id")
+
+.pk_meta_is_checkout_placeholder_library <- function(ids) {
+  ids <- unique(as.character(ids))
+  ids <- ids[!is.na(ids) & nzchar(trimws(ids))]
+  length(ids) == length(PK_META_CHECKOUT_PLACEHOLDER_IDS) &&
+    setequal(ids, PK_META_CHECKOUT_PLACEHOLDER_IDS)
+}
+
 .pk_meta_validate_query_library <- function(query_library, metadata_ids = character(0),
                                             optional_metadata_ids = character(0)) {
   if (!is.list(query_library)) return("query_library liste olmalidir.")
@@ -649,11 +662,13 @@ pk_meta_tracked_alias_audit <- function(curated) {
   }
 
   bilinmeyen <- setdiff(metadata_ids, unique(ids))
-  zorunlu_bilinmeyen <- setdiff(bilinmeyen, optional_metadata_ids)
-  if (length(zorunlu_bilinmeyen)) {
+  if (length(bilinmeyen) && .pk_meta_is_checkout_placeholder_library(ids)) {
+    bilinmeyen <- setdiff(bilinmeyen, optional_metadata_ids)
+  }
+  if (length(bilinmeyen)) {
     hatalar <- c(hatalar, sprintf(
       "metadata katmaninda query_library icinde bulunmayan sorgu id: %s",
-      paste(zorunlu_bilinmeyen, collapse = ", ")
+      paste(bilinmeyen, collapse = ", ")
     ))
   }
 

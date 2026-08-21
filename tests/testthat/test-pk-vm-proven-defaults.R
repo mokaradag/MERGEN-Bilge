@@ -22,17 +22,19 @@ local({
   }
 })
 
-.pk_vm_test_library <- function(id) {
-  list(list(
-    id = id,
-    name = paste("Sentetik", id),
-    sql = "SELECT 1",
-    rls_columns = list(
-      masraf_yeri_col = NULL,
-      proje_kodu_col = NULL,
-      eps_kodu_col = NULL
+.pk_vm_test_library <- function(ids) {
+  lapply(ids, function(id) {
+    list(
+      id = id,
+      name = paste("Sentetik", id),
+      sql = "SELECT 1",
+      rls_columns = list(
+        masraf_yeri_col = NULL,
+        proje_kodu_col = NULL,
+        eps_kodu_col = NULL
+      )
     )
-  ))
+  })
 }
 
 test_that("VM'de doğrulanan seçim varsayılanları kalıcıdır", {
@@ -60,15 +62,16 @@ test_that("VM'de doğrulanan seçim varsayılanları kalıcıdır", {
   expect_identical(pk_config_resolve("MERGEN_PK_SELECT_PASS_A_CHARS"), 200000L)
 })
 
-test_that("optional_when_absent yalnız doğrulanmış üretim metadata'sını checkout dışında bekletebilir", {
+test_that("optional_when_absent yalnız bilinen checkout envanterinde yokluğu tolere eder", {
   optional_curated <- list(
     gen_00 = list(optional_when_absent = TRUE, entity = "project")
   )
 
-  # GitHub checkout'unda gen_00 yoksa bu doğrulanmış üretim kaydı boot'u düşürmez.
+  # GitHub checkout'undaki dört yer tutucu sorguda gen_00'nun bulunmaması
+  # beklenir; doğrulanmış üretim kaydı bu kesin envanter için boot'u düşürmez.
   expect_no_error(
     pk_query_meta_attach(
-      .pk_vm_test_library("q001"),
+      .pk_vm_test_library(PK_META_CHECKOUT_PLACEHOLDER_IDS),
       auto = list(), local = list(), curated = optional_curated,
       aliases = list(), registry = list()
     )
@@ -77,9 +80,20 @@ test_that("optional_when_absent yalnız doğrulanmış üretim metadata'sını c
   # Aynı istisna açıkça beyan edilmemiş bir typo/stale id için geçerli değildir.
   expect_error(
     pk_query_meta_attach(
-      .pk_vm_test_library("q001"),
+      .pk_vm_test_library(PK_META_CHECKOUT_PLACEHOLDER_IDS),
       auto = list(), local = list(),
       curated = list(gen_typo = list(entity = "project")),
+      aliases = list(), registry = list()
+    ),
+    "bulunmayan sorgu id"
+  )
+
+  # Üretim benzeri farklı bir envanterde optional_when_absent stale id'yi
+  # gizleyemez; gerçek sorgu silinir/yeniden adlandırılırsa fail-closed kalır.
+  expect_error(
+    pk_query_meta_attach(
+      .pk_vm_test_library(c("prod_001", "prod_002")),
+      auto = list(), local = list(), curated = optional_curated,
       aliases = list(), registry = list()
     ),
     "bulunmayan sorgu id"

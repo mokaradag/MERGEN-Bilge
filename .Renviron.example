@@ -687,7 +687,7 @@ MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES=2000
 #
 #   Her GEÇİŞ için ayrı ayrı uygulanan LLM zaman aşımı. v1'de bu alan HİÇ
 #   YOKTU (D14) ve asılı bir uç nokta Shiny olay döngüsünü bloke ediyordu.
-MERGEN_PK_SELECT_TIMEOUT_SEC=20
+MERGEN_PK_SELECT_TIMEOUT_SEC=60
 
 #   Geçiş A'nın isteyeceği ve Geçiş B'ye DEĞİŞMEDEN taşınacak aday sayısı.
 #   ASGARİ 2'dir ve bu bir GÜVENLİK sözleşmesidir: tek adaylık getirim, ikinci

@@ -679,7 +679,7 @@ test_that("row_cap geri düşüşü yapılandırma öncelik zincirini kullanır"
 
 # --- 8) DEPO SÖZLEŞMESİ: DOSYA AYRIMI VE GİZLİLİK SINIRI ----------------------
 
-test_that("izlenen metadata dosyaları üretim metadata'sı TAŞIMAZ", {
+test_that("izlenen metadata üretim-only semantiği yalnız açık opsiyonel sözleşmeyle taşır", {
   repo_root <- resolve_repo_root_for_tests()
 
   auto_env <- new.env(parent = globalenv())
@@ -692,20 +692,40 @@ test_that("izlenen metadata dosyaları üretim metadata'sı TAŞIMAZ", {
   source(file.path(repo_root, "R", "library_query_meta.R"),
          encoding = "UTF-8", local = kure_env)
 
-  # Yetenek kaydı doludur ve geçerlidir; sorgu metadata'sı ise uydurulmamıştır.
+  # Yetenek kaydı doludur ve geçerlidir.
   registry <- get("pk_capability_registry", envir = kure_env)
   expect_true(length(registry) > 0L)
   expect_equal(pk_meta_validate_capability_registry(registry), character(0))
 
+  tracked <- get("pk_query_meta", envir = kure_env)
+
+  # Checkout'taki dört YER TUTUCU id'ye izlenen semantik bağlanamaz; üretim VM'i
+  # aynı id'leri farklı gerçek sorgular için kullanabileceğinden bu sınır korunur.
   expect_equal(
-    length(get("pk_query_meta", envir = kure_env)), 0L,
+    intersect(names(tracked), PK_META_CHECKOUT_PLACEHOLDER_IDS),
+    character(0),
     info = paste(
-      "Bu checkout'ta 4 YER TUTUCU sorgu var; uretimde ~169 gercek sorgu.",
-      "Ayni id'ler icin metadata uydurmak VM'deki gercek sorguya yanlis anlam baglar."
+      "Checkout'taki yer tutucu id'lere izlenen metadata baglanmamalidir;",
+      "aksi halde VM'deki farkli gercek sorguya yanlis anlam tasinabilir."
     )
   )
 
-  expect_equal(pk_meta_tracked_alias_audit(get("pk_query_meta", envir = kure_env)), character(0))
+  # Git'te izlenen production-only semantik ancak yokluğu AÇIKÇA opsiyonel
+  # işaretlenmişse taşınabilir. Gerçek üretim envanterinde eksik id yine
+  # fail-closed'dur; bu istisna yalnız checkout yer tutucu envanterine özgüdür.
+  expect_true(
+    all(vapply(
+      tracked,
+      function(meta) is.list(meta) && isTRUE(meta$optional_when_absent),
+      logical(1)
+    )),
+    info = paste(
+      "Izlenen production-only semantik yalnizca",
+      "optional_when_absent=TRUE ile acikca beyan edilmelidir."
+    )
+  )
+
+  expect_equal(pk_meta_tracked_alias_audit(tracked), character(0))
 })
 
 test_that("yerel katmanlar gitignore'ludur ve manifestte OPSİYONEL işaretlidir", {

@@ -1214,7 +1214,7 @@ test_that("dokuz seçim anahtarı da yapılandırma sözleşmesinde kayıtlıdı
   }
   expect_equal(pk_config_spec$MERGEN_PK_SELECT_RECALL_N$min, 2L)
   expect_equal(pk_config_spec$MERGEN_PK_SELECT_RECALL_N$default, 5L)
-  expect_equal(pk_config_spec$MERGEN_PK_SELECT_TIMEOUT_SEC$default, 20L)
+  expect_equal(pk_config_spec$MERGEN_PK_SELECT_TIMEOUT_SEC$default, 60L)
   expect_equal(pk_config_spec$MERGEN_PK_SELECT_MIN_CONFIDENCE$default, 50L)
   expect_equal(pk_config_spec$MERGEN_PK_SELECT_MIN_MARGIN$default, 15L)
 })
