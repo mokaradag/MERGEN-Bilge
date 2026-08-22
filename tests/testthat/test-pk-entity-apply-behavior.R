@@ -200,8 +200,17 @@ test_that("v2 yürütücüsü çözümlemeyi derlemeden ÖNCE çağırır", {
   ham <- readBin(yol, "raw", file.info(yol)$size)
   metin <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
 
-  cozumleme <- regexpr("pk_entity_resolve_filter_plan", metin, fixed = TRUE)
-  derleme <- regexpr("pk_filter_compile(data, filters, query = query)", metin, fixed = TRUE)
+  # YORUM SATIRLARI TARAMA DIŞIDIR. `regexpr()` dosyadaki İLK geçişi bulur ve
+  # bu dosyanın uzun Türkçe başlık bloğu iş birlikçilerini ADIYLA anar; gerçek
+  # çağrı derlemeden SONRAYA taşınsa bile `cozumleme < derleme` başlıktaki
+  # anıştan ötürü DOĞRU kalıyor ve test bu dosyanın yakalamak için var olduğu
+  # regresyonu KAÇIRIYORDU.
+  satirlar <- strsplit(enc2utf8(metin), "\n", fixed = TRUE)[[1]]
+  satirlar <- satirlar[!grepl("^\\s*#", satirlar, perl = TRUE, useBytes = TRUE)]
+  kod <- paste(satirlar, collapse = "\n")
+
+  cozumleme <- regexpr("pk_entity_resolve_filter_plan", kod, fixed = TRUE)
+  derleme <- regexpr("pk_filter_compile(data, filters, query = query)", kod, fixed = TRUE)
 
   expect_true(cozumleme > 0L, info = "Cozumleyici v2 yolunda cagrilmiyor.")
   expect_true(derleme > 0L)

@@ -118,12 +118,28 @@ test_that("katlama R oturum yerelinden BAĞIMSIZDIR", {
 
   denendi <- FALSE
 
-  for (yerel in c("C", "C.UTF-8", "C.utf8")) {
+  # `LC_CTYPE` DE DEĞİŞTİRİLİR. Harf büyük/küçük dönüşümü ve bayt yorumu
+  # `LC_COLLATE` değil `LC_CTYPE` kategorisine bağlıdır; yalnız collate'i
+  # değiştirmek, ileride yeniden gelen yerele duyarlı bir `tolower()` yolunu
+  # (Türkçe `LC_CTYPE` altında noktasız `ı`) YAKALAYAMAZDI. Türkçe yerel
+  # adları da denenir: sürüklenme TAM OLARAK orada görünür. Yerel ADLARI
+  # platforma özgüdür; POSIX ve Windows yazımları birlikte denenir.
+  for (yerel in c("C", "C.UTF-8", "C.utf8",
+                  "tr_TR.UTF-8", "tr_TR.utf8", "Turkish_Turkey.1254", "Turkish")) {
     if (!nzchar(suppressWarnings(Sys.setlocale("LC_COLLATE", yerel)))) next
+    if (!nzchar(suppressWarnings(Sys.setlocale("LC_CTYPE", yerel)))) next
     denendi <- TRUE
     expect_equal(baytlar(), referans,
-                 info = sprintf("LC_COLLATE=%s altinda katlama degisti.", yerel))
+                 info = sprintf("LC_COLLATE/LC_CTYPE=%s altinda katlama degisti.", yerel))
   }
+
+  # GERİ YÜKLEME DOĞRULANIR (CLAUDE.md yerel kuralı): sızan bir `LC_CTYPE`
+  # aynı oturumdaki sonraki dosyalarda Türkçe karşılaştırmaları ve
+  # `source(..., encoding = "UTF-8")` çevirisini bozar.
+  suppressWarnings(Sys.setlocale("LC_COLLATE", eski_collate))
+  suppressWarnings(Sys.setlocale("LC_CTYPE", eski_ctype))
+  expect_identical(Sys.getlocale("LC_CTYPE"), eski_ctype)
+  expect_identical(Sys.getlocale("LC_COLLATE"), eski_collate)
 
   testthat::skip_if(!denendi, "Alternatif yerel bu ortamda ayarlanamadi.")
 })
@@ -177,8 +193,16 @@ test_that("yükleme sırası: Türkçe katlama yardımcısı metadata katmanlar�
 
   # Tüm metadata katmanı SQL loader'dan önce yüklenmelidir.
   tum <- source_manifest_paths_for_tests()
+  # `na.rm = TRUE` MANİFESTTE OLMAYAN DOSYAYI GİZLER. Bölüm listesinde kalıp
+  # tam manifestten çıkarılan bir dosya `NA` üretir, `na.rm` onu düşürür ve
+  # sıralama iddiası GEÇMEYE devam ederdi; dosya ise hiç source EDİLMEZDİ.
+  konumlar <- match(bolum, tum)
+  expect_false(
+    anyNA(konumlar),
+    info = "Bolumdeki her dosya tam manifestte bulunmalidir."
+  )
   expect_true(
-    max(match(bolum, tum), na.rm = TRUE) < match("R/config_sql_loader.R", tum),
+    max(konumlar) < match("R/config_sql_loader.R", tum),
     info = "Metadata katmani R/config_sql_loader.R sonrasina kaymis."
   )
 })

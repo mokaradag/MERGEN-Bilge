@@ -18,7 +18,19 @@
 
 .pk_stab_kaynak <- function(rel_path) {
   yol <- file.path(resolve_repo_root_for_tests(), rel_path)
+  # EKSIK DOSYA SESSIZ GECMEZ. Bos metin donmek, cagiranlarin TUM
+  # `expect_false(grepl(...))` P0 iddialarini kendiliginden gecirir; listelenen
+  # bir dosya yeniden adlandirilir/tasinirsa RCE korumasi hic kod TARAMADAN
+  # basarili raporlardi.
+  testthat::expect_true(
+    file.exists(yol),
+    info = paste("Kaynak dosya yok; P0 taramasi yapilamadi:", rel_path)
+  )
   boyut <- suppressWarnings(file.info(yol)$size[1])
+  testthat::expect_true(
+    !is.na(boyut) && boyut > 0,
+    info = paste("Kaynak dosya bos veya okunamadi:", rel_path)
+  )
   if (is.na(boyut) || boyut <= 0) return("")
   ham <- readBin(yol, what = "raw", n = boyut)
   metin <- suppressWarnings(iconv(list(ham), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]])

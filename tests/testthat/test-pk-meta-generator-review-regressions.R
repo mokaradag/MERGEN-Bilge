@@ -156,6 +156,10 @@ test_that("run-lock release restores bootstrap-mutated process state", {
   eski_log <- Sys.getenv("MERGEN_LOG_DIR", unset = NA_character_)
   on.exit({
     options(pk711.process.state = eski_option)
+    # Bootstrap'in EKLEDIGI secenek de temizlenir; aksi halde bir beklenti
+    # basarisiz oldugunda testthat govdeyi keser ve bu secenek AYNI oturumdaki
+    # sonraki testlere SIZAR.
+    options(pk711.added.by.bootstrap = NULL)
     if (is.na(eski_log)) Sys.unsetenv("MERGEN_LOG_DIR") else Sys.setenv(MERGEN_LOG_DIR = eski_log)
   }, add = TRUE)
 
@@ -165,6 +169,12 @@ test_that("run-lock release restores bootstrap-mutated process state", {
   lock_path <- file.path(tempdir(), paste0("pk711-lock-", Sys.getpid(), "-", sample.int(1e6, 1)))
   kilit <- pkgc_acquire_run_lock(lock_path, stale_sec = 3600)
   expect_true(kilit$ok)
+  # KILIT KOSULSUZ BIRAKILIR. `pkgc_release_run_lock()` asagida bir
+  # `expect_true()` icinde cagriliyor; ondan ONCEKI bir beklenti basarisiz
+  # olursa govde kesilir, kilit dosyasi `tempdir()` icinde KALIR ve ayni yola
+  # yapilan sonraki `pkgc_acquire_run_lock()` farkli davranir — tek basarisizlik
+  # ILGISIZ testlerde zincirleme hatalara donusurdu.
+  on.exit(try(pkgc_release_run_lock(kilit), silent = TRUE), add = TRUE, after = FALSE)
 
   options(pk711.process.state = "after")
   options(pk711.added.by.bootstrap = TRUE)

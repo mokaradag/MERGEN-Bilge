@@ -125,8 +125,13 @@ test_that("PK SQL hata yolu ham conditionMessage() gommez", {
   )
 
   # Eski kalip: err_msg dogrudan kullaniciya donen metne yapistiriliyordu.
+  #
+  # TAM BOSLUK ESLESMESI SINAMAZ: onceki desen `\n` + TAM IKI SEKME
+  # gerektiriyordu; dosya bosluklarla ya da bir/uc sekmeyle girintilendiyse
+  # eslesme HIC olusmaz ve ham hata metni kullaniciya donse bile test gecerdi.
+  # Anlamsal kalip (sembolun kendisi) aranir.
   expect_false(
-    grepl('"`",\n\t\terr_msg', modul, fixed = TRUE, useBytes = TRUE),
+    grepl("err_msg", modul, fixed = TRUE, useBytes = TRUE),
     info = "Ham hata metni kullaniciya gosterilen mesaja gommelenmemelidir."
   )
   expect_false(
@@ -137,6 +142,11 @@ test_that("PK SQL hata yolu ham conditionMessage() gommez", {
 
 test_that("redaksiyon MERGEN_PK_ENGINE bayragindan BAGIMSIZDIR", {
   metin <- .pk_safe_err_code_only("R/helpers_pk_safe_errors.R")
+
+  # BOS ICERIK NEGATIF IDDIALARI KENDILIGINDEN GECIRIR. Okuyucu dosya yoksa
+  # ya da okunamazsa `""` doner ve `grepl("", ...)` FALSE'tur; dosya yeniden
+  # adlandirildiginda/tasindiginda test BASARILI raporlardi.
+  expect_true(nzchar(metin), info = "helpers_pk_safe_errors.R okunamadi.")
 
   expect_false(grepl("MERGEN_PK_ENGINE", metin, fixed = TRUE, useBytes = TRUE))
   expect_false(grepl("pk_engine_is_v2", metin, fixed = TRUE, useBytes = TRUE))

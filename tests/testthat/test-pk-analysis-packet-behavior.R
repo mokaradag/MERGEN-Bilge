@@ -77,6 +77,10 @@ test_that("D19: paket metni capture.output/print kullanmaz", {
     kod <- .pk_packet_code_only(dosya)
     expect_false(grepl("capture.output", kod, fixed = TRUE, useBytes = TRUE),
                  info = sprintf("%s capture.output kullanmamalidir.", dosya))
+    # Test ADI `print` de iddia ediyordu ama yalnız `capture.output` denetleniyordu;
+    # paket metnini `print()` ile üreten bir regresyon bu testi GEÇİYORDU.
+    expect_false(grepl("\\bprint\\s*\\(", kod, perl = TRUE, useBytes = TRUE),
+                 info = sprintf("%s print() ile metin uretmemelidir.", dosya))
   }
 })
 

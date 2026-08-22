@@ -622,7 +622,10 @@ test_that("işleyici sınırındaki ve altındaki decimals kabul edilir", {
 test_that("PK_META_MAX_DECIMALS işleyicilerin gerçek kırpma sınırıyla aynıdır", {
   repo_root <- resolve_repo_root_for_tests()
   ortam <- new.env(parent = globalenv())
-  ortam$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
+  # ÜRETİM OPERATÖRÜYLE AYNI. Depo `%||%` yalnız `NULL` için yedeğe düşer;
+  # sıfır uzunluklu değerde de düşen bir test kopyası, kaynaklanan üretim
+  # dosyalarını FARKLI bir dala sokar ve iddia üretimden sapabilir.
+  ortam$`%||%` <- function(a, b) if (is.null(a)) b else a
   for (.pk705_dosya in c("helpers_pk_precision.R", "helpers_pk_packet_stats.R")) source(file.path(repo_root, "R", .pk705_dosya), encoding = "UTF-8", local = ortam)
 
   # İşleyici sınırın ÜSTÜNDEKİ bir isteği kırpar; sınırda ise kırpmaz.

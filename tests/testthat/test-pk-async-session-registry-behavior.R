@@ -6,9 +6,10 @@
 #   - `onSessionEnded` kancası OTURUM BAŞINA BİR KEZ kurulur (istek başına bir
 #     kapanış kaydetmek, tamamlanan HER isteğin gönderim çerçevesini oturum
 #     ömrü boyunca canlı tutuyordu).
-#   - Terk etme VARSAYILAN olarak serbest bırakma kapanışını ÇALIŞTIRMAZ:
-#     gezinme/yeni sohbet yolunda taze durum ezilmemelidir. Oturum kapanışı
-#     `release = TRUE` geçer.
+#   - Terk etme, iptal sinyalinin YANI SIRA sahiplik denetimli yuva bırakma
+#     kapanışını da ÇALIŞTIRIR: takılmış bir işçi gezinme sonrasında admisyon
+#     yuvasını tutmaya devam edemez. Kapanış yalnızca KENDİ jetonunu bıraktığı
+#     için daha yeni bir isteğin yuvasını ya da TAZE durumu ezemez.
 #   - Kaydedilmemiş sohbetler `NULL` kimliği PAYLAŞIR; nesil sayacı olmadan
 #     "kaydedilmemiş sohbet A" ile Yeni Söyleşi sonrası "kaydedilmemiş sohbet B"
 #     ayırt edilemez ve tamamlanan bir işçinin sonucu TAZE sohbete düşerdi.

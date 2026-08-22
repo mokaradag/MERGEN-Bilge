@@ -352,7 +352,13 @@ test_that("taşma çipleri gizli adayları ASLA içermez", {
   expect_equal(cip_degerleri, utils::head(beklenen, 2L))
 
   # Kalan adaylar çiplerde GÖRÜNMEZ.
-  expect_true(all(!(setdiff(beklenen, cip_degerleri) %in% cip_degerleri)))
+  #
+  # `setdiff(beklenen, cip_degerleri)` zaten çiplerde OLAN her ögeyi atar;
+  # kalanı `%in% cip_degerleri` ile denetlemek HER ZAMAN FALSE üretir, yani
+  # iddia hiç sınanmıyordu. Gizli adaylar DOĞRUDAN kontrol edilir.
+  gizli <- utils::tail(beklenen, -2L)
+  expect_true(length(gizli) > 0L)
+  expect_false(any(gizli %in% cip_degerleri))
 
   # "Tümü" kapalı olduğu için görünmeyen adaylar hiçbir yoldan seçilemez.
   expect_true(all(cip_degerleri %in% sozluk))

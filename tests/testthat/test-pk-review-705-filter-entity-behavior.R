@@ -8,7 +8,10 @@
 .pk705_filter_env <- function() {
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
-  env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
+  # ÜRETİM OPERATÖRÜYLE AYNI. Depo `%||%` yalnız `NULL` için yedeğe düşer;
+  # sıfır uzunluklu değerde de düşen bir test kopyası, kaynaklanan üretim
+  # dosyalarını FARKLI bir dala sokar ve iddia üretimden sapabilir.
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
   for (dosya in c("helpers_pk_text_turkish.R", "helpers_pk_query_meta_schema.R",
                   "helpers_pk_query_meta_access.R", "helpers_pk_filter_compile.R",
                   "helpers_pk_filter_group.R")) {
@@ -143,7 +146,10 @@ test_that("mantik grubu yapraklari applied/groups kaydinda GERCEK sutunla gorunu
 test_that("varlik cozumleyicisi grup cocuklarini gezer", {
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
-  env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
+  # ÜRETİM OPERATÖRÜYLE AYNI. Depo `%||%` yalnız `NULL` için yedeğe düşer;
+  # sıfır uzunluklu değerde de düşen bir test kopyası, kaynaklanan üretim
+  # dosyalarını FARKLI bir dala sokar ve iddia üretimden sapabilir.
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
   for (.pk705_dosya in c("helpers_pk_entity_tree.R", "helpers_pk_entity_apply.R")) source(file.path(repo_root, "R", .pk705_dosya),
          encoding = "UTF-8", local = env)
 
@@ -179,7 +185,10 @@ test_that("varlik cozumleyicisi grup cocuklarini gezer", {
 .pk705_entity_env <- function() {
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
-  env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
+  # ÜRETİM OPERATÖRÜYLE AYNI. Depo `%||%` yalnız `NULL` için yedeğe düşer;
+  # sıfır uzunluklu değerde de düşen bir test kopyası, kaynaklanan üretim
+  # dosyalarını FARKLI bir dala sokar ve iddia üretimden sapabilir.
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
   # Sira `R/config_source_manifest.R` ile AYNIdir.
   for (dosya in c("helpers_pk_text_turkish.R", "helpers_pk_config.R",
                   "helpers_pk_query_meta_schema.R", "helpers_pk_query_meta_access.R",

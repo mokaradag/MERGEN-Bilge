@@ -56,8 +56,12 @@ test_that("IDF sık geçen kelimenin skoru domine etmesini engeller", {
   # `takvim` yalnızca q003'te geçer -> yüksek IDF.
   index <- pk_retrieval_build_index(.pk_ret_lib())
 
-  idf_sentetik <- index$idf[["sen"]]
-  idf_takvim <- index$idf[["tak"]]
+  # `[[` EKSİK ADDA HATA YÜKSELTİR ("subscript out of bounds") ve aşağıdaki
+  # `expect_true()` HİÇ çalışmazdı; tokenleştirici/indeks değişikliği bu
+  # 3-gramlardan birini düşürürse anlamlı tanı yerine opak bir hata görülürdü.
+  # Tek köşeli parantez eksik adda `NA` döner ve tanı iddiası ÇALIŞIR.
+  idf_sentetik <- unname(index$idf["sen"])
+  idf_takvim <- unname(index$idf["tak"])
 
   expect_true(
     is.finite(idf_sentetik) && is.finite(idf_takvim),

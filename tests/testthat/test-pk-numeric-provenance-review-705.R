@@ -29,6 +29,16 @@
 #           KULLANILMAZ; tüm olgular SENTETİKtir.
 # ==============================================================================
 
+# DOSYA KAPSAMINDA DA TANIMLIDIR. `.prov705_fact()` dosya kapsamında tanımlıdır
+# ve `%||%` ifadesini TEST DOSYASI ortamında değerlendirir; yalnızca `env`
+# içinde tanımlamak, operatörün paylaşılan testthat ortamına BAŞKA bir dosyanın
+# yan etkisiyle gelmesine bağlı kalırdı. Bu dosya TEK BAŞINA çalıştırıldığında
+# (triyaj sırasında `testthat::test_file()`) her test köken davranışını
+# sınamak yerine "could not find function" ile düşerdi.
+if (!exists("%||%", mode = "function", inherits = TRUE)) {
+  `%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
+}
+
 .prov705_env <- function() {
   env <- new.env(parent = globalenv())
   kok <- resolve_repo_root_for_tests()

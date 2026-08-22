@@ -257,9 +257,20 @@ test_that("render katmani alias yolunu YALNIZCA aciklama metninde tasir", {
   # Yol yalnızca ÜRETİLEN dosyanın başlık metnini kuran fonksiyonda geçmelidir;
   # bir yazma çağrısının hedefi olarak DEĞİL.
   expect_true(grepl("pkgr_render_local_meta_file", metin, fixed = TRUE, useBytes = TRUE))
+
+  # ÇOK BELİRTEÇLİ TAM DİZE ARAMASI SINAMAZ. `.pkgc_code_only()` `deparse()`
+  # çıktısı döndürür; `deparse()` belirteç aralıklarını normalleştirir ve
+  # ifadeyi satırlara BÖLEBİLİR, dolayısıyla o tam bayt dizisi render katmanı
+  # gerçekten alias dosyasına yazsa BİLE bulunmaz ve `expect_false()` hem doğru
+  # hem bozuk kodda geçerdi. Bunun yerine YAZMA ÇAĞRISI TAŞIYAN satırlarda
+  # alias yolu aranır.
+  satirlar <- strsplit(metin, "\n", fixed = TRUE)[[1]]
+  yazma_satirlari <- grep("writeBin|writeLines|file\\(|file\\.rename|file\\.copy",
+                          satirlar, value = TRUE, perl = TRUE)
   expect_false(
-    grepl("writeBin(charToRaw(enc2utf8(text)), file(\"R/library_query_aliases_local.R",
-          metin, fixed = TRUE, useBytes = TRUE)
+    any(grepl("R/library_query_aliases_local.R", yazma_satirlari,
+              fixed = TRUE, useBytes = TRUE)),
+    info = "Alias dosyasi bir YAZMA cagrisinin hedefi olmamalidir."
   )
 })
 

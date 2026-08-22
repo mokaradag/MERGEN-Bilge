@@ -204,6 +204,12 @@ test_that("kullanıcı mesajları iptal ile zaman aşımını KARIŞTIRMAZ", {
 })
 
 test_that("isci PID sondasi ana olay dongusunu BLOKE ETMEZ ve sonucsuz sonda basari degildir", {
+  # `local_mocked_bindings(.package = "future")` ad alanini YUKLEMEYI gerektirir;
+  # paket kurulu degilse bu bir ATLAMA degil BASARISIZLIK olur ve
+  # `tests/testthat.R` `stop_on_failure = TRUE` ile tum suite'i kirar.
+  testthat::skip_if_not_installed("future")
+  testthat::skip_if_not_installed("withr")
+
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a

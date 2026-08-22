@@ -157,4 +157,44 @@ test_that("TTS köken alt bilgisi sınırını sentezden önce kaldırır", {
   expect_gt(buffered_tts_pos, marker_pos)
   expect_gt(streaming_tts_pos, marker_pos)
   expect_true(grepl("substr(full_text, 1L, marker_pos - 1L)", txt, fixed = TRUE, useBytes = TRUE))
+
+  # KAYNAK OFSETİ SIRALAMASI YÜKÜN KENDİSİNİ KANITLAMAZ. Yukarıdaki denetim
+  # yalnızca `provenance_marker <-` metninin sentez çağrılarından ÖNCE geçtiğini
+  # gösterir; kırpmanın AYNI `full_text` üzerinde, AYNI dalda ve sentez
+  # öncesinde çalıştığını göstermez. Üretimin KENDİ kırpma bloğu sentetik bir
+  # metin üzerinde çalıştırılır ve DÖNEN yük denetlenir.
+  satirlar <- strsplit(txt, "\n", fixed = TRUE)[[1]]
+  bas <- grep("^\\s*provenance_marker <- ", satirlar, perl = TRUE)[1]
+  expect_false(is.na(bas))
+  # Blok, PARANTEZ DENGESİ sağlanana kadar okunur; sabit satır sayısı
+  # kırpma bloğunun şekli değişince sessizce yanlış kod çalıştırırdı.
+  son <- NA_integer_
+  for (i in seq(bas, min(length(satirlar), bas + 30L))) {
+    aday <- paste(satirlar[bas:i], collapse = "\n")
+    if (!grepl("substr(full_text", aday, fixed = TRUE)) next
+    if (!inherits(tryCatch(parse(text = aday), error = function(e) e), "error")) {
+      son <- i
+      break
+    }
+  }
+  expect_false(is.na(son))
+  blok <- paste(satirlar[bas:son], collapse = "\n")
+  expect_true(grepl("substr(full_text", blok, fixed = TRUE))
+
+  ortam <- new.env(parent = baseenv())
+  ortam$full_text <- paste0(
+    "Görünür cevap gövdesi.",
+    "\n\n---\n**Analiz Kaynağı (Proje ve Kaynak Analizi)**\n",
+    "Sorgu: Sentetik | Satır: 12\n"
+  )
+  eval(parse(text = blok), envir = ortam)
+
+  expect_identical(ortam$full_text, "Görünür cevap gövdesi.")
+  expect_false(grepl("Analiz Kaynağı", ortam$full_text, fixed = TRUE))
+
+  # İşaretçi YOKKEN metin AYNEN korunur (kırpma yalnız işaretçide çalışır).
+  ortam2 <- new.env(parent = baseenv())
+  ortam2$full_text <- "Isaretci tasimayan duz cevap."
+  eval(parse(text = blok), envir = ortam2)
+  expect_identical(ortam2$full_text, "Isaretci tasimayan duz cevap.")
 })

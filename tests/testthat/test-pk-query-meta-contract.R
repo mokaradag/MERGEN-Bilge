@@ -711,6 +711,15 @@ test_that("izlenen metadata üretim-only semantiği yalnız açık opsiyonel sö
     )
   )
 
+  # BOŞ KÜME ÜZERİNDE `all()` VACUOUS TRUE'DUR. Küre edilmiş girdiler
+  # `R/library_query_meta.R` içinden kazara silinirse hem aşağıdaki denetim hem
+  # de yukarıdaki kesişim denetimi GEÇERDİ; yani bu sözleşmenin koruduğu
+  # regresyon CI'ı kırmadan geri gelebilirdi.
+  expect_true(
+    length(tracked) > 0L,
+    info = "Izlenen production-only semantik BOS olmamalidir; bos kume denetimi vacuous gecer."
+  )
+
   # Git'te izlenen production-only semantik ancak yokluğu AÇIKÇA opsiyonel
   # işaretlenmişse taşınabilir. Gerçek üretim envanterinde eksik id yine
   # fail-closed'dur; bu istisna yalnız checkout yer tutucu envanterine özgüdür.

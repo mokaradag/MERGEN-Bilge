@@ -182,6 +182,10 @@ test_that("anahtar yoksa parmak izi HİÇ yazılmaz", {
   )
 
   row <- DBI::dbGetQuery(conn, "SELECT * FROM MB_Analiz_Log")
+  # SATIR SAYISI ÖNCE DOĞRULANIR: telemetri fail-soft'tur, hiç satır
+  # yazılmazsa `row$SoruMetni[1]` NA olur ve aşağıdaki iddialar KENDİLİĞİNDEN
+  # geçerdi; sözleşme YAZILAN bir satır için kanıtlanmalıdır.
+  expect_equal(nrow(row), 1L)
   # Ne ham metin ne de parmak izi: anahtar yönetilemiyorsa hiçbir soru izi
   # bırakılmaz (plan §9 açık talimatı).
   expect_true(is.na(row$SoruMetni[1]))
@@ -202,6 +206,7 @@ test_that("açık onayla (=true) ham soru metni saklanabilir", {
   )
 
   row <- DBI::dbGetQuery(conn, "SELECT * FROM MB_Analiz_Log")
+  expect_equal(nrow(row), 1L)
   expect_identical(row$SoruMetni[1], .pk_priv_question)
 })
 
@@ -220,6 +225,8 @@ test_that("HMAC anahtarının kendisi telemetri satırına sızmaz", {
   )
 
   row <- DBI::dbGetQuery(conn, "SELECT * FROM MB_Analiz_Log")
+  # BOŞ SONUÇTA `grepl()` HİÇ EŞLEŞMEZ; sızıntı iddiası satır olmadan vacuous'tur.
+  expect_equal(nrow(row), 1L)
   butun_satir <- paste(unlist(lapply(row, as.character)), collapse = " | ")
   expect_false(grepl(key, butun_satir, fixed = TRUE))
 })

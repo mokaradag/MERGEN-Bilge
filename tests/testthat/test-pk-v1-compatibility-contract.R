@@ -553,8 +553,14 @@ test_that("Olgu saklandiginda isaretler silinir ve blok alt bilginin ONUNE gelir
 
   expect_false(grepl("[fact:", metin, fixed = TRUE))
   expect_true(grepl("Toplam 6,0 saat.", metin, fixed = TRUE))
-  expect_lt(regexpr("Önizleme", metin, fixed = TRUE),
-            regexpr("Analiz Kaynağı", metin, fixed = TRUE))
+  # HER İKİ İŞARETÇİNİN VARLIĞI ÖNCE KANITLANIR. `regexpr()` desen yoksa `-1`
+  # döner; önizleme bloğu üretilmez olsa bile `-1 < <konum>` DOĞRU kalır ve
+  # test bozuk üretim çıktısı için BAŞARILI raporlardı.
+  onizleme_pos <- regexpr("Önizleme", metin, fixed = TRUE)
+  kaynak_pos <- regexpr("Analiz Kaynağı", metin, fixed = TRUE)
+  expect_gt(onizleme_pos, 0L)
+  expect_gt(kaynak_pos, 0L)
+  expect_lt(onizleme_pos, kaynak_pos)
 })
 
 test_that("Alt bilgi ek satirini gosterir ama RLS oncesi sayiyi ASLA yazmaz", {

@@ -425,11 +425,12 @@ test_that("belirsizliği tetikleyen ikinci aday ÇİPLERE dâhildir", {
 
   karar <- pk_entity_resolve("alfa beta", c("alfa beta gama", "alfa beta delta"),
                              thresholds = esik)
-  if (identical(karar$decision, "clarify") && identical(karar$rule, 2L)) {
-    expect_true(length(karar$chips) >= 2L)
-  } else {
-    succeed()
-  }
+  # `succeed()` yedegi bu regresyon kilidini KOSULSUZ yapiyordu: cozumleyici
+  # bu fixture icin `clarify`/kural 2 uretmeyi biraksa bile test geciyordu ve
+  # tek cipli "birden cok yakin aday" diyalogu FARK EDILMEDEN kalirdi.
+  expect_identical(karar$decision, "clarify")
+  expect_identical(karar$rule, 2L)
+  expect_true(length(karar$chips) >= 2L)
 })
 
 test_that("çoğul istek TEK adaya sessizce ÇÖKMEZ", {
@@ -699,6 +700,7 @@ test_that("ZAYIF doğrudan eşleşme geçmişi bastırmaz", {
 # --- PR #705 KARARLILIK: tarama siniri / sohbet kapsami / isci tasima ---------
 
 test_that("en yakin aday onerileri TARAMA TAVANINA uyar", {
+  testthat::skip_if_not_installed("stringi")
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
   pk_entity_source_chain_for_tests(env = env)
@@ -728,6 +730,7 @@ test_that("en yakin aday onerileri TARAMA TAVANINA uyar", {
 })
 
 test_that("devralinan varlik baglami SOHBET SINIRINDA temizlenir", {
+  testthat::skip_if_not_installed("stringi")
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
   pk_entity_source_chain_for_tests(extra = "helpers_pk_entity_context.R", env = env)
@@ -755,6 +758,7 @@ test_that("devralinan varlik baglami SOHBET SINIRINDA temizlenir", {
 })
 
 test_that("devralinan varlik baglami isciye DUZ VERI olarak tasinir", {
+  testthat::skip_if_not_installed("stringi")
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a

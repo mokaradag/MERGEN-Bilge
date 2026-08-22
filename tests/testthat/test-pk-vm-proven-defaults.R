@@ -126,3 +126,45 @@ test_that("optional_when_absent yalnız bilinen checkout envanterinde yokluğu t
 
   expect_identical(sonuc[[1]]$meta$entity, "project")
 })
+
+test_that("checkout yer tutucu sabiti GERÇEK kütüphaneden bağımsız doğrulanır", {
+  kok <- resolve_repo_root_for_tests()
+
+  # SABİT ile GERÇEK envanter SÜRÜKLENEBİLİR. Pozitif fikstür üretim
+  # yükleminin karşılaştırdığı AYNI sabitten kuruluyordu; sabit
+  # `R/library_queries.R` içindeki gerçek kimliklerden ayrışırsa test YEŞİL
+  # kalır, oysa gerçek checkout ya opsiyonel metadata'yı tolere etmeyi bırakır
+  # ya da yanlış bir envanter "checkout" sayılır. Kimlikler DOSYADAN okunur.
+  kutuphane_ortami <- new.env(parent = globalenv())
+  # `R/library_queries.R` yalnızca `DB_TARGETS` sembolüne ihtiyaç duyar; tam
+  # DB yardımcı zincirini yüklemeden minimal ve gerçekçi bir değer verilir.
+  kutuphane_ortami$DB_TARGETS <- list(
+    PRIMARY = "primary", SECONDARY = "secondary", TERTIARY = "tertiary"
+  )
+  source(file.path(kok, "R", "library_queries.R"),
+         encoding = "UTF-8", local = kutuphane_ortami)
+
+  # Bu dosya GitHub checkout'unun yer tutucu kütüphanesidir; işaret ZORUNLUDUR.
+  expect_true(isTRUE(kutuphane_ortami$query_library_is_checkout_placeholder))
+
+  gercek_idler <- vapply(
+    kutuphane_ortami$query_library,
+    function(q) as.character(q$id)[1],
+    character(1)
+  )
+
+  expect_setequal(gercek_idler, PK_META_CHECKOUT_PLACEHOLDER_IDS)
+
+  # Yüklem GERÇEK envanterle çalıştırılır (sabitle değil).
+  isaret_ortami <- new.env(parent = emptyenv())
+  isaret_ortami$query_library_is_checkout_placeholder <- TRUE
+
+  expect_no_error(
+    pk_query_meta_attach(
+      .pk_vm_test_library(gercek_idler),
+      auto = list(), local = list(),
+      curated = list(gen_00 = list(optional_when_absent = TRUE, entity = "project")),
+      aliases = list(), registry = list(), envir = isaret_ortami
+    )
+  )
+})
