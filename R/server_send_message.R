@@ -369,6 +369,20 @@ sendMessageInit <- function(
 
         api_key_val <- as.character(api_key_plan$key %||% "")[1]
 
+        if (identical(as.character(api_key_plan$source %||% "")[1], "snapshot_failed")) {
+          # Gönderim anında anahtar planı DONDURULAMADI. Burada canlı çözüm
+          # yapmak, aynı isteğin iki farklı yapılandırma durumundan derlenmesi
+          # demektir; istek dürüstçe başarısız olur.
+          abort_send_message(
+            message = paste0(
+              "API anahtarı gönderim anında çözümlenemedi; istek güvenli ",
+              "biçimde durduruldu. Lütfen tekrar deneyin."
+            ),
+            type = "error"
+          )
+          return(invisible(NULL))
+        }
+
         if (is.na(api_key_val) || !nzchar(api_key_val)) {
           abort_send_message(
             message = "API anahtarı eksik. Ayarlar > Model Ayarları > API Anahtarı Güncelleme üzerinden girin.",

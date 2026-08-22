@@ -317,9 +317,16 @@ if (exists("oo_arac_sql_baglami_kur", mode = "function", inherits = TRUE) &&
     }
 
     footer <- .pk_hook_scalar_text(footer)
-    if (is.list(result) && nzchar(footer)) {
-      result$provenance_footer <- footer
+    if (nzchar(footer)) {
+      # KAYIT ZATEN TÜKETİLDİ: teslim edilemese bile YAYINLANIR.
+      #
+      # `pk_provenance_take()` yuvayı yukarıda boşaltır. Yayın yalnızca
+      # `is.list(result)` dalında yapılıyordu; çekirdek bir hata/ret yolundan
+      # düz METİN döndürdüğünde yetkili alt bilgi alınıp ATILIYOR ve (kayıt
+      # tüketildiği için) bir daha teslim edilemiyordu. Depoya yayınlamak,
+      # `motor$tamamla` sınırında eklenmesine izin verir.
       .pk_hook_room_footer_publish(footer)
+      if (is.list(result)) result$provenance_footer <- footer
     }
     result
   }

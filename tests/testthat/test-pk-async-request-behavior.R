@@ -383,8 +383,13 @@ test_that("sequential future planında asenkron gönderim UYGUN DEĞİLDİR", {
   skip_if_not_installed("future")
 
   eski <- Sys.getenv("MERGEN_PK_ASYNC", unset = NA_character_)
+  # PLAN GLOBAL DURUMDUR VE GERİ YÜKLENİR. testthat tüm dosyaları TEK oturumda
+  # çalıştırır; burada bırakılan `sequential` plan, sonraki dosyalardaki
+  # asenkron beklentileri ALAKASIZ yerlerde düşürürdü.
+  eski_plan <- future::plan()
   on.exit({
     if (is.na(eski)) Sys.unsetenv("MERGEN_PK_ASYNC") else Sys.setenv(MERGEN_PK_ASYNC = eski)
+    try(future::plan(eski_plan), silent = TRUE)
   }, add = TRUE)
 
   Sys.setenv(MERGEN_PK_ASYNC = "true")

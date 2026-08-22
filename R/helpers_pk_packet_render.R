@@ -290,9 +290,14 @@
             if (length(parcalar)) paste0(": ", paste(parcalar, collapse = " ; ")) else "")
   })
 
+  # Daraltılan grupların iki toplamı da ALINTILANABİLİR olmalıdır; karşılık
+  # gelen bağlam olguları `pk_packet_context_facts()` içinde üretilir.
   diger <- if ((g$other_groups %||% 0L) > 0L) {
-    sprintf("- Diger (%s grup, %s satir)", pk_fmt_number(g$other_groups, 0L),
-            pk_fmt_number(g$other_rows, 0L))
+    sprintf("- Diger (%s grup %s, %s satir %s)",
+            pk_fmt_number(g$other_groups, 0L),
+            .pk_render_marker(gruplama, "other_groups"),
+            pk_fmt_number(g$other_rows, 0L),
+            .pk_render_marker(gruplama, "other_rows"))
   } else {
     NULL
   }

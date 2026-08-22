@@ -518,9 +518,13 @@ test_that("işçi globals paketi BOOTSTRAP ÖNCESİ çağrı grafiği için KAPA
 })
 
 test_that("bootstrap kaynak döngüsü sahne ebeveynini HER DOSYADAN ÖNCE tazeler", {
-  kaynak <- readLines("../../R/helpers_pk_async_bootstrap.R",
-                      warn = FALSE, encoding = "UTF-8")
-  metin <- paste(kaynak, collapse = "\n")
+  # Repo kökü ortak yardımcıyla çözülür (çalışma dizini bağımsız) ve dosya
+  # BAYT-GÜVENLİ okunur: Windows VM'de Türkçe yorumlu dosyalarda düz
+  # `readLines(encoding = "UTF-8")` "invalid UTF-8" ile düşüyordu.
+  yol <- file.path(resolve_repo_root_for_tests(), "R", "helpers_pk_async_bootstrap.R")
+  ham <- readBin(yol, what = "raw", n = file.info(yol)$size)
+  metin <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
+  kaynak <- strsplit(metin, "\n", fixed = TRUE)[[1]]
   expect_true(grepl("pk_async_worker_stage_refresh(sahne, hedef)", metin, fixed = TRUE))
   # Tazeleme `sys.source()` ÖNCESİNDE olmalıdır.
   expect_lt(

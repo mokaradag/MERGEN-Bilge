@@ -263,8 +263,25 @@ redact_connection_identifiers <- function(x) {
   if (is.null(metin)) return("<redaksiyon uygulanamadi>")
   if (!is.character(metin) || length(metin) != 1L || is.na(metin)) return(metin)
 
+  # SÜSLÜ PARANTEZLİ DEĞER: KAÇIŞLI VE KAPANMAMIŞ BİÇİMLER DE MASKELENİR.
+  #
+  # ODBC bağlantı dizesinde `}` karakteri `}}` ile kaçırılır. Eski `\{[^}]*\}`
+  # deseni `Pwd={A}}B}` girdisinde ERKEN durup yalnızca `{A}` kısmını maskeliyor,
+  # `}B}` kuyruğu logda GÖRÜNÜR kalıyordu. Kapanış parantezi hiç yoksa desen
+  # eşleşmiyor, ikinci geçişteki `(?!\{)` de devreye girmediği için değerin
+  # TAMAMI görünür kalıyordu. Önce kaçışlı biçim, sonra kapanmamış biçim.
   metin <- gsub(
-    paste0("(?i)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS, ")(\\s*=\\s*)\\{[^}]*\\}"),
+    paste0("(?i)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS,
+           ")(\\s*=\\s*)\\{(?:[^{}]|\\}\\})*\\}"),
+    "\\1\\2\\3{<redacted>}",
+    metin,
+    perl = TRUE
+  )
+
+  # Kapanmamış süslü parantez: satır sonuna kadar maskelenir.
+  metin <- gsub(
+    paste0("(?i)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS,
+           ")(\\s*=\\s*)\\{[^{}\r\n]*$"),
     "\\1\\2\\3{<redacted>}",
     metin,
     perl = TRUE

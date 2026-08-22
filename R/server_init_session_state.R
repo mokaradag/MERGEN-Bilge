@@ -121,6 +121,8 @@ serverInitSessionState <- function(session, identity, sso_state = NULL) {
   if (is.na(out)) "" else out
 }
 
+# `question` GERİYE DÖNÜK UYUMLULUK İÇİN KABUL EDİLİR AMA KULLANILMAZ; bkz.
+# aşağıdaki "SORU METNİYLE TEMİZLİK YAPILMAZ" açıklaması.
 pk_filter_observation_clear <- function(request_id = NULL, question = NULL) {
   state <- if (exists(".pk_filter_observation_state", inherits = TRUE)) {
     get(".pk_filter_observation_state", inherits = TRUE)
@@ -133,16 +135,19 @@ pk_filter_observation_clear <- function(request_id = NULL, question = NULL) {
   if (length(keys) == 0L) return(invisible(FALSE))
 
   request_id <- .pk_hook_scalar_text(request_id)
-  question <- .pk_hook_scalar_text(question)
-  if (!nzchar(request_id) && !nzchar(question)) return(invisible(FALSE))
+  # SORU METNİYLE TEMİZLİK YAPILMAZ.
+  #
+  # `.pk_filter_observation_state` SÜREÇ GENELİNDEDİR. İstek kimliği yokken
+  # anahtarın yalnızca DÖRDÜNCÜ bileşeni (soru metni) karşılaştırılıyordu; aynı
+  # soruyu soran İKİ oturumdan biri kimliksiz erken çıktığında DİĞERİNİN canlı
+  # gözlemi siliniyor, o istek filtre kökenini ve telemetrisini kaybediyordu.
+  # Temizlik yalnızca istek kimliğiyle yapılır; kimlik yoksa hiçbir kayıt
+  # silinmez (bayat kayıt zaten kendi TTL/kapasite sınırıyla düşer).
+  if (!nzchar(request_id)) return(invisible(FALSE))
 
   remove_key <- vapply(keys, function(key) {
     parts <- strsplit(key, "\u001f", fixed = TRUE)[[1]]
-    request_match <- nzchar(request_id) && length(parts) >= 1L &&
-      identical(parts[[1]], request_id)
-    question_match <- !nzchar(request_id) && nzchar(question) &&
-      length(parts) >= 4L && identical(parts[[4]], question)
-    request_match || question_match
+    length(parts) >= 1L && identical(parts[[1]], request_id)
   }, logical(1))
 
   doomed <- keys[remove_key]

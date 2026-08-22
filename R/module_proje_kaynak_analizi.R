@@ -108,6 +108,10 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   }
   # NOT: Kapanış `conn` ve `username` değerlerini ÇAĞRI ANINDA çözer; bu yüzden
   # yalnızca o değişkenler tanımlandıktan sonraki çıkışlarda çağrılır.
+  # Seçim bozulma açıklamaları: kapanış tanımlanmadan ÖNCE ilklenir (aşağıda
+  # gerçek değerle güncellenir); `pk_observe()` bunu sözlüksel kapsamla okur.
+  pk_selection_disclosures <- character(0)
+
   pk_observe <- function(...) {
     if (!exists("pk_analysis_observe", mode = "function", inherits = TRUE)) return(invisible(NULL))
 
@@ -121,11 +125,12 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
       # Faz 5: secim asamasinda olusan bozulmalar (varsa) alt bilgiye ve
       # telemetriye tasinir. Yalnizca loglara yazilan bir zayiflatma,
       # kullanici acisindan hic olmamis demektir.
-      extra_degradations = if (exists("pk_selection_disclosures", inherits = FALSE)) {
-        pk_selection_disclosures
-      } else {
-        character(0)
-      },
+      # `exists(..., inherits = FALSE)` YALNIZCA `pk_observe()` çerçevesine
+      # bakar; değişken KAPSAYAN çerçevede (`pk_analiz_process_request`)
+      # atanır, dolayısıyla koşul HER ZAMAN FALSE'tu ve seçim bozulmaları
+      # telemetriye/alt bilgiye HİÇ ulaşmıyordu. Değişken artık kapanış
+      # tanımlanmadan ÖNCE ilklenir ve sözlüksel kapsamla okunur.
+      extra_degradations = pk_selection_disclosures,
       duration_ms = as.numeric(difftime(Sys.time(), pk_started_at, units = "secs")) * 1000
     )
     pk_over <- list(...)
@@ -272,7 +277,13 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     pk_exec_ctx_restore <- pk_set_exec_context(
       query = selected_query, rls_info = NULL, engine = pk_engine_mode()
     )
-    on.exit(try(pk_exec_ctx_restore(), silent = TRUE), add = TRUE)
+    # `after = FALSE`: `on.exit()` işleyicileri KAYIT SIRASINDA çalışır. İlk
+    # geri yükleyici bağlamı özgün değerine döndürüyor, ARDINDAN aşağıdaki
+    # tazeleme geri yükleyicisi onu "tazeleme öncesi" (yani sorgu kapsamlı)
+    # değerle EZİYORDU: sorguya özgü `analysis_deadline_sec` fonksiyondan
+    # döndükten SONRA da yürürlükte kalıyor ve aynı süreçte bağlamı okuyan bir
+    # sonraki koda sızıyordu. LIFO çözüm sırası doğru olandır.
+    on.exit(try(pk_exec_ctx_restore(), silent = TRUE), add = TRUE, after = FALSE)
   }
 
   if (is.function(stop_check) && isTRUE(stop_check())) {
@@ -387,7 +398,8 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 	  pk_exec_ctx_refresh <- pk_set_exec_context(
 		query = selected_query, rls_info = rls_info, engine = pk_engine_mode()
 	  )
-	  on.exit(try(pk_exec_ctx_refresh(), silent = TRUE), add = TRUE)
+	  # LIFO: bkz. yukarıdaki `pk_exec_ctx_restore` açıklaması.
+	  on.exit(try(pk_exec_ctx_refresh(), silent = TRUE), add = TRUE, after = FALSE)
 	}
 
 	raw_data <- tryCatch({

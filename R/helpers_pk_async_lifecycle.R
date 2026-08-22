@@ -46,6 +46,13 @@ mergen_pk_send_snapshot <- function(session, settings_data) {
       if (is.list(duz)) duz else list()
     }, error = function(e) list())
   }
+  # ANAHTAR PLANI ALINAMAZSA AÇIK BİR "EKSİK" İŞARETİ DÖNER.
+  #
+  # `NULL` dönmek, `server_send_message.R` içindeki `%||%` yedeğini devreye
+  # sokuyordu: ertelenen devam kapanışı DAKİKALAR SONRA çalışıp anahtarı CANLI
+  # olarak yeniden çözüyor ve tek bir istek İKİ farklı yapılandırma durumundan
+  # derlenebiliyordu. İşaret, isteğin o noktada dürüstçe başarısız olmasını
+  # sağlar (anahtar boş olduğu için mevcut abort yolu çalışır).
   anahtar <- tryCatch(
     mb_api_key_get_cached_for_send(
       session = session, require_auth = TRUE,
@@ -53,6 +60,9 @@ mergen_pk_send_snapshot <- function(session, settings_data) {
     ),
     error = function(e) NULL
   )
+  if (!is.list(anahtar)) {
+    anahtar <- list(key = "", source = "snapshot_failed", owner = NULL)
+  }
   list(settings = ayarlar, api_key_plan = anahtar)
 }
 
