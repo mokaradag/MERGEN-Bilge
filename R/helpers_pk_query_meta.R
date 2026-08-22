@@ -11,90 +11,6 @@ PK_META_SCHEMA_VALIDATED <- "validated"
   get(name, envir = envir, inherits = TRUE)
 }
 
-.pk_meta_validate_named_layer <- function(name, layer) {
-  if (is.null(layer)) return(character(0))
-  if (!is.list(layer)) return(sprintf("%s adlandirilmis liste olmalidir.", name))
-  if (!length(layer)) return(character(0))
-
-  adlar <- names(layer)
-  if (is.null(adlar) || length(adlar) != length(layer) ||
-      any(is.na(adlar) | !nzchar(trimws(adlar)))) {
-    return(sprintf("%s adlandirilmis liste olmalidir.", name))
-  }
-
-  hatalar <- character(0)
-  tekrar <- unique(adlar[duplicated(adlar)])
-  if (length(tekrar)) {
-    hatalar <- c(hatalar, sprintf(
-      "%s icinde tekrar eden kimlik: %s", name, paste(tekrar, collapse = ", ")
-    ))
-  }
-
-  liste_olmayan <- adlar[!vapply(layer, is.list, logical(1))]
-  if (length(liste_olmayan)) {
-    hatalar <- c(hatalar, sprintf(
-      "%s icindeki her sorgu girdisi liste olmalidir: %s",
-      name, paste(liste_olmayan, collapse = ", ")
-    ))
-  }
-
-  unique(hatalar)
-}
-
-.pk_meta_merge_one <- function(alt, ustun) {
-  if (!is.list(alt)) alt <- list()
-  if (!is.list(ustun)) return(alt)
-
-  out <- alt
-  for (alan in names(ustun)) {
-    if (is.na(alan) || !nzchar(alan)) next
-    ust_deger <- ustun[[alan]]
-    alt_deger <- alt[[alan]]
-
-    if (identical(alan, "column_meta") && is.list(ust_deger)) {
-      birlesik <- if (is.list(alt_deger)) alt_deger else list()
-      for (sutun in names(ust_deger)) {
-        if (is.na(sutun) || !nzchar(sutun)) next
-        yeni <- ust_deger[[sutun]]
-        if (!is.list(yeni)) {
-          birlesik[[sutun]] <- yeni
-          next
-        }
-
-        mevcut <- if (is.list(birlesik[[sutun]])) birlesik[[sutun]] else list()
-        for (calan in names(yeni)) {
-          if (is.na(calan) || !nzchar(calan)) next
-          mevcut[[calan]] <- yeni[[calan]]
-        }
-        birlesik[[sutun]] <- mevcut
-      }
-      out[[alan]] <- birlesik
-    } else {
-      out[[alan]] <- ust_deger
-    }
-  }
-
-  out
-}
-
-pk_meta_merge_layers <- function(auto = list(), local = list(), curated = list()) {
-  auto <- if (is.list(auto)) auto else list()
-  local <- if (is.list(local)) local else list()
-  curated <- if (is.list(curated)) curated else list()
-
-  kimlikler <- unique(c(names(auto), names(local), names(curated)))
-  kimlikler <- kimlikler[!is.na(kimlikler) & nzchar(trimws(kimlikler))]
-
-  out <- list()
-  for (id in kimlikler) {
-    birlesik <- .pk_meta_merge_one(list(), auto[[id]])
-    birlesik <- .pk_meta_merge_one(birlesik, local[[id]])
-    birlesik <- .pk_meta_merge_one(birlesik, curated[[id]])
-    out[[id]] <- birlesik
-  }
-  out
-}
-
 .pk_meta_alias_allowed <- function(cmeta) {
   if (!is.list(cmeta)) return(TRUE)
   if (isTRUE(cmeta$allow_aliases)) return(TRUE)
@@ -224,11 +140,39 @@ pk_meta_apply_alias_overlay <- function(meta, overlay) {
   list(meta = meta, errors = unique(hatalar))
 }
 
+# Sorgu düzeyinde izin verilen alanlar.
+#
+# Yapılandırma anahtarları `pk_config_spec` ÜZERİNDEN TÜRETİLİR: sorgu bazlı her
+# `MERGEN_PK_*` ezmesi `pk_config_meta_key()` adıyla metadata içinde
+# taşınabildiği için sabit bir liste kaçınılmaz olarak eskir. Geri kalanlar
+# yapısal/anlamsal alanlar ile üreticiye ait alanlardır.
+pk_meta_query_field_allowlist <- function() {
+  yapilandirma <- if (exists("pk_config_spec", inherits = TRUE) &&
+                      exists("pk_config_meta_key", mode = "function", inherits = TRUE)) {
+    vapply(names(pk_config_spec), pk_config_meta_key, character(1), USE.NAMES = FALSE)
+  } else {
+    character(0)
+  }
+
+  unique(c(
+    "column_meta", "result_schema", "capability_variants",
+    "grain", "grain_columns", "primary_entity", "entity",
+    "default_group_by", "default_measures",
+    "keywords", "sample_questions", "intents", "not_for",
+    "row_cap", "tier", "optional_when_absent", "schema_validation",
+    # Üretici alanları (yalnızca üretilen katmanda görülür).
+    "generated_mode", "generated_at", "source_fingerprint",
+    yapilandirma
+  ))
+}
+
 pk_meta_validate_query <- function(query_id, meta, registry = NULL) {
   if (is.null(meta) || !length(meta)) return(character(0))
   if (!is.list(meta)) return(.pk_meta_err(query_id, "metadata liste olmalidir."))
 
-  hatalar <- character(0)
+  hatalar <- .pk_meta_validate_field_names(
+    query_id, "metadata:", meta, pk_meta_query_field_allowlist()
+  )
   sutunlar <- meta$column_meta
 
   if (!is.null(meta$grain) && !.pk_meta_is_scalar_text(meta$grain)) {

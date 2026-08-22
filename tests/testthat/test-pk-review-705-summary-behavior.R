@@ -204,3 +204,42 @@ test_that("v1 kırpma özyinelemesi FİLTRELEME UYARISINI düşürmez", {
   expect_true(grepl("FİLTRELEME UYARISI", sonuc$summary_text, fixed = TRUE))
   expect_true(grepl("500", sonuc$summary_text, fixed = TRUE))
 })
+
+# ------------------------------------------------- inceleme takibi: ölçüler ---
+
+test_that("benzersiz tam sayılı ÖLÇÜ kimlik sanılıp istatistikten dışlanmaz", {
+  env <- .pk705_summary_env()
+
+  # 24 satırlık gerçek bir tutar sütunu: tam sayı, birbirinden farklı ama
+  # vekil anahtarın YOĞUN ARTAN dizisi DEĞİL. Eski kural yalnızca
+  # "tamsayı + benzersiz" aradığı için bunu kimlik sayıp toplam/ortalama
+  # üretmiyor ve modele "bu değerleri ASLA toplama" diyordu.
+  tutarlar <- c(1250, 4300, 990, 15600, 2075, 8320, 640, 11500,
+                3380, 7215, 950, 20450, 1875, 6640, 12300, 480,
+                5290, 9150, 2740, 17800, 1360, 4025, 8880, 13470)
+  expect_length(unique(tutarlar), length(tutarlar))
+  expect_true(all(tutarlar == round(tutarlar)))
+
+  metin <- paste(.pk705_ozet(
+    env,
+    data.frame(Tutar = tutarlar, stringsAsFactors = FALSE),
+    mode = "summary"
+  ), collapse = "\n")
+
+  expect_true(grepl("Tutar", metin, fixed = TRUE))
+  expect_false(grepl("ÖLÇÜ DEĞİLDİR", metin, fixed = TRUE))
+  expect_true(grepl("Toplam", metin, fixed = TRUE))
+})
+
+test_that("yoğun artan vekil anahtar dizisi ÖLÇÜ sayılmaz", {
+  env <- .pk705_summary_env()
+
+  metin <- paste(.pk705_ozet(
+    env,
+    data.frame(KayitID = 1:24, stringsAsFactors = FALSE),
+    mode = "summary"
+  ), collapse = "\n")
+
+  expect_true(grepl("ÖLÇÜ DEĞİLDİR", metin, fixed = TRUE))
+  expect_true(grepl("KayitID", metin, fixed = TRUE))
+})

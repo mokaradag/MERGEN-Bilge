@@ -400,5 +400,19 @@ pk_select_decide <- function(pass_b, candidates_ids, library_index, cfg,
       yetkin[[length(yetkin) + 1L]] <- alt
     }
   }
-  yetkin
+  if (length(yetkin) < 2L) return(yetkin)
+
+  # MARJ KAPISI EN GÜÇLÜ YETKİN RAKİBE KARŞI ÖLÇÜLÜR.
+  #
+  # Belge "azalan güven" diyordu ama sıralama HİÇ uygulanmıyordu; model
+  # `alternates` dizisini sıralamak zorunda değildir. `rakipler[[1]]` bu yüzden
+  # rastgele bir aday olabiliyor, marj ona göre hesaplanıyor ve GERÇEK bir
+  # yakın beraberlik `close_margin` kapısını tetiklemeden `auto` çalışıyordu.
+  puanlar <- vapply(
+    yetkin,
+    function(alt) suppressWarnings(as.numeric(alt$confidence)[1]),
+    numeric(1)
+  )
+  puanlar[!is.finite(puanlar)] <- -Inf
+  yetkin[order(-puanlar, method = "radix")]
 }

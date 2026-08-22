@@ -17,6 +17,7 @@ local({
     "helpers_pk_config.R",
     "helpers_pk_query_meta_schema.R",
     "helpers_pk_query_meta_access.R",
+    "helpers_pk_query_meta_layers.R",
     "helpers_pk_query_meta.R",
     "helpers_pk_sql_statements.R", "helpers_pk_sql_readonly.R"
   )) {

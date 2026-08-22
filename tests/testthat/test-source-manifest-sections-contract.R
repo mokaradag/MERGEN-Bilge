@@ -118,7 +118,7 @@
   # doğrulayıcı + erişimci yardımcıları, ardından dört veri katmanı
   # (iskelet -> üretilen -> küre edilmiş -> yerel alias) ve birleştirici;
   # hepsi R/config_sql_loader.R'den ÖNCE (master plan §6 zorunlu sırası).
-  pk_query_metadata = list(first = "R/helpers_pk_ascii_tokens.R", last = "R/helpers_pk_query_meta.R", n = 9L),
+  pk_query_metadata = list(first = "R/helpers_pk_ascii_tokens.R", last = "R/helpers_pk_query_meta.R", n = 10L),
   sql_library = list(first = "R/library_queries.R", last = "R/config_sql_loader.R", n = 2L),
   language_messaging = list(first = "R/helpers_language.R", last = "R/helpers_messaging.R", n = 2L),
   mcp_tools = list(first = "R/helpers_mcp_context.R", last = "R/helpers_mcp_tools.R", n = 9L),
@@ -578,7 +578,7 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # manifeste taşındı.
   # `helpers_pk_async_probe.R`: işçi-PID sondası `helpers_pk_async_plan.R`
   # içinden AYRILDI (ratchet bölünmesi). 468 -> 469.
-  expect_equal(length(runtime), 470L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  expect_equal(length(runtime), 471L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

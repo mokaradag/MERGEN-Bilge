@@ -26,8 +26,11 @@
       identical(.pk_async_plan_probe_cache$key, anahtar)) {
     return(.pk_async_plan_probe_cache$result)
   }
-  # Plan DEĞİŞTİYSE bekleyen sonda ve soğuma penceresi de geçersizdir.
+  # PLAN DEĞİŞTİYSE ESKİ KANIT TAŞINMAZ. Kesin sonuç da düşürülür: aksi hâlde
+  # yeni plan için SONUÇSUZ (`NA`) biten bir sonda, anahtar güncellendiği için
+  # bir sonraki çağrıda ÖNCEKİ planın TRUE/FALSE cevabını devrederdi.
   if (!identical(.pk_async_plan_probe_cache$key, anahtar)) {
+    .pk_async_plan_probe_cache$result <- NULL
     .pk_async_plan_probe_cache$pending <- NULL
     .pk_async_plan_probe_cache$na_until <- NULL
   }

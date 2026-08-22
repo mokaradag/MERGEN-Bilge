@@ -249,10 +249,27 @@ pk_filter_zero_match_policy <- function(data, filters, compiled, query = NULL) {
   }
 
   # 2) Yalnızca ikincil sütunlarda sıfır eşleşme -> düşür, ifşa et, devam et.
-  kalan <- Filter(function(f) {
-    yaprak <- pk_filter_normalize_leaf(f)
-    !(yaprak$column %in% dusurulen)
-  }, filters)
+  #
+  # İÇ İÇE GRUPLAR DA GEZİLİR. `pk_filter_normalize_leaf()` bir grup düğümü
+  # için `column = ""` döndürür; bu yüzden sıfır eşleşen bir yaprağı İÇEREN
+  # grup eskiden `kalan` içinde kalıyor, kurtarma derlemesi grubu yeniden
+  # uyguluyor ve politika BOŞ maskeyle `dropped_secondary` döndürüyordu —
+  # yani "devam ediyoruz" denirken hiçbir satır kalmıyordu. Grup ya TAMAMEN
+  # uygulanır ya da REDDEDİLİR (bkz. helpers_pk_filter_group.R); dolayısıyla
+  # düşürülen bir sütuna dokunan grubun tamamı çıkarılır.
+  .dokunuyor <- function(dugum, derinlik = 0L) {
+    if (derinlik > 10L) return(FALSE)
+    if (is.list(dugum) && is.list(dugum$children)) {
+      return(any(vapply(
+        dugum$children,
+        function(cocuk) .dokunuyor(cocuk, derinlik + 1L),
+        logical(1)
+      )))
+    }
+    pk_filter_normalize_leaf(dugum)$column %in% dusurulen
+  }
+
+  kalan <- Filter(function(f) !.dokunuyor(f), filters)
 
   # KURTARMA DERLEMESİ AYNI METADATA İLE YAPILIR.
   #

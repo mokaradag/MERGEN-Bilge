@@ -229,8 +229,12 @@ pk_sql_columns_from_metadata <- function(column_info, schema = NULL) {
       }
 
       anahtar <- as.character(kod)
-      birim <- .PK_ODBC_FIXED_TYPE_BYTES[[anahtar]]
-      if (!is.null(birim)) {
+      # `[[` DEĞİL `[`: adlandırılmış atomik vektörde OLMAYAN bir ad `[[` ile
+      # "subscript out of bounds" fırlatır. Desteklenmeyen bir ODBC tip kodu bu
+      # yüzden `__unknown__` dalına HİÇ ulaşamıyor, planlayıcı çağrısı da
+      # tek-satır getirmeye düşmek yerine ABORT ediyordu.
+      birim <- unname(.PK_ODBC_FIXED_TYPE_BYTES[anahtar])
+      if (length(birim) == 1L && !is.na(birim)) {
         if (anahtar %in% .PK_ODBC_VARIABLE_TYPE_CODES) {
           # Değişken genişlik: BEYAN EDİLEN uzunluk zorunludur.
           #

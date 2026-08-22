@@ -336,11 +336,19 @@ pk_facts_index <- function(facts) {
 
     # Birim yalnızca 1-12 harf değildir: `kişi/saat`, `adam-saat`, `m²`, `TL`
     # gibi bileşik/simgesel birimler de olgunun gösteriminde geçebilir.
+    #
+    # DEVAM SINIFI RAKAM DA İÇERİR. `.PK_PROV_KNOWN_UNITS` `m2` biçimini kabul
+    # ederken devam sınıfında `0-9` yoktu; `12 m2 [fact:...]` metninde sona
+    # dayalı desen "12 m2" ile eşleşemiyor, geriye dönüp yalnızca sondaki `2`
+    # ile eşleşiyordu. Doğrulayıcı da iddia edilen değeri `2` sanıp
+    # `value_mismatch` bildiriyor, `block` kipinde DOĞRU yanıt yedekle
+    # değiştiriliyordu. Birimin İLK karakteri hâlâ rakam OLAMAZ (aksi hâlde
+    # "12 34" ifadesinde `34` birim sanılırdı).
     eslesme <- regmatches(
       yakin,
       gregexpr(paste0("(%\\s*)?-?[0-9][0-9.,]*\\s*",
                       "(%|[A-Za-zÇĞİÖŞÜçğıöşü\u20ba\u00b2\u00b3$\u20ac]",
-                      "[A-Za-zÇĞİÖŞÜçğıöşü\u20ba\u00b2\u00b3$\u20ac/.-]{0,23})?\\s*$"),
+                      "[A-Za-z0-9ÇĞİÖŞÜçğıöşü\u20ba\u00b2\u00b3$\u20ac/.-]{0,23})?\\s*$"),
                yakin, perl = TRUE)
     )[[1]]
 

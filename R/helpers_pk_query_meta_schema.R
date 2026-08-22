@@ -115,15 +115,72 @@ pk_meta_validate_capability_registry <- function(registry) {
   unique(hatalar)
 }
 
+# ------------------------------------------------------------------------------
+# ALAN ADI SÖZLEŞMESİ (kapalı başarısız)
+# ------------------------------------------------------------------------------
+#
+# Doğrulayıcılar yalnızca OKUDUKLARI alanları denetliyor, BEKLENMEYEN bir üst
+# düzey anahtarı hiç reddetmiyordu. Katmanlar doğrulamadan ÖNCE birleştiği için
+# küratörlü bindirmedeki bir yazım hatası (`filterble = FALSE`, `entitiy =
+# "project"`) kullanılmayan bir alan olarak KALIYOR, alttaki katmanın
+# `filterable`/`entity` değeri (ya da yokluğu) yürürlükte kalıyordu: açılış
+# başarılı oluyor ama anlam küratörün yazdığından FARKLI oluyordu.
+#
+# Ayrıca R listeleri MÜKERRER ada sahip olabilir. `.pk_meta_merge_one()` içinde
+# `yeni[[ad]]` her zaman İLK eşleşmeyi çözer, yani
+# `list(filterable = TRUE, filterable = FALSE)` birleşmede `TRUE` olur ve ikinci
+# beyan doğrulayıcıyı hiç görmez. Mükerrer ad bu yüzden BİRLEŞTİRMEDEN ÖNCE
+# hatadır.
+.pk_meta_validate_field_names <- function(query_id, onek, kayit, izinli) {
+  if (!is.list(kayit) || !length(kayit)) return(character(0))
+
+  adlar <- names(kayit)
+  if (is.null(adlar) || length(adlar) != length(kayit) ||
+      any(is.na(adlar) | !nzchar(trimws(adlar)))) {
+    return(.pk_meta_err(query_id, onek, " tum alanlar adlandirilmis olmalidir."))
+  }
+
+  adlar <- trimws(adlar)
+  hatalar <- character(0)
+
+  tekrar <- unique(adlar[duplicated(adlar)])
+  if (length(tekrar)) {
+    hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
+      " tekrar eden alan adi: %s", paste(sort(tekrar), collapse = ", ")
+    )))
+  }
+
+  bilinmeyen <- setdiff(unique(adlar), izinli)
+  if (length(bilinmeyen)) {
+    hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
+      " bilinmeyen alan: %s", paste(sort(bilinmeyen), collapse = ", ")
+    )))
+  }
+
+  hatalar
+}
+
+# Sütun metadatasında izin verilen alanlar. Üreticiye ait/dahili alanlar da
+# AÇIKÇA listelenir; aksi hâlde üretilen katman kendi çıktısıyla düşerdi.
+PK_META_COLUMN_FIELDS <- c(
+  "role", "label", "capability", "match", "match_mode", "filterable",
+  "high_cardinality", "tier", "unit", "decimals", "percent_scale",
+  "additive", "aggregate", "weight_by", "latest_by", "latest_tie_by",
+  "domain", "entity", "entity_kind", "entity_kinds",
+  "aliases", "allow_aliases", "alias_provenance",
+  # Üretici/gözlem alanları (yalnızca üretilen katmanda görülür).
+  "inferred_from", "source_type", "observed", "high_cardinality_proved"
+)
+
 pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
   onek <- sprintf("column_meta['%s']:", column)
   if (!is.list(cmeta)) return(.pk_meta_err(query_id, onek, " liste olmalidir."))
 
-  hatalar <- character(0)
+  hatalar <- .pk_meta_validate_field_names(query_id, onek, cmeta, PK_META_COLUMN_FIELDS)
   if (!.pk_meta_is_scalar_text(cmeta$role) || !(cmeta$role %in% PK_META_ROLES)) {
-    return(.pk_meta_err(query_id, onek, sprintf(
+    return(c(hatalar, .pk_meta_err(query_id, onek, sprintf(
       " gecersiz role (izinli: %s).", paste(PK_META_ROLES, collapse = "/")
-    )))
+    ))))
   }
 
   for (alan in c("label", "entity", "unit")) {
@@ -222,8 +279,16 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
       hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
         " additive yalnizca role='measure' sutununda tanimlanabilir."))
     }
+    # `latest` DE ÖLÇÜYE ÖZGÜDÜR.
+    #
+    # Denetim `sum`/`mean`/`weighted_mean` değerlerini reddediyor ama
+    # `aggregate = "latest"` geçiyordu; üstelik bu beyan sonraki
+    # `latest_by`/`latest_tie_by` referans denetimlerini de sağlayabildiği için
+    # metadata GEÇERLİ görünüyordu. Oysa `pk_meta_aggregate_for()` ölçü
+    # olmayan her rol için hemen `"none"` döner ve `pk_latest_fact()` sayısal
+    # ölçü olgu yoludur: küratörün yazdığı `latest` SESSİZCE yok sayılırdı.
     if (.pk_meta_is_scalar_text(cmeta$aggregate) &&
-        cmeta$aggregate %in% c("sum", "mean", "weighted_mean")) {
+        cmeta$aggregate %in% c("sum", "mean", "weighted_mean", "latest")) {
       hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
         " aggregate='%s' yalnizca role='measure' sutununda kullanilabilir.", cmeta$aggregate
       )))

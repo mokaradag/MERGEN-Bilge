@@ -148,7 +148,7 @@ source_manifest_sections <- list(
     "R/library_query_meta_local.R",
     "R/library_query_meta.R",
     "R/library_query_aliases_local.R",
-    "R/helpers_pk_query_meta.R"
+    "R/helpers_pk_query_meta_layers.R", "R/helpers_pk_query_meta.R"  # katman -> iliştirme
   ),
 
   # sql_library: SQL kütüphane sorguları + loader.
@@ -272,13 +272,11 @@ source_manifest_sections <- list(
     "R/helpers_pk_async_bootstrap.R",
     "R/helpers_pk_async_snapshot_validate.R",
     "R/helpers_pk_async_snapshot.R",
-    "R/helpers_pk_async_probe.R",  # sonda, plan çözümleyicisinden ÖNCE
-    "R/helpers_pk_async_plan.R",
+    "R/helpers_pk_async_probe.R", "R/helpers_pk_async_plan.R",  # sonda -> plan
     "R/helpers_pk_async_request.R",
     "R/helpers_pk_async_worker_sql.R",
     "R/helpers_pk_async_worker.R",
-    "R/helpers_pk_provenance.R",
-    "R/helpers_pk_provenance_peek.R",  # tüketmeyen kip okuması: sahibinden SONRA
+    "R/helpers_pk_provenance.R", "R/helpers_pk_provenance_peek.R",  # sahip -> tüketmeyen okuma
     "R/helpers_pk_telemetry_record.R",
     "R/helpers_pk_telemetry_base.R",
     "R/helpers_pk_telemetry.R",
@@ -335,8 +333,7 @@ source_manifest_sections <- list(
     "R/helpers_deep_analysis_detail.R",
     "R/helpers_deep_analysis_context.R",
     "R/helpers_deep_analysis.R",
-    "R/helpers_pk_analysis_core_impl.R",  # saf gövde: çekirdekten ÖNCE
-    "R/helpers_pk_analysis_core.R",
+    "R/helpers_pk_analysis_core_impl.R", "R/helpers_pk_analysis_core.R",  # gövde -> çekirdek
     "R/helpers_pk_p1_runtime_guards.R",   # tanımları EZER: her ikisinden SONRA
     "R/helpers_pk_rls_identity.R", "R/helpers_pk_analysis_security_summary.R",
     "R/helpers_pk_statistical_summary.R",

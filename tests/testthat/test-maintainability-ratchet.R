@@ -118,9 +118,9 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
   # dört çalışma zamanı dosyası (PK çekirdek gövdesi, P1 guard'ları, işçi-PID
   # sondası, tüketmeyen köken okuması) `R/config_source_manifest.R` içinde
   # AÇIKÇA sıralandı. En büyük dosya artık SAF VERİ olan manifestin kendisidir
-  # (799 satır, 0 fonksiyon). 795 -> 799; "800+ dosya sayısı = 0" kuralı
+  # (796 satır, 0 fonksiyon). 795 -> 796; "800+ dosya sayısı = 0" kuralı
   # DEĞİŞMEDİ, yani manifeste yeni giriş eklemek artık bölüm bölmesi gerektirir.
-  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 799L)
+  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 796L)
   max_file_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_FUNCTIONS", 24L)
 
   actual_large_files <- sum(score_report$lines >= 800)
@@ -371,9 +371,10 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # de CIP ONAYI yolu ayni sahibi kullanir (kopya mantik kaldirildi).
   assert_current_budget("R/helpers_pk_query_selection_requirements.R", 325L, 13L)
   assert_current_budget("R/helpers_pk_query_selection_parse.R", 300L, 8L)
-  # PR #705 incelemesi (P1): `not_for` ile dışlanan sorgu güven/marj
-  # kapılarından ÖNCE reddedilir; ölçülen taban çizgisi 400 -> 410.
-  assert_current_budget("R/helpers_pk_query_selection_decide.R", 410L, 10L)
+  # PR #705 incelemesi: `not_for` ile dışlanan sorgu güven/marj kapılarından
+  # ÖNCE reddedilir ve yetkin alternatifler AZALAN güvene göre sıralanır
+  # (marj kapısı en güçlü rakibe karşı ölçülür). Taban çizgisi 400 -> 420.
+  assert_current_budget("R/helpers_pk_query_selection_decide.R", 420L, 10L)
   assert_current_budget("R/helpers_pk_query_selection_degraded.R", 190L, 7L)
   assert_current_budget("R/helpers_pk_query_selection_session.R", 220L, 14L)
   # BILINCLI GUNCELLEME (PR #705 kararlilik): Gecis A TOPLAM yuk butcesi

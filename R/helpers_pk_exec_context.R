@@ -92,7 +92,17 @@ pk_set_exec_context <- function(query = NULL, rls_info = NULL, engine = "") {
   # SIKILAŞTIRABİLİR; gevşetemez.
   if (is.finite(kuresel) && kuresel > 0 && butce > kuresel) butce <- kuresel
 
-  an + butce
+  yeni <- an + butce
+
+  # YÜRÜRLÜKTEKİ SON TARİH İLERİ ALINAMAZ: kelepçe yalnızca BÜTÇELERİ
+  # karşılaştırıyordu. Dispatch kuyrukta geçen süreyi düşerek daha KISA bir son
+  # tarih yayınlayabilir; küresel tavanın altında ama kalan süreden büyük bir
+  # sorgu bütçesi o zaman daha GEÇ bir an üretip seçeneği eziyor, bekçi köpeği
+  # de yürürlükteki tavanı uygulamıyordu (`kuresel` NA iken de aynı gevşeme).
+  mevcut <- tryCatch(as.POSIXct(getOption("mergen.pk.async.deadline_at", NULL)),
+                     error = function(e) NULL)
+  if (length(mevcut) == 1L && !is.na(mevcut) && mevcut < yeni) return(NULL)
+  yeni
 }
 
 #' Etkin yürütme bağlamını oku (yoksa boş liste)

@@ -32,6 +32,7 @@ local({
     "helpers_pk_text_turkish.R",
     "helpers_pk_query_meta_schema.R",
     "helpers_pk_query_meta_access.R",
+    "helpers_pk_query_meta_layers.R",
     "helpers_pk_query_meta.R"
   )) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = globalenv())

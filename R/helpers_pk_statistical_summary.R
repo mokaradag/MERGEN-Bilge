@@ -68,7 +68,22 @@
   if (length(gecerli) < .PK_STAT_ID_MIN_ROWS) return(TRUE)
   tamsayi <- all(is.finite(gecerli)) && isTRUE(all(gecerli == round(gecerli)))
   if (!tamsayi) return(TRUE)
-  !(length(unique(gecerli)) == length(gecerli))
+  if (length(unique(gecerli)) != length(gecerli)) return(TRUE)
+
+  # BENZERSİZLİK + TAMSAYILIK TEK BAŞINA KİMLİK KANITI DEĞİLDİR.
+  #
+  # Gerçek bir ölçü de bu testi geçer: 24 satırlık bir sonuçta `Tutar`
+  # sütunundaki tutarlar tam sayı ve birbirinden farklı olabilir. Eski kural
+  # o sütunu `num_cols` dışına atıyor; toplam/ortalama/medyan/std ÜRETİLMİYOR
+  # ve istem bloğu modele "bu değerleri ASLA toplama" diyordu. Kullanıcı
+  # gerçek bir ölçünün doğru toplamını KAYBEDİYORDU.
+  #
+  # Vekil anahtarın (surrogate key) ürettiği YOĞUN ARTAN dizi aranır:
+  # `max - min + 1 == n`. `1..24` bu testi geçer, dağınık tutarlar geçmez.
+  # Yoğunluk kanıtlanamıyorsa sütun ÖLÇÜ sayılır (kapalı başarısızlık yönü
+  # burada "istatistik üret"tir; anlam metadata ile kesinleşir).
+  aralik <- max(gecerli) - min(gecerli) + 1
+  !isTRUE(aralik == length(gecerli))
 }
 
 generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_chars = MAX_ANALYSIS_PROMPT_CHARS, mode = "summary", rls_total_rows = NULL, user_filter_applied = FALSE, pre_aggregated_columns = NULL, column_meta = NULL) {

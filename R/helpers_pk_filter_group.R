@@ -72,7 +72,20 @@
   }
 
   cocuklar <- node$children
-  if (!length(cocuklar)) return(bos)
+  # BOŞ GRUP SESSİZCE YOK SAYILMAZ.
+  #
+  # Çocuksuz bir grup, kullanıcının istediği kısıtın KAYBOLMASI demektir.
+  # `bos` sonucu `mask = NULL`, `applied`/`dropped` boş döndürdüğü için düğüm
+  # `pk_filter_compile()` içinde sayılmıyor, `all_dropped` FALSE kalıyor ve
+  # ifşa hattı sessizleşiyordu: analiz DAHA GENİŞ popülasyonu, grup uygulanmış
+  # gibi raporluyordu. Diğer tüm ret yolları gibi burada da `__group__` kaydı
+  # döndürülür.
+  if (!length(cocuklar)) {
+    return(list(mask = NULL, applied = list(), dropped = list(list(
+      leaf = list(column = "__group__", values = character(0)),
+      reason = sprintf("filtre grubu bos; hicbir kosul tasimiyor (islec: %s)", islec)
+    ))))
+  }
 
   maskeler <- list()
   uygulanan <- list()

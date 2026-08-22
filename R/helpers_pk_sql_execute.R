@@ -378,11 +378,26 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
     # varsa getirim BAŞLATILMAZ ve tipli `too_large` döner.
     # Sonuc TAMAMLANDIYSA projeksiyon anlamsizdir: sonraki getirim SIFIR satirdir. Cevap alinamiyorsa karar ESKISI GIBI reddetmektir (kapali basarisiz).
     if (parca_sayisi > 0L &&
-        (toplam_bayt + son_parca_bayt) > (tavan_mb * .PK_RESULT_MB) &&
-        !isTRUE(suppressWarnings(try(DBI::dbHasCompleted(res), silent = TRUE)))) {
-      rm(parcalar)
-      return(bos("too_large", error = "projected_peak_exceeds_ceiling",
-                 chunks = parca_sayisi, timeout_mechanism = mekanizma))
+        (toplam_bayt + son_parca_bayt) > (tavan_mb * .PK_RESULT_MB)) {
+      # TAMAMLANMA DENETİMİ DE `bloklayan()` ÜZERİNDEN GEÇER.
+      #
+      # Doğrudan çağrı, sürücü tamamlanma denetiminde bloklarsa kalan analiz ve
+      # ifade bütçelerini ATLIYORDU; asılı bir denetim getirimin kendisi kadar
+      # etkili biçimde işçiyi tutar. Tipli zaman aşımı/durdurma durumu aynen
+      # yukarı taşınır; denetim cevap veremezse karar ESKİSİ GİBİ reddetmektir.
+      tamamlandi <- bloklayan(function() {
+        isTRUE(suppressWarnings(try(DBI::dbHasCompleted(res), silent = TRUE)))
+      })
+      if (!isTRUE(tamamlandi$ok)) {
+        rm(parcalar)
+        return(bos(tamamlandi$status, error = tamamlandi$error,
+                   chunks = parca_sayisi, timeout_mechanism = mekanizma))
+      }
+      if (!isTRUE(tamamlandi$value)) {
+        rm(parcalar)
+        return(bos("too_large", error = "projected_peak_exceeds_ceiling",
+                   chunks = parca_sayisi, timeout_mechanism = mekanizma))
+      }
     }
 
     getirim <- bloklayan(function() DBI::dbFetch(res, n = parca_satir))
