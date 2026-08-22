@@ -95,6 +95,7 @@ test_that("izole dizin yoksa disa aktarim BASARISIZ olur, paylasilan koke yazilm
 })
 
 test_that("XLSX kapisi HUCRE sayisinin yani sira BAYT tavanini da uygular", {
+  skip_if_not_installed("withr")
   env <- .pk_exps_env()
 
   # Az hucre, COK genis hucreler: hucre tavaninin cok altinda ama byte olarak
@@ -117,6 +118,8 @@ test_that("XLSX kapisi HUCRE sayisinin yani sira BAYT tavanini da uygular", {
 })
 
 test_that("bayt tavani ALTINDA davranis DEGISMEZ", {
+  skip_if_not_installed("writexl")
+  skip_if_not_installed("withr")
   env <- .pk_exps_env()
   veri <- .pk_exps_frame(n = 8L)
   dizin <- file.path(tempdir(), paste0("pk_exps_c_", as.integer(runif(1, 1, 1e9))))
@@ -125,7 +128,11 @@ test_that("bayt tavani ALTINDA davranis DEGISMEZ", {
 
   withr::with_envvar(list(MERGEN_PK_EXPORT_MAX_BYTES_MB = "512"), {
     sonuc <- env$pk_export_build(veri, base_name = "sentetik", dir = dizin)
-    expect_true(sonuc$status %in% c("ok", "csv_fallback"))
+    # Tavanin ALTINDA XLSX yolu SECILMELIDIR. `%in% c("ok", "csv_fallback")`
+    # her iki sonucu da kabul ettigi icin, bayt kapisi gerileyip HER ihraci CSV
+    # yoluna itse bile iddia geciyordu; yani test korumasi gereken regresyonu
+    # HIC yakalayamiyordu.
+    expect_identical(sonuc$status, "ok")
     expect_true(length(sonuc$files) > 0L)
   })
 })

@@ -73,6 +73,43 @@
   # Ters bölü ile ayrılmış alan adı\\kullanici çifti.
   metin <- gsub("(?i)(['\"\\[])[A-Za-z0-9_.-]+\\\\[A-Za-z0-9_.$-]+(['\"\\]])",
                 "<kullanici>", metin, perl = TRUE)
+  .pkgh_redact_bracket_hosts(metin)
+}
+
+# KÖŞELİ PARANTEZLİ İÇ SUNUCU/HOST ADLARI MASKELENİR.
+#
+# ODBC hata metinleri `[Microsoft][ODBC Driver 17 for SQL Server][ProdSql01]`
+# gibi zincirler taşır. İlk iki belirteç STANDART sürücü önekidir ve tanılama
+# için gereklidir; sonuncusu ise İÇ SUNUCU ADIDIR. `pkgh_sanitize_bootstrap_error()`
+# çıktısı operatör konsoluna ve `health.json` içine gidebildiğinden, hassas iç
+# uç nokta adı orada YER ALMAMALIDIR. Bilinen sürücü/protokol belirteçleri ve
+# SQLSTATE benzeri kodlar korunur; geri kalan köşeli belirteçler maskelenir.
+.PKGH_BRACKET_SAFE <- c(
+  "microsoft", "odbc", "sql server", "sql native client", "unixodbc",
+  "freetds", "driver manager", "iodbc", "sqlserver", "db2", "oracle"
+)
+
+.pkgh_redact_bracket_hosts <- function(metin) {
+  if (!is.character(metin) || length(metin) != 1L || is.na(metin)) return(metin)
+
+  konumlar <- gregexpr("\\[[^\\[\\]]+\\]", metin, perl = TRUE)
+  parcalar <- regmatches(metin, konumlar)[[1]]
+  if (!length(parcalar)) return(metin)
+
+  yeni <- vapply(parcalar, function(p) {
+    icerik <- trimws(substr(p, 2L, nchar(p) - 1L))
+    kucuk <- tolower(icerik)
+    # SQLSTATE / hata kodu benzeri kısa belirteçler korunur.
+    if (grepl("^[0-9A-Za-z]{5}$", icerik) || grepl("^[0-9]+$", icerik)) return(p)
+    if (any(vapply(.PKGH_BRACKET_SAFE,
+                   function(g) startsWith(kucuk, g) || grepl(g, kucuk, fixed = TRUE),
+                   logical(1)))) {
+      return(p)
+    }
+    "[<sunucu>]"
+  }, character(1), USE.NAMES = FALSE)
+
+  regmatches(metin, konumlar) <- list(yeni)
   metin
 }
 

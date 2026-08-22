@@ -106,6 +106,8 @@ test_that("iki mesaj biçimi de okunur: role/content ve type/content", {
 })
 
 test_that("boş / bozuk geçmiş güvenli biçimde ele alınır", {
+  testthat::skip_if_not_installed("stringi")
+
   expect_equal(length(pk_entity_prior_user_prompts(NULL)), 0L)
   expect_equal(length(pk_entity_prior_user_prompts(list())), 0L)
   expect_equal(length(pk_entity_prior_user_prompts("metin degil liste")), 0L)

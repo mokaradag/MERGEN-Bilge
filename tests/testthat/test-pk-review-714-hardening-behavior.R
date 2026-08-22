@@ -439,6 +439,14 @@ test_that("secim hata log'u BAGLANTI redaktorunu kullanir", {
 
 test_that("geri okunan buyuk tam sayi BILIMSEL GOSTERIMLE karsilastirilmaz", {
   # Uretimdeki karsilastirma tabani: `as.character(1e15)` -> "1e+15".
+  #
+  # `scipen` YUKSEKKEN `as.character(1e15)` "1000000000000000" dondurur ve bu
+  # kontrol ihrac davranisi hic test edilmeden duserdi; taban yerel olarak
+  # sabitlenir. Asagidaki acik `format(..., scientific = FALSE)` iddiasi zaten
+  # `scipen` bagimsizdir.
+  eski_scipen <- getOption("scipen")
+  on.exit(options(scipen = eski_scipen), add = TRUE)
+  options(scipen = 0)
   expect_equal(as.character(1e15), "1e+15")
   expect_equal(trimws(format(1e15, scientific = FALSE, trim = TRUE, digits = 22L)),
                "1000000000000000")

@@ -50,6 +50,9 @@
 
 test_that("P0: ayni saniyede ayni ada yazan iki disa aktarim BIRBIRINI EZMEZ", {
   skip_if_not_installed("writexl")
+  # `readxl` asagida GERCEKTEN cagrilir; eksikse tum paket dusmemeli, ATLANMALI
+  # (tests/testthat.R `stop_on_failure = TRUE` ile calisir).
+  skip_if_not_installed("readxl")
   env <- .pk_export_hardening_env()
   kok <- .pk_export_hardening_dir()
 
@@ -325,10 +328,16 @@ test_that("P1: tek satirlik tabakadan BASKA bir satir secilmez", {
 
   ornek <- env$pk_packet_examples(veri, list(), stratify_column = "Bolum", n = 5L)
 
-  # `sample(idx, 1)` tek elemanli sayisal vektorde `1:idx` gibi davranir ve
-  # 61. satir yerine 1..61 arasindan rastgele bir satir secebilirdi.
   expect_true(all(ornek$indices %in% seq_len(nrow(veri))))
   expect_equal(length(ornek$indices), length(unique(ornek$indices)))
+
+  # ASIL SOZLESME: `sample(idx, 1)` tek elemanli sayisal vektorde `1:idx` gibi
+  # davranir ve 61. satir yerine 1..61 arasindan rastgele bir satir secerdi.
+  # Yukaridaki iki iddia O HATA ALTINDA DA GECERDI (secilen deger yine
+  # gecerli aralikta ve tekildir). Tek satirlik "Z" tabakasi YALNIZCA 61.
+  # satirla temsil edilebilir; kusur tam olarak bunu bozar.
+  expect_true(61L %in% ornek$indices)
+  expect_true("Z" %in% veri$Bolum[ornek$indices])
 })
 
 test_that("P2: sonsuz degerler ornek satirlarda UC DEGER olarak secilmez", {

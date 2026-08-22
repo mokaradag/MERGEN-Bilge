@@ -7,47 +7,19 @@
 # ayrılmıştır; bu dosya seçim kararını uygulama/telemetri sınırında tutar.
 # ==============================================================================
 
-# İzole module_proje_kaynak_analizi.R yüklemesinde çıkarılmış v1 AI seçicisini
-# gerekirse yükle. Normal manifestte zaten daha önce yüklenmiştir. İzole source()
-# çağrıları süreç CWD'sine bağlı olmamalıdır: önce bu dosyanın gerçek konumunu,
-# sonra açık repo kökünü, repo-root CWD'sini ve tests/testthat CWD'sini deneriz.
-.pk_v1_selector_name <- "helpers_pk_analysis_ai_selector.R"
-.pk_v1_source_file <- tryCatch({
-  ofile <- sys.frame(1)$ofile
-  if (is.null(ofile) || !length(ofile) || is.na(ofile[1]) || !nzchar(ofile[1])) {
-    NA_character_
-  } else {
-    normalizePath(ofile[1], winslash = "/", mustWork = FALSE)
-  }
-}, error = function(e) NA_character_)
-.pk_repo_root <- Sys.getenv("MERGEN_REPO_ROOT", unset = "")
-.pk_v1_selector_candidates <- unique(c(
-  if (!is.na(.pk_v1_source_file)) {
-    file.path(dirname(.pk_v1_source_file), .pk_v1_selector_name)
-  },
-  if (nzchar(.pk_repo_root)) {
-    file.path(.pk_repo_root, "R", .pk_v1_selector_name)
-  },
-  file.path("R", .pk_v1_selector_name),
-  file.path("..", "..", "R", .pk_v1_selector_name)
-))
-.pk_v1_selector_candidates <- .pk_v1_selector_candidates[
-  !is.na(.pk_v1_selector_candidates) & nzchar(.pk_v1_selector_candidates)
-]
-.pk_v1_selector_path <- .pk_v1_selector_candidates[
-  file.exists(.pk_v1_selector_candidates)
-]
-if (!exists("find_best_query_with_ai", mode = "function", inherits = TRUE) &&
-    length(.pk_v1_selector_path)) {
-  source(.pk_v1_selector_path[[1]], encoding = "UTF-8", local = globalenv())
-}
-rm(
-  .pk_v1_selector_name,
-  .pk_v1_source_file,
-  .pk_repo_root,
-  .pk_v1_selector_candidates,
-  .pk_v1_selector_path
-)
+# V1 SEÇİCİSİ MANİFEST TARAFINDAN YÜKLENİR; BURADA DİNAMİK `source()` YOKTUR.
+#
+# Bu dosya eskiden `R/helpers_pk_analysis_ai_selector.R` dosyasını çalışma
+# zamanında, ÇALIŞMA DİZİNİNE göreli adaylarla (`R/...`, `../../R/...`) arayıp
+# `source(..., local = globalenv())` ile yüklüyordu. Üç sorun:
+#   1) Kaynak manifesti sözleşmesi ihlal ediliyor; dosya zaten manifestte ve bu
+#      dosyadan ÖNCE yükleniyor (bağımlılık sırası atlanabilirdi).
+#   2) İşçi önyüklemesi sembolleri YALITILMIŞ bir sahne ortamında hazırlayıp
+#      atomik olarak commit eder; `local = globalenv()` sahne DIŞINA yazdığı
+#      için başarısız bir commit sonrası işçi KARMA sürümü "temiz" raporlardı.
+#   3) Süreç CWD'si repo kökü değilse `file.path("R", ...)` ALAKASIZ bir dizine
+#      çözülebilirdi.
+# İzole testler zinciri `tests/testthat/helper_pk_selection.R` üzerinden yükler.
 
 #' Karardan v1 uyumlu all_scores tablosu kur
 pk_select_scores_table <- function(library, decision) {

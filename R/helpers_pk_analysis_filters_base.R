@@ -355,7 +355,33 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
         val_flat <- as.character(unlist(val_raw, use.names = FALSE))
         if (length(val_flat) != 1L) return(f)
 
-        if (grepl("aktif|active|durum|status", col_lower, perl = TRUE)) {
+        # KISAYOL SÜTUN TÜRÜYLE SINIRLIDIR.
+        #
+        # Sütun adı `aktif|active|durum|status` desenine uyduğunda değer
+        # KOŞULSUZ olarak `"1"`/`"0"` yazılıyordu. `Durum` gibi METİN bir sütun
+        # `Aktif`/`Beklemede`/`Kapali` etiketlerini saklarken bu yeniden yazım
+        # tam eşleşmeyi SIFIR satıra düşürür: model doğru etiketi yazmış olsa
+        # bile filtre hiçbir kaydı tutmaz. Kısayol yalnızca değerin GERÇEKTEN
+        # mantıksal ya da 0/1 kodlandığı sütunlarda anlamlıdır.
+        sutun_adi <- as.character(f$column %||% "")[1]
+        sutun_degerleri <- if (is.data.frame(data_context) &&
+                               !is.na(sutun_adi) && nzchar(sutun_adi) &&
+                               sutun_adi %in% names(data_context)) {
+          data_context[[sutun_adi]]
+        } else {
+          NULL
+        }
+        ikili_sutun <- if (is.logical(sutun_degerleri)) {
+          TRUE
+        } else if (is.numeric(sutun_degerleri)) {
+          gecerli <- sutun_degerleri[!is.na(sutun_degerleri)]
+          length(gecerli) == 0L || all(gecerli %in% c(0, 1))
+        } else {
+          FALSE
+        }
+
+        if (isTRUE(ikili_sutun) &&
+            grepl("aktif|active|durum|status", col_lower, perl = TRUE)) {
           # DEĞER TARAFI TÜRKÇE OLABİLİR: hem ASCII hem Türkçe-farkında katlama
           # denenir. Yalnızca ASCII katlamak `HAYIR -> hayir` üretir ve Türkçe
           # `hayır` karşılığını kaçırırdı; yalnızca `tolower()` ise yerele

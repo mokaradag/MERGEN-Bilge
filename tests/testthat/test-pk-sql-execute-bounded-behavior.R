@@ -274,6 +274,8 @@ test_that("ifade zaman aşımı uygulanamadığında analiz iptal EDİLMEZ", {
 # tur daha doner ve projeksiyon "ayni boyutta bir satir daha gelecek" varsayar.
 # Tavanin ALTINDA kalan tek buyuk satir bu yuzden `too_large` ile reddediliyordu.
 test_that("tavan altinda kalan TEK satir tepe projeksiyonuyla reddedilmez", {
+  skip_if_not_installed("RSQLite")
+  skip_if_not_installed("DBI")
   conn <- .pk_sql_test_conn(rows = 1L)
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
@@ -293,6 +295,8 @@ test_that("tavan altinda kalan TEK satir tepe projeksiyonuyla reddedilmez", {
 })
 
 test_that("tavani GERCEKTEN asan sonuc hala TIPLI reddedilir", {
+  skip_if_not_installed("RSQLite")
+  skip_if_not_installed("DBI")
   conn <- .pk_sql_test_conn(rows = 40L)
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 

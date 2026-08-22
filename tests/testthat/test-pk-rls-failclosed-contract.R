@@ -21,6 +21,13 @@
 
 .pk_rls_read_bytes <- function(rel_path) {
   full <- file.path(resolve_repo_root_for_tests(), rel_path)
+  # DOSYA VARLIGI ACIKCA IDDIA EDILIR.
+  #
+  # Bu okuyucu dosya yoksa "" donuyordu; guvenlik taramalarinin cogu
+  # `expect_false(grepl(...))` bicimindedir ve BOS dize bu iddialari
+  # KENDILIGINDEN saglar. Dosya yeniden adlandirilirsa sozlesme "basarili"
+  # raporlarken kapali-basarisiz muhafizi artik hic dogrulanmiyor olurdu.
+  testthat::expect_true(file.exists(full), info = rel_path)
   size <- suppressWarnings(file.info(full)$size[1])
   if (is.na(size) || size <= 0) return("")
   con <- file(full, open = "rb")

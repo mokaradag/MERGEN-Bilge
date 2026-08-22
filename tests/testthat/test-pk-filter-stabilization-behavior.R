@@ -189,9 +189,33 @@ test_that("cok degerli durum filtresi hata yerine derleyiciye ulasir", {
   expect_identical(derleme$mask, c(TRUE, TRUE, FALSE))
 })
 
-test_that("tek degerli durum kisayolu KORUNUR", {
+test_that("durum kisayolu YALNIZCA ikili sutunda uygulanir", {
+  # `Durum` bu VERI KUMESINDE 0/1 kodludur: `evet` -> `1` yeniden yazimi
+  # yalnizca boyle bir sutunda anlamlidir.
+  ikili_veri <- data.frame(
+    ProjeAdi = c("SENTETIK ALFA", "SENTETIK BETA"),
+    Durum    = c(1, 0),
+    stringsAsFactors = FALSE
+  )
   json <- paste0(
     '{"filters":[{"column":"Durum","value":"evet","operation":"exact_match"}],',
+    '"aggregation":"list"}'
+  )
+  env <- .pk_stab_extract_env(json)
+  sonuc <- env$extract_filter_criteria_from_prompt(
+    "aktif olanlar", ikili_veri, names(ikili_veri), NULL
+  )
+  expect_identical(sonuc$status, "ok_filtered")
+  expect_identical(as.character(sonuc$filters[[1]]$value), "1")
+  expect_identical(sonuc$filters[[1]]$operation, "exact_match")
+})
+
+test_that("METIN durum sutununda etiket degeri YENIDEN YAZILMAZ", {
+  # `Durum` metin sutunudur ve `Aktif`/`Beklemede`/`Kapali` etiketlerini saklar.
+  # Kosulsuz `-> "1"` yeniden yazimi tam eslesmeyi SIFIR satira dusururdu:
+  # model dogru etiketi yazmis olsa bile hicbir kayit tutulmazdi.
+  json <- paste0(
+    '{"filters":[{"column":"Durum","value":"Aktif","operation":"exact_match"}],',
     '"aggregation":"list"}'
   )
   env <- .pk_stab_extract_env(json)
@@ -199,8 +223,11 @@ test_that("tek degerli durum kisayolu KORUNUR", {
     "aktif olanlar", .pk_stab_data(), names(.pk_stab_data()), NULL
   )
   expect_identical(sonuc$status, "ok_filtered")
-  expect_identical(as.character(sonuc$filters[[1]]$value), "1")
-  expect_identical(sonuc$filters[[1]]$operation, "exact_match")
+  expect_identical(as.character(sonuc$filters[[1]]$value), "Aktif")
+
+  cenv <- .pk_stab_compile_env()
+  derleme <- cenv$pk_filter_compile(.pk_stab_data(), sonuc$filters)
+  expect_identical(derleme$mask, c(TRUE, FALSE, FALSE))
 })
 
 test_that("kurtarma derlemesi metadata kapisini ZAYIFLATMAZ", {

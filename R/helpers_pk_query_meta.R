@@ -567,7 +567,24 @@ pk_meta_tracked_alias_audit <- function(curated) {
 # bir üretim metadata kimliği başlangıcı fail-closed düşürmeye devam eder.
 PK_META_CHECKOUT_PLACEHOLDER_IDS <- c("q001", "q002", "q003", "q_ornek_id")
 
-.pk_meta_is_checkout_placeholder_library <- function(ids) {
+# AÇIK İŞARET ZORUNLUDUR; KİMLİK EŞİTLİĞİ TEK BAŞINA YETMEZ.
+#
+# `R/library_queries.R` GitHub kopyasında `query_library_is_checkout_placeholder`
+# değişkenini TRUE olarak tanımlar; üretim VM'indeki gerçek kütüphane bunu
+# TANIMLAMAZ. Yalnızca kimlik kümesine bakmak, yerel envanteri bozulup bu
+# dosyaya geri düşmüş bir ÜRETİM dağıtımını "checkout" sayar ve bozuk envanteri
+# `optional_when_absent` gevşetmesiyle GİZLERDİ.
+.pk_meta_checkout_marker_present <- function(envir = globalenv()) {
+  isaret <- tryCatch(
+    get0("query_library_is_checkout_placeholder", envir = envir,
+         inherits = TRUE, ifnotfound = NULL),
+    error = function(e) NULL
+  )
+  isTRUE(isaret)
+}
+
+.pk_meta_is_checkout_placeholder_library <- function(ids, envir = globalenv()) {
+  if (!.pk_meta_checkout_marker_present(envir)) return(FALSE)
   ids <- unique(as.character(ids))
   ids <- ids[!is.na(ids) & nzchar(trimws(ids))]
   length(ids) == length(PK_META_CHECKOUT_PLACEHOLDER_IDS) &&
@@ -575,7 +592,8 @@ PK_META_CHECKOUT_PLACEHOLDER_IDS <- c("q001", "q002", "q003", "q_ornek_id")
 }
 
 .pk_meta_validate_query_library <- function(query_library, metadata_ids = character(0),
-                                            optional_metadata_ids = character(0)) {
+                                            optional_metadata_ids = character(0),
+                                            envir = globalenv()) {
   if (!is.list(query_library)) return("query_library liste olmalidir.")
 
   hatalar <- character(0)
@@ -606,7 +624,7 @@ PK_META_CHECKOUT_PLACEHOLDER_IDS <- c("q001", "q002", "q003", "q_ornek_id")
   }
 
   bilinmeyen <- setdiff(metadata_ids, unique(ids))
-  if (length(bilinmeyen) && .pk_meta_is_checkout_placeholder_library(ids)) {
+  if (length(bilinmeyen) && .pk_meta_is_checkout_placeholder_library(ids, envir = envir)) {
     bilinmeyen <- setdiff(bilinmeyen, optional_metadata_ids)
   }
   if (length(bilinmeyen)) {
@@ -664,7 +682,7 @@ pk_query_meta_attach <- function(query_library,
     logical(1)
   )]
   hatalar <- c(hatalar, .pk_meta_validate_query_library(
-    query_library, names(birlesik), optional_curated_ids
+    query_library, names(birlesik), optional_curated_ids, envir = envir
   ))
 
   normal <- pk_meta_normalize_aliases(birlesik)

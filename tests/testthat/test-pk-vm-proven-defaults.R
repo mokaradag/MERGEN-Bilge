@@ -68,14 +68,31 @@ test_that("optional_when_absent yalnız bilinen checkout envanterinde yokluğu t
     gen_00 = list(optional_when_absent = TRUE, entity = "project")
   )
 
+  # AÇIK CHECKOUT İŞARETİ. `R/library_queries.R` GitHub kopyası
+  # `query_library_is_checkout_placeholder <- TRUE` tanımlar; üretim VM
+  # kütüphanesi tanımlamaz. Gevşetme YALNIZCA bu işaretle birlikte geçerlidir.
+  isaret_ortami <- new.env(parent = emptyenv())
+  isaret_ortami$query_library_is_checkout_placeholder <- TRUE
+
   # GitHub checkout'undaki dört yer tutucu sorguda gen_00'nun bulunmaması
   # beklenir; doğrulanmış üretim kaydı bu kesin envanter için boot'u düşürmez.
   expect_no_error(
     pk_query_meta_attach(
       .pk_vm_test_library(PK_META_CHECKOUT_PLACEHOLDER_IDS),
       auto = list(), local = list(), curated = optional_curated,
-      aliases = list(), registry = list()
+      aliases = list(), registry = list(), envir = isaret_ortami
     )
+  )
+
+  # AYNI kimlik kümesi AMA İŞARET YOK: bu bir üretim dağıtımı olabilir (yerel
+  # envanteri bozulmuş ve checked-in dosyaya düşmüş). Gevşetme UYGULANMAZ.
+  expect_error(
+    pk_query_meta_attach(
+      .pk_vm_test_library(PK_META_CHECKOUT_PLACEHOLDER_IDS),
+      auto = list(), local = list(), curated = optional_curated,
+      aliases = list(), registry = list(), envir = new.env(parent = emptyenv())
+    ),
+    "bulunmayan sorgu id"
   )
 
   # Aynı istisna açıkça beyan edilmemiş bir typo/stale id için geçerli değildir.

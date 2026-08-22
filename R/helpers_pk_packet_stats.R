@@ -649,12 +649,9 @@ pk_packet_context_facts <- function(packet, scope = NULL) {
 
   g <- packet$groups %||% list()
   gruplama <- paste(as.character(g$group_by %||% character(0)), collapse = "+")
-  # DARALTILAN GRUPLARIN SAYILARI DA OLGUDUR.
-  #
-  # Yazıcı "Diger (N grup, M satir)" satırını çıplak sayılarla basıyordu ama
-  # burada yalnızca GÖRÜNÜR `group_rows` olguları üretiliyordu: dosya
-  # sözleşmesi modele gösterilen HER sayının yanında `[fact:...]` işareti
-  # ister; model bu iki toplamı alıntılayamıyordu.
+  # DARALTILAN GRUPLARIN SAYILARI DA OLGUDUR: yazıcı "Diger (N grup, M satir)"
+  # satırını ÇIPLAK sayılarla basıyor, burada ise yalnızca GÖRÜNÜR `group_rows`
+  # olguları üretiliyordu; model bu iki toplamı alıntılayamıyordu.
   tanimlar <- c(tanimlar, list(
     list(id = gruplama, agg = "other_groups",
          value = if ((g$other_groups %||% 0L) > 0L) g$other_groups else NULL,
