@@ -146,6 +146,14 @@
 # NOT: module_startup_screen.R ve helpers_ai_expert.R taban değerleri, önceki
 # birleştirilen PR'lardaki meşru büyüme (skip-intro nöral renk; AI Expert
 # staleness + TTS parçalama) sonrası ölçülen gerçek değerlere güncellendi.
+#
+# PR #705 P1 incelemesi — BİLİNÇLİ taban güncellemesi:
+#   * R/helpers_chat_runtime.R 523 -> 532. `block` kipinde köken doğrulaması
+#     artık AKIŞTAN VE TTS'TEN ÖNCE çalışır; aksi hâlde TTS motoru HAM
+#     `full_response` ile çağrılıyor ve kullanıcı hiç GÖSTERİLMEYEN sayıları
+#     DUYUYORDU (söylenmiş ses geri alınamaz). Karar/metin üretimi
+#     `mergen_pk_block_mode_texts()` içine ÇIKARILDI; bu dosyada kalan yalnızca
+#     sonucun uygulanmasıdır. Fonksiyon sayısı 14 -> 15 (yalnızca bu delege).
 .maintainability_baseline <- data.frame(
   path = c(
     "R/helpers_mcp_tools.R",
@@ -211,7 +219,7 @@
     572L,
     539L,
     532L,
-    523L,
+    532L,
     385L,
     341L
   ),

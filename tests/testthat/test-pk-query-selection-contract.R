@@ -1060,7 +1060,11 @@ test_that("select_smart_query içinde v2 dalı VARDIR ve motor bayrağına bağl
   txt <- .pk_sel_read_source(yol)
 
   expect_true(
-    grepl("pk_select_query_v2(\n      prompt, library, chat_history,", txt, fixed = TRUE, useBytes = TRUE),
+    # BICIMLENDIRMEYE TOLERANSLI. Onceki desen `(` + yeni satir + ALTI bosluk
+    # dizisini TAM BAYT olarak istiyordu; herhangi bir yeniden girintileme ya
+    # da argüman sarmalama davranis DOGRU kalirken bu sozlesmeyi kiriyordu.
+    grepl("pk_select_query_v2\\s*\\(\\s*prompt\\s*,\\s*library\\s*,\\s*chat_history\\s*,",
+          txt, perl = TRUE, useBytes = TRUE),
     info = paste(
       "Faz 4 incelemesinin en ağır bulgusu, çözümleyicinin hiç ÇAĞRILMAMASIYDI.",
       "Seçim hattı gerçek istek yolunda çağrılmalıdır."

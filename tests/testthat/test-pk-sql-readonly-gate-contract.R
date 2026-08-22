@@ -404,11 +404,14 @@ test_that("anahtar kelime esleşmesi yerelden BAGIMSIZDIR (Turkce noktasiz i)", 
 
   # `toupper("intersect")` Turkce yerelde noktali `İ` uretir ve `INTERSECT`
   # islecine eslesmezdi; mesru sorgu "ikinci ifade" sanilip REDDEDILIRDI.
+  # BEKLENTI `on.exit()` ICINDE CALISTIRILMAZ. Asagidaki `skip_if()` cereveyi
+  # cozerken cikis isleyicisi yine calisir ve testthat, ZATEN atlanmis bir test
+  # icin beklenti kaydeder. Ayrica geri yukleme yalnizca cozulme sirasinda
+  # dogrulanirsa, basarisiz bir `Sys.setlocale()` cikis isleyicisine atfedilir
+  # ve Turkce yerel SONRAKI test dosyalarina SIZAR. Isleyici yalnizca geri
+  # yukler; dogrulama TEST GOVDESINDE yapilir.
   eski <- Sys.getlocale("LC_CTYPE")
-  on.exit({
-    geri <- suppressWarnings(Sys.setlocale("LC_CTYPE", eski))
-    expect_true(nzchar(geri))
-  }, add = TRUE)
+  on.exit(suppressWarnings(Sys.setlocale("LC_CTYPE", eski)), add = TRUE)
 
   kuruldu <- ""
   for (loc in c("tr_TR.UTF-8", "tr_TR.utf8", "Turkish_Turkey.1254", "Turkish", "tr_TR")) {
@@ -419,4 +422,10 @@ test_that("anahtar kelime esleşmesi yerelden BAGIMSIZDIR (Turkce noktasiz i)", 
 
   sonuc <- env$pk_sql_classify_readonly("select a from t1 intersect select b from t2")
   expect_true(isTRUE(sonuc$allowed))
+
+  # GERI YUKLEME GOVDEDE DOGRULANIR: sizan bir `LC_CTYPE` ayni oturumdaki
+  # sonraki dosyalarda Turkce karsilastirmalari bozar.
+  geri <- suppressWarnings(Sys.setlocale("LC_CTYPE", eski))
+  expect_true(nzchar(geri))
+  expect_identical(Sys.getlocale("LC_CTYPE"), eski)
 })

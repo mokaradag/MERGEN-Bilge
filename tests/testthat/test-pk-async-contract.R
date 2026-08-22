@@ -339,7 +339,12 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # `sql_variant` HER ZAMAN SINIRSIZ LOB listesinden CIKARILDI: ODBC tip kodu
     # -98'in KANITLI 8016 baytlik ust siniri vardir. Sinirsiz saymak, tamamen
     # olculebilir bir sonucu gereksiz yere reddediyordu. Fonksiyon sayisi AYNI.
-    "R/helpers_pk_result_columns.R" = c(259L, 8L),
+    # BILINCLI GUNCELLEME (PR #705 P2 takibi): 259 -> 263 satir (OLCULEN).
+    # `[[` yerine `[` kullanilir: adlandirilmis atomik vektorde OLMAYAN bir ad
+    # `[[` ile "subscript out of bounds" firlatir; desteklenmeyen bir ODBC tip
+    # kodu bu yuzden `__unknown__` dalina HIC ulasamiyor ve planlayici tek-satir
+    # getirmeye dusmek yerine ABORT ediyordu. Fonksiyon sayisi AYNI.
+    "R/helpers_pk_result_columns.R" = c(263L, 8L),
     # BILINCLI GUNCELLEME (PR #705 inceleme): 551 -> 592 satir (OLCULEN). Iki
     # neden: (a) `sql_variant` icin KANITLI 8016 bayt ust siniri; (b) R nesne
     # tabani (karakter 56 / atomik 8 bayt/eleman) tahmine EKLENDI -- eskiden
@@ -364,7 +369,12 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # Getirim ONCESI "ongorulen tepe" kapisi eklendi: `rbind` birlestirmesi
     # sirasinda tepe bellek IKI KATIdir; tavana SIGAN ama birlestirilirken
     # sigmayacak bir sonuc artik tahsisattan ONCE reddedilir. Fonksiyon AYNI.
-    "R/helpers_pk_sql_execute.R" = c(459L, 22L),
+    # BILINCLI GUNCELLEME (PR #705 P2 takibi): 459 -> 474 satir (OLCULEN).
+    # `dbHasCompleted()` tamamlanma denetimi de `bloklayan()` uzerinden gecer:
+    # dogrudan cagri, surucu denetimde bloklarsa kalan analiz/ifade butcelerini
+    # ATLIYORDU ve asili bir denetim isciyi getirimin kendisi kadar tutar.
+    # Fonksiyon sayisi AYNI.
+    "R/helpers_pk_sql_execute.R" = c(474L, 22L),
     "R/helpers_pk_sql_connection.R" = c(125L, 6L),
     "R/helpers_pk_async_worker_env.R" = c(372L, 22L),
     # BILINCLI GUNCELLEME (PR #705 inceleme): +5 satir. Admisyon karari artik
@@ -425,7 +435,13 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # Olculen 218.
     "R/helpers_pk_async_session_registry.R" = c(218L, 16L),
     "R/helpers_pk_async_routing.R" = c(239L, 21L),
-    "R/helpers_pk_async_lifecycle.R" = c(232L, 17L),
+    # BILINCLI GUNCELLEME (PR #705 P2 takibi): 232 -> 240 satir (OLCULEN).
+    # `mergen_pk_send_snapshot()` anahtar plani alinamadiginda ACIK bir
+    # "snapshot_failed" isareti dondurur; `NULL` donmek `%||%` yedegini
+    # devreye sokuyor ve ertelenen devam kapanisi anahtari DAKIKALAR SONRA
+    # CANLI cozerek tek istegi IKI farkli yapilandirmadan derliyordu.
+    # Fonksiyon sayisi AYNI.
+    "R/helpers_pk_async_lifecycle.R" = c(240L, 17L),
     # BILINCLI GUNCELLEME (PR #705): `pk_stopped` artik tipli `pk_halt_status`
     # tasir; son tarih kullanici iptali gibi raporlanmaz.
     # Tavan 1 satir bayatti (olculen 223); TAM olculen degere cekildi.

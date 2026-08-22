@@ -1138,10 +1138,14 @@ test_that("bulgu ayrıntısı mutlak yolları ve kullanıcı adlarını SIZDIRMA
   # Yollar RUNTIME'DA kurulur: depo taramasi (test-secret-leak-contract.R)
   # kaynak dosyada LITERAL bir kisisel Windows yolu gormemeli.
   win_kok <- paste0("C:", "/", "Users", "/")
-  unc_kok <- paste0("\\\\", "\\\\", "SUNUCU01", "\\\\", "pay")
+  # GERCEK UNC BICIMI: iki bastaki ters bolu + TEK ayirici. R kaynaginda
+  # "\\\\" ZATEN iki ters bolu demektir; onceki fikstur bunu iki kez yazip
+  # DORT bastaki ters bolu ve IKI ayirici uretiyordu, yani `\\host\share`
+  # bicimine capalanmis bir redaksiyon deseni HIC sinanmiyordu.
+  unc_kok <- paste0("\\", "\\", "SUNUCU01", "\\", "pay")
   ornekler <- c(
     sprintf("Beyan edilen sql_file COZULEMEDI: '%sAlice/gizli/sorgu.sql'.", win_kok),
-    sprintf("Beyan edilen sql_file BOS: '%s\\\\pk\\\\sorgu.sql'.", unc_kok),
+    sprintf("Beyan edilen sql_file BOS: '%s\\pk\\sorgu.sql'.", unc_kok),
     "Beyan edilen sql_file OKUNAMIYOR: '/home/operator/pk/sorgu.sql'."
   )
 

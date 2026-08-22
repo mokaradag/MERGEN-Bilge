@@ -7,8 +7,8 @@ chat_reset_state <- function(session, values) {
   values$typing <- FALSE
 
   # Premium akıl yürütme kartı aktifse kendi iç durumuna göre temizlensin
-  # (durduruldu / hata / tamamlandı). removeUI çağrısından önce tetiklenir ki
-  # kart "kesildi" görünümünü kısaca gösterebilsin.
+  # (durduruldu/hata/tamamlandı); removeUI'den ÖNCE tetiklenir ki kart
+  # "kesildi" görünümünü kısaca gösterebilsin.
   shinyjs::runjs("if (window.PremiumReasoning && window.PremiumReasoning.isActive && window.PremiumReasoning.isActive()) { window.PremiumReasoning.onResetChatState(); }")
 
   removeUI(selector = "#typing-animation-wrapper")
@@ -108,9 +108,8 @@ chat_add_message <- function(session, values, settings_data, output,
     new_message$followups <- followups
   }
 
-  # Akıl yürütme (reasoning) metnini mesaja iliştir; böylece veritabanındaki
-  # MB_Messages.ReasoningContent sütununa düşünen modellerin dahili çıktısı
-  # da yazılabilir (save_message_to_db zaten bu alanı okuyor).
+  # Akıl yürütme metnini mesaja iliştir; MB_Messages.ReasoningContent sütununa
+  # düşünen modellerin dahili çıktısı yazılabilsin (save_message_to_db okur).
   if (!is.null(reasoning_content)) {
     reasoning_txt <- tryCatch(as.character(reasoning_content)[1], error = function(e) "")
     if (is.character(reasoning_txt) && length(reasoning_txt) == 1 &&
@@ -443,37 +442,12 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     })
   }
 
-  # -- 4b. `block` KİPİ: DOĞRULAMA AKIŞTAN VE TTS'TEN ÖNCE ÇALIŞIR --
-  #
-  # Köken doğrulaması (§5.11) desteklenmeyen sayısal iddia bulduğunda model
-  # düzyazısını deterministik yedekle DEĞİŞTİRİR. Eskiden bu yalnızca akış
-  # tamamlandığında yapılıyordu; TTS motoru ise HAM `full_response` ile çoktan
-  # çağrılmış oluyordu. Kullanıcı böylece hiçbir zaman gösterilmeyen sayıları
-  # DUYABİLİYORDU ve söylenmiş sesi geri almak mümkün değildir.
-  #
-  # Bu kipte doğrulama BURADA yapılır; hem seslendirilen hem akıtılan metin
-  # doğrulanmış metindir. Alt bilgi (kaynakça/ek) yalnızca ekrana gider:
-  # `pk_provenance_decorate()` metni `paste0(govde, alt_bilgi)` biçiminde
-  # ürettiği için sondaki alt bilgi seslendirmeden çıkarılır.
-  tts_metni <- full_response
-  if (exists("pk_provenance_blocks_streaming", mode = "function", inherits = TRUE) &&
-      isTRUE(tryCatch(pk_provenance_blocks_streaming(session, request_id = pk_request_id),
-                      error = function(e) FALSE))) {
-    bekleyen <- tryCatch(pk_provenance_peek(session, request_id = pk_request_id),
-                         error = function(e) NULL)
-    alt_bilgi <- as.character(bekleyen$footer %||% "")[1]
-    dekore <- tryCatch(
-      pk_provenance_decorate(full_response, session, request_id = pk_request_id),
-      error = function(e) full_response
-    )
-    full_response <- dekore
-    tts_metni <- if (!is.na(alt_bilgi) && nzchar(alt_bilgi) &&
-                     endsWith(dekore, alt_bilgi)) {
-      substr(dekore, 1L, nchar(dekore) - nchar(alt_bilgi))
-    } else {
-      dekore
-    }
-  }
+  # -- 4b. `block` KİPİ: DOĞRULAMA AKIŞTAN VE TTS'TEN ÖNCE (gerekçe:
+  # `mergen_pk_block_mode_texts()`); ekrana `display`, TTS'e `tts` gider.
+  blok <- if (exists("mergen_pk_block_mode_texts", mode = "function", inherits = TRUE)) {
+    mergen_pk_block_mode_texts(full_response, session, request_id = pk_request_id)
+  } else list(display = full_response, tts = full_response)
+  full_response <- blok$display; tts_metni <- blok$tts
 
   # -- 5. KARAR: TTS BEKLENSİN Mİ? --
   if (!is.null(tts_engine) && is.function(tts_engine) && nzchar(tts_metni)) {
@@ -544,11 +518,10 @@ chat_start_new_chat <- function(session, values, saved_chats_data, session_files
   # Karşılama ekranında "aşağı kaydır" butonunu gizle
   shinyjs::runjs("$('#scroll_to_bottom_container').removeClass('show');")
 
-  # NOT: Eski sürüm karşılama ekranını burada #chat_content_container içine de
-  # ekliyordu; hemen ardından start_new_chat() aynı ekranı
-  # #welcome_fullscreen_container içinde TAM olarak yeniden render ettiği için
-  # bu ilk ekleme boşa giden büyük bir HTML yüküydü (çift render + gecikme).
-  # Karşılama render sorumluluğu tek yerde: render_welcome_screen().
+  # NOT: Eski sürüm karşılama ekranını burada da ekliyordu; start_new_chat()
+  # aynı ekranı #welcome_fullscreen_container içinde TAM yeniden render ettiği
+  # için bu boşa giden bir HTML yüküydü (çift render). Sorumluluk tek yerde:
+  # render_welcome_screen().
   showToast(session, "Yeni söyleşi başlatıldı.", "success")
 }
 

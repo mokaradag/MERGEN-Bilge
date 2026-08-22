@@ -13,16 +13,27 @@
 #   - İliştirme idempotenttir ve bayat istek kimliğinde iliştirme YAPILMAZ.
 # ==============================================================================
 
-local({
+# İZOLE ORTAM: yardımcı `globalenv()` yerine özel bir ortama kaynaklanır.
+#
+# `globalenv()`e kaynaklamak ve `%||%` operatörünü `<<-` ile atamak, AYNI
+# oturumda sonra çalışan HER test dosyası için kalıcı olur; sonraki bir dosya
+# `pk_build_provenance_footer()` ya da `%||%` değerini bu SIZAN durumdan
+# çözüp kendi kopyasını kaynaklamadan geçebilir ve sonuçlar DOSYA SIRASINA
+# bağlı hâle gelir. Bu gruptaki diğer PK test dosyaları da özel ortam kurar.
+.pk_prov_footer_env <- local({
   repo_root <- resolve_repo_root_for_tests()
-
-  if (!exists("%||%", mode = "function", inherits = TRUE)) {
-    `%||%` <<- function(a, b) if (is.null(a)) b else a
-  }
-
+  ortam <- new.env(parent = globalenv())
+  assign("%||%", function(a, b) if (is.null(a)) b else a, envir = ortam)
   source(file.path(repo_root, "R", "helpers_pk_provenance.R"),
-         encoding = "UTF-8", local = globalenv())
+         encoding = "UTF-8", local = ortam)
+  ortam
 })
+
+# Test gövdeleri yardımcıları bu ortamdan çözer (üretim adları korunur).
+for (.pk_prov_ad in ls(.pk_prov_footer_env, all.names = TRUE)) {
+  assign(.pk_prov_ad, get(.pk_prov_ad, envir = .pk_prov_footer_env))
+}
+rm(.pk_prov_ad)
 
 # DİKKAT: utils::modifyList() liste değerli alanları ada göre ÖZYİNELEMELİ
 # birleştirir; `filters = list()` ile geçersiz kılma çalışmaz. Bu yüzden düz

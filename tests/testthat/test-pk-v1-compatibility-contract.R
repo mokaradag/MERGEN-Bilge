@@ -455,7 +455,10 @@ test_that("D20: v2 istemi epistemik etiketleme kullanir ve benchmark istemez", {
     expect_true(grepl(etiket, istem, fixed = TRUE),
                 info = sprintf("'%s' etiketi v2 isteminde yok.", etiket))
   }
-  expect_true(grepl("benchmark", istem, fixed = TRUE))
+  # TEST ADI "benchmark ISTEMEZ" diyor ama cıplak belirtec, modele benchmark
+  # URETMESINI soyleyen bir istemde de bulunurdu. TAM OLUMSUZ ifade aranır.
+  expect_true(grepl("Elinde benchmark verisi YOKTUR", istem, fixed = TRUE))
+  expect_false(grepl("sektör benchmarks'leri ver", istem, fixed = TRUE))
   expect_true(grepl("uydurma", istem, fixed = TRUE))
   expect_false(grepl("KÖK SEBEP", istem, fixed = TRUE))
   expect_true(grepl("[fact:", istem, fixed = TRUE))

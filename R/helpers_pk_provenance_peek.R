@@ -54,3 +54,44 @@ pk_provenance_pending_mode <- function(session, request_id = NULL) {
 pk_provenance_blocks_streaming <- function(session, request_id = NULL) {
   identical(pk_provenance_pending_mode(session, request_id), "block")
 }
+
+# BLOCK KİPİ METİNLERİ: EKRANA GİDEN ve SESLENDİRİLEN metni birlikte üretir.
+#
+# Köken doğrulaması (§5.11) desteklenmeyen sayısal iddia bulduğunda model
+# düzyazısını deterministik yedekle DEĞİŞTİRİR. Doğrulama yalnızca akış
+# tamamlandığında yapılırsa TTS motoru HAM `full_response` ile çoktan çağrılmış
+# olur ve kullanıcı hiçbir zaman GÖSTERİLMEYEN sayıları DUYAR; söylenmiş sesi
+# geri almak mümkün değildir. Bu yüzden doğrulama akıştan ve TTS'ten ÖNCE
+# çalışır. Alt bilgi (kaynakça/ek) yalnızca ekrana gider: `pk_provenance_decorate()`
+# metni `paste0(govde, alt_bilgi)` biçiminde ürettiği için sondaki alt bilgi
+# seslendirmeden çıkarılır.
+#
+# `block` kipi etkin değilse metin DEĞİŞMEDEN döner (davranış korunur).
+mergen_pk_block_mode_texts <- function(full_response, session, request_id = NULL) {
+  varsayilan <- list(display = full_response, tts = full_response)
+
+  if (!exists("pk_provenance_blocks_streaming", mode = "function", inherits = TRUE)) {
+    return(varsayilan)
+  }
+  bloklu <- isTRUE(tryCatch(
+    pk_provenance_blocks_streaming(session, request_id = request_id),
+    error = function(e) FALSE
+  ))
+  if (!bloklu) return(varsayilan)
+
+  bekleyen <- tryCatch(pk_provenance_peek(session, request_id = request_id),
+                       error = function(e) NULL)
+  alt_bilgi <- as.character(bekleyen$footer %||% "")[1]
+  dekore <- tryCatch(
+    pk_provenance_decorate(full_response, session, request_id = request_id),
+    error = function(e) full_response
+  )
+
+  tts_metni <- if (!is.na(alt_bilgi) && nzchar(alt_bilgi) && endsWith(dekore, alt_bilgi)) {
+    substr(dekore, 1L, nchar(dekore) - nchar(alt_bilgi))
+  } else {
+    dekore
+  }
+
+  list(display = dekore, tts = tts_metni)
+}

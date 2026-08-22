@@ -48,11 +48,15 @@ read_text <- function(path) {
 # `enc2utf8()` ile ayni kodlamaya getirir ve `startsWith()` ile karsilastirir.
 # Ayni yontem `tests/scripts/frontend_maintainability_report.R` icinde
 # zaten VM'de dogrulanmis durumdadir.
+# DEPO KOKU BIR KEZ NORMALLESTIRILIR. `relative_path()` kesfedilen HER dosya
+# icin cagriliyor; koku her cagride yeniden `normalizePath()` etmek Windows UNC
+# calisma kopyasinda dosya basina bir AG GIDIS-DONUSU demektir.
+repo_root_norm <- enc2utf8(normalizePath(repo_root, winslash = "/", mustWork = TRUE))
+
 relative_path <- function(path) {
-  root_norm <- enc2utf8(normalizePath(repo_root, winslash = "/", mustWork = TRUE))
   path_norm <- enc2utf8(normalizePath(path, winslash = "/", mustWork = TRUE))
 
-  root_prefix <- paste0(root_norm, "/")
+  root_prefix <- paste0(repo_root_norm, "/")
 
   if (startsWith(path_norm, root_prefix)) {
     return(substring(path_norm, nchar(root_prefix) + 1L))

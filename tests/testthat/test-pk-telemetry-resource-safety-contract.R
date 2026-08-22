@@ -163,9 +163,13 @@ test_that("shared-room SQL provenance reaches direct and generated answers", {
   env$captured <- list()
   env$bridge_results <- list()
 
-  env$pk_provenance_take <- function(session, request_id = NULL) {
+  # URETIM IMZASIYLA AYNI: `pk_provenance_take(session, request_id, full)`.
+  # `full` eksikken ileride tam kaydi isteyen bir cagri "unused argument"
+  # hatasi verir ve basarisizlik test edilen davranisi degil TESTI gosterir.
+  env$pk_provenance_take <- function(session, request_id = NULL, full = FALSE) {
     pending <- session$userData$pk_provenance_pending
     session$userData$pk_provenance_pending <- NULL
+    if (isTRUE(full)) return(pending)
     if (is.list(pending)) pending$footer else pending
   }
 

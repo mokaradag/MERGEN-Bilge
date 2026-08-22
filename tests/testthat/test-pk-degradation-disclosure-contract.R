@@ -37,10 +37,11 @@
   env
 }
 
-.pk_deg_call <- function(env, prompt = "Radar projesinde kimler var?", stop_check = NULL) {
+.pk_deg_call <- function(env, prompt = "Radar projesinde kimler var?", stop_check = NULL,
+                         data_context = data.frame(ProjeAdi = "X", stringsAsFactors = FALSE)) {
   env$extract_filter_criteria_from_prompt(
     user_prompt = prompt,
-    data_context = data.frame(ProjeAdi = "X", stringsAsFactors = FALSE),
+    data_context = data_context,
     available_columns = "ProjeAdi",
     conn = NULL,
     session = NULL,
@@ -157,7 +158,14 @@ test_that("adaptör gözlem amaçlıdır: filters/aggregation sözleşmesi deği
     ))
   })
 
-  sonuc <- .pk_deg_call(env)
+  # `Durum` sütunu fikstürde 0/1 KODLUDUR: durum kısayolu (aktif -> "1")
+  # yalnızca değerin GERÇEKTEN mantıksal/ikili olduğu sütunlarda uygulanır
+  # (bkz. test-pk-filter-stabilization-behavior.R "durum kisayolu YALNIZCA
+  # ikili sutunda uygulanir"). Metin bir `Durum` sütununda yeniden yazım tam
+  # eşleşmeyi SIFIR satıra düşürürdü; buradaki sözleşme kısayolun KORUNDUĞUdur.
+  sonuc <- .pk_deg_call(env, data_context = data.frame(
+    ProjeAdi = "X", Durum = c(1, 0), stringsAsFactors = FALSE
+  ))
 
   expect_identical(sonuc$aggregation, "group_by")
   expect_identical(sonuc$group_column, "Departman")
@@ -251,12 +259,39 @@ test_that("nihai yanıt sonlandırma noktaları alt bilgiyi iliştirir", {
     grepl("tts_engine(full_response, tts_voice)", txt, fixed = TRUE, useBytes = TRUE),
     info = "Ham full_response TTS'e verilmemelidir (block kipinde doğrulanmamış olabilir)."
   )
+  # SAHİPLİK SINIRI: `block` kipi tespiti ve alt bilgi ayırma kararı
+  # `mergen_pk_block_mode_texts()` içindedir (`helpers_pk_provenance_peek.R`);
+  # `helpers_chat_runtime.R` yalnızca SONUCU uygular. Karar bu yüzden yeni
+  # sahibinde aranır — çalışma zamanı kodu geri taşınmaz.
   expect_true(
-    grepl("pk_provenance_blocks_streaming", txt, fixed = TRUE, useBytes = TRUE),
+    grepl("mergen_pk_block_mode_texts", txt, fixed = TRUE, useBytes = TRUE),
+    info = "chat runtime block-kipi metinlerini yardımcıdan almalıdır."
+  )
+
+  peek_path <- file.path(root, "R", "helpers_pk_provenance_peek.R")
+  peek_raw <- readBin(peek_path, what = "raw", n = file.info(peek_path)$size)
+  peek_txt <- iconv(rawToChar(peek_raw), from = "UTF-8", to = "UTF-8", sub = "byte")
+
+  expect_true(
+    grepl("pk_provenance_blocks_streaming", peek_txt, fixed = TRUE, useBytes = TRUE),
     info = "block kipi TTS'ten ÖNCE tespit edilmelidir."
   )
   expect_true(
-    grepl("endsWith(dekore, alt_bilgi)", txt, fixed = TRUE, useBytes = TRUE),
+    grepl("endsWith(dekore, alt_bilgi)", peek_txt, fixed = TRUE, useBytes = TRUE),
     info = "Alt bilgi seslendirilecek metinden AYRILMALIDIR."
   )
+
+  # DAVRANIŞ: yardımcı gerçekten alt bilgiyi seslendirmeden ayırır.
+  ortam <- new.env(parent = globalenv())
+  assign("%||%", function(a, b) if (is.null(a)) b else a, envir = ortam)
+  source(peek_path, encoding = "UTF-8", local = ortam)
+  ortam$pk_provenance_blocks_streaming <- function(session, request_id = NULL) TRUE
+  ortam$pk_provenance_peek <- function(session, request_id = NULL) list(footer = "\n\nKAYNAKCA")
+  ortam$pk_provenance_decorate <- function(text, session, request_id = NULL) {
+    paste0("DOGRULANMIS GOVDE", "\n\nKAYNAKCA")
+  }
+
+  metinler <- ortam$mergen_pk_block_mode_texts("HAM GOVDE", NULL, request_id = "req-1")
+  expect_identical(metinler$display, "DOGRULANMIS GOVDE\n\nKAYNAKCA")
+  expect_identical(metinler$tts, "DOGRULANMIS GOVDE")
 })

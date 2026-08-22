@@ -547,13 +547,11 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
         # talimatıyla modele verir. Beklenmeyen bir istisna sürücü, DSN, dosya
         # yolu, SQL ya da iç uygulama ayrıntısı taşıyabilir; normal SQL hata
         # yolları bilerek genel metin döndürürken bu dal onları ATLIYORDU.
-        # Ham metin SUNUCU LOG'una (redakte edilerek) yazılır.
-        # MESAJ SABİTTİR; `pk_safe_error_message()` burada UYGUN DEĞİLDİR: onun
-        # sözleşmesi "altyapı görünümlü metni genelleştir, aksi hâlde OLDUĞU
-        # GİBİ geçir"dir. Buradaki girdi ise KEYFİ bir istisnadır; ODBC'ye
-        # benzemeyen ama dosya yolu/iç ayrıntı taşıyan metin o süzgeçten
-        # DEĞİŞMEDEN geçerdi. Ayrıca `exists()` kapısı kararı ÇALIŞMA BAĞLAMINA
-        # bağlı kılıyordu (izole vs tam paket). Karar artık DETERMİNİSTİKtir.
+        # Ham metin SUNUCU LOG'una (redakte edilerek) yazılır. MESAJ SABİTTİR;
+        # `pk_safe_error_message()` UYGUN DEĞİLDİR: sözleşmesi "altyapı
+        # görünümlü metni genelleştir, aksi hâlde OLDUĞU GİBİ geçir"dir ve
+        # ODBC'ye benzemeyen ama dosya yolu taşıyan metin süzgeçten DEĞİŞMEDEN
+        # geçerdi. Karar artık ÇALIŞMA BAĞLAMINDAN bağımsız/DETERMİNİSTİKtir.
         ham <- tryCatch(conditionMessage(e), error = function(x) "")
         guvenli <- paste0(
           "Bu analiz beklenmeyen bir hata nedeniyle tamamlanamadı; ",
