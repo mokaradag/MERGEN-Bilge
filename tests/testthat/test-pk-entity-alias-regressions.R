@@ -1,138 +1,82 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-pk-entity-alias-regressions.R
-# Açıklama: Varlık/alias çözümleme ve ilgili sözleşme gerilemelerini doğrudan
-#           sözleşme düzeyinde doğrular.
+# Açıklama: Faz 4 (§5.4, Katman 2) — onaylı alias kayıt defteri indeksi ve
+#           arama sözleşmesinin gerileme testleri. `R/helpers_pk_entity_alias.R`
+#           dosyasının ÜÇ kapalı başarısızlık kuralını ve kayıplı/kayıpsız
+#           anahtar sırasını doğrudan doğrular.
+#
+#           Bu dosya eskiden adını taşıdığı konuyu HİÇ test etmiyordu; içerik
+#           `test-review-705-ui-validation-regressions.R` dosyasına taşındı ve
+#           gerçek alias kapsamı buraya yazıldı.
+#
+#           Tamamen çevrimdışı ve belirlenimcidir: DB, LLM, tarayıcı, SSO, ağ
+#           veya gizli değer GEREKMEZ.
 # ==============================================================================
 
-.find_repo_root_pk_entity_alias <- function() {
-  candidates <- unique(normalizePath(
-    c(
-      getwd(),
-      file.path(getwd(), ".."),
-      file.path(getwd(), "..", "..")
-    ),
-    winslash = "/",
-    mustWork = FALSE
-  ))
+pk_entity_source_chain_for_tests()
 
-  for (candidate in candidates) {
-    if (file.exists(file.path(candidate, "app.R")) &&
-        dir.exists(file.path(candidate, "R"))) {
-      return(candidate)
-    }
-  }
+test_that("alias indeksi katlanmış anahtarı kanonik hedefe eşler", {
+  index <- pk_entity_alias_index(c("ANKA" = "ANKA İHA", "akıncı" = "AKINCI"))
 
-  stop("Repo kökü bulunamadı.", call. = FALSE)
-}
-
-repo_root_pk_entity_alias <- .find_repo_root_pk_entity_alias()
-
-.read_pk_entity_alias <- function(...) {
-  paste(readLines(
-    file.path(repo_root_pk_entity_alias, ...),
-    warn = FALSE,
-    encoding = "UTF-8"
-  ), collapse = "\n")
-}
-
-test_that("Selectize açıkken yapılandırma ipucu bastırılır", {
-  css <- .read_pk_entity_alias("www", "css", "settings_page.css")
-
-  expect_true(grepl(
-    ":has\\(\\.selectize-input\\.dropdown-active\\)::after",
-    css,
-    perl = TRUE
-  ))
-  expect_false(grepl(
-    ":has\\(\\.selectize-control\\.dropdown-active\\)::after",
-    css,
-    perl = TRUE
-  ))
+  expect_true(index$valid)
+  expect_length(index$errors, 0L)
+  expect_identical(unname(index$fold[[pk_tr_fold("ANKA")]]), "ANKA İHA")
+  expect_identical(unname(index$fold[[pk_tr_fold("akıncı")]]), "AKINCI")
+  expect_true(all(c("ANKA İHA", "AKINCI") %in% index$targets))
 })
 
-test_that("mesaj güvenlik tavanı tamsayı taşmasında varsayılana düşer", {
-  validation_env <- new.env(parent = baseenv())
-  source(
-    file.path(repo_root_pk_entity_alias, "R", "helpers_db_validation.R"),
-    local = validation_env,
-    encoding = "UTF-8"
-  )
+test_that("aynı katlanmış anahtar farklı hedeflere işaret ederse KAPALI başarısız olunur", {
+  # Türkçe `I/İ` katlaması iki yazımı AYNI anahtara indirger; hedefler farklıysa
+  # `match()` ile ilki sessizce seçilmemelidir.
+  index <- pk_entity_alias_index(c("ANKA" = "ANKA İHA", "anka" = "ANKA-2"))
 
-  withr::with_envvar(c(MERGEN_MAX_MESSAGE_CHARS = "3000000000"), {
-    expect_identical(validation_env$mergen_max_message_chars(), 1000000L)
-    expect_true(validation_env$validate_message_content("geçerli ileti"))
-  })
-
-  withr::with_envvar(c(MERGEN_MAX_MESSAGE_CHARS = "Inf"), {
-    expect_identical(validation_env$mergen_max_message_chars(), 1000000L)
-  })
+  expect_false(index$valid)
+  expect_true(length(index$errors) >= 1L)
+  expect_true(any(grepl("birden fazla kanonik", index$errors, fixed = TRUE)))
+  expect_false(pk_tr_fold("ANKA") %in% names(index$fold))
 })
 
-test_that("MCP ikinci geçişi çıktı token ortam ayarını uygular", {
-  second_pass_env <- new.env(parent = baseenv())
-  source(
-    file.path(repo_root_pk_entity_alias, "R", "helpers_llm_worker_second_pass.R"),
-    local = second_pass_env,
-    encoding = "UTF-8"
-  )
+test_that("boş/adsız kayıt defteri güvenli boş indeks döndürür", {
+  expect_true(pk_entity_alias_index(NULL)$valid)
+  expect_length(pk_entity_alias_index(NULL)$fold, 0L)
+  expect_length(pk_entity_alias_index(character(0))$fold, 0L)
 
-  withr::with_envvar(c(MERGEN_MAX_OUTPUT_TOKENS = "12000"), {
-    expect_identical(
-      second_pass_env$llm_worker_resolve_max_output_tokens(list()),
-      12000L
-    )
-  })
-
-  withr::with_envvar(c(MERGEN_MAX_OUTPUT_TOKENS = "12000"), {
-    expect_identical(
-      second_pass_env$llm_worker_resolve_max_output_tokens(
-        list(max_output_tokens = 9000L)
-      ),
-      9000L
-    )
-  })
-
-  withr::with_envvar(c(MERGEN_MAX_OUTPUT_TOKENS = "3000000000"), {
-    expect_identical(
-      second_pass_env$llm_worker_resolve_max_output_tokens(list()),
-      32768L
-    )
-  })
+  adsiz <- pk_entity_alias_index(c("ANKA İHA"))
+  expect_false(adsiz$valid)
+  expect_true(any(grepl("adlandırılmış", adsiz$errors, fixed = TRUE)))
 })
 
-test_that("yerel CodeMirror yapısı tam çizim ve ucuz refresh sağlar", {
-  core_js <- .read_pk_entity_alias("www", "js", "codemirror_compat.js")
-  manager_js <- .read_pk_entity_alias("www", "js", "codemirror-manager.js")
-  core_css <- .read_pk_entity_alias("www", "css", "codemirror_compat.css")
+test_that("kesin katlanmış anahtar KAYIPSIZ eşleşir", {
+  index <- pk_entity_alias_index(c("ANKA" = "ANKA İHA"))
+  sonuc <- pk_entity_alias_lookup(index, pk_entity_normalize("anka"))
 
-  expect_false(grepl("extension placeholder", core_js, fixed = TRUE))
-  expect_true(grepl("OfflineCodeMirror.prototype.on", core_js, fixed = TRUE))
-  expect_true(grepl("OfflineCodeMirror.prototype.setSize", core_js, fixed = TRUE))
-  expect_true(grepl("OfflineCodeMirror.prototype.refresh", core_js, fixed = TRUE))
-  expect_true(grepl("this._wrapper.CodeMirror = this", core_js, fixed = TRUE))
-  expect_true(grepl("self._code.appendChild(row)", core_js, fixed = TRUE))
-  expect_true(grepl("OfflineCodeMirror.prototype._needsRender", core_js, fixed = TRUE))
-  expect_true(grepl("if (this._needsRender()) this._render();", core_js, fixed = TRUE))
-  expect_true(grepl("viewportMargin: Infinity", manager_js, fixed = TRUE))
-  expect_true(grepl(".CodeMirror-line-row", core_css, fixed = TRUE))
-  expect_false(grepl("min-width: max-content", core_css, fixed = TRUE))
-  expect_true(grepl("flex: 1 1 auto", core_css, fixed = TRUE))
+  expect_identical(sonuc$target, "ANKA İHA")
+  expect_false(sonuc$lossy)
+  expect_false(sonuc$ambiguous)
 })
 
-test_that("özel CodeMirror varlıkları app-owned ratchet kapsamındadır", {
-  manifest <- .read_pk_entity_alias("R", "config_ui_assets.R")
+test_that("ASCII yedek anahtarı Türkçe harfsiz yazımı bulur ve KAYIPLI işaretlenir", {
+  index <- pk_entity_alias_index(c("ŞAHİN" = "ŞAHİN PROJESİ"))
+  sonuc <- pk_entity_alias_lookup(index, pk_entity_normalize("sahin"))
 
-  expect_true(grepl('"js/codemirror_compat.js"', manifest, fixed = TRUE))
-  expect_true(grepl('"css/codemirror_compat.css"', manifest, fixed = TRUE))
-  expect_false(grepl('"codemirror/codemirror.min.js"', manifest, fixed = TRUE))
-  expect_false(grepl('"codemirror/codemirror.min.css"', manifest, fixed = TRUE))
+  expect_identical(sonuc$target, "ŞAHİN PROJESİ")
+  expect_true(sonuc$lossy)
+  expect_false(sonuc$ambiguous)
 })
 
-test_that("yapılandırma ipuçları erişilebilir açıklamalara bağlanır", {
-  settings_js <- .read_pk_entity_alias("www", "js", "settings_model_info.js")
+test_that("ASCII yedek anahtarı çakışırsa hedef seçilmez, netleştirme istenir", {
+  index <- pk_entity_alias_index(c("ŞAHİN" = "ŞAHİN PROJESİ", "SAHIN" = "SAHIN A.Ş."))
+  sonuc <- pk_entity_alias_lookup(index, pk_entity_normalize("sahin"))
 
-  expect_true(grepl("[data-settings-tooltip]", settings_js, fixed = TRUE))
-  expect_true(grepl("aria-describedby", settings_js, fixed = TRUE))
-  expect_true(grepl("settings-tooltip-sr", settings_js, fixed = TRUE))
-  expect_true(grepl("syncSettingsTooltipAccessibility(document)", settings_js, fixed = TRUE))
+  expect_true(sonuc$ambiguous)
+  expect_null(sonuc$target)
+  expect_true(length(sonuc$targets) >= 2L)
+})
+
+test_that("boş ifade ve boş indeks için alias katmanı hiçbir hedef döndürmez", {
+  index <- pk_entity_alias_index(c("ANKA" = "ANKA İHA"))
+
+  expect_null(pk_entity_alias_lookup(index, pk_entity_normalize("   "))$target)
+  expect_null(pk_entity_alias_lookup(NULL, pk_entity_normalize("anka"))$target)
+  expect_null(pk_entity_alias_lookup(index, pk_entity_normalize("bilinmeyen"))$target)
 })

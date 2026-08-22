@@ -27,6 +27,7 @@
                   "helpers_pk_exec_context.R", "helpers_pk_result_columns.R", "helpers_pk_result_size.R", "helpers_pk_sql_execute.R", "helpers_pk_sql_connection.R",
                   "utils_log_redact.R", "helpers_pk_rls_identity.R",
                   "helpers_deep_analysis_sql.R", "helpers_deep_analysis_reconcile.R",
+                  "helpers_pk_query_selection_deep.R",
                      "helpers_deep_analysis_phase6.R",
                      "helpers_deep_analysis_selector.R")) {
     source(file.path(kok, "R", dosya), encoding = "UTF-8", local = env)

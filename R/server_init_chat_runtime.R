@@ -276,14 +276,16 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
       )
       user_id <- tryCatch(session$userData$user_id %||% NULL, error = function(e) NULL)
 
-      conn_list <- tryCatch(get_connection(), error = function(e) NULL)
-      conn <- if (is.list(conn_list)) conn_list$conn %||% NULL else NULL
-      if (!is.null(conn_list)) {
-        on.exit(try(release_connection(conn_list), silent = TRUE), add = TRUE)
-      }
-
+      # DURDURULMUŞ GİRİŞ YENİ BİR BAĞLANTI AÇMAZ.
+      #
+      # Bu dala YALNIZCA `entry_stopped` doğruyken girilir; iptal ZATEN
+      # onaylanmıştır. Havuz tükenmişse ya da DSN login'i yavaşsa
+      # `get_connection()` yalnızca telemetri yazmak için ANA Shiny olay
+      # döngüsünü bloklardı. Tek analiz yolu (`R/server_init_session_state.R`)
+      # `stopped` için aynı atlamayı yapar; telemetri `conn = NULL` ile
+      # fail-soft çalışır.
       try(
-        pk_analysis_observe(session, conn, list(
+        pk_analysis_observe(session, NULL, list(
           request_id = request_id,
           question = user_prompt,
           username = username,

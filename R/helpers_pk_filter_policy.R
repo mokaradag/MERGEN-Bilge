@@ -188,6 +188,19 @@ pk_filter_zero_match_policy <- function(data, filters, compiled, query = NULL) {
     ))
   }
 
+  # 0c) BİRİNCİL varlık BELİRLENEMEDİ ve EN AZ BİR yaprak düşürüldü -> RED.
+  #
+  # `pk_filter_primary_column()` metadata yokken iki veya daha fazla filtre
+  # sütunu görür görmez NULL döner; bu durumda 0b hiç çalışmaz ve 0a yalnızca
+  # HER yaprak düşerse devreye girer. Arada kalan durum sessizce genişleyen bir
+  # popülasyondur: "ANKA projesinde 2024 harcamaları" isteğinde `ProjeAdi`
+  # yaprağı düşürülüp `Yil` uygulanırsa analiz 2024'ün TÜM projelerini özetler.
+  # Bu, 1b'deki sıfır eşleşme kuralının reddettiği sonucun aynısıdır; hangi
+  # daraltmanın sorunun ÖZNESİ olduğu bilinemediğinden karar SİMETRİK olmalıdır.
+  if (is.null(birincil_on) && length(dusen_sutunlar)) {
+    return(reddet(.pk_policy_dropped_message(compiled$dropped), NULL))
+  }
+
   sifir_gruplar <- Filter(function(g) isTRUE(g$zero_match), compiled$groups)
   if (!length(sifir_gruplar)) return(sonuc)
 

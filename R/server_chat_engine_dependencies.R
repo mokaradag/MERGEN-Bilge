@@ -197,9 +197,17 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
 
     call_env <- new.env(parent = .pk_hook_deep_core_env)
 
-    call_env$get_connection <- function() {
-      conn_list <- .pk_hook_real_get_connection()
-      if (is.null(state$primary)) state$primary <- conn_list
+    # `target` SARMALAYICIDA DA KABUL EDİLİR VE İLETİLİR.
+    #
+    # Gerçek `get_connection(target = "primary")` imzasını taşımayan bir
+    # sarmalayıcı, hedef belirten her çağrıda "unused argument" ile düşerdi.
+    # Yalnızca BİRİNCİL bağlantı yaşam döngüsü izlenir; ikincil/üçüncül hedefler
+    # çağıranın kendi `release_connection()` sözleşmesine tabidir.
+    call_env$get_connection <- function(target = "primary") {
+      conn_list <- .pk_hook_real_get_connection(target)
+      if (identical(target, "primary") && is.null(state$primary)) {
+        state$primary <- conn_list
+      }
       conn_list
     }
 

@@ -263,6 +263,27 @@ pk_export_csv_verify <- function(path, expected) {
 
       if (okunan_satir < parca_satir) break
 
+      # DOSYA SONUNDA YENİDEN OKUNMAZ.
+      #
+      # Beklenen satır sayısı tamamlandığında bir sonraki okuma bağlantının
+      # SONUNDA yapılırdı. `read.table()` tükenmiş bir bağlantıda R sürümüne ve
+      # sütun bilgisine göre "no lines available in input" hatası verebilir; bu
+      # hata `tryCatch` tarafından yakalanıp GEÇERLİ bir CSV parçası "geri okuma
+      # hatası" olarak reddedilirdi. Tetikleyici, parça satır sayısının
+      # `.PK_CSV_CHUNK_ROWS` katı olmasıdır (varsayılan parça boyutu tam 20
+      # katıdır). Fazladan içerik varsa AÇIKÇA raporlanır.
+      if (okunan_toplam >= toplam_beklenen) {
+        fazla <- tryCatch(readLines(baglanti, n = 1L, warn = FALSE),
+                          error = function(e) character(0))
+        if (length(fazla) && nzchar(trimws(fazla[1]))) {
+          return(list(ok = FALSE, reason = sprintf(
+            "Satir sayisi uyusmuyor: beklenen %d, dosyada fazladan satir var.",
+            toplam_beklenen
+          )))
+        }
+        break
+      }
+
       okunan <- utils::read.csv(
         baglanti, nrows = parca_satir, header = FALSE,
         col.names = sutun_adlari, colClasses = "character", check.names = FALSE,

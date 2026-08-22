@@ -243,12 +243,3 @@ pk_deep_observation_helpers <- function(session, conn, username, user_prompt,
 
   list(observe = pk_observe_deep, stash = stash_deep_footer)
 }
-if (!exists("pk_deep_build_v2_packet_result", mode = "function", inherits = FALSE)) {
-  .pk_deep_reconcile_file <- NULL
-  for (.pk_deep_frame in rev(sys.frames())) {
-    if (!is.null(.pk_deep_frame$ofile) && identical(basename(.pk_deep_frame$ofile), "helpers_deep_analysis_reconcile.R")) { .pk_deep_reconcile_file <- .pk_deep_frame$ofile; break }
-  }
-  if (is.null(.pk_deep_reconcile_file)) .pk_deep_reconcile_file <- if (file.exists(file.path("R", "helpers_deep_analysis_reconcile.R"))) file.path("R", "helpers_deep_analysis_reconcile.R") else file.path("..", "..", "R", "helpers_deep_analysis_reconcile.R")
-  source(file.path(dirname(.pk_deep_reconcile_file), "helpers_pk_query_selection_deep.R"), encoding = "UTF-8", local = TRUE)
-  rm(.pk_deep_reconcile_file, .pk_deep_frame)
-}

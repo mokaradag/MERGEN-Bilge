@@ -78,19 +78,26 @@ pk_session_state_write <- function(session, key, value) {
   paste0(.pk_marker_session_id(session), "|", kimlik)
 }
 
-# OTURUM KİMLİĞİ. Jeton TEK BAŞINA yeterli değildir: jetonu olmayan oturumlar
-# (testler, işçi vekilleri) AYNI boş anahtarı paylaşır ve bir oturumun işareti
-# diğerine sızardı. `userData` bir ORTAM olduğu için adresi süreç içinde
-# BENZERSİZDİR ve birincil kimlik olarak kullanılır.
+# OTURUM KİMLİĞİ. Önce `session$token`: Shiny bunu oturum başına benzersiz üretir
+# ve oturum ömrü boyunca KARARLIDIR. Jetonsuz oturumlar (testler, işçi vekilleri)
+# için `userData` içine BİR KEZ rastgele kimlik yazılır; böylece jetonsuz iki
+# oturum AYNI boş anahtarı paylaşmaz. `format(userData)` ARTIK KULLANILMAZ:
+# ortam adresi yalnızca nesne yaşarken benzersizdir ve yeniden kullanıldığında
+# ölü bir oturumun işareti yeni oturuma sızabilir; adlandırılmış ortamlarda ise
+# adres hiç yer almaz ve kimlik SABİTLEŞİR.
+.PK_MARKER_SESSION_KEY <- "pk_marker_session_id"
+
 .pk_marker_session_id <- function(session) {
-  ud <- try(session$userData, silent = TRUE)
-  if (!inherits(ud, "try-error") && is.environment(ud)) {
-    adres <- try(format(ud), silent = TRUE)
-    if (!inherits(adres, "try-error") && length(adres) == 1L &&
-        !is.na(adres) && nzchar(adres)) return(adres)
-  }
   jeton <- .pk_marker_id(try(session$token, silent = TRUE))
-  if (is.na(jeton)) "" else jeton
+  if (!is.na(jeton) && nzchar(jeton)) return(jeton)
+  ud <- try(session$userData, silent = TRUE)
+  if (inherits(ud, "try-error") || !is.environment(ud)) return("")
+  mevcut <- .pk_marker_id(try(ud[[.PK_MARKER_SESSION_KEY]], silent = TRUE))
+  if (!is.na(mevcut) && nzchar(mevcut)) return(mevcut)
+  yeni <- paste0("pk-oturum-",
+                 paste(format(as.hexmode(sample.int(2147483647L, 4L))), collapse = ""))
+  yazildi <- try({ ud[[.PK_MARKER_SESSION_KEY]] <- yeni; TRUE }, silent = TRUE)
+  if (isTRUE(yazildi)) yeni else ""
 }
 
 # Ayna sınırlı tutulur: uzun ömürlü bir süreçte sınırsız büyümemeli.

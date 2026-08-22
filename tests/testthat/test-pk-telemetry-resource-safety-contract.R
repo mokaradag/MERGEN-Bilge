@@ -72,7 +72,7 @@ test_that("single-analysis DB failures do not reconnect for telemetry", {
   environment(core) <- env
   env$pk_analiz_process_request <- core
   env$pk_provenance_current_request_id <- function(session) "req-db"
-  env$get_connection <- function() {
+  env$get_connection <- function(target = "primary") {
     env$connection_calls <- env$connection_calls + 1L
     stop("telemetry must not reconnect")
   }
@@ -106,7 +106,7 @@ test_that("deep analysis releases RLS connection before short-lived telemetry", 
   env$connection_number <- 0L
   env$.pk_filter_observation_state <- new.env(parent = emptyenv())
 
-  env$get_connection <- function() {
+  env$get_connection <- function(target = "primary") {
     env$connection_number <- env$connection_number + 1L
     conn <- paste0("conn-", env$connection_number)
     env$events <- c(env$events, paste0("get:", conn))
@@ -252,7 +252,7 @@ test_that("veritabanı kaynaklı olmayan istisnalar telemetri için bağlantı a
   environment(core) <- env
   env$pk_analiz_process_request <- core
   env$pk_provenance_current_request_id <- function(session) "req-app-error"
-  env$get_connection <- function() {
+  env$get_connection <- function(target = "primary") {
     env$connection_calls <- env$connection_calls + 1L
     list(conn = paste0("conn-", env$connection_calls))
   }
@@ -294,7 +294,7 @@ test_that("veritabanı istisnaları hâlâ yeniden bağlanmaz", {
   environment(core) <- env
   env$pk_analiz_process_request <- core
   env$pk_provenance_current_request_id <- function(session) "req-db-exc"
-  env$get_connection <- function() {
+  env$get_connection <- function(target = "primary") {
     env$connection_calls <- env$connection_calls + 1L
     stop("telemetry must not reconnect")
   }

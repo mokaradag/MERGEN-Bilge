@@ -443,13 +443,45 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     })
   }
 
+  # -- 4b. `block` KİPİ: DOĞRULAMA AKIŞTAN VE TTS'TEN ÖNCE ÇALIŞIR --
+  #
+  # Köken doğrulaması (§5.11) desteklenmeyen sayısal iddia bulduğunda model
+  # düzyazısını deterministik yedekle DEĞİŞTİRİR. Eskiden bu yalnızca akış
+  # tamamlandığında yapılıyordu; TTS motoru ise HAM `full_response` ile çoktan
+  # çağrılmış oluyordu. Kullanıcı böylece hiçbir zaman gösterilmeyen sayıları
+  # DUYABİLİYORDU ve söylenmiş sesi geri almak mümkün değildir.
+  #
+  # Bu kipte doğrulama BURADA yapılır; hem seslendirilen hem akıtılan metin
+  # doğrulanmış metindir. Alt bilgi (kaynakça/ek) yalnızca ekrana gider:
+  # `pk_provenance_decorate()` metni `paste0(govde, alt_bilgi)` biçiminde
+  # ürettiği için sondaki alt bilgi seslendirmeden çıkarılır.
+  tts_metni <- full_response
+  if (exists("pk_provenance_blocks_streaming", mode = "function", inherits = TRUE) &&
+      isTRUE(tryCatch(pk_provenance_blocks_streaming(session, request_id = pk_request_id),
+                      error = function(e) FALSE))) {
+    bekleyen <- tryCatch(pk_provenance_peek(session, request_id = pk_request_id),
+                         error = function(e) NULL)
+    alt_bilgi <- as.character(bekleyen$footer %||% "")[1]
+    dekore <- tryCatch(
+      pk_provenance_decorate(full_response, session, request_id = pk_request_id),
+      error = function(e) full_response
+    )
+    full_response <- dekore
+    tts_metni <- if (!is.na(alt_bilgi) && nzchar(alt_bilgi) &&
+                     endsWith(dekore, alt_bilgi)) {
+      substr(dekore, 1L, nchar(dekore) - nchar(alt_bilgi))
+    } else {
+      dekore
+    }
+  }
+
   # -- 5. KARAR: TTS BEKLENSİN Mİ? --
-  if (!is.null(tts_engine) && is.function(tts_engine) && nzchar(full_response)) {
+  if (!is.null(tts_engine) && is.function(tts_engine) && nzchar(tts_metni)) {
       cat(sprintf("[TTS-STREAM] Seslendirme başlatılıyor (ses: %s, metin: %d karakter)\n",
-                  tts_voice %||% "varsayılan", nchar(full_response)))
+                  tts_voice %||% "varsayılan", nchar(tts_metni)))
       # "Düşünüyor" animasyonu TTS hazır olana kadar görünür kalır
       promises::then(
-          tts_engine(full_response, tts_voice),
+          tts_engine(tts_metni, tts_voice),
           onFulfilled = function(result) {
               # TTS tamamlandı -> Metin akışı ve ses birlikte başlasın
               if (isTRUE(result$success)) {

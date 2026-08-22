@@ -234,15 +234,29 @@ test_that("nihai yanıt sonlandırma noktaları alt bilgiyi iliştirir", {
     )
   }
 
-  # TTS yolunda alt bilgi SESLENDİRİLMEMELİDİR: dekoratör, tts_engine
-  # çağrısından sonra gelen final_text üzerinde çalışır.
+  # TTS yolunda İKİ kural birden geçerlidir:
+  #   1) Alt bilgi (kaynakça/ek) SESLENDİRİLMEZ.
+  #   2) `block` kipinde DOĞRULANMAMIŞ düzyazı da seslendirilmez; söylenen ses
+  #      geri alınamaz. Bu yüzden motor artık ham `full_response` ile değil,
+  #      doğrulanmış ve alt bilgisi ayrılmış `tts_metni` ile çağrılır.
   path <- file.path(root, "R", "helpers_chat_runtime.R")
   raw_bytes <- readBin(path, what = "raw", n = file.info(path)$size)
   txt <- iconv(rawToChar(raw_bytes), from = "UTF-8", to = "UTF-8", sub = "byte")
 
   expect_true(
-    regexpr("pk_provenance_decorate", txt, fixed = TRUE, useBytes = TRUE) <
-      regexpr("tts_engine(full_response, tts_voice)", txt, fixed = TRUE, useBytes = TRUE),
-    info = "Dekoratör, TTS'e giden full_response'u DEĞİŞTİRMEMELİDİR."
+    grepl("tts_engine(tts_metni, tts_voice)", txt, fixed = TRUE, useBytes = TRUE),
+    info = "TTS motoru ham full_response ile ÇAĞRILMAMALIDIR."
+  )
+  expect_false(
+    grepl("tts_engine(full_response, tts_voice)", txt, fixed = TRUE, useBytes = TRUE),
+    info = "Ham full_response TTS'e verilmemelidir (block kipinde doğrulanmamış olabilir)."
+  )
+  expect_true(
+    grepl("pk_provenance_blocks_streaming", txt, fixed = TRUE, useBytes = TRUE),
+    info = "block kipi TTS'ten ÖNCE tespit edilmelidir."
+  )
+  expect_true(
+    grepl("endsWith(dekore, alt_bilgi)", txt, fixed = TRUE, useBytes = TRUE),
+    info = "Alt bilgi seslendirilecek metinden AYRILMALIDIR."
   )
 })

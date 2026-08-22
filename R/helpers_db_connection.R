@@ -187,12 +187,34 @@ DB_TARGETS <- list(
 )
 
 get_connection <- function(target = "primary") {
-  dsn_var <- switch(target,
+  # BİLİNMEYEN HEDEF KAPALI BAŞARISIZ OLUR.
+  #
+  # `switch()` varsayılanı her tanınmayan hedefi `DB_DSN` değişkenine
+  # eşliyordu; yazım hatası içeren ("secondry") ya da yeni bir metadata
+  # hedefi bu yolla BİRİNCİL veritabanına gidiyor, boş-DSN koruması hiç
+  # devreye girmiyordu. Sonuç doğru gibi raporlanır ama yetkilendirme ve
+  # kapsam varsayımları başka bir veritabanına aittir.
+  hedef_ad <- if (length(target) == 1L && !is.na(target)) {
+    as.character(target)[1]
+  } else {
+    ""
+  }
+  dsn_var <- switch(hedef_ad,
     "primary"   = "DB_DSN",
     "secondary" = "DB_DSN_2",
     "tertiary"  = "DB_DSN_3",
-    "DB_DSN"
+    NULL
   )
+
+  if (is.null(dsn_var) || !nzchar(dsn_var)) {
+    stop(
+      sprintf(
+        "HATA: Tanimsiz veritabani hedefi: '%s'",
+        paste(as.character(target), collapse = ",")
+      ),
+      call. = FALSE
+    )
+  }
 
   if (target == "primary" && exists("pool", envir = .GlobalEnv, inherits = FALSE)) {
     pool_obj <- tryCatch(

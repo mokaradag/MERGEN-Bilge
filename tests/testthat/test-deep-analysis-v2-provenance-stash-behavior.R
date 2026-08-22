@@ -15,7 +15,8 @@
     "helpers_pk_text_turkish.R",
     "helpers_pk_numeric_provenance.R",
     "helpers_pk_provenance.R",
-    "helpers_deep_analysis_reconcile.R"
+    "helpers_deep_analysis_reconcile.R",
+    "helpers_pk_query_selection_deep.R"
   )) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = env)
   }

@@ -294,10 +294,13 @@ test_that("entry-time deep-analysis cancellation is observed without delegation"
 
   expect_true(grepl("İşlem Durduruldu", result, fixed = TRUE))
   expect_identical(captured$delegated, 0L)
-  expect_identical(captured$db_calls, 1L)
-  expect_identical(captured$release_calls, 1L)
+  # DURDURULMUŞ GİRİŞ YENİ BAĞLANTI AÇMAZ: iptal onaylandıktan sonra yalnızca
+  # telemetri için ODBC login başlatmak ANA olay döngüsünü bloklardı. Telemetri
+  # `conn = NULL` ile fail-soft çalışır (tek analiz yolundaki kuralla aynı).
+  expect_identical(captured$db_calls, 0L)
+  expect_identical(captured$release_calls, 0L)
   expect_identical(captured$observe_calls, 1L)
-  expect_identical(captured$conn, "test-conn")
+  expect_null(captured$conn)
   expect_identical(captured$info$request_id, "req-deep-stop")
   expect_identical(captured$info$user_id, 271L)
   expect_true(isTRUE(captured$info$deep_thinking))
