@@ -33,6 +33,33 @@
   enc2utf8(txt)
 }
 
+test_that("izole yükleme guard'ı ARAMA YOLUNA değil HEDEF ORTAMA bakar", {
+  # ÖLÇÜLMÜŞ KUSUR: guard `exists(..., inherits = TRUE)` kullandığında, aynı R
+  # oturumunda daha önce çalışan bir test yardımcıyı `globalenv()`e bıraktıysa
+  # arama yolu onu buluyor, gövde ATLANIYOR ve yardımcılar hedef ortamda HİÇ
+  # tanımlanmıyordu. Dosya tek başına geçiyor, TAM SUITE'te düşüyordu.
+  helper_path <- file.path(repo_root_for_tests, "R", "helpers_pk_analysis_core.R")
+
+  ust <- new.env(parent = globalenv())
+  assign("summarize_columns_for_ai", function(...) "sizinti", envir = ust)
+
+  hedef <- new.env(parent = ust)
+  source(helper_path, encoding = "UTF-8", local = hedef)
+
+  expect_true(
+    exists("summarize_columns_for_ai", envir = hedef, mode = "function",
+           inherits = FALSE),
+    info = paste(
+      "Üst ortamda aynı adlı bir sızıntı olsa bile gövde ATLANMAMALIDIR;",
+      "yoksa yardımcılar hedef ortamda tanımsız kalır."
+    )
+  )
+  expect_false(
+    identical(get("summarize_columns_for_ai", envir = hedef), get("summarize_columns_for_ai", envir = ust)),
+    info = "Hedef ortamdaki tanım GERÇEK uygulamadır, sızıntı değildir."
+  )
+})
+
 test_that("helpers_pk_analysis_core.R exists and exposes the extracted helpers", {
   helper_path <- file.path(repo_root_for_tests, "R", "helpers_pk_analysis_core.R")
 

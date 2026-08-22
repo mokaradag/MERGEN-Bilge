@@ -61,7 +61,16 @@
 # sırasını atlatıyor ve staged/asenkron dağıtımlarda yanlış ya da eksik yol
 # çözebiliyordu. Aşağıdaki guard YALNIZCA izole test/hata ayıklama
 # yüklemeleri içindir; manifest yolunda hiçbir zaman tetiklenmez.
-if (!exists("summarize_columns_for_ai", mode = "function", inherits = TRUE)) {
+#
+# KONTROL BU ORTAMA BAKAR (`inherits = FALSE`), ARAMA YOLUNA DEĞİL.
+# `inherits = TRUE` ölçülmüş bir kusurdur: testler bu dosyayı `parent =
+# globalenv()` olan TAZE bir ortama kaynaklar; aynı oturumda daha önce çalışan
+# bir test yardımcıyı `globalenv()`e bırakmışsa arama yolu onu bulur, gövde
+# ATLANIR ve yardımcılar hedef ortamda HİÇ tanımlanmaz. Üretimde bu dosya
+# `globalenv()` içine kaynaklandığı için `environment()` zaten `globalenv()`tir
+# ve manifest yolunda gövde yine atlanır.
+if (!exists("summarize_columns_for_ai", mode = "function",
+            envir = environment(), inherits = FALSE)) {
   source(
     .pk_core_resolve_sibling("helpers_pk_analysis_core_impl.R"),
     encoding = "UTF-8", local = environment()
