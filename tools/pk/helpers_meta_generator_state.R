@@ -58,7 +58,17 @@
   h2 <- 5381
   for (b in baytlar) {
     karisik <- bitwXor(.pkgh_to_signed32(h1), .pkgh_to_signed32(b))
-    h1 <- (as.numeric(karisik) %% .PKGH_UINT32 * 16777619) %% .PKGH_UINT32
+    # 32 BIT CARPMA IKI 16 BITLIK PARCAYA BOLUNUR. Tek adimda carpmak
+    # (2^32 * 16777619 ~ 7.2e16) cift duyarlikli sayinin TAM tam sayi
+    # araligini (2^53 ~ 9.0e15) ASAR; carpim `%%` calismadan ONCE yuvarlanir,
+    # dusuk bitler kaybolur ve `h1` 8/16'nin kati olur (FNV avalanche ozelligi
+    # gider, etkin genislik ~28 bite duser). Bu yol `digest` yokken calisir ve
+    # devam onbellegi yeniden kullanimini kapiladigi icin zayif karma, DEGISMIS
+    # bir sorgunun BAYAT semayi yeniden kullanma olasiligini artirirdi.
+    taban <- as.numeric(karisik) %% .PKGH_UINT32
+    alt <- taban %% 65536
+    ust <- (taban - alt) / 65536
+    h1 <- (alt * 16777619 + (ust * 16777619 %% 65536) * 65536) %% .PKGH_UINT32
     h2 <- (h2 * 33 + b) %% .PKGH_UINT32
   }
   sprintf("%08x%08x-%d", as.integer(h1 %% 2147483647), as.integer(h2 %% 2147483647),

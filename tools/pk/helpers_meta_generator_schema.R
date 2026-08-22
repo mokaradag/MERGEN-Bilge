@@ -243,7 +243,12 @@ pkgs_schema_from_dataframe <- function(df, column_types = NULL, column_widths = 
 
   eslenmeyen <- list()
   sinirsiz <- character(0)
-  kaynak <- stats::setNames(as.character(siniflar), adlar)
+  # NATIF TIP BILINMIYORSA UYDURULMAZ. Surucunun R sinifi ("numeric") bir SQL
+  # tipi DEGILDIR. Tanimlayici yoksa asagidaki dongu hicbir girdiyi ezmez ve
+  # `source_types` gozlenmemis bir natif tip IDDIA ederdi; ayni sutun `describe`
+  # kipinde "int", `sample` kipinde "integer" raporlayarak kip PARITE kuralini
+  # da bozardi. Deger `column_meta$source_type` ve devam onbellegine akar.
+  kaynak <- stats::setNames(rep(NA_character_, length(adlar)), adlar)
 
   genislik <- function(sutun) {
     if (!is.null(column_widths) && sutun %in% names(column_widths)) {

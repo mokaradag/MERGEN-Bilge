@@ -243,7 +243,12 @@
   # Final sorgu zaten WITH ile basliyorsa ikinci bir WITH yazmak T-SQL'i bozar.
   # Staging CTE'leri mevcut CTE zincirinin BASINA virgulle eklenir. Bu yalnizca
   # describe metnidir; runtime ve sample orijinal batch'i kullanmaya devam eder.
-  sonuc_cte <- sub("^WITH[ \\t\\r\\n]+", "", sonuc,
+  # BASTAKI BOSLUK TOLERE EDILIR. Siniflandirma (`.pk_sql_starts_with_word()`)
+  # bastaki bosluk/yeni satiri tolere ediyor; bu degistirme etmiyordu. Yeni
+  # satirla ya da bosluklarla baslayan bir `result_sql` "cte" siniflandirilip
+  # ardindan "final CTE govdesi ayristirilamadi" ile REDDEDILIYOR ve sorgu
+  # yalnizca BICIMLENDIRME nedeniyle describe metadata'sini kaybediyordu.
+  sonuc_cte <- sub("^[ \\t\\r\\n]*WITH[ \\t\\r\\n]+", "", sonuc,
                    ignore.case = TRUE, perl = TRUE)
   if (!nzchar(trimws(sonuc_cte)) || identical(sonuc_cte, sonuc)) {
     stop("[PK_META_GEN] Yerel #temp final CTE govdesi ayristirilamadi.", call. = FALSE)
