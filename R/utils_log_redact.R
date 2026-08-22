@@ -261,7 +261,17 @@ mergen_build_runtime_error_record <- function(error,
 redact_connection_identifiers <- function(x) {
   metin <- tryCatch(redact_sensitive_text(x), error = function(e) NULL)
   if (is.null(metin)) return("<redaksiyon uygulanamadi>")
-  if (!is.character(metin) || length(metin) != 1L || is.na(metin)) return(metin)
+  if (!is.character(metin) || length(metin) == 0L) return(metin)
+
+  # ÇOK ÖGELİ GİRDİDE MASKELEME ÖGE BAŞINA UYGULANIR. `redact_sensitive_text()`
+  # vektöreldir ve uzunluğu korur; uzunluk 1 değilse ERKEN dönmek `DSN=`,
+  # `UID=` ve `Server=` değerlerini OLDUĞU GİBİ bırakıyordu (ör. bir sürücü
+  # tanılamasının `capture.output()` çıktısı). Genel redaktör çalıştığı için
+  # kayıp SESSİZDİ: yalnızca bağlantı katmanı düşüyordu.
+  if (length(metin) > 1L) {
+    return(vapply(metin, redact_connection_identifiers, character(1), USE.NAMES = FALSE))
+  }
+  if (is.na(metin)) return(metin)
 
   # SÜSLÜ PARANTEZLİ DEĞER: KAÇIŞLI VE KAPANMAMIŞ BİÇİMLER DE MASKELENİR.
   #

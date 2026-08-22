@@ -36,9 +36,9 @@
   if (!requireNamespace("stringi", quietly = TRUE)) {
     stop(
       paste0(
-        "pk_tr_fold: 'stringi' paketi bulunamadi. Turkce katlama yerelden ",
-        "bagimsiz olarak yalnizca stringi ile yapilabilir; sessiz bir yedek ",
-        "yol alias anahtarlarini bozar."
+        "pk_tr_fold: 'stringi' paketi bulunamadı. Türkçe katlama yerelden ",
+        "bağımsız olarak yalnızca stringi ile yapılabilir; sessiz bir yedek ",
+        "yol alias anahtarlarını bozar."
       ),
       call. = FALSE
     )

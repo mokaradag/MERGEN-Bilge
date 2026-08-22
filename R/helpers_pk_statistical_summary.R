@@ -141,7 +141,10 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
   summary_parts <- list()
   summary_parts[[1]] <- sprintf("TOPLAM SATIR: %d | TOPLAM SUTUN: %d", total_rows, total_cols)
 
-  if (isTRUE(user_filter_applied) && !is.null(rls_total_rows) && rls_total_rows > total_rows) {
+  # NA satır sayısı bir KARŞILAŞTIRMA DEĞİLDİR: `NA > n` koşulu `NA` döner ve
+  # R "missing value where TRUE/FALSE needed" hatası verir. `generate_statistical_summary()`
+  # tryCatch taşımadığı için tüm analiz isteği düşerdi; `isTRUE()` kapatır.
+  if (isTRUE(user_filter_applied) && isTRUE(rls_total_rows > total_rows)) {
     summary_parts[[length(summary_parts) + 1]] <- sprintf(
       "\n\n\U000026A0\U0000FE0F FİLTRELEME UYARISI:\n- Yetki dahilinde toplam satır: %d\n- Kullanıcı filtreleme sonrası satır: %d\n- BU %d SATIR SPESİFİK FİLTRELEME KRİTERİNE AİTTİR (tüm veri için değil!)\n- Oran/yüzde hesaplarken SADECE filtreleme sonrası %d satırı referans al",
       rls_total_rows, total_rows, total_rows, total_rows
@@ -342,8 +345,8 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
     # Terminal geri düşmede `pk_v2 &&` koşulu vardı: v1'de `mode = "full"`
     # bir istek önizleme kırpması beş satıra indikten sonra buraya düşünce,
     # yanıt FİLTRELENMİŞ bir alt kümeyi anlatıp kapsam uyarısını KAYBEDİYORDU.
-    if (isTRUE(user_filter_applied) && !is.null(rls_total_rows) &&
-        rls_total_rows > total_rows) {
+    # NA satır sayısı için `isTRUE()` (yukarıdaki kapı ile aynı gerekçe).
+    if (isTRUE(user_filter_applied) && isTRUE(rls_total_rows > total_rows)) {
       basic_summary <- paste0(
         basic_summary,
         sprintf(

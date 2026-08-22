@@ -16,7 +16,15 @@
     # yürütme kipine göre `ai|...` ya da `assistant|...` imzası üretiyor,
     # örtüşme denetimi başarısız oluyor ve önceki sorgu/açıklama bağlamı
     # kayboluyordu. Eşanlamlılar TEK kanonik role indirgenir.
-    ham_rol <- tolower(trimws(as.character(m$role %||% m$type %||% "user")[1]))
+    # `tolower()` YERELE DUYARLIDIR: Türkçe `LC_CTYPE` altında "AI" -> "aı"
+    # (noktasız `ı`) olur, `switch()` "ai" dalını ıskalar ve imza `aı|...`
+    # çıkar. Rol/tip birer MAKİNE BELİRTECİDİR; ASCII katlama doğru sözleşmedir.
+    ham_rol <- trimws(as.character(m$role %||% m$type %||% "user")[1])
+    ham_rol <- if (exists("pk_ascii_lower", mode = "function", inherits = TRUE)) {
+      pk_ascii_lower(ham_rol)
+    } else {
+      chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", ham_rol)
+    }
     rol <- switch(ham_rol,
       "ai" = "assistant", "assistant" = "assistant", "bot" = "assistant",
       "human" = "user", "user" = "user",

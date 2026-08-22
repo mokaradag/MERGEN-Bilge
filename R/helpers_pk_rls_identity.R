@@ -168,7 +168,20 @@
 .pk_rls_rows_for_user <- function(rows, username) {
   if (!is.data.frame(rows) || !nrow(rows)) return(rows)
   if (!("KullaniciAdi" %in% names(rows))) return(rows[0, , drop = FALSE])
-  rows[.pk_rls_user_key(rows$KullaniciAdi) %in% .pk_rls_user_key(username), , drop = FALSE]
+  # ÇÖZÜLEMEYEN KİMLİK KAPSAM ALMAZ. `.pk_rls_user_key()` NA kullanıcı adı için
+  # `NA_character_`, boş için `""` döndürür ve `%in%` NA'yı EŞLEŞEBİLİR sayar
+  # (`NA %in% NA` TRUE'dur). DB tarafı daraltma başarısız olup tam izin tablosu
+  # yedeğe düştüğünde, `KullaniciAdi` alanı NULL/boş olan satırlar çağıranın
+  # kapsamı gibi seçilirdi: kimliği çözülemeyen kullanıcı proje/EPS kodlarını
+  # DEVRALIRDI. Kullanılamayan kimlik ÖNCE reddedilir.
+  anahtar <- .pk_rls_user_key(username)
+  anahtar <- anahtar[!is.na(anahtar) & nzchar(anahtar)]
+  if (!length(anahtar)) return(rows[0, , drop = FALSE])
+
+  satir_anahtari <- .pk_rls_user_key(rows$KullaniciAdi)
+  eslesme <- !is.na(satir_anahtari) & nzchar(satir_anahtari) &
+    satir_anahtari %in% anahtar
+  rows[eslesme, , drop = FALSE]
 }
 
 #' Yetkisiz RLS sonucundan kullanıcıya görünen TİPLİ mesaj

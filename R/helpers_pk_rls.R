@@ -119,7 +119,10 @@ pk_rls_scope_state <- function(values, declared_state = NULL, applicable = TRUE)
   durum <- pk_rls_scope_state(values, declared_state, applicable)
 
   if (identical(durum, "not_applicable")) {
-    return(list(state = durum))
+    # ETİKET KORUNUR: `pk_rls_plan()` durum haritasını `adim$label %||% "?"`
+    # ile anahtarlar. Etiketsiz dönüş, uygulanamayan TÜM boyutları paylaşılan
+    # `"?"` anahtarına yazıyor ve `plan$states$proje` gibi alanlar NULL kalıyordu.
+    return(list(state = durum, label = label))
   }
 
   if (identical(durum, "unavailable")) {

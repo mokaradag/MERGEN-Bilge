@@ -40,7 +40,12 @@
     "pk_compute_heuristic_query_scores", "print_score_table",
     # Faz 5 seçim zinciri de guard listesindedir; stub'lanmazsa modül tüm
     # zinciri kaynaklamayı dener ve izole ortamda göreli yol çözülemez.
-    "pk_select_query_v2", "pk_select_run", "pk_select_decide"
+    "pk_select_query_v2", "pk_select_run", "pk_select_decide",
+    # PR #705 P3: korumasız çağrılan yardımcılar da guard listesindedir.
+    # Aşağıda gerçek tanımı kaynaklananlar bu stub'ları EZER; yalnızca bu
+    # ortamda gerçekten bulunmayanlar stub kalır ve zincir kaynaklanmaz.
+    "pk_row_cap_stage", "pk_user_error_text", "pk_report_db_error",
+    "pk_sql_readonly_guard", "pk_meta_actual_column_gate", "pk_build_analysis_result"
   )
   for (fn in guard_fns) assign(fn, function(...) NULL, envir = env)
 

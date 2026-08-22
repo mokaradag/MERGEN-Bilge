@@ -241,7 +241,13 @@ pk_select_revalidate_config <- function(cfg) {
   if (!is.list(cfg)) {
     return(list(valid = FALSE, errors = "Seçim yapılandırması bir liste olmalıdır."))
   }
-  pk_select_normalize_config(cfg)
+  # NORMALLEŞTİRİLMEYEN ALANLAR KORUNUR. `pk_select_normalize_config()` çıktıyı
+  # sıfırdan kurar ve yalnızca `.PK_SELECT_FIELD_MAP` anahtarları + `errors` /
+  # `valid` yazar; sonucu doğrudan döndürmek enjekte edilen `cfg` üzerindeki
+  # diğer alanları SİLİYORDU ve sonradan okuyan çağıran `NULL` görüyordu.
+  normal <- pk_select_normalize_config(cfg)
+  for (ad in names(normal)) cfg[[ad]] <- normal[[ad]]
+  cfg
 }
 
 #' Karar eşiklerini SEÇİLEN SORGUNUN metadata'sıyla yeniden çöz (§9)

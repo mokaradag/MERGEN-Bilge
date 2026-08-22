@@ -57,9 +57,16 @@ pk_telemetry_question_fingerprint <- function(question) {
   )
   if (is.na(digest_hex) || !nzchar(digest_hex)) return(empty)
 
-  key_id <- tryCatch(pk_config_resolve("MERGEN_PK_TELEMETRY_HMAC_KEY_ID"), error = function(e) "k1")
+  # BELGELENMİŞ "k1" VARSAYILANI HER BOŞ DEĞERDE UYGULANIR. `pk_config_resolve()`
+  # yalnızca HATA yükseltirse yedeğe düşmek yetersizdi: `MERGEN_PK_TELEMETRY_HMAC_KEY_ID`
+  # hiç ayarlanmadığında boş değer dönüyor ve `ParmakIziAnahtarID` BOŞ yazılıyordu;
+  # anahtar rotasyonundan sonra hangi anahtarın eski satırları ürettiği bilinemezdi.
+  # Uzunluk da `NVARCHAR(32)` sütununa göre sınırlanır.
+  key_id <- tryCatch(pk_config_resolve("MERGEN_PK_TELEMETRY_HMAC_KEY_ID"), error = function(e) NULL)
+  key_id <- suppressWarnings(as.character(key_id)[1])
+  if (length(key_id) != 1L || is.na(key_id) || !nzchar(key_id)) key_id <- "k1"
 
-  list(fingerprint = digest_hex, key_id = as.character(key_id)[1])
+  list(fingerprint = digest_hex, key_id = .pk_tel_chr(key_id, 32L))
 }
 
 .pk_tel_int <- function(x) {

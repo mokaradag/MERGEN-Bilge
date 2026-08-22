@@ -54,7 +54,15 @@ chatInputObserversInit <- function(input, session, values, settings_data,
       if (exists("mergen_pk_signal_cancel", mode = "function", inherits = TRUE) &&
           exists("mergen_pk_request_has_cancel_token", mode = "function", inherits = TRUE)) {
         aktif_kimlik <- isolate(active_request_id())
-        if (isTRUE(mergen_pk_request_has_cancel_token(session, aktif_kimlik))) {
+        # ARAMA HATASI TÜM DURDURMA AKIŞINI KİLİTLEMEZ. Yüklem sarmalanmamıştı;
+        # hata yükseltirse gözlemci `stop_generation(TRUE)` ve istek kimliği
+        # döndürmesine ULAŞMADAN düşüyor ve Durdur düğmesi o tıklamada ölü
+        # görünüyordu — PK olmayan istekler dâhil.
+        sahip_mi <- tryCatch(
+          isTRUE(mergen_pk_request_has_cancel_token(session, aktif_kimlik)),
+          error = function(e) FALSE
+        )
+        if (isTRUE(sahip_mi)) {
           try(mergen_pk_signal_cancel(aktif_kimlik, session = session), silent = TRUE)
         }
       }

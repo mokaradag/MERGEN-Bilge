@@ -440,7 +440,12 @@ pk_sql_readonly_guard <- function(sql, context_label = "PK_ANALIZ") {
 
 # Normal tek-SELECT/NOCOUNT siniflandiricisini aynen sakla. Yerel-temp denetimi
 # staging SELECT'lerinin guvenligini de AYNI yasaklarla yeniden kanitlar.
-.pk_sql_classify_readonly_base <- pk_sql_classify_readonly
+# YAKALAMA ETKİSİZDİR (idempotent). Dosya aynı ortamda iki kez source edilirse
+# ikinci yakalama aşağıda tanımlanan SARMALAYICIYI alır; sarmalayıcı da bu
+# ismi çağırdığı için her sınıflandırma SONSUZ ÖZYİNELEMEYE (C stack) düşerdi.
+if (!exists(".pk_sql_classify_readonly_base", mode = "function", inherits = FALSE)) {
+  .pk_sql_classify_readonly_base <- pk_sql_classify_readonly
+}
 
 .pk_sql_local_temp_name_equal <- function(a, b) {
   a <- as.character(a %||% "")[1]

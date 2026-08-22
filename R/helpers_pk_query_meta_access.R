@@ -349,8 +349,15 @@ pk_meta_validate_actual_columns <- function(query, actual_columns) {
   gercek_girdi <- as.character(actual_columns %||% character(0))
   gecersiz_gercek <- gercek_girdi[is.na(gercek_girdi) | !nzchar(trimws(gercek_girdi))]
   gercek_ham <- gercek_girdi[!is.na(gercek_girdi) & nzchar(trimws(gercek_girdi))]
-  tekrar_gercek <- unique(gercek_ham[duplicated(gercek_ham)])
-  gercek <- unique(gercek_ham)
+  # KARŞILAŞTIRMANIN İKİ TARAFI DA AYNI BİÇİMDE KIRPILIR. `sutun` (RLS) ve
+  # `rls_beyan_edilen` zaten `trimws()` ile üretiliyordu; `gercek` ham kalınca
+  # sürücünün baş/son boşluklu döndürdüğü bir sütun adı VAR OLDUĞU HÂLDE
+  # `missing_rls` / `missing_declared` olarak raporlanıyor ve çağıran zararsız
+  # bir sebeple kapalı başarısız oluyordu. Mükerrer denetimi de kırpılmış
+  # değer üzerinden bakar; " PK " ile "PK" aynı sütundur.
+  gercek_kirpik <- trimws(gercek_ham)
+  tekrar_gercek <- unique(gercek_kirpik[duplicated(gercek_kirpik)])
+  gercek <- unique(gercek_kirpik)
 
   eksik_rls <- character(0)
   if (!length(rls_hatalari) && is.list(rls)) {
@@ -371,7 +378,8 @@ pk_meta_validate_actual_columns <- function(query, actual_columns) {
     .pk_meta_reference_columns(meta)
   ))
   beyan <- beyan[!is.na(beyan) & nzchar(trimws(beyan))]
-  eksik_beyan <- setdiff(beyan, gercek)
+  # Beyan tarafı da kırpılarak karşılaştırılır; raporlanan ad beyandaki hâlidir.
+  eksik_beyan <- beyan[!(trimws(beyan) %in% gercek)]
 
   hatalar <- rls_hatalari
   if (length(gecersiz_gercek)) {

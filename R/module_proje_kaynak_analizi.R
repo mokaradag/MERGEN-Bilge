@@ -52,6 +52,11 @@ pk_required_helpers <- list(
       file.path("R", "helpers_pk_query_selection_deep.R"),
       file.path("R", "helpers_pk_query_selection_apply.R")
     )
+  ),
+  # İZOLE yüklemede KORUMASIZ çağrılan yardımcılar; sıra manifest sırasıdır.
+  list(
+    functions = c("pk_row_cap_stage", "pk_user_error_text", "pk_report_db_error", "pk_sql_readonly_guard", "pk_meta_actual_column_gate", "pk_build_analysis_result"),
+    path = file.path("R", c("helpers_pk_result_size.R", "helpers_pk_safe_errors.R", "helpers_pk_sql_statements.R", "helpers_pk_sql_readonly.R", "helpers_pk_rls.R", "helpers_pk_precision.R", "helpers_pk_packet_stats.R", "helpers_pk_analysis_packet.R", "helpers_pk_packet_render.R", "helpers_pk_numeric_provenance.R", "helpers_pk_export_plan.R", "helpers_pk_export_csv.R", "helpers_pk_export_xlsx.R", "helpers_pk_export_serve.R", "helpers_pk_answer_compose.R", "helpers_pk_analysis_result.R"))
   )
 )
 
@@ -260,12 +265,11 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     pk_select_log_selection(selected_query)
   }
 
-  # Faz 6 (§5.10): YURUTME BAGLAMI SECIMDEN HEMEN SONRA kurulur; per-query
-  # `analysis_deadline_sec` override'ini uygular. Daha once SQL hazirligindan ve
-  # `target_db != "primary"` dalindaki YENIDEN BAGLANMADAN SONRA kuruluyordu; o
-  # reconnect kuresel son tarihi kullaniyor ve yavas bir ikincil DSN, sorguya
-  # ozel butcenin cok otesinde bloklayabiliyordu. RLS kapsami henuz bilinmedigi
-  # icin once yalnizca sorguyla kurulur, kapsam cozulunce TAZELENIR.
+  # Faz 6 (§5.10): YURUTME BAGLAMI SECIMDEN HEMEN SONRA kurulur (per-query
+  # `analysis_deadline_sec`). Daha once SQL hazirligindan ve `target_db !=
+  # "primary"` YENIDEN BAGLANMASINDAN SONRA kuruluyordu; o reconnect kuresel son
+  # tarihi kullanip sorguya ozel butcenin cok otesinde bloklayabiliyordu. RLS
+  # kapsami henuz bilinmedigi icin once sorguyla kurulur, cozulunce TAZELENIR.
   pk_exec_ctx_restore <- NULL
   if (exists("pk_set_exec_context", mode = "function", inherits = TRUE)) {
     pk_exec_ctx_restore <- pk_set_exec_context(
@@ -695,14 +699,10 @@ select_smart_query <- function(prompt, library, chat_history,
   }
 
   # Motor siniri (master plan §10): Faz 5 iki gecisli secim hatti YALNIZCA
-  # MERGEN_PK_ENGINE=v2 iken calisir. Desen apply_smart_filters() ile AYNIDIR.
-  # v1 govdesi (AI dali + sezgisel dal + esikler) asagida DEGISMEDEN kalir;
-  # bayrak v1 iken bu dal hic calismaz.
-  #
-  # Motor kipi istek icin BIR KEZ cozulur ve secilen sorguya iliştirilir.
-  # Aksi halde kupur bir istek olusabiliyordu: kuresel `v1` + sorgu metadata
-  # `engine="v2"` bu kapiyi kapali birakip secim SONRASI v2 kapilarini aciyor,
-  # tersi ise v2 secimini v1 asagi akisiyla karistiriyordu.
+  # MERGEN_PK_ENGINE=v2 iken calisir; v1 govdesi asagida DEGISMEDEN kalir.
+  # Motor kipi istek icin BIR KEZ cozulur ve secilen sorguya ilistirilir; aksi
+  # halde kuresel `v1` + sorgu metadata `engine="v2"` (ya da tersi) kupur bir
+  # istek uretiyor, secim ile asagi akis FARKLI motorlara dusuyordu.
   pk_engine_v2_request <- exists("pk_engine_is_v2", mode = "function", inherits = TRUE) &&
     isTRUE(pk_engine_is_v2())
 
