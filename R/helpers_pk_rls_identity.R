@@ -20,7 +20,7 @@
 #           verdiği DBI bağlantısını kullanır.
 # ==============================================================================
 
-# KULLANICI ADI KANONİK BİÇİMİ.
+# KULLANICI ADI KANONİK BİÇİMİ (YETKİLENDİRME SINIRI).
 #
 # Temel kimlik araması SQL'de yapılır (`WHERE KullaniciAdi = ?`) ve SQL Server
 # COLLATION'ına uyar (normalde büyük/küçük harf duyarsız). İzin satırları ise
@@ -28,19 +28,33 @@
 # izin tablosundaki yazımı farklı diye HİÇBİR PY/EPS satırını eşleştiremeyip
 # boş kapsama (erişim reddi) düşebiliyordu. Katlama yerelden BAĞIMSIZDIR:
 # Türkçe yerelde `tolower("I")` noktasız `ı` üretir ve iki taraf ayrışır.
+#
+# NOKTALI/NOKTASIZ I AİLESİ KATLANMAZ (PR #705/#714 incelemesi).
+#
+# Önceki biçim `İ` ve `I` harflerinin İKİSİNİ de `i` yapıyordu. Bu bir
+# TRANSLİTERASYONdur ve yetkilendirmede kullanılamaz: `Ipek` ile `İpek`
+# BİRBİRİNDEN FARKLI hesaplardır, hiçbir SQL Server collation'ı (ne
+# `Turkish_CI_AS` ne `Latin1_General_CI_AS`) bu ikisini eşit saymaz. Katlama
+# sonucu `.pk_rls_rows_for_user()` iki hesabın izin satırlarını BİRLEŞTİRİP
+# kullanıcıya kendi kapsamı dışında proje/EPS kodu verebiliyordu.
+#
+# Katlama artık yalnızca AYNI HARFİN büyük/küçük biçimlerini birleştirir:
+#   * ASCII A-Z -> a-z (`I` -> `i` dâhil; bu, dağıtımın kullandığı
+#     büyük/küçük harf duyarsız collation davranışıdır ve korunur),
+#   * Türkçe Ç/Ğ/Ö/Ş/Ü -> ç/ğ/ö/ş/ü.
+#
+# `İ` (U+0130) ve `ı` (U+0131) HİÇ katlanmaz. Bunlar ASCII `i`/`I`'dan AYRI
+# harflerdir; onları ASCII i-ailesine indirmek `İpek` ile `Ipek` hesaplarını
+# BİRLEŞTİRİYORDU. İki taraf gerçekten farklı harf kullanıyorsa satır
+# EŞLEŞMEZ ve karar KAPALI BAŞARISIZ (kapsam boş) olur; yanlış hesabın
+# kapsamını devralmaktansa erişimi reddetmek doğrudur.
+.PK_RLS_FOLD_FROM <- "ABCDEFGHIJKLMNOPQRSTUVWXYZÇĞÖŞÜ"
+.PK_RLS_FOLD_TO   <- "abcdefghijklmnopqrstuvwxyzçğöşü"
+
 .pk_rls_user_key <- function(x) {
   ham <- as.character(x %||% "")
   ham <- trimws(ham)
-  if (exists("pk_ascii_lower", mode = "function", inherits = TRUE)) {
-    ham <- vapply(ham, function(v) {
-      out <- tryCatch(pk_ascii_lower(chartr("ÇĞİIÖŞÜçğıöşü", "CGIIOSUcgiosu", v)),
-                      error = function(e) NA_character_)
-      if (is.na(out)) NA_character_ else out
-    }, character(1), USE.NAMES = FALSE)
-    return(ham)
-  }
-  ham <- chartr("ÇĞİIÖŞÜçğıöşü", "CGIIOSUcgiosu", ham)
-  chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", ham)
+  chartr(.PK_RLS_FOLD_FROM, .PK_RLS_FOLD_TO, ham)
 }
 
 # SUNUCU LOG'UNA GİDECEK HER TANI METNİ REDAKTE EDİLİR (kapalı başarısız).
@@ -53,10 +67,13 @@
   if (is.na(metin) || !nzchar(metin)) return("")
   # Bu metin KALICI sunucu log'una gider: baglanti TANIMLAYICILARI (DSN/UID/
   # Server/Database) da maskelenir. Genel redaktor bunlari BILEREK korur.
+  #
+  # GENEL REDAKTÖRE GERİ DÜŞÜLMEZ. `redact_sensitive_text()` sözleşmesi gereği
+  # `Server=`, `Database=`, `DSN=`, `UID=` alanlarını BİLEREK korur; geri
+  # düşmek, bağlantı altyapısını kalıcı log'a yazmak demekti. Bağlantıya özgü
+  # redaktör yoksa tanı metni HİÇ yazılmaz.
   redaktor <- if (exists("redact_connection_identifiers", mode = "function", inherits = TRUE)) {
     redact_connection_identifiers
-  } else if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
-    redact_sensitive_text
   } else {
     NULL
   }
@@ -83,16 +100,55 @@
 # GERİ DÜŞME KORUNUR: sarma çalışmazsa (ör. sondaki `ORDER BY`) eski davranışa
 # dönülür ve R tarafındaki kanonik eşleştirme yine uygulanır; yalnızca DB
 # tarafı daraltma kaybolur ve bu durum log'lanır.
+#
+# GERİ DÜŞME YALNIZCA SÖZDİZİMİ SINIFI HATALARDA ÇALIŞIR.
+#
+# Sarmalama başarısız olduğunda daraltılmamış sorgu TÜM izin tablosunu taşır.
+# Bunu HER hatada yapmak, geçici bir sürücü/ağ arızasında aynı isteğin iki tam
+# tablo okuması yapmasına ve kalan bütçenin ARDIŞIK olarak tüketilmesine yol
+# açardı. Türetilmiş tablo sarmalamasının gerçekten desteklenmediği durumlar
+# SQL sözdizimi/nesne hatalarıdır; geçici arızalar bu sınıfta değildir ve
+# yukarı YAYILIR (çağıran onu `db_error` olarak TİPLİ raporlar).
+.PK_RLS_SYNTAX_SIGNS <- c(
+  "42000", "42S22", "42S02",
+  "incorrect syntax", "syntax error", "invalid column name",
+  "invalid object name", "must be the first statement",
+  "sozdizimi"
+)
+
+.pk_rls_syntax_class_error <- function(e) {
+  metin <- tryCatch(conditionMessage(e), error = function(x) "")
+  if (is.null(metin) || !length(metin) || is.na(metin[1]) || !nzchar(metin[1])) return(FALSE)
+  # Katlama yerelden BAĞIMSIZ olmalıdır: Türkçe yerelde `tolower("I")` noktasız
+  # `ı` üretir ve "INCORRECT SYNTAX" eşleşmezdi.
+  duz <- chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", metin[1])
+  any(vapply(.PK_RLS_SYNTAX_SIGNS, function(p) grepl(p, duz, fixed = TRUE), logical(1)))
+}
+
+# TÜRETİLMİŞ TABLO GÖVDESİNDE SONDAKİ `;` BULUNAMAZ.
+#
+# SQL Server `... FROM (SELECT ...;) AS t` yazımını REDDEDER: noktalı virgül
+# ifadeyi kapatır. Küratörlü izin SQL'i sonda `;` taşıyorsa sarmalama HER
+# ZAMAN sözdizimi hatası verir ve daraltma sessizce kaybolurdu. Yalnızca
+# SONDAKİ ayırıcı (ve ardındaki boşluk) kırpılır; gövde içindeki noktalı
+# virgüllere dokunulmaz.
+.pk_rls_strip_terminal_semicolon <- function(statement) {
+  metin <- as.character(statement %||% "")[1]
+  if (is.na(metin)) return("")
+  sub("[[:space:];]+$", "", metin, perl = TRUE)
+}
+
 .pk_rls_permission_rows <- function(conn, statement, username) {
   sarmalanmis <- sprintf(
     "SELECT mb_izin.* FROM (\n%s\n) AS mb_izin WHERE mb_izin.KullaniciAdi = ?",
-    as.character(statement)[1]
+    .pk_rls_strip_terminal_semicolon(statement)
   )
 
   sonuc <- tryCatch(
     .pk_rls_bounded_query(conn, sarmalanmis, params = list(username)),
     error = function(e) {
       if (isTRUE(.pk_rls_halt_error(e))) stop(e)
+      if (!isTRUE(.pk_rls_syntax_class_error(e))) stop(e)
       e
     }
   )
@@ -159,8 +215,10 @@ pk_rls_denied_message <- function(rls_info) {
     ))
   }
 
+  # İÇ KAYNAK ADI (tablo/görünüm) KULLANICIYA GÖSTERİLMEZ: kurtarmaya yardımı
+  # yoktur, iç şema adını sızdırır. Ayrıntı sunucu log'unda kalır.
   paste0(
     "\U000026A0\U0000FE0F **Yetki Hatası:** Sistemde kullanıcı kaydınız ",
-    "(DC01_user_base) bulunamadı. Lütfen yönetici ile iletişime geçin."
+    "bulunamadı. Lütfen yönetici ile iletişime geçin."
   )
 }

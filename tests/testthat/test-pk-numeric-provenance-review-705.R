@@ -33,6 +33,12 @@
   env <- new.env(parent = globalenv())
   kok <- resolve_repo_root_for_tests()
   env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
+  # Bagimlilik sirasi calisma zamani manifestiyle AYNI tutulur: koken
+  # dogrulayicisi kesinlik yardimcilariyla ayni sinirda calisir. Izole ortam
+  # onu yuklemezse, ileride eklenen bir kesinlik cagrisi bu dosyada
+  # "cozulmemis sembol" olarak patlar ve gercek regresyon davranisi degil
+  # yukleme sirasi test edilmis olur.
+  source(file.path(kok, "R", "helpers_pk_precision.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "helpers_pk_numeric_provenance.R"), encoding = "UTF-8", local = env)
   env
 }

@@ -165,7 +165,7 @@ pk_entity_resolve_filter_plan <- function(data, filters, query = NULL,
       degerler = degerler, sozluk = sozluk, cmeta = cmeta,
       varlik_rolu = varlik_rolu, meta_kok = meta_kok,
       chat_history = chat_history, prior_context = prior_context,
-      sutun = sutun
+      sutun = sutun, query = query
     )
 
     kararlar <- c(kararlar, sonuc$decisions)
@@ -185,9 +185,9 @@ pk_entity_resolve_filter_plan <- function(data, filters, query = NULL,
   )
 }
 
-# Tek bir yaprağın tüm değerlerini çözer.
+# Tek bir yaprağın tüm değerlerini çözer. `query` AÇIK PARAMETRE olmalıdır: gövdedeki `.pk_entity_context_key(query, ...)` üst düzey tanımdan ötürü çağıranın ortamını GÖREMEZ; tembel değerlendirme yüzünden hata yalnızca D11 devralma yolunda `object 'query' not found` olarak çıkardı.
 .pk_entity_apply_leaf <- function(degerler, sozluk, cmeta, varlik_rolu, meta_kok,
-                                  chat_history, prior_context, sutun) {
+                                  chat_history, prior_context, sutun, query = NULL) {
   kararlar <- list()
   aciklamalar <- character(0)
   yeni_degerler <- character(0)

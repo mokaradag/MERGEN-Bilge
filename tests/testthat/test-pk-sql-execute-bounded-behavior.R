@@ -266,3 +266,42 @@ test_that("ifade zaman aşımı uygulanamadığında analiz iptal EDİLMEZ", {
   expect_false(pk_sql_apply_statement_timeout(conn, NA)$applied)
   expect_false(pk_sql_apply_statement_timeout(NULL, 30L)$applied)
 })
+
+# --- PR #714 (CodeRabbit P2): tamamlanmis getirimde tepe projeksiyonu ---------
+#
+# Genislik bilinmedigi durumda planlayici TEK satirlik parca secebilir. Sonuc
+# tam olarak `parca_satir` satirsa kisa-getirim cikisi TETIKLENMEZ; dongu bir
+# tur daha doner ve projeksiyon "ayni boyutta bir satir daha gelecek" varsayar.
+# Tavanin ALTINDA kalan tek buyuk satir bu yuzden `too_large` ile reddediliyordu.
+test_that("tavan altinda kalan TEK satir tepe projeksiyonuyla reddedilmez", {
+  conn <- .pk_sql_test_conn(rows = 1L)
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  # Tek satir tavanin ALTINDA; iki satirlik projeksiyon tavanin USTUNDE olacak
+  # sekilde tavan daraltilir. `chunk_rows = 1L` planlayici davranisini taklit eder.
+  bayt <- .pk_sql_frame_bytes(DBI::dbGetQuery(conn, "SELECT * FROM veri"))
+  tavan_mb <- (bayt * 1.6) / (1024 * 1024)
+
+  sonuc <- pk_sql_execute_bounded(
+    conn, "SELECT * FROM veri", unicode_param = FALSE,
+    chunk_rows = 1L, max_result_mb = tavan_mb, overhead_factor = 1
+  )
+
+  expect_equal(sonuc$status, "ok")
+  expect_equal(sonuc$rows, 1L)
+  expect_false(identical(sonuc$error, "projected_peak_exceeds_ceiling"))
+})
+
+test_that("tavani GERCEKTEN asan sonuc hala TIPLI reddedilir", {
+  conn <- .pk_sql_test_conn(rows = 40L)
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  # Tavan tek satirin bile altinda: kapi KAPALI BASARISIZ kalir.
+  sonuc <- pk_sql_execute_bounded(
+    conn, "SELECT * FROM veri", unicode_param = FALSE,
+    chunk_rows = 1L, max_result_mb = 1e-6, overhead_factor = 1
+  )
+
+  expect_equal(sonuc$status, "too_large")
+  expect_true(is.null(sonuc$data))
+})

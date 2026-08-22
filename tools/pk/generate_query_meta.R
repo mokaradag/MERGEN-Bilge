@@ -344,11 +344,19 @@ local({
     # "aynı anda tek üretici" garantisi işlevsiz kalır. Bu noktadan sonra HİÇBİR
     # durum/artefakt/metadata yazımı yapılmadan durulur.
     if (!isTRUE(pkgc_refresh_run_lock(kilit))) {
-      stop(paste0(
-        "Kosu kilidi KAYBEDILDI (baska bir uretici devralmis olabilir). ",
-        "Paylasilan durum/metadata dosyalarina yazmamak icin kosu ",
-        "DURDURULDU. Kilit: ", yapilandirma$lock_path %||% "(bilinmiyor)"
-      ), call. = FALSE)
+      # SINIFLANDIRILMIS kosul: envanter dongusu bu hatayi UYARIYA indirmeden
+      # yeniden firlatir (bkz. PKG_META_LOCK_LOST_CLASS).
+      stop(structure(
+        class = c(PKG_META_LOCK_LOST_CLASS, "error", "condition"),
+        list(
+          message = paste0(
+            "Kosu kilidi KAYBEDILDI (baska bir uretici devralmis olabilir). ",
+            "Paylasilan durum/metadata dosyalarina yazmamak icin kosu ",
+            "DURDURULDU. Kilit: ", yapilandirma$lock_path %||% "(bilinmiyor)"
+          ),
+          call = NULL
+        )
+      ))
     }
     pkgh_write_state(cache, yapilandirma$state_path, yapilandirma$mode,
                      yapilandirma$timestamp, yapilandirma$state_version)

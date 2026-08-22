@@ -201,7 +201,11 @@ pk_parse_number_tr <- function(txt) {
 .pk_prov_unit_fold <- function(x) {
   txt <- as.character(x %||% "")[1]
   if (length(txt) != 1L || is.na(txt)) return("")
-  txt <- chartr("ÇĞİIÖŞÜ", "cgiiosu", txt)
+  # KÜÇÜK HARFLİ Türkçe harfler de katlanır. Yalnızca büyük harfler
+  # katlandığında `"gün"` (olgu birimi) ile `"gun"` (yanıt metni) FARKLI
+  # kalıyordu: iki taraf da sözlükte tanınıyor ama karşılaştırma `unit_mismatch`
+  # üretiyordu ve `block` kipinde DOĞRU bir yanıt gizleniyordu.
+  txt <- chartr("ÇĞİIÖŞÜçğıöşü", "cgiiosucgiosu", txt)
   txt <- chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", txt)
   trimws(sub("[.]+$", "", txt))
 }

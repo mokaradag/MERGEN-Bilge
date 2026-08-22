@@ -124,8 +124,14 @@ pk_select_refusal_message <- function(decision) {
   if (is.null(text) || !length(text) || is.na(text[1])) return("")
   metin <- as.character(text)[1]
 
-  if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
-    temiz <- tryCatch(redact_sensitive_text(metin), error = function(e) NULL)
+  # BAĞLANTI TANIMLAYICILARI DA MASKELENİR (kapalı başarısız).
+  #
+  # Seçim hataları sürücü/DSN metni taşıyabilir; genel `redact_sensitive_text()`
+  # `DSN=`, `UID=`, `Server=`, `Database=` DEĞERLERİNİ sözleşmesi gereği KORUR.
+  # Bu metin stdout'a, yani kalıcı sunucu log'una gider. Bağlantıya özgü
+  # redaktör yoksa metin YAYIMLANMAZ; genel redaktöre geri düşülmez.
+  if (exists("redact_connection_identifiers", mode = "function", inherits = TRUE)) {
+    temiz <- tryCatch(redact_connection_identifiers(metin), error = function(e) NULL)
     if (!is.character(temiz) || length(temiz) != 1L || is.na(temiz)) {
       return("(redaksiyon uygulanamadi)")
     }

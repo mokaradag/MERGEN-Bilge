@@ -316,11 +316,10 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
       try(later::later(function() try(pk_cancel_token_clear(cancel_token), silent = TRUE),
                        delay = 300), silent = TRUE)
       if (isTRUE(arayuz_bizim)) {
-        try(shiny::isolate({
-          ctx$cleanup_send_message()
-          ctx$add_message_fn(mergen_pk_worker_outcome_text("deadline"), "ai")
-        }), silent = TRUE)
-      }
+        try(shiny::isolate({ ctx$cleanup_send_message()
+          ctx$add_message_fn(mergen_pk_worker_outcome_text("deadline"), "ai") }), silent = TRUE)
+      } else if (isTRUE(karar_bekci$apply) && !isTRUE(ayni_chat_bekci)) {  # SOHBET DEGISTI, istek kimligi HALA BU ISTEK: `koruma_gecti()` bunu temizler, bekci temizlemiyordu; yeni sohbet eski istegin gonderim kilidinde TAKILI kaliyordu. Mesaj EKLENMEZ.
+        try(shiny::isolate(ctx$cleanup_send_message()), silent = TRUE) }
       invisible(NULL)
     }, delay = gecikme), silent = TRUE)
     if (inherits(bekci_iptal, "try-error")) bekci_iptal <- NULL

@@ -359,6 +359,13 @@ pkgn_inventory_one <- function(query, config, conn = NULL,
 #' @param release_fn `function(handle, timeout_sec)` -> serbest bırak.
 #' @param fingerprints Devam önbelleği parmak izleri (yalnızca önbellek
 #'   girdisinin kaydedilmesi için; kabul kararı `pkgh_read_state()` içindedir).
+# KOŞU KİLİDİ KAYBI İÇİN KOŞUL SINIFI.
+#
+# Ara kayıt yazıcısı (`generate_query_meta.R` içindeki `ara_kayit`) kilidi
+# kaybettiğinde bu sınıfla sinyal verir. Sınıf, hata METNİNE bakmadan ayırt
+# etmeyi sağlar; metin eşleştirme yerelleştirme/redaksiyon ile bozulabilirdi.
+PKG_META_LOCK_LOST_CLASS <- "pkg_meta_lock_lost"
+
 #' @param checkpoint_fn `function(cache)` -> her sorgudan SONRA çağrılır.
 #'   Kesintiye uğrayan bir koşunun devam edebilmesi için durum ARA ARA
 #'   yazılmalıdır; yalnızca koşu sonunda yazmak, kesintide TÜM ilerlemeyi
@@ -552,6 +559,15 @@ pkg_meta_run_inventory <- function(query_library, config,
     # taranır, ancak operatör devam edilebilirliğin kaybolduğunu ANINDA görür.
     if (is.function(checkpoint_fn)) {
       kayit_ok <- tryCatch(checkpoint_fn(yeni_cache), error = function(e) e)
+      # ÇİTLEME (fencing) KAYBI UYARIYA İNDİRGENMEZ.
+      #
+      # Ara kayıt, koşu kilidini KAYBETTİĞİ için de başarısız olabilir: o anda
+      # kilidi başka bir üretici devralmıştır. Bu hatayı yutup envantere devam
+      # etmek, iki koşunun AYNI paylaşılan metadata/artefakt dosyalarına
+      # yazmasına izin verirdi. Sınıf İMZAYLA ayırt edilir (metin eşleştirme
+      # DEĞİL) ve yukarı YAYILIR; sıradan yazma hataları aşağıdaki uyarı
+      # yolunda kalır.
+      if (inherits(kayit_ok, PKG_META_LOCK_LOST_CLASS)) stop(kayit_ok)
       if (inherits(kayit_ok, "condition") || !isTRUE(kayit_ok)) {
         neden <- if (inherits(kayit_ok, "condition")) {
           if (exists("pkgh_sanitize_bootstrap_error", mode = "function", inherits = TRUE)) {

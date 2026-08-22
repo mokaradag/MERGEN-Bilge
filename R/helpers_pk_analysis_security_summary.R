@@ -188,6 +188,25 @@ get_user_rls_info <- function(username, conn) {
 
   info <- as.list(user_base[1, ])
   info$authorized <- TRUE
+
+  # ROL DEĞERİ KAPSAM SEÇİMİNDEN ÖNCE BİR KEZ NORMALLEŞTİRİLİR.
+  #
+  # `pk_rls_plan()` rolü `trimws()` ile kırpar; bu dosya ise aşağıda HAM
+  # `info$Yetki` üzerinde `identical(..., "PY")` / `%in% c("KY-P","DIR-P")`
+  # karşılaştırması yapıyordu. `Yetki` sütunu SQL Server'da sabit genişlikli
+  # (`char(n)`) ise DBI `"PY "` döndürür: buradaki dal ÇALIŞMAZ, proje/EPS
+  # kapsamı `not_applicable` kalır, ama plan katmanı kırpılmış `"PY"` rolünü
+  # görüp yüklemi ATLAR. Sonuç, kullanıcının proje kapsamı DIŞINDAKİ satırların
+  # dönmesidir. Normalleştirme `pk_rls_code_norm()` sözleşmesiyle aynıdır:
+  # yalnızca kırpma; Türkçe I/İ anlamını değiştirebileceği için harf durumu
+  # DÖNÜŞTÜRÜLMEZ.
+  yetki_ham <- info$Yetki
+  info$Yetki <- if (is.null(yetki_ham) || !length(yetki_ham)) {
+    NA_character_
+  } else {
+    ham <- as.character(yetki_ham)[1]
+    if (is.na(ham)) NA_character_ else trimws(ham)
+  }
   # Rol/masraf yeri değerleri KULLANICIYA ÖZEL yetkilendirme verisidir; sunucu
   # log'una yazılmaz. Yalnızca kararın ALINDIĞI kaydedilir.
   cat("[PK_ANALIZ] DC01 yetki kaydi cozuldu.\n")

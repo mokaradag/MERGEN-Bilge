@@ -13,7 +13,7 @@ pk_required_helpers <- list(
       "apply_rls_to_data",
       "generate_statistical_summary"
     ),
-    path = file.path("R", c("helpers_pk_rls_identity.R", "helpers_pk_analysis_security_summary.R"))  # kimlik/izin ONCE
+    path = file.path("R", c("helpers_pk_rls_identity.R", "helpers_pk_analysis_security_summary.R", "helpers_pk_statistical_summary.R"))  # kimlik/izin ONCE, sonra ozet
   ),
   list(
     functions = c("extract_filter_criteria_from_prompt", "apply_smart_filters"),

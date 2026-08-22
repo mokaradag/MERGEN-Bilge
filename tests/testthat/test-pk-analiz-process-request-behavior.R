@@ -101,7 +101,11 @@ test_that("pk_analiz_process_request yetkisiz kullanıcıya yetki hatası döner
   env$get_user_rls_info <- function(username, conn) list(authorized = FALSE)
   res <- env$pk_analiz_process_request("soru", list(), .pkSession(), stop_check = function() FALSE)
   expect_true(grepl("Yetki Hatası", res, fixed = TRUE))
-  expect_true(grepl("DC01_user_base", res, fixed = TRUE))
+  expect_true(grepl("kullanıcı kaydınız", res, fixed = TRUE))
+  # PR #714: IC KAYNAK ADI (tablo/gorunum) kullaniciya GOSTERILMEZ. Eski
+  # bekleme tam da bu sizintiyi sozlesme sayiyordu; kurtarmaya yardimi yok,
+  # ic semayi acik ediyordu. Ayrinti sunucu log'unda kalir.
+  expect_false(grepl("DC01_user_base", res, fixed = TRUE))
 })
 
 # PR #705: yetki verilmeyen ÜÇ durum TİPLİ ayrılır; hepsinde analiz

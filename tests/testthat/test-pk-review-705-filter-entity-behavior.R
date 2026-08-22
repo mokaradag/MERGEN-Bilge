@@ -173,14 +173,119 @@ test_that("varlik cozumleyicisi grup cocuklarini gezer", {
 
 # --- P4-12: karar kaydi entity_role + column_meta tasir ----------------------
 
-test_that("cozumleyici karari baglam kaydinin BEKLEDIGI alanlari tasir", {
-  guvenlik <- readBin(
-    file.path(resolve_repo_root_for_tests(), "R", "helpers_pk_entity_apply.R"),
-    "raw", file.info(file.path(resolve_repo_root_for_tests(), "R",
-                               "helpers_pk_entity_apply.R"))$size
-  )
-  metin <- iconv(rawToChar(guvenlik), from = "UTF-8", to = "UTF-8", sub = "byte")
+# Varlik cozumleyicisini GERCEKTEN calistiran ortam. Kaynak metni taramak
+# yetmez: atamalar olu bir dalda ya da yorumda kalirsa metin taramasi GECER
+# ama donen karar alanlari tasimaz ve baglam kaydi sessizce bozulur.
+.pk705_entity_env <- function() {
+  repo_root <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
+  # Sira `R/config_source_manifest.R` ile AYNIdir.
+  for (dosya in c("helpers_pk_text_turkish.R", "helpers_pk_config.R",
+                  "helpers_pk_query_meta_schema.R", "helpers_pk_query_meta_access.R",
+                  "helpers_pk_entity_morph.R", "helpers_pk_entity_normalize.R",
+                  "helpers_pk_entity_mention.R", "helpers_pk_entity_alias.R",
+                  "helpers_pk_entity_score.R", "helpers_pk_entity_scan.R",
+                  "helpers_pk_entity_resolver.R", "helpers_pk_entity_history.R",
+                  "helpers_pk_entity_context.R", "helpers_pk_entity_tree.R",
+                  "helpers_pk_entity_apply.R")) {
+    source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = env)
+  }
+  env
+}
 
-  expect_true(grepl("karar$entity_role <- varlik_rolu", metin, fixed = TRUE))
-  expect_true(grepl("karar$column_meta <- cmeta", metin, fixed = TRUE))
+# `pk_config_resolve()` sirasiyla query_meta -> ORTAM -> options() -> varsayilan
+# cozer; ORTAM options()'i YENER. Bu yuzden iki kanal da izole edilir ve
+# ikisi de geri yuklenir (CLAUDE.md yapilandirma-izolasyonu notu).
+.pk705_with_resolve_enabled <- function(kod) {
+  eski_env <- Sys.getenv("MERGEN_PK_RESOLVE_ENABLED", unset = NA_character_)
+  eski_opt <- getOption("mergen.pk.resolve_enabled", default = NULL)
+  Sys.setenv(MERGEN_PK_RESOLVE_ENABLED = "true")
+  options(mergen.pk.resolve_enabled = TRUE)
+  on.exit({
+    if (is.na(eski_env)) Sys.unsetenv("MERGEN_PK_RESOLVE_ENABLED")
+    else Sys.setenv(MERGEN_PK_RESOLVE_ENABLED = eski_env)
+    options(mergen.pk.resolve_enabled = eski_opt)
+  }, add = TRUE)
+  force(kod)
+}
+
+.pk705_entity_query <- function() {
+  list(
+    id = "sentetik_sorgu_1",
+    meta = list(
+      primary_entity = "Proje",
+      column_meta = list(
+        Proje = list(role = "dimension", match = "resolve", entity_kinds = "proje")
+      )
+    )
+  )
+}
+
+test_that("cozumleyici karari baglam kaydinin BEKLEDIGI alanlari tasir", {
+  env <- .pk705_entity_env()
+  veri <- data.frame(
+    Proje = c("ANKA", "AKINCI", "KIZILELMA"),
+    Deger = c(1, 2, 3),
+    stringsAsFactors = FALSE
+  )
+
+  plan <- .pk705_with_resolve_enabled(env$pk_entity_resolve_filter_plan(
+    data = veri,
+    filters = list(list(column = "Proje", operation = "equals", value = "ANKA")),
+    query = .pk705_entity_query()
+  ))
+
+  expect_equal(plan$action, "proceed")
+  expect_length(plan$decisions, 1L)
+
+  karar <- plan$decisions[[1]]
+  # Cozumleme GERCEKTEN calismis olmali; aksi halde alanlarin varligi bir sey
+  # kanitlamaz.
+  expect_equal(karar$decision, "auto")
+  expect_equal(karar$values, "ANKA")
+  expect_equal(karar$column, "Proje")
+
+  # `pk_entity_context_remember()` bu IKI alani okur.
+  expect_equal(karar$entity_role, "subject")
+  expect_true(is.list(karar$column_meta))
+  expect_equal(karar$column_meta$role, "dimension")
+  expect_equal(as.character(karar$column_meta$entity_kinds)[1], "proje")
+})
+
+# Devralinan baglam yolu (D11) GERCEKTEN calisabilmelidir.
+#
+# `.pk_entity_apply_leaf()` govdesi `context_key = .pk_entity_context_key(query, ...)`
+# yaziyordu ama `query` o fonksiyonun PARAMETRESI DEGILDI. R tembel
+# degerlendirdigi icin hata yalnizca `context_key` ZORLANDIGINDA, yani tam da
+# devralma karsilastirmasinda ortaya cikiyordu: `object 'query' not found`.
+test_that("baglam anahtari cozulur; devralma yolu tanimsiz sembolle patlamaz", {
+  env <- .pk705_entity_env()
+  veri <- data.frame(Proje = c("ANKA", "AKINCI"), stringsAsFactors = FALSE)
+
+  zorlanan <- new.env(parent = emptyenv())
+  zorlanan$anahtar <- NULL
+  zorlanan$hata <- NULL
+  gercek <- env$pk_entity_resolve_with_history
+  env$pk_entity_resolve_with_history <- function(..., context_key = NULL) {
+    cozum <- tryCatch(force(context_key), error = function(e) {
+      zorlanan$hata <- conditionMessage(e)
+      NULL
+    })
+    zorlanan$anahtar <- cozum
+    gercek(..., context_key = cozum)
+  }
+
+  plan <- .pk705_with_resolve_enabled(env$pk_entity_resolve_filter_plan(
+    data = veri,
+    filters = list(list(column = "Proje", operation = "equals", value = "ANKA")),
+    query = .pk705_entity_query()
+  ))
+
+  expect_null(zorlanan$hata)
+  expect_true(is.list(zorlanan$anahtar))
+  expect_equal(zorlanan$anahtar$query_id, "sentetik_sorgu_1")
+  expect_equal(zorlanan$anahtar$column, "Proje")
+  expect_equal(zorlanan$anahtar$entity_kind, "proje")
+  expect_equal(plan$action, "proceed")
 })

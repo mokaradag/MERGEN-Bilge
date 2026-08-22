@@ -176,21 +176,41 @@ pk_compose_close_markdown <- function(text) {
   # bir bloğu KAPATMAZ: ardına eklenen tablo, indirme bağlantıları ve yetkili
   # alt bilgi kod bloğunun İÇİNDE kalır (bağlantı tıklanamaz olur). Ayraç
   # durumu satır satır izlenir; açık kalan ayracın AYNISI eklenir.
+  #
+  # AYRACIN TAM BİÇİMİ SAKLANIR (karakter + UZUNLUK).
+  #
+  # Eskiden ayraç `substr(..., 1L, 3L)` ile ÜÇ karaktere kırpılıyordu. Dört
+  # ters tırnakla (` ```` `) açılmış bir blok, içindeki sıradan üç ters tırnaklı
+  # satırla KAPANMIŞ sayılıyor; Markdown ise bloğu AÇIK kabul ediyordu. Eklenen
+  # tablo ve indirme bağlantıları yine kod bloğunun içinde kalıyordu.
+  #
+  # CommonMark kuralı: kapanış çiti AYNI karakteri kullanır, açılıştan KISA
+  # OLAMAZ ve satırda çitten başka (boşluk dışında) bir şey TAŞIYAMAZ. Bilgi
+  # dizesi (` ```python `) yalnızca AÇILIŞTA bulunabilir.
   satirlar <- strsplit(txt, "\n", fixed = TRUE)[[1]]
-  acik <- NA_character_
+  acik_kar <- NA_character_
+  acik_uzunluk <- NA_integer_
   for (satir in satirlar) {
-    eslesme <- regmatches(satir, regexpr("^\\s*(```+|~~~+)", satir, perl = TRUE))
+    eslesme <- regmatches(satir, regexpr("^\\s*(`{3,}|~{3,})", satir, perl = TRUE))
     if (!length(eslesme)) next
-    ayrac <- substr(trimws(eslesme[1]), 1L, 3L)
-    if (is.na(acik)) {
-      acik <- ayrac
-    } else if (identical(ayrac, acik)) {
-      # Aynı ayraçla kapanış. Farklı ayraç, açık blok İÇİNDE sıradan metindir.
-      acik <- NA_character_
+    ayrac <- trimws(eslesme[1])
+    kar <- substr(ayrac, 1L, 1L)
+    uzunluk <- nchar(ayrac, type = "chars")
+    if (is.na(acik_kar)) {
+      acik_kar <- kar
+      acik_uzunluk <- uzunluk
+      next
     }
+    # Farklı ayraç ya da kısa ayraç, açık blok İÇİNDE sıradan metindir.
+    if (!identical(kar, acik_kar) || uzunluk < acik_uzunluk) next
+    # Kapanış çiti bilgi dizesi taşıyamaz.
+    kalan <- sub("^\\s*(`{3,}|~{3,})\\s*$", "", satir, perl = TRUE)
+    if (nzchar(kalan)) next
+    acik_kar <- NA_character_
+    acik_uzunluk <- NA_integer_
   }
 
-  if (!is.na(acik)) txt <- paste0(txt, "\n", acik)
+  if (!is.na(acik_kar)) txt <- paste0(txt, "\n", strrep(acik_kar, acik_uzunluk))
 
   txt
 }

@@ -297,7 +297,11 @@ test_that("dar metin sütunlari SQL genisligiyle DEGIL R tabaniyla olculur", {
     c = list(type = "varchar", max_length = 1)
   ))
   expect_true(genislik$bounded)
-  expect_gte(genislik$bytes_per_row, 3 * 8)
+  # ATOMIK taban (8 bayt) DEGIL, KARAKTER tabani beklenir. `3 * 8` esigi,
+  # `pk_result_width_upper_bound()` dar metin sutunlarini yeniden atomik
+  # tabana dusurse bile GECERDI; bu durumda onbellek/tavan on kontrolu
+  # materyalizasyonda tavani asabilecek bir sonucu kabul ederdi.
+  expect_gte(genislik$bytes_per_row, 3L * .PK_R_CHAR_ELEMENT_BYTES)
   expect_true(genislik$bytes_per_row > 3)
 })
 

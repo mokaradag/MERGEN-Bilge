@@ -545,21 +545,22 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
         # yolu, SQL ya da iç uygulama ayrıntısı taşıyabilir; normal SQL hata
         # yolları bilerek genel metin döndürürken bu dal onları ATLIYORDU.
         # Ham metin SUNUCU LOG'una (redakte edilerek) yazılır.
+        # MESAJ SABİTTİR; `pk_safe_error_message()` burada UYGUN DEĞİLDİR: onun
+        # sözleşmesi "altyapı görünümlü metni genelleştir, aksi hâlde OLDUĞU
+        # GİBİ geçir"dir. Buradaki girdi ise KEYFİ bir istisnadır; ODBC'ye
+        # benzemeyen ama dosya yolu/iç ayrıntı taşıyan metin o süzgeçten
+        # DEĞİŞMEDEN geçerdi. Ayrıca `exists()` kapısı kararı ÇALIŞMA BAĞLAMINA
+        # bağlı kılıyordu (izole vs tam paket). Karar artık DETERMİNİSTİKtir.
         ham <- tryCatch(conditionMessage(e), error = function(x) "")
-        guvenli <- if (exists("pk_safe_error_message", mode = "function", inherits = TRUE)) {
-          tryCatch(pk_safe_error_message(ham), error = function(x) NULL)
-        } else {
-          NULL
-        }
-        if (!is.character(guvenli) || length(guvenli) != 1L || is.na(guvenli) ||
-            !nzchar(guvenli)) {
-          guvenli <- paste0(
-            "Bu analiz beklenmeyen bir hata nedeniyle tamamlanamadı; ",
-            "ayrıntı sunucu günlüğüne yazıldı."
-          )
-        }
-        kayit <- if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
-          tryCatch(redact_sensitive_text(ham), error = function(x) "(redaksiyon uygulanamadi)")
+        guvenli <- paste0(
+          "Bu analiz beklenmeyen bir hata nedeniyle tamamlanamadı; ",
+          "ayrıntı sunucu günlüğüne yazıldı."
+        )
+        # KALICI sunucu log'u: baglanti TANIMLAYICILARI (DSN/UID/Server) da
+        # maskelenir. Genel redaktor bunlari BILEREK korur, bu yuzden ona GERI
+        # DUSULMEZ; baglantiya ozgu redaktor yoksa tani metni YAZILMAZ.
+        kayit <- if (exists("redact_connection_identifiers", mode = "function", inherits = TRUE)) {
+          tryCatch(redact_connection_identifiers(ham), error = function(x) "(redaksiyon uygulanamadi)")
         } else {
           "(redaktor yuklenmedi)"
         }

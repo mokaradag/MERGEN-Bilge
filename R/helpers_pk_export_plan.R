@@ -307,7 +307,18 @@ pk_export_summary_sheet <- function(packet) {
   # tam-CSV yedeğine düşülmüyordu.
   if (inherits(bek, "integer64") || inherits(ger, "integer64")) {
     b <- trimws(as.character(bek))[dolu]
-    g <- trimws(as.character(ger))[dolu]
+    # GERİ OKUNAN SAYISAL DEĞER BİLİMSEL GÖSTERİMLE METNE ÇEVRİLMEZ.
+    #
+    # XLSX geri okuması `integer64` sütununu sıradan `double` olarak döndürür ve
+    # `as.character(1e15)` R'de `"1e+15"` üretir. Beklenen taraf `integer64`
+    # olduğu için `"1000000000000000"` metnini verir; iki taraf DEĞİŞMEMİŞ
+    # olmasına rağmen eşleşmez, doğrulama başarısız olur ve geçerli bir çalışma
+    # kitabı gereksiz yere CSV yedeğine düşerdi.
+    g <- if (is.numeric(ger) && !inherits(ger, "integer64")) {
+      trimws(format(ger[dolu], scientific = FALSE, trim = TRUE, digits = 22L))
+    } else {
+      trimws(as.character(ger))[dolu]
+    }
     # Elektronik tablo geri okuması ondalık kuyruk ekleyebilir ("42" -> "42.0").
     g <- sub("\\.0+$", "", g)
     b <- sub("\\.0+$", "", b)

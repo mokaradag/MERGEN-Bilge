@@ -1162,10 +1162,16 @@ test_that("başarısız ara kayıt SESSİZ geçmez", {
     FALSE
   }
 
-  kutuphane <- list(list(
-    id = "q705", name = "Sentetik", sql = "SELECT 1",
-    rls_columns = list(masraf_yeri_col = NULL)
-  ))
+  # IKI sorgu gerekir. Tek sorguyla, envanter ilk basarisiz ara kayittan HEMEN
+  # SONRA dursaydi bile geri cagri calisir ve iki uyari da basilirdi; test
+  # "devam ediliyor" iddiasini KANITLAMAZDI. Ikinci sorgunun KAYIT almasi
+  # devam etmenin dogrudan kanitidir.
+  kutuphane <- list(
+    list(id = "q705", name = "Sentetik-1", sql = "SELECT 1",
+         rls_columns = list(masraf_yeri_col = NULL)),
+    list(id = "q705b", name = "Sentetik-2", sql = "SELECT 2",
+         rls_columns = list(masraf_yeri_col = NULL))
+  )
 
   cikti <- utils::capture.output(
     sonuc <- pkg_meta_run_inventory(
@@ -1184,4 +1190,12 @@ test_that("başarısız ara kayıt SESSİZ geçmez", {
   expect_true(cagri$n >= 1L)
   expect_true(any(grepl("ARA KAYIT BASARISIZ", cikti, fixed = TRUE)))
   expect_true(any(grepl("DEVAM ETTIRILEMEZ", cikti, fixed = TRUE)))
+
+  # ILK ara kayit basarisiz olmasina RAGMEN envanter durmadi: ikinci sorgu da
+  # islendi ve KENDI kaydini aldi.
+  expect_equal(cagri$n, 2L)
+  kimlikler <- vapply(sonuc$records, function(k) as.character(k$query_id)[1],
+                      character(1))
+  expect_true(all(c("q705", "q705b") %in% kimlikler))
+  expect_true(any(grepl("q705b", cikti, fixed = TRUE)))
 })

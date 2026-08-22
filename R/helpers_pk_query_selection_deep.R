@@ -339,7 +339,20 @@ pk_deep_build_v2_packet_result <- function(filtered_data, secure_data, query,
   ad_alanli <- .pk_deep_namespace_facts(
     paket_yazi$text, pk_packet_all_facts(paket), query$id
   )
-  if (isTRUE(paket_yazi$over_budget)) {
+  # BÜTÇE AD ALANLAMA SONRASINDA YENİDEN ÖLÇÜLÜR.
+  #
+  # `pk_packet_render()` bütçeyi ad alanlamadan ÖNCEKİ metin üzerinde hesaplar.
+  # Her `[fact:...]` işaretine eklenen `slug_hash__` öneki metni BÜYÜTÜR; bütçe
+  # sınırına yakın ve çok işaretli bir paket, ölçülmüş `FALSE` değeriyle
+  # BÜTÇEYİ AŞMIŞ hâlde "başarılı" dönüyordu. Bütçe bilinmiyorsa (ör. sahte
+  # kurucu) eski karar korunur.
+  butce <- suppressWarnings(as.numeric(paket_yazi$budget %||% NA_real_)[1])
+  butce_asildi <- if (is.finite(butce)) {
+    nchar(ad_alanli$text, type = "chars") > butce
+  } else {
+    isTRUE(paket_yazi$over_budget)
+  }
+  if (isTRUE(paket_yazi$over_budget) || isTRUE(butce_asildi)) {
     return(finish_result(
       list(query_name = query_name, success = FALSE,
            error_msg = paste0("Kanonik v2 analiz paketi güvenli istem bütçesine sığmadı; ",
@@ -371,6 +384,32 @@ pk_deep_build_v2_packet_result <- function(filtered_data, secure_data, query,
   )
 }
 
+#' Kısaltılmamış sorgu kimliği için deterministik ASCII sağlama
+#'
+#' `pk_fact_slug()` normalleştirir VE keser; bu yüzden tek başına bir ad alanı
+#' anahtarı olamaz. Buradaki polinom karma dış bağımlılık kullanmaz, yerelden
+#' bağımsızdır ve sonuç 8 haneli sabit ASCII hex'tir (olgu kimliği jetonu
+#' `[A-Za-z0-9_.]` alfabesinde kalır). Kriptografik DEĞİLDİR; amaç yalnızca
+#' kaza eseri çarpışmayı ayırmaktır.
+.pk_deep_id_checksum <- function(x) {
+  ham <- enc2utf8(as.character(x %||% "")[1])
+  if (is.na(ham) || !nzchar(ham)) return("00000000")
+  baytlar <- as.integer(charToRaw(ham))
+  # `h` bir double'dır; en büyük ara değer ~5.6e11 olup 2^53 tam sayı
+  # kesinliğinin çok altındadır, taşma olmaz.
+  m <- 4294967291  # 2^32'den küçük en büyük asal
+  h <- 2166136261
+  for (b in baytlar) h <- (h * 131 + b) %% m
+  haneler <- c(as.character(0:9), letters[1:6])
+  out <- character(8L)
+  v <- h
+  for (i in 8:1) {
+    out[i] <- haneler[(v %% 16) + 1L]
+    v <- v %/% 16
+  }
+  paste0(out, collapse = "")
+}
+
 #' Bir v2 paketinin olgu kimliklerini SORGUYA göre ad alanına al
 #'
 #' Basılan `[fact:...]` işaretleri ile toplanan olgu kayıtları AYNI dönüşümden
@@ -389,10 +428,25 @@ pk_deep_build_v2_packet_result <- function(filtered_data, secure_data, query,
   slug <- as.character(slug %||% "")[1]
   if (is.na(slug) || !nzchar(slug)) return(list(text = metin, facts = olgular))
 
-  onek <- paste0(slug, "__")
+  # AD ALANI ÇARPIŞMAYA DAYANIKLI OLMALIDIR.
+  #
+  # `pk_fact_slug()` ASCII dışını `_` yapar ve 60 karakterde KESER. Bu yüzden
+  # `A-B` ile `A B`, ya da ilk 60 karakteri aynı olan iki sorgu kimliği AYNI
+  # slug'ı üretir. İki sorgu aynı olgu kimliğini yayarsa ad alanlı kimlikler de
+  # çakışır, `pk_facts_index()` kimliği `ambiguous_fact_id` işaretler ve DOĞRU
+  # bir sayısal ifade reddedilir/bloklanır. KISALTILMAMIŞ kimliğin sağlaması
+  # eklenerek bu çarpışma kapatılır.
+  onek <- paste0(slug, "_", .pk_deep_id_checksum(query_id), "__")
 
   yeni_olgular <- lapply(olgular, function(olgu) {
-    if (!is.list(olgu) || !is.character(olgu$fact_id) || !nzchar(olgu$fact_id)) return(olgu)
+    # `NA_character_` bir olgu kimliği `!nzchar(NA)` -> `NA` üretir ve
+    # `if (... || NA)` HATA fırlatırdı: tamamlanmış bir sorgu, sonuç
+    # birleştirme sırasında çöküyordu.
+    if (!is.list(olgu) || !is.character(olgu$fact_id) ||
+        length(olgu$fact_id) != 1L || is.na(olgu$fact_id) ||
+        !nzchar(olgu$fact_id)) {
+      return(olgu)
+    }
     olgu$fact_id <- paste0(onek, olgu$fact_id)
     olgu
   })

@@ -297,8 +297,24 @@ pk_apply_smart_filters_v2 <- function(data, filter_instructions, query = NULL) {
       # gerçek bir sıfır görür. Paket istatistiği sözleşmesi (`PK_FACT_NO_FINITE`)
       # sonlu gözlemi olmayan ölçüyü KULLANILAMAZ sayar; bu yol da aynı
       # sözleşmeye uyar ve `NA` bildirir.
+      #
+      # `integer64` SÜTUNU `as.numeric()` İLE ÇEVRİLMEZ.
+      #
+      # `bit64::integer64` bir double içinde saklanır; `is.numeric()` TRUE
+      # döner, bu yüzden sütun buraya kadar gelir. Ama `as.numeric()` 2^53
+      # üstündeki her değeri en yakın temsil edilebilir double'a YUVARLAR
+      # (`9007199254740993` -> `9007199254740992`) ve toplam SESSİZCE yanlış
+      # çıkar. `integer64` tipinde `Inf`/`NaN` yoktur; geçerlilik ölçütü
+      # yalnızca `is.na()`'dır ve `sum()` bit64'ün kendi yöntemine dağıtılarak
+      # kesinliği korur.
       toplamlar <- lapply(toplanabilir, function(nc) {
-        ham <- suppressWarnings(as.numeric(filtrelenmis[[nc]]))
+        sut <- filtrelenmis[[nc]]
+        if (inherits(sut, "integer64")) {
+          gecerli <- sut[!is.na(sut)]
+          if (!length(gecerli)) return(NA_real_)
+          return(sum(gecerli))
+        }
+        ham <- suppressWarnings(as.numeric(sut))
         sonlu <- ham[!is.na(ham) & is.finite(ham)]
         if (!length(sonlu)) return(NA_real_)
         sum(sonlu)

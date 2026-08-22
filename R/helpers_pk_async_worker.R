@@ -310,11 +310,9 @@ PK_ASYNC_GENERIC_ERROR_MESSAGE <- "Analiz sirasinda beklenmeyen bir hata olustu.
   # BILEREK korur (kullanici adi tek basina sir degildir). Burada metin KALICI
   # sunucu log'una yazilir ve depo sozlesmesi ozel DSN'lerin log'lanmasini
   # ACIKCA yasaklar; bu alanlar iç altyapiyi yeniden kurmaya yeter.
+  # GENEL REDAKTORE GERI DUSULMEZ: `redact_sensitive_text()` tam da yukarida sayilan alanlari KORUR; geri dusmek bu korumayi tamamen kaldirirdi.
   if (exists("redact_connection_identifiers", mode = "function", inherits = TRUE)) {
     ham <- tryCatch(redact_connection_identifiers(ham),
-                    error = function(e) "[redaksiyon basarisiz - ham metin gizlendi]")
-  } else if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
-    ham <- tryCatch(redact_sensitive_text(ham),
                     error = function(e) "[redaksiyon basarisiz - ham metin gizlendi]")
   } else {
     # KAPALI BASARISIZ: redaktor hic yuklenmemisse ham metin LOG'A YAZILMAZ.
@@ -339,10 +337,12 @@ PK_ASYNC_GENERIC_ERROR_MESSAGE <- "Analiz sirasinda beklenmeyen bir hata olustu.
 
   # D22 sözleşmesi korunur: DB/sürücü kaynaklı hatalar kullanıcıya "teknik bir
   # hata" olarak bildirilir (ham DSN/nanodbc/SQLSTATE metni ASLA taşınmaz).
-  altyapi <- c("nanodbc", "SQLSTATE", "DSN=", "ODBC", "Driver", "sp_executesql",
-               "TCP Provider", "SQL Server")
+  # IMZA ESLESMESI BUYUK/KUCUK HARFTEN BAGIMSIZDIR (`dsn=`, `odbc`, `sqlstate`). Katlama YEREL `chartr()` iledir: `tolower()` Turkce yerelde `I` -> noktasiz `i` uretir, `pk_ascii_lower()` ise iscide yuklu olmayabilir.
+  .AZ <- "ABCDEFGHIJKLMNOPQRSTUVWXYZ"; .az <- "abcdefghijklmnopqrstuvwxyz"
+  ham_duz <- chartr(.AZ, .az, ham); redakte_duz <- chartr(.AZ, .az, redakte)
+  altyapi <- chartr(.AZ, .az, c("nanodbc", "SQLSTATE", "DSN=", "ODBC", "Driver", "sp_executesql", "TCP Provider", "SQL Server"))
   if (any(vapply(altyapi, function(p) {
-        grepl(p, ham, fixed = TRUE) || grepl(p, redakte, fixed = TRUE)
+        grepl(p, ham_duz, fixed = TRUE) || grepl(p, redakte_duz, fixed = TRUE)
       }, logical(1)))) {
     return("Veritabani erisiminde teknik bir hata olustu.")
   }

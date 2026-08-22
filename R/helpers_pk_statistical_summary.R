@@ -42,9 +42,18 @@
   bilgi <- .pk_stat_meta_role(column_meta, col)
   if (!is.null(bilgi)) {
     if (!identical(bilgi$role, "measure")) return(FALSE)
-    # Küratörlü metadata sütunu AÇIKÇA toplanamaz diyorsa toplam üretilmez.
-    if (is.logical(bilgi$additive) && length(bilgi$additive) == 1L &&
-        !is.na(bilgi$additive) && !isTRUE(bilgi$additive)) {
+    # TOPLANABİLİRLİK AÇIKÇA `TRUE` OLMALIDIR.
+    #
+    # Eksik/`NA`/mantıksal olmayan/vektör bir `additive` değeri "toplanabilir"
+    # DEĞİL, "toplulaştırma sözleşmesi BİLİNMİYOR" demektir. Eskiden bu durum
+    # `TRUE` sayılıyordu ve oran, yüzde, anlık bakiye gibi bir ölçü için
+    # toplam/ortalama üretiliyordu; model bu sayıyı gerçek bir ölçü gibi
+    # aktarır. Bu, `is.numeric()` yerine metadata koymanın TAM OLARAK önlemek
+    # istediği hatadır. Metadata HİÇ yoksa davranış değişmez (aşağıdaki
+    # yapısal kimlik dışlaması); değişen yalnızca "metadata var ama eksik"
+    # hâlidir ve o hâlde karar KAPALI BAŞARISIZdır.
+    if (!(is.logical(bilgi$additive) && length(bilgi$additive) == 1L &&
+          isTRUE(bilgi$additive))) {
       return(FALSE)
     }
     return(TRUE)
@@ -312,7 +321,13 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
     }
     # Eğer hala büyükse, sadece temel özet gönder
     basic_summary <- sprintf("TOPLAM SATIR: %d | TOPLAM SUTUN: %d", total_rows, total_cols)
-    if (pk_v2 && isTRUE(user_filter_applied) && !is.null(rls_total_rows) &&
+    # FİLTRELEME UYARISI MOTOR BAYRAĞINA BAĞLI DEĞİLDİR.
+    #
+    # Ana özet yolunda (yukarıda) bu uyarı `pk_v2` koşulu OLMADAN üretilir.
+    # Terminal geri düşmede `pk_v2 &&` koşulu vardı: v1'de `mode = "full"`
+    # bir istek önizleme kırpması beş satıra indikten sonra buraya düşünce,
+    # yanıt FİLTRELENMİŞ bir alt kümeyi anlatıp kapsam uyarısını KAYBEDİYORDU.
+    if (isTRUE(user_filter_applied) && !is.null(rls_total_rows) &&
         rls_total_rows > total_rows) {
       basic_summary <- paste0(
         basic_summary,

@@ -376,13 +376,13 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
     # Muhafazakâr tepe tahmini: birikmiş baytlar + BİR ÖNCEKİ parçanın boyutu
     # (bilinmiyorsa birikmiş toplam). Tavanın YARISINI aşan bir tepe beklentisi
     # varsa getirim BAŞLATILMAZ ve tipli `too_large` döner.
-    if (parca_sayisi > 0L) {
-      beklenen_tepe <- toplam_bayt + son_parca_bayt
-      if (beklenen_tepe > (tavan_mb * .PK_RESULT_MB)) {
-        rm(parcalar)
-        return(bos("too_large", error = "projected_peak_exceeds_ceiling",
-                   chunks = parca_sayisi, timeout_mechanism = mekanizma))
-      }
+    # Sonuc TAMAMLANDIYSA projeksiyon anlamsizdir: sonraki getirim SIFIR satirdir. Cevap alinamiyorsa karar ESKISI GIBI reddetmektir (kapali basarisiz).
+    if (parca_sayisi > 0L &&
+        (toplam_bayt + son_parca_bayt) > (tavan_mb * .PK_RESULT_MB) &&
+        !isTRUE(suppressWarnings(try(DBI::dbHasCompleted(res), silent = TRUE)))) {
+      rm(parcalar)
+      return(bos("too_large", error = "projected_peak_exceeds_ceiling",
+                 chunks = parca_sayisi, timeout_mechanism = mekanizma))
     }
 
     getirim <- bloklayan(function() DBI::dbFetch(res, n = parca_satir))
