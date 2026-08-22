@@ -463,7 +463,22 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
 
   filters <- filter_instructions$filters
   aggregation <- filter_instructions$aggregation
-  group_col <- filter_instructions$group_column
+  # GRUPLAMA SÜTUNU TEK BİR KARAKTER DEĞERE İNDİRGENİR.
+  #
+  # `simplifyVector = FALSE` ile ayrıştırılan model çıktısında birden çok grup
+  # sütunu LİSTE olarak gelir. `group_col %in% names(dt)` o zaman uzunluğu
+  # birden büyük bir vektör üretir ve R 4.3+ `&&` içinde HATA fırlatır; ayrıca
+  # `by =` argümanına liste geçmek data.table tarafında tanımsız davranıştır.
+  # `helpers_pk_analysis_filters.R` içindeki gövdeyle AYNI olmalıdır.
+  group_col <- local({
+    ham <- filter_instructions$group_column
+    if (is.null(ham)) return(NULL)
+    duz <- unlist(ham, use.names = FALSE)
+    duz <- as.character(duz)
+    duz <- duz[!is.na(duz) & nzchar(trimws(duz))]
+    if (!length(duz)) return(NULL)
+    trimws(duz[1])
+  })
 
   genel_soru_kaliplari <- c(
     "kaç", "toplam", "sayı", "adet", "hangi", "dağılım", "özet",
@@ -530,26 +545,24 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
         if (!is.null(col) && nzchar(as.character(col)[1]) && col %in% names(dt)) {
           col_vals <- dt[[col]]
 
-          # ÇOK DEĞERLİ YAPRAK (aynı sütun içi VEYA). Yukarıdaki istem
-          # modelden `value` alanını DİZİ vermesini ister ve doğrulayıcı
-          # diziyi KORUR; `as.character(val)[1]` ise sessizce ilk değeri
-          # alıp kullanıcının sorduğu VEYA'yı düşürüyordu. Karşılaştırma
-          # operatörleri (`greater_than`/`less_than`) tek değerli kalır.
-          val_flat <- as.character(unlist(val, use.names = FALSE))
-          val_flat <- val_flat[!is.na(val_flat)]
-          if (length(val_flat) == 0L) val_flat <- ""
-          val_str <- val_flat[1]
+          # v1 ÇOK DEĞERLİ YAPRAĞI BİLİNÇLİ OLARAK KIRPAR. Aynı sütun içi VEYA
+          # v2 motorunun (`helpers_pk_filter_compile.R`) sözleşmesidir; v1 geri
+          # dönüş şeridi olduğu için davranışı BİT BAZINDA sabit kalmalıdır
+          # (`test-pk-v1-compatibility-contract.R` D2 bunu kilitler).
+          # `helpers_pk_analysis_filters.R` içindeki gövdeyle AYNI olmalıdır.
+          val_str <- as.character(val)[1]
 
           if (is.character(col_vals) || is.factor(col_vals)) {
+            val_regex <- gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\\1", val_str)
             col_vals_char <- as.character(col_vals)
-            val_regex <- gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\\1", val_flat)
 
-            if (op == "contains") {
-              desen <- paste0("(", paste(val_regex, collapse = "|"), ")")
+            if (op == "exact_match") {
+              dt <- dt[grepl(paste0("^", val_regex, "$"), col_vals_char, ignore.case = TRUE), ]
+            } else if (op == "contains") {
+              dt <- dt[grepl(val_regex, col_vals_char, ignore.case = TRUE), ]
             } else {
-              desen <- paste0("^(", paste(val_regex, collapse = "|"), ")$")
+              dt <- dt[grepl(paste0("^", val_regex, "$"), col_vals_char, ignore.case = TRUE), ]
             }
-            dt <- dt[grepl(desen, col_vals_char, ignore.case = TRUE), ]
           } else if (is.numeric(col_vals)) {
             val_num <- suppressWarnings(as.numeric(val_str))
             if (!is.na(val_num)) {
@@ -558,9 +571,7 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
               } else if (op == "less_than") {
                 dt <- dt[col_vals < val_num, ]
               } else {
-                val_nums <- suppressWarnings(as.numeric(val_flat))
-                val_nums <- val_nums[!is.na(val_nums)]
-                dt <- dt[col_vals %in% val_nums, ]
+                dt <- dt[col_vals == val_num, ]
               }
             }
           }

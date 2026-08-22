@@ -80,17 +80,28 @@ resolve_pk_analysis_username <- function(session, fallback = "Unknown") {
 #' `authorized` dalına GİRMEDEN ÖNCE bunu kullanır: bir Durdur/son tarih
 #' "kullanıcı kaydınız bulunamadı" diye raporlanmamalıdır.
 pk_rls_halt_message <- function(rls_info) {
-  if (exists("pk_active_stage_halt", mode = "function", inherits = TRUE)) {
-    durum <- tryCatch(getOption("mergen.pk.async.deadline_at", NULL), error = function(e) NULL)
-    if (!is.null(durum) && exists("pk_deadline_expired", mode = "function", inherits = TRUE) &&
-        isTRUE(tryCatch(pk_deadline_expired(durum), error = function(e) FALSE)) &&
-        exists("pk_async_halt_message", mode = "function", inherits = TRUE)) {
-      return(pk_async_halt_message("deadline"))
-    }
-  }
-  if (exists("pk_async_halt_message", mode = "function", inherits = TRUE)) {
-    return(pk_async_halt_message("cancelled"))
-  }
+  mesaj_var <- exists("pk_async_halt_message", mode = "function", inherits = TRUE)
+
+  # SON TARİH KARARI AŞAMA KAPISI YARDIMCISINA BAĞLI DEĞİLDİR. `pk_active_stage_halt`
+  # bu kararla ilgisizdir; yüklenmediğinde son tarih dalı hiç çalışmıyor ve
+  # zaman aşımı "isteği siz durdurdunuz" diye raporlanıyordu.
+  durum <- tryCatch(getOption("mergen.pk.async.deadline_at", NULL), error = function(e) NULL)
+  son_tarih_doldu <- !is.null(durum) &&
+    exists("pk_deadline_expired", mode = "function", inherits = TRUE) &&
+    isTRUE(tryCatch(pk_deadline_expired(durum), error = function(e) FALSE))
+  if (son_tarih_doldu && mesaj_var) return(pk_async_halt_message("deadline"))
+
+  # GEÇEN SÜRE BÜTÇESİ de zaman aşımıdır. `.pk_rls_bounded_query()`
+  # `.db_with_elapsed_budget()` üzerinden durabilir ve bu, sınırlı senkron
+  # yolda `mergen.pk.async.deadline_at` HİÇ AYARLANMADAN olabilir. Kullanıcı
+  # gerçekten iptal jetonunu tetiklemediyse "iptal ettiniz" metni yanlıştır.
+  jeton <- tryCatch(getOption("mergen.pk.async.cancel_token", NULL), error = function(e) NULL)
+  kullanici_iptali <- !is.null(jeton) &&
+    exists("pk_cancel_token_is_signalled", mode = "function", inherits = TRUE) &&
+    isTRUE(tryCatch(pk_cancel_token_is_signalled(jeton), error = function(e) FALSE))
+  if (!kullanici_iptali && mesaj_var) return(pk_async_halt_message("deadline"))
+
+  if (mesaj_var) return(pk_async_halt_message("cancelled"))
   as.character(rls_info$reason %||%
     "\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz tamamlanamadı.")[1]
 }

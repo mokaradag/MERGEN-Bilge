@@ -129,8 +129,6 @@
     list(type = "pk_stopped",
          pk_halt_status = as.character(status %||% halt_durumu() %||% "cancelled")[1])
   }
-  iptal <- iptal_sonucu()
-
   meta <- .pk_result_meta(query)
   etkin_filtreler <- .pk_result_effective_filters(policy, filter_criteria)
 
@@ -212,7 +210,12 @@
     nchar(kuyruk_talimati, type = "chars") +
     nchar(as.character(ifsa %||% ""), type = "chars")
 
-  if (durduruldu()) return(iptal)
+  # SON TARİH de bu kapılarda gözlenir. `durduruldu()` yalnızca kullanıcı
+  # Stop'unu okur; paket kurulduktan sonra süresi dolan bir istek aksi hâlde
+  # kompozisyona ve dışa aktarım işine DEVAM ederdi. Tipli durum da giriş
+  # anındaki `iptal` yerine O ANKİ kapıdan alınır.
+  durum <- halt_durumu()
+  if (!is.null(durum)) return(iptal_sonucu(durum))
 
   yazi <- pk_packet_render(paket, budget = .pk_result_packet_budget(sabit_yuk, meta),
                            query_meta = meta)
@@ -251,7 +254,12 @@
 
   karar <- pk_compose_decide(nrow(filtered_data), ncol(filtered_data), user_prompt, meta)
 
-  if (durduruldu()) return(iptal)
+  # SON TARİH de bu kapılarda gözlenir. `durduruldu()` yalnızca kullanıcı
+  # Stop'unu okur; paket kurulduktan sonra süresi dolan bir istek aksi hâlde
+  # kompozisyona ve dışa aktarım işine DEVAM ederdi. Tipli durum da giriş
+  # anındaki `iptal` yerine O ANKİ kapıdan alınır.
+  durum <- halt_durumu()
+  if (!is.null(durum)) return(iptal_sonucu(durum))
 
   artefakt <- NULL
   if (!identical(karar$mode, "inline_table")) {
@@ -283,7 +291,12 @@
     artefakt <- tryCatch(pk_export_serve(session, artefakt), error = function(e) artefakt)
   }
 
-  if (durduruldu()) return(iptal)
+  # SON TARİH de bu kapılarda gözlenir. `durduruldu()` yalnızca kullanıcı
+  # Stop'unu okur; paket kurulduktan sonra süresi dolan bir istek aksi hâlde
+  # kompozisyona ve dışa aktarım işine DEVAM ederdi. Tipli durum da giriş
+  # anındaki `iptal` yerine O ANKİ kapıdan alınır.
+  durum <- halt_durumu()
+  if (!is.null(durum)) return(iptal_sonucu(durum))
 
   blok <- paste0(pk_compose_block(karar, filtered_data, artefakt, meta, meta),
                  pk_compose_reference_links(query))

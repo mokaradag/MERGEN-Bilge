@@ -139,7 +139,12 @@
     tz <- if (is.character(tz) && length(tz) >= 1L && !is.na(tz[1]) && nzchar(tz[1])) {
       tz[1]
     } else {
-      Sys.timezone() %||% "UTC"
+      # `Sys.timezone()` platform saat dilimi çözülemediğinde `NA_character_`
+      # döner; depo `%||%` yalnızca `is.null()` denetler, dolayısıyla NA
+      # geçip `as.Date(..., tz = NA)` "invalid 'tz' value" hatası verirdi.
+      yerel <- tryCatch(Sys.timezone(), error = function(e) NA_character_)
+      if (is.character(yerel) && length(yerel) == 1L &&
+          !is.na(yerel) && nzchar(yerel)) yerel else "UTC"
     }
     return(as.Date(values, tz = tz))
   }
