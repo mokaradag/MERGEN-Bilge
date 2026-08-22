@@ -212,9 +212,10 @@ pk_filter_zero_match_policy <- function(data, filters, compiled, query = NULL) {
   for (grup in sifir_gruplar) {
     if (!is.null(birincil) && identical(grup$column, birincil)) {
       degerler <- unlist(lapply(grup$applied, function(l) l$values), use.names = FALSE)
-      sonuc$action <- "refuse"
-      sonuc$refusal_message <- .pk_policy_zero_match_message(grup$column, degerler)
-      return(sonuc)
+      # RED HER YOLDA MASKEYİ KAPATIR. Elle `action` yazmak `mask` alanını
+      # `compiled$mask` olarak bırakıyordu; `action` denetlemeyen bir tüketici
+      # o maskeyle TÜM yetkili kümeyi analiz ederdi.
+      return(reddet(.pk_policy_zero_match_message(grup$column, degerler), birincil))
     }
   }
 
@@ -241,11 +242,10 @@ pk_filter_zero_match_policy <- function(data, filters, compiled, query = NULL) {
       }),
       use.names = FALSE
     )
-    sonuc$action <- "refuse"
-    sonuc$refusal_message <- .pk_policy_zero_match_message(
+    # RED HER YOLDA MASKEYİ KAPATIR (yukarıdaki 1) dalıyla aynı gerekçe).
+    return(reddet(.pk_policy_zero_match_message(
       paste(unique(dusurulen), collapse = "` / `"), degerler
-    )
-    return(sonuc)
+    ), NULL))
   }
 
   # 2) Yalnızca ikincil sütunlarda sıfır eşleşme -> düşür, ifşa et, devam et.

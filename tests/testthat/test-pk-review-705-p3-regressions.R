@@ -222,3 +222,76 @@ test_that("kapsayıcı üst sınır YAZ SAATİ geçiş gününde günün tamamı
     FALSE
   )
 })
+
+test_that("büyük satır sayıları alt bilgi kurulumunu düşürmez", {
+  ortam <- .p3_705_source("helpers_pk_provenance_peek.R", "helpers_pk_provenance.R")
+
+  # 2147483647'nin üzerinde `as.integer()` NA + uyarı üretiyor, ardından
+  # `if (NA < 0L)` "missing value where TRUE/FALSE needed" hatası veriyordu.
+  expect_identical(ortam$.pk_format_count(3e9), "3.000.000.000")
+  expect_identical(ortam$.pk_format_count(1234567), "1.234.567")
+  expect_identical(ortam$.pk_format_count(-4567), "-4.567")
+  expect_identical(ortam$.pk_format_count(0), "0")
+  expect_identical(ortam$.pk_format_count(NA), "?")
+
+  # Uyarı üretilmez (katı test paketi uyarıyı hata sayar).
+  expect_silent(ortam$.pk_format_count(5e10))
+})
+
+test_that("her red yolu maskeyi kapatır", {
+  ortam <- .p3_705_source("helpers_pk_ascii_tokens.R", "helpers_pk_filter_policy.R")
+
+  veri <- data.frame(ProjeAdi = c("ANKA", "ALTAY"), Yil = c(2024, 2024),
+                     stringsAsFactors = FALSE)
+
+  # Birincil varlık BİLİNMİYOR ve uygulanan filtre sıfır eşleşti -> RED.
+  derlenmis <- list(
+    ok = TRUE, all_dropped = FALSE, mask = c(TRUE, TRUE), dropped = list(),
+    groups = list(list(column = "ProjeAdi", zero_match = TRUE,
+                       applied = list(list(values = "YOKPROJE"))))
+  )
+
+  sonuc <- ortam$pk_filter_zero_match_policy(veri, list(), derlenmis, query = NULL)
+  expect_identical(sonuc$action, "refuse")
+  # `action` denetlemeyen bir tüketici maskeyle TÜM yetkili kümeyi analiz
+  # ederdi; maske reddin kendisiyle tutarlı olmalıdır.
+  expect_identical(sonuc$mask, c(FALSE, FALSE))
+})
+
+test_that("varyant doğrulaması tek sebep için tek bulgu üretir", {
+  ortam <- .p3_705_source(
+    "helpers_pk_config.R", "helpers_pk_text_turkish.R",
+    "helpers_pk_query_meta_schema.R", "helpers_pk_query_meta_access.R",
+    "helpers_pk_query_meta_layers.R", "helpers_pk_query_meta.R"
+  )
+
+  kayit <- list("labor.remaining_hours" = list(role = "measure", unit = "saat"))
+  meta <- list(entity = "project", column_meta = list(
+    A = list(label = "A", role = "measure", capability = "labor.remaining_hours",
+             unit = "saat", additive = TRUE),
+    B = list(label = "B", role = "measure", capability = "labor.remaining_hours",
+             unit = "saat", additive = TRUE)
+  ))
+
+  # 1) Birden çok sahip, varyant beyanı YOK.
+  cok_sahip <- ortam$pk_meta_validate_query("q", meta, kayit)
+  expect_length(cok_sahip, 1L)
+  expect_true(any(grepl("birden fazla sutunda", cok_sahip, fixed = TRUE)))
+
+  # 2) Geçersiz `prefer`: TEK bulgu (eskiden iki bulgu üretiyordu).
+  gecersiz <- meta
+  gecersiz$capability_variants <- list("labor.remaining_hours" = list(prefer = "YOK"))
+  hatalar <- ortam$pk_meta_validate_query("q", gecersiz, kayit)
+  expect_length(hatalar, 1L)
+  expect_true(any(grepl("$prefer", hatalar, fixed = TRUE)))
+
+  # 3) Varyant liste değil: TEK bulgu.
+  liste_degil <- meta
+  liste_degil$capability_variants <- list("labor.remaining_hours" = "metin")
+  expect_length(ortam$pk_meta_validate_query("q", liste_degil, kayit), 1L)
+
+  # 4) Geçerli beyan: hiç bulgu yok.
+  gecerli <- meta
+  gecerli$capability_variants <- list("labor.remaining_hours" = list(prefer = "A"))
+  expect_length(ortam$pk_meta_validate_query("q", gecerli, kayit), 0L)
+})

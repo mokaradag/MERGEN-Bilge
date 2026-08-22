@@ -293,20 +293,21 @@ pk_meta_validate_query <- function(query_id, meta, registry = NULL) {
     varyant <- varyantlar[[cap]]
     tercih <- if (is.list(varyant)) varyant$prefer else NULL
 
+    # TEK SEBEP, TEK BULGU. Bu üç dal eskiden aynı yapılandırma hatası için
+    # birden fazla bulgu üretebiliyordu (ör. birden çok sahip + geçersiz
+    # `prefer` -> iki bulgu); başlangıç raporundaki sayım ayrı sorun sayısını
+    # olduğundan fazla gösterirdi. Dallar artık BİRBİRİNİ DIŞLAR.
+    tercih_gecerli <- .pk_meta_is_scalar_text(tercih) && tercih %in% sahipler
+
     if (!is.null(varyant) && !is.list(varyant)) {
       hatalar <- c(hatalar, .pk_meta_err(query_id, sprintf(
         "capability_variants[['%s']] liste olmalidir.", cap
       )))
-    }
-
-    if (!is.null(varyant) && (!.pk_meta_is_scalar_text(tercih) || !(tercih %in% sahipler))) {
+    } else if (!is.null(varyant) && !tercih_gecerli) {
       hatalar <- c(hatalar, .pk_meta_err(query_id, sprintf(
         "capability_variants[['%s']]$prefer bu capability'yi tasiyan bir sutun olmalidir.", cap
       )))
-    }
-
-    if (length(sahipler) > 1L &&
-        (!.pk_meta_is_scalar_text(tercih) || !(tercih %in% sahipler))) {
+    } else if (is.null(varyant) && length(sahipler) > 1L) {
       hatalar <- c(hatalar, .pk_meta_err(query_id, sprintf(
         paste0(
           "capability '%s' ayni sorguda birden fazla sutunda: %s. ",

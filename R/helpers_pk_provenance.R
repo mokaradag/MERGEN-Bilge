@@ -92,10 +92,16 @@ pk_degradations_from_filter_status <- function(status) {
   # paketi uyarıyı hata sayar) ve davranışları getOption("OutDec") yerel
   # ayarına bağlıdır. Bu biçimde çıktı yerelden bağımsızdır ve bilimsel
   # gösterim hiçbir koşulda oluşmaz (§5.7 / D19).
-  x <- as.integer(round(num))
-  grouped <- gsub("(?<=[0-9])(?=([0-9]{3})+$)", ".", as.character(abs(x)), perl = TRUE)
+  # TAMSAYIYA ÇEVİRME YAPILMAZ. 2147483647'den büyük bir sayım `as.integer()`
+  # içinde `NA_integer_` + uyarı üretir; ardından `if (NA < 0L)` "missing value
+  # where TRUE/FALSE needed" hatası verir. `pk_build_provenance_footer()` bu
+  # yolu tryCatch olmadan çağırdığı için BÜYÜK bir satır sayısı TÜM alt bilgi
+  # kurulumunu düşürürdü. Değer yalnızca biçimlendirilir; tamsayı gerekmez.
+  x <- round(num)
+  duz <- sprintf("%.0f", abs(x))
+  grouped <- gsub("(?<=[0-9])(?=([0-9]{3})+$)", ".", duz, perl = TRUE)
 
-  if (x < 0L) paste0("-", grouped) else grouped
+  if (x < 0) paste0("-", grouped) else grouped
 }
 
 # Alt bilgiye giren serbest metinleri (LLM/kullanıcı kaynaklı filtre değerleri
