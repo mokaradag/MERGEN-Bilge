@@ -51,7 +51,7 @@ mergen_pk_analysis_execute <- function(ctx) {
   # bkz. `mergen_pk_prepare_async_request()`. Burada ÖN kayıt yapmak, hazırlık
   # iptal olduğunda (kimlik hazır değil, anlık görüntü güvensiz) hiçbir yolun
   # temizlemediği bayat bir sahiplik bırakırdı.
-  hazirlik <- mergen_pk_prepare_async_request(ctx)
+  hazirlik <- mergen_pk_prepare_async_request(ctx, started_at = istek_baslangici)
   if (!isTRUE(hazirlik$ok)) {
     if (isTRUE(hazirlik$fallback_sync)) {
       # ASENKRON NİYETİ AÇIKTI: senkron yola düşülse bile Faz 6 sınırları
@@ -289,6 +289,20 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
     gecikme <- max(1, pk_deadline_remaining_sec(son_tarih_ani) + 3)
     bekci_iptal <- try(later::later(function() {
       if (isTRUE(request_done)) return(invisible(NULL))
+
+      # BEKÇİ DE PROMISE GERİ ÇAĞRILARIYLA AYNI KORUMADAN GEÇER: takılı bir
+      # işçide `request_done` FALSE kalır, bu yüzden terk edilmiş/bayat bir
+      # istek ESKİ son tarihte BAŞKA bir sohbetin arayüzünü bozabiliyordu.
+      # Durum temizliği yine yapılır; ARAYÜZ yalnızca istek hâlâ bizimse.
+      terk <- isTRUE(try(mergen_pk_request_abandoned(oturum, req_id), silent = TRUE))
+      aktif_id <- try(shiny::isolate(ctx$active_request_id()), silent = TRUE)
+      if (inherits(aktif_id, "try-error")) aktif_id <- NULL
+      karar_bekci <- pk_async_should_apply(aktif_id, req_id, stopped = terk)
+      ayni_chat_bekci <- identical(mergen_pk_chat_identity(oturum, ctx$values),
+                                   kaynak_chat_key)
+      arayuz_bizim <- isTRUE(karar_bekci$apply) && isTRUE(ayni_chat_bekci) &&
+        isTRUE(mergen_pk_session_open(oturum))
+
       log_warn("[PK_ASYNC] Mutlak son tarih asildi; istek terk ediliyor (isci yaniti beklenmiyor).")
       try(pk_cancel_token_signal(cancel_token), silent = TRUE)
       # Geç gelen işçi sonucu UYGULANAMAZ.
@@ -301,11 +315,11 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
       # gecikmeli olarak temizlenir; aksi hâlde `.flag` sızıntısı olurdu.
       try(later::later(function() try(pk_cancel_token_clear(cancel_token), silent = TRUE),
                        delay = 300), silent = TRUE)
-      try(shiny::isolate({
-        if (!isTRUE(mergen_pk_session_open(oturum))) return(invisible(NULL))
-        ctx$cleanup_send_message()
-        ctx$add_message_fn(mergen_pk_worker_outcome_text("deadline"), "ai")
-      }), silent = TRUE)
+      if (isTRUE(arayuz_bizim)) {
+        try(shiny::isolate({ ctx$cleanup_send_message()
+          ctx$add_message_fn(mergen_pk_worker_outcome_text("deadline"), "ai") }), silent = TRUE)
+      } else if (isTRUE(karar_bekci$apply) && !isTRUE(ayni_chat_bekci)) {  # SOHBET DEGISTI, istek kimligi HALA BU ISTEK: `koruma_gecti()` bunu temizler, bekci temizlemiyordu; yeni sohbet eski istegin gonderim kilidinde TAKILI kaliyordu. Mesaj EKLENMEZ.
+        try(shiny::isolate(ctx$cleanup_send_message()), silent = TRUE) }
       invisible(NULL)
     }, delay = gecikme), silent = TRUE)
     if (inherits(bekci_iptal, "try-error")) bekci_iptal <- NULL

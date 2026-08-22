@@ -31,7 +31,30 @@
 # uzunluk bir üst sınır DEĞİLDİR), dolayısıyla materyalizasyonu
 # yetkilendiremezler.
 .PK_ALWAYS_UNBOUNDED_TYPES <- c(
-  "text", "ntext", "image", "xml", "sql_variant", "json", "geography", "geometry"
+  "text", "ntext", "image", "xml", "json", "geography", "geometry"
+)
+
+# `sql_variant` SINIRSIZ DEĞİLDİR: SQL Server'da tek bir değer en fazla
+# 8.016 bayttır. Bu tipi sınırsız LOB saymak, metadata üreticisinin AYNI
+# depodaki sözleşmesiyle (kanıtlanmış 8.016 bayt) çelişiyor ve çalışma zamanı
+# sınırsız-LOB opt-in'i kapalıyken sınırlı bir sonucu getirmeden REDDEDİYORDU.
+.PK_SQL_VARIANT_MAX_BYTES <- 8016
+
+# R TEMSİLİ İÇİN ELEMAN BAŞINA ALT SINIR (bayt).
+#
+# SQL depolama genişliği bir R BELLEĞİ üst sınırı DEĞİLDİR: bir karakter
+# vektörünün her elemanı en az bir SEXP işaretçisi (8 bayt) ve kendi CHARSXP
+# başlığını taşır. `varchar(1)` SQL'de 1 bayttır ama R'de ~56 bayttan aşağı
+# olamaz; sabit yük çarpanı bu farkı kapatmaz. Bu taban olmadan çok sayıda dar
+# metin sütunu taşıyan bir sonuç `MERGEN_PK_MAX_RESULT_MB` altında görünüp
+# materyalizasyonda tavanın kat kat üstüne çıkabiliyor, `pk_sql_plan_chunk_rows()`
+# de fazla büyük parça seçiyordu.
+.PK_R_CHAR_ELEMENT_BYTES <- 56
+.PK_R_ATOMIC_ELEMENT_BYTES <- 8
+
+.PK_R_CHAR_LIKE_TYPES <- c(
+  "varchar", "nvarchar", "char", "nchar", "text", "ntext", "xml", "json",
+  "uniqueidentifier", "sql_variant", "__unproven__"
 )
 
 # Sabit genişlikli tiplerin muhafazakâr bayt maliyeti (R tarafı, sürücü yükü
@@ -44,6 +67,17 @@
   datetimeoffset = 8L, time = 8L, timestamp = 8L,
   uniqueidentifier = 36L
 )
+
+# Sütunun R temsilindeki ELEMAN BAŞINA alt sınırı.
+#
+# `__bounded__` (ODBC tip kodundan türetilmiş) değişken genişlikli sütunlar da
+# R'de karakter olarak materyalize olur; en muhafazakâr taban KARAKTER tabanıdır.
+.pk_r_element_floor <- function(sql_type) {
+  tip <- .pk_result_type_key(sql_type)
+  if (!nzchar(tip)) return(.PK_R_ATOMIC_ELEMENT_BYTES)
+  if (tip %in% c(.PK_R_CHAR_LIKE_TYPES, "__bounded__")) return(.PK_R_CHAR_ELEMENT_BYTES)
+  .PK_R_ATOMIC_ELEMENT_BYTES
+}
 
 .pk_result_type_key <- function(sql_type) {
   ham <- tryCatch(as.character(sql_type)[1], error = function(e) NA_character_)
@@ -81,6 +115,9 @@ pk_column_width_upper_bound <- function(sql_type, max_length = NA) {
 
   sabit <- .PK_FIXED_TYPE_BYTES[[tip]]
   if (!is.null(sabit)) return(as.numeric(sabit))
+
+  # `sql_variant`: KANITLANMIŞ 8.016 baytlık üst sınır (bkz. sabit tanımı).
+  if (identical(tip, "sql_variant")) return(as.numeric(.PK_SQL_VARIANT_MAX_BYTES))
 
   if (tip %in% .PK_ALWAYS_UNBOUNDED_TYPES) return(NA_real_)
 
@@ -130,6 +167,10 @@ pk_result_width_upper_bound <- function(columns) {
     }
 
     sinir <- pk_column_width_upper_bound(sutun$type, sutun$max_length %||% NA)
+    if (!is.na(sinir)) {
+      # SQL genişliği R temsilinin ALTINDA kalamaz (bkz. sabit tanımları).
+      sinir <- max(as.numeric(sinir), .pk_r_element_floor(sutun$type))
+    }
     if (is.na(sinir)) {
       sinirsiz <- c(sinirsiz, ad)
       # "Bilinmeyen tip" ile "GERÇEK LOB" AYRI risklerdir: bilinmeyen tipte

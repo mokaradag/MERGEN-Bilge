@@ -286,7 +286,7 @@ source_manifest_sections <- list(
     # yüklenir. RLS kararı, Faz 3a metadata erişimcilerine dayanır; onlar
     # pk_query_metadata bölümünde çok daha önce yüklenmiştir.
     "R/helpers_pk_safe_errors.R",
-    "R/helpers_pk_sql_readonly.R",
+    "R/helpers_pk_sql_statements.R", "R/helpers_pk_sql_readonly.R",
     "R/helpers_pk_rls.R",
     # Faz 4 (§5.4) varlık çözümleme: normalleştirme -> puanlama -> karar
     # politikası -> geçmiş daraltması (D11). Sıra ZORUNLU; dördü de SAFTIR ve
@@ -300,7 +300,7 @@ source_manifest_sections <- list(
     "R/helpers_pk_entity_scan.R",
     "R/helpers_pk_entity_resolver.R",
     "R/helpers_pk_entity_history.R",
-    "R/helpers_pk_entity_context.R", "R/helpers_pk_entity_apply.R",  # ilki: D11 devralınan bağlam anahtarı/kaydı
+    "R/helpers_pk_entity_context.R", "R/helpers_pk_entity_tree.R", "R/helpers_pk_entity_apply.R",  # baglam anahtari + filtre agaci gezintisi ONCE
     # Faz 1 v2 davranış katmanı (MERGEN_PK_ENGINE=v2 arkasında): saf filtre
     # derleyicisi -> saf sıfır-eşleşme politikası -> v2 yürütücüsü. Yürütücü
     # ikisini de kullandığı için en sonda gelir; üçü de v1 uyumluluk yüzeyi
@@ -314,7 +314,7 @@ source_manifest_sections <- list(
     "R/helpers_pk_analysis_prompts.R",
     # Faz 2 (v2 arkasında) bağımlılık sırası: olgu çekirdeği -> paket -> paket
     # metni -> sayısal köken -> dışa aktarım planı/G-Ç -> kompozisyon -> sonuç.
-    "R/helpers_pk_packet_stats.R",
+    "R/helpers_pk_precision.R", "R/helpers_pk_packet_stats.R",
     "R/helpers_pk_analysis_packet.R",
     "R/helpers_pk_packet_render.R",
     "R/helpers_pk_numeric_provenance.R",
@@ -334,7 +334,7 @@ source_manifest_sections <- list(
     "R/helpers_deep_analysis_context.R",
     "R/helpers_deep_analysis.R",
     "R/helpers_pk_analysis_core.R",
-    "R/helpers_pk_analysis_security_summary.R",
+    "R/helpers_pk_rls_identity.R", "R/helpers_pk_analysis_security_summary.R",
     "R/helpers_pk_statistical_summary.R",
     "R/helpers_pk_analysis_filters_base.R",
     "R/helpers_pk_analysis_filters.R",
@@ -355,7 +355,7 @@ source_manifest_sections <- list(
     "R/helpers_pk_query_selection_config.R",
     "R/helpers_pk_query_selection_payload.R",
     "R/helpers_pk_query_selection_prompt.R",
-    "R/helpers_pk_query_selection_requirements.R",
+    "R/helpers_pk_query_selection_canonical.R", "R/helpers_pk_query_selection_requirements.R",  # varolus->sayim imasi ONCE
     "R/helpers_pk_query_selection_parse.R",
     "R/helpers_pk_query_selection_decide.R",
     "R/helpers_pk_query_selection_degraded.R",

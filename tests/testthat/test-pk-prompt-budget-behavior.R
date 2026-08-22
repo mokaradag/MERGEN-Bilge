@@ -168,10 +168,20 @@ test_that("D8: v1 ozyineleme davranisi DEGISMEDEN korunur", {
     user_filter_applied = TRUE
   )
 
-  # v1'de ozyineleme mode/rls_total_rows/user_filter_applied parametrelerini
-  # DUSURUYOR; uyari bu yuzden kayboluyor. Motor siniri sozlesmesi geregi bu
-  # davranis v1'de AYNEN korunur.
-  expect_false(grepl("FİLTRELEME UYARISI", sonuc$summary_text, fixed = TRUE))
+  # PR #714: BU BEKLENTININ GEREKCESI ARTIK GECERSIZDIR.
+  #
+  # Yorumun dayanagi "v1 ozyinelemesi kapsam argumanlarini DUSURUYOR" idi; PR
+  # #705 o kusuru duzeltti ve v1 ozyinelemesi de mode/rls_total_rows/
+  # user_filter_applied tasiyor. Geriye YALNIZCA terminal geri dusmedeki
+  # `pk_v2 &&` kapisi kalmisti ve v1'de FILTRELENMIS bir yanit kapsam
+  # uyarisini kaybediyordu: model, yalnizca filtreli alt kumeyi anlatan
+  # sayilari TUM VERI gibi sunabilirdi. Uyari artik motor bayragindan
+  # BAGIMSIZDIR; ana ozet yolunda da (kirpma olmadan) zaten oyleydi.
+  expect_true(
+    grepl("FİLTRELEME UYARISI", sonuc$summary_text, fixed = TRUE),
+    info = "v1 terminal geri dusmesinde de kapsam uyarisi KORUNMALIDIR."
+  )
+  expect_true(grepl("5000", sonuc$summary_text, fixed = TRUE))
 })
 
 test_that("butce anahtari yapilandirma oncelik zincirini izler", {

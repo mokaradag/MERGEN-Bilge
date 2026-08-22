@@ -132,7 +132,11 @@ mergen_pk_cancel_token_for_session <- function(session, request_id) {
   )
 }
 
-mergen_pk_prepare_async_request <- function(ctx) {
+#' @param started_at İSTEĞİN ORİJİNAL başlangıç anı. Hazırlık önemsiz olmayan
+#'   bir süre alır; `Sys.time()`ı burada YENİDEN okumak işçi son tarihini ve ana
+#'   süreç bekçisini o kadar İLERİ atar ve istek
+#'   `MERGEN_PK_ANALYSIS_DEADLINE_SEC` sınırını hazırlık süresi kadar aşabilirdi.
+mergen_pk_prepare_async_request <- function(ctx, started_at = NULL) {
   kimlik <- tryCatch(resolve_pk_analysis_username(ctx$session), error = function(e) NULL)
   if (!is.list(kimlik) || !isTRUE(kimlik$ready)) {
     return(list(ok = FALSE, answer = paste0(
@@ -183,7 +187,7 @@ mergen_pk_prepare_async_request <- function(ctx) {
     deadline_sec = tryCatch(pk_config_resolve("MERGEN_PK_ANALYSIS_DEADLINE_SEC"),
                             error = function(e) 300L),
     engine = motor, bootstrap_files = pk_async_worker_bootstrap_files(),
-    started_at = Sys.time(),
+    started_at = started_at %||% Sys.time(),
     # Ana süreçte çözülmüş `options()` basamağı işçiye taşınır; aksi hâlde
     # kalıcı PSOCK işçisi farklı güvenlik sınırlarıyla çalışabilir.
     config_snapshot = config_ss

@@ -88,7 +88,21 @@
 .pk_join_key <- function(data, columns) {
   parcalar <- lapply(columns, function(s) {
     v <- data[[s]]
-    ch <- if (inherits(v, "Date") || inherits(v, "POSIXt")) format(v) else as.character(v)
+    # KESİRLİ SANİYE KAYBEDİLEMEZ.
+    #
+    # `format.POSIXct()` varsayılanı kesirli saniyeyi YAZMAZ; aynı saniye
+    # içindeki FARKLI damgalar tek anahtara düşüyor, bu da ya sahte "tanecik
+    # mükerrerliği" (geçerli toplulaştırmayı bloklar) ya da iki ayrı
+    # `default_group_by` kovasının BİRLEŞMESİ (yanlış grup olgusu) demekti.
+    # Kayıpsız temsil: sayısal an (epoch saniye, tam basamakla).
+    ch <- if (inherits(v, "POSIXt")) {
+      sprintf("%.6f", as.numeric(v))
+    } else if (inherits(v, "Date")) {
+      format(v)
+    } else {
+      as.character(v)
+    }
+    ch[is.na(v)] <- NA_character_
     out <- paste0(nchar(ch, type = "bytes"), ":", ch)
     out[is.na(ch)] <- "<NA>:"
     out
@@ -114,7 +128,21 @@
 # sütuna `as.Date()` uygulamak tüm v2 isteğini düşürürdü.
 .pk_as_date_safe <- function(values) {
   if (inherits(values, "Date")) return(values)
-  if (inherits(values, "POSIXt")) return(as.Date(values))
+  if (inherits(values, "POSIXt")) {
+    # ZAMAN DİLİMİ KORUNUR.
+    #
+    # `as.Date.POSIXct()` varsayılan olarak UTC uygular; `tzone` alanını YOK
+    # SAYAR. `Europe/Istanbul` ile saklanan `2024-03-01 00:30` bu yüzden
+    # `2024-02-29` oluyor ve yerel gece yarısına yakın kayıtlar YANLIŞ güne/aya
+    # düşüyordu (paket zaman penceresi ve aylık dağılım hatalı yayımlanırdı).
+    tz <- attr(values, "tzone")
+    tz <- if (is.character(tz) && length(tz) >= 1L && !is.na(tz[1]) && nzchar(tz[1])) {
+      tz[1]
+    } else {
+      Sys.timezone() %||% "UTC"
+    }
+    return(as.Date(values, tz = tz))
+  }
 
   cikti <- suppressWarnings(tryCatch(as.Date(values), error = function(e) NULL))
   if (is.null(cikti) || !inherits(cikti, "Date")) return(NULL)
@@ -435,6 +463,24 @@ pk_packet_examples <- function(data, meta, measure_column = NULL,
   agg <- as.character(spec$aggregate %||% "none")[1]
 
   if (identical(agg, "weighted_mean")) {
+    # TANECİK İHLALİ GRUP KIRILIMINDA DA GEÇERLİDİR.
+    #
+    # `aggregate_blocked` bayrağı yalnızca `pk_measure_facts()` yoluna
+    # aktarılıyordu; ağırlıklı ortalama dalı onu YOK SAYIYORDU. Beyan edilen
+    # tanecikte mükerrer satır varsa hem PAY hem PAYDA bozulur, bu yüzden
+    # grup ağırlıklı ortalaması SAYISAL OLARAK YANLIŞ olabilir; paket genel
+    # olguyu `grain_violation` diye işaretlerken grup olgularını `ok` yayımlamak
+    # modele çelişkili kanıt verir.
+    if (isTRUE(aggregate_blocked)) {
+      return(list(pk_fact_record(
+        kind = "measure", column = olcu, aggregation = "weighted_mean", value = NULL,
+        spec = spec, status = PK_FACT_GRAIN_VIOLATION, scope = scope,
+        group_keys = etiket,
+        note = paste("Beyan edilen tanecikte mukerrer satir var;",
+                     "grup agirlikli ortalamasi HESAPLANMADI.")
+      )))
+    }
+
     agirlik <- as.character(spec$weight_by %||% "")[1]
     if (nzchar(agirlik) && agirlik %in% names(data)) {
       return(list(pk_weighted_mean_fact(
@@ -455,6 +501,7 @@ pk_packet_examples <- function(data, meta, measure_column = NULL,
       data[index, , drop = FALSE], olcu, spec, scope = scope, group_keys = etiket
     )))
   }
+
 
   pk_measure_facts(
     data[[olcu]][index], olcu, spec, scope = scope, group_keys = etiket,

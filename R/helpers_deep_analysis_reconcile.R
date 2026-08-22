@@ -134,8 +134,37 @@ pk_deep_packet_comparability <- function(provenance) {
 # Gözlem + birleşik köken alt bilgisi fabrikası
 # ------------------------------------------------------------------------------
 
+#' Birincil bağlantı için İDEMPOTENT bırakıcı: çekirdek onu RLS okumasından
+#' hemen sonra bırakır ama hata yolları için `on.exit` da kurar.
+pk_deep_primary_connection_release <- function(conn_list) {
+  durum <- new.env(parent = emptyenv())
+  durum$serbest <- FALSE
+
+  list(release = function() {
+    if (isTRUE(durum$serbest)) return(invisible(FALSE))
+    durum$serbest <- TRUE
+    try(release_connection(conn_list), silent = TRUE)
+    invisible(TRUE)
+  })
+}
+
+#' Telemetri için KISA ÖMÜRLÜ bağlantı sağlayıcısı: her gözlem kendi
+#' bağlantısını açıp hemen bırakır, böylece derin analiz boyunca kullanılmayan
+#' bir birincil bağlantı tutulmaz. Açılamazsa `NULL` (telemetri fail-soft'tur).
+pk_deep_short_lived_conn_provider <- function() {
+  function() {
+    liste <- tryCatch(get_connection(), error = function(e) NULL)
+    if (!is.list(liste)) return(NULL)
+    list(conn = liste$conn, release = function() release_connection(liste))
+  }
+}
+
+#' @param conn_provider İsteğe bağlı kısa ömürlü bağlantı sağlayıcısı
+#'   (`list(conn=, release=)`); ana süreç sarmalayıcısı bunu zaten yapıyordu ama
+#'   worker bootstrap'ına dâhil DEĞİLDİR.
 pk_deep_observation_helpers <- function(session, conn, username, user_prompt,
-                                        request_id, started_at) {
+                                        request_id, started_at,
+                                        conn_provider = NULL) {
   pk_request_id <- request_id
   pk_started_at <- started_at
 
@@ -167,7 +196,17 @@ pk_deep_observation_helpers <- function(session, conn, username, user_prompt,
     }
 
     tryCatch({
-      footer <- pk_analysis_observe(session, conn, info)
+      gozlem_conn <- conn
+      if (is.function(conn_provider)) {
+        saglayici <- try(conn_provider(), silent = TRUE)
+        if (!inherits(saglayici, "try-error") && is.list(saglayici)) {
+          gozlem_conn <- saglayici$conn
+          if (is.function(saglayici$release)) {
+            on.exit(try(saglayici$release(), silent = TRUE), add = TRUE)
+          }
+        }
+      }
+      footer <- pk_analysis_observe(session, gozlem_conn, info)
       footer <- as.character(footer)[1]
       if (is.na(footer)) "" else footer
     }, error = function(e) "")

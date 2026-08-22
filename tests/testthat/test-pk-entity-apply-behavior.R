@@ -20,7 +20,7 @@
 #   - Anahtar kapalıyken hat hiçbir şey değiştirmez.
 # ==============================================================================
 
-pk_entity_source_chain_for_tests(extra = "helpers_pk_entity_apply.R")
+pk_entity_source_chain_for_tests(extra = c("helpers_pk_entity_tree.R", "helpers_pk_entity_apply.R"))
 
 local({
   # `%||%` çalışma zamanı yardımcısıdır; izole test zincirinde tanımlı olmayabilir.

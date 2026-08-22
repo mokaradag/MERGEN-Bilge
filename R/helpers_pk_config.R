@@ -524,8 +524,20 @@ pk_config_option_key <- function(key) {
   txt <- .pk_config_ascii_lower(trimws(as.character(value)[1]))
   if (is.na(txt) || !nzchar(txt)) return(NULL)
 
-  if (txt %in% c("true", "t", "1", "yes", "y", "on", "evet", "acik", "açık")) return(TRUE)
-  if (txt %in% c("false", "f", "0", "no", "n", "off", "hayir", "hayır", "kapali", "kapalı")) return(FALSE)
+  # PR #705: Türkçe BÜYÜK harfli operatör yazımları da desteklenir.
+  #
+  # ASCII katlama yerelden bağımsızdır ama `Ç`/`Ğ`/`İ`/`Ö`/`Ş`/`Ü` harflerine
+  # DOKUNMAZ; `AÇIK` yazan bir operatör `aÇik` üretiyor, sözlükte bulunamıyor
+  # ve değer SESSİZCE geçersiz sayılıp daha düşük öncelikli bir varsayılana
+  # düşülüyordu. Eşleme SABİT ve yerelden bağımsızdır (`tolower()` kullanılmaz).
+  txt <- chartr("ÇĞİÖŞÜ", "çğiöşü", txt)
+
+  # Nokta(sız) i belirsizliği: ASCII katlamada `I` -> `i`, Türkçe yazımda
+  # `ı` beklenir. Her iki yazım da AÇIKÇA kabul edilir; tahmin yapılmaz.
+  if (txt %in% c("true", "t", "1", "yes", "y", "on", "evet",
+                 "acik", "acık", "açik", "açık")) return(TRUE)
+  if (txt %in% c("false", "f", "0", "no", "n", "off", "hayir", "hayır",
+                 "kapali", "kapalı")) return(FALSE)
 
   NULL
 }
@@ -666,21 +678,32 @@ pk_config_probe <- function(key, query_meta = NULL) {
   .ham_var <- function(x) !is.null(x) && length(x) == 1L &&
     !is.na(x) && nzchar(trimws(as.character(x)[1]))
 
-  if (is.list(query_meta)) {
-    ham <- query_meta[[pk_config_meta_key(key)]]
-    if (.ham_var(ham) && is.null(.pk_config_coerce(ham, spec))) {
-      gecersiz <- c(gecersiz, "query_meta")
+  # ÖNCELİK SIRASI: query_meta -> environment -> options.
+  #
+  # PR #705: KAZANAN basamaktan SONRAKİ basamaklar artık taranmaz. Eski
+  # davranışta geçerli bir `meta$resolve_auto_score = 90` kazanmış olsa bile
+  # bayat bir `MERGEN_PK_RESOLVE_AUTO_SCORE=bogus` "environment geçersiz" diye
+  # raporlanıyor, `pk_resolve_thresholds()` bunu görüp çözümleyiciyi
+  # `config_error` sayıyordu. Yani isteği ETKİLEYEMEYEN düşük öncelikli bir
+  # değer, geçerli bir sorgu-özel ayarı zehirliyordu.
+  #
+  # Kapalı başarısızlık KORUNUR: kazanandan ÖNCEKİ (yani gerçekten
+  # uygulanabilecekken bozuk olan) basamaklar hâlâ geçersiz raporlanır.
+  basamaklar <- list(
+    list(ad = "query_meta", ham = if (is.list(query_meta)) query_meta[[pk_config_meta_key(key)]] else NULL),
+    list(ad = "environment", ham = Sys.getenv(key, unset = NA_character_)),
+    list(ad = "options", ham = getOption(pk_config_option_key(key), default = NULL))
+  )
+
+  for (basamak in basamaklar) {
+    if (!.ham_var(basamak$ham)) next
+    if (is.null(.pk_config_coerce(basamak$ham, spec))) {
+      gecersiz <- c(gecersiz, basamak$ad)
+      next
     }
-  }
-
-  env_raw <- Sys.getenv(key, unset = NA_character_)
-  if (.ham_var(env_raw) && is.null(.pk_config_coerce(env_raw, spec))) {
-    gecersiz <- c(gecersiz, "environment")
-  }
-
-  opt_raw <- getOption(pk_config_option_key(key), default = NULL)
-  if (.ham_var(opt_raw) && is.null(.pk_config_coerce(opt_raw, spec))) {
-    gecersiz <- c(gecersiz, "options")
+    # Geçerli değer bulundu: bu basamak KAZANIR, alt basamaklar isteği
+    # etkileyemez ve tanılama amacıyla bile geçersiz sayılmaz.
+    break
   }
 
   list(

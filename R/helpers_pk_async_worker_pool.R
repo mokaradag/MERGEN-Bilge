@@ -320,7 +320,13 @@ pk_async_worker_pool_retire <- function(hedef) {
   cfg <- if (is.function(yapilandirma)) tryCatch(yapilandirma(), error = function(e) NULL) else NULL
   kapali_basarisiz <- isTRUE(tryCatch(cfg$fail_fast, error = function(e) FALSE))
 
-  pay <- pk_async_worker_pool_admission(cfg$max_size %||% 8L, workers)
+  # TAVAN İKİ KEZ BÖLÜŞTÜRÜLMEZ: `db_pool_config()` async etkinken
+  # `pk_db_pool_process_share()`i ZATEN uygular, yani `cfg$max_size` küçültülmüş
+  # süreç payıdır. Onu ana süreç işçi sayısıyla TEKRAR bölmek, `main + N isci`
+  # için yeten bir tavanı `fits = FALSE` yapabiliyordu. Kabul kararı KÜRESEL
+  # tavandan hesaplanır; işçi payı sonra BİR KEZ uygulanır.
+  kuresel_tavan <- cfg$admission_cap %||% cfg$max_size %||% 8L
+  pay <- pk_async_worker_pool_admission(kuresel_tavan, workers)
   geri_yukle <- pk_async_worker_pool_apply_share(pay)
   on.exit(try(geri_yukle(), silent = TRUE), add = TRUE)
 

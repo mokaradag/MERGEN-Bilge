@@ -342,12 +342,25 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # bölündü. HİÇBİR BÜTÇE GEVŞETİLMEDİ: `prompt` 520 -> 400, `parse` 680 -> 300,
   # `ai` 380 -> 520 (orkestrasyon iptal/teşhis/onay yollarını da üstlendi),
   # `apply` 250 -> 320, `retrieval` 360 -> 400 (not_for olumsuz kanıtı).
-  assert_current_budget("R/helpers_pk_query_retrieval.R", 400L, 17L)
+  # BILINCLI GUNCELLEME (PR #705 inceleme): 400 -> 411 satir (OLCULEN). Tek
+  # nedeni `not_for` olumsuz kanitinin BUTUN IFADE eslesmesine cevrilmesidir:
+  # tek bir >=3 karakterlik belirtec artik yetmez, bir ifadenin TUM anlamli
+  # belirtecleri istemde gecmelidir. Aksi halde `not_for = "planlanan butce"`,
+  # "planlanan iscilik" istegini de reddedip GECERLI bir secimi guven kapisinin
+  # altina itiyordu. Fonksiyon sayisi ARTMAMISTIR (17).
+  assert_current_budget("R/helpers_pk_query_retrieval.R", 411L, 17L)
   assert_current_budget("R/helpers_pk_query_selection_json.R", 240L, 10L)
   assert_current_budget("R/helpers_pk_query_selection_config.R", 300L, 10L)
   assert_current_budget("R/helpers_pk_query_selection_payload.R", 460L, 18L)
   assert_current_budget("R/helpers_pk_query_selection_prompt.R", 400L, 16L)
-  assert_current_budget("R/helpers_pk_query_selection_requirements.R", 300L, 12L)
+  # BILINCLI GUNCELLEME (PR #705 inceleme): 300 -> 325 satir / 12 -> 13
+  # fonksiyon (OLCULEN). Iki neden: (a) TIPLI dogrulama sonucuna `canonicalized`
+  # alani eklendi ve varolussal->sayim kanoniklestirmesi TEK cagri ile baglandi
+  # (kanoniklestiricinin KENDISI ayri dosyada: helpers_..._canonical.R);
+  # (b) `unsupported` serbest metin alanini normalize eden
+  # `pk_select_unsupported_needs()` BURAYA tasindi ve hem normal karar yolu hem
+  # de CIP ONAYI yolu ayni sahibi kullanir (kopya mantik kaldirildi).
+  assert_current_budget("R/helpers_pk_query_selection_requirements.R", 325L, 13L)
   assert_current_budget("R/helpers_pk_query_selection_parse.R", 300L, 8L)
   assert_current_budget("R/helpers_pk_query_selection_decide.R", 400L, 10L)
   assert_current_budget("R/helpers_pk_query_selection_degraded.R", 190L, 7L)
@@ -355,7 +368,14 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # BILINCLI GUNCELLEME (PR #705 kararlilik): Gecis A TOPLAM yuk butcesi
   # asildiginda kapali basarisiz olan dal eklendi (sessiz kirpma, gorunmeyen
   # sorgu = geri alinamaz recall kaybi). Fonksiyon sayisi ARTMAMISTIR.
-  assert_current_budget("R/helpers_pk_query_selection_ai.R", 578L, 22L)
+  #
+  # BILINCLI GUNCELLEME (PR #705 inceleme): 578 -> 601 satir (OLCULEN). Tek
+  # nedeni GUVENLIK kapisidir: `unsupported_requirement` kapisi CIP ONAYI
+  # yolunda YENIDEN uygulanir. Onceden `unsupported` SERBEST METIN oldugu icin
+  # dogrulayici `not_asserted` donuyor ve bir onceki turda REDDEDILMIS istek,
+  # kullanici cip sectiginde `AUTO` + guven 100 olarak calisabiliyordu; karar
+  # politikasinin 4. kurali BYPASS ediliyordu. Fonksiyon sayisi ARTMAMISTIR.
+  assert_current_budget("R/helpers_pk_query_selection_ai.R", 601L, 22L)
   assert_current_budget("R/helpers_pk_query_selection_apply.R", 320L, 14L)
 
   # PR #705 dengeleme (inceleme borcu kok neden duzeltmeleri). Bu uc butce

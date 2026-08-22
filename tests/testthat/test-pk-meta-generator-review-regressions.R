@@ -18,7 +18,7 @@ local({
     "helpers_pk_query_meta_schema.R",
     "helpers_pk_query_meta_access.R",
     "helpers_pk_query_meta.R",
-    "helpers_pk_sql_readonly.R"
+    "helpers_pk_sql_statements.R", "helpers_pk_sql_readonly.R"
   )) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = globalenv())
   }

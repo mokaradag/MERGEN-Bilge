@@ -152,10 +152,60 @@ pk_parse_number_tr <- function(txt) {
 }
 
 # Birim karşılaştırması yerelden bağımsız katlanır ("Saat" == "saat").
+# BİÇİMLENDİRME AYRACI SAYININ KÖKENİNİ SİLMEZ.
+#
+# ÜRETİM BULGUSU: model doğru sayıyı doğru işaretle alıntıladığı hâlde
+# `Geciken Aktivite Sayisi: **15.574 adet** [fact:...]` gibi bir satırda
+# doğrulayıcı sayıyı GÖREMİYORDU. Neden: sayı+birim örüntüsü bağlam
+# penceresinin SONUNA sabitlenir (`\\s*$`) ve markdown vurgusu (`**`, `_`),
+# kapanış parantezi, tırnak, noktalama ya da Türkçe kesme eki (`adet'tir`)
+# araya girdiğinde eşleşme kurulamıyordu. Sonuç ÇİFT hataydı: aynı sayı hem
+# `no_number` hem de (işaretin nöbetçisi ulaşılamadığı için)
+# `missing_fact_marker` sayılıp payı VE paydayı şişiriyordu.
+#
+# Bu jetonlar ANLAM TAŞIMAZ: rakam, `%`, birim harfi ya da ayraç değildirler.
+# Silinmeleri hiçbir gerçek denetimi zayıflatmaz — sayı, birim, değer ve
+# toplulaştırma denetimleri aynen çalışır.
+.PK_PROV_EMPHASIS <- "[*_`~]"
+
+# Markdown vurgusu ve bölünemez boşluk, sayı ile birimi/işaretini AYIRIR ama
+# hiçbir anlam taşımaz. Doğrulama KOPYASI üzerinde BOŞLUKLA değiştirilir
+# (silinmez: `5*3` gibi bir ifade tek sayıya birleşmemelidir). `_` burada
+# DEĞİŞTİRİLMEZ çünkü olgu kimliklerinde geçerlidir; pencere kırpıcıları onu
+# zaten ele alır. Kullanıcıya GÖSTERİLEN metin bu dönüşümden etkilenmez.
+.pk_prov_normalize_markup <- function(txt) {
+  metin <- as.character(txt %||% "")[1]
+  if (is.na(metin)) return("")
+  metin <- gsub("[*`~]", " ", metin, perl = TRUE)
+  gsub("\u00a0", " ", metin, perl = TRUE)
+}
+.PK_PROV_TRAILING <- "[[:space:]\u00a0)\\]}>\"'’”»,.;:!?…\\-]"
+
+.pk_prov_trim_tail <- function(txt) {
+  metin <- as.character(txt %||% "")[1]
+  if (is.na(metin)) return("")
+
+  # Vurgu imleri metnin İÇİNDE de olabilir (`**15.574** adet`).
+  metin <- gsub(.PK_PROV_EMPHASIS, "", metin, perl = TRUE)
+
+  onceki <- ""
+  while (!identical(onceki, metin)) {
+    onceki <- metin
+    # Türkçe kesme eki: `adet'tir`, `saat’te`.
+    metin <- sub("['’][A-Za-zÇĞİÖŞÜçğıöşü]*$", "", metin, perl = TRUE)
+    metin <- sub(paste0(.PK_PROV_TRAILING, "+$"), "", metin, perl = TRUE)
+  }
+  metin
+}
+
 .pk_prov_unit_fold <- function(x) {
   txt <- as.character(x %||% "")[1]
   if (length(txt) != 1L || is.na(txt)) return("")
-  txt <- chartr("ÇĞİIÖŞÜ", "cgiiosu", txt)
+  # KÜÇÜK HARFLİ Türkçe harfler de katlanır. Yalnızca büyük harfler
+  # katlandığında `"gün"` (olgu birimi) ile `"gun"` (yanıt metni) FARKLI
+  # kalıyordu: iki taraf da sözlükte tanınıyor ama karşılaştırma `unit_mismatch`
+  # üretiyordu ve `block` kipinde DOĞRU bir yanıt gizleniyordu.
+  txt <- chartr("ÇĞİIÖŞÜçğıöşü", "cgiiosucgiosu", txt)
   txt <- chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", txt)
   trimws(sub("[.]+$", "", txt))
 }
@@ -166,6 +216,13 @@ pk_parse_number_tr <- function(txt) {
 .PK_PROV_KNOWN_UNITS <- c("%", "tl", "try", "usd", "eur", "saat", "gun", "gün",
                           "adet", "kisi", "kişi", "ay", "yil", "yıl", "m2", "m²",
                           "adam-saat", "kisi/saat", "kişi/saat")
+
+# BOYUTSUZ SAYIM BİRİMLERİ. Bir sayım olgusunun ölçeği birimden GELMEZ; "adet"
+# yalnızca "kaç tane" der. Bu yüzden düzyazıda YAZILMAMASI ölçek kaybı
+# DEĞİLDİR ("15.574 geciken aktivite" tamamen açıktır). Ölçek taşıyan birimler
+# (%/TL/saat/gün) bu listede YOKTUR ve onların atlanması işaretlenmeye devam
+# eder.
+.PK_PROV_COUNT_UNITS <- c("adet", "kayit", "kayıt", "tane")
 
 .pk_prov_unit_vocabulary <- function(index) {
   bilinen <- vapply(index, function(o) .pk_prov_unit_fold(o$unit %||% ""), character(1))
@@ -197,20 +254,30 @@ pk_parse_number_tr <- function(txt) {
   # "Önce ortalama incelendi. Toplam 100 [fact:mean]" geçiyordu. Sözcüğün
   # KONUMU kullanılır; iddiaya en yakın (en sağdaki) terim iddianın terimidir.
   en_yakin <- NULL
+  en_yakin_kalip <- NULL
   en_yakin_konum <- -1L
 
   for (agg in names(.PK_PROV_AGG_WORDS)) {
     for (sozcuk in .PK_PROV_AGG_WORDS[[agg]]) {
       kalip <- .pk_prov_unit_fold(sozcuk)
       konumlar <- gregexpr(kalip, txt, fixed = TRUE)[[1]]
-      son <- max(as.integer(konumlar))
-      if (is.na(son) || son < 1L) next
-      # Eşit konumda daha UZUN eşleşme daha özgüldür ("agirlikli ortalama"
-      # yalnız "ortalama"yı yener).
+      baslangic <- max(as.integer(konumlar))
+      if (is.na(baslangic) || baslangic < 1L) next
+
+      # BİLEŞİK İFADE, İÇİNDEKİ KISA İFADEYE YENİLEMEZ.
+      #
+      # Karşılaştırma BAŞLANGIÇ konumuna göre yapıldığında "ağırlıklı ortalama"
+      # içindeki "ortalama" DAHA SAĞDA başladığı için kazanıyor ve geçerli bir
+      # `weighted_mean` alıntısı `mean` sanılıp toplulaştırma uyuşmazlığı
+      # üretiyordu (`block` kipinde model anlatısı düşerdi). BİTİŞ konumu
+      # kullanılır: iç içe eşleşmeler AYNI yerde biter ve o zaman daha UZUN
+      # (daha özgül) ifade kazanır. İddiaya yakınlık semantiği korunur.
+      son <- baslangic + nchar(kalip) - 1L
       if (son > en_yakin_konum ||
-          (son == en_yakin_konum && nchar(kalip) > nchar(.pk_prov_unit_fold(en_yakin %||% "")))) {
+          (son == en_yakin_konum && nchar(kalip) > nchar(.pk_prov_unit_fold(en_yakin_kalip %||% "")))) {
         en_yakin_konum <- son
         en_yakin <- agg
+        en_yakin_kalip <- kalip
       }
     }
   }
@@ -265,7 +332,7 @@ pk_facts_index <- function(facts) {
     # Bağlam penceresi hem sayıyı hem de iddia edilen toplulaştırma sözcüğünü
     # ("toplam", "ortalama", ...) yakalayacak kadar geniştir.
     onceki <- substr(txt, max(1L, konum[i] - 160L), konum[i] - 1L)
-    yakin <- substr(onceki, max(1L, nchar(onceki) - 60L), nchar(onceki))
+    yakin <- .pk_prov_trim_tail(substr(onceki, max(1L, nchar(onceki) - 60L), nchar(onceki)))
 
     # Birim yalnızca 1-12 harf değildir: `kişi/saat`, `adam-saat`, `m²`, `TL`
     # gibi bileşik/simgesel birimler de olgunun gösteriminde geçebilir.
@@ -335,9 +402,18 @@ pk_facts_index <- function(facts) {
     if (!nzchar(ham)) next
 
     # Hemen ARDINDAN gelen nobetci bu sayinin ALINTILANDIGI anlamina gelir.
+    #
+    # Pencere BILEREK genistir ve anlamsiz ayraclar (markdown vurgusu, kapanis
+    # parantezi, noktalama, Turkce kesme eki) atlanir: `**15.574 adet**[fact:x]`
+    # dogru bicimde ALINTILANMISTIR ve `missing_fact_marker` sayilamaz. Sadece
+    # ayraclar atlanir; araya baska bir SAYI ya da harf girerse nobetci
+    # bulunamaz ve iddia yine kokensiz sayilir.
     kuyruk <- substr(maskeli, konum[i] + uzunluk[i],
-                     min(nchar(maskeli), konum[i] + uzunluk[i] + 4L))
-    if (startsWith(trimws(kuyruk), nobetci)) next
+                     min(nchar(maskeli), konum[i] + uzunluk[i] + 24L))
+    kuyruk <- gsub(.PK_PROV_EMPHASIS, "", kuyruk, perl = TRUE)
+    kuyruk <- sub("^['’][A-Za-zÇĞİÖŞÜçğıöşü]*", "", kuyruk, perl = TRUE)
+    kuyruk <- sub(paste0("^", .PK_PROV_TRAILING, "+"), "", kuyruk, perl = TRUE)
+    if (startsWith(kuyruk, nobetci)) next
 
     yuzde <- grepl("%", ham, fixed = TRUE)
     sayi_metni <- trimws(gsub("%", "", ham))
@@ -378,7 +454,11 @@ pk_facts_index <- function(facts) {
 #' @return `list(checked=, mismatches=, rate=, claims=)`
 pk_numeric_provenance_validate <- function(text, facts) {
   index <- pk_facts_index(facts)
-  iddialar <- .pk_prov_claims(text)
+  # Doğrulama, biçimlendirmeden ARINDIRILMIŞ bir kopya üzerinde çalışır; her
+  # iki tarayıcı (alıntılı ve alıntısız) AYNI metni görmelidir, aksi hâlde
+  # aynı sayı bir tarayıcıda alıntılı, diğerinde köksüz görünür.
+  metin <- .pk_prov_normalize_markup(text)
+  iddialar <- .pk_prov_claims(metin)
   sozluk <- .pk_prov_unit_vocabulary(index)
   uyusmazliklar <- list()
 
@@ -420,6 +500,17 @@ pk_numeric_provenance_validate <- function(text, facts) {
     olgu_birimi <- .pk_prov_unit_fold(olgu$unit %||% "")
     iddia_birimi <- .pk_prov_unit_fold(iddia$unit)
 
+    # SAYIDAN SONRAKİ HER SÖZCÜK BİRİM DEĞİLDİR.
+    #
+    # Örüntü, sayıyı izleyen TEK jetonu "iddia edilen birim" olarak alıyordu.
+    # `15.574 aktivite [fact:...]` gibi tamamen doğru bir cümlede "aktivite"
+    # ÖLÇÜLEN ŞEYDİR, birim değildir; olgunun birimi "adet" olduğu için bu
+    # sıradan Türkçe ad `unit_mismatch` üretiyordu (üretimde ölçülen yanlış
+    # pozitif). Ters yön (birimsiz olguya uydurulmuş birim) ZATEN sözlük
+    # üyeliği istiyordu; iki yön artık SİMETRİKTİR. Gerçek bir yanlış birim
+    # (ör. "saat" yerine "adet") sözlükte olduğu için hâlâ yakalanır.
+    if (nzchar(iddia_birimi) && !(iddia_birimi %in% sozluk)) iddia_birimi <- ""
+
     if (isTRUE(iddia$percent) && !identical(olgu_birimi, "%")) {
       ekle(fact_id = iddia$fact_id, reason = "unit_mismatch",
            claimed = "%", actual = olgu_birimi)
@@ -446,7 +537,8 @@ pk_numeric_provenance_validate <- function(text, facts) {
     # "%61,3" yerine yalnızca "61,3" diye sunulduğunda okuyucu bunu mutlak bir
     # sayı sanar. Aynı şey para/saat gibi beyan edilmiş birimler için de
     # geçerlidir: birimsiz sunulan bir tutar ölçek bilgisini kaybeder.
-    if (nzchar(olgu_birimi) && !nzchar(iddia_birimi) && !isTRUE(iddia$percent)) {
+    if (nzchar(olgu_birimi) && !nzchar(iddia_birimi) && !isTRUE(iddia$percent) &&
+        !(olgu_birimi %in% .PK_PROV_COUNT_UNITS)) {
       ekle(fact_id = iddia$fact_id, reason = "unit_missing",
            claimed = "(birimsiz)", actual = olgu_birimi)
       next
@@ -455,7 +547,19 @@ pk_numeric_provenance_validate <- function(text, facts) {
     # BİRİMSİZ bir olguya birim UYDURULAMAZ. Sıradan düzyazı sözcükleri
     # ("47 farkli kaynak") işaretlenmesin diye yalnızca GERÇEK bir birim
     # sözlüğüne düşen jetonlar uyuşmazlık sayılır.
+    # SAYIM OLGUSUNA "adet" YAZMAK BİRİM UYDURMAK DEĞİLDİR.
+    #
+    # Bağlam olguları (satır sayısı, farklı değer sayısı, kategori/tarih
+    # sayısı, grup satırı) `unit` beyan etmez; modelin doğal Türkçesi ise
+    # "50.045 adet" der. Bu, birimsiz bir ölçüye ölçek uydurmak DEĞİLDİR:
+    # sayımın boyutsuz birimidir. Ölçek taşıyan bir birim (saat/TL/%) yine
+    # uyuşmazlıktır.
+    sayim_olgusu <- identical(as.character(olgu$kind %||% "")[1], "context") ||
+      identical(as.character(olgu$aggregation %||% "")[1], "count") ||
+      grepl("count|rows|duplicates", as.character(olgu$aggregation %||% "")[1], perl = TRUE)
+
     if (!nzchar(olgu_birimi) && nzchar(iddia_birimi) &&
+        !(isTRUE(sayim_olgusu) && iddia_birimi %in% .PK_PROV_COUNT_UNITS) &&
         (isTRUE(iddia$percent) || iddia_birimi %in% sozluk)) {
       ekle(fact_id = iddia$fact_id, reason = "unit_mismatch",
            claimed = iddia$unit, actual = "(birimsiz)")
@@ -480,7 +584,7 @@ pk_numeric_provenance_validate <- function(text, facts) {
   # hem `checked` hem de payda onları KAPSAYACAK biçimde genişletilir; aksi
   # hâlde tamamı işaretsiz bir yanıtta `rate` sıfır çıkar ve eşik tabanlı
   # kipler hiçbir şey yakalamaz.
-  kokensizler <- .pk_prov_uncited_claims(text)
+  kokensizler <- .pk_prov_uncited_claims(metin)
   for (k in kokensizler) {
     ekle(fact_id = NA_character_, reason = "missing_fact_marker",
          claimed = k$raw, actual = NA_character_)

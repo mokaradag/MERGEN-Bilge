@@ -44,7 +44,7 @@ test_that("beyan edilen RLS sutunu sonucta yoksa plan DURDURUR, atlamaz (D6)", {
 
   plan <- env$pk_rls_plan(
     user_info = list(Yetki = "PY", allowed_projects = "P1",
-                     scope_state_projects = "available"),
+                     scope_state_projects = "available", scope_state_depts = "not_applicable"),
     rls_cols = list(proje_kodu_col = "ProjeKodu"),
     actual_columns = c("BaskaSutun", "Deger")
   )
@@ -61,7 +61,7 @@ test_that("cozulemeyen kapsam DURDURUR, bos kapsam SIFIR satir uretir (D6b)", {
 
   # 1) Izin sorgusu hata verdi -> kapsam cozulemedi -> DURDUR.
   cozulemedi <- env$pk_rls_plan(
-    list(Yetki = "PY", allowed_projects = NULL, scope_state_projects = "unavailable"),
+    list(Yetki = "PY", allowed_projects = NULL, scope_state_projects = "unavailable", scope_state_depts = "not_applicable"),
     rls, sutunlar
   )
   expect_true(isTRUE(cozulemedi$abort))
@@ -70,7 +70,7 @@ test_that("cozulemeyen kapsam DURDURUR, bos kapsam SIFIR satir uretir (D6b)", {
   # 2) Kullanici izin tablosunda yok -> kapsam BOS -> SIFIR satir.
   #    KRITIK: bu ASLA "tum satirlar" olmamalidir.
   bos <- env$pk_rls_plan(
-    list(Yetki = "PY", allowed_projects = NULL, scope_state_projects = "empty"),
+    list(Yetki = "PY", allowed_projects = NULL, scope_state_projects = "empty", scope_state_depts = "not_applicable"),
     rls, sutunlar
   )
   expect_false(isTRUE(bos$abort))
@@ -78,14 +78,14 @@ test_that("cozulemeyen kapsam DURDURUR, bos kapsam SIFIR satir uretir (D6b)", {
   expect_length(bos$predicates, 0L)
 
   # 3) Durum alani hic tasinmayan eski cagri yolu GUVENLI tarafa duser.
-  eski <- env$pk_rls_plan(list(Yetki = "PY", allowed_projects = NULL), rls, sutunlar)
+  eski <- env$pk_rls_plan(list(Yetki = "PY", allowed_projects = NULL, scope_state_depts = "not_applicable"), rls, sutunlar)
   expect_true(isTRUE(eski$abort))
   expect_identical(eski$reason, "scope_unavailable")
 
   # 4) EPS rolleri icin de ayni sozlesme gecerlidir.
   for (rol in c("KY-P", "DIR-P")) {
     eps_bos <- env$pk_rls_plan(
-      list(Yetki = rol, allowed_eps = NULL, scope_state_eps = "empty"),
+      list(Yetki = rol, allowed_eps = NULL, scope_state_eps = "empty", scope_state_depts = "not_applicable"),
       list(eps_kodu_col = "EPSKodu"), c("EPSKodu")
     )
     expect_true(isTRUE(eps_bos$zero_rows), info = rol)
@@ -97,7 +97,7 @@ test_that("NA veya bos Yetki hata vermek yerine kapali basarisiz olur", {
   env <- .pk_rls_env()
 
   for (yetki in list(NA_character_, "", NULL, "   ")) {
-    plan <- env$pk_rls_plan(list(Yetki = yetki), list(), c("A"))
+    plan <- env$pk_rls_plan(list(Yetki = yetki, scope_state_depts = "not_applicable"), list(), c("A"))
     expect_true(isTRUE(plan$abort))
     expect_identical(plan$reason, "missing_role")
   }
@@ -106,7 +106,7 @@ test_that("NA veya bos Yetki hata vermek yerine kapali basarisiz olur", {
 test_that("ADMIN filtresiz kalir, kapsamli rol predikat uretir", {
   env <- .pk_rls_env()
 
-  admin <- env$pk_rls_plan(list(Yetki = "ADMIN"), list(proje_kodu_col = "ProjeKodu"), "ProjeKodu")
+  admin <- env$pk_rls_plan(list(Yetki = "ADMIN", scope_state_depts = "not_applicable"), list(proje_kodu_col = "ProjeKodu"), "ProjeKodu")
   expect_true(isTRUE(admin$admin))
   expect_false(isTRUE(admin$abort))
 
@@ -131,7 +131,7 @@ test_that("kapsam cozulmus ama sutun beyan edilmemisse analiz DURDURULUR", {
   # disindaki kayitlari gormesi demektir. Yetkilendirme siniri "beyan
   # edilmemis" oldugu icin yok sayilamaz: karar KAPALI BASARISIZ'dir.
   plan <- env$pk_rls_plan(
-    list(Yetki = "PY", allowed_projects = "P1", scope_state_projects = "available"),
+    list(Yetki = "PY", allowed_projects = "P1", scope_state_projects = "available", scope_state_depts = "not_applicable"),
     list(),
     c("Deger")
   )
@@ -140,13 +140,36 @@ test_that("kapsam cozulmus ama sutun beyan edilmemisse analiz DURDURULUR", {
   expect_true(grepl("sutun beyan etmiyor", plan$detail, fixed = TRUE))
 
   # Rol bu boyutu HIC ima etmiyorsa (kapsam yok) durdurma da YOKTUR.
+  # PR #705: "kapsam yok" iddiasi ARTIK ACIKCA BEYAN EDILMELIDIR. `NULL`
+  # kapsam tek basina "kisit yok" anlamina GELMEZ; cozulememis kapsamdan
+  # ayirt edilemedigi icin kapali basarisiz olunur.
   serbest <- env$pk_rls_plan(
+    list(Yetki = "KY-P", allowed_eps = NULL, scope_state_eps = "not_applicable",
+         allowed_depts = NULL, scope_state_depts = "not_applicable"),
+    list(),
+    c("Deger")
+  )
+  expect_false(isTRUE(serbest$abort))
+
+  # BEYANSIZ NULL departman kapsami: "kisit yok" DEGIL, "cozulemedi" sayilir.
+  beyansiz <- env$pk_rls_plan(
     list(Yetki = "KY-P", allowed_eps = NULL, scope_state_eps = "not_applicable",
          allowed_depts = NULL),
     list(),
     c("Deger")
   )
-  expect_false(isTRUE(serbest$abort))
+  expect_true(isTRUE(beyansiz$abort))
+  expect_identical(beyansiz$reason, "scope_unavailable")
+
+  # ACIKCA "unavailable" beyan edilen departman kapsami da DURDURUR.
+  cozulemeyen <- env$pk_rls_plan(
+    list(Yetki = "KY-P", allowed_eps = NULL, scope_state_eps = "not_applicable",
+         allowed_depts = NULL, scope_state_depts = "unavailable"),
+    list(masraf_yeri_col = "MasrafYeri"),
+    c("Deger", "MasrafYeri")
+  )
+  expect_true(isTRUE(cozulemeyen$abort))
+  expect_identical(cozulemeyen$reason, "scope_unavailable")
 })
 
 test_that("pk_rls_code_norm asgari kalir ve pk_tr_fold boru hattini KULLANMAZ", {
@@ -196,7 +219,7 @@ test_that("farkli yetkilendirme kodlarinin ayni anahtara cokmesi SERT HATADIR", 
   # kapsam kodu cakismasi RLS'i DURDURUR.
   plan <- gevsek$pk_rls_plan(
     list(Yetki = "PY", allowed_projects = c("P1", "p1"),
-         scope_state_projects = "available"),
+         scope_state_projects = "available", scope_state_depts = "not_applicable"),
     list(proje_kodu_col = "ProjeKodu"),
     c("ProjeKodu")
   )

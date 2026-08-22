@@ -13,6 +13,11 @@
 
 # Bağımlılık sırası R/config_source_manifest.R ile BİREBİR aynıdır.
 PK_SELECT_SOURCE_CHAIN <- c(
+  # `.pk_select_log_safe()` seçici tanılamalarını KAPALI BAŞARISIZ biçimde
+  # `redact_sensitive_text()` üzerinden geçirir; redaktör yüklenmezse metin
+  # yayımlanmaz. Üretimde temel katman bunu her zaman yükler, izole zincir de
+  # aynı sınırı taşımalıdır.
+  "utils_log_redact.R",
   "helpers_pk_config.R",
   "helpers_pk_text_turkish.R",
   # `.pk_meta_is_scalar_text()` şema dosyasında tanımlıdır; erişimci ondan
@@ -32,6 +37,8 @@ PK_SELECT_SOURCE_CHAIN <- c(
   "helpers_pk_query_selection_config.R",
   "helpers_pk_query_selection_payload.R",
   "helpers_pk_query_selection_prompt.R",
+  # Varlik("var mi?") -> sayim yetenek imasi; dogrulayici bunu cagirir.
+  "helpers_pk_query_selection_canonical.R",
   "helpers_pk_query_selection_requirements.R",
   "helpers_pk_query_selection_parse.R",
   "helpers_pk_query_selection_decide.R",
@@ -52,6 +59,7 @@ PK_SELECT_RUNTIME_FILES <- c(
   "helpers_pk_query_selection_config.R",
   "helpers_pk_query_selection_payload.R",
   "helpers_pk_query_selection_prompt.R",
+  "helpers_pk_query_selection_canonical.R",
   "helpers_pk_query_selection_requirements.R",
   "helpers_pk_query_selection_parse.R",
   "helpers_pk_query_selection_decide.R",

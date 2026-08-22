@@ -121,15 +121,22 @@ pk_rls_halt_message <- function(rls_info) {
 }
 
 get_user_rls_info <- function(username, conn) {
-  cat(sprintf("[PK_ANALIZ] get_user_rls_info calistiriliyor. Kullanici: %s\n", username))
+  cat("[PK_ANALIZ] get_user_rls_info calistiriliyor.\n")
 
-  base_query <- "SELECT TOP 1 * FROM DC01_user_base WHERE KullaniciAdi = ?"
+  # `TOP 1` + `ORDER BY` YOK => KEYFİ SATIR. `DC01_user_base` dış bir kaynaktır;
+  # dizin/veri eşitlemesi sırasında aynı `KullaniciAdi` için FARKLI `Yetki` /
+  # `MasrafYeriKodu` taşıyan mükerrer satırlar bulunabilir. SQL Server hangisini
+  # döndüreceğini garanti etmez; daha geniş yetkili bir mükerrer satır RLS'i
+  # NONDETERMİNİSTİK biçimde genişletebilirdi. İKİ satır istenir: birden fazla
+  # kayıt varsa yetki BELİRSİZDİR ve kapalı başarısız olunur.
+  base_query <- "SELECT TOP 2 * FROM DC01_user_base WHERE KullaniciAdi = ?"
   halt_reason <- NULL
   db_error <- NULL
   user_base <- tryCatch({
     .pk_rls_bounded_query(conn, base_query, params = list(username))
   }, error = function(e) {
-    cat(sprintf("[PK_ANALIZ] HATA (DC01_user_base): %s\n", e$message))
+    cat(sprintf("[PK_ANALIZ] HATA (DC01_user_base): %s\n",
+                .pk_rls_safe_detail(conditionMessage(e))))
     # SON TARİH/İPTAL bir YETKİ SONUCU DEĞİLDİR; tipli olarak korunur.
     if (isTRUE(.pk_rls_halt_error(e))) {
       halt_reason <<- conditionMessage(e)
@@ -170,14 +177,57 @@ get_user_rls_info <- function(username, conn) {
     return(list(authorized = FALSE, reason = "Kullanıcı DC01 tablosunda bulunamadı."))
   }
 
+  if (nrow(user_base) > 1L) {
+    cat("[PK_ANALIZ] DC01_user_base icinde MUKERRER yetki kaydi; karar BELIRSIZ.\n")
+    return(list(authorized = FALSE, ambiguous = TRUE, reason = paste0(
+      "Yetki kaydınız benzersiz değil (birden fazla kayıt bulundu). Yanlış bir ",
+      "kapsamla analiz çalıştırmamak için işlem durduruldu; sistem yöneticisine ",
+      "bildirin."
+    )))
+  }
+
   info <- as.list(user_base[1, ])
   info$authorized <- TRUE
-  cat(sprintf("[PK_ANALIZ] Yetki Tipi: %s, MasrafYeri: %s\n", info$Yetki, info$MasrafYeriKodu))
 
-  if (!is.na(info$MasrafYeriKodu) && info$MasrafYeriKodu != "ADMIN") {
-    info$allowed_depts <- trimws(unlist(strsplit(as.character(info$MasrafYeriKodu), ",")))
+  # ROL DEĞERİ KAPSAM SEÇİMİNDEN ÖNCE BİR KEZ NORMALLEŞTİRİLİR.
+  #
+  # `pk_rls_plan()` rolü `trimws()` ile kırpar; bu dosya ise aşağıda HAM
+  # `info$Yetki` üzerinde `identical(..., "PY")` / `%in% c("KY-P","DIR-P")`
+  # karşılaştırması yapıyordu. `Yetki` sütunu SQL Server'da sabit genişlikli
+  # (`char(n)`) ise DBI `"PY "` döndürür: buradaki dal ÇALIŞMAZ, proje/EPS
+  # kapsamı `not_applicable` kalır, ama plan katmanı kırpılmış `"PY"` rolünü
+  # görüp yüklemi ATLAR. Sonuç, kullanıcının proje kapsamı DIŞINDAKİ satırların
+  # dönmesidir. Normalleştirme `pk_rls_code_norm()` sözleşmesiyle aynıdır:
+  # yalnızca kırpma; Türkçe I/İ anlamını değiştirebileceği için harf durumu
+  # DÖNÜŞTÜRÜLMEZ.
+  yetki_ham <- info$Yetki
+  info$Yetki <- if (is.null(yetki_ham) || !length(yetki_ham)) {
+    NA_character_
+  } else {
+    ham <- as.character(yetki_ham)[1]
+    if (is.na(ham)) NA_character_ else trimws(ham)
+  }
+  # Rol/masraf yeri değerleri KULLANICIYA ÖZEL yetkilendirme verisidir; sunucu
+  # log'una yazılmaz. Yalnızca kararın ALINDIĞI kaydedilir.
+  cat("[PK_ANALIZ] DC01 yetki kaydi cozuldu.\n")
+
+  # EKSİK DEPARTMAN KAPSAMI, "KISIT YOK" DEMEK DEĞİLDİR.
+  #
+  # `MasrafYeriKodu` AÇIK `"ADMIN"` işaretiyse departman kısıtı BİLEREK yoktur.
+  # Değer `NA`/boş ise kapsam ÇÖZÜLEMEMİŞTİR; eskiden ikisi de `NULL` olup
+  # `pk_rls_plan()` boyutu `not_applicable` sayıyordu ve `USER` gibi proje/EPS
+  # yüklemi de olmayan bir rol TÜM satırları görebiliyordu.
+  masraf_ham <- info$MasrafYeriKodu
+  masraf <- if (is.null(masraf_ham) || !length(masraf_ham)) NA_character_ else as.character(masraf_ham)[1]
+  if (!is.na(masraf) && identical(trimws(masraf), "ADMIN")) {
+    info$allowed_depts <- NULL
+    info$scope_state_depts <- "not_applicable"
+  } else if (!is.na(masraf) && nzchar(trimws(masraf))) {
+    info$allowed_depts <- .pk_rls_scope_codes(masraf)
+    info$scope_state_depts <- if (length(info$allowed_depts)) "available" else "empty"
   } else {
     info$allowed_depts <- NULL
+    info$scope_state_depts <- "unavailable"
   }
 
   info$allowed_projects <- NULL
@@ -190,7 +240,7 @@ get_user_rls_info <- function(username, conn) {
     # DURDURMA/SON TARİH burada da TİPLİ kalır: `NULL`'a indirgemek, iptal
     # edilmiş bir isteği "kapsam çözülemedi" diye RAPORLAYIP analize devam
     # etmek olurdu (PR #703 incelemesi).
-    py_res <- tryCatch(.pk_rls_bounded_query(conn, sql_permission_py), error = function(e) {
+    py_res <- tryCatch(.pk_rls_permission_rows(conn, sql_permission_py, username), error = function(e) {
       if (isTRUE(.pk_rls_halt_error(e))) halt_reason <<- conditionMessage(e)
       NULL
     })
@@ -204,11 +254,14 @@ get_user_rls_info <- function(username, conn) {
       info$scope_state_projects <- "unavailable"
       cat("[PK_ANALIZ] UYARI: PY izin sorgusu calistirilamadi; kapsam COZULEMEDI.\n")
     } else {
-      user_rows <- py_res[py_res$KullaniciAdi == username, ]
+      user_rows <- .pk_rls_rows_for_user(py_res, username)
       if (nrow(user_rows) > 0) {
         info$allowed_projects <- .pk_rls_scope_codes(user_rows$ProjeKodu)
         info$scope_state_projects <- "available"
-        cat(sprintf("[PK_ANALIZ] PY Projeleri: %s\n", paste(info$allowed_projects, collapse = ",")))
+        # Kapsam KODLARI kullanıcının iç erişim sınırını yeniden kurar; log'a
+        # yalnızca SAYI yazılır.
+        cat(sprintf("[PK_ANALIZ] PY kapsami cozuldu (%d kod).\n",
+                    length(info$allowed_projects)))
       } else {
         info$scope_state_projects <- "empty"
         cat("[PK_ANALIZ] PY izin tablosunda kullaniciya ait satir yok; kapsam BOS.\n")
@@ -218,7 +271,7 @@ get_user_rls_info <- function(username, conn) {
 
   if (info$Yetki %in% c("KY-P", "DIR-P")) {
     cat("[PK_ANALIZ] Program (EPS) yetkisi kontrol ediliyor...\n")
-    eps_res <- tryCatch(.pk_rls_bounded_query(conn, sql_permission_eps), error = function(e) {
+    eps_res <- tryCatch(.pk_rls_permission_rows(conn, sql_permission_eps, username), error = function(e) {
       if (isTRUE(.pk_rls_halt_error(e))) halt_reason <<- conditionMessage(e)
       NULL
     })
@@ -232,11 +285,12 @@ get_user_rls_info <- function(username, conn) {
       info$scope_state_eps <- "unavailable"
       cat("[PK_ANALIZ] UYARI: EPS izin sorgusu calistirilamadi; kapsam COZULEMEDI.\n")
     } else {
-      user_rows <- eps_res[eps_res$KullaniciAdi == username, ]
+      user_rows <- .pk_rls_rows_for_user(eps_res, username)
       if (nrow(user_rows) > 0) {
         info$allowed_eps <- .pk_rls_scope_codes(user_rows$EPSKodu)
         info$scope_state_eps <- "available"
-        cat(sprintf("[PK_ANALIZ] EPS Kodlari: %s\n", paste(info$allowed_eps, collapse = ",")))
+        cat(sprintf("[PK_ANALIZ] EPS kapsami cozuldu (%d kod).\n",
+                    length(info$allowed_eps)))
       } else {
         info$scope_state_eps <- "empty"
         cat("[PK_ANALIZ] EPS izin tablosunda kullaniciya ait satir yok; kapsam BOS.\n")

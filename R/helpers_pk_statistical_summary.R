@@ -12,7 +12,66 @@
 #           Dosya bilerek SAFTIR: Shiny/reactive/DB/ağ/LLM bağımlılığı yoktur.
 # ==============================================================================
 
-generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_chars = MAX_ANALYSIS_PROMPT_CHARS, mode = "summary", rls_total_rows = NULL, user_filter_applied = FALSE, pre_aggregated_columns = NULL) {
+# ÖLÇÜ SÖZLEŞMESİ (PR #705, U45)
+#
+# `is.numeric()` bir ÖLÇÜ sözleşmesi DEĞİLDİR. Sayısal kimlikler, yıl alanları,
+# durum kodları ve toplanamaz oranlar da sayısaldır; bunlara toplam/ortalama/
+# standart sapma üretmek modele MAKUL AMA ANLAMSIZ istatistik verir.
+#
+# Karar sırası:
+#   1) Küratörlü sütun metadatası varsa `role`/`additive` KESİNDİR
+#      (`measure` + toplanabilir -> ölçü; `dimension`/`date`/`id` -> ölçü değil).
+#   2) Metadata YOKSA yalnızca YAPISAL bir kimlik dışlaması uygulanır
+#      (tamsayı değerli VE satır başına benzersiz -> kimlik gibi davranır).
+#      Bu bir anlam ÜRETMEZ; yalnızca kanıtlanabilir biçimde ölçü OLMAYANI eler.
+# Sözlük/eşanlamlı tablosu YOKTUR; her fiziksel sütunun metadatası da GEREKMEZ.
+# Metadata YOKKEN kimlik çıkarımı için gereken ASGARİ örneklem. Bunun altında
+# benzersizlik hiçbir şey KANITLAMAZ.
+.PK_STAT_ID_MIN_ROWS <- 20L
+
+.pk_stat_meta_role <- function(column_meta, col) {
+  if (!is.list(column_meta) || !length(column_meta)) return(NULL)
+  girdi <- column_meta[[col]]
+  if (!is.list(girdi)) return(NULL)
+  rol <- girdi$role
+  if (!is.character(rol) || !length(rol) || is.na(rol[1]) || !nzchar(rol[1])) return(NULL)
+  list(role = tolower(trimws(rol[1])), additive = girdi$additive)
+}
+
+.pk_stat_is_measure <- function(values, column_meta, col) {
+  bilgi <- .pk_stat_meta_role(column_meta, col)
+  if (!is.null(bilgi)) {
+    if (!identical(bilgi$role, "measure")) return(FALSE)
+    # TOPLANABİLİRLİK AÇIKÇA `TRUE` OLMALIDIR.
+    #
+    # Eksik/`NA`/mantıksal olmayan/vektör bir `additive` değeri "toplanabilir"
+    # DEĞİL, "toplulaştırma sözleşmesi BİLİNMİYOR" demektir. Eskiden bu durum
+    # `TRUE` sayılıyordu ve oran, yüzde, anlık bakiye gibi bir ölçü için
+    # toplam/ortalama üretiliyordu; model bu sayıyı gerçek bir ölçü gibi
+    # aktarır. Bu, `is.numeric()` yerine metadata koymanın TAM OLARAK önlemek
+    # istediği hatadır. Metadata HİÇ yoksa davranış değişmez (aşağıdaki
+    # yapısal kimlik dışlaması); değişen yalnızca "metadata var ama eksik"
+    # hâlidir ve o hâlde karar KAPALI BAŞARISIZdır.
+    if (!(is.logical(bilgi$additive) && length(bilgi$additive) == 1L &&
+          isTRUE(bilgi$additive))) {
+      return(FALSE)
+    }
+    return(TRUE)
+  }
+
+  # Metadata yok: yalnızca KANITLANABİLİR kimlik dışlaması.
+  #
+  # Benzersizlik TEK BAŞINA zayıf kanıttır: 3 satırlık gerçek bir ölçü de
+  # benzersiz olur. Bu yüzden dışlama için YETERLİ ÖRNEKLEM aranır; altında
+  # hiçbir anlam ÜRETİLMEZ ve sütun ölçü sayılır (mevcut davranış korunur).
+  gecerli <- values[!is.na(values)]
+  if (length(gecerli) < .PK_STAT_ID_MIN_ROWS) return(TRUE)
+  tamsayi <- all(is.finite(gecerli)) && isTRUE(all(gecerli == round(gecerli)))
+  if (!tamsayi) return(TRUE)
+  !(length(unique(gecerli)) == length(gecerli))
+}
+
+generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_chars = MAX_ANALYSIS_PROMPT_CHARS, mode = "summary", rls_total_rows = NULL, user_filter_applied = FALSE, pre_aggregated_columns = NULL, column_meta = NULL) {
   # Kolon adlarını okunabilir hale getirme fonksiyonu
   prettify_col_name <- function(col) {
     # CamelCase ayırma
@@ -40,6 +99,18 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
 
   num_cols <- names(dt)[vapply(dt, is.numeric, logical(1))]
   cat_cols <- names(dt)[vapply(dt, function(x) is.character(x) || is.factor(x), logical(1))]
+
+  # U45: sayısal depolama tipi ölçü DEMEK DEĞİLDİR (yukarıdaki sözleşme).
+  olcu_disi <- character(0)
+  if (length(num_cols) > 0) {
+    olcu_mu <- vapply(
+      num_cols,
+      function(col) .pk_stat_is_measure(dt[[col]], column_meta, col),
+      logical(1)
+    )
+    olcu_disi <- num_cols[!olcu_mu]
+    num_cols <- num_cols[olcu_mu]
+  }
 
   # Önceden toplulaştırılmış sütunları sayısal özetten çıkar
   pre_agg_cols <- character(0)
@@ -75,6 +146,20 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
         "Bu sütunları YALNIZCA satır bazında yorumla, olduğu gibi aktar."
       ),
       paste(pretty_names, collapse = ", ")
+    )
+  }
+
+  if (length(olcu_disi) > 0) {
+    # Sütunlar GİZLENMEZ; yalnızca ÖLÇÜ MUAMELESİ GÖRMEZ. Model bunları satır
+    # bazında okuyabilir, ama toplam/ortalama üretmemelidir.
+    summary_parts[[length(summary_parts) + 1]] <- sprintf(
+      paste0(
+        "\n\n\U000026A0\U0000FE0F ÖLÇÜ OLMAYAN SAYISAL SÜTUNLAR:\n",
+        "- %s\n",
+        "Bu sütunlar sayısal saklanır ama ÖLÇÜ DEĞİLDİR (kimlik/kod/yıl gibi).\n",
+        "ASLA toplam, ortalama, medyan veya standart sapma hesaplama."
+      ),
+      paste(vapply(olcu_disi, prettify_col_name, character(1)), collapse = ", ")
     )
   }
 
@@ -214,14 +299,35 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
           mode = mode,
           rls_total_rows = rls_total_rows,
           user_filter_applied = user_filter_applied,
-          pre_aggregated_columns = pre_aggregated_columns
+          pre_aggregated_columns = pre_aggregated_columns,
+          column_meta = column_meta
         ))
       }
-      return(generate_statistical_summary(data, max_preview_rows = floor(max_preview_rows / 2), max_total_chars = max_total_chars, pre_aggregated_columns = pre_aggregated_columns))
+      # PR #705: v1 ozyinelemesi de KAPSAM argumanlarini tasir. Aksi halde
+      # kirpilan bir `mode="full"` istegi sessizce `summary`'ye donuyor ve
+      # FILTRELENMIS bir istek, sayilarin yalnizca filtreli kumeyi anlattigi
+      # UYARISINI kaybediyordu. Kirpma yalnizca onizleme satirlarini azaltmali,
+      # analiz semantigini DEGISTIRMEMELIDIR.
+      return(generate_statistical_summary(
+        data,
+        max_preview_rows = floor(max_preview_rows / 2),
+        max_total_chars = max_total_chars,
+        mode = mode,
+        rls_total_rows = rls_total_rows,
+        user_filter_applied = user_filter_applied,
+        pre_aggregated_columns = pre_aggregated_columns,
+        column_meta = column_meta
+      ))
     }
     # Eğer hala büyükse, sadece temel özet gönder
     basic_summary <- sprintf("TOPLAM SATIR: %d | TOPLAM SUTUN: %d", total_rows, total_cols)
-    if (pk_v2 && isTRUE(user_filter_applied) && !is.null(rls_total_rows) &&
+    # FİLTRELEME UYARISI MOTOR BAYRAĞINA BAĞLI DEĞİLDİR.
+    #
+    # Ana özet yolunda (yukarıda) bu uyarı `pk_v2` koşulu OLMADAN üretilir.
+    # Terminal geri düşmede `pk_v2 &&` koşulu vardı: v1'de `mode = "full"`
+    # bir istek önizleme kırpması beş satıra indikten sonra buraya düşünce,
+    # yanıt FİLTRELENMİŞ bir alt kümeyi anlatıp kapsam uyarısını KAYBEDİYORDU.
+    if (isTRUE(user_filter_applied) && !is.null(rls_total_rows) &&
         rls_total_rows > total_rows) {
       basic_summary <- paste0(
         basic_summary,

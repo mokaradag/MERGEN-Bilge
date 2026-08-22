@@ -21,6 +21,7 @@ pk_export_serve <- function(session, artifact) {
   if (is.null(session) || is.null(session$registerDataObj)) return(artifact)
 
   temizlenecek <- character(0)
+  kayit_basarisiz <- FALSE
   artifact$files <- lapply(artifact$files, function(dosya) {
     yol <- normalizePath(dosya$path, winslash = "/", mustWork = FALSE)
     dosya$path <- yol
@@ -69,11 +70,28 @@ pk_export_serve <- function(session, artifact) {
     )
 
     temizlenecek <<- c(temizlenecek, yol)
+    if (is.null(url) || !nzchar(as.character(url)[1])) kayit_basarisiz <<- TRUE
     dosya$url <- url
     dosya
   })
 
   .pk_export_register_cleanup(session, temizlenecek)
+
+  # URL ÜRETİLEMEDİYSE EK BAŞARILI SAYILMAZ.
+  #
+  # `registerDataObj()` hata verdiğinde `url` `NULL` kalıyor ama artefakt
+  # `status = "ok"` dönüyordu. Senkron sonuç kurucusu, asenkron yaşam
+  # döngüsündeki URL doğrulamasını YAPMAZ; kullanıcıya indirilebilir bağlantısı
+  # OLMAYAN, yalnızca dosya adı taşıyan "başarılı" bir ek kartı gösteriliyordu.
+  # Tipli başarısızlık, mevcut dışa aktarım-hatası yanıtını devreye sokar.
+  if (isTRUE(kayit_basarisiz)) {
+    artifact$status <- "failed"
+    artifact$message <- paste0(
+      "Analiz eki hazırlandı ancak indirme bağlantısı oluşturulamadı; ",
+      "dosya sunulamadığı için ek gönderilmedi."
+    )
+  }
+
   artifact
 }
 

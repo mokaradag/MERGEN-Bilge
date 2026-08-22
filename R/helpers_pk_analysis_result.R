@@ -38,7 +38,10 @@
     mode = analysis_mode,
     rls_total_rows = nrow(secure_data),
     user_filter_applied = user_filter_applied,
-    pre_aggregated_columns = query$pre_aggregated_columns
+    pre_aggregated_columns = query$pre_aggregated_columns,
+    # U45: kuratorlu sutun metadatasi ÖLÇÜ sozlesmesini belirler; yoksa
+    # ozetleyici yalnizca yapisal kimlik dislamasi uygular.
+    column_meta = .pk_result_meta(query)$column_meta
   )
 
   data_str <- pk_build_analysis_payload(

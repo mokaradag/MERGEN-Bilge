@@ -242,8 +242,18 @@
     if (identical(as.integer(t$n %||% 0L), 0L)) {
       return(sprintf("- %s: gecerli tarih yok", .pk_render_safe_text(t$label, 120L)))
     }
-    kova <- vapply(t$buckets, function(b) sprintf("%s=%s", b$bucket,
-                                                  pk_fmt_number(b$count, 0L)), character(1))
+    # AYLIK KOVA SAYILARI DA ALINTILANABİLİR OLMALIDIR.
+    #
+    # Kovalar modele GÖRÜNÜR ama `[fact:...]` işareti taşımıyordu ve
+    # `pk_packet_context_facts()` yalnızca genel `date_count` olgusunu
+    # üretiyordu. Aylık eğilim sorusuna cevap veren model bu yüzden ya sayıyı
+    # atlamak ya da işaretsiz yazmak zorundaydı; küçük tam sayılar köksüz-iddia
+    # dedektörünün DIŞINDA olduğu için yanlış/uydurma bir aylık sayı köken
+    # doğrulamasından sessizce geçebiliyordu.
+    kova <- vapply(t$buckets, function(b) sprintf(
+      "%s=%s %s", b$bucket, pk_fmt_number(b$count, 0L),
+      .pk_render_marker(t$column, "bucket_count", as.character(b$bucket)[1])
+    ), character(1))
     paste(c(
       sprintf("- %s: %s - %s (%s kayit %s)", .pk_render_safe_text(t$label, 120L),
               t$from, t$to, pk_fmt_number(t$n, 0L),

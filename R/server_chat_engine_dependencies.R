@@ -252,13 +252,21 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
   }
 }
 
+# YETKİLİ ALT BİLGİ MODEL METNİNE GÖRE BASTIRILMAZ.
+#
+# Eski metin tabanlı idempotentlik denetimi (`grepl("**Analiz Kaynağı", ...)`)
+# modelin KENDİ yazdığı ya da istem enjeksiyonuyla ürettiği bir başlığı
+# "footer zaten var" sanıp R'ye ait YETKİLİ alt bilgiyi DÜŞÜRÜYORDU. Kayıt bu
+# noktada ZATEN tüketilmiştir, yani daha sonra teslim edilme şansı da yoktur:
+# kullanıcıya yalnızca MODEL DENETİMİNDEKİ kaynak bölümü kalırdı.
+#
+# İdempotentlik BANT DIŞI sağlanır: `provenance_store` girdisi `istek_id`
+# anahtarıyla tutulur ve okunduğu anda SİLİNİR (bkz. `motor$tamamla`
+# sarmalayıcısı) — `pk_provenance_decorate()` ile aynı sözleşme.
 .pk_hook_room_footer_append <- function(text, footer) {
   footer <- .pk_hook_scalar_text(footer)
   if (!nzchar(footer)) return(text)
-
-  base <- .pk_hook_scalar_text(text)
-  if (grepl("**Analiz Kaynağı", base, fixed = TRUE)) return(text)
-  paste0(base, footer)
+  paste0(.pk_hook_scalar_text(text), footer)
 }
 
 .pk_hook_room_footer_publish <- function(footer) {
@@ -356,10 +364,10 @@ if (exists("ortakOturumYzBind", mode = "function", inherits = TRUE) &&
           NULL
         }
 
+        # Alt bilgi TEK terminal metne eklenir; yanıt varsa ona, yoksa hataya.
         if (!is.null(yanit_metni)) {
           yanit_metni <- .pk_hook_room_footer_append(yanit_metni, footer)
-        }
-        if (!is.null(hata_metni)) {
+        } else if (!is.null(hata_metni)) {
           hata_metni <- .pk_hook_room_footer_append(hata_metni, footer)
         }
 

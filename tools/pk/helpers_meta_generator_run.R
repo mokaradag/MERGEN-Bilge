@@ -359,6 +359,13 @@ pkgn_inventory_one <- function(query, config, conn = NULL,
 #' @param release_fn `function(handle, timeout_sec)` -> serbest bırak.
 #' @param fingerprints Devam önbelleği parmak izleri (yalnızca önbellek
 #'   girdisinin kaydedilmesi için; kabul kararı `pkgh_read_state()` içindedir).
+# KOŞU KİLİDİ KAYBI İÇİN KOŞUL SINIFI.
+#
+# Ara kayıt yazıcısı (`generate_query_meta.R` içindeki `ara_kayit`) kilidi
+# kaybettiğinde bu sınıfla sinyal verir. Sınıf, hata METNİNE bakmadan ayırt
+# etmeyi sağlar; metin eşleştirme yerelleştirme/redaksiyon ile bozulabilirdi.
+PKG_META_LOCK_LOST_CLASS <- "pkg_meta_lock_lost"
+
 #' @param checkpoint_fn `function(cache)` -> her sorgudan SONRA çağrılır.
 #'   Kesintiye uğrayan bir koşunun devam edebilmesi için durum ARA ARA
 #'   yazılmalıdır; yalnızca koşu sonunda yazmak, kesintide TÜM ilerlemeyi
@@ -543,8 +550,40 @@ pkg_meta_run_inventory <- function(query_library, config,
     }
 
     # ARA KAYIT: koşu burada kesilse bile buraya kadarki ilerleme korunur.
+    #
+    # PR #705: BAŞARISIZ ARA KAYIT SESSİZ GEÇMEZ. Disk/izin/geçici Windows
+    # dosya kilidi yüzünden `checkpoint_fn` FALSE dönerse ya da hata atarsa,
+    # operatör koşuyu son başarılı kayıttan SONRA keserse aradaki iş DEVAM
+    # ETTİRİLEMEZ; oysa belgelenen garanti "her sorgudan sonra kayıt"tır.
+    # Envanteri durdurmak yerine GÖRÜNÜR uyarı üretilir: kalan sorgular hâlâ
+    # taranır, ancak operatör devam edilebilirliğin kaybolduğunu ANINDA görür.
     if (is.function(checkpoint_fn)) {
-      tryCatch(checkpoint_fn(yeni_cache), error = function(e) NULL)
+      kayit_ok <- tryCatch(checkpoint_fn(yeni_cache), error = function(e) e)
+      # ÇİTLEME (fencing) KAYBI UYARIYA İNDİRGENMEZ.
+      #
+      # Ara kayıt, koşu kilidini KAYBETTİĞİ için de başarısız olabilir: o anda
+      # kilidi başka bir üretici devralmıştır. Bu hatayı yutup envantere devam
+      # etmek, iki koşunun AYNI paylaşılan metadata/artefakt dosyalarına
+      # yazmasına izin verirdi. Sınıf İMZAYLA ayırt edilir (metin eşleştirme
+      # DEĞİL) ve yukarı YAYILIR; sıradan yazma hataları aşağıdaki uyarı
+      # yolunda kalır.
+      if (inherits(kayit_ok, PKG_META_LOCK_LOST_CLASS)) stop(kayit_ok)
+      if (inherits(kayit_ok, "condition") || !isTRUE(kayit_ok)) {
+        neden <- if (inherits(kayit_ok, "condition")) {
+          if (exists("pkgh_sanitize_bootstrap_error", mode = "function", inherits = TRUE)) {
+            pkgh_sanitize_bootstrap_error(conditionMessage(kayit_ok))
+          } else {
+            "yazma hatasi"
+          }
+        } else {
+          "yazma basarisiz"
+        }
+        cat(sprintf(paste0(
+          "[PK_META_GEN] !!! ARA KAYIT BASARISIZ (sorgu=%s): %s\n",
+          "[PK_META_GEN]     Bu noktadan sonraki is DEVAM ETTIRILEMEZ; kosu\n",
+          "[PK_META_GEN]     kesilirse bastan baslamak gerekir.\n"
+        ), id, neden))
+      }
     }
   }
 

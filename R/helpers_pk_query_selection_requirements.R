@@ -177,6 +177,18 @@ pk_select_normalize_requirements <- function(raw) {
 }
 
 #' Normalleştirilmiş iddia BOŞ mu (doğrulanacak bir şey var mı)?
+#' `unsupported` alanini normalize et (SERBEST METIN ihtiyac listesi)
+#'
+#' Hem normal karar yolu hem de CIP ONAYI yolu ayni kapiya bakar; alan liste ya
+#' da karakter vektoru olabilir. Tek sahip burasidir.
+pk_select_unsupported_needs <- function(requirements) {
+  if (!is.list(requirements)) return(character(0))
+  ham <- requirements$unsupported %||% character(0)
+  if (is.list(ham)) ham <- unlist(ham, use.names = FALSE)
+  ham <- trimws(as.character(ham))
+  unique(ham[!is.na(ham) & nzchar(ham)])
+}
+
 pk_select_requirements_empty <- function(requirements) {
   gorunum <- .pk_select_req_view(requirements)
   iddia <- unlist(gorunum[.PK_SELECT_REQ_CAPABILITY_FIELDS], use.names = FALSE)
@@ -192,17 +204,26 @@ pk_select_requirements_empty <- function(requirements) {
 #'     sorgu gerekir),
 #'   * `validator_error`     — doğrulayıcı yüklenmedi ya da çöktü (SİSTEM
 #'     kusuru; metadata doldurmak düzeltmez).
-pk_select_validate_requirements <- function(query, requirements, capability_ids = NULL) {
-  if (is.null(capability_ids)) capability_ids <- pk_select_capability_ids()
+#' @param registry Yetenek kayıt defteri. `NULL` çalışma zamanındaki
+#'   `pk_capability_registry`yi okur; testler TUTARLI bir defter enjekte eder.
+pk_select_validate_requirements <- function(query, requirements, capability_ids = NULL,
+                                            registry = NULL) {
+  if (is.null(capability_ids)) capability_ids <- pk_select_capability_ids(registry)
 
   bos <- list(status = "not_asserted", asserted = FALSE,
               unknown = character(0), missing = character(0),
-              columns = list(), errors = character(0))
+              columns = list(), canonicalized = character(0), errors = character(0))
 
   if (!is.list(requirements)) return(bos)
 
   requirements <- .pk_select_req_view(requirements)
   if (pk_select_requirements_empty(requirements)) return(bos)
+
+  # VARLIK -> SAYIM kanonikleştirmesi (deterministik ima; ayrıntı ve kapalı
+  # başarısızlık kuralları `R/helpers_pk_query_selection_canonical.R` içinde).
+  kanon <- pk_select_apply_canonicalization(query, requirements, capability_ids, registry)
+  requirements <- .pk_select_req_view(kanon$requirements)
+  kanonik <- kanon$mappings
 
   istenen <- unique(unlist(
     requirements[.PK_SELECT_REQ_CAPABILITY_FIELDS], use.names = FALSE
@@ -214,6 +235,7 @@ pk_select_validate_requirements <- function(query, requirements, capability_ids 
     return(list(
       status = "unknown_capability", asserted = TRUE,
       unknown = bilinmeyen, missing = character(0), columns = list(),
+      canonicalized = kanonik,
       errors = sprintf(
         "İzinli olmayan yetenek kimliği: %s", paste(bilinmeyen, collapse = ", ")
       )
@@ -224,6 +246,7 @@ pk_select_validate_requirements <- function(query, requirements, capability_ids 
     return(list(
       status = "validator_error", asserted = TRUE,
       unknown = character(0), missing = istenen, columns = list(),
+      canonicalized = kanonik,
       errors = "Yetenek doğrulayıcısı yüklenmedi; anlamsal iddia doğrulanamadı."
     ))
   }
@@ -247,6 +270,7 @@ pk_select_validate_requirements <- function(query, requirements, capability_ids 
     return(list(
       status = "validator_error", asserted = TRUE,
       unknown = character(0), missing = istenen, columns = list(),
+      canonicalized = kanonik,
       errors = sprintf(
         "Yetenek doğrulayıcısı çalıştırılamadı: %s",
         cagri_hatasi %||% "bilinmeyen hata"
@@ -259,7 +283,7 @@ pk_select_validate_requirements <- function(query, requirements, capability_ids 
     return(list(
       status = "capability_missing", asserted = TRUE,
       unknown = character(0), missing = eksik,
-      columns = kontrol$columns %||% list(),
+      columns = kontrol$columns %||% list(), canonicalized = kanonik,
       errors = sprintf(
         "Seçilen sorgu şu anlamsal yetenekleri sunmuyor: %s",
         paste(eksik, collapse = ", ")
@@ -270,7 +294,8 @@ pk_select_validate_requirements <- function(query, requirements, capability_ids 
   list(
     status = "ok", asserted = TRUE,
     unknown = character(0), missing = character(0),
-    columns = kontrol$columns %||% list(), errors = character(0)
+    columns = kontrol$columns %||% list(), canonicalized = kanonik,
+    errors = character(0)
   )
 }
 

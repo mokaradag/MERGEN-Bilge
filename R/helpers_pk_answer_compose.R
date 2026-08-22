@@ -170,9 +170,47 @@ pk_compose_close_markdown <- function(text) {
   txt <- as.character(text %||% "")[1]
   if (length(txt) != 1L || is.na(txt) || !nzchar(txt)) return("")
 
+  # AÇIK ÇİT KENDİ AYRACIYLA KAPATILIR.
+  #
+  # Yalnızca çit SAYISINI saymak ve her durumda ``` eklemek, `~~~` ile açılmış
+  # bir bloğu KAPATMAZ: ardına eklenen tablo, indirme bağlantıları ve yetkili
+  # alt bilgi kod bloğunun İÇİNDE kalır (bağlantı tıklanamaz olur). Ayraç
+  # durumu satır satır izlenir; açık kalan ayracın AYNISI eklenir.
+  #
+  # AYRACIN TAM BİÇİMİ SAKLANIR (karakter + UZUNLUK).
+  #
+  # Eskiden ayraç `substr(..., 1L, 3L)` ile ÜÇ karaktere kırpılıyordu. Dört
+  # ters tırnakla (` ```` `) açılmış bir blok, içindeki sıradan üç ters tırnaklı
+  # satırla KAPANMIŞ sayılıyor; Markdown ise bloğu AÇIK kabul ediyordu. Eklenen
+  # tablo ve indirme bağlantıları yine kod bloğunun içinde kalıyordu.
+  #
+  # CommonMark kuralı: kapanış çiti AYNI karakteri kullanır, açılıştan KISA
+  # OLAMAZ ve satırda çitten başka (boşluk dışında) bir şey TAŞIYAMAZ. Bilgi
+  # dizesi (` ```python `) yalnızca AÇILIŞTA bulunabilir.
   satirlar <- strsplit(txt, "\n", fixed = TRUE)[[1]]
-  cit <- sum(grepl("^\\s*(```|~~~)", satirlar, perl = TRUE))
-  if (cit %% 2L == 1L) txt <- paste0(txt, "\n```")
+  acik_kar <- NA_character_
+  acik_uzunluk <- NA_integer_
+  for (satir in satirlar) {
+    eslesme <- regmatches(satir, regexpr("^\\s*(`{3,}|~{3,})", satir, perl = TRUE))
+    if (!length(eslesme)) next
+    ayrac <- trimws(eslesme[1])
+    kar <- substr(ayrac, 1L, 1L)
+    uzunluk <- nchar(ayrac, type = "chars")
+    if (is.na(acik_kar)) {
+      acik_kar <- kar
+      acik_uzunluk <- uzunluk
+      next
+    }
+    # Farklı ayraç ya da kısa ayraç, açık blok İÇİNDE sıradan metindir.
+    if (!identical(kar, acik_kar) || uzunluk < acik_uzunluk) next
+    # Kapanış çiti bilgi dizesi taşıyamaz.
+    kalan <- sub("^\\s*(`{3,}|~{3,})\\s*$", "", satir, perl = TRUE)
+    if (nzchar(kalan)) next
+    acik_kar <- NA_character_
+    acik_uzunluk <- NA_integer_
+  }
+
+  if (!is.na(acik_kar)) txt <- paste0(txt, "\n", strrep(acik_kar, acik_uzunluk))
 
   txt
 }
@@ -263,7 +301,12 @@ pk_compose_close_markdown <- function(text) {
 }
 
 #' Deterministik markdown tablo (R'ye aittir; model üretmez)
-pk_compose_markdown_table <- function(data, max_rows = 15L, max_cols = 12L, meta = list()) {
+#' @param attachment_available Ek dosya GERÇEKTEN üretildi mi? `inline_table`
+#'   kipinde `pk_export_build()` HİÇ çağrılmaz; hücre kırpma notunun "tam
+#'   değerler ek dosyadadır" demesi kullanıcıya var olmayan bir dosya vaat
+#'   ediyor ve kırpılan içerik ERİŞİLEMEZ kalıyordu.
+pk_compose_markdown_table <- function(data, max_rows = 15L, max_cols = 12L, meta = list(),
+                                      attachment_available = TRUE) {
   if (!is.data.frame(data) || !nrow(data) || !ncol(data)) return(NULL)
 
   max_rows <- max(1L, suppressWarnings(as.integer(max_rows)))
@@ -305,8 +348,14 @@ pk_compose_markdown_table <- function(data, max_rows = 15L, max_cols = 12L, meta
   # Hücre kırpması da AÇIKÇA bildirilir: 60. karakterden sonra ayrışan iki
   # proje adı aksi hâlde ayırt edilemez görünürdü.
   if (kirpilan_hucre > 0L) {
-    notlar <- c(notlar, sprintf("%s hücre uzunluk nedeniyle kısaltıldı; tam değerler ek dosyadadır",
-                                pk_fmt_number(kirpilan_hucre, 0L)))
+    notlar <- c(notlar, if (isTRUE(attachment_available)) {
+      sprintf("%s hücre uzunluk nedeniyle kısaltıldı; tam değerler ek dosyadadır",
+              pk_fmt_number(kirpilan_hucre, 0L))
+    } else {
+      sprintf(paste0("%s hücre uzunluk nedeniyle kısaltıldı; tam değerler için ",
+                     "dışa aktarım (Excel/CSV) isteyin"),
+              pk_fmt_number(kirpilan_hucre, 0L))
+    })
   }
 
   if (length(notlar)) {
@@ -463,10 +512,16 @@ pk_compose_block <- function(decision, data, artifact = NULL, meta = list(),
   ic_sutun <- .pk_compose_cfg("MERGEN_PK_INLINE_MAX_COLS", query_meta, 8L)
 
   if (identical(decision$mode, "inline_table")) {
-    tablo <- pk_compose_markdown_table(data, ic_satir, ic_sutun, meta)
+    # `inline_table` kipinde EK ÜRETİLMEZ; kırpma notu bunu bilmelidir.
+    tablo <- pk_compose_markdown_table(data, ic_satir, ic_sutun, meta,
+                                       attachment_available = FALSE)
     if (!is.null(tablo)) parcalar <- c(parcalar, paste0("\n\n**Sonuç tablosu**\n\n", tablo))
   } else {
-    onizleme <- pk_compose_markdown_table(data, decision$preview_rows, ic_sutun, meta)
+    ek_var <- is.list(artifact) &&
+      (identical(artifact$status, "ok") || identical(artifact$status, "csv_fallback")) &&
+      length(artifact$files %||% list()) > 0L
+    onizleme <- pk_compose_markdown_table(data, decision$preview_rows, ic_sutun, meta,
+                                          attachment_available = ek_var)
     if (!is.null(onizleme)) {
       parcalar <- c(parcalar, paste0("\n\n**Önizleme**\n\n", onizleme))
     }

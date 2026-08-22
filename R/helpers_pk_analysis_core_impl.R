@@ -73,14 +73,20 @@ convert_date_columns <- function(data, date_col_names) {
       if (is.character(vals) || is.factor(vals)) {
         vals_char <- as.character(vals)
 
-        converted <- as.Date(vals_char, format = "%d.%m.%Y")
+        # PR #705 (U44): yedek bicimler "hepsi basarisiz" kosuluna BAGLI
+        # DEGILDIR. KARISIK bicimli bir sutunda ilk bicim bazi degerleri
+        # cevirdiginde `all(is.na(...))` FALSE olur, yedekler hic denenmez ve
+        # KALAN gercek tarihler sessizce NA olarak dusurulurdu. Artik her yedek
+        # bicim YALNIZCA hala NA olan degerlere uygulanir; tek bicimli
+        # sutunlarda sonuc birebir aynidir.
+        gecerli <- !is.na(vals_char) & nzchar(vals_char)
+        converted <- as.Date(rep(NA_character_, length(vals_char)))
 
-        if (all(is.na(converted[!is.na(vals_char) & nzchar(vals_char)]))) {
-          converted <- as.Date(vals_char, format = "%Y-%m-%d")
-        }
-
-        if (all(is.na(converted[!is.na(vals_char) & nzchar(vals_char)]))) {
-          converted <- as.Date(vals_char, format = "%d/%m/%Y")
+        for (bicim in c("%d.%m.%Y", "%Y-%m-%d", "%d/%m/%Y")) {
+          eksik <- gecerli & is.na(converted)
+          if (!any(eksik)) break
+          deneme <- suppressWarnings(as.Date(vals_char[eksik], format = bicim))
+          converted[eksik] <- deneme
         }
 
         success_count <- sum(!is.na(converted) & !is.na(vals_char) & nzchar(vals_char))

@@ -128,6 +128,45 @@ test_that("Proje/Kaynak Analizi security-summary helper manifest içinde doğru 
     ),
     label = "PK security-summary/module source sırası bozulmuş:"
   )
+
+  # PR #705 inceleme sertleştirmesi: kanonik kullanıcı anahtarı, redakte eden
+  # tanı yardımcısı ve SQL tarafında daraltılmış izin okuması AYRI bir dosyaya
+  # ÇIKARILDI; güvenlik özeti dosyası ratchet altında küçük kalmalıdır.
+  expect_source_manifest_order_for_tests(
+    c(
+      "R/helpers_pk_rls_identity.R",
+      "R/helpers_pk_analysis_security_summary.R"
+    ),
+    label = "PK RLS kimlik/izin helper sırası bozulmuş:"
+  )
+})
+
+test_that("RLS kimlik/izin yardımcıları ayrı dosyada kalır", {
+  kimlik <- .pk_read_repo_text("R/helpers_pk_rls_identity.R")
+  guvenlik <- .pk_read_repo_text("R/helpers_pk_analysis_security_summary.R")
+
+  for (fn in c(".pk_rls_user_key", ".pk_rls_safe_detail",
+               ".pk_rls_permission_rows", ".pk_rls_rows_for_user")) {
+    expect_true(
+      grepl(paste0(fn, " <- function"), kimlik, fixed = TRUE),
+      info = sprintf("%s R/helpers_pk_rls_identity.R içinde tanımlı olmalıdır.", fn)
+    )
+    expect_false(
+      grepl(paste0(fn, " <- function"), guvenlik, fixed = TRUE),
+      info = sprintf("%s güvenlik özeti dosyasına geri taşınmamalıdır.", fn)
+    )
+  }
+
+  # İzin okuması SQL tarafında kullanıcıya daraltılır; ham `sql_permission_*`
+  # doğrudan çağrılmaz.
+  expect_true(grepl(".pk_rls_permission_rows(conn, sql_permission_py, username)",
+                    guvenlik, fixed = TRUE))
+  expect_true(grepl(".pk_rls_permission_rows(conn, sql_permission_eps, username)",
+                    guvenlik, fixed = TRUE))
+
+  # Kullanıcı adı / yetki kapsamı kodları sunucu log'una DÖKÜLMEZ.
+  expect_false(grepl('paste(info$allowed_projects, collapse = ",")', guvenlik, fixed = TRUE))
+  expect_false(grepl('paste(info$allowed_eps, collapse = ",")', guvenlik, fixed = TRUE))
 })
 
 test_that("Proje/Kaynak Analizi helper extraction maintainability kazanımı korunur", {
@@ -215,7 +254,7 @@ test_that("apply_rls_to_data rol ve kolon sözleşmesini korur", {
 
   admin_data <- helper_env$apply_rls_to_data(
     sample_data,
-    user_info = list(Yetki = "ADMIN"),
+    user_info = list(Yetki = "ADMIN", scope_state_depts = "not_applicable"),
     rls_cols = rls_cols
   )
 
@@ -238,7 +277,10 @@ test_that("apply_rls_to_data rol ve kolon sözleşmesini korur", {
     sample_data,
     user_info = list(
       Yetki = "KY-P",
+      # PR #705: ADMIN departman kapsami ACIKCA beyan edilir; cikplak `NULL`
+      # artik "kisit yok" degil "cozulemedi" sayilir (kapali basarisiz).
       allowed_depts = NULL,
+      scope_state_depts = "not_applicable",
       allowed_eps = "E1"
     ),
     rls_cols = rls_cols
@@ -269,8 +311,7 @@ test_that("apply_rls_to_data eksik RLS sutununda kapali basarisiz olur (D6)", {
       user_info = list(
         Yetki = "PY",
         allowed_projects = "P1",
-        scope_state_projects = "available"
-      ),
+        scope_state_projects = "available", scope_state_depts = "not_applicable"),
       rls_cols = list(proje_kodu_col = "OlmayanSutun")
     ),
     class = "pk_rls_error"
@@ -294,8 +335,7 @@ test_that("apply_rls_to_data cozulemeyen kapsamda durur, bos kapsamda sifir sati
       user_info = list(
         Yetki = "PY",
         allowed_projects = NULL,
-        scope_state_projects = "unavailable"
-      ),
+        scope_state_projects = "unavailable", scope_state_depts = "not_applicable"),
       rls_cols = rls_cols
     ),
     class = "pk_rls_error"
@@ -307,8 +347,7 @@ test_that("apply_rls_to_data cozulemeyen kapsamda durur, bos kapsamda sifir sati
     user_info = list(
       Yetki = "PY",
       allowed_projects = NULL,
-      scope_state_projects = "empty"
-    ),
+      scope_state_projects = "empty", scope_state_depts = "not_applicable"),
     rls_cols = rls_cols
   )
   expect_equal(nrow(bos_kapsam), 0L)
@@ -317,7 +356,7 @@ test_that("apply_rls_to_data cozulemeyen kapsamda durur, bos kapsamda sifir sati
   expect_error(
     helper_env$apply_rls_to_data(
       sample_data,
-      user_info = list(Yetki = "PY", allowed_projects = NULL),
+      user_info = list(Yetki = "PY", allowed_projects = NULL, scope_state_depts = "not_applicable"),
       rls_cols = rls_cols
     ),
     class = "pk_rls_error"
@@ -332,7 +371,7 @@ test_that("apply_rls_to_data NA Yetki degerinde hata vermek yerine kapali basari
   expect_error(
     helper_env$apply_rls_to_data(
       sample_data,
-      user_info = list(Yetki = NA_character_),
+      user_info = list(Yetki = NA_character_, scope_state_depts = "not_applicable"),
       rls_cols = list(proje_kodu_col = "ProjeKodu")
     ),
     class = "pk_rls_error"
@@ -367,8 +406,10 @@ test_that("RLS veritabani hatasi KULLANICI BULUNAMADI olarak raporlanmaz", {
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
-  source(file.path(repo_root, "R", "helpers_pk_analysis_security_summary.R"),
-         encoding = "UTF-8", local = env)
+  for (dosya in c("utils_log_redact.R", "helpers_pk_rls_identity.R",
+                  "helpers_pk_analysis_security_summary.R")) {
+    source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = env)
+  }
 
   # KUSUR: SON TARIH/IPTAL disindaki HER hata (baglanti kopmasi, ODBC/surucu
   # hatasi, SQL hatasi) bos bir cerceveye indirgeniyor, bir sonraki dal da

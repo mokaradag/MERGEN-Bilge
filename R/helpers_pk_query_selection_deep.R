@@ -66,6 +66,21 @@ pk_select_queries_v2 <- function(prompt, library, chat_history = NULL,
 
   indeks <- pk_select_library_index(library)
   yetenekler <- pk_select_capability_ids()
+
+  # `not_for` OLUMSUZ KANITI EK ADAYLARA DA UYGULANIR.
+  #
+  # Birincil seçim `pk_retrieval_agreement()` üzerinden geçerken sorgunun kendi
+  # `not_for` beyanı açık olumsuz kanıt olarak değerlendirilir. Ek Derin Düşünme
+  # adayları bu kapıdan HİÇ geçmiyor, yalnızca güven + yetenek denetleniyordu;
+  # "bu soru için DEĞİL" diye küratörlenmiş bir sorgu alternatif skoru yüksek
+  # olduğu için çalıştırılıp derin analiz cevabına katılabiliyordu.
+  dislanan_ids <- character(0)
+  if (exists("pk_retrieval_excluded_ids", mode = "function", inherits = TRUE)) {
+    dislanan_ids <- tryCatch(
+      as.character(pk_retrieval_excluded_ids(library, prompt) %||% character(0)),
+      error = function(e) character(0)
+    )
+  }
   ids <- names(skorlar)
   puanlar <- vapply(ids, function(k) as.numeric(skorlar[[k]]), numeric(1), USE.NAMES = FALSE)
   sira <- order(-puanlar, ids, method = "radix")
@@ -73,6 +88,8 @@ pk_select_queries_v2 <- function(prompt, library, chat_history = NULL,
   for (kimlik in ids[sira]) {
     if (length(sonuc) >= sinir) break
     if (identical(kimlik, birincil$id)) next
+
+    if (kimlik %in% dislanan_ids) next
 
     sorgu <- indeks[[kimlik]]
     if (!is.list(sorgu)) next
@@ -310,7 +327,32 @@ pk_deep_build_v2_packet_result <- function(filtered_data, secure_data, query,
   if (!is.null(durdurma)) return(pk_deep_halt_result(durdurma))
 
   paket_yazi <- pk_packet_render(paket, query_meta = query$meta)
-  if (isTRUE(paket_yazi$over_budget)) {
+  # DERİN ANALİZDE OLGU KİMLİKLERİ SORGUYA GÖRE AD ALANINA ALINIR.
+  #
+  # Olgu kimliği yalnızca (yetenek/sütun + toplulaştırma + grup) üzerinden
+  # üretilir; kapsam ya da sorgu kimliği İÇERMEZ. Aynı yeteneği FARKLI
+  # değerlerle sunan iki başarılı v2 sorgusu bu yüzden AYNI kimliği üretiyor,
+  # `pk_facts_index()` kimliği `ambiguous_fact_id` işaretliyor ve DOĞRU
+  # alıntılanmış bir sayı bile geçersiz sayılıyordu (`block` kipinde tüm model
+  # anlatısı düşerdi). Ad alanı hem BASILAN işarete hem TOPLANAN olguya AYNI
+  # anda uygulanır; ikisi ayrışamaz.
+  ad_alanli <- .pk_deep_namespace_facts(
+    paket_yazi$text, pk_packet_all_facts(paket), query$id
+  )
+  # BÜTÇE AD ALANLAMA SONRASINDA YENİDEN ÖLÇÜLÜR.
+  #
+  # `pk_packet_render()` bütçeyi ad alanlamadan ÖNCEKİ metin üzerinde hesaplar.
+  # Her `[fact:...]` işaretine eklenen `slug_hash__` öneki metni BÜYÜTÜR; bütçe
+  # sınırına yakın ve çok işaretli bir paket, ölçülmüş `FALSE` değeriyle
+  # BÜTÇEYİ AŞMIŞ hâlde "başarılı" dönüyordu. Bütçe bilinmiyorsa (ör. sahte
+  # kurucu) eski karar korunur.
+  butce <- suppressWarnings(as.numeric(paket_yazi$budget %||% NA_real_)[1])
+  butce_asildi <- if (is.finite(butce)) {
+    nchar(ad_alanli$text, type = "chars") > butce
+  } else {
+    isTRUE(paket_yazi$over_budget)
+  }
+  if (isTRUE(paket_yazi$over_budget) || isTRUE(butce_asildi)) {
     return(finish_result(
       list(query_name = query_name, success = FALSE,
            error_msg = paste0("Kanonik v2 analiz paketi güvenli istem bütçesine sığmadı; ",
@@ -332,14 +374,87 @@ pk_deep_build_v2_packet_result <- function(filtered_data, secure_data, query,
       query_id = query$id, query_meta = query$meta, success = TRUE,
       row_count = nrow(filtered_data), relevance = query$relevance_score %||% 0,
       pk_engine_mode = "v2", pk_packet = paket,
-      pk_packet_text = paket_yazi$text, pk_packet_chars = paket_yazi$chars,
-      pk_facts = pk_packet_all_facts(paket),
+      pk_packet_text = ad_alanli$text, pk_packet_chars = nchar(ad_alanli$text),
+      pk_facts = ad_alanli$facts,
       pk_fallback_text = pk_compose_facts_summary(paket$facts), data = filtered_data
     ),
     filter_status = filter_status, filters = applied_filters,
     pre_rls_rows = pre_rls_rows, authorized_rows = nrow(secure_data),
     filtered_rows = nrow(filtered_data), outcome = "Basarili"
   )
+}
+
+#' Kısaltılmamış sorgu kimliği için deterministik ASCII sağlama
+#'
+#' `pk_fact_slug()` normalleştirir VE keser; bu yüzden tek başına bir ad alanı
+#' anahtarı olamaz. Buradaki polinom karma dış bağımlılık kullanmaz, yerelden
+#' bağımsızdır ve sonuç 8 haneli sabit ASCII hex'tir (olgu kimliği jetonu
+#' `[A-Za-z0-9_.]` alfabesinde kalır). Kriptografik DEĞİLDİR; amaç yalnızca
+#' kaza eseri çarpışmayı ayırmaktır.
+.pk_deep_id_checksum <- function(x) {
+  ham <- enc2utf8(as.character(x %||% "")[1])
+  if (is.na(ham) || !nzchar(ham)) return("00000000")
+  baytlar <- as.integer(charToRaw(ham))
+  # `h` bir double'dır; en büyük ara değer ~5.6e11 olup 2^53 tam sayı
+  # kesinliğinin çok altındadır, taşma olmaz.
+  m <- 4294967291  # 2^32'den küçük en büyük asal
+  h <- 2166136261
+  for (b in baytlar) h <- (h * 131 + b) %% m
+  haneler <- c(as.character(0:9), letters[1:6])
+  out <- character(8L)
+  v <- h
+  for (i in 8:1) {
+    out[i] <- haneler[(v %% 16) + 1L]
+    v <- v %/% 16
+  }
+  paste0(out, collapse = "")
+}
+
+#' Bir v2 paketinin olgu kimliklerini SORGUYA göre ad alanına al
+#'
+#' Basılan `[fact:...]` işaretleri ile toplanan olgu kayıtları AYNI dönüşümden
+#' geçer; aksi hâlde model doğru işareti alıntılar ama doğrulayıcı o kimliği
+#' bulamazdı. Saf metin/veri dönüşümüdür.
+.pk_deep_namespace_facts <- function(text, facts, query_id) {
+  metin <- as.character(text %||% "")[1]
+  if (is.na(metin)) metin <- ""
+  olgular <- facts %||% list()
+
+  slug <- if (exists("pk_fact_slug", mode = "function", inherits = TRUE)) {
+    tryCatch(pk_fact_slug(query_id), error = function(e) "")
+  } else {
+    ""
+  }
+  slug <- as.character(slug %||% "")[1]
+  if (is.na(slug) || !nzchar(slug)) return(list(text = metin, facts = olgular))
+
+  # AD ALANI ÇARPIŞMAYA DAYANIKLI OLMALIDIR.
+  #
+  # `pk_fact_slug()` ASCII dışını `_` yapar ve 60 karakterde KESER. Bu yüzden
+  # `A-B` ile `A B`, ya da ilk 60 karakteri aynı olan iki sorgu kimliği AYNI
+  # slug'ı üretir. İki sorgu aynı olgu kimliğini yayarsa ad alanlı kimlikler de
+  # çakışır, `pk_facts_index()` kimliği `ambiguous_fact_id` işaretler ve DOĞRU
+  # bir sayısal ifade reddedilir/bloklanır. KISALTILMAMIŞ kimliğin sağlaması
+  # eklenerek bu çarpışma kapatılır.
+  onek <- paste0(slug, "_", .pk_deep_id_checksum(query_id), "__")
+
+  yeni_olgular <- lapply(olgular, function(olgu) {
+    # `NA_character_` bir olgu kimliği `!nzchar(NA)` -> `NA` üretir ve
+    # `if (... || NA)` HATA fırlatırdı: tamamlanmış bir sorgu, sonuç
+    # birleştirme sırasında çöküyordu.
+    if (!is.list(olgu) || !is.character(olgu$fact_id) ||
+        length(olgu$fact_id) != 1L || is.na(olgu$fact_id) ||
+        !nzchar(olgu$fact_id)) {
+      return(olgu)
+    }
+    olgu$fact_id <- paste0(onek, olgu$fact_id)
+    olgu
+  })
+
+  yeni_metin <- gsub("\\[fact:([A-Za-z0-9_.]+)\\]",
+                     paste0("[fact:", onek, "\\1]"), metin, perl = TRUE)
+
+  list(text = yeni_metin, facts = yeni_olgular)
 }
 
 # Uzlaştırma SONRASI yalnız başarılı v2 paketleri numeric provenance'a girer.
@@ -392,9 +507,11 @@ if (!exists(".pk_deep_observation_helpers_base", inherits = FALSE) &&
 }
 if (exists(".pk_deep_observation_helpers_base", inherits = FALSE)) {
   pk_deep_observation_helpers <- function(session, conn, username, user_prompt,
-                                          request_id, started_at) {
+                                          request_id, started_at,
+                                          conn_provider = NULL) {
     helpers <- .pk_deep_observation_helpers_base(
-      session, conn, username, user_prompt, request_id, started_at
+      session, conn, username, user_prompt, request_id, started_at,
+      conn_provider = conn_provider
     )
     base_stash <- helpers$stash
     helpers$stash <- function(footers, facts = NULL, fallback_text = NULL,

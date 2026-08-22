@@ -47,8 +47,9 @@
   # Faz 1: modul artik salt-okunur SQL kapisini, ODBC redaksiyonunu, kapali
   # basarisiz RLS/gercek-sutun kapisini ve saf istem/yuk kuruculari tuketir.
   for (yardimci in c("helpers_pk_config.R", "helpers_pk_safe_errors.R",
-                     "helpers_pk_sql_readonly.R", "helpers_pk_query_meta_schema.R",
+                     "helpers_pk_sql_statements.R", "helpers_pk_sql_readonly.R", "helpers_pk_query_meta_schema.R",
                      "helpers_pk_query_meta_access.R", "helpers_pk_rls.R",
+                     "utils_log_redact.R", "helpers_pk_rls_identity.R",
                      "helpers_pk_prompt_budget.R", "helpers_pk_analysis_prompts.R")) {
     source(file.path(kok, "R", yardimci), encoding = "UTF-8", local = env)
   }
@@ -100,7 +101,35 @@ test_that("pk_analiz_process_request yetkisiz kullanıcıya yetki hatası döner
   env$get_user_rls_info <- function(username, conn) list(authorized = FALSE)
   res <- env$pk_analiz_process_request("soru", list(), .pkSession(), stop_check = function() FALSE)
   expect_true(grepl("Yetki Hatası", res, fixed = TRUE))
-  expect_true(grepl("DC01_user_base", res, fixed = TRUE))
+  expect_true(grepl("kullanıcı kaydınız", res, fixed = TRUE))
+  # PR #714: IC KAYNAK ADI (tablo/gorunum) kullaniciya GOSTERILMEZ. Eski
+  # bekleme tam da bu sizintiyi sozlesme sayiyordu; kurtarmaya yardimi yok,
+  # ic semayi acik ediyordu. Ayrinti sunucu log'unda kalir.
+  expect_false(grepl("DC01_user_base", res, fixed = TRUE))
+})
+
+# PR #705: yetki verilmeyen ÜÇ durum TİPLİ ayrılır; hepsinde analiz
+# ÇALIŞMAZ (kapalı başarısız), yalnızca kullanıcıya görünen TEŞHİS değişir.
+test_that("pk_analiz_process_request DB hatasını 'kullanıcı yok' diye raporlamaz", {
+  env <- .pkAnalizEnv()
+  env$get_user_rls_info <- function(username, conn) {
+    list(authorized = FALSE, db_error = TRUE,
+         reason = "Yetki bilgisi okunamadı (veritabanı erişim hatası).")
+  }
+  res <- env$pk_analiz_process_request("soru", list(), .pkSession(), stop_check = function() FALSE)
+  expect_true(grepl("Yetki Bilgisi Okunamadı", res, fixed = TRUE))
+  expect_false(grepl("DC01_user_base", res, fixed = TRUE))
+})
+
+test_that("pk_analiz_process_request mükerrer yetki kaydını BELİRSİZ raporlar", {
+  env <- .pkAnalizEnv()
+  env$get_user_rls_info <- function(username, conn) {
+    list(authorized = FALSE, ambiguous = TRUE,
+         reason = "Yetki kaydınız benzersiz değil (birden fazla kayıt bulundu).")
+  }
+  res <- env$pk_analiz_process_request("soru", list(), .pkSession(), stop_check = function() FALSE)
+  expect_true(grepl("Yetki Kaydı Belirsiz", res, fixed = TRUE))
+  expect_false(grepl("DC01_user_base", res, fixed = TRUE))
 })
 
 test_that("pk_analiz_process_request RLS sonrası durdurma talebinde iptal eder", {

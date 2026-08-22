@@ -25,6 +25,7 @@
   # kuralı gereği izole test GERÇEK sahip dosyaları yükler; stub'lanmaz.
   for (dosya in c("helpers_pk_config.R", "helpers_pk_async_cancel.R",
                   "helpers_pk_exec_context.R", "helpers_pk_result_columns.R", "helpers_pk_result_size.R", "helpers_pk_sql_execute.R", "helpers_pk_sql_connection.R",
+                  "utils_log_redact.R", "helpers_pk_rls_identity.R",
                   "helpers_deep_analysis_sql.R", "helpers_deep_analysis_reconcile.R",
                      "helpers_deep_analysis_phase6.R",
                      "helpers_deep_analysis_selector.R")) {
@@ -82,7 +83,42 @@ test_that("pk_deep_analysis_process yetkisiz kullanıcıya yetki hatası döner"
     detail_level = "standart", stop_check = function() FALSE
   )
   expect_true(grepl("Yetki Hatası", res, fixed = TRUE))
-  expect_true(grepl("kullanıcı kaydınız bulunamadı", res, fixed = TRUE))
+  # PR #705: mesaj artık iki yolda da PAYLAŞILAN `pk_rls_denied_message()`
+  # çıktısıdır; tekil yolun yerleşik metniyle birebir aynıdır.
+  expect_true(grepl("kullanıcı kaydınız", res, fixed = TRUE))
+  expect_true(grepl("bulunamadı", res, fixed = TRUE))
+})
+
+# PR #705: yetki verilmeyen ÜÇ durum TİPLİ olarak ayrılır. Karar hepsinde
+# KAPALI BAŞARISIZ kalır (analiz çalışmaz); ayrılan yalnızca kullanıcıya
+# görünen TEŞHİStir. Geçici bir DC01 kesintisi "kullanıcı kaydınız yok" diye
+# raporlanamaz.
+test_that("pk_deep_analysis_process DB hatasını yetki hatası gibi raporlamaz", {
+  env <- .deepProcessEnv()
+  env$get_user_rls_info <- function(username, conn) {
+    list(authorized = FALSE, db_error = TRUE,
+         reason = "Yetki bilgisi okunamadı (veritabanı erişim hatası).")
+  }
+  res <- env$pk_deep_analysis_process(
+    "soru", list(), .deepSession(),
+    detail_level = "standart", stop_check = function() FALSE
+  )
+  expect_true(grepl("Yetki Bilgisi Okunamadı", res, fixed = TRUE))
+  expect_false(grepl("kullanıcı kaydınız bulunamadı", res, fixed = TRUE))
+})
+
+test_that("pk_deep_analysis_process mükerrer yetki kaydını BELİRSİZ olarak raporlar", {
+  env <- .deepProcessEnv()
+  env$get_user_rls_info <- function(username, conn) {
+    list(authorized = FALSE, ambiguous = TRUE,
+         reason = "Yetki kaydınız benzersiz değil (birden fazla kayıt bulundu).")
+  }
+  res <- env$pk_deep_analysis_process(
+    "soru", list(), .deepSession(),
+    detail_level = "standart", stop_check = function() FALSE
+  )
+  expect_true(grepl("Yetki Kaydı Belirsiz", res, fixed = TRUE))
+  expect_false(grepl("kullanıcı kaydınız bulunamadı", res, fixed = TRUE))
 })
 
 test_that("pk_deep_analysis_process RLS sonrası durdurma talebinde iptal mesajı döner", {
@@ -172,5 +208,60 @@ test_that("pk_deep_analysis_process sorgu hatasını yakalar ve başarısız son
   # Türkçe yorum: hata yakalanıp success=FALSE sonuç olarak eklenmiş olmalı
   expect_length(yakalanan$results, 1L)
   expect_false(isTRUE(yakalanan$results[[1]]$success))
-  expect_true(grepl("sorgu çöktü", yakalanan$results[[1]]$error_msg, fixed = TRUE))
+  # PR #705 inceleme sertleştirmesi: HAM istisna metni `error_msg` ile
+  # KULLANICIYA/MODELE taşınmaz. `build_deep_analysis_context()` bu alanı ya
+  # doğrudan gösterir ya da modele "başarısızlık nedenini bildir" diye verir;
+  # beklenmeyen bir istisna sürücü/DSN/dosya yolu/SQL ayrıntısı taşıyabilir.
+  # Ham metin yalnızca (redakte edilerek) sunucu günlüğüne yazılır.
+  expect_false(grepl("sorgu çöktü", yakalanan$results[[1]]$error_msg, fixed = TRUE))
+  expect_true(nzchar(yakalanan$results[[1]]$error_msg))
+})
+
+# PR #705 / CI regresyonu: MESAJ DETERMINISTIKTIR.
+#
+# Ilk duzeltme `pk_safe_error_message()` cagiriyordu. O yardimcinin sozlesmesi
+# "ALTYAPI GORUNUMLU metni genellestir, aksi halde OLDUGU GIBI gecir"dir; keyfi
+# bir BEKLENMEYEN istisna (ODBC'ye benzemeyen ama dosya yolu/ic ayrinti
+# tasiyan) o suzgecten DEGISMEDEN geciyordu. Dahasi `exists()` kapisi yuzunden
+# davranis CALISMA BAGLAMINA bagliydi: yardimci yuklu degilken genel mesaj,
+# yukluyken ham metin. Bu yuzden izole kosum GECIYOR, tam paket (ve Windows CI)
+# DUSUYORDU. Bu test her iki baglami da ACIKCA kapsar.
+test_that("beklenmeyen istisna mesaji yardimci yuklu olsa da OLMASA da AYNIDIR", {
+  kok <- resolve_repo_root_for_tests()
+
+  mesaji_al <- function(yardimci_yuklu) {
+    env <- .deepProcessEnv()
+    if (isTRUE(yardimci_yuklu)) {
+      source(file.path(kok, "R", "utils_log_redact.R"), encoding = "UTF-8", local = env)
+      source(file.path(kok, "R", "helpers_pk_safe_errors.R"), encoding = "UTF-8", local = env)
+      stopifnot(exists("pk_safe_error_message", envir = env, mode = "function"))
+    }
+    yakalanan <- new.env(parent = emptyenv())
+    # Hassas ama ODBC'ye BENZEMEYEN bir istisna: eski yol bunu aynen gecirirdi.
+    env$execute_single_deep_query <- function(...) {
+      stop("beklenmeyen: /home/operator/gizli/sorgu.sql okunamadi")
+    }
+    env$build_deep_analysis_context <- function(query_results, ...) {
+      yakalanan$results <- query_results
+      "BAGLAM"
+    }
+    invisible(env$pk_deep_analysis_process(
+      "soru", list(), .deepSession(),
+      detail_level = "standart", stop_check = function() FALSE
+    ))
+    yakalanan$results[[1]]$error_msg
+  }
+
+  yardimcisiz <- mesaji_al(FALSE)
+  yardimcili  <- mesaji_al(TRUE)
+
+  # Ayni kod yolu her iki baglamda AYNI mesaji uretmelidir.
+  expect_identical(yardimcisiz, yardimcili)
+  # Ham istisna ayrintisi (dosya yolu dahil) KULLANICIYA/MODELE gitmez.
+  for (mesaj in c(yardimcisiz, yardimcili)) {
+    expect_false(grepl("gizli", mesaj, fixed = TRUE))
+    expect_false(grepl(".sql", mesaj, fixed = TRUE))
+    expect_false(grepl("beklenmeyen:", mesaj, fixed = TRUE))
+    expect_true(nzchar(mesaj))
+  }
 })

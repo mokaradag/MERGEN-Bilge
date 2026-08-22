@@ -112,10 +112,35 @@ pk_select_refusal_message <- function(decision) {
   paste(parcalar, collapse = "\n")
 }
 
-#' Satır tabanlı günlüğe girecek metni temizle
+#' Satır tabanlı günlüğe girecek metni temizle — REDAKSİYON DÂHİL
+#'
+#' Bu yardımcı yalnızca denetim karakterlerini siliyor ve kırpıyordu; yakalanan
+#' sürücü/DSN ayrıntısı ya da modelin ürettiği (kullanıcı metnini yankılayan)
+#' gerekçe doğrudan stdout'a yazılabiliyordu. `config_logging.R` uygulama
+#' günlüklerini `redact_sensitive_text()` üzerinden geçirir; bu doğrudan konsol
+#' yazımları o sınırı ATLIYORDU. Redaksiyon KAPALI BAŞARISIZDIR: redaktör
+#' yüklenmemişse ya da hata verirse metin yayımlanmaz.
 .pk_select_log_safe <- function(text, max_chars = 300L) {
   if (is.null(text) || !length(text) || is.na(text[1])) return("")
-  metin <- gsub("[[:cntrl:]]+", " ", as.character(text)[1], perl = TRUE)
+  metin <- as.character(text)[1]
+
+  # BAĞLANTI TANIMLAYICILARI DA MASKELENİR (kapalı başarısız).
+  #
+  # Seçim hataları sürücü/DSN metni taşıyabilir; genel `redact_sensitive_text()`
+  # `DSN=`, `UID=`, `Server=`, `Database=` DEĞERLERİNİ sözleşmesi gereği KORUR.
+  # Bu metin stdout'a, yani kalıcı sunucu log'una gider. Bağlantıya özgü
+  # redaktör yoksa metin YAYIMLANMAZ; genel redaktöre geri düşülmez.
+  if (exists("redact_connection_identifiers", mode = "function", inherits = TRUE)) {
+    temiz <- tryCatch(redact_connection_identifiers(metin), error = function(e) NULL)
+    if (!is.character(temiz) || length(temiz) != 1L || is.na(temiz)) {
+      return("(redaksiyon uygulanamadi)")
+    }
+    metin <- temiz
+  } else {
+    return("(redaktor yuklenmedi)")
+  }
+
+  metin <- gsub("[[:cntrl:]]+", " ", metin, perl = TRUE)
   metin <- gsub("[[:space:]]+", " ", trimws(metin), perl = TRUE)
   if (nchar(metin) > max_chars) metin <- paste0(substr(metin, 1L, max_chars - 1L), "…")
   metin
@@ -178,14 +203,32 @@ pk_select_query_v2 <- function(prompt, library, chat_history = NULL,
   }
 
   tablo <- pk_select_scores_table(library, karar)
+  # TANILAMA: `yetenek=unknown_capability` tek başına operatöre HANGİ kimliğin
+  # reddedildiğini söylemiyordu; doğrulayıcı bunu zaten biliyor. Yetenek
+  # kimlikleri operatör tanımlı ANLAMSAL belirteçlerdir (iş verisi, satır
+  # değeri ya da kullanıcı metni DEĞİLDİR), bu yüzden güvenle yazılabilirler.
+  ek <- ""
+  bilinmeyen <- as.character(karar$capability_unknown %||% character(0))
+  if (length(bilinmeyen)) {
+    ek <- paste0(ek, sprintf(" | unknown=%s",
+                             .pk_select_log_safe(paste(bilinmeyen, collapse = ","), 200L)))
+  }
+  kanonik <- karar$capability_canonicalized %||% character(0)
+  if (length(kanonik) && !is.null(names(kanonik))) {
+    ek <- paste0(ek, sprintf(" | kanonik=%s", .pk_select_log_safe(
+      paste(sprintf("%s>%s", names(kanonik), unname(kanonik)), collapse = ","), 200L
+    )))
+  }
+
   cat(sprintf(
-    "[PK_SELECT] v2 karar=%s | sorgu=%s | guven=%s | etkin=%s | marj=%s | yetenek=%s\n",
+    "[PK_SELECT] v2 karar=%s | sorgu=%s | guven=%s | etkin=%s | marj=%s | yetenek=%s%s\n",
     karar$status,
     karar$query_id %||% "-",
     karar$confidence %||% "-",
     karar$effective_confidence %||% "-",
     karar$margin %||% "-",
-    karar$capability_status %||% "-"
+    karar$capability_status %||% "-",
+    ek
   ))
 
   if (!identical(karar$status, PK_SELECT_STATUS_AUTO)) {

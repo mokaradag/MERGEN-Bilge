@@ -592,3 +592,43 @@ test_that("mükerrer olmayan temiz sonuçta fail-closed tetiklenmez", {
   expect_false(eksik$ok)
   expect_true(eksik$fail_closed)
 })
+
+# PR #705: `decimals` doğrulaması işleyici sınırıyla hizalanır.
+#
+# `pk_fmt_number()` ve `.pk_export_number_format()` değeri SESSİZCE 9'a kırpar.
+# Validator daha büyük bir beyanı kabul ederse, "doğrulanmış" bir sorgu
+# çıktısında beyanından DAHA AZ hassasiyet yayınlar; sözleşme sessizce ihlal
+# edilir. Metadata artık işleyicinin gerçekten üretebileceğini beyan eder.
+test_that("decimals işleyici sınırının üstünde beyan edilemez", {
+  meta <- .review_meta()
+  meta$column_meta$KalanIscilik_sa$decimals <- PK_META_MAX_DECIMALS + 1L
+
+  hatalar <- pk_meta_validate_query("q001", meta, registry = .review_registry())
+
+  expect_true(length(hatalar) > 0L)
+  expect_true(any(grepl("decimals", hatalar, fixed = TRUE)))
+})
+
+test_that("işleyici sınırındaki ve altındaki decimals kabul edilir", {
+  for (basamak in c(0L, 2L, PK_META_MAX_DECIMALS)) {
+    meta <- .review_meta()
+    meta$column_meta$KalanIscilik_sa$decimals <- basamak
+    hatalar <- pk_meta_validate_query("q001", meta, registry = .review_registry())
+    expect_length(hatalar[grepl("decimals", hatalar, fixed = TRUE)], 0L)
+  }
+})
+
+test_that("PK_META_MAX_DECIMALS işleyicilerin gerçek kırpma sınırıyla aynıdır", {
+  repo_root <- resolve_repo_root_for_tests()
+  ortam <- new.env(parent = globalenv())
+  ortam$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
+  for (.pk705_dosya in c("helpers_pk_precision.R", "helpers_pk_packet_stats.R")) source(file.path(repo_root, "R", .pk705_dosya), encoding = "UTF-8", local = ortam)
+
+  # İşleyici sınırın ÜSTÜNDEKİ bir isteği kırpar; sınırda ise kırpmaz.
+  sinirda <- ortam$pk_fmt_number(1 / 3, PK_META_MAX_DECIMALS)
+  ustunde <- ortam$pk_fmt_number(1 / 3, PK_META_MAX_DECIMALS + 3L)
+  expect_identical(sinirda, ustunde)
+
+  kesir <- sub("^[^,]*,?", "", sinirda)
+  expect_equal(nchar(kesir), PK_META_MAX_DECIMALS)
+})

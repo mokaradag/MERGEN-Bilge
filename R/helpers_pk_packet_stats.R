@@ -250,13 +250,6 @@ pk_fact_record <- function(kind, column, aggregation, value = NULL, spec = list(
 # `as.numeric()` 2^53 ustundeki tam sayıyı temsil EDEMEZ; 9007199254740993
 # sessizce 9007199254740992 olurdu. Böyle bir sütun hesaplanmaz, açıkça
 # desteklenmeyen kesinlik olarak raporlanır.
-.pk_precision_loss <- function(values) {
-  if (!inherits(values, "integer64")) return(FALSE)
-
-  num <- suppressWarnings(as.numeric(as.character(values)))
-  any(!is.na(num) & abs(num) > 2^53)
-}
-
 .pk_finite_split <- function(values) {
   ham <- suppressWarnings(as.numeric(values))
   sonlu <- ham[!is.na(ham) & is.finite(ham)]
@@ -503,7 +496,21 @@ pk_latest_fact <- function(data, column, spec = list(), scope = NULL,
   # yüzden değişken genişlikli metin tie sütunlarında YANLIŞ satır seçilip
   # yanlış "en yeni" olgusu yayımlanabiliyordu. Sıralama HAM kanonik değerlerle
   # yapılır; uzunluk öneki yalnızca benzersizlik denetiminde kullanılır.
-  ham_tie <- lapply(as.list(data[esitlik]), function(sutun) as.character(sutun)[aday])
+  # SIRALAMA TİPİ KORUNUR; KARAKTER KODLAMA YALNIZCA BENZERSİZLİK İÇİNDİR.
+  #
+  # Sayısal bir `latest_tie_by` sütununu karaktere çevirmek `order()`u
+  # SÖZLÜKSEL yapar: `2` ve `10` -> `"10", "2"` sıralanır ve artan sıranın SON
+  # satırı olarak `2` anahtarlı satır seçilip ölçüsü kanonik `latest` olgusu
+  # diye yayımlanır. Sıralanabilir tipler (sayısal/tarih/mantıksal) KENDİ
+  # tiplerinde tutulur; karakter kodlama yalnızca çakışma denetiminde kullanılır.
+  tie_sutunlari <- as.list(data[esitlik])
+  sira_tie <- lapply(tie_sutunlari, function(sutun) {
+    dilim <- sutun[aday]
+    kanonik <- .pk_orderable(dilim)
+    if (!is.null(kanonik)) return(kanonik)
+    as.character(dilim)
+  })
+  ham_tie <- lapply(tie_sutunlari, function(sutun) as.character(sutun)[aday])
 
   # Uzunluk öneki ÇAKIŞMASIZ bir KİMLİKTİR ama SIRA KORUYUCU DEĞİLDİR; bu
   # yüzden yalnızca benzersizlik denetiminde kullanılır, sıralamada DEĞİL.
@@ -531,7 +538,7 @@ pk_latest_fact <- function(data, column, spec = list(), scope = NULL,
   secilen <- if (length(aday) == 1L) {
     aday
   } else {
-    aday[do.call(order, c(ham_tie, list(method = "radix")))][length(aday)]
+    aday[do.call(order, c(sira_tie, list(method = "radix")))][length(aday)]
   }
 
   # integer64 KESİNLİK MUHAFAZASI "en yeni" olgusunda da geçerlidir.
@@ -628,6 +635,16 @@ pk_packet_context_facts <- function(packet, scope = NULL) {
       id = t$column, agg = "date_count", value = t$n,
       label = sprintf("%s gecerli tarih", t$label %||% t$column)
     )))
+    # Yazıcının bastığı her aylık kova işaretinin BİREBİR karşılığı.
+    for (b in (t$buckets %||% list())) {
+      kova <- as.character(b$bucket %||% "")[1]
+      if (is.na(kova) || !nzchar(kova)) next
+      tanimlar <- c(tanimlar, list(list(
+        id = t$column, agg = "bucket_count", value = b$count,
+        label = sprintf("%s %s", t$label %||% t$column, kova),
+        group = kova
+      )))
+    }
   }
 
   g <- packet$groups %||% list()

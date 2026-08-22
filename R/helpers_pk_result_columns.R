@@ -34,9 +34,15 @@
   -10L,  # SQL_WLONGVARCHAR (ntext / nvarchar(max))
   -152L, # SQL_SS_XML
   -151L, # SQL_SS_UDT
-  -98L,  # SQL Server sql_variant (sürücüye göre)
   -370L  # SQL_SS_TABLE
 )
+
+# `sql_variant` (ODBC -98) SINIRSIZ DEĞİLDİR: tek bir değer en fazla 8.016
+# bayttır ve bu, AYNI depodaki metadata üreticisi sözleşmesinde de kanıtlanmış
+# üst sınır olarak modellenmiştir. LOB listesinde tutmak, sınırsız-LOB opt-in'i
+# kapalıyken sınırlı bir sonucu getirmeden reddediyordu.
+.PK_ODBC_SQL_VARIANT_CODE <- -98L
+.PK_SQL_VARIANT_MAX_BYTES_RUNTIME <- 8016
 
 # SINIRLI (fixed/bounded) ODBC tip kodları -> KANITLANMIŞ bayt üst sınırı.
 #
@@ -159,7 +165,12 @@ pk_sql_describe_result_schema <- function(conn, sql_text, call_fn = NULL) {
   tip <- tolower(as.character(satir$system_type_name %||% ""))
   boyut <- suppressWarnings(as.numeric(satir$max_length %||% NA_real_)[1])
 
-  sinirsiz_tipler <- c("xml", "text", "ntext", "image", "sql_variant", "hierarchyid")
+  # `sql_variant` KANITLANMIŞ 8.016 baytlık üst sınıra sahiptir (bkz. sabit).
+  if (grepl("sql_variant", tip, fixed = TRUE)) {
+    return(list(type = "__bounded__", max_length = .PK_SQL_VARIANT_MAX_BYTES_RUNTIME))
+  }
+
+  sinirsiz_tipler <- c("xml", "text", "ntext", "image", "hierarchyid")
   if (any(vapply(sinirsiz_tipler, function(t) grepl(t, tip, fixed = TRUE), logical(1)))) {
     return(list(type = "text", max_length = NA_real_))
   }
@@ -207,6 +218,12 @@ pk_sql_columns_from_metadata <- function(column_info, schema = NULL) {
     kod <- suppressWarnings(as.integer(tip))
     if (!is.na(kod)) {
       # Sayısal ODBC kodu: LOB kodları üst sınır ÜRETMEZ.
+      # `sql_variant` (-98) KANITLANMIŞ 8.016 bayt üst sınırı taşır.
+      if (identical(kod, .PK_ODBC_SQL_VARIANT_CODE)) {
+        return(list(type = "__bounded__",
+                    max_length = .PK_SQL_VARIANT_MAX_BYTES_RUNTIME))
+      }
+
       if (kod %in% .PK_ODBC_LOB_TYPE_CODES) {
         return(list(type = "text", max_length = NA_real_))
       }

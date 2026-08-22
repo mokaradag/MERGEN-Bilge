@@ -72,7 +72,10 @@ test_that("TEK sınırsız sütun TÜM sonucu sınırsız yapar", {
     ad = list(type = "nvarchar", max_length = 50)
   ))
   expect_true(sinirli$bounded)
-  expect_equal(sinirli$bytes_per_row, 4 + 200)
+  # PR #705 inceleme: SQL depolama genişliği bir R BELLEĞİ üst sınırı değildir.
+  # Her sütun için R temsilinin ELEMAN BAŞINA tabanı uygulanır: atomik 8 bayt
+  # (int SQL'de 4), karakter 56 bayt (burada SQL sınırı 200 daha büyüktür).
+  expect_equal(sinirli$bytes_per_row, 8 + 200)
 
   sinirsiz <- pk_result_width_upper_bound(list(
     id = list(type = "int"),
@@ -95,7 +98,8 @@ test_that("ön kontrol: kanıtlanmış sınır + tavan altı -> materialize", {
     row_count = 1000, width = genislik, max_result_mb = 512, overhead_factor = 2.5
   )
   expect_equal(karar$decision, "materialize")
-  expect_equal(karar$estimated_bytes, 1000 * 4 * 2.5)
+  # `int` SQL'de 4 bayttır ama R atomik eleman tabanı 8'dir (bkz. üstteki not).
+  expect_equal(karar$estimated_bytes, 1000 * 8 * 2.5)
 })
 
 test_that("ön kontrol: tavanı aşan tahmin -> AÇIK REDDETME", {
@@ -277,4 +281,36 @@ test_that("seçilen sorgu analiz son tarihini override edebilir", {
   expect_equal(as.numeric(getOption("mergen.pk.async.deadline_at")),
                as.numeric(baslangic + 300))
   geri3()
+})
+
+
+# --- PR #705 inceleme: R temsili tabanı ve `sql_variant` ----------------------
+
+test_that("dar metin sütunlari SQL genisligiyle DEGIL R tabaniyla olculur", {
+  # `varchar(1)` SQL'de 1 bayttir; R karakter vektorunde eleman basina isaretci
+  # + CHARSXP yuku bundan KAT KAT buyuktur. Sabit yuk carpani bu farki
+  # kapatmaz: cok sayida dar metin sutunlu bir sonuc tavanin altinda gorunup
+  # materyalizasyonda tavani asabiliyordu.
+  genislik <- pk_result_width_upper_bound(list(
+    a = list(type = "varchar", max_length = 1),
+    b = list(type = "varchar", max_length = 1),
+    c = list(type = "varchar", max_length = 1)
+  ))
+  expect_true(genislik$bounded)
+  # ATOMIK taban (8 bayt) DEGIL, KARAKTER tabani beklenir. `3 * 8` esigi,
+  # `pk_result_width_upper_bound()` dar metin sutunlarini yeniden atomik
+  # tabana dusurse bile GECERDI; bu durumda onbellek/tavan on kontrolu
+  # materyalizasyonda tavani asabilecek bir sonucu kabul ederdi.
+  expect_gte(genislik$bytes_per_row, 3L * .PK_R_CHAR_ELEMENT_BYTES)
+  expect_true(genislik$bytes_per_row > 3)
+})
+
+test_that("sql_variant KANITLANMIS 8016 baytlik ust sinira sahiptir", {
+  # Metadata ureticisi sozlesmesi ile AYNI: sinirsiz LOB DEGILDIR.
+  expect_equal(pk_column_width_upper_bound("sql_variant"), 8016)
+
+  genislik <- pk_result_width_upper_bound(list(v = list(type = "sql_variant")))
+  expect_true(genislik$bounded)
+  expect_length(genislik$unbounded_columns, 0L)
+  expect_length(genislik$lob_columns, 0L)
 })

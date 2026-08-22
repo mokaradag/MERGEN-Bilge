@@ -174,6 +174,16 @@ mergen_pk_abandon_active_requests <- function(session, release = FALSE) {
   # `mergen_pk_chat_identity()` yeniden `chat:A` üretir; koruma o zaman AÇIKÇA
   # TERK EDİLMİŞ bir sonucu kabul edip bayat yanıt/oturum yazımlarını uygulardı.
   mergen_pk_invalidate_requests(session, adlar)
+
+  # TERK EDİLEN GİRDİLER KAYITTAN SİLİNİR: kayıt "yalnızca AKTİF istekler"
+  # sözleşmesindedir, ama girdi istek-sahipli `release` kapanışını ve yakaladığı
+  # durumu canlı tutuyordu; takılı bir işçi terminal geri çağrısına hiç ulaşmazsa
+  # her gezinme oturum belleğini büyütürdü. Bayat sonuç koruması AYRI terk-işareti
+  # deposundadır (yukarıda), bu yüzden silme korumayı zayıflatmaz.
+  for (kimlik in adlar) {
+    if (!is.null(kayit[[kimlik]])) try(rm(list = kimlik, envir = kayit), silent = TRUE)
+  }
+
   invisible(length(adlar))
 }
 

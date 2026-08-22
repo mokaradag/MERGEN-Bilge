@@ -71,6 +71,36 @@ pk_export_run_dir <- function(base_dir = NULL) {
   yol
 }
 
+# ELEKTRONİK TABLO FORMÜL ENJEKSİYONU ETKİSİZLEŞTİRİLİR.
+#
+# `=`, `+`, `-`, `@` (ve satır başı/sekme öncüleri) ile başlayan bir metin
+# hücresi Excel/LibreOffice'te FORMÜL olarak yorumlanır. Açıklama/yorum alanları
+# kullanıcı denetimindedir, yani RLS uygulanmış bir dışa aktarım açıldığında
+# hücre çalıştırılabilir hâle gelirdi. Değer bir tek tırnakla ön eklenir: bu,
+# elektronik tabloların METİN olarak yorumlama sözleşmesidir; veri KAYBOLMAZ.
+#
+# Doğrulayıcı da AYNI gösterimle karşılaştırır (bkz. `pk_export_csv_neutralize`
+# çağrısı), aksi hâlde yuvarlak yolculuk denetimi yanlış pozitif verirdi.
+.PK_CSV_FORMULA_LEADS <- c("=", "+", "-", "@")
+
+pk_export_csv_neutralize <- function(df) {
+  if (!is.data.frame(df) || !ncol(df)) return(df)
+
+  for (ad in names(df)) {
+    sutun <- df[[ad]]
+    if (is.factor(sutun)) sutun <- as.character(sutun)
+    if (!is.character(sutun)) next
+
+    bas <- sub("^[\t\r\n ]+", "", sutun)
+    riskli <- !is.na(sutun) & nzchar(sutun) &
+      substr(bas, 1L, 1L) %in% .PK_CSV_FORMULA_LEADS
+    if (any(riskli)) sutun[riskli] <- paste0("'", sutun[riskli])
+    df[[ad]] <- sutun
+  }
+
+  df
+}
+
 #' UTF-8 BOM'lu CSV'yi PARÇA PARÇA yaz (tam kopya materyalize edilmez)
 .pk_export_write_csv_bom <- function(path, df, chunk_rows = .PK_CSV_CHUNK_ROWS) {
   chunk_rows <- max(1L, suppressWarnings(as.integer(chunk_rows)))
@@ -89,6 +119,8 @@ pk_export_run_dir <- function(base_dir = NULL) {
     writeBin(charToRaw(enc2utf8(paste0(paste(metin, collapse = "\n"), "\n"))), con)
     invisible(NULL)
   }
+
+  df <- pk_export_csv_neutralize(df)
 
   toplam <- nrow(df)
   if (toplam == 0L) {
@@ -130,6 +162,10 @@ pk_export_csv_verify <- function(path, expected) {
   if (!is.data.frame(expected)) {
     return(list(ok = FALSE, reason = "Karsilastirilacak cerceve yok."))
   }
+
+  # DOĞRULAMA, GERÇEKTEN YAZILAN GÖSTERİMLE karşılaştırılır: formül öncüsü
+  # taşıyan hücreler yazımda etkisizleştirilir (bkz. `pk_export_csv_neutralize`).
+  expected <- pk_export_csv_neutralize(expected)
 
   # DOĞRULAMA BELLEK SINIRLIDIR (PARÇA PARÇA GERİ OKUMA).
   #
