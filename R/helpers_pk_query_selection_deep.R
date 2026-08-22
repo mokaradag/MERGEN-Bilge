@@ -66,6 +66,21 @@ pk_select_queries_v2 <- function(prompt, library, chat_history = NULL,
 
   indeks <- pk_select_library_index(library)
   yetenekler <- pk_select_capability_ids()
+
+  # `not_for` OLUMSUZ KANITI EK ADAYLARA DA UYGULANIR.
+  #
+  # Birincil seçim `pk_retrieval_agreement()` üzerinden geçerken sorgunun kendi
+  # `not_for` beyanı açık olumsuz kanıt olarak değerlendirilir. Ek Derin Düşünme
+  # adayları bu kapıdan HİÇ geçmiyor, yalnızca güven + yetenek denetleniyordu;
+  # "bu soru için DEĞİL" diye küratörlenmiş bir sorgu alternatif skoru yüksek
+  # olduğu için çalıştırılıp derin analiz cevabına katılabiliyordu.
+  dislanan_ids <- character(0)
+  if (exists("pk_retrieval_excluded_ids", mode = "function", inherits = TRUE)) {
+    dislanan_ids <- tryCatch(
+      as.character(pk_retrieval_excluded_ids(library, prompt) %||% character(0)),
+      error = function(e) character(0)
+    )
+  }
   ids <- names(skorlar)
   puanlar <- vapply(ids, function(k) as.numeric(skorlar[[k]]), numeric(1), USE.NAMES = FALSE)
   sira <- order(-puanlar, ids, method = "radix")
@@ -73,6 +88,8 @@ pk_select_queries_v2 <- function(prompt, library, chat_history = NULL,
   for (kimlik in ids[sira]) {
     if (length(sonuc) >= sinir) break
     if (identical(kimlik, birincil$id)) next
+
+    if (kimlik %in% dislanan_ids) next
 
     sorgu <- indeks[[kimlik]]
     if (!is.list(sorgu)) next
@@ -310,6 +327,18 @@ pk_deep_build_v2_packet_result <- function(filtered_data, secure_data, query,
   if (!is.null(durdurma)) return(pk_deep_halt_result(durdurma))
 
   paket_yazi <- pk_packet_render(paket, query_meta = query$meta)
+  # DERİN ANALİZDE OLGU KİMLİKLERİ SORGUYA GÖRE AD ALANINA ALINIR.
+  #
+  # Olgu kimliği yalnızca (yetenek/sütun + toplulaştırma + grup) üzerinden
+  # üretilir; kapsam ya da sorgu kimliği İÇERMEZ. Aynı yeteneği FARKLI
+  # değerlerle sunan iki başarılı v2 sorgusu bu yüzden AYNI kimliği üretiyor,
+  # `pk_facts_index()` kimliği `ambiguous_fact_id` işaretliyor ve DOĞRU
+  # alıntılanmış bir sayı bile geçersiz sayılıyordu (`block` kipinde tüm model
+  # anlatısı düşerdi). Ad alanı hem BASILAN işarete hem TOPLANAN olguya AYNI
+  # anda uygulanır; ikisi ayrışamaz.
+  ad_alanli <- .pk_deep_namespace_facts(
+    paket_yazi$text, pk_packet_all_facts(paket), query$id
+  )
   if (isTRUE(paket_yazi$over_budget)) {
     return(finish_result(
       list(query_name = query_name, success = FALSE,
@@ -332,14 +361,46 @@ pk_deep_build_v2_packet_result <- function(filtered_data, secure_data, query,
       query_id = query$id, query_meta = query$meta, success = TRUE,
       row_count = nrow(filtered_data), relevance = query$relevance_score %||% 0,
       pk_engine_mode = "v2", pk_packet = paket,
-      pk_packet_text = paket_yazi$text, pk_packet_chars = paket_yazi$chars,
-      pk_facts = pk_packet_all_facts(paket),
+      pk_packet_text = ad_alanli$text, pk_packet_chars = nchar(ad_alanli$text),
+      pk_facts = ad_alanli$facts,
       pk_fallback_text = pk_compose_facts_summary(paket$facts), data = filtered_data
     ),
     filter_status = filter_status, filters = applied_filters,
     pre_rls_rows = pre_rls_rows, authorized_rows = nrow(secure_data),
     filtered_rows = nrow(filtered_data), outcome = "Basarili"
   )
+}
+
+#' Bir v2 paketinin olgu kimliklerini SORGUYA göre ad alanına al
+#'
+#' Basılan `[fact:...]` işaretleri ile toplanan olgu kayıtları AYNI dönüşümden
+#' geçer; aksi hâlde model doğru işareti alıntılar ama doğrulayıcı o kimliği
+#' bulamazdı. Saf metin/veri dönüşümüdür.
+.pk_deep_namespace_facts <- function(text, facts, query_id) {
+  metin <- as.character(text %||% "")[1]
+  if (is.na(metin)) metin <- ""
+  olgular <- facts %||% list()
+
+  slug <- if (exists("pk_fact_slug", mode = "function", inherits = TRUE)) {
+    tryCatch(pk_fact_slug(query_id), error = function(e) "")
+  } else {
+    ""
+  }
+  slug <- as.character(slug %||% "")[1]
+  if (is.na(slug) || !nzchar(slug)) return(list(text = metin, facts = olgular))
+
+  onek <- paste0(slug, "__")
+
+  yeni_olgular <- lapply(olgular, function(olgu) {
+    if (!is.list(olgu) || !is.character(olgu$fact_id) || !nzchar(olgu$fact_id)) return(olgu)
+    olgu$fact_id <- paste0(onek, olgu$fact_id)
+    olgu
+  })
+
+  yeni_metin <- gsub("\\[fact:([A-Za-z0-9_.]+)\\]",
+                     paste0("[fact:", onek, "\\1]"), metin, perl = TRUE)
+
+  list(text = yeni_metin, facts = yeni_olgular)
 }
 
 # Uzlaştırma SONRASI yalnız başarılı v2 paketleri numeric provenance'a girer.
@@ -392,9 +453,11 @@ if (!exists(".pk_deep_observation_helpers_base", inherits = FALSE) &&
 }
 if (exists(".pk_deep_observation_helpers_base", inherits = FALSE)) {
   pk_deep_observation_helpers <- function(session, conn, username, user_prompt,
-                                          request_id, started_at) {
+                                          request_id, started_at,
+                                          conn_provider = NULL) {
     helpers <- .pk_deep_observation_helpers_base(
-      session, conn, username, user_prompt, request_id, started_at
+      session, conn, username, user_prompt, request_id, started_at,
+      conn_provider = conn_provider
     )
     base_stash <- helpers$stash
     helpers$stash <- function(footers, facts = NULL, fallback_text = NULL,

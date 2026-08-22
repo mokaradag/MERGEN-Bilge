@@ -75,6 +75,9 @@ pk_select_ranked_chips <- function(pass_b, candidates_ids, library_index) {
     reason = NA_character_,
     requirements = NULL,
     capability_status = "not_asserted",
+    # Tanılama: reddedilen kimlik ve VARLIK->SAYIM kanonikleştirmesi.
+    capability_unknown = character(0),
+    capability_canonicalized = character(0),
     alternate_scores = list(),
     lexical = list(available = FALSE, rank = NA_integer_, score = NA_real_, disagrees = FALSE),
     chips = list(),
@@ -177,6 +180,8 @@ pk_select_decide <- function(pass_b, candidates_ids, library_index, cfg,
     reason = pass_b$reason,
     requirements = pass_b$requirements,
     capability_status = dogrulama$status,
+    capability_unknown = dogrulama$unknown %||% character(0),
+    capability_canonicalized = dogrulama$canonicalized %||% character(0),
     alternate_scores = .pk_select_alternate_scores(pass_b),
     lexical = lexical
   )
@@ -303,7 +308,7 @@ pk_select_decide <- function(pass_b, candidates_ids, library_index, cfg,
   # Model, sorunun gerektirdiği ama İZİNLİ LİSTEDE OLMAYAN bir anlamsalı
   # bildirdiyse iddia doğrulanamaz. Eskiden istem modelden bu ihtiyacı
   # SİLMESİNİ istiyordu; sonuç, kanıtsız ama yüksek güvenli bir `auto` idi.
-  ifade_edilemeyen <- pass_b$requirements$unsupported %||% character(0)
+  ifade_edilemeyen <- pk_select_unsupported_needs(pass_b$requirements)
   if (length(ifade_edilemeyen)) {
     return(karar(
       PK_SELECT_STATUS_UNSUPPORTED_REQ,

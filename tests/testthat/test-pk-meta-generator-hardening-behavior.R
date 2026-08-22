@@ -26,7 +26,7 @@ local({
     "helpers_pk_query_meta_schema.R",
     "helpers_pk_query_meta_access.R",
     "helpers_pk_query_meta.R",
-    "helpers_pk_sql_readonly.R"
+    "helpers_pk_sql_statements.R", "helpers_pk_sql_readonly.R"
   )) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = globalenv())
   }
@@ -1115,4 +1115,73 @@ test_that("giris betigindeki TUM islev cagrilari cozulur", {
                   "PKG_META_STATE_VERSION")) {
     expect_true(exists(sabit, inherits = TRUE), info = sabit)
   }
+})
+
+# ============================================================================
+# PR #705 incelemesi: üretici sertleştirmeleri
+# ============================================================================
+
+test_that("bulgu ayrıntısı mutlak yolları ve kullanıcı adlarını SIZDIRMAZ", {
+  # Windows sürücü harfli yol, UNC payı ve POSIX ev dizini.
+  # Yollar RUNTIME'DA kurulur: depo taramasi (test-secret-leak-contract.R)
+  # kaynak dosyada LITERAL bir kisisel Windows yolu gormemeli.
+  win_kok <- paste0("C:", "/", "Users", "/")
+  unc_kok <- paste0("\\\\", "\\\\", "SUNUCU01", "\\\\", "pay")
+  ornekler <- c(
+    sprintf("Beyan edilen sql_file COZULEMEDI: '%sAlice/gizli/sorgu.sql'.", win_kok),
+    sprintf("Beyan edilen sql_file BOS: '%s\\\\pk\\\\sorgu.sql'.", unc_kok),
+    "Beyan edilen sql_file OKUNAMIYOR: '/home/operator/pk/sorgu.sql'."
+  )
+
+  for (ornek in ornekler) {
+    bulgu <- pkgh_finding("sql_file_unresolvable", "blocking", ornek)
+    expect_false(grepl("Alice", bulgu$detail, fixed = TRUE))
+    expect_false(grepl("SUNUCU01", bulgu$detail, fixed = TRUE))
+    expect_false(grepl("operator", bulgu$detail, fixed = TRUE))
+    expect_true(grepl("<yol>", bulgu$detail, fixed = TRUE))
+    # Bulgunun ANLAMI korunur: kod ve siniflandirma degismez.
+    expect_identical(bulgu$code, "sql_file_unresolvable")
+    expect_identical(bulgu$severity, "blocking")
+  }
+})
+
+test_that("bulgu ayrıntısındaki sıradan Türkçe metin bozulmadan kalır", {
+  bulgu <- pkgh_finding("role_type_mismatch", "attention",
+                        "Sutun 'KalanIscilik_sa' rolu 'measure' ama tipi metindir.")
+
+  expect_true(grepl("KalanIscilik_sa", bulgu$detail, fixed = TRUE))
+  expect_true(grepl("measure", bulgu$detail, fixed = TRUE))
+})
+
+test_that("başarısız ara kayıt SESSİZ geçmez", {
+  cagri <- new.env(parent = emptyenv())
+  cagri$n <- 0L
+  # Ara kayit BASARISIZ raporlar; envanter devam etmeli ama UYARI basmali.
+  checkpoint_fn <- function(cache) {
+    cagri$n <- cagri$n + 1L
+    FALSE
+  }
+
+  kutuphane <- list(list(
+    id = "q705", name = "Sentetik", sql = "SELECT 1",
+    rls_columns = list(masraf_yeri_col = NULL)
+  ))
+
+  cikti <- utils::capture.output(
+    sonuc <- pkg_meta_run_inventory(
+      query_library = kutuphane,
+      config = list(mode = "describe", sample_rows = 5L, sql_timeout_sec = 5L,
+                    max_result_mb = 1, high_cardinality_threshold = 3L,
+                    state_version = 1L, timestamp = "20260101-000000"),
+      connect_fn = function(target) NULL,
+      release_fn = function(x) invisible(NULL),
+      describe_fn = function(conn, sql) NULL,
+      sample_fn = function(conn, sql, n) NULL,
+      checkpoint_fn = checkpoint_fn
+    )
+  )
+
+  expect_true(cagri$n >= 1L)
+  expect_true(any(grepl("ARA KAYIT BASARISIZ", cikti, fixed = TRUE)))
+  expect_true(any(grepl("DEVAM ETTIRILEMEZ", cikti, fixed = TRUE)))
 })

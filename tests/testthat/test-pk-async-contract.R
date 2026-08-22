@@ -333,8 +333,17 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     "R/helpers_pk_async_cancel.R" = c(295L, 24L),
     "R/helpers_pk_exec_context.R" = c(135L, 11L),
     "R/helpers_pk_cancel_http.R" = c(109L, 10L),
-    "R/helpers_pk_result_columns.R" = c(245L, 8L),
-    "R/helpers_pk_result_size.R" = c(551L, 19L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme): 245 -> 259 satir (OLCULEN).
+    # `sql_variant` HER ZAMAN SINIRSIZ LOB listesinden CIKARILDI: ODBC tip kodu
+    # -98'in KANITLI 8016 baytlik ust siniri vardir. Sinirsiz saymak, tamamen
+    # olculebilir bir sonucu gereksiz yere reddediyordu. Fonksiyon sayisi AYNI.
+    "R/helpers_pk_result_columns.R" = c(259L, 8L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme): 551 -> 592 satir (OLCULEN). Iki
+    # neden: (a) `sql_variant` icin KANITLI 8016 bayt ust siniri; (b) R nesne
+    # tabani (karakter 56 / atomik 8 bayt/eleman) tahmine EKLENDI -- eskiden
+    # yalnizca surucu genisligi sayiliyor, cok sutunlu dar sonuclarda gercek
+    # bellek AYAK IZI ciddi sekilde EKSIK tahmin ediliyordu. Fonksiyon AYNI.
+    "R/helpers_pk_result_size.R" = c(592L, 19L),
     "R/helpers_pk_cache_key.R" = c(140L, 11L),
     # BILINCLI GUNCELLEME (PR #705): sinirlar artik KAYIP anahtarda da
     # uzlastirilir (kapali onbellek/dusurulmus tavan ANINDA etkilidir).
@@ -344,15 +353,36 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # "NA > 429" bicimindeki hatanin ardinda gorunmez kaldi. Tavan yine TAM
     # olculen degere cekilmistir; sonraki bir buyume yine BASARISIZ olur.
     # Kuresel ratchet (795 satir / 24 fonksiyon) ihlal EDILMEMEKTEDIR.
-    "R/helpers_pk_sql_execute.R" = c(430L, 22L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme): +5 satir. Sinirli yurutucu artik
+    # ACIK `query_meta` parametresi alir; derin analiz per-query yurutme baglami
+    # KURMADIGI icin ortuk `pk_active_query_meta()` orada NULL donuyor ve sorgu
+    # override'lari (yuk carpani / onayli LOB) OLU kaliyordu. Fonksiyon sayisi
+    # DEGISMEDI. Olculen 435.
+    # BILINCLI GUNCELLEME (PR #705 inceleme): 435 -> 459 satir (OLCULEN).
+    # Getirim ONCESI "ongorulen tepe" kapisi eklendi: `rbind` birlestirmesi
+    # sirasinda tepe bellek IKI KATIdir; tavana SIGAN ama birlestirilirken
+    # sigmayacak bir sonuc artik tahsisattan ONCE reddedilir. Fonksiyon AYNI.
+    "R/helpers_pk_sql_execute.R" = c(459L, 22L),
     "R/helpers_pk_sql_connection.R" = c(125L, 6L),
     "R/helpers_pk_async_worker_env.R" = c(372L, 22L),
-    "R/helpers_pk_async_worker_pool.R" = c(355L, 26L),
-    "R/helpers_pk_async_bootstrap.R" = c(504L, 24L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme): +5 satir. Admisyon karari artik
+    # KURESEL `admission_cap` uzerinden hesaplanir; `cfg$max_size` zaten bir kez
+    # bolusturulmus sureç payi oldugu icin ikinci bolusturme mesru bir tavani
+    # `fits = FALSE` yapabiliyordu. Fonksiyon sayisi DEGISMEDI. Olculen 360.
+    "R/helpers_pk_async_worker_pool.R" = c(360L, 26L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme): +10 satir. D11 devralinan varlik
+    # baglami hem isci vekiline KURULUR hem de hasat yuvalarina eklenir; aksi
+    # halde asenkron takip sorulari onceki turun varlik kisitini kaybediyordu.
+    # Fonksiyon sayisi DEGISMEDI. Olculen 514.
+    "R/helpers_pk_async_bootstrap.R" = c(514L, 24L),
     "R/helpers_pk_async_snapshot_validate.R" = c(135L, 9L),
     # BILINCLI GUNCELLEME (PR #705): D11 devralinan varlik baglami isciye
     # ACIKCA duz veri olarak tasinir (genel dongu list alanlari atliyordu).
-    "R/helpers_pk_async_snapshot.R" = c(279L, 20L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme): +9 satir. Toplama tarafi artik
+    # LISTE degerli `pk_entity_prior_context` alanini da okur; okunmadigi icin
+    # `.pk_async_plain_user_data()` sanitizasyonu OLU KODDU. Fonksiyon sayisi
+    # DEGISMEDI (try() kullanildi). Olculen 288.
+    "R/helpers_pk_async_snapshot.R" = c(288L, 20L),
     # BILINCLI GUNCELLEME (PR #705 kararlilik): yetenek sondasi artik
     # `future::value()` ile ana olay dongusunu BLOKE ETMEZ; `resolved()`
     # sinirli bir butce boyunca yoklanir ve SONUCSUZ sonda basari sayilmaz.
@@ -360,24 +390,54 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     "R/helpers_pk_async_plan.R" = c(242L, 18L),
     "R/helpers_pk_async_request.R" = c(295L, 16L),
     "R/helpers_pk_async_worker_sql.R" = c(165L, 11L),
-    "R/helpers_pk_async_worker.R" = c(330L, 22L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme): 330 -> 355 satir (OLCULEN). Iki
+    # GUVENLIK nedeni: (a) LOG sinirinda ODBC BAGLANTI TANIMLAYICILARI da
+    # maskelenir (`DSN=`/`UID=`/`Server=` kalici sunucu log'una yazilamaz) ve
+    # redaktor HIC yuklenmemisse ham metin LOG'A YAZILMAZ (kapali basarisiz);
+    # (b) hata SINIFLANDIRMASI ham metinden, KAYIT redakte metinden yapilir --
+    # aksi halde guclenen redaksiyon altyapi imzasini silip gercek bir DB
+    # hatasini "genel hata" olarak raporlardi. Fonksiyon sayisi ARTMAMISTIR.
+    "R/helpers_pk_async_worker.R" = c(355L, 22L),
     "R/helpers_pk_worker_observers.R" = c(110L, 7L),
     "R/helpers_pk_worker_direct_exit.R" = c(145L, 11L),
     "R/helpers_deep_analysis_sql.R" = c(210L, 15L),
-    "R/helpers_deep_analysis_reconcile.R" = c(215L, 15L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme): 215/15 -> 254/19. Bu bir BOLME'dir,
+    # buyume degil: birincil baglantinin idempotent birakicisi ve telemetri icin
+    # kisa omurlu baglanti saglayicisi orkestratorden (R/helpers_deep_analysis.R)
+    # BURAYA tasindi; orkestrator ayni anda 677/14 -> 649/11'e DUSTU ve kendi
+    # butcesi (680/14) DEGISMEDI. Neden: derin analiz birincil baglantiyi TUM
+    # analiz boyunca tutuyordu; ana surecteki erken-birakma sarmalayicisi worker
+    # bootstrap'ina DAHIL DEGILDIR, bu yuzden eszamanli derin isciler SQL Server
+    # oturumlarini tuketebiliyordu. Olculen 254/19.
+    "R/helpers_deep_analysis_reconcile.R" = c(254L, 19L),
     "R/helpers_deep_analysis_phase6.R" = c(250L, 19L),
     "R/helpers_deep_analysis_selector.R" = c(205L, 8L),
     "R/helpers_pk_async_request_markers.R" = c(225L, 16L),
-    "R/helpers_pk_async_session_registry.R" = c(208L, 16L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme): +10 satir. Terk edilen istekler
+    # kayittan SILINIR; girdi, istek-sahipli `release` kapanisini ve yakaladigi
+    # durumu oturum boyunca canli tutuyordu. Fonksiyon sayisi DEGISMEDI.
+    # Olculen 218.
+    "R/helpers_pk_async_session_registry.R" = c(218L, 16L),
     "R/helpers_pk_async_routing.R" = c(239L, 21L),
     "R/helpers_pk_async_lifecycle.R" = c(232L, 17L),
     # BILINCLI GUNCELLEME (PR #705): `pk_stopped` artik tipli `pk_halt_status`
     # tasir; son tarih kullanici iptali gibi raporlanmaz.
     # Tavan 1 satir bayatti (olculen 223); TAM olculen degere cekildi.
-    "R/helpers_pk_async_apply.R" = c(223L, 16L),
-    "R/helpers_pk_export_serve.R" = c(145L, 10L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme): +4 satir. Hazirlik artik ISTEGIN
+    # ORIJINAL baslangicini alir; `Sys.time()`i yeniden okumak mutlak son tarihi
+    # hazirlik suresi kadar ILERI atiyordu. Fonksiyon sayisi DEGISMEDI. Olculen 227.
+    "R/helpers_pk_async_apply.R" = c(227L, 16L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme): 145 -> 163 satir (OLCULEN).
+    # URL uretilemediginde artifact artik `status = "failed"` isaretlenir;
+    # eskiden kayit basarisizligi SESSIZ kalip disa aktarimi BASARILI
+    # gosteriyordu. Fonksiyon sayisi AYNI.
+    "R/helpers_pk_export_serve.R" = c(163L, 10L),
     # Tavan 1 satir bayatti (olculen 439); TAM olculen degere cekildi.
-    "R/server_handler_pk_async.R" = c(439L, 14L)
+    # BILINCLI GUNCELLEME (PR #705 inceleme): +15 satir. Son tarih bekcisi artik
+    # promise geri cagrilariyla AYNI istek-kimligi/terk/oturum/sohbet korumasindan
+    # gecer; takili bir iscide BASKA bir sohbetin arayuzunu bozabiliyordu.
+    # Fonksiyon sayisi DEGISMEDI. Olculen 454.
+    "R/server_handler_pk_async.R" = c(454L, 14L)
   )
 
   for (dosya in names(butceler)) {

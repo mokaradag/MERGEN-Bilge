@@ -8,7 +8,20 @@
 
   imzalar <- vapply(chat_history, function(m) {
     if (!is.list(m)) return("")
-    rol <- tolower(trimws(as.character(m$role %||% m$type %||% "user")[1]))
+    # ROL KANONİKLEŞTİRMESİ — SENKRON/ASENKRON AYNI İMZAYI ÜRETMELİDİR.
+    #
+    # Normal sohbet geçmişi yardımcı iletiyi `type = "ai"` (rolsüz) tutar;
+    # asenkron anlık görüntü AYNI iletiyi `role = "assistant"` + `type = "ai"`
+    # olarak taşır. Bu fonksiyon `role`u tercih ettiği için aynı söyleşi
+    # yürütme kipine göre `ai|...` ya da `assistant|...` imzası üretiyor,
+    # örtüşme denetimi başarısız oluyor ve önceki sorgu/açıklama bağlamı
+    # kayboluyordu. Eşanlamlılar TEK kanonik role indirgenir.
+    ham_rol <- tolower(trimws(as.character(m$role %||% m$type %||% "user")[1]))
+    rol <- switch(ham_rol,
+      "ai" = "assistant", "assistant" = "assistant", "bot" = "assistant",
+      "human" = "user", "user" = "user",
+      ham_rol
+    )
     icerik <- trimws(as.character(m$content %||% "")[1])
     if (is.na(icerik) || !nzchar(icerik)) return("")
 

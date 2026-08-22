@@ -177,7 +177,7 @@ test_that("uygulanamayan yetki kapsami analizi DURDURUR", {
   env <- .pk_stab_env(c("helpers_pk_rls.R"))
 
   plan <- env$pk_rls_plan(
-    list(Yetki = "PY", allowed_projects = "P1", scope_state_projects = "available"),
+    list(Yetki = "PY", allowed_projects = "P1", scope_state_projects = "available", scope_state_depts = "not_applicable"),
     list(),
     c("BaskaSutun")
   )

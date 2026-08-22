@@ -454,7 +454,8 @@ testthat::test_that("evidence semasi + does_prove/does_not_prove + redaksiyon se
                  "pk_cache_hit_observed", "pk_cache_eviction_observed",
                  "pk_cache_scope_isolated", "pk_deep_budget_decreases",
                  "pk_deep_halts_between_queries",
-                 "pk_connection_acquire_release_balanced", "pk_psock_async_path")
+                 "pk_connection_acquire_release_balanced", "pk_connection_instrumented",
+                 "pk_psock_async_path")
   for (ad in pk_adlari) {
     kontrol <- Filter(function(c) identical(c$name, ad), checks)
     testthat::expect_length(kontrol, 1L)
@@ -488,6 +489,8 @@ testthat::test_that("evidence semasi + does_prove/does_not_prove + redaksiyon se
   pk_zayif$fetch$rows_always_complete <- FALSE
   pk_zayif$deep$budget_decreases <- FALSE
   pk_zayif$db$acquire_release_balanced <- FALSE
+  # PR #705: enstrumante EDILMEMIS kosum de FAIL uretmeli.
+  pk_zayif$db$instrumented <- FALSE
   pk_zayif$psock$ok <- FALSE
   checks_zayif <- env$soak_evaluate_thresholds(
     cfg, s, inproc, list(total_leaks = 0L), mg, 0, TRUE, 0L, NULL, NULL, pk_zayif
@@ -495,7 +498,7 @@ testthat::test_that("evidence semasi + does_prove/does_not_prove + redaksiyon se
   for (ad in c("pk_cancel_inflight_exercised", "pk_cache_eviction_observed",
                "pk_cache_scope_isolated", "pk_bounded_fetch_complete",
                "pk_deep_budget_decreases", "pk_connection_acquire_release_balanced",
-               "pk_psock_async_path")) {
+               "pk_connection_instrumented", "pk_psock_async_path")) {
     kontrol <- Filter(function(c) identical(c$name, ad), checks_zayif)
     testthat::expect_length(kontrol, 1L)
     testthat::expect_false(isTRUE(kontrol[[1]]$pass), info = ad)

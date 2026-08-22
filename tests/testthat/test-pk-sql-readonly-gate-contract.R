@@ -10,7 +10,7 @@
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
-  source(file.path(repo_root, "R", "helpers_pk_sql_readonly.R"),
+  for (.pk705_dosya in c("helpers_pk_sql_statements.R", "helpers_pk_sql_readonly.R")) source(file.path(repo_root, "R", .pk705_dosya),
          encoding = "UTF-8", local = env)
   env
 }
@@ -361,4 +361,62 @@ test_that("satir yorumu CR / LF / CRLF'in HEPSINDE biter (kapi ACILMAZ)", {
       )
     )
   }
+})
+
+# PR #705: NOKTALI VIRGULSUZ IKINCI IFADE + YERELDEN BAGIMSIZ ANAHTAR KELIME.
+#
+# T-SQL ifadeler arasinda `;` zorunlu kilmaz: `SELECT 1\nSELECT 2` tek dize
+# olarak doner, hicbir yasak-kelime taramasi reddetmez ve boyle bir kutuphane
+# sorgusu BIRDEN FAZLA sonuc kumesi uretebilir. Tespit parantez DERINLIGI
+# farkindadir; kume islecleri (`UNION [ALL]` / `EXCEPT` / `INTERSECT`) MESRUdur.
+test_that("noktali virgulsuz ikinci ust duzey SELECT reddedilir", {
+  env <- .pk_sql_gate_env()
+
+  red <- env$pk_sql_classify_readonly("SELECT 1 AS a\nSELECT 2 AS b")
+  expect_false(isTRUE(red$allowed))
+  expect_identical(red$reason, "multiple_statements")
+
+  # Noktali virgulle ayrilmis ikinci ifade de reddedilmelidir.
+  red2 <- env$pk_sql_classify_readonly("SELECT 1 AS a; SELECT 2 AS b")
+  expect_false(isTRUE(red2$allowed))
+})
+
+test_that("kume islecleri ve alt sorgular YANLIS POZITIF uretmez", {
+  env <- .pk_sql_gate_env()
+
+  gecerli <- c(
+    "SELECT a FROM t1 UNION SELECT b FROM t2",
+    "SELECT a FROM t1 UNION ALL SELECT b FROM t2",
+    "SELECT a FROM t1 EXCEPT SELECT b FROM t2",
+    "SELECT a FROM t1 INTERSECT SELECT b FROM t2",
+    "SELECT a FROM (SELECT b AS a FROM t) x",
+    "WITH k AS (SELECT a FROM t) SELECT a FROM k",
+    "SELECT a FROM t WHERE EXISTS (SELECT 1 FROM u)"
+  )
+  for (sql in gecerli) {
+    sonuc <- env$pk_sql_classify_readonly(sql)
+    expect_true(isTRUE(sonuc$allowed), info = sql)
+  }
+})
+
+test_that("anahtar kelime esleşmesi yerelden BAGIMSIZDIR (Turkce noktasiz i)", {
+  env <- .pk_sql_gate_env()
+
+  # `toupper("intersect")` Turkce yerelde noktali `İ` uretir ve `INTERSECT`
+  # islecine eslesmezdi; mesru sorgu "ikinci ifade" sanilip REDDEDILIRDI.
+  eski <- Sys.getlocale("LC_CTYPE")
+  on.exit({
+    geri <- suppressWarnings(Sys.setlocale("LC_CTYPE", eski))
+    expect_true(nzchar(geri))
+  }, add = TRUE)
+
+  kuruldu <- ""
+  for (loc in c("tr_TR.UTF-8", "tr_TR.utf8", "Turkish_Turkey.1254", "Turkish", "tr_TR")) {
+    kuruldu <- suppressWarnings(Sys.setlocale("LC_CTYPE", loc))
+    if (nzchar(kuruldu)) break
+  }
+  testthat::skip_if(!nzchar(kuruldu), "Turkce yerel bu makinede kurulu degil.")
+
+  sonuc <- env$pk_sql_classify_readonly("select a from t1 intersect select b from t2")
+  expect_true(isTRUE(sonuc$allowed))
 })

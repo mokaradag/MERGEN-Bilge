@@ -303,9 +303,22 @@ PK_ASYNC_GENERIC_ERROR_MESSAGE <- "Analiz sirasinda beklenmeyen bir hata olustu.
   if (is.null(ham) || !length(ham) || is.na(ham) || !nzchar(ham)) {
     return("Bilinmeyen analiz hatasi.")
   }
-  if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
+  # PR #705 (P1): LOG sinirinda BAGLANTI TANIMLAYICILARI da maskelenir.
+  #
+  # Genel `redact_sensitive_text()` KIMLIK BILGISI alanlarini maskeler ama
+  # `DSN=PrivateProd`, `UID=alice`, `Server=corp-internal\SQL01` degerlerini
+  # BILEREK korur (kullanici adi tek basina sir degildir). Burada metin KALICI
+  # sunucu log'una yazilir ve depo sozlesmesi ozel DSN'lerin log'lanmasini
+  # ACIKCA yasaklar; bu alanlar iç altyapiyi yeniden kurmaya yeter.
+  if (exists("redact_connection_identifiers", mode = "function", inherits = TRUE)) {
+    ham <- tryCatch(redact_connection_identifiers(ham),
+                    error = function(e) "[redaksiyon basarisiz - ham metin gizlendi]")
+  } else if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
     ham <- tryCatch(redact_sensitive_text(ham),
                     error = function(e) "[redaksiyon basarisiz - ham metin gizlendi]")
+  } else {
+    # KAPALI BASARISIZ: redaktor hic yuklenmemisse ham metin LOG'A YAZILMAZ.
+    return("[redaktor yuklenmedi - ham metin gizlendi]")
   }
   substr(ham, 1L, 400L)
 }
@@ -314,11 +327,23 @@ PK_ASYNC_GENERIC_ERROR_MESSAGE <- "Analiz sirasinda beklenmeyen bir hata olustu.
   redakte <- .pk_async_redact_for_log(message)
   .pk_async_log("[PK_ASYNC] Isci hatasi (redakte): %s", redakte)
 
+  # SINIFLANDIRMA HAM METINDEN, KAYIT REDAKTE METINDEN.
+  #
+  # Sinif tespiti redakte edilmis metne bakarsa, redaksiyon ne kadar guclu
+  # olursa tespit o kadar korlesir: `DSN=<redacted>` gibi maskelenmis bir
+  # deger, altyapi imzasini SILEBILIR ve gercek bir DB hatasi "genel hata"
+  # olarak raporlanir. Ham metin YALNIZCA bellekte, siniflandirma icin
+  # okunur; ASLA log'a ya da kullaniciya TASINMAZ.
+  ham <- tryCatch(as.character(message)[1], error = function(e) NA_character_)
+  if (is.null(ham) || !length(ham) || is.na(ham)) ham <- ""
+
   # D22 sözleşmesi korunur: DB/sürücü kaynaklı hatalar kullanıcıya "teknik bir
   # hata" olarak bildirilir (ham DSN/nanodbc/SQLSTATE metni ASLA taşınmaz).
   altyapi <- c("nanodbc", "SQLSTATE", "DSN=", "ODBC", "Driver", "sp_executesql",
                "TCP Provider", "SQL Server")
-  if (any(vapply(altyapi, function(p) grepl(p, redakte, fixed = TRUE), logical(1)))) {
+  if (any(vapply(altyapi, function(p) {
+        grepl(p, ham, fixed = TRUE) || grepl(p, redakte, fixed = TRUE)
+      }, logical(1)))) {
     return("Veritabani erisiminde teknik bir hata olustu.")
   }
 

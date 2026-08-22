@@ -13,7 +13,7 @@ pk_required_helpers <- list(
       "apply_rls_to_data",
       "generate_statistical_summary"
     ),
-    path = file.path("R", "helpers_pk_analysis_security_summary.R")
+    path = file.path("R", c("helpers_pk_rls_identity.R", "helpers_pk_analysis_security_summary.R"))  # kimlik/izin ONCE
   ),
   list(
     functions = c("extract_filter_criteria_from_prompt", "apply_smart_filters"),
@@ -172,8 +172,8 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   # PR #703: TİPLİ Durdur/son tarih, `authorized`'dan ÖNCE ele alınmalıdır.
   if (isTRUE(rls_info$halted)) return(pk_rls_halt_message(rls_info))
   if (!isTRUE(rls_info$authorized)) {
-    cat("[PK_ANALIZ] Yetki Hatasi: Kullanici bulunamadi.\n")
-    return("\U000026A0\U0000FE0F **Yetki Hatası:** Sistemde kullanıcı kaydınız (DC01_user_base) bulunamadı. Lütfen yönetici ile iletişime geçin.")
+    cat(sprintf("[PK_ANALIZ] Yetki verilmedi (tur=%s).\n", if (isTRUE(rls_info$db_error)) "db_error" else if (isTRUE(rls_info$ambiguous)) "ambiguous" else "not_found"))
+    return(pk_rls_denied_message(rls_info))  # PR #705: db_error/ambiguous/not_found TIPLI ayrilir; hepsi KAPALI BASARISIZ, ayrilan yalnizca TESHIS
   }
   
   if (is.function(stop_check) && isTRUE(stop_check())) {
@@ -497,7 +497,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
   }
   
-  pk_filter_policy <- NULL
+  pk_filter_policy <- NULL; pk_entity_decisions <- NULL  # P4-9: OZNE iptal kapisindan SONRA saklanir
 
   if (isTRUE(selected_query$disable_ai_filters)) {
     cat("[PK_ANALIZ] Ozel Sorgu Ayari: AI Filtreleme devre disi birakildi. Sadece RLS verisi kullaniliyor.\n")
@@ -536,8 +536,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 	filtered_data <- apply_smart_filters(secure_data, filter_criteria, user_prompt)
 	# v2 politika karari, normalize_pk_dataframe_utf8() ozniteligi dusurmeden ONCE alinir.
 	if (pk_engine_v2 && exists("PK_FILTER_V2_ATTR", inherits = TRUE)) {
-	  pk_filter_policy <- attr(filtered_data, PK_FILTER_V2_ATTR, exact = TRUE)
-	  if (exists("pk_entity_context_remember", mode = "function", inherits = TRUE)) try(pk_entity_context_remember(session, pk_filter_policy$entity_decisions, selected_query), silent = TRUE)  # cozulmus OZNE bir sonraki tur icin saklanir
+	  pk_filter_policy <- attr(filtered_data, PK_FILTER_V2_ATTR, exact = TRUE); pk_entity_decisions <- pk_filter_policy$entity_decisions  # yazim iptal kapisindan SONRA
 	}
 
 	filtered_data <- normalize_pk_dataframe_utf8(filtered_data)
@@ -577,6 +576,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     cat("[PK_ANALIZ] Durdurma talebi alindi (filtreleme sonrasi)\n")
     return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
   }
+  if (!is.null(pk_entity_decisions) && exists("pk_entity_context_remember", mode = "function", inherits = TRUE)) try(pk_entity_context_remember(session, pk_entity_decisions, selected_query), silent = TRUE)  # P4-9: iptal edilen istek bir sonraki turu TOHUMLAMAZ
 			  
 	if (nrow(filtered_data) < nrow(secure_data) * 0.05 && nrow(secure_data) > 100) {
 	  cat("[PK_ANALIZ] UYARI: Filtreleme sonucu çok az veri kaldı (<%5). Kullanıcı gereksiz filtre uygulanmış olabilir.\n")

@@ -177,7 +177,19 @@
   # PR #705 dengeleme: iki odakli dosya eklendi -- helpers_pk_filter_group.R
   # (acik AND/OR gruplarinin inert degerlendiricisi; eval(parse()) yerine) ve
   # helpers_pk_entity_context.R (D11 devralinan baglam anahtari/kaydi). 79 -> 81.
-  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_query_selection_apply.R", n = 81L),
+  # PR #705 inceleme duzeltmeleri: 81 -> 85. Dort BILINCLI bolunme; hicbiri
+  # yeni davranis eklemez, mevcut sorumlulari ayirir ve bakim ratchet'ini
+  # (799 satir / 24 fonksiyon) IHLAL ETMEDEN duzeltme yapilmasini saglar:
+  #   * helpers_pk_query_selection_canonical.R -- varolussal gereksinimlerin
+  #     YAPISAL kanoniklestirmesi (sozluk/es-anlamli tablosu DEGIL),
+  #   * helpers_pk_rls_identity.R -- RLS kimlik/izin okumasi + TIPLI yetki
+  #     reddi mesaji (security_summary 400 satir butcesi korunur),
+  #   * helpers_pk_sql_statements.R -- maskelenmis SQL uzerinde ust duzey
+  #     ifade yapisi cozumlemesi (noktali virgulsuz ikinci ifade tespiti),
+  #   * helpers_pk_precision.R -- integer64 kesinlik korumasi,
+  #   * helpers_pk_entity_tree.R -- filtre agacinda mantik grubu gezintisi.
+  # 81 -> 86.
+  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_query_selection_apply.R", n = 86L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
   # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
@@ -553,7 +565,11 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # (795 satır / 24 fonksiyon) ihlal edilmeden düzeltme yapabilmek için
   # BÖLÜNDÜ; hiçbiri yeni davranış eklemez, mevcut sorumlulukları ayırır.
   # analysis_helpers +10, module_analysis +1, server_handlers_send_message +2.
-  expect_equal(length(runtime), 461L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # PR #705 inceleme düzeltmeleri: 461 -> 466. analysis_helpers +5 (bkz. bölüm
+  # çıpası açıklaması): kanonikleştirme, RLS kimlik/izin, SQL ifade yapısı,
+  # integer64 kesinliği ve filtre ağacı gezintisi. Beşi de BİLİNÇLİ ratchet
+  # bölünmesidir; hiçbiri yeni davranış eklemez.
+  expect_equal(length(runtime), 466L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

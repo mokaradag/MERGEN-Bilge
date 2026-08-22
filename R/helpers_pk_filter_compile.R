@@ -25,6 +25,10 @@ PK_FILTER_ALTERNATIVE_OPS <- c("exact_match", "equals", "contains", "in", "start
 # Aralık sınırı üreten işlemler (sütun içinde VE'lenir).
 PK_FILTER_LOWER_OPS <- c("greater_than", "greater_or_equal", "from", "min")
 PK_FILTER_UPPER_OPS <- c("less_than", "less_or_equal", "to", "max")
+
+# KAPSAYICI üst sınır işlemleri: yalnız-tarih değeri gün SONUNA genişletilebilir.
+# `less_than` KATI'dır ve bu kümede YOKTUR.
+.PK_FILTER_INCLUSIVE_UPPER_OPS <- c("less_or_equal", "to", "max")
 # Dışlama üreten işlemler (sütun içinde VE'lenen NOT).
 PK_FILTER_EXCLUDE_OPS <- c("not_equals", "exclude", "not_in", "not_contains")
 
@@ -285,8 +289,13 @@ pk_filter_normalize_leaf <- function(f) {
     }, error = function(e) as.POSIXct(NA)))
   }
 
-  # Üst sınır işlemlerinde yalnız-tarih değeri GÜN SONU olarak yorumlanır.
-  gun_sonu <- leaf$operation %in% PK_FILTER_UPPER_OPS
+  # YALNIZ-TARİH DEĞERİ SADECE KAPSAYICI ÜST SINIRDA GÜN SONUNA GENİŞLER.
+  #
+  # `less_or_equal 2024-05-01` ("1 Mayıs DAHİL") gün sonunu kapsamalıdır; ama
+  # KATI `less_than 2024-05-01` ("1 Mayıs'tan ÖNCE") sınırı `00:00:00`da
+  # bitirmelidir. Eskiden ikisi de gün sonuna genişletiliyordu ve katı
+  # karşılaştırma 1 Mayıs'ın neredeyse tamamını İÇERİYORDU.
+  gun_sonu <- leaf$operation %in% .PK_FILTER_INCLUSIVE_UPPER_OPS
 
   sinirlar <- do.call(c, lapply(seq_along(leaf$values), function(i) {
     ayrist(leaf$values[i], gun_sonu && yalniz_tarih[i])
@@ -380,12 +389,51 @@ pk_filter_leaf_mask <- function(data, leaf, query = NULL) {
   list(ok = TRUE, mask = maske, reason = NA_character_)
 }
 
-# Metadata sütun tanımı taşıyorsa ve sütun filtrelenebilir değilse TRUE.
+# AÇIK MANTIK GRUBU YAPRAKLARINI GERÇEK SÜTUN ADLARIYLA RAPORLA
+#
+# Grup maskesi TEK bir birleşik maskedir; her sütun için ayrı satır sayısı
+# üretilemez. Bu yüzden her sütun grubu AYNI birleşik maskeyi taşır ama KENDİ
+# adıyla raporlanır: aşağı akış (sıfır-eşleşme politikası, provenans, paket,
+# telemetri) sentetik `__group__` yerine gerçek kısıtı görür.
+.pk_filter_tree_groups <- function(applied, mask, n) {
+  if (!length(applied)) return(list())
+
+  eslesen <- sum(mask)
+  sutunlar <- unique(vapply(applied, function(x) as.character(x$column %||% "")[1],
+                            character(1)))
+  sutunlar <- sutunlar[!is.na(sutunlar) & nzchar(sutunlar)]
+  if (!length(sutunlar)) sutunlar <- "__group__"
+
+  lapply(sutunlar, function(sutun) {
+    list(
+      column = sutun,
+      applied = Filter(function(x) identical(as.character(x$column %||% "")[1], sutun),
+                       applied),
+      rows_before = n, rows_after = eslesen,
+      group_matches = eslesen, zero_match = eslesen == 0L,
+      contradictory_bounds = FALSE,
+      from_logic_group = TRUE
+    )
+  })
+}
+
+# KÜRATÖRLENMEMİŞ SÜTUN FİLTRELENEBİLİR SAYILMAZ.
+#
+# Metadata sözleşmesi `filterable` yoksa FALSE der (`pk_meta_tier0_fallbacks()`).
+# Bu kapı ise sorgunun `column_meta` haritasında HİÇ GEÇMEYEN bir sütunu
+# "engellenmemiş" sayıyordu: SQL sonucu yeni bir sütun kazandığında model o
+# sütunu adıyla filtreleyebiliyor ve `pk_filter_leaf_mask()` onu normal biçimde
+# derliyordu. `pk_meta_validate_actual_columns()` yalnızca BEYAN EDİLİP sonuçta
+# OLMAYAN sütunları denetler; FAZLADAN sütunları değil. Artık `column_meta`
+# tanımlıyken beyan edilmemiş sütun ENGELLENİR.
+#
+# `column_meta` HİÇ tanımlı değilse (Tier-0/v1 sorgular) eski davranış korunur;
+# aksi hâlde metadata'sı olmayan her sorguda filtreleme tamamen ölürdü.
 .pk_filter_meta_blocks <- function(query, column) {
   meta <- if (is.list(query)) (query$meta %||% query) else NULL
   sutunlar <- if (is.list(meta)) meta$column_meta else NULL
   if (!is.list(sutunlar) || !length(sutunlar)) return(FALSE)
-  if (!(column %in% names(sutunlar))) return(FALSE)
+  if (!(column %in% names(sutunlar))) return(TRUE)
   !isTRUE(pk_meta_is_filterable(query, column))
 }
 
@@ -504,14 +552,9 @@ pk_filter_compile <- function(data, filters, noop_ratio = NULL, query = NULL) {
     bos$dropped <- agac_dusen
     bos$requested <- length(agac_uygulanan) + length(agac_dusen)
     bos$all_dropped <- !length(agac_uygulanan) && length(agac_dusen) > 0L
-    if (length(agac_uygulanan)) {
-      bos$groups <- list(list(
-        column = "__group__", applied = agac_uygulanan,
-        rows_before = n, rows_after = sum(agac_maskesi),
-        group_matches = sum(agac_maskesi), zero_match = sum(agac_maskesi) == 0L,
-        contradictory_bounds = FALSE
-      ))
-    }
+    if (length(agac_uygulanan)) bos$groups <- .pk_filter_tree_groups(
+      agac_uygulanan, agac_maskesi, n
+    )
     return(bos)
   }
 
@@ -541,7 +584,17 @@ pk_filter_compile <- function(data, filters, noop_ratio = NULL, query = NULL) {
 
   sutunlar <- unique(vapply(gecerli, function(x) x$column, character(1)))
   toplam_maske <- agac_maskesi
-  gruplar <- list()
+  # GRUP YAPRAKLARI DA `groups` İÇİNDE RAPORLANIR.
+  #
+  # Model açık bir mantık grubu ile düz filtreyi BİRLİKTE gönderdiğinde
+  # (`(Proje=A OR Proje=B) AND Yil=2024`), grup maskesi UYGULANIYOR ama
+  # `groups` yalnızca düz filtreleri taşıyordu. Analiz paketi, telemetri,
+  # provenans alt bilgisi ve dışa aktarım bilgisi bu yüzden sonucu GERÇEKTEN
+  # belirleyen proje kısıtını atlıyordu. Ayrıca birincil varlık grubun İÇİNDE
+  # olduğunda sıfır-eşleşme politikası `__group__` sentetik adını görüyor,
+  # birincil varlık reddini üretemiyordu; yapraklar GERÇEK sütun adlarıyla
+  # raporlanır.
+  gruplar <- .pk_filter_tree_groups(agac_uygulanan, agac_maskesi, n)
   etkisiz <- character(0)
   uygulanan_sayisi <- length(agac_uygulanan)
 

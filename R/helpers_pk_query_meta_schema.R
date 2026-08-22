@@ -9,6 +9,11 @@ PK_META_AGGREGATES <- c("sum", "mean", "weighted_mean", "latest", "none")
 PK_META_MATCH_MODES <- c("exact", "resolve", "contains", "none")
 PK_META_PERCENT_SCALES <- c("points", "fraction")
 PK_META_ALIAS_PROVENANCE <- c("synthetic", "approved")
+
+# Isleyicilerin (pk_fmt_number / .pk_export_number_format) destekledigi AZAMI
+# ondalik hassasiyet. Metadata bundan fazlasini BEYAN EDEMEZ; aksi halde
+# dogrulanmis bir sorgu, ciktisinda sessizce daha az hassasiyet yayinlar.
+PK_META_MAX_DECIMALS <- 9L
 .PK_META_CAPABILITY_PATTERN <- "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
 
 .pk_meta_is_scalar_text <- function(x) {
@@ -176,10 +181,17 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
       " tier negatif olmayan tam sayi olmalidir."))
   }
 
+  # PR #705: `decimals` DOGRULAMASI, ISLEYICILERIN GERCEKTEN destekledigi
+  # hassasiyetle SINIRLIDIR. `pk_fmt_number()` ve `.pk_export_number_format()`
+  # degeri SESSIZCE 9'a kirpar; validator 10-15 arasi bir beyani kabul
+  # ederse sorgu "dogrulanmis" gorunur ama ciktisi beyandan DAHA AZ hassastir.
+  # Sozlesme ile isleyici arasindaki bu sessiz uyusmazlik KAPATILIR.
   if (!is.null(cmeta$decimals) &&
-      !.pk_meta_is_whole_number(cmeta$decimals, min = 0, max = .Machine$integer.max)) {
-    hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
-      " decimals negatif olmayan tam sayi olmalidir."))
+      !.pk_meta_is_whole_number(cmeta$decimals, min = 0, max = PK_META_MAX_DECIMALS)) {
+    hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
+      " decimals 0 ile %d arasinda tam sayi olmalidir (isleyici siniri).",
+      PK_META_MAX_DECIMALS
+    )))
   }
 
   if (!is.null(cmeta$percent_scale) &&

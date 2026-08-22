@@ -20,10 +20,29 @@
 PK_FILTER_V2_ATTR <- "pk_filter_v2"
 
 # Politika sonrası GERÇEKTEN yürürlükte kalan yaprakları döndürür.
+# UYGULANAN FİLTRE KAYDI, AÇIK MANTIK GRUBU YAPRAKLARINI DA KAPSAR.
+#
+# `derleme$groups` artık grup ağacından gelen yaprakları da GERÇEK sütun
+# adlarıyla taşır (bkz. `.pk_filter_tree_groups()`), bu yüzden bu fonksiyon
+# tek kaynaktan okumaya devam eder ve `(Proje=A OR Proje=B) AND Yil=2024`
+# isteğinde proje kısıtı da paket/telemetri/köken alt bilgisine girer.
 .pk_v2_retained_leaves <- function(groups, dropped_columns = character(0)) {
   dropped_columns <- as.character(dropped_columns %||% character(0))
   kalan <- Filter(function(g) !(g$column %in% dropped_columns), groups %||% list())
   unlist(lapply(kalan, function(g) g$applied), recursive = FALSE) %||% list()
+}
+
+# Toplulaştırma belirteci — AŞAĞIDAKİ ANA YOLLA AYNI normalleştirme.
+#
+# İki farklı katlama kullanılırsa boş sonuçtaki `count` dalı ile dolu sonuçtaki
+# `count` dalı ayrışabilir; tek yardımcıda toplanır.
+.pk_v2_agg_token <- function(aggregation) {
+  ham <- as.character(aggregation %||% "")[1]
+  if (is.na(ham)) return("")
+  if (exists("pk_ascii_token", mode = "function", inherits = TRUE)) {
+    return(pk_ascii_token(ham))
+  }
+  chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", trimws(ham))
 }
 
 # Desteklenen toplulaştırmalar; bunun dışındaki bir değer SESSİZCE ham satır
@@ -75,6 +94,19 @@ pk_apply_smart_filters_v2 <- function(data, filter_instructions, query = NULL) {
   )
 
   if (nrow(data) == 0L) {
+    # BOŞ SONUÇTA DA `count` OTORİTER CEVABI SIFIRDIR.
+    #
+    # Bu erken dönüş toplulaştırma anahtarından ÖNCE çalışıyordu; geçerli bir
+    # `aggregation = "count"` isteği sıfır satır/sıfır sütunluk bir çerçeveye
+    # düşüyor ve aşağı akış bunu "veri yok/kullanılamaz" diye anlatıyordu.
+    # Oysa sorunun DOĞRU cevabı `Adet = 0`dır.
+    if (identical(.pk_v2_agg_token(aggregation), "count")) {
+      aciklama <- if (length(filters) > 0) "Filtrelenen Kayıt Sayısı" else "Toplam Kayıt Sayısı"
+      return(sonuc_ekle(
+        data.frame(Sonuc = aciklama, Adet = 0L, stringsAsFactors = FALSE),
+        0L, bos_karar
+      ))
+    }
     return(sonuc_ekle(data.frame(), 0L, bos_karar))
   }
 
@@ -258,7 +290,19 @@ pk_apply_smart_filters_v2 <- function(data, filter_instructions, query = NULL) {
         )))
       }
 
-      toplamlar <- lapply(toplanabilir, function(nc) sum(filtrelenmis[[nc]], na.rm = TRUE))
+      # HİÇ SONLU GÖZLEM YOKKEN SIFIR ÜRETİLMEZ.
+      #
+      # `sum(x, na.rm = TRUE)` tamamı `NA` olan bir sütun için 0 döner ve bu
+      # çerçeve aşağı akışta GÖZLENMİŞ bir toplam gibi kullanılır; kullanıcı
+      # gerçek bir sıfır görür. Paket istatistiği sözleşmesi (`PK_FACT_NO_FINITE`)
+      # sonlu gözlemi olmayan ölçüyü KULLANILAMAZ sayar; bu yol da aynı
+      # sözleşmeye uyar ve `NA` bildirir.
+      toplamlar <- lapply(toplanabilir, function(nc) {
+        ham <- suppressWarnings(as.numeric(filtrelenmis[[nc]]))
+        sonlu <- ham[!is.na(ham) & is.finite(ham)]
+        if (!length(sonlu)) return(NA_real_)
+        sum(sonlu)
+      })
       names(toplamlar) <- toplanabilir
       return(sonuc_ekle(as.data.frame(toplamlar, stringsAsFactors = FALSE), eslesen, karar))
     }

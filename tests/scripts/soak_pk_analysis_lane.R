@@ -925,10 +925,17 @@ soak_pk_analysis_lane <- function(cfg) {
 
   # Baglanti muhasebesi: sinirli getirim her cikis yolunda sonuc kumesini
   # kapatir; getirimden sonra baglanti hala kullanilabilir olmalidir.
-  conn_usable <- isTRUE(tryCatch({
-    probe <- DBI::dbGetQuery(db$conn, "SELECT COUNT(*) AS n FROM pk_veri")
-    is.data.frame(probe) && nrow(probe) == 1L
-  }, error = function(e) FALSE))
+  #
+  # PR #705: PROB, GETIRIMIN GERCEKTEN KULLANDIGI YOLDAN yapilir. Onceden
+  # `db$conn` (serit kurulum baglantisi) sorgulaniyordu; sinirli getirimden
+  # sonra HAVUZDAKI baglanti kirli/kullanilamaz kalsa bile bu kapi yesil
+  # kaliyordu. Artik `al_birak()` uzerinden URETIM checkout'u yeniden alinir.
+  conn_usable <- isTRUE(tryCatch(
+    al_birak(function(baglanti) {
+      probe <- DBI::dbGetQuery(baglanti, "SELECT COUNT(*) AS n FROM pk_veri")
+      is.data.frame(probe) && nrow(probe) == 1L
+    }),
+    error = function(e) FALSE))
 
   # SIZINTI KANITI URETIMDEN OKUNUR. Serit sayaclari `on.exit()` sayesinde her
   # zaman dengelidir; asil kanit uretim havuzunun checkout-return farkidir.
@@ -937,12 +944,17 @@ soak_pk_analysis_lane <- function(cfg) {
                       released = conn_counts$released,
                       instrumented = isTRUE(havuz_kuruldu),
                       pool_leaked = pool_leaked)
+  # PR #705: ENSTRUMANTASYON YOKSA KAPI GECMEZ.
+  #
+  # Onceki kosul `(!isTRUE(havuz_kuruldu) || ...)` idi: havuz kurulamadiginda
+  # serit KENDI dogasi geregi dengeli sayaclarina duser ve kapi "uretim
+  # acquire/release sizinti kapsami" raporlardi -- oysa uretim yolu HIC
+  # calistirilmamis olurdu. "Olculmedi" ile "gecti" karistirilamaz: enstrumante
+  # kosum ZORUNLUdur ve uretim sizinti sayaci SIFIR olmalidir.
   conn_balanced <- identical(conn_counts$acquired, conn_counts$released) &&
     conn_counts$acquired >= sessions &&
-    # Enstrumante kosumda uretim muhasebesi de DENGELI olmalidir. NA =
-    # olculmedi (havuz kurulamadi); bu durumda kapi seride guvenmez ve
-    # `instrumented = FALSE` artifact'ta acikca raporlanir.
-    (!isTRUE(havuz_kuruldu) || identical(as.integer(pool_leaked %||% -1L), 0L))
+    isTRUE(havuz_kuruldu) &&
+    identical(as.integer(pool_leaked %||% -1L), 0L)
 
   ok_count <- sum(outcomes == "ok")
   measurable <- sum(!cancelled)

@@ -18,7 +18,7 @@
   env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
 
   for (dosya in c("helpers_pk_config.R", "helpers_pk_text_turkish.R",
-                  "helpers_pk_prompt_budget.R", "helpers_pk_packet_stats.R",
+                  "helpers_pk_prompt_budget.R", "helpers_pk_precision.R", "helpers_pk_packet_stats.R",
                   "helpers_pk_analysis_packet.R", "helpers_pk_packet_render.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = env)
   }

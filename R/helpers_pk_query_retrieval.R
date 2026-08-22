@@ -315,11 +315,22 @@ pk_retrieval_excluded_ids <- function(library, prompt) {
     metin <- .pk_retrieval_field_text(meta$not_for)
     if (!length(metin)) next
 
-    belirtecler <- unique(.pk_retrieval_tokens(metin))
-    belirtecler <- belirtecler[nchar(belirtecler) >= 3L]
-    if (length(intersect(belirtecler, istem))) {
-      dislanan <- c(dislanan, trimws(as.character(kimlik)[1]))
+    # OLUMSUZ İFADE BÜTÜN OLARAK EŞLEŞMELİDİR. Eskiden `not_for` içindeki
+    # HERHANGİ bir >=3 karakterlik belirteç yetiyordu: `not_for = "planlanan
+    # bütçe"`, "planlanan işçilik" isteğini de reddediyor ve bu yanlış pozitif
+    # `pk_retrieval_agreement()` üzerinden GEÇERLİ bir seçimi güven kapısının
+    # altına itebiliyordu. Tek sözcüklük ifadeler eskisi gibi davranır.
+    dislandi <- FALSE
+    for (ifade in metin) {
+      belirtecler <- unique(.pk_retrieval_tokens(ifade))
+      belirtecler <- belirtecler[nchar(belirtecler) >= 3L]
+      if (!length(belirtecler)) next
+      if (all(belirtecler %in% istem)) {
+        dislandi <- TRUE
+        break
+      }
     }
+    if (dislandi) dislanan <- c(dislanan, trimws(as.character(kimlik)[1]))
   }
 
   unique(dislanan)

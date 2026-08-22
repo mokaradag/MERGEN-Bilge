@@ -61,12 +61,17 @@ pk_sql_bounded_call <- function(fn, budget_fn, floor_sec = 0.05) {
 # metadata'dan KANITLANMIŞ satır genişliği türetilir, parça boyutu ona göre
 # küçültülür ve kanıt yoksa granülarite tek satıra iner.
 
+#' @param query_meta AÇIK sorgu metadata'sı. Derin analiz per-query yürütme
+#'   bağlamı KURMAZ; örtük `pk_active_query_meta()` orada `NULL` döner ve
+#'   `MERGEN_PK_RESULT_OVERHEAD_FACTOR` / `MERGEN_PK_ALLOW_UNBOUNDED_LOB` gibi
+#'   sorgu override'ları ÖLÜ kalırdı. Verilmezse eski örtük davranış korunur.
 pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
                                    chunk_rows = 5000L, max_result_mb = 512,
                                    stop_check = NULL, stage_gate = NULL,
                                    timeout_sec = NULL, deadline_at = NULL,
                                    expected_rows = NA_real_,
-                                   overhead_factor = NULL) {
+                                   overhead_factor = NULL, query_meta = NULL) {
+  etkin_meta <- query_meta %||% tryCatch(pk_active_query_meta(), error = function(e) NULL)
   bos <- function(status, error = NA_character_, data = NULL, rows = 0L,
                   bytes = 0, chunks = 0L, timeout_mechanism = "none") {
     list(status = status, data = data, rows = rows, bytes = bytes, chunks = chunks,
@@ -83,8 +88,7 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
   if (length(beklenen_satir) != 1L) beklenen_satir <- NA_real_
   yuk_carpani <- suppressWarnings(as.numeric(
     overhead_factor %||% tryCatch(
-      pk_config_resolve("MERGEN_PK_RESULT_OVERHEAD_FACTOR",
-                        pk_active_query_meta()),
+      pk_config_resolve("MERGEN_PK_RESULT_OVERHEAD_FACTOR", etkin_meta),
       error = function(e) 2.5
     )
   )[1])
@@ -302,6 +306,7 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
     pk_sql_plan_chunk_rows(kolon_bilgisi, chunk_rows = parca_satir,
                            max_result_mb = tavan_mb,
                            schema = sema,
+                           query_meta = etkin_meta,
                            # Yapılandırılmış yük çarpanı planlamaya da GİRER;
                            # aksi hâlde `MERGEN_PK_RESULT_OVERHEAD_FACTOR`
                            # override'ı sıradan getirimlerde ÖLÜ kalırdı
@@ -353,10 +358,33 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
   toplam_bayt <- 0
   toplam_satir <- 0L
   parca_sayisi <- 0L
+  son_parca_bayt <- 0
   repeat {
     durum <- kapi()
     if (!identical(durum, "ok")) return(bos(durum, chunks = parca_sayisi,
                                              timeout_mechanism = mekanizma))
+
+    # BİR SONRAKİ PARÇA, TEPE KULLANIMI TAVANI AŞACAKSA HİÇ GETİRİLMEZ.
+    #
+    # Getirim SONRASI bayt kapısı, parça ZATEN bellekte olduktan sonra çalışır.
+    # Genişlik bilinmediğinde planlayıcı tek satırlık parça seçer; ilk satır
+    # büyük ama tavanın altındaysa kabul edilir ve döngü HEMEN bir sonraki tam
+    # satırı getirir. 512 MB tavan altında iki adet 300 MB'lık satır bu yüzden
+    # `pk_chunk_accumulate_decision()` `too_large` diyemeden AYNI ANDA bellekte
+    # olabiliyor ve işçi tipli reddi üretmek yerine OOM ile ölebiliyordu.
+    #
+    # Muhafazakâr tepe tahmini: birikmiş baytlar + BİR ÖNCEKİ parçanın boyutu
+    # (bilinmiyorsa birikmiş toplam). Tavanın YARISINI aşan bir tepe beklentisi
+    # varsa getirim BAŞLATILMAZ ve tipli `too_large` döner.
+    if (parca_sayisi > 0L) {
+      beklenen_tepe <- toplam_bayt + son_parca_bayt
+      if (beklenen_tepe > (tavan_mb * .PK_RESULT_MB)) {
+        rm(parcalar)
+        return(bos("too_large", error = "projected_peak_exceeds_ceiling",
+                   chunks = parca_sayisi, timeout_mechanism = mekanizma))
+      }
+    }
+
     getirim <- bloklayan(function() DBI::dbFetch(res, n = parca_satir))
     if (!isTRUE(getirim$ok)) {
       return(bos(getirim$status, error = getirim$error, chunks = parca_sayisi,
@@ -376,6 +404,7 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
     }
     parca_sayisi <- parca_sayisi + 1L
     parcalar[[parca_sayisi]] <- parca
+    son_parca_bayt <- parca_bayt
     toplam_bayt <- karar$total_bytes
     toplam_satir <- toplam_satir + nrow(parca)
     if (nrow(parca) < parca_satir) break

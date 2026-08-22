@@ -350,6 +350,23 @@ pk_sql_classify_readonly <- function(sql) {
     return(sonuc(FALSE, "sequence_mutation", kind = "next_value_for", count = 1L))
   }
 
+  # NOKTALI VİRGÜLSÜZ İKİNCİ İFADE.
+  #
+  # T-SQL ifadeler arasında `;` ZORUNLU KILMAZ: `SELECT 1\nSELECT 2` tek bir
+  # dize olarak döner, hiçbir yasak-kelime taraması onu reddetmez ve
+  # sınıflandırıcı "tek SELECT" der. Böyle bir kütüphane sorgusu BİRDEN FAZLA
+  # sonuç kümesi üretebilir ve DBI, metadata/RLS yolunun beklediğinden BAŞKA
+  # bir sonuç kümesini tüketebilir.
+  #
+  # Tespit DERİNLİK farkındadır: alt sorgular, türetilmiş tablolar, `EXISTS`,
+  # `APPLY` ve CTE gövdeleri parantez içindedir (derinlik > 0) ve SAYILMAZ.
+  # Derinlik-0'daki ikinci bir `SELECT` yalnızca bir küme işlecinden
+  # (`UNION [ALL]` / `EXCEPT` / `INTERSECT`) sonra geliyorsa MEŞRUDUR.
+  ek_ifade <- .pk_sql_extra_top_level_statement(ifade)
+  if (!is.null(ek_ifade)) {
+    return(sonuc(FALSE, "multiple_statements", kind = ek_ifade, count = 2L))
+  }
+
   if (.pk_sql_starts_with_word(ifade, "SELECT")) {
     return(sonuc(TRUE, NULL, kind = "select", count = 1L))
   }

@@ -55,9 +55,30 @@ pk_safe_error_message <- function(raw_message) {
     return(PK_GENERIC_DB_ERROR_MESSAGE)
   }
 
+  # BÜYÜK/KÜÇÜK HARF DUYARSIZ eşleşme (PR #705, P4-1).
+  #
+  # Sürücüler aynı tanılamayı farklı harflendirmeyle üretir (`dsn=`, `Pwd=`,
+  # `sql server`, `login failed`). Harfe duyarlı `fixed = TRUE` karşılaştırma
+  # bunları KAÇIRIYOR ve ham altyapı metni kullanıcıya gidiyordu.
+  #
+  # Katlama ASCII'ye SABİTLENMİŞTİR: `tolower()` Türkçe yerelde `I` -> `ı`
+  # eşlemesi yaptığı için `IM002`/`Invalid object name` gibi ASCII kalıpları
+  # bozardı. `chartr()` yerelden BAĞIMSIZDIR.
+  .pk_err_fold <- function(x) {
+    chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", x)
+  }
+
+  katlanmis <- tryCatch(.pk_err_fold(metin), error = function(e) NULL)
+  if (is.null(katlanmis) || length(katlanmis) != 1L || is.na(katlanmis)) {
+    # KAPALI BAŞARISIZ: katlanamayan metin güvenli sayılmaz.
+    return(PK_GENERIC_DB_ERROR_MESSAGE)
+  }
+
   riskli <- any(vapply(
     PK_UNSAFE_ERROR_PATTERNS,
-    function(kalip) grepl(kalip, metin, fixed = TRUE, useBytes = TRUE),
+    function(kalip) {
+      grepl(.pk_err_fold(kalip), katlanmis, fixed = TRUE, useBytes = TRUE)
+    },
     logical(1)
   ))
 

@@ -32,7 +32,14 @@ pkgh_finding <- function(code, severity, detail, columns = character(0),
     code = as.character(code)[1],
     severity = severity,
     security_relevant = isTRUE(security),
-    detail = .pkgh_redact(detail),
+    # PR #705: BULGU AYRINTISI SERBEST METİNDİR.
+    #
+    # `.pkgh_redact()` yalnızca `anahtar=deger` ve URL biçimlerini kapatır.
+    # Mutlak bir `sql_file` beyanı çözülemediğinde ayrıntı TAM YOLU taşır ve
+    # Windows kullanıcı adı, sunucu/pay adı ve iç dizin yapısı `health.json` /
+    # `health.txt` içine KALICI olarak yazılırdı. Sırasız artefakt sınırı
+    # gereği ayrıntı SERBEST METİN redaktöründen de geçirilir.
+    detail = .pkgh_redact_freeform(.pkgh_redact(detail)),
     columns = as.character(columns %||% character(0))
   )
 }

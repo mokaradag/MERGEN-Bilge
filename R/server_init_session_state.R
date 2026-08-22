@@ -305,7 +305,14 @@ pk_hook_single_exit_fix_install <- function() {
 
     conn_list <- NULL
     conn <- NULL
-    if (!isTRUE(database_failure)) {
+    # DURDURULMUŞ İSTEK YENİ BİR BAĞLANTI AÇMAZ.
+    #
+    # `stopped` bir DB arızası DEĞİLDİR, bu yüzden eski koşul bu dala giriyordu:
+    # havuz kapalıyken `get_connection()` ANA Shiny olay döngüsünde bloklayan bir
+    # ODBC login başlatabiliyor ve iptal ZATEN onaylanmışken yanıtı geciktirip
+    # diğer oturumları donduruyordu. İşçi doğrudan-çıkış sarmalayıcısı bu
+    # atlamayı zaten yapar; ana süreç de aynı sözleşmeye uyar.
+    if (!isTRUE(database_failure) && !isTRUE(stopped)) {
       conn_list <- tryCatch(get_connection(), error = function(e) NULL)
       conn <- if (is.list(conn_list)) conn_list$conn %||% NULL else NULL
       if (!is.null(conn_list)) {
@@ -320,6 +327,14 @@ pk_hook_single_exit_fix_install <- function() {
         username = .pk_hook_session_username(session),
         user_id = user_id,
         deep_thinking = FALSE,
+        # ETKİN MOTOR DOĞRUDAN ÇIKIŞTA DA YAZILIR: alan boş kalınca
+        # `pk_telemetry_build_record()` `Motor`u v1 varsayıyor ve v2 istekleri
+        # (yetkisiz / eşleşme yok / hata) yanlış motora atfediliyordu.
+        engine = if (exists("pk_engine_mode", mode = "function", inherits = TRUE)) {
+          tryCatch(pk_engine_mode(), error = function(e) NULL)
+        } else {
+          NULL
+        },
         query_name = "Tekil analiz",
         filter_status = if (stopped) "stopped" else "not_reached",
         filters = list(),

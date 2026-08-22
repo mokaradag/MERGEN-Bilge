@@ -153,7 +153,13 @@ pk_deep_execute_sql <- function(conn, sql_text, deadline_at = NULL,
     max_result_mb = tavan_mb,
     stage_gate = kapi,
     timeout_sec = plan$timeout_sec,
-    deadline_at = deadline_at
+    deadline_at = deadline_at,
+    # SEÇİLEN SORGUNUN METADATA'SI AÇIKÇA GEÇİRİLİR.
+    #
+    # Derin analiz per-query yürütme bağlamı kurmaz; sınırlı yürütücü
+    # `pk_active_query_meta()` üzerinden örtük okuduğunda `NULL` alıyor ve
+    # sorgu override'ları (yük çarpanı, onaylı LOB) ÖLÜ kalıyordu.
+    query_meta = query_meta
   )
 
   if (identical(sonuc$status, "ok") && nzchar(onbellek_anahtari) &&

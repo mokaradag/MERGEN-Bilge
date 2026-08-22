@@ -221,13 +221,32 @@ pk_rls_plan <- function(user_info, rls_cols, actual_columns) {
 
   rls_cols <- if (is.list(rls_cols)) rls_cols else list()
 
+  # DEPARTMAN KAPSAMININ UYGULANABİLİRLİĞİ (PR #705, P1).
+  #
+  # `allowed_depts = NULL` İKİ AYRI durumdan gelir: (a) MasrafYeriKodu "ADMIN"
+  # olduğu için departman kısıtı BİLEREK yok, (b) kapsam ÇÖZÜLEMEDİ. Eski
+  # `applicable = !is.null(allowed_depts)` ifadesi ikisini de "kısıt yok"
+  # sayıyordu; kapsamı çözülemeyen KISITLI bir kullanıcı, başka daraltıcı
+  # kapsamı olmadığında TÜM satırları görebiliyordu.
+  #
+  # Artık BEYAN EDİLEN durum belirleyicidir. Beyan yoksa (yalnızca eski/sentetik
+  # çağrılar) `pk_rls_scope_state()`in belgelenmiş GERİYE DÖNÜK GÜVENLİ
+  # varsayımı devreye girer: NULL kapsam "unavailable" sayılır ve plan DURUR.
+  # "ADMIN departman kapsamı" iddiası artık AÇIKÇA beyan edilmelidir.
+  dept_state_ham <- user_info$scope_state_depts
+  dept_beyan_var <- is.character(dept_state_ham) && length(dept_state_ham) >= 1L &&
+    !is.na(dept_state_ham[1]) && nzchar(trimws(dept_state_ham[1]))
+  dept_uygulanabilir <- if (dept_beyan_var) {
+    !identical(trimws(dept_state_ham[1]), "not_applicable")
+  } else {
+    TRUE
+  }
+
   adimlar <- list(
     .pk_rls_scope_step(
       values = user_info$allowed_depts,
       declared_state = user_info$scope_state_depts,
-      # MasrafYeriKodu "ADMIN" ise allowed_depts NULL olur ve bu rol için
-      # departman kısıtı BİLEREK yoktur; kapsam ima edilmez.
-      applicable = !is.null(user_info$allowed_depts),
+      applicable = dept_uygulanabilir,
       column = rls_cols$masraf_yeri_col,
       actual_columns = actual_columns,
       label = "masraf_yeri"

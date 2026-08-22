@@ -106,7 +106,6 @@ pk_entity_apply_enabled <- function(query_meta = NULL) {
 #'
 #' @return `list(action, filters, decisions, disclosures, message_tr)`.
 #'   `action`: "proceed" (derlemeye devam) veya "halt" (analiz yapılmaz).
-
 pk_entity_resolve_filter_plan <- function(data, filters, query = NULL,
                                           chat_history = NULL,
                                           prior_context = NULL) {
@@ -121,17 +120,30 @@ pk_entity_resolve_filter_plan <- function(data, filters, query = NULL,
   meta_kok <- if (is.list(query) && is.list(query$meta)) query$meta else query
   if (!pk_entity_apply_enabled(meta_kok)) return(bos)
 
-  sutunlar <- vapply(filters, function(f) {
-    if (!is.list(f)) return("")
-    as.character(f$column %||% "")[1]
+  # AÇIK MANTIK GRUPLARININ YAPRAKLARI DA ÇÖZÜMLENİR.
+  #
+  # `{operator, children}` düğümünün KENDİSİNDE `column` yoktur; eski döngü bu
+  # düğümü atlıyor ve çocuk yapraklarının HİÇBİRİ varlık çözümleyicisine
+  # ulaşmıyordu. Takma ad, bulanık ad ve önceki varlık bağlamı bu yüzden düz
+  # filtrelerde çalışıyor ama MANTIKSAL OLARAK EŞDEĞER gruplu filtrelerde
+  # çalışmıyordu: geçerli bir gruplu varlık isteği "eşleşmedi" diye
+  # reddedilebiliyor ve çözülen varlık takip sorusu için saklanamıyordu.
+  # Yaprak konumları özyinelemeli olarak toplanır; MANTIKSAL YAPI KORUNUR
+  # (yalnızca yaprakların `value` alanı yerinde güncellenir).
+  yaprak_yollari <- .pk_entity_leaf_paths(filters)
+
+  sutunlar <- vapply(yaprak_yollari, function(yol) {
+    y <- .pk_entity_pluck(filters, yol)
+    if (!is.list(y)) return("")
+    as.character(y$column %||% "")[1]
   }, character(1))
 
   kararlar <- list()
   aciklamalar <- character(0)
   durdur <- NA_character_
 
-  for (i in seq_along(filters)) {
-    yaprak <- filters[[i]]
+  for (yol in yaprak_yollari) {
+    yaprak <- .pk_entity_pluck(filters, yol)
     if (!is.list(yaprak)) next
 
     sutun <- as.character(yaprak$column %||% "")[1]
@@ -161,7 +173,7 @@ pk_entity_resolve_filter_plan <- function(data, filters, query = NULL,
 
     if (!is.na(sonuc$halt_message) && is.na(durdur)) durdur <- sonuc$halt_message
 
-    filters[[i]]$value <- sonuc$values
+    filters <- .pk_entity_set_leaf_value(filters, yol, sonuc$values)
   }
 
   list(
@@ -206,6 +218,17 @@ pk_entity_resolve_filter_plan <- function(data, filters, query = NULL,
 
     karar$column <- sutun
     karar$phrase <- deger
+    # BAĞLAM KAYDI İÇİN GEREKEN İKİ ALAN BURADAN GEÇER.
+    #
+    # `pk_entity_context_remember()` kararın `entity_role` ve `column_meta`
+    # alanlarını okur; `pk_entity_resolve*()` bunları DÖNDÜRMEZ ve bu devir
+    # yalnızca `column`/`phrase` ekliyordu. Sonuç iki yönlü bozuktu: her karar
+    # varsayılan `subject` sayılıyor (sondaki ikincil daraltma gerçek öznenin
+    # yerine hatırlanabiliyor) ve saklanan bağlam anahtarı varlık türü OLMADAN
+    # kuruluyordu; sonraki turda anahtar `cmeta` ile kurulduğu için kayıt KENDİ
+    # kimlik denetimini geçemiyordu.
+    karar$entity_role <- varlik_rolu
+    karar$column_meta <- cmeta
     kararlar[[length(kararlar) + 1L]] <- karar
 
     if (identical(karar$decision, "auto") && length(karar$values)) {

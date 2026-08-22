@@ -415,6 +415,13 @@ pk_async_worker_session <- function(request) {
     ud[["pk_select_state"]] <- request$select_state
   }
 
+  # D11 devralınan varlık bağlamı vekile de kurulur (sanitize edilmiş biçim).
+  duz <- tryCatch(.pk_async_plain_user_data(request$user_session_snapshot),
+                  error = function(e) NULL)
+  if (is.list(duz) && is.list(duz[["pk_entity_prior_context"]])) {
+    ud[["pk_entity_prior_context"]] <- duz[["pk_entity_prior_context"]]
+  }
+
   # Köken alt bilgisi istek kimliğine bağlıdır; vekilde de aynı kimlik olmalı.
   istek <- as.character(request$request_id %||% "")[1]
   if (nzchar(istek)) ud[["pk_provenance_request_id"]] <- istek
@@ -425,7 +432,10 @@ pk_async_worker_session <- function(request) {
 # İş bittiğinde ana sürece geri taşınacak oturum yazımları.
 .PK_ASYNC_HARVEST_SLOTS <- c(
   "pk_select_state",
-  "pk_provenance_pending"
+  "pk_provenance_pending",
+  # Asenkron çalıştırmada çözülen varlık bağlamı da ana sürece döner; aksi
+  # hâlde bir sonraki eksiltili soru ("peki 2024 için?") o kısıtı göremezdi.
+  "pk_entity_prior_context"
 )
 
 #' İŞÇİ TARAFINDA üretilmiş dışa aktarım artifact'ini yerelde sil

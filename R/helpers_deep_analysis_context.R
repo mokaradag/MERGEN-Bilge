@@ -222,6 +222,28 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
     )
     if (is.list(sigdirma) && is.character(sigdirma$user_context)) {
       user_context <- sigdirma$user_context
+
+      # BÜTÇE AŞIMI SESSİZ GEÇMEZ.
+      #
+      # Tüm deterministik bozulmalara rağmen yük hâlâ bütçeyi aşıyorsa, onu
+      # olduğu gibi göndermek yapılandırılan sınırı ETKİSİZ kılar ve model
+      # bağlam sınırı reddine yol açabilir. Sondan kesme deterministiktir ve
+      # kesildiği AÇIKÇA bildirilir.
+      if (isTRUE(sigdirma$over_budget)) {
+        hedef <- suppressWarnings(as.integer(sigdirma$budget)[1])
+        sabit <- nchar(system_prompt, type = "chars")
+        kalan <- if (length(hedef) == 1L && !is.na(hedef)) hedef - sabit else NA_integer_
+        not <- paste0(
+          "\n\n\U000026A0\U0000FE0F İSTEM BÜTÇESİ: bağlam yapılandırılan sınırı ",
+          "aştığı için SONDAN KESİLDİ. Bu analiz EKSİKTİR; bulguları tam sonuç ",
+          "gibi sunma."
+        )
+        if (!is.na(kalan) && kalan > nchar(not, type = "chars") + 200L) {
+          user_context <- paste0(
+            substr(user_context, 1L, kalan - nchar(not, type = "chars")), not
+          )
+        }
+      }
     }
   }
 
@@ -257,12 +279,23 @@ pk_deep_fit_context_budget <- function(system_prompt, user_context, data_blocks,
     return(list(user_context = user_context, trimmed = FALSE))
   }
 
+  # İFŞA METİNLERİ İÇİN YER AYRILIR.
+  #
+  # Kırpma döngüleri bütçeyi TAM sınırda bırakıyor, ardından eklenen
+  # "İSTEM BÜTÇESİ: ... GÖNDERİLMEDİ" notları yükü YENİDEN sınırın üstüne
+  # itiyordu. Not eklendikten sonra kırpılacak blok kalmadığında fonksiyon
+  # `over_budget = TRUE` döndürüyor, çağıran ise bunu YOK SAYIP aşırı yükü
+  # modele gönderiyordu. Kırpma hedefi bu yüzden ifşa payı KADAR daha
+  # düşüktür ve nihai denetim aynı yerde kalır.
+  ifsa_payi <- 400L
+  kirpma_hedefi <- max(butce - ifsa_payi, as.integer(butce * 0.5))
+
   # Önizleme JSON bölümlerini sondan başlayarak düşür.
   kirpilmis <- user_context
   dusurulen <- 0L
   desen <- "\n\n--- \u00d6RNEK VER\u0130 \\(JSON\\) ---\n[^\n]*"
 
-  while (toplam(kirpilmis) > butce && grepl(desen, kirpilmis)) {
+  while (toplam(kirpilmis) > kirpma_hedefi && grepl(desen, kirpilmis)) {
     # Yerine konan metin desenle ESLESMEMELIDIR; aksi halde dongu ayni blogu
     # sonsuza kadar "dusurmeye" calisir ve metin hic kucullmez.
     konumlar <- gregexpr(desen, kirpilmis)[[1]]
@@ -303,7 +336,7 @@ pk_deep_fit_context_budget <- function(system_prompt, user_context, data_blocks,
   sonuc_sonu <- "\n\n--- SONUÇLAR SONU ---"
   dusen_blok <- 0L
 
-  while (toplam(kirpilmis) > butce) {
+  while (toplam(kirpilmis) > kirpma_hedefi) {
     konumlar <- gregexpr(blok_isareti, kirpilmis, fixed = TRUE)[[1]]
     if (konumlar[1] < 1L) break
 

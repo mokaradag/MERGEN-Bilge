@@ -510,6 +510,15 @@ soak_evaluate_thresholds <- function(cfg, summary, inprocess, redaction,
         isTRUE(pk_lane$db$connection_usable_after_bounded_fetch), TRUE,
         isTRUE(pk_lane$db$connection_usable_after_bounded_fetch),
         "Sinirli getirimden sonra baglanti hala kullanilabilir olmali.")
+    # PR #705: ENSTRUMANTASYON AYRI BIR KAPIDIR. Havuz kurulamadiginda serit
+    # kendi dogasi geregi dengeli sayaclarina duser; bu, uretim al/birak
+    # yolunun calistirildigi ANLAMINA GELMEZ. "Olculmedi" ile "gecti"
+    # karistirilmasin diye kosul ACIKCA raporlanir.
+    add("pk_connection_instrumented", TRUE,
+        as.character(pk_lane$db$instrumented %||% FALSE), "TRUE",
+        isTRUE(pk_lane$db$instrumented),
+        paste0("Baglanti kapisi URETIM havuz yolundan olculmeli; havuz ",
+               "kurulamadiysa kapsam KANITLANMAMISTIR."))
     add("pk_connection_acquire_release_balanced", TRUE,
         sprintf("%s/%s", as.character(pk_lane$db$acquired %||% NA),
                 as.character(pk_lane$db$released %||% NA)), "esit",

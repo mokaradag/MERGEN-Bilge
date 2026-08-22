@@ -65,10 +65,23 @@ PK_ENTITY_RESOLVE_ENV_KEYS <- c(
   "MERGEN_PK_RESOLVE_ENABLED"
 )
 
+# PR #705: URETIM ESLEMESI kullanilir, `tolower()` DEGIL.
+#
+# Bu paket Turkce `LC_CTYPE` altinda BILEREK kosar; orada `tolower("MIN")`
+# noktasiz `mın` uretir ve `mergen.pk.resolve_mın_score` gibi GERCEKTE VAR
+# OLMAYAN bir option adi olusur. Sonuc: `pk_entity_with_resolve_env()` gercek
+# option'lari ne temizler ne geri yukler; makine/dagitim ayarlari testlere
+# sizar, yanlis basarisizlik uretir ya da gercek bir regresyonu maskeler.
 pk_entity_resolve_option_keys <- function() {
+  if (exists("pk_config_option_key", mode = "function", inherits = TRUE)) {
+    return(vapply(PK_ENTITY_RESOLVE_ENV_KEYS, pk_config_option_key,
+                  character(1), USE.NAMES = FALSE))
+  }
+  # Uretim yardimcisi yuklenmemisse yerelden BAGIMSIZ ASCII katlama uygulanir.
   paste0(
     "mergen.pk.",
-    tolower(sub("^MERGEN_PK_", "", PK_ENTITY_RESOLVE_ENV_KEYS))
+    chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz",
+           sub("^MERGEN_PK_", "", PK_ENTITY_RESOLVE_ENV_KEYS))
   )
 }
 

@@ -16,7 +16,7 @@
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
 
-  for (dosya in c("helpers_pk_config.R", "helpers_pk_packet_stats.R",
+  for (dosya in c("helpers_pk_config.R", "helpers_pk_precision.R", "helpers_pk_packet_stats.R",
                   "helpers_pk_numeric_provenance.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = env)
   }

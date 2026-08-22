@@ -223,3 +223,54 @@ mergen_build_runtime_error_record <- function(error,
     captured_at = captured_at
   )
 }
+# ==============================================================================
+# ODBC/SQL Server BAĞLANTI TANIMLAYICILARI (AYRI, OPT-IN katman)
+#
+# `redact_sensitive_text()` KİMLİK BİLGİSİ alanlarını maskeler; `Uid`/`Server`
+# gibi alanları BİLEREK KORUR (bkz. test-log-redact-connection-string-behavior.R:
+# "kullanıcı adı sır değildir"). Bu genel sözleşme DEĞİŞMEZ.
+#
+# Ancak PK/asenkron çalışma zamanı, sürücü istisnalarını KALICI sunucu log'una
+# yazar ve sıradan bir ODBC hatası `DSN=PrivateProd`, `UID=alice`,
+# `Server=corp-internal\SQL01` taşır. Depo sözleşmesi özel DSN'lerin
+# log'lanmasını AÇIKÇA yasaklar; bu alanlar tek başına gizli değer olmasa da
+# iç altyapıyı yeniden kurmaya yeter. Bu yüzden AYRI ve AÇIKÇA çağrılan bir
+# katman uygulanır; genel redaktörün davranışına dokunulmaz.
+#
+# Değer maskelenir, ALAN ADI korunur: tanı için "hangi alan" bilgisi yeterlidir.
+# ==============================================================================
+
+.REDACT_CONN_KEYS <- paste(
+  c("dsn", "uid", "user[_ ]?id", "server", "address", "addr", "network",
+    "data[ _]?source", "database", "initial[ _]?catalog", "host",
+    "hostname", "port", "driver", "app", "application[ _]?name",
+    "workstation[ _]?id", "trusted[_ ]?connection"),
+  collapse = "|"
+)
+
+#' Bağlantı tanımlayıcılarını da maskele (log sınırı için)
+#'
+#' Önce genel `redact_sensitive_text()` uygulanır, ardından bağlantı
+#' tanımlayıcı DEĞERLERİ maskelenir. Yalnızca LOG yolunda çağrılır; kullanıcıya
+#' dönen metinler için `pk_safe_error_message()` zaten genel mesaja düşer.
+redact_connection_identifiers <- function(x) {
+  metin <- tryCatch(redact_sensitive_text(x), error = function(e) NULL)
+  if (is.null(metin)) return("<redaksiyon uygulanamadi>")
+  if (!is.character(metin) || length(metin) != 1L || is.na(metin)) return(metin)
+
+  metin <- gsub(
+    paste0("(?i)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS, ")(\\s*=\\s*)\\{[^}]*\\}"),
+    "\\1\\2\\3{<redacted>}",
+    metin,
+    perl = TRUE
+  )
+
+  gsub(
+    # Zaten maskelenmiş ya da süslü parantezli değerler İKİNCİ KEZ işlenmez.
+    paste0("(?i)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS,
+           ")(\\s*=\\s*)(?!<redacted>)(?!\\{)[^;,}\\])\\s\"']+"),
+    "\\1\\2\\3<redacted>",
+    metin,
+    perl = TRUE
+  )
+}

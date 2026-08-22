@@ -122,8 +122,19 @@ pk_select_degraded_candidates <- function(index, prompt, library_index,
     NA_character_
   }
 
+  # ÖNCEKİ SORGU KISITLAMANIN DIŞINA ÇIKAMAZ.
+  #
+  # `restrict_ids` Geçiş A'nın (bağlam farkında) recall kümesidir. Konu
+  # değiştiğinde Geçiş A önceki sorguyu BİLEREK dışarıda bırakır; Geçiş B
+  # zaman aşımına uğrar ya da bozuk cevap dönerse bu satır o eski sorguyu
+  # 1. seçenek olarak GERİ GETİRİYORDU ve kullanıcı onu seçtiğinde recall
+  # adımının reddettiği sorgu çalıştırılabiliyordu. Kısıtlama varsa önceki
+  # kimlik ancak o kümenin ÜYESİYSE eklenir.
   if (!is.na(onceki) && !is.null(library_index[[onceki]])) {
-    kimlikler <- unique(c(onceki, kimlikler))
+    kisitli <- !is.null(restrict_ids) && length(restrict_ids)
+    if (!kisitli || onceki %in% as.character(restrict_ids)) {
+      kimlikler <- unique(c(onceki, kimlikler))
+    }
   }
 
   kimlikler

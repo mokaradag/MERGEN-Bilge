@@ -275,5 +275,14 @@ pk_async_capture_user_data <- function(session) {
     cikti[[alan]] <- deger
   }
 
+  # D11 DEVRALINAN VARLIK BAĞLAMI DA TOPLANIR: döngü yalnızca ATOMİK alanları
+  # kopyalar, oysa `pk_entity_prior_context` LİSTE değerlidir; toplanmadığı için
+  # `.pk_async_plain_user_data()` sanitizasyonu ÖLÜ KODDU ve asenkron takip
+  # soruları önceki turun kısıtını kaybediyordu. Sanitizasyon işçi sınırındadır.
+  kayit <- try(ud[["pk_entity_prior_context"]], silent = TRUE)
+  if (!inherits(kayit, "try-error") && is.list(kayit) && length(kayit$values)) {
+    cikti[["pk_entity_prior_context"]] <- kayit
+  }
+
   cikti
 }

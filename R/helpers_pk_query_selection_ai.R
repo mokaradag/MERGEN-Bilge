@@ -364,6 +364,29 @@ pk_select_confirmed_decision <- function(session, prompt, library_index, chat_ke
       pk_select_validate_requirements(secilen, gereksinimler),
       error = function(e) NULL
     )
+
+    # İFADE EDİLEMEYEN İHTİYAÇ ÇİP ONAYIYLA SİLİNEMEZ. `unsupported` SERBEST
+    # METİNDİR; doğrulayıcı onu yetenek iddiası saymaz ve `not_asserted` döner.
+    # Bu yüzden önceki tur `unsupported_requirement` ile REDDETMİŞ olsa bile
+    # çip seçimi `AUTO` + güven 100 üretiyordu; karar politikasının 4. kuralı
+    # BYPASS ediliyordu. Aynı kapı burada YENİDEN uygulanır.
+    ifade_edilemeyen <- pk_select_unsupported_needs(gereksinimler)
+    if (length(ifade_edilemeyen)) {
+      return(.pk_select_decision(
+        PK_SELECT_STATUS_UNSUPPORTED_REQ,
+        message_tr = paste0(
+          "Sorunuzun gerektirdiği bazı bilgiler tanımlı analiz yetenekleriyle ",
+          "ifade edilemedi; yanlış bir sonuç üretmemek için analiz çalıştırılmadı."
+        ),
+        query_id = kimlik,
+        capability_status = PK_SELECT_STATUS_UNSUPPORTED_REQ,
+        selection_method = "user_confirmed",
+        reason = "Onaylanan aday ifade edilemeyen ihtiyac kapisindan gecemedi.",
+        disclosures = sprintf("Karşılanamayan ihtiyaç: %s",
+                              paste(ifade_edilemeyen, collapse = ", "))
+      ))
+    }
+
     if (is.list(kontrol) && isTRUE(kontrol$asserted) &&
         !identical(kontrol$status, "ok")) {
       # Durum, doğrulayıcının TİPLİ sonucudur (normal karar yoluyla aynı küme:

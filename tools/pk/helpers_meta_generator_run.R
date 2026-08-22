@@ -543,8 +543,31 @@ pkg_meta_run_inventory <- function(query_library, config,
     }
 
     # ARA KAYIT: koşu burada kesilse bile buraya kadarki ilerleme korunur.
+    #
+    # PR #705: BAŞARISIZ ARA KAYIT SESSİZ GEÇMEZ. Disk/izin/geçici Windows
+    # dosya kilidi yüzünden `checkpoint_fn` FALSE dönerse ya da hata atarsa,
+    # operatör koşuyu son başarılı kayıttan SONRA keserse aradaki iş DEVAM
+    # ETTİRİLEMEZ; oysa belgelenen garanti "her sorgudan sonra kayıt"tır.
+    # Envanteri durdurmak yerine GÖRÜNÜR uyarı üretilir: kalan sorgular hâlâ
+    # taranır, ancak operatör devam edilebilirliğin kaybolduğunu ANINDA görür.
     if (is.function(checkpoint_fn)) {
-      tryCatch(checkpoint_fn(yeni_cache), error = function(e) NULL)
+      kayit_ok <- tryCatch(checkpoint_fn(yeni_cache), error = function(e) e)
+      if (inherits(kayit_ok, "condition") || !isTRUE(kayit_ok)) {
+        neden <- if (inherits(kayit_ok, "condition")) {
+          if (exists("pkgh_sanitize_bootstrap_error", mode = "function", inherits = TRUE)) {
+            pkgh_sanitize_bootstrap_error(conditionMessage(kayit_ok))
+          } else {
+            "yazma hatasi"
+          }
+        } else {
+          "yazma basarisiz"
+        }
+        cat(sprintf(paste0(
+          "[PK_META_GEN] !!! ARA KAYIT BASARISIZ (sorgu=%s): %s\n",
+          "[PK_META_GEN]     Bu noktadan sonraki is DEVAM ETTIRILEMEZ; kosu\n",
+          "[PK_META_GEN]     kesilirse bastan baslamak gerekir.\n"
+        ), id, neden))
+      }
     }
   }
 

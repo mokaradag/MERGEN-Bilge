@@ -21,7 +21,7 @@
   env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
   # Faz 6 (D16): SQL kaynagi/yurutmesi ve iptal/son tarih aritmetigi kendi sahip
   # dosyalarina tasindi; izole ortam GERCEK sahipleri yukler.
-  for (yardimci in c("helpers_pk_sql_readonly.R", "helpers_pk_query_meta_schema.R",
+  for (yardimci in c("helpers_pk_sql_statements.R", "helpers_pk_sql_readonly.R", "helpers_pk_query_meta_schema.R",
                      "helpers_pk_query_meta_access.R", "helpers_pk_rls.R",
                      "helpers_pk_config.R", "helpers_pk_async_cancel.R",
                      "helpers_pk_exec_context.R", "helpers_pk_result_columns.R", "helpers_pk_result_size.R", "helpers_pk_sql_execute.R", "helpers_pk_sql_connection.R",
@@ -40,7 +40,7 @@
   # implementation'ı yeniden taklit edilmez; üretim ile aynı helper'lar çağrılır.
   if (isTRUE(v2_packets)) {
     for (yardimci in c("helpers_pk_text_turkish.R", "helpers_pk_prompt_budget.R",
-                       "helpers_pk_packet_stats.R", "helpers_pk_analysis_packet.R",
+                       "helpers_pk_precision.R", "helpers_pk_packet_stats.R", "helpers_pk_analysis_packet.R",
                        "helpers_pk_packet_render.R", "helpers_pk_answer_compose.R",
                        "helpers_pk_numeric_provenance.R")) {
       source(file.path(kok, "R", yardimci), encoding = "UTF-8", local = env)

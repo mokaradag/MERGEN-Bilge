@@ -35,6 +35,24 @@ if (!isTRUE(get0(".pk_p1_runtime_guards_loaded", inherits = FALSE,
   function() pk_async_stage_gate(token, deadline)
 }
 
+# İsteğin KALAN mutlak bütçesi (saniye). Bütçe yoksa `Inf` döner ve davranış
+# değişmez; sıfıra düşmüşse alt sınır 1 saniyedir (0/negatif değer kütüphane
+# tarafından geçersiz sayılır ve başlatma HİÇ denenemezdi).
+.pk_p1_remaining_budget_sec <- function(request) {
+  sure <- suppressWarnings(as.numeric(request$deadline_sec %||% NA_real_)[1])
+  if (!length(sure) || is.na(sure) || !is.finite(sure) || sure <= 0) return(Inf)
+
+  baslangic <- tryCatch(
+    as.POSIXct(suppressWarnings(as.numeric(request$started_at)[1]), origin = "1970-01-01"),
+    error = function(e) NULL
+  )
+  if (is.null(baslangic) || is.na(baslangic)) return(sure)
+
+  kalan <- sure - as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
+  if (!is.finite(kalan)) return(sure)
+  max(kalan, 1)
+}
+
 .pk_p1_kill_cluster <- function(cluster) {
   if (is.null(cluster) || !length(cluster)) return(invisible(FALSE))
   for (node in cluster) {
@@ -52,13 +70,36 @@ if (!isTRUE(get0(".pk_p1_runtime_guards_loaded", inherits = FALSE,
                 diagnostics = list(duration_ms = 0)))
   }
 
-  cluster <- tryCatch(parallelly::makeClusterPSOCK(1L), error = function(e) NULL)
+  # PSOCK BAŞLATMA DA İSTEK BÜTÇESİYLE SINIRLIDIR.
+  #
+  # `makeClusterPSOCK()` SENKRONDUR ve son iptal/son-tarih kapısından SONRA,
+  # yoklama döngüsünden ÖNCE çalışır. El sıkışma askıda kalırsa istek, PK son
+  # tarihi ÇOKTAN dolmuş olsa bile küme başlatma zaman aşımı kadar bloke
+  # kalır; kapı bu çağrı dönene dek bunu GÖZLEYEMEZ. Başlatma kalan bütçeyle
+  # sınırlanır ve dönüşte kapı YENİDEN yoklanır.
+  kalan <- .pk_p1_remaining_budget_sec(request)
+  cluster <- tryCatch(
+    if (is.finite(kalan)) {
+      parallelly::makeClusterPSOCK(1L, connectTimeout = kalan, timeout = kalan)
+    } else {
+      parallelly::makeClusterPSOCK(1L)
+    },
+    error = function(e) NULL
+  )
   if (is.null(cluster)) {
     return(list(status = "bootstrap_failed", result = NULL,
                 session_writes = list(), error = "Tek kullanimlik DB iscisi baslatilamadi.",
                 diagnostics = list(duration_ms = 0)))
   }
   on.exit(.pk_p1_kill_cluster(cluster), add = TRUE)
+
+  # Başlatma sırasında Durdur gelmiş ya da son tarih dolmuş olabilir.
+  start_gate <- gate()
+  if (isTRUE(start_gate$halt)) {
+    return(list(status = start_gate$status, result = NULL,
+                session_writes = list(), error = NA_character_,
+                diagnostics = list(duration_ms = 0)))
+  }
 
   old_plan <- future::plan()
   on.exit(try(future::plan(old_plan), silent = TRUE), add = TRUE)
@@ -115,6 +156,18 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     ))
   }
 
+  # NATIF v2 YOLU LEGACY ÖZET KANCASINI ÇAĞIRMAZ.
+  #
+  # `execute_single_deep_query()` başarılı her v2 sorgusunu artık
+  # `pk_deep_build_v2_packet_result()` üzerinden döndürür ve
+  # `generate_statistical_summary()`ye HİÇ uğramaz. Bu sarmalayıcı ise legacy
+  # kancanın `holder$data` doldurmasını "filtreli veri var" KANITI sayıyordu;
+  # kanca hiç çağrılmadığı için sarmalayıcı başarılı HER v2 derin sorgusunu
+  # istisnaya çeviriyor ve çevreleyen döngü onları başarısız sayıyordu.
+  #
+  # Kanca TEK çalıştırma etrafında kurulur (SQL İKİ KEZ ÇALIŞTIRILMAZ); natif
+  # sonuç kanonik paketi (`pk_packet`) taşıyorsa OLDUĞU GİBİ kabul edilir ve
+  # legacy yeniden kurulum ATLANIR.
   owner <- environment(.pk_p1_original_execute_single_deep_query)
   legacy <- get0("generate_statistical_summary", envir = owner, inherits = TRUE,
                  ifnotfound = NULL)
@@ -133,6 +186,10 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     query, user_prompt, session, rls_info, detail_config, stop_check, chat_history
   )
   if (!is.list(result) || !isTRUE(result$success)) return(result)
+
+  # NATİF v2 PAKETİ VARSA İŞ BİTMİŞTİR.
+  if (!is.null(result$pk_packet)) return(result)
+
   if (!exists("data", envir = holder, inherits = FALSE)) {
     stop("v2 Derin Dusunme filtreli veri paketi olusturulamadi.", call. = FALSE)
   }

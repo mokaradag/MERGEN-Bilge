@@ -133,6 +133,18 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
 
   if (is.function(stop_check) && isTRUE(stop_check())) return(pk_deep_halt_result("cancelled"))
 
+  # DERİN YOL DA NORMAL YOLLA AYNI KANONİK ÇERÇEVEYİ GÖRMELİDİR.
+  #
+  # `pk_analiz_process_request()` SQL getiriminden hemen sonra
+  # `normalize_pk_dataframe_utf8()` çağırır; derin yol ise doğrudan tarih
+  # dönüşümüne ve metadata/RLS sütun kapısına giriyordu. Windows/ODBC kodlama
+  # durumlarında AYNI sorgu normal analizde çalışıp derin analizde sütun
+  # eşleşmesinden düşebiliyor (ya da farklı kodlanmış Türkçe değerleri
+  # filtrelemeye taşıyabiliyor) idi.
+  if (exists("normalize_pk_dataframe_utf8", mode = "function", inherits = TRUE)) {
+    raw_data <- tryCatch(normalize_pk_dataframe_utf8(raw_data), error = function(e) raw_data)
+  }
+
   if (!is.null(query$date_columns)) {
     raw_data <- convert_date_columns(raw_data, query$date_columns)
   }
@@ -288,7 +300,9 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
       mode = "summary",
       rls_total_rows = nrow(secure_data),
       user_filter_applied = (nrow(filtered_data) < nrow(secure_data)),
-      pre_aggregated_columns = query$pre_aggregated_columns
+      pre_aggregated_columns = query$pre_aggregated_columns,
+      # U45: ayni OLCU sozlesmesi derin yolda da gecerlidir.
+      column_meta = if (is.list(query$meta)) query$meta$column_meta else NULL
     )
   }, detail_config$pk_deadline_at)
 
@@ -370,17 +384,33 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
 
   conn_list <- get_connection()
   conn <- conn_list$conn
-  on.exit(release_connection(conn_list), add = TRUE)
+  # BAĞLANTI RLS OKUMASINDAN HEMEN SONRA BIRAKILIR.
+  #
+  # Bu birincil bağlantı yalnızca yetki okuması için gerekir; eskiden TÜM derin
+  # analiz boyunca (5 sorgu + LLM) açık kalıyordu ve her sorgu AYRICA kendi
+  # hedef bağlantısını açıyordu. Ana süreçteki erken-bırakma sarmalayıcısı
+  # (`server_chat_engine_dependencies.R`) worker bootstrap'ına DÂHİL DEĞİLDİR,
+  # bu yüzden eşzamanlı asenkron derin işçiler kullanılmayan birincil
+  # bağlantıları tutup SQL Server oturumlarını tüketebiliyordu. Bırakma
+  # `conn_serbest` ile İDEMPOTENTTİR; hata yolları için `on.exit` korunur.
+  birakici <- pk_deep_primary_connection_release(conn_list)
+  birak_conn <- birakici$release
+  on.exit(birak_conn(), add = TRUE)
 
   deep_observers <- pk_deep_observation_helpers(
     session = session, conn = conn, username = username,
     user_prompt = user_prompt, request_id = pk_request_id,
-    started_at = pk_started_at
+    started_at = pk_started_at,
+    # Telemetri KENDİ kısa ömürlü bağlantısını açar; böylece birincil bağlantı
+    # RLS okumasından sonra tutulmak zorunda kalmaz.
+    conn_provider = pk_deep_short_lived_conn_provider()
   )
   pk_observe_deep <- deep_observers$observe
   stash_deep_footer <- deep_observers$stash
 
   rls_info <- get_user_rls_info(username, conn)
+  # BİRİNCİL BAĞLANTI BURADA BIRAKILIR (bkz. `birak_conn` açıklaması).
+  birak_conn()
 
   if (isTRUE(rls_info$halted)) {
     pk_observe_deep(list(
@@ -399,7 +429,9 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
       filters = list(),
       outcome = "Yetkisiz"
     ))
-    return("\U000026A0\U0000FE0F **Yetki Hatası:** Sistemde kullanıcı kaydınız bulunamadı.")
+    # PR #705: TİPLİ yetki reddi. Altyapı arızası ve mükerrer yetki kaydı,
+    # "kullanıcı kaydınız bulunamadı" diye raporlanmaz.
+    return(pk_rls_denied_message(rls_info))
   }
 
   if (is.function(stop_check) && isTRUE(stop_check())) {
@@ -505,11 +537,37 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
         chat_history = chat_history
       ),
       error = function(e) {
-        cat(sprintf("[DEEP_ANALYSIS] Sorgu hatası: %s\n", e$message))
+        # HAM İSTİSNA METNİ KULLANICIYA/MODELE GİTMEZ.
+        #
+        # `build_deep_analysis_context()` bu metni ya tüm-sorgular-başarısız
+        # yanıtında DOĞRUDAN gösterir ya da "başarısızlık nedenini bildir"
+        # talimatıyla modele verir. Beklenmeyen bir istisna sürücü, DSN, dosya
+        # yolu, SQL ya da iç uygulama ayrıntısı taşıyabilir; normal SQL hata
+        # yolları bilerek genel metin döndürürken bu dal onları ATLIYORDU.
+        # Ham metin SUNUCU LOG'una (redakte edilerek) yazılır.
+        ham <- tryCatch(conditionMessage(e), error = function(x) "")
+        guvenli <- if (exists("pk_safe_error_message", mode = "function", inherits = TRUE)) {
+          tryCatch(pk_safe_error_message(ham), error = function(x) NULL)
+        } else {
+          NULL
+        }
+        if (!is.character(guvenli) || length(guvenli) != 1L || is.na(guvenli) ||
+            !nzchar(guvenli)) {
+          guvenli <- paste0(
+            "Bu analiz beklenmeyen bir hata nedeniyle tamamlanamadı; ",
+            "ayrıntı sunucu günlüğüne yazıldı."
+          )
+        }
+        kayit <- if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
+          tryCatch(redact_sensitive_text(ham), error = function(x) "(redaksiyon uygulanamadi)")
+        } else {
+          "(redaktor yuklenmedi)"
+        }
+        cat(sprintf("[DEEP_ANALYSIS] Sorgu hatası: %s\n", kayit))
         list(
           query_name = selected_query$name %||% "?",
           success = FALSE,
-          error_msg = e$message,
+          error_msg = guvenli,
           pk_observation = list(
             query_id = selected_query$id,
             query_name = selected_query$name %||% "?",

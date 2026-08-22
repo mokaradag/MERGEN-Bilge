@@ -440,6 +440,21 @@ llmResponseHandlersInit <- function(
     promises::finally(p2, onFinally = function() {
       try(drain_mcp_reasoning_stream(), silent = TRUE)
 
+      # BU İSTEĞİN BEKLEYEN PK KÖKEN KAYDI HER TERMİNAL YOLDA TÜKETİLİR.
+      #
+      # Kayıt yalnızca `if (result$success)` içinde `pk_provenance_decorate()`
+      # ile tüketiliyordu. Nihai LLM çağrısı `success = FALSE` dönerse ya da
+      # promise REDDEDİLİRSE hata dalları arayüzü sıfırlıyor ama kaydı
+      # BIRAKIYORDU; `chat_reset_state()` de o oturum durumunu temizlemez.
+      # Sonraki ALAKASIZ yapay zekâ mesajı `add_message_fn()` içinde bayat
+      # istek kimliğini/bekleyen kaydı görüp ÖNCEKİ analizin alt bilgisini,
+      # olgularını ve dışa aktarım ekini alabiliyordu.
+      #
+      # Başarı yolunda kayıt ZATEN tüketilmiştir; bu çağrı orada no-op'tur.
+      if (exists("pk_provenance_take", mode = "function", inherits = TRUE)) {
+        try(pk_provenance_take(session, request_id = req_id), silent = TRUE)
+      }
+
       if (!is.null(mcp_reasoning_stream_observer)) {
         try(mcp_reasoning_stream_observer$destroy(), silent = TRUE)
         mcp_reasoning_stream_observer <- NULL

@@ -3,6 +3,11 @@ name: R tests
 on:
   push:
     branches: [main]
+  # PR #705 incelemesi: `pull_request` tetigi geri getirildi. Tetik kaldirilmis
+  # halde birakilirsa bu is akisi GELECEKTEKI TUM pull request'ler icin
+  # otomatik calismayi birakir; regresyonlar R testi kontrolu hic kosmadan
+  # main'e girebilirdi. Uzun suren tam paket, PR basina bir kez kosar.
+  pull_request:
   workflow_dispatch:
 
 permissions:

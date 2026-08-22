@@ -336,7 +336,20 @@ local({
     # envanter (özellikle `sample` kipinde) varsayılan bayatlama süresini
     # aştığında KENDİ kilidini bayat gösterir; ikinci bir koşu canlı kilidi
     # devralır ve iki koşu aynı çıktı/durum dosyalarına yazar.
-    pkgc_refresh_run_lock(kilit)
+    # PR #705: KALP ATIŞI BAŞARISIZSA BU BİR ÇİTLEME (fencing) HATASIDIR.
+    #
+    # Kilit sahiplik jetonu değiştiyse başka bir koşu kilidi DEVRALMIŞTIR.
+    # Dönüş değerini yok sayıp devam etmek, iki koşunun AYNI devam durumuna ve
+    # sonunda AYNI paylaşılan metadata dosyasına yazmasına izin verir; belgelenen
+    # "aynı anda tek üretici" garantisi işlevsiz kalır. Bu noktadan sonra HİÇBİR
+    # durum/artefakt/metadata yazımı yapılmadan durulur.
+    if (!isTRUE(pkgc_refresh_run_lock(kilit))) {
+      stop(paste0(
+        "Kosu kilidi KAYBEDILDI (baska bir uretici devralmis olabilir). ",
+        "Paylasilan durum/metadata dosyalarina yazmamak icin kosu ",
+        "DURDURULDU. Kilit: ", yapilandirma$lock_path %||% "(bilinmiyor)"
+      ), call. = FALSE)
+    }
     pkgh_write_state(cache, yapilandirma$state_path, yapilandirma$mode,
                      yapilandirma$timestamp, yapilandirma$state_version)
   }
@@ -562,7 +575,23 @@ local({
         rapor$summary <- ozet
         rapor$local_layer_written <- TRUE
         rapor$local_layer_status <- "published"
-        artefaktlari_yaz()
+
+        # PR #705: YAYIM SONRASI DENETİM YAZIMI ZORUNLUDUR.
+        #
+        # Bu ikinci yazım başarısız olursa (antivirüs kilidi, dolu disk),
+        # dayanıklı artefakt hâlâ `local_layer_written = FALSE`,
+        # `status = "staged"`, `written_entries = 0` der -- oysa CANLI metadata
+        # dosyası DEĞİŞMİŞTİR. Zorunlu denetim kanıtı üretim durumuyla
+        # ÇELİŞİR. Bunu "YAZILDI" diye raporlamak sessiz bir yalandır: koşu
+        # TERMİNAL bir yayım/denetim hatasıyla biter.
+        if (!isTRUE(artefaktlari_yaz())) {
+          stop(paste0(
+            "Metadata YAYIMLANDI ancak denetim artefaktlari (health.json/",
+            "health.txt) GUNCELLENEMEDI. Dayanikli kanit canli durumla ",
+            "CELISIYOR; artefakt dizinini kontrol edip kosuyu tekrarlayin: ",
+            yapilandirma$artifact_dir
+          ), call. = FALSE)
+        }
 
         cat(sprintf("[PK_META_GEN] YAZILDI: %s (%d sorgu)\n",
                     yapilandirma$output_rel, yeni_sayi))

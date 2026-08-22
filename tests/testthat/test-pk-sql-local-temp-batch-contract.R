@@ -9,7 +9,7 @@
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
-  source(file.path(repo_root, "R", "helpers_pk_sql_readonly.R"),
+  for (.pk705_dosya in c("helpers_pk_sql_statements.R", "helpers_pk_sql_readonly.R")) source(file.path(repo_root, "R", .pk705_dosya),
          encoding = "UTF-8", local = env)
   source(file.path(repo_root, "tools", "pk", "helpers_meta_generator_fetch.R"),
          encoding = "UTF-8", local = env)
