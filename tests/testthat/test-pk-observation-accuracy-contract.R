@@ -14,6 +14,9 @@
     "R/helpers_pk_provenance.R",
     "R/helpers_pk_telemetry_record.R",
     "R/helpers_pk_analysis_filters.R",
+    # Manifest sirasi: taban dosya `helpers_pk_telemetry.R` ONCESINDE yuklenir.
+    # (Uretim dosyasindaki dinamik `source()` kesfi KALDIRILDI.)
+    "R/helpers_pk_telemetry_base.R",
     "R/helpers_pk_telemetry.R"
   )) {
     source(file.path(root, rel), encoding = "UTF-8", local = env)

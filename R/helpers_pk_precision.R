@@ -1,13 +1,13 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_pk_precision.R
-# Aciklama: integer64 KESINLIK korumasi (saf karar katmani).
+# Açıklama: integer64 KESİNLİK koruması (saf karar katmanı).
 #
-#           2^53 ustundeki tam sayilar `as.numeric()` ile TEMSIL EDILEMEZ;
-#           sessiz yuvarlama, kanonik bir olgunun YANLIS deger yayimlamasina
-#           yol acar. Denetim bu yuzden TAM ONDALIK METIN uzerinde yapilir.
+#           2^53 üstündeki tam sayılar `as.numeric()` ile TEMSİL EDİLEMEZ;
+#           sessiz yuvarlama, kanonik bir olgunun YANLIŞ değer yayımlamasına
+#           yol açar. Denetim bu yüzden TAM ONDALIK METİN üzerinde yapılır.
 #
-#           Dosya bilerek SAFTIR: Shiny/reaktif/DB/ag/LLM bagimliligi YOKTUR.
-#           Yukleme sirasi: `R/helpers_pk_packet_stats.R` dosyasindan ONCE.
+#           Dosya bilerek SAFTIR: Shiny/reaktif/DB/ağ/LLM bağımlılığı YOKTUR.
+#           Yükleme sırası: `R/helpers_pk_packet_stats.R` dosyasından ÖNCE.
 # ==============================================================================
 
 # KESİNLİK DENETİMİ, DENETLEDİĞİ DÖNÜŞÜMÜ KENDİSİ YAPMAMALIDIR.

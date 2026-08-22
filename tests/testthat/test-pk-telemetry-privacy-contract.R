@@ -30,7 +30,9 @@ local({
   }
 
   for (f in c("helpers_pk_config.R", "helpers_pk_provenance.R",
-              "helpers_pk_telemetry_record.R", "helpers_pk_telemetry.R")) {
+              "helpers_pk_telemetry_record.R",
+              # Manifest sirasi: taban dosya once (dinamik source kesfi kaldirildi).
+              "helpers_pk_telemetry_base.R", "helpers_pk_telemetry.R")) {
     source(file.path(repo_root, "R", f), encoding = "UTF-8", local = globalenv())
   }
 })

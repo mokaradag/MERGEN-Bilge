@@ -332,6 +332,12 @@ pk_entity_nearest_candidates <- function(phrase, candidates, n = 3L,
 # Seçili indeksleri tam normalleştirip puanlar.
 .pk_entity_score_indices <- function(idx, kaba, user_norm, alias_hit, vocab,
                                      exact_only) {
+  # Alias hedefi DONGU DISINDA normallestirilir (bkz. `.pk_entity_tier_of()`).
+  if (!is.null(alias_hit) && !is.null(alias_hit$target) &&
+      is.null(alias_hit$target_norm)) {
+    alias_hit$target_norm <- pk_entity_normalize(alias_hit$target)
+  }
+
   kayitlar <- list()
   for (i in idx) {
     deger <- kaba$values[i]

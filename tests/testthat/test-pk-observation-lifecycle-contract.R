@@ -38,6 +38,8 @@ test_that("split PK helpers source correctly outside the repository working dire
     "R/helpers_pk_config.R",
     "R/helpers_pk_provenance.R",
     "R/helpers_pk_telemetry_record.R",
+    # Manifest sirasi: taban dosya once (dinamik `source()` kesfi kaldirildi).
+    "R/helpers_pk_telemetry_base.R",
     "R/helpers_pk_telemetry.R"
   ))
   expect_true(exists("pk_telemetry_log_analysis", envir = telemetry_env, inherits = FALSE))
@@ -86,6 +88,8 @@ test_that("pk_analysis_observe fills KullaniciID from the authenticated session"
     "R/helpers_pk_config.R",
     "R/helpers_pk_provenance.R",
     "R/helpers_pk_telemetry_record.R",
+    # Manifest sirasi: taban dosya once (dinamik `source()` kesfi kaldirildi).
+    "R/helpers_pk_telemetry_base.R",
     "R/helpers_pk_telemetry.R"
   ))
 

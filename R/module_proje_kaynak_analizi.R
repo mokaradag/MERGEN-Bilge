@@ -28,11 +28,10 @@ pk_required_helpers <- list(
     ),
     path = file.path("R", "helpers_pk_analysis_query_selection.R")
   ),
-  # Faz 5 (§5.2) iki geçişli seçim zinciri. İZOLE/DOĞRUDAN yüklemede bu zincir
-  # yoksa `pk_select_query_v2` tanımsız kalır, aşağıdaki `exists()` kapısı
-  # sessizce FALSE olur ve `MERGEN_PK_ENGINE=v2` istenmiş olsa bile istek
-  # KAPILARI OLMAYAN v1 seçicisine düşerdi. Sıra bağımlılık sırasıdır ve
-  # `R/config_source_manifest.R` ile BİREBİR aynıdır.
+  # Faz 5 (§5.2) iki geçişli seçim zinciri. İZOLE yüklemede zincir yoksa
+  # `pk_select_query_v2` tanımsız kalır, aşağıdaki `exists()` kapısı sessizce
+  # FALSE olur ve `MERGEN_PK_ENGINE=v2` istenmiş olsa bile istek KAPILARI
+  # OLMAYAN v1 seçicisine düşerdi. Sıra `R/config_source_manifest.R` ile aynıdır.
   list(
     functions = c("pk_select_query_v2", "pk_select_run", "pk_select_decide"),
     path = c(
@@ -82,9 +81,17 @@ for (helper_spec in pk_required_helpers) {
     )
   }
 
-  # Zincir BAĞIMLILIK SIRASINDA yüklenir; tek dosyalı girdiler de aynı yoldan
-  # geçer (vektör uzunluğu 1'dir).
-  for (yol in helper_spec$path) source(yol, encoding = "UTF-8", local = globalenv())
+  # Zincir BAĞIMLILIK SIRASINDA yüklenir (tek dosyalı girdiler de aynı yoldan;
+  # vektör uzunluğu 1'dir) ve depo kuralı gereği `safe_source()` üzerinden
+  # geçer: kontrollü kodlama yedeği (BOM/WINDOWS-1254/latin1) bu zincirde
+  # ÖNEMLİDİR. Yardımcı henüz yüklenmemişse düz `source()` yedeği kalır.
+  for (yol in helper_spec$path) {
+    if (exists("safe_source", mode = "function", inherits = TRUE)) {
+      safe_source(yol, encoding = "UTF-8")
+    } else {
+      source(yol, encoding = "UTF-8", local = globalenv())
+    }
+  }
 }
 
 rm(list = intersect(
@@ -124,11 +131,10 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
       question    = user_prompt,
       username    = username,
       engine      = "v1",
-      # Faz 5: secim asamasinda olusan bozulmalar (varsa) alt bilgiye ve
-      # telemetriye tasinir. Yalnizca loglara yazilan bir zayiflatma,
-      # kullanici acisindan hic olmamis demektir.
-      # `exists(..., inherits = FALSE)` KAPSAYAN çerçeveyi göremezdi: koşul HER
-      # ZAMAN FALSE'tu ve bozulmalar hiç taşınmıyordu. Sözlüksel kapsam kullanılır.
+      # Faz 5: secim bozulmalari alt bilgiye ve telemetriye tasinir; yalnizca
+      # loglanan bir zayiflatma kullanici acisindan hic olmamis demektir.
+      # `exists(..., inherits = FALSE)` KAPSAYAN cerceveyi goremezdi: kosul HER
+      # ZAMAN FALSE'tu. Sozluksel kapsam kullanilir.
       extra_degradations = pk_selection_disclosures,
       duration_ms = as.numeric(difftime(Sys.time(), pk_started_at, units = "secs")) * 1000
     )
@@ -186,10 +192,9 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   }
   
   cat("[PK_ANALIZ] Akilli sorgu secimi yapiliyor (select_smart_query)...\n")
-  # Oturum ACIKCA gecirilir: Ortak Oturum koprusu soruyu soran kullanici icin
-  # sentetik bir oturum kurar ve varsayilan reaktif alan adi BASKA bir
-  # kullaniciya aittir. Varsayilan alani okumak, baska kullanicinin onceki
-  # sorgusunu tohumlar ve API anahtarini yanlis kullaniciyla cozerdi.
+  # Oturum ACIKCA gecirilir: Ortak Oturum koprusu sentetik bir oturum kurar ve
+  # varsayilan reaktif alan BASKA kullaniciya aittir; onu okumak baska
+  # kullanicinin sorgusunu tohumlar ve API anahtarini yanlis cozerdi.
   selected_query <- select_smart_query(
     user_prompt, query_library, chat_history,
     session = session, stop_check = stop_check
@@ -210,10 +215,9 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
         return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
       }
 
-      # Reddetme/netlestirme sonuclari da TELEMETRIYE yazilir. Aksi halde
-      # low_confidence/close_margin/timeout gibi sonuclar kalici olcumden
-      # tamamen dusuyor ve yayilim metrikleri yalnizca basarili calistirmalari
-      # gorup esik ayarini olcemez hale geliyordu.
+      # Reddetme/netlestirme sonuclari da TELEMETRIYE yazilir; aksi halde
+      # low_confidence/close_margin/timeout kalici olcumden dusuyor ve
+      # metrikler yalnizca basarili calistirmalari gorup esik ayarini olcemiyordu.
       pk_karar <- selected_query$pk_selection
       pk_observe(
         outcome = "Reddedildi",
@@ -226,9 +230,8 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
       )
 
       # Yapisal netlestirme secenekleri (chips) KORUNUR. Tasiyici sekil
-      # bilinerek `error_message`dir: hem send_message hem Ortak Oturum
-      # koprusu bu sekli dogrudan yanit olarak isler, boylece metin gosterimi
-      # bozulmadan yapisal veri de birlikte tasinir.
+      # bilinerek `error_message`dir: hem send_message hem Ortak Oturum koprusu
+      # bu sekli dogrudan isler, metin gosterimi bozulmadan yapisal veri tasinir.
       return(list(
         type = "error_message",
         content = as.character(selected_query$refusal_message)[1],
@@ -266,10 +269,10 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   }
 
   # Faz 6 (§5.10): YURUTME BAGLAMI SECIMDEN HEMEN SONRA kurulur (per-query
-  # `analysis_deadline_sec`). Daha once SQL hazirligindan ve `target_db !=
-  # "primary"` YENIDEN BAGLANMASINDAN SONRA kuruluyordu; o reconnect kuresel son
-  # tarihi kullanip sorguya ozel butcenin cok otesinde bloklayabiliyordu. RLS
-  # kapsami henuz bilinmedigi icin once sorguyla kurulur, cozulunce TAZELENIR.
+  # `analysis_deadline_sec`). Daha once `target_db != "primary"` YENIDEN
+  # BAGLANMASINDAN sonra kuruluyordu; o reconnect kuresel son tarihi kullanip
+  # sorguya ozel butceyi asabiliyordu. RLS kapsami bilinmedigi icin once
+  # sorguyla kurulur, cozulunce TAZELENIR.
   pk_exec_ctx_restore <- NULL
   if (exists("pk_set_exec_context", mode = "function", inherits = TRUE)) {
     pk_exec_ctx_restore <- pk_set_exec_context(
@@ -443,12 +446,11 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     raw_data <- convert_date_columns(raw_data, selected_query$date_columns)
   }
   
-  # Faz 3a M8 baglantisi: SQL'den gelen GERCEK sutunlar, sorgu metadatasi ve
-  # rls_columns beyanina karsi RLS'ten ONCE dogrulanir.
-  #
-  # Motor kipi istek basina TEK KEZ cozulur. `select_smart_query()` secim
-  # aninda cozdugu kipi sorguya iliştirir; boylece kuresel bayrak ile sorgu
-  # metadata'si farkli olsa bile secim ve asagi akis AYNI kipte kalir.
+  # Faz 3a M8: SQL'den gelen GERCEK sutunlar, sorgu metadatasi ve rls_columns
+  # beyanina karsi RLS'ten ONCE dogrulanir. Motor kipi istek basina TEK KEZ
+  # cozulur; `select_smart_query()` kipi sorguya ilistirir, boylece kuresel
+  # bayrak ile sorgu metadata'si farkli olsa bile secim ve asagi akis AYNI
+  # kipte kalir.
   pk_engine_v2 <- if (!is.null(selected_query$pk_engine_mode)) {
     identical(as.character(selected_query$pk_engine_mode)[1], "v2")
   } else {
@@ -613,10 +615,9 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   
   # Faz 2: istatistik/paket, sistem istemi, kompozisyon ve dışa aktarım tek bir
   # kurucudadır. v1 dalı BİREBİR korunur; v2 dalı analiz paketini (§5.7), R'ye
-  # ait tabloyu/eki (§5.8-§5.9) ve olgu referanslarını (§5.11) üretir.
-  # Paket kurulumu, dışa aktarım yazımı/geri okuması ve grup kırılımı bu
-  # isteğin EN PAHALI adımlarıdır; `stop_check` kurucuya iletilir ve pahalı
-  # sınırların arasında değerlendirilir.
+  # ait tabloyu/eki (§5.8-§5.9) ve olgu referanslarını (§5.11) üretir. Paket
+  # kurulumu/dışa aktarım/grup kırılımı EN PAHALI adımlardır; `stop_check`
+  # kurucuya iletilir ve pahalı sınırların arasında değerlendirilir.
   analiz_sonucu <- pk_build_analysis_result(
     filtered_data = filtered_data,
     secure_data = secure_data,
@@ -698,11 +699,10 @@ select_smart_query <- function(prompt, library, chat_history,
     try({ session_obj <- shiny::getDefaultReactiveDomain() }, silent = TRUE)
   }
 
-  # Motor siniri (master plan §10): Faz 5 iki gecisli secim hatti YALNIZCA
+  # Motor siniri (master plan §10): Faz 5 secim hatti YALNIZCA
   # MERGEN_PK_ENGINE=v2 iken calisir; v1 govdesi asagida DEGISMEDEN kalir.
-  # Motor kipi istek icin BIR KEZ cozulur ve secilen sorguya ilistirilir; aksi
-  # halde kuresel `v1` + sorgu metadata `engine="v2"` (ya da tersi) kupur bir
-  # istek uretiyor, secim ile asagi akis FARKLI motorlara dusuyordu.
+  # Kip istek icin BIR KEZ cozulur ve secilen sorguya ilistirilir; aksi halde
+  # kuresel `v1` + metadata `engine="v2"` (ya da tersi) kupur istek uretirdi.
   pk_engine_v2_request <- exists("pk_engine_is_v2", mode = "function", inherits = TRUE) &&
     isTRUE(pk_engine_is_v2())
 

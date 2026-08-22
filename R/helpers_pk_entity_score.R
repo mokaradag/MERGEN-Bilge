@@ -215,7 +215,14 @@ pk_entity_edit_ratio <- function(a, b) {
 
   # Katman 2 — doğrulanmış alias.
   if (!is.null(alias_hit) && !is.null(alias_hit$target) && !is.na(cand_value)) {
-    hedef_norm <- pk_entity_normalize(alias_hit$target)
+    # ALIAS HEDEFI ADAY BASINA DEGIL, BIR KEZ NORMALLESTIRILIR. Bu fonksiyon
+    # kisa listedeki HER aday icin calisir (varsayilan tavan 2000) ve sonuc
+    # yalnizca `alias_hit$target` degerine baglidir; her seferinde birkac
+    # `stringi` gecisi tekrar edilmesi paylasilan Shiny surecinde bosuna is
+    # yapar. Cagiran (`.pk_entity_score_indices()`) normali `target_norm`
+    # olarak gecirir; gecirmeyen cagiranlar icin hesaplama yedegi korunur.
+    hedef_norm <- alias_hit$target_norm
+    if (is.null(hedef_norm)) hedef_norm <- pk_entity_normalize(alias_hit$target)
     if (!is.na(hedef_norm$exact) && identical(hedef_norm$exact, cand_norm$exact)) {
       return(list(
         tier = "alias", score = 95L,

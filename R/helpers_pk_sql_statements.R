@@ -1,18 +1,18 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_pk_sql_statements.R
-# Aciklama: Maskelenmis SQL metni uzerinde IFADE YAPISI cozumlemesi.
+# Açıklama: Maskelenmiş SQL metni üzerinde İFADE YAPISI çözümlemesi.
 #
-#           `pk_sql_classify_readonly()` salt-okunur KAPISININ ihtiyac duydugu
-#           tek sey, metnin BIRDEN FAZLA ust duzey ifade icerip icermedigidir.
-#           T-SQL ifadeler arasinda `;` ZORUNLU KILMAZ, bu yuzden tespit
-#           parantez DERINLIGI farkindaligi ister ve kendi basina bir
+#           `pk_sql_classify_readonly()` salt-okunur KAPISININ ihtiyaç duyduğu
+#           tek şey, metnin BİRDEN FAZLA üst düzey ifade içerip içermediğidir.
+#           T-SQL ifadeler arasında `;` ZORUNLU KILMAZ, bu yüzden tespit
+#           parantez DERİNLİĞİ farkındalığı ister ve kendi başına bir
 #           sorumluluktur.
 #
-#           Dosya bilerek SAFTIR: Shiny/reaktif/DB/ag/LLM bagimliligi YOKTUR ve
-#           yalnizca `pk_sql_mask_literals()` ciktisi uzerinde calisir.
+#           Dosya bilerek SAFTIR: Shiny/reaktif/DB/ağ/LLM bağımlılığı YOKTUR ve
+#           yalnızca `pk_sql_mask_literals()` çıktısı üzerinde çalışır.
 #
-#           Yukleme sirasi: bu dosya `R/helpers_pk_sql_readonly.R` dosyasindan
-#           ONCE yuklenmelidir.
+#           Yükleme sırası: bu dosya `R/helpers_pk_sql_readonly.R` dosyasından
+#           ÖNCE yüklenmelidir.
 # ==============================================================================
 
 # Derinlik-0 jetonlarını sırayla üretir (maskelenmiş metin üzerinde).
