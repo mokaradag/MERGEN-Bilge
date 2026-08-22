@@ -171,29 +171,25 @@ pk_export_prepare_percent <- function(data, meta = list(), formatted = FALSE) {
 
 #' CSV yedeğinde formül benzeri METİN değerleri etkisizleştir (§5.9 madde 8)
 #'
-#' Metni `=`, `+`, `-`, `@`, sekme veya satır başı ile başlayan METİN BENZERİ
-#' hücrelere uygulanır. Sayısal `-125.50` SAYI KALIR; karakter `-KAPALI-`
-#' etkisizleştirilir. `factor` (ve benzeri etiketli metin) sütunları da
-#' kapsanır: `write.csv()` bir faktör düzeyini metin olarak yazar, dolayısıyla
-#' `=HYPERLINK(...)` düzeyi CSV açıldığında Excel'de yine formül olur. Bu kural
-#' CSV'ye özgüdür — writexl metni zaten metin olarak saklar.
+#' GERİYE DÖNÜK UYUMLU AD. Tek gerçek gövde `pk_export_csv_neutralize()`
+#' içindedir (`R/helpers_pk_export_csv.R`); burada YALNIZCA ona devredilir.
+#'
+#' Eskiden bu dosyada ikinci, AYRI bir gövde vardı ve iki kural birbirinden
+#' sapıyordu: buradaki `grepl("^[=+@\\-\t\r]", ...)` öncü BOŞLUĞU görmüyor
+#' (`" =1+1"` etkisizleştirilmiyordu; oysa elektronik tablo öncü boşluğu atıp
+#' `=` ile karşılaşır) ve zararsız `"\tmetin"` değerini gereksiz yere
+#' etkisizleştiriyordu. Kanonik gövde öncü boşluk/sekme/satır başını KIRPIP
+#' ilk GERÇEK karaktere bakar; bu hem daha doğru hem de yazım ile doğrulamanın
+#' AYNI gösterimi kullanmasını garanti eder.
+#'
+#' Kanonik gövde yüklenmemişse SESSİZCE ZAYIF bir kurala düşmek yerine
+#' AÇIKÇA durulur: yanlış etkisizleştirme bir güvenlik sınırıdır.
 pk_export_neutralize_csv <- function(data) {
-  if (!is.data.frame(data) || !ncol(data)) return(data)
-
-  for (sutun in names(data)) {
-    degerler <- data[[sutun]]
-    if (is.numeric(degerler) || is.logical(degerler) ||
-        inherits(degerler, "Date") || inherits(degerler, "POSIXt")) {
-      next
-    }
-
-    degerler <- as.character(degerler)
-    riskli <- !is.na(degerler) & grepl("^[=+@\\-\t\r]", degerler, perl = TRUE)
-    if (any(riskli)) degerler[riskli] <- paste0("'", degerler[riskli])
-    data[[sutun]] <- degerler
+  if (!exists("pk_export_csv_neutralize", mode = "function", inherits = TRUE)) {
+    stop("pk_export_csv_neutralize bulunamadı: R/helpers_pk_export_csv.R yüklenmeli.",
+         call. = FALSE)
   }
-
-  data
+  pk_export_csv_neutralize(data)
 }
 
 #' `Bilgi` sayfası içeriği

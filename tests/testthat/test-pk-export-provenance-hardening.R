@@ -234,6 +234,27 @@ test_that("P2: geri okuma dogrulamasi BASLIK, SIRA, TIP ve BOSLUK ayrimini korur
   expect_false(env$pk_export_verify_multiset(hassas, bozuk)$ok)
 })
 
+test_that("iki etkisizlestirme adi TEK kurali paylasir (oncu bosluk dahil)", {
+  env <- .pk_export_hardening_env()
+
+  # `pk_export_neutralize_csv` artik `pk_export_csv_neutralize`e DEVREDER.
+  # Eski ikinci gövde `grepl("^[=+@\\-\t\r]", ...)` kullaniyordu; oncu BOSLUK
+  # goremedigi icin `" =1+1"` etkisizlestirilmeden gecebiliyor, buna karsilik
+  # zararsiz `"\tmetin"` degerini gereksiz yere isaretliyordu.
+  veri <- data.frame(
+    Not = c(" =1+1", "\tmetin", "=1+1"),
+    stringsAsFactors = FALSE
+  )
+
+  devreden <- env$pk_export_neutralize_csv(veri)
+  kanonik <- env$pk_export_csv_neutralize(veri)
+
+  expect_identical(devreden, kanonik)
+  expect_identical(devreden$Not[1], "' =1+1")
+  expect_identical(devreden$Not[2], "\tmetin")
+  expect_identical(devreden$Not[3], "'=1+1")
+})
+
 test_that("P2: CSV formul etkisizlestirmesi FAKTOR sutunlarini da kapsar", {
   env <- .pk_export_hardening_env()
   veri <- data.frame(
