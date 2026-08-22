@@ -273,13 +273,16 @@ main_result <- tryCatch({
     } else {
       cat(sprintf(
         "  -> %d oturum | basari=%s | iptal=%d (uygulanmadi=%s) | bayat=%d (uygulanmadi=%s) | onbellek hit=%d\n",
-        pk_result$sessions,
+        # `%d` NULL/sifir uzunlukta HATA yukseltir; eksik bir sayac butun ana
+        # akisi durdurup kalan seritleri (attach, HTTP yuk) atlatiyor ve kapi
+        # PK-serit sorunu yerine "Ana akis hatasi" raporluyordu.
+        as.integer(pk_result$sessions %||% 0L),
         as.character(pk_result$summary$success_rate),
-        pk_result$cancel$storm_rounds,
+        as.integer(pk_result$cancel$storm_rounds %||% 0L),
         as.character(pk_result$cancel$never_applied),
-        pk_result$guard$stale_rounds,
+        as.integer(pk_result$guard$stale_rounds %||% 0L),
         as.character(pk_result$guard$stale_never_applied),
-        pk_result$cache$hit
+        as.integer(pk_result$cache$hit %||% 0L)
       ))
     }
   } else {

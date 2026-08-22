@@ -793,7 +793,13 @@ soak_pk_analysis_lane <- function(cfg) {
     error = function(e) NA_real_
   )
 
+  # SIRA ONEMLIDIR: `on.exit()` isleyicileri KAYIT SIRASINDA calisir. Uretim
+  # havuzu SQLite dosyasina acik baglanti tutar; havuz once yikilmazsa Windows
+  # `unlink()` acik tanitici yuzunden basarisiz olur ve serit her kosuda
+  # `tempdir()` icinde bir SQLite dosyasi birakir. Havuz yikimi bu yuzden
+  # BAGLANTI KAPATMA/SILME ile AYNI isleyicide ve ONUNDE calisir.
   on.exit({
+    try(soak_pk_teardown_pool(), silent = TRUE)
     tryCatch(DBI::dbDisconnect(db$conn), error = function(e) NULL)
     unlink(db$path, force = TRUE)
     unlink(token_root, recursive = TRUE, force = TRUE)
@@ -813,8 +819,9 @@ soak_pk_analysis_lane <- function(cfg) {
   # `pool` paketi yoksa serit-yerel SQLite baglantisina duser (davranis
   # onceki gibidir) ve bu durum artifact'ta `instrumented = FALSE` olarak
   # ACIKCA raporlanir; "olculmedi" ile "gecti" karistirilmaz.
+  # Havuz yikimi yukaridaki isleyicide (silmeden ONCE) yapilir; burada AYRI bir
+  # `on.exit()` kaydi YOKTUR, aksi halde silme once calisirdi.
   havuz_kuruldu <- soak_pk_install_pool(db$path)
-  on.exit(try(soak_pk_teardown_pool(), silent = TRUE), add = TRUE)
 
   conn_counts <- new.env(parent = emptyenv())
   conn_counts$acquired <- 0L
@@ -941,10 +948,14 @@ soak_pk_analysis_lane <- function(cfg) {
   # SIZINTI KANITI URETIMDEN OKUNUR. Serit sayaclari `on.exit()` sayesinde her
   # zaman dengelidir; asil kanit uretim havuzunun checkout-return farkidir.
   pool_leaked <- soak_pk_pool_leak()
-  conn_counts <- list(acquired = conn_counts$acquired,
-                      released = conn_counts$released,
-                      instrumented = isTRUE(havuz_kuruldu),
-                      pool_leaked = pool_leaked)
+  # AYRI AD: `conn_counts` `al_birak()` kapanisinin MUTASYONA ugrattigi bir
+  # ortamdir. Ayni ada duz bir liste baglamak, sonraki bir `al_birak()` cagrisini
+  # liste uzerinde calistirir; R o noktada cerceve-yerel bir KOPYA olusturur ve
+  # al/birak muhasebesi SESSIZCE duser. Mevcut cagri sirasi bunu maskeliyordu.
+  conn_ozet <- list(acquired = conn_counts$acquired,
+                    released = conn_counts$released,
+                    instrumented = isTRUE(havuz_kuruldu),
+                    pool_leaked = pool_leaked)
   # PR #705: ENSTRUMANTASYON YOKSA KAPI GECMEZ.
   #
   # Onceki kosul `(!isTRUE(havuz_kuruldu) || ...)` idi: havuz kurulamadiginda
@@ -952,8 +963,8 @@ soak_pk_analysis_lane <- function(cfg) {
   # acquire/release sizinti kapsami" raporlardi -- oysa uretim yolu HIC
   # calistirilmamis olurdu. "Olculmedi" ile "gecti" karistirilamaz: enstrumante
   # kosum ZORUNLUdur ve uretim sizinti sayaci SIFIR olmalidir.
-  conn_balanced <- identical(conn_counts$acquired, conn_counts$released) &&
-    conn_counts$acquired >= sessions &&
+  conn_balanced <- identical(conn_ozet$acquired, conn_ozet$released) &&
+    conn_ozet$acquired >= sessions &&
     isTRUE(havuz_kuruldu) &&
     identical(as.integer(pool_leaked %||% -1L), 0L)
 
@@ -1016,11 +1027,11 @@ soak_pk_analysis_lane <- function(cfg) {
     psock = psock,
     db = list(connection_usable_after_bounded_fetch = conn_usable,
               acquire_release_balanced = conn_balanced,
-              acquired = conn_counts$acquired, released = conn_counts$released,
+              acquired = conn_ozet$acquired, released = conn_ozet$released,
               # URETIM al/birak ciftinden mi gecildi (yoksa serit-yerel
               # baglanti mi kullanildi) ve uretimin KENDI sizinti sayaci.
-              instrumented = isTRUE(conn_counts$instrumented),
-              pool_leaked = conn_counts$pool_leaked),
+              instrumented = isTRUE(conn_ozet$instrumented),
+              pool_leaked = conn_ozet$pool_leaked),
     does_prove = c(
       "Iptal jetonu YUK ALTINDA gorulur ve iptal edilen tur ASLA uygulanmaz",
       "UCUS-ICI iptal: getirim parcalar arasinda durur (tam olarak 'cancelled')",

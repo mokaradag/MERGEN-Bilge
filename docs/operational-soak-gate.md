@@ -134,16 +134,18 @@ eşzamanlılık değişikliğidir.
   hem **tahliye**), **çoklu yetki kapsamı** (kullanıcılar arası önbellek
   izolasyonu, giriş başına kapsam sahibi işaretiyle doğrulanır) ve **Derin
   Düşünme bütçe bölüşümü** (gerçek `pk_deep_execute_sql` üzerinden).
-- Gate-enforced eşikler (21): `pk_analysis_success_rate`, `pk_cancel_exercised`,
+- Gate-enforced eşikler (25): `pk_analysis_lane_available`,
+  `pk_analysis_lane_enabled`, `pk_analysis_success_rate`, `pk_cancel_exercised`,
   `pk_cancel_inflight_exercised`, `pk_cancel_honoured`,
   `pk_cancelled_never_applied`, `pk_stale_exercised`, `pk_stale_never_applied`,
   `pk_fresh_always_applied`, `pk_snapshot_worker_safe`,
   `pk_deep_deadline_respected`, `pk_deep_budget_decreases`,
-  `pk_deep_halts_between_queries`, `pk_connection_usable_after_fetch`,
-  `pk_bounded_fetch_complete`, `pk_cache_within_budget`,
-  `pk_cache_hit_observed`, `pk_cache_eviction_observed`,
+  `pk_deep_halts_between_queries`, `pk_connection_instrumented`,
+  `pk_connection_usable_after_fetch`, `pk_bounded_fetch_complete`,
+  `pk_cache_within_budget`, `pk_cache_hit_observed`,
+  `pk_cache_eviction_observed`, `pk_cache_oversize_entry_rejected`,
   `pk_cache_scope_isolated`, `pk_connection_acquire_release_balanced`,
-  `pk_psock_async_path`.
+  `pk_psock_async_path`, `pk_psock_worker_bootstrap`.
 - **GERÇEK PSOCK turu:** serit ayrıca `pk_async_run_analysis()`'ı gerçek bir
   `multisession` işçisine gönderir (jeton önceden sinyallendiği için sonuç
   DETERMİNİSTİK olarak `cancelled`'dır; LLM/DB gerekmez). Bu prob olmadan serit,
@@ -398,6 +400,8 @@ Rscript tests/scripts/run_operational_soak_gate.R
 | `MERGEN_SOAK_PK_STALE_EVERY` | `5` | Her N. istek bayat tamamlanma üretir. |
 | `MERGEN_SOAK_PK_DEEP_EVERY` | `9` | Her N. istek Derin Düşünme olur. |
 | `MERGEN_SOAK_PK_DEEP_MAX_QUERIES` | `5` | Derin sıralı-küme tavanı (bütçe bölüşümü). |
+| `MERGEN_SOAK_PK_CACHE_MAX_MB` | `512` | Önbellek TOPLAM bayt bütçesi (tek sonuç tavanı `MERGEN_SOAK_PK_MAX_RESULT_MB`'den FARKLIDIR). |
+| `MERGEN_SOAK_PK_CACHE_MAX_ENTRY_MB` | `128` | Önbellek GİRDİ BAŞINA bayt tavanı; üstündeki girdi hiç önbelleklenmez. |
 
 ### Kapasite eğrisi
 

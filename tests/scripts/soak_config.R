@@ -48,6 +48,16 @@ soak_env_int <- function(name, default) {
   if (is.na(val)) as.integer(default) else val
 }
 
+# POZITIF TAMSAYI KNOB'U. Diger sayisal ayarlar (users, interactive_users,
+# max_new_per_tick) soak_env_int() sonrasinda kirpilir; PK serit degerleri
+# kirpilmiyordu ve 0/negatif deger dogrudan seride geciyordu. Somut kusurlar:
+# CANCEL_EVERY=0 -> `i %% 0` NaN -> `if (NA)` HATA; CHUNK_ROWS=0 -> ilerlemeyen
+# getirme dongusu; DISTINCT_USERS=0 -> bozuk kapsam indeksi.
+soak_env_pos_int <- function(name, default) {
+  val <- soak_env_int(name, default)
+  if (is.na(val) || val < 1L) as.integer(default) else val
+}
+
 soak_env_num <- function(name, default) {
   raw <- trimws(Sys.getenv(name, unset = ""))
   if (!nzchar(raw)) return(as.numeric(default))
@@ -355,22 +365,22 @@ soak_resolve_config <- function() {
     interactive_iterations = interactive_iterations,
     pk_lane = pk_lane,
     pk_lane_sessions = pk_lane_sessions,
-    pk_lane_distinct_users = soak_env_int("MERGEN_SOAK_PK_DISTINCT_USERS", 6L),
-    pk_lane_distinct_queries = soak_env_int("MERGEN_SOAK_PK_DISTINCT_QUERIES", 5L),
-    pk_lane_deadline_sec = soak_env_int("MERGEN_SOAK_PK_DEADLINE_SEC", 300L),
-    pk_lane_sql_timeout_sec = soak_env_int("MERGEN_SOAK_PK_SQL_TIMEOUT_SEC", 120L),
-    pk_lane_row_cap = soak_env_int("MERGEN_SOAK_PK_ROW_CAP", 50000L),
-    pk_lane_rows_per_query = soak_env_int("MERGEN_SOAK_PK_ROWS_PER_QUERY", 4000L),
-    pk_lane_chunk_rows = soak_env_int("MERGEN_SOAK_PK_CHUNK_ROWS", 1000L),
-    pk_lane_max_result_mb = soak_env_int("MERGEN_SOAK_PK_MAX_RESULT_MB", 512L),
-    pk_lane_cancel_every = soak_env_int("MERGEN_SOAK_PK_CANCEL_EVERY", 7L),
-    pk_lane_stale_every = soak_env_int("MERGEN_SOAK_PK_STALE_EVERY", 5L),
-    pk_lane_deep_every = soak_env_int("MERGEN_SOAK_PK_DEEP_EVERY", 9L),
-    pk_lane_deep_max_queries = soak_env_int("MERGEN_SOAK_PK_DEEP_MAX_QUERIES", 5L),
+    pk_lane_distinct_users = soak_env_pos_int("MERGEN_SOAK_PK_DISTINCT_USERS", 6L),
+    pk_lane_distinct_queries = soak_env_pos_int("MERGEN_SOAK_PK_DISTINCT_QUERIES", 5L),
+    pk_lane_deadline_sec = soak_env_pos_int("MERGEN_SOAK_PK_DEADLINE_SEC", 300L),
+    pk_lane_sql_timeout_sec = soak_env_pos_int("MERGEN_SOAK_PK_SQL_TIMEOUT_SEC", 120L),
+    pk_lane_row_cap = soak_env_pos_int("MERGEN_SOAK_PK_ROW_CAP", 50000L),
+    pk_lane_rows_per_query = soak_env_pos_int("MERGEN_SOAK_PK_ROWS_PER_QUERY", 4000L),
+    pk_lane_chunk_rows = soak_env_pos_int("MERGEN_SOAK_PK_CHUNK_ROWS", 1000L),
+    pk_lane_max_result_mb = soak_env_pos_int("MERGEN_SOAK_PK_MAX_RESULT_MB", 512L),
+    pk_lane_cancel_every = soak_env_pos_int("MERGEN_SOAK_PK_CANCEL_EVERY", 7L),
+    pk_lane_stale_every = soak_env_pos_int("MERGEN_SOAK_PK_STALE_EVERY", 5L),
+    pk_lane_deep_every = soak_env_pos_int("MERGEN_SOAK_PK_DEEP_EVERY", 9L),
+    pk_lane_deep_max_queries = soak_env_pos_int("MERGEN_SOAK_PK_DEEP_MAX_QUERIES", 5L),
     # Onbellek BAYT butcesi tek-sonuc tavanindan (max_result_mb) FARKLIDIR;
     # kapi ikisini karistirmamalidir.
-    pk_cache_max_mb = soak_env_int("MERGEN_SOAK_PK_CACHE_MAX_MB", 512L),
-    pk_cache_max_entry_mb = soak_env_int("MERGEN_SOAK_PK_CACHE_MAX_ENTRY_MB", 128L),
+    pk_cache_max_mb = soak_env_pos_int("MERGEN_SOAK_PK_CACHE_MAX_MB", 512L),
+    pk_cache_max_entry_mb = soak_env_pos_int("MERGEN_SOAK_PK_CACHE_MAX_ENTRY_MB", 128L),
     capacity_curve_enabled = capacity_enabled,
     capacity_curve_users = soak_default_capacity_curve(),
     capacity_step_seconds = soak_env_int("MERGEN_SOAK_CAPACITY_STEP_SECONDS", 30L),

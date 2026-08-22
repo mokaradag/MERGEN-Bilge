@@ -1542,7 +1542,7 @@ assigned to a seam in `R/config_seam_registry.R`):**
 | `R/library_query_aliases_local.R` | operator-maintained production aliases, **gitignored**, optional, never generator-written | data |
 | `R/library_query_meta.R` | **curated** capability registry and approved/synthetic per-query metadata keyed by stable id | data |
 | `tools/pk/generate_query_meta.R` | VM-only metadata generator, operator entry point (NOT in the manifest) | script |
-| `tools/pk/helpers_meta_generator_*.R` | generator internals: `config` (mode/env), `schema` (type mapping + one-sided evidence), `render` (ASCII R source + atomic write + forbidden-target gate), `health` (findings/report/state), `run` (inventory loop, injected DB access) | script |
+| `tools/pk/helpers_meta_generator_*.R` | generator internals, 12 files loaded in dependency order by the entry point: `config` (mode/env), `schema` (type mapping + one-sided evidence), `render` (ASCII R source + atomic write + forbidden-target gate), `redact` (secret masking + DB-error classification), `findings` (per-query findings), `health` (report assembly), `state` (resume snapshot + TTL), `db` (bounded driver access), `fetch` (schema acquisition), `run` (inventory loop, injected DB access), `lock` (single-run lock), `commit` (layer merge + publish) | script |
 
 All four metadata/alias files are runtime data and **must appear in
 `R/config_source_manifest.R`**, loaded after `R/helpers_pk_text_turkish.R` in the order

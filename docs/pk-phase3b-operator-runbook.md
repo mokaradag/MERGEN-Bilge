@@ -436,7 +436,7 @@ Gerçek üretim proje/program adları yalnız gitignore'lu
 |---|---|---|
 | `MERGEN_PK_META_MODE` | `describe` | `describe` veya `sample`; geçersiz değer hata verir |
 | `MERGEN_PK_META_SAMPLE_ROWS` | `500` | `sample` kipinde sorgu başına istemci aktarım satır tavanı |
-| `MERGEN_PK_META_HIGH_CARD_MIN` | `50` | Bu sayıdan fazla farklı değer `high_cardinality = TRUE` kanıtlar |
+| `MERGEN_PK_META_HIGH_CARD_MIN` | `50` | Bu sayıdan fazla farklı değer `high_cardinality = TRUE` kanıtlar. `sample` kipinde `MERGEN_PK_META_SAMPLE_ROWS` değerinden KESİNLİKLE KÜÇÜK olmalıdır; aksi hâlde kanıt ulaşılamaz olur ve koşu hata ile durur |
 | `MERGEN_PK_META_SQL_TIMEOUT_SEC` | `120` | Sorgu başına zaman aşımı |
 | `MERGEN_PK_META_MAX_RESULT_MB` | `64` | Örnekleme sonuç bayt tavanı |
 | `MERGEN_PK_META_RESUME` | `TRUE` | Kesilen koşuyu sürdür; temiz koşu için `FALSE` |
