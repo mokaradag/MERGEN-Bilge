@@ -499,7 +499,9 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
         "[SMART_FILTER] Filtre #%d: sutun='%s', deger='%s', islem='%s'\n",
         i,
         f$column %||% "NULL",
-        f$value %||% "NULL",
+        # Çok değerli yaprakta `sprintf` vektörleşip filtre başına birden çok
+        # satır basardı; günlük tek satır kalsın diye değerler birleştirilir.
+        paste(as.character(unlist(f$value %||% "NULL", use.names = FALSE)), collapse = "|"),
         f$operation %||% "NULL"
       ))
     }
@@ -527,19 +529,27 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
 
         if (!is.null(col) && nzchar(as.character(col)[1]) && col %in% names(dt)) {
           col_vals <- dt[[col]]
-          val_str <- as.character(val)[1]
+
+          # ÇOK DEĞERLİ YAPRAK (aynı sütun içi VEYA). Yukarıdaki istem
+          # modelden `value` alanını DİZİ vermesini ister ve doğrulayıcı
+          # diziyi KORUR; `as.character(val)[1]` ise sessizce ilk değeri
+          # alıp kullanıcının sorduğu VEYA'yı düşürüyordu. Karşılaştırma
+          # operatörleri (`greater_than`/`less_than`) tek değerli kalır.
+          val_flat <- as.character(unlist(val, use.names = FALSE))
+          val_flat <- val_flat[!is.na(val_flat)]
+          if (length(val_flat) == 0L) val_flat <- ""
+          val_str <- val_flat[1]
 
           if (is.character(col_vals) || is.factor(col_vals)) {
-            val_regex <- gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\\1", val_str)
             col_vals_char <- as.character(col_vals)
+            val_regex <- gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\\1", val_flat)
 
-            if (op == "exact_match") {
-              dt <- dt[grepl(paste0("^", val_regex, "$"), col_vals_char, ignore.case = TRUE), ]
-            } else if (op == "contains") {
-              dt <- dt[grepl(val_regex, col_vals_char, ignore.case = TRUE), ]
+            if (op == "contains") {
+              desen <- paste0("(", paste(val_regex, collapse = "|"), ")")
             } else {
-              dt <- dt[grepl(paste0("^", val_regex, "$"), col_vals_char, ignore.case = TRUE), ]
+              desen <- paste0("^(", paste(val_regex, collapse = "|"), ")$")
             }
+            dt <- dt[grepl(desen, col_vals_char, ignore.case = TRUE), ]
           } else if (is.numeric(col_vals)) {
             val_num <- suppressWarnings(as.numeric(val_str))
             if (!is.na(val_num)) {
@@ -548,7 +558,9 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
               } else if (op == "less_than") {
                 dt <- dt[col_vals < val_num, ]
               } else {
-                dt <- dt[col_vals == val_num, ]
+                val_nums <- suppressWarnings(as.numeric(val_flat))
+                val_nums <- val_nums[!is.na(val_nums)]
+                dt <- dt[col_vals %in% val_nums, ]
               }
             }
           }

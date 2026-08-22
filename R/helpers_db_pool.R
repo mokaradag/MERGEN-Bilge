@@ -94,7 +94,14 @@ db_pool_config <- function() {
   # Pay hesabı TEK yerdedir (`pk_db_admission_plan()`), ana süreç ve işçi AYNI
   # bölüşümü uygular. Asenkron KAPALIYKEN bölüşüm devreye girmez ve davranış
   # bit bazında korunur.
-  admission_cap <- max(1L, as.integer(.db_pool_env_num("MERGEN_DB_POOL_MAX_SIZE", 8)))
+  # `Inf` ya da tamsayı aralığını aşan bir değer `as.integer()` içinde NA üretir
+  # ve `max(1L, NA)` yine NA döner; `pool::dbPool()` NA `maxSize` ile açılamaz.
+  # Geçersiz değer SESSİZCE havuzu düşürmek yerine varsayılana geri düşer.
+  admission_ham <- .db_pool_env_num("MERGEN_DB_POOL_MAX_SIZE", 8)
+  if (!is.finite(admission_ham) || admission_ham < 1 || admission_ham > .Machine$integer.max) {
+    admission_ham <- 8
+  }
+  admission_cap <- max(1L, as.integer(admission_ham))
   process_max <- admission_cap
   if (exists("pk_db_pool_process_share", mode = "function", inherits = TRUE)) {
     pay <- try(suppressWarnings(as.integer(pk_db_pool_process_share(admission_cap))[1]),
@@ -105,7 +112,9 @@ db_pool_config <- function() {
   }
 
   # Bölüşüm sonrası `min_size > max_size` kalırsa havuz kurulumu tutarsız olur.
-  min_size <- max(0L, as.integer(.db_pool_env_num("MERGEN_DB_POOL_MIN_SIZE", 1)))
+  min_ham <- .db_pool_env_num("MERGEN_DB_POOL_MIN_SIZE", 1)
+  if (!is.finite(min_ham) || min_ham < 0 || min_ham > .Machine$integer.max) min_ham <- 1
+  min_size <- max(0L, as.integer(min_ham))
 
   list(
     enabled = is_db_pool_enabled(),

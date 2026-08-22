@@ -127,35 +127,35 @@ normalize_pk_text_utf8 <- function(x) {
     "latin1"
   ))
 
-  donustur_tek <- function(s) {
-    if (is.na(s) || !nzchar(s)) return(s)
+  # `iconv()` VEKTÖRELDİR. Öge başına altı `iconv()` çağrısı yerine aday
+  # kodlama başına TEK geçiş yapılır ve yalnızca hâlâ NA olan ögeler
+  # doldurulur (yukarıdaki tarih dönüşümündeki desenin aynısı). Maliyet
+  # satır x aday yerine yalnızca aday sayısıyla ölçeklenir; sonuç aynıdır.
+  out <- rep(NA_character_, length(x))
+  bos <- is.na(x) | !nzchar(x)
+  out[bos] <- x[bos]
 
-    for (kodlama in denenecek_kodlamalar) {
-      y <- tryCatch(
-        iconv(s, from = kodlama, to = "UTF-8", sub = NA),
-        error = function(e) NA_character_
-      )
-
-      if (!is.na(y)) {
-        Encoding(y) <- "UTF-8"
-        return(y)
-      }
-    }
-
-    y <- tryCatch(
-      iconv(s, from = "", to = "UTF-8", sub = "?"),
-      error = function(e) enc2utf8(s)
+  for (kodlama in denenecek_kodlamalar) {
+    eksik <- is.na(out) & !bos
+    if (!any(eksik)) break
+    deneme <- tryCatch(
+      iconv(x[eksik], from = kodlama, to = "UTF-8", sub = NA),
+      error = function(e) rep(NA_character_, sum(eksik))
     )
-
-    if (is.na(y)) {
-      y <- enc2utf8(s)
-    }
-
-    Encoding(y) <- "UTF-8"
-    y
+    out[eksik] <- deneme
   }
 
-  out <- vapply(x, donustur_tek, character(1), USE.NAMES = FALSE)
+  eksik <- is.na(out) & !bos
+  if (any(eksik)) {
+    yedek <- tryCatch(
+      iconv(x[eksik], from = "", to = "UTF-8", sub = "?"),
+      error = function(e) enc2utf8(x[eksik])
+    )
+    hala_na <- is.na(yedek)
+    if (any(hala_na)) yedek[hala_na] <- enc2utf8(x[eksik][hala_na])
+    out[eksik] <- yedek
+  }
+
   out[is.na(x)] <- NA_character_
   Encoding(out) <- "UTF-8"
   out

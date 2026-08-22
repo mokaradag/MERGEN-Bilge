@@ -138,7 +138,21 @@ mergen_seam_guard_tests <- function() {
         # aşağı akıştaki hiçbir kontrol bunu yakalayamaz.
         "tests/testthat/test-pk-query-retrieval-behavior.R",
         "tests/testthat/test-pk-query-selection-contract.R",
-        "tests/testthat/test-pk-golden-set-behavior.R"
+        "tests/testthat/test-pk-golden-set-behavior.R",
+        # Faz 6 (§5.10) bloklamayan çalıştırma. Bu testler bu seam'e AİTTİR:
+        # kayıtlı olmadıklarında iptal/son tarih/sınırlı getirme/önbellek veya
+        # işçi bootstrap'ı bozulsa bile kapsamlı seam doğrulaması YEŞİL raporlar.
+        "tests/testthat/test-pk-async-contract.R",
+        "tests/testthat/test-pk-async-cancel-behavior.R",
+        "tests/testthat/test-pk-async-dispatch-behavior.R",
+        "tests/testthat/test-pk-async-hardening-behavior.R",
+        "tests/testthat/test-pk-async-request-behavior.R",
+        "tests/testthat/test-pk-async-session-registry-behavior.R",
+        "tests/testthat/test-pk-async-worker-behavior.R",
+        "tests/testthat/test-pk-cache-behavior.R",
+        "tests/testthat/test-pk-result-size-behavior.R",
+        "tests/testthat/test-pk-sql-execute-bounded-behavior.R",
+        "tests/testthat/test-deep-analysis-reconcile-behavior.R"
       ),
       focused_validation = c(
         "testthat::test_file(\"tests/testthat/test-mcp-excel-resolve.R\")",

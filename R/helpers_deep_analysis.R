@@ -605,11 +605,15 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
   }
 
   if (length(query_results) == 0) {
+    # `stop_check()` SAF DEĞİLDİR: işçide iptal jetonu dosyasını okur ve iki
+    # çağrı arasında dönebilir. Tek kez okunur, aksi halde bildirilen
+    # `filter_status` ile `outcome` çelişir ("stopped" + "Hata" gibi).
+    durduruldu <- is.function(stop_check) && isTRUE(stop_check())
     pk_observe_deep(list(
       query_name = "Derin analiz",
-      filter_status = if (is.function(stop_check) && isTRUE(stop_check())) "stopped" else "not_reached",
+      filter_status = if (durduruldu) "stopped" else "not_reached",
       filters = list(),
-      outcome = if (is.function(stop_check) && isTRUE(stop_check())) "Durduruldu" else "Hata"
+      outcome = if (durduruldu) "Durduruldu" else "Hata"
     ))
     if (!is.na(deep_halt_status)) return(pk_async_halt_message(deep_halt_status))
     return("\U000026A0\U0000FE0F **Derin Analiz:** Hiçbir sorgu çalıştırılamadı. Lütfen tekrar deneyin.")

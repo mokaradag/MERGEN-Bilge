@@ -34,7 +34,9 @@ pk_deep_resolve_username <- function(session, resolver = NULL) {
     return(list(
       ready = FALSE,
       username = NA_character_,
-      reason = as.character(durum$reason %||% "unknown")[1],
+      # Çözümleyici atomik bir değer (FALSE, karakter) döndürebilir; `$`
+      # atomik vektörde hata verir ve fail-closed kimlik mesajını yutardı.
+      reason = if (is.list(durum)) as.character(durum$reason %||% "unknown")[1] else "unknown",
       message = paste0(
         "\U000023F3 **Kimlik Doğrulama Hazırlanıyor:** ",
         "Derin analiz için kullanıcı kimliğiniz henüz hazır değil. ",
