@@ -936,7 +936,7 @@ test_that("devam onbellegi yazilip geri okunur ve kip degisince YOK SAYILIR", {
     source_types = c("ProjeAdı" = "nvarchar(200)", "Saat" = "decimal(18,2)")
   ))
 
-  expect_true(pkgh_write_state(onbellek, durum_yolu, "describe", "T"))
+  expect_true(pkgh_write_state(onbellek, durum_yolu, "describe", format(Sys.time(), "%Y%m%d-%H%M%S")))
   expect_true(file.exists(durum_yolu))
 
   geri <- pkgh_read_state(durum_yolu, "describe")
@@ -1052,7 +1052,7 @@ test_that("SQL degisince devam onbellegi girdisi KABUL EDILMEZ", {
     columns = c(A = "integer"),
     source_types = c(A = "int")
   ))
-  pkgh_write_state(onbellek, durum_yolu, "describe", "T")
+  pkgh_write_state(onbellek, durum_yolu, "describe", format(Sys.time(), "%Y%m%d-%H%M%S"))
 
   # Aynı SQL: girdi kabul edilir.
   ayni <- pkgh_read_state(durum_yolu, "describe",
@@ -1075,8 +1075,12 @@ test_that("bicim surumu degisince devam onbellegi TAMAMEN yok sayilir", {
   gecici <- withr::local_tempdir()
   durum_yolu <- file.path(gecici, "generator-state.json")
 
+  # Damga GERÇEK biçimde ve TAZE yazılır: devam durumu artık yaşlandığında
+  # (bkz. `MERGEN_PK_META_RESUME_MAX_AGE_SEC`) yok sayılır; bu test biçim
+  # sürümü sözleşmesini ölçer, tazeliği değil.
+  taze <- format(Sys.time(), "%Y%m%d-%H%M%S")
   pkgh_write_state(list(q1 = list(columns = c(A = "integer"), fingerprint = "fp")),
-                   durum_yolu, "describe", "T", state_version = 1L)
+                   durum_yolu, "describe", taze, state_version = 1L)
 
   expect_length(pkgh_read_state(durum_yolu, "describe", state_version = 2L), 0L)
   expect_named(pkgh_read_state(durum_yolu, "describe", state_version = 1L), "q1")
@@ -1096,7 +1100,7 @@ test_that("devam onbellegi KANIT alanlarini yuvarlak yolculukla korur", {
     unbounded = "Kod",
     observations = list(Kod = list(high_cardinality_proved = TRUE, distinct_observed = 99))
   ))
-  pkgh_write_state(onbellek, durum_yolu, "sample", "T")
+  pkgh_write_state(onbellek, durum_yolu, "sample", format(Sys.time(), "%Y%m%d-%H%M%S"))
 
   geri <- pkgh_read_state(durum_yolu, "sample")
   # Bunları boş yeniden kurmak, ikinci koşuda yüksek kardinalite gözlemlerini ve
@@ -1962,4 +1966,33 @@ test_that("health.json koleksiyon alanlari KARDINALITEDEN bagimsiz dizidir", {
   # sütuna geçtiğinde KIRILIRDI.
   expect_true(is.list(rls[[1]]$columns))
   expect_length(rls[[1]]$columns, 1L)
+})
+
+test_that("BAYAT devam durumu yeniden kullanilmaz (DB kanidi eskir)", {
+  skip_if_not_installed("jsonlite")
+
+  gecici <- withr::local_tempdir()
+  durum_yolu <- file.path(gecici, "generator-state.json")
+
+  # Parmak izi SQL METNINDEN turetilir; SQL degismeden arkadaki gorunum/tip
+  # degisirse parmak izi AYNI kalir ve normal bir yeniden kosu describe/sample
+  # adimini tamamen ATLARDI. Devam durumu bu yuzden yalnizca KESILMIS bir kosuyu
+  # surdurecek kadar yasar.
+  eski <- format(Sys.time() - (48 * 3600), "%Y%m%d-%H%M%S")
+  pkgh_write_state(list(q1 = list(columns = c(A = "integer"), fingerprint = "fp")),
+                   durum_yolu, "describe", eski)
+
+  expect_length(pkgh_read_state(durum_yolu, "describe"), 0L)
+
+  # Sure siniri acikca kapatildiginda eski girdi yine okunabilir (teshis yolu).
+  onceki <- Sys.getenv("MERGEN_PK_META_RESUME_MAX_AGE_SEC", unset = NA_character_)
+  on.exit({
+    if (is.na(onceki)) {
+      Sys.unsetenv("MERGEN_PK_META_RESUME_MAX_AGE_SEC")
+    } else {
+      Sys.setenv(MERGEN_PK_META_RESUME_MAX_AGE_SEC = onceki)
+    }
+  }, add = TRUE)
+  Sys.setenv(MERGEN_PK_META_RESUME_MAX_AGE_SEC = "0")
+  expect_named(pkgh_read_state(durum_yolu, "describe"), "q1")
 })

@@ -326,7 +326,15 @@ pkgh_structural_findings <- function(query, merged, schema, blocking = character
     }
     if (length(beyan_kaynakli)) {
       bulgular <- c(bulgular, list(pkgh_finding(
-        "role_type_mismatch_declared_date", "attention",
+        # `blocking` OLMALIDIR.
+        #
+        # `.pkgh_split_validator_messages()` bu kodu "kapsanmis" saydigi icin
+        # eslesen baslangic-dogrulayici hatasini `info` seviyesine dusuruyordu;
+        # `attention` ise adayin katmana ALINMASINI engellemiyordu. Sonuc:
+        # tekil bir beyan-tarihi uyusmazligi, bütün üretilen katmanin
+        # yayimlanmasini BLOKLUYOR (butun-kutuphane baslangic kapisi yine
+        # reddediyor) -- oysa dogru davranis YALNIZCA o sorguyu geri cekmektir.
+        "role_type_mismatch_declared_date", "blocking",
         sprintf(paste0(
           "role=date sutunu ham semada tarih degil, ancak query$date_columns ",
           "icinde beyan edildigi icin istek yolunda Date'e cevrilir: %s. ",

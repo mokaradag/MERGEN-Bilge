@@ -405,9 +405,20 @@ pk_meta_validate_actual_columns <- function(query, actual_columns) {
     unlist(if (is.list(rls)) rls else list(), use.names = FALSE)
   )))
 
+  # BOZUK SONUÇ ŞEKLİ HER MOTORDA KOŞULSUZ DURDURUR.
+  #
+  # Mükerrer ya da boş/NA GERÇEK sütun adı bir "metadata anlam uyuşmazlığı"
+  # değil, sonucun KENDİSİNİN bozuk olmasıdır. v1 hattı tamamen AD TABANLIDIR
+  # (`df[[col]]`, ada göre filtre kriteri, `summarize_columns_for_ai()` içinde
+  # `names(df)` gezip `df[[col]]` okumak): aynı adı taşıyan iki sütunun İKİSİ de
+  # ilk eşleşme olarak raporlanır/analiz edilir, ikinci değer sessizce yanlış
+  # sunulur. Bu yüzden durdurma RLS kesişimine ya da motor bayrağına BAĞLI
+  # DEĞİLDİR. Yalnızca "beyan edilen metadata sütunu sonuçta yok" durumu v1'de
+  # uyarı olarak kalır (geçerli bir sonuç şekli + eksik beyan).
   list(
     ok = !length(hatalar),
     fail_closed = length(rls_hatalari) > 0L || length(eksik_rls) > 0L ||
+      length(gecersiz_gercek) > 0L || length(tekrar_gercek) > 0L ||
       length(intersect(tekrar_gercek, rls_beyan_edilen)) > 0L,
     invalid_rls = rls_hatalari,
     missing_rls = unique(eksik_rls),

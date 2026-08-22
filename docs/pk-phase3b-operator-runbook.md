@@ -440,6 +440,7 @@ Gerçek üretim proje/program adları yalnız gitignore'lu
 | `MERGEN_PK_META_SQL_TIMEOUT_SEC` | `120` | Sorgu başına zaman aşımı |
 | `MERGEN_PK_META_MAX_RESULT_MB` | `64` | Örnekleme sonuç bayt tavanı |
 | `MERGEN_PK_META_RESUME` | `TRUE` | Kesilen koşuyu sürdür; temiz koşu için `FALSE` |
+| `MERGEN_PK_META_RESUME_MAX_AGE_SEC` | `21600` | Devam önbelleğindeki DB kanıtının azami yaşı (saniye); `0` = sınırsız (teşhis) |
 | `MERGEN_PK_META_SAMPLE_UNICODE` | `TRUE` | `sample` SQL'ini üretimin Unicode parametre yolu ile gönder |
 
 Tümü `.Renviron.example` içinde belgelenmiştir.

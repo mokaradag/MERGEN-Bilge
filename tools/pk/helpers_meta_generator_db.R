@@ -271,7 +271,8 @@ pkg_default_release_fn <- function(handle, timeout_sec = NULL) {
 #' çekilmeden `dbColumnInfo()` ile yalnızca eksik adlar doğrulanır. Böylece çalışan
 #' sql_file sorguları yanlış "adsiz sonuc sutunu" diye reddedilmez; kolon sayısı
 #' veya adlar runtime ile doğrulanamazsa sistem yine fail-closed kalır.
-pkg_default_describe_fn <- function(conn, sql, timeout_sec = NULL) {
+pkg_default_describe_fn <- function(conn, sql, timeout_sec = NULL,
+                                    allow_runtime_names = FALSE) {
   if (!requireNamespace("DBI", quietly = TRUE)) {
     stop("[PK_META_GEN] DBI paketi gerekli.", call. = FALSE)
   }
@@ -292,10 +293,17 @@ pkg_default_describe_fn <- function(conn, sql, timeout_sec = NULL) {
     "ORDER BY column_ordinal"
   )
 
-  cerceve <- .pkgd_bounded(
+  # TEK SON TARİH: tanımlayıcı sondası VE ad kurtarma AYNI bütçeyi paylaşır.
+  #
+  # `MERGEN_PK_META_SQL_TIMEOUT_SEC` sözleşme gereği SORGU BAŞINA tavandır. Ad
+  # kurtarma kendi `.pkgd_deadline()` değerini kurduğunda tek bir describe
+  # işlemi neredeyse İKİ tam pencere tüketebiliyordu.
+  son_tarih <- .pkgd_deadline(timeout_sec)
+
+  cerceve <- .pkgd_bounded_until(
     function() DBI::dbGetQuery(conn, tanim_sql,
                                params = .pkgd_descriptor_params(descriptor_sql)),
-    timeout_sec
+    son_tarih
   )
   if (!is.data.frame(cerceve) || nrow(cerceve) == 0L) return(NULL)
 
@@ -307,7 +315,21 @@ pkg_default_describe_fn <- function(conn, sql, timeout_sec = NULL) {
   adlar <- as.character(cerceve$name)
   eksik <- is.na(adlar) | !nzchar(adlar)
   if (any(eksik)) {
-    runtime_adlari <- .pkgd_runtime_column_names(conn, sql, timeout_sec)
+    # AD KURTARMA SORGUYU ÇALIŞTIRIR: describe kipinde OPT-IN gerekir.
+    #
+    # `.pkgd_runtime_column_names()` gerçek bir `dbSendQuery()` açar. Hiç satır
+    # çekilmese bile SQL Server JOIN/ORDER BY iş yükünü ÜRETİMDE çalıştırabilir.
+    # Örnek yolu bu yüzden `query$meta_sample_safe = TRUE` ister; describe kipi
+    # o kapıyı ATLAYAMAZ. İzin yoksa yapı KAPALI BAŞARISIZ olur.
+    if (!isTRUE(allow_runtime_names)) {
+      stop(paste0(
+        "[PK_META_GEN] Statik tanimlayici bazi kolon adlarini belirleyemedi ve ",
+        "ad kurtarma sorguyu CALISTIRACAGI icin atlandi. Bu sorgu icin ",
+        "query$meta_sample_safe = TRUE olarak acikca kure edin ya da ifadeye ",
+        "takma ad (AS) verin."
+      ), call. = FALSE)
+    }
+    runtime_adlari <- .pkgd_runtime_column_names(conn, sql, .pkgd_remaining(son_tarih))
     cerceve <- .pkgd_repair_descriptor_names(cerceve, runtime_adlari)
     cat(sprintf(
       "[PK_META_GEN] BILGI: statik tanimlayicinin belirleyemedigi %d kolon adi runtime metadata ile dogrulandi.\n",
@@ -399,18 +421,32 @@ pkg_default_sample_fn <- function(conn, sql, sample_rows = 500L, timeout_sec = N
 
   # BAYT TAVANI İÇİN PARÇALI GETİRİM: birkaç büyük LOB satırı, satır sayısı
   # sınırının altında kalırken yapılandırılmış bellek bütçesini kat kat aşabilir.
-  parca <- max(1L, min(n, 200L))
+  # UYARLAMALI PARÇA BOYUTU: İLK GETİRİM TEK SATIRDIR.
+  #
+  # Sabit 200 satırlık bir ilk blok, tek bir `nvarchar(max)`/LOB değeri ya da
+  # birkaç geniş satır yüzünden bayt kontrolü ÇALIŞMADAN ÖNCE tavanın kat kat
+  # üstünde bellek ayırabilir (operatör süreci OOM olabilir): `object.size()`
+  # denetimi ancak ALLOKASYONDAN SONRA konuşur. Bu yüzden önce TEK satır
+  # getirilir, gözlemlenen satır başına boyuttan kalan bütçeye sığacak bir
+  # sonraki parça boyutu türetilir ve hiçbir zaman 200 satırı aşmaz.
   parcalar <- list()
   toplam_satir <- 0L
   toplam_bayt <- 0
+  parca <- 1L
 
   while (toplam_satir < n) {
-    istenen <- min(parca, n - toplam_satir)
+    istenen <- max(1L, min(parca, n - toplam_satir))
     blok <- .pkgd_bounded_until(function() DBI::dbFetch(sonuc, n = istenen), son_tarih)
     if (!is.data.frame(blok) || nrow(blok) == 0L) break
 
-    toplam_bayt <- toplam_bayt + suppressWarnings(as.numeric(utils::object.size(blok)))
-    if (is.finite(tavan_bayt) && toplam_bayt > tavan_bayt) {
+    blok_bayt <- suppressWarnings(as.numeric(utils::object.size(blok)))
+    toplam_bayt <- toplam_bayt + blok_bayt
+
+    # `rbind` TEPE NOKTASI: birleştirme sırasında birikmiş çerçeve ile sonucu
+    # AYNI ANDA bellekte tutar. Tavana sığan ama birleşirken sığmayan bir sonuç
+    # da REDDEDİLİR.
+    tepe <- if (length(parcalar) >= 1L) toplam_bayt * 2 else toplam_bayt
+    if (is.finite(tavan_bayt) && (toplam_bayt > tavan_bayt || tepe > tavan_bayt)) {
       stop(sprintf(paste0(
         "[PK_META_GEN] Ornek sonucu yapilandirilmis bayt tavanini asti ",
         "(MERGEN_PK_META_MAX_RESULT_MB = %s). Getirim durduruldu."
@@ -420,6 +456,19 @@ pkg_default_sample_fn <- function(conn, sql, sample_rows = 500L, timeout_sec = N
     parcalar[[length(parcalar) + 1L]] <- blok
     toplam_satir <- toplam_satir + nrow(blok)
     if (nrow(blok) < istenen) break
+
+    # Sonraki parça, kalan bayt bütçesinden türetilir (tepe payı için yarısı).
+    satir_bayt <- if (nrow(blok) > 0L && is.finite(blok_bayt)) {
+      max(1, blok_bayt / nrow(blok))
+    } else {
+      NA_real_
+    }
+    parca <- if (is.finite(tavan_bayt) && is.finite(satir_bayt)) {
+      kalan_bayt <- max(0, (tavan_bayt / 2) - toplam_bayt)
+      max(1L, min(200L, as.integer(floor(kalan_bayt / satir_bayt))))
+    } else {
+      200L
+    }
   }
 
   cerceve <- if (!length(parcalar)) {

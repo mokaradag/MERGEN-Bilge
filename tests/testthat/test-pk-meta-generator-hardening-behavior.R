@@ -750,6 +750,17 @@ test_that("ARA KAYIT gezilmemis onbellek girdilerini SILMEZ (ve sekli DOGRUDUR)"
   yol <- file.path(gecici, "generator-state.json")
   expect_true(pkgh_write_state(ilk, yol, "describe", "20260818-000000"))
 
+  # Bu test GIRDI SEKLINI olcer, tazeligi degil: sabit damga TTL'e takilmasin.
+  onceki_yas <- Sys.getenv("MERGEN_PK_META_RESUME_MAX_AGE_SEC", unset = NA_character_)
+  on.exit({
+    if (is.na(onceki_yas)) {
+      Sys.unsetenv("MERGEN_PK_META_RESUME_MAX_AGE_SEC")
+    } else {
+      Sys.setenv(MERGEN_PK_META_RESUME_MAX_AGE_SEC = onceki_yas)
+    }
+  }, add = TRUE)
+  Sys.setenv(MERGEN_PK_META_RESUME_MAX_AGE_SEC = "0")
+
   geri <- pkgh_read_state(yol, "describe",
                           fingerprints = list(q1 = "fp1", q2 = "fp2"))
   expect_true("q2" %in% names(geri))

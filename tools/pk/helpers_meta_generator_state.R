@@ -292,6 +292,35 @@ pkgh_read_state <- function(state_path, mode, fingerprints = NULL,
     surum <- suppressWarnings(as.integer(ham$state_version %||% NA_integer_)[1])
     if (is.na(surum) || !identical(surum, as.integer(state_version)[1])) return(list())
 
+    # VERİTABANI KANITI EskİR: DEVAM DURUMU YALNIZCA KISA SÜRE GEÇERLİDİR.
+    #
+    # Parmak izleri SQL METNİNDEN ve yapılandırmadan türetilir. SQL değişmeden
+    # arkadaki görünüm/tip değişirse (ör. `SELECT *` altında bir ALTER, tip
+    # genişletme) parmak izi AYNI kalır ve normal bir yeniden koşu describe/
+    # sample adımını tamamen ATLAR: üretilen `result_schema` süresiz BAYAT
+    # kalabilirdi. Devam durumu bu yüzden yalnızca KESİLMİŞ bir koşuyu
+    # sürdürecek kadar yaşar. `MERGEN_PK_META_RESUME_MAX_AGE_SEC` ile ayarlanır
+    # (varsayılan 6 saat; `0` = süre sınırı yok, yalnızca teşhis içindir).
+    azami_yas <- suppressWarnings(as.numeric(
+      Sys.getenv("MERGEN_PK_META_RESUME_MAX_AGE_SEC", unset = "21600")
+    )[1])
+    if (is.na(azami_yas) || !is.finite(azami_yas) || azami_yas < 0) azami_yas <- 21600
+    if (azami_yas > 0) {
+      # Damga `pkg_meta_config()` içinde YEREL saatte "%Y%m%d-%H%M%S" biçiminde
+      # üretilir; ayrıştırma da aynı biçimi ve yereli kullanır.
+      ham_damga <- as.character(ham$timestamp %||% NA_character_)[1]
+      damga <- suppressWarnings(strptime(ham_damga, format = "%Y%m%d-%H%M%S"))
+      if (length(damga) != 1L || is.na(damga)) {
+        damga <- suppressWarnings(as.POSIXct(ham_damga, optional = TRUE))
+      }
+      if (length(damga) != 1L || is.na(damga)) {
+        # Damga okunamıyorsa DB kanıtı doğrulanamaz; yeniden sorgulanır.
+        return(list())
+      }
+      yas <- suppressWarnings(as.numeric(difftime(Sys.time(), damga, units = "secs")))
+      if (!is.finite(yas) || yas > azami_yas) return(list())
+    }
+
     cikti <- list()
     for (girdi in (ham$entries %||% list())) {
       id <- as.character(girdi$query_id %||% "")[1]

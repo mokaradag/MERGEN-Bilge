@@ -831,6 +831,14 @@ MERGEN_PK_META_MAX_RESULT_MB=64
 #   FALSE yapin.
 MERGEN_PK_META_RESUME=TRUE
 
+#   Devam onbellegindeki VERITABANI kaniti (result_schema/tipler) EN FAZLA bu
+#   kadar saniye yeniden kullanilir. Parmak izi SQL METNINDEN turetildigi icin,
+#   SQL degismeden arkadaki gorunum/tip degisirse (ALTER, SELECT * altinda tip
+#   genisletme) parmak izi AYNI kalir ve normal bir yeniden kosu describe/sample
+#   adimini tamamen ATLARDI. Varsayilan 6 saat: kesilen bir kosuyu surdurmeye
+#   yeter, bayat semayi susresiz tasimaz. `0` = sure siniri yok (yalnizca teshis).
+MERGEN_PK_META_RESUME_MAX_AGE_SEC=21600
+
 #   `sample` kipinde SQL metni, uretimin de kullandigi NVARCHAR(MAX) parametre
 #   yolu (sp_executesql) ile gonderilir; boylece Turkce/koseli parantezli sutun
 #   adlari ODBC ayrisma hatasi vermez. Yalnizca teshis icin FALSE yapin.

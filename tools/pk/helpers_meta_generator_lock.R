@@ -252,11 +252,28 @@ pkgc_acquire_run_lock <- function(lock_path, stale_sec = 3600) {
   # ÖNCE alınır. Başarısız kilit edinimi operatör sürecine dokunmaz.
   surec_durumu <- .pkgc_capture_process_state()
 
-  tryCatch(
+  # SAHİPLİK JETONU KALICI YAZILAMAZSA EDİNİM BAŞARISIZDIR.
+  #
+  # Yazım hatası sessizce yutuluyordu; jetonsuz bir kilit sonra "sahip
+  # bilinmiyor" durumuna düşer ve devralma/bırakma yolları KİMİN sahip olduğunu
+  # kanıtlayamaz. Bu, jeton şemasının önlemek için var olduğu eşzamanlı-yazar
+  # yarışını geri getirirdi.
+  yazildi <- isTRUE(tryCatch({
     writeLines(.pkgc_lock_owner_text(jeton),
-               file.path(lock_path, PKG_META_LOCK_OWNER_FILE)),
-    error = function(e) NULL
-  )
+               file.path(lock_path, PKG_META_LOCK_OWNER_FILE))
+    identical(.pkgc_lock_read_token(lock_path), jeton)
+  }, error = function(e) FALSE))
+
+  if (!yazildi) {
+    .pkgc_restore_process_state(surec_durumu)
+    tryCatch(unlink(lock_path, recursive = TRUE, force = TRUE), error = function(e) NULL)
+    return(list(ok = FALSE, path = lock_path, token = NA_character_,
+                reason = "owner_write_failed", detail = paste0(
+      "Kilit sahiplik jetonu yazilamadi; es zamanli yazar korumasi ",
+      "dogrulanamadigi icin kosu BASLATILMADI."
+    )))
+  }
+
   .pkgc_lock_touch(lock_path)
 
   list(ok = TRUE, path = lock_path, token = jeton, reason = gerekce,
@@ -271,8 +288,13 @@ pkgc_refresh_run_lock <- function(lock) {
   if (is.null(lock) || !isTRUE(lock$ok)) return(invisible(FALSE))
   # SAHİPLİK DEĞİŞTİYSE TAZELEME YAPILMAZ: kilidi başka bir koşu devraldıysa
   # onun kalp atışını yazmak, o koşunun kilidini bizim canlı tutmamız olurdu.
+  # `NA` = SAHİP BİLİNMİYOR -> SAHİBİ DEĞİLİZ. Eski koşul yalnızca FARKLI ve
+  # NA olmayan bir jetonu reddediyordu; okunamayan/eksik `owner.txt`, kilidi
+  # HÂLÂ bizim sanmamıza yol açıyordu. Dizin devralınmışsa ve jetonu geçici
+  # olarak okunamıyorsa eski koşu YENİ koşunun kilidini canlı tutar ve daha
+  # sonra siler.
   diskteki <- .pkgc_lock_read_token(lock$path)
-  if (!is.na(diskteki) && !identical(diskteki, lock$token)) return(invisible(FALSE))
+  if (is.na(diskteki) || !identical(diskteki, lock$token)) return(invisible(FALSE))
   invisible(.pkgc_lock_touch(lock$path))
 }
 
@@ -289,8 +311,9 @@ pkgc_release_run_lock <- function(lock) {
   surec_durumu <- if (!is.null(lock$process_state)) lock$process_state else NULL
   on.exit(.pkgc_restore_process_state(surec_durumu), add = TRUE)
 
+  # `NA` = SAHİP BİLİNMİYOR -> SİLİNMEZ (bkz. tazeleme açıklaması).
   diskteki <- .pkgc_lock_read_token(lock$path)
-  if (!is.na(diskteki) && !identical(diskteki, lock$token)) {
+  if (is.na(diskteki) || !identical(diskteki, lock$token)) {
     return(invisible(FALSE))
   }
 

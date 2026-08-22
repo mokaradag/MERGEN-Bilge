@@ -266,7 +266,11 @@
     .pkgn_call_injected(
       describe_fn,
       positional = list(conn, describe_sql),
-      optional = list(timeout_sec = config$sql_timeout_sec)
+      optional = list(
+        timeout_sec = config$sql_timeout_sec,
+        # Ad kurtarma GERÇEK sorguyu açar; örnek yoluyla AYNI operatör kapısı.
+        allow_runtime_names = isTRUE(query$meta_sample_safe)
+      )
     ),
     error = function(e) e
   )

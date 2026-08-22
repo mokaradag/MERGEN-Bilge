@@ -340,6 +340,41 @@ pkgr_stage_local_meta_file <- function(text, path, forbidden = PKG_META_FORBIDDE
   TRUE
 }
 
+# ÖKSÜZ YEDEK KURTARMA.
+#
+# `.pkgr_replace_with_backup()` iki AYRI dosya sistemi işlemidir: önce canlı
+# dosya `<path>.bak-*` adına taşınır, sonra hazırlanan dosya yerine konur. Süreç
+# ya da VM ikisinin ARASINDA düşerse kanonik yol YOK olur; önceki geçerli dosya
+# yedekte durmasına rağmen uygulama bir sonraki açılışta (bu katman bilinçli
+# olarak OPSİYONEL olduğu için) üretilmiş yapısal metadata OLMADAN sessizce
+# çalışırdı. Yayımdan ÖNCE öksüz yedek geri alınır; başarılı yayım zaten yedeği
+# siler, dolayısıyla normal akışta bu fonksiyon hiçbir şey yapmaz.
+.pkgr_recover_orphan_backup <- function(path) {
+  if (file.exists(path)) return(invisible(FALSE))
+
+  desen <- paste0("^", basename(path), "\\.bak-")
+  dizin <- dirname(path)
+  adaylar <- tryCatch(
+    list.files(dizin, pattern = desen, full.names = TRUE, all.files = TRUE),
+    error = function(e) character(0)
+  )
+  adaylar <- adaylar[file.exists(adaylar)]
+  if (!length(adaylar)) return(invisible(FALSE))
+
+  # En YENİ yedek geri alınır.
+  zamanlar <- suppressWarnings(file.info(adaylar)$mtime)
+  en_yeni <- adaylar[order(zamanlar, decreasing = TRUE)][1]
+
+  geri <- isTRUE(tryCatch(file.rename(en_yeni, path), error = function(e) FALSE))
+  if (geri) {
+    message(sprintf(
+      "[PK_META_GEN] Oksuz yedek geri alindi (onceki yayim yarim kalmis): %s",
+      basename(en_yeni)
+    ))
+  }
+  invisible(geri)
+}
+
 #' HAZIRLANMIŞ dosyayı yerine taşı (YAYIMLA)
 #'
 #' `file.rename()` aynı dosya sisteminde ATOMİKTİR ve tercih edilen yoldur.
@@ -351,6 +386,9 @@ pkgr_publish_staged_file <- function(staged, path, attempts = 3L) {
          call. = FALSE)
   }
   on.exit(if (file.exists(staged)) unlink(staged), add = TRUE)
+
+  # Önceki yayımın yarım kaldığı durumda kanonik yol yeniden var edilir.
+  .pkgr_recover_orphan_backup(path)
 
   deneme <- max(1L, suppressWarnings(as.integer(attempts)[1]))
   for (i in seq_len(deneme)) {
