@@ -50,21 +50,28 @@
   ""
 }
 
-test_that("betik BAYT DÜZEYİNDE ASCII'dir", {
+test_that("betik WINDOWS-1254'e ÇEVRİLEBİLİR", {
   yol <- .pk_phase_script_path()
   expect_true(file.exists(yol))
 
-  ham <- readBin(yol, "raw", file.info(yol)$size)
-  ascii_disi <- which(as.integer(ham) > 127L)
+  # ASCII-ONLY DENETİMİ TÜRKÇEYİ LATİNLEŞTİRMEYE ZORLUYORDU (CLAUDE.md kural 1
+  # ile çelişir). Gerçek sınır CP1254 TEMSİL EDİLEBİLİRLİĞİDİR: Türkçe harfler
+  # CP1254'te vardır ve Türkçe Windows konsolunda doğru görünür; uzun tire /
+  # paragraf işareti / emoji gibi KARŞILIĞI OLMAYAN karakterler mojibake üretir.
+  satirlar <- readLines(yol, encoding = "UTF-8", warn = FALSE)
+  cevrilen <- suppressWarnings(iconv(satirlar, from = "UTF-8", to = "WINDOWS-1254"))
+  bozuk <- which(is.na(cevrilen))
 
-  # Dosya başlığı ASCII-only olduğunu İDDİA EDER; iddia denetlenmezse bir
-  # uzun tire veya paragraf işareti sessizce geri gelir ve UTF-8 olmayan bir
-  # VM konsolunda mojibake üretir.
   expect_equal(
-    length(ascii_disi), 0L,
-    info = sprintf("ASCII disi bayt konumlari: %s",
-                   paste(utils::head(ascii_disi, 10L), collapse = ", "))
+    length(bozuk), 0L,
+    info = sprintf("WINDOWS-1254'e cevrilemeyen satirlar: %s",
+                   paste(utils::head(bozuk, 10L), collapse = ", "))
   )
+
+  # Dosya UTF-8 olarak GEÇERLİ kalmalıdır (bozuk bayt dizisi girmemeli).
+  ham <- readBin(yol, "raw", file.info(yol)$size)
+  metin <- suppressWarnings(iconv(list(ham), from = "UTF-8", to = "UTF-8"))[[1]]
+  expect_false(is.na(metin), info = "Betik gecerli UTF-8 degil.")
 })
 
 test_that("kabuk sözdizimi geçerlidir", {
@@ -94,7 +101,7 @@ test_that("seçenek biçimli ref argümanı REDDEDİLİR", {
   durum <- attr(sonuc, "status")
 
   expect_true(!is.null(durum) && durum != 0L)
-  expect_true(any(grepl("secenek olamaz", sonuc, fixed = TRUE)))
+  expect_true(any(grepl("seçenek olamaz", sonuc, fixed = TRUE)))
 })
 
 test_that("kapalı başarısızlık ve doğruluk sınırı metinde AÇIKÇA vardır", {

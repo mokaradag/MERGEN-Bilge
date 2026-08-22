@@ -175,19 +175,19 @@
   # helpers_pk_async_request_markers.R (istek geçersizleştirme işaretleri),
   # helpers_pk_async_routing.R (yönlendirme metadata'sı).
   # PR #705 dengeleme: iki odakli dosya eklendi -- helpers_pk_filter_group.R
-  # (acik AND/OR gruplarinin inert degerlendiricisi; eval(parse()) yerine) ve
-  # helpers_pk_entity_context.R (D11 devralinan baglam anahtari/kaydi). 79 -> 81.
-  # PR #705 inceleme duzeltmeleri: 81 -> 85. Dort BILINCLI bolunme; hicbiri
-  # yeni davranis eklemez, mevcut sorumlulari ayirir ve bakim ratchet'ini
-  # (799 satir / 24 fonksiyon) IHLAL ETMEDEN duzeltme yapilmasini saglar:
-  #   * helpers_pk_query_selection_canonical.R -- varolussal gereksinimlerin
-  #     YAPISAL kanoniklestirmesi (sozluk/es-anlamli tablosu DEGIL),
-  #   * helpers_pk_rls_identity.R -- RLS kimlik/izin okumasi + TIPLI yetki
-  #     reddi mesaji (security_summary 400 satir butcesi korunur),
-  #   * helpers_pk_sql_statements.R -- maskelenmis SQL uzerinde ust duzey
-  #     ifade yapisi cozumlemesi (noktali virgulsuz ikinci ifade tespiti),
-  #   * helpers_pk_precision.R -- integer64 kesinlik korumasi,
-  #   * helpers_pk_entity_tree.R -- filtre agacinda mantik grubu gezintisi.
+  # (açık AND/OR gruplarının inert değerlendiricisi; eval(parse()) yerine) ve
+  # helpers_pk_entity_context.R (D11 devralınan bağlam anahtarı/kaydı). 79 -> 81.
+  # PR #705 inceleme düzeltmeleri: 81 -> 85. Dört BİLİNÇLİ bölünme; hiçbiri
+  # yeni davranış eklemez, mevcut sorumluları ayırır ve bakım ratchet'ini
+  # (799 satır / 24 fonksiyon) İHLAL ETMEDEN düzeltme yapılmasını sağlar:
+  #   * helpers_pk_query_selection_canonical.R -- varoluşsal gereksinimlerin
+  #     YAPISAL kanonikleştirmesi (sözlük/eş anlamlı tablosu DEĞİL),
+  #   * helpers_pk_rls_identity.R -- RLS kimlik/izin okuması + TİPLİ yetki
+  #     reddi mesajı (security_summary 400 satır bütçesi korunur),
+  #   * helpers_pk_sql_statements.R -- maskelenmiş SQL üzerinde üst düzey
+  #     ifade yapısı çözümlemesi (noktalı virgülsüz ikinci ifade tespiti),
+  #   * helpers_pk_precision.R -- integer64 kesinlik koruması,
+  #   * helpers_pk_entity_tree.R -- filtre ağacında mantık grubu gezintisi.
   # 81 -> 86.
   # PR #705 takibi: manifest dışı dinamik `source()` kaldırıldı; PK çekirdek
   # gövdesi ve P1 çalışma zamanı guard'ları bu bölüme AÇIKÇA eklendi (86 -> 88).

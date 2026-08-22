@@ -2,13 +2,13 @@
 # =============================================================================
 # tools/pk_phase_status.sh
 #
-# Proje ve Kaynak Analizi yeniden yapim fazlarinin GERCEK birlesme durumunu
-# git gecmisinden turetir. `.ai/pk-rebuild-progress.md` icindeki elle yazilan
-# durum tablosu, PR'i ACAN oturum tarafindan yazildigi ve o oturum birlesme
-# gerceklesmeden once sona erdigi icin YAPISAL OLARAK bayatlar. Dort ardisik
-# fazda bayat kaldi. Bu betik, hatirlamaya dayali adimi tek bir komuta cevirir.
+# Proje ve Kaynak Analizi yeniden yapım fazlarının GERÇEK birleşme durumunu
+# git geçmişinden türetir. `.ai/pk-rebuild-progress.md` içindeki elle yazılan
+# durum tablosu, PR'i AÇAN oturum tarafından yazıldığı ve o oturum birleşme
+# gerçekleşmeden önce sona erdiği için YAPISAL OLARAK bayatlar. Dört ardışık
+# fazda bayat kaldı. Bu betik, hatırlamaya dayalı adımı tek bir komuta çevirir.
 #
-# Kullanim:
+# Kullanım:
 #   bash tools/pk_phase_status.sh              # origin/pk/rebuild
 #   bash tools/pk_phase_status.sh <ref>        # baska bir entegrasyon dali
 #
@@ -17,9 +17,12 @@
 #
 # Betik SALT OKUNURDUR: hicbir dosyayi degistirmez, hicbir sey push etmez.
 #
-# ASCII-only: Windows/Turkce yerelde `source`/parse guvenligi icin (depo
-# genelindeki operasyonel giris betigi kurali). Bu dosyada Unicode noktalama
-# (uzun tire, paragraf isareti) BULUNMAZ; bayt duzeyi ASCII iddiasi
+# WINDOWS-1254 GUVENLI (CLAUDE.md §1G): Turkce harfler (ç ğ ı İ ö ş ü ...)
+# CP1254'te TEMSIL EDILEBILIR ve operator ciktisinda korunur; CP1254'te
+# KARSILIGI OLMAYAN karakterler (uzun tire, paragraf isareti, emoji) BULUNMAZ.
+# Onceki "bayt duzeyi ASCII" kurali Turkce metni Latinlestirmeye zorluyordu;
+# oysa bu bir bash betigidir, R hicbir zaman `source()` etmez ve Turkce
+# Windows konsolunun kod sayfasi zaten CP1254'tur. Iddia
 # tests/testthat/test-pk-phase-status-contract.R tarafindan korunur.
 #
 # DOGRULUK SINIRI (bilerek acik yazilmistir): bu betik BIRLESME COMMIT'lerini
@@ -38,21 +41,21 @@ REF="${1:-origin/pk/rebuild}"
 # birlesmeler entegre olmus gibi raporlanir.
 case "${REF}" in
   -*)
-    echo "HATA: '<ref>' bir secenek olamaz ('${REF}'). Gecerli bir commit referansi verin." >&2
+    echo "HATA: '<ref>' bir seçenek olamaz ('${REF}'). Geçerli bir commit referansı verin." >&2
     exit 2
     ;;
 esac
 
 if ! git rev-parse --verify --quiet "${REF}^{commit}" >/dev/null 2>&1; then
-  echo "HATA: '${REF}' bir commit referansina cozulemedi. Once 'git fetch origin' calistirin." >&2
+  echo "HATA: '${REF}' bir commit referansına çözülemedi. Önce 'git fetch origin' çalıştırın." >&2
   exit 1
 fi
 
 # Sig (shallow) klonda eski faz birlesmeleri gecmiste HIC BULUNMAZ; o halde
 # "birlesmemis" ciktisi tamamen yaniltici olur.
 if [ "$(git rev-parse --is-shallow-repository 2>/dev/null || echo false)" = "true" ]; then
-  echo "HATA: Depo sig (shallow) klondur; faz gecmisi eksik olabilir." >&2
-  echo "      Once 'git fetch --unshallow' calistirin." >&2
+  echo "HATA: Depo sığ (shallow) klondur; faz geçmişi eksik olabilir." >&2
+  echo "      Önce 'git fetch --unshallow' çalıştırın." >&2
   exit 1
 fi
 
@@ -63,26 +66,26 @@ fi
 case "${REF}" in
   origin/*)
     if [ "${PK_PHASE_SKIP_REMOTE_CHECK:-0}" = "1" ]; then
-      echo "UYARI: Uzak tazelik dogrulamasi atlandi; cikti BAYAT olabilir." >&2
+      echo "UYARI: Uzak tazelik doğrulaması atlandı; çıktı BAYAT olabilir." >&2
     else
       uzak_dal="${REF#origin/}"
       uzak_sha="$(git ls-remote origin "refs/heads/${uzak_dal}" 2>/dev/null | awk '{print $1}' | head -n 1)"
       if [ -z "${uzak_sha}" ]; then
-        echo "HATA: 'origin/${uzak_dal}' uzak referansi dogrulanamadi (agsiz olabilirsiniz)." >&2
-        echo "      Cevrimdisi calisiyorsaniz PK_PHASE_SKIP_REMOTE_CHECK=1 ile calistirin." >&2
+        echo "HATA: 'origin/${uzak_dal}' uzak referansı doğrulanamadı (ağsız olabilirsiniz)." >&2
+        echo "      Çevrimdışı çalışıyorsanız PK_PHASE_SKIP_REMOTE_CHECK=1 ile çalıştırın." >&2
         exit 1
       fi
       yerel_sha="$(git rev-parse "${REF}")"
       if [ "${uzak_sha}" != "${yerel_sha}" ]; then
         echo "HATA: '${REF}' bayat. Uzak=${uzak_sha} Yerel=${yerel_sha}." >&2
-        echo "      Once 'git fetch origin' calistirin." >&2
+        echo "      Önce 'git fetch origin' çalıştırın." >&2
         exit 1
       fi
     fi
     ;;
 esac
 
-echo "PK faz birlesme durumu - referans: ${REF} ($(git rev-parse --short "${REF}"))"
+echo "PK faz birleşme durumu - referans: ${REF} ($(git rev-parse --short "${REF}"))"
 echo
 
 # BIRINCI EBEVEYN gecmisi. Birinci ebeveyn kisiti olmadan `git log` bir ozellik
