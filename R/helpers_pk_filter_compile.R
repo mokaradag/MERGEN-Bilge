@@ -82,7 +82,13 @@ PK_FILTER_AND_TOKENS <- c("and", "ve", "all", "tumu", "hepsi")
 # çevrilmez; yaprak düşürülür (aksi hâlde "Durum = belirsiz" sessizce
 # "Durum = FALSE" olur ve yanlış bir alt küme doğruymuş gibi raporlanır).
 .PK_FILTER_TRUE_TOKENS <- c("true", "t", "1", "evet", "e", "yes", "y", "aktif", "var")
-.PK_FILTER_FALSE_TOKENS <- c("false", "f", "0", "hayir", "h", "no", "n", "pasif", "yok")
+# Türkçe yazım da kapsanır: `.pk_filter_ascii_lower()` yalnız `A-Z` katlar,
+# bu yüzden noktasız `ı` taşıyan `hayır` biçimi `hayir`e DÖNÜŞMEZ. Doğru
+# Türkçe yazan bir model çıktısı sözlük dışı sayılıp yaprağı düşürüyordu.
+# Sözcük burada listelenir; `.pk_filter_fold()` çağırmak bu yola `stringi`
+# zorunluluğu ve kapalı başarısızlık riski eklerdi.
+.PK_FILTER_FALSE_TOKENS <- c("false", "f", "0", "hayir", "hayır", "h", "no", "n",
+                             "pasif", "yok")
 
 # bit64::integer64 sütunlarını KAYIPSIZ karşılaştır.
 #
@@ -277,11 +283,31 @@ pk_filter_normalize_leaf <- function(f) {
 
   yalniz_tarih <- grepl("^\\d{4}-\\d{2}-\\d{2}$", trimws(leaf$values))
 
+  # GÜN SONU TAKVİMDEN KURULUR, SABİT SANİYEDEN DEĞİL.
+  #
+  # Yerel gece yarısına `86399.999` saniye eklemek YAZ SAATİ geçiş gününde
+  # bozulur: bir saat kaybeden günde sınır ERTESİ günün `23:59:59`una,
+  # bir saat kazanan günde `22:59:59`a düşer. `less_or_equal 2024-03-31`
+  # o zaman ertesi günün satırlarını içeri alır ya da istenen günün son
+  # saatini dışarıda bırakır. Sütunun zaman dilimi `attr(col_vals, "tzone")`
+  # ile geldiği için DST'li bir bölge ERİŞİLEBİLİRDİR. Doğru üst sınır,
+  # ERTESİ GÜNÜN BAŞLANGICINDAN bir milisaniye öncesidir; bu, günün gerçek
+  # uzunluğundan bağımsızdır.
   ayrist <- function(metin, gun_sonu) {
     suppressWarnings(tryCatch({
       if (grepl("^\\d{4}-\\d{2}-\\d{2}$", trimws(metin))) {
         temel <- as.POSIXct(paste0(trimws(metin), " 00:00:00"), tz = tz)
-        if (isTRUE(gun_sonu)) temel <- temel + 86399.999
+        if (isTRUE(gun_sonu)) {
+          gun <- as.Date(trimws(metin))
+          ertesi <- as.POSIXct(paste0(format(gun + 1L), " 00:00:00"), tz = tz)
+          # Ertesi gün yerel gece yarısı YOKSA (ileri atlayan bölge) eski
+          # davranışa düşülür; sessizce NA sınır üretilmez.
+          temel <- if (length(ertesi) == 1L && !is.na(ertesi)) {
+            ertesi - 0.001
+          } else {
+            temel + 86399.999
+          }
+        }
         temel
       } else {
         as.POSIXct(trimws(metin), tz = tz)

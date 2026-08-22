@@ -86,6 +86,10 @@ pk_cache_rls_signature <- function(rls_info) {
   paste0("nohash:", .pk_cache_unique_token())
 }
 
+# Sıra TAŞIMAYAN (küme anlamlı) yetki kapsamı alanları. Yalnızca bunlar
+# sıralanır/tekilleştirilir; başka alanların sırası anlam taşıyabilir.
+.PK_CACHE_SET_FIELDS <- c("allowed_projects", "allowed_eps", "allowed_depts")
+
 # Kanonik kodlama: her parça `<bayt uzunluğu>:<içerik>` biçimindedir, bu yüzden
 # ayırıcı içeren değerler farklı bir yapıyı TAKLİT EDEMEZ.
 .pk_cache_canonical_encode <- function(rls_info, alanlar) {
@@ -103,6 +107,16 @@ pk_cache_rls_signature <- function(rls_info) {
     ogeler <- tryCatch(as.character(unlist(deger, use.names = FALSE)),
                        error = function(e) "<unserializable>")
     if (!length(ogeler)) ogeler <- character(0)
+
+    # KÜME DEĞERLİ YETKİ KAPSAMLARI KANONİKLEŞTİRİLİR. `allowed_projects`,
+    # `allowed_eps` ve `allowed_depts` birer KÜMEDİR; onları besleyen izin
+    # sorgularında `ORDER BY` yoktur, dolayısıyla aynı yetki bir istekte
+    # `c("P1","P2")`, diğerinde `c("P2","P1")` gelebilir. Sıralamadan önce
+    # imza FARKLI çıkıyor ve önbellek DB satır sırasına bağlı olarak ıskalıyordu.
+    # Gerçekten sıra duyarlı alanlar DEĞİŞMEDEN kalır.
+    if (ad %in% .PK_CACHE_SET_FIELDS && length(ogeler)) {
+      ogeler <- sort(unique(ogeler[!is.na(ogeler)]), method = "radix")
+    }
     paste0(
       parca(ad),
       parca(as.character(length(ogeler))),

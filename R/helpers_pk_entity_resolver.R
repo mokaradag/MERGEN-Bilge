@@ -398,14 +398,20 @@ pk_entity_resolve <- function(phrase, candidates, aliases = NULL,
   # bayrağı kalkar. Bu durumda `fark` (tepe ile ikinci arasındaki marj)
   # ÖLÇÜLMEMİŞTİR: elenen bir aday tepe puanla eşit olabilir ve gerçekte
   # netleştirme gerekirdi. Tek aday kaldığında marj `Inf` görünür ve karar
-  # sessizce `auto` olur; yani kullanıcının kastetmediği bir varlık üzerinden
-  # analiz üretilir. Ölçülmemiş marj üzerinden otomatik/onaylı karar verilmez;
-  # kullanıcıya SORULUR.
+  # sessizce `auto` olur. Ölçülmemiş marj üzerinden karar verilmez; SORULUR.
   # `phrase_truncated` aynı sınıftan bir kusurdur: ifade kırpıldıysa puanlama
   # kullanıcının SÖYLEDİĞİ metnin tamamı üzerinden yapılmamıştır.
   if ((isTRUE(puanlar$scan_truncated) || isTRUE(puanlar$phrase_truncated)) &&
       !.pk_entity_has_unique_exact(eslesmeler)) {
-    netlestirme <- pk_entity_clarification(eslesmeler, esikler$max_candidates)
+    # KIRPILMIŞ KISA LİSTE HİÇ ADAY TAŞIMAYABİLİR; netleştirme SIFIR seçenekle
+    # üretilirdi. `.pk_entity_below_threshold_decision()` ile AYNI kurtarma
+    # kümesi kullanılır ve eşiği geçmedikleri için "Tümü" kapalıdır.
+    aday_kumesi <- if (length(eslesmeler)) eslesmeler else
+      pk_entity_nearest_candidates(phrase, candidates, esikler$max_candidates,
+                                   query_meta = query_meta)
+    netlestirme <- pk_entity_clarification(
+      aday_kumesi, esikler$max_candidates, allow_all = length(eslesmeler) > 0L
+    )
     return(.pk_entity_decision(
       "clarify", rule = 2L,
       message_tr = paste0(

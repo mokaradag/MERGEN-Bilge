@@ -85,7 +85,11 @@ pk_entity_context_remember <- function(session, decisions, query = NULL) {
   for (karar in rev(kararlar)) {
     if (!is.list(karar) || !identical(karar$decision, "auto")) next
     if (!length(karar$values)) next
-    if (!identical(as.character(karar$entity_role %||% "subject")[1], "subject")) next
+    # ROL BEYAN EDİLMEMİŞSE DEVRALINMAZ. Varsayılan `subject`, `entity_role`
+    # alanını yazmayan bir üreticinin İKİNCİL daraltmasını sessizce sonraki
+    # soruya taşırdı; kullanıcının sormadığı bir kısıt devralınmış olurdu.
+    # Üretim üreticisi (`helpers_pk_entity_apply.R`) alanı HER ZAMAN yazar.
+    if (!identical(as.character(karar$entity_role %||% "")[1], "subject")) next
 
     sutun <- as.character(karar$column %||% "")[1]
     if (is.na(sutun) || !nzchar(sutun)) next

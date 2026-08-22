@@ -146,3 +146,79 @@ test_that("atomik kimlik çözümleyici sonucu derin analizi düşürmez", {
   )
   expect_identical(yapili$reason, "sso_pending")
 })
+
+test_that("küme değerli yetki kapsamı DB satır sırasından bağımsızdır", {
+  ortam <- .p3_705_source("helpers_pk_cache_key.R")
+
+  # İzin sorgularında `ORDER BY` yoktur: aynı yetki bir istekte
+  # `c("P1","P2")`, diğerinde `c("P2","P1")` gelebilir.
+  a <- list(authorized = TRUE, allowed_projects = c("P1", "P2"),
+            allowed_eps = c("E2", "E1"), allowed_depts = c("D1"), rol = "X")
+  b <- list(authorized = TRUE, allowed_projects = c("P2", "P1"),
+            allowed_eps = c("E1", "E2"), allowed_depts = c("D1"), rol = "X")
+  expect_identical(ortam$pk_cache_rls_signature(a), ortam$pk_cache_rls_signature(b))
+
+  # GERÇEKTEN FARKLI kapsam hâlâ ayrılır (yetki sınırı zayıflamaz).
+  dar <- list(authorized = TRUE, allowed_projects = c("P1"),
+              allowed_eps = c("E1", "E2"), allowed_depts = c("D1"), rol = "X")
+  expect_false(identical(ortam$pk_cache_rls_signature(a),
+                         ortam$pk_cache_rls_signature(dar)))
+
+  # Sıra duyarlı (küme olmayan) alanlar DEĞİŞMEDEN kalır.
+  s1 <- list(authorized = TRUE, allowed_projects = c("P1"), sirali = c("b", "a"))
+  s2 <- list(authorized = TRUE, allowed_projects = c("P1"), sirali = c("a", "b"))
+  expect_false(identical(ortam$pk_cache_rls_signature(s1),
+                         ortam$pk_cache_rls_signature(s2)))
+})
+
+test_that("Türkçe `hayır` yazımı mantıksal yaprağı düşürmez", {
+  ortam <- .p3_705_source("helpers_pk_ascii_tokens.R", "helpers_pk_filter_compile.R")
+
+  sutun <- c(TRUE, FALSE, TRUE)
+  maske <- ortam$.pk_filter_mask_logical(sutun, list(values = "hayır"))
+  expect_identical(maske, c(FALSE, TRUE, FALSE))
+
+  # ASCII yazım ve büyük harf biçimleri de çalışmaya devam eder.
+  expect_identical(ortam$.pk_filter_mask_logical(sutun, list(values = "hayir")),
+                   c(FALSE, TRUE, FALSE))
+  expect_identical(ortam$.pk_filter_mask_logical(sutun, list(values = "HAYIR")),
+                   c(FALSE, TRUE, FALSE))
+  expect_identical(ortam$.pk_filter_mask_logical(sutun, list(values = "evet")),
+                   c(TRUE, FALSE, TRUE))
+
+  # SÖZLÜK DIŞI değer HÂLÂ yaprağı düşürür (FALSE'a çevrilmez).
+  expect_null(ortam$.pk_filter_mask_logical(sutun, list(values = "belirsiz")))
+})
+
+test_that("kapsayıcı üst sınır YAZ SAATİ geçiş gününde günün tamamını kapsar", {
+  ortam <- .p3_705_source("helpers_pk_ascii_tokens.R", "helpers_pk_filter_compile.R")
+
+  # Şili 2024-04-06'da bir saat KAZANIR (25 saatlik gün). Sabit `86399.999`
+  # saniye eklemek sınırı günün son saatinden ÖNCE bitiriyordu.
+  tz <- "America/Santiago"
+  gec_kayit <- as.POSIXct("2024-04-06 23:30:00", tz = tz)
+  attr(gec_kayit, "tzone") <- tz
+
+  maske <- ortam$.pk_filter_mask_posix(
+    gec_kayit,
+    list(values = "2024-04-06", operation = "less_or_equal")
+  )
+  expect_identical(maske, TRUE)
+
+  # KATI karşılaştırma HÂLÂ gün başında biter.
+  kati <- ortam$.pk_filter_mask_posix(
+    gec_kayit,
+    list(values = "2024-04-06", operation = "less_than")
+  )
+  expect_identical(kati, FALSE)
+
+  # ERTESİ günün kaydı kapsayıcı sınıra GİRMEZ.
+  ertesi_kayit <- as.POSIXct("2024-04-07 00:30:00", tz = tz)
+  attr(ertesi_kayit, "tzone") <- tz
+  expect_identical(
+    ortam$.pk_filter_mask_posix(
+      ertesi_kayit, list(values = "2024-04-06", operation = "less_or_equal")
+    ),
+    FALSE
+  )
+})
