@@ -53,15 +53,17 @@
   stop(sprintf("%s bulunamadı.", filename), call. = FALSE)
 }
 
-source(
-  .pk_core_resolve_sibling("helpers_pk_analysis_core_impl.R"),
-  encoding = "UTF-8", local = environment()
-)
-
-if (exists("pk_async_run_analysis", mode = "function", inherits = TRUE) &&
-    exists("execute_single_deep_query", mode = "function", inherits = TRUE)) {
+# ÜRETİMDE MANİFEST YÜKLER.
+#
+# `R/helpers_pk_analysis_core_impl.R` ve `R/helpers_pk_p1_runtime_guards.R`
+# artık `R/config_source_manifest.R` içinde AÇIKÇA sıralanmıştır (impl bu
+# dosyadan ÖNCE, guard'lar SONRA). Manifest dışı dinamik `source()` bağımlılık
+# sırasını atlatıyor ve staged/asenkron dağıtımlarda yanlış ya da eksik yol
+# çözebiliyordu. Aşağıdaki guard YALNIZCA izole test/hata ayıklama
+# yüklemeleri içindir; manifest yolunda hiçbir zaman tetiklenmez.
+if (!exists("summarize_columns_for_ai", mode = "function", inherits = TRUE)) {
   source(
-    .pk_core_resolve_sibling("helpers_pk_p1_runtime_guards.R"),
+    .pk_core_resolve_sibling("helpers_pk_analysis_core_impl.R"),
     encoding = "UTF-8", local = environment()
   )
 }

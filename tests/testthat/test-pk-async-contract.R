@@ -37,6 +37,7 @@ test_that("Faz 6 dosyaları var ve manifestte DOĞRU SIRADA yer alır", {
     "R/helpers_pk_async_bootstrap.R",
     "R/helpers_pk_async_snapshot_validate.R",
     "R/helpers_pk_async_snapshot.R",
+    "R/helpers_pk_async_probe.R",
     "R/helpers_pk_async_plan.R",
     "R/helpers_pk_async_request.R",
     "R/helpers_pk_async_worker_sql.R",
@@ -69,6 +70,7 @@ test_that("Faz 6 dosyaları var ve manifestte DOĞRU SIRADA yer alır", {
     "R/helpers_pk_async_bootstrap.R",
     "R/helpers_pk_async_snapshot_validate.R",
     "R/helpers_pk_async_snapshot.R",
+    "R/helpers_pk_async_probe.R",
     "R/helpers_pk_async_plan.R",
     "R/helpers_pk_async_request.R",
     "R/helpers_pk_async_worker_sql.R",
@@ -387,7 +389,11 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # `future::value()` ile ana olay dongusunu BLOKE ETMEZ; `resolved()`
     # sinirli bir butce boyunca yoklanir ve SONUCSUZ sonda basari sayilmaz.
     # Tavan yine TAM olculen degere cekilmistir; fonksiyon sayisi ARTMAMISTIR.
-    "R/helpers_pk_async_plan.R" = c(242L, 18L),
+    # PR #705 takibi: işçi-PID sondası kendi dosyasına AYRILDI (bekleyen
+    # future'ı yeniden kullanır, ölçülemeyen sonucu soğuma penceresiyle
+    # hatırlar). Plan dosyası 242 -> 190 küçüldü; sonda kendi bütçesini taşır.
+    "R/helpers_pk_async_plan.R" = c(190L, 14L),
+    "R/helpers_pk_async_probe.R" = c(110L, 5L),
     "R/helpers_pk_async_request.R" = c(295L, 16L),
     "R/helpers_pk_async_worker_sql.R" = c(165L, 11L),
     # BILINCLI GUNCELLEME (PR #705 inceleme): 330 -> 355 satir (OLCULEN). Iki

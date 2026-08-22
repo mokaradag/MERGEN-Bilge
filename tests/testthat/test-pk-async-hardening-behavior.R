@@ -34,6 +34,7 @@ local({
   yukle("helpers_pk_async_worker_env.R")
   yukle("helpers_pk_async_worker_pool.R")
   yukle("helpers_pk_async_snapshot.R")
+  yukle("helpers_pk_async_probe.R")
   yukle("helpers_pk_async_plan.R")
   yukle("helpers_pk_async_request.R")
   yukle("helpers_pk_analysis_query_selection.R")

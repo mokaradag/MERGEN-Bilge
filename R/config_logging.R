@@ -57,6 +57,18 @@ mergen_log_dir_is_writable <- function(dir_path) {
   isTRUE(ok)
 }
 
+# İŞÇİ KİPİ LOG DİZİNİ DOĞRULAMASINDAN ÖNCE BELİRLENİR.
+#
+# Faz 6 (§5.10) PK future işçisi bu dosyayı KENDİ sürecinde source eder ve
+# aşağıda görüldüğü gibi işçide DOSYA appender'ı hiç kurulmaz. Buna rağmen
+# yazılabilirlik kapısı işçide de çalışıyordu: UNC günlük dizini işçiden
+# erişilemediğinde `stop()` tetikleniyor ve PK analizi hiç başlamadan
+# önyükleme başarısız oluyordu. İşçi yalnızca konsol appender'ı kullandığı için
+# günlük dizinini OLUŞTURMAZ ve DOĞRULAMAZ.
+mergen_logging_worker_mode <- isTRUE(tolower(trimws(
+  Sys.getenv("MERGEN_PK_WORKER_BOOTSTRAP", unset = "")
+)) %in% c("1", "true", "t", "yes", "on"))
+
 mergen_log_dir <- resolve_mergen_log_dir()
 
 # Birincil log dizinine yazılamıyorsa (ör. UNC paylaşımı erişilemez/izinsiz),
@@ -64,7 +76,8 @@ mergen_log_dir <- resolve_mergen_log_dir()
 # dizinine düşülür ve durum konsola yüksek sesle bildirilir. Bu, Haziran
 # regresyonundaki "konsol çalışıyor ama mergen_YYYYMMDD.log oluşmuyor"
 # durumunun sessizce sürmesini engeller.
-if (!mergen_log_dir_is_writable(mergen_log_dir)) {
+if (!isTRUE(mergen_logging_worker_mode) &&
+    !mergen_log_dir_is_writable(mergen_log_dir)) {
   fallback_log_dir <- normalizePath(
     file.path(getwd(), "logs"),
     winslash = "/", mustWork = FALSE
@@ -76,7 +89,8 @@ if (!mergen_log_dir_is_writable(mergen_log_dir)) {
   mergen_log_dir <- fallback_log_dir
 }
 
-if (!mergen_log_dir_is_writable(mergen_log_dir)) {
+if (!isTRUE(mergen_logging_worker_mode) &&
+    !mergen_log_dir_is_writable(mergen_log_dir)) {
   stop(sprintf("Log dizini oluşturulamadı/yazılamıyor: %s", mergen_log_dir))
 }
 
@@ -150,9 +164,8 @@ log_file_path <- current_mergen_log_file_path()
 # arızaları tam da güvenilir başlangıç/hata kronolojisi gerektirdiğinden bu
 # kaynak-zamanı kurulum ANA SÜREÇLE SINIRLIDIR; konsol appender'ı işçide de
 # çalışır, dolayısıyla `log_*()` çağrıları sessizleşmez.
-mergen_logging_worker_mode <- isTRUE(tolower(trimws(
-  Sys.getenv("MERGEN_PK_WORKER_BOOTSTRAP", unset = "")
-)) %in% c("1", "true", "t", "yes", "on"))
+# (`mergen_logging_worker_mode` dosyanın BAŞINDA, log dizini doğrulamasından
+# ÖNCE çözülür.)
 
 # Çoklu appender yapılandırması
 # Dosya logu düz metin olmalı

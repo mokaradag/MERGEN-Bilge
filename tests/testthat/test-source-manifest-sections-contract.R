@@ -189,7 +189,9 @@
   #   * helpers_pk_precision.R -- integer64 kesinlik korumasi,
   #   * helpers_pk_entity_tree.R -- filtre agacinda mantik grubu gezintisi.
   # 81 -> 86.
-  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_query_selection_apply.R", n = 86L),
+  # PR #705 takibi: manifest dışı dinamik `source()` kaldırıldı; PK çekirdek
+  # gövdesi ve P1 çalışma zamanı guard'ları bu bölüme AÇIKÇA eklendi (86 -> 88).
+  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_query_selection_apply.R", n = 90L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
   # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
@@ -569,7 +571,14 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # çıpası açıklaması): kanonikleştirme, RLS kimlik/izin, SQL ifade yapısı,
   # integer64 kesinliği ve filtre ağacı gezintisi. Beşi de BİLİNÇLİ ratchet
   # bölünmesidir; hiçbiri yeni davranış eklemez.
-  expect_equal(length(runtime), 466L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # PR #705 inceleme takibi: `helpers_pk_analysis_core_impl.R` ve
+  # `helpers_pk_p1_runtime_guards.R` manifest DIŞI dinamik `source()` ile
+  # yükleniyordu; ikisi de artık AÇIKÇA sıralanır (impl çekirdekten önce,
+  # guard'lar sonra). 466 -> 468; yeni davranış yok, yalnızca yükleme sahipliği
+  # manifeste taşındı.
+  # `helpers_pk_async_probe.R`: işçi-PID sondası `helpers_pk_async_plan.R`
+  # içinden AYRILDI (ratchet bölünmesi). 468 -> 469.
+  expect_equal(length(runtime), 470L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

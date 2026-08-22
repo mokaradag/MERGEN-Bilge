@@ -71,6 +71,7 @@ soak_pk_bootstrap <- function() {
     "R/helpers_pk_async_bootstrap.R",
     "R/helpers_pk_async_snapshot_validate.R",
     "R/helpers_pk_async_snapshot.R",
+    "R/helpers_pk_async_probe.R",
     "R/helpers_pk_async_plan.R",
     "R/helpers_pk_async_request.R",
     "R/helpers_pk_async_worker_sql.R",

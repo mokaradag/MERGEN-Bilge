@@ -196,7 +196,14 @@ pk_deep_observation_helpers <- function(session, conn, username, user_prompt,
     }
 
     tryCatch({
-      gozlem_conn <- conn
+      # SAĞLAYICI VARSA YAKALANMIŞ `conn` YEDEK OLARAK KULLANILMAZ.
+      #
+      # Derin analiz çekirdeği birincil bağlantıyı RLS okumasından hemen sonra
+      # BIRAKIR. `conn_provider` verildiği hâlde kısa ömürlü bağlantı
+      # açılamazsa, yakalanmış `conn` ARTIK GEÇERSİZDİR; havuzlu kurulumda o
+      # tanıtıcı BAŞKA bir oturumun elinde olabilir. Telemetri fail-soft'tur:
+      # bağlantı yoksa gözlem sessizce atlanır ("" döner).
+      gozlem_conn <- if (is.function(conn_provider)) NULL else conn
       if (is.function(conn_provider)) {
         saglayici <- try(conn_provider(), silent = TRUE)
         if (!inherits(saglayici, "try-error") && is.list(saglayici)) {
@@ -205,6 +212,7 @@ pk_deep_observation_helpers <- function(session, conn, username, user_prompt,
             on.exit(try(saglayici$release(), silent = TRUE), add = TRUE)
           }
         }
+        if (is.null(gozlem_conn)) return("")
       }
       footer <- pk_analysis_observe(session, gozlem_conn, info)
       footer <- as.character(footer)[1]

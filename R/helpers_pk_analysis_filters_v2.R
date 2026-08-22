@@ -80,7 +80,21 @@ pk_apply_smart_filters_v2 <- function(data, filter_instructions, query = NULL) {
 
   filters <- filter_instructions$filters %||% list()
   aggregation <- filter_instructions$aggregation
-  group_col <- filter_instructions$group_column
+  # GRUPLAMA SÜTUNU TEK BİR KARAKTER DEĞERE İNDİRGENİR.
+  #
+  # `simplifyVector = FALSE` ile ayrıştırılan model çıktısında birden çok grup
+  # sütunu LİSTE olarak gelir. `group_col %in% names(dt)` o zaman uzunluğu
+  # birden büyük bir vektör üretir ve R 4.3+ `&&` içinde HATA fırlatır; ayrıca
+  # `by =` argümanına liste geçmek data.table tarafında tanımsız davranıştır.
+  group_col <- local({
+    ham <- filter_instructions$group_column
+    if (is.null(ham)) return(NULL)
+    duz <- unlist(ham, use.names = FALSE)
+    duz <- as.character(duz)
+    duz <- duz[!is.na(duz) & nzchar(trimws(duz))]
+    if (!length(duz)) return(NULL)
+    trimws(duz[1])
+  })
 
   sonuc_ekle <- function(df, matched_rows, karar) {
     attr(df, PK_FILTER_V2_ATTR) <- karar

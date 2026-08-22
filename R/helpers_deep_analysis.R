@@ -398,7 +398,10 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
   on.exit(birak_conn(), add = TRUE)
 
   deep_observers <- pk_deep_observation_helpers(
-    session = session, conn = conn, username = username,
+    # `conn` BİLİNÇLİ OLARAK VERİLMEZ: birincil bağlantı aşağıda RLS
+    # okumasından hemen sonra `birak_conn()` ile bırakılır. Gözlem katmanı
+    # kendi kısa ömürlü bağlantısını `conn_provider` ile açar.
+    session = session, conn = NULL, username = username,
     user_prompt = user_prompt, request_id = pk_request_id,
     started_at = pk_started_at,
     # Telemetri KENDİ kısa ömürlü bağlantısını açar; böylece birincil bağlantı

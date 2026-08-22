@@ -24,7 +24,7 @@ local({
 
   for (dosya in c("helpers_pk_config.R", "helpers_pk_async_cancel.R",
                   "helpers_pk_async_worker_env.R", "helpers_pk_async_worker_pool.R", "helpers_pk_async_bootstrap.R", "helpers_pk_async_snapshot_validate.R", "helpers_pk_async_snapshot.R",
-                  "helpers_pk_async_plan.R", "helpers_pk_async_request.R")) {
+                  "helpers_pk_async_probe.R", "helpers_pk_async_plan.R", "helpers_pk_async_request.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = globalenv())
   }
 })

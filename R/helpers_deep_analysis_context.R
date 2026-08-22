@@ -336,13 +336,33 @@ pk_deep_fit_context_budget <- function(system_prompt, user_context, data_blocks,
   sonuc_sonu <- "\n\n--- SONUÇLAR SONU ---"
   dusen_blok <- 0L
 
+  # KIRPMA SINIRI SORGU BLOĞUNUN SONUNDA BİTER, SONUÇ SONLANDIRICISINDA DEĞİL.
+  #
+  # `user_context` sırası: sorgu blokları -> BAŞARISIZ SORGULAR notu -> EKSİK
+  # ANALİZ UYARISI -> `--- SONUÇLAR SONU ---`. Silinen aralık son bloktan
+  # doğrudan sonuç sonlandırıcısına kadar uzatıldığında ARADAKİ iki uyarı da
+  # siliniyordu: model hangi sorguların veri döndüremediğini ve analizin EKSİK
+  # olduğunu öğrenemiyor, kullanıcıya da bildirilmiyordu. Aralık bu yüzden
+  # `bas` konumundan sonra gelen İLK sonlandırıcıda biter. Uyarı blokları
+  # sorgu bloklarıyla AYNI ayraç çizgisini kullanır ama işaretleri farklıdır
+  # (uyarı üçgeni / grafik simgesi), bu yüzden yapısal olarak ayırt edilir.
+  uyari_isareti <- "\n\n==========================================\n\U000026A0\U0000FE0F "
+  .ilk_sonlandirici <- function(metin, bas) {
+    kuyruk_metni <- substr(metin, bas, nchar(metin))
+    konum <- Inf
+    for (aday in c(uyari_isareti, sonuc_sonu)) {
+      k <- regexpr(aday, kuyruk_metni, fixed = TRUE)
+      if (k[1] > 0L) konum <- min(konum, bas + k[1] - 1L)
+    }
+    if (is.finite(konum)) konum else nchar(metin) + 1L
+  }
+
   while (toplam(kirpilmis) > kirpma_hedefi) {
     konumlar <- gregexpr(blok_isareti, kirpilmis, fixed = TRUE)[[1]]
     if (konumlar[1] < 1L) break
 
     bas <- konumlar[length(konumlar)]
-    kuyruk <- regexpr(sonuc_sonu, substr(kirpilmis, bas, nchar(kirpilmis)), fixed = TRUE)
-    son <- if (kuyruk[1] > 0L) bas + kuyruk[1] - 1L else nchar(kirpilmis) + 1L
+    son <- .ilk_sonlandirici(kirpilmis, bas)
 
     # Yerine konan metin blok işaretiyle EŞLEŞMEZ; döngü her turda kısalır.
     kirpilmis <- paste0(

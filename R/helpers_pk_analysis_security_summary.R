@@ -333,7 +333,15 @@ apply_rls_to_data <- function(data, user_info, rls_cols) {
 
   filtered_data <- data
   for (predikat in plan$predicates) {
-    filtered_data <- filtered_data[filtered_data[[predikat$column]] %in% predikat$values, ]
+    # `drop = FALSE` ZORUNLUDUR.
+    #
+    # Sonuç kümesi TEK sütunlu olduğunda (yalnızca RLS sütununu döndüren bir
+    # sorgu) `[i, ]` çerçeveyi VEKTÖRE indirir: `nrow()` NULL olur, `cat()`
+    # hata verir, ikinci predikat `[[` üzerinde çöker ve fonksiyon
+    # `pk_build_analysis_result()` çağrısına çerçeve yerine vektör döndürür.
+    filtered_data <- filtered_data[
+      filtered_data[[predikat$column]] %in% predikat$values, , drop = FALSE
+    ]
     cat(sprintf(
       "[PK_ANALIZ] RLS predikati '%s' sonrasi: %d satir\n",
       predikat$column, nrow(filtered_data)

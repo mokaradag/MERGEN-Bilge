@@ -207,6 +207,8 @@ test_that("isci PID sondasi ana olay dongusunu BLOKE ETMEZ ve sonucsuz sonda bas
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
+  source(file.path(repo_root, "R", "helpers_pk_async_probe.R"),
+         encoding = "UTF-8", local = env)
   source(file.path(repo_root, "R", "helpers_pk_async_plan.R"),
          encoding = "UTF-8", local = env)
 

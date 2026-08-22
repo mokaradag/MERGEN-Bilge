@@ -245,25 +245,16 @@ pk_select_decide <- function(pass_b, candidates_ids, library_index, cfg,
     ))
   }
 
-  # --- `not_for` DIŞLAMASI: güven/marj kapılarından ÖNCE ve KOŞULSUZ RED ----
-  #
-  # `pk_retrieval_agreement()` seçilen sorgunun KENDİ `not_for` kaydı bu isteme
-  # uyduğunda `excluded_by_not_for = TRUE` döner. Bu, "sinyal zayıf" değil,
-  # metadata'nın AÇIK olumsuz kanıtıdır. Karar katmanı bu alanı hiç okumuyor,
-  # yalnızca uyuşmazlık cezasını uyguluyordu; güven ve marj kapıları geçtiğinde
-  # `auto` dönüp `not_for` ile REDDEDİLEN sorgu çalıştırılabiliyordu.
+  # `not_for` DIŞLAMASI: güven/marj kapılarından ÖNCE ve KOŞULSUZ RED. Bu alan
+  # metadata'nın AÇIK olumsuz kanıtıdır; okunmadığı için kapılar geçtiğinde
+  # `auto` dönüp REDDEDİLEN sorgu çalıştırılabiliyordu.
   if (isTRUE(lexical$excluded_by_not_for)) {
     return(do.call(.pk_select_decision, c(
-      list(
-        PK_SELECT_STATUS_CAPABILITY_MISSING,
-        message_tr = paste0(
-          "Seçilen analizin tanımı bu tür bir soru için UYGUN OLMADIĞINI ",
-          "açıkça belirtiyor; yanlış bir sonuç üretmemek adına analiz ",
-          "çalıştırılmadı. Lütfen aşağıdaki seçeneklerden birini belirtin ya ",
-          "da sorunuzu netleştirin."
-        ),
-        chips = cipler, disclosures = aciklamalar
-      ),
+      list(PK_SELECT_STATUS_CAPABILITY_MISSING, message_tr = paste0(
+        "Seçilen analizin tanımı bu tür bir soru için UYGUN OLMADIĞINI açıkça ",
+        "belirtiyor; yanlış bir sonuç üretmemek adına analiz çalıştırılmadı. ",
+        "Lütfen aşağıdaki seçeneklerden birini belirtin ya da sorunuzu netleştirin."
+      ), chips = cipler, disclosures = aciklamalar),
       ortak
     )))
   }

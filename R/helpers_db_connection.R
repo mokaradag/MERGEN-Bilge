@@ -354,13 +354,34 @@ worker_db_connect <- function(max_retries = 3, retry_delay = 1) {
         stop("Worker needs 'odbc' and 'DBI' packages installed.", call. = FALSE)
       }
 
-      conn <- DBI::dbConnect(
-        odbc::odbc(),
-        dsn = Sys.getenv("DB_DSN", .DEFAULT_DSN),
-        encoding = .DEFAULT_DB_CLIENT_ENCODING,
-        name_encoding = .DEFAULT_DB_NAME_ENCODING,
-        interruptible = TRUE
-      )
+      # İŞÇİ BAĞLANTISI DA İSTEK BÜTÇESİNE TABİDİR.
+      #
+      # `get_connection()` ile AYNI sözleşme: `setTimeLimit()` ODBC bağlantı
+      # KURULUMUNU kesemez, bu yüzden sınır sürücüye `timeout` ile devredilir.
+      # Bütçe her denemede YENİDEN okunur; aksi hâlde asılı bir DSN/login
+      # gecikmeyi `max_retries` katına çıkarıp analiz son tarihini aşardı.
+      conn_budget <- .db_pk_residual_budget_sec()
+      login_plan <- .db_login_timeout_plan(conn_budget)
+      if (identical(login_plan$mode, "refuse")) {
+        stop("PK istek butcesi login zaman asimini temsil edemiyor; baglanti acilmadi.",
+             call. = FALSE)
+      }
+
+      conn <- .db_with_elapsed_budget(conn_budget, function() {
+        baglanti_args <- list(
+          odbc::odbc(),
+          dsn = Sys.getenv("DB_DSN", .DEFAULT_DSN),
+          encoding = .DEFAULT_DB_CLIENT_ENCODING,
+          name_encoding = .DEFAULT_DB_NAME_ENCODING,
+          interruptible = TRUE
+        )
+        # `driver_default` kipinde `timeout` HİÇ GEÇİLMEZ: PK dışı işçilerin
+        # sürücü varsayılanı korunur.
+        if (identical(login_plan$mode, "bounded")) {
+          baglanti_args$timeout <- login_plan$timeout
+        }
+        do.call(DBI::dbConnect, baglanti_args)
+      })
 
       return(conn)
     }, error = function(e) {

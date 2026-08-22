@@ -335,7 +335,12 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
         # yapraklar içindir.
         if (.pk_filter_base_is_group(f)) return(f)
 
-        col_lower <- tolower(f$column %||% "")
+        # YERELDEN BAĞIMSIZ KATLAMA: Türkçe yerelde `tolower("I")` NOKTASIZ
+        # `ı` üretir. `AKTIFKAYNAK` sütunu bu yüzden Windows VM'de
+        # `aktıfkaynak` olur, `aktif|active|durum|status` deseni EŞLEŞMEZ ve
+        # `EVET` metni `1` alanına karşı derlenip HİÇBİR satırı tutmaz.
+        # Sütun adları makine belirtecidir; ASCII katlama doğru sözleşmedir.
+        col_lower <- .pk_filter_base_ascii_lower(f$column %||% "")
         val_raw <- f$value %||% ""
 
         # ÇOK DEĞERLİ YAPRAK (aynı sütun içi VEYA) bu kısayoldan MUAFTIR.
@@ -351,11 +356,22 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
         if (length(val_flat) != 1L) return(f)
 
         if (grepl("aktif|active|durum|status", col_lower, perl = TRUE)) {
-          val_lower <- tolower(val_flat)
-          if (val_lower %in% c("y", "yes", "evet", "aktif", "active", "1", "true")) {
+          # DEĞER TARAFI TÜRKÇE OLABİLİR: hem ASCII hem Türkçe-farkında katlama
+          # denenir. Yalnızca ASCII katlamak `HAYIR -> hayir` üretir ve Türkçe
+          # `hayır` karşılığını kaçırırdı; yalnızca `tolower()` ise yerele
+          # bağımlı kalırdı.
+          val_ascii <- .pk_filter_base_ascii_lower(val_flat)
+          val_tr <- if (exists("pk_tr_fold", mode = "function", inherits = TRUE)) {
+            as.character(pk_tr_fold(val_flat))[1]
+          } else {
+            val_ascii
+          }
+          val_adaylari <- unique(c(val_ascii, val_tr))
+          if (any(val_adaylari %in% c("y", "yes", "evet", "aktif", "active", "1", "true"))) {
             f$value <- "1"
             f$operation <- "exact_match"
-          } else if (val_lower %in% c("n", "no", "hayır", "pasif", "passive", "inactive", "0", "false")) {
+          } else if (any(val_adaylari %in% c("n", "no", "hayır", "hayir", "pasif",
+                                             "passive", "inactive", "0", "false"))) {
             f$value <- "0"
             f$operation <- "exact_match"
           }

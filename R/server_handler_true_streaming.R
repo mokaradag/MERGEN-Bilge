@@ -66,20 +66,14 @@ handle_true_streaming_mode <- function(ctx) {
   stream_env$user_prompt_db_id <- ctx$user_prompt_msg$db_id %||% NULL
   stream_env$chat_persist_scheduled <- FALSE
 
-  # KÖKEN DOĞRULAMASI ERTELENDİĞİNDE GÖRÜNÜR METİN TAMPONLANIR.
-  #
-  # `block` kipinde doğrulama tamamlanma anında çalışır ve desteklenmeyen
-  # sayısal iddia bulunduğunda model düzyazısı deterministik yedekle
-  # DEĞİŞTİRİLİR. Karar akış BAŞLAMADAN verilir; ilk delta gittikten sonra
-  # geri alınamaz.
+  # `block` kipinde köken doğrulaması TAMAMLANMA anında çalışır ve desteklenmeyen
+  # sayısal iddiada model düzyazısını deterministik yedekle DEĞİŞTİRİR; karar bu
+  # yüzden akış BAŞLAMADAN verilir (ilk delta gittikten sonra geri alınamaz).
   stream_env$defer_visible_text <- isTRUE(tryCatch(
     exists("pk_provenance_blocks_streaming", mode = "function", inherits = TRUE) &&
       pk_provenance_blocks_streaming(session, request_id = req_id),
     error = function(e) FALSE
   ))
-  if (isTRUE(stream_env$defer_visible_text)) {
-    log_info("[PK_ANALIZ] block kipi: akis metni dogrulamaya kadar tamponlaniyor.")
-  }
 
   find_message_index <- function() {
     which(vapply(values$messages, function(m) identical(m$id, stream_env$msg_id), logical(1)))
@@ -561,15 +555,11 @@ handle_true_streaming_mode <- function(ctx) {
           values$messages[[idx]]$content <- stream_env$accumulated_text
         }
 
-        # `block` KİPİNDE DOĞRULANMAMIŞ METİN GÖNDERİLMEZ.
-        #
-        # Köken doğrulaması (§5.11) tamamlanma anında çalışır ve gerektiğinde
-        # model düzyazısını deterministik yedekle DEĞİŞTİRİR. Ham delta'lar
-        # çoktan gönderilmişse kullanıcı desteklenmeyen sayıları GÖRMÜŞ olur ve
-        # bu geri alınamaz. Bu kipte metin tamponlanır; `finalize_stream_message`
-        # doğrulanmış (ya da güvenli yedek) HTML'i tek seferde gönderir.
+        # `block` kipinde DOĞRULANMAMIŞ metin gönderilmez: ham delta'lar gidince
+        # kullanıcı desteklenmeyen sayıları GÖRMÜŞ olur ve geri alınamaz. Metin
+        # tamponlanır; `finalize_stream_message` doğrulanmış HTML'i tek seferde
+        # gönderir. Tampon aktifken istemciye "üretiliyor" durumu kalır.
         if (isTRUE(stream_env$defer_visible_text)) {
-          # Tampon aktifken istemciye yalnızca "üretiliyor" durumu kalır.
         } else if (isTRUE(use_delta_transport)) {
           session$sendCustomMessage("streamingDelta", list(
             id = stream_env$msg_id,

@@ -138,64 +138,6 @@ pk_async_plan_capability <- function() {
   !is.na(deger) && deger == 1
 }
 
-# İşçi PID sondası (SÜREÇ BAŞINA MEMOIZE)
-#
-# @return `TRUE` işçi AYRI süreçte, `FALSE` işçi ANA süreçte, `NA` ölçülemedi.
-.pk_async_plan_probe_cache <- new.env(parent = emptyenv())
-
-.pk_async_worker_pid_probe <- function(force = FALSE, plan_key = NULL) {
-  anahtar <- tryCatch(as.character(plan_key %||% .pk_async_plan_key())[1],
-                      error = function(e) "plan")
-  if (!isTRUE(force) && !is.null(.pk_async_plan_probe_cache$result) &&
-      identical(.pk_async_plan_probe_cache$key, anahtar)) {
-    return(.pk_async_plan_probe_cache$result)
-  }
-  .pk_async_plan_probe_cache$key <- anahtar
-
-  # SONDA SINIRLIDIR: ANA OLAY DÖNGÜSÜ BLOKE EDİLMEZ.
-  #
-  # Eskiden `future::value(f)` çağrılıyordu; tek işçili bir `AsIs` planında o
-  # işçi BAŞKA bir oturumun analizini yürütüyorsa çağrı işçi boşalana kadar
-  # bekler ve TÜM oturumların olay döngüsünü dondurur — sonda, önlemek için
-  # var olduğu donmayı üretirdi. Bunun yerine `resolved()` sınırlı bir bütçe
-  # boyunca yoklanır; çözülmezse sonuç ÖLÇÜLEMEDİ (`NA`) olur ve önemsiz sonda
-  # görevi işçi boşaldığında kendiliğinden tamamlanır.
-  butce_sn <- suppressWarnings(as.numeric(
-    Sys.getenv("MERGEN_PK_ASYNC_PROBE_TIMEOUT_SEC", unset = "1")
-  )[1])
-  if (is.na(butce_sn) || !is.finite(butce_sn) || butce_sn < 0) butce_sn <- 1
-
-  sonuc <- tryCatch({
-    f <- future::future(Sys.getpid(), lazy = FALSE, seed = TRUE)
-    bitis <- Sys.time() + butce_sn
-    cozuldu <- FALSE
-    repeat {
-      cozuldu <- isTRUE(future::resolved(f))
-      if (cozuldu || Sys.time() >= bitis) break
-      Sys.sleep(0.025)
-    }
-    if (!cozuldu) {
-      NA
-    } else {
-      isci_pid <- suppressWarnings(as.integer(future::value(f))[1])
-      if (is.na(isci_pid)) NA else !identical(isci_pid, Sys.getpid())
-    }
-  }, error = function(e) NA)
-
-  # ÖLÇÜLEMEYEN sonuç ÖNBELLEĞE ALINMAZ: sonda meşgul bir işçi yüzünden
-  # zaman aşımına uğradıysa, işçi boşaldığında sonraki çağrı yeniden dener.
-  # Kesin sonuçlar (TRUE/FALSE) plan başına bir kez ölçülür.
-  if (!is.na(sonuc)) .pk_async_plan_probe_cache$result <- sonuc
-  sonuc
-}
-
-#' Sonda önbelleğini sıfırla (plan değiştiğinde / testlerde)
-pk_async_plan_probe_reset <- function() {
-  .pk_async_plan_probe_cache$result <- NULL
-  .pk_async_plan_probe_cache$key <- NULL
-  invisible(TRUE)
-}
-
 # Plan KİMLİĞİ: sonda önbelleği plan değiştiğinde KENDİLİĞİNDEN geçersizleşir.
 .pk_async_plan_key <- function() {
   tryCatch({

@@ -255,13 +255,53 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
     result
   }
 
-  if (nrow(data) == 0) return(finish(data.frame(), 0L))
+  # BOŞ SONUÇTA DA `count` OTORİTER CEVABI SIFIRDIR (v2 ile AYNI sözleşme).
+  #
+  # Bu erken dönüş toplulaştırma anahtarından ÖNCE çalışıyordu; geçerli bir
+  # `aggregation = "count"` isteği sıfır satır/sıfır sütunluk bir çerçeveye
+  # düşüyor, aşağı akış ise bunu "veri yok" diye anlatıyordu. Oysa sorunun
+  # DOĞRU cevabı `Adet = 0`dır. v1 varsayılan motor olduğundan bu yol üretimde
+  # ulaşılabilirdir.
+  if (nrow(data) == 0) {
+    agg_bos <- if (exists("pk_ascii_token", mode = "function", inherits = TRUE)) {
+      pk_ascii_token(as.character(filter_instructions$aggregation %||% "")[1])
+    } else {
+      chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz",
+             trimws(as.character(filter_instructions$aggregation %||% "")[1]))
+    }
+    if (identical(agg_bos, "count")) {
+      aciklama <- if (length(filter_instructions$filters %||% list()) > 0) {
+        "Filtrelenen Kayıt Sayısı"
+      } else {
+        "Toplam Kayıt Sayısı"
+      }
+      return(finish(
+        data.frame(Sonuc = aciklama, Adet = 0L, stringsAsFactors = FALSE),
+        0L
+      ))
+    }
+    return(finish(data.frame(), 0L))
+  }
 
   dt <- data.table::as.data.table(data)
 
   filters <- filter_instructions$filters
   aggregation <- filter_instructions$aggregation
-  group_col <- filter_instructions$group_column
+  # GRUPLAMA SÜTUNU TEK BİR KARAKTER DEĞERE İNDİRGENİR.
+  #
+  # `simplifyVector = FALSE` ile ayrıştırılan model çıktısında birden çok grup
+  # sütunu LİSTE olarak gelir. `group_col %in% names(dt)` o zaman uzunluğu
+  # birden büyük bir vektör üretir ve R 4.3+ `&&` içinde HATA fırlatır; ayrıca
+  # `by =` argümanına liste geçmek data.table tarafında tanımsız davranıştır.
+  group_col <- local({
+    ham <- filter_instructions$group_column
+    if (is.null(ham)) return(NULL)
+    duz <- unlist(ham, use.names = FALSE)
+    duz <- as.character(duz)
+    duz <- duz[!is.na(duz) & nzchar(trimws(duz))]
+    if (!length(duz)) return(NULL)
+    trimws(duz[1])
+  })
 
   genel_soru_kaliplari <- c(
     "kaç", "toplam", "sayı", "adet", "hangi", "dağılım", "özet",

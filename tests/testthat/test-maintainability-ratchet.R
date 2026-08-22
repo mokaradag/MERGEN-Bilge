@@ -114,7 +114,13 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
   # oluşturdu. 800+ satır dosya sayısı 0, 25+ fonksiyon dosya sayısı 0 (bu
   # dosya 24 fonksiyon, artmadı) ve en yüksek fonksiyon sayısı 24 KORUNUR;
   # yalnızca en büyük dosya satır tavanı yükseldi.
-  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 795L)
+  # PR #705 incelemesi: manifest DIŞI dinamik `source()` çağrıları kaldırıldı ve
+  # dört çalışma zamanı dosyası (PK çekirdek gövdesi, P1 guard'ları, işçi-PID
+  # sondası, tüketmeyen köken okuması) `R/config_source_manifest.R` içinde
+  # AÇIKÇA sıralandı. En büyük dosya artık SAF VERİ olan manifestin kendisidir
+  # (799 satır, 0 fonksiyon). 795 -> 799; "800+ dosya sayısı = 0" kuralı
+  # DEĞİŞMEDİ, yani manifeste yeni giriş eklemek artık bölüm bölmesi gerektirir.
+  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 799L)
   max_file_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_FUNCTIONS", 24L)
 
   actual_large_files <- sum(score_report$lines >= 800)
@@ -294,7 +300,10 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # worker.R) çıkarıldı; handler onu delege eder. server_handler_true_streaming.R
   # 681 -> 655 satıra indi (küresel pin 681 -> 678). Bütçeler liste içeriğinin
   # handler'a geri sızmasını ve fabrikanın şişmesini yakalar.
-  assert_current_budget("R/server_handler_true_streaming.R", 660L, 18L)
+  # PR #705 incelemesi (P1): `block` kipinde doğrulanmamış analiz metni artık
+  # akışta yayınlanmaz; tampon kararı ve dal ölçülen taban çizgisini 660 -> 680
+  # yükseltti. Yeni fonksiyon EKLENMEDİ; sınır bilinçli olarak güncellendi.
+  assert_current_budget("R/server_handler_true_streaming.R", 680L, 18L)
   assert_current_budget("R/helpers_llm_true_streaming_worker.R", 80L, 1L)
 
   # Yönetişim katmanı (seam kayıt defteri + frontend bölge haritası) saf veri
@@ -362,7 +371,9 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # de CIP ONAYI yolu ayni sahibi kullanir (kopya mantik kaldirildi).
   assert_current_budget("R/helpers_pk_query_selection_requirements.R", 325L, 13L)
   assert_current_budget("R/helpers_pk_query_selection_parse.R", 300L, 8L)
-  assert_current_budget("R/helpers_pk_query_selection_decide.R", 400L, 10L)
+  # PR #705 incelemesi (P1): `not_for` ile dışlanan sorgu güven/marj
+  # kapılarından ÖNCE reddedilir; ölçülen taban çizgisi 400 -> 410.
+  assert_current_budget("R/helpers_pk_query_selection_decide.R", 410L, 10L)
   assert_current_budget("R/helpers_pk_query_selection_degraded.R", 190L, 7L)
   assert_current_budget("R/helpers_pk_query_selection_session.R", 220L, 14L)
   # BILINCLI GUNCELLEME (PR #705 kararlilik): Gecis A TOPLAM yuk butcesi

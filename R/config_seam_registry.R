@@ -157,7 +157,7 @@ mergen_seam_registry <- function() {
         "module_analysis"
       ),
       # R/helpers_pk_analysis_core.R bu iki kardeş dosyayı manifest DIŞINDA source eder.
-      extra_runtime_files = c("R/helpers_pk_analysis_core_impl.R", "R/helpers_pk_p1_runtime_guards.R"),
+      extra_runtime_files = character(0),  # PK çekirdek dosyaları artık manifestte
       related_seams = c("dosya_yasam_dongusu", "sohbet_llm_akis")
     ),
 
