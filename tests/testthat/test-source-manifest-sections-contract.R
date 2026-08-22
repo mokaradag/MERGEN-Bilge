@@ -177,7 +177,7 @@
   # PR #705 dengeleme: iki odakli dosya eklendi -- helpers_pk_filter_group.R
   # (açık AND/OR gruplarının inert değerlendiricisi; eval(parse()) yerine) ve
   # helpers_pk_entity_context.R (D11 devralınan bağlam anahtarı/kaydı). 79 -> 81.
-  # PR #705 inceleme düzeltmeleri: 81 -> 85. Dört BİLİNÇLİ bölünme; hiçbiri
+  # PR #705 inceleme düzeltmeleri: 81 -> 86. BEŞ BİLİNÇLİ bölünme; hiçbiri
   # yeni davranış eklemez, mevcut sorumluları ayırır ve bakım ratchet'ini
   # (799 satır / 24 fonksiyon) İHLAL ETMEDEN düzeltme yapılmasını sağlar:
   #   * helpers_pk_query_selection_canonical.R -- varoluşsal gereksinimlerin
@@ -191,6 +191,9 @@
   # 81 -> 86.
   # PR #705 takibi: manifest dışı dinamik `source()` kaldırıldı; PK çekirdek
   # gövdesi ve P1 çalışma zamanı guard'ları bu bölüme AÇIKÇA eklendi (86 -> 88).
+  # PR #705 P2 takibi: `helpers_pk_provenance_peek.R` (köken bilgisini
+  # TÜKETMEDEN okuma) ve `helpers_pk_async_probe.R` (işçi-PID sondası)
+  # bölündü; ikisi de ratchet bölünmesidir, yeni davranış yoktur. 88 -> 90.
   analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_query_selection_apply.R", n = 90L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
@@ -578,6 +581,9 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # manifeste taşındı.
   # `helpers_pk_async_probe.R`: işçi-PID sondası `helpers_pk_async_plan.R`
   # içinden AYRILDI (ratchet bölünmesi). 468 -> 469.
+  # PR #705 P2 takibi: `helpers_pk_provenance_peek.R` (analysis_helpers) ve
+  # `helpers_pk_query_meta_layers.R` (pk_query_metadata) BÖLÜNDÜ; ikisi de
+  # ratchet bölünmesidir ve yeni davranış eklemez. 469 -> 471.
   expect_equal(length(runtime), 471L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])

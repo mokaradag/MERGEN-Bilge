@@ -181,6 +181,34 @@ test_that("uyuşmazlık sinyali KARAR DEĞİL, yalnızca sıra/bayrak üretir", 
   expect_setequal(names(uyum), c("available", "rank", "score", "disagrees"))
 })
 
+test_that("seçilen sorgunun KENDİ `not_for` kaydı da bağlayıcıdır", {
+  # `not_for` "bu istek bu sorguya UYGUN DEĞİL" diyen AÇIK olumsuz kanıttır.
+  # Eski `setdiff(..., kimlik)` seçileni dışlama kümesinden çıkarıyordu; yani
+  # sorgu tam da bu isteği reddetse bile kapı "uyuşmazlık yok" diyebiliyordu.
+  lib <- .pk_ret_lib()
+  lib[[2]]$meta$not_for <- "kaynak atama"
+
+  index <- pk_retrieval_build_index(lib)
+  istem <- "sentetik kaynak atama listesi"
+
+  # Ölçüm: kütüphane VERİLMEZSE q002 sözlüksel BİRİNCİDİR ve uyuşmazlık yoktur.
+  # Bu, aşağıdaki iddianın boş olmadığını (dışlama kapısının gerçekten iş
+  # yaptığını) kanıtlar.
+  kutuphanesiz <- pk_retrieval_agreement(index, istem, "q002", 2L)
+  expect_equal(kutuphanesiz$rank, 1L)
+  expect_false(kutuphanesiz$disagrees)
+
+  dislandi <- pk_retrieval_agreement(index, istem, "q002", 2L, library = lib)
+  expect_true(dislandi$available)
+  expect_true(dislandi$disagrees)
+  expect_true(isTRUE(dislandi$excluded_by_not_for))
+
+  # Dışlama SIRALAMA İDDİASI DEĞİLDİR: sıra/skor bilinçli olarak yoktur, aksi
+  # hâlde politika "birinciydi ama uyuşmuyor" gibi çelişkili bir sinyal görür.
+  expect_true(is.na(dislandi$rank))
+  expect_true(is.na(dislandi$score))
+})
+
 test_that("sözlüksel sinyal tamamen boşken uyuşmazlık İDDİA EDİLMEZ", {
   index <- pk_retrieval_build_index(.pk_ret_lib())
 
