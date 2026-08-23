@@ -296,13 +296,16 @@ pk_select_config_for_query <- function(cfg, query_meta) {
   # tamamen belirsiz bir beraberlik bile OTOMATİK çalıştırılabiliyordu.
   # Geçersiz birleşim metadata geçersiz kılmasını DÜŞÜRÜR; çağıranın kendi
   # doğrulanmış yapılandırması korunur.
+  # Metadata geçersizse kullanılmak üzere özgün yapılandırmayı koru.
+  original_cfg <- cfg
+
   birlesik <- pk_select_normalize_config(cfg)
   if (!isTRUE(birlesik$valid)) {
     cat(sprintf(
       "[PK_SELECT] Metadata gecersiz kilmasi birlesik yapilandirmayi bozdu, yok sayildi: %s\n",
       paste(birlesik$errors, collapse = "; ")
     ))
-    return(ham)
+    return(original_cfg)
   }
   cfg
 }
