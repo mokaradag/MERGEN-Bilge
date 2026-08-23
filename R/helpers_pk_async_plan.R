@@ -49,7 +49,12 @@ pk_async_plan_capability <- function() {
     isci_sayisi <- suppressWarnings(as.numeric(
       tryCatch(future::nbrOfWorkers(), error = function(e) NA_real_)
     )[1])
-    if (!is.na(isci_sayisi) && is.finite(isci_sayisi) && isci_sayisi < 1) {
+    # İŞÇİ SAYISI ÇÖZÜLEMEZSE KANIT YOKTUR (kapalı başarısız): ambivalant tek
+    # işçi kapısı da atlanacağı için plan asenkron SAYILMAZ.
+    if (is.na(isci_sayisi) || !is.finite(isci_sayisi)) {
+      return(list(ok = FALSE, reason = "worker_count_unknown"))
+    }
+    if (isci_sayisi < 1) {
       return(list(ok = FALSE, reason = "no_worker_plan"))
     }
 
