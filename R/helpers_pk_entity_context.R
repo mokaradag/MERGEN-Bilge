@@ -82,10 +82,15 @@ pk_entity_context_remember <- function(session, decisions, query = NULL) {
   if (is.null(ud)) return(invisible(FALSE))
 
   kararlar <- if (is.list(decisions)) decisions else list()
+  # YENİ BİR ÖZNE BEYAN EDİLDİ AMA ÇÖZÜLEMEDİYSE ESKİ BAĞLAM DÜŞER.
+  ozne_var <- any(vapply(kararlar, function(k) {
+    is.list(k) && identical(as.character(k$entity_role %||% "")[1], "subject")
+  }, logical(1)))
+
   for (karar in rev(kararlar)) {
     if (!is.list(karar) || !identical(karar$decision, "auto")) next
     if (!length(karar$values)) next
-    # ROL BEYAN EDİLMEMİŞSE DEVRALINMAZ. Varsayılan `subject`, `entity_role`
+    # ROL BEYAN EDİLMEDİYSE DEVRALINMAZ. Varsayılan `subject`, `entity_role`
     # alanını yazmayan bir üreticinin İKİNCİL daraltmasını sessizce sonraki
     # soruya taşırdı; kullanıcının sormadığı bir kısıt devralınmış olurdu.
     # Üretim üreticisi (`helpers_pk_entity_apply.R`) alanı HER ZAMAN yazar.
@@ -103,6 +108,7 @@ pk_entity_context_remember <- function(session, decisions, query = NULL) {
     return(invisible(TRUE))
   }
 
+  if (isTRUE(ozne_var)) pk_entity_context_clear(session)
   invisible(FALSE)
 }
 
