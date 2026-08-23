@@ -95,9 +95,9 @@ PK_FILTER_AND_TOKENS <- c("and", "ve", "all", "tumu", "hepsi")
 # `as.numeric()` 2^53 üstü BIGINT değerlerini bozar; iki farklı kimlik aynı
 # double'a düşer ve filtre yanlış satırı seçer. Değerler bu yüzden integer64
 # uzayında karşılaştırılır ve dönüştürülemeyen bir değer sessizce eşitliğe
-# düşmek yerine yaprağı düşürür.
-.pk_filter_is_integer64 <- function(x) inherits(x, "integer64")
-
+# düşmek yerine yaprağı düşürür. Sınıf denetimi `inherits(x, "integer64")`
+# olarak YERİNDE yazılır; tek satırlık sarmalayıcı, dosyanın fonksiyon
+# bütçesini gereksiz yere tüketiyordu (CLAUDE.md ratchet kuralı).
 .pk_filter_as_integer64 <- function(x) {
   if (!requireNamespace("bit64", quietly = TRUE)) return(NULL)
   out <- suppressWarnings(tryCatch(bit64::as.integer64(x), error = function(e) NULL))
@@ -193,6 +193,20 @@ pk_filter_normalize_leaf <- function(f) {
 # uzayda (numeric / integer64 / Date / POSIXct) olmalıdır. Bilinmeyen işlem
 # buraya ULAŞMAZ (yaprak normalleştirmede reddedilir); yine de savunmacı
 # olarak NULL döner.
+# BIT64 ÜYELİĞİ TABAN `%in%` İLE YAPILAMAZ.
+#
+# `requireNamespace("bit64")` bit64'ün `%in%` genelini EKLEMEZ; taban `%in%`
+# integer64 vektörünün altındaki DOUBLE bit desenleriyle eşleştirir. Bit deseni
+# `NaN` çözülen iki FARKLI BIGINT değeri bu yüzden aynı sayılır: dahil etme
+# filtresi ikisini birden seçer, dışlama filtresi ikisini birden atardı.
+# Karşılaştırma karakter gösterime taşınır; integer64 için kayıpsızdır.
+.pk_filter_uyelik <- function(degerler, sinirlar) {
+  if (inherits(degerler, "integer64") || inherits(sinirlar, "integer64")) {
+    return(as.character(degerler) %in% as.character(sinirlar))
+  }
+  degerler %in% sinirlar
+}
+
 .pk_filter_compare_mask <- function(degerler, sinirlar, operation) {
   gecerli <- !is.na(degerler)
 
@@ -206,12 +220,12 @@ pk_filter_normalize_leaf <- function(f) {
     less_or_equal    = degerler <= max(sinirlar),
     to               = degerler <= max(sinirlar),
     max              = degerler <= max(sinirlar),
-    exact_match      = degerler %in% sinirlar,
-    equals           = degerler %in% sinirlar,
-    `in`             = degerler %in% sinirlar,
-    not_equals       = degerler %in% sinirlar,
-    not_in           = degerler %in% sinirlar,
-    exclude          = degerler %in% sinirlar,
+    exact_match      = .pk_filter_uyelik(degerler, sinirlar),
+    equals           = .pk_filter_uyelik(degerler, sinirlar),
+    `in`             = .pk_filter_uyelik(degerler, sinirlar),
+    not_equals       = .pk_filter_uyelik(degerler, sinirlar),
+    not_in           = .pk_filter_uyelik(degerler, sinirlar),
+    exclude          = .pk_filter_uyelik(degerler, sinirlar),
     NULL
   )
 
@@ -230,7 +244,7 @@ pk_filter_normalize_leaf <- function(f) {
 .pk_filter_mask_numeric <- function(col_vals, leaf) {
   if (!length(leaf$values)) return(NULL)
 
-  if (.pk_filter_is_integer64(col_vals)) {
+  if (inherits(col_vals, "integer64")) {
     sinirlar <- .pk_filter_as_integer64(leaf$values)
     if (is.null(sinirlar) || anyNA(sinirlar)) return(NULL)
     return(.pk_filter_compare_mask(col_vals, sinirlar, leaf$operation))
@@ -330,6 +344,37 @@ pk_filter_normalize_leaf <- function(f) {
   if (is.null(sinirlar) || !length(sinirlar) || anyNA(sinirlar)) return(NULL)
 
   degerler <- as.POSIXct(col_vals)
+
+  # YALNIZ-TARİH EŞİTLİĞİ GÜN DÜZEYİNDE DEĞERLENDİRİLİR.
+  #
+  # Gün genişletmesi yalnızca KAPSAYICI ÜST SINIR için çalışıyordu; eşitlik ve
+  # üyelik işlemleri sınırı yerel `00:00:00`da bırakıyordu. `POSIXt` sütunda
+  # `equals "2026-05-01"` bu yüzden YALNIZCA tam gece yarısı kayıtlarını
+  # eşleştiriyor, yaprak düşürülmediği için kullanıcıya HİÇBİR ifşa gitmiyor ve
+  # analiz neredeyse boş bir alt kümeyi "istenen popülasyon" diye raporluyordu;
+  # dışlama işlemleri de aynı maskeyi tersleyip neredeyse hiçbir şey atmıyordu.
+  # Karar aralık işlemlerinde kapatılmış olan bu sessiz anlam kaymasının aynısı.
+  uyelik_op <- leaf$operation %in% c("exact_match", "equals", "in",
+                                     "not_equals", "not_in", "exclude")
+  if (uyelik_op && any(yalniz_tarih)) {
+    gunler <- suppressWarnings(as.Date(format(degerler, tz = tz, "%Y-%m-%d")))
+    maske <- rep(FALSE, length(degerler))
+
+    hedef_gunler <- suppressWarnings(as.Date(trimws(leaf$values[yalniz_tarih])))
+    hedef_gunler <- hedef_gunler[!is.na(hedef_gunler)]
+    if (length(hedef_gunler)) maske <- maske | (gunler %in% hedef_gunler)
+
+    # Saat taşıyan değerler AN düzeyinde karşılaştırılmaya devam eder.
+    if (any(!yalniz_tarih)) {
+      anlar <- do.call(c, lapply(leaf$values[!yalniz_tarih],
+                                 function(v) ayrist(v, FALSE)))
+      if (!is.null(anlar) && length(anlar) && !anyNA(anlar)) {
+        maske <- maske | (degerler %in% anlar)
+      }
+    }
+    return(as.logical(maske) & !is.na(degerler))
+  }
+
   .pk_filter_compare_mask(degerler, sinirlar, leaf$operation)
 }
 
@@ -401,7 +446,7 @@ pk_filter_leaf_mask <- function(data, leaf, query = NULL) {
     .pk_filter_mask_date(col_vals, leaf)
   } else if (is.logical(col_vals)) {
     .pk_filter_mask_logical(col_vals, leaf)
-  } else if (is.numeric(col_vals) || .pk_filter_is_integer64(col_vals)) {
+  } else if (is.numeric(col_vals) || inherits(col_vals, "integer64")) {
     .pk_filter_mask_numeric(col_vals, leaf)
   } else {
     NULL

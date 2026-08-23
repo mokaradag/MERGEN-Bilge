@@ -497,52 +497,10 @@ pk_deep_collect_v2_provenance <- function(query_results, primary_meta = NULL) {
   )
 }
 
-# Baseline Deep gözlem fabrikasını değiştirmeden, v2 olgularını aynı birleşik
-# footer ile request-scope provenance yuvasına taşıyan dar sarmalayıcı.
-if (!exists(".pk_deep_observation_helpers_base", inherits = FALSE) &&
-    exists("pk_deep_observation_helpers", mode = "function", inherits = TRUE)) {
-  .pk_deep_observation_helpers_base <- get(
-    "pk_deep_observation_helpers", mode = "function", inherits = TRUE
-  )
-}
-if (exists(".pk_deep_observation_helpers_base", inherits = FALSE)) {
-  pk_deep_observation_helpers <- function(session, conn, username, user_prompt,
-                                          request_id, started_at,
-                                          conn_provider = NULL) {
-    helpers <- .pk_deep_observation_helpers_base(
-      session, conn, username, user_prompt, request_id, started_at,
-      conn_provider = conn_provider
-    )
-    base_stash <- helpers$stash
-    helpers$stash <- function(footers, facts = NULL, fallback_text = NULL,
-                              query_id = NULL, mode = NULL) {
-      if (is.null(facts) && is.null(fallback_text) && is.null(query_id) && is.null(mode)) {
-        return(base_stash(footers))
-      }
-      if (!exists("pk_provenance_stash", mode = "function", inherits = TRUE)) {
-        return(invisible(FALSE))
-      }
-      footers <- as.character(footers)
-      footers <- footers[!is.na(footers) & nzchar(footers)]
-      if (!length(footers)) return(invisible(FALSE))
-
-      standard_prefix <- "\n\n---\n**Analiz Kaynağı**\n"
-      bodies <- character(length(footers))
-      for (i in seq_along(footers)) {
-        body <- if (startsWith(footers[i], standard_prefix)) {
-          substring(footers[i], nchar(standard_prefix) + 1L)
-        } else footers[i]
-        bodies[i] <- sub("\n$", "", body)
-      }
-      combined_footer <- paste0(
-        "\n\n---\n**Analiz Kaynağı (Derin Analiz)**\n",
-        paste(bodies, collapse = "\n\n"), "\n"
-      )
-      pk_provenance_stash(
-        session, combined_footer, request_id = request_id,
-        facts = facts, fallback_text = fallback_text, query_id = query_id, mode = mode
-      )
-    }
-    helpers
-  }
-}
+# NOT: v2 olgularını (`facts`/`fallback_text`/`query_id`/`mode`) provenance
+# yuvasına taşıyan mantık ARTIK TEK YERDE, `helpers_deep_analysis_reconcile.R`
+# içindeki `stash_deep_footer()` imzasında yaşar. Buradaki eski kaynak-zamanı
+# sarmalayıcısı aynı birleştirme mantığını kopyalıyordu ve orkestratörün çağrı
+# sözleşmesini, sarmalayıcının kurulmuş OLMASINA bağlı kılıyordu; sarmalayıcının
+# yüklenmediği izole test/işçi bağlamlarında çağrı "unused arguments" ile
+# düşerdi. Tek gövde bırakıldı; davranış aynıdır.

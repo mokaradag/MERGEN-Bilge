@@ -62,6 +62,13 @@
     local = pk_env
   )
 
+  # İZOLE YÜKLEME: taban dosya manifest sırasına göre AÇIKÇA önce gelir.
+  source(
+    file.path(repo_root_for_tests, "R", "helpers_pk_analysis_filters_base.R"),
+    encoding = "UTF-8",
+    local = pk_env
+  )
+
   source(
     file.path(repo_root_for_tests, "R", "helpers_pk_analysis_filters.R"),
     encoding = "UTF-8",

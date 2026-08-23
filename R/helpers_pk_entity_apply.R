@@ -150,7 +150,21 @@ pk_entity_resolve_filter_plan <- function(data, filters, query = NULL,
     if (is.na(sutun) || !nzchar(sutun)) next
 
     sozluk <- .pk_entity_apply_vocab(data, sutun)
-    if (!length(sozluk)) next
+    if (!length(sozluk)) {
+      # ATLANAN YAPRAK SESSİZ KALMAZ.
+      #
+      # `.pk_entity_apply_vocab()` sayısal/mantıksal/tarih sütunlarda
+      # `character(0)` döndürür ve yaprak çözümlemeye HİÇ girmezdi: ham LLM
+      # değeri hiçbir çözümleyici kararı ve hiçbir bildirim olmadan derleyiciye
+      # ulaşıyordu. Tamsayı saklanan kodlu bir durum sütununda etiket değerli
+      # filtre bu yüzden SIFIR satır seçip kullanıcıya hiçbir şey söylemiyordu.
+      aciklamalar <- c(aciklamalar, sprintf(
+        paste("`%s` alanı metin olmadığı için varlık çözümlemesi UYGULANMADI;",
+              "filtre değeri modelden geldiği gibi kullanıldı."),
+        sutun
+      ))
+      next
+    }
 
     cmeta <- .pk_entity_apply_meta(query, sutun)
     varlik_rolu <- .pk_entity_apply_role(query, sutun, sutunlar)

@@ -204,9 +204,16 @@ pk_select_query_v2 <- function(prompt, library, chat_history = NULL,
   ))
 
   if (!identical(karar$status, PK_SELECT_STATUS_AUTO)) {
-    pk_select_forget_query_id(session, sohbet)
-    pk_select_remember_offer(session, karar$chips, sohbet,
-                             requirements = karar$requirements)
+    # İPTAL OTURUM DURUMUNU BOZMAZ.
+    #
+    # `cancelled`, kullanıcının Durdur'a basmasıdır: seçim hakkında hiçbir şey
+    # ÖĞRENİLMEMİŞTİR. Önceki başarılı sorgu tohumunu silmek ve bayat teklifi
+    # yeniden yazmak, sonraki eliptik takip sorusunun bağlamını kaybettirirdi.
+    if (!identical(karar$status, PK_SELECT_STATUS_CANCELLED)) {
+      pk_select_forget_query_id(session, sohbet)
+      pk_select_remember_offer(session, karar$chips, sohbet,
+                               requirements = karar$requirements)
+    }
     return(list(
       all_scores = tablo,
       refusal_message = pk_select_refusal_message(karar),

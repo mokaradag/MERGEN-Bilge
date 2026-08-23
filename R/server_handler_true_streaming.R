@@ -261,8 +261,23 @@ handle_true_streaming_mode <- function(ctx) {
     )$text
 
     # PK köken alt bilgisi (sahibi R, model değil); üst sınırdan SONRA eklenir.
+    #
+    # HATA AKIŞI ASKIDA BIRAKAMAZ. `stream_env$finalized` yukarıda ZATEN TRUE
+    # yapıldı; buradan kaçan bir istisna `finalize_stream_message()` ve
+    # `observe()` gövdesini terk eder, yoklama gözlemcisi durur ve yeniden
+    # deneme hemen döner. Sonuç: `finalizeStreamingMessage` gönderilmez,
+    # `cleanup_streaming_state()` ve `ctx$reset_chat_state_fn()` HİÇ çalışmaz;
+    # yazma animasyonu ve durdurma kipi kalıcı olarak takılı kalırdı. Bu
+    # sınırdaki diğer tüm çağrılar gibi burası da korunur.
     if (exists("pk_provenance_decorate", mode = "function", inherits = TRUE)) {
-      final_text <- pk_provenance_decorate(final_text, session, request_id = stream_env$req_id)
+      final_text <- tryCatch(
+        pk_provenance_decorate(final_text, session, request_id = stream_env$req_id),
+        error = function(e) {
+          cat(sprintf("[PK] Akış sonunda köken dekorasyonu başarısız: %s\n",
+                      conditionMessage(e)))
+          final_text
+        }
+      )
     }
 
     chart_info <- build_chartlab_message(final_text, stream_env$msg_id, session)

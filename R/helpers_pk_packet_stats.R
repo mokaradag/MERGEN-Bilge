@@ -212,12 +212,11 @@ pk_fact_record <- function(kind, column, aggregation, value = NULL, spec = list(
   # KESİR TABANLI YÜZDELER OLGU KURULURKEN PUANA ÇEVRİLİR.
   #
   # Metadata `unit = "%"` ve `percent_scale = "fraction"` ilan ettiğinde ham
-  # değer 0..1 aralığındadır. Satır içi tablo ve dışa aktarım yolları bunu
-  # ZATEN 100 ile ölçekliyor; olgu yolu ölçeklemiyordu. Sonuç iki yönlü
-  # bozuktu: model `0,6 %` gibi YANLIŞ bir olgu görüyordu ve kullanıcı doğru
-  # biçimde `%61,3` yazdığında sayısal köken doğrulaması bunu değer
-  # uyuşmazlığı sayıp REDDEDİYORDU. Kanonik değer ile gösterim artık aynı
-  # ölçekte üretilir.
+  # değer 0..1 aralığındadır. Satır içi tablo ve dışa aktarım yolları bunu ZATEN
+  # 100 ile ölçekliyor; olgu yolu ölçeklemiyordu. Sonuç iki yönlü bozuktu: model
+  # `0,6 %` gibi YANLIŞ bir olgu görüyordu ve kullanıcı doğru biçimde `%61,3`
+  # yazdığında köken doğrulaması bunu değer uyuşmazlığı sayıp REDDEDİYORDU.
+  # Kanonik değer ile gösterim artık aynı ölçekte üretilir.
   if (sayisal && identical(as.character(spec$unit %||% "")[1], "%") &&
       identical(as.character(spec$percent_scale %||% "")[1], "fraction")) {
     value <- as.numeric(value) * 100
@@ -294,14 +293,12 @@ pk_fact_record <- function(kind, column, aggregation, value = NULL, spec = list(
 #' Toplama YALNIZCA `additive = TRUE` iken üretilir. Ortalama ise beyan edilen
 #' toplulaştırma FARKLI ve bağdaşmaz bir metrik dayattığında (ör.
 #' `weighted_mean`, `latest`) ÜRETİLMEZ: ağırlıklı ortalama beyan eden bir ölçü
-#' için düz satır ortalaması yayımlamak, sorgunun açıkça yanlış dediği sayıyı
-#' yetkili olgu diye sunmaktır. Metadata yokken (Tier-0) ikisi de üretilmez.
+#' için düz satır ortalaması yayımlamak, sorgunun yanlış dediği sayıyı yetkili
+#' olgu diye sunmaktır; metadata yokken (Tier-0) ikisi de üretilmez.
 #' Dağılım istatistikleri (medyan, yüzdelik, min/maks, std sapma, uç değer)
-#' DÖNEN SATIRLARI betimler; varlık düzeyinde toplulaştırma iddiası taşımaz ve
-#' bu yüzden Tier-0'da da güvenlidir.
+#' DÖNEN SATIRLARI betimler; toplulaştırma iddiası taşımaz, Tier-0'da güvenlidir.
 #'
-#' @param aggregate_blocked Beyan edilen tanecikte mükerrer satır varsa TRUE.
-#'   Toplam ve ortalama çift sayılacağı için ÜRETİLMEZ.
+#' @param aggregate_blocked Tanecikte mükerrer satır varsa TRUE; toplam ve ortalama çift sayılacağı için ÜRETİLMEZ.
 pk_measure_facts <- function(values, column, spec = list(), scope = NULL,
                              group_keys = character(0), time_window = NULL,
                              aggregate_mode = "none", additive = FALSE,
@@ -488,21 +485,17 @@ pk_latest_fact <- function(data, column, spec = list(), scope = NULL,
   en_yeni <- max(damga[gecerli])
   aday <- gecerli[damga[gecerli] == en_yeni]
 
-  # BENZERSİZLİK ANAHTARI ile SIRALAMA ANAHTARI AYRIDIR.
+  # BENZERSİZLİK ANAHTARI ile SIRALAMA ANAHTARI AYRIDIR; SIRALAMA TİPİ KORUNUR.
   #
   # Uzunluk önekli seri hâl (`3:abc`) çakışmasız bir KİMLİKTİR ama SIRA
   # KORUYUCU DEĞİLDİR: `z` -> `1:z`, `aa` -> `2:aa` olur ve radix sıralaması
-  # `aa`yı son sıraya koyar; oysa ham artan sıralamada son değer `z`dir. Bu
-  # yüzden değişken genişlikli metin tie sütunlarında YANLIŞ satır seçilip
-  # yanlış "en yeni" olgusu yayımlanabiliyordu. Sıralama HAM kanonik değerlerle
-  # yapılır; uzunluk öneki yalnızca benzersizlik denetiminde kullanılır.
-  # SIRALAMA TİPİ KORUNUR; KARAKTER KODLAMA YALNIZCA BENZERSİZLİK İÇİNDİR.
-  #
-  # Sayısal bir `latest_tie_by` sütununu karaktere çevirmek `order()`u
-  # SÖZLÜKSEL yapar: `2` ve `10` -> `"10", "2"` sıralanır ve artan sıranın SON
-  # satırı olarak `2` anahtarlı satır seçilip ölçüsü kanonik `latest` olgusu
-  # diye yayımlanır. Sıralanabilir tipler (sayısal/tarih/mantıksal) KENDİ
-  # tiplerinde tutulur; karakter kodlama yalnızca çakışma denetiminde kullanılır.
+  # `aa`yı son sıraya koyar; oysa ham artan sıralamada son değer `z`dir.
+  # Sayısal bir `latest_tie_by` sütununu karaktere çevirmek de `order()`u
+  # SÖZLÜKSEL yapar: `2` ve `10` -> `"10", "2"` sıralanır ve SON satır olarak
+  # `2` anahtarlı satır seçilip ölçüsü kanonik `latest` olgusu diye yayımlanır.
+  # Her iki durumda da YANLIŞ satır "en yeni" sayılırdı. Sıralanabilir tipler
+  # (sayısal/tarih/mantıksal) KENDİ tiplerinde tutulur; karakter kodlama ve
+  # uzunluk öneki YALNIZCA benzersizlik/çakışma denetiminde kullanılır.
   tie_sutunlari <- as.list(data[esitlik])
   sira_tie <- lapply(tie_sutunlari, function(sutun) {
     dilim <- sutun[aday]
@@ -667,6 +660,15 @@ pk_packet_context_facts <- function(packet, scope = NULL) {
     )))
   }
 
+  # Yazıcının bastığı "Sonlu gozlem / disarida birakilan" sayıları da OLGUDUR:
+  # dört haneli işaretsiz bir sayım `block` kipinde `missing_fact_marker` üretip
+  # TÜM yanıtı determinist yedekle değiştirirdi. TERS gezilir: son yazan kazandığı için yazıcıyla AYNI (sütunun İLK) olgusu geçerli olur.
+  for (o in rev(packet$facts %||% list())) tanimlar <- c(tanimlar, list(
+    list(id = o$column, agg = "finite_count", value = o$n_finite,
+         label = sprintf("%s sonlu gozlem", o$column)),
+    list(id = o$column, agg = "excluded_count", value = o$n_excluded,
+         label = sprintf("%s disarida birakilan", o$column))))
+
   out <- list()
   for (t in tanimlar) {
     deger <- suppressWarnings(as.numeric(t$value %||% NA_real_))
@@ -684,7 +686,7 @@ pk_packet_context_facts <- function(packet, scope = NULL) {
 #'
 #' Grup kırılımındaki ölçü olguları da `[fact:...]` işaretiyle basıldığı hâlde
 #' indekse girmiyordu; doğru alıntılanmış bir grup toplamı `unknown_fact`
-#' sayılırdı. Kimliğe göre tekilleştirilir.
+#' sayılırdı (kimliğe göre tekilleştirilir).
 pk_packet_all_facts <- function(packet) {
   grup_olgulari <- unlist(
     lapply(packet$groups$top %||% list(), function(satir) satir$facts %||% list()),

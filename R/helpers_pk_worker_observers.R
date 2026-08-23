@@ -80,12 +80,32 @@ if (exists("pk_deep_observation_helpers", mode = "function", inherits = TRUE) &&
 # yüzden YALNIZCA asenkron yönlendirme kullanıldığı için anlam değiştiriyor ve
 # denetim/rollout ölçümleri bozuluyordu. Eşleme TEK yerdedir.
 # ==============================================================================
+# `error_message` SONUCUNDAN KULLANICIYA GÖRÜNEN METNİ ÇIKAR.
+#
+# Sonuç `list(type = "error_message", message = ...)` ya da bir koşul nesnesi
+# olabilir. `as.character(x)[1]` listede İLK ÖGEYİ (`type`) döndürür; desen
+# taramaları bu yüzden YANLIŞ dizede çalışıyordu. İki sınıflandırıcı da bunu
+# kullanır.
+pk_direct_exit_text <- function(x) {
+  if (is.null(x)) return("")
+  ham <- if (inherits(x, "condition")) {
+    tryCatch(conditionMessage(x), error = function(e) "")
+  } else if (is.list(x)) {
+    Find(Negate(is.null), x[c("message", "answer", "text", "content")]) %||% ""
+  } else x
+  metin <- tryCatch(as.character(ham)[1], error = function(e) "")
+  if (length(metin) != 1L || is.na(metin)) "" else metin
+}
+
 pk_direct_exit_outcome <- function(response_text, stopped = FALSE, error = FALSE) {
   if (isTRUE(error)) return("Hata")
   if (isTRUE(stopped)) return("Durduruldu")
 
-  metin <- tryCatch(as.character(response_text %||% "")[1], error = function(e) "")
-  if (is.na(metin)) metin <- ""
+  # `type == "error_message"` desen taramasından ÖNCE hata sonucuna eşlenir.
+  if (is.list(response_text) &&
+      identical(as.character(response_text$type %||% "")[1], "error_message")) return("Hata")
+
+  metin <- pk_direct_exit_text(response_text)
 
   if (grepl("\u0130\u015flem Durduruldu", metin, fixed = TRUE)) return("Durduruldu")
   if (grepl("Yetki Hatas\u0131", metin, fixed = TRUE)) return("Yetkisiz")

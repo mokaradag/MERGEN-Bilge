@@ -39,31 +39,51 @@
 
 # VARLIK (existential) kip jetonları. Bunlar KAVRAM değil, KİP belirtir:
 # "bu şey var mı / mevcut mu / herhangi biri var mı".
-.PK_SELECT_EXISTENTIAL_ASPECTS <- c(
+.PK_SELECT_EXISTENTIAL_ASPECTS <- enc2utf8(c(
   "exists", "exist", "existing", "existence",
   "has", "have", "any", "present", "presence", "occurs", "occurrence",
   "var", "varmi", "varlik", "mevcut", "mevcudiyet", "bulunuyor", "bulunur"
-)
+))
 
 # SAYIM kip jetonları. Hedef ölçünün sayım olduğunu YAPISAL olarak gösterir.
-.PK_SELECT_COUNT_ASPECTS <- c(
+.PK_SELECT_COUNT_ASPECTS <- enc2utf8(c(
   "count", "counts", "cnt", "num", "number",
   "adet", "sayi", "sayisi", "sayısı"
-)
+))
 
 # Boyutsuz SAYIM birimleri. Kayıt defterindeki `unit` alanı da hedefin sayım
 # olduğunu kanıtlayabilir (ör. `list(role = "measure", unit = "adet")`).
-.PK_SELECT_COUNT_UNITS <- c("adet", "count", "kayit", "kayıt")
+.PK_SELECT_COUNT_UNITS <- enc2utf8(c("adet", "count", "kayit", "kayıt"))
 
 # Anlam taşımayan bağlayıcı jetonlar; kavram anahtarından düşülür.
-.PK_SELECT_FILLER_ASPECTS <- c("of", "the", "is", "ile", "olan", "bir")
+.PK_SELECT_FILLER_ASPECTS <- enc2utf8(c("of", "the", "is", "ile", "olan", "bir"))
 
 #' Yerel bağımsız ASCII katlama (Türkçe İ/I tuzağı olmadan)
+#'
+#' KATLAMA REPO STANDARDINDAN GEÇER. Eski gövde `chartr()` çağrılarını Türkçe
+#' STRING SABİTLERİYLE yapıyordu; Windows VM'de `source(..., encoding = "UTF-8")`
+#' bu sabitleri YERELE (WINDOWS-1254) çevirdiği için sabit "native", katlanacak
+#' metin ise UTF-8 işaretli oluyordu ve eşleme sessizce ıskalanabiliyordu.
+#' Artık ICU tabanlı `pk_tr_fold()` (Türkçe küçük harf) ile
+#' `pk_entity_ascii_key()` (ASCII ikincil anahtar) kullanılır; ikisi de girdiyi
+#' `enc2utf8()` ile sabitler. İzole `source()` bağlamlarında bu yardımcılar
+#' bulunmayabilir; o durumda UTF-8'e SABİTLENMİŞ `chartr()` yoluna düşülür.
 .pk_select_cap_fold <- function(x) {
   txt <- as.character(x %||% "")[1]
-  if (is.na(txt)) return("")
-  txt <- chartr("ÇĞİIÖŞÜ", "cgiiosu", txt)
-  txt <- chartr("çğıöşü", "cgiosu", txt)
+  if (length(txt) != 1L || is.na(txt)) return("")
+
+  if (exists("pk_tr_fold", mode = "function", inherits = TRUE) &&
+      exists("pk_entity_ascii_key", mode = "function", inherits = TRUE)) {
+    katlanmis <- tryCatch(
+      pk_entity_ascii_key(pk_tr_fold(txt))[1],
+      error = function(e) NA_character_
+    )
+    if (length(katlanmis) == 1L && !is.na(katlanmis)) return(trimws(katlanmis))
+  }
+
+  txt <- enc2utf8(txt)
+  txt <- chartr(enc2utf8("ÇĞİIÖŞÜ"), "cgiiosu", txt)
+  txt <- chartr(enc2utf8("çğıöşü"), "cgiosu", txt)
   tolower(trimws(txt))
 }
 

@@ -1,5 +1,5 @@
 # ==============================================================================
-# Dosya Yolu: tests/testthat/test-pk-review-705-p3-regressions.R
+# Dosya Yolu: tests/testthat/test-pk-runtime-p3-regressions.R
 # Açıklama: PR #705 P3 inceleme bulgularının çalışma zamanı davranış
 #           regresyonları. Çevrimdışı ve deterministiktir: gerçek DB, LLM,
 #           tarayıcı, SSO veya ağ ERİŞİMİ YOKTUR.

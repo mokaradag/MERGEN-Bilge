@@ -429,3 +429,31 @@ test_that("anahtar kelime esleşmesi yerelden BAGIMSIZDIR (Turkce noktasiz i)", 
   expect_true(nzchar(geri))
   expect_identical(Sys.getlocale("LC_CTYPE"), eski)
 })
+
+test_that("CTE SUTUN LISTESI govde taramasini bozmaz", {
+  env <- .pk_sql_gate_env()
+
+  # GERİLEME KORUMASI: `WITH c(a,b) AS (SELECT ...) SELECT ...` geçerli
+  # T-SQL'dir; ilk üst düzey parantez SÜTUN LİSTESİDİR. Tarayıcı derinlik
+  # sıfıra döndüğünde durduğu için `AS (SELECT ...) SELECT ...` döndürüyor ve
+  # kapı ifadeyi `cte_not_select` diye reddediyordu — CTE sütun listesi
+  # kullanan HER salt-okunur kütüphane sorgusu bloklanırdı.
+  for (sql in c(
+    "WITH c(a,b) AS (SELECT 1 AS a, 2 AS b) SELECT a, b FROM c",
+    "WITH c(a) AS (SELECT 1), d(b) AS (SELECT 2) SELECT a, b FROM c, d",
+    "WITH c AS (SELECT 1 AS a) SELECT a FROM c"
+  )) {
+    sonuc <- env$pk_sql_classify_readonly(sql)
+    expect_true(isTRUE(sonuc$allowed), info = sql)
+  }
+
+  # KAPI HÂLÂ KAPALI BAŞARISIZDIR: sütun listesi mutasyonu meşrulaştırmaz.
+  for (sql in c(
+    "WITH c(a) AS (SELECT 1) DELETE FROM T",
+    "WITH c(a) AS (SELECT 1) UPDATE T SET x = 1",
+    "WITH c(a) AS (INSERT INTO T VALUES (1)) SELECT 1"
+  )) {
+    sonuc <- env$pk_sql_classify_readonly(sql)
+    expect_false(isTRUE(sonuc$allowed), info = sql)
+  }
+})

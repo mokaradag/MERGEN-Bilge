@@ -73,12 +73,12 @@ convert_date_columns <- function(data, date_col_names) {
       if (is.character(vals) || is.factor(vals)) {
         vals_char <- as.character(vals)
 
-        # PR #705 (U44): yedek bicimler "hepsi basarisiz" kosuluna BAGLI
-        # DEGILDIR. KARISIK bicimli bir sutunda ilk bicim bazi degerleri
-        # cevirdiginde `all(is.na(...))` FALSE olur, yedekler hic denenmez ve
-        # KALAN gercek tarihler sessizce NA olarak dusurulurdu. Artik her yedek
-        # bicim YALNIZCA hala NA olan degerlere uygulanir; tek bicimli
-        # sutunlarda sonuc birebir aynidir.
+        # YEDEK BİÇİMLER "HEPSİ BAŞARISIZ" KOŞULUNA BAĞLI DEĞİLDİR.
+        # KARIŞIK biçimli bir sütunda ilk biçim bazı değerleri çevirdiğinde
+        # `all(is.na(...))` FALSE olur, yedekler hiç denenmez ve KALAN gerçek
+        # tarihler sessizce NA olarak düşürülürdü. Artık her yedek biçim
+        # YALNIZCA hâlâ NA olan değerlere uygulanır; tek biçimli sütunlarda
+        # sonuç birebir aynıdır.
         gecerli <- !is.na(vals_char) & nzchar(vals_char)
         converted <- as.Date(rep(NA_character_, length(vals_char)))
 
@@ -95,14 +95,14 @@ convert_date_columns <- function(data, date_col_names) {
         if (total_count > 0 && (success_count / total_count) >= 0.5) {
           data[[col]] <- converted
           cat(sprintf(
-            "[PK_ANALIZ] Tarih donusumu: '%s' sutunu Date tipine cevrildi (%d/%d basarili)\n",
+            "[PK_ANALIZ] Tarih dönüşümü: '%s' sütunu Date tipine çevrildi (%d/%d başarılı)\n",
             col,
             success_count,
             total_count
           ))
         } else {
           cat(sprintf(
-            "[PK_ANALIZ] UYARI: '%s' sutunu Date'e cevrilemedi (basari orani dusuk)\n",
+            "[PK_ANALIZ] UYARI: '%s' sütunu Date'e çevrilemedi (başarı oranı düşük)\n",
             col
           ))
         }

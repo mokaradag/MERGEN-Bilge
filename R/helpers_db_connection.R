@@ -280,9 +280,10 @@ get_connection <- function(target = "primary") {
       dsn = dsn_name,
       encoding = .DEFAULT_DB_CLIENT_ENCODING,
       name_encoding = .DEFAULT_DB_NAME_ENCODING,
-      # PSOCK workers are non-interactive, so odbc otherwise defaults this to
-      # FALSE. The bounded PK executor relies on R interrupts to trigger
-      # odbc's SQLCancel path while SQLExecute/SQLExecuteDirect is blocked.
+      # PSOCK işçileri etkileşimsizdir; `odbc` bu değeri aksi hâlde FALSE
+      # varsayar. Sınırlı PK yürütücüsü, `SQLExecute`/`SQLExecuteDirect`
+      # bloklandığı sırada `odbc`nin `SQLCancel` yolunu tetiklemek için R
+      # kesmelerine (interrupt) dayanır.
       interruptible = TRUE
     )
     # `driver_default` kipinde `timeout` HİÇ GEÇİLMEZ: PK dışı çağıranların

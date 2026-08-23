@@ -27,20 +27,30 @@
 .PK_ENTITY_SPLIT_WORDS <- c("ve", "veya", "ile", "yada", "ya")
 
 # Varlık adının parçası OLMAYAN, isteğin biçimini anlatan belirteçler.
+# TÜRKÇE SABİTLER YÜKLEME ANINDA UTF-8'E SABİTLENİR (`enc2utf8`).
+#
+# `R/helpers_pk_entity_morph.R` başlığındaki ölçülen arıza burada da geçerlidir:
+# Windows VM'de `source(dosya, encoding = "UTF-8")` içeriği YERELE
+# (WINDOWS-1254) çevirir ve sabitler "native" işaretli olur; karşılaştırılan
+# belirteçler ise `pk_tr_fold()`/`pk_entity_normalize()` yolundan UTF-8 işaretli
+# gelir. `%in%`, `identical()` ve `stri_replace_all_fixed()` o durumda native
+# tarafı GÜNCEL yerele göre çevirir; yerel `C` iken çeviri başarısız olur ve
+# eşleşme SESSİZCE kaybolur. UTF-8 işaretli dizelerde `enc2utf8()` işlemsizdir.
+
 # Çoğul ipuçları burada da yer alır: ipucu ÇOĞULLUK bayrağını belirler,
 # ancak varlık adının kendisi değildir ("tüm ANKA" -> "ANKA").
-.PK_ENTITY_CONTROL_WORDS <- c(
+.PK_ENTITY_CONTROL_WORDS <- enc2utf8(c(
   .PK_ENTITY_PLURAL_WORDS,
   "list", "listele", "listesini",
   "göster", "goster", "getir", "bul", "ver",
   "adlı", "adli", "isimli", "olan", "olanlar",
   "için", "icin", "ait", "ilgili"
-)
+))
 
 # Metadata'da tanımlı varlık TÜRÜ belirteçleri için güvenli varsayılan.
 # Bilinçli olarak KÜÇÜK tutulmuştur: fazlası kanonik adları aşındırır.
 # Gerçek liste `entity_kinds` argümanıyla sorgu metadatasından gelir.
-.PK_ENTITY_DEFAULT_KINDS <- c("proje", "program")
+.PK_ENTITY_DEFAULT_KINDS <- enc2utf8(c("proje", "program"))
 
 .pk_entity_mention_drop_set <- function(entity_kinds = NULL) {
   turler <- if (is.null(entity_kinds)) character(0) else as.character(entity_kinds)

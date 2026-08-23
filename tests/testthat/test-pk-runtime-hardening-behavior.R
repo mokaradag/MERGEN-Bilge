@@ -1,5 +1,5 @@
 # ==============================================================================
-# Dosya Yolu: tests/testthat/test-pk-review-714-hardening-behavior.R
+# Dosya Yolu: tests/testthat/test-pk-runtime-hardening-behavior.R
 # Açıklama: PR #714 (CodeRabbit) inceleme bulgularının regresyon sözleşmeleri.
 #
 #           Tamamen ÇEVRİMDIŞI ve DETERMİNİSTİKtir: gerçek DB, LLM, tarayıcı,

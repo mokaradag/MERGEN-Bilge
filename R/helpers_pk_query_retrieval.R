@@ -359,35 +359,45 @@ pk_retrieval_agreement <- function(index, prompt, selected_id, top_n, library = 
   top_n <- suppressWarnings(as.integer(top_n)[1])
   if (!length(top_n) || is.na(top_n) || top_n < 1L) top_n <- 1L
 
-  bos <- list(available = FALSE, rank = NA_integer_, score = NA_real_, disagrees = FALSE)
+  # `excluded_by_not_for` HER YOLDA DÖNER. Alanı yalnızca dışlama dalında
+  # yazmak, `agreement$excluded_by_not_for` okuyan bir tüketiciye diğer
+  # yollarda `NULL` verirdi; `if (NULL)` sıfır uzunluklu koşulla HATA fırlatır.
+  bos <- list(available = FALSE, rank = NA_integer_, score = NA_real_,
+              disagrees = FALSE, excluded_by_not_for = FALSE)
   if (!is.list(index) || !length(index$ids %||% character(0))) return(bos)
   if (is.null(selected_id) || !length(selected_id) || is.na(selected_id[1])) return(bos)
 
   siralama <- pk_retrieval_score(index, prompt)
   if (!nrow(siralama)) return(bos)
 
-  # Sözlüksel sinyal tamamen boşsa (tüm skorlar 0) uyuşmazlık İDDİA EDİLMEZ.
-  # Aksi hâlde metadata'sı olmayan bir kütüphanede her seçim "şüpheli" olurdu.
-  if (all(siralama$score <= 0)) return(bos)
-
   kimlik <- trimws(as.character(selected_id)[1])
 
+  # SEÇİLEN SORGUNUN KENDİ `not_for` KAYDI DA BAĞLAYICIDIR.
+  #
+  # `not_for` bu isteğin o sorguya UYGUN OLMADIĞINA dair AÇIK olumsuz kanıttır.
+  # Eski `setdiff(..., kimlik)` seçileni dışlama kümesinden çıkarıyordu; yani
+  # sorgunun kendi `not_for` kaydı isteme uysa bile bu kapı "sözlüksel
+  # uyuşmazlık yok" diyebiliyor ve seçim geçebiliyordu.
+  #
+  # DENETİM SIFIR-SKOR KISA DEVRESİNDEN ÖNCE YAPILIR: `pk_retrieval_document_text()`
+  # `not_for` metnini dizine ALMAZ, bu yüzden `not_for` dışında az metin taşıyan
+  # bir kütüphane bir istem için HER YERDE 0 skorlayabilir. Eski sırada bu
+  # durumda bağlayıcı `not_for` eşleşmesi tamamen atılıyordu.
   if (!is.null(library)) {
     tum_dislanan <- pk_retrieval_excluded_ids(library, prompt)
-
-    # SEÇİLEN SORGUNUN KENDİ `not_for` KAYDI DA BAĞLAYICIDIR.
-    #
-    # `not_for` bu isteğin o sorguya UYGUN OLMADIĞINA dair AÇIK olumsuz
-    # kanıttır. Eski `setdiff(..., kimlik)` seçileni dışlama kümesinden
-    # çıkarıyordu; yani sorgunun kendi `not_for` kaydı isteme uysa bile bu kapı
-    # "sözlüksel uyuşmazlık yok" diyebiliyor ve seçim geçebiliyordu.
     if (kimlik %in% tum_dislanan) {
       return(list(
         available = TRUE, rank = NA_integer_, score = NA_real_,
         disagrees = TRUE, excluded_by_not_for = TRUE
       ))
     }
+  }
 
+  # Sözlüksel sinyal tamamen boşsa (tüm skorlar 0) uyuşmazlık İDDİA EDİLMEZ.
+  # Aksi hâlde metadata'sı olmayan bir kütüphanede her seçim "şüpheli" olurdu.
+  if (all(siralama$score <= 0)) return(bos)
+
+  if (!is.null(library)) {
     dislanan <- setdiff(tum_dislanan, kimlik)
     if (length(dislanan)) {
       siralama <- siralama[!(siralama$query_id %in% dislanan), , drop = FALSE]
@@ -406,6 +416,7 @@ pk_retrieval_agreement <- function(index, prompt, selected_id, top_n, library = 
     available = TRUE,
     rank = as.integer(sira),
     score = skor,
-    disagrees = isTRUE(sira > top_n) && isTRUE(skor < esik)
+    disagrees = isTRUE(sira > top_n) && isTRUE(skor < esik),
+    excluded_by_not_for = FALSE
   )
 }

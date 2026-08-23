@@ -3,9 +3,34 @@
 # PR #705 P1: doğrudan DB süreç sınırı ve Derin Düşünme v2 paket köprüsü.
 # ==============================================================================
 
-if (!isTRUE(get0(".pk_p1_runtime_guards_loaded", inherits = FALSE,
-                 ifnotfound = FALSE))) {
+# TEKRAR YÜKLEME KORUMASI "BAYRAK" DEĞİL, "ZATEN SARMALANMIŞ MI" SORUSUDUR.
+#
+# Eski sürüm dosyanın TAMAMINI tek bir `.pk_p1_runtime_guards_loaded` bayrağıyla
+# çevreliyordu. `global.R` yeniden kaynaklandığında `helpers_pk_async_worker.R`
+# `pk_async_run_analysis()`i SARMALANMAMIŞ hâliyle yeniden tanımlıyor, ama
+# bayrak hâlâ TRUE olduğu için bu dosya sarmalayıcıyı YENİDEN KURMUYORDU.
+# Sonuç: sonraki gönderim `.pk_p1_run_direct_disposable()` izolasyonunu
+# tamamen atlıyordu. Karar artık `helpers_pk_worker_observers.R` ile aynı
+# desene dayanır: MEVCUT public fonksiyon işaretli bir sarmalayıcı değilse
+# yeniden kurulur. Yardımcı tanımlar düz atama olduğundan tekrar çalıştırılması
+# güvenlidir.
 .pk_p1_direct_child_marker <- "MERGEN_PK_DIRECT_DB_CHILD"
+
+# Sarmalayıcı işareti: özyinelemeli sarmalamayı (sonsuz döngü) engeller.
+.pk_p1_wrapper_mark <- "pk_p1_runtime_guard"
+
+.pk_p1_is_wrapped <- function(fn) {
+  is.function(fn) && isTRUE(attr(fn, .pk_p1_wrapper_mark, exact = TRUE))
+}
+
+# İşçi global paketi ÖNBELLEKLENİR. Sarmalayıcı yeniden kurulduğunda önbellek
+# eski (sarmalanmamış) gövdeyi taşıyor olabilir; bu yüzden geçersiz kılınır.
+.pk_p1_reset_worker_globals <- function() {
+  sifirla <- get0("pk_async_worker_globals_reset", mode = "function",
+                  inherits = TRUE, ifnotfound = NULL)
+  if (is.function(sifirla)) try(sifirla(), silent = TRUE)
+  invisible(TRUE)
+}
 
 .pk_p1_pool_enabled_for_request <- function(request) {
   snap <- request$db_pool_options
@@ -77,15 +102,26 @@ if (!isTRUE(get0(".pk_p1_runtime_guards_loaded", inherits = FALSE,
   # tarihi ÇOKTAN dolmuş olsa bile küme başlatma zaman aşımı kadar bloke
   # kalır; kapı bu çağrı dönene dek bunu GÖZLEYEMEZ. Başlatma kalan bütçeyle
   # sınırlanır ve dönüşte kapı YENİDEN yoklanır.
+  # `connectTimeout`/`timeout` SOKET HAREKETSİZLİĞİNİ sınırlar, ÇAĞRININ TAMAMINI
+  # değil: Unix/macOS'ta askıda bir el sıkışma bu iki değerin ÜSTÜNDE bloke
+  # kalabilir. Bu yüzden başlatma AYRICA repo genelinde kullanılan bağımsız
+  # bütçe sarmalayıcısından (`pk_async_bounded_fs()`) geçirilir; sarmalayıcı
+  # yoksa (izole test/eski çalışma kopyası) davranış aynen korunur.
   kalan <- .pk_p1_remaining_budget_sec(request)
-  cluster <- tryCatch(
+  baslat <- function() {
     if (is.finite(kalan)) {
       parallelly::makeClusterPSOCK(1L, connectTimeout = kalan, timeout = kalan)
     } else {
       parallelly::makeClusterPSOCK(1L)
-    },
-    error = function(e) NULL
-  )
+    }
+  }
+  cluster <- if (is.finite(kalan) &&
+                 exists("pk_async_bounded_fs", mode = "function", inherits = TRUE)) {
+    sonuc <- pk_async_bounded_fs(baslat, deadline_at = Sys.time() + kalan)
+    if (isTRUE(sonuc$ok)) sonuc$value else NULL
+  } else {
+    tryCatch(baslat(), error = function(e) NULL)
+  }
   if (is.null(cluster)) {
     return(list(status = "bootstrap_failed", result = NULL,
                 session_writes = list(), error = "Tek kullanimlik DB iscisi baslatilamadi.",
@@ -135,16 +171,25 @@ if (!isTRUE(get0(".pk_p1_runtime_guards_loaded", inherits = FALSE,
   value
 }
 
-.pk_p1_original_pk_async_run_analysis <- pk_async_run_analysis
-pk_async_run_analysis <- function(request) {
-  child <- identical(Sys.getenv(.pk_p1_direct_child_marker, unset = ""), "1")
-  if (child || .pk_p1_pool_enabled_for_request(request)) {
-    return(.pk_p1_original_pk_async_run_analysis(request))
+if (exists("pk_async_run_analysis", mode = "function", inherits = TRUE) &&
+    !.pk_p1_is_wrapped(get("pk_async_run_analysis", mode = "function", inherits = TRUE))) {
+  .pk_p1_original_pk_async_run_analysis <- get("pk_async_run_analysis",
+                                               mode = "function", inherits = TRUE)
+  pk_async_run_analysis <- function(request) {
+    child <- identical(Sys.getenv(.pk_p1_direct_child_marker, unset = ""), "1")
+    if (child || .pk_p1_pool_enabled_for_request(request)) {
+      return(.pk_p1_original_pk_async_run_analysis(request))
+    }
+    .pk_p1_run_direct_disposable(request)
   }
-  .pk_p1_run_direct_disposable(request)
+  attr(pk_async_run_analysis, .pk_p1_wrapper_mark) <- TRUE
+  .pk_p1_reset_worker_globals()
 }
 
-.pk_p1_original_execute_single_deep_query <- execute_single_deep_query
+if (exists("execute_single_deep_query", mode = "function", inherits = TRUE) &&
+    !.pk_p1_is_wrapped(get("execute_single_deep_query", mode = "function", inherits = TRUE))) {
+.pk_p1_original_execute_single_deep_query <- get("execute_single_deep_query",
+                                                 mode = "function", inherits = TRUE)
 execute_single_deep_query <- function(query, user_prompt, session, rls_info,
                                       detail_config, stop_check = NULL,
                                       chat_history = NULL) {
@@ -228,6 +273,10 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
   result$pk_facts <- pk_packet_all_facts(packet)
   result
 }
-
-.pk_p1_runtime_guards_loaded <- TRUE
+attr(execute_single_deep_query, .pk_p1_wrapper_mark) <- TRUE
+.pk_p1_reset_worker_globals()
 }
+
+# Geriye dönük uyumluluk: bazı tanı betikleri bu bayrağı okur. Artık KURULUM
+# KARARINI VERMEZ; yalnızca dosyanın en az bir kez yüklendiğini bildirir.
+.pk_p1_runtime_guards_loaded <- TRUE

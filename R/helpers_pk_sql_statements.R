@@ -43,12 +43,12 @@
   for (i in seq_along(konumlar)) {
     bas <- konumlar[i]
     if (bas > length(derinlik) || derinlik[bas] != 0L) next
-    # BUYUK HARFE CEVIRME YERELDEN BAGIMSIZ OLMALIDIR.
+    # BÜYÜK HARFE ÇEVİRME YERELDEN BAĞIMSIZ OLMALIDIR.
     #
-    # Turkce `LC_CTYPE` altinda `toupper("intersect")` noktali `İ` uretir ve
-    # `INTERSECT` kume islecine ESLESMEZ; mesru bir `SELECT ... INTERSECT
-    # SELECT ...` sorgusu "ikinci ifade" sanilip REDDEDILIRDI. Anahtar
-    # kelimeler saf ASCII oldugundan `chartr()` dogru ve yeterlidir.
+    # Türkçe `LC_CTYPE` altında `toupper("intersect")` noktalı `İ` üretir ve
+    # `INTERSECT` küme işlecine EŞLEŞMEZ; meşru bir `SELECT ... INTERSECT
+    # SELECT ...` sorgusu "ikinci ifade" sanılıp REDDEDİLİRDİ. Anahtar
+    # kelimeler saf ASCII olduğundan `chartr()` doğru ve yeterlidir.
     kelimeler <- c(kelimeler, chartr("abcdefghijklmnopqrstuvwxyz",
                                      "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
                                      substr(metin, bas, bas + boylar[i] - 1L)))

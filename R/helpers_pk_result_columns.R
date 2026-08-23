@@ -162,7 +162,14 @@ pk_sql_describe_result_schema <- function(conn, sql_text, call_fn = NULL) {
 # `max_length = -1` SQL Server'da MAX/`unlimited` demektir: KANITLANMIŞ üst sınır
 # YOKTUR. `xml`/`text`/`ntext`/`image`/`sql_variant` da sınırsızdır.
 .pk_sql_column_from_descriptor <- function(satir) {
-  tip <- tolower(as.character(satir$system_type_name %||% ""))
+  # `%||%` YALNIZCA `NULL` ATLAR. `sys.dm_exec_describe_first_result_set`
+  # ifadeyi tam betimleyemediğinde `system_type_name` SQL NULL döner; DBI bunu
+  # `NA_character_` yapar ve `grepl()` `NA` yayar. Sonraki `if (NA)`
+  # "missing value where TRUE/FALSE needed" ile sınıflandırmayı DÜŞÜRÜRDÜ;
+  # kanıtlanmamış tip zaten aşağıda güvenli tarafta ("text"/sınırsız) biter.
+  tip <- suppressWarnings(as.character(satir$system_type_name %||% "")[1])
+  if (length(tip) != 1L || is.na(tip)) tip <- ""
+  tip <- tolower(tip)
   boyut <- suppressWarnings(as.numeric(satir$max_length %||% NA_real_)[1])
 
   # `sql_variant` KANITLANMIŞ 8.016 baytlık üst sınıra sahiptir (bkz. sabit).

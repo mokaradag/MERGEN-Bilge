@@ -10,9 +10,9 @@ PK_META_MATCH_MODES <- c("exact", "resolve", "contains", "none")
 PK_META_PERCENT_SCALES <- c("points", "fraction")
 PK_META_ALIAS_PROVENANCE <- c("synthetic", "approved")
 
-# Isleyicilerin (pk_fmt_number / .pk_export_number_format) destekledigi AZAMI
-# ondalik hassasiyet. Metadata bundan fazlasini BEYAN EDEMEZ; aksi halde
-# dogrulanmis bir sorgu, ciktisinda sessizce daha az hassasiyet yayinlar.
+# İşleyicilerin (pk_fmt_number / .pk_export_number_format) desteklediği AZAMİ
+# ondalık hassasiyet. Metadata bundan fazlasını BEYAN EDEMEZ; aksi hâlde
+# doğrulanmış bir sorgu, çıktısında sessizce daha az hassasiyet yayımlar.
 PK_META_MAX_DECIMALS <- 9L
 .PK_META_CAPABILITY_PATTERN <- "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
 
@@ -198,7 +198,36 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
     )))
   }
 
-  if (.pk_meta_is_scalar_text(cmeta$match) && cmeta$match %in% c("resolve", "contains") &&
+  # `match_mode` KABUL EDİLEN AMA OKUNMAYAN BİR ALAN OLARAK KALAMAZ.
+  #
+  # Ad `PK_META_COLUMN_FIELDS` içinde izinli olduğu için bilinmeyen-alan
+  # koruması susuyor, hiçbir doğrulayıcı değerini denetlemiyor ve
+  # `pk_meta_match_mode()` de okumuyordu: `match_mode = "resolve"` yazan bir
+  # küratör başlangıç doğrulamasını geçiyor ama varlık çözümlemesi SESSİZCE
+  # `"none"` kalıyordu. Alan artık `match` takma adı olarak OKUNUR (bkz.
+  # `pk_meta_match_mode()`) ve AYNI kümeye karşı doğrulanır.
+  if (!is.null(cmeta$match_mode) &&
+      (!.pk_meta_is_scalar_text(cmeta$match_mode) ||
+       !(cmeta$match_mode %in% PK_META_MATCH_MODES))) {
+    hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
+      " gecersiz match_mode (izinli: %s).", paste(PK_META_MATCH_MODES, collapse = "/")
+    )))
+  }
+  if (!is.null(cmeta$match) && !is.null(cmeta$match_mode) &&
+      !identical(as.character(cmeta$match)[1], as.character(cmeta$match_mode)[1])) {
+    hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
+      " match ve match_mode birlikte verildiginde AYNI degeri tasimalidir."))
+  }
+
+  .etkin_match <- if (.pk_meta_is_scalar_text(cmeta$match)) {
+    cmeta$match
+  } else if (.pk_meta_is_scalar_text(cmeta$match_mode)) {
+    cmeta$match_mode
+  } else {
+    NULL
+  }
+
+  if (!is.null(.etkin_match) && .etkin_match %in% c("resolve", "contains") &&
       !identical(cmeta$role, "dimension")) {
     hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
       " role='%s' sutununda bulanik match kullanilamaz; resolve/contains yalnizca dimension icindir.",
@@ -235,14 +264,14 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
   if (!is.null(cmeta$tier) &&
       !.pk_meta_is_whole_number(cmeta$tier, min = 0, max = .Machine$integer.max)) {
     hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
-      " tier negatif olmayan tam sayi olmalidir."))
+      " tier negatif olmayan tam sayı olmalıdır."))
   }
 
-  # PR #705: `decimals` DOGRULAMASI, ISLEYICILERIN GERCEKTEN destekledigi
-  # hassasiyetle SINIRLIDIR. `pk_fmt_number()` ve `.pk_export_number_format()`
-  # degeri SESSIZCE 9'a kirpar; validator 10-15 arasi bir beyani kabul
-  # ederse sorgu "dogrulanmis" gorunur ama ciktisi beyandan DAHA AZ hassastir.
-  # Sozlesme ile isleyici arasindaki bu sessiz uyusmazlik KAPATILIR.
+  # `decimals` DOĞRULAMASI, İŞLEYİCİLERİN GERÇEKTEN desteklediği hassasiyetle
+  # SINIRLIDIR. `pk_fmt_number()` ve `.pk_export_number_format()` değeri
+  # SESSİZCE 9'a kırpar; doğrulayıcı 10-15 arası bir beyanı kabul ederse sorgu
+  # "doğrulanmış" görünür ama çıktısı beyandan DAHA AZ hassastır. Sözleşme ile
+  # işleyici arasındaki bu sessiz uyuşmazlık KAPATILIR.
   if (!is.null(cmeta$decimals) &&
       !.pk_meta_is_whole_number(cmeta$decimals, min = 0, max = PK_META_MAX_DECIMALS)) {
     hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
@@ -314,7 +343,8 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
         " aliases yalnizca role='id' veya role='dimension' sutununda tanimlanabilir."))
     }
     if (!isTRUE(cmeta$allow_aliases) &&
-        (identical(cmeta$role, "id") || identical(cmeta$match, "exact"))) {
+        (identical(cmeta$role, "id") ||
+         identical(as.character(cmeta$match %||% cmeta$match_mode %||% "")[1], "exact"))) {
       hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
         " kod/kimlik veya exact sutunu alias alamaz; allow_aliases=TRUE zorunludur."))
     }

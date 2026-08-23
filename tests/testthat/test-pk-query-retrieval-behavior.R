@@ -178,7 +178,13 @@ test_that("uyuşmazlık sinyali KARAR DEĞİL, yalnızca sıra/bayrak üretir", 
   expect_gt(uyumsuz$rank, 1L)
 
   # Dönen nesne yalnızca SİNYALDİR; hiçbir "seç/çalıştır" alanı taşımaz.
-  expect_setequal(names(uyum), c("available", "rank", "score", "disagrees"))
+  # `excluded_by_not_for` de bir sinyaldir ve artık HER yolda döner: alanı
+  # yalnızca dışlama dalında yazmak, `agreement$excluded_by_not_for` okuyan bir
+  # tüketiciye diğer yollarda `NULL` verir ve `if (NULL)` HATA fırlatırdı.
+  expect_setequal(names(uyum),
+                  c("available", "rank", "score", "disagrees", "excluded_by_not_for"))
+  expect_false(uyum$excluded_by_not_for)
+  expect_false(uyumsuz$excluded_by_not_for)
 })
 
 test_that("seçilen sorgunun KENDİ `not_for` kaydı da bağlayıcıdır", {

@@ -19,7 +19,15 @@
     # `tolower()` YERELE DUYARLIDIR: Türkçe `LC_CTYPE` altında "AI" -> "aı"
     # (noktasız `ı`) olur, `switch()` "ai" dalını ıskalar ve imza `aı|...`
     # çıkar. Rol/tip birer MAKİNE BELİRTECİDİR; ASCII katlama doğru sözleşmedir.
-    ham_rol <- trimws(as.character(m$role %||% m$type %||% "user")[1])
+    # `%||%` YALNIZCA `NULL` ATLAR: `role = NA` + `type = "ai"` durumunda
+    # `ham_rol` `NA` kalıyor, `switch()` geçerli rol üretmiyor ve dıştaki
+    # `vapply(..., character(1))` "values must be length 1" ile sorgu seçimini
+    # KESİYORDU. Boş olmayan tekil değer sırayla `role` -> `type` -> `"user"`.
+    .ilk_metin <- function(x) {
+      v <- suppressWarnings(trimws(as.character(x)[1]))
+      if (length(v) != 1L || is.na(v) || !nzchar(v)) NULL else v
+    }
+    ham_rol <- .ilk_metin(m$role) %||% .ilk_metin(m$type) %||% "user"
     ham_rol <- if (exists("pk_ascii_lower", mode = "function", inherits = TRUE)) {
       pk_ascii_lower(ham_rol)
     } else {

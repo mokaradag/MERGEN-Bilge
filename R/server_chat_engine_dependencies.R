@@ -212,8 +212,18 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
     }
 
     call_env$release_connection <- function(conn_list) {
+      # BİRİNCİL BIRAKILDIKTAN SONRA AYNI NESNE ARTIK "BİRİNCİL" DEĞİLDİR.
+      #
+      # Havuz bir sonraki checkout'ta genellikle AYNI `conn` nesnesini geri
+      # verir. `state$primary` hiç temizlenmediği ve `primary_released` TRUE
+      # kaldığı için, geri dönüştürülen bağlantının bırakılması sessizce
+      # ATLANIYOR ve sorgunun `on.exit(release_connection(...))` çağrısı hiçbir
+      # şey yapmıyordu: bağlantı analiz boyunca havuza DÖNMÜYORDU. Bırakma
+      # gerçekleştiğinde işaret sıfırlanır; sonraki edinim yeniden işaretler.
       is_primary <- .pk_hook_same_connection_list(conn_list, state$primary)
       if (is_primary && isTRUE(state$primary_released)) {
+        state$primary <- NULL
+        state$primary_released <- FALSE
         return(invisible(NULL))
       }
       if (is_primary) state$primary_released <- TRUE
@@ -230,6 +240,17 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
     }
 
     call_env$pk_analysis_observe <- function(session, conn, info) {
+      # ÇAĞIRANIN AÇTIĞI BAĞLANTI YENİDEN AÇILMAZ.
+      #
+      # `helpers_deep_analysis.R` gözlem katmanına `conn_provider =
+      # pk_deep_short_lived_conn_provider()` verir; yani `conn` ZATEN açılmış
+      # kısa ömürlü bağlantıdır. Bu sarmalayıcı onu yok sayıp ikinci bir
+      # bağlantı açıyordu: her gözlem (çalıştırılan sorgu başına bir tane, artı
+      # terminal gözlemler) havuzdan İKİ checkout tüketiyor, sağlayıcının
+      # bağlantısı ise hiç kullanılmadan açılıp bırakılıyordu.
+      if (!is.null(conn)) {
+        return(.pk_hook_real_pk_analysis_observe(session, conn, info))
+      }
       telemetry_list <- tryCatch(
         .pk_hook_real_get_connection(),
         error = function(e) NULL

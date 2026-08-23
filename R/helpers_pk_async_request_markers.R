@@ -88,7 +88,13 @@ pk_session_state_write <- function(session, key, value) {
 .PK_MARKER_SESSION_KEY <- "pk_marker_session_id"
 
 .pk_marker_session_id <- function(session) {
-  jeton <- .pk_marker_id(try(session$token, silent = TRUE))
+  # `try()` HATA NESNESİ KİMLİK DEĞİLDİR: `try-error` hata METNİNİ taşıyan bir
+  # dizedir, `nzchar()` TRUE döner ve metin geçerli jeton sanılırdı. `token`
+  # erişimi hata veren HER vekil o zaman AYNI kimliği paylaşır ve
+  # `.pk_session_hook_installed()` sonraki oturumda ÖNCEKİNİN işaretini görüp
+  # `onSessionEnded` temizliğini hiç kurmazdı.
+  ham_jeton <- try(session$token, silent = TRUE)
+  jeton <- if (inherits(ham_jeton, "try-error")) NA_character_ else .pk_marker_id(ham_jeton)
   if (!is.na(jeton) && nzchar(jeton)) return(jeton)
   ud <- try(session$userData, silent = TRUE)
   if (inherits(ud, "try-error") || !is.environment(ud)) return("")
@@ -117,8 +123,12 @@ pk_session_state_write <- function(session, key, value) {
 
 #' Test/izolasyon için süreç-yerel aynayı sıfırla
 pk_request_markers_reset <- function() {
-  .pk_request_marker_store$abandoned <- character(0)
-  .pk_request_marker_store$revoked <- character(0)
+  # HER YUVA temizlenir: `hooked` dışarıda kalınca jetonu testler arasında
+  # tekrarlanan bir oturum ikizinde sızan işaret TRUE okunuyor ve
+  # `session$onSessionEnded()` kurulumu fark edilmeden ATLANIYORDU.
+  for (yuva in c("abandoned", "revoked", "hooked")) {
+    .pk_request_marker_store[[yuva]] <- character(0)
+  }
   invisible(TRUE)
 }
 

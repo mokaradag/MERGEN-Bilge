@@ -650,6 +650,31 @@ test_that("P2: acik OLUMSUZLAMA disa aktarim istegi sayilmaz", {
   expect_identical(env$pk_compose_decide(3L, 3L, "CSV olarak indir")$format, "csv")
 })
 
+test_that("P2: olumsuzlama KOMSU ipucunu kapsar, cumlecigin tamamini degil", {
+  env <- .pk_export_hardening_env()
+
+  # (1) Ayni cumlecikteki OLUMLU ipucu artik dusmez. Eskiden cumlecigin tamami
+  # atiliyor ve hic ek uretilmiyordu.
+  niyet <- env$pk_compose_export_intent("Excel istemiyorum CSV gonder")
+  expect_true(isTRUE(niyet$wants))
+  expect_identical(niyet$format, "csv")
+
+  # (2) TEK BASINA `degil` de olumsuzlamadir; eskiden ilk cumlecik `bicim`i
+  # "csv" olarak kilitliyor ve kullanicinin REDDETTIGI bicim disa aktariliyordu.
+  for (soru in c("CSV değil, Excel istiyorum", "CSV degil, Excel istiyorum")) {
+    niyet2 <- env$pk_compose_export_intent(soru)
+    expect_true(isTRUE(niyet2$wants), info = soru)
+    expect_identical(niyet2$format, "xlsx", info = soru)
+  }
+
+  # (3) Turkce yazimli olumsuzlama da yakalanir (`pk_tr_fold()` yalnizca kucultur).
+  expect_false(env$pk_compose_wants_export("dosya olmasın"))
+  expect_false(env$pk_compose_wants_export("rapor oluşturma"))
+
+  # (4) Tamami olumsuzlanan cumlecik hala disa aktarim SAYILMAZ.
+  expect_false(env$pk_compose_wants_export("Excel istemiyorum"))
+})
+
 test_that("P1: onizleme/satir ici tablo hucreleri sutun metadatasini KULLANIR", {
   env <- .pk_export_hardening_env()
   meta <- list(column_meta = list(

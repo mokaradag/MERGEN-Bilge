@@ -14,10 +14,19 @@
 # ==============================================================================
 
 # Tek bir metadata kaydındaki MÜKERRER alan adlarını raporlar.
+# TAM ADLANDIRILMAMIŞ KAYIT SESSİZCE DÜŞMEZ.
+#
+# `.pk_meta_merge_one()` `names(ustun)` üzerinde döner: adsız bir kayıtta bu
+# döngü HİÇ çalışmaz, kısmen adlandırılmışta ise boş adlar atlanır. Örneğin
+# `list("project", filterable = TRUE)` katman doğrulamasından geçiyor, adsız öge
+# birleştirme sırasında HATASIZ atılıyor ve küratörün yazdığı anlam kayboluyordu.
 .pk_meta_dup_field_names <- function(baglam, kayit) {
   if (!is.list(kayit) || !length(kayit)) return(character(0))
   adlar <- names(kayit)
-  if (is.null(adlar) || length(adlar) != length(kayit)) return(character(0))
+  if (is.null(adlar) || length(adlar) != length(kayit) ||
+      any(is.na(adlar) | !nzchar(trimws(adlar)))) {
+    return(sprintf("%s icindeki tum alanlar adlandirilmis olmalidir.", baglam))
+  }
   adlar <- trimws(adlar)
   tekrar <- unique(adlar[duplicated(adlar) & nzchar(adlar) & !is.na(adlar)])
   if (!length(tekrar)) return(character(0))
@@ -64,12 +73,22 @@
     if (!is.list(girdi)) return(character(0))
     yerel <- .pk_meta_dup_field_names(sprintf("%s['%s']", name, id), girdi)
     sutunlar <- girdi$column_meta
-    if (is.list(sutunlar) && length(sutunlar) && !is.null(names(sutunlar))) {
-      for (sutun in names(sutunlar)) {
-        if (is.na(sutun) || !nzchar(sutun)) next
-        yerel <- c(yerel, .pk_meta_dup_field_names(
-          sprintf("%s['%s'] column_meta['%s']", name, id, sutun), sutunlar[[sutun]]
+    if (is.list(sutunlar) && length(sutunlar)) {
+      # `column_meta` GİRDİLERİ DE TAM ADLANDIRILMIŞ OLMALIDIR: adsız/kısmen
+      # adlandırılmış girdiler doğrulamada atlanıyor ve birleştirmede sessizce
+      # düşüyordu; sütun rolleri ve kısıtları kayboluyordu.
+      sutun_adlari <- names(sutunlar)
+      if (is.null(sutun_adlari) || length(sutun_adlari) != length(sutunlar) ||
+          any(is.na(sutun_adlari) | !nzchar(trimws(sutun_adlari)))) {
+        yerel <- c(yerel, sprintf(
+          "%s['%s'] column_meta girdilerinin TAMAMI adlandirilmis olmalidir.", name, id
         ))
+      } else {
+        for (sutun in sutun_adlari) {
+          yerel <- c(yerel, .pk_meta_dup_field_names(
+            sprintf("%s['%s'] column_meta['%s']", name, id, sutun), sutunlar[[sutun]]
+          ))
+        }
       }
     }
     yerel

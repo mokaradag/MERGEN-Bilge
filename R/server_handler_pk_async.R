@@ -80,6 +80,15 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
 
   request_done <- FALSE
   bekci_iptal <- NULL
+  # İŞÇİ FUTURE'I YERLEŞTİ Mİ? Son tarih bekçisinin ertelenmiş jeton temizliği
+  # bu bayrağa bakar; bkz. aşağıdaki `jetonu_gecikmeli_temizle()`.
+  isci_yerlesti <- FALSE
+  # İşçi yerleşti: jeton ARTIK assert edilmez (son çare zamanlayıcısı da bunu
+  # görüp hiçbir şey yapmaz).
+  jeton_yerlesmede_temizle <- function() {
+    isci_yerlesti <<- TRUE
+    try(pk_cancel_token_clear(cancel_token), silent = TRUE)
+  }
 
   butce_birak <- function() {
     try(shiny::isolate(
@@ -161,7 +170,17 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
       # AI mesajlarında `pk_provenance_decorate()` çağırdığı için terminal
       # yanıtlar da alt bilgiyi ALIR. Mesaj kimliği ise çipler için ZORUNLUDUR
       # (aşağıya bakınız).
-      mesaj_kimligi <- ctx$add_message_fn(uygulama$answer, "ai")
+      # `add_message_fn()` MESAJ LİSTESİ döndürür; çip tüketicisi seçicisini bu
+      # değerden kurduğu için hiçbir DOM düğümünün taşımadığı bir sarmalayıcı
+      # kimliği arıyor ve terminal yanıtın çipleri KAYBOLUYORDU. `id` alanı
+      # alınır; eski davranışa (düz kimlik) da uyumlu kalınır.
+      eklenen <- ctx$add_message_fn(uygulama$answer, "ai")
+      mesaj_kimligi <- if (is.list(eklenen)) {
+        as.character(eklenen$id %||% "")[1]
+      } else {
+        as.character(eklenen %||% "")[1]
+      }
+      if (length(mesaj_kimligi) != 1L || is.na(mesaj_kimligi)) mesaj_kimligi <- ""
       if (exists("mergen_pk_emit_chips", mode = "function", inherits = TRUE)) {
         try(mergen_pk_emit_chips(ctx, uygulama$chips, message_id = mesaj_kimligi),
             silent = TRUE)
@@ -311,10 +330,23 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
       try(mergen_pk_unregister_active_request(oturum, req_id), silent = TRUE)
       try(mergen_pk_unregister_cancel_token(oturum, req_id), silent = TRUE)
       butce_birak()
-      # Jeton dosyası işçi için BIRAKILIR (o hâlâ çalışıyor olabilir) ve
-      # gecikmeli olarak temizlenir; aksi hâlde `.flag` sızıntısı olurdu.
-      try(later::later(function() try(pk_cancel_token_clear(cancel_token), silent = TRUE),
-                       delay = 300), silent = TRUE)
+      # JETON, İŞÇİ FUTURE'I YERLEŞENE KADAR ASSERT EDİLİR.
+      #
+      # Koşulsuz zamanlayıcı temizliği, yerel bir çağrıda bloklanmış ve o
+      # gecikmeden SONRA dönen bir işçinin aşama kapılarında "iptal yok"
+      # okumasına yol açıyordu: terk edilmiş istek SQL/analiz/dışa aktarım
+      # işine devam ediyor, işçi yuvasını ve bir DB bağlantısını tutuyordu —
+      # üstelik ana süreç sonucu ÇOKTAN attıktan sonra. Asıl temizlik bu yüzden
+      # TAMAMLANMA YOLUNDA (`jeton_yerlesmede_temizle()`; onFulfilled /
+      # onRejected / catch) yapılır. Aşağıdaki tek zamanlayıcı yalnızca
+      # promise'in HİÇ yerleşmediği (işçi kayıp) durum için son çaredir ve
+      # yerleşmişse hiçbir şey yapmaz. TEK SEFERLİKTİR: kendini yeniden kuran
+      # bir zincir `later` kuyruğunu saatlerce dolu tutar ve aynı R oturumunda
+      # çalışan Shiny/`testServer` akışlarını bloke eder.
+      try(later::later(function() {
+        if (isTRUE(isci_yerlesti)) return(invisible(NULL))
+        try(pk_cancel_token_clear(cancel_token), silent = TRUE)
+      }, delay = 300), silent = TRUE)
       if (isTRUE(arayuz_bizim)) {
         try(shiny::isolate({ ctx$cleanup_send_message()
           ctx$add_message_fn(mergen_pk_worker_outcome_text("deadline"), "ai") }), silent = TRUE)
@@ -328,6 +360,7 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
   tamamlandi <- promises::then(
     vaat,
     onFulfilled = function(worker_result) {
+      jeton_yerlesmede_temizle()
       if (!isTRUE(koruma_gecti("fulfilled", worker_result$result))) return(invisible(NULL))
       bitir_istek()
       durum <- as.character(worker_result$status %||% "error")[1]
@@ -407,6 +440,10 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
       invisible(NULL)
     },
     onRejected = function(error) {
+      # REDDEDİLEN future de YERLEŞMİŞTİR: jeton ertelemesi burada da biter,
+      # aksi hâlde altyapı hatasıyla ölen bir istek `.flag` dosyasını gereksiz
+      # yere bir saate kadar canlı tutardı.
+      jeton_yerlesmede_temizle()
       if (!isTRUE(koruma_gecti("rejected"))) return(invisible(NULL))
       bitir_istek()
       # Buraya yalnızca ALTYAPI hataları düşer (serileştirme/işçi kaybı):
@@ -425,6 +462,7 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
   # promise'e düşer. Yakalanmazsa `is_sending`/backpressure takılı kalır ve
   # yanıt sessizce kaybolur.
   try(promises::catch(tamamlandi, function(hata) {
+    jeton_yerlesmede_temizle()
     log_warn("[PK_ASYNC] Devam kapanisi hata verdi; istek temizleniyor.")
     bitir_istek()
     butce_birak()

@@ -41,10 +41,19 @@ PK_COMPOSE_CSV_HINTS <- c("csv")
 PK_COMPOSE_XLSX_HINTS <- c("excel", "xlsx")
 
 # Olumsuzlama: "Excel istemiyorum", "rapor gerek yok", "dosya olmasın".
+# TEK BASINA `degil` de olumsuzlamadir: "CSV degil, Excel istiyorum" isteginde
+# ilk cumlecik olumsuz sayilmadigi icin `bicim` "csv" olarak kilitleniyor ve
+# analiz kullanicinin REDDETTIGI bicimi disa aktariyordu.
+#
+# `pk_tr_fold()` yalnizca KUCULTUR; Turkce harfleri ASCII'ye INDIRGEMEZ. Bu
+# yuzden Turkce harf tasiyan her belirtec HER IKI yazimla da listelenir
+# (`PK_COMPOSE_EXPORT_HINTS` icindeki "dokum"/"döküm" ciftiyle ayni kural).
 PK_COMPOSE_NEGATIONS <- c(
-  "isteme", "istemem", "istemiyor", "gerek yok", "gerekmiyor", "olmasin",
-  "gerekli degil", "lazim degil", "hayir", "yollama", "gonderme", "ekleme",
-  "cikarma", "olusturma", "uretme"
+  "isteme", "istemem", "istemiyor", "gerek yok", "gerekmiyor",
+  "degil", "değil", "gerekli degil", "gerekli değil", "lazim degil",
+  "lazım değil", "olmasin", "olmasın", "hayir", "hayır", "yollama",
+  "gonderme", "gönderme", "ekleme", "cikarma", "çıkarma",
+  "olusturma", "oluşturma", "uretme", "üretme"
 )
 
 .pk_compose_fold <- function(x) {
@@ -75,6 +84,29 @@ PK_COMPOSE_NEGATIONS <- c(
   any(konum == 1L | !grepl("^[a-z0-9]$", onceki))
 }
 
+# OLUMSUZLAMANIN KAPSAMI CÜMLECİĞİN TAMAMI DEĞİL, KOMŞU İPUCUDUR.
+#
+# Türkçede olumsuzlama nesnenin ARDINDAN gelir ("Excel istemiyorum",
+# "CSV değil"). Cümleciğin tamamını atmak aynı cümlecikteki OLUMLU ipucunu da
+# düşürüyordu: "Excel istemiyorum CSV gönder" isteğinde hiç ek üretilmiyordu.
+# Cümlecik olumsuzlama belirteçlerine göre bölünür ve YALNIZCA son belirteçten
+# SONRAKİ parça olumlu sayılır; öncesindeki her şey olumsuzlanmış kabul edilir.
+.pk_compose_positive_span <- function(cumle) {
+  sonlar <- integer(0)
+  for (n in PK_COMPOSE_NEGATIONS) {
+    kok <- .pk_compose_fold(n)
+    if (!nzchar(kok)) next
+    konum <- gregexpr(kok, cumle, fixed = TRUE)[[1]]
+    if (identical(konum[1], -1L)) next
+    sonlar <- c(sonlar, as.integer(konum) + nchar(kok))
+  }
+  if (!length(sonlar)) return(cumle)
+
+  bas <- max(sonlar)
+  if (bas > nchar(cumle)) return("")
+  substr(cumle, bas, nchar(cumle))
+}
+
 #' Kullanıcının dışa aktarım niyeti (biçim dâhil)
 #'
 #' Çıplak alt dize eşleşmesi `Excel istemiyorum; sadece özetle` isteğini de
@@ -96,24 +128,22 @@ pk_compose_export_intent <- function(user_prompt) {
   bicim <- NA_character_
 
   for (cumle in cumlecikler) {
-    olumsuz <- any(vapply(PK_COMPOSE_NEGATIONS, function(n) {
-      grepl(.pk_compose_fold(n), cumle, fixed = TRUE)
-    }, logical(1)))
-    if (olumsuz) next
+    olumlu <- .pk_compose_positive_span(cumle)
+    if (!nzchar(trimws(olumlu))) next
 
     eslesen <- Filter(function(ipucu) {
-      .pk_compose_has_root(cumle, .pk_compose_fold(ipucu))
+      .pk_compose_has_root(olumlu, .pk_compose_fold(ipucu))
     }, PK_COMPOSE_EXPORT_HINTS)
     if (!length(eslesen)) next
 
     istiyor <- TRUE
     if (is.na(bicim)) {
       if (any(vapply(PK_COMPOSE_CSV_HINTS, function(h) {
-        .pk_compose_has_root(cumle, .pk_compose_fold(h))
+        .pk_compose_has_root(olumlu, .pk_compose_fold(h))
       }, logical(1)))) {
         bicim <- "csv"
       } else if (any(vapply(PK_COMPOSE_XLSX_HINTS, function(h) {
-        .pk_compose_has_root(cumle, .pk_compose_fold(h))
+        .pk_compose_has_root(olumlu, .pk_compose_fold(h))
       }, logical(1)))) {
         bicim <- "xlsx"
       }

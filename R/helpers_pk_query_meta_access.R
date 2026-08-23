@@ -113,10 +113,20 @@ pk_meta_aggregate_for <- function(query, column) {
   "none"
 }
 
+# `match_mode`, `match` alanının TAKMA ADIDIR.
+#
+# Alan `PK_META_COLUMN_FIELDS` içinde kabul ediliyor ama hiçbir yer okumuyordu:
+# küratör `match = "resolve"` yerine `match_mode = "resolve"` yazdığında
+# başlangıç doğrulaması geçiyor, bilinmeyen-alan koruması ad izinli olduğu için
+# susuyor ve varlık çözümlemesi sessizce `"none"` kalıyordu. Artık okunur;
+# değeri `helpers_pk_query_meta_schema.R` içinde `match` ile AYNI kümeye karşı
+# doğrulanır.
 pk_meta_match_mode <- function(query, column) {
   cmeta <- .pk_meta_of(query)$column_meta[[column]]
   if (is.list(cmeta) && .pk_meta_is_scalar_text(cmeta$match) &&
       cmeta$match %in% PK_META_MATCH_MODES) return(cmeta$match)
+  if (is.list(cmeta) && .pk_meta_is_scalar_text(cmeta$match_mode) &&
+      cmeta$match_mode %in% PK_META_MATCH_MODES) return(cmeta$match_mode)
   if (is.list(cmeta) && identical(cmeta$role, "id")) return("exact")
   "none"
 }

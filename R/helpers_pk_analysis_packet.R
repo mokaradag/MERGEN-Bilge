@@ -110,16 +110,20 @@
   do.call(paste, c(parcalar, list(sep = "|")))
 }
 
-# Kullanıcıya/model paketine görünen grup etiketi (anahtar DEĞİL).
-#
-# Etiket de sütun adıyla nitelenir ve değer tırnaklanır: düz `" | "` birleşimi
-# `("A | B", "C")` ile `("A", "B | C")` gruplarını görünüşte AYNI gösterirdi ve
-# model iki farklı grubu tek grup sanardı.
+# Kullanıcıya/model paketine görünen grup etiketi. ENJEKTİF olmak ZORUNDADIR:
+# `group_keys` olarak olgu kayıtlarına geçer, yani OLGU KİMLİĞİNİN parçasıdır.
+# Düz `" | "` birleşimi `("A | B", "C")` ile `("A", "B | C")` gruplarını AYNI
+# gösterirdi; kaçışsız tırnak ise `ProjeAdi = 'A", Yil="1'` + `Yil = 2` ile
+# `ProjeAdi = "A"` + `Yil = 1` çiftini tek dizeye çökertir; köken doğrulaması o
+# zaman geçerli bir olguyu reddeder ya da değeri YANLIŞ gruba bağlar. Ters bölü
+# ÖNCE kaçışlanır; aksi hâlde `\"` dizisi belirsiz kalırdı.
 .pk_group_label <- function(data, columns, index) {
   paste(vapply(columns, function(s) {
     v <- data[[s]][index]
     ch <- if (inherits(v, "Date") || inherits(v, "POSIXt")) format(v) else as.character(v)
-    if (length(ch) != 1L || is.na(ch)) sprintf("%s=(bos)", s) else sprintf("%s=\"%s\"", s, ch)
+    if (length(ch) != 1L || is.na(ch)) return(sprintf("%s=(bos)", s))
+    ch <- gsub("\"", "\\\"", gsub("\\", "\\\\", ch, fixed = TRUE), fixed = TRUE)
+    sprintf("%s=\"%s\"", s, ch)
   }, character(1)), collapse = ", ")
 }
 
@@ -703,12 +707,31 @@ pk_packet_build <- function(data, query, context = list()) {
     ))
   }
 
-  # Tier YALNIZCA metadata TÜM sonuç sütunlarını kapsıyorsa 3'tür. Tek sütunlu
-  # kısmi bir açıklama, geri kalan sütunların yedek anlambilimle özetlendiğini
-  # gizleyerek modele "tam Tier-3" demek olurdu.
+  # Tier YALNIZCA metadata TÜM sonuç sütunlarını kapsıyorsa 3'tür; kısmi bir
+  # açıklama, kalan sütunların yedek anlambilimle özetlendiğini gizlerdi. KAPSAM
+  # TEK BAŞINA YETMEZ: `pk_meta_tier0_column_meta()` HER yapısal sütun için
+  # `tier = 0` / `inferred_from = "structural_schema"` girdisi üretir; yalnızca
+  # kapsama bakan eski kural, küre edilmiş anlambilimi olmayan sorguyu "tam
+  # Tier-3" ilan ediyordu. Tier artık GİRDİLERİN kendi beyanından türetilir.
   sutun_meta <- meta$column_meta %||% list()
   kapsanmayan <- setdiff(names(data), names(sutun_meta))
-  tier <- if (length(sutun_meta) && !length(kapsanmayan)) 3L else 0L
+  cikarim_sutunlari <- if (length(sutun_meta)) {
+    names(sutun_meta)[vapply(sutun_meta, function(m) {
+      is.list(m) &&
+        (identical(as.character(m$inferred_from %||% "")[1], "structural_schema") ||
+           identical(suppressWarnings(as.integer(m$tier %||% NA_integer_)[1]), 0L))
+    }, logical(1))]
+  } else character(0)
+
+  tier <- if (length(sutun_meta) && !length(kapsanmayan) &&
+              !length(cikarim_sutunlari)) 3L else 0L
+
+  if (length(sutun_meta) && length(cikarim_sutunlari)) {
+    sinirliliklar <- c(sinirliliklar, sprintf(paste(
+      "Metadata YAPISAL CIKARIMDIR (Tier-0): %s sutunu icin kure edilmis",
+      "anlamsal beyan yok; rol/birim semadan tahmin edildi."
+    ), paste(cikarim_sutunlari, collapse = ", ")))
+  }
 
   if (!length(sutun_meta)) {
     sinirliliklar <- c(sinirliliklar, paste(

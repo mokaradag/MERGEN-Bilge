@@ -199,7 +199,21 @@ if (exists("pk_analiz_process_request", mode = "function", inherits = TRUE) &&
     )
     user_id <- tryCatch(session$userData$user_id %||% NULL, error = function(e) NULL)
 
-    conn_list <- tryCatch(get_connection(), error = function(e) NULL)
+    # DURDURULMUŞ ÇIKIŞ YENİ BİR VERİTABANI BAĞLANTISI AÇMAZ.
+    #
+    # Kullanıcı Durdur'a bastığında `pk_analiz_process_request()` veritabanına
+    # HİÇ dokunmadan durdurma mesajıyla döner. Buradaki koşulsuz
+    # `get_connection()` ise yalnızca telemetri yazmak için PAYLAŞILAN Shiny
+    # olay döngüsünde bloklayıcı bir ODBC oturum açma denemesi başlatıyordu;
+    # havuz tükendiğinde veya DSN girişi yavaş olduğunda iptal edilmiş bir
+    # istek yüzünden tüm oturumlar bekliyordu. Aynı dosyadaki derin analiz yolu
+    # ve `R/server_init_session_state.R` bu atlamayı zaten yapar; telemetri
+    # `conn = NULL` ile fail-soft çalışır.
+    conn_list <- if (isTRUE(stopped)) {
+      NULL
+    } else {
+      tryCatch(get_connection(), error = function(e) NULL)
+    }
     conn <- if (is.list(conn_list)) conn_list$conn %||% NULL else NULL
     if (!is.null(conn_list)) {
       on.exit(try(release_connection(conn_list), silent = TRUE), add = TRUE)

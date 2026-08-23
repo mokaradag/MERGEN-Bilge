@@ -42,15 +42,25 @@
   "`"
 )
 
+# TÜRKÇE SABİTLER YÜKLEME ANINDA UTF-8'E SABİTLENİR (`enc2utf8`).
+#
+# `R/helpers_pk_entity_morph.R` başlığındaki ölçülen arıza burada da geçerlidir:
+# Windows VM'de `source(dosya, encoding = "UTF-8")` içeriği YERELE
+# (WINDOWS-1254) çevirir ve sabitler "native" işaretli olur; karşılaştırılan
+# belirteçler ise `pk_tr_fold()`/`pk_entity_normalize()` yolundan UTF-8 işaretli
+# gelir. `%in%`, `identical()` ve `stri_replace_all_fixed()` o durumda native
+# tarafı GÜNCEL yerele göre çevirir; yerel `C` iken çeviri başarısız olur ve
+# eşleşme SESSİZCE kaybolur. UTF-8 işaretli dizelerde `enc2utf8()` işlemsizdir.
+
 # ASCII ikincil anahtar eşlemesi (§5.4). Kullanıcılar Türkçe karakter
 # yazmadan arama yapar: "kalip" -> "kalıp", "sure" -> "sûre".
 # Katlama zaten küçük harfe indirdiği için yalnızca küçük harf biçimleri gerekir.
 # Şapkalı ünlüler de dâhildir: kurumsal adlarda `SÛRE`, `KÂĞIT`, `HÂKİM` gibi
 # biçimler vardır ve klavyeden `sure`, `kagit`, `hakim` yazılır.
-.PK_ENTITY_TR_CHARS <- c(
+.PK_ENTITY_TR_CHARS <- enc2utf8(c(
   "ı", "ş", "ğ", "ü", "ö", "ç",
   "â", "î", "û", "ê", "ô"
-)
+))
 .PK_ENTITY_ASCII_CHARS <- c(
   "i", "s", "g", "u", "o", "c",
   "a", "i", "u", "e", "o"
@@ -66,7 +76,7 @@
 # yazdığı `elektronik` ile ASCII katmanında buluşması GEREKİR (tasarım
 # kararı E3). `İ` ise küçük harfe `i` olarak indiği için katlanmış metinde
 # görünmez; bu yüzden HAM girdide ayrıca aranır.
-.PK_ENTITY_TR_ONLY_CHARS <- c("ı", "ş", "ğ", "ü", "ö", "ç", "â", "î", "û")
+.PK_ENTITY_TR_ONLY_CHARS <- enc2utf8(c("ı", "ş", "ğ", "ü", "ö", "ç", "â", "î", "û"))
 .PK_ENTITY_TR_DOTTED_I <- c(
   intToUtf8(0x0130L),                       # İ
   paste0("i", intToUtf8(0x0307L)),          # i + birleşik nokta
@@ -80,7 +90,7 @@
 # `list`, `listele`, `listesi` BİLEREK YOKTUR: bunlar komut/ad belirteçleridir,
 # birden çok kanonik değer istendiğini KANITLAMAZLAR ("KAYNAK LİSTESİ" tekil
 # bir kanonik addır).
-.PK_ENTITY_PLURAL_WORDS <- c(
+.PK_ENTITY_PLURAL_WORDS <- enc2utf8(c(
   "tüm", "tum", "tümü", "tumu", "tümünü", "tumunu",
   "bütün", "butun",
   "hepsi", "hepsini",
@@ -89,18 +99,18 @@
   "farklı", "farkli",
   "birden", "birkaç", "birkac",
   "bazı", "bazi"
-)
+))
 
 # `-lar/-ler` BİÇİMBİRİM sinyali YALNIZCA varlık adı olabilecek belirteçlerden
 # okunur. Genel sıfat-fiiller ("olanlar", "bulunanlar") satır daraltmasıdır,
 # birden çok KANONİK DEĞER istendiğinin kanıtı değildir: "sadece aktif olanlar"
 # tek bir varlığın kayıtlarını daraltır, iki varlığı birleştirmez.
-.PK_ENTITY_NON_ENTITY_PLURALS <- c(
+.PK_ENTITY_NON_ENTITY_PLURALS <- enc2utf8(c(
   "olanlar", "olanları", "olanlari",
   "bulunanlar", "bulunanları", "bulunanlari",
   "yapılanlar", "yapilanlar",
   "kalanlar", "gelenler", "gidenler", "verilenler", "alınanlar", "alinanlar"
-)
+))
 
 .pk_entity_require_stringi <- function() {
   if (!requireNamespace("stringi", quietly = TRUE)) {

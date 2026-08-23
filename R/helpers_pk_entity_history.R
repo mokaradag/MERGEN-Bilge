@@ -37,33 +37,43 @@
 .PK_ENTITY_USER_ROLES <- c("user", "human", "kullanici", "kullanıcı")
 
 # İlk belirteç olarak göründüğünde devam sorusu sinyali veren ifadeler.
+# TÜRKÇE SABİTLER YÜKLEME ANINDA UTF-8'E SABİTLENİR (`enc2utf8`).
+#
+# `R/helpers_pk_entity_morph.R` başlığındaki ölçülen arıza burada da geçerlidir:
+# Windows VM'de `source(dosya, encoding = "UTF-8")` içeriği YERELE
+# (WINDOWS-1254) çevirir ve sabitler "native" işaretli olur; karşılaştırılan
+# belirteçler ise `pk_tr_fold()`/`pk_entity_normalize()` yolundan UTF-8 işaretli
+# gelir. `%in%`, `identical()` ve `stri_replace_all_fixed()` o durumda native
+# tarafı GÜNCEL yerele göre çevirir; yerel `C` iken çeviri başarısız olur ve
+# eşleşme SESSİZCE kaybolur. UTF-8 işaretli dizelerde `enc2utf8()` işlemsizdir.
+
 # Türkçe adıllar ÇEKİM EKİ alır; belirtme (`onu`), yönelme (`ona`) ve
 # bulunma biçimleri de listede olmalıdır, aksi hâlde "onu göster" veya
 # "buna 2024 için bak" devam sorusu sayılmaz.
-.PK_ENTITY_FOLLOWUP_LEAD <- c(
+.PK_ENTITY_FOLLOWUP_LEAD <- enc2utf8(c(
   "peki", "ya", "sadece", "yalnızca", "yalnizca", "ayrıca", "ayrica",
   "onun", "onu", "ona", "onda", "ondan", "onlar", "onları", "onlari",
   "bunun", "bunu", "buna", "bunda", "bundan", "bunları", "bunlari",
   "şunun", "sunun", "şunu", "sunu", "şuna", "suna",
   "hepsi", "hepsini", "tümü", "tumu", "tümünü", "tumunu",
   "hem", "ve"
-)
+))
 
 # İfadenin herhangi bir yerinde geçmesi yeterli olan güçlü sinyaller.
-.PK_ENTITY_FOLLOWUP_ANY <- c(
+.PK_ENTITY_FOLLOWUP_ANY <- enc2utf8(c(
   "peki", "sadece", "yalnızca", "yalnizca", "ayrıca", "ayrica",
   "aynısı", "aynisi", "aynısını", "aynisini"
-)
+))
 
 # Yapısal devam sinyali: kısa bir daraltma ifadesinde geçen belirteçler.
 # "2024 için?", "aktif olanlar?", "sadece kapalı olanlar" gibi biçimler
 # hiçbir işaret sözcüğü taşımaz ama tam olarak D11'in hedefidir.
-.PK_ENTITY_REFINEMENT_WORDS <- c(
+.PK_ENTITY_REFINEMENT_WORDS <- enc2utf8(c(
   "için", "icin", "ile", "olan", "olanlar", "olanları", "olanlari",
   "itibariyle", "itibarıyla", "arası", "arasi", "sonrası", "sonrasi",
   "öncesi", "oncesi", "yılı", "yili", "yılında", "yilinda",
   "de", "da", "te", "ta", "mi", "mı", "mu", "mü"
-)
+))
 
 # Yapısal devam ifadesinde kabul edilen azami belirteç sayısı. Daha uzun bir
 # ifade artık "eksiltili devam" değil, kendi başına bir sorudur.
@@ -84,7 +94,7 @@
 #   Bu yeniden yazım KAYIPLIDIR: "Bir Proje bütçesi nedir" ifadesi
 #   "proje bütçesi"ne dönüşüp FARKLI bir kanonik değere denk gelebilir. Bu
 #   yüzden yeniden yazımdan doğan hiçbir sonuç otomatik kabul edilmez.
-.PK_ENTITY_QUESTION_WORDS <- c(
+.PK_ENTITY_QUESTION_WORDS <- enc2utf8(c(
   "nedir", "ne", "kadar", "kaç", "kac", "kaçtır", "kactir",
   "hangi", "hangisi", "hangileri", "nasıl", "nasil", "neden", "niçin", "nicin",
   "nerede", "nereye", "kim", "kimdir",
@@ -94,7 +104,7 @@
   "için", "icin", "ile", "ve", "veya", "ya", "da", "de",
   "bu", "şu", "su", "o", "bir", "en", "var", "yok",
   "olan", "olanlar", "oldu", "nedeni", "durumu", "bilgisi"
-)
+))
 
 #' Devralınan önceki sorudan soru sözcüklerini at (yalnızca geçmiş katmanı)
 #'

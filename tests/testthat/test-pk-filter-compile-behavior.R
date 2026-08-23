@@ -487,3 +487,58 @@ test_that("D3: islem adi YERELDEN BAGIMSIZ kucuk harfe indirilir", {
     info = "Yerel bagimli tolower() derleyiciye geri getirilmemelidir."
   )
 })
+
+test_that("POSIXt sutununda YALNIZ-TARIH esitligi GUN duzeyinde eslesir", {
+  env <- .pk_compile_env()
+  # GERİLEME KORUMASI: gün genişletmesi yalnızca kapsayıcı ÜST SINIR için
+  # çalışıyordu; eşitlik/üyelik sınırı yerel `00:00:00`da kalıyor ve SADECE
+  # gece yarısı kayıtları eşleşiyordu. Yaprak düşmediği için kullanıcıya
+  # hiçbir ifşa gitmiyordu.
+  veri <- data.frame(
+    Zaman = as.POSIXct(c("2026-05-01 00:00:00", "2026-05-01 13:45:00",
+                         "2026-05-02 09:00:00"), tz = "UTC"),
+    stringsAsFactors = FALSE
+  )
+
+  for (op in c("exact_match", "equals", "in")) {
+    yaprak <- env$pk_filter_normalize_leaf(
+      list(column = "Zaman", values = "2026-05-01", operation = op)
+    )
+    sonuc <- env$pk_filter_leaf_mask(veri, yaprak)
+    expect_true(isTRUE(sonuc$ok), info = op)
+    expect_identical(sonuc$mask, c(TRUE, TRUE, FALSE), info = op)
+  }
+
+  # Dışlama aynı maskeyi kullanır (tersleme üst katmanda yapılır).
+  yaprak_haric <- env$pk_filter_normalize_leaf(
+    list(column = "Zaman", values = "2026-05-01", operation = "not_equals")
+  )
+  expect_identical(env$pk_filter_leaf_mask(veri, yaprak_haric)$mask,
+                   c(TRUE, TRUE, FALSE))
+
+  # SAAT TAŞIYAN değer AN düzeyinde karşılaştırılmaya devam eder.
+  yaprak_an <- env$pk_filter_normalize_leaf(
+    list(column = "Zaman", values = "2026-05-01 13:45:00", operation = "equals")
+  )
+  expect_identical(env$pk_filter_leaf_mask(veri, yaprak_an)$mask,
+                   c(FALSE, TRUE, FALSE))
+})
+
+test_that("integer64 uyeligi BIT DESENI degil DEGER karsilastirir", {
+  skip_if_not_installed("bit64")
+  env <- .pk_compile_env()
+
+  # GERİLEME KORUMASI: taban `%in%` integer64 altındaki DOUBLE bit desenini
+  # eşleştirir; bit deseni `NaN` çözülen iki FARKLI BIGINT aynı sayılırdı.
+  a <- bit64::as.integer64("9218868437227405313")
+  b <- bit64::as.integer64("9218868437227405314")
+  expect_false(identical(as.character(a), as.character(b)))
+
+  veri <- data.frame(Kimlik = c(a, b))
+  yaprak <- env$pk_filter_normalize_leaf(
+    list(column = "Kimlik", values = as.character(a), operation = "equals")
+  )
+  sonuc <- env$pk_filter_leaf_mask(veri, yaprak)
+  expect_true(isTRUE(sonuc$ok))
+  expect_identical(sonuc$mask, c(TRUE, FALSE))
+})

@@ -138,22 +138,63 @@ pk_async_bounded_fs <- function(fn, deadline_at = NULL) {
   paste0(boyut, ":", sum(as.integer(ham) * seq_along(ham)) %% .Machine$integer.max)
 }
 
+# `sql_file` bildirimleri KAYNAK METİNDEN okunur (yüklenmiş `query_library`'den
+# DEĞİL). Temiz bir PSOCK işçisinde ilk parmak izi bootstrap'tan ÖNCE hesaplanır
+# ve o an `query_library` HENÜZ YOKTUR: eski sürüm `character(0)` döndürüyor,
+# bir sonraki istek ise dolu kütüphaneyle FARKLI bir parmak izi üretiyordu.
+# Değişmemiş bir çalışma kopyasında işçi bu yüzden İKİNCİ bir tam bootstrap
+# yapıyor ve kaynak yükleme + havuz kurulumu analiz son tarihinin İÇİNDE
+# tekrarlanıyordu. Statik tarama ilk ve sonraki çağrılarda AYNI girdiyi verir.
+.pk_async_sql_paths_from_source <- function(repo_root, files) {
+  adaylar <- files[grepl("library_quer", basename(files), fixed = TRUE)]
+  if (!length(adaylar)) return(character(0))
+
+  yollar <- character(0)
+  for (dosya in file.path(repo_root, adaylar)) {
+    boyut <- suppressWarnings(file.info(dosya)$size[1])
+    if (is.na(boyut) || boyut <= 0) next
+
+    # BAYT GÜVENLİ OKUMA: `library_queries.R` Türkçe yorum taşır ve Windows VM
+    # çalışma kopyasında geçersiz UTF-8 bayt dizisi içerebilir; düz
+    # `readLines(encoding = "UTF-8")` orada uyarı/hata üretiyordu.
+    metin <- tryCatch({
+      con <- file(dosya, open = "rb")
+      on.exit(close(con), add = TRUE)
+      ham <- readBin(con, what = "raw", n = boyut)
+      suppressWarnings(iconv(list(ham), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]])
+    }, error = function(e) "")
+    if (!is.character(metin) || length(metin) != 1L || is.na(metin) || !nzchar(metin)) next
+
+    m <- regmatches(metin, gregexpr('sql_file[ \t]*=[ \t]*"[^"]+"', metin))[[1]]
+    if (!length(m)) next
+    yollar <- c(yollar, sub('.*"([^"]+)"$', "\\1", m))
+  }
+  unique(yollar[nzchar(yollar)])
+}
+
 # `config_sql_loader.R` her sorgunun HARİCİ `sql_file` dosyasını source anında
 # `query_library` içine okur. Bir operatör `library_queries.R` dosyasına HİÇ
 # dokunmadan bir `.sql` dosyasını güncellerse, ana süreç yeni SQL'i yüklerken
 # kalıcı işçi aynı parmak izini görüp `cached = TRUE` döndürür ve ESKİ SQL'i
 # süresiz çalıştırır. Bu yüzden çözülen SQL bağımlılıkları da parmak izine girer.
-pk_async_worker_sql_dependencies <- function(repo_root) {
-  kutuphane <- get0("query_library", inherits = TRUE)
-  if (!is.list(kutuphane) || !length(kutuphane)) return(character(0))
+pk_async_worker_sql_dependencies <- function(repo_root, files = character(0)) {
+  yollar <- tryCatch(.pk_async_sql_paths_from_source(repo_root, files),
+                     error = .pk_async_chr0)
 
-  yollar <- vapply(kutuphane, function(sorgu) {
-    if (!is.list(sorgu)) return("")
-    yol <- tryCatch(as.character(sorgu$sql_file)[1], error = function(e) "")
-    if (is.null(yol) || is.na(yol)) "" else yol
-  }, character(1))
+  if (!length(yollar)) {
+    # Kaynak taraması sonuç vermezse (çağıran `files` geçmediyse) eski davranış
+    # korunur; yalnızca YEDEK yoldur, parmak izi kararlılığını statik tarama verir.
+    kutuphane <- get0("query_library", inherits = TRUE)
+    if (!is.list(kutuphane) || !length(kutuphane)) return(character(0))
 
-  yollar <- unique(yollar[nzchar(yollar)])
+    yollar <- vapply(kutuphane, function(sorgu) {
+      if (!is.list(sorgu)) return("")
+      yol <- tryCatch(as.character(sorgu$sql_file)[1], error = function(e) "")
+      if (is.null(yol) || is.na(yol)) "" else yol
+    }, character(1))
+    yollar <- unique(yollar[nzchar(yollar)])
+  }
+
   if (!length(yollar)) return(character(0))
 
   # Göreli yollar repo köküne göre çözülür (loader `getwd()` kullanır).
@@ -168,7 +209,8 @@ pk_async_worker_sql_dependencies <- function(repo_root) {
 #' Bootstrap kaynak parmak izi (İÇERİK tabanlı, SQL bağımlılıkları dahil)
 pk_async_bootstrap_fingerprint <- function(repo_root, files) {
   tam <- file.path(repo_root, files)
-  sql <- tryCatch(pk_async_worker_sql_dependencies(repo_root), error = .pk_async_chr0)
+  sql <- tryCatch(pk_async_worker_sql_dependencies(repo_root, files),
+                  error = .pk_async_chr0)
 
   hedefler <- c(tam, sql)
   parcalar <- vapply(hedefler, function(p) {

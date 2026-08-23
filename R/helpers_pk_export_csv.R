@@ -199,10 +199,22 @@ pk_export_csv_verify <- function(path, expected) {
             any(sonsuz_bek & (sign(bek_sayi) != sign(ger_sayi)))) {
           return(sprintf("'%s' sutununda sonsuz deger deseni degismis.", sutun_adlari[i]))
         }
+        # KANONİK GÖSTERİM KARŞILAŞTIRILIR, BÜYÜKLÜĞE ÖLÇEKLİ TOLERANS DEĞİL.
+        #
+        # Eski eşik `max(1e-9, |beklenen| * 1e-12)` idi: `1e12` civarında BİR
+        # birimlik, `1e15` civarında BİN birimlik değişim "doğrulandı" sayılır;
+        # oysa bu geri okuma tam da sadakati KANITLAMAK için yapılıyor ve
+        # maddi olarak değişmiş bir kimlik/adet/tutar sessizce onaylanırdı.
+        # `utils::write.csv()` ondalık metin yazar (15 anlamlı basamak);
+        # aynı gösterime indirgenen iki değer CSV'de AYIRT EDİLEMEZ, farklı
+        # gösterime düşen her fark ise GERÇEK bir sapmadır.
+        kanonik <- function(x) {
+          x[x == 0] <- 0  # `-0` ile `0` CSV'de aynı yazılır.
+          sprintf("%.15g", x)
+        }
         sonlu <- !bos & !sonsuz_bek
         if (any(sonlu) &&
-            any(abs(ger_sayi[sonlu] - bek_sayi[sonlu]) >
-                  pmax(1e-9, abs(bek_sayi[sonlu]) * 1e-12))) {
+            !identical(kanonik(bek_sayi[sonlu]), kanonik(ger_sayi[sonlu]))) {
           return(sprintf("'%s' sutununda sayisal deger degismis.", sutun_adlari[i]))
         }
         next

@@ -412,8 +412,28 @@ pk_export_build <- function(data, packet = list(), context = list(),
     )
   })
   if (!isTRUE(paket_sonucu$ok)) {
-    return(iptal_sonucu(plan$total_rows, csv_sutun,
-                        status = halt_durumu() %||% "deadline"))
+    # BÜTÇE TÜKENMESİ İLE GERÇEK HATA AYRILIR.
+    #
+    # `pk_async_bounded_fs()` `fn` içindeki HER istisnayı `ok = FALSE` yapar;
+    # `pk_export_csv_bundle()` gövde dilimleme/`transform` çağrısını sarmadığı
+    # için oradaki bir hata "son tarih" olarak raporlanıyordu ("ayrılan süre
+    # içinde tamamlanamadı"). XLSX dalında bu boşluk yok: iç `tryCatch` yazım
+    # hatasını `yazim$value = FALSE`a çevirir.
+    hata_metni <- as.character(paket_sonucu$error %||% "")[1]
+    if (is.na(hata_metni)) hata_metni <- ""
+    butce_bitti <- identical(hata_metni, "budget_exhausted") ||
+      grepl("elapsed time limit|reached elapsed", hata_metni, ignore.case = TRUE)
+    durdurma <- halt_durumu()
+
+    if (!is.null(durdurma) || isTRUE(butce_bitti)) {
+      return(iptal_sonucu(plan$total_rows, csv_sutun,
+                          status = durdurma %||% "deadline"))
+    }
+    cat(sprintf("[PK_ANALIZ] CSV paketi olusturulamadi: %s\n", hata_metni))
+    return(list(status = "failed", files = list(),
+                message = "Dışa aktarım hazırlanırken beklenmeyen bir hata oluştu.",
+                total_rows = plan$total_rows, cols = csv_sutun,
+                format = NA_character_, notes = character(0)))
   }
   paket <- paket_sonucu$value
   .pk_export_track_artifact(vapply(

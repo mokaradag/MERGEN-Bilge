@@ -228,6 +228,9 @@ pk_async_worker_globals <- function(force = FALSE) {
     pk_async_worker_required_files = pk_async_worker_required_files,
     pk_async_bootstrap_fingerprint = pk_async_bootstrap_fingerprint,
     pk_async_worker_sql_dependencies = pk_async_worker_sql_dependencies,
+    # `sql_file` bildirimlerini KAYNAK METİNDEN çıkaran yardımcı da bootstrap
+    # ÖNCESİ çağrılır: ilk parmak izi `query_library` YOKKEN hesaplanır.
+    .pk_async_sql_paths_from_source = .pk_async_sql_paths_from_source,
     .pk_async_file_digest = .pk_async_file_digest,
     # ORTAK `tryCatch` işleyicisi: paketlenen fonksiyonların gövdesinde
     # ADIYLA geçer. `dependency_mode = "explicit"` otomatik tarama YAPMAZ, bu
@@ -275,6 +278,8 @@ pk_async_worker_globals <- function(force = FALSE) {
     .PK_ASYNC_POOL_READY_FLAG = .PK_ASYNC_POOL_READY_FLAG,
     .PK_ASYNC_OWNED_NAMES_SLOT = .PK_ASYNC_OWNED_NAMES_SLOT,
     .PK_ASYNC_DB_POOL_OPTIONS = .PK_ASYNC_DB_POOL_OPTIONS,
+    # Ortam tabanlı havuz girdileri de bootstrap ÖNCESİ kurulur.
+    .PK_ASYNC_DB_POOL_ENV = .PK_ASYNC_DB_POOL_ENV,
     .PK_ASYNC_HARVEST_SLOTS = .PK_ASYNC_HARVEST_SLOTS,
     .PK_ASYNC_USER_DATA_FIELDS = .PK_ASYNC_USER_DATA_FIELDS,
     .PK_ASYNC_WORKER_BUNDLE_MARK = .PK_ASYNC_WORKER_BUNDLE_MARK,

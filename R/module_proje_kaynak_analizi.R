@@ -118,8 +118,8 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   } else {
     NULL
   }
-  # NOT: Kapanış `conn` ve `username` değerlerini ÇAĞRI ANINDA çözer; bu yüzden
-  # yalnızca o değişkenler tanımlandıktan sonraki çıkışlarda çağrılır.
+  # NOT: Kapanış `conn`/`username`/`pk_engine_v2` değerlerini ÇAĞRI ANINDA çözer.
+  # `engine` artık çözülmüş kipten gelir: sabit "v1" varsayılanı v2 RED/boş kayıtlarını da "v1" yazıyordu.
   pk_selection_disclosures <- character(0)  # kapanıştan ÖNCE ilklenir
   pk_observe <- function(...) {
     if (!exists("pk_analysis_observe", mode = "function", inherits = TRUE)) return(invisible(NULL))
@@ -130,11 +130,11 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
       request_id  = pk_request_id,
       question    = user_prompt,
       username    = username,
-      engine      = "v1",
-      # Faz 5: secim bozulmalari alt bilgiye ve telemetriye tasinir; yalnizca
-      # loglanan bir zayiflatma kullanici acisindan hic olmamis demektir.
-      # `exists(..., inherits = FALSE)` KAPSAYAN cerceveyi goremezdi: kosul HER
-      # ZAMAN FALSE'tu. Sozluksel kapsam kullanilir.
+      engine      = if (exists("pk_engine_v2", inherits = TRUE) && isTRUE(pk_engine_v2)) "v2" else "v1",
+      # Faz 5: secim bozulmalari alt bilgiye ve telemetriye tasinir (yalnizca
+      # loglanan zayiflatma kullanici acisindan hic olmamis demektir).
+      # `exists(..., inherits = FALSE)` KAPSAYAN cerceveyi goremez; sozluksel
+      # kapsam kullanilir.
       extra_degradations = pk_selection_disclosures,
       duration_ms = as.numeric(difftime(Sys.time(), pk_started_at, units = "secs")) * 1000
     )

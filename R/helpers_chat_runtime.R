@@ -444,10 +444,36 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
 
   # -- 4b. `block` KİPİ: DOĞRULAMA AKIŞTAN VE TTS'TEN ÖNCE (gerekçe:
   # `mergen_pk_block_mode_texts()`); ekrana `display`, TTS'e `tts` gider.
+  # YARDIMCI ARIZASI AKIŞI KİLİTLEYEMEZ.
+  #
+  # Bu çağrı `start_streaming_execution()` ÖNCESİNDE çalışır. Yardımcı hata
+  # fırlatırsa (ör. bozuk bekleyen köken kaydı) ya da `tts` alanı olmayan bir
+  # liste döndürürse, `nzchar(NULL)` -> `logical(0)` yüzünden aşağıdaki `if`
+  # "argument is of length zero" ile düşerdi. Sonuç: yazma animasyonu hiç
+  # kaldırılmaz, `values$is_sending` TRUE kalır, gönder düğmesi durdurma
+  # kipinde donar ve `chat_reset_state()` HİÇ çalışmaz — oturum yeniden
+  # yükleme gerektirirdi. Yedek, dekore edilmemiş yanıttır.
+  yedek_blok <- list(display = full_response, tts = full_response)
   blok <- if (exists("mergen_pk_block_mode_texts", mode = "function", inherits = TRUE)) {
-    mergen_pk_block_mode_texts(full_response, session, request_id = pk_request_id)
-  } else list(display = full_response, tts = full_response)
-  full_response <- blok$display; tts_metni <- blok$tts
+    tryCatch(
+      mergen_pk_block_mode_texts(full_response, session, request_id = pk_request_id),
+      error = function(e) {
+        cat(sprintf("[PK] block kipi metinleri hazırlanamadı: %s\n",
+                    conditionMessage(e)))
+        yedek_blok
+      }
+    )
+  } else yedek_blok
+  if (!is.list(blok)) blok <- yedek_blok
+
+  # Metinler TEK ÖGELİ karaktere ZORLANIR: sıfır uzunluklu/NA değer skaler
+  # `if` içinde hata fırlatırdı.
+  .cr_metin <- function(x, yedek) {
+    v <- suppressWarnings(as.character(x)[1])
+    if (length(v) != 1L || is.na(v)) yedek else v
+  }
+  full_response <- .cr_metin(blok$display, yedek_blok$display)
+  tts_metni <- .cr_metin(blok$tts, yedek_blok$tts)
 
   # -- 5. KARAR: TTS BEKLENSİN Mİ? --
   if (!is.null(tts_engine) && is.function(tts_engine) && nzchar(tts_metni)) {

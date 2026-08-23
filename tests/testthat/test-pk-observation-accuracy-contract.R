@@ -13,6 +13,9 @@
     "R/helpers_pk_config.R",
     "R/helpers_pk_provenance.R",
     "R/helpers_pk_telemetry_record.R",
+    # İZOLE YÜKLEME: taban dosya manifest sırasına göre AÇIKÇA önce gelir
+    # (üretimdeki dinamik `source()` keşfi KALDIRILDI).
+    "R/helpers_pk_analysis_filters_base.R",
     "R/helpers_pk_analysis_filters.R",
     # Manifest sirasi: taban dosya `helpers_pk_telemetry.R` ONCESINDE yuklenir.
     # (Uretim dosyasindaki dinamik `source()` kesfi KALDIRILDI.)

@@ -17,34 +17,43 @@
 
 # AI Destekli Seçim Fonksiyonu
 find_best_query_with_ai <- function(user_prompt, library, session) {
-  cat("[PK_ANALIZ] AI tabanli sorgu secimi baslatiliyor...\n")
+  cat("[PK_ANALIZ] AI tabanlı sorgu seçimi başlatılıyor...\n")
   
   # Kütüphane özetini hazırla
   library_context <- vapply(seq_along(library), function(i) {
     q <- library[[i]]
-    sprintf("ID: %d | ISIM: %s | ACIKLAMA: %s", i, q$name, q$description)
+    # EKSİK ALAN `character(0)` ÜRETMEZ. `sprintf()` sıfır uzunluklu bir
+    # argümanla `character(0)` döndürür ve `vapply(..., character(1))`
+    # "values must be length 1" ile HATA fırlatırdı; `tryCatch` daha sonra
+    # başladığı için seçici belgelenen `NULL` yedeğini döndüremezdi.
+    # `.pk_meta_validate_query_library()` yalnızca `id`/`sql` doğrular.
+    ad <- as.character(q$name %||% "")[1]
+    aciklama <- as.character(q$description %||% "")[1]
+    if (is.na(ad)) ad <- ""
+    if (is.na(aciklama)) aciklama <- ""
+    sprintf("ID: %d | İSİM: %s | AÇIKLAMA: %s", i, ad, aciklama)
   }, character(1))
   
   library_text <- paste(library_context, collapse = "\n")
   
   system_instruction <- paste0(
-    "Sen bir Veritabani Sorgu Yonlendiricisisin. Kullanicinin Turkce sorusunu analiz edip EN UYGUN SQL sorgusunu sec.\n\n",
+    "Sen bir Veritabanı Sorgu Yönlendiricisisin. Kullanıcının Türkçe sorusunu analiz edip EN UYGUN SQL sorgusunu seç.\n\n",
     
     "### MEVCUT SORGULAR:\n",
     library_text, "\n\n",
     
-    "### ESLESTIRME KURALLARI:\n",
-    "1. ANLAM ESLESMESI: Kelimelerin birebir eslesip eslesmedigine degil, kullanicinin NIYETINE bak.\n",
-    "2. YAKIN KAVRAMLAR: 'butce', 'maliyet', 'harcama' gibi kavramlar birbirine yakindir.\n",
-    "3. KISMI ESLESME: Sorgu tam olarak cevap vermese bile, KISMI olarak ilgiliyse sec ve confidence'i dusur.\n",
-    "4. Hic alakali sorgu yoksa: match_id: null dondur.\n\n",
+    "### EŞLEŞTİRME KURALLARI:\n",
+    "1. ANLAM EŞLEŞMESİ: Kelimelerin birebir eşleşip eşleşmediğine değil, kullanıcının NİYETİNE bak.\n",
+    "2. YAKIN KAVRAMLAR: 'bütçe', 'maliyet', 'harcama' gibi kavramlar birbirine yakındır.\n",
+    "3. KISMİ EŞLEŞME: Sorgu tam olarak cevap vermese bile, KISMİ olarak ilgiliyse seç ve confidence'ı düşür.\n",
+    "4. Hiç alakalı sorgu yoksa: match_id: null döndür.\n\n",
     
-    "### ZORUNLU JSON CIKTISI:\n",
-    "{\"match_id\": 1, \"confidence\": 85, \"reason\": \"Kisa aciklama\"}\n\n",
-    "- match_id: Sorgu ID numarasi (1'den baslar) veya null\n",
-    "- confidence: 0-100 arasi (100=mukemmel, 50=kismi, 0=alakasiz)\n",
-    "- reason: Neden bu sorguyu sectin (tek cumle)\n\n",
-    "ONEMLI: Sadece JSON dondur, baska hicbir sey yazma."
+    "### ZORUNLU JSON ÇIKTISI:\n",
+    "{\"match_id\": 1, \"confidence\": 85, \"reason\": \"Kısa açıklama\"}\n\n",
+    "- match_id: Sorgu ID numarası (1'den başlar) veya null\n",
+    "- confidence: 0-100 arası (100=mükemmel, 50=kısmi, 0=alakasız)\n",
+    "- reason: Neden bu sorguyu seçtin (tek cümle)\n\n",
+    "ÖNEMLİ: Sadece JSON döndür, başka hiçbir şey yazma."
   )
   
   messages <- list(
@@ -127,10 +136,17 @@ find_best_query_with_ai <- function(user_prompt, library, session) {
     parsed <- jsonlite::fromJSON(content, simplifyVector = FALSE)
     
 	if (!is.null(parsed$match_id)) {
-      idx <- as.integer(parsed$match_id)
-	  if (idx > 0 && idx <= length(library)) {
-        confidence <- as.numeric(parsed$confidence %||% 0)
-        cat(sprintf("[PK_ANALIZ] AI Secimi: ID=%d (%s) | Guven: %.1f%% | Sebep: %s\n", 
+      # SÖZLEŞME İHLALİ HATA DEĞİLDİR. Model sayı yerine metin ("birinci") ya
+      # da dizi döndürdüğünde `as.integer()` `NA` veya çok ögeli değer üretir;
+      # `if` o zaman "missing value where TRUE/FALSE needed" / "the condition
+      # has length > 1" fırlatır, dıştaki işleyici bunu `AI Seçim Hatası`
+      # olarak loglar ve çağıran döngü AYNI çağrıyı yineler. Geçersiz değer
+      # artık sessizce `NULL` (eşleşme yok) olarak raporlanır.
+      idx <- suppressWarnings(as.integer(parsed$match_id)[1])
+	  if (length(idx) == 1L && !is.na(idx) && idx > 0 && idx <= length(library)) {
+        confidence <- suppressWarnings(as.numeric(parsed$confidence %||% 0)[1])
+        if (length(confidence) != 1L || is.na(confidence)) confidence <- 0
+        cat(sprintf("[PK_ANALIZ] AI Seçimi: ID=%d (%s) | Güven: %.1f%% | Sebep: %s\n", 
                     idx, library[[idx]]$name, confidence, parsed$reason %||% ""))
         
         result <- library[[idx]]
@@ -145,7 +161,7 @@ find_best_query_with_ai <- function(user_prompt, library, session) {
     return(NULL)
     
   }, error = function(e) {
-    cat(sprintf("[PK_ANALIZ] AI Secim Hatasi: %s\n", e$message))
+    cat(sprintf("[PK_ANALIZ] AI Seçim Hatası: %s\n", e$message))
     return(NULL)
   })
 }

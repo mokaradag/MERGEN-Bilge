@@ -693,3 +693,92 @@ test_that("kayıtlı sohbet yükleme, PK isteğini YALNIZCA kimlik değişince t
   expect_true(grepl("isTRUE(hedef_degisti) &&", metin, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl("mergen_pk_abandon_active_requests", metin, fixed = TRUE, useBytes = TRUE))
 })
+
+test_that("bootstrap parmak izi SQL bagimliliklarini KAYNAK METINDEN turetir", {
+  kok <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
+  for (dosya in c("helpers_pk_config.R", "helpers_pk_async_cancel.R",
+                  "helpers_pk_async_worker_env.R")) {
+    source(file.path(kok, "R", dosya), encoding = "UTF-8", local = env)
+  }
+
+  dosyalar <- c("R/library_queries.R", "R/config_sql_loader.R")
+
+  # Temiz bir PSOCK iscisinde ILK parmak izi bootstrap'tan ONCE hesaplanir ve o
+  # an `query_library` HENUZ YOKTUR. Kaynak taramasi her iki durumda da AYNI
+  # girdiyi verir; aksi halde isci degismemis bir calisma kopyasinda IKINCI bir
+  # tam bootstrap yapiyordu.
+  onceki <- get0("query_library", envir = globalenv(), inherits = FALSE)
+  on.exit({
+    if (is.null(onceki)) {
+      if (exists("query_library", envir = globalenv(), inherits = FALSE)) {
+        rm("query_library", envir = globalenv())
+      }
+    } else {
+      assign("query_library", onceki, envir = globalenv())
+    }
+  }, add = TRUE)
+
+  if (exists("query_library", envir = globalenv(), inherits = FALSE)) {
+    rm("query_library", envir = globalenv())
+  }
+  ilk <- env$pk_async_bootstrap_fingerprint(kok, dosyalar)
+
+  assign("query_library",
+         list(list(id = "q001", sql_file = "sql_queries/q001_kpi.sql")),
+         envir = globalenv())
+  ikinci <- env$pk_async_bootstrap_fingerprint(kok, dosyalar)
+
+  expect_identical(ilk, ikinci)
+
+  # Statik tarama, kaynak metindeki TUM `sql_file` bildirimlerini yakalar.
+  statik <- env$.pk_async_sql_paths_from_source(kok, dosyalar)
+  expect_true(length(statik) >= 1L)
+  expect_true(all(grepl("\\.sql$", statik)))
+
+  # `files` gecilmediginde ESKI davranis (calisma zamani kutuphanesi) korunur.
+  yedek <- env$pk_async_worker_sql_dependencies(kok)
+  expect_true(any(grepl("q001_kpi\\.sql$", yedek)))
+})
+
+test_that("ORTAM tabanli havuz girdileri sicak isciye tasinir", {
+  kok <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
+  for (dosya in c("helpers_pk_config.R", "helpers_pk_async_worker_pool.R")) {
+    source(file.path(kok, "R", dosya), encoding = "UTF-8", local = env)
+  }
+
+  eski <- Sys.getenv(c("MERGEN_DB_POOL_MAX_SIZE", "MERGEN_DB_POOL_MIN_SIZE",
+                       "MERGEN_DB_POOL_ENABLED", "MERGEN_DB_POOL_SHARE_APPLIED"),
+                     unset = NA_character_)
+  on.exit({
+    for (ad in names(eski)) {
+      if (is.na(eski[[ad]])) Sys.unsetenv(ad)
+      else do.call(Sys.setenv, stats::setNames(list(eski[[ad]]), ad))
+    }
+  }, add = TRUE)
+
+  # ANA SUREC durumu.
+  Sys.setenv(MERGEN_DB_POOL_MAX_SIZE = "12", MERGEN_DB_POOL_ENABLED = "true")
+  Sys.unsetenv("MERGEN_DB_POOL_MIN_SIZE")
+  anlik <- env$pk_async_db_pool_option_snapshot()
+  expect_true("env:MERGEN_DB_POOL_MAX_SIZE" %in% names(anlik))
+
+  # SICAK ISCI durumu: ortam FARKLI ve surec rolu isareti kurulu.
+  Sys.setenv(MERGEN_DB_POOL_MAX_SIZE = "99", MERGEN_DB_POOL_MIN_SIZE = "7",
+             MERGEN_DB_POOL_SHARE_APPLIED = "1")
+  env$pk_async_db_pool_option_install(anlik)
+
+  # Ana surecin degeri geri kurulur, ana surecte SILINMIS anahtar iscide de silinir.
+  expect_identical(Sys.getenv("MERGEN_DB_POOL_MAX_SIZE"), "12")
+  expect_identical(Sys.getenv("MERGEN_DB_POOL_MIN_SIZE"), "")
+  # SUREC ROLU isareti BILEREK tasinmaz; silinseydi tavan iki kez bolusulurdu.
+  expect_identical(Sys.getenv("MERGEN_DB_POOL_SHARE_APPLIED"), "1")
+
+  # Parmak izi ortam degisimine TEPKI verir; aksi halde isci eski havuzu korurdu.
+  ilk <- env$pk_async_worker_pool_fingerprint(2L)
+  Sys.setenv(MERGEN_DB_POOL_MAX_SIZE = "4")
+  expect_false(identical(ilk, env$pk_async_worker_pool_fingerprint(2L)))
+})

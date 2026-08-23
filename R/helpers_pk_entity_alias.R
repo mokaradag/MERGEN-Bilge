@@ -125,10 +125,21 @@ pk_entity_alias_lookup <- function(index, user_norm) {
 
   # 3) ASCII yedek anahtarı (kayıplı). Kullanıcı Türkçe harf yazmadıysa
   #    onaylı `ŞAHİN -> ...` alias'ı `sahin` yazımıyla da bulunmalıdır.
-  ascii_anahtar <- pk_entity_ascii_key(user_norm$fold_only)
-  hedefler <- index$ascii[[ascii_anahtar]]
+  # ANAHTAR LİSTE İNDEKSLEMESİNDEN ÖNCE DOĞRULANIR.
+  #
+  # `pk_entity_ascii_key()` ASCII'ye eşlenebilir karakter içermeyen bir girdi
+  # için `NA_character_` ya da `""` döndürebilir (dizin kurucusu bunu zaten
+  # atlıyor). Böyle bir anahtarla `index$ascii[[anahtar]]` "subscript out of
+  # bounds" HATASI fırlatır ve alias çözümlemesi ham R hatasıyla düşerdi.
+  .alias_ara <- function(anahtar) {
+    a <- suppressWarnings(as.character(anahtar)[1])
+    if (length(a) != 1L || is.na(a) || !nzchar(a)) return(NULL)
+    index$ascii[[a]]
+  }
+
+  hedefler <- .alias_ara(pk_entity_ascii_key(user_norm$fold_only))
   if (is.null(hedefler) || !length(hedefler)) {
-    hedefler <- index$ascii[[user_norm$ascii]]
+    hedefler <- .alias_ara(user_norm$ascii)
   }
   if (is.null(hedefler) || !length(hedefler)) return(bos)
 

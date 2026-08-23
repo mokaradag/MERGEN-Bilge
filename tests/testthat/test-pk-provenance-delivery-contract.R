@@ -8,7 +8,15 @@
 .pk_p2_read_source <- function(rel_path) {
   path <- file.path(resolve_repo_root_for_tests(), rel_path)
   raw_bytes <- readBin(path, what = "raw", n = file.info(path)$size)
-  iconv(rawToChar(raw_bytes), from = "UTF-8", to = "UTF-8", sub = "byte")
+  metin <- iconv(rawToChar(raw_bytes), from = "UTF-8", to = "UTF-8", sub = "byte")
+  # SATIR SONLARI NORMALLEŞTİRİLİR (CLAUDE.md "CRLF corollary").
+  # `.gitattributes` yalnızca TEK bir dosyada `eol=lf` zorlar; Windows CI
+  # checkout'u (core.autocrlf) diğer kaynakları CRLF olarak yazar. Bu durumda
+  # `strsplit(metin, "\n")` her satırın sonunda bir `\r` bırakır ve aşağıdaki
+  # üretim bloğu `parse()` edilirken "unexpected invalid token" ile düşerdi;
+  # çok satırlı `fixed = TRUE` eşleşmeleri de sessizce kaçırılırdı.
+  metin <- gsub("\r\n", "\n", metin, fixed = TRUE)
+  gsub("\r", "\n", metin, fixed = TRUE)
 }
 
 test_that("doğrudan AI yanıtları mesaj sınırında bekleyen köken alt bilgisini tüketir", {

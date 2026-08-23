@@ -48,7 +48,12 @@
   # Eşleşme desenleri (`timeout`, `api_http_error_401`, ...) MAKİNE
   # işaretleridir; Türkçe yerelde `tolower()` bunları bozar ve zaman aşımı
   # "servis kullanılamıyor" gibi yanlış bir duruma sınıflanır.
-  metin <- .pk_select_ascii_lower(as.character(message)[1] %||% "")
+  # `NA` METİN BOŞ METNE ÇEVRİLİR: `%||%` yalnızca `NULL` atlar, `NA` geçer;
+  # `grepl(..., NA)` -> `NA`, `any(NA)` -> `NA` ve `if (NA)` HATA fırlatırdı,
+  # yani bozulma kipi hiç karar üretemezdi.
+  metin <- as.character(message)[1] %||% ""
+  if (length(metin) != 1L || is.na(metin)) metin <- ""
+  metin <- .pk_select_ascii_lower(metin)
 
   esles <- function(desenler) {
     any(vapply(desenler, function(p) grepl(p, metin, fixed = TRUE), logical(1)))
@@ -110,9 +115,13 @@ pk_select_degraded_candidates <- function(index, prompt, library_index,
   # Geçiş A başarılıysa aday kümesi ZATEN bağlam farkındadır; bozulma o kümenin
   # İÇİNDE kalmalıdır. Aksi hâlde `candidate_ids` bir kümeyi, `chips` bambaşka
   # bir kümeyi anlatırdı.
+  # KISITLAMA POZİTİF SKORLU KÜMEYLE KESİŞİR.
+  #
+  # Eskiden `restrict_ids` KOŞULSUZ ekleniyordu; pozitif skorlu üçten az aday
+  # varsa SIFIR skorlu kimlikler çipe dönüşüyor ve kullanıcıya soruyla ilgisi
+  # kanıtlanmamış seçenekler sunuluyordu (`pk_select_chips()` üst sınırı 3).
   if (!is.null(restrict_ids) && length(restrict_ids)) {
-    sirali <- kimlikler[kimlikler %in% restrict_ids]
-    kimlikler <- unique(c(sirali, as.character(restrict_ids)))
+    kimlikler <- kimlikler[kimlikler %in% as.character(restrict_ids)]
   }
 
   onceki <- if (!is.null(prior_query_id) && length(prior_query_id) &&

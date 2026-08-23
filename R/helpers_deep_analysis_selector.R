@@ -44,7 +44,7 @@ find_multiple_queries_with_ai <- function(user_prompt, library, session,
       isTRUE(tryCatch(pk_active_stage_halt(), error = function(e) FALSE))
   }
   if (durduruldu()) {
-    cat("[DEEP_ANALYSIS] Coklu secim iptal edildi (secim baslamadi).\n")
+    cat("[DEEP_ANALYSIS] Çoklu seçim iptal edildi (seçim başlamadı).\n")
     return(NULL)
   }
 
@@ -139,7 +139,7 @@ find_multiple_queries_with_ai <- function(user_prompt, library, session,
     })
 
     if (durduruldu()) {
-      cat("[DEEP_ANALYSIS] Coklu secim iptal edildi (sonuc kullanilmadi).\n")
+      cat("[DEEP_ANALYSIS] Çoklu seçim iptal edildi (sonuç kullanılmadı).\n")
       return(NULL)
     }
 
@@ -162,13 +162,21 @@ find_multiple_queries_with_ai <- function(user_prompt, library, session,
     selected <- list()
     selected_indices <- integer(0)
     for (m in parsed$matches) {
-      idx <- as.integer(m$match_id)
-      if (!is.null(idx) && idx > 0 && idx <= length(library)) {
+      # BOZUK TEK KAYIT TÜM SEÇİMİ DÜŞÜRMEZ.
+      #
+      # `as.integer()` eksik alan için `integer(0)`, sayısal olmayan metin için
+      # `NA_integer_` üretir; `idx > 0` her iki durumda da `&&` içinde HATA
+      # fırlatır. Hata dıştaki `tryCatch`e ulaşır, fonksiyon `NULL` döner ve
+      # GEÇERLİ tüm eşleşmeler kaybolarak derin analiz sessizce tek sorgu
+      # seçimine düşerdi. Artık yalnızca bozuk kayıt atlanır.
+      idx <- suppressWarnings(as.integer(m$match_id)[1])
+      if (length(idx) == 1L && !is.na(idx) && idx > 0 && idx <= length(library)) {
         if (idx %in% selected_indices) {
           cat(sprintf("[DEEP_ANALYSIS] Tekrarlı sorgu atlandı: ID=%d ('%s')\n", idx, library[[idx]]$name))
           next
         }
-        confidence <- as.numeric(m$confidence %||% 0)
+        confidence <- suppressWarnings(as.numeric(m$confidence %||% 0)[1])
+        if (length(confidence) != 1L || is.na(confidence)) next
         if (confidence >= 30) {
           q <- library[[idx]]
           q$relevance_score <- confidence

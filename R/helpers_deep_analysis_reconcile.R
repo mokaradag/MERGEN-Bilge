@@ -220,7 +220,14 @@ pk_deep_observation_helpers <- function(session, conn, username, user_prompt,
     }, error = function(e) "")
   }
 
-  stash_deep_footer <- function(footers) {
+  # ÇAĞRI SÖZLEŞMESİ TEK YERDE TANIMLIDIR. Derin analiz orkestratörü bu
+  # kapanışa `pk_deep_collect_v2_provenance()` alanlarını da adlandırılmış
+  # argüman olarak geçirir. İmza yalnızca `footers` kabul etseydi R
+  # "unused arguments" fırlatır ve TAMAMLANMIŞ derin analiz sonucu çöpe
+  # giderdi; bu davranış, imzayı genişleten bir sarmalayıcının kurulmuş
+  # olmasına bağlı KALMAMALIDIR (izole test/işçi bağlamları).
+  stash_deep_footer <- function(footers, facts = NULL, fallback_text = NULL,
+                                query_id = NULL, mode = NULL) {
     if (!exists("pk_provenance_stash", mode = "function", inherits = TRUE)) {
       return(invisible(FALSE))
     }
@@ -246,7 +253,11 @@ pk_deep_observation_helpers <- function(session, conn, username, user_prompt,
       "\n"
     )
 
-    pk_provenance_stash(session, combined_footer, request_id = pk_request_id)
+    pk_provenance_stash(
+      session, combined_footer, request_id = pk_request_id,
+      facts = facts, fallback_text = fallback_text,
+      query_id = query_id, mode = mode
+    )
   }
 
   list(observe = pk_observe_deep, stash = stash_deep_footer)

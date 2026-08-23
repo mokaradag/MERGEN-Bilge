@@ -286,5 +286,23 @@ pk_select_config_for_query <- function(cfg, query_meta) {
     alan <- .PK_SELECT_DECISION_FIELDS[[i]]
     cfg[[alan]] <- yeni[[alan]]
   }
+
+  # BİRLEŞTİRİLMİŞ NESNE YENİDEN DOĞRULANIR.
+  #
+  # İlişki değişmezi (`min_confidence` ile `min_margin` BİRLİKTE sıfır olamaz)
+  # `ham` ve `yeni` üzerinde AYRI AYRI denetleniyor, birleşmiş nesnede HİÇ
+  # denetlenmiyordu: çağıran `min_confidence = 0` + `min_margin = 15` verip
+  # sorgu yalnızca `select_min_margin = 0` beyan ettiğinde sonuç 0/0 oluyor ve
+  # tamamen belirsiz bir beraberlik bile OTOMATİK çalıştırılabiliyordu.
+  # Geçersiz birleşim metadata geçersiz kılmasını DÜŞÜRÜR; çağıranın kendi
+  # doğrulanmış yapılandırması korunur.
+  birlesik <- pk_select_normalize_config(cfg)
+  if (!isTRUE(birlesik$valid)) {
+    cat(sprintf(
+      "[PK_SELECT] Metadata gecersiz kilmasi birlesik yapilandirmayi bozdu, yok sayildi: %s\n",
+      paste(birlesik$errors, collapse = "; ")
+    ))
+    return(ham)
+  }
   cfg
 }

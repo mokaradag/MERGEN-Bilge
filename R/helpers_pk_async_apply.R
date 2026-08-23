@@ -57,7 +57,9 @@ mergen_pk_apply_analysis_result <- function(analiz_result, messages_to_process) 
   # `prompt_context` + `user_context` taşır; bunları taşımayan bir liste
   # (yeni bir terminal tip, bozuk paket) sessizce "bağlamsız devam"a
   # dönüşmemelidir.
-  if (is.null(analiz_result$user_context) && is.null(analiz_result$prompt_context)) {
+  # HER İKİSİ DE ZORUNLU ("ve" değil "veya"): tek başına `prompt_context`
+  # TEMELSİZ yanıt, tek başına `user_context` talimatsız analiz demektir.
+  if (is.null(analiz_result$user_context) || is.null(analiz_result$prompt_context)) {
     try(log_warn(sprintf(
       "[PK] Analiz sonucu bilinmeyen terminal tip (%s); istek kapali basarisiz.",
       as.character(analiz_result$type %||% "<tipsiz>")[1]
@@ -218,10 +220,25 @@ mergen_pk_prepare_async_request <- function(ctx, started_at = NULL) {
   list(ok = TRUE, request = istek, cancel_token = jeton)
 }
 
+# DOSYA SİSTEMİ SONDASI OLAY DÖNGÜSÜNDE TEKRARLANMAZ: bu çözümleme işçi
+# gönderilmeden ÖNCE paylaşılan süreçte senkron çalışır ve `MERGEN_REPO_ROOT`
+# yanıt vermeyen bir UNC/NFS noktasını gösterdiğinde HER istekte bloklardı.
+# Girdi (env + çalışma dizini) başına bir kez çözülür; testlerde girdi
+# değişince yeniden çözümlenir.
+.pk_async_repo_root_cache <- new.env(parent = emptyenv())
+
 mergen_pk_async_repo_root <- function() {
   kok <- Sys.getenv("MERGEN_REPO_ROOT", unset = "")
-  if (nzchar(kok) && dir.exists(kok)) {
-    return(normalizePath(kok, winslash = "/", mustWork = FALSE))
+  wd <- getwd()
+  anahtar <- paste0(kok, "\u001f", wd)
+  onbellek <- .pk_async_repo_root_cache[[anahtar]]
+  if (!is.null(onbellek)) return(onbellek)
+  if (length(ls(.pk_async_repo_root_cache, all.names = TRUE)) > 32L) {
+    rm(list = ls(.pk_async_repo_root_cache, all.names = TRUE),
+       envir = .pk_async_repo_root_cache)
   }
-  normalizePath(getwd(), winslash = "/", mustWork = FALSE)
+  cozum <- normalizePath(if (nzchar(kok) && dir.exists(kok)) kok else wd,
+                         winslash = "/", mustWork = FALSE)
+  assign(anahtar, cozum, envir = .pk_async_repo_root_cache)
+  cozum
 }

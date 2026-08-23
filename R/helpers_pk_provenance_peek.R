@@ -82,9 +82,31 @@ mergen_pk_block_mode_texts <- function(full_response, session, request_id = NULL
   bekleyen <- tryCatch(pk_provenance_peek(session, request_id = request_id),
                        error = function(e) NULL)
   alt_bilgi <- as.character(bekleyen$footer %||% "")[1]
+  # BLOCK KİPİNDE DEKORASYON HATASI HAM METNİ TESLİM EDEMEZ.
+  #
+  # `block` kipi tam da DESTEKLENMEYEN sayısal iddiaların kullanıcı GÖRMEDEN
+  # ve DUYMADAN önce değiştirilmesi için vardır. Eski yedek (`full_response`)
+  # doğrulama hata verdiğinde kipin engellemek için var olduğu çıktının TA
+  # KENDİSİNİ hem ekrana hem TTS'e gönderiyordu. Artık kapalı başarısız
+  # davranılır: bekleyen kaydın deterministik yedeği varsa o, yoksa sabit bir
+  # reddetme metni kullanılır.
   dekore <- tryCatch(
     pk_provenance_decorate(full_response, session, request_id = request_id),
-    error = function(e) full_response
+    error = function(e) {
+      cat(sprintf("[PK] Köken dekorasyonu başarısız (block kipi): %s\n",
+                  conditionMessage(e)))
+      yedek <- as.character(bekleyen$fallback_text %||% "")[1]
+      if (!is.na(yedek) && nzchar(yedek)) {
+        paste0(yedek, if (!is.na(alt_bilgi)) alt_bilgi else "")
+      } else {
+        paste0(
+          "\U000026A0\U0000FE0F **Yanıt doğrulanamadı:** Sayısal iddialar analiz ",
+          "verisine karşı doğrulanamadığı için yanıt gösterilmiyor. Lütfen ",
+          "sorunuzu yeniden gönderin.",
+          if (!is.na(alt_bilgi)) alt_bilgi else ""
+        )
+      }
+    }
   )
 
   tts_metni <- if (!is.na(alt_bilgi) && nzchar(alt_bilgi) && endsWith(dekore, alt_bilgi)) {

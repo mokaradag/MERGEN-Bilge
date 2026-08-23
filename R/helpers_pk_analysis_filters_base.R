@@ -40,6 +40,22 @@
 # Tek doğruluk kaynağı yüklüyse o kullanılır; izole test/hata ayıklama
 # oturumlarında dosya tek başına source edilebildiği için yerel şekil kontrolü
 # yedektir.
+# TEK KARAKTER DEĞERE İNDİRGEME (model çıktısı normalleştirmesi).
+#
+# Filtre yanıtı `simplifyVector = FALSE` ile ayrıştırılır; bu yüzden
+# `"aggregation": ["count"]` gibi bir JSON dizisi R tarafına LİSTE olarak
+# gelir. Böyle bir değer `tolower()` içinde "non-character argument" hatası,
+# skaler `if` karşılaştırmasında ise R 4.3+ "the condition has length > 1"
+# hatası üretirdi ve v1 isteği bozulmak yerine ÇÖKERDİ. Tek gövde: hem bu
+# dosyadaki hem `helpers_pk_analysis_filters.R` içindeki kopya bunu kullanır.
+.pk_filter_scalar_token <- function(x) {
+  if (is.null(x)) return(NULL)
+  duz <- suppressWarnings(as.character(unlist(x, use.names = FALSE)))
+  duz <- duz[!is.na(duz) & nzchar(trimws(duz))]
+  if (!length(duz)) return(NULL)
+  trimws(duz[1])
+}
+
 .pk_filter_base_is_group <- function(f) {
   if (exists(".pk_filter_is_group_node", mode = "function", inherits = TRUE)) {
     return(isTRUE(.pk_filter_is_group_node(f)))
@@ -301,12 +317,20 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
     ai_text <- gsub("```json|```", "", ai_text)
     ai_text <- trimws(ai_text)
 
-    if (nchar(ai_text) < 50) {
-      cat(sprintf("[FILTER_AI] Yanit cok kisa (%d karakter), iptal ediliyor.\n", nchar(ai_text)))
+    # UZUNLUK BİR DOĞRULUK ÖLÇÜTÜ DEĞİLDİR. Eski 50 karakterlik alt sınır,
+    # `{"filters":[],"aggregation":"count"}` (36 karakter) gibi TAMAMEN
+    # geçerli bir sayım yanıtını `malformed` yapıyordu; v2'de bu statü REDde
+    # dönüştüğü için meşru istek reddediliyordu. Geçerlilik kararını şema
+    # doğrulaması ve `jsonlite::fromJSON()` verir.
+    if (!nzchar(ai_text)) {
+      cat("[FILTER_AI] Yanıt boş, iptal ediliyor.\n")
       return(.pk_filter_empty_result("malformed"))
     }
 
-    if (!grepl("\\{.*\\}", ai_text)) {
+    # `.` satır sonunu EŞLEŞTİRMEZ: çok satırlı (pretty-print) JSON —ki istem
+    # örneği de böyle— bu kapıda düşerdi. Yapısal denetim satır sonuna
+    # duyarsız yapılır; nihai kararı yine ayrıştırıcı verir.
+    if (!grepl("\\{[\\s\\S]*\\}", ai_text, perl = TRUE)) {
       cat("[FILTER_AI] JSON format algilanamadi.\n")
       return(.pk_filter_empty_result("malformed"))
     }
@@ -325,6 +349,20 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
     })
 
     if (is.null(parsed)) return(.pk_filter_empty_result("malformed"))
+
+    # ŞEMA KAPISI (eski uzunluk kapısının yerine).
+    #
+    # Doğruluk ölçütü artık yanıtın UZUNLUĞU değil, TANINAN ŞEMA ALANLARINDAN
+    # en az birini taşıyıp taşımadığıdır. Böylece `{"filters":[],
+    # "aggregation":"count"}` (36 karakter) gibi TAMAMEN geçerli kısa yanıtlar
+    # kabul edilirken, hiçbir sözleşme alanı taşımayan `{}` gibi içi boş bir
+    # nesne `malformed` olarak kalır.
+    if (!is.list(parsed) ||
+        !any(c("filters", "aggregation", "group_column", "filter_column",
+               "filter_expression") %in% names(parsed))) {
+      cat("[FILTER_AI] Yanit taninan filtre alanlarindan hicbirini tasimiyor.\n")
+      return(.pk_filter_empty_result("malformed"))
+    }
 
     filters <- parsed$filters
     if (is.null(filters) || !is.list(filters)) filters <- list()
@@ -407,12 +445,23 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
       })
     }
 
+    # ESKİ `filter_column` BİÇİMİ YAPISAL DİZİYİ SESSİZCE EZMEZ.
+    # Model her iki gösterimi birlikte döndürdüğünde eski dal doğrulanmış
+    # `filters` dizisinin TAMAMINI atıp tek bir eski filtre bırakıyordu; yanıt
+    # yine `ok_filtered` raporlandığı için çok ölçütlü istek, farklı tek
+    # sütunlu bir filtreye dönüşüp BAŞKA bir soruyu yanıtlıyordu. İki gösterim
+    # artık birbirini dışlar: `filters` doluyken eski alanlar yok sayılır ve
+    # durum tanıya yazılır.
     if (!is.null(parsed$filter_column)) {
-      filters <- list(list(
-        column = parsed$filter_column,
-        value = parsed$filter_value,
-        operation = parsed$operation
-      ))
+      if (length(filters) > 0L) {
+        cat("[FILTER_AI] Eski `filter_column` alani yok sayildi: yapisal `filters` dizisi mevcut.\n")
+      } else {
+        filters <- list(list(
+          column = parsed$filter_column,
+          value = parsed$filter_value,
+          operation = parsed$operation
+        ))
+      }
     }
 
     if (length(filters) > 0) {
@@ -462,7 +511,8 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
   dt <- data.table::as.data.table(data)
 
   filters <- filter_instructions$filters
-  aggregation <- filter_instructions$aggregation
+  # TOPLULAŞTIRMA DA TEK KARAKTER DEĞERE İNDİRGENİR (grup sütunuyla aynı gerekçe).
+  aggregation <- .pk_filter_scalar_token(filter_instructions$aggregation)
   # GRUPLAMA SÜTUNU TEK BİR KARAKTER DEĞERE İNDİRGENİR.
   #
   # `simplifyVector = FALSE` ile ayrıştırılan model çıktısında birden çok grup
@@ -538,6 +588,16 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
       cat("[SMART_FILTER] Standart filtre listesi uygulanıyor (AND mantığı)...\n")
 
       for (f in filters) {
+        # MANTIK GRUBU (`{operator, children}`) YAPRAK DEĞİLDİR: yalnızca v2
+        # motoru değerlendirebilir. Bu izole gövdede sessizce yaprak gibi
+        # işlenip "sütun yok" dalına düşmek yerine AÇIKÇA atlanır ve kayda
+        # geçer (`helpers_pk_analysis_filters.R` gövdesi aynı düğümü tipli
+        # `dropped` bildirimiyle raporlar).
+        if (.pk_filter_base_is_group(f)) {
+          cat("[SMART_FILTER] Mantik grubu (VEYA) v1 motorunda degerlendirilemiyor, atlandi.\n")
+          next
+        }
+
         col <- f$column
         val <- f$value
         op <- f$operation %||% "exact_match"

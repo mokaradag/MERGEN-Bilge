@@ -164,8 +164,15 @@
                       if (is.null(basi$unit)) "" else sprintf(" (%s)", basi$unit),
                       if (is.null(basi$measure_capability)) "" else
                         sprintf(" [yetenek: %s]", basi$measure_capability))
-    gozlem <- sprintf("  - Sonlu gozlem: %s | disarida birakilan: %s",
-                      pk_fmt_number(basi$n_finite, 0L), pk_fmt_number(basi$n_excluded, 0L))
+    # HER SAYI ISARETLIDIR: bu iki sayim `pk_packet_context_facts()` icinde
+    # `finite_count` / `excluded_count` baglam olgusu olarak da uretilir.
+    # Isaretsiz birakildiginda dort haneli bir sayim `block` kipinde
+    # `missing_fact_marker` uretip TUM yaniti determinist yedekle degistiriyordu.
+    gozlem <- sprintf("  - Sonlu gozlem: %s %s | disarida birakilan: %s %s",
+                      pk_fmt_number(basi$n_finite, 0L),
+                      .pk_render_marker(basi$column, "finite_count"),
+                      pk_fmt_number(basi$n_excluded, 0L),
+                      .pk_render_marker(basi$column, "excluded_count"))
     paste(c(baslik, gozlem, vapply(alt, .pk_render_fact_line, character(1))), collapse = "\n")
   })
 

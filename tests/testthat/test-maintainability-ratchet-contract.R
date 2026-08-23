@@ -154,6 +154,15 @@
 #     DUYUYORDU (söylenmiş ses geri alınamaz). Karar/metin üretimi
 #     `mergen_pk_block_mode_texts()` içine ÇIKARILDI; bu dosyada kalan yalnızca
 #     sonucun uygulanmasıdır. Fonksiyon sayısı 14 -> 15 (yalnızca bu delege).
+#
+# PR #705 inceleme takibi — BİLİNÇLİ taban güncellemesi:
+#   * R/helpers_chat_runtime.R 532/14 -> 579/17 (ÖLÇÜLEN). İki neden:
+#     (a) `mergen_pk_block_mode_texts()` çağrısı `tryCatch` ile sarıldı — metin
+#     üretimi hata verdiğinde TÜM yanıt teslimi düşüyor ve kullanıcı hazır
+#     cevabı hiç göremiyordu; (b) dönen alanlar `.cr_metin()` ile SKALER'e
+#     indirgenir, çünkü çok elemanlı bir alan `if (nzchar(x))` içinde koşul
+#     uzunluğu hatası fırlatıyordu. Küresel eşikler (100/100, 800+ = 0,
+#     25+ fonksiyon = 0, en büyük dosya 796, en yüksek fonksiyon 24) KORUNDU.
 .maintainability_baseline <- data.frame(
   path = c(
     "R/helpers_mcp_tools.R",
@@ -219,7 +228,7 @@
     572L,
     539L,
     532L,
-    532L,
+    579L,
     385L,
     341L
   ),
@@ -253,7 +262,7 @@
     3L,
     0L,
     20L,
-    14L,
+    17L,
     27L,
     32L
   ),

@@ -6,75 +6,32 @@
 #           ifadesini telemetri amacıyla ikinci kez değerlendirmez.
 # ==============================================================================
 
-# Standart çalışma zamanında temel dosya kaynak manifesti tarafından bu dosyadan
-# önce yüklenir ve bu blok hiç çalışmaz. İzole source()/testthat çalıştırmalarında
-# ise çalışma dizininden bağımsız aday yollar sırayla denenir: repo kökü,
-# tests/testthat ve MERGEN_REPO_ROOT. sys.frame(1)$ofile tek başına yeterli
-# değildir; testthat çağrı yığınının derininde ofile taşımayan bir çerçeve olur.
-if (!exists("extract_filter_criteria_from_prompt", mode = "function", inherits = FALSE)) {
-  # 1) Bu dosyayı source eden çerçevedeki ofile üzerinden kardeş dosyayı bul.
-  #    testthat yığınında source çerçevesi sys.frame(1) DEĞİLDİR; bu yüzden tüm
-  #    çerçeveler içten dışa taranır. Mutlak yolla source edilen izole testler
-  #    (getwd() tempdir()) yalnızca bu adayla çözülür.
-  .pk_filter_sibling <- NULL
-  for (.pk_filter_i in rev(seq_len(sys.nframe()))) {
-    .pk_filter_of <- tryCatch(
-      get("ofile", envir = sys.frame(.pk_filter_i), inherits = FALSE),
-      error = function(e) NULL
-    )
-    if (is.character(.pk_filter_of) && length(.pk_filter_of) == 1L &&
-        !is.na(.pk_filter_of) && nzchar(.pk_filter_of)) {
-      .pk_filter_try <- file.path(
-        dirname(normalizePath(.pk_filter_of, winslash = "/", mustWork = FALSE)),
-        "helpers_pk_analysis_filters_base.R"
-      )
-      if (isTRUE(tryCatch(file.exists(.pk_filter_try), error = function(e) FALSE))) {
-        .pk_filter_sibling <- .pk_filter_try
-        break
-      }
-    }
-  }
-
-  # 2) Çalışma dizininden bağımsız aday yollar: repo kökü, tests/testthat, MERGEN_REPO_ROOT.
-  .pk_filter_base_candidates <- c(
-    .pk_filter_sibling,
-    file.path("R", "helpers_pk_analysis_filters_base.R"),
-    file.path("..", "..", "R", "helpers_pk_analysis_filters_base.R"),
-    file.path("..", "R", "helpers_pk_analysis_filters_base.R"),
-    if (nzchar(Sys.getenv("MERGEN_REPO_ROOT"))) {
-      file.path(Sys.getenv("MERGEN_REPO_ROOT"), "R", "helpers_pk_analysis_filters_base.R")
-    } else {
-      NULL
-    }
-  )
-
-  .pk_filter_base_path <- NULL
-  for (.pk_filter_cand in .pk_filter_base_candidates) {
-    if (!is.null(.pk_filter_cand) && nzchar(.pk_filter_cand) &&
-        isTRUE(tryCatch(file.exists(.pk_filter_cand), error = function(e) FALSE))) {
-      .pk_filter_base_path <- .pk_filter_cand
-      break
-    }
-  }
-
-  if (is.null(.pk_filter_base_path)) {
-    stop("helpers_pk_analysis_filters_base.R bulunamadı.", call. = FALSE)
-  }
-
-  source(.pk_filter_base_path, encoding = "UTF-8", local = environment())
-
-  # Source-time geçici değişkenler yalnızca var olduklarında silinir (warning-free).
-  for (.pk_filter_tmp in c(".pk_filter_sibling", ".pk_filter_i", ".pk_filter_of",
-                           ".pk_filter_try", ".pk_filter_base_candidates",
-                           ".pk_filter_base_path", ".pk_filter_cand")) {
-    if (exists(.pk_filter_tmp, inherits = FALSE)) rm(list = .pk_filter_tmp)
-  }
-  rm(.pk_filter_tmp)
-}
+# TEMEL DOSYA KAYNAK MANİFESTİ TARAFINDAN YÜKLENİR.
+#
+# `R/config_source_manifest.R`, `helpers_pk_analysis_filters_base.R` dosyasını
+# bu dosyadan HEMEN ÖNCE yükler. Buradaki eski blok, kardeş dosyayı çalışma
+# zamanında `sys.frame()$ofile` ve aday yol taramasıyla bulup düz `source()`
+# ile yüklüyordu; bu, manifest sahipliğini ve `safe_source()` sözleşmesini
+# bypass eden gizli/dinamik bir yükleme yoluydu. Kaldırıldı: izole
+# `testthat::test_file(...)` çalıştırmaları temel dosyayı AÇIKÇA source
+# etmelidir (repo genelindeki izole-yükleme kuralıyla aynı).
 
 if (!exists(".pk_filter_observation_state", inherits = FALSE) ||
     !is.environment(.pk_filter_observation_state)) {
   .pk_filter_observation_state <- new.env(parent = emptyenv())
+}
+
+# EKLEME SIRASI: sınırsız büyümeyi engelleyen LRU benzeri tahliye için tutulur.
+if (!exists(".pk_filter_observation_order", inherits = FALSE) ||
+    !is.environment(.pk_filter_observation_order)) {
+  .pk_filter_observation_order <- new.env(parent = emptyenv())
+  .pk_filter_observation_order$keys <- character(0)
+}
+
+# Süreç ömrü boyunca tutulacak en fazla gözlem kaydı.
+.pk_filter_observation_cap <- function() {
+  ham <- suppressWarnings(as.integer(getOption("mergen.pk.filter_observation_max", 256L))[1])
+  if (length(ham) != 1L || is.na(ham) || ham < 1L) 256L else ham
 }
 
 .pk_filter_observation_scalar <- function(x) {
@@ -167,15 +124,47 @@ if (!exists(".pk_filter_observation_state", inherits = FALSE) ||
   )
 }
 
+# İSTEK KİMLİĞİ OLMADAN SAKLAMA YAPILMAZ (kapalı başarısız).
+#
+# Anahtar `request_id + query_id + query_name + question` birleşimidir. İstek
+# kimliği çözülemediğinde bileşen BOŞ kalır; aynı sorguya aynı soruyu soran İKİ
+# EŞZAMANLI KULLANICI o zaman TEK bir anahtarı paylaşır ve ikinci saklama
+# birincisini ezer. Sonuç, bir kullanıcının köken alt bilgisinde BAŞKA bir
+# kullanıcının `matched_rows` değerinin yayımlanmasıdır. Kimliksiz kayıt artık
+# hiç saklanmaz: alt bilgi yoksa yanlış alt bilgiden iyidir.
+#
+# Ayrıca ortam SINIRLIDIR. `pk_filter_observation_take()` tek kaldırma yoludur;
+# alınmayan her kayıt (v2 reddi, çağıran hatası, iptal edilen istek) süreç ömrü
+# boyunca kalırdı. Ekleme sırasına göre en eski kayıtlar tahliye edilir.
 .pk_filter_observation_store <- function(context, observation) {
+  istek <- .pk_filter_observation_scalar(context$request_id)
+  if (!nzchar(istek)) {
+    cat("[PK_OBSERVE] İstek kimliği çözülemedi; gözlem kaydı saklanmadı.\n")
+    return(invisible(observation))
+  }
+
   key <- .pk_filter_observation_key(
-    context$request_id,
+    istek,
     context$query_id,
     context$query_name,
     context$question
   )
   observation$query_meta <- context$query_meta
   assign(key, observation, envir = .pk_filter_observation_state)
+
+  sira <- .pk_filter_observation_order$keys
+  sira <- c(sira[sira != key], key)
+  tavan <- .pk_filter_observation_cap()
+  if (length(sira) > tavan) {
+    eski <- sira[seq_len(length(sira) - tavan)]
+    sira <- sira[-seq_len(length(sira) - tavan)]
+    for (k in eski) {
+      if (exists(k, envir = .pk_filter_observation_state, inherits = FALSE)) {
+        rm(list = k, envir = .pk_filter_observation_state)
+      }
+    }
+  }
+  .pk_filter_observation_order$keys <- sira
   invisible(observation)
 }
 
@@ -192,6 +181,8 @@ pk_filter_observation_take <- function(info) {
 
   observation <- get(key, envir = .pk_filter_observation_state, inherits = FALSE)
   rm(list = key, envir = .pk_filter_observation_state)
+  .pk_filter_observation_order$keys <-
+    .pk_filter_observation_order$keys[.pk_filter_observation_order$keys != key]
   observation
 }
 
@@ -286,7 +277,8 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
   dt <- data.table::as.data.table(data)
 
   filters <- filter_instructions$filters
-  aggregation <- filter_instructions$aggregation
+  # TOPLULAŞTIRMA DA TEK KARAKTER DEĞERE İNDİRGENİR (grup sütunuyla aynı gerekçe).
+  aggregation <- .pk_filter_scalar_token(filter_instructions$aggregation)
   # GRUPLAMA SÜTUNU TEK BİR KARAKTER DEĞERE İNDİRGENİR.
   #
   # `simplifyVector = FALSE` ile ayrıştırılan model çıktısında birden çok grup
@@ -374,6 +366,21 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
       cat("[SMART_FILTER] Standart filtre listesi uygulanıyor (AND mantığı)...\n")
 
       for (f in filters) {
+        # MANTIK GRUBU (`{operator, children}`) YAPRAK DEĞİLDİR.
+        #
+        # Ortak çıkarım istemi, sütunlar ARASI VEYA'yı grup düğümü olarak
+        # istiyor ve doğrulayıcı bu düğümü koruyor; ancak grubu yalnızca v2
+        # motoru (`helpers_pk_filter_compile.R`) değerlendirebiliyor. v1
+        # gövdesinde düğüm zaten düşüyordu, fakat `f$column` boş olduğu için
+        # "sütun veri kümesinde bulunamadı" gibi YANLIŞ bir gerekçeyle
+        # raporlanıyordu. Karar (düşürme) değişmedi; bildirim artık doğru.
+        if (.pk_filter_base_is_group(f)) {
+          dropped[[length(dropped) + 1L]] <- .pk_filter_dropped(
+            f, "mantık grubu (VEYA) v1 motorunda değerlendirilemiyor"
+          )
+          next
+        }
+
         col <- .pk_filter_observation_scalar(f$column)
         val <- f$value
         op <- .pk_filter_observation_scalar(f$operation %||% "exact_match")

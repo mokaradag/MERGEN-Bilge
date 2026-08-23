@@ -92,3 +92,33 @@ test_that("dogrudan DB alt iscisi bloklanirken zorla sonlandirilabilir", {
   expect_lt(elapsed, 5)
   expect_error(future::value(blocked))
 })
+
+test_that("PSOCK baslatma BAGIMSIZ butce sarmalayicisindan gecer", {
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
+  env$pk_async_run_analysis <- function(request) list(status = "ok")
+  env$execute_single_deep_query <- function(...) list(success = FALSE)
+  for (dosya in c("helpers_pk_config.R", "helpers_pk_async_cancel.R",
+                  "helpers_pk_p1_runtime_guards.R")) {
+    source(file.path(resolve_repo_root_for_tests(), "R", dosya),
+           encoding = "UTF-8", local = env)
+  }
+
+  # `connectTimeout`/`timeout` yalnizca SOKET HAREKETSIZLIGINI sinirlar; Unix ve
+  # macOS'ta askida bir el sikisma bu iki degerin USTUNDE bloke kalabilir.
+  # Baslatma bu yuzden repo genelindeki bagimsiz butce sarmalayicisindan gecer.
+  cagrildi <- FALSE
+  env$pk_async_bounded_fs <- function(fn, deadline_at = NULL) {
+    cagrildi <<- TRUE
+    list(ok = FALSE, value = NULL, error = "reached elapsed time limit")
+  }
+  env$parallelly <- NULL
+
+  istek <- list(deadline_sec = 30, started_at = as.numeric(Sys.time()),
+                cancel_token = NULL, repo_root = tempdir())
+  sonuc <- env$.pk_p1_run_direct_disposable(istek)
+
+  expect_true(cagrildi)
+  # Sarmalayici butceyi asarsa kume KURULMAMIS sayilir; istek asili kalmaz.
+  expect_identical(sonuc$status, "bootstrap_failed")
+})

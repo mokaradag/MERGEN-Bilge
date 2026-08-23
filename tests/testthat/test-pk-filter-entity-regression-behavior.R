@@ -1,5 +1,5 @@
 # ==============================================================================
-# Dosya Yolu: tests/testthat/test-pk-review-705-filter-entity-behavior.R
+# Dosya Yolu: tests/testthat/test-pk-filter-entity-regression-behavior.R
 # Açıklama: PR #705 inceleme bulgularının FİLTRE/VARLIK regresyon sözleşmeleri.
 #           Tamamen çevrimdışı ve deterministiktir: DB, LLM, tarayıcı, SSO, ağ
 #           ya da gizli değer GEREKMEZ. Fixture'lar sentetiktir.

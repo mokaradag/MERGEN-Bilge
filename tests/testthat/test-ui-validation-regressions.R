@@ -1,5 +1,5 @@
 # ==============================================================================
-# Dosya Yolu: tests/testthat/test-review-705-ui-validation-regressions.R
+# Dosya Yolu: tests/testthat/test-ui-validation-regressions.R
 # Açıklama: PR #705 incelemesinden çıkan, birbirinden bağımsız arayüz/doğrulama
 #           sözleşmesi gerilemelerini doğrular: selectize ipucu bastırma, mesaj
 #           uzunluk tavanı taşması, MCP ikinci geçiş token ayarı, yerel

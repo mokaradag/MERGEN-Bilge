@@ -103,6 +103,44 @@ pk_prompt_fit_payload <- function(summary_text, preview_data, assemble, budget =
     yuk <- assemble(summary_text, json, satir_sayisi)
     uzunluk <- nchar(yuk, type = "chars")
 
+    # BÜTÇE AŞILDIYSA VE KIRPILACAK SATIR KALMADIYSA SESSİZCE GÖNDERİLMEZ.
+    #
+    # `satir_sayisi == 0L` kısa devresi, `uzunluk > budget` olsa bile
+    # birleştirilmiş yükü döndürüyordu; `over_budget` yalnızca üstveriydi ve
+    # `pk_build_analysis_payload()` aşırı büyük özeti yine de gönderiyordu.
+    # Böyle bir istek model uç noktasında girdi boyutundan reddedilebilir.
+    # Kırpılacak içerik kalmadığında özet, bütçeye SIĞACAK şekilde kesilir ve
+    # kesme AÇIKÇA bildirilir.
+    if (uzunluk > budget && satir_sayisi == 0L) {
+      json_bos <- pk_prompt_preview_json(NULL)
+      sabit_yuk <- nchar(assemble("", json_bos, 0L), type = "chars")
+      kalan <- budget - sabit_yuk
+      kesme_notu <- "\n\n[NOT: Ozet, istem butcesine sigmasi icin KISALTILDI.]"
+      if (kalan > nchar(kesme_notu, type = "chars") + 32L) {
+        kisa_ozet <- paste0(
+          substr(summary_text, 1L, kalan - nchar(kesme_notu, type = "chars")),
+          kesme_notu
+        )
+      } else {
+        kisa_ozet <- kesme_notu
+      }
+      yuk <- assemble(kisa_ozet, json_bos, 0L)
+      uzunluk <- nchar(yuk, type = "chars")
+      # `over_budget` İFŞA BAYRAĞIDIR: "istenen içerik bütçeye sığmadı".
+      # Kesme sayesinde GÖNDERİLEN yük artık bütçeye sığar, ama kullanıcıya /
+      # modele giden bildirim (`pk_prompt_budget_note()`) korunur.
+      return(list(
+        payload = yuk,
+        preview_rows = 0L,
+        preview_json = json_bos,
+        trimmed = TRUE,
+        budget = budget,
+        chars = uzunluk,
+        over_budget = TRUE,
+        summary_truncated = TRUE
+      ))
+    }
+
     if (uzunluk <= budget || satir_sayisi == 0L) {
       return(list(
         payload = yuk,
@@ -225,9 +263,10 @@ pk_prompt_budget_note <- function(fit, requested_rows) {
   if (!isTRUE(fit$trimmed) && !isTRUE(fit$over_budget)) return(NULL)
 
   if (isTRUE(fit$over_budget)) {
+    ek <- if (isTRUE(fit$summary_truncated)) " Özet, bütçeye sığması için KISALTILDI." else ""
     return(sprintf(
-      "\n\n\U000026A0\U0000FE0F İSTEM BÜTÇESİ AŞILDI: İstatistiksel özet tek başına %d karakter bütçesini aşıyor; örnek satır GÖNDERİLMEDİ.",
-      fit$budget
+      "\n\n\U000026A0\U0000FE0F İSTEM BÜTÇESİ AŞILDI: İstatistiksel özet tek başına %d karakter bütçesini aşıyor; örnek satır GÖNDERİLMEDİ.%s",
+      fit$budget, ek
     ))
   }
 

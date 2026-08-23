@@ -201,7 +201,18 @@ pk_async_run_analysis <- function(request) {
   )
   assign("execute_pk_sql_unicode", bounded_unicode, envir = target_env)
   on.exit({
-    if (is.function(eski_unicode)) assign("execute_pk_sql_unicode", eski_unicode, envir = target_env)
+    # ÖNCEKİ BAĞLAMA YOKSA GEÇİCİ BAĞLAMA KALDIRILIR.
+    #
+    # `get0()` önceki değer bulunmadığında `NULL` döner. Eski `on.exit`
+    # yalnızca fonksiyon durumunda geri yazıyor, aksi hâlde SINIRLI
+    # sarmalayıcıyı `target_env` içinde BIRAKIYORDU; aynı kalıcı PSOCK
+    # işçisindeki BİR SONRAKİ istek o zaman ÖNCEKİ isteğin kapısı/son tarihiyle
+    # çalışırdı.
+    if (is.function(eski_unicode)) {
+      assign("execute_pk_sql_unicode", eski_unicode, envir = target_env)
+    } else if (exists("execute_pk_sql_unicode", envir = target_env, inherits = FALSE)) {
+      rm("execute_pk_sql_unicode", envir = target_env)
+    }
   }, add = TRUE)
 
   # Deep orkestratörün içeride türettiği iki kurucu dispatch bağlamına sabitlenir.
@@ -211,8 +222,16 @@ pk_async_run_analysis <- function(request) {
     assign("pk_deadline_at", function(started_at, deadline_sec) etkin_son_tarih(), envir = target_env)
     assign("pk_cancel_token_path", function(request_id, base_dir = NULL) jeton, envir = target_env)
     on.exit({
-      assign("pk_deadline_at", eski_deadline_fn, envir = target_env)
-      assign("pk_cancel_token_path", eski_token_fn, envir = target_env)
+      # Aynı gerekçe: önceki değer yoksa `NULL` ATANMAZ, bağlama KALDIRILIR.
+      .pk_worker_restore <- function(ad, eski) {
+        if (is.function(eski)) {
+          assign(ad, eski, envir = target_env)
+        } else if (exists(ad, envir = target_env, inherits = FALSE)) {
+          rm(list = ad, envir = target_env)
+        }
+      }
+      .pk_worker_restore("pk_deadline_at", eski_deadline_fn)
+      .pk_worker_restore("pk_cancel_token_path", eski_token_fn)
     }, add = TRUE)
   }
 

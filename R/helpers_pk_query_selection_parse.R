@@ -41,6 +41,11 @@ PK_SELECT_STATUS_LIBRARY_ERROR      <- "library_error"
 PK_SELECT_STATUS_CONFIG_ERROR       <- "config_error"
 PK_SELECT_STATUS_INTERNAL_ERROR     <- "internal_error"
 PK_SELECT_STATUS_DISABLED           <- "disabled"
+# İPTAL, NETLEŞTİRME DEĞİLDİR. Kullanıcı Durdur'a bastığında seçim bir
+# "netleştirme" kararı üretiyordu; `pk_select_query_v2()` her AUTO-dışı kararı
+# RED sayıp `pk_select_forget_query_id()` çağırdığı için ÖNCEKİ başarılı sorgu
+# tohumu siliniyor ve sonraki eliptik takip sorusu bağlamını kaybediyordu.
+PK_SELECT_STATUS_CANCELLED          <- "cancelled"
 
 #' Geçiş A çıktısını KATI biçimde ayrıştır (§5.2)
 #'
@@ -63,7 +68,7 @@ pk_select_parse_pass_a <- function(text, library_ids, expected_n = NULL) {
   ayrisik <- pk_select_parse_json(text)
   if (is.null(ayrisik)) {
     return(hata(paste0(
-      "Gecis A ciktisi tek bir gecerli JSON nesnesi degil (sarmalayici metin, ",
+      "Geçiş A çıktısı tek bir geçerli JSON nesnesi değil (sarmalayıcı metin, ",
       "tekrar eden anahtar ya da bozuk JSON)."
     )))
   }

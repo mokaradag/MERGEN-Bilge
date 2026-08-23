@@ -187,13 +187,18 @@ pk_select_pass_a_messages <- function(user_prompt, payload, context, cfg,
 }
 
 #' İstenen aday sayısına UYAN Geçiş A örneği
+#'
+#' ÖRNEK ASLA GERÇEK KÜTÜPHANE KİMLİĞİ TAŞIMAZ.
+#'
+#' Eskiden yeterli kimlik olduğunda `utils::head(library_ids, n)` yazılıyordu:
+#' sıcaklık 0'da modelin bu JSON'u AYNEN kopyalaması hâlinde kimlikler geçerli
+#' ve sayı doğru olduğu için `pk_select_parse_pass_a()` kabul ediyor, Geçiş B de
+#' SORUDAN BAĞIMSIZ, sıralı bir önekten seçim yapıyordu. Örnek bu yüzden
+#' kütüphanede BULUNMAYAN yer tutucularla kurulur; kopyalanan bir örnek
+#' ayrıştırıcıda "bilinmeyen kimlik" olarak düşer.
 .pk_select_pass_a_example <- function(library_ids, recall_n) {
-  n <- max(1L, min(as.integer(recall_n), length(library_ids)))
-  ornek_ids <- if (length(library_ids) >= n) {
-    utils::head(library_ids, n)
-  } else {
-    sprintf("q%03d", seq_len(n))
-  }
+  n <- max(1L, min(as.integer(recall_n), max(1L, length(library_ids))))
+  ornek_ids <- sprintf("ORNEK_KIMLIK_%d", seq_len(n))
   sprintf(
     "{\"candidates\": [%s]}",
     paste(sprintf("\"%s\"", ornek_ids), collapse = ", ")

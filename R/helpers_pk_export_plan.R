@@ -259,8 +259,14 @@ pk_export_summary_sheet <- function(packet) {
   data.frame(
     Olcu = vapply(olgular, function(o) as.character(o$label %||% o$column)[1], character(1)),
     Toplulastirma = vapply(olgular, function(o) as.character(o$aggregation)[1], character(1)),
-    Deger = vapply(olgular, function(o) if (is.null(o$value)) NA_real_ else as.numeric(o$value),
-                   numeric(1)),
+    # `vapply()` her geri çağrıdan TEK ögeli sonuç bekler. `value` alanı
+    # `numeric(0)` (sonlu gözlem yok) ya da çok ögeli olabilir; `NULL` olmadığı
+    # için eski koruma devreye girmiyor ve "values must be length 1" hatası
+    # `pk_export_build()` içinden HAM R hatası olarak dışarı sızıyordu.
+    Deger = vapply(olgular, function(o) {
+      v <- suppressWarnings(as.numeric(o$value))
+      if (length(v) != 1L) NA_real_ else v
+    }, numeric(1)),
     Birim = vapply(olgular, function(o) as.character(o$unit %||% "")[1], character(1)),
     Durum = vapply(olgular, function(o) as.character(o$status)[1], character(1)),
     SonluGozlem = vapply(olgular, function(o) {

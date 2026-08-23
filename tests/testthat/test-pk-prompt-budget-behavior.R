@@ -64,6 +64,13 @@ test_that("ozet tek basina butceyi asarsa ornek satir hic gonderilmez ve ifsa ed
   not <- env$pk_prompt_budget_note(fit, 10L)
   expect_true(nzchar(not))
   expect_true(grepl("BÜTÇESİ AŞILDI", not, fixed = TRUE))
+
+  # GÖNDERİLEN YÜK GERÇEKTEN BÜTÇEYE SIĞAR. Eskiden `satir_sayisi == 0L` kısa
+  # devresi, bütçe aşılmış OLSA DA birleştirilmiş yükü döndürüyordu; istek
+  # model uç noktasında girdi boyutundan reddedilebiliyordu.
+  expect_lte(nchar(fit$payload, type = "chars"), 1000L)
+  expect_true(isTRUE(fit$summary_truncated))
+  expect_true(grepl("KISALTILDI", fit$payload, fixed = TRUE))
 })
 
 test_that("butceye zaten sigan yuk kirpilmaz", {

@@ -6,7 +6,7 @@
 #           anahtar sırasını doğrudan doğrular.
 #
 #           Bu dosya eskiden adını taşıdığı konuyu HİÇ test etmiyordu; içerik
-#           `test-review-705-ui-validation-regressions.R` dosyasına taşındı ve
+#           `test-ui-validation-regressions.R` dosyasına taşındı ve
 #           gerçek alias kapsamı buraya yazıldı.
 #
 #           Tamamen çevrimdışı ve belirlenimcidir: DB, LLM, tarayıcı, SSO, ağ

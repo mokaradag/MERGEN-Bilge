@@ -264,7 +264,17 @@ pk_select_run_pass_b <- function(user_prompt, candidates, candidate_ids, context
                   status = cagri$status, error = NA_character_, attempts = deneme))
     }
 
-    ayrisik <- pk_select_parse_pass_b(cagri$text, candidate_ids)
+    # GEÇİŞ B, İSTEMİN GERÇEKTEN İLAN ETTİĞİ KİMLİKLERE KARŞI DOĞRULANIR.
+    #
+    # `candidate_ids` `pk_select_seed_candidates()` tarafından eklenen ESKİ bir
+    # sorgu kimliği taşıyabilir. O sorgu kütüphanede yoksa `library_index[[k]]`
+    # `NULL` olur, `pk_select_pass_b_blocks()` onu istemden düşürür ve model
+    # yalnızca `bloklar$ids` görür. Ayrıştırıcı yine de GENİŞ kümeyi kabul
+    # ederse, model bayat kimliği döndürdüğünde çözümleme `internal_error` ile
+    # düşerdi. Doğrulama ilan edilen kümeyle yapılır.
+    ilan_edilen <- as.character(bloklar$ids %||% candidate_ids)
+    if (!length(ilan_edilen)) ilan_edilen <- candidate_ids
+    ayrisik <- pk_select_parse_pass_b(cagri$text, ilan_edilen)
 
     if (isTRUE(ayrisik$ok)) {
       anlamsal <- .pk_select_repairable_semantic_error(
@@ -513,7 +523,7 @@ pk_select_run <- function(user_prompt, library, chat_history = NULL,
   if (is.function(stop_check) && isTRUE(tryCatch(stop_check(), error = function(e) FALSE))) {
     return(bitir(
       .pk_select_decision(
-        PK_SELECT_STATUS_CLARIFY,
+        PK_SELECT_STATUS_CANCELLED,
         message_tr = "Analiz kullanıcı tarafından iptal edildi.",
         disclosures = "Geçiş B, iptal isteği nedeniyle başlatılmadı."
       ),

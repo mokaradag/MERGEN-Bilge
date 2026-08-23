@@ -98,8 +98,18 @@ if (isTRUE(.pk_worker_direct_exit_mode) &&
       # doğrudan çıkışların HİÇBİRİNİ `MB_Analiz_Log`'a yazmaz; yalnızca köken
       # kaydını bırakırdı. Ana süreçteki karşılığı da bağlantıyı açıp bırakır.
       # DB HATASINDAN SONRA YENİDEN BAĞLANILMAZ.
+      # DENETİME ÇIKARILMIŞ MESAJ METNİ VERİLİR: `pk_direct_exit_is_db_failure()`
+      # argümanını `as.character(x)[1]` ile daraltır ve bir listede bu İLK ÖGE
+      # (`type`) olurdu; `error_message` listesi içinde taşınan DB arızası
+      # saptanmıyor, sarmalayıcı telemetri için yeni bağlantı açarak AYNI
+      # başarısız bağlanma denemesini tekrarlıyordu.
+      sonuc_metni <- if (exists("pk_direct_exit_text", mode = "function", inherits = TRUE)) {
+        tryCatch(pk_direct_exit_text(sonuc), error = function(e) "")
+      } else {
+        sonuc
+      }
       db_hatasi <- exists("pk_direct_exit_is_db_failure", mode = "function", inherits = TRUE) &&
-        isTRUE(tryCatch(pk_direct_exit_is_db_failure(sonuc), error = function(e) FALSE))
+        isTRUE(tryCatch(pk_direct_exit_is_db_failure(sonuc_metni), error = function(e) FALSE))
 
       baglanti <- if (db_hatasi) list(conn = NULL, conn_info = NULL) else .pk_worker_observer_connection()
       if (!is.null(baglanti$conn_info)) {

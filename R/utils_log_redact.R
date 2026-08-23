@@ -289,8 +289,13 @@ redact_connection_identifiers <- function(x) {
   )
 
   # Kapanmamış süslü parantez: satır sonuna kadar maskelenir.
+  #
+  # `(?m)` ZORUNLUDUR: karakter sınıfı satır sonlarını dışladığı için `$`
+  # çok satırlı bir mesajda YALNIZCA dizenin sonunda eşleşiyordu; ODBC sürücü
+  # tanıları çoğunlukla TEK çok satırlı dizedir ve ortadaki `Pwd={gizli`
+  # hiç maskelenmiyordu. Üçüncü geçiş de `(?!\{)` yüzünden değeri atlıyordu.
   metin <- gsub(
-    paste0("(?i)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS,
+    paste0("(?im)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS,
            ")(\\s*=\\s*)\\{[^{}\r\n]*$"),
     "\\1\\2\\3{<redacted>}",
     metin,

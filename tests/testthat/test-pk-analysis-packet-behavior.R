@@ -537,3 +537,75 @@ test_that("Onceden toplulastirilmis sutunlar sayisal olgudan cikarilir ve ifsa e
   expect_true("Normal" %in% sutunlar)
   expect_true(any(grepl("Onceden toplulastirilmis", paket$limitations, fixed = TRUE)))
 })
+
+test_that("Sonlu gozlem / disarida birakilan sayilari ISARETLI basilir ve olgu kaydinda karsiligi vardir", {
+  env <- .pk_packet_env()
+
+  paket <- list(
+    facts = list(list(
+      kind = "measure", column = "Butce", aggregation = "sum",
+      value = 1234567, status = "ok", display = "1.234.567", label = "Butce",
+      fact_id = "butce.sum.overall.sentetik",
+      n_finite = 15234L, n_excluded = 812L
+    )),
+    scope = list(authorized_rows = 20000L, filtered_rows = 16046L,
+                 scope_signature = "sentetik-kapsam"),
+    coverage = list(rows = 16046L, columns = 4L)
+  )
+
+  metin <- env$.pk_render_facts(paket)
+  expect_true(grepl("Sonlu gozlem", metin, fixed = TRUE))
+
+  # Yazicinin BASTIGI her isaret, olgu kaydinda GERCEKTEN bulunmalidir; aksi
+  # halde dort haneli bir sayim `block` kipinde `missing_fact_marker` uretip
+  # TUM yaniti determinist yedekle degistiriyordu.
+  isaretler <- regmatches(metin, gregexpr("\\[fact:[^]]+\\]", metin))[[1]]
+  isaretler <- gsub("^\\[fact:|\\]$", "", isaretler)
+  expect_true(length(isaretler) >= 3L)
+
+  olgular <- env$pk_packet_all_facts(paket)
+  kimlikler <- vapply(olgular, function(o) o$fact_id, character(1))
+  expect_identical(setdiff(isaretler, kimlikler), character(0))
+
+  # Iki sayim da BAGLAM olgusu olarak uretilir ve degerleri korunur.
+  bul <- function(agg) {
+    hedef <- Filter(function(o) identical(o$aggregation, agg), olgular)
+    if (!length(hedef)) return(NULL)
+    hedef[[1]]$value
+  }
+  expect_equal(bul("finite_count"), 15234)
+  expect_equal(bul("excluded_count"), 812)
+})
+
+test_that("ayni sutunun BIRDEN COK olgusunda sayim, yazicinin bastigi ILK olgudan gelir", {
+  env <- .pk_packet_env()
+
+  # Yazici sutun basligini `alt[[1]]` (ILK olgu) uzerinden basar. Baglam olgusu
+  # kaydi kimlige gore tekillestirdigi icin SON yazan kazanirdi; ayni sutunun
+  # ikinci olgusu farkli bir `n_finite` tasidiginda kayittaki deger ile basilan
+  # deger AYRISIYOR ve dogru alintilanmis bir sayim `value_mismatch` sayiliyordu.
+  paket <- list(
+    facts = list(
+      list(kind = "measure", column = "Butce", aggregation = "sum", value = 1,
+           status = "ok", display = "1", label = "Butce", fact_id = "b.sum.sentetik",
+           n_finite = 15234L, n_excluded = 812L),
+      list(kind = "measure", column = "Butce", aggregation = "mean", value = 2,
+           status = "ok", display = "2", label = "Butce", fact_id = "b.mean.sentetik",
+           n_finite = 999L, n_excluded = 1L)
+    ),
+    scope = list(scope_signature = "sentetik-kapsam"),
+    coverage = list(rows = 16046L, columns = 4L)
+  )
+
+  metin <- env$.pk_render_facts(paket)
+  olgular <- env$pk_packet_all_facts(paket)
+  kimlikler <- vapply(olgular, function(o) o$fact_id, character(1))
+
+  isaretler <- gsub("^\\[fact:|\\]$", "",
+                    regmatches(metin, gregexpr("\\[fact:[^]]+\\]", metin))[[1]])
+  expect_identical(setdiff(isaretler, kimlikler), character(0))
+
+  sayim <- Filter(function(o) identical(o$aggregation, "finite_count"), olgular)
+  expect_length(sayim, 1L)
+  expect_equal(sayim[[1]]$value, 15234)
+})

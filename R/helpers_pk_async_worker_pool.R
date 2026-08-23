@@ -23,6 +23,28 @@
   "mergen.db.pool_fail_fast"
 )
 
+# ORTAM TABANLI HAVUZ GİRDİLERİ DE TAŞINIR.
+#
+# `db_pool_config()` açık/kapalı, kapalı-başarısız ve TAVAN bilgisini YALNIZCA
+# ortamdan okur; `pk_async_worker_pool_fingerprint()` de aynı değişkenleri
+# İŞÇİNİN KENDİ ortamından okur. Kalıcı bir PSOCK işçisi ana süreçteki SONRAKİ
+# `Sys.setenv()` çağrılarını GÖRMEZ: operatör `MERGEN_DB_POOL_MAX_SIZE`ı
+# düşürse, `MERGEN_DB_POOL_ENABLED=false` yapsa ya da DSN'i değiştirse bile
+# işçinin parmak izi DEĞİŞMİYOR ve işçi ESKİ havuzu ile eski oturum tavanını
+# ömrü boyunca koruyordu. Anahtarlar her istekte anlık görüntüden yeniden
+# kurulur.
+#
+# `MERGEN_DB_POOL_SHARE_APPLIED` BİLEREK LİSTEDE YOKTUR: o bir SÜREÇ ROLÜDÜR
+# ("ben bir PK işçisiyim"), ana süreçte hiç tanımlı değildir ve taşınsaydı her
+# istekte SİLİNİP tavanın iki kez bölüşülmesine yol açardı.
+.PK_ASYNC_DB_POOL_ENV <- c(
+  "MERGEN_DB_POOL_ENABLED",
+  "MERGEN_DB_POOL_FAIL_FAST",
+  "MERGEN_DB_POOL_MAX_SIZE",
+  "MERGEN_DB_POOL_MIN_SIZE",
+  "MERGEN_DB_POOL_IDLE_TIMEOUT"
+)
+
 # AÇIK "KALDIRILDI" DEĞERİ.
 #
 # `NULL` değerleri anlık görüntüden DÜŞÜRMEK, bir option'ın SİLİNMESİNİ temsil
@@ -44,6 +66,10 @@ pk_async_db_pool_option_snapshot <- function() {
       !is.function(deger) && !is.environment(deger) && !is.list(deger)
     cikti[[ad]] <- if (tasinabilir) deger else .PK_ASYNC_OPTION_UNSET
   }
+  for (ad in .PK_ASYNC_DB_POOL_ENV) {
+    ham <- Sys.getenv(ad, unset = NA_character_)
+    cikti[[paste0("env:", ad)]] <- if (is.na(ham)) .PK_ASYNC_OPTION_UNSET else ham
+  }
   cikti
 }
 
@@ -53,6 +79,21 @@ pk_async_db_pool_option_snapshot <- function() {
 #' işçi ana süreçte SİLİNMİŞ bir option'ı taşımaya devam etmez.
 pk_async_db_pool_option_install <- function(snapshot) {
   if (!is.list(snapshot) || length(snapshot) == 0L) return(list())
+
+  # ORTAM BASAMAĞI ÖNCE KURULUR: `db_pool_config()` ve havuz parmak izi bu
+  # değişkenleri okur. Sentinel taşıyan anahtar işçide AÇIKÇA SİLİNİR.
+  for (ad in .PK_ASYNC_DB_POOL_ENV) {
+    anahtar <- paste0("env:", ad)
+    if (!anahtar %in% names(snapshot)) next
+    deger <- snapshot[[anahtar]]
+    if (identical(deger, .PK_ASYNC_OPTION_UNSET)) {
+      try(Sys.unsetenv(ad), silent = TRUE)
+    } else {
+      try(do.call(Sys.setenv, stats::setNames(list(as.character(deger)[1]), ad)),
+          silent = TRUE)
+    }
+  }
+
   gecerli <- snapshot[intersect(names(snapshot), .PK_ASYNC_DB_POOL_OPTIONS)]
   if (length(gecerli) == 0L) return(list())
   gecerli <- lapply(gecerli, function(x) {
@@ -227,7 +268,14 @@ pk_async_worker_pool_apply_share <- function(admission) {
 # açıkça kapatılır.
 pk_async_worker_pool_retire <- function(hedef) {
   ortam <- if (is.environment(hedef)) hedef else globalenv()
-  eski <- get0("pool", envir = globalenv(), inherits = FALSE)
+  # HAVUZ NESNESİ DE `hedef` ORTAMINDAN OKUNUR.
+  #
+  # Eskiden nesne koşulsuz `globalenv()` içinden alınıyordu; bootstrap
+  # `globalenv()` DIŞINDA bir ortamı hedeflediğinde emekliye ayırma YANLIŞ
+  # ortamı okuyor, `hedef` içindeki canlı havuz hiç kapatılmıyor ve
+  # `globalenv()` içindeki bir havuz nesnesi `hedef` hâlâ ona başvururken
+  # kapatılabiliyordu.
+  eski <- get0("pool", envir = ortam, inherits = FALSE)
   if (is.null(eski)) return(invisible(FALSE))
 
   # Güncel havuz durumu bu nesneyi HÂLÂ tanıyorsa kapatmak yanlış olurdu.
@@ -250,7 +298,8 @@ pk_async_worker_pool_retire <- function(hedef) {
   # kesemez; bu yüzden ayrıca REFERANS her hâlükârda düşürülür ve başarısız
   # kapatma AÇIKÇA loglanır. "Kapatamadım" demek, süresiz bloklamaktan iyidir.
   kapandi <- .pk_async_pool_close_bounded(eski)
-  try(rm("pool", envir = globalenv()), silent = TRUE)
+  # Referans, havuzun OKUNDUĞU ortamdan düşürülür (bkz. yukarıdaki gerekçe).
+  try(rm("pool", envir = ortam), silent = TRUE)
   if (!isTRUE(kapandi)) {
     .pk_async_pool_log(
       "[PK_ASYNC] Eski isci havuzu SINIRLI surede kapatilamadi; referans dusuruldu."

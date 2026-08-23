@@ -250,7 +250,11 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
         Sutun = prettify_col_name(col),
         EnSikDeger = top_name,
         Adet = as.integer(top5[1]),
-        BenzerSayi = length(unique(dt[[col]])),
+        # `EnSikDeger`/`Adet` `table(..., useNA = "no")` üzerinden gelir, yani
+        # eksik değeri DIŞLAR. Ham `unique()` ise `NA`yı ayrı bir kategori
+        # sayıyor ve modele GERÇEK kategori sayısından bir fazlasını
+        # bildiriyordu; bu sayı kullanıcıya raporlanabiliyordu.
+        BenzerSayi = length(unique(dt[[col]][!is.na(dt[[col]])])),
         stringsAsFactors = FALSE
       )
     })

@@ -178,7 +178,14 @@ pk_degradations_from_filter_status <- function(status) {
 
   if (is.null(authorized)) return(NULL)
 
-  if (is.null(filtered) || identical(as.integer(filtered), as.integer(authorized))) {
+  # 32-BİT TAŞMASI OLMADAN KARŞILAŞTIR. `as.integer()` 2147483647 üstündeki her
+  # değer için uyarıyla `NA_integer_` üretir; `identical(NA, NA)` TRUE olduğu
+  # için 3e9 yetkili / 1e9 filtreli bir analizde alt bilgi "filtre sonrası"
+  # sayısını DÜŞÜRÜP kullanıcıya filtresiz satır sayısını gösteriyordu. Katı
+  # test paketi ayrıca uyarıları hata sayar.
+  yetkili_sayi <- suppressWarnings(as.numeric(authorized)[1])
+  filtre_sayi <- suppressWarnings(as.numeric(filtered)[1])
+  if (is.null(filtered) || isTRUE(filtre_sayi == yetkili_sayi)) {
     return(sprintf("%s (yetkiniz dâhilinde)", .pk_format_count(authorized)))
   }
 
@@ -204,14 +211,24 @@ pk_degradations_from_filter_status <- function(status) {
   dosyalar <- attachment$files %||% list()
   if (!length(dosyalar)) return(NULL)
 
+  # MARKDOWN BAĞLANTISI ERKEN KAPANMAMALIDIR.
+  #
+  # `.pk_footer_sanitize()` yalnızca ters tırnak ve boru işaretini temizler;
+  # `[`, `]`, `(`, `)` geçer. Ek adında bir `]` ya da URL'de bir `)` bulunduğunda
+  # bağlantı erken kapanıyor, kullanıcı ham işaretleme görüyor ve indirme
+  # bağlantısı KULLANILAMAZ hâle geliyordu.
   parcalar <- vapply(dosyalar, function(d) {
     ad <- .pk_footer_sanitize(d$name %||% "", 80L)
     olcu <- sprintf("%s satır × %s sütun", .pk_format_count(d$rows), .pk_format_count(d$cols))
     if (is.null(d$url) || !nzchar(as.character(d$url)[1])) {
-      sprintf("%s (%s)", ad, olcu)
-    } else {
-      sprintf("[%s](%s) (%s)", ad, as.character(d$url)[1], olcu)
+      return(sprintf("%s (%s)", ad, olcu))
     }
+    # Bağlantı metninde `[`/`]` kaçırılır; URL'de `(`/`)` yüzde kodlanır.
+    ad_kacisli <- gsub("([\\[\\]])", "\\\\\\1", ad, perl = TRUE)
+    url_kodlu <- gsub(")", "%29",
+                      gsub("(", "%28", as.character(d$url)[1], fixed = TRUE),
+                      fixed = TRUE)
+    sprintf("[%s](%s) (%s)", ad_kacisli, url_kodlu, olcu)
   }, character(1))
 
   sprintf("- **Ek:** %s", paste(parcalar, collapse = " · "))
@@ -439,7 +456,16 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
     kimlik <- as.character(request_id %||% pending$request_id %||% "")[1]
     if (is.environment(store) && nzchar(kimlik)) {
       bitenler <- as.character(store[[.pk_provenance_done_slot]] %||% character(0))
-      if (kimlik %in% bitenler) return(text)
+      if (kimlik %in% bitenler) {
+        # AYNI İSTEK İÇİN İKİNCİ KAYIT TÜKETİLDİĞİNDE HAM METİN DÖNDÜRÜLMEZ.
+        #
+        # Kayıt yukarıda zaten TÜKETİLDİ (geri konulamaz). Eskiden bu dal ham
+        # `text` döndürüyordu: `block` kipinde kullanıcıya DOĞRULANMAMIŞ,
+        # `[fact:...]` işaretleri duran ve alt bilgisi olmayan bir metin
+        # gidiyordu. Deterministik yedek varsa O kullanılır.
+        if (!is.null(guvenli_yedek)) return(guvenli_yedek)
+        return(text)
+      }
       store[[.pk_provenance_done_slot]] <- utils::tail(unique(c(bitenler, kimlik)), 20L)
     }
 

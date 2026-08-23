@@ -63,18 +63,18 @@ PK_SQL_READONLY_REASONS <- list(
   cte_not_select       = "CTE zincirinin son ifadesi SELECT degil.",
   forbidden_keyword    = "Yan etkili SQL anahtar kelimesi tespit edildi.",
   forbidden_prefix     = "Sakli yordam oneki (sp_/xp_) tespit edildi.",
-  sequence_mutation    = "Sequence ilerleten ifade (NEXT VALUE FOR) durum degistirir."
+  sequence_mutation    = "Sequence ilerleten ifade (NEXT VALUE FOR) durum değiştirir."
 )
 
-# SEQUENCE ILERLETEN IFADE.
+# SEQUENCE İLERLETEN İFADE.
 #
-# `SELECT NEXT VALUE FOR dbo.SomeSequence` sozdizimsel olarak bir SELECT'tir ve
-# yasakli anahtar kelimelerin HICBIRINI icermez; ancak SQL Server'da her
-# `NEXT VALUE FOR` cagrisi sequence degerini AYIRIR/ILERLETIR. Deger hicbir yere
-# yazilmasa bile URETIM DURUMU DEGISIR. "Salt-okunur SELECT" sozu bunu
-# kapsayamaz; bu yuzden kapi acikca reddeder. (Faz 3b metadata ureticisi bu
-# ayni kapiyi kullandigi icin duzeltme burada yapilir ve TUM tuketiciler
-# kazanir.)
+# `SELECT NEXT VALUE FOR dbo.SomeSequence` sözdizimsel olarak bir SELECT'tir ve
+# yasaklı anahtar kelimelerin HİÇBİRİNİ içermez; ancak SQL Server'da her
+# `NEXT VALUE FOR` çağrısı sequence değerini AYIRIR/İLERLETİR. Değer hiçbir yere
+# yazılmasa bile ÜRETİM DURUMU DEĞİŞİR. "Salt-okunur SELECT" sözü bunu
+# kapsayamaz; bu yüzden kapı açıkça reddeder. (Faz 3b metadata üreticisi bu
+# aynı kapıyı kullandığı için düzeltme burada yapılır ve TÜM tüketiciler
+# kazanır.)
 PK_SQL_SEQUENCE_MUTATION_PATTERN <- "(^|[^A-Za-z0-9_@#$])NEXT[ \t\r\n]+VALUE[ \t\r\n]+FOR($|[^A-Za-z0-9_@#$])"
 
 # Kullanıcıya gösterilen genel mesaj: sürücü/DSN/şema ayrıntısı içermez.
@@ -274,6 +274,19 @@ pk_sql_split_statements <- function(masked_sql) {
           i <- i + 1L
           next
         }
+        # CTE SÜTUN LİSTESİ GÖVDE DEĞİLDİR.
+        #
+        # `WITH c(a,b) AS (SELECT ...) SELECT ...` geçerli T-SQL'dir ve ilk üst
+        # düzey parantez SÜTUN LİSTESİDİR (`(a,b)`). Derinlik onun kapanışında
+        # sıfıra döndüğü için tarayıcı `AS (SELECT ...) SELECT ...` döndürüyor,
+        # çağıran da ifadeyi `cte_not_select` diye REDDEDİYORDU: CTE sütun
+        # listesi kullanan HER salt-okunur kütüphane sorgusu kapıda düşerdi.
+        # Kalan `AS` ile başlıyorsa gerçek gövde bir sonraki dengeli
+        # parantezden SONRA gelir; taramaya devam edilir.
+        if (grepl("^AS[[:space:](]", kalan, ignore.case = TRUE)) {
+          i <- i + 1L
+          next
+        }
         return(kalan)
       }
     }
@@ -424,22 +437,22 @@ pk_sql_readonly_guard <- function(sql, context_label = "PK_ANALIZ") {
 }
 
 # ==============================================================================
-# SQL Server yerel #temp analitik batch uyumlulugu
+# SQL Server yerel #temp analitik batch uyumluluğu
 #
-# Mevcut D23 yasaklari DEGISTIRILMEZ. Asagidaki dar istisna yalnizca su sekli
-# kanitlayabilen cok-ifadeli batch'leri kabul eder:
-#   [istege bagli IF OBJECT_ID('tempdb..#T') ... DROP TABLE #T;]
+# Mevcut D23 yasakları DEĞİŞTİRİLMEZ. Aşağıdaki dar istisna yalnızca şu şekli
+# kanıtlayabilen çok ifadeli batch'leri kabul eder:
+#   [isteğe bağlı IF OBJECT_ID('tempdb..#T') ... DROP TABLE #T;]
 #   SELECT ... INTO #T ...;
-#   [yalnizca olusturulmus #T uzerinde CREATE [NON]CLUSTERED INDEX ...;]
-#   [ayni yerel #temp staging zinciri tekrarlanabilir]
-#   tek bir salt-okunur sonuc SELECT/CTE;
+#   [yalnızca oluşturulmuş #T üzerinde CREATE [NON]CLUSTERED INDEX ...;]
+#   [aynı yerel #temp hazırlama zinciri tekrarlanabilir]
+#   tek bir salt-okunur sonuç SELECT/CTE;
 #   DROP TABLE [IF EXISTS] #T [, #T2 ...];
-# Kalici tablo yazimi/DDL, ##global temp, EXEC, ek sonuc SELECT'i veya belirsiz
-# herhangi bir sekil mevcut kapali-basarisiz davranisinda kalir.
+# Kalıcı tablo yazımı/DDL, ##global temp, EXEC, ek sonuç SELECT'i veya belirsiz
+# herhangi bir şekil mevcut kapalı-başarısız davranışında kalır.
 # ==============================================================================
 
-# Normal tek-SELECT/NOCOUNT siniflandiricisini aynen sakla. Yerel-temp denetimi
-# staging SELECT'lerinin guvenligini de AYNI yasaklarla yeniden kanitlar.
+# Normal tek-SELECT/NOCOUNT sınıflandırıcısını aynen sakla. Yerel-temp denetimi
+# hazırlama SELECT'lerinin güvenliğini de AYNI yasaklarla yeniden kanıtlar.
 # YAKALAMA ETKİSİZDİR (idempotent). Dosya aynı ortamda iki kez source edilirse
 # ikinci yakalama aşağıda tanımlanan SARMALAYICIYI alır; sarmalayıcı da bu
 # ismi çağırdığı için her sınıflandırma SONSUZ ÖZYİNELEMEYE (C stack) düşerdi.

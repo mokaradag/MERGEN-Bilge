@@ -31,6 +31,9 @@
   env$resolve_local_llm_credentials <- function(...) list(default_api_key = "")
   env$call_local_llm <- llm_fn
 
+  # İZOLE YÜKLEME: taban dosya manifest sırasına göre AÇIKÇA önce gelir.
+  source(file.path(repo_root, "R", "helpers_pk_analysis_filters_base.R"),
+         encoding = "UTF-8", local = env)
   source(file.path(repo_root, "R", "helpers_pk_analysis_filters.R"),
          encoding = "UTF-8", local = env)
 
@@ -114,6 +117,32 @@ test_that("üç durum (no_filter / timeout / error) birbirinden AYRIDIR", {
 
   expect_equal(length(unique(c(no_filter, timeout, error))), 3L)
   expect_setequal(c(no_filter, timeout, error), c("ok_no_filter", "timeout", "error"))
+})
+
+test_that("kısa ve çok satırlı GEÇERLİ JSON yanıtı malformed sayılmaz", {
+  # GERİLEME KORUMASI: eskiden `nchar(ai_text) < 50` kapısı, tamamen geçerli
+  # kısa yanıtları ayrıştırma bile yapmadan `malformed` yapıyordu; v2'de bu
+  # statü REDde dönüştüğü için meşru bir sayım isteği reddediliyordu.
+  kisa <- '{"filters":[],"aggregation":"count"}'
+  expect_lt(nchar(kisa), 50L)
+  expect_identical(
+    .pk_deg_call(.pk_deg_env(function(...) .pk_deg_json(kisa)))$status,
+    "ok_no_filter"
+  )
+
+  # Çok satırlı (pretty-print) JSON — istem örneğinin kendi biçimi — yapısal
+  # kapıda düşmemelidir.
+  cok_satirli <- "{\n  \"filters\": [],\n  \"aggregation\": \"count\"\n}"
+  expect_identical(
+    .pk_deg_call(.pk_deg_env(function(...) .pk_deg_json(cok_satirli)))$status,
+    "ok_no_filter"
+  )
+
+  # ŞEMA KAPISI KORUNUR: tanınan hiçbir alan taşımayan nesne hâlâ malformed.
+  expect_identical(
+    .pk_deg_call(.pk_deg_env(function(...) .pk_deg_json('{"beklenmeyen":1}')))$status,
+    "malformed"
+  )
 })
 
 test_that("bozuk/çözümlenemeyen yanıtlar malformed üretir", {

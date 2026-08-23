@@ -269,6 +269,38 @@ pk_filter_zero_match_policy <- function(data, filters, compiled, query = NULL) {
     pk_filter_normalize_leaf(dugum)$column %in% dusurulen
   }
 
+  # GRUP ÇIKARMA BİRİNCİL KRİTERİ DÜŞÜREMEZ.
+  #
+  # `.dokunuyor()` bir grup düğümünü, İÇİNDEKİ HERHANGİ bir yaprak sıfır
+  # eşleşen sütuna dokunduğunda TAMAMEN çıkarır. Birincil yaprak ile sıfır
+  # eşleşen ikincil yaprak AYNI grupta olduğunda (ör.
+  # `and(ProjeAdi = "ANKA", Yil = 1999)`) bu, `ProjeAdi` kriterini de silerdi:
+  # kurtarma derlemesi birincil daraltmayı HİÇ uygulamaz ve politika
+  # `dropped_secondary` derken analiz TÜM yetkili popülasyonu özetlerdi — bu
+  # kural tam da bunu engellemek için var. Böyle bir durumda karar REDdir.
+  .birincil_iceriyor <- function(dugum, derinlik = 0L) {
+    if (is.null(birincil) || derinlik > 10L) return(FALSE)
+    if (is.list(dugum) && is.list(dugum$children)) {
+      return(any(vapply(dugum$children,
+                        function(c) .birincil_iceriyor(c, derinlik + 1L),
+                        logical(1))))
+    }
+    identical(pk_filter_normalize_leaf(dugum)$column, birincil)
+  }
+
+  cikarilan <- Filter(function(f) .dokunuyor(f), filters)
+  if (any(vapply(cikarilan, .birincil_iceriyor, logical(1)))) {
+    degerler <- unlist(
+      lapply(sifir_gruplar, function(g) {
+        unlist(lapply(g$applied, function(l) l$values), use.names = FALSE)
+      }),
+      use.names = FALSE
+    )
+    return(reddet(.pk_policy_zero_match_message(
+      paste(unique(dusurulen), collapse = "` / `"), degerler
+    ), birincil))
+  }
+
   kalan <- Filter(function(f) !.dokunuyor(f), filters)
 
   # KURTARMA DERLEMESİ AYNI METADATA İLE YAPILIR.

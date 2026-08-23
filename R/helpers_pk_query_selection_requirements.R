@@ -134,6 +134,19 @@ pk_select_normalize_requirements <- function(raw) {
     cikti[[alan]] <- dizi$values
   }
 
+  # BOŞ `requirements` NESNESİ KABUL EDİLMEZ.
+  #
+  # `"requirements": {}` geldiğinde doğrulayıcı yetenek kaydı denetimini
+  # tamamen ATLIYOR ve seçilen sorgu hiçbir yetenek iddiası olmadan
+  # ilerleyebiliyordu. Geçiş B ya BEYAN eder ya da nesneyi hiç göndermez;
+  # gönderilen boş nesne SÖZLEŞME İHLALİDİR.
+  if (length(raw) == 0L) {
+    return(list(ok = FALSE, value = bos, error = paste0(
+      "Geçiş B 'requirements' nesnesi boş olamaz; en az bir yetenek alanı ",
+      "beyan edilmeli ya da alan hiç gönderilmemelidir."
+    )))
+  }
+
   varlik <- pk_select_nullable_text(raw, "entity")
   if (identical(varlik$state, "invalid")) {
     return(list(ok = FALSE, value = bos, error = paste0(
@@ -309,7 +322,14 @@ pk_select_validate_requirements <- function(query, requirements, capability_ids 
 #' başka bir rol altında ZATEN beyan edilmiş gruplama anahtarları doğrulayıcıya
 #' ikinci kez gönderilmez; rolleri kendi alanlarından doğrulanır.
 .pk_select_capability_payload <- function(requirements) {
-  zaten <- unique(c(requirements$measures, requirements$dates, requirements$dimensions))
+  # BASTIRMA KÜMESİ YALNIZCA TARİH VE BOYUT BEYANLARIDIR.
+  #
+  # Yukarıdaki gerekçe SADECE tarih durumunu haklı çıkarır. `measures` de
+  # kümeye katıldığında, bir ölçü yeteneğini tekrarlayan `group_by` girdisi
+  # doğrulamadan ÖNCE siliniyor; `pk_meta_capability_check()` o yetenek için
+  # gruplama anlambilimini HİÇ doğrulamıyor ve sorgu, istenen kırılımı
+  # üretemese bile otomatik seçilebiliyordu.
+  zaten <- unique(c(requirements$dates, requirements$dimensions))
   zaten <- zaten[!is.na(zaten) & nzchar(zaten)]
 
   gruplama <- setdiff(requirements$group_by, zaten)

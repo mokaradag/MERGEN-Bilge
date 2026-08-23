@@ -29,6 +29,8 @@ test_that("split PK helpers source correctly outside the repository working dire
 
   filter_env <- .pk_final_source_env(c(
     "R/helpers_pk_analysis_core.R",
+    # İZOLE YÜKLEME: taban dosya manifest sırasına göre AÇIKÇA önce gelir.
+    "R/helpers_pk_analysis_filters_base.R",
     "R/helpers_pk_analysis_filters.R"
   ))
   expect_true(exists("extract_filter_criteria_from_prompt", envir = filter_env, inherits = FALSE))
@@ -49,6 +51,8 @@ test_that("split PK helpers source correctly outside the repository working dire
 test_that("model uretimi filtre ifadesi CALISTIRILMAZ ve dusurulmus olarak raporlanir", {
   env <- .pk_final_source_env(c(
     "R/helpers_pk_analysis_core.R",
+    # İZOLE YÜKLEME: taban dosya manifest sırasına göre AÇIKÇA önce gelir.
+    "R/helpers_pk_analysis_filters_base.R",
     "R/helpers_pk_analysis_filters.R"
   ))
 
@@ -57,23 +61,30 @@ test_that("model uretimi filtre ifadesi CALISTIRILMAZ ve dusurulmus olarak rapor
   # calistirilmasi istem enjeksiyonuyla erisilebilen bir RCE yoluydu. Artik
   # ifade yok sayilir ve gozlem hattina DUSURULMUS filtre olarak girer.
   env$counter <- 0L
-  result <- env$apply_smart_filters(
-    data.frame(x = 1:4),
-    list(
-      filters = list(),
-      filter_expression = "{counter <<- counter + 1L; x > 1}",
-      aggregation = NULL,
-      group_column = NULL
-    ),
-    "x birden büyük"
-  )
+  # GÖZLEM KAYDI İSTEK KİMLİĞİ GEREKTİRİR (kapalı başarısız): kimliksiz kayıt
+  # saklanmaz, çünkü süreç düzeyindeki gözlem anahtarı kimlik olmadan aynı
+  # soruyu soran iki eşzamanlı kullanıcı arasında çakışırdı.
+  env$pk_provenance_current_request_id <- function(session) "req-ifade"
+  result <- local({
+    session <- list()
+    env$apply_smart_filters(
+      data.frame(x = 1:4),
+      list(
+        filters = list(),
+        filter_expression = "{counter <<- counter + 1L; x > 1}",
+        aggregation = NULL,
+        group_column = NULL
+      ),
+      "x birden büyük"
+    )
+  })
 
   # Yan etki OLUSMADI ve hicbir satir elenmedi.
   expect_identical(env$counter, 0L)
   expect_identical(nrow(result), 4L)
 
   observation <- env$pk_filter_observation_take(list(
-    request_id = NULL,
+    request_id = "req-ifade",
     query_id = NULL,
     query_name = NULL,
     question = "x birden büyük"
@@ -310,4 +321,76 @@ test_that("entry-time deep-analysis cancellation is observed without delegation"
   expect_true(isTRUE(captured$info$deep_thinking))
   expect_identical(captured$info$filter_status, "stopped")
   expect_identical(captured$info$outcome, "Durduruldu")
+})
+
+test_that("kimliksiz gözlem SAKLANMAZ ve gözlem ortamı SINIRLIDIR", {
+  env <- .pk_final_source_env(c(
+    "R/helpers_pk_analysis_core.R",
+    "R/helpers_pk_analysis_filters_base.R",
+    "R/helpers_pk_analysis_filters.R"
+  ))
+
+  temizle <- function() {
+    rm(list = ls(env$.pk_filter_observation_state, all.names = TRUE),
+       envir = env$.pk_filter_observation_state)
+    env$.pk_filter_observation_order$keys <- character(0)
+  }
+  temizle()
+
+  # 1) İSTEK KİMLİĞİ YOKKEN HİÇ SAKLANMAZ.
+  #    Anahtar `request_id + query_id + query_name + question` birleşimidir;
+  #    kimlik boşken aynı soruyu soran iki EŞZAMANLI kullanıcı tek anahtarı
+  #    paylaşır ve ikincisi birincinin `matched_rows` değerini ezerdi.
+  env$pk_provenance_current_request_id <- function(session) NULL
+  utils::capture.output(
+    local({
+      session <- list()
+      env$apply_smart_filters(data.frame(x = 1:3), list(filters = list()), "kimliksiz soru")
+    }),
+    type = "output"
+  )
+  expect_length(ls(env$.pk_filter_observation_state, all.names = TRUE), 0L)
+
+  # 2) KİMLİK VARKEN SAKLANIR ve TEK SEFERLİK tüketilir.
+  env$pk_provenance_current_request_id <- function(session) "req-kimlikli"
+  utils::capture.output(
+    local({
+      session <- list()
+      env$apply_smart_filters(data.frame(x = 1:3), list(filters = list()), "kimlikli soru")
+    }),
+    type = "output"
+  )
+  expect_length(ls(env$.pk_filter_observation_state, all.names = TRUE), 1L)
+  alinan <- env$pk_filter_observation_take(list(request_id = "req-kimlikli",
+                                                question = "kimlikli soru"))
+  expect_false(is.null(alinan))
+  expect_length(ls(env$.pk_filter_observation_state, all.names = TRUE), 0L)
+  expect_length(env$.pk_filter_observation_order$keys, 0L)
+
+  # 3) ALINMAYAN KAYITLAR SINIRSIZ BİRİKMEZ.
+  #    Tek kaldırma yolu `pk_filter_observation_take()` olduğundan v2 reddi,
+  #    çağıran hatası ya da iptal edilen istek kayıtları süreç ömrü boyunca
+  #    kalırdı. Ekleme sırasına göre en eski kayıtlar tahliye edilir.
+  temizle()
+  withr::with_options(list(mergen.pk.filter_observation_max = 3L), {
+    for (i in 1:6) {
+      local({
+        session <- list()
+        idx <- i
+        env$pk_provenance_current_request_id <- function(session) paste0("req-", idx)
+        utils::capture.output(
+          env$apply_smart_filters(data.frame(x = 1:2), list(filters = list()),
+                                  paste0("soru-", idx)),
+          type = "output"
+        )
+      })
+    }
+  })
+  expect_length(ls(env$.pk_filter_observation_state, all.names = TRUE), 3L)
+  expect_length(env$.pk_filter_observation_order$keys, 3L)
+  # En ESKİ kayıtlar gitti, en YENİLER durur.
+  expect_null(env$pk_filter_observation_take(list(request_id = "req-1", question = "soru-1")))
+  expect_false(is.null(
+    env$pk_filter_observation_take(list(request_id = "req-6", question = "soru-6"))
+  ))
 })

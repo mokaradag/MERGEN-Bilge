@@ -63,6 +63,17 @@
   sonuc <- tryCatch({
     f <- .pk_async_plan_probe_cache$pending
     if (is.null(f) || !inherits(f, "Future")) {
+      # KAPASİTE KAPISI: `lazy = FALSE` boş işçi yokken BLOKLAR ve bu bekleme
+      # `butce_sn` DIŞINDADIR; kapasite yoksa sonuç ÖLÇÜLEMEDİ (NA) sayılır
+      # (çağıran NA'yı kapalı-başarısız yorumlar) ve soğuma devreye girer.
+      # `lazy` BİLEREK FALSE kalır: sonda planın GERÇEKTEN asenkron çalışıp
+      # çalışmadığını ölçer; tembel bir future ölçümü yoklama anına erteler.
+      bos_isci <- suppressWarnings(tryCatch(
+        as.integer(future::nbrOfFreeWorkers())[1], error = function(e) NA_integer_))
+      if (length(bos_isci) == 1L && !is.na(bos_isci) && bos_isci < 1L) {
+        .pk_async_plan_probe_cache$na_until <- Sys.time() + soguma_sn
+        return(NA)
+      }
       f <- future::future(Sys.getpid(), lazy = FALSE, seed = TRUE)
       .pk_async_plan_probe_cache$pending <- f
     }

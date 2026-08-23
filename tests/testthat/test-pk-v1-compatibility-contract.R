@@ -25,8 +25,18 @@
          encoding = "UTF-8", local = env)
   source(file.path(repo_root, "R", "helpers_pk_analysis_filters.R"),
          encoding = "UTF-8", local = env)
+  # GÖZLEM KAYDI İSTEK KİMLİĞİ GEREKTİRİR (kapalı başarısız).
+  # Kimliksiz kayıt artık hiç saklanmaz: süreç düzeyindeki gözlem ortamında
+  # anahtar `request_id + query_id + query_name + question` birleşimidir ve
+  # kimlik boşken aynı soruyu soran iki EŞZAMANLI kullanıcı tek anahtarı
+  # paylaşıp birbirinin `matched_rows` değerini yayımlayabilirdi. Üretim yolu
+  # kimliği daima taşır; sentetik gövde de aynı şekli kullanır.
+  env$pk_provenance_current_request_id <- function(session) .PK_V1_ISTEK_KIMLIGI
   env
 }
+
+# Sentetik gövdenin kullandığı sabit istek kimliği.
+.PK_V1_ISTEK_KIMLIGI <- "req-v1-sentetik"
 
 # Yalnizca kod taranir; aciklama satirlari taranmaz (bayt guvenli okuma).
 .pk_v1_code_only <- function(rel_path) {
@@ -54,6 +64,10 @@
 
 # Ciktiyi bastirarak filtre uygular (v1 gövdesi bol miktarda cat() yazar).
 .pk_v1_apply <- function(env, veri, talimat) {
+  # `session` bu çerçevede TANIMLIDIR: gözlem bağlamı çağrı yığınını `session`
+  # adı için tarar ve istek kimliğini oradan çözer. Üretimde bu değişken her
+  # zaman kapsamdadır; sentetik gövde de aynı şekli kurar.
+  session <- list()
   sonuc <- NULL
   utils::capture.output(
     sonuc <- env$apply_smart_filters(veri, talimat, "sentetik soru"),
@@ -203,7 +217,8 @@ test_that("v1 gozlem sozlesmesi (Faz 0) her iki motorda da korunur", {
       sonuc <- .pk_v1_apply(env, veri, talimat)
       expect_equal(nrow(sonuc), 2L, info = motor)
 
-      gozlem <- env$pk_filter_observation_take(list(question = "sentetik soru"))
+      gozlem <- env$pk_filter_observation_take(list(
+        request_id = .PK_V1_ISTEK_KIMLIGI, question = "sentetik soru"))
       expect_true(is.list(gozlem), info = motor)
       expect_identical(as.integer(gozlem$matched_rows), 2L, info = motor)
       expect_true(length(gozlem$applied_filters) > 0L, info = motor)
@@ -316,13 +331,17 @@ test_that("v2 gozlemi filtre DEGERINI korur (koken alt bilgisi bos yazmaz)", {
 
   withr::with_envvar(list(MERGEN_PK_ENGINE = "v2"), {
     withr::with_options(list(mergen.pk.engine = NULL), {
+      # `session` kapsamda OLMALIDIR: gözlem kaydı istek kimliği gerektirir
+      # (bkz. `.pk_v1_apply()` içindeki aynı gerekçe).
+      session <- list()
       utils::capture.output(
         sonuc <- env$apply_smart_filters(veri, talimat, "sentetik deger sorusu"),
         type = "output"
       )
       expect_false(is.null(attr(sonuc, env$PK_FILTER_V2_ATTR, exact = TRUE)))
 
-      gozlem <- env$pk_filter_observation_take(list(question = "sentetik deger sorusu"))
+      gozlem <- env$pk_filter_observation_take(list(
+        request_id = .PK_V1_ISTEK_KIMLIGI, question = "sentetik deger sorusu"))
       expect_false(is.null(gozlem))
 
       expect_length(gozlem$applied_filters, 1L)

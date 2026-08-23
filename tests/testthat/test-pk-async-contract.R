@@ -344,7 +344,12 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # `[[` ile "subscript out of bounds" firlatir; desteklenmeyen bir ODBC tip
     # kodu bu yuzden `__unknown__` dalina HIC ulasamiyor ve planlayici tek-satir
     # getirmeye dusmek yerine ABORT ediyordu. Fonksiyon sayisi AYNI.
-    "R/helpers_pk_result_columns.R" = c(263L, 8L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 263 -> 270 satir (OLCULEN).
+    # `system_type_name` NA geldiginde siniflandirma ARTIK durmaz: NA yalnizca
+    # "bilinmeyen tip" demektir ve sutun muhafazakar sekilde `character` /
+    # `dimension` olarak isaretlenir. Eskiden tek bir NA tum sonuc semasini
+    # dusuruyordu. Fonksiyon sayisi AYNI.
+    "R/helpers_pk_result_columns.R" = c(270L, 8L),
     # BILINCLI GUNCELLEME (PR #705 inceleme): 551 -> 592 satir (OLCULEN). Iki
     # neden: (a) `sql_variant` icin KANITLI 8016 bayt ust siniri; (b) R nesne
     # tabani (karakter 56 / atomik 8 bayt/eleman) tahmine EKLENDI -- eskiden
@@ -376,12 +381,35 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # Fonksiyon sayisi AYNI.
     "R/helpers_pk_sql_execute.R" = c(474L, 22L),
     "R/helpers_pk_sql_connection.R" = c(125L, 6L),
-    "R/helpers_pk_async_worker_env.R" = c(372L, 22L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 372/22 -> 414/24 (OLCULEN).
+    # `sql_file` bagimliliklari artik KAYNAK METINDEN cikarilir. Temiz bir PSOCK
+    # iscisinde ILK parmak izi bootstrap'tan ONCE hesaplanir ve o an
+    # `query_library` HENUZ YOKTUR: eski surum `character(0)` donuyor, sonraki
+    # istek dolu kutuphaneyle FARKLI parmak izi uretiyor ve isci DEGISMEMIS bir
+    # calisma kopyasinda IKINCI bir tam bootstrap yapiyordu (kaynak yukleme +
+    # havuz kurulumu analiz son tarihinin ICINDE tekrarlaniyordu). Fonksiyon
+    # sayisi 22 -> 24: bir yardimci + iki `tryCatch` isleyicisi. Kuresel tavan
+    # (24) ASILMAMISTIR.
+    "R/helpers_pk_async_worker_env.R" = c(414L, 24L),
     # BILINCLI GUNCELLEME (PR #705 inceleme): +5 satir. Admisyon karari artik
     # KURESEL `admission_cap` uzerinden hesaplanir; `cfg$max_size` zaten bir kez
     # bolusturulmus sureç payi oldugu icin ikinci bolusturme mesru bir tavani
     # `fits = FALSE` yapabiliyordu. Fonksiyon sayisi DEGISMEDI. Olculen 360.
-    "R/helpers_pk_async_worker_pool.R" = c(360L, 26L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 360 -> 368 satir (OLCULEN).
+    # Havuz nesnesi `get0("pool", envir = ortam)` ile okunur ve `rm()` ile ADI
+    # verilerek kaldirilir; `ortam$pool` zinciri gormedigi ve `rm(pool)` sembolu
+    # cagri cercevesinde aradigi icin kapatma yolu sessizce bosa dusuyordu.
+    # Fonksiyon sayisi ARTMAMISTIR.
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 368 -> 409 satir (OLCULEN).
+    # Anlik goruntu artik ORTAM TABANLI havuz girdilerini de tasir
+    # (`MERGEN_DB_POOL_ENABLED/FAIL_FAST/MAX_SIZE/MIN_SIZE/IDLE_TIMEOUT`).
+    # `db_pool_config()` ve havuz parmak izi bunlari ISCININ KENDI ortamindan
+    # okuyor; kalici bir PSOCK iscisi ana surecteki sonraki `Sys.setenv()`
+    # cagrilarini GORMEDIGI icin operator tavani dusurse ya da havuzu kapatsa
+    # bile isci ESKI havuzu ve eski oturum tavanini omru boyunca koruyordu.
+    # `MERGEN_DB_POOL_SHARE_APPLIED` BILEREK tasinmaz (surec rolu).
+    # Fonksiyon sayisi ARTMAMISTIR.
+    "R/helpers_pk_async_worker_pool.R" = c(409L, 26L),
     # BILINCLI GUNCELLEME (PR #705 inceleme): +10 satir. D11 devralinan varlik
     # baglami hem isci vekiline KURULUR hem de hasat yuvalarina eklenir; aksi
     # halde asenkron takip sorulari onceki turun varlik kisitini kaybediyordu.
@@ -403,8 +431,19 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # future'ı yeniden kullanır, ölçülemeyen sonucu soğuma penceresiyle
     # hatırlar). Plan dosyası 242 -> 190 küçüldü; sonda kendi bütçesini taşır.
     "R/helpers_pk_async_plan.R" = c(190L, 14L),
-    "R/helpers_pk_async_probe.R" = c(110L, 5L),
-    "R/helpers_pk_async_request.R" = c(295L, 16L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 110 -> 114 satir (OLCULEN).
+    # PID sondasi artik BOS isci yuvasi kapisindan gecer; aksi halde teshis
+    # sondasi kullanici isine ayrilmis bir isciyi kapabiliyordu. `lazy`
+    # BILEREK FALSE kalir (sonda planin GERCEKTEN asenkron oldugunu olcer).
+    # Fonksiyon sayisi AYNI.
+    "R/helpers_pk_async_probe.R" = c(114L, 5L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 295 -> 300 satir (OLCULEN).
+    # Isci globals paketine iki bootstrap-ONCESI sembol eklendi:
+    # `.pk_async_sql_paths_from_source` ve `.PK_ASYNC_DB_POOL_ENV`.
+    # `dependency_mode = "explicit"` tarama YAPMAZ; eksik biri temiz bir PSOCK
+    # iscisini "object not found" ile dusurup her istegi SESSIZCE senkron yola
+    # indiriyordu. Fonksiyon sayisi ARTMAMISTIR.
+    "R/helpers_pk_async_request.R" = c(300L, 16L),
     "R/helpers_pk_async_worker_sql.R" = c(165L, 11L),
     # BILINCLI GUNCELLEME (PR #705 inceleme): 330 -> 355 satir (OLCULEN). Iki
     # GUVENLIK nedeni: (a) LOG sinirinda ODBC BAGLANTI TANIMLAYICILARI da
@@ -413,9 +452,24 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # (b) hata SINIFLANDIRMASI ham metinden, KAYIT redakte metinden yapilir --
     # aksi halde guclenen redaksiyon altyapi imzasini silip gercek bir DB
     # hatasini "genel hata" olarak raporlardi. Fonksiyon sayisi ARTMAMISTIR.
-    "R/helpers_pk_async_worker.R" = c(355L, 22L),
-    "R/helpers_pk_worker_observers.R" = c(110L, 7L),
-    "R/helpers_pk_worker_direct_exit.R" = c(145L, 11L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 355 -> 374 satir (OLCULEN).
+    # Onceki degeri OLMAYAN baglamalar artik `NULL` ATANMAZ, gercekten KALDIRILIR
+    # (`rm()`); `NULL` atamak isci ortaminda var olan ama degeri NULL olan bir
+    # sembol biraktigi icin `exists()` kapilari yanlis TRUE donuyordu.
+    # Fonksiyon sayisi ARTMAMISTIR.
+    "R/helpers_pk_async_worker.R" = c(374L, 22L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 110/7 -> 130/8 (OLCULEN).
+    # Dogrudan-cikis metnini iki sahipten cikaran ORTAK yardimci
+    # (`pk_direct_exit_text()`) BURAYA tasindi; `type == "error_message"` artik
+    # "Hata" olarak siniflandirilir (eskiden bilinmeyen tip sessizce "Bilinmiyor"
+    # oluyor ve DB hatasi tespiti kaciriliyordu). Kopya metin cikarma mantigi
+    # `helpers_pk_worker_direct_exit.R` icinden KALDIRILDI.
+    "R/helpers_pk_worker_observers.R" = c(130L, 8L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 145/11 -> 155/12 (OLCULEN).
+    # Dogrudan cikis artik CIKARILAN metni `pk_direct_exit_is_db_failure()`
+    # fonksiyonuna gecirir; eskiden ham liste gecildigi icin DB hatasi tespiti
+    # her zaman FALSE donuyordu.
+    "R/helpers_pk_worker_direct_exit.R" = c(155L, 12L),
     "R/helpers_deep_analysis_sql.R" = c(210L, 15L),
     # BILINCLI GUNCELLEME (PR #705 inceleme): 215/15 -> 254/19. Bu bir BOLME'dir,
     # buyume degil: birincil baglantinin idempotent birakicisi ve telemetri icin
@@ -425,10 +479,23 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # analiz boyunca tutuyordu; ana surecteki erken-birakma sarmalayicisi worker
     # bootstrap'ina DAHIL DEGILDIR, bu yuzden eszamanli derin isciler SQL Server
     # oturumlarini tuketebiliyordu. Olculen 254/19.
-    "R/helpers_deep_analysis_reconcile.R" = c(254L, 19L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 254 -> 264 satir (OLCULEN).
+    # `stash_deep_footer()` artik `facts` / `fallback_text` / `query_id` / `mode`
+    # ADLANDIRILMIS argumanlarini kabul eder; orkestrator bunlari gecerken
+    # "unused arguments" hatasi aliyor ve v2 kanonik olgu kaydi provenance
+    # yuvasina HIC tasinmiyordu. Fonksiyon sayisi ARTMAMISTIR.
+    "R/helpers_deep_analysis_reconcile.R" = c(264L, 19L),
     "R/helpers_deep_analysis_phase6.R" = c(250L, 19L),
-    "R/helpers_deep_analysis_selector.R" = c(205L, 8L),
-    "R/helpers_pk_async_request_markers.R" = c(225L, 16L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 205 -> 211 satir (OLCULEN).
+    # Bozuk `match_id` / `confidence` alani artik YALNIZCA o girdiyi atlar
+    # (eskiden tum LLM yanitini dusuruyordu) ve teshis log'u Turkce metne
+    # geri cevrildi. Fonksiyon sayisi AYNI.
+    "R/helpers_deep_analysis_selector.R" = c(211L, 8L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 225 -> 235 satir (OLCULEN).
+    # `try-error` nesnesi ARTIK gecerli bir jeton sayilmaz ve sifirlama
+    # `hooked` yuvasini da temizler; aksi halde oturum-sonu kancasi bir daha
+    # HIC kurulamiyordu. Fonksiyon sayisi ARTMAMISTIR.
+    "R/helpers_pk_async_request_markers.R" = c(235L, 16L),
     # BILINCLI GUNCELLEME (PR #705 inceleme): +10 satir. Terk edilen istekler
     # kayittan SILINIR; girdi, istek-sahipli `release` kapanisini ve yakaladigi
     # durumu oturum boyunca canli tutuyordu. Fonksiyon sayisi DEGISMEDI.
@@ -448,7 +515,13 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # BILINCLI GUNCELLEME (PR #705 inceleme): +4 satir. Hazirlik artik ISTEGIN
     # ORIJINAL baslangicini alir; `Sys.time()`i yeniden okumak mutlak son tarihi
     # hazirlik suresi kadar ILERI atiyordu. Fonksiyon sayisi DEGISMEDI. Olculen 227.
-    "R/helpers_pk_async_apply.R" = c(227L, 16L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 227 -> 244 satir (OLCULEN).
+    # Iki neden: (a) cift baglam korumasi `&&` yerine `||` kullanir -- tek bir
+    # baglam bile hatali oldugunda kapali basarisiz olunur; (b) depo koku
+    # cozumu (env + `getwd()` anahtarli) BELLEKLENIR, boylece UNC/NFS uzerinde
+    # `dir.exists()`/`normalizePath()` sondalari Shiny olay dongusune dusmez.
+    # Fonksiyon sayisi ARTMAMISTIR.
+    "R/helpers_pk_async_apply.R" = c(244L, 16L),
     # BILINCLI GUNCELLEME (PR #705 inceleme): 145 -> 163 satir (OLCULEN).
     # URL uretilemediginde artifact artik `status = "failed"` isaretlenir;
     # eskiden kayit basarisizligi SESSIZ kalip disa aktarimi BASARILI
@@ -459,7 +532,18 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # promise geri cagrilariyla AYNI istek-kimligi/terk/oturum/sohbet korumasindan
     # gecer; takili bir iscide BASKA bir sohbetin arayuzunu bozabiliyordu.
     # Fonksiyon sayisi DEGISMEDI. Olculen 454.
-    "R/server_handler_pk_async.R" = c(454L, 14L)
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 454 -> 491 satir / 14 -> 15
+    # fonksiyon (OLCULEN).
+    # Iki neden: (a) tamamlanma cipi artik `eklenen$id` alir -- eskiden TUM mesaj
+    # listesi gecildigi icin cip hedefi cozulemiyordu; (b) iptal jetonu SABIT
+    # 300 saniyelik zamanlayiciyla degil, ISCI FUTURE'I YERLESTIGINDE temizlenir
+    # (`jeton_yerlesmede_temizle()`; onFulfilled/onRejected/catch): yerli bir
+    # cagrida takilan isci, jeton temizlendikten sonra donup asama kapilarini
+    # "iptal yok" okuyarak SQL/analiz/disa aktarim isini surdurebiliyordu.
+    # Zamanlayici SON CARE olarak TEK SEFERLIK kalir; kendini yeniden kuran bir
+    # zincir `later` kuyrugunu saatlerce dolu tutup ayni R oturumundaki
+    # Shiny/`testServer` akislarini bloke ediyordu (+1 fonksiyon: ortak kapanis).
+    "R/server_handler_pk_async.R" = c(491L, 15L)
   )
 
   for (dosya in names(butceler)) {

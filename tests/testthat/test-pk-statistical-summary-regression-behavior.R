@@ -1,5 +1,5 @@
 # ==============================================================================
-# Dosya Yolu: tests/testthat/test-pk-review-705-summary-behavior.R
+# Dosya Yolu: tests/testthat/test-pk-statistical-summary-regression-behavior.R
 # Açıklama: PR #705 incelemesinde tespit edilen istatistiksel özet ve tarih
 #           dönüşümü kusurlarının davranışsal regresyon kapsamı.
 #
