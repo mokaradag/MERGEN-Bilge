@@ -159,10 +159,13 @@ pk_async_bounded_fs <- function(fn, deadline_at = NULL) {
     # `readLines(encoding = "UTF-8")` orada uyarı/hata üretiyordu.
     metin <- tryCatch({
       con <- file(dosya, open = "rb")
-      on.exit(close(con), add = TRUE)
       ham <- readBin(con, what = "raw", n = boyut)
+      close(con)
       suppressWarnings(iconv(list(ham), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]])
-    }, error = function(e) "")
+    }, error = function(e) {
+      if (exists("con", inherits = FALSE)) try(close(con), silent = TRUE)
+      ""
+    })
     if (!is.character(metin) || length(metin) != 1L || is.na(metin) || !nzchar(metin)) next
 
     m <- regmatches(metin, gregexpr('sql_file[ \t]*=[ \t]*"[^"]+"', metin))[[1]]
