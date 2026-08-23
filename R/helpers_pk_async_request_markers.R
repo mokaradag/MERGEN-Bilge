@@ -102,9 +102,9 @@ pk_session_state_write <- function(session, key, value) {
   if (!is.na(mevcut) && nzchar(mevcut)) return(mevcut)
   yeni <- paste0("pk-oturum-",
                  paste(format(as.hexmode(sample.int(2147483647L, 4L))), collapse = ""))
-  yazildi <- try({ ud[[.PK_MARKER_SESSION_KEY]] <- yeni; TRUE }, silent = TRUE)
-  if (isTRUE(yazildi)) yeni else ""
-}
+  yazildi <- isTRUE(try({ ud[[.PK_MARKER_SESSION_KEY]] <- yeni; TRUE }, silent = TRUE))
+  geri <- if (yazildi) .pk_marker_id(try(ud[[.PK_MARKER_SESSION_KEY]], silent = TRUE)) else NA_character_
+  if (!is.na(geri) && identical(geri, yeni)) yeni else ""
 
 # Ayna sınırlı tutulur: uzun ömürlü bir süreçte sınırsız büyümemeli.
 .pk_marker_note <- function(slot, key) {
