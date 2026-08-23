@@ -73,7 +73,12 @@
     if (!is.list(girdi)) return(character(0))
     yerel <- .pk_meta_dup_field_names(sprintf("%s['%s']", name, id), girdi)
     sutunlar <- girdi$column_meta
-    if (is.list(sutunlar) && length(sutunlar)) {
+    sutunlar <- girdi$column_meta
+    if (!is.null(sutunlar) && !is.list(sutunlar)) {
+      yerel <- c(yerel, sprintf(
+        "%s['%s'] column_meta adlandırılmış liste olmalıdır.", name, id
+      ))
+    } else if (is.list(sutunlar) && length(sutunlar)) {
       # `column_meta` GİRDİLERİ DE TAM ADLANDIRILMIŞ OLMALIDIR: adsız/kısmen
       # adlandırılmış girdiler doğrulamada atlanıyor ve birleştirmede sessizce
       # düşüyordu; sütun rolleri ve kısıtları kayboluyordu.
