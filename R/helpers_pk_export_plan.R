@@ -336,10 +336,14 @@ pk_export_summary_sheet <- function(packet) {
     }
     b <- as.numeric(bek)[dolu]
     g <- as.numeric(ger)[dolu]
-    # Sabit 6 basamağa yuvarlamak, metadata'nın 9 basamağa kadar izin verdiği
-    # bir ölçüde bozulmuş değeri geçirebilirdi. Tolerans yalnızca ikili kayan
-    # nokta gürültüsü kadardır.
-    if (any(abs(b - g) > pmax(1e-9, abs(b) * 1e-12))) {
+    # KANONİK GÖSTERİM KARŞILAŞTIRILIR (CSV doğrulayıcısıyla aynı sözleşme):
+    # büyüklüğe ölçekli tolerans `1e15` civarında BİN birimlik sapmayı
+    # "doğrulandı" sayardı.
+    kanonik <- function(x) {
+      x[x == 0] <- 0
+      sprintf("%.15g", x)
+    }
+    if (!identical(kanonik(b), kanonik(g))) {
       return(sprintf("'%s' sutununda sayisal deger degismis.", ad))
     }
     return(NULL)
