@@ -249,12 +249,7 @@ pk_apply_smart_filters_v2 <- function(data, filter_instructions, query = NULL) {
     # Yerelden bağımsız ASCII küçük harf: Türkçe Windows'ta `tolower()` "I"yı
     # noktasız `ı` yapar ve büyük harfle gelen bir toplulaştırma adı sessizce
     # tanınmaz hâle gelir.
-    agg <- if (exists("pk_ascii_token", mode = "function", inherits = TRUE)) {
-      pk_ascii_token(as.character(aggregation)[1])
-    } else {
-      chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz",
-             trimws(as.character(aggregation)[1]))
-    }
+    agg <- .pk_v2_agg_token(aggregation)
 
     reddet <- function(mesaj) {
       karar$action <- "refuse"
