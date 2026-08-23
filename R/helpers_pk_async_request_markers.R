@@ -105,6 +105,7 @@ pk_session_state_write <- function(session, key, value) {
   yazildi <- isTRUE(try({ ud[[.PK_MARKER_SESSION_KEY]] <- yeni; TRUE }, silent = TRUE))
   geri <- if (yazildi) .pk_marker_id(try(ud[[.PK_MARKER_SESSION_KEY]], silent = TRUE)) else NA_character_
   if (!is.na(geri) && identical(geri, yeni)) yeni else ""
+}
 
 # Ayna sınırlı tutulur: uzun ömürlü bir süreçte sınırsız büyümemeli.
 .pk_marker_note <- function(slot, key) {
