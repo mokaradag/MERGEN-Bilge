@@ -245,10 +245,10 @@ mergen_build_runtime_error_record <- function(error,
     "data[ _]?source", "database", "initial[ _]?catalog", "host",
     "hostname", "port", "driver", "app", "application[ _]?name",
     "workstation[ _]?id", "trusted[_ ]?connection",
-    # SIR ALANLARI: genel redaktor `Password=abc` gibi TIRNAKSIZ degerleri
-    # maskeler ama SURULU (`Pwd={...}`) bicimi yakalamaz; ODBC surucu hatalari
-    # ise tam baglanti dizesini bu bicimde yazar. Anahtarlar burada da yer
-    # alinca asagidaki suslu-parantez kurali sifreyi de maskeler.
+    # SIR ALANLARI: genel redaktör `Password=abc` gibi TIRNAKSIZ değerleri
+    # maskeler ama SÜSLÜ (`Pwd={...}`) biçimi yakalamaz; ODBC sürücü hataları
+    # ise tam bağlantı dizesini bu biçimde yazar. Anahtarlar burada da yer
+    # alınca aşağıdaki süslü-parantez kuralı şifreyi de maskeler.
     "password", "passwd", "pwd"),
   collapse = "|"
 )
