@@ -17,7 +17,7 @@ pk_required_helpers <- list(
   ),
   list(
     functions = c("extract_filter_criteria_from_prompt", "apply_smart_filters"),
-    path = file.path("R", "helpers_pk_analysis_filters.R")
+    path = file.path("R", c("helpers_pk_analysis_filters_base.R", "helpers_pk_analysis_filters.R"))  # KARAR VEREN v1 motoru base dosyadadir; sira manifest ile ayni
   ),
   list(
     functions = c(

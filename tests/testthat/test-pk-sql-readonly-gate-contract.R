@@ -10,7 +10,7 @@
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
-  for (.pk705_dosya in c("helpers_pk_sql_statements.R", "helpers_pk_sql_readonly.R")) source(file.path(repo_root, "R", .pk705_dosya),
+  for (.pk_kaynak_dosya in c("helpers_pk_sql_statements.R", "helpers_pk_sql_readonly.R")) source(file.path(repo_root, "R", .pk_kaynak_dosya),
          encoding = "UTF-8", local = env)
   env
 }
@@ -456,4 +456,45 @@ test_that("CTE SUTUN LISTESI govde taramasini bozmaz", {
     sonuc <- env$pk_sql_classify_readonly(sql)
     expect_false(isTRUE(sonuc$allowed), info = sql)
   }
+})
+
+# NOKTALI VIRGULSUZ IKINCI IFADE YALNIZCA "IKINCI BIR SELECT" DEGILDIR.
+#
+# `DISABLE TRIGGER ALL ON DATABASE` gecerli, tek basina calisan ve DURUM
+# DEGISTIREN bir T-SQL ifadesidir; hicbir kelimesi denylist'te bulunmaz. Eski
+# kapi yalnizca ikinci bir `SELECT` aradigi icin bu batch'i ONAYLIYORDU.
+test_that("SELECT sonrasi SELECT DISI ust duzey ifade de reddedilir", {
+  env <- .pk_sql_gate_env()
+
+  red <- env$pk_sql_classify_readonly("SELECT 1 AS a\nDISABLE TRIGGER ALL ON DATABASE")
+  expect_false(isTRUE(red$allowed))
+  expect_identical(red$reason, "multiple_statements")
+  expect_identical(red$statement_kind, "disable_trigger")
+
+  acik <- env$pk_sql_classify_readonly("SELECT 1 AS a\nENABLE TRIGGER ALL ON DATABASE")
+  expect_false(isTRUE(acik$allowed))
+  expect_identical(acik$reason, "multiple_statements")
+
+  # AYRILMIS ifade baslaticilari da (denylist'te olmayanlar) reddedilir.
+  for (ifade in c("SELECT 1 AS a\nRETURN", "SELECT 1 AS a\nCHECKPOINT",
+                  "SELECT 1 AS a\nWHILE 1=1 BREAK", "SELECT 1 AS a\nREVERT")) {
+    sonuc <- env$pk_sql_classify_readonly(ifade)
+    expect_false(isTRUE(sonuc$allowed), info = ifade)
+  }
+})
+
+# YANLIS POZITIF KORUMASI: `OFFSET ... FETCH NEXT ... ROWS ONLY` mesru ve
+# yaygin bir SELECT sayfalama bicimidir; `FETCH`/`NEXT` baslatici SAYILMAZ.
+test_that("OFFSET/FETCH sayfalamasi ve ayrilmamis takma adlar reddedilmez", {
+  env <- .pk_sql_gate_env()
+
+  sayfali <- env$pk_sql_classify_readonly(
+    "SELECT a FROM dbo.t ORDER BY a OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY"
+  )
+  expect_true(isTRUE(sayfali$allowed))
+
+  # `Enable` AYRILMIS bir kelime degildir; tek basina ifade baslaticisi
+  # sayilmamalidir (yalnizca `ENABLE TRIGGER` ikilisi reddedilir).
+  takma <- env$pk_sql_classify_readonly("SELECT a AS Enable FROM dbo.t")
+  expect_true(isTRUE(takma$allowed))
 })

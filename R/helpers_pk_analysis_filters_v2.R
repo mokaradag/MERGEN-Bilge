@@ -245,7 +245,14 @@ pk_apply_smart_filters_v2 <- function(data, filter_instructions, query = NULL) {
     length(derleme$groups), eslesen, nrow(data)
   ))
 
-  if (!is.null(aggregation)) {
+  # BOŞ DEĞER "TOPLULAŞTIRMA YOK" DEMEKTİR; tanınmayan biçim DEĞİLDİR.
+  #
+  # Ayrıştırıcı `simplifyVector = FALSE` kullandığı için model `"aggregation": []`
+  # ya da `""` döndürdüğünde değer BOŞ LİSTE/BOŞ DİZE olarak gelir. Eski kapı
+  # yalnızca `NULL` denetliyordu: boş değer enum denetimine düşüp isteğin
+  # TAMAMINI "İstenen özetleme biçimi (`NA`) desteklenmiyor" ile reddediyordu.
+  # Doğru davranış, alanın hiç gelmemesiyle AYNI: toplulaştırmasız satır listesi.
+  if (!is.null(aggregation) && nzchar(.pk_v2_agg_token(aggregation))) {
     # Yerelden bağımsız ASCII küçük harf: Türkçe Windows'ta `tolower()` "I"yı
     # noktasız `ı` yapar ve büyük harfle gelen bir toplulaştırma adı sessizce
     # tanınmaz hâle gelir.

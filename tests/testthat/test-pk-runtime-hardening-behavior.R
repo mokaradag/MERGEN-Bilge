@@ -8,7 +8,7 @@
 #           fixture'lar sentetiktir.
 # ==============================================================================
 
-.pk714_env <- function(dosyalar) {
+.pk_hardening_test_env <- function(dosyalar) {
   kok <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
@@ -21,7 +21,7 @@
 # --- Bağlantı sırrı redaksiyonu ------------------------------------------------
 
 test_that("suslu parantezli baglanti SIFRESI de maskelenir", {
-  env <- .pk714_env("utils_log_redact.R")
+  env <- .pk_hardening_test_env("utils_log_redact.R")
 
   # Sentetik degerler; gercek bir DSN/sifre DEGILDIR.
   metin <- paste0("DSN=", "SentetikKaynak", ";Pwd={", "sahte-deger-42", "}")
@@ -35,14 +35,23 @@ test_that("suslu parantezli baglanti SIFRESI de maskelenir", {
 
   surucu <- paste0("Driver={ODBC Driver 17};", "Pwd={", "bir;iki", "}")
   expect_false(grepl("bir;iki", env$redact_connection_identifiers(surucu), fixed = TRUE))
+
+  # KACISLI AMA KAPANMAMIS DEGER: `}}` ODBC'de kacislanmis tek `}` demektir.
+  # Kesilmis bir surucu tanisinda son kapanis `}` bulunmayabilir; eski desenler
+  # bu bicimi HIC maskelemiyor, parola kuyrugu kalici loga yaziliyordu.
+  kesik <- paste0("Pwd={", "sahte", "}}", "kuyruk")
+  cikti_kesik <- env$redact_connection_identifiers(kesik)
+  expect_false(grepl("sahte", cikti_kesik, fixed = TRUE))
+  expect_false(grepl("kuyruk", cikti_kesik, fixed = TRUE))
+  expect_true(grepl("Pwd=", cikti_kesik, fixed = TRUE))
 })
 
 # --- RLS kimlik sınırı ---------------------------------------------------------
 
-.pk714_rls_env <- function() .pk714_env(c("utils_log_redact.R", "helpers_pk_rls_identity.R"))
+.pk_rls_test_env <- function() .pk_hardening_test_env(c("utils_log_redact.R", "helpers_pk_rls_identity.R"))
 
 test_that("noktali/noktasiz I ailesi yetkilendirmede BIRLESTIRILMEZ", {
-  env <- .pk714_rls_env()
+  env <- .pk_rls_test_env()
   noktasiz <- "Ipek"
   noktali <- paste0(intToUtf8(0x0130), "pek")  # "İpek"
 
@@ -60,7 +69,7 @@ test_that("noktali/noktasiz I ailesi yetkilendirmede BIRLESTIRILMEZ", {
 })
 
 test_that("ASCII buyuk/kucuk harf farki (I DAHIL) hala eslesir", {
-  env <- .pk714_rls_env()
+  env <- .pk_rls_test_env()
   expect_identical(env$.pk_rls_user_key("AHMET"), env$.pk_rls_user_key("ahmet"))
   # Mevcut dagitim davranisi KORUNUR: ASCII `I` <-> `i` ayni harftir.
   expect_identical(env$.pk_rls_user_key("ALI"), env$.pk_rls_user_key("Ali"))
@@ -94,7 +103,7 @@ test_that("baglanti redaktoru YOKKEN tani metni yayimlanmaz", {
 })
 
 test_that("izin sorgusu sarmalanirken SONDAKI noktali virgul kirpilir", {
-  env <- .pk714_rls_env()
+  env <- .pk_rls_test_env()
   expect_equal(env$.pk_rls_strip_terminal_semicolon("SELECT a FROM t;"),
                "SELECT a FROM t")
   expect_equal(env$.pk_rls_strip_terminal_semicolon("SELECT a FROM t; \n"),
@@ -105,7 +114,7 @@ test_that("izin sorgusu sarmalanirken SONDAKI noktali virgul kirpilir", {
 })
 
 test_that("sarmalanmis izin sorgusu turetilmis tabloda GECERLI kalir", {
-  env <- .pk714_rls_env()
+  env <- .pk_rls_test_env()
   gorulen <- new.env(parent = emptyenv())
   env$.pk_rls_bounded_query <- function(conn, statement, params = NULL) {
     gorulen$sql <- statement
@@ -120,7 +129,7 @@ test_that("sarmalanmis izin sorgusu turetilmis tabloda GECERLI kalir", {
 })
 
 test_that("gecici surucu hatasi TAM TABLO geri dusmesini TETIKLEMEZ", {
-  env <- .pk714_rls_env()
+  env <- .pk_rls_test_env()
   sayac <- new.env(parent = emptyenv())
   sayac$n <- 0L
   env$.pk_rls_halt_error <- function(e) FALSE
@@ -137,7 +146,7 @@ test_that("gecici surucu hatasi TAM TABLO geri dusmesini TETIKLEMEZ", {
 })
 
 test_that("sozdizimi sinifi hata R tarafi geri dusmesine IZIN VERIR", {
-  env <- .pk714_rls_env()
+  env <- .pk_rls_test_env()
   sayac <- new.env(parent = emptyenv())
   sayac$n <- 0L
   env$.pk_rls_halt_error <- function(e) FALSE
@@ -155,7 +164,7 @@ test_that("sozdizimi sinifi hata R tarafi geri dusmesine IZIN VERIR", {
 })
 
 test_that("yetki reddi mesaji IC KAYNAK ADI sizdirmaz", {
-  env <- .pk714_rls_env()
+  env <- .pk_rls_test_env()
   mesaj <- env$pk_rls_denied_message(list(authorized = FALSE))
   expect_false(grepl("DC01", mesaj, fixed = TRUE))
   expect_true(grepl("Yetki Hatas", mesaj, fixed = TRUE))
@@ -190,10 +199,10 @@ test_that("integer64 olcusu 2^53 ustunde KESINLIK kaybetmeden toplanir", {
 
 # --- Ölçü sözleşmesi ve filtre uyarısı ----------------------------------------
 
-.pk714_stat_env <- function() .pk714_env("helpers_pk_statistical_summary.R")
+.pk_stat_test_env <- function() .pk_hardening_test_env("helpers_pk_statistical_summary.R")
 
 test_that("additive BILDIRILMEMIS bir olcu toplulastirilmaz", {
-  env <- .pk714_stat_env()
+  env <- .pk_stat_test_env()
   degerler <- c(1.5, 2.5, 3.5)
 
   acik <- list(x = list(role = "measure", additive = TRUE))
@@ -226,7 +235,7 @@ test_that("v1 terminal geri dusmesi FILTRELEME UYARISINI korur", {
 # --- Markdown çiti -------------------------------------------------------------
 
 test_that("dort ters tirnakli blok UC tirnakla KAPANMIS sayilmaz", {
-  env <- .pk714_env("helpers_pk_answer_compose.R")
+  env <- .pk_hardening_test_env("helpers_pk_answer_compose.R")
   metin <- paste("````", "kod ``` icinde siradan metin", sep = "\n")
   kapali <- env$pk_compose_close_markdown(metin)
   satirlar <- strsplit(kapali, "\n", fixed = TRUE)[[1]]
@@ -234,7 +243,7 @@ test_that("dort ters tirnakli blok UC tirnakla KAPANMIS sayilmaz", {
 })
 
 test_that("bilgi dizeli satir KAPANIS citi sayilmaz", {
-  env <- .pk714_env("helpers_pk_answer_compose.R")
+  env <- .pk_hardening_test_env("helpers_pk_answer_compose.R")
   metin <- paste("```", "x <- 1", "```r", sep = "\n")
   kapali <- env$pk_compose_close_markdown(metin)
   satirlar <- strsplit(kapali, "\n", fixed = TRUE)[[1]]
@@ -242,7 +251,7 @@ test_that("bilgi dizeli satir KAPANIS citi sayilmaz", {
 })
 
 test_that("duzgun kapanmis blok DEGISTIRILMEZ", {
-  env <- .pk714_env("helpers_pk_answer_compose.R")
+  env <- .pk_hardening_test_env("helpers_pk_answer_compose.R")
   metin <- paste("```python", "x = 1", "```", sep = "\n")
   expect_equal(env$pk_compose_close_markdown(metin), metin)
 })
@@ -250,7 +259,7 @@ test_that("duzgun kapanmis blok DEGISTIRILMEZ", {
 # --- Birim katlaması -----------------------------------------------------------
 
 test_that("kucuk harfli Turkce birim harfleri de katlanir", {
-  env <- .pk714_env("helpers_pk_numeric_provenance.R")
+  env <- .pk_hardening_test_env("helpers_pk_numeric_provenance.R")
   gun_tr <- paste0("g", intToUtf8(0xFC), "n")  # "gün"
   expect_identical(env$.pk_prov_unit_fold(gun_tr), env$.pk_prov_unit_fold("gun"))
   kisi_tr <- paste0("ki", intToUtf8(0x15F), "i")  # "kişi"
@@ -259,7 +268,7 @@ test_that("kucuk harfli Turkce birim harfleri de katlanir", {
 
 # --- Olgu ad alanı -------------------------------------------------------------
 
-.pk714_deep_env <- function() {
+.pk_deep_test_env <- function() {
   kok <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
@@ -275,7 +284,7 @@ test_that("kucuk harfli Turkce birim harfleri de katlanir", {
 }
 
 test_that("ad alani KISALTILMAMIS sorgu kimligiyle carpismaya dayaniklidir", {
-  env <- .pk714_deep_env()
+  env <- .pk_deep_test_env()
   # `pk_fact_slug()` ASCII disini `_` yapar ve 60 karakterde KESER.
   expect_identical(env$pk_fact_slug("A-B"), env$pk_fact_slug("A B"))
   expect_false(identical(env$.pk_deep_id_checksum("A-B"),
@@ -292,7 +301,7 @@ test_that("ad alani KISALTILMAMIS sorgu kimligiyle carpismaya dayaniklidir", {
 })
 
 test_that("NA olgu kimligi ad alanlama sirasinda HATA firlatmaz", {
-  env <- .pk714_deep_env()
+  env <- .pk_deep_test_env()
   sonuc <- env$.pk_deep_namespace_facts(
     "metin [fact:a] son",
     list(list(fact_id = NA_character_), list(fact_id = "a"), list(fact_id = character(0))),
@@ -329,7 +338,7 @@ test_that("bekci SOHBET DEGISTIGINDE gonderim durumunu temizler", {
 # --- Salt-okunur SQL kapısı ----------------------------------------------------
 
 test_that("SELECT sonrasi UST DUZEY ikinci ifadeler REDDEDILIR", {
-  env <- .pk714_env(c("helpers_pk_sql_statements.R", "helpers_pk_sql_readonly.R"))
+  env <- .pk_hardening_test_env(c("helpers_pk_sql_statements.R", "helpers_pk_sql_readonly.R"))
   for (sorgu in c("SELECT 1; SET NOCOUNT ON",
                   "SELECT 1 SET NOCOUNT ON",
                   "SELECT a FROM t SELECT b FROM u",
@@ -364,7 +373,7 @@ test_that("tepe projeksiyonu surucunun TAMAMLANDI durumunu yoklar", {
 # --- Metadata üreticisi çitleme kaybı -----------------------------------------
 
 test_that("kilit kaybi ara kayit UYARISINA indirgenmez", {
-  env <- .pk714_env(character(0))
+  env <- .pk_hardening_test_env(character(0))
   kok <- resolve_repo_root_for_tests()
   source(file.path(kok, "tools", "pk", "helpers_meta_generator_run.R"),
          encoding = "UTF-8", local = env)
@@ -415,7 +424,7 @@ test_that("pk_required_helpers her BILDIRILEN fonksiyonu gercekten yukler", {
 # --- Bağlantı hatası sınıflandırması ------------------------------------------
 
 test_that("kucuk harfli surucu imzalari da VERITABANI hatasi sayilir", {
-  env <- .pk714_env(c("utils_log_redact.R", "helpers_pk_async_worker.R"))
+  env <- .pk_hardening_test_env(c("utils_log_redact.R", "helpers_pk_async_worker.R"))
   env$.pk_async_log <- function(...) invisible(NULL)
   for (metin in c("dsn=sentetik baglanti kurulamadi",
                   "odbc surucu hatasi",

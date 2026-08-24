@@ -613,10 +613,10 @@ if (!exists(".pk_sql_classify_readonly_base", mode = "function", inherits = FALS
   hedef
 }
 
-#' Yalnizca kanitlanmis yerel-#temp analitik batch planini dondur
+#' Yalnızca kanıtlanmış yerel-#temp analitik batch planını döndür
 #'
 #' @return `list(ok, temp_names, staging_sql, result_sql, statement_count)`.
-#'   `ok=FALSE` durumunda hicbir SQL parcasi yurutulmek icin guvenilir sayilmaz.
+#'   `ok=FALSE` durumunda hiçbir SQL parçası yürütülmek için güvenilir sayılmaz.
 pk_sql_analyze_local_temp_batch <- function(sql) {
   bos <- function() list(
     ok = FALSE, temp_names = character(0), staging_sql = character(0),
@@ -629,7 +629,7 @@ pk_sql_analyze_local_temp_batch <- function(sql) {
   maske <- pk_sql_mask_literals(sql_text)
   if (!isTRUE(maske$ok)) return(bos())
 
-  # Yerel-temp istisnasi GO ile coklu batch'e ASLA genislemez.
+  # Yerel-temp istisnası GO ile çoklu batch'e ASLA genişlemez.
   if (grepl(
     "(^|\\r\\n|\\n|\\r)[ \\t]*GO[ \\t]*(?=\\r\\n|\\n|\\r|$)",
     maske$masked, ignore.case = TRUE, perl = TRUE, useBytes = TRUE
@@ -648,8 +648,8 @@ pk_sql_analyze_local_temp_batch <- function(sql) {
     pair <- ifadeler[[i]]
 
     if (is.null(sonuc_sql)) {
-      # Eski guvenli biçim korunur: predrop varsa hemen arkasindaki staging ile
-      # birebir ayni #temp adini hedeflemelidir.
+      # Eski güvenli biçim korunur: predrop varsa hemen arkasındaki staging ile
+      # birebir aynı #temp adını hedeflemelidir.
       on_drop <- .pk_sql_local_temp_predrop(pair$raw)
       if (!is.null(on_drop)) {
         if (i >= length(ifadeler) || .pk_sql_local_temp_has_name(temp_adlari, on_drop)) {
@@ -665,8 +665,8 @@ pk_sql_analyze_local_temp_batch <- function(sql) {
         next
       }
 
-      # SSMS'te yaygin olan ikinci guvenli biçim: dinamik batch kapsami zaten
-      # yerel #temp'i yalittigi icin predrop ZORUNLU degildir.
+      # SSMS'te yaygın olan ikinci güvenli biçim: dinamik batch kapsamı zaten
+      # yerel #temp'i yalıttığı için predrop ZORUNLU değildir.
       stage <- .pk_sql_local_temp_stage(pair)
       if (!is.null(stage)) {
         if (.pk_sql_local_temp_has_name(temp_adlari, stage$temp_name)) return(bos())
@@ -676,15 +676,15 @@ pk_sql_analyze_local_temp_batch <- function(sql) {
         next
       }
 
-      # Performans icin CREATE INDEX yalnizca daha once kanitlanmis yerel #temp
-      # uzerinde olabilir. Metadata CTE donusumunde indeksler bilerek atlanir.
+      # Performans için CREATE INDEX yalnızca daha önce kanıtlanmış yerel #temp
+      # üzerinde olabilir. Metadata CTE dönüşümünde indeksler bilerek atlanır.
       index_hedef <- .pk_sql_local_temp_index(pair, temp_adlari)
       if (!is.null(index_hedef)) {
         i <- i + 1L
         next
       }
 
-      # Kurulum bittikten sonra TAM OLARAK bir sonuc SELECT/CTE kabul edilir.
+      # Kurulum bittikten sonra TAM OLARAK bir sonuç SELECT/CTE kabul edilir.
       if (!length(temp_adlari)) return(bos())
       sonuc_kapi <- .pk_sql_classify_readonly_base(pair$raw)
       if (!isTRUE(sonuc_kapi$allowed)) return(bos())
@@ -693,7 +693,7 @@ pk_sql_analyze_local_temp_batch <- function(sql) {
       next
     }
 
-    # Sonuc SELECT'inden sonra yalnizca ayni batch'in yarattigi #temp DROP'lari.
+    # Sonuç SELECT'inden sonra yalnızca aynı batch'in yarattığı #temp DROP'ları.
     silinecekler <- .pk_sql_local_temp_cleanup(pair$raw)
     if (is.null(silinecekler) || !length(silinecekler)) return(bos())
 

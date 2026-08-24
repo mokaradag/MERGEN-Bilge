@@ -200,3 +200,27 @@ test_that("tanılama özeti gizli anahtarın ham değerini sızdırmaz", {
     }
   )
 })
+
+# BEYAN EDILMIS AMA BOZUK DEGER "YOK" DEGILDIR.
+#
+# Cok elemanli ya da acikca NA bir esik beyani sessizce ATLANIYOR,
+# `invalid_sources` bos kaliyor ve `pk_resolve_thresholds()` yapilandirmayi
+# GECERLI rapor ediyordu: operator esigi degistirdigini sanirken varlik
+# cozumlemesi baska bir esikle calisiyordu (kapali-basarisiz ihlali).
+test_that("bozuk esik beyani YOK degil GECERSIZ raporlanir", {
+  eski <- getOption("mergen.pk.resolve_auto_score", default = NULL)
+  on.exit(options(mergen.pk.resolve_auto_score = eski), add = TRUE)
+
+  options(mergen.pk.resolve_auto_score = c(90L, 95L))
+  sonda <- pk_config_probe("MERGEN_PK_RESOLVE_AUTO_SCORE")
+  expect_true("options" %in% sonda$invalid_sources)
+
+  options(mergen.pk.resolve_auto_score = NA)
+  expect_true("options" %in% pk_config_probe("MERGEN_PK_RESOLVE_AUTO_SCORE")$invalid_sources)
+
+  # AYARLANMAMIS ortam degiskeni GECERSIZ SAYILMAZ: `Sys.getenv()` sentinel'i
+  # "beyan edilmis ama bozuk" ile karistirilmamalidir.
+  options(mergen.pk.resolve_auto_score = NULL)
+  expect_equal(pk_config_probe("MERGEN_PK_RESOLVE_AUTO_SCORE")$invalid_sources,
+               character(0))
+})

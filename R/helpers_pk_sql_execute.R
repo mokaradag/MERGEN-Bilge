@@ -298,7 +298,14 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
   # granülaritesini düşürür (bkz. pk_sql_plan_chunk_rows).
   meta_okuma <- bloklayan(function() DBI::dbColumnInfo(res))
   kolon_bilgisi <- if (isTRUE(meta_okuma$ok)) meta_okuma$value else NULL
-  if (!isTRUE(meta_okuma$ok) && meta_okuma$status %in% c("deadline", "timeout")) {
+  # HER TERMİNAL DURUM AYNEN KORUNUR.
+  #
+  # Eskiden yalnızca `deadline`/`timeout` erken dönüyordu; kapı `dbColumnInfo()`
+  # çağrısının HEMEN ÖNÜNDE `cancelled` verdiğinde durum DÜŞÜYOR, akış
+  # metadata'sız devam ediyor ve iptal, bir sonraki kapı yoklamasına kadar
+  # görünmüyordu. Metadata'sız plan artık kapalı-başarısız reddettiği için bu
+  # yol iptali `too_large` diye raporlardı: TİPLİ SONUÇ KAYBOLURDU.
+  if (!isTRUE(meta_okuma$ok) && !identical(meta_okuma$status, "ok")) {
     return(bos(meta_okuma$status, error = meta_okuma$error, timeout_mechanism = mekanizma))
   }
 
@@ -376,7 +383,9 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
     # Muhafazakâr tepe tahmini: birikmiş baytlar + BİR ÖNCEKİ parçanın boyutu
     # (bilinmiyorsa birikmiş toplam). Tavanın YARISINI aşan bir tepe beklentisi
     # varsa getirim BAŞLATILMAZ ve tipli `too_large` döner.
-    # Sonuc TAMAMLANDIYSA projeksiyon anlamsizdir: sonraki getirim SIFIR satirdir. Cevap alinamiyorsa karar ESKISI GIBI reddetmektir (kapali basarisiz).
+    # Sonuç TAMAMLANDIYSA projeksiyon anlamsızdır: sonraki getirim SIFIR
+    # satırdır. Cevap alınamıyorsa karar ESKİSİ GİBİ reddetmektir (kapalı
+    # başarısız).
     if (parca_sayisi > 0L &&
         (toplam_bayt + son_parca_bayt) > (tavan_mb * .PK_RESULT_MB)) {
       # TAMAMLANMA DENETİMİ DE `bloklayan()` ÜZERİNDEN GEÇER.

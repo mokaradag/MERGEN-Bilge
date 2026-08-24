@@ -175,9 +175,16 @@ pk_fact_id <- function(identity, aggregation, group_keys = character(0)) {
 #' yeni bir bağımlılık gerektirmez. RLS ÖNCESİ satır sayısı BURAYA GİRMEZ.
 pk_scope_signature <- function(authorized_rows = NULL, filtered_rows = NULL,
                                group_keys = character(0)) {
+  # TAMSAYIYA ÇEVİRME YAPILMAZ: 2^31 üstündeki bir sayım `as.integer()` ile
+  # `NA`ya çöker (üstelik uyarı üretir; sıkı pakette uyarı HATADIR) ve iki AYRI
+  # kapsam `yetki=NA|filtre=NA` ile AYNI imzayı üretirdi.
+  .say <- function(x) {
+    v <- suppressWarnings(as.numeric(x)[1])
+    if (length(v) != 1L || is.na(v) || !is.finite(v)) "?" else sprintf("%.0f", v)
+  }
   parcalar <- c(
-    sprintf("yetki=%s", if (is.null(authorized_rows)) "?" else as.integer(authorized_rows)),
-    sprintf("filtre=%s", if (is.null(filtered_rows)) "?" else as.integer(filtered_rows))
+    sprintf("yetki=%s", if (is.null(authorized_rows)) "?" else .say(authorized_rows)),
+    sprintf("filtre=%s", if (is.null(filtered_rows)) "?" else .say(filtered_rows))
   )
 
   gruplar <- as.character(group_keys %||% character(0))
@@ -561,165 +568,6 @@ pk_latest_fact <- function(data, column, spec = list(), scope = NULL,
   yap(deger, PK_FACT_OK, not)
 }
 
-# Sayım/kapsam olguları için kısa kayıt kurucusu (birimsiz, tam sayı).
-.pk_count_fact <- function(identity, aggregation, value, label,
-                           group_keys = character(0), scope = NULL) {
-  pk_fact_record(
-    kind = "context", column = identity, aggregation = aggregation,
-    value = value, spec = list(label = label, decimals = 0L),
-    status = PK_FACT_OK, scope = scope, group_keys = group_keys
-  )
-}
-
-#' Pakette MODELE GÖRÜNEN ama ölçü olmayan sayılar için olgu kümesi
-#'
-#' Kategorik dağılım, tarih, kapsama ve grup satır sayıları modele gönderilir
-#' ama §5.11 doğrulayıcısı yalnızca `packet$facts` indeksini okurdu. Model bu
-#' bulgulardan birini alıntılamak istediğinde ya sayıyı atlamak, ya olmayan bir
-#' kimlik uydurmak, ya da doğrulamayı atlayan işaretsiz bir sayı yazmak
-#' zorunda kalıyordu. Bu fonksiyon aynı sayılar için yapılandırılmış olgu
-#' üretir; kimlikler yazıcının bastığı `[fact:...]` işaretleriyle BİREBİR
-#' aynıdır.
-pk_packet_context_facts <- function(packet, scope = NULL) {
-  tanimlar <- list()
-
-  s <- packet$scope %||% list()
-  kapsama <- packet$coverage %||% list()
-
-  tanimlar <- c(tanimlar, list(
-    list(id = "__kapsam__", agg = "authorized_rows", value = s$authorized_rows,
-         label = "Yetkiniz dahilindeki satir"),
-    list(id = "__kapsam__", agg = "filtered_rows", value = s$filtered_rows,
-         label = "Analiz edilen satir"),
-    list(id = "__kapsama__", agg = "row_count", value = kapsama$rows,
-         label = "Satir sayisi"),
-    list(id = "__kapsama__", agg = "column_count", value = kapsama$columns,
-         label = "Sutun sayisi"),
-    list(id = "__kapsama__", agg = "grain_duplicates",
-         value = kapsama$duplicate_rows_at_grain, label = "Tanecikte mukerrer satir")
-  ))
-
-  for (m in (kapsama$missing %||% list())) {
-    tanimlar <- c(tanimlar, list(list(
-      id = m$column, agg = "missing_count", value = m$missing,
-      label = sprintf("%s bos deger", m$column)
-    )))
-  }
-
-  for (k in (packet$categorical %||% list())) {
-    tanimlar <- c(tanimlar, list(
-      list(id = k$column, agg = "distinct_count", value = k$distinct,
-           label = sprintf("%s farkli deger", k$label %||% k$column)),
-      list(id = k$column, agg = "other_rows",
-           value = if ((k$other_rows %||% 0L) > 0L) k$other_rows else NULL,
-           label = sprintf("%s diger satir", k$label %||% k$column))
-    ))
-    for (t in (k$top %||% list())) {
-      tanimlar <- c(tanimlar, list(list(
-        id = k$column, agg = "category_count", value = t$count,
-        label = sprintf("%s: %s", k$label %||% k$column, as.character(t$value)[1]),
-        group = as.character(t$value)[1]
-      )))
-    }
-  }
-
-  for (t in (packet$dates %||% list())) {
-    tanimlar <- c(tanimlar, list(list(
-      id = t$column, agg = "date_count", value = t$n,
-      label = sprintf("%s gecerli tarih", t$label %||% t$column)
-    )))
-    # Yazıcının bastığı her aylık kova işaretinin BİREBİR karşılığı.
-    for (b in (t$buckets %||% list())) {
-      kova <- as.character(b$bucket %||% "")[1]
-      if (is.na(kova) || !nzchar(kova)) next
-      tanimlar <- c(tanimlar, list(list(
-        id = t$column, agg = "bucket_count", value = b$count,
-        label = sprintf("%s %s", t$label %||% t$column, kova),
-        group = kova
-      )))
-    }
-  }
-
-  g <- packet$groups %||% list()
-  gruplama <- paste(as.character(g$group_by %||% character(0)), collapse = "+")
-  # DARALTILAN GRUPLARIN SAYILARI DA OLGUDUR: yazıcı "Diger (N grup, M satir)"
-  # satırını ÇIPLAK sayılarla basıyor, burada ise yalnızca GÖRÜNÜR `group_rows`
-  # olguları üretiliyordu; model bu iki toplamı alıntılayamıyordu.
-  tanimlar <- c(tanimlar, list(
-    list(id = gruplama, agg = "other_groups",
-         value = if ((g$other_groups %||% 0L) > 0L) g$other_groups else NULL,
-         label = "Daraltilan grup sayisi"),
-    list(id = gruplama, agg = "other_rows",
-         value = if ((g$other_groups %||% 0L) > 0L) g$other_rows else NULL,
-         label = "Daraltilan gruplardaki satir")
-  ))
-  for (satir in (g$top %||% list())) {
-    tanimlar <- c(tanimlar, list(list(
-      id = gruplama, agg = "group_rows", value = satir$rows,
-      label = sprintf("%s satir sayisi", satir$group), group = satir$group
-    )))
-  }
-
-  # Yazıcının bastığı "Sonlu gozlem / disarida birakilan" sayıları da OLGUDUR:
-  # dört haneli işaretsiz bir sayım `block` kipinde `missing_fact_marker` üretip
-  # TÜM yanıtı determinist yedekle değiştirirdi. TERS gezilir: son yazan kazandığı için yazıcıyla AYNI (sütunun İLK) olgusu geçerli olur.
-  for (o in rev(packet$facts %||% list())) tanimlar <- c(tanimlar, list(
-    list(id = o$column, agg = "finite_count", value = o$n_finite,
-         label = sprintf("%s sonlu gozlem", o$column)),
-    list(id = o$column, agg = "excluded_count", value = o$n_excluded,
-         label = sprintf("%s disarida birakilan", o$column))))
-
-  out <- list()
-  for (t in tanimlar) {
-    deger <- suppressWarnings(as.numeric(t$value %||% NA_real_))
-    if (length(deger) != 1L || is.na(deger) || !is.finite(deger)) next
-    olgu <- .pk_count_fact(t$id, t$agg, deger, t$label,
-                           group_keys = as.character(t$group %||% character(0)),
-                           scope = scope)
-    out[[olgu$fact_id]] <- olgu
-  }
-
-  unname(out)
-}
-
-#' Paketin DOĞRULANABİLİR tüm olguları (ölçü + grup + bağlam)
-#'
-#' Grup kırılımındaki ölçü olguları da `[fact:...]` işaretiyle basıldığı hâlde
-#' indekse girmiyordu; doğru alıntılanmış bir grup toplamı `unknown_fact`
-#' sayılırdı (kimliğe göre tekilleştirilir).
-pk_packet_all_facts <- function(packet) {
-  grup_olgulari <- unlist(
-    lapply(packet$groups$top %||% list(), function(satir) satir$facts %||% list()),
-    recursive = FALSE
-  )
-
-  hepsi <- c(packet$facts %||% list(), grup_olgulari %||% list(),
-             pk_packet_context_facts(packet, scope = packet$scope$scope_signature))
-
-  # ÇAKIŞAN KİMLİKLER DOĞRULAYICIYA ULAŞMADAN ATILMAZ.
-  #
-  # `pk_facts_index()` aynı kimliğe düşen İKİ FARKLI olguyu bilerek "belirsiz"
-  # işaretler ve o kimlik üzerinden hiçbir iddiayı kabul etmez. Eski "ilk
-  # kazanır" tekilleştirmesi ikinci olguyu doğrulayıcı görmeden siliyordu;
-  # kimlik yeteneğe/toplulaştırmaya göre üretildiği için aynı yeteneği paylaşan
-  # iki ölçü sütunu meşru biçimde çakışabiliyor ve provenans, ikinci sütuna
-  # atfedilen bir sayıyı BİRİNCİ sütunun değeriyle doğrulayabiliyordu.
-  #
-  # BİREBİR AYNI olgu (aynı kimlik + aynı değer + aynı durum) yinelemesi
-  # gerçek bir çakışma değildir; yalnızca o eleniyor.
-  out <- list()
-  imza <- character(0)
-  for (o in hepsi) {
-    if (!is.list(o) || !is.character(o$fact_id) || !nzchar(o$fact_id)) next
-    kimlik <- paste(o$fact_id, o$column %||% "", o$aggregation %||% "",
-                    o$status %||% "", format(o$value %||% NA), sep = "\u0001")
-    if (kimlik %in% imza) next
-    imza <- c(imza, kimlik)
-    out[[length(out) + 1L]] <- o
-  }
-
-  out
-}
 
 #' Ağırlıklı ortalama olgusu (§5.7 geçersiz ağırlık sözleşmesi)
 #'

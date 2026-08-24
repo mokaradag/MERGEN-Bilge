@@ -42,7 +42,7 @@ local({
   }
 })
 
-.pk711_cfg <- function(mode = "describe") {
+.pk_meta_test_cfg <- function(mode = "describe") {
   list(
     mode = mode,
     sql_timeout_sec = 5,
@@ -53,7 +53,7 @@ local({
   )
 }
 
-.pk711_descriptor <- function(name, type, max_length = 50) {
+.pk_meta_test_descriptor <- function(name, type, max_length = 50) {
   list(list(name = name, system_type_name = type, max_length = max_length))
 }
 
@@ -68,10 +68,10 @@ test_that("declared date_columns are applied to the effective schema", {
 
   sonuc <- pkgn_fetch_schema(
     query = query,
-    config = .pk711_cfg("describe"),
+    config = .pk_meta_test_cfg("describe"),
     conn = TRUE,
     describe_fn = function(conn, sql, timeout_sec = NULL) {
-      .pk711_descriptor("Tarih", "varchar(10)", 10)
+      .pk_meta_test_descriptor("Tarih", "varchar(10)", 10)
     },
     sample_fn = function(...) stop("sample should not run")
   )
@@ -92,14 +92,14 @@ test_that("date and sample-safety policy changes invalidate stale fingerprints",
   )
 
   kaynak_once <- pkgh_source_fingerprint(query)
-  durum_once <- pkgh_state_fingerprint(query, .pk711_cfg("sample"))
+  durum_once <- pkgh_state_fingerprint(query, .pk_meta_test_cfg("sample"))
 
   query$date_columns <- "BaskaTarih"
   expect_false(identical(pkgh_source_fingerprint(query), kaynak_once))
 
   query$date_columns <- "Tarih"
   query$meta_sample_safe <- TRUE
-  expect_false(identical(pkgh_state_fingerprint(query, .pk711_cfg("sample")), durum_once))
+  expect_false(identical(pkgh_state_fingerprint(query, .pk_meta_test_cfg("sample")), durum_once))
 })
 
 test_that("production sample mode fails closed without explicit safe curation", {
@@ -112,7 +112,7 @@ test_that("production sample mode fails closed without explicit safe curation", 
 
   sonuc <- pkgn_fetch_schema(
     query = query,
-    config = .pk711_cfg("sample"),
+    config = .pk_meta_test_cfg("sample"),
     conn = TRUE,
     describe_fn = function(conn, sql, timeout_sec = NULL) NULL,
     sample_fn = pkg_default_sample_fn
@@ -152,21 +152,21 @@ test_that("metadata and health replacement fallbacks never copy over live files"
 })
 
 test_that("run-lock release restores bootstrap-mutated process state", {
-  eski_option <- getOption("pk711.process.state", NULL)
+  eski_option <- getOption("mergen.pk.meta_test.process_state", NULL)
   eski_log <- Sys.getenv("MERGEN_LOG_DIR", unset = NA_character_)
   on.exit({
-    options(pk711.process.state = eski_option)
+    options(mergen.pk.meta_test.process_state = eski_option)
     # Bootstrap'in EKLEDIGI secenek de temizlenir; aksi halde bir beklenti
     # basarisiz oldugunda testthat govdeyi keser ve bu secenek AYNI oturumdaki
     # sonraki testlere SIZAR.
-    options(pk711.added.by.bootstrap = NULL)
+    options(mergen.pk.meta_test.added_by_bootstrap = NULL)
     if (is.na(eski_log)) Sys.unsetenv("MERGEN_LOG_DIR") else Sys.setenv(MERGEN_LOG_DIR = eski_log)
   }, add = TRUE)
 
-  options(pk711.process.state = "before")
+  options(mergen.pk.meta_test.process_state = "before")
   Sys.setenv(MERGEN_LOG_DIR = "before")
 
-  lock_path <- file.path(tempdir(), paste0("pk711-lock-", Sys.getpid(), "-", sample.int(1e6, 1)))
+  lock_path <- file.path(tempdir(), paste0("pk-meta-test-lock-", Sys.getpid(), "-", sample.int(1e6, 1)))
   kilit <- pkgc_acquire_run_lock(lock_path, stale_sec = 3600)
   expect_true(kilit$ok)
   # KILIT KOSULSUZ BIRAKILIR. `pkgc_release_run_lock()` asagida bir
@@ -176,12 +176,12 @@ test_that("run-lock release restores bootstrap-mutated process state", {
   # ILGISIZ testlerde zincirleme hatalara donusurdu.
   on.exit(try(pkgc_release_run_lock(kilit), silent = TRUE), add = TRUE, after = FALSE)
 
-  options(pk711.process.state = "after")
-  options(pk711.added.by.bootstrap = TRUE)
+  options(mergen.pk.meta_test.process_state = "after")
+  options(mergen.pk.meta_test.added_by_bootstrap = TRUE)
   Sys.setenv(MERGEN_LOG_DIR = "after")
 
   expect_true(pkgc_release_run_lock(kilit))
-  expect_identical(getOption("pk711.process.state"), "before")
-  expect_null(getOption("pk711.added.by.bootstrap", NULL))
+  expect_identical(getOption("mergen.pk.meta_test.process_state"), "before")
+  expect_null(getOption("mergen.pk.meta_test.added_by_bootstrap", NULL))
   expect_identical(Sys.getenv("MERGEN_LOG_DIR", unset = NA_character_), "before")
 })

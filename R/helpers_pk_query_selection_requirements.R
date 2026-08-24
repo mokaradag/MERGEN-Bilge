@@ -189,11 +189,10 @@ pk_select_normalize_requirements <- function(raw) {
   bos
 }
 
-#' Normalleştirilmiş iddia BOŞ mu (doğrulanacak bir şey var mı)?
-#' `unsupported` alanini normalize et (SERBEST METIN ihtiyac listesi)
+#' `unsupported` alanını normalleştir (SERBEST METİN ihtiyaç listesi)
 #'
-#' Hem normal karar yolu hem de CIP ONAYI yolu ayni kapiya bakar; alan liste ya
-#' da karakter vektoru olabilir. Tek sahip burasidir.
+#' Hem normal karar yolu hem de ÇİP ONAYI yolu aynı kapıya bakar; alan liste ya
+#' da karakter vektörü olabilir. Tek sahip burasıdır.
 pk_select_unsupported_needs <- function(requirements) {
   if (!is.list(requirements)) return(character(0))
   ham <- requirements$unsupported %||% character(0)
@@ -202,6 +201,7 @@ pk_select_unsupported_needs <- function(requirements) {
   unique(ham[!is.na(ham) & nzchar(ham)])
 }
 
+#' Normalleştirilmiş iddia BOŞ mu (doğrulanacak bir şey var mı)?
 pk_select_requirements_empty <- function(requirements) {
   gorunum <- .pk_select_req_view(requirements)
   iddia <- unlist(gorunum[.PK_SELECT_REQ_CAPABILITY_FIELDS], use.names = FALSE)

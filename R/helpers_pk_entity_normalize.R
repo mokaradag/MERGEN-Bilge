@@ -76,7 +76,17 @@
 # yazdığı `elektronik` ile ASCII katmanında buluşması GEREKİR (tasarım
 # kararı E3). `İ` ise küçük harfe `i` olarak indiği için katlanmış metinde
 # görünmez; bu yüzden HAM girdide ayrıca aranır.
-.PK_ENTITY_TR_ONLY_CHARS <- enc2utf8(c("ı", "ş", "ğ", "ü", "ö", "ç", "â", "î", "û"))
+# ŞAPKALI ÜNLÜLERİN TAMAMI LİSTEDE OLMALIDIR.
+#
+# `.PK_ENTITY_TR_CHARS` on bir harfi ASCII'ye katlar (`ê` ve `ô` dâhil). Bu
+# vektör dokuzunu listelediği için, ifadedeki TEK Türkçeye özgü harf `ê` ya da
+# `ô` olduğunda `has_turkish` FALSE kalıyor, `.pk_entity_tier_of()` katmanı
+# `ascii_key` + 90 puan olarak `ascii_lossy` BAYRAĞI OLMADAN döndürüyor ve
+# kural 4 adayı OTOMATİK kabul ediyordu: kullanıcı yalnızca o aksanla ayrılan
+# BAŞKA bir varlığı teyit istemeden filtreleyebilirdi.
+.PK_ENTITY_TR_ONLY_CHARS <- enc2utf8(c(
+  "ı", "ş", "ğ", "ü", "ö", "ç", "â", "î", "û", "ê", "ô"
+))
 .PK_ENTITY_TR_DOTTED_I <- c(
   intToUtf8(0x0130L),                       # İ
   paste0("i", intToUtf8(0x0307L)),          # i + birleşik nokta

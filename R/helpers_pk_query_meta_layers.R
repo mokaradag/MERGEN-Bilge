@@ -25,37 +25,37 @@
   adlar <- names(kayit)
   if (is.null(adlar) || length(adlar) != length(kayit) ||
       any(is.na(adlar) | !nzchar(trimws(adlar)))) {
-    return(sprintf("%s icindeki tum alanlar adlandirilmis olmalidir.", baglam))
+    return(sprintf("%s içindeki tüm alanlar adlandırılmış olmalıdır.", baglam))
   }
   adlar <- trimws(adlar)
   tekrar <- unique(adlar[duplicated(adlar) & nzchar(adlar) & !is.na(adlar)])
   if (!length(tekrar)) return(character(0))
-  sprintf("%s icinde tekrar eden alan adi: %s", baglam, paste(sort(tekrar), collapse = ", "))
+  sprintf("%s içinde tekrar eden alan adı: %s", baglam, paste(sort(tekrar), collapse = ", "))
 }
 
 .pk_meta_validate_named_layer <- function(name, layer) {
   if (is.null(layer)) return(character(0))
-  if (!is.list(layer)) return(sprintf("%s adlandirilmis liste olmalidir.", name))
+  if (!is.list(layer)) return(sprintf("%s adlandırılmış liste olmalıdır.", name))
   if (!length(layer)) return(character(0))
 
   adlar <- names(layer)
   if (is.null(adlar) || length(adlar) != length(layer) ||
       any(is.na(adlar) | !nzchar(trimws(adlar)))) {
-    return(sprintf("%s adlandirilmis liste olmalidir.", name))
+    return(sprintf("%s adlandırılmış liste olmalıdır.", name))
   }
 
   hatalar <- character(0)
   tekrar <- unique(adlar[duplicated(adlar)])
   if (length(tekrar)) {
     hatalar <- c(hatalar, sprintf(
-      "%s icinde tekrar eden kimlik: %s", name, paste(tekrar, collapse = ", ")
+      "%s içinde tekrar eden kimlik: %s", name, paste(tekrar, collapse = ", ")
     ))
   }
 
   liste_olmayan <- adlar[!vapply(layer, is.list, logical(1))]
   if (length(liste_olmayan)) {
     hatalar <- c(hatalar, sprintf(
-      "%s icindeki her sorgu girdisi liste olmalidir: %s",
+      "%s içindeki her sorgu girdisi liste olmalıdır: %s",
       name, paste(liste_olmayan, collapse = ", ")
     ))
   }
@@ -73,7 +73,6 @@
     if (!is.list(girdi)) return(character(0))
     yerel <- .pk_meta_dup_field_names(sprintf("%s['%s']", name, id), girdi)
     sutunlar <- girdi$column_meta
-    sutunlar <- girdi$column_meta
     if (!is.null(sutunlar) && !is.list(sutunlar)) {
       yerel <- c(yerel, sprintf(
         "%s['%s'] column_meta adlandırılmış liste olmalıdır.", name, id
@@ -86,9 +85,20 @@
       if (is.null(sutun_adlari) || length(sutun_adlari) != length(sutunlar) ||
           any(is.na(sutun_adlari) | !nzchar(trimws(sutun_adlari)))) {
         yerel <- c(yerel, sprintf(
-          "%s['%s'] column_meta girdilerinin TAMAMI adlandirilmis olmalidir.", name, id
+          "%s['%s'] column_meta girdilerinin TAMAMI adlandırılmış olmalıdır.", name, id
         ))
       } else {
+        # MÜKERRER SÜTUN ADI DA BİRLEŞTİRMEDEN ÖNCE YAKALANIR: `[[` yalnızca
+        # İLK eşleşmeyi çözer ve ikinci beyan (ör. aynı sütun için farklı bir
+        # `role`) sessizce düşerdi. Birleşme kanıtı yok ettiği için denetim
+        # BURADA yapılmalıdır.
+        tekrar_sutun <- unique(sutun_adlari[duplicated(trimws(sutun_adlari))])
+        if (length(tekrar_sutun)) {
+          yerel <- c(yerel, sprintf(
+            "%s['%s'] column_meta içinde tekrar eden sütun adı: %s", name, id,
+            paste(sort(tekrar_sutun), collapse = ", ")
+          ))
+        }
         for (sutun in sutun_adlari) {
           yerel <- c(yerel, .pk_meta_dup_field_names(
             sprintf("%s['%s'] column_meta['%s']", name, id, sutun), sutunlar[[sutun]]

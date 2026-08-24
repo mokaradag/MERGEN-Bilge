@@ -675,8 +675,19 @@ pk_config_probe <- function(key, query_meta = NULL) {
   }
 
   gecersiz <- character(0)
-  .ham_var <- function(x) !is.null(x) && length(x) == 1L &&
-    !is.na(x) && nzchar(trimws(as.character(x)[1]))
+  # BEYAN EDİLMİŞ AMA BOZUK DEĞER "YOK" DEĞİLDİR.
+  #
+  # Eski kapı yalnızca skaler, `NA` olmayan ve boş olmayan bir değeri "var"
+  # sayıyordu; çok elemanlı (`c(90, 95)`) ya da açıkça `NA` bir beyan sessizce
+  # ATLANIYOR, `invalid_sources` boş kalıyor ve `pk_resolve_thresholds()`
+  # yapılandırmayı GEÇERLİ raporluyordu. Operatör eşiği değiştirdiğini sanırken
+  # varlık çözümlemesi başka bir eşikle çalışıyordu (kapalı-başarısız ihlali).
+  .ham_var <- function(x) {
+    if (is.null(x) || length(x) == 0L) return(FALSE)
+    if (length(x) != 1L) return(TRUE)
+    if (is.na(x)) return(TRUE)
+    nzchar(trimws(as.character(x)[1]))
+  }
 
   # ÖNCELİK SIRASI: query_meta -> environment -> options.
   #
@@ -691,7 +702,14 @@ pk_config_probe <- function(key, query_meta = NULL) {
   # uygulanabilecekken bozuk olan) basamaklar hâlâ geçersiz raporlanır.
   basamaklar <- list(
     list(ad = "query_meta", ham = if (is.list(query_meta)) query_meta[[pk_config_meta_key(key)]] else NULL),
-    list(ad = "environment", ham = Sys.getenv(key, unset = NA_character_)),
+    # ORTAM DEĞİŞKENİNDE "AYARLANMAMIŞ" BOŞ DİZEDİR, `NA` DEĞİLDİR.
+    #
+    # `unset = NA_character_` sentinel'i, aşağıdaki "beyan edilmiş ama bozuk"
+    # denetimiyle çakışırdı: AYARLANMAMIŞ her anahtar `NA` görülüp "environment
+    # geçersiz" raporlanır ve `pk_resolve_thresholds()` tüm yapılandırmayı
+    # geçersiz sayardı. Boş dize hem "yok" demektir hem de operatörün açıkça
+    # boş bıraktığı bir değeri zaten geçersiz kılmaz.
+    list(ad = "environment", ham = Sys.getenv(key, unset = "")),
     list(ad = "options", ham = getOption(pk_config_option_key(key), default = NULL))
   )
 

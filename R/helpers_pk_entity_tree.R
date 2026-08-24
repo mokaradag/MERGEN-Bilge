@@ -1,21 +1,16 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_pk_entity_tree.R
-# Aciklama: Filtre agacinda MANTIK GRUBU GEZINTISI (saf yol yardimcilari).
+# Açıklama: Filtre ağacında MANTIK GRUBU GEZİNTİSİ (saf yol yardımcıları).
 #
-#           `filters` duz bir yaprak listesi olabilecegi gibi
-#           `{operator, children}` dugumleri de icerebilir. Bu yardimcilar
-#           yapraklarin KONUMUNU (indeks yolu) uretir, o konumdaki dugumu okur
-#           ve yerinde gunceller; agac YAPISI degismez.
+#           `filters` düz bir yaprak listesi olabileceği gibi
+#           `{operator, children}` düğümleri de içerebilir. Bu yardımcılar
+#           yaprakların KONUMUNU (indeks yolu) üretir, o konumdaki düğümü okur
+#           ve yerinde günceller; ağaç YAPISI değişmez.
 #
-#           Dosya bilerek SAFTIR: Shiny/reaktif/DB/ag/LLM bagimliligi YOKTUR.
-#           Yukleme sirasi: `R/helpers_pk_entity_apply.R` dosyasindan ONCE.
+#           Dosya bilerek SAFTIR: Shiny/reaktif/DB/ağ/LLM bağımlılığı YOKTUR.
+#           Yükleme sırası: `R/helpers_pk_entity_apply.R` dosyasından ÖNCE.
 # ==============================================================================
 
-# --- MANTIK GRUBU GEZİNTİSİ (saf yol yardımcıları) ----------------------------
-#
-# `filters` ya düz yaprak listesi ya da `{operator, children}` düğümleri
-# içerebilir. Bu üç yardımcı, yaprakların KONUMUNU (indeks yolu) üretir, o
-# konumdaki düğümü okur ve yerinde günceller; ağaç YAPISI değişmez.
 .pk_entity_is_group_node <- function(x) {
   is.list(x) && !is.null(x$children) && is.list(x$children)
 }

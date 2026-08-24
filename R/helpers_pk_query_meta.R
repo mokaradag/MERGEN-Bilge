@@ -275,6 +275,18 @@ pk_meta_validate_query <- function(query_id, meta, registry = NULL) {
           any(is.na(adlar) | !nzchar(trimws(adlar)))) {
         hatalar <- c(hatalar, .pk_meta_err(query_id, "capability_variants adlandirilmis liste olmalidir."))
         varyantlar <- list()
+      } else {
+        # MÜKERRER CAPABILITY ADI DA REDDEDİLİR: aşağıdaki `varyantlar[[cap]]`
+        # her zaman İLK eşleşmeyi çözer, ikinci `prefer` beyanı doğrulayıcıyı
+        # HİÇ görmez ve capability küratörün seçmediği bir sütuna bağlanırdı.
+        tekrar_varyant <- unique(adlar[duplicated(trimws(adlar))])
+        if (length(tekrar_varyant)) {
+          hatalar <- c(hatalar, .pk_meta_err(query_id, sprintf(
+            "capability_variants icinde tekrar eden capability adi: %s",
+            paste(sort(tekrar_varyant), collapse = ", ")
+          )))
+          varyantlar <- list()
+        }
       }
     }
   } else {
@@ -454,8 +466,14 @@ pk_meta_validate_schema_dependent <- function(query_id, meta, schema, rls_column
   sema_ham <- parcalar$columns
   sema_gecersiz <- sema_ham[is.na(sema_ham) | !nzchar(trimws(sema_ham))]
   sema_tekrar <- unique(sema_ham[!is.na(sema_ham) & duplicated(sema_ham)])
-  sema_sutunlari <- unique(sema_ham)
-  sema_sutunlari <- sema_sutunlari[!is.na(sema_sutunlari) & nzchar(trimws(sema_sutunlari))]
+  # KARŞILAŞTIRMANIN İKİ TARAFI DA AYNI BİÇİMDE KIRPILIR.
+  #
+  # Şema adları eskiden KIRPILMADAN saklanıyor, karşılaştırmalar ise kırpılmış
+  # değerlerle yapılıyordu: `result_schema` içinde " ProjeKodu" gibi baştaki/
+  # sondaki boşluk taşıyan bir ad, VAR OLAN bir sütun için "semada yok" hatası
+  # üretip açılışı iyi huylu bir nedenle kapalı-başarısız düşürüyordu.
+  sema_sutunlari <- unique(trimws(sema_ham[!is.na(sema_ham)]))
+  sema_sutunlari <- sema_sutunlari[nzchar(sema_sutunlari)]
   if (length(sema_gecersiz)) {
     hatalar <- c(hatalar, .pk_meta_err(query_id,
       "result_schema bos veya NA sutun adi iceremez."))
@@ -475,7 +493,7 @@ pk_meta_validate_schema_dependent <- function(query_id, meta, schema, rls_column
     }
   }
 
-  eksik_meta <- setdiff(names(meta$column_meta %||% list()), sema_sutunlari)
+  eksik_meta <- setdiff(trimws(names(meta$column_meta %||% list())), sema_sutunlari)
   if (length(eksik_meta)) {
     hatalar <- c(hatalar, .pk_meta_err(query_id, sprintf(
       "column_meta sutunu semada yok: %s", paste(eksik_meta, collapse = ", ")
@@ -501,7 +519,8 @@ pk_meta_validate_schema_dependent <- function(query_id, meta, schema, rls_column
     if (is.character(meta$default_measures)) meta$default_measures else character(0),
     .pk_meta_reference_columns(meta)
   ))
-  top_atif <- top_atif[!is.na(top_atif) & nzchar(trimws(top_atif))]
+  top_atif <- trimws(top_atif[!is.na(top_atif)])
+  top_atif <- top_atif[nzchar(top_atif)]
   eksik_atif <- setdiff(top_atif, sema_sutunlari)
   if (length(eksik_atif)) {
     hatalar <- c(hatalar, .pk_meta_err(query_id, sprintf(

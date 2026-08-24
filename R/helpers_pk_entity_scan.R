@@ -232,10 +232,12 @@ pk_entity_score_candidates <- function(phrase, candidates, aliases = NULL,
   guclu_katman <- c("exact_fold", "alias", "ascii_key", "punct_key", "compact_key")
   if (!exact_only &&
       !any(vapply(kayitlar, function(k) k$tier %in% guclu_katman, logical(1)))) {
-    kayitlar <- .pk_entity_merge_mention_matches(
+    anim_sonuc <- .pk_entity_merge_mention_matches(
       kayitlar, ham_ifade, kaba, alias_hit, sozluk_belirtecleri,
       entity_kinds, azami_tarama
     )
+    kayitlar <- anim_sonuc$records
+    if (isTRUE(anim_sonuc$truncated)) tarama_kirpildi <- TRUE
   }
 
   if (length(kayitlar)) {
@@ -332,7 +334,7 @@ pk_entity_nearest_candidates <- function(phrase, candidates, n = 3L,
 # Seçili indeksleri tam normalleştirip puanlar.
 .pk_entity_score_indices <- function(idx, kaba, user_norm, alias_hit, vocab,
                                      exact_only) {
-  # Alias hedefi DONGU DISINDA normallestirilir (bkz. `.pk_entity_tier_of()`).
+  # Alias hedefi DÖNGÜ DIŞINDA normalleştirilir (bkz. `.pk_entity_tier_of()`).
   if (!is.null(alias_hit) && !is.null(alias_hit$target) && is.null(alias_hit$target_norm)) {
     alias_hit$target_norm <- pk_entity_normalize(alias_hit$target)
   }
@@ -368,18 +370,24 @@ pk_entity_nearest_candidates <- function(phrase, candidates, n = 3L,
 .pk_entity_merge_mention_matches <- function(kayitlar, phrase, kaba, alias_hit,
                                              vocab, entity_kinds, max_scan) {
   animlar <- pk_entity_mentions(phrase, entity_kinds = entity_kinds)
-  if (!length(animlar)) return(kayitlar)
+  if (!length(animlar)) return(list(records = kayitlar, truncated = FALSE))
 
+  # ANIM TARAMASI DA KIRPILABİLİR.
+  #
+  # Kısa liste bayrağı burada YUTULUYORDU: tam ifade hiçbir güçlü katmanı
+  # tutturmadığında yalnızca anım taraması çalışır ve o tarama kırpıldığında
+  # `scan_truncated` FALSE kalıyordu. Çözümleyicinin kırpılmış-tarama kapısı bu
+  # yol için HİÇ çalışmıyor, ÖLÇÜLMEMİŞ bir marjla `auto`ya gidilebiliyordu.
+  kirpildi <- FALSE
   mevcut <- vapply(kayitlar, function(k) k$value, character(1))
 
   for (anim in animlar) {
     anim_norm <- pk_entity_normalize(anim, vocab = vocab)
     if (isTRUE(anim_norm$blank)) next
 
-    idx <- unique(c(
-      .pk_entity_key_hits(kaba, anim_norm, FALSE),
-      .pk_entity_shortlist(kaba, anim_norm, max_scan)$idx
-    ))
+    kisa_anim <- .pk_entity_shortlist(kaba, anim_norm, max_scan)
+    if (isTRUE(kisa_anim$truncated)) kirpildi <- TRUE
+    idx <- unique(c(.pk_entity_key_hits(kaba, anim_norm, FALSE), kisa_anim$idx))
 
     yeni <- .pk_entity_score_indices(idx, kaba, anim_norm, alias_hit, vocab, FALSE)
     for (k in yeni) {
@@ -396,5 +404,5 @@ pk_entity_nearest_candidates <- function(phrase, candidates, n = 3L,
     }
   }
 
-  kayitlar
+  list(records = kayitlar, truncated = kirpildi)
 }

@@ -23,6 +23,23 @@ summarize_columns_for_ai <- function(df) {
         return(sprintf("- %s: (Sayısal, veri yok)", col))
       }
 
+      # `integer64` HASSASİYETİ KORUNUR.
+      #
+      # `bit64::integer64` `is.numeric()` denetimini GEÇER, ama base `sprintf()`
+      # bu sınıfa DİSPATCH ETMEZ: 2^53 üstündeki büyüklüklerde ham double bit
+      # deseni ya da yuvarlanmış bir değer basılırdı. `as.character()` doğru
+      # dizeyi üretir; ortalama da `as.numeric()` üzerinden AÇIKÇA hesaplanır.
+      if (inherits(valid_vals, "integer64")) {
+        return(sprintf(
+          "- %s: (Sayısal, Min: %s, Maks: %s, Ort: %.2f, Kayıt: %d)",
+          col,
+          as.character(min(valid_vals)),
+          as.character(max(valid_vals)),
+          mean(as.numeric(valid_vals)),
+          length(valid_vals)
+        ))
+      }
+
       return(sprintf(
         "- %s: (Sayısal, Min: %s, Maks: %s, Ort: %.2f, Kayıt: %d)",
         col,
@@ -203,10 +220,18 @@ execute_pk_sql_unicode <- function(conn, sql_text) {
 normalize_sql_server_identifiers <- function(sql_text) {
   if (is.null(sql_text) || !nzchar(sql_text)) return(sql_text)
 
+  # TÜRKÇE DESEN UTF-8'E SABİTLENİR.
+  #
+  # `source(file, encoding = "UTF-8")` dize sabitlerini YERLİ (WINDOWS-1254)
+  # işaretler; karşılaştırılan metin ise UTF-8 işaretli gelir ve `perl = TRUE`
+  # eşleşmesi Türkçe Windows VM'de SESSİZCE durur. Köşeli parantezli Türkçe bir
+  # tanımlayıcı o zaman `[...]` olarak kalır, `SET QUOTED_IDENTIFIER ON` yazımı
+  # uygulanmaz ve bu yardımcının önlemek için var olduğu ODBC ayrıştırma sorunu
+  # geri döner.
   sql_text_fixed <- gsub(
-    "\\[([^\\]\\r\\n]*[ ÇĞİÖŞÜçğıöşü][^\\]\\r\\n]*)\\]",
+    enc2utf8("\\[([^\\]\\r\\n]*[ ÇĞİÖŞÜçğıöşü][^\\]\\r\\n]*)\\]"),
     "\"\\1\"",
-    sql_text,
+    enc2utf8(sql_text),
     perl = TRUE
   )
 

@@ -71,10 +71,16 @@
 # ve manifest yolunda gövde yine atlanır.
 if (!exists("summarize_columns_for_ai", mode = "function",
             envir = environment(), inherits = FALSE)) {
-  source(
-    .pk_core_resolve_sibling("helpers_pk_analysis_core_impl.R"),
-    encoding = "UTF-8", local = environment()
-  )
+  # YÜKLEME `safe_source()` ÜZERİNDEN YAPILIR (repo sözleşmesi): UTF-8/BOM ve
+  # Windows yerel geri düşmeleri düz `source()` içinde YOKTUR. Yardımcı
+  # bulunamayan gerçekten izole bağlamlarda düz `source()` son çare olarak kalır.
+  .pk_core_impl_path <- .pk_core_resolve_sibling("helpers_pk_analysis_core_impl.R")
+  if (exists("safe_source", mode = "function", inherits = TRUE)) {
+    safe_source(.pk_core_impl_path, encoding = "UTF-8", envir = environment())
+  } else {
+    source(.pk_core_impl_path, encoding = "UTF-8", local = environment())
+  }
+  rm(.pk_core_impl_path)
 }
 
 rm(.pk_core_resolve_sibling)

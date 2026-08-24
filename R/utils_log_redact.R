@@ -294,9 +294,14 @@ redact_connection_identifiers <- function(x) {
   # çok satırlı bir mesajda YALNIZCA dizenin sonunda eşleşiyordu; ODBC sürücü
   # tanıları çoğunlukla TEK çok satırlı dizedir ve ortadaki `Pwd={gizli`
   # hiç maskelenmiyordu. Üçüncü geçiş de `(?!\{)` yüzünden değeri atlıyordu.
+  #
+  # KAÇIŞLI `}}` DA KAPANMAMIŞ DEĞERİN İÇİNDE OLABİLİR. `Pwd={A}}B` biçimi
+  # birinci desende eşleşmez (son kapanış `}` yoktur), eski ikinci desen ise
+  # `[^{}]` yüzünden ilk `}` karakterinde durup HİÇ eşleşmiyordu: kesilmiş bir
+  # ODBC tanısında parola kuyruğu kalıcı loga yazılırdı.
   metin <- gsub(
     paste0("(?im)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS,
-           ")(\\s*=\\s*)\\{[^{}\r\n]*$"),
+           ")(\\s*=\\s*)\\{(?:[^{}\r\n]|\\}\\})*$"),
     "\\1\\2\\3{<redacted>}",
     metin,
     perl = TRUE

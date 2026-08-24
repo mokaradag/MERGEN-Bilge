@@ -194,7 +194,12 @@
   # PR #705 P2 takibi: `helpers_pk_provenance_peek.R` (köken bilgisini
   # TÜKETMEDEN okuma) ve `helpers_pk_async_probe.R` (işçi-PID sondası)
   # bölündü; ikisi de ratchet bölünmesidir, yeni davranış yoktur. 88 -> 90.
-  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_query_selection_apply.R", n = 90L),
+  # PR #705 inceleme takibi: `helpers_pk_packet_context_facts.R` BÖLÜNDÜ --
+  # `helpers_pk_packet_stats.R` 832 satıra çıkarak KÜRESEL 800 satır tavanını
+  # aşmıştı; bağlam olgusu üreticileri (`pk_packet_context_facts`,
+  # `pk_packet_all_facts`) ayrı dosyaya taşındı. Ratchet bölünmesidir, yeni
+  # davranış yoktur. 90 -> 91.
+  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_query_selection_apply.R", n = 91L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
   # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
@@ -584,7 +589,10 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # PR #705 P2 takibi: `helpers_pk_provenance_peek.R` (analysis_helpers) ve
   # `helpers_pk_query_meta_layers.R` (pk_query_metadata) BÖLÜNDÜ; ikisi de
   # ratchet bölünmesidir ve yeni davranış eklemez. 469 -> 471.
-  expect_equal(length(runtime), 471L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # PR #705 inceleme takibi: `helpers_pk_packet_context_facts.R` BÖLÜNDÜ
+  # (analysis_helpers); `helpers_pk_packet_stats.R` küresel 800 satır tavanını
+  # aşmıştı. Ratchet bölünmesidir, yeni davranış yoktur. 471 -> 472.
+  expect_equal(length(runtime), 472L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

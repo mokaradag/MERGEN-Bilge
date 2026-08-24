@@ -102,9 +102,8 @@ pk_session_state_write <- function(session, key, value) {
   if (!is.na(mevcut) && nzchar(mevcut)) return(mevcut)
   yeni <- paste0("pk-oturum-",
                  paste(format(as.hexmode(sample.int(2147483647L, 4L))), collapse = ""))
-  yazildi <- isTRUE(try({ ud[[.PK_MARKER_SESSION_KEY]] <- yeni; TRUE }, silent = TRUE))
-  geri <- if (yazildi) .pk_marker_id(try(ud[[.PK_MARKER_SESSION_KEY]], silent = TRUE)) else NA_character_
-  if (!is.na(geri) && identical(geri, yeni)) yeni else ""
+  try({ ud[[.PK_MARKER_SESSION_KEY]] <- yeni }, silent = TRUE)  # YAZ-SONRA-OKU: doğrulanmamış yazım kimlik SAYILMAZ
+  if (identical(.pk_marker_id(try(ud[[.PK_MARKER_SESSION_KEY]], silent = TRUE)), yeni)) yeni else ""
 }
 
 # Ayna sınırlı tutulur: uzun ömürlü bir süreçte sınırsız büyümemeli.

@@ -230,7 +230,14 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
     # başlatmadı, yalnızca gezindi. Gönderim durumu (`is_sending`) burada
     # temizlenmezse yeni sohbet eski isteğin durdur/gönder kilidinde takılı
     # kalırdı. Gerçekten BAYAT kimlikler için davranış değişmez (no-op).
-    if (isTRUE(karar$apply) && !isTRUE(ayni_chat)) {
+    #
+    # KAPI `karar$apply` DEĞİL, İSTEK KİMLİĞİDİR. Terk işareti (`abandoned`)
+    # `stopped = TRUE` yapar ve `pk_async_should_apply()` `apply = FALSE`
+    # döndürür; sohbet gezinmesi tam da bu işareti koyduğu için temizlik dalı
+    # HİÇ çalışmıyor, `values$is_sending` ve yazma sarmalayıcısı yeni açılan
+    # sohbette TAKILI kalıyordu. Gerçekten BAYAT bir kimlik için davranış
+    # değişmez: `aktif` başka bir isteği gösterdiğinde koşul zaten FALSE'tur.
+    if (identical(aktif, req_id) && !isTRUE(ayni_chat)) {
       try(shiny::isolate(ctx$cleanup_send_message()), silent = TRUE)
     }
     FALSE

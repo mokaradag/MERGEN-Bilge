@@ -37,15 +37,42 @@
 #   edilebilmesini hem de sürdürülebilirlik bütçesini korur.
 # ==============================================================================
 
-# Süreç kapsamlı telemetri durumu. ready: NA = henüz bilinmiyor.
+# Süreç kapsamlı telemetri durumu. `ready`: NA = henüz bilinmiyor.
+#
+# HAZIRLIK KARARI VERİTABANI HEDEFİNE GÖRE ANAHTARLANIR.
+#
+# `pk_telemetry_log_analysis()` SEÇİLEN sorgunun bağlantısını alır ve sorgu
+# kütüphanesi sorgu başına `db_target` beyan eder. Tek bir süreç-küresel bit,
+# İLK yoklanan hedefin kararını DİĞER TÜM hedeflere dayatıyordu: ilk hedefte
+# `MB_Analiz_Log` yoksa tablosu OLAN bir hedefte denetim kaydı hiç yazılmıyor;
+# ilk hedefte varsa tablosu OLMAYAN bir hedef her analizde başarısız bir
+# `INSERT` tekrarlıyordu.
 .pk_telemetry_state <- new.env(parent = emptyenv())
 .pk_telemetry_state$ready <- NA
+.pk_telemetry_state$ready_by_target <- list()
 .pk_telemetry_state$warned <- FALSE
 .pk_telemetry_state$write_warned <- FALSE
+
+# Etkin telemetri hedefi: açık değer -> etkin yürütme bağlamı -> "primary".
+.pk_telemetry_target_key <- function(target = NULL) {
+  ad <- as.character(target %||% "")[1]
+  if (is.na(ad) || !nzchar(ad)) {
+    ad <- tryCatch({
+      baglam <- if (exists("pk_active_exec_context", mode = "function", inherits = TRUE)) {
+        pk_active_exec_context()
+      } else {
+        list()
+      }
+      as.character(baglam$query$db_target %||% "")[1]
+    }, error = function(e) "")
+  }
+  if (length(ad) != 1L || is.na(ad) || !nzchar(ad)) "primary" else ad
+}
 
 #' Telemetri durumunu sıfırla (yalnızca testler ve tanılama içindir)
 pk_telemetry_reset_state <- function() {
   .pk_telemetry_state$ready <- NA
+  .pk_telemetry_state$ready_by_target <- list()
   .pk_telemetry_state$warned <- FALSE
   .pk_telemetry_state$write_warned <- FALSE
   invisible(TRUE)
@@ -111,9 +138,11 @@ pk_telemetry_enabled <- function() {
 #' MB_Analiz_Log tablosunun kullanılabilirliğini süreç başına bir kez tespit et
 #'
 #' @return TRUE (yazılabilir) / FALSE (yok veya erişilemiyor).
-pk_telemetry_table_ready <- function(conn) {
-  if (!is.na(.pk_telemetry_state$ready)) {
-    return(isTRUE(.pk_telemetry_state$ready))
+pk_telemetry_table_ready <- function(conn, target = NULL) {
+  hedef <- .pk_telemetry_target_key(target)
+  onceki <- .pk_telemetry_state$ready_by_target[[hedef]]
+  if (!is.null(onceki) && !is.na(onceki)) {
+    return(isTRUE(onceki))
   }
 
   if (is.null(conn)) return(FALSE)
@@ -134,6 +163,8 @@ pk_telemetry_table_ready <- function(conn) {
   # sürecin/işçinin ÖMRÜ BOYUNCA telemetriyi kapatırdı. Yalnızca KESİN sonuç
   # ("tablo yok/kullanılamaz") saklanır.
   if (isTRUE(ready) || !isTRUE(gecici)) {
+    .pk_telemetry_state$ready_by_target[[hedef]] <- ready
+    # Geriye dönük tanılama alanı: son kesin karar.
     .pk_telemetry_state$ready <- ready
   }
   if (isTRUE(gecici)) return(FALSE)

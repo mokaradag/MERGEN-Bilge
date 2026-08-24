@@ -187,6 +187,15 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
       vals <- vals[!is.na(vals)]
       if (length(vals) == 0) return(NULL)
 
+      # `integer64` İSTATİSTİK FONKSİYONLARINA GİRMEDEN ÖNCE ÇEVRİLİR.
+      #
+      # `bit64::integer64` `is.numeric()` denetimini geçer, ama `sd()`/`median()`
+      # bu sınıfa dispatch etmez ve HAM DOUBLE BİT DESENİ üzerinden hesap yapıp
+      # anlamsız bir `StdSapma` üretirdi. `Toplam`/`Min`/`Max` de aynı riski
+      # taşır. 2^53 üstü büyüklüklerde hassasiyet kaybı olabileceği için çevrim
+      # AÇIKÇA yapılır; sessiz bir bit deseni yerine bilinen bir yaklaşımdır.
+      if (inherits(vals, "integer64")) vals <- as.numeric(vals)
+
       data.frame(
         Sutun = prettify_col_name(col),
         Toplam = sum(vals, na.rm = TRUE),

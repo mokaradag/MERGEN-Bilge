@@ -313,3 +313,34 @@ test_that("DUSURULEN birincil/tek filtre analizi durdurur", {
   expect_true(nzchar(politika$refusal_message))
   expect_true(grepl("uygulanamad", politika$refusal_message))
 })
+
+# AYNI MANTIK GRUBUNDAKI ESLESEN IKINCIL KRITER de grup cikarildiginda DUSER.
+# Ifsa listesi yalnizca SIFIR eslesen sutunlari sayarken kullanici, yil
+# kapsamli bir soruya TUM yillar uzerinden verilmis yaniti uyarisiz okuyordu.
+test_that("grup cikarma yan hasari da ifsa edilir", {
+  veri <- data.frame(
+    ProjeAdi = c("ANKA", "ANKA", "AKINCI"),
+    Yil = c(2024L, 2023L, 2024L),
+    Durum = c("A", "B", "A"),
+    stringsAsFactors = FALSE
+  )
+
+  filtreler <- list(
+    list(column = "ProjeAdi", operation = "equals", values = "ANKA"),
+    list(operator = "and", children = list(
+      list(column = "Yil", operation = "equals", values = 2024L),
+      list(column = "Durum", operation = "equals", values = "YOK")
+    ))
+  )
+
+  env <- .pk_policy_env()
+  sorgu <- list(meta = list(primary_entity = "ProjeAdi"))
+  derleme <- env$pk_filter_compile(veri, filtreler, query = sorgu)
+  politika <- env$pk_filter_zero_match_policy(veri, filtreler, derleme, query = sorgu)
+
+  expect_equal(politika$action, "dropped_secondary")
+  # Sifir eslesen sutun ZATEN raporlaniyordu; asil kayip `Yil` idi.
+  expect_true("Durum" %in% politika$dropped_columns)
+  expect_true("Yil" %in% politika$dropped_columns)
+  expect_true(any(grepl("Yil", politika$disclosures, fixed = TRUE)))
+})

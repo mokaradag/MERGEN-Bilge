@@ -66,7 +66,7 @@ PK_ENTITY_EXACT_TIERS <- c("exact_fold", "alias")
   if (!requireNamespace("stringdist", quietly = TRUE)) {
     stop(
       paste0(
-        "pk_entity_score: 'stringdist' paketi bulunamadi. Katman 6 (duzenleme ",
+        "pk_entity_score: 'stringdist' paketi bulunamadı. Katman 6 (düzenleme ",
         "mesafesi) bu paket olmadan hesaplanamaz."
       ),
       call. = FALSE

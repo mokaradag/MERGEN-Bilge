@@ -125,6 +125,19 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
 
     load_chat_in_progress(TRUE)
 
+    # KİLİT HER ÇIKIŞ YOLUNDA BIRAKILIR.
+    #
+    # `load_feedback_from_db()` ya da sonraki bir render adımı hata fırlattığında
+    # fonksiyon, gecikmeli sıfırlama planlanmadan ÖNCE terk ediliyordu. Kilit
+    # TRUE kalıyor ve kullanıcı oturumu yeniden yükleyene kadar HİÇBİR sohbet
+    # açılamıyordu. Başarı yolunda sahiplik gecikmeli geri çağrıya DEVREDİLİR
+    # (kısa gecikme çift tıklamayı emmeye devam eder); bu yüzden `basarili`
+    # bayrağı yalnızca orada TRUE olur.
+    basarili <- FALSE
+    on.exit({
+      if (!isTRUE(basarili)) try(load_chat_in_progress(FALSE), silent = TRUE)
+    }, add = TRUE)
+
     # ANINDA görsel geri bildirim: özel mesajlar reaktif flush beklemeden
     # websocket'e yazıldığı için bu toast, aşağıdaki DB hidrasyonu ve UI
     # kurulumu sürerken kullanıcıya hemen görünür. Başarı toast'ı ise içerik
@@ -245,9 +258,9 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       try(mergen_pk_abandon_active_requests(session, release = FALSE), silent = TRUE)
     }
 
-    # D11 devralinan varlik baglami SOHBETE aittir. Ayni gerekcyle yalnizca
-    # kimlik GERCEKTEN degistiginde dusurulur; ayni sohbete yeniden tiklamak
-    # gecerli bir devam baglamini silmemelidir.
+    # D11 devralınan varlık bağlamı SOHBETE aittir. Aynı gerekçeyle yalnızca
+    # kimlik GERÇEKTEN değiştiğinde düşürülür; aynı sohbete yeniden tıklamak
+    # geçerli bir devam bağlamını silmemelidir.
     if (isTRUE(hedef_degisti) &&
         exists("pk_entity_context_clear", mode = "function", inherits = TRUE)) {
       try(pk_entity_context_clear(session), silent = TRUE)
@@ -446,7 +459,9 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       as.numeric(difftime(Sys.time(), yukleme_baslangici, units = "secs")) * 1000
     ))
     
-    # Kilidi kısa bir gecikmeyle serbest bırak
+    # Kilidi kısa bir gecikmeyle serbest bırak. SAHİPLİK BURADA DEVREDİLİR:
+    # `on.exit()` güvenlik ağı artık devreye girmez.
+    basarili <- TRUE
     shinyjs::delay(500, {
       load_chat_in_progress(FALSE)
     })

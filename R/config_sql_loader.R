@@ -411,7 +411,16 @@ if (!exists("pk_query_meta_attach", mode = "function")) {
   )
 }
 
-query_library <- pk_query_meta_attach(query_library)
+# YÜKLEME ORTAMI AÇIKÇA GEÇİLİR.
+#
+# PK işçisi manifest dosyalarını önce bir SAHNELEME ortamında değerlendirir.
+# Varsayılan `envir = globalenv()` ile metadata katmanları (`pk_query_meta*`,
+# `pk_query_aliases_local`, `pk_capability_registry`) yanlış ortamdan
+# toplanıyordu: temiz bir işçi BOŞ katmanları doğrular, YENİDEN KULLANILAN bir
+# işçi ise ÖNCEKİ bootstrap'tan kalan BAYAT katmanları iliştirebilirdi.
+# Üretimde bu dosya `globalenv()` içine kaynaklandığından `environment()` zaten
+# `globalenv()`tir; davranış değişmez.
+query_library <- pk_query_meta_attach(query_library, envir = environment())
 
 cat(sprintf(
   "[SQL_LOADER] PK metadata sözleşmesi doğrulandı: %d sorgu.\n",

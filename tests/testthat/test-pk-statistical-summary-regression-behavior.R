@@ -15,7 +15,7 @@
 #           ve üretim SQL'i, proje adı veya VM veri kümesi KULLANILMAZ.
 # ==============================================================================
 
-.pk705_summary_env <- function() {
+.pk_summary_test_env <- function() {
   env <- new.env(parent = globalenv())
   kok <- resolve_repo_root_for_tests()
   env$MAX_ANALYSIS_PROMPT_CHARS <- 100000L
@@ -23,14 +23,14 @@
   env
 }
 
-.pk705_core_env <- function() {
+.pk_core_test_env <- function() {
   env <- new.env(parent = globalenv())
   kok <- resolve_repo_root_for_tests()
   source(file.path(kok, "R", "helpers_pk_analysis_core_impl.R"), encoding = "UTF-8", local = env)
   env
 }
 
-.pk705_ozet <- function(env, ...) {
+.pk_ozet_kaydi <- function(env, ...) {
   invisible(utils::capture.output(sonuc <- env$generate_statistical_summary(...)))
   sonuc
 }
@@ -38,7 +38,7 @@
 # ------------------------------------------------------------------ U44 ------
 
 test_that("convert_date_columns KARIŞIK biçimli sütunda kalan değerleri de çevirir", {
-  env <- .pk705_core_env()
+  env <- .pk_core_test_env()
   veri <- data.frame(
     Tarih = c("01.02.2024", "2024-03-15", "16/04/2024", NA, ""),
     stringsAsFactors = FALSE
@@ -56,7 +56,7 @@ test_that("convert_date_columns KARIŞIK biçimli sütunda kalan değerleri de �
 })
 
 test_that("convert_date_columns tek biçimli sütunda davranışını korur", {
-  env <- .pk705_core_env()
+  env <- .pk_core_test_env()
   veri <- data.frame(Tarih = c("01.02.2024", "02.02.2024"), stringsAsFactors = FALSE)
 
   invisible(utils::capture.output(sonuc <- env$convert_date_columns(veri, "Tarih")))
@@ -66,7 +66,7 @@ test_that("convert_date_columns tek biçimli sütunda davranışını korur", {
 })
 
 test_that("convert_date_columns çözülemeyen sütunu Date'e ZORLAMAZ", {
-  env <- .pk705_core_env()
+  env <- .pk_core_test_env()
   veri <- data.frame(Tarih = c("abc", "def", "ghi"), stringsAsFactors = FALSE)
 
   invisible(utils::capture.output(sonuc <- env$convert_date_columns(veri, "Tarih")))
@@ -78,7 +78,7 @@ test_that("convert_date_columns çözülemeyen sütunu Date'e ZORLAMAZ", {
 # ------------------------------------------------------------------ U45 ------
 
 test_that("küratörlü metadata 'dimension' diyen sayısal sütuna ÖLÇÜ muamelesi yapılmaz", {
-  env <- .pk705_summary_env()
+  env <- .pk_summary_test_env()
   veri <- data.frame(
     KayitKodu = c(10L, 10L, 20L, 20L),
     Tutar     = c(1.5, 2.5, 3.5, 4.5),
@@ -89,7 +89,7 @@ test_that("küratörlü metadata 'dimension' diyen sayısal sütuna ÖLÇÜ muam
     Tutar     = list(role = "measure", additive = TRUE)
   )
 
-  sonuc <- .pk705_ozet(env, veri, column_meta = meta)
+  sonuc <- .pk_ozet_kaydi(env, veri, column_meta = meta)
 
   expect_true(grepl("ÖLÇÜ OLMAYAN SAYISAL SÜTUNLAR", sonuc$summary_text, fixed = TRUE))
   expect_true(grepl("SAYISAL SUTUNLAR OZETI", sonuc$summary_text, fixed = TRUE))
@@ -101,7 +101,7 @@ test_that("küratörlü metadata 'dimension' diyen sayısal sütuna ÖLÇÜ muam
 })
 
 test_that("metadata additive=FALSE diyen ölçüye toplam üretilmez", {
-  env <- .pk705_summary_env()
+  env <- .pk_summary_test_env()
   veri <- data.frame(
     Oran  = c(0.1, 0.2, 0.3, 0.4),
     Tutar = c(1, 2, 3, 4),
@@ -112,7 +112,7 @@ test_that("metadata additive=FALSE diyen ölçüye toplam üretilmez", {
     Tutar = list(role = "measure", additive = TRUE)
   )
 
-  sonuc <- .pk705_ozet(env, veri, column_meta = meta)
+  sonuc <- .pk_ozet_kaydi(env, veri, column_meta = meta)
   olcu_blok <- strsplit(sonuc$summary_text, "SAYISAL SUTUNLAR OZETI", fixed = TRUE)[[1]][2]
 
   expect_true(grepl("Tutar", olcu_blok, fixed = TRUE))
@@ -120,19 +120,19 @@ test_that("metadata additive=FALSE diyen ölçüye toplam üretilmez", {
 })
 
 test_that("metadata YOKKEN küçük örneklemde ölçü sütunu kimlik sanılmaz", {
-  env <- .pk705_summary_env()
+  env <- .pk_summary_test_env()
   # Regresyon: 3 satırlık gerçek bir ölçü de benzersizdir; benzersizlik TEK
   # BAŞINA kimlik kanıtı değildir.
   veri <- data.frame(Saat = c(10, 20, 30), Proje = c("A", "B", "A"), stringsAsFactors = FALSE)
 
-  sonuc <- .pk705_ozet(env, veri)
+  sonuc <- .pk_ozet_kaydi(env, veri)
 
   expect_true(grepl("SAYISAL SUTUNLAR OZETI", sonuc$summary_text, fixed = TRUE))
   expect_false(grepl("ÖLÇÜ OLMAYAN SAYISAL SÜTUNLAR", sonuc$summary_text, fixed = TRUE))
 })
 
 test_that("metadata YOKKEN yalnızca kanıtlanabilir kimlik sütunu dışlanır", {
-  env <- .pk705_summary_env()
+  env <- .pk_summary_test_env()
   # Kimlik çıkarımı için YETERLİ örneklem gerekir (bkz. .PK_STAT_ID_MIN_ROWS);
   # 24 satır eşiğin üzerindedir.
   n <- 24L
@@ -143,7 +143,7 @@ test_that("metadata YOKKEN yalnızca kanıtlanabilir kimlik sütunu dışlanır"
     stringsAsFactors = FALSE
   )
 
-  sonuc <- .pk705_ozet(env, veri)
+  sonuc <- .pk_ozet_kaydi(env, veri)
   olcu_blok <- strsplit(sonuc$summary_text, "SAYISAL SUTUNLAR OZETI", fixed = TRUE)[[1]][2]
 
   expect_false(grepl("Satir Kimligi", olcu_blok, fixed = TRUE))
@@ -153,7 +153,7 @@ test_that("metadata YOKKEN yalnızca kanıtlanabilir kimlik sütunu dışlanır"
 })
 
 test_that("ölçü olmayan sayısal sütunlar GİZLENMEZ, açıkça bildirilir", {
-  env <- .pk705_summary_env()
+  env <- .pk_summary_test_env()
   veri <- data.frame(
     DurumKodu = c(1L, 1L, 2L, 2L),
     Tutar     = c(5, 6, 7, 8),
@@ -161,18 +161,18 @@ test_that("ölçü olmayan sayısal sütunlar GİZLENMEZ, açıkça bildirilir",
   )
   meta <- list(DurumKodu = list(role = "dimension"), Tutar = list(role = "measure"))
 
-  sonuc <- .pk705_ozet(env, veri, column_meta = meta)
+  sonuc <- .pk_ozet_kaydi(env, veri, column_meta = meta)
 
   expect_true(grepl("Durum Kodu", sonuc$summary_text, fixed = TRUE))
   expect_true(grepl("ASLA toplam, ortalama", sonuc$summary_text, fixed = TRUE))
 })
 
 test_that("tüm sayısal sütunlar ölçü değilse sayısal özet bloğu üretilmez", {
-  env <- .pk705_summary_env()
+  env <- .pk_summary_test_env()
   veri <- data.frame(Kod = c(1L, 1L, 2L), Ad = c("a", "b", "c"), stringsAsFactors = FALSE)
   meta <- list(Kod = list(role = "dimension"))
 
-  sonuc <- .pk705_ozet(env, veri, column_meta = meta)
+  sonuc <- .pk_ozet_kaydi(env, veri, column_meta = meta)
 
   expect_false(grepl("SAYISAL SUTUNLAR OZETI", sonuc$summary_text, fixed = TRUE))
   expect_true(grepl("ÖLÇÜ OLMAYAN SAYISAL SÜTUNLAR", sonuc$summary_text, fixed = TRUE))
@@ -181,7 +181,7 @@ test_that("tüm sayısal sütunlar ölçü değilse sayısal özet bloğu üreti
 # ------------------------------------------------------ kapsam özyinelemesi ---
 
 test_that("v1 kırpma özyinelemesi FİLTRELEME UYARISINI düşürmez", {
-  env <- .pk705_summary_env()
+  env <- .pk_summary_test_env()
   env$pk_engine_is_v2 <- function(...) FALSE
   veri <- data.frame(
     Ad    = paste0("kayit_", sprintf("%03d", 1:60)),
@@ -189,7 +189,7 @@ test_that("v1 kırpma özyinelemesi FİLTRELEME UYARISINI düşürmez", {
     stringsAsFactors = FALSE
   )
 
-  sonuc <- .pk705_ozet(
+  sonuc <- .pk_ozet_kaydi(
     env, veri,
     max_preview_rows = 40,
     # Kırpma özyinelemesini TETİKLER ama "temel özet" dibine DÜŞMEZ; böylece
@@ -208,7 +208,7 @@ test_that("v1 kırpma özyinelemesi FİLTRELEME UYARISINI düşürmez", {
 # ------------------------------------------------- inceleme takibi: ölçüler ---
 
 test_that("benzersiz tam sayılı ÖLÇÜ kimlik sanılıp istatistikten dışlanmaz", {
-  env <- .pk705_summary_env()
+  env <- .pk_summary_test_env()
 
   # 24 satırlık gerçek bir tutar sütunu: tam sayı, birbirinden farklı ama
   # vekil anahtarın YOĞUN ARTAN dizisi DEĞİL. Eski kural yalnızca
@@ -220,7 +220,7 @@ test_that("benzersiz tam sayılı ÖLÇÜ kimlik sanılıp istatistikten dışla
   expect_length(unique(tutarlar), length(tutarlar))
   expect_true(all(tutarlar == round(tutarlar)))
 
-  metin <- paste(.pk705_ozet(
+  metin <- paste(.pk_ozet_kaydi(
     env,
     data.frame(Tutar = tutarlar, stringsAsFactors = FALSE),
     mode = "summary"
@@ -232,9 +232,9 @@ test_that("benzersiz tam sayılı ÖLÇÜ kimlik sanılıp istatistikten dışla
 })
 
 test_that("yoğun artan vekil anahtar dizisi ÖLÇÜ sayılmaz", {
-  env <- .pk705_summary_env()
+  env <- .pk_summary_test_env()
 
-  metin <- paste(.pk705_ozet(
+  metin <- paste(.pk_ozet_kaydi(
     env,
     data.frame(KayitID = 1:24, stringsAsFactors = FALSE),
     mode = "summary"

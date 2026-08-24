@@ -5,7 +5,7 @@
 #           ya da gizli değer GEREKMEZ. Fixture'lar sentetiktir.
 # ==============================================================================
 
-.pk705_filter_env <- function() {
+.pk_filter_test_env <- function() {
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   # ÜRETİM OPERATÖRÜYLE AYNI. Depo `%||%` yalnız `NULL` için yedeğe düşer;
@@ -20,7 +20,7 @@
   env
 }
 
-.pk705_data <- function() {
+.pk_review_data <- function() {
   data.frame(
     Proje = c("ANKA", "AKINCI", "KIZILELMA", "ANKA"),
     Yil = c(2024L, 2024L, 2023L, 2023L),
@@ -34,8 +34,8 @@
 # --- U5: KATI `less_than` gün sonuna genişlemez --------------------------------
 
 test_that("less_than yalniz-tarih degeri GUN BASINDA biter", {
-  env <- .pk705_filter_env()
-  d <- .pk705_data()
+  env <- .pk_filter_test_env()
+  d <- .pk_review_data()
 
   kati <- env$pk_filter_leaf_mask(
     d, env$pk_filter_normalize_leaf(
@@ -59,8 +59,8 @@ test_that("less_than yalniz-tarih degeri GUN BASINDA biter", {
 # --- U15: desteklenmeyen mantik birlestiricisi REDDEDILIR ---------------------
 
 test_that("bilinmeyen grup islecleri sessizce AND'e cevrilmez", {
-  env <- .pk705_filter_env()
-  d <- .pk705_data()
+  env <- .pk_filter_test_env()
+  d <- .pk_review_data()
 
   for (islec in c("not", "xor", "andd", "nor")) {
     sonuc <- env$.pk_filter_eval_group(d, list(
@@ -84,8 +84,8 @@ test_that("bilinmeyen grup islecleri sessizce AND'e cevrilmez", {
 # --- U14: KISMEN degerlendirilen grup REDDEDILIR ------------------------------
 
 test_that("bir cocugu dusen mantik grubu TAMAMEN reddedilir", {
-  env <- .pk705_filter_env()
-  d <- .pk705_data()
+  env <- .pk_filter_test_env()
+  d <- .pk_review_data()
 
   sonuc <- env$.pk_filter_eval_group(d, list(
     operator = "and",
@@ -104,7 +104,7 @@ test_that("bir cocugu dusen mantik grubu TAMAMEN reddedilir", {
 # --- U46: `column_meta` tanimliyken BEYAN EDILMEMIS sutun filtrelenemez -------
 
 test_that("column_meta VARKEN beyan edilmemis sutun ENGELLENIR", {
-  env <- .pk705_filter_env()
+  env <- .pk_filter_test_env()
   sorgu <- list(id = "q_syn", meta = list(column_meta = list(
     Proje = list(label = "Proje", role = "id", filterable = TRUE)
   )))
@@ -119,8 +119,8 @@ test_that("column_meta VARKEN beyan edilmemis sutun ENGELLENIR", {
 # --- U8 + U27: grup yapraklari GERCEK sutun adiyla raporlanir -----------------
 
 test_that("mantik grubu yapraklari applied/groups kaydinda GERCEK sutunla gorunur", {
-  env <- .pk705_filter_env()
-  d <- .pk705_data()
+  env <- .pk_filter_test_env()
+  d <- .pk_review_data()
 
   # Mantik gruplari `filters` icinde INERT VERI olarak tasinir.
   derleme <- env$pk_filter_compile(
@@ -150,7 +150,7 @@ test_that("varlik cozumleyicisi grup cocuklarini gezer", {
   # sıfır uzunluklu değerde de düşen bir test kopyası, kaynaklanan üretim
   # dosyalarını FARKLI bir dala sokar ve iddia üretimden sapabilir.
   env$`%||%` <- function(a, b) if (is.null(a)) b else a
-  for (.pk705_dosya in c("helpers_pk_entity_tree.R", "helpers_pk_entity_apply.R")) source(file.path(repo_root, "R", .pk705_dosya),
+  for (.pk_kaynak_dosya in c("helpers_pk_entity_tree.R", "helpers_pk_entity_apply.R")) source(file.path(repo_root, "R", .pk_kaynak_dosya),
          encoding = "UTF-8", local = env)
 
   filtreler <- list(
@@ -182,7 +182,7 @@ test_that("varlik cozumleyicisi grup cocuklarini gezer", {
 # Varlik cozumleyicisini GERCEKTEN calistiran ortam. Kaynak metni taramak
 # yetmez: atamalar olu bir dalda ya da yorumda kalirsa metin taramasi GECER
 # ama donen karar alanlari tasimaz ve baglam kaydi sessizce bozulur.
-.pk705_entity_env <- function() {
+.pk_entity_test_env <- function() {
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   # ÜRETİM OPERATÖRÜYLE AYNI. Depo `%||%` yalnız `NULL` için yedeğe düşer;
@@ -206,7 +206,7 @@ test_that("varlik cozumleyicisi grup cocuklarini gezer", {
 # `pk_config_resolve()` sirasiyla query_meta -> ORTAM -> options() -> varsayilan
 # cozer; ORTAM options()'i YENER. Bu yuzden iki kanal da izole edilir ve
 # ikisi de geri yuklenir (CLAUDE.md yapilandirma-izolasyonu notu).
-.pk705_with_resolve_enabled <- function(kod) {
+.pk_with_resolve_enabled <- function(kod) {
   eski_env <- Sys.getenv("MERGEN_PK_RESOLVE_ENABLED", unset = NA_character_)
   eski_opt <- getOption("mergen.pk.resolve_enabled", default = NULL)
   Sys.setenv(MERGEN_PK_RESOLVE_ENABLED = "true")
@@ -219,7 +219,7 @@ test_that("varlik cozumleyicisi grup cocuklarini gezer", {
   force(kod)
 }
 
-.pk705_entity_query <- function() {
+.pk_entity_test_query <- function() {
   list(
     id = "sentetik_sorgu_1",
     meta = list(
@@ -232,17 +232,17 @@ test_that("varlik cozumleyicisi grup cocuklarini gezer", {
 }
 
 test_that("cozumleyici karari baglam kaydinin BEKLEDIGI alanlari tasir", {
-  env <- .pk705_entity_env()
+  env <- .pk_entity_test_env()
   veri <- data.frame(
     Proje = c("ANKA", "AKINCI", "KIZILELMA"),
     Deger = c(1, 2, 3),
     stringsAsFactors = FALSE
   )
 
-  plan <- .pk705_with_resolve_enabled(env$pk_entity_resolve_filter_plan(
+  plan <- .pk_with_resolve_enabled(env$pk_entity_resolve_filter_plan(
     data = veri,
     filters = list(list(column = "Proje", operation = "equals", value = "ANKA")),
-    query = .pk705_entity_query()
+    query = .pk_entity_test_query()
   ))
 
   expect_equal(plan$action, "proceed")
@@ -269,7 +269,7 @@ test_that("cozumleyici karari baglam kaydinin BEKLEDIGI alanlari tasir", {
 # degerlendirdigi icin hata yalnizca `context_key` ZORLANDIGINDA, yani tam da
 # devralma karsilastirmasinda ortaya cikiyordu: `object 'query' not found`.
 test_that("baglam anahtari cozulur; devralma yolu tanimsiz sembolle patlamaz", {
-  env <- .pk705_entity_env()
+  env <- .pk_entity_test_env()
   veri <- data.frame(Proje = c("ANKA", "AKINCI"), stringsAsFactors = FALSE)
 
   zorlanan <- new.env(parent = emptyenv())
@@ -285,10 +285,10 @@ test_that("baglam anahtari cozulur; devralma yolu tanimsiz sembolle patlamaz", {
     gercek(..., context_key = cozum)
   }
 
-  plan <- .pk705_with_resolve_enabled(env$pk_entity_resolve_filter_plan(
+  plan <- .pk_with_resolve_enabled(env$pk_entity_resolve_filter_plan(
     data = veri,
     filters = list(list(column = "Proje", operation = "equals", value = "ANKA")),
-    query = .pk705_entity_query()
+    query = .pk_entity_test_query()
   ))
 
   expect_null(zorlanan$hata)

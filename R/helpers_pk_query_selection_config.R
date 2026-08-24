@@ -281,6 +281,7 @@ pk_select_config_for_query <- function(cfg, query_meta) {
   # İSTEK KAPSAMLI `min_margin` değeri de sessizce süreç varsayılanıyla
   # değiştiriliyordu; bu, istek için sıkılaştırılmış bir seçim kapısını
   # gevşetip AUTO/red davranışını değiştirebilirdi.
+  girdi_cfg <- cfg  # birleşim GEÇERSİZ çıkarsa dönülecek DOĞRULANMIŞ çağıran yapılandırması
   for (i in seq_along(.PK_SELECT_DECISION_FIELDS)) {
     if (!isTRUE(ilgili[[i]])) next
     alan <- .PK_SELECT_DECISION_FIELDS[[i]]
@@ -294,18 +295,14 @@ pk_select_config_for_query <- function(cfg, query_meta) {
   # denetlenmiyordu: çağıran `min_confidence = 0` + `min_margin = 15` verip
   # sorgu yalnızca `select_min_margin = 0` beyan ettiğinde sonuç 0/0 oluyor ve
   # tamamen belirsiz bir beraberlik bile OTOMATİK çalıştırılabiliyordu.
-  # Geçersiz birleşim metadata geçersiz kılmasını DÜŞÜRÜR; çağıranın kendi
-  # doğrulanmış yapılandırması korunur.
-  # Metadata geçersizse kullanılmak üzere özgün yapılandırmayı koru.
-  original_cfg <- cfg
-
+  # Geçersiz birleşim metadata geçersiz kılmasını DÜŞÜRÜR; çağıranın DOĞRULANMIŞ yapılandırması korunur.
   birlesik <- pk_select_normalize_config(cfg)
   if (!isTRUE(birlesik$valid)) {
     cat(sprintf(
       "[PK_SELECT] Metadata gecersiz kilmasi birlesik yapilandirmayi bozdu, yok sayildi: %s\n",
       paste(birlesik$errors, collapse = "; ")
     ))
-    return(original_cfg)
+    return(girdi_cfg)
   }
   cfg
 }

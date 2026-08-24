@@ -56,6 +56,40 @@
   kelimeler
 }
 
+# İKİNCİ ÜST DÜZEY İFADE YALNIZCA "İKİNCİ BİR SELECT" DEĞİLDİR.
+#
+# Eski sürüm SADECE ikinci bir `SELECT` arıyordu; T-SQL ise noktalı virgül
+# istemediği için `SELECT 1 AS a\nDISABLE TRIGGER ALL ON DATABASE` tek bir dize
+# olarak geliyor, `DISABLE`/`TRIGGER` denylist'te bulunmadığı için hiçbir yasak
+# kelime taraması onu reddetmiyor ve salt-okunur kapı bir DURUM DEĞİŞTİREN
+# batch'i onaylıyordu.
+#
+# Aşağıdaki liste SADECE T-SQL'de AYRILMIŞ (reserved) olan ifade başlatıcılarını
+# içerir: ayrılmış oldukları için köşeli parantez olmadan sütun/takma ad
+# OLAMAZLAR, dolayısıyla meşru bir kütüphane SELECT'ini yanlışlıkla
+# REDDETMEZLER. `PK_SQL_FORBIDDEN_KEYWORDS` taramasında zaten bulunanlar burada
+# tekrarlanmaz; bu liste denylist'in AÇIĞINI kapatır.
+#
+# `FETCH` ve `NEXT` BİLEREK YOKTUR: `ORDER BY ... OFFSET n ROWS FETCH NEXT m
+# ROWS ONLY` meşru ve yaygın bir SELECT sayfalama biçimidir.
+.pk_sql_ascii_lower <- function(x) {
+  chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", x)
+}
+
+.PK_SQL_RESERVED_STATEMENT_STARTERS <- c(
+  "BREAK", "CHECKPOINT", "CLOSE", "CONTINUE", "DEALLOCATE", "GOTO", "IF",
+  "OPEN", "READTEXT", "RETURN", "REVERT", "SETUSER", "UPDATETEXT", "WHILE",
+  "WRITETEXT"
+)
+
+# AYRILMAMIŞ ama tek başına çalışabilen yan etkili ifadeler yalnızca İKİLİ
+# biçimleriyle aranır; böylece `Enable` adlı bir sütun takma adı yanlışlıkla
+# reddedilmez.
+.PK_SQL_STATEMENT_STARTER_PAIRS <- list(
+  c("DISABLE", "TRIGGER"),
+  c("ENABLE", "TRIGGER")
+)
+
 # İkinci bir üst düzey ifade var mı? Varsa jeton adını döndürür, yoksa `NULL`.
 .pk_sql_extra_top_level_statement <- function(masked) {
   kelimeler <- .pk_sql_top_level_words(masked)
@@ -66,6 +100,24 @@
 
   for (i in seq_along(kelimeler)) {
     kelime <- kelimeler[i]
+
+    # İLK jeton bu ifadenin KENDİ başlangıcıdır; "ikinci ifade" sayılmaz.
+    # Sınıflandırıcı zaten metnin SELECT/WITH/(SELECT ile başlamasını ayrıca
+    # zorunlu kılar.
+    if (i > 1L) {
+      # `tolower()` YERELE BAĞLIDIR: Türkçe `LC_CTYPE` altında "IF" -> "ıf"
+      # üretir ve rapor edilen `kind` değeri platforma göre DEĞİŞİRDİ.
+      if (kelime %in% .PK_SQL_RESERVED_STATEMENT_STARTERS) {
+        return(.pk_sql_ascii_lower(kelime))
+      }
+      sonraki <- if (i < length(kelimeler)) kelimeler[i + 1L] else ""
+      for (ikili in .PK_SQL_STATEMENT_STARTER_PAIRS) {
+        if (identical(kelime, ikili[1]) && identical(sonraki, ikili[2])) {
+          return(.pk_sql_ascii_lower(paste(ikili, collapse = "_")))
+        }
+      }
+    }
+
     if (!identical(kelime, "SELECT")) next
 
     if (!select_goruldu) {

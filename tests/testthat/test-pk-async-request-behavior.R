@@ -24,7 +24,15 @@ local({
 
   for (dosya in c("helpers_pk_config.R", "helpers_pk_async_cancel.R",
                   "helpers_pk_async_worker_env.R", "helpers_pk_async_worker_pool.R", "helpers_pk_async_bootstrap.R", "helpers_pk_async_snapshot_validate.R", "helpers_pk_async_snapshot.R",
-                  "helpers_pk_async_probe.R", "helpers_pk_async_plan.R", "helpers_pk_async_request.R")) {
+                  "helpers_pk_async_probe.R", "helpers_pk_async_plan.R", "helpers_pk_async_request.R",
+                  # ÜRETİM ŞEKLİ İÇİN ZORUNLU: `helpers_pk_async_worker.R` hem
+                  # `pk_async_run_analysis()` girişini tanımlar hem de globals
+                  # paketini `.pk_async_log` ile SARMALAR. Bu dosya listede
+                  # yokken paketin boyu, süreçte başka bir testin bu dosyayı
+                  # yükleyip yüklememesine göre DEĞİŞİYORDU (izole 55, tam
+                  # pakette 56/57) ve boyut tavanı sıra bağımlı kırılıyordu.
+                  # Sıra `R/config_source_manifest.R` ile aynıdır.
+                  "helpers_pk_async_worker_sql.R", "helpers_pk_async_worker.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = globalenv())
   }
 })
@@ -346,7 +354,12 @@ test_that("globals paketi KÜÇÜK kalır ve memoize edilir", {
   # PAKET KAPALILIĞI ayrıca `test-pk-async-hardening-behavior.R` içinde
   # çağrı grafiği gezilerek kanıtlanır; buradaki sınır yalnızca "boru hattının
   # tamamı taşınmasın" korumasıdır.
-  expect_true(length(ilk) < 56L)
+  #
+  # ÖLÇÜM ARTIK BELİRLENİMCİ: dosyanın başındaki blok üretim zincirinin
+  # tamamını (`helpers_pk_async_worker.R` dahil) yüklediği için paket her
+  # koşuda AYNI şekli taşır — `pk_async_run_analysis` girişi ve sarmalayıcının
+  # eklediği `.pk_async_log` de dahil. Tavan bu ÜRETİM şekline göredir.
+  expect_true(length(ilk) < 60L)
   expect_true("pk_async_worker_bootstrap" %in% names(ilk))
   expect_true("bootstrap_files" %in% names(ilk))
   expect_false("pk_analiz_process_request" %in% names(ilk))

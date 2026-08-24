@@ -122,14 +122,22 @@ pk_deep_execute_sql <- function(conn, sql_text, deadline_at = NULL,
                     timeout_reason = "halted_before_cache_use",
                     timeout_mechanism = "none", cached = FALSE))
       }
-      if (isTRUE(pk_cache_entry_within_limit(isabet$value, tavan_mb))) {
+      # KISMİ BOOTSTRAP'TA DA IŞKA YOLU ÇALIŞIR: limit denetimi korumasızken bir
+      # önbellek İSABETİ "could not find function" ile isteği düşürüyordu.
+      sinir_ici <- isTRUE(tryCatch(
+        pk_cache_entry_within_limit(isabet$value, tavan_mb),
+        error = function(e) FALSE
+      ))
+      if (sinir_ici) {
         return(list(
           status = "ok", data = isabet$value, rows = nrow(isabet$value),
           error = NA_character_, timeout_sec = 0L, timeout_reason = "cache_hit",
           timeout_mechanism = "none", cached = TRUE
         ))
       }
-      try(pk_cache_invalidate(onbellek_anahtari), silent = TRUE)
+      if (exists("pk_cache_invalidate", mode = "function", inherits = TRUE)) {
+        try(pk_cache_invalidate(onbellek_anahtari), silent = TRUE)
+      }
     }
   }
 

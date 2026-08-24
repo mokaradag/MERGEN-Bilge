@@ -782,12 +782,16 @@ test_that("SQL loader metadata sözleşmesini çağırır ve strict bayrağında
   ham <- readBin(yol, what = "raw", n = file.info(yol)$size)
   metin <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
 
-  expect_true(grepl("pk_query_meta_attach(query_library)", metin, fixed = TRUE, useBytes = TRUE))
+  # YÜKLEME ORTAMI AÇIKÇA GEÇİLİR: varsayılan `envir = globalenv()`, PK
+  # işçisinin SAHNELEME ortamında yanlış (boş ya da bayat) metadata katmanları
+  # toplardı.
+  cagri_metni <- "pk_query_meta_attach(query_library, envir = environment())"
+  expect_true(grepl(cagri_metni, metin, fixed = TRUE, useBytes = TRUE))
 
-  # Doğrulama, .SQL_LOADER_STRICT içine gömülmemelidir: gecersiz metadata ile
-  # acilan bir uygulama sessizce yanlis cevap uretir.
+  # Doğrulama, .SQL_LOADER_STRICT içine gömülmemelidir: geçersiz metadata ile
+  # açılan bir uygulama sessizce yanlış cevap üretir.
   satirlar <- strsplit(metin, "\n", fixed = TRUE)[[1]]
-  cagri_index <- grep("pk_query_meta_attach(query_library)", satirlar, fixed = TRUE)
+  cagri_index <- grep(cagri_metni, satirlar, fixed = TRUE)
   expect_length(cagri_index, 1L)
 
   onceki <- satirlar[max(1L, cagri_index - 3L):cagri_index]

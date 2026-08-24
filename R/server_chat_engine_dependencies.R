@@ -159,6 +159,41 @@ serverBuildChatEngineDependencyBundle <- function(settings_data,
   identical(left$conn %||% NULL, right$conn %||% NULL)
 }
 
+# BIRAKILMIS (stale) BAGLANTI KAYDI.
+#
+# Cekirdek, birincil baglantiyi RLS okumasindan sonra havuza iade eder; elindeki
+# `conn` referansi bu noktadan sonra ARTIK CHECKOUT DEGILDIR. Ayni referansla
+# telemetri sorgusu calistirmak "use-after-release" olur. Kayit, YALNIZCA bu
+# sarmalayicinin gercekten iade ettigi baglantilari izler; conn_provider gibi
+# izlenmeyen yollardan gelen CANLI baglantilar bilinmez kalir ve oldugu gibi
+# kullanilir (gereksiz ikinci checkout acilmaz).
+.PK_HOOK_RELEASED_CAP <- 8L
+
+.pk_hook_conn_is_released <- function(conn, state) {
+  kayit <- state$released
+  if (is.null(conn) || !is.list(kayit) || length(kayit) == 0L) return(FALSE)
+  for (eski in kayit) if (identical(eski, conn)) return(TRUE)
+  FALSE
+}
+
+.pk_hook_mark_released <- function(conn, state) {
+  if (is.null(conn)) return(invisible(NULL))
+  kayit <- if (is.list(state$released)) state$released else list()
+  kayit <- Filter(function(eski) !identical(eski, conn), kayit)
+  kayit <- c(kayit, list(conn))
+  if (length(kayit) > .PK_HOOK_RELEASED_CAP) {
+    kayit <- kayit[seq(length(kayit) - .PK_HOOK_RELEASED_CAP + 1L, length(kayit))]
+  }
+  state$released <- kayit
+  invisible(NULL)
+}
+
+.pk_hook_mark_acquired <- function(conn, state) {
+  if (is.null(conn) || !is.list(state$released)) return(invisible(NULL))
+  state$released <- Filter(function(eski) !identical(eski, conn), state$released)
+  invisible(NULL)
+}
+
 # Derin analiz henüz server_init_chat_runtime.R giriş-iptal sarmalayıcısını
 # almadan önce çekirdeği sarılır. İlk bağlantı yalnızca RLS kimlik okumasına
 # kadar yaşar; gözlem çağrıları kısa ömürlü telemetri bağlantıları kullanır.
@@ -194,6 +229,7 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
     state <- new.env(parent = emptyenv())
     state$primary <- NULL
     state$primary_released <- FALSE
+    state$released <- list()
 
     call_env <- new.env(parent = .pk_hook_deep_core_env)
 
@@ -205,6 +241,7 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
     # çağıranın kendi `release_connection()` sözleşmesine tabidir.
     call_env$get_connection <- function(target = "primary") {
       conn_list <- .pk_hook_real_get_connection(target)
+      if (is.list(conn_list)) .pk_hook_mark_acquired(conn_list$conn %||% NULL, state)
       if (identical(target, "primary") && is.null(state$primary)) {
         state$primary <- conn_list
       }
@@ -227,6 +264,7 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
         return(invisible(NULL))
       }
       if (is_primary) state$primary_released <- TRUE
+      if (is.list(conn_list)) .pk_hook_mark_released(conn_list$conn %||% NULL, state)
       .pk_hook_real_release_connection(conn_list)
     }
 
@@ -248,7 +286,13 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
       # bağlantı açıyordu: her gözlem (çalıştırılan sorgu başına bir tane, artı
       # terminal gözlemler) havuzdan İKİ checkout tüketiyor, sağlayıcının
       # bağlantısı ise hiç kullanılmadan açılıp bırakılıyordu.
-      if (!is.null(conn)) {
+      #
+      # ANCAK BIRAKILMIŞ BİR REFERANS YENİDEN KULLANILMAZ: çekirdek, birincil
+      # bağlantıyı RLS okumasından sonra havuza iade eder ve elindeki `conn`
+      # değişkenini gözleme yine de geçirir. Bu referansla sorgu çalıştırmak
+      # "use-after-release" olurdu; bu durumda kısa ömürlü YENİ bir bağlantı
+      # açılır. İzlenmeyen (conn_provider) canlı bağlantılar etkilenmez.
+      if (!is.null(conn) && !.pk_hook_conn_is_released(conn, state)) {
         return(.pk_hook_real_pk_analysis_observe(session, conn, info))
       }
       telemetry_list <- tryCatch(

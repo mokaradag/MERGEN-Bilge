@@ -259,3 +259,34 @@ test_that("gözlem katmanı hiçbir koşulda hata fırlatmaz", {
   expect_no_error(pk_analysis_observe(NULL, NULL, list(filter_status = "sacma-durum")))
   expect_no_error(pk_analysis_observe(list(userData = new.env()), NULL, .pk_tel_sample_info()))
 })
+
+# HAZIRLIK KARARI VERITABANI HEDEFINE GORE ANAHTARLANIR.
+#
+# Tek bir surec-kuresel bit, ILK yoklanan hedefin kararini butun hedeflere
+# dayatiyordu: tablosu OLAN bir hedefte denetim kaydi hic yazilmiyor ya da
+# tablosu OLMAYAN bir hedefte her analizde basarisiz bir INSERT tekrarlaniyordu.
+test_that("MB_Analiz_Log hazirlik kararı DB HEDEFI basina tutulur", {
+  pk_telemetry_reset_state()
+  on.exit(pk_telemetry_reset_state(), add = TRUE)
+
+  cagrilar <- character(0)
+  yok_conn <- structure(list(kimlik = "yok"), class = "PKTelemetriYok")
+  var_conn <- structure(list(kimlik = "var"), class = "PKTelemetriVar")
+
+  testthat::local_mocked_bindings(
+    dbGetQuery = function(conn, statement, ...) {
+      cagrilar <<- c(cagrilar, class(conn)[1])
+      if (inherits(conn, "PKTelemetriYok")) stop("Invalid object name 'MB_Analiz_Log'.")
+      data.frame(AnalizLogID = integer(0))
+    },
+    .package = "DBI"
+  )
+
+  expect_false(pk_telemetry_table_ready(yok_conn, target = "secondary"))
+  # DIGER hedef KENDI kararini verir; onceki hedefin kararini devralmaz.
+  expect_true(pk_telemetry_table_ready(var_conn, target = "primary"))
+  # Her hedef icin karar ONBELLEKLENIR: ikinci cagri DB'ye gitmez.
+  expect_false(pk_telemetry_table_ready(yok_conn, target = "secondary"))
+  expect_true(pk_telemetry_table_ready(var_conn, target = "primary"))
+  expect_equal(length(cagrilar), 2L)
+})

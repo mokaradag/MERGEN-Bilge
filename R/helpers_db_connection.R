@@ -216,7 +216,11 @@ get_connection <- function(target = "primary") {
     )
   }
 
-  if (target == "primary" && exists("pool", envir = .GlobalEnv, inherits = FALSE)) {
+  # KARŞILAŞTIRMALAR NORMALLEŞTİRİLMİŞ HEDEFLE YAPILIR: `factor("primary")` gibi
+  # karakter olmayan bir `target` doğrulamayı geçip `identical(target, "primary")`
+  # denetiminde düşüyor, havuz yeniden kullanımı ve birincil DSN varsayılanı
+  # sessizce ATLANIYORDU.
+  if (identical(hedef_ad, "primary") && exists("pool", envir = .GlobalEnv, inherits = FALSE)) {
     pool_obj <- tryCatch(
       get("pool", envir = .GlobalEnv, inherits = FALSE),
       error = function(e) NULL
@@ -240,7 +244,7 @@ get_connection <- function(target = "primary") {
   # üzerinden üretilen sonuç, doğru veritabanından gelmiş gibi raporlanır ve
   # yetkilendirme/kapsam varsayımları da o veritabanına aittir. Yapılandırılmamış
   # bir ikincil hedef KAPALI BAŞARISIZ olmalıdır.
-  dsn_name <- if (identical(target, "primary")) {
+  dsn_name <- if (identical(hedef_ad, "primary")) {
     Sys.getenv(dsn_var, .DEFAULT_DSN)
   } else {
     Sys.getenv(dsn_var, "")

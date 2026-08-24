@@ -370,6 +370,9 @@ pk_cache_lru_order <- function() {
 #' olur (sürüm alanına güvenmek yetmez).
 #'
 #' @return Anahtar metni; kimlik veya kapsam çözülemezse `""` (önbellek atlanır).
+# Ham SQL sonucu için TEK önbellek boyutu (analiz kipinden bağımsız).
+.PK_CACHE_RAW_SQL_ENGINE <- "raw_sql"
+
 pk_query_result_cache_key <- function(query, rls_info, sql_text, engine = "") {
   kimlik <- .pk_cache_scalar(query$id, "")
   if (!nzchar(kimlik)) return("")
@@ -405,7 +408,14 @@ pk_query_result_cache_key <- function(query, rls_info, sql_text, engine = "") {
     rls_signature = kapsam,
     filter_signature = "",
     query_version = sql_imza,
-    engine = engine,
+    # HAM SQL SONUCU ANALİZ KİPİNE BAĞLI DEĞİLDİR.
+    #
+    # Bu anahtar FİLTRE ÖNCESİ ham çerçeveyi adresler; v1/v2/derin ayrımı
+    # yalnızca getirimden SONRAKİ işlemeyi etkiler. `engine` anahtara girdiğinde
+    # derin analiz ile normal analiz AYNI sorgu/RLS/SQL üçlüsünde birbirinin
+    # girdisine ASLA çarpmıyordu. `engine` argümanı geriye dönük uyumluluk için
+    # KABUL EDİLİR ama anahtara GİRMEZ.
+    engine = .PK_CACHE_RAW_SQL_ENGINE,
     # DB HEDEF KİMLİĞİ MANTIKSAL ADDAN İBARET DEĞİLDİR.
     #
     # Yalnızca `db_target` ("primary"/"secondary") anahtara girdiğinde,

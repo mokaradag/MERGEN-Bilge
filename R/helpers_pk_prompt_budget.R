@@ -115,7 +115,7 @@ pk_prompt_fit_payload <- function(summary_text, preview_data, assemble, budget =
       json_bos <- pk_prompt_preview_json(NULL)
       sabit_yuk <- nchar(assemble("", json_bos, 0L), type = "chars")
       kalan <- budget - sabit_yuk
-      kesme_notu <- "\n\n[NOT: Ozet, istem butcesine sigmasi icin KISALTILDI.]"
+      kesme_notu <- "\n\n[NOT: Özet, istem bütçesine sığması için KISALTILDI.]"
       if (kalan > nchar(kesme_notu, type = "chars") + 32L) {
         kisa_ozet <- paste0(
           substr(summary_text, 1L, kalan - nchar(kesme_notu, type = "chars")),

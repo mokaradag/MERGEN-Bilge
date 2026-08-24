@@ -8,7 +8,10 @@
 #' `recall_n`, Geçiş A'nın taze recall bütçesidir. Önceki kararlı sorgu bu
 #' bütçenin dışında konuşma-bağlamı tohumu olarak korunur: taze recall kümesi
 #' eksilmez, ancak eksiltili bir takip de tek konuşma-derived adayını kaybetmez.
-pk_select_seed_candidates <- function(recalled_ids, prior_query_id, cfg) {
+#' @param library_ids YÜKLÜ kütüphanenin kimlik kümesi. Verildiğinde tohum bu
+#'   kümeye karşı DOĞRULANIR; verilmezse eski davranış korunur.
+pk_select_seed_candidates <- function(recalled_ids, prior_query_id, cfg,
+                                      library_ids = NULL) {
   aday <- as.character(recalled_ids)
   aday <- unique(aday[!is.na(aday) & nzchar(aday)])
 
@@ -22,6 +25,18 @@ pk_select_seed_candidates <- function(recalled_ids, prior_query_id, cfg) {
 
   onceki <- trimws(as.character(prior_query_id)[1])
   if (!nzchar(onceki) || onceki %in% aday) return(aday)
+
+  # TOHUM DA KÜTÜPHANEDE OLMAK ZORUNDADIR.
+  #
+  # `recalled_ids` Geçiş A ayrıştırıcısında kütüphaneye karşı doğrulanır, ama
+  # oturum durumundan gelen bu tohum doğrulanmıyordu. Kütüphane yeniden
+  # üretildiğinde / bir sorgu emekliye ayrıldığında / kimlik kayıtlı bir
+  # söyleşiden geri yüklendiğinde `library_index[[kimlik]]` NULL bir aday kaydı
+  # üretiyor, Geçiş B ise kaydı OLMAYAN bir kimlikle çalışıyordu: seçilen
+  # kimlik var olmayan bir sorguya işaret edebilirdi.
+  if (!is.null(library_ids) && !(onceki %in% trimws(as.character(library_ids)))) {
+    return(aday)
+  }
 
   c(onceki, aday)
 }

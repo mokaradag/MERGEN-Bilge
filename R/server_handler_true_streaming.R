@@ -274,8 +274,19 @@ handle_true_streaming_mode <- function(ctx) {
         pk_provenance_decorate(final_text, session, request_id = stream_env$req_id),
         error = function(e) {
           cat(sprintf("[PK] Akış sonunda köken dekorasyonu başarısız: %s\n",
-                      conditionMessage(e)))
-          final_text
+                      conditionMessage(e)[1]))
+          # BLOCK KİPİNDE HAM METNE DÜŞÜLMEZ: doğrulanmamış düzyazı tam da bu
+          # kipin engellemek için var olduğu çıktıdır.
+          blok <- isTRUE(tryCatch(
+            exists("pk_provenance_blocks_streaming", mode = "function", inherits = TRUE) &&
+              isTRUE(pk_provenance_blocks_streaming(session, request_id = stream_env$req_id)),
+            error = function(e2) FALSE
+          ))
+          if (blok && exists("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)) {
+            get("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)
+          } else {
+            final_text
+          }
         }
       )
     }
@@ -561,7 +572,14 @@ handle_true_streaming_mode <- function(ctx) {
       }
 
       if (batches$delta_count > 0) {
-        if (!isTRUE(stream_env$ui_started)) {
+        # TAMPON AKTİFKEN BALONCUK AÇILMAZ.
+        #
+        # `ensure_stream_ui_started()` yazma animasyonunu KALDIRIR ve BOŞ bir
+        # mesaj baloncuğu ekler. `block` kipinde görünür metin sonlandırmaya
+        # kadar tamponlandığı için kullanıcı, uzun bir üretim boyunca ne
+        # animasyon ne de metin görüyordu: ilerleme göstergesi TAMAMEN
+        # kayboluyordu. Kabuk, ilk GÖRÜNÜR metinle birlikte açılır.
+        if (!isTRUE(stream_env$ui_started) && !isTRUE(stream_env$defer_visible_text)) {
           ensure_stream_ui_started()
         }
 

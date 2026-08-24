@@ -224,6 +224,11 @@ pk_parse_number_tr <- function(txt) {
 # eder.
 .PK_PROV_COUNT_UNITS <- c("adet", "kayit", "kayıt", "tane")
 
+# Sözlük, karşılaştırma yapılacak biçimde (katlanmış) bir kez hazırlanır.
+.PK_PROV_KNOWN_UNITS_FOLDED <- unique(vapply(.PK_PROV_KNOWN_UNITS,
+                                             .pk_prov_unit_fold, character(1),
+                                             USE.NAMES = FALSE))
+
 .pk_prov_unit_vocabulary <- function(index) {
   bilinen <- vapply(index, function(o) .pk_prov_unit_fold(o$unit %||% ""), character(1))
   unique(c(.PK_PROV_KNOWN_UNITS, bilinen[nzchar(bilinen)]))
@@ -445,10 +450,18 @@ pk_facts_index <- function(facts) {
       as.integer(sade) >= 1900L && as.integer(sade) <= 2100L
     if (isTRUE(yil_gibi)) next
 
-    # BIRIM VARLIGI TEK BASINA YETMEZ: "3 kez" / "2. madde" gibi sıradan
-    # ifadeler veri iddiasi degildir ve `block` kipinde gecerli yanitlari
-    # dusurmemelidir. Olcek isareti aranir: ayrac, yuzde ya da 4+ hane.
-    veri_gibi <- ayrac || yuzde || haneler >= 4L
+    # BİRİM VARLIĞI TEK BAŞINA YETMEZ: "3 kez" / "2. madde" gibi sıradan
+    # ifadeler veri iddiası değildir ve `block` kipinde geçerli yanıtları
+    # düşürmemelidir. Ölçek işareti aranır: ayraç, yüzde ya da 4+ hane.
+    #
+    # ANCAK TANINAN BİR ÖLÇÜ BİRİMİ DE ÖLÇEK İŞARETİDİR. "47 adet" ayraç, yüzde
+    # ya da dört hane taşımaz; eski kapı onu veri DIŞI sayıyordu. Sonuç: `block`
+    # kipinde köksüz bir sayı HİÇ uyuşmazlık üretmeden yayımlanıyor, yapılandırılan
+    # köken zorlaması tam da hedeflediği durumda atlanıyordu. Sıra sayıları
+    # ("2. madde") ve "kez" sözlükte YOKTUR; dışarıda kalmaya devam ederler.
+    birim_ilk <- .pk_prov_unit_fold(sub("[[:space:]].*$", "", birim))
+    veri_gibi <- ayrac || yuzde || haneler >= 4L ||
+      (nzchar(birim_ilk) && birim_ilk %in% .PK_PROV_KNOWN_UNITS_FOLDED)
     if (!veri_gibi) next
 
     out[[length(out) + 1L]] <- list(raw = ham, number = rakam, unit = birim,

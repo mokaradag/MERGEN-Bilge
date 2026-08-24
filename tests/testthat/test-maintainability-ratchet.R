@@ -311,7 +311,11 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # hatasi (bozuk olgu kaydi, eksik yardimci) TUM akis sonlandirmasini
   # dusuruyor ve kullanici HAZIR yaniti hic goremiyordu. Fonksiyon sayisi
   # ARTMAMISTIR (17).
-  assert_current_budget("R/server_handler_true_streaming.R", 689L, 18L)
+  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 689 -> 707 satir (OLCULEN).
+  # `defer_visible_text` TRUE iken bos yanit balonu artik ACILMAZ; kanit
+  # dogrulamasi biten metin gelene kadar kullaniciya bos bir kabuk
+  # gosteriliyordu. Fonksiyon sayisi ARTMAMISTIR (18).
+  assert_current_budget("R/server_handler_true_streaming.R", 707L, 18L)
   assert_current_budget("R/helpers_llm_true_streaming_worker.R", 80L, 1L)
 
   # Yönetişim katmanı (seam kayıt defteri + frontend bölge haritası) saf veri
@@ -343,8 +347,17 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   assert_current_budget("R/helpers_pk_entity_mention.R", 150L, 5L)
   assert_current_budget("R/helpers_pk_entity_alias.R", 170L, 4L)
   assert_current_budget("R/helpers_pk_entity_score.R", 400L, 16L)
-  assert_current_budget("R/helpers_pk_entity_scan.R", 400L, 13L)
-  assert_current_budget("R/helpers_pk_entity_resolver.R", 680L, 17L)
+  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 400 -> 408 satir (OLCULEN).
+  # `.pk_entity_merge_mention_matches()` artik `list(records =, truncated =)`
+  # dondurur; kirpilmis bir anim taramasi eskiden SESSIZCE tam tarama gibi
+  # davraniyordu. Fonksiyon sayisi ARTMAMISTIR (11).
+  assert_current_budget("R/helpers_pk_entity_scan.R", 408L, 13L)
+  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 680 -> 702 satir (OLCULEN).
+  # (a) Kirpilmis taramada `allow_all` artik FALSE (eksik kumeyi "tumu" gibi
+  # sunmak yanlis toplam uretiyordu); (b) `refinement` rolu icin 7. kural
+  # (aciklama ile `unfiltered`) eklendi -- daralticidan ibaret bir anim TUM
+  # analizi durduruyordu. Fonksiyon sayisi ARTMAMISTIR (15).
+  assert_current_budget("R/helpers_pk_entity_resolver.R", 702L, 17L)
   assert_current_budget("R/helpers_pk_entity_history.R", 520L, 17L)
   # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 270 -> 284 satir (OLCULEN).
   # Karakter OLMAYAN sutunda varlik filtresi artik SESSIZCE atlanmaz; bir
@@ -425,7 +438,11 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # gore dogrulanir -- model kume disi bir kimlik uydurdugunda eskiden sessizce
   # kabul ediliyordu; (b) iptal `PK_SELECT_STATUS_CANCELLED` dondurur.
   # Fonksiyon sayisi ARTMAMISTIR (22).
-  assert_current_budget("R/helpers_pk_query_selection_ai.R", 611L, 22L)
+  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 611 -> 613 satir (OLCULEN).
+  # Tohum (`seed`) artik KUTUPHANE kimlik kumesine gore dogrulanir; kutuphane
+  # disi bir tohum eskiden gecerli secim gibi ilerliyordu. Fonksiyon sayisi
+  # ARTMAMISTIR (22).
+  assert_current_budget("R/helpers_pk_query_selection_ai.R", 613L, 22L)
   assert_current_budget("R/helpers_pk_query_selection_apply.R", 320L, 14L)
 
   # PR #705 dengeleme (inceleme borcu kok neden duzeltmeleri). Bu uc butce
@@ -443,7 +460,11 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # `suppressWarnings(as.integer(...)[1])` ile korunur; cok elemanli bir ad ya
   # da sayisal olmayan bir indeks `if` icinde kosul uzunlugu hatasi firlatiyor
   # ve TUM secimi dusuruyordu. Fonksiyon sayisi AYNI (4).
-  assert_current_budget("R/helpers_pk_analysis_ai_selector.R", 167L, 4L)
+  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 167 -> 173 satir (OLCULEN).
+  # Liste degerli `match_id` `as.integer()` oncesi REDDEDILIR; aksi halde
+  # coklu elemanli bir model yaniti kosul uzunlugu hatasi firlatiyordu.
+  # Fonksiyon sayisi AYNI (4).
+  assert_current_budget("R/helpers_pk_analysis_ai_selector.R", 173L, 4L)
 
   # Varlık manifesti VERİ/DOĞRULAYICI/RENDER olarak üç dosyaya bölündü
   # (config_ui_asset_zones.R deseni): config_ui_assets.R 690 satırdan VERİ-odaklı

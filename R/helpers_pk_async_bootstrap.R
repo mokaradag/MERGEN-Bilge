@@ -416,7 +416,10 @@ pk_async_worker_session <- function(request) {
   }
 
   # D11 devralınan varlık bağlamı vekile de kurulur (sanitize edilmiş biçim).
-  duz <- tryCatch(.pk_async_plain_user_data(request$user_session),  # ALAN ADI `user_session`'DIR; `user_session_snapshot` kurucunun PARAMETRE adidir ve istekte BULUNMAZ (devralinan varlik kisiti isciye HIC kurulmuyordu)
+  # ALAN ADI `user_session`'DIR: `user_session_snapshot` kurucunun PARAMETRE
+  # adıdır ve istekte BULUNMAZ; yanlış ad okunduğunda devralınan varlık kısıtı
+  # işçiye HİÇ kurulmuyordu.
+  duz <- tryCatch(.pk_async_plain_user_data(request$user_session),
                   error = function(e) NULL)
   if (is.list(duz) && is.list(duz[["pk_entity_prior_context"]])) {
     ud[["pk_entity_prior_context"]] <- duz[["pk_entity_prior_context"]]

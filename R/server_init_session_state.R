@@ -198,8 +198,16 @@ pk_filter_observation_clear <- function(request_id = NULL, question = NULL) {
     )
   }
 
+  # TÜRKÇE DESENLERDE BAYT EŞLEŞMESİ KULLANILMAZ.
+  #
+  # `useBytes = TRUE`, "Veritabanı Hatası" gibi çok baytlı bir deseni metnin
+  # KODLAMA İŞARETİNDEN bağımsız ham baytlarla karşılaştırır: desen yerli
+  # (WINDOWS-1254) işaretliyken metin UTF-8 işaretliyse (ya da tersi) eşleşme
+  # SESSİZCE kaçar ve gerçek bir DB hatası "uygulama hatası" sayılıp telemetri
+  # için ikinci bir bağlantı açılırdı. Her iki taraf da UTF-8'e sabitlenir.
+  metin_utf8 <- enc2utf8(text)
   any(vapply(patterns, function(pattern) {
-    grepl(pattern, text, fixed = TRUE, useBytes = TRUE)
+    grepl(enc2utf8(pattern), metin_utf8, fixed = TRUE)
   }, logical(1)))
 }
 
@@ -279,8 +287,10 @@ pk_hook_single_exit_fix_install <- function() {
       return(result)
     }
 
+    # `conditionMessage()` SKALER OLMAYABİLİR: çok elemanlı bir koşul mesajı
+    # aşağıdaki `grepl()`/`if()` zincirini hata işleyicinin İÇİNDE düşürürdü.
     response_text <- if (is_exception) {
-      conditionMessage(result)
+      .pk_hook_scalar_text(conditionMessage(result))
     } else if (is.character(result)) {
       .pk_hook_scalar_text(result)
     } else {

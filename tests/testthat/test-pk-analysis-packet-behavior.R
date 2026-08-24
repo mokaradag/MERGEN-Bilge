@@ -18,7 +18,7 @@
   env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
 
   for (dosya in c("helpers_pk_config.R", "helpers_pk_text_turkish.R",
-                  "helpers_pk_prompt_budget.R", "helpers_pk_precision.R", "helpers_pk_packet_stats.R",
+                  "helpers_pk_prompt_budget.R", "helpers_pk_precision.R", "helpers_pk_packet_stats.R", "helpers_pk_packet_context_facts.R",
                   "helpers_pk_analysis_packet.R", "helpers_pk_packet_render.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = env)
   }
@@ -72,7 +72,7 @@ test_that("D19: sayilar bilimsel gosterime DUSMEZ ve yerelden bagimsizdir", {
 })
 
 test_that("D19: paket metni capture.output/print kullanmaz", {
-  for (dosya in c("R/helpers_pk_packet_stats.R", "R/helpers_pk_analysis_packet.R",
+  for (dosya in c("R/helpers_pk_packet_stats.R", "R/helpers_pk_packet_context_facts.R", "R/helpers_pk_analysis_packet.R",
                   "R/helpers_pk_packet_render.R")) {
     kod <- .pk_packet_code_only(dosya)
     expect_false(grepl("capture.output", kod, fixed = TRUE, useBytes = TRUE),
@@ -301,8 +301,12 @@ test_that("D17: ilk-K disinda kalan degerler 'Diger' olarak toplanir", {
   # inceleme bulgusu: "Diğer" artık yalnızca kaç FARKLI değer kaldığını
   # değil, KAÇ SATIR tuttuğunu ve payını da söyler (uzun kuyruk sayısız bir
   # dipnot olarak görünemez).
-  expect_true(grepl("Diger (15 deger, 15 satir, %60,0)",
-                    env$pk_packet_render(paket, 200000L)$text, fixed = TRUE))
+  # Her sayı KENDİ `[fact:...]` işaretini taşır (dosya sözleşmesi): işaretsiz
+  # basılan bir sayı `block` kipinde köksüz iddia sayılıp yanıtı düşürüyordu.
+  metin <- env$pk_packet_render(paket, 200000L)$text
+  expect_true(grepl("Diger (15 deger [fact:", metin, fixed = TRUE))
+  expect_true(grepl("15 satir [fact:", metin, fixed = TRUE))
+  expect_true(grepl("%60,0 [fact:", metin, fixed = TRUE))
 })
 
 # --- D18: konumsal yanli olmayan ornek ----------------------------------------

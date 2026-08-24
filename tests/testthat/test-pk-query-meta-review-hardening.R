@@ -256,7 +256,7 @@ test_that("kararlı sorgu kimliği ve metadata katman şekli zorunludur", {
       auto = list(), local = "bozuk", curated = list(q001 = .review_meta()),
       aliases = list(), registry = .review_registry()
     ),
-    "pk_query_meta_local adlandirilmis liste"
+    "pk_query_meta_local adlandırılmış liste"
   )
 })
 
@@ -626,7 +626,7 @@ test_that("PK_META_MAX_DECIMALS işleyicilerin gerçek kırpma sınırıyla ayn�
   # sıfır uzunluklu değerde de düşen bir test kopyası, kaynaklanan üretim
   # dosyalarını FARKLI bir dala sokar ve iddia üretimden sapabilir.
   ortam$`%||%` <- function(a, b) if (is.null(a)) b else a
-  for (.pk705_dosya in c("helpers_pk_precision.R", "helpers_pk_packet_stats.R")) source(file.path(repo_root, "R", .pk705_dosya), encoding = "UTF-8", local = ortam)
+  for (.pk_kaynak_dosya in c("helpers_pk_precision.R", "helpers_pk_packet_stats.R")) source(file.path(repo_root, "R", .pk_kaynak_dosya), encoding = "UTF-8", local = ortam)
 
   # İşleyici sınırın ÜSTÜNDEKİ bir isteği kırpar; sınırda ise kırpmaz.
   sinirda <- ortam$pk_fmt_number(1 / 3, PK_META_MAX_DECIMALS)

@@ -29,7 +29,7 @@
 #           KULLANILMAZ; tüm olgular SENTETİKtir.
 # ==============================================================================
 
-# DOSYA KAPSAMINDA DA TANIMLIDIR. `.prov705_fact()` dosya kapsamında tanımlıdır
+# DOSYA KAPSAMINDA DA TANIMLIDIR. `.prov_fp_fact()` dosya kapsamında tanımlıdır
 # ve `%||%` ifadesini TEST DOSYASI ortamında değerlendirir; yalnızca `env`
 # içinde tanımlamak, operatörün paylaşılan testthat ortamına BAŞKA bir dosyanın
 # yan etkisiyle gelmesine bağlı kalırdı. Bu dosya TEK BAŞINA çalıştırıldığında
@@ -39,7 +39,7 @@ if (!exists("%||%", mode = "function", inherits = TRUE)) {
   `%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
 }
 
-.prov705_env <- function() {
+.prov_fp_env <- function() {
   env <- new.env(parent = globalenv())
   kok <- resolve_repo_root_for_tests()
   env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
@@ -54,7 +54,7 @@ if (!exists("%||%", mode = "function", inherits = TRUE)) {
 }
 
 # Sentetik olgu kurucusu. Üretim metadatası veya gerçek sütun adı kullanılmaz.
-.prov705_fact <- function(id, value, unit = NULL, aggregation = NULL,
+.prov_fp_fact <- function(id, value, unit = NULL, aggregation = NULL,
                           kind = NULL, column = NULL) {
   olgu <- list(fact_id = id, value = value, column = column %||% "SentetikSutun")
   if (!is.null(unit)) olgu$unit <- unit
@@ -63,7 +63,7 @@ if (!exists("%||%", mode = "function", inherits = TRUE)) {
   olgu
 }
 
-.prov705_reasons <- function(sonuc) {
+.prov_fp_reasons <- function(sonuc) {
   sort(unique(vapply(sonuc$mismatches %||% list(),
                      function(m) as.character(m$reason %||% "")[1], character(1))))
 }
@@ -73,8 +73,8 @@ if (!exists("%||%", mode = "function", inherits = TRUE)) {
 # ---------------------------------------------------------------------------
 
 test_that("Türkçe binlik ayıraçlı sayı doğru ayrıştırılır ve uyuşmazlık üretmez", {
-  env <- .prov705_env()
-  olgular <- list(.prov705_fact("gecikme_sayisi", 15574, unit = "adet",
+  env <- .prov_fp_env()
+  olgular <- list(.prov_fp_fact("gecikme_sayisi", 15574, unit = "adet",
                                 aggregation = "count", kind = "context"))
 
   sonuc <- env$pk_numeric_provenance_validate(
@@ -88,8 +88,8 @@ test_that("Türkçe binlik ayıraçlı sayı doğru ayrıştırılır ve uyuşma
 })
 
 test_that("ondalık virgüllü Türkçe sayı da doğru eşleşir", {
-  env <- .prov705_env()
-  olgular <- list(.prov705_fact("oran", 61.3, unit = "%"))
+  env <- .prov_fp_env()
+  olgular <- list(.prov_fp_fact("oran", 61.3, unit = "%"))
 
   sonuc <- env$pk_numeric_provenance_validate(
     "Tamamlanma orani %61,3 [fact:oran] seviyesindedir.", olgular
@@ -103,8 +103,8 @@ test_that("ondalık virgüllü Türkçe sayı da doğru eşleşir", {
 # ---------------------------------------------------------------------------
 
 test_that("olgunun beyan ettiği birim doğru yazıldığında uyuşmazlık yoktur", {
-  env <- .prov705_env()
-  olgular <- list(.prov705_fact("kalan_saat", 3783, unit = "saat", aggregation = "sum"))
+  env <- .prov_fp_env()
+  olgular <- list(.prov_fp_fact("kalan_saat", 3783, unit = "saat", aggregation = "sum"))
 
   sonuc <- env$pk_numeric_provenance_validate(
     "Toplam kalan is 3.783 saat [fact:kalan_saat] olarak hesaplandi.", olgular
@@ -118,37 +118,37 @@ test_that("olgunun beyan ettiği birim doğru yazıldığında uyuşmazlık yokt
 # ---------------------------------------------------------------------------
 
 test_that("yanlış birim hâlâ unit_mismatch olarak yakalanır", {
-  env <- .prov705_env()
-  olgular <- list(.prov705_fact("kalan_saat", 3783, unit = "saat", aggregation = "sum"))
+  env <- .prov_fp_env()
+  olgular <- list(.prov_fp_fact("kalan_saat", 3783, unit = "saat", aggregation = "sum"))
 
   sonuc <- env$pk_numeric_provenance_validate(
     "Toplam kalan is 3.783 gun [fact:kalan_saat] olarak hesaplandi.", olgular
   )
 
-  expect_true("unit_mismatch" %in% .prov705_reasons(sonuc))
+  expect_true("unit_mismatch" %in% .prov_fp_reasons(sonuc))
 })
 
 test_that("yüzde olguyu mutlak sayı gibi sunmak yakalanır", {
-  env <- .prov705_env()
-  olgular <- list(.prov705_fact("oran", 61.3, unit = "%"))
+  env <- .prov_fp_env()
+  olgular <- list(.prov_fp_fact("oran", 61.3, unit = "%"))
 
   sonuc <- env$pk_numeric_provenance_validate(
     "Deger 61,3 [fact:oran] olarak olculdu.", olgular
   )
 
-  expect_true("unit_missing" %in% .prov705_reasons(sonuc))
+  expect_true("unit_missing" %in% .prov_fp_reasons(sonuc))
 })
 
 test_that("birimsiz ÖLÇÜYE ölçek taşıyan birim uydurmak yakalanır", {
-  env <- .prov705_env()
+  env <- .prov_fp_env()
   # Sayım DEĞİL: kind/aggregation beyan edilmemiş sıradan bir ölçü.
-  olgular <- list(.prov705_fact("ham_deger", 120))
+  olgular <- list(.prov_fp_fact("ham_deger", 120))
 
   sonuc <- env$pk_numeric_provenance_validate(
     "Sonuc 120 saat [fact:ham_deger] olarak bulundu.", olgular
   )
 
-  expect_true("unit_mismatch" %in% .prov705_reasons(sonuc))
+  expect_true("unit_mismatch" %in% .prov_fp_reasons(sonuc))
 })
 
 # ---------------------------------------------------------------------------
@@ -156,8 +156,8 @@ test_that("birimsiz ÖLÇÜYE ölçek taşıyan birim uydurmak yakalanır", {
 # ---------------------------------------------------------------------------
 
 test_that("işaretsiz sayısal iddia hâlâ missing_fact_marker üretir", {
-  env <- .prov705_env()
-  olgular <- list(.prov705_fact("toplam", 27028, unit = "adet",
+  env <- .prov_fp_env()
+  olgular <- list(.prov_fp_fact("toplam", 27028, unit = "adet",
                                 aggregation = "count", kind = "context"))
 
   sonuc <- env$pk_numeric_provenance_validate(
@@ -165,7 +165,7 @@ test_that("işaretsiz sayısal iddia hâlâ missing_fact_marker üretir", {
     olgular
   )
 
-  expect_true("missing_fact_marker" %in% .prov705_reasons(sonuc))
+  expect_true("missing_fact_marker" %in% .prov_fp_reasons(sonuc))
   # Alintili olan sayi uyusmazlik URETMEZ.
   expect_length(Filter(function(m) identical(m$reason, "missing_fact_marker"),
                        sonuc$mismatches), 1L)
@@ -176,29 +176,29 @@ test_that("işaretsiz sayısal iddia hâlâ missing_fact_marker üretir", {
 # ---------------------------------------------------------------------------
 
 test_that("olguyla uyuşmayan sayı value_mismatch üretir", {
-  env <- .prov705_env()
-  olgular <- list(.prov705_fact("toplam", 27028, unit = "adet",
+  env <- .prov_fp_env()
+  olgular <- list(.prov_fp_fact("toplam", 27028, unit = "adet",
                                 aggregation = "count", kind = "context"))
 
   sonuc <- env$pk_numeric_provenance_validate(
     "Toplam 27.029 adet [fact:toplam] kayit bulundu.", olgular
   )
 
-  nedenler <- .prov705_reasons(sonuc)
+  nedenler <- .prov_fp_reasons(sonuc)
   expect_true(length(nedenler) > 0L)
   expect_false(identical(nedenler, "missing_fact_marker"))
 })
 
 test_that("var olmayan olgu kimliği unknown_fact üretir", {
-  env <- .prov705_env()
-  olgular <- list(.prov705_fact("toplam", 10, unit = "adet",
+  env <- .prov_fp_env()
+  olgular <- list(.prov_fp_fact("toplam", 10, unit = "adet",
                                 aggregation = "count", kind = "context"))
 
   sonuc <- env$pk_numeric_provenance_validate(
     "Deger 10 adet [fact:olmayan_olgu] seklindedir.", olgular
   )
 
-  expect_true("unknown_fact" %in% .prov705_reasons(sonuc))
+  expect_true("unknown_fact" %in% .prov_fp_reasons(sonuc))
 })
 
 # ---------------------------------------------------------------------------
@@ -206,13 +206,13 @@ test_that("var olmayan olgu kimliği unknown_fact üretir", {
 # ---------------------------------------------------------------------------
 
 test_that("çok sayıda alıntı doğru olgulara eşlenir ve karışmaz", {
-  env <- .prov705_env()
+  env <- .prov_fp_env()
   olgular <- list(
-    .prov705_fact("a", 15574, unit = "adet", aggregation = "count", kind = "context"),
-    .prov705_fact("b", 27028, unit = "adet", aggregation = "count", kind = "context"),
-    .prov705_fact("c", 3783, unit = "saat", aggregation = "sum"),
-    .prov705_fact("d", 50045, unit = "adet", aggregation = "count", kind = "context"),
-    .prov705_fact("e", 46385, unit = "adet", aggregation = "count", kind = "context")
+    .prov_fp_fact("a", 15574, unit = "adet", aggregation = "count", kind = "context"),
+    .prov_fp_fact("b", 27028, unit = "adet", aggregation = "count", kind = "context"),
+    .prov_fp_fact("c", 3783, unit = "saat", aggregation = "sum"),
+    .prov_fp_fact("d", 50045, unit = "adet", aggregation = "count", kind = "context"),
+    .prov_fp_fact("e", 46385, unit = "adet", aggregation = "count", kind = "context")
   )
   metin <- paste0(
     "Geciken 15.574 adet [fact:a], toplam 27.028 adet [fact:b], ",
@@ -229,10 +229,10 @@ test_that("çok sayıda alıntı doğru olgulara eşlenir ve karışmaz", {
 })
 
 test_that("sayılar çapraz eşlendiğinde uyuşmazlık raporlanır", {
-  env <- .prov705_env()
+  env <- .prov_fp_env()
   olgular <- list(
-    .prov705_fact("a", 15574, unit = "adet", aggregation = "count", kind = "context"),
-    .prov705_fact("b", 27028, unit = "adet", aggregation = "count", kind = "context")
+    .prov_fp_fact("a", 15574, unit = "adet", aggregation = "count", kind = "context"),
+    .prov_fp_fact("b", 27028, unit = "adet", aggregation = "count", kind = "context")
   )
 
   # Degerler BILEREK takas edilmistir.
@@ -248,8 +248,8 @@ test_that("sayılar çapraz eşlendiğinde uyuşmazlık raporlanır", {
 # ---------------------------------------------------------------------------
 
 test_that("farklı binlik ayıraç yazımları aynı değere çözülür", {
-  env <- .prov705_env()
-  olgular <- list(.prov705_fact("v", 50045, unit = "adet",
+  env <- .prov_fp_env()
+  olgular <- list(.prov_fp_fact("v", 50045, unit = "adet",
                                 aggregation = "count", kind = "context"))
 
   # Turkce yazim binlik ayraci NOKTAdir; bosluk/NBSP desteklenmez (iki ayri
@@ -269,24 +269,24 @@ test_that("farklı binlik ayıraç yazımları aynı değere çözülür", {
 # ---------------------------------------------------------------------------
 
 test_that("tam sayı ve ondalık gösterim birbirine karıştırılmaz", {
-  env <- .prov705_env()
+  env <- .prov_fp_env()
 
   tam <- env$pk_numeric_provenance_validate(
     "Deger 1.250 adet [fact:t] olarak olculdu.",
-    list(.prov705_fact("t", 1250, unit = "adet", aggregation = "count", kind = "context"))
+    list(.prov_fp_fact("t", 1250, unit = "adet", aggregation = "count", kind = "context"))
   )
   expect_length(tam$mismatches, 0L)
 
   ondalik <- env$pk_numeric_provenance_validate(
     "Deger 1,25 saat [fact:o] olarak olculdu.",
-    list(.prov705_fact("o", 1.25, unit = "saat", aggregation = "mean"))
+    list(.prov_fp_fact("o", 1.25, unit = "saat", aggregation = "mean"))
   )
   expect_length(ondalik$mismatches, 0L)
 
   # BELIRSIZ OLMAYAN yazim: 12.500 (on iki bin bes yuz) 1,25 DEGILDIR.
   yanlis <- env$pk_numeric_provenance_validate(
     "Deger 12.500 saat [fact:o] olarak olculdu.",
-    list(.prov705_fact("o", 1.25, unit = "saat", aggregation = "mean"))
+    list(.prov_fp_fact("o", 1.25, unit = "saat", aggregation = "mean"))
   )
   expect_true(length(yanlis$mismatches) > 0L)
 })
@@ -295,17 +295,17 @@ test_that("tam sayı ve ondalık gösterim birbirine karıştırılmaz", {
 # dogrulayici HER IKI okumayi da kabul eder. Bu BILINCLI bir sozlesmedir:
 # tek bir okumayi dayatmak, sade bicimli mesru alintilari reddederdi.
 test_that("tek noktalı gruplama iki okumayı da kabul eder (belirsizlik sözleşmesi)", {
-  env <- .prov705_env()
+  env <- .prov_fp_env()
 
   binli <- env$pk_numeric_provenance_validate(
     "Deger 1.250 saat [fact:o] olarak olculdu.",
-    list(.prov705_fact("o", 1250, unit = "saat", aggregation = "sum"))
+    list(.prov_fp_fact("o", 1250, unit = "saat", aggregation = "sum"))
   )
   expect_length(binli$mismatches, 0L)
 
   ondalikli <- env$pk_numeric_provenance_validate(
     "Deger 1.250 saat [fact:o] olarak olculdu.",
-    list(.prov705_fact("o", 1.25, unit = "saat", aggregation = "mean"))
+    list(.prov_fp_fact("o", 1.25, unit = "saat", aggregation = "mean"))
   )
   expect_length(ondalikli$mismatches, 0L)
 })
@@ -315,11 +315,11 @@ test_that("tek noktalı gruplama iki okumayı da kabul eder (belirsizlik sözle�
 # ---------------------------------------------------------------------------
 
 test_that("desteklenen birimler birbirinden ayırt edilir", {
-  env <- .prov705_env()
+  env <- .prov_fp_env()
   birimler <- c("adet", "saat", "gun", "%", "TL")
 
   for (dogru in birimler) {
-    olgular <- list(.prov705_fact("x", 12, unit = dogru))
+    olgular <- list(.prov_fp_fact("x", 12, unit = dogru))
     metin <- if (identical(dogru, "%")) {
       "Deger %12 [fact:x] olarak olculdu."
     } else {
@@ -334,9 +334,9 @@ test_that("desteklenen birimler birbirinden ayırt edilir", {
     yanlis <- setdiff(c("saat", "gun", "TL"), dogru)[1]
     sonuc <- env$pk_numeric_provenance_validate(
       sprintf("Deger 12 %s [fact:x] olarak olculdu.", yanlis),
-      list(.prov705_fact("x", 12, unit = dogru))
+      list(.prov_fp_fact("x", 12, unit = dogru))
     )
-    expect_true("unit_mismatch" %in% .prov705_reasons(sonuc),
+    expect_true("unit_mismatch" %in% .prov_fp_reasons(sonuc),
                 info = sprintf("%s yerine %s", dogru, yanlis))
   }
 })
@@ -346,13 +346,13 @@ test_that("desteklenen birimler birbirinden ayırt edilir", {
 # ---------------------------------------------------------------------------
 
 test_that("tamamen doğru üretim benzeri yanıt sıfır uyuşmazlık oranı verir", {
-  env <- .prov705_env()
+  env <- .prov_fp_env()
   olgular <- list(
-    .prov705_fact("f1", 15574, unit = "adet", aggregation = "count", kind = "context"),
-    .prov705_fact("f2", 27028, unit = "adet", aggregation = "count", kind = "context"),
-    .prov705_fact("f3", 3783, unit = "adet", aggregation = "count", kind = "context"),
-    .prov705_fact("f4", 50045, unit = "adet", aggregation = "count", kind = "context"),
-    .prov705_fact("f5", 46385, unit = "adet", aggregation = "count", kind = "context")
+    .prov_fp_fact("f1", 15574, unit = "adet", aggregation = "count", kind = "context"),
+    .prov_fp_fact("f2", 27028, unit = "adet", aggregation = "count", kind = "context"),
+    .prov_fp_fact("f3", 3783, unit = "adet", aggregation = "count", kind = "context"),
+    .prov_fp_fact("f4", 50045, unit = "adet", aggregation = "count", kind = "context"),
+    .prov_fp_fact("f5", 46385, unit = "adet", aggregation = "count", kind = "context")
   )
 
   # Uretimdeki gibi MARKDOWN VURGUSU, noktalama ve Turkce kesme eki icerir.
@@ -375,8 +375,8 @@ test_that("tamamen doğru üretim benzeri yanıt sıfır uyuşmazlık oranı ver
 })
 
 test_that("vurgu ve noktalama aynı sayıyı İKİ KEZ saydırmaz", {
-  env <- .prov705_env()
-  olgular <- list(.prov705_fact("f", 15574, unit = "adet",
+  env <- .prov_fp_env()
+  olgular <- list(.prov_fp_fact("f", 15574, unit = "adet",
                                 aggregation = "count", kind = "context"))
 
   sonuc <- env$pk_numeric_provenance_validate(
@@ -393,8 +393,8 @@ test_that("vurgu ve noktalama aynı sayıyı İKİ KEZ saydırmaz", {
 # ---------------------------------------------------------------------------
 
 test_that("uydurulmuş ek sayılar hâlâ yakalanır (halüsinasyon koruması)", {
-  env <- .prov705_env()
-  olgular <- list(.prov705_fact("f", 100, unit = "adet",
+  env <- .prov_fp_env()
+  olgular <- list(.prov_fp_fact("f", 100, unit = "adet",
                                 aggregation = "count", kind = "context"))
 
   sonuc <- env$pk_numeric_provenance_validate(
@@ -403,7 +403,7 @@ test_that("uydurulmuş ek sayılar hâlâ yakalanır (halüsinasyon koruması)",
     olgular
   )
 
-  expect_true("missing_fact_marker" %in% .prov705_reasons(sonuc))
+  expect_true("missing_fact_marker" %in% .prov_fp_reasons(sonuc))
   expect_true(sonuc$rate > 0)
 })
 
@@ -412,14 +412,14 @@ test_that("uydurulmuş ek sayılar hâlâ yakalanır (halüsinasyon koruması)",
 # ---------------------------------------------------------------------------
 
 test_that("toplamı ortalama diye sunmak aggregation_mismatch üretir", {
-  env <- .prov705_env()
-  olgular <- list(.prov705_fact("f", 500, unit = "saat", aggregation = "sum"))
+  env <- .prov_fp_env()
+  olgular <- list(.prov_fp_fact("f", 500, unit = "saat", aggregation = "sum"))
 
   sonuc <- env$pk_numeric_provenance_validate(
     "Ortalama 500 saat [fact:f] olarak hesaplandi.", olgular
   )
 
-  expect_true("aggregation_mismatch" %in% .prov705_reasons(sonuc))
+  expect_true("aggregation_mismatch" %in% .prov_fp_reasons(sonuc))
 })
 
 # ---------------------------------------------------------------------------
@@ -427,8 +427,8 @@ test_that("toplamı ortalama diye sunmak aggregation_mismatch üretir", {
 # ---------------------------------------------------------------------------
 
 test_that("block kipi gerçek uyuşmazlıkta hâlâ engeller", {
-  env <- .prov705_env()
-  olgular <- list(.prov705_fact("f", 100, unit = "adet",
+  env <- .prov_fp_env()
+  olgular <- list(.prov_fp_fact("f", 100, unit = "adet",
                                 aggregation = "count", kind = "context"))
 
   sonuc <- env$pk_numeric_provenance_apply(
@@ -441,8 +441,8 @@ test_that("block kipi gerçek uyuşmazlıkta hâlâ engeller", {
 })
 
 test_that("block kipi DOĞRU yanıtı engellemez", {
-  env <- .prov705_env()
-  olgular <- list(.prov705_fact("f", 100, unit = "adet",
+  env <- .prov_fp_env()
+  olgular <- list(.prov_fp_fact("f", 100, unit = "adet",
                                 aggregation = "count", kind = "context"))
 
   sonuc <- env$pk_numeric_provenance_apply(
@@ -459,8 +459,8 @@ test_that("block kipi DOĞRU yanıtı engellemez", {
 # ---------------------------------------------------------------------------
 
 test_that("hiçbir bölüm/şablon köken doğrulamasından muaf tutulmaz", {
-  env <- .prov705_env()
-  olgular <- list(.prov705_fact("f", 100, unit = "adet",
+  env <- .prov_fp_env()
+  olgular <- list(.prov_fp_fact("f", 100, unit = "adet",
                                 aggregation = "count", kind = "context"))
 
   # Baslik/tablo/kod blogu gibi "deterministik gorunumlu" bolumler de taranir.
@@ -472,7 +472,7 @@ test_that("hiçbir bölüm/şablon köken doğrulamasından muaf tutulmaz", {
 
   sonuc <- env$pk_numeric_provenance_validate(metin, olgular)
 
-  expect_true("missing_fact_marker" %in% .prov705_reasons(sonuc))
+  expect_true("missing_fact_marker" %in% .prov_fp_reasons(sonuc))
 })
 
 test_that("köken doğrulaması kaynak dosyada muafiyet listesi TAŞIMAZ", {

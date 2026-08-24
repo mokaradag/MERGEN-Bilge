@@ -5,7 +5,7 @@
 #           tarayıcı, SSO veya ağ ERİŞİMİ YOKTUR.
 # ==============================================================================
 
-.p3_705_source <- function(...) {
+.p3_regression_source <- function(...) {
   kok <- resolve_repo_root_for_tests()
   ortam <- new.env(parent = globalenv())
   if (!exists("%||%", envir = ortam, mode = "function", inherits = TRUE)) {
@@ -18,7 +18,7 @@
 }
 
 test_that("geçersiz havuz boyutu NA yerine varsayılana düşer", {
-  ortam <- .p3_705_source("helpers_db_pool.R")
+  ortam <- .p3_regression_source("helpers_db_pool.R")
 
   eski <- Sys.getenv(c("MERGEN_DB_POOL_MAX_SIZE", "MERGEN_DB_POOL_MIN_SIZE"),
                      unset = NA_character_, names = TRUE)
@@ -45,7 +45,7 @@ test_that("geçersiz havuz boyutu NA yerine varsayılana düşer", {
 })
 
 test_that("kodlama kurtarma vektörel geçişte aynı sonucu üretir", {
-  ortam <- .p3_705_source("helpers_pk_analysis_core_impl.R")
+  ortam <- .p3_regression_source("helpers_pk_analysis_core_impl.R")
 
   latin_bayt <- rawToChar(as.raw(c(0x54, 0xFC, 0x72)))  # WINDOWS-1254 "Tür"
   girdi <- c("Türkçe", NA, "", "plain", latin_bayt)
@@ -65,7 +65,7 @@ test_that("kodlama kurtarma vektörel geçişte aynı sonucu üretir", {
 })
 
 test_that("çözülemeyen sistem saat dilimi as.Date'e NA olarak GEÇMEZ", {
-  ortam <- .p3_705_source("helpers_pk_analysis_packet.R")
+  ortam <- .p3_regression_source("helpers_pk_analysis_packet.R")
 
   # `Sys.timezone()` platform saat dilimi çözülemediğinde `NA_character_`
   # döner ve depo `%||%` operatörü (yalnız `is.null`) NA'yı geçirir.
@@ -102,7 +102,7 @@ test_that("çözülemeyen sistem saat dilimi as.Date'e NA olarak GEÇMEZ", {
 })
 
 test_that("RLS durdurma mesajı son tarihi kullanıcı iptali olarak raporlamaz", {
-  ortam <- .p3_705_source("helpers_pk_analysis_security_summary.R")
+  ortam <- .p3_regression_source("helpers_pk_analysis_security_summary.R")
 
   ortam$pk_async_halt_message <- function(status) {
     if (identical(as.character(status)[1], "deadline")) "ZAMAN_ASIMI" else "IPTAL"
@@ -129,7 +129,7 @@ test_that("RLS durdurma mesajı son tarihi kullanıcı iptali olarak raporlamaz"
 })
 
 test_that("atomik kimlik çözümleyici sonucu derin analizi düşürmez", {
-  ortam <- .p3_705_source("helpers_deep_analysis_sql.R")
+  ortam <- .p3_regression_source("helpers_deep_analysis_sql.R")
 
   # `$` atomik vektörde hata verir; fail-closed kimlik mesajı yutulurdu.
   sonuc <- ortam$pk_deep_resolve_username(NULL, resolver = function(session) FALSE)
@@ -148,7 +148,7 @@ test_that("atomik kimlik çözümleyici sonucu derin analizi düşürmez", {
 })
 
 test_that("küme değerli yetki kapsamı DB satır sırasından bağımsızdır", {
-  ortam <- .p3_705_source("helpers_pk_cache_key.R")
+  ortam <- .p3_regression_source("helpers_pk_cache_key.R")
 
   # İzin sorgularında `ORDER BY` yoktur: aynı yetki bir istekte
   # `c("P1","P2")`, diğerinde `c("P2","P1")` gelebilir.
@@ -172,7 +172,7 @@ test_that("küme değerli yetki kapsamı DB satır sırasından bağımsızdır"
 })
 
 test_that("Türkçe `hayır` yazımı mantıksal yaprağı düşürmez", {
-  ortam <- .p3_705_source("helpers_pk_ascii_tokens.R", "helpers_pk_filter_compile.R")
+  ortam <- .p3_regression_source("helpers_pk_ascii_tokens.R", "helpers_pk_filter_compile.R")
 
   sutun <- c(TRUE, FALSE, TRUE)
   maske <- ortam$.pk_filter_mask_logical(sutun, list(values = "hayır"))
@@ -191,7 +191,7 @@ test_that("Türkçe `hayır` yazımı mantıksal yaprağı düşürmez", {
 })
 
 test_that("kapsayıcı üst sınır YAZ SAATİ geçiş gününde günün tamamını kapsar", {
-  ortam <- .p3_705_source("helpers_pk_ascii_tokens.R", "helpers_pk_filter_compile.R")
+  ortam <- .p3_regression_source("helpers_pk_ascii_tokens.R", "helpers_pk_filter_compile.R")
 
   # Şili 2024-04-06'da bir saat KAZANIR (25 saatlik gün). Sabit `86399.999`
   # saniye eklemek sınırı günün son saatinden ÖNCE bitiriyordu.
@@ -224,7 +224,7 @@ test_that("kapsayıcı üst sınır YAZ SAATİ geçiş gününde günün tamamı
 })
 
 test_that("büyük satır sayıları alt bilgi kurulumunu düşürmez", {
-  ortam <- .p3_705_source("helpers_pk_provenance_peek.R", "helpers_pk_provenance.R")
+  ortam <- .p3_regression_source("helpers_pk_provenance_peek.R", "helpers_pk_provenance.R")
 
   # 2147483647'nin üzerinde `as.integer()` NA + uyarı üretiyor, ardından
   # `if (NA < 0L)` "missing value where TRUE/FALSE needed" hatası veriyordu.
@@ -239,7 +239,7 @@ test_that("büyük satır sayıları alt bilgi kurulumunu düşürmez", {
 })
 
 test_that("her red yolu maskeyi kapatır", {
-  ortam <- .p3_705_source("helpers_pk_ascii_tokens.R", "helpers_pk_filter_policy.R")
+  ortam <- .p3_regression_source("helpers_pk_ascii_tokens.R", "helpers_pk_filter_policy.R")
 
   veri <- data.frame(ProjeAdi = c("ANKA", "ALTAY"), Yil = c(2024, 2024),
                      stringsAsFactors = FALSE)
@@ -259,7 +259,7 @@ test_that("her red yolu maskeyi kapatır", {
 })
 
 test_that("varyant doğrulaması tek sebep için tek bulgu üretir", {
-  ortam <- .p3_705_source(
+  ortam <- .p3_regression_source(
     "helpers_pk_config.R", "helpers_pk_text_turkish.R",
     "helpers_pk_query_meta_schema.R", "helpers_pk_query_meta_access.R",
     "helpers_pk_query_meta_layers.R", "helpers_pk_query_meta.R"

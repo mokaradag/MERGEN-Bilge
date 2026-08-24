@@ -99,12 +99,9 @@ mergen_pk_block_mode_texts <- function(full_response, session, request_id = NULL
       if (!is.na(yedek) && nzchar(yedek)) {
         paste0(yedek, if (!is.na(alt_bilgi)) alt_bilgi else "")
       } else {
-        paste0(
-          "\U000026A0\U0000FE0F **Yanıt doğrulanamadı:** Sayısal iddialar analiz ",
-          "verisine karşı doğrulanamadığı için yanıt gösterilmiyor. Lütfen ",
-          "sorunuzu yeniden gönderin.",
-          if (!is.na(alt_bilgi)) alt_bilgi else ""
-        )
+        # TEK SAHİP: metin `helpers_pk_provenance.R` içindeki sabitten gelir.
+        paste0(PK_PROVENANCE_BLOCK_REFUSAL_TR,
+               if (!is.na(alt_bilgi)) alt_bilgi else "")
       }
     }
   )

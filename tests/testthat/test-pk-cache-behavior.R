@@ -281,3 +281,25 @@ test_that("durum özeti SIR veya anahtar METNİ dışa vermez", {
     expect_true(all(c("entries", "total_bytes", "hit", "miss") %in% names(ozet)))
   })
 })
+
+
+# HAM SQL SONUCU ANALIZ KIPINE BAGLI DEGILDIR: derin analiz ile normal analiz
+# ayni sorgu/RLS/SQL uclusunde AYNI ham cerceveyi paylasabilmelidir. `engine`
+# anahtara girdiginde iki yol birbirinin girdisine ASLA carpmiyordu.
+test_that("ham SQL onbellek anahtari analiz kipinden BAGIMSIZDIR", {
+  skip_if_not(requireNamespace("digest", quietly = TRUE) ||
+              requireNamespace("openssl", quietly = TRUE))
+
+  sorgu <- list(id = "q001", db_target = "primary")
+  rls <- list(authorized = TRUE, username = "tester", role = "USER",
+              allowed_projects = c("P-1"), allowed_depts = NULL)
+  sql <- "SELECT 1 AS a"
+
+  derin <- pk_query_result_cache_key(sorgu, rls, sql, engine = "deep")
+  v1 <- pk_query_result_cache_key(sorgu, rls, sql, engine = "v1")
+  v2 <- pk_query_result_cache_key(sorgu, rls, sql, engine = "v2")
+
+  expect_true(nzchar(derin))
+  expect_identical(derin, v1)
+  expect_identical(derin, v2)
+})

@@ -291,8 +291,17 @@ llmResponseHandlersInit <- function(
           # `req_id` AÇIKÇA verilir: kimliksiz çağrı, bu istek geç bittiğinde
           # DAHA YENİ bir isteğin bekleyen kaydını tüketip onun olgularına göre
           # doğrulanmasına ve alt bilgisini/ekini almasına yol açardı.
+          #
+          # DEKORASYON HATASI TAMAMLANMIŞ YANITI DÜŞÜREMEZ: hata bu noktadan
+          # kaçarsa `add_message_fn()` hiç çalışmaz ve kullanıcı yanıtı kaybeder.
           if (exists("pk_provenance_decorate", mode = "function", inherits = TRUE)) {
-            result$content <- pk_provenance_decorate(result$content, session, request_id = req_id)
+            result$content <- tryCatch(
+              pk_provenance_decorate(result$content, session, request_id = req_id),
+              error = function(e) {
+                cat(sprintf("[PK] Köken alt bilgisi eklenemedi: %s\n", conditionMessage(e)[1]))
+                result$content
+              }
+            )
           }
 
           # AI mesajını ekle

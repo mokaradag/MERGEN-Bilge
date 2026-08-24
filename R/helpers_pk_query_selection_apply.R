@@ -216,7 +216,17 @@ pk_select_query_v2 <- function(prompt, library, chat_history = NULL,
     }
     return(list(
       all_scores = tablo,
-      refusal_message = pk_select_refusal_message(karar),
+      # İPTAL BİR NETLEŞTİRME İSTEĞİ DEĞİLDİR.
+      #
+      # `pk_select_refusal_message()` her mesajın başına "Analiz Seçimi
+      # Netleştirilmeli" başlığını koyar. Kullanıcı Durdur'a bastığında ekranda
+      # seçimini netleştirmesi gerektiğini okuyordu; oysa istek onun isteğiyle
+      # durdurulmuştu ve netleştirilecek bir şey yoktu.
+      refusal_message = if (identical(karar$status, PK_SELECT_STATUS_CANCELLED)) {
+        as.character(karar$message_tr)[1]
+      } else {
+        pk_select_refusal_message(karar)
+      },
       pk_selection = karar,
       pk_chips = karar$chips %||% list()
     ))

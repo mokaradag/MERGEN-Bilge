@@ -36,7 +36,20 @@ serverInitChatRuntime <- function(session, values, settings_data, output,
       } else {
         NULL
       }
-      content <- pk_provenance_decorate(content, session, request_id = etkin_pk_id)
+      # DEKORASYON HATASI TERMİNAL MESAJI DÜŞÜREMEZ.
+      #
+      # Bozuk bir bekleyen kayıt burada hata fırlattığında `chat_add_message()`
+      # hiç çalışmıyor, kullanıcı yanıtı TAMAMEN kaybediyor ve gönderim durumu
+      # takılı kalıyordu. Aynı çağrı `R/server_handler_true_streaming.R` içinde
+      # zaten korumalıdır; sözleşme burada da aynıdır: alt bilgi eklenemezse
+      # SÜSLENMEMİŞ içerik teslim edilir.
+      content <- tryCatch(
+        pk_provenance_decorate(content, session, request_id = etkin_pk_id),
+        error = function(e) {
+          cat(sprintf("[PK] Köken alt bilgisi eklenemedi: %s\n", conditionMessage(e)[1]))
+          content
+        }
+      )
     }
 
     effective_user_id <- resolve_current_user_id()
@@ -106,10 +119,22 @@ serverInitChatRuntime <- function(session, values, settings_data, output,
 # yolların telemetrisi yinelenmez.
 if (exists("pk_analiz_process_request", mode = "function", inherits = TRUE) &&
     !exists(".pk_analiz_process_request_without_exit_observer", inherits = FALSE)) {
-
   .pk_analiz_process_request_without_exit_observer <- get(
     "pk_analiz_process_request", mode = "function", inherits = TRUE
   )
+}
+
+# YEDEK SARMALAYICI YALNIZCA KURULUM YARDIMCISI YOKKEN KURULUR.
+#
+# `pk_hook_single_exit_fix_install()` (R/server_init_session_state.R) HAM
+# çekirdeği sarmalar ve `pk_analiz_process_request`'i AYNI çalışma ortamında
+# yeniden atar. Aşağıdaki sarmalayıcı bu yüzden varsayılan yapılandırmada çağrı
+# zincirinden ÇIKARILIYOR ve gövdesi ULAŞILMAZ kalıyordu: iki kopya zamanla
+# ayrışmış, birinde yapılan düzeltme diğerinde etkisiz kalmıştı. Tek sahip artık
+# kurulum yardımcısıdır; burası yalnızca o yardımcı yoksa devreye giren yedektir.
+if (!exists("pk_hook_single_exit_fix_install", mode = "function", inherits = TRUE) &&
+    exists(".pk_analiz_process_request_without_exit_observer",
+           mode = "function", inherits = FALSE)) {
 
   pk_analiz_process_request <- function(user_prompt, chat_history, session,
                                         stop_check = NULL) {
@@ -161,14 +186,21 @@ if (exists("pk_analiz_process_request", mode = "function", inherits = TRUE) &&
       return(result)
     }
 
-    response_text <- if (is_exception) {
-      conditionMessage(result)
-    } else if (is.character(result)) {
-      as.character(result)[1]
-    } else {
-      as.character(result$content %||% "")[1]
+    # `conditionMessage()` SKALER OLMAYABİLİR: çok elemanlı bir koşul mesajı
+    # `is.na()`/`if()` çağrılarını hata işleyicinin İÇİNDE düşürür, özgün
+    # başarısızlığı gizler ve telemetriyi bastırırdı.
+    .skaler <- function(x) {
+      if (is.null(x) || length(x) == 0L) return("")
+      out <- as.character(x)[1]
+      if (is.na(out)) "" else out
     }
-    if (is.na(response_text)) response_text <- ""
+    response_text <- if (is_exception) {
+      .skaler(conditionMessage(result))
+    } else if (is.character(result)) {
+      .skaler(result)
+    } else {
+      .skaler(result$content)
+    }
 
     stopped <- grepl("İşlem Durduruldu", response_text, fixed = TRUE)
     unauthorized <- grepl("Yetki Hatası", response_text, fixed = TRUE)

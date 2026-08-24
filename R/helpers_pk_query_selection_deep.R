@@ -182,14 +182,51 @@ if (exists(".pk_deep_analysis_process_base", inherits = FALSE)) {
     }
 
     yerel$pk_engine_is_v2 <- function() FALSE
+
+    # DIŞ iptal kapısı, aşağıdaki köprünün KENDİ `stop_check` parametresi
+    # tarafından gölgelenmeden önce yakalanır.
+    dis_stop_check <- stop_check
+
+    # İMZA ÇAĞIRANIN İMZASIYLA AYNI OLMALIDIR.
+    #
+    # `pk_deep_select_multi_queries()` seçiciyi `timeout_sec = <kalan bütçe>` ve
+    # `stop_check = ...` ile çağırır. Köprü bunları KABUL etmezse çağrı "unused
+    # argument" ile düşer; KULLANMAZSA da kalan bütçe sessizce yok sayılırdı.
     yerel$find_multiple_queries_with_ai <- function(prompt, library, owner_session,
-                                                    max_queries = pk_deep_max_queries()) {
+                                                    max_queries = pk_deep_max_queries(),
+                                                    timeout_sec = NULL,
+                                                    stop_check = NULL) {
+      kapi <- if (is.function(stop_check)) stop_check else dis_stop_check
+
+      # KALAN BÜTÇE v2 seçicisine de UYGULANIR: yapılandırmanın kendi
+      # `timeout_sec` değeri istek bütçesinden BÜYÜK olamaz.
+      cfg <- tryCatch(pk_select_config(), error = function(e) NULL)
+      if (is.list(cfg) && isTRUE(cfg$valid) && is.numeric(timeout_sec) &&
+          length(timeout_sec) == 1L && is.finite(timeout_sec)) {
+        cfg$timeout_sec <- max(1L, min(as.numeric(cfg$timeout_sec),
+                                       floor(as.numeric(timeout_sec))))
+      }
+
       durum$multi <- pk_select_queries_v2(
         prompt, library, chat_history,
-        session = owner_session, stop_check = stop_check,
+        session = owner_session, stop_check = kapi, cfg = cfg,
         max_queries = max_queries
       )
       durum$multi$queries %||% list()
+    }
+
+    # `pk_deep_select_multi_queries()` AYRI bir üst düzey fonksiyondur ve KENDİ
+    # sözcüksel ortamı `globalenv()`tir. Gövdesindeki `find_multiple_queries_with_ai`
+    # bu yüzden yukarıdaki v2 köprüsünü DEĞİL küresel v1 seçicisini çözüyordu:
+    # `durum$multi` hiç dolmuyor, v2 iki geçişli seçimi ve commit davranışı
+    # ATLANIYORDU. Fonksiyonun bir KOPYASI `yerel`e bağlanır; bütçe/tavan
+    # kararları AYNEN korunur.
+    if (exists("pk_deep_select_multi_queries", mode = "function",
+               envir = yerel, inherits = TRUE)) {
+      coklu_secici <- get("pk_deep_select_multi_queries", mode = "function",
+                          envir = yerel, inherits = TRUE)
+      environment(coklu_secici) <- yerel
+      yerel$pk_deep_select_multi_queries <- coklu_secici
     }
 
     yerel$select_smart_query <- function(prompt, library, history, ...) {

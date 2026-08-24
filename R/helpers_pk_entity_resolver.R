@@ -409,9 +409,32 @@ pk_entity_resolve <- function(phrase, candidates, aliases = NULL,
     aday_kumesi <- if (length(eslesmeler)) eslesmeler else
       pk_entity_nearest_candidates(phrase, candidates, esikler$max_candidates,
                                    query_meta = query_meta)
+    # KIRPILMIŞ TARAMADA "Tümü" SUNULMAZ.
+    #
+    # Bu dalda küme KANITLANMIŞ biçimde EKSİKTİR: kırpılan adaylar tam da
+    # "Tümü"nün kapsadığını iddia ettiği kümededir. Kullanıcı, hiç görmediği
+    # adayları dışarıda bırakan bir alt kümeyi "Tümü" sanarak seçebilirdi.
     netlestirme <- pk_entity_clarification(
-      aday_kumesi, esikler$max_candidates, allow_all = length(eslesmeler) > 0L
+      aday_kumesi, esikler$max_candidates, allow_all = FALSE
     )
+    # İKİNCİL DARALTMADA KIRPILMA ANALİZİ DURDURMAZ.
+    #
+    # Bu kapı rol ayrımından ÖNCE çalışıyor ve HER ZAMAN `clarify` dönüyordu;
+    # `.pk_entity_apply_leaf()` `clarify`ı her yaprakta HALT'a çeviriyor,
+    # dolayısıyla yüksek kardinaliteli bir İKİNCİL daraltma isteğin tamamını
+    # durduruyordu. Dosyanın kural 7 sözleşmesi bu durumda "filtresiz devam +
+    # AÇIK ifşa" der; kırpılma bilgisi ifşaya eklenir.
+    if (identical(entity_role, "refinement")) {
+      return(.pk_entity_decision(
+        "unfiltered", rule = 7L,
+        message_tr = paste0(
+          "İkincil daraltma ifadesi için adayların TAMAMI karşılaştırılamadı; ",
+          "analiz BU DARALTMA UYGULANMADAN yapıldı."
+        ),
+        scored = puanlar, clarification = netlestirme, thresholds = esikler,
+        plural = cogul, margin = fark, disclose = TRUE, suggestions_only = TRUE
+      ))
+    }
     return(.pk_entity_decision(
       "clarify", rule = 2L,
       message_tr = paste0(

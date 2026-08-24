@@ -75,12 +75,12 @@ pk_select_parse_pass_a <- function(text, library_ids, expected_n = NULL) {
 
   alan <- intersect(c("candidates", "ids", "candidate_ids"), names(ayrisik))
   if (!length(alan)) {
-    return(hata("Gecis A ciktisinda 'candidates' alani yok."))
+    return(hata("Geçiş A çıktısında 'candidates' alanı yok."))
   }
 
   dizi <- pk_select_string_array(ayrisik[[alan[1]]])
   if (!isTRUE(dizi$ok)) {
-    return(hata("'candidates' alani DUZ bir kararli kimlik dizisi olmalidir."))
+    return(hata("'candidates' alanı DÜZ bir kararlı kimlik dizisi olmalıdır."))
   }
 
   # ÇELİŞKİLİ TAKMA ALANLAR REDDEDİLİR: birden fazla ad VARSA eskiden SESSİZCE
@@ -92,7 +92,7 @@ pk_select_parse_pass_a <- function(text, library_ids, expected_n = NULL) {
       ek_dizi <- pk_select_string_array(ayrisik[[ek]])
       if (!isTRUE(ek_dizi$ok) || !identical(ek_dizi$values, dizi$values)) {
         return(hata(sprintf(
-          "Gecis A ciktisi CELISKILI aday alanlari iceriyor: %s",
+          "Geçiş A çıktısı ÇELİŞKİLİ aday alanları içeriyor: %s",
           paste(alan, collapse = ", ")
         )))
       }
@@ -102,7 +102,7 @@ pk_select_parse_pass_a <- function(text, library_ids, expected_n = NULL) {
   ham <- dizi$values
   if (anyDuplicated(ham)) {
     return(hata(sprintf(
-      "'candidates' icinde tekrar eden kimlik var: %s",
+      "'candidates' içinde tekrar eden kimlik var: %s",
       paste(unique(ham[duplicated(ham)]), collapse = ", ")
     )))
   }
@@ -115,13 +115,13 @@ pk_select_parse_pass_a <- function(text, library_ids, expected_n = NULL) {
     )))
   }
 
-  if (!length(ham)) return(hata("Gecis A hic aday kimligi dondurmedi."))
+  if (!length(ham)) return(hata("Geçiş A hiç aday kimliği döndürmedi."))
 
   if (!is.null(expected_n)) {
     beklenen <- as.integer(expected_n)[1]
     if (!is.na(beklenen) && length(ham) != beklenen) {
       return(hata(sprintf(
-        "Gecis A tam olarak %d aday kimligi dondurmelidir; %d dondurdu.",
+        "Geçiş A tam olarak %d aday kimliği döndürmelidir; %d döndürdü.",
         beklenen, length(ham)
       )))
     }
@@ -150,11 +150,11 @@ pk_select_parse_pass_a <- function(text, library_ids, expected_n = NULL) {
 .pk_select_parse_alternates <- function(raw, selected_id, candidate_ids) {
   if (is.null(raw)) {
     return(list(ok = FALSE, values = list(),
-                error = "Gecis B 'alternates' alani zorunludur."))
+                error = "Geçiş B 'alternates' alanı zorunludur."))
   }
   if (!is.list(raw)) {
     return(list(ok = FALSE, values = list(),
-                error = "Gecis B 'alternates' alani bir dizi olmalidir."))
+                error = "Geçiş B 'alternates' alanı bir dizi olmalıdır."))
   }
 
   alternatifler <- list()
@@ -163,13 +163,13 @@ pk_select_parse_pass_a <- function(text, library_ids, expected_n = NULL) {
   for (girdi in raw) {
     if (!is.list(girdi)) {
       return(list(ok = FALSE, values = list(),
-                  error = "'alternates' ogeleri id ve confidence tasiyan nesneler olmalidir."))
+                  error = "'alternates' ögeleri id ve confidence taşıyan nesneler olmalıdır."))
     }
 
     alt_id <- pk_select_scalar_string(girdi$id)
     if (is.na(alt_id)) {
       return(list(ok = FALSE, values = list(),
-                  error = "'alternates[*].id' tek bir kararli kimlik olmalidir."))
+                  error = "'alternates[*].id' tek bir kararlı kimlik olmalıdır."))
     }
 
     alt_guven <- pk_select_scalar_integer(girdi$confidence, min = 0L, max = 100L)
@@ -181,12 +181,12 @@ pk_select_parse_pass_a <- function(text, library_ids, expected_n = NULL) {
 
     if (identical(alt_id, selected_id)) {
       return(list(ok = FALSE, values = list(), error = sprintf(
-        "'alternates' secilen kimligi (%s) tekrar ediyor.", alt_id
+        "'alternates' seçilen kimliği (%s) tekrar ediyor.", alt_id
       )))
     }
     if (alt_id %in% gorulen) {
       return(list(ok = FALSE, values = list(), error = sprintf(
-        "'alternates' icinde tekrar eden kimlik: %s", alt_id
+        "'alternates' içinde tekrar eden kimlik: %s", alt_id
       )))
     }
     if (!alt_id %in% candidate_ids) {
@@ -221,7 +221,7 @@ pk_select_parse_pass_b <- function(text, candidate_ids) {
   ayrisik <- pk_select_parse_json(text)
   if (is.null(ayrisik)) {
     return(.pk_select_pass_b_empty(paste0(
-      "Gecis B ciktisi tek bir gecerli JSON nesnesi degil (sarmalayici metin, ",
+      "Geçiş B çıktısı tek bir geçerli JSON nesnesi değil (sarmalayıcı metin, ",
       "tekrar eden anahtar ya da bozuk JSON)."
     )))
   }
@@ -235,7 +235,7 @@ pk_select_parse_pass_b <- function(text, candidate_ids) {
   fazla <- setdiff(names(ayrisik), izinli_alanlar)
   if (length(fazla)) {
     return(.pk_select_pass_b_empty(sprintf(
-      "Gecis B ciktisi sozlesme disi alan iceriyor: %s",
+      "Geçiş B çıktısı sözleşme dışı alan içeriyor: %s",
       paste(sort(fazla), collapse = ", ")
     )))
   }
@@ -243,26 +243,26 @@ pk_select_parse_pass_b <- function(text, candidate_ids) {
   kimlik <- pk_select_scalar_string(ayrisik$id)
   if (is.na(kimlik)) {
     return(.pk_select_pass_b_empty(
-      "Gecis B ciktisinda tek bir kararli 'id' alani yok."
+      "Geçiş B çıktısında tek bir kararlı 'id' alanı yok."
     ))
   }
   if (!kimlik %in% candidate_ids) {
     return(.pk_select_pass_b_empty(sprintf(
-      "Gecis B aday kumesinde olmayan bir kimlik dondurdu: %s", kimlik
+      "Geçiş B aday kümesinde olmayan bir kimlik döndürdü: %s", kimlik
     )))
   }
 
   guven <- pk_select_scalar_integer(ayrisik$confidence, min = 0L, max = 100L)
   if (is.na(guven)) {
     return(.pk_select_pass_b_empty(
-      "Gecis B 'confidence' degeri 0-100 arasi TAM SAYI degil.", id = kimlik
+      "Geçiş B 'confidence' değeri 0-100 arası TAM SAYI değil.", id = kimlik
     ))
   }
 
   gerekce <- pk_select_scalar_string(ayrisik$reason)
   if (is.na(gerekce)) {
     return(.pk_select_pass_b_empty(
-      "Gecis B 'reason' alani bos olmayan tek bir metin olmalidir.", id = kimlik
+      "Geçiş B 'reason' alanı boş olmayan tek bir metin olmalıdır.", id = kimlik
     ))
   }
 
@@ -281,13 +281,13 @@ pk_select_parse_pass_b <- function(text, candidate_ids) {
   eksik <- pk_select_nullable_text(ayrisik, "missing_info")
   if (identical(eksik$state, "absent")) {
     return(.pk_select_pass_b_empty(
-      "Gecis B 'missing_info' alani zorunludur (eksik bilgi yoksa null yaz).",
+      "Geçiş B 'missing_info' alanı zorunludur (eksik bilgi yoksa null yaz).",
       id = kimlik
     ))
   }
   if (identical(eksik$state, "invalid")) {
     return(.pk_select_pass_b_empty(
-      "Gecis B 'missing_info' alani metin ya da null olmalidir.", id = kimlik
+      "Geçiş B 'missing_info' alanı metin ya da null olmalıdır.", id = kimlik
     ))
   }
 

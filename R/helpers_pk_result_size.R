@@ -322,6 +322,18 @@ pk_sql_plan_chunk_rows <- function(column_info, chunk_rows = 5000L,
     # çağıranın istediği parçayı (normalde 5.000) döndürmek, ilk `dbFetch()`
     # ile gigabaytları materyalize edip bayt kapısının ÖNÜNDE belleği
     # tüketebilirdi. Kanıt yoksa granülarite bir satırdır.
+    #
+    # ANCAK TEK SATIR DA GÜVENLİ DEĞİLDİR: metadata olmadan sütunun sınırlı bir
+    # metin mi yoksa `varchar(max)`/XML/image mi olduğu BİLİNEMEZ ve TEK hücre
+    # `MERGEN_PK_MAX_RESULT_MB` tavanını aşabilir; bayt kapısı ancak
+    # materyalizasyondan SONRA çalışır. `unbounded_lob_column` ve
+    # `unproven_variable_width_column` dalları AYNI riski zaten reddeder; kanıt
+    # HİÇ yokken daha gevşek davranmak kapalı-başarısız sözleşmesini bozardı.
+    # Operatör `allow_unbounded_lob` ile açıkça izin verebilir.
+    if (!isTRUE(lob_izinli)) {
+      return(list(rows = 1L, bounded = FALSE, bytes_per_row = NA_real_,
+                  reason = "metadata_unavailable", refuse = TRUE))
+    }
     return(list(rows = 1L, bounded = FALSE, bytes_per_row = NA_real_,
                 reason = "metadata_unavailable"))
   }

@@ -430,6 +430,12 @@ pk_export_build <- function(data, packet = list(), context = list(),
                           status = durdurma %||% "deadline"))
     }
     cat(sprintf("[PK_ANALIZ] CSV paketi olusturulamadi: %s\n", hata_metni))
+    # HATA YOLUNDA YARIM PAKET DİSKTE BIRAKILMAZ: `pk_export_csv_bundle()`
+    # kendi temizliğini yapar, ancak bu isteğe ait daha önce izlenen artefaktlar
+    # da (ör. XLSX denemesinden kalanlar) burada bırakılır.
+    if (exists("pk_artifact_discard_tracked", mode = "function", inherits = TRUE)) {
+      try(pk_artifact_discard_tracked(), silent = TRUE)
+    }
     return(list(status = "failed", files = list(),
                 message = "Dışa aktarım hazırlanırken beklenmeyen bir hata oluştu.",
                 total_rows = plan$total_rows, cols = csv_sutun,

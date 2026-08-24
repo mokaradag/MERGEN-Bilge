@@ -135,8 +135,16 @@
   if (isTRUE(f$user_filter_applied)) {
     satirlar <- c(satirlar, paste0(
       "\n\U000026A0\U0000FE0F FİLTRELEME UYARISI:\n",
-      sprintf("- Yetki dahilinde toplam satir: %s\n", pk_fmt_number(s$authorized_rows, 0L)),
-      sprintf("- Kullanici filtresi sonrasi satir: %s\n", pk_fmt_number(s$filtered_rows, 0L)),
+      # TEKRARLANAN SAYIMLAR DA İŞARETLİDİR: dosya sözleşmesi modelin GÖRDÜĞÜ
+      # her sayının yanında `[fact:...]` ister. İşaretsiz basıldıklarında
+      # `.pk_prov_uncited_claims()` bunları `missing_fact_marker` sayıyor ve
+      # `block` kipi geçerli yanıtı deterministik yedekle DEĞİŞTİRİYORDU.
+      sprintf("- Yetki dahilinde toplam satir: %s %s\n",
+              pk_fmt_number(s$authorized_rows, 0L),
+              .pk_render_marker("__kapsam__", "authorized_rows")),
+      sprintf("- Kullanici filtresi sonrasi satir: %s %s\n",
+              pk_fmt_number(s$filtered_rows, 0L),
+              .pk_render_marker("__kapsam__", "filtered_rows")),
       "- BU SATIRLAR SPESIFIK FILTRELEME KRITERINE AITTIR (tum veri icin degil!)\n",
       "- Oran/yuzde hesaplarken SADECE filtre sonrasi satir sayisini payda al"
     ))
@@ -203,12 +211,21 @@
       return(paste(satirlar, collapse = "\n"))
     }
 
+    # İŞARET, AİT OLDUĞU SAYININ HEMEN ARDINDA DURUR.
+    #
+    # Eskiden satır `50 (%25,0) [fact:category_count]` biçimindeydi: köken
+    # ayrıştırıcısı işaretin HEMEN ÖNÜNDEKİ sayı olarak YÜZDEYİ okuyup onu
+    # SAYIM olgusuyla karşılaştırıyor ve `value_mismatch` üretiyordu; kapanış
+    # parantezi yüzünden alternatif okuma da `no_number` veriyordu. Payın artık
+    # KENDİ olgusu ve işareti vardır.
     for (t in ilk) {
       deger <- .pk_render_safe_text(t$value, 120L)
-      satirlar <- c(satirlar, sprintf("  - %s: %s (%s) %s", deger,
+      satirlar <- c(satirlar, sprintf("  - %s: %s %s (%s %s)", deger,
                                       pk_fmt_number(t$count, 0L),
-                                      pk_fmt_share(t$count, k$total),
                                       .pk_render_marker(k$column, "category_count",
+                                                        as.character(t$value)[1]),
+                                      pk_fmt_share(t$count, k$total),
+                                      .pk_render_marker(k$column, "category_share",
                                                         as.character(t$value)[1])))
     }
 
@@ -223,12 +240,22 @@
     kalan_satir <- (k$other_rows %||% 0L) + dusen_satir
 
     if (kalan_deger > 0L) {
-      satirlar <- c(satirlar, sprintf(
-        "  - Diger (%s deger, %s satir, %s)%s",
-        pk_fmt_number(kalan_deger, 0L), pk_fmt_number(kalan_satir, 0L),
-        pk_fmt_share(kalan_satir, k$total),
-        if (length(dusen)) "" else paste0(" ", .pk_render_marker(k$column, "other_rows"))
-      ))
+      # BÜTÇE NEDENİYLE DÜŞEN ilk-K girdileri eklendiğinde sayımlar artık
+      # kayıtlı olgularla EŞLEŞMEZ; o durumda işaret basılmaz ve sayılar da
+      # basılmaz (işaretsiz sayı `block` kipinde köksüz iddia sayılırdı).
+      if (length(dusen)) {
+        satirlar <- c(satirlar, "  - Diger: (butce nedeniyle sayimlar verilmedi)")
+      } else {
+        satirlar <- c(satirlar, sprintf(
+          "  - Diger (%s deger %s, %s satir %s, %s %s)",
+          pk_fmt_number(kalan_deger, 0L),
+          .pk_render_marker(k$column, "other_values"),
+          pk_fmt_number(kalan_satir, 0L),
+          .pk_render_marker(k$column, "other_rows"),
+          pk_fmt_share(kalan_satir, k$total),
+          .pk_render_marker(k$column, "other_share")
+        ))
+      }
     }
 
     paste(satirlar, collapse = "\n")

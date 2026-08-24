@@ -453,7 +453,24 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
   # kaldırılmaz, `values$is_sending` TRUE kalır, gönder düğmesi durdurma
   # kipinde donar ve `chat_reset_state()` HİÇ çalışmaz — oturum yeniden
   # yükleme gerektirirdi. Yedek, dekore edilmemiş yanıttır.
-  yedek_blok <- list(display = full_response, tts = full_response)
+  # BLOCK KİPİNDE YEDEK HAM METİN OLAMAZ.
+  #
+  # `block` kipi doğrulanmamış düzyazının kullanıcıya GİTMEMESİ için vardır.
+  # Eski yedek, yardımcı arıza verdiğinde kipin engellemek için var olduğu
+  # çıktının TA KENDİSİNİ hem ekrana hem TTS'e gönderiyordu: kip tam da devreye
+  # girmesi gereken anda AÇIK BAŞARISIZ oluyordu.
+  .cr_blok_aktif <- isTRUE(tryCatch(
+    exists("pk_provenance_blocks_streaming", mode = "function", inherits = TRUE) &&
+      isTRUE(pk_provenance_blocks_streaming(session, request_id = pk_request_id)),
+    error = function(e) FALSE
+  ))
+  .cr_yedek_metin <- if (.cr_blok_aktif &&
+                         exists("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)) {
+    get("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)
+  } else {
+    full_response
+  }
+  yedek_blok <- list(display = .cr_yedek_metin, tts = .cr_yedek_metin)
   blok <- if (exists("mergen_pk_block_mode_texts", mode = "function", inherits = TRUE)) {
     tryCatch(
       mergen_pk_block_mode_texts(full_response, session, request_id = pk_request_id),

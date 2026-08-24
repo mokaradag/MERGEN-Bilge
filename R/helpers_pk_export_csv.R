@@ -368,6 +368,7 @@ pk_export_csv_bundle <- function(dir, base_name, plan, body,
                                  transform = NULL, stop_check = NULL) {
   dosyalar <- list()
   uretilenler <- character(0)
+  tamamlandi <- FALSE
 
   geri_al <- function(reason) {
     if (exists("safe_unlink_if_exists", mode = "function", inherits = TRUE)) {
@@ -375,6 +376,20 @@ pk_export_csv_bundle <- function(dir, base_name, plan, body,
     }
     list(ok = FALSE, files = list(), reason = reason)
   }
+
+  # İSTİSNA DA YARIM PAKET BIRAKAMAZ.
+  #
+  # `geri_al()` yalnızca DÖNÜŞ yollarında çalışır. `transform()` ya da
+  # `pk_export_neutralize_csv()` hata fırlattığında yığın `geri_al()`i ATLAYARAK
+  # çözülüyor, çağıran tarafta hata `ok = FALSE`a çevriliyor ve o ana kadar
+  # yazılmış RLS süzülmüş CSV parçaları çalışma dizininde SAHİPSİZ kalıyordu:
+  # `.pk_export_track_artifact()` de yalnızca başarı yolunda çağrılır.
+  on.exit({
+    if (!isTRUE(tamamlandi) &&
+        exists("safe_unlink_if_exists", mode = "function", inherits = TRUE)) {
+      for (y in uretilenler) try(safe_unlink_if_exists(y), silent = TRUE)
+    }
+  }, add = TRUE)
 
   # İPTAL/SON TARİH PARÇALAR ARASINDA YOKLANIR.
   #
@@ -434,5 +449,6 @@ pk_export_csv_bundle <- function(dir, base_name, plan, body,
     )
   }
 
+  tamamlandi <- TRUE
   list(ok = TRUE, files = dosyalar, reason = NULL)
 }

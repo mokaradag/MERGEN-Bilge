@@ -91,10 +91,20 @@ pk_async_bounded_sql_executor <- function(stage_gate, deadline_at, status_box,
           .pk_async_sql_note(status_box, durum)
           return(pk_async_halt_message(durum))
         }
-        if (isTRUE(pk_cache_entry_within_limit(isabet$value, tavan_mb))) {
+        # KISMİ BOOTSTRAP'TA DA IŞKA YOLU ÇALIŞIR: `pk_cache_get()` korumalı
+        # olduğu hâlde limit denetimi korumasızdı; yardımcı setinin yalnızca bir
+        # kısmı yüklendiğinde bir önbellek İSABETİ "could not find function" ile
+        # isteği düşürüyordu.
+        sinir_ici <- isTRUE(tryCatch(
+          pk_cache_entry_within_limit(isabet$value, tavan_mb),
+          error = function(e) FALSE
+        ))
+        if (sinir_ici) {
           return(isabet$value)
         }
-        try(pk_cache_invalidate(anahtar), silent = TRUE)
+        if (exists("pk_cache_invalidate", mode = "function", inherits = TRUE)) {
+          try(pk_cache_invalidate(anahtar), silent = TRUE)
+        }
       }
     }
 

@@ -303,6 +303,25 @@ pk_filter_zero_match_policy <- function(data, filters, compiled, query = NULL) {
 
   kalan <- Filter(function(f) !.dokunuyor(f), filters)
 
+  # AYNI GRUPTAKİ EŞLEŞEN İKİNCİL KRİTERLER DE DÜŞER; İFŞA EDİLMELİDİR.
+  #
+  # `.dokunuyor()` grubun TAMAMINI çıkarır. `and(Yil = 2024, Durum = "X")`
+  # grubunda yalnızca `Durum` sıfır eşleşse bile `Yil` kriteri de uygulanmaz;
+  # ifşa listesi ise SADECE sıfır eşleşen sütunları sayıyordu. Kullanıcı yıl
+  # kapsamlı bir soruya TÜM yıllar üzerinden verilmiş bir yanıtı hiçbir uyarı
+  # görmeden okuyordu.
+  .yaprak_sutunlari <- function(dugum, derinlik = 0L) {
+    if (derinlik > 10L) return(character(0))
+    if (is.list(dugum) && is.list(dugum$children)) {
+      return(unlist(lapply(dugum$children,
+                           function(c) .yaprak_sutunlari(c, derinlik + 1L)),
+                    use.names = FALSE))
+    }
+    as.character(pk_filter_normalize_leaf(dugum)$column %||% "")
+  }
+  yan_hasar <- unique(unlist(lapply(cikarilan, .yaprak_sutunlari), use.names = FALSE))
+  yan_hasar <- setdiff(yan_hasar[nzchar(yan_hasar)], c(dusurulen, ""))
+
   # KURTARMA DERLEMESİ AYNI METADATA İLE YAPILIR.
   #
   # İlk derleme `query`'yi taşır ve `pk_filter_leaf_mask()` bu sayede
@@ -315,7 +334,7 @@ pk_filter_zero_match_policy <- function(data, filters, compiled, query = NULL) {
 
   sonuc$action <- "dropped_secondary"
   sonuc$mask <- yeniden$mask
-  sonuc$dropped_columns <- dusurulen
+  sonuc$dropped_columns <- unique(c(dusurulen, yan_hasar))
   sonuc$disclosures <- vapply(sifir_gruplar, function(g) {
     degerler <- unlist(lapply(g$applied, function(l) l$values), use.names = FALSE)
     degerler <- unique(as.character(degerler %||% character(0)))
@@ -325,6 +344,13 @@ pk_filter_zero_match_policy <- function(data, filters, compiled, query = NULL) {
       paste(utils::head(degerler, 5L), collapse = "`, `")
     )
   }, character(1))
+
+  if (length(yan_hasar)) {
+    sonuc$disclosures <- c(sonuc$disclosures, sprintf(
+      "Aynı mantık grubunda yer aldığı için `%s` kriteri de UYGULANMADI.",
+      paste(sort(yan_hasar), collapse = "`, `")
+    ))
+  }
 
   sonuc
 }

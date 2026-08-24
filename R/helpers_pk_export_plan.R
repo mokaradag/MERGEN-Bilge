@@ -341,6 +341,14 @@ pk_export_summary_sheet <- function(packet) {
     # "doğrulandı" sayardı.
     kanonik <- function(x) {
       x[x == 0] <- 0
+      # 15 ANLAMLI BASAMAK BİLİNÇLİ BİR TAVANDIR (ÖLÇÜLDÜ).
+      #
+      # 17 basamak bir `double`ı birebir ayırt eder, ama XLSX gidiş dönüşü
+      # `double` için BİREBİR DEĞİLDİR: özet sayfasındaki hesaplanmış değerler
+      # (ortalama/std sapma) geri okunduğunda son basamaklarda farklılaşır ve
+      # 17 basamaklık karşılaştırma GEÇERLİ bir dışa aktarımı reddedip CSV
+      # yedeğine düşürür. Doğrulayıcının amacı bozulmayı yakalamaktır; geçerli
+      # çıktıyı reddetmek daha kötü bir arızadır.
       sprintf("%.15g", x)
     }
     if (!identical(kanonik(b), kanonik(g))) {
@@ -364,8 +372,18 @@ pk_export_summary_sheet <- function(packet) {
     if (!inherits(ger, "POSIXt")) {
       return(sprintf("'%s' sutunu zaman damgasi olarak yazilmamis.", ad))
     }
-    if (!identical(format(bek, "%Y-%m-%d %H:%M:%S", tz = "UTC")[dolu],
-                   format(ger, "%Y-%m-%d %H:%M:%S", tz = "UTC")[dolu])) {
+    # ALT SANİYE HASSASİYETİ DE KARŞILAŞTIRILIR.
+    #
+    # `%H:%M:%S` biçimi SQL Server `datetime2` değerlerinde milisaniyeyi ATAR:
+    # `12:34:56.100` ile `12:34:56.900` aynı görünür ve milisaniyeyi kaydıran/
+    # kırpan bir XLSX gidiş dönüşü "sadık" raporlanırdı. Karşılaştırma altta
+    # yatan an üzerinden, açık bir toleransla yapılır (kayan nokta temsili
+    # nedeniyle birebir eşitlik beklenmez).
+    bek_an <- as.numeric(bek)[dolu]
+    ger_an <- as.numeric(ger)[dolu]
+    if (length(bek_an) != length(ger_an) ||
+        any(is.na(bek_an) != is.na(ger_an)) ||
+        any(abs(bek_an - ger_an) > 5e-4, na.rm = TRUE)) {
       return(sprintf("'%s' sutununda zaman damgasi degismis.", ad))
     }
     return(NULL)

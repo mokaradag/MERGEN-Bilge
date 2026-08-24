@@ -83,7 +83,19 @@
 .PK_ODBC_VARIABLE_TYPE_CODES <- c("1", "-8", "12", "-9", "-2", "-3")
 
 .pk_sql_metadata_field <- function(column_info, adaylar) {
-  alanlar <- tolower(names(column_info))
+  # YERELDEN BAĞIMSIZ KATLAMA ZORUNLUDUR.
+  #
+  # Türkçe yerelde `tolower("I")` NOKTASIZ `ı` üretir: `PRECISION` gibi bir
+  # sürücü alan adı `precision` yerine `precısıon` olur, aday listesiyle
+  # EŞLEŞMEZ ve `boyut` `NA` kalır. Değişken genişlikli sütun o zaman
+  # `__unproven__` sınıflanır ve sınırlı yürütücü Türkçe VM'de aynı sorguyu
+  # `too_large` diye reddederken CI'da başarılı olur.
+  alanlar <- if (exists("pk_ascii_lower", mode = "function", inherits = TRUE)) {
+    pk_ascii_lower(names(column_info))
+  } else {
+    chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz",
+           as.character(names(column_info)))
+  }
   idx <- which(alanlar %in% adaylar)
   if (!length(idx)) return(NULL)
   column_info[[idx[1L]]]
@@ -169,7 +181,13 @@ pk_sql_describe_result_schema <- function(conn, sql_text, call_fn = NULL) {
   # kanıtlanmamış tip zaten aşağıda güvenli tarafta ("text"/sınırsız) biter.
   tip <- suppressWarnings(as.character(satir$system_type_name %||% "")[1])
   if (length(tip) != 1L || is.na(tip)) tip <- ""
-  tip <- tolower(tip)
+  # YERELDEN BAĞIMSIZ KATLAMA: Türkçe yerelde `tolower("INT")` noktasız `ı`
+  # üretir ve aşağıdaki tip karşılaştırmalarının hiçbiri eşleşmezdi.
+  tip <- if (exists("pk_ascii_lower", mode = "function", inherits = TRUE)) {
+    pk_ascii_lower(tip)
+  } else {
+    chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", tip)
+  }
   boyut <- suppressWarnings(as.numeric(satir$max_length %||% NA_real_)[1])
 
   # `sql_variant` KANITLANMIŞ 8.016 baytlık üst sınıra sahiptir (bkz. sabit).
@@ -186,6 +204,19 @@ pk_sql_describe_result_schema <- function(conn, sql_text, call_fn = NULL) {
     return(list(type = "text", max_length = NA_real_))
   }
   if (length(boyut) == 1L && !is.na(boyut) && is.finite(boyut) && boyut > 0) {
+    # UNICODE GENİŞLİĞİ UTF-8 İÇİN ÖLÇEKLENİR.
+    #
+    # `sys.dm_exec_describe_first_result_set` `max_length` değerini SQL Server
+    # SAKLAMA baytı olarak verir; `nchar`/`nvarchar` için bu UTF-16'dır.
+    # `pk_column_width_upper_bound()` `__bounded__` genişlikleri AYNEN kullanır,
+    # oysa R tarafındaki UTF-8 temsili daha geniş olabilir (en kötü durumda
+    # 1,5 kat). Tip-adı yolu Unicode beyanlarını zaten 4 ile çarpar; burada
+    # bayt cinsinden geldiği için 2 kat KORUYUCU üst sınırdır. Aksi hâlde
+    # `pk_sql_plan_chunk_rows()` satır genişliğini OLDUĞUNDAN KÜÇÜK hesaplayıp
+    # `MERGEN_PK_MAX_RESULT_MB` tavanının izin verdiğinden BÜYÜK bir parça seçer.
+    unicode_tip <- grepl("nchar", tip, fixed = TRUE) ||
+      grepl("nvarchar", tip, fixed = TRUE)
+    if (isTRUE(unicode_tip)) boyut <- boyut * 2
     return(list(type = "__bounded__", max_length = boyut))
   }
   # Beyan yok: SABİT genişlikli tipler için tip adından türetilebilir.

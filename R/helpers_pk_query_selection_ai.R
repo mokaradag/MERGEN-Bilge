@@ -515,7 +515,9 @@ pk_select_run <- function(user_prompt, library, chat_history = NULL,
     ))
   }
 
-  aday_kimlikler <- pk_select_seed_candidates(gecis_a$ids, baglam$prior_query_id, cfg)
+  aday_kimlikler <- pk_select_seed_candidates(
+    gecis_a$ids, baglam$prior_query_id, cfg, library_ids = names(library_index)
+  )
   adaylar <- lapply(aday_kimlikler, function(k) library_index[[k]])
 
   # Geçiş A uçarken gelen bir durdurma isteği, ikinci bir LLM çağrısını

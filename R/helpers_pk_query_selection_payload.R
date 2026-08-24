@@ -431,7 +431,11 @@ pk_select_pass_b_blocks <- function(candidates, cfg) {
   bloklar <- character(0)
   kimlikler <- character(0)
   toplam <- 0L
-  butce <- cfg$pass_b_chars %||% 24000L
+  # BÜTÇE GEÇİŞ A ile AYNI biçimde sayıya çevrilir: metin bir değer aşağıdaki
+  # `toplam > butce` karşılaştırmasını DİZE karşılaştırmasına çevirir
+  # ("120" > "24000" TRUE'dur) ve SIĞAN bir yükü "kırpıldı" diye reddederdi.
+  butce <- suppressWarnings(as.integer(cfg$pass_b_chars %||% 24000L)[1])
+  if (length(butce) != 1L || is.na(butce) || butce <= 0L) butce <- 24000L
 
   for (aday in candidates) {
     blok <- pk_select_pass_b_block(aday, cfg)

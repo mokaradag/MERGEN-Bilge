@@ -349,17 +349,31 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # "bilinmeyen tip" demektir ve sutun muhafazakar sekilde `character` /
     # `dimension` olarak isaretlenir. Eskiden tek bir NA tum sonuc semasini
     # dusuruyordu. Fonksiyon sayisi AYNI.
-    "R/helpers_pk_result_columns.R" = c(270L, 8L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 270 -> 301 satir (OLCULEN).
+    # Iki neden: (a) surucu ustveri alan adlari ve tanimlayici tip adlari artik
+    # `pk_ascii_lower()` ile katlanir -- `tolower()` Turkce yerelde `I` -> `i`
+    # yapmaz ve `NVARCHAR` gibi tipler eslesmiyordu; (b) Unicode (nchar/nvarchar)
+    # tanimlayici genislikleri UTF-8 icin x2 olceklenir. Fonksiyon sayisi AYNI.
+    "R/helpers_pk_result_columns.R" = c(301L, 8L),
     # BILINCLI GUNCELLEME (PR #705 inceleme): 551 -> 592 satir (OLCULEN). Iki
     # neden: (a) `sql_variant` icin KANITLI 8016 bayt ust siniri; (b) R nesne
     # tabani (karakter 56 / atomik 8 bayt/eleman) tahmine EKLENDI -- eskiden
     # yalnizca surucu genisligi sayiliyor, cok sutunlu dar sonuclarda gercek
     # bellek AYAK IZI ciddi sekilde EKSIK tahmin ediliyordu. Fonksiyon AYNI.
-    "R/helpers_pk_result_size.R" = c(592L, 19L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 592 -> 604 satir (OLCULEN).
+    # `metadata_unavailable` artik `refuse = TRUE` dondurur (yalnizca
+    # `pk_allow_unbounded_lob()` acikca izin verdiginde gecer): KANITLANMAMIS
+    # bir ust sinirla tam materyallestirme yapmak bellek tavanini bypass
+    # ediyordu. Fonksiyon sayisi AYNI.
+    "R/helpers_pk_result_size.R" = c(604L, 19L),
     "R/helpers_pk_cache_key.R" = c(140L, 11L),
     # BILINCLI GUNCELLEME (PR #705): sinirlar artik KAYIP anahtarda da
     # uzlastirilir (kapali onbellek/dusurulmus tavan ANINDA etkilidir).
-    "R/helpers_pk_cache.R" = c(446L, 26L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 446 -> 456 satir (OLCULEN).
+    # Ham SQL onbellek anahtari artik SABIT `.PK_CACHE_RAW_SQL_ENGINE` kullanir;
+    # cagiranin `engine` degeri anahtara girdiginde derin analiz ve standart
+    # analiz AYNI sorgu icin ayri girdiler yaziyordu. Fonksiyon sayisi AYNI.
+    "R/helpers_pk_cache.R" = c(456L, 26L),
     # BILINCLI GUNCELLEME: tavan 1 satir BAYATTI (olculen 430, tavan 429).
     # Bu sapma, rapor yol eslesmesi bozuk oldugu icin (nrow == 0) uzun sure
     # "NA > 429" bicimindeki hatanin ardinda gorunmez kaldi. Tavan yine TAM
@@ -379,7 +393,11 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # dogrudan cagri, surucu denetimde bloklarsa kalan analiz/ifade butcelerini
     # ATLIYORDU ve asili bir denetim isciyi getirimin kendisi kadar tutar.
     # Fonksiyon sayisi AYNI.
-    "R/helpers_pk_sql_execute.R" = c(474L, 22L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 474 -> 483 satir (OLCULEN).
+    # `dbColumnInfo` kapisinda "ok" OLMAYAN HER durum erken doner; eskiden
+    # yalnizca `deadline`/`timeout` donuyor, TIPLI `cancelled` sonucu
+    # `too_large` olarak yeniden etiketleniyordu. Fonksiyon sayisi AYNI.
+    "R/helpers_pk_sql_execute.R" = c(483L, 22L),
     "R/helpers_pk_sql_connection.R" = c(125L, 6L),
     # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 372/22 -> 414/24 (OLCULEN).
     # `sql_file` bagimliliklari artik KAYNAK METINDEN cikarilir. Temiz bir PSOCK
@@ -414,7 +432,10 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # baglami hem isci vekiline KURULUR hem de hasat yuvalarina eklenir; aksi
     # halde asenkron takip sorulari onceki turun varlik kisitini kaybediyordu.
     # Fonksiyon sayisi DEGISMEDI. Olculen 514.
-    "R/helpers_pk_async_bootstrap.R" = c(514L, 24L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 514 -> 517 satir (OLCULEN).
+    # Operatore gorunen mesajlar Turkce'ye geri alindi (Kural 2); mantik
+    # DEGISMEDI. Fonksiyon sayisi AYNI.
+    "R/helpers_pk_async_bootstrap.R" = c(517L, 24L),
     "R/helpers_pk_async_snapshot_validate.R" = c(135L, 9L),
     # BILINCLI GUNCELLEME (PR #705): D11 devralinan varlik baglami isciye
     # ACIKCA duz veri olarak tasinir (genel dongu list alanlari atliyordu).
@@ -543,7 +564,11 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # Zamanlayici SON CARE olarak TEK SEFERLIK kalir; kendini yeniden kuran bir
     # zincir `later` kuyrugunu saatlerce dolu tutup ayni R oturumundaki
     # Shiny/`testServer` akislarini bloke ediyordu (+1 fonksiyon: ortak kapanis).
-    "R/server_handler_pk_async.R" = c(491L, 15L)
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 491 -> 498 satir (OLCULEN).
+    # Gonderim durumu temizligi artik `identical(aktif, req_id)` ile korunur:
+    # `karar$apply` FALSE olan BAYAT bir geri cagri, DAHA YENI bir istegin
+    # gonderim/yazim durumunu sifirliyordu. Fonksiyon sayisi AYNI.
+    "R/server_handler_pk_async.R" = c(498L, 15L)
   )
 
   for (dosya in names(butceler)) {

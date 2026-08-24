@@ -242,6 +242,14 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
           user_context <- paste0(
             substr(user_context, 1L, kalan - nchar(not, type = "chars")), not
           )
+        } else {
+          # KESMEYE YER KALMASA BİLE İFŞA YAZILIR.
+          #
+          # `kalan` küçük ya da negatifse blok TAMAMEN atlanıyordu: model
+          # bütçeyi aşan bir bağlam alıyor ve analizin EKSİK olduğunu belirten
+          # HİÇBİR ifade görmüyordu. Bozulmanın görünür olması §5.11
+          # sözleşmesidir; kesme yapılamaması onu görünmez kılmaz.
+          user_context <- paste0(user_context, not)
         }
       }
     }

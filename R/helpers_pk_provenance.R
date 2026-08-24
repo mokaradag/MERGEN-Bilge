@@ -422,6 +422,17 @@ pk_provenance_take <- function(session, request_id = NULL, full = FALSE) {
 #' doğrulanmamış düzyazıyı `[fact:...]` işaretleriyle birlikte geçirir, R'ye ait
 #' bloğu ve alt bilgiyi düşürürdü.
 #'
+# BLOCK KİPİ DETERMİNİSTİK REDDETME METNİ (TEK SAHİP).
+#
+# Sabittir; `helpers_pk_provenance.R` fonksiyon bütçesinin tavanındadır ve bu
+# metin için ayrı bir fonksiyon eklenmez. `helpers_pk_provenance_peek.R` de
+# aynı sabiti kullanır, böylece iki yol zamanla ayrışamaz.
+PK_PROVENANCE_BLOCK_REFUSAL_TR <- paste0(
+  "\U000026A0\U0000FE0F", " **Yanıt doğrulanamadı:** Sayısal iddialar analiz ",
+  "verisine karşı doğrulanamadığı için yanıt gösterilmiyor. Lütfen ",
+  "sorunuzu yeniden gönderin."
+)
+
 #' Hiçbir koşulda hata fırlatmaz; başarısızlıkta metin değişmeden döner.
 pk_provenance_decorate <- function(text, session, request_id = NULL) {
   # KAYIT TÜKETİLDİKTEN SONRAKİ HER HATA İÇİN GÜVENLİ GERİ DÜŞME.
@@ -432,6 +443,10 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
   # için yeniden denemek de mümkün değildir. Bu yüzden tüketilen kaydın
   # deterministik yedek metni burada tutulur ve hata hâlinde O kullanılır.
   guvenli_yedek <- NULL
+  # `block` kipinde ham metnin ASLA teslim edilmemesi için kipin kendisi de
+  # kayıt tüketildiği anda hatırlanır; `fallback_text` beyan edilmemiş olabilir.
+  blok_kipi <- FALSE
+  blok_alt_bilgi <- ""
 
   tryCatch({
     pending <- pk_provenance_take(session, request_id = request_id, full = TRUE)
@@ -439,9 +454,12 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
 
     # `block` kipinde TÜKETİLMİŞ kayıt için güvenli geri düşme metni hazırlanır.
     if (identical(as.character(pending$mode %||% "")[1], "block")) {
+      blok_kipi <- TRUE
+      alt <- as.character(pending$footer %||% "")[1]
+      blok_alt_bilgi <- if (is.na(alt)) "" else alt
       yedek <- as.character(pending$fallback_text %||% "")[1]
       if (!is.na(yedek) && nzchar(yedek)) {
-        guvenli_yedek <- paste0(yedek, as.character(pending$footer %||% "")[1])
+        guvenli_yedek <- paste0(yedek, blok_alt_bilgi)
       }
     }
 
@@ -499,6 +517,15 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
     paste0(base_txt, footer)
   }, error = function(e) {
     if (!is.null(guvenli_yedek)) return(guvenli_yedek)
+    # BLOCK KİPİ AÇIK BAŞARISIZ OLAMAZ.
+    #
+    # `fallback_text` beyan edilmemişse ham model metni döndürülüyordu; bu, kipin
+    # tam da engellemek için var olduğu DOĞRULANMAMIŞ düzyazının kullanıcıya
+    # gitmesi demektir. Kayıt zaten tüketildiği için yeniden deneme de yoktur:
+    # deterministik reddetme metni tek güvenli çıktıdır.
+    if (isTRUE(blok_kipi)) {
+      return(paste0(PK_PROVENANCE_BLOCK_REFUSAL_TR, blok_alt_bilgi))
+    }
     text
   })
 }

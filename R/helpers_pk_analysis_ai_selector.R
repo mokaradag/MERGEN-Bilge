@@ -142,7 +142,13 @@ find_best_query_with_ai <- function(user_prompt, library, session) {
       # has length > 1" fırlatır, dıştaki işleyici bunu `AI Seçim Hatası`
       # olarak loglar ve çağıran döngü AYNI çağrıyı yineler. Geçersiz değer
       # artık sessizce `NULL` (eşleşme yok) olarak raporlanır.
-      idx <- suppressWarnings(as.integer(parsed$match_id)[1])
+      # LİSTE DEĞERİ DÖNÜŞÜM ÖNCESİ REDDEDİLİR: `as.integer(list(...))` iç öge
+      # atomik değilse HATA fırlatır ve sözleşme ihlali yine istisnaya dönerdi.
+      idx <- if (is.list(parsed$match_id) || !is.atomic(parsed$match_id)) {
+        NA_integer_
+      } else {
+        suppressWarnings(as.integer(parsed$match_id)[1])
+      }
 	  if (length(idx) == 1L && !is.na(idx) && idx > 0 && idx <= length(library)) {
         confidence <- suppressWarnings(as.numeric(parsed$confidence %||% 0)[1])
         if (length(confidence) != 1L || is.na(confidence)) confidence <- 0

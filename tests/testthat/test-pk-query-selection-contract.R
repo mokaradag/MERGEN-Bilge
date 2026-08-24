@@ -753,6 +753,20 @@ test_that("tohum, Geçiş A'nın taze adaylarını DÜŞÜRMEZ", {
 
   # Tohum yoksa kırpma normal biçimde uygulanır.
   expect_equal(length(pk_select_seed_candidates(c("q001", "q002", "q003", "q004"), NULL, cfg)), 3L)
+
+  # TOHUM KÜTÜPHANE ÜYELİĞİNE KARŞI DOĞRULANIR: kütüphanede OLMAYAN kalıcı bir
+  # kimlik, kaydı bulunmayan bir aday üretip Geçiş B'yi var olmayan bir sorguya
+  # yönlendirebilirdi.
+  expect_equal(
+    pk_select_seed_candidates(c("q002", "q003"), "q999", cfg,
+                              library_ids = c("q002", "q003", "q004")),
+    c("q002", "q003")
+  )
+  expect_equal(
+    pk_select_seed_candidates(c("q002", "q003"), "q004", cfg,
+                              library_ids = c("q002", "q003", "q004")),
+    c("q004", "q002", "q003")
+  )
 })
 
 test_that("tohumlanan kimlik TEKİLLEŞTİRİLİR ve uçtan uca Geçiş B'ye taşınır", {
@@ -1232,7 +1246,7 @@ test_that("CELISKILI Gecis A takma alanlari REDDEDILIR", {
   celiskili <- sprintf('{"candidates":["%s"],"ids":["%s"]}', kimlikler[1], kimlikler[2])
   sonuc <- pk_select_parse_pass_a(celiskili, kimlikler)
   expect_false(isTRUE(sonuc$ok))
-  expect_true(grepl("CELISKILI", sonuc$error, fixed = TRUE))
+  expect_true(grepl("\u00c7EL\u0130\u015eK\u0130L\u0130", sonuc$error, fixed = TRUE))
 
   # AYNI kumeyi tasiyan takma adlar KABUL EDILIR (geriye donuk uyum).
   ayni <- sprintf('{"candidates":["%s"],"ids":["%s"]}', kimlikler[1], kimlikler[1])
@@ -1254,5 +1268,5 @@ test_that("Gecis B SOZLESME DISI ust duzey alanlari REDDEDER", {
   kaymis <- sub("^\\{", '{"selected_id":"q003",', gecerli)
   sonuc <- pk_select_parse_pass_b(kaymis, c("q001", "q002", "q003", "q004"))
   expect_false(isTRUE(sonuc$ok))
-  expect_true(grepl("sozlesme disi", sonuc$error, fixed = TRUE))
+  expect_true(grepl("s\u00f6zle\u015fme d\u0131\u015f\u0131", sonuc$error, fixed = TRUE))
 })
