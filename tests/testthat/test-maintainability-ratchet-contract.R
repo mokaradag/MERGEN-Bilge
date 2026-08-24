@@ -221,7 +221,7 @@
     686L,
     662L,
     662L,
-    662L,
+    707L,  # BILINCLI GUNCELLEME (PR #705): R/server_handler_true_streaming.R -- `defer_visible_text` TRUE iken bos yanit balonu ACILMAZ + `pk_provenance_decorate()` tryCatch ile sarildi (OLCULEN 707)
     627L,
     662L,
     577L,

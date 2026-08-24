@@ -132,7 +132,12 @@ if (exists("pk_analiz_process_request", mode = "function", inherits = TRUE) &&
 # zincirinden ÇIKARILIYOR ve gövdesi ULAŞILMAZ kalıyordu: iki kopya zamanla
 # ayrışmış, birinde yapılan düzeltme diğerinde etkisiz kalmıştı. Tek sahip artık
 # kurulum yardımcısıdır; burası yalnızca o yardımcı yoksa devreye giren yedektir.
-if (!exists("pk_hook_single_exit_fix_install", mode = "function", inherits = TRUE) &&
+# Kontrol ARAMA YOLUNA değil HEDEF ORTAMA bakar (`inherits = FALSE`): üretimde
+# her iki dosya da `globalenv()` içine kaynaklandığı için davranış aynıdır, ama
+# izole bir test/işçi ortamında arama yolunda kalan bir kurulum yardımcısı bu
+# yedeği SESSİZCE devre dışı bırakıp telemetriyi tümden düşürüyordu.
+if (!exists("pk_hook_single_exit_fix_install", mode = "function",
+            envir = environment(), inherits = FALSE) &&
     exists(".pk_analiz_process_request_without_exit_observer",
            mode = "function", inherits = FALSE)) {
 
@@ -354,6 +359,10 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
 # PR #695 Codex düzeltmesi: Yukarıdaki temel doğrudan-çıkış sarmalayıcısı
 # kurulduktan sonra DB-hata tekrar bağlantısı ve filtre temizliği sertleştirmesini
 # etkinleştir.
-if (exists("pk_hook_single_exit_fix_install", mode = "function", inherits = TRUE)) {
+# Aynı ortam kuralı: yardımcı YALNIZCA bu ortamda tanımlıysa çağrılır. Arama
+# yolundaki bir kopya `pk_analiz_process_request`'i KENDİ ortamında yeniden
+# atardı ve bu ortam sarmalanmamış kalırdı.
+if (exists("pk_hook_single_exit_fix_install", mode = "function",
+           envir = environment(), inherits = FALSE)) {
   pk_hook_single_exit_fix_install()
 }
