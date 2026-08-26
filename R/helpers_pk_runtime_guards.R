@@ -1,5 +1,5 @@
 # ==============================================================================
-# Dosya Yolu: R/helpers_pk_p1_runtime_guards.R
+# Dosya Yolu: R/helpers_pk_runtime_guards.R
 # PR #705 P1: doğrudan DB süreç sınırı ve Derin Düşünme v2 paket köprüsü.
 # ==============================================================================
 
@@ -67,8 +67,17 @@
   sure <- suppressWarnings(as.numeric(request$deadline_sec %||% NA_real_)[1])
   if (!length(sure) || is.na(sure) || !is.finite(sure) || sure <= 0) return(Inf)
 
+  # ALAN ADI `started_at_epoch`.
+  #
+  # İstek anlık görüntüsü (`mergen_pk_build_async_request()`) başlangıcı
+  # `started_at_epoch` olarak yazar; `.pk_p1_direct_gate()` de bu adı okur.
+  # Burada `started_at` okunduğu için değer HER ZAMAN `NA` oluyor ve kalan
+  # bütçe TAM `deadline_sec` kadar hesaplanıyordu: geçen süre hiç düşülmüyor,
+  # başlatma sınırları isteğin son tarihini AŞABİLİYORDU. Eski ad geriye
+  # dönük uyumluluk için yedek olarak korunur.
+  ham <- request$started_at_epoch %||% request$started_at
   baslangic <- tryCatch(
-    as.POSIXct(suppressWarnings(as.numeric(request$started_at)[1]), origin = "1970-01-01"),
+    as.POSIXct(suppressWarnings(as.numeric(ham)[1]), origin = "1970-01-01"),
     error = function(e) NULL
   )
   if (is.null(baslangic) || is.na(baslangic)) return(sure)

@@ -273,10 +273,14 @@ test_that("kucuk harfli Turkce birim harfleri de katlanir", {
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
   source(file.path(kok, "R", "helpers_pk_packet_stats.R"), encoding = "UTF-8", local = env)
-  # `helpers_pk_query_selection_deep.R` ust duzeyde genis bir bagimlilik
-  # zincirine dayanir; burada YALNIZCA saf ad alani yardimcilari degerlendirilir.
+  # `helpers_pk_query_selection_deep.R` üst düzeyde geniş bir bağımlılık
+  # zincirine dayanır; burada YALNIZCA saf ad alanı yardımcıları değerlendirilir.
   satirlar <- readLines(file.path(kok, "R", "helpers_pk_query_selection_deep.R"),
                         encoding = "UTF-8", warn = FALSE)
+  # CRLF DAYANIKLILIĞI: `readLines()` CRLF çalışma kopyasında satır sonunda
+  # `\r` bırakır; TAM EŞİTLİK karşılaştırması o durumda HİÇ eşleşmez ve
+  # `satirlar[bas:...]` boş indeks üzerinde değerlendirilirdi.
+  satirlar <- sub("\r$", "", satirlar)
   bas <- which(satirlar == ".pk_deep_id_checksum <- function(x) {")
   expect_length(bas, 1L)
   eval(parse(text = paste(satirlar[bas:length(satirlar)], collapse = "\n")), envir = env)
@@ -397,6 +401,8 @@ test_that("pk_required_helpers her BILDIRILEN fonksiyonu gercekten yukler", {
   kok <- resolve_repo_root_for_tests()
   satirlar <- readLines(file.path(kok, "R", "module_proje_kaynak_analizi.R"),
                         encoding = "UTF-8", warn = FALSE)
+  # CRLF DAYANIKLILIĞI (yukarıdaki tarayıcıyla AYNI gerekçe).
+  satirlar <- sub("\r$", "", satirlar)
   bas <- which(satirlar == "pk_required_helpers <- list(")
   expect_length(bas, 1L)
   son <- which(satirlar == ")")

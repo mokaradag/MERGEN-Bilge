@@ -147,8 +147,8 @@ test_that("kip cozumleme belgelenmis varsayilani kullanir ve buyuk harfi kabul e
 })
 
 test_that("gecersiz kip SESSIZCE varsayilana dusmez, acikca reddedilir", {
-  expect_error(pkg_meta_resolve_mode("describ"), "Gecersiz MERGEN_PK_META_MODE")
-  expect_error(pkg_meta_resolve_mode("full"), "Gecersiz MERGEN_PK_META_MODE")
+  expect_error(pkg_meta_resolve_mode("describ"), "Geçersiz MERGEN_PK_META_MODE", fixed = TRUE)
+  expect_error(pkg_meta_resolve_mode("full"), "Geçersiz MERGEN_PK_META_MODE", fixed = TRUE)
   # Yanlış yazılmış bir kipin `sample`'a düşmesi üretim DB'sinde gereksiz yük
   # demektir; hata mesajı izinli kipleri söylemelidir.
   expect_error(pkg_meta_resolve_mode("x"), "describe")
@@ -156,10 +156,10 @@ test_that("gecersiz kip SESSIZCE varsayilana dusmez, acikca reddedilir", {
 
 test_that("gecersiz sayisal yapilandirma reddedilir", {
   withr::with_envvar(c(MERGEN_PK_META_SAMPLE_ROWS = "abc"), {
-    expect_error(pkg_meta_resolve_config(repo_root = tempdir()), "tam sayi olmalidir")
+    expect_error(pkg_meta_resolve_config(repo_root = tempdir()), "tam sayı olmalıdır", fixed = TRUE)
   })
   withr::with_envvar(c(MERGEN_PK_META_SAMPLE_ROWS = "0"), {
-    expect_error(pkg_meta_resolve_config(repo_root = tempdir()), "araliginda olmalidir")
+    expect_error(pkg_meta_resolve_config(repo_root = tempdir()), "aralığında olmalıdır", fixed = TRUE)
   })
 })
 
@@ -703,7 +703,11 @@ test_that("baslangic dogrulama hatasindaki alias ayrintisi rapora GIRMEZ", {
   # Alias bindirmesi ÜRETİMDEN TÜRETİLMİŞTİR; kanonik hedef değerleri gerçek
   # proje/program adları olabilir.
   expect_false(grepl("Gercek Proje Adi", temiz, fixed = TRUE))
-  expect_true(grepl("[q1]", temiz, fixed = TRUE))
+  # KIMLIK KOSELI PARANTEZSIZ yazilir: `pkgh_sanitize_bootstrap_error()` bu
+  # ciktiyi serbest metin maskesinden gecirir ve koseli parantezli STANDART
+  # OLMAYAN bir kimlik surucu oneki sanilip `[<sunucu>]` diye maskeleniyordu.
+  expect_true(grepl("q1:", temiz, fixed = TRUE))
+  expect_true(grepl("q1", pkgh_sanitize_bootstrap_error(ham), fixed = TRUE))
   # Alias ile ilgisiz satır KORUNUR.
   expect_true(grepl("Sorgu metadata sozlesmesi gecersiz", temiz, fixed = TRUE))
 })
@@ -1620,7 +1624,7 @@ test_that("ULASILAMAZ yuksek kardinalite esigi SAMPLE kipinde reddedilir", {
   withr::with_envvar(c(MERGEN_PK_META_MODE = "sample",
                        MERGEN_PK_META_SAMPLE_ROWS = "50",
                        MERGEN_PK_META_HIGH_CARD_MIN = "50"), {
-    expect_error(pkg_meta_resolve_config(repo_root = tempdir()), "KUCUK olmalidir")
+    expect_error(pkg_meta_resolve_config(repo_root = tempdir()), "KÜÇÜK olmalıdır", fixed = TRUE)
   })
 })
 

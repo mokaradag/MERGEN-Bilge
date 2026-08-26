@@ -34,23 +34,23 @@ read_text <- function(path) {
   enc2utf8(txt)
 }
 
-# Repo koku onekini ayirir ve repoya GORE yolu dondurur.
+# Repo kökü önekini ayırır ve repoya GÖRE yolu döndürür.
 #
-# Eski surum onegi PCRE ile ayiriyordu:
-#   sub(paste0("^", <kacisli repo_root>), "", normalizePath(path), perl = TRUE)
-# Windows VM'de repo koku bir UNC paylasimidir ve Turkce karakter icerir
-# ("//sunucu/.../04 - Gelistirme/MERGEN Bilge"). Desen ile hedef dizenin
-# kodlama isaretleri ayrisabildigi icin PCRE eslesmesi SESSIZCE bosa dusuyor,
-# onek ayrilmiyor ve `file` sutununda MUTLAK yol kaliyordu. Bu da
-# `report$file == "R/x.R"` bicimindeki TAM esitlik aramalarini bozuyordu
-# (suffix eslesmesi kullanan testler etkilenmedigi icin sorun uzun sure
-# gorunmez kaldi). Asagidaki yaklasim regex kullanmaz; her iki tarafi da
-# `enc2utf8()` ile ayni kodlamaya getirir ve `startsWith()` ile karsilastirir.
-# Ayni yontem `tests/scripts/frontend_maintainability_report.R` icinde
-# zaten VM'de dogrulanmis durumdadir.
-# DEPO KOKU BIR KEZ NORMALLESTIRILIR. `relative_path()` kesfedilen HER dosya
-# icin cagriliyor; koku her cagride yeniden `normalizePath()` etmek Windows UNC
-# calisma kopyasinda dosya basina bir AG GIDIS-DONUSU demektir.
+# Eski sürüm öneki PCRE ile ayırıyordu:
+#   sub(paste0("^", <kaçışlı repo_root>), "", normalizePath(path), perl = TRUE)
+# Windows VM'de repo kökü bir UNC paylaşımıdır ve Türkçe karakter içerir
+# ("//sunucu/.../04 - Geliştirme/MERGEN Bilge"). Desen ile hedef dizenin
+# kodlama işaretleri ayrışabildiği için PCRE eşleşmesi SESSİZCE boşa düşüyor,
+# önek ayrılmıyor ve `file` sütununda MUTLAK yol kalıyordu. Bu da
+# `report$file == "R/x.R"` biçimindeki TAM eşitlik aramalarını bozuyordu
+# (sonek eşleşmesi kullanan testler etkilenmediği için sorun uzun süre
+# görünmez kaldı). Aşağıdaki yaklaşım regex kullanmaz; her iki tarafı da
+# `enc2utf8()` ile aynı kodlamaya getirir ve `startsWith()` ile karşılaştırır.
+# Aynı yöntem `tests/scripts/frontend_maintainability_report.R` içinde
+# zaten VM'de doğrulanmış durumdadır.
+# DEPO KÖKÜ BİR KEZ NORMALLEŞTİRİLİR. `relative_path()` keşfedilen HER dosya
+# için çağrılıyor; kökü her çağrıda yeniden `normalizePath()` etmek Windows UNC
+# çalışma kopyasında dosya başına bir AĞ GİDİŞ-DÖNÜŞÜ demektir.
 repo_root_norm <- enc2utf8(normalizePath(repo_root, winslash = "/", mustWork = TRUE))
 
 relative_path <- function(path) {
@@ -62,7 +62,7 @@ relative_path <- function(path) {
     return(substring(path_norm, nchar(root_prefix) + 1L))
   }
 
-  # Windows/ag yolu guvenligi: buyuk/kucuk harf farki olsa da ayni onegi ayir.
+  # Windows/ağ yolu güvenliği: büyük/küçük harf farkı olsa da aynı öneki ayır.
   if (startsWith(tolower(path_norm), tolower(root_prefix))) {
     return(substring(path_norm, nchar(root_prefix) + 1L))
   }

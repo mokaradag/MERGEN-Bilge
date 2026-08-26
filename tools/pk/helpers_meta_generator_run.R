@@ -313,7 +313,19 @@ pkgn_inventory_one <- function(query, config, conn = NULL,
   # ÖNEK ÖRNEĞİNİN KANITLADIĞI row_cap AŞIMI. Örnek satır sayısı etkin
   # `row_cap` değerini GEÇTİYSE, önek TEK BAŞINA aşımı kanıtlar; bu durumda
   # "bilinmiyor" demek elde olan kanıtı gizlemek olurdu.
-  ust_sinir <- suppressWarnings(as.numeric(dogrulama$merged$row_cap %||% NA_real_)[1])
+  # ETKİN row_cap ÇALIŞMA ZAMANI ÇÖZÜMLEYİCİSİNDEN GELİR.
+  #
+  # Metadata `row_cap` beyan ETMEDİĞİNDE etkin tavan `MERGEN_PK_ROW_CAP`
+  # ortamından gelir; ham alanı `NA`ya çevirmek `row_cap_exceeded` bulgusunu
+  # HİÇ üretmiyor ve `health.txt` bulguyu ATLIYORDU.
+  etkin_cap <- if (exists("pk_meta_row_cap", mode = "function", inherits = TRUE)) {
+    tryCatch(pk_meta_row_cap(list(meta = dogrulama$merged)), error = function(e) NULL)
+  } else {
+    NULL
+  }
+  ust_sinir <- suppressWarnings(as.numeric(
+    etkin_cap %||% dogrulama$merged$row_cap %||% NA_real_
+  )[1])
   gorulen <- suppressWarnings(as.numeric(ornek_bilgi$rows_seen %||% NA_real_)[1])
   if (!is.na(ust_sinir) && !is.na(gorulen) && is.finite(ust_sinir) && gorulen > ust_sinir) {
     ornek_bilgi$cardinality_claim <- "row_cap_exceeded"

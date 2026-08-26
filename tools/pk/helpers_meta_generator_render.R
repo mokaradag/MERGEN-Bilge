@@ -29,6 +29,13 @@ pkgr_encode_string <- function(x) {
 
   metin <- enc2utf8(as.character(x)[1])
   kod_noktalari <- utf8ToInt(metin)
+  # `enc2utf8()` YALNIZCA isaretler, DOGRULAMAZ. Bozuk bir bayt dizisinde
+  # `utf8ToInt()` tek bir `NA` doner ve asagidaki `if (kod == 92L)` kosulu
+  # "missing value where TRUE/FALSE needed" ile TUM yayimlama adimini dusururdu.
+  if (length(kod_noktalari) && anyNA(kod_noktalari)) {
+    stop("[PK_META_GEN] Metadata degeri GECERSIZ UTF-8 bayt dizisi tasiyor; kaynak uretilemez.",
+         call. = FALSE)
+  }
   if (is.null(kod_noktalari)) return("\"\"")
 
   parcalar <- vapply(kod_noktalari, function(kod) {

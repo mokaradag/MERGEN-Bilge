@@ -523,8 +523,12 @@ test_that("karar dalları ÇÖZÜLMÜŞ yapılandırmayı okur, literal eşik ta
       info = sprintf("Karar dali cozulmus esik okumuyor: %s", trimws(satir))
     )
     # Sağ tarafta çıplak sayı bulunmamalıdır.
+    #
+    # DÖRT karşılaştırıcı da kapsanır: eski desen yalnızca `>=` ve `<`
+    # eşleşiyordu, bu yüzden `if (tepe > 85L && fark >= esikler$...)` gibi bir
+    # satır hem çözülmüş eşik hem LİTERAL taşıdığı hâlde muhafızdan geçiyordu.
     expect_false(
-      grepl("(>=|<)\\s*[0-9]+L?\\b", satir),
+      grepl("(>=|<=|>|<)\\s*[0-9]+L?\\b", satir, perl = TRUE),
       info = sprintf("Karar dalinda literal esik: %s", trimws(satir))
     )
   }

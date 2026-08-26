@@ -560,9 +560,18 @@ soak_evaluate_thresholds <- function(cfg, summary, inprocess, redaction,
     # bunlar FARKLI sinirlardir ve yanlis kiyas gercek bir butce asimini
     # gizleyebilirdi.
     cache_budget_mb <- as.numeric(cfg$pk_cache_max_mb %||% 512)
-    cache_ok <- is.finite(pk_lane$cache$total_mb %||% NA_real_) &&
-      pk_lane$cache$total_mb <= cache_budget_mb
-    add("pk_cache_within_budget", TRUE, pk_lane$cache$total_mb,
+    # DEGER SKALER'E NORMALLESTIRILIR.
+    #
+    # `pk_cache_stats()` alani yoksa `total_mb` NULL kalirdi. Kontrol o zaman
+    # `value = NULL` ile FAIL olarak kaydediliyor, `soak_threshold_outcome()`
+    # ise basarisiz kontrolleri `sprintf(..., as.character(c$value), ...)` ile
+    # bicimliyordu: `as.character(NULL)` -> `character(0)` -> `sprintf()` sifir
+    # uzunlukta doner ve `vapply(..., character(1))` HATA verir. Kapi o zaman
+    # esigi raporlamak yerine artefakt uretimi sirasinda COKUYORDU.
+    cache_total_mb <- suppressWarnings(as.numeric(pk_lane$cache$total_mb %||% NA_real_))[1]
+    if (length(cache_total_mb) != 1L) cache_total_mb <- NA_real_
+    cache_ok <- is.finite(cache_total_mb) && cache_total_mb <= cache_budget_mb
+    add("pk_cache_within_budget", TRUE, cache_total_mb,
         cache_budget_mb, cache_ok,
         sprintf("Onbellek bayt butcesi asilmamali. hit=%s miss=%s tahliye=%s",
                 as.character(pk_lane$cache$hit), as.character(pk_lane$cache$miss),
@@ -593,16 +602,33 @@ soak_evaluate_thresholds <- function(cfg, summary, inprocess, redaction,
         isTRUE(pk_lane$cache$scope_isolated),
         "Onbellek girisi YALNIZCA kendi yetki kapsamina donmeli (capraz sizinti YOK).")
   } else if (isTRUE(cfg$pk_lane)) {
-    add("pk_analysis_lane_available", TRUE, FALSE, TRUE, FALSE,
-        paste0("PK-analiz seridi istendi ama calismadi; Faz 6 bloklamayan ",
-               "yurutme kapsami KAYBEDILDI. MERGEN_PK_ASYNC acilmamalidir."))
+    # Opt-out: fail_on_pk_unavailable (bkz. tests/scripts/soak_config.R).
+    if (isTRUE(th$fail_on_pk_unavailable)) {
+      add("pk_analysis_lane_available", TRUE, FALSE, TRUE, FALSE,
+          paste0("PK-analiz seridi istendi ama calismadi; Faz 6 bloklamayan ",
+                 "yurutme kapsami KAYBEDILDI. MERGEN_PK_ASYNC acilmamalidir."))
+    } else {
+      add("pk_analysis_lane_available", FALSE, NA, TRUE, NA,
+          paste0("PK-analiz seridi istendi ama calismadi (olculemeyen; fail ",
+                 "kapatildi). Bu kosum MERGEN_PK_ASYNC icin kanit sayilamaz."))
+    }
   } else {
     # KAPALI serit de kanit DEGILDIR. Onceden bu dal hicbir kontrol eklemiyordu,
     # yani seridi kapatmak kapiyi Faz 6 kapsami OLMADAN yesil birakiyordu.
-    add("pk_analysis_lane_enabled", TRUE, FALSE, TRUE, FALSE,
-        paste0("PK-analiz seridi KAPALI (MERGEN_SOAK_PK_LANE=false). Faz 6 ",
-               "bloklamayan yurutme kapsami olculmedi; bu kosum MERGEN_PK_ASYNC ",
-               "acilmasi icin kanit sayilamaz."))
+    # Ancak bayrak olmadan bu, seridin bagimliliklari bulunmayan bir makinede
+    # KENDINI-DUSUREN bir anahtara donusuyordu; opt-out ile olculemeyen olarak
+    # raporlanir (yine kanit degildir).
+    if (isTRUE(th$fail_on_pk_unavailable)) {
+      add("pk_analysis_lane_enabled", TRUE, FALSE, TRUE, FALSE,
+          paste0("PK-analiz seridi KAPALI (MERGEN_SOAK_PK_LANE=false). Faz 6 ",
+                 "bloklamayan yurutme kapsami olculmedi; bu kosum MERGEN_PK_ASYNC ",
+                 "acilmasi icin kanit sayilamaz."))
+    } else {
+      add("pk_analysis_lane_enabled", FALSE, NA, TRUE, NA,
+          paste0("PK-analiz seridi KAPALI ve fail kapatildi (olculemeyen). Faz 6 ",
+                 "bloklamayan yurutme kapsami olculmedi; bu kosum MERGEN_PK_ASYNC ",
+                 "acilmasi icin kanit sayilamaz."))
+    }
   }
 
   # 16) Kademeli kapasite merdiveni: HER calistirilan adim stabil esigi gecmeli.

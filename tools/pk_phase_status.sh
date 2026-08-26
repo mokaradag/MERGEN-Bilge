@@ -69,7 +69,10 @@ case "${REF}" in
       echo "UYARI: Uzak tazelik doğrulaması atlandı; çıktı BAYAT olabilir." >&2
     else
       uzak_dal="${REF#origin/}"
-      uzak_sha="$(git ls-remote origin "refs/heads/${uzak_dal}" 2>/dev/null | awk '{print $1}' | head -n 1)"
+      # SÜRE SINIRI: askıda kalan bir bağlantı (VPN kopması, kapalı port,
+      # yanıtsız vekil) betiği SÜRESİZ bekletiyordu; operatör hangi durumda
+      # olduğunu göremiyordu. Zaman aşımı mevcut çevrimdışı hata yoluna düşer.
+      uzak_sha="$(GIT_TERMINAL_PROMPT=0 timeout 20 git ls-remote origin "refs/heads/${uzak_dal}" 2>/dev/null | awk '{print $1}' | head -n 1)"
       if [ -z "${uzak_sha}" ]; then
         echo "HATA: 'origin/${uzak_dal}' uzak referansı doğrulanamadı (ağsız olabilirsiniz)." >&2
         echo "      Çevrimdışı çalışıyorsanız PK_PHASE_SKIP_REMOTE_CHECK=1 ile çalıştırın." >&2

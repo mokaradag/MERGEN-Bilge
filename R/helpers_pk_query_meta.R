@@ -535,8 +535,20 @@ pk_meta_validate_schema_dependent <- function(query_id, meta, schema, rls_column
   if (is.null(schema_types) || is.null(names(schema_types))) return(character(0))
   hatalar <- character(0)
 
-  for (sutun in intersect(names(meta$column_meta %||% list()), sema_sutunlari)) {
-    cmeta <- meta$column_meta[[sutun]]
+  # ARAMA ANAHTARLARININ İKİSİ DE KIRPILIR.
+  #
+  # `sema_sutunlari` kırpılmış geldiği için `" Saat" = "decimal(18,2)"` beyanı
+  # üyelik denetiminden GEÇİYOR, ama tip araması ham adla yapıldığından
+  # `schema_types[["Saat"]]` `NULL` dönüyordu: `.pk_meta_is_scalar_text(NULL)`
+  # FALSE olduğu için döngü `next` diyor ve `role='date'` / `role='measure'`
+  # yapısal denetimleri O sütun için HİÇ çalışmıyordu. Açılış, doğrulanmamış
+  # bir şemayı "doğrulandı" diye raporluyordu.
+  if (length(schema_types)) names(schema_types) <- trimws(names(schema_types))
+  sutun_meta <- meta$column_meta %||% list()
+  if (length(sutun_meta)) names(sutun_meta) <- trimws(names(sutun_meta))
+
+  for (sutun in intersect(names(sutun_meta), sema_sutunlari)) {
+    cmeta <- sutun_meta[[sutun]]
     if (!is.list(cmeta) || !.pk_meta_is_scalar_text(cmeta$role)) next
     if (!.pk_meta_is_scalar_text(schema_types[[sutun]])) next
     yapisal <- .pk_meta_role_from_class(schema_types[[sutun]])

@@ -306,9 +306,9 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     )
   }, detail_config$pk_deadline_at)
 
-  if (!isTRUE(ozet_sonucu$ok)) {
-    return(pk_deep_halt_result("deadline"))
-  }
+  if (!isTRUE(ozet_sonucu$ok)) return(pk_deep_bounded_summary_failure(
+    ozet_sonucu, detail_config, finish_result, query_name, filter_status,
+    applied_filters, nrow(raw_data), nrow(secure_data), nrow(filtered_data)))
   stat_summary <- ozet_sonucu$value
 
   post_stat_gate <- pk_async_stage_gate(

@@ -265,8 +265,17 @@ test_that("nihai yanıt sonlandırma noktaları alt bilgiyi iliştirir", {
     raw_bytes <- readBin(path, what = "raw", n = file.info(path)$size)
     txt <- iconv(rawToChar(raw_bytes), from = "UTF-8", to = "UTF-8", sub = "byte")
 
+    # YORUM SATIRLARI KANIT SAYILMAZ.
+    #
+    # `grepl("pk_provenance_decorate", ...)` bir Türkçe yorumla da eşleşir.
+    # Gerçek çağrı kaldırılıp yalnızca yorum bırakılırsa bu muhafız yeşil
+    # kalırken alt bilgi HİÇ eklenmezdi. Yalnızca ÇAĞRI biçimi aranır ve
+    # yorum satırları atılır.
+    satirlar <- strsplit(txt, "\n", fixed = TRUE)[[1]]
+    kod <- satirlar[!grepl("^\\s*#", satirlar, useBytes = TRUE)]
+
     expect_true(
-      grepl("pk_provenance_decorate", txt, fixed = TRUE, useBytes = TRUE),
+      any(grepl("pk_provenance_decorate(", kod, fixed = TRUE, useBytes = TRUE)),
       info = sprintf("%s alt bilgiyi iliştirmelidir.", rel)
     )
   }

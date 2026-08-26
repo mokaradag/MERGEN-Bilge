@@ -82,6 +82,21 @@
 # DEĞİŞKEN genişlikli kodlar: üst sınır ancak BEYAN EDİLEN uzunlukla bilinir.
 .PK_ODBC_VARIABLE_TYPE_CODES <- c("1", "-8", "12", "-9", "-2", "-3")
 
+# UNICODE DEĞİŞKEN genişlikli kodlar KARAKTER BAŞINA 4 BAYT sayılır.
+#
+# ODBC beyanı KARAKTER cinsindendir; R tarafındaki UTF-8 temsili karakter
+# başına 4 bayta kadar çıkar. Diğer iki genişlik yolu aynı mantıksal tip için
+# zaten `karakter x 4` üretiyor: betimleyici yolu SQL saklama baytını (UTF-16)
+# 2 ile çarpar, `helpers_pk_result_size.R` tip-adı yolu beyan edilen
+# `nvarchar` uzunluğunu 4 ile çarpar. Burada `.PK_ODBC_FIXED_TYPE_BYTES`
+# değerini (2) kullanmak, yalnız `dbColumnInfo()` ile betimlenen bir
+# `nvarchar(4000)` sonucunda satır genişliğini YARIYA indiriyor ve
+# `pk_sql_plan_chunk_rows()` `MERGEN_PK_MAX_RESULT_MB` tavanının izin
+# verdiğinden BÜYÜK bir parça seçiyordu; bayt kapısı ise parça ZATEN
+# maddileştikten sonra çalışır.
+.PK_ODBC_UNICODE_TYPE_CODES <- c("-8", "-9")
+.PK_ODBC_UNICODE_BYTES_PER_CHAR <- 4
+
 .pk_sql_metadata_field <- function(column_info, adaylar) {
   # YERELDEN BAĞIMSIZ KATLAMA ZORUNLUDUR.
   #
@@ -285,7 +300,12 @@ pk_sql_columns_from_metadata <- function(column_info, schema = NULL) {
           if (is.na(boyut) || !is.finite(boyut) || boyut <= 0) {
             return(list(type = "__unproven__", max_length = NA_real_))
           }
-          return(list(type = "__bounded__", max_length = boyut * birim))
+          carpan <- if (anahtar %in% .PK_ODBC_UNICODE_TYPE_CODES) {
+            .PK_ODBC_UNICODE_BYTES_PER_CHAR
+          } else {
+            birim
+          }
+          return(list(type = "__bounded__", max_length = boyut * carpan))
         }
         # Sabit genişlik: üst sınır tipin KENDİSİNDEN bilinir.
         return(list(type = "__bounded__", max_length = birim))

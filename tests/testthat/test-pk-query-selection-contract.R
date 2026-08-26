@@ -1027,8 +1027,14 @@ test_that("sözlüksel uyuşmazlık güveni DÜŞÜRÜR ama tek başına karar v
     adaylar
   )
 
-  uyumlu <- list(available = TRUE, rank = 1L, score = 0.7, disagrees = FALSE)
-  uyumsuz <- list(available = TRUE, rank = 4L, score = 0.01, disagrees = TRUE)
+  # `excluded_by_not_for` `pk_retrieval_agreement()` sonucunun BEŞ alanından
+  # biridir ve bir tüketici onu okur. Elle kurulan vekiller dört alan taşırsa
+  # `pk_select_decide()` GERÇEK sinyal şekliyle hiç sınanmaz ve o alanın
+  # korumasız okunması fark edilmezdi.
+  uyumlu <- list(available = TRUE, rank = 1L, score = 0.7, disagrees = FALSE,
+                 excluded_by_not_for = FALSE)
+  uyumsuz <- list(available = TRUE, rank = 4L, score = 0.01, disagrees = TRUE,
+                  excluded_by_not_for = FALSE)
 
   a <- pk_select_decide(pass_b, adaylar, lib_index, .pk_sel_cfg(), lexical = uyumlu)
   b <- pk_select_decide(pass_b, adaylar, lib_index, .pk_sel_cfg(), lexical = uyumsuz)
@@ -1216,10 +1222,12 @@ test_that("Faz 5 dosyaları manifestte DOĞRU SIRADA kayıtlıdır", {
 
   # v1 sezgiseli, bağlama katmanından ÖNCE yüklenmelidir
   # (`pk_init_query_score_table()` oradan gelir).
-  expect_lt(
-    regexpr("R/helpers_pk_analysis_query_selection.R", txt, fixed = TRUE, useBytes = TRUE)[1],
-    konumlar[["helpers_pk_query_selection_apply.R"]]
-  )
+  # `regexpr()` bulunamayan desen için `-1` döndürür; doğrudan karşılaştırma
+  # yapılırsa dosya manifestten TAMAMEN çıkarıldığında da iddia GEÇERDİ.
+  v1_konum <- regexpr("R/helpers_pk_analysis_query_selection.R", txt,
+                      fixed = TRUE, useBytes = TRUE)[1]
+  expect_gt(v1_konum, 0L)
+  expect_lt(v1_konum, konumlar[["helpers_pk_query_selection_apply.R"]])
 })
 
 test_that("dokuz seçim anahtarı da yapılandırma sözleşmesinde kayıtlıdır", {

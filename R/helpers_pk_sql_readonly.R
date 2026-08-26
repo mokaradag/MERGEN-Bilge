@@ -357,7 +357,7 @@ pk_sql_classify_readonly <- function(sql) {
     }
   }
 
-  # Sequence ilerleten ifade: sozdizimi SELECT olsa da uretim durumunu degistirir.
+  # Sequence ilerleten ifade: sözdizimi SELECT olsa da üretim durumunu değiştirir.
   if (grepl(PK_SQL_SEQUENCE_MUTATION_PATTERN, ifade,
             ignore.case = TRUE, perl = TRUE, useBytes = TRUE)) {
     return(sonuc(FALSE, "sequence_mutation", kind = "next_value_for", count = 1L))
@@ -468,8 +468,8 @@ if (!exists(".pk_sql_classify_readonly_base", mode = "function", inherits = FALS
         ignore.case = TRUE, perl = TRUE, useBytes = TRUE)
 }
 
-# Maskelenmis metindeki noktalivirguller ham metinle AYNI konumdadir; literal ve
-# yorum icindeki noktalivirguller maskelendigi icin ifade siniri sayilmaz.
+# Maskelenmiş metindeki noktalı virgüller ham metinle AYNI konumdadır; literal ve
+# yorum içindeki noktalı virgüller maskelendiği için ifade sınırı sayılmaz.
 .pk_sql_local_temp_statement_pairs <- function(raw_sql, masked_sql) {
   raw_chars <- strsplit(as.character(raw_sql)[1], "", fixed = TRUE)[[1]]
   masked_chars <- strsplit(as.character(masked_sql)[1], "", fixed = TRUE)[[1]]
@@ -516,7 +516,12 @@ if (!exists(".pk_sql_classify_readonly_base", mode = "function", inherits = FALS
 # Son temizlik hem klasik `DROP TABLE #T` hem de SQL Server 2016+ biçimi
 # `DROP TABLE IF EXISTS #A, #B` olabilir. Her hedef MUTLAKA yerel #temp'tir.
 .pk_sql_local_temp_cleanup <- function(raw_statement) {
+  # `(?s)`: PCRE'de `.` varsayılan olarak `\n` ile EŞLEŞMEZ. SSMS biçimli
+  # kütüphane SQL'inde `DROP TABLE #A,\n  #B` listesi satırlara bölünebilir;
+  # `(.+)$` o listeyi tek satırla sınırlar, ad listesi eksik yakalanır ve
+  # yerel `#temp` toplu işi bütünüyle REDDEDİLİRDİ.
   kalip <- paste0(
+    "(?s)",
     "^DROP[ \\t\\r\\n]+TABLE",
     "(?:[ \\t\\r\\n]+IF[ \\t\\r\\n]+EXISTS)?",
     "[ \\t\\r\\n]+(.+)$"
@@ -560,8 +565,8 @@ if (!exists(".pk_sql_classify_readonly_base", mode = "function", inherits = FALS
   sonra <- if (sonraki <= ham_uzunluk) substr(pair$raw, sonraki, ham_uzunluk) else ""
   salt_okunur_karsilik <- paste0(once, " ", sonra)
 
-  # Yalniz `INTO #YerelTemp` parcasi cikarilir; geri kalan SELECT mevcut D23
-  # siniflandiricisinin BUTUN yasaklarindan tekrar gecmek zorundadir.
+  # Yalnız `INTO #YerelTemp` parçası çıkarılır; geri kalan SELECT mevcut D23
+  # sınıflandırıcısının BÜTÜN yasaklarından tekrar geçmek zorundadır.
   kapi <- .pk_sql_classify_readonly_base(salt_okunur_karsilik)
   if (!isTRUE(kapi$allowed)) return(NULL)
 
@@ -573,9 +578,9 @@ if (!exists(".pk_sql_classify_readonly_base", mode = "function", inherits = FALS
   any(vapply(names, function(x) .pk_sql_local_temp_name_equal(x, name), logical(1)))
 }
 
-# CREATE INDEX genel olarak yasaktir. Bu istisna yalnizca batch'in DAHA ONCE
-# olusturdugu yerel #temp uzerindeki fiziksel indeksleri kabul eder. Kalici
-# tablo, ##global temp veya baska yasakli SQL ailesi hedeflenirse NULL doner.
+# CREATE INDEX genel olarak yasaktır. Bu istisna yalnızca batch'in DAHA ÖNCE
+# oluşturduğu yerel #temp üzerindeki fiziksel indeksleri kabul eder. Kalıcı
+# tablo, ##global temp veya başka yasaklı SQL ailesi hedeflenirse NULL döner.
 .pk_sql_local_temp_index <- function(pair, temp_names) {
   if (!is.list(pair) || !.pk_sql_starts_with_word(pair$masked %||% "", "CREATE")) {
     return(NULL)
@@ -586,6 +591,13 @@ if (!exists(".pk_sql_classify_readonly_base", mode = "function", inherits = FALS
 
   m <- regexec(
     paste0(
+      # `(?s)`: `.` `\n` ile de eşleşsin. SSMS biçimli
+      # `CREATE NONCLUSTERED INDEX ix_t\n  ON #T (Kolon)` ifadesi çok
+      # satırlıdır; DOTALL olmadan eşleşme başarısız olur,
+      # `.pk_sql_local_temp_index()` `NULL` döner ve TÜM toplu iş
+      # `local_temp_batch` istisnasını kaybederek salt-okunur kapısında
+      # güvenlik mesajıyla reddedilirdi.
+      "(?s)",
       "^CREATE[ \\t\\r\\n]+",
       "(?:UNIQUE[ \\t\\r\\n]+)?",
       "(?:(?:CLUSTERED|NONCLUSTERED)[ \\t\\r\\n]+)?",
@@ -723,8 +735,8 @@ pk_sql_analyze_local_temp_batch <- function(sql) {
   )
 }
 
-# Mevcut siniflandiriciyi yalnizca `multiple_statements` sonucu icin daralt.
-# Diger HER ret gerekcesi ve butun yasak anahtar kelime ratchet'leri aynen kalir.
+# Mevcut sınıflandırıcıyı yalnızca `multiple_statements` sonucu için daralt.
+# Diğer HER ret gerekçesi ve bütün yasak anahtar kelime ratchet'leri aynen kalır.
 pk_sql_classify_readonly <- function(sql) {
   temel <- .pk_sql_classify_readonly_base(sql)
   if (isTRUE(temel$allowed) || !identical(temel$reason, "multiple_statements")) {

@@ -263,6 +263,7 @@ test_that("Bilgi sayfasi RLS ONCESI satir sayisini ICERMEZ", {
 })
 
 test_that("Cok parcali aktarimda her satir TAM OLARAK bir kez yazilir", {
+  testthat::skip_if_not_installed("withr")
   skip_if_not_installed("writexl")
   skip_if_not_installed("readxl")
 
@@ -291,6 +292,7 @@ test_that("Cok parcali aktarimda her satir TAM OLARAK bir kez yazilir", {
 })
 
 test_that("Parca tavani asilirsa dosya URETILMEZ ve ret mesaji doner", {
+  testthat::skip_if_not_installed("withr")
   env <- .pk_export_env()
   withr::with_envvar(list(MERGEN_PK_EXPORT_MAX_ROWS = "10",
                           MERGEN_PK_EXPORT_MAX_PARTS = "2"), {

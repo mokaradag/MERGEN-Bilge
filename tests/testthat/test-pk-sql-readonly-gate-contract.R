@@ -265,6 +265,13 @@ test_that("kapi TUM PK SQL yurutme yollarinda baglidir (v1 / v2 / derin mod)", {
 test_that("kapi MERGEN_PK_ENGINE bayragindan BAGIMSIZDIR", {
   metin <- .pk_sql_read_bytes("R/helpers_pk_sql_readonly.R")
 
+  # EKSIK DOSYA OLUMSUZ IDDIALARI KENDILIGINDEN GECIRIR: `.pk_sql_read_bytes()`
+  # okunamayan dosya icin "" doner ve `grepl()` her zaman FALSE olur. Dosya
+  # yeniden adlandirilirsa bu guvenlik sozlesmesi HICBIR SEY dogrulamadan
+  # yesil kalirdi.
+  expect_true(nzchar(metin),
+              info = "R/helpers_pk_sql_readonly.R okunamadi (sozlesme vacuous).")
+
   expect_false(
     grepl("MERGEN_PK_ENGINE", metin, fixed = TRUE, useBytes = TRUE),
     info = "Salt-okunur kapisi motor bayragina bagli olmamalidir (kosulsuz)."

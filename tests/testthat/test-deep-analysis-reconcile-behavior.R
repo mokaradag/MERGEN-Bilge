@@ -16,7 +16,8 @@
 .pk_reconcile_env <- function() {
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
-  env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
+  # ÜRETİM OPERATÖRÜYLE AYNI (`R/utils_common.R`): yalnız `NULL` yedeğe düşer.
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
 
   for (dosya in c("helpers_pk_config.R", "helpers_pk_async_cancel.R",
                   "helpers_pk_exec_context.R", "helpers_pk_result_columns.R", "helpers_pk_result_size.R", "helpers_pk_sql_execute.R", "helpers_pk_sql_connection.R",

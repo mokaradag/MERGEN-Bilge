@@ -186,6 +186,23 @@ pk_export_csv_verify <- function(path, expected) {
       bek <- bek_dilim[[i]]
       ger <- okunan[[i]]
 
+      # `integer64` TAM ONDALIK METİN olarak karşılaştırılır.
+      #
+      # `bit64::integer64` `is.numeric()` denetimini GEÇER; iki tarafı da
+      # `as.numeric()` ile çevirmek 2^53 üstünde AYNI yuvarlamayı uygular ve
+      # DEĞİŞMİŞ bir kimlik "doğrulandı" sayılırdı. XLSX doğrulayıcısı
+      # (`.pk_export_compare_column()`) zaten metin karşılaştırır; iki
+      # doğrulayıcı TEK sözleşmeye bağlanır.
+      if (inherits(bek, "integer64")) {
+        bek_metin <- trimws(as.character(bek))
+        bek_metin[is.na(bek_metin)] <- ""
+        if (!identical(bek_metin, trimws(as.character(ger)))) {
+          return(sprintf("'%s' sutununda tam sayi degeri degismis (integer64).",
+                         sutun_adlari[i]))
+        }
+        next
+      }
+
       if (is.numeric(bek)) {
         ger_sayi <- suppressWarnings(as.numeric(ger))
         bek_sayi <- as.numeric(bek)

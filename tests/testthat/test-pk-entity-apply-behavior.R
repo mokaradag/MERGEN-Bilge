@@ -22,12 +22,11 @@
 
 pk_entity_source_chain_for_tests(extra = c("helpers_pk_entity_tree.R", "helpers_pk_entity_apply.R"))
 
-local({
-  # `%||%` çalışma zamanı yardımcısıdır; izole test zincirinde tanımlı olmayabilir.
-  if (!exists("%||%", mode = "function")) {
-    assign("%||%", function(x, y) if (is.null(x)) y else x, envir = globalenv())
-  }
-})
+# `%||%` çalışma zamanı yardımcısıdır; izole test zincirinde tanımlı
+# olmayabilir. KÜRESEL ORTAMA SIZDIRILMAZ: bu dosyadan sonra çalışan bir test
+# dosyası, kendi izole ortamına yüklemeden bu tanımı bulup fail-closed dallarını
+# ATLAYABİLİRDİ. Tanım YALNIZCA bu dosyanın ortamındadır.
+`%||%` <- function(x, y) if (is.null(x)) y else x
 
 .PK_APPLY_VERI <- data.frame(
   Proje = c("ANKA Projesi", "AKINCI Projesi", "ANKA Projesi"),

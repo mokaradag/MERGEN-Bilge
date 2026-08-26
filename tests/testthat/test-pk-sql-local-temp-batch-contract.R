@@ -315,10 +315,60 @@ test_that("Faz 3b kalici DB yazma ratchet'i degismemistir", {
   for (rel in c("tools/pk/helpers_meta_generator_db.R",
                 "tools/pk/helpers_meta_generator_fetch.R")) {
     metin <- .pk_local_temp_read_bytes(rel)
+    # BOŞ İÇERİK OLUMSUZ İDDİALARI KENDİLİĞİNDEN GEÇİRİR: `grepl("", ...)`
+    # her zaman FALSE döner. Dosya yeniden adlandırılır/taşınırsa bu ratchet
+    # hiçbir şey doğrulamadan yeşil kalırdı; önce OKUNABİLİRLİK doğrulanır.
+    expect_true(nzchar(metin), info = sprintf("%s okunamadi.", rel))
     for (yasak in c("dbExecute(", "dbWriteTable(", "dbRemoveTable(",
                     "dbCreateTable(", "dbAppendTable(", "sqlAppendTable(")) {
       expect_false(grepl(yasak, metin, fixed = TRUE, useBytes = TRUE),
                    info = sprintf("%s icinde yasak DB yazma API'si: %s", rel, yasak))
     }
   }
+})
+
+test_that("cok satirli CREATE INDEX ve DROP TABLE listesi REDDEDILMEZ", {
+  env <- .pk_local_temp_env()
+
+  # SSMS biçimli kütüphane SQL'i `ON` yan tümcesini ve `DROP TABLE` ad
+  # listesini SATIRLARA BÖLER. PCRE'de `.` varsayılan olarak `\n` ile
+  # eşleşmediği için çok satırlı bir `CREATE INDEX` hiç eşleşmiyor,
+  # `.pk_sql_local_temp_index()` `NULL` dönüyor ve TÜM toplu iş
+  # `local_temp_batch` istisnasını kaybederek güvenlik mesajıyla reddediliyordu.
+  sql <- paste(
+    "IF OBJECT_ID('tempdb..#Kaynak') IS NOT NULL DROP TABLE #Kaynak;",
+    "SELECT p.ProjeId, p.Tutar INTO #Kaynak FROM dbo.Projeler AS p;",
+    "CREATE NONCLUSTERED INDEX ix_kaynak",
+    "    ON #Kaynak (ProjeId);",
+    "SELECT ProjeId, SUM(Tutar) AS Toplam FROM #Kaynak GROUP BY ProjeId;",
+    "DROP TABLE #Kaynak;",
+    sep = "\n"
+  )
+
+  plan <- env$pk_sql_analyze_local_temp_batch(sql)
+  expect_true(isTRUE(plan$ok))
+  expect_identical(plan$temp_names, "#Kaynak")
+
+  sonuc <- env$pk_sql_classify_readonly(sql)
+  expect_true(isTRUE(sonuc$allowed))
+  expect_identical(sonuc$statement_kind, "local_temp_batch")
+})
+
+test_that("cok satirli DROP TABLE ad LISTESI de yerel #temp olarak cozulur", {
+  env <- .pk_local_temp_env()
+
+  sql <- paste(
+    "IF OBJECT_ID('tempdb..#A') IS NOT NULL DROP TABLE #A;",
+    "SELECT p.ProjeId INTO #A FROM dbo.Projeler AS p;",
+    "IF OBJECT_ID('tempdb..#B') IS NOT NULL DROP TABLE #B;",
+    "SELECT a.ProjeId, COUNT(*) AS N INTO #B FROM #A AS a GROUP BY a.ProjeId;",
+    "SELECT ProjeId, N FROM #B;",
+    "DROP TABLE #A,",
+    "  #B;",
+    sep = "\n"
+  )
+
+  plan <- env$pk_sql_analyze_local_temp_batch(sql)
+  expect_true(isTRUE(plan$ok))
+  expect_identical(plan$temp_names, c("#A", "#B"))
 })

@@ -25,8 +25,15 @@ testthat::skip_if_not_installed("openssl")
 local({
   repo_root <- resolve_repo_root_for_tests()
 
+  # `<<-` DEĞİL, AÇIK `assign()`.
+  #
+  # `<<-` en yakın kapsayan kapsamda ada bakar ve bulamazsa `globalenv()`e
+  # yazar; niyet okunmaz ve dosya bitince kalan tanım bir SIZINTIYA dönüşür.
+  # Bu dosya üretim PK yardımcılarını ZATEN `globalenv()`e sourceladığı için
+  # yedek operatörün de orada olması TUTARLIDIR; kritik olan anlamın ÜRETİMLE
+  # BİREBİR AYNI olmasıdır (yalnız `NULL` yedeğe düşer, `R/utils_common.R`).
   if (!exists("%||%", mode = "function", inherits = TRUE)) {
-    `%||%` <<- function(a, b) if (is.null(a)) b else a
+    assign("%||%", function(a, b) if (is.null(a)) b else a, envir = globalenv())
   }
 
   for (f in c("helpers_pk_config.R", "helpers_pk_provenance.R",
@@ -173,7 +180,11 @@ test_that("anahtar yoksa parmak izi HİÇ yazılmaz", {
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   .pk_priv_with_env(
-    list(MERGEN_PK_TELEMETRY_HMAC_KEY = NULL, MERGEN_PK_LOG_QUESTION_TEXT = NULL),
+    # `MERGEN_PK_TELEMETRY` SABİTLENİR: koşucu bunu `false` ayarlarsa
+    # `pk_telemetry_log_analysis()` SATIR YAZMADAN döner ve `nrow(row) == 1L`
+    # iddiası ORTAM yüzünden düşerdi.
+    list(MERGEN_PK_TELEMETRY = "true",
+         MERGEN_PK_TELEMETRY_HMAC_KEY = NULL, MERGEN_PK_LOG_QUESTION_TEXT = NULL),
     {
       fp <- pk_telemetry_question_fingerprint(.pk_priv_question)
       expect_true(is.na(fp$fingerprint))
@@ -202,7 +213,8 @@ test_that("açık onayla (=true) ham soru metni saklanabilir", {
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
   .pk_priv_with_env(
-    list(MERGEN_PK_LOG_QUESTION_TEXT = "true",
+    list(MERGEN_PK_TELEMETRY = "true",
+         MERGEN_PK_LOG_QUESTION_TEXT = "true",
          MERGEN_PK_TELEMETRY_HMAC_KEY = .pk_priv_fake_key()),
     expect_true(pk_telemetry_log_analysis(.pk_priv_info(), conn))
   )
@@ -222,7 +234,8 @@ test_that("HMAC anahtarının kendisi telemetri satırına sızmaz", {
   key <- .pk_priv_fake_key("gizli")
 
   .pk_priv_with_env(
-    list(MERGEN_PK_TELEMETRY_HMAC_KEY = key, MERGEN_PK_LOG_QUESTION_TEXT = "true"),
+    list(MERGEN_PK_TELEMETRY = "true",
+         MERGEN_PK_TELEMETRY_HMAC_KEY = key, MERGEN_PK_LOG_QUESTION_TEXT = "true"),
     expect_true(pk_telemetry_log_analysis(.pk_priv_info(), conn))
   )
 

@@ -49,8 +49,9 @@ pk_entity_source_chain_for_tests <- function(extra = character(0),
 # Test yerelinde eşikleri EZİP geri alan yardımcı.
 #
 # Dağıtım yapılandırmasından YALITIM: yalnızca test tarafından açıkça
-# verilen değişkenler değil, BEŞ çözümleme anahtarının TAMAMI ve karşılık
-# gelen `options()` girdileri kaydedilir/temizlenir. Aksi hâlde yapılandırılmış
+# verilen değişkenler değil, aşağıda listelenen çözümleme anahtarlarının
+# TAMAMI ve karşılık gelen `options()` girdileri kaydedilir/temizlenir.
+# Aksi hâlde yapılandırılmış
 # bir VM'de veya geliştirici checkout'unda ortamdaki `AMBIGUITY_MARGIN` /
 # `MAX_CANDIDATES` değerleri dal davranışını değiştirir ve testler ya geçerli
 # kodu düşürür ya da gerçek bir regresyonu maskeler.
@@ -65,19 +66,19 @@ PK_ENTITY_RESOLVE_ENV_KEYS <- c(
   "MERGEN_PK_RESOLVE_ENABLED"
 )
 
-# PR #705: URETIM ESLEMESI kullanilir, `tolower()` DEGIL.
+# ÜRETİM EŞLEMESİ kullanılır, `tolower()` DEĞİL.
 #
-# Bu paket Turkce `LC_CTYPE` altinda BILEREK kosar; orada `tolower("MIN")`
-# noktasiz `mın` uretir ve `mergen.pk.resolve_mın_score` gibi GERCEKTE VAR
-# OLMAYAN bir option adi olusur. Sonuc: `pk_entity_with_resolve_env()` gercek
-# option'lari ne temizler ne geri yukler; makine/dagitim ayarlari testlere
-# sizar, yanlis basarisizlik uretir ya da gercek bir regresyonu maskeler.
+# Bu paket Türkçe `LC_CTYPE` altında BİLEREK koşar; orada `tolower("MIN")`
+# noktasız `mın` üretir ve `mergen.pk.resolve_mın_score` gibi GERÇEKTE VAR
+# OLMAYAN bir option adı oluşur. Sonuç: `pk_entity_with_resolve_env()` gerçek
+# option'ları ne temizler ne geri yükler; makine/dağıtım ayarları testlere
+# sızar, yanlış başarısızlık üretir ya da gerçek bir regresyonu maskeler.
 pk_entity_resolve_option_keys <- function() {
   if (exists("pk_config_option_key", mode = "function", inherits = TRUE)) {
     return(vapply(PK_ENTITY_RESOLVE_ENV_KEYS, pk_config_option_key,
                   character(1), USE.NAMES = FALSE))
   }
-  # Uretim yardimcisi yuklenmemisse yerelden BAGIMSIZ ASCII katlama uygulanir.
+  # Üretim yardımcısı yüklenmemişse yerelden BAĞIMSIZ ASCII katlama uygulanır.
   paste0(
     "mergen.pk.",
     chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz",

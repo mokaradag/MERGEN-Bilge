@@ -100,11 +100,12 @@ test_that("v1 butce ALTINDA kalan yuk BIREBIR degismez", {
 
   # Butcenin altinda: kirpilma YOK, butce notu YOK, sekil ayni.
   expect_false(grepl("İSTEM BÜTÇESİ", yuk, fixed = TRUE))
-  expect_true(grepl("--- ORNEK SATIRLAR (JSON) ---", yuk, fixed = TRUE))
+  expect_true(grepl("--- ÖRNEK SATIRLAR (JSON) ---", yuk, fixed = TRUE))
   expect_true(grepl("Sutun_1", yuk, fixed = TRUE))
 })
 
 test_that("v1 yolu da istek boyutu sinirini UYGULAR", {
+  testthat::skip_if_not_installed("withr")
   # KUSUR: `MERGEN_PK_ENGINE` varsayilani v1'ken bu dal ornek satirlarin
   # TAMAMINI serilestirip butceye hic bakmadan donuyordu; istem guvenligi
   # v2'ye gecmeye bagli kaliyordu.
@@ -127,6 +128,7 @@ test_that("v1 yolu da istek boyutu sinirini UYGULAR", {
 })
 
 test_that("v2 yuk kurucusu butceyi uygular ve notu ekler", {
+  testthat::skip_if_not_installed("withr")
   env <- .pk_budget_env("v2")
   onizleme <- .pk_budget_frame(200L, 12L)
 
@@ -192,6 +194,7 @@ test_that("D8: v1 ozyineleme davranisi DEGISMEDEN korunur", {
 })
 
 test_that("butce anahtari yapilandirma oncelik zincirini izler", {
+  testthat::skip_if_not_installed("withr")
   env <- .pk_budget_env("v2")
 
   withr::with_envvar(list(MERGEN_PK_PROMPT_CHAR_BUDGET = NA_character_), {
@@ -245,6 +248,7 @@ test_that("ACIK sifir butce TUKENMIS demektir, varsayilana DUSMEZ", {
 })
 
 test_that("AYARLANMAMIS/GECERSIZ butce varsayilan yolu KORUR", {
+  testthat::skip_if_not_installed("withr")
   env <- .pk_budget_env("v2")
   onizleme <- .pk_budget_frame(3L, 3L)
 

@@ -55,7 +55,7 @@
 
 # ÜRETİMDE MANİFEST YÜKLER.
 #
-# `R/helpers_pk_analysis_core_impl.R` ve `R/helpers_pk_p1_runtime_guards.R`
+# `R/helpers_pk_analysis_core_impl.R` ve `R/helpers_pk_runtime_guards.R`
 # artık `R/config_source_manifest.R` içinde AÇIKÇA sıralanmıştır (impl bu
 # dosyadan ÖNCE, guard'lar SONRA). Manifest dışı dinamik `source()` bağımlılık
 # sırasını atlatıyor ve staged/asenkron dağıtımlarda yanlış ya da eksik yol

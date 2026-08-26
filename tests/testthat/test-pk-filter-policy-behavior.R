@@ -11,7 +11,8 @@
 .pk_policy_env <- function() {
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
-  env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
+  # ÜRETİM OPERATÖRÜYLE AYNI (`R/utils_common.R`): yalnız `NULL` yedeğe düşer.
+  env$`%||%` <- function(x, y) if (is.null(x)) y else x
   for (f in c("helpers_pk_text_turkish.R", "helpers_pk_query_meta_schema.R",
               "helpers_pk_query_meta_access.R", "helpers_pk_provenance.R",
               "helpers_pk_filter_compile.R", "helpers_pk_filter_group.R", "helpers_pk_filter_policy.R",
@@ -343,4 +344,64 @@ test_that("grup cikarma yan hasari da ifsa edilir", {
   expect_true("Durum" %in% politika$dropped_columns)
   expect_true("Yil" %in% politika$dropped_columns)
   expect_true(any(grepl("Yil", politika$disclosures, fixed = TRUE)))
+})
+
+# ------------------------------------------------------------------------------
+# DERİNLİK AŞIMI / DEĞERLENDİRİLEMEYEN MANTIK GRUBU (`__group__`)
+# ------------------------------------------------------------------------------
+
+test_that("dusurulen `__group__` gecerli bir filtre YANINDA da analizi REDDEDER", {
+  env <- .pk_policy_env()
+  veri <- .pk_policy_data()
+
+  # Derinlik asimi / desteklenmeyen birlestirici / bos grup, sentetik
+  # `__group__` adiyla dusurulur. Metadata BIRINCIL sutunu UYGULANAN yapraktan
+  # cikarabildiginde 0b kapisi calismiyor; `__group__` gercek bir sutun adi
+  # olmadigi icin 0c kapisi da calismiyordu. Sonuc: kullanicinin istedigi grup
+  # SESSIZCE atiliyor ve analiz yalnizca ILGISIZ kalan filtreyle suruyordu.
+  derlenmis <- list(
+    mask = c(TRUE, FALSE, TRUE),
+    all_dropped = FALSE,
+    applied = list(list(column = "Durum", operation = "exact_match",
+                        values = "Aktif", matched = 2L)),
+    dropped = list(list(leaf = list(column = "__group__"), reason = "depth_overflow")),
+    zero_match = list()
+  )
+
+  karar <- env$pk_filter_zero_match_policy(
+    veri,
+    list(list(column = "Durum", value = "Aktif", operation = "exact_match")),
+    derlenmis,
+    query = list(id = "q-grup", meta = list(primary_entity = "Durum"))
+  )
+
+  expect_identical(karar$action, "refuse")
+  expect_true(nzchar(as.character(karar$refusal_message)[1]))
+  expect_true(all(karar$mask == FALSE))
+  # Sentetik ad kullaniciya SIZMAZ.
+  expect_false(grepl("__group__", as.character(karar$refusal_message)[1], fixed = TRUE))
+})
+
+test_that("`__group__` YOKSA gecerli filtre yolunda davranis DEGISMEZ", {
+  env <- .pk_policy_env()
+  veri <- .pk_policy_data()
+
+  derlenmis <- list(
+    mask = c(TRUE, FALSE, TRUE),
+    all_dropped = FALSE,
+    applied = list(list(column = "Durum", operation = "exact_match",
+                        values = "Aktif", matched = 2L)),
+    dropped = list(),
+    zero_match = list()
+  )
+
+  karar <- env$pk_filter_zero_match_policy(
+    veri,
+    list(list(column = "Durum", value = "Aktif", operation = "exact_match")),
+    derlenmis,
+    query = list(id = "q-grup", meta = list(primary_entity = "Durum"))
+  )
+
+  expect_identical(karar$action, "proceed")
+  expect_identical(karar$mask, c(TRUE, FALSE, TRUE))
 })

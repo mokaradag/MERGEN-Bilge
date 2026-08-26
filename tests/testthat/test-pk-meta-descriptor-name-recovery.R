@@ -1,7 +1,8 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-pk-meta-descriptor-name-recovery.R
-# Açıklama:Faz 3b metadata ureticisi -- statik tanimlayici ad kurtarma regresyon testleri.
-#          Tamamen cevrimdisidir; SQL Server/ODBC gerektirmez.
+# Açıklama: Faz 3b metadata üreticisi -- statik tanımlayıcı ad kurtarma
+#           regresyon testleri. Tamamen çevrimdışıdır; SQL Server/ODBC
+#           gerektirmez.
 # ==============================================================================
 
 local({
@@ -33,7 +34,7 @@ local({
   )
 }
 
-test_that("runtime metadata yalnizca statik tanimlayicinin eksik adlarini tamamlar", {
+test_that("runtime metadata yalnızca statik tanımlayıcının eksik adlarını tamamlar", {
   descriptor <- .pk_descriptor_fixture()
   runtime_names <- c(
     "MasrafYeriKodu", "MasrafYeri", "SicilNo", "KaynakAdi", "EPPosta", "Telefon"
@@ -45,13 +46,13 @@ test_that("runtime metadata yalnizca statik tanimlayicinin eksik adlarini tamaml
     as.character(sonuc$name),
     runtime_names
   )
-  # Tip/genislik kaniti runtime sonucundan UYDURULMAZ; statik SQL Server
-  # tanimlayicisinin degerleri aynen korunur.
+  # Tip/genişlik kanıtı runtime sonucundan UYDURULMAZ; statik SQL Server
+  # tanımlayıcısının değerleri aynen korunur.
   expect_identical(sonuc$system_type_name, descriptor$system_type_name)
   expect_identical(sonuc$max_length, descriptor$max_length)
 })
 
-test_that("kolon sayisi uyusmazsa ad kurtarma fail-closed kalir", {
+test_that("kolon sayısı uyuşmazsa ad kurtarma fail-closed kalır", {
   descriptor <- .pk_descriptor_fixture()
 
   expect_error(
@@ -82,7 +83,7 @@ test_that("tam statik sema runtime adlarina dokunmadan korunur", {
   )
 })
 
-test_that("SQL Server tanimlayici hata alanlari kaybedilmez", {
+test_that("SQL Server tanımlayıcı hata alanları kaybedilmez", {
   descriptor <- .pk_descriptor_fixture()
   descriptor$error_number[1] <- 11526L
   descriptor$error_type_desc[1] <- "DYNAMIC_SQL"

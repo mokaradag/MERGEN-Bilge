@@ -170,9 +170,9 @@ pk_build_analysis_payload <- function(stat_summary, query, engine_is_v2 = FALSE,
   kur <- function(summary_text, preview_json, preview_rows) {
     paste0(
       summary_text,
-      "\n\n--- ORNEK SATIRLAR (JSON) ---\n",
+      "\n\n--- ÖRNEK SATIRLAR (JSON) ---\n",
       preview_json,
-      "\n\n(Not: Yukaridaki istatistikler ", stat_summary$row_count, " satirdan olusturulmustur)"
+      "\n\n(Not: Yukarıdaki istatistikler ", stat_summary$row_count, " satırdan oluşturulmuştur)"
     )
   }
 

@@ -39,6 +39,33 @@ test_that("D11 hâlâ geçerlidir: v1 yolu chat_history'yi OKUMAZ", {
   # katmanı ile v1 yolu ÇAKIŞIR.
   satirlar <- strsplit(metin, "\n", fixed = TRUE)[[1]]
   kod <- satirlar[!grepl("^\\s*#", satirlar)]
+
+  # SATIR SONU YORUMLARI KIYASLAMADAN ÖNCE ATILIR.
+  #
+  # İzin listesi eskiden üretim satırındaki SATIR SONU YORUMUNU birebir
+  # taşımak zorundaydı. O yorumun düzenlenmesi (örneğin Latinize yazımın
+  # Türkçeye çevrilmesi) davranış HİÇ değişmediği hâlde bu testi kırıyor ve
+  # `stop_on_failure = TRUE` yüzünden süiti düşürüyordu. Ayrıca test, düzeltilmesi
+  # gereken Latinize metni kendi içinde SABİTLİYORDU. Yorum yalnızca tırnak
+  # DIŞINDAKİ bir `#` işaretinden itibaren atılır; dize içindeki `#` korunur.
+  yorumu_at <- function(satir) {
+    karakterler <- strsplit(satir, "", fixed = TRUE)[[1]]
+    tirnak <- ""
+    for (i in seq_along(karakterler)) {
+      k <- karakterler[i]
+      onceki <- if (i > 1L) karakterler[i - 1L] else ""
+      if (nzchar(tirnak)) {
+        if (identical(k, tirnak) && !identical(onceki, "\\")) tirnak <- ""
+      } else if (k %in% c("\"", "'")) {
+        tirnak <- k
+      } else if (identical(k, "#")) {
+        return(substr(satir, 1L, i - 1L))
+      }
+    }
+    satir
+  }
+
+  kod <- vapply(kod, yorumu_at, character(1), USE.NAMES = FALSE)
   gecisler <- trimws(kod[grepl("chat_history", kod, fixed = TRUE)])
 
   expect_true(length(gecisler) >= 2L,
@@ -64,8 +91,7 @@ test_that("D11 hâlâ geçerlidir: v1 yolu chat_history'yi OKUMAZ", {
     # iliştirilir ve çözümleyici onu v2 dalında tüketir.
     paste0("if (exists(\"pk_filter_instructions_with_context\", mode = \"function\", ",
            "inherits = TRUE)) filter_criteria <- pk_filter_instructions_with_context(",
-           "filter_criteria, chat_history, session)  # D11: gecmis + onceki tur ",
-           "varlik baglami cozumleyiciye BURADA baglanir")
+           "filter_criteria, chat_history, session)")
   )
 
   expect_equal(

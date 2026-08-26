@@ -146,7 +146,11 @@ test_that("CSV yedegi TAM BOYUTLU ikinci kopya olusturmaz (parca basina donusum)
 
   # Donusum PARCA BASINA cagrilir; her cagri plan parcasi kadar satir gorur.
   gorulen_satirlar <- integer(0)
-  plan <- env$pk_export_plan(veri, base_name = "Veri")
+  # COK PARCALI plan SARTTIR: varsayilan satir tavani ile 30 satirlik cerceve
+  # TEK parca uretir ve "tum cerceveyi tek seferde donustur" regresyonu da
+  # asagidaki iddialari GECERDI (tek cagri = 30 satir = nrow(veri)).
+  plan <- env$pk_export_plan(veri, base_name = "Veri", max_rows = 10L)
+  expect_identical(length(plan$parts), 3L)
 
   paket <- env$pk_export_csv_bundle(
     dizin, "sentetik", plan, veri,
@@ -157,8 +161,11 @@ test_that("CSV yedegi TAM BOYUTLU ikinci kopya olusturmaz (parca basina donusum)
   )
 
   expect_true(isTRUE(paket$ok))
-  # Hicbir cagri TUM cerceveyi gormedi (parca sayisi 1 ise esitlik kabul).
-  expect_true(length(gorulen_satirlar) >= 1L)
+  # HICBIR cagri TUM cerceveyi gormedi: en buyuk dilim parca tavanindan kucuk
+  # ya da esittir ve toplam satir sayisi korunur.
+  expect_identical(length(gorulen_satirlar), 3L)
+  expect_true(max(gorulen_satirlar) < nrow(veri))
+  expect_true(max(gorulen_satirlar) <= 10L)
   expect_identical(sum(gorulen_satirlar), nrow(veri))
 
   # Donusum UYGULANIR: sutun adi degistiginde dosyaya o ad yazilir.
@@ -229,6 +236,41 @@ test_that("CSV dogrulamasi PARCA PARCA okur ve dogru karar verir", {
 
   # Satir sayisi uyusmazligi REDDEDILIR.
   expect_false(isTRUE(env$pk_export_csv_verify(yol, df[1:100, , drop = FALSE])$ok))
+})
+
+test_that("satir sayisi PARCA KATI oldugunda dosya sonu korumasi calisir", {
+  env <- .pk_exps_env()
+  dizin <- file.path(tempdir(), paste0("pk_exps_gk_", as.integer(runif(1, 1, 1e9))))
+  dir.create(dizin, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(dizin, recursive = TRUE, force = TRUE), add = TRUE)
+
+  # `pk_export_csv_verify()` dosya sonu korumasinin TETIKLEYICISI, parca satir
+  # sayisinin `.PK_CSV_CHUNK_ROWS` TAM KATI olmasidir: son okuma tam dolar,
+  # dongu kirilmaz ve tukenmis baglantida bir okuma daha denenirdi. 12000 satir
+  # tam kat DEGILDIR, dolayisiyla korunan yol hic calismiyordu.
+  n <- 2L * env$.PK_CSV_CHUNK_ROWS
+  df <- data.frame(
+    Ad = paste0("SENTETIK_", seq_len(n)),
+    Sayi = as.numeric(seq_len(n)),
+    stringsAsFactors = FALSE
+  )
+  yol <- file.path(dizin, "tam_kat.csv")
+  env$.pk_export_write_csv_bom(yol, df)
+
+  expect_true(isTRUE(env$pk_export_csv_verify(yol, df)$ok))
+
+  # FAZLADAN icerik hala ACIKCA reddedilir (koruma "sessizce kabul et" degildir).
+  # Gerekce KORUMANIN KENDISINDEN gelmelidir: koruma kaldirildiginda ret yine
+  # olusur ama gerekce genel satir-sayisi mesajidir, dolayisiyla yalnizca
+  # `expect_false` korunan yolu AYIRT EDEMEZDI.
+  con <- file(yol, open = "ab")
+  writeLines("SENTETIK_FAZLA,999", con, sep = "\n")
+  close(con)
+  fazla_sonuc <- env$pk_export_csv_verify(yol, df)
+  expect_false(isTRUE(fazla_sonuc$ok))
+  gerekce <- as.character(fazla_sonuc$reason)
+  expect_true(length(gerekce) == 1L &&
+                grepl("fazladan satir", gerekce, fixed = TRUE))
 })
 
 test_that("TIRNAKLI gomulu satir sonu parca okumada BOZULMAZ", {

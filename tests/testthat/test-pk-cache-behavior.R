@@ -283,10 +283,10 @@ test_that("durum özeti SIR veya anahtar METNİ dışa vermez", {
 })
 
 
-# HAM SQL SONUCU ANALIZ KIPINE BAGLI DEGILDIR: derin analiz ile normal analiz
-# ayni sorgu/RLS/SQL uclusunde AYNI ham cerceveyi paylasabilmelidir. `engine`
-# anahtara girdiginde iki yol birbirinin girdisine ASLA carpmiyordu.
-test_that("ham SQL onbellek anahtari analiz kipinden BAGIMSIZDIR", {
+# HAM SQL SONUCU ANALİZ KİPİNE BAĞLI DEĞİLDİR: derin analiz ile normal analiz
+# aynı sorgu/RLS/SQL üçlüsünde AYNI ham çerçeveyi paylaşabilmelidir. `engine`
+# anahtara girdiğinde iki yol birbirinin girdisine ASLA çarpmıyordu.
+test_that("ham SQL önbellek anahtarı analiz kipinden BAĞIMSIZDIR", {
   skip_if_not(requireNamespace("digest", quietly = TRUE) ||
               requireNamespace("openssl", quietly = TRUE))
 

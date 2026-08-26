@@ -2,8 +2,10 @@
 # Dosya Yolu: tests/testthat/test-deep-analysis-split-contract.R
 # Açıklama: R/helpers_deep_analysis.R bölünmesini dondurur.
 #
-#           helpers_deep_analysis.R bakım borcu ratchet bütçesini (627 taban ->
-#           659 satır / 15 fonksiyon izni) aşmıştı: 780 satır / 16 fonksiyon.
+#           helpers_deep_analysis.R bakım borcu ratchet bütçesini aşmıştı:
+#           780 satır / 16 fonksiyon. Bu dosyanın DONDURDUĞU güncel bütçe
+#           AŞAĞIDAKİ iddialardır: en çok 680 satır / 14 fonksiyon (ölçülen
+#           taban 672/10).
 #           Bütçeyi yükseltmek CLAUDE.md tarafından yasak olduğu için dosya iki
 #           SAF yardımcıya bölündü:
 #             * R/helpers_deep_analysis_detail.R  -> detay seviyesi kataloğu
@@ -143,7 +145,7 @@ test_that("bölünme sonrası orkestratör ratchet bütçesinin altındadır", {
   #   * RLS `halted` sonucunun yetki hatasından AYRILMASI,
   #   * istatistik üretim aşamasının kalan bütçeyle SINIRLANMASI,
   #   * satır tavanının geri alma kipinde de etkin kalması.
-  # Ölçülen yeni taban 677/10; küresel ratchet (795/24) DEĞİŞMEDİ.
+  # Ölçülen yeni taban 672/10; küresel ratchet (796/24) DEĞİŞMEDİ.
   expect_lte(satir_sayisi, 680L)
   expect_lte(fonksiyon_sayisi, 14L)
 })

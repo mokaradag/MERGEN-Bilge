@@ -187,7 +187,7 @@ Bu çalışma sırasında aşağıdaki sınırlar özellikle korunmuştur:
 - `PK_SQL_FORBIDDEN_KEYWORDS` genel olarak gevşetilmedi;
 - `DECLARE`, `CREATE`, `DROP` ve `INTO` genel izinli anahtar kelimelere dönüştürülmedi;
 - scalar `DECLARE` uyumluluğu mevcut `pk_sql_classify_readonly()` içinde dar bir çok-ifade dalı olarak eklendi; yeni bir genel izin yolu açılmadı;
-- `R/helpers_pk_sql_readonly.R` için yeni adlandırılmış fonksiyon eklenmedi; fonksiyon sayısı 22'de kaldı ve dosya 800 satır eşiğinin altında kaldı;
+- `R/helpers_pk_sql_readonly.R` için yeni adlandırılmış fonksiyon eklenmedi; fonksiyon sayısı 18'de kaldı ve dosya 800 satır eşiğinin altında kaldı;
 - maintainability ratchet eşikleri değiştirilmedi;
 - Faz 3b araçlarında veri değiştiren DBI çağrıları yasak kalmaya devam ediyor;
 - metadata generator DB bağlantı/pool davranışı değiştirilmedi;

@@ -284,6 +284,7 @@ test_that("taban R baglanti tutamaclari isci sinirinda REDDEDILIR", {
 })
 
 test_that("onbellek sinirlari KAYIP anahtarda da uzlastirilir", {
+  testthat::skip_if_not_installed("withr")
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a

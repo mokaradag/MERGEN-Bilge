@@ -72,15 +72,12 @@
   repo_root <- resolve_repo_root_for_tests()
   helper_env <- new.env(parent = globalenv())
 
-  helper_env$`%||%` <- function(x, y) {
-    if (is.null(x) || length(x) == 0L) {
-      return(y)
-    }
-    if (length(x) == 1L && is.na(x)) {
-      return(y)
-    }
-    x
-  }
+  # ÜRETİM OPERATÖRÜYLE AYNI (`R/utils_common.R`): yalnız `NULL` yedeğe düşer.
+  #
+  # `NA`/uzunluk-sıfır için de yedeğe düşen bir kopya, `resolve_pk_analysis_username()`
+  # ve `get_user_rls_info()` kimlik/kapsam dallarını ÜRETİMDEN FARKLI çalıştırıyor
+  # ve kimlik iddiaları üretim `"Unknown"` dönerken bile geçebiliyordu.
+  helper_env$`%||%` <- function(x, y) if (is.null(x)) y else x
 
   source(
     file.path(repo_root, "R", "helpers_pk_analysis_core.R"),
@@ -405,7 +402,8 @@ test_that("generate_statistical_summary filtre ve pre-aggregated uyarılarını 
 test_that("RLS veritabani hatasi KULLANICI BULUNAMADI olarak raporlanmaz", {
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
-  env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
+  # ÜRETİM OPERATÖRÜYLE AYNI (`R/utils_common.R`): yalnız `NULL` yedeğe düşer.
+  env$`%||%` <- function(x, y) if (is.null(x)) y else x
   for (dosya in c("utils_log_redact.R", "helpers_pk_rls_identity.R",
                   "helpers_pk_analysis_security_summary.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = env)

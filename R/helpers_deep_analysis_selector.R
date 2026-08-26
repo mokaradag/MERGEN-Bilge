@@ -48,9 +48,24 @@ find_multiple_queries_with_ai <- function(user_prompt, library, session,
     return(NULL)
   }
 
+  # SKALER METİN ZORUNLU.
+  #
+  # `.pk_meta_validate_query_library()` yalnızca `id` ve `sql` alanlarını
+  # doğrular; bir kütüphane girdisi `NULL` `name`/`description` taşıyabilir.
+  # `sprintf()` o zaman `character(0)` döndürür ve `vapply(..., character(1))`
+  # "values must be length 1" hatasıyla düşer. Bu blok aşağıdaki `tryCatch()`
+  # sınırından ÖNCE çalıştığı için hata fonksiyondan KAÇAR ve tek sorguluk
+  # yedek yol tamamen kaybolurdu.
+  skaler <- function(x, yedek = "") {
+    v <- as.character(x %||% yedek)
+    if (!length(v) || is.na(v[1])) return(yedek)
+    v[1]
+  }
+
   library_context <- vapply(seq_along(library), function(i) {
     q <- library[[i]]
-    sprintf("ID: %d | İSİM: %s | AÇIKLAMA: %s", i, q$name, q$description)
+    sprintf("ID: %d | İSİM: %s | AÇIKLAMA: %s", i,
+            skaler(q$name, "(isimsiz)"), skaler(q$description, "(açıklama yok)"))
   }, character(1))
 
   library_text <- paste(library_context, collapse = "\n")
@@ -172,7 +187,7 @@ find_multiple_queries_with_ai <- function(user_prompt, library, session,
       idx <- suppressWarnings(as.integer(m$match_id)[1])
       if (length(idx) == 1L && !is.na(idx) && idx > 0 && idx <= length(library)) {
         if (idx %in% selected_indices) {
-          cat(sprintf("[DEEP_ANALYSIS] Tekrarlı sorgu atlandı: ID=%d ('%s')\n", idx, library[[idx]]$name))
+          cat(sprintf("[DEEP_ANALYSIS] Tekrarlı sorgu atlandı: ID=%d ('%s')\n", idx, skaler(library[[idx]]$name, "(isimsiz)")))
           next
         }
         confidence <- suppressWarnings(as.numeric(m$confidence %||% 0)[1])
@@ -200,7 +215,8 @@ find_multiple_queries_with_ai <- function(user_prompt, library, session,
 
     cat(sprintf("[DEEP_ANALYSIS] %d sorgu seçildi: %s\n",
                 length(selected),
-                paste(vapply(selected, function(s) s$name, character(1)), collapse = ", ")))
+                paste(vapply(selected, function(s) skaler(s$name, "(isimsiz)"),
+                             character(1)), collapse = ", ")))
 
     return(selected)
 

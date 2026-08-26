@@ -74,13 +74,26 @@ pk_select_queries_v2 <- function(prompt, library, chat_history = NULL,
   # adayları bu kapıdan HİÇ geçmiyor, yalnızca güven + yetenek denetleniyordu;
   # "bu soru için DEĞİL" diye küratörlenmiş bir sorgu alternatif skoru yüksek
   # olduğu için çalıştırılıp derin analiz cevabına katılabiliyordu.
+  # KAPI HESAPLANAMAZSA KAPALI KALIR.
+  #
+  # Hata durumunda boş dışlama kümesine düşmek, "bu soru için DEĞİL" diye
+  # küratörlenmiş bir sorgunun ek aday olarak ÇALIŞMASINA ve derin analiz
+  # cevabına KATILMASINA izin veriyordu. Dışlama hesaplanamıyorsa ek aday
+  # eklenmez; birincil seçim kendi kapısından zaten geçmiştir.
   dislanan_ids <- character(0)
+  dislama_hatasi <- FALSE
   if (exists("pk_retrieval_excluded_ids", mode = "function", inherits = TRUE)) {
     dislanan_ids <- tryCatch(
       as.character(pk_retrieval_excluded_ids(library, prompt) %||% character(0)),
-      error = function(e) character(0)
+      error = function(e) {
+        cat(sprintf("[DEEP_SELECT] not_for dislama hesaplanamadi: %s\n",
+                    conditionMessage(e)))
+        dislama_hatasi <<- TRUE
+        character(0)
+      }
     )
   }
+  if (isTRUE(dislama_hatasi)) return(list(primary = birincil, queries = sonuc))
   ids <- names(skorlar)
   puanlar <- vapply(ids, function(k) as.numeric(skorlar[[k]]), numeric(1), USE.NAMES = FALSE)
   sira <- order(-puanlar, ids, method = "radix")
@@ -306,6 +319,61 @@ pk_deep_v2_halt_status <- function(detail_config, stop_check = NULL) {
   NULL
 }
 
+# SINIRLI ÇALIŞTIRMA BAŞARISIZLIĞINI SINIFLANDIR (son tarih mi, GERÇEK hata mı?)
+#
+# `pk_async_bounded_fs()` YALNIZCA bütçe dolduğunda değil, sınırlı fonksiyonun
+# içinde oluşan HER hatada `ok = FALSE` döndürür. Her başarısızlığı `deadline`
+# saymak iki şeyi bozuyordu: (1) sıradan bir paket kurulum çökmesi kullanıcıya
+# "süre doldu" diye raporlanıyor, gerçek kusur gizleniyordu; (2) bu eşleme
+# üzerine yazılan testler sınıflandırmayı DEĞİL eşlemeyi doğruluyordu.
+#
+# `budget_exhausted` sentineli ve GERÇEKTEN dolmuş bir son tarih son tarih
+# sayılır; `elapsed time limit` R'ın kendi `setTimeLimit()` kesmesidir ve o da
+# bütçe aşımıdır. Bunların dışındaki her şey GERÇEK HATADIR ve `NULL` döner.
+pk_deep_bounded_deadline_reason <- function(bounded_result, deadline_at = NULL) {
+  if (isTRUE(bounded_result$ok)) return(NULL)
+
+  hata <- tryCatch(as.character(bounded_result$error)[1], error = function(e) NA_character_)
+  if (!is.na(hata) && nzchar(hata)) {
+    if (identical(hata, "budget_exhausted")) return("deadline")
+    # R'ın zaman sınırı kesmesi yerelleştirilebilir; ASCII çapa yeterlidir.
+    if (grepl("elapsed time limit", hata, fixed = TRUE)) return("deadline")
+    if (grepl("reached elapsed time limit", hata, fixed = TRUE)) return("deadline")
+  }
+
+  # Hata alanı YOKSA (enjekte edilmiş sade bir yedek) son tarihin gerçekten
+  # dolup dolmadığına bakılır; dolmuşsa son tarihtir.
+  if (!is.null(deadline_at) &&
+      exists("pk_deadline_expired", mode = "function", inherits = TRUE)) {
+    dolmus <- tryCatch(isTRUE(pk_deadline_expired(deadline_at)), error = function(e) FALSE)
+    if (isTRUE(dolmus)) return("deadline")
+  }
+
+  NULL
+}
+
+# SINIRLI İSTATİSTİK ÖZETİ BAŞARISIZLIĞINI TİPLİ SONUCA ÇEVİR (v1 yolu)
+#
+# Karar `R/helpers_deep_analysis.R` içinde inline duruyordu ve o dosya bakım
+# ratchet tavanındadır. Sınıflandırma burada, kararın ikizi olan v2 paket
+# kurulum dalıyla AYNI dosyada tutulur: son tarih/iptal halt'i ile GERÇEK bir
+# iç hata birbirinden ayrılır.
+pk_deep_bounded_summary_failure <- function(bounded, detail_config, finish_result,
+                                            query_name, filter_status,
+                                            applied_filters, pre_rls_rows,
+                                            authorized_rows, filtered_rows) {
+  durdurma <- pk_deep_bounded_deadline_reason(bounded, detail_config$pk_deadline_at)
+  if (!is.null(durdurma)) return(pk_deep_halt_result(durdurma))
+
+  finish_result(
+    list(query_name = query_name, success = FALSE,
+         error_msg = "İstatistiksel özet üretilemedi (iç hata)."),
+    filter_status = filter_status, filters = applied_filters,
+    pre_rls_rows = pre_rls_rows, authorized_rows = authorized_rows,
+    filtered_rows = filtered_rows, outcome = "Hata"
+  )
+}
+
 pk_deep_build_v2_packet_result <- function(filtered_data, secure_data, query,
                                            filter_status, applied_filters,
                                            detail_config, finish_result,
@@ -355,8 +423,17 @@ pk_deep_build_v2_packet_result <- function(filtered_data, secure_data, query,
     list(ok = TRUE, value = build_call())
   }
   if (!isTRUE(paket_sonucu$ok)) {
-    durdurma <- pk_deep_v2_halt_status(detail_config, stop_check) %||% "deadline"
-    return(pk_deep_halt_result(durdurma))
+    durdurma <- pk_deep_v2_halt_status(detail_config, stop_check) %||%
+      pk_deep_bounded_deadline_reason(paket_sonucu, detail_config$pk_deadline_at)
+    if (!is.null(durdurma)) return(pk_deep_halt_result(durdurma))
+    # SON TARİH DEĞİL, GERÇEK HATA: kullanıcıya "süre doldu" denmez.
+    return(finish_result(
+      list(query_name = query_name, success = FALSE,
+           error_msg = "Analiz paketi kurulamadı (iç hata); sonuç üretilmedi."),
+      filter_status = filter_status, filters = applied_filters,
+      pre_rls_rows = pre_rls_rows, authorized_rows = nrow(secure_data),
+      filtered_rows = nrow(filtered_data), outcome = "Hata"
+    ))
   }
   paket <- paket_sonucu$value
 

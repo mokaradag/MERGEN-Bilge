@@ -117,13 +117,26 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
 
   # U45: sayısal depolama tipi ölçü DEMEK DEĞİLDİR (yukarıdaki sözleşme).
   olcu_disi <- character(0)
+  olcu_belirsiz <- character(0)
   if (length(num_cols) > 0) {
     olcu_mu <- vapply(
       num_cols,
       function(col) .pk_stat_is_measure(dt[[col]], column_meta, col),
       logical(1)
     )
-    olcu_disi <- num_cols[!olcu_mu]
+    disarida <- num_cols[!olcu_mu]
+    # KAPALI BAŞARISIZ KARAR AYNI, İFŞA METNİ FARKLI.
+    #
+    # `role = "measure"` ama `additive` beyan EDİLMEMİŞ bir sütun ölçü
+    # muamelesi görmez (doğru), ama "kimlik/kod/yıl gibi" DEĞİLDİR. Tek metin
+    # kullanmak, modele gerçek bir ölçüyü KİMLİK diye tanıtıyor ve model bu
+    # sınıflandırmayı kullanıcıya tekrarlayabiliyordu.
+    belirsiz_mu <- vapply(disarida, function(col) {
+      bilgi <- .pk_stat_meta_role(column_meta, col)
+      is.list(bilgi) && identical(bilgi$role, "measure")
+    }, logical(1))
+    olcu_belirsiz <- disarida[belirsiz_mu]
+    olcu_disi <- disarida[!belirsiz_mu]
     num_cols <- num_cols[olcu_mu]
   }
 
@@ -178,6 +191,21 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
         "ASLA toplam, ortalama, medyan veya standart sapma hesaplama."
       ),
       paste(vapply(olcu_disi, prettify_col_name, character(1)), collapse = ", ")
+    )
+  }
+
+  if (length(olcu_belirsiz) > 0) {
+    # TOPLULAŞTIRMA SÖZLEŞMESİ BİLİNMİYOR: sütun bir ÖLÇÜdür ama `additive`
+    # beyan edilmediği için toplam/ortalama ÜRETİLMEZ (kapalı başarısız).
+    summary_parts[[length(summary_parts) + 1]] <- sprintf(
+      paste0(
+        "\n\n\U000026A0\U0000FE0F TOPLULAŞTIRMA SÖZLEŞMESİ BİLİNMEYEN ÖLÇÜLER:\n",
+        "- %s\n",
+        "Bu sütunlar ÖLÇÜDÜR ama toplanabilirlikleri (additive) BEYAN EDİLMEMİŞTİR.\n",
+        "Kimlik/kod/yıl DEĞİLDİRLER; yalnızca toplam/ortalama/medyan/standart ",
+        "sapma HESAPLANAMAZ. Değerleri satır bazında olduğu gibi aktar."
+      ),
+      paste(vapply(olcu_belirsiz, prettify_col_name, character(1)), collapse = ", ")
     )
   }
 

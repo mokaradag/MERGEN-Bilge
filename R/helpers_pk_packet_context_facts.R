@@ -125,7 +125,15 @@ pk_packet_context_facts <- function(packet, scope = NULL) {
   }
 
   g <- packet$groups %||% list()
-  gruplama <- paste(as.character(g$group_by %||% character(0)), collapse = "+")
+  # GRUP OLGU KİMLİĞİ AD ALANLANIR.
+  #
+  # Kimlik `paste(group_by, collapse = "+")` ile üretiliyordu. Tek sütunlu bir
+  # kırılımda bu dize AYNI adı taşıyan kategorik sütunun kimliğine EŞİT olur:
+  # grup `other_rows` olgusu ile kategorik `other_rows` olgusu tek bir
+  # `pk_fact_id()` paylaşır, kimliğe göre biriktirilen kayıtlardan biri DÜŞER
+  # ve basılan kategorik sayım GRUP değerine karşı doğrulanır. Ön ek yazıcıyla
+  # (`R/helpers_pk_packet_render.R`) AYNI olmak zorundadır.
+  gruplama <- .pk_group_fact_id(g$group_by)
   # DARALTILAN GRUPLARIN SAYILARI DA OLGUDUR: yazıcı "Diger (N grup, M satir)"
   # satırını ÇIPLAK sayılarla basıyor, burada ise yalnızca GÖRÜNÜR `group_rows`
   # olguları üretiliyordu; model bu iki toplamı alıntılayamıyordu.

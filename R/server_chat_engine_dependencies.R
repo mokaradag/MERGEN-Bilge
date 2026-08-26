@@ -159,14 +159,14 @@ serverBuildChatEngineDependencyBundle <- function(settings_data,
   identical(left$conn %||% NULL, right$conn %||% NULL)
 }
 
-# BIRAKILMIS (stale) BAGLANTI KAYDI.
+# BIRAKILMIŞ (stale) BAGLANTI KAYDI.
 #
-# Cekirdek, birincil baglantiyi RLS okumasindan sonra havuza iade eder; elindeki
+# Çekirdek, birincil bağlantıyı RLS okumasindan sonra havuza iade eder; elindeki
 # `conn` referansi bu noktadan sonra ARTIK CHECKOUT DEGILDIR. Ayni referansla
-# telemetri sorgusu calistirmak "use-after-release" olur. Kayit, YALNIZCA bu
-# sarmalayicinin gercekten iade ettigi baglantilari izler; conn_provider gibi
-# izlenmeyen yollardan gelen CANLI baglantilar bilinmez kalir ve oldugu gibi
-# kullanilir (gereksiz ikinci checkout acilmaz).
+# telemetri sorgusu çalıştırmak "use-after-release" olur. Kayit, YALNIZCA bu
+# sarmalayıcının gercekten iade ettigi baglantilari izler; conn_provider gibi
+# izlenmeyen yollardan gelen CANLI baglantilar bilinmez kalır ve olduğu gibi
+# kullanılır (gereksiz ikinci checkout acilmaz).
 .PK_HOOK_RELEASED_CAP <- 8L
 
 .pk_hook_conn_is_released <- function(conn, state) {
@@ -336,15 +336,67 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
 # İdempotentlik BANT DIŞI sağlanır: `provenance_store` girdisi `istek_id`
 # anahtarıyla tutulur ve okunduğu anda SİLİNİR (bkz. `motor$tamamla`
 # sarmalayıcısı) — `pk_provenance_decorate()` ile aynı sözleşme.
+# ORTAK OTURUM YANITI DA SAYISAL KÖKENE KARŞI DOĞRULANIR.
+#
+# Alt bilgi eklemek YETKİ vermez: model uydurma bir sayı üretirse, yanıt
+# yine "Analiz Kaynağı" alt bilgisiyle YAYINLANIYORDU. Tek kullanıcılı yol
+# (`pk_provenance_decorate()`) doğrulamayı `pk_numeric_provenance_apply()`
+# ile yapar; Ortak Oturum yolu da AYNI sözleşmeye bağlanır. Bu yüzden depoya
+# yalnızca alt bilgi METNİ değil, KAYDIN TAMAMI (olgular + kip + deterministik
+# yedek) yayınlanır ve doğrulama `motor$tamamla` sınırında çalışır.
+.pk_hook_room_record <- function(value) {
+  if (is.list(value)) {
+    return(list(
+      footer = .pk_hook_scalar_text(value$footer),
+      facts = value$facts,
+      fallback_text = value$fallback_text,
+      query_id = value$query_id,
+      mode = value$mode
+    ))
+  }
+  list(footer = .pk_hook_scalar_text(value), facts = NULL,
+       fallback_text = NULL, query_id = NULL, mode = NULL)
+}
+
 .pk_hook_room_footer_append <- function(text, footer) {
-  footer <- .pk_hook_scalar_text(footer)
-  if (!nzchar(footer)) return(text)
-  paste0(.pk_hook_scalar_text(text), footer)
+  kayit <- .pk_hook_room_record(footer)
+  if (!nzchar(kayit$footer)) return(text)
+
+  govde <- .pk_hook_scalar_text(text)
+
+  # DOĞRULAMA ALT BİLGİDEN ÖNCE. Olgu saklanmamışsa (v1 yolu) adım atlanır ve
+  # davranış değişmez. Doğrulayıcı kendi içinde KAPALI başarısız olur:
+  # `block` kipinde deterministik yedek metni döndürür, ham düzyazıyı DEĞİL.
+  if (!is.null(kayit$facts) &&
+      exists("pk_numeric_provenance_apply", mode = "function", inherits = TRUE)) {
+    govde <- tryCatch({
+      sonuc <- pk_numeric_provenance_apply(
+        govde, kayit$facts, mode = kayit$mode,
+        fallback_text = kayit$fallback_text
+      )
+      if (exists("pk_numeric_provenance_report", mode = "function", inherits = TRUE)) {
+        try(pk_numeric_provenance_report(sonuc, kayit$query_id), silent = TRUE)
+      }
+      .pk_hook_scalar_text(sonuc$text)
+    }, error = function(e) {
+      # `block` kipi AÇIK başarısız olamaz: doğrulanmamış düzyazı teslim
+      # edilmektense deterministik reddetme metni gösterilir.
+      if (identical(as.character(kayit$mode %||% "")[1], "block") &&
+          exists("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)) {
+        return(.pk_hook_scalar_text(
+          get("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)
+        ))
+      }
+      govde
+    })
+  }
+
+  paste0(govde, kayit$footer)
 }
 
 .pk_hook_room_footer_publish <- function(footer) {
-  footer <- .pk_hook_scalar_text(footer)
-  if (!nzchar(footer)) return(invisible(FALSE))
+  kayit <- .pk_hook_room_record(footer)
+  if (!nzchar(kayit$footer)) return(invisible(FALSE))
 
   for (frame in rev(sys.frames())) {
     has_store <- exists(".pk_room_provenance_store", envir = frame, inherits = FALSE)
@@ -356,7 +408,7 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
       ".pk_room_provenance_key", envir = frame, inherits = FALSE
     ))
     if (is.environment(store) && nzchar(key)) {
-      assign(key, footer, envir = store)
+      assign(key, kayit, envir = store)
       return(invisible(TRUE))
     }
   }
@@ -375,13 +427,16 @@ if (exists("oo_arac_sql_baglami_kur", mode = "function", inherits = TRUE) &&
 
   oo_arac_sql_baglami_kur <- function(soru, gecmis, oda_session, arac_meta) {
     result <- .pk_hook_room_sql_core(soru, gecmis, oda_session, arac_meta)
-    footer <- if (exists("pk_provenance_take", mode = "function", inherits = TRUE)) {
-      tryCatch(pk_provenance_take(oda_session), error = function(e) NULL)
+    # TAM KAYIT alınır: yalnız alt bilgi metni değil, sayısal köken olguları,
+    # kip ve deterministik yedek de taşınır (bkz. `.pk_hook_room_footer_append`).
+    kayit <- if (exists("pk_provenance_take", mode = "function", inherits = TRUE)) {
+      tryCatch(pk_provenance_take(oda_session, full = TRUE), error = function(e) NULL)
     } else {
       NULL
     }
 
-    footer <- .pk_hook_scalar_text(footer)
+    kayit <- .pk_hook_room_record(kayit)
+    footer <- kayit$footer
     if (nzchar(footer)) {
       # KAYIT ZATEN TÜKETİLDİ: teslim edilemese bile YAYINLANIR.
       #
@@ -390,7 +445,7 @@ if (exists("oo_arac_sql_baglami_kur", mode = "function", inherits = TRUE) &&
       # düz METİN döndürdüğünde yetkili alt bilgi alınıp ATILIYOR ve (kayıt
       # tüketildiği için) bir daha teslim edilemiyordu. Depoya yayınlamak,
       # `motor$tamamla` sınırında eklenmesine izin verir.
-      .pk_hook_room_footer_publish(footer)
+      .pk_hook_room_footer_publish(kayit)
       if (is.list(result)) result$provenance_footer <- footer
     }
     result

@@ -189,12 +189,21 @@ pk_telemetry_table_ready <- function(conn, target = NULL) {
 #' @param info Telemetri girdisi (bkz. pk_telemetry_build_record).
 #' @param conn Açık DBI bağlantısı. Çağıran akışın bağlantısı kullanılır;
 #'   telemetri kendi başına bağlantı AÇMAZ.
+#' @param db_target Hazırlık kararının anahtarlanacağı VERİTABANI HEDEFİ.
+#'   Verilmezse etkin yürütme bağlamından çözülür.
+#'
+#'   HEDEF AÇIKÇA TAŞINIR: etkin yürütme bağlamı OLMAYAN yollarda (işçi
+#'   doğrudan-çıkış telemetrisi, derin gözlem) `.pk_telemetry_target_key()`
+#'   her bağlantıyı `"primary"` sayıyordu. Önbelleğe alınmış bir birincil
+#'   karar, geçerli bir ikincil yazımı ATLAYABİLİYOR ya da geçersiz bir
+#'   `INSERT`i ikincil bağlantıda YİNELEYEBİLİYORDU.
 #' @return Görünmez TRUE (yazıldı) / FALSE (atlandı veya başarısız).
-pk_telemetry_log_analysis <- function(info, conn) {
+pk_telemetry_log_analysis <- function(info, conn, db_target = NULL) {
   tryCatch({
     if (!pk_telemetry_enabled()) return(invisible(FALSE))
     if (is.null(conn)) return(invisible(FALSE))
-    if (!pk_telemetry_table_ready(conn)) return(invisible(FALSE))
+    hedef <- db_target %||% (if (is.list(info)) info$db_target else NULL)
+    if (!pk_telemetry_table_ready(conn, target = hedef)) return(invisible(FALSE))
 
     record <- .pk_telemetry_normalize_record(pk_telemetry_build_record(info))
 
@@ -272,7 +281,7 @@ pk_analysis_observe <- function(session, conn, info) {
       character(1)
     )
 
-    pk_telemetry_log_analysis(info, conn)
+    pk_telemetry_log_analysis(info, conn, db_target = info$db_target)
 
     invisible(footer)
   }, error = function(e) invisible(""))

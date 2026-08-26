@@ -162,8 +162,10 @@ eşzamanlılık değişikliğidir.
   kanıtlamadan yeşil görünürdü. `*_exercised` / `*_observed` eşikleri bunu
   kapatır. Aynı nedenle iptal edilen tur **tam olarak `"cancelled"`** bitmelidir;
   `"deadline"` kabul edilseydi jetonu hiç okumayan bir regresyon geçerdi.
-- **Önbellek bütçesi** `MERGEN_PK_CACHE_MAX_MB` ile karşılaştırılır — bu, tek
-  sonuç tavanı `MERGEN_PK_MAX_RESULT_MB`'den **FARKLI** bir sınırdır.
+- **Önbellek bütçesi** `MERGEN_SOAK_PK_CACHE_MAX_MB` ile karşılaştırılır — bu,
+  tek sonuç tavanı `MERGEN_SOAK_PK_MAX_RESULT_MB`'den **FARKLI** bir sınırdır.
+  (Şeridin okuduğu değişkenler bunlardır; `MERGEN_PK_CACHE_MAX_MB` /
+  `MERGEN_PK_MAX_RESULT_MB` UYGULAMA değişkenleridir ve kapı onları okumaz.)
 - Serit **istendi ama çalışmadıysa** `pk_analysis_lane_available` FAIL olur;
   serit **KAPALI** ise (`MERGEN_SOAK_PK_LANE=false`) `pk_analysis_lane_enabled`
   FAIL olur. Atlanmış da kapatılmış da serit asla kanıt değildir.

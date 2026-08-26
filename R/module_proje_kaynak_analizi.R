@@ -539,7 +539,7 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 	  }
 	}
 
-	if (exists("pk_filter_instructions_with_context", mode = "function", inherits = TRUE)) filter_criteria <- pk_filter_instructions_with_context(filter_criteria, chat_history, session)  # D11: gecmis + onceki tur varlik baglami cozumleyiciye BURADA baglanir
+	if (exists("pk_filter_instructions_with_context", mode = "function", inherits = TRUE)) filter_criteria <- pk_filter_instructions_with_context(filter_criteria, chat_history, session)  # D11: geçmiş + önceki tur varlık bağlamı çözümleyiciye BURADA bağlanır
 	filtered_data <- apply_smart_filters(secure_data, filter_criteria, user_prompt)
 	# v2 politika karari, normalize_pk_dataframe_utf8() ozniteligi dusurmeden ONCE alinir.
 	if (pk_engine_v2 && exists("PK_FILTER_V2_ATTR", inherits = TRUE)) {

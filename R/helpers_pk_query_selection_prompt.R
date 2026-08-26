@@ -346,15 +346,25 @@ pk_select_pass_b_messages <- function(user_prompt, candidates, context, cfg,
   )
 }
 
-#' Gerçek adaylardan Geçiş B örneği üret
+#' Geçiş B örneğini YER TUTUCU kimliklerle üret
 #'
-#' Sabit `q042`/`q108` örneği aday kümesinde olmayan kimlikleri gösteriyor ve
-#' tek alternatif yazarak "tum adaylari ver" kuralıyla çelişiyordu.
+#' ÖRNEK ASLA GERÇEK ADAY KİMLİĞİ TAŞIMAZ. Sıcaklık 0'da model bu zorunlu JSON
+#' bloğunu AYNEN kopyalayabilir. Gerçek kimlikli bir kopya `pk_select_parse_pass_b()`
+#' kapısından GEÇER (`id %in% candidate_ids`, geçerli `confidence`, tüm
+#' alternatifler, geçerli `requirements`), karar katmanı 78 güveni ve geniş bir
+#' marjı görür ve İLK geri getirme adayı sorudan BAĞIMSIZ olarak otomatik
+#' çalışır. Geçiş A örneği zaten yer tutucu kullanır ve kopya kimliksiz kalıp
+#' kapalı başarısız olur; Geçiş B de AYNI sözleşmeye bağlanır. Yer tutucu
+#' kimlik aday kümesinde bulunamaz, tek onarım denemesine düşer.
+#'
+#' Alternatif sayısı yine gerçek aday sayısını yansıtır; böylece "SECILEN
+#' DISINDAKI TUM adaylar" kuralı ŞEKİL olarak gösterilmeye devam eder.
 .pk_select_pass_b_example <- function(candidate_ids) {
-  if (!length(candidate_ids)) candidate_ids <- c("q001", "q002")
+  n <- max(2L, length(candidate_ids))
+  ornek_ids <- sprintf("ORNEK_KIMLIK_%d", seq_len(n))
 
-  secilen <- candidate_ids[1]
-  digerleri <- candidate_ids[-1]
+  secilen <- ornek_ids[1]
+  digerleri <- ornek_ids[-1]
   alternatifler <- if (length(digerleri)) {
     paste(
       vapply(

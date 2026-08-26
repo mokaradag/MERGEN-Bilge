@@ -125,12 +125,25 @@ test_that("yönlendirme muafiyeti SEMANTİK istemde de bulunur (alt dize aramaz)
     }
   }, add = TRUE)
 
+  # ÜRETİMİN GERÇEKTEN TAŞIDIĞI ALAN: `server_send_message.R` bağlamı
+  # `user_message_text` kurar. Yalnızca `user_prompt` sınanırsa, üretim alanının
+  # okunması kaldırıldığında test YEŞİL kalır ve muafiyet sessizce ölür.
   # İstem sorgu ADINI İÇERMEZ; eski alt-dize yaklaşımı muafiyeti KAÇIRIRDI.
-  meta <- mergen_pk_routing_query_meta(list(user_prompt = "bu yilki butce asimlarini goster"))
+  meta <- mergen_pk_routing_query_meta(
+    list(user_message_text = "bu yilki butce asimlarini goster")
+  )
   expect_true(is.list(meta))
   expect_false(isTRUE(meta$async))
 
+  # Geriye dönük `user_prompt` yedeği de çalışmaya devam eder.
+  meta_yedek <- mergen_pk_routing_query_meta(
+    list(user_prompt = "bu yilki butce asimlarini goster")
+  )
+  expect_true(is.list(meta_yedek))
+  expect_false(isTRUE(meta_yedek$async))
+
   # İlgisiz istem muafiyet ÜRETMEZ.
+  expect_null(mergen_pk_routing_query_meta(list(user_message_text = "merhaba nasilsin")))
   expect_null(mergen_pk_routing_query_meta(list(user_prompt = "merhaba nasilsin")))
 })
 
@@ -490,7 +503,10 @@ test_that("işçi globals paketi BOOTSTRAP ÖNCESİ çağrı grafiği için KAPA
                 "pk_async_worker_stage_refresh", "pk_async_worker_commit_env",
                 "pk_async_worker_install_globals",
                 "pk_async_worker_sql_dependencies")
-  tohumlar <- intersect(tohumlar, names(paket))
+  # TOHUMLAR SESSİZCE DÜŞÜRÜLMEZ: `intersect()` ile kesişim alınırsa, bir giriş
+  # noktası pakette olmadığında (yeniden adlandırma / paketten düşme) test daha
+  # AZ tohumla yeşil kalır ve tam da koruması gereken regresyonu kaçırır.
+  expect_identical(setdiff(tohumlar, names(paket)), character(0))
   expect_true(length(tohumlar) > 0L)
 
   gorulen <- character(0)

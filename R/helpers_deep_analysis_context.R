@@ -313,7 +313,7 @@ pk_deep_fit_context_budget <- function(system_prompt, user_context, data_blocks,
     boy <- attr(konumlar, "match.length")[son]
     kirpilmis <- paste0(
       substr(kirpilmis, 1L, bas - 1L),
-      "\n\n[ORNEK VERI: istem butcesi nedeniyle GONDERILMEDI]",
+      "\n\n[ÖRNEK VERİ: istem bütçesi nedeniyle GÖNDERİLMEDİ]",
       substr(kirpilmis, bas + boy, nchar(kirpilmis))
     )
     dusurulen <- dusurulen + 1L
@@ -375,7 +375,7 @@ pk_deep_fit_context_budget <- function(system_prompt, user_context, data_blocks,
     # Yerine konan metin blok işaretiyle EŞLEŞMEZ; döngü her turda kısalır.
     kirpilmis <- paste0(
       substr(kirpilmis, 1L, bas - 1L),
-      "\n\n[SORGU BLOGU: istem butcesi nedeniyle GONDERILMEDI]",
+      "\n\n[SORGU BLOĞU: istem bütçesi nedeniyle GÖNDERİLMEDİ]",
       substr(kirpilmis, son, nchar(kirpilmis))
     )
     dusen_blok <- dusen_blok + 1L

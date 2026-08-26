@@ -143,12 +143,33 @@ pk_parse_number_tr <- function(txt) {
 # Eski göreli terim (`abs(value) * 1e-9`) büyüklükle büyüyordu: 1e12'de ±1.000,
 # 1e15'te ±1.000.000 hataya izin veriyordu; maddi olarak yanlış bir bütçe/maliyet
 # iddiası bu yüzden köken doğrulamasından geçebilirdi.
+# KABALIK EŞİĞİ: iddia edilen gösterimin yuvarlama adımı, olgunun
+# büyüklüğünün bu oranından KÜÇÜKSE alıntı "yeterince hassas" sayılır ve kendi
+# yuvarlama adımı tolerans olur. Daha kaba alıntılarda maddiyet sınırı yeniden
+# devreye girer.
+#
+# Neden gerekli: `min(yuvarlama, maddiyet)` KÜÇÜK değerlerde meşru yuvarlamayı
+# reddediyordu. `3,456` olgusunu `3,46` diye alıntılamak geçerli bir 2 ondalık
+# yuvarlamadır (fark 0,004) ama maddiyet 0,003456'ya düşüyor ve doğru alıntı
+# `value_mismatch` sayılıyordu; `block` kipinde DOĞRU bir yanıt deterministik
+# yedekle değiştiriliyordu. Adım oranı 0,145% olduğu için artık kabul edilir.
+# `61,34` -> `61` iddiasının adım oranı 0,815%'tir; eşiğin ÜSTÜNDE kaldığı için
+# maddiyet sınırı uygulanmaya devam eder ve iddia yine REDDEDİLİR.
+.PK_PROV_COARSE_STEP_RATIO <- 5e-3
+
 .pk_prov_tolerance <- function(gosterim, gercek, olgu = NULL) {
   buyukluk <- abs(as.numeric(gercek))
   yuvarlama <- 0.5 * 10^(-.pk_prov_decimals(gosterim))
   maddiyet <- max(buyukluk * 1e-3, .Machine$double.eps * 16)
 
-  min(yuvarlama, maddiyet) + buyukluk * .Machine$double.eps * 16
+  temel <- if (is.finite(buyukluk) && buyukluk > 0 &&
+               yuvarlama <= buyukluk * .PK_PROV_COARSE_STEP_RATIO) {
+    yuvarlama
+  } else {
+    min(yuvarlama, maddiyet)
+  }
+
+  temel + buyukluk * .Machine$double.eps * 16
 }
 
 # Birim karşılaştırması yerelden bağımsız katlanır ("Saat" == "saat").

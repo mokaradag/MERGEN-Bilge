@@ -103,6 +103,14 @@ pk_filter_primary_column <- function(query, filter_columns) {
 
   satirlar <- vapply(utils::head(dropped, 5L), function(d) {
     sutun <- as.character(d$leaf$column %||% "?")[1]
+    # SENTETİK AD KULLANICIYA GÖSTERİLMEZ.
+    #
+    # `__group__` gerçek bir sütun adı değil, "mantık grubunun TAMAMI
+    # değerlendirilemedi" işaretidir. Ham hâliyle basıldığında kullanıcı
+    # sorgusunda olmayan bir sütun adı görüyor ve mesaj yanıltıcı oluyordu.
+    # Sentetik ad ters tırnaksız yazılır: kod adı DEĞİL, açıklamadır.
+    grup_mu <- identical(sutun, "__group__")
+    etiket <- if (grup_mu) "belirttiğiniz koşul grubu" else sprintf("`%s`", sutun)
     degerler <- unique(as.character(d$leaf$values %||% d$leaf$value %||% character(0)))
     degerler <- degerler[nzchar(degerler)]
     gosterim <- if (length(degerler)) {
@@ -110,7 +118,7 @@ pk_filter_primary_column <- function(query, filter_columns) {
     } else {
       ""
     }
-    sprintf("`%s`%s -> %s", sutun, gosterim, d$reason %||% "bilinmeyen sebep")
+    sprintf("%s%s -> %s", etiket, gosterim, d$reason %||% "bilinmeyen sebep")
   }, character(1))
 
   paste0(
@@ -146,12 +154,26 @@ pk_filter_zero_match_policy <- function(data, filters, compiled, query = NULL) {
   # hiç incelemiyordu: kullanıcı bir daraltma istediği hâlde derleyici onu
   # düşürdüğünde analiz TÜM YETKİLİ KÜME üzerinde sürüyor ve sonuç, sorulan
   # sorudan başka bir soruyu yanıtlıyordu.
-  dusen_sutunlar <- unique(vapply(
+  dusen_ham <- vapply(
     compiled$dropped %||% list(),
     function(d) as.character(d$leaf$column %||% "")[1],
     character(1)
-  ))
-  dusen_sutunlar <- dusen_sutunlar[nzchar(dusen_sutunlar) & !is.na(dusen_sutunlar)]
+  )
+  adsiz <- is.na(dusen_ham) | !nzchar(dusen_ham)
+  # `__group__` GERÇEK bir sütun adı değil, "mantık grubunun TAMAMI
+  # değerlendirilemedi" sentetik işaretidir; birincil sütun çıkarımına
+  # sokulmaz (aksi hâlde metadata'sız kaynaklarda sahte bir aday olurdu).
+  grup_dusen <- any(!adsiz & dusen_ham == "__group__")
+  dusen_sutunlar <- unique(dusen_ham[!adsiz & dusen_ham != "__group__"])
+
+  # SÜTUN ADI OLMAYAN DÜŞÜRÜLEN YAPRAK DA BİR DARALTMADIR.
+  #
+  # `pk_filter_normalize_leaf()` model `column` alanını atladığında `column = ""`
+  # döndürür ve yukarıdaki süzgeç o yaprağı KAYBEDERDİ: `all_dropped` FALSE
+  # (başka bir yaprak uygulandı), `dusen_sutunlar` BOŞ, dolayısıyla 0b ve 0c
+  # kapıları HİÇ çalışmıyordu. Kullanıcı "ANKA" daraltmasını istediği hâlde
+  # analiz yalnızca `Yil` filtresiyle TÜM projeleri özetliyordu.
+  adsiz_dusen <- any(adsiz)
 
   uygulanan_sutunlar <- vapply(compiled$groups %||% list(), function(g) g$column, character(1))
   birincil_on <- pk_filter_primary_column(query, unique(c(uygulanan_sutunlar, dusen_sutunlar)))
@@ -172,6 +194,17 @@ pk_filter_zero_match_policy <- function(data, filters, compiled, query = NULL) {
 
   # 0a) Kullanıcının istediği HER filtre düşürüldü -> analiz yapılmaz.
   if (isTRUE(compiled$all_dropped)) {
+    return(reddet(.pk_policy_dropped_message(compiled$dropped), birincil_on))
+  }
+
+  # 0a2) MANTIK GRUBUNUN TAMAMI değerlendirilemedi -> RED.
+  #
+  # Derinlik aşımı, desteklenmeyen birleştirici ya da boş grup, `__group__`
+  # sentetik adıyla düşürülür. Metadata birincil sütunu UYGULANAN yapraktan
+  # çıkarabildiğinde 0b çalışmıyor, `dusen_sutunlar` da gerçek bir ad
+  # taşımadığından 0c çalışmıyordu: kullanıcının istediği grup SESSİZCE
+  # atılıyor ve analiz yalnızca ilgisiz kalan filtreyle sürüyordu.
+  if (isTRUE(grup_dusen)) {
     return(reddet(.pk_policy_dropped_message(compiled$dropped), birincil_on))
   }
 
@@ -197,8 +230,8 @@ pk_filter_zero_match_policy <- function(data, filters, compiled, query = NULL) {
   # yaprağı düşürülüp `Yil` uygulanırsa analiz 2024'ün TÜM projelerini özetler.
   # Bu, 1b'deki sıfır eşleşme kuralının reddettiği sonucun aynısıdır; hangi
   # daraltmanın sorunun ÖZNESİ olduğu bilinemediğinden karar SİMETRİK olmalıdır.
-  if (is.null(birincil_on) && length(dusen_sutunlar)) {
-    return(reddet(.pk_policy_dropped_message(compiled$dropped), NULL))
+  if ((is.null(birincil_on) && length(dusen_sutunlar)) || isTRUE(adsiz_dusen)) {
+    return(reddet(.pk_policy_dropped_message(compiled$dropped), birincil_on))
   }
 
   sifir_gruplar <- Filter(function(g) isTRUE(g$zero_match), compiled$groups)

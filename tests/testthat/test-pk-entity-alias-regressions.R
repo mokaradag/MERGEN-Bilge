@@ -47,6 +47,9 @@ test_that("boş/adsız kayıt defteri güvenli boş indeks döndürür", {
 })
 
 test_that("kesin katlanmış anahtar KAYIPSIZ eşleşir", {
+  # `pk_entity_normalize()` `stringi` gerektirir; kardeş varlık test
+  # dosyalarıyla AYNI korumadır: paket yoksa hata değil ATLAMA üretilir.
+  testthat::skip_if_not_installed("stringi")
   index <- pk_entity_alias_index(c("ANKA" = "ANKA İHA"))
   sonuc <- pk_entity_alias_lookup(index, pk_entity_normalize("anka"))
 
@@ -56,6 +59,9 @@ test_that("kesin katlanmış anahtar KAYIPSIZ eşleşir", {
 })
 
 test_that("ASCII yedek anahtarı Türkçe harfsiz yazımı bulur ve KAYIPLI işaretlenir", {
+  # `pk_entity_normalize()` `stringi` gerektirir; kardeş varlık test
+  # dosyalarıyla AYNI korumadır: paket yoksa hata değil ATLAMA üretilir.
+  testthat::skip_if_not_installed("stringi")
   index <- pk_entity_alias_index(c("ŞAHİN" = "ŞAHİN PROJESİ"))
   sonuc <- pk_entity_alias_lookup(index, pk_entity_normalize("sahin"))
 
@@ -65,6 +71,9 @@ test_that("ASCII yedek anahtarı Türkçe harfsiz yazımı bulur ve KAYIPLI işa
 })
 
 test_that("ASCII yedek anahtarı çakışırsa hedef seçilmez, netleştirme istenir", {
+  # `pk_entity_normalize()` `stringi` gerektirir; kardeş varlık test
+  # dosyalarıyla AYNI korumadır: paket yoksa hata değil ATLAMA üretilir.
+  testthat::skip_if_not_installed("stringi")
   index <- pk_entity_alias_index(c("ŞAHİN" = "ŞAHİN PROJESİ", "SAHIN" = "SAHIN A.Ş."))
   sonuc <- pk_entity_alias_lookup(index, pk_entity_normalize("sahin"))
 
@@ -74,6 +83,9 @@ test_that("ASCII yedek anahtarı çakışırsa hedef seçilmez, netleştirme ist
 })
 
 test_that("boş ifade ve boş indeks için alias katmanı hiçbir hedef döndürmez", {
+  # `pk_entity_normalize()` `stringi` gerektirir; kardeş varlık test
+  # dosyalarıyla AYNI korumadır: paket yoksa hata değil ATLAMA üretilir.
+  testthat::skip_if_not_installed("stringi")
   index <- pk_entity_alias_index(c("ANKA" = "ANKA İHA"))
 
   expect_null(pk_entity_alias_lookup(index, pk_entity_normalize("   "))$target)

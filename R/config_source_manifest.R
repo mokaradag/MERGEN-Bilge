@@ -334,7 +334,7 @@ source_manifest_sections <- list(
     "R/helpers_deep_analysis_context.R",
     "R/helpers_deep_analysis.R",
     "R/helpers_pk_analysis_core_impl.R", "R/helpers_pk_analysis_core.R",  # gövde -> çekirdek
-    "R/helpers_pk_p1_runtime_guards.R",   # tanımları EZER: her ikisinden SONRA
+    "R/helpers_pk_runtime_guards.R",   # tanımları EZER: her ikisinden SONRA
     "R/helpers_pk_rls_identity.R", "R/helpers_pk_analysis_security_summary.R",
     "R/helpers_pk_statistical_summary.R",
     "R/helpers_pk_analysis_filters_base.R",

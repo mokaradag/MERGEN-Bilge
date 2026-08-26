@@ -354,7 +354,10 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # `pk_ascii_lower()` ile katlanir -- `tolower()` Turkce yerelde `I` -> `i`
     # yapmaz ve `NVARCHAR` gibi tipler eslesmiyordu; (b) Unicode (nchar/nvarchar)
     # tanimlayici genislikleri UTF-8 icin x2 olceklenir. Fonksiyon sayisi AYNI.
-    "R/helpers_pk_result_columns.R" = c(301L, 8L),
+    # BILINCLI GUNCELLEME (PR incelemesi): Unicode ODBC kodlari (-8/-9)
+    # karakter basina 4 BAYT sayilir; diger iki genislik yolu ile ayni
+    # sozlesme. OLCULEN taban 301 -> 321 (fonksiyon sayisi ARTMADI).
+    "R/helpers_pk_result_columns.R" = c(321L, 8L),
     # BILINCLI GUNCELLEME (PR #705 inceleme): 551 -> 592 satir (OLCULEN). Iki
     # neden: (a) `sql_variant` icin KANITLI 8016 bayt ust siniri; (b) R nesne
     # tabani (karakter 56 / atomik 8 bayt/eleman) tahmine EKLENDI -- eskiden
@@ -373,7 +376,10 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # Ham SQL onbellek anahtari artik SABIT `.PK_CACHE_RAW_SQL_ENGINE` kullanir;
     # cagiranin `engine` degeri anahtara girdiginde derin analiz ve standart
     # analiz AYNI sorgu icin ayri girdiler yaziyordu. Fonksiyon sayisi AYNI.
-    "R/helpers_pk_cache.R" = c(456L, 26L),
+    # YEREL SOZLESME KURESEL TAVANI ASAMAZ: kuresel ratchet
+    # `actual_max_functions <= 24` iddia eder; burada 26'ya izin vermek yerel
+    # testin GECIP kuresel testin DUSMESI demekti.
+    "R/helpers_pk_cache.R" = c(456L, 24L),
     # BILINCLI GUNCELLEME: tavan 1 satir BAYATTI (olculen 430, tavan 429).
     # Bu sapma, rapor yol eslesmesi bozuk oldugu icin (nrow == 0) uzun sure
     # "NA > 429" bicimindeki hatanin ardinda gorunmez kaldi. Tavan yine TAM
@@ -427,7 +433,8 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # bile isci ESKI havuzu ve eski oturum tavanini omru boyunca koruyordu.
     # `MERGEN_DB_POOL_SHARE_APPLIED` BILEREK tasinmaz (surec rolu).
     # Fonksiyon sayisi ARTMAMISTIR.
-    "R/helpers_pk_async_worker_pool.R" = c(409L, 26L),
+    # YEREL SOZLESME KURESEL TAVANI ASAMAZ (bkz. helpers_pk_cache.R notu).
+    "R/helpers_pk_async_worker_pool.R" = c(409L, 24L),
     # BILINCLI GUNCELLEME (PR #705 inceleme): +10 satir. D11 devralinan varlik
     # baglami hem isci vekiline KURULUR hem de hasat yuvalarina eklenir; aksi
     # halde asenkron takip sorulari onceki turun varlik kisitini kaybediyordu.
@@ -511,7 +518,10 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # Bozuk `match_id` / `confidence` alani artik YALNIZCA o girdiyi atlar
     # (eskiden tum LLM yanitini dusuruyordu) ve teshis log'u Turkce metne
     # geri cevrildi. Fonksiyon sayisi AYNI.
-    "R/helpers_deep_analysis_selector.R" = c(211L, 8L),
+    # BILINCLI GUNCELLEME (PR incelemesi): eksik `name`/`description`
+    # metadata'sinda `vapply(..., character(1))` "values must be length 1" ile
+    # dusuyordu; skaler indirgeme eklendi. OLCULEN taban 211 -> 227.
+    "R/helpers_deep_analysis_selector.R" = c(227L, 8L),
     # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 225 -> 235 satir (OLCULEN).
     # `try-error` nesnesi ARTIK gecerli bir jeton sayilmaz ve sifirlama
     # `hooked` yuvasini da temizler; aksi halde oturum-sonu kancasi bir daha
@@ -521,7 +531,10 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # kayittan SILINIR; girdi, istek-sahipli `release` kapanisini ve yakaladigi
     # durumu oturum boyunca canli tutuyordu. Fonksiyon sayisi DEGISMEDI.
     # Olculen 218.
-    "R/helpers_pk_async_session_registry.R" = c(218L, 16L),
+    # BILINCLI GUNCELLEME (PR incelemesi): sohbet nesli yazimi YAZ-SONRA-OKU
+    # ile dogrulanir (yutulan bir yazim iki kaydedilmemis soylesiyi AYNI
+    # kimlige dusuruyordu). OLCULEN taban 218 -> 230.
+    "R/helpers_pk_async_session_registry.R" = c(230L, 16L),
     "R/helpers_pk_async_routing.R" = c(239L, 21L),
     # BILINCLI GUNCELLEME (PR #705 P2 takibi): 232 -> 240 satir (OLCULEN).
     # `mergen_pk_send_snapshot()` anahtar plani alinamadiginda ACIK bir

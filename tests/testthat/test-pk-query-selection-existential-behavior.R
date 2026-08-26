@@ -154,6 +154,23 @@ test_that("group_by içinde de geçen varlık kimliği kanonikleştirilmez", {
   sonuc <- .pk_exist_validate(list(measures = "activity.delayed_exists",
                                    group_by = "activity.delayed_exists"))
   expect_equal(sonuc$status, "unknown_capability")
+
+  # KAPININ KENDİSİ DOĞRULANIR.
+  #
+  # Yukarıdaki durum tek başına kapıyı SINAMAZ: `group_by` belirsizlik kuralı
+  # tamamen kaldırılıp yalnızca `measures` kanonikleştirilse bile `group_by`
+  # girdisi hâlâ BİLİNMEYEN bir yetenek olurdu ve durum yine
+  # `unknown_capability` çıkardı. Bu yüzden dönüşümün HİÇ olmadığı doğrudan
+  # iddia edilir.
+  donusum <- pk_select_canonicalize_requirements(
+    .pk_exist_query(),
+    list(measures = "activity.delayed_exists",
+         group_by = "activity.delayed_exists"),
+    capability_ids = .pk_exist_ids(), registry = .pk_exist_registry()
+  )
+  expect_false(isTRUE(donusum$changed))
+  expect_setequal(donusum$requirements$measures, "activity.delayed_exists")
+  expect_setequal(donusum$requirements$group_by, "activity.delayed_exists")
 })
 
 test_that("SAYIM OLMAYAN bir ölçü varlık kipine hedef olamaz", {

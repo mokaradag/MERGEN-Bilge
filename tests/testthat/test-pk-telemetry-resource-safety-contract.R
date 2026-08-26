@@ -163,9 +163,9 @@ test_that("shared-room SQL provenance reaches direct and generated answers", {
   env$captured <- list()
   env$bridge_results <- list()
 
-  # URETIM IMZASIYLA AYNI: `pk_provenance_take(session, request_id, full)`.
-  # `full` eksikken ileride tam kaydi isteyen bir cagri "unused argument"
-  # hatasi verir ve basarisizlik test edilen davranisi degil TESTI gosterir.
+  # ÜRETİM İMZASIYLA AYNI: `pk_provenance_take(session, request_id, full)`.
+  # `full` eksikken ileride tam kaydı isteyen bir çağrı "unused argument"
+  # hatası verir ve başarısızlık test edilen davranışı değil TESTİ gösterir.
   env$pk_provenance_take <- function(session, request_id = NULL, full = FALSE) {
     pending <- session$userData$pk_provenance_pending
     session$userData$pk_provenance_pending <- NULL
@@ -338,4 +338,142 @@ test_that("istisna sınıflandırması yalnızca DB desenlerine dayanır", {
   expect_true(classify("**Veritabanı Hatası:** SQLSTATE 08001"))
   expect_false(classify("normal bir yanit metni"))
   expect_false(classify(NULL))
+})
+
+test_that("ortak oturum yanıtı alt bilgiden ÖNCE sayısal kökene karşı doğrulanır", {
+  env <- .pk_fix_test_env()
+  env$captured <- list()
+  env$dogrulama_cagrildi <- 0L
+
+  env$pk_provenance_take <- function(session, request_id = NULL, full = FALSE) {
+    pending <- session$userData$pk_provenance_pending
+    session$userData$pk_provenance_pending <- NULL
+    if (isTRUE(full)) return(pending)
+    if (is.list(pending)) pending$footer else pending
+  }
+
+  # `block` kipinde uyuşmayan sayısal iddia deterministik yedekle DEĞİŞTİRİLİR.
+  env$pk_numeric_provenance_apply <- function(text, facts, mode = NULL,
+                                              fallback_text = NULL) {
+    env$dogrulama_cagrildi <- env$dogrulama_cagrildi + 1L
+    list(text = paste0("DOĞRULANMADI: ", fallback_text), mode = mode,
+         checked = 1L, mismatches = list(list(reason = "value_mismatch")),
+         rate = 1, blocked = TRUE)
+  }
+
+  bridge <- function(soru, gecmis, oda_session, arac_meta) {
+    oda_session$userData$pk_provenance_pending <- list(
+      footer = "\n\n---\n**Analiz Kaynağı**\n- **Sorgu:** q001\n",
+      facts = list(list(id = "f1", value = 42)),
+      fallback_text = "R tarafından hesaplanan değer: 42",
+      query_id = "q001",
+      mode = "block"
+    )
+    list(prompt_context = "system", user_context = "user")
+  }
+  environment(bridge) <- env
+  env$oo_arac_sql_baglami_kur <- bridge
+
+  bind <- function(input, output, session, ctx, motor) {
+    motor$tamamla <- function(oturum_id, soru_id, istek_id,
+                              yanit_metni = NULL, hata_metni = NULL,
+                              kuyruk_id = NULL, soran_id = NULL,
+                              persona_id = NULL) {
+      env$captured[[istek_id]] <- yanit_metni
+      invisible(NULL)
+    }
+
+    motor$llm_uret <- function(oturum_id, soru_id, soran_id, istek_id,
+                               kuyruk_id = NULL, persona_kimligi = NULL) {
+      room_session <- list(userData = new.env(parent = emptyenv()))
+      oo_arac_sql_baglami_kur("soru", list(), room_session, list())
+      motor$tamamla(
+        oturum_id, soru_id, istek_id,
+        yanit_metni = "Toplam 99.999 saat harcanmıştır.",
+        soran_id = soran_id
+      )
+      invisible(NULL)
+    }
+    invisible(TRUE)
+  }
+  environment(bind) <- env
+  env$ortakOturumYzBind <- bind
+
+  .source_pk_fix_layer(env)
+
+  motor <- new.env(parent = emptyenv())
+  env$ortakOturumYzBind(NULL, NULL, NULL, NULL, motor)
+  motor$llm_uret(10L, 1L, 7L, "req-block")
+
+  yanit <- env$captured[["req-block"]]
+  expect_identical(env$dogrulama_cagrildi, 1L)
+  # Doğrulanmamış model düzyazısı YAYINLANMAZ.
+  expect_false(grepl("99.999", yanit, fixed = TRUE))
+  expect_match(yanit, "DOĞRULANMADI", fixed = TRUE)
+  # Yetkili alt bilgi yine eklenir.
+  expect_match(yanit, "Analiz Kaynağı", fixed = TRUE)
+})
+
+test_that("olgu taşımayan ortak oturum kaydı doğrulayıcıyı ÇAĞIRMAZ", {
+  env <- .pk_fix_test_env()
+  env$captured <- list()
+  env$dogrulama_cagrildi <- 0L
+
+  env$pk_provenance_take <- function(session, request_id = NULL, full = FALSE) {
+    pending <- session$userData$pk_provenance_pending
+    session$userData$pk_provenance_pending <- NULL
+    if (isTRUE(full)) return(pending)
+    if (is.list(pending)) pending$footer else pending
+  }
+
+  env$pk_numeric_provenance_apply <- function(text, facts, mode = NULL,
+                                              fallback_text = NULL) {
+    env$dogrulama_cagrildi <- env$dogrulama_cagrildi + 1L
+    list(text = "ASLA", mode = mode, checked = 0L, mismatches = list(),
+         rate = 0, blocked = FALSE)
+  }
+
+  bridge <- function(soru, gecmis, oda_session, arac_meta) {
+    oda_session$userData$pk_provenance_pending <- list(
+      footer = "\n\n---\n**Analiz Kaynağı**\n- **Sorgu:** q002\n"
+    )
+    list(dogrudan_yanit = "v1 yolu yanıtı")
+  }
+  environment(bridge) <- env
+  env$oo_arac_sql_baglami_kur <- bridge
+
+  bind <- function(input, output, session, ctx, motor) {
+    motor$tamamla <- function(oturum_id, soru_id, istek_id,
+                              yanit_metni = NULL, hata_metni = NULL,
+                              kuyruk_id = NULL, soran_id = NULL,
+                              persona_id = NULL) {
+      env$captured[[istek_id]] <- yanit_metni
+      invisible(NULL)
+    }
+
+    motor$llm_uret <- function(oturum_id, soru_id, soran_id, istek_id,
+                               kuyruk_id = NULL, persona_kimligi = NULL) {
+      room_session <- list(userData = new.env(parent = emptyenv()))
+      sonuc <- oo_arac_sql_baglami_kur("soru", list(), room_session, list())
+      motor$tamamla(
+        oturum_id, soru_id, istek_id,
+        yanit_metni = sonuc$dogrudan_yanit,
+        soran_id = soran_id
+      )
+      invisible(NULL)
+    }
+    invisible(TRUE)
+  }
+  environment(bind) <- env
+  env$ortakOturumYzBind <- bind
+
+  .source_pk_fix_layer(env)
+
+  motor <- new.env(parent = emptyenv())
+  env$ortakOturumYzBind(NULL, NULL, NULL, NULL, motor)
+  motor$llm_uret(10L, 1L, 7L, "req-v1")
+
+  expect_identical(env$dogrulama_cagrildi, 0L)
+  expect_match(env$captured[["req-v1"]], "v1 yolu yanıtı", fixed = TRUE)
+  expect_match(env$captured[["req-v1"]], "Analiz Kaynağı", fixed = TRUE)
 })

@@ -66,7 +66,7 @@ test_that("gözlem yalnız uygulanan filtreleri ve yapılandırılmış motoru k
   env$query_library <- list(list(id = "q-engine", name = "Motor Sorgusu", engine = "v2"))
 
   captured <- new.env(parent = emptyenv())
-  env$pk_telemetry_log_analysis <- function(info, conn) {
+  env$pk_telemetry_log_analysis <- function(info, conn, db_target = NULL) {
     captured$info <- info
     invisible(TRUE)
   }
@@ -130,7 +130,7 @@ test_that("tüm filtreler düşürüldüyse ok_no_filter bozuk olarak raporlanı
   env$pk_provenance_current_request_id <- function(session) "req-expr"
 
   captured <- new.env(parent = emptyenv())
-  env$pk_telemetry_log_analysis <- function(info, conn) {
+  env$pk_telemetry_log_analysis <- function(info, conn, db_target = NULL) {
     captured$info <- info
     invisible(TRUE)
   }
@@ -184,7 +184,7 @@ test_that("düşürülen filtre stopped gibi özgül durumları ezmez", {
   env$pk_provenance_current_request_id <- function(session) "req-stopped"
 
   captured <- new.env(parent = emptyenv())
-  env$pk_telemetry_log_analysis <- function(info, conn) {
+  env$pk_telemetry_log_analysis <- function(info, conn, db_target = NULL) {
     captured$info <- info
     invisible(TRUE)
   }

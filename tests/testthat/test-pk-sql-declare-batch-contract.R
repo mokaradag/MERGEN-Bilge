@@ -1,6 +1,6 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-pk-sql-declare-batch-contract.R
-# Aciklama: Salt-okunur scalar DECLARE oneki icin dar regresyon sozlesmesi.
+# Açıklama: Salt-okunur scalar DECLARE öneki için dar regresyon sözleşmesi.
 # ==============================================================================
 
 .pk_declare_gate_env <- function() {

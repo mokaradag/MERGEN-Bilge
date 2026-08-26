@@ -196,6 +196,7 @@ test_that("RLS oncesi sayi diye bir olgu YOKTUR; alintisi reddedilir", {
 
 test_that("Varsayilan kip 'log'tur ve kullanicinin gordugu metni DEGISTIRMEZ", {
   env <- .pk_prov_env()
+  testthat::skip_if_not_installed("withr")
   withr::with_envvar(list(MERGEN_PK_NUMERIC_PROVENANCE_MODE = NA_character_), {
     expect_identical(env$pk_numeric_provenance_mode(), "log")
   })
@@ -285,6 +286,7 @@ test_that("off kipi dogrulama yapmaz ama isaretleri yine de temizler", {
 
 test_that("Gecersiz kip degeri sessizce 'log'a duser", {
   env <- .pk_prov_env()
+  testthat::skip_if_not_installed("withr")
   withr::with_envvar(list(MERGEN_PK_NUMERIC_PROVENANCE_MODE = "saldirgan"), {
     expect_identical(env$pk_numeric_provenance_mode(), "log")
   })
@@ -397,4 +399,33 @@ test_that("siradan sayilar YANLIS POZITIF uretmez", {
     sonuc <- env$pk_numeric_provenance_validate(metin, olgular)
     expect_true(length(sonuc$mismatches) >= 1L, info = metin)
   }
+})
+
+test_that("iddia edilen HASSASİYETE yuvarlanmış meşru alıntı reddedilmez", {
+  env <- .pk_prov_env()
+
+  # Maddiyet sınırı (`|deger| * 1e-3`) küçük değerlerde yuvarlama adımından
+  # daha katıydı: 3,456 -> "3,46" alıntısı `value_mismatch` sayılıyordu.
+  olgular <- list(
+    env$pk_fact_record("measure", "Ortalama", "mean", 3.456,
+                       list(label = "Ortalama", decimals = 3L))
+  )
+  kimlik <- olgular[[1]]$fact_id
+
+  sonuc <- env$pk_numeric_provenance_validate(
+    sprintf("Ortalama 3,46 [fact:%s] olarak hesaplandi.", kimlik), olgular
+  )
+  expect_equal(length(sonuc$mismatches), 0L)
+
+  # KABA alıntı hâlâ REDDEDİLİR: 61,34 -> "61" adım oranı eşiğin üstündedir.
+  kaba <- list(
+    env$pk_fact_record("measure", "Tamamlanma", "mean", 61.34,
+                       list(label = "Tamamlanma", decimals = 2L))
+  )
+  kaba_kimlik <- kaba[[1]]$fact_id
+  sonuc_kaba <- env$pk_numeric_provenance_validate(
+    sprintf("Tamamlanma 61 [fact:%s] seviyesinde.", kaba_kimlik), kaba
+  )
+  expect_true(length(sonuc_kaba$mismatches) >= 1L)
+  expect_identical(sonuc_kaba$mismatches[[1]]$reason, "value_mismatch")
 })

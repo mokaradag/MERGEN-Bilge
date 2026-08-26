@@ -76,6 +76,15 @@ testthat::test_that("R kaynak dosyaları WINDOWS-1254 yerelinde bozulmadan okuna
       error = function(e) NA_character_
     )
     if (length(satirlar) == 1L && is.na(satirlar[1])) return(NA_integer_)
+    # BOM İLK SATIRDA KALABİLİR.
+    #
+    # `readLines(encoding = "UTF-8")` yalnızca kodlamayı ETİKETLER; BOM'u
+    # ayıklamaz. U+FEFF'in CP1254 karşılığı YOKTUR, dolayısıyla BOM'lu ama
+    # tamamen geçerli bir kaynak dosya ilk satırında `NA` üretir ve test onu
+    # HATALI olarak reddederdi.
+    if (length(satirlar)) {
+      satirlar[1] <- sub("^\ufeff", "", satirlar[1], useBytes = FALSE)
+    }
     cevrilen <- suppressWarnings(iconv(satirlar, from = "UTF-8", to = "WINDOWS-1254"))
     kotu <- which(is.na(cevrilen) & !is.na(satirlar))
     if (length(kotu)) kotu[1] else NA_integer_
@@ -143,10 +152,13 @@ testthat::test_that("test kaynaklarında kaçış ve literal Türkçe aynı dize
   )
   testthat::expect_gt(length(dosyalar), 0L)
 
-  # `"..."` dize sabitleri (kaçırılmış tırnaklar dâhil) taranır. Yorum SATIRLARI
-  # atlanır; satır içi yorumda dize sabiti olabileceği için satırın tamamı değil
-  # yalnızca tümüyle yorum olan satırlar elenir.
-  dize_deseni <- "\"(?:[^\"\\\\]|\\\\.)*\""
+  # `"..."` VE `'...'` dize sabitleri (kaçırılmış tırnaklar dâhil) taranır. R
+  # her iki tırnak biçimini de destekler; yalnızca çift tırnak taranırsa hem
+  # `\u` kaçışı hem literal Türkçe içeren TEK TIRNAKLI bir dize sessizce
+  # atlanır ve bulgu kaçırılırdı. Yorum SATIRLARI atlanır; satır içi yorumda
+  # dize sabiti olabileceği için satırın tamamı değil yalnızca tümüyle yorum
+  # olan satırlar elenir.
+  dize_deseni <- "\"(?:[^\"\\\\]|\\\\.)*\"|'(?:[^'\\\\]|\\\\.)*'"
   kacis_deseni <- "\\\\[uU]\\{?[0-9A-Fa-f]{1,8}\\}?"
 
   bulgular <- character(0)

@@ -98,7 +98,13 @@
 
   yeni <- vapply(parcalar, function(p) {
     icerik <- trimws(substr(p, 2L, nchar(p) - 1L))
-    kucuk <- tolower(icerik)
+    # PROTOKOL BELIRTECI YERELE BAGLI KATLANMAZ (Turkce noktasiz `i` tuzagi).
+    #
+    # `tolower("I")` Turkce `LC_CTYPE` altinda noktasiz `ı` uretir:
+    # `[iODBC]`/`[Microsoft]` gibi STANDART surucu onekleri izin listesiyle
+    # eslesmeyip `[<sunucu>]` diye maskeleniyor ve operator surucu kanitini
+    # KAYBEDIYORDU.
+    kucuk <- .pkgh_ascii_lower(icerik)
     # SQLSTATE / hata kodu benzeri kısa belirteçler korunur.
     if (grepl("^[0-9A-Za-z]{5}$", icerik) || grepl("^[0-9]+$", icerik)) return(p)
     if (any(vapply(.PKGH_BRACKET_SAFE,
@@ -210,7 +216,17 @@ pkgh_sanitize_validation_error <- function(message) {
   temiz <- vapply(satirlar, function(satir) {
     if (grepl("alias", satir, ignore.case = TRUE, useBytes = TRUE)) {
       kimlik <- regmatches(satir, regexpr("^\\s*-?\\s*\\[[^]]+\\]", satir))
-      onek <- if (length(kimlik) == 1L) trimws(kimlik) else "-"
+      # KIMLIK KOSELI PARANTEZ OLMADAN YAZILIR.
+      #
+      # `pkgh_sanitize_bootstrap_error()` bu ciktiyi `.pkgh_redact_freeform()`
+      # icinden gecirir; koseli parantezli STANDART OLMAYAN bir sorgu kimligi
+      # (`[q_planned_labour]`) surucu oneki sanilip `[<sunucu>]` diye
+      # maskelenebiliyor ve operator BASARISIZ sorgunun kimligini KAYBEDIYORDU.
+      onek <- if (length(kimlik) == 1L) {
+        paste0("- ", gsub("^[^\\[]*\\[|\\].*$", "", trimws(kimlik)), ":")
+      } else {
+        "-"
+      }
       return(paste0(
         onek, " alias bindirmesi dogrulamasi basarisiz. Ayrinti operator ",
         "oturumundadir; kanonik hedef degerleri (uretim proje/program adlari) ",

@@ -185,8 +185,14 @@ test_that("olguyla uyuşmayan sayı value_mismatch üretir", {
   )
 
   nedenler <- .prov_fp_reasons(sonuc)
-  expect_true(length(nedenler) > 0L)
-  expect_false(identical(nedenler, "missing_fact_marker"))
+  # NEDEN KODU DOGRUDAN IDDIA EDILIR.
+  #
+  # "bos olmayan ve tam olarak `missing_fact_marker` olmayan" bir kume,
+  # dogrulayici alintili ama YANLIS degerli sayiyi `unit_mismatch` ya da
+  # `unknown_fact` diye siniflandirsa da GECERDI; oysa testin adi
+  # `value_mismatch` iddia ediyor.
+  expect_true("value_mismatch" %in% nedenler)
+  expect_false("missing_fact_marker" %in% nedenler)
 })
 
 test_that("var olmayan olgu kimliği unknown_fact üretir", {

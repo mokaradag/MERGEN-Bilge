@@ -166,13 +166,28 @@ pk_select_parse_pass_a <- function(text, library_ids, expected_n = NULL) {
                   error = "'alternates' ögeleri id ve confidence taşıyan nesneler olmalıdır."))
     }
 
-    alt_id <- pk_select_scalar_string(girdi$id)
+    # KESİN ALAN ERİŞİMİ: `$` benzersiz ÖNEKLERİ de kabul eder.
+    #
+    # `{"ids":"q002","confidence_pct":60}` gibi sözleşme DIŞI bir öge
+    # `girdi$id`/`girdi$confidence` ile geçerli sayılıyor, `malformed`
+    # işaretlenmiyor ve marj kapısı sözleşme dışı alanlardan gelen değerlerle
+    # hesaplanıyordu. Anahtar kümesi de `id`/`confidence` ile sınırlandırılır.
+    anahtarlar <- names(girdi) %||% character(0)
+    if (!all(anahtarlar %in% c("id", "confidence"))) {
+      return(list(ok = FALSE, values = list(), error = paste0(
+        "'alternates' ögesi yalnızca 'id' ve 'confidence' alanlarını taşıyabilir; ",
+        "sözleşme dışı alan: ",
+        paste(setdiff(anahtarlar, c("id", "confidence")), collapse = ", ")
+      )))
+    }
+
+    alt_id <- pk_select_scalar_string(girdi[["id"]])
     if (is.na(alt_id)) {
       return(list(ok = FALSE, values = list(),
                   error = "'alternates[*].id' tek bir kararlı kimlik olmalıdır."))
     }
 
-    alt_guven <- pk_select_scalar_integer(girdi$confidence, min = 0L, max = 100L)
+    alt_guven <- pk_select_scalar_integer(girdi[["confidence"]], min = 0L, max = 100L)
     if (is.na(alt_guven)) {
       return(list(ok = FALSE, values = list(), error = sprintf(
         "'alternates' ogesi '%s' icin 0-100 arasi TAM SAYI confidence tasimiyor.", alt_id

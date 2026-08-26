@@ -455,7 +455,11 @@ testthat::test_that("evidence semasi + does_prove/does_not_prove + redaksiyon se
                  "pk_cache_scope_isolated", "pk_deep_budget_decreases",
                  "pk_deep_halts_between_queries",
                  "pk_connection_acquire_release_balanced", "pk_connection_instrumented",
-                 "pk_psock_async_path")
+                 "pk_psock_async_path",
+                 # TEMIZ ISCI BOOTSTRAP ve TEK GIRIS tavani kapilari da listede
+                 # OLMALIDIR: aksi halde bu iki kapi kaldirilsa ya da surekli
+                 # basarili yapilsa test paketi yine gecerdi.
+                 "pk_psock_worker_bootstrap", "pk_cache_oversize_entry_rejected")
   for (ad in pk_adlari) {
     kontrol <- Filter(function(c) identical(c$name, ad), checks)
     testthat::expect_length(kontrol, 1L)
@@ -492,13 +496,20 @@ testthat::test_that("evidence semasi + does_prove/does_not_prove + redaksiyon se
   # PR #705: enstrumante EDILMEMIS kosum de FAIL uretmeli.
   pk_zayif$db$instrumented <- FALSE
   pk_zayif$psock$ok <- FALSE
+  # Temiz iscide bootstrap BASARISIZ ve tek-giris tavani prob'u REDDETMEMIS
+  # olmali: iki kapi da zayif senaryoda FAIL uretmezse koruma kozmetiktir.
+  pk_zayif$psock$bootstrap_ok <- FALSE
+  pk_zayif$cache$oversize_rejected <- FALSE
+  pk_zayif$cache$oversize_reason <- "not_rejected"
+  pk_zayif$cache$oversize_rejected_delta <- 0L
   checks_zayif <- env$soak_evaluate_thresholds(
     cfg, s, inproc, list(total_leaks = 0L), mg, 0, TRUE, 0L, NULL, NULL, pk_zayif
   )
   for (ad in c("pk_cancel_inflight_exercised", "pk_cache_eviction_observed",
                "pk_cache_scope_isolated", "pk_bounded_fetch_complete",
                "pk_deep_budget_decreases", "pk_connection_acquire_release_balanced",
-               "pk_connection_instrumented", "pk_psock_async_path")) {
+               "pk_connection_instrumented", "pk_psock_async_path",
+               "pk_psock_worker_bootstrap", "pk_cache_oversize_entry_rejected")) {
     kontrol <- Filter(function(c) identical(c$name, ad), checks_zayif)
     testthat::expect_length(kontrol, 1L)
     testthat::expect_false(isTRUE(kontrol[[1]]$pass), info = ad)
@@ -635,6 +646,59 @@ testthat::test_that("istenen ama calismayan etkilesimli serit ENFORCED FAIL'dir 
                                           mg, NA, TRUE, 0L, unavailable)
   chk2 <- Filter(function(c) c$name == "interactive_lane_available", checks2)[[1]]
   testthat::expect_false(isTRUE(chk2$measured))
+})
+
+# ------------------------------------------------------------------------------
+testthat::test_that("PK seridi kullanilamiyorsa opt-out KENDINI-DUSUREN anahtari onler", {
+  # `MERGEN_SOAK_PK_LANE=false` bir SERIT SECICIDIR; bagimliliklari olmayan bir
+  # makinede hicbir yapilandirmanin PASS uretemedigi bir KENDINI-DUSUREN
+  # anahtara donusmemelidir. Opt-out acildiginda kontrol OLCULEMEYEN olarak
+  # DURUSTCE raporlanir (kanit SAYILMAZ), kapatildiginda ise ENFORCED FAIL'dir.
+  env <- new.env(); soak_source_modules(env)
+  s <- env$soak_metrics_summary(env$soak_metrics_new())
+  inproc <- list(available = FALSE)
+  mg <- list(rss_measured = FALSE, process_rss_growth_mb = NA)
+  base_th <- list(success_rate_min = 0.98, p95_latency_ms_max = 0L,
+                  memory_growth_mb_max = -1, temp_growth_mb_max = -1,
+                  fail_on_browser_console_errors = FALSE, fail_on_mojibake = TRUE,
+                  fail_on_secret_leak = TRUE, fail_on_interactive_db_leak = TRUE,
+                  fail_on_interactive_unavailable = FALSE)
+
+  degerlendir <- function(pk_lane_acik, enforce) {
+    cfg <- list(interactive_lane = FALSE, llm_lane = "fake", http_lane = TRUE,
+                pk_lane = pk_lane_acik,
+                thresholds = c(base_th, list(fail_on_pk_unavailable = enforce)))
+    env$soak_evaluate_thresholds(cfg, s, inproc, list(total_leaks = 0L), mg,
+                                 NA, TRUE, 0L, NULL, NULL, NULL)
+  }
+  bul <- function(checks, ad) Filter(function(c) identical(c$name, ad), checks)
+
+  # 1) Serit ISTENDI, calismadi, enforce ACIK -> olculen FAIL.
+  c1 <- degerlendir(TRUE, TRUE)
+  k1 <- bul(c1, "pk_analysis_lane_available")
+  testthat::expect_length(k1, 1L)
+  testthat::expect_true(isTRUE(k1[[1]]$measured))
+  testthat::expect_false(isTRUE(k1[[1]]$pass))
+  testthat::expect_false(isTRUE(env$soak_threshold_outcome(c1)$pass))
+
+  # 2) Ayni durum, enforce KAPALI -> OLCULEMEYEN, kapiyi kirmaz.
+  c2 <- degerlendir(TRUE, FALSE)
+  k2 <- bul(c2, "pk_analysis_lane_available")
+  testthat::expect_length(k2, 1L)
+  testthat::expect_false(isTRUE(k2[[1]]$measured))
+
+  # 3) Serit KAPALI, enforce ACIK -> olculen FAIL (kapali serit kanit degildir).
+  c3 <- degerlendir(FALSE, TRUE)
+  k3 <- bul(c3, "pk_analysis_lane_enabled")
+  testthat::expect_length(k3, 1L)
+  testthat::expect_true(isTRUE(k3[[1]]$measured))
+  testthat::expect_false(isTRUE(k3[[1]]$pass))
+
+  # 4) Serit KAPALI, enforce KAPALI -> OLCULEMEYEN; yine de PK kanidi YOKTUR.
+  c4 <- degerlendir(FALSE, FALSE)
+  k4 <- bul(c4, "pk_analysis_lane_enabled")
+  testthat::expect_length(k4, 1L)
+  testthat::expect_false(isTRUE(k4[[1]]$measured))
 })
 
 # ------------------------------------------------------------------------------

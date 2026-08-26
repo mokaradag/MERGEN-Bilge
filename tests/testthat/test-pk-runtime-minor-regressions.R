@@ -1,6 +1,6 @@
 # ==============================================================================
-# Dosya Yolu: tests/testthat/test-pk-runtime-p3-regressions.R
-# Açıklama: PR #705 P3 inceleme bulgularının çalışma zamanı davranış
+# Dosya Yolu: tests/testthat/test-pk-runtime-minor-regressions.R
+# Açıklama: PK çalışma zamanı küçük inceleme bulgularının davranış
 #           regresyonları. Çevrimdışı ve deterministiktir: gerçek DB, LLM,
 #           tarayıcı, SSO veya ağ ERİŞİMİ YOKTUR.
 # ==============================================================================
@@ -8,7 +8,10 @@
 .p3_regression_source <- function(...) {
   kok <- resolve_repo_root_for_tests()
   ortam <- new.env(parent = globalenv())
-  if (!exists("%||%", envir = ortam, mode = "function", inherits = TRUE)) {
+  # HEDEF ORTAM denetlenir, ARAMA YOLU değil: `inherits = TRUE` küresel bir
+  # sızıntıyı bulup atamayı ATLAR ve sourcelanan dosya üretim anlamı yerine
+  # o sızıntıyı görür. Ayrıca yedek ÜRETİMLE AYNIDIR (yalnız `NULL`).
+  if (!exists("%||%", envir = ortam, mode = "function", inherits = FALSE)) {
     assign("%||%", function(a, b) if (is.null(a)) b else a, envir = ortam)
   }
   for (dosya in c(...)) {

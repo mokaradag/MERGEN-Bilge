@@ -150,15 +150,36 @@ find_best_query_with_ai <- function(user_prompt, library, session) {
         suppressWarnings(as.integer(parsed$match_id)[1])
       }
 	  if (length(idx) == 1L && !is.na(idx) && idx > 0 && idx <= length(library)) {
-        confidence <- suppressWarnings(as.numeric(parsed$confidence %||% 0)[1])
+        # SÖZLEŞME İHLALİ HATA DEĞİLDİR: `match_id` ile AYNI atomik denetim.
+        # `fromJSON(..., simplifyVector = FALSE)` `{"confidence": ["85"]}` için
+        # LİSTE döndürür; `as.numeric(list("85"))` "(list) object cannot be
+        # coerced" HATASI fırlatır, dıştaki işleyici bunu `AI Seçim Hatası`
+        # olarak loglar ve çağıran AYNI çağrıyı yineler.
+        ham_guven <- parsed$confidence %||% 0
+        confidence <- if (is.list(ham_guven) || !is.atomic(ham_guven)) {
+          NA_real_
+        } else {
+          suppressWarnings(as.numeric(ham_guven)[1])
+        }
         if (length(confidence) != 1L || is.na(confidence)) confidence <- 0
-        cat(sprintf("[PK_ANALIZ] AI Seçimi: ID=%d (%s) | Güven: %.1f%% | Sebep: %s\n", 
-                    idx, library[[idx]]$name, confidence, parsed$reason %||% ""))
+        # `sprintf()` LİSTE argümanı kabul etmez; model `reason` alanını dizi
+        # olarak döndürdüğünde ("invalid format" / "cannot be coerced") sözleşme
+        # ihlali yine ISTISNAYA dönüşürdü. Ad ve sebep skalere indirgenir.
+        skaler_metin <- function(x, yedek = "") {
+          if (is.null(x) || is.list(x) || !is.atomic(x)) return(yedek)
+          v <- as.character(x)
+          if (!length(v) || is.na(v[1])) return(yedek)
+          v[1]
+        }
+        sebep <- skaler_metin(parsed$reason)
+        cat(sprintf("[PK_ANALIZ] AI Seçimi: ID=%d (%s) | Güven: %.1f%% | Sebep: %s\n",
+                    idx, skaler_metin(library[[idx]]$name, "(isimsiz)"),
+                    confidence, sebep))
         
         result <- library[[idx]]
         result$relevance_score <- confidence
         result$selection_method <- "ai"
-        result$selection_reason <- parsed$reason %||% ""
+        result$selection_reason <- sebep
         result$.matched_idx <- idx
         return(result)
       }

@@ -126,8 +126,8 @@
   if (!requireNamespace("stringi", quietly = TRUE)) {
     stop(
       paste0(
-        "pk_entity_normalize: 'stringi' paketi bulunamadi. Yerelden bagimsiz ",
-        "normallestirme yalnizca stringi ile yapilabilir."
+        "pk_entity_normalize: 'stringi' paketi bulunamadı. Yerelden bağımsız ",
+        "normalleştirme yalnızca stringi ile yapılabilir."
       ),
       call. = FALSE
     )

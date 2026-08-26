@@ -21,7 +21,8 @@
 .pk_stab_compile_env <- function() {
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
-  env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
+  # ÜRETİM OPERATÖRÜYLE AYNI (`R/utils_common.R`): yalnız `NULL` yedeğe düşer.
+  env$`%||%` <- function(x, y) if (is.null(x)) y else x
   for (f in c("helpers_pk_text_turkish.R", "helpers_pk_query_meta_schema.R",
               "helpers_pk_query_meta_access.R", "helpers_pk_provenance.R",
               "helpers_pk_filter_compile.R", "helpers_pk_filter_group.R",
@@ -37,7 +38,8 @@
 .pk_stab_extract_env <- function(model_json) {
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
-  env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
+  # ÜRETİM OPERATÖRÜYLE AYNI (`R/utils_common.R`): yalnız `NULL` yedeğe düşer.
+  env$`%||%` <- function(x, y) if (is.null(x)) y else x
   source(file.path(repo_root, "R", "helpers_pk_filter_group.R"),
          encoding = "UTF-8", local = env)
   source(file.path(repo_root, "R", "helpers_pk_analysis_filters_base.R"),

@@ -171,8 +171,12 @@ test_that("recall@N: beklenen sorgu Geçiş A YÜKÜNDE görünür kalır", {
   )
 
   # Kırpma, ayırt edici terimi YOK ETMEMELİDİR.
+  # TEK KOSELI PARANTEZ: `[[` eksik adda "subscript out of bounds" firlatir ve
+  # asagidaki `info` tanilamasi HIC calismaz; okuyucu amaclanan recall
+  # tanilamasi yerine kapali bir hata gorurdu. `[` eksik adda `NA` doner,
+  # `grepl()` FALSE olur ve iddia KENDI mesajini raporlar.
   expect_true(
-    grepl("ertelendi", satirlar[["q003"]], fixed = TRUE),
+    isTRUE(grepl("ertelendi", unname(satirlar["q003"]), fixed = TRUE)),
     info = paste(
       "Ayırt edici terim örnek sorudan kırpılırsa Geçiş A onu göremez ve",
       "Geçiş B geri getiremez (§5.2)."

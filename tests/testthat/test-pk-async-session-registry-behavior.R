@@ -79,13 +79,13 @@ test_that("terk etme jetonu SİNYALLER ve backpressure yuvasını BIRAKIR", {
 
   # Gezinme/yeni sohbet yolu: iptal EVET ve yuva bırakma DA EVET.
   #
-  # Eskiden gezinme yalnizca iptal sinyali gonderiyordu. ODBC/LLM/yerel kod
-  # icinde takilmis bir isci iptal bayragini hemen goremediginde, her gezinme
-  # surec genelinde bir admisyon yuvasini isci/son tarih bitene kadar tutuyor
-  # ve bir sure sonra ILGISIZ taze istekler "sunucu mesgul" ile basarisiz
-  # oluyordu. Kayitli kapanis YALNIZCA sahiplik denetimli yuva birakmadir
-  # (`mergen_send_message_release_values_token`), bu yuzden daha yeni bir
-  # istegin yuvasini ya da sifirlanmis TAZE durumu ezemez.
+  # Eskiden gezinme yalnızca iptal sinyali gönderiyordu. ODBC/LLM/yerel kod
+  # içinde takılmış bir işçi iptal bayrağını hemen göremediğinde, her gezinme
+  # süreç genelinde bir admisyon yuvasını işçi/son tarih bitene kadar tutuyor
+  # ve bir süre sonra İLGİSİZ taze istekler "sunucu meşgul" ile başarısız
+  # oluyordu. Kayıtlı kapanış YALNIZCA sahiplik denetimli yuva bırakmadır
+  # (`mergen_send_message_release_values_token`), bu yüzden daha yeni bir
+  # isteğin yuvasını ya da sıfırlanmış TAZE durumu ezemez.
   mergen_pk_abandon_active_requests(oturum)
   expect_true(pk_cancel_token_is_signalled(jeton))
   expect_equal(birakildi, 1L)

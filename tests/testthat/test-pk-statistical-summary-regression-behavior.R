@@ -220,11 +220,17 @@ test_that("benzersiz tam sayılı ÖLÇÜ kimlik sanılıp istatistikten dışla
   expect_length(unique(tutarlar), length(tutarlar))
   expect_true(all(tutarlar == round(tutarlar)))
 
+  # YALNIZCA `summary_text` OKUNUR.
+  #
+  # `.pk_ozet_kaydi()` `list(summary_text, row_count, preview_data)` dondurur;
+  # butun listeyi `paste()` ile duzlestirmek `preview_data` icindeki sutun
+  # adlarini ve degerleri de metne katiyordu. `Tutar` olcu blogundan TAMAMEN
+  # dusurulse bile iddia GECERDI.
   metin <- paste(.pk_ozet_kaydi(
     env,
     data.frame(Tutar = tutarlar, stringsAsFactors = FALSE),
     mode = "summary"
-  ), collapse = "\n")
+  )$summary_text, collapse = "\n")
 
   expect_true(grepl("Tutar", metin, fixed = TRUE))
   expect_false(grepl("ÖLÇÜ DEĞİLDİR", metin, fixed = TRUE))
@@ -238,8 +244,35 @@ test_that("yoğun artan vekil anahtar dizisi ÖLÇÜ sayılmaz", {
     env,
     data.frame(KayitID = 1:24, stringsAsFactors = FALSE),
     mode = "summary"
-  ), collapse = "\n")
+  )$summary_text, collapse = "\n")
 
   expect_true(grepl("ÖLÇÜ DEĞİLDİR", metin, fixed = TRUE))
-  expect_true(grepl("KayitID", metin, fixed = TRUE))
+  # SÜTUN GİZLENMEZ, yalnızca ÖLÇÜ MUAMELESİ GÖRMEZ. Ad açıklama bloğunda
+  # `prettify_col_name()` biçiminde geçer; ham `KayitID` dizesi `summary_text`
+  # içinde YOKTUR (eski iddia yalnızca `preview_data` düzleştiği için geçiyordu).
+  expect_true(grepl("Kayit ID", metin, fixed = TRUE))
+  expect_false(grepl("Ortalama", metin, fixed = TRUE))
+})
+
+test_that("toplulaştırma sözleşmesi bilinmeyen ÖLÇÜ kimlik olarak etiketlenmez", {
+  env <- .pk_summary_test_env()
+  veri <- data.frame(
+    DurumKodu = c(1L, 1L, 2L),
+    Oran      = c(0.5, 0.6, 0.7),
+    stringsAsFactors = FALSE
+  )
+  # `Oran` bir ÖLÇÜDÜR ama `additive` BEYAN EDİLMEMİŞTİR.
+  meta <- list(DurumKodu = list(role = "dimension"), Oran = list(role = "measure"))
+
+  sonuc <- .pk_ozet_kaydi(env, veri, column_meta = meta)
+
+  # Kapalı başarısız karar KORUNUR: sayısal özet bloğu ÜRETİLMEZ.
+  expect_false(grepl("SAYISAL SUTUNLAR OZETI", sonuc$summary_text, fixed = TRUE))
+  # `Oran` KİMLİK diye tanıtılmaz; kendi bloğunda raporlanır.
+  expect_true(grepl("TOPLULAŞTIRMA SÖZLEŞMESİ BİLİNMEYEN ÖLÇÜLER", sonuc$summary_text,
+                    fixed = TRUE))
+  kimlik_blok <- strsplit(sonuc$summary_text, "TOPLULAŞTIRMA SÖZLEŞMESİ BİLİNMEYEN",
+                          fixed = TRUE)[[1]][1]
+  expect_false(grepl("Oran", kimlik_blok, fixed = TRUE))
+  expect_true(grepl("Durum Kodu", kimlik_blok, fixed = TRUE))
 })

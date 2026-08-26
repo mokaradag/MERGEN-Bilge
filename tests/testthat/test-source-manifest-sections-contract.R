@@ -580,7 +580,7 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # integer64 kesinliği ve filtre ağacı gezintisi. Beşi de BİLİNÇLİ ratchet
   # bölünmesidir; hiçbiri yeni davranış eklemez.
   # PR #705 inceleme takibi: `helpers_pk_analysis_core_impl.R` ve
-  # `helpers_pk_p1_runtime_guards.R` manifest DIŞI dinamik `source()` ile
+  # `helpers_pk_runtime_guards.R` manifest DIŞI dinamik `source()` ile
   # yükleniyordu; ikisi de artık AÇIKÇA sıralanır (impl çekirdekten önce,
   # guard'lar sonra). 466 -> 468; yeni davranış yok, yalnızca yükleme sahipliği
   # manifeste taşındı.

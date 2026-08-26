@@ -29,8 +29,12 @@ local({
   }
 
   for (f in c("helpers_pk_config.R", "helpers_pk_provenance.R",
+              # Etkin yürütme bağlamı: hedef ANAHTARI açıkça verilmediğinde
+              # `.pk_telemetry_target_key()` buradan çözülür; üretim çağrı
+              # yolunu sınamak için gereklidir.
+              "helpers_pk_exec_context.R",
               "helpers_pk_telemetry_record.R",
-              # Manifest sirasi: taban dosya once (dinamik source kesfi kaldirildi).
+              # Manifest sırası: taban dosya önce (dinamik source keşfi kaldırıldı).
               "helpers_pk_telemetry_base.R", "helpers_pk_telemetry.R")) {
     source(file.path(repo_root, "R", f), encoding = "UTF-8", local = globalenv())
   }
@@ -260,12 +264,12 @@ test_that("gözlem katmanı hiçbir koşulda hata fırlatmaz", {
   expect_no_error(pk_analysis_observe(list(userData = new.env()), NULL, .pk_tel_sample_info()))
 })
 
-# HAZIRLIK KARARI VERITABANI HEDEFINE GORE ANAHTARLANIR.
+# HAZIRLIK KARARI VERİTABANI HEDEFİNE GÖRE ANAHTARLANIR.
 #
-# Tek bir surec-kuresel bit, ILK yoklanan hedefin kararini butun hedeflere
-# dayatiyordu: tablosu OLAN bir hedefte denetim kaydi hic yazilmiyor ya da
-# tablosu OLMAYAN bir hedefte her analizde basarisiz bir INSERT tekrarlaniyordu.
-test_that("MB_Analiz_Log hazirlik kararı DB HEDEFI basina tutulur", {
+# Tek bir süreç-küresel bit, İLK yoklanan hedefin kararını bütün hedeflere
+# dayatıyordu: tablosu OLAN bir hedefte denetim kaydı hiç yazılmıyor ya da
+# tablosu OLMAYAN bir hedefte her analizde başarısız bir INSERT tekrarlanıyordu.
+test_that("MB_Analiz_Log hazırlık kararı DB HEDEFİ başına tutulur", {
   pk_telemetry_reset_state()
   on.exit(pk_telemetry_reset_state(), add = TRUE)
 
@@ -283,10 +287,51 @@ test_that("MB_Analiz_Log hazirlik kararı DB HEDEFI basina tutulur", {
   )
 
   expect_false(pk_telemetry_table_ready(yok_conn, target = "secondary"))
-  # DIGER hedef KENDI kararini verir; onceki hedefin kararini devralmaz.
+  # DİĞER hedef KENDİ kararını verir; önceki hedefin kararını devralmaz.
   expect_true(pk_telemetry_table_ready(var_conn, target = "primary"))
-  # Her hedef icin karar ONBELLEKLENIR: ikinci cagri DB'ye gitmez.
+  # Her hedef için karar ÖNBELLEKLENİR: ikinci çağrı DB'ye gitmez.
   expect_false(pk_telemetry_table_ready(yok_conn, target = "secondary"))
   expect_true(pk_telemetry_table_ready(var_conn, target = "primary"))
+  expect_equal(length(cagrilar), 2L)
+})
+
+# ÜRETİM ÇAĞRI YOLU: `target` AÇIKÇA VERİLMEZ.
+#
+# `pk_telemetry_log_analysis()` hedefi `db_target` argümanından ya da etkin
+# yürütme bağlamından çözer; `pk_telemetry_table_ready()` çağrısına elle bir
+# `target` GEÇİRMEZ. Yalnızca açık `target` ile sınamak, ortam bağlamından
+# çözümü hiç çalıştırmıyor ve gerçek yolun `"primary"`ye sabitlenmesi
+# fark edilmiyordu.
+test_that("hedef VERİLMEDİĞİNDE etkin yürütme bağlamından çözülür", {
+  pk_telemetry_reset_state()
+  on.exit(pk_telemetry_reset_state(), add = TRUE)
+
+  cagrilar <- character(0)
+  yok_conn <- structure(list(kimlik = "yok"), class = "PKTelemetriYok")
+  var_conn <- structure(list(kimlik = "var"), class = "PKTelemetriVar")
+
+  testthat::local_mocked_bindings(
+    dbGetQuery = function(conn, statement, ...) {
+      cagrilar <<- c(cagrilar, class(conn)[1])
+      if (inherits(conn, "PKTelemetriYok")) stop("Invalid object name 'MB_Analiz_Log'.")
+      data.frame(AnalizLogID = integer(0))
+    },
+    .package = "DBI"
+  )
+
+  # 1) Bağlam `secondary` iken karar O hedefe yazılır.
+  geri_al <- pk_set_exec_context(query = list(id = "q1", db_target = "secondary"))
+  on.exit(geri_al(), add = TRUE)
+  expect_false(pk_telemetry_table_ready(yok_conn))
+
+  # 2) Bağlam `primary`ye geçtiğinde KENDİ kararı verilir (devralınmaz).
+  geri_al2 <- pk_set_exec_context(query = list(id = "q2", db_target = "primary"))
+  on.exit(geri_al2(), add = TRUE)
+  expect_true(pk_telemetry_table_ready(var_conn))
+
+  # 3) Kararlar hedef başına ÖNBELLEKLENİR; DB'ye yalnızca iki kez gidilir.
+  geri_al3 <- pk_set_exec_context(query = list(id = "q3", db_target = "secondary"))
+  on.exit(geri_al3(), add = TRUE)
+  expect_false(pk_telemetry_table_ready(yok_conn))
   expect_equal(length(cagrilar), 2L)
 })

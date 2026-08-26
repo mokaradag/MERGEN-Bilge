@@ -246,6 +246,9 @@ test_that("dort capraz-motor madde v1'de de ETKINDIR", {
   for (dosya in c("R/helpers_pk_rls.R", "R/helpers_pk_sql_readonly.R",
                   "R/helpers_pk_safe_errors.R")) {
     metin <- oku(dosya)
+    # EKSIK DOSYA OLUMSUZ IDDIALARI KENDILIGINDEN GECIRIR (bos metinde
+    # `grepl()` her zaman FALSE); once OKUNABILIRLIK dogrulanir.
+    expect_true(nzchar(metin), info = sprintf("%s okunamadi.", dosya))
     expect_false(grepl("MERGEN_PK_ENGINE", metin, fixed = TRUE, useBytes = TRUE), info = dosya)
     expect_false(grepl("pk_engine_is_v2", metin, fixed = TRUE, useBytes = TRUE), info = dosya)
   }
@@ -520,7 +523,7 @@ test_that("v1 yuku eski istatistiksel ozet bicimini KORUR", {
   )
 
   expect_true(grepl("ISTATISTIKSEL OZET", v1$user_context, fixed = TRUE))
-  expect_true(grepl("ORNEK SATIRLAR (JSON)", v1$user_context, fixed = TRUE))
+  expect_true(grepl("ÖRNEK SATIRLAR (JSON)", v1$user_context, fixed = TRUE))
   expect_false(grepl("ANALIZ PAKETI", v1$user_context, fixed = TRUE))
   expect_false(grepl("[fact:", v1$user_context, fixed = TRUE))
 })

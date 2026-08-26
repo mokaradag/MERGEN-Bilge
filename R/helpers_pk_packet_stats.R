@@ -97,7 +97,13 @@ pk_fmt_share <- function(pay, toplam) {
   toplam <- suppressWarnings(as.numeric(toplam))
   if (is.na(toplam) || !is.finite(toplam) || toplam <= 0) return("?")
 
-  oran <- suppressWarnings(as.numeric(pay)) / toplam
+  # PAY DA UZUNLUK DENETİMİNDEN GEÇER: `NULL` / uzunluğu sıfır bir pay
+  # `numeric(0)` üretir ve `if (logical(0))` R'de HATA fırlatırdı; yazıcı tüm
+  # paketi düşürürdü. `pk_fmt_number()` ile AYNI muhafız kullanılır.
+  pay_num <- suppressWarnings(as.numeric(pay))
+  if (length(pay_num) != 1L) return("?")
+
+  oran <- pay_num / toplam
   if (is.na(oran) || !is.finite(oran)) return("?")
 
   paste0("%", pk_fmt_number(oran * 100, decimals = 1L))
@@ -167,6 +173,18 @@ pk_fact_id <- function(identity, aggregation, group_keys = character(0)) {
 
   paste(c(pk_fact_slug(identity), pk_fact_slug(aggregation), grup_slug,
           pk_fact_checksum(c(identity, aggregation, gruplar))), collapse = ".")
+}
+
+#' GRUP kırılımı olgu kimliği (AD ALANLI)
+#'
+#' Grup kimliği eskiden `paste(group_by, collapse = "+")` idi. Tek sütunlu bir
+#' kırılımda bu dize AYNI adı taşıyan KATEGORİK sütunun kimliğine eşit olur ve
+#' `other_rows` gibi ortak toplama adlarında iki farklı olgu tek bir
+#' `pk_fact_id()` paylaşır; kimliğe göre biriktirmede biri DÜŞER ve yazıcının
+#' bastığı kategorik sayım GRUP değerine karşı doğrulanır. Ön ek çakışmayı
+#' kaldırır ve HEM üretici HEM yazıcı bu tek kaynaktan okur.
+.pk_group_fact_id <- function(group_by) {
+  paste0("grup:", paste(as.character(group_by %||% character(0)), collapse = "+"))
 }
 
 #' Kapsam imzası — okunur ve deterministik
@@ -538,7 +556,25 @@ pk_latest_fact <- function(data, column, spec = list(), scope = NULL,
   secilen <- if (length(aday) == 1L) {
     aday
   } else {
-    aday[do.call(order, c(sira_tie, list(method = "radix")))][length(aday)]
+    # SIRALAMA ANAHTARI DA BENZERSİZ OLMAK ZORUNDADIR.
+    #
+    # Sıfır dolgulu bir karakter `latest_tie_by` sütunu (`"01"` / `"1"`)
+    # `.pk_orderable()` içinde SAYIYA çevrilir. Benzersizlik denetimi HAM
+    # metinde geçer (`2:01` != `1:1`) ama sıralama anahtarı EŞİTLENİR ve
+    # `order()` girdi sırasını korur; böylece veritabanı dönüş sırası sessizce
+    # eşitlik bozucu olurdu. Sıralamadan SONRA eşitlik kalıyorsa değer SEÇİLMEZ.
+    duzen <- do.call(order, c(sira_tie, list(method = "radix")))
+    sirali <- do.call(paste, c(
+      lapply(sira_tie, function(s) as.character(s)[duzen]),
+      list(sep = "\u001f")
+    ))
+    if (anyDuplicated(sirali) > 0L) {
+      return(yap(NULL, PK_FACT_AMBIGUOUS_LATEST, sprintf(
+        "latest_tie_by siralama anahtari %d satirda AYNI degere dusuyor; deger SECILMEDI.",
+        length(aday)
+      )))
+    }
+    aday[duzen][length(aday)]
   }
 
   # integer64 KESİNLİK MUHAFAZASI "en yeni" olgusunda da geçerlidir.

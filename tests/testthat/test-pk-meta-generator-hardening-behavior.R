@@ -377,17 +377,51 @@ test_that("SQLSTATE ACILIS PARANTEZINDEN cikarilir (Microsoft oneki yanilmaz)", 
   expect_false(grepl("osoft", ozet, fixed = TRUE))
 })
 
+# TURKCE YEREL KUR (kurulamazsa ATLA).
+#
+# `LC_CTYPE` adlari platforma gore degisir; POSIX ve Windows yazimlarinin
+# TAMAMI denenir. Windows-motivasyonlu bir sozlesmenin tam Windows'ta atlanmasi
+# anlamsiz olurdu.
+.pkh_turkce_yerel_kur <- function() {
+  for (yerel in c("tr_TR.UTF-8", "tr_TR.utf8", "tr_TR", "Turkish_Turkey.1254",
+                  "Turkish_Turkey.65001", "Turkish")) {
+    kuruldu <- suppressWarnings(try(Sys.setlocale("LC_CTYPE", yerel), silent = TRUE))
+    if (!inherits(kuruldu, "try-error") && is.character(kuruldu) && nzchar(kuruldu)) {
+      return(TRUE)
+    }
+  }
+  FALSE
+}
+
 test_that("hata sinifi YERELDEN BAGIMSIZ eslesir", {
   # Turkce yerelde buyuk `I` noktasiz `i` olur; ASCII katlama bunu kapar.
   eski <- Sys.getlocale("LC_CTYPE")
   on.exit(try(suppressWarnings(Sys.setlocale("LC_CTYPE", eski)), silent = TRUE), add = TRUE)
 
-  expect_true(grepl("sinif=permission_denied",
-                    pkgh_db_error_summary("LOGIN FAILED for user"), fixed = TRUE))
-  expect_true(grepl("sinif=connection_lost",
-                    pkgh_db_error_summary("COMMUNICATION LINK FAILURE"), fixed = TRUE))
-  expect_true(grepl("sinif=object_missing",
-                    pkgh_db_error_summary("INVALID OBJECT NAME 'dbo.X'"), fixed = TRUE))
+  iddialar <- function() {
+    expect_true(grepl("sinif=permission_denied",
+                      pkgh_db_error_summary("LOGIN FAILED for user"), fixed = TRUE))
+    expect_true(grepl("sinif=connection_lost",
+                      pkgh_db_error_summary("COMMUNICATION LINK FAILURE"), fixed = TRUE))
+    expect_true(grepl("sinif=object_missing",
+                      pkgh_db_error_summary("INVALID OBJECT NAME 'dbo.X'"), fixed = TRUE))
+  }
+
+  # 1) Mevcut (genelde C/UTF-8) yerelde taban davranis.
+  iddialar()
+
+  # 2) YEREL GERCEKTEN DEGISTIRILIR.
+  #
+  # Yalnizca mevcut yereli kaydedip iddiada bulunmak sozlesmeyi SINAMAZ: tum
+  # girdiler ASCII buyuk harftir ve `tolower()`e donen bir regresyon varsayilan
+  # yerelde de eslesirdi. Turkce yerel kurulamiyorsa (CI konteyneri) yalnizca
+  # bu ikinci tur atlanir; taban iddialar YINE calisir.
+  if (.pkh_turkce_yerel_kur()) {
+    iddialar()
+    suppressWarnings(Sys.setlocale("LC_CTYPE", eski))
+  } else {
+    testthat::skip("Turkce LC_CTYPE yok; yalnizca taban yerel sinandi")
+  }
 
   # Yerel geri yuklendigi DOGRULANIR: sizan bir LC_CTYPE sonraki dosyalari kirar.
   expect_identical(Sys.getlocale("LC_CTYPE"), eski)
@@ -796,8 +830,26 @@ test_that("HYT00 (sorgu zaman asimi) BAGLANTI hatasi SAYILMAZ", {
 })
 
 test_that("baglanti hatasi tespiti YERELDEN BAGIMSIZDIR", {
-  expect_true(.pkgn_is_connection_error("COMMUNICATION LINK FAILURE"))
-  expect_true(.pkgn_is_connection_error("LOGIN TIMEOUT expired"))
+  eski <- Sys.getlocale("LC_CTYPE")
+  on.exit(try(suppressWarnings(Sys.setlocale("LC_CTYPE", eski)), silent = TRUE), add = TRUE)
+
+  iddialar <- function() {
+    expect_true(.pkgn_is_connection_error("COMMUNICATION LINK FAILURE"))
+    expect_true(.pkgn_is_connection_error("LOGIN TIMEOUT expired"))
+  }
+  iddialar()
+
+  # Yerel GERCEKTEN Turkce'ye alinir; aksi halde `tolower()` regresyonu
+  # varsayilan yerelde de eslesir ve test yesil kalirdi.
+  if (.pkh_turkce_yerel_kur()) {
+    iddialar()
+    suppressWarnings(Sys.setlocale("LC_CTYPE", eski))
+  } else {
+    testthat::skip("Turkce LC_CTYPE yok; yalnizca taban yerel sinandi")
+  }
+
+  # Yerel geri yuklendigi DOGRULANIR: sizan bir LC_CTYPE sonraki dosyalari kirar.
+  expect_identical(Sys.getlocale("LC_CTYPE"), eski)
 })
 
 # ------------------------------------------------------------------------------
@@ -1183,9 +1235,9 @@ test_that("başarısız ara kayıt SESSİZ geçmez", {
   # "devam ediliyor" iddiasini KANITLAMAZDI. Ikinci sorgunun KAYIT almasi
   # devam etmenin dogrudan kanitidir.
   kutuphane <- list(
-    list(id = "q705", name = "Sentetik-1", sql = "SELECT 1",
+    list(id = "qara1", name = "Sentetik-1", sql = "SELECT 1",
          rls_columns = list(masraf_yeri_col = NULL)),
-    list(id = "q705b", name = "Sentetik-2", sql = "SELECT 2",
+    list(id = "qara2", name = "Sentetik-2", sql = "SELECT 2",
          rls_columns = list(masraf_yeri_col = NULL))
   )
 
@@ -1212,6 +1264,6 @@ test_that("başarısız ara kayıt SESSİZ geçmez", {
   expect_equal(cagri$n, 2L)
   kimlikler <- vapply(sonuc$records, function(k) as.character(k$query_id)[1],
                       character(1))
-  expect_true(all(c("q705", "q705b") %in% kimlikler))
-  expect_true(any(grepl("q705b", cikti, fixed = TRUE)))
+  expect_true(all(c("qara1", "qara2") %in% kimlikler))
+  expect_true(any(grepl("qara2", cikti, fixed = TRUE)))
 })

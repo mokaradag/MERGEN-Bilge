@@ -562,6 +562,19 @@ local({
       cat("[PK_META_GEN] !!! Denetim artefaktlari yazilamadigi icin uretilen katman\n")
       cat("[PK_META_GEN] !!! YAYIMLANMADI; onceki metadata korundu.\n")
       tryCatch(unlink(hazirlanan), error = function(e) NULL)
+    } else if (!isTRUE(pkgc_refresh_run_lock(kilit))) {
+      # CITLEME (fencing) YAYIM ADIMINDA DA GECERLIDIR.
+      #
+      # `ara_kayit()` envanter dongusunde kilit sahipligini dogruluyordu, ama
+      # birlestirme + tum-kutuphane dogrulamasi + render + staging + artefakt
+      # yazimi BAYATLIK esigini asabilir ve IKINCI bir kosu kilidi DEVRALABILIR.
+      # O durumda `pkgr_publish_staged_file()` PAYLASILAN cikti dosyasini
+      # degistirir ve iki kosu ayni dosyayi yazar; kilidin engellemek icin var
+      # oldugu davranis tam da budur.
+      cat("[PK_META_GEN] !!! Kosu kilidi KAYBEDILDI; uretilen katman YAYIMLANMADI.\n")
+      tryCatch(unlink(hazirlanan), error = function(e) NULL)
+      rapor$local_layer_status <- "lock_lost"
+      artefaktlari_yaz()
     } else {
       yazildi <- isTRUE(tryCatch({
         pkgr_publish_staged_file(hazirlanan, yapilandirma$output_path)
@@ -618,7 +631,12 @@ local({
   }
 
   # --- 13) Devam durumunu son kez yaz -----------------------------------------
-  if (!isTRUE(pkgh_write_state(kosu$cache, yapilandirma$state_path,
+  #
+  # PAYLASILAN durum dosyasi da CITLEME kapsamindadir: kilit kaybedildiyse
+  # yazilmaz, cunku devralan kosu kendi durumunu yaziyor olabilir.
+  if (!isTRUE(pkgc_refresh_run_lock(kilit))) {
+    cat("[PK_META_GEN] !!! Kosu kilidi KAYBEDILDI; devam durumu YAZILMADI.\n")
+  } else if (!isTRUE(pkgh_write_state(kosu$cache, yapilandirma$state_path,
                                yapilandirma$mode, yapilandirma$timestamp,
                                yapilandirma$state_version))) {
     # BAYAT ANLIK GÖRÜNTÜ KARANTİNAYA ALINIR.

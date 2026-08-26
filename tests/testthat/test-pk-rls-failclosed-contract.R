@@ -307,10 +307,17 @@ test_that("RLS DISI metadata uyusmazligi yalnizca v2'de durdurur", {
 })
 
 test_that("gercek-sutun kapisi cagri yerlerinde BAGLIDIR", {
-  modul <- .pk_rls_read_bytes("R/module_proje_kaynak_analizi.R")
-  derin <- .pk_rls_read_bytes("R/helpers_deep_analysis.R")
+  # KOD OKUYUCU KULLANILIR, HAM OKUYUCU DEGIL.
+  #
+  # `.pk_rls_read_bytes()` yorum satirlarini da dondurur. RLS dosyalari bu
+  # yardimcilarin ADINI gecen aciklama metinleri tasiyor (zaten
+  # `.pk_rls_code_only()` bu yuzden var): gercek cagri kaldirilip yorum
+  # birakilirsa bu sozlesme YESIL kalirken kapi HIC calismazdi.
+  modul <- .pk_rls_code_only("R/module_proje_kaynak_analizi.R")
+  derin <- .pk_rls_code_only("R/helpers_deep_analysis.R")
 
   for (dosya in list(modul, derin)) {
+    expect_true(nzchar(dosya), info = "Kaynak dosya okunamadi (sozlesme vacuous).")
     expect_true(
       grepl("pk_meta_actual_column_gate(", dosya, fixed = TRUE, useBytes = TRUE),
       info = "M8 kapisi RLS'ten once cagrilmalidir."

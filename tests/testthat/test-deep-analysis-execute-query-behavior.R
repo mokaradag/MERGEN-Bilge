@@ -18,7 +18,8 @@
   kok <- resolve_repo_root_for_tests()
   # Faz 1: derin mod artik ANA YOL ile ayni salt-okunur SQL kapisini ve kapali
   # basarisiz RLS/gercek-sutun kapisini kullanir; yalitilmis ortam da yuklemeli.
-  env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
+  # ÜRETİM OPERATÖRÜYLE AYNI (`R/utils_common.R`): yalnız `NULL` yedeğe düşer.
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
   # Faz 6 (D16): SQL kaynagi/yurutmesi ve iptal/son tarih aritmetigi kendi sahip
   # dosyalarina tasindi; izole ortam GERCEK sahipleri yukler.
   for (yardimci in c("helpers_pk_sql_statements.R", "helpers_pk_sql_readonly.R", "helpers_pk_query_meta_schema.R",
@@ -365,19 +366,66 @@ test_that("v2 Deep Thinking fact registry halüsinasyon sayıyı provenance bloc
 })
 
 test_that("v2 Deep Thinking paket kurulumu deadline olursa typed halt döner", {
+  # SINIFLANDIRMA sınanır, EŞLEME değil.
+  #
+  # `pk_async_bounded_fs()` sınırlı fonksiyonun içindeki HER hatada
+  # `ok = FALSE` döndürür. Yalnızca `list(ok = FALSE, value = NULL)` döndüren
+  # bir vekil kullanılırsa, üretim kodu ALAKASIZ bir paket kurulum çökmesini
+  # `deadline` diye raporlasa bile bu iddia GEÇERDİ. Bu yüzden vekil bütçe
+  # sentinelini TAŞIR ve ayrıca bütçe DIŞI bir hatanın son tarih SAYILMADIĞI
+  # ikinci bir durum eklenir.
   env <- .deepQueryEnv(v2_packets = TRUE)
   veri <- .deepV2Data()
   env$pk_deep_execute_sql <- function(conn, sql_text, ...) {
     list(status = "ok", data = veri, rows = nrow(veri), error = NA_character_)
   }
-  env$pk_async_bounded_fs <- function(fn, deadline_at = NULL) list(ok = FALSE, value = NULL)
   env$generate_statistical_summary <- function(...) stop("legacy özet çağrıldı")
 
+  env$pk_async_bounded_fs <- function(fn, deadline_at = NULL) {
+    list(ok = FALSE, value = NULL, error = "budget_exhausted")
+  }
   res <- env$execute_single_deep_query(
     query = .deepV2Query(), user_prompt = "özetle",
     session = NULL, rls_info = list(), detail_config = .detailCfg
   )
-
   expect_true(env$pk_deep_is_halt_result(res))
   expect_identical(res$pk_halt_status, "deadline")
+
+  # BÜTÇE DIŞI hata: son tarih halt'i DEĞİL, gerçek hata sonucu döner.
+  env$pk_async_bounded_fs <- function(fn, deadline_at = NULL) {
+    list(ok = FALSE, value = NULL, error = "paket kurulumunda beklenmeyen hata")
+  }
+  hatali <- env$execute_single_deep_query(
+    query = .deepV2Query(), user_prompt = "özetle",
+    session = NULL, rls_info = list(), detail_config = .detailCfg
+  )
+  expect_false(isTRUE(env$pk_deep_is_halt_result(hatali)))
+  expect_false(isTRUE(hatali$success))
+  expect_true(nzchar(as.character(hatali$error_msg)[1]))
+})
+
+test_that("sınırlı çalıştırma sınıflandırıcısı bütçeyi GERÇEK hatadan ayırır", {
+  env <- .deepQueryEnv(v2_packets = TRUE)
+
+  expect_null(env$pk_deep_bounded_deadline_reason(list(ok = TRUE, value = 1)))
+  expect_identical(
+    env$pk_deep_bounded_deadline_reason(list(ok = FALSE, error = "budget_exhausted")),
+    "deadline"
+  )
+  expect_identical(
+    env$pk_deep_bounded_deadline_reason(
+      list(ok = FALSE, error = "reached elapsed time limit")
+    ),
+    "deadline"
+  )
+  expect_null(env$pk_deep_bounded_deadline_reason(list(ok = FALSE, error = "baska hata")))
+
+  # Hata alanı YOKSA son tarihin GERÇEKTEN dolup dolmadığına bakılır.
+  expect_identical(
+    env$pk_deep_bounded_deadline_reason(list(ok = FALSE),
+                                        deadline_at = Sys.time() - 5),
+    "deadline"
+  )
+  expect_null(env$pk_deep_bounded_deadline_reason(list(ok = FALSE),
+                                                  deadline_at = Sys.time() + 600))
 })

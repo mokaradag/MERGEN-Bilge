@@ -162,9 +162,18 @@ if (!exists("pk_telemetry_log_analysis", mode = "function", inherits = TRUE)) {
   info$extra_degradations <- NULL
 
   status <- pk_filter_status_normalize(info$filter_status)
+  # TELEMETRİ HAZIRLIK KARARI DB HEDEFİ BAŞINA ANAHTARLANIR.
+  #
+  # Etkin yürütme bağlamı OLMAYAN yollarda (işçi doğrudan-çıkışı, derin gözlem)
+  # `.pk_telemetry_target_key()` her bağlantıyı `"primary"` sayıyordu:
+  # önbelleğe alınmış bir birincil karar geçerli bir ikincil yazımı ATLAYABİLİR
+  # ya da geçersiz bir `INSERT`i ikincil bağlantıda YİNELEYEBİLİRDİ. Hedef,
+  # seçilen sorgunun metadata'sından burada çözülür.
+  hedef <- as.character(info$db_target %||% query_meta$db_target %||% "")[1]
   list(
     info = info,
     status = status,
+    db_target = if (is.na(hedef) || !nzchar(hedef)) NULL else hedef,
     degradations = c(
       pk_degradations_from_filter_status(status), dropped_degradations, ek_bozulmalar
     ),
@@ -197,6 +206,7 @@ pk_analysis_observe <- function(session, conn, info) {
     zengin <- list(info = info,
                    status = tryCatch(pk_filter_status_normalize(info$filter_status),
                                      error = function(e) info$filter_status),
+                   db_target = info$db_target,
                    degradations = list(), provenance_mode = NULL)
   }
   info <- zengin$info
@@ -224,7 +234,10 @@ pk_analysis_observe <- function(session, conn, info) {
   # ÖNÜNE eklenir; olgular ve deterministik yedek metin ise §5.11 sayısal
   # köken doğrulaması için birlikte saklanır. Alt bilgi kurulamasa BİLE blok
   # teslim edilir.
-  if (nzchar(footer) || nzchar(blok)) {
+  # OLGU VARSA KAYIT HER HÂLÜKÂRDA SAKLANIR: alt bilgi ve R'ye ait blok boş
+  # olsa bile §5.11 doğrulaması çalışmalıdır; aksi hâlde doğrulanmamış model
+  # düzyazısı `[fact:...]` işaretleriyle birlikte teslim edilirdi.
+  if (nzchar(footer) || nzchar(blok) || !is.null(info$facts)) {
     try(pk_provenance_stash(
       session, paste0(blok, footer),
       request_id = info$request_id,
@@ -243,7 +256,10 @@ pk_analysis_observe <- function(session, conn, info) {
     character(1)
   )
 
-  try(pk_telemetry_log_analysis(info, conn), silent = TRUE)
+  # HEDEF AÇIKÇA GEÇİRİLİR: hazırlık kararı DB HEDEFİ başına anahtarlanır ve
+  # etkin yürütme bağlamı olmayan yollarda da doğru hedefe düşer.
+  try(pk_telemetry_log_analysis(info, conn, db_target = zengin$db_target),
+      silent = TRUE)
 
   invisible(footer)
 }

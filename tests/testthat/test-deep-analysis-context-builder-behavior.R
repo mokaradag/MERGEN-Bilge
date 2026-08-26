@@ -163,7 +163,8 @@ test_that("v2 başarılı kayıt kanonik packet metni yoksa legacy summary fail-
   )
 }
 
-test_that("onizlemeler yetmezse SORGU BLOKLARI dusurulur ve butce UYGULANIR", {
+test_that("önizlemeler yetmezse SORGU BLOKLARI düşürülür ve bütçe UYGULANIR", {
+  testthat::skip_if_not_installed("withr")
   sistem <- strrep("S", 500L)
   baglam <- .dac_baglam()
 
@@ -182,7 +183,8 @@ test_that("onizlemeler yetmezse SORGU BLOKLARI dusurulur ve butce UYGULANIR", {
   })
 })
 
-test_that("hic onizleme blogu olmayan asim da bloklarla cozulur", {
+test_that("hiç önizleme bloğu olmayan aşım da bloklarla çözülür", {
+  testthat::skip_if_not_installed("withr")
   sistem <- strrep("S", 500L)
   baglam <- .dac_baglam(onizleme = FALSE)
 
@@ -194,7 +196,8 @@ test_that("hic onizleme blogu olmayan asim da bloklarla cozulur", {
   })
 })
 
-test_that("butceye sigan baglam DEGISMEDEN doner", {
+test_that("bütçeye sığan bağlam DEĞİŞMEDEN döner", {
+  testthat::skip_if_not_installed("withr")
   sistem <- strrep("S", 100L)
   baglam <- .dac_baglam(n = 1L, ozet_uzunluk = 5L)
 
@@ -205,7 +208,8 @@ test_that("butceye sigan baglam DEGISMEDEN doner", {
   })
 })
 
-test_that("sabit sistem metni tek basina asiyorsa SONSUZ DONGU olmaz", {
+test_that("sabit sistem metni tek başına aşıyorsa SONSUZ DÖNGÜ olmaz", {
+  testthat::skip_if_not_installed("withr")
   # Daha fazla deterministik kirpma mumkun degildir; durum sessiz gecmez.
   sistem <- strrep("S", 5000L)
   baglam <- .dac_baglam(n = 2L, ozet_uzunluk = 200L)

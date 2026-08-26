@@ -372,15 +372,27 @@ pk_export_summary_sheet <- function(packet) {
     if (!inherits(ger, "POSIXt")) {
       return(sprintf("'%s' sutunu zaman damgasi olarak yazilmamis.", ad))
     }
-    # ALT SANİYE HASSASİYETİ DE KARŞILAŞTIRILIR.
+    # ALT SANİYE HASSASİYETİ DE KARŞILAŞTIRILIR — AMA DUVAR SAATİ ÜZERİNDEN.
     #
     # `%H:%M:%S` biçimi SQL Server `datetime2` değerlerinde milisaniyeyi ATAR:
     # `12:34:56.100` ile `12:34:56.900` aynı görünür ve milisaniyeyi kaydıran/
-    # kırpan bir XLSX gidiş dönüşü "sadık" raporlanırdı. Karşılaştırma altta
-    # yatan an üzerinden, açık bir toleransla yapılır (kayan nokta temsili
-    # nedeniyle birebir eşitlik beklenmez).
-    bek_an <- as.numeric(bek)[dolu]
-    ger_an <- as.numeric(ger)[dolu]
+    # kırpan bir XLSX gidiş dönüşü "sadık" raporlanırdı.
+    #
+    # Ancak HAM AN (`as.numeric()`) karşılaştırması SAAT DİLİMİNE bağlıdır:
+    # yazıcılar duvar saatini saat dilimi bilgisi OLMADAN saklar, `readxl` ise
+    # okunan değeri UTC olarak döndürür. Beklenen sütun UTC dışı bir saat
+    # dilimindeyse iki an UTC farkı kadar ayrışır, tolerans aşılır ve SADIK bir
+    # çalışma kitabı CSV yedeğine düşürülürdü. Bu yüzden iki taraf da KENDİ
+    # saat diliminde biçimlenip UTC'de yeniden okunur: karşılaştırma duvar
+    # saati üzerinden, alt saniye hassasiyeti KORUNARAK yapılır.
+    duvar_saati <- function(x) {
+      suppressWarnings(as.numeric(as.POSIXct(
+        format(x, format = "%Y-%m-%d %H:%M:%OS6"),
+        tz = "UTC"
+      )))
+    }
+    bek_an <- duvar_saati(bek)[dolu]
+    ger_an <- duvar_saati(ger)[dolu]
     if (length(bek_an) != length(ger_an) ||
         any(is.na(bek_an) != is.na(ger_an)) ||
         any(abs(bek_an - ger_an) > 5e-4, na.rm = TRUE)) {

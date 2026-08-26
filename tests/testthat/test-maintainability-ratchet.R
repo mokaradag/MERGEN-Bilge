@@ -306,12 +306,12 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # PR #705 incelemesi (P1): `block` kipinde doğrulanmamış analiz metni artık
   # akışta yayınlanmaz; tampon kararı ve dal ölçülen taban çizgisini 660 -> 680
   # yükseltti. Yeni fonksiyon EKLENMEDİ; sınır bilinçli olarak güncellendi.
-  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 680 -> 689 satir (OLCULEN).
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 680 -> 689 satır (ÖLÇÜLEN).
   # `pk_provenance_decorate()` cagrisi `tryCatch` ile sarildi: dekorasyon
   # hatasi (bozuk olgu kaydi, eksik yardimci) TUM akis sonlandirmasini
   # dusuruyor ve kullanici HAZIR yaniti hic goremiyordu. Fonksiyon sayisi
   # ARTMAMISTIR (17).
-  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 689 -> 707 satir (OLCULEN).
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 689 -> 707 satır (ÖLÇÜLEN).
   # `defer_visible_text` TRUE iken bos yanit balonu artik ACILMAZ; kanit
   # dogrulamasi biten metin gelene kadar kullaniciya bos bir kabuk
   # gosteriliyordu. Fonksiyon sayisi ARTMAMISTIR (18).
@@ -347,19 +347,19 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   assert_current_budget("R/helpers_pk_entity_mention.R", 150L, 5L)
   assert_current_budget("R/helpers_pk_entity_alias.R", 170L, 4L)
   assert_current_budget("R/helpers_pk_entity_score.R", 400L, 16L)
-  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 400 -> 408 satir (OLCULEN).
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 400 -> 408 satır (ÖLÇÜLEN).
   # `.pk_entity_merge_mention_matches()` artik `list(records =, truncated =)`
   # dondurur; kirpilmis bir anim taramasi eskiden SESSIZCE tam tarama gibi
   # davraniyordu. Fonksiyon sayisi ARTMAMISTIR (11).
   assert_current_budget("R/helpers_pk_entity_scan.R", 408L, 13L)
-  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 680 -> 702 satir (OLCULEN).
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 680 -> 702 satır (ÖLÇÜLEN).
   # (a) Kirpilmis taramada `allow_all` artik FALSE (eksik kumeyi "tumu" gibi
   # sunmak yanlis toplam uretiyordu); (b) `refinement` rolu icin 7. kural
   # (aciklama ile `unfiltered`) eklendi -- daralticidan ibaret bir anim TUM
   # analizi durduruyordu. Fonksiyon sayisi ARTMAMISTIR (15).
   assert_current_budget("R/helpers_pk_entity_resolver.R", 702L, 17L)
   assert_current_budget("R/helpers_pk_entity_history.R", 520L, 17L)
-  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 270 -> 284 satir (OLCULEN).
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 270 -> 284 satır (ÖLÇÜLEN).
   # Karakter OLMAYAN sutunda varlik filtresi artik SESSIZCE atlanmaz; bir
   # aciklama (`aciklamalar`) kaydi uretilir. Aksi halde kullanici, uygulanmadigi
   # halde uygulanmis sandigi bir filtreyle sonuc goruyordu. Fonksiyon sayisi
@@ -377,13 +377,13 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # bölündü. HİÇBİR BÜTÇE GEVŞETİLMEDİ: `prompt` 520 -> 400, `parse` 680 -> 300,
   # `ai` 380 -> 520 (orkestrasyon iptal/teşhis/onay yollarını da üstlendi),
   # `apply` 250 -> 320, `retrieval` 360 -> 400 (not_for olumsuz kanıtı).
-  # BILINCLI GUNCELLEME (PR #705 inceleme): 400 -> 411 satir (OLCULEN). Tek
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme): 400 -> 411 satır (ÖLÇÜLEN). Tek
   # nedeni `not_for` olumsuz kanitinin BUTUN IFADE eslesmesine cevrilmesidir:
   # tek bir >=3 karakterlik belirtec artik yetmez, bir ifadenin TUM anlamli
-  # belirtecleri istemde gecmelidir. Aksi halde `not_for = "planlanan butce"`,
+  # belirteçleri istemde geçmelidir. Aksi hâlde `not_for = "planlanan bütçe"`,
   # "planlanan iscilik" istegini de reddedip GECERLI bir secimi guven kapisinin
   # altina itiyordu. Fonksiyon sayisi ARTMAMISTIR (17).
-  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 411 -> 422 satir (OLCULEN).
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 411 -> 422 satır (ÖLÇÜLEN).
   # `not_for` dislamasi SIFIR PUAN kisayolundan ONCE degerlendirilir ve
   # `excluded_by_not_for` alani HER yolda (TRUE/FALSE) dondurulur; eskiden
   # sifir puanli bir sorgu dislama kanitini tasimadan donuyor, tuketiciler de
@@ -391,7 +391,7 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # Fonksiyon sayisi ARTMAMISTIR.
   assert_current_budget("R/helpers_pk_query_retrieval.R", 422L, 17L)
   assert_current_budget("R/helpers_pk_query_selection_json.R", 240L, 10L)
-  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 300 -> 308 satir (OLCULEN).
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 300 -> 308 satır (ÖLÇÜLEN).
   # Birlestirilmis yapilandirma `pk_select_normalize_config()` ile YENIDEN
   # dogrulanir; kullanici geciversiz bir esik verdiginde birlestirme sonrasi
   # dogrulama yapilmadigi icin gecersiz deger canli karara sizabiliyordu.
@@ -399,55 +399,59 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   assert_current_budget("R/helpers_pk_query_selection_config.R", 308L, 10L)
   assert_current_budget("R/helpers_pk_query_selection_payload.R", 460L, 18L)
   assert_current_budget("R/helpers_pk_query_selection_prompt.R", 400L, 16L)
-  # BILINCLI GUNCELLEME (PR #705 inceleme): 300 -> 325 satir / 12 -> 13
-  # fonksiyon (OLCULEN). Iki neden: (a) TIPLI dogrulama sonucuna `canonicalized`
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme): 300 -> 325 satır / 12 -> 13
+  # fonksiyon (ÖLÇÜLEN). İki neden: (a) TİPLİ doğrulama sonucuna `canonicalized`
   # alani eklendi ve varolussal->sayim kanoniklestirmesi TEK cagri ile baglandi
   # (kanoniklestiricinin KENDISI ayri dosyada: helpers_..._canonical.R);
   # (b) `unsupported` serbest metin alanini normalize eden
   # `pk_select_unsupported_needs()` BURAYA tasindi ve hem normal karar yolu hem
   # de CIP ONAYI yolu ayni sahibi kullanir (kopya mantik kaldirildi).
-  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 325 -> 345 satir (OLCULEN).
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 325 -> 345 satır (ÖLÇÜLEN).
   # Iki neden: (a) BOS bir `requirements` nesnesi artik REDDEDILIR -- eskiden
   # "beyan yok" ile "bos beyan" ayni sayilip guven kapisini bypass ediyordu;
   # (b) `zaten` (already-satisfied) kontrolu YALNIZCA tarih ve boyut alanlarina
   # uygulanir, olcut alanlarina degil. Fonksiyon sayisi ARTMAMISTIR.
   assert_current_budget("R/helpers_pk_query_selection_requirements.R", 345L, 13L)
-  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 300 -> 304 satir (OLCULEN).
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 300 -> 304 satır (ÖLÇÜLEN).
   # Iptal durumu icin ACIK sabit eklendi (`PK_SELECT_STATUS_CANCELLED`); iptal
   # "bos yanit" ile ayni koda dusunce oturum durumu iptalde de temizleniyordu.
   # Fonksiyon sayisi ARTMAMISTIR.
-  assert_current_budget("R/helpers_pk_query_selection_parse.R", 304L, 8L)
+  # BİLİNÇLİ GÜNCELLEME (PR incelemesi): `alternates` ögelerinde `$` kısmi ad
+  # eşleşmesi yerine KESİN alan erişimi (`[["id"]]`/`[["confidence"]]`) ve
+  # sözleşme dışı anahtar reddi eklendi; ÖLÇÜLEN taban 304 -> 319. KÜRESEL
+  # eşikler DEĞİŞMEDİ (fonksiyon sayısı aynı).
+  assert_current_budget("R/helpers_pk_query_selection_parse.R", 319L, 8L)
   # PR #705 incelemesi: `not_for` ile dışlanan sorgu güven/marj kapılarından
   # ÖNCE reddedilir ve yetkin alternatifler AZALAN güvene göre sıralanır
   # (marj kapısı en güçlü rakibe karşı ölçülür). Taban çizgisi 400 -> 420.
   assert_current_budget("R/helpers_pk_query_selection_decide.R", 420L, 10L)
   assert_current_budget("R/helpers_pk_query_selection_degraded.R", 190L, 7L)
   assert_current_budget("R/helpers_pk_query_selection_session.R", 220L, 14L)
-  # BILINCLI GUNCELLEME (PR #705 kararlilik): Gecis A TOPLAM yuk butcesi
-  # asildiginda kapali basarisiz olan dal eklendi (sessiz kirpma, gorunmeyen
-  # sorgu = geri alinamaz recall kaybi). Fonksiyon sayisi ARTMAMISTIR.
+  # BİLİNÇLİ GÜNCELLEME (PR #705 kararlılık): Geçiş A TOPLAM yük bütçesi
+  # aşıldığında kapalı başarısız olan dal eklendi (sessiz kırpma, görünmeyen
+  # sorgu = geri alınamaz recall kaybı). Fonksiyon sayısı ARTMAMIŞTIR.
   #
-  # BILINCLI GUNCELLEME (PR #705 inceleme): 578 -> 601 satir (OLCULEN). Tek
-  # nedeni GUVENLIK kapisidir: `unsupported_requirement` kapisi CIP ONAYI
-  # yolunda YENIDEN uygulanir. Onceden `unsupported` SERBEST METIN oldugu icin
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme): 578 -> 601 satır (ÖLÇÜLEN). Tek
+  # nedeni GÜVENLİK kapısıdır: `unsupported_requirement` kapısı ÇİP ONAYI
+  # yolunda YENİDEN uygulanır. Önceden `unsupported` SERBEST METİN olduğu için
   # dogrulayici `not_asserted` donuyor ve bir onceki turda REDDEDILMIS istek,
   # kullanici cip sectiginde `AUTO` + guven 100 olarak calisabiliyordu; karar
   # politikasinin 4. kurali BYPASS ediliyordu. Fonksiyon sayisi ARTMAMISTIR.
-  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 601 -> 611 satir (OLCULEN).
-  # Iki neden: (a) Gecis B yaniti Gecis A'nin DONDURDUGU `bloklar$ids` kumesine
-  # gore dogrulanir -- model kume disi bir kimlik uydurdugunda eskiden sessizce
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 601 -> 611 satır (ÖLÇÜLEN).
+  # İki neden: (a) Geçiş B yanıtı Geçiş A'nın DONDURDUĞU `bloklar$ids` kümesine
+  # göre doğrulanır -- model küme dışı bir kimlik uydurduğunda eskiden sessizce
   # kabul ediliyordu; (b) iptal `PK_SELECT_STATUS_CANCELLED` dondurur.
   # Fonksiyon sayisi ARTMAMISTIR (22).
-  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 611 -> 613 satir (OLCULEN).
-  # Tohum (`seed`) artik KUTUPHANE kimlik kumesine gore dogrulanir; kutuphane
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 611 -> 613 satır (ÖLÇÜLEN).
+  # Tohum (`seed`) artık KÜTÜPHANE kimlik kümesine göre doğrulanır; kütüphane
   # disi bir tohum eskiden gecerli secim gibi ilerliyordu. Fonksiyon sayisi
   # ARTMAMISTIR (22).
   assert_current_budget("R/helpers_pk_query_selection_ai.R", 613L, 22L)
   assert_current_budget("R/helpers_pk_query_selection_apply.R", 320L, 14L)
 
-  # PR #705 dengeleme (inceleme borcu kok neden duzeltmeleri). Bu uc butce
-  # OLCULEN yeni tabanla guncellendi; hicbir KURESEL esik gevsetilmedi
-  # (skor 100/100, 800+ satir 0, 25+ fonksiyon 0, en buyuk dosya 795):
+  # PR #705 dengeleme (inceleme borcu kök neden düzeltmeleri). Bu üç bütçe
+  # ÖLÇÜLEN yeni tabanla güncellendi; hiçbir KÜRESEL eşik gevşetilmedi
+  # (skor 100/100, 800+ satır 0, 25+ fonksiyon 0, en büyük dosya 795):
   #   * `json` 220 -> 240: ayristirici katiligi (kacis dizisi/kontrol karakteri
   #     dogrulamasi, yinelenen anahtar taramasinin dize-farkindaligi).
   #   * `ai` 520 -> 560 ve 21 -> 22: onaylanmis secim yolunun oturum durumu
@@ -455,16 +459,21 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   #   * `analysis_ai_selector` 140 -> 155: v1 seciciye tipli reddetme durumu.
   # v1 AI seçicisi modülden çıkarıldı (davranış BİREBİR); modül orkestrasyona
   # odaklı kalır ve 800 satır tavanına geri dayanmaz.
-  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 155 -> 167 satir (OLCULEN).
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 155 -> 167 satır (ÖLÇÜLEN).
   # Sorgu adi/aciklamasi SKALER'e indirgenir ve model yanitindaki indeks
   # `suppressWarnings(as.integer(...)[1])` ile korunur; cok elemanli bir ad ya
   # da sayisal olmayan bir indeks `if` icinde kosul uzunlugu hatasi firlatiyor
   # ve TUM secimi dusuruyordu. Fonksiyon sayisi AYNI (4).
-  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 167 -> 173 satir (OLCULEN).
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 167 -> 173 satır (ÖLÇÜLEN).
   # Liste degerli `match_id` `as.integer()` oncesi REDDEDILIR; aksi halde
   # coklu elemanli bir model yaniti kosul uzunlugu hatasi firlatiyordu.
   # Fonksiyon sayisi AYNI (4).
-  assert_current_budget("R/helpers_pk_analysis_ai_selector.R", 173L, 4L)
+  # BİLİNÇLİ GÜNCELLEME (PR incelemesi): `confidence` için atomik denetim ve
+  # `sprintf()` LİSTE argümanına karşı skaler metin indirgemesi eklendi
+  # (sözleşme ihlali artık ISTISNAYA dönüşmüyor). Yerel `skaler_metin`
+  # yardımcısı fonksiyon sayısını 4 -> 5 yaptı; ÖLÇÜLEN taban 173 -> 194.
+  # KÜRESEL eşikler (24 fonksiyon / 796 satır) DEĞİŞMEDİ.
+  assert_current_budget("R/helpers_pk_analysis_ai_selector.R", 194L, 5L)
 
   # Varlık manifesti VERİ/DOĞRULAYICI/RENDER olarak üç dosyaya bölündü
   # (config_ui_asset_zones.R deseni): config_ui_assets.R 690 satırdan VERİ-odaklı

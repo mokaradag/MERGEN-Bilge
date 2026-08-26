@@ -414,6 +414,15 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
         } else if (is.numeric(sutun_degerleri)) {
           gecerli <- sutun_degerleri[!is.na(sutun_degerleri)]
           length(gecerli) == 0L || all(gecerli %in% c(0, 1))
+        } else if (is.character(sutun_degerleri) || is.factor(sutun_degerleri)) {
+          # `0`/`1` DEĞERLERİNİ METİN OLARAK SAKLAYAN SÜTUN DA İKİLİDİR.
+          #
+          # ODBC bazı `bit`/`char(1)` sütunlarını karakter döndürür; sayısal
+          # kapı bunları görmüyor ve "aktif mi?" tipi bir filtre EVET/HAYIR
+          # eşlemesini kaybediyordu.
+          gecerli <- trimws(as.character(sutun_degerleri))
+          gecerli <- gecerli[!is.na(gecerli) & nzchar(gecerli)]
+          length(gecerli) == 0L || all(gecerli %in% c("0", "1"))
         } else {
           FALSE
         }
@@ -659,7 +668,10 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
       num_cols <- names(dt)[vapply(dt, is.numeric, logical(1))]
       if (length(num_cols) > 0) {
         sums <- lapply(num_cols, function(nc) sum(dt[[nc]], na.rm = TRUE))
-        return(as.data.frame(sums))
+        # KAYNAK ÖLÇÜ ADLARI KORUNUR (yalıtılmış çalıştırma gövdesi ana
+        # gövdeden AYRIŞMAMALIDIR; bkz. `R/helpers_pk_analysis_filters.R`).
+        names(sums) <- num_cols
+        return(as.data.frame(sums, check.names = FALSE))
       }
     } else if (agg_str == "group_by" && !is.null(group_col) && group_col %in% names(dt)) {
       return(as.data.frame(dt[, .N, by = group_col]))

@@ -60,6 +60,7 @@ test_that("doğrudan AI yanıtları mesaj sınırında bekleyen köken alt bilgi
 })
 
 test_that("derin analiz her sorguyu gözlemler ve tek birleşik köken alt bilgisi saklar", {
+  testthat::skip_if_not_installed("withr")
   # Bu sözleşme v1'in `find_multiple_queries_with_ai` çoklu seçim yolunu
   # doğrular. `test_dir()` ortak test ortamında v2 seçicisi daha önce yüklenmiş
   # olabilir; VM'deki motor ayarı bu izole v1 sözleşmesini değiştirmemelidir.

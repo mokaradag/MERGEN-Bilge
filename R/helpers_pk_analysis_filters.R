@@ -467,7 +467,13 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
       num_cols <- names(dt)[vapply(dt, is.numeric, logical(1))]
       if (length(num_cols) > 0) {
         sums <- lapply(num_cols, function(nc) sum(dt[[nc]], na.rm = TRUE))
-        return(finish(as.data.frame(sums), matched_rows))
+        # KAYNAK ÖLÇÜ ADLARI KORUNUR. Adsız listeden üretilen çerçeve
+        # `V1`/`V2` başlıkları alıyordu; yanıt metni ve CSV/XLSX dışa aktarımı
+        # kullanıcının kaynak sütuna EŞLEYEMEDİĞİ başlıklar yayımlıyordu.
+        # `check.names = FALSE`: boşluklu/Türkçe ölçü adı `make.names()` ile
+        # YENİDEN YAZILMAZ.
+        names(sums) <- num_cols
+        return(finish(as.data.frame(sums, check.names = FALSE), matched_rows))
       }
     } else if (agg_str == "group_by" && !is.null(group_col) && group_col %in% names(dt)) {
       return(finish(as.data.frame(dt[, .N, by = group_col]), matched_rows))

@@ -1,6 +1,24 @@
 # ==============================================================================
-# Dosya Yolu: tests/testthat/test-pk-p1-runtime-guards.R
+# Dosya Yolu: tests/testthat/test-pk-runtime-guards-behavior.R
+# Açıklama: PK çalışma zamanı guard'ları (doğrudan çıkış kapısı, PSOCK
+#           başlatma bütçesi, kalan istek bütçesi) için davranış testleri.
 # ==============================================================================
+
+# Guard yardımcılarını YALITILMIŞ bir ortama yükler; üretim tanımları
+# `globalenv()`e SIZMAZ (tam paket çalıştırmasında dosya sırası bağımlılığı
+# oluşturmamak için).
+.pk_guard_env <- function() {
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  env$pk_async_run_analysis <- function(request) list(status = "ok")
+  env$execute_single_deep_query <- function(...) list(success = FALSE)
+  for (dosya in c("helpers_pk_config.R", "helpers_pk_async_cancel.R",
+                  "helpers_pk_runtime_guards.R")) {
+    source(file.path(resolve_repo_root_for_tests(), "R", dosya),
+           encoding = "UTF-8", local = env)
+  }
+  env
+}
 
 test_that("v2 Derin Dusunme kanonik paket ve olgulari kullanir", {
   env <- new.env(parent = globalenv())
@@ -42,7 +60,7 @@ test_that("v2 Derin Dusunme kanonik paket ve olgulari kullanir", {
   env$pk_packet_render <- function(packet) list(text = "KANONIK F1 TRY", mode = "full")
   env$pk_packet_all_facts <- function(packet) packet$fact_registry
 
-  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_pk_p1_runtime_guards.R"),
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_pk_runtime_guards.R"),
          encoding = "UTF-8", local = env)
 
   res <- env$execute_single_deep_query(
@@ -74,7 +92,7 @@ test_that("dogrudan DB alt iscisi bloklanirken zorla sonlandirilabilir", {
   env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
   env$pk_async_run_analysis <- function(request) list(status = "ok")
   env$execute_single_deep_query <- function(...) list(success = FALSE)
-  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_pk_p1_runtime_guards.R"),
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_pk_runtime_guards.R"),
          encoding = "UTF-8", local = env)
 
   cluster <- parallelly::makeClusterPSOCK(1L)
@@ -99,7 +117,7 @@ test_that("PSOCK baslatma BAGIMSIZ butce sarmalayicisindan gecer", {
   env$pk_async_run_analysis <- function(request) list(status = "ok")
   env$execute_single_deep_query <- function(...) list(success = FALSE)
   for (dosya in c("helpers_pk_config.R", "helpers_pk_async_cancel.R",
-                  "helpers_pk_p1_runtime_guards.R")) {
+                  "helpers_pk_runtime_guards.R")) {
     source(file.path(resolve_repo_root_for_tests(), "R", dosya),
            encoding = "UTF-8", local = env)
   }
@@ -114,11 +132,41 @@ test_that("PSOCK baslatma BAGIMSIZ butce sarmalayicisindan gecer", {
   }
   env$parallelly <- NULL
 
-  istek <- list(deadline_sec = 30, started_at = as.numeric(Sys.time()),
+  # ALAN ADI ÜRETİMLE AYNI: anlık görüntü `started_at_epoch` yazar.
+  istek <- list(deadline_sec = 30, started_at_epoch = as.numeric(Sys.time()),
                 cancel_token = NULL, repo_root = tempdir())
   sonuc <- env$.pk_p1_run_direct_disposable(istek)
 
   expect_true(cagrildi)
-  # Sarmalayici butceyi asarsa kume KURULMAMIS sayilir; istek asili kalmaz.
+  # Sarmalayıcı bütçeyi aşarsa küme KURULMAMIŞ sayılır; istek asılı kalmaz.
   expect_identical(sonuc$status, "bootstrap_failed")
+})
+
+test_that("kalan başlatma bütçesi GEÇEN SÜRE kadar KÜÇÜLÜR", {
+  env <- .pk_guard_env()
+
+  # `started_at_epoch` üretim anlık görüntüsünün alanıdır; eskiden bu yardımcı
+  # `started_at` okuduğu için geçen süre HİÇ düşülmüyor ve bütçe tam
+  # `deadline_sec` kalıyordu.
+  taze <- env$.pk_p1_remaining_budget_sec(list(
+    deadline_sec = 30, started_at_epoch = as.numeric(Sys.time())
+  ))
+  eski <- env$.pk_p1_remaining_budget_sec(list(
+    deadline_sec = 30, started_at_epoch = as.numeric(Sys.time()) - 20
+  ))
+
+  expect_true(taze > eski)
+  expect_true(eski <= 11)
+  # Zaman damgası yoksa davranış DEĞİŞMEZ: tam süre döner.
+  expect_identical(
+    env$.pk_p1_remaining_budget_sec(list(deadline_sec = 30)),
+    30
+  )
+  # Bütçe tükendiğinde alt sınır 1 saniyedir (0/negatif değer geçersizdir).
+  expect_identical(
+    env$.pk_p1_remaining_budget_sec(list(
+      deadline_sec = 5, started_at_epoch = as.numeric(Sys.time()) - 600
+    )),
+    1
+  )
 })

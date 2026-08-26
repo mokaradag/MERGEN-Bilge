@@ -6,10 +6,12 @@
 #           yalnızca metni ve kabuk sözdizimi denetlenir.
 #
 # Kapsanan sözleşmeler:
-#   - Dosya BAYT DÜZEYİNDE ASCII'dir (Windows/Türkçe yerelde mojibake riski).
+#   - Dosya WINDOWS-1254'e ÇEVRİLEBİLİR ve GEÇERLİ UTF-8'dir (Windows/Türkçe
+#     yerelde mojibake riski); ASCII-ONLY kuralı BİLEREK KALDIRILDI, çünkü
+#     Türkçeyi Latinleştirmeye zorluyordu (CLAUDE.md kural 1).
 #   - Seçenek biçimli `<ref>` argümanı REDDEDİLİR.
 #   - Sig (shallow) klon ve bayat uzak referans KAPALI BAŞARISIZ olur.
-#   - Tarama BİRİNCİ EBEVEYN gecmisiyle sınırlıdır.
+#   - Tarama BİRİNCİ EBEVEYN geçmişiyle sınırlıdır.
 #   - Yokluk KANIT SAYILMAZ; kapanış notu bunu açıkça söyler.
 # ==============================================================================
 
@@ -64,14 +66,14 @@ test_that("betik WINDOWS-1254'e ÇEVRİLEBİLİR", {
 
   expect_equal(
     length(bozuk), 0L,
-    info = sprintf("WINDOWS-1254'e cevrilemeyen satirlar: %s",
+    info = sprintf("WINDOWS-1254'e çevrilemeyen satırlar: %s",
                    paste(utils::head(bozuk, 10L), collapse = ", "))
   )
 
   # Dosya UTF-8 olarak GEÇERLİ kalmalıdır (bozuk bayt dizisi girmemeli).
   ham <- readBin(yol, "raw", file.info(yol)$size)
   metin <- suppressWarnings(iconv(list(ham), from = "UTF-8", to = "UTF-8"))[[1]]
-  expect_false(is.na(metin), info = "Betik gecerli UTF-8 degil.")
+  expect_false(is.na(metin), info = "Betik geçerli UTF-8 değil.")
 })
 
 test_that("kabuk sözdizimi geçerlidir", {
@@ -92,8 +94,8 @@ test_that("seçenek biçimli ref argümanı REDDEDİLİR", {
   bash_bin <- .pk_phase_locate_bash()
   testthat::skip_if_not(nzchar(bash_bin))
 
-  # `--all` gecirmek `git log ... --all` etkisi yaratir ve YALNIZCA ozellik
-  # dalinda kalan birlesmeler entegre olmus gibi raporlanir.
+  # `--all` geçirmek `git log ... --all` etkisi yaratır ve YALNIZCA özellik
+  # dalında kalan birleşmeler entegre olmuş gibi raporlanır.
   sonuc <- suppressWarnings(system2(
     bash_bin, c(shQuote(.pk_phase_script_path()), "--all"),
     stdout = TRUE, stderr = TRUE
@@ -101,41 +103,53 @@ test_that("seçenek biçimli ref argümanı REDDEDİLİR", {
   durum <- attr(sonuc, "status")
 
   expect_true(!is.null(durum) && durum != 0L)
-  expect_true(any(grepl("seçenek olamaz", sonuc, fixed = TRUE)))
+
+  # YAKALANAN ÇIKTI YEREL KODLAMADADIR (Türkçe Windows konsolunda CP1254),
+  # R literali ise UTF-8'dir; `fixed = TRUE` karşılaştırması farklı bayt
+  # dizilerini kıyaslar ve betik seçeneği DOĞRU reddetse bile test düşerdi.
+  # Bu dosyanın geri kalanı gibi burada da metin açıkça çevrilir ve ek olarak
+  # ASCII bir çapa aranır.
+  cevrili <- suppressWarnings(iconv(sonuc, from = "", to = "UTF-8"))
+  cevrili[is.na(cevrili)] <- ""
+  expect_true(any(grepl("HATA:", sonuc, fixed = TRUE, useBytes = TRUE)))
+  expect_true(
+    any(grepl("seçenek olamaz", cevrili, fixed = TRUE)) ||
+      any(grepl("seçenek olamaz", sonuc, fixed = TRUE))
+  )
 })
 
 test_that("kapalı başarısızlık ve doğruluk sınırı metinde AÇIKÇA vardır", {
   metin <- .pk_phase_script_text()
 
   zorunlu <- c(
-    # Bayat uzak referans / sig klon / bozuk gecmis kapali basarisiz olur.
+    # Bayat uzak referans / sığ klon / bozuk geçmiş kapalı başarısız olur.
     "is-shallow-repository",
     "git ls-remote",
     "PK_PHASE_SKIP_REMOTE_CHECK",
-    # Tarama birinci ebeveyn gecmisiyle sinirlidir (ozellik dali icindeki
-    # birlesmeler entegrasyon sayilmaz).
+    # Tarama birinci ebeveyn geçmişiyle sınırlıdır (özellik dalı içindeki
+    # birleşmeler entegrasyon sayılmaz).
     "--first-parent",
-    # Squash birlesme ve geri alma (revert) taninir.
+    # Squash birleşme ve geri alma (revert) tanınır.
     "squash",
     "Revert",
-    # PK ad alani dogrulamasi: `ui/phase-2-redesign` gibi ilgisiz dallar
-    # faz sayilmaz.
+    # PK ad alanı doğrulaması: `ui/phase-2-redesign` gibi ilgisiz dallar
+    # faz sayılmaz.
     "claude/pk-phase-",
-    # Yokluk KANIT DEGILDIR.
+    # Yokluk KANIT DEĞİLDİR.
     "SONUCU CIKARILAMAZ"
   )
 
   for (token in zorunlu) {
     expect_true(grepl(token, metin, fixed = TRUE, useBytes = TRUE),
-                info = sprintf("Betikte beklenen sozlesme izi yok: %s", token))
+                info = sprintf("Betikte beklenen sözleşme izi yok: %s", token))
   }
 })
 
 test_that("faz numarası İLK işaretten okunur (açgözlü kalıp yok)", {
   metin <- .pk_phase_script_text()
 
-  # `claude/pk-phase-4-fix-phase-5-prep` dali Faz 4'tur. Acgozlu `.*phase-`
-  # kalibi son isareti alir ve Faz 5'i yanlislikla entegre gosterir.
+  # `claude/pk-phase-4-fix-phase-5-prep` dalı Faz 4'tür. Açgözlü `.*phase-`
+  # kalıbı son işareti alır ve Faz 5'i yanlışlıkla entegre gösterir.
   expect_true(grepl('${dal#*phase-}', metin, fixed = TRUE, useBytes = TRUE))
   expect_false(grepl('s/.*phase-\\(', metin, fixed = TRUE, useBytes = TRUE))
 })

@@ -198,7 +198,12 @@ test_that("uretimden turetilen dosyalar depoda IZLENMEZ", {
 
 test_that("yasakli yazma hedefleri sozlesmede tanimlidir", {
   kok <- .pkgc_root()
-  metin <- .pkgc_read_bytes(file.path(kok, "tools", "pk", "helpers_meta_generator_config.R"))
+  # KOD TARANIR, YORUM DEĞİL: yasaklı hedef listesi ÇALIŞMA ZAMANI kapısıdır
+  # (`pkgr_assert_writable_target`). Bir giriş vektörden çıkarılıp bir yoruma
+  # taşınırsa `.pkgc_read_bytes()` yine eşleşir ve test YEŞİL kalırken üretici
+  # o dosyaya YAZABİLİR hâle gelirdi.
+  metin <- .pkgc_code_only(file.path(kok, "tools", "pk", "helpers_meta_generator_config.R"))
+  expect_true(nzchar(metin), info = "config dosyasi parse edilemedi.")
 
   # Bunlar yorum değil, çalışma zamanında uygulanan bir kapıdır
   # (pkgr_assert_writable_target); listeden bir giriş düşerse üretici o dosyaya
@@ -220,8 +225,11 @@ test_that("yasakli yazma hedefleri sozlesmede tanimlidir", {
 })
 
 test_that("uretici izlenen metadata dosyalarina YAZMA cagrisi icermez", {
+  # `deparse()` adlandırılmış argümanı `file = ` olarak yazar; `"cat(file"`
+  # bayt dizisi HİÇ oluşmaz ve yalnızca `cat(..., file = ...)` ile yazan bir
+  # yardımcı için alias taraması SESSİZCE atlanırdı. Çağrı ADIYLA aranır.
   yazma_desenleri <- c("writeLines(", "writeBin(", "file.copy(", "file.rename(",
-                       "cat(file", "saveRDS(")
+                       "cat(", "saveRDS(")
 
   # İki dosya alias yolunu MEŞRU olarak taşır ve bu taramadan muaftır:
   #   * config : yasaklı hedef listesini TANIMLAR (kapının kendisi),

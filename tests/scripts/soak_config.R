@@ -425,7 +425,14 @@ soak_resolve_thresholds <- function(profile) {
     # ekledigi DB-havuz/islem/izolasyon kapsami kaybedilir; varsayilan olarak FAIL.
     # Havuz paketleri olmayan minimal ortamlar bunu FALSE yapabilir veya
     # MERGEN_SOAK_INTERACTIVE_LANE=false ile seridi hic istemeyebilir.
-    fail_on_interactive_unavailable = soak_env_flag("MERGEN_SOAK_FAIL_ON_INTERACTIVE_UNAVAILABLE", TRUE)
+    fail_on_interactive_unavailable = soak_env_flag("MERGEN_SOAK_FAIL_ON_INTERACTIVE_UNAVAILABLE", TRUE),
+    # PK-analiz seridi ISTENDI ama calismadiysa (paket/bootstrap eksik) ya da
+    # operator seridi KAPATTIYSA, Faz 6 bloklamayan yurutme kapsami olculmez;
+    # varsayilan olarak FAIL. Bu bayrak olmadan MERGEN_SOAK_PK_LANE=false bir
+    # KENDINI-DUSUREN anahtar olurdu: hicbir yapilandirma PASS uretemezdi.
+    # FALSE yapildiginda kontrol UNMEASURED olarak DURUSTCE raporlanir ve o
+    # kosum MERGEN_PK_ASYNC acilmasi icin kanit SAYILMAZ.
+    fail_on_pk_unavailable = soak_env_flag("MERGEN_SOAK_FAIL_ON_PK_UNAVAILABLE", TRUE)
   )
 }
 

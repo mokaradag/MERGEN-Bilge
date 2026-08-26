@@ -461,7 +461,9 @@ test_that("v1 uyumlu tabloda ETKİN güven ve TÜM alternatif skorları görün�
   )
   karar <- pk_select_decide(
     ayrisik, adaylar, pk_select_library_index(pk_select_test_library()), .pk_selhard_cfg(),
-    lexical = list(available = TRUE, rank = 9L, score = 0.01, disagrees = TRUE)
+    # `pk_retrieval_agreement()` BEŞ alan döndürür; vekil de aynı şekli taşımalı.
+    lexical = list(available = TRUE, rank = 9L, score = 0.01, disagrees = TRUE,
+                   excluded_by_not_for = FALSE)
   )
 
   tablo <- pk_select_scores_table(pk_select_test_library(), karar)
@@ -497,7 +499,9 @@ test_that("CEZA SIFIR iken bile sözlüksel uyuşmazlık RAPORLANIR", {
   karar <- pk_select_decide(
     ayrisik, adaylar, pk_select_library_index(pk_select_test_library()),
     .pk_selhard_cfg(disagree_penalty = 0L),
-    lexical = list(available = TRUE, rank = 9L, score = 0.01, disagrees = TRUE)
+    # `pk_retrieval_agreement()` BEŞ alan döndürür; vekil de aynı şekli taşımalı.
+    lexical = list(available = TRUE, rank = 9L, score = 0.01, disagrees = TRUE,
+                   excluded_by_not_for = FALSE)
   )
   expect_identical(karar$status, PK_SELECT_STATUS_AUTO)
   expect_equal(karar$effective_confidence, 90L)
@@ -615,9 +619,28 @@ test_that("Geçiş B istemi varlık türlerini yetenek kimliğinden AYIRIR", {
   # Yetenek kimlikleri ROLLERİYLE gönderilir (aksi hâlde model doğru alanı
   # seçemez ve geçerli aday `capability_missing` ile reddedilir).
   expect_true(grepl("labor.planned_hours (rol: measure)", sistem, fixed = TRUE))
-  # Örnek, GERÇEK adaylardan üretilir.
-  expect_true(grepl("\"id\":\"q001\"", sistem, fixed = TRUE))
+  # ÖRNEK ASLA GERÇEK ADAY KİMLİĞİ TAŞIMAZ.
+  #
+  # Sıcaklık 0'da model zorunlu JSON bloğunu AYNEN kopyalayabilir. Gerçek
+  # kimlikli bir kopya `pk_select_parse_pass_b()` kapısından GEÇER ve sorudan
+  # BAĞIMSIZ olarak ilk geri getirme adayı otomatik çalışırdı. Yer tutucu
+  # kimlik `id %in% candidate_ids` kapısında düşer ve onarım yoluna gider.
+  expect_false(grepl("\"id\":\"q001\"", sistem, fixed = TRUE))
+  expect_true(grepl("\"id\":\"ORNEK_KIMLIK_1\"", sistem, fixed = TRUE))
+  # Alternatif SAYISI yine gerçek aday sayısını yansıtır (kural şekli korunur).
+  expect_true(grepl("\"id\":\"ORNEK_KIMLIK_2\"", sistem, fixed = TRUE))
   expect_false(grepl("q042", sistem, fixed = TRUE))
+
+  # Kopyalanan örnek AYRIŞTIRICIDAN GEÇMEZ.
+  kopya <- paste0(
+    "{\"id\":\"ORNEK_KIMLIK_1\",\"confidence\":78,\"reason\":\"Kisa gerekce\",",
+    "\"alternates\":[{\"id\":\"ORNEK_KIMLIK_2\",\"confidence\":50}],",
+    "\"requirements\":{\"entity\":null,\"measures\":[],\"dates\":[],",
+    "\"dimensions\":[],\"group_by\":[],\"unsupported\":[]},",
+    "\"missing_info\":null}"
+  )
+  ayrisik <- pk_select_parse_pass_b(kopya, c("q001", "q002"))
+  expect_false(isTRUE(ayrisik$ok))
 })
 
 test_that("Gecis A TOPLAM butcesi asilirsa kapali basarisiz olunur", {

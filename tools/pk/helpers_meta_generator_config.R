@@ -89,12 +89,12 @@ PKG_META_STATE_VERSION <- 3L
   sayi <- suppressWarnings(as.numeric(ham))
   if (length(sayi) != 1L || is.na(sayi) || !is.finite(sayi) || sayi != trunc(sayi)) {
     stop(sprintf(
-      "[PK_META_GEN] %s tam sayi olmalidir (alinan: '%s').", name, ham
+      "[PK_META_GEN] %s tam sayı olmalıdır (alınan: '%s').", name, ham
     ), call. = FALSE)
   }
   if (sayi < min || sayi > max) {
     stop(sprintf(
-      "[PK_META_GEN] %s %s..%s araliginda olmalidir (alinan: %s).",
+      "[PK_META_GEN] %s %s..%s aralığında olmalıdır (alınan: %s).",
       name, format(min), format(max), format(sayi)
     ), call. = FALSE)
   }
@@ -107,7 +107,7 @@ PKG_META_STATE_VERSION <- 3L
   if (ham %in% c("true", "t", "1", "yes", "on", "evet", "acik")) return(TRUE)
   if (ham %in% c("false", "f", "0", "no", "off", "hayir", "kapali")) return(FALSE)
   stop(sprintf(
-    "[PK_META_GEN] %s TRUE/FALSE olmalidir (alinan: '%s').", name, ham
+    "[PK_META_GEN] %s TRUE/FALSE olmalıdır (alınan: '%s').", name, ham
   ), call. = FALSE)
 }
 
@@ -131,8 +131,8 @@ pkg_meta_resolve_mode <- function(raw = NULL) {
   if (!(kip %in% PKG_META_MODES)) {
     stop(sprintf(
       paste0(
-        "[PK_META_GEN] Gecersiz MERGEN_PK_META_MODE: '%s'. ",
-        "Izinli kipler: %s."
+        "[PK_META_GEN] Geçersiz MERGEN_PK_META_MODE: '%s'. ",
+        "İzinli kipler: %s."
       ),
       ham_metin, paste(PKG_META_MODES, collapse = ", ")
     ), call. = FALSE)
@@ -214,8 +214,8 @@ pkg_meta_resolve_config <- function(repo_root = ".", now = Sys.time()) {
   if (identical(kip$mode, "sample") && kardinalite_esigi >= ornek_satir) {
     stop(sprintf(paste0(
       "[PK_META_GEN] MERGEN_PK_META_HIGH_CARD_MIN (%d) ",
-      "MERGEN_PK_META_SAMPLE_ROWS (%d) degerinden KUCUK olmalidir; aksi halde ",
-      "yuksek kardinalite kaniti hicbir sutun icin uretilemez."
+      "MERGEN_PK_META_SAMPLE_ROWS (%d) değerinden KÜÇÜK olmalıdır; aksi hâlde ",
+      "yüksek kardinalite kanıtı hiçbir sütun için üretilemez."
     ), kardinalite_esigi, ornek_satir), call. = FALSE)
   }
 

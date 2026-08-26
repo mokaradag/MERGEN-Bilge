@@ -195,7 +195,19 @@ mergen_pk_bump_chat_epoch <- function(session) {
                                                  error = function(e) NA_integer_))[1])
   if (length(mevcut) != 1L || is.na(mevcut)) mevcut <- 0L
   yeni <- mevcut + 1L
-  try(ud[["pk_unsaved_chat_epoch"]] <- yeni, silent = TRUE)
+  # YAZ-SONRA-OKU DOĞRULAMASI.
+  #
+  # `try(...)` yutulan bir yazımda da sessizce geçer; nesil ARTMAZ ve iki AYRI
+  # kaydedilmemiş söyleşi AYNI kimliğe (`<new-chat>:0`) düşer. Geç biten bir
+  # işçi sonucu o zaman YENİ söyleşiye uygulanabilirdi. Yazım doğrulanamazsa
+  # arayan `NA` görür ve kimlik çakışmasını varsaymaz.
+  yazildi <- tryCatch({
+    ud[["pk_unsaved_chat_epoch"]] <- yeni
+    okunan <- suppressWarnings(as.integer(ud[["pk_unsaved_chat_epoch"]])[1])
+    length(okunan) == 1L && !is.na(okunan) && identical(okunan, yeni)
+  }, error = function(e) FALSE)
+
+  if (!isTRUE(yazildi)) return(invisible(NA_integer_))
   invisible(yeni)
 }
 

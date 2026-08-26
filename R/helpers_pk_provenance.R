@@ -353,7 +353,16 @@ pk_provenance_stash <- function(session, footer, request_id = NULL,
                                 query_id = NULL, mode = NULL) {
   store <- .pk_provenance_store(session)
   if (is.null(store)) return(invisible(FALSE))
-  if (is.null(footer) || !nzchar(as.character(footer)[1])) return(invisible(FALSE))
+
+  # OLGU TAŞIYAN KAYIT ALT BİLGİSİZ DE SAKLANIR.
+  #
+  # Alt bilgi kurulamadığında (ör. `pk_build_provenance_footer()` boş döndü)
+  # kayıt hiç saklanmıyordu; böylece §5.11 sayısal köken doğrulaması da HİÇ
+  # çalışmıyor ve model düzyazısı DOĞRULANMADAN yayımlanıyordu. Olgu varsa
+  # kayıt saklanır ve `pk_provenance_decorate()` doğrulamayı yine uygular.
+  alt_bilgi <- if (is.null(footer)) "" else as.character(footer)[1]
+  if (is.na(alt_bilgi)) alt_bilgi <- ""
+  if (!nzchar(alt_bilgi) && is.null(facts)) return(invisible(FALSE))
 
   # BAYAT İSTEK KORUMASI: yuva tektir. B isteği olgularını koyduktan sonra
   # geç biten A isteği yazarsa B'nin sayısal doğrulaması, R'ye ait tablosu,
@@ -367,7 +376,7 @@ pk_provenance_stash <- function(session, footer, request_id = NULL,
 
   tryCatch({
     store[[.pk_provenance_slot]] <- list(
-      footer = as.character(footer)[1],
+      footer = alt_bilgi,
       request_id = if (is.null(request_id)) NULL else as.character(request_id)[1],
       facts = facts,
       fallback_text = fallback_text,
@@ -463,8 +472,11 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
       }
     }
 
-    footer <- pending$footer
-    if (is.null(footer) || !nzchar(footer)) return(text)
+    footer <- as.character(pending$footer %||% "")[1]
+    if (is.na(footer)) footer <- ""
+    # ALT BİLGİSİZ AMA OLGULU KAYIT DA DOĞRULANIR: erken dönüş yalnızca
+    # gerçekten yapılacak iş kalmadığında (ne alt bilgi ne olgu) geçerlidir.
+    if (!nzchar(footer) && is.null(pending$facts)) return(text)
 
     base_txt <- if (is.null(text) || length(text) == 0L) "" else as.character(text)[1]
     if (is.na(base_txt)) base_txt <- ""

@@ -336,7 +336,12 @@ pk_apply_smart_filters_v2 <- function(data, filter_instructions, query = NULL) {
         sum(sonlu)
       })
       names(toplamlar) <- toplanabilir
-      return(sonuc_ekle(as.data.frame(toplamlar, stringsAsFactors = FALSE), eslesen, karar))
+      # `check.names = FALSE`: boşluklu ya da Türkçe bir ölçü adını
+      # `make.names()` YENİDEN YAZAMAZ; başlık kaynak sütuna eşlenebilir kalır.
+      return(sonuc_ekle(
+        as.data.frame(toplamlar, stringsAsFactors = FALSE, check.names = FALSE),
+        eslesen, karar
+      ))
     }
 
     if (identical(agg, "group_by")) {

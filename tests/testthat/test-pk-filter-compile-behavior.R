@@ -10,7 +10,8 @@
 .pk_compile_env <- function() {
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
-  env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
+  # ÜRETİM OPERATÖRÜYLE AYNI (`R/utils_common.R`): yalnız `NULL` yedeğe düşer.
+  env$`%||%` <- function(x, y) if (is.null(x)) y else x
   source(file.path(repo_root, "R", "helpers_pk_text_turkish.R"),
          encoding = "UTF-8", local = env)
   source(file.path(repo_root, "R", "helpers_pk_filter_compile.R"),
@@ -392,7 +393,8 @@ test_that("bos filtre listesi ve bos veri guvenli davranir", {
 test_that("Turkce katlama otoritesi yoksa derleyici KAPALI BASARISIZ olur", {
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = baseenv())
-  env$`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L) y else x
+  # ÜRETİM OPERATÖRÜYLE AYNI (`R/utils_common.R`): yalnız `NULL` yedeğe düşer.
+  env$`%||%` <- function(x, y) if (is.null(x)) y else x
   env$exists <- function(...) FALSE
   source(file.path(repo_root, "R", "helpers_pk_filter_compile.R"),
          encoding = "UTF-8", local = env)

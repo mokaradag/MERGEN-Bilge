@@ -105,7 +105,10 @@ test_that("pk_analysis_observe fills KullaniciID from the authenticated session"
   ))
 
   captured <- new.env(parent = emptyenv())
-  env$pk_telemetry_log_analysis <- function(info, conn) {
+  # ÜRETİM İMZASIYLA AYNI (`info, conn, db_target`). Eksik bir argüman
+  # "unused argument" hatası verir; çağrı `try()` içinde olduğu için hata
+  # YUTULUR ve iddia test edilen davranışı değil TESTİ gösterirdi.
+  env$pk_telemetry_log_analysis <- function(info, conn, db_target = NULL) {
     captured$info <- info
     invisible(TRUE)
   }
@@ -324,6 +327,7 @@ test_that("entry-time deep-analysis cancellation is observed without delegation"
 })
 
 test_that("kimliksiz gözlem SAKLANMAZ ve gözlem ortamı SINIRLIDIR", {
+  testthat::skip_if_not_installed("withr")
   env <- .pk_final_source_env(c(
     "R/helpers_pk_analysis_core.R",
     "R/helpers_pk_analysis_filters_base.R",
