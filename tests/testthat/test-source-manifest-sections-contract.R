@@ -11,11 +11,15 @@
   repo_root <- resolve_repo_root_for_tests()
   manifest_env <- new.env(parent = globalenv())
 
-  source(
-    file.path(repo_root, "R", "config_source_manifest.R"),
-    encoding = "UTF-8",
-    local = manifest_env
-  )
+  # Zorunlu sıra ve OPSİYONEL yol tanımları ayrı VERİ dosyalarındadır
+  # (Faz 4, E5): manifest tek satır bakım borcu tavanına dayanmıştı.
+  for (manifest_dosyasi in c("bootstrap_source_manifest.R", "config_source_manifest.R")) {
+    source(
+      file.path(repo_root, "R", manifest_dosyasi),
+      encoding = "UTF-8",
+      local = manifest_env
+    )
+  }
 
   manifest_env
 }
@@ -31,6 +35,7 @@
   "config_ui_assets",
   "architecture_governance",
   "database",
+  "pk_query_metadata",
   "sql_library",
   "language_messaging",
   "mcp_tools",
@@ -91,7 +96,12 @@
   # dosyaya bölündü (config_ui_asset_validators.R + config_ui_asset_tags.R);
   # config_ui_assets.R 690 satırdan VERİ-odaklı dosyaya indi. 3 -> 5.
   config_ui_assets = list(first = "R/config_ui_assets.R", last = "R/config_ui_asset_zone_validators.R", n = 5L),
-  architecture_governance = list(first = "R/config_seam_registry.R", last = "R/config_seam_registry.R", n = 1L),
+  # Bilinçli güncelleme: seam guard test/odaklı doğrulama listesi AYRI veri
+  # dosyasına (R/config_seam_guard_tests.R) çıkarıldı. Kayıt defteri tam
+  # 580/580 bakım tavanındaydı ve Faz 4 guard testleri bu yüzden hiçbir
+  # seam'e KAYDEDİLEMİYORDU. Birleştirme mergen_seam_registry() içindedir;
+  # genel API değişmedi. 1 -> 2 dosya.
+  architecture_governance = list(first = "R/config_seam_guard_tests.R", last = "R/config_seam_registry.R", n = 2L),
   # database n = 12L -> 13L bilinçli güncelleme: işlem-güvenli DB bağlantı havuzu
   # (R/helpers_db_pool.R) helpers_db_connection.R'den SONRA bölüme eklendi.
   # 13L -> 15L bilinçli güncelleme: Bilge Yolaç kalıcı oturum katmanı
@@ -104,6 +114,11 @@
   # worker katmanı (R/helpers_startup_chat_preview.R) helpers_db_chat_readers.R
   # sonrası, helpers_db_chat_mutations.R öncesi eklendi.
   database = list(first = "R/helpers_db_unicode_escape.R", last = "R/helpers_database.R", n = 17L),
+  # Faz 3a: sorgu metadata sözleşmesi. Türkçe katlama yardımcısı + sözlük/
+  # doğrulayıcı + erişimci yardımcıları, ardından dört veri katmanı
+  # (iskelet -> üretilen -> küre edilmiş -> yerel alias) ve birleştirici;
+  # hepsi R/config_sql_loader.R'den ÖNCE (master plan §6 zorunlu sırası).
+  pk_query_metadata = list(first = "R/helpers_pk_ascii_tokens.R", last = "R/helpers_pk_query_meta.R", n = 10L),
   sql_library = list(first = "R/library_queries.R", last = "R/config_sql_loader.R", n = 2L),
   language_messaging = list(first = "R/helpers_language.R", last = "R/helpers_messaging.R", n = 2L),
   mcp_tools = list(first = "R/helpers_mcp_context.R", last = "R/helpers_mcp_tools.R", n = 9L),
@@ -122,7 +137,83 @@
   # helpers_langflow_sources.R'den SONRA eklendi (marker bloğu bağımlılığı).
   chat_send_message_runtime = list(first = "R/helpers_chat_runtime.R", last = "R/helpers_quick_action_intro_messages.R", n = 15L),
   summarization_followup = list(first = "R/helpers_summarization_modes.R", last = "R/helpers_followup_questions.R", n = 3L),
-  analysis_helpers = list(first = "R/helpers_deep_analysis.R", last = "R/helpers_pk_analysis_query_selection.R", n = 5L),
+  # Faz 0 (Proje ve Kaynak Analizi yeniden inşası): yapılandırma çözümleyicisi,
+  # köken/bozulma ve telemetri yardımcıları bölümün BAŞINA eklendi
+  # (bağımlılık sırası: config -> provenance -> telemetry).
+  # n: 11 -> 13. R/helpers_deep_analysis.R bakım borcu ratchet bütçesini aştığı
+  # için iki saf yardımcıya bölündü (detail + context) ve ikisi de bu bölüme,
+  # orkestratörden ÖNCE eklendi. Bkz. test-deep-analysis-split-contract.R.
+  # Bilinçli güncelleme (Faz 1 — cerrahi doğruluk): koşulsuz güvenlik katmanı
+  # (safe_errors / sql_readonly / rls) + v2 davranış katmanı (filter_compile /
+  # filter_policy / filters_v2) + saf istem katmanı (prompt_budget /
+  # analysis_prompts) eklendi + saf istatistiksel özet kurucusu; 13 -> 22 dosya.
+  # Bilinçli güncelleme: inceleme düzeltmeleri —
+  # R/helpers_pk_export_csv.R (akışlı + doğrulanmış CSV yedeği ve çakışmasız
+  # dosya yolu tabanı) export_plan ile export_xlsx arasına eklendi; 30 -> 31.
+  # n 31 -> 35: Faz 4 varlık çözümleme dört saf dosya ekledi.
+  # Bilinçli güncelleme: Faz 4 (§5.4) varlık çözümleme hattı bölüme eklendi
+  # (morfoloji -> normalleştirme -> anım -> alias -> puanlama -> tarama ->
+  # karar -> geçmiş -> filtre hattına bağlama); 35 -> 40 dosya.
+  # Bilinçli güncelleme: Faz 5 (§5.2) iki geçişli sorgu seçimi beş dosya
+  # ekledi (getirim -> istem -> ayrıştırma/karar -> LLM -> bağlama); 40 -> 45.
+  # inceleme düzeltmeleri: history/seed/deep sahipleri ayrıştırıldı;
+  # analysis_helpers bölümüne üç kayıt daha eklendi. 53 -> 56.
+  # Bilinçli güncelleme: Faz 6 (§5.10) bloklamayan yürütme katmanı altı dosya
+  # (iptal/son tarih, sonuç boyutu+satır tavanı, LRU önbellek, sınırlı SQL
+  # getirimi, işçi bootstrap/vekil, istek anlık görüntüsü, işçi giriş noktası)
+  # ve derin analiz uzlaştırma katmanı (D16) bir dosya ekledi. 56 -> 64.
+  # 69L -> 79L BİLİNÇLİ güncelleme (PR #703 inceleme düzeltmeleri): bakım
+  # ratchet'ini (795 satır / 24 fonksiyon) ihlal etmemek için on saf bölünme:
+  # helpers_pk_cancel_http.R (HTTP iptal köprüsü),
+  # helpers_pk_result_columns.R (ODBC tip kodu haritaları),
+  # helpers_pk_sql_connection.R (bağlantı düzeyi zaman aşımı/geçersizleştirme),
+  # helpers_pk_cache_key.R (önbellek anahtarı + RLS imzası),
+  # helpers_pk_async_worker_env.R (işçi ortam yaşam döngüsü),
+  # helpers_pk_async_worker_pool.R (işçi DB havuzu payı),
+  # helpers_pk_async_snapshot_validate.R (anlık görüntü sınıf/tip doğrulaması),
+  # helpers_pk_async_plan.R (future planı yetenek kararı),
+  # helpers_pk_async_request_markers.R (istek geçersizleştirme işaretleri),
+  # helpers_pk_async_routing.R (yönlendirme metadata'sı).
+  # PR #705 dengeleme: iki odakli dosya eklendi -- helpers_pk_filter_group.R
+  # (açık AND/OR gruplarının inert değerlendiricisi; eval(parse()) yerine) ve
+  # helpers_pk_entity_context.R (D11 devralınan bağlam anahtarı/kaydı). 79 -> 81.
+  # PR #705 inceleme düzeltmeleri: 81 -> 86. BEŞ BİLİNÇLİ bölünme; hiçbiri
+  # yeni davranış eklemez, mevcut sorumluları ayırır ve bakım ratchet'ini
+  # (799 satır / 24 fonksiyon) İHLAL ETMEDEN düzeltme yapılmasını sağlar:
+  #   * helpers_pk_query_selection_canonical.R -- varoluşsal gereksinimlerin
+  #     YAPISAL kanonikleştirmesi (sözlük/eş anlamlı tablosu DEĞİL),
+  #   * helpers_pk_rls_identity.R -- RLS kimlik/izin okuması + TİPLİ yetki
+  #     reddi mesajı (security_summary 400 satır bütçesi korunur),
+  #   * helpers_pk_sql_statements.R -- maskelenmiş SQL üzerinde üst düzey
+  #     ifade yapısı çözümlemesi (noktalı virgülsüz ikinci ifade tespiti),
+  #   * helpers_pk_precision.R -- integer64 kesinlik koruması,
+  #   * helpers_pk_entity_tree.R -- filtre ağacında mantık grubu gezintisi.
+  # 81 -> 86.
+  # PR #705 takibi: manifest dışı dinamik `source()` kaldırıldı; PK çekirdek
+  # gövdesi ve P1 çalışma zamanı guard'ları bu bölüme AÇIKÇA eklendi (86 -> 88).
+  # PR #705 P2 takibi: `helpers_pk_provenance_peek.R` (köken bilgisini
+  # TÜKETMEDEN okuma) ve `helpers_pk_async_probe.R` (işçi-PID sondası)
+  # bölündü; ikisi de ratchet bölünmesidir, yeni davranış yoktur. 88 -> 90.
+  # PR #705 inceleme takibi: `helpers_pk_packet_context_facts.R` BÖLÜNDÜ --
+  # `helpers_pk_packet_stats.R` 832 satıra çıkarak KÜRESEL 800 satır tavanını
+  # aşmıştı; bağlam olgusu üreticileri (`pk_packet_context_facts`,
+  # `pk_packet_all_facts`) ayrı dosyaya taşındı. Ratchet bölünmesidir, yeni
+  # davranış yoktur. 90 -> 91.
+  # İnceleme takibi: `helpers_pk_select_timeout.R` v1 ve v2 seçicilerinin
+  # ORTAK zaman aşımı tabanıdır (v1'de taban zaman aşımı YALNIZCA async son
+  # tarihi varken kuruluyordu ve sevk edilen varsayılanlarda hiç
+  # kurulmuyordu). Karar tek dosyada toplandı. 91 -> 92.
+  # `helpers_pk_entity_apply_leaf.R` (yaprak düzeyi varlık kararı) bakım
+  # ratchet'i altında kalmak için `helpers_pk_entity_apply.R`den ayrıldı.
+  # Ratchet bölünmesidir, yeni davranış değildir. 92 -> 93.
+  # 95 -> 96: `helpers_pk_async_secrets.R` (işçiye taşınan sırlar)
+  # `helpers_pk_async_snapshot.R` bakım ratchet'i sınırında olduğu için AYRI
+  # dosyaya çıkarıldı.
+  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 96 -> 97.
+  # `helpers_pk_numeric_provenance_claims.R` eklendi: duzyazi iddia
+  # tarayicilari, dogrulayici katmanindan AYRILDI (kuresel 800 satir bakim
+  # ratchet'i). Tarayicilar dogrulayicidan SONRA yuklenir.
+  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_query_selection_apply.R", n = 97L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
   # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
@@ -184,7 +275,10 @@
   # (R/module_ortak_oturum_by_calistirma.R; stream-json ajan yürütmesi +
   # KismiYanit ilerleme yayını + durdurma) eklendi.
   ortak_oturumlar = list(first = "R/helpers_ortak_oturum_permissions.R", last = "R/module_ortak_calismalar.R", n = 27L),
-  module_analysis = list(first = "R/module_proje_kaynak_analizi.R", last = "R/module_proje_kaynak_analizi.R", n = 1L),
+  # 2L -> 3L BİLİNÇLİ güncelleme (PR #703): doğrudan-çıkış gözlemci
+  # sarmalayıcısı `R/helpers_pk_worker_direct_exit.R` içine BÖLÜNDÜ; ayrı
+  # sorumluluk (telemetri + kısa ömürlü DB bağlantısı) ve dosya bütçesi.
+  module_analysis = list(first = "R/module_proje_kaynak_analizi.R", last = "R/helpers_pk_worker_direct_exit.R", n = 3L),
   module_support = list(first = "R/module_destek_yardim.R", last = "R/module_destek.R", n = 6L),
   # Bilinçli güncelleme: at-budget admin modüllerinin inline highcharter/DT
   # renderer'ları *_outputs() dosyalarına çıkarıldı (geri_bildirim + yanit);
@@ -207,7 +301,15 @@
   # (R/server_speech_assets_runtime.R) ve PCM akış köprüsü
   # (R/server_speech_pcm_stream.R) bölüm başına eklendi; ai_expert
   # handler'larından önce yüklenirler.
-  server_handlers_send_message = list(first = "R/server_speech_assets_runtime.R", last = "R/server_send_message.R", n = 13L)
+  # Bilinçli güncelleme: Faz 6 PK gönderim katmanı (uygulama yardımcıları +
+  # gönderim işleyicisi) server_send_message.R'den ÖNCE eklendi. 13 -> 15.
+  # 17L -> 19L BİLİNÇLİ güncelleme (PR #703): derin analiz SQL yürütme
+  # (R/helpers_deep_analysis_sql.R) ve dışa aktarım sunumu
+  # (R/helpers_pk_export_serve.R) ratchet için ayrı dosyalara BÖLÜNDÜ.
+  # 19 -> 20: `helpers_pk_async_marker_store.R` (süreç-yerel işaret aynası)
+  # `helpers_pk_async_request_markers.R` bakım ratchet'i sınırında olduğu için
+  # AYRI dosyaya çıkarıldı.
+  server_handlers_send_message = list(first = "R/server_speech_assets_runtime.R", last = "R/server_send_message.R", n = 20L)
 )
 
 test_that("source_manifest_sections beklenen sırada ve adlarda bölümler içerir", {
@@ -447,7 +549,80 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # onları seam sahipliği olmayan ölü koda çeviriyordu.
   # 365L -> 366L bilinçli güncelleme: dizin gezgini numaralandırması ana Shiny
   # olay döngüsünden çıkarıldı (R/helpers_claude_code_dir_listing_async.R).
-  expect_equal(length(runtime), 367L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 367 -> 371: Faz 0 dört PK yardımcısı ekledi (config/provenance/telemetry-record/telemetry).
+  # 371 -> 373: Faz 0 ayrıca iki temel dosya ekledi (telemetry_base/analysis_filters_base);
+  # bunlar sarmalayıcılarından hemen önce yüklenir.
+  # 373 -> 381: Faz 3a yeni `pk_query_metadata` bölümünü ekledi (8 dosya):
+  # Türkçe katlama + metadata sözlük/erişim/birleştirme yardımcıları ve dört
+  # veri katmanı. İkisi (meta_local / aliases_local) BİLİNÇLİ olarak
+  # opsiyoneldir ve bulut checkout'unda bulunmaz; aşağıdaki eksik-dosya
+  # kontrolü onları opsiyonel listesi üzerinden hariç tutar.
+  # 381 -> 383: helpers_deep_analysis_detail.R + helpers_deep_analysis_context.R
+  # 383 -> 392: Faz 1 (cerrahi doğruluk) dokuz yeni PK yardımcı dosyası
+  # (ratchet bölünmesi, analysis_helpers bölümü).
+  # 392 -> 400: Faz 2 (deterministik analiz + dışa aktarım) sekiz yeni PK
+  # yardımcı dosyası: paket istatistikleri/kurucusu/metni, sayısal köken,
+  # dışa aktarım planı/G-Ç, yanıt kompozisyonu ve sonuç kurucusu.
+  # 400 -> 401: inceleme düzeltmeleri, R/helpers_pk_export_csv.R.
+  # 401 -> 405: Faz 4 varlık çözümleme (normalize/score/resolver/history).
+  # 411 -> 416: Faz 5 sorgu seçimi (retrieval/prompt/parse/ai/apply).
+  # 416 -> 423: Faz 5 inceleme düzeltmeleri (json/config/payload/requirements/
+  # decide/degraded/session bölünmeleri; ratchet bütçeleri korunur).
+  # 424 -> 427: PR #701 history/seed/deep seçim sahiplerini manifeste ekledi.
+  # 427 -> 437: Faz 6 (bloklamayan yürütme + performans) dokuz dosya ekledi:
+  # inceleme düzeltmeleri: analysis_helpers +4
+  # (helpers_pk_async_snapshot.R = işçi-güvenli anlık görüntü doğrulaması,
+  # helpers_pk_async_worker_sql.R = işçi sınırlı-SQL köprüsü,
+  # helpers_deep_analysis_phase6.R = derin Faz 6 kurulum/karar katmanı,
+  # helpers_deep_analysis_selector.R = v1 çoklu seçici);
+  # module_analysis +1 (helpers_pk_worker_observers.R = işçi-güvenli PK
+  # gözlemci sarmalayıcıları); server_handlers_send_message +2
+  # (helpers_pk_async_lifecycle.R = tek-istek yaşam döngüsü,
+  # helpers_pk_async_session_registry.R = oturum kapsamlı aktif istek defteri).
+  # Dördü de bakım ratchet'i (25 fonksiyon / 800 satır) ihlal etmemek için
+  # yapılan BİLİNÇLİ bölünmelerdir.
+  #
+  # analysis_helpers +7 (iptal/son tarih, sonuç boyutu+satır tavanı, LRU
+  # önbellek, sınırlı SQL getirimi, işçi bootstrap/vekil, istek anlık görüntüsü,
+  # işçi girişi) ve derin uzlaştırma; server_handlers_send_message +2 (uygulama
+  # yardımcıları + gönderim işleyicisi). Toplam 427 -> 437.
+  # PR #702: `helpers_pk_exec_context.R` (istek kapsamlı yürütme bağlamı)
+  # `helpers_pk_result_size.R` içinden BÖLÜNDÜ. 444 -> 445.
+  # PR #703 inceleme düzeltmeleri: 445 -> 458. On üç dosya, bakım ratchet'i
+  # (795 satır / 24 fonksiyon) ihlal edilmeden düzeltme yapabilmek için
+  # BÖLÜNDÜ; hiçbiri yeni davranış eklemez, mevcut sorumlulukları ayırır.
+  # analysis_helpers +10, module_analysis +1, server_handlers_send_message +2.
+  # PR #705 inceleme düzeltmeleri: 461 -> 466. analysis_helpers +5 (bkz. bölüm
+  # çıpası açıklaması): kanonikleştirme, RLS kimlik/izin, SQL ifade yapısı,
+  # integer64 kesinliği ve filtre ağacı gezintisi. Beşi de BİLİNÇLİ ratchet
+  # bölünmesidir; hiçbiri yeni davranış eklemez.
+  # PR #705 inceleme takibi: `helpers_pk_analysis_core_impl.R` ve
+  # `helpers_pk_runtime_guards.R` manifest DIŞI dinamik `source()` ile
+  # yükleniyordu; ikisi de artık AÇIKÇA sıralanır (impl çekirdekten önce,
+  # guard'lar sonra). 466 -> 468; yeni davranış yok, yalnızca yükleme sahipliği
+  # manifeste taşındı.
+  # `helpers_pk_async_probe.R`: işçi-PID sondası `helpers_pk_async_plan.R`
+  # içinden AYRILDI (ratchet bölünmesi). 468 -> 469.
+  # PR #705 P2 takibi: `helpers_pk_provenance_peek.R` (analysis_helpers) ve
+  # `helpers_pk_query_meta_layers.R` (pk_query_metadata) BÖLÜNDÜ; ikisi de
+  # ratchet bölünmesidir ve yeni davranış eklemez. 469 -> 471.
+  # PR #705 inceleme takibi: `helpers_pk_packet_context_facts.R` BÖLÜNDÜ
+  # (analysis_helpers); `helpers_pk_packet_stats.R` küresel 800 satır tavanını
+  # aşmıştı. Ratchet bölünmesidir, yeni davranış yoktur. 471 -> 472.
+  # 472 -> 473: `helpers_pk_select_timeout.R` v1 ve v2 seçicilerinin ORTAK
+  # zaman aşımı tabanıdır; iki hattın kararı bir daha ayrışamasın diye tek
+  # dosyada toplanmıştır. Yine ratchet bölünmesidir, yeni davranış yoktur.
+  # 474 -> 475: `helpers_pk_async_bootstrap_fs.R` işçi bootstrap'ının SINIRLI
+  # yol-varlık denetimini taşır. `helpers_pk_async_bootstrap.R` ve
+  # `helpers_pk_async_worker_env.R` 24-fonksiyon KÜRESEL tavanında olduğu için
+  # yardımcı oraya eklenemezdi. Ratchet bölünmesidir; davranış eklenmez.
+  # 475 -> 476: `helpers_pk_sql_local_temp_batch.R` salt-okunur kapının YEREL
+  # #temp batch istisnasını taşır. `helpers_pk_sql_readonly.R` KÜRESEL 796
+  # satır tavanındaydı ve yer tutucu SQL reddi eklenemiyordu. Ratchet
+  # bölünmesidir; yeni davranış eklemez.
+  # 478 -> 479: PR #705 inceleme takibi, R/helpers_pk_numeric_provenance_claims.R
+  # (sayisal koken duzyazi tarayicilari; kuresel 800 satir ratchet'i icin ayrildi).
+  expect_equal(length(runtime), 479L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

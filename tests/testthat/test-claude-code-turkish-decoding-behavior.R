@@ -12,14 +12,29 @@
 # ==============================================================================
 
 .ccdecode_source_once <- function() {
+  # `repair_text_mojibake` DA ERKEN DÖNÜŞ KOŞULUNA DÂHİLDİR (PR #705, P2).
+  #
+  # Başka bir test yalnızca puanlayıcı/seçici ikilisini yükleyip
+  # `R/utils_text_encoding.R` dosyasını yüklemezse bu koruma erken dönüyor ve
+  # onarım testi `repair_text_mojibake` bulunamadığı için TEST SIRASINA BAĞLI
+  # olarak düşüyordu.
   if (exists("score_turkish_decoding_candidate", envir = globalenv(),
              mode = "function", inherits = TRUE) &&
       exists("pick_best_turkish_decoding", envir = globalenv(),
+             mode = "function", inherits = TRUE) &&
+      exists("repair_text_mojibake", envir = globalenv(),
              mode = "function", inherits = TRUE)) {
     return(invisible(TRUE))
   }
+  kok <- resolve_repo_root_for_tests()
+  # `repair_text_mojibake()` MERKEZÎ onarım sınırıdır ve
+  # `normalize_claude_code_text_file_to_utf8()` onu `exists()` ile arar.
+  # Testte SKIP edilirse kaynak manifesti/yükleme sırası gerilemesi CI'da
+  # sessizce yeşil kalır; bu yüzden bağımlılık burada AÇIKÇA yüklenir.
+  source(file.path(kok, "R", "utils_text_encoding.R"),
+         encoding = "UTF-8", local = globalenv())
   source(
-    file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_workdir_snapshot.R"),
+    file.path(kok, "R", "helpers_claude_code_workdir_snapshot.R"),
     encoding = "UTF-8", local = globalenv()
   )
   invisible(TRUE)
@@ -82,4 +97,105 @@ testthat::test_that("pick_best_turkish_decoding WINDOWS-1254 baytlarını Türk�
   testthat::expect_true(grepl("[çğışÇ]", best, perl = TRUE))
   # Mojibake jetonu içermemeli
   testthat::expect_false(grepl("Ã", best, fixed = TRUE))
+})
+
+# ------------------------------------------------------------------------------
+# normalize_claude_code_text_file_to_utf8 - GEÇERLİ UTF-8 mojibake onarımı
+# ------------------------------------------------------------------------------
+# PR #705 inceleme bulgusu (P1): dosya GEÇERLİ UTF-8 olduğu hâlde mojibake
+# içerdiğinde eski kod HAM BAYTLARI eski tek-baytlı kodlamalarla YENİDEN
+# çözüyordu. Bu, zaten geçerli olan UTF-8'i bozup YENİ bir mojibake üretebilir
+# ve dosyanın üzerine yazıldığı için kayıp geri alınamaz. Doğru davranış,
+# çözülmüş metni merkezî `repair_text_mojibake()` ile ONARMAKTIR.
+testthat::test_that("geçerli UTF-8 mojibake ham bayt çözümlemesiyle bozulmaz", {
+  .ccdecode_source_once()
+  # SKIP DEĞİL, İDDİA: bağımlılık kaybolursa bu regresyon testi DÜŞMELİDİR.
+  testthat::expect_true(
+    exists("repair_text_mojibake", mode = "function", inherits = TRUE)
+  )
+
+  # U+00C5 U+017E ikilisi GEÇERLİ UTF-8'dir ve U+015E karakterinin
+  # WINDOWS-1254 olarak yanlış yorumlanmış hâlidir.
+  bozuk <- .ccd_cp(0x00C5, 0x017E)
+  dogru <- .ccd_cp(0x015E)
+  testthat::expect_true(all(validUTF8(bozuk)))
+
+  yol <- tempfile(fileext = ".txt")
+  on.exit(unlink(yol), add = TRUE)
+  con <- file(yol, open = "wb")
+  # `writeBin()` hata verse de bağlantı kapanmalıdır. `after = FALSE` ile
+  # kapatma, kayıtlı `unlink()`ten ÖNCE koşar (Windows'ta AÇIK dosya
+  # silinemez). Dosya doğrulama çağrısından ÖNCE flush edilmek zorunda
+  # olduğu için manuel `close()` KALIR; ikinci kapatma denemesi yutulur.
+  on.exit(try(close(con), silent = TRUE), add = TRUE, after = FALSE)
+  writeBin(charToRaw(enc2utf8(bozuk)), con)
+  close(con)
+
+  testthat::expect_true(normalize_claude_code_text_file_to_utf8(yol))
+
+  ham <- readBin(yol, "raw", n = file.info(yol)$size)
+  if (length(ham) >= 3 && identical(ham[1:3], as.raw(c(0xEF, 0xBB, 0xBF)))) {
+    ham <- ham[-(1:3)]
+  }
+  sonuc <- rawToChar(ham)
+  Encoding(sonuc) <- "UTF-8"
+
+  testthat::expect_identical(sonuc, dogru)
+  # YENİ mojibake üretilmemiş olmalı
+  testthat::expect_gte(score_turkish_decoding_candidate(sonuc), 0L)
+})
+
+# U+009F mojibake sınıfı: C5 9F baytlarının latin1 çözümü CEZA almalıdır.
+testthat::test_that("latin1 kaynakli C5 9F mojibake cezasi alir", {
+  .ccdecode_source_once()
+  aday <- .ccd_cp(0x00C5, 0x009F)
+  testthat::expect_lt(score_turkish_decoding_candidate(aday), 0L)
+})
+
+# ------------------------------------------------------------------------------
+# PR #705 inceleme bulgusu (P2): onarim, ZATEN GECERLI UTF-8 olan metni yalnizca
+# "onarilan aday daha yuksek puan aldi" gerekcesiyle YENIDEN YAZMAMALIDIR.
+# 11+ gecerli Turkce karakter iceren ve icinde LITERAL "\u00C5\u017E" dizisi
+# bulunan gecerli bir dosya POZITIF puan alir; eski kod onu "\u015E" yapip
+# ORIJINAL baytlari yok ediyordu.
+testthat::test_that("pozitif puanli gecerli UTF-8 metin izin olmadan YENIDEN YAZILMAZ", {
+  .ccdecode_source_once()
+
+  turkce <- .ccd_cp(0x00C7, 0x0061, 0x011F, 0x0072, 0x0131, 0x015E, 0x00F6,
+                    0x00FC, 0x0130, 0x011E, 0x00D6, 0x00DC, 0x015F)
+  literal <- .ccd_cp(0x00C5, 0x017E)
+  icerik <- paste0(turkce, literal)
+
+  testthat::expect_true(all(validUTF8(icerik)))
+  # Puan POZITIF: eski kapi (`mevcut_skor < 0`) bu icerikte onarimi calistirmaz.
+  testthat::expect_gte(score_turkish_decoding_candidate(icerik), 0L)
+
+  oku <- function(yol) {
+    ham <- readBin(yol, "raw", n = file.info(yol)$size)
+    if (length(ham) >= 3 && identical(ham[1:3], as.raw(c(0xEF, 0xBB, 0xBF)))) ham <- ham[-(1:3)]
+    sonuc <- rawToChar(ham)
+    Encoding(sonuc) <- "UTF-8"
+    sonuc
+  }
+  yaz <- function(metin) {
+    yol <- tempfile(fileext = ".txt")
+    con <- file(yol, open = "wb")
+    writeBin(charToRaw(enc2utf8(metin)), con)
+    close(con)
+    yol
+  }
+
+  yol <- yaz(icerik)
+  on.exit(unlink(yol), add = TRUE)
+  testthat::expect_true(normalize_claude_code_text_file_to_utf8(yol))
+  # LITERAL dizi KORUNUR: gecerli baytlar tahrip edilmemistir.
+  testthat::expect_identical(oku(yol), icerik)
+
+  # ACIK OPERATOR IZNI ile karisik icerik onarimi YINE mumkundur.
+  withr::with_envvar(c(MERGEN_CLAUDE_CODE_REPAIR_VALID_UTF8 = "true"), {
+    yol2 <- yaz(icerik)
+    on.exit(unlink(yol2), add = TRUE)
+    testthat::expect_true(normalize_claude_code_text_file_to_utf8(yol2))
+    testthat::expect_identical(oku(yol2), paste0(turkce, .ccd_cp(0x015E)))
+  })
 })

@@ -15,7 +15,7 @@ repo_root_cs <- resolve_repo_root_for_tests()
 
 .cs_make_env <- function() {
   env <- new.env(parent = globalenv())
-  env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0) b else a
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
   for (.fn in c("log_info", "log_warn", "log_error", "log_debug")) {
     env[[.fn]] <- function(...) invisible(NULL)
   }

@@ -48,6 +48,37 @@ soak_env_int <- function(name, default) {
   if (is.na(val)) as.integer(default) else val
 }
 
+# POZITIF TAMSAYI KNOB'U. Diger sayisal ayarlar (users, interactive_users,
+# max_new_per_tick) soak_env_int() sonrasinda kirpilir; PK serit degerleri
+# kirpilmiyordu ve 0/negatif deger dogrudan seride geciyordu. Somut kusurlar:
+# CANCEL_EVERY=0 -> `i %% 0` NaN -> `if (NA)` HATA; CHUNK_ROWS=0 -> ilerlemeyen
+# getirme dongusu; DISTINCT_USERS=0 -> bozuk kapsam indeksi.
+soak_env_pos_int <- function(name, default) {
+  # REDDEDILEN OVERRIDE SESSIZ KALMAZ: operator gecersiz bir deger verdiginde
+  # (0/negatif/`Inf`/sayisal olmayan) serit VARSAYILANA doner. Uyari olmadan
+  # operator ayarin uygulandigini sanip yanlis bir kanit okurdu.
+  #
+  # HAM DEGER BURADA OKUNUR, `soak_env_int()` SONUCU DEGIL: cozulemeyen bir
+  # deger (`"Inf"`) zaten orada sessizce varsayilana dusuyor ve bu fonksiyona
+  # GECERLI bir sayi olarak geliyordu; yalnizca sonuca bakan bir kapi o vakayi
+  # HIC goremezdi. Uyari POZITIF TAMSAYI knob'lariyla sinirli kalir; paylasilan
+  # `soak_env_int()` davranisi DEGISMEZ.
+  ham <- trimws(Sys.getenv(name, unset = ""))
+  cozulen <- if (nzchar(ham)) suppressWarnings(as.integer(ham)) else NA_integer_
+  gecersiz <- nzchar(ham) && (length(cozulen) != 1L || is.na(cozulen) || cozulen < 1L)
+
+  if (isTRUE(gecersiz)) {
+    warning(sprintf(
+      "[SOAK_CONFIG] %s degeri gecersiz ('%s'); varsayilan %s kullanildi.",
+      name, ham, as.integer(default)
+    ), call. = FALSE)
+    return(as.integer(default))
+  }
+
+  val <- soak_env_int(name, default)
+  if (is.na(val) || val < 1L) as.integer(default) else val
+}
+
 soak_env_num <- function(name, default) {
   raw <- trimws(Sys.getenv(name, unset = ""))
   if (!nzchar(raw)) return(as.numeric(default))
@@ -233,6 +264,22 @@ soak_resolve_config <- function() {
   interactive_iterations <- soak_env_int("MERGEN_SOAK_INTERACTIVE_ITERATIONS", 1L)
   if (interactive_iterations < 1L) interactive_iterations <- 1L
 
+  # FAZ 6 PK-analiz seridi: bloklamayan yurutme katmanini (iptal jetonu, son
+  # tarih, boyut sinirli LRU onbellek, sinirli SQL getirimi, istek-kimligi
+  # korumasi) yuk altinda calistirir. Varsayilan ACIK: gercek LLM/DB gerektirmez,
+  # lane-yerel SQLite kullanir. MERGEN_PK_ASYNC=true ACILMADAN ONCE en az bu
+  # seridin fake-lane smoke profilinde gecmesi gerekir (master plan bolum 8, Faz 6).
+  pk_lane <- soak_env_flag("MERGEN_SOAK_PK_LANE", TRUE)
+  # VARSAYILAN `double` ILE HESAPLANIR: `users * 3L` TAMSAYI aritmetigidir ve
+  # buyuk bir MERGEN_SOAK_CONCURRENT_USERS degerinde tasarak `NA` uretiyordu.
+  # `NA` varsayilan `soak_env_int()`ten aynen doner ve `if (x < 1L)` satiri
+  # "missing value where TRUE/FALSE needed" ile gate'i ARTIFACT URETMEDEN
+  # durduruyordu. Sonuc 400 ile sinirlidir, bu yuzden tamsayiya cevrim guvenli.
+  pk_lane_sessions_default <- as.integer(min(max(as.numeric(users) * 3, 60), 400))
+  # Override POZITIF TAMSAYI knob'udur: `Inf`, `0`, negatif ve cozulemeyen
+  # degerler varsayilana duser (bkz. soak_env_pos_int notu).
+  pk_lane_sessions <- soak_env_pos_int("MERGEN_SOAK_PK_SESSIONS", pk_lane_sessions_default)
+
   # HTTP yuk seridi: calisan bir uygulama (MERGEN_SOAK_APP_URL) gerektirir.
   # Varsayilan ACIK (mevcut davranis). KAPALI yapildiginda gate yalnizca
   # in-process + etkilesimli seritleri calistirir (bulut/uygulamasiz kanit).
@@ -343,6 +390,24 @@ soak_resolve_config <- function() {
     interactive_lane = interactive_lane,
     interactive_users = interactive_users,
     interactive_iterations = interactive_iterations,
+    pk_lane = pk_lane,
+    pk_lane_sessions = pk_lane_sessions,
+    pk_lane_distinct_users = soak_env_pos_int("MERGEN_SOAK_PK_DISTINCT_USERS", 6L),
+    pk_lane_distinct_queries = soak_env_pos_int("MERGEN_SOAK_PK_DISTINCT_QUERIES", 5L),
+    pk_lane_deadline_sec = soak_env_pos_int("MERGEN_SOAK_PK_DEADLINE_SEC", 300L),
+    pk_lane_sql_timeout_sec = soak_env_pos_int("MERGEN_SOAK_PK_SQL_TIMEOUT_SEC", 120L),
+    pk_lane_row_cap = soak_env_pos_int("MERGEN_SOAK_PK_ROW_CAP", 50000L),
+    pk_lane_rows_per_query = soak_env_pos_int("MERGEN_SOAK_PK_ROWS_PER_QUERY", 4000L),
+    pk_lane_chunk_rows = soak_env_pos_int("MERGEN_SOAK_PK_CHUNK_ROWS", 1000L),
+    pk_lane_max_result_mb = soak_env_pos_int("MERGEN_SOAK_PK_MAX_RESULT_MB", 512L),
+    pk_lane_cancel_every = soak_env_pos_int("MERGEN_SOAK_PK_CANCEL_EVERY", 7L),
+    pk_lane_stale_every = soak_env_pos_int("MERGEN_SOAK_PK_STALE_EVERY", 5L),
+    pk_lane_deep_every = soak_env_pos_int("MERGEN_SOAK_PK_DEEP_EVERY", 9L),
+    pk_lane_deep_max_queries = soak_env_pos_int("MERGEN_SOAK_PK_DEEP_MAX_QUERIES", 5L),
+    # Onbellek BAYT butcesi tek-sonuc tavanindan (max_result_mb) FARKLIDIR;
+    # kapi ikisini karistirmamalidir.
+    pk_cache_max_mb = soak_env_pos_int("MERGEN_SOAK_PK_CACHE_MAX_MB", 512L),
+    pk_cache_max_entry_mb = soak_env_pos_int("MERGEN_SOAK_PK_CACHE_MAX_ENTRY_MB", 128L),
     capacity_curve_enabled = capacity_enabled,
     capacity_curve_users = soak_default_capacity_curve(),
     capacity_step_seconds = soak_env_int("MERGEN_SOAK_CAPACITY_STEP_SECONDS", 30L),
@@ -387,7 +452,14 @@ soak_resolve_thresholds <- function(profile) {
     # ekledigi DB-havuz/islem/izolasyon kapsami kaybedilir; varsayilan olarak FAIL.
     # Havuz paketleri olmayan minimal ortamlar bunu FALSE yapabilir veya
     # MERGEN_SOAK_INTERACTIVE_LANE=false ile seridi hic istemeyebilir.
-    fail_on_interactive_unavailable = soak_env_flag("MERGEN_SOAK_FAIL_ON_INTERACTIVE_UNAVAILABLE", TRUE)
+    fail_on_interactive_unavailable = soak_env_flag("MERGEN_SOAK_FAIL_ON_INTERACTIVE_UNAVAILABLE", TRUE),
+    # PK-analiz seridi ISTENDI ama calismadiysa (paket/bootstrap eksik) ya da
+    # operator seridi KAPATTIYSA, Faz 6 bloklamayan yurutme kapsami olculmez;
+    # varsayilan olarak FAIL. Bu bayrak olmadan MERGEN_SOAK_PK_LANE=false bir
+    # KENDINI-DUSUREN anahtar olurdu: hicbir yapilandirma PASS uretemezdi.
+    # FALSE yapildiginda kontrol UNMEASURED olarak DURUSTCE raporlanir ve o
+    # kosum MERGEN_PK_ASYNC acilmasi icin kanit SAYILMAZ.
+    fail_on_pk_unavailable = soak_env_flag("MERGEN_SOAK_FAIL_ON_PK_UNAVAILABLE", TRUE)
   )
 }
 
@@ -422,6 +494,26 @@ soak_config_public <- function(cfg) {
     interactive_lane = cfg$interactive_lane,
     interactive_users = cfg$interactive_users,
     interactive_iterations = cfg$interactive_iterations,
+    pk_lane = cfg$pk_lane,
+    pk_lane_sessions = cfg$pk_lane_sessions,
+    # Faz 6 GUVENLIK PARAMETRELERI artifact'te ACIKCA yer alir: kapinin hangi
+    # son tarih / SQL zaman asimi / satir tavani / sonuc tavani / onbellek
+    # butcesi altinda gectigi sonradan yeniden kurulabilir olmali. Yalnizca
+    # sonuclari kaydetmek, esikler degistiginde kanitin anlamini kaybettirir.
+    pk_safety = list(
+      deadline_sec = cfg$pk_lane_deadline_sec,
+      sql_timeout_sec = cfg$pk_lane_sql_timeout_sec,
+      row_cap = cfg$pk_lane_row_cap,
+      rows_per_query = cfg$pk_lane_rows_per_query,
+      chunk_rows = cfg$pk_lane_chunk_rows,
+      max_result_mb = cfg$pk_lane_max_result_mb,
+      cache_max_mb = cfg$pk_cache_max_mb,
+      cache_max_entry_mb = cfg$pk_cache_max_entry_mb,
+      deep_max_queries = cfg$pk_lane_deep_max_queries,
+      cancel_every = cfg$pk_lane_cancel_every,
+      stale_every = cfg$pk_lane_stale_every,
+      deep_every = cfg$pk_lane_deep_every
+    ),
     capacity_curve_enabled = cfg$capacity_curve_enabled,
     capacity_curve_users = cfg$capacity_curve_users,
     capacity_ladder_enabled = cfg$capacity_ladder_enabled,

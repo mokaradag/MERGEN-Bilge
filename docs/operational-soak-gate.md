@@ -109,6 +109,89 @@ açmaz**. Etkileşimli serit bu boşluğu kapatır.
   eşzamanlılığı ya da UNC/ağ paylaşımı gecikmesi DEĞİL. Bu sınırlar
   `soak_evidence.json` içinde `does_not_prove` altında açıkça yazılır.
 
+### Lane E — PK-analiz (Faz 6 bloklamayan yürütme)
+
+Proje ve Kaynak Analizi'nin **bloklamayan yürütme** katmanı (iptal jetonu, duvar
+saati son tarihi, boyut sınırlı LRU önbellek, sınırlı SQL getirimi, istek-kimliği
+koruması ve işçi-güvenli anlık görüntü) **yük altında** çalıştırılır. İki-tarayıcı
+mutlu-yol kontrolü iptal fırtınasını, bayat tamamlanmayı, önbellek/bağlantı
+baskısını ve ardışık derin sorgu bütçesini **ölçemez**; Faz 6 planın en riskli
+eşzamanlılık değişikliğidir.
+
+- `tests/scripts/soak_pk_analysis_lane.R`; varsayılan AÇIK
+  (`MERGEN_SOAK_PK_LANE=true`), gerçek LLM/SQL Server GEREKTİRMEZ.
+- Her "oturum": istek kimliği üretimi → **işçi-güvenli anlık görüntü doğrulaması**
+  (`pk_async_validate_request`) → önbellek yoklama (`pk_cache_get/put`, yetki
+  imzalı anahtar) → **gerçek** sınırlı SQL getirimi (`pk_sql_execute_bounded`:
+  `dbSendQuery` + parçalı `dbFetch` + parça arası iptal/son tarih yoklaması) →
+  yetki farkında satır tavanı planı → **istek-kimliği koruması**
+  (`pk_async_should_apply`).
+- Üretilen baskılar: **iptal fırtınası** (her N. istek gerçek jeton dosyasıyla
+  iptal edilir; turların **yarısı UÇUŞ-İÇİ** iptaldir — jeton getirim
+  başladıktan sonra, parçalar arası kapıdan yazılır), **bayat tamamlanma**
+  (daha yeni istek eski geri çağrıyı geçersiz kılar), **tekrarlayan/
+  önbelleklenebilir istekler** (SICAK KÜME + SOĞUK KUYRUK deseniyle hem **hit**
+  hem **tahliye**), **çoklu yetki kapsamı** (kullanıcılar arası önbellek
+  izolasyonu, giriş başına kapsam sahibi işaretiyle doğrulanır) ve **Derin
+  Düşünme bütçe bölüşümü** (gerçek `pk_deep_execute_sql` üzerinden).
+- Gate-enforced eşikler (25): `pk_analysis_lane_available`,
+  `pk_analysis_lane_enabled`, `pk_analysis_success_rate`, `pk_cancel_exercised`,
+  `pk_cancel_inflight_exercised`, `pk_cancel_honoured`,
+  `pk_cancelled_never_applied`, `pk_stale_exercised`, `pk_stale_never_applied`,
+  `pk_fresh_always_applied`, `pk_snapshot_worker_safe`,
+  `pk_deep_deadline_respected`, `pk_deep_budget_decreases`,
+  `pk_deep_halts_between_queries`, `pk_connection_instrumented`,
+  `pk_connection_usable_after_fetch`, `pk_bounded_fetch_complete`,
+  `pk_cache_within_budget`, `pk_cache_hit_observed`,
+  `pk_cache_eviction_observed`, `pk_cache_oversize_entry_rejected`,
+  `pk_cache_scope_isolated`, `pk_connection_acquire_release_balanced`,
+  `pk_psock_async_path`, `pk_psock_worker_bootstrap`.
+- **GERÇEK PSOCK turu:** serit ayrıca `pk_async_run_analysis()`'ı gerçek bir
+  `multisession` işçisine gönderir (jeton önceden sinyallendiği için sonuç
+  DETERMİNİSTİK olarak `cancelled`'dır; LLM/DB gerekmez). Bu prob olmadan serit,
+  `MERGEN_PK_ASYNC=true` ile fiilen etkinleşen kodu — anlık görüntü
+  serileştirme, temiz işçide bootstrap, future tamamlanma — hiç çalıştırmadan
+  tüm eşikleri geçebilirdi. Nitekim eklendiğinde `pk_async_worker_globals()`
+  paketinde bootstrap ÖNCESİ kullanılan iptal/son tarih yardımcılarının eksik
+  olduğunu ortaya çıkardı. Yük/olay döngüsü kanıtı DEĞİLDİR; yalnızca DOĞRULUK.
+- **Bağlantı muhasebesi:** her tur üretim şeklindeki bir al/bırak
+  sarmalayıcısından geçer; `acquired`/`released` sayaçları dengelenmezse istek
+  başına bağlantı sızıntısı var demektir ve kapı FAIL olur.
+- **"Gerçekten çalıştırıldı mı" eşikleri kozmetik değildir:** sıfır iptal/bayat
+  turunda `all(...)` boş vektör üzerinde `TRUE` döner ve serit hiçbir şey
+  kanıtlamadan yeşil görünürdü. `*_exercised` / `*_observed` eşikleri bunu
+  kapatır. Aynı nedenle iptal edilen tur **tam olarak `"cancelled"`** bitmelidir;
+  `"deadline"` kabul edilseydi jetonu hiç okumayan bir regresyon geçerdi.
+- **Önbellek bütçesi** `MERGEN_SOAK_PK_CACHE_MAX_MB` ile karşılaştırılır — bu,
+  tek sonuç tavanı `MERGEN_SOAK_PK_MAX_RESULT_MB`'den **FARKLI** bir sınırdır.
+  (Şeridin okuduğu değişkenler bunlardır; `MERGEN_PK_CACHE_MAX_MB` /
+  `MERGEN_PK_MAX_RESULT_MB` UYGULAMA değişkenleridir ve kapı onları okumaz.)
+- Serit **istendi ama çalışmadıysa** `pk_analysis_lane_available` FAIL olur;
+  serit **KAPALI** ise (`MERGEN_SOAK_PK_LANE=false`) `pk_analysis_lane_enabled`
+  FAIL olur. Atlanmış da kapatılmış da serit asla kanıt değildir.
+- **Bilinçli opt-out:** `MERGEN_SOAK_FAIL_ON_PK_UNAVAILABLE=false` bu iki
+  kontrolü FAIL yerine **UNMEASURED** (`expected = FALSE`, `actual = NA`) olarak
+  raporlar. Varsayılan `true`'dur, yani varsayılan davranış FAIL'dir. Bayrak,
+  seridin bağımlılıkları bulunmayan bir makinede kapının kendini düşürmesini
+  önlemek içindir; UNMEASURED sonuç da **kanıt değildir** ve `MERGEN_PK_ASYNC`
+  açılması için kullanılamaz.
+- Kapının hangi güvenlik parametreleri altında geçtiği `config.json` içindeki
+  `pk_safety` bloğuna yazılır (son tarih, SQL zaman aşımı, satır tavanı, sonuç
+  tavanı, önbellek bütçeleri, derin sorgu tavanı), böylece kanıt sonradan
+  yeniden kurulabilir.
+- **Sınır:** tek-süreçte **ardışık** oturumlardır (gerçek tarayıcı/websocket
+  eşzamanlılığı DEĞİL), **gerçek future işçi havuzu doygunluğu DEĞİL**, **gerçek
+  LLM davranışı DEĞİL**, **lane-yerel SQLite** kullanır (üretim T-SQL/ODBC
+  DEĞİL) ve **SQL Server sorgu zaman aşımı mekanizmasının gerçekten
+  uygulandığını KANITLAMAZ**. Bu sınırlar `soak_evidence.json` içinde
+  `pk_analysis_lane.does_not_prove` altında açıkça yazılır.
+
+> **`MERGEN_PK_ASYNC=true` açılmadan ÖNCE en az bu seridin fake-lane smoke
+> profilinde geçmesi gerekir** (master plan §8, Faz 6). Geçmesi, olay döngüsü
+> yanıt verebilirliğini kanıtlamaz — o yalnızca Windows VM'de ölçülebilir.
+
+---
+
 > HTTP seridi `MERGEN_SOAK_HTTP_LANE=false` ile kapatılabilir; bu durumda kapı
 > yalnızca in-process + etkileşimli seritleri çalıştırır ve **çalışan bir uygulama
 > URL'sine ihtiyaç duymaz** (bulut/uygulamasız etkileşimli kanıt için). HTTP
@@ -306,6 +389,28 @@ Rscript tests/scripts/run_operational_soak_gate.R
 | `MERGEN_SOAK_INTERACTIVE_LANE` | etkileşimli in-process oturum seridi (varsayılan TRUE) |
 | `MERGEN_SOAK_INTERACTIVE_USERS` | etkileşimli oturum sayısı (varsayılan `min(max(users,8),50)`) |
 | `MERGEN_SOAK_INTERACTIVE_ITERATIONS` | oturum kümesinin tekrar sayısı (varsayılan 1) |
+
+### PK-analiz seridi (Faz 6)
+
+| Değişken | Varsayılan | Açıklama |
+|---|---|---|
+| `MERGEN_SOAK_PK_LANE` | `true` | PK-analiz seridini aç/kapat. Kapatmak Faz 6 kapsamını KAYBEDER (varsayılanda FAIL). |
+| `MERGEN_SOAK_FAIL_ON_PK_UNAVAILABLE` | `true` | Serit istenmiş ama çalışmamışsa / kapalıysa FAIL üretilsin mi? `false` bunu UNMEASURED yapar; UNMEASURED de kanıt DEĞİLDİR. |
+| `MERGEN_SOAK_PK_SESSIONS` | `max(users*3, 60)` (≤400) | Analiz oturumu sayısı. |
+| `MERGEN_SOAK_PK_DISTINCT_USERS` | `6` | Farklı yetki kapsamı sayısı (önbellek izolasyonu). |
+| `MERGEN_SOAK_PK_DISTINCT_QUERIES` | `5` | Farklı sorgu kimliği (önbellek hit oranı). |
+| `MERGEN_SOAK_PK_DEADLINE_SEC` | `300` | Analiz duvar-saati bütçesi. |
+| `MERGEN_SOAK_PK_SQL_TIMEOUT_SEC` | `120` | Yapılandırılmış SQL zaman aşımı. |
+| `MERGEN_SOAK_PK_ROW_CAP` | `50000` | Satır tavanı planı girdisi. |
+| `MERGEN_SOAK_PK_ROWS_PER_QUERY` | `4000` | Sorgu başına satır (getirim baskısı). |
+| `MERGEN_SOAK_PK_CHUNK_ROWS` | `1000` | Parça başına satır. |
+| `MERGEN_SOAK_PK_MAX_RESULT_MB` | `512` | TEK sonuç bayt tavanı (önbellek TOPLAM bütçesi `MERGEN_SOAK_PK_CACHE_MAX_MB`'den FARKLIDIR). |
+| `MERGEN_SOAK_PK_CANCEL_EVERY` | `7` | Her N. istek gerçekten iptal edilir. |
+| `MERGEN_SOAK_PK_STALE_EVERY` | `5` | Her N. istek bayat tamamlanma üretir. |
+| `MERGEN_SOAK_PK_DEEP_EVERY` | `9` | Her N. istek Derin Düşünme olur. |
+| `MERGEN_SOAK_PK_DEEP_MAX_QUERIES` | `5` | Derin sıralı-küme tavanı (bütçe bölüşümü). |
+| `MERGEN_SOAK_PK_CACHE_MAX_MB` | `512` | Önbellek TOPLAM bayt bütçesi (tek sonuç tavanı `MERGEN_SOAK_PK_MAX_RESULT_MB`'den FARKLIDIR). |
+| `MERGEN_SOAK_PK_CACHE_MAX_ENTRY_MB` | `128` | Önbellek GİRDİ BAŞINA bayt tavanı; üstündeki girdi hiç önbelleklenmez. |
 
 ### Kapasite eğrisi
 

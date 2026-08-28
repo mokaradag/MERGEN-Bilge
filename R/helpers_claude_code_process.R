@@ -55,7 +55,7 @@ escape_non_ascii <- function(metin) {
 
     # Önce UTF-8 olarak yorumlamayı dene
     tryCatch({
-      # iconv ile UTF-8 → UTF-8 doğrulaması
+      # iconv ile UTF-8 -> UTF-8 doğrulaması
       test <- iconv(m, from = "UTF-8", to = "UTF-8")
       if (!is.na(test)) {
         Encoding(m) <- "UTF-8"

@@ -11,7 +11,7 @@ suppressMessages(library(shiny))
 repo_root_ccp <- resolve_repo_root_for_tests()
 
 .ccp_env <- new.env(parent = globalenv())
-.ccp_env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0) b else a
+.ccp_env$`%||%` <- function(a, b) if (is.null(a)) b else a
 for (.fn in c("log_info", "log_warn", "log_error", "log_debug")) {
   .ccp_env[[.fn]] <- function(...) invisible(NULL)
 }

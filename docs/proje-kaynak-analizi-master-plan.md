@@ -549,7 +549,7 @@ or after adding query #170, with zero risk to their alias work or tracked curati
 | Tier | How | Effort |
 |---|---|---|
 | 0 | **Structural-only fallback.** Infer `role` from declared/static schema and R type; infer `date` from class. Treat cardinality, null-rate, identifier and `high_cardinality` claims as unknown unless established by a representative bounded strategy or a one-sided observation that can only disprove/confirm the claimed property. This supports safe inspection/rendering only; stable semantic measure, date and output-dimension capability IDs remain unknown. | 0 |
-| 1 | Generator `tools/pk/generate_query_meta.R` (VM-only, NOT in the source manifest) → writes the **gitignored** `R/library_query_meta_local.R`, never a tracked file or `R/library_query_aliases_local.R`. **Also validates declared `rls_columns` against actual result columns, surfacing every D6 hole.** | ~1 day to build, minutes to run |
+| 1 | Generator `tools/pk/generate_query_meta.R` (VM-only, NOT in the source manifest) → writes the **gitignored** `R/library_query_meta_local.R`, never a tracked file or `R/library_query_aliases_local.R`. **Also validates declared `rls_columns` against actual result columns, surfacing every D6 hole.** **BUILT** and offline-tested; operator runbook: [`docs/pk-phase3b-operator-runbook.md`](pk-phase3b-operator-runbook.md). Not yet **run** on the VM. | built; minutes to run |
 | 2 | `keywords` + `sample_questions` — **OPTIONAL**, see below | 0–45 s/query |
 | 3 | Human-only: capability IDs, `grain`, `additive`, `unit`, `primary_entity`, `intents`, `default_measures` | ~2 min/query |
 
@@ -577,7 +577,7 @@ or that a numeric column means planned rather than remaining labor. Therefore:
 RStudio on the Windows VM, matching the existing `tests/scripts/*.R` convention:
 
 ```r
-Sys.setenv(MERGEN_PK_META_MODE = "sample")   # or "describe"
+Sys.setenv(MERGEN_PK_META_MODE = "describe")   # first pass; "sample" is the second
 source("tools/pk/generate_query_meta.R", encoding = "UTF-8")
 ```
 
@@ -588,7 +588,7 @@ Two modes, because some production queries are expensive:
 
 * **`describe`** — uses `sys.dm_exec_describe_first_result_set` to obtain column
   names and types **without executing** the query. Fast, zero DB load, no cardinality.
-* **`sample`** (default) — obtains up to `<MERGEN_PK_META_SAMPLE_ROWS>` rows through a
+* **`sample`** — obtains up to `<MERGEN_PK_META_SAMPLE_ROWS>` rows through a
   representative bounded strategy when the query can be sampled safely (for example a
   deterministic hash/reservoir or metadata-declared stratification), and records the
   exact `sample_method` and seed. A bare `TOP n` prefix in database return order is not
@@ -621,6 +621,39 @@ Hard requirements for the generator:
 * **Secret-safe**: no DSN, credential, or connection string in output or logs.
 * **Turkish-safe**: results pass through `normalize_pk_dataframe_utf8()`; the emitted
   R file is UTF-8 with Turkish comments.
+
+#### Per-query withholding — an implementation refinement (built in Phase 3b)
+
+The plan above says the generator writes generated metadata and the health report
+enumerates the mismatches. Implementation surfaced a consequence that must be stated
+explicitly, because it changes a failure mode:
+
+Once `result_schema` exists for a query, the schema-dependent startup checks become
+**active** for it (§5.1 "Startup validation"). A declared RLS column that the result
+does not return is an **error**, not a warning — so naively writing generated schema
+for a library that still has D6 holes would make the **application fail to boot**.
+
+The generator therefore decides **per query**:
+
+* A query whose merged (auto + generated + curated) metadata passes the exact startup
+  validators is written into `R/library_query_meta_local.R`.
+* A query with any blocking finding is **withheld** from the generated layer and
+  reported as `withheld` with its reasons.
+
+A withheld query keeps **today's** behavior — Tier-0, `schema_validation =
+"pending_no_schema"` — so nothing regresses and **no gate is weakened**: request-time
+`pk_meta_validate_actual_columns()` enforcement is unconditional and unchanged. The
+healthy queries still gain their real schema, so one broken query cannot hold the other
+168 at Tier-0.
+
+Before writing, the generator additionally re-runs `pk_query_meta_attach()` over the
+**whole** candidate layer. If that gate fails, nothing is written and the previous file
+is preserved. A generator run can therefore never break application startup.
+
+Two further preservation rules: a run that produces **zero** entries while a previous
+generated layer exists does **not** overwrite it (that is a DB-outage signature, not a
+result), and a run that produces fewer entries than the previous one writes but warns
+with the delta.
 
 #### Query-library health report
 
@@ -1508,7 +1541,8 @@ assigned to a seam in `R/config_seam_registry.R`):**
 | `R/library_query_meta_local.R` | generator output, **gitignored**, VM-only (§5.1) | data |
 | `R/library_query_aliases_local.R` | operator-maintained production aliases, **gitignored**, optional, never generator-written | data |
 | `R/library_query_meta.R` | **curated** capability registry and approved/synthetic per-query metadata keyed by stable id | data |
-| `tools/pk/generate_query_meta.R` | VM-only metadata generator (NOT in the manifest) | script |
+| `tools/pk/generate_query_meta.R` | VM-only metadata generator, operator entry point (NOT in the manifest) | script |
+| `tools/pk/helpers_meta_generator_*.R` | generator internals, 12 files loaded in dependency order by the entry point: `config` (mode/env), `schema` (type mapping + one-sided evidence), `render` (ASCII R source + atomic write + forbidden-target gate), `redact` (secret masking + DB-error classification), `findings` (per-query findings), `health` (report assembly), `state` (resume snapshot + TTL), `db` (bounded driver access), `fetch` (schema acquisition), `run` (inventory loop, injected DB access), `lock` (single-run lock), `commit` (layer merge + publish) | script |
 
 All four metadata/alias files are runtime data and **must appear in
 `R/config_source_manifest.R`**, loaded after `R/helpers_pk_text_turkish.R` in the order
@@ -1709,8 +1743,22 @@ when the relevant schema exists; Tier-0 inference produces a usable structural
 `column_meta` for a query with no metadata at all but does not invent semantic
 capability IDs or promote arbitrary prefix-sample observations into authoritative
 identifier/null-rate/low-cardinality claims.
+**STATUS: MET.** Built as `tools/pk/generate_query_meta.R` plus **twelve** helpers
+under `tools/pk/` (config, schema, render, redact, findings, health, state, db, fetch,
+run, lock, commit — loaded in that dependency order); DB access is injected so the
+whole decision path is offline-testable. Covered by
+`tests/testthat/test-pk-meta-generator-behavior.R`,
+`tests/testthat/test-pk-meta-generator-hardening-behavior.R`,
+`tests/testthat/test-pk-meta-generator-review-regressions.R` and
+`tests/testthat/test-pk-meta-generator-contract.R`. Operator instructions:
+[`docs/pk-phase3b-operator-runbook.md`](pk-phase3b-operator-runbook.md).
+Additional properties beyond the original acceptance list: emitted R source is **pure
+ASCII** (`\uXXXX` escapes) so the WINDOWS-1254 `source()` truncation class (§1G of
+`CLAUDE.md`) cannot apply; writes are atomic with a parse check; and blocking queries
+are **withheld per query** rather than breaking startup (see §5.1).
+
 *Acceptance (VM):* generator runs clean over all 169 queries; health report is empty
-or every finding is triaged.
+or every finding is triaged. **NOT MET — requires the operator's VM run.**
 
 ### Phase 4 — Entity resolution (2–3 days)
 Resolver built on the Phase-3a `pk_tr_fold()` helper · ASCII-secondary-key tier ·
@@ -1832,9 +1880,14 @@ by serializing a helper closure (same rule as `MERGEN_LLM_TIMEOUT_SEC`).
 | `MERGEN_PK_CACHE_TTL_SEC` | `300` | `(query_id, rls_signature, filter_signature)` cache lifetime |
 | `MERGEN_PK_TELEMETRY` | `true` | Write `MB_Analiz_Log`. Applies to **both** engines — see §10 |
 | `MERGEN_PK_LOG_QUESTION_TEXT` | `false` | **Privacy:** store the raw question, or only a keyed fingerprint. With `false`, the fingerprint MUST be a normalized, server-keyed **HMAC** with key rotation — a plain unsalted hash does not protect low-entropy prompts drawn from a finite project vocabulary, since anyone who can read the table can hash the candidate questions and recover matches. If no key can be managed, omit the fingerprint entirely |
-| `MERGEN_PK_NUMERIC_PROVENANCE_MODE` | `log` | `off` / `log` / `warn` / `block` — enforcement level for answer facts that are absent or semantically mis-cited (§5.11). Ship in `log`, move to `warn` once the false-positive rate is calibrated on the VM |
-| `MERGEN_PK_META_MODE` | `sample` | Generator mode: `sample` or `describe` |
-| `MERGEN_PK_META_SAMPLE_ROWS` | `500` | Maximum rows fetched per query in `sample` mode; the sample method and evidentiary limits must be recorded |
+| `MERGEN_PK_NUMERIC_PROVENANCE_MODE` | `warn` (dağıtım şablonu) / `log` (kod varsayılanı) | `off` / `log` / `warn` / `block` — enforcement level for answer facts that are absent or semantically mis-cited (§5.11). The deployment template ships in `warn` so a mismatch is never silent; move to `block` once the false-positive rate is calibrated on the VM |
+| `MERGEN_PK_META_MODE` | `describe` | Generator mode: `describe` or `sample`. An invalid value is **rejected**, never silently defaulted. The default is the **non-executing** mode: an unset variable must never make a bare `source(...)` run the whole production query library |
+| `MERGEN_PK_META_SAMPLE_ROWS` | `500` | Maximum rows **transferred** per query in `sample` mode; the sample method and evidentiary limits must be recorded. This is not a server-work bound (`dbSendQuery()` runs the SELECT) — the real bounds are the timeout and the byte ceiling below |
+| `MERGEN_PK_META_HIGH_CARD_MIN` | `50` | Distinct-value count above which `high_cardinality = TRUE` is **proved** (one-sided; below it proves nothing). Must be strictly below `MERGEN_PK_META_SAMPLE_ROWS`, otherwise the proof is unreachable and the generator rejects the configuration |
+| `MERGEN_PK_META_SQL_TIMEOUT_SEC` | `120` | Generator per-query timeout |
+| `MERGEN_PK_META_MAX_RESULT_MB` | `64` | Generator sample-result ceiling |
+| `MERGEN_PK_META_RESUME` | `true` | Resume an interrupted run from `artifacts/pk-meta/generator-state.json`; the cache holds **DB observations only**, is checkpointed after every query, carries an SQL + `db_target` fingerprint per entry, and is discarded when the mode, the state-format version or a query's SQL changes |
+| `MERGEN_PK_META_SAMPLE_UNICODE` | `true` | Send the sampled SQL through production's `NVARCHAR(MAX)` parameter path (`sp_executesql`) so Turkish/bracketed identifiers behave identically in the app and the generator. Diagnostic opt-out only |
 
 **SQL timeout precedence is bounded by the remaining whole-analysis budget.** At
 analysis start compute an absolute deadline. Immediately before every ODBC statement —
@@ -2002,7 +2055,7 @@ follows is how to do that safely.
 | 2 Packet + Excel | 100% | ~95% | `DT` widget rendering and real Excel presentation need a browser/VM |
 | 4 Entity resolver | 100% | **100%** | clarification chips UI needs a browser |
 | 5 Selection | 100% | ~60% | logic yes; **accuracy needs a real endpoint** |
-| 3b Metadata population | generator only | 0% | generator cannot be **run**; metadata cannot be populated |
+| 3b Metadata population | generator **built + offline-tested** | ~55% | generator cannot be **run**; metadata cannot be populated; the health report cannot be produced |
 | 6 Async | 100% | **~30%** | event-loop responsiveness is VM-only |
 
 ### Recommended order when the VM is unavailable
@@ -2232,9 +2285,12 @@ Plus a short header listing, in order, which phases are already merged into
 These require the Windows VM and must be reported as unproven until run there:
 
 * Real behavior against the 169-query production library.
-* **Running `tools/pk/generate_query_meta.R`** — it needs the real query library and a
-  live DB connection, so `R/library_query_meta_local.R` cannot be produced in a cloud
-  session, and the query-library health report cannot be generated.
+* **Running `tools/pk/generate_query_meta.R`** — the generator is **built and
+  offline-tested**, but it needs the real query library and a live DB connection, so
+  `R/library_query_meta_local.R` cannot be produced in a cloud session and the
+  query-library health report cannot be generated. `sys.dm_exec_describe_first_result_set`
+  behavior against real production SQL, the SQL-type-to-R-class mapping against real
+  driver output, and the actual RLS-mismatch count are all VM-only facts.
 * Production alias/vocabulary validation against the optional
   `R/library_query_aliases_local.R` overlay.
 * Shadow-mode agreement rates against real Turkish questions.

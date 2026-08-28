@@ -129,3 +129,72 @@ test_that(".read_sql_file_text UTF-8 BOM'lu dosyayı temizleyerek okur", {
   # BOM baytları sonuçta görünmemeli; içerik SELECT 1 ile başlamalı.
   expect_true(startsWith(trimws(out), "SELECT 1"))
 })
+# ---------------------------------------------------------------------------
+# NON-STRICT DEGRADASYON: ne `sql_file` ne `sql` tanımlı olan sorgu
+# ---------------------------------------------------------------------------
+
+test_that("non-strict modda SQL'siz sorgu da placeholder alir (boot dusmez)", {
+  # GERİLEME: bu başarısızlık sınıfı YALNIZCA sayılıyor, `sql` alanı YOK
+  # bırakılıyordu. Diğer iki başarısızlık yolu (dosya yok / dosya okunamadı)
+  # non-strict modda placeholder atıyordu. Sonuç: `pk_query_meta_attach()`
+  # "bos olmayan SQL tasimalidir" diyerek non-strict modda da AÇILIŞI
+  # düşürüyordu; belgelenen degradasyon gerçekleşmiyordu.
+  kok <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+
+  env$query_library <- list(
+    list(id = "q_sqlsiz", name = "SQL'siz sorgu", description = "sentetik")
+  )
+  # İLİŞTİRME ADIMI ÜRETİMDEKİ SÖZLEŞMEYİ TAŞIR: `pk_query_meta_attach()` boş
+  # SQL taşıyan bir sorguda açılışı DÜŞÜRÜR. Kimlik stub'ı bu kuralı taşımadığı
+  # için, yükleyici yer tutucuyu iliştirmeden ÖNCE üretmese bile test yine
+  # geçerdi (üretim açılışı ise düşerdi).
+  # STUB ÇAĞRILDI MI? Yükleyici `pk_query_meta_attach()` çağırmayı bırakırsa
+  # stub hiç koşmaz ve test yine geçerdi; o zaman geçersiz sorgu metadata'sı
+  # açılış denetimini SESSİZCE atlar. Bayrak bunu görünür kılar.
+  metadata_iliştirildi <- FALSE
+  env$pk_query_meta_attach <- function(lib, envir = NULL) {
+    metadata_iliştirildi <<- TRUE
+    sql_var <- vapply(
+      lib,
+      function(sorgu) is.character(sorgu$sql) && length(sorgu$sql) == 1L &&
+        !is.na(sorgu$sql) && nzchar(sorgu$sql),
+      logical(1)
+    )
+    if (!all(sql_var)) stop("bos olmayan SQL tasimalidir", call. = FALSE)
+    lib
+  }
+
+  withr::with_envvar(list(MERGEN_SQL_LOADER_STRICT = "false"), {
+    invisible(capture.output(suppressWarnings(
+      source(file.path(kok, "R", "config_sql_loader.R"), encoding = "UTF-8", local = env)
+    )))
+  })
+
+  expect_true(metadata_iliştirildi)
+  sorgu <- env$query_library[[1]]
+  expect_true(is.character(sorgu$sql) && nzchar(sorgu$sql))
+  expect_identical(sorgu$sql_source, "placeholder_missing_sql")
+  expect_true(grepl("sql_loader_placeholder", sorgu$sql, fixed = TRUE))
+})
+
+test_that("strict modda SQL'siz sorgu placeholder ALMAZ", {
+  kok <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+
+  env$query_library <- list(
+    list(id = "q_sqlsiz", name = "SQL'siz sorgu", description = "sentetik")
+  )
+  env$pk_query_meta_attach <- function(lib, envir = NULL) lib
+
+  withr::with_envvar(list(MERGEN_SQL_LOADER_STRICT = "true"), {
+    invisible(capture.output(suppressWarnings(
+      expect_error(
+        source(file.path(kok, "R", "config_sql_loader.R"), encoding = "UTF-8", local = env),
+        "SQL yuklenemedi"
+      )
+    )))
+  })
+
+  expect_null(env$query_library[[1]]$sql)
+})

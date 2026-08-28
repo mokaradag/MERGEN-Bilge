@@ -3,8 +3,11 @@ name: R tests
 on:
   push:
     branches: [main]
+  # PR #705 incelemesi: `pull_request` tetiği geri getirildi. Tetik kaldırılmış
+  # halde bırakılırsa bu iş akışı GELECEKTEKİ TÜM pull request'ler için
+  # otomatik çalışmayı bırakır; regresyonlar R testi kontrolü hiç koşmadan
+  # main'e girebilirdi. Uzun süren tam paket, PR başına bir kez koşar.
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -16,7 +19,7 @@ concurrency:
 
 jobs:
   testthat:
-    timeout-minutes: 25
+    timeout-minutes: 120
     runs-on: ${{ matrix.os }}
     name: ${{ matrix.os }} / R ${{ matrix.r }}
 
@@ -24,7 +27,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest]
-        r: ["4.4", "4.5"]
+        r: ["4.6"]
 
     env:
       # MERGEN paralel cluster ve gc scheduler gibi arka plan kancaları
@@ -74,6 +77,13 @@ jobs:
             libjpeg-dev \
             unixodbc-dev
 
+      # NOT: aşağıdaki `packages: |` blok skaleri yalnızca paket belirtimi içermelidir.
+      # İçine yazılan `# ...` satırları YAML yorumu değil, girdi değerinin parçasıdır ve
+      # pak::lockfile_create() tarafından paket adı gibi ayrıştırılır. Açıklamalar bu
+      # bloğun dışında tutulmalıdır. RSQLite TEST-ONLY bir bağımlılıktır
+      # (gerçek SQLite ile DB havuzu / Ortak Oturum davranış testleri ve soak
+      # betikleri); `required_packages` içinde YER ALMAZ ama testthat adımı
+      # için burada kurulmalıdır.
       - name: Install R package dependencies
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
@@ -95,6 +105,7 @@ jobs:
             any::fs
             any::future
             any::glue
+            any::highcharter
             any::htmltools
             any::httr
             any::jsonlite
@@ -104,12 +115,14 @@ jobs:
             any::markdown
             any::odbc
             any::openssl
+            any::openxlsx
             any::pdftools
             any::pool
             any::promises
             any::purrr
             any::readr
             any::readxl
+            any::RSQLite
             any::shiny
             any::shinyBS
             any::shinycssloaders

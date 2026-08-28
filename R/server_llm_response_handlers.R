@@ -285,6 +285,92 @@ llmResponseHandlersInit <- function(
 
           ai_msg <- NULL
 
+          # Proje ve Kaynak Analizi köken alt bilgisi (sahibi R'dir, model
+          # değil). PK dışı yanıtlarda içerik aynen kalır.
+          #
+          # `req_id` AÇIKÇA verilir: kimliksiz çağrı, bu istek geç bittiğinde
+          # DAHA YENİ bir isteğin bekleyen kaydını tüketip onun olgularına göre
+          # doğrulanmasına ve alt bilgisini/ekini almasına yol açardı.
+          #
+          # DEKORASYON HATASI TAMAMLANMIŞ YANITI DÜŞÜREMEZ: hata bu noktadan
+          # kaçarsa `add_message_fn()` hiç çalışmaz ve kullanıcı yanıtı kaybeder.
+          # SESLENDİRME VE TAKİP ÜRETİMİ ALT BİLGİYİ GÖRMEZ.
+          #
+          # Dekorasyondan ÖNCEKİ yanıt saklanır: alt bilgi ekrana/DB'ye gider ama
+          # TTS onu SESLİ OKUMAZ ve takip önerileri onu bağlam sanmaz.
+          # `R/helpers_chat_runtime.R` benzetimli akışta AYNI sözleşmeyi
+          # uyguluyor (alt bilgi TTS motoru metni tükettikten SONRA eklenir).
+          #
+          # SESLENDİRME VE TAKİP ÜRETİMİ DOĞRULANMIŞ GÖVDEYİ KULLANIR.
+          # `mergen_pk_validated_texts()` doğrulamayı BİR KEZ çalıştırır ve
+          # ekrana giden `display` ile seslendirmeye/takibe giden `tts`
+          # gövdesini birlikte üretir. Dekorasyondan ÖNCEKİ metni seslendirmek,
+          # `block` kipinde ekranda GÖSTERİLMEYEN sayıların DUYULMASI; `warn`
+          # kipinde ise görünür uyarı işaretlerinin atlanması demekti.
+          # Söylenmiş ses geri alınamaz.
+          #
+          # `validated = FALSE` (dekorasyon başarısız + bekleyen köken kaydı
+          # var) durumunda ham düzyazı TESLİM EDİLMEZ; takip önerileri de
+          # reddedilmiş metinden üretilmez.
+          # BLOK KİPİ KARARI DOĞRULAYICIDAN **ÖNCE** ÇÖZÜLÜR (PR #705, P2).
+          #
+          # `mergen_pk_validated_texts()` istek kapsamlı BEKLEYEN köken kaydını
+          # TÜKETİR. Çağrı kaydı tükettikten SONRA düşerse, aşağıdaki ikinci
+          # `pk_provenance_blocks_streaming()` sorgusu artık bekleyen kayıt
+          # GÖRMEZ ve `FALSE` döner; `tryCatch` yalnızca FIRLATILAN hatada
+          # `TRUE`ya düşer, `FALSE` DÖNÜŞÜNDE düşmez. Sonuç AÇIK BAŞARISIZDI:
+          # reddetme metni uygulanmıyor, ham model düzyazısı ekrana gidiyor,
+          # TTS ile SESLENDİRİLİYOR ve DB'ye yazılıyordu -- `block` kipinin tam
+          # da engellemek için var olduğu çıktı. `R/server_handler_true_streaming.R`
+          # aynı tehlikeyi kararı üretimden önce yakalayarak çözer.
+          pk_blok_kipi_baslangic <- isTRUE(tryCatch(
+            exists("pk_provenance_blocks_streaming", mode = "function", inherits = TRUE) &&
+              isTRUE(pk_provenance_blocks_streaming(session, request_id = req_id)),
+            error = function(e) TRUE
+          ))
+
+          pk_metinler <- if (exists("mergen_pk_validated_texts", mode = "function", inherits = TRUE)) {
+            tryCatch(
+              mergen_pk_validated_texts(result$content, session, request_id = req_id),
+              error = function(e) {
+                cat(sprintf("[PK] Köken doğrulaması hazırlanamadı: %s\n", conditionMessage(e)[1]))
+                # KAPALI BAŞARISIZ: doğrulayıcı ÇÖKTÜĞÜNDE `NULL` dönmek,
+                # aşağıdaki `pk_kok_dogrulandi <- TRUE` varsayılanını yürürlükte
+                # bırakıyor ve HAM model düzyazısı ekrana, TTS'e ve takip
+                # bağlamına gidiyordu -- `block` kipinin tam da engellemek için
+                # var olduğu çıktı. Başarısızlık DOĞRULAMA BAŞARISIZLIĞIDIR.
+                list(display = NULL, tts = NULL, validated = FALSE)
+              }
+            )
+          } else NULL
+
+          pk_kok_dogrulandi <- TRUE
+          seslendirilecek_metin <- result$content
+          if (is.list(pk_metinler) && length(pk_metinler$display) == 1L &&
+              !is.na(pk_metinler$display)) {
+            result$content <- as.character(pk_metinler$display)[1]
+            seslendirilecek_metin <- as.character(pk_metinler$tts %||% pk_metinler$display)[1]
+            pk_kok_dogrulandi <- isTRUE(pk_metinler$validated)
+          } else if (is.list(pk_metinler) && !isTRUE(pk_metinler$validated)) {
+            # Doğrulayıcı ÇALIŞMADI. Bekleyen köken kaydı `block` kipindeyse
+            # deterministik reddetme metni gösterilir; ham düzyazı DEĞİL.
+            pk_kok_dogrulandi <- FALSE
+            # ÜRETİM ÖNCESİ YAKALANAN KARAR KULLANILIR; kayıt tükenmiş olabilir.
+            pk_blok_kipi <- isTRUE(pk_blok_kipi_baslangic)
+            if (pk_blok_kipi) {
+              pk_yedek <- if (exists("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)) {
+                as.character(get("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE))[1]
+              } else {
+                paste0("\U000026A0\U0000FE0F **Analiz Kayna\u011f\u0131 Do\u011frulanamad\u0131:** ",
+                       "Yan\u0131t yay\u0131mlanmad\u0131.")
+              }
+              if (length(pk_yedek) == 1L && !is.na(pk_yedek) && nzchar(pk_yedek)) {
+                result$content <- pk_yedek
+                seslendirilecek_metin <- pk_yedek
+              }
+            }
+          }
+
           # AI mesajını ekle
           tryCatch({
             ai_msg <- add_message_fn(
@@ -323,7 +409,7 @@ llmResponseHandlersInit <- function(
  
           # TTS'i tetikle (eğer mesaj eklendiyse ve durdurulmadıysa)
           if (!is.null(ai_msg) && !isTRUE(stop_generation())) {
-            trigger_tts_fn(ai_msg$id, result$content)
+            trigger_tts_fn(ai_msg$id, seslendirilecek_metin)
           }
  
           # Kullanım logunu kaydet
@@ -345,9 +431,11 @@ llmResponseHandlersInit <- function(
           # senkron takip LLM çağrısı artık kritik yolun DIŞINDADIR. Sözleşme:
           # tarayıcı followup_container'ı talep üzerine oluşturur
           # (updateFollowupSuggestions), bu yüzden mesaj önerilerden önce eklenebilir.
-          if (!is.null(ai_msg) && !is.null(ai_msg$id)) {
+          # Köken doğrulaması REDDEDİLMİŞ bir yanıtta takip önerisi üretilmez:
+          # öneriler reddedilen düzyazıyı bağlam sanardı.
+          if (!is.null(ai_msg) && !is.null(ai_msg$id) && isTRUE(pk_kok_dogrulandi)) {
             followup_target_id <- ai_msg$id
-            followup_ai_text <- result$content
+            followup_ai_text <- seslendirilecek_metin
             later::later(function() {
               followup_perf_start <- mergen_perf_now()
               followup_questions <- tryCatch(
@@ -429,6 +517,21 @@ llmResponseHandlersInit <- function(
     # Promise tamamlandığında her zaman temizlik yap
     promises::finally(p2, onFinally = function() {
       try(drain_mcp_reasoning_stream(), silent = TRUE)
+
+      # BU İSTEĞİN BEKLEYEN PK KÖKEN KAYDI HER TERMİNAL YOLDA TÜKETİLİR.
+      #
+      # Kayıt yalnızca `if (result$success)` içinde `pk_provenance_decorate()`
+      # ile tüketiliyordu. Nihai LLM çağrısı `success = FALSE` dönerse ya da
+      # promise REDDEDİLİRSE hata dalları arayüzü sıfırlıyor ama kaydı
+      # BIRAKIYORDU; `chat_reset_state()` de o oturum durumunu temizlemez.
+      # Sonraki ALAKASIZ yapay zekâ mesajı `add_message_fn()` içinde bayat
+      # istek kimliğini/bekleyen kaydı görüp ÖNCEKİ analizin alt bilgisini,
+      # olgularını ve dışa aktarım ekini alabiliyordu.
+      #
+      # Başarı yolunda kayıt ZATEN tüketilmiştir; bu çağrı orada no-op'tur.
+      if (exists("pk_provenance_take", mode = "function", inherits = TRUE)) {
+        try(pk_provenance_take(session, request_id = req_id), silent = TRUE)
+      }
 
       if (!is.null(mcp_reasoning_stream_observer)) {
         try(mcp_reasoning_stream_observer$destroy(), silent = TRUE)

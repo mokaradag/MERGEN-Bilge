@@ -65,6 +65,21 @@ handle_true_streaming_mode <- function(ctx) {
   stream_env$user_prompt_id <- ctx$user_prompt_msg$id %||% NULL
   stream_env$user_prompt_db_id <- ctx$user_prompt_msg$db_id %||% NULL
   stream_env$chat_persist_scheduled <- FALSE
+  # Köken doğrulaması sonucu: `FALSE` olduğunda takip önerileri ÜRETİLMEZ.
+  stream_env$pk_validated <- TRUE
+  stream_env$validated_final_text <- NULL
+
+  # `block` kipinde köken doğrulaması TAMAMLANMA anında çalışır ve desteklenmeyen
+  # sayısal iddiada model düzyazısını deterministik yedekle DEĞİŞTİRİR; karar bu
+  # yüzden akış BAŞLAMADAN verilir (ilk delta gittikten sonra geri alınamaz).
+  # KAPALI BAŞARISIZ: kip OKUNAMAZSA metin ERTELENİR. Eski `FALSE` yedeği, bozuk
+  # bir bekleyen kayıt kip sorgusunu düşürdüğünde ham delta'ları doğrulamadan
+  # ÖNCE gönderiyordu; kullanıcı onaylanmayan sayıları GÖRÜRDÜ (geri alınamaz).
+  stream_env$defer_visible_text <- isTRUE(tryCatch(
+    exists("pk_provenance_blocks_streaming", mode = "function", inherits = TRUE) &&
+      pk_provenance_blocks_streaming(session, request_id = req_id),
+    error = function(e) TRUE
+  ))
 
   find_message_index <- function() {
     which(vapply(values$messages, function(m) identical(m$id, stream_env$msg_id), logical(1)))
@@ -237,6 +252,8 @@ handle_true_streaming_mode <- function(ctx) {
 
     idx <- find_message_index()
     if (length(idx) == 0) {
+      # KAPALI BASARISIZ: koken dogrulamasi HIC calismadi (asagida, bu erken donusten SONRA yapilir). `pk_validated` baslangicta TRUE oldugu icin takip onerileri HAM model duzyazisindan uretilebiliyordu.
+      stream_env$pk_validated <- FALSE; stream_env$validated_final_text <- NULL
       cleanup_streaming_state()
       ctx$reset_chat_state_fn()
       return(invisible(NULL))
@@ -250,6 +267,33 @@ handle_true_streaming_mode <- function(ctx) {
       note = "\n\n*(Yanıt çok uzun olduğu için yapılandırılmış üst sınırda kısaltıldı.)*",
       metric_name = "stream_text_truncated"
     )$text
+
+    # PK köken alt bilgisi (sahibi R, model değil); üst sınırdan SONRA eklenir.
+    #
+    # HATA AKIŞI ASKIDA BIRAKAMAZ. `stream_env$finalized` yukarıda ZATEN TRUE yapıldı; buradan kaçan bir istisna `finalize_stream_message()` ve `observe()` gövdesini terk eder, yoklama gözlemcisi durur ve yeniden deneme hemen döner. Sonuç: `finalizeStreamingMessage` gönderilmez, `cleanup_streaming_state()` ve `ctx$reset_chat_state_fn()` HİÇ çalışmaz; yazma animasyonu ve durdurma kipi kalıcı olarak takılı kalırdı.
+    # KÖKEN DOĞRULAMASI TEK SINIRDAN GEÇER (`mergen_pk_validated_texts()`):
+    # ekrana giden `display`, TAKİBE giden alt-bilgisiz `tts` gövdesi ve
+    # `validated` bayrağı birlikte üretilir. `block` kararı akış BAŞINDA
+    # yakalanan `defer_visible_text` değeridir; kipi burada YENİDEN sormak açık
+    # başarısızdı, çünkü başarısız dekorasyon bekleyen kaydı ZATEN tüketmiş
+    # olabilir ve ikinci sorgu ham düzyazıyı teslim ederdi.
+    pk_akis <- tryCatch(
+      mergen_pk_stream_validated_text(
+        final_text, session, stream_env$req_id,
+        isTRUE(stream_env$defer_visible_text)
+      ),
+      error = function(e) {
+        try(log_warn(sprintf("[PK] Koken dogrulamasi hazirlanamadi: %s", conditionMessage(e)[1])), silent = TRUE)
+        # KAPALI BASARISIZ: `defer_visible_text` TRUE iken delta'lar BASTIRILDI, yani tamponlanan metin HIC dogrulanmadi ve yayimlanamaz.
+        if (!isTRUE(stream_env$defer_visible_text)) return(list(display = final_text, tts = final_text, validated = FALSE))
+        yedek <- if (exists("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)) as.character(get("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE))[1] else paste0("\U000026A0\U0000FE0F **Analiz Kayna\u011f\u0131 Do\u011frulanamad\u0131:** Yan\u0131t yay\u0131mlanmad\u0131.")
+        list(display = yedek, tts = yedek, validated = FALSE)
+      }  # dis `if (!is.list(pk_akis))` yedegi asagida
+    )
+    if (!is.list(pk_akis)) pk_akis <- list(display = final_text, tts = final_text, validated = FALSE)
+    final_text <- pk_akis$display
+    stream_env$pk_validated <- pk_akis$validated
+    stream_env$validated_final_text <- pk_akis$tts
 
     chart_info <- build_chartlab_message(final_text, stream_env$msg_id, session)
     if (isTRUE(chart_info$found)) {
@@ -532,7 +576,14 @@ handle_true_streaming_mode <- function(ctx) {
       }
 
       if (batches$delta_count > 0) {
-        if (!isTRUE(stream_env$ui_started)) {
+        # TAMPON AKTİFKEN BALONCUK AÇILMAZ.
+        #
+        # `ensure_stream_ui_started()` yazma animasyonunu KALDIRIR ve BOŞ bir
+        # mesaj baloncuğu ekler. `block` kipinde görünür metin sonlandırmaya
+        # kadar tamponlandığı için kullanıcı, uzun bir üretim boyunca ne
+        # animasyon ne de metin görüyordu: ilerleme göstergesi TAMAMEN
+        # kayboluyordu. Kabuk, ilk GÖRÜNÜR metinle birlikte açılır.
+        if (!isTRUE(stream_env$ui_started) && !isTRUE(stream_env$defer_visible_text)) {
           ensure_stream_ui_started()
         }
 
@@ -541,7 +592,12 @@ handle_true_streaming_mode <- function(ctx) {
           values$messages[[idx]]$content <- stream_env$accumulated_text
         }
 
-        if (isTRUE(use_delta_transport)) {
+        # `block` kipinde DOĞRULANMAMIŞ metin gönderilmez: ham delta'lar gidince
+        # kullanıcı desteklenmeyen sayıları GÖRMÜŞ olur ve geri alınamaz. Metin
+        # tamponlanır; `finalize_stream_message` doğrulanmış HTML'i tek seferde
+        # gönderir. Tampon aktifken istemciye "üretiliyor" durumu kalır.
+        if (isTRUE(stream_env$defer_visible_text)) {
+        } else if (isTRUE(use_delta_transport)) {
           session$sendCustomMessage("streamingDelta", list(
             id = stream_env$msg_id,
             delta = batches$delta_text,
@@ -637,16 +693,18 @@ handle_true_streaming_mode <- function(ctx) {
 
     # Takip (follow-up) önerileri: kritik yolun DIŞINDA, bloklamayan bir later()
     # döngüsünde üretilip push edilir (yük denetimi yardımcısına delege edilir).
-    mergen_stream_dispatch_followups(
-      session = session,
-      msg_id = stream_env$msg_id,
-      user_message_text = ctx$user_message_text,
-      final_text = base_final_text,
-      settings_data = settings_data,
-      api_config = ctx$api_config,
-      followup_tools = ctx$followup_tools,
-      fallback_followup_tool = ctx$fallback_followup_tool
-    )
+    if (isTRUE(stream_env$pk_validated)) {
+      mergen_stream_dispatch_followups(
+        session = session,
+        msg_id = stream_env$msg_id,
+        user_message_text = ctx$user_message_text,
+        final_text = stream_env$validated_final_text %||% base_final_text,
+        settings_data = settings_data,
+        api_config = ctx$api_config,
+        followup_tools = ctx$followup_tools,
+        fallback_followup_tool = ctx$fallback_followup_tool
+      )
+    }
 
     invisible(NULL)
   })

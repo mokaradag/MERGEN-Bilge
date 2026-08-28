@@ -5,7 +5,7 @@
 #           R/helpers_llm_true_streaming_worker.R'de yaşar; handler onu delege
 #           eder. Worker-export sözleşmesi (reasoning delta / stop-file / model
 #           request override yardımcıları) korunmalıdır. Uygulamayı başlatmaz;
-#           tüm global semboller stub'lanır → deterministik ve çevrimdışı.
+#           tüm global semboller stub'lanır -> deterministik ve çevrimdışı.
 # ==============================================================================
 
 .tsw_repo_root <- function() {
@@ -25,7 +25,11 @@
 .tsw_read_text <- function(rel_path) {
   full <- file.path(.tsw_repo_root(), rel_path)
   size <- suppressWarnings(file.info(full)$size[1])
-  if (is.na(size) || size <= 0) return("")
+  if (is.na(size) || size <= 0) {
+    # BOŞ DOSYA DA VACUOUS GEÇİRİR: bu dosyalardaki taramaların çoğu
+    # `expect_false(grepl(...))` biçimindedir ve boş dize hepsini karşılar.
+    stop(sprintf("Kaynak dosya BOŞ ya da okunamıyor: %s", full), call. = FALSE)
+  }
   con <- file(full, open = "rb")
   on.exit(close(con), add = TRUE)
   raw_data <- readBin(con, what = "raw", n = size)

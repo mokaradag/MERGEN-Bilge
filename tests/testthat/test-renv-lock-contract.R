@@ -25,7 +25,11 @@
 .renv_read <- function(rel) {
   p <- file.path(.renv_repo_root(), rel)
   size <- file.info(p)$size
-  if (is.na(size) || size <= 0) return("")
+  if (is.na(size) || size <= 0) {
+    # BOŞ DOSYA DA VACUOUS GEÇİRİR: bu dosyalardaki taramaların çoğu
+    # `expect_false(grepl(...))` biçimindedir ve boş dize hepsini karşılar.
+    stop(sprintf("Kaynak dosya BOŞ ya da okunamıyor: %s", p), call. = FALSE)
+  }
   raw_bytes <- readBin(p, what = "raw", n = size)
   iconv(rawToChar(raw_bytes), from = "UTF-8", to = "UTF-8", sub = "byte")
 }

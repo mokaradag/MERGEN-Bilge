@@ -1,0 +1,319 @@
+# ==============================================================================
+# Dosya Yolu: R/helpers_pk_query_selection_apply.R
+# Açıklama: Faz 5 (§5.2) — iki geçişli seçim hattının çalışma zamanına bağlanması.
+#
+# MOTOR SINIRI: v2 yolu yalnızca MERGEN_PK_ENGINE=v2 iken çalışır; iç hata v1'e
+# sessizce düşmez. Derin-analiz çoklu seçim ve recall tohumu odaklı helper'lara
+# ayrılmıştır; bu dosya seçim kararını uygulama/telemetri sınırında tutar.
+# ==============================================================================
+
+# V1 SEÇİCİSİ MANİFEST TARAFINDAN YÜKLENİR; BURADA DİNAMİK `source()` YOKTUR.
+#
+# Bu dosya eskiden `R/helpers_pk_analysis_ai_selector.R` dosyasını çalışma
+# zamanında, ÇALIŞMA DİZİNİNE göreli adaylarla (`R/...`, `../../R/...`) arayıp
+# `source(..., local = globalenv())` ile yüklüyordu. Üç sorun:
+#   1) Kaynak manifesti sözleşmesi ihlal ediliyor; dosya zaten manifestte ve bu
+#      dosyadan ÖNCE yükleniyor (bağımlılık sırası atlanabilirdi).
+#   2) İşçi önyüklemesi sembolleri YALITILMIŞ bir sahne ortamında hazırlayıp
+#      atomik olarak commit eder; `local = globalenv()` sahne DIŞINA yazdığı
+#      için başarısız bir commit sonrası işçi KARMA sürümü "temiz" raporlardı.
+#   3) Süreç CWD'si repo kökü değilse `file.path("R", ...)` ALAKASIZ bir dizine
+#      çözülebilirdi.
+# İzole testler zinciri `tests/testthat/helper_pk_selection.R` üzerinden yükler.
+
+#' Karardan v1 uyumlu all_scores tablosu kur
+pk_select_scores_table <- function(library, decision) {
+  tablo <- if (exists("pk_init_query_score_table", mode = "function", inherits = TRUE)) {
+    pk_init_query_score_table(library)
+  } else {
+    data.frame(
+      query_id = character(0), query_name = character(0),
+      ai_score = numeric(0), heuristic_score = numeric(0),
+      final_score = numeric(0), stringsAsFactors = FALSE
+    )
+  }
+
+  if (!nrow(tablo)) return(tablo)
+
+  puanla <- function(kimlik, ham, etkin = NULL) {
+    if (is.null(kimlik) || is.na(kimlik) || is.null(ham) || is.na(ham)) {
+      return(invisible(NULL))
+    }
+    satir <- which(tablo$query_id == kimlik)
+    if (!length(satir)) return(invisible(NULL))
+    tablo$ai_score[satir] <<- as.numeric(ham)
+    tablo$final_score[satir] <<- as.numeric(etkin %||% ham)
+    invisible(NULL)
+  }
+
+  for (cip in decision$chips %||% list()) {
+    if (is.list(cip) && !is.null(cip$confidence)) puanla(cip$id, cip$confidence)
+  }
+  for (kimlik in names(decision$alternate_scores %||% list())) {
+    puanla(kimlik, decision$alternate_scores[[kimlik]])
+  }
+  puanla(decision$query_id, decision$confidence, decision$effective_confidence)
+  tablo
+}
+
+#' Reddetme/netleştirme mesajını kullanıcıya gösterilecek Türkçe metne çevir
+pk_select_refusal_message <- function(decision) {
+  ana <- decision$message_tr
+  if (is.null(ana) || !length(ana) || is.na(ana[1]) || !nzchar(trimws(ana[1]))) {
+    ana <- paste0(
+      "Sorunuza hangi analizin cevap vereceği güvenle belirlenemedi; yanlış bir ",
+      "analiz çalıştırmamak için işlem durduruldu."
+    )
+  }
+
+  parcalar <- c(paste0("\U0001F914 **Analiz Seçimi Netleştirilmeli:** ", ana))
+  cipler <- decision$chips %||% list()
+  if (length(cipler)) {
+    parcalar <- c(parcalar, "", "**Olası analizler:**")
+    for (i in seq_along(cipler)) {
+      cip <- cipler[[i]]
+      ad <- as.character(cip$name %||% cip$id)[1]
+      parcalar <- c(parcalar, sprintf("%d. %s", i, ad))
+    }
+    parcalar <- c(
+      parcalar, "",
+      "Numarasını ya da adını yazmanız yeterli; seçiminizi doğrudan uygularım."
+    )
+  }
+
+  paste(parcalar, collapse = "\n")
+}
+
+#' Satır tabanlı günlüğe girecek metni temizle — REDAKSİYON DÂHİL
+#'
+#' Bu yardımcı yalnızca denetim karakterlerini siliyor ve kırpıyordu; yakalanan
+#' sürücü/DSN ayrıntısı ya da modelin ürettiği (kullanıcı metnini yankılayan)
+#' gerekçe doğrudan stdout'a yazılabiliyordu. `config_logging.R` uygulama
+#' günlüklerini `redact_sensitive_text()` üzerinden geçirir; bu doğrudan konsol
+#' yazımları o sınırı ATLIYORDU. Redaksiyon KAPALI BAŞARISIZDIR: redaktör
+#' yüklenmemişse ya da hata verirse metin yayımlanmaz.
+.pk_select_log_safe <- function(text, max_chars = 300L) {
+  if (is.null(text) || !length(text) || is.na(text[1])) return("")
+  metin <- as.character(text)[1]
+
+  # BAĞLANTI TANIMLAYICILARI DA MASKELENİR (kapalı başarısız).
+  #
+  # Seçim hataları sürücü/DSN metni taşıyabilir; genel `redact_sensitive_text()`
+  # `DSN=`, `UID=`, `Server=`, `Database=` DEĞERLERİNİ sözleşmesi gereği KORUR.
+  # Bu metin stdout'a, yani kalıcı sunucu log'una gider. Bağlantıya özgü
+  # redaktör yoksa metin YAYIMLANMAZ; genel redaktöre geri düşülmez.
+  if (exists("redact_connection_identifiers", mode = "function", inherits = TRUE)) {
+    temiz <- tryCatch(redact_connection_identifiers(metin), error = function(e) NULL)
+    if (!is.character(temiz) || length(temiz) != 1L || is.na(temiz)) {
+      return("(redaksiyon uygulanamadi)")
+    }
+    metin <- temiz
+  } else {
+    return("(redaktor yuklenmedi)")
+  }
+
+  metin <- gsub("[[:cntrl:]]+", " ", metin, perl = TRUE)
+  metin <- gsub("[[:space:]]+", " ", trimws(metin), perl = TRUE)
+  if (nchar(metin) > max_chars) metin <- paste0(substr(metin, 1L, max_chars - 1L), "…")
+  metin
+}
+
+#' Seçilen sorgunun tanılama satırlarını yaz
+pk_select_log_selection <- function(selected_query) {
+  if (!is.list(selected_query)) return(invisible(FALSE))
+
+  ilgililik <- selected_query$relevance_score %||% 0
+  yontem <- selected_query$selection_method %||% "unknown"
+  gerekce <- .pk_select_log_safe(selected_query$selection_reason %||% "")
+
+  cat(sprintf(
+    "[PK_ANALIZ] Secilen Sorgu: '%s' | İlgililik: %.1f%% | Yontem: %s\n",
+    .pk_select_log_safe(selected_query$name, 200L), ilgililik, yontem
+  ))
+  if (nchar(gerekce) > 0) cat(sprintf("[PK_ANALIZ] Secim Nedeni: %s\n", gerekce))
+  invisible(TRUE)
+}
+
+#' v2 iç hatası için tipli ret kararı
+.pk_select_internal_failure <- function(library, message) {
+  karar <- .pk_select_decision(
+    PK_SELECT_STATUS_INTERNAL_ERROR,
+    message_tr = paste0(
+      "Sorgu seçimi iç bir hata nedeniyle tamamlanamadı; yanlış bir analiz ",
+      "çalıştırmamak için işlem durduruldu. Operatöre bildirin."
+    ),
+    disclosures = .pk_select_log_safe(message)
+  )
+
+  list(
+    all_scores = pk_select_scores_table(library, karar),
+    refusal_message = pk_select_refusal_message(karar),
+    pk_selection = karar
+  )
+}
+
+#' v2 seçim giriş noktası — select_smart_query() bunu çağırır
+pk_select_query_v2 <- function(prompt, library, chat_history = NULL,
+                               session = NULL, llm_fn = NULL, cfg = NULL,
+                               stop_check = NULL) {
+  if (!is.list(library) || !length(library)) return(NULL)
+
+  # OTURUM ÖNCE ÇÖZÜLÜR: `.pk_select_decide_for_request()` `session = NULL`
+  # geldiğinde `shiny::getDefaultReactiveDomain()` yedeğine düşer. Anahtar bu
+  # çözümlemeden ÖNCE hesaplandığında oturum kapsamlı durum yerine HAM imza
+  # anahtarı üretiliyor ve devam bağlamı kayboluyordu.
+  etkin_oturum <- session %||% tryCatch(shiny::getDefaultReactiveDomain(),
+                                        error = function(e) NULL)
+  sohbet <- pk_select_chat_key(chat_history, session = etkin_oturum)
+  karar <- tryCatch(
+    .pk_select_decide_for_request(
+      prompt, library, chat_history, session, llm_fn, cfg, stop_check, sohbet
+    ),
+    error = function(e) {
+      cat(sprintf("[PK_SELECT] v2 secim hatti hata verdi: %s\n",
+                  .pk_select_log_safe(conditionMessage(e))))
+      structure(list(message = conditionMessage(e)), class = "pk_select_failure")
+    }
+  )
+
+  if (inherits(karar, "pk_select_failure")) {
+    return(.pk_select_internal_failure(library, karar$message))
+  }
+
+  tablo <- pk_select_scores_table(library, karar)
+  # TANILAMA: `yetenek=unknown_capability` tek başına operatöre HANGİ kimliğin
+  # reddedildiğini söylemiyordu; doğrulayıcı bunu zaten biliyor. Yetenek
+  # kimlikleri operatör tanımlı ANLAMSAL belirteçlerdir (iş verisi, satır
+  # değeri ya da kullanıcı metni DEĞİLDİR), bu yüzden güvenle yazılabilirler.
+  ek <- ""
+  bilinmeyen <- as.character(karar$capability_unknown %||% character(0))
+  if (length(bilinmeyen)) {
+    ek <- paste0(ek, sprintf(" | unknown=%s",
+                             .pk_select_log_safe(paste(bilinmeyen, collapse = ","), 200L)))
+  }
+  kanonik <- karar$capability_canonicalized %||% character(0)
+  if (length(kanonik) && !is.null(names(kanonik))) {
+    ek <- paste0(ek, sprintf(" | kanonik=%s", .pk_select_log_safe(
+      paste(sprintf("%s>%s", names(kanonik), unname(kanonik)), collapse = ","), 200L
+    )))
+  }
+
+  cat(sprintf(
+    "[PK_SELECT] v2 karar=%s | sorgu=%s | guven=%s | etkin=%s | marj=%s | yetenek=%s%s\n",
+    karar$status,
+    karar$query_id %||% "-",
+    karar$confidence %||% "-",
+    karar$effective_confidence %||% "-",
+    karar$margin %||% "-",
+    karar$capability_status %||% "-",
+    ek
+  ))
+
+  if (!identical(karar$status, PK_SELECT_STATUS_AUTO)) {
+    # İPTAL OTURUM DURUMUNU BOZMAZ.
+    #
+    # `cancelled`, kullanıcının Durdur'a basmasıdır: seçim hakkında hiçbir şey
+    # ÖĞRENİLMEMİŞTİR. Önceki başarılı sorgu tohumunu silmek ve bayat teklifi
+    # yeniden yazmak, sonraki eliptik takip sorusunun bağlamını kaybettirirdi.
+    if (!identical(karar$status, PK_SELECT_STATUS_CANCELLED)) {
+      # `etkin_oturum` KULLANILIR, `session` DEĞİL (PR #705, P2): `session = NULL`
+      # iken `etkin_oturum` reaktif alana düşer ve `sohbet` ZATEN oradan gelir;
+      # `session` verilince iki yardımcı da yazmadan dönüyor, teklif saklanmıyor
+      # ve önceki sorgu kimliği temizlenmiyordu.
+      pk_select_forget_query_id(etkin_oturum, sohbet)
+      pk_select_remember_offer(etkin_oturum, karar$chips, sohbet,
+                               requirements = karar$requirements)
+    }
+    return(list(
+      all_scores = tablo,
+      # İPTAL BİR NETLEŞTİRME İSTEĞİ DEĞİLDİR.
+      #
+      # `pk_select_refusal_message()` her mesajın başına "Analiz Seçimi
+      # Netleştirilmeli" başlığını koyar. Kullanıcı Durdur'a bastığında ekranda
+      # seçimini netleştirmesi gerektiğini okuyordu; oysa istek onun isteğiyle
+      # durdurulmuştu ve netleştirilecek bir şey yoktu.
+      refusal_message = if (identical(karar$status, PK_SELECT_STATUS_CANCELLED)) {
+        as.character(karar$message_tr)[1]
+      } else {
+        pk_select_refusal_message(karar)
+      },
+      pk_selection = karar,
+      pk_chips = karar$chips %||% list()
+    ))
+  }
+
+  indeks <- pk_select_library_index(library)
+  secilen <- indeks[[karar$query_id]]
+  if (is.null(secilen)) {
+    return(.pk_select_internal_failure(
+      library, sprintf("Secilen kimlik kutuphanede cozulemedi: %s", karar$query_id)
+    ))
+  }
+
+  secilen$relevance_score <- as.numeric(karar$effective_confidence %||% karar$confidence)
+  secilen$selection_method <- as.character(karar$selection_method %||% "ai_two_pass")[1]
+  secilen$selection_reason <- {
+    gerekce <- karar$reason
+    if (is.null(gerekce) || is.na(gerekce)) {
+      sprintf("İki geçişli seçim (marj: %s)", karar$margin %||% "-")
+    } else {
+      gerekce
+    }
+  }
+  secilen$all_scores <- tablo
+  secilen$pk_selection <- karar
+  secilen$pk_pending_chat_key <- sohbet
+  secilen
+}
+
+#' Karar üretimi (hata sarmalayıcının içinde çalışır)
+.pk_select_decide_for_request <- function(prompt, library, chat_history, session,
+                                          llm_fn, cfg, stop_check, chat_key) {
+  if (is.null(session)) {
+    session <- tryCatch(shiny::getDefaultReactiveDomain(), error = function(e) NULL)
+  }
+
+  indeks <- pk_select_library_index(library)
+  onay <- pk_select_confirmed_decision(session, prompt, indeks, chat_key)
+  if (!is.null(onay)) {
+    onay$candidate_ids <- onay$query_id
+    onay$pass_a_status <- NA_character_
+    onay$pass_b_status <- NA_character_
+    return(onay)
+  }
+
+  pk_select_run(
+    user_prompt = prompt,
+    library = library,
+    chat_history = chat_history,
+    prior_query_id = pk_select_prior_query_id(session, chat_key),
+    session = session,
+    llm_fn = llm_fn,
+    cfg = cfg,
+    stop_check = stop_check
+  )
+}
+
+#' Seçimi kalıcılaştır — çağıran iptal kapısını geçtikten sonra çağrılır
+pk_select_commit_selection <- function(selected_query, session) {
+  if (!is.list(selected_query) || is.null(selected_query$id)) return(invisible(FALSE))
+
+  sohbet <- selected_query$pk_pending_chat_key
+  if (is.null(sohbet) || !length(sohbet) || is.na(sohbet[1])) return(invisible(FALSE))
+
+  pk_select_forget_offer(session, sohbet)
+  pk_select_remember_query_id(session, selected_query$id, sohbet)
+}
+
+#' Seçim kararından yanıta/telemetriye taşınacak bozulma açıklamaları
+pk_select_disclosures <- function(selected_query) {
+  if (!is.list(selected_query)) return(character(0))
+  karar <- selected_query$pk_selection
+  if (!is.list(karar)) return(character(0))
+
+  aciklamalar <- as.character(karar$disclosures %||% character(0))
+  aciklamalar[!is.na(aciklamalar) & nzchar(trimws(aciklamalar))]
+}
+
+# Recall tohumu ve Derin Düşünme köprüsü manifestte bu dosyadan ÖNCE yüklenir;
+# runtime bağlama katmanı çalışma dizinine göre ek kaynak yüklemez.

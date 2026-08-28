@@ -9,10 +9,19 @@
 testthat::local_edition(3)
 
 .rls_env <- new.env(parent = globalenv())
-source(
-  file.path(resolve_repo_root_for_tests(), "R", "helpers_pk_analysis_security_summary.R"),
-  encoding = "UTF-8", local = .rls_env
-)
+# `%||%` ORTAMDA TANIMLANIR: kaynaklanan PK yardımcıları operatörü ÇAĞIRIR ve
+# ebeveyn `globalenv()` olduğu için, başka bir test dosyası onu global ortama
+# SIZDIRMADIKÇA çağrı "could not find function" ile düşerdi. Üretim semantiği
+# (`R/utils_common.R`) korunur: yalnızca `NULL` yedeğe düşer.
+.rls_env$`%||%` <- function(a, b) if (is.null(a)) b else a
+# Kaynak sırası ÇALIŞMA ZAMANI manifestini yansıtır: kimlik/izin yardımcıları
+# `helpers_pk_rls_identity.R` içindedir, redaktör ise temel katmandadır
+# (tanı metinleri KAPALI BAŞARISIZ biçimde redakte edilir).
+for (.f in c("utils_log_redact.R", "helpers_pk_rls_identity.R",
+             "helpers_pk_analysis_security_summary.R")) {
+  source(file.path(resolve_repo_root_for_tests(), "R", .f),
+         encoding = "UTF-8", local = .rls_env)
+}
 # PY/EPS sorgu metinleri üretimde global tanımlıdır; mock'un ayırt edebilmesi için
 # test ortamında ayırt edici sabitler atanır.
 .rls_env$sql_permission_py <- "PY_PERMISSION_SQL"
@@ -77,7 +86,10 @@ test_that("get_user_rls_info PY yetkisinde izinli projeleri çözer", {
         return(data.frame(KullaniciAdi = "ali", Yetki = "PY", MasrafYeriKodu = "10",
                           stringsAsFactors = FALSE))
       }
-      if (identical(statement, "PY_PERMISSION_SQL")) {
+      # İzin okuması artık SQL TARAFINDA kullanıcıya daraltılır: operatör
+      # sorgusu türetilmiş tablo olarak sarılır ve `KullaniciAdi = ?` yüklemi
+      # eklenir. Sahte sürücü bu sözleşmeyi doğrular.
+      if (grepl("PY_PERMISSION_SQL", statement, fixed = TRUE)) {
         return(data.frame(KullaniciAdi = c("ali", "ali"), ProjeKodu = c("P1", "P2"),
                           stringsAsFactors = FALSE))
       }
@@ -89,6 +101,139 @@ test_that("get_user_rls_info PY yetkisinde izinli projeleri çözer", {
   expect_setequal(r$allowed_projects, c("P1", "P2"))
 })
 
+test_that("izin okumasi SQL tarafinda kullaniciya daraltilir", {
+  gorulen <- new.env(parent = emptyenv())
+  gorulen$ifade <- NA_character_
+  gorulen$params <- NULL
+
+  testthat::local_mocked_bindings(
+    dbGetQuery = function(conn, statement, ...) {
+      if (grepl("DC01_user_base", statement, fixed = TRUE)) {
+        return(data.frame(KullaniciAdi = "ali", Yetki = "PY", MasrafYeriKodu = "10",
+                          stringsAsFactors = FALSE))
+      }
+      if (grepl("PY_PERMISSION_SQL", statement, fixed = TRUE)) {
+        gorulen$ifade <- statement
+        gorulen$params <- list(...)$params
+        return(data.frame(KullaniciAdi = "ali", ProjeKodu = "P1", stringsAsFactors = FALSE))
+      }
+      data.frame()
+    },
+    .package = "DBI"
+  )
+
+  r <- .rls_call()
+  expect_setequal(r$allowed_projects, "P1")
+  # BOŞLUĞA TOLERANSLI: güvenlik sözleşmesi "yüklem PARAMETRELİDİR"; sarmalayıcı
+  # biçimlendirmesi (`KullaniciAdi=?`, satır sonu) değişince test kırılmamalı.
+  expect_true(grepl("KullaniciAdi\\s*=\\s*\\?", gorulen$ifade, perl = TRUE))
+  expect_equal(gorulen$params, list("ali"))
+})
+
+test_that("DB tarafi daraltma calismazsa R tarafinda filtrelenir", {
+  testthat::local_mocked_bindings(
+    dbGetQuery = function(conn, statement, ...) {
+      if (grepl("DC01_user_base", statement, fixed = TRUE)) {
+        return(data.frame(KullaniciAdi = "ali", Yetki = "PY", MasrafYeriKodu = "10",
+                          stringsAsFactors = FALSE))
+      }
+      # Sarmalanmış biçim reddedilir (ör. sondaki ORDER BY): eski davranışa
+      # dönülür ve KULLANICI FİLTRESİ R tarafında uygulanır.
+      #
+      # SENTETİK SQL SABİTİ `PY_PERMISSION_SQL`tir; `mb_izin` GEÇMEZ. Eski
+      # koşul hiçbir zaman eşleşmiyor, mock boş çerçeve döndürüyor ve düz
+      # sorgu yedeği HİÇ sınanmıyordu. Doğru kural: sarmalanmış (tam eşit
+      # OLMAYAN) her varyantı reddet.
+      if (grepl("PY_PERMISSION_SQL", statement, fixed = TRUE) &&
+          !identical(statement, "PY_PERMISSION_SQL")) {
+        stop("Incorrect syntax near ORDER.")
+      }
+      if (identical(statement, "PY_PERMISSION_SQL")) {
+        return(data.frame(KullaniciAdi = c("ali", "veli"), ProjeKodu = c("P1", "P9"),
+                          stringsAsFactors = FALSE))
+      }
+      data.frame()
+    },
+    .package = "DBI"
+  )
+  r <- .rls_call()
+  expect_setequal(r$allowed_projects, "P1")
+})
+
+test_that("izin tablosundaki farkli buyuk/kucuk harf yazimi kapsami dusurmez", {
+  testthat::local_mocked_bindings(
+    dbGetQuery = function(conn, statement, ...) {
+      if (grepl("DC01_user_base", statement, fixed = TRUE)) {
+        return(data.frame(KullaniciAdi = "Ali", Yetki = "PY", MasrafYeriKodu = "10",
+                          stringsAsFactors = FALSE))
+      }
+      if (grepl("PY_PERMISSION_SQL", statement, fixed = TRUE)) {
+        # SQL Server collation'ı büyük/küçük harf duyarsızdır; R'nin `==`
+        # karşılaştırması DEĞİLDİR. Yazım farkı kapsamı boşaltmamalıdır.
+        return(data.frame(KullaniciAdi = "ALI", ProjeKodu = "P1", stringsAsFactors = FALSE))
+      }
+      data.frame()
+    },
+    .package = "DBI"
+  )
+  r <- .rls_call(username = "Ali")
+  expect_setequal(r$allowed_projects, "P1")
+  expect_equal(r$scope_state_projects, "available")
+})
+
+test_that("mukerrer DC01 yetki kaydi KAPALI BASARISIZ olur", {
+  testthat::local_mocked_bindings(
+    dbGetQuery = function(conn, statement, ...) {
+      if (grepl("DC01_user_base", statement, fixed = TRUE)) {
+        return(data.frame(KullaniciAdi = c("ali", "ali"),
+                          Yetki = c("USER", "ADMIN"),
+                          MasrafYeriKodu = c("10", "ADMIN"),
+                          stringsAsFactors = FALSE))
+      }
+      data.frame()
+    },
+    .package = "DBI"
+  )
+  r <- .rls_call()
+  expect_false(isTRUE(r$authorized))
+  expect_true(isTRUE(r$ambiguous))
+})
+
+test_that("MasrafYeriKodu NA iken departman kapsami COZULEMEDI sayilir", {
+  testthat::local_mocked_bindings(
+    dbGetQuery = function(conn, statement, ...) {
+      if (grepl("DC01_user_base", statement, fixed = TRUE)) {
+        return(data.frame(KullaniciAdi = "ali", Yetki = "USER",
+                          MasrafYeriKodu = NA_character_, stringsAsFactors = FALSE))
+      }
+      data.frame()
+    },
+    .package = "DBI"
+  )
+  r <- .rls_call()
+  expect_true(isTRUE(r$authorized))
+  expect_null(r$allowed_depts)
+  # ADMIN işareti DEĞİL: kapsam çözülemedi. `pk_rls_plan()` bunu durdurma
+  # nedeni sayar; `not_applicable` deseydi kullanıcı TÜM satırları görürdü.
+  expect_equal(r$scope_state_depts, "unavailable")
+})
+
+test_that("MasrafYeriKodu ADMIN ise departman kisiti BILEREK yoktur", {
+  testthat::local_mocked_bindings(
+    dbGetQuery = function(conn, statement, ...) {
+      if (grepl("DC01_user_base", statement, fixed = TRUE)) {
+        return(data.frame(KullaniciAdi = "ali", Yetki = "USER",
+                          MasrafYeriKodu = "ADMIN", stringsAsFactors = FALSE))
+      }
+      data.frame()
+    },
+    .package = "DBI"
+  )
+  r <- .rls_call()
+  expect_null(r$allowed_depts)
+  expect_equal(r$scope_state_depts, "not_applicable")
+})
+
 test_that("get_user_rls_info KY-P yetkisinde EPS kodlarını çözer", {
   testthat::local_mocked_bindings(
     dbGetQuery = function(conn, statement, ...) {
@@ -96,7 +241,7 @@ test_that("get_user_rls_info KY-P yetkisinde EPS kodlarını çözer", {
         return(data.frame(KullaniciAdi = "ali", Yetki = "KY-P", MasrafYeriKodu = "10",
                           stringsAsFactors = FALSE))
       }
-      if (identical(statement, "EPS_PERMISSION_SQL")) {
+      if (grepl("EPS_PERMISSION_SQL", statement, fixed = TRUE)) {
         return(data.frame(KullaniciAdi = "ali", EPSKodu = "E1,E2", stringsAsFactors = FALSE))
       }
       data.frame()

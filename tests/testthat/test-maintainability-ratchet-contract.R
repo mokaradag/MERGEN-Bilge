@@ -1,13 +1,20 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-maintainability-ratchet-contract.R
 # Açıklama: Büyük dosyaların daha da büyümesini engelleyen bakım borcu ratchet
-#           sözleşmesini doğrular. library_queries.R bilinçli olarak hariçtir.
+#           sözleşmesini doğrular. Üretilen büyük veri/metadata dosyaları hariçtir.
 # ==============================================================================
 
 .read_repo_text_maintainability <- function(path) {
+  # BOŞ/OKUNAMAYAN DOSYA VACUOUS GEÇİRİR: `""` döndüğünde rapor sıfır satır ve
+  # sıfır fonksiyon ölçer, ratchet'in TÜM `<=` iddiaları geçer. Kısmi bir
+  # checkout ya da bozuk birleştirme sonucu KULLANILAMAZ bir çalışma zamanı
+  # dosyası bu yolla "bakım borcu yok" diye raporlanırdı.
+  if (!file.exists(path)) {
+    stop(sprintf("Kaynak dosya bulunamadı: %s", path), call. = FALSE)
+  }
   size <- suppressWarnings(file.info(path)$size[1])
   if (is.na(size) || size <= 0) {
-    return("")
+    stop(sprintf("Kaynak dosya BOŞ ya da okunamıyor: %s", path), call. = FALSE)
   }
 
   con <- file(path, open = "rb")
@@ -131,8 +138,16 @@
   report$path <- sub("^/+", "", report$path)
   report$path <- enc2utf8(report$path)
 
-  # library_queries.R bilgi tabanı olduğu için ratchet kapsamına alınmaz.
-  keep <- !grepl("(^|/)library_queries\\.R$", report$path, perl = TRUE)
+  # library_queries.R bilgi tabanı; library_query_meta*.R dosyaları ise sorgu
+  # kütüphanesinin metadata katmanıdır (curated meta, tracked auto iskelet ve
+  # yerelde üretilen gitignore'lu local artefakt). Üretim VM'indeki gerçek
+  # kütüphane on binlerce satıra ulaşabildiği için hiçbiri ratchet kapsamına
+  # alınmaz.
+  keep <- !grepl(
+    "(^|/)(library_queries|library_query_meta(_auto|_local)?)\\.R$",
+    report$path,
+    perl = TRUE
+  )
   report <- report[keep, , drop = FALSE]
 
   report[order(report$lines, decreasing = TRUE), , drop = FALSE]
@@ -141,6 +156,23 @@
 # NOT: module_startup_screen.R ve helpers_ai_expert.R taban değerleri, önceki
 # birleştirilen PR'lardaki meşru büyüme (skip-intro nöral renk; AI Expert
 # staleness + TTS parçalama) sonrası ölçülen gerçek değerlere güncellendi.
+#
+# PR #705 P1 incelemesi — BİLİNÇLİ taban güncellemesi:
+#   * R/helpers_chat_runtime.R 523 -> 532. `block` kipinde köken doğrulaması
+#     artık AKIŞTAN VE TTS'TEN ÖNCE çalışır; aksi hâlde TTS motoru HAM
+#     `full_response` ile çağrılıyor ve kullanıcı hiç GÖSTERİLMEYEN sayıları
+#     DUYUYORDU (söylenmiş ses geri alınamaz). Karar/metin üretimi
+#     `mergen_pk_block_mode_texts()` içine ÇIKARILDI; bu dosyada kalan yalnızca
+#     sonucun uygulanmasıdır. Fonksiyon sayısı 14 -> 15 (yalnızca bu delege).
+#
+# PR #705 inceleme takibi — BİLİNÇLİ taban güncellemesi:
+#   * R/helpers_chat_runtime.R 532/14 -> 579/17 (ÖLÇÜLEN). İki neden:
+#     (a) `mergen_pk_block_mode_texts()` çağrısı `tryCatch` ile sarıldı — metin
+#     üretimi hata verdiğinde TÜM yanıt teslimi düşüyor ve kullanıcı hazır
+#     cevabı hiç göremiyordu; (b) dönen alanlar `.cr_metin()` ile SKALER'e
+#     indirgenir, çünkü çok elemanlı bir alan `if (nzchar(x))` içinde koşul
+#     uzunluğu hatası fırlatıyordu. Küresel eşikler (100/100, 800+ = 0,
+#     25+ fonksiyon = 0, en büyük dosya 796, en yüksek fonksiyon 24) KORUNDU.
 .maintainability_baseline <- data.frame(
   path = c(
     "R/helpers_mcp_tools.R",
@@ -199,14 +231,14 @@
     686L,
     662L,
     662L,
-    662L,
+    707L,  # BİLİNÇLİ GÜNCELLEME: R/server_handler_true_streaming.R -- `defer_visible_text` TRUE iken boş yanıt balonu AÇILMAZ + `pk_provenance_decorate()` çağrısı tryCatch ile sarıldı (ÖLÇÜLEN 707)
     627L,
     662L,
     577L,
     572L,
     539L,
     532L,
-    523L,
+    579L,
     385L,
     341L
   ),
@@ -240,7 +272,7 @@
     3L,
     0L,
     20L,
-    14L,
+    17L,
     27L,
     32L
   ),

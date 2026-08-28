@@ -28,7 +28,11 @@
   }
 
   size <- suppressWarnings(file.info(path)$size[1])
-  if (is.na(size) || size <= 0) return("")
+  if (is.na(size) || size <= 0) {
+    # BOŞ DOSYA DA VACUOUS GEÇİRİR: bu dosyalardaki taramaların çoğu
+    # `expect_false(grepl(...))` biçimindedir ve boş dize hepsini karşılar.
+    stop(sprintf("Kaynak dosya BOŞ ya da okunamıyor: %s", path), call. = FALSE)
+  }
 
   con <- file(path, open = "rb")
   on.exit(close(con), add = TRUE)
@@ -164,9 +168,10 @@ testthat::test_that("MusicManager keeps single-audio and stale-playlist ordering
     "MusicManager single-audio/stale-playlist sözleşmesi eksik:"
   )
 
-	# Do not use useBytes=TRUE here:
-	# regexpr(byte offset) + substr(character offset) breaks when the JS file
-	# contains Turkish multibyte characters before _playTrack.
+	# Burada `useBytes = TRUE` KULLANILMAZ: `regexpr()` bayt konumu,
+	# `substr()` ise karakter konumu döndürür. `_playTrack` öncesinde Türkçe
+	# çok baytlı karakter bulunan bir JS dosyasında bu ikisi kayar ve yanlış
+	# parça kesilir.
 	play_track_pos <- regexpr(
 	  "_playTrack: function(src)",
 	  music_js,

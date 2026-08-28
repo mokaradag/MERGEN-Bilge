@@ -141,7 +141,31 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
   trigger_tts_for_message <- function(msg_id, content) {
     if (!isTRUE(settings_data$enable_tts_audio)) return(invisible(NULL))
 
-    full_text <- as.character(content)[1]
+    # EKSİK İÇERİK SKALERE NORMALLEŞTİRİLİR.
+    #
+    # `content` NULL/boş geldiğinde `as.character(content)[1]` `NA_character_`
+    # ya da `character(0)` üretir; aşağıdaki `nzchar()`/`regexpr()` zinciri o
+    # zaman `NA` ya da `logical(0)` ile skaler `if` içinde HATA fırlatır ve
+    # seslendirme yolu yanıtı düşürürdü.
+    full_text <- as.character(content %||% "")[1]
+    if (length(full_text) != 1L || is.na(full_text)) full_text <- ""
+
+    # Analiz kökeni ve bozulma bildirimi ekranda görünür meta veridir; TTS
+    # tarafından okunmamalıdır. R bu eki aşağıdaki kesin markdown sınırından
+    # itibaren eklediği için yalnızca bu son ek güvenli biçimde çıkarılır.
+    # SON EŞLEŞME KULLANILIR, İLK DEĞİL.
+    #
+    # `regexpr()` İLK eşleşmeyi döndürür. Yanıt gövdesi bu işareti kendisi
+    # taşıyabilir (model önceki bir yanıtı alıntılar ya da kullanıcı yapıştırır);
+    # o durumda seslendirme, işaretten SONRAKİ gerçek cevabı da kesiyordu. Ek
+    # her zaman metnin SONUNA yazıldığı için doğru sınır SON eşleşmedir.
+    provenance_marker <- "\n\n---\n**Analiz Kaynağı"
+    eslesmeler <- gregexpr(provenance_marker, full_text, fixed = TRUE)[[1]]
+    eslesmeler <- eslesmeler[!is.na(eslesmeler) & eslesmeler > 0L]
+    if (length(eslesmeler)) {
+      full_text <- substr(full_text, 1L, max(eslesmeler) - 1L)
+    }
+
     if (!nzchar(full_text)) return(invisible(NULL))
 
     # Persona kimliği fail-closed çözülür: kilitli referans modunda yanıt

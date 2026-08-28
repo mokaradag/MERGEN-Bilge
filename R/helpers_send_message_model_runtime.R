@@ -11,6 +11,28 @@ mergen_build_send_message_request_callbacks <- function(session,
                                                         req_id) {
   request_id <- req_id
 
+  # Proje ve Kaynak Analizi köken alt bilgisi istek kapsamlıdır. Bu kurucu her
+  # istek başında tam bir kez çalıştığı için bekleyen alt bilgi burada
+  # temizlenir ve aktif istek kimliği yazılır; böylece bayat bir alt bilgi bir
+  # sonraki yanıta iliştirilemez.
+  #
+  # DÖNÜŞ DEĞERİ YUTULMAZ (PR #705 incelemesi, P2): `pk_provenance_clear()`
+  # oturum deposuna yazamazsa `FALSE` döner. Sonuç yok sayılırsa BAYAT bir
+  # köken alt bilgisi bir sonraki yanıta iliştirilebilir ve bunun hiçbir izi
+  # kalmazdı. Oturum YOKKEN (izole test/worker) `FALSE` beklenen ve sessiz
+  # durumdur; uyarı yalnızca gerçek bir oturum varken üretilir. `tryCatch`:
+  # yardımcı yüklü değilse (izole test) sessizce atlanır.
+  koken_temizlendi <- tryCatch(
+    isTRUE(pk_provenance_clear(session, request_id = request_id)),
+    error = function(e) NA
+  )
+  if (!is.null(session) && !isTRUE(koken_temizlendi)) {
+    try(cat(sprintf(
+      "[PK_PROV] UYARI: koken alt bilgisi sifirlanamadi | istek=%s\n",
+      as.character(request_id %||% "-")[1]
+    )), silent = TRUE)
+  }
+
   list(
     cleanup = function(remove_typing_wrapper = TRUE) {
       mergen_send_message_release_values_token(values = values, req_id = request_id)

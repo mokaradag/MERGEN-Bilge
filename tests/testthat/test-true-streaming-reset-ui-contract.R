@@ -29,7 +29,11 @@
   }
 
   size <- suppressWarnings(file.info(path)$size[1])
-  if (is.na(size) || size <= 0) return("")
+  if (is.na(size) || size <= 0) {
+    # BOŞ DOSYA DA VACUOUS GEÇİRİR: bu dosyalardaki taramaların çoğu
+    # `expect_false(grepl(...))` biçimindedir ve boş dize hepsini karşılar.
+    stop(sprintf("Kaynak dosya BOŞ ya da okunamıyor: %s", path), call. = FALSE)
+  }
 
   con <- file(path, open = "rb")
   on.exit(close(con), add = TRUE)

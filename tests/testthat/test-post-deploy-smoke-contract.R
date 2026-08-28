@@ -38,7 +38,11 @@ source(
     stop(sprintf("Dosya bulunamadı: %s", rel_path), call. = FALSE)
   }
   size <- suppressWarnings(file.info(abs_path)$size[1])
-  if (is.na(size) || size <= 0) return("")
+  if (is.na(size) || size <= 0) {
+    # BOŞ DOSYA DA VACUOUS GEÇİRİR: bu dosyalardaki taramaların çoğu
+    # `expect_false(grepl(...))` biçimindedir ve boş dize hepsini karşılar.
+    stop(sprintf("Kaynak dosya BOŞ ya da okunamıyor: %s", abs_path), call. = FALSE)
+  }
   con <- file(abs_path, open = "rb")
   on.exit(close(con), add = TRUE)
   raw_data <- readBin(con, what = "raw", n = size)
@@ -101,7 +105,7 @@ test_that("data frame kontrol seti satir bazinda degerlendirilir (sutun degil)",
   expect_identical(as.integer(res$counts[["ok"]]), 2L)
   expect_identical(as.integer(res$counts[["critical"]]), 1L)
 
-  # Tümü ok olan data frame → pass, bloklamaz.
+  # Tümü ok olan data frame -> pass, bloklamaz.
   df_ok <- do.call(rbind, list(
     data.frame(id = "app.boot",   status = "ok", stringsAsFactors = FALSE),
     data.frame(id = "db.primary", status = "ok", stringsAsFactors = FALSE)
@@ -110,7 +114,7 @@ test_that("data frame kontrol seti satir bazinda degerlendirilir (sutun degil)",
   expect_identical(res_ok$overall, "pass")
   expect_false(res_ok$should_fail)
 
-  # 0 satırlı data frame → no_checks ile bloklar (sütun sayısı > 0 olsa bile).
+  # 0 satırlı data frame -> no_checks ile bloklar (sütun sayısı > 0 olsa bile).
   df_empty <- data.frame(id = character(0), status = character(0), stringsAsFactors = FALSE)
   res_empty <- mergen_post_deploy_smoke_evaluate(df_empty)
   expect_true(res_empty$should_fail)
@@ -296,7 +300,7 @@ test_that("redact-record yalnizca string degerleri redakte eder; anahtar/sayacla
   j <- as.character(jsonlite::toJSON(redacted2, auto_unbox = TRUE, pretty = TRUE, null = "null"))
   expect_true(isTRUE(jsonlite::validate(j)))
 
-  # 4) NULL/geçersiz redaktör → kayıt değişmeden döner.
+  # 4) NULL/geçersiz redaktör -> kayıt değişmeden döner.
   expect_identical(mergen_post_deploy_smoke_redact_record(rec, NULL), rec)
   expect_identical(mergen_post_deploy_smoke_redact_record(rec, "x"), rec)
 })
@@ -360,7 +364,7 @@ test_that("git hata ciktisi/sifir-disi cikis dal/sha yerine bos string verir", {
     mergen_post_deploy_smoke_clean_git_value(fatal_out, status = 128L),
     ""
   )
-  # Status verilmese bile "fatal:" öneki dal/sha olamaz → boş.
+  # Status verilmese bile "fatal:" öneki dal/sha olamaz -> boş.
   expect_identical(mergen_post_deploy_smoke_clean_git_value(fatal_out, status = NULL), "")
   # Diğer git hata önekleri de korunur.
   expect_identical(mergen_post_deploy_smoke_clean_git_value("error: bir sey", NULL), "")
@@ -368,7 +372,7 @@ test_that("git hata ciktisi/sifir-disi cikis dal/sha yerine bos string verir", {
 })
 
 test_that("basarili git ciktisi gercek dal/sha degerini korur", {
-  # Başarı: status sıfır (veya NULL/attr yok) → gerçek değer aynen döner.
+  # Başarı: status sıfır (veya NULL/attr yok) -> gerçek değer aynen döner.
   expect_identical(
     mergen_post_deploy_smoke_clean_git_value("claude/admiring-ride-qajux6", status = 0L),
     "claude/admiring-ride-qajux6"

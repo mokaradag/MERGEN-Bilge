@@ -158,6 +158,10 @@ test_that("global.R future cluster test modunda başlatılmaz sözleşmesini kor
 # ------------------------------------------------------------------------------
 
 test_that("opsiyonel manifest yolları eksik olsa da doğrulama ve yükleme sürer", {
+  # `withr` bu pakette OPSİYONELDİR (bkz. test-pk-export-stabilization-behavior.R).
+  # Koruma olmadan eksik bir opsiyonel paket, manifest kodu DOĞRU olduğu hâlde
+  # `stop_on_failure = TRUE` yüzünden TÜM suite'i düşürürdü.
+  skip_if_not_installed("withr")
   repo_root <- resolve_repo_root_for_tests()
 
   env <- new.env(parent = globalenv())
@@ -200,8 +204,14 @@ test_that("opsiyonel manifest yolları eksik olsa da doğrulama ve yükleme sür
 test_that("Codex sertleştirme dosyaları opsiyonel işaretlidir", {
   repo_root <- resolve_repo_root_for_tests()
 
+  # Opsiyonel/yokluğu beklenen katman tanımları bootstrap dosyasındadır
+  # (Faz 4, E5): manifest saf VERİ dosyasıydı ve bakım borcu tavanına tek
+  # satır kala gelmişti. Okuma yolu değişmedi; yalnızca tanım yeri değişti.
   env <- new.env(parent = globalenv())
-  source(file.path(repo_root, "R", "config_source_manifest.R"), encoding = "UTF-8", local = env)
+  for (manifest_dosyasi in c("bootstrap_source_manifest.R",
+                             "config_source_manifest.R")) {
+    source(file.path(repo_root, "R", manifest_dosyasi), encoding = "UTF-8", local = env)
+  }
 
   opsiyonel <- env$source_manifest_optional_source_paths
 

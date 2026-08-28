@@ -57,9 +57,70 @@ source_manifest_paths_for_tests <- function() {
   enc2utf8(paths)
 }
 
+# Bölümlenmiş manifesti (source_manifest_sections) ad -> yol vektörü olarak
+# döndürür. Bölüm İÇİ sırayı doğrulayan testler bunu kullanmalıdır; manifesti
+# elle yeniden source etmek gereksiz tekrar üretir.
+source_manifest_sections_for_tests <- function() {
+  repo_root <- source_manifest_contract_repo_root()
+  manifest_env <- new.env(parent = globalenv())
+
+  source(
+    file.path(repo_root, "R", "config_source_manifest.R"),
+    encoding = "UTF-8",
+    local = manifest_env
+  )
+
+  if (!exists("source_manifest_sections", envir = manifest_env, inherits = FALSE)) {
+    stop("Test manifesti source_manifest_sections nesnesini bulamadı.", call. = FALSE)
+  }
+
+  sections <- get("source_manifest_sections", envir = manifest_env, inherits = FALSE)
+
+  # ŞEKİL DOĞRULANIR: adsız ya da boş bir bölüm listesi, bölüm bazlı
+  # sözleşmeleri SESSİZCE vacuous geçirir (her `for` döngüsü boş küme üzerinde
+  # koşar ve hiçbir iddia çalışmaz).
+  if (!is.list(sections) || length(sections) == 0L ||
+      is.null(names(sections)) || !all(nzchar(names(sections)))) {
+    stop("Test manifesti bölüm listesi boş veya adsız.", call. = FALSE)
+  }
+
+  # HER BÖLÜM AYRI AYRI DOĞRULANIR.
+  #
+  # Üstteki denetim yalnızca LİSTENİN kendisine bakıyordu: tek bir bölüm
+  # `character(0)` olduğunda ya da karakter olmayan bir değere düştüğünde
+  # bölüm bazlı sözleşmeler o bölüm için SIFIR iddia çalıştırıp GEÇİYORDU.
+  # Çalışma zamanı manifestinden bir bölümün tüm yolları silinse bile
+  # kaynak-sıra paketi yeşil kalırdı.
+  for (bolum_adi in names(sections)) {
+    yollar <- sections[[bolum_adi]]
+    if (!is.character(yollar) || length(yollar) == 0L ||
+        any(is.na(yollar)) || !all(nzchar(trimws(yollar)))) {
+      stop(
+        sprintf("Test manifesti bölümü boş ya da geçersiz: %s", bolum_adi),
+        call. = FALSE
+      )
+    }
+  }
+
+  sections
+}
+
+# BOŞ/GEÇERSİZ BEKLENTİ VEKTÖRÜ SESSİZCE GEÇMEZ: `match(character(0), ...)`
+# boş döner, `any(is.na(...))` FALSE olur ve `all(diff(...) > 0)` da TRUE
+# olur; iddia HİÇBİR ŞEY doğrulamadan yeşil kalırdı.
+.source_manifest_require_expectation <- function(x, label) {
+  if (!is.character(x) || length(x) == 0L || any(is.na(x)) ||
+      !all(nzchar(trimws(x)))) {
+    stop(sprintf("%s: beklenen yol vektörü boş ya da geçersiz.", label),
+         call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 expect_source_manifest_contains_for_tests <- function(required_paths,
                                                      paths = source_manifest_paths_for_tests(),
                                                      label = "Manifest içinde eksik kaynak kayıtları:") {
+  .source_manifest_require_expectation(required_paths, label)
   positions <- match(required_paths, paths)
 
   testthat::expect_false(
@@ -76,6 +137,7 @@ expect_source_manifest_contains_for_tests <- function(required_paths,
 expect_source_manifest_order_for_tests <- function(expected_order,
                                                    paths = source_manifest_paths_for_tests(),
                                                    label = "Manifest source sırası bozulmuş:") {
+  .source_manifest_require_expectation(expected_order, label)
   positions <- match(expected_order, paths)
 
   testthat::expect_false(

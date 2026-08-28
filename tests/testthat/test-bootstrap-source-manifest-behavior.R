@@ -177,3 +177,81 @@ testthat::test_that("validate_parse söz dizimi hatalı dosyayı reddeder", {
     regexp = "parse edilemedi"
   )
 })
+# ------------------------------------------------------------------------------
+# Faz 3a: "yokluğu BEKLENEN" opsiyonel gruplar
+# ------------------------------------------------------------------------------
+# Ayrım önemlidir: codex_hardening eksikse çalışma kopyası bozuktur ve bu
+# GÜRÜLTÜLÜ bildirilmelidir. Gitignore'lu, VM'e özgü dosyalar ise her bulut/CI
+# checkout'unda tasarım gereği yoktur; onlar için her boot'ta uyarı yazmak,
+# gerçek sorunu gösteren uyarıyı gürültüye boğar.
+
+# Verilen ortamı opsiyonel grup yapılandırmasıyla donatıp yolları ayıklar ve
+# bu sırada üretilen mesajları toplar.
+.manifest_present_with_groups <- function(groups, expected_absent, paths, repo_root) {
+  env <- .source_manifest_bootstrap_for_test()
+  assign("source_manifest_optional_source_groups", groups, envir = env)
+  assign("source_manifest_optional_source_paths",
+         unlist(groups, use.names = FALSE), envir = env)
+  assign("source_manifest_expected_absent_source_groups", expected_absent, envir = env)
+
+  # Süreç başına bir kez uyarma önbelleği testler arasında sızmasın.
+  assign(".source_manifest_warned", new.env(parent = emptyenv()), envir = env)
+
+  mesajlar <- character(0)
+  sonuc <- withCallingHandlers(
+    env$source_manifest_present_paths(paths, repo_root = repo_root),
+    message = function(m) {
+      mesajlar <<- c(mesajlar, conditionMessage(m))
+      invokeRestart("muffleMessage")
+    }
+  )
+
+  list(paths = sonuc, messages = mesajlar)
+}
+
+testthat::test_that("yokluğu beklenen opsiyonel grup SESSİZCE atlanır", {
+  repo <- .make_manifest_repo(list("R/var.R" = "x <- 1"))
+
+  sonuc <- .manifest_present_with_groups(
+    groups = list(pk_yerel = "R/yok.R"),
+    expected_absent = "pk_yerel",
+    paths = c("R/var.R", "R/yok.R"),
+    repo_root = repo
+  )
+
+  # Dosya yine atlanır (opsiyonel sözleşmesi korunur)...
+  testthat::expect_equal(sonuc$paths, "R/var.R")
+  # ...ama hiçbir uyarı yazılmaz.
+  testthat::expect_equal(sonuc$messages, character(0))
+})
+
+testthat::test_that("yokluğu beklenmeyen opsiyonel grup GÜRÜLTÜLÜ kalır", {
+  repo <- .make_manifest_repo(list("R/var.R" = "x <- 1"))
+
+  sonuc <- .manifest_present_with_groups(
+    groups = list(sertlestirme = "R/yok.R"),
+    expected_absent = character(0),
+    paths = c("R/var.R", "R/yok.R"),
+    repo_root = repo
+  )
+
+  testthat::expect_equal(sonuc$paths, "R/var.R")
+  testthat::expect_true(any(grepl("DEVRE DISI", sonuc$messages, fixed = TRUE)))
+  testthat::expect_true(any(grepl("R/yok.R", sonuc$messages, fixed = TRUE)))
+})
+
+testthat::test_that("beklenen-eksik listesi grubun ATOMİKLİĞİNİ değiştirmez", {
+  # Bir üyesi eksik olan grubun TÜM üyeleri düşer; susturma yalnızca mesajı
+  # etkiler, yükleme kararını değil.
+  repo <- .make_manifest_repo(list("R/a.R" = "x <- 1", "R/var.R" = "y <- 2"))
+
+  sonuc <- .manifest_present_with_groups(
+    groups = list(ikili = c("R/a.R", "R/yok.R")),
+    expected_absent = "ikili",
+    paths = c("R/var.R", "R/a.R", "R/yok.R"),
+    repo_root = repo
+  )
+
+  testthat::expect_equal(sonuc$paths, "R/var.R")
+  testthat::expect_equal(sonuc$messages, character(0))
+})

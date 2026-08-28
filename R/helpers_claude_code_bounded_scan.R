@@ -167,16 +167,47 @@ cc_path_is_reparse_link <- function(path) {
   # Windows VM / UNC paylaşımlarında base R `list.files()` bazen erişilebilir
   # bir paylaşım için de boş döner. Bu yüzden boş sonuçta `fs` yedeğine düşülür;
   # `fs` de doğru kodlanmış adlar döndürdüğü için Türkçe adlar korunur.
+  fs_yedegi <- FALSE
   if (!length(entries) && requireNamespace("fs", quietly = TRUE)) {
-    yedek <- try(fs::dir_ls(path, recurse = FALSE, all = FALSE, fail = FALSE), silent = TRUE)
-    if (!inherits(yedek, "try-error")) entries <- as.character(yedek)
+    # YEDEK NUMARALANDIRMA BÜTÇE KAPISININ ARDINDADIR (PR #705 incelemesi, P2).
+    #
+    # `fs::dir_ls()` başlık-sınırlama (head-limit) API'si SUNMAZ: çağrı tüm
+    # listeyi üretir. Bu yüzden bütçe ZATEN tükenmişken ikinci bir tam
+    # numaralandırma BAŞLATILMAZ; aksi hâlde yavaş bir UNC paylaşımında Shiny
+    # işçisi `timeout_ms` sınırının çok ötesinde bloke kalırdı. Sonuç dönerse
+    # `max_entries` HEMEN uygulanır, böylece bellek ve aşağı akış işi sınırlı
+    # kalır.
+    gecen_ms <- as.numeric(difftime(Sys.time(), deadline_ms$started, units = "secs")) * 1000
+    if (isTRUE(gecen_ms > deadline_ms$limit)) {
+      return(list(entries = character(0), truncated = TRUE, reason = "timeout"))
+    }
+
+    yedek <- suppressWarnings(try(fs::dir_ls(path, recurse = FALSE, all = FALSE, fail = FALSE), silent = TRUE))
+    if (inherits(yedek, "try-error")) {
+      stop(sprintf("Dizin listelenemedi: %s", conditionMessage(attr(yedek, "condition"))))
+    }
+    entries <- as.character(yedek)
+    if (length(entries) > limit) entries <- entries[seq_len(limit)]
+    fs_yedegi <- TRUE
   }
 
   # `list.files()` erişilemeyen bir dizin için hata vermez, sessizce boş döner.
   # Gerçek erişim hatasını "boş dizin" gibi göstermemek için okunabilirliği
   # ayrıca doğrularız; aksi halde paylaşım/ACL hatası sessiz kalırdı.
-  if (!length(entries) && !identical(unname(file.access(path, mode = 4L))[1], 0L)) {
-    stop(sprintf("Dizin listelenemedi: okuma izni yok (%s)", path))
+  #
+  # `fs::dir_ls(fail = FALSE)` de erişim hatasını UYARIYA çevirir ve KISMİ bir
+  # liste döndürebilir; uyarı yutulduğunda eksik sonuç BAŞARILI sayılıyordu.
+  # Bu yüzden yedek kullanıldığında okunabilirlik sonuç BOŞ OLMASA DA
+  # doğrulanır.
+  # OKUMA TEK BAŞINA YETMEZ: POSIX'te yalnızca `r` izni olan bir dizin
+  # listelenebilir ama içindeki ögeler STAT EDİLEMEZ (`x`/arama izni gerekir).
+  # `mode = 4L` böyle bir dizini geçirir; sonraki `file.info()` NA döner ve
+  # tarama erişilemeyen yollarla `ok = TRUE` raporlardı. `mode = 5L` okuma ve
+  # arama izinlerini BİRLİKTE doğrular (Windows'ta dizinler zaten çalıştırılabilir
+  # sayılır; davranış değişmez).
+  if ((!length(entries) || isTRUE(fs_yedegi)) &&
+      !identical(unname(file.access(path, mode = 5L))[1], 0L)) {
+    stop(sprintf("Dizin listelenemedi: okuma/arama izni yok (%s)", path))
   }
 
   truncated <- FALSE

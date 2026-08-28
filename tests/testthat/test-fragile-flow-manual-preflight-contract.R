@@ -28,7 +28,11 @@
   }
 
   size <- file.info(path)$size[1]
-  if (is.na(size) || size <= 0) return("")
+  if (is.na(size) || size <= 0) {
+    # BOŞ DOSYA DA VACUOUS GEÇİRİR: bu dosyalardaki taramaların çoğu
+    # `expect_false(grepl(...))` biçimindedir ve boş dize hepsini karşılar.
+    stop(sprintf("Kaynak dosya BOŞ ya da okunamıyor: %s", path), call. = FALSE)
+  }
 
   con <- file(path, open = "rb")
   on.exit(close(con), add = TRUE)
@@ -75,6 +79,14 @@ test_that("fragile-flow manual preflight keeps required local and VM checks", {
     "evidence",
     "fileEncoding = \"UTF-8\""
   )
+
+  # BAYT KARŞILAŞTIRMASI ÖNCESİ NORMALİZASYON: `.manual_preflight_read_text()`
+  # her zaman UTF-8 bayt döndürür, ancak buradaki Türkçe literaller bu test
+  # dosyasının PARSER kodlamasına bağlıdır. Yerel kodlaması CP1254 olan bir
+  # Windows koşucusunda literaller `grepl(useBytes = TRUE)` içine CP1254
+  # baytlarıyla girer, UTF-8 script baytlarına HİÇ eşleşmez ve script doğru
+  # olduğu hâlde "kapsam eksik" raporlanır.
+  required_tokens <- enc2utf8(required_tokens)
 
   missing <- required_tokens[!vapply(
     required_tokens,

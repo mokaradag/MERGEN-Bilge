@@ -9,7 +9,7 @@
 repo_root_sml <- resolve_repo_root_for_tests()
 
 .sml_env <- new.env(parent = globalenv())
-.sml_env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0) b else a
+.sml_env$`%||%` <- function(a, b) if (is.null(a)) b else a
 .sml_env$log_info <- function(...) invisible(NULL)
 
 # MCP oturum dosyası yardımcısı artık current_session_files kaydını

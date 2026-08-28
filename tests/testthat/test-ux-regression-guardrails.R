@@ -36,18 +36,34 @@
 
   size <- suppressWarnings(file.info(full_path)$size[1])
   if (is.na(size) || size <= 0) {
-    return("")
+    # BOŞ DOSYA SESSİZCE GEÇMEZ: `""` döndürmek, aşağıdaki tüm NEGATİF
+    # iddiaları (`expect_false(grepl(...))`) anlamsız biçimde geçirir ve
+    # muhafızın kendisi kaybolmuşken süit başarı raporlar.
+    stop(sprintf("Kaynak dosya BOŞ ya da okunamıyor: %s", full_path), call. = FALSE)
   }
 
   con <- file(full_path, open = "rb")
   on.exit(close(con), add = TRUE)
 
   raw_data <- readBin(con, what = "raw", n = size)
+  # `sub` VERİLMEZ (PR #705 incelemesi, P3).
+  #
+  # `iconv()` bir ögeyi ancak `sub` VARSAYILAN (`NA`) iken çözemediğinde `NA`
+  # döndürür. `sub = "byte"` her geçersiz baytı `<ff>` kaçışına çevirip HER
+  # ZAMAN bir dize üretir; aşağıdaki `is.na(txt)` kapısı bu yüzden HİÇ
+  # tetiklenmiyordu. CP1254 gibi UTF-8 OLMAYAN bir kodlamayla kaydedilmiş
+  # kaynak dosya, kaçışlarla dolu bozuk bir metne dönüşüyor ve yalnız olumsuz
+  # iddia taşıyan taramalar o dosya için de "geçiyordu".
   txt <- suppressWarnings(
-    iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
+    iconv(list(raw_data), from = "UTF-8", to = "UTF-8")[[1]]
   )
 
-  if (is.na(txt)) txt <- ""
+  # ÇÖZÜMLEME BAŞARISIZLIĞI BOŞ METNE ÇEVRİLMEZ: yalnız olumsuz iddia taşıyan
+  # bir koruma (ör. görselleştirici taraması) okunamayan kaynak dosya için de
+  # geçerdi.
+  if (is.na(txt)) {
+    stop(sprintf("Kaynak dosya UTF-8 olarak çözülemedi: %s", full_path), call. = FALSE)
+  }
   txt <- gsub("\\r\\n?|\\r", "\n", txt, perl = TRUE)
   enc2utf8(txt)
 }
@@ -59,6 +75,31 @@
     fixed = TRUE,
     useBytes = TRUE
   )))
+}
+
+# SIRA MUHAFIZI: yalnızca "her iki dize de dosyada var" demek, bir düzenleme
+# ikisinin SIRASINI değiştirdiğinde muhafızın kör kalmasına yol açar. Bu
+# yardımcı, verilen dizelerin kaynakta BEKLENEN SIRADA geçmesini doğrular.
+# Karakter uzaklığı kullanılır (bayt/karakter karışımı yoktur) ve tüm parçalar
+# tek tek konumlandığı için eksik bir parça da ayırt edilebilir hata verir.
+.ux_guard_expect_order <- function(text, expected, label) {
+  konumlar <- vapply(expected, function(item) {
+    p <- regexpr(item, text, fixed = TRUE)[[1]]
+    if (p < 0L) NA_integer_ else as.integer(p)
+  }, integer(1))
+
+  testthat::expect_true(
+    all(!is.na(konumlar)),
+    info = paste(label, "BULUNAMADI:",
+                 paste(expected[is.na(konumlar)], collapse = ", "))
+  )
+  if (any(is.na(konumlar))) return(invisible(FALSE))
+
+  testthat::expect_true(
+    !is.unsorted(konumlar, strictly = TRUE),
+    info = paste(label, "SIRA BOZUK:", paste(expected, collapse = " -> "))
+  )
+  invisible(TRUE)
 }
 
 .ux_guard_expect_all <- function(text, expected, label) {
@@ -202,11 +243,14 @@ testthat::test_that("quick action model, tool, intro ve duplicate-event sözleş
 testthat::test_that("hızlı özetleme işlemi eski analiz kontrollerini kapatır", {
   quick_r <- .ux_guard_read_text("R/module_quick_actions.R")
 
+  # `useBytes = TRUE` KULLANILMAZ: `regexpr()` bayt uzaklığı döndürürken
+  # aşağıdaki `substr()` KARAKTER sayar. Taranan dosyada çapadan önce Türkçe
+  # karakterler bulunduğu için pencere amaçlanan çapadan SONRA başlar ve test
+  # ya beklenen dizeleri kaçırır ya da sessizce başka bir bölgeyi kapsar.
   summarization_start <- regexpr(
     "if (identical(template_action_id, \"summarization\"))",
     quick_r,
-    fixed = TRUE,
-    useBytes = TRUE
+    fixed = TRUE
   )[[1]]
 
   testthat::expect_gt(summarization_start, 0L)
@@ -339,13 +383,35 @@ testthat::test_that("TTS, STT ve müzik state guardrail sözleşmeleri korunur",
     "Stop butonu TTS/reasoning cleanup sözleşmesi eksik:"
   )
 
+  # TTS DEKORE EDİLMEMİŞ METNİ ALIR.
+  #
+  # Bu iddia eskiden `trigger_tts_fn(ai_msg$id, result$content)` arıyordu;
+  # `result$content` o satıra gelindiğinde `pk_provenance_decorate()` ile
+  # köken alt bilgisi EKLENMİŞ hâldedir ve alt bilgi SESLİ OKUNUYORDU.
+  # `R/helpers_chat_runtime.R` benzetimli akışta AYNI sözleşmeyi uygular.
   .ux_guard_expect_all(
     llm_handlers_r,
     c(
-      "trigger_tts_fn(ai_msg$id, result$content)",
+      "seslendirilecek_metin <- result$content",
+      "trigger_tts_fn(ai_msg$id, seslendirilecek_metin)",
       "if (!is.null(ai_msg) && !isTRUE(stop_generation()))"
     ),
-    "TTS yalnızca yeni AI yanıtından tetiklenmeli sözleşmesi eksik:"
+    "TTS yalnızca yeni AI yanıtından (DEKORE EDİLMEMİŞ metinle) tetiklenmeli sözleşmesi eksik:"
+  )
+
+  # SIRA DA SÖZLEŞMENİN PARÇASIDIR: yalnızca varlık denetlenirse, bir düzenleme
+  # dekorasyonu kopyanın ÜSTÜNE taşıdığında her iki dize de yerinde kalır,
+  # muhafız yeşil raporlar ve TTS köken alt bilgisini yeniden SESLİ OKUR.
+  # Ham gövde ÖNCE yakalanır; `result$content` ancak sonra doğrulanmış
+  # `display` ile değiştirilir.
+  .ux_guard_expect_order(
+    llm_handlers_r,
+    c(
+      "seslendirilecek_metin <- result$content",
+      "result$content <- as.character(pk_metinler$display)[1]",
+      "trigger_tts_fn(ai_msg$id, seslendirilecek_metin)"
+    ),
+    "TTS metni dekorasyondan ÖNCE yakalanmalıdır:"
   )
 
   .ux_guard_expect_all(

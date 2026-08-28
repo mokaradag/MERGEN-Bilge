@@ -5,7 +5,7 @@
 #           bir tarayıcı çalıştırmaz; www/smoke/ux-smoke.html ve
 #           www/smoke/ux-smoke-probes.js içindeki Oturumlar probe'unun VAR OLDUĞUNU
 #           ve ana smoke dizisine BAĞLANDIĞINI, ayrıca korunan değişmezleri
-#           (Durum/Model filtresinde "Tümü" kalıcılığı, aktif ↔ arşiv kart eylem
+#           (Durum/Model filtresinde "Tümü" kalıcılığı, aktif <-> arşiv kart eylem
 #           yüzeyi, detay modalı kaydırma/max-height sözleşmesi, çift DOM id
 #           yokluğu) doğrular. Böylece gelecekte probe yanlışlıkla kaldırılamaz.
 #
@@ -146,7 +146,7 @@ test_that("ux-smoke-probes.js Oturumlar filtre değişmezlerini gerçek tarayıc
   )
 })
 
-test_that("ux-smoke-probes.js aktif ↔ arşiv kart eylem yüzeyini ve modalı korur", {
+test_that("ux-smoke-probes.js aktif <-> arşiv kart eylem yüzeyini ve modalı korur", {
   probes_js <- .ccs_smoke_read_text("www", "smoke", "ux-smoke-probes.js")
 
   .ccs_smoke_expect_all(
@@ -208,7 +208,7 @@ test_that("sentetik Oturumlar fixture'ı gerçek modül UI yüzeyiyle hizalıdı
 
   # Probe'un sentetik fixture'ı gerçek kart eylem sınıflarını ve durum
   # seçeneklerini yeniden kullanır; bu değerler gerçek UI'da gerçekten
-  # üretilmelidir (fixture ↔ gerçek UI drift koruması).
+  # üretilmelidir (fixture <-> gerçek UI drift koruması).
   .ccs_smoke_expect_all(
     ui_metin,
     c(

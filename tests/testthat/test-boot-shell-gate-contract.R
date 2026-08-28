@@ -15,7 +15,11 @@
 .boot_gate_oku <- function(rel_path) {
   full_path <- file.path(.boot_gate_repo_root(), rel_path)
   size <- suppressWarnings(file.info(full_path)$size[1])
-  if (is.na(size) || size <= 0) return("")
+  if (is.na(size) || size <= 0) {
+    # BOŞ DOSYA DA VACUOUS GEÇİRİR: bu dosyalardaki taramaların çoğu
+    # `expect_false(grepl(...))` biçimindedir ve boş dize hepsini karşılar.
+    stop(sprintf("Kaynak dosya BOŞ ya da okunamıyor: %s", full_path), call. = FALSE)
+  }
   con <- file(full_path, open = "rb")
   on.exit(close(con), add = TRUE)
   raw_data <- readBin(con, what = "raw", n = size)
