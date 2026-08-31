@@ -9,6 +9,14 @@
 
 testthat::local_edition(3)
 
+# `withr` OPSİYONEL BİR TEST BAĞIMLILIĞIDIR (bkz.
+# tests/testthat/test-pk-meta-generator-behavior.R): bu dosya dosya
+# düzeyinde `withr::` çağırır. Muhafız YOKKEN, paketin kurulu olmadığı bir
+# koşucuda testler ATLANMAK yerine "there is no package called 'withr'"
+# hatası veriyor ve `stop_on_failure = TRUE` altında TÜM paket düşüyordu.
+testthat::skip_if_not_installed("withr")
+
+
 # config_sql_loader.R, query_library bulunmazsa stop() eder. Bu stop'tan ÖNCE
 # tanımlanan yardımcı fonksiyonlar tryCatch ile yutulan kaynak sonrası ortamda
 # kalır. cat() çıktısı capture.output ile bastırılır.

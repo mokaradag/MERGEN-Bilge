@@ -82,7 +82,9 @@
   # `max - min + 1 == n`. `1..24` bu testi geçer, dağınık tutarlar geçmez.
   # Yoğunluk kanıtlanamıyorsa sütun ÖLÇÜ sayılır (kapalı başarısızlık yönü
   # burada "istatistik üret"tir; anlam metadata ile kesinleşir).
-  aralik <- max(gecerli) - min(gecerli) + 1
+  # `integer` ÇIKARMASI TAŞABİLİR: SQL `INT` sütunu R'de `integer` gelir; benzersiz tam değerlerin açıklığı `2^31 - 1` üzerindeyse çıkarma "NAs produced by integer overflow" uyarısı üretir. Sınıflandırma yönü güvenli kalır ama uyarı NORMAL analiz yolunda doğar ve süite `stop_on_warning = TRUE` ile çalışır.
+  sinirlar <- as.numeric(c(min(gecerli), max(gecerli)))
+  aralik <- sinirlar[2] - sinirlar[1] + 1
   !isTRUE(aralik == length(gecerli))
 }
 

@@ -119,7 +119,17 @@ test_that("fixture, ayırt edici terimi YALNIZCA sample_questions'ta taşıyan v
   # Ve bu iddia GERÇEKTEN doğru olmalıdır: terim başka alanda geçmemelidir.
   lib <- pk_select_library_index(pk_select_test_library())
   vaka <- ayirt[[1]]
-  hedef <- lib[[vaka$expected_query_id]]
+  # ADI OLMAYAN KİMLİK `[[` İLE ARANMAZ: liste üzerinde `lib[["yok"]]`
+  # "subscript out of bounds" FIRLATIR, `NULL` DÖNDÜRMEZ; blok aşağıdaki
+  # tanılayıcı iddiaya HİÇ ulaşamıyor ve okuyucu amaçlanan mesaj yerine opak
+  # indeks hatasını görüyordu.
+  .hedef_kimlik <- as.character(vaka$expected_query_id %||% "")[1]
+  hedef <- if (!is.na(.hedef_kimlik) && nzchar(.hedef_kimlik) &&
+               .hedef_kimlik %in% names(lib)) {
+    lib[[.hedef_kimlik]]
+  } else {
+    NULL
+  }
 
   # EKSIK KUTUPHANE GIRDISI OPAK HATAYA DONUSMEZ: `hedef` NULL iken
   # `grepl(..., NULL)` `logical(0)` doner ve `expect_false()` amaclanan kabul

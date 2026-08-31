@@ -257,11 +257,14 @@ normalize_sql_server_identifiers <- function(sql_text) {
     "|--[^\\r\\n]*",
     "|/\\*[\\s\\S]*?\\*/"
   )
-  yerler <- gregexpr(kalip_maske, metin, perl = TRUE)[[1]]
+  # EŞLEŞMELER BİR KEZ HESAPLANIR: desen iç içe niceleyici taşır, aynı metni
+  # üç kez taramak tam maliyeti üçe katlıyordu.
+  eslesmeler <- gregexpr(kalip_maske, metin, perl = TRUE)
+  yerler <- eslesmeler[[1]]
   saklanan <- character(0)
   if (!identical(yerler[1], -1L)) {
-    saklanan <- regmatches(metin, gregexpr(kalip_maske, metin, perl = TRUE))[[1]]
-    regmatches(metin, gregexpr(kalip_maske, metin, perl = TRUE)) <-
+    saklanan <- regmatches(metin, eslesmeler)[[1]]
+    regmatches(metin, eslesmeler) <-
       list(sprintf("\u0001PKLIT%d\u0001", seq_along(saklanan)))
   }
 
@@ -272,9 +275,14 @@ normalize_sql_server_identifiers <- function(sql_text) {
     perl = TRUE
   )
 
+  # TERS BÖLÜ KORUNUR: `sub(..., fixed = TRUE)` DESENİ sabit sayar ama
+  # DEĞİŞTİRME dizesindeki `\\` kaçışlarını YİNE yorumlar; ters bölü içeren
+  # maskelenmiş bir SQL sabiti (ör. UNC yolu) DEĞİŞTİRİLMİŞ içerikle geri
+  # konuyordu. `regmatches<-` değeri OLDUĞU GİBİ yazar.
   for (i in seq_along(saklanan)) {
-    sql_text_fixed <- sub(sprintf("\u0001PKLIT%d\u0001", i), saklanan[i],
-                          sql_text_fixed, fixed = TRUE)
+    yer <- regexpr(sprintf("\u0001PKLIT%d\u0001", i), sql_text_fixed, fixed = TRUE)
+    if (identical(yer[1], -1L)) next
+    regmatches(sql_text_fixed, yer) <- saklanan[i]
   }
 
   paste0("SET QUOTED_IDENTIFIER ON;\n", sql_text_fixed)

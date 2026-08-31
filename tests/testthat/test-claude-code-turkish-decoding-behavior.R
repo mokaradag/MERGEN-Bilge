@@ -153,12 +153,12 @@ testthat::test_that("latin1 kaynakli C5 9F mojibake cezasi alir", {
 })
 
 # ------------------------------------------------------------------------------
-# PR #705 inceleme bulgusu (P2): onarim, ZATEN GECERLI UTF-8 olan metni yalnizca
-# "onarilan aday daha yuksek puan aldi" gerekcesiyle YENIDEN YAZMAMALIDIR.
-# 11+ gecerli Turkce karakter iceren ve icinde LITERAL "\u00C5\u017E" dizisi
-# bulunan gecerli bir dosya POZITIF puan alir; eski kod onu "\u015E" yapip
-# ORIJINAL baytlari yok ediyordu.
-testthat::test_that("pozitif puanli gecerli UTF-8 metin izin olmadan YENIDEN YAZILMAZ", {
+# PR #705 inceleme bulgusu (P2): onarım, ZATEN GEÇERLİ UTF-8 olan metni yalnızca
+# "onarılan aday daha yüksek puan aldı" gerekçesiyle YENİDEN YAZMAMALIDIR.
+# 11+ geçerli Türkçe karakter içeren ve içinde LİTERAL "\u00C5\u017E" dizisi
+# bulunan geçerli bir dosya POZİTİF puan alır; eski kod onu "\u015E" yapıp
+# ORİJİNAL baytları yok ediyordu.
+testthat::test_that("pozitif puanlı geçerli UTF-8 metin izin olmadan YENİDEN YAZILMAZ", {
   .ccdecode_source_once()
 
   turkce <- .ccd_cp(0x00C7, 0x0061, 0x011F, 0x0072, 0x0131, 0x015E, 0x00F6,

@@ -123,7 +123,13 @@ fi
 
 # Geri alinan (revert) birlesmeler. Birlesme commit'i gecmiste KALIR; kodun
 # hala dalda oldugu SONUCU CIKARILAMAZ.
-geri_alinanlar="$(printf '%s\n' "${gecmis}" | awk -F '\037' '{print $2}' | sed -n 's/^Revert "\(.*\)"$/\1/p')" || true
+# SQUASH BIRLESMIS GERI ALMA: GitHub, revert PR'i squash ile birlestirildiginde
+# konu satirinin SONUNA ' (#N)' ekler. Yalnizca kapanis alintisiyla biten kalip
+# bu konuyu KACIRIR; geri alinmis bir faz 'birlesmis' raporlanir ve operator
+# sonraki faza GERI ALINMIS kod uzerinde baslayabilir.
+geri_alinanlar="$(printf '%s\n' "${gecmis}" | awk -F '\037' '{print $2}' \
+  | sed -n -e 's/^Revert "\(.*\)"$/\1/p' \
+            -e 's/^Revert "\(.*\)" (#[0-9][0-9]*)$/\1/p')" || true
 
 bulundu=0
 gorulenler=""
@@ -192,9 +198,13 @@ while IFS=$'\037' read -r sha subject parents; do
     *phase-[0-9]*)
       # Squash konusu dal adini tasimayabilir; PK ad alani DOGRULANAMADIGI
       # icin sessizce kabul edilmez.
-      if [ "${birlesme_tipi}" = "squash" ]; then
-        belirsiz=$((belirsiz + 1))
-      fi
+      #
+      # KONUSU DUZENLENMIS BIRLESME DE SAYILIR: sayac yalnizca `squash` icin
+      # artirilinca, konusu elle degistirilmis bir birlesme commit'i (dal adi
+      # cikarilamadigi icin `dal="${subject}"` olur) ne raporda ne de kapanis
+      # belirsizlik uyarisinda GORUNMUYORDU -- tam da yukarida yasaklanan
+      # SESSIZ ATLAMA.
+      belirsiz=$((belirsiz + 1))
       continue
       ;;
     *) continue ;;

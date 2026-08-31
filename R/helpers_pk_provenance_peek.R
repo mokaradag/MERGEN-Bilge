@@ -99,8 +99,8 @@ mergen_pk_block_mode_texts <- function(full_response, session, request_id = NULL
       if (!is.na(yedek) && nzchar(yedek)) {
         paste0(yedek, if (!is.na(alt_bilgi)) alt_bilgi else "")
       } else {
-        # TEK SAHİP: metin `helpers_pk_provenance.R` içindeki sabitten gelir.
-        paste0(PK_PROVENANCE_BLOCK_REFUSAL_TR,
+        # SABİT ÇÖZÜLEMEZSE HATA YAKALAYICISI DA DÜŞERDİ: kısmi dağıtımda `PK_PROVENANCE_BLOCK_REFUSAL_TR` bulunamaz, "object not found" `mergen_pk_block_mode_texts()` dışına kaçar ve çağıran `display`/`tts` çiftini HİÇ alamazdı. Aynı dosyadaki korumalı erişimci kullanılır.
+        paste0(pk_block_mode_fallback_text(TRUE, ""),
                if (!is.na(alt_bilgi)) alt_bilgi else "")
       }
     }
@@ -240,6 +240,32 @@ mergen_pk_stream_validated_text <- function(final_text, session, request_id,
   list(display = gosterim, tts = seslendirme, validated = isTRUE(sonuc$validated))
 }
 
+
+# BENZETİLMİŞ AKIŞ SONLANDIRMASI İÇİN EKRANA GİDECEK METİN.
+#
+# `chat_simulate_streaming()` sonlandırıcısı bakım ratchet'i sınırındadır;
+# kapalı başarısız karar bu yüzden burada toplanır. Sözleşme: DÖNÜŞ HER ZAMAN
+# tek ögeli karakterdir. Doğrulama/dekorasyon düşerse HAM model metni
+# yayımlanmaz; `mergen_pk_stream_validated_text()` bekleyen köken kaydı varken
+# deterministik yedeği ya da sabit reddetme metnini döndürür.
+pk_stream_display_text <- function(final_text, session, request_id,
+                                   block_mode = FALSE) {
+  metin <- suppressWarnings(as.character(final_text)[1])
+  if (length(metin) != 1L || is.na(metin)) return(final_text)
+
+  if (!exists("mergen_pk_stream_validated_text", mode = "function", inherits = TRUE)) {
+    return(final_text)
+  }
+
+  sonuc <- try(mergen_pk_stream_validated_text(
+    final_text, session, request_id = request_id, block_mode = isTRUE(block_mode)
+  ), silent = TRUE)
+  if (!is.list(sonuc)) return(final_text)
+
+  gosterim <- suppressWarnings(as.character(sonuc$display)[1])
+  if (length(gosterim) != 1L || is.na(gosterim) || !nzchar(gosterim)) return(final_text)
+  gosterim
+}
 
 #' `block` kipinde HAM DUZYAZI YERINE gosterilecek deterministik yedek metin
 #'

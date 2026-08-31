@@ -158,12 +158,9 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
     checked_out <- TRUE
   }
 
-  timeout_state <- pk_sql_apply_statement_timeout(query_conn, etkin_timeout, analiz_kalan)
-  mekanizma <- paste(c(
-    if (inherits(query_conn, "OdbcConnection")) "odbc_interrupt" else character(0),
-    if (isTRUE(timeout_state$applied)) "lock_timeout" else character(0)
-  ), collapse = "+")
-  if (!nzchar(mekanizma)) mekanizma <- timeout_state$mechanism %||% "none"
+  # TEMİZLİK KAYDI CHECKOUT'TAN HEMEN SONRA GELİR: `pool::poolCheckout()` başarılı olup `checked_out <- TRUE` yazıldıktan SONRA, `on.exit()` kaydına kadar geçen HER satır korumasızdı. `pk_sql_apply_statement_timeout()` bir hata sinyalledi mi (kısmi bootstrap'ta "could not find function" yeter) fonksiyon `poolReturn()` de `.pk_sql_invalidate_connection()` de çalıştırmadan çıkıyor, checkout KALICI olarak sızıyordu; tekrarı havuzu tüketip sonraki istekleri checkout'ta blokluyordu.
+  timeout_state <- list(mechanism = "none", applied = FALSE,
+                        timeout_sec = 0L, previous = NA_integer_)
 
   # Sonuç kümesi temizliği de başarısız olabilir; o durumda bağlantı KİRLİDİR.
   sonuc_temiz <- new.env(parent = emptyenv())
@@ -203,6 +200,23 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
       }
     }
   }, add = TRUE)
+
+  # ZAMAN AŞIMI UYGULAMASI ÖLÜMCÜL DEĞİLDİR: hata durumunda kilit bekleme
+  # sınırından vazgeçilir, bağlantı temiz kalır ve temizlik kaydı ZATEN kuruludur.
+  uygulanan_zaman_asimi <- try(
+    pk_sql_apply_statement_timeout(query_conn, etkin_timeout, analiz_kalan),
+    silent = TRUE
+  )
+  if (is.list(uygulanan_zaman_asimi) &&
+      !inherits(uygulanan_zaman_asimi, "try-error")) {
+    timeout_state <- uygulanan_zaman_asimi
+  }
+  mekanizma <- paste(c(
+    if (inherits(query_conn, "OdbcConnection")) "odbc_interrupt" else character(0),
+    if (isTRUE(timeout_state$applied)) "lock_timeout" else character(0)
+  ), collapse = "+")
+  if (!nzchar(mekanizma)) mekanizma <- timeout_state$mechanism %||% "none"
+
 
   ifade_son_tarihi <- if (is.finite(etkin_timeout) && etkin_timeout > 0) {
     Sys.time() + etkin_timeout
@@ -386,8 +400,9 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
     # Sonuç TAMAMLANDIYSA projeksiyon anlamsızdır: sonraki getirim SIFIR
     # satırdır. Cevap alınamıyorsa karar ESKİSİ GİBİ reddetmektir (kapalı
     # başarısız).
+    # EŞİK, HEMEN ALTINDAKİ BİRİKTİRME KARARIYLA AYNIDIR: `pk_chunk_accumulate_decision()` ilk parçadan SONRA `tavan_mb / 2` uygular; ön getirim kapısı tam tavanla karşılaştırınca ARDINDAN gelen karardan DAHA ZAYIF kalıyor ve açıklamayla çelişiyordu.
     if (parca_sayisi > 0L &&
-        (toplam_bayt + son_parca_bayt) > (tavan_mb * .PK_RESULT_MB)) {
+        (toplam_bayt + son_parca_bayt) > (tavan_mb / 2 * .PK_RESULT_MB)) {
       # TAMAMLANMA DENETİMİ DE `bloklayan()` ÜZERİNDEN GEÇER.
       #
       # Doğrudan çağrı, sürücü tamamlanma denetiminde bloklarsa kalan analiz ve

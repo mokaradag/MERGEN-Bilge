@@ -382,9 +382,14 @@ pk_sql_plan_chunk_rows <- function(column_info, chunk_rows = 5000L,
       identical(.pk_result_type_key(s$type), "__unknown__")
     }, logical(1), USE.NAMES = FALSE)
     if (any(bilinmeyen) && !isTRUE(lob_izinli)) {
+      # `sutunlar` ADSIZ bir listedir (`pk_sql_columns_from_metadata()` onu `lapply(seq_len(...))` ile kurar); `names()` `NULL` döndüğü için eski indeksleme HER öge için `NA_character_` üretiyordu. Operatör günlüğü ve telemetri, sorguyu hangi sütunun engellediğini göremiyordu. Ad, ögenin kendisinden ya da konumundan türetilir.
+      adlar <- vapply(seq_along(sutunlar), function(i) {
+        ad <- suppressWarnings(as.character(sutunlar[[i]]$name)[1])
+        if (length(ad) != 1L || is.na(ad) || !nzchar(ad)) paste0("col_", i) else ad
+      }, character(1))
       return(list(rows = 1L, bounded = FALSE, bytes_per_row = NA_real_,
                   reason = "unknown_type_code", refuse = TRUE,
-                  lob_columns = as.character(names(sutunlar))[bilinmeyen]))
+                  lob_columns = adlar[bilinmeyen]))
     }
     return(list(rows = 1L, bounded = FALSE, bytes_per_row = NA_real_,
                 reason = "width_not_provably_bounded"))

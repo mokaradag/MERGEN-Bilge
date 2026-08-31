@@ -102,9 +102,15 @@ test_that(".db_with_elapsed_budget dis sinirin KALANINI geri yukler", {
     invisible(NULL)
   }
 
-  # DIŞ bütçe 30 sn; İÇ bütçe 2 sn.
+  # DIŞ bütçe 30 sn; İÇ bütçe 2 sn. İÇ blok ÖLÇÜLEBİLİR zaman tüketir: hemen
+  # dönen bir blokta kalan bütçe ~30 sn olur ve `expect_lte(..., 30)`, çıkışta
+  # TAM bütçeyi geri yükleyen (geçen süreyi yok sayan) hatalı bir uygulama için
+  # de geçerdi; test yalnızca "Inf geri yüklenmedi"yi kanıtlardı.
   env$.db_with_elapsed_budget(30, function() {
-    env$.db_with_elapsed_budget(2, function() "ic")
+    env$.db_with_elapsed_budget(2, function() {
+      Sys.sleep(1.2)
+      "ic"
+    })
   })
 
   expect_gte(length(cagrilar), 3L)
@@ -113,7 +119,8 @@ test_that(".db_with_elapsed_budget dis sinirin KALANINI geri yukler", {
   expect_equal(cagrilar[[2]], 2, tolerance = 0.5)
   son_ic_cikis <- cagrilar[[3]]
   expect_true(is.finite(son_ic_cikis))
-  expect_lte(son_ic_cikis, 30)
+  # KALAN geri yüklenir: TAM bütçe geri yüklenirse bu iddia DÜŞER.
+  expect_lt(son_ic_cikis, 29.5)
   expect_gt(son_ic_cikis, 1)
 })
 

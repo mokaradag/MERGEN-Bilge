@@ -403,6 +403,21 @@ pk_entity_resolve_with_history <- function(phrase, candidates, chat_history = NU
 
   cogul <- pk_entity_phrase_is_plural(phrase)
 
+  # (1b) GÜNCEL TURUN BELİRTEÇLERİ ÖNCE DENENİR. Kısa kanonik adlar tam ifade
+  #      puanlanarak bulunamaz (bkz. (5) J = 1/3 notu); belirteçler yalnızca
+  #      GEÇMİŞ için denendiğinde, bu turda AÇIKÇA yazılmış bir varlık
+  #      (`"ANKA icin"`) kalıcı bağlamla DEĞİŞTİRİLİYORDU: kullanıcının az önce
+  #      yazdığı özne hiç teklif edilmiyor, onay istemi ESKİ özneyi öneriyordu.
+  for (belirtec in setdiff(pk_entity_tokens(phrase, stem = FALSE),
+                           .PK_ENTITY_REFINEMENT_WORDS)) {
+    karar <- coz(belirtec, plural_override = cogul)
+    if (karar$decision %in% c("auto", "confirm") &&
+        .pk_entity_is_strong_result(karar)) {
+      karar$original_phrase <- as.character(phrase)[1]
+      return(karar)
+    }
+  }
+
   # (2) KALICI BAĞLAM — sorgu/sütun kimliği eşleşiyorsa yeniden puanlama YOK.
   baglam <- .pk_entity_context_decision(
     prior_context, context_key, ilk, phrase, cogul

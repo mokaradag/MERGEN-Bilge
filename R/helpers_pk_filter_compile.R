@@ -364,6 +364,8 @@ pk_filter_normalize_leaf <- function(f) {
   # bitirmelidir. Eskiden ikisi de gün sonuna genişletiliyordu ve katı
   # karşılaştırma 1 Mayıs'ın neredeyse tamamını İÇERİYORDU.
   gun_sonu <- leaf$operation %in% .PK_FILTER_INCLUSIVE_UPPER_OPS
+  # KATI ALT SINIR DA GÜN SONUNA GENİŞLER: yalnız-tarih değeri BİR GÜNÜ anlatır. `less_than` o günü TAMAMEN dışarıda bırakırken `greater_than` günü neredeyse TAMAMEN İÇERİYORDU (1 Mayıs'tan SONRA istenirken 1 Mayıs'ın saatli satırları geliyordu); iki uç simetrik olmalıdır ve yaprak düşürülmediği için hiçbir ifşa da gitmiyordu.
+  if (identical(leaf$operation, "greater_than")) gun_sonu <- TRUE
 
   sinirlar <- do.call(c, lapply(seq_along(leaf$values), function(i) {
     ayrist(leaf$values[i], gun_sonu && yalniz_tarih[i])
@@ -600,6 +602,14 @@ pk_filter_leaf_mask <- function(data, leaf, query = NULL) {
 
     if (identical(rol, "exclude")) {
       dilim <- !sonuc$mask
+      # BİLİNMEYEN DEĞER DIŞLAMAYA GİRMEZ: pozitif maske `NA` satırlarını ZATEN
+      # düşürür (`pk_filter_leaf_mask()`), tersleme onları TRUE yapıyor ve
+      # `not_equals`/`not_in`/`exclude` eşleşen pozitif yükleme göre DAHA GENİŞ
+      # bir popülasyon raporluyordu (eşdeğer SQL yüklemi de bunları dışarıda
+      # bırakır).
+      if (!is.null(leaf$column) && !is.null(data[[leaf$column]])) {
+        dilim[is.na(data[[leaf$column]])] <- FALSE
+      }
     } else {
       dilim <- sonuc$mask
     }
@@ -655,11 +665,18 @@ pk_filter_compile <- function(data, filters, noop_ratio = NULL, query = NULL) {
   agac_maskesi <- rep(TRUE, n)
   agac_dusen <- list()
   agac_uygulanan <- list()
+  agac_reddedildi <- FALSE
   for (dugum in gruplar_agac) {
     sonuc <- .pk_filter_eval_group(data, dugum, query = query)
     agac_dusen <- c(agac_dusen, sonuc$dropped)
     agac_uygulanan <- c(agac_uygulanan, sonuc$applied)
-    if (!is.null(sonuc$mask)) agac_maskesi <- agac_maskesi & sonuc$mask
+    # REDDEDİLEN GRUP (`mask = NULL`) KISITSIZ GRUPTAN AYRILIR: eskiden ikisi de
+    # atlanıyordu; model bir grup düğümü + bir düz yaprak gönderdiğinde grup
+    # reddedilse bile `uygulanan_sayisi > 0` kalıyor, `all_dropped` FALSE
+    # oluyordu ve politika katmanı REDDEDEMİYORDU. Analiz o zaman TÜM yetkili
+    # 2024 kümesini "istenen popülasyon" diye raporluyordu.
+    if (is.null(sonuc$mask)) agac_reddedildi <- TRUE
+    else agac_maskesi <- agac_maskesi & sonuc$mask
   }
 
   if (!length(filters)) {
@@ -667,7 +684,8 @@ pk_filter_compile <- function(data, filters, noop_ratio = NULL, query = NULL) {
     bos$mask <- agac_maskesi
     bos$dropped <- agac_dusen
     bos$requested <- length(agac_uygulanan) + length(agac_dusen)
-    bos$all_dropped <- !length(agac_uygulanan) && length(agac_dusen) > 0L
+    bos$all_dropped <- isTRUE(agac_reddedildi) ||
+      (!length(agac_uygulanan) && length(agac_dusen) > 0L)
     if (length(agac_uygulanan)) bos$groups <- .pk_filter_tree_groups(
       agac_uygulanan, agac_maskesi, n
     )
@@ -699,6 +717,13 @@ pk_filter_compile <- function(data, filters, noop_ratio = NULL, query = NULL) {
   }
 
   sutunlar <- unique(vapply(gecerli, function(x) x$column, character(1)))
+
+  # SÜTUNLAR ARASI `or` BEYANI SESSİZCE VE'LENMEZ (karar `helpers_pk_filter_group.R` içindedir; VEYA semantiğinin sahibi orasıdır).
+  .or_ayikla <- .pk_filter_reject_crosscolumn_or(gecerli, sutunlar)
+  dusen <- c(dusen, .or_ayikla$dropped)
+  gecerli <- .or_ayikla$valid
+  sutunlar <- .or_ayikla$columns
+
   toplam_maske <- agac_maskesi
   # GRUP YAPRAKLARI DA `groups` İÇİNDE RAPORLANIR.
   #
@@ -756,6 +781,7 @@ pk_filter_compile <- function(data, filters, noop_ratio = NULL, query = NULL) {
     noop_columns = etkisiz,
     ok = TRUE,
     requested = istenen,
-    all_dropped = uygulanan_sayisi == 0L && length(dusen) > 0L
+    all_dropped = isTRUE(agac_reddedildi) ||
+      (uygulanan_sayisi == 0L && length(dusen) > 0L)
   )
 }

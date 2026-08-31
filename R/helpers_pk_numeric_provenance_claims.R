@@ -57,6 +57,8 @@
     # CÜMLE SONU DESENİ ONDALIK/BİNLİK NOKTAYI SAYMAZ: `18.420` içindeki nokta
     # sınır sayılsaydı iddia edilen değer `420` olur ve DOĞRU alıntı
     # `value_mismatch` bildirilirdi. Sınır, ardından boşluk/son gelen `.!?`.
+    # İŞARETE KOMŞU NOKTALAMA CÜMLE SINIRI SAYILMAZ: `Toplam 15.574 kayıt bulundu. [fact:f]` metninde pencerenin SONUNDAKİ nokta sınır sayılınca pencere yalnızca boşluğa iniyor ve DOĞRU alıntı `no_number` bildiriliyordu. Kuyruk ÖNCE kırpılır, sınır SONRA aranır.
+    onceki <- .pk_prov_trim_tail(onceki)
     cumle <- gregexpr("[.!?](?=\\s|$)", onceki, perl = TRUE)[[1]]
     if (!identical(cumle[1], -1L)) {
       onceki <- substr(onceki, cumle[length(cumle)] + 1L, nchar(onceki))

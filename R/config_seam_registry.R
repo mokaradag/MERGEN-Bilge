@@ -35,7 +35,7 @@ mergen_seam_registry <- function() {
   # Genel API değişmez: çağıranlar aynı alanları görür.
   koruma <- if (exists("mergen_seam_guard_tests", mode = "function")) mergen_seam_guard_tests() else list()
 
-  # BILINMEYEN SEAM KIMLIGI SESSIZCE KAYBOLMAZ: asagidaki dongu yalnizca KAYITLI seam'leri gezer; guard test tablosundaki yazim hatasi ya da artik kullanilmayan bir kimlik hicbir seam'e baglanmaz ve dogrulama YINE gecerdi (gercekte hicbir seam'i korumayan bir guard testi kayitli gorunurdu).
+  # BİLİNMEYEN SEAM KİMLİĞİ SESSİZCE KAYBOLMAZ: aşağıdaki döngü yalnızca KAYITLI seam'leri gezer; guard test tablosundaki yazım hatası ya da artık kullanılmayan bir kimlik hiçbir seam'e bağlanmaz ve doğrulama YİNE geçerdi (gerçekte hiçbir seam'i korumayan bir guard testi kayıtlı görünürdü).
   bilinmeyen <- setdiff(names(koruma), names(kayit))
   if (length(bilinmeyen)) stop(sprintf("Seam guard test tablosunda kayitli olmayan seam kimligi var: %s", paste(sort(bilinmeyen), collapse = ", ")), call. = FALSE)
 

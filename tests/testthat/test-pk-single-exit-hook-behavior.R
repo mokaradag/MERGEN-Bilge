@@ -109,6 +109,13 @@ test_that("İŞÇİ doğrudan çıkış yolu sınıflandırılmış sonucu YAYAR
 })
 
 test_that("ANA SÜREÇ doğrudan çıkış yolu AYNI sınıflandırmayı yayar", {
+  # KARDEŞ TESTLE AYNI MUHAFIZ: `.pk_hook_runtime_env` korumasız okunduğunda
+  # yükleme başarısız olan bir koşucuda test ATLANMAK yerine "object not found"
+  # ile düşüyor ve rapor gerçek nedeni gizliyordu.
+  skip_if_not(exists("pk_hook_single_exit_fix_install", mode = "function") &&
+                exists(".pk_hook_runtime_env"),
+              "Kurulum yardımcısı yüklenemedi.")
+
   hedef <- .pk_hook_runtime_env
 
   eski_cekirdek <- get0(".pk_analiz_process_request_without_exit_observer",

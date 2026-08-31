@@ -103,6 +103,16 @@ test_that("uretici dosyalari parse edilebilir", {
     if (is.call(x)) {
       bas <- x[[1]]
       if (is.name(bas)) basliklar <<- c(basliklar, as.character(bas))
+      # AD ALANLI ÇAĞRI DA AYNI SINIFTANDIR: `base::quit()` için `x[[1]]` bir
+      # `::` ÇAĞRISIDIR, ad DEĞİL; hedef ad (`quit`) yalnızca o çağrının üçüncü
+      # ögesindedir ve `gez()` sembolden hiçbir şey toplamaz. Kapı bu yüzden
+      # `base::quit()` / `base::q()` çağrısını GÖRMÜYORDU; operatör bu betikleri
+      # `source()` ile çalıştırdığı için böyle bir çağrı OTURUMU KAPATIRDI.
+      if (is.call(bas) && is.name(bas[[1]]) &&
+          as.character(bas[[1]]) %in% c("::", ":::") &&
+          length(bas) >= 3L && is.name(bas[[3]])) {
+        basliklar <<- c(basliklar, as.character(bas[[3]]))
+      }
       for (i in seq_along(x)) gez(.pkgc_arg_at(x, i))
     } else if (is.pairlist(x) || is.list(x)) {
       for (i in seq_along(x)) gez(.pkgc_arg_at(x, i))
@@ -306,8 +316,11 @@ test_that("uretici SALT-OKUNUR kapisini kullanir ve veri degistiren ifade calist
   # sessizce açardı.
   for (dosya in .pkgc_tool_files()) {
     kod <- .pkgc_code_only(dosya)
+    # `dbSendStatement(` DE YASAKTIR: bir yardımcı, veri değiştiren bir SQL
+    # deyimini `DBI::dbSendStatement()` üzerinden çalıştırıp bu sözleşmeyi
+    # düşürmeden geçebiliyordu.
     for (yasak in c("dbExecute(", "dbWriteTable(", "dbRemoveTable(", "dbCreateTable(",
-                    "dbAppendTable(", "sqlAppendTable(")) {
+                    "dbAppendTable(", "sqlAppendTable(", "dbSendStatement(")) {
       expect_false(
         grepl(yasak, kod, fixed = TRUE, useBytes = TRUE),
         info = sprintf("%s icinde %s cagrisi var", basename(dosya), yasak)
@@ -379,10 +392,14 @@ test_that("uretici yapilandirma anahtarlari .Renviron.example icinde belgelenir"
 
   # Depo sözleşmesi: her yeni ayar şablonda görünmelidir; aksi hâlde depodan
   # sağlanan/denetlenen bir VM bu ayarları KEŞFEDEMEZ.
+  # ÜRETİCİNİN OKUDUĞU TÜM AYARLAR LİSTELENİR: `MERGEN_PK_META_SAMPLE_UNICODE`
+  # ve `MERGEN_PK_META_RESUME_MAX_AGE_SEC` eksikti; sözleşme YEŞİL kalırken
+  # ileri sürdüğü iddia (her yeni ayar şablonda görünür) YANLIŞTI.
   for (anahtar in c(
     "MERGEN_PK_META_MODE", "MERGEN_PK_META_SAMPLE_ROWS",
     "MERGEN_PK_META_HIGH_CARD_MIN", "MERGEN_PK_META_SQL_TIMEOUT_SEC",
-    "MERGEN_PK_META_MAX_RESULT_MB", "MERGEN_PK_META_RESUME"
+    "MERGEN_PK_META_MAX_RESULT_MB", "MERGEN_PK_META_RESUME",
+    "MERGEN_PK_META_SAMPLE_UNICODE", "MERGEN_PK_META_RESUME_MAX_AGE_SEC"
   )) {
     expect_true(
       grepl(anahtar, ornek, fixed = TRUE, useBytes = TRUE),

@@ -11,10 +11,25 @@
 # Türkçe yorum: helpers_deep_analysis.R'yi yalıtılmış ortama yükler; LLM çağrısı
 # ve kimlik bilgisi çözücüsü stub edilir. mergen.filter_model option'ı set
 # edildiği için api_config'e dokunulmaz (getOption default'u tembel kalır).
+# DERİN SIRALI-KÜME TAVANI TESTTE SABİTLENİR: ortam artık `helpers_pk_config.R`
+# yüklediği için `find_multiple_queries_with_ai()` varsayılan `max_queries`
+# değerini `MERGEN_PK_DEEP_MAX_QUERIES` üzerinden çözer; koşucu `1` dışa
+# aktarırsa testler KOD nedeniyle değil ORTAM nedeniyle düşerdi.
+.multiQueryPinDeepLimit <- function(deger = "5") {
+  eski <- Sys.getenv("MERGEN_PK_DEEP_MAX_QUERIES", unset = NA_character_)
+  withr::defer(
+    if (is.na(eski)) Sys.unsetenv("MERGEN_PK_DEEP_MAX_QUERIES") else
+      Sys.setenv(MERGEN_PK_DEEP_MAX_QUERIES = eski),
+    envir = parent.frame()
+  )
+  Sys.setenv(MERGEN_PK_DEEP_MAX_QUERIES = deger)
+  invisible(TRUE)
+}
+
 .multiQueryEnv <- function(llm_content) {
   env <- new.env(parent = globalenv())
   kok <- resolve_repo_root_for_tests()
-  env$`%||%` <- function(a, b) if (is.null(a)) b else a  # URETIM SEMANTIGI (R/utils_common.R): sifir uzunluk YEDEGE DUSMEZ.
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a  # ÜRETİM SEMANTİĞİ (R/utils_common.R): sıfır uzunluk YEDEĞE DÜŞMEZ.
   # Faz 6: derin sıralı-küme tavanı yapılandırmadan gelir (pk_deep_max_queries);
   # izole test GERÇEK sahip dosyaları yükler.
   for (yardimci in c("helpers_pk_config.R", "helpers_pk_async_cancel.R",
@@ -55,6 +70,7 @@ test_that("find_multiple_queries_with_ai boş matches için NULL döndürür", {
 
 test_that("find_multiple_queries_with_ai geçerli eşleşmeleri sorgulara eşler ve alanları doldurur", {
   withr::local_options(mergen.filter_model = "test-model")
+  .multiQueryPinDeepLimit()
   env <- .multiQueryEnv(
     '{"matches":[{"match_id":2,"confidence":90,"reason":"satış ilgili"},{"match_id":1,"confidence":60,"reason":"personel"}]}'
   )
@@ -71,6 +87,7 @@ test_that("find_multiple_queries_with_ai geçerli eşleşmeleri sorgulara eşler
 
 test_that("find_multiple_queries_with_ai güven<30 olan eşleşmeleri eler", {
   withr::local_options(mergen.filter_model = "test-model")
+  .multiQueryPinDeepLimit()
   env <- .multiQueryEnv(
     '{"matches":[{"match_id":1,"confidence":29,"reason":"zayıf"},{"match_id":3,"confidence":80,"reason":"stok"}]}'
   )
@@ -81,6 +98,7 @@ test_that("find_multiple_queries_with_ai güven<30 olan eşleşmeleri eler", {
 
 test_that("find_multiple_queries_with_ai tekrarlı match_id'leri eler", {
   withr::local_options(mergen.filter_model = "test-model")
+  .multiQueryPinDeepLimit()
   env <- .multiQueryEnv(
     '{"matches":[{"match_id":2,"confidence":70},{"match_id":2,"confidence":95}]}'
   )

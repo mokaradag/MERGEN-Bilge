@@ -352,6 +352,15 @@ pkgh_read_state <- function(state_path, mode, fingerprints = NULL,
 
       adlar <- vapply(sutunlar, function(s) as.character(s$name)[1], character(1))
       siniflar <- vapply(sutunlar, function(s) as.character(s$r_class)[1], character(1))
+
+      # EKSIK KOLON KAYDI YENIDEN SORGULAMAYA ZORLAR: `r_class` yoksa metadata
+      # kurucusu KONSERVATIF `dimension` rolune duser; `name` yoksa kolon
+      # SESSIZCE atlanir. Ikisi de onbellek `ok = TRUE` iken YANLIS/EKSIK
+      # metadata yayimlanmasi demektir. Boyle bir girdi KABUL EDILMEZ.
+      if (any(is.na(adlar) | !nzchar(trimws(adlar))) ||
+          any(is.na(siniflar) | !nzchar(trimws(siniflar)))) {
+        next
+      }
       tipler <- vapply(sutunlar, function(s) {
         as.character(s$source_type %||% NA_character_)[1]
       }, character(1))

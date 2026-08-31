@@ -12,6 +12,13 @@
 # ODBC sürücü metinlerini ya da üretim SQL'ini KANITLAMAZ.
 # ==============================================================================
 
+# `withr` OPSİYONEL BİR TEST BAĞIMLILIĞIDIR (bkz.
+# tests/testthat/test-pk-meta-generator-behavior.R): bu dosya dosya
+# düzeyinde `withr::` çağırır. Muhafız YOKKEN, paketin kurulu olmadığı bir
+# koşucuda testler ATLANMAK yerine "there is no package called 'withr'"
+# hatası veriyor ve `stop_on_failure = TRUE` altında TÜM paket düşüyordu.
+testthat::skip_if_not_installed("withr")
+
 local({
   repo_root <- resolve_repo_root_for_tests()
 

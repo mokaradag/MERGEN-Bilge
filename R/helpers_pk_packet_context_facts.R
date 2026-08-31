@@ -22,6 +22,12 @@
 # yuvarlanmış YÜZDE taşır. Sabit `decimals = 0L` ve birimsiz kayıt, yazıcının
 # bastığı `%25,0` biçimindeki iddiayı `unit_mismatch` yapıyor ve `block`
 # kipinde GEÇERLİ yanıtı determinist yedekle değiştiriyordu.
+# `%||%` YALNIZCA `NULL` ATLAR: paket kurucusu daraltılmış satır/grup sayısını `NA_integer_` olarak da bildirebilir; `if (NA > 0L)` "missing value where TRUE/FALSE needed" hatasıyla TÜM olgu üretimini düşürüyordu. `R/helpers_pk_packet_render.R` içindeki `.pk_render_count()` ile AYNI indirgeme, izole kullanım için yerel tutulur.
+.pk_ctx_count <- function(x) {
+  d <- suppressWarnings(as.numeric(x)[1])
+  if (length(d) != 1L || is.na(d) || !is.finite(d)) 0 else d
+}
+
 .pk_count_fact <- function(identity, aggregation, value, label,
                            group_keys = character(0), scope = NULL,
                            unit = NULL, decimals = 0L) {
@@ -72,16 +78,16 @@ pk_packet_context_facts <- function(packet, scope = NULL) {
       list(id = k$column, agg = "distinct_count", value = k$distinct,
            label = sprintf("%s farkli deger", k$label %||% k$column)),
       list(id = k$column, agg = "other_rows",
-           value = if ((k$other_rows %||% 0L) > 0L) k$other_rows else NULL,
+           value = if (.pk_ctx_count(k$other_rows) > 0) k$other_rows else NULL,
            label = sprintf("%s diger satir", k$label %||% k$column)),
       # YAZICININ BASTIĞI HER SAYININ BİR OLGUSU OLMALIDIR: "Diger" satırındaki
       # FARKLI DEĞER sayısı işaretsiz basılıyordu ve `block` kipinde köksüz
       # iddia sayılıp geçerli bir yanıtı düşürebiliyordu.
       list(id = k$column, agg = "other_values",
-           value = if ((k$other_values %||% 0L) > 0L) k$other_values else NULL,
+           value = if (.pk_ctx_count(k$other_values) > 0) k$other_values else NULL,
            label = sprintf("%s diger deger", k$label %||% k$column)),
       list(id = k$column, agg = "other_share",
-           value = if ((k$other_rows %||% 0L) > 0L && is.numeric(k$total) &&
+           value = if (.pk_ctx_count(k$other_rows) > 0 && is.numeric(k$total) &&
                        length(k$total) == 1L && is.finite(k$total) && k$total > 0) {
              round(as.numeric(k$other_rows) / as.numeric(k$total) * 100, 1L)
            } else {
@@ -146,10 +152,10 @@ pk_packet_context_facts <- function(packet, scope = NULL) {
   # olguları üretiliyordu; model bu iki toplamı alıntılayamıyordu.
   tanimlar <- c(tanimlar, list(
     list(id = gruplama, agg = "other_groups",
-         value = if ((g$other_groups %||% 0L) > 0L) g$other_groups else NULL,
+         value = if (.pk_ctx_count(g$other_groups) > 0) g$other_groups else NULL,
          label = "Daraltilan grup sayisi"),
     list(id = gruplama, agg = "other_rows",
-         value = if ((g$other_groups %||% 0L) > 0L) g$other_rows else NULL,
+         value = if (.pk_ctx_count(g$other_groups) > 0) g$other_rows else NULL,
          label = "Daraltilan gruplardaki satir")
   ))
   for (satir in (g$top %||% list())) {

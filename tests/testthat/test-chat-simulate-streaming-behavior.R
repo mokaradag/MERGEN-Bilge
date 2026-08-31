@@ -319,6 +319,9 @@ testthat::test_that("sohbet AYNIYSA TTS geri cagrisi akisi baslatir", {
   # AYIRT EDİCİ SİNYAL: `initStreamingMessage` YALNIZCA akış gövdesine
   # girildiğinde gönderilir. Bayat testi (yukarıda) aynı kaydın BOŞ kaldığını
   # iddia eder; iki test birlikte kapının HER İKİ yönünü de kilitler.
-  tipler <- vapply(rec$msgs, function(m) as.character(m$type %||% "")[1], character(1))
+  # `%||%` BU DOSYADA BAĞLI DEĞİLDİR (`tests/testthat.R` `R/utils_common.R`
+  # yüklemez ve hiçbir yardımcı tanımlamaz); `.css_session()` `type` alanını
+  # HER KAYITTA yazdığı için alan doğrudan okunur.
+  tipler <- vapply(rec$msgs, function(m) as.character(m$type)[1], character(1))
   testthat::expect_true("initStreamingMessage" %in% tipler)
 })

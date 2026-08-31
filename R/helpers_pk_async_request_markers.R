@@ -33,7 +33,7 @@
 #' @return `TRUE` yalnızca yazım kalıcı olduysa; aksi hâlde `FALSE`.
 pk_session_state_write <- function(session, key, value) {
   ud <- try(session$userData, silent = TRUE)
-  if (inherits(ud, "try-error") || is.null(ud)) return(FALSE)
+  if (inherits(ud, "try-error") || !is.environment(ud)) return(FALSE)  # ORTAM DEGILSE YAZIM PAYLASILMAZ: liste bir KOPYADIR, `ud[[anahtar]] <- value` yalnizca YEREL kopyayi degistirir, geri okuma yine de degeri gorur ve sahiplik "yazildi" saniliyordu (`.pk_marker_session_id()` zaten ortam sartini uyguluyor).
   anahtar <- .pk_marker_id(key)
   if (is.na(anahtar)) return(FALSE)
 
@@ -92,8 +92,12 @@ pk_session_state_write <- function(session, key, value) {
   ham_jeton <- try(session$token, silent = TRUE)
   jeton <- if (inherits(ham_jeton, "try-error")) NA_character_ else .pk_marker_id(ham_jeton)
   if (!is.na(jeton) && nzchar(jeton)) return(jeton)
+  # KIMLIK COZULEMEZSE BOS DIZE PAYLASILAN AD ALANIDIR: `""` donen IKI AYRI oturum AYNI isaret alanini kullanir ve biri digerinin `closed`/`hooked` isaretini gorebilir. Son care NESNE ADRESIDIR; ayni surecte YASAYAN iki nesne asla ayni adresi tasimaz.
+  ham_adres <- try(utils::capture.output(print.default(session))[1], silent = TRUE)
+  adres <- if (inherits(ham_adres, "try-error")) "" else sub("^.*(0x[0-9a-f]+).*$", "\\1", as.character(ham_adres)[1])
+  adres <- if (grepl("^0x[0-9a-f]+$", adres)) paste0("pk-adres-", adres) else ""
   ud <- try(session$userData, silent = TRUE)
-  if (inherits(ud, "try-error") || !is.environment(ud)) return("")
+  if (inherits(ud, "try-error") || !is.environment(ud)) return(adres)
   # `session$token` ile AYNI gerekçe: başarısız `userData` okuması KİMLİK
   # DEĞİLDİR. `try-error` hata METNİNİ taşır, `nzchar()` TRUE döner ve aynı
   # okuma hatasını yaşayan İKİ vekil AYNI işaret alanını paylaşırdı; biri
@@ -104,7 +108,7 @@ pk_session_state_write <- function(session, key, value) {
   yeni <- paste0("pk-oturum-",
                  paste(format(as.hexmode(sample.int(2147483647L, 4L))), collapse = ""))
   try({ ud[[.PK_MARKER_SESSION_KEY]] <- yeni }, silent = TRUE)  # YAZ-SONRA-OKU: doğrulanmamış yazım kimlik SAYILMAZ
-  if (identical(.pk_marker_id(try(ud[[.PK_MARKER_SESSION_KEY]], silent = TRUE)), yeni)) yeni else ""
+  if (identical(.pk_marker_id(try(ud[[.PK_MARKER_SESSION_KEY]], silent = TRUE)), yeni)) yeni else adres
 }
 
 # ------------------------------------------------------------------------------

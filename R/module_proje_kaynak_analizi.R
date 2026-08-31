@@ -145,6 +145,9 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     invisible(NULL)
   }
 
+  # KAPALI YOLLAR DA TELEMETRI YAZAR: SQL hatasi, metadata kapisi ve RLS reddi `pk_observe()` cagirmadigi icin `MB_Analiz_Log` bu isteklere HIC satir yazmiyordu; basarisizlik sayilari ve sureleri DB/yetki hatalarini eksik raporluyordu.
+  pk_gozle_kapali <- function(sonuc, ham_satir = 0L) pk_observe(query_id = selected_query$id, query_name = selected_query$name, filter_status = "not_reached", filters = list(), pre_rls_rows = ham_satir, authorized_rows = 0L, filtered_rows = 0L, outcome = sonuc)
+
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat("[PK_ANALIZ] Durdurma talebi alindi (baslangic)\n")
     return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
@@ -439,22 +442,18 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
   # noktada karakter deger YALNIZCA hata dalindan gelebilir. Onek kontrolu tek
   # basina kirilgandi: isareti tasimayan bir hata metni sonuc kumesi sanilip
   # akisi ham bir R hatasiyla ("argument is of length zero") cokertiyordu.
-  if (is.character(raw_data)) return(raw_data)
-  
+  if (is.character(raw_data)) { pk_gozle_kapali("Hata"); return(raw_data) }
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat("[PK_ANALIZ] Durdurma talebi alindi (SQL sonrasi)\n")
     return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")
   }
-  
 	raw_data <- normalize_pk_dataframe_utf8(raw_data)
 
 	cat(sprintf("[PK_ANALIZ] SQL Basarili. Dönen Satir: %d\n", nrow(raw_data)))
 	cat("[PK_ANALIZ] SQL sonucu UTF-8 normalize edildi.\n")
-  
   if (!is.null(selected_query$date_columns)) {
     raw_data <- convert_date_columns(raw_data, selected_query$date_columns)
   }
-  
   # Faz 3a M8: GERCEK sutunlar, sorgu metadatasi ve rls_columns beyanina karsi
   # RLS'ten ONCE dogrulanir. `pk_engine_v2` SECIM ANINDA cozuldu, burada DEGIL.
   meta_gate <- pk_meta_actual_column_gate(selected_query, names(raw_data), pk_engine_v2)
@@ -465,9 +464,11 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     ))
   }
   if (isTRUE(meta_gate$abort)) {
+    pk_gozle_kapali("Reddedildi", nrow(raw_data))
     return(PK_RLS_ABORT_USER_MESSAGE)
   }
   if (isTRUE(meta_gate$engine_abort)) {
+    pk_gozle_kapali("Reddedildi", nrow(raw_data))
     return(paste0(
       "\U000026A0\U0000FE0F **Yapılandırma Hatası:** Sorgu sonucu, tanımlı sorgu ",
       "metadatası ile uyuşmuyor. Analiz güvenli biçimde sürdürülemedi."
@@ -480,9 +481,8 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
     apply_rls_to_data(raw_data, rls_info, selected_query$rls_columns),
     pk_rls_error = function(e) conditionMessage(e)
   )
-  if (is.character(secure_data)) return(secure_data)
+  if (is.character(secure_data)) { pk_gozle_kapali("Reddedildi", nrow(raw_data)); return(secure_data) }
   cat(sprintf("[PK_ANALIZ] RLS sonrasi: %d satir\n", nrow(secure_data)))
-  
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat("[PK_ANALIZ] Durdurma talebi alindi (RLS sonrasi)\n")
     return("\U000026A0\U0000FE0F **İşlem Durduruldu:** Analiz kullanıcı tarafından iptal edildi.")

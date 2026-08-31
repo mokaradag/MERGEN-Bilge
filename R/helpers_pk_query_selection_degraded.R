@@ -165,9 +165,11 @@ pk_select_degraded_decision <- function(status, index, prompt, library_index,
   if (!length(kimlikler)) {
     return(.pk_select_decision(
       status,
+      # DURUMA ÖZGÜ GİDERİM SİLİNMEZ: aday bulunamadığında da kök neden değişmez. `auth_error` / `timeout` durumunda "sorunuzu farklı kelimelerle yazın" demek YANLIŞ yönlendirmedir; eksik/reddedilmiş API anahtarı ya da zaman aşımı yeniden ifadeyle onarılmaz. Duruma özgü metin KORUNUR, aday yokluğu cümlesi EKLENİR.
       message_tr = paste0(
-        "Sorgu seçimi şu anda yapılamadı ve sorunuza yakın bir analiz de ",
-        "bulunamadı. Lütfen sorunuzu farklı kelimelerle yeniden ifade edin."
+        .pk_select_degraded_message(status),
+        " Ayrıca sorunuza yakın bir analiz de bulunamadı; sorunuzu farklı ",
+        "kelimelerle yeniden ifade etmeyi deneyebilirsiniz."
       ),
       disclosures = "Seçim sözlüksel getirime düşürüldü; eşleşen aday yok."
     ))

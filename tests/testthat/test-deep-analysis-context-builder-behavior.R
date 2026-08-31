@@ -189,11 +189,11 @@ test_that("önizlemeler yetmezse SORGU BLOKLARI düşürülür ve bütçe UYGULA
   withr::with_envvar(list(MERGEN_PK_PROMPT_CHAR_BUDGET = "12000"), {
     sonuc <- .dac_butce_env$pk_deep_fit_context_budget(sistem, baglam, NULL)
 
-    # Butce GERCEKTEN uygulanir.
+    # Bütçe GERÇEKTEN uygulanır.
     expect_false(isTRUE(sonuc$over_budget))
     expect_true(sonuc$chars <= sonuc$budget)
 
-    # Onizlemeler once, ardindan blok duserek; ikisi de ACIKCA ifsa edilir.
+    # Önizlemeler önce, ardından blok düşerek; ikisi de AÇIKÇA ifşa edilir.
     expect_true(sonuc$dropped_previews > 0L)
     expect_true(sonuc$dropped_blocks > 0L)
     expect_true(grepl("sonuç bloğu", sonuc$user_context, fixed = TRUE))
@@ -233,7 +233,7 @@ test_that("bütçeye sığan bağlam DEĞİŞMEDEN döner", {
 
 test_that("sabit sistem metni tek başına aşıyorsa SONSUZ DÖNGÜ olmaz", {
   testthat::skip_if_not_installed("withr")
-  # Daha fazla deterministik kirpma mumkun degildir; durum sessiz gecmez.
+  # Daha fazla deterministik kırpma mümkün değildir; durum sessiz geçmez.
   sistem <- strrep("S", 5000L)
   baglam <- .dac_baglam(n = 2L, ozet_uzunluk = 200L)
 

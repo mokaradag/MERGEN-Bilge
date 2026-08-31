@@ -199,7 +199,17 @@ pk_retrieval_build_index <- function(library) {
     ))
   }
 
-  df_sayaci <- table(unlist(lapply(tf_listesi, names), use.names = FALSE))
+  # HİÇ 3-GRAM YOKSA `table()` ÇAĞRILMAZ: metinsel metadata taşımayan bir kütüphanede `unlist(...)` `NULL` döner; `table(NULL)` bazı R sürümlerinde "nothing to tabulate" hatası verir ve `pk_select_run()` indeks kurarken düşerdi. Boş indeks MEŞRU sonuçtur.
+  tum_3gram <- unlist(lapply(tf_listesi, names), use.names = FALSE)
+  if (!length(tum_3gram)) {
+    return(structure(
+      list(ids = kimlikler, tf = tf_listesi, idf = numeric(0),
+           norm = rep(0, n), n = n),
+      class = "pk_retrieval_index"
+    ))
+  }
+
+  df_sayaci <- table(tum_3gram)
   idf <- log(1 + n / as.numeric(df_sayaci))
   names(idf) <- names(df_sayaci)
 

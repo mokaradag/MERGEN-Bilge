@@ -24,6 +24,12 @@ pk_entity_source_chain_for_tests(extra = c("helpers_pk_entity_tree.R",
                                            "helpers_pk_entity_apply_leaf.R",
                                            "helpers_pk_entity_apply.R"))
 
+# TABAN YALITIMI: bu dosyadaki SARILMAMIŞ (varsayılan eşikli) çözümleyici
+# çağrıları da dağıtım `MERGEN_PK_RESOLVE_*` ortam değişkenlerinden ve
+# eşleşen `mergen.pk.*` seçeneklerinden ETKİLENMEMELİDİR;
+# `pk_entity_with_resolve_env()` yalnızca SARDIĞI çağrıyı korur.
+pk_entity_isolate_resolve_config()
+
 # `%||%` KAYNAK ZİNCİRİNİN ORTAMINA BAĞLANIR.
 #
 # `pk_entity_source_chain_for_tests()` varsayılan olarak `globalenv()` içine

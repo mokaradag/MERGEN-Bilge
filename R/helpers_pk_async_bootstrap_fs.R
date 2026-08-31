@@ -34,14 +34,11 @@ pk_async_bounded_path_exists <- function(path, dir = FALSE, deadline_at = NULL) 
   yol <- tryCatch(as.character(path)[1], error = function(e) NA_character_)
   if (length(yol) != 1L || is.na(yol) || !nzchar(yol)) return(FALSE)
 
-  if (!exists("pk_async_bounded_fs", mode = "function", inherits = TRUE)) {
-    denetim <- if (isTRUE(dir)) {
-      tryCatch(dir.exists(yol), error = function(e) FALSE)
-    } else {
-      tryCatch(file.exists(yol), error = function(e) FALSE)
-    }
-    return(isTRUE(denetim[1]))
-  }
+  # SINIRSIZ DOSYA DENETİMİ YAPILMAZ (KAPALI BAŞARISIZ): `pk_async_bounded_fs`
+  # yüklü değilken doğrudan `dir.exists()`/`file.exists()` çağrılırsa, askıda
+  # bir UNC/NFS bağlama noktasında işçi o çağrıda BLOKLANIR ve iptal/son tarih
+  # kapısına HİÇ ulaşamaz. Sınırlandırıcı yoksa bootstrap `FALSE` ile kapanır.
+  if (!exists("pk_async_bounded_fs", mode = "function", inherits = TRUE)) return(FALSE)
 
   sonuc <- pk_async_bounded_fs(function() {
     if (isTRUE(dir)) dir.exists(yol) else file.exists(yol)

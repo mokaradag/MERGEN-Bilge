@@ -206,6 +206,8 @@ mergen_pk_serve_worker_artifact <- function(result, session) {
     # SESSİZCE URL'siz eke geri dönmek, kullanıcıya ÇALIŞMAYAN bir indirme
     # kartı göstermek olurdu; üstelik başarı yolu artifact'i temizlemediği
     # için dosya da öksüz kalırdı. Bu yüzden TİPLİ başarısızlık döner.
+    # DOSYASIZ EKTE SUNUM HATASI ANLAM TAŞIMAZ: sunulacak dosya yokken atılan bir hata TAMAMLANMIŞ analizi `export_failed` ile değiştiriyordu (URL denetimi bu durumu ZATEN atlıyor).
+    if (isTRUE(dosyasiz)) return(list(ok = TRUE, result = result))
     return(list(ok = FALSE, result = result))
   }
   result$pk_attachment <- yeni

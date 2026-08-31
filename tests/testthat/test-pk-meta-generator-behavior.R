@@ -795,7 +795,11 @@ test_that("uretilen dosya parse edilemezse ONCEKI dosya korunur", {
 
   # Yarım/bozuk dosya ASLA yerine geçmez.
   expect_identical(trimws(paste(readLines(hedef), collapse = "\n")), trimws(onceki))
-  expect_length(list.files(gecici, pattern = "\\.tmp-"), 0L)
+  # EVRELEME DOSYASI HEDEFİN YANINDA oluşur (`gecici/R/`); `list.files()`
+  # ÖZYİNELEMELİ DEĞİLDİR, `gecici` üzerinde aramak yalnızca `R` dizinini
+  # görür ve iddia HER durumda geçerdi (yazıcı evreleme dosyasını bırakmaya
+  # başlasa bile sızıntı SAPTANMAZDI).
+  expect_length(list.files(dirname(hedef), pattern = "\\.tmp-"), 0L)
 })
 
 test_that("uretilen dosya pk_query_meta_attach kapisindan gecer", {

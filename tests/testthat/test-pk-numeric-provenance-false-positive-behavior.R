@@ -299,10 +299,14 @@ test_that("tam sayı ve ondalık gösterim birbirine karıştırılmaz", {
   expect_true(length(yanlis$mismatches) > 0L)
 })
 
-# Tek noktali gruplama BELIRSIZDIR ("1.250" hem 1250 hem 1,250 okunabilir);
-# dogrulayici HER IKI okumayi da kabul eder. Bu BILINCLI bir sozlesmedir:
-# tek bir okumayi dayatmak, sade bicimli mesru alintilari reddederdi.
-test_that("tek noktalı gruplama iki okumayı da kabul eder (belirsizlik sözleşmesi)", {
+# TÜRKÇE GRUPLAMA BİÇİMİ BELİRSİZ SAYILMAZ (PR incelemesi, P1).
+#
+# `N.NNN` kalıbı Türkçe düzyazıda BİNLİK gruplamadır: kullanıcı `1.250`
+# metnini 1250 olarak OKUR. Kesirli okumayı da kabul etmek, model 1,25 için
+# `1.250` yazdığında BİN KAT hatalı bir sayıyı "doğrulanmış" gibi
+# yayımlıyordu. Nokta-ondalık gösterimler (`0.613`) gruplama kalıbına
+# uymadığı için ETKİLENMEZ.
+test_that("Türkçe gruplama biçiminde YALNIZCA binlik okuması kabul edilir", {
   env <- .prov_fp_env()
 
   binli <- env$pk_numeric_provenance_validate(
@@ -311,15 +315,24 @@ test_that("tek noktalı gruplama iki okumayı da kabul eder (belirsizlik sözle�
   )
   expect_length(binli$mismatches, 0L)
 
+  # Kesirli okuma ARTIK kabul edilmez: kullanıcı 1250 görürken olgu 1,25'tir.
   ondalikli <- env$pk_numeric_provenance_validate(
     "Deger 1.250 saat [fact:o] olarak olculdu.",
     list(.prov_fp_fact("o", 1.25, unit = "saat", aggregation = "mean"))
   )
-  expect_length(ondalikli$mismatches, 0L)
+  expect_true(length(ondalikli$mismatches) > 0L)
+  expect_identical(ondalikli$mismatches[[1]]$reason, "value_mismatch")
+
+  # SADE NOKTA-ONDALIK BİÇİM KORUNUR: gruplama kalıbına uymaz.
+  sade <- env$pk_numeric_provenance_validate(
+    "Deger 0.613 saat [fact:o] olarak olculdu.",
+    list(.prov_fp_fact("o", 0.613, unit = "saat", aggregation = "mean"))
+  )
+  expect_length(sade$mismatches, 0L)
 })
 
 # ---------------------------------------------------------------------------
-# 9) Birimler (adet/saat/gün/iş günü/%/TL) birbirinden ayırt edilebilir.
+# 9) Birimler (adet/saat/gün/%/TL) birbirinden ayırt edilebilir.
 # ---------------------------------------------------------------------------
 
 test_that("desteklenen birimler birbirinden ayırt edilir", {
@@ -347,6 +360,35 @@ test_that("desteklenen birimler birbirinden ayırt edilir", {
     expect_true("unit_mismatch" %in% .prov_fp_reasons(sonuc),
                 info = sprintf("%s yerine %s", dogru, yanlis))
   }
+
+  # GERÇEK TÜRKÇE YAZIM DA SINANIR: yukarıdaki vakalar yalnızca ASCII `gun`
+  # kullanıyordu; Unicode birim katlaması (`gün` -> `gun`) bozulsa bile hepsi
+  # geçiyor, üretimdeki `12 gün` metni ise yanlışlıkla `unit_mismatch`
+  # üretebiliyordu.
+  #
+  # KAPSAM SINIRI: `iş günü` gibi BOŞLUKLU bileşik birimler `.PK_PROV_KNOWN_UNITS`
+  # içinde YOKTUR (liste `adam-saat` / `kişi/saat` gibi boşluksuz bileşikleri
+  # tanır). Burada onu sınamak, var olmayan bir üretim davranışını iddia etmek
+  # olurdu; birim listesini genişletmek bu incelemenin kapsamı DIŞINDADIR.
+  gun_tr <- paste0("g", intToUtf8(0x00FC), "n")            # "gün"
+  olumlu <- env$pk_numeric_provenance_validate(
+    sprintf("Deger 12 %s [fact:x] olarak olculdu.", gun_tr),
+    list(.prov_fp_fact("x", 12, unit = gun_tr))
+  )
+  expect_length(olumlu$mismatches %||% list(), 0L)
+
+  # ASCII olgu / UTF-8 düzyazı (ve tersi) AYNI birim sayılır.
+  karisik <- env$pk_numeric_provenance_validate(
+    sprintf("Deger 12 %s [fact:x] olarak olculdu.", gun_tr),
+    list(.prov_fp_fact("x", 12, unit = "gun"))
+  )
+  expect_length(karisik$mismatches %||% list(), 0L)
+
+  capraz <- env$pk_numeric_provenance_validate(
+    sprintf("Deger 12 %s [fact:x] olarak olculdu.", gun_tr),
+    list(.prov_fp_fact("x", 12, unit = "TL"))
+  )
+  expect_true("unit_mismatch" %in% .prov_fp_reasons(capraz), info = gun_tr)
 })
 
 # ---------------------------------------------------------------------------
@@ -380,6 +422,11 @@ test_that("tamamen doğru üretim benzeri yanıt sıfır uyuşmazlık oranı ver
   expect_equal(sonuc$checked, 5L)
   expect_length(sonuc$mismatches, 0L)
   expect_equal(sonuc$rate, 0)
+  # ALAN VARLIĞI ÖNCE İDDİA EDİLİR: `expect_length(NULL, 0L)` BOŞA GEÇER;
+  # doğrulayıcı `uncited` alanını düşürse/yeniden adlandırsa çift sayım
+  # gerilemesi test YEŞİLKEN geri gelebilirdi.
+  expect_true("uncited" %in% names(sonuc))
+  expect_length(sonuc$uncited, 0L)
 })
 
 test_that("vurgu ve noktalama aynı sayıyı İKİ KEZ saydırmaz", {
@@ -542,14 +589,22 @@ test_that("TANINAN BİRİM taşıyan yıl-benzeri sayı köksüz kalamaz", {
 
 test_that("köken doğrulaması kaynak dosyada muafiyet listesi TAŞIMAZ", {
   kok <- resolve_repo_root_for_tests()
-  yol <- file.path(kok, "R", "helpers_pk_numeric_provenance.R")
-  ham <- readBin(yol, "raw", file.size(yol))
-  metin <- iconv(rawToChar(ham), "UTF-8", "UTF-8", sub = "byte")
+  # HER İKİ KÖKEN KAYNAĞI DA TARANIR: düzyazı iddia tarayıcıları artık
+  # `R/helpers_pk_numeric_provenance_claims.R` dosyasındadır ve HANGİ sayıların
+  # doğrulamaya gireceğine o dosya karar verir; tek dosyayı taramak muhafızı
+  # sözleşme bozukken de geçirirdi.
+  for (dosya in c("helpers_pk_numeric_provenance.R",
+                  "helpers_pk_numeric_provenance_claims.R")) {
+    yol <- file.path(kok, "R", dosya)
+    expect_true(file.exists(yol), info = dosya)
+    ham <- readBin(yol, "raw", file.size(yol))
+    metin <- iconv(rawToChar(ham), "UTF-8", "UTF-8", sub = "byte")
 
-  # Bolum/sablon bazli atlama, esik dusurme veya sessizce gecme YOKTUR.
-  for (kalip in c("exempt", "whitelist", "allowlist", "skip_section", "bypass")) {
-    expect_false(grepl(kalip, metin, fixed = TRUE, useBytes = TRUE),
-                 info = kalip)
+    # Bolum/sablon bazli atlama, esik dusurme veya sessizce gecme YOKTUR.
+    for (kalip in c("exempt", "whitelist", "allowlist", "skip_section", "bypass")) {
+      expect_false(grepl(kalip, metin, fixed = TRUE, useBytes = TRUE),
+                   info = paste(dosya, kalip))
+    }
   }
 })
 
@@ -597,4 +652,39 @@ test_that("sayi ile isaret arasindaki isim obegi CIFT uyusmazlik uretmez (PR #70
   # Hic alintilanmamis sayi KOKEN-SIZ sayilmaya devam eder.
   koken_siz <- env$pk_numeric_provenance_validate("Toplam 99.999 saat uretildi.", olgular)
   expect_true("missing_fact_marker" %in% .prov_fp_reasons(koken_siz))
+})
+
+# ---------------------------------------------------------------------------
+# 15) İşarete KOMŞU cümle sonu, sayıyı iddia penceresinden SİLMEZ.
+# ---------------------------------------------------------------------------
+
+test_that("isaretten hemen once biten cumle DOGRU alintiyi no_number yapmaz", {
+  env <- .prov_fp_env()
+  olgular <- list(.prov_fp_fact("f", 15574, unit = "adet",
+                                aggregation = "count", kind = "context"))
+
+  # Model tam bir cumle yazip isareti SONRA ekler; pencerenin sonundaki nokta
+  # cumle siniri sayilinca pencere bosaliyor ve DOGRU alinti `no_number`
+  # bildiriliyordu (block kipinde gecerli yanit yedekle degistiriliyordu).
+  sonuc <- env$pk_numeric_provenance_validate(
+    "Toplam 15.574 kayit bulundu. [fact:f]", olgular
+  )
+
+  expect_equal(sonuc$checked, 1L)
+  expect_length(sonuc$mismatches, 0L)
+})
+
+test_that("PENCERE ICINDEKI gercek cumle siniri hala kesilir", {
+  env <- .prov_fp_env()
+  olgular <- list(.prov_fp_fact("sum", 100, unit = "TL", aggregation = "sum"))
+
+  # `[fact:mean]. Butce 100 TL [fact:sum]` biciminde ONCEKI cumlenin
+  # toplulastirma sozcugu sizmamalidir; kuyruk kirpma bu kesmeyi bozmaz.
+  sonuc <- env$pk_numeric_provenance_validate(
+    "Ortalama sure 5 saat [fact:mean]. Butce 100 TL [fact:sum] olarak bulundu.",
+    list(.prov_fp_fact("mean", 5, unit = "saat", aggregation = "mean"),
+         .prov_fp_fact("sum", 100, unit = "TL", aggregation = "sum"))
+  )
+
+  expect_false("aggregation_mismatch" %in% .prov_fp_reasons(sonuc))
 })

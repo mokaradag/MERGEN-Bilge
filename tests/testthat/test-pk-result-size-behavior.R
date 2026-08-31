@@ -265,7 +265,11 @@ test_that("satır sayısı bilinmiyorsa tavan uygulanır ama kesme İDDİA EDİL
 # önceliği verir. Seçimden sonra yeniden çözmezsek `analysis_deadline_sec`
 # override'ı SESSİZCE ÖLÜ bir yapılandırma olurdu.
 test_that("seçilen sorgu analiz son tarihini override edebilir", {
-  skip_if_not(exists("pk_set_exec_context", mode = "function"))
+  # ATLAMA DEĞİL İDDİA: `R/helpers_pk_exec_context.R` yukarıda KOŞULSUZ
+  # kaynaklanır, dolayısıyla bu koşul yalnızca dosya yüklenip fonksiyonun
+  # KAYBOLDUĞU durumda tetiklenir — yani sözleşmenin yakalaması gereken tam o
+  # gerilemede. Atlamak, son tarih override testini SESSİZCE yok sayardı.
+  expect_true(exists("pk_set_exec_context", mode = "function"))
 
   baslangic <- as.POSIXct("2026-01-01 00:00:00", tz = "UTC")
   # ORTAM BASAMAĞI `options()`'I EZER: dağıtım kabuğu

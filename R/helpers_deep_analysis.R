@@ -605,8 +605,8 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
   if (length(query_results) == 0) {
     # `stop_check()` SAF DEĞİLDİR: işçide iptal jetonu dosyasını okur ve iki
     # çağrı arasında dönebilir. Tek kez okunur, aksi halde bildirilen
-    # `filter_status` ile `outcome` çelişir ("stopped" + "Hata" gibi).
-    durduruldu <- is.function(stop_check) && isTRUE(stop_check())
+    # `filter_status` ile `outcome` çelişir ("stopped" + "Hata" gibi). TİPLİ HALT DA DURDURMADIR: son tarih dolduğunda iptal jetonu YAZILMAZ ve `stop_check()` FALSE döner; olay "Hata" kaydedilirken kullanıcıya son tarih halt mesajı gidiyor, gözlem ile teslim edilen yanıt AYNI istek için ÇELİŞİYORDU.
+    durduruldu <- (is.function(stop_check) && isTRUE(stop_check())) || (!is.na(deep_halt_status) && nzchar(deep_halt_status))
     pk_observe_deep(list(
       query_name = "Derin analiz",
       filter_status = if (durduruldu) "stopped" else "not_reached",

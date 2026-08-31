@@ -130,6 +130,59 @@ test_that("sarmalanmis izin sorgusu turetilmis tabloda GECERLI kalir", {
   expect_true(grepl(") AS mb_izin WHERE mb_izin.KullaniciAdi = ?", gorulen$sql, fixed = TRUE))
 })
 
+test_that("cozulemeyen kimlik DB tarafi izin sorgusunu HIC calistirmaz", {
+  env <- .pk_rls_test_env()
+  sayac <- new.env(parent = emptyenv())
+  sayac$n <- 0L
+  env$.pk_rls_bounded_query <- function(conn, statement, params = NULL) {
+    sayac$n <- sayac$n + 1L
+    data.frame(KullaniciAdi = "", ProjeKodu = "P-1", stringsAsFactors = FALSE)
+  }
+  env$.pk_rls_halt_error <- function(e) FALSE
+
+  # `KullaniciAdi = ''` satirlari, cozulemeyen kimlik icin DB tarafinda
+  # ESLESIR ve `pk_rls_db_narrowed = TRUE` ile otoriter sayilirdi.
+  for (kimlik in list(NULL, "", "   ", NA_character_)) {
+    expect_error(env$.pk_rls_permission_rows(NULL, "SELECT 1", kimlik),
+                 "cozulmus bir kullanici kimligi")
+  }
+  expect_equal(sayac$n, 0L)
+})
+
+test_that("DB tarafi daraltilmis satirlarda AKSAN farki satiri DUSURUR", {
+  env <- .pk_rls_test_env()
+  o_aksanli <- paste0(intToUtf8(0x00D6), "z")  # "Öz"
+
+  satirlar <- data.frame(
+    KullaniciAdi = c("Oz", o_aksanli),
+    ProjeKodu = c("P-1", "P-2"),
+    stringsAsFactors = FALSE
+  )
+  attr(satirlar, "pk_rls_db_narrowed") <- TRUE
+
+  # Aksan DUYARSIZ collation (`_CI_AI`) `Oz` sorgusuna `Öz` satirini da
+  # dondurur; ikisi FARKLI hesaptir ve kapsam DEVRALINMAZ.
+  secilen <- env$.pk_rls_rows_for_user(satirlar, "Oz")
+  expect_equal(nrow(secilen), 1L)
+  expect_equal(secilen$ProjeKodu, "P-1")
+})
+
+test_that("DB tarafi daraltmada I ailesi YETKILI satiri DUSURMEZ", {
+  env <- .pk_rls_test_env()
+  noktali <- paste0(intToUtf8(0x0130), "pek")  # "İpek"
+
+  satirlar <- data.frame(
+    KullaniciAdi = noktali, ProjeKodu = "P-9", stringsAsFactors = FALSE
+  )
+  attr(satirlar, "pk_rls_db_narrowed") <- TRUE
+
+  # Dagitim collation'i (`Turkish_CI_AS`) `i` ile `İ`yi esit sayar; R tarafi
+  # bunlari AYIRSAYDI yetkili kullanici BOS kapsam alirdi.
+  secilen <- env$.pk_rls_rows_for_user(satirlar, "ipek")
+  expect_equal(nrow(secilen), 1L)
+  expect_equal(secilen$ProjeKodu, "P-9")
+})
+
 test_that("gecici surucu hatasi TAM TABLO geri dusmesini TETIKLEMEZ", {
   env <- .pk_rls_test_env()
   sayac <- new.env(parent = emptyenv())
@@ -457,6 +510,13 @@ test_that("secim hata log'u BAGLANTI redaktorunu kullanir", {
   yol <- file.path(kok, "R", "helpers_pk_query_selection_apply.R")
   ham <- readBin(yol, "raw", file.info(yol)$size)
   metin <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
+  # YORUM SATIRLARI TARAMA DIŞIDIR: olumlu iddia, çağrı SİLİNSE bile aynı adı
+  # ALINTILAYAN bir açıklama satırıyla geçebilir; olumsuz iddia ise ESKİ
+  # yardımcıyı ANAN bir yorum yüzünden davranış DEĞİŞMEDEN kırılabilirdi
+  # (bkz. `.pk_rls_code_only()`, test-pk-rls-failclosed-contract.R).
+  .satirlar <- strsplit(gsub("\r\n?", "\n", metin), "\n", fixed = TRUE)[[1]]
+  metin <- paste(.satirlar[!grepl("^\\s*#", .satirlar, perl = TRUE, useBytes = TRUE)],
+                 collapse = "\n")
   expect_true(grepl("redact_connection_identifiers(metin)", metin, fixed = TRUE))
   expect_false(grepl("redact_sensitive_text(metin)", metin, fixed = TRUE))
 })

@@ -366,7 +366,9 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # gerçek `-da` eki hiç soyulmuyor ve tam eşleşecek varlık kaçırılıyordu.
   # Eşleşmelerin tamamı taranır ve SON ek zinciri soyulur. KÜRESEL eşikler
   # (796 satır / 24 fonksiyon) DEĞİŞMEDİ.
-  assert_current_budget("R/helpers_pk_entity_normalize.R", 466L, 14L)
+  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 466/14 -> 467/12 (OLCULEN).
+  # Varlik normallestirmesinde tekil/olcek kapisi bir satir buyudu.
+  assert_current_budget("R/helpers_pk_entity_normalize.R", 467L, 12L)
   # ÖLÇÜLEN DARALTMA: 150 -> 148 satır (noktalama sınırı düzeltmesi açıklama
   # yoğunluğunu azalttı; davranış EKLENDİ, satır sayısı düştü).
   # BILINCLI GUNCELLEME (PR #705 inceleme): 148 -> 161 satir (OLCULEN).
@@ -374,7 +376,9 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # (`AR/GE`, `A/B`); yalnizca bolunmus parcalar uretilince hicbir anim kanonik
   # katlamaya ULASAMIYOR ve kullanici adi birebir yazsa bile istek
   # netlestirmeye gidiyordu. Bolunmemis bicim ek aday olarak eklenir.
-  assert_current_budget("R/helpers_pk_entity_mention.R", 161L, 6L)
+  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 161/6 -> 162/4 (OLCULEN).
+  # Anma cikarimi bir satir buyudu; fonksiyon sayisi DUSTU.
+  assert_current_budget("R/helpers_pk_entity_mention.R", 162L, 4L)
   assert_current_budget("R/helpers_pk_entity_alias.R", 170L, 4L)
   assert_current_budget("R/helpers_pk_entity_score.R", 400L, 16L)
   # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 400 -> 408 satır (ÖLÇÜLEN).
@@ -391,7 +395,11 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # analizi durduruyordu. Fonksiyon sayisi ARTMAMISTIR (15).
   # Fonksiyon bütçesi ÖLÇÜLEN değere çekildi (15).
   assert_current_budget("R/helpers_pk_entity_resolver.R", 702L, 15L)
-  assert_current_budget("R/helpers_pk_entity_history.R", 520L, 17L)
+  # BILINCLI GUNCELLEME (PR incelemesi): 520 -> 530 satir (OLCULEN). Guncel
+  # turun belirtecleri KALICI BAGLAMDAN ONCE denenir; `"ANKA icin"` gibi kisa
+  # bir daraltma ifadesinde kullanicinin AZ ONCE yazdigi varlik hic teklif
+  # edilmiyor, onay istemi ESKI ozneyi oneriyordu. Fonksiyon sayisi AYNI.
+  assert_current_budget("R/helpers_pk_entity_history.R", 530L, 17L)
   # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 270 -> 284 satır (ÖLÇÜLEN).
   # Karakter OLMAYAN sutunda varlik filtresi artik SESSIZCE atlanmaz; bir
   # aciklama (`aciklamalar`) kaydi uretilir. Aksi halde kullanici, uygulanmadigi
@@ -442,7 +450,11 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # metin sözlüksel puanlama için doğruydu, ama aynı metin dışlamaya
   # uygulandığında ÖNCEKİ bir turun jetonları `not_for` ifadesini tamamlayıp
   # GEÇERLİ bir seçimi dışlıyordu.
-  assert_current_budget("R/helpers_pk_query_retrieval.R", 424L, 17L)
+  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 424/17 -> 434/10 (OLCULEN).
+  # HIC 3-gram yokken `table()` CAGRILMAZ: metinsel metadata tasimayan bir
+  # kutuphanede `table(NULL)` bazi R surumlerinde "nothing to tabulate" hatasi
+  # verip indeks kurulumunu dusuruyordu. Bos indeks MESRU sonuctur.
+  assert_current_budget("R/helpers_pk_query_retrieval.R", 434L, 10L)
   assert_current_budget("R/helpers_pk_query_selection_json.R", 240L, 10L)
   # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 300 -> 308 satır (ÖLÇÜLEN).
   # Birlestirilmis yapilandirma `pk_select_normalize_config()` ile YENIDEN
@@ -462,7 +474,11 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # Gecis B istemi ARTIK alti `requirements` alaninin TAMAMININ zorunlu
   # oldugunu ACIKCA soyler; normallestirici eksik alani zaten reddediyordu ama
   # istem bunu bildirmedigi icin model tek onarim hakkini tuketiyordu.
-  assert_current_budget("R/helpers_pk_query_selection_prompt.R", 415L, 16L)
+  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 415/16 -> 418/16 (OLCULEN).
+  # Rol cozumlemesi `role` -> `type` -> `"user"` sirasini BOS OLMAYAN TEKIL
+  # deger uzerinden yapar: `%||%` yalnizca `NULL` atladigi icin `role = NA`
+  # tasiyan bir asistan turu SESSIZCE "user" rolune dusuyordu.
+  assert_current_budget("R/helpers_pk_query_selection_prompt.R", 418L, 16L)
   # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme): 300 -> 325 satır / 12 -> 13
   # fonksiyon (ÖLÇÜLEN). İki neden: (a) TİPLİ doğrulama sonucuna `canonicalized`
   # alani eklendi ve varolussal->sayim kanoniklestirmesi TEK cagri ile baglandi
@@ -484,7 +500,10 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # Boş `requirements` nesnesi için üretilen ONARIM mesajı artık ALTI alan
   # kuralıyla aynı şeyi söyler; eski metin "en az bir alan" diyordu, model
   # onu izliyor ve TEK onarım hakkı boşa gidip istek reddediliyordu.
-  assert_current_budget("R/helpers_pk_query_selection_requirements.R", 361L, 13L)
+  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 361/13 -> 371/12 (OLCULEN).
+  # Kanoniklestirici YUKLENMEMISSE tipli `validator_error` uretilir; tanimsiz
+  # fonksiyon istisnasi v2 yolunda IC SECIM HATASINA donusuyordu.
+  assert_current_budget("R/helpers_pk_query_selection_requirements.R", 371L, 12L)
   # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 300 -> 304 satır (ÖLÇÜLEN).
   # Iptal durumu icin ACIK sabit eklendi (`PK_SELECT_STATUS_CANCELLED`); iptal
   # "bos yanit" ile ayni koda dusunce oturum durumu iptalde de temizleniyordu.
@@ -505,7 +524,11 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # PR #705 incelemesi: `not_for` ile dışlanan sorgu güven/marj kapılarından
   # ÖNCE reddedilir ve yetkin alternatifler AZALAN güvene göre sıralanır
   # (marj kapısı en güçlü rakibe karşı ölçülür). Taban çizgisi 400 -> 420.
-  assert_current_budget("R/helpers_pk_query_selection_decide.R", 420L, 10L)
+  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 420/10 -> 428/9 (OLCULEN).
+  # `not_for` dislamasi BUTUN diger kurallardan ONCE gelir (Gecis B tek aday
+  # bildirdiginde reddedilen sorgu chip olarak GERI TEKLIF ediliyordu); rakip
+  # guveni ve `missing_info` alanlari SKALERE indirgenir.
+  assert_current_budget("R/helpers_pk_query_selection_decide.R", 428L, 9L)
   assert_current_budget("R/helpers_pk_query_selection_degraded.R", 190L, 7L)
   assert_current_budget("R/helpers_pk_query_selection_session.R", 220L, 14L)
   # BİLİNÇLİ GÜNCELLEME (PR #705 kararlılık): Geçiş A TOPLAM yük bütçesi
@@ -535,8 +558,15 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # yalnizca tipli basarisizlik yolunda uretiliyor ve onarim denemeleri
   # tukendiginde operatore HIC ulasmiyordu. Kullaniciya gosterilen Turkce
   # mesajlarin Latinlestirilmis yazimi da duzeltildi. Fonksiyon sayisi AYNI.
-  assert_current_budget("R/helpers_pk_query_selection_ai.R", 617L, 21L)
-  assert_current_budget("R/helpers_pk_query_selection_apply.R", 320L, 14L)
+  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 617/21 -> 622/22 (OLCULEN).
+  # Onarim kapisi dogrulayiciyi YAKALAYICI ile cagirir: kacan bir istisna
+  # istegi tipli `validator_error` reddi yerine `internal_error` yapiyordu.
+  assert_current_budget("R/helpers_pk_query_selection_ai.R", 622L, 22L)
+  # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 320/14 -> 328/15 (OLCULEN).
+  # (a) Bayat teklif HER reddetmede temizlenir (cipsiz ret sonrasi "1" cevabi
+  # ALAKASIZ sorguyu onayliyordu). (b) `||` operandlari uzunluk denetiminden
+  # gecer. (c) Oturum, secim yoluyla AYNI sekilde cozulur.
+  assert_current_budget("R/helpers_pk_query_selection_apply.R", 328L, 15L)
 
   # PR #705 dengeleme (inceleme borcu kök neden düzeltmeleri). Bu üç bütçe
   # ÖLÇÜLEN yeni tabanla güncellendi; hiçbir KÜRESEL eşik gevşetilmedi

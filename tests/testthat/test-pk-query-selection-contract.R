@@ -34,6 +34,15 @@ pk_select_source_chain_for_tests()
   gsub("\r", "\n", txt, fixed = TRUE, useBytes = TRUE)
 }
 
+# YASAKLI BELİRTEÇ TARAMALARI YORUMU KOD SAYMAZ: açıklayıcı bir başlık
+# satırında `pk_select_decide` / `max_heuristic` / `MERGEN_PK_ENGINE` geçmesi,
+# taranan katman SAF olduğu hâlde iddiayı düşürüyordu. `tests/testthat.R`
+# `stop_on_failure = TRUE` ile çalıştığı için TEK bir yorum TÜM paketi kırardı.
+.pk_sel_read_code <- function(yol) {
+  satirlar <- unlist(strsplit(.pk_sel_read_source(yol), "\n", fixed = TRUE))
+  paste(satirlar[!grepl("^\\s*#", satirlar)], collapse = "\n")
+}
+
 .pk_sel_lib <- function() pk_select_test_library()
 
 # Yetenek kayıt defteri testte AÇIKÇA kurulur; checkout'taki gerçek defter
@@ -1096,7 +1105,7 @@ test_that("v2 yolu v1 SEZGİSEL skorlayıcısını KARAR için çağırmaz (D10)
   kok <- resolve_repo_root_for_tests()
   for (dosya in PK_SELECT_RUNTIME_FILES) {
     yol <- file.path(kok, "R", dosya)
-    txt <- .pk_sel_read_source(yol)
+    txt <- .pk_sel_read_code(yol)
 
     for (desen in c("pk_compute_heuristic_query_scores", "pk_score_query_relevance")) {
       expect_false(
@@ -1119,9 +1128,9 @@ test_that("select_smart_query içinde v2 dalı VARDIR ve motor bayrağına bağl
   txt <- .pk_sel_read_source(yol)
 
   expect_true(
-    # BICIMLENDIRMEYE TOLERANSLI. Onceki desen `(` + yeni satir + ALTI bosluk
+    # BİÇİMLENDİRMEYE TOLERANSLI. Önceki desen `(` + yeni satır + ALTI boşluk
     # dizisini TAM BAYT olarak istiyordu; herhangi bir yeniden girintileme ya
-    # da argüman sarmalama davranis DOGRU kalirken bu sozlesmeyi kiriyordu.
+    # da argüman sarmalama davranış DOĞRU kalırken bu sözleşmeyi kırıyordu.
     grepl("pk_select_query_v2\\s*\\(\\s*prompt\\s*,\\s*library\\s*,\\s*chat_history\\s*,",
           txt, perl = TRUE, useBytes = TRUE),
     info = paste(
@@ -1161,16 +1170,20 @@ test_that("v2 dalının KAPISI motor bayrağıdır (v1 davranışı değişmez, 
   yol <- file.path(resolve_repo_root_for_tests(), "R", "module_proje_kaynak_analizi.R")
   satirlar <- strsplit(.pk_sel_read_source(yol), "\n", fixed = TRUE)[[1]]
 
-  kapi <- grep("isTRUE(pk_engine_is_v2())", satirlar, fixed = TRUE)
-  kapi <- c(kapi, grep("if (pk_engine_v2_request &&", satirlar, fixed = TRUE))
-  # BICIMLENDIRMEYE TOLERANSLI (PR #705 incelemesi, P3): TAM BAYT dizisi
-  # istemek, atamanin sarmalanmasi (`secim_v2 <-` bir satirda,
-  # `pk_select_query_v2(` sonrakinde) durumunda `integer(0)` uretiyor; asagidaki
-  # `min()`/`max()` bos vektorde UYARI veriyor ve kapi yerlesimi DOGRU oldugu
-  # halde paket kiriliyordu. 1121. satirdaki iddia zaten gevsetilmisti.
-  # YORUM SATIRLARI ELENIR: 725. satirdaki aciklama da `pk_select_query_v2()`
-  # yaziyor ve salt ad esslemesi IKI eslesme uretirdi.
+  # YORUM SATIRLARI ELENİR (çağrı taramasıyla AYNI gerekçe): kapının ADINI
+  # geçen bir açıklama, KALDIRILMIŞ bir kapıyı "yerinde" gösterebilir ve
+  # `any(kapi < cagri)` mesafe denetimi v2 dalı KAPISIZ çalışırken de geçerdi.
   kod_satirlari <- sub("#.*$", "", satirlar)
+  kapi <- grep("isTRUE(pk_engine_is_v2())", kod_satirlari, fixed = TRUE)
+  kapi <- c(kapi, grep("if (pk_engine_v2_request &&", kod_satirlari, fixed = TRUE))
+  # BİÇİMLENDİRMEYE TOLERANSLI (PR #705 incelemesi, P3): TAM BAYT dizisi
+  # istemek, atamanın sarmalanması (`secim_v2 <-` bir satırda,
+  # `pk_select_query_v2(` sonrakinde) durumunda `integer(0)` üretiyor; aşağıdaki
+  # `min()`/`max()` boş vektörde UYARI veriyor ve kapı yerleşimi DOĞRU olduğu
+  # hâlde paket kırılıyordu. 1121. satırdaki iddia zaten gevşetilmişti.
+  # YORUM SATIRLARI ELENİR: 725. satırdaki açıklama da `pk_select_query_v2()`
+  # yazıyor ve salt ad eşlemesi İKİ eşleşme üretirdi (`kod_satirlari` yukarıda
+  # ZATEN hesaplandı; yeniden üretilmez).
   cagri <- grep("pk_select_query_v2\\s*\\(", kod_satirlari, perl = TRUE)
 
   expect_true(length(kapi) >= 1L && length(cagri) == 1L)
@@ -1242,7 +1255,7 @@ test_that("seçim hattı SAF kalır: motor bayrağını kendisi okumaz", {
 
   for (dosya in saf_dosyalar) {
     yol <- file.path(kok, "R", dosya)
-    txt <- .pk_sel_read_source(yol)
+    txt <- .pk_sel_read_code(yol)
 
     for (desen in c("pk_engine_is_v2", "MERGEN_PK_ENGINE", "mergen.pk.engine")) {
       expect_false(
@@ -1277,7 +1290,10 @@ test_that("Faz 5 dosyaları manifestte DOĞRU SIRADA kayıtlıdır", {
   expect_lt(v1_konum, konumlar[["helpers_pk_query_selection_apply.R"]])
 })
 
-test_that("dokuz seçim anahtarı da yapılandırma sözleşmesinde kayıtlıdır", {
+# BAŞLIK SABİT SAYI TAŞIMAZ: döngü `PK_SELECT_ENV_KEYS` üzerinde koşar ve
+# liste büyüdükçe kapsam kendiliğinden genişler; "dokuz" yazısı listeyle
+# uyuşmuyordu ve okuyucuyu yanıltıyordu.
+test_that("TÜM seçim anahtarları yapılandırma sözleşmesinde kayıtlıdır", {
   for (anahtar in PK_SELECT_ENV_KEYS) {
     if (identical(anahtar, "MERGEN_PK_ENGINE")) next
     expect_true(
@@ -1292,34 +1308,34 @@ test_that("dokuz seçim anahtarı da yapılandırma sözleşmesinde kayıtlıdı
   expect_equal(pk_config_spec$MERGEN_PK_SELECT_MIN_MARGIN$default, 15L)
 })
 
-test_that("CELISKILI Gecis A takma alanlari REDDEDILIR", {
+test_that("ÇELİŞKİLİ Geçiş A takma alanları REDDEDİLİR", {
   kimlikler <- pk_select_pass_a_payload(.pk_sel_lib(), .pk_sel_cfg())$ids
 
-  # KUSUR: uc ad da kabul ediliyor ama birden fazlasi varsa SESSIZCE ilki
-  # kullaniliyordu; iki FARKLI aday kumesi tasiyan yanit kati ayristirmayi
-  # gecip otomatik secime ilerleyebiliyordu.
+  # KUSUR: üç ad da kabul ediliyor ama birden fazlası varsa SESSİZCE ilki
+  # kullanılıyordu; iki FARKLI aday kümesi taşıyan yanıt katı ayrıştırmayı
+  # geçip otomatik seçime ilerleyebiliyordu.
   celiskili <- sprintf('{"candidates":["%s"],"ids":["%s"]}', kimlikler[1], kimlikler[2])
   sonuc <- pk_select_parse_pass_a(celiskili, kimlikler)
   expect_false(isTRUE(sonuc$ok))
   expect_true(grepl("\u00c7EL\u0130\u015eK\u0130L\u0130", sonuc$error, fixed = TRUE))
 
-  # AYNI kumeyi tasiyan takma adlar KABUL EDILIR (geriye donuk uyum).
+  # AYNI kümeyi taşıyan takma adlar KABUL EDİLİR (geriye dönük uyum).
   ayni <- sprintf('{"candidates":["%s"],"ids":["%s"]}', kimlikler[1], kimlikler[1])
   expect_true(isTRUE(pk_select_parse_pass_a(ayni, kimlikler)$ok))
 
-  # TEK alan davranisi DEGISMEZ.
+  # TEK alan davranışı DEĞİŞMEZ.
   tek <- sprintf('{"candidates":["%s"]}', kimlikler[1])
   expect_true(isTRUE(pk_select_parse_pass_a(tek, kimlikler)$ok))
 })
 
-test_that("Gecis B SOZLESME DISI ust duzey alanlari REDDEDER", {
+test_that("Geçiş B SÖZLEŞME DIŞI üst düzey alanları REDDEDER", {
 
   gecerli <- .pk_sel_pass_b(id = "q002")
   expect_true(isTRUE(pk_select_parse_pass_b(gecerli, c("q001", "q002", "q003", "q004"))$ok))
 
-  # KUSUR: ayristirici yalnizca beklenen adlari OKUYUP diger her ust duzey
-  # alani SESSIZCE yok sayiyordu; sema kaymasi yanit tum denetimlerden gecip
-  # CELISKILI bir secimle otomatik calistirilabiliyordu.
+  # KUSUR: ayrıştırıcı yalnızca beklenen adları OKUYUP diğer her üst düzey
+  # alanı SESSİZCE yok sayıyordu; şema kayması yanıt tüm denetimlerden geçip
+  # ÇELİŞKİLİ bir seçimle otomatik çalıştırılabiliyordu.
   kaymis <- sub("^\\{", '{"selected_id":"q003",', gecerli)
   sonuc <- pk_select_parse_pass_b(kaymis, c("q001", "q002", "q003", "q004"))
   expect_false(isTRUE(sonuc$ok))

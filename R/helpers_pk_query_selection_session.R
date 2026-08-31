@@ -17,8 +17,18 @@
   if (!is.list(durum)) list() else durum
 }
 
-.pk_select_state_write <- function(session, state) {
+.pk_select_state_write <- function(session, state, touched = NULL) {
   if (is.null(session)) return(invisible(FALSE))
+
+  # AYIKLAMA EKLEME SIRASINA GÖRE DEĞİL SON KULLANIMA GÖRE YAPILIR: hatırlama yardımcıları var olan adlı ögeyi YERİNDE günceller, öge ilk konumunu korur ve `.PK_SELECT_STATE_MAX_CHATS` aşıldığında `utils::tail()` AZ ÖNCE kullanılan söyleşiyi düşürebilirdi. Saklanan sorgu kimliği ve bekleyen teklif kaybolur, sonraki eksiltili takip sorusu bağlamını yitirirdi.
+  if (length(touched) == 1L && !is.na(touched) &&
+      as.character(touched) %in% names(state)) {
+    anahtar <- as.character(touched)
+    kayit <- state[[anahtar]]
+    state[[anahtar]] <- NULL
+    state[[anahtar]] <- kayit
+  }
+
   if (length(state) > .PK_SELECT_STATE_MAX_CHATS) {
     state <- utils::tail(state, .PK_SELECT_STATE_MAX_CHATS)
   }
@@ -59,7 +69,7 @@ pk_select_remember_query_id <- function(session, query_id, chat_key = "__yeni__"
   kayit <- if (is.list(durum[[chat_key]])) durum[[chat_key]] else list()
   kayit$query_id <- kimlik
   durum[[chat_key]] <- kayit
-  .pk_select_state_write(session, durum)
+  .pk_select_state_write(session, durum, touched = chat_key)
 }
 
 #' Önceki kararlı kimliği düşür
@@ -102,7 +112,7 @@ pk_select_remember_offer <- function(session, chips, chat_key = "__yeni__",
   # `pk_select_confirmed_decision`).
   kayit$offer_requirements <- requirements
   durum[[chat_key]] <- kayit
-  .pk_select_state_write(session, durum)
+  .pk_select_state_write(session, durum, touched = chat_key)
 }
 
 #' Teklifle birlikte saklanmış yetenek gereksinimlerini oku

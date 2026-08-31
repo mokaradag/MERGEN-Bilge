@@ -335,7 +335,12 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
   # `tests/testthat/test-maintainability-ratchet.R`) ve bu dosyaların hiçbiri
   # ona yaklaşmamaktadır.
   butceler <- list(
-    "R/helpers_pk_async_cancel.R" = c(295L, 24L),
+    # BILINCLI GUNCELLEME (PR incelemesi): 295 -> 298 satir (OLCULEN). Bayat
+    # jeton supurucusundeki SABITLEME artik YAS SINIRLIDIR: terminal yol bu
+    # surecte hic calismazsa (isci cokmesi, `pk_cancel_token_clear()` atlanan
+    # oturum yikimi) anahtar surec omru boyunca kaliyor, `.flag` dosyasi HIC
+    # toplanmiyor ve kayit sinirsiz buyuyordu. Fonksiyon sayisi AYNI.
+    "R/helpers_pk_async_cancel.R" = c(298L, 24L),
     "R/helpers_pk_exec_context.R" = c(135L, 11L),
     "R/helpers_pk_cancel_http.R" = c(109L, 10L),
     # BILINCLI GUNCELLEME (PR #705 inceleme): 245 -> 259 satir (OLCULEN).
@@ -365,10 +370,10 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # metadata'si sanilmaz; aksi halde betimlenemeyen bir toplu ifade
     # `__unproven__` siniflandirilip sonuc HIC veri cekilmeden reddediliyordu.
     # Fonksiyon sayisi AYNI.
-    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 333 -> 342 satir (OLCULEN).
-    # `.pk_sql_metadata_field()` artik ADAY SIRASINI onceliklendirir; `precision`
-    # alanini `column_size`/`max_length` ONCESINDE bildiren bir DBI arka ucunda
-    # sayisal hassasiyet karakter uzunlugu saniliyordu. Fonksiyon sayisi AYNI.
+    # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 333 -> 342 satır (ÖLÇÜLEN).
+    # `.pk_sql_metadata_field()` artık ADAY SIRASINI önceliklendirir; `precision`
+    # alanını `column_size`/`max_length` ÖNCESİNDE bildiren bir DBI arka ucunda
+    # sayısal hassasiyet karakter uzunluğu sanılıyordu. Fonksiyon sayısı AYNI.
     "R/helpers_pk_result_columns.R" = c(342L, 8L),
     # BILINCLI GUNCELLEME (PR #705 inceleme): 551 -> 592 satir (OLCULEN). Iki
     # neden: (a) `sql_variant` icin KANITLI 8016 bayt ust siniri; (b) R nesne
@@ -389,7 +394,12 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # olur: tip kodu ne sabit-genislik tablosunda ne LOB listesindedir, bayt
     # orani bilinmedigi icin tek hucre tavani asabilirdi ama dal `dbFetch(n=1)`
     # cagrisini refuse ETMEDEN yetkilendiriyordu. Fonksiyon sayisi AYNI.
-    "R/helpers_pk_result_size.R" = c(630L, 19L),
+    # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 630 -> 635 satır (ÖLÇÜLEN).
+    # `unknown_type_code` reddinin `lob_columns` yükü ARTIK gerçek sütun adını
+    # taşır: `sutunlar` ADSIZ bir listedir, `names()` NULL döndüğü için eski
+    # indeksleme her öge için `NA_character_` üretiyor ve operatör günlüğü
+    # sorguyu hangi sütunun engellediğini GÖREMİYORDU. Fonksiyon sayısı AYNI.
+    "R/helpers_pk_result_size.R" = c(635L, 19L),
     "R/helpers_pk_cache_key.R" = c(140L, 11L),
     # BILINCLI GUNCELLEME (PR #705): sinirlar artik KAYIP anahtarda da
     # uzlastirilir (kapali onbellek/dusurulmus tavan ANINDA etkilidir).
@@ -430,16 +440,26 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 483 -> 487 satir (OLCULEN).
     # `dbHasCompleted()` artik SINIRLI cagri altinda okunur; suresiz bloklayan
     # bir surucu cagrisi butceyi asamaz. Fonksiyon sayisi AYNI.
-    "R/helpers_pk_sql_execute.R" = c(487L, 22L),
-    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 125 -> 138 satir (OLCULEN).
-    # `poolReturn()` sonucu artik DENETLENIR; sinirli cagri basarisiz olursa
-    # checkout emekliye ayrilir. Fonksiyon sayisi AYNI.
-    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 138 -> 151 satir (OLCULEN).
-    # ONCEKI `LOCK_TIMEOUT` degeri OKUNAMADIYSA zaman asimi HIC uygulanmaz;
-    # eskiden uygulanip `applied = TRUE` raporlaniyor, temizlik `dirty = TRUE`
-    # dondugu icin o durumdaki HER istek bir havuz baglantisini yok ediyordu.
-    # Fonksiyon sayisi AYNI.
-    "R/helpers_pk_sql_connection.R" = c(151L, 6L),
+    # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 487 -> 502 satır (ÖLÇÜLEN).
+    # (a) TEMİZLİK KAYDI checkout'tan HEMEN SONRA kurulur ve zaman aşımı
+    # uygulaması ölümcül değildir: aradaki bir hata havuz yuvasını KALICI
+    # sızdırıyordu. (b) Ön getirim projeksiyon kapısı, hemen ardındaki
+    # biriktirme kararıyla AYNI eşiği (`tavan_mb / 2`) kullanır.
+    # Fonksiyon sayısı AYNI.
+    "R/helpers_pk_sql_execute.R" = c(502L, 22L),
+    # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 125 -> 138 satır (ÖLÇÜLEN).
+    # `poolReturn()` sonucu artık DENETLENİR; sınırlı çağrı başarısız olursa
+    # checkout emekliye ayrılır. Fonksiyon sayısı AYNI.
+    # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 138 -> 151 satır (ÖLÇÜLEN).
+    # ÖNCEKİ `LOCK_TIMEOUT` değeri OKUNAMADIYSA zaman aşımı HİÇ uygulanmaz;
+    # eskiden uygulanıp `applied = TRUE` raporlanıyor, temizlik `dirty = TRUE`
+    # döndüğü için o durumdaki HER istek bir havuz bağlantısını yok ediyordu.
+    # Fonksiyon sayısı AYNI.
+    # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 151 -> 154 satır (ÖLÇÜLEN).
+    # `SET LOCK_TIMEOUT` milisaniye çarpımı TAM SAYI TAŞMASINA uğramaz:
+    # 2147483 saniyenin üzerinde ifade `SET LOCK_TIMEOUT NA` olarak gidiyor
+    # ve kilit bekleme sınırı SESSİZCE uygulanmıyordu. Fonksiyon sayısı AYNI.
+    "R/helpers_pk_sql_connection.R" = c(154L, 6L),
     # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 372/22 -> 414/24 (OLCULEN).
     # `sql_file` bagimliliklari artik KAYNAK METINDEN cikarilir. Temiz bir PSOCK
     # iscisinde ILK parmak izi bootstrap'tan ONCE hesaplanir ve o an
@@ -525,13 +545,13 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # LISTE degerli `pk_entity_prior_context` alanini da okur; okunmadigi icin
     # `.pk_async_plain_user_data()` sanitizasyonu OLU KODDU. Fonksiyon sayisi
     # DEGISMEDI (try() kullanildi). Olculen 288.
-    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): sir tasima (`pk_async_secret_*`)
-    # AYRI `R/helpers_pk_async_secrets.R` dosyasina cikarildi; kalan govde OLCULEN.
+    # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): sır taşıma (`pk_async_secret_*`)
+    # AYRI `R/helpers_pk_async_secrets.R` dosyasına çıkarıldı; kalan gövde ÖLÇÜLEN.
     "R/helpers_pk_async_snapshot.R" = c(263L, 16L),
-    # BILINCLI GUNCELLEME (PR #705 kararlilik): yetenek sondasi artik
-    # `future::value()` ile ana olay dongusunu BLOKE ETMEZ; `resolved()`
-    # sinirli bir butce boyunca yoklanir ve SONUCSUZ sonda basari sayilmaz.
-    # Tavan yine TAM olculen degere cekilmistir; fonksiyon sayisi ARTMAMISTIR.
+    # BİLİNÇLİ GÜNCELLEME (PR #705 kararlılık): yetenek sondası artık
+    # `future::value()` ile ana olay döngüsünü BLOKE ETMEZ; `resolved()`
+    # sınırlı bir bütçe boyunca yoklanır ve SONUÇSUZ sonda başarı sayılmaz.
+    # Tavan yine TAM ölçülen değere çekilmiştir; fonksiyon sayısı ARTMAMIŞTIR.
     # PR #705 takibi: işçi-PID sondası kendi dosyasına AYRILDI (bekleyen
     # future'ı yeniden kullanır, ölçülemeyen sonucu soğuma penceresiyle
     # hatırlar). Plan dosyası 242 -> 190 küçüldü; sonda kendi bütçesini taşır.
@@ -634,7 +654,12 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # HIC kurulamiyordu. Fonksiyon sayisi ARTMAMISTIR.
     # BILINCLI GUNCELLEME (PR #705 inceleme takibi): surec-yerel ayna deposu AYRI
     # `R/helpers_pk_async_marker_store.R` dosyasina cikarildi; kalan govde OLCULEN.
-    "R/helpers_pk_async_request_markers.R" = c(215L, 11L),
+    # BILINCLI GUNCELLEME (PR incelemesi): 215 -> 219 satir (OLCULEN). (a)
+    # `pk_session_state_write()` artik ORTAM sarti uygular: liste bir KOPYADIR
+    # ve geri okuma yazimi "kalici" gosteriyordu. (b) `.pk_marker_session_id()`
+    # kimlik cozulemedigi durumda BOS DIZE yerine NESNE ADRESI dondurur; `""`
+    # donen iki AYRI oturum AYNI isaret alanini paylasiyordu. Fonksiyon AYNI.
+    "R/helpers_pk_async_request_markers.R" = c(219L, 11L),
     # BILINCLI GUNCELLEME (PR #705 inceleme): +10 satir. Terk edilen istekler
     # kayittan SILINIR; girdi, istek-sahipli `release` kapanisini ve yakaladigi
     # durumu oturum boyunca canli tutuyordu. Fonksiyon sayisi DEGISMEDI.
@@ -647,7 +672,13 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # ayna tasiyor (`.pk_marker_note("closed", ...)`). Yutulmus bir atama
     # `mergen_pk_session_open()` icin oturumu ACIK birakiyordu; gec biten isci
     # geri cagrisi kapanmis oturuma artefakt sunup nihai LLM'i tetikleyebilirdi.
-    "R/helpers_pk_async_session_registry.R" = c(240L, 16L),
+    # BILINCLI GUNCELLEME (PR incelemesi): 240 -> 247 satir / 16 -> 16 fonksiyon
+    # (OLCULEN). (a) Oturum sonunda BU OTURUMA ait sabitlemeler birakilir;
+    # `pinned` deposu surec-yereldir ve terminal geri cagriya ulasamayan istek
+    # anahtari surec omru boyunca kaliyordu. (b) Kalici olmayan bir nesil
+    # artisi icin surec-yerel ayna eklendi; yutulan yazim iki AYRI kaydedilmemis
+    # sohbeti AYNI kimlige dusuruyordu.
+    "R/helpers_pk_async_session_registry.R" = c(247L, 16L),
     # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 239 -> 250 satir (OLCULEN).
     # Geri yukleyici artik YEREL baglama YOKKEN sarmalayiciyi KALDIRIR; eskiden
     # sinirli yurutucu surec omru boyunca bagli kaliyor ve sonraki senkron
@@ -659,7 +690,12 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # tek-cikis kancasi kuruluyken hedef ortam yanlisti: sinirsiz
     # materyalizasyon kaliyor, parcalama/sonuc-boyutu/Durdur/son tarih kapisi
     # bu yolda HIC uygulanmiyordu. Fonksiyon sayisi AYNI.
-    "R/helpers_pk_async_routing.R" = c(258L, 21L),
+    # BILINCLI GUNCELLEME (PR incelemesi): 258 -> 260 satir (OLCULEN).
+    # `heuristic_score` SUTUN VARLIGI dogrulanir ve senkron-only indeksler
+    # `yuzde` uzunluguna gore kirpilir: sutun kaldirilir/yeniden adlandirilirsa
+    # `yuzde[senkron_only]` `NA` doner, `kutuphane[[NA_integer_]]` ise TUM PK
+    # istegini yakalanmamis bir alt simge hatasiyla dusururdu. Fonksiyon AYNI.
+    "R/helpers_pk_async_routing.R" = c(260L, 21L),
     # BILINCLI GUNCELLEME (PR #705 P2 takibi): 232 -> 240 satir (OLCULEN).
     # `mergen_pk_send_snapshot()` anahtar plani alinamadiginda ACIK bir
     # "snapshot_failed" isareti dondurur; `NULL` donmek `%||%` yedegini
@@ -674,7 +710,11 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 255 -> 259 satir (OLCULEN).
     # Oturum yedegi artik `sendCustomMessage()` hatasini BASARI saymaz;
     # kapali websocket icin cipler teslim edilmis kaydediliyordu.
-    "R/helpers_pk_async_lifecycle.R" = c(259L, 17L),
+    # BILINCLI GUNCELLEME (PR incelemesi): 259 -> 260 satir (OLCULEN). DOSYASIZ
+    # bir ekte `pk_export_serve()` hata firlattiginda TAMAMLANMIS analiz artik
+    # `export_failed` ile DEGISTIRILMEZ (URL denetimi bu durumu ZATEN atliyor).
+    # Fonksiyon sayisi AYNI.
+    "R/helpers_pk_async_lifecycle.R" = c(260L, 17L),
     # BILINCLI GUNCELLEME (PR #705): `pk_stopped` artik tipli `pk_halt_status`
     # tasir; son tarih kullanici iptali gibi raporlanmaz.
     # Tavan 1 satir bayatti (olculen 223); TAM olculen degere cekildi.
@@ -744,7 +784,14 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # denetiminden geciyor. Mutlak son tarih kurulmamisken
     # `mergen_pk_request_deadline_at()` `NA` donuyor, `!is.null(NA)` TRUE
     # oldugu icin bekci `delay = Inf` ile zamanlaniyor ve HIC ATESLENMIYORDU.
-    "R/server_handler_pk_async.R" = c(504L, 14L)
+    # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 504 -> 517 satır (ÖLÇÜLEN).
+    # (a) Jeton temizliği FAIL-SOFT: kaldırılamayan bir `.flag` dosyası
+    # `bitir_istek()` içinde fırlatınca `is_sending`/yazıyor sarmalayıcısı
+    # HİÇ temizlenmiyor, sohbet oturum sonuna kadar KİLİTLİ kalıyordu.
+    # (b) Bayat köken kaydı ARTIK her terminal hata yolunda tüketilir;
+    # önceki isteğin otoriter alt bilgisi ilgisiz bir altyapı hatasına
+    # iliştiriliyordu. Fonksiyon sayısı AYNI.
+    "R/server_handler_pk_async.R" = c(517L, 14L)
   )
 
   for (dosya in names(butceler)) {

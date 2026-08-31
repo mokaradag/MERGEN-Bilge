@@ -11,10 +11,10 @@
 #           bağımlılığı yoktur ve ortam değerleri future worker içinde
 #           doğrudan Sys.getenv() ile okunur (kapanış serileştirilmez).
 #
-# Not: Bu dosya yalnızca gerçekten TÜKETİLEN anahtarları kaydeder. Örneğin
-#      MERGEN_PK_FILTER_TIMEOUT_SEC burada YOKTUR; onu v1'de tüketmek motorun
-#      filtre sonuçlarını değiştirirdi ve bu, master planın §10 motor sınırı
-#      sözleşmesine aykırıdır.
+# Not: Bu dosya yalnızca gerçekten TÜKETİLEN anahtarları kaydeder.
+#      `MERGEN_PK_FILTER_TIMEOUT_SEC` KAYITLIDIR ama YALNIZCA v2 tüketir; v1
+#      kendi sabit değerinde bırakılır, böylece master planın §10 motor sınırı
+#      sözleşmesi bozulmaz (bkz. anahtar tanımı).
 # ==============================================================================
 
 # Desteklenen anahtarların tek kaynağı. Yeni faz yeni anahtar eklerken bu
@@ -530,7 +530,7 @@ pk_config_option_key <- function(key) {
   # DOKUNMAZ; `AÇIK` yazan bir operatör `aÇik` üretiyor, sözlükte bulunamıyor
   # ve değer SESSİZCE geçersiz sayılıp daha düşük öncelikli bir varsayılana
   # düşülüyordu. Eşleme SABİT ve yerelden bağımsızdır (`tolower()` kullanılmaz).
-  txt <- chartr("ÇĞİÖŞÜ", "çğiöşü", txt)
+  txt <- chartr(enc2utf8("ÇĞİÖŞÜ"), enc2utf8("çğiöşü"), txt)  # SABİTLER UTF-8'E SABİTLENİR: yerel `C` iken yerli işaretli eşleme dönüşümü başarısız olur ve `AÇIK` sessizce geçersiz sayılırdı.
 
   # Nokta(sız) i belirsizliği: ASCII katlamada `I` -> `i`, Türkçe yazımda
   # `ı` beklenir. Her iki yazım da AÇIKÇA kabul edilir; tahmin yapılmaz.

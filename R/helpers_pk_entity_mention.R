@@ -79,6 +79,7 @@
 
   for (kok in dusur) {
     if (nchar(token) <= nchar(kok)) next
+    if (nchar(token) - nchar(kok) < 2L) next  # TEK HARFLİK KUYRUK EK SAYILMAZ: `.pk_entity_run_is_suffix_chain()` tek harfli sözlük eklerini de kabul ettiği için `ver` + `i` kalıbı `veri` gibi GERÇEK varlık belirteçlerini denetim sözcüğü sanıp düşürüyordu (`projesi` -> `si`, `projeleri` -> `leri` korunur).
     if (!identical(substring(token, 1L, nchar(kok)), kok)) next
     if (.pk_entity_run_is_suffix_chain(substring(token, nchar(kok) + 1L))) return(TRUE)
   }

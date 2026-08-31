@@ -37,7 +37,9 @@
 # ama yanlış bir alt küme. Belirteç açık AND/OR kümelerine karşı doğrulanır;
 # bilinmeyen değer `NA` döner ve grup REDDEDİLİR.
 .pk_filter_group_operator <- function(x) {
-  ham <- as.character(x$operator %||% x$logic %||% NA_character_)[1]
+  # ÇOK DEĞERLİ BEYAN SESSİZCE İLK ÖGEYE İNDİRGENMEZ: `[1]` kırpması doğrulamadan ÖNCE yapıldığı için uzunluk denetimi hiç çalışmıyordu.
+  ham <- as.character(x$operator %||% x$logic %||% NA_character_)
+  if (length(ham) > 1L) return(NA_character_)
   if (is.null(ham) || length(ham) != 1L || is.na(ham) || !nzchar(trimws(ham))) {
     # Belirteç HİÇ verilmemişse sözleşmenin varsayılanı `and`dir.
     return("and")
@@ -123,7 +125,13 @@
     }
 
     maske <- sonuc$mask
-    if (.pk_filter_leaf_role(yaprak$operation) %in% "exclude") maske <- !maske
+    if (.pk_filter_leaf_role(yaprak$operation) %in% "exclude") {
+      maske <- !maske
+      # BİLİNMEYEN DEĞER DIŞLAMAYA GİRMEZ (derleyiciyle AYNI sözleşme).
+      if (!is.null(yaprak$column) && !is.null(data[[yaprak$column]])) {
+        maske[is.na(data[[yaprak$column]])] <- FALSE
+      }
+    }
     maskeler[[length(maskeler) + 1L]] <- maske
     uygulanan[[length(uygulanan) + 1L]] <- yaprak
   }
@@ -145,4 +153,33 @@
   }
 
   list(mask = birlesik, applied = uygulanan, dropped = dusen)
+}
+
+# SÜTUNLAR ARASI `or` BEYANINI DÜŞÜR (düz filtre listesi).
+#
+# VEYA havuzu SÜTUN İÇİNDEDİR: `pk_filter_compile()` her sütun grubunun
+# maskesini VE'ler. Farklı sütunlardaki iki `logic = "or"` yaprağı bu yüzden
+# KESİŞTİRİLİYOR; istenen BİRLEŞİM yerine çoğu zaman sıfır satır dönüyor ve
+# hiçbir yaprak düşmediği için kullanıcıya HİÇBİR ifşa da gitmiyordu. Sütunlar
+# arası VEYA yalnızca AÇIK grup düğümüyle (`children`/`operator`) ifade edilir,
+# bu yüzden eş sütun kardeşi OLMAYAN `or` yaprağı düşürülür ve gerekçesi ifşa
+# edilir (politika katmanı buradan reddedebilir).
+.pk_filter_reject_crosscolumn_or <- function(valid, columns) {
+  if (length(columns) <= 1L || !length(valid)) {
+    return(list(valid = valid, dropped = list(), columns = columns))
+  }
+
+  or_yalniz <- vapply(valid, function(x) {
+    identical(as.character(x$logic %||% "")[1], "or") &&
+      sum(vapply(valid, function(y) identical(y$column, x$column), logical(1))) == 1L
+  }, logical(1))
+  if (!any(or_yalniz)) return(list(valid = valid, dropped = list(), columns = columns))
+
+  dusen <- lapply(valid[or_yalniz], function(x) list(
+    leaf = x,
+    reason = "sutunlar arasi 'or' beyani duz filtrede uygulanamaz; mantik grubu gerekir"
+  ))
+  kalan <- valid[!or_yalniz]
+  list(valid = kalan, dropped = dusen,
+       columns = unique(vapply(kalan, function(x) x$column, character(1))))
 }

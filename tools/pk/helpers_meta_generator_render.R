@@ -332,8 +332,13 @@ pkgr_stage_local_meta_file <- function(text, path, forbidden = PKG_META_FORBIDDE
 .pkgr_replace_with_backup <- function(staged, path, attempts = 3L) {
   if (!file.exists(path)) return(FALSE)
 
-  yedek <- paste0(path, ".bak-", Sys.getpid(), "-", format(Sys.time(), "%Y%m%d%H%M%OS6"))
-  yedek <- gsub(":", "", yedek, fixed = TRUE)
+  # ':' YALNIZCA URETILEN SONEKTEN TEMIZLENIR, TAM YOLDAN DEGIL. Windows'ta
+  # `path` surucu harfiyle baslar (`C:/repo/...`); ':' tum dizeden silindiginde
+  # yedek yolu GORECELI olur, ust dizini yoktur, `file.rename()` duser ve
+  # belgelenen yedekli takas kurtarmasi Windows'ta HIC calismazdi.
+  sonek <- gsub(":", "", paste0(".bak-", Sys.getpid(), "-",
+                                format(Sys.time(), "%Y%m%d%H%M%OS6")), fixed = TRUE)
+  yedek <- paste0(path, sonek)
   if (file.exists(yedek)) unlink(yedek)
 
   tasi <- function(from, to) {

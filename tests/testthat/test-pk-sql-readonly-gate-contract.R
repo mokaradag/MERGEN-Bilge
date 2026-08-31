@@ -30,6 +30,17 @@
   if (is.na(txt)) "" else enc2utf8(txt)
 }
 
+# YORUM SATIRLARI ÇIKARILMIŞ KOD METNİ: olumlu bir çağrı taraması, çağrı
+# SİLİNSE bile aynı adı ALINTILAYAN bir yorum satırı kaldığında YEŞİL kalırdı;
+# bu dosyalar zaten `pk_sql_readonly_guard()` adını anan açıklama taşıyor
+# (kardeş çözüm: `.pk_rls_code_only()`, test-pk-rls-failclosed-contract.R).
+.pk_sql_code_only <- function(rel_path) {
+  satirlar <- strsplit(gsub("\r\n?", "\n", .pk_sql_read_bytes(rel_path)),
+                       "\n", fixed = TRUE)[[1]]
+  paste(satirlar[!grepl("^\\s*#", satirlar, perl = TRUE, useBytes = TRUE)],
+        collapse = "\n")
+}
+
 test_that("tek bir salt-okunur SELECT ve CTE+SELECT kabul edilir", {
   env <- .pk_sql_gate_env()
 
@@ -235,8 +246,8 @@ test_that("guard reddettiginde ham SQL kullaniciya donmez", {
 })
 
 test_that("kapi TUM PK SQL yurutme yollarinda baglidir (v1 / v2 / derin mod)", {
-  modul <- .pk_sql_read_bytes("R/module_proje_kaynak_analizi.R")
-  derin <- .pk_sql_read_bytes("R/helpers_deep_analysis.R")
+  modul <- .pk_sql_code_only("R/module_proje_kaynak_analizi.R")
+  derin <- .pk_sql_code_only("R/helpers_deep_analysis.R")
 
   expect_true(
     grepl("pk_sql_readonly_guard(", modul, fixed = TRUE, useBytes = TRUE),

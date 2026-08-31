@@ -331,7 +331,11 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
       .pk_hook_mark_acquired(telemetry_conn, state)
       if (!is.null(telemetry_list)) {
         on.exit(
-          try(.pk_hook_real_release_connection(telemetry_list), silent = TRUE),
+          {
+            # KAYIT İADE ANINDA GÜNCELLENİR: doğrudan `.pk_hook_real_release_connection()` çağrısı kaydı GÜNCELLEMEZ (yalnızca `call_env$release_connection()` günceller); aynı `conn` nesnesi bir sonraki gözlemde CANLI sanılıyor ve iade edilmiş bir havuz bağlantısı üzerinde telemetri çalıştırılıyordu.
+            .pk_hook_mark_released(telemetry_conn, state)
+            try(.pk_hook_real_release_connection(telemetry_list), silent = TRUE)
+          },
           add = TRUE
         )
       }
@@ -399,11 +403,27 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
   # ATLANIYOR ve otoriter alt bilgi ham model metnine EKLENİYORDU. `block`
   # kipinin tüm amacı budur: deterministik yedek (yoksa sabit reddetme metni)
   # kullanılır.
-  if (is.null(kayit$facts) && identical(kayit$mode, "block")) {
-    yedek <- .pk_hook_scalar_text(kayit$fallback_text)
-    if (!nzchar(yedek) && exists("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)) {
-      yedek <- .pk_hook_scalar_text(get("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE))
+  # KİP TEK BİR NORMALLEŞTİRME İLE OKUNUR: aşağıdaki hata yakalayıcısı `as.character(...)[1]` kullanırken bu kapı ÇIPLAK `identical()` yapıyordu; adlandırılmış/öznitelikli bir `mode` değeri kapıyı geçersiz kılıyor, olgu kaydı da olmadığı için doğrulama ATLANIYOR ve ham model metni otoriter alt bilgiyle YAYIMLANIYORDU.
+  kip <- as.character(kayit$mode %||% "")[1]
+  if (length(kip) != 1L || is.na(kip)) kip <- ""
+
+  .blok_yedegi <- function() {
+    y <- .pk_hook_scalar_text(kayit$fallback_text)
+    if (!nzchar(y) && exists("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)) {
+      y <- .pk_hook_scalar_text(get("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE))
     }
+    y
+  }
+
+  if (is.null(kayit$facts) && identical(kip, "block")) {
+    yedek <- .blok_yedegi()
+    if (nzchar(yedek)) govde <- yedek
+  }
+
+  # DOĞRULAYICI YÜKLENMEMİŞSE `block` KİPİ KAPALI BAŞARISIZ OLUR: olgu VARKEN doğrulayıcı çözülemezse aşağıdaki dal atlanıyor ve otoriter alt bilgi DOĞRULANMAMIŞ düzyazıya ekleniyordu.
+  if (!is.null(kayit$facts) && identical(kip, "block") &&
+      !exists("pk_numeric_provenance_apply", mode = "function", inherits = TRUE)) {
+    yedek <- .blok_yedegi()
     if (nzchar(yedek)) govde <- yedek
   }
 
@@ -421,7 +441,7 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
     }, error = function(e) {
       # `block` kipi AÇIK başarısız olamaz: doğrulanmamış düzyazı teslim
       # edilmektense deterministik reddetme metni gösterilir.
-      if (identical(as.character(kayit$mode %||% "")[1], "block") &&
+      if (identical(kip, "block") &&
           exists("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)) {
         return(.pk_hook_scalar_text(
           get("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)

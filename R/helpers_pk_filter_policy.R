@@ -241,6 +241,21 @@ pk_filter_zero_match_policy <- function(data, filters, compiled, query = NULL) {
   birincil <- pk_filter_primary_column(query, filtre_sutunlari)
   sonuc$primary_column <- birincil
 
+  .sifir_degerleri <- function() {
+    unlist(lapply(sifir_gruplar, function(g) {
+      unlist(lapply(g$applied, function(l) l$values), use.names = FALSE)
+    }), use.names = FALSE)
+  }
+
+  # BEYAN EDİLEN BİRİNCİL SÜTUN UYGULANMADIYSA KARAR REDDİR: `pk_filter_primary_column()` metadata'nın beyan ettiği sütunu, o sütun UYGULANAN filtreler arasında OLMASA BİLE döndürür. Böyle bir durumda aşağıdaki hiçbir kapı çalışmaz (1) sıfır eşleşen grubu birincil sanmaz, 1b) `birincil` NULL olmadığı için atlanır, `.birincil_iceriyor()` çıkarılan düğümde o sütunu bulamaz); kurtarma derlemesi geriye daraltma bırakmaz ve TÜMÜ-TRUE maske ile TÜM yetkili küme "istenen popülasyon" sanılır.
+  if (!is.null(birincil) && !(birincil %in% filtre_sutunlari)) {
+    return(reddet(.pk_policy_zero_match_message(
+      paste(unique(vapply(sifir_gruplar, function(g) g$column, character(1))),
+            collapse = "` / `"),
+      .sifir_degerleri()
+    ), birincil))
+  }
+
   # 1) Birincil sütunda sıfır eşleşme -> analiz yapılmaz.
   for (grup in sifir_gruplar) {
     if (!is.null(birincil) && identical(grup$column, birincil)) {
@@ -364,6 +379,13 @@ pk_filter_zero_match_policy <- function(data, filters, compiled, query = NULL) {
   # geçerdi: kurtarma yolu, ilk derlemenin bilinçli olarak reddettiği bir
   # kriteri uygulayarak anlamsal kapıyı ZAYIFLATIRDI.
   yeniden <- pk_filter_compile(data, kalan, query = query)
+
+  # KURTARMA GERİYE HİÇBİR DARALTMA BIRAKMADIYSA KARAR REDDİR: `kalan` boşken ya da metadata kapısı kalan yaprakları da düşürdüğünde `pk_filter_compile()` TÜMÜ-TRUE maske döndürür; `dropped_secondary` denirken analiz TÜM yetkili popülasyonu kapsardı — 1b'nin engellemek için var olduğu sonucun aynısı.
+  if (!length(kalan) || !length(yeniden$groups)) {
+    return(reddet(.pk_policy_zero_match_message(
+      paste(unique(dusurulen), collapse = "` / `"), .sifir_degerleri()
+    ), birincil))
+  }
 
   sonuc$action <- "dropped_secondary"
   sonuc$mask <- yeniden$mask

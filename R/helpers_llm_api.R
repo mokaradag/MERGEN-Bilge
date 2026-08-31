@@ -269,6 +269,10 @@ call_llm_with_retry <- function(chat_history, settings, max_retries = 3) {
     }, error = function(e) {
       if (i == max_retries || .pk_llm_retry_cancelled(e)) stop(e)
       Sys.sleep(2^i)
+      # BEKLEME SIRASINDA DURDUR'A BASILABİLİR: kapı yalnızca hata anında
+      # yoklandığında, geri çekilme süresi boyunca gelen iptal görülmez ve
+      # ZATEN iptal edilmiş bir analiz için yeni bir POST atılırdı.
+      if (.pk_llm_retry_cancelled(e)) stop(e)
       list(ok = FALSE, value = NULL)
     })
 

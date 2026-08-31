@@ -65,7 +65,8 @@ resolve_pk_analysis_username <- function(session, fallback = "Unknown") {
 .pk_rls_bounded_query <- function(conn, statement, params = NULL) {
   if (exists("pk_active_stage_halt", mode = "function", inherits = TRUE) &&
       isTRUE(tryCatch(pk_active_stage_halt(), error = function(e) FALSE))) {
-    stop("PK istegi durduruldu; yetki okumasi baslatilmadi.", call. = FALSE)
+    stop(structure(class = c("pk_halt_error", "error", "condition"),  # TİPLİ KOŞUL: sınıflandırma yerelleştirilmiş sürücü metnine bağlı kalmaz.
+                   list(message = "PK istegi durduruldu; yetki okumasi baslatilmadi.", call = NULL)))
   }
 
   cagri <- function() {
@@ -117,6 +118,10 @@ pk_rls_halt_message <- function(rls_info) {
 }
 
 .pk_rls_halt_error <- function(e) {
+  # TİPLİ KOŞUL VE ETKİN KAPI DURUMU METİNDEN ÖNCE GELİR: yerelleştirilmiş bir sürücü mesajı sınıflandırmayı düşürdüğünde son tarih/iptal, kullanıcıya "veritabanı erişim hatası" olarak raporlanıyordu.
+  if (inherits(e, "pk_halt_error")) return(TRUE)
+  if (exists("pk_active_stage_halt", mode = "function", inherits = TRUE) &&
+      isTRUE(try(pk_active_stage_halt(), silent = TRUE))) return(TRUE)
   metin <- tryCatch(conditionMessage(e), error = function(x) "")
   if (is.null(metin) || is.na(metin) || !nzchar(metin)) return(FALSE)
   isaretler <- c("durduruldu", "butcesi tukendi", "butcesi tukendi;",

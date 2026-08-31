@@ -211,7 +211,12 @@ test_that("üretim kaynağı belleğe okunan gövdeye geri DÖNMEZ", {
 
 .pk_serve_private <- function(paket, ad, envir = NULL) {
   tryCatch({
-    ortam <- envir %||% asNamespace(paket)
+    # `%||%` BU DOSYADA BAĞLI DEĞİLDİR (yalnızca özel yardımcı ortamına atanır):
+    # operatör oturumda yoksa "could not find function" `tryCatch()` içinde
+    # `NULL`a dönüyor, iki bütünleşme testi ATLANIYOR ve atlama mesajı gerçek
+    # nedeni (eksik operatör) gizleyip yukarı akış yeniden adlandırmasını
+    # SUÇLUYORDU.
+    ortam <- if (is.null(envir)) asNamespace(paket) else envir
     if (!exists(ad, envir = ortam, inherits = FALSE)) return(NULL)
     get(ad, envir = ortam, inherits = FALSE)
   }, error = function(e) NULL)
@@ -236,8 +241,11 @@ test_that("httpuv adlandırılmış `file` gövdesini dosya akışına çevirir"
   )
   # Alan adı ARANIR; tam ifade biçimi DEĞİL (yukarı akış yeniden yazımına
   # dayanıklı olsun diye).
+  # İDDİA GERÇEKTEN SINAR: ikinci koşul (`grepl("body", ...)`) `bodyFile`
+  # dizesiyle de eşleştiği için ayrık ifade HER ZAMAN TRUE oluyordu; sözleşme
+  # ("çeviri yanıt GÖVDESİNE bakar") hiç denetlenmiyordu.
   expect_true(
-    grepl("resp$body", govde, fixed = TRUE) || grepl("body", govde, fixed = TRUE),
+    grepl("resp$body", govde, fixed = TRUE),
     info = "Çeviri, yanıt gövdesine bakmalıdır."
   )
 })

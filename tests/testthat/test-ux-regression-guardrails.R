@@ -65,15 +65,31 @@
     stop(sprintf("Kaynak dosya UTF-8 olarak çözülemedi: %s", full_path), call. = FALSE)
   }
   txt <- gsub("\\r\\n?|\\r", "\n", txt, perl = TRUE)
+
+  # YALNIZ BOŞLUK İÇEREN DOSYA DA REDDEDİLİR: `size > 0` olduğu için yukarıdaki
+  # boş-dosya kapısını geçen, ama içeriği tamamen silinmiş (yalnız satır sonu /
+  # boşluk kalan) bir kaynak, bu dosyadaki OLUMSUZ taramaların hepsini geçirir
+  # ve muhafız edilen bileşen TAMAMEN kaybolmuşken süit başarı raporlardı.
+  if (!nzchar(trimws(txt))) {
+    stop(sprintf("Kaynak dosya YALNIZCA boşluk içeriyor: %s", full_path),
+         call. = FALSE)
+  }
+
   enc2utf8(txt)
 }
 
 .ux_guard_has_text <- function(text, needle) {
+  # `useBytes = TRUE` KULLANILMAZ: metin `enc2utf8()` ile UTF-8'dir, arama
+  # dizesi ise bu TEST DOSYASININ literalidir. Windows VM'de R yereli
+  # Türkçe/`WINDOWS-1254` olduğu ve testthat dosyayı UTF-8 beyanı OLMADAN
+  # ayrıştırdığı için Türkçe içeren bir literal YERLİ işaretlenir; bayt
+  # karşılaştırması sessizce kaçar ve muhafız VAR OLAN bir sözleşmeyi EKSİK
+  # raporlardı. `.ux_guard_expect_order()` de `useBytes` geçmez; iki yardımcı
+  # artık aynı karşılaştırmayı yapar.
   isTRUE(suppressWarnings(grepl(
-    needle,
+    enc2utf8(needle),
     text,
-    fixed = TRUE,
-    useBytes = TRUE
+    fixed = TRUE
   )))
 }
 
@@ -366,7 +382,11 @@ testthat::test_that("TTS, STT ve müzik state guardrail sözleşmeleri korunur",
     c(
       "self._stopAudio();",
       "MusicManager.unduck('ai_expert')",
-      "ttsVisualizerState.setIdle",
+      # ÇAĞRININ KENDİSİ İSTENİR, YALNIZCA TANIMLAYICI DEĞİL: `setIdle` adı hem
+      # kullanılabilirlik denetiminde (`&& window.ttsVisualizerState.setIdle`)
+      # hem çağrıda geçer; çağrı SİLİNİP `if` koşulu kalsaydı muhafız geçer ve
+      # otomatik oynatma reddi TTS görselleştiricisini SIFIRLAMAZDI.
+      "ttsVisualizerState.setIdle()",
       "self._scheduleHide(self._estimateReadTime(self.state.currentText))"
     ),
     "AI Expert autoplay rejection cleanup sözleşmesi eksik:"
@@ -412,6 +432,44 @@ testthat::test_that("TTS, STT ve müzik state guardrail sözleşmeleri korunur",
       "trigger_tts_fn(ai_msg$id, seslendirilecek_metin)"
     ),
     "TTS metni dekorasyondan ÖNCE yakalanmalıdır:"
+  )
+
+  # BENZETİMLİ AKIŞ (SIMULATED STREAMING) DA AYNI SÖZLEŞMEYİ TAŞIR.
+  #
+  # Yukarıdaki iddialar yalnızca `R/server_llm_response_handlers.R` dosyasını
+  # denetliyordu; oysa `R/helpers_chat_runtime.R` de TTS'i tetikler. Orada
+  # dekorasyon SONLANDIRMADA yapılır ve YALNIZCA ekrana/DB'ye giden
+  # `final_text`i değiştirir; TTS motoru DAHA ÖNCE `tts_metni` ile çağrılmıştır.
+  # Bu dosya denetlenmezse, benzetimli akış köken alt bilgisini SESLİ OKUMAYA
+  # başlasa bile süit yeşil kalırdı.
+  ct_runtime_r <- .ux_guard_read_text("R/helpers_chat_runtime.R")
+
+  .ux_guard_expect_all(
+    ct_runtime_r,
+    c(
+      "tts_metni <- .cr_metin(blok$tts, yedek_blok$tts)",
+      "tts_engine(tts_metni, tts_voice)",
+      "final_text <- pk_stream_display_text(final_text, session, pk_request_id, .cr_blok_aktif)"
+    ),
+    "Benzetimli akış TTS/dekorasyon sözleşmesi eksik:"
+  )
+
+  # BU DOSYADA METİNSEL SIRA SÖZLEŞME DEĞİLDİR: dekorasyon,
+  # `start_streaming_execution()` gövdesinde (dosyada DAHA YUKARIDA) yer alır
+  # ama ÇALIŞMA sırasında TTS promise'i çözüldükten SONRA çalışır. Sözleşme,
+  # dekorasyonun YALNIZCA gösterilecek metne uygulanmasıdır; bu yüzden OLUMSUZ
+  # iddialarla kilitlenir.
+  testthat::expect_false(
+    .ux_guard_has_text(ct_runtime_r, "pk_stream_display_text(tts_metni"),
+    info = "Köken dekorasyonu TTS metnine UYGULANMAMALIDIR."
+  )
+  testthat::expect_false(
+    .ux_guard_has_text(ct_runtime_r, "tts_engine(final_text"),
+    info = "TTS motoru DEKORE EDİLMİŞ metinle çağrılmamalıdır."
+  )
+  testthat::expect_false(
+    .ux_guard_has_text(ct_runtime_r, "tts_engine(pk_stream_display_text"),
+    info = "TTS motoru dekorasyon çıktısını almamalıdır."
   )
 
   .ux_guard_expect_all(

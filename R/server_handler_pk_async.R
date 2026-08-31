@@ -107,7 +107,8 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
       try(bekci_iptal(), silent = TRUE)
       bekci_iptal <<- NULL
     }
-    pk_cancel_token_clear(cancel_token)
+    # JETON TEMİZLİĞİ FAIL-SOFT'TUR: dosya (ör. Windows'ta kilitliyken) kaldırılamazsa yardımcı hata sinyaller; terminal temizlik (`is_sending`, yazıyor sarmalayıcısı, backpressure) YİNE tamamlanmalıdır. Aksi hâlde `bitir_istek()` fırlatıyor, `promises::catch()` içindeki ikinci çağrı da fırlatıyor ve sohbet oturum sonuna kadar KİLİTLİ kalıyordu.
+    try(pk_cancel_token_clear(cancel_token), silent = TRUE)
     try(mergen_pk_unregister_active_request(oturum, req_id), silent = TRUE)
     # SAHİPLİK DE KALDIRILIR. Bu fonksiyon başarılı analizde `devam_et()`'in
     # nihai LLM'i AYNI istek kimliğiyle başlatmasından ÖNCE çalışır; sahiplik
@@ -160,7 +161,8 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
     # Yaşam döngüsü koruması KURULAMADIYSA asenkron gönderim yapılmaz: iptal
     # edilemeyen ve backpressure'ı bırakılamayan bir işçi bırakmak, senkron
     # yolun bloklamasından daha kötüdür.
-    pk_cancel_token_clear(cancel_token)
+    # JETON TEMİZLİĞİ FAIL-SOFT'TUR: dosya (ör. Windows'ta kilitliyken) kaldırılamazsa yardımcı hata sinyaller; terminal temizlik (`is_sending`, yazıyor sarmalayıcısı, backpressure) YİNE tamamlanmalıdır. Aksi hâlde `bitir_istek()` fırlatıyor, `promises::catch()` içindeki ikinci çağrı da fırlatıyor ve sohbet oturum sonuna kadar KİLİTLİ kalıyordu.
+    try(pk_cancel_token_clear(cancel_token), silent = TRUE)
     try(mergen_pk_unregister_cancel_token(oturum, req_id), silent = TRUE)
     return(sinirli_senkron("active_registry_failed"))
   }
@@ -437,6 +439,7 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
       # bir istek, canlı oturumun seçim durumunu ve köken alt bilgisini
       # EZEMEMELİDİR (sonraki istek oradan tohumlanıyor).
       if (identical(durum, "bootstrap_failed")) {
+        bayat_kokeni_tuket()
         return(devam_et(altyapi_hatasi("bootstrap_failed")))
       }
       shiny::isolate({
@@ -459,6 +462,7 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
       jeton_yerlesmede_temizle()
       if (!isTRUE(koruma_gecti("rejected"))) return(invisible(NULL))
       bitir_istek()
+      bayat_kokeni_tuket()
       # Buraya yalnızca ALTYAPI hataları düşer (serileştirme/işçi kaybı):
       # boru hattı hataları işçide tipli pakete dönüştürülür. Bu geri çağrı ANA
       # SÜREÇTE çalıştığı için senkron tekrar oynatma YAPILMAZ (bkz. yukarıdaki
@@ -468,6 +472,14 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
       invisible(NULL)
     }
   )
+
+  # BAYAT KÖKEN KAYDI HER TERMİNAL HATA YOLUNDA TÜKETİLİR: yalnızca genel `!ok` dalı temizliyordu; `bootstrap_failed`, reddedilen future ve devam kapanışı hatası temizlemeyince ÖNCEKİ isteğin bekleyen otoriter alt bilgisi, ilgisiz bir altyapı hatası mesajına `add_message()` içindeki dekorasyonla iliştiriliyordu.
+  bayat_kokeni_tuket <- function() {
+    if (exists("pk_provenance_take", mode = "function", inherits = TRUE)) {
+      try(pk_provenance_take(oturum, request_id = req_id), silent = TRUE)
+    }
+    invisible(NULL)
+  }
 
   # `then()` içindeki onFulfilled/onRejected KENDİLERİ de hata atabilir
   # (`mergen_pk_apply_analysis_result`, `continue_fn`, nihai LLM hazırlığı).
@@ -486,6 +498,7 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
       try(mergen_pk_cleanup_worker_artifact(sunulan_sonuc), silent = TRUE)
       sunulan_sonuc <<- NULL
     }
+    bayat_kokeni_tuket()
     try(shiny::isolate({
       ctx$cleanup_send_message()
       ctx$add_message_fn(mergen_pk_worker_outcome_text("error"), "ai")

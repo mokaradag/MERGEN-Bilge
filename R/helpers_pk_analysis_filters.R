@@ -359,9 +359,13 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
   # ayrıştırılamadığı durumda zaten var olan ve sınanmış geri düşme yoludur.
   applied_expression_success <- FALSE
 
-  if (!is.null(filter_instructions$filter_expression) &&
-      nzchar(as.character(filter_instructions$filter_expression)[1])) {
-    expr_str <- as.character(filter_instructions$filter_expression)[1]
+  # BOŞ DİZİ İFADE DEĞİLDİR: ayrıştırıcı `simplifyVector = FALSE` kullandığı
+  # için `"filter_expression": []` BOŞ LİSTE olarak gelir. `as.character(
+  # list())[1]` `NA` üretir ve `nzchar(NA)` TRUE olduğu için model hiç ifade
+  # göndermemişken kullanıcıya SAHTE bir bozulma bildirimi yazılıyordu.
+  expr_str <- .pk_filter_observation_scalar(filter_instructions$filter_expression)
+
+  if (nzchar(expr_str)) {
     cat("[SMART_FILTER] filter_expression yok sayildi (calistirilabilir ifade kabul edilmez).\n")
     dropped[[length(dropped) + 1L]] <- .pk_filter_dropped(
       list(column = "filter_expression", value = expr_str, operation = "expression"),
@@ -429,7 +433,10 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
         val_str <- .pk_filter_observation_scalar(val)
 
         if (is.character(col_vals) || is.factor(col_vals)) {
-          val_regex <- gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\\1", val_str)
+          # TERS BÖLÜ DE KAÇILIR: UNC yolu ya da alan adı taşıyan bir değer
+          # (`\\sunucu\\pay`) eskiden ASILI bir kaçış karakteri üretiyor,
+          # `grepl()` HİÇBİR satırı tutmuyor ama yaprak UYGULANDI sayılıyordu.
+          val_regex <- gsub("([.|()\\^{}+$*?\\\\]|\\[|\\])", "\\\\\\1", val_str)
           col_vals_char <- as.character(col_vals)
 
           if (op == "exact_match") {
@@ -437,7 +444,15 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
           } else if (op == "contains") {
             dt <- dt[grepl(val_regex, col_vals_char, ignore.case = TRUE), ]
           } else {
-            dt <- dt[grepl(paste0("^", val_regex, "$"), col_vals_char, ignore.case = TRUE), ]
+            # KARŞILAŞTIRMA İŞLEMİ METİN SÜTUNUNDA EŞİTLİĞE ÇEVRİLMEZ:
+            # `greater_than`/`less_than` bir metin/faktör sütununda
+            # DEĞERLENDİRİLEMEZ; sessizce tam eşleşmeye düşmek analizi daha dar
+            # bir soruya cevap verdiriyor, köken alt bilgisi de HİÇ
+            # uygulanmamış bir kısıtlamayı bildiriyordu.
+            dropped[[length(dropped) + 1L]] <- .pk_filter_dropped(
+              f, "işlem sütun türü için değerlendirilemiyor"
+            )
+            next
           }
           applied[[length(applied) + 1L]] <- f
           next
@@ -460,8 +475,14 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
             dt <- dt[col_vals > val_num, ]
           } else if (op == "less_than") {
             dt <- dt[col_vals < val_num, ]
-          } else {
+          } else if (op == "exact_match") {
             dt <- dt[col_vals == val_num, ]
+          } else {
+            # `contains` SAYISAL SÜTUNDA DEĞERLENDİRİLEMEZ (aynı gerekçe).
+            dropped[[length(dropped) + 1L]] <- .pk_filter_dropped(
+              f, "işlem sütun türü için değerlendirilemiyor"
+            )
+            next
           }
           applied[[length(applied) + 1L]] <- f
           next

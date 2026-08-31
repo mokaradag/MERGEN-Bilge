@@ -581,18 +581,21 @@ test_that("kaynak manifesti Faz 4 dosyalarını doğru sırada yükler", {
   ))
 })
 
-test_that("beş çözümleme anahtarı yapılandırma sözleşmesinde kayıtlıdır", {
-  beklenen <- c(
-    "MERGEN_PK_RESOLVE_AUTO_SCORE",
-    "MERGEN_PK_RESOLVE_MULTI_SCORE",
-    "MERGEN_PK_RESOLVE_MIN_SCORE",
-    "MERGEN_PK_RESOLVE_AMBIGUITY_MARGIN",
-    "MERGEN_PK_RESOLVE_MAX_CANDIDATES"
-  )
-
-  for (anahtar in beklenen) {
+test_that("TÜM çözümleme anahtarları yapılandırma sözleşmesinde kayıtlıdır", {
+  # TEK KAYNAK: yalıtım yardımcısının anahtar listesi (`helper_pk_entity.R`).
+  # Elle yazılmış beş anahtarlık alt küme, listeye eklenen
+  # `MAX_PHRASE_CHARS` / `MAX_SCAN_CANDIDATES` / `ENABLED` anahtarlarını
+  # KAPSAM DIŞI bırakıyordu: biri `pk_config_spec` içinden kaldırılsa bu
+  # sözleşme YEŞİL kalıyor, hata ilk üretim çağrısında "bilinmeyen anahtar"
+  # olarak nedeninden UZAKTA çıkıyordu.
+  for (anahtar in PK_ENTITY_RESOLVE_ENV_KEYS) {
     expect_true(anahtar %in% names(pk_config_spec), info = anahtar)
-    expect_equal(pk_config_spec[[anahtar]]$type, "integer", info = anahtar)
+    beklenen_tur <- if (identical(anahtar, "MERGEN_PK_RESOLVE_ENABLED")) {
+      "logical"
+    } else {
+      "integer"
+    }
+    expect_equal(pk_config_spec[[anahtar]]$type, beklenen_tur, info = anahtar)
   }
 
   # Bilinmeyen anahtar UYDURULMAZ; hata verir.

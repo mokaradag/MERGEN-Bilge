@@ -182,6 +182,7 @@ mergen_pk_abandon_active_requests <- function(session, release = FALSE) {
   # `mergen_pk_chat_identity()` yeniden `chat:A` üretir; koruma o zaman AÇIKÇA
   # TERK EDİLMİŞ bir sonucu kabul edip bayat yanıt/oturum yazımlarını uygulardı.
   mergen_pk_invalidate_requests(session, adlar)
+  if (isTRUE(release)) for (kimlik in adlar) try(.pk_marker_unpin(.pk_marker_key(session, kimlik)), silent = TRUE)  # OTURUM SONU: BU OTURUMA AIT SABITLEMELER BIRAKILIR; `pinned` SUREC-YERELDIR ve terminal geri cagriya ulasamayan istek burada birakilmazsa surec omru boyunca kalir, 500 girdilik tavan yalnizca KALAN kumeye uygulanirdi (diger CANLI oturumlarin sabitlemeleri korunur).
 
   # TERK EDİLEN GİRDİLER KAYITTAN SİLİNİR: kayıt "yalnızca AKTİF istekler"
   # sözleşmesindedir, ama girdi istek-sahipli `release` kapanışını ve yakaladığı
@@ -215,9 +216,15 @@ mergen_pk_bump_chat_epoch <- function(session) {
     length(okunan) == 1L && !is.na(okunan) && identical(okunan, yeni)
   }, error = function(e) FALSE)
 
-  if (!isTRUE(yazildi)) return(invisible(NA_integer_))
+  if (!isTRUE(yazildi)) {
+    .pk_chat_epoch_mirror[[.pk_marker_key(session, "epoch")]] <- yeni  # KALICI OLMAYAN ARTIS OKUMA YOLUNDA DA KARSILANIR: aksi halde YENI kaydedilmemis sohbet ONCEKININ kimligini korur ve gec biten isci sonucu YENI sohbete uygulanirdi (kanca/kapali isaretleriyle AYNI surec-yerel ayna deseni).
+    return(invisible(NA_integer_))
+  }
   invisible(yeni)
 }
+
+# Kalici olmayan nesil artislarinin surec-yerel aynasi (bkz. yukaridaki not).
+.pk_chat_epoch_mirror <- new.env(parent = emptyenv())
 
 mergen_pk_chat_identity <- function(session, values) {
   kimlik <- try(shiny::isolate(values$current_chat_id), silent = TRUE)
@@ -233,6 +240,8 @@ mergen_pk_chat_identity <- function(session, values) {
   nesil <- suppressWarnings(as.integer(tryCatch(
     session$userData[["pk_unsaved_chat_epoch"]], error = function(e) NA_integer_
   ))[1])
+  ayna <- suppressWarnings(as.integer(.pk_chat_epoch_mirror[[.pk_marker_key(session, "epoch")]] %||% NA_integer_)[1])  # AYNA DAHA YENIYSE O KULLANILIR: yutulan bir yazim iki AYRI kaydedilmemis sohbeti AYNI kimlige dusuruyordu.
   if (length(nesil) != 1L || is.na(nesil)) nesil <- 0L
+  if (length(ayna) == 1L && !is.na(ayna) && ayna > nesil) nesil <- ayna
   paste0("<new-chat>:", nesil)
 }

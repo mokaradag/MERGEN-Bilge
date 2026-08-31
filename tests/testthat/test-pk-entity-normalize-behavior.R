@@ -230,7 +230,7 @@ test_that("normalleştirme yerelden bağımsızdır", {
 # NOKTALAMA SINIRI ve AYIRICI EK TARAMASI
 # ---------------------------------------------------------------------------
 
-test_that("virgul/noktali virgul sinirlari AYRI anim uretir", {
+test_that("virgül/noktalı virgül sınırları AYRI anım üretir", {
   skip_if_not_installed("stringi")
 
   # GERİLEME: `pk_entity_normalize()` noktalamayı boşluğa indirdiği için
@@ -249,7 +249,7 @@ test_that("virgul/noktali virgul sinirlari AYRI anim uretir", {
   expect_true(length(pk_entity_mentions("ALFA ve BETA")) >= 2L)
 })
 
-test_that("ayirici ek taramasi ILK eslesmede DURMAZ", {
+test_that("ayırıcı ek taraması İLK eşleşmede DURMAZ", {
   skip_if_not_installed("stringi")
 
   # GERİLEME: `stri_match_first_regex()` en soldaki eşleşmeyi verir; tireli
@@ -259,7 +259,7 @@ test_that("ayirici ek taramasi ILK eslesmede DURMAZ", {
   expect_identical(.pk_entity_strip_separator_suffixes_one("HAVA-SAVUNMA-da"),
                    "HAVA-SAVUNMA")
 
-  # Tek ayiricili durum ve ek TASIMAYAN ad davranisi DEGISMEZ.
+  # Tek ayırıcılı durum ve ek TAŞIMAYAN ad davranışı DEĞİŞMEZ.
   expect_identical(.pk_entity_strip_separator_suffixes_one("ANKA-da"), "ANKA")
   expect_identical(.pk_entity_strip_separator_suffixes_one("HAVA-SAVUNMA"),
                    "HAVA-SAVUNMA")

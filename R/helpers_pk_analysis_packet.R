@@ -55,7 +55,7 @@
   if (!is.list(cmeta)) cmeta <- list()
 
   list(
-    label = if (is.character(cmeta$label) && nzchar(cmeta$label %||% "")) cmeta$label else column,
+    label = if (is.character(cmeta$label) && length(cmeta$label) == 1L && !is.na(cmeta$label) && nzchar(cmeta$label)) cmeta$label else column,  # `nzchar(character(0))` `logical(0)` doner ve `&&` R 4.3+ ile HATA verir; UZUNLUK once denetlenir.
     unit = cmeta$unit,
     decimals = cmeta$decimals,
     capability = cmeta$capability,
@@ -74,58 +74,6 @@
   list()
 }
 
-# Boş/yalnızca boşluk metin, SQL sonuçlarında yaygın bir "eksik" biçimidir.
-# `NA` sayılmazsa kapsama raporu eksikliği olduğundan az gösterir ve boş dize
-# kategorik dağılımda gerçek (çoğu zaman ilk sıradaki) bir değer olur.
-.pk_blank_to_na <- function(x) {
-  if (!is.character(x)) return(x)
-  x[!is.na(x) & !nzchar(trimws(x))] <- NA_character_
-  x
-}
-
-# Ayraç çakışmasız birleşik anahtar: her parça bayt uzunluğu ön ekiyle yazılır,
-# eksik değer ayrı bir jetonla kodlanır.
-.pk_join_key <- function(data, columns) {
-  parcalar <- lapply(columns, function(s) {
-    v <- data[[s]]
-    # KESİRLİ SANİYE KAYBEDİLEMEZ.
-    #
-    # `format.POSIXct()` varsayılanı kesirli saniyeyi YAZMAZ; aynı saniye
-    # içindeki FARKLI damgalar tek anahtara düşüyor, bu da ya sahte "tanecik
-    # mükerrerliği" (geçerli toplulaştırmayı bloklar) ya da iki ayrı
-    # `default_group_by` kovasının BİRLEŞMESİ (yanlış grup olgusu) demekti.
-    # Kayıpsız temsil: sayısal an (epoch saniye, tam basamakla).
-    ch <- if (inherits(v, "POSIXt")) {
-      sprintf("%.6f", as.numeric(v))
-    } else if (inherits(v, "Date")) {
-      format(v)
-    } else {
-      as.character(v)
-    }
-    ch[is.na(v)] <- NA_character_
-    out <- paste0(nchar(ch, type = "bytes"), ":", ch)
-    out[is.na(ch)] <- "<NA>:"
-    out
-  })
-  do.call(paste, c(parcalar, list(sep = "|")))
-}
-
-# Kullanıcıya/model paketine görünen grup etiketi. ENJEKTİF olmak ZORUNDADIR:
-# `group_keys` olarak olgu kayıtlarına geçer, yani OLGU KİMLİĞİNİN parçasıdır.
-# Düz `" | "` birleşimi `("A | B", "C")` ile `("A", "B | C")` gruplarını AYNI
-# gösterirdi; kaçışsız tırnak ise `ProjeAdi = 'A", Yil="1'` + `Yil = 2` ile
-# `ProjeAdi = "A"` + `Yil = 1` çiftini tek dizeye çökertir; köken doğrulaması o
-# zaman geçerli bir olguyu reddeder ya da değeri YANLIŞ gruba bağlar. Ters bölü
-# ÖNCE kaçışlanır; aksi hâlde `\"` dizisi belirsiz kalırdı.
-.pk_group_label <- function(data, columns, index) {
-  paste(vapply(columns, function(s) {
-    v <- data[[s]][index]
-    ch <- if (inherits(v, "Date") || inherits(v, "POSIXt")) format(v) else as.character(v)
-    if (length(ch) != 1L || is.na(ch)) return(sprintf("%s=(bos)", s))
-    ch <- gsub("\"", "\\\"", gsub("\\", "\\\\", ch, fixed = TRUE), fixed = TRUE)
-    sprintf("%s=\"%s\"", s, ch)
-  }, character(1)), collapse = ", ")
-}
 
 # Metadata `role = "date"` diyebilir ama `convert_date_columns()` ayrıştırma
 # oranı düşük olduğunda sütunu BİLEREK karakter bırakır. Ayrıştırılamayan bir
@@ -656,6 +604,11 @@ pk_packet_build <- function(data, query, context = list()) {
 
   for (sutun in olcu_sutunlari) {
     spec <- .pk_packet_column_spec(meta, sutun)
+    # SAYISAL OLMAYAN SUTUNDAN OLCU OLGUSU URETILMEZ: `pk_measure_facts()` sutunu `as.numeric()` ile zorluyor, `pk_packet_groups()` ise AYNI sutunu sayisal olmadigi icin disliyordu; paket karsiligi olmayan genel olculer gosterebiliyordu.
+    if (!is.numeric(data[[sutun]])) {
+      sinirliliklar <- c(sinirliliklar, sprintf("Sayisal olmayan '%s' sutunu icin olcu istatistigi URETILMEDI.", sutun))
+      next
+    }
     olgular <- c(olgular, pk_measure_facts(
       data[[sutun]], sutun, spec, scope = kapsam, time_window = zaman_penceresi,
       aggregate_mode = spec$aggregate %||% "none", additive = spec$additive,

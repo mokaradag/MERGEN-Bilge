@@ -33,8 +33,13 @@
   con <- file(full, open = "rb")
   on.exit(close(con), add = TRUE)
   raw_data <- readBin(con, what = "raw", n = size)
-  txt <- suppressWarnings(iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]])
-  if (is.na(txt)) txt <- ""
+  # `sub` VERİLMEZ: `sub = "byte"` her geçersiz baytı kaçışa çevirir ve
+  # `is.na()` kapısı HİÇ tetiklenmez; UTF-8 OLMAYAN bir kaynak dosya yalnızca
+  # OLUMSUZ iddia taşıyan taramaları SESSİZCE geçirirdi.
+  txt <- suppressWarnings(iconv(list(raw_data), from = "UTF-8", to = "UTF-8")[[1]])
+  if (is.na(txt)) {
+    stop(sprintf("Kaynak dosya UTF-8 olarak çözülemedi: %s", full), call. = FALSE)
+  }
   enc2utf8(gsub("\r\n?|\r", "\n", txt, perl = TRUE))
 }
 

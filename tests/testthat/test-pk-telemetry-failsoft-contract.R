@@ -53,14 +53,6 @@ local({
   if (!exists("%||%", mode = "function", inherits = TRUE)) {
     `%||%` <<- function(a, b) if (is.null(a)) b else a
   }
-  withr::defer(
-    suppressWarnings(try(rm(
-      list = setdiff(ls(globalenv(), all.names = TRUE), onceki_adlar),
-      envir = globalenv()
-    ), silent = TRUE)),
-    envir = testthat::teardown_env()
-  )
-
   for (f in c("helpers_pk_config.R", "helpers_pk_provenance.R",
               # Etkin yürütme bağlamı: hedef ANAHTARI açıkça verilmediğinde
               # `.pk_telemetry_target_key()` buradan çözülür; üretim çağrı
@@ -71,6 +63,27 @@ local({
               "helpers_pk_telemetry_base.R", "helpers_pk_telemetry.R")) {
     source(file.path(repo_root, "R", f), encoding = "UTF-8", local = globalenv())
   }
+
+  # KALDIRILACAK ADLAR ŞİMDİ SABİTLENİR.
+  #
+  # `testthat::teardown_env()` TÜM dosyalardan SONRA çalışır (dosya sonunda
+  # DEĞİL). Silme listesi eskiden o anda `setdiff(ls(globalenv()), onceki_adlar)`
+  # ile hesaplanıyordu; bu, SONRAKİ test dosyalarının küresel ortamda
+  # oluşturduğu adları da siliyordu. Liste burada, yalnızca BU dosyanın
+  # eklediği simgelerle DONDURULUR.
+  #
+  # DÜRÜSTLÜK NOTU: testthat dosya bazlı teardown kancası sunmadığı için bu
+  # yardımcılar koşu sonuna kadar görünür kalır; sözleşme, BAŞKA dosyaların
+  # simgelerine DOKUNULMAMASIDIR.
+  eklenen_adlar <- setdiff(ls(globalenv(), all.names = TRUE), onceki_adlar)
+  withr::defer(
+    suppressWarnings(try(
+      rm(list = intersect(eklenen_adlar, ls(globalenv(), all.names = TRUE)),
+         envir = globalenv()),
+      silent = TRUE
+    )),
+    envir = testthat::teardown_env()
+  )
 })
 
 # Test kapsamında log_warn çağrılarını sayan sayaç. Gerçek log_warn varsa

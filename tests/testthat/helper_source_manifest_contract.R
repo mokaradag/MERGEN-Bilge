@@ -79,8 +79,12 @@ source_manifest_sections_for_tests <- function() {
   # ŞEKİL DOĞRULANIR: adsız ya da boş bir bölüm listesi, bölüm bazlı
   # sözleşmeleri SESSİZCE vacuous geçirir (her `for` döngüsü boş küme üzerinde
   # koşar ve hiçbir iddia çalışmaz).
+  # `NA` AD AÇIKÇA REDDEDİLİR: `nzchar(NA)` `NA` döner, `all(...)` da `NA`
+  # olur ve `if` "missing value where TRUE/FALSE needed" ile düşerdi; geçersiz
+  # manifest şekli bildirilmek yerine opak bir hataya dönüşüyordu.
   if (!is.list(sections) || length(sections) == 0L ||
-      is.null(names(sections)) || !all(nzchar(names(sections)))) {
+      is.null(names(sections)) || any(is.na(names(sections))) ||
+      !all(nzchar(names(sections)))) {
     stop("Test manifesti bölüm listesi boş veya adsız.", call. = FALSE)
   }
 

@@ -102,7 +102,22 @@ testthat::test_that("R kaynak dosyaları WINDOWS-1254 yerelinde bozulmadan okuna
     "app.R", "global.R", "server.R", "ui.R",
     "welcome_screen.R", "run_mergen_prod.R"
   )
-  kok_dosyalar <- file.path(kok, kok_calisma_zamani)
+
+  # KÖK DOSYALARI İZLENEN KÜMEDEN TÜRETİLİR: sabit liste, DEPOYA EKLENMİŞ yeni
+  # bir kök `.R` dosyasını taramanın DIŞINDA bırakıyordu; o dosya
+  # WINDOWS-1254'e çevrilemeyen bir karakter taşısa bile sözleşme YEŞİL
+  # kalırdı. İzlenen kümeden türetmek, yukarıdaki gerekçeyi (operatörün
+  # İZLENMEYEN deneme betikleri taranmaz) AYNEN korur; git yoksa kapalı listeye
+  # geri düşülür.
+  kok_izlenen <- .cp1254_izlenen_dosyalar(kok)
+  kok_dosyalar <- if (is.null(kok_izlenen)) {
+    file.path(kok, kok_calisma_zamani)
+  } else {
+    kok_norm <- normalizePath(kok, winslash = "/", mustWork = FALSE)
+    goreli <- sub(paste0("^", gsub("([.|()\\^{}+$*?\\[\\]])", "\\\\\\1", kok_norm), "/"),
+                  "", kok_izlenen)
+    kok_izlenen[!grepl("/", goreli, fixed = TRUE)]
+  }
   kok_dosyalar <- kok_dosyalar[file.exists(kok_dosyalar)]
   dosyalar <- unique(c(dosyalar, kok_dosyalar))
 

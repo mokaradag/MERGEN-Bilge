@@ -486,10 +486,11 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     
     # Kilidi kısa bir gecikmeyle serbest bırak. SAHİPLİK BURADA DEVREDİLİR:
     # `on.exit()` güvenlik ağı artık devreye girmez.
-    basarili <- TRUE
+    # SAHİPLİK YALNIZCA GERİ ÇAĞRI GERÇEKTEN KURULDUKTAN SONRA DEVREDİLİR: `shinyjs::delay()` (ör. websocket kapanırken) düşerse bayrak ZATEN `TRUE` olduğu için `on.exit()` güvenlik ağı kilidi bırakmıyor, `load_chat_in_progress` `TRUE` kalıyor ve sonraki HER söyleşi seçimi erken dönüyordu.
     shinyjs::delay(500, {
       load_chat_in_progress(FALSE)
     })
+    basarili <- TRUE
   }
   
   # -------------------------------------------------------------------------

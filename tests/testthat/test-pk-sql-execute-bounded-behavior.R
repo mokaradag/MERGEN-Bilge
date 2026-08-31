@@ -236,7 +236,15 @@ test_that("tavanı aşacak parça KABUL EDİLMEDEN durulur", {
 
   expect_equal(sonuc$status, "too_large")
   expect_null(sonuc$data)
-  expect_equal(sonuc$error, "would_exceed_max_result_mb")
+  # IKI TIPLI RED DE GECERLIDIR ve ayni sozlesmeyi korur: parca KABUL
+  # EDILMEDEN durulur. On getirim projeksiyon kapisi artik hemen ardindaki
+  # biriktirme karariyla AYNI esigi (`tavan_mb / 2`) kullandigi icin, tavani
+  # asacak ikinci parca genellikle DAHA ONCE — getirim hic baslatilmadan —
+  # reddedilir. Hangi kapinin once davrandigi parca boyutuna baglidir; onemli
+  # olan reddin TIPLI olmasi ve veri DONMEMESIDIR.
+  expect_true(sonuc$error %in% c("would_exceed_max_result_mb",
+                                 "projected_peak_exceeds_ceiling"),
+              info = sonuc$error)
   expect_gte(.pk_clear_calls$n, 1L)
 })
 

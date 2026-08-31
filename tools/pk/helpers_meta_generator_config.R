@@ -148,7 +148,7 @@ pkg_meta_validate_db_target <- function(target) {
   ham <- if (length(target) == 1L && !is.na(target)) trimws(as.character(target)) else ""
   if (!nzchar(ham)) {
     return(list(ok = FALSE, target = NA_character_, env_var = NA_character_,
-                detail = "db_target bos; hedef veritabani belirsiz."))
+                detail = "db_target boş; hedef veritabanı belirsiz."))
   }
 
   kucuk <- .pkg_ascii_lower(ham)
@@ -157,8 +157,8 @@ pkg_meta_validate_db_target <- function(target) {
       ok = FALSE, target = ham, env_var = NA_character_,
       detail = sprintf(
         paste0(
-          "Desteklenmeyen db_target: '%s'. Izinli hedefler: %s. ",
-          "Bilinmeyen hedef BIRINCIL veritabanina dusebilecegi icin baglanti ACILMADI."
+          "Desteklenmeyen db_target: '%s'. İzinli hedefler: %s. ",
+          "Bilinmeyen hedef BİRİNCİL veritabanına düşebileceği için bağlantı AÇILMADI."
         ),
         ham, paste(PKG_META_DB_TARGETS, collapse = ", ")
       )

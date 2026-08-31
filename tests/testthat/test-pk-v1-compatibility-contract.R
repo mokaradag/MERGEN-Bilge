@@ -211,15 +211,11 @@ test_that("D4: v1'de sifir eslesme politikasi YOKTUR", {
 })
 
 test_that("D9: filtre zaman asimi v1'de 8 saniyede sabit kalir", {
-  metin_yolu <- file.path(resolve_repo_root_for_tests(),
-                          "R", "helpers_pk_analysis_filters_base.R")
-  size <- suppressWarnings(file.info(metin_yolu)$size[1])
-  con <- file(metin_yolu, open = "rb")
-  on.exit(close(con), add = TRUE)
-  raw_data <- readBin(con, what = "raw", n = size)
-  metin <- suppressWarnings(
-    iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
-  )
+  # YALNIZCA KOD TARANIR: ham metin yorum satırlarını da içeriyordu ve
+  # `# eski varsayilan: filter_timeout <- 8` gibi bir açıklama, v1 varsayılanı
+  # DEĞİŞMİŞ olsa bile iddiayı VACUOUS geçirirdi. `.pk_v1_code_only()` ayrıca
+  # dosya varlığını ve çözümlenebilirliğini de doğrular.
+  metin <- .pk_v1_code_only("R/helpers_pk_analysis_filters_base.R")
 
   # v1 varsayilani 8 saniye olarak KORUNUR; yapilandirilabilir deger yalnizca
   # v2 dalinda tuketilir.
@@ -255,17 +251,10 @@ test_that("v1 gozlem sozlesmesi (Faz 0) her iki motorda da korunur", {
 test_that("dort capraz-motor madde v1'de de ETKINDIR", {
   repo_root <- resolve_repo_root_for_tests()
 
-  oku <- function(rel) {
-    full <- file.path(repo_root, rel)
-    size <- suppressWarnings(file.info(full)$size[1])
-    con <- file(full, open = "rb")
-    on.exit(close(con), add = TRUE)
-    raw_data <- readBin(con, what = "raw", n = size)
-    txt <- suppressWarnings(iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]])
-    satirlar <- strsplit(enc2utf8(txt), "\n", fixed = TRUE)[[1]]
-    satirlar <- satirlar[!grepl("^\\s*#", satirlar, perl = TRUE, useBytes = TRUE)]
-    paste(satirlar, collapse = "\n")
-  }
+  # ORTAK OKUYUCU KULLANILIR: yerel kopya bayt okuma / iconv / yorum eleme
+  # adımlarını TEKRARLIYOR ama `.pk_v1_code_only()` içindeki VARLIK ve ÇÖZÜM
+  # muhafızlarını taşımıyordu.
+  oku <- .pk_v1_code_only
 
   # 1) RLS kapali basarisizligi ve 2) salt-okunur SQL kapisi ve
   # 3) ODBC redaksiyonu: hicbiri motor bayragina bagli DEGILDIR.
@@ -464,7 +453,7 @@ test_that("v2 gozlemi filtre DEGERINI korur (koken alt bilgisi bos yazmaz)", {
   for (f in c("helpers_pk_config.R", "helpers_pk_text_turkish.R",
               "helpers_pk_provenance.R", "helpers_pk_prompt_budget.R",
               "helpers_pk_analysis_prompts.R", "helpers_pk_precision.R", "helpers_pk_packet_stats.R", "helpers_pk_packet_context_facts.R",
-              "helpers_pk_analysis_packet.R", "helpers_pk_packet_render.R",
+              "helpers_pk_packet_keys.R", "helpers_pk_analysis_packet.R", "helpers_pk_packet_render.R",
               "helpers_pk_numeric_provenance.R", "helpers_pk_numeric_provenance_claims.R",
               "helpers_pk_export_plan.R",
               "helpers_pk_export_xlsx.R", "helpers_pk_answer_compose.R",
@@ -645,7 +634,15 @@ test_that("Olgu saklandiginda isaretler silinir ve blok alt bilginin ONUNE gelir
   olgular <- env$pk_measure_facts(c(1, 2, 3), "Saat",
                                   list(label = "Saat", unit = "saat", decimals = 1L),
                                   additive = TRUE)
-  kimlik <- Filter(function(o) identical(o$aggregation, "sum"), olgular)[[1]]$fact_id
+  # `[[1]]` KORUMASIZ OKUNMAZ: `Filter()` hiç `sum` olgusu yoksa BOŞ liste
+  # döndürür ve `[[1]]` "subscript out of bounds" fırlatır; blok orada kesilir,
+  # okuyucu gerçek nedeni (toplanabilir ölçü için `sum` olgusu ÜRETİLMEDİ)
+  # yerine opak bir indeks hatası görürdü.
+  toplamlar <- Filter(function(o) identical(o$aggregation, "sum"), olgular)
+  expect_true(length(toplamlar) >= 1L,
+              info = "Toplanabilir ölçü için `sum` olgusu üretilmelidir.")
+  if (!length(toplamlar)) return(invisible(NULL))
+  kimlik <- toplamlar[[1]]$fact_id
 
   env$pk_provenance_clear(oturum, request_id = "r1")
   env$pk_provenance_stash(

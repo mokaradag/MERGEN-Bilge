@@ -346,7 +346,7 @@ pk_export_build <- function(data, packet = list(), context = list(),
     # Bütçe içinde bitmediyse YARIM dosya diskte kalmamalıdır. Sınırlı aşamanın
     # bütçesi dolduysa neden SON TARİHtir, kullanıcı iptali değil.
     if (!isTRUE(yazim$ok)) {
-      if (!is.na(yol)) safe_unlink_if_exists(yol)
+      if (!is.na(yol)) try(safe_unlink_if_exists(yol), silent = TRUE)
       return(iptal_sonucu(plan$total_rows, ncol(govde),
                           status = halt_durumu() %||% "deadline"))
     }
@@ -360,11 +360,11 @@ pk_export_build <- function(data, packet = list(), context = list(),
       # BAŞARISIZ YAZIM KISMİ DOSYA BIRAKMAZ: `write_xlsx()`/`saveWorkbook()`
       # hedefi OLUŞTURDUKTAN sonra da düşebilir. Dosya izlenmediği için hiçbir
       # temizlik yolu ona ulaşmaz ve RLS filtreli veri çalışma dizininde KALIR.
-      safe_unlink_if_exists(yol)
+      try(safe_unlink_if_exists(yol), silent = TRUE)
     }
 
     if (durduruldu()) {
-      if (!is.na(yol)) safe_unlink_if_exists(yol)
+      if (!is.na(yol)) try(safe_unlink_if_exists(yol), silent = TRUE)
       return(iptal_sonucu(plan$total_rows, ncol(govde)))
     }
 
@@ -372,7 +372,7 @@ pk_export_build <- function(data, packet = list(), context = list(),
       # Geri okuma/doğrulama da SINIRLIDIR: aynı gerekçe (bkz. `sinirli_asama`).
       dogrulama_sonucu <- sinirli_asama(function() pk_export_verify_file(yol, plan, sayfalar))
       if (!isTRUE(dogrulama_sonucu$ok)) {
-        if (!is.na(yol)) safe_unlink_if_exists(yol)
+        if (!is.na(yol)) try(safe_unlink_if_exists(yol), silent = TRUE)
         return(iptal_sonucu(plan$total_rows, ncol(govde),
                             status = halt_durumu() %||% "deadline"))
       }
@@ -394,7 +394,7 @@ pk_export_build <- function(data, packet = list(), context = list(),
 
     cat(sprintf("[PK_ANALIZ] XLSX dogrulamasi basarisiz (%s); CSV yedegine dusuluyor.\n",
                 as.character(dogrulama$reason %||% "?")[1]))
-    if (!is.na(yol)) safe_unlink_if_exists(yol)
+    if (!is.na(yol)) try(safe_unlink_if_exists(yol), silent = TRUE)
   }
 
   # CSV yedeği: yüzde sözleşmesi CSV'ye göre YENİDEN kurulur, parçalar akışlı

@@ -30,7 +30,7 @@
 
   for (dosya in c("helpers_pk_config.R", "helpers_pk_text_turkish.R",
                   "helpers_pk_prompt_budget.R", "helpers_pk_precision.R", "helpers_pk_packet_stats.R", "helpers_pk_packet_context_facts.R",
-                  "helpers_pk_analysis_packet.R", "helpers_pk_packet_render.R",
+                  "helpers_pk_packet_keys.R", "helpers_pk_analysis_packet.R", "helpers_pk_packet_render.R",
                   "helpers_pk_numeric_provenance.R", "helpers_pk_numeric_provenance_claims.R",
                   "helpers_pk_export_plan.R",
                   "helpers_pk_export_csv.R", "helpers_pk_export_xlsx.R",
@@ -373,7 +373,13 @@ test_that("P2: sonsuz degerler ornek satirlarda UC DEGER olarak secilmez", {
   # dolayisiyla fixture sinirlari sonlu tutar.
   veri <- data.frame(Saat = c(seq_len(25), Inf, -Inf, seq_len(25)))
 
-  ornek <- env$pk_packet_examples(veri, list(), measure_column = "Saat", n = 6L)
+  # KOTA SIFIRLANIR: üretim sözleşmesi sonlu-olmayan satırları YALNIZCA uç
+  # değer ve min/maks dalında dışlar; rastgele/tabakalı dal onları DIŞLAMAZ.
+  # `n = 6L` ile kota 2 kalıyor ve iddia, sonsuz satırların çekilmediğini
+  # SEED 42'nin rastgele çekimine borçlu oluyordu — seed/RNG değişince üretim
+  # DOĞRUYKEN test kırılırdı. `n = 4L` kotayı sıfırlar; iddia yalnızca
+  # sınanmak istenen dalı kapsar.
+  ornek <- env$pk_packet_examples(veri, list(), measure_column = "Saat", n = 4L)
   secilen <- veri$Saat[ornek$indices]
 
   expect_false(any(is.infinite(secilen)))
@@ -549,8 +555,11 @@ test_that("P2: nokta-ondalik ve binlik gruplama BELIRSIZLIGI dogru cozulur", {
 
   # "0.613" binlik gruplama OLAMAZ.
   expect_equal(env$pk_parse_number_tr("0.613"), 0.613)
-  # "12.345" belirsizdir; iki aday da uretilir.
-  expect_setequal(env$pk_parse_number_candidates("12.345"), c(12345, 12.345))
+  # TURKCE GRUPLAMA BICIMI BELIRSIZ SAYILMAZ (PR incelemesi, P1): `N.NNN`
+  # kalibini kullanici BINLIK okur; kesirli okumayi da kabul etmek, model
+  # 12,345 yerine "12.345" yazdiginda BIN KAT hatali bir sayiyi
+  # "dogrulanmis" gibi yayimliyordu.
+  expect_setequal(env$pk_parse_number_candidates("12.345"), 12345)
   # Cok gruplu bicim tek yorumludur.
   expect_equal(env$pk_parse_number_tr("1.234.567"), 1234567)
 })

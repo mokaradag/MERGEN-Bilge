@@ -156,7 +156,8 @@ find_best_query_with_ai <- function(user_prompt, library, session) {
           if (!length(v) || is.na(v[1])) return(yedek)
           v[1]
         }
-        sebep <- skaler_metin(parsed$reason)
+        # `$` KISMİ EŞLEŞME YAPAR: model `reason` yerine `reasoning` gönderdiğinde `parsed$reason` o alana düşer ve sözleşmede TANIMSIZ bir metin sebep olarak raporlanırdı (kardeş okumalar `match_id`/`confidence` zaten `[[` kullanıyor).
+        sebep <- skaler_metin(parsed[["reason"]])
         # MODEL ÜRETİMİ METİN LOGA REDAKTE EDİLEREK GİDER: `reason` tamamen LLM üretimidir ve istemde geçen bir bağlantı dizesini/anahtarı yankılayabilir; ham `cat()` bunu sunucu günlüğüne olduğu gibi yazıyordu.
         cat(sprintf("[PK_ANALIZ] AI Seçimi: ID=%d (%s) | Güven: %.1f%% | Sebep: %s\n",
                     idx, skaler_metin(library[[idx]]$name, "(isimsiz)"),

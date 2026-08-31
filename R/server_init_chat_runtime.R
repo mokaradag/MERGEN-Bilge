@@ -117,8 +117,13 @@ serverInitChatRuntime <- function(session, values, settings_data, output,
 # bırakmadığı çıkışları (başlangıç durdurma, kimlik/yetki, eşleşme yok, SQL ve
 # yapılandırma hataları ile beklenmeyen istisnalar) tamamlar. Böylece başarılı
 # yolların telemetrisi yinelenmez.
+# SENTINEL YÜRÜRLÜKTEKİ FONKSİYONA GÖRE DE TAZELENİR: yalnızca sentinel varlığına bakmak, `R/module_proje_kaynak_analizi.R` bu dosyadan SONRA yeniden source edildiğinde (bootstrap parmak izi tazelemesi, `global.R` yeniden yüklemesi) BAYAT çekirdeği kalıcı hâle getiriyordu; `pk_hook_single_exit_fix_install()` o eski çekirdeği sarmalayıp public sembole atadığı için boru hattı ÖNCEKİ revizyonu çalıştırıyordu. Sarmalanmış bir fonksiyon ASLA çekirdek olarak yakalanmaz (işaret çözülemiyorsa da yakalanmaz: çift sarmalama riski).
 if (exists("pk_analiz_process_request", mode = "function", inherits = TRUE) &&
-    !exists(".pk_analiz_process_request_without_exit_observer", inherits = FALSE)) {
+    (!exists(".pk_analiz_process_request_without_exit_observer", inherits = FALSE) ||
+     (exists(".pk_hook_single_exit_is_wrapped", mode = "function", inherits = TRUE) &&
+      !isTRUE(.pk_hook_single_exit_is_wrapped(
+        get("pk_analiz_process_request", mode = "function", inherits = TRUE)
+      ))))) {
   .pk_analiz_process_request_without_exit_observer <- get(
     "pk_analiz_process_request", mode = "function", inherits = TRUE
   )

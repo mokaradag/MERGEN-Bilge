@@ -316,8 +316,16 @@ pk_hook_single_exit_fix_install <- function() {
       .pk_hook_scalar_text(conditionMessage(result))
     } else if (is.character(result)) {
       .pk_hook_scalar_text(result)
+    } else if (exists("pk_direct_exit_text", mode = "function", inherits = TRUE)) {
+      # ORTAK ÇIKARICI KULLANILIR: kabul edilen `error_message` biçimi metni `message` alanında taşıyabilir; yalnız `content` okumak BOŞ dize üretiyor, `pk_direct_exit_outcome()` gerçek bir hataya "DogrudanYanit" yazıyor ve `.pk_hook_database_failure_text("")` FALSE döndüğü için DB arızalıyken telemetri bağlantısı açılıyordu.
+      .cikan <- try(pk_direct_exit_text(result), silent = TRUE)
+      if (inherits(.cikan, "try-error")) {
+        .pk_hook_scalar_text(result$message %||% result$content)
+      } else {
+        .pk_hook_scalar_text(.cikan)
+      }
     } else {
-      .pk_hook_scalar_text(result$content)
+      .pk_hook_scalar_text(result$message %||% result$content)
     }
 
     stopped <- grepl("İşlem Durduruldu", response_text, fixed = TRUE)

@@ -17,6 +17,12 @@
 
 pk_entity_source_chain_for_tests()
 
+# TABAN YALITIMI: bu dosyadaki SARILMAMIŞ (varsayılan eşikli) çözümleyici
+# çağrıları da dağıtım `MERGEN_PK_RESOLVE_*` ortam değişkenlerinden ve
+# eşleşen `mergen.pk.*` seçeneklerinden ETKİLENMEMELİDİR;
+# `pk_entity_with_resolve_env()` yalnızca SARDIĞI çağrıyı korur.
+pk_entity_isolate_resolve_config()
+
 .PK_HIST_SOZLUK <- c(
   "Sentetik Elektronik Harp Şebekesi",
   "Sentetik Lojistik Destek Altyapısı"

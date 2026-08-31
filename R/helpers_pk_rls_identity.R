@@ -57,6 +57,24 @@
   chartr(.PK_RLS_FOLD_FROM, .PK_RLS_FOLD_TO, ham)
 }
 
+# DB TARAFI DARALTILMIŞ SATIRLAR İÇİN AKSAN DUYARLI KİMLİK ANAHTARI.
+#
+# `WHERE KullaniciAdi = ?` yüklemi VERİTABANI collation'ıyla çözülür. AKSAN
+# DUYARSIZ (`_CI_AI`) bir collation'da `Oz` sorgusu HEM `Oz` HEM `Öz` satırını
+# döndürür ve `get_user_rls_info()` iki kullanıcının proje/EPS kodlarını
+# çağıranın kapsamına ekler. Bu anahtar yalnızca BÜYÜK/KÜÇÜK harf farkını
+# katlar; `Ç/Ğ/Ö/Ş/Ü` ile `C/G/O/S/U` AYRI kalır, yani aksan farkı satırı
+# DÜŞÜRÜR. Noktalı/noktasız `I` ailesi burada BİLEREK birleştirilir: dağıtım
+# collation'ı (`Turkish_CI_AS`) `i` ile `İ`yi zaten eşit sayar; ayırmak
+# YETKİLİ bir kullanıcının kapsamını boşaltırdı (yedek yol bunları hâlâ ayrı
+# tutar, orada DB kararı YOKTUR).
+.PK_RLS_DB_FOLD_FROM <- "\u0130\u0131"
+.PK_RLS_DB_FOLD_TO   <- "ii"
+
+.pk_rls_db_match_key <- function(x) {
+  chartr(.PK_RLS_DB_FOLD_FROM, .PK_RLS_DB_FOLD_TO, .pk_rls_user_key(x))
+}
+
 # SUNUCU LOG'UNA GİDECEK HER TANI METNİ REDAKTE EDİLİR (kapalı başarısız).
 #
 # Ham ODBC/sürücü metni DSN, sunucu/veritabanı adı, kullanıcı adı ve zaman
@@ -144,6 +162,17 @@
 }
 
 .pk_rls_permission_rows <- function(conn, statement, username) {
+  # ÇÖZÜLEMEYEN KİMLİK SORGULANMAZ: DB tarafı daraltma başarılı olduğunda
+  # satırlar `pk_rls_db_narrowed = TRUE` ile döner; boş/NA kimlik burada
+  # reddedilmezse `KullaniciAdi = ''` satırları çağıranın kapsamı sayılırdı
+  # (R tarafı yedeği yalnızca daraltma BAŞARISIZKEN korur).
+  kimlik <- .pk_rls_user_key(username)
+  kimlik <- kimlik[!is.na(kimlik) & nzchar(kimlik)]
+  if (!length(kimlik)) {
+    stop("RLS izin okumasi icin cozulmus bir kullanici kimligi gerekir.",
+         call. = FALSE)
+  }
+
   sarmalanmis <- sprintf(
     "SELECT mb_izin.* FROM (\n%s\n) AS mb_izin WHERE mb_izin.KullaniciAdi = ?",
     .pk_rls_strip_terminal_semicolon(statement)
@@ -187,7 +216,17 @@
   # DB TARAFINDA DARALTILMIŞ SATIRLAR OTORİTERDİR (bkz. `.pk_rls_permission_rows()`).
   # İşaret YOKSA (test kurgusu, eski çağıran) filtre yine uygulanır: varsayılan
   # KAPALI BAŞARISIZDIR.
-  if (isTRUE(attr(rows, "pk_rls_db_narrowed"))) return(rows)
+  if (isTRUE(attr(rows, "pk_rls_db_narrowed"))) {
+    # Satırlar yetkilidir AMA collation aksan duyarsız olabilir; aksan farkı
+    # taşıyan BAŞKA bir hesabın satırı düşürülür (bkz. `.pk_rls_db_match_key`).
+    if (!("KullaniciAdi" %in% names(rows))) return(rows)
+    db_anahtar <- .pk_rls_db_match_key(username)
+    db_anahtar <- db_anahtar[!is.na(db_anahtar) & nzchar(db_anahtar)]
+    if (!length(db_anahtar)) return(rows[0, , drop = FALSE])
+    db_satir <- .pk_rls_db_match_key(rows$KullaniciAdi)
+    return(rows[!is.na(db_satir) & nzchar(db_satir) & db_satir %in% db_anahtar,
+                , drop = FALSE])
+  }
   if (!("KullaniciAdi" %in% names(rows))) return(rows[0, , drop = FALSE])
   # ÇÖZÜLEMEYEN KİMLİK KAPSAM ALMAZ. `.pk_rls_user_key()` NA kullanıcı adı için
   # `NA_character_`, boş için `""` döndürür ve `%in%` NA'yı EŞLEŞEBİLİR sayar

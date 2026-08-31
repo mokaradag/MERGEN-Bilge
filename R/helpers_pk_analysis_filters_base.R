@@ -400,7 +400,12 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
         # `aktıfkaynak` olur, `aktif|active|durum|status` deseni EŞLEŞMEZ ve
         # `EVET` metni `1` alanına karşı derlenip HİÇBİR satırı tutmaz.
         # Sütun adları makine belirtecidir; ASCII katlama doğru sözleşmedir.
-        col_lower <- .pk_filter_base_ascii_lower(f$column %||% "")
+        # SÜTUN ADI ÖNCE TEK KARAKTER DEĞERE İNDİRGENİR: liste biçimli
+        # (`["Durum","Ad"]`) bir alan `col_lower` uzunluğunu >1 yapar ve
+        # aşağıdaki `isTRUE(ikili_sutun) && grepl(..., col_lower, ...)`
+        # koşulunu R 4.3+ HATA sayar; dış `tryCatch` geçerli yanıtı `error`
+        # durumuna çeviriyor, v2 motoru da bunu reddetmeye dönüştürüyordu.
+        col_lower <- .pk_filter_base_ascii_lower(.pk_filter_scalar_chr(f$column))
         val_raw <- f$value %||% ""
 
         # ÇOK DEĞERLİ YAPRAK (aynı sütun içi VEYA) bu kısayoldan MUAFTIR.
@@ -694,7 +699,10 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
           val_str <- as.character(val)[1]
 
           if (is.character(col_vals) || is.factor(col_vals)) {
-            val_regex <- gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\\1", val_str)
+            # TERS BÖLÜ DE KAÇILIR (çalışma zamanı gövdesiyle AYNI): UNC yolu
+            # taşıyan bir değer eskiden ASILI kaçış üretiyor ve filtre HİÇBİR
+            # satırı tutmuyordu.
+            val_regex <- gsub("([.|()\\^{}+$*?\\\\]|\\[|\\])", "\\\\\\1", val_str)
             col_vals_char <- as.character(col_vals)
 
             if (op == "exact_match") {
@@ -702,7 +710,10 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
             } else if (op == "contains") {
               dt <- dt[grepl(val_regex, col_vals_char, ignore.case = TRUE), ]
             } else {
-              dt <- dt[grepl(paste0("^", val_regex, "$"), col_vals_char, ignore.case = TRUE), ]
+              # KARŞILAŞTIRMA İŞLEMİ METİN SÜTUNUNDA EŞİTLİĞE ÇEVRİLMEZ
+              # (çalışma zamanı gövdesiyle AYNI sözleşme).
+              cat("[SMART_FILTER] Islem sutun turu icin degerlendirilemiyor, atlandi.\n")
+              next
             }
           } else if (is.numeric(col_vals)) {
             # `integer64` de `is.numeric()` TRUE'dur; ortak kesinlik yardımcısı
@@ -722,8 +733,12 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
                 dt <- dt[col_vals > val_num, ]
               } else if (op == "less_than") {
                 dt <- dt[col_vals < val_num, ]
-              } else {
+              } else if (op == "exact_match") {
                 dt <- dt[col_vals == val_num, ]
+              } else {
+                # `contains` SAYISAL SÜTUNDA DEĞERLENDİRİLEMEZ (aynı gerekçe).
+                cat("[SMART_FILTER] Islem sutun turu icin degerlendirilemiyor, atlandi.\n")
+                next
               }
             }
           }

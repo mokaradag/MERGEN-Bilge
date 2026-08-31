@@ -12,6 +12,12 @@
 
 pk_entity_source_chain_for_tests()
 
+# TABAN YALITIMI: bu dosyadaki SARILMAMIŞ (varsayılan eşikli) çözümleyici
+# çağrıları da dağıtım `MERGEN_PK_RESOLVE_*` ortam değişkenlerinden ve
+# eşleşen `mergen.pk.*` seçeneklerinden ETKİLENMEMELİDİR;
+# `pk_entity_with_resolve_env()` yalnızca SARDIĞI çağrıyı korur.
+pk_entity_isolate_resolve_config()
+
 .PK_FIX_ESIK <- list(
   valid = TRUE, errors = character(0),
   min_score = 40L, multi_score = 70L, auto_score = 85L,
@@ -697,42 +703,42 @@ test_that("ZAYIF doğrudan eşleşme geçmişi bastırmaz", {
   expect_equal(karar$chips[[1]]$value, "ANKA")
 })
 
-# --- PR #705 KARARLILIK: tarama siniri / sohbet kapsami / isci tasima ---------
+# --- PR #705 KARARLILIK: tarama sınırı / sohbet kapsamı / işçi taşıma ---------
 
-test_that("en yakin aday onerileri TARAMA TAVANINA uyar", {
+test_that("en yakın aday önerileri TARAMA TAVANINA uyar", {
   testthat::skip_if_not_installed("stringi")
-  # `withr` `required_packages` UYESI DEGILDIR; asagida tavan sabitlemesi icin
-  # kullanildigi halde varligi denetlenmiyordu.
+  # `withr` `required_packages` ÜYESİ DEĞİLDİR; aşağıda tavan sabitlemesi için
+  # kullanıldığı hâlde varlığı denetlenmiyordu.
   testthat::skip_if_not_installed("withr")
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(a, b) if (is.null(a)) b else a
   pk_entity_source_chain_for_tests(env = env)
 
-  # KUSUR: esik alti kurtarma yolu sutundaki HER ayrik degerle cagriliyor ve
-  # `MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES` tavanini YOK SAYIYORDU.
+  # KUSUR: eşik altı kurtarma yolu sütundaki HER ayrık değerle çağrılıyor ve
+  # `MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES` tavanını YOK SAYIYORDU.
   adaylar <- paste0("SENTETIK PROJE ", sprintf("%05d", 1:20000))
 
   withr::with_envvar(list(MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES = "200"), {
     sonuc <- env$pk_entity_nearest_candidates("SENTETIK PROJE 00042X", adaylar, 3L)
     expect_length(sonuc, 3L)
     expect_true(all(vapply(sonuc, function(x) identical(x$tier, "suggestion"), logical(1))))
-    # Oneri KALITESI korunur: dogru aday hala listede (tavan icinde, indeks 42).
+    # Öneri KALİTESİ korunur: doğru aday hâlâ listede (tavan içinde, indeks 42).
     expect_true(any(vapply(sonuc, function(x) x$value == "SENTETIK PROJE 00042", logical(1))))
   })
 
-  # TAVAN GERCEKTEN UYGULANIR.
+  # TAVAN GERÇEKTEN UYGULANIR.
   #
-  # Yukaridaki vakada beklenen aday ilk 200 girdi ICINDE yer alir; tavan HIC
-  # uygulanmasa da ayni sonuc doner, yani o iddia kirpmayi KANITLAMAZ. Tavanin
-  # OTESINDE (indeks 15000) bir hedef secilir: tavan 200 iken bu aday
-  # ULASILAMAZ olmali, tavan genisletildiginde ise DONMELIDIR.
+  # Yukarıdaki vakada beklenen aday ilk 200 girdi İÇİNDE yer alır; tavan HİÇ
+  # uygulanmasa da aynı sonuç döner, yani o iddia kırpmayı KANITLAMAZ. Tavanın
+  # ÖTESİNDE (indeks 15000) bir hedef seçilir: tavan 200 iken bu aday
+  # ULAŞILAMAZ olmalı, tavan genişletildiğinde ise DÖNMELİDİR.
   uzak <- "SENTETIK PROJE 15000"
   withr::with_envvar(list(MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES = "200"), {
     dar <- env$pk_entity_nearest_candidates(paste0(uzak, "X"), adaylar, 3L)
     expect_false(any(vapply(dar, function(x) identical(x$value, uzak), logical(1))))
   })
 
-  # Tavan yuksekken ayni hedef BULUNUR (kirpma oneri kalitesini bozmaz).
+  # Tavan yüksekken aynı hedef BULUNUR (kırpma öneri kalitesini bozmaz).
   withr::with_envvar(list(MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES = "50000"), {
     genis <- env$pk_entity_nearest_candidates(paste0(uzak, "X"), adaylar, 3L)
     expect_true(any(vapply(genis, function(x) identical(x$value, uzak), logical(1))))
@@ -740,11 +746,11 @@ test_that("en yakin aday onerileri TARAMA TAVANINA uyar", {
     expect_true(any(vapply(yakin, function(x) x$value == "SENTETIK PROJE 00042", logical(1))))
   })
 
-  # Kucuk sozlukte davranis DEGISMEZ.
+  # Küçük sözlükte davranış DEĞİŞMEZ.
   #
-  # TAVAN BURADA DA SABITLENIR: yapilandirilmis bir VM/CI kabugu kucuk bir
-  # `MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES` disa aktarabilir; o zaman kisa
-  # liste ikiden az kayit tutar ve URETIM DOGRU oldugu halde test kirilirdi.
+  # TAVAN BURADA DA SABİTLENİR: yapılandırılmış bir VM/CI kabuğu küçük bir
+  # `MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES` dışa aktarabilir; o zaman kısa
+  # liste ikiden az kayıt tutar ve ÜRETİM DOĞRU olduğu hâlde test kırılırdı.
   withr::with_envvar(list(MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES = "200"), {
     kucuk <- env$pk_entity_nearest_candidates("ANKARA", c("ANKARA", "ISTANBUL", "IZMIR"), 2L)
     expect_length(kucuk, 2L)
@@ -752,7 +758,7 @@ test_that("en yakin aday onerileri TARAMA TAVANINA uyar", {
   })
 })
 
-test_that("devralinan varlik baglami SOHBET SINIRINDA temizlenir", {
+test_that("devralınan varlık bağlamı SOHBET SINIRINDA temizlenir", {
   testthat::skip_if_not_installed("stringi")
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(a, b) if (is.null(a)) b else a
@@ -770,17 +776,17 @@ test_that("devralinan varlik baglami SOHBET SINIRINDA temizlenir", {
   expect_false(is.null(env$pk_entity_context_recall(oturum)))
   expect_identical(env$pk_entity_context_recall(oturum)$values, "SENTETIK ALFA")
 
-  # KUSUR: kayit oturum genelindeydi ve sohbet degisince dusurulmuyordu; yeni
-  # sohbet, sorgu/sutun kimligi eslestigi anda ONCEKI sohbetin oznesini
-  # devraliyordu.
+  # KUSUR: kayıt oturum genelindeydi ve sohbet değişince düşürülmüyordu; yeni
+  # sohbet, sorgu/sütun kimliği eşleştiği anda ÖNCEKİ sohbetin öznesini
+  # devralıyordu.
   env$pk_entity_context_clear(oturum)
   expect_null(env$pk_entity_context_recall(oturum))
 
-  # SOHBET SINIRI GERCEKTEN SINANIR (yalnizca dogrudan `clear()` cagrisi
-  # DEGIL). Kayit yazildigi andaki sohbet nesliyle damgalanir; "Yeni Soylesi"
-  # nesli artirdiginda ONCEKI sohbetin kaydi okuma aninda DUSER. Boylece
-  # `pk_entity_context_clear()` bir cagri yerinden dusse bile capraz-sohbet
-  # sizintisi geri gelemez.
+  # SOHBET SINIRI GERÇEKTEN SINANIR (yalnızca doğrudan `clear()` çağrısı
+  # DEĞİL). Kayıt yazıldığı andaki sohbet nesliyle damgalanır; "Yeni Söyleşi"
+  # nesli artırdığında ÖNCEKİ sohbetin kaydı okuma anında DÜŞER. Böylece
+  # `pk_entity_context_clear()` bir çağrı yerinden düşse bile çapraz-sohbet
+  # sızıntısı geri gelemez.
   env$pk_entity_context_remember(oturum, kararlar, list(id = "q001"))
   expect_identical(env$pk_entity_context_recall(oturum)$values, "SENTETIK ALFA")
 
@@ -792,8 +798,8 @@ test_that("devralinan varlik baglami SOHBET SINIRINDA temizlenir", {
     as.integer(if (is.null(.nesil)) 0L else .nesil) + 1L
   expect_null(env$pk_entity_context_recall(oturum))
 
-  # Damga dusen kayit KALICI olarak temizlenir (nesil geri alinsa bile geri
-  # gelmez); bayat ozne baska bir yoldan yeniden okunamaz.
+  # Damgası düşen kayıt KALICI olarak temizlenir (nesil geri alınsa bile geri
+  # gelmez); bayat özne başka bir yoldan yeniden okunamaz.
   oturum$userData[["pk_unsaved_chat_epoch"]] <-
     as.integer(oturum$userData[["pk_unsaved_chat_epoch"]]) - 1L
   expect_null(env$pk_entity_context_recall(oturum))
@@ -802,7 +808,7 @@ test_that("devralinan varlik baglami SOHBET SINIRINDA temizlenir", {
   expect_silent(env$pk_entity_context_clear(NULL))
 })
 
-test_that("devralinan varlik baglami isciye DUZ VERI olarak tasinir", {
+test_that("devralınan varlık bağlamı işçiye DÜZ VERİ olarak taşınır", {
   testthat::skip_if_not_installed("stringi")
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
@@ -820,18 +826,18 @@ test_that("devralinan varlik baglami isciye DUZ VERI olarak tasinir", {
     )
   )
 
-  # KUSUR: genel dongu `is.list(deger)` olan HER alani atliyordu; kayit tam
-  # olarak o sekildedir, dolayisiyla isciye HIC ulasmiyordu.
+  # KUSUR: genel döngü `is.list(deger)` olan HER alanı atlıyordu; kayıt tam
+  # olarak o şekildedir, dolayısıyla işçiye HİÇ ulaşmıyordu.
   duz <- env$.pk_async_plain_user_data(anlik)
   expect_false(is.null(duz$pk_entity_prior_context))
   expect_identical(duz$pk_entity_prior_context$values, "SENTETIK ALFA")
   expect_identical(duz$pk_entity_prior_context$key$query_id, "q001")
   expect_identical(duz$pk_entity_prior_context$key$column, "ProjeAdi")
 
-  # Tasinan sekil ISCI SINIRI dogrulamasindan GECER.
+  # Taşınan şekil İŞÇİ SINIRI doğrulamasından GEÇER.
   expect_true(isTRUE(env$pk_async_validate_request(list(user_session = duz))$safe))
 
-  # Bos/bozuk kayit tasinmaz (yanlis pozitif yok).
+  # Boş/bozuk kayıt taşınmaz (yanlış pozitif yok).
   expect_null(env$.pk_async_plain_user_data(
     list(pk_entity_prior_context = list(values = character(0)))
   )$pk_entity_prior_context)

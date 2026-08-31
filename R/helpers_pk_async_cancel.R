@@ -18,8 +18,10 @@
 # İptal jetonlarının kök dizini. Bilge Yolaç indirme kökünden AYRIDIR: bu
 # dosyalar geçicidir ve tarayıcıya asla servis edilmez.
 pk_cancel_token_root <- function(base_dir = NULL) {
-  kok <- if (!is.null(base_dir) && nzchar(as.character(base_dir)[1])) {
-    as.character(base_dir)[1]
+  # `NA` ADAY GÜVENLİ ELENİR: `nzchar(NA)` `NA` döner ve `if` bu koşulda "missing value where TRUE/FALSE needed" ile DÜŞERDİ; iptal yolu ve bayat jeton temizliği geçersiz bir yapılandırma değerinde çöküyordu.
+  aday <- suppressWarnings(as.character(base_dir)[1])
+  kok <- if (length(aday) == 1L && !is.na(aday) && nzchar(aday)) {
+    aday
   } else {
     file.path(tempdir(), "mergen_pk_cancel")
   }
@@ -161,8 +163,12 @@ pk_cancel_token_cleanup_stale <- function(base_dir = NULL, max_age_sec = 3600) {
 
     gecen <- suppressWarnings(as.numeric(difftime(simdi, bilgi$mtime[1], units = "secs")))
     if (is.na(gecen) || gecen < yas) next
-    # ETKİN İSTEĞİN JETONU BAYAT SAYILMAZ (yukarıdaki kayıt).
-    if (exists(basename(dosya), envir = .pk_cancel_active_tokens, inherits = FALSE)) next
+    # ETKİN İSTEĞİN JETONU BAYAT SAYILMAZ (yukarıdaki kayıt). ANCAK SABİTLEME SONSUZ DEĞİLDİR: terminal yol bu süreçte hiç çalışmazsa (işçi çökmesi, `pk_cancel_token_clear()` atlanan oturum yıkımı) anahtar süreç ömrü boyunca kalır, dosya HİÇ toplanmaz ve kayıt büyürdü.
+    anahtar <- basename(dosya)
+    if (exists(anahtar, envir = .pk_cancel_active_tokens, inherits = FALSE)) {
+      if (gecen < (yas * 4)) next
+      rm(list = anahtar, envir = .pk_cancel_active_tokens)
+    }
     if (isTRUE(suppressWarnings(file.remove(dosya)))) silinen <- silinen + 1L
   }
 

@@ -34,7 +34,7 @@
   }
 
   for (dosya in c("helpers_pk_config.R", "helpers_pk_text_turkish.R",
-                  "helpers_pk_precision.R", "helpers_pk_packet_stats.R", "helpers_pk_packet_context_facts.R", "helpers_pk_analysis_packet.R",
+                  "helpers_pk_precision.R", "helpers_pk_packet_stats.R", "helpers_pk_packet_context_facts.R", "helpers_pk_packet_keys.R", "helpers_pk_analysis_packet.R",
                   "helpers_pk_packet_render.R", "helpers_pk_export_plan.R",
                   "helpers_pk_export_csv.R", "helpers_pk_export_xlsx.R",
                   "helpers_pk_export_serve.R",
@@ -211,7 +211,14 @@ test_that("5.000 satirlik sonuc dogru bir XLSX uretir ve geri okunur", {
   # hâlde kırılır.
   testthat::skip_if_not_installed("withr")
   artefakt <- withr::with_envvar(
-    list(MERGEN_PK_EXPORT_MAX_ROWS = NA_character_),
+    # BAYT VE PARÇA TAVANLARI DA SABİTLENİR: `pk_export_build()` yalnızca satır
+    # tavanında değil, BAYT tavanı aşıldığında da CSV yoluna düşer. Yapılandırılmış
+    # bir VM/CI kabuğu küçük bir `MERGEN_PK_EXPORT_MAX_BYTES_MB` dışa aktarırsa
+    # 5000 satırlık fikstür `csv_fallback` döner ve ÜRETİM DOĞRU olduğu hâlde
+    # aşağıdaki iddia kırılırdı (satır anahtarı için ZATEN belgelenen gerekçe).
+    list(MERGEN_PK_EXPORT_MAX_ROWS = NA_character_,
+         MERGEN_PK_EXPORT_MAX_BYTES_MB = NA_character_,
+         MERGEN_PK_EXPORT_MAX_PARTS = NA_character_),
     env$pk_export_build(
       veri, paket,
       context = list(query_id = "q_sentetik", query_name = "Sentetik Sorgu",

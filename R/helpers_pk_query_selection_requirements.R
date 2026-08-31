@@ -166,7 +166,7 @@ pk_select_normalize_requirements <- function(raw) {
   eksik_alanlar <- setdiff(.PK_SELECT_REQ_FIELDS, adlar)
   if (length(eksik_alanlar)) {
     return(list(ok = FALSE, value = bos, error = sprintf(
-      "Geçiş B 'requirements' nesnesi eksik alan tasiyor: %s (alti alan zorunlu).",
+      "Geçiş B 'requirements' nesnesi eksik alan taşıyor: %s (altı alan zorunlu).",
       paste(eksik_alanlar, collapse = ", ")
     )))
   }
@@ -250,6 +250,16 @@ pk_select_validate_requirements <- function(query, requirements, capability_ids 
 
   # VARLIK -> SAYIM kanonikleştirmesi (deterministik ima; ayrıntı ve kapalı
   # başarısızlık kuralları `R/helpers_pk_query_selection_canonical.R` içinde).
+  # KANONİKLEŞTİRİCİ YOKSA TİPLİ REDDETME ÜRETİLİR: kısmi dağıtımda (ya da `R/helpers_pk_query_selection_canonical.R` yüklenmemiş bir izole zincirde) tanımsız fonksiyon istisna fırlatıyor, v2 yolu bunu doğrulayıcının `validator_error` sonucu yerine iç seçim hatasına çeviriyordu.
+  if (!exists("pk_select_apply_canonicalization", mode = "function", inherits = TRUE)) {
+    return(list(
+      status = "validator_error", asserted = TRUE,
+      unknown = character(0), missing = character(0), columns = list(),
+      canonicalized = list(),
+      errors = "Yetenek kanonikleştiricisi yüklenmedi; anlamsal iddia doğrulanamadı."
+    ))
+  }
+
   kanon <- pk_select_apply_canonicalization(query, requirements, capability_ids, registry)
   requirements <- .pk_select_req_view(kanon$requirements)
   kanonik <- kanon$mappings

@@ -383,8 +383,8 @@ llmResponseHandlersInit <- function(
             cat("[AI_RESP][ADD_MESSAGE_ERROR] ", conditionMessage(e), "\n", sep="")
             cat("[AI_RESP][ADD_MESSAGE_ERROR] dput(content)= "); dput(result$content); cat("\n")
             showToast(session, "Render hatası: içerik boş/uygunsuz. Günlüğe yazıldı.", "error")
-            # Sohbet akışını bozmamak için placeholder mesaj ekle
-            ai_msg <- add_message_fn("\U000026A0\U0000FE0F Model boş bir yanıt döndürdü (loglandı).", "ai")
+            # Sohbet akışını bozmamak için placeholder mesaj ekle. `<<-` ZORUNLUDUR: hata işleyicisi AYRI bir fonksiyondur ve `<-` yalnızca YEREL bir bağlantı kurar; dış `ai_msg` `NULL` kalıyor, bu yüzden `premiumReasoningStreamStart`, `trigger_tts_fn()` ve takip önerisi üretimi ATLANIYORDU — kullanıcı sessiz, akıl yürütme paneli ve takip çipleri OLMAYAN bir mesaj alıyordu.
+            ai_msg <<- add_message_fn("\U000026A0\U0000FE0F Model boş bir yanıt döndürdü (loglandı).", "ai")
           })
 
           if (isTRUE(current_settings$enable_mcp_reasoning_stream) &&

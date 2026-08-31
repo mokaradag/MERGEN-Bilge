@@ -170,7 +170,12 @@
 # `[0-9A-Za-z]{5}(?=\])` kalıbı yalnızca `]` ÖNCESİNDE beş alfanümerik ister; bu
 # yüzden standart ODBC öneki `[Microsoft][ODBC Driver ...][22018]` içinde ÖNCE
 # `[Microsoft]` sonundaki `osoft` ile eşleşir ve rapora `sqlstate=osoft` yazardı.
-.PKGH_SQLSTATE_PATTERN <- "\\[([0-9A-Z]{5})\\]"
+# BICIM, KOSELI IZIN LISTESIYLE AYNIDIR: iki rakam + uc alfanumerik ya da
+# `HY`/`IM` sinif oneki. Serbest bes karakterli bir bracket belirteci
+# (`[Microsoft][ODBC Driver 17 for SQL Server][SQL01]` zincirindeki IC SUNUCU
+# adi gibi) `sqlstate=` alanina YAZILMAZ; bu fonksiyonun ciktisi bracket
+# redaksiyonundan GECMEZ ve deger operator konsoluna/`health.json`a giderdi.
+.PKGH_SQLSTATE_PATTERN <- "\\[((?:[0-9]{2}|HY|IM)[0-9A-Z]{3})\\]"
 
 # SÜRÜCÜ HATA NUMARASI YALNIZCA YAPISAL OLARAK ÇAPALANMIŞ BİÇİMDEN OKUNUR.
 #

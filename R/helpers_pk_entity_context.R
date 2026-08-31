@@ -18,7 +18,10 @@
     (if (is.list(query)) query$id %||% query$query_id else NULL) %||%
       (if (is.list(meta_kok)) meta_kok$query_id else NULL) %||% ""
   )[1]
-  if (is.na(sorgu_id)) sorgu_id <- ""
+  # KİMLİKSİZ SORGU DEVRALMAZ (D11 kapalı başarısız): `""` anahtarı, kimliği
+  # OLMAYAN İKİ FARKLI sorguyu aynı sütun/varlık türünde AYNI kayda düşürür ve
+  # `pk_entity_context_decision()` ALAKASIZ bir varlığı onaya sunardı.
+  if (is.na(sorgu_id) || !nzchar(sorgu_id)) return(NULL)
 
   tur <- as.character(
     (if (is.list(cmeta)) (cmeta$entity_kinds %||% cmeta$entity_kind %||% cmeta$role) else NULL) %||% ""

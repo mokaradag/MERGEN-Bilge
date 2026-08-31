@@ -275,9 +275,9 @@ test_that("dizin listeleyici hatası tarama hatalarına aktarılır", {
   expect_true(isTRUE(sonuc$truncated))
   expect_identical(sonuc$truncated_reason, "listing_error")
   expect_length(sonuc$files, 0L)
-  # MESAJ SOZLESMESI: erisim kontrolu `mode = 5L` (okuma + arama) yaptigi icin
-  # metin de her iki izni anar. Kararli parcalar uzerinden eslesilir; yalnizca
-  # "okuma izni yok" arayan eski hali, dogrulama guclendirildiginde kirilirdi.
+  # MESAJ SÖZLEŞMESİ: erişim kontrolü `mode = 5L` (okuma + arama) yaptığı için
+  # metin de her iki izni anar. Kararlı parçalar üzerinden eşleşilir; yalnızca
+  # "okuma izni yok" arayan eski hâli, doğrulama güçlendirildiğinde kırılırdı.
   expect_true(any(grepl("Dizin listelenemedi", sonuc$errors, fixed = TRUE)))
   # HER IKI IZIN ADI AYRI AYRI ARANIR (PR #705 incelemesi, P3): salt
   # "izni yok" araması, tanı YALNIZCA arama iznini bildirecek biçimde

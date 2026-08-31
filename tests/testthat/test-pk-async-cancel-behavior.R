@@ -250,6 +250,11 @@ test_that("isci PID sondasi ana olay dongusunu BLOKE ETMEZ ve sonucsuz sonda bas
     future = function(...) structure(list(), class = "sahte_future"),
     resolved = function(...) FALSE,
     value = function(...) stop("BLOKE ETMEMELIYDI"),
+    # KAPASİTE KAPISI SABİTLENİR: sonda future'ı KURMADAN ÖNCE
+    # `future::nbrOfFreeWorkers()` okur. Ortamdaki plan (ör. başka bir dosyanın
+    # kurduğu meşgul multisession) sıfır boş işçi bildirirse sonda HİÇ
+    # yoklamadan NA döner ve aşağıdaki SINIRLI BEKLEME iddiası boşa geçerdi.
+    nbrOfFreeWorkers = function(...) 1L,
     .package = "future"
   )
 

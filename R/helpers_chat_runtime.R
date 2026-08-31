@@ -265,8 +265,10 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
 
   # -- 2. CORE EXECUTION CLOSURE (UI Update & Streaming) --
   # This function runs ONLY when we are ready to show text (after audio is ready)
+  # `block` bayrağı 4b'de ÇÖZÜLÜR; izole çağrı için ÖNCEDEN tanımlanır.
+  .cr_blok_aktif <- FALSE
   start_streaming_execution <- function(audio_result = NULL) {
-    # Sohbet DEGISTIYSE bu akis artik kimsenin beklemedigi bir yanittir.
+    # Sohbet DEĞİŞTİYSE bu akış artık kimsenin beklemediği bir yanıttır.
     # GÖNDERME DURUMU DA SERBEST BIRAKILIR: eski çıkış yalnızca animasyonu
     # kaldırıyor, `is_sending` TRUE kalıp gönder düğmesini KİLİTLİYORDU.
     # BAYAT AKIŞ PAYLAŞILAN DURUMU SIFIRLAMAZ: söyleşi değiştiyse `values` ARTIK YENİ söyleşinindir; koşulsuz sıfırlama sürmekte olan YENİ isteğin yazma animasyonunu kaldırıp `is_sending` bayrağını temizliyordu. Karar saf yardımcıdadır (`pk_stale_callback_may_reset()`): daha yeni bir istek durumun sahibiyse DOKUNULMAZ.
@@ -371,10 +373,9 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
             # Proje ve Kaynak Analizi köken alt bilgisi. TTS motoru yukarıda
             # `full_response` ile ÇOKTAN çağrıldığı için alt bilgi burada
             # eklendiğinde yalnızca ekrana/DB'ye gider, SESLENDİRİLMEZ.
-            # HATA SINIRLANIR: dekorasyon bir SONLANDIRMA ADIMIDIR, ön koşul değildir. Fırlatırsa `finalizeStreamingMessage` gönderilmez, mesaj kalıcılaşmaz, `on_complete`/`chat_reset_state()` çalışmaz ve `stream_observer$destroy()` hiç çağrılmaz: kullanıcı SÜREKLİ akan bir balon ve kilitli bir gönder düğmesi görürdü. Aynı sınırlama `block` kipi yolunda zaten uygulanıyor.
-            if (exists("pk_provenance_decorate", mode = "function", inherits = TRUE)) {
-              .cr_suslu <- try(pk_provenance_decorate(final_text, session, request_id = pk_request_id), silent = TRUE)
-              if (is.character(.cr_suslu) && length(.cr_suslu) == 1L && !is.na(.cr_suslu) && nzchar(.cr_suslu)) final_text <- .cr_suslu
+            # HATA SINIRLANIR VE KAPALI BAŞARISIZ OLUR: dekorasyon SONLANDIRMA adımıdır (fırlatırsa akış hiç sonlanmaz) ama düşerse HAM model metni de YAYIMLANMAZ; karar gerçek akış hattıyla AYNI sınırı kullanan `pk_stream_display_text()` içindedir.
+            if (exists("pk_stream_display_text", mode = "function", inherits = TRUE)) {
+              final_text <- pk_stream_display_text(final_text, session, pk_request_id, .cr_blok_aktif)
             }
 
             chart_info <- build_chartlab_message(final_text, streaming_state$msg_id, session)
@@ -477,8 +478,8 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
       isTRUE(pk_provenance_blocks_streaming(session, request_id = pk_request_id)),
     error = function(e) TRUE
   ))
-  # SABIT COZULEMESE DE HAM DUZYAZI GITMEZ (KAPALI BASARISIZ): karar saf
-  # yardimcidadir (bkz. `pk_block_mode_fallback_text()`).
+  # SABİT ÇÖZÜLEMESE DE HAM DÜZYAZI GİTMEZ (KAPALI BAŞARISIZ): karar saf
+  # yardımcıdadır (bkz. `pk_block_mode_fallback_text()`).
   .cr_yedek_metin <- if (exists("pk_block_mode_fallback_text", mode = "function", inherits = TRUE)) pk_block_mode_fallback_text(.cr_blok_aktif, full_response) else if (.cr_blok_aktif && exists("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)) get("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE) else full_response
   yedek_blok <- list(display = .cr_yedek_metin, tts = .cr_yedek_metin)
   blok <- if (exists("mergen_pk_block_mode_texts", mode = "function", inherits = TRUE)) {

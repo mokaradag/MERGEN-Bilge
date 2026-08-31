@@ -23,7 +23,8 @@
 #' kesilirdi.
 #'
 #' @return `list(detail_config = <güncellenmiş>, restore = <fonksiyon|NULL>)`.
-pk_deep_phase6_setup <- function(detail_config, session, request_id, started_at) {
+pk_deep_phase6_setup <- function(detail_config, session, request_id,
+                                 started_at = Sys.time()) {
   aktif <- exists("pk_async_mode_active", mode = "function", inherits = TRUE) &&
     isTRUE(tryCatch(pk_async_mode_active(), error = function(e) FALSE))
 

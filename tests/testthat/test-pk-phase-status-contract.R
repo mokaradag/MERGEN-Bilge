@@ -123,7 +123,11 @@ test_that("seçenek biçimli ref argümanı REDDEDİLİR", {
   expect_true(
     any(grepl("olamaz", cevrili, fixed = TRUE)) ||
       any(grepl("olamaz", sonuc, fixed = TRUE, useBytes = TRUE)) ||
-      any(grepl("<ref>", sonuc, fixed = TRUE, useBytes = TRUE))
+      # ASCII ÇAPA YALNIZCA BU YOLA ÖZGÜ OLMALIDIR: genel kullanım metnindeki
+      # `<ref>`, sığ klon / uzak erişim reddi gibi DİĞER erken çıkış yollarında
+      # da basılır; test o zaman seçenek reddini HİÇ sınamadan geçerdi.
+      # `--all` dizesi yalnızca seçenek-biçimli `<ref>` reddinde yankılanır.
+      any(grepl("--all", sonuc, fixed = TRUE, useBytes = TRUE))
   )
 })
 
@@ -162,9 +166,9 @@ test_that("faz numarası İLK işaretten okunur (açgözlü kalıp yok)", {
   expect_true(grepl('${dal#*phase-}', metin, fixed = TRUE, useBytes = TRUE))
   expect_false(grepl('s/.*phase-\\(', metin, fixed = TRUE, useBytes = TRUE))
 
-  # AYNI KURAL SQUASH KONUSUNDAKI `Faz ` ISARETI ICIN DE GECERLIDIR.
-  # `Faz 4 duzeltme, Faz 5 hazirligi (#123)` konusu acgozlu kalipla Faz 5
-  # okunuyor, BIRLESMEMIS bir faz entegre gibi raporlaniyordu.
+  # AYNI KURAL SQUASH KONUSUNDAKİ `Faz ` İŞARETİ İÇİN DE GEÇERLİDİR.
+  # `Faz 4 düzeltme, Faz 5 hazırlığı (#123)` konusu açgözlü kalıpla Faz 5
+  # okunuyor, BİRLEŞMEMİŞ bir faz entegre gibi raporlanıyordu.
   expect_true(grepl('${subject#*[Ff]az }', metin, fixed = TRUE, useBytes = TRUE))
   expect_false(grepl('s/.*[Ff]az \\(', metin, fixed = TRUE, useBytes = TRUE))
 })

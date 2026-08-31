@@ -41,6 +41,11 @@
                               sub("^MERGEN_PK_", "", anahtar)))
 }
 
+# BAYAT `withr` ATLAMA MUHAFIZLARI KALDIRILDI: bu dosyadaki hiçbir test
+# `withr` çağırmaz; ortam ve `options()` sabitlemesini aşağıdaki yardımcı
+# kendisi yapar. `withr` kurulu olmayan bir koşucuda üç SQL zaman aşımı /
+# önbellek bütçesi testi, ÇALIŞIP GEÇECEKKEN atlanıyor ve kapsam sessizce
+# kayboluyordu.
 .pk_recon_with_config <- function(anahtarlar, deger = character(0), code) {
   opsiyonlar <- vapply(anahtarlar, .pk_recon_option_key, character(1),
                        USE.NAMES = FALSE)
@@ -200,7 +205,6 @@ test_that("derin SQL yürütme gerçek veriyi döner (Unicode olmayan yol)", {
 
   # VARSAYILAN SABİTLENİR: ortam değişkeni dağıtımda tanımlıysa (VM/CI kabuğu)
   # üretim çözümleyicisi doğru olduğu hâlde test kırılırdı.
-  skip_if_not_installed("withr")
   # HER IKI KATMAN YALITILIR (PR #705 incelemesi, P3): `pk_config_resolve()`
   # ortamdan SONRA `options()` okur; salt `with_envvar()` `mergen.pk.sql_timeout_sec`
   # secenegini birakan baska bir testte bu iddiayi kirardi.
@@ -248,7 +252,6 @@ test_that("SQL zaman aşımı kalan bütçeyle SINIRLANIR", {
   # VARSAYILAN SABİTLENİR: dağıtım kabuğu `MERGEN_PK_SQL_TIMEOUT_SEC=20`
   # verirse etkin süre YAPILANDIRMADAN gelir, `timeout_reason` "configured"
   # olur ve üretim doğru olduğu hâlde test kırılır.
-  skip_if_not_installed("withr")
   sonuc <- .pk_recon_with_config("MERGEN_PK_SQL_TIMEOUT_SEC", code = {
     env$pk_deep_execute_sql(
       conn, "SELECT * FROM veri",
@@ -272,7 +275,6 @@ test_that("sorgu metadata SQL zaman aşımını yükseltir ama son tarihi UZATMA
   # §9 senaryosu: 600 sn sorgu override'ı, 300 sn analiz bütçesi.
   # Ortam değeri, sorgu override'ından bağımsız olarak taban çözümlemeyi
   # etkilediği için burada da SABİTLENİR.
-  skip_if_not_installed("withr")
   sonuc <- .pk_recon_with_config("MERGEN_PK_SQL_TIMEOUT_SEC", code = {
     env$pk_deep_execute_sql(
       conn, "SELECT * FROM veri",

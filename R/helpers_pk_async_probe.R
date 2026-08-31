@@ -70,7 +70,7 @@
       # çalışmadığını ölçer; tembel bir future ölçümü yoklama anına erteler.
       bos_isci <- suppressWarnings(tryCatch(
         as.integer(future::nbrOfFreeWorkers())[1], error = function(e) NA_integer_))
-      if (length(bos_isci) == 1L && !is.na(bos_isci) && bos_isci < 1L) {
+      if (length(bos_isci) != 1L || is.na(bos_isci) || bos_isci < 1L) {  # OLCULEMEYEN KAPASITE DE YETERSIZ SAYILIR: `NA` dondugunde eski kosul GECIYOR ve `future(lazy = FALSE)` bos isci beklerken Shiny surecini `butce_sn` DISINDA blokluyordu.
         .pk_async_plan_probe_cache$na_until <- Sys.time() + soguma_sn
         return(NA)
       }

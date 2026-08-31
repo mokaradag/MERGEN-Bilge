@@ -647,13 +647,13 @@ test_that("Geçiş B istemi varlık türlerini yetenek kimliğinden AYIRIR", {
   expect_false(isTRUE(ayrisik$ok))
 })
 
-test_that("Gecis A TOPLAM butcesi asilirsa kapali basarisiz olunur", {
-  # KUSUR: alan basina kirpma sorgu SAYISINI sinirlamiyordu; daha buyuk bir
-  # kutuphane Gecis A'yi secici modelin baglaminin otesine itebiliyor ve
-  # satirlar sessizce dusuyordu. Gorunmeyen bir sorgu asla secilemez; bu
-  # `skipped` ile ayni sinif recall kaybidir.
-  # Gercek kutuphane 169 sorguludur; sentetik kutuphane bilincli olarak
-  # BUYUTULUR ki toplam butce kapisi anlamli bicimde sinansin.
+test_that("Geçiş A TOPLAM bütçesi aşılırsa kapalı başarısız olunur", {
+  # KUSUR: alan başına kırpma sorgu SAYISINI sınırlamıyordu; daha büyük bir
+  # kütüphane Geçiş A'yı seçici modelin bağlamının ötesine itebiliyor ve
+  # satırlar sessizce düşüyordu. Görünmeyen bir sorgu asla seçilemez; bu
+  # `skipped` ile aynı sınıf recall kaybıdır.
+  # Gerçek kütüphane 169 sorguludur; sentetik kütüphane bilinçli olarak
+  # BÜYÜTÜLÜR ki toplam bütçe kapısı anlamlı biçimde sınansın.
   taban <- pk_select_test_library()
   lib <- list()
   for (k in seq_len(40L)) {
@@ -663,12 +663,12 @@ test_that("Gecis A TOPLAM butcesi asilirsa kapali basarisiz olunur", {
     }
   }
 
-  # SIGAR VAKASI FIXTURE GENISLIGINDEN BAGIMSIZDIR.
+  # SIĞAR VAKASI FİKSTÜR GENİŞLİĞİNDEN BAĞIMSIZDIR.
   #
-  # Sabit `pass_a_chars` (60000) kullanmak, fixture buyudugunde testi GERCEK
-  # bir gerileme olmadan kirmis olurdu. Once yuk olculur, sonra butce olculen
-  # degerin USTUNE ayarlanir: "sigdiginda kirpma YOK" sozlesmesi boylece
-  # fixture boyutundan bagimsiz sinanir.
+  # Sabit `pass_a_chars` (60000) kullanmak, fikstür büyüdüğünde testi GERÇEK
+  # bir gerileme olmadan kırmış olurdu. Önce yük ölçülür, sonra bütçe ölçülen
+  # değerin ÜSTÜNE ayarlanır: "sığdığında kırpma YOK" sözleşmesi böylece
+  # fikstür boyutundan bağımsız sınanır.
   # BÜTÇE GEÇERLİ ARALIKTA OLMALIDIR: `pk_select_normalize_config()` üst sınırı
   # 400000'dir. 10.000.000 REDDEDİLİYOR, alan yapılandırmadan DÜŞÜYOR ve ölçüm
   # sessizce 60000 varsayılanına dönüyordu; büyüyen bir fikstürde bu, ölçümün
@@ -683,21 +683,21 @@ test_that("Gecis A TOPLAM butcesi asilirsa kapali basarisiz olunur", {
   expect_false(isTRUE(genis$truncated))
   expect_true(genis$chars > 0L)
 
-  # Butce gercek yukun ALTINDA: kapali basarisiz raporlanir.
+  # Bütçe gerçek yükün ALTINDA: kapalı başarısız raporlanır.
   dar_butce <- max(2000L, as.integer(genis$chars / 2L))
   dar <- pk_select_pass_a_payload(lib, .pk_selhard_cfg(pass_a_chars = dar_butce))
   expect_true(isTRUE(dar$truncated))
   expect_identical(dar$budget, dar_butce)
   expect_true(dar$chars > dar$budget)
 
-  # Satirlar SESSIZCE kirpilmaz: kimlikler korunur, karar katmani reddeder.
+  # Satırlar SESSİZCE kırpılmaz: kimlikler korunur, karar katmanı reddeder.
   expect_identical(dar$ids, genis$ids)
 
-  # KARAR KATMANININ GERCEK CIKTISI DA DENETLENIR.
+  # KARAR KATMANININ GERÇEK ÇIKTISI DA DENETLENİR.
   #
-  # Yukun `truncated = TRUE` raporlamasi tek basina yetmez: asil sozlesme
-  # calistiricinin KAPALI BASARISIZ olmasidir. Bu dogrulanmazsa, bayragi yok
-  # sayan bir gerileme (kirpilmis kutuphaneyle secime devam etmek) bu dosyadan
+  # Yükün `truncated = TRUE` raporlaması tek başına yetmez: asıl sözleşme
+  # çalıştırıcının KAPALI BAŞARISIZ olmasıdır. Bu doğrulanmazsa, bayrağı yok
+  # sayan bir gerileme (kırpılmış kütüphaneyle seçime devam etmek) bu dosyadan
   # sessizce gecerdi.
   karar <- pk_select_run(
     user_prompt = "sentetik soru",

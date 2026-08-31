@@ -377,19 +377,22 @@ test_that("dusurulen `__group__` gecerli bir filtre YANINDA da analizi REDDEDER"
   # cikarabildiginde 0b kapisi calismiyor; `__group__` gercek bir sutun adi
   # olmadigi icin 0c kapisi da calismiyordu. Sonuc: kullanicinin istedigi grup
   # SESSIZCE atiliyor ve analiz yalnizca ILGISIZ kalan filtreyle suruyordu.
-  derlenmis <- list(
-    mask = c(TRUE, FALSE, TRUE),
-    all_dropped = FALSE,
-    applied = list(list(column = "Durum", operation = "exact_match",
-                        values = "Aktif", matched = 2L)),
-    dropped = list(list(leaf = list(column = "__group__"), reason = "depth_overflow")),
-    zero_match = list()
+  # FİKSTÜR GERÇEK DERLEYİCİ ŞEKLİNDEN ÜRETİLİR: elle yazılan `applied` /
+  # `zero_match` alanları üretimin döndürdüğü şekil DEĞİLDİR (`pk_filter_compile()`
+  # `mask`/`groups`/`dropped`/`noop_columns`/`ok`/`requested`/`all_dropped`
+  # döndürür). Politika bu yüzden SIFIR uygulanan grup görüyor ve
+  # `groups` güdümlü dallardaki bir gerileme SAPTANMADAN kalıyordu. Derleme
+  # gerçek işlevle yapılır, `__group__` düşme kaydı SONRADAN enjekte edilir.
+  filtreler <- list(list(column = "Durum", value = "Aktif",
+                         operation = "exact_match"))
+  derlenmis <- env$pk_filter_compile(veri, filtreler, query = NULL)
+  derlenmis$dropped <- c(
+    derlenmis$dropped,
+    list(list(leaf = list(column = "__group__"), reason = "depth_overflow"))
   )
 
   karar <- env$pk_filter_zero_match_policy(
-    veri,
-    list(list(column = "Durum", value = "Aktif", operation = "exact_match")),
-    derlenmis,
+    veri, filtreler, derlenmis,
     query = list(id = "q-grup", meta = list(primary_entity = "Durum"))
   )
 
@@ -422,4 +425,57 @@ test_that("`__group__` YOKSA gecerli filtre yolunda davranis DEGISMEZ", {
 
   expect_identical(karar$action, "proceed")
   expect_identical(karar$mask, c(TRUE, FALSE, TRUE))
+})
+
+test_that("BEYAN EDILEN birincil sutun UYGULANMADIYSA sifir eslesme REDDEDER", {
+  env <- .pk_policy_env()
+  veri <- .pk_policy_data()
+
+  # Metadata `ProjeAdi`yi birincil sayar; istek YALNIZCA `Durum` uzerinde
+  # daraltir ve o daraltma sifir eslesir. Onceden hicbir kapi calismiyor,
+  # kurtarma derlemesi TUMU-TRUE maske uretiyordu.
+  filtreler <- list(
+    list(column = "Durum", value = "HIC OLMAYAN DURUM", operation = "exact_match")
+  )
+  derlenmis <- env$pk_filter_compile(
+    veri, filtreler,
+    query = list(id = "q-birincil-yok", meta = list(primary_entity = "ProjeAdi"))
+  )
+
+  karar <- env$pk_filter_zero_match_policy(
+    veri, filtreler, derlenmis,
+    query = list(id = "q-birincil-yok", meta = list(primary_entity = "ProjeAdi"))
+  )
+
+  expect_identical(karar$action, "refuse")
+  expect_identical(sum(karar$mask), 0L)
+  expect_true(nzchar(as.character(karar$refusal_message)[1]))
+})
+
+test_that("KURTARMA geriye daraltma birakmiyorsa karar REDDIR", {
+  env <- .pk_policy_env()
+  veri <- .pk_policy_data()
+
+  # Tek daraltma sifir eslesiyor ve birincil varlik ayni sutun DEGIL:
+  # `kalan` bos kalir, `pk_filter_compile(data, list(), ...)` TUMU-TRUE maske
+  # dondururdu. Kapali basarisiz karar REDdir.
+  filtreler <- list(
+    list(column = "Durum", value = "HIC OLMAYAN DURUM", operation = "exact_match")
+  )
+  derlenmis <- env$pk_filter_compile(veri, filtreler, query = NULL)
+
+  karar <- env$pk_filter_zero_match_policy(veri, filtreler, derlenmis, query = NULL)
+
+  expect_identical(karar$action, "refuse")
+  expect_false(any(karar$mask))
+})
+
+test_that("COK DEGERLI grup operatoru sessizce ilk ogeye INDIRGENMEZ", {
+  env <- .pk_policy_env()
+
+  # Model `{"operator": ["or","and"], ...}` uretirse `[1]` kirpmasi eskiden
+  # ifadeyi sessizce OR yapiyordu; belirsiz beyan artik `NA` doner.
+  expect_true(is.na(env$.pk_filter_group_operator(list(operator = c("or", "and")))))
+  expect_identical(env$.pk_filter_group_operator(list(operator = "or")), "or")
+  expect_identical(env$.pk_filter_group_operator(list()), "and")
 })

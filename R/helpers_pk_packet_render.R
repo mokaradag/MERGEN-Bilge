@@ -418,7 +418,8 @@
 
   # Daraltılan grupların iki toplamı da ALINTILANABİLİR olmalıdır; karşılık
   # gelen bağlam olguları `pk_packet_context_facts()` içinde üretilir.
-  diger <- if ((g$other_groups %||% 0L) > 0L) {
+  # `%||%` YALNIZCA `NULL` ATLAR: `NA`/`NaN` grup sayısı `if (NA > 0L)` ile TÜM paket yazımını düşürüyor, hemen altındaki sonluluk muhafızı hiç çalışamıyordu.
+  diger <- if (isTRUE(.pk_render_count(g$other_groups) > 0)) {
     # SAYIM SONLU DEGILSE ISARET DE BASILMAZ (PR #705 incelemesi, P3).
     #
     # `pk_packet_context_facts()` sonlu OLMAYAN tanimi ATLAR; olgu dizininde
@@ -449,7 +450,9 @@
 
 .pk_render_coverage <- function(packet) {
   c_ <- packet$coverage %||% list()
-  eksikler <- Filter(function(m) (m$missing %||% 0L) > 0L, c_$missing %||% list())
+  # `NA` eksik-sayısı `Filter()` içinde "missing value where TRUE/FALSE needed" hatası veriyordu.
+  eksikler <- Filter(function(m) isTRUE(.pk_render_count(m$missing) > 0),
+                     c_$missing %||% list())
 
   # SONLU OLMAYAN SAYAÇ İÇİN İŞARET BASILMAZ (aynı gerekçe: olgu üretilmez).
   kapsama_parcalari <- c(
@@ -544,8 +547,10 @@ pk_packet_render <- function(packet, budget = NULL, query_meta = NULL) {
       120000L
     }
   }
+  # SIFIR BÜTÇE "AYARLANMADI" DEĞİL "TÜKENDİ" DEMEKTİR: `.pk_result_packet_budget()` sabit yük bütçeyi zaten aştığında bilerek `0L` döndürür; burada varsayılana çevirmek tükenmiş durumu siliyor, `over_budget` FALSE kalıyor ve deterministik özet yedeği HİÇ çalışmadan uç noktanın bağlam sınırı aşılıyordu. Varsayılan yalnızca `NULL`/`NA` için geçerlidir.
   budget <- suppressWarnings(as.integer(budget))
-  if (is.na(budget) || budget <= 0L) budget <- 120000L
+  if (length(budget) != 1L || is.na(budget)) budget <- 120000L
+  if (budget < 0L) budget <- 0L
 
   ornek_satir <- {
     r <- packet$examples$rows

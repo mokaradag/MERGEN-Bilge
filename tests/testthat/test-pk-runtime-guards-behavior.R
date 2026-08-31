@@ -129,11 +129,18 @@ test_that("PSOCK baslatma BAGIMSIZ butce sarmalayicisindan gecer", {
   # macOS'ta askida bir el sikisma bu iki degerin USTUNDE bloke kalabilir.
   # Baslatma bu yuzden repo genelindeki bagimsiz butce sarmalayicisindan gecer.
   cagrildi <- FALSE
+  kume_kurucu <- NULL
   env$pk_async_bounded_fs <- function(fn, deadline_at = NULL) {
     cagrildi <<- TRUE
+    # `fn` YALNIZCA SAKLANIR, ÇAĞRILMAZ: küme kurulumunun gerçekten
+    # ERTELENDİĞİNİ ve bütçe aşımında HİÇ çalıştırılmadığını kanıtlar.
+    kume_kurucu <<- fn
     list(ok = FALSE, value = NULL, error = "reached elapsed time limit")
   }
-  env$parallelly <- NULL
+  # NOT: `env$parallelly <- NULL` bağımlılığı KALDIRMAZ — ortamda değeri `NULL`
+  # olan bir bağ oluşturur ve üretim kodu `parallelly::makeClusterPSOCK()`
+  # biçiminde AD ALANI NİTELİKLİ çağırdığı için yerel bağ onu etkileyemez.
+  # Gerçek kanıt yukarıdaki "kurucu çağrılmadı" iddiasıdır.
 
   # ALAN ADI ÜRETİMLE AYNI: anlık görüntü `started_at_epoch` yazar.
   istek <- list(deadline_sec = 30, started_at_epoch = as.numeric(Sys.time()),
@@ -141,6 +148,9 @@ test_that("PSOCK baslatma BAGIMSIZ butce sarmalayicisindan gecer", {
   sonuc <- env$.pk_p1_run_direct_disposable(istek)
 
   expect_true(cagrildi)
+  # Küme kurulumu SARMALAYICIYA devredilmiştir ve HİÇ çalıştırılmamıştır.
+  expect_true(is.function(kume_kurucu))
+  expect_null(sonuc$result)
   # Sarmalayıcı bütçeyi aşarsa küme KURULMAMIŞ sayılır; istek asılı kalmaz.
   expect_identical(sonuc$status, "bootstrap_failed")
 })

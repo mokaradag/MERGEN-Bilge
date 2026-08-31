@@ -249,6 +249,13 @@ test_that("getirim katmanı SABİT alan bonusu ve eşik İÇERMEZ (D10)", {
   ham <- readBin(yol, "raw", file.info(yol)$size)
   txt <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
 
+  # YORUM SATIRLARI KOD SAYILMAZ: açıklayıcı bir başlıkta `max_heuristic` ya da
+  # `THRESHOLD_RAW` geçmesi, taranan katman SAF olduğu hâlde iddiayı düşürür ve
+  # `stop_on_failure = TRUE` altında TÜM paketi kırardı (kardeş taramalar
+  # `test-pk-query-selection-contract.R` içinde yorumları ZATEN eler).
+  .satirlar <- unlist(strsplit(gsub("\r\n?", "\n", txt), "\n", fixed = TRUE))
+  txt <- paste(.satirlar[!grepl("^\\s*#", .satirlar)], collapse = "\n")
+
   # v1'in yedi alan bonusu buraya TAŞINMAMALIDIR.
   for (desen in c("score + 8", "score <- score +", "THRESHOLD_RAW", "THRESHOLD_PCT")) {
     expect_false(
@@ -270,4 +277,17 @@ test_that("getirim katmanı SABİT alan bonusu ve eşik İÇERMEZ (D10)", {
       info = sprintf("Sözlüksel katman saf kalmalıdır: %s bulundu.", desen)
     )
   }
+})
+
+test_that("METINSEL metadata TASIMAYAN kutuphane indeksi DUSURMEZ", {
+  # Tum kayitlar bos metin uretirse `unlist(lapply(tf, names))` `NULL` doner;
+  # `table(NULL)` bazi R surumlerinde "nothing to tabulate" hatasi verir ve
+  # indeks kurulumu opak bir hatayla duserdi. Bos indeks MESRU sonuctur.
+  idx <- pk_retrieval_build_index(list(list(id = "q1"), list(id = "q2")))
+
+  expect_s3_class(idx, "pk_retrieval_index")
+  expect_identical(idx$n, 2L)
+  expect_identical(idx$ids, c("q1", "q2"))
+  expect_length(idx$idf, 0L)
+  expect_true(all(idx$norm == 0))
 })

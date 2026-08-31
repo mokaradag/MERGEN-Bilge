@@ -22,6 +22,12 @@
   env
 }
 
+# `withr` `required_packages` ÜYESİ DEĞİLDİR ama bu dosyadaki beş test
+# `withr::local_options()` çağırır. Muhafız YOKKEN paketin kurulu olmadığı
+# bir koşucuda dosya ATLANMAK yerine HATA veriyor ve v1 seçici davranış
+# testleri dâhil TÜM kapsam kayboluyordu.
+testthat::skip_if_not_installed("withr")
+
 test_that("son tarih YOKKEN bile sonlu bir taban zaman aşımı uygulanır", {
   env <- .pk_sel_to_env()
   withr::local_options(list(mergen.pk.async.deadline_at = NULL))
@@ -69,15 +75,17 @@ test_that("kalan bütçe tabanı DARALTIR, genişletmez", {
 
 test_that("bütçe tükendiğinde istek HİÇ gönderilmez", {
   env <- .pk_sel_to_env()
+  # ÜRETİM PLANLAYICISI SINANIR: `.pk_sel_to_env()` `R/helpers_pk_async_cancel.R`
+  # dosyasını yükler ve `pk_sql_timeout_plan()` ORADA tanımlıdır. Test-yerel bir
+  # planlayıcıyla değiştirmek, sınanmak istenen ÜRETİM zaman aşımı mantığını
+  # devre dışı bırakıyordu.
   env$pk_deadline_remaining_sec <- function(x) 0.4
-  env$pk_sql_timeout_plan <- function(configured, remaining) {
-    ts <- min(configured, floor(remaining))
-    list(dispatch = ts >= 1, timeout_sec = ts)
-  }
   withr::local_options(list(mergen.pk.async.deadline_at = Sys.time()))
 
   plan <- env$pk_select_effective_timeout(base_sec = 60L)
   expect_false(isTRUE(plan$dispatch))
+  # Tükenmiş bütçe SIFIR zaman aşımı demektir (yuvarlanmış kalan < 1 sn).
+  expect_identical(as.integer(plan$timeout_sec), 0L)
 })
 
 test_that("v1 ve v2 seçicileri AYNI yardımcıyı çağırır", {

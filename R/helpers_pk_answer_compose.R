@@ -517,7 +517,11 @@ pk_compose_facts_summary <- function(facts, limit = 12L,
   kullanilabilir <- Filter(function(o) is.list(o) && !is.null(o$value), facts %||% list())
   if (!length(kullanilabilir)) return("")
 
-  limit <- max(1L, suppressWarnings(as.integer(limit)))
+  # SINIR TAM SAYIYA İNDİRGENİR: `as.integer()` sayısal olmayan/`NA` bir değer
+  # için `NA_integer_` döner, `max(1L, NA)` yine `NA` kalır ve aşağıdaki
+  # `utils::head(..., NA)` HATA fırlatırdı; bu metin `block` kipinde model
+  # düzyazısı reddedildiğinde GÖSTERİLEN yedektir.
+  limit <- .pk_compose_int_or(limit, 12L)
   oncelik <- c("sum", "weighted_mean", "latest", "mean", "median", "max", "min")
 
   sutunlar <- unique(vapply(kullanilabilir, function(o) as.character(o$column)[1], character(1)))
@@ -626,8 +630,10 @@ pk_compose_block <- function(decision, data, artifact = NULL, meta = list(),
                              query_meta = NULL) {
   parcalar <- character(0)
 
-  ic_satir <- .pk_compose_cfg("MERGEN_PK_INLINE_MAX_ROWS", query_meta, 15L)
-  ic_sutun <- .pk_compose_cfg("MERGEN_PK_INLINE_MAX_COLS", query_meta, 8L)
+  # `pk_compose_decide()` ile AYNI indirgeme: sayısal olmayan bir değer ANAHTARIN
+  # kendi varsayılanına düşer, tablo katmanının varsayılanına (15/12) DEĞİL.
+  ic_satir <- .pk_compose_int_cfg("MERGEN_PK_INLINE_MAX_ROWS", query_meta, 15L)
+  ic_sutun <- .pk_compose_int_cfg("MERGEN_PK_INLINE_MAX_COLS", query_meta, 8L)
 
   if (identical(decision$mode, "inline_table")) {
     # `inline_table` kipinde EK ÜRETİLMEZ; kırpma notu bunu bilmelidir.

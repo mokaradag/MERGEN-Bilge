@@ -50,6 +50,18 @@ test_that("rolling three-message windows preserve selector state through message
   sonraki_anahtar <- pk_select_chat_key(sonraki_pencere, session)
   expect_identical(sonraki_anahtar, ilk_anahtar)
   expect_identical(pk_select_prior_query_id(session, sonraki_anahtar), "q001")
+
+  # OLUMSUZ İDDİA: yalnızca "iki örtüşen pencere AYNI anahtarı üretir" demek,
+  # `chat_history`'yi HİÇ okumayıp oturum başına SABİT bir anahtar döndüren bir
+  # uygulamayı da geçirirdi; bağlam o zaman söyleşiler arasında SIZARDI.
+  baska_pencere <- list(
+    list(role = "user", content = "alakasiz soru", id = "z-1"),
+    list(role = "assistant", content = "alakasiz yanit", id = "z-2"),
+    list(role = "user", content = "devam", id = "z-3")
+  )
+  baska_anahtar <- pk_select_chat_key(baska_pencere, session)
+  expect_false(identical(baska_anahtar, ilk_anahtar))
+  expect_null(pk_select_prior_query_id(session, baska_anahtar))
 })
 
 test_that("text-only single-message overlap is not conversation identity", {

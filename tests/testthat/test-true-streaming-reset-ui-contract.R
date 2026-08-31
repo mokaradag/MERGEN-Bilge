@@ -39,11 +39,18 @@
   on.exit(close(con), add = TRUE)
 
   raw_data <- readBin(con, what = "raw", n = size)
+  # `sub` VERİLMEZ: `sub = "byte"` her geçersiz baytı bir kaçışa çevirip HER
+  # ZAMAN dize üretir, dolayısıyla aşağıdaki `is.na()` kapısı HİÇ tetiklenmez.
+  # CP1254 kaydedilmiş bir kaynak dosya o zaman kaçışlı mojibake olarak
+  # taranıyor, sözleşme belirteçleri ASCII olduğu için yine eşleşiyor ve test
+  # BOZUK bir dosyada başarı raporluyordu.
   txt <- suppressWarnings(
-    iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
+    iconv(list(raw_data), from = "UTF-8", to = "UTF-8")[[1]]
   )
 
-  if (is.na(txt)) txt <- ""
+  if (is.na(txt)) {
+    stop(sprintf("Kaynak dosya UTF-8 olarak çözülemedi: %s", path), call. = FALSE)
+  }
   enc2utf8(gsub("\\r\\n?|\\r", "\n", txt, perl = TRUE))
 }
 

@@ -61,8 +61,11 @@ pk_sql_apply_statement_timeout <- function(conn, timeout_sec, budget_fn = NULL) 
                 previous = NA_integer_))
   }
 
+  # MİLİSANİYE ÇARPIMI TAM SAYI TAŞMASINA UĞRAMAZ: `MERGEN_PK_SQL_TIMEOUT_SEC` üst sınır BEYAN ETMEZ; 2147483 saniyenin üzerinde `saniye * 1000L` `NA_integer_` üretiyor, ifade `SET LOCK_TIMEOUT NA` olarak gidiyor, deyim düşüyor ve kilit bekleme sınırı operatör aksini sanırken SESSİZCE uygulanmıyordu. Üst sınır SQL Server'ın kabul ettiği azami değerdir.
+  ms <- min(as.numeric(saniye) * 1000, 2147483647)
+
   uygulama <- pk_sql_bounded_call(
-    function() DBI::dbExecute(conn, sprintf("SET LOCK_TIMEOUT %d", saniye * 1000L)),
+    function() DBI::dbExecute(conn, sprintf("SET LOCK_TIMEOUT %.0f", ms)),
     butce
   )
   if (isTRUE(uygulama$ok)) {

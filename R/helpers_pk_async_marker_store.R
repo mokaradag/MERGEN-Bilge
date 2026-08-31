@@ -51,6 +51,10 @@
 }
 
 # İstek terminal duruma ulaştı: sabitleme kalkar, girdi normal tavana tabidir.
+# TOPLU SERBEST BIRAKMA: oturum sonu temizliginde her istek icin AYRI bir
+# terminal geri cagri olmayabilir; sabitlenen anahtarlar orada da birakilmazsa
+# `pinned` surec omru boyunca buyur ve 500 girdilik tavan yalnizca KALAN
+# sabitlenmemis kumeye uygulanirdi.
 .pk_marker_unpin <- function(key) {
   if (!.pk_marker_key_ok(key)) return(invisible(FALSE))
   sabit <- .pk_request_marker_store$pinned

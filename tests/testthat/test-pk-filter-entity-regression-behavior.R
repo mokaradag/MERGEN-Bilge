@@ -232,6 +232,11 @@ test_that("varlik cozumleyicisi grup cocuklarini gezer", {
 }
 
 test_that("cozumleyici karari baglam kaydinin BEKLEDIGI alanlari tasir", {
+  # `pk_entity_resolve_filter_plan()` -> `pk_entity_normalize()` yolu `stringi`
+  # olmadan `stop()` eder; muhafız YOKKEN test ATLANMAK yerine HATA verir ve
+  # `stop_on_failure = TRUE` altında TÜM paket eksik bir OPSİYONEL paket
+  # yüzünden düşerdi (rapor da filtre/varlık mantığını gösterirdi).
+  testthat::skip_if_not_installed("stringi")
   env <- .pk_entity_test_env()
   veri <- data.frame(
     Proje = c("ANKA", "AKINCI", "KIZILELMA"),
@@ -269,6 +274,11 @@ test_that("cozumleyici karari baglam kaydinin BEKLEDIGI alanlari tasir", {
 # degerlendirdigi icin hata yalnizca `context_key` ZORLANDIGINDA, yani tam da
 # devralma karsilastirmasinda ortaya cikiyordu: `object 'query' not found`.
 test_that("baglam anahtari cozulur; devralma yolu tanimsiz sembolle patlamaz", {
+  # `pk_entity_resolve_filter_plan()` -> `pk_entity_normalize()` yolu `stringi`
+  # olmadan `stop()` eder; muhafız YOKKEN test ATLANMAK yerine HATA verir ve
+  # `stop_on_failure = TRUE` altında TÜM paket eksik bir OPSİYONEL paket
+  # yüzünden düşerdi (rapor da filtre/varlık mantığını gösterirdi).
+  testthat::skip_if_not_installed("stringi")
   env <- .pk_entity_test_env()
   veri <- data.frame(Proje = c("ANKA", "AKINCI"), stringsAsFactors = FALSE)
 

@@ -178,7 +178,10 @@ pk_meta_row_cap <- function(query) {
     if (!is.list(cmeta) || !.pk_meta_is_scalar_text(cmeta$capability) ||
         !.pk_meta_is_scalar_text(cmeta$role)) next
     cap <- trimws(cmeta$capability)
-    adaylar[[cap]] <- c(adaylar[[cap]], sutun)
+    # BİRİKTİRİCİ `list()` OLARAK BAŞLAR: karakter alt simgesi BOŞ/ADSIZ
+    # listede `NULL` DÖNDÜRMEZ, "subscript out of bounds" fırlatır ve ilk
+    # yetenek sütununda yetenek kapısı OPAK bir hatayla düşerdi.
+    adaylar[[cap]] <- c(.pk_meta_named_entry(adaylar, cap), sutun)
   }
 
   out <- list()
@@ -263,7 +266,10 @@ pk_meta_capability_check <- function(query, requirements = list()) {
     if (identical(alan, "dimensions")) deger <- c(deger, group_by)
     deger <- unique(trimws(deger[!is.na(deger) & nzchar(trimws(deger))]))
     for (cap in deger) {
-      if (!is.null(istekler[[cap]]) && !identical(istekler[[cap]], unname(alanlar[[alan]]))) {
+      # AYNI AD-GÜVENLİ OKUMA: `istekler` `list()` olarak başlar ve karakter
+      # alt simgesi boş/adsız listede `NULL` yerine HATA üretir.
+      mevcut_istek <- .pk_meta_named_entry(istekler, cap)
+      if (!is.null(mevcut_istek) && !identical(mevcut_istek, unname(alanlar[[alan]]))) {
         gecersiz <- c(gecersiz, sprintf("capability '%s' birden fazla rol altinda istendi.", cap))
       } else {
         istekler[[cap]] <- unname(alanlar[[alan]])

@@ -90,8 +90,9 @@ mergen_pk_routing_query_meta <- function(ctx) {
     skorlar <- tryCatch(pk_compute_heuristic_query_scores(prompt, library),
                         error = function(e) NULL)
     if (is.list(skorlar) && is.data.frame(skorlar$all_scores) &&
-        nrow(skorlar$all_scores) == length(library)) {
-      yuzde <- suppressWarnings(as.numeric(skorlar$all_scores$heuristic_score))
+        nrow(skorlar$all_scores) == length(library) &&
+        !is.null(skorlar$all_scores[["heuristic_score"]])) {  # SUTUN VARLIGI DA DOGRULANIR: skorlayici sutunu yeniden adlandirir/kaldirirsa `as.numeric(NULL)` SIFIR UZUNLUKLU olur, `yuzde[senkron_only]` `NA` doner ve `kutuphane[[NA_integer_]]` TUM PK istegini yakalanmamis bir alt simge hatasiyla dusururdu.
+      yuzde <- suppressWarnings(as.numeric(skorlar$all_scores[["heuristic_score"]]))
       yuzde[is.na(yuzde)] <- 0
       # `pk_compute_heuristic_query_scores()` içindeki `THRESHOLD_PCT` ile AYNI
       # eşik; orası tek kaynaktır ve burada yeniden tanımlanmaz.
@@ -117,7 +118,8 @@ mergen_pk_routing_query_meta <- function(ctx) {
       }, logical(1)))
 
       if (length(senkron_only)) {
-        indeksler <- unique(c(indeksler, senkron_only[yuzde[senkron_only] > 0]))
+        gecerli_senkron <- senkron_only[senkron_only <= length(yuzde)]
+        indeksler <- unique(c(indeksler, gecerli_senkron[yuzde[gecerli_senkron] > 0]))
       }
       if (length(indeksler)) return(indeksler)
       return(integer(0))

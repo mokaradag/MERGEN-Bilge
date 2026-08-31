@@ -410,11 +410,12 @@ pk_entity_normalize <- function(x, vocab = character(0)) {
     tokens = belirtec$tokens,
     tokens_raw = pk_entity_tokens(kayipli, stem = FALSE),
     tokens_ascii = pk_entity_tokens(ascii, stem = TRUE, vocab = pk_entity_ascii_key(vocab)),
-    has_turkish = any(vapply(
+    # HAM GİRDİDE ARANIR, KATLANMIŞ METİNDE DEĞİL: Türkçe katlama ASCII büyük `I` harfini NOKTASIZ `ı`ya çevirir; katlanmış metinde arama, TAMAMI BÜYÜK HARF ASCII bir ifadeyi (`ELEKTRONIK`) "Türkçe yazılmış" sayar, `ascii_lossy` katmanı eklenir ve E3 otomatik kabulü GEREKSİZ yere onaya düşerdi.
+    has_turkish = (!is.na(ham) && any(vapply(
       .PK_ENTITY_TR_ONLY_CHARS,
-      function(ch) grepl(ch, kesin, fixed = TRUE),
+      function(ch) grepl(ch, enc2utf8(ham), fixed = TRUE),
       logical(1)
-    )) || (!is.na(ham) && any(vapply(
+    ))) || (!is.na(ham) && any(vapply(
       .PK_ENTITY_TR_DOTTED_I,
       function(ch) grepl(ch, enc2utf8(ham), fixed = TRUE),
       logical(1)

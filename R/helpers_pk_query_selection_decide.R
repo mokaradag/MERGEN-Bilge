@@ -51,7 +51,11 @@ pk_select_ranked_chips <- function(pass_b, candidates_ids, library_index) {
     skorlar[[alt$id]] <- alt$confidence
   }
 
-  guvenler <- vapply(kimlikler, function(k) as.integer(skorlar[[k]]), integer(1), USE.NAMES = FALSE)
+  # SABİT TİPLİ `vapply()` SKALER BEKLER: Geçiş B bir adayın `confidence` alanını `NULL` ya da çok değerli döndürdüğünde `vapply()` "values must be length 1" ile TÜM seçimi düşürüyordu. Kullanılamayan güven `0L` sayılır; aday listenin SONUNA düşer, sessizce KAYBOLMAZ.
+  guvenler <- vapply(kimlikler, function(k) {
+    d <- suppressWarnings(as.integer(skorlar[[k]])[1])
+    if (length(d) != 1L || is.na(d)) 0L else d
+  }, integer(1), USE.NAMES = FALSE)
   sira <- order(-guvenler, kimlikler, method = "radix")
   kimlikler <- kimlikler[sira]
 
@@ -189,6 +193,21 @@ pk_select_decide <- function(pass_b, candidates_ids, library_index, cfg,
   erken <- .pk_select_semantic_gate(pass_b, dogrulama, cipler, ortak)
   if (!is.null(erken)) return(erken)
 
+  # `not_for` DIŞLAMASI BÜTÜN diğer kurallardan ÖNCE gelir: kapı eskiden ikinci-aday kuralından SONRA duruyordu; Geçiş B tek aday bildirdiğinde `no_runner_up` erken dönüyor ve REDDEDİLEN sorgu çip olarak GERİ TEKLİF ediliyordu. Onay yolu yalnızca saklanan gereksinimleri doğrular, `not_for`u YENİDEN değerlendirmez; kullanıcı o çipe basarak metadata'nın uygunsuz işaretlediği sorguyu çalıştırabiliyordu. `aciklamalar` bu noktada henüz tanımlı değildir; ret metni zaten kendi gerekçesini taşır.
+  if (isTRUE(lexical$excluded_by_not_for)) {
+    # REDDEDİLEN SORGU GERİ TEKLİF EDİLMEZ.
+    .not_for_id <- as.character(pass_b$id %||% "")[1]
+    not_for_cipler <- Filter(function(cip) !identical(as.character(cip$id %||% "")[1], .not_for_id), cipler %||% list())
+    return(do.call(.pk_select_decision, c(
+      list(PK_SELECT_STATUS_CAPABILITY_MISSING, message_tr = paste0(
+        "Seçilen analizin tanımı bu tür bir soru için UYGUN OLMADIĞINI açıkça ",
+        "belirtiyor; yanlış bir sonuç üretmemek adına analiz çalıştırılmadı. ",
+        "Lütfen aşağıdaki seçeneklerden birini belirtin ya da sorunuzu netleştirin."
+      ), chips = not_for_cipler, disclosures = character(0)),
+      ortak
+    )))
+  }
+
   # --- İkinci aday: marj kapısının ÖN KOŞULU (§5.2) -------------------------
   #
   # Marj kapısı "iki analiz de akla yatkın" durumunu yakalamak içindir. İDDİA
@@ -238,31 +257,18 @@ pk_select_decide <- function(pass_b, candidates_ids, library_index, cfg,
   # Hiçbir rakip iddiayı karşılayamıyorsa BELİRSİZLİK YOKTUR: seçilen sorgu
   # metadata'ya göre TEK yetkin adaydır. Bu durumda reddetmek, iyi tanımlanmış
   # istekleri cezalandıran bir yanlış alarm olurdu. Güven kapısı YİNE uygulanır.
-  marj <- if (is.null(ikinci)) NA_integer_ else as.integer(etkin - ikinci$confidence)
+  # RAKİP GÜVENİ SKALERE İNDİRGENİR: `NULL` bir `confidence` ile `etkin - ikinci$confidence` `numeric(0)` üretiyor, `marj` `integer(0)` oluyor ve marj kapısındaki `if (!is.na(integer(0)) && ...)` "argument is of length zero" fırlatıyordu; kapı, kullanıcıdan netleştirme istemek yerine iç hataya düşüyordu.
+  ikinci_guven <- if (is.null(ikinci)) NA_integer_ else {
+    d <- suppressWarnings(as.integer(ikinci$confidence)[1])
+    if (length(d) != 1L) NA_integer_ else d
+  }
+  marj <- if (is.null(ikinci) || is.na(ikinci_guven)) NA_integer_ else as.integer(etkin - ikinci_guven)
   ortak$margin <- marj
   if (is.null(ikinci)) {
     aciklamalar <- c(aciklamalar, paste0(
       "Diğer adayların hiçbiri sorunun gerektirdiği anlamsal yetenekleri ",
       "sunmuyor; marj kapısı uygulanmadı."
     ))
-  }
-
-  # `not_for` DIŞLAMASI: güven/marj kapılarından ÖNCE ve KOŞULSUZ RED. Bu alan
-  # metadata'nın AÇIK olumsuz kanıtıdır; okunmadığı için kapılar geçtiğinde
-  # `auto` dönüp REDDEDİLEN sorgu çalıştırılabiliyordu.
-  if (isTRUE(lexical$excluded_by_not_for)) {
-    # REDDEDİLEN SORGU GERİ TEKLİF EDİLMEZ: onay yolu yalnızca saklanan
-    # gereksinimleri doğrular, `not_for` YENİDEN değerlendirilmezdi.
-    .not_for_id <- as.character(pass_b$id %||% "")[1]
-    not_for_cipler <- Filter(function(cip) !identical(as.character(cip$id %||% "")[1], .not_for_id), cipler %||% list())
-    return(do.call(.pk_select_decision, c(
-      list(PK_SELECT_STATUS_CAPABILITY_MISSING, message_tr = paste0(
-        "Seçilen analizin tanımı bu tür bir soru için UYGUN OLMADIĞINI açıkça ",
-        "belirtiyor; yanlış bir sonuç üretmemek adına analiz çalıştırılmadı. ",
-        "Lütfen aşağıdaki seçeneklerden birini belirtin ya da sorunuzu netleştirin."
-      ), chips = not_for_cipler, disclosures = aciklamalar),
-      ortak
-    )))
   }
 
   if (etkin < cfg$min_confidence) {
@@ -378,10 +384,12 @@ pk_select_decide <- function(pass_b, candidates_ids, library_index, cfg,
     ))
   }
 
-  if (!is.na(pass_b$missing_info)) {
+  # ALAN HİÇ YOKSA `is.na(NULL)` `logical(0)` DÖNER: `if (logical(0))` "argument is of length zero" fırlatır ve istek tipli reddetme yerine iç seçim hatasına dönerdi.
+  eksik_bilgi <- pass_b$missing_info
+  if (length(eksik_bilgi) == 1L && !is.na(eksik_bilgi)) {
     return(karar(
       PK_SELECT_STATUS_MISSING_INFO,
-      sprintf("Sorunuzu cevaplamak için ek bilgi gerekiyor: %s", pass_b$missing_info)
+      sprintf("Sorunuzu cevaplamak için ek bilgi gerekiyor: %s", eksik_bilgi)
     ))
   }
 

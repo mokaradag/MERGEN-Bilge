@@ -42,11 +42,20 @@ pk_numeric_provenance_mode <- function(query_meta = NULL) {
 #' Belirsiz gruplama (ör. "1.234,56.7") reddedilir.
 #' Bir sayı metninin OLASI tüm yorumları
 #'
-#' `18.420` Türkçe binlik gruplamadır (18420), ama `0.613` nokta-ondalıktır ve
-#' `12.345` ikisi de olabilir. Tek bir yorumu sessizce seçmek ya doğru bir
-#' iddiayı bloklar (`0.613`ü 613 sanmak) ya da yanlış ölçekli bir iddiayı
-#' onaylar. Bu yüzden belirsiz biçimde İKİ aday da döner; doğrulayıcı olguyla
-#' eşleşen yorumu kabul eder, eşleşen yoksa iddia yine reddedilir.
+#' `18.420` Türkçe binlik gruplamadır (18420), `0.613` ise nokta-ondalıktır.
+#' Tek bir yorumu sessizce seçmek doğru bir iddiayı bloklayabilir (`0.613`ü
+#' 613 sanmak), bu yüzden GERÇEKTEN belirsiz biçimler için birden çok aday
+#' döner ve doğrulayıcı olguyla eşleşen yorumu kabul eder.
+#'
+#' TÜRKÇE GRUPLAMA BİÇİMİ BELİRSİZ SAYILMAZ (PR incelemesi, P1).
+#'
+#' `N.NNN` kalıbı (tam olarak üç basamaklı tek grup) Türkçe düzyazıda BİNLİK
+#' gruplamadır: kullanıcı `1.250` metnini 1250 olarak OKUR. Kesirli okumayı
+#' (1,25) da kabul etmek, model 1,25 değeri için `1.250` yazdığında BİN KAT
+#' hatalı bir sayının doğrulanmış gibi yayımlanmasına yol açıyordu; `block`
+#' kipi tam da bunu engellemek için vardır. Bu yüzden bu biçimde YALNIZCA
+#' binlik okuması aday olur. Nokta-ondalık gösterimler (`0.613`, `1.5`,
+#' `12.34`) gruplama kalıbına UYMADIĞI için etkilenmez.
 pk_parse_number_candidates <- function(txt) {
   ham <- as.character(txt %||% "")[1]
   if (is.na(ham) || !nzchar(ham)) return(numeric(0))
@@ -78,10 +87,9 @@ pk_parse_number_candidates <- function(txt) {
     nokta <- lengths(regmatches(ham, gregexpr(".", ham, fixed = TRUE)))
     gruplama <- grepl("^[1-9][0-9]{0,2}(\\.[0-9]{3})+$", ham)
 
-    if (gruplama && nokta == 1L) {
-      # Belirsiz: "12.345" hem 12345 hem 12,345 olabilir.
-      adaylar <- c(gsub(".", "", ham, fixed = TRUE), ham)
-    } else if (gruplama) {
+    if (gruplama) {
+      # Türkçe gruplama biçiminde YALNIZCA binlik okuması geçerlidir
+      # (gerekçe: fonksiyon başlığı).
       adaylar <- gsub(".", "", ham, fixed = TRUE)
     } else if (nokta > 1L) {
       return(numeric(0))

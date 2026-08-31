@@ -36,7 +36,9 @@ pk_select_scores_table <- function(library, decision) {
   if (!nrow(tablo)) return(tablo)
 
   puanla <- function(kimlik, ham, etkin = NULL) {
-    if (is.null(kimlik) || is.na(kimlik) || is.null(ham) || is.na(ham)) {
+    # `||` OPERANDI TAM UZUNLUK 1 OLMALIDIR: sıfır/çok değerli bir alan `is.na()` üzerinden `||` içine girdiğinde R hata fırlatır ve bu hata seçim sınırındaki `tryCatch()` KAPANDIKTAN sonra çalıştığı için tipli reddetme yerine dışarı kaçardı.
+    if (length(kimlik) != 1L || is.na(kimlik) ||
+        length(ham) != 1L || is.na(ham)) {
       return(invisible(NULL))
     }
     satir <- which(tablo$query_id == kimlik)
@@ -221,6 +223,8 @@ pk_select_query_v2 <- function(prompt, library, chat_history = NULL,
       # `session` verilince iki yardımcı da yazmadan dönüyor, teklif saklanmıyor
       # ve önceki sorgu kimliği temizlenmiyordu.
       pk_select_forget_query_id(etkin_oturum, sohbet)
+      # BAYAT TEKLİF HER REDDETMEDE TEMİZLENİR: `pk_select_remember_offer()` çip listesi boşken HİÇBİR ŞEY yapmaz; `no_candidates` / `config_error` / `library_error` gibi çipsiz retlerden sonra ÖNCEKİ turun teklifi oturumda kalıyor, kullanıcının `1` cevabı ALAKASIZ bir sorguyu onaylayıp çalıştırıyordu.
+      pk_select_forget_offer(etkin_oturum, sohbet)
       pk_select_remember_offer(etkin_oturum, karar$chips, sohbet,
                                requirements = karar$requirements)
     }
@@ -253,11 +257,12 @@ pk_select_query_v2 <- function(prompt, library, chat_history = NULL,
   secilen$relevance_score <- as.numeric(karar$effective_confidence %||% karar$confidence)
   secilen$selection_method <- as.character(karar$selection_method %||% "ai_two_pass")[1]
   secilen$selection_reason <- {
+    # MODEL KAYNAKLI `reason` ÇOK DEĞERLİ GELEBİLİR: `is.na()` sıfır/çok uzunlukta bir değerle `||` operandı olduğunda R hata fırlatır ve bu satır seçim sınırındaki yakalayıcı kapandıktan SONRA çalışır.
     gerekce <- karar$reason
-    if (is.null(gerekce) || is.na(gerekce)) {
+    if (length(gerekce) != 1L || is.na(gerekce)) {
       sprintf("İki geçişli seçim (marj: %s)", karar$margin %||% "-")
     } else {
-      gerekce
+      as.character(gerekce)[1]
     }
   }
   secilen$all_scores <- tablo
@@ -301,8 +306,12 @@ pk_select_commit_selection <- function(selected_query, session) {
   sohbet <- selected_query$pk_pending_chat_key
   if (is.null(sohbet) || !length(sohbet) || is.na(sohbet[1])) return(invisible(FALSE))
 
-  pk_select_forget_offer(session, sohbet)
-  pk_select_remember_query_id(session, selected_query$id, sohbet)
+  # OTURUM SEÇİM YOLUYLA AYNI ŞEKİLDE ÇÖZÜLÜR: analiz yolu `session = NULL` verdiğinde seçim varsayılan reaktif alana düşer ama bu iki yardımcı HAM `NULL` alıp yazmadan dönerdi; teklif etkin kalır ve takip sorusunun tohumu saklanmazdı.
+  etkin_oturum <- session %||% tryCatch(shiny::getDefaultReactiveDomain(),
+                                        error = function(e) NULL)
+
+  pk_select_forget_offer(etkin_oturum, sohbet)
+  pk_select_remember_query_id(etkin_oturum, selected_query$id, sohbet)
 }
 
 #' Seçim kararından yanıta/telemetriye taşınacak bozulma açıklamaları

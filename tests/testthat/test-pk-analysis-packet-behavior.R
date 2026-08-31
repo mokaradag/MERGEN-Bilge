@@ -19,7 +19,7 @@
 
   for (dosya in c("helpers_pk_config.R", "helpers_pk_text_turkish.R",
                   "helpers_pk_prompt_budget.R", "helpers_pk_precision.R", "helpers_pk_packet_stats.R", "helpers_pk_packet_context_facts.R",
-                  "helpers_pk_analysis_packet.R", "helpers_pk_packet_render.R")) {
+                  "helpers_pk_packet_keys.R", "helpers_pk_analysis_packet.R", "helpers_pk_packet_render.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = env)
   }
   env
@@ -699,4 +699,55 @@ test_that("dogru alintilanan bir pay iddiasi `unit_mismatch` uretmez", {
   nedenler <- vapply(sonuc$mismatches %||% list(),
                      function(m) as.character(m$reason)[1], character(1))
   expect_false("unit_mismatch" %in% nedenler)
+})
+
+# ---------------------------------------------------------------------------
+# NA sayimlar ve TUKENMIS butce: yazici/olgu uretimi kapali basarisiz olur.
+# ---------------------------------------------------------------------------
+
+test_that("NA daraltma sayilari olgu uretimini DUSURMEZ", {
+  env <- .pk_packet_env()
+  veri <- data.frame(K = paste0("deger_", seq_len(25)), stringsAsFactors = FALSE)
+  paket <- env$pk_packet_build(veri, .pk_packet_query(),
+                               list(authorized_rows = 25L, filtered_rows = 25L))
+
+  # `%||%` YALNIZCA `NULL` atlar; `NA` sayim `if (NA > 0L)` ile TUM olgu
+  # uretimini "missing value where TRUE/FALSE needed" hatasiyla dusuruyordu.
+  paket$categorical[[1]]$other_rows <- NA_integer_
+  paket$categorical[[1]]$other_values <- NA_integer_
+
+  olgular <- env$pk_packet_all_facts(paket)
+  expect_true(is.list(olgular))
+  expect_true(length(olgular) > 0L)
+})
+
+test_that("NA grup sayisi paket yazimini DUSURMEZ", {
+  env <- .pk_packet_env()
+  veri <- data.frame(G = rep(c("a", "b"), 10), S = seq_len(20),
+                     stringsAsFactors = FALSE)
+  paket <- env$pk_packet_build(veri, .pk_packet_query(),
+                               list(authorized_rows = 20L, filtered_rows = 20L))
+
+  paket$groups <- list(list(group_by = "G", other_groups = NA_integer_,
+                            other_rows = NA_integer_, top = list()))
+  yazi <- env$pk_packet_render(paket, budget = 200000L)
+  expect_true(is.character(yazi$text))
+  expect_true(nzchar(yazi$text))
+})
+
+test_that("SIFIR butce 'ayarlanmadi' sayilmaz; over_budget bildirilir", {
+  env <- .pk_packet_env()
+  veri <- data.frame(K = rep(c("a", "b"), 10), stringsAsFactors = FALSE)
+  paket <- env$pk_packet_build(veri, .pk_packet_query(),
+                               list(authorized_rows = 20L, filtered_rows = 20L))
+
+  # `.pk_result_packet_budget()` sabit yuk butceyi astiginda bilerek `0L`
+  # dondurur; varsayilana cevrilirse tukenmis durum silinir ve determinist
+  # ozet yedegi HIC calismaz.
+  sonuc <- env$pk_packet_render(paket, budget = 0L)
+  expect_identical(sonuc$budget, 0L)
+  expect_true(isTRUE(sonuc$over_budget))
+
+  # NULL/NA hala varsayilana duser.
+  expect_true(env$pk_packet_render(paket, budget = NA_integer_)$budget > 0L)
 })

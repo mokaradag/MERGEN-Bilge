@@ -68,7 +68,7 @@ test_that("kodlama kurtarma vektörel geçişte aynı sonucu üretir", {
 })
 
 test_that("çözülemeyen sistem saat dilimi as.Date'e NA olarak GEÇMEZ", {
-  ortam <- .p3_regression_source("helpers_pk_analysis_packet.R")
+  ortam <- .p3_regression_source("helpers_pk_packet_keys.R", "helpers_pk_analysis_packet.R")
 
   # `Sys.timezone()` platform saat dilimi çözülemediğinde `NA_character_`
   # döner ve depo `%||%` operatörü (yalnız `is.null`) NA'yı geçirir.

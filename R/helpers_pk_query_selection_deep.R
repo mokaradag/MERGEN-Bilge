@@ -104,7 +104,11 @@ pk_select_queries_v2 <- function(prompt, library, chat_history = NULL,
   }
   if (isTRUE(dislama_hatasi)) return(list(primary = birincil, queries = sonuc))
   ids <- names(skorlar)
-  puanlar <- vapply(ids, function(k) as.numeric(skorlar[[k]]), numeric(1), USE.NAMES = FALSE)
+  # SABİT TİPLİ `vapply()` SKALER BEKLER: Geçiş B'nin bildirdiği tek bir bozuk `confidence` değeri "values must be length 1" ile TÜM derin aday sıralamasını düşürüyor, çağıran daraltılmış sorgu kümesi yerine hata görüyordu.
+  puanlar <- vapply(ids, function(k) {
+    d <- suppressWarnings(as.numeric(skorlar[[k]])[1])
+    if (length(d) != 1L || is.na(d) || !is.finite(d)) 0 else d
+  }, numeric(1), USE.NAMES = FALSE)
   sira <- order(-puanlar, ids, method = "radix")
 
   for (kimlik in ids[sira]) {

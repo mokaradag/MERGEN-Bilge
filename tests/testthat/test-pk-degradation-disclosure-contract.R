@@ -290,10 +290,15 @@ test_that("nihai yanıt sonlandırma noktaları alt bilgiyi iliştirir", {
     satirlar[!grepl("^\\s*#", satirlar, useBytes = TRUE)]
   }
 
+  # `helpers_chat_runtime.R` ARTIK DOĞRUDAN DEKORE ETMEZ: benzetimli akış
+  # sonlandırması, gerçek akış hattıyla AYNI kapalı-başarısız sınırı kullanan
+  # `pk_stream_display_text()` üzerinden geçer. Sınırın kendisi aşağıda
+  # `helpers_pk_provenance_peek.R` içinde ayrıca doğrulanır; delegasyon
+  # zinciri bu yüzden ZAYIFLAMAZ.
   seams <- list(
     "R/server_handler_true_streaming.R" = "mergen_pk_stream_validated_text(",
     "R/server_llm_response_handlers.R"  = "mergen_pk_validated_texts(",
-    "R/helpers_chat_runtime.R"          = "pk_provenance_decorate("
+    "R/helpers_chat_runtime.R"          = "pk_stream_display_text("
   )
 
   for (rel in names(seams)) {
@@ -303,6 +308,21 @@ test_that("nihai yanıt sonlandırma noktaları alt bilgiyi iliştirir", {
       info = sprintf("%s alt bilgi sınırına ULAŞMALIDIR (%s).", rel, seams[[rel]])
     )
   }
+
+  # DELEGASYON GERÇEKTEN DOĞRULANMIŞ METNE ULAŞIR: `pk_stream_display_text()`
+  # yalnızca bir sarmalayıcı olsaydı, `helpers_chat_runtime.R` iddiası
+  # anlamsız kalırdı.
+  peek_kod <- .pkd_kod_satirlari("R/helpers_pk_provenance_peek.R")
+  expect_true(
+    any(grepl("pk_stream_display_text <- function", peek_kod,
+              fixed = TRUE, useBytes = TRUE)),
+    info = "pk_stream_display_text() koken sinirinda TANIMLI olmalidir."
+  )
+  expect_true(
+    any(grepl("mergen_pk_stream_validated_text(", peek_kod,
+              fixed = TRUE, useBytes = TRUE)),
+    info = "pk_stream_display_text() dogrulanmis metin sinirina ULASMALIDIR."
+  )
 
   # SINIRIN KENDİSİ GERÇEKTEN DEKORE EDER: yukarıdaki delegasyon iddiaları,
   # `pk_provenance_decorate()` sınırdan da kaldırılırsa anlamsız kalırdı.

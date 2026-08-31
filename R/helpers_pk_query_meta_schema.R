@@ -50,14 +50,14 @@ PK_META_MAX_DECIMALS <- 9L
 
 pk_meta_validate_capability_registry <- function(registry) {
   if (is.null(registry)) return(character(0))
-  if (!is.list(registry)) return("pk_capability_registry bir liste olmalidir.")
+  if (!is.list(registry)) return("pk_capability_registry bir liste olmalıdır.")
 
   # BOŞ kayıt MEŞRU bir durumdur: hiçbir yetenek henüz küre edilmemiştir.
-  # `names(list())` NULL döndügü icin bu erken cikis olmadan asagidaki
-  # "adlandirilmis olmalidir" kontrolu bos kaydi HATA sayar ve baslangici
-  # dusurur. Kardes dogrulayicilar (.pk_meta_validate_named_layer,
-  # .pk_meta_validate_rls_columns) da bos girdiyi ayni sekilde kabul eder;
-  # bu erken cikisi kaldirmak o sozlesmeyi bozar.
+  # `names(list())` NULL döndüğü için bu erken çıkış olmadan aşağıdaki
+  # "adlandırılmış olmalıdır" kontrolü boş kaydı HATA sayar ve başlangıcı
+  # düşürür. Kardeş doğrulayıcılar (.pk_meta_validate_named_layer,
+  # .pk_meta_validate_rls_columns) da boş girdiyi aynı şekilde kabul eder;
+  # bu erken çıkışı kaldırmak o sözleşmeyi bozar.
   if (!length(registry)) return(character(0))
 
   adlar <- names(registry)
@@ -137,7 +137,7 @@ pk_meta_validate_capability_registry <- function(registry) {
   adlar <- names(kayit)
   if (is.null(adlar) || length(adlar) != length(kayit) ||
       any(is.na(adlar) | !nzchar(trimws(adlar)))) {
-    return(.pk_meta_err(query_id, onek, " tum alanlar adlandirilmis olmalidir."))
+    return(.pk_meta_err(query_id, onek, " tüm alanlar adlandırılmış olmalıdır."))
   }
 
   adlar <- trimws(adlar)
@@ -146,7 +146,7 @@ pk_meta_validate_capability_registry <- function(registry) {
   tekrar <- unique(adlar[duplicated(adlar)])
   if (length(tekrar)) {
     hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
-      " tekrar eden alan adi: %s", paste(sort(tekrar), collapse = ", ")
+      " tekrar eden alan adı: %s", paste(sort(tekrar), collapse = ", ")
     )))
   }
 
@@ -275,7 +275,7 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
   if (!is.null(cmeta$decimals) &&
       !.pk_meta_is_whole_number(cmeta$decimals, min = 0, max = PK_META_MAX_DECIMALS)) {
     hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
-      " decimals 0 ile %d arasinda tam sayi olmalidir (isleyici siniri).",
+      " decimals 0 ile %d arasında tam sayı olmalıdır (işleyici sınırı).",
       PK_META_MAX_DECIMALS
     )))
   }

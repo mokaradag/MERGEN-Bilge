@@ -128,7 +128,13 @@ PK_SELECT_ENV_KEYS <- c(
 # değerinin testlere sızmasına yeter (Geçiş A karakter bütçesi bu yüzden
 # gözden kaçmıştı). Üretim listesi yüklüyse fark burada raporlanır.
 pk_select_env_keys_gap <- function() {
-  if (!exists(".PK_SELECT_CONFIG_KEYS", inherits = TRUE)) return(character(0))
+  # ÜRETİM LİSTESİ YOKSA SESSİZCE "boşluk yok" DENMEZ: sözleşme testi bu değeri
+  # "fark yok" sayıyor; sabit yeniden adlandırılır, kaldırılır ya da kaynak
+  # zincirinden düşerse HİÇBİR karşılaştırma yapılmadan yeşil kalır ve yeni bir
+  # `MERGEN_PK_SELECT_*` anahtarı dağıtım değerini testlere sızdırabilir.
+  if (!exists(".PK_SELECT_CONFIG_KEYS", inherits = TRUE)) {
+    return("<.PK_SELECT_CONFIG_KEYS yüklenmedi>")
+  }
   setdiff(get(".PK_SELECT_CONFIG_KEYS", inherits = TRUE), PK_SELECT_ENV_KEYS)
 }
 
@@ -146,7 +152,13 @@ pk_select_option_keys <- function() {
 }
 
 pk_select_with_env <- function(vars = character(0), code) {
-  env_keys <- PK_SELECT_ENV_KEYS
+  # ANAHTAR KÜMESİ ÇAĞRININ AYARLADIKLARINI DA KAPSAR: yalnızca
+  # `PK_SELECT_ENV_KEYS` anlık görüntülenip geri yüklenirken, listede OLMAYAN
+  # bir anahtar (ör. `MERGEN_PK_RESOLVE_*`) blok bittikten sonra süreç
+  # ortamında KALIYOR ve aynı testthat oturumundaki sonraki dosyalara sızıyordu.
+  env_keys <- union(PK_SELECT_ENV_KEYS,
+                    if (length(vars)) names(vars) else character(0))
+  env_keys <- env_keys[!is.na(env_keys) & nzchar(env_keys)]
   opt_keys <- pk_select_option_keys()
 
   eski_env <- Sys.getenv(env_keys, unset = NA_character_, names = TRUE)

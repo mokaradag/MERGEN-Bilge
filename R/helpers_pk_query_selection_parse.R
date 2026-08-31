@@ -117,7 +117,7 @@ pk_select_parse_pass_a <- function(text, library_ids, expected_n = NULL) {
   bilinmeyen <- setdiff(ham, library_ids)
   if (length(bilinmeyen)) {
     return(list(ok = FALSE, ids = character(0), unknown = bilinmeyen, error = sprintf(
-      "'candidates' kutuphanede olmayan kimlik iceriyor: %s",
+      "'candidates' kütüphanede olmayan kimlik içeriyor: %s",
       paste(bilinmeyen, collapse = ", ")
     )))
   }
@@ -201,7 +201,7 @@ pk_select_parse_pass_a <- function(text, library_ids, expected_n = NULL) {
     alt_guven <- pk_select_scalar_integer(girdi[["confidence"]], min = 0L, max = 100L)
     if (is.na(alt_guven)) {
       return(list(ok = FALSE, values = list(), error = sprintf(
-        "'alternates' ogesi '%s' icin 0-100 arasi TAM SAYI confidence tasimiyor.", alt_id
+        "'alternates' ögesi '%s' için 0-100 arası TAM SAYI confidence taşımıyor.", alt_id
       )))
     }
 
@@ -217,7 +217,7 @@ pk_select_parse_pass_a <- function(text, library_ids, expected_n = NULL) {
     }
     if (!alt_id %in% candidate_ids) {
       return(list(ok = FALSE, values = list(), error = sprintf(
-        "'alternates' aday kumesinde olmayan bir kimlik iceriyor: %s", alt_id
+        "'alternates' aday kümesinde olmayan bir kimlik içeriyor: %s", alt_id
       )))
     }
 
@@ -228,7 +228,7 @@ pk_select_parse_pass_a <- function(text, library_ids, expected_n = NULL) {
   eksik <- setdiff(setdiff(candidate_ids, selected_id), gorulen)
   if (length(eksik)) {
     return(list(ok = FALSE, values = list(), error = sprintf(
-      "'alternates' su adaylarin guvenini vermiyor: %s", paste(eksik, collapse = ", ")
+      "'alternates' şu adayların güvenini vermiyor: %s", paste(eksik, collapse = ", ")
     )))
   }
 

@@ -48,10 +48,13 @@ pk_select_follow_up_context <- function(chat_history, prior_query_id, library_id
       # `tolower("AI")` NOKTASIZ `aı` üretir; "AI"/"Assistant"/"BOT" değerleri
       # eşleşme listesini tutturamaz ve asistan turu SESSİZCE "user" rolüne
       # düşerdi (talimat/veri sınırı ve sözlüksel uyuşmazlık cezası bozulur).
-      rol <- as.character(m$role %||% m$type %||% "")[1]
-      rol <- if (is.na(rol) || !nzchar(rol)) {
-        "user"
-      } else if (exists("pk_ascii_lower", mode = "function", inherits = TRUE)) {
+      # BOŞ OLMAYAN TEKİL DEĞER: `role` -> `type` -> `"user"`. `%||%` yalnızca `NULL` atlar; `role = NA_character_` (ya da `character(0)`) taşıyan bir asistan turu `type = "ai"` olsa bile "user" rolüne düşüyordu. `R/helpers_pk_query_selection_history.R` aynı vakayı zaten böyle çözer; iki yol AYNI mesajı farklı sınıflandırmamalıdır.
+      .ilk_metin <- function(x) {
+        v <- suppressWarnings(trimws(as.character(x)[1]))
+        if (length(v) != 1L || is.na(v) || !nzchar(v)) NULL else v
+      }
+      rol <- .ilk_metin(m$role) %||% .ilk_metin(m$type) %||% "user"
+      rol <- if (exists("pk_ascii_lower", mode = "function", inherits = TRUE)) {
         pk_ascii_lower(rol)
       } else {
         chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", rol)

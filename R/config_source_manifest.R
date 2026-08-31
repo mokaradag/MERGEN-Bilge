@@ -315,7 +315,7 @@ source_manifest_sections <- list(
     # Faz 2 (v2 arkasında) bağımlılık sırası: olgu çekirdeği -> paket -> paket
     # metni -> sayısal köken -> dışa aktarım planı/G-Ç -> kompozisyon -> sonuç.
     "R/helpers_pk_precision.R", "R/helpers_pk_packet_stats.R", "R/helpers_pk_packet_context_facts.R",  # olgu çekirdeği -> bağlam olguları
-    "R/helpers_pk_analysis_packet.R",
+    "R/helpers_pk_packet_keys.R", "R/helpers_pk_analysis_packet.R",  # saf gruplama anahtarı/etiketi -> paket kurucusu
     "R/helpers_pk_packet_render.R",
     "R/helpers_pk_numeric_provenance.R", "R/helpers_pk_numeric_provenance_claims.R",  # ikincisi: düzyazı iddia tarayıcıları, doğrulayıcıdan SONRA yüklenir (sabitleri ÇAĞRI ANINDA çözer)
     "R/helpers_pk_export_plan.R",

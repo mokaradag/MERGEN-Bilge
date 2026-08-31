@@ -305,7 +305,12 @@ pk_select_run_pass_b <- function(user_prompt, candidates, candidate_ids, context
   secilen <- library_index[[pass_b$id]]
   if (is.null(secilen)) return(NA_character_)
 
-  kontrol <- pk_select_validate_requirements(secilen, pass_b$requirements, capability_ids)
+  # DOĞRULAYICI İSTİSNASI ONARIM KAPISINDAN KAÇMAZ: `pk_select_run_pass_b()` yerel bir yakalayıcı içinde çalışmaz; buradan kaçan bir istisna isteği, normal karar yolunun ürettiği tipli `validator_error` reddi yerine `internal_error` yapardı. Hata durumunda onarım DENENMEZ ve karar politikasına bırakılır.
+  kontrol <- tryCatch(
+    pk_select_validate_requirements(secilen, pass_b$requirements, capability_ids),
+    error = function(e) NULL
+  )
+  if (!is.list(kontrol)) return(NA_character_)
   if (identical(kontrol$status, "unknown_capability")) {
     return(sprintf(
       "requirements icinde IZINLI OLMAYAN yetenek kimligi var: %s. Yalnizca izinli listedeki kimlikleri kullan.",

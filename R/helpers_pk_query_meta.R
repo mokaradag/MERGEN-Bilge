@@ -96,14 +96,11 @@ pk_meta_apply_alias_overlay <- function(meta, overlay) {
       ))
     }
 
-    # `column_meta` ATOMİK bir vektörse `[[` "subscript out of bounds" fırlatır ve
-    # boot, bu fonksiyonun üretmesi gereken AÇIKLAYICI metadata bulgusu yerine
-    # opak bir hatayla düşerdi. (Adlandırılmış/adsız LİSTE ve `NULL` için `[[`
-    # zaten `NULL` döndürür; kusur yalnızca atomik biçimdedir.)
+    # `column_meta` ATOMİK/BOŞ/ADSIZ olduğunda `[[` "subscript out of bounds" fırlatır ve boot, bu fonksiyonun üretmesi gereken AÇIKLAYICI metadata bulgusu yerine opak bir hatayla düşerdi; okuma `.pk_meta_named_entry()` üzerinden yapılır.
     sutun_meta <- if (is.list(mevcut_giris$column_meta)) mevcut_giris$column_meta else list()
 
     for (sutun in sutun_adlari) {
-      cmeta <- sutun_meta[[sutun]]
+      cmeta <- .pk_meta_named_entry(sutun_meta, sutun)
       if (!is.list(cmeta)) {
         hatalar <- c(hatalar, sprintf(
           paste0(
@@ -271,7 +268,8 @@ pk_meta_validate_query <- function(query_id, meta, registry = NULL) {
     cmeta <- sutunlar[[sutun]]
     if (!is.list(cmeta) || !.pk_meta_is_scalar_text(cmeta$capability)) next
     cap <- trimws(cmeta$capability)
-    eslesme[[cap]] <- c(eslesme[[cap]], sutun)
+    # BİRİKTİRİCİ `list()` OLARAK BAŞLAR: karakter alt simgesi ilk yetenek sütununda "subscript out of bounds" fırlatırdı.
+    eslesme[[cap]] <- c(.pk_meta_named_entry(eslesme, cap), sutun)
   }
 
   varyantlar <- meta$capability_variants
@@ -576,6 +574,8 @@ pk_meta_validate_schema_dependent <- function(query_id, meta, schema, rls_column
   # hatası `pk_meta_validate_query()` tarafından zaten AYRICA bildirilir.
   sutun_meta <- meta$column_meta %||% list()
   if (!is.list(sutun_meta)) sutun_meta <- list()
+  # ADSIZ AMA DOLU LİSTE: `names()` `NULL`, `trimws(NULL)` ise `character(0)`; `names<-` uzunluk uyuşmazlığıyla HATA fırlatır ve şema doğrulaması, toplanmış `[PK_META]` bulgularını dönmek yerine opak bir hatayla düşerdi (şekil hatası `pk_meta_validate_query()` tarafından AYRICA bildirilir).
+  if (length(sutun_meta) && is.null(names(sutun_meta))) sutun_meta <- list()
   if (length(sutun_meta)) names(sutun_meta) <- trimws(names(sutun_meta))
 
   for (sutun in intersect(names(sutun_meta), sema_sutunlari)) {

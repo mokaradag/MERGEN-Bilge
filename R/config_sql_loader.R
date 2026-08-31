@@ -284,13 +284,17 @@ for (i in seq_along(query_library)) {
     sprintf("index_%d", i)
   }
 
-  has_sql_file <- .sql_has_text(q_item$sql_file)
-  has_sql_inline <- .sql_has_text(q_item$sql)
+  has_sql_file <- .sql_has_text(q_item[["sql_file"]])
+  # `$` KISMİ EŞLEŞME YAPAR: `sql` alanı YOKKEN `q_item$sql`, `sql_file`
+  # değerine düşer ve satır içi SQL varmış gibi görünürdü. Sonuç: eksik/
+  # okunamayan dosya için yer tutucu yerine DOSYA YOLU saklanıyor ve giriş
+  # "üzerine yazıldı" sayılıyordu.
+  has_sql_inline <- .sql_has_text(q_item[["sql"]])
 
   if (has_sql_file) {
     .sql_file_declared_count <- .sql_file_declared_count + 1L
 
-    fpath <- as.character(q_item$sql_file)[1]
+    fpath <- as.character(q_item[["sql_file"]])[1]
     path_to_use <- .resolve_sql_file_path(fpath)
 
     if (is.null(path_to_use)) {
@@ -321,12 +325,16 @@ for (i in seq_along(query_library)) {
         q_id, fpath
       ))
 
-      query_library[[i]]$sql <- if (has_sql_inline) {
-        as.character(q_item$sql)[1]
+      # KORUNAN SATIR İÇİ SQL YER TUTUCU DEĞİLDİR: `sql_source` gerçek
+      # kaynağı bildirmelidir, aksi hâlde çalıştırılabilir bir sorgu
+      # aşağı akışta "yer tutucu" sanılırdı.
+      if (has_sql_inline) {
+        query_library[[i]]$sql <- as.character(q_item[["sql"]])[1]
+        query_library[[i]]$sql_source <- "inline_missing_sql_file"
       } else {
-        .sql_placeholder_text(q_id)
+        query_library[[i]]$sql <- .sql_placeholder_text(q_id)
+        query_library[[i]]$sql_source <- "placeholder_missing_sql_file"
       }
-      query_library[[i]]$sql_source <- "placeholder_missing_sql_file"
       query_library[[i]]$sql_loaded_path <- NA_character_
 
       next
@@ -358,12 +366,15 @@ for (i in seq_along(query_library)) {
         q_id, path_to_use, conditionMessage(full_sql)
       ))
 
-      query_library[[i]]$sql <- if (has_sql_inline) {
-        as.character(q_item$sql)[1]
+      # Aynı gerekçe: okunamayan dosyada KORUNAN satır içi SQL yer tutucu
+      # değildir ve öyle etiketlenmemelidir.
+      if (has_sql_inline) {
+        query_library[[i]]$sql <- as.character(q_item[["sql"]])[1]
+        query_library[[i]]$sql_source <- "inline_sql_read_error"
       } else {
-        .sql_placeholder_text(q_id)
+        query_library[[i]]$sql <- .sql_placeholder_text(q_id)
+        query_library[[i]]$sql_source <- "placeholder_sql_read_error"
       }
-      query_library[[i]]$sql_source <- "placeholder_sql_read_error"
       query_library[[i]]$sql_loaded_path <- path_to_use
 
       next

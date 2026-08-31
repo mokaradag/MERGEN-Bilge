@@ -442,6 +442,12 @@ test_that("ortak oturum yanıtı alt bilgiden ÖNCE sayısal kökene karşı do�
   env$pk_numeric_provenance_apply <- function(text, facts, mode = NULL,
                                               fallback_text = NULL) {
     env$dogrulama_cagrildi <- env$dogrulama_cagrildi + 1L
+    # ARGÜMANLAR SABİTLENİR: taslak `text`/`facts`/`mode` değerlerini YOK
+    # SAYIYORDU; üretim yanlış olgu, `block` DIŞI bir kip ya da `NULL` yedek
+    # metin geçseydi yayımlanan yanıt yine `"DOĞRULANMADI: "` olur ve aşağıdaki
+    # iddiaların HEPSİ geçerdi.
+    env$dogrulama_arg <- list(text = text, facts = facts, mode = mode,
+                              fallback_text = fallback_text)
     list(text = paste0("DOĞRULANMADI: ", fallback_text), mode = mode,
          checked = 1L, mismatches = list(list(reason = "value_mismatch")),
          rate = 1, blocked = TRUE)
@@ -493,6 +499,12 @@ test_that("ortak oturum yanıtı alt bilgiden ÖNCE sayısal kökene karşı do�
 
   yanit <- env$captured[["req-block"]]
   expect_identical(env$dogrulama_cagrildi, 1L)
+  # DOĞRULAYICIYA GEÇEN ARGÜMANLAR DA DENETLENİR.
+  expect_identical(env$dogrulama_arg$mode, "block")
+  expect_identical(env$dogrulama_arg$fallback_text,
+                   "R tarafından hesaplanan değer: 42")
+  expect_true(grepl("99.999", env$dogrulama_arg$text, fixed = TRUE))
+  expect_equal(env$dogrulama_arg$facts[[1]]$value, 42)
   # Doğrulanmamış model düzyazısı YAYINLANMAZ.
   expect_false(grepl("99.999", yanit, fixed = TRUE))
   expect_match(yanit, "DOĞRULANMADI", fixed = TRUE)

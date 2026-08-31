@@ -265,7 +265,14 @@
 # DB'de #temp olusturulmaz ve örnekleme/çalışma zamanı SQL'i değiştirilmez.
 .pkgn_describe <- function(query, config, conn, describe_fn) {
   describe_sql <- tryCatch(.pkgn_local_temp_describe_sql(query$sql), error = function(e) e)
-  if (inherits(describe_sql, "condition")) return(describe_sql)
+  if (inherits(describe_sql, "condition")) {
+    # YEREL YENIDEN YAZIM HATASI SONDA HATASI DEGILDIR: bu kosul DB'ye HIC
+    # gitmeden olusur (or. yerel `#temp` metadata CTE adi sorguyla cakisir).
+    # Isaretlenmezse `describe_failed` olarak raporlaniyor ve operator
+    # `health.json` uzerinden sorgu metni yerine BAGLANTI/sonda sorunu ariyordu.
+    class(describe_sql) <- c("pkgn_describe_rewrite_error", class(describe_sql))
+    return(describe_sql)
+  }
 
   tryCatch(
     .pkgn_call_injected(
@@ -316,6 +323,16 @@ pkgn_fetch_schema <- function(query, config, conn, describe_fn, sample_fn,
 
 .pkgn_fetch_describe <- function(query, config, conn, describe_fn, hata_sonucu) {
   tanimlayici <- .pkgn_describe(query, config, conn, describe_fn)
+  if (inherits(tanimlayici, "pkgn_describe_rewrite_error")) {
+    return(hata_sonucu(
+      "describe_rewrite_failed",
+      paste0(
+        "Yerel `#temp` describe donusumu BASARISIZ; DB'ye sorgu GONDERILMEDI. ",
+        "Bulgu SORGU METNINDEDIR, baglantida DEGIL."
+      ),
+      conditionMessage(tanimlayici)
+    ))
+  }
   if (inherits(tanimlayici, "condition")) {
     return(hata_sonucu("describe_failed",
                        paste0(
