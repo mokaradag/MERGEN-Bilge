@@ -38,6 +38,10 @@
       temizleyiciler[[length(temizleyiciler) + 1L]] <<- fn
       invisible(fn)
     },
+    # KAYIT SAYISI OKUNABILIR: yalnizca "dosya yok" iddiasi, `pk_export_serve()`
+    # basarisiz kayit yolunda dosyayi ZATEN sildigi icin temizleyicinin
+    # kaydedilip kaydedilmedigini KANITLAMAZ.
+    temizleyici_sayisi = function() length(temizleyiciler),
     registerDataObj = function(name, data, filterFunc) {
       kayitlar[[length(kayitlar) + 1L]] <<- list(
         name = name, data = data, filterFunc = filterFunc
@@ -174,6 +178,13 @@ test_that("kayıt URL üretemezse ek BAŞARISIZ sayılır ve dosya diskte kalmaz
 
   # KAYIT BAŞARISIZ OLSA DA DOSYA OTURUM SONUNDA GİDER: temizleyici gerçekten
   # kaydedilmiş olmalı ve çalıştırıldığında dosyayı silmelidir.
+  #
+  # AYIRT EDİCİ İDDİA KAYIT SAYISIDIR: başarısız kayıt dalında
+  # `pk_export_serve()` `.pk_export_discard_files()` çağırıp dosyayı DÖNMEDEN
+  # ÖNCE siler; dolayısıyla `.pk_export_register_cleanup()` `onSessionEnded`
+  # kancasını kurmayı bıraksa bile aşağıdaki `expect_false()` geçerdi.
+  expect_false(file.exists(yol))
+  expect_gt(oturum$temizleyici_sayisi(), 0L)
   oturum$oturumu_bitir()
   expect_false(file.exists(yol))
 

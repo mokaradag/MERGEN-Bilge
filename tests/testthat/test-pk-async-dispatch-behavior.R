@@ -444,6 +444,11 @@ test_that("bootstrap başarısızlığı SENKRON TEKRAR OYNATMAZ (tipli altyapı
   env <- .pk_dispatch_env()
   senkron_cagrildi <- FALSE
   eski_senkron <- env$mergen_pk_run_sync
+  # SEMBOL VARLIĞI SABİTLENİR: `$` eksik bir ada `NULL` döndürür (hata DEĞİL),
+  # yani üretim yardımcısı yeniden adlandırılırsa aşağıdaki sarmalayıcı ÖLÜ
+  # KOD olur, `senkron_cagrildi` hep FALSE kalır ve test -- yasakladığı
+  # bloklayan senkron tekrar oynatma GERÇEKLEŞSE BİLE -- yeşil raporlardı.
+  expect_true(is.function(eski_senkron))
   env$mergen_pk_run_sync <- function(...) {
     senkron_cagrildi <<- TRUE
     eski_senkron(...)
@@ -469,6 +474,11 @@ test_that("işçi reddi (ALTYAPI hatası) SENKRON TEKRAR OYNATMAZ", {
   env <- .pk_dispatch_env()
   senkron_cagrildi <- FALSE
   eski_senkron <- env$mergen_pk_run_sync
+  # SEMBOL VARLIĞI SABİTLENİR: `$` eksik bir ada `NULL` döndürür (hata DEĞİL),
+  # yani üretim yardımcısı yeniden adlandırılırsa aşağıdaki sarmalayıcı ÖLÜ
+  # KOD olur, `senkron_cagrildi` hep FALSE kalır ve test -- yasakladığı
+  # bloklayan senkron tekrar oynatma GERÇEKLEŞSE BİLE -- yeşil raporlardı.
+  expect_true(is.function(eski_senkron))
   env$mergen_pk_run_sync <- function(...) {
     senkron_cagrildi <<- TRUE
     eski_senkron(...)

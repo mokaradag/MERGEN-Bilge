@@ -85,8 +85,15 @@ case "${REF}" in
       # tehlikesi `bash` icin `test-pk-phase-status-contract.R` tarafindan
       # zaten reddediliyor.
       zaman_yolu="$(command -v timeout 2>/dev/null || true)"
-      case "$(printf '%s' "${zaman_yolu}" | tr 'A-Z' 'a-z')" in
-        */system32/*) zaman_yolu="" ;;
+      # TERS BOLU BICIMI DE REDDEDILIR: `command -v timeout` PATH'te natif
+      # Windows girisleri varken `C:\Windows\System32\timeout.exe` dondurur.
+      # Yalnizca ileri bolu kalibina bakmak o yolu ELEMIYOR, betik Windows
+      # `timeout.exe` programini `20 git ls-remote ...` argumanlariyla
+      # calistiriyor (o program alt komut CALISTIRMAZ), `uzak_sha` bos kaliyor
+      # ve ag calisirken "agsiz olabilirsiniz" denip 1 ile cikiliyordu.
+      # `tr` sinifleri POSIX bicimindedir (SC2018/SC2019).
+      case "$(printf '%s' "${zaman_yolu}" | tr '[:upper:]' '[:lower:]')" in
+        */system32/*|*\\system32\\*) zaman_yolu="" ;;
       esac
       if [ -n "${zaman_yolu}" ]; then
         uzak_sha="$(GIT_TERMINAL_PROMPT=0 "${zaman_yolu}" 20 git ls-remote origin "refs/heads/${uzak_dal}" 2>/dev/null | awk '{print $1}' | head -n 1)"
@@ -171,7 +178,20 @@ while IFS=$'\037' read -r sha subject parents; do
           pr="$(printf '%s\n' "${subject}" | sed -n 's/.*(#\([0-9][0-9]*\)).*/\1/p')"
           dal="${subject}"
           case "${subject}" in
-            *phase-[0-9]*) ;;
+            *phase-[0-9]*)
+              # `phase-` ISARETINDEN FAZ NUMARASI GERCEKTEN OKUNUR.
+              #
+              # Dal BOS birakilinca `dal` tum KONU olarak kaliyor; asagidaki
+              # ad alani denetimi `pk/phase-*` kalibina uymuyor, `*phase-[0-9]*)
+              # dalina dusuyor, `belirsiz` artiyor ve commit ATLANIYORDU. Yani
+              # yorumun vaat ettigi "squash faz kimligi konudaki `phase-<N>`
+              # isaretinden cikarilir" yolu HIC calismiyordu. Okuma `Faz <N>`
+              # dalindaki kuralla AYNIDIR: `${subject#*phase-}` EN KISA on eki
+              # atar, boylece `phase-4-fix-phase-5-prep` konusu Faz 4 sayilir.
+              faz_kuyruk_ph="${subject#*phase-}"
+              faz_ph="$(printf '%s\n' "${faz_kuyruk_ph}" | sed -n 's/^\([0-9][0-9a-z]*\).*/\1/p')"
+              [ -n "${faz_ph}" ] && dal="pk/phase-${faz_ph}-squash"
+              ;;
             [Ff]az\ [0-9]*|*\ [Ff]az\ [0-9]*)
               # FAZ NUMARASI ILK isaretten okunur. Acgozlu `.*[Ff]az ` kalibi
               # `Faz 4 duzeltme, Faz 5 hazirligi (#123)` konusunu Faz 5 sanir;

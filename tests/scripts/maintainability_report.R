@@ -13,8 +13,13 @@ if (!file.exists(file.path(repo_root, "app.R")) ||
 
 read_text <- function(path) {
   size <- suppressWarnings(file.info(path)$size[1])
+  # BOŞ/OKUNAMAYAN ÇALIŞMA ZAMANI DOSYASI SESSİZCE GEÇMEZ.
+  #
+  # `""` döndürmek raporda sıfır fonksiyon ve sıfır satır cezası üretiyordu;
+  # yani geçersiz bir çalışma zamanı kaynağı varken skor testi YİNE geçiyordu.
+  # `test-maintainability-ratchet-contract.R` zaten bu durumda durur.
   if (is.na(size) || size <= 0) {
-    return("")
+    stop(sprintf("Kaynak dosya boş ya da okunamıyor: %s", path), call. = FALSE)
   }
 
   con <- file(path, open = "rb")
@@ -127,7 +132,7 @@ cat("\nRefactor adayları:\n")
 # büyük kalabilir ve ratchet skoruna dahil edilmez.
 score_report <- subset(
   report,
-  !grepl("(^|/)(library_queries|library_query_meta(_auto|_local)?)\\.R$", file, perl = TRUE)
+  !grepl("(^|/)(library_queries|library_query_meta(_auto|_local)?|library_query_aliases_local)\\.R$", file, perl = TRUE)
 )
 
 candidates <- subset(score_report, lines >= 800 | functions >= 25)

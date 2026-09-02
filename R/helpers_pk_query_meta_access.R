@@ -301,9 +301,17 @@ pk_meta_capability_check <- function(query, requirements = list()) {
 
   meta <- .pk_meta_of(query)
   declared_entities <- unique(c(
-    if (.pk_meta_is_scalar_text(meta$entity)) trimws(meta$entity) else character(0),
+    # TAM AD OKUMASI: `entity` / `entity_kind` / `entity_kinds` ÖNEK ÇAKIŞIR.
+    # `$` kısmi eşleşmesi, yalnızca `entity_kinds` bildiren bir kaydın
+    # değerini `declared_entities` içine emiyor ve HİÇ beyan edilmemiş bir
+    # `entity` gereksinimini karşılanmış gösteriyordu.
+    local({
+      e <- .pk_meta_field(meta, "entity")
+      if (.pk_meta_is_scalar_text(e)) trimws(e) else character(0)
+    }),
     unlist(lapply(meta$column_meta %||% list(), function(cm) {
-      if (is.list(cm) && .pk_meta_is_scalar_text(cm$entity)) trimws(cm$entity) else character(0)
+      ce <- .pk_meta_field(cm, "entity")
+      if (.pk_meta_is_scalar_text(ce)) trimws(ce) else character(0)
     }), use.names = FALSE)
   ))
   entity_missing <- if (.pk_meta_is_scalar_text(entity_req) && !(entity_req %in% declared_entities)) {

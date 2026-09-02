@@ -216,16 +216,29 @@ test_that("boru hattı İÇİNDE iptal edilirse durum cancelled olur (ok değil)
 
   jeton <- env$pk_cancel_token_path("ortada_iptal", base_dir = kok)
 
+  # İDDİALAR MOCK BORU HATTININ İÇİNDE DEĞİL, DÖNÜŞTEN SONRA YAPILIR.
+  #
+  # `pk_async_run_analysis()` boru hattı çağrısını `tryCatch(error = ...)`
+  # ile sarar ve bir testthat beklenti hatası da bir HATA KOŞULUDUR: burada
+  # başarısız olan bir iddia işçi tarafından yutulur, işçi onu boru hattı
+  # sonrası iptal denetimine eşler ve aşağıdaki `cancelled` iddiası YİNE
+  # geçerdi (yani bozuk bir `stop_check()` fark edilmezdi). Gözlenen
+  # değerler önce kaydedilir.
+  gorulen <- new.env(parent = emptyenv())
   env$pk_analiz_process_request <- function(prompt, history, session, stop_check = NULL) {
     # Aşama kontrolü ilk çağrıda FALSE görür; sonra kullanıcı durdurur.
-    expect_false(isTRUE(stop_check()))
+    gorulen$once <- isTRUE(stop_check())
     env$pk_cancel_token_signal(jeton)
-    expect_true(isTRUE(stop_check()))
+    gorulen$sonra <- isTRUE(stop_check())
     # Boru hattı kullanıcıya görünen durdurma metnini döner (mevcut davranış).
     paste0("\U000026A0\U0000FE0F", " **İşlem Durduruldu:** Analiz iptal edildi.")
   }
 
   sonuc <- env$pk_async_run_analysis(.pk_worker_request(env, cancel_token = jeton))
+
+  # Aşama kapısı GERÇEKTEN önce FALSE, jeton işaretlendikten sonra TRUE gördü.
+  expect_false(isTRUE(gorulen$once))
+  expect_true(isTRUE(gorulen$sonra))
 
   # Durum TİPLİ olarak cancelled'dır; "ok + rastgele metin" DEĞİL.
   expect_equal(sonuc$status, "cancelled")

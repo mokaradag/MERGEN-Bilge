@@ -141,12 +141,12 @@ pk_entity_mentions <- function(phrase, entity_kinds = NULL) {
   }
 
   animlar <- vapply(gruplar, .anim_yap, character(1), USE.NAMES = FALSE)
-
-  # BÖLÜNMEMİŞ ANIM DA KORUNUR (PR #705 incelemesi, P2): `/` ve `|` hem gerçek
-  # liste ayırıcısı (`ALFA/BETA`) hem de kanonik adın KENDİ parçası (`AR/GE`,
-  # `A/B`) olabilir. Yalnızca bölünmüş parçalar üretilirse `AR/GE projesi`
-  # ifadesi `ar` ve `ge` anımlarına düşer ve hiçbir anım `ar ge` kanonik
-  # katlamasına ULAŞAMAZ. Bölünmemiş biçim ek aday olur; bölme DEĞİŞMEZ.
+  if (!isTRUE(bolundu) && length(gruplar) > 1L) animlar <- c(animlar, .anim_yap(belirtecler))  # BAĞLAÇLA BÖLÜNMÜŞ İFADE DE BÖLÜNMEMİŞ BİÇİMİYLE KORUNUR: `ve`/`ile` kanonik adın KENDİ parçası olabilir ("SAĞLIK VE GÜVENLİK"). Yalnızca bölünmüş parçalar üretilirse `SAĞLIK VE GÜVENLİK projesi` isteği `saglik` ve `guvenlik` anımlarına düşer, hiçbir anım `saglik ve guvenlik` kanonik katlamasına ULAŞAMAZ ve çözümleyici kural 6 `unresolved` ile analizi bloklar; noktalama yolunun aşağıdaki yedeğiyle AYNI hata sınıfıdır. `ve` düşürme kümesinde olmadığı için belirteç listesini bütün tutmak gerekli adayı üretir. Dal `!bolundu` ile sınırlıdır: noktalama yolunda aynı aday zaten HAM metinden üretilir, çift üretim olmaz.
+  # BÖLÜNMEMİŞ ANIM DA KORUNUR: `/` ve `|` hem gerçek liste ayırıcısı
+  # (`ALFA/BETA`) hem de kanonik adın KENDİ parçası (`AR/GE`, `A/B`) olabilir.
+  # Yalnızca bölünmüş parçalar üretilirse `AR/GE projesi` ifadesi `ar` ve `ge`
+  # anımlarına düşer ve hiçbir anım `ar ge` kanonik katlamasına ULAŞAMAZ.
+  # Bölünmemiş biçim ek aday olur; bölme DEĞİŞMEZ.
   if (isTRUE(bolundu)) {
     bolunmemis <- pk_entity_normalize(ham)
     if (!isTRUE(bolunmemis$blank)) {

@@ -100,7 +100,13 @@
 # tek tek konumlandığı için eksik bir parça da ayırt edilebilir hata verir.
 .ux_guard_expect_order <- function(text, expected, label) {
   konumlar <- vapply(expected, function(item) {
-    p <- regexpr(item, text, fixed = TRUE)[[1]]
+    # ARAMA DİZESİ DE UTF-8'E NORMALLEŞTİRİLİR (`.ux_guard_has_text()` ile
+    # PARİTE). Windows VM'de testthat bu dosyayı UTF-8 beyanı OLMADAN
+    # ayrıştırır; `WINDOWS-1254` yerelinde Türkçe karakter taşıyan bir
+    # beklenti dizesi NATİF işaretlenir, `text` ise `enc2utf8()` sonrası
+    # UTF-8'dir. `fixed = TRUE` karşılaştırması o zaman VAR OLAN bir dizeyi
+    # bulamaz ve muhafız doğru kaynak için YANLIŞ "BULUNAMADI" raporlardı.
+    p <- regexpr(enc2utf8(item), text, fixed = TRUE)[[1]]
     if (p < 0L) NA_integer_ else as.integer(p)
   }, integer(1))
 

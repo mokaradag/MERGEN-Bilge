@@ -398,7 +398,6 @@ Rscript tests/scripts/run_operational_soak_gate.R
 | `MERGEN_SOAK_FAIL_ON_PK_UNAVAILABLE` | `true` | Serit istenmiş ama çalışmamışsa / kapalıysa FAIL üretilsin mi? `false` bunu UNMEASURED yapar; UNMEASURED de kanıt DEĞİLDİR. |
 | `MERGEN_SOAK_PK_SESSIONS` | `max(users*3, 60)` (≤400) | Analiz oturumu sayısı. |
 | `MERGEN_SOAK_PK_DISTINCT_USERS` | `6` | Farklı yetki kapsamı sayısı (önbellek izolasyonu). |
-| `MERGEN_SOAK_PK_DISTINCT_QUERIES` | `5` | Farklı sorgu kimliği (önbellek hit oranı). |
 | `MERGEN_SOAK_PK_DEADLINE_SEC` | `300` | Analiz duvar-saati bütçesi. |
 | `MERGEN_SOAK_PK_SQL_TIMEOUT_SEC` | `120` | Yapılandırılmış SQL zaman aşımı. |
 | `MERGEN_SOAK_PK_ROW_CAP` | `50000` | Satır tavanı planı girdisi. |

@@ -278,6 +278,17 @@ testthat::test_that("sohbet DEGISTIYSE gec cozulen TTS akisi baslatmaz", {
 
 testthat::test_that("sohbet AYNIYSA TTS geri cagrisi akisi baslatir", {
   env <- .css_env()
+  # AKIŞ GÖVDESİNE GİRİLİR ama SÜRESİZ GÖZLEMCİ OLUŞTURULMAZ.
+  #
+  # `stop_generation = function() FALSE` ile `start_streaming_execution()`
+  # gerçek `shiny::observe()`/`invalidateLater()` döngüsünü kurar. Koşum
+  # bittikten sonra o gözlemci YAŞAMAYA devam eder; aynı R oturumunda sonraki
+  # bir dosya reaktifleri boşalttığında (ör. `shiny::testServer`) artık ölü
+  # olan `values`/session ortamıyla çalışır, kendini yeniden zamanlar ve
+  # ALAKASIZ bir dosyada hata/meşgul `later` kuyruğu üretir.
+  # `initStreamingMessage` gözlemciden ÖNCE gönderildiği için ayırt edici
+  # sinyal KORUNUR.
+  env$observe <- function(...) invisible(NULL)
   rec <- new.env(parent = emptyenv()); rec$msgs <- list()
   vals <- new.env(parent = emptyenv())
   vals$messages <- list()

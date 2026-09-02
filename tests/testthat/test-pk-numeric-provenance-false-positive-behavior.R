@@ -555,7 +555,13 @@ test_that("ONDALIK NOKTA cümle sonu sayılmaz", {
   sonuc <- env$pk_numeric_provenance_validate(
     "Yaklasik 18.420 [fact:f_bin].", list(olgu)
   )
-  expect_length(sonuc$mismatches, 0L)
+  # İDDİANIN GERÇEKTEN TARANDIĞI DA DENETLENİR: tarayıcı `18.420` sayısını
+  # tümden DÜŞÜRSE `checked` sıfır olur, `mismatches` boş kalır ve yalnızca
+  # boşluk iddiasına bakan test GEÇERDİ -- oysa testin adı sayının
+  # AYRIŞTIRILIP eşleştiğini iddia ediyor (aynı dosyadaki `1.234 m2` testi
+  # zaten bu sıkı biçimi kullanıyor).
+  expect_identical(sonuc$checked, 1L)
+  expect_length(sonuc$mismatches %||% list(), 0L)
 })
 
 test_that("RAKAM İÇEREN BİRİM alıntısız taramada da tam eşleşir", {

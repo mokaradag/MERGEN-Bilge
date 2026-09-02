@@ -272,17 +272,28 @@ test_that("AYARLANMAMIS/GECERSIZ butce varsayilan yolu KORUR", {
   env <- .pk_budget_env("v2")
   onizleme <- .pk_budget_frame(3L, 3L)
 
+  # BUTCE ORTAM DEGISKENI SABITLENIR (PR #705 incelemesi, P3): dosya duzeyindeki
+  # yalitim yalnizca `mergen.pk.prompt_char_budget` SECENEGINI temizler.
+  # `budget = NULL` ve `budget = NA` yollari `pk_prompt_char_budget()` uzerinden
+  # `MERGEN_PK_PROMPT_CHAR_BUDGET` okur; kucuk bir deger tanimlayan VM/CI
+  # kabugunda onizleme kirpilir ve iddialar URETIM DOGRU oldugu halde duserdi.
   # NULL -> yapilandirma/varsayilan.
-  fit_null <- env$pk_prompt_fit_payload(
-    "OZET", onizleme, function(ozet, json, satir) paste0(ozet, json), budget = NULL
+  fit_null <- withr::with_envvar(
+    list(MERGEN_PK_PROMPT_CHAR_BUDGET = NA_character_),
+    env$pk_prompt_fit_payload(
+      "OZET", onizleme, function(ozet, json, satir) paste0(ozet, json), budget = NULL
+    )
   )
   expect_true(fit_null$budget > 0L)
   expect_identical(fit_null$preview_rows, 3L)
 
   # NA -> gecersiz girdi, varsayilana duser (tukenmis DEGIL).
-  fit_na <- env$pk_prompt_fit_payload(
-    "OZET", onizleme, function(ozet, json, satir) paste0(ozet, json),
-    budget = NA_integer_
+  fit_na <- withr::with_envvar(
+    list(MERGEN_PK_PROMPT_CHAR_BUDGET = NA_character_),
+    env$pk_prompt_fit_payload(
+      "OZET", onizleme, function(ozet, json, satir) paste0(ozet, json),
+      budget = NA_integer_
+    )
   )
   expect_identical(fit_na$budget, 120000L)
   expect_identical(fit_na$preview_rows, 3L)

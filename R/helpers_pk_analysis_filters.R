@@ -76,6 +76,14 @@ if (!exists(".pk_filter_observation_order", inherits = FALSE) ||
       candidate_session <- get("session", envir = fr, inherits = FALSE)
       if (!is.null(candidate_session)) session_obj <- candidate_session
     }
+
+    # ÜÇÜ DE BULUNDUYSA TARAMA BİTER. Bu yardımcı HER filtre uygulamasında
+    # çağrılır ve Shiny çağrı yığını derindir; tüm çerçeveleri sonuna kadar
+    # yürümek gereksiz `exists()`/`get()` maliyetidir. Erken çıkış davranışı
+    # DEĞİŞTİRMEZ: döngü en içteki çerçeveden dışa doğru ilerler ve her alan
+    # yalnızca `NULL` iken yazılır, yani kalan çerçeveler zaten hiçbir alanı
+    # güncelleyemezdi.
+    if (!is.null(request_id) && !is.null(query_meta) && !is.null(session_obj)) break
   }
 
   if ((is.null(request_id) || !nzchar(.pk_filter_observation_scalar(request_id))) &&

@@ -22,13 +22,19 @@
   env
 }
 
-# `withr` `required_packages` ÜYESİ DEĞİLDİR ama bu dosyadaki beş test
-# `withr::local_options()` çağırır. Muhafız YOKKEN paketin kurulu olmadığı
-# bir koşucuda dosya ATLANMAK yerine HATA veriyor ve v1 seçici davranış
-# testleri dâhil TÜM kapsam kayboluyordu.
-testthat::skip_if_not_installed("withr")
+# `withr` `required_packages` ÜYESİ DEĞİLDİR ama bu dosyadaki BEŞ test
+# `withr::local_options()` çağırır. Muhafız YOKKEN paketin kurulu olmadığı bir
+# koşucuda dosya ATLANMAK yerine HATA veriyordu.
+#
+# MUHAFIZ DOSYA DÜZEYİNDE DEĞİL, TEST DÜZEYİNDEDİR (PR #705, P3): dosya
+# düzeyindeki `skip_if_not_installed()` TÜM dosyayı atlıyor ve `withr`
+# KULLANMAYAN dört testi (v1 sonlu zaman aşımı, atomik/adsız JSON,
+# `fixed = TRUE` semantiği, `.pk_select_inline()`) de kapsam dışı bırakıyordu;
+# oysa bu dosya tam olarak o v1 gerilemelerini kilitlemek için var.
+.pk_sel_need_withr <- function() testthat::skip_if_not_installed("withr")
 
 test_that("son tarih YOKKEN bile sonlu bir taban zaman aşımı uygulanır", {
+  .pk_sel_need_withr()
   env <- .pk_sel_to_env()
   withr::local_options(list(mergen.pk.async.deadline_at = NULL))
 
@@ -40,6 +46,7 @@ test_that("son tarih YOKKEN bile sonlu bir taban zaman aşımı uygulanır", {
 })
 
 test_that("geçersiz/eksik taban SINIRSIZ demek değildir", {
+  .pk_sel_need_withr()
   env <- .pk_sel_to_env()
   withr::local_options(list(mergen.pk.async.deadline_at = NULL))
 
@@ -51,6 +58,7 @@ test_that("geçersiz/eksik taban SINIRSIZ demek değildir", {
 })
 
 test_that("açık taban değeri korunur", {
+  .pk_sel_need_withr()
   env <- .pk_sel_to_env()
   withr::local_options(list(mergen.pk.async.deadline_at = NULL))
 
@@ -59,6 +67,7 @@ test_that("açık taban değeri korunur", {
 })
 
 test_that("kalan bütçe tabanı DARALTIR, genişletmez", {
+  .pk_sel_need_withr()
   env <- .pk_sel_to_env()
   # Yalnizca KALAN BUTCE kaynagi stub'lanir; kirpmayi URETIM planlayicisi yapar.
   env$pk_deadline_remaining_sec <- function(x) 3
@@ -74,6 +83,7 @@ test_that("kalan bütçe tabanı DARALTIR, genişletmez", {
 })
 
 test_that("bütçe tükendiğinde istek HİÇ gönderilmez", {
+  .pk_sel_need_withr()
   env <- .pk_sel_to_env()
   # ÜRETİM PLANLAYICISI SINANIR: `.pk_sel_to_env()` `R/helpers_pk_async_cancel.R`
   # dosyasını yükler ve `pk_sql_timeout_plan()` ORADA tanımlıdır. Test-yerel bir
@@ -160,6 +170,14 @@ test_that("v1 seçicisi son tarih YOKKEN de SONLU zaman aşımı gönderir", {
 })
 
 test_that("v1 seçicisi ATOMİK / ADSIZ JSON yanıtında HATA fırlatmaz", {
+  # SON TARİH AÇIKÇA TEMİZLENİR (PR #705, P3): `mergen.pk.async.deadline_at`
+  # SÜREÇ GENELİDİR. Daha önceki bir test bayat bir son tarih bıraktıysa
+  # `pk_select_effective_timeout()` `dispatch = FALSE` döner,
+  # `find_best_query_with_ai()` JSON ayrıştırmasına HİÇ gelmeden `NULL` verir
+  # ve her iki iddia da YANLIŞ NEDENLE geçerdi; korunan gerileme artık
+  # yakalanmazdı.
+  eski_secenek <- options(mergen.pk.async.deadline_at = NULL)
+  on.exit(options(eski_secenek), add = TRUE)
   # `jsonlite::fromJSON("5", simplifyVector = FALSE)` ATOMİK bir değer,
   # `fromJSON("[1,2]", ...)` ADSIZ bir liste döndürür. `parsed$match_id`
   # ilkinde "$ operator is invalid for atomic vectors" ile düşüyordu;

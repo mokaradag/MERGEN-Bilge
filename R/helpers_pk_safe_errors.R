@@ -97,14 +97,19 @@ pk_safe_error_message <- function(raw_message) {
   # `exists()` FALSE olduğunda ham metin AYNEN dönüyordu: izole işçi ya da
   # kısmi kaynak kümesinde bir DSN/parola sohbet balonuna ulaşabilirdi.
   # `.pk_err_redakte()` aynı yokluğu zaten kapalı başarısız sayar.
-  if (exists("redact_sensitive_text", mode = "function", inherits = TRUE)) {
-    metin <- tryCatch(redact_sensitive_text(metin),
-                      error = function(e) PK_GENERIC_DB_ERROR_MESSAGE)
-  } else {
-    metin <- PK_GENERIC_DB_ERROR_MESSAGE
-  }
+  # TAM REDAKSİYON ZİNCİRİ KULLANICI SINIRINDA DA UYGULANIR.
+  #
+  # Burada yalnızca `redact_sensitive_text()` çalışıyordu; o redaktör parola/
+  # anahtar BİÇİMLİ değerleri maskeler ama bağlantı KİMLİKLERİNİ
+  # (`Data Source=`, `Initial Catalog=`, `Address=`, `Trusted_Connection=`)
+  # olduğu gibi bırakır. Bu adlar "güvensiz kalıp" denetiminden de geçtiği
+  # için sürücü hatasına gömülü sunucu/veritabanı adı sohbet balonuna
+  # ulaşabiliyordu. `.pk_err_redakte()` iki redaktörü de uygular ve yokluk/
+  # hata/`NA`/çok elemanlı çıktıyı KAPALI BAŞARISIZ sayarak `NULL` döner.
+  guvenli <- .pk_err_redakte(metin)
+  if (is.null(guvenli) || !nzchar(trimws(guvenli))) return(PK_GENERIC_DB_ERROR_MESSAGE)
 
-  metin
+  guvenli
 }
 
 #' Kullanıcıya dönecek hata metnini TANINABİLİR biçime getir

@@ -85,7 +85,7 @@
 # kural 4 adayı OTOMATİK kabul ediyordu: kullanıcı yalnızca o aksanla ayrılan
 # BAŞKA bir varlığı teyit istemeden filtreleyebilirdi.
 .PK_ENTITY_TR_ONLY_CHARS <- enc2utf8(c(
-  "ı", "ş", "ğ", "ü", "ö", "ç", "â", "î", "û", "ê", "ô"
+  "ı", "ş", "ğ", "ü", "ö", "ç", "â", "î", "û", "ê", "ô", "Ş", "Ğ", "Ü", "Ö", "Ç", "Â", "Î", "Û", "Ê", "Ô"  # BÜYÜK HARF BİÇİMLERİ DE LİSTEDEDİR: arama HAM girdide `fixed = TRUE` ile yapılır ve büyük/küçük harf DUYARLIDIR. Tamamı büyük yazılmış bir ifadede (`ÜRETİM`, `ÇELİK`) `has_turkish` FALSE kalıyor, `.pk_entity_tier_of()` katmanı `ascii_key` + 90 puanı `ascii_lossy` BAYRAĞI OLMADAN döndürüyor ve kural 4 yalnızca o aksanla ayrılan BAŞKA bir adayı teyit istemeden otomatik kabul edebiliyordu. ASCII büyük `I` BİLEREK YOKTUR: `ı` harfinin büyüğü odur ve eklenirse tamamı büyük harf ASCII her ifade "Türkçe yazılmış" sayılırdı (yukarıdaki nota bakınız); noktalı `İ` zaten `.PK_ENTITY_TR_DOTTED_I` üzerinden aranır.
 ))
 .PK_ENTITY_TR_DOTTED_I <- c(
   intToUtf8(0x0130L),                       # İ

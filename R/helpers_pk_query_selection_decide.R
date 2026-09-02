@@ -83,7 +83,7 @@ pk_select_ranked_chips <- function(pass_b, candidates_ids, library_index) {
     capability_unknown = character(0),
     capability_canonicalized = character(0),
     alternate_scores = list(),
-    lexical = list(available = FALSE, rank = NA_integer_, score = NA_real_, disagrees = FALSE),
+    lexical = list(available = FALSE, rank = NA_integer_, score = NA_real_, disagrees = FALSE, excluded_by_not_for = FALSE),
     chips = list(),
     disclosures = character(0),
     message_tr = message_tr
@@ -102,7 +102,7 @@ pk_select_ranked_chips <- function(pass_b, candidates_ids, library_index) {
 #'   4. İfade edilemeyen anlamsal ihtiyaç  -> unsupported_requirement
 #'   5. Yetenek kimliği uydurulmuş         -> unknown_capability
 #'   6. Doğrulayıcı çalışamadı             -> validator_error
-#'   7. Sorgu yeteneği sunmuyor            -> capability_missing
+#'   7. Yetenek yok / sorgunun `not_for`u  -> capability_missing (KARAR VERİR, ceza değil: güven ve marj kapılarına HİÇ gelinmez)
 #'   8. Model eksik bilgi bildirdi         -> missing_info
 #'   9. Doğrulanmış ikinci aday yok        -> no_runner_up
 #'  10. Güven eşiğin altında               -> low_confidence
@@ -118,7 +118,7 @@ pk_select_ranked_chips <- function(pass_b, candidates_ids, library_index) {
 #' alınır.
 pk_select_decide <- function(pass_b, candidates_ids, library_index, cfg,
                              lexical = NULL, capability_ids = NULL) {
-  bos_lex <- list(available = FALSE, rank = NA_integer_, score = NA_real_, disagrees = FALSE)
+  bos_lex <- list(available = FALSE, rank = NA_integer_, score = NA_real_, disagrees = FALSE, excluded_by_not_for = FALSE)  # `excluded_by_not_for` `pk_retrieval_agreement()` sozlesmesinin BESINCI alanidir; `bos_lex` icinde de ACIKCA tasinir, aksi halde tuketiciye `NULL` giderdi.
   if (!is.list(lexical)) lexical <- bos_lex
 
   if (!isTRUE(cfg$valid)) {
@@ -238,7 +238,7 @@ pk_select_decide <- function(pass_b, candidates_ids, library_index, cfg,
   }
 
   # --- Sözlüksel uyuşmazlık: güveni ZAYIFLATIR, karar vermez ---------------
-  etkin <- pass_b$confidence
+  etkin <- secilen_guven <- max(0L, suppressWarnings(as.integer(c(pass_b$confidence, 0L)[1])), na.rm = TRUE)  # SEÇİLEN ADAYIN GÜVENİ DE SKALERE İNDİRGENİR (chips yolu satır 55-58 ile AYNI kural): ham `NULL`/`NA`/çok değerli bir `confidence`, aşağıdaki eşik karşılaştırmasında `if (logical(0))` ya da `if (NA)` fırlatıp `pk_select_decide()` çağrısını çağıranın `tryCatch`i içinde düşürüyor ve kullanıcı tipli reddetme yerine iç seçim hatası görüyordu.
   aciklamalar <- character(0)
   if (isTRUE(lexical$disagrees)) {
     ceza <- max(0L, as.integer(cfg$disagree_penalty))
@@ -247,12 +247,12 @@ pk_select_decide <- function(pass_b, candidates_ids, library_index, cfg,
     # SIRA BİLİNMİYORSA "NA. sıra" YAZILMAZ: `pk_retrieval_agreement()` seçilen sorgu KENDİ `not_for` kaydıyla dışlandığında `rank = NA_integer_` döndürür.
     sira_var <- length(lexical$rank) == 1L && !is.na(lexical$rank)
     aciklamalar <- c(aciklamalar, if (sira_var) {
-      sprintf("Sözlüksel getirim bu sorguyu %d. sırada gördü; güven %d -> %d.", as.integer(lexical$rank), pass_b$confidence, etkin)
+      sprintf("Sözlüksel getirim bu sorguyu %d. sırada gördü; güven %d -> %d.", as.integer(lexical$rank), secilen_guven, etkin)
     } else {
-      sprintf("Sözlüksel getirim bu sorguyu aday listesinde GÖRMEDİ (kütüphane kaydı bu soruyu dışlıyor); güven %d -> %d.", pass_b$confidence, etkin)
+      sprintf("Sözlüksel getirim bu sorguyu aday listesinde GÖRMEDİ (kütüphane kaydı bu soruyu dışlıyor); güven %d -> %d.", secilen_guven, etkin)
     })
   }
-  ortak$effective_confidence <- etkin
+  ortak$confidence <- secilen_guven; ortak$effective_confidence <- etkin  # `confidence` alanı da normalleştirilmiş skaleri taşır.
 
   # Hiçbir rakip iddiayı karşılayamıyorsa BELİRSİZLİK YOKTUR: seçilen sorgu
   # metadata'ya göre TEK yetkin adaydır. Bu durumda reddetmek, iyi tanımlanmış

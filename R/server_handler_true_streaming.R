@@ -290,7 +290,10 @@ handle_true_streaming_mode <- function(ctx) {
         list(display = yedek, tts = yedek, validated = FALSE)
       }  # dis `if (!is.list(pk_akis))` yedegi asagida
     )
-    if (!is.list(pk_akis)) pk_akis <- list(display = final_text, tts = final_text, validated = FALSE)
+    if (!is.list(pk_akis)) {  # KAPALI BAŞARISIZ: bu DIŞ yedek de `block` kipini UYGULAR. İçteki `tryCatch` işleyicisi `defer_visible_text` TRUE iken reddetme metnini döndürüyordu; bu dal ise `mergen_pk_stream_validated_text()` HATA FIRLATMADAN liste dışı bir değer (ör. `NULL`) döndürdüğünde `display = final_text` atıyordu. `final_text` tamponlanmış, HİÇ doğrulanmamış model metnidir: bastırılan deltalar tek seferde ham hâlde yayımlanıyor, `validated = FALSE` ise yalnızca takip önerilerini susturuyordu -- `block` kipinin tam da engellemek için var olduğu çıktı.
+      yedek <- if (!isTRUE(stream_env$defer_visible_text)) final_text else if (exists("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)) as.character(get("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE))[1] else paste0("\U000026A0\U0000FE0F **Analiz Kaynağı Doğrulanamadı:** Yanıt yayımlanmadı.")
+      pk_akis <- list(display = yedek, tts = yedek, validated = FALSE)
+    }
     final_text <- pk_akis$display
     stream_env$pk_validated <- pk_akis$validated
     stream_env$validated_final_text <- pk_akis$tts

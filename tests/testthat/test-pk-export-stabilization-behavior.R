@@ -119,6 +119,11 @@ test_that("XLSX kapisi HUCRE sayisinin yani sira BAYT tavanini da uygular", {
 
 test_that("bayt tavani ALTINDA davranis DEGISMEZ", {
   skip_if_not_installed("writexl")
+  # `pk_export_build()` "ok" dondurmek icin GERI OKUMA dogrulamasini gecmek
+  # zorundadir; `readxl` yoksa dogrulama basarisiz olur ve CSV yedegine
+  # dusulur. `readxl` opsiyoneldir, yani bu desteklenen bir yapilandirmadir
+  # ve test o ortamda GERILEME yuzunden degil ORTAM yuzunden duserdi.
+  skip_if_not_installed("readxl")
   skip_if_not_installed("withr")
   env <- .pk_exps_env()
   veri <- .pk_exps_frame(n = 8L)
@@ -264,6 +269,11 @@ test_that("satir sayisi PARCA KATI oldugunda dosya sonu korumasi calisir", {
   # olusur ama gerekce genel satir-sayisi mesajidir, dolayisiyla yalnizca
   # `expect_false` korunan yolu AYIRT EDEMEZDI.
   con <- file(yol, open = "ab")
+  # BAGLANTI HATA YOLUNDA DA KAPANIR: `writeLines()` hata verirse `close(con)`
+  # hic calismaz; Windows'ta acik tanitici `tam_kat.csv` dosyasini KILITLER ve
+  # yukaridaki `on.exit(unlink(dizin, ...))` dizini silemez, gecici veri oturum
+  # boyunca diskte kalirdi.
+  on.exit(try(close(con), silent = TRUE), add = TRUE)
   writeLines("SENTETIK_FAZLA,999", con, sep = "\n")
   close(con)
   fazla_sonuc <- env$pk_export_csv_verify(yol, df)

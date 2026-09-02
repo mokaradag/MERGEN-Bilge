@@ -163,12 +163,22 @@ pk_cancel_token_cleanup_stale <- function(base_dir = NULL, max_age_sec = 3600) {
 
     gecen <- suppressWarnings(as.numeric(difftime(simdi, bilgi$mtime[1], units = "secs")))
     if (is.na(gecen) || gecen < yas) next
-    # ETKİN İSTEĞİN JETONU BAYAT SAYILMAZ (yukarıdaki kayıt). ANCAK SABİTLEME SONSUZ DEĞİLDİR: terminal yol bu süreçte hiç çalışmazsa (işçi çökmesi, `pk_cancel_token_clear()` atlanan oturum yıkımı) anahtar süreç ömrü boyunca kalır, dosya HİÇ toplanmaz ve kayıt büyürdü.
+    # ETKİN İSTEĞİN JETONU HİÇBİR YAŞTA BAYAT SAYILMAZ.
+    #
+    # Eskiden `yas * 4` penceresinden sonra kayıt da dosya da siliniyordu. İptal
+    # edilmiş ama HÂLÂ ETKİN bir istekte bu, iptal sinyalinin YOK OLMASI
+    # demektir: ODBC/LLM/yerel kodda bloklanmış bir işçi o pencereden sonra
+    # `pk_async_stage_gate()`e ulaştığında hiçbir durdurma işareti görmez ve
+    # kullanıcının terk ettiği analizi SONUNA KADAR çalıştırır (bağlantıyı ve
+    # işçi yuvasını da o süre boyunca tutar). Jeton yalnızca terminal yaşam
+    # döngüsünde (`pk_cancel_token_clear()`) temizlenir.
+    #
+    # SIZINTI RİSKİ KABUL EDİLEBİLİR: kayıt yalnızca durdurma anında yazılır,
+    # süreç yereldir ve süreçle birlikte kaybolur; jeton dosyaları da oturum
+    # geçici dizinindedir. Etkin OLMAYAN (çökmüş süreçten kalan) dosyalar
+    # aşağıdaki yaş kapısıyla zaten toplanır.
     anahtar <- basename(dosya)
-    if (exists(anahtar, envir = .pk_cancel_active_tokens, inherits = FALSE)) {
-      if (gecen < (yas * 4)) next
-      rm(list = anahtar, envir = .pk_cancel_active_tokens)
-    }
+    if (exists(anahtar, envir = .pk_cancel_active_tokens, inherits = FALSE)) next
     if (isTRUE(suppressWarnings(file.remove(dosya)))) silinen <- silinen + 1L
   }
 

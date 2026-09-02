@@ -32,7 +32,12 @@ local({
   # Bu dosya üretim PK yardımcılarını ZATEN `globalenv()`e sourceladığı için
   # yedek operatörün de orada olması TUTARLIDIR; kritik olan anlamın ÜRETİMLE
   # BİREBİR AYNI olmasıdır (yalnız `NULL` yedeğe düşer, `R/utils_common.R`).
-  if (!exists("%||%", mode = "function", inherits = TRUE)) {
+  # KAPSAM `globalenv()` ILE SINIRLANIR: `inherits = TRUE` denetimi PAYLASILAN
+  # testthat yardimci ortamina da ulasir, ama uretim yardimcilari
+  # `globalenv()` icine sourceLanir ve oradan o ortama BAKAMAZ. Bir yardimci
+  # dosya `%||%` tanimlarsa atama ATLANIR ve sourceLanan her telemetri
+  # yardimcisi "could not find function \"%||%\"" ile duserdi.
+  if (!exists("%||%", mode = "function", envir = globalenv(), inherits = FALSE)) {
     assign("%||%", function(a, b) if (is.null(a)) b else a, envir = globalenv())
   }
 

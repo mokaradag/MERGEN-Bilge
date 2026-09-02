@@ -321,7 +321,8 @@ pk_filter_normalize_leaf <- function(f) {
   if (!length(leaf$values)) return(NULL)
 
   tz <- attr(col_vals, "tzone")
-  if (is.null(tz) || !nzchar(tz[1])) tz <- ""
+  # `POSIXlt` üç ögeli bir `tzone` taşıyabilir; `tz[1]` denetimi geçse bile TAM VEKTÖR `as.POSIXct()` çağrısına gidiyor, o da tek dizge beklediği için hata veriyordu. Hata yakalayıcı `NA` döndürüyor, sınırlar reddediliyor ve POSIX yaprağı filtre uygulanmak yerine DÜŞÜRÜLÜYORDU.
+  tz <- if (is.null(tz) || !length(tz) || is.na(tz[1]) || !nzchar(tz[1])) "" else as.character(tz)[1]
 
   yalniz_tarih <- grepl("^\\d{4}-\\d{2}-\\d{2}$", trimws(leaf$values))
 
@@ -553,6 +554,9 @@ pk_filter_leaf_mask <- function(data, leaf, query = NULL) {
   # Tanınmayan bir mantıksal değer varsa yaprak düşürülür.
   if (any(!(dogru | yanlis))) return(NULL)
 
+  # HEM DOĞRU HEM YANLIŞ İSTEYEN YAPRAK HİÇBİR ŞEYİ KISITLAMAZ: `c("evet", "hayir")` için `unique(dogru)` `c(TRUE, FALSE)` olur ve maske `NA` dışındaki HER satırı tutar. Yaprak "uygulandı" diye raporlanırken kullanıcı KISITLANMAMIŞ sonucu istediği alt küme sanıyordu; çözülemeyen yaprak olarak düşürülür.
+  if (length(unique(dogru)) > 1L) return(NULL)
+
   col_vals %in% unique(dogru)
 }
 
@@ -581,6 +585,8 @@ pk_filter_leaf_mask <- function(data, leaf, query = NULL) {
   dusen <- list()
   alt_sinir_sayisi <- 0L
   ust_sinir_sayisi <- 0L
+  # BEYAN GRUP DÜZEYİNDE OKUNUR: bağlaç bir SÜTUN GRUBUNUN tamamına aittir, tek bir yaprağa değil. Model iki yaprağı aynı sütuna yazıp `logic`i yalnızca İKİNCİSİNE koyduğunda (`Yil > 2020` + `Yil < 2000 logic="or"`) VEYA havuzuna tek yaprak giriyor, kardeşi `kisit` içinde kalıyor ve sonuç `veya_havuzu & kisit`, yani KESİŞİM oluyordu. Hiçbir yaprak düşmediği için `dropped` boş, `all_dropped` FALSE kalıyor ve kullanıcı istediği birleşim yerine (çoğu zaman sıfır satırlık) kesişimi HİÇBİR İFŞA GÖRMEDEN okuyordu.
+  grup_veya <- any(vapply(leaves, function(l) identical(as.character(l$logic %||% "")[1], "or"), logical(1)))
 
   for (leaf in leaves) {
     sonuc <- pk_filter_leaf_mask(data, leaf, query = query)
@@ -598,7 +604,7 @@ pk_filter_leaf_mask <- function(data, leaf, query = NULL) {
     # `kisit` içine VE'leniyordu. "Yıl > 2020 VEYA Yıl < 2000" (bir aralığın
     # DIŞI) isteği o zaman KESİŞİM alınıp SIFIR satır döndürüyor, yaprak
     # düşmediği için kullanıcıya HİÇBİR ifşa da ulaşmıyordu.
-    veya_ister <- identical(as.character(leaf$logic %||% "")[1], "or")
+    veya_ister <- isTRUE(grup_veya)
 
     if (identical(rol, "exclude")) {
       dilim <- !sonuc$mask
@@ -712,7 +718,7 @@ pk_filter_compile <- function(data, filters, noop_ratio = NULL, query = NULL) {
     bos$requested <- istenen
     # HİÇBİR yaprak uygulanamadı: çağıran taraf bunu "filtre yoktu" ile
     # KARIŞTIRMAMALIDIR; politika katmanı bu bayrağı görüp reddeder.
-    bos$all_dropped <- !length(agac_uygulanan)
+    bos$all_dropped <- isTRUE(agac_reddedildi) || !length(agac_uygulanan)  # REDDEDİLEN MANTIK GRUBU BU YOLDA DA SAYILIR: aşağıdaki ana dönüş `agac_reddedildi` bayrağını birleştiriyordu, bu erken dönüş birleştirmiyordu; reddetme yalnızca `__group__` düşme kaydına bağlı kalıyordu.
     return(bos)
   }
 

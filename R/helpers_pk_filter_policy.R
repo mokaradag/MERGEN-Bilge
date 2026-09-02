@@ -88,9 +88,22 @@ pk_filter_primary_column <- function(query, filter_columns) {
     "belirtilen değer"
   }
 
+  # SENTETİK AD KULLANICIYA GÖSTERİLMEZ. `.pk_filter_tree_groups()` yaprakları
+  # sütun adı taşımayan bir mantık grubunu `"__group__"` etiketiyle işaretler;
+  # ham hâliyle basıldığında kullanıcı sorgusunda OLMAYAN bir alan adı görür.
+  # `.pk_policy_dropped_message()` bu ikameyi zaten yapıyordu, sıfır eşleşme
+  # yolu yapmıyordu. Sentetik ad ters tırnaksız yazılır: kod adı DEĞİL,
+  # açıklamadır.
+  alan <- as.character(column %||% "?")[1]
+  alan_gosterimi <- if (grepl("__group__", alan, fixed = TRUE)) {
+    "belirttiğiniz koşul grubunda"
+  } else {
+    paste0("`", alan, "` alanında")
+  }
+
   paste0(
     "\U0001F50D **Çözümlenemedi:** Sorunuzun ana konusu olan ", gosterim,
-    " değeri, `", column, "` alanında bulunamadı.\n\n",
+    " değeri, ", alan_gosterimi, " bulunamadı.\n\n",
     "Bu nedenle analiz YAPILMADI. Tüm kayıtlar üzerinden istatistik üretmek ",
     "sorduğunuz sorudan başka bir soruyu yanıtlardı. Lütfen değeri kontrol ",
     "edip tekrar deneyin."
@@ -389,7 +402,15 @@ pk_filter_zero_match_policy <- function(data, filters, compiled, query = NULL) {
 
   sonuc$action <- "dropped_secondary"
   sonuc$mask <- yeniden$mask
+  # İKİ FARKLI NEDEN AYRI TAŞINIR: `dropped_columns` hem "hiçbir kayıtla
+  # eşleşmedi" (`dusurulen`) hem de "yalnızca aynı mantık grubunda olduğu için
+  # çıkarıldı" (`yan_hasar`) sütunlarını karıştırıyordu. v2 tüketicisi
+  # (`helpers_pk_analysis_filters_v2.R`) her girdiye SABİT "hiçbir kayıtla
+  # eşleşmedi" gerekçesini yazdığı için köken/telemetri kaydı, hemen altındaki
+  # ifşa metniyle ÇELİŞEN bir sebep bildiriyordu.
   sonuc$dropped_columns <- unique(c(dusurulen, yan_hasar))
+  sonuc$zero_match_columns <- unique(dusurulen)
+  sonuc$group_collateral_columns <- setdiff(unique(yan_hasar), unique(dusurulen))
   sonuc$disclosures <- vapply(sifir_gruplar, function(g) {
     degerler <- unlist(lapply(g$applied, function(l) l$values), use.names = FALSE)
     degerler <- unique(as.character(degerler %||% character(0)))

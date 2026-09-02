@@ -392,11 +392,11 @@ pk_select_pass_b_messages <- function(user_prompt, candidates, context, cfg,
   }
 
   # ÖRNEK, YETENEK KAPISINI ATLAYAN ŞEKİLDE OLMAMALIDIR: `entity:null` + BEŞ BOŞ dizi tam olarak `pk_select_requirements_empty()` TRUE dediği nesnedir; `pk_select_validate_requirements()` o durumda `not_asserted` döner ve `pk_meta_capability_check()` HİÇ çağrılmaz. Model ZORUNLU örneği birebir kopyaladığında (Geçiş A/B kimliklerini yer tutucuya çeviren belgelenmiş davranış) anlamsal kapı atlanır ve ilk aday doğrulanmamış yetenekle otomatik çalışabilirdi. Bu yüzden örnek, BU istek için gerçekten İZİNLİ bir yetenek kimliğini KENDİ ROLÜNE karşılık gelen alanda gösterir; kural metni zaten "yalnızca GEREKEN yetenekleri bildir" der, örnek yalnızca beyanın ŞEKLİNİ öğretir.
-  ornek_yetenek <- if (length(capability_ids)) trimws(as.character(capability_ids)[1]) else ""
-  roller <- if (nzchar(ornek_yetenek)) tryCatch(pk_select_capability_roles(), error = function(e) character(0)) else character(0)
-  ornek_rol <- if (nzchar(ornek_yetenek) && ornek_yetenek %in% names(roller)) as.character(roller[[ornek_yetenek]])[1] else NA_character_
-  alan <- switch(if (is.na(ornek_rol)) "" else ornek_rol,
-                 measure = "measures", date = "dates", dimension = "dimensions", NA_character_)
+  adaylar <- trimws(as.character(capability_ids %||% character(0))); adaylar <- adaylar[!is.na(adaylar) & nzchar(adaylar)]
+  roller <- if (length(adaylar)) tryCatch(pk_select_capability_roles(), error = function(e) character(0)) else character(0)
+  alanlar <- c(measure = "measures", date = "dates", dimension = "dimensions")  # ÖRNEK YETENEĞİ KONUM DEĞİL, ÇÖZÜLEBİLİR ROL BELİRLER: kimlik sırasının İLKİ `pk_select_capability_roles()` içinde rolsüz (ya da boş rollü) olduğunda `alan` `NA` kalıyor ve örnek tam da yukarıda yasaklanan `entity:null` + BEŞ BOŞ dizi şekline düşüyordu; yani zorunlu örnek, İZİNLİ yetenekler mevcutken bile modele kapı-atlayan şekli ÖĞRETİYORDU. Rolü çözülebilen İLK kimlik seçilir; hiçbiri çözülemezse aşağıdaki yedek dal eskisi gibi çalışır.
+  uygun <- adaylar[vapply(adaylar, function(a) a %in% names(roller) && isTRUE(as.character(roller[[a]])[1] %in% names(alanlar)), logical(1))]
+  ornek_yetenek <- if (length(uygun)) uygun[1] else ""; alan <- if (nzchar(ornek_yetenek)) unname(alanlar[[as.character(roller[[ornek_yetenek]])[1]]]) else NA_character_
 
   gereksinim <- if (!is.na(alan) && nzchar(ornek_yetenek)) {
     degerler <- c(measures = "[]", dates = "[]", dimensions = "[]", group_by = "[]")

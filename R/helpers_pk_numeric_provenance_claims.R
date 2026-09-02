@@ -63,7 +63,14 @@
     if (!identical(cumle[1], -1L)) {
       onceki <- substr(onceki, cumle[length(cumle)] + 1L, nchar(onceki))
     }
-    yakin <- .pk_prov_trim_tail(substr(onceki, max(1L, nchar(onceki) - 60L), nchar(onceki)))
+    # PENCERE, İZİN VERİLEN SÖZCÜK BOŞLUĞUNU KAPSAR: 60 karakter, `.PK_PROV_MAX_GAP_WORDS`
+    # (3) sözcüklük boşluk izninden DAR kalıyordu; araya giren isim öbeği uzun
+    # olduğunda sayı pencerenin DIŞINDA kalıyor, aşağıdaki kırpma döngüsü onu
+    # geri getiremiyor ve DOĞRU alıntı `no_number` bildiriliyordu. Alıntısız
+    # tarayıcı (aşağıda) zaten AYNI bütçeyi kullanır; iki tarayıcının aynı
+    # bitişiklik kuralını uygulaması dosya sözleşmesidir.
+    prov_pencere <- 60L + .PK_PROV_MAX_GAP_WORDS * 26L
+    yakin <- .pk_prov_trim_tail(substr(onceki, max(1L, nchar(onceki) - prov_pencere), nchar(onceki)))
 
     # Birim yalnızca 1-12 harf değildir: `kişi/saat`, `adam-saat`, `m²`, `TL`
     # gibi bileşik/simgesel birimler de olgunun gösteriminde geçebilir.

@@ -231,10 +231,19 @@ pk_apply_smart_filters_v2 <- function(data, filter_instructions, query = NULL) {
   # "düşürülen filtre" uyarısı olarak yayımlar.
   sifir_dusurmeleri <- list()
   if (identical(politika$action, "dropped_secondary")) {
+    # NEDEN SÜTUNA GÖRE SEÇİLİR: `dropped_columns` iki farklı nedeni birleştirir.
+    # Sabit "hiçbir kayıtla eşleşmedi" gerekçesi, yalnızca aynı mantık grubunda
+    # olduğu için çıkarılan sütunlar hakkında YANLIŞ bilgi veriyor ve politika
+    # katmanının ürettiği ifşa metniyle çelişiyordu.
+    yan_hasar_sutunlari <- as.character(politika$group_collateral_columns %||% character(0))
     sifir_dusurmeleri <- lapply(politika$dropped_columns, function(sutun) {
       list(
         leaf = list(column = sutun, values = character(0)),
-        reason = "hiçbir kayıtla eşleşmediği için uygulanmadı"
+        reason = if (sutun %in% yan_hasar_sutunlari) {
+          "aynı mantık grubunda yer aldığı için uygulanmadı"
+        } else {
+          "hiçbir kayıtla eşleşmediği için uygulanmadı"
+        }
       )
     })
   }

@@ -199,10 +199,17 @@ pk_select_string_array <- function(x) {
   # model dizi sözleşmesini bozduğunda bunu görmemiz gerekir.
   if (!is.list(x)) return(list(ok = FALSE, values = character(0)))
   ogeler <- x
+  # ADLANDIRILMIŞ KAPSAYICI, BOŞ-DİZİ KISA DEVRESİNDEN ÖNCE REDDEDİLİR.
+  #
+  # `jsonlite::fromJSON(..., simplifyVector = FALSE)` `{}` değerini BOŞ ADLI bir
+  # liste, `[]` değerini ise boş ADSIZ bir liste olarak temsil eder. Uzunluk
+  # denetimi ad denetiminden ÖNCE geldiği için `requirements$measures` ya da
+  # `candidates` alanı `{}` geldiğinde bir NESNE, geçerli bir boş DİZİ olarak
+  # kabul ediliyordu; yani model dizi sözleşmesini bozduğu hâlde `ok = TRUE`
+  # dönüyordu. Boş adlı listede `any(nzchar(names(...)))` FALSE olduğu için
+  # denetim ayrıca `is.null(names())` üzerinden yapılır.
+  if (!is.null(names(ogeler))) return(list(ok = FALSE, values = character(0)))
   if (!length(ogeler)) return(list(ok = TRUE, values = character(0)))
-  if (!is.null(names(ogeler)) && any(nzchar(names(ogeler)))) {
-    return(list(ok = FALSE, values = character(0)))
-  }
 
   degerler <- character(length(ogeler))
   for (i in seq_along(ogeler)) {

@@ -36,8 +36,11 @@
     # mükerrerliği" (geçerli toplulaştırmayı bloklar) ya da iki ayrı
     # `default_group_by` kovasının BİRLEŞMESİ (yanlış grup olgusu) demekti.
     # Kayıpsız temsil: sayısal an (epoch saniye, tam basamakla).
+    # `%.6f` MİKROSANİYEDE KESERDİ: aynı mikrosaniye penceresine düşen FARKLI
+    # damgalar tek anahtar parçası üretip iki ayrı grubu BİRLEŞTİRİYORDU.
+    # `%.17g` bir `double` değerini kayıpsız (round-trip) yazar.
     ch <- if (inherits(v, "POSIXt")) {
-      sprintf("%.6f", as.numeric(v))
+      sprintf("%.17g", as.numeric(v))
     } else if (inherits(v, "Date")) {
       format(v)
     } else {
@@ -51,6 +54,20 @@
   do.call(paste, c(parcalar, list(sep = "|")))
 }
 
+# Okunabilir ama ENJEKTİF zaman damgası etiketi. `%OS6` kesirli saniyeyi
+# MİKROSANİYEDE KESER; `.pk_join_key()` mikrosaniye altındaki iki damgayı AYIRIR
+# ama etiket onları birleştirir, iki farklı grup AYNI `fact_id`yi alır ve doğru
+# alıntılanan bir değer DİĞER grubun olgusuna karşı doğrulanırdı. Mikrosaniye
+# altı artık YALNIZCA gerçekten varsa eklenir; olağan durumda etiket DEĞİŞMEZ.
+.pk_posix_label <- function(v) {
+  metin <- format(v, "%Y-%m-%d %H:%M:%OS6")
+  mikro <- suppressWarnings(as.numeric(v) * 1e6)
+  if (length(mikro) != 1L || is.na(mikro) || !is.finite(mikro)) return(metin)
+  artik <- mikro - floor(mikro)  # `%OS6` KESER, bu yüzden `floor()` ile hizalanır.
+  if (artik <= 0) return(metin)
+  sprintf("%s+%.0fns", metin, artik * 1000)
+}
+
 # Kullanıcıya/model paketine görünen grup etiketi. ENJEKTİF olmak ZORUNDADIR:
 # `group_keys` olarak olgu kayıtlarına geçer, yani OLGU KİMLİĞİNİN parçasıdır.
 # Düz `" | "` birleşimi `("A | B", "C")` ile `("A", "B | C")` gruplarını AYNI
@@ -62,7 +79,7 @@
   paste(vapply(columns, function(s) {
     v <- data[[s]][index]
     # KESIRLI SANIYE ETIKETTE DE KORUNUR: `.pk_join_key()` ayni saniyedeki iki damgayi AYIRIR; etiket birlestirirse iki grup AYNI `fact_id`yi alir ve dogru alintilanan bir deger DIGER grubun olgusuna karsi dogrulanirdi.
-    ch <- if (inherits(v, "POSIXt")) format(v, "%Y-%m-%d %H:%M:%OS6") else if (inherits(v, "Date")) format(v) else as.character(v)
+    ch <- if (inherits(v, "POSIXt")) .pk_posix_label(v) else if (inherits(v, "Date")) format(v) else as.character(v)
     if (length(ch) != 1L || is.na(ch)) return(sprintf("%s=(bos)", s))
     ch <- gsub("\"", "\\\"", gsub("\\", "\\\\", ch, fixed = TRUE), fixed = TRUE)
     sprintf("%s=\"%s\"", s, ch)

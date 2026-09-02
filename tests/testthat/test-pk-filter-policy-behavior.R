@@ -291,9 +291,9 @@ test_that("D4: birincil BILINIYORKEN ikincil dusurme davranisi korunur", {
   # Mesru ikincil-dusurme yolu kaybolmamalidir: metadata birincil varligi
   # beyan ettiginde, birincil eslesiyorken sifir eslesen IKINCIL sutun
   # dusurulur, ifsa edilir ve analiz surer.
-  env$pk_meta_primary_entity <- function(query, filter_columns = character(0)) {
-    query$meta$primary_entity
-  }
+  # STUB YOK: ortam `R/helpers_pk_query_meta_access.R` dosyasini ZATEN source
+  # eder ve uretim erisimcisi kullanilir; stub, gercek metadata cozumlemesindeki
+  # bir gerilemeyi bu testten GIZLERDI.
   sorgu <- list(meta = list(primary_entity = "ProjeAdi"))
 
   filtreler <- list(
@@ -407,24 +407,28 @@ test_that("`__group__` YOKSA gecerli filtre yolunda davranis DEGISMEZ", {
   env <- .pk_policy_env()
   veri <- .pk_policy_data()
 
-  derlenmis <- list(
-    mask = c(TRUE, FALSE, TRUE),
-    all_dropped = FALSE,
-    applied = list(list(column = "Durum", operation = "exact_match",
-                        values = "Aktif", matched = 2L)),
-    dropped = list(),
-    zero_match = list()
-  )
+  # GİRDİ GERÇEK DERLEYİCİYLE ÜRETİLİR.
+  #
+  # Elle yazılan `applied`/`zero_match` alanları ÜRETİM ŞEKLİ DEĞİLDİR ve
+  # `groups` alanı hiç yoktu; `pk_filter_zero_match_policy()` o zaman
+  # `groups`-siz bir girdi değerlendiriyor, `groups` güdümlü dallar
+  # gerilese bile `proceed` sonucu ayakta kalıyordu. Komşu test (yukarıda)
+  # gerçek sözleşmenin `mask`/`groups`/`dropped`/`noop_columns`/`ok`/
+  # `requested`/`all_dropped` olduğunu belgeliyor.
+  filtreler <- list(list(column = "Durum", value = "Aktif", operation = "exact_match"))
+  derlenmis <- env$pk_filter_compile(veri, filtreler)
+  expect_true(isTRUE(derlenmis$ok))
+  expect_false(isTRUE(derlenmis$all_dropped))
 
   karar <- env$pk_filter_zero_match_policy(
     veri,
-    list(list(column = "Durum", value = "Aktif", operation = "exact_match")),
+    filtreler,
     derlenmis,
     query = list(id = "q-grup", meta = list(primary_entity = "Durum"))
   )
 
   expect_identical(karar$action, "proceed")
-  expect_identical(karar$mask, c(TRUE, FALSE, TRUE))
+  expect_identical(karar$mask, derlenmis$mask)
 })
 
 test_that("BEYAN EDILEN birincil sutun UYGULANMADIYSA sifir eslesme REDDEDER", {

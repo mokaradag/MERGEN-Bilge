@@ -351,7 +351,11 @@ test_that("nihai yanıt sonlandırma noktaları alt bilgiyi iliştirir", {
     info = "TTS motoru ham full_response ile ÇAĞRILMAMALIDIR."
   )
   expect_false(
-    grepl("tts_engine(full_response, tts_voice)", txt, fixed = TRUE, useBytes = TRUE),
+    # BOSLUGA TOLERANSLI DESEN: birebir metin araması yalnızca TEK bir yazımı
+    # yakalar. Gerileme çağrıyı `tts_engine(full_response , tts_voice)` diye ya
+    # da iki satıra bölerek geri getirirse iddia FALSE kalır ve doğrulanmamış
+    # düzyazı TTS'e giderken test yeşil raporlardı.
+    grepl("tts_engine\\s*\\(\\s*full_response\\b", txt, perl = TRUE, useBytes = TRUE),
     info = "Ham full_response TTS'e verilmemelidir (block kipinde doğrulanmamış olabilir)."
   )
   # SAHİPLİK SINIRI: `block` kipi tespiti ve alt bilgi ayırma kararı

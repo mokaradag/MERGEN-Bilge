@@ -1061,6 +1061,11 @@ test_that("saglik kaydi JSON'a serilestirilebilir", {
 
 test_that("SQL degisince devam onbellegi girdisi KABUL EDILMEZ", {
   skip_if_not_installed("jsonlite")
+  # TAZELIK SINIRI ACIKCA KAPATILIR: `pkgh_read_state()` bu degiskeni CAGRI
+  # ANINDA okur ve `.gen_test_config()` temizligi test govdesini KAPSAMAZ.
+  # Kosucu kucuk bir pozitif deger export ederse (ornegin 1) az once yazilan
+  # durum BAYAT sayilir ve asagidaki sozlesme iddialari YANLIS duserdi.
+  withr::local_envvar(c(MERGEN_PK_META_RESUME_MAX_AGE_SEC = NA_character_))
 
   gecici <- withr::local_tempdir()
   durum_yolu <- file.path(gecici, "generator-state.json")
@@ -1093,6 +1098,11 @@ test_that("SQL degisince devam onbellegi girdisi KABUL EDILMEZ", {
 
 test_that("bicim surumu degisince devam onbellegi TAMAMEN yok sayilir", {
   skip_if_not_installed("jsonlite")
+  # TAZELIK SINIRI ACIKCA KAPATILIR: `pkgh_read_state()` bu degiskeni CAGRI
+  # ANINDA okur ve `.gen_test_config()` temizligi test govdesini KAPSAMAZ.
+  # Kosucu kucuk bir pozitif deger export ederse (ornegin 1) az once yazilan
+  # durum BAYAT sayilir ve asagidaki sozlesme iddialari YANLIS duserdi.
+  withr::local_envvar(c(MERGEN_PK_META_RESUME_MAX_AGE_SEC = NA_character_))
 
   gecici <- withr::local_tempdir()
   durum_yolu <- file.path(gecici, "generator-state.json")
@@ -1110,6 +1120,11 @@ test_that("bicim surumu degisince devam onbellegi TAMAMEN yok sayilir", {
 
 test_that("devam onbellegi KANIT alanlarini yuvarlak yolculukla korur", {
   skip_if_not_installed("jsonlite")
+  # TAZELIK SINIRI ACIKCA KAPATILIR: `pkgh_read_state()` bu degiskeni CAGRI
+  # ANINDA okur ve `.gen_test_config()` temizligi test govdesini KAPSAMAZ.
+  # Kosucu kucuk bir pozitif deger export ederse (ornegin 1) az once yazilan
+  # durum BAYAT sayilir ve asagidaki sozlesme iddialari YANLIS duserdi.
+  withr::local_envvar(c(MERGEN_PK_META_RESUME_MAX_AGE_SEC = NA_character_))
 
   gecici <- withr::local_tempdir()
   durum_yolu <- file.path(gecici, "generator-state.json")

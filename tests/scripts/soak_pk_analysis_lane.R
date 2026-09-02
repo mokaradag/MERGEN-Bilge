@@ -81,12 +81,22 @@ soak_pk_bootstrap <- function() {
     "R/helpers_deep_analysis_reconcile.R"
   )
   ok <- TRUE
+  # KULLANILAMAMA NEDENI AYRISTIRILIR: `available = FALSE` UC AYRI nedenden
+  # dogar (source hatasi, eksik yardimci islev, eksik paket). Yalnizca
+  # `missing_fns` dondurulunce `RSQLite`/`DBI` eksik bir makinede gerekce
+  # "Faz 6 yardimcilari yuklenemedi (eksik: )" olarak BOS kaliyor ve
+  # `fail_on_pk_unavailable = TRUE` kapisi operatore hicbir ipucu vermeden
+  # sert basarisizlik uretiyordu.
+  basarisiz_dosyalar <- character(0)
   for (f in files) {
     res <- tryCatch({
       suppressWarnings(suppressMessages(source(file.path(root, f), encoding = "UTF-8")))
       TRUE
     }, error = function(e) FALSE)
-    if (!isTRUE(res)) ok <- FALSE
+    if (!isTRUE(res)) {
+      ok <- FALSE
+      basarisiz_dosyalar <- c(basarisiz_dosyalar, f)
+    }
   }
 
   required_fns <- c(
@@ -102,11 +112,39 @@ soak_pk_bootstrap <- function() {
   )
   present <- vapply(required_fns, function(fn) exists(fn, mode = "function"), logical(1))
 
-  available <- ok && all(present) &&
-    requireNamespace("RSQLite", quietly = TRUE) &&
-    requireNamespace("DBI", quietly = TRUE)
+  eksik_paketler <- Filter(
+    function(p) !requireNamespace(p, quietly = TRUE),
+    c("RSQLite", "DBI")
+  )
+  available <- ok && all(present) && length(eksik_paketler) == 0L
 
-  list(available = available, missing_fns = required_fns[!present])
+  list(
+    available = available,
+    source_ok = isTRUE(ok),
+    failed_files = basarisiz_dosyalar,
+    missing_packages = as.character(eksik_paketler),
+    missing_fns = required_fns[!present]
+  )
+}
+
+# Bootstrap basarisizliginin GERCEK nedenini tek satirda toplar. Bos parcalar
+# atlanir; hicbir parca yoksa genel bir gerekce dondurulur.
+soak_pk_bootstrap_reason <- function(boot) {
+  parcalar <- character(0)
+  if (length(boot$failed_files %||% character(0))) {
+    parcalar <- c(parcalar, sprintf("kaynak yuklenemedi: %s",
+                                    paste(boot$failed_files, collapse = ", ")))
+  }
+  if (length(boot$missing_packages %||% character(0))) {
+    parcalar <- c(parcalar, sprintf("eksik paket: %s",
+                                    paste(boot$missing_packages, collapse = ", ")))
+  }
+  if (length(boot$missing_fns %||% character(0))) {
+    parcalar <- c(parcalar, sprintf("eksik islev: %s",
+                                    paste(boot$missing_fns, collapse = ", ")))
+  }
+  if (!length(parcalar)) parcalar <- "neden belirlenemedi"
+  sprintf("Faz 6 yardimcilari yuklenemedi (%s)", paste(parcalar, collapse = "; "))
 }
 
 # Lane-yerel SQLite: GERCEK sinirli getirim yolunu (dbSendQuery + parcali
@@ -114,12 +152,23 @@ soak_pk_bootstrap <- function() {
 soak_pk_make_db <- function(rows = 20000L) {
   path <- tempfile(pattern = "soak_pk_", fileext = ".sqlite")
   conn <- DBI::dbConnect(RSQLite::SQLite(), path)
+  # KAYNAK TEMIZLIGI: `dbWriteTable()` basarisiz olursa cagiran hatayi yakalayip
+  # devam ediyor, ancak baglanti ACIK ve gecici dosya DISKTE kaliyordu. Soak
+  # sureci boyunca her basarisiz kurulum bir baglanti sizdiriyordu.
+  tamamlandi <- FALSE
+  on.exit({
+    if (!tamamlandi) {
+      try(DBI::dbDisconnect(conn), silent = TRUE)
+      unlink(path, force = TRUE)
+    }
+  }, add = TRUE)
   DBI::dbWriteTable(conn, "pk_veri", data.frame(
     id = seq_len(rows),
     proje = paste0("PROJE-", sprintf("%05d", seq_len(rows))),
     tutar = as.numeric(seq_len(rows)) * 1.37,
     stringsAsFactors = FALSE
   ))
+  tamamlandi <- TRUE
   list(conn = conn, path = path)
 }
 
@@ -473,7 +522,12 @@ soak_pk_psock_probe <- function(cfg_lane) {
   # ISCI ORTAMI: temiz PSOCK iscileri `R/config_file_store.R` icindeki zorunlu
   # ortam degiskeni denetiminden gecer. Uretimde bunlar `.Renviron`'dan gelir;
   # seritte YER TUTUCU degerler kullanilir (GERCEK SIR/DSN/ENDPOINT DEGIL).
-  # Yalnizca TANIMSIZ olanlar doldurulur; cikista geri alinir. Degerler
+  # HER DEGER KOSULSUZ AYARLANIR. Eskiden yalnizca TANIMSIZ olanlar
+  # dolduruluyordu; `.Renviron` icinde GERCEK bir `DB_DSN` veya
+  # `LOCAL_LLM_ENDPOINT` tanimli oldugunda iptal EDILMEMIS bootstrap turu
+  # `pk_async_run_analysis()` cagirisini URETIM yapilandirmasiyla calistirip
+  # gercek veritabani/LLM servisine baglanabiliyordu. Onceki degerler
+  # saklanir ve cikista (hata dahil) AYNEN geri yuklenir. Degerler
   # `future::plan()` ONCESINDE ayarlanmalidir: PSOCK iscileri ortami dogum
   # aninda devralir.
   yer_tutucu <- list(
@@ -486,14 +540,20 @@ soak_pk_psock_probe <- function(cfg_lane) {
     MERGEN_UPLOADS_DIR = file.path(tempdir(), "soak_pk_uploads"),
     MERGEN_INDEX_PATH = file.path(tempdir(), "soak_pk_index.json")
   )
-  eklenen <- character(0)
+  onceki_env <- Sys.getenv(names(yer_tutucu), unset = NA_character_, names = TRUE)
   for (ad in names(yer_tutucu)) {
-    if (!nzchar(Sys.getenv(ad, unset = ""))) {
-      do.call(Sys.setenv, stats::setNames(list(yer_tutucu[[ad]]), ad))
-      eklenen <- c(eklenen, ad)
-    }
+    do.call(Sys.setenv, stats::setNames(list(yer_tutucu[[ad]]), ad))
   }
-  on.exit(if (length(eklenen)) try(Sys.unsetenv(eklenen), silent = TRUE), add = TRUE)
+  on.exit({
+    for (ad in names(onceki_env)) {
+      if (is.na(onceki_env[[ad]])) {
+        try(Sys.unsetenv(ad), silent = TRUE)
+      } else {
+        try(do.call(Sys.setenv, stats::setNames(list(onceki_env[[ad]]), ad)),
+            silent = TRUE)
+      }
+    }
+  }, add = TRUE)
 
   eski_plan <- future::plan()
   on.exit(try(future::plan(eski_plan), silent = TRUE), add = TRUE)
@@ -767,18 +827,20 @@ soak_pk_pool_leak <- function() {
 soak_pk_analysis_lane <- function(cfg) {
   boot <- soak_pk_bootstrap()
   if (!isTRUE(boot$available)) {
-    return(list(
-      available = FALSE,
-      reason = sprintf("Faz 6 yardimcilari yuklenemedi (eksik: %s)",
-                       paste(boot$missing_fns, collapse = ", "))
-    ))
+    return(list(available = FALSE, reason = soak_pk_bootstrap_reason(boot)))
   }
 
   sessions <- max(1L, as.integer(cfg$pk_lane_sessions %||% 60L))
 
   cfg_lane <- list(
     distinct_users = max(1L, as.integer(cfg$pk_lane_distinct_users %||% 6L)),
-    distinct_queries = max(1L, as.integer(cfg$pk_lane_distinct_queries %||% 5L)),
+    # NOT: "farkli sorgu kimligi" icin AYAR YOKTUR ve OLMAMALIDIR. Seridin
+    # onbellek erisim deseni bilerek SABITTIR (SICAK KUME + SOGUK KUYRUK):
+    # serit-yerel LRU tavani 12 giristir; sicak havuz buyutulurse sicak
+    # anahtarlar yeniden okunmadan tahliye olur ve ayni kosuda hem ISABET hem
+    # TAHLIYE uretilemez. Eskiden burada cozulen `distinct_queries` alani
+    # HICBIR YERDE OKUNMUYORDU; operator `MERGEN_SOAK_PK_DISTINCT_QUERIES`
+    # ayarlayinca desenin degistigini SANIYOR ama serit ayni kaliyordu.
     deadline_sec = as.numeric(cfg$pk_lane_deadline_sec %||% 300),
     sql_timeout_sec = as.numeric(cfg$pk_lane_sql_timeout_sec %||% 120),
     row_cap = as.numeric(cfg$pk_lane_row_cap %||% 50000),
@@ -801,7 +863,14 @@ soak_pk_analysis_lane <- function(cfg) {
   token_root <- file.path(tempdir(), paste0("soak_pk_tokens_", as.integer(Sys.time())))
   dir.create(token_root, recursive = TRUE, showWarnings = FALSE)
 
-  db <- tryCatch(soak_pk_make_db(20000L), error = function(e) NULL)
+  # TABLO BOYUTU YAPILANDIRMADAN TURETILIR: fikstur sabit 20000 satirken
+  # `MERGEN_SOAK_PK_ROWS_PER_QUERY` bunun uzerine ayarlanirsa her tur eksik
+  # satir dondurur, `rows_complete` FALSE olur ve kapi URETIM kodu dogruyken
+  # `pk_bounded_fetch_complete` gerilemesi RAPOR EDIYORDU.
+  db <- tryCatch(
+    soak_pk_make_db(max(20000L, as.integer(cfg_lane$rows_per_query))),
+    error = function(e) NULL
+  )
   if (is.null(db)) {
     return(list(available = FALSE, reason = "Lane-yerel SQLite kurulamadi"))
   }
@@ -1048,6 +1117,15 @@ soak_pk_analysis_lane <- function(cfg) {
     cache = list(
       entries = cache_stats$entries,
       total_mb = cache_stats$total_mb,
+      # ETKIN URETIM TAVANI (soak yan degiskeni DEGIL). `MERGEN_SOAK_PK_CACHE_MAX_MB`
+      # ile `MERGEN_PK_CACHE_MAX_MB` BAGIMSIZ degiskenlerdir: kapi soak yan
+      # degiskenine bakinca, operator VM'de uretim tavanini 64 MB'a indirip soak
+      # varsayilanini 512 MB birakmis olsa bile gozlenen toplam uretim sinirinin
+      # USTUNDEYKEN kontrol GECIYOR (bozuk bayt-tahliye yolu yesil kaliyor).
+      # Ayna durum da vardir: yalnizca soak degiskenini dusurmek kapiyi ORTAM
+      # nedeniyle dusururdu. Bu yuzden uretimin KENDI cozumleyicisi okunur.
+      total_ceiling_mb = suppressWarnings(as.numeric(tryCatch(
+        pk_config_resolve("MERGEN_PK_CACHE_MAX_MB"), error = function(e) NA_real_))[1]),
       hit = cache_stats$hit,
       miss = cache_stats$miss,
       evicted = cache_stats$evicted,

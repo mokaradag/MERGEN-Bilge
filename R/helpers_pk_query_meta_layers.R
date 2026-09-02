@@ -100,6 +100,19 @@
           ))
         }
         for (sutun in sutun_adlari) {
+          # SÜTUN GİRDİSİ DE LİSTE OLMALIDIR. `.pk_meta_dup_field_names()`
+          # liste olmayan bir kayıt için `character(0)` döndürdüğü için
+          # `column_meta = list(ProjeKodu = "dimension")` DOĞRULAMAYI GEÇİYOR,
+          # `.pk_meta_merge_one()` skaleri birleşik metadata'ya kopyalıyor ve
+          # `role`/`label`/`capability` okuyan tüketiciler o sütunun beyan
+          # edilmiş anlamını HATASIZ biçimde KAYBEDİYORDU. Katman sözleşmesi
+          # `column_meta`nın kendisi için bu kuralı zaten uygular.
+          if (!is.list(sutunlar[[sutun]])) {
+            yerel <- c(yerel, sprintf(
+              "%s['%s'] column_meta['%s'] adlandırılmış liste olmalıdır.", name, id, sutun
+            ))
+            next
+          }
           yerel <- c(yerel, .pk_meta_dup_field_names(
             sprintf("%s['%s'] column_meta['%s']", name, id, sutun), sutunlar[[sutun]]
           ))

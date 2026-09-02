@@ -132,3 +132,20 @@ pk_active_stage_halt <- function() {
   if (is.null(jeton) && is.null(son_tarih)) return(FALSE)
   isTRUE(tryCatch(pk_async_stage_gate(jeton, son_tarih)$halt, error = function(e) FALSE))
 }
+
+#' AKTİF durdurmanın TİPLİ nedeni (`"cancelled"` / `"deadline"` / `NA`)
+#'
+#' `pk_active_stage_halt()` iki AYRI nedeni tek boole'ye indirir. Çağıranlar o
+#' boole'den tipli bir durum ÜRETEMEZ: ham `timeout` döndürmek kullanıcı
+#' Durdur'unda oturum seçim durumunu siler, ham `cancelled` döndürmek ise
+#' kullanıcının durdurmadığı bir son tarım aşımını "siz iptal ettiniz" diye
+#' raporlar. Bu erişimci kapının KENDİ durumunu döndürür; durdurma yoksa `NA`.
+pk_active_stage_halt_status <- function() {
+  if (!exists("pk_async_stage_gate", mode = "function", inherits = TRUE)) return(NA_character_)
+  jeton <- getOption("mergen.pk.async.cancel_token", NULL)
+  son_tarih <- getOption("mergen.pk.async.deadline_at", NULL)
+  if (is.null(jeton) && is.null(son_tarih)) return(NA_character_)
+  kapi <- tryCatch(pk_async_stage_gate(jeton, son_tarih), error = function(e) NULL)
+  if (!is.list(kapi) || !isTRUE(kapi$halt)) return(NA_character_)
+  as.character(kapi$status %||% "cancelled")[1]
+}

@@ -167,6 +167,16 @@ test_that("doğrulayıcı HATA verirse block kipi ham düzyazıyı TESLİM ETMEZ
 
   # Doğrulayıcı yerel olarak patlatılır: `block` kipi AÇIK başarısız olamaz.
   env$pk_numeric_provenance_apply <- function(...) stop("sentetik doğrulayıcı hatası")
+  # URETIM SABITI GERCEKTEN VAR MI? Bu ortam `R/helpers_pk_provenance.R`
+  # dosyasini sourceLAMAZ, yani asagidaki atama olmasa kanca sabiti hic
+  # bulamazdi. Sabiti yalnizca burada tanimlamak, uretimden KALDIRILMASINI
+  # gorunmez kilardi: `block` yolu o zaman dogrulayici hatasinda ve
+  # `fallback_text` yokken "object not found" ile duserdi.
+  uretim_kaynak <- readLines(
+    file.path(resolve_repo_root_for_tests(), "R", "helpers_pk_provenance.R"),
+    warn = FALSE, encoding = "UTF-8"
+  )
+  expect_true(any(grepl("PK_PROVENANCE_BLOCK_REFUSAL_TR <-", uretim_kaynak, fixed = TRUE)))
   env$PK_PROVENANCE_BLOCK_REFUSAL_TR <- "SENTETIK RED METNI"
 
   sonuc <- env$.pk_hook_room_footer_append(

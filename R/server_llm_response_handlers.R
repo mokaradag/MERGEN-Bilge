@@ -85,7 +85,26 @@ llmResponseHandlersInit <- function(
       }
 
       yeni_satirlar <- satirlar[seq.int(mcp_reasoning_lines_read + 1L, length(satirlar))]
-      mcp_reasoning_lines_read <<- length(satirlar)
+
+      # SON SATIR YARIM YAZILMIŞ OLABİLİR (JSONL yazarı hâlâ akışta).
+      #
+      # İmleci koşulsuz ilerletmek, henüz tamamlanmamış son kaydı bir daha
+      # OKUNAMAZ hâle getiriyordu: bir sonraki yoklamada satır tamamlanmış olsa
+      # bile `mcp_reasoning_lines_read` onu çoktan geçmiş oluyor ve içindeki
+      # akıl yürütme deltası KALICI olarak kayboluyordu. Ayrıştırılamayan SON
+      # satır bu yüzden tüketilmez. Ortadaki (arkasından başka satır gelmiş)
+      # bozuk kayıtlar gerçekten bozuktur ve eskisi gibi atlanır.
+      son_bozuk <- length(yeni_satirlar) > 0L && is.null(tryCatch(
+        jsonlite::fromJSON(yeni_satirlar[length(yeni_satirlar)], simplifyVector = TRUE),
+        error = function(e) NULL
+      ))
+      if (isTRUE(son_bozuk)) {
+        yeni_satirlar <- yeni_satirlar[-length(yeni_satirlar)]
+        mcp_reasoning_lines_read <<- length(satirlar) - 1L
+      } else {
+        mcp_reasoning_lines_read <<- length(satirlar)
+      }
+      if (!length(yeni_satirlar)) return(invisible(NULL))
 
       reasoning_batch <- character(0)
 
@@ -367,6 +386,31 @@ llmResponseHandlersInit <- function(
               if (length(pk_yedek) == 1L && !is.na(pk_yedek) && nzchar(pk_yedek)) {
                 result$content <- pk_yedek
                 seslendirilecek_metin <- pk_yedek
+              }
+            } else {
+              # `warn` KİPİNDE DE DEGRADASYON AÇIKÇA BİLDİRİLİR.
+              #
+              # Doğrulayıcı bekleyen kaydı TÜKETTİKTEN sonra çöktüğünde ne alt
+              # bilgi ne de görünür uyarı işaretleri üretilebiliyordu; blok kipi
+              # olmadığı için de reddetme metni uygulanmıyordu. Sonuç: kullanıcı
+              # ham model düzyazısını, doğrulamanın başarısız olduğuna dair
+              # HİÇBİR gösterge olmadan okuyor ve SESLENDİRİLMİŞ hâlde duyuyordu.
+              # `warn` sözleşmesi tam da bunu yasaklar; deterministik not hem
+              # ekrana hem seslendirmeye eklenir.
+              pk_not <- if (exists("PK_PROVENANCE_WARN_DEGRADED_TR", inherits = TRUE)) {
+                as.character(get("PK_PROVENANCE_WARN_DEGRADED_TR", inherits = TRUE))[1]
+              } else {
+                paste0("\n\n\U000026A0\U0000FE0F **Kaynak doğrulaması ",
+                       "yapılamadı:** Sayısal ifadeler doğrulanamadı.")
+              }
+              if (length(pk_not) == 1L && !is.na(pk_not) && nzchar(pk_not)) {
+                govde <- as.character(result$content %||% "")[1]
+                if (is.na(govde)) govde <- ""
+                # Not zaten eklenmişse (yeniden giriş) İKİNCİ kez eklenmez.
+                if (!endsWith(govde, trimws(pk_not))) {
+                  result$content <- paste0(govde, pk_not)
+                  seslendirilecek_metin <- result$content
+                }
               }
             }
           }

@@ -22,8 +22,12 @@
   stop("Repo kökü bulunamadı.", call. = FALSE)
 }
 
-.tsw_read_text <- function(rel_path) {
-  full <- file.path(.tsw_repo_root(), rel_path)
+# `root` YALNIZCA TESTTEN ENJEKTE EDİLİR: kapının kendisini (boş dosya /
+# geçersiz UTF-8) geçici bir dosyayla doğrulayabilmek için repo kökü
+# değiştirilebilir olmalıdır. Üretim çağrıları argümanı vermez ve davranış
+# birebir aynıdır.
+.tsw_read_text <- function(rel_path, root = .tsw_repo_root()) {
+  full <- file.path(root, rel_path)
   size <- suppressWarnings(file.info(full)$size[1])
   if (is.na(size) || size <= 0) {
     # BOŞ DOSYA DA VACUOUS GEÇİRİR: bu dosyalardaki taramaların çoğu
@@ -36,6 +40,17 @@
   # `sub` VERİLMEZ: `sub = "byte"` her geçersiz baytı kaçışa çevirir ve
   # `is.na()` kapısı HİÇ tetiklenmez; UTF-8 OLMAYAN bir kaynak dosya yalnızca
   # OLUMSUZ iddia taşıyan taramaları SESSİZCE geçirirdi.
+  # HAM BAYTLAR ÖNCE DETERMİNİSTİK OLARAK DOĞRULANIR.
+  #
+  # `iconv()` platforma göre bozuk UTF-8 baytlarını sessizce kabul edebilir
+  # ya da yanlış dönüştürebilir; `NA` üretmesi GARANTİ DEĞİLDİR. O durumda
+  # okuyucu bozuk metin döndürür ve yalnızca OLUMSUZ `grepl()` iddiaları
+  # taşıyan taramalar sessizce geçerdi. `validUTF8()` platformdan bağımsız
+  # ve deterministiktir, bu yüzden kapı ondan üretilir.
+  ham_metin <- suppressWarnings(tryCatch(rawToChar(raw_data), error = function(e) NA_character_))
+  if (length(ham_metin) != 1L || is.na(ham_metin) || !isTRUE(validUTF8(ham_metin))) {
+    stop(sprintf("Kaynak dosya UTF-8 olarak çözülemedi: %s", full), call. = FALSE)
+  }
   txt <- suppressWarnings(iconv(list(raw_data), from = "UTF-8", to = "UTF-8")[[1]])
   if (is.na(txt)) {
     stop(sprintf("Kaynak dosya UTF-8 olarak çözülemedi: %s", full), call. = FALSE)
@@ -127,4 +142,31 @@ test_that("fabrika tum kritik worker-export adlarini ve arg gecisini saglar", {
 
   expect_true(is.function(g[["%||%"]]))
   expect_false(is.null(g$api_config))
+})
+
+test_that(".tsw_read_text() gecersiz UTF-8 baytini DETERMINISTIK reddeder", {
+  # Bu regresyon, okuyucunun kapisinin GERCEKTEN calistigini kanitlar. Kapi
+  # yalnizca `iconv()` `NA` dondurmesine dayandiginda platforma gore SESSIZCE
+  # gecebiliyordu; o durumda UTF-8 OLMAYAN bir kaynak dosya bozuk metin olarak
+  # taraniyor ve OLUMSUZ `grepl()` iddialarinin tamami yanlislikla geciyordu.
+  kok <- .tsw_repo_root()
+  gecici <- file.path(tempdir(), "tsw_gecersiz_utf8.R")
+  on.exit(unlink(gecici), add = TRUE)
+
+  # 0xFF tek basina HICBIR UTF-8 dizisinde gecerli degildir.
+  con <- file(gecici, open = "wb")
+  writeBin(c(charToRaw("x <- 1  # "), as.raw(0xFF), charToRaw("\n")), con)
+  close(con)
+
+  expect_error(
+    .tsw_read_text(basename(gecici), root = dirname(gecici)),
+    "UTF-8 olarak"
+  )
+
+  # Gecerli UTF-8 Turkce icerik ise normal okunur (yanlis pozitif YOK).
+  gecerli <- file.path(tempdir(), "tsw_gecerli_utf8.R")
+  on.exit(unlink(gecerli), add = TRUE)
+  writeLines(enc2utf8("x <- 1  # çğıöşü"), gecerli, useBytes = TRUE)
+  expect_true(grepl("x <- 1", .tsw_read_text(basename(gecerli), root = dirname(gecerli)), fixed = TRUE))
+  expect_true(is.character(kok) && nzchar(kok))
 })

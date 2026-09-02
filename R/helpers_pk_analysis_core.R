@@ -29,18 +29,26 @@
     }
   }
 
-  # 2) Çalışma dizininden bağımsız aday yollar: repo kökü, tests/testthat,
-  #    MERGEN_REPO_ROOT.
+  # 2) Çalışma dizininden bağımsız aday yollar.
+  #
+  # SIRALAMA ÖNEMLİDİR: `MERGEN_REPO_ROOT` ÇALIŞMA DİZİNİNE GÖRELİ adaylardan
+  # ÖNCE denenir. `R/`, `../R/` ve `../../R/` adayları süreç çalışma dizinine
+  # görelidir; süreç repo kökünde DEĞİLKEN ve hiçbir çerçeve `ofile` taşımazken
+  # `file.path("R", filename)` BAŞKA bir ağaçtaki aynı adlı dosyayı eşleyebilir
+  # ve bu yükleyici o dosyanın tanımlarını kurardı. Açıkça beyan edilmiş repo
+  # kökü, tahmine dayalı göreli adaylardan her zaman daha güvenilirdir; göreli
+  # adaylar yalnızca izole test/hata ayıklama yedeği olarak KORUNUR (üretim
+  # yüklemesi manifeste aittir).
   candidates <- c(
     sibling,
-    file.path("R", filename),
-    file.path("..", "..", "R", filename),
-    file.path("..", "R", filename),
     if (nzchar(Sys.getenv("MERGEN_REPO_ROOT"))) {
       file.path(Sys.getenv("MERGEN_REPO_ROOT"), "R", filename)
     } else {
       NULL
-    }
+    },
+    file.path("R", filename),
+    file.path("..", "..", "R", filename),
+    file.path("..", "R", filename)
   )
 
   for (cand in candidates) {

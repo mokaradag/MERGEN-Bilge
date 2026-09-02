@@ -53,6 +53,7 @@
 #' garanti yoktur. `pk_tr_fold()` ile aynı gerekçeyle tek doğrulanmış yol ICU'
 #' dur: `\p{L}` (harf) ve `\p{N}` (sayı) Unicode özellik sınıfları yerelden
 #' BAĞIMSIZ çalışır.
+.PK_RETRIEVAL_NOT_FOR_FRAME <- c("bu", "sorgu", "sorgusu", "sorgular", "için", "icin", "değil", "degil", "değildir", "degildir", "kullanılmaz", "kullanilmaz", "uygun", "uygundur", "amacıyla", "amaciyla", "amaçla", "amacla", "yönelik", "yonelik", "ilişkin", "iliskin", "konusunda", "hakkında", "hakkinda", "şeklinde", "seklinde", "olarak", "asla", "hiçbir", "hicbir")  # OLUMSUZ CÜMLE ÇERÇEVESİ. `not_for` bir CÜMLE olduğunda ("Bu sorgu gerçekleşen maliyetler için değildir") `all(belirtecler %in% istem)` ASLA eşleşmiyordu: istem "gerçekleşen maliyetler" olsa bile "bu"/"sorgu"/"için"/"değildir" belirteçleri istemde yoktur, `pk_retrieval_excluded_ids()` kimliği atlıyor ve küratörün AÇIK dışlaması hiç ateşlenmiyordu. Bu dilbilgisel çerçeve sözcükleri düşürülür; İÇERİK sözcüklerinin TAMAMI hâlâ istemde geçmek zorundadır, dolayısıyla eski yanlış-pozitif koruması korunur. Türkçe'de çekim ekleri ve serbest sözcük sırası yüzünden bitişik ifade (substring) eşleşmesi yerine belirteç KÜMESİ kullanılır; ASCII'leştirilmiş biçimler de listelenir çünkü `pk_tr_fold()` yalnızca küçük harfe çevirir, aksanları düşürmez.
 .pk_retrieval_tokens <- function(text) {
   if (is.null(text) || !length(text)) return(character(0))
 
@@ -325,15 +326,12 @@ pk_retrieval_excluded_ids <- function(library, prompt) {
     metin <- .pk_retrieval_field_text(meta$not_for)
     if (!length(metin)) next
 
-    # OLUMSUZ İFADE BÜTÜN OLARAK EŞLEŞMELİDİR. Eskiden `not_for` içindeki
-    # HERHANGİ bir >=3 karakterlik belirteç yetiyordu: `not_for = "planlanan
-    # bütçe"`, "planlanan işçilik" isteğini de reddediyor ve bu yanlış pozitif
-    # `pk_retrieval_agreement()` üzerinden GEÇERLİ bir seçimi güven kapısının
-    # altına itebiliyordu. Tek sözcüklük ifadeler eskisi gibi davranır.
+    # OLUMSUZ İFADE BÜTÜN OLARAK EŞLEŞMELİDİR. Eskiden `not_for` içindeki HERHANGİ bir >=3 karakterlik belirteç yetiyordu: `not_for = "planlanan bütçe"`, "planlanan işçilik" isteğini de reddediyor ve bu yanlış pozitif `pk_retrieval_agreement()` üzerinden GEÇERLİ bir seçimi güven kapısının altına itebiliyordu. Tek sözcüklük ifadeler eskisi gibi davranır.
     dislandi <- FALSE
     for (ifade in metin) {
       belirtecler <- unique(.pk_retrieval_tokens(ifade))
       belirtecler <- belirtecler[nchar(belirtecler) >= 3L]
+      icerik <- setdiff(belirtecler, .PK_RETRIEVAL_NOT_FOR_FRAME); if (length(icerik)) belirtecler <- icerik  # ÇERÇEVE SÖZCÜKLERİ İÇERİKTEN AYRILIR (bkz. sabitin yanındaki not); ifadenin TAMAMI çerçeveyse eski davranış korunur ve ifade yine bütün olarak aranır.
       if (!length(belirtecler)) next
       if (all(belirtecler %in% istem)) {
         dislandi <- TRUE

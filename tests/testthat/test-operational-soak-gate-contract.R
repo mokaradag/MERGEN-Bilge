@@ -1165,7 +1165,15 @@ testthat::test_that("PK serit oturum sayisi TASMAZ ve `Inf` override'i varsayila
 
   # AYARLANMAMIS degisken UYARI URETMEZ: yalnizca operatorun GERCEKTEN verdigi
   # gecersiz bir deger raporlanir.
+  # ILGISIZ SOAK DEGISKENLERI DE NOTRLENIR: `soak_resolve_config()` bilinmeyen
+  # bir `MERGEN_SOAK_PROFILE`/`MERGEN_SOAK_LLM_MODE` ya da gecersiz baska bir
+  # PK anahtari icin de UYARI uretir. Kosucu veya VM `.Renviron` boyle bir
+  # deger tasidiginda `expect_no_warning()` PK oturum sozlesmesiyle ILGISIZ
+  # bir nedenle duser ve rapor yanlis nedeni gosterirdi.
   withr::with_envvar(list(MERGEN_SOAK_CONCURRENT_USERS = "10",
+                          MERGEN_SOAK_PROFILE = NA_character_,
+                          MERGEN_SOAK_LLM_MODE = NA_character_,
+                          MERGEN_SOAK_PK_DISTINCT_USERS = NA_character_,
                           MERGEN_SOAK_PK_SESSIONS = NA_character_), {
     testthat::expect_no_warning(bos_cfg <- env$soak_resolve_config())
     testthat::expect_equal(bos_cfg$pk_lane_sessions, 60L)

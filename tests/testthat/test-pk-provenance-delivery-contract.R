@@ -201,7 +201,7 @@ test_that("TTS köken alt bilgisi sınırını sentezden önce kaldırır", {
   blok <- paste(satirlar[bas:son], collapse = "\n")
   expect_true(grepl("substr(full_text", blok, fixed = TRUE))
 
-  ortam <- new.env(parent = baseenv())
+  ortam <- new.env(parent = globalenv())  # `baseenv()` DEĞİL: çıkarılan üretim bloğu ileride `%||%` ya da base dışı bir yardımcı kullanırsa test, kapsadığını iddia ettiği gerilemeyi değil KOŞUM ORTAMINI raporlardı.
   ortam$full_text <- paste0(
     "Görünür cevap gövdesi.",
     "\n\n---\n**Analiz Kaynağı (Proje ve Kaynak Analizi)**\n",
@@ -213,14 +213,14 @@ test_that("TTS köken alt bilgisi sınırını sentezden önce kaldırır", {
   expect_false(grepl("Analiz Kaynağı", ortam$full_text, fixed = TRUE))
 
   # İşaretçi YOKKEN metin AYNEN korunur (kırpma yalnız işaretçide çalışır).
-  ortam2 <- new.env(parent = baseenv())
+  ortam2 <- new.env(parent = globalenv())  # `baseenv()` DEĞİL: çıkarılan üretim bloğu ileride `%||%` ya da base dışı bir yardımcı kullanırsa test, kapsadığını iddia ettiği gerilemeyi değil KOŞUM ORTAMINI raporlardı.
   ortam2$full_text <- "Isaretci tasimayan duz cevap."
   eval(parse(text = blok), envir = ortam2)
   expect_identical(ortam2$full_text, "Isaretci tasimayan duz cevap.")
 
   # ISARETCI GOVDEDE DE GECIYORSA SON eslesmeden kirpilir; aksi halde
   # seslendirme, alintilanan isaretcinin ARDINDAKI gercek cevabi da atardi.
-  ortam3 <- new.env(parent = baseenv())
+  ortam3 <- new.env(parent = globalenv())  # `baseenv()` DEĞİL: çıkarılan üretim bloğu ileride `%||%` ya da base dışı bir yardımcı kullanırsa test, kapsadığını iddia ettiği gerilemeyi değil KOŞUM ORTAMINI raporlardı.
   ortam3$full_text <- paste0(
     "Onceki yanit alintisi.",
     "\n\n---\n**Analiz Kaynağı (Proje ve Kaynak Analizi)**\nSorgu: Eski\n",

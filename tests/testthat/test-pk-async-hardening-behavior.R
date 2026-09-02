@@ -359,8 +359,16 @@ test_that("kendi başına TOPLAM bütçeyi aşan isabet SERVİS EDİLMEZ", {
                                                           cache_max_entry_mb = 64L))$stored)
 
   # Operatör TOPLAM bütçeyi girişin altına indiriyor (giriş-başına tavan YÜKSEK).
-  isabet <- pk_cache_get("k1", query_meta = list(cache_max_mb = 1L,
-                                                 cache_max_entry_mb = 64L))
+  #
+  # TOPLAM BÜTÇE ORTAMDAN VERİLİR, SORGU METADATA'SINDAN DEĞİL: `.pk_cache_store`
+  # SÜREÇ YERELİDİR ve tüm sorguların girişlerini bir arada tutar, bu yüzden
+  # depo geneli `MERGEN_PK_CACHE_MAX_MB` bilerek sorgu metadata'sını GÖRMEZ
+  # (aksi hâlde tek bir sorgunun override'ı başka sorguların girişlerini
+  # tahliye eder ya da operatör tavanını gevşetirdi). Giriş-başına tavan
+  # (`cache_max_entry_mb`) metadata'dan gelmeye devam eder.
+  skip_if_not_installed("withr")
+  withr::local_envvar(list(MERGEN_PK_CACHE_MAX_MB = "1"))
+  isabet <- pk_cache_get("k1", query_meta = list(cache_max_entry_mb = 64L))
   expect_false(isabet$hit)
   expect_identical(isabet$reason, "entry_over_total_budget")
 })

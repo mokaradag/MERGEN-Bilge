@@ -196,7 +196,14 @@ pk_export_build <- function(data, packet = list(), context = list(),
   #
   # Durdurma yoksa `NULL` döner; böylece `%||%` zinciri doğal çalışır.
   halt_durumu <- function() tryCatch({
-    if (is.function(stop_check) && isTRUE(stop_check())) return("cancelled")
+    # KULLANICI GERİ ÇAĞRISI HATASI SON TARİH KAPISINI DÜŞÜREMEZ: `stop_check()`
+    # ortak `tryCatch` içinde fırlarsa dış işleyici `NULL` döndürüyor ve
+    # aşağıdaki MUTLAK son tarih denetimi hiç çalışmıyordu; dışa aktarım
+    # bildirilen son tarihten sonra tipli durdurma yerine "ok" raporluyordu.
+    kullanici <- if (is.function(stop_check)) {
+      tryCatch(isTRUE(stop_check()), error = function(e) FALSE)
+    } else FALSE
+    if (isTRUE(kullanici)) return("cancelled")
     if (!exists("pk_async_stage_gate", mode = "function", inherits = TRUE)) return(NULL)
     jeton <- getOption("mergen.pk.async.cancel_token", NULL)
     son_tarih <- getOption("mergen.pk.async.deadline_at", NULL)

@@ -231,6 +231,20 @@ pk_deep_halt_result <- function(status) {
   structure(list(pk_halt_status = durum), class = "pk_deep_halt")
 }
 
+# HALT NEDENİ TİPLİ OKUNUR.
+#
+# `stop_check()` yalnızca boole döner ve İKİ ayrı nedeni (kullanıcının Durdur'u
+# ile son tarih aşımı) tek değere indirger. `stop_check()` doğru olduğunda ham
+# `"cancelled"` raporlamak, kullanıcının HİÇ durdurmadığı bir son tarih aşımını
+# "siz iptal ettiniz" diye bildiriyordu; SQL katmanı ve kapı-sonrası dallar ise
+# tipli durumu zaten koruyordu, yani aynı analizde iki farklı anlatım oluşuyordu.
+# Kapının KENDİ durumu okunur; okunamazsa `pk_deep_halt_result()` eski
+# `"cancelled"` varsayılanına düşer (davranış değişmez).
+pk_deep_halt_status <- function() {
+  if (!exists("pk_active_stage_halt_status", mode = "function", inherits = TRUE)) return(NA_character_)
+  tryCatch(pk_active_stage_halt_status(), error = function(e) NA_character_)
+}
+
 pk_deep_is_halt_result <- function(result) {
   inherits(result, "pk_deep_halt") ||
     (is.list(result) && nzchar(as.character(result$pk_halt_status %||% "")[1]))

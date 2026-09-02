@@ -377,7 +377,8 @@ pk_compose_close_markdown <- function(text) {
 # birim başlıkta "(%)" olarak görünür (dışa aktarımla aynı sözleşme).
 .pk_compose_header <- function(column, cmeta) {
   cmeta <- if (is.list(cmeta)) cmeta else list()
-  etiket <- if (is.character(cmeta$label) && nzchar(cmeta$label %||% "")) cmeta$label else column
+  ham_etiket <- as.character(cmeta$label %||% "")[1]; if (length(ham_etiket) != 1L || is.na(ham_etiket)) ham_etiket <- ""  # ETİKET ÖNCE SKALERE İNDİRGENİR: `%||%` yalnızca `NULL` değerini değiştirir, dolayısıyla `label = character(0)` için `is.character()` TRUE, `nzchar(character(0))` ise `logical(0)` dönüyor ve `&&` sıfır uzunluklu koşulla `if` içinde HATA fırlatıyordu; `pk_compose_markdown_table()` düşüyor ve tüm v2 kompozisyonu hataya çeviriyordu. Bu dosyadaki diğer yardımcılar (`birim`, `percent_scale`) zaten aynı indirgemeyi uygular.
+  etiket <- if (nzchar(ham_etiket)) ham_etiket else column
   birim <- as.character(cmeta$unit %||% "")[1]
   if (is.na(birim)) birim <- ""
 

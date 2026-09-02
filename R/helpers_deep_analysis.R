@@ -47,7 +47,7 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
 
   if (is.function(stop_check) && isTRUE(stop_check())) {
     cat(sprintf("[DEEP_QUERY] '%s' - Durdurma talebi alındı.\n", query_name))
-    return(pk_deep_halt_result("cancelled"))
+    return(pk_deep_halt_result(pk_deep_halt_status()))
   }
 
   conn_list <- tryCatch(get_connection(target = query$db_target %||% "primary"), error = function(e) NULL)
@@ -131,7 +131,7 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     ))
   }
 
-  if (is.function(stop_check) && isTRUE(stop_check())) return(pk_deep_halt_result("cancelled"))
+  if (is.function(stop_check) && isTRUE(stop_check())) return(pk_deep_halt_result(pk_deep_halt_status()))
 
   # DERİN YOL DA NORMAL YOLLA AYNI KANONİK ÇERÇEVEYİ GÖRMELİDİR.
   #
@@ -275,7 +275,7 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
     ))
   }
 
-  if (is.function(stop_check) && isTRUE(stop_check())) return(pk_deep_halt_result("cancelled"))
+  if (is.function(stop_check) && isTRUE(stop_check())) return(pk_deep_halt_result(pk_deep_halt_status()))
 
   post_sql_gate <- pk_async_stage_gate(
     detail_config$pk_cancel_token, detail_config$pk_deadline_at

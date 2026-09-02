@@ -212,6 +212,7 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
   }
 
   if (length(num_cols) > 0) {
+    hassasiyet_disi <- character(0)  # 2^53 üstü `integer64` nedeniyle istatistiği ÜRETİLMEYEN sütunlar.
     num_summary_list <- lapply(num_cols, function(col) {
       vals <- dt[[col]]
       vals <- vals[!is.na(vals)]
@@ -224,7 +225,29 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
       # anlamsız bir `StdSapma` üretirdi. `Toplam`/`Min`/`Max` de aynı riski
       # taşır. 2^53 üstü büyüklüklerde hassasiyet kaybı olabileceği için çevrim
       # AÇIKÇA yapılır; sessiz bir bit deseni yerine bilinen bir yaklaşımdır.
-      if (inherits(vals, "integer64")) vals <- as.numeric(vals)
+      # 2^53 ÜSTÜ `integer64` DEĞERİ SESSİZCE YUVARLANMAZ.
+      #
+      # `as.numeric()` çevrimi 2^53 üzerinde KAYIPLIDIR; sütunda böyle bir
+      # değer varsa `Toplam`/`Min`/`Max` SQL sonucundan FARKLI çıkar ve model
+      # bu sayıyı "hesaplanmış olgu" gibi aktarır. Bu, deterministik R
+      # sahipliği sözleşmesinin tam olarak engellemek istediği durumdur:
+      # yaklaşık bir sayı üretmek yerine sütun istatistiği ÜRETİLMEZ ve
+      # aşağıdaki belirsiz-ölçü bloğuyla aynı şekilde AÇIKÇA bildirilir.
+      if (inherits(vals, "integer64")) {
+        # KARŞILAŞTIRMA `integer64` YERLİSİDİR: eşiği `as.numeric()` ile ölçmek
+        # tam da kaçınılmak istenen kayıplı çevrimi yapar ve R "integer
+        # precision lost while converting to double" UYARISI üretir; süite
+        # `stop_on_warning = TRUE` ile koştuğu için bu uyarı testleri de kırardı.
+        asiri <- tryCatch({
+          esik <- bit64::as.integer64("9007199254740992")  # 2^53
+          any(vals > esik | vals < -esik)
+        }, error = function(e) TRUE)
+        if (isTRUE(asiri)) {
+          hassasiyet_disi <<- c(hassasiyet_disi, col)
+          return(NULL)
+        }
+        vals <- as.numeric(vals)
+      }
       # `integer` TOPLAMI TAŞABİLİR (PR #705 incelemesi, P3).
       #
       # R 4.5 öncesinde `sum(<integer>)` 2^31-1 sınırını aşınca UYARI verip
@@ -253,6 +276,18 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
     if (!is.null(num_summary_df) && nrow(num_summary_df) > 0) {
       summary_parts[[length(summary_parts) + 1]] <- "\n\nSAYISAL SUTUNLAR OZETI:"
       summary_parts[[length(summary_parts) + 1]] <- paste(capture.output(print(num_summary_df, row.names = FALSE)), collapse = "\n")
+    }
+
+    if (length(hassasiyet_disi)) {
+      summary_parts[[length(summary_parts) + 1]] <- sprintf(
+        paste0(
+          "\n\nHASSASIYET SINIRI: %s sutunlari 2^53 ustunde tam sayi deger ",
+          "icerdigi icin istatistikleri HESAPLANMADI (double cevrimi degeri ",
+          "yuvarlardi). Bu sutunlar icin toplam/ortalama/std URETME; degerleri ",
+          "satir bazinda oldugu gibi aktar."
+        ),
+        paste(vapply(hassasiyet_disi, prettify_col_name, character(1)), collapse = ", ")
+      )
     }
   }
 
@@ -359,27 +394,20 @@ generate_statistical_summary <- function(data, max_preview_rows = 20, max_total_
   current_text <- paste(summary_parts, collapse = "\n")
   if (nchar(current_text) > max_total_chars) {
     cat(sprintf("[PK_ANALIZ] UYARI: Prompt çok büyük (%d karakter), kırpılıyor.\n", nchar(current_text)))
-    # D8: ozyineleme mode / rls_total_rows / user_filter_applied parametrelerini
-    # DUSURUYORDU; bu yuzden "FILTRELEME UYARISI" blogu tam da verinin buyuk
-    # oldugu durumda kayboluyordu. Artik TUM baglam tek yoldan aktarilir.
-    # Önce preview satır sayısını yarıya indir
-    if (max_preview_rows > 5) {
-      # v1 ozyinelemesi de KAPSAM argumanlarini tasir. Aksi halde
-      # kirpilan bir `mode="full"` istegi sessizce `summary`'ye donuyor ve
-      # FILTRELENMIS bir istek, sayilarin yalnizca filtreli kumeyi anlattigi
-      # UYARISINI kaybediyordu. Kirpma yalnizca onizleme satirlarini azaltmali,
-      # analiz semantigini DEGISTIRMEMELIDIR.
-      return(generate_statistical_summary(
-        data,
-        max_preview_rows = floor(max_preview_rows / 2),
-        max_total_chars = max_total_chars,
-        mode = mode,
-        rls_total_rows = rls_total_rows,
-        user_filter_applied = user_filter_applied,
-        pre_aggregated_columns = pre_aggregated_columns,
-        column_meta = column_meta
-      ))
-    }
+    # ÖNİZLEME SATIRI SAYISINI YARILAYAN ÖZYİNELEME KALDIRILDI.
+    #
+    # Ölçülen metin (`current_text`) YALNIZCA `summary_parts` üzerinden kurulur;
+    # önizleme satırları ayrı bir alanda (`preview_data`) döner. `mode = "full"`
+    # yolunda `summary_parts[[1]]` sabit 3 satırlık bir blokla değiştirilir ve
+    # `max_preview_rows` hiç etkilemez; `mode = "summary"` yolunda ise yalnızca
+    # ~60 karakterlik tek bir nota girer. Yani `max_preview_rows` yarılamak
+    # `nchar(current_text)` değerini bütçenin altına İNDİREMEZ.
+    #
+    # Sonuç: 500 -> 250 -> 125 -> 62 -> 31 -> 15 -> 7 -> 3 zinciri
+    # `data.table` dönüşümünü, tüm sayısal/tarih istatistiklerini ve tüm
+    # frekans tablolarını TAM çerçeve üzerinde sekiz kez yeniden hesaplıyor,
+    # uyarıyı sekiz kez basıyor ve sonunda ZATEN tek geçişte üretilecek olan
+    # temel özete düşüyordu. Bu iş istek yolunda çalışır. Dönen değer aynıdır.
     # Eğer hala büyükse, sadece temel özet gönder
     basic_summary <- sprintf("TOPLAM SATIR: %d | TOPLAM SUTUN: %d", total_rows, total_cols)
     # FİLTRELEME UYARISI MOTOR BAYRAĞINA BAĞLI DEĞİLDİR.

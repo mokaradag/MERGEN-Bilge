@@ -34,7 +34,13 @@
   on.exit(close(con), add = TRUE)
   raw_data <- readBin(con, what = "raw", n = size)
   txt <- suppressWarnings(iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]])
-  if (is.na(txt)) return("")
+  # BOZUK ÇEVRİM DE VACUOUS GEÇİRİR: boş metin, aşağıdaki
+  # `expect_false(grepl("tolower(", ...))` muhafızını HİÇBİR kaynak taranmadan
+  # karşılar ve yerele bağımlı `tolower()` gerilemesi (D3) fark edilmezdi.
+  # Bu dosya boş dosya için zaten hata veriyor; çözülemeyen dosya da öyle olur.
+  if (is.na(txt)) {
+    stop(sprintf("Kaynak dosya UTF-8 olarak çözülemedi: %s", full), call. = FALSE)
+  }
   satirlar <- strsplit(enc2utf8(txt), "\n", fixed = TRUE)[[1]]
   satirlar <- satirlar[!grepl("^\\s*#", satirlar, perl = TRUE, useBytes = TRUE)]
   paste(satirlar, collapse = "\n")

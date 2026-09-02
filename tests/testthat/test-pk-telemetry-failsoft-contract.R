@@ -50,8 +50,13 @@ local({
   }, envir = testthat::teardown_env())
   Sys.setenv(MERGEN_PK_TELEMETRY = "true")
 
-  if (!exists("%||%", mode = "function", inherits = TRUE)) {
-    `%||%` <<- function(a, b) if (is.null(a)) b else a
+  # KAPSAM `globalenv()` ILE SINIRLANIR: `inherits = TRUE` denetimi PAYLASILAN
+  # testthat yardimci ortamina da ulasir, ama uretim yardimcilari
+  # `globalenv()` icine sourceLanir ve oradan o ortama BAKAMAZ. Bir yardimci
+  # dosya `%||%` tanimlarsa atama ATLANIR ve sourceLanan her telemetri
+  # yardimcisi "could not find function \"%||%\"" ile duserdi.
+  if (!exists("%||%", mode = "function", envir = globalenv(), inherits = FALSE)) {
+    assign("%||%", function(a, b) if (is.null(a)) b else a, envir = globalenv())
   }
   for (f in c("helpers_pk_config.R", "helpers_pk_provenance.R",
               # Etkin yürütme bağlamı: hedef ANAHTARI açıkça verilmediğinde

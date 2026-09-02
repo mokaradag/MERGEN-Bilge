@@ -393,7 +393,9 @@ soak_resolve_config <- function() {
     pk_lane = pk_lane,
     pk_lane_sessions = pk_lane_sessions,
     pk_lane_distinct_users = soak_env_pos_int("MERGEN_SOAK_PK_DISTINCT_USERS", 6L),
-    pk_lane_distinct_queries = soak_env_pos_int("MERGEN_SOAK_PK_DISTINCT_QUERIES", 5L),
+    # `MERGEN_SOAK_PK_DISTINCT_QUERIES` KALDIRILDI: seridin onbellek erisim
+    # deseni bilerek sabittir (bkz. `soak_pk_analysis_lane.R`), bu yuzden deger
+    # cozuluyor ve dogrulaniyor ama HICBIR davranisi degistirmiyordu.
     pk_lane_deadline_sec = soak_env_pos_int("MERGEN_SOAK_PK_DEADLINE_SEC", 300L),
     pk_lane_sql_timeout_sec = soak_env_pos_int("MERGEN_SOAK_PK_SQL_TIMEOUT_SEC", 120L),
     pk_lane_row_cap = soak_env_pos_int("MERGEN_SOAK_PK_ROW_CAP", 50000L),

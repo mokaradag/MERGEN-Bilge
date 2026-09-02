@@ -93,11 +93,19 @@ pk_session_state_write <- function(session, key, value) {
   jeton <- if (inherits(ham_jeton, "try-error")) NA_character_ else .pk_marker_id(ham_jeton)
   if (!is.na(jeton) && nzchar(jeton)) return(jeton)
   # KIMLIK COZULEMEZSE BOS DIZE PAYLASILAN AD ALANIDIR: `""` donen IKI AYRI oturum AYNI isaret alanini kullanir ve biri digerinin `closed`/`hooked` isaretini gorebilir. Son care NESNE ADRESIDIR; ayni surecte YASAYAN iki nesne asla ayni adresi tasimaz.
-  ham_adres <- try(utils::capture.output(print.default(session))[1], silent = TRUE)
-  adres <- if (inherits(ham_adres, "try-error")) "" else sub("^.*(0x[0-9a-f]+).*$", "\\1", as.character(ham_adres)[1])
-  adres <- if (grepl("^0x[0-9a-f]+$", adres)) paste0("pk-adres-", adres) else ""
+  # ADRES YALNIZCA GEREKTİĞİNDE ÖLÇÜLÜR: `print.default()` yakalaması TÜM
+  # oturum nesnesini (`userData` alanları dâhil) metne çevirir, ama sonucun
+  # yalnızca ilk satırı kullanılır ve `userData` zaten bir kimlik taşıdığında
+  # tamamen ATILIR. `.pk_marker_key()` her terk/iptal/sahiplik denetiminde
+  # çağrıldığı için jetonsuz bir oturum bu bedeli HER işaret okumasında
+  # ödüyor ve sır taşıyan alanlar her seferinde belleğe seriliyordu.
+  adres_hesapla <- function() {
+    ham <- try(utils::capture.output(print.default(session))[1], silent = TRUE)
+    a <- if (inherits(ham, "try-error")) "" else sub("^.*(0x[0-9a-f]+).*$", "\\1", as.character(ham)[1])
+    if (grepl("^0x[0-9a-f]+$", a)) paste0("pk-adres-", a) else ""
+  }
   ud <- try(session$userData, silent = TRUE)
-  if (inherits(ud, "try-error") || !is.environment(ud)) return(adres)
+  if (inherits(ud, "try-error") || !is.environment(ud)) return(adres_hesapla())
   # `session$token` ile AYNI gerekçe: başarısız `userData` okuması KİMLİK
   # DEĞİLDİR. `try-error` hata METNİNİ taşır, `nzchar()` TRUE döner ve aynı
   # okuma hatasını yaşayan İKİ vekil AYNI işaret alanını paylaşırdı; biri
@@ -108,7 +116,7 @@ pk_session_state_write <- function(session, key, value) {
   yeni <- paste0("pk-oturum-",
                  paste(format(as.hexmode(sample.int(2147483647L, 4L))), collapse = ""))
   try({ ud[[.PK_MARKER_SESSION_KEY]] <- yeni }, silent = TRUE)  # YAZ-SONRA-OKU: doğrulanmamış yazım kimlik SAYILMAZ
-  if (identical(.pk_marker_id(try(ud[[.PK_MARKER_SESSION_KEY]], silent = TRUE)), yeni)) yeni else adres
+  if (identical(.pk_marker_id(try(ud[[.PK_MARKER_SESSION_KEY]], silent = TRUE)), yeni)) yeni else adres_hesapla()
 }
 
 # ------------------------------------------------------------------------------

@@ -329,6 +329,20 @@ test_that("onbellek sinirlari KAYIP anahtarda da uzlastirilir", {
     source(file.path(repo_root, "R", f), encoding = "UTF-8", local = env)
   }
 
+  # ORTAM DA SABİTLENİR: `pk_config_resolve()` ortamı `options()`'tan ÖNCE
+  # okur. Kurulu bir `.Renviron` bu dört anahtarı ayarladığında (ki
+  # `.Renviron.example` ayarlar) test sessizce OPERATÖRÜN değerlerini ölçer:
+  # `MAX_ENTRIES < 5` ise aşağıdaki uzunluk iddiası, `TTL_SEC = 0` ya da
+  # `MAX_MB`/`MAX_ENTRY_MB = 0` ise isabet iddiası ÜRETİM KODU DOĞRUYKEN
+  # düşer ve `stop_on_failure = TRUE` altında tüm paket koşumu durur.
+  # (`test-pk-cache-behavior.R` aynı tuzağı belgeler ve iki kanalı da sabitler.)
+  withr::local_envvar(list(
+    MERGEN_PK_CACHE_MAX_ENTRIES = "50",
+    MERGEN_PK_CACHE_MAX_MB = "512",
+    MERGEN_PK_CACHE_MAX_ENTRY_MB = "128",
+    MERGEN_PK_CACHE_TTL_SEC = "300"
+  ))
+
   env$pk_cache_reset()
   for (i in 1:5) env$pk_cache_put(sprintf("anahtar_%d", i), data.frame(x = 1:10))
   expect_length(env$.pk_cache_store$entries, 5L)

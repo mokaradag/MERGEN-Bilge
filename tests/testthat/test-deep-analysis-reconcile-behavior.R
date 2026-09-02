@@ -72,7 +72,12 @@
 
 .PK_RECON_CACHE_KEYS <- c(
   "MERGEN_PK_CACHE_MAX_ENTRIES", "MERGEN_PK_CACHE_MAX_MB",
-  "MERGEN_PK_CACHE_MAX_ENTRY_MB", "MERGEN_PK_CACHE_TTL_SEC"
+  "MERGEN_PK_CACHE_MAX_ENTRY_MB", "MERGEN_PK_CACHE_TTL_SEC",
+  # Onbellek ISABETI de bu tavandan gecer (`pk_cache_entry_within_limit()`,
+  # R/helpers_deep_analysis_sql.R): kucuk bir deger disaridan export
+  # edildiginde giris gecersiz sayilir, ikinci cagri DUSURULMUS tabloya SQL
+  # calistirir ve uretim davranisi DOGRUYKEN test duserdi.
+  "MERGEN_PK_MAX_RESULT_MB"
 )
 
 # --- D16 (1): KİMLİK ----------------------------------------------------------

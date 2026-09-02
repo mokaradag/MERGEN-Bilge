@@ -82,7 +82,7 @@ pk_select_forget_query_id <- function(session, chat_key = "__yeni__") {
 
   kayit$query_id <- NULL
   durum[[chat_key]] <- kayit
-  .pk_select_state_write(session, durum)
+  .pk_select_state_write(session, durum, touched = chat_key)  # ETKİN SÖYLEŞİNİN TAZELİĞİ YENİLENİR (bkz. helpers_pk_query_selection_history.R içindeki not): `touched` verilmezse budama az önce kullanılan söyleşiyi tahliye edebilirdi.
 }
 
 #' Kullanıcıya sunulan netleştirme seçeneklerini hatırla
@@ -174,5 +174,26 @@ pk_select_forget_offer <- function(session, chat_key = "__yeni__") {
   # doğruluyordu.
   kayit$offer_requirements <- NULL
   durum[[chat_key]] <- kayit
-  .pk_select_state_write(session, durum)
+  .pk_select_state_write(session, durum, touched = chat_key)  # ETKİN SÖYLEŞİNİN TAZELİĞİ YENİLENİR (yukarıdaki `pk_select_forget_query_id()` ile aynı gerekçe).
+}
+
+# DURDURMA TİPLİ SEÇİM DURUMUNA EŞLENİR (TEK SAHİP).
+#
+# `pk_stage_halted()` kullanıcının Durdur'u ile son tarih aşımını TEK bir
+# boole'de birleştirir. Ham `timeout` döndürmek `pk_select_query_v2()` yolunda
+# oturum seçim durumunu SİLER (bkz. `helpers_pk_query_selection_apply.R`; durum
+# yalnızca `PK_SELECT_STATUS_CANCELLED` için korunur) ve sonraki eliptik takip
+# sorusu bağlamını kaybeder; ham `cancelled` döndürmek ise kullanıcının HİÇ
+# durdurmadığı bir zaman aşımını "siz iptal ettiniz" diye raporlar. Kapının
+# KENDİ tipli durumu okunur; okunamazsa eski `cancelled` davranışı korunur.
+#
+# BU DOSYADA DURUYOR: `helpers_pk_query_selection_ai.R` bakım ratchet'inde
+# fonksiyon tavanındadır; oturum durumu sözleşmesini bilen dosya da burasıdır.
+pk_select_halt_status <- function() {
+  durum <- if (exists("pk_active_stage_halt_status", mode = "function", inherits = TRUE)) {
+    tryCatch(pk_active_stage_halt_status(), error = function(e) NA_character_)
+  } else {
+    NA_character_
+  }
+  if (identical(as.character(durum)[1], "deadline")) PK_SELECT_STATUS_TIMEOUT else PK_SELECT_STATUS_CANCELLED
 }

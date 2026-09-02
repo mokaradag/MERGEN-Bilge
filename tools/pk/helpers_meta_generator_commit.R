@@ -295,8 +295,24 @@ pkgc_catalog_findings <- function(query_library) {
     }
     kimlikler <- c(kimlikler, kimlik)
 
-    sql_beyani <- as.character(q$sql %||% "")[1]
-    dosya_beyani <- as.character(q$sql_file %||% "")[1]
+    # TAM ALAN ERISIMI (yukleyici ile AYNI kural, bkz. R/config_sql_loader.R).
+    #
+    # `$` listelerde KISMI eslesme yapar. Yukleyici her girise `sql_source` ve
+    # `sql_loaded_path` alanlarini YAZAR, dolayisiyla `q$sql` ikinci bir
+    # `sql`-onekli ad varken BELIRSIZ hale gelir ve TAM `sql` alani olmayan
+    # bir giriste `NULL` doner; gecerli bir `sql_file` beyan eden sorgu
+    # `missing_sql` diye raporlanirdi. Bugun etkiyi `dosya_var` dalinin
+    # onceligi maskeliyor, ama maskeleme kalici degildir.
+    .alan <- function(ad) {
+      if (!is.list(q)) return("")
+      adlar <- names(q)
+      if (is.null(adlar)) return("")
+      i <- match(ad, adlar)
+      if (is.na(i)) return("")
+      as.character(q[[i]] %||% "")[1]
+    }
+    sql_beyani <- .alan("sql")
+    dosya_beyani <- .alan("sql_file")
     inline_var <- !is.na(sql_beyani) && nzchar(trimws(sql_beyani))
     dosya_var <- !is.na(dosya_beyani) && nzchar(trimws(dosya_beyani))
 

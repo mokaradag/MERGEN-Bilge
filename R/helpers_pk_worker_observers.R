@@ -104,10 +104,6 @@ pk_direct_exit_outcome <- function(response_text, stopped = FALSE, error = FALSE
   if (isTRUE(error)) return("Hata")
   if (isTRUE(stopped)) return("Durduruldu")
 
-  # `type == "error_message"` desen taramasından ÖNCE hata sonucuna eşlenir.
-  if (is.list(response_text) &&
-      identical(as.character(response_text$type %||% "")[1], "error_message")) return("Hata")
-
   metin <- pk_direct_exit_text(response_text)
 
   if (grepl("\u0130\u015flem Durduruldu", metin, fixed = TRUE)) return("Durduruldu")
@@ -115,6 +111,20 @@ pk_direct_exit_outcome <- function(response_text, stopped = FALSE, error = FALSE
   if (grepl("mevcut analiz k\u00fct\u00fcphanesinde bulunamad\u0131", metin, fixed = TRUE)) {
     return("EslesmeYok")
   }
+
+  # `type == "error_message"` DESEN TARAMASINDAN SONRA hata sonucuna eşlenir.
+  #
+  # Eşleme desenlerden ÖNCE yapıldığında AYNI yanıt, hangi yolun
+  # sınıflandırdığına göre FARKLI bir `MB_Analiz_Log` sonucu alıyordu: ana
+  # süreçteki sarmalayıcı (`R/server_init_chat_runtime.R`) önce `result$content`
+  # metnini çıkarıp bu sınıflandırıcıya verdiği için "Yetkisiz"/"EslesmeYok"
+  # üretiyor, işçi yolu (`R/helpers_pk_worker_direct_exit.R`) HAM listeyi
+  # verdiği için aynı yanıtı "Hata" sayıyordu; telemetri sonucu ASENKRON
+  # YÖNLENDİRMEYE bağlıydı. Daha ÖZGÜL desenler önce denenir; hiçbiri tutmazsa
+  # `error_message` yine "Hata"dır, yani genel hata listeleri "DogrudanYanit"a
+  # DÜŞMEZ.
+  if (is.list(response_text) &&
+      identical(as.character(response_text$type %||% "")[1], "error_message")) return("Hata")
 
   "DogrudanYanit"
 }

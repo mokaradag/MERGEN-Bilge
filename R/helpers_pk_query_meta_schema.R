@@ -16,6 +16,27 @@ PK_META_ALIAS_PROVENANCE <- c("synthetic", "approved")
 PK_META_MAX_DECIMALS <- 9L
 .PK_META_CAPABILITY_PATTERN <- "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
 
+#' Metadata alanını TAM ADLA okur (kısmi eşleşme YOK)
+#'
+#' `x$ad` R'de `x[[ad, exact = FALSE]]` ile eşdeğerdir ve KISMİ EŞLEŞME yapar.
+#' Metadata izin listesi ÖNEK ÇAKIŞAN adlar içerir (`grain` / `grain_columns`,
+#' `entity` / `entity_kind` / `entity_kinds`), bu yüzden yalnızca UZUN adı
+#' bildiren bir kayıtta `meta$grain` sessizce `grain_columns` değerini,
+#' `cmeta$entity` ise `entity_kinds` değerini döndürüyordu: geçerli küratör
+#' metadata'sı yanlış bir başlangıç bulgusu ya da yanlış bir çalışma zamanı
+#' değeri üretiyordu.
+#'
+#' Adsız listede `[[` "subscript out of bounds" fırlattığı için ad denetimi
+#' burada yapılır ve yokluk `NULL` ile bildirilir.
+.pk_meta_field <- function(x, name) {
+  if (!is.list(x) || !length(x)) return(NULL)
+  adlar <- names(x)
+  if (is.null(adlar)) return(NULL)
+  i <- match(as.character(name)[1], adlar)
+  if (is.na(i)) return(NULL)
+  x[[i]]
+}
+
 .pk_meta_is_scalar_text <- function(x) {
   is.character(x) && length(x) == 1L && !is.na(x) && nzchar(trimws(x))
 }
@@ -235,7 +256,11 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
     )))
   }
 
-  if (!is.null(cmeta$entity) && !(cmeta$role %in% c("id", "dimension"))) {
+  # TAM AD OKUMASI: `cmeta$entity` yalnızca `entity_kinds` bildiren bir sütunda
+  # o değeri KISMİ EŞLEŞMEYLE döndürüp geçerli metadata'yı `entity` beyanı
+  # sayıyor ve sütunu haksız yere reddediyordu.
+  cmeta_entity <- .pk_meta_field(cmeta, "entity")
+  if (!is.null(cmeta_entity) && !(cmeta$role %in% c("id", "dimension"))) {
     hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
       " entity yalnizca role='id' veya role='dimension' sutununda tanimlanabilir."))
   }

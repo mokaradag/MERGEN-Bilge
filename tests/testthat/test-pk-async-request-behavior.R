@@ -138,6 +138,13 @@ test_that("userData anlık görüntüsü yalnızca ATOMİK alanları alır", {
     "system_username", "user_id", "auth_source", "auth_initialized",
     "sso_active", "current_chat_id"
   )))
+  # BOŞ LİSTE DE `all(... %in% ...)` iddiasını GEÇER (ve aşağıdaki iki
+  # `expect_false()` de geçer). Yakalayıcı atomik alanları kopyalamayı
+  # bıraksaydı -- ör. izin listesi yeniden adlandırılınca -- işçi vekil
+  # oturumu `system_username`/`auth_initialized` alanlarını KAYBEDER ve bu
+  # test yine yeşil kalırdı. Alanların GERÇEKTEN taşındığı ayrıca kanıtlanır.
+  expect_true(all(c("system_username", "user_id", "auth_initialized") %in% names(anlik)))
+  expect_identical(anlik$system_username, "ali")
   expect_false("user_config" %in% names(anlik))
   expect_false("some_fn" %in% names(anlik))
   # Anahtar bu yoldan KOPYALANMAZ; yalnızca çözülmüş plan üzerinden taşınır.
@@ -381,6 +388,14 @@ test_that("MERGEN_PK_ASYNC varsayılan KAPALI ve motor bayrağından BAĞIMSIZDI
     if (is.na(eski_async)) Sys.unsetenv("MERGEN_PK_ASYNC") else Sys.setenv(MERGEN_PK_ASYNC = eski_async)
     if (is.na(eski_engine)) Sys.unsetenv("MERGEN_PK_ENGINE") else Sys.setenv(MERGEN_PK_ENGINE = eski_engine)
   }, add = TRUE)
+
+  # SEÇENEK KATMANI DA İZOLE EDİLİR: `pk_async_enabled()` `options()` değerini
+  # de okur, dolayısıyla önceki bir test `mergen.pk.async = TRUE` bırakmışsa
+  # yalnızca ortam değişkenini silmek YERLEŞİK VARSAYILANI seçmez ve bu test
+  # üretim varsayılanı doğruyken düşerdi.
+  eski_opsiyon <- getOption("mergen.pk.async", NULL)
+  options(mergen.pk.async = NULL)
+  on.exit(options(mergen.pk.async = eski_opsiyon), add = TRUE)
 
   Sys.unsetenv("MERGEN_PK_ASYNC")
   expect_false(pk_async_enabled())

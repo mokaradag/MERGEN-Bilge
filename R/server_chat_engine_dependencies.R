@@ -389,7 +389,27 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
 
 .pk_hook_room_footer_append <- function(text, footer) {
   kayit <- .pk_hook_room_record(footer)
-  if (!nzchar(kayit$footer)) return(text)
+
+  # KİP TEK BİR NORMALLEŞTİRME İLE OKUNUR: aşağıdaki hata yakalayıcısı
+  # `as.character(...)[1]` kullanırken bu kapı ÇIPLAK `identical()` yapıyordu;
+  # adlandırılmış/öznitelikli bir `mode` değeri kapıyı geçersiz kılıyor, olgu
+  # kaydı da olmadığı için doğrulama ATLANIYOR ve ham model metni otoriter alt
+  # bilgiyle YAYIMLANIYORDU. Normalleştirme ERKEN DÖNÜŞTEN ÖNCE yapılır çünkü
+  # boş alt bilgi kapısı da bu değere bakar.
+  kip <- as.character(kayit$mode %||% "")[1]
+  if (length(kip) != 1L || is.na(kip)) kip <- ""
+
+  # ALT BİLGİ BOŞ OLSA BİLE DOĞRULAMA ÇALIŞIR. `pk_build_provenance_footer()`
+  # başarısız olduğunda "" döndürür, ancak telemetri üreticisi olguları ve kipi
+  # yine de saklar; amaç tam olarak §5.11 doğrulamasının çalışmaya devam
+  # etmesidir. Koşulsuz erken dönüş, `block` kipinde DOĞRULANMAMIŞ model
+  # düzyazısını Ortak Oturum yolundan teslim ediyordu. Bu yüzden yalnızca
+  # yapılacak iş kalmadığında (alt bilgi yok + olgu yok + kip `block` değil)
+  # erken dönülür; aksi hâlde doğrulama koşar ve yalnızca alt bilgi birleştirme
+  # adımı boş kalır.
+  if (!nzchar(kayit$footer) && is.null(kayit$facts) && !identical(kip, "block")) {
+    return(text)
+  }
 
   govde <- .pk_hook_scalar_text(text)
 
@@ -403,10 +423,6 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
   # ATLANIYOR ve otoriter alt bilgi ham model metnine EKLENİYORDU. `block`
   # kipinin tüm amacı budur: deterministik yedek (yoksa sabit reddetme metni)
   # kullanılır.
-  # KİP TEK BİR NORMALLEŞTİRME İLE OKUNUR: aşağıdaki hata yakalayıcısı `as.character(...)[1]` kullanırken bu kapı ÇIPLAK `identical()` yapıyordu; adlandırılmış/öznitelikli bir `mode` değeri kapıyı geçersiz kılıyor, olgu kaydı da olmadığı için doğrulama ATLANIYOR ve ham model metni otoriter alt bilgiyle YAYIMLANIYORDU.
-  kip <- as.character(kayit$mode %||% "")[1]
-  if (length(kip) != 1L || is.na(kip)) kip <- ""
-
   .blok_yedegi <- function() {
     y <- .pk_hook_scalar_text(kayit$fallback_text)
     if (!nzchar(y) && exists("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)) {
@@ -430,8 +446,12 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
   if (!is.null(kayit$facts) &&
       exists("pk_numeric_provenance_apply", mode = "function", inherits = TRUE)) {
     govde <- tryCatch({
+      # DOĞRULAYICIYA NORMALLEŞTİRİLMİŞ KİP GEÇİLİR: yukarıdaki kapılar `kip`
+      # üzerinden karar verirken buraya ham `kayit$mode` geçiliyordu; adlandırılmış
+      # veya öznitelikli bir değer iki kararın AYRIŞMASINA ve doğrulayıcının
+      # bloklamayan bir kip seçmesine yol açabiliyordu.
       sonuc <- pk_numeric_provenance_apply(
-        govde, kayit$facts, mode = kayit$mode,
+        govde, kayit$facts, mode = kip,
         fallback_text = kayit$fallback_text
       )
       if (exists("pk_numeric_provenance_report", mode = "function", inherits = TRUE)) {
@@ -440,12 +460,14 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
       .pk_hook_scalar_text(sonuc$text)
     }, error = function(e) {
       # `block` kipi AÇIK başarısız olamaz: doğrulanmamış düzyazı teslim
-      # edilmektense deterministik reddetme metni gösterilir.
-      if (identical(kip, "block") &&
-          exists("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)) {
-        return(.pk_hook_scalar_text(
-          get("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)
-        ))
+      # edilmektense deterministik reddetme metni gösterilir. TEK SÖZLEŞME:
+      # `.blok_yedegi()` önce `kayit$fallback_text` değerini kullanır; bu dal
+      # yalnızca `PK_PROVENANCE_BLOCK_REFUSAL_TR` sabitine bakınca, sabit
+      # çözülemeyen worker/izole çalışma zamanlarında deterministik yedek
+      # metin VARKEN bile ham düzyazı yayımlanıyordu.
+      if (identical(kip, "block")) {
+        yedek <- .blok_yedegi()
+        if (nzchar(yedek)) return(yedek)
       }
       govde
     })

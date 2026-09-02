@@ -146,7 +146,7 @@ testthat::test_that("geçerli UTF-8 mojibake ham bayt çözümlemesiyle bozulmaz
 })
 
 # U+009F mojibake sınıfı: C5 9F baytlarının latin1 çözümü CEZA almalıdır.
-testthat::test_that("latin1 kaynakli C5 9F mojibake cezasi alir", {
+testthat::test_that("latin1 kaynaklı C5 9F mojibake cezası alır", {
   .ccdecode_source_once()
   aday <- .ccd_cp(0x00C5, 0x009F)
   testthat::expect_lt(score_turkish_decoding_candidate(aday), 0L)
@@ -167,7 +167,7 @@ testthat::test_that("pozitif puanlı geçerli UTF-8 metin izin olmadan YENİDEN 
   icerik <- paste0(turkce, literal)
 
   testthat::expect_true(all(validUTF8(icerik)))
-  # Puan POZITIF: eski kapi (`mevcut_skor < 0`) bu icerikte onarimi calistirmaz.
+  # Puan POZİTİF: `mevcut_skor < 0` kapısı bu geçerli içerikte onarımı ÇALIŞTIRMAZ.
   testthat::expect_gte(score_turkish_decoding_candidate(icerik), 0L)
 
   oku <- function(yol) {
@@ -185,13 +185,19 @@ testthat::test_that("pozitif puanlı geçerli UTF-8 metin izin olmadan YENİDEN 
     yol
   }
 
-  yol <- yaz(icerik)
-  on.exit(unlink(yol), add = TRUE)
-  testthat::expect_true(normalize_claude_code_text_file_to_utf8(yol))
-  # LITERAL dizi KORUNUR: gecerli baytlar tahrip edilmemistir.
-  testthat::expect_identical(oku(yol), icerik)
+  # VARSAYILAN DAL SÜREÇ ORTAMINDAN YALITILIR: operatör makinesinde
+  # `MERGEN_CLAUDE_CODE_REPAIR_VALID_UTF8=true` tanımlıysa onarım BİLEREK
+  # çalışır ve bu iddia GEÇERLİ bir yapılandırmada düşerdi.
+  testthat::skip_if_not_installed("withr")
+  withr::with_envvar(c(MERGEN_CLAUDE_CODE_REPAIR_VALID_UTF8 = "false"), {
+    yol <- yaz(icerik)
+    on.exit(unlink(yol), add = TRUE)
+    testthat::expect_true(normalize_claude_code_text_file_to_utf8(yol))
+    # LİTERAL dizi KORUNUR: geçerli baytlar tahrip edilmemiştir.
+    testthat::expect_identical(oku(yol), icerik)
+  })
 
-  # ACIK OPERATOR IZNI ile karisik icerik onarimi YINE mumkundur.
+  # AÇIK OPERATÖR İZNİ ile karışık içerik onarımı YİNE mümkündür.
   withr::with_envvar(c(MERGEN_CLAUDE_CODE_REPAIR_VALID_UTF8 = "true"), {
     yol2 <- yaz(icerik)
     on.exit(unlink(yol2), add = TRUE)

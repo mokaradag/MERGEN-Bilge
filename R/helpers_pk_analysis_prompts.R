@@ -89,15 +89,40 @@ pk_build_analysis_system_prompt <- function(analysis_mode, query) {
     )
   }
 
-	if (!is.null(query$info_file) && nzchar(query$info_file)) {
-	  file_path_normalized <- gsub("\\\\", "/", query$info_file)
-	  system_prompt <- paste0(system_prompt, 
+	# v1 YOLU DA v2 İLE AYNI NORMALLEŞTİRME/KAÇIŞ SÖZLEŞMESİNE BAĞLIDIR
+	# (bkz. `pk_compose_reference_links()`), çünkü ham metadata okuması ÜÇ ayrı
+	# kusur üretiyordu: (1) `nzchar(NA)` TRUE döner, `info_file = NA_character_`
+	# olan bir sorgu isteme `data-filepath='NA'` yazdırıyordu; (2) birden çok
+	# ögeli bir değerde `if` koşulu uzun olur ve R >= 4.2 HATA fırlatarak o
+	# sorguyu kullanan HER v1 isteğinde `pk_build_analysis_system_prompt()`
+	# çağrısını düşürürdü; (3) değerler tek tırnaklı HTML özniteliğine HAM
+	# giriyordu — kesme işareti özniteliği erken kapatıyor, `info_url` ise
+	# şema denetimi olmadan `href` içine yazılıyordu.
+	.oznitelik <- function(x) {
+	  if (exists(".pk_compose_attr", mode = "function", inherits = TRUE)) {
+	    return(.pk_compose_attr(x))
+	  }
+	  txt <- as.character(x %||% "")[1]
+	  if (length(txt) != 1L || is.na(txt)) return("")
+	  txt <- gsub("&", "&amp;", txt, fixed = TRUE)
+	  txt <- gsub("<", "&lt;", txt, fixed = TRUE)
+	  txt <- gsub(">", "&gt;", txt, fixed = TRUE)
+	  txt <- gsub("\"", "&quot;", txt, fixed = TRUE)
+	  gsub("'", "&#39;", txt, fixed = TRUE)
+	}
+
+	info_file <- as.character(query$info_file %||% "")[1]
+	if (!is.na(info_file) && nzchar(info_file)) {
+	  file_path_normalized <- .oznitelik(gsub("\\\\", "/", info_file))
+	  system_prompt <- paste0(system_prompt,
 		"\n8. EK DOSYA: Kullaniciya su dosyayi incelemesini oner. Cevabinin en altina su HTML linkini ekle: <br><br>\U0001F449 <span class='analysis-file-link' data-filepath='", file_path_normalized, "' style='color:#007bff; cursor:pointer; text-decoration:underline; font-weight:bold;'>İlgili Dosyayı Görüntüle</span>\n")
 	}
 
-	if (!is.null(query$info_url) && nzchar(query$info_url)) {
-	  system_prompt <- paste0(system_prompt, 
-		"\n9. EK LINK: Kullaniciya su adresi incelemesini oner. Cevabinin en altina su HTML linkini ekle: <br><br>\U0001F310 <a href='", query$info_url, "' target='_blank' rel='noopener noreferrer'><b>Daha Fazla Bilgi</b></a>\n")
+	info_url <- trimws(as.character(query$info_url %||% "")[1])
+	if (!is.na(info_url) && nzchar(info_url) &&
+	    grepl("^https?://", info_url, perl = TRUE)) {
+	  system_prompt <- paste0(system_prompt,
+		"\n9. EK LINK: Kullaniciya su adresi incelemesini oner. Cevabinin en altina su HTML linkini ekle: <br><br>\U0001F310 <a href='", .oznitelik(info_url), "' target='_blank' rel='noopener noreferrer'><b>Daha Fazla Bilgi</b></a>\n")
 	}
 
   system_prompt

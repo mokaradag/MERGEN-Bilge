@@ -77,11 +77,11 @@ pk_cache_entry_within_limit <- function(value, max_result_mb) {
   # (`MERGEN_PK_CACHE_MAX_MB=abc`) döndürdüğünde `as.numeric()` sessizce `NA`
   # üretiyordu. `NA` `is.finite()` denetimlerini geçemediği için sayı, bayt ve
   # giriş-başına tavanların HEPSİ atlanıyor ve depo SINIRSIZ büyüyordu.
-  coz <- function(key, fallback) {
+  coz <- function(key, fallback, meta = query_meta) {
     ham <- if (!exists("pk_config_resolve", mode = "function", inherits = TRUE)) {
       fallback
     } else {
-      tryCatch(pk_config_resolve(key, query_meta), error = function(e) fallback)
+      tryCatch(pk_config_resolve(key, meta), error = function(e) fallback)
     }
     sayi <- suppressWarnings(as.numeric(ham)[1])
     if (length(sayi) != 1L || is.na(sayi) || !is.finite(sayi)) {
@@ -90,11 +90,27 @@ pk_cache_entry_within_limit <- function(value, max_result_mb) {
     sayi
   }
 
+  # DEPO GENELİ BÜTÇE, SORGU METADATA'SINI GÖRMEZ.
+  #
+  # `.pk_cache_store` SÜREÇ YERELİDİR: içinde her sorgunun girişi bir arada
+  # durur. `max_entries` / `max_bytes` değerlerini sorgu metadata'sıyla
+  # çözersek, TEK bir sorgunun metadata'sındaki `MERGEN_PK_CACHE_MAX_ENTRIES`
+  # override'ı TÜM deponun bütçesi hâline gelir: küçük bir değer diğer
+  # sorguların girişlerini tahliye eder (hatta `< 1` ise deponun tamamını
+  # siler), büyük bir değer ise operatörün beyan ettiği süreç tavanını
+  # sessizce GEVŞETİRDİ. Depo geneli sınırlar bu yüzden yalnızca
+  # ortam/`options()` katmanından, `meta = NULL` ile çözülür.
+  #
+  # `max_entry_bytes` ve `ttl_sec` GİRİŞ BAŞINA sınırlardır (yalnızca bu isteğin
+  # kendi girişine uygulanır), dolayısıyla sorgu metadata'sını kullanabilirler.
+  # `store_ttl_sec` ise depo geneli TTL'dir: "önbellek tamamen kapalı" kararı
+  # (tüm girişleri düşürme) yalnızca ondan üretilir.
   list(
-    max_entries = coz("MERGEN_PK_CACHE_MAX_ENTRIES", 50L),
-    max_bytes = coz("MERGEN_PK_CACHE_MAX_MB", 512L) * .PK_CACHE_MB,
+    max_entries = coz("MERGEN_PK_CACHE_MAX_ENTRIES", 50L, NULL),
+    max_bytes = coz("MERGEN_PK_CACHE_MAX_MB", 512L, NULL) * .PK_CACHE_MB,
     max_entry_bytes = coz("MERGEN_PK_CACHE_MAX_ENTRY_MB", 128L) * .PK_CACHE_MB,
-    ttl_sec = coz("MERGEN_PK_CACHE_TTL_SEC", 300L)
+    ttl_sec = coz("MERGEN_PK_CACHE_TTL_SEC", 300L),
+    store_ttl_sec = coz("MERGEN_PK_CACHE_TTL_SEC", 300L, NULL)
   )
 }
 
@@ -105,7 +121,12 @@ pk_cache_entry_within_limit <- function(value, max_result_mb) {
 .pk_cache_disabled <- function(limits) {
   if (is.finite(limits$max_entries) && limits$max_entries < 1) return(TRUE)
   if (is.finite(limits$max_bytes) && limits$max_bytes <= 0) return(TRUE)
-  if (is.finite(limits$ttl_sec) && limits$ttl_sec <= 0) return(TRUE)
+  # DEPO GENELİ TTL: tüm girişleri düşürmeye yalnızca bu değer yetki verir.
+  # Sorgu bazlı `ttl_sec = 0` bu isteğin girişini kullanılamaz kılar (yaş
+  # denetimi zaten süresi dolmuş sayar) ama BAŞKA sorguların girişlerini
+  # silemez; `store_ttl_sec` bulunmayan eski çağrılarda `ttl_sec` yedeğe düşer.
+  depo_ttl <- suppressWarnings(as.numeric(limits$store_ttl_sec %||% limits$ttl_sec)[1])
+  if (length(depo_ttl) == 1L && !is.na(depo_ttl) && is.finite(depo_ttl) && depo_ttl <= 0) return(TRUE)
   FALSE
 }
 
@@ -304,8 +325,15 @@ pk_cache_put <- function(key, value, query_meta = NULL, now = Sys.time()) {
 
   limitler <- .pk_cache_limits(query_meta)
 
-  # Önbellek kapatılmış (0 giriş, 0 bayt veya 0 TTL): yazma YAPILMAZ.
+  # Önbellek kapatılmış (0 giriş, 0 bayt veya 0 depo TTL): yazma YAPILMAZ.
   if (isTRUE(.pk_cache_disabled(limitler))) {
+    return(list(stored = FALSE, bytes = NA_real_, reason = "cache_disabled"))
+  }
+  # Sorgu bazlı TTL sıfır/negatif ise depo açık olsa bile bu giriş hiç
+  # okunamayacağı (yaş denetimi anında süresi dolmuş sayar) için saklanmaz;
+  # aksi hâlde diğer sorguların bütçesi boşuna tüketilirdi.
+  istek_ttl <- suppressWarnings(as.numeric(limitler$ttl_sec)[1])
+  if (length(istek_ttl) == 1L && !is.na(istek_ttl) && is.finite(istek_ttl) && istek_ttl <= 0) {
     return(list(stored = FALSE, bytes = NA_real_, reason = "cache_disabled"))
   }
 

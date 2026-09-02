@@ -19,6 +19,21 @@
 # Sarmalayıcı işareti: özyinelemeli sarmalamayı (sonsuz döngü) engeller.
 .pk_p1_wrapper_mark <- "pk_p1_runtime_guard"
 
+# ETKİN v2 DERİN SORGU TOPLAYICI YIĞINI (süreç-yerel).
+#
+# `generate_statistical_summary()` vekili PAYLAŞILAN bir bağlamaya yazıldığı
+# için istek başına ayrı bir vekil kurmak yarış üretiyordu (bkz. aşağıdaki
+# `on.exit` açıklaması). Yığın sayesinde tek bir yönlendirici kurulur, vekil
+# her zaman EN İÇTEKİ isteğe yazar ve geri yükleme yalnızca yığın boşalınca
+# yapılır. Tekrar kaynaklamada sıfırlanmaması için yalnızca yoksa kurulur.
+if (!exists(".pk_p1_deep_holders", inherits = FALSE)) {
+  .pk_p1_deep_holders <- new.env(parent = emptyenv())
+  .pk_p1_deep_holders$stack <- list()
+  .pk_p1_deep_holders$owner <- NULL
+  .pk_p1_deep_holders$legacy <- NULL
+  .pk_p1_deep_holders$local_existed <- FALSE
+}
+
 .pk_p1_is_wrapped <- function(fn) {
   is.function(fn) && isTRUE(attr(fn, .pk_p1_wrapper_mark, exact = TRUE))
 }
@@ -51,8 +66,14 @@
   token <- as.character(request$cancel_token %||% "")[1]
   if (!nzchar(token)) token <- NULL
   started <- tryCatch(
-    as.POSIXct(as.numeric(request$started_at_epoch %||% NA_real_),
-               origin = "1970-01-01"),
+    # ALAN ADI ÇÖZÜMÜ `.pk_p1_remaining_budget_sec()` İLE AYNIDIR: yalnızca eski
+    # `started_at` adını taşıyan bir anlık görüntüde kapı başlangıcı
+    # `Sys.time()` sanıyor ve son tarihi ZATEN GEÇEN süre kadar İLERİ
+    # kaydırıyordu; yoklama döngüsü doğru anda `deadline` bildirmiyor, tek
+    # kullanımlık çocuk bağlantıyı ve worker'ı son tarihten sonra da tutuyordu.
+    as.POSIXct(suppressWarnings(as.numeric(
+      request$started_at_epoch %||% request$started_at %||% NA_real_
+    )[1]), origin = "1970-01-01"),
     error = function(e) Sys.time()
   )
   if (length(started) != 1L || is.na(started)) started <- Sys.time()
@@ -157,6 +178,19 @@
                 diagnostics = list(duration_ms = 0)))
   }
 
+  # `repo_root` FUTURE BAŞLAMADAN DOĞRULANIR: eksik/boş bir anlık görüntüde
+  # `setwd(NULL)` future İÇİNDE hata veriyor, çağıran bunu genel
+  # "Tek kullanimlik DB iscisi tamamlanamadi." metnine eşliyor ve GERÇEK neden
+  # kayboluyordu.
+  repo_root <- suppressWarnings(as.character(request$repo_root %||% "")[1])
+  if (length(repo_root) != 1L || is.na(repo_root) || !nzchar(repo_root) ||
+      !dir.exists(repo_root)) {
+    .pk_p1_kill_cluster(cluster)
+    return(list(status = "bootstrap_failed", result = NULL, session_writes = list(),
+                error = "Istek anlik goruntusunde gecerli bir repo_root yok.",
+                diagnostics = list(duration_ms = 0)))
+  }
+
   old_plan <- future::plan()
   on.exit(try(future::plan(old_plan), silent = TRUE), add = TRUE)
   future::plan(future::cluster, workers = cluster)
@@ -248,16 +282,44 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
   # olmayan yeni bir bağlama doğar ve ebeveyn tanımını KALICI olarak gölgeler:
   # ebeveyndeki sonraki bir güncelleme bu ortamda hiç etkili olmaz. Yerel bir
   # bağlama yoksa çıkışta bağlama KALDIRILIR.
-  yerel_vardi <- exists("generate_statistical_summary", envir = owner, inherits = FALSE)
-  assign("generate_statistical_summary", function(data, ...) {
-    holder$data <- data
-    list(row_count = nrow(data), summary_text = "", preview_data = data[0, , drop = FALSE])
-  }, envir = owner)
+  # TOPLAYICI İSTEK KAPSAMLIDIR, PAYLAŞILAN BAĞLAMA DEĞİL.
+  #
+  # Eskiden her istek `owner` (normalde global ortam) içine KENDİ vekilini
+  # yazıyor ve `on.exit` ile eski değeri geri koyuyordu. Aynı süreçte iki v2
+  # derin sorgu iç içe geçtiğinde A'nın geri yüklemesi B'nin vekilini SİLİYOR,
+  # B'nin `holder$data` alanı hiç dolmuyor ve SQL'i BAŞARILI olmuş bir istek
+  # "v2 Derin Dusunme filtreli veri paketi olusturulamadi." ile düşüyordu; ters
+  # sıralamada A'nın toplayıcısına B'nin verisi de yazılabiliyordu.
+  #
+  # Artık TEK bir yönlendirici kurulur; etkin toplayıcılar bir YIĞINDA tutulur
+  # ve vekil her zaman EN İÇTEKİ isteğe yazar. Geri yükleme YALNIZCA yığın
+  # boşaldığında (en dıştaki istek bittiğinde) yapılır.
+  .pk_p1_deep_holders$stack <- c(.pk_p1_deep_holders$stack, holder)
+  if (length(.pk_p1_deep_holders$stack) == 1L) {
+    .pk_p1_deep_holders$owner <- owner
+    .pk_p1_deep_holders$legacy <- legacy
+    .pk_p1_deep_holders$local_existed <-
+      exists("generate_statistical_summary", envir = owner, inherits = FALSE)
+    assign("generate_statistical_summary", function(data, ...) {
+      etkin <- .pk_p1_deep_holders$stack
+      if (length(etkin)) etkin[[length(etkin)]]$data <- data
+      list(row_count = nrow(data), summary_text = "", preview_data = data[0, , drop = FALSE])
+    }, envir = owner)
+  }
   on.exit({
-    if (isTRUE(yerel_vardi)) {
-      assign("generate_statistical_summary", legacy, envir = owner)
-    } else if (exists("generate_statistical_summary", envir = owner, inherits = FALSE)) {
-      try(rm("generate_statistical_summary", envir = owner), silent = TRUE)
+    yigin <- .pk_p1_deep_holders$stack
+    if (length(yigin)) .pk_p1_deep_holders$stack <- yigin[-length(yigin)]
+    if (!length(.pk_p1_deep_holders$stack)) {
+      sahip <- .pk_p1_deep_holders$owner
+      if (is.environment(sahip)) {
+        if (isTRUE(.pk_p1_deep_holders$local_existed)) {
+          assign("generate_statistical_summary", .pk_p1_deep_holders$legacy, envir = sahip)
+        } else if (exists("generate_statistical_summary", envir = sahip, inherits = FALSE)) {
+          try(rm("generate_statistical_summary", envir = sahip), silent = TRUE)
+        }
+      }
+      .pk_p1_deep_holders$owner <- NULL
+      .pk_p1_deep_holders$legacy <- NULL
     }
   }, add = TRUE)
 
@@ -296,7 +358,10 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
       pre_aggregated_columns = query$pre_aggregated_columns
     )
   )
-  rendered <- pk_packet_render(packet)
+  # METADATA VE BÜTÇE NATİF YOLLA AYNI GEÇİRİLİR: ikisi de verilmeyince sorguya
+  # özgü bütçe ezmesi YOK SAYILIYOR ve `result$summary_text` natif yolun izin
+  # verdiğinden DAHA FAZLA veri taşıyabiliyordu.
+  rendered <- pk_packet_render(packet, query_meta = query$meta)
 
   result$summary_text <- rendered$text
   result$preview_json <- "{}"

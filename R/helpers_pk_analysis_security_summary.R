@@ -122,8 +122,8 @@ pk_rls_halt_message <- function(rls_info) {
   if (inherits(e, "pk_halt_error")) return(TRUE)
   if (exists("pk_active_stage_halt", mode = "function", inherits = TRUE) &&
       isTRUE(try(pk_active_stage_halt(), silent = TRUE))) return(TRUE)
-  metin <- tryCatch(conditionMessage(e), error = function(x) "")
-  if (is.null(metin) || is.na(metin) || !nzchar(metin)) return(FALSE)
+  metin <- as.character(tryCatch(conditionMessage(e), error = function(x) ""))[1]  # KOŞUL MESAJI ÖNCE SKALERE İNDİRGENİR: `conditionMessage()`, çok elemanlı bir `message` alanıyla kurulmuş koşulda (bkz. `.pk_rls_bounded_query()`) BİRDEN ÇOK öge döndürebilir; `is.na(metin)` o zaman VEKTÖR olur ve `||` R 4.3+ sürümlerinde "invalid length argument" fırlatır. Hata `get_user_rls_info()` içindeki `tryCatch` işleyicisinin İÇİNDEN kaçar ve yetki okuması tipli kapalı-başarısız sonuç yerine HAM bir R hatasıyla düşerdi.
+  if (length(metin) != 1L || is.na(metin) || !nzchar(metin)) return(FALSE)
   isaretler <- c("durduruldu", "butcesi tukendi", "butcesi tukendi;",
                  "reached elapsed time limit", "time limit")
   any(vapply(isaretler, function(p) grepl(p, metin, fixed = TRUE), logical(1)))

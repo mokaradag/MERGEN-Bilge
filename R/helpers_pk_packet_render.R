@@ -246,12 +246,17 @@
     if (!is.null(top_k)) ilk <- utils::head(ilk, max(1L, as.integer(top_k)))
     dusen <- utils::tail(k$top, max(0L, length(k$top) - length(ilk)))
 
-    satirlar <- c(sprintf("- %s: %s farkli deger %s (bos: %s %s)",
+    # SAYI VE İŞARETİ AYNI SONLULUK KAPISINDAN GEÇER (satır 111-127 sözleşmesi):
+    # `pk_packet_context_facts()` sonlu olmayan bir tanım için olgu ÜRETMEZ, bu
+    # yüzden işaret basılınca olgu dizininde karşılığı olmuyor, alıntı
+    # `unknown_fact` oluyor ve `block` kipinde TÜM yanıt deterministik yedekle
+    # değiştiriliyordu.
+    satirlar <- c(sprintf("- %s: %s%s (bos: %s%s)",
                           .pk_render_safe_text(k$label, 120L),
-                          pk_fmt_number(k$distinct, 0L),
-                          .pk_render_marker(k$column, "distinct_count"),
-                          pk_fmt_number(k$missing, 0L),
-                          .pk_render_marker(k$column, "missing_count")))
+                          if (.pk_render_finite(k$distinct)) paste0(pk_fmt_number(k$distinct, 0L), " farkli deger") else "farkli deger sayisi HESAPLANMADI",
+                          if (.pk_render_finite(k$distinct)) paste0(" ", .pk_render_marker(k$column, "distinct_count")) else "",
+                          if (.pk_render_finite(k$missing)) pk_fmt_number(k$missing, 0L) else "?",
+                          if (.pk_render_finite(k$missing)) paste0(" ", .pk_render_marker(k$column, "missing_count")) else ""))
 
     if (isTRUE(k$high_cardinality)) {
       satirlar <- c(satirlar, paste(
@@ -362,7 +367,9 @@
     # sinirindan gecmiyordu.
     gecerli_kova <- Filter(function(b) {
       etiket <- suppressWarnings(as.character(b$bucket)[1])
-      length(etiket) == 1L && !is.na(etiket) && nzchar(etiket)
+      # SAYIM DA SONLU OLMALIDIR: sonlu olmayan bir kova için işaret basılıyor
+      # ama `pk_packet_context_facts()` olgu üretmiyordu.
+      length(etiket) == 1L && !is.na(etiket) && nzchar(etiket) && .pk_render_finite(b$count)
     }, t$buckets)
     kova <- vapply(gecerli_kova, function(b) {
       etiket <- as.character(b$bucket)[1]
@@ -371,11 +378,11 @@
               .pk_render_marker(t$column, "bucket_count", etiket))
     }, character(1))
     paste(c(
-      sprintf("- %s: %s - %s (%s kayit %s)", .pk_render_safe_text(t$label, 120L),
+      sprintf("- %s: %s - %s (%s kayit%s)", .pk_render_safe_text(t$label, 120L),
               .pk_render_safe_text(t$from, 40L),
               .pk_render_safe_text(t$to, 40L),
-              pk_fmt_number(t$n, 0L),
-              .pk_render_marker(t$column, "date_count")),
+              if (.pk_render_finite(t$n)) pk_fmt_number(t$n, 0L) else "?",
+              if (.pk_render_finite(t$n)) paste0(" ", .pk_render_marker(t$column, "date_count")) else ""),
       if (length(kova)) sprintf("  - Aylik: %s", paste(kova, collapse = ", ")) else NULL,
       if (isTRUE(t$truncated)) "  - (En eski aylar kisaltildi)" else NULL
     ), collapse = "\n")
@@ -465,7 +472,7 @@
                         if (length(kapsama_parcalari))
                           paste0("\n- ", paste(kapsama_parcalari, collapse = " | ")) else ""))
 
-  if (!is.na(c_$duplicate_rows_at_grain %||% NA_integer_)) {
+  if (.pk_render_finite(c_$duplicate_rows_at_grain)) {  # `%||% NA_integer_` YALNIZCA `NULL` atlar; `NaN`/`Inf` denetimden geçip işareti bastırıyor, sıfır uzunluklu bir değer ise `if` içinde "argument is of length zero" ile TÜM paket derlemesini düşürüyordu.
     satirlar <- c(satirlar, sprintf("- Beyan edilen tanecikte mukerrer satir: %s %s",
                                     pk_fmt_number(c_$duplicate_rows_at_grain, 0L),
                                     .pk_render_marker("__kapsama__", "grain_duplicates")))

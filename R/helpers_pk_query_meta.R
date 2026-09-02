@@ -183,13 +183,13 @@ pk_meta_validate_query <- function(query_id, meta, registry = NULL) {
   )
   sutunlar <- meta$column_meta
 
-  if (!is.null(meta$grain) && !.pk_meta_is_scalar_text(meta$grain)) {
+  if (!is.null(.pk_meta_field(meta, "grain")) && !.pk_meta_is_scalar_text(.pk_meta_field(meta, "grain"))) {  # TAM AD OKUMASI: `meta$grain` R'de KISMİ EŞLEŞME yapar ve yalnızca `grain_columns` bildiren bir kayıtta O VEKTÖRÜ döndürür; geçerli küratör metadata'sı "grain tek metin olmalıdır" diye YANLIŞ bir başlangıç bulgusu üretiyordu.
     hatalar <- c(hatalar, .pk_meta_err(query_id, "grain tek bos olmayan metin olmalidir."))
   }
   if (!is.null(meta$primary_entity) && !.pk_meta_is_scalar_text(meta$primary_entity)) {
     hatalar <- c(hatalar, .pk_meta_err(query_id, "primary_entity tek bos olmayan metin olmalidir."))
   }
-  if (!is.null(meta$entity) && !.pk_meta_is_scalar_text(meta$entity)) {
+  if (!is.null(.pk_meta_field(meta, "entity")) && !.pk_meta_is_scalar_text(.pk_meta_field(meta, "entity"))) {  # TAM AD OKUMASI: `entity` / `entity_kind` / `entity_kinds` ÖNEK ÇAKIŞIR; `$` yalnızca uzun adı bildiren kayıtta onun değerini döndürüyordu.
     hatalar <- c(hatalar, .pk_meta_err(query_id, "entity tek bos olmayan metin olmalidir."))
   }
 
@@ -217,7 +217,7 @@ pk_meta_validate_query <- function(query_id, meta, registry = NULL) {
     }
   }
 
-  if (!is.null(meta$grain) &&
+  if (!is.null(.pk_meta_field(meta, "grain")) &&
       !.pk_meta_is_text_vector(meta$grain_columns, allow_empty = FALSE)) {
     hatalar <- c(hatalar, .pk_meta_err(query_id,
       "grain beyan edildiginde bos olmayan grain_columns zorunludur."))

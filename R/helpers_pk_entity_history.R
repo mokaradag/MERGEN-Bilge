@@ -338,8 +338,8 @@ pk_entity_followup_plan <- function(chat_history, phrase, limit = 5L) {
 # Bir kararın KESİN (kayıpsız) bir katmandan gelip gelmediği.
 .pk_entity_is_strong_result <- function(karar) {
   if (!length(karar$candidates)) return(FALSE)
-  identical(karar$candidates[[1]]$tier, "exact_fold") ||
-    identical(karar$candidates[[1]]$tier, "alias")
+  # KATMAN KÜMESİ `helpers_pk_entity_scan.R` İÇİNDEKİ `guclu_katman` İLE AYNIDIR: ikincil anahtar katmanları da kayıpsızdır (kullanıcı hiç Türkçe harf yazmadığında ASCII katlama kayıp üretmez). Dar küme, bu turda AÇIKÇA yazılmış `"akinci icin"` gibi bir varlığı (`ascii_key` -> `AKINCI`) "zayıf" sayıp DÜŞÜRÜYOR ve onay istemi ESKİ turun bağlamını öneriyordu.
+  as.character(karar$candidates[[1]]$tier)[1] %in% c("exact_fold", "alias", "ascii_key", "punct_key", "compact_key")
 }
 
 #' Geçmiş farkındalıklı varlık çözümleme (D11)
@@ -408,8 +408,8 @@ pk_entity_resolve_with_history <- function(phrase, candidates, chat_history = NU
   #      GEÇMİŞ için denendiğinde, bu turda AÇIKÇA yazılmış bir varlık
   #      (`"ANKA icin"`) kalıcı bağlamla DEĞİŞTİRİLİYORDU: kullanıcının az önce
   #      yazdığı özne hiç teklif edilmiyor, onay istemi ESKİ özneyi öneriyordu.
-  for (belirtec in setdiff(pk_entity_tokens(phrase, stem = FALSE),
-                           .PK_ENTITY_REFINEMENT_WORDS)) {
+  #      BELİRTEÇLER KATLANMIŞ METİNDEN TÜRETİLİR: ham `pk_entity_tokens()` yalnızca boşluktan böler, `.PK_ENTITY_REFINEMENT_WORDS` ise katlanmış küçük harfli formları tutar. `"AKINCI İÇİN?"` girdisinde `setdiff()` HİÇBİR ŞEY elemiyor, daraltma sözcüğü için de tam sözlük taraması çalışıyordu. `tokens_raw` aynı boru hattının SOYULMAMIŞ çıktısıdır (satır 122/139/236 ile aynı kural).
+  for (belirtec in setdiff(pk_entity_normalize(phrase)$tokens_raw, .PK_ENTITY_REFINEMENT_WORDS)) {
     karar <- coz(belirtec, plural_override = cogul)
     if (karar$decision %in% c("auto", "confirm") &&
         .pk_entity_is_strong_result(karar)) {

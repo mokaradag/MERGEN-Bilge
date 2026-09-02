@@ -20,6 +20,7 @@ PKG_HEALTH_STATUS <- c("ok", "withheld", "failed", "skipped")
 PKG_HEALTH_SCHEMA_FAILURE_CODES <- c(
   "no_connection", "describe_failed", "describe_unavailable",
   "describe_empty_schema", "describe_invalid_schema",
+  "describe_rewrite_failed",  # `.pkgn_fetch_describe()` bu kodu dondurur; listede olmadigi icin `pkgh_query_record()` sema alinamamis bir kaydi `schema_failure = FALSE` isaretliyor ve "Sema alinamayan" satiri GERCEKTEN dusuk raporluyordu.
   "sample_failed", "sample_not_dataframe", "sample_no_columns",
   "sample_invalid_schema", "sample_not_normalized", "sample_not_server_bounded",
   "schema_unavailable"

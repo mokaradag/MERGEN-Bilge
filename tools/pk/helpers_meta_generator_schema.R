@@ -197,6 +197,24 @@ pkgs_schema_from_descriptor <- function(descriptor) {
     if (isTRUE(tip$unbounded)) sinirsiz <- c(sinirsiz, ad_ham)
   }
 
+  # TEKRAR EDEN SONUC SUTUNU RAPOR EDILIR AMA SEMAYI GECERSIZ KILMAZ.
+  #
+  # `stats::setNames()` tekrar eden adi bir kez tasiyan bir vektor uretir ve
+  # asagi akistaki her `[[ad]]` aramasi ILK esleseni cozer:
+  # `SELECT a.ProjeKodu, b.ProjeKodu FROM ...` sonucunda `result_schema` ve
+  # uretilen `column_meta` yalnizca ILK sutunu betimler, IKINCI sutun ise
+  # birincinin rolunu ve `source_type` degerini devralir; metadata gercek
+  # DBI sonucuyla CELISIR.
+  #
+  # BUNU `gecersiz` LISTESINE EKLEMEK YANLIS OLURDU: semayi tumden reddetmek,
+  # calisma zamani dogrulayicisinin ayni sema uzerinde urettigi
+  # `rls_column_duplicated` GUVENLIK bulgusunu da ortadan kaldirir; kayit
+  # `describe_invalid_schema` ile geri cekilir, `security_finding_count` ve
+  # `rls_mismatches` SIFIR kalir ve operator DURDURUCU uyariyi HIC gormez
+  # (bkz. "MUKERRER RLS sutunu GUVENLIK bulgusudur" sozlesme testi).
+  # Tekrar bu yuzden AYRI bir alanda tasinir; cagiran bunu bir bulguya
+  # cevirir ve guvenlik yolu bozulmadan kalir.
+  tekrar <- unique(adlar[duplicated(adlar)])
   if (length(gecersiz)) {
     return(list(ok = FALSE, invalid = unique(gecersiz), schema = NULL))
   }
@@ -208,6 +226,7 @@ pkgs_schema_from_descriptor <- function(descriptor) {
   list(
     ok = TRUE,
     invalid = character(0),
+    duplicate_columns = tekrar,
     schema = sema,
     source_types = kaynak,
     # BEYAN EDİLEN GENİŞLİK KANITI. `sample` kipi natif tip ADINI alsa bile
@@ -356,8 +375,16 @@ pkgs_sample_observations <- function(df, high_cardinality_threshold = 50L,
   if (length(esik) != 1L || is.na(esik) || esik < 2L) esik <- 50L
 
   out <- list()
-  for (sutun in names(df)) {
-    deger <- df[[sutun]]
+  for (ham_sutun in names(df)) {
+    deger <- df[[ham_sutun]]
+    # ANAHTAR SEMA ILE AYNI TEMSILDE OLMALIDIR: `pkgs_schema_from_dataframe()`
+    # sutun adini `.pkgs_utf8()` ile isaretler ve `pkgs_build_column_meta()`
+    # adlarini o semadan turetir. Ham adi anahtar yapmak, Windows VM'de
+    # native/CP1254 isaretli Turkce bir sutun adinda BAYTLARI farklilastirir;
+    # `pkgs_apply_observations()` o sutun icin giris bulamaz, `observed`
+    # yazilmaz ve KANITLANMIS bir `high_cardinality` sessizce kaybolur.
+    sutun <- .pkgs_utf8(ham_sutun)
+    if (is.na(sutun) || !nzchar(sutun)) sutun <- ham_sutun
     n <- length(deger)
 
     gozlem <- list(

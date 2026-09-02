@@ -203,6 +203,11 @@ pk_export_info_sheet <- function(context = list(), plan = list()) {
   filtreler <- context$filters %||% list()
   filtre_metni <- if (length(filtreler)) {
     paste(vapply(filtreler, function(f) {
+      # LİSTE OLMAYAN GİRDİDE `$` HATA FIRLATIR: `pk_export_info_sheet()`
+      # `pk_export_build()` içinden `tryCatch` OLMADAN çağrılır, bu yüzden ham
+      # hata dışa sızıyor ve dışa aktarım tipli bir durum yerine yapısız bir
+      # başarısızlık bildiriyordu.
+      if (!is.list(f)) return(as.character(f)[1])
       sprintf("%s %s %s", as.character(f$column %||% "?")[1],
               as.character(f$operation %||% "=")[1],
               paste(as.character(f$value %||% ""), collapse = ", "))
@@ -231,7 +236,7 @@ pk_export_info_sheet <- function(context = list(), plan = list()) {
   degerler <- c(
     as.character(context$query_id %||% "?")[1],
     as.character(context$query_name %||% "?")[1],
-    format(context$timestamp %||% Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    format((context$timestamp %||% Sys.time())[1], "%Y-%m-%d %H:%M:%S"),  # SKALERE İNDİRİLİR: çok ögeli bir `timestamp`, `degerler` uzunluğunu `alanlar`dan ayırıp `data.frame()` çağrısını "differing number of rows" ile düşürüyordu.
     as.character(context$username %||% "?")[1],
     filtre_metni,
     paste(as.character(context$resolved_values %||% character(0)), collapse = ", "),

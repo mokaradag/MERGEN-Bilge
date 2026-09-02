@@ -191,10 +191,17 @@ cc_path_is_reparse_link <- function(path) {
     # uyarı yutulduğunda eksik sonuç BAŞARILI sayılıyordu. `warn = 2` uyarıyı
     # HATAYA çevirir, böylece kısmi sonuç aşağıda AÇIKÇA reddedilir (ek bir
     # işleyici kapanışı gerekmeden; dosya fonksiyon bütçesi sınırındadır).
+    # KALAN BÜTÇE UZATILMAZ. `max(0.05, ...)` 50 ms'den AZ kalmışken yedeğe yine
+    # 50 ms veriyordu; yavaş bir UNC dizininde `cc_scan_list_dir_bounded()`
+    # ana Shiny sürecini `timeout_ms` ÖTESİNDE bloklayabiliyordu. Kullanılabilir
+    # en küçük sınırın altında kalındığında yedek HİÇ denenmez.
+    if (isTRUE(kalan_ms < 50)) {
+      return(list(entries = character(0), truncated = TRUE, reason = "timeout"))
+    }
     eski_warn <- getOption("warn")
     on.exit({ options(warn = eski_warn); setTimeLimit() }, add = TRUE)
     options(warn = 2L)
-    setTimeLimit(elapsed = max(0.05, kalan_ms / 1000), transient = TRUE)
+    setTimeLimit(elapsed = kalan_ms / 1000, transient = TRUE)
     yedek <- try(fs::dir_ls(path, recurse = FALSE, all = FALSE, fail = FALSE), silent = TRUE)
     setTimeLimit()
     options(warn = eski_warn)

@@ -217,6 +217,14 @@ normalize_claude_code_text_file_to_utf8 <- function(file_path) {
     #   * `MERGEN_CLAUDE_CODE_REPAIR_VALID_UTF8=true` -> operatör AÇIK izni.
     # Kabul ölçütü her iki durumda da AYNI kalır: onarılan aday YALNIZCA daha
     # yüksek puan alırsa kullanılır, dolayısıyla temiz metin bozulamaz.
+    #
+    # PR #705 incelemesi `mevcut_skor < 0` kapısının da kaldırılmasını önerdi
+    # (geçerli bir kodlama örneği de negatif puan alabilir). UYGULANMADI:
+    # `test-claude-code-turkish-decoding-behavior.R:143` tam olarak bu kapıyı
+    # KİLİTLER — içeriği yalnızca "\u00C5\u017E" olan bir dosya operatör izni
+    # OLMADAN da onarılmalıdır; aksi hâlde tartışmasız mojibake, üretilen
+    # dosyalarda olduğu gibi kalırdı. Negatif puan "bozuk dizi BASKIN" demektir
+    # ve bu, dosyadaki belgelenmiş kanıt ölçütüdür.
     karisik_onarim_izni <- isTRUE(tolower(trimws(Sys.getenv(
       "MERGEN_CLAUDE_CODE_REPAIR_VALID_UTF8", unset = "false"
     ))) %in% c("true", "1", "yes", "on", "evet"))

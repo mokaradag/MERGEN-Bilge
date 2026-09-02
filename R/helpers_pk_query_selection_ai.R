@@ -120,13 +120,10 @@ pk_select_llm_invoke <- function(messages, cfg, session = NULL, llm_fn = NULL,
   # hatası gibi görünür; bu yüzden burada TİPLİ bir zaman aşımı/iptal sonucuna
   # dönüştürülür — aksi hâlde Durdur "AI servisi kullanılamıyor" olarak rapor
   # edilirdi.
-  .select_halted <- if (exists("pk_stage_halted", mode = "function", inherits = TRUE)) {
-    pk_stage_halted
-  } else {
-    function() FALSE
-  }
+  .select_halted <- if (exists("pk_stage_halted", mode = "function", inherits = TRUE)) pk_stage_halted else function() FALSE
+  # DURDURMA TİPLİ AYRIŞTIRILIR: `pk_stage_halted()` kullanıcı Durdur'u ile son tarih aşımını TEK boole'de birleştirir. Ham `timeout` dönmek `pk_select_query_v2()` yolunda oturum durumunu SİLİYOR (bkz. `helpers_pk_query_selection_apply.R`; durum yalnızca `PK_SELECT_STATUS_CANCELLED` için korunur) ve sonraki eliptik takip sorusu bağlamını kaybediyordu; ham `cancelled` dönmek ise kullanıcının durdurmadığı bir zaman aşımını "siz iptal ettiniz" diye raporlardı.
   if (.select_halted()) {
-    return(list(ok = FALSE, text = NA_character_, status = PK_SELECT_STATUS_TIMEOUT))
+    return(list(ok = FALSE, text = NA_character_, status = pk_select_halt_status()))
   }
 
   sonuc <- tryCatch(
@@ -142,7 +139,7 @@ pk_select_llm_invoke <- function(messages, cfg, session = NULL, llm_fn = NULL,
       (exists("pk_http_cancelled_error", mode = "function", inherits = TRUE) &&
          isTRUE(tryCatch(pk_http_cancelled_error(ileti), error = function(e) FALSE)))
     if (isTRUE(iptal)) {
-      return(list(ok = FALSE, text = NA_character_, status = PK_SELECT_STATUS_TIMEOUT))
+      return(list(ok = FALSE, text = NA_character_, status = pk_select_halt_status()))
     }
     return(list(
       ok = FALSE, text = NA_character_,
@@ -151,7 +148,7 @@ pk_select_llm_invoke <- function(messages, cfg, session = NULL, llm_fn = NULL,
   }
 
   if (.select_halted()) {
-    return(list(ok = FALSE, text = NA_character_, status = PK_SELECT_STATUS_TIMEOUT))
+    return(list(ok = FALSE, text = NA_character_, status = pk_select_halt_status()))
   }
 
   if (is.null(sonuc)) {
@@ -302,7 +299,7 @@ pk_select_run_pass_b <- function(user_prompt, candidates, candidate_ids, context
 #' sunmuyor" ise bir metadata gerçeğidir; aynı istemi tekrarlamak onu
 #' değiştirmez ve karar politikasına bırakılır.
 .pk_select_repairable_semantic_error <- function(pass_b, library_index, capability_ids) {
-  secilen <- library_index[[pass_b$id]]
+  secilen <- if (as.character(pass_b$id %||% "")[1] %in% names(library_index)) library_index[[pass_b$id]] else NULL  # `[[` EKSİK/ADSIZ anahtarda `NULL` DÖNDÜRMEZ, "subscript out of bounds" FIRLATIR; `bloklar$ids` boşken satır 267 `candidate_ids`e düşüyor ve kütüphanede OLMAYAN bir tohum kimliği buraya gelebiliyordu.
   if (is.null(secilen)) return(NA_character_)
 
   # DOĞRULAYICI İSTİSNASI ONARIM KAPISINDAN KAÇMAZ: `pk_select_run_pass_b()` yerel bir yakalayıcı içinde çalışmaz; buradan kaçan bir istisna isteği, normal karar yolunun ürettiği tipli `validator_error` reddi yerine `internal_error` yapardı. Hata durumunda onarım DENENMEZ ve karar politikasına bırakılır.
@@ -347,7 +344,7 @@ pk_select_confirmed_decision <- function(session, prompt, library_index, chat_ke
   kimlik <- pk_select_resolve_user_choice(session, prompt, chat_key)
   if (is.na(kimlik)) return(NULL)
 
-  secilen <- library_index[[kimlik]]
+  secilen <- if (kimlik %in% names(library_index)) library_index[[kimlik]] else NULL  # `[[` EKSİK anahtarda "subscript out of bounds" FIRLATIR: kaldırılmış bir sorguyu adlandıran BAYAT bir teklif, taze seçime düşmek yerine TÜM isteği `internal_error` yapıyordu.
   if (is.null(secilen)) return(NULL)
 
   # ONAYLANAN ÇİP YETENEK KAPISINI ATLAYAMAZ.
@@ -364,12 +361,11 @@ pk_select_confirmed_decision <- function(session, prompt, library_index, chat_ke
     pk_select_offer_requirements(session, chat_key), error = function(e) NULL
   )
 
-  if (!is.null(gereksinimler) &&
-      exists("pk_select_validate_requirements", mode = "function", inherits = TRUE)) {
-    kontrol <- tryCatch(
-      pk_select_validate_requirements(secilen, gereksinimler),
-      error = function(e) NULL
-    )
+  if (!is.null(gereksinimler)) {
+    .dogrulanamadi <- list(asserted = TRUE, status = PK_SELECT_STATUS_VALIDATOR_ERROR, errors = "Yetenek dogrulayicisi calistirilamadi.")  # KAPALI BAŞARISIZLIK: doğrulayıcı YOKSA (izole çalışma zamanı) ya da İSTİSNA fırlatırsa kapı tamamen ATLANIYOR, `kontrol` `NULL` kalıyor ve onaylanan çip `AUTO` + `not_asserted` ile SQL çalıştırıyordu; normal karar yolu AYNI arızada `validator_error` ile reddederken çip yolu AÇIK kalıyordu.
+    kontrol <- if (exists("pk_select_validate_requirements", mode = "function", inherits = TRUE)) {
+      tryCatch(pk_select_validate_requirements(secilen, gereksinimler), error = function(e) .dogrulanamadi)
+    } else .dogrulanamadi
 
     # İFADE EDİLEMEYEN İHTİYAÇ ÇİP ONAYIYLA SİLİNEMEZ. `unsupported` SERBEST
     # METİNDİR; doğrulayıcı onu yetenek iddiası saymaz ve `not_asserted` döner.

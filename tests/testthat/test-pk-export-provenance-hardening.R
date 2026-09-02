@@ -321,7 +321,7 @@ test_that("P1: tanecik ihlali TOPLAM ve ORTALAMAYI GECERSIZ kilar", {
 
   expect_null(toplam$value)
   expect_identical(toplam$status, "grain_violation")
-  expect_true(any(grepl("mukerrer satir", paket$limitations, fixed = TRUE)))
+  expect_true(any(grepl("mükerrer satır", paket$limitations, fixed = TRUE)))  # Sınırlılık metni Türkçe karakterlerle üretilir (Latinleştirme YASAK).
 })
 
 test_that("P1: ayristirilamayan tarih sutunu v2 istegini DUSURMEZ", {
@@ -333,9 +333,11 @@ test_that("P1: ayristirilamayan tarih sutunu v2 istegini DUSURMEZ", {
     Saat = list(label = "Saat", role = "measure", additive = TRUE)
   )))
 
-  paket <- expect_no_error(
-    env$pk_packet_build(veri, q, list(authorized_rows = 2L, filtered_rows = 2L))
-  )
+  # `expect_no_error()` testthat >= 3.1.0 gerektirir; daha eski bir ortamda
+  # "bulunamadi" hatasi verir ve `stop_on_failure = TRUE` altinda asagidaki
+  # `paket` iddialari HIC calismadan tum suite duserdi. Cagri dogrudan yapilir;
+  # bir hata firlarsa test zaten hata olarak raporlanir.
+  paket <- env$pk_packet_build(veri, q, list(authorized_rows = 2L, filtered_rows = 2L))
   expect_identical(paket$dates[[1]]$unavailable, "Tarih olarak ayristirilamadi")
   expect_null(paket$scope$time_window)
 })
@@ -638,17 +640,42 @@ test_that("P2: bilesik/simgesel birimler AYRISTIRILIR", {
   expect_length(sonuc$mismatches, 0L)
 })
 
-test_that("P1: dogrulayici hata verirse HAM model metni gosterilmez", {
+test_that("P1: dogrulayici hata verirse ZORLAMA kiplerinde HAM metin gosterilmez", {
   env <- .pk_export_hardening_env()
   env$pk_numeric_provenance_validate <- function(text, facts) stop("sentetik cokme")
 
-  sonuc <- env$pk_numeric_provenance_apply(
-    "Uydurma 999 [fact:yok].", list(), mode = "log", fallback_text = "**Hesaplanan**"
-  )
+  # ZORLAMA KIPLERI (`warn`/`block`) KAPALI BASARISIZ KALIR: ham model metni
+  # kullaniciya GITMEZ, deterministik yedek gosterilir.
+  for (kip in c("warn", "block")) {
+    sonuc <- env$pk_numeric_provenance_apply(
+      "Uydurma 999 [fact:yok].", list(), mode = kip, fallback_text = "**Hesaplanan**"
+    )
+    expect_true(sonuc$blocked, info = kip)
+    expect_false(grepl("Uydurma 999", sonuc$text, fixed = TRUE), info = kip)
+    expect_true(grepl("Hesaplanan", sonuc$text, fixed = TRUE), info = kip)
+  }
 
-  expect_true(sonuc$blocked)
-  expect_false(grepl("Uydurma 999", sonuc$text, fixed = TRUE))
-  expect_true(grepl("Hesaplanan", sonuc$text, fixed = TRUE))
+  # KALIBRASYON KIPLERI (`off`/`log`) YANITI DEGISTIRMEZ.
+  #
+  # `log` VARSAYILANDIR ve dosya basligindaki sozlesme "uyusmazliklar
+  # KAYDEDILIR, yanit degismez" der. Dogrulayicidaki tek bir uc durum,
+  # zorlamayi HIC acmamis her kurulumda model aciklamasini gizlerse
+  # kalibrasyon kipi fiilen `block` gibi calisirdi. Hata yine
+  # `mismatches` uzerinden kaydedilir.
+  for (kip in c("off", "log")) {
+    sonuc <- env$pk_numeric_provenance_apply(
+      "Uydurma 999 [fact:yok].", list(), mode = kip, fallback_text = "**Hesaplanan**"
+    )
+    expect_false(isTRUE(sonuc$blocked), info = kip)
+    expect_true(grepl("Uydurma 999", sonuc$text, fixed = TRUE), info = kip)
+    expect_false(grepl("[fact:", sonuc$text, fixed = TRUE), info = kip)
+    # `off` DOGRULAYICIYI HIC CAGIRMAZ (tam kapali kip), bu yuzden kayit da
+    # uretmez; kalibrasyon kaydi yalnizca `log` icin beklenir.
+    if (identical(kip, "log")) {
+      nedenler <- vapply(sonuc$mismatches, function(m) as.character(m$reason)[1], character(1))
+      expect_true("validator_error" %in% nedenler, info = kip)
+    }
+  }
 })
 
 # --- P1/P2: yanıt kompozisyonu -------------------------------------------------

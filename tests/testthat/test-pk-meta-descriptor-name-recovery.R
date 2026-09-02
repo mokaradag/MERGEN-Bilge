@@ -69,7 +69,7 @@ test_that("kolon sayısı uyuşmazsa ad kurtarma fail-closed kalır", {
   )
 })
 
-test_that("runtime sonucu da adsizsa sema uydurulmaz", {
+test_that("runtime sonucu da adsızsa şema uydurulmaz", {
   descriptor <- .pk_descriptor_fixture()
   runtime_names <- c("", "MasrafYeri", "SicilNo", "KaynakAdi", "EPPosta", "Telefon")
 
@@ -80,7 +80,7 @@ test_that("runtime sonucu da adsizsa sema uydurulmaz", {
   )
 })
 
-test_that("tam statik sema runtime adlarina dokunmadan korunur", {
+test_that("tam statik şema runtime adlarına dokunmadan korunur", {
   descriptor <- .pk_descriptor_fixture()
   descriptor$name <- c("A", "B", "C", "D", "E", "F")
 

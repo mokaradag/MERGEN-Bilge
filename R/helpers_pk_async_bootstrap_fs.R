@@ -22,9 +22,12 @@
 #' geçirir; bütçe tükendiğinde ya da çağrı kesildiğinde `FALSE` döner
 #' (KAPALI BAŞARISIZ: eksik dosya gibi davranılır).
 #'
-#' `pk_async_bounded_fs()` yoksa (izole test/eski yükleme sırası) davranış
-#' çıplak denetimle AYNIDIR; yani bu dosya hiçbir yolu yeni bir bağımlılığa
-#' bağlamaz.
+#' `pk_async_bounded_fs()` YOKSA (izole test/eski yükleme sırası) denetim
+#' KAPALI BAŞARISIZ olur ve `FALSE` döner; çıplak `file.exists()`/`dir.exists()`
+#' çağrısına DÜŞÜLMEZ. Askıda bir UNC/NFS bağlama noktasında çıplak çağrı
+#' işçiyi süresiz bloklar ve iptal/son tarih kapısına hiç ulaşılamaz; bu
+#' yardımcı tam da onu engellemek için vardır, dolayısıyla sınırlandırıcının
+#' yokluğunda "dosya yok" demek "sınırsız beklemek"ten güvenlidir.
 #'
 #' @param path Denetlenecek yol (tek öge).
 #' @param dir `TRUE` ise `dir.exists()`, aksi hâlde `file.exists()`.

@@ -184,7 +184,7 @@ pk_select_parse_pass_a <- function(text, library_ids, expected_n = NULL) {
     # işaretlenmiyor ve marj kapısı sözleşme dışı alanlardan gelen değerlerle
     # hesaplanıyordu. Anahtar kümesi de `id`/`confidence` ile sınırlandırılır.
     anahtarlar <- names(girdi) %||% character(0)
-    if (!all(anahtarlar %in% c("id", "confidence"))) {
+    if (!length(anahtarlar) || !all(anahtarlar %in% c("id", "confidence"))) {  # ADSIZ ÖGE DE SÖZLEŞME DIŞIDIR: `names()` NULL iken (`[["q002",60]]` ya da `{}`) denetim BOŞ kümede TRUE döner ve `girdi[["id"]]` "subscript out of bounds" ile ÇÖKER; katı ayrıştırıcı `malformed` yerine iç hata üretiyor, tek onarım denemesi de atlanıyordu.
       return(list(ok = FALSE, values = list(), error = paste0(
         "'alternates' ögesi yalnızca 'id' ve 'confidence' alanlarını taşıyabilir; ",
         "sözleşme dışı alan: ",

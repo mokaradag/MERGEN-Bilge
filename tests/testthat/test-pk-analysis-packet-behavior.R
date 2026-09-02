@@ -696,6 +696,11 @@ test_that("dogru alintilanan bir pay iddiasi `unit_mismatch` uretmez", {
   # kendiliginden gecirirdi.
   expect_gte(sonuc$checked, 1L)
 
+  # `%||%` BU DOSYADA YEREL OLARAK TANIMLANIR: `.pk_packet_env()` operatörü
+  # yalnızca kendi izole ortamına koyar ve R 4.4.0 ÖNCESİ sürümlerde base
+  # karşılığı YOKTUR; başka bir test dosyasının `globalenv()` içine sızdırdığı
+  # bağlantıya güvenmek TEST SIRASI BAĞIMLILIĞI yaratırdı.
+  `%||%` <- function(a, b) if (is.null(a)) b else a
   nedenler <- vapply(sonuc$mismatches %||% list(),
                      function(m) as.character(m$reason)[1], character(1))
   expect_false("unit_mismatch" %in% nedenler)

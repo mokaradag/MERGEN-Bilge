@@ -278,20 +278,16 @@ pk_entity_nearest_candidates <- function(phrase, candidates, n = 3L,
   degerler <- degerler[!is.na(degerler) & nzchar(trimws(degerler))]
   if (!length(degerler)) return(list())
 
-  user_norm <- pk_entity_normalize(phrase)
+  ham_ifade <- if (is.null(phrase) || !length(phrase)) NA_character_ else as.character(phrase)[1]  # İFADE UZUNLUĞU TAVANI BURADA DA UYGULANIR: `pk_entity_score_candidates()` ifadeyi `MERGEN_PK_RESOLVE_MAX_PHRASE_CHARS` ile kırpar, ama bu kurtarma yolu `pk_entity_resolve()` üzerinden HAM ifadeyi alıyordu. Levenshtein maliyeti O(m*n) olduğu için aday tavanı TEK BAŞINA işi sınırlamaz: kullanıcı çözümlenebilir bir alana uzun bir metin yapıştırdığında hiçbir aday eşleşmez, kural 6/7 her seferinde buraya düşer ve senkron PK yolunda paylaşılan Shiny süreci her oturum için bloklanırdı.
+  azami_karakter <- .pk_entity_scan_limit("MERGEN_PK_RESOLVE_MAX_PHRASE_CHARS", 160L, query_meta)
+  if (!is.na(ham_ifade) && nchar(ham_ifade) > azami_karakter) ham_ifade <- substring(ham_ifade, 1L, azami_karakter)
+  user_norm <- pk_entity_normalize(ham_ifade)
   if (isTRUE(user_norm$blank)) return(list())
 
   # KAPALI BAŞARISIZ: paket yoksa kurtarma yolu ÖNERİ ÜRETMEZ ama isteği İSTİSNAYA da çevirmez (bkz. `.pk_entity_edit_available()`).
   if (!.pk_entity_edit_available()) return(list())
-  # TARAMA TAVANI BURADA DA UYGULANIR — HEM DE NORMALLEŞTİRMEDEN ÖNCE. Eşik altı
-  # kurtarma yolu bu yardımcıyı sütundaki HER ayrık değerle çağırır ve
-  # `MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES` tavanını YOK SAYIYORDU: yüksek
-  # kardinaliteli bir sütunda tek yazım hatası on binlerce hesabı geri getirip
-  # asenkron kapalıyken paylaşılan Shiny olay döngüsünü blokluyordu. Kırpma
-  # `.pk_entity_coarse_view()` ÇAĞRILMADAN ÖNCE yapılır (baskın maliyet TÜM
-  # değerler üzerindeki katlama/ASCII normalleştirmesidir); ön eleme
-  # `.pk_entity_shortlist()` ile AYNI uzunluk bandını kullanır (ham `nchar`
-  # ucuzdur, sıralama YOKTUR).
+  # TARAMA TAVANI BURADA DA UYGULANIR — HEM DE NORMALLEŞTİRMEDEN ÖNCE. Eşik altı kurtarma yolu bu yardımcıyı sütundaki HER ayrık değerle çağırır ve `MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES` tavanını YOK SAYIYORDU: yüksek kardinaliteli bir sütunda tek yazım hatası on binlerce hesabı geri getirip asenkron kapalıyken paylaşılan Shiny olay döngüsünü blokluyordu.
+  # Kırpma `.pk_entity_coarse_view()` ÇAĞRILMADAN ÖNCE yapılır (baskın maliyet TÜM değerler üzerindeki katlama/ASCII normalleştirmesidir); ön eleme `.pk_entity_shortlist()` ile AYNI uzunluk bandını kullanır (ham `nchar` ucuzdur, sıralama YOKTUR).
   azami_tarama <- .pk_entity_scan_limit(
     "MERGEN_PK_RESOLVE_MAX_SCAN_CANDIDATES", 2000L, query_meta
   )

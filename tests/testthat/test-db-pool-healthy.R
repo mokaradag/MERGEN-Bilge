@@ -115,8 +115,11 @@ test_that(".db_with_elapsed_budget dis sinirin KALANINI geri yukler", {
 
   expect_gte(length(cagrilar), 3L)
   # 1) dış sınır kurulur, 2) iç sınır DARALTIR, 3) çıkışta dışın KALANI geri gelir.
-  expect_equal(cagrilar[[1]], 30, tolerance = 0.5)
-  expect_equal(cagrilar[[2]], 2, tolerance = 0.5)
+  # `tolerance` GÖRECELİDİR (testthat 3. sürüm waldo'ya devreder): 0.5 değeri 30
+  # için ~%50 sapmaya, 2 için 1-3 aralığına izin veriyordu; yani bütçe aritmetiği
+  # YANLIŞKEN de test başarılı raporluyordu. Sınır MUTLAK saniye cinsinden sınanır.
+  expect_lt(abs(cagrilar[[1]] - 30), 0.5)
+  expect_lt(abs(cagrilar[[2]] - 2), 0.5)
   son_ic_cikis <- cagrilar[[3]]
   expect_true(is.finite(son_ic_cikis))
   # KALAN geri yüklenir: TAM bütçe geri yüklenirse bu iddia DÜŞER.
@@ -144,7 +147,7 @@ test_that("ic butce DIS butceyi GENISLETEMEZ (yalnizca daraltir)", {
   })
 
   expect_gte(length(cagrilar), 2L)
-  expect_equal(cagrilar[[1]], 1, tolerance = 0.5)
+  expect_lt(abs(cagrilar[[1]] - 1), 0.5)  # MUTLAK sapma (bkz. yukarıdaki not).
   # İÇ sınır DIŞ kalanı AŞMAZ.
   expect_lte(cagrilar[[2]], 1 + 0.5)
 })
@@ -162,6 +165,6 @@ test_that("dis sinir yokken cikis Inf'e doner (davranis korunur)", {
 
   env$.db_with_elapsed_budget(3, function() "tek")
 
-  expect_equal(cagrilar[[1]], 3, tolerance = 0.5)
+  expect_lt(abs(cagrilar[[1]] - 3), 0.5)  # MUTLAK sapma (bkz. yukarıdaki not).
   expect_true(is.infinite(cagrilar[[length(cagrilar)]]))
 })

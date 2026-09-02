@@ -279,10 +279,22 @@ test_that("dizin listeleyici hatası tarama hatalarına aktarılır", {
   # metin de her iki izni anar. Kararlı parçalar üzerinden eşleşilir; yalnızca
   # "okuma izni yok" arayan eski hâli, doğrulama güçlendirildiğinde kırılırdı.
   expect_true(any(grepl("Dizin listelenemedi", sonuc$errors, fixed = TRUE)))
-  # HER IKI IZIN ADI AYRI AYRI ARANIR (PR #705 incelemesi, P3): salt
-  # "izni yok" araması, tanı YALNIZCA arama iznini bildirecek biçimde
-  # gerilerse de geçerdi ve okuma+arama sözleşmesi denetlenmemiş olurdu.
-  expect_true(any(grepl("okuma/arama izni yok", sonuc$errors, fixed = TRUE)))
+  # OKUMA+ARAMA MESAJI DETERMİNİSTİK DALDA DENETLENİR.
+  #
+  # `fs` kurulu bir POSIX koşucusunda (root OLMAYAN) `fs::dir_ls(fail = FALSE)`
+  # erişim hatasını UYARIYA çevirir; tarayıcı `options(warn = 2L)` altında
+  # onu `Dizin listelenemedi: <fs mesajı>` hatasına dönüştürür ve
+  # `file.access(mode = 5L)` ön denetimine HİÇ ULAŞMAZ. Yani yukarıdaki
+  # yolda `okuma/arama izni yok` metnini şart koşmak, üretim doğruyken
+  # başarısızlık üretirdi. Sözleşme bu yüzden yedeği KAPATAN çağrıda
+  # doğrulanır: orada `list.files()` boş döner ve izin denetimi kesin çalışır.
+  # `fs` yedeği devrede DEĞİLKEN (mock ya da paket yok) `list.files()` boş
+  # döner ve izin ön denetimi KESİN çalışır; o zaman tam metin şart koşulur.
+  fs_yedegi_var <- isTRUE(tryCatch(env$requireNamespace("fs", quietly = TRUE),
+                                   error = function(e) FALSE))
+  if (!fs_yedegi_var) {
+    expect_true(any(grepl("okuma/arama izni yok", sonuc$errors, fixed = TRUE)))
+  }
 })
 
 test_that("dizin listeleyici kabuk alt süreci çalıştırmaz", {

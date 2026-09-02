@@ -145,7 +145,12 @@ testthat::test_that("R kaynak dosyaları WINDOWS-1254 yerelinde bozulmadan okuna
     # tamamen geçerli bir kaynak dosya ilk satırında `NA` üretir ve test onu
     # HATALI olarak reddederdi.
     if (length(satirlar)) {
-      satirlar[1] <- sub("^\ufeff", "", satirlar[1], useBytes = FALSE)
+      # BAYT DÜZEYİNDE AYIKLANIR: `readLines(encoding = "UTF-8")` baytları
+      # DOĞRULAMAZ, yalnızca dizeleri UTF-8 olarak İŞARETLER. Geçersiz bayt
+      # taşıyan böyle bir dizede `useBytes = FALSE` bir `sub()` hata verebilir;
+      # çağrı `tryCatch` kapsamı DIŞINDA olduğu için `vapply` durur ve dosya +
+      # satır raporu HİÇ üretilmezdi.
+      satirlar[1] <- sub("^\ufeff", "", satirlar[1], useBytes = TRUE)
     }
     cevrilen <- suppressWarnings(iconv(satirlar, from = "UTF-8", to = "WINDOWS-1254"))
     kotu <- which(is.na(cevrilen) & !is.na(satirlar))
@@ -278,7 +283,16 @@ testthat::test_that("test kaynaklarında kaçış ve literal Türkçe aynı dize
 
   bulgular <- character(0)
   for (yol in dosyalar) {
-    ham <- readBin(yol, "raw", file.info(yol)$size)
+    # OKUNAMAYAN DOSYA TARAMAYI DÜŞÜRMEZ. `list.files()` sonrasında silinen ya
+    # da kilitlenen bir dosyada `file.info(yol)$size` `NA` olur ve
+    # `readBin(..., n = NA)` TÜM testi durdururdu; etkilenen yol raporlanamaz,
+    # kalan dosyalar da hiç taranmazdı.
+    boyut <- suppressWarnings(file.info(yol)$size[1])
+    if (length(boyut) != 1L || is.na(boyut) || boyut < 0) {
+      bulgular <- c(bulgular, sprintf("%s: okunamadı", basename(yol)))
+      next
+    }
+    ham <- readBin(yol, "raw", boyut)
     metin <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
 
     # SATIR SONLARI NORMALLEŞTİRİLİR: `.gitattributes` yalnızca TAZE bir
@@ -286,6 +300,11 @@ testthat::test_that("test kaynaklarında kaçış ve literal Türkçe aynı dize
     # `parse(text = <tek dize>)` CR karakterinde "unexpected invalid token"
     # verirdi.
     satirlar <- strsplit(gsub("\r\n?", "\n", metin), "\n", fixed = TRUE)[[1]]
+    # DOSYA BAŞINDAKİ UTF-8 BOM AYIKLANIR: `.karisik_dizeler()` içindeki
+    # `parse(text = satirlar)` BOM ile başlayan ilk satırı ayrıştıramaz,
+    # `NA_character_` döner ve test tamamen geçerli bir dosyayı
+    # "ayrıştırılamadı" diye raporlardı (yukarıdaki tarama ile AYNI kural).
+    if (length(satirlar)) satirlar[1] <- sub("^\ufeff", "", satirlar[1], useBytes = TRUE)
 
     dosya_bulgulari <- .karisik_dizeler(satirlar)
     if (length(dosya_bulgulari) == 1L && is.na(dosya_bulgulari)) {

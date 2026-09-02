@@ -455,8 +455,24 @@ test_that("RLS veritabani hatasi KULLANICI BULUNAMADI olarak raporlanmaz", {
   expect_true(grepl("bulunamadı", bos$reason, fixed = TRUE))
 
   # SON TARIH/IPTAL hala TIPLI kalir (db_error DEGILDIR).
-  env$.pk_rls_bounded_query <- function(...) stop("islem durduruldu")
+  #
+  # TIPLI `pk_halt_error` KOSULU ILE denenir. Duz bir mesaj metni
+  # ("islem durduruldu") `.pk_rls_halt_error()` icindeki METIN YEDEGINE de
+  # takilir; yani uretimde tipli kosulun TANINMASI bozulsa bile test
+  # geciyordu. Metin yedegi ayri bir turda dogrulanir.
+  env$.pk_rls_bounded_query <- function(...) {
+    stop(structure(
+      class = c("pk_halt_error", "error", "condition"),
+      list(message = "PK asamasi durduruldu (tipli kosul).", call = NULL)
+    ))
+  }
   durdu <- env$get_user_rls_info("sentetik_kullanici", NULL)
   expect_true(isTRUE(durdu$halted))
   expect_false(isTRUE(durdu$db_error))
+
+  # METIN YEDEGI de KORUNUR (yerellestirilmemis surucu mesajlari icin).
+  env$.pk_rls_bounded_query <- function(...) stop("islem durduruldu")
+  durdu_metin <- env$get_user_rls_info("sentetik_kullanici", NULL)
+  expect_true(isTRUE(durdu_metin$halted))
+  expect_false(isTRUE(durdu_metin$db_error))
 })

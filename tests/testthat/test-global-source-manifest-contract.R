@@ -23,7 +23,16 @@
     raw_data <- raw_data[-(1:3)]
   }
 
-  raw_data <- raw_data[raw_data != as.raw(0)]
+  # NUL BAYTI SİLİNMEZ, DOSYA REDDEDİLİR.
+  #
+  # `global.R` UTF-16LE ile ya da bozuk biçimde kaydedilmişse NUL baytlarını
+  # ATMAK geriye beklenen TÜM belirteçleri içeren geçerli görünen bir ASCII
+  # metin bırakır: bu test GEÇER, ama uygulama açılışında
+  # `source("global.R", encoding = "UTF-8")` dosyayı AYRIŞTIRAMAZ. Sözleşme
+  # kapalı-başarısız olmalıdır.
+  if (any(raw_data == as.raw(0))) {
+    stop("Kaynak dosya NUL bayti iceriyor (UTF-16/bozuk kayit): global.R", call. = FALSE)
+  }
 
   txt <- rawToChar(raw_data, multiple = FALSE)
   Encoding(txt) <- "bytes"

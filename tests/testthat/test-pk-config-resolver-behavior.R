@@ -226,6 +226,16 @@ test_that("bozuk eşik beyanı YOK değil GEÇERSİZ raporlanır", {
   eski <- getOption("mergen.pk.resolve_auto_score", default = NULL)
   on.exit(options(mergen.pk.resolve_auto_score = eski), add = TRUE)
 
+  # ORTAM DEĞİŞKENİ TÜM TEST BOYUNCA KALDIRILIR.
+  #
+  # `pk_config_probe()` `query_meta -> environment -> options` sırasında İLK
+  # mevcut basamakta durur. Koşucuda (ör. VM `.Renviron`) geçerli bir
+  # `MERGEN_PK_RESOLVE_AUTO_SCORE` tanımlıysa `environment` kazanır, döngü
+  # `options` basamağına HİÇ ulaşmaz, `invalid_sources` boş kalır ve
+  # aşağıdaki iki iddia ÜRETİM DOĞRUYKEN düşerdi.
+  skip_if_not_installed("withr")
+  withr::local_envvar(list(MERGEN_PK_RESOLVE_AUTO_SCORE = NA_character_))
+
   options(mergen.pk.resolve_auto_score = c(90L, 95L))
   sonda <- pk_config_probe("MERGEN_PK_RESOLVE_AUTO_SCORE")
   expect_true("options" %in% sonda$invalid_sources)
@@ -240,10 +250,7 @@ test_that("bozuk eşik beyanı YOK değil GEÇERSİZ raporlanır", {
   # gecerli bir deger tanimliysa `environment` katmani kazaniyor ve iddia
   # sentinel yolunu HIC calistirmadan geciyordu; gecersiz bir deger tanimliysa
   # ayni iddia HAKSIZ yere dusuyordu.
-  skip_if_not_installed("withr")
   options(mergen.pk.resolve_auto_score = NULL)
-  withr::with_envvar(list(MERGEN_PK_RESOLVE_AUTO_SCORE = NA_character_), {
-    expect_equal(pk_config_probe("MERGEN_PK_RESOLVE_AUTO_SCORE")$invalid_sources,
-                 character(0))
-  })
+  expect_equal(pk_config_probe("MERGEN_PK_RESOLVE_AUTO_SCORE")$invalid_sources,
+               character(0))
 })

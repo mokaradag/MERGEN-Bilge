@@ -224,8 +224,20 @@ test_that("recall@N: beklenen sorgu Geçiş A YÜKÜNDE görünür kalır", {
   # asagidaki `info` tanilamasi HIC calismaz; okuyucu amaclanan recall
   # tanilamasi yerine kapali bir hata gorurdu. `[` eksik adda `NA` doner,
   # `grepl()` FALSE olur ve iddia KENDI mesajini raporlar.
+  #
+  # KIMLIK VE TERIM FIKSTURDEN TURETILIR (PR #705, P3): sabit kodlanmis
+  # `satirlar["q003"]` / `"ertelendi"` ciftinde, fikstur ayirt edici vakayi
+  # BASKA bir kimlige tasidiginda `satirlar["q003"]` `NA` doner, `grepl()`
+  # FALSE olur ve URETIM DOGRU oldugu halde test duserdi.
+  .terimli_vaka <- Filter(
+    function(v) nzchar(as.character(v$distinguishing_term %||% "")[1]) &&
+      !is.null(v$expected_query_id),
+    golden$cases
+  )[[1]]
   expect_true(
-    isTRUE(grepl("ertelendi", unname(satirlar["q003"]), fixed = TRUE)),
+    isTRUE(grepl(as.character(.terimli_vaka$distinguishing_term)[1],
+                 unname(satirlar[as.character(.terimli_vaka$expected_query_id)[1]]),
+                 fixed = TRUE)),
     info = paste(
       "Ayırt edici terim örnek sorudan kırpılırsa Geçiş A onu göremez ve",
       "Geçiş B geri getiremez (§5.2)."
@@ -250,6 +262,18 @@ test_that("recall@N: beklenen sorgu Geçiş A ÇIKTISINDA (ilk N aday) yer alır
   # Kaydedilmiş recall çıktısı: sözlüksel sıralamanın ilk N kimliği. Bu, bir
   # modelin makul biçimde döndüreceği kümedir ve YENİDEN ÜRETİLEBİLİRDİR.
   index <- pk_retrieval_build_index(lib)
+
+  # OLCULEBILIR VAKA KALMALIDIR: dongu kapsam disi ve eksiltili vakalari
+  # atlar. Fikstur duzenlenip geriye olculebilir vaka kalmazsa dongu SIFIR tur
+  # doner ve test recall@N'i HIC olcmeden basari raporlardi.
+  .olculebilir <- Filter(
+    function(v) !is.null(v$expected_query_id) && !isTRUE(v$elliptical),
+    golden$cases
+  )
+  expect_true(
+    length(.olculebilir) >= 1L,
+    info = "Olculebilir (kapsam ici, eksiltili olmayan) hic vaka yok."
+  )
 
   for (vaka in golden$cases) {
     beklenen <- vaka$expected_query_id
@@ -296,6 +320,15 @@ test_that("sözlüksel getirim, altın kümede beklenen sorguyu ilk-3'e taşır"
   # Bu SADECE tanılamadır: bozulma kipi kalitesini ölçer, karar vermez.
   # Eksiltili vaka hariç tutulur — sözlüksel sinyal orada zaten yoktur ve
   # olmaması BEKLENİR (bağlam tohumlaması bu yüzden vardır).
+  .olculebilir_tani <- Filter(
+    function(v) !is.null(v$expected_query_id) && !isTRUE(v$elliptical),
+    golden$cases
+  )
+  expect_true(
+    length(.olculebilir_tani) >= 1L,
+    info = "Tanilama dongusu icin olculebilir hic vaka yok."
+  )
+
   for (vaka in golden$cases) {
     beklenen <- vaka$expected_query_id
     if (is.null(beklenen) || isTRUE(vaka$elliptical)) next
@@ -417,17 +450,27 @@ test_that("eksiltili vaka, önceki kimlik OLMADAN aday kümesine giremez", {
   ))
 
   # Geçiş A, eksiltili soruda beklenen sorguyu bulamaz (gerçekçi senaryo).
-  gecis_a <- "{\"candidates\":[\"q003\",\"q004\"]}"
+  # ADAY KIMLIKLERI FIKSTURDEN TURETILIR (PR #705, P3): sabit `q003`/`q004`
+  # ciftinde, fikstur eksiltili vakanin beklenen kimligini bunlardan biri
+  # yaparsa asagidaki "aday kumesinde YOK" iddiasi tohumlamayla ILGISIZ bir
+  # nedenle duserdi.
+  .a_adaylari <- utils::head(setdiff(
+    vapply(lib, function(q) as.character(q$id)[1], character(1)),
+    as.character(eksiltili$expected_query_id)[1]
+  ), 2L)
+  expect_true(length(.a_adaylari) >= 2L,
+              info = "Gecis A tohumlama testi icin en az iki alternatif kimlik gerekir.")
+  gecis_a <- sprintf("{\"candidates\":[\"%s\"]}", paste(.a_adaylari, collapse = "\",\""))
 
   # Önceki kimlik OLMADAN: beklenen sorgu aday kümesinde YOK.
   stub_yok <- pk_select_stub_llm(list(
-    gecis_a, .pk_golden_pass_b("q003", c("q003", "q004"), confidence = 80L)
+    gecis_a, .pk_golden_pass_b(.a_adaylari[1], .a_adaylari, confidence = 80L)
   ))
   karar_yok <- pk_select_run(eksiltili$soru, lib, llm_fn = stub_yok$fn, cfg = cfg)
   expect_false(eksiltili$expected_query_id %in% karar_yok$candidate_ids)
 
   # Önceki kimlik İLE: tohum, taze adayları DÜŞÜRMEDEN kümeye eklenir.
-  adaylar_var <- c(eksiltili$expected_query_id, "q003", "q004")
+  adaylar_var <- c(eksiltili$expected_query_id, .a_adaylari)
   stub_var <- pk_select_stub_llm(list(
     gecis_a,
     .pk_golden_pass_b(eksiltili$expected_query_id, adaylar_var, confidence = 85L)
@@ -442,5 +485,5 @@ test_that("eksiltili vaka, önceki kimlik OLMADAN aday kümesine giremez", {
   expect_identical(karar_var$query_id, eksiltili$expected_query_id)
   expect_identical(karar_var$status, PK_SELECT_STATUS_AUTO)
   # Tohum, Geçiş A'nın taze adaylarını DÜŞÜRMEZ: küme bir eleman büyüyebilir.
-  expect_true(all(c("q003", "q004") %in% karar_var$candidate_ids))
+  expect_true(all(.a_adaylari %in% karar_var$candidate_ids))
 })

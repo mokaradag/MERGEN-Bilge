@@ -164,7 +164,12 @@ test_that("ANA SÜREÇ doğrudan çıkış yolu AYNI sınıflandırmayı yayar",
 })
 
 test_that("sarmalayıcı SEMBOL YENİDEN KAYNAKLANDIĞINDA yeniden kurulur", {
-  skip_if_not(exists("pk_hook_single_exit_fix_install", mode = "function"),
+  # KARDEŞ TESTLE AYNI MUHAFIZ: aşağıda `.pk_hook_runtime_env` KORUMASIZ
+  # okunuyordu; yardımcı dosya yüklenip bağlama eksik/yeniden adlandırılmış
+  # olduğunda test ATLANMAK yerine "object not found" ile düşüyor ve
+  # `stop_on_failure = TRUE` altında rapor GERÇEK nedeni gizliyordu.
+  skip_if_not(exists("pk_hook_single_exit_fix_install", mode = "function") &&
+                exists(".pk_hook_runtime_env"),
               "Kurulum yardımcısı yüklenemedi.")
 
   hedef <- .pk_hook_runtime_env

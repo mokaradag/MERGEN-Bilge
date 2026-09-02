@@ -582,15 +582,15 @@ pk_packet_build <- function(data, query, context = list()) {
     kapsama$duplicate_rows_at_grain > 0L
   if (tanecik_ihlali) {
     sinirliliklar <- c(sinirliliklar, sprintf(
-      paste("Beyan edilen tanecikte %d mukerrer satir var; TOPLAM ve ORTALAMA",
-            "olgulari URETILMEDI (cift sayim riski). Dagilim istatistikleri",
-            "donen satirlari betimler ve gecerlidir."),
+      paste("Beyan edilen tanecikte %d mükerrer satır var; TOPLAM ve ORTALAMA",
+            "olguları ÜRETİLMEDİ (çift sayım riski). Dağılım istatistikleri",
+            "dönen satırları betimler ve geçerlidir."),
       as.integer(kapsama$duplicate_rows_at_grain)
     ))
   }
   if (length(kapsama$grain_missing_columns)) {
     sinirliliklar <- c(sinirliliklar, sprintf(
-      "Beyan edilen tanecik sutunlari sonucta eksik (%s); mukerrer satir denetimi YAPILAMADI.",
+      "Beyan edilen tanecik sütunları sonuçta eksik (%s); mükerrer satır denetimi YAPILAMADI.",
       paste(kapsama$grain_missing_columns, collapse = ", ")
     ))
   }

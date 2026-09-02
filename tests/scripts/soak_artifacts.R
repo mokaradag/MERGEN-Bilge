@@ -559,7 +559,16 @@ soak_evaluate_thresholds <- function(cfg, summary, inprocess, redaction,
     # yapilir. Onceden tek sonuc tavani (max_result_mb) ile kiyaslaniyordu;
     # bunlar FARKLI sinirlardir ve yanlis kiyas gercek bir butce asimini
     # gizleyebilirdi.
-    cache_budget_mb <- as.numeric(cfg$pk_cache_max_mb %||% 512)
+    # ETKIN URETIM TAVANI TERCIH EDILIR: serit `pk_config_resolve("MERGEN_PK_CACHE_MAX_MB")`
+    # degerini `total_ceiling_mb` olarak raporlar. `cfg$pk_cache_max_mb` yalnizca
+    # soak yan degiskenidir (`MERGEN_SOAK_PK_CACHE_MAX_MB`) ve uretim tavaniyla
+    # ayni olmak ZORUNDA DEGILDIR; ona gore kiyaslamak gercek bir butce asimini
+    # gizleyebilir ya da ortam nedeniyle yanlis basarisizlik uretebilirdi.
+    # Serit eski bir surumse (alan yoksa) davranis degismez.
+    cache_budget_mb <- suppressWarnings(as.numeric(pk_lane$cache$total_ceiling_mb %||% NA_real_))[1]
+    if (length(cache_budget_mb) != 1L || !is.finite(cache_budget_mb) || cache_budget_mb <= 0) {
+      cache_budget_mb <- as.numeric(cfg$pk_cache_max_mb %||% 512)
+    }
     # DEGER SKALER'E NORMALLESTIRILIR.
     #
     # `pk_cache_stats()` alani yoksa `total_mb` NULL kalirdi. Kontrol o zaman
@@ -1216,6 +1225,45 @@ soak_write_summary_md <- function(artifact_dir, cfg, evidence) {
       )
     } else {
       "- Calismadi/kapali (kanit DEGIL)."
+    },
+    "",
+    # PK-ANALIZ SERIDI INSAN OKUNUR ARTEFAKTA DA GORUNUR.
+    #
+    # Kanit JSON dosyasi seridi tasiyordu ama `summary.md` icinde hicbir PK
+    # bolumu yoktu: PASS bir kosumda `summary.md` okuyan operator Faz 6
+    # kapsamini HIC gormuyor, seridin `does_not_prove` sinirlari da insan
+    # okunur artefakta ULASMIYORDU.
+    "## PK-Analiz Seridi",
+    if (is.list(evidence$pk_analysis_lane) && isTRUE(evidence$pk_analysis_lane$available)) {
+      pl <- evidence$pk_analysis_lane
+      c(
+        sprintf("- Oturum: %s | Basari orani: %s | Iptal edilen: %s",
+                as.character(pl$sessions %||% NA),
+                as.character(pl$metrics$success_rate %||% NA),
+                as.character(pl$metrics$cancelled %||% NA)),
+        sprintf("- Iptal: tur=%s uygulanmadi=%s | Bayat: tur=%s uygulanmadi=%s",
+                as.character(pl$cancellation$storm_rounds %||% NA),
+                as.character(pl$cancellation$never_applied %||% NA),
+                as.character(pl$request_lifecycle$stale_rounds %||% NA),
+                as.character(pl$request_lifecycle$stale_never_applied %||% NA)),
+        sprintf("- Onbellek: giris=%s toplam=%s MB (tavan %s MB) isabet=%s tahliye=%s",
+                as.character(pl$cache$entries %||% NA),
+                as.character(pl$cache$total_mb %||% NA),
+                as.character(pl$cache$total_ceiling_mb %||% NA),
+                as.character(pl$cache$hit %||% NA),
+                as.character(pl$cache$evicted %||% NA)),
+        sprintf("- Sinirli getirim tamamlandi: %s | Derin butce korundu: %s",
+                as.character(pl$bounded_fetch$complete %||% NA),
+                as.character(pl$deep_thinking_budget$budget_respected %||% NA)),
+        if (length(pl$does_not_prove)) {
+          c("- KANITLAMAZ:", paste0("  - ", as.character(pl$does_not_prove)))
+        } else {
+          character(0)
+        }
+      )
+    } else {
+      sprintf("- Calismadi/kapali (kanit DEGIL): %s",
+              as.character(evidence$pk_analysis_lane$reason %||% "sebep bildirilmedi"))
     },
     "",
     "## Sistem Telemetrisi",

@@ -989,6 +989,10 @@ test_that("sonuc temizligi de SINIRLI calisir", {
 
   # `dbClearResult()` bloklayabilir; sinirsiz birakilan bu cagri "her bloklayan
   # surucu cagrisi sinirlidir" sozunu curuturdu.
+  # BOS VEKTORDE `all()` TRUE doner (`temizlik_sinirlari` `c()` ile baslar,
+  # yani `NULL`): cagri sayisi ONCE dogrulanir, aksi halde `.pkgd_bounded`
+  # HIC cagrilmasa bile iddia GECERDI ve sozlesme dogrulanmamis olurdu.
+  expect_gt(length(temizlik_sinirlari), 0L)
   expect_true(all(!is.na(temizlik_sinirlari)))
 })
 

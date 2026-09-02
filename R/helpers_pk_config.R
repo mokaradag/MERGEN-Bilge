@@ -682,11 +682,21 @@ pk_config_probe <- function(key, query_meta = NULL) {
   # ATLANIYOR, `invalid_sources` boş kalıyor ve `pk_resolve_thresholds()`
   # yapılandırmayı GEÇERLİ raporluyordu. Operatör eşiği değiştirdiğini sanırken
   # varlık çözümlemesi başka bir eşikle çalışıyordu (kapalı-başarısız ihlali).
-  .ham_var <- function(x) {
+  # BOŞLUK YALNIZCA ORTAM DEĞİŞKENİNDE "AYARLANMAMIŞ" DEMEKTİR.
+  #
+  # `Sys.getenv(key, unset = "")` ayarlanmamış anahtar için boş dize döndürür,
+  # dolayısıyla orada boşluk gerçekten "yok"tur. `query_meta` ve `options`
+  # basamaklarında ise ayarlanmamış değer `NULL`'dur; oralarda boş bir dize
+  # OPERATÖRÜN BEYAN ETTİĞİ bozuk bir değerdir. Boşluğu her basamakta "yok"
+  # saymak, `meta$resolve_auto_score = ""` gibi bir beyanı sessizce atlayıp
+  # `invalid_sources` listesini boş bırakıyor ve `pk_resolve_thresholds()`
+  # yapılandırmayı GEÇERLİ raporluyordu (kapalı-başarısız ihlali).
+  .ham_var <- function(x, basamak_adi = "") {
     if (is.null(x) || length(x) == 0L) return(FALSE)
     if (length(x) != 1L) return(TRUE)
     if (is.na(x)) return(TRUE)
-    nzchar(trimws(as.character(x)[1]))
+    if (nzchar(trimws(as.character(x)[1]))) return(TRUE)
+    !identical(as.character(basamak_adi)[1], "environment")
   }
 
   # ÖNCELİK SIRASI: query_meta -> environment -> options.
@@ -714,7 +724,7 @@ pk_config_probe <- function(key, query_meta = NULL) {
   )
 
   for (basamak in basamaklar) {
-    if (!.ham_var(basamak$ham)) next
+    if (!.ham_var(basamak$ham, basamak$ad)) next
     if (is.null(.pk_config_coerce(basamak$ham, spec))) {
       gecersiz <- c(gecersiz, basamak$ad)
       next

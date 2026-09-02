@@ -155,9 +155,15 @@
 #     Yalin `driver` kelimesi, `[ODBC Driver 18 for SQL Server]` gibi STANDART
 #     bir onek tasiyan HER sunucu hatasini (ornegin bir deadlock) surucu sorunu
 #     gibi siniflandirirdi.
+#   * TURKCE AKSANLI BICIMLER DE LISTEDEDIR. `.pkgh_ascii_lower()` yalnizca
+#     ASCII buyuk harfleri kucultur; `ğ`, `ı`, `ş` gibi harfleri KORUR. Turkce
+#     bir ODBC surucusu `Bağlantı kesildi` ya da `Zaman aşımı` dondugunde
+#     yalnizca ASCII'lestirilmis `baglanti` / `zaman asimi` kaliplari eslesmiyor
+#     ve `pkgh_db_error_summary()` `sinif=unknown` raporluyordu; operator o
+#     zaman gercek arizayi (zaman asimi mi, baglanti kopmasi mi) goremiyordu.
 .PKGH_ERROR_CLASSES <- list(
-  timeout             = "timeout|zaman asimi|query timeout|hywat|hyt00|hyt01",
-  connection_lost     = "08s01|08001|08003|08004|communication link|connection is closed|connection was closed|not connected|baglanti",
+  timeout             = "timeout|zaman asimi|zaman aşımı|query timeout|hywat|hyt00|hyt01",
+  connection_lost     = "08s01|08001|08003|08004|communication link|connection is closed|connection was closed|not connected|baglanti|bağlantı",
   permission_denied   = "permission|denied|unauthorized|login failed|28000|42000.*permission",
   object_missing      = "invalid object name|invalid column name|could not find|does not exist|42s02|42s22",
   conversion_failed   = "conversion failed|arithmetic overflow|cannot convert|out-of-range",
@@ -258,7 +264,20 @@ pkgh_sanitize_validation_error <- function(message) {
         "rapora YAZILMAZ."
       ))
     }
-    satir
+    # ALIAS DISI SATIRLARDA DA KARARLI ETIKETLER PARANTEZDEN CIKARILIR.
+    #
+    # Bu satirlar `pk_query_meta_attach()` uretici bicimini korur:
+    # `[PK_META] Sorgu metadata sozlesmesi gecersiz (...)` ve
+    # `- [q001] column_meta['ProjeAdi']: gecersiz role ...`. `pkgh_sanitize_bootstrap_error()`
+    # ciktiyi `.pkgh_redact_freeform()` icinden gecirir; ne `PK_META` ne de
+    # `q001` SQLSTATE bicimine ya da surucu izin listesine uyar, bu yuzden
+    # IKISI de `[<sunucu>]` olarak maskeleniyor ve operator hem sabit etiketi
+    # hem de BASARISIZ SORGUNUN KIMLIGINI kaybediyordu. Alias dali ayni nedenle
+    # kimligi zaten parantezsiz yaziyor; genel dal simdi ayni kurali uygular.
+    # Yalnizca satir BASINDAKI iki kararli belirtec acilir; satirin geri kalani
+    # (sunucu adlari dahil) serbest metin maskelemesine girmeye devam eder.
+    satir <- sub("^(\\s*)\\[PK_META\\]", "\\1PK_META:", satir)
+    sub("^(\\s*-?\\s*)\\[([A-Za-z0-9_.:+@-]{1,64})\\]", "\\1\\2:", satir)
   }, character(1), USE.NAMES = FALSE)
 
   .pkgh_redact(paste(temiz, collapse = "\n"))

@@ -327,8 +327,20 @@
   # Stop'unu okur; paket kurulduktan sonra süresi dolan bir istek aksi hâlde
   # kompozisyona ve dışa aktarım işine DEVAM ederdi. Tipli durum da giriş
   # anındaki `iptal` yerine O ANKİ kapıdan alınır.
+  #
+  # ÜRETİLEN DOSYA DİSKTE BIRAKILMAZ: bu kapı artefakt KURULDUKTAN SONRA
+  # çalışır ve sonucu atar. Yazım + geri okuma doğrulaması geniş sonuçlarda
+  # uzun sürdüğü için Durdur/son tarih tam bu pencereye düşebilir; temizlik
+  # olmadan sunulmuş XLSX/CSV oturum bitene kadar diskte kalıyor ve iptal
+  # edilen her istek RLS ile filtrelenmiş yeni bir kopya biriktiriyordu.
   durum <- halt_durumu()
-  if (!is.null(durum)) return(iptal_sonucu(durum))
+  if (!is.null(durum)) {
+    if (is.list(artefakt) && length(artefakt$files %||% list()) &&
+        exists(".pk_export_discard_files", mode = "function", inherits = TRUE)) {
+      try(.pk_export_discard_files(artefakt$files), silent = TRUE)
+    }
+    return(iptal_sonucu(durum))
+  }
 
   blok <- paste0(pk_compose_block(karar, filtered_data, artefakt, meta, meta),
                  pk_compose_reference_links(query))

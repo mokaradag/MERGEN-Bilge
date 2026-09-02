@@ -103,7 +103,11 @@ test_that("Sinirin altindaki sonuc tek parcada aktarilir", {
 
 test_that("Sinirin ustundeki sonuc DOGRULANABILIR numarali parcalara bolunur", {
   env <- .pk_export_env()
-  plan <- env$pk_export_plan(data.frame(A = seq_len(2500)), max_rows = 1000L)
+  # `max_parts` DE SABITLENIR: varsayilan `MERGEN_PK_EXPORT_MAX_PARTS` degerinden
+  # cozulur, dolayisiyla kosucuda kucuk bir deger tanimliysa plan `ok` yerine
+  # parca-tavani reddine duser ve test URETIM DOGRUYKEN basarisiz olurdu.
+  plan <- env$pk_export_plan(data.frame(A = seq_len(2500)), max_rows = 1000L,
+                             max_parts = 50L)
 
   expect_identical(plan$status, "ok")
   expect_length(plan$parts, 3L)

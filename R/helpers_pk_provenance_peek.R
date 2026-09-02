@@ -106,6 +106,18 @@ mergen_pk_block_mode_texts <- function(full_response, session, request_id = NULL
     }
   )
 
+  # DEKORASYON DÖNÜŞÜ SKALER KARAKTERE İNDİRİLİR: başarı yolu `NULL` ya da
+  # sıfır uzunluklu bir değer döndürürse `endsWith()` `logical(0)` üretir ve
+  # `if` "argument is of length zero" ile PATLAR. Hata `mergen_pk_block_mode_texts()`
+  # dışına kaçar, çağıran `display`/`tts` çiftini HİÇ alamaz; oysa bu yardımcı
+  # tam da o kapalı başarısız davranışı garanti etmek için eklenmişti.
+  dekore_skaler <- suppressWarnings(as.character(dekore)[1])
+  if (length(dekore_skaler) != 1L || is.na(dekore_skaler)) {
+    dekore_skaler <- paste0(pk_block_mode_fallback_text(TRUE, ""),
+                            if (!is.na(alt_bilgi)) alt_bilgi else "")
+  }
+  dekore <- dekore_skaler
+
   tts_metni <- if (!is.na(alt_bilgi) && nzchar(alt_bilgi) && endsWith(dekore, alt_bilgi)) {
     substr(dekore, 1L, nchar(dekore) - nchar(alt_bilgi))
   } else {
@@ -182,11 +194,13 @@ mergen_pk_validated_texts <- function(text, session, request_id = NULL,
     }
     govde <- .skaler(if (is.list(bekleyen)) bekleyen$fallback_text else NULL)
     if (!nzchar(govde)) {
-      govde <- if (exists("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)) {
-        get("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)
-      } else {
-        metin
-      }
+      # SABİT ÇÖZÜLEMEZSE HAM DÜZYAZIYA DÜŞÜLMEZ. Bu dal yalnızca dekorasyon
+      # başarısız OLDUĞUNDA ve bekleyen bir köken kaydı VARKEN çalışır; yani
+      # sayısal iddialar HİÇ doğrulanmamıştır. `metin` yedeği, `block` kipinin
+      # tam da engellemek için var olduğu çıktıyı `display`/`tts` olarak
+      # yayımlıyordu. Aynı dosyadaki korumalı erişimci, sabit yüklenmemiş olsa
+      # bile deterministik bir reddetme metni üretir.
+      govde <- .skaler(pk_block_mode_fallback_text(TRUE, ""))
     }
     return(list(display = paste0(govde, alt_bilgi), tts = govde, validated = FALSE))
   }
@@ -214,6 +228,16 @@ mergen_pk_stream_validated_text <- function(final_text, session, request_id,
   yedek <- function(dogrulandi) {
     metin <- suppressWarnings(as.character(final_text)[1])
     if (length(metin) != 1L || is.na(metin)) metin <- ""
+    # `block` KİPİNDE DOĞRULANMAMIŞ YEDEK HAM METİN OLAMAZ. `yedek(FALSE)`
+    # sarmalayıcı hata verdiğinde ya da şekil doğrulaması düştüğünde çağrılır;
+    # bu durumda sayısal iddialar denetlenmemiştir ve ham düzyazıyı hem ekrana
+    # hem TTS'e vermek kipin engellemek için var olduğu sonucu üretirdi.
+    if (!isTRUE(dogrulandi) && isTRUE(block_mode)) {
+      metin <- suppressWarnings(as.character(
+        pk_block_mode_fallback_text(TRUE, metin)
+      )[1])
+      if (length(metin) != 1L || is.na(metin)) metin <- ""
+    }
     list(display = metin, tts = metin, validated = isTRUE(dogrulandi))
   }
 
@@ -253,17 +277,30 @@ pk_stream_display_text <- function(final_text, session, request_id,
   metin <- suppressWarnings(as.character(final_text)[1])
   if (length(metin) != 1L || is.na(metin)) return(final_text)
 
+  # KAPALI BAŞARISIZ YEDEK: `block` kipinde doğrulama hattı KURULAMADIĞINDA ya
+  # da sarmalayıcı DÜŞTÜĞÜNDE ham model metnine geri dönmek, kipin engellemek
+  # için var olduğu çıktıyı yayımlamak demektir. Kip etkin değilse erişimci
+  # ham metni AYNEN döndürür, davranış değişmez.
+  .kapali_yedek <- function() {
+    y <- suppressWarnings(as.character(
+      pk_block_mode_fallback_text(isTRUE(block_mode), final_text)
+    )[1])
+    if (length(y) != 1L || is.na(y) || !nzchar(y)) final_text else y
+  }
+
   if (!exists("mergen_pk_stream_validated_text", mode = "function", inherits = TRUE)) {
-    return(final_text)
+    return(.kapali_yedek())
   }
 
   sonuc <- try(mergen_pk_stream_validated_text(
     final_text, session, request_id = request_id, block_mode = isTRUE(block_mode)
   ), silent = TRUE)
-  if (!is.list(sonuc)) return(final_text)
+  if (!is.list(sonuc)) return(.kapali_yedek())
 
   gosterim <- suppressWarnings(as.character(sonuc$display)[1])
-  if (length(gosterim) != 1L || is.na(gosterim) || !nzchar(gosterim)) return(final_text)
+  if (length(gosterim) != 1L || is.na(gosterim) || !nzchar(gosterim)) {
+    return(.kapali_yedek())
+  }
   gosterim
 }
 

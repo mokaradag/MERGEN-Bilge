@@ -180,7 +180,19 @@ testthat::test_that("MusicManager keeps single-audio and stale-playlist ordering
 
 	testthat::expect_true(play_track_pos > 0L)
 
+	# BLOK YALNIZCA `_playTrack` GÖVDESİDİR.
+	#
+	# Eskiden blok dosyanın SONUNA kadar uzanıyordu: `this._stopAudio();`,
+	# `new Audio(src)` ve `this._audio = audio;` ifadeleri `_playTrack`
+	# içinden KALDIRILIP başka bir metotta bulunsa bile sıra iddiaları
+	# geçerdi ve bayat-ses gerilemesi YEŞİL duman testiyle üretime giderdi.
+	# Sonraki metot başlangıcı (aynı girintideki bir sonraki `\n  <ad>(`)
+	# bulunarak blok kapatılır; bulunamazsa eski davranış korunur.
 	play_track_block <- substr(music_js, play_track_pos, nchar(music_js))
+	sonraki <- regexpr("\n  [A-Za-z_$][A-Za-z0-9_$]*\\s*\\(", 
+	                   substr(play_track_block, 2L, nchar(play_track_block)),
+	                   perl = TRUE)[[1]]
+	if (sonraki > 0L) play_track_block <- substr(play_track_block, 1L, sonraki)
 
 	stop_audio_pos <- regexpr(
 	  "this._stopAudio();",

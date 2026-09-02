@@ -243,3 +243,31 @@ test_that("sabit sistem metni tek başına aşıyorsa SONSUZ DÖNGÜ olmaz", {
     expect_true(sonuc$dropped_blocks > 0L)
   })
 })
+
+test_that("bütçe aşımı ÇAĞIRANDA da bildirilir (kurucu sessiz kalmaz)", {
+  testthat::skip_if_not_installed("withr")
+  # ÇAĞIRAN DAVRANIŞI DA DENETLENİR: bütçe yardımcısını tek başına sınamak,
+  # `build_deep_analysis_context()` aşımı sessizce yutarsa yetmez. Sabit
+  # sistem metni bütçeyi tek başına aştığında kurucu, ifşayı `user_context`
+  # içine eklemeli ve durumu görünür kılmalıdır; modele SESSİZCE sınır üstü
+  # bir yük gitmemelidir.
+  qr <- list(.dac_ok("Maliyet"))
+  # BÜTÇE ÇÖZÜCÜSÜ DE YÜKLÜ OLAN ORTAM kullanılır: `.dac_env` yalnızca bağlam
+  # kurucusunu source eder, `pk_prompt_char_budget()` orada YOKTUR ve
+  # `pk_deep_fit_context_budget()` bütçeyi `NA` görüp erken döner (yani test
+  # üretim davranışını değil, eksik bir test ortamını ölçerdi).
+  # `600` KULLANILAMAZ: yapılandırma spesifikasyonu bu anahtara `min = 1000`
+  # koyar ve altındaki değer VARSAYILANA (120000) düşer; test o zaman bütçe
+  # aşımını hiç tetiklemezdi.
+  withr::with_envvar(list(MERGEN_PK_PROMPT_CHAR_BUDGET = "1000"), {
+    out <- .dac_butce_env$build_deep_analysis_context(
+      qr, "soru", list(instruction = strrep("Y", 5000L), max_tokens = 3000)
+    )
+    # Kurucu ya tipli bir hata döndürür ya da veri analizini AÇIK ifşa ile
+    # işaretler; sessiz bir sınır üstü `data_analysis` KABUL EDİLMEZ.
+    expect_true(out$type %in% c("error_message", "data_analysis"))
+    if (identical(out$type, "data_analysis")) {
+      expect_true(grepl("KISALTILDI|bütçe|BÜTÇE|kırpıl", out$user_context))
+    }
+  })
+})

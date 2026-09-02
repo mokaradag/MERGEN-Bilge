@@ -246,11 +246,36 @@ test_that("altyapi tanilamasi GIBI GORUNMEYEN SQL hatasi da kullanici mesajina d
   # icinde ham bir R hatasiyla ("argument is of length zero") cokuyordu.
   # execute_pk_sql_unicode()'un kendi ilk kontrolu tam olarak boyle bir mesaj
   # firlatir; bu yol sentetik degil, gercek bir uretim yoludur.
-  for (ham in c("Bos SQL metni gonderilemez.",
-                "could not find function \"normalize_db_params\"")) {
+  senaryolar <- expand.grid(
+    ham = c("Bos SQL metni gonderilemez.",
+            "could not find function \"normalize_db_params\""),
+    bicim = c("firlat", "deger"),
+    stringsAsFactors = FALSE
+  )
+  for (.satir in seq_len(nrow(senaryolar))) {
+    ham <- senaryolar$ham[.satir]
+    bicim <- senaryolar$bicim[.satir]
     env <- .pkAnalizEnv()
     env$select_smart_query <- function(...) list(id = 1L, name = "S", sql = "SELECT * FROM tablo")
-    env$execute_pk_sql_unicode <- function(conn, sql) stop(ham, call. = FALSE)
+    # HATA HEM FIRLATILARAK HEM DE DEGER OLARAK DONDURULEREK denenir.
+    #
+    # Yalnizca `stop()` atan bir stub, KORUNAN GERILEME MEVCUTKEN bile bu
+    # testi gecirir: modulun kendi `tryCatch` blogu istisnayi yakalar,
+    # `pk_user_error_text()` ayni "Veritabanı Hatası" onekini ekler ve
+    # `apply_rls_to_data()` her iki uygulamada da ULASILMAZ kalir
+    # (`cagrildi` ikisinde de FALSE). Gerileme ise farklidir: SQL yurutmesi
+    # hata metnini DEGER olarak dondurur, modul onu sonuc kumesi sanir ve
+    # `apply_rls_to_data()` ham bir R hatasiyla coker. Bu yuzden ikinci bicim
+    # de kosulur.
+    yurutucu <- if (identical(bicim, "firlat")) {
+      function(conn, sql) stop(ham, call. = FALSE)
+    } else {
+      # KAÇIŞ VE LİTERAL TÜRKÇE AYNI DİZEDE BİRLEŞMEZ (CLAUDE.md §1G): testthat
+      # bu dosyayı Windows VM'de UTF-8 beyanı OLMADAN ayrıştırır, karışık
+      # literal sessizce ÇİFT KODLANIR. İki parça `paste0()` ile birleştirilir.
+      function(conn, sql) paste0("\U000026A0\U0000FE0F", " **Veritabanı Hatası:** ", ham)
+    }
+    env$execute_pk_sql_unicode <- yurutucu
     # STUB'IN CALISMADIGI ACIKCA OLCULUR.
     #
     # Yalnizca `stop()` atmak yetmez: modulun hata yakalayicisi o istisnayi da
@@ -266,7 +291,7 @@ test_that("altyapi tanilamasi GIBI GORUNMEYEN SQL hatasi da kullanici mesajina d
 
     res <- env$pk_analiz_process_request("soru", list(), .pkSession(), stop_check = function() FALSE)
 
-    expect_false(cagrildi, info = ham)
+    expect_false(cagrildi, info = paste(bicim, ham))
     expect_true(is.character(res), info = ham)
     expect_length(res, 1L)
     # Kullaniciya donen metin ortak isareti TASIR.

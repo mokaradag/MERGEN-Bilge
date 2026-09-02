@@ -550,6 +550,23 @@ pk_numeric_provenance_apply <- function(text, facts, mode = NULL, fallback_text 
   })
 
   if (is.null(sonuc)) {
+    # KALİBRASYON KİPLERİ KULLANICIYA GÖRÜNEN YANITI DEĞİŞTİRMEZ. Dosya
+    # başlığındaki sözleşme açıktır: `log` VARSAYILANDIR ve "uyuşmazlıklar
+    # KAYDEDİLİR, yanıt değişmez" demektir. Bu dal kipi hiç okumadan reddetme
+    # metnini ve `blocked = TRUE` döndürüyordu; yani doğrulayıcıdaki tek bir uç
+    # durum (bozuk olgu kaydı, beklenmeyen `unit`/`aggregation` şekli),
+    # ZORLAMAYI HİÇ AÇMAMIŞ her kurulumda model açıklamasını kullanıcıdan
+    # gizliyor ve kalibrasyon kipini fiilen `block` gibi çalıştırıyordu.
+    # Kapalı başarısızlık YALNIZCA zorlama kiplerinde (`warn`/`block`) sürer;
+    # hata her kipte `mismatches` üzerinden kaydedilmeye devam eder.
+    if (kip %in% c("off", "log")) {
+      return(list(
+        text = pk_numeric_provenance_strip(ham), mode = kip, checked = 0L,
+        mismatches = list(list(reason = "validator_error")), rate = 1,
+        blocked = FALSE
+      ))
+    }
+
     yedek <- as.character(fallback_text %||% "")[1]
     return(list(
       text = paste0(

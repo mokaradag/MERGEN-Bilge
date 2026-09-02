@@ -249,10 +249,17 @@ pk_export_csv_verify <- function(path, expected) {
     on.exit(try(close(baglanti), silent = TRUE), add = TRUE)
 
     parca_satir <- .PK_CSV_CHUNK_ROWS
+    # BOŞ SATIR ATLANMAZ: `write.csv(..., na = "")` TEK sütunlu bir sonuçta
+    # değeri `NA` olan satır için BOŞ bir satır yazar; `read.csv()` varsayılan
+    # `blank.lines.skip = TRUE` ile o satırı düşürür. Okunan satır sayısı
+    # beklenenin altında kalıyor, `pk_export_csv_verify()` "Satir sayisi
+    # uyusmuyor" diyor, geçerli dosya SİLİNİYOR ve kullanıcıya HİÇ dosya
+    # gitmiyordu.
     ilk <- utils::read.csv(
       baglanti, nrows = parca_satir, header = TRUE,
       colClasses = "character", check.names = FALSE,
-      na.strings = character(0), stringsAsFactors = FALSE
+      na.strings = character(0), stringsAsFactors = FALSE,
+      blank.lines.skip = FALSE
     )
     okunan <- ilk
     sutun_adlari <- names(ilk)
@@ -316,7 +323,8 @@ pk_export_csv_verify <- function(path, expected) {
       okunan <- utils::read.csv(
         baglanti, nrows = parca_satir, header = FALSE,
         col.names = sutun_adlari, colClasses = "character", check.names = FALSE,
-        na.strings = character(0), stringsAsFactors = FALSE
+        na.strings = character(0), stringsAsFactors = FALSE,
+        blank.lines.skip = FALSE
       )
       if (!nrow(okunan)) break
     }

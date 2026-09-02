@@ -30,10 +30,38 @@
 })
 
 # Test gövdeleri yardımcıları bu ortamdan çözer (üretim adları korunur).
-for (.pk_prov_ad in ls(.pk_prov_footer_env, all.names = TRUE)) {
-  assign(.pk_prov_ad, get(.pk_prov_ad, envir = .pk_prov_footer_env))
+#
+# KOPYALAR DOSYA ORTAMINA BAĞLANIR VE DOSYA BİTİNCE KALDIRILIR.
+#
+# `envir = environment()` AÇIKÇA verilir: kopyaların nereye yazıldığı
+# örtük kalmamalıdır. testthat 3. sürümde her dosya kendi ortamında
+# değerlendirilir, ama tek dosya koşumları ve gelecekteki koşucu
+# değişiklikleri ortamı PAYLAŞABİLİR; o durumda sonraki bir test dosyası
+# `pk_build_provenance_footer()` ya da `%||%` değerini bu SIZAN durumdan
+# çözüp kendi kopyasını hiç kaynaklamadan geçer ve sonuçlar DOSYA SIRASINA
+# bağlı hâle gelirdi. Yıkım kancası bu olasılığı kapatır; `withr` yoksa
+# davranış eskisiyle aynıdır.
+.pk_prov_kopyalanan <- ls(.pk_prov_footer_env, all.names = TRUE)
+for (.pk_prov_ad in .pk_prov_kopyalanan) {
+  assign(.pk_prov_ad, get(.pk_prov_ad, envir = .pk_prov_footer_env),
+         envir = environment())
 }
 rm(.pk_prov_ad)
+# `teardown_env()` YALNIZCA bir testthat koşumunun İÇİNDE geçerlidir; bu dosya
+# doğrudan `source()` edildiğinde hata fırlatır. Kanca bu yüzden savunmalıdır.
+if (requireNamespace("withr", quietly = TRUE)) {
+  local({
+    dosya_ortami <- environment()
+    adlar <- .pk_prov_kopyalanan
+    tryCatch(
+      withr::defer(
+        suppressWarnings(rm(list = adlar, envir = parent.env(dosya_ortami))),
+        envir = testthat::teardown_env()
+      ),
+      error = function(e) invisible(NULL)
+    )
+  })
+}
 
 # DİKKAT: utils::modifyList() liste değerli alanları ada göre ÖZYİNELEMELİ
 # birleştirir; `filters = list()` ile geçersiz kılma çalışmaz. Bu yüzden düz
@@ -211,7 +239,14 @@ test_that("bayat istek kimliğinde alt bilgi İLİŞTİRİLMEZ", {
 
 test_that("yeni istek başlangıcı bekleyen alt bilgiyi temizler", {
   session <- list(userData = new.env(parent = emptyenv()))
-  pk_provenance_stash(session, "ESKI", request_id = "req-1")
+  # ÖNCE ETKİN İSTEK KURULUR VE SAKLAMANIN BAŞARILI OLDUĞU KANITLANIR.
+  #
+  # Taze oturumda etkin istek kimliği YOKTUR; `pk_provenance_stash()` o
+  # durumda `FALSE` döner (bkz. test-pk-provenance-delivery-contract.R).
+  # Yuva zaten boş kaldığı için aşağıdaki `expect_null()`, temizleme HİÇBİR
+  # ŞEY yapmasa bile geçiyordu.
+  pk_provenance_clear(session, request_id = "req-1")
+  expect_true(isTRUE(pk_provenance_stash(session, "ESKI", request_id = "req-1")))
 
   pk_provenance_clear(session, request_id = "req-2")
   expect_null(pk_provenance_take(session))

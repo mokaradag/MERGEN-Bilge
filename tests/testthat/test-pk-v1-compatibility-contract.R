@@ -277,14 +277,14 @@ test_that("v2'ye ozgu davranis dosyalari motor bayragina BAGLI kalir", {
   repo_root <- resolve_repo_root_for_tests()
 
   # Modul, v2 davranislarini yalnizca bayrak acikken devreye alir.
-  full <- file.path(repo_root, "R", "module_proje_kaynak_analizi.R")
-  size <- suppressWarnings(file.info(full)$size[1])
-  con <- file(full, open = "rb")
-  on.exit(close(con), add = TRUE)
-  raw_data <- readBin(con, what = "raw", n = size)
-  metin <- enc2utf8(suppressWarnings(
-    iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
-  ))
+  #
+  # YALNIZCA KOD TARANIR. Yerel okuyucu ACIKLAMA satirlarini koruyordu ve
+  # asagidaki uc iddia OLUMLU `grepl()` denetimidir: `pk_engine_is_v2(`,
+  # `pk_filter_degraded_gate(` ya da `pk_engine_v2 &&` adini ANAN bir Turkce
+  # yorum, gercek cagri KALDIRILDIKTAN sonra bile testi yesil tutardi. Bu
+  # modul boyle yorumlar tasiyor (bkz. test-pk-query-selection-contract.R).
+  # `.pk_v1_code_only()` ayrica varlik ve cozulebilirlik denetimi de yapar.
+  metin <- .pk_v1_code_only("R/module_proje_kaynak_analizi.R")
 
   expect_true(grepl("pk_engine_is_v2(", metin, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl("pk_filter_degraded_gate(", metin, fixed = TRUE, useBytes = TRUE))

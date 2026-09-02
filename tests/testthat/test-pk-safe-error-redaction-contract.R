@@ -181,7 +181,16 @@ test_that("PK SQL hata yolu ham conditionMessage() gommez", {
   # icerir ama CAGRI icermez, dolayisiyla eski yuklem onu `onaysiz` sayiyor ve
   # UYUMLU bir uygulamada test DUSUYORDU. Bugun gecmesinin tek nedeni boyle bir
   # satirin henuz bulunmamasidir, yani sozlesme hicbir sey dogrulamiyordu.
-  onaysiz <- err_satirlari[
+  # SATIR DEGIL IFADE TARANIR.
+  #
+  # Iki kalip da SATIR kapsamliydi; uyumlu bir uygulama cagriyi cok satira
+  # bolebilir (`pk_report_db_error(` / `  err_msg,` / `)`), o zaman `  err_msg,`
+  # satiri hicbir kalibi karsilamaz ve `onaysiz` icine duserdi. Sozlesme HAM
+  # metnin gomulmemesi hakkindadir, bicimlendirme hakkinda degil: bosluklar
+  # duzlestirilip ayni kaliplar tum metne uygulanir.
+  duz <- gsub("[[:space:]]+", " ", paste(err_satirlari, collapse = " "), perl = TRUE)
+  duz_uyumlu <- grepl("pk_report_db_error\\([^)]*err_msg", duz, perl = TRUE)
+  onaysiz <- if (isTRUE(duz_uyumlu)) character(0) else err_satirlari[
     !grepl("pk_report_db_error\\([^)]*err_msg", err_satirlari, perl = TRUE) &
       !grepl("^\\s*err_msg\\s*<-\\s*conditionMessage\\(", err_satirlari, perl = TRUE)
   ]

@@ -217,8 +217,18 @@ test_that("kanonikleştirme SAF ve enjekte edilebilirdir", {
 test_that("kanonikleştirme dosyası SAF kalır (Shiny/DB/LLM/ağ yok)", {
   yol <- file.path(resolve_repo_root_for_tests(), "R",
                    "helpers_pk_query_selection_canonical.R")
-  ham <- readBin(yol, "raw", file.info(yol)$size)
-  metin <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
+  # KAPALI BAŞARISIZ OKUMA: boş ya da çözülemeyen bir kaynak metni, aşağıdaki
+  # OLUMSUZ `expect_false(grepl(...))` iddialarının HEPSİNİ hiçbir şey
+  # taranmadan karşılar ve saflık sözleşmesi sessizce doğrulanmamış kalırdı.
+  boyut <- suppressWarnings(file.info(yol)$size[1])
+  if (length(boyut) != 1L || is.na(boyut) || boyut <= 0) {
+    stop(sprintf("Kaynak dosya BOŞ ya da okunamıyor: %s", yol), call. = FALSE)
+  }
+  ham <- readBin(yol, "raw", boyut)
+  metin <- suppressWarnings(iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8"))
+  if (length(metin) != 1L || is.na(metin) || !nzchar(metin)) {
+    stop(sprintf("Kaynak dosya UTF-8 olarak çözülemedi: %s", yol), call. = FALSE)
+  }
   # Açıklama satırları taranmaz: "Shiny/reactive/DB/LLM/ağ bağımlılığı yoktur"
   # gibi bir SÖZLEŞME NOTU saflık ihlali değildir.
   satirlar <- strsplit(gsub("\r\n?", "\n", metin), "\n", fixed = TRUE)[[1]]

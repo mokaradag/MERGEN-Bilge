@@ -323,8 +323,27 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
     kalan_bekci <- suppressWarnings(as.numeric(pk_deadline_remaining_sec(son_tarih_ani))[1])
     if (!isTRUE(is.finite(kalan_bekci))) kalan_bekci <- 0
     gecikme <- max(1, kalan_bekci + 3)
-    bekci_iptal <- try(later::later(function() {
+    bekci_govde <- function() {
       if (isTRUE(request_done)) return(invisible(NULL))
+
+      # YAYIMLANMIŞ SON TARİH YENİDEN OKUNUR. İşçi, sorgu seçiminden SONRA
+      # metadata daha büyük bir `analysis_deadline_sec` bildirdiğinde
+      # `mergen.pk.async.deadline_at` option'ını UZATABİLİR. Bekçi ise gecikmeyi
+      # seçim ÖNCESİ son tarihten hesapladığı için isteği, işçi hâlâ KENDİ izin
+      # verilen bütçesi içindeyken terk ediyor ve kullanıcıya tipli zaman aşımı
+      # mesajı gösteriyordu. Uzatılmış bir son tarih varsa bekçi yeniden
+      # ZAMANLANIR; kısaltma bu kapıyı etkilemez.
+      yayimlanan <- getOption("mergen.pk.async.deadline_at", NULL)
+      kalan_yeni <- if (is.null(yayimlanan)) NA_real_ else {
+        suppressWarnings(as.numeric(pk_deadline_remaining_sec(yayimlanan))[1])
+      }
+      if (isTRUE(is.finite(kalan_yeni)) && isTRUE(kalan_yeni > 0) &&
+          requireNamespace("later", quietly = TRUE)) {
+        bekci_iptal <<- try(later::later(bekci_govde, delay = max(1, kalan_yeni + 3)),
+                            silent = TRUE)
+        if (inherits(bekci_iptal, "try-error")) bekci_iptal <<- NULL
+        return(invisible(NULL))
+      }
 
       # BEKÇİ DE PROMISE GERİ ÇAĞRILARIYLA AYNI KORUMADAN GEÇER: takılı bir
       # işçide `request_done` FALSE kalır, bu yüzden terk edilmiş/bayat bir
@@ -367,10 +386,23 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
       } else if (isTRUE(karar_bekci$apply) && !isTRUE(ayni_chat_bekci)) {  # SOHBET DEGISTI, istek kimligi HALA BU ISTEK: `koruma_gecti()` bunu temizler, bekci temizlemiyordu; yeni sohbet eski istegin gonderim kilidinde TAKILI kaliyordu. Mesaj EKLENMEZ.
         try(shiny::isolate(ctx$cleanup_send_message()), silent = TRUE) }
       invisible(NULL)
-    }, delay = gecikme), silent = TRUE)
+    }
+    bekci_iptal <- try(later::later(bekci_govde, delay = gecikme), silent = TRUE)
     if (inherits(bekci_iptal, "try-error")) bekci_iptal <- NULL
   }
 
+  # BAYAT KÖKEN KAYDI HER TERMİNAL HATA YOLUNDA TÜKETİLİR: yalnızca genel `!ok` dalı temizliyordu; `bootstrap_failed`, reddedilen future ve devam kapanışı hatası temizlemeyince ÖNCEKİ isteğin bekleyen otoriter alt bilgisi, ilgisiz bir altyapı hatası mesajına `add_message()` içindeki dekorasyonla iliştiriliyordu.
+  bayat_kokeni_tuket <- function() {
+    if (exists("pk_provenance_take", mode = "function", inherits = TRUE)) {
+      try(pk_provenance_take(oturum, request_id = req_id), silent = TRUE)
+    }
+    invisible(NULL)
+  }
+
+  # TANIM `promises::then()` ÖNCESİNE ALINDI: geri çağrılar bu işlevi çağırır ve
+  # bugün yalnızca promise'lerin olay döngüsünde çalışması sayesinde bağlanır.
+  # `tracked_future_promise()` yerine geri çağrıyı EŞ ZAMANLI çalıştıran bir test
+  # ikizi kullanıldığında "could not find function" doğardı.
   tamamlandi <- promises::then(
     vaat,
     onFulfilled = function(worker_result) {
@@ -472,14 +504,6 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
       invisible(NULL)
     }
   )
-
-  # BAYAT KÖKEN KAYDI HER TERMİNAL HATA YOLUNDA TÜKETİLİR: yalnızca genel `!ok` dalı temizliyordu; `bootstrap_failed`, reddedilen future ve devam kapanışı hatası temizlemeyince ÖNCEKİ isteğin bekleyen otoriter alt bilgisi, ilgisiz bir altyapı hatası mesajına `add_message()` içindeki dekorasyonla iliştiriliyordu.
-  bayat_kokeni_tuket <- function() {
-    if (exists("pk_provenance_take", mode = "function", inherits = TRUE)) {
-      try(pk_provenance_take(oturum, request_id = req_id), silent = TRUE)
-    }
-    invisible(NULL)
-  }
 
   # `then()` içindeki onFulfilled/onRejected KENDİLERİ de hata atabilir
   # (`mergen_pk_apply_analysis_result`, `continue_fn`, nihai LLM hazırlığı).

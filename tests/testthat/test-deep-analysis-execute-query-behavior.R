@@ -403,7 +403,12 @@ test_that("v2 Deep Thinking paket kurulumu deadline olursa typed halt döner", {
   )
   expect_false(isTRUE(env$pk_deep_is_halt_result(hatali)))
   expect_false(isTRUE(hatali$success))
-  expect_true(nzchar(as.character(hatali$error_msg)[1]))
+  # TİP VE İÇERİK AÇIKÇA DENETLENİR: `as.character(NULL)[1]` `NA_character_`
+  # üretir ve `nzchar()` varsayılan `keepNA = FALSE` ile `NA` için `TRUE`
+  # döner; yani `error_msg` alanı HİÇ olmayan bir başarısız sonuç da bu
+  # iddiayı geçiyor, test kullanıcının mesaj aldığını YANLIŞ raporluyordu.
+  expect_true(is.character(hatali$error_msg) && length(hatali$error_msg) == 1L &&
+                !is.na(hatali$error_msg) && nzchar(hatali$error_msg))
 })
 
 test_that("sınırlı çalıştırma sınıflandırıcısı bütçeyi GERÇEK hatadan ayırır", {

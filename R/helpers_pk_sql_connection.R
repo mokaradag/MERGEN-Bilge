@@ -108,7 +108,11 @@ pk_sql_apply_statement_timeout <- function(conn, timeout_sec, budget_fn = NULL) 
 # ödünç alana devredilirdi. `pool::poolClose()` bir havuz nesnesi içindir;
 # TEK bir checkout'u emekliye ayırmanın doğru yolu fiziksel bağlantıyı
 # kapatmaktır — havuz eksik bağlantıyı gerektiğinde yeniden kurar.
-#' @return `TRUE` yalnızca fiziksel bağlantının KAPATILDIĞI doğrulandıysa.
+#' @return `TRUE` yalnızca fiziksel bağlantının KAPATILDIĞI doğrulandıysa VE
+#'   havuz muhasebesi (`pool::poolReturn()`) da serbest bırakıldıysa. İki
+#'   koşulun BİRLEŞİK sonucudur: kapatma doğrulanmış ama iade başarısız olduğunda
+#'   `FALSE` döner, çünkü checkout yuvası kaybedilmiştir ve çağıran bunu bir
+#'   tam temizlik gibi raporlamamalıdır. Fark log'lanır (aşağıdaki uyarı).
 .pk_sql_invalidate_connection <- function(conn, budget_fn) {
   kapatildi <- try(pk_sql_bounded_call(
     function() DBI::dbDisconnect(conn), budget_fn

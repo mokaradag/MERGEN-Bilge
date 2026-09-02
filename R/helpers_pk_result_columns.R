@@ -44,6 +44,15 @@
 .PK_ODBC_SQL_VARIANT_CODE <- -98L
 .PK_SQL_VARIANT_MAX_BYTES_RUNTIME <- 8016
 
+# `hierarchyid` DE SINIRSIZ DEĞİLDİR: tek bir değer SQL Server'da en fazla 892
+# bayttır. Tip adı `sinirsiz_tipler` listesinde durduğu için `type = "text"`
+# dönüyor, `.pk_result_type_is_lob()` bunu LOB sayıyor ve
+# `pk_sql_plan_chunk_rows()` -- operatör `MERGEN_PK_ALLOW_UNBOUNDED_LOB`
+# açmadıkça -- `refuse = TRUE` / `unbounded_lob_column` üretiyordu. Yani satır
+# genişliği KANITLANABİLİRKEN analiz tek satır bile çekilmeden `too_large` ile
+# reddediliyordu; `sql_variant` için zaten düzeltilmiş olan hata sınıfının aynısı.
+.PK_SQL_HIERARCHYID_MAX_BYTES <- 892
+
 # SINIRLI (fixed/bounded) ODBC tip kodları -> KANITLANMIŞ bayt üst sınırı.
 #
 # Bunlar olmadan her LOB-OLMAYAN sayısal kod `__unknown__` sayılıyor ve
@@ -231,7 +240,12 @@ pk_sql_describe_result_schema <- function(conn, sql_text, call_fn = NULL) {
     return(list(type = "__bounded__", max_length = .PK_SQL_VARIANT_MAX_BYTES_RUNTIME))
   }
 
-  sinirsiz_tipler <- c("xml", "text", "ntext", "image", "hierarchyid")
+  # `hierarchyid` KANITLANMIŞ 892 baytlık üst sınıra sahiptir (bkz. sabit).
+  if (grepl("hierarchyid", tip, fixed = TRUE)) {
+    return(list(type = "__bounded__", max_length = .PK_SQL_HIERARCHYID_MAX_BYTES))
+  }
+
+  sinirsiz_tipler <- c("xml", "text", "ntext", "image")
   if (any(vapply(sinirsiz_tipler, function(t) grepl(t, tip, fixed = TRUE), logical(1)))) {
     return(list(type = "text", max_length = NA_real_))
   }

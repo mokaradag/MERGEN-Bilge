@@ -37,7 +37,7 @@ mergen_seam_registry <- function() {
 
   # BİLİNMEYEN SEAM KİMLİĞİ SESSİZCE KAYBOLMAZ: aşağıdaki döngü yalnızca KAYITLI seam'leri gezer; guard test tablosundaki yazım hatası ya da artık kullanılmayan bir kimlik hiçbir seam'e bağlanmaz ve doğrulama YİNE geçerdi (gerçekte hiçbir seam'i korumayan bir guard testi kayıtlı görünürdü).
   bilinmeyen <- setdiff(names(koruma), names(kayit))
-  if (length(bilinmeyen)) stop(sprintf("Seam guard test tablosunda kayitli olmayan seam kimligi var: %s", paste(sort(bilinmeyen), collapse = ", ")), call. = FALSE)
+  if (length(bilinmeyen)) stop(sprintf("Seam guard test tablosunda kayıtlı olmayan seam kimliği var: %s", paste(sort(bilinmeyen), collapse = ", ")), call. = FALSE)
 
   for (id in names(kayit)) {
     kaynak <- koruma[[id]]

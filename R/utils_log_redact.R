@@ -308,9 +308,17 @@ redact_connection_identifiers <- function(x) {
   # `}B}` kuyruğu logda GÖRÜNÜR kalıyordu. Kapanış parantezi hiç yoksa desen
   # eşleşmiyor, ikinci geçişteki `(?!\{)` de devreye girmediği için değerin
   # TAMAMI görünür kalıyordu. Önce kaçışlı biçim, sonra kapanmamış biçim.
+  # ATOMİK GRUP ZORUNLUDUR (`redact_sensitive_text()` ile AYNI kurgu).
+  #
+  # Geri izlemeye izin verilirse motor `Driver={ODBC Driver 17}}x` girdisinde
+  # yalnızca `{ODBC Driver 17}` kısmını eşler; çıktı `Driver={<redacted>}x`
+  # olur ve `x` kuyruğu KALICI logda MASKESİZ kalır. İkinci geçiş de
+  # yakalayamaz (değer artık kapanmamış değildir), üçüncü geçiş ise `(?!\{)`
+  # yüzünden atlar. `(?>...)` geri izlemeyi kapatarak `}}` çiftinin
+  # bölünmesini engeller.
   metin <- gsub(
     paste0("(?i)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS,
-           ")(\\s*=\\s*)\\{(?:[^{}]|\\}\\})*\\}"),
+           ")(\\s*=\\s*)\\{(?>(?:[^{}]|\\}\\})*)\\}"),
     "\\1\\2\\3{<redacted>}",
     metin,
     perl = TRUE

@@ -19,6 +19,15 @@
 # @return `TRUE` işçi AYRI süreçte, `FALSE` işçi ANA süreçte, `NA` ölçülemedi.
 .pk_async_plan_probe_cache <- new.env(parent = emptyenv())
 
+# `future::nbrOfFreeWorkers()` KULLANILABİLİR Mİ? (sürüm tabanı: future >= 1.24.0)
+.pk_async_probe_free_workers_available <- function() {
+  isTRUE(tryCatch(
+    requireNamespace("future", quietly = TRUE) &&
+      is.function(utils::getFromNamespace("nbrOfFreeWorkers", "future")),
+    error = function(e) FALSE
+  ))
+}
+
 .pk_async_worker_pid_probe <- function(force = FALSE, plan_key = NULL) {
   anahtar <- tryCatch(as.character(plan_key %||% .pk_async_plan_key())[1],
                       error = function(e) "plan")
@@ -68,6 +77,20 @@
       # (çağıran NA'yı kapalı-başarısız yorumlar) ve soğuma devreye girer.
       # `lazy` BİLEREK FALSE kalır: sonda planın GERÇEKTEN asenkron çalışıp
       # çalışmadığını ölçer; tembel bir future ölçümü yoklama anına erteler.
+      # SÜRÜM TABANI AÇIKÇA BİLDİRİLİR. `nbrOfFreeWorkers()` `future` 1.24.0 ile
+      # dışa açıldı; daha eski bir kurulumda arama HATA verir, `NA_integer_`
+      # üretir ve sonda "ölçülemedi" der. Davranış kapalı-başarısızdır (asenkron
+      # devre dışı kalır, doğruluk bozulmaz) ama SEBEP görünmezdi: operatör
+      # `worker_probe_inconclusive` görüp planı/işçi sayısını araştırıyordu.
+      # Uyarı süreç başına BİR KEZ verilir, sonda sıcak yolda gürültü yapmaz.
+      if (!.pk_async_probe_free_workers_available()) {
+        if (!isTRUE(.pk_async_plan_probe_cache$version_warned)) {
+          .pk_async_plan_probe_cache$version_warned <- TRUE
+          warning("PK asenkron sondasi icin 'future' >= 1.24.0 gerekir (nbrOfFreeWorkers). Asenkron yol devre disi birakildi.", call. = FALSE)
+        }
+        .pk_async_plan_probe_cache$na_until <- Sys.time() + soguma_sn
+        return(NA)
+      }
       bos_isci <- suppressWarnings(tryCatch(
         as.integer(future::nbrOfFreeWorkers())[1], error = function(e) NA_integer_))
       if (length(bos_isci) != 1L || is.na(bos_isci) || bos_isci < 1L) {  # OLCULEMEYEN KAPASITE DE YETERSIZ SAYILIR: `NA` dondugunde eski kosul GECIYOR ve `future(lazy = FALSE)` bos isci beklerken Shiny surecini `butce_sn` DISINDA blokluyordu.

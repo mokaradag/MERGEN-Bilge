@@ -199,10 +199,10 @@ test_that("yükleme sırası: Türkçe katlama yardımcısı metadata katmanlar�
   konumlar <- match(bolum, tum)
   expect_false(
     anyNA(konumlar),
-    info = "Bolumdeki her dosya tam manifestte bulunmalidir."
+    info = "Bölümdeki her dosya tam manifestte bulunmalıdır."
   )
   expect_true(
     max(konumlar) < match("R/config_sql_loader.R", tum),
-    info = "Metadata katmani R/config_sql_loader.R sonrasina kaymis."
+    info = "Metadata katmanı R/config_sql_loader.R sonrasına kaymış."
   )
 })

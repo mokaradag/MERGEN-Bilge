@@ -12,7 +12,7 @@
   env
 }
 
-test_that("scalar DECLARE oneki + tek SELECT salt-okunur kabul edilir", {
+test_that("scalar DECLARE öneki + tek SELECT salt-okunur kabul edilir", {
   env <- .pk_declare_gate_env()
   sql <- paste(
     "DECLARE @CutoffDate DATE = DATEADD(day, -90, GETDATE());",
@@ -53,12 +53,12 @@ test_that("DECLARE istisnasi mevcut fail-closed ratchetleri gevsetmez", {
   }
 })
 
-test_that("ayrilmis kelimeyle ADLANDIRILMIS yerel degisken REDDEDILMEZ (PR #705 P2)", {
+test_that("ayrılmış kelimeyle ADLANDIRILMIŞ yerel değişken REDDEDİLMEZ", {
   env <- .pk_declare_gate_env()
 
-  # Jeton deseni `@` sigilini disarida biraktigi icin `@Open` jetonu `OPEN`
-  # olarak okunuyor ve AYRILMIS ifade baslatici listesine dusuyordu; tamamen
-  # salt-okunur bir kutuphane sorgusu guvenlik gerekcesiyle REDDEDILIYORDU.
+  # Jeton deseni `@` sigilini dışarıda bıraktığı için `@Open` jetonu `OPEN`
+  # olarak okunuyor ve AYRILMIŞ ifade başlatıcı listesine düşüyordu; tamamen
+  # salt-okunur bir kütüphane sorgusu güvenlik gerekçesiyle REDDEDİLİYORDU.
   for (ad in c("Open", "Close", "If", "While", "Return", "Break", "Continue", "Goto")) {
     sql <- sprintf("DECLARE @%s INT = 1;\nSELECT @%s AS a;", ad, ad)
     sonuc <- env$pk_sql_classify_readonly(sql)
@@ -66,11 +66,29 @@ test_that("ayrilmis kelimeyle ADLANDIRILMIS yerel degisken REDDEDILMEZ (PR #705 
     expect_identical(sonuc$statement_kind, "declare_select_batch")
   }
 
-  # GERCEK ikinci ust duzey ifade REDDEDILMEYE devam eder.
+  # GERÇEK ikinci üst düzey ifade REDDEDİLMEYE devam eder.
   expect_false(isTRUE(env$pk_sql_classify_readonly(
     "SELECT 1 AS a\nDISABLE TRIGGER ALL ON DATABASE"
   )$allowed))
-  expect_false(isTRUE(env$pk_sql_classify_readonly(
-    "SELECT 1 AS a\nIF 1=1 SELECT 2"
-  )$allowed))
+  # SİGİL TAŞIMAYAN ayrılmış kelime HÂLÂ ikinci ifade sayılır.
+  #
+  # Pozitif döngü sekiz adı da `@` sigiliyle KABUL EDİLİR diye kanıtlıyordu ama
+  # negatif taraf yalnızca `IF` için vardı. `OPEN`/`WHILE`/`RETURN` gibi bir ad
+  # ayrılmış ifade başlatıcı listesinden TAMAMEN çıkarılırsa (sigil taşıyan
+  # jetonu atlamak yerine) salt-okunur kapısı gerçek bir ikinci ifadeyi kabul
+  # ederdi ve bu sözleşme testi YİNE başarılı raporlardı; güvenlik ratcheti
+  # sessizce gevşerdi. Kümeler simetrik tutulur.
+  ciplak <- c(
+    "SELECT 1 AS a\nIF 1=1 SELECT 2",
+    "SELECT 1 AS a\nWHILE 1=1 SELECT 2",
+    "SELECT 1 AS a\nOPEN c1",
+    "SELECT 1 AS a\nCLOSE c1",
+    "SELECT 1 AS a\nRETURN 1",
+    "SELECT 1 AS a\nBREAK",
+    "SELECT 1 AS a\nCONTINUE",
+    "SELECT 1 AS a\nGOTO etiket"
+  )
+  for (sql_ciplak in ciplak) {
+    expect_false(isTRUE(env$pk_sql_classify_readonly(sql_ciplak)$allowed), info = sql_ciplak)
+  }
 })

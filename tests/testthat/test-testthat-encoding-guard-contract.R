@@ -22,9 +22,19 @@
   on.exit(close(con), add = TRUE)
   raw_data <- readBin(con, what = "raw", n = size)
   txt <- suppressWarnings(
-    iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
+    iconv(list(raw_data), from = "UTF-8", to = "UTF-8")[[1]]
   )
-  if (is.na(txt)) txt <- ""
+  # GEÇERSİZ UTF-8 SESSİZCE KABUL EDİLMEZ.
+  #
+  # `sub = "byte"` her geçersiz baytı kaçırır ve HER ZAMAN bir dize döndürür,
+  # dolayısıyla aşağıdaki `NA` kapısı ULAŞILAMAZ kalıyordu: UTF-8 dışı bir
+  # kodlamayla kaydedilmiş kaynak dosya kaçırılmış mojibake olarak taranıyor,
+  # ASCII sözleşme belirteçleri yine eşleşiyor ve NEGATİF iddialar bozuk bir
+  # dosya için de geçiyordu. `test-true-streaming-reset-ui-contract.R` ile
+  # `test-ux-regression-guardrails.R` zaten bu kuralı uygular.
+  if (is.na(txt)) {
+    stop(sprintf("Kaynak dosya geçerli UTF-8 değil: %s", rel_path), call. = FALSE)
+  }
   txt
 }
 

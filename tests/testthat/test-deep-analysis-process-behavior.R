@@ -261,12 +261,21 @@ test_that("beklenmeyen istisna mesaji yardimci yuklu olsa da OLMASA da AYNIDIR",
                             inherits = TRUE),
         logical(1)
       )
-      if (any(sizmis)) {
-        testthat::skip(paste0(
-          "Yardimcisiz baglam kanitlanamiyor; onceki bir test dosyasi su adlari ",
-          "globalenv() icine sizdirmis: ",
-          paste(names(sizmis)[sizmis], collapse = ", ")
-        ))
+      # SIZAN BAGLANTI GECICI OLARAK KALDIRILIR, TEST ATLANMAZ.
+      #
+      # `skip()` her iki dali da (yardimcisiz VE yardimcili) dogrulanmamis
+      # birakiyordu: onceki bir dosya `pk_safe_error_message` adini
+      # `globalenv()` icine yazdiginda bu sozlesme HIC calismiyordu. Ad
+      # kaldirilir, test kosar ve `on.exit` ile GERI YUKLENIR.
+      for (.sizan_ad in names(sizmis)[sizmis]) {
+        .sizan_deger <- get(.sizan_ad, envir = globalenv(), inherits = TRUE)
+        local({
+          ad <- .sizan_ad
+          deger <- .sizan_deger
+          rm(list = ad, envir = globalenv())
+          withr::defer(assign(ad, deger, envir = globalenv()),
+                       envir = parent.frame(4))
+        })
       }
     }
     yakalanan <- new.env(parent = emptyenv())

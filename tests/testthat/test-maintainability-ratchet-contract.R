@@ -144,7 +144,7 @@
   # kütüphane on binlerce satıra ulaşabildiği için hiçbiri ratchet kapsamına
   # alınmaz.
   keep <- !grepl(
-    "(^|/)(library_queries|library_query_meta(_auto|_local)?)\\.R$",
+    "(^|/)(library_queries|library_query_meta(_auto|_local)?|library_query_aliases_local)\\.R$",
     report$path,
     perl = TRUE
   )

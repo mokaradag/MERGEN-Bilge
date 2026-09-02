@@ -524,8 +524,21 @@ extract_filter_criteria_from_prompt <- function(user_prompt, data_context, avail
       })
       valid_filters <- Filter(function(f) {
         if (.pk_filter_base_is_group(f)) return(length(f$children) > 0L)
+        # BOŞ `value` DİZİSİ GEÇERLİ YAPRAK DEĞİLDİR. Ayrıştırıcı
+        # `simplifyVector = FALSE` kullandığı için `"value": []` buraya BOŞ
+        # LİSTE olarak gelir ve `!is.null()` denetimini GEÇERDİ. İki v1 gövdesi
+        # bu alanı FARKLI yardımcılarla indirger, dolayısıyla aynı bozuk yaprak
+        # iki AYRI yanlış sonuç üretiyordu: `.pk_filter_observation_scalar()`
+        # `""` döndürüp `grepl("", ...)` ile HER satırı eşleştiriyor (kısıt
+        # uygulanmadığı hâlde köken alt bilgisi uygulanmış gibi raporluyor),
+        # `as.character(list())[1]` ise `NA_character_` döndürüp
+        # `grepl(NA, ...)` çağrısını "invalid 'pattern' argument" ile
+        # düşürüyordu. Tek kapıda reddedilir; yaprak hiçbir gövdeye ulaşmaz.
+        gecerli_deger <- !is.null(f$value) &&
+          length(f$value) > 0L &&
+          any(nzchar(trimws(suppressWarnings(as.character(unlist(f$value, use.names = FALSE))))), na.rm = TRUE)
         is.character(f$column) && length(f$column) == 1L &&
-          !is.na(f$column) && nzchar(f$column) && !is.null(f$value)
+          !is.na(f$column) && nzchar(f$column) && isTRUE(gecerli_deger)
       }, filters)
 
       if (length(valid_filters) == 0) {

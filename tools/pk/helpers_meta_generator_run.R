@@ -25,6 +25,24 @@
 #   * BAĞLANTI HER DURUMDA BIRAKILIR (`on.exit`).
 # ==============================================================================
 
+# ADA GORE GUVENLI ONBELLEK ARAMASI (uretimdeki `.pk_meta_named_entry()` ile
+# AYNI kural). `cache` varsayilan BOS liste oldugunda `cache[[id]]` "subscript
+# out of bounds" firlatir ve bu, envanter dongusundeki `tryCatch()` blogundan
+# ONCE calistigi icin KOSUNUN TAMAMINI dusururdu. Uretim yardimcisi
+# yuklenmisse (normal operator akisi `app.R` sourceLar) o kullanilir; izole
+# arac testlerinde ayni davranisi veren yerel yedek devreye girer.
+.pkgn_onbellek_girisi <- function(cache, id) {
+  if (exists(".pk_meta_named_entry", mode = "function", inherits = TRUE)) {
+    return(.pk_meta_named_entry(cache, id))
+  }
+  if (!is.list(cache) || !length(cache)) return(NULL)
+  adlar <- names(cache)
+  if (is.null(adlar)) return(NULL)
+  i <- match(as.character(id)[1], adlar)
+  if (is.na(i)) return(NULL)
+  cache[[i]]
+}
+
 .pkgn_is_text <- function(x) {
   is.character(x) && length(x) == 1L && !is.na(x) && nzchar(trimws(x))
 }
@@ -249,6 +267,24 @@ pkgn_inventory_one <- function(query, config, conn = NULL,
                                        alias_overlay = alias_overlay)
   bulgular <- pkgh_structural_findings(query, dogrulama$merged, sema, dogrulama$errors)
 
+  tekrar_sutunlar <- as.character(sema_sonucu$duplicate_columns %||% character(0))
+  tekrar_sutunlar <- tekrar_sutunlar[!is.na(tekrar_sutunlar) & nzchar(tekrar_sutunlar)]
+  if (length(tekrar_sutunlar)) {
+    # TEKRAR EDEN SONUC SUTUNU OPERATOR EYLEMI GEREKTIRIR: `result_schema` ve
+    # `column_meta` o adi YALNIZCA BIR KEZ tasir, dolayisiyla ikinci sutun
+    # birincinin rolunu/`source_type` degerini devralir ve uretilen metadata
+    # gercek DBI sonucuyla celisir. Sema BILEREK gecersiz sayilmaz; aksi halde
+    # ayni sema uzerinde uretilen `rls_column_duplicated` GUVENLIK bulgusu da
+    # kaybolurdu (bkz. helpers_meta_generator_schema.R icindeki not).
+    bulgular <- c(bulgular, list(pkgh_finding(
+      "duplicate_result_column", "attention",
+      sprintf(paste0("Sonuc kumesinde TEKRAR EDEN sutun adi: %s. Uretilen metadata bu ",
+                     "adi bir kez tasir; ikinci sutun birincinin rolunu devralir. ",
+                     "SELECT listesine takma ad ekleyin."),
+              paste(sort(tekrar_sutunlar), collapse = ", ")),
+      columns = tekrar_sutunlar
+    )))
+  }
   if (length(sema_sonucu$unmapped %||% list())) {
     bulgular <- c(bulgular, list(.pkgn_unmapped_finding(sema_sonucu$unmapped)))
   }
@@ -382,6 +418,13 @@ PKG_META_LOCK_LOST_CLASS <- "pkg_meta_lock_lost"
 #'   Kesintiye uğrayan bir koşunun devam edebilmesi için durum ARA ARA
 #'   yazılmalıdır; yalnızca koşu sonunda yazmak, kesintide TÜM ilerlemeyi
 #'   kaybettirir.
+#'
+#'   SÖZLEŞME: başarılı bir yazma için `TRUE` DÖNDÜRMELİDİR. Dönüş
+#'   `isTRUE()` ile denetlenir; `NULL` ya da bir atama değeri döndüren
+#'   başarılı bir geri çağrı YANLIŞ "ARA KAYIT BASARISIZ" ve
+#'   "DEVAM ETTIRILEMEZ" uyarıları üretir. Giriş noktası kapanışı
+#'   `pkgh_write_state()` mantıksal sonucunu döndürerek bu sözleşmeyi
+#'   zaten karşılar; yeni bir çağıran da aynısını yapmalıdır.
 pkg_meta_run_inventory <- function(query_library, config,
                                    connect_fn, release_fn,
                                    describe_fn, sample_fn,
@@ -507,7 +550,11 @@ pkg_meta_run_inventory <- function(query_library, config,
     # gerekmeyen bir bloklamaya dönüşür.
     onkontrol <- pkgn_precheck_query(q, config, hedef_hatasi)
 
-    onbellek <- if (isTRUE(config$resume) && !is.na(id)) cache[[id]] else NULL
+    # ONBELLEK ARAMASI KORUMALIDIR: `cache` varsayilan BOS liste oldugunda
+    # `cache[[id]]` "subscript out of bounds" firlatir. Bu ifade asagidaki
+    # `tryCatch()` blogundan ONCE calisir, dolayisiyla hata envanter kosusunun
+    # TAMAMINI dusururdu (`--resume` ile ilk kosu tam da bu sekildedir).
+    onbellek <- if (isTRUE(config$resume) && !is.na(id)) .pkgn_onbellek_girisi(cache, id) else NULL
     baglanti <- if (!is.null(onkontrol) || !is.null(onbellek)) NULL else baglanti_al(hedef)
 
     sonuc <- if (!is.null(onkontrol)) {

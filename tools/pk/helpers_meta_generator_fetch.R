@@ -371,6 +371,7 @@ pkgn_fetch_schema <- function(query, config, conn, describe_fn, sample_fn,
     source_types = cikarim$source_types,
     unmapped = cikarim$unmapped,
     unbounded = cikarim$unbounded,
+    duplicate_columns = cikarim$duplicate_columns,  # TEKRAR EDEN SONUC SUTUNU: semayi gecersiz kilmaz (guvenlik yolu korunur), envanter dongusunde AYRI bir bulguya donusur.
     observations = list(),
     sample_info = ornek_bilgi,
     cache = list(mode = "describe", columns = etkin_sema,

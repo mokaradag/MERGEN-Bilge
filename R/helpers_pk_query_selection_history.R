@@ -165,6 +165,7 @@ pk_select_chat_key <- function(chat_history, session = NULL) {
     kayit$first_follow_up_eligible <- FALSE
   }
   durum[[anahtar]] <- kayit
-  .pk_select_state_write(session, durum)
+  # `touched` VERİLİR: `.pk_select_state_write()` bir anahtarı listenin SONUNA yalnızca `touched` ile taşır ve AYNI çağrıda `utils::tail(state, .PK_SELECT_STATE_MAX_CHATS)` ile budar. Kullanıcının İÇİNDE OLDUĞU söyleşinin kaydı `touched` olmadan yazıldığında tazelik yenilenmiyor; sonraki bir büyüme olayı tam da az önce kullanılan söyleşiyi tahliye edip imzalarını, hatırlanan sorgu kimliğini ve bekleyen teklifini DÜŞÜRÜYORDU.
+  .pk_select_state_write(session, durum, touched = anahtar)
   anahtar
 }

@@ -324,8 +324,8 @@ pk_deep_fit_context_budget <- function(system_prompt, user_context, data_blocks,
   )
 
   while (toplam(kirpilmis) > kirpma_hedefi && grepl(desen, kirpilmis, perl = TRUE)) {
-    # Yerine konan metin desenle ESLESMEMELIDIR; aksi halde dongu ayni blogu
-    # sonsuza kadar "dusurmeye" calisir ve metin hic kucullmez.
+    # Yerine konan metin desenle EŞLEŞMEMELİDİR; aksi hâlde döngü aynı bloğu
+    # sonsuza kadar "düşürmeye" çalışır ve metin hiç küçülmez.
     konumlar <- gregexpr(desen, kirpilmis, perl = TRUE)[[1]]
     if (konumlar[1] < 1L) break
     son <- length(konumlar)

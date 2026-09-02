@@ -97,8 +97,14 @@ mergen_pk_routing_query_meta <- function(ctx) {
       # `pk_compute_heuristic_query_scores()` içindeki `THRESHOLD_PCT` ile AYNI
       # eşik; orası tek kaynaktır ve burada yeniden tanımlanmaz.
       indeksler <- which(yuzde >= 30)
+      # `best_idx` SINIR DENETİMİNDEN GEÇER. Skorlayıcı boş kütüphanede `0`,
+      # ileride bir sözleşme değişikliğinde ise kütüphane uzunluğunu aşan bir
+      # indeks döndürebilir; aday listesine ham hâliyle eklersek aşağı akıştaki
+      # `library[[indeks]]` erişimi TÜM PK isteğini yakalanmamış bir alt simge
+      # hatasıyla düşürürdü.
       en_iyi <- suppressWarnings(as.integer(skorlar$best_idx)[1])
-      if (isTRUE(skorlar$passes_threshold) && !is.na(en_iyi)) {
+      if (isTRUE(skorlar$passes_threshold) && length(en_iyi) == 1L && !is.na(en_iyi) &&
+          en_iyi >= 1L && en_iyi <= length(library)) {
         indeksler <- unique(c(indeksler, en_iyi))
       }
 

@@ -228,31 +228,59 @@ test_that("yetki reddi mesaji IC KAYNAK ADI sizdirmaz", {
 
 # --- Toplama kesinliği ---------------------------------------------------------
 
-test_that("integer64 olcusu 2^53 ustunde KESINLIK kaybetmeden toplanir", {
+# TEST URETIM KODUNU CAGIRIR. Eski surum `eski`/`yeni` ifadelerini TESTIN
+# ICINDE hesaplayip birbiriyle karsilastiriyordu; hicbir uretim fonksiyonu
+# calismiyor, hicbir uretim kaynagi taranmiyordu. Yani `as.numeric()` cevrimi
+# uretimde geri gelse bile bu test YESIL kalir, adinda vaat ettigi sozlesmeyi
+# DOGRULAMAZDI (yalnizca `as.numeric()`in 2^53 ustunde kayipli oldugunu
+# gosteriyordu).
+test_that("2^53 ustundeki integer64 olcusu YUVARLANMIS istatistik URETMEZ", {
   skip_if_not_installed("bit64")
-  degerler <- bit64::as.integer64(c("9007199254740993", "2", NA))
-
-  # Uretimdeki ESKI yol: `as.numeric()` -> 2^53 ustunu yuvarlar.
-  eski <- {
-    ham <- suppressWarnings(as.numeric(degerler))
-    sonlu <- ham[!is.na(ham) & is.finite(ham)]
-    sum(sonlu)
-  }
-  # YENI yol: `integer64` yerlisi kalir.
-  yeni <- {
-    gecerli <- degerler[!is.na(degerler)]
-    sum(gecerli)
+  # `.pk_stat_test_env()` bu dosyada DAHA SONRA tanımlanır; testthat dosyayı
+  # yukarıdan aşağı değerlendirdiği için ortak kurucu doğrudan çağrılır.
+  env <- .pk_hardening_test_env("helpers_pk_statistical_summary.R")
+  # Üretimde `R/config_file_store.R` tarafından tanımlanır; izole ortamda
+  # yalnızca varsayılan bütçe gerekir.
+  if (!exists("MAX_ANALYSIS_PROMPT_CHARS", envir = env, inherits = TRUE)) {
+    env$MAX_ANALYSIS_PROMPT_CHARS <- 120000L
   }
 
-  expect_equal(format(yeni), "9007199254740995")
-  expect_false(identical(format(eski, scientific = FALSE), format(yeni)))
+  veri <- data.frame(x = 1:3)
+  veri$Buyuk <- bit64::as.integer64(c("9007199254740993", "2", NA))
 
-  # Tamami NA olan sutun GOZLENMIS bir sifir uretmez.
-  bos <- bit64::as.integer64(c(NA, NA))
-  expect_true(is.na(if (!length(bos[!is.na(bos)])) NA_real_ else sum(bos[!is.na(bos)])))
+  sonuc <- env$generate_statistical_summary(veri, mode = "summary")
+  metin <- paste(sonuc$summary_text, collapse = "\n")
+
+  # `as.numeric()` cevriminin urettigi YUVARLANMIS toplam YAYIMLANMAZ.
+  expect_false(grepl("9007199254740994", metin, fixed = TRUE))
+  expect_false(grepl("9.0072e+15", metin, fixed = TRUE))
+  # Dislama SESSIZ DEGILDIR: model/kullanici neden istatistik olmadigini gorur.
+  expect_true(grepl("HASSASIYET SINIRI", metin, fixed = TRUE))
+
+  # 2^53 ALTINDAKI bir integer64 olcusu NORMAL sekilde ozetlenir.
+  veri2 <- data.frame(x = 1:3)
+  veri2$Kucuk <- bit64::as.integer64(c("10", "20", NA))
+  metin2 <- paste(env$generate_statistical_summary(veri2, mode = "summary")$summary_text,
+                  collapse = "\n")
+  expect_false(grepl("HASSASIYET SINIRI", metin2, fixed = TRUE))
+  expect_true(grepl("SAYISAL SUTUNLAR OZETI", metin2, fixed = TRUE))
 })
 
 # --- Ölçü sözleşmesi ve filtre uyarısı ----------------------------------------
+
+# OLUMLU KAYNAK TARAMALARI YALNIZCA KOD SATIRLARINDA YAPILIR.
+#
+# `readBin()` + `iconv()` dosyanın TAMAMINI döndürür, yorum satırları dâhil.
+# Olumlu bir `grepl(..., fixed = TRUE)` iddiası, gerçek çağrı SİLİNSE bile aynı
+# metni ALINTILAYAN bir açıklama satırıyla YEŞİL kalır; PK kaynakları tam da bu
+# tür açıklayıcı düzyazıyı taşır. Aynı normalleştirme bu dosyanın alt
+# bölümünde ve `.pk_rls_code_only()` içinde (test-pk-rls-failclosed-contract.R)
+# zaten kullanılıyordu; tek yardımcıya toplanır.
+.pk_hardening_code_only <- function(metin) {
+  satirlar <- strsplit(gsub("\r\n?", "\n", metin), "\n", fixed = TRUE)[[1]]
+  paste(satirlar[!grepl("^\\s*#", satirlar, perl = TRUE, useBytes = TRUE)],
+        collapse = "\n")
+}
 
 .pk_stat_test_env <- function() .pk_hardening_test_env("helpers_pk_statistical_summary.R")
 
@@ -379,7 +407,7 @@ test_that("devralinan varlik baglami request$user_session'dan okunur", {
   kok <- resolve_repo_root_for_tests()
   yol <- file.path(kok, "R", "helpers_pk_async_bootstrap.R")
   ham <- readBin(yol, "raw", file.info(yol)$size)
-  metin <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
+  metin <- .pk_hardening_code_only(iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte"))
   # `pk_async_build_request()` alani `user_session` adiyla tasir.
   expect_true(grepl(".pk_async_plain_user_data(request$user_session)", metin, fixed = TRUE))
   expect_false(grepl("request$user_session_snapshot", metin, fixed = TRUE))
@@ -389,8 +417,8 @@ test_that("bekci SOHBET DEGISTIGINDE gonderim durumunu temizler", {
   kok <- resolve_repo_root_for_tests()
   yol <- file.path(kok, "R", "server_handler_pk_async.R")
   ham <- readBin(yol, "raw", file.info(yol)$size)
-  metin <- gsub("\r\n", "\n", iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8",
-                                    sub = "byte"), fixed = TRUE)
+  metin <- .pk_hardening_code_only(iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8",
+                                         sub = "byte"))
   expect_true(grepl(
     "} else if (isTRUE(karar_bekci$apply) && !isTRUE(ayni_chat_bekci)) {",
     metin, fixed = TRUE))
@@ -426,8 +454,8 @@ test_that("tepe projeksiyonu surucunun TAMAMLANDI durumunu yoklar", {
   kok <- resolve_repo_root_for_tests()
   yol <- file.path(kok, "R", "helpers_pk_sql_execute.R")
   ham <- readBin(yol, "raw", file.info(yol)$size)
-  metin <- gsub("\r\n", "\n", iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8",
-                                    sub = "byte"), fixed = TRUE)
+  metin <- .pk_hardening_code_only(iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8",
+                                         sub = "byte"))
   expect_true(grepl("DBI::dbHasCompleted(res)", metin, fixed = TRUE))
 })
 
@@ -442,13 +470,13 @@ test_that("kilit kaybi ara kayit UYARISINA indirgenmez", {
 
   yol <- file.path(kok, "tools", "pk", "helpers_meta_generator_run.R")
   ham <- readBin(yol, "raw", file.info(yol)$size)
-  metin <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
+  metin <- .pk_hardening_code_only(iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte"))
   expect_true(grepl("if (inherits(kayit_ok, PKG_META_LOCK_LOST_CLASS)) stop(kayit_ok)",
                     metin, fixed = TRUE))
 
   yol2 <- file.path(kok, "tools", "pk", "generate_query_meta.R")
   ham2 <- readBin(yol2, "raw", file.info(yol2)$size)
-  metin2 <- iconv(rawToChar(ham2), from = "UTF-8", to = "UTF-8", sub = "byte")
+  metin2 <- .pk_hardening_code_only(iconv(rawToChar(ham2), from = "UTF-8", to = "UTF-8", sub = "byte"))
   expect_true(grepl("class = c(PKG_META_LOCK_LOST_CLASS,", metin2, fixed = TRUE))
 })
 
@@ -540,6 +568,6 @@ test_that("geri okunan buyuk tam sayi BILIMSEL GOSTERIMLE karsilastirilmaz", {
   kok <- resolve_repo_root_for_tests()
   yol <- file.path(kok, "R", "helpers_pk_export_plan.R")
   ham <- readBin(yol, "raw", file.info(yol)$size)
-  metin <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
+  metin <- .pk_hardening_code_only(iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte"))
   expect_true(grepl("scientific = FALSE", metin, fixed = TRUE))
 })

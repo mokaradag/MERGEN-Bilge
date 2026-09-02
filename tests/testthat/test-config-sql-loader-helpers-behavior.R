@@ -10,11 +10,17 @@
 testthat::local_edition(3)
 
 # `withr` OPSİYONEL BİR TEST BAĞIMLILIĞIDIR (bkz.
-# tests/testthat/test-pk-meta-generator-behavior.R): bu dosya dosya
-# düzeyinde `withr::` çağırır. Muhafız YOKKEN, paketin kurulu olmadığı bir
-# koşucuda testler ATLANMAK yerine "there is no package called 'withr'"
-# hatası veriyor ve `stop_on_failure = TRUE` altında TÜM paket düşüyordu.
-testthat::skip_if_not_installed("withr")
+# tests/testthat/test-pk-meta-generator-behavior.R). Muhafız YOKKEN, paketin
+# kurulu olmadığı bir koşucuda testler ATLANMAK yerine "there is no package
+# called 'withr'" hatası veriyor ve `stop_on_failure = TRUE` altında TÜM
+# paket düşüyordu.
+#
+# MUHAFIZ DOSYA DÜZEYİNDE DEĞİL, BAĞIMLI TESTLERİN İÇİNDEDİR: dosya düzeyinde
+# `skip_if_not_installed()` dosyanın DEĞERLENDİRİLMESİNİ durdurur, yani
+# `withr` gerektirmeyen SAF yardımcı testleri (`.sql_placeholder_text`,
+# `.read_sql_file_text`, BOM temizleme, ...) de gereksiz yere atlanırdı.
+# `withr::with_envvar()` yalnızca aşağıdaki iki testte kullanılır.
+.sql_loader_withr_gerek <- function() testthat::skip_if_not_installed("withr")
 
 
 # config_sql_loader.R, query_library bulunmazsa stop() eder. Bu stop'tan ÖNCE
@@ -142,6 +148,7 @@ test_that(".read_sql_file_text UTF-8 BOM'lu dosyayı temizleyerek okur", {
 # ---------------------------------------------------------------------------
 
 test_that("non-strict modda SQL'siz sorgu da placeholder alir (boot dusmez)", {
+  .sql_loader_withr_gerek()
   # GERİLEME: bu başarısızlık sınıfı YALNIZCA sayılıyor, `sql` alanı YOK
   # bırakılıyordu. Diğer iki başarısızlık yolu (dosya yok / dosya okunamadı)
   # non-strict modda placeholder atıyordu. Sonuç: `pk_query_meta_attach()`
@@ -160,9 +167,9 @@ test_that("non-strict modda SQL'siz sorgu da placeholder alir (boot dusmez)", {
   # STUB ÇAĞRILDI MI? Yükleyici `pk_query_meta_attach()` çağırmayı bırakırsa
   # stub hiç koşmaz ve test yine geçerdi; o zaman geçersiz sorgu metadata'sı
   # açılış denetimini SESSİZCE atlar. Bayrak bunu görünür kılar.
-  metadata_iliştirildi <- FALSE
+  metadata_eklendi <- FALSE
   env$pk_query_meta_attach <- function(lib, envir = NULL) {
-    metadata_iliştirildi <<- TRUE
+    metadata_eklendi <<- TRUE
     sql_var <- vapply(
       lib,
       function(sorgu) is.character(sorgu$sql) && length(sorgu$sql) == 1L &&
@@ -179,7 +186,7 @@ test_that("non-strict modda SQL'siz sorgu da placeholder alir (boot dusmez)", {
     )))
   })
 
-  expect_true(metadata_iliştirildi)
+  expect_true(metadata_eklendi)
   sorgu <- env$query_library[[1]]
   expect_true(is.character(sorgu$sql) && nzchar(sorgu$sql))
   expect_identical(sorgu$sql_source, "placeholder_missing_sql")
@@ -187,6 +194,7 @@ test_that("non-strict modda SQL'siz sorgu da placeholder alir (boot dusmez)", {
 })
 
 test_that("strict modda SQL'siz sorgu placeholder ALMAZ", {
+  .sql_loader_withr_gerek()
   kok <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
 

@@ -247,7 +247,7 @@ pk_select_query_v2 <- function(prompt, library, chat_history = NULL,
   }
 
   indeks <- pk_select_library_index(library)
-  secilen <- indeks[[karar$query_id]]
+  secilen <- if (as.character(karar$query_id %||% "")[1] %in% names(indeks)) indeks[[karar$query_id]] else NULL  # `[[` EKSİK anahtarda "subscript out of bounds" FIRLATIR; bu satır 170'teki `tryCatch` DIŞINDA çalıştığı için hata `pk_select_query_v2()` dışına kaçıyor ve aşağıdaki `.pk_select_internal_failure()` HİÇ çalışmıyordu.
   if (is.null(secilen)) {
     return(.pk_select_internal_failure(
       library, sprintf("Secilen kimlik kutuphanede cozulemedi: %s", karar$query_id)

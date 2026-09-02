@@ -431,8 +431,17 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     # TRUE kalıyor, yeni mesaj "önceki isteği bekleyin" ile reddediliyor ama
     # ekranda hiçbir ilerleme göstergesi kalmıyordu. Sarmalayıcı mesaj balonları
     # basıldıktan SONRA yeniden eklenir.
+    # HER İKİ BAYRAK DA ETKİN İSTEK SAYILIR. Yeniden yükleme yolu
+    # `#chat_content_container` içeriğini `values$is_sending` VEYA
+    # `values$typing` için temizler, ama bu kapı yalnızca ilkine bakıyordu;
+    # `R/server_observers_chat_input.R` ile `send_message()` ise ikisini de
+    # etkin istek sayar. Ertelenmiş bir PK gönderimi `is_sending` bayrağını
+    # sıfırlayıp `typing` bayrağını TRUE bırakırsa, kullanıcı açık söyleşiye
+    # yeniden tıkladığında hiçbir ilerleme göstergesi kalmıyor ama girdi
+    # BLOKLU kalıyordu.
     if (!isTRUE(hedef_degisti) &&
-        isTRUE(shiny::isolate(values$is_sending)) &&
+        (isTRUE(shiny::isolate(values$is_sending)) ||
+         isTRUE(shiny::isolate(values$typing))) &&
         exists("mergen_show_send_message_thinking_wrapper", mode = "function",
                inherits = TRUE)) {
       ucustaki_id <- tryCatch(shiny::isolate(values$backpressure_request_id),

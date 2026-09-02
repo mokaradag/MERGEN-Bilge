@@ -48,11 +48,19 @@
 # BİRLEŞTİRİYORDU. İki taraf gerçekten farklı harf kullanıyorsa satır
 # EŞLEŞMEZ ve karar KAPALI BAŞARISIZ (kapsam boş) olur; yanlış hesabın
 # kapsamını devralmaktansa erişimi reddetmek doğrudur.
-.PK_RLS_FOLD_FROM <- "ABCDEFGHIJKLMNOPQRSTUVWXYZÇĞÖŞÜ"
-.PK_RLS_FOLD_TO   <- "abcdefghijklmnopqrstuvwxyzçğöşü"
+#
+# KATLAMA TABLOLARI AÇIKÇA UTF-8 İŞARETLENİR. Bu dosya Windows VM'de
+# `source(..., encoding = "UTF-8")` ile yüklenir, ama tabloların kendisi
+# yerel kod sayfasında işaretlenmiş olarak kalabilir. `chartr()` iki tarafı
+# BAYT bazında eşlediği için, yerel-işaretli bir tablo ile UTF-8 işaretli bir
+# kullanıcı adı arasında Türkçe harfler hizasını kaybeder: `Ç` katlanmaz ya da
+# yanlış harfe katlanır ve iki taraf gerçekte aynı hesap olduğu hâlde
+# EŞLEŞMEZ (kapsam boş kalır, erişim gereksiz yere reddedilir).
+.PK_RLS_FOLD_FROM <- enc2utf8("ABCDEFGHIJKLMNOPQRSTUVWXYZÇĞÖŞÜ")
+.PK_RLS_FOLD_TO   <- enc2utf8("abcdefghijklmnopqrstuvwxyzçğöşü")
 
 .pk_rls_user_key <- function(x) {
-  ham <- as.character(x %||% "")
+  ham <- enc2utf8(as.character(x %||% ""))
   ham <- trimws(ham)
   chartr(.PK_RLS_FOLD_FROM, .PK_RLS_FOLD_TO, ham)
 }
@@ -97,6 +105,21 @@
   }
   if (is.null(redaktor)) return("(redaktor yuklenmedi)")
   temiz <- tryCatch(redaktor(metin), error = function(e) NULL)
+  if (!is.character(temiz) || length(temiz) != 1L || is.na(temiz)) {
+    return("(redaksiyon uygulanamadi)")
+  }
+  # GEÇERSİZ UTF-8 BAYTLARI ÖNCE ZARARSIZ HÂLE GETİRİLİR.
+  #
+  # `metin` genellikle bir ODBC sürücü hata mesajıdır ve Windows VM'de yerel
+  # kod sayfasından gelen, UTF-8 olarak GEÇERSİZ baytlar taşıyabilir. `perl =
+  # TRUE` `gsub()` ve `nchar()` böyle bir dizede "invalid multibyte string"
+  # hatası fırlatıyor; hata yakalanmadığı için bu güvenli-detay üreticisi
+  # ÇAĞIRANI düşürüyor ve tüm RLS kararı yakalanmamış bir istisnaya dönüşüyordu.
+  # Bayt yedeğiyle dönüştürmek görünürlüğü korur, kırılganlığı kaldırır.
+  temiz <- tryCatch({
+    aday <- enc2utf8(temiz)
+    if (isTRUE(validUTF8(aday))) aday else iconv(aday, "UTF-8", "UTF-8", sub = "?")
+  }, error = function(e) iconv(temiz, "", "UTF-8", sub = "?"))
   if (!is.character(temiz) || length(temiz) != 1L || is.na(temiz)) {
     return("(redaksiyon uygulanamadi)")
   }

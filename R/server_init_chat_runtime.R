@@ -295,6 +295,22 @@ if (!exists("pk_hook_single_exit_fix_install", mode = "function",
     if (is_exception) stop(caught_error)
     result
   }
+
+  # YEDEK SARMALAYICI DA "SARMALANMIŞ" DİYE İŞARETLENİR.
+  #
+  # Yukarıdaki çekirdek yakalama kapısı bir fonksiyonu yalnızca
+  # `.pk_hook_single_exit_is_wrapped()` FALSE dediğinde ham çekirdek sayar. Bu
+  # yedek sarmalayıcı işareti taşımadığı için, dosya yeniden source edildiğinde
+  # (bootstrap parmak izi tazelemesi, `global.R` yeniden yüklemesi) kapı ONU
+  # çekirdek olarak yakalıyor ve üzerine ikinci bir sarmalayıcı kuruyordu.
+  # Zincir her tazelemede bir halka uzuyor, aynı doğrudan çıkış için
+  # `MB_Analiz_Log` tablosuna YİNELENEN satırlar yazılıyordu. İşaret,
+  # `R/server_init_session_state.R` ile AYNI özniteliktir; o dosya manifestte
+  # bundan ÖNCE yüklendiği için sembol burada görünür, yine de yokluğuna karşı
+  # savunmalı davranılır (işaretlenemezse davranış eski hâline döner).
+  if (exists(".PK_HOOK_SINGLE_EXIT_MARK", inherits = TRUE)) {
+    attr(pk_analiz_process_request, get(".PK_HOOK_SINGLE_EXIT_MARK", inherits = TRUE)) <- TRUE
+  }
 }
 
 # ==============================================================================

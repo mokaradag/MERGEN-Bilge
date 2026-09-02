@@ -455,6 +455,20 @@ PK_PROVENANCE_BLOCK_REFUSAL_TR <- paste0(
   "sorunuzu yeniden gönderin."
 )
 
+# `warn` KİPİ DETERMİNİSTİK DEGRADASYON NOTU (TEK SAHİP).
+#
+# `block` kipi yanıtı hiç yayımlamaz; `warn` kipi ise yayımlar ama doğrulama
+# işaretlerini göstermek ZORUNDADIR. Doğrulayıcı çöktüğünde istek kapsamlı
+# bekleyen köken kaydı zaten TÜKENMİŞ olur: ne alt bilgi ne de görünür uyarı
+# işaretleri üretilebilir ve kullanıcı doğrulanmamış sayıları hiçbir uyarı
+# görmeden okuyup DUYUYORDU. Bu not o sözleşme boşluğunu kapatır; metin
+# sabittir, böylece her yol (akış, akış-dışı, benzetimli) aynı ifadeyi kullanır.
+PK_PROVENANCE_WARN_DEGRADED_TR <- paste0(
+  "\n\n", "\U000026A0\U0000FE0F", " **Kaynak doğrulaması yapılamadı:** ",
+  "Yukarıdaki sayısal ifadeler analiz verisine karşı doğrulanamadı. ",
+  "Kritik kararlar için lütfen kaynak veriyi kontrol edin."
+)
+
 #' Hiçbir koşulda hata fırlatmaz; başarısızlıkta metin değişmeden döner.
 pk_provenance_decorate <- function(text, session, request_id = NULL) {
   # KAYIT TÜKETİLDİKTEN SONRAKİ HER HATA İÇİN GÜVENLİ GERİ DÜŞME.

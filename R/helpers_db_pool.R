@@ -107,7 +107,13 @@ db_pool_config <- function() {
     pay <- try(suppressWarnings(as.integer(pk_db_pool_process_share(admission_cap))[1]),
                silent = TRUE)
     if (!inherits(pay, "try-error") && length(pay) == 1L && !is.na(pay) && pay >= 1L) {
-      process_max <- pay
+      # PAY KÜRESEL TAVANI AŞAMAZ. Yardımcı, işçi sayısı matematiğindeki bir
+      # değişiklikten ya da çağırana geçmiş bayat bir tavandan ötürü
+      # `admission_cap` üstünde bir değer döndürebilir; o değer doğrudan
+      # `max_size` olarak yayımlandığında her süreç yapılandırılan KÜRESEL
+      # bağlantı tavanının üstünde bağlantı açar ve `MERGEN_DB_POOL_MAX_SIZE`
+      # sözleşmesi sessizce bozulurdu.
+      process_max <- min(pay, admission_cap)
     }
   }
 

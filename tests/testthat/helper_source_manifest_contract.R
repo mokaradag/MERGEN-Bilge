@@ -54,6 +54,19 @@ source_manifest_paths_for_tests <- function() {
     stop("Test manifesti boş veya geçersiz.", call. = FALSE)
   }
 
+  # EKSİK VE BOŞ GİRDİLER DE REDDEDİLİR.
+  #
+  # Eski denetim `c("R/utils_common.R", "")` ya da `NA` taşıyan bir manifesti
+  # KABUL ediyordu: içerme ve sıra testleri beklenen yollar mevcut olduğu için
+  # geçiyor, ama bootstrap daha sonra geçersiz girdiyi `source()` etmeye
+  # çalışıp UYGULAMA AÇILIŞINI düşürüyordu. Manifest sözleşmesi burada
+  # kapalı-başarısız olmalıdır.
+  gecersiz <- is.na(paths) | !nzchar(trimws(paths))
+  if (any(gecersiz)) {
+    stop(sprintf("Test manifestinde BOŞ/NA yol var (konum: %s).",
+                 paste(which(gecersiz), collapse = ", ")), call. = FALSE)
+  }
+
   enc2utf8(paths)
 }
 
