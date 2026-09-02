@@ -324,13 +324,24 @@ pkgn_fetch_schema <- function(query, config, conn, describe_fn, sample_fn,
 .pkgn_fetch_describe <- function(query, config, conn, describe_fn, hata_sonucu) {
   tanimlayici <- .pkgn_describe(query, config, conn, describe_fn)
   if (inherits(tanimlayici, "pkgn_describe_rewrite_error")) {
-    return(hata_sonucu(
-      "describe_rewrite_failed",
-      paste0(
+    # YEREL YENIDEN YAZIM HATASI BIR SURUCU HATASI DEGILDIR (PR #705 inceleme, P3).
+    #
+    # `hata_sonucu()` her `error` argumanini `pkgh_db_error_summary()` icinden
+    # gecirir; bu metin ise DB'ye hic ulasmadan `.pkgn_local_temp_describe_sql()`
+    # tarafindan URETILIR. Ozetleyici hicbir surucu sinifina eslemedigi icin
+    # "DB hatasi (sinif=unknown)" yaziyor ve operatorun TEK ipucu olan yapisal
+    # sebep (`Yerel #temp metadata CTE adi sorguyla cakisti.`) SILINIYORDU --
+    # ustelik yukaridaki `detail` metni "bulgu sorgu metnindedir" diyordu.
+    # Metin ureticinin KENDI yazdigi yapisal aciklamadir ve uretim satir degeri
+    # TASIMAZ; `.pkgh_redact()` bu yuzden yeterlidir.
+    return(list(
+      ok = FALSE, code = "describe_rewrite_failed",
+      detail = paste0(
         "Yerel `#temp` describe donusumu BASARISIZ; DB'ye sorgu GONDERILMEDI. ",
         "Bulgu SORGU METNINDEDIR, baglantida DEGIL."
       ),
-      conditionMessage(tanimlayici)
+      error = .pkgh_redact(conditionMessage(tanimlayici)),
+      connection_error = FALSE
     ))
   }
   if (inherits(tanimlayici, "condition")) {

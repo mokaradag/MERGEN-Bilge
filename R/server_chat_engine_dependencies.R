@@ -478,7 +478,18 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
 
 .pk_hook_room_footer_publish <- function(footer) {
   kayit <- .pk_hook_room_record(footer)
-  if (!nzchar(kayit$footer)) return(invisible(FALSE))
+  # BOŞ ALT BİLGİ "YAPILACAK İŞ YOK" DEMEK DEĞİLDİR (PR #705 inceleme, P2):
+  # `.pk_hook_room_footer_append()` (bkz. yukarıdaki kapı) alt bilgi boş olsa da
+  # olgu ya da `block` kipi varsa DOĞRULAMAYI çalıştırır. Bu erken dönüş, tam
+  # olarak o kayıtları düşürüyordu: `pk_provenance_take()` kaydı zaten TÜKETMİŞ
+  # olduğu için `motor$tamamla()` sınırına `footer = NULL` gidiyor, doğrulama
+  # hiç koşmuyor ve `block` kipinde DOĞRULANMAMIŞ model düzyazısı teslim
+  # ediliyordu. Yayın artık kayıt olgu ya da `block` taşıdığında da yapılır.
+  kip <- as.character(kayit$mode %||% "")[1]
+  if (length(kip) != 1L || is.na(kip)) kip <- ""
+  if (!nzchar(kayit$footer) && is.null(kayit$facts) && !identical(kip, "block")) {
+    return(invisible(FALSE))
+  }
 
   for (frame in rev(sys.frames())) {
     has_store <- exists(".pk_room_provenance_store", envir = frame, inherits = FALSE)
@@ -519,7 +530,12 @@ if (exists("oo_arac_sql_baglami_kur", mode = "function", inherits = TRUE) &&
 
     kayit <- .pk_hook_room_record(kayit)
     footer <- kayit$footer
-    if (nzchar(footer)) {
+    # ÇAĞIRAN KAPISI DA GEVŞETİLİR (PR #705 inceleme, P2): olgu taşıyan ya da
+    # `block` kipindeki bir kayıt alt bilgisiz de olsa YAYINLANMALIDIR; aksi
+    # hâlde tüketilmiş kayıt burada sessizce ATILIR ve doğrulama hiç koşmaz.
+    kip_kaydi <- as.character(kayit$mode %||% "")[1]
+    if (length(kip_kaydi) != 1L || is.na(kip_kaydi)) kip_kaydi <- ""
+    if (nzchar(footer) || !is.null(kayit$facts) || identical(kip_kaydi, "block")) {
       # KAYIT ZATEN TÜKETİLDİ: teslim edilemese bile YAYINLANIR.
       #
       # `pk_provenance_take()` yuvayı yukarıda boşaltır. Yayın yalnızca

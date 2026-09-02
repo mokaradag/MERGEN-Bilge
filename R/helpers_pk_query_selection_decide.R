@@ -269,6 +269,28 @@ pk_select_decide <- function(pass_b, candidates_ids, library_index, cfg,
       "Diğer adayların hiçbiri sorunun gerektirdiği anlamsal yetenekleri ",
       "sunmuyor; marj kapısı uygulanmadı."
     ))
+  } else if (is.na(ikinci_guven)) {
+    # RAKİP GÜVENİ OKUNAMAZSA MARJ KAPISI FAIL-OPEN OLMAZ (PR #705 inceleme, P2).
+    #
+    # `marj` burada `NA` olduğu için aşağıdaki `!is.na(marj)` kapısı HİÇ
+    # ateşlenmiyor ve gerçek bir yakın eşleşme sessizce `auto` olarak
+    # çalışıyordu; üstelik `is.null(ikinci)` dalına da girmediği için kullanıcıya
+    # tek bir açıklama bile gitmiyordu. Çip yolu (`.pk_select_chip_*`) aynı
+    # okunamayan değeri zaten temkinli biçimde `0L` sayar.
+    aciklamalar <- c(aciklamalar, paste0(
+      "İkinci adayın güven değeri okunamadı; marj kapısı kapalı başarısız oldu."
+    ))
+    return(do.call(.pk_select_decision, c(
+      list(
+        PK_SELECT_STATUS_CLOSE_MARGIN,
+        message_tr = paste0(
+          "Sorgu seçiminin güven karşılaştırması yapılamadı. Yanlış bir analiz ",
+          "çalıştırmamak için hangisini istediğinizi belirtmenizi rica ederiz."
+        ),
+        chips = cipler, disclosures = aciklamalar
+      ),
+      ortak
+    )))
   }
 
   if (etkin < cfg$min_confidence) {

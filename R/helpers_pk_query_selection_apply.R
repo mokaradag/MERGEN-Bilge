@@ -237,7 +237,16 @@ pk_select_query_v2 <- function(prompt, library, chat_history = NULL,
       # seçimini netleştirmesi gerektiğini okuyordu; oysa istek onun isteğiyle
       # durdurulmuştu ve netleştirilecek bir şey yoktu.
       refusal_message = if (identical(karar$status, PK_SELECT_STATUS_CANCELLED)) {
-        as.character(karar$message_tr)[1]
+        # VARSAYILAN METİN ZORUNLUDUR (PR #705 inceleme, P3): durum bir yardımcı
+        # üzerinden (`.pk_select_pass_failure_decision()` /
+        # `pk_select_degraded_decision()`) geldiğinde `message_tr` BOŞ olabilir
+        # ve kullanıcı sohbette düz `NA` metnini okuyordu.
+        .iptal_metni <- as.character(karar$message_tr %||% NA_character_)[1]
+        if (is.na(.iptal_metni) || !nzchar(trimws(.iptal_metni))) {
+          "Analiz kullanıcı tarafından iptal edildi."
+        } else {
+          .iptal_metni
+        }
       } else {
         pk_select_refusal_message(karar)
       },

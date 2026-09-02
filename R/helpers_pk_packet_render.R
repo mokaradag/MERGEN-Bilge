@@ -281,6 +281,16 @@
       is.finite(k$total) && k$total > 0
     for (t in ilk) {
       deger <- .pk_render_safe_text(t$value, 120L)
+      # SAYIM SONLU DEĞİLSE İŞARET DE BASILMAZ (PR #705 inceleme, P3; dosya
+      # sözleşmesi için bkz. `.pk_render_finite()` başlığı). `pk_fmt_number()`
+      # sonlu olmayan sayımda `?` basar ama işaret koşulsuz yazılıyordu;
+      # `pk_packet_context_facts()` sonlu olmayan tanımı ATLADIĞI için işaretin
+      # olgu dizininde karşılığı olmuyor, alıntı `unknown_fact` üretiyor ve
+      # `block` kipinde TÜM yanıt deterministik yedekle değiştiriliyordu.
+      if (!.pk_render_finite(t$count)) {
+        satirlar <- c(satirlar, sprintf("  - %s: sayim HESAPLANMADI", deger))
+        next
+      }
       satirlar <- c(satirlar, sprintf("  - %s: %s %s%s", deger,
                                       pk_fmt_number(t$count, 0L),
                                       .pk_render_marker(k$column, "category_count",

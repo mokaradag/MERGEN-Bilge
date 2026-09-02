@@ -326,24 +326,20 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
     bekci_govde <- function() {
       if (isTRUE(request_done)) return(invisible(NULL))
 
-      # YAYIMLANMIŞ SON TARİH YENİDEN OKUNUR. İşçi, sorgu seçiminden SONRA
-      # metadata daha büyük bir `analysis_deadline_sec` bildirdiğinde
-      # `mergen.pk.async.deadline_at` option'ını UZATABİLİR. Bekçi ise gecikmeyi
-      # seçim ÖNCESİ son tarihten hesapladığı için isteği, işçi hâlâ KENDİ izin
-      # verilen bütçesi içindeyken terk ediyor ve kullanıcıya tipli zaman aşımı
-      # mesajı gösteriyordu. Uzatılmış bir son tarih varsa bekçi yeniden
-      # ZAMANLANIR; kısaltma bu kapıyı etkilemez.
-      yayimlanan <- getOption("mergen.pk.async.deadline_at", NULL)
-      kalan_yeni <- if (is.null(yayimlanan)) NA_real_ else {
-        suppressWarnings(as.numeric(pk_deadline_remaining_sec(yayimlanan))[1])
-      }
-      if (isTRUE(is.finite(kalan_yeni)) && isTRUE(kalan_yeni > 0) &&
-          requireNamespace("later", quietly = TRUE)) {
-        bekci_iptal <<- try(later::later(bekci_govde, delay = max(1, kalan_yeni + 3)),
-                            silent = TRUE)
-        if (inherits(bekci_iptal, "try-error")) bekci_iptal <<- NULL
-        return(invisible(NULL))
-      }
+      # SON TARİH YENİDEN OKUNMAZ; İŞÇİ ONU UZATAMAZ (PR #705 inceleme, P2).
+      #
+      # Burada `getOption("mergen.pk.async.deadline_at")` yeniden okunuyor ve
+      # "işçi seçimden sonra son tarihi uzatmış olabilir" gerekçesiyle bekçi
+      # yeniden zamanlanıyordu. Bu ÖLÜ bir daldı ve iki ayrı nedenle YANLIŞTI:
+      #   1) Analiz AYRI bir PSOCK sürecinde koşar ve `options()` SÜREÇ
+      #      YERELİDİR; işçinin yazdığı değer ANA sürece hiç ulaşmaz, yani okuma
+      #      her zaman seçim ÖNCESİ değeri (ya da `NULL`) döndürürdü.
+      #   2) Sorgu bazlı `analysis_deadline_sec` zaten YALNIZCA SIKILAŞTIRABİLİR:
+      #      `.pk_exec_query_deadline_at()` bütçeyi küresel tavana kelepçeler ve
+      #      yürürlükteki son tarihi İLERİ ALMAYI açıkça reddeder. Dolayısıyla
+      #      işçinin bekçiden DAHA UZUN bir bütçesi hiçbir durumda olamaz.
+      # Sonuç olarak bekçinin ilk gecikmesi (kalan + 3 sn) üst sınırdır ve
+      # yeniden zamanlama gerekmez.
 
       # BEKÇİ DE PROMISE GERİ ÇAĞRILARIYLA AYNI KORUMADAN GEÇER: takılı bir
       # işçide `request_done` FALSE kalır, bu yüzden terk edilmiş/bayat bir

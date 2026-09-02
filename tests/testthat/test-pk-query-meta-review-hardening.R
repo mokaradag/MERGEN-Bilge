@@ -5,8 +5,15 @@
 
 local({
   repo_root <- resolve_repo_root_for_tests()
-  if (!exists("%||%", mode = "function", inherits = TRUE)) {
-    `%||%` <<- function(a, b) if (is.null(a)) b else a
+  # KAPSAM `globalenv()` ILE SINIRLIDIR (PR #705 inceleme, P3).
+  #
+  # `inherits = TRUE` araması PAYLASILAN testthat yardimci ortamini da kapsar; o
+  # ortam test-dosyasi ortaminin EBEVEYNIDIR ama `globalenv()` icinden GORUNMEZ.
+  # Bir `helper_*.R` dosyasi operatoru tanimladiginda bu atama ATLANIYOR ve
+  # asagida `local = globalenv()` ile source edilen uretim yardimcilari
+  # `could not find function "%||%"` ile dusuyordu.
+  if (!exists("%||%", mode = "function", envir = globalenv(), inherits = FALSE)) {
+    assign("%||%", function(a, b) if (is.null(a)) b else a, envir = globalenv())
   }
 
   for (dosya in c(
@@ -209,9 +216,17 @@ test_that("tam sayı alanları kesir, taşma ve vektörü kabul etmez", {
   expect_null(.pk_config_as_integer("999999999999", pk_config_spec$MERGEN_PK_ROW_CAP))
 
   eski <- Sys.getenv("MERGEN_PK_ROW_CAP", unset = NA_character_)
+  # `options()` KATMANI DA SABITLENIR (PR #705 inceleme, P3): gecersiz ortam
+  # degeri cozumlemeyi `options()` katmanina dusurur; onceki bir test dosyasi
+  # `options(mergen.pk.row_cap)` birakmissa asagidaki iddia o SIZAN degeri okur
+  # ve uretim dogruyken duserdi (`test-deep-analysis-reconcile-behavior.R`
+  # icindeki `.pk_recon_with_config()` ayni nedenle iki katmani da izole eder).
+  eski_opt <- list(mergen.pk.row_cap = getOption("mergen.pk.row_cap", default = NULL))
   on.exit({
     if (is.na(eski)) Sys.unsetenv("MERGEN_PK_ROW_CAP") else Sys.setenv(MERGEN_PK_ROW_CAP = eski)
+    options(eski_opt)
   }, add = TRUE)
+  options(mergen.pk.row_cap = NULL)
   Sys.setenv(MERGEN_PK_ROW_CAP = "999999999999")
   expect_equal(
     pk_config_resolve("MERGEN_PK_ROW_CAP"),

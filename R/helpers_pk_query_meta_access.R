@@ -255,7 +255,13 @@ pk_meta_capability_check <- function(query, requirements = list()) {
   }
 
   for (alan in names(alanlar)) {
-    deger <- requirements[[alan]] %||% character(0)
+    # AYNI AD-GÜVENLİ OKUMA (PR #705 inceleme, P2): `[[` karakter alt simgesi
+    # BOŞ ya da ADSIZ bir listede `NULL` DÖNDÜRMEZ, "subscript out of bounds"
+    # FIRLATIR. `pk_meta_capability_check(query)` belgelenen varsayılan
+    # `requirements = list()` ile çağrıldığında (ya da JSON dizisinden gelen
+    # adsız bir liste verildiğinde) kapasite kapısı, kapalı-başarısız
+    # `PK_META_STATUS_NO_SEMANTICS` sonucu yerine OPAK bir hatayla düşüyordu.
+    deger <- .pk_meta_named_entry(requirements, alan) %||% character(0)
     if (!is.character(deger)) {
       gecersiz <- c(gecersiz, sprintf("requirements$%s karakter vektoru olmalidir.", alan))
       next

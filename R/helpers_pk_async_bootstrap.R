@@ -214,6 +214,13 @@ pk_async_worker_bootstrap <- function(repo_root, files,
     if (isTRUE(havuz$fatal)) {
       return(list(ok = FALSE, loaded = 0L, failed = "db_pool_fail_fast", cached = TRUE))
     }
+    # ADMISYON KUSURU BASARILI SAYILMAZ (PR #705 inceleme, P2; bkz.
+    # `.pk_async_worker_db_pool_init()` gerekcesi): havuz kurulamadigi icin isci
+    # dogrudan baglanti yoluna duser ve KURESEL oturum tavanini bypass ederdi.
+    if (identical(havuz$admission, FALSE)) {
+      return(list(ok = FALSE, loaded = 0L,
+                  failed = "db_pool_admission_unavailable", cached = TRUE))
+    }
     return(list(ok = TRUE, loaded = 0L, failed = character(0), cached = TRUE))
   }
 
@@ -351,6 +358,11 @@ pk_async_worker_bootstrap <- function(repo_root, files,
   havuz <- .pk_async_worker_pool_ensure(hedef, workers)
   if (isTRUE(havuz$fatal)) {
     return(list(ok = FALSE, loaded = yuklenen, failed = "db_pool_fail_fast", cached = FALSE))
+  }
+  # ADMISYON KUSURU BASARILI SAYILMAZ (yukaridaki onbellekli yol ile AYNI kural).
+  if (identical(havuz$admission, FALSE)) {
+    return(list(ok = FALSE, loaded = yuklenen,
+                failed = "db_pool_admission_unavailable", cached = FALSE))
   }
   list(ok = TRUE, loaded = yuklenen, failed = character(0), cached = FALSE)
 }

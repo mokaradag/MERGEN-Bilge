@@ -91,7 +91,21 @@ pk_direct_exit_text <- function(x) {
   ham <- if (inherits(x, "condition")) {
     tryCatch(conditionMessage(x), error = function(e) "")
   } else if (is.list(x)) {
-    Find(Negate(is.null), x[c("message", "answer", "text", "content")]) %||% ""
+    # BOŞ / `NA` ALAN KULLANILABİLİR DEĞİLDİR (PR #705 inceleme, P3).
+    #
+    # `Negate(is.null)` `character(0)` ve `NA_character_` değerlerini de KABUL
+    # ediyor, bu yüzden boş bir `message` alanı DOLU `answer`/`text`/`content`
+    # alanlarını MASKELİYORDU. Sonuç: `pk_direct_exit_is_db_failure()` boş metin
+    # okuyup `FALSE` döndürüyor, doğrudan-çıkış sarmalayıcısı DSN erişilemezken
+    # yeni bir telemetri bağlantısı açıyordu -- tam olarak bu sınıflandırıcının
+    # engellemek için var olduğu bloklayan yeniden bağlanma. `Yetkisiz` /
+    # `EslesmeYok` sınıflandırmaları da aynı nedenle kayboluyordu.
+    .kullanilir <- function(v) {
+      if (is.null(v)) return(FALSE)
+      s <- tryCatch(as.character(v)[1], error = function(e) NA_character_)
+      length(s) == 1L && !is.na(s) && nzchar(s)
+    }
+    Find(.kullanilir, x[c("message", "answer", "text", "content")]) %||% ""
   } else x
   metin <- tryCatch(as.character(ham)[1], error = function(e) "")
   if (length(metin) != 1L || is.na(metin)) return("")

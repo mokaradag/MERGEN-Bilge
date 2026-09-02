@@ -30,7 +30,18 @@
 #   giris noktasi zincirindedir ve farkli locale'lerde source edilir.
 # ==============================================================================
 
-`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L || is.na(x[1])) y else x
+# SERIT-YEREL OPERATOR ADI (PR #705 inceleme, P3).
+#
+# Bu dosya yardimciyi eskiden URETIM operatoru ile AYNI ada bagliyordu:
+# `soak_pk_bootstrap()` (asagida) `R/utils_common.R` dosyasini AYNI ortama
+# source eder ve oradaki surum YALNIZ `NULL` icin yedege duser. Ezme iki
+# yonluydu: (a) bootstrap ONCESI, gate surecinde zaten yuklu olan uygulama
+# yardimcilari bu NA/sifir-uzunluk varyantini kullaniyordu; (b) bootstrap
+# SONRASI bu dosyadaki HER kullanim NA yedegini KAYBEDIYORDU -- cozulen bir
+# yapilandirma degeri `NA` oldugunda `max(1L, NA)` `NA` uretiyor,
+# `vector("list", NA)` hata veriyor ve serit COKUYORDU (gate hicbir PK kaniti
+# uretmeden bitiyordu). Ad ayrilir; uretim operatorune DOKUNULMAZ.
+`%soak_or%` <- function(x, y) if (is.null(x) || length(x) == 0L || is.na(x[1])) y else x
 
 soak_pk_repo_root <- function() {
   env_root <- Sys.getenv("MERGEN_REPO_ROOT", unset = "")
@@ -131,15 +142,15 @@ soak_pk_bootstrap <- function() {
 # atlanir; hicbir parca yoksa genel bir gerekce dondurulur.
 soak_pk_bootstrap_reason <- function(boot) {
   parcalar <- character(0)
-  if (length(boot$failed_files %||% character(0))) {
+  if (length(boot$failed_files %soak_or% character(0))) {
     parcalar <- c(parcalar, sprintf("kaynak yuklenemedi: %s",
                                     paste(boot$failed_files, collapse = ", ")))
   }
-  if (length(boot$missing_packages %||% character(0))) {
+  if (length(boot$missing_packages %soak_or% character(0))) {
     parcalar <- c(parcalar, sprintf("eksik paket: %s",
                                     paste(boot$missing_packages, collapse = ", ")))
   }
-  if (length(boot$missing_fns %||% character(0))) {
+  if (length(boot$missing_fns %soak_or% character(0))) {
     parcalar <- c(parcalar, sprintf("eksik islev: %s",
                                     paste(boot$missing_fns, collapse = ", ")))
   }
@@ -201,7 +212,7 @@ soak_pk_calibrate_inflight_gate <- function(conn, sql, cfg_lane, max_k = 40L) {
     ), error = function(e) NULL)
     if (is.null(res)) next
     if (identical(res$status, "cancelled") &&
-        isTRUE(as.integer(res$chunks %||% 0L) >= 1L)) {
+        isTRUE(as.integer(res$chunks %soak_or% 0L) >= 1L)) {
       return(k)
     }
     # Iptal edilmeden TAMAMLANDIYSA daha buyuk k denemenin anlami yok.
@@ -374,7 +385,7 @@ soak_pk_one_session <- function(idx, conn, token_root, cfg_lane,
         # BASARISIZ sayilir.
         if (isTRUE(inflight_cancel)) {
           inflight_after_fetch <- identical(res$status, "cancelled") &&
-            isTRUE(as.integer(res$chunks %||% 0L) >= 1L)
+            isTRUE(as.integer(res$chunks %soak_or% 0L) >= 1L)
         }
 
         if (identical(res$status, "ok")) {
@@ -465,7 +476,7 @@ soak_pk_deep_budget_probe <- function(conn, token_root, cfg_lane) {
                                cancel_token = token, unicode_param = FALSE)
     statuses <- c(statuses, as.character(res$status)[1])
     if (!identical(res$status, "ok")) break
-    ts <- suppressWarnings(as.numeric(res$timeout_sec %||% NA_real_)[1])
+    ts <- suppressWarnings(as.numeric(res$timeout_sec %soak_or% NA_real_)[1])
     if (!is.finite(ts) || ts <= 0) break
     effective <- c(effective, ts)
     # Gercek zaman tuket: SQLite sorgusu milisaniyeler surer, dolayisiyla
@@ -611,7 +622,7 @@ soak_pk_psock_probe <- function(cfg_lane) {
                 bootstrap_status = NA_character_,
                 error = as.character(sonuc$message)[1]))
   }
-  durum <- as.character((sonuc %||% list())$status %||% NA_character_)[1]
+  durum <- as.character((sonuc %soak_or% list())$status %soak_or% NA_character_)[1]
 
   # IKINCI TUR: IPTAL EDILMEMIS, GERCEK BOOTSTRAP.
   #
@@ -629,8 +640,8 @@ soak_pk_psock_probe <- function(cfg_lane) {
        status = durum,
        bootstrap_ran = isTRUE(bs$ran),
        bootstrap_ok = isTRUE(bs$ok),
-       bootstrap_status = as.character(bs$status %||% NA_character_)[1],
-       bootstrap_reason = as.character(bs$reason %||% NA_character_)[1])
+       bootstrap_status = as.character(bs$status %soak_or% NA_character_)[1],
+       bootstrap_reason = as.character(bs$reason %soak_or% NA_character_)[1])
 }
 
 # Temiz PSOCK iscisinde GERCEK bootstrap + giris noktasi dogrulamasi.
@@ -679,7 +690,7 @@ soak_pk_psock_bootstrap_round <- function(cfg_lane, root, token_dir, paket) {
                 error = as.character(sonuc$message)[1]))
   }
 
-  durum <- as.character((sonuc %||% list())$status %||% NA_character_)[1]
+  durum <- as.character((sonuc %soak_or% list())$status %soak_or% NA_character_)[1]
   bootstrap_dustu <- identical(durum, "bootstrap_failed")
   list(ran = TRUE, ok = !isTRUE(bootstrap_dustu) && !is.na(durum),
        reason = if (isTRUE(bootstrap_dustu)) "bootstrap_failed" else "ok",
@@ -705,7 +716,7 @@ soak_pk_cache_oversize_probe <- function() {
     return(bos)
   }
 
-  onceki <- tryCatch(as.integer(pk_cache_stats()$rejected_oversize %||% 0L),
+  onceki <- tryCatch(as.integer(pk_cache_stats()$rejected_oversize %soak_or% 0L),
                      error = function(e) NA_integer_)
   if (is.na(onceki)) return(bos)
 
@@ -752,7 +763,7 @@ soak_pk_cache_oversize_probe <- function() {
     stringsAsFactors = FALSE
   )
   sonuc <- tryCatch(pk_cache_put("soak_pk_oversize", buyuk), error = function(e) NULL)
-  sonrasi <- tryCatch(as.integer(pk_cache_stats()$rejected_oversize %||% 0L),
+  sonrasi <- tryCatch(as.integer(pk_cache_stats()$rejected_oversize %soak_or% 0L),
                       error = function(e) NA_integer_)
 
   if (!is.list(sonuc) || is.na(sonrasi)) return(bos)
@@ -763,7 +774,7 @@ soak_pk_cache_oversize_probe <- function() {
   list(
     ran = TRUE,
     stored = isTRUE(sonuc$stored),
-    reason = as.character(sonuc$reason %||% NA_character_)[1],
+    reason = as.character(sonuc$reason %soak_or% NA_character_)[1],
     rejected_delta = as.integer(sonrasi - onceki),
     rejected = !isTRUE(sonuc$stored) && !isTRUE(okundu$hit) &&
       identical(as.character(sonuc$reason)[1], "entry_too_large") &&
@@ -816,7 +827,7 @@ soak_pk_pool_leak <- function() {
   anlik <- tryCatch(db_pool_status_snapshot(), error = function(e) NULL)
   if (!is.list(anlik)) return(NA_integer_)
   # `checkout - returned`; havuz sayaclari `counters` altindadir.
-  as.integer(anlik$counters$outstanding_checkouts %||% NA_integer_)
+  as.integer(anlik$counters$outstanding_checkouts %soak_or% NA_integer_)
 }
 
 #' PK-analiz soak seridini calistir
@@ -830,10 +841,10 @@ soak_pk_analysis_lane <- function(cfg) {
     return(list(available = FALSE, reason = soak_pk_bootstrap_reason(boot)))
   }
 
-  sessions <- max(1L, as.integer(cfg$pk_lane_sessions %||% 60L))
+  sessions <- max(1L, as.integer(cfg$pk_lane_sessions %soak_or% 60L))
 
   cfg_lane <- list(
-    distinct_users = max(1L, as.integer(cfg$pk_lane_distinct_users %||% 6L)),
+    distinct_users = max(1L, as.integer(cfg$pk_lane_distinct_users %soak_or% 6L)),
     # NOT: "farkli sorgu kimligi" icin AYAR YOKTUR ve OLMAMALIDIR. Seridin
     # onbellek erisim deseni bilerek SABITTIR (SICAK KUME + SOGUK KUYRUK):
     # serit-yerel LRU tavani 12 giristir; sicak havuz buyutulurse sicak
@@ -841,23 +852,23 @@ soak_pk_analysis_lane <- function(cfg) {
     # TAHLIYE uretilemez. Eskiden burada cozulen `distinct_queries` alani
     # HICBIR YERDE OKUNMUYORDU; operator `MERGEN_SOAK_PK_DISTINCT_QUERIES`
     # ayarlayinca desenin degistigini SANIYOR ama serit ayni kaliyordu.
-    deadline_sec = as.numeric(cfg$pk_lane_deadline_sec %||% 300),
-    sql_timeout_sec = as.numeric(cfg$pk_lane_sql_timeout_sec %||% 120),
-    row_cap = as.numeric(cfg$pk_lane_row_cap %||% 50000),
-    rows_per_query = max(1L, as.integer(cfg$pk_lane_rows_per_query %||% 4000L)),
-    chunk_rows = max(1L, as.integer(cfg$pk_lane_chunk_rows %||% 1000L)),
-    max_result_mb = as.numeric(cfg$pk_lane_max_result_mb %||% 512),
-    cancel_every = max(2L, as.integer(cfg$pk_lane_cancel_every %||% 7L)),
-    stale_every = max(2L, as.integer(cfg$pk_lane_stale_every %||% 5L)),
-    deep_every = max(2L, as.integer(cfg$pk_lane_deep_every %||% 9L)),
-    deep_max_queries = max(2L, as.integer(cfg$pk_lane_deep_max_queries %||% 5L)),
+    deadline_sec = as.numeric(cfg$pk_lane_deadline_sec %soak_or% 300),
+    sql_timeout_sec = as.numeric(cfg$pk_lane_sql_timeout_sec %soak_or% 120),
+    row_cap = as.numeric(cfg$pk_lane_row_cap %soak_or% 50000),
+    rows_per_query = max(1L, as.integer(cfg$pk_lane_rows_per_query %soak_or% 4000L)),
+    chunk_rows = max(1L, as.integer(cfg$pk_lane_chunk_rows %soak_or% 1000L)),
+    max_result_mb = as.numeric(cfg$pk_lane_max_result_mb %soak_or% 512),
+    cancel_every = max(2L, as.integer(cfg$pk_lane_cancel_every %soak_or% 7L)),
+    stale_every = max(2L, as.integer(cfg$pk_lane_stale_every %soak_or% 5L)),
+    deep_every = max(2L, as.integer(cfg$pk_lane_deep_every %soak_or% 9L)),
+    deep_max_queries = max(2L, as.integer(cfg$pk_lane_deep_max_queries %soak_or% 5L)),
     # Derin butce KUCUK tutulur ki `MERGEN_PK_SQL_TIMEOUT_SEC` degil KALAN
     # BUTCE baglayici olsun; aksi halde azalma olculemez.
-    deep_budget_sec = max(4, as.numeric(cfg$pk_lane_deep_budget_sec %||% 10)),
-    deep_step_sleep_sec = max(0.2, as.numeric(cfg$pk_lane_deep_step_sleep_sec %||% 1.2)),
+    deep_budget_sec = max(4, as.numeric(cfg$pk_lane_deep_budget_sec %soak_or% 10)),
+    deep_step_sleep_sec = max(0.2, as.numeric(cfg$pk_lane_deep_step_sleep_sec %soak_or% 1.2)),
     # Bootstrap turu GERCEKTEN kaynak yukler; son tarih bunun icin yeterli
     # olmalidir (yoksa tur "deadline" doner ve bootstrap hic olculmez).
-    psock_bootstrap_deadline_sec = max(30, as.numeric(cfg$pk_lane_psock_bootstrap_deadline_sec %||% 120))
+    psock_bootstrap_deadline_sec = max(30, as.numeric(cfg$pk_lane_psock_bootstrap_deadline_sec %soak_or% 120))
   )
 
   token_root <- file.path(tempdir(), paste0("soak_pk_tokens_", as.integer(Sys.time())))
@@ -982,8 +993,8 @@ soak_pk_analysis_lane <- function(cfg) {
     )
   }
 
-  durations <- vapply(rows, function(r) as.numeric(r$duration_ms %||% NA_real_), numeric(1))
-  outcomes <- vapply(rows, function(r) as.character(r$outcome %||% "error"), character(1))
+  durations <- vapply(rows, function(r) as.numeric(r$duration_ms %soak_or% NA_real_), numeric(1))
+  outcomes <- vapply(rows, function(r) as.character(r$outcome %soak_or% "error"), character(1))
   cancelled <- vapply(rows, function(r) isTRUE(r$cancelled_round), logical(1))
   stale <- vapply(rows, function(r) isTRUE(r$stale_round), logical(1))
   hits <- vapply(rows, function(r) isTRUE(r$cache_hit), logical(1))
@@ -1080,7 +1091,7 @@ soak_pk_analysis_lane <- function(cfg) {
   conn_balanced <- identical(conn_ozet$acquired, conn_ozet$released) &&
     conn_ozet$acquired >= sessions &&
     isTRUE(havuz_kuruldu) &&
-    identical(as.integer(pool_leaked %||% -1L), 0L)
+    identical(as.integer(pool_leaked %soak_or% -1L), 0L)
 
   ok_count <- sum(outcomes == "ok")
   measurable <- sum(!cancelled)
@@ -1134,7 +1145,7 @@ soak_pk_analysis_lane <- function(cfg) {
       hit_observed = sum(hits) > 0L,
       # Tahliye GOZLENDI mi: LRU giris tavani gercekten asilmadiysa bozuk
       # bir tahliye yolu sessizce gecerdi.
-      eviction_observed = isTRUE(as.numeric(cache_stats$evicted %||% 0)[1] > 0),
+      eviction_observed = isTRUE(as.numeric(cache_stats$evicted %soak_or% 0)[1] > 0),
       scope_isolated = cache_scope_isolated,
       # TEK GIRIS tavani AYRI bir sinirdir; ayri kanit uretilir.
       oversize_probe_ran = isTRUE(oversize$ran),

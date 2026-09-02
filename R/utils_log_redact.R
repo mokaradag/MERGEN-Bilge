@@ -162,7 +162,12 @@ redact_sensitive_text <- function(x) {
     # bir değerde motor `}}` çiftini bölerek `{A}` eşleşmesi uydurur ve parola
     # kuyruğu (`}}B`) maskesiz kalırdı.
     metin <- gsub(
-      paste0("(?i)\\b(", secret_key_pattern, ")(\\s*[:=]\\s*)\\{(?>(?:[^}]|\\}\\})*)\\}"),
+      # DEĞER SINIFI SATIR SONUNU KAPSAMAZ (PR #705 inceleme, P3): kümeli bir ODBC
+      # değeri satır sonu TAŞIMAZ. Sınıf `\r\n` eşlediğinde KAPANMAMIŞ bir küme,
+      # SONRAKİ satırdaki kapanış parantezine kadar her şeyi yutuyor ve kalıcı
+      # sunucu logundan sürücü/bağlantı tanı bağlamı SİLİNİYORDU (kapanmamış
+      # geçiş için aynı koruma aşağıda zaten var).
+      paste0("(?i)\\b(", secret_key_pattern, ")(\\s*[:=]\\s*)\\{(?>(?:[^}\\r\\n]|\\}\\})*)\\}"),
       "\\1\\2{<redacted>}",
       metin,
       perl = TRUE
@@ -317,8 +322,11 @@ redact_connection_identifiers <- function(x) {
   # yüzünden atlar. `(?>...)` geri izlemeyi kapatarak `}}` çiftinin
   # bölünmesini engeller.
   metin <- gsub(
+    # DEĞER SINIFI SATIR SONUNU KAPSAMAZ (PR #705 inceleme, P3): yukarıdaki
+    # `redact_sensitive_text()` geçişiyle AYNI gerekçe -- kapanmamış bir küme
+    # sonraki satırların kapanışına kadar her şeyi yutup tanı bağlamını siliyordu.
     paste0("(?i)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS,
-           ")(\\s*=\\s*)\\{(?>(?:[^{}]|\\}\\})*)\\}"),
+           ")(\\s*=\\s*)\\{(?>(?:[^{}\\r\\n]|\\}\\})*)\\}"),
     "\\1\\2\\3{<redacted>}",
     metin,
     perl = TRUE

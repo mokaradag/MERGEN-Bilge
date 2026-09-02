@@ -135,7 +135,13 @@ pk_select_query_entities <- function(query) {
 #' Aday kümesindeki TÜM varlık türleri (Geçiş B istemi için)
 pk_select_entity_kinds <- function(queries) {
   if (!is.list(queries) || !length(queries)) return(character(0))
-  sort(unique(unlist(lapply(queries, pk_select_query_entities), use.names = FALSE)))
+  # SIRALAMA YERELDEN BAĞIMSIZ OLMALIDIR (PR #705 inceleme, P3): `sort()`
+  # `LC_COLLATE` duyarlıdır ve bu sıra `pk_select_pass_b_messages()` içinde
+  # DOĞRUDAN isteme gömülür. Ana süreç ile PSOCK işçisi farklı `LC_COLLATE`
+  # taşıdığında AYNI soru İKİ FARKLI Geçiş B istemi üretiyordu.
+  benzersiz <- unique(unlist(lapply(queries, pk_select_query_entities), use.names = FALSE))
+  if (!length(benzersiz)) return(character(0))
+  benzersiz[order(benzersiz, method = "radix")]
 }
 
 #' Sütun etiketlerini kompakt metne çevir (Geçiş A)
@@ -193,7 +199,13 @@ pk_select_pass_a_line <- function(query, cfg) {
   etiket_metin <- .pk_select_column_labels(meta, cfg$keyword_chars)
 
   ornekler <- .pk_select_meta_chr(meta, "sample_questions")
-  if (length(ornekler) > cfg$sample_n) ornekler <- ornekler[seq_len(cfg$sample_n)]
+  # YAPILANDIRMA ALANI UZUNLUK DENETİMİNDEN GEÇER (PR #705 inceleme, P3): alan
+  # yoksa karşılaştırma `logical(0)` üretir ve `if` "argument is of length zero"
+  # ile TÜM yük kurulumunu düşürürdü. Aynı yoldaki bütçe alanları zaten
+  # `.pk_select_clip()` / `%||%` ile yedekli okunuyordu.
+  ornek_n <- suppressWarnings(as.integer(cfg$sample_n %||% 3L)[1])
+  if (length(ornek_n) != 1L || is.na(ornek_n) || ornek_n < 0L) ornek_n <- 3L
+  if (length(ornekler) > ornek_n) ornekler <- ornekler[seq_len(ornek_n)]
   ornekler <- vapply(
     ornekler,
     function(s) .pk_select_inline(.pk_select_clip(s, cfg$sample_chars)),

@@ -82,7 +82,13 @@ if (!exists(".pk_sql_classify_readonly_base", mode = "function", inherits = FALS
 .pk_sql_local_temp_predrop <- function(raw_statement) {
   kalip <- paste0(
     "^IF[ \\t\\r\\n]+OBJECT_ID[ \\t\\r\\n]*\\([ \\t\\r\\n]*N?'tempdb\\.\\.",
-    "(#[A-Za-z_][A-Za-z0-9_]*)'[ \\t\\r\\n]*\\)[ \\t\\r\\n]+",
+    "(#[A-Za-z_][A-Za-z0-9_]*)'[ \\t\\r\\n]*",
+    # İSTEĞE BAĞLI NESNE TÜRÜ ARGÜMANI (PR #705 inceleme, P3): T-SQL
+    # `OBJECT_ID('tempdb..#T', 'U')` biçimini de kabul eder ve bu, SSMS'te
+    # YAYGIN ön-DROP deyimidir. Reddedildiğinde deyim ne hazırlama ne indeks
+    # şekline uyuyor, `pk_sql_analyze_local_temp_batch()` boş dönüyor ve TÜM
+    # toplu iş `multiple_statements` ile read-only kapısında reddediliyordu.
+    "(?:,[ \\t\\r\\n]*N?'U'[ \\t\\r\\n]*)?\\)[ \\t\\r\\n]+",
     "IS[ \\t\\r\\n]+NOT[ \\t\\r\\n]+NULL[ \\t\\r\\n]+",
     "DROP[ \\t\\r\\n]+TABLE[ \\t\\r\\n]+(#[A-Za-z_][A-Za-z0-9_]*)$"
   )

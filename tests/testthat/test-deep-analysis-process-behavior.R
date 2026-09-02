@@ -236,6 +236,25 @@ test_that("beklenmeyen istisna mesaji yardimci yuklu olsa da OLMASA da AYNIDIR",
   kok <- resolve_repo_root_for_tests()
 
   mesaji_al <- function(yardimci_yuklu) {
+    # GERI YUKLEME SILMEDEN ONCE KAYDEDILIR (PR #705 inceleme, P3).
+    #
+    # Eski kod once `rm(list = ad, envir = globalenv())` yapip SONRA
+    # `withr::defer(..., envir = parent.frame(4))` cagiriyordu. Uc ayri kusur
+    # vardi: (a) `withr` kurulu degilse (bu dosyada `skip_if_not_installed()`
+    # YOK) satir HATA verir ve ad TUM paket icin SILINMIS kalir; (b)
+    # `parent.frame(4)` `local()`/`eval()` cerceve duzenine bagimlidir ve yanlis
+    # bir cerceveye baglanirsa geri yukleme HIC calismaz; (c) `inherits = TRUE`
+    # ile arama `globalenv()` USTUNDEKI bir baglamayi da eslestirir, `rm()`
+    # yalnizca uyari verir ve ertelenen `assign()` daha ONCE OLMAYAN bir kuresel
+    # baglama YARATIR. Geri yukleme artik BU cercevenin `on.exit()` kancasina
+    # baglanir; cerceve KESIN olarak cikar ve `withr` bagimliligi yoktur.
+    geri_yukle <- list()
+    on.exit({
+      for (.geri_ad in names(geri_yukle)) {
+        assign(.geri_ad, geri_yukle[[.geri_ad]], envir = globalenv())
+      }
+    }, add = TRUE)
+
     env <- .deepProcessEnv()
     if (isTRUE(yardimci_yuklu)) {
       source(file.path(kok, "R", "utils_log_redact.R"), encoding = "UTF-8", local = env)
@@ -255,10 +274,14 @@ test_that("beklenmeyen istisna mesaji yardimci yuklu olsa da OLMASA da AYNIDIR",
       # bağlama önce bulunur; `globalenv()` sızıntısı bu bağlamı GEÇERSİZ
       # KILMAZ. Onu ön koşula almak testi tam suite koşumunda GEREKSİZ yere
       # atlatıyor ve determinizm kapısı hiç çalışmıyordu.
+      # `inherits = FALSE`: YALNIZCA `globalenv()` UZERINDEKI baglama sayilir.
+      # `TRUE` ile eklenmis paketlerdeki bir ad da eslesir; `rm()` onu kaldiramaz
+      # (yalnizca uyarir) ve geri yukleme daha once OLMAYAN bir kuresel baglama
+      # yaratirdi.
       sizmis <- vapply(
         c("pk_safe_error_message"),
         function(ad) exists(ad, envir = globalenv(), mode = "function",
-                            inherits = TRUE),
+                            inherits = FALSE),
         logical(1)
       )
       # SIZAN BAGLANTI GECICI OLARAK KALDIRILIR, TEST ATLANMAZ.
@@ -268,14 +291,10 @@ test_that("beklenmeyen istisna mesaji yardimci yuklu olsa da OLMASA da AYNIDIR",
       # `globalenv()` icine yazdiginda bu sozlesme HIC calismiyordu. Ad
       # kaldirilir, test kosar ve `on.exit` ile GERI YUKLENIR.
       for (.sizan_ad in names(sizmis)[sizmis]) {
-        .sizan_deger <- get(.sizan_ad, envir = globalenv(), inherits = TRUE)
-        local({
-          ad <- .sizan_ad
-          deger <- .sizan_deger
-          rm(list = ad, envir = globalenv())
-          withr::defer(assign(ad, deger, envir = globalenv()),
-                       envir = parent.frame(4))
-        })
+        # ONCE KAYDET, SONRA SIL: yukaridaki `on.exit()` bu listeyi okur.
+        geri_yukle[[.sizan_ad]] <- get(.sizan_ad, envir = globalenv(),
+                                       inherits = FALSE)
+        rm(list = .sizan_ad, envir = globalenv())
       }
     }
     yakalanan <- new.env(parent = emptyenv())

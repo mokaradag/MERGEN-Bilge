@@ -129,11 +129,24 @@
   if (!is.list(alt)) alt <- list()
   if (!is.list(ustun)) return(alt)
 
+  # AD-GÜVENLİ OKUMA (PR #705 inceleme, P1): `[[` KARAKTER indeksi BOŞ listede
+  # `NULL` DÖNDÜRMEZ, "subscript out of bounds" FIRLATIR. `pk_meta_merge_layers()`
+  # birleştirmeye `alt = list()` ile başlar, bu yüzden metadata önyüklemesi
+  # `[PK_META]` bulgularını hiç üretemeden çöküyordu.
+  .ad_ile <- function(x, ad) {
+    if (!is.list(x) || !length(x)) return(NULL)
+    adlar <- names(x)
+    if (is.null(adlar)) return(NULL)
+    i <- match(as.character(ad)[1], adlar)
+    if (is.na(i)) return(NULL)
+    x[[i]]
+  }
+
   out <- alt
   for (alan in names(ustun)) {
     if (is.na(alan) || !nzchar(alan)) next
     ust_deger <- ustun[[alan]]
-    alt_deger <- alt[[alan]]
+    alt_deger <- .ad_ile(alt, alan)
 
     if (identical(alan, "column_meta") && is.list(ust_deger)) {
       birlesik <- if (is.list(alt_deger)) alt_deger else list()
@@ -145,7 +158,8 @@
           next
         }
 
-        mevcut <- if (is.list(birlesik[[sutun]])) birlesik[[sutun]] else list()
+        mevcut_ham <- .ad_ile(birlesik, sutun)
+        mevcut <- if (is.list(mevcut_ham)) mevcut_ham else list()
         for (calan in names(yeni)) {
           if (is.na(calan) || !nzchar(calan)) next
           mevcut[[calan]] <- yeni[[calan]]

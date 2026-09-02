@@ -203,11 +203,42 @@ test_that("uretimden turetilen dosyalar depoda IZLENMEZ", {
 
   # `git ls-files --error-unmatch` için 0=IZLENIYOR, 1=eslesme yok. 128 gibi
   # başka bir durum Git'in kontrolü yapamadığını gösterir ve BAŞARI sayılmaz.
-  for (dosya in c("R/library_query_meta_local.R", "R/library_query_aliases_local.R")) {
-    izlenen <- suppressWarnings(system2(
+  .izlenme_durumu <- function(dosya) {
+    suppressWarnings(system2(
       "git", c("-C", shQuote(kok), "ls-files", "--error-unmatch", shQuote(dosya)),
       stdout = FALSE, stderr = FALSE
     ))
+  }
+
+  # POZITIF KONTROL (PR #705 inceleme, P3).
+  #
+  # Asagidaki iddia "durum 1" (eslesme yok) bekler; ama cagri sekli BOZULSA da
+  # -- kabuk alintilama kayarsa, `-C` yolu Git'e ulasmazsa, pathspec Git'e hic
+  # gecmezse -- yine 1 doner ve sozlesme VACUOUS gecerdi. Once IZLENDIGI KESIN
+  # olan bir dosyanin AYNI cagri sekliyle 0 dondurdugu kanitlanir; boylece
+  # mekanizmanin gercekten calistigi olculur.
+  #
+  # `shQuote()` KALDIRILMAZ: `system2()` argumanlari kabuga oldugu gibi
+  # yapistirir (POSIX'te `sh`, Windows'ta `cmd.exe`), uretim VM'inde depo koku
+  # ise BOSLUK iceren bir UNC yolundadir (`... /MERGEN Bilge`). Alintilama
+  # kaldirilirsa `-C` yolu ikiye bolunur ve sozlesme her kosuda 128 verir.
+  expect_identical(
+    as.integer(.izlenme_durumu("R/library_query_meta_local.R.gitignore-kanit")),
+    1L,
+    info = "kontrol: var olmayan bir yol icin durum 1 beklenir"
+  )
+  expect_identical(
+    as.integer(.izlenme_durumu("tests/testthat/test-pk-meta-generator-contract.R")),
+    0L,
+    info = paste(
+      "pozitif kontrol basarisiz: bu test dosyasi Git tarafindan IZLENIYOR",
+      "olmali; 0 disinda bir durum, izlenme sorgusunun calismadigini ve",
+      "asagidaki iddialarin vacuous gectigini gosterir"
+    )
+  )
+
+  for (dosya in c("R/library_query_meta_local.R", "R/library_query_aliases_local.R")) {
+    izlenen <- .izlenme_durumu(dosya)
     expect_identical(
       as.integer(izlenen), 1L,
       info = sprintf(

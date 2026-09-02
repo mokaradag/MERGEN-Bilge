@@ -130,6 +130,45 @@ test_that("yanlış birim hâlâ unit_mismatch olarak yakalanır", {
   expect_true("unit_mismatch" %in% .prov_fp_reasons(sonuc))
 })
 
+test_that("Türkçe yapım ekli birim yazımı YANLIŞ uyuşmazlık üretmez", {
+  # TURKCE EK ALMIS BIRIM (PR #705 inceleme, P2).
+  #
+  # Turkce'de olcu birimleri dogal olarak yapim eki alir: "3.783 saatlik is",
+  # "120 gunluk sure", "45 kisilik ekip". Kok cikarma YOKKEN `saatlik` ile
+  # beyan edilen `saat` birimi ESLESMIYOR ve tamamen DOGRU bir yanit
+  # `unit_mismatch` ile isaretleniyordu; `block` kipinde de dogru cevap
+  # ENGELLENIYORDU. Kok cikarma bu yanlis pozitifi kapatir.
+  env <- .prov_fp_env()
+
+  ek_ornekleri <- list(
+    list(birim = "saat", metin = "Toplam kalan is 3.783 saatlik [fact:f1] duzeyindedir."),
+    list(birim = "gun",  metin = "Sure 120 gunluk [fact:f1] olarak planlandi."),
+    list(birim = "adet", metin = "Stok 15.574 adetlik [fact:f1] seviyededir."),
+    list(birim = "kisi", metin = "Ekip 45 kisilik [fact:f1] olarak kuruldu.")
+  )
+
+  for (ornek in ek_ornekleri) {
+    olgular <- list(.prov_fp_fact("f1", NULL))
+    olgular[[1]]$value <- switch(
+      ornek$birim, saat = 3783, gun = 120, adet = 15574, kisi = 45
+    )
+    olgular[[1]]$unit <- ornek$birim
+    olgular[[1]]$aggregation <- "sum"
+
+    sonuc <- env$pk_numeric_provenance_validate(ornek$metin, olgular)
+    expect_false("unit_mismatch" %in% .prov_fp_reasons(sonuc),
+                 info = sprintf("ekli birim yanlis uyusmazlik uretti: %s", ornek$birim))
+  }
+
+  # KOK CIKARMA ASIRI GENIS DEGILDIR: GERCEKTEN farkli bir birim (ekli olsa
+  # bile) hala yakalanir; aksi halde koruma kozmetiklesirdi.
+  olgular <- list(.prov_fp_fact("f1", 3783, unit = "saat", aggregation = "sum"))
+  yanlis <- env$pk_numeric_provenance_validate(
+    "Toplam kalan is 3.783 gunluk [fact:f1] duzeyindedir.", olgular
+  )
+  expect_true("unit_mismatch" %in% .prov_fp_reasons(yanlis))
+})
+
 test_that("yüzde olguyu mutlak sayı gibi sunmak yakalanır", {
   env <- .prov_fp_env()
   olgular <- list(.prov_fp_fact("oran", 61.3, unit = "%"))
@@ -249,6 +288,11 @@ test_that("sayılar çapraz eşlendiğinde uyuşmazlık raporlanır", {
   )
 
   expect_equal(length(sonuc$mismatches), 2L)
+  # NEDEN KODU DA SABITLENIR (PR #705 inceleme, P3): testin adi "capraz
+  # eslenmis SAYILAR" der, ama yalnizca SAYMAK, dogrulayici her iki iddiayi
+  # `unit_mismatch` / `unknown_fact` / `no_number` olarak siniflandirsa bile
+  # YESIL kalirdi. Takas edilen degerler TAM OLARAK `value_mismatch` uretmelidir.
+  expect_identical(.prov_fp_reasons(sonuc), "value_mismatch")
 })
 
 # ---------------------------------------------------------------------------
@@ -682,15 +726,21 @@ test_that("isaretten hemen once biten cumle DOGRU alintiyi no_number yapmaz", {
 
 test_that("PENCERE ICINDEKI gercek cumle siniri hala kesilir", {
   env <- .prov_fp_env()
-  olgular <- list(.prov_fp_fact("sum", 100, unit = "TL", aggregation = "sum"))
+  # OLGU LISTESI TEK YERDE KURULUR: eskiden `olgular` tanimlanip cagriya HIC
+  # verilmiyordu ve yalnizca `sum` olgusu tasiyordu.
+  olgular <- list(.prov_fp_fact("mean", 5, unit = "saat", aggregation = "mean"),
+                  .prov_fp_fact("sum", 100, unit = "TL", aggregation = "sum"))
 
   # `[fact:mean]. Butce 100 TL [fact:sum]` biciminde ONCEKI cumlenin
   # toplulastirma sozcugu sizmamalidir; kuyruk kirpma bu kesmeyi bozmaz.
   sonuc <- env$pk_numeric_provenance_validate(
     "Ortalama sure 5 saat [fact:mean]. Butce 100 TL [fact:sum] olarak bulundu.",
-    list(.prov_fp_fact("mean", 5, unit = "saat", aggregation = "mean"),
-         .prov_fp_fact("sum", 100, unit = "TL", aggregation = "sum"))
+    olgular
   )
 
+  # IDDIALAR GERCEKTEN TARANDI (PR #705 inceleme, P3): tek iddia olan olumsuz
+  # kontrol, tarayici `100 TL [fact:sum]` iddiasini HIC gormese de gecerdi.
+  # Kardes testler (satir 563/578/632) `checked` degerini AYNI nedenle sabitler.
+  expect_identical(sonuc$checked, 2L)
   expect_false("aggregation_mismatch" %in% .prov_fp_reasons(sonuc))
 })

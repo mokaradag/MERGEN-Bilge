@@ -242,7 +242,12 @@ mergen_pk_stream_validated_text <- function(final_text, session, request_id,
   }
 
   if (!exists("mergen_pk_validated_texts", mode = "function", inherits = TRUE)) {
-    return(yedek(TRUE))
+    # `block` KİPİNDE HAT KURULAMAMIŞSA HAM METİN TESLİM EDİLMEZ (PR #705
+    # inceleme, P3): doğrulama HİÇ çalışmamıştır, yani doğrulanmamış model
+    # düzyazısı hem ekrana hem TTS motoruna gidiyordu. `pk_stream_display_text()`
+    # aynı eksik-yardımcı durumunu ZATEN `.kapali_yedek()` ile kapatıyor; iki yol
+    # aynı kuralı uygulamalıdır. `block` DIŞINDA davranış DEĞİŞMEZ.
+    return(yedek(!isTRUE(block_mode)))
   }
 
   sonuc <- tryCatch(

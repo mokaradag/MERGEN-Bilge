@@ -20,13 +20,9 @@ pk_required_helpers <- list(
     path = file.path("R", c("helpers_pk_analysis_filters_base.R", "helpers_pk_analysis_filters.R"))  # KARAR VEREN v1 motoru base dosyadadir; sira manifest ile ayni
   ),
   list(
-    functions = c(
-      "pk_init_query_score_table",
-      "pk_score_query_relevance",
-      "pk_compute_heuristic_query_scores",
-      "print_score_table"
-    ),
-    path = file.path("R", "helpers_pk_analysis_query_selection.R")
+    # `find_best_query_with_ai` DE ZORUNLUDUR (PR #705 inceleme, P3): `select_smart_query()` onu KORUMASIZ çağırır; izole yüklemede v1 yolu sezgisel skorlamaya bile ulaşamadan `could not find function` ile düşüyordu. Sıra `R/config_source_manifest.R` ile aynıdır.
+    functions = c("pk_init_query_score_table", "pk_score_query_relevance", "pk_compute_heuristic_query_scores", "print_score_table", "find_best_query_with_ai"),
+    path = file.path("R", c("helpers_pk_analysis_query_selection.R", "helpers_pk_select_timeout.R", "helpers_pk_analysis_ai_selector.R"))
   ),
   # Faz 5 (§5.2) iki geçişli seçim zinciri. İZOLE yüklemede zincir yoksa
   # `pk_select_query_v2` tanımsız kalır, aşağıdaki `exists()` kapısı sessizce

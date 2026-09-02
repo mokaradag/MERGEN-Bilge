@@ -223,6 +223,16 @@ testthat::test_that("sohbet DEGISTIYSE gec cozulen TTS akisi baslatmaz", {
   # `onFulfilled` ESKİ yanıt için `start_streaming_execution()` çağırıyor ve
   # boşaltılmış `values$messages` listesine eski yanıtı ekliyordu.
   env <- .css_env()
+  # AYNI KORUMA (bkz. aşağıdaki "sohbet AYNIYSA" testi; PR #705 inceleme, P3):
+  # kimlik kapısı geriye giderse `start_streaming_execution()` GERÇEK bir
+  # `shiny::observe()`/`invalidateLater()` döngüsü kurar ve o gözlemci koşumdan
+  # sonra da yaşayıp ALAKASIZ dosyalarda hata üretirdi. Ayırt edici sinyal
+  # (`initStreamingMessage`) gözlemciden ÖNCE gönderildiği için iddia zayıflamaz.
+  testthat::local_mocked_bindings(
+    observe = function(...) invisible(NULL),
+    .package = "shiny"
+  )
+  env$observe <- function(...) invisible(NULL)
   rec <- new.env(parent = emptyenv()); rec$msgs <- list()
   vals <- new.env(parent = emptyenv())
   vals$messages <- list()
@@ -288,6 +298,16 @@ testthat::test_that("sohbet AYNIYSA TTS geri cagrisi akisi baslatir", {
   # ALAKASIZ bir dosyada hata/meşgul `later` kuyruğu üretir.
   # `initStreamingMessage` gözlemciden ÖNCE gönderildiği için ayırt edici
   # sinyal KORUNUR.
+  #
+  # `shiny::observe` BAĞLAMASI MOCK'LANIR (PR #705 inceleme, P2):
+  # `R/helpers_chat_runtime.R` gözlemciyi NİTELİKLİ `shiny::observe()` ile
+  # kurar, bu yüzden ortamdaki `env$observe` stub'ı ONU HİÇ BASTIRMIYORDU;
+  # gerçek gözlemci `shiny::invalidateLater(25)` ile kendini yeniden zamanlayıp
+  # test bittikten sonra da yaşıyordu.
+  testthat::local_mocked_bindings(
+    observe = function(...) invisible(NULL),
+    .package = "shiny"
+  )
   env$observe <- function(...) invisible(NULL)
   rec <- new.env(parent = emptyenv()); rec$msgs <- list()
   vals <- new.env(parent = emptyenv())

@@ -109,11 +109,22 @@ test_that("güven değeri gerçek JSON TAM SAYISI olmalıdır", {
 })
 
 test_that("skaler olmayan `id` alanı seçim sayılmaz", {
+  # SOZLESME IHLALI YALNIZCA `id` OLMALIDIR (PR #705 inceleme, P3).
+  #
+  # Yuk eskiden `"requirements":{}` tasiyordu; `pk_select_normalize_requirements()`
+  # BOS nesneyi ZATEN reddettigi icin `pk_select_parse_pass_b()` sirf o alan
+  # yuzunden `ok = FALSE` donuyordu. `id` katiligi geriye gitse bile bu iddia
+  # GECERDI. Gecerli alti alanli bir `requirements` blogu kullanilir ve donen
+  # hata metni de dogrulanir.
   ayrisik <- pk_select_parse_pass_b(
-    "{\"id\":[\"q002\",\"q001\"],\"confidence\":90,\"reason\":\"x\",\"alternates\":[],\"requirements\":{},\"missing_info\":null}",
+    sprintf(
+      "{\"id\":[\"q002\",\"q001\"],\"confidence\":90,\"reason\":\"x\",\"alternates\":[],\"requirements\":%s,\"missing_info\":null}",
+      .pk_selhard_req()
+    ),
     c("q001", "q002")
   )
   expect_false(ayrisik$ok)
+  expect_true(grepl("id", as.character(ayrisik$error %||% "")[1], fixed = TRUE))
   expect_identical(pk_select_scalar_string(list("a", "b")), NA_character_)
 })
 

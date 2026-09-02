@@ -65,7 +65,14 @@
   if (length(mikro) != 1L || is.na(mikro) || !is.finite(mikro)) return(metin)
   artik <- mikro - floor(mikro)  # `%OS6` KESER, bu yüzden `floor()` ile hizalanır.
   if (artik <= 0) return(metin)
-  sprintf("%s+%.0fns", metin, artik * 1000)
+  # EK ARTIK "NANOSANİYE" DİYE SUNULMAZ (PR #705 inceleme, P3): güncel epoch'ta
+  # bir `double` yalnızca ~250 ns çözünürlük taşır, bu yüzden `artik * 1000`
+  # GERÇEK bir nanosaniye ÖLÇÜMÜ değil YUVARLAMA KUANTUMUDUR ve sıradan bir
+  # damgaya uydurma `+250ns` ekliyordu. Etiketin ENJEKTİF kalması ise hâlâ
+  # ZORUNLUDUR (`%OS6` mikrosaniyede KESER, `.pk_join_key()` `%.17g` ile AYIRIR),
+  # bu yüzden ayrım açık bir EŞİTLİK BOZUCU (`#`) olarak yazılır: mikrosaniyenin
+  # kesri olduğu bellidir ve hiçbir birim iddiası taşımaz.
+  sprintf("%s#%s", metin, format(round(artik, 6), scientific = FALSE, trim = TRUE))
 }
 
 # Kullanıcıya/model paketine görünen grup etiketi. ENJEKTİF olmak ZORUNDADIR:

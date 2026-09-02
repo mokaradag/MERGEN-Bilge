@@ -22,8 +22,15 @@
 local({
   repo_root <- resolve_repo_root_for_tests()
 
-  if (!exists("%||%", mode = "function", inherits = TRUE)) {
-    `%||%` <<- function(a, b) if (is.null(a)) b else a
+  # KAPSAM `globalenv()` ILE SINIRLIDIR (PR #705 inceleme, P3).
+  #
+  # `inherits = TRUE` araması PAYLASILAN testthat yardimci ortamini da kapsar; o
+  # ortam test-dosyasi ortaminin EBEVEYNIDIR ama `globalenv()` icinden GORUNMEZ.
+  # Bir `helper_*.R` dosyasi operatoru tanimladiginda bu atama ATLANIYOR ve
+  # asagida `local = globalenv()` ile source edilen uretim yardimcilari
+  # `could not find function "%||%"` ile dusuyordu.
+  if (!exists("%||%", mode = "function", envir = globalenv(), inherits = FALSE)) {
+    assign("%||%", function(a, b) if (is.null(a)) b else a, envir = globalenv())
   }
 
   # Çalışma zamanı yükleme sırasının AYNISI (manifest §6 sırası).
@@ -689,11 +696,18 @@ test_that("match ve filterable geri düşüşleri FAIL-CLOSED yöndedir", {
 
 test_that("row_cap geri düşüşü yapılandırma öncelik zincirini kullanır", {
   eski <- Sys.getenv("MERGEN_PK_ROW_CAP", unset = NA_character_)
+  # `options()` KATMANI DA IZOLE EDILIR (PR #705 inceleme, P3): `pk_config_resolve()`
+  # zinciri ORTAM -> `options()` -> yerlesik varsayilan seklindedir. Onceki bir
+  # test `options(mergen.pk.row_cap)` birakirsa asagidaki "yerlesik varsayilan"
+  # iddiasi o SIZAN degeri okur ve uretim dogruyken duserdi.
+  eski_opt <- list(mergen.pk.row_cap = getOption("mergen.pk.row_cap", default = NULL))
   on.exit({
     if (is.na(eski)) Sys.unsetenv("MERGEN_PK_ROW_CAP") else Sys.setenv(MERGEN_PK_ROW_CAP = eski)
+    options(eski_opt)
   }, add = TRUE)
 
   Sys.unsetenv("MERGEN_PK_ROW_CAP")
+  options(mergen.pk.row_cap = NULL)
 
   # Sorgu metadata'sı global değeri EZER.
   expect_equal(pk_meta_row_cap(list(meta = list(row_cap = 200000L))), 200000L)

@@ -204,12 +204,24 @@ test_that("CSV paketi PARCALAR ARASINDA iptal yoklar", {
   dir.create(dizin, recursive = TRUE, showWarnings = FALSE)
   on.exit(unlink(dizin, recursive = TRUE, force = TRUE), add = TRUE)
 
-  plan <- env$pk_export_plan(veri, base_name = "Veri")
+  # COK PARCALI PLAN SARTTIR (PR #705 inceleme, P2): varsayilan satir tavaninda
+  # 20 satirlik cerceve TEK parca uretir. Tek parcali planda "kapiyi yalnizca TUM
+  # paket uretildikten SONRA yokla" gerilemesi de AYNI sonucu verirdi
+  # (`ok = FALSE`, bos `files`, temizlenmis dosyalar), yani bu test korumasi
+  # gereken kusuru SAPTAYAMIYORDU.
+  plan <- env$pk_export_plan(veri, base_name = "Veri", max_rows = 5L)
+  expect_gt(length(plan$parts), 1L)
 
   # KUSUR: kapi yalnizca TUM paket uretildikten SONRA yoklaniyordu.
+  cagri <- 0L
   paket <- env$pk_export_csv_bundle(dizin, "sentetik", plan, veri,
-                                    stop_check = function() TRUE)
+                                    stop_check = function() {
+                                      cagri <<- cagri + 1L
+                                      cagri > 1L
+                                    })
   expect_false(isTRUE(paket$ok))
+  # IPTAL PARCALAR ARASINDA GORULMELIDIR: tum parcalar uretilmeden durulur.
+  expect_lt(cagri, length(plan$parts) + 1L)
   expect_length(paket$files, 0L)
   # Yarim kume BIRAKILMAZ.
   expect_length(list.files(dizin, pattern = "\\.csv$"), 0L)

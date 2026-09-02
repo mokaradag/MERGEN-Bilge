@@ -263,11 +263,17 @@ test_that("bütçe aşımı ÇAĞIRANDA da bildirilir (kurucu sessiz kalmaz)", {
     out <- .dac_butce_env$build_deep_analysis_context(
       qr, "soru", list(instruction = strrep("Y", 5000L), max_tokens = 3000)
     )
-    # Kurucu ya tipli bir hata döndürür ya da veri analizini AÇIK ifşa ile
-    # işaretler; sessiz bir sınır üstü `data_analysis` KABUL EDİLMEZ.
-    expect_true(out$type %in% c("error_message", "data_analysis"))
-    if (identical(out$type, "data_analysis")) {
-      expect_true(grepl("KISALTILDI|bütçe|BÜTÇE|kırpıl", out$user_context))
-    }
+    # İFŞA HER İKİ DALDA DA ARANIR (PR #705 inceleme, P3).
+    #
+    # `build_deep_analysis_context()` YALNIZCA `error_message` ya da
+    # `data_analysis` döndürür, dolayısıyla eski `expect_true(out$type %in% ...)`
+    # iddiası HER ZAMAN geçiyordu ve gerçek ifşa denetimi yalnızca
+    # `data_analysis` dalında koşuyordu: kurucu bu girdi için ALAKASIZ bir
+    # `error_message` döndürseydi (ör. "Hiçbir sorgu başarılı" ya da kanonik
+    # paket kapalı-başarısız yolu) test YEŞİL kalır, bütçe aşımı ifşası HİÇ
+    # kanıtlanmazdı. Tipin kendisi bilgi taşımaz; ifşa metni taşır.
+    ifsa <- if (identical(out$type, "data_analysis")) out$user_context else out$content
+    expect_true(grepl("KISALTILDI|bütçe|BÜTÇE|kırpıl", ifsa %||% ""),
+                info = out$type)
   })
 })

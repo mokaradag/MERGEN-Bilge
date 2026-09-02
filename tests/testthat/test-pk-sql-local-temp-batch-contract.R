@@ -136,6 +136,60 @@ test_that("SSMS tipi indeksli yerel-temp batch kabul edilir", {
   expect_identical(sonuc$statement_count, 9L)
 })
 
+test_that("iki argumanli OBJECT_ID on-DROP bicimi de yerel #temp sayilir", {
+  # SSMS'in URETTIGI YAYGIN BICIM (PR #705 inceleme, P3).
+  #
+  # `OBJECT_ID('tempdb..#T', 'U')` -- ikinci arguman nesne turudur ("User
+  # table"). Ayristirici bu bicimi REDDETTIGINDE deyim ne hazirlama ne indeks
+  # sekline uyuyor, `pk_sql_analyze_local_temp_batch()` bos donuyor ve TUM
+  # toplu is `multiple_statements` ile read-only kapisinda REDDEDILIYORDU;
+  # yani gecerli bir kutuphane sorgusu calistirilamiyordu.
+  env <- .pk_local_temp_env()
+
+  iki_argumanli <- paste(
+    "IF OBJECT_ID('tempdb..#T', 'U') IS NOT NULL DROP TABLE #T;",
+    "SELECT Id INTO #T FROM dbo.SourceData;",
+    "SELECT * FROM #T;",
+    "DROP TABLE #T;",
+    sep = "\n"
+  )
+  plan <- env$pk_sql_analyze_local_temp_batch(iki_argumanli)
+  expect_true(isTRUE(plan$ok))
+  expect_identical(plan$temp_names, "#T")
+  expect_true(isTRUE(env$pk_sql_classify_readonly(iki_argumanli)$allowed))
+
+  # `N'U'` (Unicode literal) ve bosluklu bicim de kabul edilir.
+  n_onekli <- paste(
+    "IF OBJECT_ID(N'tempdb..#T' , N'U' ) IS NOT NULL DROP TABLE #T;",
+    "SELECT Id INTO #T FROM dbo.SourceData;",
+    "SELECT * FROM #T;",
+    "DROP TABLE #T;",
+    sep = "\n"
+  )
+  expect_true(isTRUE(env$pk_sql_analyze_local_temp_batch(n_onekli)$ok))
+
+  # TEK ARGUMANLI BICIM AYNEN CALISIR (gerileme koruması).
+  tek_argumanli <- paste(
+    "IF OBJECT_ID('tempdb..#T') IS NOT NULL DROP TABLE #T;",
+    "SELECT Id INTO #T FROM dbo.SourceData;",
+    "SELECT * FROM #T;",
+    "DROP TABLE #T;",
+    sep = "\n"
+  )
+  expect_true(isTRUE(env$pk_sql_analyze_local_temp_batch(tek_argumanli)$ok))
+
+  # GENISLEME SINIRLI KALIR: `'V'` (view) gibi BASKA bir nesne turu yerel
+  # #temp on-DROP'u DEGILDIR ve kabul edilmemelidir.
+  gorunum_turu <- paste(
+    "IF OBJECT_ID('tempdb..#T', 'V') IS NOT NULL DROP TABLE #T;",
+    "SELECT Id INTO #T FROM dbo.SourceData;",
+    "SELECT * FROM #T;",
+    "DROP TABLE #T;",
+    sep = "\n"
+  )
+  expect_false(isTRUE(env$pk_sql_analyze_local_temp_batch(gorunum_turu)$ok))
+})
+
 test_that("mevcut D23 yasak anahtar kelime ratchet'i aynen korunur", {
   env <- .pk_local_temp_env()
   for (kelime in c("MERGE", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP",

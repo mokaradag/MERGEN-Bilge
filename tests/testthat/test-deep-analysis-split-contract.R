@@ -43,8 +43,17 @@
     iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
   )
 
+  # COZULEMEYEN KAYNAK DURDURUR, BOS DIZEYE DUSMEZ (PR #705 inceleme, P2).
+  #
+  # `txt <- ""` tam da yukaridaki BOS DOSYA korumasinin engellemek icin var
+  # oldugu durumu geri getiriyordu: bos dize bu dosyadaki
+  # `expect_false(grepl(...))` taramalarinin TAMAMINI karsilar, olumlu
+  # taramalar ise ayirt edilemeyen bir sekilde basarisiz olur. Bozuk kodlanmis
+  # bir kaynak "sozlesme saglaniyor" diye raporlanmak yerine NEDENIYLE BIRLIKTE
+  # durdurulur.
   if (is.na(txt)) {
-    txt <- ""
+    stop(sprintf("Kaynak dosya UTF-8 olarak cozulemedi: %s", rel_path),
+         call. = FALSE)
   }
 
   txt <- gsub("\r\n?|\r", "\n", txt, perl = TRUE)

@@ -238,8 +238,10 @@ pk_async_worker_pool_apply_share <- function(admission) {
   eski_isaret <- Sys.getenv("MERGEN_DB_POOL_SHARE_APPLIED", unset = NA_character_)  # ISARET DEGERI YAZMADAN ONCE OKUNUR: asagida `"1"` yazildiktan SONRA okumak, geri yukleyicinin her zaman `"1"` yazmasina ve isaretin surecte KALICI olmasina yol aciyordu.
   Sys.setenv(MERGEN_DB_POOL_MAX_SIZE = as.character(admission$share))
   # PAY UYGULANDI İŞARETİ: `db_pool_config()` bu süreçte yeniden bölüştürme
-  # YAPMAZ (aksi hâlde pay iki kez küçülürdü). İşaret GERİ ALINMAZ çünkü bu bir
-  # SÜREÇ ROLÜDÜR ("ben bir PK işçisiyim"), isteğe özgü bir ayar değil.
+  # YAPMAZ (aksi hâlde pay iki kez küçülürdü). İşaret, pay penceresi kapanırken
+  # TAVANLA BİRLİKTE önceki değerine döndürülür (bkz. aşağıdaki geri yükleyici);
+  # yorum eskiden "GERİ ALINMAZ" diyordu ve güvenlikle ilgili bu davranışın
+  # TERSİNİ belgeliyordu (PR #705 inceleme).
   Sys.setenv(MERGEN_DB_POOL_SHARE_APPLIED = "1")
 
   # Minimum boyut paydan büyük kalırsa havuz kurulumu tutarsız olurdu.
@@ -391,7 +393,15 @@ pk_async_worker_pool_retire <- function(hedef) {
       "[PK_ASYNC] DB havuz tavani (%d) isci sayisina (%d) BOLUNEMIYOR; isci havuzu KURULMADI.",
       pay$cap, pay$workers
     )
-    return(list(ok = FALSE, enabled = TRUE, fatal = isTRUE(kapali_basarisiz)))
+    # `admission = FALSE` GECICI BIR DB HATASI DEGILDIR (PR #705 inceleme, P2):
+    # tavan bolusulemedigi icin havuz HIC kurulamaz ve `get_connection()` dogrudan
+    # `DBI::dbConnect()` yoluna duser, yani isci oturumlari yapilandirilmis
+    # `MERGEN_DB_POOL_MAX_SIZE` tavanini TAMAMEN BYPASS eder. Bootstrap bunu
+    # `fatal` olmadiginda "basarili" sayiyordu; ayri alan sayesinde cagiran
+    # istegi senkron yola dusurebilir. Yapilandirma kusuru oldugu icin yeniden
+    # denemek de anlamsizdir.
+    return(list(ok = FALSE, enabled = TRUE, fatal = isTRUE(kapali_basarisiz),
+                admission = FALSE))
   }
 
   # `init_db_pool_once()` fail-fast KAPALIYKEN hata ATMADAN `NULL` doner; bunu basari saymak, dogrudan baglanti yedegine dusen bir isciyi "havuz hazir" parmak iziyle isaretliyordu.

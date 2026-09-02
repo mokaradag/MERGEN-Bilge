@@ -113,9 +113,21 @@ testthat::test_that("R kaynak dosyaları WINDOWS-1254 yerelinde bozulmadan okuna
   kok_dosyalar <- if (is.null(kok_izlenen)) {
     file.path(kok, kok_calisma_zamani)
   } else {
+    # ONEK REGEX ILE DEGIL, `startsWith()` ILE SIYRILIR (PR #705 inceleme, P3).
+    #
+    # El yapimi bir karakter-sinifi kacisi (`gsub("([.|()...])", ...)`) depo
+    # kokundeki HER metakarakteri kapsayamaz ve uretim VM'inde kok bir UNC
+    # yolundadir. Kacis eksik kalirsa `sub()` ONEKI HIC siyirmaz, `goreli`
+    # mutlak yol olarak kalir, icindeki `/` yuzunden TUM kok dosyalari
+    # elenir ve `app.R`/`global.R`/`server.R`/`ui.R` HIC taranmadan sozlesme
+    # yesil doner. `startsWith()`/`substring()` duz metin karsilastirmasidir;
+    # kacis gerektirmez ve `maintainability_report.R` icindeki `relative_path()`
+    # yardimcisiyla ayni deseni kullanir.
     kok_norm <- normalizePath(kok, winslash = "/", mustWork = FALSE)
-    goreli <- sub(paste0("^", gsub("([.|()\\^{}+$*?\\[\\]])", "\\\\\\1", kok_norm), "/"),
-                  "", kok_izlenen)
+    onek <- paste0(kok_norm, "/")
+    goreli <- ifelse(startsWith(kok_izlenen, onek),
+                     substring(kok_izlenen, nchar(onek) + 1L),
+                     kok_izlenen)
     kok_izlenen[!grepl("/", goreli, fixed = TRUE)]
   }
   kok_dosyalar <- kok_dosyalar[file.exists(kok_dosyalar)]

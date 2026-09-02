@@ -204,16 +204,33 @@ mergen_pk_unregister_cancel_token <- function(session, request_id) {
   kimlik <- .pk_marker_id(request_id)
   if (is.na(kimlik)) return(invisible(FALSE))
 
+  anahtar <- .pk_marker_key(session, kimlik)
   # ÖNCE süreç-yerel veto: `userData` yazımı yutulsa bile Durdur gözlemcisi
   # (aynı süreçte) artık bu istek için jeton yazmaz.
-  .pk_marker_note("revoked", .pk_marker_key(session, kimlik))
+  .pk_marker_note("revoked", anahtar)
   # TERMİNAL DURUM: terk işaretinin sabitlemesi kalkar (bkz. `.pk_marker_note()`).
-  .pk_marker_unpin(.pk_marker_key(session, kimlik))
+  .pk_marker_unpin(anahtar)
 
   mevcut <- .pk_marker_read(session, "pk_cancel_token_owners")
   if (is.character(mevcut) && length(mevcut)) {
     pk_session_state_write(session, "pk_cancel_token_owners", setdiff(mevcut, kimlik))
   }
+
+  # KALICI YAZIM DOĞRULANAMADIYSA VETO SABİTLENİR (PR #705 inceleme, P3).
+  #
+  # `revoked` yuvası sabitlenmemiş anahtarların yalnızca EN YENİ 500'ünü tutar.
+  # `userData` yazımı yutulduğunda -- yani aynanın var olma nedeni olan durumda --
+  # 500 yeni geçersizleme sonrası bu veto DÜŞÜYOR,
+  # `mergen_pk_request_has_cancel_token()` sahipliği yeniden bildiriyor ve Durdur
+  # gözlemcisi ZATEN SONLANMIŞ bir istek için yeni bir `.flag` dosyası yazıyordu;
+  # o dosyayı silecek bir PK yolu artık yoktur. Sabitleme yalnızca bu arıza
+  # durumunda kurulur ve oturum sonunda `.pk_marker_unpin_session()` ile toplu
+  # bırakılır, dolayısıyla `pinned` sınırsız büyümez.
+  kalan_sahipler <- .pk_marker_read(session, "pk_cancel_token_owners")
+  if (is.character(kalan_sahipler) && kimlik %in% kalan_sahipler) {
+    .pk_marker_note("revoked", anahtar, pin = TRUE)
+  }
+
   # SONUÇ GERİ OKUNUR: `TRUE` yalnızca sahiplik gerçekten görünmez olduğunda.
   invisible(!isTRUE(mergen_pk_request_has_cancel_token(session, kimlik)))
 }

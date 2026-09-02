@@ -107,10 +107,14 @@ pkgn_validate_candidate <- function(query, local_entry, auto_entry = NULL,
   birlesik <- normal$meta[[id]]
   hatalar <- normal$errors
 
-  if (!is.null(alias_overlay) && is.list(alias_overlay) && !is.null(alias_overlay[[id]])) {
+  # AD-GUVENLI ARAMA (PR #705 inceleme, P1/P2): `[[` KARAKTER indeksi BOS listede
+  # `NULL` DONDURMEZ, "subscript out of bounds" FIRLATIR; `alias_overlay` varsayilan
+  # olarak BOS gelir.
+  .bindirme_girisi <- .pkgn_onbellek_girisi(alias_overlay, id)
+  if (!is.null(.bindirme_girisi)) {
     bindirme <- pk_meta_apply_alias_overlay(
       stats::setNames(list(birlesik), id),
-      stats::setNames(list(alias_overlay[[id]]), id)
+      stats::setNames(list(.bindirme_girisi), id)
     )
     birlesik <- bindirme$meta[[id]]
     hatalar <- c(hatalar, bindirme$errors)
@@ -462,7 +466,10 @@ pkg_meta_run_inventory <- function(query_library, config,
   baglanti_hatalari <- list()
 
   baglanti_birak <- function(hedef) {
-    tutamac <- baglantilar[[hedef]]
+    # AD-GUVENLI ARAMA: `baglantilar` BOS baslar; ilk sorguda `connect_fn()`
+    # basarisiz oldugunda bu fonksiyon per-sorgu `tryCatch()` DISINDA calisir ve
+    # ham `[[` TUM envanter kosusunu dusururdu (PR #705 inceleme, P1/P2).
+    tutamac <- .pkgn_onbellek_girisi(baglantilar, hedef)
     if (is.null(tutamac)) return(invisible(NULL))
     tryCatch(
       .pkgn_call_injected(release_fn, positional = list(tutamac$handle),
@@ -492,7 +499,10 @@ pkg_meta_run_inventory <- function(query_library, config,
   # doğrulama hatası / eksik ODBC sürücüsü / oturum açma zaman aşımı / havuz
   # checkout hatası AYIRT EDİLEMEZ olur.
   baglanti_al <- function(hedef) {
-    if (!is.null(baglantilar[[hedef]])) return(baglantilar[[hedef]]$conn)
+    # AD-GUVENLI ARAMA: ILK cagrida `baglantilar` BOS bir listedir ve ham
+    # `[[hedef]]` "subscript out of bounds" FIRLATIRDI (PR #705 inceleme, P1/P2).
+    .onbellekli <- .pkgn_onbellek_girisi(baglantilar, hedef)
+    if (!is.null(.onbellekli)) return(.onbellekli$conn)
 
     tutamac <- tryCatch(
       .pkgn_call_injected(connect_fn, positional = list(hedef),
@@ -564,13 +574,16 @@ pkg_meta_run_inventory <- function(query_library, config,
         pkgn_inventory_one(
           query = q, config = config, conn = baglanti,
           describe_fn = describe_fn, sample_fn = sample_fn,
-          auto_entry = if (!is.na(id)) auto_layer[[id]] else NULL,
-          curated_entry = if (!is.na(id)) curated_layer[[id]] else NULL,
+          # AD-GUVENLI ARAMA: gonderilen `pk_query_meta_auto` BOS liste olabilir;
+          # ham `[[` her sorguyu `inventory_exception` yapiyor ve HIC metadata
+          # uretilmiyordu (PR #705 inceleme, P1/P2).
+          auto_entry = if (!is.na(id)) .pkgn_onbellek_girisi(auto_layer, id) else NULL,
+          curated_entry = if (!is.na(id)) .pkgn_onbellek_girisi(curated_layer, id) else NULL,
           registry = registry,
           cached = onbellek,
           alias_overlay = alias_overlay,
           target_error = hedef_hatasi,
-          connect_error = baglanti_hatalari[[hedef]]
+          connect_error = .pkgn_onbellek_girisi(baglanti_hatalari, hedef)
         ),
         # TEK BİR SORGU KOŞUYU DÜŞÜRMEZ.
         error = function(e) list(
@@ -597,8 +610,9 @@ pkg_meta_run_inventory <- function(query_library, config,
     if (!is.null(sonuc$cache) && !is.na(id)) {
       girdi <- sonuc$cache
       if (is.null(girdi$fingerprint)) {
-        girdi$fingerprint <- if (!is.null(fingerprints) && !is.null(fingerprints[[id]])) {
-          fingerprints[[id]]
+        .parmak_girisi <- .pkgn_onbellek_girisi(fingerprints, id)
+        girdi$fingerprint <- if (!is.null(.parmak_girisi)) {
+          .parmak_girisi
         } else if (exists("pkgh_state_fingerprint", mode = "function", inherits = TRUE)) {
           pkgh_state_fingerprint(q, config)
         } else {

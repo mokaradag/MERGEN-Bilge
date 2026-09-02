@@ -438,7 +438,13 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # TUM deponun butcesi haline geliyordu (kucuk deger baska sorgularin
     # girislerini tahliye ediyor, buyuk deger operator tavanini gevsetiyordu).
     # Depo geneli TTL de ayrildi. Fonksiyon sayisi AYNI.
-    "R/helpers_pk_cache.R" = c(505L, 24L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 505 -> 524 satir (OLCULEN).
+    # `.pk_cache_limits()` artik AYRI bir `store_max_entry_bytes` alani uretir
+    # ve `.pk_cache_reconcile()` BASKA sorgularin girislerini yalnizca depo
+    # geneli tavanla tahliye eder; onceden cagiranin SORGU BAZLI giris tavani
+    # tum depoya uygulaniyor, tek bir sorgunun metadata override'i baska
+    # sorgularin girislerini silebiliyordu. Fonksiyon sayisi AYNI.
+    "R/helpers_pk_cache.R" = c(524L, 24L),
     # BILINCLI GUNCELLEME: tavan 1 satir BAYATTI (olculen 430, tavan 429).
     # Bu sapma, rapor yol eslesmesi bozuk oldugu icin (nrow == 0) uzun sure
     # "NA > 429" bicimindeki hatanin ardinda gorunmez kaldi. Tavan yine TAM
@@ -536,7 +542,11 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # koruyordu. (b) `MERGEN_DB_POOL_SHARE_APPLIED` isareti tavanla BIRLIKTE geri
     # alinir; aksi halde pay penceresi disinda kurulan havuz TOPLAM oturum
     # tavanini asabiliyordu. Fonksiyon sayisi AYNI.
-    "R/helpers_pk_async_worker_pool.R" = c(416L, 24L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 416 -> 425 satir (OLCULEN).
+    # Pay hesabi SIGMAZSA (`!pay$fits`) artik `admission = FALSE` doner:
+    # onceden kabul kararsiz kaliyor, cagiran bunu "kabul edildi" gibi isleyip
+    # kuresel DB kabul tavanini asabiliyordu. Fonksiyon sayisi AYNI.
+    "R/helpers_pk_async_worker_pool.R" = c(425L, 24L),
     # BILINCLI GUNCELLEME (PR #705 inceleme): +10 satir. D11 devralinan varlik
     # baglami hem isci vekiline KURULUR hem de hasat yuvalarina eklenir; aksi
     # halde asenkron takip sorulari onceki turun varlik kisitini kaybediyordu.
@@ -563,7 +573,13 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # bloke oluyordu; asama kapisi yukarida gecildigi icin ne Durdur belirteci
     # ne de mutlak son tarih gozlemleniyor, ana surec izleyicisi kullaniciya
     # yanit verse bile PSOCK iscisi askida kaliyordu. Fonksiyon sayisi AYNI.
-    "R/helpers_pk_async_bootstrap.R" = c(556L, 24L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 556 -> 568 satir (OLCULEN).
+    # Havuz kurulumu kabul ETMEDIGINDE bootstrap artik
+    # `failed = "db_pool_admission_unavailable"` ile biter; onceden isci
+    # sessizce dogrudan baglantiya dusuyor, `MERGEN_DB_POOL_MAX_SIZE` kabul
+    # tavani tam da esler eklendiginde DEVRE DISI kaliyordu.
+    # Fonksiyon sayisi AYNI.
+    "R/helpers_pk_async_bootstrap.R" = c(568L, 24L),
     # Faz 6: bootstrap'in SINIRLI yol-varlik denetimi (ratchet tavani nedeniyle
     # ayri dosya; bkz. dosya basligi).
     "R/helpers_pk_async_bootstrap_fs.R" = c(60L, 6L),
@@ -642,7 +658,12 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # ana surec metni cikarip verdigi icin "Yetkisiz"/"EslesmeYok", isci ise HAM
     # listeyi verdigi icin "Hata" uretiyordu; AYNI yanitin `MB_Analiz_Log`
     # sonucu ASENKRON YONLENDIRMEYE bagliydi. Fonksiyon sayisi AYNI.
-    "R/helpers_pk_worker_observers.R" = c(159L, 10L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 159 -> 173 satir (OLCULEN).
+    # Gozlemci metin cikarimi artik `Find()` ile ILK KULLANILABILIR alani secer
+    # (`message`/`answer`/`text`/`content`); onceden ilk alan BOS/`NA` oldugunda
+    # sonraki alanlar HIC denenmiyor ve telemetri bos metin kaydediyordu.
+    # Fonksiyon sayisi AYNI.
+    "R/helpers_pk_worker_observers.R" = c(173L, 10L),
     # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 145/11 -> 155/12 (OLCULEN).
     # Dogrudan cikis artik CIKARILAN metni `pk_direct_exit_is_db_failure()`
     # fonksiyonuna gecirir; eskiden ham liste gecildigi icin DB hatasi tespiti
@@ -668,7 +689,11 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # BILINCLI GUNCELLEME (inceleme takibi): 264/19 -> 275/19 (OLCULEN).
     # Bozuk filtre nedeniyle DUSURULEN paket artik `pk_observation` icine de
     # yazilir; aksi halde ayni paket telemetriye/alt bilgiye BASARILI gidiyordu.
-    "R/helpers_deep_analysis_reconcile.R" = c(275L, 19L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 275 -> 293 satir (OLCULEN).
+    # `stash_deep_footer()` artik olgu TASIYAN kayitlari altbilgi BOS olsa da
+    # saklar; onceden yalnizca bos-olmayan altbilgiye bakiliyor, olgulari olan
+    # bir paket koken denetiminden DUSUYORDU. Fonksiyon sayisi AYNI.
+    "R/helpers_deep_analysis_reconcile.R" = c(293L, 19L),
     # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 250 -> 260 satir, 19 -> 20
     # fonksiyon (OLCULEN). `pk_deep_halt_status()` eklendi: `stop_check()` iki
     # AYRI nedeni tek boole'de birlestirdigi icin derin yol her durdurmayi ham
@@ -709,7 +734,12 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # adres her cagriya kurulurken, `userData` yazilamayan bir oturumda bile
     # gereksiz is yapiliyordu ve FAIL-SAFE isaretlerin (terk edilmis istek,
     # iptal edilmis sahiplik) tasindigi yol gereksizce agirdi.
-    "R/helpers_pk_async_request_markers.R" = c(227L, 12L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 227 -> 244 satir (OLCULEN).
+    # `mergen_pk_unregister_cancel_token()` kalici yazim DOGRULANAMADIGINDA
+    # iptal isaretini surec yerel aynaya PINLER; onceden dogrulanmamis bir
+    # yazimdan sonra isaret kaybolabiliyor ve iptal edilmis bir istek yeniden
+    # gecerli sayilabiliyordu. Fonksiyon sayisi AYNI.
+    "R/helpers_pk_async_request_markers.R" = c(244L, 12L),
     # BILINCLI GUNCELLEME (PR #705 inceleme): +10 satir. Terk edilen istekler
     # kayittan SILINIR; girdi, istek-sahipli `release` kapanisini ve yakaladigi
     # durumu oturum boyunca canli tutuyordu. Fonksiyon sayisi DEGISMEDI.
@@ -728,7 +758,13 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # anahtari surec omru boyunca kaliyordu. (b) Kalici olmayan bir nesil
     # artisi icin surec-yerel ayna eklendi; yutulan yazim iki AYRI kaydedilmemis
     # sohbeti AYNI kimlige dusuruyordu.
-    "R/helpers_pk_async_session_registry.R" = c(247L, 16L),
+    # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 247 -> 266 satir (OLCULEN).
+    # (a) `mergen_pk_bump_chat_epoch()` sayaci surec yerel AYNADAN tohumlar:
+    # `userData` yazilamadiginda kusak sayaci her cagride sifirlaniyor ve
+    # bayat bir isci sonucu YENI sohbete inebiliyordu. (b) Oturum kapanis
+    # kancasi artik o oturuma ait TUM isaretleri onek ile serbest birakir.
+    # Fonksiyon sayisi AYNI.
+    "R/helpers_pk_async_session_registry.R" = c(266L, 16L),
     # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 239 -> 250 satir (OLCULEN).
     # Geri yukleyici artik YEREL baglama YOKKEN sarmalayiciyi KALDIRIR; eskiden
     # sinirli yurutucu surec omru boyunca bagli kaliyor ve sonraki senkron

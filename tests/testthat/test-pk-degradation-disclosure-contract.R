@@ -69,8 +69,15 @@
 
 local({
   repo_root <- resolve_repo_root_for_tests()
-  if (!exists("%||%", mode = "function", inherits = TRUE)) {
-    `%||%` <<- function(a, b) if (is.null(a)) b else a
+  # KAPSAM `globalenv()` ILE SINIRLIDIR (PR #705 inceleme, P3).
+  #
+  # `inherits = TRUE` araması PAYLASILAN testthat yardimci ortamini da kapsar; o
+  # ortam test-dosyasi ortaminin EBEVEYNIDIR ama `globalenv()` icinden GORUNMEZ.
+  # Bir `helper_*.R` dosyasi operatoru tanimladiginda bu atama ATLANIYOR ve
+  # asagida `local = globalenv()` ile source edilen uretim yardimcilari
+  # `could not find function "%||%"` ile dusuyordu.
+  if (!exists("%||%", mode = "function", envir = globalenv(), inherits = FALSE)) {
+    assign("%||%", function(a, b) if (is.null(a)) b else a, envir = globalenv())
   }
   source(file.path(repo_root, "R", "helpers_pk_provenance.R"),
          encoding = "UTF-8", local = globalenv())
@@ -347,7 +354,12 @@ test_that("nihai yanıt sonlandırma noktaları alt bilgiyi iliştirir", {
   txt <- .pk_deg_code_text(path)
 
   expect_true(
-    grepl("tts_engine(tts_metni, tts_voice)", txt, fixed = TRUE, useBytes = TRUE),
+    # BOSLUGA TOLERANSLI DESEN (PR #705 inceleme, P3): asagidaki OLUMSUZ
+    # iddia zaten ayni gerekceyle PCRE kullaniyor. Birebir literal eslesme,
+    # uretim cagrisi `tts_engine(tts_metni , tts_voice)` diye yeniden
+    # bicimlendirildiginde ya da iki satira bolundugunde SOZLESME HALA
+    # GECERLIYKEN duser ve dogru bir degisikligi bloklardi.
+    grepl("tts_engine\\s*\\(\\s*tts_metni\\b", txt, perl = TRUE, useBytes = TRUE),
     info = "TTS motoru ham full_response ile ÇAĞRILMAMALIDIR."
   )
   expect_false(

@@ -155,7 +155,14 @@ pk_entity_isolate_resolve_config <- function() {
 }
 
 pk_entity_with_resolve_env <- function(vars = character(0), code) {
-  env_keys <- PK_ENTITY_RESOLVE_ENV_KEYS
+  # ANAHTAR KUMESI CAGRININ AYARLADIKLARINI DA KAPSAR (PR #705 inceleme, P3;
+  # `pk_select_with_env()` ile AYNI kural): yalnizca `PK_ENTITY_RESOLVE_ENV_KEYS`
+  # anlik goruntulenip geri yuklendiginde, listede OLMAYAN bir anahtari ayarlayan
+  # bir cagiran o anahtari blok bittikten SONRA surec ortaminda BIRAKIR ve ayni
+  # testthat oturumundaki sonraki dosyalara sizdirirdi.
+  env_keys <- union(PK_ENTITY_RESOLVE_ENV_KEYS,
+                    if (length(vars)) names(vars) else character(0))
+  env_keys <- env_keys[!is.na(env_keys) & nzchar(env_keys)]
   opt_keys <- pk_entity_resolve_option_keys()
 
   eski_env <- Sys.getenv(env_keys, unset = NA_character_, names = TRUE)

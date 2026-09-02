@@ -571,22 +571,19 @@ pk_filter_leaf_mask <- function(data, leaf, query = NULL) {
 
 # Tek bir sütun grubunun maskesini kurar.
 #
-# Birleştirme kuralı:
-#   * Aralık sınırları (lower/upper) her zaman VE'lenir.
-#   * Dışlamalar her zaman VE'lenen NOT'tur.
-#   * Alternatifler VARSAYILAN OLARAK VE'lenir; yalnızca yaprak açıkça
-#     `logic = "or"` beyan ettiyse kendi aralarında VEYA'lanır. Tek bir
-#     yaprağın çok değerli olması zaten VEYA'dır ve maske üretiminde ele alınır.
+# Birleştirme kuralı (BAĞLAÇ KONUMSALDIR):
+#   * `logic` yaprağın KENDİ niteliği değil, ÖNCEKİ yaprakla arasındaki
+#     BAĞLAÇTIR: `logic = "or"` beyan eden yaprak AÇIK parçaya katılır (VEYA),
+#     beyan etmeyen yaprak YENİ parça başlatır; parçalar kendi aralarında VE'lenir.
+#   * İlk yaprağın bağlacı yoktur; `or` beyan etse bile parçayı BAŞLATIR.
+#   * Tek yaprağın çok değerli olması zaten VEYA'dır (maske üretiminde ele alınır).
+#   * Dışlamalar VE'lenen NOT'tur; yalnızca AÇIK `or` bağlacı onları VEYA parçasına taşır.
+# NEDEN GRUP DÜZEYİ BAYRAK DEĞİL (PR #705 inceleme, P2): grup içindeki HERHANGİ bir `or` beyanı TÜM yaprakları VEYA havuzuna alan eski kural, beyanı OLMAYAN kardeşleri de havuza sokuyordu. `Yil > 2020 (or)`, `Yil < 2000 (or)`, `Yil != 2010 (beyansız)` girdisinde dışlama maskesi neredeyse tamamen TRUE olduğu için havuz da TRUE oluyor, `kisit` hiç daralmıyor ve grup PRATİKTE HİÇBİR kısıt uygulamıyordu; hiçbir yaprak düşmediği için `dropped` boş kalıyor, `all_dropped` FALSE oluyor ve kullanıcı sessizce GENİŞLETİLMİŞ bir popülasyon okuyordu. Konumsal okuma, bağlacın yalnızca İKİNCİ yaprakta göründüğü (`Yil > 2020` + `Yil < 2000 logic="or"`) modeli de doğru çözer: birinci yaprak parçayı başlatır, ikincisi ona KATILIR ve sonuç KESİŞİM değil BİRLEŞİM olur.
 .pk_filter_column_group_mask <- function(data, leaves, query = NULL) {
   n <- nrow(data)
-  veya_havuzu <- NULL
-  kisit <- rep(TRUE, n)
   uygulanan <- list()
   dusen <- list()
-  alt_sinir_sayisi <- 0L
-  ust_sinir_sayisi <- 0L
-  # BEYAN GRUP DÜZEYİNDE OKUNUR: bağlaç bir SÜTUN GRUBUNUN tamamına aittir, tek bir yaprağa değil. Model iki yaprağı aynı sütuna yazıp `logic`i yalnızca İKİNCİSİNE koyduğunda (`Yil > 2020` + `Yil < 2000 logic="or"`) VEYA havuzuna tek yaprak giriyor, kardeşi `kisit` içinde kalıyor ve sonuç `veya_havuzu & kisit`, yani KESİŞİM oluyordu. Hiçbir yaprak düşmediği için `dropped` boş, `all_dropped` FALSE kalıyor ve kullanıcı istediği birleşim yerine (çoğu zaman sıfır satırlık) kesişimi HİÇBİR İFŞA GÖRMEDEN okuyordu.
-  grup_veya <- any(vapply(leaves, function(l) identical(as.character(l$logic %||% "")[1], "or"), logical(1)))
+  parcalar <- list()
 
   for (leaf in leaves) {
     sonuc <- pk_filter_leaf_mask(data, leaf, query = query)
@@ -596,15 +593,6 @@ pk_filter_leaf_mask <- function(data, leaf, query = NULL) {
     }
 
     rol <- .pk_filter_leaf_role(leaf$operation)
-
-    # BEYAN EDİLEN `logic = "or"` HER ROLDE ONURLANDIRILIR.
-    #
-    # Eskiden yalnızca `alternative` rolü VEYA havuzuna giriyordu; `lower` /
-    # `upper` / `exclude` rolündeki bir yaprak `logic = "or"` bildirse bile
-    # `kisit` içine VE'leniyordu. "Yıl > 2020 VEYA Yıl < 2000" (bir aralığın
-    # DIŞI) isteği o zaman KESİŞİM alınıp SIFIR satır döndürüyor, yaprak
-    # düşmediği için kullanıcıya HİÇBİR ifşa da ulaşmıyordu.
-    veya_ister <- isTRUE(grup_veya)
 
     if (identical(rol, "exclude")) {
       dilim <- !sonuc$mask
@@ -620,18 +608,32 @@ pk_filter_leaf_mask <- function(data, leaf, query = NULL) {
       dilim <- sonuc$mask
     }
 
-    if (isTRUE(veya_ister)) {
-      veya_havuzu <- if (is.null(veya_havuzu)) dilim else (veya_havuzu | dilim)
+    # BEYAN EDİLEN `logic = "or"` HER ROLDE ONURLANDIRILIR: `lower` / `upper` /
+    # `exclude` rolündeki bir yaprak da açık bağlaçla VEYA parçasına katılabilir
+    # ("Yıl > 2020 VEYA Yıl < 2000" = bir aralığın DIŞI).
+    if (identical(as.character(leaf$logic %||% "")[1], "or") && length(parcalar)) {
+      son <- length(parcalar)
+      parcalar[[son]]$mask <- parcalar[[son]]$mask | dilim
+      parcalar[[son]]$roles <- c(parcalar[[son]]$roles, rol)
     } else {
-      kisit <- kisit & dilim
-      if (identical(rol, "lower")) alt_sinir_sayisi <- alt_sinir_sayisi + 1L
-      if (identical(rol, "upper")) ust_sinir_sayisi <- ust_sinir_sayisi + 1L
+      parcalar[[length(parcalar) + 1L]] <- list(mask = dilim, roles = rol)
     }
 
     uygulanan[[length(uygulanan) + 1L]] <- leaf
   }
 
-  maske <- if (is.null(veya_havuzu)) kisit else (veya_havuzu & kisit)
+  maske <- rep(TRUE, n)
+  alt_sinir_sayisi <- 0L
+  ust_sinir_sayisi <- 0L
+  for (parca in parcalar) {
+    maske <- maske & parca$mask
+    # ÇELİŞKİLİ SINIR YALNIZCA VE'LENEN (tek yapraklı) PARÇALARDA SAYILIR: bir
+    # VEYA parçasındaki iki alt sınır çelişki DEĞİLDİR.
+    if (length(parca$roles) == 1L) {
+      if (identical(parca$roles, "lower")) alt_sinir_sayisi <- alt_sinir_sayisi + 1L
+      if (identical(parca$roles, "upper")) ust_sinir_sayisi <- ust_sinir_sayisi + 1L
+    }
+  }
 
   list(
     mask = maske,

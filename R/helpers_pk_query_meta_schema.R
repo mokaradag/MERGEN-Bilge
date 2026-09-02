@@ -212,8 +212,17 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
     }
   }
 
-  if (!is.null(cmeta$match) &&
-      (!.pk_meta_is_scalar_text(cmeta$match) || !(cmeta$match %in% PK_META_MATCH_MODES))) {
+  # ALANLAR KESİN ADLA OKUNUR (PR #705 inceleme, P3): `$` bir LİSTEDE KISMİ AD
+  # EŞLEŞMESİ yapar, bu yüzden yalnızca `match_mode` beyan eden bir sütunda
+  # `cmeta$match` o değeri döndürüyor ve küratörün HİÇ yazmadığı bir alan için
+  # ikinci bir `gecersiz match` bulgusu üretiliyordu; başlangıç raporu TEK bir
+  # hatayı İKİ ayrı sorun gibi sayıyordu. `.pk_meta_field()` (satır 31) bu
+  # sınıfı zaten kapatıyor, bu çağrı yerleri atlanmıştı.
+  .beyan_match <- .pk_meta_field(cmeta, "match")
+  .beyan_match_mode <- .pk_meta_field(cmeta, "match_mode")
+
+  if (!is.null(.beyan_match) &&
+      (!.pk_meta_is_scalar_text(.beyan_match) || !(.beyan_match %in% PK_META_MATCH_MODES))) {
     hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
       " gecersiz match (izinli: %s).", paste(PK_META_MATCH_MODES, collapse = "/")
     )))
@@ -227,23 +236,23 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
   # küratör başlangıç doğrulamasını geçiyor ama varlık çözümlemesi SESSİZCE
   # `"none"` kalıyordu. Alan artık `match` takma adı olarak OKUNUR (bkz.
   # `pk_meta_match_mode()`) ve AYNI kümeye karşı doğrulanır.
-  if (!is.null(cmeta$match_mode) &&
-      (!.pk_meta_is_scalar_text(cmeta$match_mode) ||
-       !(cmeta$match_mode %in% PK_META_MATCH_MODES))) {
+  if (!is.null(.beyan_match_mode) &&
+      (!.pk_meta_is_scalar_text(.beyan_match_mode) ||
+       !(.beyan_match_mode %in% PK_META_MATCH_MODES))) {
     hatalar <- c(hatalar, .pk_meta_err(query_id, onek, sprintf(
       " gecersiz match_mode (izinli: %s).", paste(PK_META_MATCH_MODES, collapse = "/")
     )))
   }
-  if (!is.null(cmeta$match) && !is.null(cmeta$match_mode) &&
-      !identical(as.character(cmeta$match)[1], as.character(cmeta$match_mode)[1])) {
+  if (!is.null(.beyan_match) && !is.null(.beyan_match_mode) &&
+      !identical(as.character(.beyan_match)[1], as.character(.beyan_match_mode)[1])) {
     hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
       " match ve match_mode birlikte verildiginde AYNI degeri tasimalidir."))
   }
 
-  .etkin_match <- if (.pk_meta_is_scalar_text(cmeta$match)) {
-    cmeta$match
-  } else if (.pk_meta_is_scalar_text(cmeta$match_mode)) {
-    cmeta$match_mode
+  .etkin_match <- if (.pk_meta_is_scalar_text(.beyan_match)) {
+    .beyan_match
+  } else if (.pk_meta_is_scalar_text(.beyan_match_mode)) {
+    .beyan_match_mode
   } else {
     NULL
   }
@@ -369,7 +378,8 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
     }
     if (!isTRUE(cmeta$allow_aliases) &&
         (identical(cmeta$role, "id") ||
-         identical(as.character(cmeta$match %||% cmeta$match_mode %||% "")[1], "exact"))) {
+         identical(as.character(.pk_meta_field(cmeta, "match") %||%
+                                  .pk_meta_field(cmeta, "match_mode") %||% "")[1], "exact"))) {
       hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
         " kod/kimlik veya exact sutunu alias alamaz; allow_aliases=TRUE zorunludur."))
     }

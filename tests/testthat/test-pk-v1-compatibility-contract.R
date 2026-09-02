@@ -55,7 +55,16 @@
   con <- file(full, open = "rb")
   on.exit(close(con), add = TRUE)
   raw_data <- readBin(con, what = "raw", n = size)
-  txt <- suppressWarnings(iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]])
+  # `sub = "byte"` BILEREK KULLANILMAZ (PR #705 inceleme, P2).
+  #
+  # `sub = "byte"` gecersiz baytlari `<xx>` kacislarina cevirir ve sonuc ASLA
+  # `NA` olmaz; boylece hemen asagidaki "cozulemedi" korumasi OLU KOD haline
+  # gelir. Bozuk kodlanmis bir kaynak dosya sessizce taranir, Turkce metin
+  # kacislara donusur ve bu dosyadaki olumsuz taramalar (`expect_false(grepl(...))`)
+  # HICBIR ANLAM TASIMADAN gecer. Taranan dosyalar depo kaynagidir ve gecerli
+  # UTF-8 olmak ZORUNDADIR (CP1254 kaynak guvenligi sozlesmesi + parse sanity);
+  # cozulememesi gercek bir kusurdur ve GURULTULU bicimde durdurulur.
+  txt <- suppressWarnings(iconv(list(raw_data), from = "UTF-8", to = "UTF-8")[[1]])
   # BOZUK ÇEVRİM DE VACUOUS GEÇİRİR: boş metin bu dosyadaki motor-sızıntı
   # taramalarının (`expect_false(grepl(...))`) TAMAMINI karşılar ve sözleşme
   # hiçbir kaynak metni taranmadan "başarılı" raporlar.
@@ -299,9 +308,15 @@ test_that("motor kipi istek basina TEK KEZ cozulur (karisik hat yasagi)", {
   con <- file(full, open = "rb")
   on.exit(close(con), add = TRUE)
   raw_data <- readBin(con, what = "raw", n = size)
-  metin <- enc2utf8(suppressWarnings(
-    iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
-  ))
+  # `sub = "byte"` YOK: yukaridaki `.pk_v1_code_only()` ile AYNI gerekce.
+  # Cozulemeyen kaynak `NA` uretir ve asagidaki olumlu/olumsuz iddialarin
+  # tamami anlamsizlasmadan once GURULTULU bicimde yakalanir.
+  ham_metin <- suppressWarnings(
+    iconv(list(raw_data), from = "UTF-8", to = "UTF-8")[[1]]
+  )
+  expect_false(is.na(ham_metin),
+               info = "Modul dosyasi UTF-8 olarak cozulemedi.")
+  metin <- enc2utf8(ham_metin)
   satirlar <- strsplit(metin, "\n", fixed = TRUE)[[1]]
   kod <- paste(satirlar[!grepl("^\\s*#", satirlar, perl = TRUE, useBytes = TRUE)],
                collapse = "\n")

@@ -27,8 +27,13 @@ mergen_build_send_message_request_callbacks <- function(session,
     error = function(e) NA
   )
   if (!is.null(session) && !isTRUE(koken_temizlendi)) {
-    try(cat(sprintf(
-      "[PK_PROV] UYARI: koken alt bilgisi sifirlanamadi | istek=%s\n",
+    # UYARI DEPO LOGGER'INA GİDER (PR #705 inceleme): `cat()` YALNIZCA stdout'a
+    # yazar. Üretimde operatör log DOSYASINA bakar; bu satır oraya hiç
+    # ulaşmıyordu, yani yukarıdaki gerekçenin ("bunun hiçbir izi kalmazdı")
+    # kendisi geçerli kalıyordu. `log_warn()` yoksa (izole test/worker) `try()`
+    # sessizce yutar ve davranış değişmez.
+    try(log_warn(sprintf(
+      "[PK_PROV] Koken alt bilgisi sifirlanamadi | istek=%s",
       as.character(request_id %||% "-")[1]
     )), silent = TRUE)
   }

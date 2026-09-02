@@ -244,7 +244,12 @@ pkg_meta_resolve_config <- function(repo_root = ".", now = Sys.time()) {
     sample_unicode = .pkg_env_flag("MERGEN_PK_META_SAMPLE_UNICODE", TRUE),
     # Kesintiye uğrayan bir koşuyu kaldığı yerden sürdürür. Operatör temiz bir
     # koşu istediğinde FALSE yapar.
-    resume = .pkg_env_flag("MERGEN_PK_META_RESUME", TRUE)
+    resume = .pkg_env_flag("MERGEN_PK_META_RESUME", TRUE),
+    # DEVAM TAZELİK SINIRI DA BURADA ÇÖZÜLÜR (PR #705 inceleme): `sample_unicode`
+    # ile AYNI kural -- çalıştırma anında `Sys.getenv()` ile okunan bir ayar koşu
+    # yapılandırma özetine GİRMEZ, dolayısıyla FARKLI tazelik sınırlarıyla koşan
+    # iki üretim raporlarda AYIRT EDİLEMEZ olur. `0` = süre sınırı yok.
+    resume_max_age_sec = .pkg_env_whole("MERGEN_PK_META_RESUME_MAX_AGE_SEC", 21600L, min = 0L)
   )
 }
 
@@ -261,6 +266,7 @@ pkg_meta_config_summary <- function(config) {
     max_result_mb = config$max_result_mb,
     sample_unicode = isTRUE(config$sample_unicode),
     resume = isTRUE(config$resume),
+    resume_max_age_sec = config$resume_max_age_sec,
     output_rel = config$output_rel,
     artifact_rel = config$artifact_rel,
     run_id = as.character(config$run_id %||% NA_character_)[1]

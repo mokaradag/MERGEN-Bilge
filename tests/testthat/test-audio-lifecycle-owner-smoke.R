@@ -189,9 +189,19 @@ testthat::test_that("MusicManager keeps single-audio and stale-playlist ordering
 	# Sonraki metot başlangıcı (aynı girintideki bir sonraki `\n  <ad>(`)
 	# bulunarak blok kapatılır; bulunamazsa eski davranış korunur.
 	play_track_block <- substr(music_js, play_track_pos, nchar(music_js))
-	sonraki <- regexpr("\n  [A-Za-z_$][A-Za-z0-9_$]*\\s*\\(", 
-	                   substr(play_track_block, 2L, nchar(play_track_block)),
-	                   perl = TRUE)[[1]]
+	# NESNE-LITERAL METOT SINIRI (PR #705 inceleme, P2).
+	#
+	# `MusicManager` metotlari `ad: function(...)` biciminde tanimlanir
+	# (`_handleTrackEnded: function()`), kisa `ad(...)` biciminde DEGIL. Yalnizca
+	# `ad(` arayan eski desen bir sonraki metodu HIC bulamiyor, blok dosyanin
+	# SONUNA kadar uzuyor ve bu smoke testinin engellemek icin var oldugu
+	# gerileme (ifadelerin baska bir metoda tasinmasi) YESIL geciyordu. Her iki
+	# bicim de kabul edilir.
+	sonraki <- regexpr(
+	  "\n  [A-Za-z_$][A-Za-z0-9_$]*\\s*(:\\s*function\\s*)?\\(",
+	  substr(play_track_block, 2L, nchar(play_track_block)),
+	  perl = TRUE
+	)[[1]]
 	if (sonraki > 0L) play_track_block <- substr(play_track_block, 1L, sonraki)
 
 	stop_audio_pos <- regexpr(

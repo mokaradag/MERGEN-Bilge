@@ -243,7 +243,27 @@ pk_deep_observation_helpers <- function(session, conn, username, user_prompt,
 
     footers <- as.character(footers)
     footers <- footers[!is.na(footers) & nzchar(footers)]
-    if (length(footers) == 0L) return(invisible(FALSE))
+    # OLGU VARSA KAYIT ALT BİLGİSİZ DE SAKLANIR (PR #705 inceleme, P2).
+    #
+    # `pk_observe_deep()` her fail-soft yolda `""` döndürür (telemetri için
+    # kısa ömürlü bağlantı açılamaması, `pk_analysis_observe` yardımcısının
+    # yüklü olmaması). TÜM sorgular boş alt bilgi ürettiğinde bu erken dönüş,
+    # orkestratörün `pk_deep_collect_v2_provenance()` ile taşıdığı OLGULARI da
+    # düşürüyordu: istek için bekleyen köken kaydı hiç oluşmuyor,
+    # `pk_provenance_blocks_streaming()` ve §5.11 sayısal doğrulaması
+    # denetleyecek bir şey bulamıyor ve `[fact:...]` işaretleri taşıyan
+    # DOĞRULANMAMIŞ model düzyazısı teslim ediliyordu.
+    # `R/helpers_pk_telemetry.R` tekil yolda olgu-yalnız kayıtları ZATEN
+    # saklıyor; derin yol AYNI kuralı uygular. Alt bilgi gövdesi yoksa boş
+    # kalır, yalnızca olgular taşınır.
+    if (length(footers) == 0L && is.null(facts)) return(invisible(FALSE))
+    if (length(footers) == 0L) {
+      return(pk_provenance_stash(
+        session, "", request_id = pk_request_id,
+        facts = facts, fallback_text = fallback_text,
+        query_id = query_id, mode = mode
+      ))
+    }
 
     standard_prefix <- "\n\n---\n**Analiz Kaynağı**\n"
     bodies <- vapply(footers, function(footer) {

@@ -240,8 +240,18 @@ pkgc_load_raw_query_library <- function(repo_root) {
     ))
   }
 
-  okunabilir <- isTRUE(tryCatch(file.access(cozulmus, mode = 4L)[[1]] == 0L,
-                                error = function(e) FALSE))
+  # GERCEK OKUMA DENENIR, IZIN BITI SORULMAZ (PR #705 inceleme, P3).
+  #
+  # `file.access(mode = 4L)` Windows'ta yalnizca salt-okunur BAYRAGINA bakar;
+  # ACL ile okuma reddedilen bir UNC paylasimi icin BASARILI raporlar. O zaman
+  # bu `sql_file_unreadable` bulgusu hic uretilmiyor ve operator, gercek nedeni
+  # gizleyen genel bir bootstrap hatasi goruyordu. Tek baytlik sinirli bir okuma
+  # ERISIMIN KENDISINI dener; dosya zaten var ve bos olmadigi dogrulandi.
+  okunabilir <- isTRUE(tryCatch({
+    baglanti <- file(cozulmus, open = "rb")
+    on.exit(try(close(baglanti), silent = TRUE), add = TRUE)
+    length(readBin(baglanti, what = "raw", n = 1L)) == 1L
+  }, error = function(e) FALSE, warning = function(w) FALSE))
   if (!okunabilir) {
     return(pkgh_finding(
       "sql_file_unreadable", "blocking",

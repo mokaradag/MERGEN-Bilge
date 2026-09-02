@@ -277,6 +277,34 @@ pk_parse_number_tr <- function(txt) {
   unique(c(.PK_PROV_KNOWN_UNITS, bilinen[nzchar(bilinen)]))
 }
 
+# BİRİMİN EKLİ BİÇİMİ DE BİRİMDİR (PR #705 inceleme, P3).
+#
+# `.pk_prov_unit_fold()` Türkçe TÜRETME EKLERİNİ atmaz; `saatlik`, `gunluk`,
+# `adetlik` sözlükte YOKTUR ve birim kapısı onları "birim değil" sayıp
+# SIFIRLIYORDU. Olgu ölçek taşıyan bir birim beyan ettiğinde iddia o zaman
+# `unit_missing` üretiyor, `block` kipinde DOĞRU bir model yanıtı deterministik
+# yedekle değiştiriliyor, `warn` kipinde doğru bir sayı "doğrulanmadı" diye
+# işaretleniyordu.
+#
+# YALNIZCA AÇIK TÜRETME EKLERİ kabul edilir. Serbest önek eşleşmesi
+# (`ayrica` -> `ay`, `ayni` -> `ay`) sıradan Türkçe sözcükleri birim sanıp YENİ
+# yanlış pozitifler üretirdi; bu liste bilinçli olarak dardır.
+.PK_PROV_UNIT_DERIV_SUFFIXES <- c("lik", "luk", "li", "lu")
+
+.pk_prov_unit_root <- function(folded, vocabulary) {
+  if (!nzchar(folded)) return("")
+  for (birim in vocabulary) {
+    uf <- .pk_prov_unit_fold(birim)
+    if (!nzchar(uf) || nchar(uf) < 2L) next
+    if (identical(folded, uf)) return(uf)
+    if (startsWith(folded, uf) &&
+        substring(folded, nchar(uf) + 1L) %in% .PK_PROV_UNIT_DERIV_SUFFIXES) {
+      return(uf)
+    }
+  }
+  ""
+}
+
 # Türkçe toplulaştırma sözcükleri -> olgu toplulaştırması. Yalnızca AÇIKÇA
 # tanınan bir sözcük, alıntılanan olgunun toplulaştırmasıyla ÇELİŞTİĞİNDE
 # işaretlenir; bu, "bir toplamı ortalama diye sunmak" durumunu yakalar.
@@ -422,7 +450,11 @@ pk_numeric_provenance_validate <- function(text, facts) {
     # pozitif). Ters yön (birimsiz olguya uydurulmuş birim) ZATEN sözlük
     # üyeliği istiyordu; iki yön artık SİMETRİKTİR. Gerçek bir yanlış birim
     # (ör. "saat" yerine "adet") sözlükte olduğu için hâlâ yakalanır.
-    if (nzchar(iddia_birimi) && !(iddia_birimi %in% sozluk)) iddia_birimi <- ""
+    # EKLİ BİÇİM ÖNCE KÖKÜNE İNDİRGENİR (bkz. `.pk_prov_unit_root()`); sözlükte
+    # karşılığı olmayan jeton yine SIFIRLANIR ve eski simetri korunur.
+    if (nzchar(iddia_birimi) && !(iddia_birimi %in% sozluk)) {
+      iddia_birimi <- .pk_prov_unit_root(iddia_birimi, sozluk)
+    }
 
     if (isTRUE(iddia$percent) && !identical(olgu_birimi, "%")) {
       ekle(fact_id = iddia$fact_id, reason = "unit_mismatch",

@@ -412,9 +412,14 @@ test_that("Turkce katlama otoritesi yoksa derleyici KAPALI BASARISIZ olur", {
          encoding = "UTF-8", local = env)
 
   # pk_tr_fold yoksa SESSIZCE tolower()'a DUSULMEZ; hata yukselir (D3).
+  #
+  # IDDIA KAPININ KENDI METNINE BAGLANIR (PR #705 inceleme, P3): yalnizca
+  # `"pk_tr_fold"` alt dizesini aramak, R'nin KENDI `could not find function
+  # "pk_tr_fold"` hatasiyla da eslesir. Yani acik fail-closed denetim
+  # kaldirilip `pk_tr_fold()` DOGRUDAN cagrilsa bile test YESIL kalirdi.
   expect_error(
     env$.pk_filter_fold("ABC"),
-    "pk_tr_fold",
+    "pk_tr_fold bulunamadi; Turkce karsilastirma guvenli yapilamaz.",
     fixed = TRUE
   )
 })
@@ -558,6 +563,43 @@ test_that("integer64 uyeligi BIT DESENI degil DEGER karsilastirir", {
   sonuc <- env$pk_filter_leaf_mask(veri, yaprak)
   expect_true(isTRUE(sonuc$ok))
   expect_identical(sonuc$mask, c(TRUE, FALSE))
+})
+
+test_that("grup duzeyi `or` BEYANSIZ kardesleri VEYA havuzuna ALMAZ", {
+  env <- .pk_compile_env()
+  veri <- data.frame(
+    Yil = c(1990L, 2005L, 2010L, 2024L),
+    stringsAsFactors = FALSE
+  )
+
+  # GERILEME (PR #705 inceleme, P2): grup icindeki HERHANGI bir `or` beyani TUM
+  # yapraklari VEYA havuzuna aliyordu. Dislama maskesi (`!= 2010`) neredeyse
+  # tamamen TRUE oldugu icin havuz da TRUE oluyor, grup PRATIKTE hicbir kisit
+  # uygulamiyor ve hicbir yaprak dusmedigi icin kullaniciya IFSA da gitmiyordu.
+  sonuc <- env$pk_filter_compile(veri, list(
+    list(column = "Yil", value = 2020, operation = "greater_than", logic = "or"),
+    list(column = "Yil", value = 2000, operation = "less_than", logic = "or"),
+    list(column = "Yil", value = 2010, operation = "not_equals")
+  ))
+
+  expect_equal(length(sonuc$dropped), 0L)
+  # ((Yil > 2020) VEYA (Yil < 2000)) VE (Yil != 2010) -> 1990 ve 2024
+  expect_identical(veri$Yil[sonuc$mask], c(1990L, 2024L))
+})
+
+test_that("bagclac KONUMSALDIR: ilk yaprak parcayi baslatir", {
+  env <- .pk_compile_env()
+  veri <- data.frame(Yil = c(1990L, 2010L, 2024L), stringsAsFactors = FALSE)
+
+  # KORUNAN DAVRANIS: model `logic` bilgisini yalnizca IKINCI yaprakta yazdiginda
+  # ("bir araligin DISI") iki yaprak yine VEYA'lanir; sonuc KESISIM olmaz.
+  sonuc <- env$pk_filter_compile(veri, list(
+    list(column = "Yil", value = 2020, operation = "greater_than"),
+    list(column = "Yil", value = 2000, operation = "less_than", logic = "or")
+  ))
+
+  expect_equal(length(sonuc$dropped), 0L)
+  expect_identical(veri$Yil[sonuc$mask], c(1990L, 2024L))
 })
 
 test_that("TANINMAYAN `logic` belirteci SESSIZCE `and` olmaz", {

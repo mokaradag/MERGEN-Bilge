@@ -199,7 +199,10 @@ test_that("son tarih dolması iptal ile KARIŞTIRILMAZ", {
 test_that("gerçek iptal jetonu getirimi durdurur (dosya tabanlı sinyal)", {
   skip_if_not_installed("RSQLite")
 
-  kok <- file.path(tempdir(), paste0("pk_sql_cancel_", as.integer(runif(1, 1, 1e9))))
+  # `tempfile()` KULLANILIR, `runif()` DEGIL (PR #705 inceleme, P3): `runif()`
+  # oturum RNG akisini TUKETIR ve tohumlanmis bir akisa dayanan sonraki bir test
+  # FARKLI bir dizi gorur; paket sonuclari DOSYA SIRASINA bagimli hale gelirdi.
+  kok <- tempfile("pk_sql_cancel_")
   dir.create(kok, recursive = TRUE, showWarnings = FALSE)
   on.exit(unlink(kok, recursive = TRUE), add = TRUE)
 

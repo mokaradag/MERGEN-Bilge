@@ -557,6 +557,19 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
         try(mergen_pk_abandon_active_requests(session, release = FALSE), silent = TRUE)
       }
 
+      # D11 SOHBET KAPSAMLI VARLIK BAĞLAMI DA DÜŞÜRÜLÜR (PR #705 inceleme, P2):
+      # etkin sohbet kimliği sıfırlanıyor ama `pk_entity_prior_context` oturumda
+      # KALIYORDU; kullanıcı silmeden sonra kaydedilmemiş bir söyleşiye
+      # geçtiğinde varlık çözümlemesi SİLİNMİŞ sohbetin kanonik öznesini
+      # uyguluyor ve YANLIŞ bir PK analizi üretebiliyordu. Nesil sayacı da
+      # artırılır: kaydedilmemiş sohbetler `NULL` kimliği PAYLAŞIR (bkz.
+      # `chat_reset_state()` ile AYNI sözleşme).
+      for (.pk_fn in c("pk_entity_context_clear", "mergen_pk_bump_chat_epoch")) {
+        if (exists(.pk_fn, mode = "function", inherits = TRUE)) {
+          try(get(.pk_fn, mode = "function")(session), silent = TRUE)
+        }
+      }
+
       # Sohbet durumunu sıfırla
       values$messages <- list()
       values$current_chat_id <- NULL
@@ -633,6 +646,14 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
         # ETKİN PK İSTEĞİ ÖNCE TERK EDİLİR (tek silme ile AYNI sözleşme).
         if (exists("mergen_pk_abandon_active_requests", mode = "function", inherits = TRUE)) {
           try(mergen_pk_abandon_active_requests(session, release = FALSE), silent = TRUE)
+        }
+
+        # D11 varlık bağlamı ve nesil sayacı da sıfırlanır (tek silme ile AYNI
+        # sözleşme; bkz. yukarıdaki gerekçe).
+        for (.pk_fn in c("pk_entity_context_clear", "mergen_pk_bump_chat_epoch")) {
+          if (exists(.pk_fn, mode = "function", inherits = TRUE)) {
+            try(get(.pk_fn, mode = "function")(session), silent = TRUE)
+          }
         }
 
         # Sohbet durumunu sıfırla

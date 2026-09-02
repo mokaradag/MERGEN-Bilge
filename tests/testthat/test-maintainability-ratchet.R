@@ -462,7 +462,15 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # dogrulama yapilmadigi icin gecersiz deger canli karara sizabiliyordu.
   # Fonksiyon sayisi ARTMAMISTIR.
   assert_current_budget("R/helpers_pk_query_selection_config.R", 308L, 10L)
-  assert_current_budget("R/helpers_pk_query_selection_payload.R", 460L, 18L)
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 460 -> 472 satır (ÖLÇÜLEN),
+  # 18 -> 16 fonksiyon (ÖLÇÜLEN; SIKILAŞTIRMA).
+  # `pk_select_entity_kinds()` sıralaması artık YERELDEN BAĞIMSIZ `order(...,
+  # method = "radix")` kullanır; Türkçe `LC_COLLATE` altında `sort()` "İ"/"ı"
+  # harflerini farklı sıralayıp AYNI varlık kümesi için FARKLI istem üretiyor
+  # ve seçim kararını oynatabiliyordu. Ayrıca `ornek_n` uzunluk koruması
+  # eklendi: sıfır uzunlukta bir yapılandırma değeri `> 0L` karşılaştırmasında
+  # `logical(0)` üretip `if()` içinde HATA veriyordu.
+  assert_current_budget("R/helpers_pk_query_selection_payload.R", 472L, 16L)
   # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 400 -> 412 (ÖLÇÜLEN).
   # ZORUNLU Geçiş B örneği artık `entity:null` + BEŞ BOŞ dizi ŞEKLİNDE
   # DEĞİLDİR. O şekil tam olarak `pk_select_requirements_empty()` TRUE dediği
@@ -478,7 +486,12 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # Rol cozumlemesi `role` -> `type` -> `"user"` sirasini BOS OLMAYAN TEKIL
   # deger uzerinden yapar: `%||%` yalnizca `NULL` atladigi icin `role = NA`
   # tasiyan bir asistan turu SESSIZCE "user" rolune dusuyordu.
-  assert_current_budget("R/helpers_pk_query_selection_prompt.R", 418L, 16L)
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 418 -> 425 satır (ÖLÇÜLEN).
+  # `tur_sayisi` artık `> 0L` karşılaştırmasından ÖNCE uzunluk denetiminden
+  # geçer: sıfır uzunlukta bir değer `logical(0)` üretiyor, `if()` HATA veriyor
+  # ve istem oluşturma tümüyle düşüyordu. `utils::tail()` çağrısı da aynı
+  # korumanın arkasına alındı. Fonksiyon sayısı ARTMAMIŞTIR.
+  assert_current_budget("R/helpers_pk_query_selection_prompt.R", 425L, 16L)
   # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme): 300 -> 325 satır / 12 -> 13
   # fonksiyon (ÖLÇÜLEN). İki neden: (a) TİPLİ doğrulama sonucuna `canonicalized`
   # alani eklendi ve varolussal->sayim kanoniklestirmesi TEK cagri ile baglandi
@@ -528,7 +541,13 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # `not_for` dislamasi BUTUN diger kurallardan ONCE gelir (Gecis B tek aday
   # bildirdiginde reddedilen sorgu chip olarak GERI TEKLIF ediliyordu); rakip
   # guveni ve `missing_info` alanlari SKALERE indirgenir.
-  assert_current_budget("R/helpers_pk_query_selection_decide.R", 428L, 9L)
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 428 -> 450 satır (ÖLÇÜLEN).
+  # Marj kapısı artık KAPALI BAŞARISIZ olur: ikinci adayın güveni `NA` iken
+  # `ikinci_guven < esik` karşılaştırması `NA` döndürüyor, `if()` dalı hiçbir
+  # koşulu seçmiyor ve karar YAKIN MARJ uyarısı ÜRETMEDEN geçiyordu. Artık
+  # açık bir `is.na()` dalı `PK_SELECT_STATUS_CLOSE_MARGIN` döndürür.
+  # Fonksiyon sayısı ARTMAMIŞTIR.
+  assert_current_budget("R/helpers_pk_query_selection_decide.R", 450L, 9L)
   assert_current_budget("R/helpers_pk_query_selection_degraded.R", 190L, 7L)
   assert_current_budget("R/helpers_pk_query_selection_session.R", 220L, 14L)
   # BİLİNÇLİ GÜNCELLEME (PR #705 kararlılık): Geçiş A TOPLAM yük bütçesi
@@ -561,12 +580,23 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 617/21 -> 622/22 (OLCULEN).
   # Onarim kapisi dogrulayiciyi YAKALAYICI ile cagirir: kacan bir istisna
   # istegi tipli `validator_error` reddi yerine `internal_error` yapiyordu.
-  assert_current_budget("R/helpers_pk_query_selection_ai.R", 622L, 22L)
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 622 -> 651 satır (ÖLÇÜLEN).
+  # `pk_select_query_v2()` artık HEM Geçiş A HEM Geçiş B için `CANCELLED`
+  # durumunu ERKEN döndürür. Önceden iptal edilen bir geçiş
+  # `.pk_select_pass_failure_decision()` / `pk_retrieval_agreement()` yoluna
+  # düşüyor, kullanıcı isteği DURDURMUŞ olmasına rağmen "başarısız seçim"
+  # gerekçesi üretiliyor ve iptal, hata gibi raporlanıyordu.
+  # Fonksiyon sayısı ARTMAMIŞTIR.
+  assert_current_budget("R/helpers_pk_query_selection_ai.R", 651L, 22L)
   # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 320/14 -> 328/15 (OLCULEN).
   # (a) Bayat teklif HER reddetmede temizlenir (cipsiz ret sonrasi "1" cevabi
   # ALAKASIZ sorguyu onayliyordu). (b) `||` operandlari uzunluk denetiminden
   # gecer. (c) Oturum, secim yoluyla AYNI sekilde cozulur.
-  assert_current_budget("R/helpers_pk_query_selection_apply.R", 328L, 15L)
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 328 -> 337 satır (ÖLÇÜLEN).
+  # İptal metni artık yedekli çözülür: karar mesajı boş/`NA` geldiğinde
+  # kullanıcıya sohbette birebir "NA" yazısı gösteriliyordu.
+  # Fonksiyon sayısı ARTMAMIŞTIR.
+  assert_current_budget("R/helpers_pk_query_selection_apply.R", 337L, 15L)
 
   # PR #705 dengeleme (inceleme borcu kök neden düzeltmeleri). Bu üç bütçe
   # ÖLÇÜLEN yeni tabanla güncellendi; hiçbir KÜRESEL eşik gevşetilmedi
@@ -720,7 +750,14 @@ test_that("mevcut büyük ve fonksiyon yoğun dosya taban çizgileri sessizce b�
   assert_file_budget("R/helpers_llm_worker.R", 799L, 8L)
   assert_file_budget("R/helpers_llm_worker_tool_results.R", 260L, 2L)
   assert_file_budget("R/helpers_claude_code.R", 450L, 18L)
-  assert_file_budget("R/helpers_claude_code_directory_listing.R", 260L, 19L)
+  # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 260 -> 264 satır (ÖLÇÜLEN).
+  # `cc_list_dir_relaxed()` artık bloklayan `fs::dir_ls()` yedeğini ana Shiny
+  # olay döngüsünde ÇALIŞTIRMAZ: `setTimeLimit()` askıda kalmış YERLİ bir
+  # çağrıyı kesemez ve kopmuş bir UNC paylaşımı tüm oturumları dondurur.
+  # KARARIN KENDİSİ bilerek bu dosyaya EKLENMEDİ; `dir_listing_async.R`
+  # içindeki `cc_dir_listing_fs_fallback_allowed()` yardımcısına taşındı,
+  # böylece fonksiyon bütçesi 19'da SABİT kaldı (artış YALNIZCA çağrı yeri).
+  assert_file_budget("R/helpers_claude_code_directory_listing.R", 264L, 19L)
   # Bütçe: UNC ağ paylaşımı için runtime workdir yeniden kullanım yolu ve
   # fs::dir_ls fallback'i eklenince satır sayısı 240 -> ~325'e çıktı. Codex
   # P1 düzeltmesi (boyut sınırı nedeniyle atlanan GEREKLİ girdinin artık

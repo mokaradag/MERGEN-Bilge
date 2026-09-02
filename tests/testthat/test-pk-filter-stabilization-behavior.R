@@ -277,6 +277,15 @@ test_that("kurtarma derlemesi metadata kapisini ZAYIFLATMAZ", {
     file.path(resolve_repo_root_for_tests(), "R", "helpers_pk_filter_policy.R"),
     warn = FALSE, encoding = "UTF-8"
   )
+  # YORUM SATIRLARI TARAMA DISIDIR (PR #705 inceleme, P3).
+  #
+  # Bu OLUMLU bir kaynak iddiasidir: kurtarma derlemesi `query = NULL`'a geri
+  # alinsa BILE, ayni metni ALINTILAYAN aciklayici bir yorum satiri iddiayi
+  # YESIL tutardi -- ve `helpers_pk_filter_policy.R` tam olarak bu turden
+  # aciklayici metin tasir. Kardes sozlesmeler (`test-pk-rls-failclosed-contract.R`,
+  # `test-pk-runtime-hardening-behavior.R`) olumlu taramalarda zaten YALNIZCA
+  # kodu okur.
+  kaynak <- kaynak[!grepl("^\\s*#", kaynak, perl = TRUE, useBytes = TRUE)]
   expect_true(
     any(grepl("pk_filter_compile(data, kalan, query = query)", kaynak, fixed = TRUE)),
     info = "Kurtarma derlemesi ayni sorgu metadata'si ile yapilmalidir."

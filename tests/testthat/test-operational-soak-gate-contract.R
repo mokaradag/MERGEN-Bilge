@@ -386,7 +386,15 @@ testthat::test_that("evidence semasi + does_prove/does_not_prove + redaksiyon se
                  fresh_always_applied = TRUE, snapshot_all_worker_safe = TRUE),
     # TEK GIRIS tavani toplam bayt butcesinden AYRIDIR: seride ozel bir prob
     # tavani asan bir giris yazmayi dener ve REDDEDILMIS olmalidir.
-    cache = list(entries = 12L, total_mb = 9.5, hit = 22L, miss = 38L,
+    # `total_ceiling_mb` FIKSTURDE BULUNUR (PR #705 inceleme, P2).
+    #
+    # Serit ETKIN URETIM tavanini bu alanda raporlar ve kapi onu TERCIH eder.
+    # Alan fiksturde YOKKEN kapi her zaman `cfg$pk_cache_max_mb` yedegine
+    # dusuyordu; yani uretim tavanini okuyan asil dal HIC calistirilmiyor,
+    # o dala inen bir gerileme (yanlis alan adi, NA'ya dusme, yanlis kiyas)
+    # sozlesme YESILKEN uretime gidebiliyordu.
+    cache = list(entries = 12L, total_mb = 9.5, total_ceiling_mb = 16,
+                 hit = 22L, miss = 38L,
                  evicted = 16L, rejected_oversize = 1L, entries_ceiling = 12L,
                  hit_observed = TRUE, eviction_observed = TRUE,
                  scope_isolated = TRUE,
@@ -515,6 +523,36 @@ testthat::test_that("evidence semasi + does_prove/does_not_prove + redaksiyon se
     testthat::expect_false(isTRUE(kontrol[[1]]$pass), info = ad)
   }
   testthat::expect_false(isTRUE(env$soak_threshold_outcome(checks_zayif)$pass))
+
+  # ETKIN URETIM TAVANI GERCEKTEN KIYASA GIRER (PR #705 inceleme, P2).
+  #
+  # Uretim tavani gozlenen toplamin ALTINDAYKEN kapi FAIL uretmelidir; `cfg`
+  # icindeki soak yan degiskeni buyuk kalsa BILE. Bu senaryo olculmedigi surece
+  # "uretim tavanini tercih et" kurali kozmetiktir: alani okumayi birakan bir
+  # gerileme, buyuk soak yedegine dusup gercek bir butce asimini gizlerdi.
+  pk_tavan <- pk_ok
+  pk_tavan$cache$total_mb <- 9.5
+  pk_tavan$cache$total_ceiling_mb <- 4
+  cfg_genis <- cfg
+  cfg_genis$pk_cache_max_mb <- 512
+  checks_tavan <- env$soak_evaluate_thresholds(
+    cfg_genis, s, inproc, list(total_leaks = 0L), mg, 0, TRUE, 0L, NULL, NULL, pk_tavan
+  )
+  butce_chk <- Filter(function(c) identical(c$name, "pk_cache_within_budget"),
+                      checks_tavan)
+  testthat::expect_length(butce_chk, 1L)
+  testthat::expect_false(isTRUE(butce_chk[[1]]$pass))
+  testthat::expect_equal(as.numeric(butce_chk[[1]]$threshold), 4)
+
+  # Ve tavan gozlenen toplamin USTUNDEYKEN ayni kontrol GECER (kapi kor degil).
+  pk_tavan$cache$total_ceiling_mb <- 16
+  butce_ok <- Filter(
+    function(c) identical(c$name, "pk_cache_within_budget"),
+    env$soak_evaluate_thresholds(cfg_genis, s, inproc, list(total_leaks = 0L), mg,
+                                 0, TRUE, 0L, NULL, NULL, pk_tavan)
+  )[[1]]
+  testthat::expect_true(isTRUE(butce_ok$pass))
+  testthat::expect_equal(as.numeric(butce_ok$threshold), 16)
 
   # Artifact yazimi + redaksiyon self-check (gecici dizinde).
   tmp <- file.path(tempdir(), paste0("soak_art_", as.integer(stats::runif(1, 1, 1e6))))

@@ -1252,8 +1252,17 @@ soak_write_summary_md <- function(artifact_dir, cfg, evidence) {
                 as.character(pl$cache$total_ceiling_mb %||% NA),
                 as.character(pl$cache$hit %||% NA),
                 as.character(pl$cache$evicted %||% NA)),
-        sprintf("- Sinirli getirim tamamlandi: %s | Derin butce korundu: %s",
-                as.character(pl$bounded_fetch$complete %||% NA),
+        # ALAN ADI SERITTE URETILEN ALANLA ESLESIR (PR #705 inceleme, P3).
+        #
+        # `soak_build_evidence()` `bounded_fetch = pk_lane$fetch` atar ve o yapi
+        # `rows_always_complete` + `complete_rounds` tasir; `complete` diye bir
+        # alan YOKTUR. `$` kismi ad eslesmesi yuzunden okuma sessizce
+        # `complete_rounds` (bir SAYAC) degerine dusuyor, operator `summary.md`
+        # icinde bir sayiyi BOOLE verdict sanabiliyordu; ileride `complete_*`
+        # onekli ikinci bir alan eklenirse eslesme BELIRSIZ olup `NA` verirdi.
+        sprintf("- Sinirli getirim tamamlandi: %s (tur=%s) | Derin butce korundu: %s",
+                as.character(pl$bounded_fetch$rows_always_complete %||% NA),
+                as.character(pl$bounded_fetch$complete_rounds %||% NA),
                 as.character(pl$deep_thinking_budget$budget_respected %||% NA)),
         if (length(pl$does_not_prove)) {
           c("- KANITLAMAZ:", paste0("  - ", as.character(pl$does_not_prove)))

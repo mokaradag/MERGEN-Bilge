@@ -137,7 +137,13 @@ pkgh_reconcile_records_with_layer <- function(records, layer) {
     if (!(durum %in% c("failed", "skipped"))) return(r)
 
     id <- as.character(r$query_id %||% NA_character_)[1]
-    if (is.na(id) || is.null(katman[[id]])) return(r)
+    # AD-GUVENLI ARAMA (PR #705 inceleme, P1/P2): hicbir sorgu kabul edilmediginde
+    # `layer` BOS bir listedir ve ham `katman[[id]]` "subscript out of bounds"
+    # FIRLATIR; uzlastirma adimi HIC saglik artefakti yazilmadan cokerdi.
+    if (is.na(id)) return(r)
+    .adlar <- names(katman)
+    if (is.null(.adlar) || is.na(match(id, .adlar))) return(r)
+    if (is.null(katman[[id]])) return(r)
 
     r$schema_validation <- "preserved_previous"
     r$tier0 <- FALSE

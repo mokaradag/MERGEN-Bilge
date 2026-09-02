@@ -173,27 +173,51 @@ test_that("PK SQL hata yolu ham conditionMessage() gommez", {
   #
   # Sozlesme: ham hata metnini TASIYAN her satir ya `pk_report_db_error()`
   # cagrisi olmalidir ya da hic olmamalidir.
+  # BAGLAMA SATIRI DA MESRUDUR: yukarida ONAYLANAN bicim
+  # `err_msg <- conditionMessage(e)` baglayip degeri YALNIZCA
+  # `pk_report_db_error()` cagrisina vermektir. Baglama satiri `err_msg`
+  # icerir ama CAGRI icermez; onu `onaysiz` sayan bir yuklem UYUMLU bir
+  # uygulamada testi DUSURURDU.
+  #
+  # SATIR DEGIL, HER GECIS AYRI DEGERLENDIRILIR (PR #705 inceleme, P3).
+  #
+  # Onceki surum tum `err_msg` satirlarini TEK dizede birlestirip tek bir
+  # `pk_report_db_error\\([^)]*err_msg` eslesmesi ariyordu: UYUMLU tek bir
+  # cagri butun dosyayi aklıyordu. Modul hem onaylanan cagriyi koruyup hem de
+  # kullaniciya donen bir mesaja `paste0("Hata: ", err_msg)` eklerse, sozlesme
+  # BASARILI raporlarken ham hata metni sohbete sizardi.
+  #
+  # Cozum: bosluklar duzlestirilmis MODUL metninde `err_msg` GECISLERI tek tek
+  # gezilir. Duzlestirme cok satira bolunmus cagrilari (`pk_report_db_error(` /
+  # `  err_msg,` / `)`) korurken, gecis basina degerlendirme tek bir uyumlu
+  # cagrinin digerlerini maskelemesini ENGELLER.
   err_satirlari <- grep("err_msg", strsplit(modul, "\n", fixed = TRUE)[[1]],
                         fixed = TRUE, value = TRUE)
-  # BAGLAMA SATIRI DA MESRUDUR (PR #705 incelemesi, P3): yukarida ONAYLANAN
-  # bicim `err_msg <- conditionMessage(e)` baglayip degeri YALNIZCA
-  # `pk_report_db_error()` cagrisina vermektir. Baglama satiri `err_msg`
-  # icerir ama CAGRI icermez, dolayisiyla eski yuklem onu `onaysiz` sayiyor ve
-  # UYUMLU bir uygulamada test DUSUYORDU. Bugun gecmesinin tek nedeni boyle bir
-  # satirin henuz bulunmamasidir, yani sozlesme hicbir sey dogrulamiyordu.
-  # SATIR DEGIL IFADE TARANIR.
-  #
-  # Iki kalip da SATIR kapsamliydi; uyumlu bir uygulama cagriyi cok satira
-  # bolebilir (`pk_report_db_error(` / `  err_msg,` / `)`), o zaman `  err_msg,`
-  # satiri hicbir kalibi karsilamaz ve `onaysiz` icine duserdi. Sozlesme HAM
-  # metnin gomulmemesi hakkindadir, bicimlendirme hakkinda degil: bosluklar
-  # duzlestirilip ayni kaliplar tum metne uygulanir.
-  duz <- gsub("[[:space:]]+", " ", paste(err_satirlari, collapse = " "), perl = TRUE)
-  duz_uyumlu <- grepl("pk_report_db_error\\([^)]*err_msg", duz, perl = TRUE)
-  onaysiz <- if (isTRUE(duz_uyumlu)) character(0) else err_satirlari[
-    !grepl("pk_report_db_error\\([^)]*err_msg", err_satirlari, perl = TRUE) &
-      !grepl("^\\s*err_msg\\s*<-\\s*conditionMessage\\(", err_satirlari, perl = TRUE)
-  ]
+  duz_modul <- gsub("[[:space:]]+", " ", modul, perl = TRUE)
+  konumlar <- gregexpr("err_msg", duz_modul, fixed = TRUE)[[1]]
+  konumlar <- konumlar[konumlar > 0L]
+
+  onaysiz <- character(0)
+  for (kon in konumlar) {
+    onceki <- substr(duz_modul, max(1L, kon - 200L), kon - 1L)
+    sonraki <- substr(duz_modul, kon, min(nchar(duz_modul), kon + 80L))
+
+    # (a) KAPANMAMIS `pk_report_db_error(` cagrisinin ICINDE mi?
+    cagri_icinde <- grepl("pk_report_db_error\\([^()]*$", onceki, perl = TRUE)
+    # (b) Onaylanan baglama ifadesinin KENDISI mi?
+    baglama <- grepl("^err_msg <- conditionMessage\\(", sonraki, perl = TRUE)
+
+    if (!cagri_icinde && !baglama) {
+      onaysiz <- c(onaysiz, trimws(substr(
+        duz_modul, max(1L, kon - 60L), min(nchar(duz_modul), kon + 60L)
+      )))
+    }
+  }
+
+  # `err_msg` gecen satir varsa taramanin GERCEKTEN calistigi kanitlanir:
+  # kalip kayarsa `konumlar` bosalir ve iddia VACUOUS gecerdi.
+  if (length(err_satirlari)) expect_true(length(konumlar) >= 1L)
+
   expect_equal(
     onaysiz, character(0),
     info = paste(

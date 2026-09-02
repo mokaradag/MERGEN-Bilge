@@ -50,6 +50,16 @@
   tryCatch(pk_config_resolve(key, query_meta = query_meta), error = function(e) fallback)
 }
 
+# TAM SAYIYA İNDİRGEME (PR #705 inceleme, P2). `.pk_packet_cfg()` yalnızca
+# `pk_config_resolve()` YOKSA ya da HATA verirse yedeğe düşer; ÇÖZÜLMÜŞ ama
+# sayısal olmayan bir değer (boş/bozuk ortam girdisi) olduğu gibi geçiyordu.
+# `utils::head(x, NA)` hata verir ve `if (NA)` "missing value where TRUE/FALSE
+# needed" fırlatır; sonuçta TÜM v2 paketi (dolayısıyla istek) düşüyordu.
+.pk_packet_cfg_int <- function(key, query_meta, fallback) {
+  v <- suppressWarnings(as.integer(.pk_packet_cfg(key, query_meta, fallback))[1])
+  if (length(v) != 1L || is.na(v)) as.integer(fallback) else max(1L, v)
+}
+
 .pk_packet_column_spec <- function(meta, column) {
   cmeta <- if (is.list(meta) && is.list(meta$column_meta)) meta$column_meta[[column]] else NULL
   if (!is.list(cmeta)) cmeta <- list()
@@ -564,9 +574,9 @@ pk_packet_build <- function(data, query, context = list()) {
   onceden_toplu <- as.character(context$pre_aggregated_columns %||% character(0))
   olcu_sutunlari <- setdiff(roller$measure, onceden_toplu)
 
-  top_k <- .pk_packet_cfg("MERGEN_PK_TOPK_CATEGORIES", meta, 10L)
-  grup_n <- .pk_packet_cfg("MERGEN_PK_GROUP_TOPN", meta, 15L)
-  ornek_n <- .pk_packet_cfg("MERGEN_PK_SAMPLE_ROWS", meta, 30L)
+  top_k <- .pk_packet_cfg_int("MERGEN_PK_TOPK_CATEGORIES", meta, 10L)
+  grup_n <- .pk_packet_cfg_int("MERGEN_PK_GROUP_TOPN", meta, 15L)
+  ornek_n <- .pk_packet_cfg_int("MERGEN_PK_SAMPLE_ROWS", meta, 30L)
   tohum <- .pk_packet_cfg("MERGEN_PK_SAMPLE_SEED", meta, 42L)
 
   zaman_penceresi <- .pk_packet_time_window(data, roller$date)

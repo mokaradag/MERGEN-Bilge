@@ -112,6 +112,13 @@ if (!exists(".pk_p1_deep_holders", inherits = FALSE)) {
   max(kalan, 1)
 }
 
+# BÜTÇESİZ İSTEK İÇİN SERT DUVAR SAATİ TAVANI (saniye). Yalnızca `cancel_token`
+# ve `deadline_sec` alanlarının İKİSİ de eksik olduğunda devreye girer; bütçeli
+# isteklerde kapı ZATEN daha önce ateşlenir. Yapılandırma anahtarı bilinçli
+# olarak EKLENMEZ: bu bir arıza-güvenliği tavanıdır, ayarlanabilir bir politika
+# değildir.
+.PK_P1_DIRECT_MAX_WAIT_SEC <- 900
+
 .pk_p1_kill_cluster <- function(cluster) {
   if (is.null(cluster) || !length(cluster)) return(invisible(FALSE))
   for (node in cluster) {
@@ -203,6 +210,21 @@ if (!exists(".pk_p1_deep_holders", inherits = FALSE)) {
     pk_async_run_analysis(request)
   }, seed = TRUE)
 
+  # YOKLAMA DÖNGÜSÜ HER DURUMDA SINIRLIDIR (PR #705 inceleme, P2).
+  #
+  # `cancel_token` ve `deadline_sec` alanlarının İKİSİ de yoksa anlık görüntü
+  # `""` ve `NA` saklar; `.pk_p1_direct_gate()` o zaman HİÇBİR ZAMAN durdurmaz.
+  # Çocuk süreç çözülmezse (askıda ODBC girişi, ölü PSOCK düğümü) bu döngü
+  # SINIRSIZ dönüp işçi sürecini ve çağıran iş parçacığını süresiz tutardı.
+  # Bütçe VARSA tavan yalnızca bir dış güvenlik ağıdır (kapı zaten önce
+  # ateşlenir); bütçe YOKSA tek sınırdır.
+  bekleme_tavani <- if (is.finite(kalan) && kalan > 0) {
+    kalan + 5
+  } else {
+    .PK_P1_DIRECT_MAX_WAIT_SEC
+  }
+  bitis_ani <- Sys.time() + bekleme_tavani
+
   repeat {
     state <- gate()
     if (isTRUE(state$halt)) {
@@ -212,6 +234,12 @@ if (!exists(".pk_p1_deep_holders", inherits = FALSE)) {
                   diagnostics = list(duration_ms = 0)))
     }
     if (isTRUE(future::resolved(child))) break
+    if (Sys.time() >= bitis_ani) {
+      .pk_p1_kill_cluster(cluster)
+      return(list(status = "deadline", result = NULL,
+                  session_writes = list(), error = NA_character_,
+                  diagnostics = list(duration_ms = 0)))
+    }
     Sys.sleep(0.05)
   }
 

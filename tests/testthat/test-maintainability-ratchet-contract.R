@@ -109,6 +109,19 @@
 
   runtime_paths <- unique(runtime_paths[file.exists(runtime_paths)])
 
+  # KAPSAM DIŞI DOSYA HİÇ OKUNMAZ (PR #705 inceleme, P2/P3).
+  #
+  # Süzgeç eskiden okuma bittikten SONRA (aşağıda) uygulanıyordu.
+  # `.read_repo_text_maintainability()` sıfır baytlık bir dosya için bilinçli
+  # olarak `stop()` eder; yerelde üretilen (gitignore'lu) `library_query_*_local.R`
+  # artefaktı yarıda kalmış bir üretimde BOŞ kalabilir ve o zaman bu sözleşmenin
+  # HER İKİ testi de -- hiçbir taban aşılmamışken -- `Kaynak dosya BOŞ ya da
+  # okunamıyor` ile düşüyordu (`tests/testthat.R` `stop_on_failure = TRUE`).
+  # Süzgeci yola taşımak ayrıca bilgi tabanı dosyasının tamamen belleğe
+  # alınmasını da önler.
+  .kapsam_disi <- "(^|/)(library_queries|library_query_meta(_auto|_local)?|library_query_aliases_local)\\.R$"
+  runtime_paths <- runtime_paths[!grepl(.kapsam_disi, runtime_paths, perl = TRUE)]
+
   rows <- lapply(runtime_paths, function(path) {
     rel_path <- .relative_repo_path_maintainability(path, repo_root)
 
@@ -142,12 +155,10 @@
   # kütüphanesinin metadata katmanıdır (curated meta, tracked auto iskelet ve
   # yerelde üretilen gitignore'lu local artefakt). Üretim VM'indeki gerçek
   # kütüphane on binlerce satıra ulaşabildiği için hiçbiri ratchet kapsamına
-  # alınmaz.
-  keep <- !grepl(
-    "(^|/)(library_queries|library_query_meta(_auto|_local)?|library_query_aliases_local)\\.R$",
-    report$path,
-    perl = TRUE
-  )
+  # alınmaz. Süzgeç OKUMA ÖNCESİNDE uygulanır (bkz. yukarıdaki `.kapsam_disi`);
+  # burada yalnızca normalize edilmiş yol biçimine karşı SON bir güvence olarak
+  # tekrarlanır.
+  keep <- !grepl(.kapsam_disi, report$path, perl = TRUE)
   report <- report[keep, , drop = FALSE]
 
   report[order(report$lines, decreasing = TRUE), , drop = FALSE]

@@ -109,6 +109,10 @@ pk_cache_entry_within_limit <- function(value, max_result_mb) {
     max_entries = coz("MERGEN_PK_CACHE_MAX_ENTRIES", 50L, NULL),
     max_bytes = coz("MERGEN_PK_CACHE_MAX_MB", 512L, NULL) * .PK_CACHE_MB,
     max_entry_bytes = coz("MERGEN_PK_CACHE_MAX_ENTRY_MB", 128L) * .PK_CACHE_MB,
+    # DEPO GENELİ GİRİŞ TAVANI: `.pk_cache_reconcile()` BAŞKA sorguların
+    # girişlerini yalnızca bununla tahliye eder (PR #705 inceleme, P2). Sorgu
+    # bazlı `max_entry_bytes` yalnızca çağıranın KENDİ girişine uygulanır.
+    store_max_entry_bytes = coz("MERGEN_PK_CACHE_MAX_ENTRY_MB", 128L, NULL) * .PK_CACHE_MB,
     ttl_sec = coz("MERGEN_PK_CACHE_TTL_SEC", 300L),
     store_ttl_sec = coz("MERGEN_PK_CACHE_TTL_SEC", 300L, NULL)
   )
@@ -183,6 +187,21 @@ pk_cache_entry_within_limit <- function(value, max_result_mb) {
 
   korunan_anahtar <- as.character(protect %||% "")[1]
 
+  # BAŞKA SORGULARIN GİRİŞLERİ YALNIZCA DEPO GENELİ SINIRLARLA YAŞLANDIRILIR
+  # (PR #705 inceleme, P2). `.pk_cache_limits()` `ttl_sec` ve `max_entry_bytes`
+  # değerlerini ÇAĞIRANIN sorgu metadata'sıyla çözer; bu döngü onları TÜM depoya
+  # uygularsa, tek bir sorgunun küçük `MERGEN_PK_CACHE_TTL_SEC` /
+  # `MERGEN_PK_CACHE_MAX_ENTRY_MB` override'ı ilgisiz sorguların hâlâ geçerli
+  # girişlerini siler, `expired`/`evicted` sayaçlarını şişirir ve o sorgular SQL'i
+  # yeniden çalıştırırdı. Bu, `.pk_cache_limits()` gerekçesinin yasakladığı
+  # sorgular-arası bütçe sızıntısının aynısıdır.
+  .depo_sayi <- function(deger, yedek) {
+    v <- suppressWarnings(as.numeric(deger %||% yedek)[1])
+    if (length(v) != 1L || is.na(v)) suppressWarnings(as.numeric(yedek)[1]) else v
+  }
+  depo_ttl <- .depo_sayi(limits$store_ttl_sec, limits$ttl_sec)
+  depo_giris_tavani <- .depo_sayi(limits$store_max_entry_bytes, limits$max_entry_bytes)
+
   for (ad in names(girisler)) {
     giris <- girisler[[ad]]
     if (!is.list(giris)) next
@@ -190,9 +209,9 @@ pk_cache_entry_within_limit <- function(value, max_result_mb) {
     # değerlendirmek `expired` sayacını iki kez artırırdı.
     if (nzchar(korunan_anahtar) && identical(ad, korunan_anahtar)) next
 
-    if (is.finite(limits$ttl_sec) && limits$ttl_sec >= 0) {
+    if (is.finite(depo_ttl) && depo_ttl >= 0) {
       yas <- suppressWarnings(as.numeric(difftime(now, giris$stored_at, units = "secs")))
-      if (is.na(yas) || yas > limits$ttl_sec) {
+      if (is.na(yas) || yas > depo_ttl) {
         .pk_cache_drop_entry(ad, giris)
         .pk_cache_store$stats$expired <- .pk_cache_store$stats$expired + 1L
         next
@@ -200,7 +219,7 @@ pk_cache_entry_within_limit <- function(value, max_result_mb) {
     }
 
     bayt <- as.numeric(giris$bytes %||% NA_real_)
-    if (is.finite(limits$max_entry_bytes) && !is.na(bayt) && bayt > limits$max_entry_bytes) {
+    if (is.finite(depo_giris_tavani) && !is.na(bayt) && bayt > depo_giris_tavani) {
       .pk_cache_drop_entry(ad, giris)
       .pk_cache_store$stats$evicted <- .pk_cache_store$stats$evicted + 1L
     }

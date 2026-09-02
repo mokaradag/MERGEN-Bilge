@@ -499,6 +499,23 @@ pk_select_run <- function(user_prompt, library, chat_history = NULL,
 
   gecis_a <- pk_select_run_pass_a(user_prompt, payload, baglam, cfg, session, llm_fn)
   if (!isTRUE(gecis_a$ok)) {
+    # İPTAL BOZULMA KİPİNE DÜŞMEZ (PR #705 inceleme, P1): `pk_select_llm_invoke()`
+    # Durdur sırasında `PK_SELECT_STATUS_CANCELLED` döndürür, ancak
+    # `.pk_select_pass_failure_decision()` `library_error` DIŞINDAKİ her durumu
+    # `pk_select_degraded_decision()` yoluna sokar ve tipli iptal KAYBOLUR.
+    # Durum korunmazsa `helpers_pk_query_selection_apply.R` iptali sıradan bir
+    # ret sayar; önceki sorgu tohumunu ve bekleyen teklifi SİLER, kullanıcı da
+    # "Analiz Seçimi Netleştirilmeli" başlığını okur.
+    if (identical(gecis_a$status, PK_SELECT_STATUS_CANCELLED)) {
+      return(bitir(
+        .pk_select_decision(
+          PK_SELECT_STATUS_CANCELLED,
+          message_tr = "Analiz kullanıcı tarafından iptal edildi.",
+          disclosures = "Geçiş A sırasında istek kullanıcı tarafından durduruldu."
+        ),
+        character(0), gecis_a$status
+      ))
+    }
     return(bitir(
       .pk_select_pass_failure_decision(
         gecis_a$status, index, user_prompt, library_index, baglam
@@ -530,6 +547,22 @@ pk_select_run <- function(user_prompt, library, chat_history = NULL,
     session = session, llm_fn = llm_fn, capability_ids = yetenekler,
     library_index = library_index
   )
+
+  # İPTAL, GERİ ALMA/KARAR YOLUNDAN ÖNCE ELE ALINIR (PR #705 inceleme, P1/P2):
+  # aşağıdaki beyaz liste `cancelled` durumunu İÇERMEZ, bu yüzden durdurulan bir
+  # Geçiş B `id = NA` ile `pk_retrieval_agreement()` ve `pk_select_decide()`
+  # yoluna düşüyor ve `PK_SELECT_STATUS_MALFORMED` olarak raporlanıyordu.
+  if (!isTRUE(gecis_b$ok) &&
+      identical(gecis_b$status, PK_SELECT_STATUS_CANCELLED)) {
+    return(bitir(
+      .pk_select_decision(
+        PK_SELECT_STATUS_CANCELLED,
+        message_tr = "Analiz kullanıcı tarafından iptal edildi.",
+        disclosures = "Geçiş B sırasında istek kullanıcı tarafından durduruldu."
+      ),
+      aday_kimlikler, gecis_a$status, gecis_b$status
+    ))
+  }
 
   if (!isTRUE(gecis_b$ok) &&
       gecis_b$status %in% c(PK_SELECT_STATUS_TIMEOUT, PK_SELECT_STATUS_LLM_UNAVAILABLE,

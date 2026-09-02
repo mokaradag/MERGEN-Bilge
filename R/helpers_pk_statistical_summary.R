@@ -83,6 +83,18 @@
   # Yoğunluk kanıtlanamıyorsa sütun ÖLÇÜ sayılır (kapalı başarısızlık yönü
   # burada "istatistik üret"tir; anlam metadata ile kesinleşir).
   # `integer` ÇIKARMASI TAŞABİLİR: SQL `INT` sütunu R'de `integer` gelir; benzersiz tam değerlerin açıklığı `2^31 - 1` üzerindeyse çıkarma "NAs produced by integer overflow" uyarısı üretir. Sınıflandırma yönü güvenli kalır ama uyarı NORMAL analiz yolunda doğar ve süite `stop_on_warning = TRUE` ile çalışır.
+  # `integer64` ÇİFTE ÇEVRİLMEZ (PR #705 inceleme, P3): `column_meta` yokken
+  # `gecerli` `bit64::integer64` olabilir (`num_cols` `is.numeric()` kullanır) ve
+  # çift olarak TAM temsil edilemeyen bir sınırda `as.numeric()` "integer
+  # precision lost while converting to double" UYARISI üretir. Süite
+  # `stop_on_warning = TRUE` ile koştuğu için bu, sıradan bir analiz yolunda
+  # doğan uyarı olarak TÜM paketi düşürürdü. Açıklık `integer64` aritmetiğiyle
+  # hesaplanır; SONUÇ yalnızca bir karşılaştırmadır, yani taşma riski yoktur.
+  if (inherits(gecerli, "integer64") && requireNamespace("bit64", quietly = TRUE)) {
+    aralik64 <- (max(gecerli) - min(gecerli)) + bit64::as.integer64(1L)
+    return(!isTRUE(aralik64 == bit64::as.integer64(length(gecerli))))
+  }
+
   sinirlar <- as.numeric(c(min(gecerli), max(gecerli)))
   aralik <- sinirlar[2] - sinirlar[1] + 1
   !isTRUE(aralik == length(gecerli))

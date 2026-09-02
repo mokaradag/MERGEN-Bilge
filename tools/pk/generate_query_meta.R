@@ -310,7 +310,8 @@ local({
   onbellek <- if (isTRUE(yapilandirma$resume)) {
     pkgh_read_state(yapilandirma$state_path, yapilandirma$mode,
                     fingerprints = parmak_izleri,
-                    state_version = yapilandirma$state_version)
+                    state_version = yapilandirma$state_version,
+                    max_age_sec = yapilandirma$resume_max_age_sec)
   } else {
     list()
   }

@@ -259,8 +259,13 @@ main_result <- tryCatch({
 
   # --- FAZ 6 PK-analiz seridi: bloklamayan yurutme katmani yuk altinda -------
   if (isTRUE(cfg$pk_lane)) {
+    # `sprintf()` HERHANGI bir argumani SIFIR UZUNLUKTA oldugunda `character(0)`
+    # doner ve `cat(character(0))` HICBIR SEY basmaz (PR #705 inceleme, P3).
+    # `cfg$pk_lane` TRUE iken `cfg$pk_lane_sessions` `NULL`/sifir uzunlukta ise
+    # serit CALISIR ama operator baslangic satirini GORMEZ -- asagidaki sonuc
+    # satiri icin zaten kapatilmis olan ayni kusur.
     cat(sprintf("[soak] PK-analiz seridi: %d in-process analiz oturumu...\n",
-                cfg$pk_lane_sessions))
+                as.integer(cfg$pk_lane_sessions %||% 0L)))
     pk_result <- tryCatch(
       soak_pk_analysis_lane(cfg),
       error = function(e) list(available = FALSE,

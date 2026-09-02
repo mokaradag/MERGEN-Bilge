@@ -35,9 +35,16 @@ pk_select_follow_up_context <- function(chat_history, prior_query_id, library_id
                                         user_prompt = NULL) {
   turlar <- list()
 
-  if (is.list(chat_history) && length(chat_history) && cfg$history_turns > 0L) {
+  # YAPILANDIRMA ALANI UZUNLUK DENETİMİNDEN GEÇER (PR #705 inceleme, P3): alan
+  # yoksa `cfg$history_turns > 0L` `logical(0)` üretir ve `&&` "argument is of
+  # length zero" ile bağlam kurulumunu düşürürdü; `utils::tail()` de `NULL`
+  # `n` ile hata verirdi.
+  tur_sayisi <- suppressWarnings(as.integer(cfg$history_turns %||% 0L)[1])
+  if (length(tur_sayisi) != 1L || is.na(tur_sayisi) || tur_sayisi < 0L) tur_sayisi <- 0L
+
+  if (is.list(chat_history) && length(chat_history) && tur_sayisi > 0L) {
     gecmis <- .pk_select_drop_current_turn(chat_history, user_prompt)
-    son <- utils::tail(gecmis, cfg$history_turns)
+    son <- utils::tail(gecmis, tur_sayisi)
 
     for (m in son) {
       if (!is.list(m)) next

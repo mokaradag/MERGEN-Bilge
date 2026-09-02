@@ -10,14 +10,21 @@
 
 local({
   repo_root <- resolve_repo_root_for_tests()
-  if (!exists("%||%", mode = "function", inherits = TRUE)) {
-    `%||%` <<- function(a, b) if (is.null(a)) b else a
+  # KAPSAM `globalenv()` ILE SINIRLIDIR (PR #705 inceleme, P3).
+  #
+  # `inherits = TRUE` araması PAYLASILAN testthat yardimci ortamini da kapsar; o
+  # ortam test-dosyasi ortaminin EBEVEYNIDIR ama `globalenv()` icinden GORUNMEZ.
+  # Bir `helper_*.R` dosyasi operatoru tanimladiginda bu atama ATLANIYOR ve
+  # asagida `local = globalenv()` ile source edilen uretim yardimcilari
+  # `could not find function "%||%"` ile dusuyordu.
+  if (!exists("%||%", mode = "function", envir = globalenv(), inherits = FALSE)) {
+    assign("%||%", function(a, b) if (is.null(a)) b else a, envir = globalenv())
   }
-  if (!exists("log_warn", mode = "function", inherits = TRUE)) {
-    log_warn <<- function(...) invisible(NULL)
+  if (!exists("log_warn", mode = "function", envir = globalenv(), inherits = FALSE)) {
+    assign("log_warn", function(...) invisible(NULL), envir = globalenv())
   }
-  if (!exists("log_info", mode = "function", inherits = TRUE)) {
-    log_info <<- function(...) invisible(NULL)
+  if (!exists("log_info", mode = "function", envir = globalenv(), inherits = FALSE)) {
+    assign("log_info", function(...) invisible(NULL), envir = globalenv())
   }
 
   yukle <- function(...) source(file.path(repo_root, "R", ...),

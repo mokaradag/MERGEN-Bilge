@@ -255,8 +255,13 @@ test_that("httpuv adlandırılmış `file` gövdesini dosya akışına çevirir"
   # İDDİA GERÇEKTEN SINAR: ikinci koşul (`grepl("body", ...)`) `bodyFile`
   # dizesiyle de eşleştiği için ayrık ifade HER ZAMAN TRUE oluyordu; sözleşme
   # ("çeviri yanıt GÖVDESİNE bakar") hiç denetlenmiyordu.
+  # HER İKİ ERİŞİM BİÇİMİ KABUL EDİLİR (PR #705 inceleme, P3): dosya başlığı
+  # "yukarı akış yeniden adlandırması testi KIRMAMALIDIR" der, ama tam `resp$body`
+  # metnini şart koşmak httpuv davranışı AYNI kalırken erişimi `resp[["body"]]`
+  # olarak yazan bir yeniden yazımda düşerdi (`stop_on_failure = TRUE` ile TÜM
+  # süite, indirme yolu çalışırken).
   expect_true(
-    grepl("resp$body", govde, fixed = TRUE),
+    grepl("resp\\$body|resp\\[\\[\"body\"\\]\\]", govde),
     info = "Çeviri, yanıt gövdesine bakmalıdır."
   )
 })

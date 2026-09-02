@@ -56,7 +56,13 @@
   on.exit(close(con), add = TRUE)
   raw_data <- readBin(con, what = "raw", n = size)
   txt <- suppressWarnings(iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]])
-  if (is.na(txt)) return("")
+  # COZULEMEYEN KAYNAK DURDURUR (PR #705 inceleme, P2): `return("")` hemen
+  # yukaridaki BOS DOSYA korumasini etkisiz kiliyordu; bos dize bu dosyadaki
+  # olumsuz taramalarin (`expect_false(grepl(...))`) hepsini karsilar ve
+  # sozlesme HICBIR kaynak metni taranmadan "gecti" raporlar.
+  if (is.na(txt)) {
+    stop(sprintf("Kaynak dosya UTF-8 olarak cozulemedi: %s", full), call. = FALSE)
+  }
   satirlar <- strsplit(enc2utf8(txt), "\n", fixed = TRUE)[[1]]
   satirlar <- satirlar[!grepl("^\\s*#", satirlar, perl = TRUE, useBytes = TRUE)]
   paste(satirlar, collapse = "\n")
@@ -298,7 +304,14 @@ test_that("Cok parcali aktarimda her satir TAM OLARAK bir kez yazilir", {
   # yapilandirilabilir bir anahtardir ve dagitim/CI kabugu `2` verirse
   # 250/100 plani 3 parca ister, plan `refused` doner ve uretim dogru oldugu
   # halde test kirilirdi.
+  #
+  # `MERGEN_PK_EXPORT_MAX_BYTES_MB` AYNI GEREKCEYLE SABITLENIR (PR #705
+  # inceleme): `.pk_export_plan()` bayt tavanini da uygular; yapilandirilmis
+  # bir VM/CI kabugu kucuk bir deger disa aktarirsa 250 satirlik plan
+  # `refused` doner ve bu test uretim DOGRUYKEN kirilirdi (satir tavani
+  # sabitlemesiyle ayni sinif).
   withr::with_envvar(list(MERGEN_PK_EXPORT_MAX_ROWS = "100",
+                          MERGEN_PK_EXPORT_MAX_BYTES_MB = NA_character_,
                           MERGEN_PK_EXPORT_MAX_PARTS = NA_character_), {
     artefakt <- env$pk_export_build(
       veri, list(facts = list()),

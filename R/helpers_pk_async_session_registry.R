@@ -93,6 +93,13 @@ mergen_pk_register_active_request <- function(session, request_id, cancel_token,
           try(log_warn("[PK_ASYNC] Oturum kapali isareti oturuma yazilamadi; surec-yerel ayna kullaniliyor."), silent = TRUE)
         }
         try(mergen_pk_abandon_active_requests(session, release = TRUE), silent = TRUE)
+        # TERK EDİLMİŞ SABİTLEMELER DE BIRAKILIR (PR #705 inceleme, P2):
+        # `release = FALSE` ile terk edilen istekler kayıttan SİLİNİR, bu yüzden
+        # yukarıdaki döngü onların anahtarlarını GÖREMEZ. Oturum önekiyle toplu
+        # bırakma, art arda söyleşi değişiminde `pinned` kümesinin süreç ömrü
+        # boyunca büyümesini engeller.
+        try(.pk_marker_unpin_session(paste0(.pk_marker_session_id(session), "|")),
+            silent = TRUE)
       })
       TRUE
     }, silent = TRUE)
@@ -203,6 +210,18 @@ mergen_pk_bump_chat_epoch <- function(session) {
   mevcut <- suppressWarnings(as.integer(tryCatch(ud[["pk_unsaved_chat_epoch"]],
                                                  error = function(e) NA_integer_))[1])
   if (length(mevcut) != 1L || is.na(mevcut)) mevcut <- 0L
+  # AYNA OKUMA YOLUNDA DEĞİL, ARTIŞ YOLUNDA DA KAYNAKTIR (PR #705 inceleme, P2):
+  # yazım yutulduğunda `userData` her çağrıda `NA` döner, `mevcut` 0'a düşer ve
+  # `yeni` HER ZAMAN 1 olur. Ayna da 1'de kalınca `mergen_pk_chat_identity()`
+  # ikinci ve üçüncü kaydedilmemiş söyleşi için AYNI `:1` kimliğini üretiyor ve
+  # geç biten bir işçi sonucu YENİ söyleşiye uygulanabiliyordu -- aynanın
+  # engellemek için var olduğu çakışmanın ta kendisi.
+  ayna_mevcut <- suppressWarnings(as.integer(
+    .pk_chat_epoch_mirror[[.pk_marker_key(session, "epoch")]] %||% NA_integer_
+  )[1])
+  if (length(ayna_mevcut) == 1L && !is.na(ayna_mevcut) && ayna_mevcut > mevcut) {
+    mevcut <- ayna_mevcut
+  }
   yeni <- mevcut + 1L
   # YAZ-SONRA-OKU DOĞRULAMASI.
   #

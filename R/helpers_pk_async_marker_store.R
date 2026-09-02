@@ -63,6 +63,23 @@
   invisible(TRUE)
 }
 
+# OTURUM KAPSAMLI TOPLU SERBEST BIRAKMA (PR #705 inceleme, P2).
+#
+# `mergen_pk_abandon_active_requests(..., release = FALSE)` istekleri AKTİF
+# kayıttan siler ama sabitlemelerini bırakmaz. Oturum sonu kancası o noktada BOŞ
+# bir kayıt görür ve terk edilmiş anahtarları artık bulamaz; art arda söyleşi
+# değiştiren bir kullanıcı süreç-yerel `pinned` kümesini SINIRSIZ büyütür ve
+# 500 girdilik tavan yalnızca KALAN sabitlenmemiş kümeye uygulanırdı. Oturum
+# öneki (`<oturum>|`) ile toplu bırakma bu sızıntıyı kapatır ve DİĞER canlı
+# oturumların sabitlemelerine dokunmaz.
+.pk_marker_unpin_session <- function(session_prefix) {
+  if (!.pk_marker_key_ok(session_prefix)) return(invisible(FALSE))
+  sabit <- .pk_request_marker_store$pinned
+  if (!is.character(sabit) || !length(sabit)) return(invisible(FALSE))
+  .pk_request_marker_store$pinned <- sabit[!startsWith(sabit, session_prefix)]
+  invisible(TRUE)
+}
+
 .pk_marker_has <- function(slot, key) {
   if (!.pk_marker_key_ok(key)) return(FALSE)
   mevcut <- .pk_request_marker_store[[slot]]

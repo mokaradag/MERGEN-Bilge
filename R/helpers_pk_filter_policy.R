@@ -414,9 +414,23 @@ pk_filter_zero_match_policy <- function(data, filters, compiled, query = NULL) {
   sonuc$disclosures <- vapply(sifir_gruplar, function(g) {
     degerler <- unlist(lapply(g$applied, function(l) l$values), use.names = FALSE)
     degerler <- unique(as.character(degerler %||% character(0)))
+    # SENTETİK AD BU İFŞADA DA GÖSTERİLMEZ (PR #705 inceleme, P3).
+    #
+    # `.pk_policy_zero_match_message()` ve `.pk_policy_dropped_message()` bu
+    # ikameyi ZATEN yapıyor; bu `sprintf()` ise `g$column` değerini HAM basıyordu.
+    # `.pk_filter_tree_groups()` sütun adı taşımayan bir mantık grubunu
+    # `"__group__"` etiketler ve 0a2 kapısı yalnızca DÜŞÜRÜLEN grupları
+    # reddettiği için böyle bir grup SIFIR EŞLEŞME yolundan buraya ulaşabilir;
+    # kullanıcı o zaman isteğinde HİÇ OLMAYAN bir alan adı okuyordu.
+    alan <- as.character(g$column %||% "?")[1]
+    alan_gosterimi <- if (identical(alan, "__group__")) {
+      "belirttiğiniz koşul grubundaki"
+    } else {
+      sprintf("`%s` alanındaki", alan)
+    }
     sprintf(
-      "`%s` alanındaki `%s` kriteri hiçbir kayıtla eşleşmedi ve UYGULANMADI.",
-      g$column,
+      "%s `%s` kriteri hiçbir kayıtla eşleşmedi ve UYGULANMADI.",
+      alan_gosterimi,
       paste(utils::head(degerler, 5L), collapse = "`, `")
     )
   }, character(1))

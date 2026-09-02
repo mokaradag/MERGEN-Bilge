@@ -134,9 +134,17 @@ fi
 # konu satirinin SONUNA ' (#N)' ekler. Yalnizca kapanis alintisiyla biten kalip
 # bu konuyu KACIRIR; geri alinmis bir faz 'birlesmis' raporlanir ve operator
 # sonraki faza GERI ALINMIS kod uzerinde baslayabilir.
-geri_alinanlar="$(printf '%s\n' "${gecmis}" | awk -F '\037' '{print $2}' \
-  | sed -n -e 's/^Revert "\(.*\)"$/\1/p' \
-            -e 's/^Revert "\(.*\)" (#[0-9][0-9]*)$/\1/p')" || true
+# GERI ALMA EN YAKIN ESKI BIRLESMEYE UYGULANIR (PR #705 inceleme, P2).
+#
+# Eskiden TUM geri alma konulari tek bir KURESEL kumede toplaniyordu. Bir faz
+# birlestirilip geri alinip AYNI konu ile YENIDEN birlestirildiginde, kume o
+# konuyu hala icerdigi icin YENI (etkin) birlesme de atlaniyor ve entegre bir
+# faz yetkili ciktida HIC gorunmuyordu. `git log` YENIDEN ESKIYE yurudugu icin
+# bir geri alma HER ZAMAN hedefinden ONCE gorulur; bu yuzden geri almalar bir
+# KUYRUKTA biriktirilir ve bir birlesme konusuyla eslestiginde kuyruktan TEK
+# bir kopya TUKETILIR. Boylece her geri alma yalnizca kendi ESKI birlesmesini
+# gecersiz kilar.
+bekleyen_geri_almalar=""
 
 bulundu=0
 gorulenler=""
@@ -144,6 +152,17 @@ belirsiz=0
 
 while IFS=$'\037' read -r sha subject parents; do
   [ -n "${sha}" ] || continue
+
+  # GERI ALMA COMMIT'I: hedef konu kuyruga eklenir ve commit'in kendisi
+  # ISLENMEZ. Bu ayrica squash ile birlestirilen bir geri alma PR'inin
+  # (`Revert "..." (#N)`) yanlislikla bir SQUASH BIRLESME sanilmasini onler.
+  geri_hedef="$(printf '%s\n' "${subject}" \
+    | sed -n -e 's/^Revert "\(.*\)" (#[0-9][0-9]*)$/\1/p' \
+              -e 's/^Revert "\(.*\)"$/\1/p' | head -n 1)"
+  if [ -n "${geri_hedef}" ]; then
+    bekleyen_geri_almalar="$(printf '%s\n%s' "${bekleyen_geri_almalar}" "${geri_hedef}")"
+    continue
+  fi
 
   dal=""
   pr=""
@@ -161,7 +180,20 @@ while IFS=$'\037' read -r sha subject parents; do
         # Konusu duzenlenmis birlesme: dal adi yok. Faz cikarilamiyorsa bu
         # SESSIZCE atlanamaz; belirsiz sayilir ve sonda bildirilir.
         case "${subject}" in
-          *phase-[0-9]*) dal="${subject}" ;;
+          *phase-[0-9]*)
+            # SQUASH YOLUNDAKI (asagidaki) AYNI KURAL UYGULANIR (PR #705
+            # inceleme, P3): ham konu ad alani denetimini GECEMEZ, `belirsiz`
+            # artar ve ENTEGRE bir faz "belirlenemedi" diye raporlanirdi; yani
+            # bu atama OLU koddu. `${subject#*phase-}` EN KISA on eki atar,
+            # boylece `phase-4-fix-phase-5-prep` konusu Faz 4 sayilir.
+            faz_kuyruk_mg="${subject#*phase-}"
+            faz_mg="$(printf '%s\n' "${faz_kuyruk_mg}" | sed -n 's/^\([0-9][0-9a-z]*\).*/\1/p')"
+            if [ -n "${faz_mg}" ]; then
+              dal="pk/phase-${faz_mg}-merge"
+            else
+              dal="${subject}"
+            fi
+            ;;
           *) belirsiz=$((belirsiz + 1)); continue ;;
         esac
       fi
@@ -237,8 +269,14 @@ while IFS=$'\037' read -r sha subject parents; do
   faz="$(printf '%s\n' "${faz_kuyruk}" | sed -n 's/^\([0-9][0-9a-z]*\).*/\1/p')"
   [ -n "${faz}" ] || continue
 
-  # Geri alinmis birlesme entegre SAYILMAZ.
-  if [ -n "${geri_alinanlar}" ] && printf '%s\n' "${geri_alinanlar}" | grep -Fxq "${subject}"; then
+  # Geri alinmis birlesme entegre SAYILMAZ. TEK kopya tuketilir (bkz. yukaridaki
+  # kuyruk gerekcesi): geri alma sonrasi AYNI konu ile yapilan YENI birlesme
+  # etkin sayilmali, eski geri alma onu gecersiz kilmamalidir.
+  if [ -n "${bekleyen_geri_almalar}" ] &&
+     printf '%s\n' "${bekleyen_geri_almalar}" | grep -Fxq "${subject}"; then
+    bekleyen_geri_almalar="$(printf '%s\n' "${bekleyen_geri_almalar}" \
+      | awk -v hedef="${subject}" 'BEGIN { silindi = 0 }
+          { if (silindi == 0 && $0 == hedef) { silindi = 1; next } print }')"
     continue
   fi
 

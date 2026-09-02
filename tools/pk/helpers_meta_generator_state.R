@@ -297,7 +297,8 @@ pkgh_quarantine_state <- function(state_path) {
 #'   parmak izi karşılaştırması YAPILMAZ; bu yalnızca izole test/teşhis içindir,
 #'   üretici giriş noktası HER ZAMAN gerçek haritayı geçirir.
 pkgh_read_state <- function(state_path, mode, fingerprints = NULL,
-                            state_version = PKG_META_STATE_VERSION) {
+                            state_version = PKG_META_STATE_VERSION,
+                            max_age_sec = NULL) {
   if (!file.exists(state_path)) return(list())
 
   tryCatch({
@@ -316,9 +317,15 @@ pkgh_read_state <- function(state_path, mode, fingerprints = NULL,
     # kalabilirdi. Devam durumu bu yüzden yalnızca KESİLMİŞ bir koşuyu
     # sürdürecek kadar yaşar. `MERGEN_PK_META_RESUME_MAX_AGE_SEC` ile ayarlanır
     # (varsayılan 6 saat; `0` = süre sınırı yok, yalnızca teşhis içindir).
-    azami_yas <- suppressWarnings(as.numeric(
-      Sys.getenv("MERGEN_PK_META_RESUME_MAX_AGE_SEC", unset = "21600")
-    )[1])
+    # SINIR ÖNCE ÇÖZÜLMÜŞ YAPILANDIRMADAN OKUNUR (PR #705 inceleme): değer artık
+    # `pkg_meta_resolve_config()` içinde çözülür ve koşu özetine girer. Argüman
+    # verilmediğinde (doğrudan çağıran izole testler) eski ortam yolu KORUNUR.
+    azami_yas <- suppressWarnings(as.numeric(max_age_sec %||% NA_real_)[1])
+    if (length(azami_yas) != 1L || is.na(azami_yas)) {
+      azami_yas <- suppressWarnings(as.numeric(
+        Sys.getenv("MERGEN_PK_META_RESUME_MAX_AGE_SEC", unset = "21600")
+      )[1])
+    }
     if (is.na(azami_yas) || !is.finite(azami_yas) || azami_yas < 0) azami_yas <- 21600
     if (azami_yas > 0) {
       # Damga `pkg_meta_config()` içinde YEREL saatte "%Y%m%d-%H%M%S" biçiminde
@@ -343,7 +350,15 @@ pkgh_read_state <- function(state_path, mode, fingerprints = NULL,
       if (!nzchar(id) || !length(sutunlar)) next
 
       if (!is.null(fingerprints)) {
-        beklenen <- fingerprints[[id]]
+        # AD-GUVENLI ARAMA (PR #705 inceleme, P1/P2 sinifi): `fingerprints` BOS
+        # bir liste oldugunda `[[id]]` "subscript out of bounds" FIRLATIR ve
+        # devam onbellegi okumasi TUM kosuyu dusururdu.
+        .parmak_adlari <- names(fingerprints)
+        beklenen <- if (is.null(.parmak_adlari) || is.na(match(id, .parmak_adlari))) {
+          NULL
+        } else {
+          fingerprints[[id]]
+        }
         kayitli <- as.character(girdi$fingerprint %||% NA_character_)[1]
         # Sorgu kütüphaneden kalkmış ya da SQL'i/yapısal sonucu değişmişse eski
         # şema o sorguyu TEMSİL ETMEZ; girdi atlanır ve sorgu yeniden sorgulanır.

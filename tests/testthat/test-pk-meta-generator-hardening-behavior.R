@@ -973,11 +973,33 @@ test_that("ornek getirimi TEK bir mutlak son tarihi PAYLASIR", {
 test_that("sonuc temizligi de SINIRLI calisir", {
   skip_if_not_installed("RSQLite")
 
-  temizlik_sinirlari <- c()
+  # HANGI CAGRININ sinirlandigi KAYDEDILIR (PR #705 inceleme, P3).
+  #
+  # Eski surum tum sinirlari TEK vektore yaziyordu; `dbSendQuery` ve `dbFetch`
+  # zaten `.pkgd_bounded()` uzerinden gectigi icin, uretimden
+  # `DBI::dbClearResult()` etrafindaki sinir KALDIRILSA BILE vektor dolu
+  # kaliyor ve bu test YESIL geciyordu -- yani adinin iddia ettigi sozlesmeyi
+  # ("her bloklayan surucu cagrisi sinirlidir") HIC korumuyordu. Sarmalanan
+  # kapamanin govdesi ayristirilarak cagri turu belirlenir ve iddia OZELLIKLE
+  # temizlik cagrisina baglanir.
+  sinirli_cagrilar <- list()
   eski <- .pkgd_bounded
   withr::defer(assign(".pkgd_bounded", eski, envir = globalenv()))
   assign(".pkgd_bounded", function(fn, timeout_sec = NULL) {
-    temizlik_sinirlari <<- c(temizlik_sinirlari, as.numeric(timeout_sec %||% NA_real_))
+    govde <- paste(deparse(body(fn)), collapse = " ")
+    tur <- if (grepl("dbClearResult", govde, fixed = TRUE)) {
+      "temizlik"
+    } else if (grepl("dbFetch", govde, fixed = TRUE)) {
+      "getirme"
+    } else if (grepl("dbSendQuery", govde, fixed = TRUE) ||
+               grepl("send_sample_query", govde, fixed = TRUE)) {
+      "gonderme"
+    } else {
+      "diger"
+    }
+    sinirli_cagrilar[[length(sinirli_cagrilar) + 1L]] <<- list(
+      tur = tur, sinir = as.numeric(timeout_sec %||% NA_real_)
+    )
     fn()
   }, envir = globalenv())
 
@@ -989,11 +1011,21 @@ test_that("sonuc temizligi de SINIRLI calisir", {
 
   # `dbClearResult()` bloklayabilir; sinirsiz birakilan bu cagri "her bloklayan
   # surucu cagrisi sinirlidir" sozunu curuturdu.
-  # BOS VEKTORDE `all()` TRUE doner (`temizlik_sinirlari` `c()` ile baslar,
-  # yani `NULL`): cagri sayisi ONCE dogrulanir, aksi halde `.pkgd_bounded`
-  # HIC cagrilmasa bile iddia GECERDI ve sozlesme dogrulanmamis olurdu.
-  expect_gt(length(temizlik_sinirlari), 0L)
-  expect_true(all(!is.na(temizlik_sinirlari)))
+  turler <- vapply(sinirli_cagrilar, function(x) x$tur, character(1))
+  sinirlar <- vapply(sinirli_cagrilar, function(x) x$sinir, numeric(1))
+
+  # Sarmalayicinin GERCEKTEN calistigi once kanitlanir: hic cagrilmadiysa
+  # asagidaki iddialar bos kume uzerinde VACUOUS gecerdi.
+  expect_gt(length(sinirli_cagrilar), 0L)
+
+  # ASIL SOZLESME: temizlik cagrisi SINIRLI kosmustur.
+  expect_true("temizlik" %in% turler,
+              info = "DBI::dbClearResult() `.pkgd_bounded()` icinden cagrilmalidir.")
+  expect_true(all(!is.na(sinirlar[turler == "temizlik"])),
+              info = "Temizlik cagrisina SONLU bir sinir verilmelidir.")
+
+  # Komsu cagrilar da sinirli kalir (gerileme buradan da sizabilir).
+  expect_true(all(!is.na(sinirlar)))
 })
 
 test_that("ornekleme UNICODE anahtari YAPILANDIRMADAN gelir", {

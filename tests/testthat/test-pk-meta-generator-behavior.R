@@ -623,6 +623,15 @@ test_that("baglanti kurulamadiginda sorgular Tier-0 kalir ve baglanti birakilir"
   expect_identical(sonuc$records[[1]]$status, "failed")
   expect_true(sonuc$records[[1]]$tier0)
   expect_length(sonuc$local_meta, 0L)
+
+  # TESTIN ADINDAKI IKINCI IDDIA GERCEKTEN OLCULUR (PR #705 inceleme, P3).
+  #
+  # Test adi "baglanti birakilir" diyordu ama `birakildi` sayaci HIC
+  # dogrulanmiyordu; `connect_fn` hata attiginda serbest birakilacak bir
+  # tutamac YOKTUR, dolayisiyla dogru sozlesme "sifir birakma"dir. Sayac
+  # olculmedigi surece, olmayan bir tutamaci birakmaya calisan (ve boylece
+  # `release_fn` icinde ikinci bir hata ureten) bir gerileme sessizce gecerdi.
+  expect_identical(birakildi, 0L)
 })
 
 test_that("basarili kosuda baglanti HER DURUMDA birakilir", {
@@ -932,9 +941,13 @@ test_that("saglik artefaktlari yazilir ve gizli deger tasimaz", {
   expect_null(geri$config$dsn)
   expect_setequal(
     names(geri$config),
+    # `resume_max_age_sec` ARTIK OZETTEDIR (PR #705 inceleme): deger calisma
+    # aninda `Sys.getenv()` ile okundugunda kosu yapilandirma ozetine girmiyor
+    # ve farkli tazelik sinirlariyla kosan iki uretim raporlarda AYIRT
+    # EDILEMIYORDU.
     c("mode", "mode_defaulted", "sample_rows", "high_cardinality_threshold",
       "sql_timeout_sec", "max_result_mb", "sample_unicode", "resume",
-      "output_rel", "artifact_rel", "run_id")
+      "resume_max_age_sec", "output_rel", "artifact_rel", "run_id")
   )
 
   metin <- paste(readLines(yollar$text, warn = FALSE, encoding = "UTF-8"), collapse = "\n")

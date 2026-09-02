@@ -229,11 +229,26 @@ test_that("recall@N: beklenen sorgu Geçiş A YÜKÜNDE görünür kalır", {
   # `satirlar["q003"]` / `"ertelendi"` ciftinde, fikstur ayirt edici vakayi
   # BASKA bir kimlige tasidiginda `satirlar["q003"]` `NA` doner, `grepl()`
   # FALSE olur ve URETIM DOGRU oldugu halde test duserdi.
-  .terimli_vaka <- Filter(
+  #
+  # BOS SONUC ONCE DENETLENIR (PR #705 inceleme, P2): fikstur ayirt edici
+  # terim tasiyan TEK vakayi da kaybederse, dogrudan `[[1]]` opak bir
+  # "subscript out of bounds" verir ve gercek neden ("fikstur bu vaka
+  # sinifini KAYBETTI") kaybolur. Once uzunluk iddia edilir, bos ise TEST
+  # ERKEN BITER; boylece raporlanan hata nedenin KENDISIDIR.
+  .terimli_vakalar <- Filter(
     function(v) nzchar(as.character(v$distinguishing_term %||% "")[1]) &&
       !is.null(v$expected_query_id),
     golden$cases
-  )[[1]]
+  )
+  expect_true(
+    length(.terimli_vakalar) >= 1L,
+    info = paste(
+      "Altin kume, ayirt edici terim VE beklenen sorgu kimligi tasiyan",
+      "en az bir vaka icermelidir."
+    )
+  )
+  if (!length(.terimli_vakalar)) return(invisible(NULL))
+  .terimli_vaka <- .terimli_vakalar[[1]]
   expect_true(
     isTRUE(grepl(as.character(.terimli_vaka$distinguishing_term)[1],
                  unname(satirlar[as.character(.terimli_vaka$expected_query_id)[1]]),
@@ -439,6 +454,11 @@ test_that("eksiltili vaka, önceki kimlik OLMADAN aday kümesine giremez", {
   eksiltililer <- Filter(function(v) isTRUE(v$elliptical), golden$cases)
   expect_true(length(eksiltililer) >= 1L,
               info = "Altın küme en az bir eksiltili vaka taşımalıdır.")
+  # `expect_true()` BASARISIZLIKTA DURDURMAZ (PR #705 inceleme, P2): iddia
+  # kaydedilir ve gövde AKMAYA DEVAM eder, sonra `[[1]]` opak bir indeks
+  # hatasi atar. Erken donus, raporlanan tek hatanin yukaridaki ACIKLAYICI
+  # iddia olmasini garanti eder.
+  if (!length(eksiltililer)) return(invisible(NULL))
   eksiltili <- eksiltililer[[1]]
 
   lib <- pk_select_test_library()

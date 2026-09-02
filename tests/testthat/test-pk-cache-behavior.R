@@ -346,6 +346,46 @@ test_that("sayisal olmayan limit TUM butceleri devre disi birakmaz", {
   })
 })
 
+test_that("cozumleyici SAYISAL OLMAYAN dondururse `coz()` yedege duser", {
+  # KORUMAYI GERCEKTEN OLCEN TEST (PR #705 inceleme, P3).
+  #
+  # Yukaridaki test ortam/`options()` katmanina `"abc"` yaziyor; ama
+  # `pk_config_resolve()` bu degeri KENDISI reddedip yapilandirilmis
+  # varsayilani donduruyor. Yani `.pk_cache_limits()` icindeki `coz()` sayisal
+  # korumasi KALDIRILSA BILE o test GECERDI.
+  #
+  # Burada cozumleyicinin KENDISI saplanir: sayisal olmayan bir deger
+  # dondurdugunde `as.numeric()` sessizce `NA` uretir, `NA` `is.finite()`
+  # denetimlerini gecemez ve sayi/bayt/giris-basina tavanlarin HEPSI atlanip
+  # depo SINIRSIZ buyurdu. Koruma varsa hepsi sonlu ve pozitif kalir.
+  kok <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  # Cozumleyici hata ATMAZ; sessizce sayisal olmayan bir deger dondurur.
+  env$pk_config_resolve <- function(key, query_meta = NULL, ...) "yirmi-uc"
+  source(file.path(kok, "R", "helpers_pk_cache_key.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "helpers_pk_cache.R"), encoding = "UTF-8", local = env)
+
+  limitler <- env$.pk_cache_limits()
+  for (alan in c("max_entries", "max_bytes", "max_entry_bytes",
+                 "store_max_entry_bytes", "ttl_sec", "store_ttl_sec")) {
+    expect_true(is.finite(limitler[[alan]]), info = alan)
+    expect_gt(limitler[[alan]], 0)
+  }
+
+  # Deger BELGELENEN varsayilanlardir; "sifir olmayan herhangi bir sey" degil.
+  expect_equal(limitler$max_entries, 50)
+  expect_equal(limitler$max_bytes, 512 * env$.PK_CACHE_MB)
+  expect_equal(limitler$max_entry_bytes, 128 * env$.PK_CACHE_MB)
+  expect_equal(limitler$ttl_sec, 300)
+
+  # `NULL` donduren bir cozumleyici de ayni yedege dusmelidir.
+  env$pk_config_resolve <- function(key, query_meta = NULL, ...) NULL
+  bos_limitler <- env$.pk_cache_limits()
+  expect_equal(bos_limitler$max_entries, 50)
+  expect_equal(bos_limitler$ttl_sec, 300)
+})
+
 test_that("DSN parmak izi yalnizca `digest` kuruluyken de CARPISMAZ", {
   skip_if_not_installed("digest")
   # `withr` bu depoda OPSİYONEL bir test bağımlılığıdır; koruma olmadan
