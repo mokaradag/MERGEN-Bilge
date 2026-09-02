@@ -273,7 +273,7 @@ test_that("bağlama katmanı manifestte ve doğru sıradadır", {
 # kullanılamaz: bu depoda yardımcılar bir pakete değil, doğrudan ortama
 # kaynaklanır. Geri yükleme yapılmazsa sonraki test dosyaları bozuk bir
 # çözümleyici görürdü.
-.pk_apply_with_config_error <- function(gövde) {
+.pk_apply_with_config_error <- function(body_fn) {
   hedef <- environment(pk_entity_resolve_filter_plan)
   eski <- get("pk_entity_resolve_with_history", envir = hedef)
   assign("pk_entity_resolve_with_history", function(...) {
@@ -281,7 +281,7 @@ test_that("bağlama katmanı manifestte ve doğru sıradadır", {
          message_tr = "Çözümleyici yapılandırması geçersiz.")
   }, envir = hedef)
   on.exit(assign("pk_entity_resolve_with_history", eski, envir = hedef), add = TRUE)
-  gövde()
+  body_fn()
 }
 
 test_that("ÖZNE yaprağında `config_error` analizi REDDEDER (ham değer filtreye derlenmez)", {
