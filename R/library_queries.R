@@ -1,6 +1,20 @@
 # R/library_queries.R
 # Bu dosya T-SQL sorgularını ve Yetki sorgularını barındırır.
 
+# AÇIK CHECKOUT/FIXTURE İŞARETİ.
+#
+# Bu dosyanın GitHub'daki hâli YALNIZCA yer tutucu sorgular taşır; üretimdeki
+# gerçek sorgu kütüphanesi Windows VM üzerinde bulunur. `optional_when_absent`
+# metadata gevşetmesi SADECE bu yer tutucu envanteri için geçerlidir.
+#
+# Sınıflandırma ESKİDEN yalnızca sorgu KİMLİKLERİNİN eşitliğine bakıyordu; ama
+# sözleşme, üretimin AYNI kimlikleri FARKLI gerçek sorgular için yeniden
+# kullanabileceğini açıkça söyler. Yerel envanteri bozulmuş ve bu dosyaya geri
+# düşmüş bir üretim dağıtımı böylece "checkout" sanılıp bozuk envanteri
+# GİZLEYEBİLİRDİ. Bu yüzden AÇIK bir işaret gerekir: üretim dosyasında bu
+# değişken YOKTUR ve gevşetme devreye girmez.
+query_library_is_checkout_placeholder <- TRUE
+
 # ==============================================================================
 # BÖLÜM 1: YETKİ SORGULARI (PERMISSION QUERIES)
 # ==============================================================================

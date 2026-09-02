@@ -8,10 +8,13 @@
 #             * stop_generation TRUE -> akış gözlemcisi (invalidateLater döngüsü)
 #               OLUŞTURULMADAN temizlenir (typing kapatılır, reset çağrılır,
 #               initStreamingMessage GÖNDERİLMEZ, mesaj eklenmez).
-#           Tüm testler stop_generation=TRUE kullanır; böylece kırılgan
+#           Testlerin ÇOĞU stop_generation=TRUE kullanır; böylece kırılgan
 #           shiny::observe/invalidateLater döngüsüne girilmez ve test
-#           tamamen senkron/deterministik kalır. Gerçek DB/LLM/ağ/tarayıcı
-#           GEREKMEZ.
+#           tamamen senkron/deterministik kalır. TEK İSTİSNA bayat-sohbet
+#           testidir: orada stop_generation=function() FALSE geçilir ve erken
+#           çıkış BİLEREK kimlik kapısına (bayat sohbet tespiti) bırakılır;
+#           kapı kaldırılırsa test döngüye girer ve BAŞARISIZ olur — istenen
+#           budur. Gerçek DB/LLM/ağ/tarayıcı GEREKMEZ.
 # ==============================================================================
 
 # helpers_chat_runtime.R'yi izole ortama yükler; çağrıların yan etkilerini
@@ -209,4 +212,147 @@ testthat::test_that("TTS başarısız (success=FALSE) promise: başarısız log 
   blob <- paste(out, collapse = "\n")
   testthat::expect_true(grepl("Seslendirme başarısız", blob, fixed = TRUE))
   testthat::expect_identical(env$.rec$reset, 1L)
+})
+
+# ---------------------------------------------------------------------------
+# BAYAT TTS GERİ ÇAĞRISI: Yeni Söyleşi sırasında çözülen promise
+# ---------------------------------------------------------------------------
+
+testthat::test_that("sohbet DEGISTIYSE gec cozulen TTS akisi baslatmaz", {
+  # GERİLEME: TTS promise'i beklerken kullanıcı Yeni Söyleşi başlatırsa,
+  # `onFulfilled` ESKİ yanıt için `start_streaming_execution()` çağırıyor ve
+  # boşaltılmış `values$messages` listesine eski yanıtı ekliyordu.
+  env <- .css_env()
+  # AYNI KORUMA (bkz. aşağıdaki "sohbet AYNIYSA" testi; PR #705 inceleme, P3):
+  # kimlik kapısı geriye giderse `start_streaming_execution()` GERÇEK bir
+  # `shiny::observe()`/`invalidateLater()` döngüsü kurar ve o gözlemci koşumdan
+  # sonra da yaşayıp ALAKASIZ dosyalarda hata üretirdi. Ayırt edici sinyal
+  # (`initStreamingMessage`) gözlemciden ÖNCE gönderildiği için iddia zayıflamaz.
+  testthat::local_mocked_bindings(
+    observe = function(...) invisible(NULL),
+    .package = "shiny"
+  )
+  env$observe <- function(...) invisible(NULL)
+  rec <- new.env(parent = emptyenv()); rec$msgs <- list()
+  vals <- new.env(parent = emptyenv())
+  vals$messages <- list()
+  vals$typing <- TRUE
+  vals$current_chat_id <- "sohbet-A"
+
+  # Üretim yardımcısıyla AYNI sözleşme: kaydedilmiş sohbet kimliği damgalanır.
+  env$mergen_pk_chat_identity <- function(session, values) {
+    paste0("chat:", as.character(values$current_chat_id)[1])
+  }
+
+  cozucu <- NULL
+  env_tts <- function(text, voice) {
+    promises::promise(function(resolve, reject) cozucu <<- resolve)
+  }
+
+  invisible(utils::capture.output(
+    env$chat_simulate_streaming(
+      full_response = "eski yanit",
+      session = .css_session(rec),
+      values = vals,
+      settings_data = list(selected_character = "emre"),
+      output = list(),
+      stop_generation = function() FALSE,
+      tts_engine = env_tts,
+      tts_voice = "ses"
+    )
+  ))
+
+  # Kullanıcı Yeni Söyleşi başlattı: kimlik DEĞİŞTİ ve mesaj listesi boşaldı.
+  vals$current_chat_id <- "sohbet-B"
+  vals$messages <- list()
+
+  testthat::expect_false(is.null(cozucu))
+  # POZITIF AYIRT EDICI: geri cagri kapiya ULASMADAN sessizce reddedilirse
+  # asagidaki NEGATIF beklentiler de gecer ve kapinin CALISTIGI kanitlanmaz.
+  onceki_reset <- env$.rec$reset
+  invisible(utils::capture.output(cozucu(list(success = TRUE, duration = 0))))
+  .css_drain()
+
+  testthat::expect_length(vals$messages, 0L)
+  testthat::expect_identical(env$.rec$insertUI, 0L)
+  # POZITIF AYIRT EDICI: bayat kapisi calistiginda `chat_reset_state()` bir kez
+  # cagrilir. Geri cagri kapiya ULASMADAN sessizce reddedilseydi sayac AYNI
+  # kalirdi ve asagidaki negatif beklentiler yine gecerdi.
+  testthat::expect_identical(env$.rec$reset, onceki_reset + 1L)
+  # AYIRT EDICI SINYAL: `initStreamingMessage` akis govdesinin BASINDA
+  # gonderilir; kimlik kapisi kaldirilirsa bu kayit DOLAR. Sadece
+  # `vals$messages`/`insertUI` bakmak yetmez, cunku onlar dongunun SONUNDA
+  # dokunulur ve bu kosum ortami `observe`/`invalidateLater` calistirmaz.
+  testthat::expect_length(rec$msgs, 0L)
+})
+
+testthat::test_that("sohbet AYNIYSA TTS geri cagrisi akisi baslatir", {
+  env <- .css_env()
+  # AKIŞ GÖVDESİNE GİRİLİR ama SÜRESİZ GÖZLEMCİ OLUŞTURULMAZ.
+  #
+  # `stop_generation = function() FALSE` ile `start_streaming_execution()`
+  # gerçek `shiny::observe()`/`invalidateLater()` döngüsünü kurar. Koşum
+  # bittikten sonra o gözlemci YAŞAMAYA devam eder; aynı R oturumunda sonraki
+  # bir dosya reaktifleri boşalttığında (ör. `shiny::testServer`) artık ölü
+  # olan `values`/session ortamıyla çalışır, kendini yeniden zamanlar ve
+  # ALAKASIZ bir dosyada hata/meşgul `later` kuyruğu üretir.
+  # `initStreamingMessage` gözlemciden ÖNCE gönderildiği için ayırt edici
+  # sinyal KORUNUR.
+  #
+  # `shiny::observe` BAĞLAMASI MOCK'LANIR (PR #705 inceleme, P2):
+  # `R/helpers_chat_runtime.R` gözlemciyi NİTELİKLİ `shiny::observe()` ile
+  # kurar, bu yüzden ortamdaki `env$observe` stub'ı ONU HİÇ BASTIRMIYORDU;
+  # gerçek gözlemci `shiny::invalidateLater(25)` ile kendini yeniden zamanlayıp
+  # test bittikten sonra da yaşıyordu.
+  testthat::local_mocked_bindings(
+    observe = function(...) invisible(NULL),
+    .package = "shiny"
+  )
+  env$observe <- function(...) invisible(NULL)
+  rec <- new.env(parent = emptyenv()); rec$msgs <- list()
+  vals <- new.env(parent = emptyenv())
+  vals$messages <- list()
+  vals$typing <- TRUE
+  vals$current_chat_id <- "sohbet-A"
+
+  env$mergen_pk_chat_identity <- function(session, values) {
+    paste0("chat:", as.character(values$current_chat_id)[1])
+  }
+
+  cozucu <- NULL
+  env_tts <- function(text, voice) {
+    promises::promise(function(resolve, reject) cozucu <<- resolve)
+  }
+
+  invisible(utils::capture.output(
+    env$chat_simulate_streaming(
+      full_response = "guncel yanit",
+      session = .css_session(rec),
+      values = vals,
+      settings_data = list(selected_character = "emre"),
+      output = list(),
+      # `TRUE` DEĞİL (PR #705 incelemesi, P2): erken çıkışla hem BAYAT hem
+      # GEÇEN yol `chat_reset_state()` fonksiyonunu TAM BİR KEZ çağırır, bu
+      # yüzden `reset` sayacı iki dalı AYIRT EDEMİYORDU. Kimlik damgası
+      # biçimi bozulup her geri çağrı bayat sayılsaydı bu test YİNE geçer,
+      # paket yeşil kalır ve TTS sonrası benzetimli akış TAMAMEN ÖLÜRDÜ.
+      # `FALSE` ile kapı geçilince akış gövdesine GİRİLİR.
+      stop_generation = function() FALSE,
+      tts_engine = env_tts,
+      tts_voice = "ses"
+    )
+  ))
+
+  testthat::expect_false(is.null(cozucu))
+  invisible(utils::capture.output(cozucu(list(success = TRUE, duration = 0))))
+  .css_drain()
+
+  # AYIRT EDİCİ SİNYAL: `initStreamingMessage` YALNIZCA akış gövdesine
+  # girildiğinde gönderilir. Bayat testi (yukarıda) aynı kaydın BOŞ kaldığını
+  # iddia eder; iki test birlikte kapının HER İKİ yönünü de kilitler.
+  # `%||%` BU DOSYADA BAĞLI DEĞİLDİR (`tests/testthat.R` `R/utils_common.R`
+  # yüklemez ve hiçbir yardımcı tanımlamaz); `.css_session()` `type` alanını
+  # HER KAYITTA yazdığı için alan doğrudan okunur.
+  tipler <- vapply(rec$msgs, function(m) as.character(m$type)[1], character(1))
+  testthat::expect_true("initStreamingMessage" %in% tipler)
 })

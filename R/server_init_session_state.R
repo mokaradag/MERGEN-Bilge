@@ -102,3 +102,326 @@ serverInitSessionState <- function(session, identity, sso_state = NULL) {
     sync_feedback_from_db = sync_feedback_from_db
   )
 }
+
+# ==============================================================================
+# PR #695 — Proje/Kaynak Analizi Codex çalışma zamanı düzeltmeleri
+# ==============================================================================
+# Bu katman server init bölümünde, analiz ve Ortak Oturum modüllerinden sonra
+# yüklenir. Büyük orkestratörleri büyütmeden dört sınırı sertleştirir:
+#   * ortak oda SQL yanıtlarında köken alt bilgisi,
+#   * DB hatası sonrasında bağlantı tekrarının önlenmesi,
+#   * derin analiz kimlik bağlantısının erken bırakılması,
+#   * yarım kalan filtre gözlemlerinin istek sonunda temizlenmesi.
+
+.pk_hook_runtime_env <- environment()
+
+.pk_hook_scalar_text <- function(x) {
+  if (is.null(x) || length(x) == 0L) return("")
+  out <- as.character(x)[1]
+  if (is.na(out)) "" else out
+}
+
+# `question` GERİYE DÖNÜK UYUMLULUK İÇİN KABUL EDİLİR AMA KULLANILMAZ; bkz.
+# aşağıdaki "SORU METNİYLE TEMİZLİK YAPILMAZ" açıklaması.
+pk_filter_observation_clear <- function(request_id = NULL, question = NULL) {
+  state <- if (exists(".pk_filter_observation_state", inherits = TRUE)) {
+    get(".pk_filter_observation_state", inherits = TRUE)
+  } else {
+    NULL
+  }
+  if (!is.environment(state)) return(invisible(FALSE))
+
+  keys <- ls(state, all.names = TRUE)
+  if (length(keys) == 0L) return(invisible(FALSE))
+
+  request_id <- .pk_hook_scalar_text(request_id)
+  # SORU METNİYLE TEMİZLİK YAPILMAZ.
+  #
+  # `.pk_filter_observation_state` SÜREÇ GENELİNDEDİR. İstek kimliği yokken
+  # anahtarın yalnızca DÖRDÜNCÜ bileşeni (soru metni) karşılaştırılıyordu; aynı
+  # soruyu soran İKİ oturumdan biri kimliksiz erken çıktığında DİĞERİNİN canlı
+  # gözlemi siliniyor, o istek filtre kökenini ve telemetrisini kaybediyordu.
+  # Temizlik yalnızca istek kimliğiyle yapılır; kimlik yoksa hiçbir kayıt
+  # silinmez (bayat kayıt zaten kendi TTL/kapasite sınırıyla düşer).
+  if (!nzchar(request_id)) return(invisible(FALSE))
+
+  remove_key <- vapply(keys, function(key) {
+    parts <- strsplit(key, "\u001f", fixed = TRUE)[[1]]
+    length(parts) >= 1L && identical(parts[[1]], request_id)
+  }, logical(1))
+
+  doomed <- keys[remove_key]
+  if (length(doomed) == 0L) return(invisible(FALSE))
+
+  rm(list = doomed, envir = state)
+  invisible(TRUE)
+}
+
+.pk_hook_current_request_id <- function(session) {
+  if (!exists("pk_provenance_current_request_id", mode = "function", inherits = TRUE)) {
+    return(NULL)
+  }
+  tryCatch(pk_provenance_current_request_id(session), error = function(e) NULL)
+}
+
+.pk_hook_session_username <- function(session) {
+  tryCatch(
+    session$userData$system_username %||%
+      session$userData$username %||%
+      session$userData$user_name %||%
+      "Unknown",
+    error = function(e) "Unknown"
+  )
+}
+
+# Çıkışın DB/SQL kaynaklı olup olmadığını METİNDEN sınıflandırır. İstisnalar da
+# koşulsuz DB hatası sayılmaz: aksi halde ayrıştırma, sorgu seçimi veya başka
+# uygulama hataları conn = NULL ile gözlemlenir ve MB_Analiz_Log'a hiç yazılmaz.
+# Yeniden bağlanmama yolu yalnızca gerçekten DB kaynaklı çıkışlara ayrılmıştır.
+.pk_hook_database_failure_text <- function(text, is_exception = FALSE) {
+  text <- .pk_hook_scalar_text(text)
+  if (!nzchar(text)) return(FALSE)
+
+  # DESEN LİSTESİ İŞÇİ SINIFLANDIRICISIYLA ORTAKTIR.
+  #
+  # İki liste ayrı tutulduğunda sessizce ayrışıyordu (bkz.
+  # `R/helpers_pk_worker_observers.R`); aynı DB arızası eşzamanlı yolda
+  # tanınıp asenkron yolda tanınmıyordu. Sabitler orada tanımlanır ve manifeste
+  # göre bu dosyadan ÖNCE yüklenir; yerel yedek yalnızca izole test/worker
+  # bağlamı içindir.
+  patterns <- if (exists("PK_DB_FAILURE_PATTERNS", inherits = TRUE)) {
+    PK_DB_FAILURE_PATTERNS
+  } else {
+    c("Veritabanı Hatası", "SQLSTATE", "ODBC", "nanodbc",
+      "Login timeout", "Login failed", "could not connect",
+      "Connection refused", "DSN=", "Driver=")
+  }
+
+  # İstisna mesajlarında bağlantı katmanı hataları DBI/ODBC biçiminde görünür.
+  if (isTRUE(is_exception)) {
+    patterns <- c(patterns, if (exists("PK_DB_FAILURE_EXCEPTION_PATTERNS", inherits = TRUE)) {
+      PK_DB_FAILURE_EXCEPTION_PATTERNS
+    } else {
+      c("dbConnect", "dbGetQuery", "dbSendQuery", "dbExecute",
+        "Data source name not found", "08001", "08S01", "HYT00", "IM002")
+    })
+  }
+
+  # TÜRKÇE DESENLERDE BAYT EŞLEŞMESİ KULLANILMAZ.
+  #
+  # `useBytes = TRUE`, "Veritabanı Hatası" gibi çok baytlı bir deseni metnin
+  # KODLAMA İŞARETİNDEN bağımsız ham baytlarla karşılaştırır: desen yerli
+  # (WINDOWS-1254) işaretliyken metin UTF-8 işaretliyse (ya da tersi) eşleşme
+  # SESSİZCE kaçar ve gerçek bir DB hatası "uygulama hatası" sayılıp telemetri
+  # için ikinci bir bağlantı açılırdı. Her iki taraf da UTF-8'e sabitlenir.
+  metin_utf8 <- enc2utf8(text)
+  any(vapply(patterns, function(pattern) {
+    grepl(enc2utf8(pattern), metin_utf8, fixed = TRUE)
+  }, logical(1)))
+}
+
+# server_init_chat_runtime.R kendi doğrudan-çıkış sarmalayıcısını kurduktan
+# sonra çağrılır. DB/SQL hata çıkışı biliniyorsa telemetri için ikinci bağlantı
+# açılmaz; pk_analysis_observe(conn = NULL) köken alt bilgisini yine hazırlar.
+# KURULUM İŞARETİ SARMALAYICININ KENDİSİNDEDİR.
+#
+# Eski koruma yalnızca `.pk_hook_single_exit_installed` bayrağına bakıyordu.
+# `global.R` yeniden kaynaklandığında `R/module_proje_kaynak_analizi.R`
+# kurulumdan ÖNCE `pk_analiz_process_request` sembolünü SARMALANMAMIŞ hâline
+# geri yazıyor, bayrak ise ortamda kalıyordu: kurulum erken dönüyor, doğrudan
+# çıkış yolları `pk_filter_observation_clear()` / `pk_analysis_observe()`
+# çağrılarını atlıyor ve `MB_Analiz_Log` satırları düşüyordu. Artık YÜRÜRLÜKTEKİ
+# fonksiyonun kendisi denetlenir (bkz. `.PK_DEEP_ENTRY_WRAP_MARK` deseni).
+.PK_HOOK_SINGLE_EXIT_MARK <- "pk_single_exit_observer_wrapped"
+
+.pk_hook_single_exit_is_wrapped <- function(fn) {
+  is.function(fn) && isTRUE(attr(fn, .PK_HOOK_SINGLE_EXIT_MARK, exact = TRUE))
+}
+
+pk_hook_single_exit_fix_install <- function() {
+  target_env <- .pk_hook_runtime_env
+  if (!exists(
+    ".pk_analiz_process_request_without_exit_observer",
+    mode = "function",
+    envir = target_env,
+    inherits = TRUE
+  )) {
+    return(invisible(FALSE))
+  }
+  mevcut <- get0("pk_analiz_process_request", mode = "function",
+                 envir = target_env, inherits = TRUE)
+  if (.pk_hook_single_exit_is_wrapped(mevcut)) return(invisible(FALSE))
+
+  core <- get(
+    ".pk_analiz_process_request_without_exit_observer",
+    mode = "function",
+    envir = target_env,
+    inherits = TRUE
+  )
+
+  replacement <- function(user_prompt, chat_history, session,
+                           stop_check = NULL) {
+    started_at <- Sys.time()
+    request_id <- NULL
+    on.exit({
+      cleanup_request_id <- request_id %||% .pk_hook_current_request_id(session)
+      try(
+        pk_filter_observation_clear(cleanup_request_id, user_prompt),
+        silent = TRUE
+      )
+    }, add = TRUE)
+
+    caught_error <- NULL
+    result <- tryCatch(
+      core(
+        user_prompt = user_prompt,
+        chat_history = chat_history,
+        session = session,
+        stop_check = stop_check
+      ),
+      error = function(e) {
+        caught_error <<- e
+        e
+      }
+    )
+
+    request_id <- .pk_hook_current_request_id(session)
+    is_exception <- inherits(result, "condition")
+    is_direct_exit <- is_exception || is.character(result) ||
+      (is.list(result) && identical(result$type, "error_message"))
+    if (!isTRUE(is_direct_exit)) return(result)
+
+    has_pending_footer <- tryCatch(
+      !is.null(session$userData$pk_provenance_pending),
+      error = function(e) FALSE
+    )
+    if (isTRUE(has_pending_footer)) {
+      if (is_exception) stop(caught_error)
+      return(result)
+    }
+
+    auth_pending <- tryCatch(
+      identical(session$userData$auth_initialized, FALSE),
+      error = function(e) FALSE
+    )
+    if (isTRUE(auth_pending) ||
+        !exists("pk_analysis_observe", mode = "function", inherits = TRUE)) {
+      if (is_exception) stop(caught_error)
+      return(result)
+    }
+
+    # `conditionMessage()` SKALER OLMAYABİLİR: çok elemanlı bir koşul mesajı
+    # aşağıdaki `grepl()`/`if()` zincirini hata işleyicinin İÇİNDE düşürürdü.
+    response_text <- if (is_exception) {
+      .pk_hook_scalar_text(conditionMessage(result))
+    } else if (is.character(result)) {
+      .pk_hook_scalar_text(result)
+    } else if (exists("pk_direct_exit_text", mode = "function", inherits = TRUE)) {
+      # ORTAK ÇIKARICI KULLANILIR: kabul edilen `error_message` biçimi metni `message` alanında taşıyabilir; yalnız `content` okumak BOŞ dize üretiyor, `pk_direct_exit_outcome()` gerçek bir hataya "DogrudanYanit" yazıyor ve `.pk_hook_database_failure_text("")` FALSE döndüğü için DB arızalıyken telemetri bağlantısı açılıyordu.
+      .cikan <- try(pk_direct_exit_text(result), silent = TRUE)
+      if (inherits(.cikan, "try-error")) {
+        .pk_hook_scalar_text(result$message %||% result$content)
+      } else {
+        .pk_hook_scalar_text(.cikan)
+      }
+    } else {
+      .pk_hook_scalar_text(result$message %||% result$content)
+    }
+
+    stopped <- grepl("İşlem Durduruldu", response_text, fixed = TRUE)
+    unauthorized <- grepl("Yetki Hatası", response_text, fixed = TRUE)
+    no_match <- grepl(
+      "mevcut analiz kütüphanesinde bulunamadı",
+      response_text,
+      fixed = TRUE
+    )
+
+    # TEK EŞLEME: işçi (`pk_direct_exit_outcome()`) ve ana süreç AYNI
+    # sınıflandırıcıyı kullanır. Kopyalanan üç desen aynıydı ama son dal
+    # ayrışıyordu: hiçbiri eşleşmediğinde işçi `"DogrudanYanit"`, ana süreç
+    # `"Hata"` yazıyordu. Aynı doğrudan çıkış yalnızca `MERGEN_PK_ASYNC`
+    # yönlendirmesine göre farklı kaydediliyor ve `MB_Analiz_Log` denetim/
+    # rollout metrikleri bozuluyordu.
+    outcome <- if (exists("pk_direct_exit_outcome", mode = "function", inherits = TRUE)) {
+      tryCatch(
+        pk_direct_exit_outcome(response_text, stopped = stopped, error = is_exception),
+        error = function(e) if (stopped) "Durduruldu" else "Hata"
+      )
+    } else if (is_exception) {
+      "Hata"
+    } else if (stopped) {
+      "Durduruldu"
+    } else if (unauthorized) {
+      "Yetkisiz"
+    } else if (no_match) {
+      "EslesmeYok"
+    } else {
+      "DogrudanYanit"
+    }
+
+    user_id <- tryCatch(session$userData$user_id %||% NULL, error = function(e) NULL)
+    database_failure <- .pk_hook_database_failure_text(response_text, is_exception)
+
+    conn_list <- NULL
+    conn <- NULL
+    # DURDURULMUŞ İSTEK YENİ BİR BAĞLANTI AÇMAZ.
+    #
+    # `stopped` bir DB arızası DEĞİLDİR, bu yüzden eski koşul bu dala giriyordu:
+    # havuz kapalıyken `get_connection()` ANA Shiny olay döngüsünde bloklayan bir
+    # ODBC login başlatabiliyor ve iptal ZATEN onaylanmışken yanıtı geciktirip
+    # diğer oturumları donduruyordu. İşçi doğrudan-çıkış sarmalayıcısı bu
+    # atlamayı zaten yapar; ana süreç de aynı sözleşmeye uyar.
+    if (!isTRUE(database_failure) && !isTRUE(stopped)) {
+      conn_list <- tryCatch(get_connection(), error = function(e) NULL)
+      conn <- if (is.list(conn_list)) conn_list$conn %||% NULL else NULL
+      if (!is.null(conn_list)) {
+        on.exit(try(release_connection(conn_list), silent = TRUE), add = TRUE)
+      }
+    }
+
+    try(
+      pk_analysis_observe(session, conn, list(
+        request_id = request_id,
+        question = user_prompt,
+        username = .pk_hook_session_username(session),
+        user_id = user_id,
+        deep_thinking = FALSE,
+        # ETKİN MOTOR DOĞRUDAN ÇIKIŞTA DA YAZILIR: alan boş kalınca
+        # `pk_telemetry_build_record()` `Motor`u v1 varsayıyor ve v2 istekleri
+        # (yetkisiz / eşleşme yok / hata) yanlış motora atfediliyordu.
+        engine = if (exists("pk_engine_mode", mode = "function", inherits = TRUE)) {
+          tryCatch(pk_engine_mode(), error = function(e) NULL)
+        } else {
+          NULL
+        },
+        query_name = "Tekil analiz",
+        filter_status = if (stopped) "stopped" else "not_reached",
+        filters = list(),
+        outcome = outcome,
+        duration_ms = as.numeric(difftime(Sys.time(), started_at, units = "secs")) * 1000
+      )),
+      silent = TRUE
+    )
+
+    if (is_exception) stop(caught_error)
+    result
+  }
+
+  attr(replacement, .PK_HOOK_SINGLE_EXIT_MARK) <- TRUE
+  # SARMALAYICININ ORTAMI KURUCU ÇERÇEVESİDİR VE ÖYLE KALMALIDIR: `replacement`
+  # burada tanımlanan `core` değişkenini KAPATIR; ortamı `target_env` yapmak o
+  # bağlamayı erişilemez kılar ("could not find function core").
+  #
+  # BUNUN SONUCU BİR SÖZLEŞMEDİR: `environment(pk_analiz_process_request)`
+  # OMURSUZ kurucu çerçevesidir, HAT ortamı DEĞİLDİR. Yürütücü override'ı
+  # (`execute_pk_sql_unicode`) yazan HER çağıran bu yüzden ÇEKİRDEĞİN ortamını
+  # hedeflemek zorundadır -- bkz. `mergen_pk_force_bounded_sync()` ve
+  # `pk_async_run_analysis()`; ikisi de `.pk_analiz_process_request_without_exit_observer`
+  # üzerinden `environment(cekirdek)` çözer. Kurucu çerçevesine yazılan bir
+  # override'ı `core()` HİÇ görmez ve sınırlı SQL yürütücüsü UYGULANMAZ.
+  assign("pk_analiz_process_request", replacement, envir = target_env)
+  # Geriye dönük uyumluluk: bayrağa bakan eski tanılar/testler çalışmayı sürdürür.
+  assign(".pk_hook_single_exit_installed", TRUE, envir = target_env)
+  invisible(TRUE)
+}
+

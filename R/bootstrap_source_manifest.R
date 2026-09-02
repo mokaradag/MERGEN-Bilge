@@ -158,6 +158,22 @@ source_manifest_optional_groups <- function(envir = environment()) {
   gruplar
 }
 
+# Yokluğu BEKLENEN opsiyonel grup adları. Bunlar için eksiklik uyarısı
+# YAZILMAZ: gitignore'lu, VM'e özgü dosyalardır ve her bulut/CI checkout'unda
+# tasarım gereği bulunmazlar. Uyarı bastırma yalnızca MESAJI etkiler; dosya
+# yine opsiyoneldir ve eksikken atlanır.
+source_manifest_expected_absent_groups <- function(envir = environment()) {
+  adlar <- get0(
+    "source_manifest_expected_absent_source_groups",
+    envir = envir,
+    inherits = TRUE,
+    ifnotfound = character(0)
+  )
+
+  if (!is.character(adlar) || !length(adlar)) return(character(0))
+  adlar
+}
+
 # Eksik opsiyonel dosya uyarısının süreç başına bir kez yazılmasını sağlar.
 .source_manifest_warned <- new.env(parent = emptyenv())
 
@@ -197,13 +213,20 @@ source_manifest_present_paths <- function(paths, repo_root = getwd()) {
 
   # Eksik üyesi olan opsiyonel grupların tüm üyeleri düşer.
   eksik_grup_uyeleri <- character(0)
-  for (grup in source_manifest_optional_groups()) {
-    grup <- enc2utf8(as.character(grup %||% character(0)))
+  gruplar <- source_manifest_optional_groups()
+  beklenen_eksik <- source_manifest_expected_absent_groups()
+  grup_adlari <- names(gruplar) %||% rep("", length(gruplar))
+
+  for (grup_index in seq_along(gruplar)) {
+    grup <- enc2utf8(as.character(gruplar[[grup_index]] %||% character(0)))
     if (!length(grup)) next
     eksikler <- grup[!file.exists(file.path(repo_root, grup))]
     if (!length(eksikler)) next
 
     eksik_grup_uyeleri <- c(eksik_grup_uyeleri, grup)
+
+    # Yokluğu beklenen gruplar sessizce atlanır (bkz. yukarıdaki açıklama).
+    if (grup_adlari[grup_index] %in% beklenen_eksik) next
 
     # SESSİZ DEĞİL: opsiyonel grup düştüğünde uygulama açılır ama o katmanın
     # sertleştirmeleri DEVRE DIŞI kalır. Operatör bunu fark edemezse çalışma
@@ -645,4 +668,75 @@ source_manifest_required_order <- list(
   c("R/helpers_admin_geri_bildirim.R", "R/helpers_admin_geri_bildirim_queries.R"),
   c("R/helpers_admin_geri_bildirim_queries.R", "R/module_admin_geri_bildirim.R"),
   c("R/helpers_admin_hata_analizi.R", "R/module_admin_hata_analizi.R")
+)
+# ==============================================================================
+# OPSİYONEL / YOKLUĞU BEKLENEN MANİFEST KATMANLARI
+# ------------------------------------------------------------------------------
+# Bu blok R/config_source_manifest.R içinden BURAYA taşınmıştır (Faz 4, E5).
+#
+# GEREKÇE: config_source_manifest.R saf VERİ dosyasıdır ve uzunluğu uygulamadaki
+# çalışma zamanı dosyası sayısıyla birlikte tekdüze artar. Faz 4 öncesinde dosya
+# 794 satırdaydı; genel bakım borcu tavanı 795'tir. Yani YENİ bir çalışma zamanı
+# dosyası ekleyen HERHANGİ bir faz tavanı aşacaktı. Tavanı yükseltmek CLAUDE.md
+# tarafından yasaktır ("Split instead"), bu yüzden blok bölünmüştür.
+#
+# NEDEN BURASI: bootstrap dosyası manifest POLİTİKA VERİSİNİ zaten sahiplenir
+# (`source_manifest_required_order` da veridir) ve global.R tarafından
+# config_source_manifest.R'den ÖNCE yüklenir. Böylece yeni bir boot dosyası
+# oluşturmak, app.R boot listesini ve seam kaydını değiştirmek gerekmez.
+#
+# Aşağıdaki üç nesne, bu dosyadaki source_manifest_optional_paths() /
+# source_manifest_optional_groups() / source_manifest_expected_absent_groups()
+# yardımcılarının get0(..., inherits = TRUE) ile okuduğu değerlerdir; okuma yolu
+# DEĞİŞMEMİŞTİR.
+# ==============================================================================
+
+# Bir çalışma kopyasında bulunmayabilecek manifest yolları.
+#
+# BOOT GÜVENLİĞİ SÖZLEŞMESİ: Manifest normalde eksik dosyada fail-fast yapar ve
+# bu davranış korunmalıdır. Aşağıdaki iki dosya bunun bilinçli istisnasıdır:
+# git'te izlenirler, ancak henüz güncellenmemiş bir on-prem çalışma kopyasında
+# fiziksel olarak bulunmayabilirler. Bunları ZORUNLU kılmak, üretimdeki
+# uygulamayı "Kaynak manifesti doğrulaması başarısız" hatasıyla hiç
+# açılmaz duruma sokar. Mevcut olduklarında normal sırayla yüklenirler;
+# bulunmadıklarında yalnızca sertleştirmeleri devre dışı kalır, uygulama açılır.
+#
+# Bu listeye yeni dosya eklemek bilinçli bir karardır: eksikliği gerçekten
+# tolere edilebilir olmayan hiçbir runtime dosyası buraya eklenmemelidir.
+# Gruplar ATOMİKTİR: bir üyesi eksikse grubun tamamı atlanır. Codex output
+# hardening dosyası, runtime hardening katmanı yüklenmeden source edildiğinde
+# bilinçli olarak stop() eder; bu yüzden ikisi ya birlikte yüklenir ya hiç
+# yüklenmez. Aksi halde yalnızca runtime dosyası eksik olan bir çalışma
+# kopyasında uygulama yine açılmaz.
+source_manifest_optional_source_groups <- list(
+  codex_hardening = c(
+    "R/helpers_claude_code_codex_runtime_fixes.R",
+    "R/helpers_claude_code_codex_output_fixes.R"
+  ),
+
+  # Faz 3a: üreticinin (generator) VM'de yazdığı sorgu metadata envanteri.
+  # Gerçek sütun adları, kardinalite ve null oranları taşır; gitignore'ludur.
+  pk_query_meta_local = "R/library_query_meta_local.R",
+
+  # Faz 3a: operatörün VM'de tuttuğu üretim alias -> kanonik değer haritaları.
+  # Kurumsal proje/program adları taşır; gitignore'ludur ve üretici ASLA yazmaz.
+  pk_query_aliases_local = "R/library_query_aliases_local.R"
+)
+
+# Yokluğu BEKLENEN opsiyonel gruplar.
+#
+# codex_hardening eksikse çalışma kopyası bozuktur ve bu GÜRÜLTÜLÜ bildirilir.
+# Buradaki gruplar ise tam tersidir: gitignore'lu, VM'e özgü dosyalardır ve her
+# bulut/CI checkout'unda TASARIM GEREĞİ yoktur. Onlar için her boot'ta uyarı
+# yazmak, gerçek bir sorunu gösteren codex_hardening uyarısını gürültüye
+# boğardı. Bu liste yalnızca MESAJI susturur; dosyalar yine opsiyoneldir ve
+# eksikken bölümün geri kalanı normal şekilde yüklenir.
+source_manifest_expected_absent_source_groups <- c(
+  "pk_query_meta_local",
+  "pk_query_aliases_local"
+)
+
+source_manifest_optional_source_paths <- unlist(
+  source_manifest_optional_source_groups,
+  use.names = FALSE
 )

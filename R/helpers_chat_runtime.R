@@ -7,8 +7,8 @@ chat_reset_state <- function(session, values) {
   values$typing <- FALSE
 
   # Premium akıl yürütme kartı aktifse kendi iç durumuna göre temizlensin
-  # (durduruldu / hata / tamamlandı). removeUI çağrısından önce tetiklenir ki
-  # kart "kesildi" görünümünü kısaca gösterebilsin.
+  # (durduruldu/hata/tamamlandı); removeUI'den ÖNCE tetiklenir ki kart
+  # "kesildi" görünümünü kısaca gösterebilsin.
   shinyjs::runjs("if (window.PremiumReasoning && window.PremiumReasoning.isActive && window.PremiumReasoning.isActive()) { window.PremiumReasoning.onResetChatState(); }")
 
   removeUI(selector = "#typing-animation-wrapper")
@@ -108,9 +108,8 @@ chat_add_message <- function(session, values, settings_data, output,
     new_message$followups <- followups
   }
 
-  # Akıl yürütme (reasoning) metnini mesaja iliştir; böylece veritabanındaki
-  # MB_Messages.ReasoningContent sütununa düşünen modellerin dahili çıktısı
-  # da yazılabilir (save_message_to_db zaten bu alanı okuyor).
+  # Akıl yürütme metnini mesaja iliştir; MB_Messages.ReasoningContent sütununa
+  # düşünen modellerin dahili çıktısı yazılabilsin (save_message_to_db okur).
   if (!is.null(reasoning_content)) {
     reasoning_txt <- tryCatch(as.character(reasoning_content)[1], error = function(e) "")
     if (is.character(reasoning_txt) && length(reasoning_txt) == 1 &&
@@ -250,9 +249,13 @@ chat_store_message_in_saved_chats <- function(values, message) {
 
 chat_simulate_streaming <- function(full_response, session, values, settings_data, output, stop_generation,
                                    followups = NULL, on_complete = NULL, on_start = NULL,
-                                   tts_engine = NULL, tts_voice = NULL) {
-  
-  # -- 1. SETUP PREPARATION --
+                                   tts_engine = NULL, tts_voice = NULL, request_id = NULL) {
+  # Bayat kayıt koruması: kimlik GÖZLEMCİ KURULMADAN ÖNCE yakalanır (sonlandırıcı gecikmeli çalışır; o anda okunan kimlik DAHA YENİ bir isteğe ait olabilir).
+  pk_request_id <- tryCatch({ rid <- as.character(request_id %||% "")[1]; if (is.na(rid) || !nzchar(rid)) rid <- as.character(pk_provenance_current_request_id(session) %||% "")[1]; if (is.na(rid) || !nzchar(rid)) NULL else rid }, error = function(e) NULL)  # -- 1. SETUP PREPARATION --
+  # BAYAT TTS GERİ ÇAĞRISI TAZE SÖYLEŞİYİ BAŞLATAMAZ: TTS promise'i çözülmeden kullanıcı Yeni Söyleşi başlatırsa `onFulfilled` ESKİ yanıtı boşaltılmış `values$messages` listesine ekliyordu. Söyleşi kimliği (kaydedilmemiş söyleşiler için nesil sayacı dâhil) BURADA yakalanır, geri çağrıda doğrulanır.
+  .cr_kimlik_oku <- function() { if (!exists("mergen_pk_chat_identity", mode = "function", inherits = TRUE)) return(NULL); v <- try(mergen_pk_chat_identity(session, values), silent = TRUE); if (inherits(v, "try-error")) NULL else v }
+  pk_chat_kimlik <- .cr_kimlik_oku()
+  .cr_ayni_sohbet <- function() { if (is.null(pk_chat_kimlik)) return(TRUE); s <- .cr_kimlik_oku(); is.null(s) || identical(s, pk_chat_kimlik) }
   msg_id <- paste0("msg_", floor(as.numeric(Sys.time()) * 1000), "_", sample(1000:9999, 1))
   timestamp <- format_timestamp()
   
@@ -262,7 +265,14 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
 
   # -- 2. CORE EXECUTION CLOSURE (UI Update & Streaming) --
   # This function runs ONLY when we are ready to show text (after audio is ready)
+  # `block` bayrağı 4b'de ÇÖZÜLÜR; izole çağrı için ÖNCEDEN tanımlanır.
+  .cr_blok_aktif <- FALSE
   start_streaming_execution <- function(audio_result = NULL) {
+    # Sohbet DEĞİŞTİYSE bu akış artık kimsenin beklemediği bir yanıttır.
+    # GÖNDERME DURUMU DA SERBEST BIRAKILIR: eski çıkış yalnızca animasyonu
+    # kaldırıyor, `is_sending` TRUE kalıp gönder düğmesini KİLİTLİYORDU.
+    # BAYAT AKIŞ PAYLAŞILAN DURUMU SIFIRLAMAZ: söyleşi değiştiyse `values` ARTIK YENİ söyleşinindir; koşulsuz sıfırlama sürmekte olan YENİ isteğin yazma animasyonunu kaldırıp `is_sending` bayrağını temizliyordu. Karar saf yardımcıdadır (`pk_stale_callback_may_reset()`): daha yeni bir istek durumun sahibiyse DOKUNULMAZ.
+    if (!.cr_ayni_sohbet()) { if (!exists("pk_stale_callback_may_reset", mode = "function", inherits = TRUE) || isTRUE(pk_stale_callback_may_reset(session, pk_request_id))) chat_reset_state(session, values); return() }
     if (stop_generation()) {
         removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
         values$typing <- FALSE
@@ -360,6 +370,14 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
           if (length(msg_index) > 0) {
             final_text <- if (nchar(streaming_state$accumulated) > 0) streaming_state$accumulated else full_response
 
+            # Proje ve Kaynak Analizi köken alt bilgisi. TTS motoru yukarıda
+            # `full_response` ile ÇOKTAN çağrıldığı için alt bilgi burada
+            # eklendiğinde yalnızca ekrana/DB'ye gider, SESLENDİRİLMEZ.
+            # HATA SINIRLANIR VE KAPALI BAŞARISIZ OLUR: dekorasyon SONLANDIRMA adımıdır (fırlatırsa akış hiç sonlanmaz) ama düşerse HAM model metni de YAYIMLANMAZ; karar gerçek akış hattıyla AYNI sınırı kullanan `pk_stream_display_text()` içindedir.
+            if (exists("pk_stream_display_text", mode = "function", inherits = TRUE)) {
+              final_text <- pk_stream_display_text(final_text, session, pk_request_id, .cr_blok_aktif)
+            }
+
             chart_info <- build_chartlab_message(final_text, streaming_state$msg_id, session)
             if (isTRUE(chart_info$found)) {
               final_html <- chart_info$html
@@ -436,13 +454,62 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     })
   }
 
+  # -- 4b. `block` KİPİ: DOĞRULAMA AKIŞTAN VE TTS'TEN ÖNCE (gerekçe:
+  # `mergen_pk_block_mode_texts()`); ekrana `display`, TTS'e `tts` gider.
+  # YARDIMCI ARIZASI AKIŞI KİLİTLEYEMEZ.
+  #
+  # Bu çağrı `start_streaming_execution()` ÖNCESİNDE çalışır. Yardımcı hata
+  # fırlatırsa (ör. bozuk bekleyen köken kaydı) ya da `tts` alanı olmayan bir
+  # liste döndürürse, `nzchar(NULL)` -> `logical(0)` yüzünden aşağıdaki `if`
+  # "argument is of length zero" ile düşerdi. Sonuç: yazma animasyonu hiç
+  # kaldırılmaz, `values$is_sending` TRUE kalır, gönder düğmesi durdurma
+  # kipinde donar ve `chat_reset_state()` HİÇ çalışmaz — oturum yeniden
+  # yükleme gerektirirdi. Yedek, dekore edilmemiş yanıttır.
+  # BLOCK KİPİNDE YEDEK HAM METİN OLAMAZ.
+  #
+  # `block` kipi doğrulanmamış düzyazının kullanıcıya GİTMEMESİ için vardır.
+  # Eski yedek, yardımcı arıza verdiğinde kipin engellemek için var olduğu
+  # çıktının TA KENDİSİNİ hem ekrana hem TTS'e gönderiyordu: kip tam da devreye
+  # girmesi gereken anda AÇIK BAŞARISIZ oluyordu.
+  # KAPALI BAŞARISIZ: kip OKUNAMAZSA `block` varsayılır (aksi hâlde bozuk kayıt
+  # ham düzyazıyı yedek metin olarak ekrana ve TTS'e gönderirdi).
+  .cr_blok_aktif <- isTRUE(tryCatch(
+    exists("pk_provenance_blocks_streaming", mode = "function", inherits = TRUE) &&
+      isTRUE(pk_provenance_blocks_streaming(session, request_id = pk_request_id)),
+    error = function(e) TRUE
+  ))
+  # SABİT ÇÖZÜLEMESE DE HAM DÜZYAZI GİTMEZ (KAPALI BAŞARISIZ): karar saf
+  # yardımcıdadır (bkz. `pk_block_mode_fallback_text()`).
+  .cr_yedek_metin <- if (exists("pk_block_mode_fallback_text", mode = "function", inherits = TRUE)) pk_block_mode_fallback_text(.cr_blok_aktif, full_response) else if (.cr_blok_aktif && exists("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)) get("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE) else full_response
+  yedek_blok <- list(display = .cr_yedek_metin, tts = .cr_yedek_metin)
+  blok <- if (exists("mergen_pk_block_mode_texts", mode = "function", inherits = TRUE)) {
+    tryCatch(
+      mergen_pk_block_mode_texts(full_response, session, request_id = pk_request_id),
+      error = function(e) {
+        cat(sprintf("[PK] block kipi metinleri hazırlanamadı: %s\n",
+                    conditionMessage(e)))
+        yedek_blok
+      }
+    )
+  } else yedek_blok
+  if (!is.list(blok)) blok <- yedek_blok
+
+  # Metinler TEK ÖGELİ karaktere ZORLANIR: sıfır uzunluklu/NA değer skaler
+  # `if` içinde hata fırlatırdı.
+  .cr_metin <- function(x, yedek) {
+    v <- suppressWarnings(as.character(x)[1])
+    if (length(v) != 1L || is.na(v)) yedek else v
+  }
+  full_response <- .cr_metin(blok$display, yedek_blok$display)
+  tts_metni <- .cr_metin(blok$tts, yedek_blok$tts)
+
   # -- 5. KARAR: TTS BEKLENSİN Mİ? --
-  if (!is.null(tts_engine) && is.function(tts_engine) && nzchar(full_response)) {
+  if (!is.null(tts_engine) && is.function(tts_engine) && nzchar(tts_metni)) {
       cat(sprintf("[TTS-STREAM] Seslendirme başlatılıyor (ses: %s, metin: %d karakter)\n",
-                  tts_voice %||% "varsayılan", nchar(full_response)))
+                  tts_voice %||% "varsayılan", nchar(tts_metni)))
       # "Düşünüyor" animasyonu TTS hazır olana kadar görünür kalır
       promises::then(
-          tts_engine(full_response, tts_voice),
+          tts_engine(tts_metni, tts_voice),
           onFulfilled = function(result) {
               # TTS tamamlandı -> Metin akışı ve ses birlikte başlasın
               if (isTRUE(result$success)) {
@@ -476,6 +543,15 @@ chat_start_new_chat <- function(session, values, saved_chats_data, session_files
   values$show_welcome <- TRUE
   session_files(list())
 
+  # Faz 6 (§5.10): kaydedilmemiş sohbetler `NULL` kimliği PAYLAŞIR; nesil sayacı olmadan ayırt edilemez ve tamamlanan bir PK işçisinin sonucu taze sohbete düşerdi.
+  # D11 devralınan varlık bağlamı SÖYLEŞİYE aittir: Yeni Söyleşi'de düşürülmezse taze söyleşi önceki söyleşinin öznesini devralırdı.
+  for (fn in c("pk_entity_context_clear", "mergen_pk_bump_chat_epoch",
+               "mergen_pk_abandon_active_requests")) {
+    if (exists(fn, mode = "function", inherits = TRUE)) {
+      try(get(fn, mode = "function")(session), silent = TRUE)
+    }
+  }
+
   # Yeni söyleşide dosya bağlamı ve MCP anlık görüntüsü temiz başlar.
   session_user_data_reset_lists(
     session,
@@ -496,11 +572,10 @@ chat_start_new_chat <- function(session, values, saved_chats_data, session_files
   # Karşılama ekranında "aşağı kaydır" butonunu gizle
   shinyjs::runjs("$('#scroll_to_bottom_container').removeClass('show');")
 
-  # NOT: Eski sürüm karşılama ekranını burada #chat_content_container içine de
-  # ekliyordu; hemen ardından start_new_chat() aynı ekranı
-  # #welcome_fullscreen_container içinde TAM olarak yeniden render ettiği için
-  # bu ilk ekleme boşa giden büyük bir HTML yüküydü (çift render + gecikme).
-  # Karşılama render sorumluluğu tek yerde: render_welcome_screen().
+  # NOT: Eski sürüm karşılama ekranını burada da ekliyordu; start_new_chat()
+  # aynı ekranı #welcome_fullscreen_container içinde TAM yeniden render ettiği
+  # için bu boşa giden bir HTML yüküydü (çift render). Sorumluluk tek yerde:
+  # render_welcome_screen().
   showToast(session, "Yeni söyleşi başlatıldı.", "success")
 }
 

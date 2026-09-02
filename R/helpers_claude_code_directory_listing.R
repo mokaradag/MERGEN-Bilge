@@ -33,12 +33,16 @@ cc_list_dir_relaxed <- function(dir_path, max_entries = 500L, timeout_ms = 2000L
   # düşülmez. Özellikle yavaş UNC dizinlerinde zaman aşımı/hata sonucu boş
   # gelebilir; aynı dizini list.files()/fs::dir_ls() ile yeniden denemek ana
   # Shiny olay döngüsünü bloke eder.
+  # Bloklayan fs yedeği olay döngüsünde çalıştırılmaz; karar ve gerekçe
+  # `cc_dir_listing_fs_fallback_allowed()` içindedir (dir_listing_async.R).
+  .fs_karar <- get0("cc_dir_listing_fs_fallback_allowed", mode = "function")
   if (exists("cc_scan_list_dir_bounded", mode = "function", inherits = TRUE)) {
     sinirli <- try(
       cc_scan_list_dir_bounded(
         dir_path,
         max_entries = max_entries,
-        timeout_ms = timeout_ms
+        timeout_ms = timeout_ms,
+        allow_fs_fallback = if (is.null(.fs_karar)) TRUE else isTRUE(.fs_karar())
       ),
       silent = TRUE
     )

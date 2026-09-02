@@ -28,7 +28,11 @@
   }
 
   size <- suppressWarnings(file.info(path)$size[1])
-  if (is.na(size) || size <= 0) return("")
+  if (is.na(size) || size <= 0) {
+    # BOŞ DOSYA DA VACUOUS GEÇİRİR: bu dosyalardaki taramaların çoğu
+    # `expect_false(grepl(...))` biçimindedir ve boş dize hepsini karşılar.
+    stop(sprintf("Kaynak dosya BOŞ ya da okunamıyor: %s", path), call. = FALSE)
+  }
 
   con <- file(path, open = "rb")
   on.exit(close(con), add = TRUE)
@@ -164,9 +168,10 @@ testthat::test_that("MusicManager keeps single-audio and stale-playlist ordering
     "MusicManager single-audio/stale-playlist sözleşmesi eksik:"
   )
 
-	# Do not use useBytes=TRUE here:
-	# regexpr(byte offset) + substr(character offset) breaks when the JS file
-	# contains Turkish multibyte characters before _playTrack.
+	# Burada `useBytes = TRUE` KULLANILMAZ: `regexpr()` bayt konumu,
+	# `substr()` ise karakter konumu döndürür. `_playTrack` öncesinde Türkçe
+	# çok baytlı karakter bulunan bir JS dosyasında bu ikisi kayar ve yanlış
+	# parça kesilir.
 	play_track_pos <- regexpr(
 	  "_playTrack: function(src)",
 	  music_js,
@@ -175,7 +180,29 @@ testthat::test_that("MusicManager keeps single-audio and stale-playlist ordering
 
 	testthat::expect_true(play_track_pos > 0L)
 
+	# BLOK YALNIZCA `_playTrack` GÖVDESİDİR.
+	#
+	# Eskiden blok dosyanın SONUNA kadar uzanıyordu: `this._stopAudio();`,
+	# `new Audio(src)` ve `this._audio = audio;` ifadeleri `_playTrack`
+	# içinden KALDIRILIP başka bir metotta bulunsa bile sıra iddiaları
+	# geçerdi ve bayat-ses gerilemesi YEŞİL duman testiyle üretime giderdi.
+	# Sonraki metot başlangıcı (aynı girintideki bir sonraki `\n  <ad>(`)
+	# bulunarak blok kapatılır; bulunamazsa eski davranış korunur.
 	play_track_block <- substr(music_js, play_track_pos, nchar(music_js))
+	# NESNE-LITERAL METOT SINIRI (PR #705 inceleme, P2).
+	#
+	# `MusicManager` metotlari `ad: function(...)` biciminde tanimlanir
+	# (`_handleTrackEnded: function()`), kisa `ad(...)` biciminde DEGIL. Yalnizca
+	# `ad(` arayan eski desen bir sonraki metodu HIC bulamiyor, blok dosyanin
+	# SONUNA kadar uzuyor ve bu smoke testinin engellemek icin var oldugu
+	# gerileme (ifadelerin baska bir metoda tasinmasi) YESIL geciyordu. Her iki
+	# bicim de kabul edilir.
+	sonraki <- regexpr(
+	  "\n  [A-Za-z_$][A-Za-z0-9_$]*\\s*(:\\s*function\\s*)?\\(",
+	  substr(play_track_block, 2L, nchar(play_track_block)),
+	  perl = TRUE
+	)[[1]]
+	if (sonraki > 0L) play_track_block <- substr(play_track_block, 1L, sonraki)
 
 	stop_audio_pos <- regexpr(
 	  "this._stopAudio();",

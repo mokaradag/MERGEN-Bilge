@@ -275,7 +275,41 @@ test_that("dizin listeleyici hatası tarama hatalarına aktarılır", {
   expect_true(isTRUE(sonuc$truncated))
   expect_identical(sonuc$truncated_reason, "listing_error")
   expect_length(sonuc$files, 0L)
-  expect_true(any(grepl("okuma izni yok", sonuc$errors, fixed = TRUE)))
+  # MESAJ SÖZLEŞMESİ: erişim kontrolü `mode = 5L` (okuma + arama) yaptığı için
+  # metin de her iki izni anar. Kararlı parçalar üzerinden eşleşilir; yalnızca
+  # "okuma izni yok" arayan eski hâli, doğrulama güçlendirildiğinde kırılırdı.
+  expect_true(any(grepl("Dizin listelenemedi", sonuc$errors, fixed = TRUE)))
+  # OKUMA+ARAMA MESAJI DETERMİNİSTİK DALDA DENETLENİR.
+  #
+  # `fs` kurulu bir POSIX koşucusunda (root OLMAYAN) `fs::dir_ls(fail = FALSE)`
+  # erişim hatasını UYARIYA çevirir; tarayıcı `options(warn = 2L)` altında
+  # onu `Dizin listelenemedi: <fs mesajı>` hatasına dönüştürür ve
+  # `file.access(mode = 5L)` ön denetimine HİÇ ULAŞMAZ. Yani yukarıdaki
+  # yolda `okuma/arama izni yok` metnini şart koşmak, üretim doğruyken
+  # başarısızlık üretirdi. Sözleşme bu yüzden yedeği KAPATAN çağrıda
+  # doğrulanır: orada `list.files()` boş döner ve izin denetimi kesin çalışır.
+  # `fs` yedeği devrede DEĞİLKEN (mock ya da paket yok) `list.files()` boş
+  # döner ve izin ön denetimi KESİN çalışır; o zaman tam metin şart koşulur.
+  # MOCK KURULMADIYSA GERÇEK `requireNamespace()` SORULUR (PR #705 inceleme, P2).
+  #
+  # `env$requireNamespace` YALNIZCA `.cc_scan_mock_unreadable()` içinde atanır.
+  # `Sys.chmod` dalında (POSIX, root olmayan) o mock HİÇ çalışmaz ve `$` bir
+  # ortamda ÜST ortamları aramadığı için değer `NULL` kalır;
+  # `tryCatch(NULL("fs", ...))` "attempt to apply non-function" fırlatır,
+  # işleyici `FALSE` döndürür ve `fs_yedegi_var` YANLIŞ olarak `FALSE` olurdu.
+  # Test o zaman -- `fs` kurulu olmasına ve üretimin `fs::dir_ls()` yolundan
+  # geçmesine rağmen -- `okuma/arama izni yok` metnini şart koşuyor ve ÜRETİM
+  # DOĞRUYKEN başarısız oluyordu (`stop_on_failure = TRUE` ile tüm süite).
+  req_fn <- if (is.function(env$requireNamespace)) {
+    env$requireNamespace
+  } else {
+    base::requireNamespace
+  }
+  fs_yedegi_var <- isTRUE(tryCatch(req_fn("fs", quietly = TRUE),
+                                   error = function(e) FALSE))
+  if (!fs_yedegi_var) {
+    expect_true(any(grepl("okuma/arama izni yok", sonuc$errors, fixed = TRUE)))
+  }
 })
 
 test_that("dizin listeleyici kabuk alt süreci çalıştırmaz", {

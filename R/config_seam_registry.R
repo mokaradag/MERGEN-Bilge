@@ -26,6 +26,40 @@
 # ==============================================================================
 
 mergen_seam_registry <- function() {
+  kayit <- .mergen_seam_ownership()
+
+  # Guard test / odaklı doğrulama listeleri AYRI bir veri dosyasındadır
+  # (R/config_seam_guard_tests.R). Sahiplik verisi seam sayısıyla, guard test
+  # listesi ise kod tabanı büyüdükçe artar; ikisi tek dosyada tutulduğunda
+  # sabit bakım tavanı YENİ BİR TESTİN KAYDEDİLMESİNİ engelliyordu.
+  # Genel API değişmez: çağıranlar aynı alanları görür.
+  koruma <- if (exists("mergen_seam_guard_tests", mode = "function")) mergen_seam_guard_tests() else list()
+
+  # BİLİNMEYEN SEAM KİMLİĞİ SESSİZCE KAYBOLMAZ: aşağıdaki döngü yalnızca KAYITLI seam'leri gezer; guard test tablosundaki yazım hatası ya da artık kullanılmayan bir kimlik hiçbir seam'e bağlanmaz ve doğrulama YİNE geçerdi (gerçekte hiçbir seam'i korumayan bir guard testi kayıtlı görünürdü).
+  bilinmeyen <- setdiff(names(koruma), names(kayit))
+  if (length(bilinmeyen)) stop(sprintf("Seam guard test tablosunda kayıtlı olmayan seam kimliği var: %s", paste(sort(bilinmeyen), collapse = ", ")), call. = FALSE)
+
+  for (id in names(kayit)) {
+    kaynak <- koruma[[id]]
+    kayit[[id]]$guard_tests <- if (is.list(kaynak) && !is.null(kaynak$guard_tests)) {
+      kaynak$guard_tests
+    } else {
+      character(0)
+    }
+    kayit[[id]]$focused_validation <- if (is.list(kaynak) &&
+                                          !is.null(kaynak$focused_validation)) {
+      kaynak$focused_validation
+    } else {
+      character(0)
+    }
+  }
+
+  kayit
+}
+
+# Sahiplik verisi: bölüm -> seam eşlemesi ve manifest dışı çalışma zamanı
+# dosyaları. Guard testleri BURADA DEĞİL, mergen_seam_guard_tests() içindedir.
+.mergen_seam_ownership <- function() {
   list(
     temel_altyapi = list(
       title = "Temel Altyapı ve Boot",
@@ -48,22 +82,6 @@ mergen_seam_registry <- function() {
         "R/bootstrap_log_path.R",
         "R/config_source_manifest.R"
       ),
-      guard_tests = c(
-        "tests/testthat/test-global-source-manifest-contract.R",
-        "tests/testthat/test-source-manifest-contract.R",
-        "tests/testthat/test-source-manifest-sections-contract.R",
-        "tests/testthat/test-safe-source-encoding-contract.R",
-        "tests/testthat/test-production-contracts.R",
-        "tests/testthat/test-maintainability-ratchet.R",
-        "tests/testthat/test-secret-leak-contract.R",
-        "tests/testthat/test-runtime-network-boundary-contract.R"
-      ),
-      focused_validation = c(
-        "testthat::test_file(\"tests/testthat/test-source-manifest-contract.R\")",
-        "testthat::test_file(\"tests/testthat/test-source-manifest-sections-contract.R\")",
-        "testthat::test_file(\"tests/testthat/test-seam-registry-contract.R\")",
-        "source(\"tests/scripts/parse_sanity_check.R\", encoding = \"UTF-8\")"
-      ),
       related_seams = c("veritabani_kodlama", "dosya_yasam_dongusu", "kimlik_sso")
     ),
 
@@ -76,21 +94,6 @@ mergen_seam_registry <- function() {
       ),
       manifest_sections = c("database", "sql_library"),
       extra_runtime_files = character(0),
-      guard_tests = c(
-        "tests/testthat/test-db-refactor-contract.R",
-        "tests/testthat/test-db-normalization-contract.R",
-        "tests/testthat/test-text-encoding-utils.R",
-        "tests/testthat/test-db-user-visible-encoding-boundaries.R",
-        "tests/testthat/test-chat-message-formatting-refactor-contract.R",
-        "tests/testthat/test-db-chat-read-queries-contract.R",
-        "tests/testthat/test-db-pool-behavior.R"
-      ),
-      focused_validation = c(
-        "testthat::test_file(\"tests/testthat/test-db-normalization-contract.R\")",
-        "testthat::test_file(\"tests/testthat/test-db-refactor-contract.R\")",
-        "testthat::test_file(\"tests/testthat/test-text-encoding-utils.R\")",
-        "source(\"tests/scripts/run_vm_encoding_preflight_real.R\", encoding = \"UTF-8\")"
-      ),
       related_seams = c("temel_altyapi", "sohbet_llm_akis")
     ),
 
@@ -103,19 +106,6 @@ mergen_seam_registry <- function() {
       ),
       manifest_sections = c("sso_identity_helpers", "module_identity_startup"),
       extra_runtime_files = character(0),
-      guard_tests = c(
-        "tests/testthat/test-sso-jwt-signature.R",
-        "tests/testthat/test-sso-authorization-failclosed.R",
-        "tests/testthat/test-sso-session-identity-smoke.R",
-        "tests/testthat/test-e2e-sso-identity-readiness-regression.R",
-        "tests/testthat/test-e2e-boot-welcome-regression.R",
-        "tests/testthat/test-startup-screen-ui-refactor-contract.R"
-      ),
-      focused_validation = c(
-        "testthat::test_file(\"tests/testthat/test-sso-jwt-signature.R\")",
-        "testthat::test_file(\"tests/testthat/test-sso-authorization-failclosed.R\")",
-        "testthat::test_file(\"tests/testthat/test-e2e-sso-identity-readiness-regression.R\")"
-      ),
       related_seams = c("shiny_calisma_zamani", "veritabani_kodlama")
     ),
 
@@ -128,17 +118,6 @@ mergen_seam_registry <- function() {
       ),
       manifest_sections = c("config_api_model_keys", "module_settings_api_key"),
       extra_runtime_files = character(0),
-      guard_tests = c(
-        "tests/testthat/test-config-api-split-contract.R",
-        "tests/testthat/test-api-model-config-refactor-contract.R",
-        "tests/testthat/test-api-key-choice-modal-contract.R",
-        "tests/testthat/test-config-api-key-crypto-behavior.R",
-        "tests/testthat/test-api-key-effective-resolution-behavior.R"
-      ),
-      focused_validation = c(
-        "testthat::test_file(\"tests/testthat/test-config-api-split-contract.R\")",
-        "testthat::test_file(\"tests/testthat/test-api-key-choice-modal-contract.R\")"
-      ),
       related_seams = c("sohbet_llm_akis", "bilge_yolac")
     ),
 
@@ -161,25 +140,6 @@ mergen_seam_registry <- function() {
         "server_handlers_send_message"
       ),
       extra_runtime_files = character(0),
-      guard_tests = c(
-        "tests/testthat/test-send-message-prompting-contract.R",
-        "tests/testthat/test-send-message-request-lifecycle-contract.R",
-        "tests/testthat/test-server-handler-streaming-tts-contract.R",
-        "tests/testthat/test-true-streaming-worker-globals-contract.R",
-        "tests/testthat/test-llm-stream-io-contract.R",
-        "tests/testthat/test-streaming-poll-lifecycle-contract.R",
-        "tests/testthat/test-streaming-markdown-safety-contract.R",
-        "tests/testthat/test-true-streaming-reset-ui-contract.R",
-        "tests/testthat/test-e2e-quick-actions-streaming-regression.R",
-        "tests/testthat/test-langflow-runtime-behavior.R",
-        "tests/testthat/test-ortak-oturum-permissions-behavior.R",
-        "tests/testthat/test-ortak-oturum-db-behavior.R"
-      ),
-      focused_validation = c(
-        "testthat::test_file(\"tests/testthat/test-send-message-request-lifecycle-contract.R\")",
-        "testthat::test_file(\"tests/testthat/test-llm-stream-io-contract.R\")",
-        "testthat::test_file(\"tests/testthat/test-streaming-markdown-safety-contract.R\")"
-      ),
       related_seams = c("api_anahtar_model", "veritabani_kodlama", "mcp_analiz")
     ),
 
@@ -192,21 +152,12 @@ mergen_seam_registry <- function() {
       manifest_sections = c(
         "mcp_tools",
         "chartlab_helpers",
+        "pk_query_metadata",
         "analysis_helpers",
         "module_analysis"
       ),
-      extra_runtime_files = character(0),
-      guard_tests = c(
-        "tests/testthat/test-mcp-excel-resolve.R",
-        "tests/testthat/test-mcp-bootstrap-refactor-contract.R",
-        "tests/testthat/test-mcp-session-user-id-contract.R",
-        "tests/testthat/test-chartlab-spec-refactor-contract.R",
-        "tests/testthat/test-pk-analysis-security-summary-contract.R"
-      ),
-      focused_validation = c(
-        "testthat::test_file(\"tests/testthat/test-mcp-excel-resolve.R\")",
-        "testthat::test_file(\"tests/testthat/test-pk-analysis-security-summary-contract.R\")"
-      ),
+      # R/helpers_pk_analysis_core.R bu iki kardeş dosyayı manifest DIŞINDA source eder.
+      extra_runtime_files = character(0),  # PK çekirdek dosyaları artık manifestte
       related_seams = c("dosya_yasam_dongusu", "sohbet_llm_akis")
     ),
 
@@ -223,20 +174,6 @@ mergen_seam_registry <- function() {
         "module_files_media"
       ),
       extra_runtime_files = character(0),
-      guard_tests = c(
-        "tests/testthat/test-file-lifecycle-hardening-contract.R",
-        "tests/testthat/test-file-manager-display-name-contract.R",
-        "tests/testthat/test-file-resolution-security-contract.R",
-        "tests/testthat/test-resolve-uploaded-file.R",
-        "tests/testthat/test-upload-validator.R",
-        "tests/testthat/test-upload-size-policy.R",
-        "tests/testthat/test-image-generation-ui-refactor-contract.R"
-      ),
-      focused_validation = c(
-        "testthat::test_file(\"tests/testthat/test-file-lifecycle-hardening-contract.R\")",
-        "testthat::test_file(\"tests/testthat/test-file-resolution-security-contract.R\")",
-        "testthat::test_file(\"tests/testthat/test-upload-validator.R\")"
-      ),
       related_seams = c("mcp_analiz", "medya_ses", "temel_altyapi")
     ),
 
@@ -250,19 +187,6 @@ mergen_seam_registry <- function() {
       ),
       manifest_sections = c("ai_expert_helpers", "speech_assets", "module_ai_audio"),
       extra_runtime_files = character(0),
-      guard_tests = c(
-        "tests/testthat/test-e2e-media-audio-state-regression.R",
-        "tests/testthat/test-audio-lifecycle-owner-smoke.R",
-        "tests/testthat/test-saved-chat-reload-no-tts-contract.R",
-        "tests/testthat/test-generated-image-card-html-contract.R",
-        "tests/testthat/test-speech-asset-tree-contract.R",
-        "tests/testthat/test-speech-voice-profiles-behavior.R",
-        "tests/testthat/test-speech-playback-policy-behavior.R"
-      ),
-      focused_validation = c(
-        "testthat::test_file(\"tests/testthat/test-e2e-media-audio-state-regression.R\")",
-        "testthat::test_file(\"tests/testthat/test-audio-lifecycle-owner-smoke.R\")"
-      ),
       related_seams = c("sohbet_llm_akis", "kimlik_sso")
     ),
 
@@ -280,21 +204,6 @@ mergen_seam_registry <- function() {
         "bilge_savunmasi"
       ),
       extra_runtime_files = character(0),
-      guard_tests = c(
-        "tests/testthat/test-claude-code-security-policy-contract.R",
-        "tests/testthat/test-claude-code-run-lifecycle-contract.R",
-        "tests/testthat/test-claude-code-stream-html-safety-contract.R",
-        "tests/testthat/test-claude-code-process-refactor-contract.R",
-        "tests/testthat/test-claude-code-runtime-workdir-contract.R",
-        "tests/testthat/test-claude-code-document-download-link-encoding.R",
-        "tests/testthat/test-bilge-savunmasi-db-behavior.R",
-        "tests/testthat/test-bilge-savunmasi-lifecycle-contract.R"
-      ),
-      focused_validation = c(
-        "testthat::test_file(\"tests/testthat/test-claude-code-security-policy-contract.R\")",
-        "testthat::test_file(\"tests/testthat/test-claude-code-run-lifecycle-contract.R\")",
-        "testthat::test_file(\"tests/testthat/test-claude-code-stream-html-safety-contract.R\")"
-      ),
       related_seams = c("api_anahtar_model", "dosya_yasam_dongusu")
     ),
 
@@ -312,20 +221,6 @@ mergen_seam_registry <- function() {
         "module_health_chartlab"
       ),
       extra_runtime_files = character(0),
-      guard_tests = c(
-        "tests/testthat/test-admin-hata-analizi-refactor-contract.R",
-        "tests/testthat/test-admin-geri-bildirim-refactor-contract.R",
-        "tests/testthat/test-admin-geri-bildirim-outputs-behavior.R",
-        "tests/testthat/test-admin-geri-bildirim-output-tables-behavior.R",
-        "tests/testthat/test-admin-yanit-analizi-refactor-contract.R",
-        "tests/testthat/test-admin-yanit-analizi-outputs-behavior.R",
-        "tests/testthat/test-e2e-health-dashboard-regression.R",
-        "tests/testthat/test-health-check-env-contract.R"
-      ),
-      focused_validation = c(
-        "testthat::test_file(\"tests/testthat/test-e2e-health-dashboard-regression.R\")",
-        "testthat::test_file(\"tests/testthat/test-admin-hata-analizi-refactor-contract.R\")"
-      ),
       related_seams = c("veritabani_kodlama", "shiny_calisma_zamani")
     ),
 
@@ -342,20 +237,6 @@ mergen_seam_registry <- function() {
         "server_observers"
       ),
       extra_runtime_files = c("server.R", "ui.R"),
-      guard_tests = c(
-        "tests/testthat/test-server-runtime-context.R",
-        "tests/testthat/test-server-runtime-auth-ready-split-contract.R",
-        "tests/testthat/test-server-core-interaction-runtime.R",
-        "tests/testthat/test-server-core-observer-runtime-contract.R",
-        "tests/testthat/test-server-module-wiring-contract.R",
-        "tests/testthat/test-server-live-user-provider-contract.R",
-        "tests/testthat/test-session-user-data-store.R"
-      ),
-      focused_validation = c(
-        "testthat::test_file(\"tests/testthat/test-server-runtime-context.R\")",
-        "testthat::test_file(\"tests/testthat/test-server-core-interaction-runtime.R\")",
-        "testthat::test_file(\"tests/testthat/test-server-module-wiring-contract.R\")"
-      ),
       related_seams = c("kimlik_sso", "sohbet_llm_akis", "temel_altyapi")
     ),
 
@@ -368,23 +249,6 @@ mergen_seam_registry <- function() {
       ),
       manifest_sections = c("config_ui_assets"),
       extra_runtime_files = character(0),
-      guard_tests = c(
-        "tests/testthat/test-ui-asset-manifest-contract.R",
-        "tests/testthat/test-ui-asset-config-split-contract.R",
-        "tests/testthat/test-ui-asset-zones-contract.R",
-        "tests/testthat/test-ui-asset-zone-validators-split-contract.R",
-        "tests/testthat/test-frontend-selector-contract.R",
-        "tests/testthat/test-frontend-maintainability-ratchet.R",
-        "tests/testthat/test-browser-smoke-harness-contract.R",
-        "tests/testthat/test-ux-smoke-browser-contract.R",
-        "tests/testthat/test-smoke-probes-contract.R"
-      ),
-      focused_validation = c(
-        "testthat::test_file(\"tests/testthat/test-ui-asset-manifest-contract.R\")",
-        "testthat::test_file(\"tests/testthat/test-ui-asset-zones-contract.R\")",
-        "testthat::test_file(\"tests/testthat/test-frontend-selector-contract.R\")",
-        "source(\"tests/scripts/frontend_maintainability_report.R\", encoding = \"UTF-8\")"
-      ),
       related_seams = c("shiny_calisma_zamani", "temel_altyapi")
     )
   )

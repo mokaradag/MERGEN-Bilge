@@ -23,7 +23,16 @@
     raw_data <- raw_data[-(1:3)]
   }
 
-  raw_data <- raw_data[raw_data != as.raw(0)]
+  # NUL BAYTI SİLİNMEZ, DOSYA REDDEDİLİR.
+  #
+  # `global.R` UTF-16LE ile ya da bozuk biçimde kaydedilmişse NUL baytlarını
+  # ATMAK geriye beklenen TÜM belirteçleri içeren geçerli görünen bir ASCII
+  # metin bırakır: bu test GEÇER, ama uygulama açılışında
+  # `source("global.R", encoding = "UTF-8")` dosyayı AYRIŞTIRAMAZ. Sözleşme
+  # kapalı-başarısız olmalıdır.
+  if (any(raw_data == as.raw(0))) {
+    stop("Kaynak dosya NUL bayti iceriyor (UTF-16/bozuk kayit): global.R", call. = FALSE)
+  }
 
   txt <- rawToChar(raw_data, multiple = FALSE)
   Encoding(txt) <- "bytes"
@@ -158,6 +167,10 @@ test_that("global.R future cluster test modunda başlatılmaz sözleşmesini kor
 # ------------------------------------------------------------------------------
 
 test_that("opsiyonel manifest yolları eksik olsa da doğrulama ve yükleme sürer", {
+  # `withr` bu pakette OPSİYONELDİR (bkz. test-pk-export-stabilization-behavior.R).
+  # Koruma olmadan eksik bir opsiyonel paket, manifest kodu DOĞRU olduğu hâlde
+  # `stop_on_failure = TRUE` yüzünden TÜM suite'i düşürürdü.
+  skip_if_not_installed("withr")
   repo_root <- resolve_repo_root_for_tests()
 
   env <- new.env(parent = globalenv())
@@ -200,8 +213,14 @@ test_that("opsiyonel manifest yolları eksik olsa da doğrulama ve yükleme sür
 test_that("Codex sertleştirme dosyaları opsiyonel işaretlidir", {
   repo_root <- resolve_repo_root_for_tests()
 
+  # Opsiyonel/yokluğu beklenen katman tanımları bootstrap dosyasındadır
+  # (Faz 4, E5): manifest saf VERİ dosyasıydı ve bakım borcu tavanına tek
+  # satır kala gelmişti. Okuma yolu değişmedi; yalnızca tanım yeri değişti.
   env <- new.env(parent = globalenv())
-  source(file.path(repo_root, "R", "config_source_manifest.R"), encoding = "UTF-8", local = env)
+  for (manifest_dosyasi in c("bootstrap_source_manifest.R",
+                             "config_source_manifest.R")) {
+    source(file.path(repo_root, "R", manifest_dosyasi), encoding = "UTF-8", local = env)
+  }
 
   opsiyonel <- env$source_manifest_optional_source_paths
 

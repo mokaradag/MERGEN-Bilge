@@ -48,7 +48,7 @@ testthat::test_that("create_utf8_stream_decoder bölünmüş çok baytlı karakt
   c3 <- dec2$decode(as.raw(0x80))
   testthat::expect_identical(a, "")
   testthat::expect_identical(b, "")
-  testthat::expect_identical(c3, "\U0001F680")  # 🚀
+  testthat::expect_identical(c3, "\U0001F680")  # roket emojisi (U+1F680)
 })
 
 testthat::test_that("create_utf8_stream_decoder reset ve flush tutarlı çalışır", {
@@ -74,7 +74,7 @@ testthat::test_that("append_stream_delta_line + decode_stream_delta_payload tam 
   tmp <- tempfile(fileext = ".jsonl")
   on.exit(unlink(tmp), add = TRUE)
 
-  append_stream_delta_line(tmp, "Merhaba \U0001F680 dünya")
+  append_stream_delta_line(tmp, paste0("Merhaba ", "\U0001F680", " dünya"))
   append_stream_reasoning_line(tmp, "düşünce")
 
   lines <- readLines(tmp, encoding = "UTF-8", warn = FALSE)
@@ -84,7 +84,8 @@ testthat::test_that("append_stream_delta_line + decode_stream_delta_payload tam 
   p2 <- jsonlite::fromJSON(lines[2])
   testthat::expect_identical(p1$type, "delta")
   testthat::expect_identical(p2$type, "reasoning_delta")
-  testthat::expect_identical(decode_stream_delta_payload(p1), "Merhaba \U0001F680 dünya")
+  testthat::expect_identical(decode_stream_delta_payload(p1),
+                             paste0("Merhaba ", "\U0001F680", " dünya"))
   testthat::expect_identical(decode_stream_delta_payload(p2), "düşünce")
 })
 

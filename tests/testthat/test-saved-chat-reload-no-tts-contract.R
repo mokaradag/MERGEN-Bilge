@@ -9,28 +9,49 @@
   full_path <- file.path(repo_root, path)
 
   size <- suppressWarnings(file.info(full_path)$size[1])
-  if (is.na(size) || size <= 0) return("")
+  if (is.na(size) || size <= 0) {
+    # BOŞ DOSYA DA VACUOUS GEÇİRİR: bu dosyalardaki taramaların çoğu
+    # `expect_false(grepl(...))` biçimindedir ve boş dize hepsini karşılar.
+    stop(sprintf("Kaynak dosya BOŞ ya da okunamıyor: %s", full_path), call. = FALSE)
+  }
 
   con <- file(full_path, open = "rb")
   on.exit(close(con), add = TRUE)
 
   raw_data <- readBin(con, what = "raw", n = size)
   txt <- suppressWarnings(
-    iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
+    iconv(list(raw_data), from = "UTF-8", to = "UTF-8")[[1]]
   )
 
-  if (is.na(txt)) txt <- ""
+  # GEÇERSİZ UTF-8 SESSİZCE KABUL EDİLMEZ.
+  #
+  # `sub = "byte"` her geçersiz baytı kaçırır ve HER ZAMAN bir dize döndürür,
+  # dolayısıyla aşağıdaki `NA` kapısı ULAŞILAMAZ kalıyordu: UTF-8 dışı bir
+  # kodlamayla kaydedilmiş kaynak dosya kaçırılmış mojibake olarak taranıyor,
+  # ASCII sözleşme belirteçleri yine eşleşiyor ve NEGATİF iddialar bozuk bir
+  # dosya için de geçiyordu. `test-true-streaming-reset-ui-contract.R` ile
+  # `test-ux-regression-guardrails.R` zaten bu kuralı uygular.
+  if (is.na(txt)) {
+    stop(sprintf("Kaynak dosya geçerli UTF-8 değil: %s", path), call. = FALSE)
+  }
   enc2utf8(gsub("\\r\\n?|\\r", "\n", txt, perl = TRUE))
 }
 
 .extract_load_chat_from_storage_block <- function(text) {
+  # KARAKTER KONUMU KULLANILIR, BAYT KONUMU DEĞİL.
+  #
+  # `regexpr(..., useBytes = TRUE)` BAYT ofseti döndürür; `substr()` ve
+  # `nchar()` ise KARAKTER ofseti bekler. `R/server_observers_storage.R`
+  # dosyası çok baytlı Türkçe metin taşır, dolayısıyla iki ofset AYRIŞIR ve
+  # çıkarılan blok gözlemcinin BAŞINI atlayabilir; yeniden eklenmiş bir TTS
+  # çağrısı bu statik testin gözünden kaçardı.
   marker <- "observeEvent(input$load_chat_from_storage"
-  start <- regexpr(marker, text, fixed = TRUE, useBytes = TRUE)[[1]]
+  start <- regexpr(marker, text, fixed = TRUE)[[1]]
   testthat::expect_true(start > 0L, info = "load_chat_from_storage observer bulunamadı")
 
   tail <- substr(text, start, nchar(text))
   end_marker <- "}, ignoreInit = TRUE)"
-  end <- regexpr(end_marker, tail, fixed = TRUE, useBytes = TRUE)[[1]]
+  end <- regexpr(end_marker, tail, fixed = TRUE)[[1]]
   testthat::expect_true(end > 0L, info = "load_chat_from_storage observer sonu bulunamadı")
 
   substr(tail, 1L, end + nchar(end_marker) - 1L)

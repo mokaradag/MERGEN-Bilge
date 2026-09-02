@@ -62,14 +62,21 @@ test_that("config_source_manifest.R manifestindeki dosyalar repoda gerçekten va
   # Bilinçli olarak opsiyonel işaretlenmiş yollar bir çalışma kopyasında
   # bulunmayabilir (boot güvenliği sözleşmesi); bunlar dışındaki her eksik
   # dosya gerçek bir manifest hatasıdır.
+  # Opsiyonel yol tanımları ayrı VERİ dosyasındadır (Faz 4, E5); iki dosya da
+  # source edilmelidir, aksi hâlde `%||% character(0)` yedeği devreye girer ve
+  # bu iddia SESSİZCE boşa düşer.
   opsiyonel_env <- new.env(parent = globalenv())
-  source(
-    file.path(repo_root, "R", "config_source_manifest.R"),
-    encoding = "UTF-8", local = opsiyonel_env
-  )
+  for (manifest_dosyasi in c("bootstrap_source_manifest.R", "config_source_manifest.R")) {
+    source(
+      file.path(repo_root, "R", manifest_dosyasi),
+      encoding = "UTF-8", local = opsiyonel_env
+    )
+  }
   opsiyonel <- as.character(
     opsiyonel_env$source_manifest_optional_source_paths %||% character(0)
   )
+  expect_true(length(opsiyonel) > 0L,
+              info = "Opsiyonel yol listesi okunamadı (E5 bölmesi bozulmuş olabilir).")
 
   missing_paths <- setdiff(paths[!file.exists(file.path(repo_root, paths))], opsiyonel)
 

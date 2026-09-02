@@ -36,10 +36,19 @@
 .read_repo_bytes_sidebar_instant <- function(rel_path) {
   repo_root <- .find_repo_root_sidebar_instant()
   full_path <- file.path(repo_root, rel_path)
-  if (!file.exists(full_path)) return("")
+  # EKSİK DOSYA DA VACUOUS GEÇİRİR: yalnız olumsuz iddia taşıyan bloklar
+  # (ör. CSS taramaları) boş dizeyle KENDİLİĞİNDEN geçer. Boş/okunamayan
+  # dosyayla AYNI şekilde kapalı başarısız olunur.
+  if (!file.exists(full_path)) {
+    stop(sprintf("Kaynak dosya bulunamadı: %s", full_path), call. = FALSE)
+  }
 
   size <- suppressWarnings(file.info(full_path)$size[1])
-  if (is.na(size) || size <= 0) return("")
+  if (is.na(size) || size <= 0) {
+    # BOŞ DOSYA DA VACUOUS GEÇİRİR: bu dosyalardaki taramaların çoğu
+    # `expect_false(grepl(...))` biçimindedir ve boş dize hepsini karşılar.
+    stop(sprintf("Kaynak dosya BOŞ ya da okunamıyor: %s", full_path), call. = FALSE)
+  }
 
   con <- file(full_path, open = "rb")
   on.exit(close(con), add = TRUE)

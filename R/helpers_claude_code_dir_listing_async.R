@@ -72,3 +72,29 @@ cc_dir_listing_async_available <- function() {
   isTRUE(tryCatch(cc_future_plan_is_async(), error = function(e) FALSE))
 }
 
+#' Bloklayan `fs::dir_ls()` yedeği bu bağlamda serbest mi
+#'
+#' `.cc_scan_list_entries()` yedeği `setTimeLimit(transient = TRUE)` ile
+#' sınırlar; ancak o mekanizma R/Rcpp düzeyinde kesme yapar ve ASKIDA kalmış
+#' bir YERLİ çağrıyı (kopmuş ya da çok yavaş bir UNC paylaşımında
+#' `fs::dir_ls()`) KESEMEZ. Ana Shiny olay döngüsünde çalışırsa çağrı dönene
+#' kadar TÜM oturumlar birlikte donar.
+#'
+#' Kural: etkin bir reaktif alan VARSA (yani ana süreçteki bir gözlemcideyiz)
+#' VE güvenli eşzamansız yol MEVCUTSA yedek kapatılır; `observe_dir_contents()`
+#' zaten işçiye gönderir ve işçide reaktif alan YOKTUR, dolayısıyla yedek orada
+#' normal çalışmaya devam eder. Eşzamansız yol yoksa (sıralı future planı,
+#' izole test) davranış AYNEN korunur: UNC sahte-boş listesine karşı tek
+#' koruma odur.
+#'
+#' @return Bloklayan dosya sistemi yedeği çalıştırılabilirse TRUE
+cc_dir_listing_fs_fallback_allowed <- function() {
+  reaktif_alanda <- isTRUE(tryCatch(
+    !is.null(shiny::getDefaultReactiveDomain()),
+    error = function(e) FALSE
+  ))
+  if (!reaktif_alanda) return(TRUE)
+
+  !isTRUE(tryCatch(cc_dir_listing_async_available(), error = function(e) FALSE))
+}
+

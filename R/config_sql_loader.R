@@ -14,6 +14,15 @@
   "false"
 )
 
+# YER TUTUCU SQL ASLA ÇALIŞTIRILAMAZ.
+#
+# Metindeki `sql_loader_placeholder` işareti salt-okunur kapının
+# (`R/helpers_pk_sql_readonly.R`, `PK_SQL_LOADER_PLACEHOLDER_MARKER`) REDDETME
+# koşuludur. Yer tutucu sözdizimsel olarak geçerli bir SELECT olduğu için kapı
+# onu kendiliğinden reddetmiyordu ve sahte tek satırlık bir sonuç
+# döndürülebiliyordu. İşaret metni İKİ dosyada da AYNI olmak zorundadır;
+# yükleyici kapıdan ÖNCE yüklendiği için sabit buraya kopyalanamaz, sözleşme
+# `tests/testthat/test-pk-sql-readonly-gate-contract.R` ile korunur.
 .sql_placeholder_text <- function(q_id) {
   sprintf(
     "SELECT '%s' AS QueryID, 'sql_loader_placeholder' AS LoaderStatus",
@@ -22,8 +31,17 @@
 }
 
 # --- YARDIMCI: BOS OLMAYAN KARAKTER KONTROLU ---
+# KESIN MANTIKSAL DONUS: cagiran `if (has_sql_file)` icinde kullanir; NA veya
+# sifir uzunluklu girdi burada FALSE olmalidir. `nzchar(NA)` varsayilan olarak
+# TRUE dondurur ve `as.character(character(0))[1]` de NA uretir; ikisi de
+# yukleyiciyi olmayan bir SQL dosyasini cozmeye zorlardi.
 .sql_has_text <- function(x) {
-  !is.null(x) && nzchar(trimws(as.character(x)[1]))
+  if (is.null(x) || length(x) == 0L) return(FALSE)
+
+  deger <- suppressWarnings(as.character(x)[1])
+  if (is.na(deger)) return(FALSE)
+
+  nzchar(trimws(deger))
 }
 
 # --- YARDIMCI: SQL DOSYA YOLUNU COZ ---
@@ -195,8 +213,47 @@
 }
 
 # --- library_queries.R manifest sırası ile önceden yüklenmiş olmalı ---
-if (!exists("query_library", envir = globalenv(), inherits = FALSE) ||
-    !is.list(get("query_library", envir = globalenv(), inherits = FALSE))) {
+#
+# ARAMA `globalenv()` İLE SINIRLI DEĞİLDİR. Faz 6 PK işçisi manifest
+# dosyalarını önce bir SAHNELEME ortamına yükler ve `globalenv()`'e ancak
+# TAMAMI başarılı olduğunda taşır. `envir = globalenv(), inherits = FALSE`
+# sabitlemesi, `R/library_queries.R` bu dosyadan hemen ÖNCE başarıyla
+# yüklenmiş olsa bile bu guard'ın PATLAMASINA yol açıyordu; sonuç temiz bir
+# PSOCK işçisinde kalıcı `bootstrap_failed` ve her istekte senkron yedekti.
+# `environment()` bu dosyanın yüklendiği ortamdır (ana süreçte `globalenv()`),
+# dolayısıyla üretim davranışı DEĞİŞMEZ; yalnızca sahneleme ortamı da görünür.
+#
+# OKUMA VE YAZMA AYNI ORTAMDA OLMALIDIR.
+#
+# `exists(..., inherits = TRUE)` ÜST ortamdaki bir `query_library` kopyasını da
+# kabul eder; buna karşılık `query_library[[i]]$sql <- ...` ve
+# `query_library <- pk_query_meta_attach(...)` atamaları R'de HER ZAMAN GEÇERLİ
+# ortamda yeni bir bağ oluşturur. Sonuç: yükleyici ÜST kopyayı okuyup YEREL bir
+# kopyaya yazardı. Sahneleme ortamında `R/library_queries.R` atlandığında ya da
+# başarısız olduğunda, önceki bir bootstrap'tan `globalenv()`'de kalan BAYAT
+# envanter okunur, metadata ona iliştirilir ve boot "doğrulandı" derdi.
+# Miras alınan değer bu yüzden ÖNCE bu ortama TAŞINIR ve yüksek sesle bildirilir.
+.sql_loader_env <- environment()
+if (!exists("query_library", envir = .sql_loader_env, inherits = FALSE)) {
+  .sql_inherited <- exists("query_library", envir = .sql_loader_env, inherits = TRUE) &&
+    is.list(get("query_library", envir = .sql_loader_env, inherits = TRUE))
+  if (isTRUE(.sql_inherited)) {
+    warning(
+      "[SQL_LOADER] query_library bu ortamda TANIMLI DEĞİL; ÜST ortamdan miras alınan kopya kullanılıyor. ",
+      "R/library_queries.R bu dosyayla AYNI ortama yüklenmelidir.",
+      call. = FALSE
+    )
+    assign(
+      "query_library",
+      get("query_library", envir = .sql_loader_env, inherits = TRUE),
+      envir = .sql_loader_env
+    )
+  }
+  rm(.sql_inherited)
+}
+
+if (!exists("query_library", envir = .sql_loader_env, inherits = FALSE) ||
+    !is.list(get("query_library", envir = .sql_loader_env, inherits = FALSE))) {
   stop(
     "[SQL_LOADER] HATA: query_library bulunamadı. R/library_queries.R, R/config_sql_loader.R öncesinde manifestten yüklenmelidir.",
     call. = FALSE
@@ -227,13 +284,17 @@ for (i in seq_along(query_library)) {
     sprintf("index_%d", i)
   }
 
-  has_sql_file <- .sql_has_text(q_item$sql_file)
-  has_sql_inline <- .sql_has_text(q_item$sql)
+  has_sql_file <- .sql_has_text(q_item[["sql_file"]])
+  # `$` KISMİ EŞLEŞME YAPAR: `sql` alanı YOKKEN `q_item$sql`, `sql_file`
+  # değerine düşer ve satır içi SQL varmış gibi görünürdü. Sonuç: eksik/
+  # okunamayan dosya için yer tutucu yerine DOSYA YOLU saklanıyor ve giriş
+  # "üzerine yazıldı" sayılıyordu.
+  has_sql_inline <- .sql_has_text(q_item[["sql"]])
 
   if (has_sql_file) {
     .sql_file_declared_count <- .sql_file_declared_count + 1L
 
-    fpath <- as.character(q_item$sql_file)[1]
+    fpath <- as.character(q_item[["sql_file"]])[1]
     path_to_use <- .resolve_sql_file_path(fpath)
 
     if (is.null(path_to_use)) {
@@ -264,12 +325,16 @@ for (i in seq_along(query_library)) {
         q_id, fpath
       ))
 
-      query_library[[i]]$sql <- if (has_sql_inline) {
-        as.character(q_item$sql)[1]
+      # KORUNAN SATIR İÇİ SQL YER TUTUCU DEĞİLDİR: `sql_source` gerçek
+      # kaynağı bildirmelidir, aksi hâlde çalıştırılabilir bir sorgu
+      # aşağı akışta "yer tutucu" sanılırdı.
+      if (has_sql_inline) {
+        query_library[[i]]$sql <- as.character(q_item[["sql"]])[1]
+        query_library[[i]]$sql_source <- "inline_missing_sql_file"
       } else {
-        .sql_placeholder_text(q_id)
+        query_library[[i]]$sql <- .sql_placeholder_text(q_id)
+        query_library[[i]]$sql_source <- "placeholder_missing_sql_file"
       }
-      query_library[[i]]$sql_source <- "placeholder_missing_sql_file"
       query_library[[i]]$sql_loaded_path <- NA_character_
 
       next
@@ -301,12 +366,15 @@ for (i in seq_along(query_library)) {
         q_id, path_to_use, conditionMessage(full_sql)
       ))
 
-      query_library[[i]]$sql <- if (has_sql_inline) {
-        as.character(q_item$sql)[1]
+      # Aynı gerekçe: okunamayan dosyada KORUNAN satır içi SQL yer tutucu
+      # değildir ve öyle etiketlenmemelidir.
+      if (has_sql_inline) {
+        query_library[[i]]$sql <- as.character(q_item[["sql"]])[1]
+        query_library[[i]]$sql_source <- "inline_sql_read_error"
       } else {
-        .sql_placeholder_text(q_id)
+        query_library[[i]]$sql <- .sql_placeholder_text(q_id)
+        query_library[[i]]$sql_source <- "placeholder_sql_read_error"
       }
-      query_library[[i]]$sql_source <- "placeholder_sql_read_error"
       query_library[[i]]$sql_loaded_path <- path_to_use
 
       next
@@ -345,6 +413,17 @@ for (i in seq_along(query_library)) {
       "[SQL_LOADER] HATA: Sorguda ne sql_file ne de sql tanimli! ID: %s\n",
       q_id
     ))
+
+    if (!isTRUE(.SQL_LOADER_STRICT)) {
+      # DİĞER İKİ BAŞARISIZLIK YOLUYLA AYNI DEGRADASYON UYGULANIR. Bu dal
+      # yalnızca sayıyor ve `sql` alanını YOK bırakıyordu; non-strict modda
+      # `pk_query_meta_attach()` "bos olmayan SQL tasimalidir" diyerek AÇILIŞI
+      # DÜŞÜRÜYORDU. Belgelenen degradasyon bu başarısızlık sınıfı için de
+      # geçerlidir; yer tutucu SQL asla çalıştırılamaz (kapı reddeder).
+      query_library[[i]]$sql <- .sql_placeholder_text(q_id)
+      query_library[[i]]$sql_source <- "placeholder_missing_sql"
+      query_library[[i]]$sql_loaded_path <- NA_character_
+    }
   }
 }
 
@@ -378,8 +457,49 @@ cat(sprintf(
   .sql_loaded_count, .sql_file_declared_count, .sql_inline_only_count
 ))
 
+# --- FAZ 3a: SORGU METADATA SÖZLEŞMESİ ----------------------------------------
+# Katmanlar (iskelet -> üretilen -> küre edilmiş, küre edilmiş kazanır) burada
+# birleştirilir, yalnızca-alias yerel bindirmesi uygulanır ve sözleşme
+# doğrulanır. Şemadan BAĞIMSIZ her geçersiz sözleşme başlangıcı DÜŞÜRÜR; bu
+# bilinçli olarak .SQL_LOADER_STRICT bayrağından bağımsızdır, çünkü geçersiz
+# metadata ile açılan bir uygulama sessizce yanlış cevap üretir.
+#
+# Şema henüz yoksa (bulut checkout'u; üretici VM'de çalışmadı) şemaya bağlı
+# kontroller `pending_no_schema` olarak kaydedilir ve sorgu belgelenmiş Tier-0
+# yapısal yolundan boot eder. Bu ERTELEME, istek zamanı zorlamayı zayıflatmaz:
+# SQL döndükten sonraki gerçek sütun doğrulaması koşulsuzdur.
+#
+# `pk_query_metadata` manifest bölümü bu dosyadan ÖNCE biter; yardımcı yoksa
+# manifest sırası bozulmuş ya da sahneleme ortamı kısmi yüklenmiştir. Bu
+# durumda BOOT DÜŞER: bir `cat()` uyarısı boot kapısı değildir ve doğrulanmamış
+# metadata ile açılan uygulama sessizce yanlış cevap üretir.
+if (!exists("pk_query_meta_attach", mode = "function")) {
+  stop(
+    "[SQL_LOADER] HATA: pk_query_meta_attach bulunamadı. ",
+    "R/helpers_pk_query_meta.R, R/config_sql_loader.R öncesinde manifestten yüklenmelidir.",
+    call. = FALSE
+  )
+}
+
+# YÜKLEME ORTAMI AÇIKÇA GEÇİLİR.
+#
+# PK işçisi manifest dosyalarını önce bir SAHNELEME ortamında değerlendirir.
+# Varsayılan `envir = globalenv()` ile metadata katmanları (`pk_query_meta*`,
+# `pk_query_aliases_local`, `pk_capability_registry`) yanlış ortamdan
+# toplanıyordu: temiz bir işçi BOŞ katmanları doğrular, YENİDEN KULLANILAN bir
+# işçi ise ÖNCEKİ bootstrap'tan kalan BAYAT katmanları iliştirebilirdi.
+# Üretimde bu dosya `globalenv()` içine kaynaklandığından `environment()` zaten
+# `globalenv()`tir; davranış değişmez.
+query_library <- pk_query_meta_attach(query_library, envir = .sql_loader_env)
+
+cat(sprintf(
+  "[SQL_LOADER] PK metadata sözleşmesi doğrulandı: %d sorgu.\n",
+  length(query_library)
+))
+
 # --- GECICI NESNELERI TEMIZLE ---
 rm(
+  .sql_loader_env,
   .SQL_LOADER_DEBUG,
   .SQL_LOADER_STRICT,
   .sql_placeholder_text,

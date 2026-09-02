@@ -53,7 +53,12 @@ score_turkish_decoding_candidate <- function(aday) {
   mojibake_deseni <- paste(
     c(
       "\u00c3[\u00a7\u0178\u00bc\u00b6\u00b1\u00bd]",  # Ã§, ÃŸ, Ã¼, Ã¶, Ã±, Ã½
-      "\u00c5[\u0178\u009e]",                            # ÅŸ, Åž
+      # \u00c5\u0178 (ş), \u00c5\u017e (Ş; CP1252/CP1254 çözümlemesi),
+      # \u00c5\u009e (Ş) ve \u00c5\u009f (ş): son ikisi yalnızca latin1
+      # çözümlemesinde ortaya çıkar. \u009f EKSİKTİ: `C5 9F` (ş) baytlarını
+      # latin1 olarak çözen aday mojibake cezasını ALMIYOR ve cezalandırılmış
+      # doğru adayı geçebiliyordu.
+      "\u00c5[\u0178\u017e\u009e\u009f]",
       "\u00c4\u00b1",                                     # Ä±
       "\u00ef\u00bf\u00bd",                               # U+FFFD replacement
       "\u00c2[\u00a0-\u00bf]"                             # Â followed by control
@@ -186,17 +191,54 @@ normalize_claude_code_text_file_to_utf8 <- function(file_path) {
       return(FALSE)
     }
   } else {
-    # UTF-8 geçerli olsa bile, UTF-8 baytlarının WINDOWS-1254 olarak yorumlanmış
-    # olma olasılığını kontrol et. Mojibake örüntüsü varsa Türkçe puanına göre
-    # daha iyi bir aday kodlama varsa ona geç.
+    # UTF-8 GEÇERLİ. Metin yine de mojibake taşıyor olabilir (UTF-8 baytları bir
+    # kez WINDOWS-1254 sanılmış); örneğin ekranda "S" + iki nokta yerine iki
+    # bozuk karakter görünür ama bayt dizisi geçerli UTF-8'dir.
+    #
+    # BU DURUMDA HAM BAYTLAR YENİDEN ÇÖZÜLMEZ. `pick_best_turkish_decoding()`
+    # ZATEN GEÇERLİ UTF-8 olan baytları eski tek-baytlı kodlamalarla yeniden
+    # yorumlar; ortaya çıkan aday daha yüksek puan alıp metni YENİ bir mojibake
+    # ile ÜZERİNE YAZABİLİR ve bu kayıp geri alınamaz. Doğru işlem ÇÖZÜLMÜŞ
+    # metni onarmaktır; bu da merkezî `repair_text_mojibake()` sınırının işidir
+    # (CLAUDE.md 1B: dağınık yerel eşleme tabloları eklenmez).
     mevcut_skor <- score_turkish_decoding_candidate(metin_utf8)
 
-    if (mevcut_skor < 0) {
-      aday <- pick_best_turkish_decoding(icerik_ham)
-      aday_skor <- score_turkish_decoding_candidate(aday)
+    # GEÇERLİ UTF-8 METİN YALNIZCA KANIT VARKEN YENİDEN YAZILIR (PR #705, P2).
+    #
+    # Onarım, ZATEN GEÇERLİ UTF-8 olan baytların üzerine yazar ve kayıp geri
+    # alınamaz. "Onarılan aday daha yüksek puan aldı" TEK BAŞINA yeterli kanıt
+    # DEĞİLDİR: 11+ geçerli Türkçe karakter içeren ve içinde LİTERAL bir
+    # "\u00C5\u017E" dizisi bulunan geçerli bir .csv/.md/.log/.txt (yabancı veri
+    # ya da kodlama örneği) POZİTİF puan alır, onarım onu "\u015E" yapar ve
+    # ORİJİNAL geçerli baytlar YOK OLUR.
+    #
+    # Bu yüzden onarım yalnızca KANIT NET olduğunda çalışır:
+    #   * `mevcut_skor < 0` -> metin bozuk dizilerin BASKIN olduğu bir içerik;
+    #   * `MERGEN_CLAUDE_CODE_REPAIR_VALID_UTF8=true` -> operatör AÇIK izni.
+    # Kabul ölçütü her iki durumda da AYNI kalır: onarılan aday YALNIZCA daha
+    # yüksek puan alırsa kullanılır, dolayısıyla temiz metin bozulamaz.
+    #
+    # PR #705 incelemesi `mevcut_skor < 0` kapısının da kaldırılmasını önerdi
+    # (geçerli bir kodlama örneği de negatif puan alabilir). UYGULANMADI:
+    # `test-claude-code-turkish-decoding-behavior.R:143` tam olarak bu kapıyı
+    # KİLİTLER — içeriği yalnızca "\u00C5\u017E" olan bir dosya operatör izni
+    # OLMADAN da onarılmalıdır; aksi hâlde tartışmasız mojibake, üretilen
+    # dosyalarda olduğu gibi kalırdı. Negatif puan "bozuk dizi BASKIN" demektir
+    # ve bu, dosyadaki belgelenmiş kanıt ölçütüdür.
+    karisik_onarim_izni <- isTRUE(tolower(trimws(Sys.getenv(
+      "MERGEN_CLAUDE_CODE_REPAIR_VALID_UTF8", unset = "false"
+    ))) %in% c("true", "1", "yes", "on", "evet"))
 
-      if (!is.na(aday) && nzchar(aday) && aday_skor > mevcut_skor) {
-        metin_utf8 <- aday
+    if ((mevcut_skor < 0 || karisik_onarim_izni) &&
+        exists("repair_text_mojibake", mode = "function", inherits = TRUE)) {
+      onarilan <- tryCatch(
+        suppressWarnings(as.character(repair_text_mojibake(metin_utf8))[1]),
+        error = function(e) NA_character_
+      )
+
+      if (!is.na(onarilan) && nzchar(onarilan) &&
+          score_turkish_decoding_candidate(onarilan) > mevcut_skor) {
+        metin_utf8 <- onarilan
       }
     }
   }

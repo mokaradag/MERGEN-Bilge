@@ -13,8 +13,14 @@
   }
 
   size <- suppressWarnings(file.info(abs_path)$size[1])
+  # BOŞ DOSYA SESSİZ GEÇMEZ (PR #705 incelemesi, P3): bu sözleşmedeki
+  # taramaların çoğu `expect_false(grepl(...))` biçimindedir ve BOŞ dize
+  # hepsini KENDİLİĞİNDEN karşılar; kötü bir birleştirme dosyayı sıfır bayta
+  # indirse bile sözleşme HİÇBİR ŞEY taramadan yeşil kalırdı. Kardeş okuyucular
+  # (`test-pk-stabilization-contract.R`, `test-pk-sql-readonly-gate-contract.R`)
+  # aynı durumu zaten açık hata sayıyor.
   if (is.na(size) || size <= 0) {
-    return("")
+    stop(sprintf("Kaynak dosya BOŞ ya da okunamadı: %s", rel_path), call. = FALSE)
   }
 
   con <- file(abs_path, open = "rb")
@@ -62,6 +68,13 @@
     local = pk_env
   )
 
+  # İZOLE YÜKLEME: taban dosya manifest sırasına göre AÇIKÇA önce gelir.
+  source(
+    file.path(repo_root_for_tests, "R", "helpers_pk_analysis_filters_base.R"),
+    encoding = "UTF-8",
+    local = pk_env
+  )
+
   source(
     file.path(repo_root_for_tests, "R", "helpers_pk_analysis_filters.R"),
     encoding = "UTF-8",
@@ -95,13 +108,19 @@ test_that("helpers_pk_analysis_filters.R exists and exposes extracted public hel
 })
 
 test_that("runtime manifest sources PK filter helpers after core and before module", {
+  # TABAN DOSYA DA SIRALI VEKTÖRDEDİR.
+  #
+  # İzole test ortamı `helpers_pk_analysis_filters_base.R` dosyasını AÇIKÇA
+  # source ettiği için, çalışma zamanı manifesti tabanı `filters.R` SONRASINA
+  # taşısa bile bu test geçiyordu; uygulama ise yükleme anında kırılırdı.
   expect_source_manifest_order_for_tests(
     c(
       "R/helpers_pk_analysis_core.R",
+      "R/helpers_pk_analysis_filters_base.R",
       "R/helpers_pk_analysis_filters.R",
       "R/module_proje_kaynak_analizi.R"
     ),
-    label = "Kaynak sırası core -> filters -> module olmalıdır:"
+    label = "Kaynak sırası core -> filters_base -> filters -> module olmalıdır:"
   )
 })
 
@@ -209,6 +228,13 @@ test_that("extract_filter_criteria_from_prompt ignores stale LLM result when sto
 
   expect_equal(result$filters, list())
   expect_null(result$aggregation)
+  expect_true(
+    stopped,
+    info = paste(
+      "Stub GERÇEKTEN çağrılmalıdır; aksi hâlde test çağrı SONRASI durdurma",
+      "kapısını hiç sınamaz ve boş sonuç başka bir erken dönüşten gelir."
+    )
+  )
 })
 
 test_that("helpers_pk_analysis_filters.R remains side-effect-light", {

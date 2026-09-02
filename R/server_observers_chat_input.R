@@ -40,6 +40,33 @@ chatInputObserversInit <- function(input, session, values, settings_data,
 
     if (isTRUE(values$is_sending) || isTRUE(values$typing)) {
       cat("[STOP_BUTTON] Kullanıcı durdurma istedi\n")
+
+      # Faz 6 (§5.10): İPTAL İŞÇİYE ULAŞMALIDIR. Geri çağrıyı atmak (aşağıdaki
+      # active_request_id değişimi) işçiyi ÇALIŞMAYA DEVAM ETTİRİR; DB
+      # bağlantısını ve işçi yuvasını tutar. Jeton artık OTURUM + istek kimliği
+      # ile adlandırılır; başka bir oturumun aynı request_1 sayacına dokunamaz.
+      #
+      # Jeton YALNIZCA gerçekten bir PK isteği sahipse yazılır. Bu gözlemci her
+      # gönderen/yazan istek için çalışır; normal sohbet/görsel isteklerinde
+      # jetonun sahibi olan bir dağıtıcı YOKTUR ve hiçbir tamamlanma yolu onu
+      # temizlemez — art arda durdurmalar süreç ömrü boyunca birer dosya
+      # sızdırırdı.
+      if (exists("mergen_pk_signal_cancel", mode = "function", inherits = TRUE) &&
+          exists("mergen_pk_request_has_cancel_token", mode = "function", inherits = TRUE)) {
+        aktif_kimlik <- isolate(active_request_id())
+        # ARAMA HATASI TÜM DURDURMA AKIŞINI KİLİTLEMEZ. Yüklem sarmalanmamıştı;
+        # hata yükseltirse gözlemci `stop_generation(TRUE)` ve istek kimliği
+        # döndürmesine ULAŞMADAN düşüyor ve Durdur düğmesi o tıklamada ölü
+        # görünüyordu — PK olmayan istekler dâhil.
+        sahip_mi <- tryCatch(
+          isTRUE(mergen_pk_request_has_cancel_token(session, aktif_kimlik)),
+          error = function(e) FALSE
+        )
+        if (isTRUE(sahip_mi)) {
+          try(mergen_pk_signal_cancel(aktif_kimlik, session = session), silent = TRUE)
+        }
+      }
+
       stop_generation(TRUE)
       active_request_id(paste0("cancelled_", as.numeric(Sys.time())))
     }

@@ -140,7 +140,8 @@ cc_path_is_reparse_link <- function(path) {
 # (PowerShell için ~300-800 ms) ortadan kalkar. Sınırlar (max_entries,
 # zaman aşımı) listeleme sonrasında uygulanır; tek bir dizinin okunması
 # bir alt süreç başlatmaktan belirgin biçimde ucuzdur.
-.cc_scan_list_entries <- function(path, max_entries, deadline_ms) {
+.cc_scan_list_entries <- function(path, max_entries, deadline_ms,
+                                  allow_fs_fallback = TRUE) {
   limit <- max(0L, as.integer(max_entries))
   if (limit == 0L) return(list(entries = character(0), truncated = TRUE, reason = "max_entries"))
 
@@ -167,23 +168,94 @@ cc_path_is_reparse_link <- function(path) {
   # Windows VM / UNC paylaşımlarında base R `list.files()` bazen erişilebilir
   # bir paylaşım için de boş döner. Bu yüzden boş sonuçta `fs` yedeğine düşülür;
   # `fs` de doğru kodlanmış adlar döndürdüğü için Türkçe adlar korunur.
-  if (!length(entries) && requireNamespace("fs", quietly = TRUE)) {
+  fs_yedegi <- FALSE
+  fs_kesildi <- FALSE
+  if (!length(entries) && isTRUE(allow_fs_fallback) &&
+      requireNamespace("fs", quietly = TRUE)) {
+    # YEDEK NUMARALANDIRMA BÜTÇE KAPISININ ARDINDADIR VE SÜREYLE SINIRLIDIR.
+    #
+    # `fs::dir_ls()` başlık-sınırlama (head-limit) ya da iptal API'si SUNMAZ:
+    # çağrı tüm listeyi üretir. Bu yüzden (1) bütçe ZATEN tükenmişken ikinci
+    # bir tam numaralandırma BAŞLATILMAZ ve (2) başlatıldığında KALAN bütçe
+    # `setTimeLimit(transient = TRUE)` ile uygulanır. Aksi hâlde yavaş bir UNC
+    # paylaşımında ana Shiny olay döngüsü `timeout_ms` sınırının çok ötesinde
+    # bloke kalırdı. Çağıran (`allow_fs_fallback = FALSE`) yedeği tamamen de
+    # kapatabilir.
+    gecen_ms <- as.numeric(difftime(Sys.time(), deadline_ms$started, units = "secs")) * 1000
+    kalan_ms <- deadline_ms$limit - gecen_ms
+    if (!isTRUE(is.finite(kalan_ms)) || isTRUE(kalan_ms <= 0)) {
+      return(list(entries = character(0), truncated = TRUE, reason = "timeout"))
+    }
+
+    # `fail = FALSE` erişim hatasını UYARIYA çevirir ve KISMİ liste döndürür;
+    # uyarı yutulduğunda eksik sonuç BAŞARILI sayılıyordu. `warn = 2` uyarıyı
+    # HATAYA çevirir, böylece kısmi sonuç aşağıda AÇIKÇA reddedilir (ek bir
+    # işleyici kapanışı gerekmeden; dosya fonksiyon bütçesi sınırındadır).
+    # KALAN BÜTÇE UZATILMAZ. `max(0.05, ...)` 50 ms'den AZ kalmışken yedeğe yine
+    # 50 ms veriyordu; yavaş bir UNC dizininde `cc_scan_list_dir_bounded()`
+    # ana Shiny sürecini `timeout_ms` ÖTESİNDE bloklayabiliyordu. Kullanılabilir
+    # en küçük sınırın altında kalındığında yedek HİÇ denenmez.
+    if (isTRUE(kalan_ms < 50)) {
+      return(list(entries = character(0), truncated = TRUE, reason = "timeout"))
+    }
+    eski_warn <- getOption("warn")
+    on.exit({ options(warn = eski_warn); setTimeLimit() }, add = TRUE)
+    options(warn = 2L)
+    setTimeLimit(elapsed = kalan_ms / 1000, transient = TRUE)
     yedek <- try(fs::dir_ls(path, recurse = FALSE, all = FALSE, fail = FALSE), silent = TRUE)
-    if (!inherits(yedek, "try-error")) entries <- as.character(yedek)
+    setTimeLimit()
+    options(warn = eski_warn)
+
+    if (inherits(yedek, "try-error")) {
+      mesaj <- conditionMessage(attr(yedek, "condition"))
+      # SÜRE SINIRI KESİNTİSİ HATA DEĞİL, KIRPMADIR.
+      if (grepl("elapsed time limit", mesaj, fixed = TRUE)) {
+        return(list(entries = character(0), truncated = TRUE, reason = "timeout"))
+      }
+      stop(sprintf("Dizin listelenemedi: %s", mesaj))
+    }
+
+    entries <- as.character(yedek)
+    # KIRPMA BİLDİRİLİR: `entries` burada kesilirse aşağıdaki
+    # `length(entries) > limit` denetimi FALSE olur ve KISMİ liste TAM
+    # sayılırdı; `cc_scan_directory_bounded()` de `max_entries` kırpmasını
+    # hiç raporlamazdı.
+    fs_kesildi <- length(entries) > limit
+    if (isTRUE(fs_kesildi)) entries <- entries[seq_len(limit)]
+    fs_yedegi <- TRUE
   }
 
   # `list.files()` erişilemeyen bir dizin için hata vermez, sessizce boş döner.
   # Gerçek erişim hatasını "boş dizin" gibi göstermemek için okunabilirliği
   # ayrıca doğrularız; aksi halde paylaşım/ACL hatası sessiz kalırdı.
-  if (!length(entries) && !identical(unname(file.access(path, mode = 4L))[1], 0L)) {
-    stop(sprintf("Dizin listelenemedi: okuma izni yok (%s)", path))
+  #
+  # `fs::dir_ls(fail = FALSE)` de erişim hatasını UYARIYA çevirir ve KISMİ bir
+  # liste döndürebilir; uyarı yutulduğunda eksik sonuç BAŞARILI sayılıyordu.
+  # Bu yüzden yedek kullanıldığında okunabilirlik sonuç BOŞ OLMASA DA
+  # doğrulanır.
+  # OKUMA TEK BAŞINA YETMEZ: POSIX'te yalnızca `r` izni olan bir dizin
+  # listelenebilir ama içindeki ögeler STAT EDİLEMEZ (`x`/arama izni gerekir).
+  # `mode = 4L` böyle bir dizini geçirir; sonraki `file.info()` NA döner ve
+  # tarama erişilemeyen yollarla `ok = TRUE` raporlardı. `mode = 5L` okuma ve
+  # arama izinlerini BİRLİKTE doğrular (Windows'ta dizinler zaten çalıştırılabilir
+  # sayılır; davranış değişmez).
+  #
+  # YEDEK BAŞARISI `file.access()` ÖN DENETİMİNDEN AYRILIR: bazı Windows UNC
+  # yollarında `file.access(path, mode = 5L)` erişilebilir bir paylaşım için
+  # de `-1` döndürür; yedek TEMİZ (uyarısız) ve DOLU bir liste ürettiğinde
+  # eski koşul o geçerli sonucu atıp `listing_error` raporluyordu. Kısmi yedek
+  # sonucu yukarıda ZATEN hata veriyor, bu yüzden burada yalnızca BOŞ sonuç
+  # denetlenir.
+  if (!length(entries) &&
+      !identical(unname(file.access(path, mode = 5L))[1], 0L)) {
+    stop(sprintf("Dizin listelenemedi: okuma/arama izni yok (%s)", path))
   }
 
   truncated <- FALSE
   reason <- ""
 
-  if (length(entries) > limit) {
-    entries <- entries[seq_len(limit)]
+  if (length(entries) > limit || isTRUE(fs_kesildi)) {
+    entries <- entries[seq_len(min(length(entries), limit))]
     truncated <- TRUE
     reason <- "max_entries"
   } else {
@@ -210,7 +282,8 @@ cc_path_is_reparse_link <- function(path) {
 #' @return list(entries, truncated, reason, ok, error)
 cc_scan_list_dir_bounded <- function(path,
                                      max_entries = 500L,
-                                     timeout_ms = 2000L) {
+                                     timeout_ms = 2000L,
+                                     allow_fs_fallback = TRUE) {
   yol <- as.character(path %||% "")[1]
   bos <- list(
     entries = character(0), truncated = FALSE, reason = "",
@@ -227,7 +300,8 @@ cc_scan_list_dir_bounded <- function(path,
     .cc_scan_list_entries(
       yol,
       max_entries = max_entries,
-      deadline_ms = list(started = Sys.time(), limit = timeout_ms)
+      deadline_ms = list(started = Sys.time(), limit = timeout_ms),
+      allow_fs_fallback = isTRUE(allow_fs_fallback)
     ),
     error = function(e) {
       list(

@@ -13,8 +13,13 @@ if (!file.exists(file.path(repo_root, "app.R")) ||
 
 read_text <- function(path) {
   size <- suppressWarnings(file.info(path)$size[1])
+  # BOŞ/OKUNAMAYAN ÇALIŞMA ZAMANI DOSYASI SESSİZCE GEÇMEZ.
+  #
+  # `""` döndürmek raporda sıfır fonksiyon ve sıfır satır cezası üretiyordu;
+  # yani geçersiz bir çalışma zamanı kaynağı varken skor testi YİNE geçiyordu.
+  # `test-maintainability-ratchet-contract.R` zaten bu durumda durur.
   if (is.na(size) || size <= 0) {
-    return("")
+    stop(sprintf("Kaynak dosya boş ya da okunamıyor: %s", path), call. = FALSE)
   }
 
   con <- file(path, open = "rb")
@@ -32,6 +37,51 @@ read_text <- function(path) {
 
   txt <- gsub("\r\n?|\r", "\n", txt, perl = TRUE)
   enc2utf8(txt)
+}
+
+# Repo kökü önekini ayırır ve repoya GÖRE yolu döndürür.
+#
+# Eski sürüm öneki PCRE ile ayırıyordu:
+#   sub(paste0("^", <kaçışlı repo_root>), "", normalizePath(path), perl = TRUE)
+# Windows VM'de repo kökü bir UNC paylaşımıdır ve Türkçe karakter içerir
+# ("//sunucu/.../04 - Geliştirme/MERGEN Bilge"). Desen ile hedef dizenin
+# kodlama işaretleri ayrışabildiği için PCRE eşleşmesi SESSİZCE boşa düşüyor,
+# önek ayrılmıyor ve `file` sütununda MUTLAK yol kalıyordu. Bu da
+# `report$file == "R/x.R"` biçimindeki TAM eşitlik aramalarını bozuyordu
+# (sonek eşleşmesi kullanan testler etkilenmediği için sorun uzun süre
+# görünmez kaldı). Aşağıdaki yaklaşım regex kullanmaz; her iki tarafı da
+# `enc2utf8()` ile aynı kodlamaya getirir ve `startsWith()` ile karşılaştırır.
+# Aynı yöntem `tests/scripts/frontend_maintainability_report.R` içinde
+# zaten VM'de doğrulanmış durumdadır.
+# DEPO KÖKÜ BİR KEZ NORMALLEŞTİRİLİR. `relative_path()` keşfedilen HER dosya
+# için çağrılıyor; kökü her çağrıda yeniden `normalizePath()` etmek Windows UNC
+# çalışma kopyasında dosya başına bir AĞ GİDİŞ-DÖNÜŞÜ demektir.
+repo_root_norm <- enc2utf8(normalizePath(repo_root, winslash = "/", mustWork = TRUE))
+# SONDAKİ AYIRICI KIRPILIR: kök `C:/` ya da `//sunucu/pay/` biçiminde gelirse
+# `paste0(kok, "/")` ÇİFT ayırıcı üretir, hiçbir yol öneki eşleşmez ve `file`
+# sütununda MUTLAK yol kalır. Bu, `report$file == "R/x.R"` biçimindeki tam
+# eşitlik aramalarının tamamını sessizce bozar.
+repo_root_norm <- sub("/+$", "", repo_root_norm)
+if (!nzchar(repo_root_norm)) repo_root_norm <- "/"
+
+relative_path <- function(path) {
+  path_norm <- enc2utf8(normalizePath(path, winslash = "/", mustWork = TRUE))
+
+  # DOSYA SİSTEMİ KÖKÜ AYRI ELE ALINIR: kök `/` ise `paste0(kok, "/")` `//`
+  # üretir, `/app.R` hiçbir önek dalına uymaz ve `relative_path()` MUTLAK yol
+  # döndürür -- raporun göreli-dosya sözleşmesi bozulur.
+  root_prefix <- if (identical(repo_root_norm, "/")) "/" else paste0(repo_root_norm, "/")
+
+  if (startsWith(path_norm, root_prefix)) {
+    return(substring(path_norm, nchar(root_prefix) + 1L))
+  }
+
+  # Windows/ağ yolu güvenliği: büyük/küçük harf farkı olsa da aynı öneki ayır.
+  if (startsWith(tolower(path_norm), tolower(root_prefix))) {
+    return(substring(path_norm, nchar(root_prefix) + 1L))
+  }
+
+  path_norm
 }
 
 runtime_files <- c(
@@ -61,7 +111,7 @@ report <- lapply(runtime_files, function(path) {
   }
 
   data.frame(
-    file = sub(paste0("^", gsub("([\\^$.|?*+(){}\\[\\]\\\\])", "\\\\\\1", repo_root), "/?"), "", normalizePath(path, winslash = "/", mustWork = TRUE), perl = TRUE),
+    file = relative_path(path),
     lines = length(lines),
     functions = function_count,
     stringsAsFactors = FALSE
@@ -75,9 +125,15 @@ print(utils::head(report, 30), row.names = FALSE)
 
 cat("\nRefactor adayları:\n")
 
-# library_queries.R bilgi tabanı niteliğinde olduğu için maintainability
-# skorundan hariç tutulur; bu dosya bilinçli olarak büyük kalabilir.
-score_report <- subset(report, !grepl("(^|/)library_queries\\.R$", file, perl = TRUE))
+# library_queries.R bilgi tabanı; library_query_meta*.R dosyaları ise sorgu
+# kütüphanesinin metadata katmanıdır (curated meta, tracked auto iskelet ve
+# yerelde üretilen gitignore'lu local artefakt). Üretim VM'indeki gerçek
+# kütüphane on binlerce satıra ulaşabildiği için bu dosyalar bilinçli olarak
+# büyük kalabilir ve ratchet skoruna dahil edilmez.
+score_report <- subset(
+  report,
+  !grepl("(^|/)(library_queries|library_query_meta(_auto|_local)?|library_query_aliases_local)\\.R$", file, perl = TRUE)
+)
 
 candidates <- subset(score_report, lines >= 800 | functions >= 25)
 print(candidates, row.names = FALSE)

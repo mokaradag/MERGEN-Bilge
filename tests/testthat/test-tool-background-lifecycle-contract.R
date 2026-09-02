@@ -50,14 +50,28 @@
   repo_root <- .repo_root_tool_bg_life()
   full_path <- file.path(repo_root, rel_path)
   size <- suppressWarnings(file.info(full_path)$size[1])
-  if (is.na(size) || size <= 0) return("")
+  if (is.na(size) || size <= 0) {
+    # BOŞ DOSYA DA VACUOUS GEÇİRİR: bu dosyalardaki taramaların çoğu
+    # `expect_false(grepl(...))` biçimindedir ve boş dize hepsini karşılar.
+    stop(sprintf("Kaynak dosya BOŞ ya da okunamıyor: %s", full_path), call. = FALSE)
+  }
   con <- file(full_path, open = "rb")
   on.exit(close(con), add = TRUE)
   raw_data <- readBin(con, what = "raw", n = size)
   txt <- suppressWarnings(
-    iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
+    iconv(list(raw_data), from = "UTF-8", to = "UTF-8")[[1]]
   )
-  if (is.na(txt)) txt <- ""
+  # GEÇERSİZ UTF-8 SESSİZCE KABUL EDİLMEZ.
+  #
+  # `sub = "byte"` her geçersiz baytı kaçırır ve HER ZAMAN bir dize döndürür,
+  # dolayısıyla aşağıdaki `NA` kapısı ULAŞILAMAZ kalıyordu: UTF-8 dışı bir
+  # kodlamayla kaydedilmiş kaynak dosya kaçırılmış mojibake olarak taranıyor,
+  # ASCII sözleşme belirteçleri yine eşleşiyor ve NEGATİF iddialar bozuk bir
+  # dosya için de geçiyordu. `test-true-streaming-reset-ui-contract.R` ile
+  # `test-ux-regression-guardrails.R` zaten bu kuralı uygular.
+  if (is.na(txt)) {
+    stop(sprintf("Kaynak dosya geçerli UTF-8 değil: %s", rel_path), call. = FALSE)
+  }
   txt <- gsub("\r\n?|\r", "\n", txt, perl = TRUE)
   enc2utf8(txt)
 }

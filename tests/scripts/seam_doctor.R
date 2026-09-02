@@ -87,6 +87,7 @@ source("R/config_ui_asset_validators.R", encoding = "UTF-8", local = gov_env)
 source("R/config_ui_asset_tags.R", encoding = "UTF-8", local = gov_env)
 source("R/config_ui_asset_zones.R", encoding = "UTF-8", local = gov_env)
 source("R/config_ui_asset_zone_validators.R", encoding = "UTF-8", local = gov_env)
+source("R/config_seam_guard_tests.R", encoding = "UTF-8", local = gov_env)
 source("R/config_seam_registry.R", encoding = "UTF-8", local = gov_env)
 
 registry <- gov_env$mergen_seam_registry()

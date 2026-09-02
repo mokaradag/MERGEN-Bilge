@@ -152,6 +152,39 @@ redact_sensitive_text <- function(x) {
       perl = TRUE
     )
 
+    # ODBC KÜMELİ PAROLA DEĞERİ (`Pwd={...}`) DE MASKELENİR.
+    #
+    # Aşağıdaki çıplak-değer sınıfı `{` ve `}` karakterlerini DIŞLAR; bu yüzden
+    # `Pwd={A}}B}` biçiminde bir değer sıfır karakter eşleştiriyor ve parola
+    # OLDUĞU GİBİ loga gidiyordu. ODBC kümeli değerde `}` karakteri `}}` ile
+    # kaçırılır, yani değer İKİLENMEMİŞ ilk `}` ile biter. ATOMİK grup (`(?>)`)
+    # ZORUNLUDUR: geri izlemeye izin verilirse `Pwd={A}}B;...` gibi KAPANMAMIŞ
+    # bir değerde motor `}}` çiftini bölerek `{A}` eşleşmesi uydurur ve parola
+    # kuyruğu (`}}B`) maskesiz kalırdı.
+    metin <- gsub(
+      # DEĞER SINIFI SATIR SONUNU KAPSAMAZ (PR #705 inceleme, P3): kümeli bir ODBC
+      # değeri satır sonu TAŞIMAZ. Sınıf `\r\n` eşlediğinde KAPANMAMIŞ bir küme,
+      # SONRAKİ satırdaki kapanış parantezine kadar her şeyi yutuyor ve kalıcı
+      # sunucu logundan sürücü/bağlantı tanı bağlamı SİLİNİYORDU (kapanmamış
+      # geçiş için aynı koruma aşağıda zaten var).
+      paste0("(?i)\\b(", secret_key_pattern, ")(\\s*[:=]\\s*)\\{(?>(?:[^}\\r\\n]|\\}\\})*)\\}"),
+      "\\1\\2{<redacted>}",
+      metin,
+      perl = TRUE
+    )
+
+    # KAPANMAMIŞ küme: bozuk bir bağlantı dizesi de sızdırmamalıdır. Değer bir
+    # sonraki ayırıcıya (`;`) ya da metin sonuna kadar maskelenir.
+    metin <- gsub(
+      # DEĞER SINIFI SATIR SONUNU KAPSAMAZ: `[^;]*` `\r`/`\n` de eşlediği için
+      # çok satırlı bir sürücü tanılamasında kapanmamış küme, SONRAKİ TÜM
+      # satırları yutuyor ve arıza analizi için gereken bağlam siliniyordu.
+      paste0("(?i)\\b(", secret_key_pattern, ")(\\s*[:=]\\s*)\\{(?!<redacted>)[^;\\r\\n]*"),
+      "\\1\\2{<redacted>",
+      metin,
+      perl = TRUE
+    )
+
     metin <- gsub(
       paste0("(?i)\\b(", secret_key_pattern, ")(\\s*[:=]\\s*)[^\\s,;}{\"'&#<>]{6,}"),
       "\\1\\2<redacted>",
@@ -221,5 +254,109 @@ mergen_build_runtime_error_record <- function(error,
     message = redact_one(error_msg),
     error_class = enc2utf8(error_class),
     captured_at = captured_at
+  )
+}
+# ==============================================================================
+# ODBC/SQL Server BAĞLANTI TANIMLAYICILARI (AYRI, OPT-IN katman)
+#
+# `redact_sensitive_text()` KİMLİK BİLGİSİ alanlarını maskeler; `Uid`/`Server`
+# gibi alanları BİLEREK KORUR (bkz. test-log-redact-connection-string-behavior.R:
+# "kullanıcı adı sır değildir"). Bu genel sözleşme DEĞİŞMEZ.
+#
+# Ancak PK/asenkron çalışma zamanı, sürücü istisnalarını KALICI sunucu log'una
+# yazar ve sıradan bir ODBC hatası `DSN=PrivateProd`, `UID=alice`,
+# `Server=corp-internal\SQL01` taşır. Depo sözleşmesi özel DSN'lerin
+# log'lanmasını AÇIKÇA yasaklar; bu alanlar tek başına gizli değer olmasa da
+# iç altyapıyı yeniden kurmaya yeter. Bu yüzden AYRI ve AÇIKÇA çağrılan bir
+# katman uygulanır; genel redaktörün davranışına dokunulmaz.
+#
+# Değer maskelenir, ALAN ADI korunur: tanı için "hangi alan" bilgisi yeterlidir.
+# ==============================================================================
+
+.REDACT_CONN_KEYS <- paste(
+  c("dsn", "uid", "user[_ ]?id", "server", "address", "addr", "network",
+    "data[ _]?source", "database", "initial[ _]?catalog", "host",
+    "hostname", "port", "driver", "app", "application[ _]?name",
+    "workstation[ _]?id", "trusted[_ ]?connection",
+    # SIR ALANLARI: genel redaktör `Password=abc` gibi TIRNAKSIZ değerleri
+    # maskeler ama SÜSLÜ (`Pwd={...}`) biçimi yakalamaz; ODBC sürücü hataları
+    # ise tam bağlantı dizesini bu biçimde yazar. Anahtarlar burada da yer
+    # alınca aşağıdaki süslü-parantez kuralı şifreyi de maskeler.
+    "password", "passwd", "pwd"),
+  collapse = "|"
+)
+
+#' Bağlantı tanımlayıcılarını da maskele (log sınırı için)
+#'
+#' Önce genel `redact_sensitive_text()` uygulanır, ardından bağlantı
+#' tanımlayıcı DEĞERLERİ maskelenir. Yalnızca LOG yolunda çağrılır; kullanıcıya
+#' dönen metinler için `pk_safe_error_message()` zaten genel mesaja düşer.
+redact_connection_identifiers <- function(x) {
+  metin <- tryCatch(redact_sensitive_text(x), error = function(e) NULL)
+  if (is.null(metin)) return("<redaksiyon uygulanamadi>")
+  if (!is.character(metin) || length(metin) == 0L) return(metin)
+
+  # ÇOK ÖGELİ GİRDİDE MASKELEME ÖGE BAŞINA UYGULANIR. `redact_sensitive_text()`
+  # vektöreldir ve uzunluğu korur; uzunluk 1 değilse ERKEN dönmek `DSN=`,
+  # `UID=` ve `Server=` değerlerini OLDUĞU GİBİ bırakıyordu (ör. bir sürücü
+  # tanılamasının `capture.output()` çıktısı). Genel redaktör çalıştığı için
+  # kayıp SESSİZDİ: yalnızca bağlantı katmanı düşüyordu.
+  if (length(metin) > 1L) {
+    return(vapply(metin, redact_connection_identifiers, character(1), USE.NAMES = FALSE))
+  }
+  if (is.na(metin)) return(metin)
+
+  # SÜSLÜ PARANTEZLİ DEĞER: KAÇIŞLI VE KAPANMAMIŞ BİÇİMLER DE MASKELENİR.
+  #
+  # ODBC bağlantı dizesinde `}` karakteri `}}` ile kaçırılır. Eski `\{[^}]*\}`
+  # deseni `Pwd={A}}B}` girdisinde ERKEN durup yalnızca `{A}` kısmını maskeliyor,
+  # `}B}` kuyruğu logda GÖRÜNÜR kalıyordu. Kapanış parantezi hiç yoksa desen
+  # eşleşmiyor, ikinci geçişteki `(?!\{)` de devreye girmediği için değerin
+  # TAMAMI görünür kalıyordu. Önce kaçışlı biçim, sonra kapanmamış biçim.
+  # ATOMİK GRUP ZORUNLUDUR (`redact_sensitive_text()` ile AYNI kurgu).
+  #
+  # Geri izlemeye izin verilirse motor `Driver={ODBC Driver 17}}x` girdisinde
+  # yalnızca `{ODBC Driver 17}` kısmını eşler; çıktı `Driver={<redacted>}x`
+  # olur ve `x` kuyruğu KALICI logda MASKESİZ kalır. İkinci geçiş de
+  # yakalayamaz (değer artık kapanmamış değildir), üçüncü geçiş ise `(?!\{)`
+  # yüzünden atlar. `(?>...)` geri izlemeyi kapatarak `}}` çiftinin
+  # bölünmesini engeller.
+  metin <- gsub(
+    # DEĞER SINIFI SATIR SONUNU KAPSAMAZ (PR #705 inceleme, P3): yukarıdaki
+    # `redact_sensitive_text()` geçişiyle AYNI gerekçe -- kapanmamış bir küme
+    # sonraki satırların kapanışına kadar her şeyi yutup tanı bağlamını siliyordu.
+    paste0("(?i)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS,
+           ")(\\s*=\\s*)\\{(?>(?:[^{}\\r\\n]|\\}\\})*)\\}"),
+    "\\1\\2\\3{<redacted>}",
+    metin,
+    perl = TRUE
+  )
+
+  # Kapanmamış süslü parantez: satır sonuna kadar maskelenir.
+  #
+  # `(?m)` ZORUNLUDUR: karakter sınıfı satır sonlarını dışladığı için `$`
+  # çok satırlı bir mesajda YALNIZCA dizenin sonunda eşleşiyordu; ODBC sürücü
+  # tanıları çoğunlukla TEK çok satırlı dizedir ve ortadaki `Pwd={gizli`
+  # hiç maskelenmiyordu. Üçüncü geçiş de `(?!\{)` yüzünden değeri atlıyordu.
+  #
+  # KAÇIŞLI `}}` DA KAPANMAMIŞ DEĞERİN İÇİNDE OLABİLİR. `Pwd={A}}B` biçimi
+  # birinci desende eşleşmez (son kapanış `}` yoktur), eski ikinci desen ise
+  # `[^{}]` yüzünden ilk `}` karakterinde durup HİÇ eşleşmiyordu: kesilmiş bir
+  # ODBC tanısında parola kuyruğu kalıcı loga yazılırdı.
+  metin <- gsub(
+    paste0("(?im)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS,
+           ")(\\s*=\\s*)\\{(?:[^{}\r\n]|\\}\\})*$"),
+    "\\1\\2\\3{<redacted>}",
+    metin,
+    perl = TRUE
+  )
+
+  gsub(
+    # Zaten maskelenmiş ya da süslü parantezli değerler İKİNCİ KEZ işlenmez.
+    paste0("(?i)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS,
+           ")(\\s*=\\s*)(?!<redacted>)(?!\\{)[^;,}\\])\\s\"']+"),
+    "\\1\\2\\3<redacted>",
+    metin,
+    perl = TRUE
   )
 }

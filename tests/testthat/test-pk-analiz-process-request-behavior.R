@@ -31,16 +31,47 @@
   env <- new.env(parent = globalenv())
   kok <- resolve_repo_root_for_tests()
 
-  # Türkçe yorum: guard'ın aradığı 12 yardımcı adı için yer-tutucu stub'lar
+  # Türkçe yorum: guard'ın aradığı 18 yardımcı adı için yer-tutucu stub'lar
   guard_fns <- c(
     "summarize_columns_for_ai", "normalize_sql_server_identifiers",
     "resolve_pk_analysis_username", "get_user_rls_info", "apply_rls_to_data",
     "generate_statistical_summary", "extract_filter_criteria_from_prompt",
     "apply_smart_filters", "pk_init_query_score_table", "pk_score_query_relevance",
-    "pk_compute_heuristic_query_scores", "print_score_table"
+    "pk_compute_heuristic_query_scores", "print_score_table",
+    # Faz 5 seçim zinciri de guard listesindedir; stub'lanmazsa modül tüm
+    # zinciri kaynaklamayı dener ve izole ortamda göreli yol çözülemez.
+    "pk_select_query_v2", "pk_select_run", "pk_select_decide",
+    # PR #705 P3: korumasız çağrılan yardımcılar da guard listesindedir.
+    # Aşağıda gerçek tanımı kaynaklananlar bu stub'ları EZER; yalnızca bu
+    # ortamda gerçekten bulunmayanlar stub kalır ve zincir kaynaklanmaz.
+    "pk_row_cap_stage", "pk_user_error_text", "pk_report_db_error",
+    "pk_sql_readonly_guard", "pk_meta_actual_column_gate", "pk_build_analysis_result"
   )
   for (fn in guard_fns) assign(fn, function(...) NULL, envir = env)
 
+  # `%||%` ORTAMDA TANIMLANIR: kaynaklanan PK yardimcilari operatoru CAGIRIR ve
+  # ebeveyn `globalenv()` oldugu icin, baska bir test dosyasi onu global ortama
+  # SIZDIRMADIKCA cagri "could not find function" ile duserdi. URETIM semantigi
+  # (`R/utils_common.R`) korunur: yalnizca `NULL` yedege duser.
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+
+  # Faz 1: modul artik salt-okunur SQL kapisini, ODBC redaksiyonunu, kapali
+  # basarisiz RLS/gercek-sutun kapisini ve saf istem/yuk kuruculari tuketir.
+  for (yardimci in c("helpers_pk_config.R", "helpers_pk_safe_errors.R",
+                     "helpers_pk_sql_statements.R", "helpers_pk_sql_readonly.R",
+                     "helpers_pk_sql_local_temp_batch.R", "helpers_pk_query_meta_schema.R",
+                     "helpers_pk_query_meta_access.R", "helpers_pk_rls.R",
+                     "utils_log_redact.R", "helpers_pk_rls_identity.R",
+                     "helpers_pk_prompt_budget.R", "helpers_pk_analysis_prompts.R")) {
+    source(file.path(kok, "R", yardimci), encoding = "UTF-8", local = env)
+  }
+
+  # v1 AI seçicisi (`find_best_query_with_ai`) bakım borcu ratchet'i için
+  # modülden ÇIKARILDI; davranışı BİREBİR aynıdır ve bu dosya onu da test eder.
+  # Seçicinin zaman aşımı tabanı ORTAK yardımcıdadır ve ÖNCE kaynaklanmalıdır:
+  # eksik olduğunda seçicinin `tryCatch`'i sessizce `NULL` döndürürdü.
+  source(file.path(kok, "R", "helpers_pk_select_timeout.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "helpers_pk_analysis_ai_selector.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "module_proje_kaynak_analizi.R"), encoding = "UTF-8", local = env)
 
   env$cat <- function(...) invisible(NULL)
@@ -53,7 +84,7 @@
   # Türkçe yorum: varsayılan hazır kimlik + yetkili RLS; testler gerektikçe ezer
   env$resolve_pk_analysis_username <- function(session) list(ready = TRUE, username = "kullanici1")
   env$get_user_rls_info <- function(username, conn) list(authorized = TRUE, rls_filter = "")
-  env$select_smart_query <- function(prompt, library, chat_history) NULL
+  env$select_smart_query <- function(prompt, library, chat_history, ...) NULL
   env
 }
 
@@ -85,7 +116,35 @@ test_that("pk_analiz_process_request yetkisiz kullanıcıya yetki hatası döner
   env$get_user_rls_info <- function(username, conn) list(authorized = FALSE)
   res <- env$pk_analiz_process_request("soru", list(), .pkSession(), stop_check = function() FALSE)
   expect_true(grepl("Yetki Hatası", res, fixed = TRUE))
-  expect_true(grepl("DC01_user_base", res, fixed = TRUE))
+  expect_true(grepl("kullanıcı kaydınız", res, fixed = TRUE))
+  # PR #714: IC KAYNAK ADI (tablo/gorunum) kullaniciya GOSTERILMEZ. Eski
+  # bekleme tam da bu sizintiyi sozlesme sayiyordu; kurtarmaya yardimi yok,
+  # ic semayi acik ediyordu. Ayrinti sunucu log'unda kalir.
+  expect_false(grepl("DC01_user_base", res, fixed = TRUE))
+})
+
+# PR #705: yetki verilmeyen ÜÇ durum TİPLİ ayrılır; hepsinde analiz
+# ÇALIŞMAZ (kapalı başarısız), yalnızca kullanıcıya görünen TEŞHİS değişir.
+test_that("pk_analiz_process_request DB hatasını 'kullanıcı yok' diye raporlamaz", {
+  env <- .pkAnalizEnv()
+  env$get_user_rls_info <- function(username, conn) {
+    list(authorized = FALSE, db_error = TRUE,
+         reason = "Yetki bilgisi okunamadı (veritabanı erişim hatası).")
+  }
+  res <- env$pk_analiz_process_request("soru", list(), .pkSession(), stop_check = function() FALSE)
+  expect_true(grepl("Yetki Bilgisi Okunamadı", res, fixed = TRUE))
+  expect_false(grepl("DC01_user_base", res, fixed = TRUE))
+})
+
+test_that("pk_analiz_process_request mükerrer yetki kaydını BELİRSİZ raporlar", {
+  env <- .pkAnalizEnv()
+  env$get_user_rls_info <- function(username, conn) {
+    list(authorized = FALSE, ambiguous = TRUE,
+         reason = "Yetki kaydınız benzersiz değil (birden fazla kayıt bulundu).")
+  }
+  res <- env$pk_analiz_process_request("soru", list(), .pkSession(), stop_check = function() FALSE)
+  expect_true(grepl("Yetki Kaydı Belirsiz", res, fixed = TRUE))
+  expect_false(grepl("DC01_user_base", res, fixed = TRUE))
 })
 
 test_that("pk_analiz_process_request RLS sonrası durdurma talebinde iptal eder", {
@@ -143,18 +202,104 @@ test_that("pk_analiz_process_request geçersiz/kısa SQL için sistem hatası d�
   expect_true(grepl("Geçersiz SQL sorgusu", res, fixed = TRUE))
 })
 
-test_that("pk_analiz_process_request yasaklı SQL komutunu reddeder (Faz 5 güvenlik)", {
+test_that("pk_analiz_process_request yasakli SQL komutunu reddeder (D23 salt-okunur kapisi)", {
   env <- .pkAnalizEnv()
-  # Türkçe yorum: geçerli görünen ama DELETE içeren SQL -> güvenlik ihlali
+  # Türkçe yorum: geçerli görünen ama DELETE içeren çok ifadeli SQL reddedilir.
   cagrildi <- new.env(parent = emptyenv()); cagrildi$exec <- FALSE
   env$execute_pk_sql_unicode <- function(conn, sql) { cagrildi$exec <- TRUE; data.frame(x = 1L) }
   env$select_smart_query <- function(...) list(id = 1L, name = "S",
                                                sql = "SELECT * FROM tablo; DELETE FROM tablo")
   res <- env$pk_analiz_process_request("soru", list(), .pkSession(), stop_check = function() FALSE)
-  expect_true(grepl("Veritabanı Hatası", res, fixed = TRUE))
-  expect_true(grepl("Guvenlik ihlali", res, fixed = TRUE))
+
+  # Faz 1 / D23 + D22: Davranis BILEREK degisti. Eskiden kara liste bir stop()
+  # firlatiyor, bu da tryCatch tarafindan "Veritabani Hatasi: ... Guvenlik
+  # ihlali ..." seklinde HAM mesajla kullaniciya donuyordu. Artik kapi
+  # baglantidan ONCE reddeder ve genel guvenlik mesaji doner; ham SQL/hata
+  # metni sohbete SIZMAZ.
+  expect_true(grepl("Güvenlik Kontrolü", res, fixed = TRUE))
+  expect_false(grepl("DELETE", res, fixed = TRUE))
+  expect_false(grepl("Veritabanı Hatası", res, fixed = TRUE))
   # Türkçe yorum: yasaklı komut yüzünden gerçek SQL ÇALIŞTIRILMAMALI
   expect_false(cagrildi$exec)
+})
+
+test_that("pk_analiz_process_request ham ODBC hatasini sohbete gommez (D22)", {
+  env <- .pkAnalizEnv()
+  env$select_smart_query <- function(...) list(id = 1L, name = "S", sql = "SELECT * FROM tablo")
+  env$execute_pk_sql_unicode <- function(conn, sql) {
+    stop("nanodbc/nanodbc.cpp:1655: 42S02: [Microsoft][ODBC Driver]Invalid object name 'GizliTablo'.")
+  }
+
+  res <- env$pk_analiz_process_request("soru", list(), .pkSession(), stop_check = function() FALSE)
+
+  expect_true(grepl("Veritabanı Hatası", res, fixed = TRUE))
+  for (sizinti in c("nanodbc", "42S02", "ODBC", "GizliTablo")) {
+    expect_false(grepl(sizinti, res, fixed = TRUE), info = sizinti)
+  }
+})
+
+test_that("altyapi tanilamasi GIBI GORUNMEYEN SQL hatasi da kullanici mesajina donusur", {
+  # Redaksiyon bilerek gecirgendir: kendi urettigimiz Turkce mesajlar oldugu
+  # gibi doner (bkz. test-pk-safe-error-redaction-contract.R). Modul ise SQL
+  # yurutmesinden donen degerin veri mi hata mi oldugunu ORTAK ISARETTEN anlar.
+  # Isaret dusunce hata metni sonuc kumesi sanilyor ve akis apply_rls_to_data
+  # icinde ham bir R hatasiyla ("argument is of length zero") cokuyordu.
+  # execute_pk_sql_unicode()'un kendi ilk kontrolu tam olarak boyle bir mesaj
+  # firlatir; bu yol sentetik degil, gercek bir uretim yoludur.
+  senaryolar <- expand.grid(
+    ham = c("Bos SQL metni gonderilemez.",
+            "could not find function \"normalize_db_params\""),
+    bicim = c("firlat", "deger"),
+    stringsAsFactors = FALSE
+  )
+  for (.satir in seq_len(nrow(senaryolar))) {
+    ham <- senaryolar$ham[.satir]
+    bicim <- senaryolar$bicim[.satir]
+    env <- .pkAnalizEnv()
+    env$select_smart_query <- function(...) list(id = 1L, name = "S", sql = "SELECT * FROM tablo")
+    # HATA HEM FIRLATILARAK HEM DE DEGER OLARAK DONDURULEREK denenir.
+    #
+    # Yalnizca `stop()` atan bir stub, KORUNAN GERILEME MEVCUTKEN bile bu
+    # testi gecirir: modulun kendi `tryCatch` blogu istisnayi yakalar,
+    # `pk_user_error_text()` ayni "Veritabanı Hatası" onekini ekler ve
+    # `apply_rls_to_data()` her iki uygulamada da ULASILMAZ kalir
+    # (`cagrildi` ikisinde de FALSE). Gerileme ise farklidir: SQL yurutmesi
+    # hata metnini DEGER olarak dondurur, modul onu sonuc kumesi sanir ve
+    # `apply_rls_to_data()` ham bir R hatasiyla coker. Bu yuzden ikinci bicim
+    # de kosulur.
+    yurutucu <- if (identical(bicim, "firlat")) {
+      function(conn, sql) stop(ham, call. = FALSE)
+    } else {
+      # KAÇIŞ VE LİTERAL TÜRKÇE AYNI DİZEDE BİRLEŞMEZ (CLAUDE.md §1G): testthat
+      # bu dosyayı Windows VM'de UTF-8 beyanı OLMADAN ayrıştırır, karışık
+      # literal sessizce ÇİFT KODLANIR. İki parça `paste0()` ile birleştirilir.
+      function(conn, sql) paste0("\U000026A0\U0000FE0F", " **Veritabanı Hatası:** ", ham)
+    }
+    env$execute_pk_sql_unicode <- yurutucu
+    # STUB'IN CALISMADIGI ACIKCA OLCULUR.
+    #
+    # Yalnizca `stop()` atmak yetmez: modulun hata yakalayicisi o istisnayi da
+    # yakalar ve `pk_user_error_text()` ayni "Veritabanı Hatası" onekini ekler.
+    # Yani KORUNAN GERILEME MEVCUTKEN de asagidaki dort iddia GECERDI. Cagri
+    # gercekten olduysa bayrak ile gorulur.
+    cagrildi <- FALSE
+    env$apply_rls_to_data <- function(data, user_info, rls_cols) {
+      # Hata metni buraya ULASMAMALIDIR; ulasirsa nrow(NULL) uzerinden coker.
+      cagrildi <<- TRUE
+      stop("apply_rls_to_data hata metniyle cagrildi", call. = FALSE)
+    }
+
+    res <- env$pk_analiz_process_request("soru", list(), .pkSession(), stop_check = function() FALSE)
+
+    expect_false(cagrildi, info = paste(bicim, ham))
+    expect_true(is.character(res), info = ham)
+    expect_length(res, 1L)
+    # Kullaniciya donen metin ortak isareti TASIR.
+    expect_true(startsWith(res, "\U000026A0\U0000FE0F"), info = ham)
+    expect_true(grepl("Veritabanı Hatası", res, fixed = TRUE), info = ham)
+    # Stub metni kullaniciya SIZMAZ (sizsaydi gerileme zaten mevcut demektir).
+    expect_false(grepl("apply_rls_to_data", res, fixed = TRUE), info = ham)
+  }
 })
 
 # ---------------------------------------------------------------------------

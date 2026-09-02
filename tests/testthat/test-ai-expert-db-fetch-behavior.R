@@ -10,7 +10,7 @@
 repo_root_aix <- resolve_repo_root_for_tests()
 
 .aix_env <- new.env(parent = globalenv())
-.aix_env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0) b else a
+.aix_env$`%||%` <- function(a, b) if (is.null(a)) b else a
 for (.fn in c("log_info", "log_warn", "log_error", "log_debug")) {
   .aix_env[[.fn]] <- function(...) invisible(NULL)
 }
@@ -112,7 +112,7 @@ test_that("fetch_user_work_context: bağlantı yoksa boş bağlam döner", {
 
 .aix_env_with_read_boundary <- function() {
   env <- new.env(parent = globalenv())
-  env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0) b else a
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
   for (.fn in c("log_info", "log_warn", "log_error", "log_debug")) {
     env[[.fn]] <- function(...) invisible(NULL)
   }

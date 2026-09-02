@@ -14,7 +14,7 @@ test_that("call_local_llm çok-kipli içeriği gövdede dizi olarak korur (non-s
   skip_if_not_installed("jsonlite")
 
   env <- new.env(parent = globalenv())
-  env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0) b else a
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
   env$log_info <- function(...) invisible(NULL)
   env$resolve_local_llm_credentials <- function(model) {
     list(endpoint = "http://localhost:1234/v1/chat/completions",
@@ -79,7 +79,7 @@ test_that("call_local_llm sade string içeriği string olarak gönderir (metin y
   skip_if_not_installed("httr")
 
   env <- new.env(parent = globalenv())
-  env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0) b else a
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
   env$log_info <- function(...) invisible(NULL)
   env$resolve_local_llm_credentials <- function(model) {
     list(endpoint = "http://localhost:1234/v1/chat/completions",
@@ -125,7 +125,7 @@ test_that("call_local_llm_sse_worker çok-kipli içeriği postfields'te dizi ola
   skip_if_not_installed("jsonlite")
 
   env <- new.env(parent = globalenv())
-  env$`%||%` <- function(a, b) if (is.null(a) || length(a) == 0) b else a
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
   env$log_info <- function(...) invisible(NULL)
   env$get_local_model_capabilities <- function(model) {
     list(stream_reasoning = FALSE, allow_reasoning_fallback = FALSE)

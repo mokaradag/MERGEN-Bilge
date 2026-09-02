@@ -125,6 +125,19 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
 
     load_chat_in_progress(TRUE)
 
+    # KİLİT HER ÇIKIŞ YOLUNDA BIRAKILIR.
+    #
+    # `load_feedback_from_db()` ya da sonraki bir render adımı hata fırlattığında
+    # fonksiyon, gecikmeli sıfırlama planlanmadan ÖNCE terk ediliyordu. Kilit
+    # TRUE kalıyor ve kullanıcı oturumu yeniden yükleyene kadar HİÇBİR sohbet
+    # açılamıyordu. Başarı yolunda sahiplik gecikmeli geri çağrıya DEVREDİLİR
+    # (kısa gecikme çift tıklamayı emmeye devam eder); bu yüzden `basarili`
+    # bayrağı yalnızca orada TRUE olur.
+    basarili <- FALSE
+    on.exit({
+      if (!isTRUE(basarili)) try(load_chat_in_progress(FALSE), silent = TRUE)
+    }, add = TRUE)
+
     # ANINDA görsel geri bildirim: özel mesajlar reaktif flush beklemeden
     # websocket'e yazıldığı için bu toast, aşağıdaki DB hidrasyonu ve UI
     # kurulumu sürerken kullanıcıya hemen görünür. Başarı toast'ı ise içerik
@@ -223,8 +236,35 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     all_feedback <- load_feedback_from_db(effective_user_id)
     values$liked_messages <- all_feedback$liked
     values$disliked_messages <- all_feedback$disliked
+    # Faz 6 (§5.10): başka bir sohbete geçildiğinde, sonucu ZATEN atılacak bir
+    # PK işçisi DB bağlantısını ve işçi yuvasını doğal bitişine kadar tutmaya
+    # devam ederdi. Terk edilen istekler burada iptal edilir.
+    #
+    # YALNIZCA KİMLİK GERÇEKTEN DEĞİŞİYORSA (PR #703 incelemesi): `do_load_chat()`
+    # kullanıcı ZATEN AÇIK olan kayıtlı sohbete yeniden tıkladığında da çalışır.
+    # O durumda istek hâlâ AYNI sohbete aittir; koşulsuz terk etmek, geçerli ve
+    # uçuştaki bir PK analizini yalnızca liste öğesine tekrar tıklandığı için
+    # iptal ederdi. A -> B -> A gezinmesindeki bayat-geri-çağrı koruması
+    # KORUNUR: orada hedef kimlik gerçekten değişir.
+    onceki_chat_id <- tryCatch(shiny::isolate(values$current_chat_id), error = function(e) NULL)
+    hedef_degisti <- !identical(as.character(onceki_chat_id %||% "")[1],
+                                as.character(chat_id %||% "")[1])
+
     values$current_chat_id <- chat_id
     values$show_welcome <- FALSE
+
+    if (isTRUE(hedef_degisti) &&
+        exists("mergen_pk_abandon_active_requests", mode = "function", inherits = TRUE)) {
+      try(mergen_pk_abandon_active_requests(session, release = FALSE), silent = TRUE)
+    }
+
+    # D11 devralınan varlık bağlamı SOHBETE aittir. Aynı gerekçeyle yalnızca
+    # kimlik GERÇEKTEN değiştiğinde düşürülür; aynı sohbete yeniden tıklamak
+    # geçerli bir devam bağlamını silmemelidir.
+    if (isTRUE(hedef_degisti) &&
+        exists("pk_entity_context_clear", mode = "function", inherits = TRUE)) {
+      try(pk_entity_context_clear(session), silent = TRUE)
+    }
 
     # Mesaj içeriğinden aktif aracı tespit et ve etkinleştir
     # Görsel Uzmanı tespiti güvenilir çalışıyor (görsel yanıtlar belirgin işaretçiler içerir).
@@ -382,6 +422,40 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     # 2) Plotly/Highcharter çıktı bağlamalarını yeniden kur (sunucu taraflı grafikler)
     chat_rebind_all_charts(session, output, values$messages)
 
+    # UÇUŞTAKİ PK İSTEĞİNİN İLERLEME PANELİ GERİ KONUR.
+    #
+    # Yukarıdaki yeniden yükleme yolu `#chat_content_container` içeriğini
+    # KOŞULSUZ boşaltır; uçuştaki isteğin düşünme/yazıyor sarmalayıcısı da o
+    # kapsayıcıda yaşar. Kullanıcı ZATEN AÇIK sohbete yeniden tıkladığında istek
+    # (haklı olarak) terk edilmediği için `values$is_sending` / `values$typing`
+    # TRUE kalıyor, yeni mesaj "önceki isteği bekleyin" ile reddediliyor ama
+    # ekranda hiçbir ilerleme göstergesi kalmıyordu. Sarmalayıcı mesaj balonları
+    # basıldıktan SONRA yeniden eklenir.
+    # HER İKİ BAYRAK DA ETKİN İSTEK SAYILIR. Yeniden yükleme yolu
+    # `#chat_content_container` içeriğini `values$is_sending` VEYA
+    # `values$typing` için temizler, ama bu kapı yalnızca ilkine bakıyordu;
+    # `R/server_observers_chat_input.R` ile `send_message()` ise ikisini de
+    # etkin istek sayar. Ertelenmiş bir PK gönderimi `is_sending` bayrağını
+    # sıfırlayıp `typing` bayrağını TRUE bırakırsa, kullanıcı açık söyleşiye
+    # yeniden tıkladığında hiçbir ilerleme göstergesi kalmıyor ama girdi
+    # BLOKLU kalıyordu.
+    if (!isTRUE(hedef_degisti) &&
+        (isTRUE(shiny::isolate(values$is_sending)) ||
+         isTRUE(shiny::isolate(values$typing))) &&
+        exists("mergen_show_send_message_thinking_wrapper", mode = "function",
+               inherits = TRUE)) {
+      ucustaki_id <- tryCatch(shiny::isolate(values$backpressure_request_id),
+                              error = function(e) NULL)
+      try(mergen_show_send_message_thinking_wrapper(
+        session,
+        list(show_thinking_wrapper = TRUE,
+             panel_model_id = shiny::isolate(settings_data$model_selection),
+             classic_indicator_requested = FALSE,
+             panel_simulated = TRUE),
+        request_id = ucustaki_id
+      ), silent = TRUE)
+    }
+
     # Uzun söyleşi geçmişlerinde içerik/kartlar geç render olabildiği için
     # birkaç kez dip kaydırma denemesi yap.
     shinyjs::runjs("
@@ -419,10 +493,13 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       as.numeric(difftime(Sys.time(), yukleme_baslangici, units = "secs")) * 1000
     ))
     
-    # Kilidi kısa bir gecikmeyle serbest bırak
+    # Kilidi kısa bir gecikmeyle serbest bırak. SAHİPLİK BURADA DEVREDİLİR:
+    # `on.exit()` güvenlik ağı artık devreye girmez.
+    # SAHİPLİK YALNIZCA GERİ ÇAĞRI GERÇEKTEN KURULDUKTAN SONRA DEVREDİLİR: `shinyjs::delay()` (ör. websocket kapanırken) düşerse bayrak ZATEN `TRUE` olduğu için `on.exit()` güvenlik ağı kilidi bırakmıyor, `load_chat_in_progress` `TRUE` kalıyor ve sonraki HER söyleşi seçimi erken dönüyordu.
     shinyjs::delay(500, {
       load_chat_in_progress(FALSE)
     })
+    basarili <- TRUE
   }
   
   # -------------------------------------------------------------------------
@@ -471,7 +548,28 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     # Eğer mevcut sohbet silindiyse, Ana Söyleşi sayfasını sıfırla
     if (current_chat_deleted) {
       cat("[SAVED_CHATS] Mevcut sohbet silindi, welcome ekranına dönülüyor\n")
-      
+
+      # ETKİN PK İSTEĞİ ÖNCE TERK EDİLİR. Sohbet silindiğinde isteğin sahibi
+      # ortadan kalkar; işçi ve gönderme durumu ETKİN kalırsa geç dönen sonuç
+      # ARTIK BAŞKA bir sohbete uygulanmaya çalışılır ve gönder düğmesi
+      # DURDURMA kipinde kilitli kalırdı.
+      if (exists("mergen_pk_abandon_active_requests", mode = "function", inherits = TRUE)) {
+        try(mergen_pk_abandon_active_requests(session, release = FALSE), silent = TRUE)
+      }
+
+      # D11 SOHBET KAPSAMLI VARLIK BAĞLAMI DA DÜŞÜRÜLÜR (PR #705 inceleme, P2):
+      # etkin sohbet kimliği sıfırlanıyor ama `pk_entity_prior_context` oturumda
+      # KALIYORDU; kullanıcı silmeden sonra kaydedilmemiş bir söyleşiye
+      # geçtiğinde varlık çözümlemesi SİLİNMİŞ sohbetin kanonik öznesini
+      # uyguluyor ve YANLIŞ bir PK analizi üretebiliyordu. Nesil sayacı da
+      # artırılır: kaydedilmemiş sohbetler `NULL` kimliği PAYLAŞIR (bkz.
+      # `chat_reset_state()` ile AYNI sözleşme).
+      for (.pk_fn in c("pk_entity_context_clear", "mergen_pk_bump_chat_epoch")) {
+        if (exists(.pk_fn, mode = "function", inherits = TRUE)) {
+          try(get(.pk_fn, mode = "function")(session), silent = TRUE)
+        }
+      }
+
       # Sohbet durumunu sıfırla
       values$messages <- list()
       values$current_chat_id <- NULL
@@ -544,7 +642,20 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       # Mevcut sohbet varsa, Ana Söyleşi sayfasını sıfırla (tek silme ile aynı akış)
       if (!is.null(values$current_chat_id) || length(values$messages) > 0) {
         cat("[SAVED_CHATS] Tüm söyleşiler silindi, welcome ekranına dönülüyor\n")
-        
+
+        # ETKİN PK İSTEĞİ ÖNCE TERK EDİLİR (tek silme ile AYNI sözleşme).
+        if (exists("mergen_pk_abandon_active_requests", mode = "function", inherits = TRUE)) {
+          try(mergen_pk_abandon_active_requests(session, release = FALSE), silent = TRUE)
+        }
+
+        # D11 varlık bağlamı ve nesil sayacı da sıfırlanır (tek silme ile AYNI
+        # sözleşme; bkz. yukarıdaki gerekçe).
+        for (.pk_fn in c("pk_entity_context_clear", "mergen_pk_bump_chat_epoch")) {
+          if (exists(.pk_fn, mode = "function", inherits = TRUE)) {
+            try(get(.pk_fn, mode = "function")(session), silent = TRUE)
+          }
+        }
+
         # Sohbet durumunu sıfırla
         values$messages <- list()
         values$current_chat_id <- NULL

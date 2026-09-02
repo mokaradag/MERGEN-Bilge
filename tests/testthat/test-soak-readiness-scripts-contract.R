@@ -16,7 +16,7 @@
 #     - quit() yok (source-safe), guard env adlari mevcut.
 # ==============================================================================
 
-`%||%` <- function(x, y) if (is.null(x) || length(x) == 0L || is.na(x[1])) y else x
+`%||%` <- function(x, y) if (is.null(x)) y else x
 
 local({
   for (loc in c("C.UTF-8", "en_US.UTF-8", "tr_TR.UTF-8")) {

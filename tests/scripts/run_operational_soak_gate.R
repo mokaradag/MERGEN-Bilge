@@ -78,6 +78,7 @@ soak_src("mock_llm_server.R")
 soak_src("proxy_llm_server.R")
 soak_src("soak_client.R")
 soak_src("soak_interactive_lane.R")
+soak_src("soak_pk_analysis_lane.R")
 soak_src("soak_artifacts.R")
 
 cfg <- soak_resolve_config()
@@ -179,6 +180,7 @@ main_error <- NULL
 attach_result <- list(configured = FALSE, reachable = FALSE)
 inprocess <- list(available = FALSE, reason = "calismadi")
 interactive_result <- NULL
+pk_result <- NULL
 telemetry_handle <- NULL
 telemetry_summary <- NULL
 capacity_ladder_result <- NULL
@@ -253,6 +255,46 @@ main_result <- tryCatch({
     }
   } else {
     skipped_vec <- c(skipped_vec, "interactive_lane (kapali)")
+  }
+
+  # --- FAZ 6 PK-analiz seridi: bloklamayan yurutme katmani yuk altinda -------
+  if (isTRUE(cfg$pk_lane)) {
+    # `sprintf()` HERHANGI bir argumani SIFIR UZUNLUKTA oldugunda `character(0)`
+    # doner ve `cat(character(0))` HICBIR SEY basmaz (PR #705 inceleme, P3).
+    # `cfg$pk_lane` TRUE iken `cfg$pk_lane_sessions` `NULL`/sifir uzunlukta ise
+    # serit CALISIR ama operator baslangic satirini GORMEZ -- asagidaki sonuc
+    # satiri icin zaten kapatilmis olan ayni kusur.
+    cat(sprintf("[soak] PK-analiz seridi: %d in-process analiz oturumu...\n",
+                as.integer(cfg$pk_lane_sessions %||% 0L)))
+    pk_result <- tryCatch(
+      soak_pk_analysis_lane(cfg),
+      error = function(e) list(available = FALSE,
+                               reason = soak_redact_text(conditionMessage(e)))
+    )
+    if (!isTRUE(pk_result$available)) {
+      warnings_vec <- c(warnings_vec,
+        sprintf("PK-analiz seridi calismadi: %s", pk_result$reason %||% "bilinmeyen"))
+      skipped_vec <- c(skipped_vec, "pk_analysis_lane")
+    } else {
+      cat(sprintf(
+        "  -> %d oturum | basari=%s | iptal=%d (uygulanmadi=%s) | bayat=%d (uygulanmadi=%s) | onbellek hit=%d\n",
+        # `%d` NULL/sifir uzunlukta HATA yukseltir; eksik bir sayac butun ana
+        # akisi durdurup kalan seritleri (attach, HTTP yuk) atlatiyor ve kapi
+        # PK-serit sorunu yerine "Ana akis hatasi" raporluyordu.
+        as.integer(pk_result$sessions %||% 0L),
+        # KARAKTER ALANLAR DA YEDEKLENIR: eksik alan `character(0)` uretir,
+        # `sprintf()` de `character(0)` doner ve `cat()` HIC BIR SEY basmaz;
+        # operator PK seridinin calistigina dair kanit goremezdi.
+        as.character(pk_result$summary$success_rate %||% NA),
+        as.integer(pk_result$cancel$storm_rounds %||% 0L),
+        as.character(pk_result$cancel$never_applied %||% NA),
+        as.integer(pk_result$guard$stale_rounds %||% 0L),
+        as.character(pk_result$guard$stale_never_applied %||% NA),
+        as.integer(pk_result$cache$hit %||% 0L)
+      ))
+    }
+  } else {
+    skipped_vec <- c(skipped_vec, "pk_analysis_lane (kapali)")
   }
 
   # --- Attach modu (calisan uygulama) ---
@@ -537,7 +579,8 @@ if (!is.null(interactive_result) && isTRUE(interactive_result$available) &&
 
 threshold_checks <- soak_evaluate_thresholds(
   cfg, summary, inprocess, redaction0, memory_growth, temp_growth_mb,
-  server_alive_at_end, injected_faults, interactive_result, capacity_ladder_result
+  server_alive_at_end, injected_faults, interactive_result, capacity_ladder_result,
+  pk_result
 )
 threshold_outcome <- soak_threshold_outcome(threshold_checks)
 proofs <- soak_proof_statements(cfg, summary, inprocess, attach_result, interactive_result,
@@ -550,7 +593,7 @@ evidence <- soak_build_evidence(
   duration_actual, warnings_vec, skipped_vec, server_alive_at_end, injected_faults,
   interactive_result, telemetry_summary, capacity_ladder_result, timeout_attribution,
   real_canary_classification, real_llm_throughput_result,
-  cfg$load_driver, http_loadgen
+  cfg$load_driver, http_loadgen, pk_result
 )
 
 redaction <- soak_write_artifacts(artifact_dir, cfg, metrics, evidence,
@@ -559,7 +602,8 @@ redaction <- soak_write_artifacts(artifact_dir, cfg, metrics, evidence,
 # Redaksiyon sonucunu esik + evidence'a yansit ve FINALIZE et.
 threshold_checks <- soak_evaluate_thresholds(
   cfg, summary, inprocess, redaction, memory_growth, temp_growth_mb,
-  server_alive_at_end, injected_faults, interactive_result, capacity_ladder_result
+  server_alive_at_end, injected_faults, interactive_result, capacity_ladder_result,
+  pk_result
 )
 threshold_outcome <- soak_threshold_outcome(threshold_checks)
 evidence <- soak_build_evidence(
@@ -569,7 +613,7 @@ evidence <- soak_build_evidence(
   duration_actual, warnings_vec, skipped_vec, server_alive_at_end, injected_faults,
   interactive_result, telemetry_summary, capacity_ladder_result, timeout_attribution,
   real_canary_classification, real_llm_throughput_result,
-  cfg$load_driver, http_loadgen
+  cfg$load_driver, http_loadgen, pk_result
 )
 redaction <- soak_write_artifacts(artifact_dir, cfg, metrics, evidence,
                                   proxy_summary, capacity_rows, NULL)

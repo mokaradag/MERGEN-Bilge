@@ -136,16 +136,38 @@ call_local_llm <- function(chat_history, current_settings) {
     api_url
   ))
 
+  # Faz 6 (§5.10): PK analizinde bloklayan LLM çağrısı GERÇEKTEN iptal
+  # edilebilir olmalıdır. curl'ün ilerleme geri çağrısı `FALSE` döndüğünde
+  # aktarım anında kesilir; böylece Durdur, çağrı bitene kadar beklemek yerine
+  # tek bir yoklama aralığında gözlenir. Aktif bir PK kapısı yoksa BOŞ
+  # yapılandırma döner ve diğer LLM yolları etkilenmez.
+  iptal_cfg <- if (exists("pk_http_cancel_config", mode = "function", inherits = TRUE)) {
+    tryCatch(pk_http_cancel_config(), error = function(e) NULL)
+  } else {
+    NULL
+  }
+
   response <- mergen_perf_time(
     "llm.http_post",
     tryCatch({
-      httr::POST(
-        url = api_url,
-        body = body,
-        encode = "json",
-        do.call(httr::add_headers, hds),
-        httr::timeout(request_timeout_sec)
-      )
+      if (is.null(iptal_cfg)) {
+        httr::POST(
+          url = api_url,
+          body = body,
+          encode = "json",
+          do.call(httr::add_headers, hds),
+          httr::timeout(request_timeout_sec)
+        )
+      } else {
+        httr::POST(
+          url = api_url,
+          body = body,
+          encode = "json",
+          do.call(httr::add_headers, hds),
+          httr::timeout(request_timeout_sec),
+          iptal_cfg
+        )
+      }
     }, error = function(e) {
       stop(sprintf("API_CONNECTION_ERROR: %s", conditionMessage(e)))
     }),
@@ -212,20 +234,48 @@ call_local_llm <- function(chat_history, current_settings) {
 
 # --- YENİDEN DENEME MEKANİZMASI ---
 # API çağrılarında hata durumunda üstel geri çekilmeyle yeniden dener
+# İPTAL EDİLMİŞ İSTEK YENİDEN DENENMEZ.
+#
+# PK iptali (`pk_http_cancel_config()`) aktarımı curl'ün ilerleme geri
+# çağrısından koparır; bu kopma buraya sıradan bir `API_CONNECTION_ERROR`
+# olarak ulaşır. Her hatayı yeniden denenebilir sayan eski döngü, kullanıcı
+# Durdur'a bastıktan SONRA 2 sn bekleyip yeni bir POST atıyor, sonra 4 sn daha
+# bekleyip bir tane daha atıyordu: iptal, terminal duruma ulaşmayı ~6 sn
+# geciktiriyor ve iptal edilmiş isteğin arkasından ek LLM çağrıları
+# başlatıyordu.
+.pk_llm_retry_cancelled <- function(e) {
+  ileti <- tryCatch(conditionMessage(e), error = function(err) "")
+
+  if (exists("pk_http_cancelled_error", mode = "function", inherits = TRUE) &&
+      isTRUE(tryCatch(pk_http_cancelled_error(ileti), error = function(err) FALSE))) {
+    return(TRUE)
+  }
+
+  # Aşama kapısı GERÇEKTEN durmuşsa (Durdur ya da son tarih) yeniden deneme
+  # anlamsızdır: yeni çağrı da aynı kapıdan dönerdi.
+  exists("pk_stage_halted", mode = "function", inherits = TRUE) &&
+    isTRUE(tryCatch(pk_stage_halted(), error = function(err) FALSE))
+}
+
 call_llm_with_retry <- function(chat_history, settings, max_retries = 3) {
   for (i in 1:max_retries) {
-    tryCatch({
+    sonuc <- tryCatch({
       res <- call_local_llm(chat_history, settings)
       # Geriye uyumluluk: eski çağrılar character bekliyorsa list'e sar
       if (is.character(res)) {
         res <- list(content = as.character(res)[1] %||% "", duration = NA_real_)
       }
-      return(res)
+      list(ok = TRUE, value = res)
     }, error = function(e) {
-      if (i == max_retries) {
-        stop(e)
-      }
+      if (i == max_retries || .pk_llm_retry_cancelled(e)) stop(e)
       Sys.sleep(2^i)
+      # BEKLEME SIRASINDA DURDUR'A BASILABİLİR: kapı yalnızca hata anında
+      # yoklandığında, geri çekilme süresi boyunca gelen iptal görülmez ve
+      # ZATEN iptal edilmiş bir analiz için yeni bir POST atılırdı.
+      if (.pk_llm_retry_cancelled(e)) stop(e)
+      list(ok = FALSE, value = NULL)
     })
+
+    if (isTRUE(sonuc$ok)) return(sonuc$value)
   }
 }
