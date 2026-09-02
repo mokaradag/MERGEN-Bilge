@@ -789,7 +789,7 @@ MERGEN_PK_FETCH_CHUNK_ROWS=5000
 #   MERGEN_PK_MAX_RESULT_MB tavani KALDIRILMAZ; yalnizca dusuk-granulariteli
 #   parcali getirim yolu kullanilir. Yalnizca ilgili sorgunun LOB sutununun
 #   pratikte kucuk oldugu BILINIYORSA acin.
-MERGEN_PK_ALLOW_UNBOUNDED_LOB=FALSE
+MERGEN_PK_ALLOW_UNBOUNDED_LOB=TRUE
 
 #   PR #703 GÜNCELLEMESİ: bu bayrak artık SORGU METADATA'SINDAN da çözülür
 #   (`allow_unbounded_lob`) ve sorgu düzeyindeki değer EN YÜKSEK önceliklidir.
