@@ -32,6 +32,7 @@
 }
 
 test_that("toplulaştırma kökeninde eşleşen kayıt sayısı korunur", {
+  pk_test_pin_config("MERGEN_PK_ENGINE", "v1")  # v1 gövdesi ölçülür; VM'de v2 kipi bunu yönlendirirdi
   env <- .pk_observation_test_env()
   env$pk_provenance_current_request_id <- function(session) "req-count"
 
@@ -71,6 +72,7 @@ test_that("toplulaştırma kökeninde eşleşen kayıt sayısı korunur", {
 })
 
 test_that("gözlem yalnız uygulanan filtreleri ve BİLDİRİLEN motoru kaydeder", {
+  pk_test_pin_config("MERGEN_PK_ENGINE", "v1")  # v1 gövdesi ölçülür; VM'de v2 kipi bunu yönlendirirdi
   env <- .pk_observation_test_env()
   env$pk_provenance_current_request_id <- function(session) "req-observe"
   env$query_library <- list(list(id = "q-engine", name = "Motor Sorgusu", engine = "v2"))
@@ -156,6 +158,7 @@ test_that("gözlem yalnız uygulanan filtreleri ve BİLDİRİLEN motoru kaydeder
 })
 
 test_that("tüm filtreler düşürüldüyse ok_no_filter bozuk olarak raporlanır", {
+  pk_test_pin_config("MERGEN_PK_ENGINE", "v1")  # v1 gövdesi ölçülür; VM'de v2 kipi bunu yönlendirirdi
   env <- .pk_observation_test_env()
   env$pk_provenance_current_request_id <- function(session) "req-expr"
 
@@ -210,6 +213,7 @@ test_that("tüm filtreler düşürüldüyse ok_no_filter bozuk olarak raporlanı
 })
 
 test_that("düşürülen filtre stopped gibi özgül durumları ezmez", {
+  pk_test_pin_config("MERGEN_PK_ENGINE", "v1")  # v1 gövdesi ölçülür; VM'de v2 kipi bunu yönlendirirdi
   env <- .pk_observation_test_env()
   env$pk_provenance_current_request_id <- function(session) "req-stopped"
 

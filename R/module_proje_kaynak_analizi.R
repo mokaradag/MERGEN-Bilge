@@ -31,11 +31,14 @@ pk_required_helpers <- list(
   list(
     functions = c("pk_select_query_v2", "pk_select_run", "pk_select_decide"),
     path = c(
+      file.path("R", "helpers_pk_select_timeout.R"),  # ONKOSUL: ustteki spec onu YALNIZCA v1 skorlayicilari eksikken yukler
       file.path("R", "helpers_pk_query_retrieval.R"),
       file.path("R", "helpers_pk_query_selection_json.R"),
       file.path("R", "helpers_pk_query_selection_config.R"),
+      file.path("R", "helpers_pk_query_selection_compact.R"),
       file.path("R", "helpers_pk_query_selection_payload.R"),
       file.path("R", "helpers_pk_query_selection_prompt.R"),
+      file.path("R", "helpers_pk_query_selection_canonical.R"),
       file.path("R", "helpers_pk_query_selection_requirements.R"),
       file.path("R", "helpers_pk_query_selection_parse.R"),
       file.path("R", "helpers_pk_query_selection_decide.R"),

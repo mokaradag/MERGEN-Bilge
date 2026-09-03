@@ -178,10 +178,18 @@ $(document).ready(function() {
 		container.classList.remove('pending');
 	  }
 
+	  // Baslik cagiran tarafindan degistirilebilir: ayni kanal netlestirme
+	  // secenekleri icin de kullaniliyor ve onlar takip sorusu degildir.
+	  // Metin `textContent` ile yazilir; sunucudan gelen baslik HTML olamaz.
 	  var titleDiv = document.createElement('div');
 	  titleDiv.className = 'followup-suggestions-title';
-	  titleDiv.innerHTML =
-		'<i class="fas fa-lightbulb"></i><span>Önerilen Takip Soruları</span>';
+	  var titleIcon = document.createElement('i');
+	  titleIcon.className = 'fas fa-lightbulb';
+	  var titleText = document.createElement('span');
+	  titleText.textContent = normalizeMessageText(data.title || '').trim() ||
+		'Önerilen Takip Soruları';
+	  titleDiv.appendChild(titleIcon);
+	  titleDiv.appendChild(titleText);
 	  container.appendChild(titleDiv);
 
 	  var listDiv = document.createElement('div');

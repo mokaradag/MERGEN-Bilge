@@ -661,3 +661,84 @@ test_that("search_file_in_folder ipucu skorunda taban klasör adındaki parçala
   found <- search_file_in_folder(base_dir, "Grup&&Kalite&&prosedur.pdf")
   expect_null(found)
 })
+
+# ------------------------------------------------------------------------------
+# UNICODE ÜSTSİMGE ATIFLARI (Langflow istemi `<sup>` etiketini KALDIRDI)
+#
+# Karakterler `intToUtf8()` ile kurulur: kaynak dosya ASCII/CP1254 güvenli kalır
+# ve Windows konsol kod sayfası fixture'ı bozamaz.
+# ------------------------------------------------------------------------------
+
+.langflow_ust <- function(kod) intToUtf8(as.integer(kod))
+
+test_that("üstsimge KARAKTERİ atıfları [n]'e çevrilir", {
+  env <- .source_langflow_inline_env()
+  harita <- stats::setNames(as.character(1:4), as.character(1:4))
+
+  metin <- paste0("baslatilir", .langflow_ust(0x00B9), "; onay alinir",
+                  .langflow_ust(0x00B3), " ve rapor (EK-C)",
+                  .langflow_ust(0x2074), " hazirlanir.")
+  out <- env$.langflow_unicode_sup_to_citation(metin, harita)
+
+  expect_true(grepl("baslatilir[1];", out, fixed = TRUE))
+  expect_true(grepl("alinir[3]", out, fixed = TRUE))
+  expect_true(grepl("(EK-C)[4]", out, fixed = TRUE))
+})
+
+test_that("ÜS ifadeleri atıf sayılmaz", {
+  env <- .source_langflow_inline_env()
+  harita <- stats::setNames(as.character(1:6), as.character(1:6))
+
+  # Ölçü birimi ve sayı ardından gelen üstsimge bir üstür, atıf değildir.
+  for (metin in c(paste0("alan 25 m", .langflow_ust(0x00B2)),
+                  paste0("hacim 3 cm", .langflow_ust(0x00B3)),
+                  paste0("deger 10", .langflow_ust(0x2076)))) {
+    expect_identical(env$.langflow_unicode_sup_to_citation(metin, harita), metin)
+  }
+})
+
+test_that("yan yana üstsimgeler KAYNAKÇA'ya sorularak çözülür", {
+  env <- .source_langflow_inline_env()
+
+  metin <- paste0("dayanir", .langflow_ust(0x00B9), .langflow_ust(0x00B2), ".")
+
+  # 4 kaynak: "12" geçerli bir giriş DEĞİLDİR -> iki ayrı atıf.
+  dar <- stats::setNames(as.character(1:4), as.character(1:4))
+  expect_true(grepl("dayanir[1][2].", env$.langflow_unicode_sup_to_citation(metin, dar),
+                    fixed = TRUE))
+
+  # 12 kaynak: "12" geçerli bir giriştir -> TEK atıf.
+  genis <- stats::setNames(as.character(1:12), as.character(1:12))
+  expect_true(grepl("dayanir[12].", env$.langflow_unicode_sup_to_citation(metin, genis),
+                    fixed = TRUE))
+})
+
+test_that("KAYNAKÇA yokken üstsimge DEĞİŞMEZ", {
+  env <- .source_langflow_inline_env()
+  metin <- paste0("baslatilir", .langflow_ust(0x00B9), ".")
+
+  # Harita yok: doğrulanamayan atıf düşürülmez, metin korunur.
+  expect_identical(env$.langflow_unicode_sup_to_citation(metin, NULL), metin)
+  # Aralık dışı numara da etkisizdir.
+  expect_identical(
+    env$.langflow_unicode_sup_to_citation(paste0("x", .langflow_ust(0x2079)),
+                                          stats::setNames("1", "1")),
+    paste0("x", .langflow_ust(0x2079))
+  )
+})
+
+test_that("finalize üstsimge KARAKTERLERİNİ de tıklanabilir hâle getirir", {
+  env <- .source_langflow_inline_env()
+  kaynaklar <- list(
+    list(title = "Belge A", path = "belge_a.pdf"),
+    list(title = "Belge B", path = "Grup&&belge_b.pdf")
+  )
+  metin <- paste0("Ilk madde", .langflow_ust(0x00B9), " ve ikinci madde",
+                  .langflow_ust(0x00B2), ".")
+
+  out <- env$mergen_langflow_finalize_answer(metin, kaynaklar)
+  expect_true(grepl("Ilk madde[1]", out, fixed = TRUE))
+  expect_true(grepl("ikinci madde[2]", out, fixed = TRUE))
+  expect_true(grepl("[KAYNAK 1]", out, fixed = TRUE))
+  expect_true(grepl("[KAYNAK 2]", out, fixed = TRUE))
+})

@@ -599,6 +599,9 @@ test_that("Geçiş B bloğu Geçiş A'nın anlamsal ÜST KÜMESİDİR", {
 })
 
 test_that("Geçiş B yükü TOPLAM karakter bütçesiyle sınırlıdır", {
+  # KİMLİK GÖVDESİ bile sığmıyorsa kapalı başarısızlık KORUNUR: burada tek
+  # başına 5000 karakterlik bir açıklama 2000 karakterlik bütçeyi aşar ve bu
+  # gerçekten bir yapılandırma sorunudur.
   cfg <- .pk_selhard_cfg(pass_b_chars = 2000L)
   dev <- list(
     id = "q100", name = "Dev", description = strrep("a", 5000L),
@@ -614,6 +617,163 @@ test_that("Geçiş B yükü TOPLAM karakter bütçesiyle sınırlıdır", {
     }, cfg = .pk_selhard_cfg(pass_b_chars = 2000L, recall_n = 2L)
   )
   expect_identical(karar$status, PK_SELECT_STATUS_LIBRARY_ERROR)
+})
+
+test_that("Geçiş B bütçesi aşılınca aday DÜŞÜRÜLMEZ, sütun payı daraltılır", {
+  # ÖLÇÜLEN ÜRETİM ARIZASI: gerçek kütüphanede sorgu başına onlarca/yüzlerce
+  # sütun tanımı vardır; 5 adaylık yük varsayılan bütçeyi HER ZAMAN aşıyor ve
+  # `pk_select_pass_b_blocks()` TÜM isteği `library_error` ile reddediyordu.
+  # Yani basit bir soruda Geçiş B hiç çalışmıyordu.
+  sutunlar <- setNames(
+    lapply(seq_len(150L), function(i) list(
+      label = sprintf("Tamamlanan Aktivite Oranı %d", i),
+      capability = sprintf("measure.oran_%d", i), role = "measure",
+      entity = "project", aggregate = "median", additive = FALSE,
+      unit = "yuzde", filterable = TRUE, match = "numeric"
+    )),
+    sprintf("Kolon_%d", seq_len(150L))
+  )
+  adaylar <- lapply(seq_len(5L), function(i) list(
+    id = sprintf("q%03d", i), name = sprintf("Proje Özeti %d", i),
+    description = "Bir satır bir proje özetidir.",
+    meta = list(entity = "project", column_meta = sutunlar)
+  ))
+
+  cfg <- .pk_selhard_cfg(pass_b_chars = 24000L)
+  bloklar <- pk_select_pass_b_blocks(adaylar, cfg)
+
+  expect_false(isTRUE(bloklar$truncated))
+  expect_true(isTRUE(bloklar$clipped))
+  # HİÇBİR ADAY KAYBOLMAZ: geri alınamaz olan budur.
+  expect_identical(bloklar$ids, sprintf("q%03d", seq_len(5L)))
+  for (kimlik in bloklar$ids) {
+    expect_true(grepl(sprintf("--- SORGU %s ---", kimlik), bloklar$text, fixed = TRUE))
+  }
+  # Kırpma AÇIKÇA işaretlenir; model kalan sütunların var olduğunu bilir.
+  expect_true(grepl("sütun daha", bloklar$text, fixed = TRUE))
+  expect_true(nchar(bloklar$text) <= 24000L)
+
+  # Yük zaten sığıyorsa TAM AYRINTI yolu birebir korunur (kırpma yoktur).
+  dar_sutun <- lapply(adaylar, function(aday) {
+    aday$meta$column_meta <- sutunlar[seq_len(10L)]
+    aday
+  })
+  genis <- pk_select_pass_b_blocks(dar_sutun, .pk_selhard_cfg(pass_b_chars = 120000L))
+  expect_false(isTRUE(genis$clipped))
+  expect_false(isTRUE(genis$truncated))
+  expect_false(grepl("sütun daha", genis$text, fixed = TRUE))
+})
+
+test_that("UYDURULAN yetenek kimliği isteği öldürmez; kalan iddialar doğrulanır", {
+  # ÖLÇÜLEN ÜRETİM ARIZASI: DOĞRU sorgu %95 güvenle seçiliyor, model
+  # `dimension.project` gibi kayıt defterinde OLMAYAN bir kimlik yazıyor ve TÜM
+  # istek reddediliyordu. Uydurulmuş kimlik, sorgunun soruyu cevaplayıp
+  # cevaplayamadığı hakkında kanıt DEĞİLDİR; üstelik hiç `requirements` beyan
+  # etmeyen bir model `not_asserted` ile ilerleyebiliyordu (asimetrik ceza).
+  kayit <- pk_select_test_registry()
+  kimlikler <- pk_select_capability_ids(kayit)
+  sorgu <- pk_select_test_library()[[1]]
+  yetenek <- .pk_select_query_capabilities(sorgu)
+  expect_true(length(yetenek) > 0L)
+
+  istek <- list(
+    entity = "project", measures = list(yetenek[1]), dates = list(),
+    dimensions = list("dimension.project"), group_by = list(), unsupported = list()
+  )
+
+  ham <- pk_select_validate_requirements(sorgu, istek, kimlikler)
+  expect_identical(ham$status, "unknown_capability")
+  expect_identical(ham$unknown, "dimension.project")
+
+  temiz <- pk_select_drop_unknown_requirements(istek, ham$unknown)
+  expect_false(is.null(temiz))
+  expect_false("dimension.project" %in% temiz$dimensions)
+  # DOĞRULANABİLİR iddia KORUNUR: düşürme yalnızca bilinmeyeni siler.
+  expect_true(yetenek[1] %in% temiz$measures)
+
+  yeniden <- pk_select_validate_requirements(sorgu, temiz, kimlikler)
+  expect_false(identical(yeniden$status, "unknown_capability"))
+
+  # Kalan iddia SORGUDA YOKSA kapı hâlâ kapanır (gevşetme değildir).
+  eksik <- list(
+    entity = NULL, measures = list(), dates = list(),
+    dimensions = list(setdiff(kimlikler, yetenek)[1], "dimension.project"),
+    group_by = list(), unsupported = list()
+  )
+  eksik_ham <- pk_select_validate_requirements(sorgu, eksik, kimlikler)
+  expect_identical(eksik_ham$status, "unknown_capability")
+  eksik_temiz <- pk_select_drop_unknown_requirements(eksik, eksik_ham$unknown)
+  eksik_son <- pk_select_validate_requirements(sorgu, eksik_temiz, kimlikler)
+  expect_identical(eksik_son$status, "capability_missing")
+})
+
+test_that("beyan edilmemiş yetenek VARSAYILAN olarak reddetmez, AÇIKLANIR", {
+  # ÖLÇÜLEN ÜRETİM ARIZASI: `capability` beyanı gerçek kütüphanede kaçınılmaz
+  # biçimde KISMİDİR (yüzlerce sorgu, binlerce sütun). Beyanın YOKLUĞU yeteneğin
+  # yokluğunun kanıtı değildir; kapı yine de DOĞRU seçilmiş sorguyu durduruyordu.
+  pk_test_pin_config("MERGEN_PK_REQUIRE_CAPABILITY_MATCH", FALSE)
+  expect_false(pk_capability_match_required())
+  Sys.setenv(MERGEN_PK_REQUIRE_CAPABILITY_MATCH = "TRUE")
+  expect_true(pk_capability_match_required())
+  Sys.unsetenv("MERGEN_PK_REQUIRE_CAPABILITY_MATCH")
+
+  kimlikler <- pk_select_capability_ids(pk_select_test_registry())
+  lib <- pk_select_test_library()
+  yetenek <- .pk_select_query_capabilities(lib[[1]])
+  disarida <- setdiff(kimlikler, yetenek)
+  expect_true(length(disarida) > 0L)
+
+  # Sorgunun BEYAN ETMEDİĞİ bir ölçü istenir; sorgu yine de yüksek güvenle seçilir.
+  gecis_b <- list(
+    ok = TRUE, id = "q001", confidence = 95L, reason = "gerekce",
+    alternates = list(list(id = "q002", confidence = 20L)),
+    requirements = list(
+      entity = NULL, measures = disarida[1], dates = character(0),
+      dimensions = character(0), group_by = character(0), unsupported = character(0)
+    ),
+    missing_info = NA_character_
+  )
+  indeks <- pk_select_library_index(lib)
+
+  gevsek <- pk_select_decide(gecis_b, c("q001", "q002"), indeks, .pk_selhard_cfg(),
+                             capability_ids = kimlikler)
+  expect_identical(gevsek$status, PK_SELECT_STATUS_AUTO)
+  expect_identical(gevsek$capability_status, "capability_missing")
+  # Doğrulanamayan iddia SESSİZ KALMAZ.
+  expect_true(any(grepl("doğrulanamadı", gevsek$disclosures, fixed = TRUE)))
+
+  # KATI kip istendiğinde eski kapalı-başarısız davranış aynen geri gelir.
+  Sys.setenv(MERGEN_PK_REQUIRE_CAPABILITY_MATCH = "TRUE")
+  kati <- pk_select_decide(gecis_b, c("q001", "q002"), indeks, .pk_selhard_cfg(),
+                           capability_ids = kimlikler)
+  expect_identical(kati$status, PK_SELECT_STATUS_CAPABILITY_MISSING)
+})
+
+test_that("Geçiş B istemi izinli yetenekleri ADAYLARIN beyanına daraltır", {
+  # Küresel kayıt defterinin tamamını ilan etmek, modeli o sorguda BULUNMAYAN
+  # bir kimlik yazmaya davet ediyor ve doğru seçim `capability_missing` ile
+  # reddediliyordu.
+  cfg <- .pk_selhard_cfg()
+  lib <- pk_select_test_library()
+  adaylar <- list(lib[[1]])
+  kimlikler <- pk_select_capability_ids(pk_select_test_registry())
+  aday_yetenekleri <- .pk_select_query_capabilities(lib[[1]])
+  disarida <- setdiff(kimlikler, aday_yetenekleri)
+  expect_true(length(disarida) > 0L)
+
+  mesajlar <- pk_select_pass_b_messages(
+    "soru", adaylar,
+    pk_select_follow_up_context(NULL, NULL, "q001", cfg),
+    cfg, capability_ids = kimlikler
+  )
+  sistem <- mesajlar[[1]]$content
+
+  for (kimlik in aday_yetenekleri) {
+    expect_true(grepl(kimlik, sistem, fixed = TRUE))
+  }
+  for (kimlik in disarida) {
+    expect_false(grepl(sprintf("\n%s (rol:", kimlik), sistem, fixed = TRUE))
+  }
 })
 
 test_that("Geçiş B istemi varlık türlerini yetenek kimliğinden AYIRIR", {
@@ -694,9 +854,25 @@ test_that("Geçiş A TOPLAM bütçesi aşılırsa kapalı başarısız olunur", 
   expect_false(isTRUE(genis$truncated))
   expect_true(genis$chars > 0L)
 
-  # Bütçe gerçek yükün ALTINDA: kapalı başarısız raporlanır.
-  dar_butce <- max(2000L, as.integer(genis$chars / 2L))
-  dar <- pk_select_pass_a_payload(lib, .pk_selhard_cfg(pass_a_chars = dar_butce))
+  # EN DAR BASAMAK ölçülür (kimlik + isim + açıklama); merdivenin tabanı budur.
+  # Bütçe ondan küçükse hiçbir seyreltme yetmez ve kapalı başarısızlık KORUNUR.
+  taban <- pk_select_pass_a_payload(lib, .pk_selhard_cfg(pass_a_chars = 2000L))
+  expect_identical(taban$compaction, "asgari")
+
+  # Bütçe gerçek yükün ALTINDA ama tabanın ÜSTÜNDE: yük SEYRELTİLİR, satır
+  # DÜŞÜRÜLMEZ. Eskiden burada TÜM istek reddediliyordu; oysa bütçe aşımı bir
+  # kütüphane hatası değil, istem şekillendirme durumudur. Geri alınamaz olan
+  # tek şey bir sorgunun GÖRÜNMEZ olmasıdır.
+  orta_butce <- as.integer(taban$chars) + 500L
+  orta <- pk_select_pass_a_payload(lib, .pk_selhard_cfg(pass_a_chars = orta_butce))
+  expect_false(isTRUE(orta$truncated))
+  expect_false(identical(orta$compaction, "tam"))
+  expect_true(orta$chars <= orta_butce)
+  expect_identical(orta$ids, genis$ids)
+
+  # En dar basamak bile sığmıyorsa kapalı başarısızlık KORUNUR.
+  dar_butce <- 2000L
+  dar <- taban
   expect_true(isTRUE(dar$truncated))
   expect_identical(dar$budget, dar_butce)
   expect_true(dar$chars > dar$budget)
@@ -719,4 +895,260 @@ test_that("Geçiş A TOPLAM bütçesi aşılırsa kapalı başarısız olunur", 
   expect_identical(karar$status, PK_SELECT_STATUS_LIBRARY_ERROR)
   expect_true(grepl("secim", karar$message_tr, fixed = TRUE) ||
                 grepl("seçim", karar$message_tr, fixed = TRUE))
+})
+
+test_that("uydurulan yetenek düşürülünce karar bunu AÇIKÇA bildirir", {
+  # Kanıt yalnızca reddetme metnine iliştirilen `errors` alanında kalmamalıdır:
+  # kapı GEÇİLDİĞİNDE de kullanıcı hangi iddianın yok sayıldığını görmelidir.
+  pk_test_pin_config("MERGEN_PK_REQUIRE_CAPABILITY_MATCH", FALSE)
+  kimlikler <- pk_select_capability_ids(pk_select_test_registry())
+  lib <- pk_select_test_library()
+  yetenek <- .pk_select_query_capabilities(lib[[1]])
+
+  gecis_b <- list(
+    ok = TRUE, id = "q001", confidence = 95L, reason = "gerekce",
+    alternates = list(list(id = "q002", confidence = 20L)),
+    requirements = list(
+      entity = NULL, measures = yetenek[1], dates = character(0),
+      dimensions = "dimension.project", group_by = character(0),
+      unsupported = character(0)
+    ),
+    missing_info = NA_character_
+  )
+
+  karar <- pk_select_decide(gecis_b, c("q001", "q002"),
+                            pk_select_library_index(lib), .pk_selhard_cfg(),
+                            capability_ids = kimlikler)
+
+  expect_identical(karar$status, PK_SELECT_STATUS_AUTO)
+  expect_true(any(grepl("dimension.project", karar$disclosures, fixed = TRUE)))
+})
+
+test_that("Geçiş B daraltılmış yükü bildirilen bütçeyi AŞMAZ", {
+  # `SUTUNLAR: ` öneki paya dâhil değilken aday başına sabit bir taşma kalıyordu.
+  sutunlar <- setNames(
+    lapply(seq_len(200L), function(i) list(
+      label = sprintf("Ölçü %d", i), capability = sprintf("measure.m_%d", i),
+      role = "measure", entity = "project", unit = "adet"
+    )),
+    sprintf("Kolon_%d", seq_len(200L))
+  )
+  adaylar <- lapply(seq_len(5L), function(i) list(
+    id = sprintf("q%03d", i), name = sprintf("Sorgu %d", i),
+    description = "Kısa açıklama.", meta = list(column_meta = sutunlar)
+  ))
+
+  for (butce in c(4000L, 8000L, 20000L)) {
+    bloklar <- pk_select_pass_b_blocks(adaylar, .pk_selhard_cfg(pass_b_chars = butce))
+    expect_false(isTRUE(bloklar$truncated))
+    expect_length(bloklar$ids, 5L)
+    expect_true(nchar(bloklar$text) <= butce,
+                info = sprintf("bütçe %d aşıldı: %d", butce, nchar(bloklar$text)))
+  }
+})
+
+test_that("sütun kırpması TEK tanım sığmadığında da bütçeyi AŞMAZ", {
+  # Geri adım döngüsü `alinan > 1` iken durur; ilk tanım + işaret bütçeyi
+  # aşınca fonksiyon taşan metni AYNEN döndürüyordu.
+  tanimlar <- sprintf("Kolon_%d (yetenek=measure.m_%d)", 1:9, 1:9)
+  for (butce in c(10L, 20L, 30L, 45L, 60L)) {
+    metin <- pk_select_fit_column_defs(tanimlar, butce)
+    expect_true(nchar(metin) <= butce,
+                info = sprintf("bütçe %d aşıldı: %d", butce, nchar(metin)))
+  }
+})
+
+test_that("blok toplamı ayraçları YALNIZCA bloklar arasında sayar", {
+  # Her bloğa 2 karakter eklemek, tam bütçe boyundaki tek bloğu taşmış sayıp
+  # gereksiz kırpma tetikliyordu.
+  aday <- list(id = "q001", name = "Sorgu", description = "Kisa.")
+  tek <- pk_select_pass_b_block(aday, .pk_selhard_cfg())
+  bloklar <- pk_select_pass_b_blocks(
+    list(aday), .pk_selhard_cfg(pass_b_chars = nchar(tek))
+  )
+  expect_false(isTRUE(bloklar$clipped))
+  expect_identical(bloklar$text, tek)
+})
+
+test_that("kırpma önceliği ETİKET METNİNDEN değil metadata'dan okunur", {
+  # `yetenek=` geçen bir ETİKET, gerçek yetenek sütununu payın dışına itiyordu.
+  sutunlar <- list(
+    Tuzak = list(label = "yetenek=measure.sahte olan alan", role = "dimension"),
+    Gercek = list(label = "Kalan işçilik", capability = "measure.kalan",
+                  role = "measure", entity = "project")
+  )
+  aday <- list(id = "q001", name = "Sorgu", description = "Kisa.",
+               meta = list(column_meta = sutunlar))
+
+  taban <- pk_select_pass_b_block(aday, .pk_selhard_cfg(), 0)
+  tam <- pk_select_pass_b_block(aday, .pk_selhard_cfg())
+  # Yalnızca tek tanıma yetecek bir pay: yetenek taşıyan sütun kalmalıdır.
+  pay <- nchar(tam) - nchar(taban) - 30L
+  daraltilmis <- pk_select_pass_b_block(aday, .pk_selhard_cfg(), pay)
+  expect_true(grepl("measure.kalan", daraltilmis, fixed = TRUE))
+})
+
+test_that("ilan edilen yetenekler KAPININ okuduğu beyanla aynıdır", {
+  # Ham `column_meta` taraması, iki sütunun tercihsiz paylaştığı yeteneği de
+  # ilan ediyordu; kapı onu beyan edilmemiş sayıp doğru seçimi reddediyordu.
+  sutunlar <- list(
+    A = list(label = "A", capability = "measure.paylasilan", role = "measure"),
+    B = list(label = "B", capability = "measure.paylasilan", role = "measure"),
+    C = list(label = "C", capability = "measure.tekil", role = "measure")
+  )
+  aday <- list(id = "q001", name = "Sorgu", description = "Kisa.",
+               meta = list(column_meta = sutunlar))
+
+  izinli <- c("measure.paylasilan", "measure.tekil")
+  ilan <- pk_select_candidate_capability_ids(list(aday), izinli)
+  expect_identical(ilan, "measure.tekil")
+  expect_identical(names(pk_meta_declared_capabilities(aday)), "measure.tekil")
+})
+
+test_that("kayıt defteri YOKKEN uydurma kimlik temizliği kapıyı AÇMAZ", {
+  # İzinli liste boşken TÜM kimlikler bilinmeyen görünür; hepsi düşünce nesne
+  # boşalır ve kanıtsız bir `auto` üretilirdi.
+  pk_test_pin_config("MERGEN_PK_REQUIRE_CAPABILITY_MATCH", FALSE)
+  lib <- pk_select_test_library()
+  gecis_b <- list(
+    ok = TRUE, id = "q001", confidence = 95L, reason = "gerekce",
+    alternates = list(list(id = "q002", confidence = 20L)),
+    requirements = list(
+      entity = NULL, measures = "dimension.project", dates = character(0),
+      dimensions = character(0), group_by = character(0), unsupported = character(0)
+    ),
+    missing_info = NA_character_
+  )
+
+  karar <- pk_select_decide(gecis_b, c("q001", "q002"),
+                            pk_select_library_index(lib), .pk_selhard_cfg(),
+                            capability_ids = character(0))
+  expect_identical(karar$status, PK_SELECT_STATUS_UNKNOWN_CAPABILITY)
+})
+
+test_that("temizlenen gereksinim SAKLANAN nesneye de yazılır", {
+  # Derin Düşünme ve rakip filtresi saklanan nesneyi yeniden doğrular;
+  # uydurulmuş kimlik kalırsa geçerli alternatiflerin TAMAMI elenirdi.
+  pk_test_pin_config("MERGEN_PK_REQUIRE_CAPABILITY_MATCH", FALSE)
+  kimlikler <- pk_select_capability_ids(pk_select_test_registry())
+  lib <- pk_select_test_library()
+  yetenek <- .pk_select_query_capabilities(lib[[1]])
+
+  gecis_b <- list(
+    ok = TRUE, id = "q001", confidence = 95L, reason = "gerekce",
+    alternates = list(list(id = "q002", confidence = 20L)),
+    requirements = list(
+      entity = NULL, measures = yetenek[1], dates = character(0),
+      dimensions = "dimension.project", group_by = character(0),
+      unsupported = character(0)
+    ),
+    missing_info = NA_character_
+  )
+
+  karar <- pk_select_decide(gecis_b, c("q001", "q002"),
+                            pk_select_library_index(lib), .pk_selhard_cfg(),
+                            capability_ids = kimlikler)
+  saklanan <- unlist(karar$requirements[c("measures", "dates", "dimensions",
+                                          "group_by")], use.names = FALSE)
+  expect_false("dimension.project" %in% saklanan)
+})
+
+test_that("kütüphanede tek sorgu varken taban 2'ye ÇIKARILMAZ", {
+  # "En az 2 aday" talimatı, listede tek sorgu varken modeli kimlik uydurmaya
+  # itiyor ve cevap `malformed` sayılıyordu.
+  cfg <- .pk_selhard_cfg()
+  tekil <- list(list(id = "q001", name = "Sorgu", description = "Kisa."))
+  yuk <- pk_select_pass_a_payload(tekil, cfg)
+  mesajlar <- pk_select_pass_a_messages(
+    "soru", yuk, pk_select_follow_up_context(NULL, NULL, NULL, cfg), cfg
+  )
+  expect_false(grepl("En az 2 aday", mesajlar[[1]]$content, fixed = TRUE))
+
+  ayrisik <- pk_select_parse_pass_a(
+    '{"candidates":["q001"]}', yuk$ids,
+    expected_n = cfg$recall_n, min_n = min(2L, cfg$recall_n, length(yuk$ids))
+  )
+  expect_true(ayrisik$ok)
+  expect_identical(ayrisik$ids, "q001")
+})
+
+test_that("Geçiş A SIFIR aday beklentisini REDDEDER", {
+  # Alt sınır 0'a düşünce geçerli cevap `character(0)`e kırpılıp OK sayılıyordu.
+  ayrisik <- pk_select_parse_pass_a('{"candidates":["q001"]}', c("q001"),
+                                    expected_n = 0L)
+  expect_false(ayrisik$ok)
+})
+
+test_that("MERGEN_PK_REQUIRE_CAPABILITY_MATCH ASCII katlama ile okunur", {
+  # Türkçe yerelde `tolower("ACIK")` "acık" verir; katı kip sessizce kapanırdı.
+  pk_test_pin_config("MERGEN_PK_REQUIRE_CAPABILITY_MATCH", FALSE)
+  Sys.setenv(MERGEN_PK_REQUIRE_CAPABILITY_MATCH = "ACIK")
+  expect_true(pk_capability_match_required())
+})
+
+test_that("merdiven basamağı yapılandırılmış bütçeyi GENİŞLETMEZ", {
+  # Sabit değeri körlemesine yazmak, operatörün daha dar verdiği alanı büyütür;
+  # en dar basamak bir öncekinden geniş olur ve sığacak yük reddedilirdi.
+  dar <- list(name_chars = 20L, desc_chars = 40L, keyword_chars = 10L,
+              sample_chars = 15L, sample_n = 1L, label_chars = 5L)
+  for (basamak in PK_SELECT_PASS_A_LADDER) {
+    cfg <- pk_select_pass_a_level_cfg(dar, basamak)
+    for (alan in names(dar)) {
+      expect_true(cfg[[alan]] <= dar[[alan]],
+                  info = sprintf("%s / %s", basamak$id, alan))
+    }
+  }
+})
+
+test_that("kayıt defteri YÜKLÜ DEĞİLKEN varlık-yalnız nesne kapıyı AÇMAZ", {
+  # Boş izinli listede TÜM kimlikler bilinmeyen görünür; `entity` hayatta kalsa
+  # bile geriye doğrulanabilir bir yetenek iddiası KALMAZ.
+  pk_test_pin_config("MERGEN_PK_REQUIRE_CAPABILITY_MATCH", FALSE)
+  lib <- pk_select_test_library()
+  gecis_b <- list(
+    ok = TRUE, id = "q001", confidence = 95L, reason = "gerekce",
+    alternates = list(list(id = "q002", confidence = 20L)),
+    requirements = list(
+      entity = "project", measures = "dimension.project", dates = character(0),
+      dimensions = character(0), group_by = character(0), unsupported = character(0)
+    ),
+    missing_info = NA_character_
+  )
+
+  karar <- pk_select_decide(gecis_b, c("q001", "q002"),
+                            pk_select_library_index(lib), .pk_selhard_cfg(),
+                            capability_ids = character(0))
+  expect_identical(karar$status, PK_SELECT_STATUS_UNKNOWN_CAPABILITY)
+})
+
+test_that("Geçiş B kırpma bilgisi HER başarısızlık yolunda taşınır", {
+  # Zaman aşımı / LLM erişilemez dalları da metadata daraltılmışken oluşur;
+  # kullanıcı seyreltme açıklamasını görmelidir.
+  sutunlar <- setNames(
+    lapply(seq_len(200L), function(i) list(
+      label = sprintf("Ölçü %d", i), capability = sprintf("measure.m_%d", i),
+      role = "measure", entity = "project", unit = "adet"
+    )),
+    sprintf("Kolon_%d", seq_len(200L))
+  )
+  adaylar <- lapply(seq_len(5L), function(i) list(
+    id = sprintf("q%03d", i), name = sprintf("Sorgu %d", i),
+    description = "Kısa açıklama.", meta = list(column_meta = sutunlar)
+  ))
+  cfg <- .pk_selhard_cfg(pass_b_chars = 4000L)
+
+  for (durum in c(PK_SELECT_STATUS_TIMEOUT, PK_SELECT_STATUS_LLM_UNAVAILABLE)) {
+    sonuc <- pk_select_run_pass_b(
+      "soru", adaylar, vapply(adaylar, function(a) a$id, character(1)),
+      pk_select_follow_up_context(NULL, NULL, NULL, cfg),
+      cfg, pk_select_library_index(adaylar),
+      llm_fn = local({
+        d <- durum
+        function(...) stop(if (identical(d, PK_SELECT_STATUS_TIMEOUT)) "timeout" else "connection refused",
+                           call. = FALSE)
+      })
+    )
+    expect_false(isTRUE(sonuc$ok))
+    expect_true(isTRUE(sonuc$blocks_clipped), info = durum)
+  }
 })

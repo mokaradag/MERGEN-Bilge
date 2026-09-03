@@ -1332,6 +1332,8 @@ CRLF corollary: a static contract that matches a MULTI-LINE source snippet with 
 
 Configuration-isolation corollary: `pk_config_resolve()` resolves `query_meta -> ENVIRONMENT -> options() -> default`, so the environment WINS over `options()`. `.Renviron.example` ships real values for many `MERGEN_PK_*` keys (including `MERGEN_PK_CACHE_MAX_ENTRIES/MAX_MB/MAX_ENTRY_MB/TTL_SEC`), so on a configured VM a test that sets only `options()` silently measures the DEPLOYMENT's values and reports the limit as unenforced. Test helpers that pin such a key must isolate BOTH channels and restore both (see `pk_select_with_env()`, `pk_entity_with_resolve_env()`, `.pk_cache_with_limits()`).
 
+This bit twice more and only showed up on a configured Windows VM. A deployment with `MERGEN_PK_ALLOW_UNBOUNDED_LOB=TRUE` skips every refuse branch in `pk_sql_plan_chunk_rows()` (4 failures in `test-pk-async-hardening-behavior.R`), and one with `MERGEN_PK_ENGINE=v2` routes `apply_smart_filters()` into the v2 executor — which its `exists(..., inherits = TRUE)` guard finds as soon as ANY earlier test file in the same session has sourced `helpers_pk_analysis_filters_v2.R` into `globalenv()` — so the v1-body contracts in `test-pk-observation-accuracy-contract.R` measure the wrong engine. Both pass in isolation and in an unconfigured container, which is exactly why they were missed. `pk_test_pin_config(key, value)` in `tests/testthat/helper_pk_selection.R` is the single fix: it pins ONE key on BOTH channels for the calling test and restores both with `withr::defer`. A test that measures a config-dependent branch must pin the key it depends on; adding a key to `PK_SELECT_ENV_KEYS` only covers the selection path. `.Renviron.example` shipped `MERGEN_PK_ALLOW_UNBOUNDED_LOB=TRUE` while its own comment documented the default as OFF; it is now `FALSE` — that escape hatch must be an explicit operator choice, never a copied default.
+
 Scoping corollary: never pass `exists` DIRECTLY as the `FUN` of `vapply`/`sapply` when relying on `inherits = TRUE`. `exists()` defaults to `where = -1`, which under `*apply` resolves to the apply frame (enclosed by `namespace:base`), so the CALLER's lexical environment is skipped and only the search path/`globalenv()` is scanned. This looks correct in production (everything is in `globalenv()`) but reports every helper as missing inside an isolated test or worker-bootstrap environment. Wrap it: `vapply(names, function(ad) exists(ad, mode = "function", inherits = TRUE), logical(1))`.
 
 Protected by:
@@ -4641,6 +4643,161 @@ SQL Server query-timeout behavior; DB connection release under real ODBC; SSO
 identity/RLS correctness for the worker surrogate; and Deep Thinking producing the
 same answer as before the reconciliation.
 
+### Proje ve Kaynak Analizi selection prompt-fitting and capability policy
+
+The v2 two-pass selector refused almost every real question on the Windows VM
+(measured with the real 169-query library). Four independent causes, all now
+fixed; do not regress them.
+
+- **Pass B budget must not refuse the request.** `pk_select_pass_b_blocks()`
+  used to return `truncated = TRUE` (-> `library_error`, Pass B never ran) when
+  the candidate blocks exceeded `MERGEN_PK_SELECT_PASS_B_CHARS`. Real queries
+  carry rich `column_meta`, so 5 candidates blew the 24000 default even at 20
+  columns per query (25,530 chars measured; 165,790 at 150 columns). It now
+  reserves each candidate's identity body, splits the remaining budget EQUALLY,
+  and clips only the `SUTUNLAR` line — whole column entries, marked
+  `… (N sütun daha)`, capability-bearing columns first. A candidate is NEVER
+  dropped; fail-closed survives only when the identity bodies alone do not fit.
+  Default raised 24000 -> 60000.
+- **Pass A budget compacts, it does not refuse.** `pk_select_pass_a_payload()`
+  walks `PK_SELECT_PASS_A_LADDER` (`tam` -> `ornek_1` -> `dar_alan` ->
+  `etiketsiz` -> `orneksiz` -> `asgari`), lowering per-field character budgets
+  UNIFORMLY across all rows. Every level keeps EVERY query's row, so recall is
+  never lost; `truncated` (and `library_error`) survives only when the narrowest
+  level still does not fit. The applied level is reported through `compaction`
+  and surfaced as a decision disclosure.
+- **Pass A candidate count is a RANGE, not an equality.** The parser required
+  exactly `recall_n` ids, so a narrow question ("Projelerin genel özetini
+  göster.") where the model returned 2-3 genuinely relevant ids burned both
+  repair attempts and ended as `malformed`. Broad questions happened to return
+  exactly N, which is why only SIMPLE questions failed. `pk_select_parse_pass_a()`
+  now accepts `min_n` (default `min(2, expected_n)`; 2 because the margin gate
+  needs a runner-up) and trims extras to the first `expected_n`. The Pass A
+  prompt says "EN FAZLA %d" + "En az 2" so the instruction matches the parser.
+- **Capability claims: hallucinated ids are not evidence, and absence is not
+  proof.** Two separate fixes:
+  * `unknown_capability` (an id in NO registry — production repeatedly produced
+    `dimension.project`, conflating the query's ENTITY with a dimension
+    capability) is a model contract violation and says nothing about the query.
+    After the repair attempt is spent, `pk_select_decide()` drops the
+    unverifiable ids via `pk_select_drop_unknown_requirements()` and re-validates
+    the REMAINING claims; every verifiable claim is still enforced, and the drop
+    is disclosed.
+  * `capability_missing` is now ADVISORY by default
+    (`pk_capability_match_required()` / `MERGEN_PK_REQUIRE_CAPABILITY_MATCH`,
+    default `FALSE`). `capability` curation over hundreds of queries and
+    thousands of columns is unavoidably PARTIAL, and the absence of a
+    declaration is not proof the query cannot answer. The gate was also
+    ASYMMETRIC: a model declaring NOTHING passed as `not_asserted`, while a
+    model that declared its needs was blocked. The unverified claim is now
+    disclosed in the answer's `Analiz Kaynağı` section and the decision
+    continues to the confidence/margin gates. Set the variable to `TRUE` to
+    restore the strict fail-closed gate once metadata is fully curated.
+  * The Pass B prompt advertises only the capabilities the CANDIDATES actually
+    declare (`pk_select_candidate_capability_ids()`), never the whole registry.
+    Validation itself is unchanged — this only stops inviting the model to name
+    an id the chosen query cannot satisfy.
+- Clarification chips reach the browser as PLAIN STRINGS with an explicit
+  `title` ("Olası Analizler"). They previously went through the follow-up
+  channel as `list(id=, name=)` objects and rendered as `[object Object]` under
+  the "Önerilen Takip Soruları" heading even when follow-up suggestions were
+  disabled. An EMPTY `name` falls back to the chip id (`%||%` only catches
+  `NULL`, so a blank name dropped the chip entirely), and
+  `.mergen_pk_chip_labels()` STRIPS names — `vapply()` carries the chip list's
+  names through, and a named character vector serializes as a JSON OBJECT, which
+  renders as `[object Object]` again.
+
+PR #715 review hardening — these are part of the same contract:
+
+- **Compaction never emits an over-budget prompt.** `pk_select_fit_column_defs()`
+  returns `""` when even one definition plus the `… (N sütun daha)` marker
+  exceeds its share (the backoff loop cannot step below one entry), and
+  `pk_select_pass_b_blocks()` counts separators only BETWEEN blocks
+  (`sum(nchar) + (n-1)*2`) — the old per-block `+2` made a single block of
+  exactly `pass_b_chars` look over budget and triggered needless clipping.
+- **Clipping priority is read from `column_meta[[x]]$capability`, not from the
+  rendered line.** A label containing the literal `yetenek=` used to sort ahead
+  of a real capability column and could push the genuine evidence out of the
+  share.
+- **The advertised capability set is the set the GATE reads.**
+  `pk_select_candidate_capability_ids()` resolves declarations through
+  `.pk_select_query_capabilities()` -> `pk_meta_declared_capabilities()`. A raw
+  `column_meta` scan also advertises a capability claimed by two columns with no
+  `capability_variants[[id]]$prefer` (and one with no `role`), which the gate
+  treats as UNDECLARED — the exact false `capability_missing` this PR removes.
+  When NO candidate declares anything the list is NOT emptied: an empty list
+  makes the prompt ask the model to put its need in `unsupported`, which is a
+  hard closed failure, so partial curation would refuse every request.
+- **A ladder step may only NARROW.** `pk_select_pass_a_level_cfg()` takes
+  `min(configured, step)` per numeric field. Writing the step's constant blindly
+  can RAISE a field an operator set lower (`name_chars = 20` vs the `asgari`
+  step's 80), so the narrowest step could produce a LARGER payload than an
+  earlier one and a payload that would have fit was rejected as `truncated`.
+- **The unknown-id cleanup must not open the gate.** It applies only when the
+  capability registry is actually loaded (`length(izinli) > 0`) AND a VERIFIABLE
+  claim survives (`!pk_select_requirements_empty()`). With the registry unloaded
+  the allowlist is empty and every id looks unknown, so dropping them all — even
+  when an `entity` survives, which `pk_select_requirements_empty()` counts as
+  non-empty — would turn an unverifiable assertion into an evidence-free `auto`.
+  Gating on the registry rather than on "a capability field survived" is
+  deliberate: the stricter form would re-refuse the production case this PR
+  fixes, where the model's only capability claim was the hallucinated one.
+  On success the CLEANED object is stored back into `pass_b$requirements`
+  — Deep Thinking and the runner-up filter revalidate that object, so leaving the
+  hallucinated id there rejected every otherwise-valid alternate.
+- **The advisory/strict asymmetry between the selected query and its alternates
+  is deliberate.** `.pk_select_capable_alternates()` keeps requiring
+  `ok`/`not_asserted`. Extending advisory mode there would re-admit a candidate
+  that cannot meet the asserted semantics as a "rival" and stop valid selections
+  with `close_margin` — the over-refusal PR #705 removed. Both rules point the
+  same way: toward answering.
+- **`MERGEN_PK_REQUIRE_CAPABILITY_MATCH` is a registered §9 config key.**
+  `pk_capability_match_required()` resolves it through `pk_config_resolve()`, so
+  env -> `options()` -> default ordering and the locale-independent logical
+  parsing (`AÇIK`/`ACIK`/`evet`/`on`…) are shared with every other PK flag; a
+  local `tolower()` would read `ACIK` as `acık` on a Turkish locale and silently
+  disable strict mode. Test isolation therefore requires the key in
+  `PK_SELECT_ENV_KEYS`, and a test asserting default mode must clear BOTH the
+  environment variable and the option.
+- **A library-configuration defect outranks an empty candidate list.** The
+  `payload$skipped` check runs BEFORE the `!length(payload$ids)` return;
+  otherwise a library whose ids are all unsafe produced a generic "no candidates"
+  answer instead of the configuration error plus the skipped-query disclosure.
+- **Count bounds respect what actually exists.** The Pass A minimum is
+  `min(2, expected_n, length(payload$ids))` and the prompt emits "En az 2 aday"
+  only when the library really holds two; otherwise a single-query library
+  invites the model to invent an id. `pk_select_parse_pass_a()` rejects
+  `expected_n < 1` (the lower bound collapsed to 0 and a truncated empty result
+  was reported as valid).
+- **Capability disclosures survive early exits.** `.pk_select_semantic_gate()`
+  takes `base_disclosures`, and the `not_for` / `no_runner_up` returns carry
+  `kapasite_uyarisi`, so the dropped-hallucinated-id note is not lost on a
+  refusal. `blocks_clipped` is captured ONCE right after `bloklar` is built and
+  returned on EVERY Pass B path — timeout, `llm_unavailable`, auth error and
+  malformed included — because metadata compaction is just as real on those.
+- **The module fallback loader is a second load path.**
+  `pk_required_helpers` in `R/module_proje_kaynak_analizi.R` must list
+  `helpers_pk_select_timeout.R`, `helpers_pk_query_selection_compact.R` and
+  `helpers_pk_query_selection_canonical.R` in manifest order; declaring the entry
+  points is not enough. `tests/testthat/test-pk-runtime-hardening-behavior.R`
+  therefore runs a REAL two-pass `pk_select_run()` with a deterministic LLM stub
+  in an environment parented at `baseenv()` plus the documented prerequisites —
+  NOT at `globalenv()`, where a helper another test file loaded would mask the
+  very gap the test exists to find. That isolation is what surfaced the missing
+  `pk_select_effective_timeout` prerequisite (the preceding guard spec loads it
+  only when the v1 scorers are absent).
+
+Protected by:
+
+- `tests/testthat/test-pk-query-selection-hardening-behavior.R`
+- `tests/testthat/test-pk-query-selection-contract.R`
+- `tests/testthat/test-pk-golden-set-behavior.R`
+- `tests/testthat/test-pk-async-contract.R`
+- `tests/testthat/test-frontend-selector-contract.R`
+
+VM-only proof (NOT provable in cloud): the real 169-query library, the real
+selection endpoint's behavior, and whether a given question now runs end to end.
+
 ### Proje ve Kaynak Analizi query-metadata generator contract (Faz 3b, VM-only tooling)
 
 `tools/pk/generate_query_meta.R` is the OPERATOR-RUN, VM-only generator that produces
@@ -6018,6 +6175,28 @@ If one is missing, startup stops with an explicit error.
 The `process` and `app_expert` tools run enterprise Langflow flows (Chat Input / Chat Output) instead of the local LLM endpoint. The model is embedded in the Langflow flow, so these tools have NO `model_id` in `tool_mode_config`, the chat-header local model badge is hidden when a `runtime == "langflow"` tool is active, and they show the standard (simulated) thinking panel — never the image-generation spinner. `LANGFLOW_API_KEY` is Langflow-specific and unrelated to the local LLM keys; there is NO implicit fallback (a removed regression let it fall back to the old ALT key). Parsing/resolution lives in `R/helpers_langflow_runtime.R`; process-flow selection is stored raw in `api_config$langflow` and resolved lazily. Süreç Yönetimi supports MULTIPLE named flows selected from a chat-input dropdown (`process_chat_controls` / `chat_process_flow`; `www/js/process_tools.js` + `www/css/process_tools.css`).
 
 Langflow document sources are clickable in TWO shapes. (1) STRUCTURED JSON sources (`results$message$sources`, `data$sources`, `artifacts$sources`, top-level `sources`, `source_documents`, legacy `metadata`) are extracted by `extract_langflow_chat_sources()` in `R/helpers_langflow_sources.R`. (2) INLINE PROSE sources — some flows write sources NOT in JSON but as a trailing plain-text `Kaynak:` list (heading match is case-insensitive: `KAYNAK:`/`KAYNAKÇA:` too; blank lines between numbered entries do NOT end the list) plus inline `<sup>(1)</sup>` citations in the body — are handled by `R/helpers_langflow_inline_sources.R` (loaded AFTER `R/helpers_langflow_sources.R` in the `chat_send_message_runtime` manifest section). `mergen_langflow_finalize_answer(text, structured_sources)` is the single handler entry point: it converts `<sup>(n)</sup>` → `[n]` (survives markdown escaping; `citation_handler.js` renders `.citation-ref` superscripts that scroll to `.kaynakca-entry[data-entry=n]`), and — when there are no structured sources — parses the prose `Kaynak(lar/ça):` section (`mergen_langflow_parse_prose_sources()`), strips it (any trailing non-entry text is preserved, never silently dropped), and appends the SAME signed `mergen_langflow_kaynakca_marker_block()` marker so render/persistence/security are identical to the structured path. Both the single-chat handler (`R/server_handler_langflow.R`) and the Ortak Oturum path (`.oo_langflow_yanit_metni`) call it. `<sup>` conversion is gated TWICE for safety: (a) only runs when a real Kaynakça block was actually produced, and (b) only converts `<sup>` content that is "citation-shaped" (`.langflow_sup_is_citation_shaped()`: wholly parenthesized digit groups, e.g. `(1)`, `(1)(2)`, `(1, 2)`) — bare unparenthesized digits (`m<sup>2</sup>`) are ordinary superscripts (exponents/footnotes) and are left untouched, never mis-linked or stripped. Unmapped/out-of-range citation numbers are dropped (inert), never left pointing at the wrong Kaynakça entry. Prose-derived sources set `rec$path` to the real flat `&&`-separated filename (disk basename literally contains `&&`, `&&` is NOT a directory separator); `mergen_kaynakca_marker_html()` renders `&&` paths as a muted `.kaynakca-breadcrumb` prefix joined by `" - "` with ONLY the last segment clickable, while non-`&&` (structured) paths keep the title-clickable behavior. `data-filename` always carries the full `&&` name; `search_file_in_folder()` resolves it recursively, trying EXACT basename match FIRST (before the `&&`-hint scored search, which only keys on the hint's last segment and can otherwise return an unrelated file with a matching basename), then falling back to `.search_all_parts_contained()` (all `&&` parts contained) so files in subfolders resolve. The last-resort part-containment fallback is opt-in for EXTENSIONLESS final `&&` parts only — when the final part has an extension and the cited file genuinely doesn't exist on disk, "not found" is safer than fuzzy-matching an unrelated same-substring file. `.build_basename_index()` covers `docx`/`docm`/`doc`/`pdf`/`pptx`/`ppt`/`xlsx`/`xls` so prose-accepted extensions stay resolvable. Prose entries may carry a trailing page annotation after the extension (`dosya.pdf (Sayfa 3)`, `dosya.pdf, s. 3`); `.langflow_strip_page_suffix()` separates it before the extension check so the entry isn't rejected. Do not reintroduce raw `<sup>` into `innerHTML`, do not make the whole breadcrumb clickable, do not revert the exact-match-first search order, and keep the prose parser rejecting URL/absolute/drive/`..` and non-document entries (no fabricated sources). Protected by `tests/testthat/test-langflow-inline-sources-behavior.R`, `test-langflow-sources-behavior.R`, `test-langflow-handler-behavior.R`, `test-file-index.R`.
+
+SUPERSCRIPT CITATIONS SURVIVE A PROMPT CHANGE. The Langflow prompt no longer
+instructs the model to emit `<sup>(1)</sup>`; it now writes the citation as a
+UNICODE SUPERSCRIPT CHARACTER (`baslatilir` + U+00B9), which markdown carried
+through as plain text and `citation_handler.js` never saw. `R/helpers_langflow_inline_sources.R`
+therefore runs a SECOND converter, `.langflow_unicode_sup_to_citation()`, right
+after the `<sup>` one and under the SAME gate (only when a real Kaynakça block
+was produced). Its three rules are the contract:
+(a) **Exponents are not citations.** `.langflow_sup_looks_like_exponent()` rejects
+a superscript preceded by a digit (`10^6`) or by a measurement unit
+(`m`/`cm`/`mm`/`km`/`dm`/`um`/`in`/`ft`/`yd`), so `25 m²` stays untouched.
+(b) **Adjacent superscripts are disambiguated against the Kaynakça itself.** A run
+like U+00B9 U+00B2 is ambiguous (12, or 1 then 2); `.langflow_sup_resolve_nums()`
+takes the whole run when it is a valid entry index and otherwise splits it when
+every single digit is valid.
+(c) **Unverifiable runs are LEFT ALONE, never dropped.** The `<sup>` path may
+delete an unmatched citation because its parenthesized shape proves intent; a bare
+superscript has no such proof, so deleting it could destroy a real exponent.
+The superscript codepoints are written as `\uXXXX` escapes in both code and
+comments — U+2074 and above have no WINDOWS-1254 mapping (§1G), and the tests
+build fixtures with `intToUtf8()` for the same reason. Protected by
+`tests/testthat/test-langflow-inline-sources-behavior.R`.
 
 INTENTIONAL SCOPE LIMIT: in Ortak Oturum rooms, the inline `[n]` text stays plain (not a clickable/scrolling `.citation-ref` superscript) because `citation_handler.js`'s `MutationObserver` and click handler are scoped to `#chat_content_container` + `[id^="message_wrapper_"]`, and room messages (`.oo-mesaj`) don't have that wrapper id. This is a deliberate, confirmed decision (not a bug to silently "fix") — the room's Kaynakça source-link click-to-preview at the bottom already works (a separate, document-wide handler), and the original feature request was scoped to the single-session Süreç Yönetimi/Uygulama Uzmanı tools. Do not extend `citation_handler.js` to rooms without checking with the user first; it touches a shared, protected JS file and the room's poll/re-render lifecycle.
 - `LANGFLOW_BASE_URL`

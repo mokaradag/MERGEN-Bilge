@@ -166,11 +166,10 @@ pk_select_llm_invoke <- function(messages, cfg, session = NULL, llm_fn = NULL,
 
 #' Geçiş A: recall (TÜM kütüphane)
 #'
-#' Beklenen aday SAYISI zorunludur: eskiden boş olmayan HERHANGİ bir geçerli alt
-#' küme başarı sayılıyordu. `recall_n = 5` iken iki kimlik döndüren bir cevap
-#' "başarılı recall" oluyor, atlanan sorgu doğru olan olsa bile Geçiş B onu asla
-#' geri getiremiyordu — tam olarak tam-kütüphane geçişinin önlemesi gereken
-#' geri alınamaz sessiz başarısızlık.
+#' Aday SAYISI bir ARALIKTIR: üst sınır `cfg$recall_n`, alt sınır 2'dir (marj
+#' kapısı ikinci adayın güvenini ister). Eskiden EŞİTLİK aranıyordu; dar kapsamlı
+#' sorularda model gerçekten ilgili 2-3 kimliği döndürdüğü için geçerli bir
+#' recall `malformed` sayılıyor ve istek reddediliyordu.
 pk_select_run_pass_a <- function(user_prompt, payload, context, cfg,
                                  session = NULL, llm_fn = NULL) {
   onarim <- NULL
@@ -189,7 +188,12 @@ pk_select_run_pass_a <- function(user_prompt, payload, context, cfg,
                   error = NA_character_, attempts = deneme))
     }
 
-    ayrisik <- pk_select_parse_pass_a(cagri$text, payload$ids, expected_n = beklenen)
+    ayrisik <- pk_select_parse_pass_a(
+      cagri$text, payload$ids,
+      # TABAN KÜTÜPHANE BOYUNU AŞAMAZ: iki adaylık taban, listede tek sorgu
+      # varken modelden kimlik UYDURMASINI ister ve cevap `malformed` olurdu.
+      expected_n = beklenen, min_n = min(2L, beklenen, length(payload$ids))
+    )
     if (isTRUE(ayrisik$ok)) {
       return(list(ok = TRUE, ids = ayrisik$ids, status = "ok",
                   unknown = ayrisik$unknown, error = NA_character_, attempts = deneme))
@@ -233,6 +237,10 @@ pk_select_run_pass_b <- function(user_prompt, candidates, candidate_ids, context
   }
 
   belirtec <- .pk_select_pass_b_tokens(length(candidate_ids))
+  # KIRPMA BİLGİSİ HER DÖNÜŞ YOLUNDA TAŞINIR: zaman aşımı / LLM erişilemez /
+  # kimlik hatası dalları da metadata daraltılmışken oluşur ve kullanıcı
+  # seyreltme açıklamasını görmelidir.
+  kirpildi <- isTRUE(bloklar$clipped)
 
   for (deneme in seq_len(2L)) {
     mesajlar <- pk_select_pass_b_messages(
@@ -249,7 +257,8 @@ pk_select_run_pass_b <- function(user_prompt, candidates, candidate_ids, context
       return(list(ok = FALSE, id = NA_character_, confidence = NA_integer_,
                   alternates = list(), requirements = NULL,
                   missing_info = NA_character_, reason = NA_character_,
-                  status = cagri$status, error = NA_character_, attempts = deneme))
+                  status = cagri$status, error = NA_character_, attempts = deneme,
+                  blocks_clipped = kirpildi))
     }
 
     # GEÇİŞ B, İSTEMİN GERÇEKTEN İLAN ETTİĞİ KİMLİKLERE KARŞI DOĞRULANIR.
@@ -271,6 +280,8 @@ pk_select_run_pass_b <- function(user_prompt, candidates, candidate_ids, context
       if (is.na(anlamsal) || deneme >= 2L) {
         ayrisik$status <- "ok"
         ayrisik$attempts <- deneme
+        # Sütun payı daraltıldıysa karar bunu açıklamalarında taşır.
+        ayrisik$blocks_clipped <- kirpildi
         return(ayrisik)
       }
       onarim <- anlamsal
@@ -284,12 +295,14 @@ pk_select_run_pass_b <- function(user_prompt, candidates, candidate_ids, context
 
     ayrisik$status <- PK_SELECT_STATUS_MALFORMED
     ayrisik$attempts <- deneme
+    ayrisik$blocks_clipped <- kirpildi
     return(ayrisik)
   }
 
   list(ok = FALSE, id = NA_character_, confidence = NA_integer_, alternates = list(),
        requirements = NULL, missing_info = NA_character_, reason = NA_character_,
-       status = PK_SELECT_STATUS_MALFORMED, error = NA_character_, attempts = 2L)
+       status = PK_SELECT_STATUS_MALFORMED, error = NA_character_, attempts = 2L,
+       blocks_clipped = kirpildi)
 }
 
 #' ONARILABİLİR anlamsal hata var mı?
@@ -438,10 +451,17 @@ pk_select_run <- function(user_prompt, library, chat_history = NULL,
   cfg <- pk_select_revalidate_config(cfg)
   library_index <- pk_select_library_index(library)
 
+  # Seyreltme AÇIKÇA raporlanır: kullanıcı/operatör seçimin TAM ayrıntı yerine
+  # daraltılmış metadata üzerinden yapıldığını görebilmelidir.
+  seyreltme <- character(0)
+
   bitir <- function(karar, adaylar = character(0), a = NA_character_, b = NA_character_) {
     karar$candidate_ids <- adaylar
     karar$pass_a_status <- a
     karar$pass_b_status <- b
+    if (length(seyreltme)) {
+      karar$disclosures <- c(seyreltme, karar$disclosures %||% character(0))
+    }
     karar
   }
 
@@ -450,13 +470,14 @@ pk_select_run <- function(user_prompt, library, chat_history = NULL,
   }
 
   payload <- pk_select_pass_a_payload(library, cfg)
-  if (!length(payload$ids)) {
-    return(bitir(pk_select_decide(NULL, character(0), library_index, cfg)))
-  }
-
+  seyreltme <- pk_select_compaction_disclosure(
+    payload$compaction, payload$chars, payload$budget
+  )
   # Tam-kütüphane recall'ı EKSİK olamaz: serileştirilemeyen tek bir satır bile
   # o sorguyu geri alınamaz biçimde görünmez yapar ve seçici kalan kümeden
-  # güvenle yanlış bir sorgu çalıştırabilir.
+  # güvenle yanlış bir sorgu çalıştırabilir. DENETİM BOŞ KİMLİK LİSTESİNDEN
+  # ÖNCE GELİR: her kimlik geçersizse liste boşalır ve kullanıcı yapılandırma
+  # hatası yerine genel bir "aday yok" cevabı görüyordu.
   if (length(payload$skipped)) {
     return(bitir(.pk_select_decision(
       PK_SELECT_STATUS_LIBRARY_ERROR,
@@ -471,11 +492,13 @@ pk_select_run <- function(user_prompt, library, chat_history = NULL,
     )))
   }
 
-  # Geçiş A TOPLAM bütçesi aşıldıysa da kapalı başarısız olunur.
-  #
-  # Alan başına kırpma kütüphane BÜYÜKLÜĞÜNÜ sınırlamaz; yük seçici modelin
-  # bağlamını taşırırsa satırlar sessizce düşer ve bu, `skipped` ile aynı
-  # sınıf recall kaybıdır: görünmeyen bir sorgu asla seçilemez, seçici de
+  if (!length(payload$ids)) {
+    return(bitir(pk_select_decide(NULL, character(0), library_index, cfg)))
+  }
+
+  # Geçiş A bütçesi aşıldığında yük önce SEYRELTİLİR (satır düşürülmez); bu
+  # noktaya yalnızca en dar basamak bile sığmadığında gelinir ve o gerçekten
+  # bir yapılandırma sorunudur. Görünmeyen bir sorgu asla seçilemez, seçici de
   # kalan kümeden güvenle yanlış bir sorgu çalıştırabilir.
   if (isTRUE(payload$truncated)) {
     return(bitir(.pk_select_decision(
@@ -594,6 +617,14 @@ pk_select_run <- function(user_prompt, library, chat_history = NULL,
   if (identical(gecis_b$status, PK_SELECT_STATUS_MALFORMED)) {
     karar$disclosures <- c(
       "Yapay zekâ servisi yanıt verdi ancak seçim sözleşmesine uymayan bir çıktı üretti.",
+      karar$disclosures %||% character(0)
+    )
+  }
+
+  if (isTRUE(gecis_b$blocks_clipped)) {
+    karar$disclosures <- c(
+      paste0("Aday sütun metadata'sı seçim istemine sığması için kısaltıldı; ",
+             "hiçbir aday listeden düşürülmedi."),
       karar$disclosures %||% character(0)
     )
   }

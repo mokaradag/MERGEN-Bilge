@@ -805,7 +805,14 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # bir ekte `pk_export_serve()` hata firlattiginda TAMAMLANMIS analiz artik
     # `export_failed` ile DEGISTIRILMEZ (URL denetimi bu durumu ZATEN atliyor).
     # Fonksiyon sayisi AYNI.
-    "R/helpers_pk_async_lifecycle.R" = c(260L, 17L),
+    # BİLİNÇLİ GÜNCELLEME: netleştirme çipleri tarayıcıya DÜZ METİN olarak
+    # gönderilir (nesne gönderimi arayüzde "[object Object]" basıyordu).
+    # BILINCLI GUNCELLEME (PR #715 inceleme): 281 -> 285 satir (OLCULEN). (a) BOS
+    # bir `name` alani artik cip kimligine duser (`%||%` yalnizca `NULL` yakalar,
+    # cip listeden tamamen dusuyordu); (b) etiket vektorunun ADLARI dusurulur,
+    # aksi halde `as.list()` JSON NESNESI uretir ve tarayici yine "[object
+    # Object]" basardi. Fonksiyon sayisi AYNI.
+    "R/helpers_pk_async_lifecycle.R" = c(285L, 18L),
     # BILINCLI GUNCELLEME (PR #705): `pk_stopped` artik tipli `pk_halt_status`
     # tasir; son tarih kullanici iptali gibi raporlanmaz.
     # Tavan 1 satir bayatti (olculen 223); TAM olculen degere cekildi.

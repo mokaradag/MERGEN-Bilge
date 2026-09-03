@@ -45,6 +45,9 @@ PK_SELECT_SOURCE_CHAIN <- c(
   "helpers_pk_query_retrieval.R",
   "helpers_pk_query_selection_json.R",
   "helpers_pk_query_selection_config.R",
+  # İstem sığdırma (Geçiş A merdiveni + Geçiş B sütun payı); yük kurucusundan
+  # ÖNCE gelir, üretim manifestiyle aynı sıradır.
+  "helpers_pk_query_selection_compact.R",
   "helpers_pk_query_selection_payload.R",
   "helpers_pk_query_selection_prompt.R",
   # Varlık ("var mı?") -> sayım yetenek iması; doğrulayıcı bunu çağırır.
@@ -68,6 +71,7 @@ PK_SELECT_RUNTIME_FILES <- c(
   "helpers_pk_query_retrieval.R",
   "helpers_pk_query_selection_json.R",
   "helpers_pk_query_selection_config.R",
+  "helpers_pk_query_selection_compact.R",
   "helpers_pk_query_selection_payload.R",
   "helpers_pk_query_selection_prompt.R",
   "helpers_pk_query_selection_canonical.R",
@@ -120,6 +124,9 @@ PK_SELECT_ENV_KEYS <- c(
   "MERGEN_PK_SELECT_HISTORY_CHARS",
   "MERGEN_PK_SELECT_PASS_B_CHARS",
   "MERGEN_PK_SELECT_PASS_A_CHARS",
+  # Yetenek eşleşmesi KATI kipi seçim kararını değiştirir; dağıtım değeri
+  # testlere sızmamalıdır.
+  "MERGEN_PK_REQUIRE_CAPABILITY_MATCH",
   "MERGEN_PK_ENGINE"
 )
 
@@ -149,6 +156,41 @@ pk_select_option_keys <- function() {
   }
   paste0("mergen.pk.", chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz",
                               sub("^MERGEN_PK_", "", PK_SELECT_ENV_KEYS)))
+}
+
+# Tek bir yapılandırma anahtarını TESTİN SÜRESİNCE sabitler.
+#
+# `pk_config_resolve()` ortamı `options()` ÖNCESİNDE okur; yapılandırılmış bir
+# VM'de dağıtım değeri testin ölçtüğü dalı değiştirir. ÖLÇÜLDÜ:
+# `MERGEN_PK_ALLOW_UNBOUNDED_LOB=TRUE` LOB reddetme dallarını, `MERGEN_PK_ENGINE=v2`
+# ise v1 gövdesi sözleşmelerini düşürüyordu. `NULL` değer anahtarı temizler.
+pk_test_pin_config <- function(key, value, env = parent.frame()) {
+  key <- as.character(key)[1]
+  opt <- if (exists("pk_config_option_key", mode = "function", inherits = TRUE)) {
+    pk_config_option_key(key)
+  } else {
+    paste0("mergen.pk.", chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz",
+                                sub("^MERGEN_PK_", "", key)))
+  }
+
+  eski_env <- Sys.getenv(key, unset = NA_character_)
+  eski_opt <- getOption(opt, default = NULL)
+  withr::defer({
+    if (is.na(eski_env)) {
+      Sys.unsetenv(key)
+    } else {
+      do.call(Sys.setenv, stats::setNames(list(eski_env), key))
+    }
+    do.call(options, stats::setNames(list(eski_opt), opt))
+  }, envir = env)
+
+  if (is.null(value)) {
+    Sys.unsetenv(key)
+  } else {
+    do.call(Sys.setenv, stats::setNames(list(as.character(value)[1]), key))
+  }
+  do.call(options, stats::setNames(list(value), opt))
+  invisible(TRUE)
 }
 
 pk_select_with_env <- function(vars = character(0), code) {

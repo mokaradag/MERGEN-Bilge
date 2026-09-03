@@ -519,6 +519,81 @@ test_that("pk_required_helpers her BILDIRILEN fonksiyonu gercekten yukler", {
   }
 })
 
+test_that("v2 secim zinciri MODUL-ONLY yuklemede GERCEK bir secim uretir", {
+  # Fonksiyon varligi yetmez: zincirde eksik bir yardimci ancak GERCEK bir istek
+  # calisirken "could not find function" ile dusuyor ve istek v2 ic hata yoluna
+  # gidiyordu (`compact.R` boyle atlanmisti).
+  #
+  # ORTAM `globalenv()`E DUSMEZ: ayni oturumda baska bir test dosyasinin kuresel
+  # ortama yukledigi bir yardimci, manifestteki eksigi MASKELER ve bu iddia
+  # yesil kalirken modul-only acilis yine duserdi. Yalnizca manifestte DAHA
+  # ONCE gelen onkosullar acikca yuklenir.
+  kok <- resolve_repo_root_for_tests()
+  satirlar <- sub("\\r$", "", readLines(
+    file.path(kok, "R", "module_proje_kaynak_analizi.R"),
+    encoding = "UTF-8", warn = FALSE
+  ))
+  bas <- which(satirlar == "pk_required_helpers <- list(")
+  son <- min(which(satirlar == ")")[which(satirlar == ")") > bas])
+
+  env <- new.env(parent = globalenv())
+  eval(parse(text = paste(satirlar[bas:son], collapse = "\n")), envir = env)
+  spec <- Filter(function(x) "pk_select_query_v2" %in% x$functions,
+                 env$pk_required_helpers)
+  expect_length(spec, 1L)
+
+  onkosul <- new.env(parent = baseenv())
+  assign("%||%", function(x, y) if (is.null(x)) y else x, envir = onkosul)
+  # ONKOSULLAR: manifestte v2 zincirinden ONCE gelen ve modulun kendi guard
+  # listesinde DAHA ONCEKI bir spec tarafindan yuklenen dosyalar.
+  for (yol in c("R/utils_log_redact.R", "R/helpers_pk_config.R",
+                "R/helpers_pk_ascii_tokens.R", "R/helpers_pk_text_turkish.R",
+                "R/helpers_pk_query_meta_schema.R", "R/helpers_pk_query_meta_access.R",
+                "R/helpers_pk_provenance.R",
+                "R/helpers_pk_analysis_query_selection.R")) {
+    source(file.path(kok, yol), encoding = "UTF-8", local = onkosul)
+  }
+
+  hedef <- new.env(parent = onkosul)
+  for (yol in spec[[1]]$path) source(file.path(kok, yol), encoding = "UTF-8", local = hedef)
+
+  kutuphane <- list(
+    list(id = "q001", name = "Proje Ozeti", description = "Projelerin genel ozeti."),
+    list(id = "q002", name = "Kaynak Listesi", description = "Kaynak dagilimi.")
+  )
+
+  # IKI GECISLI deterministik LLM: Gecis A aday kimlikleri, Gecis B secimi.
+  cagri <- new.env(parent = emptyenv()); cagri$n <- 0L
+  llm <- function(messages, settings) {
+    cagri$n <- cagri$n + 1L
+    icerik <- if (cagri$n == 1L) {
+      '{"candidates":["q001","q002"]}'
+    } else {
+      paste0('{"id":"q001","confidence":95,"reason":"ozet",',
+             '"alternates":[{"id":"q002","confidence":20}],',
+             '"requirements":{"entity":null,"measures":[],"dates":[],',
+             '"dimensions":[],"group_by":[],"unsupported":[]},"missing_info":null}')
+    }
+    list(content = icerik)
+  }
+
+  karar <- hedef$pk_select_run(
+    user_prompt = "projeleri ozetle",
+    library = kutuphane,
+    cfg = hedef$pk_select_normalize_config(list(
+      timeout_sec = 20L, recall_n = 5L, min_confidence = 50L, min_margin = 15L,
+      disagree_penalty = 15L, desc_chars = 220L, sample_chars = 120L,
+      sample_n = 2L, history_turns = 2L, name_chars = 120L, keyword_chars = 160L,
+      history_chars = 240L, pass_b_chars = 60000L, pass_a_chars = 200000L
+    )),
+    llm_fn = llm
+  )
+
+  expect_equal(cagri$n, 2L)
+  expect_identical(karar$status, hedef$PK_SELECT_STATUS_AUTO)
+  expect_identical(karar$query_id, "q001")
+})
+
 # --- Bağlantı hatası sınıflandırması ------------------------------------------
 
 test_that("kucuk harfli surucu imzalari da VERITABANI hatasi sayilir", {
