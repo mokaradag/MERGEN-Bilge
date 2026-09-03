@@ -1,0 +1,113 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "tr"
+
+reviews:
+  profile: "assertive"
+  high_level_summary: true
+  request_changes_workflow: false
+  poem: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+
+  path_filters:
+    - "!.coderabbit.yaml"
+
+  path_instructions:
+    - path: "R/config_file_store*.R"
+      instructions: |
+        Yalnız gerçek P0-P3 kusurlarını bildir. Yarış koşulları, TOCTOU, stale lock,
+        lock ownership, atomik yazma/rename, lost update, kısmi index, Windows/UNC
+        hata yolları ve kalıcı kilitlenmelere özellikle odaklan.
+
+    - path: "R/helpers_db_*.R"
+      instructions: |
+        Yalnız gerçek P0-P3 kusurlarını bildir. Connection/result cleanup,
+        transaction yaşam döngüsü, SQL parametreleme, kullanıcı/oturum izolasyonu,
+        encoding, deadlock/timeout, stale connection ve kaynak sızıntılarını ara.
+
+    - path: "R/helpers_claude_code*.R"
+      instructions: |
+        Yalnız gerçek P0-P3 kusurlarını bildir. Subprocess/process cleanup,
+        path traversal, symlink/path-policy bypass, yarış koşulları, orphan process,
+        sınırsız dizin taraması/I/O, session ownership, unsafe file overwrite ve
+        streaming yaşam döngüsü hatalarına odaklan.
+
+    - path: "R/helpers_file*.R"
+      instructions: |
+        Yalnız gerçek P0-P3 kusurlarını bildir. Eşzamanlı upload/delete/refresh,
+        queue yarışları, stale session registry, path traversal/TOCTOU, yarım dosya,
+        sınırsız bellek/disk kullanımı ve cleanup sızıntılarını ara.
+
+    - path: "R/helpers_ortak_oturum*.R"
+      instructions: |
+        Yalnız gerçek P0-P3 kusurlarını bildir. Kullanıcılar/oturumlar arası veri
+        sızıntısı, fail-open yetki, duplicate delivery, queue ordering, concurrent
+        writer, stale room state ve davet/katılım yarışlarını özellikle incele.
+
+    - path: "R/helpers_llm_*.R"
+      instructions: |
+        Yalnız gerçek P0-P3 kusurlarını bildir. SSE parser/stream hang, blocking I/O,
+        retry storm, worker cancellation, second-pass yaşam döngüsü, sınırsız buffer,
+        duplicate/finalize yarışı ve timeout propagation kusurlarını ara.
+
+    - path: "R/helpers_mcp_*.R"
+      instructions: |
+        Yalnız gerçek P0-P3 kusurlarını bildir. Tool yetki sınırı, file resolver/path
+        escape, aşırı büyük sonuç/materialization, unsafe schema varsayımları,
+        blocking iş ve veri sızıntısı risklerine odaklan.
+
+    - path: "R/helpers_sso*.R"
+      instructions: |
+        Yalnız gerçek P0-P3 kusurlarını bildir. İmza doğrulama, replay/timestamp,
+        identity confusion, fail-open authentication, canonicalization/encoding ve
+        kullanıcı eşleştirme hatalarını ara.
+
+    - path: "R/helpers_api_key*.R"
+      instructions: |
+        Yalnız gerçek P0-P3 kusurlarını bildir. Secret exposure, yanlış kullanıcı
+        anahtarı, crypto misuse, yanlış fallback ve kullanıcılar arası API key
+        sızıntısına odaklan.
+
+    - path: "R/server_*.R"
+      instructions: |
+        Yalnız gerçek P0-P3 kusurlarını bildir. Shiny observer tekrar kaydı, stale
+        callback, session teardown sızıntısı, global/process state'in oturumlar
+        arasında paylaşılması, async cleanup ve event-loop bloklanmasını ara.
+
+    - path: "R/utils_*.R"
+      instructions: |
+        Yalnız gerçek P0-P3 kusurlarını bildir. Atomiklik, path traversal,
+        symlink/TOCTOU, cleanup sızıntısı, rate-limit yarışı, encoding bozulması,
+        unsafe source/worker çalıştırma ve dosya bütünlüğü sorunlarına odaklan.
+
+    - path: "R/**"
+      instructions: |
+        Bu PR yakın dönemde defalarca incelenen Proje ve Kaynak Analizi / helpers_pk_*
+        çekirdeğini tekrar taramak için değil, uzun süredir mevcut legacy üretim
+        çekirdeğindeki kör noktaları bulmak için hazırlanmıştır.
+
+        Stil, isimlendirme, yorum, biçimlendirme, dokümantasyon ve salt refactor
+        önerileri verme. Yalnız yeniden üretilebilir veya güçlü biçimde
+        gerekçelendirilebilir gerçek P0-P3 davranış kusurlarını bildir.
+
+        Özellikle şunları ara:
+        - güvenlik sınırı aşımı ve kullanıcılar arası veri/secret sızıntısı;
+        - race condition, TOCTOU, stale state/callback ve lost update;
+        - Shiny event-loop bloklanması, deadlock/livelock ve kalıcı UI hang;
+        - orphan process/worker, connection/result/file-handle sızıntısı;
+        - sınırsız bellek/disk büyümesi, O(n^2) kritik yol ve büyük veri performans kusurları;
+        - timeout/deadline/cancellation propagation hatası ve retry storm;
+        - fail-open authentication/authorization ve session ownership karışması;
+        - hata yolunda eksik cleanup/reset/finalize ve double-send/duplicate observer;
+        - Windows/UNC/locale/encoding farklarından kaynaklanan gerçek üretim kusurları.
+
+        Öncelik:
+        P0 = güvenlik sınırı aşımı, kullanıcılar arası veri/secret sızıntısı veya yaygın üretim çökmesi.
+        P1 = veri bozulması, deadlock, kritik fail-open, kalıcı kilitlenme veya büyük kapsamlı kaynak tüketimi.
+        P2 = gerçekçi üretim koşulunda yanlış sonuç, yarış, zaman aşımı veya ciddi performans kusuru.
+        P3 = sınırlı kapsamlı fakat gerçek davranış kusuru.
+
+        Her bulguda somut tetikleme koşulunu ve üretim/kullanıcı etkisini belirt.
+        Aynı kök nedeni tekrar tekrar raporlama; spekülatif bulgu üretme.
