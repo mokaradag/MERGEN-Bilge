@@ -470,7 +470,20 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # ve seçim kararını oynatabiliyordu. Ayrıca `ornek_n` uzunluk koruması
   # eklendi: sıfır uzunlukta bir yapılandırma değeri `> 0L` karşılaştırmasında
   # `logical(0)` üretip `if()` içinde HATA veriyordu.
-  assert_current_budget("R/helpers_pk_query_selection_payload.R", 472L, 16L)
+  # BİLİNÇLİ GÜNCELLEME (PR #705 üretim düzeltmesi): seçim istemleri artık
+  # bütçeyi aşınca TÜM isteği reddetmek yerine ayrıntıyı seyreltir; ölçülen
+  # yeni değerler aşağıdadır (bkz. R/helpers_pk_query_selection_compact.R).
+  # BILINCLI GUNCELLEME (PR #715 inceleme): 542 -> 533 satir, 18 -> 17 fonksiyon
+  # (OLCULEN). Yinelenen `pk_select_query_capabilities()` KALDIRILDI; ilan
+  # edilen yetenekler artik kapinin okudugu kanonik beyandan gelir.
+  assert_current_budget("R/helpers_pk_query_selection_payload.R", 533L, 17L)
+  # BILINCLI GUNCELLEME (PR #715 inceleme): 130 -> 140 satir (OLCULEN).
+  # Sutun kirpmasi tek tanim sigmadiginda da butceyi asmaz; bos yetenek
+  # kesisiminde listenin NEDEN bosaltilmadigi belgelendi. Fonksiyon sayisi AYNI.
+  # BILINCLI GUNCELLEME (PR #715 inceleme, 2. tur): 140 -> 151 satir (OLCULEN).
+  # Merdiven basamagi artik SADECE daraltir: sabit degeri korlemesine yazmak,
+  # operatorun daha dar verdigi alani genisletip sigacak bir yuku reddediyordu.
+  assert_current_budget("R/helpers_pk_query_selection_compact.R", 151L, 5L)
   # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 400 -> 412 (ÖLÇÜLEN).
   # ZORUNLU Geçiş B örneği artık `entity:null` + BEŞ BOŞ dizi ŞEKLİNDE
   # DEĞİLDİR. O şekil tam olarak `pk_select_requirements_empty()` TRUE dediği
@@ -491,7 +504,9 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # geçer: sıfır uzunlukta bir değer `logical(0)` üretiyor, `if()` HATA veriyor
   # ve istem oluşturma tümüyle düşüyordu. `utils::tail()` çağrısı da aynı
   # korumanın arkasına alındı. Fonksiyon sayısı ARTMAMIŞTIR.
-  assert_current_budget("R/helpers_pk_query_selection_prompt.R", 425L, 16L)
+  # BILINCLI GUNCELLEME (PR #715 inceleme): 434 -> 440 satir (OLCULEN). "En az
+  # 2 aday" talimati artik listede en az 2 sorgu varken verilir. Fonksiyon AYNI.
+  assert_current_budget("R/helpers_pk_query_selection_prompt.R", 440L, 16L)
   # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme): 300 -> 325 satır / 12 -> 13
   # fonksiyon (ÖLÇÜLEN). İki neden: (a) TİPLİ doğrulama sonucuna `canonicalized`
   # alani eklendi ve varolussal->sayim kanoniklestirmesi TEK cagri ile baglandi
@@ -516,7 +531,9 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 361/13 -> 371/12 (OLCULEN).
   # Kanoniklestirici YUKLENMEMISSE tipli `validator_error` uretilir; tanimsiz
   # fonksiyon istisnasi v2 yolunda IC SECIM HATASINA donusuyordu.
-  assert_current_budget("R/helpers_pk_query_selection_requirements.R", 371L, 12L)
+  # BILINCLI GUNCELLEME (PR #715 inceleme): 402 -> 405 satir (OLCULEN). Ortam
+  # belirteci ASCII katlanir; Turkce yerelde "ACIK" katı kipi kapatiyordu.
+  assert_current_budget("R/helpers_pk_query_selection_requirements.R", 405L, 14L)
   # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 300 -> 304 satır (ÖLÇÜLEN).
   # Iptal durumu icin ACIK sabit eklendi (`PK_SELECT_STATUS_CANCELLED`); iptal
   # "bos yanit" ile ayni koda dusunce oturum durumu iptalde de temizleniyordu.
@@ -533,7 +550,9 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # AYNI KATI ust duzey anahtar kumesini uyguluyor. Eskiden yalnizca aday takma
   # adlari okunuyor, `{"candidates":[...],"selected_id":"q009"}` gibi sema
   # kaymasi tasiyan yanit onarim yoluna gitmeden geciyordu.
-  assert_current_budget("R/helpers_pk_query_selection_parse.R", 330L, 8L)
+  # BILINCLI GUNCELLEME (PR #715 inceleme): 344 -> 349 satir (OLCULEN). SIFIR
+  # aday beklentisi reddedilir; alt sinir 0a dusup bos cevabi gecerli sayiyordu.
+  assert_current_budget("R/helpers_pk_query_selection_parse.R", 349L, 8L)
   # PR #705 incelemesi: `not_for` ile dışlanan sorgu güven/marj kapılarından
   # ÖNCE reddedilir ve yetkin alternatifler AZALAN güvene göre sıralanır
   # (marj kapısı en güçlü rakibe karşı ölçülür). Taban çizgisi 400 -> 420.
@@ -547,7 +566,15 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # koşulu seçmiyor ve karar YAKIN MARJ uyarısı ÜRETMEDEN geçiyordu. Artık
   # açık bir `is.na()` dalı `PK_SELECT_STATUS_CLOSE_MARGIN` döndürür.
   # Fonksiyon sayısı ARTMAMIŞTIR.
-  assert_current_budget("R/helpers_pk_query_selection_decide.R", 450L, 9L)
+  # BILINCLI GUNCELLEME (PR #715 inceleme): 499 -> 520 satir (OLCULEN).
+  # (a) Uydurma kimlik temizligi kayit defteri YOKKEN kapiyi acmaz; (b) temiz
+  # gereksinim saklanan nesneye de yazilir (Derin Dusunme alternatifleri);
+  # (c) yetenek uyarisi erken cikislarda da bildirilir; (d) rakip filtresi
+  # tavsiye kipinde secilen sorguyla AYNI olcutu kullanir. Fonksiyon AYNI.
+  # BILINCLI GUNCELLEME (PR #715 inceleme, 2. tur): 520 -> 522 satir (OLCULEN).
+  # Uydurma kimlik temizligi artik KAYIT DEFTERI YUKLU iken uygulanir; bos
+  # izinli listede varlik-yalniz bir nesne de kanitsiz `auto` uretebiliyordu.
+  assert_current_budget("R/helpers_pk_query_selection_decide.R", 522L, 10L)
   assert_current_budget("R/helpers_pk_query_selection_degraded.R", 190L, 7L)
   assert_current_budget("R/helpers_pk_query_selection_session.R", 220L, 14L)
   # BİLİNÇLİ GÜNCELLEME (PR #705 kararlılık): Geçiş A TOPLAM yük bütçesi
@@ -587,7 +614,12 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # düşüyor, kullanıcı isteği DURDURMUŞ olmasına rağmen "başarısız seçim"
   # gerekçesi üretiliyor ve iptal, hata gibi raporlanıyordu.
   # Fonksiyon sayısı ARTMAMIŞTIR.
-  assert_current_budget("R/helpers_pk_query_selection_ai.R", 651L, 22L)
+  # BILINCLI GUNCELLEME (PR #715 inceleme): 671 -> 678 satir (OLCULEN).
+  # (a) Atlanan kimlik denetimi BOS kimlik listesinden ONCE gelir; (b) Gecis A
+  # tabani kutuphane boyunu asmaz; (c) kirpma bilgisi bozuk cevapta da tasinir.
+  # BILINCLI GUNCELLEME (PR #715 inceleme, 2. tur): 678 -> 682 satir (OLCULEN).
+  # `blocks_clipped` artik zaman asimi / LLM erisilemez dallarinda da tasinir.
+  assert_current_budget("R/helpers_pk_query_selection_ai.R", 682L, 22L)
   # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 320/14 -> 328/15 (OLCULEN).
   # (a) Bayat teklif HER reddetmede temizlenir (cipsiz ret sonrasi "1" cevabi
   # ALAKASIZ sorguyu onayliyordu). (b) `||` operandlari uzunluk denetiminden

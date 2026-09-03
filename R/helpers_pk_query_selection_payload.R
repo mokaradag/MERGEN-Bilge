@@ -196,7 +196,9 @@ pk_select_pass_a_line <- function(query, cfg) {
     ""
   }
 
-  etiket_metin <- .pk_select_column_labels(meta, cfg$keyword_chars)
+  # Etiket bütçesi AYRI okunur: seyreltme merdiveni `label_chars = 0` ile
+  # yalnızca etiketleri boşaltabilmelidir (anahtar kelimeleri koruyarak).
+  etiket_metin <- .pk_select_column_labels(meta, cfg$label_chars %||% cfg$keyword_chars)
 
   ornekler <- .pk_select_meta_chr(meta, "sample_questions")
   # YAPILANDIRMA ALANI UZUNLUK DENETİMİNDEN GEÇER (PR #705 inceleme, P3): alan
@@ -239,36 +241,49 @@ PK_SELECT_PASS_A_HEADER <- paste0(
 pk_select_pass_a_payload <- function(library, cfg) {
   if (!is.list(library) || !length(library)) {
     return(list(text = "", ids = character(0), skipped = character(0),
-                truncated = FALSE, chars = 0L, budget = NA_integer_))
+                truncated = FALSE, chars = 0L, budget = NA_integer_,
+                compaction = "tam"))
   }
 
-  satirlar <- vapply(library, function(q) pk_select_pass_a_line(q, cfg), character(1))
   kimlikler <- vapply(library, pk_select_safe_query_id, character(1))
-
-  gecerli <- !is.na(satirlar) & !is.na(kimlikler)
+  gecerli <- !is.na(kimlikler)
   atlanan <- vapply(which(!gecerli), function(i) {
     ad <- if (is.list(library[[i]])) as.character(library[[i]]$name %||% "")[1] else ""
     if (is.na(ad) || !nzchar(ad)) sprintf("#%d", i) else ad
   }, character(1))
 
-  satirlar <- satirlar[gecerli]
   kimlikler <- kimlikler[gecerli]
   sira <- order(kimlikler, method = "radix")
-
-  metin <- paste(satirlar[sira], collapse = "\n")
+  sirali <- library[gecerli][sira]
 
   # TOPLAM GEÇİŞ A BÜTÇESİ (Geçiş B'deki `pass_b_chars` kapısının karşılığı).
   #
   # Alan başına kırpma sorgu SAYISINI sınırlamaz; daha büyük bir kütüphane ya
   # da izin verilen üst sınırlara yakın metadata, Geçiş A'yı seçici modelin
-  # bağlamının ötesine itebilir. Sessiz kırpma DOĞRU DEĞİLDİR: eksik bir satır
-  # o sorguyu geri alınamaz biçimde görünmez yapar ve seçici kalan kümeden
-  # güvenle yanlış bir sorguyu seçebilir — `skipped` ile aynı sınıf hata.
-  # Bu yüzden durum `truncated` ile AÇIKÇA raporlanır ve çağıran kapalı
-  # başarısız olur.
+  # bağlamının ötesine itebilir. Satırların SESSİZCE düşürülmesi kabul edilemez:
+  # görünmeyen bir sorgu asla seçilemez.
+  #
+  # ANCAK TÜM İSTEĞİ REDDETMEK DE DOĞRU DEĞİLDİR: `PK_SELECT_PASS_A_LADDER`
+  # basamakları sırayla uygulanır; her basamak TÜM satırların ayrıntısını
+  # tekbiçim daraltır, hiçbiri satır düşürmez.
   butce <- suppressWarnings(as.integer(cfg$pass_a_chars %||% 60000L)[1])  # `[1]` + uzunluk koruması (`pass_b_chars` ile AYNI)
   if (length(butce) != 1L || is.na(butce) || butce <= 0L) butce <- 60000L
-  uzunluk <- nchar(metin, type = "chars")
+
+  # Merdiven ve `pk_select_pass_a_level_cfg()` AYNI dosyadadır; yalnızca birini
+  # korumak, ikisi de yokken yine tanımsız fonksiyon hatası verirdi.
+  merdiven <- PK_SELECT_PASS_A_LADDER
+
+  metin <- ""
+  uzunluk <- 0L
+  duzey <- "tam"
+  for (basamak in merdiven) {
+    duzey_cfg <- pk_select_pass_a_level_cfg(cfg, basamak)
+    satirlar <- vapply(sirali, function(q) pk_select_pass_a_line(q, duzey_cfg), character(1))
+    metin <- paste(satirlar, collapse = "\n")
+    uzunluk <- nchar(metin, type = "chars")
+    duzey <- as.character(basamak$id)[1]
+    if (uzunluk <= butce) break
+  }
 
   list(
     text = metin,
@@ -276,7 +291,8 @@ pk_select_pass_a_payload <- function(library, cfg) {
     skipped = atlanan,
     truncated = uzunluk > butce,
     chars = uzunluk,
-    budget = butce
+    budget = butce,
+    compaction = duzey
   )
 }
 
@@ -336,7 +352,12 @@ pk_select_pass_a_payload <- function(library, cfg) {
 #' burada da vardır (özellikle `keywords` — bir sorgu YALNIZCA anahtar
 #' kelimesi yüzünden aday olabilir ve precision modeli o kanıtı görmezse
 #' rakibini seçebilir).
-pk_select_pass_b_block <- function(query, cfg) {
+#' @param detail_budget Sütun tanımlarına ayrılan karakter payı. `Inf` (varsayılan)
+#'   tam ayrıntı demektir ve mevcut davranışı BİREBİR korur; sonlu bir değer
+#'   yalnızca `SUTUNLAR` satırını daraltır. Kimliği taşıyan satırlar (SORGU/ISIM/
+#'   ACIKLAMA) ve anlamsal kapının okuduğu VARLIK/TANECIK satırları ASLA
+#'   daraltılmaz.
+pk_select_pass_b_block <- function(query, cfg, detail_budget = Inf) {
   kimlik <- pk_select_safe_query_id(query)
   if (is.na(kimlik)) return(NA_character_)
 
@@ -398,14 +419,40 @@ pk_select_pass_b_block <- function(query, cfg) {
 
   sutunlar <- meta$column_meta
   if (is.list(sutunlar) && length(sutunlar) && !is.null(names(sutunlar))) {
+    adlar <- names(sutunlar)
     tanimlar <- vapply(
-      names(sutunlar),
+      adlar,
       function(ad) .pk_select_column_line(ad, sutunlar[[ad]]),
       character(1), USE.NAMES = FALSE
     )
-    tanimlar <- tanimlar[!is.na(tanimlar)]
+    gecerli <- !is.na(tanimlar)
+    adlar <- adlar[gecerli]
+    tanimlar <- tanimlar[gecerli]
+    if (length(tanimlar) && is.finite(detail_budget)) {
+      # Kırpmada yetenek taşıyan sütunlar önceliklidir: anlamsal kapı yalnızca
+      # `capability` beyan eden sütunları okur. Öncelik ÜRETİLEN METİNDEN değil
+      # metadata'dan okunur; `yetenek=` geçen bir ETİKET gerçek yetenek sütununu
+      # payın dışına itebilirdi. Sıra kararlıdır ve sığan yükte hiç uygulanmaz.
+      yetenekli <- vapply(adlar, function(ad) {
+        cm <- sutunlar[[ad]]
+        if (!is.list(cm)) return(FALSE)
+        deger <- suppressWarnings(trimws(as.character(cm$capability)[1]))
+        length(deger) == 1L && !is.na(deger) && nzchar(deger)
+      }, logical(1), USE.NAMES = FALSE)
+      tanimlar <- tanimlar[order(!yetenekli, method = "radix")]
+    }
     if (length(tanimlar)) {
-      satirlar <- c(satirlar, sprintf("SUTUNLAR: %s", paste(tanimlar, collapse = " ; ")))
+      # `SUTUNLAR: ` ÖNEKİ DE PAYIN İÇİNDEDİR: yalnızca tanımları bütçelemek,
+      # aday başına ~11 karakterlik sabit bir taşma bırakırdı.
+      sutun_butcesi <- if (is.finite(detail_budget)) {
+        detail_budget - nchar("\nSUTUNLAR: ")
+      } else {
+        detail_budget
+      }
+      sutun_metin <- pk_select_fit_column_defs(tanimlar, sutun_butcesi)
+      if (nzchar(sutun_metin)) {
+        satirlar <- c(satirlar, sprintf("SUTUNLAR: %s", sutun_metin))
+      }
     }
   }
 
@@ -442,31 +489,45 @@ pk_select_pass_b_block <- function(query, cfg) {
 #' adaylar sessizce kırpılır. Bütçe aşıldığında sessiz kırpma YAPILMAZ; durum
 #' `truncated` ile AÇIKÇA raporlanır ve çağıran kapalı başarısız olur.
 pk_select_pass_b_blocks <- function(candidates, cfg) {
-  bloklar <- character(0)
-  kimlikler <- character(0)
-  toplam <- 0L
   # BÜTÇE GEÇİŞ A ile AYNI biçimde sayıya çevrilir: metin bir değer aşağıdaki
   # `toplam > butce` karşılaştırmasını DİZE karşılaştırmasına çevirir
   # ("120" > "24000" TRUE'dur) ve SIĞAN bir yükü "kırpıldı" diye reddederdi.
-  butce <- suppressWarnings(as.integer(cfg$pass_b_chars %||% 24000L)[1])
-  if (length(butce) != 1L || is.na(butce) || butce <= 0L) butce <- 24000L
+  butce <- suppressWarnings(as.integer(cfg$pass_b_chars %||% 60000L)[1])
+  if (length(butce) != 1L || is.na(butce) || butce <= 0L) butce <- 60000L
 
-  for (aday in candidates) {
-    blok <- pk_select_pass_b_block(aday, cfg)
-    if (is.na(blok)) next
+  gecerli <- Filter(function(aday) !is.na(pk_select_safe_query_id(aday)), candidates)
+  kimlikler <- vapply(gecerli, pk_select_safe_query_id, character(1))
+  # AYRAÇ YALNIZCA BLOKLARIN ARASINA GİRER: her bloğa 2 karakter eklemek, tam
+  # bütçe boyundaki tek bir bloğu "taşmış" sayıp gereksiz kırpma tetikliyordu.
+  topla <- function(bloklar) sum(nchar(bloklar)) + max(length(bloklar) - 1L, 0L) * 2L
 
-    toplam <- toplam + nchar(blok) + 2L
-    if (toplam > butce) {
-      return(list(text = "", ids = character(0), truncated = TRUE))
-    }
-
-    bloklar <- c(bloklar, blok)
-    kimlikler <- c(kimlikler, pk_select_safe_query_id(aday))
+  # 1) TAM AYRINTI SIĞIYORSA hiçbir şey değişmez (mevcut davranış birebir).
+  tam <- vapply(gecerli, function(aday) pk_select_pass_b_block(aday, cfg), character(1))
+  if (!length(tam) || topla(tam) <= butce) {
+    return(list(text = paste(tam, collapse = "\n\n"), ids = kimlikler,
+                truncated = FALSE, clipped = FALSE))
   }
 
+  # 2) SIĞMIYORSA ADAY DÜŞÜRÜLMEZ. Yükü büyüten şey sorgu başına onlarca/yüzlerce
+  # sütun tanımıdır; önce sütunsuz kimlik gövdeleri ayrılır, kalan bütçe adaylara
+  # EŞİT bölünür ve yalnızca `SUTUNLAR` satırı daraltılır.
+  taban <- vapply(gecerli, function(aday) pk_select_pass_b_block(aday, cfg, 0), character(1))
+  plan <- pk_select_detail_share(topla(taban), butce, length(gecerli))
+
+  # 3) Kimlik gövdeleri bile sığmıyorsa gerçekten bir yapılandırma sorunu vardır
+  # (ör. tek başına bütçeyi aşan bir açıklama); kapalı başarısızlık KORUNUR.
+  if (!isTRUE(plan$feasible)) {
+    return(list(text = "", ids = character(0), truncated = TRUE, clipped = FALSE))
+  }
+
+  daraltilmis <- vapply(
+    gecerli, function(aday) pk_select_pass_b_block(aday, cfg, plan$share), character(1)
+  )
+
   list(
-    text = paste(bloklar, collapse = "\n\n"),
+    text = paste(daraltilmis, collapse = "\n\n"),
     ids = kimlikler,
-    truncated = FALSE
+    truncated = FALSE,
+    clipped = TRUE
   )
 }

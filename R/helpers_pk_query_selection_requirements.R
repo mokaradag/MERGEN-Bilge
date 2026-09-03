@@ -89,6 +89,35 @@ pk_select_capability_roles <- function(registry = NULL) {
   list(ok = TRUE, values = unique(dizi$values))
 }
 
+#' Yetenek EŞLEŞMESİ zorunlu mu? (`MERGEN_PK_REQUIRE_CAPABILITY_MATCH`)
+#'
+#' "Beyan yoksa sorgu cevaplayamaz" varsayımı yalnızca metadata TAM olduğunda
+#' geçerlidir; gerçek kütüphanede `capability` küratörü kısmidir. Kapı ayrıca
+#' asimetriktir: hiç `requirements` bildirmeyen model `not_asserted` ile
+#' ilerlerken, ihtiyacını bildiren model engellenir. Varsayılan bu yüzden
+#' TAVSİYE kipidir; `TRUE` eski katı reddetmeyi geri getirir.
+pk_capability_match_required <- function() {
+  # ÇÖZÜMLEME §9 SÖZLEŞMESİNDEN GEÇER: yerel ELE ALMA kendi başına yapılırsa
+  # Türkçe yerelde `tolower("ACIK")` "acık" verir ve katı kip sessizce kapanır.
+  isTRUE(pk_config_resolve("MERGEN_PK_REQUIRE_CAPABILITY_MATCH"))
+}
+
+#' DOĞRULANAMAYAN yetenek kimliklerini `requirements` içinden düş
+#'
+#' @return Temizlenmiş `requirements`; düşecek bir şey yoksa `NULL`.
+pk_select_drop_unknown_requirements <- function(requirements, unknown) {
+  bilinmeyen <- as.character(unknown %||% character(0))
+  bilinmeyen <- bilinmeyen[!is.na(bilinmeyen) & nzchar(bilinmeyen)]
+  if (!length(bilinmeyen) || !is.list(requirements)) return(NULL)
+
+  temiz <- .pk_select_req_view(requirements)
+  for (alan in .PK_SELECT_REQ_CAPABILITY_FIELDS) {
+    deger <- as.character(temiz[[alan]] %||% character(0))
+    temiz[[alan]] <- deger[!(deger %in% bilinmeyen)]
+  }
+  temiz
+}
+
 #' `requirements` nesnesini KATI biçimde normalleştir
 #'
 #' @return `ok`, `error` ve `value` alanlı liste. `value`, doğrulayıcıya

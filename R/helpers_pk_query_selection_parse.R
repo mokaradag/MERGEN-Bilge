@@ -51,6 +51,8 @@ PK_SELECT_STATUS_CANCELLED          <- "cancelled"
 #'
 #' @param expected_n Beklenen GEÇERLİ aday sayısı; genellikle
 #'   `min(cfg$recall_n, length(library_ids))`. `NULL` ise sayı denetlenmez.
+#' @param min_n Kabul edilebilir EN AZ aday sayısı. `NULL` ise `min(2, expected_n)`
+#'   kullanılır; marj kapısı ikinci adayı gerektirdiği için taban 2'dir.
 #'
 #' İki kritik katılık:
 #'   * `candidates` DÜZ bir dize dizisi olmalıdır. `unlist()` iç içe nesneleri
@@ -60,7 +62,8 @@ PK_SELECT_STATUS_CANCELLED          <- "cancelled"
 #'   * BİLİNMEYEN tek bir kimlik bile cevabı bozuk yapar. Eskiden düşürülüyordu;
 #'     modelin EN OLASI gördüğü (ama var olmayan) kimlik sessizce atılıp geri
 #'     kalanlar "başarılı recall" sayılıyordu.
-pk_select_parse_pass_a <- function(text, library_ids, expected_n = NULL) {
+pk_select_parse_pass_a <- function(text, library_ids, expected_n = NULL,
+                                   min_n = NULL) {
   hata <- function(mesaj) {
     list(ok = FALSE, ids = character(0), unknown = character(0), error = mesaj)
   }
@@ -124,13 +127,29 @@ pk_select_parse_pass_a <- function(text, library_ids, expected_n = NULL) {
 
   if (!length(ham)) return(hata("Geçiş A hiç aday kimliği döndürmedi."))
 
+  # SAYI DENETİMİ ARALIKLIDIR, EŞİTLİK DEĞİL: dar kapsamlı sorularda model
+  # gerçekten ilgili 2-3 kimliği döndürür ve eşitlik denetimi iki onarım
+  # denemesini de harcayıp isteği `malformed` yapıyordu. FAZLA kimlikte ilk
+  # `beklenen` alınır ("en olası önce" sözleşmesi); EKSİK kimlikte taban 2'dir,
+  # çünkü marj kapısı ikinci adayın güvenini ister.
   if (!is.null(expected_n)) {
     beklenen <- as.integer(expected_n)[1]
-    if (!is.na(beklenen) && length(ham) != beklenen) {
-      return(hata(sprintf(
-        "Geçiş A tam olarak %d aday kimliği döndürmelidir; %d döndürdü.",
-        beklenen, length(ham)
-      )))
+    asgari <- suppressWarnings(as.integer(min_n %||% min(2L, beklenen))[1])
+    if (length(asgari) != 1L || is.na(asgari) || asgari < 1L) asgari <- 1L
+
+    # SIFIR/NEGATİF BEKLENTİ KABUL EDİLMEZ: alt sınır 0'a düşer, geçerli cevap
+    # `character(0)`e kırpılır ve çağıran BOŞ bir Geçiş A sonucunu geçerli sanardı.
+    if (!is.na(beklenen) && beklenen < 1L) {
+      return(hata("Geçiş A beklenen aday sayısı en az 1 olmalıdır."))
+    }
+    if (!is.na(beklenen)) {
+      if (length(ham) < min(asgari, beklenen)) {
+        return(hata(sprintf(
+          "Geçiş A en az %d aday kimliği döndürmelidir; %d döndürdü.",
+          min(asgari, beklenen), length(ham)
+        )))
+      }
+      if (length(ham) > beklenen) ham <- ham[seq_len(beklenen)]
     }
   }
 

@@ -354,7 +354,7 @@ source_manifest_sections <- list(
     "R/helpers_pk_query_retrieval.R",
     "R/helpers_pk_query_selection_json.R",
     "R/helpers_pk_query_selection_config.R",
-    "R/helpers_pk_query_selection_payload.R",
+    "R/helpers_pk_query_selection_compact.R", "R/helpers_pk_query_selection_payload.R",  # sığdırma ÖNCE
     "R/helpers_pk_query_selection_prompt.R",
     "R/helpers_pk_query_selection_canonical.R", "R/helpers_pk_query_selection_requirements.R",  # varolus->sayim imasi ONCE
     "R/helpers_pk_query_selection_parse.R",

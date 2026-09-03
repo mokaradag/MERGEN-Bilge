@@ -95,6 +95,25 @@ mergen_pk_residual_budget_sec <- function(request) {
 # v2 seçicisi düşük güven/yakın beraberlik durumlarında TIKLANABİLİR seçenekler
 # üretir. Yalnızca prozayı eklemek, kullanıcıdan seçmesini isteyip seçenekleri
 # göstermemek olurdu.
+#' Çip nesnelerini TARAYICININ beklediği DÜZ METİN dizisine çevir
+#'
+#' İşleyici her öğeyi metne çevirir; `list(id=, name=)` nesnesi ekrana "[object
+#' Object]" basıyordu. Çipe tıklamak metni bir sonraki isteme yazar ve
+#' `pk_select_resolve_user_choice()` onu ADIYLA çözer.
+.mergen_pk_chip_labels <- function(chips) {
+  if (!is.list(chips) || !length(chips)) return(character(0))
+  etiketler <- vapply(chips, function(cip) {
+    ad <- if (is.list(cip)) suppressWarnings(trimws(as.character(cip$name)[1])) else NA
+    # BOŞ ad KİMLİĞE düşer: `%||%` yalnızca `NULL` yakalar, boş ad çipi düşürürdü.
+    ham <- if (length(ad) == 1L && !is.na(ad) && nzchar(ad)) ad else if (is.list(cip)) cip$id else cip
+    deger <- suppressWarnings(trimws(as.character(ham)[1]))
+    if (length(deger) != 1L || is.na(deger)) "" else deger
+  }, character(1))
+  # ADLAR DÜŞÜRÜLÜR: `vapply` çip listesinin adlarını taşır, adlı bir vektör
+  # `as.list()` sonrası JSON NESNESİ olur ve tarayıcı yine "[object Object]" basar.
+  unname(etiketler[nzchar(etiketler)])
+}
+
 mergen_pk_emit_chips <- function(ctx, chips, message_id = NULL) {
   if (!is.list(chips) || length(chips) == 0L) return(invisible(FALSE))
   gonder <- tryCatch(ctx$emit_chips_fn, error = function(e) NULL)
@@ -122,13 +141,19 @@ mergen_pk_emit_chips <- function(ctx, chips, message_id = NULL) {
   kimlik <- tryCatch(as.character(message_id %||% "")[1], error = function(e) "")
   if (is.na(kimlik) || !nzchar(kimlik)) return(invisible(FALSE))
 
+  # Çipler NETLEŞTİRME seçenekleridir, takip sorusu değildir; kutu başlığı
+  # `title` ile üzerine yazılır.
+  etiketler <- .mergen_pk_chip_labels(chips)
+  if (!length(etiketler)) return(invisible(FALSE))
+
   # GÖNDERİM HATASI BAŞARI SAYILMAZ: websocket kapalıysa `sendCustomMessage()`
   # hata fırlatır; `try()` onu yutup `TRUE` döndürdüğünde çağıran çipleri
   # TESLİM EDİLMİŞ kaydediyor, kullanıcı ise tıklanabilir hiçbir seçenek
   # olmadan "seçeneklerden birini belirtin" metnini okuyordu.
   gonderim <- try(oturum$sendCustomMessage("updateFollowupSuggestions", list(
     id = kimlik,
-    followups = chips,
+    followups = as.list(etiketler),
+    title = "Olası Analizler",
     pending = FALSE
   )), silent = TRUE)
   invisible(!inherits(gonderim, "try-error"))

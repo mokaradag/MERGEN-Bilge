@@ -216,7 +216,10 @@
   # BİLİNÇLİ GÜNCELLEME (PR incelemesi): 97 -> 98. `helpers_pk_analysis_packet.R`
   # bakım ratchet'inin satır tavanındaydı; saf gruplama anahtarı/etiketi
   # yardımcıları `helpers_pk_packet_keys.R` dosyasına ayrıldı (davranış AYNI).
-  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_query_selection_apply.R", n = 98L),
+  # BİLİNÇLİ GÜNCELLEME (PR #705 üretim düzeltmesi): 98 -> 99.
+  # `helpers_pk_query_selection_compact.R` seçim istemlerini bütçeye sığdırır
+  # ve yük kurucusundan ÖNCE yüklenir.
+  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_query_selection_apply.R", n = 99L),
   sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
   # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
@@ -628,7 +631,7 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 479 -> 480: PR #705 inceleme takibi, R/helpers_pk_packet_keys.R (saf
   # gruplama anahtarı/etiketi; `helpers_pk_analysis_packet.R` KÜRESEL 796
   # satır tavanındaydı). Ratchet bölünmesidir; yeni davranış eklemez.
-  expect_equal(length(runtime), 480L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  expect_equal(length(runtime), 481L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

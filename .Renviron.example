@@ -727,6 +727,15 @@ MERGEN_PK_SELECT_MIN_MARGIN=15
 #   yalnızca zayıflatır. 0 verilirse sinyal sadece raporlanır.
 MERGEN_PK_SELECT_DISAGREE_PENALTY=15
 
+#   Seçilen sorgu, modelin bildirdiği anlamsal yeteneği metadata'sında BEYAN
+#   ETMİYORSA analiz durdurulsun mu? Varsayılan FALSE'tur: `capability` beyanı
+#   gerçek kütüphanede (yüzlerce sorgu, binlerce sütun) kaçınılmaz biçimde
+#   KISMİDİR ve beyanın YOKLUĞU, yeteneğin yokluğunun kanıtı değildir. FALSE
+#   iken doğrulanamayan iddia yanıtın "Analiz Kaynağı" bölümünde AÇIKÇA
+#   bildirilir, seçim güven/marj kapılarına devam eder. Metadata tam olarak
+#   küratörlendiğinde TRUE yapılarak eski kapalı-başarısız kip geri alınabilir.
+MERGEN_PK_REQUIRE_CAPABILITY_MATCH=FALSE
+
 #   Geçiş A satır bütçeleri. Alanlar KÜRESEL olarak düşürülmez (kullanıcının
 #   terminolojisi çoğu zaman yalnızca açıklamada ya da örnek soruda geçer);
 #   yalnızca tek tek ve deterministik biçimde kırpılır.
@@ -789,7 +798,7 @@ MERGEN_PK_FETCH_CHUNK_ROWS=5000
 #   MERGEN_PK_MAX_RESULT_MB tavani KALDIRILMAZ; yalnizca dusuk-granulariteli
 #   parcali getirim yolu kullanilir. Yalnizca ilgili sorgunun LOB sutununun
 #   pratikte kucuk oldugu BILINIYORSA acin.
-MERGEN_PK_ALLOW_UNBOUNDED_LOB=TRUE
+MERGEN_PK_ALLOW_UNBOUNDED_LOB=FALSE
 
 #   PR #703 GÜNCELLEMESİ: bu bayrak artık SORGU METADATA'SINDAN da çözülür
 #   (`allow_unbounded_lob`) ve sorgu düzeyindeki değer EN YÜKSEK önceliklidir.

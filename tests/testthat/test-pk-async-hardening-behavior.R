@@ -284,6 +284,7 @@ test_that("login zaman aşımı planı ÜÇ AYRI sonuç üretir", {
 # ------------------------------------------------------------------------------
 
 test_that("beyanı olmayan DEĞİŞKEN genişlik `__unproven__` sayılır ve REDDEDİLİR", {
+  pk_test_pin_config("MERGEN_PK_ALLOW_UNBOUNDED_LOB", FALSE)  # açık dağıtımda reddetme dalları hiç çalışmaz
   # Üretimdeki `dbColumnInfo()`: yalnızca `name` + SAYISAL ODBC kodu.
   bilgi <- data.frame(name = c("kod", "aciklama"), type = c("4", "-9"),
                       stringsAsFactors = FALSE)
@@ -301,6 +302,7 @@ test_that("beyanı olmayan DEĞİŞKEN genişlik `__unproven__` sayılır ve RED
 })
 
 test_that("sürücü TANIMLAYICISI varsa sınırlı metin sütunu TEK SATIRA düşmez", {
+  pk_test_pin_config("MERGEN_PK_ALLOW_UNBOUNDED_LOB", FALSE)  # açık dağıtımda reddetme dalları hiç çalışmaz
   bilgi <- data.frame(name = c("kod", "aciklama"), type = c("4", "-9"),
                       stringsAsFactors = FALSE)
   sema <- list(
@@ -315,6 +317,7 @@ test_that("sürücü TANIMLAYICISI varsa sınırlı metin sütunu TEK SATIRA dü
 })
 
 test_that("tanımlayıcı MAX sütunu bildirdiğinde sonuç REDDEDİLİR", {
+  pk_test_pin_config("MERGEN_PK_ALLOW_UNBOUNDED_LOB", FALSE)  # açık dağıtımda reddetme dalları hiç çalışmaz
   bilgi <- data.frame(name = c("govde"), type = c("-9"), stringsAsFactors = FALSE)
   sema <- list(list(name = "govde", system_type_name = "nvarchar(max)", max_length = -1))
   plan <- pk_sql_plan_chunk_rows(bilgi, max_result_mb = 512, schema = sema)
@@ -323,6 +326,7 @@ test_that("tanımlayıcı MAX sütunu bildirdiğinde sonuç REDDEDİLİR", {
 })
 
 test_that("sorgu metadata'sı sınırsız LOB politikasını GERÇEKTEN etkiler", {
+  pk_test_pin_config("MERGEN_PK_ALLOW_UNBOUNDED_LOB", FALSE)  # açık dağıtımda reddetme dalları hiç çalışmaz
   bilgi <- data.frame(name = c("govde"), type = c("-9"), stringsAsFactors = FALSE)
   sema <- list(list(name = "govde", system_type_name = "nvarchar(max)", max_length = -1))
 
@@ -798,6 +802,25 @@ test_that("çip gönderimi HATA verirse `sendCustomMessage` yedeği çalışır"
   ctx$emit_chips_fn <- function(chips) invisible(TRUE)
   expect_true(isTRUE(mergen_pk_emit_chips(ctx, list("a"), message_id = "msg_1")))
   expect_equal(gonderilenler$n, 0L)
+})
+
+test_that("çip etiketi BOŞ `name` alanında kimliğe düşer", {
+  # `%||%` yalnızca `NULL` yakalar; boş `name` etiketi siliyor ve çip listeden
+  # tamamen düşüyordu (kullanıcı seçim isteyen yanıtta hiç seçenek görmüyordu).
+  etiketler <- .mergen_pk_chip_labels(list(
+    list(id = "q001", name = ""),
+    list(id = "q002", name = "  "),
+    list(id = "q003", name = "Gerçek Ad"),
+    list(id = "q004")
+  ))
+  expect_identical(etiketler, c("q001", "q002", "Gerçek Ad", "q004"))
+
+  # ADLI çip listesi ADSIZ dizi üretmelidir: adlı vektör `as.list()` sonrası
+  # JSON NESNESİ olur ve tarayıcı yine "[object Object]" basar.
+  adli <- .mergen_pk_chip_labels(list(a = list(id = "q001", name = "Bir"),
+                                      b = list(id = "q002", name = "İki")))
+  expect_null(names(adli))
+  expect_identical(adli, c("Bir", "İki"))
 })
 
 test_that("registerDataObj adı her artefakt için BENZERSİZDİR", {

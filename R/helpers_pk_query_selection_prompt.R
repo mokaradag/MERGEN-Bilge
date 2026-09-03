@@ -178,13 +178,24 @@ pk_select_pass_a_messages <- function(user_prompt, payload, context, cfg,
     payload$text, "\n\n",
 
     "### GOREV:\n",
-    sprintf("Tam olarak %d adet aday sorgu KIMLIGI dondur.\n", cfg$recall_n),
+    # SAYI TALİMATI AYRIŞTIRICIYLA AYNI ARALIĞI SÖYLER. "Tam olarak N" diyen
+    # eski metin, dar kapsamli sorularda modeli 2-3 gercekten ilgili adayla
+    # celiskiye dusuruyor, ayristirici de cevabi bozuk sayip istegi
+    # reddediyordu (bkz. `pk_select_parse_pass_a()` aralik denetimi).
+    sprintf("EN FAZLA %d adet aday sorgu KIMLIGI dondur.\n", cfg$recall_n),
     "Kimlikler yukaridaki listede AYNEN gecen kararli kimliklerdir (ornegin q042).\n",
     "Sira ONEMLIDIR: en olasi aday basta olsun.\n",
     sprintf(
       "Listede %d'den az sorgu varsa mevcut olanlarin TAMAMINI dondur.\n",
       cfg$recall_n
     ),
+    # TABAN LİSTEDE GERÇEKTEN VAR OLANI AŞAMAZ: tek sorgulu kütüphanede "en az
+    # 2" talimatı modeli kimlik uydurmaya iter.
+    if (length(payload$ids) >= 2L) {
+      "En az 2 aday dondur: ikinci aday olmadan yakin beraberlik olculemez.\n"
+    } else {
+      ""
+    },
     "Genis dusun: bu asamada AMAC dogru sorguyu KACIRMAMAKTIR, secmek degil.\n",
     "'bu sorgu sunlar icin DEGILDIR' alani eslesen bir sorguyu ELEMEK icin kullan.\n\n",
 
@@ -296,6 +307,10 @@ pk_select_pass_b_messages <- function(user_prompt, candidates, context, cfg,
                                       capability_ids = character(0),
                                       repair_error = NULL, blocks = NULL) {
   if (is.null(blocks)) blocks <- pk_select_pass_b_blocks(candidates, cfg)
+
+  # İzinli yetenek listesi ADAYLARIN beyanına daraltılır; doğrulama sınırı
+  # değişmez (bkz. `pk_select_candidate_capability_ids()`).
+  capability_ids <- pk_select_candidate_capability_ids(candidates, capability_ids)
 
   sistem <- paste0(
     "Sen bir Veritabani Sorgu Yonlendiricisisin. Asagidaki ADAYLAR arasindan ",

@@ -175,7 +175,50 @@ pk_select_decide <- function(pass_b, candidates_ids, library_index, cfg,
     ))
   }
 
+  # ETKİN İZİNLİ LİSTE: aşağıdaki temizlik kararı kayıt defterinin GERÇEKTEN
+  # yüklü olup olmadığına bakar; `NULL` parametre doğrulayıcının içinde çözülür.
+  izinli <- capability_ids
+  if (is.null(izinli)) izinli <- pk_select_capability_ids(NULL)
+
   dogrulama <- pk_select_validate_requirements(secilen, pass_b$requirements, capability_ids)
+
+  # UYDURULMUŞ KİMLİK SORGU HAKKINDA KANIT DEĞİLDİR: kayıt defterinde hiç
+  # bulunmayan bir kimlik (üretimde `dimension.project`) model sözleşme
+  # ihlalidir, sorgunun yeterliliği hakkında bir şey söylemez. Onarım denemesi
+  # `pk_select_run_pass_b()` içinde zaten harcanmıştır; doğrulanamayan kimlikler
+  # düşürülür ve KALAN iddialar normal kapıdan geçer.
+  dusurulen_yetenekler <- character(0)
+  if (identical(dogrulama$status, "unknown_capability") &&
+      exists("pk_select_drop_unknown_requirements", mode = "function", inherits = TRUE)) {
+    temizlenmis <- pk_select_drop_unknown_requirements(
+      pass_b$requirements, dogrulama$unknown
+    )
+    # KAYIT DEFTERİ YÜKLÜ DEĞİLSE TEMİZLİK HİÇ UYGULANMAZ: izinli liste boşken
+    # TÜM kimlikler bilinmeyen görünür ve düşürme, iddiayı (varlık kalsa bile)
+    # kanıtsız bir `auto`ya çevirirdi. Kayıt defteri YÜKLÜYKEN geriye en az bir
+    # doğrulanabilir iddia kalması yeterlidir. Kısmi dağıtımda kapalı
+    # başarısızlık KORUNUR.
+    if (length(izinli) > 0L && !is.null(temizlenmis) &&
+        !pk_select_requirements_empty(temizlenmis)) {
+      yeniden <- pk_select_validate_requirements(secilen, temizlenmis, capability_ids)
+      if (!identical(yeniden$status, "unknown_capability")) {
+        dusurulen_yetenekler <- as.character(dogrulama$unknown %||% character(0))
+        # SAKLANAN NESNE DE TEMİZLENİR: Derin Düşünme ve rakip filtresi bu
+        # nesneyi yeniden doğrular; uydurulmuş kimlik kalırsa geçerli
+        # alternatiflerin TAMAMI `unknown_capability` ile elenirdi.
+        pass_b$requirements <- temizlenmis
+        yeniden$unknown <- dogrulama$unknown
+        yeniden$errors <- c(
+          sprintf(paste0("Doğrulanamayan (kayıt defterinde bulunmayan) yetenek ",
+                         "kimlikleri yok sayıldı: %s"),
+                  paste(dusurulen_yetenekler, collapse = ", ")),
+          yeniden$errors %||% character(0)
+        )
+        dogrulama <- yeniden
+      }
+    }
+  }
+
   cipler <- pk_select_ranked_chips(pass_b, candidates_ids, library_index)
 
   ortak <- list(
@@ -190,7 +233,24 @@ pk_select_decide <- function(pass_b, candidates_ids, library_index, cfg,
     lexical = lexical
   )
 
-  erken <- .pk_select_semantic_gate(pass_b, dogrulama, cipler, ortak)
+  # Doğrulanamayan iddia, kapı GEÇİLSE bile yanıtın kaynak bölümünde bildirilir.
+  kapasite_uyarisi <- character(0)
+  if (length(dusurulen_yetenekler)) {
+    kapasite_uyarisi <- c(kapasite_uyarisi, sprintf(
+      paste0("Sorgu seçimi tanımlı olmayan yetenek kimliği bildirdi ve bu iddia ",
+             "yok sayıldı: %s."),
+      paste(dusurulen_yetenekler, collapse = ", ")
+    ))
+  }
+  if (identical(dogrulama$status, "capability_missing")) {
+    kapasite_uyarisi <- c(kapasite_uyarisi, sprintf(
+      paste0("Seçilen analiz şu anlamsal iddiayı metadata'sında beyan etmiyor: ",
+             "%s. İddia doğrulanamadı; sonucu bu bilgiyle değerlendirin."),
+      paste(as.character(dogrulama$missing %||% character(0)), collapse = ", ")
+    ))
+  }
+
+  erken <- .pk_select_semantic_gate(pass_b, dogrulama, cipler, ortak, kapasite_uyarisi)
   if (!is.null(erken)) return(erken)
 
   # `not_for` DIŞLAMASI BÜTÜN diğer kurallardan ÖNCE gelir: kapı eskiden ikinci-aday kuralından SONRA duruyordu; Geçiş B tek aday bildirdiğinde `no_runner_up` erken dönüyor ve REDDEDİLEN sorgu çip olarak GERİ TEKLİF ediliyordu. Onay yolu yalnızca saklanan gereksinimleri doğrular, `not_for`u YENİDEN değerlendirmez; kullanıcı o çipe basarak metadata'nın uygunsuz işaretlediği sorguyu çalıştırabiliyordu. `aciklamalar` bu noktada henüz tanımlı değildir; ret metni zaten kendi gerekçesini taşır.
@@ -203,7 +263,7 @@ pk_select_decide <- function(pass_b, candidates_ids, library_index, cfg,
         "Seçilen analizin tanımı bu tür bir soru için UYGUN OLMADIĞINI açıkça ",
         "belirtiyor; yanlış bir sonuç üretmemek adına analiz çalıştırılmadı. ",
         "Lütfen aşağıdaki seçeneklerden birini belirtin ya da sorunuzu netleştirin."
-      ), chips = not_for_cipler, disclosures = character(0)),
+      ), chips = not_for_cipler, disclosures = kapasite_uyarisi),
       ortak
     )))
   }
@@ -225,7 +285,7 @@ pk_select_decide <- function(pass_b, candidates_ids, library_index, cfg,
           "olmadan seçimin güvenilirliği ölçülemedi. Lütfen aşağıdaki ",
           "seçeneklerden birini belirtin ya da sorunuzu netleştirin."
         ),
-        chips = cipler
+        chips = cipler, disclosures = kapasite_uyarisi
       ),
       ortak
     )))
@@ -239,7 +299,7 @@ pk_select_decide <- function(pass_b, candidates_ids, library_index, cfg,
 
   # --- Sözlüksel uyuşmazlık: güveni ZAYIFLATIR, karar vermez ---------------
   etkin <- secilen_guven <- max(0L, suppressWarnings(as.integer(c(pass_b$confidence, 0L)[1])), na.rm = TRUE)  # SEÇİLEN ADAYIN GÜVENİ DE SKALERE İNDİRGENİR (chips yolu satır 55-58 ile AYNI kural): ham `NULL`/`NA`/çok değerli bir `confidence`, aşağıdaki eşik karşılaştırmasında `if (logical(0))` ya da `if (NA)` fırlatıp `pk_select_decide()` çağrısını çağıranın `tryCatch`i içinde düşürüyor ve kullanıcı tipli reddetme yerine iç seçim hatası görüyordu.
-  aciklamalar <- character(0)
+  aciklamalar <- kapasite_uyarisi
   if (isTRUE(lexical$disagrees)) {
     ceza <- max(0L, as.integer(cfg$disagree_penalty))
     etkin <- max(0L, etkin - ceza)
@@ -345,10 +405,14 @@ pk_select_decide <- function(pass_b, candidates_ids, library_index, cfg,
 
 #' Anlamsal kapılar (uydurma kimlik / doğrulayıcı çökmesi / eksik yetenek /
 #' ifade edilemeyen ihtiyaç / eksik bilgi)
-.pk_select_semantic_gate <- function(pass_b, dogrulama, cipler, ortak) {
+.pk_select_semantic_gate <- function(pass_b, dogrulama, cipler, ortak,
+                                     base_disclosures = character(0)) {
+  # ERKEN ÇIKIŞTA DA BİLDİRİLİR: düşürülen uydurma kimlik açıklaması yalnızca
+  # kapı geçildiğinde ekleniyor, ret metinlerinde kayboluyordu.
   karar <- function(status, mesaj, aciklamalar = character(0)) {
     do.call(.pk_select_decision, c(
-      list(status, message_tr = mesaj, chips = cipler, disclosures = aciklamalar),
+      list(status, message_tr = mesaj, chips = cipler,
+           disclosures = c(base_disclosures, aciklamalar)),
       ortak
     ))
   }
@@ -394,7 +458,11 @@ pk_select_decide <- function(pass_b, candidates_ids, library_index, cfg,
     ))
   }
 
-  if (identical(dogrulama$status, "capability_missing")) {
+  # BEYANIN YOKLUĞU, YETENEĞİN YOKLUĞUNUN KANITI DEĞİLDİR: `capability` küratörü
+  # gerçek kütüphanede kaçınılmaz biçimde KISMİDİR. Varsayılan davranış tavsiye
+  # kipidir (bkz. `pk_capability_match_required()`).
+  if (identical(dogrulama$status, "capability_missing") &&
+      isTRUE(tryCatch(pk_capability_match_required(), error = function(e) TRUE))) {
     return(karar(
       PK_SELECT_STATUS_CAPABILITY_MISSING,
       paste0(
@@ -428,6 +496,10 @@ pk_select_decide <- function(pass_b, candidates_ids, library_index, cfg,
   if (!length(alternatifler)) return(list())
   if (pk_select_requirements_empty(pass_b$requirements)) return(alternatifler)
 
+  # ASİMETRİ BİLİNÇLİDİR (inceleme, P2 reddedildi): tavsiye kipini buraya da
+  # taşımak, iddiayı karşılayamayan bir adayı yeniden "rakip" sayar ve geçerli
+  # seçimleri `close_margin` ile durdurur. İki kural da AYNI yöne bakar:
+  # cevaplamaya. Kanıtsız rakip elenir, seçilen sorgu ise engellenmez.
   yetkin <- list()
   for (alt in alternatifler) {
     aday <- library_index[[alt$id]]

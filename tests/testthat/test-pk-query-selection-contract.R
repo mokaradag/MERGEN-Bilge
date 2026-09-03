@@ -141,7 +141,7 @@ test_that("çözümlenen RECALL_N değeri Geçiş A'nın İSTEDİĞİ sayıyı b
     sistem <- mesajlar[[1]]$content
 
     expect_true(
-      grepl(sprintf("Tam olarak %d adet aday", n), sistem, fixed = TRUE),
+      grepl(sprintf("EN FAZLA %d adet aday", n), sistem, fixed = TRUE),
       info = sprintf("Geçiş A istemi çözümlenen %d değerini taşımalıdır.", n)
     )
   }
@@ -167,39 +167,50 @@ test_that("varsayılan OLMAYAN değer 3 her iki geçişte de onurlandırılır",
     grepl("--- SORGU q004 ---", gecis_b_sistem, fixed = TRUE),
     info = "Aday olmayan sorgu Geçiş B yüküne SIZMAMALIDIR."
   )
-  expect_true(grepl("Tam olarak 3 adet aday", stub$log$calls[[1]]$system, fixed = TRUE))
+  expect_true(grepl("EN FAZLA 3 adet aday", stub$log$calls[[1]]$system, fixed = TRUE))
 })
 
-test_that("Geçiş A istenen sayıdan FAZLA aday döndürürse cevap BOZUKTUR", {
-  # Eskiden fazlalık sessizce kırpılıyordu. Sözleşme "tam olarak N" der; sessiz
-  # normalleştirme, kardinalite kapısını ölçtüğünü sandığı şeyi ölçmez yapar.
+test_that("Geçiş A istenen sayıdan FAZLA aday döndürürse ilk N alınır", {
+  # Sıra "en olası önce" sözleşmesidir; fazlalık onarım denemesi HARCAMAZ.
   cfg <- .pk_sel_cfg(recall_n = 3L)
   stub <- pk_select_stub_llm(list(
     "{\"candidates\":[\"q001\",\"q002\",\"q003\",\"q004\"]}",
-    "{\"candidates\":[\"q001\",\"q002\",\"q003\"]}",
     .pk_sel_pass_b(candidate_ids = c("q001", "q002", "q003"))
   ))
 
   karar <- pk_select_run("sentetik soru", .pk_sel_lib(), llm_fn = stub$fn, cfg = cfg)
 
-  # Fazla dolu cevap ONARIM denemesine yol açar; ikinci deneme sözleşmeye uyar.
-  expect_equal(length(stub$log$calls), 3L)
+  expect_equal(length(stub$log$calls), 2L)
   expect_identical(karar$status, PK_SELECT_STATUS_AUTO)
   expect_identical(karar$candidate_ids, c("q001", "q002", "q003"))
 })
 
-test_that("EKSİK dolu Geçiş A cevabı başarı sayılmaz (geri alınamaz recall kaybı)", {
+test_that("EKSİK dolu Geçiş A cevabı KABUL edilir; tek aday hâlâ reddedilir", {
+  # ÖLÇÜLEN ÜRETİM ARIZASI: eşitlik denetimi dar kapsamlı sorularda ("Projelerin
+  # genel özetini göster.") isteği öldürüyordu. Model gerçekten ilgili 2 adayı
+  # döndürdüğünde iki onarım denemesi de aynı sonucu veriyor ve geçerli bir sorgu
+  # kütüphanede DURURKEN istek `malformed` ile reddediliyordu.
   cfg <- .pk_sel_cfg(recall_n = 5L)
   stub <- pk_select_stub_llm(list(
     "{\"candidates\":[\"q001\",\"q002\"]}",
-    "{\"candidates\":[\"q001\",\"q002\"]}"
+    .pk_sel_pass_b(candidate_ids = c("q001", "q002"))
   ))
 
   karar <- pk_select_run("sentetik soru", .pk_sel_lib(), llm_fn = stub$fn, cfg = cfg)
 
   expect_equal(length(stub$log$calls), 2L)
-  expect_identical(karar$status, PK_SELECT_STATUS_MALFORMED)
-  expect_identical(karar$pass_a_status, PK_SELECT_STATUS_MALFORMED)
+  expect_identical(karar$status, PK_SELECT_STATUS_AUTO)
+  expect_identical(karar$candidate_ids, c("q001", "q002"))
+
+  # ALT SINIR KORUNUR: marj kapısı ikinci adayın güvenini ister; tek adaylı bir
+  # recall onarım denemesini tüketir ve sonunda `malformed` olur.
+  tek <- pk_select_stub_llm(list(
+    "{\"candidates\":[\"q001\"]}",
+    "{\"candidates\":[\"q001\"]}"
+  ))
+  tek_karar <- pk_select_run("sentetik soru", .pk_sel_lib(), llm_fn = tek$fn, cfg = cfg)
+  expect_equal(length(tek$log$calls), 2L)
+  expect_identical(tek_karar$pass_a_status, PK_SELECT_STATUS_MALFORMED)
 })
 
 test_that("Geçiş A'daki BİLİNMEYEN kimlik cevabı bozar (sessizce düşürülmez)", {
@@ -622,7 +633,17 @@ test_that("gereksinim BEYAN EDİLMEMİŞSE yetenek kapısı devreye girmez", {
   }
 })
 
-test_that("yetenek kapısı GÜVENDEN ÖNCE gelir", {
+test_that("yetenek kapısı KATI kipte GÜVENDEN ÖNCE gelir", {
+  # Kapı artık VARSAYILAN olarak tavsiyedir (kısmi metadata gerçeği; bkz.
+  # `pk_capability_match_required()`). SIRALAMA sözleşmesi -- yetenek kapısının
+  # güven/marj kapılarından ÖNCE gelmesi -- KATI kipte sınanır.
+  eski <- Sys.getenv("MERGEN_PK_REQUIRE_CAPABILITY_MATCH", unset = NA_character_)
+  on.exit({
+    if (is.na(eski)) Sys.unsetenv("MERGEN_PK_REQUIRE_CAPABILITY_MATCH")
+    else Sys.setenv(MERGEN_PK_REQUIRE_CAPABILITY_MATCH = eski)
+  }, add = TRUE)
+  Sys.setenv(MERGEN_PK_REQUIRE_CAPABILITY_MATCH = "TRUE")
+
   lib_index <- pk_select_library_index(.pk_sel_lib())
   adaylar <- c("q001", "q002")
 

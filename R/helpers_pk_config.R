@@ -338,9 +338,16 @@ pk_config_spec <- list(
   # Geçiş B aday bloklarının TOPLAM karakter bütçesi. Aday SAYISI tek başına
   # bağlamı sınırlamaz: tek bir geniş sorgu tüm açıklama/örnek/sütun
   # metadata'sıyla pencereyi taşırabilir.
+  #
+  # VARSAYILAN ÖLÇÜMLE YÜKSELTİLDİ (24000 -> 60000). Gerçek kütüphanede sorgu
+  # başına yalnızca 20 sütunla 5 adaylık yük 25.530 karakter, 150 sütunlu özet
+  # sorgularında 165.790 karakter ölçüldü; 24.000 bütçesi Geçiş B'yi pratikte
+  # HER ZAMAN kapatıyordu. Sütun payı artık daraltılıyor (bkz.
+  # `pk_select_pass_b_blocks()`), bu değer o payın ne kadar cömert olacağını
+  # belirler. Geçiş A aynı istekte zaten ~137.000 karakter göndermektedir.
   MERGEN_PK_SELECT_PASS_B_CHARS = list(
     type = "integer",
-    default = 24000L,
+    default = 60000L,
     min = 2000L,
     max = 120000L
   ),
@@ -371,6 +378,13 @@ pk_config_spec <- list(
     default = 200000L,
     min = 2000L,
     max = 400000L
+  ),
+  # Yetenek EŞLEŞMESİ zorunlu mu? Varsayılan TAVSİYE kipidir: `capability`
+  # küratörü gerçek kütüphanede kısmidir ve beyanın yokluğu yeteneğin
+  # yokluğunun kanıtı değildir. `TRUE` eski kapalı-başarısız kapıyı geri getirir.
+  MERGEN_PK_REQUIRE_CAPABILITY_MATCH = list(
+    type = "logical",
+    default = FALSE
   ),
   # Geçiş A satırına giren örnek soru sayısı (§5.2: `sample_questions[1:2]`).
   # ÜST SINIR sözleşmenin kendisidir: §5.2 iki örnek soru der ve 169 sorguluk
