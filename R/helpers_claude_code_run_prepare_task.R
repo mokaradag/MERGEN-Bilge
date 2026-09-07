@@ -39,6 +39,16 @@ cc_run_prepare_worker_globals <- function(refresh = FALSE,
     "prepare_claude_code_document_context",
     "cc_snapshot_run_output_area",
     "cc_cleanup_stale_runtime_dirs",
+    "cc_reclaim_orphaned_runtime_dirs",
+    "cc_with_runtime_cleanup_lock",
+    "cc_runtime_cleanup_lock_dir",
+    "CC_RUNTIME_LOCK_DIR_NAME",
+    ".cc_codex_acquire_dir_lock",
+    ".cc_codex_reap_dir_lock",
+    ".cc_codex_lock_owner_token",
+    ".cc_codex_touch_dir_lock",
+    ".cc_codex_dir_lock_age",
+    ".CC_CODEX_REAPER_STALE_SEC",
     "cc_cleanup_stale_document_support_dirs",
     "claude_code_runtime_limits",
     "claude_code_config",
@@ -188,6 +198,17 @@ cc_runtime_ownership_is <- function(runtime_workdir, request_id) {
 
 # Yeniden kullanılan runtime, tarama/kopyalama başlamadan önce başka bir
 # oturumun stale temizliğine karşı korunmalıdır.
+# Lease EDİNİMİ için temizlik kilidi deneme bütçesi.
+#
+# `cc_with_runtime_cleanup_lock()` varsayılan 40 deneme (~2 sn) sonunda kilidi
+# alamazsa vazgeçiyor ve her iki lease yolu `stop()` çağırıyordu: çok kullanıcılı
+# VM'de KISA SÜRELİ bir çekişme tüm hazırlığı iptal ediyordu. Kritik bölüm
+# (mkdir + file.create) milisaniyeler sürer, bu yüzden bekleme ~10 saniyeye
+# çıkarılır. Lease'siz devam etmek YİNE YASAKTIR (bayat temizlik AKTİF runtime'ı
+# silebilir); yalnızca bekleme penceresi genişletilir ve kilit tükenmesi
+# lease oluşturma hatasından AYRI raporlanır.
+CC_LEASE_LOCK_ATTEMPTS <- 200L
+
 cc_acquire_reused_runtime_lease <- function(existing_runtime_workdir,
                                             user_id,
                                             request_id) {
@@ -196,13 +217,26 @@ cc_acquire_reused_runtime_lease <- function(existing_runtime_workdir,
   }
 
   metadata_dir <- file.path(existing_runtime_workdir, "metadata")
-  dir.create(metadata_dir, recursive = TRUE, showWarnings = FALSE)
   lease <- file.path(
     metadata_dir,
     paste0("active-run-", gsub("[^A-Za-z0-9_.-]", "_", request_id), ".lease")
   )
 
-  if (!isTRUE(file.create(lease))) {
+  # Lease EDİNİMİ temizlikle AYNI kilit altında yapılır: aksi hâlde temizlik
+  # "lease yok" görüp aday dizini silerken biz lease'i oluşturuyor ve AKTİF
+  # çalışma alanı altımızdan kaldırılıyordu (TOCTOU).
+  # `fallback = NA`: kilit TÜKENMESİ ile lease OLUŞTURMA hatası ayrışır.
+  olustu <- cc_with_runtime_cleanup_lock(existing_runtime_workdir, fallback = NA,
+                                         attempts = CC_LEASE_LOCK_ATTEMPTS, {
+    dir.create(metadata_dir, recursive = TRUE, showWarnings = FALSE)
+    isTRUE(file.create(lease))
+  })
+
+  if (length(olustu) != 1L || is.na(olustu)) {
+    stop("Runtime temizlik kilidi alınamadı; yeniden kullanılan runtime lease'i oluşturulamadı.",
+         call. = FALSE)
+  }
+  if (!isTRUE(olustu)) {
     stop("Yeniden kullanılan runtime için aktif çalışma lease'i oluşturulamadı.",
          call. = FALSE)
   }
@@ -359,18 +393,47 @@ cc_prepare_run_workspace <- function(request) {
   }
   if (isTRUE(mirrored) && !nzchar(runtime_lease) &&
       is.list(layout) && nzchar(layout$metadata %||% "")) {
-    dir.create(layout$metadata, recursive = TRUE, showWarnings = FALSE)
-    runtime_lease <- file.path(
+    aday_lease <- file.path(
       layout$metadata,
       paste0("active-run-", gsub("[^A-Za-z0-9_.-]", "_", request$request_id), ".lease")
     )
-    if (!isTRUE(file.create(runtime_lease))) runtime_lease <- ""
+    # Lease edinimi temizlikle AYNI kilit altında serileştirilir.
+    lease_olustu <- cc_with_runtime_cleanup_lock(layout$root %||% runtime_workdir,
+                                                 fallback = NA,
+                                                 attempts = CC_LEASE_LOCK_ATTEMPTS, {
+      dir.create(layout$metadata, recursive = TRUE, showWarnings = FALSE)
+      isTRUE(file.create(aday_lease))
+    })
+    # Lease OLUŞMAZSA hazırlık DURUR. Eskiden `runtime_lease` boş bırakılıp
+    # `ok = TRUE` dönülüyordu; `cc_dispatch_run_preparation()` yalnızca
+    # `prep$blocked` denetlediği için çalıştırma LEASE'SİZ başlıyor ve saklama
+    # süresini aşınca bayat temizlik bu AKTİF runtime'ı silebiliyordu (ne lease
+    # ne de sahiplik guard'ı vardı).
+    if (length(lease_olustu) != 1L || is.na(lease_olustu)) {
+      stop("Runtime temizlik kilidi alınamadı; aktif çalışma lease'i oluşturulamadı.",
+           call. = FALSE)
+    }
+    if (!isTRUE(lease_olustu)) {
+      stop("Aktif çalışma lease'i oluşturulamadı; hazırlık durduruldu.", call. = FALSE)
+    }
+    runtime_lease <- aday_lease
   }
 
   # Eskimiş runtime/doküman destek klasörlerini yaşa göre temizle; aktif
   # çalışmanın klasörleri korunur.
   tryCatch(
     cc_cleanup_stale_runtime_dirs(
+      user_id = request$user_id,
+      keep_paths = c(runtime_workdir, if (is.list(layout)) layout$root else NULL)
+    ),
+    error = function(e) NULL
+  )
+
+  # AYRI KURTARMA ADIMI: rutin temizlik lease taşıyan çalışma alanını asla
+  # silmez; çöken bir süreçten kalan lease'i yalnızca bu işlem, tüm tutucuların
+  # bıraktığını doğruladıktan sonra geri kazanır.
+  tryCatch(
+    cc_reclaim_orphaned_runtime_dirs(
       user_id = request$user_id,
       keep_paths = c(runtime_workdir, if (is.list(layout)) layout$root else NULL)
     ),

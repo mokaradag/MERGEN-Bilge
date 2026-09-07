@@ -100,12 +100,20 @@ wait_for_stable_claude_code_file_paths <- function(file_paths,
     isTRUE(same_size) && isTRUE(same_mtime)
   }
 
+  # İLK imza BOŞ olduğunda erken dönülmez: UNC/antivirüs görünürlük gecikmesi
+  # ilk yoklamada dosyaları gizleyebiliyor ve aşağıdaki yeniden deneme bütçesi
+  # hiç çalışmadan üretilen dosyalar düşüyordu. Döngü boş imzayla da sürer;
+  # `same_signature()` satır sayısı farkında FALSE döndüğü için ilk görünen
+  # imza referans alınır ve bütçe bittiğinde varlık denetimi yine uygulanır.
   previous <- file_signature(file_paths)
-  if (nrow(previous) == 0L) {
-    return(character(0))
-  }
 
   latest <- previous
+
+  # GÖZLENEN YOLLARIN BİRLEŞİMİ: `same_signature()` yalnızca AYNI yol kümesinde
+  # TRUE döner, ama `previous <- current` eksik bir yoklamayı referans yapıyordu.
+  # Yalnızca A içeren iki ardışık yoklama, B geçici olarak görünmezken A'yı
+  # "kararlı" sayıp B'yi sessizce düşürüyordu.
+  gorulen <- previous$path
 
   for (attempt in seq_len(max_attempts)) {
     gecen_ms <- as.numeric(difftime(Sys.time(), bekleme_baslangic, units = "secs")) * 1000
@@ -117,17 +125,43 @@ wait_for_stable_claude_code_file_paths <- function(file_paths,
 
     current <- file_signature(file_paths)
     if (nrow(current) == 0L) {
-      return(character(0))
+      # UNC/ağ paylaşımında dosyalar anlık olarak görünmez olabilir; tüm listeyi
+      # hemen düşürmek üretilen dosyaları kaybettiriyordu. Tur atlanır ve son
+      # bilinen geçerli imza korunur.
+      next
     }
 
+    # EKSİK yoklama erken dönüşü ENGELLER: daha önce görülmüş bir yol bu turda
+    # yoksa imza TAM değildir ve kararlılık kanıtı sayılamaz.
+    eksik <- setdiff(gorulen, current$path)
+    gorulen <- union(gorulen, current$path)
     latest <- current
 
-    if (isTRUE(same_signature(previous, current))) {
+    if (!length(eksik) && isTRUE(same_signature(previous, current))) {
       return(deduplicate_claude_code_file_paths(current$path))
     }
 
     previous <- current
   }
 
-  deduplicate_claude_code_file_paths(latest$path)
+  # Deneme/süre bütçesi tükendi. Geçici UNC görünmezliği toleransı korunur,
+  # ancak saklanan imza YENİDEN DOĞRULANIR: dosya gerçekten silinmiş/yeniden
+  # adlandırılmışsa çağıran var olmayan bir yol alıp bayat indirme/çıktı
+  # metaverisi üretiyordu.
+  # BİRLEŞİM doğrulanır: son yoklamada geçici olarak görünmeyen bir yol burada
+  # kaybolmaz, GERÇEKTEN silinmiş olan ise aşağıdaki varlık denetiminde elenir.
+  birlesim <- union(gorulen, latest$path)
+  son_yollar <- deduplicate_claude_code_file_paths(birlesim[order(tolower(birlesim))])
+  if (!length(son_yollar)) return(son_yollar)
+  var_olan <- vapply(
+    son_yollar,
+    # `file.exists()` DİZİN için de TRUE döner: çıktı dosyası silinip aynı yolda
+    # bir dizin oluşursa bu fonksiyon o dizini "kararlı dosya" olarak döndürüyordu.
+    function(p) isTRUE(tryCatch(
+      file.exists(p) && !dir.exists(p),
+      error = function(e) FALSE
+    )),
+    logical(1)
+  )
+  son_yollar[var_olan]
 }

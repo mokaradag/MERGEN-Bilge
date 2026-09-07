@@ -369,12 +369,57 @@ pkgh_structural_findings <- function(query, merged, schema, blocking = character
     )))
   }
 
-  if (is.null(merged$primary_entity)) {
+if (is.null(merged$primary_entity)) {
+  cmeta <- merged$column_meta %||% list()
+
+  primary_entity_candidates <- character(0)
+
+  if (is.list(cmeta) && length(cmeta) && !is.null(names(cmeta))) {
+    primary_entity_candidates <- names(cmeta)[vapply(
+      cmeta,
+      function(x) {
+        is.list(x) &&
+          is.character(x$role) &&
+          length(x$role) == 1L &&
+          !is.na(x$role) &&
+          x$role %in% c("id", "dimension")
+      },
+      logical(1)
+    )]
+  }
+
+  # Adaylar DONEN SUTUNLARLA kesistirilir: kurasyonlu column_meta icinde olup
+  # sema_sutunlari icinde OLMAYAN bir id/dimension, saglik raporunda kullanici
+  # tarafindan secilemeyecek bir sutun icin gorunur "attention" uretiyordu.
+  if (length(sema_sutunlari)) {
+    primary_entity_candidates <- intersect(primary_entity_candidates, sema_sutunlari)
+  }
+
+  if (length(primary_entity_candidates)) {
     bulgular <- c(bulgular, list(pkgh_finding(
-      "no_primary_entity", "attention",
-      "primary_entity beyan edilmemis; Tier-0 geri dususu uygulanir (tek filtre yapragi birincil)."
+      "no_primary_entity",
+      "attention",
+      sprintf(
+        paste0(
+          "primary_entity beyan edilmemis; uygun id/dimension sutunlari mevcut: %s. ",
+          "Tier-0 geri dususu uygulanir (tek filtre yapragi birincil)."
+        ),
+        paste(primary_entity_candidates, collapse = ", ")
+      ),
+      columns = primary_entity_candidates
+    )))
+  } else {
+    bulgular <- c(bulgular, list(pkgh_finding(
+      "no_primary_entity",
+      "info",
+      paste0(
+        "primary_entity beyan edilmemis; sorguda primary_entity olarak ",
+        "kullanilabilecek id/dimension sutunu yok. Tier-0 geri dususu uygulanir."
+      )
     )))
   }
+}
+             
   if (is.null(merged$grain)) {
     bulgular <- c(bulgular, list(pkgh_finding(
       "no_grain", "info",

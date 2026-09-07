@@ -274,7 +274,9 @@ normalize_mergen_log_dir_env <- function(max_passes = 2L) {
   configured <- Sys.getenv("MERGEN_LOG_DIR", "")
   repaired <- repair_mergen_log_dir(configured, max_passes = max_passes)
 
-  if (!identical(repaired, trimws(configured))) {
+  # Yalnızca boşluk kırpılmış olsa bile ortam değişkeni geri yazılır; aksi halde
+  # aşağı akış okuyucular kırpılmamış yolu görmeye devam eder.
+  if (!identical(repaired, configured)) {
     Sys.setenv(MERGEN_LOG_DIR = repaired)
   }
 

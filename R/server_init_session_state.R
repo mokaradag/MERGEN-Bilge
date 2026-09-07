@@ -59,16 +59,42 @@ serverInitSessionState <- function(session, identity, sso_state = NULL) {
   # ---------------------------------------------------------------------------
   # Veritabanından geri bildirimleri yükle
   # ---------------------------------------------------------------------------
+  # ÖNCEKİ KULLANICININ geri bildirim durumu HER DURUMDA temizlenir. Kimlik A
+  # kullanıcısından B kullanıcısına geçtiğinde üç yol da eski değerleri
+  # bırakıyordu: (1) `effective_user_id <= 0` erken dönüşü, (2)
+  # `load_feedback_from_db()` istisnası, (3) `req()` kısa devresi. Üç durumda da
+  # kullanıcı B, A'nın beğeni/beğenmeme işaretlerini görüyordu.
+  temizle_feedback_durumu <- function() {
+    values$liked_messages <- character(0)
+    values$disliked_messages <- character(0)
+    invisible(NULL)
+  }
+
   sync_feedback_from_db <- function() {
     effective_user_id <- identity$resolve_current_user_id()
+
+    # Temizleme DB çağrısından ÖNCE yapılır; okuma başarısız olursa durum BOŞ
+    # kalır (önceki kullanıcıya ait değil).
+    temizle_feedback_durumu()
 
     if (effective_user_id <= 0) {
       return(invisible(NULL))
     }
 
-    all_feedback <- load_feedback_from_db(effective_user_id)
-    values$liked_messages <- all_feedback$liked
-    values$disliked_messages <- all_feedback$disliked
+    all_feedback <- tryCatch(
+      load_feedback_from_db(effective_user_id),
+      error = function(e) {
+        log_warn(paste(
+          "Geri bildirim durumu yüklenemedi; oturum durumu boş bırakıldı. Hata:",
+          conditionMessage(e)
+        ))
+        NULL
+      }
+    )
+    if (is.null(all_feedback) || !is.list(all_feedback)) return(invisible(NULL))
+
+    values$liked_messages <- all_feedback$liked %||% character(0)
+    values$disliked_messages <- all_feedback$disliked %||% character(0)
 
     invisible(NULL)
   }
@@ -84,10 +110,38 @@ serverInitSessionState <- function(session, identity, sso_state = NULL) {
       )
     }
 
-    shiny::observeEvent(sso_state$authenticated, {
-      shiny::req(isTRUE(sso_state$authenticated), isTRUE(identity$is_auth_ready()))
-      sync_feedback_from_db()
-    }, ignoreInit = TRUE, once = TRUE)
+    # `once = TRUE` KALDIRILDI. İki ayrı arıza üretiyordu:
+    #   1. Gözlemci ilk çalıştırmadan sonra YOK EDİLİYOR, böylece token süresi
+    #      dolup YENİDEN kimlik doğrulandığında `sync_feedback_from_db()` bir
+    #      daha koşmuyor ve oturum sayfa yenilenene kadar ESKİ kullanıcının
+    #      beğeni/beğenmeme durumunu gösteriyordu.
+    #   2. `once` yok etmeyi `on.exit` ile yaptığı için, `authenticated` TRUE
+    #      olup `auth_ready` henüz TRUE değilken `req()` kısa devre yapsa bile
+    #      gözlemci yok ediliyor ve senkronizasyon HİÇ çalışmıyordu.
+    # `req()` guard'ı TRUE -> FALSE geçişlerini zaten eler; kimlik gözlemcisi
+    # priority = 1000L ile aynı flush turunda ÖNCE çalışıp `auth_ready` değerini
+    # ayarlar.
+    # CLAIM DEĞİŞİMİ DE İZLENİR. `sso_state$user_claims` kullanıcı A'dan
+    # kullanıcı B'ye geçerken `sso_state$authenticated` TRUE kalıyor:
+    # `serverInitUserSession()` kimliği yeniden uyguluyor, ancak yalnızca
+    # `authenticated` değerini izleyen bu gözlemci HİÇ çalışmıyordu. Sıfırlama
+    # yolu `values$liked_messages` / `values$disliked_messages` alanlarını
+    # temizlemediği için kullanıcı B, A'nın geri bildirim durumunu görebiliyordu.
+    # Kimlik gözlemcisi `priority = 1000L` ile aynı flush turunda ÖNCE çalışır.
+    shiny::observeEvent(
+      list(sso_state$authenticated, sso_state$user_claims),
+      {
+        # YETKİ KAYBI / kimlik henüz hazır değil: `req()` gözlemciyi durdurmadan
+        # ÖNCE durum temizlenir, aksi hâlde önceki kullanıcının işaretleri
+        # oturumda kalıyordu.
+        if (!isTRUE(sso_state$authenticated) || !isTRUE(identity$is_auth_ready())) {
+          temizle_feedback_durumu()
+          return(invisible(NULL))
+        }
+        sync_feedback_from_db()
+      },
+      ignoreInit = TRUE
+    )
   } else {
     sync_feedback_from_db()
   }

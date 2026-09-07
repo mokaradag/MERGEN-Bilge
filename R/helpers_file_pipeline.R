@@ -1,5 +1,57 @@
 # R/helpers_file_pipeline.R
 
+# Kalıcılaştırma sonucu için AÇIK durum kodları. `processAndSummarizeFile()`
+# eskiden reddetme yollarında da `invisible(NULL)` dönüyordu; `R/server_observers_files.R`
+# sonucu yok sayıp `processed_count` değerini KOŞULSUZ artırıyor ve başarı
+# bildirimi gösteriyordu (reddedilen dosya "eklendi" sayılıyordu).
+MERGEN_FILE_PIPELINE_ACCEPTED <- "kabul"
+MERGEN_FILE_PIPELINE_REJECTED <- "red"
+
+.file_pipeline_status <- function(status, reason = "") {
+  invisible(list(status = status, reason = as.character(reason %||% "")[1]))
+}
+
+# Bir kalıcılaştırma sonucunun kabul edilip edilmediğini söyler. Eski çağıranlar
+# `NULL` alıyordu; geriye dönük uyumluluk için `NULL` REDDETME sayılır.
+mergen_file_pipeline_accepted <- function(result) {
+  if (is.null(result)) return(FALSE)
+  if (is.list(result) && !is.null(result$status)) {
+    return(identical(as.character(result$status)[1], MERGEN_FILE_PIPELINE_ACCEPTED))
+  }
+  isTRUE(result)
+}
+
+# Oturum ve çağıran kimliğinden ETKİN kullanıcı kimliğini seçer. Oturum kimliği
+# ancak KANONİK ve POZİTİF ise tercih edilir; `0L` gibi yer tutucu bir değer
+# çağıranın çözümlenmiş kimliğini gölgelemez.
+.file_pipeline_effective_uid <- function(session_user_id, caller_user_id) {
+  kanonik <- function(x) {
+    if (exists("mergen_canonical_user_id", mode = "function", inherits = TRUE)) {
+      return(mergen_canonical_user_id(x %||% NA_integer_))
+    }
+    deger <- suppressWarnings(as.numeric(x %||% NA_integer_))
+    if (length(deger) != 1L || !is.finite(deger) || deger <= 0 ||
+        deger != trunc(deger) || deger > .Machine$integer.max) {
+      return(0L)
+    }
+    as.integer(deger)
+  }
+
+  oturum <- kanonik(session_user_id)
+  cagiran <- kanonik(caller_user_id)
+
+  # KİMLİK DEĞİŞİMİ KAPALI-BAŞARISIZDIR (IDOR). Parti kullanıcı A için başlayıp
+  # aynı Shiny oturumu B'ye geçtikten SONRA tamamlanabilir (`sso_auth_error`
+  # yalnızca istemci token'ını temizler, oturumu kapatmaz). Oturum kimliğini
+  # koşulsuz tercih etmek, A'nın kalıcılaşmış dosyasını B'nin oturum durumuna
+  # bağlıyordu. İKİ kimlik de POZİTİF ve FARKLIYSA sonuç geçersizdir; çağıran
+  # mevcut `effective_user_id <= 0L` reddetme yoluna düşer.
+  if (oturum > 0L && cagiran > 0L && !identical(oturum, cagiran)) return(0L)
+
+  if (oturum > 0L) return(oturum)
+  cagiran
+}
+
 as_llm_settings_list <- function(settings) {
   if (is.null(settings)) return(list())
 
@@ -73,20 +125,38 @@ processAndSummarizeFile <- function(file_info,
                                     update_manager_ui = TRUE,
                                     show_toast = TRUE,
                                     auto_attach = FALSE,
-                                    already_persisted = FALSE) {
+                                    already_persisted = FALSE,
+                                    get_user_upload_dir_fn = NULL) {
   note_id <- showNotification(sprintf("İşlem başlatıldı: %s", file_info$name),
                               duration = NULL, type = "message")
 
-  # SSO modunda başlangıçta gelen 0L yerine oturumdaki gerçek kullanıcıyı kullan
-  effective_user_id <- suppressWarnings(as.integer(session$userData$user_id %||% current_user_id %||% 0L))
-  if (is.na(effective_user_id)) effective_user_id <- 0L
+  # SSO modunda başlangıçta gelen 0L yerine oturumdaki gerçek kullanıcıyı kullan.
+  # `%||%` YALNIZCA NULL'u değiştirir: oturum kimliği hâlâ `0L` iken çağıranın
+  # ÇÖZÜMLENMİŞ kimliği yok sayılıyor ve geçerli yükleme reddediliyordu.
+  effective_user_id <- .file_pipeline_effective_uid(
+    session$userData$user_id,
+    current_user_id
+  )
 
+  # KİMLİK ÇÖZÜLEMEZSE KALICILAŞTIRMA DURUR (kapalı-başarısız). Yalnızca log
+  # yazmak dosyayı `user_0` klasörüne kopyalıyor ve indeksi `user_id = 0` ile
+  # güncelliyordu; bu kova daha sonra kimliği doğrulanmış BAŞKA bir kullanıcıya
+  # da görünebiliyordu (IDOR).
   if (effective_user_id <= 0L) {
     cat(sprintf("[FILE PIPELINE] UYARI: effective_user_id=%d (session=%s, param=%s) - dosya: %s\n",
                 effective_user_id,
                 as.character(session$userData$user_id %||% "NULL"),
                 as.character(current_user_id %||% "NULL"),
                 file_info$name))
+    try(removeNotification(note_id), silent = TRUE)
+    if (isTRUE(show_toast)) {
+      showToast(
+        session,
+        "Kimlik doğrulama tamamlanmadan dosya kalıcı klasöre kaydedilemez.",
+        "warning"
+      )
+    }
+    return(.file_pipeline_status(MERGEN_FILE_PIPELINE_REJECTED, "kimlik"))
   }
 
   # Kalıcılaştırma TEK yerde yapılır. Dosya alım hattı (veya Dosya Yönetimi)
@@ -96,18 +166,80 @@ processAndSummarizeFile <- function(file_info,
   zaten_kalici <- isTRUE(already_persisted) || is_under_mcp_base(dest)
 
   if (!zaten_kalici) {
-    dest <- copy_to_mcp_base(list(name = file_info$name, datapath = file_info$datapath), effective_user_id)
+    # Kalıcılaştırma hatası bildirimi açık bırakmaz ve partiyi yarıda kesmez.
+    dest <- tryCatch(
+      copy_to_mcp_base(list(name = file_info$name, datapath = file_info$datapath), effective_user_id),
+      error = function(e) {
+        cat("[FILE PIPELINE] Kalıcılaştırma başarısız:", conditionMessage(e), "\n")
+        NULL
+      }
+    )
+    if (is.null(dest)) {
+      try(removeNotification(note_id), silent = TRUE)
+      if (isTRUE(show_toast)) {
+        showToast(session, paste(file_info$name, "kalıcı klasöre kaydedilemedi."), "error")
+      }
+      return(.file_pipeline_status(MERGEN_FILE_PIPELINE_REJECTED, "kopya"))
+    }
 
-    tryCatch({
+    # İNDEKS KAYDI BAŞARISIZSA YÜKLEME DURUR. Hata yutulduğunda dosya oturum
+    # durumuna ekleniyor, arayüz "yüklendi" raporluyor ancak kalıcı indeks
+    # dosyayı HİÇ içermiyordu (yeniden başlatmada kayıp). Kopya da geri alınır:
+    # işlem ya tam başarılı olur ya da diskte iz bırakmaz.
+    indekslendi <- tryCatch({
       global_register_file(
         dest, file_info$name,
         user_id = effective_user_id,
         persist_under_mcp_base = TRUE
       )
       cat("[FILE PIPELINE] Dosya indekse kaydedildi:", file_info$name, "\n")
+      TRUE
     }, error = function(e) {
       cat("[FILE PIPELINE] İndeks kaydı başarısız:", conditionMessage(e), "\n")
+      FALSE
     })
+
+    if (!isTRUE(indekslendi)) {
+      # Yetim kopya yalnızca DOĞRULANMIŞ kullanıcı kökü altındaysa kaldırılır.
+      # Çözümleyici AÇIKÇA geçilir: `fm_cleanup_orphan_upload()` ad ile arama
+      # yaptığında modül closure'ındaki `get_user_upload_dir` bulunamıyor,
+      # yardımcı "çözümleyici yok" diyerek FALSE dönüyor ve indekslenmemiş kopya
+      # kalıcı depoda kalıyordu.
+      # VARSAYILAN ÇÖZÜMLEYİCİ KÖKÜ `dest`TEN türetir: `copy_to_mcp_base()` etkin
+      # tabanı `mergen.mcp_base_dir` -> `MCP_FILES_BASE` -> `<getwd()>/mergen_uploads`
+      # sırasıyla seçer; `mergen_user_upload_dir()` ise `resolve_mcp_base_dir()`
+      # üzerinden gider ve son yedeği `MERGEN_UPLOADS_DIR`dir. İki taban
+      # AYRIŞTIĞINDA `mergen_path_inside_root()` FALSE dönüyor, temizlik "kök
+      # dışında" diyerek vazgeçiyor ve İNDEKSLENMEMİŞ kopya kalıcı depoda
+      # kalıyordu. `dest` zaten kopyanın ÜRETİLDİĞİ yoldur, bu yüzden
+      # `dirname(dest)` kullanıcı kökünün KESİN karşılığıdır.
+      kok_cozumleyici <- if (is.function(get_user_upload_dir_fn)) {
+        get_user_upload_dir_fn
+      } else {
+        function() {
+          aday <- as.character(dirname(as.character(dest %||% "")[1]))[1]
+          if (length(aday) == 1L && !is.na(aday) && nzchar(aday) && aday != ".") {
+            return(aday)
+          }
+          mergen_user_upload_dir(effective_user_id)
+        }
+      }
+      temiz <- if (exists("fm_cleanup_orphan_upload", mode = "function", inherits = TRUE)) {
+        try(fm_cleanup_orphan_upload(dest, get_user_upload_dir_fn = kok_cozumleyici),
+            silent = TRUE)
+      } else {
+        FALSE
+      }
+      # BELİRSİZ sonuç (NA) da başarı sayılmaz; yetim kopya sessizce kalmamalı.
+      if (inherits(temiz, "try-error") || !isTRUE(temiz)) {
+        cat("[FILE PIPELINE] UYARI: Yetim kopya kaldırılamadı:", as.character(dest), "\n")
+      }
+      try(removeNotification(note_id), silent = TRUE)
+      if (isTRUE(show_toast)) {
+        showToast(session, paste(file_info$name, "kalıcı indekse kaydedilemedi."), "error")
+      }
+      return(.file_pipeline_status(MERGEN_FILE_PIPELINE_REJECTED, "indeks"))
+    }
   }
 
   # MCP araçları için oturum dosya kayıt defterini merkezi helper ile güncelle
@@ -118,8 +250,8 @@ processAndSummarizeFile <- function(file_info,
     list(name = file_info$name, datapath = dest, path = dest)
   )
 
-  # Snapshot settings once
-  settings_snapshot <- tryCatch(reactiveValuesToList(settings), error = function(e) list())
+  # Ayar anlık görüntüsü: reactiveValues VE düz liste için aynı yardımcı.
+  settings_snapshot <- tryCatch(as_llm_settings_list(settings), error = function(e) list())
   settings_snapshot$shiny_session <- NULL
 
   # Encoding-safe path for worker (UTF-8 dönüşümü)
@@ -194,7 +326,9 @@ processAndSummarizeFile <- function(file_info,
       showToast(session, paste(file_info$name, "yüklendi ancak özet çıkarılamadı."), "warning")
     })
 
-  invisible(NULL)
+  # Dosya KABUL edildi: kalıcılaştırma ve indeks kaydı tamamlandı. Özetleme
+  # asenkron sürer; sayaç/başarı bildirimi bu karara göre verilir.
+  .file_pipeline_status(MERGEN_FILE_PIPELINE_ACCEPTED)
 }
 
 # Ana Söyleşi yüklemesinin ANA SÜREÇ commit'i: kopyalama/indeksleme bittikten
@@ -260,15 +394,22 @@ handle_file_upload_batch <- function(uploads_df,
     return(invisible(NULL))
   }
 
-  # SSO modunda başlangıçta gelen 0L yerine oturumdaki gerçek kullanıcıyı kullan
-  effective_user_id <- suppressWarnings(as.integer(session$userData$user_id %||% current_user_id %||% 0L))
-  if (is.na(effective_user_id)) effective_user_id <- 0L
+  # SSO modunda başlangıçta gelen 0L yerine oturumdaki gerçek kullanıcıyı kullan.
+  # `%||%` YALNIZCA NULL'u değiştirir: oturum kimliği hâlâ `0L` iken çağıranın
+  # ÇÖZÜMLENMİŞ kimliği yok sayılıyor ve geçerli yükleme reddediliyordu.
+  effective_user_id <- .file_pipeline_effective_uid(
+    session$userData$user_id,
+    current_user_id
+  )
 
   if (effective_user_id <= 0L) {
     cat(sprintf("[UPLOAD BATCH] UYARI: effective_user_id=%d, session$userData$user_id=%s, current_user_id=%s\n",
                 effective_user_id,
                 as.character(session$userData$user_id %||% "NULL"),
                 as.character(current_user_id %||% "NULL")))
+    # Kimlik hazır değilken yükleme kullanıcı kovasına yazılamaz; reddedilir.
+    showToast(session, "Kullanıcı kimliği henüz hazır değil; dosya yüklemesi reddedildi. Lütfen tekrar deneyin.", "error")
+    return(invisible(NULL))
   }
 
   # İzin verilen uzantılar tek kaynaktan (fm_normal_allowed_extensions) gelir;
@@ -286,7 +427,11 @@ handle_file_upload_batch <- function(uploads_df,
     existing_names = character(),
     user_id = effective_user_id,
     allowed_ext = allowed_exts,
-    max_size_mb = getOption("mergen.upload_max_mb", 25L),
+    max_size_mb = if (exists("fm_upload_limit_mb", mode = "function", inherits = TRUE)) {
+      fm_upload_limit_mb()
+    } else {
+      getOption("mergen.upload_max_mb", 25L)
+    },
     batch_id = batch_id
   )
 

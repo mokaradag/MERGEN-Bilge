@@ -18,6 +18,13 @@
     "R/utils_upload_validator.R",
     "R/helpers_worker_monitor.R",
     "R/helpers_files_path.R",
+    # Rezervasyon primitifleri + sahiplik kanıtlı terfi: aşamalı kopya bunlara
+    # bağlıdır (manifest sırası ile aynı).
+    "R/utils_path_reservation.R",
+    "R/helpers_files_promote_probe.R",
+    "R/helpers_files_promote_target.R",
+    "R/helpers_files_staging_copy.R",
+    "R/helpers_files_copy_promote.R",
     "R/helpers_files.R",
     "R/helpers_file_ingestion_task.R",
     "R/helpers_file_ingestion_worker.R",

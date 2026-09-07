@@ -15,6 +15,14 @@
 #             adımlar kanıt DEĞİLDİR.
 # ==============================================================================
 
+# Log kuyruk penceresi üst sınırı. `max_lines` yalnızca "sonlu ve >= 1" diye
+# doğrulanıyordu; devasa bir değer senkron okumayı GB ölçeğine çıkarıp
+# Shiny sürecini bloke edebiliyordu.
+.RELEASE_EVIDENCE_MAX_TAIL_LINES <- 200000L
+# Kuyruk okumasi icin SERT bayt tavani: satir basina 512 bayt TAHMINI, uzun
+# satirlarda istenen `max_lines` penceresinin cok altinda kaliyordu.
+.RELEASE_EVIDENCE_MAX_TAIL_BYTES <- 67108864
+
 # Repo kökünü getwd() yerine sabit ve doğrulanmış adaylardan çözer.
 # Shiny runtime sırasında getwd() tests/testthat gibi geçici dizinlere kayabilir.
 #
@@ -441,6 +449,7 @@ release_evidence_log_health <- function(log_dir = NULL, max_lines = 2000L) {
     found = FALSE,
     log_path = log_yolu,
     window_lines = 0L,
+    window_truncated = FALSE,
     error_count = 0L,
     warn_count = 0L,
     last_error_at = "",
@@ -456,18 +465,71 @@ release_evidence_log_health <- function(log_dir = NULL, max_lines = 2000L) {
   # (geçersiz UTF-8). Ham içerik startsWith/regexpr/regexec'i "input string is
   # invalid" ile kırıp TÜM Doğrulama Kanıtı sekmesini boşa düşürürdü (kök neden).
   # Öncelik byte-safe read_text_lines_utf8; izole bağlamda yoksa readBin + iconv.
+  # Sınırlı KUYRUK okuması: dosyanın tamamını belleğe almak büyük üretim
+  # loglarında yüzlerce MB tüketiyordu (max_lines penceresi ancak okumadan
+  # SONRA uygulanıyordu). Satır başına ~512 bayt varsayımıyla yalnızca son
+  # pencere okunur; kesilen ilk satır düşürülür.
+  # max_lines TEK ve SONLU pozitif tam sayıya indirgenir: NA kuyruk penceresini
+  # geçersiz yapıp tüm sekmeyi sessizce boş "found" durumuna düşürüyordu, Inf
+  # ise hem kuyruk sınırını hem son pencere kırpmasını devre dışı bırakıyordu.
+  max_lines <- suppressWarnings(as.numeric(max_lines)[1])
+  if (length(max_lines) != 1L || !is.finite(max_lines) || max_lines < 1) {
+    max_lines <- 2000L
+  }
+  # ÜST SINIR: 4000000 gibi sonlu ama devasa bir değer bu denetimi geçip
+  # kuyruk penceresini ~2 GB'a çıkarıyor (senkron okuma Shiny sürecini
+  # blokluyor veya belleği tüketiyor), daha büyük değerler ise as.integer()
+  # taşmasıyla NA üretip sekmeyi sessizce boşaltıyordu.
+  max_lines <- min(max_lines, .RELEASE_EVIDENCE_MAX_TAIL_LINES)
+  max_lines <- as.integer(max_lines)
+
+  # Pencere BAYT ile degil SATIR ile olculur: 512 baytlik tahmin, ortalama 2 KiB
+  # satirlarda `max_lines = 2000` istegini ~512 satira dusuruyor ve atlanan
+  # bolumdeki hata/uyarilar sayilmadigi halde kirpma RAPORLANMIYORDU.
+  pencere_kesildi <- FALSE
   satirlar <- tryCatch({
-    if (exists("read_text_lines_utf8", mode = "function")) {
-      read_text_lines_utf8(log_yolu, repair_mojibake = TRUE)
-    } else {
-      boyut <- suppressWarnings(file.info(log_yolu)$size[1])
-      ham <- readBin(log_yolu, what = "raw", n = if (is.na(boyut)) 0L else boyut)
+    boyut <- suppressWarnings(as.numeric(file.info(log_yolu)$size[1]))
+    if (!is.finite(boyut)) boyut <- 0
+    kuyruk_bayt <- max(262144, as.numeric(max_lines) * 512)
+    tum <- character(0)
+
+    repeat {
+      kuyruk_bayt <- min(kuyruk_bayt, .RELEASE_EVIDENCE_MAX_TAIL_BYTES)
+      kesildi <- boyut > kuyruk_bayt
+
+      ham <- if (kesildi) {
+        baglanti <- file(log_yolu, open = "rb")
+        seek(baglanti, where = boyut - kuyruk_bayt, origin = "start")
+        parca <- readBin(baglanti, what = "raw", n = as.integer(kuyruk_bayt))
+        close(baglanti)
+        parca
+      } else {
+        readBin(log_yolu, what = "raw", n = as.integer(boyut))
+      }
+
       metin <- iconv(list(ham), from = "WINDOWS-1254", to = "UTF-8", sub = "byte")[[1]]
-      if (length(metin) == 1L && !is.na(metin) && nzchar(metin)) {
+      tum <- if (length(metin) == 1L && !is.na(metin) && nzchar(metin)) {
         strsplit(metin, "\r\n|\n|\r", perl = TRUE)[[1]]
       } else {
         character(0)
       }
+
+      # Kuyruk okumasında ilk satır yarım olabilir.
+      if (kesildi && length(tum) > 1L) tum <- tum[-1L]
+
+      if (!kesildi || length(tum) >= max_lines) break
+      if (kuyruk_bayt >= .RELEASE_EVIDENCE_MAX_TAIL_BYTES) {
+        # Sert tavana ulasildi ve istenen satir sayisi hala saglanamadi.
+        pencere_kesildi <<- TRUE
+        break
+      }
+      kuyruk_bayt <- kuyruk_bayt * 4
+    }
+
+    if (exists("normalize_text_utf8", mode = "function")) {
+      normalize_text_utf8(tum, repair_mojibake = TRUE)
+    } else {
+      tum
     }
   }, error = function(e) character(0))
 
@@ -502,6 +564,9 @@ release_evidence_log_health <- function(log_dir = NULL, max_lines = 2000L) {
     found = TRUE,
     log_path = log_yolu,
     window_lines = length(satirlar),
+    # Bayt tavani nedeniyle istenen satir penceresi saglanamadiysa ACIKCA
+    # bildirilir; sessiz eksik sayim kanit gibi gorunuyordu.
+    window_truncated = isTRUE(pencere_kesildi),
     error_count = length(hata_satirlari),
     warn_count = length(uyari_satirlari),
     last_error_at = son_hata_zamani,

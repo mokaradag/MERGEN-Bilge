@@ -83,80 +83,6 @@
   txt
 }
 
-# UNICODE ÜSTSİMGE RAKAMLARI (kaynak: `<sup>` KALDIRILDIKTAN SONRAKİ akış).
-#
-# Langflow istemi artık `<sup>(1)</sup>` yazmıyor; model atıfları doğrudan
-# üstsimge karakteriyle veriyor (`baslatilir` + U+00B9). Bu karakterler markdown'dan
-# geçtiği için tıklanabilir rozete DÖNÜŞMÜYORDU. Sabitler `\uXXXX` ile yazılır:
-# U+2074 ve üstü WINDOWS-1254'te YOKTUR ve kaynak dosya CP1254-güvenli kalmalıdır.
-.LANGFLOW_SUP_DIGITS <- c("0", "1", "2", "3", "4", "5", "6", "7", "8", "9")
-names(.LANGFLOW_SUP_DIGITS) <- c(
-  "\u2070", "\u00B9", "\u00B2", "\u00B3", "\u2074",
-  "\u2075", "\u2076", "\u2077", "\u2078", "\u2079"
-)
-
-# ÜS/BİRİM YANLIŞ POZİTİFİ: `10^6`, `m^2`, `5 cm^3` yazımları (üstsimge
-# karakteriyle) atıf DEĞİLDİR.
-# Atıf her zaman bir SÖZCÜĞÜN ya da noktalamanın ardından gelir; üs ise sayının
-# veya bir ölçü biriminin ardından. İki dar kural yeterlidir ve gereksiz yere
-# gerçek atıf düşürmez.
-.langflow_sup_looks_like_exponent <- function(before) {
-  if (grepl("[0-9][ \t]*$", before, perl = TRUE)) return(TRUE)
-  birim <- regmatches(before, regexpr("[A-Za-z\u00B5]+[ \t]*$", before, perl = TRUE))
-  if (!length(birim)) return(FALSE)
-  birim <- tolower(gsub("[ \t]+$", "", birim))
-  birim %in% c("m", "cm", "mm", "km", "dm", "um", "\u00B5m", "in", "ft", "yd")
-}
-
-# Bir üstsimge dizisini atıf numaralarına çözer. Yan yana iki üstsimge rakamı
-# BELİRSİZDİR: hem
-# 12 hem de 1 ve 2 olabilir. Karar KAYNAKÇA'nın kendisine sorulur: bütün dizi
-# geçerli bir girişse tek atıftır, değilse ve her rakam tek başına geçerliyse
-# ayrı atıflardır. Hiçbiri geçerli değilse metin DEĞİŞMEDEN bırakılır (etkisiz);
-# gerçek bir üs ifadesini silmemek için burada düşürme YAPILMAZ.
-.langflow_sup_resolve_nums <- function(digits, valid) {
-  if (!length(digits) || !length(valid)) return(character(0))
-  butun <- sub("^0+(?=[0-9])", "", paste(digits, collapse = ""), perl = TRUE)
-  if (butun %in% valid) return(butun)
-  if (length(digits) > 1L && all(digits %in% valid)) return(digits)
-  character(0)
-}
-
-.langflow_unicode_sup_to_citation <- function(text, num_map = NULL) {
-  txt <- as.character(text %||% "")[1]
-  if (is.na(txt) || !nzchar(txt)) return(text)
-
-  ust <- paste(names(.LANGFLOW_SUP_DIGITS), collapse = "")
-  ac <- "\u207D"; kap <- "\u207E"  # üstsimge parantezleri
-  desen <- sprintf("[%s]?[%s]+[%s]?(?:[,;]?[%s]?[%s]+[%s]?)*",
-                   ac, ust, kap, ac, ust, kap)
-  konum <- gregexpr(desen, txt, perl = TRUE)[[1]]
-  if (length(konum) == 1L && konum[1] == -1L) return(txt)
-
-  parcalar <- regmatches(txt, gregexpr(desen, txt, perl = TRUE))[[1]]
-  baslar <- as.integer(konum)
-  gecerli <- if (is.null(num_map)) character(0) else names(num_map)
-
-  yeni <- vapply(seq_along(parcalar), function(i) {
-    onceki <- substr(txt, 1L, baslar[i] - 1L)
-    if (.langflow_sup_looks_like_exponent(onceki)) return(parcalar[i])
-
-    karakterler <- strsplit(parcalar[i], "", fixed = TRUE)[[1]]
-    rakamlar <- unname(.LANGFLOW_SUP_DIGITS[karakterler])
-    rakamlar <- rakamlar[!is.na(rakamlar)]
-    cozum <- .langflow_sup_resolve_nums(rakamlar, gecerli)
-    if (!length(cozum)) return(parcalar[i])
-
-    eslenen <- vapply(cozum, function(n) as.character(num_map[[n]]), character(1))
-    eslenen <- eslenen[!is.na(eslenen) & nzchar(eslenen)]
-    if (!length(eslenen)) return(parcalar[i])
-    paste0("[", eslenen, "]", collapse = "")
-  }, character(1))
-
-  regmatches(txt, gregexpr(desen, txt, perl = TRUE)) <- list(yeni)
-  txt
-}
-
 # Belge adının sonuna eklenmiş sayfa açıklamasını (varsa) uzantı doğrulamasından
 # ÖNCE ayırır. Yalnızca "<ad>.<uzanti> (Sayfa N)" / "<ad>.<uzanti> (Page N)" /
 # "<ad>.<uzanti>, s. N" / "<ad>.<uzanti>, p. N" biçimleri desteklenir; ek GERÇEK
@@ -412,8 +338,6 @@ mergen_langflow_finalize_answer <- function(text, structured_sources = list()) {
   # Üstsimge dönüşümü yalnızca gerçek bir Kaynakça bloğu varken uygulanır.
   if (nzchar(marker_block)) {
     txt <- .langflow_inline_sup_to_citation(txt, sup_map)
-    # `<sup>` etiketi kaldırılmış akışlarda atıf doğrudan üstsimge KARAKTERİDİR.
-    txt <- .langflow_unicode_sup_to_citation(txt, sup_map)
     txt <- paste0(txt, marker_block)
   }
   txt

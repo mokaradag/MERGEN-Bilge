@@ -123,7 +123,7 @@ testthat::test_that("test_claude_code_connection başarılı çalıştırmada ba
     list(installed = TRUE, version = "1.2.3", path = "/sahte/claude.cmd", error = "")
   }
   env$run_claude_code <- function(prompt, workdir, model = NULL, timeout_sec = NULL,
-                                  cli_path = NULL, api_key = NULL) {
+                                  cli_path = NULL, api_key = NULL, user_id = NULL) {
     list(success = TRUE, output = "OK", error = "", duration = 2)
   }
 
@@ -139,7 +139,7 @@ testthat::test_that("test_claude_code_connection CLI çalışır ama API başar�
     list(installed = TRUE, version = "1.2.3", path = "/sahte/claude.cmd", error = "")
   }
   env$run_claude_code <- function(prompt, workdir, model = NULL, timeout_sec = NULL,
-                                  cli_path = NULL, api_key = NULL) {
+                                  cli_path = NULL, api_key = NULL, user_id = NULL) {
     list(success = FALSE, output = "", error = "API hatası", duration = 1)
   }
 

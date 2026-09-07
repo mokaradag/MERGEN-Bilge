@@ -39,7 +39,15 @@ cc_send_run_stage <- function(session, ns, stage, duration = "") {
     bilgi <- claude_code_run_stages$hazirlaniyor
   }
 
-  session$sendCustomMessage(
+  # HATA GÜVENLİ: kapanmış oturumda gönderim hata veriyor; akış burada
+  # kesilirse guard/lease temizlenmiyor ve worker hiç başlatılmıyordu.
+  #
+  # BAŞARISIZLIK SİNYALİ KORUNUR: fonksiyon eskiden KOŞULSUZ `TRUE` döndüğü için
+  # çağıranın `try()`/`tryCatch()` denetimi hiçbir zaman tetiklenmiyor, guard ve
+  # lease temizliği ile süreç sonlandırma çalışmıyordu. Artık gönderim hatası
+  # `FALSE` olarak raporlanır (istisna fırlatılmaz: aşama bildirimi tek başına
+  # bir çalıştırmayı düşürmemelidir).
+  gonderim <- try(session$sendCustomMessage(
     type = "cc-update-status",
     message = list(
       statusId = ns("status_text"),
@@ -49,9 +57,9 @@ cc_send_run_stage <- function(session, ns, stage, duration = "") {
       statusColor = bilgi$renk,
       duration = duration
     )
-  )
+  ), silent = TRUE)
 
-  invisible(TRUE)
+  invisible(!inherits(gonderim, "try-error"))
 }
 
 #' Hazırlık aşamasında biten çalıştırmayı güvenle sonlandır
@@ -170,6 +178,18 @@ cc_dispatch_run_preparation <- function(ctx) {
   # worker o callback'e hiç ulaşmaz. Ana later döngüsündeki bağımsız deadline
   # aktif isteği zamanında sonlandırır; geç dönen future stale guard'a takılır.
   zaman_asimi_durumu$cancel <- later::later(function() {
+    # Oturum kapandıysa UI mesajı gönderilemez; deadline sessizce düşürülür.
+    # Durum belirlenemiyorsa (test ikizi / eski Shiny) AÇIK varsayılır ki
+    # mevcut zaman aşımı davranışı korunsun.
+    oturum_kapali <- tryCatch(
+      is.function(ctx$session$isClosed) && isTRUE(ctx$session$isClosed()),
+      error = function(e) FALSE
+    )
+    if (isTRUE(oturum_kapali)) {
+      zaman_asimi_durumu$pending <- FALSE
+      return(invisible(NULL))
+    }
+
     if (isTRUE(zaman_asimi_durumu$pending) &&
         cc_is_active_run(ctx$rv, ctx$run_request_id)) {
       zaman_asimi_durumu$pending <- FALSE
@@ -540,7 +560,22 @@ cc_start_streaming_run <- function(ctx, prep) {
 
   cc_send_run_stage(session, ns, "model")
 
-  tryCatch({
+  # Süreç başlatıldıktan SONRA FIRLATILAN bir hatada CLI çocuğu öldürülmelidir;
+  # aksi halde başıboş bir Claude süreci arka planda çalışmaya devam ederdi.
+  #
+  # KAPSAM: bu dal yalnızca İSTİSNA fırlatan adımları kapsar (ör. `rv` yazımı).
+  # Aşama bildirimi bu dala GİRMEZ: `cc_send_run_stage()` sözleşme gereği
+  # ÖLÜMCÜL DEĞİLDİR ve gönderim hatasında istisna yerine FALSE döner. Kullanıcı
+  # süreç başladıktan hemen sonra sekmeyi kapattığında çalıştırma BİLİNÇLİ olarak
+  # sürdürülür: üretilen çıktılar kaynak klasöre aktarılmalıdır (bkz. çıktı
+  # gönderim yolundaki aynı karar). Gönderim hatası yalnızca loglanır.
+  baslatilan_surec <- NULL
+  # Hata dalının sonucu ÇAĞIRANA bildirilir. Eskiden `tryCatch()` dönüşü yok
+  # sayılıp fonksiyon koşulsuz `invisible(TRUE)` döndürüyordu; süreç başladıktan
+  # sonraki her istisna (öldürülen süreç + `failed` kalıcılaştırma dâhil)
+  # çağırana BAŞARI olarak raporlanıyordu.
+
+  baslatma_basarili <- tryCatch({
     cc_log_info(paste(CLAUDE_CODE_LOG_PREFIX, "[PROCESS_START] Canlı akış başlatılıyor"))
 
     komut <- build_processx_command(ctx$cli_path, cli_args, workdir = calisma_dizini)
@@ -562,12 +597,35 @@ cc_start_streaming_run <- function(ctx, prep) {
       windows_verbatim_args = isTRUE(komut$windows_verbatim_args)
     )
 
+    # `tryCatch` gövdesi çağıran çerçevede değerlendirilir; `<<-` yerel bağı
+    # atlayıp genel ortama yazar ve hata dalı süreci NULL görürdü.
+    baslatilan_surec <- proc
     rv$active_process <- proc
     lease_handed_off <- TRUE
-    cc_send_run_stage(session, ns, "calisiyor")
+    # Dönüş değeri DENETLENİR ama çalıştırmayı kesmez: sinyal gözlemlenebilir
+    # olsun diye loglanır (sessizce yok saymak, yukarıdaki kapsam notunu
+    # doğrulanamaz hâle getiriyordu).
+    if (!isTRUE(cc_send_run_stage(session, ns, "calisiyor"))) {
+      cc_log_warn(paste(
+        CLAUDE_CODE_LOG_PREFIX,
+        "[PROCESS_START] 'Çalışıyor' aşaması bildirilemedi (oturum kapalı olabilir);",
+        "çalıştırma sürüyor."
+      ))
+    }
 
+    TRUE
   }, error = function(e) {
     hata_metni <- conditionMessage(e)
+
+    if (!is.null(baslatilan_surec)) {
+      tryCatch({
+        if (isTRUE(baslatilan_surec$is_alive())) baslatilan_surec$kill()
+      }, error = function(e2) NULL)
+      rv$active_process <- NULL
+      # Süreç öldürüldü: lease devri geçersizdir. Aksi hâlde lease'i tazeleyen
+      # yoklama gözlemcisi hiç kurulmuyor ve kilit orphan TTL'ine kadar tutuluyordu.
+      lease_handed_off <<- FALSE
+    }
     log_error(paste(
       CLAUDE_CODE_LOG_PREFIX,
       "Akış başlatma hatası:",
@@ -592,7 +650,9 @@ cc_start_streaming_run <- function(ctx, prep) {
       ctx,
       paste0("Beklenmeyen hata: ", hata_metni)
     )
+
+    FALSE
   })
 
-  invisible(TRUE)
+  invisible(isTRUE(baslatma_basarili))
 }

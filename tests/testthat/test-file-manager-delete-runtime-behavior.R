@@ -6,6 +6,12 @@
 .load_file_manager_delete_runtime_helpers <- function() {
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
+  # Manifest sırası: ortak kurtarma yardımcıları silme runtime'ından ÖNCE gelir.
+  source(
+    file.path(repo_root, "R", "helpers_file_manager_artifact_recovery.R"),
+    encoding = "UTF-8",
+    local = env
+  )
   source(
     file.path(repo_root, "R", "helpers_file_manager_delete_runtime.R"),
     encoding = "UTF-8",

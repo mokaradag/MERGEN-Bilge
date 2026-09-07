@@ -162,3 +162,95 @@ testthat::test_that("geçerli + yetkili token: claim'ler DB ile zenginleşir, ss
     testthat::expect_identical(basari$message$username, "deneme")
   })
 })
+
+# ------------------------------------------------------------------------------
+# Süre dolumunda oturumun yetkisizleştirilmesi (kapalı-başarısız)
+# ------------------------------------------------------------------------------
+# Token doğrulaması yalnızca `sso_jwt_token` girdisi geldiğinde çalışır. Periyodik
+# gözlemci `exp` geçtiğinde oturumu düşürmezse, doğrulanmış bir Shiny bağlantısı
+# açık kaldığı sürece süresi dolmuş kullanıcının kimliği, yetkisi ve kişisel API
+# anahtarı sonraki işlemlerde kullanılmaya devam eder.
+.ssoClaimsWithExp <- function(exp_offset_secs) {
+  function(payload) {
+    list(username = "deneme", sicil = "123", full_name = "Eski Ad",
+         first_name = "Eski", token_exp = as.numeric(Sys.time()) + exp_offset_secs)
+  }
+}
+
+testthat::test_that("süresi dolmuş token oturumu yetkisizleştirir", {
+  env <- .ssoAuthServerEnv(claims_fn = .ssoClaimsWithExp(-120))
+
+  shiny::testServer(env$ssoAuthServer, args = list(), {
+    kayit <- .ssoCaptureMessages(session)
+    session$setInputs(sso_jwt_token = "__prime__")
+    session$setInputs(sso_jwt_token = "gecerli-token")
+
+    testthat::expect_false(session$returned$authenticated)
+    testthat::expect_null(session$returned$auth_level)
+    testthat::expect_null(session$returned$raw_token)
+    testthat::expect_null(session$returned$user_claims)
+
+    tipler <- vapply(kayit$mesajlar, function(m) m$type, character(1))
+    testthat::expect_true("sso_auth_error" %in% tipler)
+  })
+})
+
+testthat::test_that("süresi dolmamış token oturumu düşürmez", {
+  env <- .ssoAuthServerEnv(claims_fn = .ssoClaimsWithExp(1200))
+
+  shiny::testServer(env$ssoAuthServer, args = list(), {
+    session$setInputs(sso_jwt_token = "__prime__")
+    session$setInputs(sso_jwt_token = "gecerli-token")
+    session$elapse(61 * 1000)
+
+    testthat::expect_true(session$returned$authenticated)
+    testthat::expect_identical(session$returned$auth_level, "USER")
+  })
+})
+
+testthat::test_that("geçerli exp claim'i yoksa oturum düşürülmez", {
+  # Muhafazakâr davranış: saat/ayrıştırma kaynaklı yanlış çıkış yapılmaz.
+  env <- .ssoAuthServerEnv()  # varsayılan claims_fn token_exp taşımaz
+
+  shiny::testServer(env$ssoAuthServer, args = list(), {
+    session$setInputs(sso_jwt_token = "__prime__")
+    session$setInputs(sso_jwt_token = "gecerli-token")
+    session$elapse(61 * 1000)
+
+    testthat::expect_true(session$returned$authenticated)
+  })
+})
+
+testthat::test_that("periyodik gözlemci gerçekten tetiklenir (bindEvent(invalidateLater) ölü koddu)", {
+  # invalidateLater() invisible(NULL) döndürür; bindEvent() varsayılan
+  # ignoreNULL = TRUE olduğu için `observe(...) |> bindEvent(invalidateLater(...))`
+  # biçimi HİÇ çalışmıyordu (süre dolum uyarısı da hiç gönderilmiyordu).
+  satirlar <- readLines(
+    file.path(resolve_repo_root_for_tests(), "R", "module_sso.R"),
+    encoding = "UTF-8", warn = FALSE
+  )
+  # Açıklayıcı yorumlar yanlış pozitif üretmesin diye yorum satırları elenir.
+  kod <- satirlar[!grepl("^\\s*#", satirlar)]
+  testthat::expect_false(
+    any(grepl("bindEvent(invalidateLater", kod, fixed = TRUE))
+  )
+
+  # Davranışsal kanıt: uyarı YALNIZCA ilk çalıştırmadan değil, PERİYODİK
+  # yeniden zamanlamadan da gelmelidir. Kimlik doğrulamadan sonra kayıt
+  # temizlenir; yeni uyarı ancak zamanlayıcı aralığı geçtikten sonra
+  # görünmelidir. Periyodik yeniden zamanlama kaldırılırsa bu test düşer.
+  env <- .ssoAuthServerEnv(claims_fn = .ssoClaimsWithExp(30))  # margin = 60 sn
+  shiny::testServer(env$ssoAuthServer, args = list(), {
+    kayit <- .ssoCaptureMessages(session)
+    session$setInputs(sso_jwt_token = "__prime__")
+    session$setInputs(sso_jwt_token = "gecerli-token")
+    testthat::expect_true(session$returned$authenticated)
+
+    kayit$mesajlar <- list()
+    session$elapse(61 * 1000)
+
+    tipler <- vapply(kayit$mesajlar, function(m) m$type, character(1))
+    testthat::expect_true("sso_token_expiring" %in% tipler)
+    testthat::expect_true(session$returned$authenticated)
+  })
+})

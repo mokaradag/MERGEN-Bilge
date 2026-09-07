@@ -20,14 +20,29 @@
 
 # --- Küçük saf yardımcılar ----------------------------------------------------
 
+# İstemci JSON'unda iç içe nesne/dizi gelirse (simplifyVector = FALSE -> liste)
+# as.integer(list) hata fırlatırdı; yalnızca tek skaler kabul edilir.
+.bs_skaler <- function(x) {
+  if (is.null(x) || length(x) == 0) return(NULL)
+  # LİSTE HİÇ AÇILMAZ: {"son_cekirdek":{"a":20}} tek elemanlı bir liste olarak
+  # gelip 20 değerine indirgeniyor ve bozuk istemci yükü skor/yıldız hesabına
+  # giriyordu. Yalnızca TEK değerli atomik vektör kabul edilir.
+  if (is.list(x) || !is.atomic(x) || length(x) != 1L) return(NULL)
+  x
+}
+
 .bs_tam_sayi <- function(x, varsayilan = NA_integer_) {
-  v <- suppressWarnings(as.integer(x[1]))
+  x <- .bs_skaler(x)
+  if (is.null(x)) return(varsayilan)
+  v <- suppressWarnings(as.integer(x))
   if (length(v) == 0 || is.na(v)) return(varsayilan)
   v
 }
 
 .bs_sayi <- function(x, varsayilan = NA_real_) {
-  v <- suppressWarnings(as.numeric(x[1]))
+  x <- .bs_skaler(x)
+  if (is.null(x)) return(varsayilan)
+  v <- suppressWarnings(as.numeric(x))
   if (length(v) == 0 || is.na(v) || !is.finite(v)) return(varsayilan)
   v
 }
@@ -289,6 +304,11 @@ bs_kosu_ozeti_dogrula <- function(ozet,
   son_cekirdek <- .bs_sayi(ozet$son_cekirdek, -1)
   if (is.na(son_cekirdek) || son_cekirdek < 0 || son_cekirdek > taban_cekirdek) {
     return(.bs_dogrulama_hatasi("son_cekirdek"))
+  }
+  # Son çekirdek, son dalga özetinin çekirdeğiyle çelişemez (onarım toleransı
+  # dahil); aksi halde puan/yıldız istemci beyanıyla şişirilebilirdi.
+  if (son_cekirdek > onceki_cekirdek + onarim_toleransi) {
+    return(.bs_dogrulama_hatasi("son_cekirdek_tutarsiz"))
   }
 
   zafer <- isTRUE(ozet$zafer)

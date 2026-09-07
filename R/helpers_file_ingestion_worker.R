@@ -80,6 +80,14 @@ file_ingestion_execute_task <- function(task) {
         )
       ))
     }
+  } else {
+    # Doğrulayıcı worker'a taşınmadıysa yükleme fail-open kopyalanmaz.
+    return(file_ingestion_task_result(
+      task, FALSE,
+      code = "validator_missing",
+      error = "Dosya doğrulayıcı yüklenemedi; dosya kaydedilmedi.",
+      timings = list(total_ms = elapsed_ms(started))
+    ))
   }
   validate_ms <- elapsed_ms(validate_started)
 

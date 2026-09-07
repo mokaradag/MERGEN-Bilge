@@ -47,20 +47,51 @@ test_that("canlı durum sınıflandırması POSIXct ve kesirli-saniye biçimleri
   taze_posix <- simdi - 30
   expect_identical(ortak_sunum_durumu(taze_posix, simdi = simdi), .ood_cevrimici)
 
-  # Kesirli saniyeli metin (DATETIME2(7) / bazı sürücü biçimleri).
-  taze_kesirli <- "2026-07-05 11:59:30.0000000"
+  # METİN değerler TÜRKİYE YEREL saatinde saklanır (sabit +3, DST yok; bkz.
+  # CLAUDE.md "TIMEZONE" notu). `simdi` UTC 12:00 ise Istanbul yereli 15:00'tir,
+  # bu yüzden 30 saniye önceki kalp atışı `14:59:30` olarak saklanmıştır.
+  # Regresyon: çağıran `simdi` verdiğinde metin dalı KAYDIRILMIYOR ama yine UTC
+  # olarak ayrıştırılıyordu; Türkiye-yerel değer ÜÇ SAAT İLERİDE görünüyor,
+  # negatif fark sıfıra kenetleniyor ve BAYAT kullanıcı neredeyse üç saat
+  # `Çevrimİçi` kalıyordu.
+  taze_kesirli <- "2026-07-05 14:59:30.0000000"
   expect_identical(ortak_sunum_durumu(taze_kesirli, simdi = simdi), .ood_cevrimici)
 
   # ISO 'T' ayraçlı metin.
-  taze_iso <- "2026-07-05T11:59:30"
+  taze_iso <- "2026-07-05T14:59:30"
   expect_identical(ortak_sunum_durumu(taze_iso, simdi = simdi), .ood_cevrimici)
 
   # Eski kalp atışı hâlâ ÇevrimDışı; geçersiz zaman fail-safe ÇevrimDışı.
   expect_identical(
-    ortak_sunum_durumu(format(simdi - 3600, "%Y-%m-%d %H:%M:%S"), simdi = simdi),
+    ortak_sunum_durumu(
+      format(simdi + 3L * 3600L - 3600, "%Y-%m-%d %H:%M:%S", tz = "UTC"),
+      simdi = simdi
+    ),
+    .ood_cevrimdisi
+  )
+  # ÜÇ SAAT İLERİDE görünen (UTC gibi ayrıştırılmış) bayat değer artık
+  # `Çevrimİçi` sayılmaz: UTC 12:00'da saklanan `11:59:30` Istanbul yereli
+  # demek UTC 08:59:30'dur, yani üç saatten eskidir.
+  expect_identical(
+    ortak_sunum_durumu("2026-07-05 11:59:30", simdi = simdi),
     .ood_cevrimdisi
   )
   expect_identical(ortak_sunum_durumu("gecersiz", simdi = simdi), .ood_cevrimdisi)
+})
+
+test_that("varsayılan referans yerel POSIXct kalp atışını ÇevrimDışı göstermez", {
+  # Regresyon: varsayılan `simdi` her girdi türü için +3 saat kaydırılıyordu.
+  # ODBC DATETIME2 çoğu sürücüde POSIXct döner ve bu değer zaten MUTLAK bir
+  # an'dır; şu an atılan bir kalp atışı 3 saat eski görünüp ÇevrimDışı
+  # sınıflanıyordu.
+  expect_identical(ortak_sunum_durumu(Sys.time()), .ood_cevrimici)
+  expect_identical(ortak_sunum_durumu(Sys.time() - 30), .ood_cevrimici)
+  expect_identical(ortak_sunum_durumu(Sys.time() - 3600), .ood_cevrimdisi)
+
+  # Metin değer Türkiye yerel saatinde saklanıp UTC gibi ayrıştırıldığı için
+  # varsayılan referans yalnızca bu durumda kaydırılmaya devam eder.
+  taze_metin <- format(Sys.time() + 3L * 3600L, "%Y-%m-%d %H:%M:%S", tz = "UTC")
+  expect_identical(ortak_sunum_durumu(taze_metin), .ood_cevrimici)
 })
 
 test_that("canlı durum saat dilimli POSIXct instant'ını korur (metne çevirmeden)", {

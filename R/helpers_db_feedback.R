@@ -19,7 +19,7 @@ save_feedback_to_db <- function(user_id, message_id, feedback_type) {
   feedback_type <- normalize_db_technical_value(feedback_type)
 
   query <- "
-    MERGE MB_Feedback AS target
+    MERGE MB_Feedback WITH (HOLDLOCK) AS target
     USING (SELECT ? AS UserID, ? AS MessageID, ? AS FeedbackType) AS source
     ON (target.UserID = source.UserID AND target.MessageID = source.MessageID)
     WHEN MATCHED THEN UPDATE SET FeedbackType = source.FeedbackType
@@ -111,7 +111,7 @@ save_feedback_to_db_extended <- function(user_id,
   feedback_type <- normalize_db_technical_value(feedback_type)
 
   query <- "
-    MERGE MB_Feedback AS target
+    MERGE MB_Feedback WITH (HOLDLOCK) AS target
     USING (
       SELECT
         ? AS UserID,
@@ -176,7 +176,10 @@ load_feedback_details_from_db <- function(user_id, message_id) {
     params = list(user_id, as.integer(message_id))
   )
 
-  if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
+  # Okuma sınırı: [[MERGEN-U+...]] belirteçleri de geri açılır.
+  if (exists("normalize_db_read_visible_frame", mode = "function", inherits = TRUE)) {
+    result <- normalize_db_read_visible_frame(result, repair_mojibake = TRUE)
+  } else if (exists("normalize_text_frame_utf8", mode = "function", inherits = TRUE)) {
     result <- normalize_text_frame_utf8(result, repair_mojibake = TRUE)
   }
 

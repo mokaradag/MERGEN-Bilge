@@ -457,7 +457,9 @@ ccs_run_timeline_item <- function(run_row) {
   }
   dosya_sayisi <- length(uretilen_dosyalar)
 
-  sure <- suppressWarnings(as.numeric(run_row$DurationSeconds))
+  # DurationSeconds sütunu eksikse as.numeric(NULL) -> numeric(0) ve if()
+  # "argument is of length zero" ile detay modalını düşürüyordu.
+  sure <- suppressWarnings(as.numeric(run_row$DurationSeconds %||% NA_real_)[1])
 
   div(
     class = "ccs-run-item",

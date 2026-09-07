@@ -259,9 +259,20 @@ cc_db_update_session_resume_state <- function(session_record_id,
                                               status = NULL,
                                               title = NULL,
                                               touch_last_run = TRUE,
-                                              conn = NULL) {
+                                              conn = NULL,
+                                              user_id = NULL) {
   session_record_id <- suppressWarnings(as.integer(session_record_id %||% 0L)[1])
   if (is.na(session_record_id) || session_record_id <= 0L) {
+    return(invisible(FALSE))
+  }
+
+  # Kullanıcı kapsamı ZORUNLUDUR: `user_id` yokken UPDATE yalnızca
+  # `ClaudeSessionRecordID` ile çalışıyor ve bayat/yanlış bir kayıt kimliği
+  # BAŞKA bir kullanıcının Workdir/RuntimeWorkdir/RuntimeModel/Status alanlarını
+  # ezebiliyordu ("tüm işlemler kullanıcı-izoledir" sözleşmesi bozuluyordu).
+  kapsam_uid <- mergen_canonical_user_id(user_id %||% NA_integer_)
+  if (kapsam_uid <= 0L) {
+    .cc_db_sessions_log_warn("Bilge Yolaç oturum güncellemesi kullanıcı kapsamı olmadan reddedildi.")
     return(invisible(FALSE))
   }
 
@@ -303,6 +314,7 @@ cc_db_update_session_resume_state <- function(session_record_id,
   }
 
   params[[length(params) + 1L]] <- session_record_id
+  params[[length(params) + 1L]] <- kapsam_uid
 
   handle <- .cc_db_try(
     .cc_db_sessions_acquire(conn),
@@ -315,17 +327,17 @@ cc_db_update_session_resume_state <- function(session_record_id,
   on.exit(.cc_db_sessions_release(handle), add = TRUE)
 
   sonuc <- .cc_db_try({
-    DBI::dbExecute(
+    etkilenen <- DBI::dbExecute(
       handle$conn,
       paste(
         "UPDATE MB_ClaudeCode_Sessions SET",
         paste(set_parts, collapse = ", "),
-        "WHERE ClaudeSessionRecordID = ?"
+        "WHERE ClaudeSessionRecordID = ? AND UserID = ?"
       ),
       params = normalize_db_params(params)
     )
 
-    TRUE
+    isTRUE(etkilenen > 0)
   },
   fallback = FALSE,
   uyari = "Bilge Yolaç oturum durumu güncellenemedi:")
@@ -461,7 +473,8 @@ cc_db_list_sessions <- function(user_id,
                                 date_from = NULL,
                                 date_to = NULL,
                                 sort = "last_activity",
-                                conn = NULL) {
+                                conn = NULL,
+                                only_deleted = FALSE) {
   bos <- data.frame()
 
   user_id <- suppressWarnings(as.integer(user_id %||% 0L)[1])
@@ -495,7 +508,8 @@ cc_db_list_sessions <- function(user_id,
       date_from = date_from,
       date_to = date_to,
       sort = sort,
-      sqlite_yolu = .cc_db_sessions_is_sqlite(handle$conn)
+      sqlite_yolu = .cc_db_sessions_is_sqlite(handle$conn),
+      only_deleted = only_deleted
     )
 
     sonuc <- DBI::dbGetQuery(

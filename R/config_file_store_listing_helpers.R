@@ -108,6 +108,61 @@
   invisible(TRUE)
 }
 
+# YÜKLEME ARA ÜRÜNLERİ listelemeden AYIKLANIR. Aşamalı kopya `.mergen-part`
+# adına yazılır ve terfiden sonra silinir; Windows/UNC kilidinde `unlink()`
+# sessizce başarısız olabildiği için bu ad diskte kalabilir. İndekste kaydı
+# olmadığından yalnızca dosya sistemi fallback'inde görünür ve orada GEÇERLİ bir
+# yükleme gibi listeleniyordu (açılamayan/yarım dosya). Rezervasyon dizinleri
+# `include.dirs = FALSE` ile zaten dışlanır; `fs::dir_ls(type = "file")` de
+# dizinleri getirmez, ancak marker dosyası bir dizin İÇİNDE olduğu için
+# `recurse = FALSE` ile görünmez.
+# Yalnızca DOSYA tabanlı aşamalı kopya soneki ayıklanır. REZERVASYON sonekleri
+# (`.mergen-rsv`, `.aw-rsv`, `.oo-rsv`) yalnızca `dir.create()` ile üretilen
+# DİZİNLERE aittir ve iki listeleme API'si de dizinleri zaten dışlar
+# (`include.dirs = FALSE`, `fs::dir_ls(type = "file")`). Bu sonekleri dosya
+# filtresine almak, aynı sonekle adlandırılmış GEÇERLİ bir dosyayı kullanıcı
+# listelemesinden düşürüyordu.
+#
+# Yapılandırılmış değer GEÇERSİZSE (`NULL`, `NA`, boş, `character(0)`)
+# varsayılana düşülür: `[1]` sonucu `NA` olduğunda `endsWith()` de `NA` üretiyor
+# ve normal dosya yolları `NA` girdilerine dönüşüyordu.
+.file_store_artifact_suffixes <- function() {
+  sonek_ya_da_varsayilan <- function(ad, varsayilan) {
+    deger <- if (exists(ad, inherits = TRUE)) {
+      suppressWarnings(as.character(get(ad, inherits = TRUE)))
+    } else {
+      NA_character_
+    }
+    deger <- deger[1]
+    if (length(deger) != 1L || is.na(deger) || !nzchar(deger)) varsayilan else deger
+  }
+
+  sonek_ya_da_varsayilan("MERGEN_UPLOAD_STAGING_SUFFIX", ".mergen-part")
+}
+
+# Dizinler listelemeden ayıklanır (`list.files(recursive = FALSE)` dizinleri de
+# döndürür; `include.dirs` yalnızca özyinelemeli çağrıda etkilidir).
+.file_store_drop_directories <- function(paths) {
+  if (!length(paths)) return(paths)
+  dizin <- vapply(
+    as.character(paths),
+    function(p) isTRUE(tryCatch(dir.exists(p), error = function(e) FALSE)),
+    logical(1),
+    USE.NAMES = FALSE
+  )
+  paths[!dizin]
+}
+
+.file_store_drop_upload_artifacts <- function(paths) {
+  if (!length(paths)) return(paths)
+  sonekler <- .file_store_artifact_suffixes()
+  sonekler <- unique(sonekler[!is.na(sonekler) & nzchar(sonekler)])
+  if (!length(sonekler)) return(paths)
+  adlar <- basename(as.character(paths))
+  tut <- !Reduce(`|`, lapply(sonekler, function(s) endsWith(adlar, s)))
+  paths[tut]
+}
+
 .file_store_list_user_files_relaxed <- function(dir_path) {
   dir_chr <- as.character(dir_path %||% "")
   if (!nzchar(dir_chr)) {
@@ -123,10 +178,19 @@
   )))
 
   for (v in variants) {
+    # `include.dirs` YALNIZCA `recursive = TRUE` ile etkilidir; `recursive =
+    # FALSE` çağrısı DİZİNLERİ de döndürür. Dizinler bu yüzden AÇIKÇA ayıklanır:
+    # rezervasyon dizinleri (`.mergen-rsv`, `.aw-rsv`, `.oo-rsv`) böylece sonek
+    # eşleşmesine bakılmadan düşer ve aynı soneki taşıyan GEÇERLİ bir DOSYA
+    # kullanıcı listelemesinde kalır.
     files_base <- tryCatch(
       list.files(v, full.names = TRUE, recursive = FALSE, include.dirs = FALSE),
       error = function(e) character(0)
     )
+    files_base <- .file_store_drop_directories(files_base)
+    # AYIKLAMA listeleme BAŞARISI denetiminden ÖNCE yapılır: yalnızca ara ürün
+    # içeren bir klasör "dosya var" sayılıp sonraki varyantı denemeyi engellerdi.
+    files_base <- .file_store_drop_upload_artifacts(files_base)
     if (length(files_base)) {
       return(files_base)
     }
@@ -135,6 +199,7 @@
       as.character(fs::dir_ls(v, recurse = FALSE, type = "file")),
       error = function(e) character(0)
     )
+    files_fs <- .file_store_drop_upload_artifacts(files_fs)
     if (length(files_fs)) {
       return(files_fs)
     }

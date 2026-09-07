@@ -233,24 +233,44 @@ bs_db_active_run <- function(user_id, conn = NULL) {
   on.exit(.bs_db_release(handle), add = TRUE)
 
   .bs_db_try({
+    # Yalnızca en son aktif koşu gerekir (kosu$...[1]); kontrol noktası
+    # sorgusuyla aynı biçimde SQL tarafında tek satıra sınırlanır.
     kosu <- DBI::dbGetQuery(
       handle$conn,
-      paste(
-        "SELECT GameRunID, MapID, Difficulty, Seed, Mode, ChallengeSeasonID,",
-        "BlueprintID, ClientToken, StartedAt",
-        "FROM MB_Game_Runs WHERE UserID = ? AND Status = ?",
-        "ORDER BY GameRunID DESC"
-      ),
+      if (.bs_db_is_sqlite(handle$conn)) {
+        paste(
+          "SELECT GameRunID, MapID, Difficulty, Seed, Mode, ChallengeSeasonID,",
+          "BlueprintID, ClientToken, StartedAt",
+          "FROM MB_Game_Runs WHERE UserID = ? AND Status = ?",
+          "ORDER BY GameRunID DESC LIMIT 1"
+        )
+      } else {
+        paste(
+          "SELECT TOP (1) GameRunID, MapID, Difficulty, Seed, Mode, ChallengeSeasonID,",
+          "BlueprintID, ClientToken, StartedAt",
+          "FROM MB_Game_Runs WHERE UserID = ? AND Status = ?",
+          "ORDER BY GameRunID DESC"
+        )
+      },
       params = normalize_db_params(list(uid, "Aktif"))
     )
     if (nrow(kosu) == 0L) return(NULL)
 
+    # Yalnızca en son kontrol noktası gerekir; tüm satırları çekmek yerine
+    # SQL tarafında tek satıra sınırlanır (lehçeye göre TOP / LIMIT).
     kontrol <- DBI::dbGetQuery(
       handle$conn,
-      paste(
-        "SELECT WaveNumber, StateJson FROM MB_Game_RunCheckpoints",
-        "WHERE GameRunID = ? ORDER BY WaveNumber DESC"
-      ),
+      if (.bs_db_is_sqlite(handle$conn)) {
+        paste(
+          "SELECT WaveNumber, StateJson FROM MB_Game_RunCheckpoints",
+          "WHERE GameRunID = ? ORDER BY WaveNumber DESC LIMIT 1"
+        )
+      } else {
+        paste(
+          "SELECT TOP (1) WaveNumber, StateJson FROM MB_Game_RunCheckpoints",
+          "WHERE GameRunID = ? ORDER BY WaveNumber DESC"
+        )
+      },
       params = normalize_db_params(list(as.integer(kosu$GameRunID[1])))
     )
 

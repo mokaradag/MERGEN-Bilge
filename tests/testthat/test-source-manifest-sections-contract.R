@@ -83,10 +83,19 @@
   # yönlendiricisi (R/helpers_app_http_routes.R) yatay-ölçekleme/performans için
   # eklendi; metrikler index önbelleğinden ÖNCE, router index önbelleğinden SONRA.
   foundation = list(first = "R/config_packages.R", last = "R/helpers_worker_monitor.R", n = 13L),
-  post_future_utils = list(first = "R/utils_path_helpers.R", last = "R/utils_excel_reader.R", n = 9L),
+  # post_future_utils n = 9L -> 10L bilinçli güncelleme: hedef yolu sahiplik
+  # jetonuyla rezerve eden ortak primitifler (R/utils_path_reservation.R)
+  # atomik yazma ile aynı katmana eklendi; üç ayrı terfi yolu bu tek kaynağı
+  # kullanır (ayrık uygulamalar birbirinden sapıyordu).
+  post_future_utils = list(first = "R/utils_path_helpers.R", last = "R/utils_excel_reader.R", n = 10L),
   # config_app_core n = 7L -> 8L bilinçli güncelleme: indeks kilidi
   # (R/config_file_store_index_lock.R) fonksiyon-yoğunluk bölmesiyle ayrı dosyaya alındı.
-  config_app_core = list(first = "R/config_sso.R", last = "R/config_version_history.R", n = 8L),
+  # n = 8L -> 9L bilinçli güncelleme: kova temizliği
+  # (R/config_file_store_bucket_clear.R) üç durumlu dizin varlık kararı ve
+  # sahiplik kaybı uzlaştırmasıyla büyüdüğü için AYRI dosyaya alındı;
+  # config_file_store.R 25 fonksiyon tavanında kalmaya devam eder. İndeks
+  # kilidinden SONRA yüklenir (fiziksel silme + indeks tek kilit altında).
+  config_app_core = list(first = "R/config_sso.R", last = "R/config_version_history.R", n = 9L),
   config_api_model_keys = list(first = "R/helpers_vision_model_capabilities.R", last = "R/helpers_api_key_password_toggle.R", n = 9L),
   config_claude_code = list(first = "R/config_claude_code.R", last = "R/config_claude_code_plugins.R", n = 2L),
   # Bilinçli güncelleme: bölge VERİSİ (config_ui_asset_zones.R) ile bölge
@@ -125,8 +134,17 @@
   chartlab_helpers = list(first = "R/helpers_chartlab_spec.R", last = "R/helpers_chartlab.R", n = 2L),
   # 5L -> 9L bilinçli güncelleme: bloklamayan dosya alım hattı (saf plan ->
   # worker -> kuyruk -> ana süreç runtime) helpers_files.R'den SONRA eklendi.
-  files_preview_pipeline = list(first = "R/helpers_image_gallery.R", last = "R/helpers_file_ingestion_runtime.R", n = 9L),
-  file_manager_helpers = list(first = "R/helpers_file_manager_policy.R", last = "R/helpers_file_manager_table_runtime.R", n = 12L),
+  # files_preview_pipeline n = 11L -> 13L BİLİNÇLİ GÜNCELLEME (PR #717 inceleme
+  # düzeltmeleri): ratchet bütçesi nedeniyle terfi katmanı İKİ odaklı dosyaya
+  # bölündü — `R/helpers_files_promote_probe.R` (saf görünürlük yoklaması) ve
+  # `R/helpers_files_staging_copy.R` (aşamalı kopya). Sıra bağımlılık sırasıdır:
+  # yol -> yoklama -> terfi -> aşamalı kopya -> orkestrasyon.
+  # files_preview_pipeline n = 10L -> 11L bilinçli güncelleme: sahiplik kanıtlı
+  # kalıcı-ada terfi adımı (R/helpers_files_promote_target.R) ayrı dosyaya
+  # alındı; helpers_files_copy_promote.R 130 satır bütçesinde kaldı ve terfi
+  # artık hedefi hiçbir koşulda ezmez. Terfi yardımcısı ondan ÖNCE yüklenir.
+  files_preview_pipeline = list(first = "R/helpers_image_gallery.R", last = "R/helpers_file_ingestion_runtime.R", n = 13L),
+  file_manager_helpers = list(first = "R/helpers_file_manager_policy.R", last = "R/helpers_file_manager_table_runtime.R", n = 13L),
   # Bilinçli güncelleme: R/helpers_langflow_runtime.R (kurumsal Langflow akış
   # çağrısı saf yardımcıları) send_message core'dan sonra bölüme eklendi; 11 -> 12.
   # 12 -> 13 bilinçli güncelleme: Langflow belge kaynak çıkarımı + tıklanabilir
@@ -220,7 +238,7 @@
   # `helpers_pk_query_selection_compact.R` seçim istemlerini bütçeye sığdırır
   # ve yük kurucusundan ÖNCE yüklenir.
   analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_query_selection_apply.R", n = 99L),
-  sso_identity_helpers = list(first = "R/helpers_sso_signature.R", last = "R/helpers_logout_url.R", n = 3L),
+  sso_identity_helpers = list(first = "R/helpers_sso_jwks_cache.R", last = "R/helpers_logout_url.R", n = 4L),
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
   # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
   support_admin_health_helpers = list(first = "R/helpers_destek_database.R", last = "R/helpers_health_checks.R", n = 7L),
@@ -246,7 +264,16 @@
   # 36L -> 38L bilinçli güncelleme: PR #672 Codex sertleştirme dosyaları
   # manifest dışı geç-yükleme yerine bölümün sonuna alındı (sahipsiz runtime
   # dosyası + sessiz ölü kod sorununu giderir).
-  claude_code_helpers = list(first = "R/helpers_claude_code_user_guard.R", last = "R/helpers_claude_code_codex_output_fixes.R", n = 40L),
+  # 40L -> 41L bilinçli güncelleme (PR #717 inceleme düzeltmeleri): çıktı işleme
+  # AŞAMASININ ana süreç tarafı (rapor + deadline'lı worker gönderimi)
+  # R/helpers_claude_code_run_output_dispatch.R dosyasına ayrıldı; böylece
+  # R/helpers_claude_code_run_completion.R 800 satır / 25 fonksiyon cırcırının
+  # altında kaldı.
+  # BİLİNÇLİ GÜNCELLEME: aktif çalışma "lease" yaşam döngüsü (bırakma +
+  # heartbeat) R/helpers_claude_code_runtime_lease.R dosyasına ayrıldı;
+  # R/helpers_claude_code_run_lifecycle.R küresel 24 fonksiyon tavanındaydı.
+  # 41 -> 42.
+  claude_code_helpers = list(first = "R/helpers_claude_code_user_guard.R", last = "R/helpers_claude_code_codex_output_fixes.R", n = 44L),
   llm_pipeline = list(first = "R/helpers_llm_tool_formatters.R", last = "R/helpers_llm_worker.R", n = 11L),
   module_chat = list(first = "R/module_chat_history_background.R", last = "R/module_feedback.R", n = 9L),
   module_files_media = list(first = "R/module_file_manager_ui.R", last = "R/module_summarization.R", n = 7L),
@@ -268,7 +295,10 @@
   # Yapılandırma/persona manifesti + saf doğrulama + MB_Game_* DB katmanı
   # (çekirdek -> koşu -> topluluk) + UI/sunucu modülü (7 dosya,
   # module_claude_code'dan sonra, ortak_oturumlar'dan önce).
-  bilge_savunmasi = list(first = "R/config_bilge_savunmasi.R", last = "R/module_bilge_savunmasi.R", n = 7L),
+  # 7L -> 8L bilinçli güncelleme (PR #717 inceleme düzeltmeleri): savunma planı
+  # (blueprint) DB katmanı R/helpers_db_bilge_savunmasi_plan.R dosyasına ayrıldı;
+  # böylece R/helpers_db_bilge_savunmasi_topluluk.R 800 satır cırcırının altında kaldı.
+  bilge_savunmasi = list(first = "R/config_bilge_savunmasi.R", last = "R/module_bilge_savunmasi.R", n = 8L),
   # Bilinçli güncelleme: Ortak Oturumlar (işbirlikçi çalışma odaları) bölümü
   # eklendi: saf yetki/e-posta yardımcıları + MB_OrtakOturumlar DB katmanı +
   # oda/davet/hub modülleri (12 dosya, module_claude_code'dan sonra).
@@ -631,7 +661,33 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 479 -> 480: PR #705 inceleme takibi, R/helpers_pk_packet_keys.R (saf
   # gruplama anahtarı/etiketi; `helpers_pk_analysis_packet.R` KÜRESEL 796
   # satır tavanındaydı). Ratchet bölünmesidir; yeni davranış eklemez.
-  expect_equal(length(runtime), 481L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 481 -> 482: PR #717 inceleme düzeltmeleri, R/helpers_claude_code_run_output_dispatch.R
+  # (çıktı raporlama + deadline'lı worker gönderimi; `helpers_claude_code_run_completion.R`
+  # KÜRESEL 796 satır / 24 fonksiyon tavanındaydı). Ratchet bölünmesidir; yeni davranış eklemez.
+  # 482 -> 483: aynı PR, R/helpers_db_bilge_savunmasi_plan.R (savunma planı DB
+  # katmanı; `helpers_db_bilge_savunmasi_topluluk.R` 800 satır tavanına dayandı).
+  # 483 -> 484: aynı PR, R/helpers_claude_code_runtime_lease.R (aktif çalışma
+  # lease bırakma + heartbeat; `helpers_claude_code_run_lifecycle.R` KÜRESEL 24
+  # fonksiyon tavanındaydı). Ratchet bölünmesidir; yeni davranış eklemez.
+  # 484 -> 485: aynı PR, R/helpers_sso_jwks_cache.R (JWKS getirme/önbellek;
+  # `helpers_sso_signature.R` KÜRESEL 24 fonksiyon tavanını aştı).
+  # 485 -> 486: aynı PR, R/helpers_claude_code_output_buffer.R (alt süreç
+  # çıktısı bayt bütçeli tamponu; `helpers_claude_code.R` satır tavanındaydı ve
+  # `helpers_claude_code_process.R` 24 fonksiyon tavanındaydı).
+  # 488 -> 489: PR #717 inceleme düzeltmeleri, R/helpers_files_copy_promote.R
+  # (aşamalı kopya + boyut doğrulama + kalıcı ada terfi; `helpers_files.R` 272
+  # satır tavanındaydı). Ratchet bölünmesidir, davranış sözleşmesi korunur.
+  # 489 -> 492: aynı PR'ın son inceleme turu, ÜÇ ratchet bölünmesi (davranış
+  # sözleşmesi korunur, yeni özellik eklenmez):
+  #   * R/utils_path_reservation.R — hedef yolu sahiplik jetonuyla rezerve eden
+  #     ortak primitifler; üç ayrı terfi yolu (atomik yazma, yükleme kopyası,
+  #     ortak çalışma alanı) ayrı ayrı yeniden yazmak yerine bunu kullanır.
+  #   * R/helpers_files_promote_target.R — sahiplik kanıtlı kalıcı-ada terfi;
+  #     `helpers_files_copy_promote.R` 130 satır tavanındaydı.
+  #   * R/config_file_store_bucket_clear.R — kova temizliği (üç durumlu dizin
+  #     varlık kararı + sahiplik kaybı uzlaştırması); `config_file_store.R`
+  #     KÜRESEL 25 fonksiyon tavanını aşacaktı.
+  expect_equal(length(runtime), 494L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

@@ -24,6 +24,45 @@ helpers_mcp_tools$safe_has_duckdb <- function() {
   requireNamespace("duckdb", quietly = TRUE)
 }
 
+# Yalnızca bellek içi kullanıcı tablosu üzerinde çalışacak SERTLEŞTİRİLMİŞ
+# DuckDB bağlantısı açar. SQL metni LLM/kullanıcı kontrollüdür; harici erişim
+# kapatılmazsa read_csv_auto('/etc/passwd'), read_parquet, ATTACH, COPY ... TO
+# ve INSTALL/LOAD ile sunucu dosyaları okunabilir/yazılabilirdi.
+# lock_configuration, sorgunun ayarı geri açmasını engeller.
+helpers_mcp_tools$open_sandboxed_duckdb <- function() {
+  # Bağlantı kurulumu (DuckDB init) hata atarsa çağıranlar güvenli kullanıcı
+  # hatasını üretemeden istisna yayılıyordu.
+  con <- tryCatch(
+    DBI::dbConnect(duckdb::duckdb(), dbdir = ":memory:"),
+    error = function(e) {
+      try(log_warn(paste(
+        "[MCP] DuckDB bağlantısı açılamadı:", conditionMessage(e)
+      )), silent = TRUE)
+      NULL
+    }
+  )
+  if (is.null(con)) return(NULL)
+
+  sertlestirme <- tryCatch({
+    DBI::dbExecute(con, "SET enable_external_access = false")
+    DBI::dbExecute(con, "SET lock_configuration = true")
+    TRUE
+  }, error = function(e) {
+    try(log_warn(paste(
+      "[MCP] DuckDB harici erişim kısıtlaması uygulanamadı; bağlantı kapatıldı:",
+      conditionMessage(e)
+    )), silent = TRUE)
+    FALSE
+  })
+
+  if (!isTRUE(sertlestirme)) {
+    try(DBI::dbDisconnect(con, shutdown = TRUE), silent = TRUE)
+    return(NULL)
+  }
+
+  con
+}
+
 helpers_mcp_tools$analyze_uploaded_file <- function(file_name, session = NULL) {
   file_name <- helpers_mcp_tools$auto_file_name(file_name, session)
   res <- helpers_mcp_tools$resolve_file_argument(file_name, session)
@@ -182,7 +221,10 @@ helpers_mcp_tools$sql_query_uploaded_file <- function(file_name, sql, session = 
     }
   }
 
-  con <- DBI::dbConnect(duckdb::duckdb(), dbdir = ":memory:")
+  con <- helpers_mcp_tools$open_sandboxed_duckdb()
+  if (is.null(con)) {
+    return(list(error = "SQL motoru güvenli kipte başlatılamadı; sorgu çalıştırılmadı."))
+  }
   on.exit(try(DBI::dbDisconnect(con, shutdown = TRUE), silent = TRUE), add = TRUE)
 
   DBI::dbWriteTable(con, "t", as.data.frame(dt), temporary = TRUE, overwrite = TRUE)

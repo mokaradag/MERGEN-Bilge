@@ -112,49 +112,16 @@ copy_to_mcp_base <- function(upload, user_id) {
     stop("Benzersiz hedef dosya adı üretilemedi.", call. = FALSE)
   }
 
-  # Önce fs::file_copy dene, başarısız olursa base::file.copy ile yedek deneme yap.
-  copy_success <- tryCatch({
-    fs::file_copy(upload$datapath, dest, overwrite = TRUE)
-    TRUE
-  }, error = function(e) {
-    cat(sprintf("[copy_to_mcp_base] fs::file_copy başarısız: %s\n", conditionMessage(e)))
-    FALSE
-  })
-
-  if (!copy_success || !tryCatch(fs::file_exists(dest), error = function(e) FALSE)) {
-    # base::file.copy ile yedek deneme yap; farklı encoding davranışı bazı ortamlarda işe yarayabilir.
-    cat(sprintf("[copy_to_mcp_base] Yedek yol: base::file.copy deneniyor: %s -> %s\n",
-                upload$datapath, dest))
-    copy_success <- tryCatch({
-      file.copy(upload$datapath, as.character(dest), overwrite = TRUE)
-    }, error = function(e) {
-      cat(sprintf("[copy_to_mcp_base] base::file.copy de başarısız: %s\n", conditionMessage(e)))
-      FALSE
-    })
-  }
-
-  # Boyut doğrulaması: dosya gerçekten yazıldı mı?
-  dest_exists <- path_exists_relaxed(dest)
-  if (!dest_exists) {
-    # Son çare: locale farklarından kaynaklı sorunlar için enc2native ile dene.
-    dest_native <- tryCatch(enc2native(as.character(dest)), error = function(e) as.character(dest))
-    if (!identical(dest_native, as.character(dest))) {
-      cat(sprintf("[copy_to_mcp_base] Native encoding ile yeniden deneniyor: %s\n", dest_native))
-      tryCatch(file.copy(upload$datapath, dest_native, overwrite = TRUE), error = function(e) NULL)
-      dest_exists <- path_exists_relaxed(dest_native) || path_exists_relaxed(dest)
-    }
-  }
-
-  if (!dest_exists) {
-    stop(sprintf("Kopyalanamadı: %s -> %s (dosya oluşmadı, fs=%s, base=%s)",
-                 upload$datapath, dest, as.character(copy_success), as.character(dest_exists)))
-  }
-
-  src_size <- suppressWarnings(file.info(upload$datapath)$size)
-  dest_size <- suppressWarnings(file.info(as.character(dest))$size)
-  if (!is.na(src_size) && !is.na(dest_size) && dest_size != src_size) {
-    cat(sprintf("[copy_to_mcp_base] UYARI: Boyut uyuşmazlığı! kaynak=%d, hedef=%d\n", src_size, dest_size))
-  }
+  # AŞAMALI KOPYA: kaynak önce `.mergen-part` adına kopyalanır, boyut
+  # doğrulandıktan SONRA kalıcı ada terfi ettirilir. Böylece eksik/bozuk bir
+  # kopya KALICI adla diskte kalmaz (Windows'ta hedef kilitliyken `unlink()`
+  # başarısız olabiliyor ve yarım dosya geçerli bir yükleme gibi listeleniyordu).
+  dest <- mergen_copy_upload_staged(
+    datapath = upload$datapath,
+    final_dest = dest,
+    base_root = base,
+    upload_name = upload$name %||% ""
+  )
 
   # Dosya gerçekten oluştuysa yolu olduğu gibi koru.
   # Burada enc2utf8 uygulamak UNC + Türkçe karakterli yollarda

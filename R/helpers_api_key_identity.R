@@ -174,13 +174,17 @@ mb_api_key_get_session_key <- function(session,
 }
 
 mb_api_key_default_allowed <- function() {
-  require_personal <- isTRUE(as.logical(
-    Sys.getenv("MERGEN_REQUIRE_PERSONAL_API_KEY", "FALSE")
-  ))
-
-  allow_default <- isTRUE(as.logical(
-    Sys.getenv("MERGEN_ALLOW_DEFAULT_API_KEY", "FALSE")
-  ))
+  # Ayrıştırma mergen_env_flag() ile ortaklaştırılır: `as.logical("0")` NA
+  # döndürdüğü için "0" değeri KISITLAYICI bayrağı etkinleştiriyor ve kişisel
+  # anahtarı olmayan oturumlar AUTH_MISSING_KEY alabiliyordu.
+  # KISITLAYICI bayrak fail-closed (tanınmayan değer -> "kişisel anahtar
+  # zorunlu"), İZİN VEREN bayrak fail-safe (tanınmayan değer -> kapalı).
+  require_personal <- mergen_env_flag(
+    "MERGEN_REQUIRE_PERSONAL_API_KEY", default = FALSE, invalid = TRUE
+  )
+  allow_default <- mergen_env_flag(
+    "MERGEN_ALLOW_DEFAULT_API_KEY", default = FALSE, invalid = FALSE
+  )
 
   isTRUE(allow_default) && !isTRUE(require_personal)
 }

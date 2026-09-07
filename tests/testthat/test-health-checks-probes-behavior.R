@@ -198,3 +198,36 @@ test_that("health_check_reasoning_readiness yardımcı fonksiyon yoksa critical 
   r <- env$health_check_reasoning_readiness()
   expect_identical(r$status[1], "critical")
 })
+
+# -----------------------------------------------------------------------------
+# host sınıflandırma (sondaki DNS kök noktası + IPv4-eşlemeli IPv6)
+# -----------------------------------------------------------------------------
+
+test_that("health_url_host sondaki DNS kök noktasını kaldırır", {
+  env <- .fresh_health_env()
+
+  expect_identical(env$health_url_host("https://service.local./v1"), "service.local")
+  expect_identical(env$health_url_host("https://servis.intranet.:8443/x"), "servis.intranet")
+  # Dahili son ek testi artık düşmez; canlı sonda atlanmaz.
+  expect_false(env$health_is_public_url("https://service.local./v1"))
+  expect_false(env$health_is_public_url("https://servis.intranet.:8443/x"))
+  # Genel adres sondaki noktayla da genel kalır.
+  expect_true(env$health_is_public_url("https://api.example.com./v1"))
+})
+
+test_that("IPv4-eşlemeli IPv6 gömülü IPv4 kuralıyla sınıflandırılır", {
+  env <- .fresh_health_env()
+
+  expect_true(isTRUE(env$health_ip_literal_internal("::ffff:127.0.0.1")))
+  expect_true(isTRUE(env$health_ip_literal_internal("::ffff:10.0.0.1")))
+  expect_true(isTRUE(env$health_ip_literal_internal("0:0:0:0:0:ffff:192.168.1.5")))
+  expect_false(isTRUE(env$health_ip_literal_internal("::ffff:8.8.8.8")))
+
+  expect_false(env$health_is_public_url("http://[::ffff:127.0.0.1]:8080/v1"))
+  expect_false(env$health_is_public_url("http://[::ffff:10.0.0.1]:8080/v1"))
+  expect_true(env$health_is_public_url("http://[::ffff:8.8.8.8]:8080/v1"))
+
+  # Gerçek (eşlemeli olmayan) IPv6 davranışı DEĞİŞMEZ.
+  expect_true(isTRUE(env$health_ip_literal_internal("fd00::1")))
+  expect_true(is.na(env$health_ip_literal_internal("2001:db8::1")))
+})

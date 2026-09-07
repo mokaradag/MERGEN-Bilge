@@ -109,6 +109,8 @@ test_that("file manager toplu yükleme observer'ı senkron kopyalama/indeksleme 
 
   source(file.path(repo_root, "R", "utils_common.R"), encoding = "UTF-8", local = helper_env)
   source(file.path(repo_root, "R", "helpers_file_ingestion_task.R"), encoding = "UTF-8", local = helper_env)
+  # Manifest sırası: ortak kurtarma yardımcıları yükleme runtime'ından ÖNCE gelir.
+  source(file.path(repo_root, "R", "helpers_file_manager_artifact_recovery.R"), encoding = "UTF-8", local = helper_env)
   source(file.path(repo_root, "R", "helpers_file_manager_upload_runtime.R"), encoding = "UTF-8", local = helper_env)
 
   helper_env$SSO_ENABLED <- FALSE

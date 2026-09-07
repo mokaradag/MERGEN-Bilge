@@ -32,6 +32,26 @@ helpers_mcp_tools$mcp_debug_log <- function(...) {
   invisible(NULL)
 }
 
+# Ortam bayrağı okuması MCP ortamına BAĞLANIR. `call_llm_worker()` MCP
+# araçlarını future işçisinde çalıştırabiliyor; işçiye `R/utils_common.R`
+# yüklenmediği ve otomatik bağımlılık taraması ortam içindeki fonksiyonları
+# incelemediği için `mergen_env_flag()` "could not find function" hatası
+# veriyor ve güvenli ret yerine genel araç hatası dönüyordu.
+helpers_mcp_tools$mcp_env_flag <- function(name, default = FALSE,
+                                           invalid = default) {
+  if (exists("mergen_env_flag", mode = "function", inherits = TRUE)) {
+    return(mergen_env_flag(name, default = default, invalid = invalid))
+  }
+
+  ham <- trimws(as.character(Sys.getenv(name, unset = ""))[1])
+  if (is.na(ham) || !nzchar(ham)) return(isTRUE(default))
+  anahtar <- chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", ham)
+  anahtar <- chartr("ÇĞİÖŞÜçğıöşü", "cgiosucgiosu", anahtar)
+  if (anahtar %in% c("true", "t", "1", "yes", "y", "on", "evet", "acik")) return(TRUE)
+  if (anahtar %in% c("false", "f", "0", "no", "n", "off", "hayir", "kapali")) return(FALSE)
+  isTRUE(invalid)
+}
+
 helpers_mcp_tools$get_session_user_id <- function(session = NULL) {
   if (is.null(session) || is.null(session$userData)) {
     return(NULL)

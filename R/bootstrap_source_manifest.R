@@ -710,6 +710,7 @@ source_manifest_required_order <- list(
 # kopyasında uygulama yine açılmaz.
 source_manifest_optional_source_groups <- list(
   codex_hardening = c(
+    "R/helpers_claude_code_codex_runtime_lock.R",
     "R/helpers_claude_code_codex_runtime_fixes.R",
     "R/helpers_claude_code_codex_output_fixes.R"
   ),

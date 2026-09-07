@@ -306,10 +306,13 @@ cc_report_output_sync_failure <- function(ctx, outputs) {
     "Çalıştırma tamamlandı; ancak ", length(failures),
     " çıktı kaynak klasöre aktarılamadı: ", paste(names, collapse = ", ")
   )
-  ctx$session$sendCustomMessage("cc-add-message", list(
+  # Kapanmış oturumda gönderim HATA VERİR ve `promises::catch()` bu yolu genel
+  # `cc_report_output_processing_failure()` dalına düşürüyordu; kısmi aktarım
+  # uyarısı raporlaması gönderimden BAĞIMSIZ olmalıdır.
+  try(ctx$session$sendCustomMessage("cc-add-message", list(
     target = ctx$ns("output_area"), type = "warning",
     content = htmltools::htmlEscape(message), timestamp = format(Sys.time(), "%H:%M:%S")
-  ))
+  )), silent = TRUE)
   FALSE
 }
 
@@ -321,26 +324,68 @@ cc_dispatch_run_output_processing <- function(ctx) {
     paste0("output-sync-", gsub("[^A-Za-z0-9_.-]", "_", ctx$env$request_id %||% "run"), ".active")
   )
   dir.create(dirname(guard), recursive = TRUE, showWarnings = FALSE)
+  # Lease BIRAKMA tek yardımcıya toplanır. Ham `unlink()` yerine lease
+  # katmanının kendi idempotent yardımcısı kullanılır; yardımcı yoksa (izole
+  # test) mevcut davranışa düşülür. NOT: lease dosya adı
+  # `active-run-<request_id>.lease` biçiminde İSTEK KAPSAMLIDIR, bu yüzden aynı
+  # runtime çalışma dizinini yeniden kullanan DAHA YENİ bir çalıştırmanın
+  # lease'i BAŞKA bir yolda durur; bu çağrı onu silemez.
+  lease_birak <- get0("cc_release_runtime_lease", mode = "function", ifnotfound = NULL)
   if (!isTRUE(tryCatch(file.create(guard), error = function(e) FALSE)) || !file.exists(guard)) {
+    guard_lease <- ctx$env$runtime_lease %||% ""
+    if (is.null(lease_birak)) unlink(guard_lease, force = TRUE) else try(lease_birak(guard_lease), silent = TRUE)
+    cc_log_warn(paste(
+      CLAUDE_CODE_LOG_PREFIX,
+      "[OUTPUT_SYNC] Aktarım koruma dosyası oluşturulamadı; çıktı işleme başlatılmadı."
+    ))
     cc_report_output_processing_failure(ctx, simpleError("Çıktı aktarım koruma dosyası oluşturulamadı."))
     return(invisible(TRUE))
   }
   ctx$env$output_sync_guard <- guard
   request <- cc_build_run_output_request(ctx$env, ctx$ayristirma$tool_uses %||% list())
-  cc_send_run_stage(ctx$session, ctx$ns, "cikti")
+
+  # AŞAMA GÖNDERİMİ ÇIKTI İŞLEMEYİ İPTAL ETMEZ. `cc_send_run_stage()` sözleşmesi
+  # gönderimi ÖLÜMCÜL OLMAYAN sayar (hata yerine FALSE döner). Eski dal guard ve
+  # lease'i kaldırıp worker'ı hiç göndermiyordu: kullanıcı sekmeyi kapattığında
+  # (`sendCustomMessage()` başarısız) ÜRETİLEN ÇIKTILAR kaynak klasöre hiç
+  # aktarılmıyor, tamamlanmış model çalıştırması "çıktı işleme hatası" olarak
+  # raporlanıyordu. Gönderim hatası YALNIZCA loglanır; guard/lease yaşam döngüsü
+  # aşağıdaki `cleanup()`/deadline yoluna aittir ve her durumda çalışır.
+  stage_sonuc <- try(cc_send_run_stage(ctx$session, ctx$ns, "cikti"), silent = TRUE)
+  if (inherits(stage_sonuc, "try-error") || !isTRUE(stage_sonuc)) {
+    cc_log_warn(paste(
+      CLAUDE_CODE_LOG_PREFIX,
+      "[OUTPUT_SYNC] Çıktı aşaması bildirilemedi (oturum kapalı olabilir);",
+      "çıktı işleme devam ediyor."
+    ))
+  }
 
   timeout_sec <- cc_runtime_limit("output_process_timeout_sec", 180, request$limits)
+  # GÖNDERİM ANINDAKİ değerler yakalanır: yeni bir çalıştırma `ctx$env` alanlarını
+  # değiştirebiliyor; eski geri çağrı YENİ isteğin kimliğini test edip aktif-run
+  # denetimini geçiyor ve YENİ isteğin lease'ini siliyordu.
+  dispatched_request_id <- ctx$env$request_id
+  dispatched_lease <- as.character(ctx$env$runtime_lease %||% "")[1]
+  if (is.na(dispatched_lease)) dispatched_lease <- ""
+
   deadline <- new.env(parent = emptyenv())
   deadline$pending <- TRUE
+  # `expired`: süre dolduktan SONRA geç çözülen bir promise, `changed_files`
+  # boşken hata bulamıyor ve `cc_is_active_run()` hâlâ TRUE döndüğü için daha
+  # önce `failed` kalıcılaştırılmış çalıştırmayı `completed` yazabiliyordu.
+  deadline$expired <- FALSE
   deadline$cancel <- later::later(function() {
-    if (isTRUE(deadline$pending) && cc_is_active_run(ctx$rv, ctx$env$request_id)) {
-      deadline$pending <- FALSE
-      unlink(request$active_guard, force = TRUE)
-      unlink(ctx$env$runtime_lease %||% "", force = TRUE)
+    if (!isTRUE(deadline$pending)) return(invisible(NULL))
+    deadline$pending <- FALSE
+    deadline$expired <- TRUE
+    unlink(request$active_guard, force = TRUE)
+    if (is.null(lease_birak)) unlink(dispatched_lease, force = TRUE) else try(lease_birak(dispatched_lease), silent = TRUE)
+    if (cc_is_active_run(ctx$rv, dispatched_request_id)) {
       cc_report_output_processing_failure(ctx, simpleError(sprintf(
         "Çıktı işleme zaman aşımına uğradı (%.0f saniye).", timeout_sec
       )))
     }
+    invisible(NULL)
   }, delay = timeout_sec)
   cancel_deadline <- function() {
     deadline$pending <- FALSE
@@ -351,7 +396,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
   }
   cleanup <- function() {
     unlink(request$active_guard, force = TRUE)
-    unlink(ctx$env$runtime_lease %||% "", force = TRUE)
+    if (is.null(lease_birak)) unlink(dispatched_lease, force = TRUE) else try(lease_birak(dispatched_lease), silent = TRUE)
     invisible(NULL)
   }
 
@@ -366,24 +411,37 @@ cc_dispatch_run_output_processing <- function(ctx) {
     ) |>
       promises::then(function(outputs) {
         cancel_deadline()
-        if (!cc_is_active_run(ctx$rv, ctx$env$request_id)) {
+        if (isTRUE(deadline$expired) ||
+            !cc_is_active_run(ctx$rv, dispatched_request_id)) {
           cleanup()
           return(NULL)
         }
-        if (length(outputs$sync_results %||% list())) cc_send_run_stage(ctx$session, ctx$ns, "aktarim")
+        # Aşama bildirimi ÖLÜMCÜL DEĞİLDİR (kapalı oturumda gönderim hatası
+        # `then()` zincirini reddedip başarılı çalıştırmayı `failed` yapıyordu).
+        if (length(outputs$sync_results %||% list())) {
+          try(cc_send_run_stage(ctx$session, ctx$ns, "aktarim"), silent = TRUE)
+        }
         if (cc_report_output_scan_truncation(ctx, outputs)) {
           cleanup()
           return(NULL)
         }
-        cc_report_output_sync_failure(ctx, outputs)
-        cc_finish_streaming_run(ctx, outputs)
+        # Aktarım hatası bildirildiyse çalıştırma ORADA sonlanır. Eskiden dönüş
+        # değeri yok sayılıyordu; aynı çalıştırma hem "Aktarım Hatası" hem
+        # "Tamamlandı" olarak kalıcılaşıyor ve taban dosyadaki sözleşmeden
+        # (erken dönüş) sapıyordu.
+        if (cc_report_output_sync_failure(ctx, outputs)) {
+          cleanup()
+          return(NULL)
+        }
+        try(cc_finish_streaming_run(ctx, outputs), silent = TRUE)
         cleanup()
         NULL
       }) |>
       promises::catch(function(e) {
         cancel_deadline()
         cleanup()
-        if (cc_is_active_run(ctx$rv, ctx$env$request_id)) {
+        if (!isTRUE(deadline$expired) &&
+            cc_is_active_run(ctx$rv, dispatched_request_id)) {
           cc_report_output_processing_failure(ctx, e)
         }
         NULL
@@ -394,7 +452,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
   if (!is.null(dispatch_error)) {
     cancel_deadline()
     cleanup()
-    if (cc_is_active_run(ctx$rv, ctx$env$request_id)) {
+    if (cc_is_active_run(ctx$rv, dispatched_request_id)) {
       cc_report_output_processing_failure(ctx, dispatch_error)
     }
   }
@@ -424,7 +482,21 @@ cc_dispatch_run_output_processing <- function(ctx) {
   "cc_scan_runtime_excluded_dirs", "deduplicate_claude_code_file_paths",
   "cc_select_documents_for_request", "prepare_claude_code_document_context",
   "cc_prepare_run_workspace", "snapshot_claude_code_workdir_files",
-  "cc_snapshot_run_output_area"
+  "cc_snapshot_run_output_area",
+  # Lease/temizlik kilidi worker'da da çözülebilmelidir (TOCTOU koruması).
+  ".cc_codex_reap_dir_lock", ".cc_codex_lock_owner_token",
+  ".cc_codex_touch_dir_lock", ".cc_codex_dir_lock_age",
+  ".CC_CODEX_REAPER_STALE_SEC", "CC_RUNTIME_LOCK_DIR_NAME",
+  "cc_runtime_cleanup_lock_dir", "cc_with_runtime_cleanup_lock",
+  # Bu liste GEÇİŞLİ bağımlılıkları GENİŞLETMEZ ve `dependency_mode = "explicit"`
+  # kullanıldığı için worker adları kendi global ortamında çözer. Kilit durumu
+  # ve adım adım silme yardımcıları eksik kaldığında worker
+  # `object '.CC_RUNTIME_LOCK_STATE' not found` ya da
+  # `could not find function "cc_runtime_unlink_stepwise"` ile düşüyor ve
+  # hazırlık, çalışma alanını geri kazanmak yerine başarısız oluyordu.
+  ".CC_RUNTIME_LOCK_STATE", "cc_runtime_cleanup_lock_heartbeat",
+  "cc_runtime_unlink_stepwise",
+  "cc_reclaim_orphaned_runtime_dirs"
 )
 
 .cc_codex_output_worker_names <- c(

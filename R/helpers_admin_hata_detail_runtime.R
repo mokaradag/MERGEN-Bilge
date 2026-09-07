@@ -69,12 +69,18 @@ admin_ha_prepare_detail_table_data <- function(data,
 
   data$tarih <- format(as.POSIXct(data$OlusturmaTarihi), "%d.%m.%Y %H:%M")
   data$tarih_sort <- as.numeric(as.POSIXct(data$OlusturmaTarihi))
+  # Tablo escape = FALSE ile çizilir (rozet/işlem HTML'i için); kullanıcı
+  # kaynaklı sütunlar burada kaçışlanır (XSS sınırı).
   data$kullanici <- ifelse(
     !is.na(data$KullaniciAdi) & nzchar(data$KullaniciAdi),
-    data$KullaniciAdi,
+    htmltools::htmlEscape(data$KullaniciAdi),
     "-"
   )
-  data$konular_display <- ifelse(nzchar(data$Konular), data$Konular, "-")
+  data$konular_display <- ifelse(
+    !is.na(data$Konular) & nzchar(data$Konular),
+    htmltools::htmlEscape(data$Konular),
+    "-"
+  )
 
   data$kategori_display <- vapply(data$Kategoriler, function(k) {
     if (is.na(k) || !nzchar(k)) {
@@ -83,15 +89,17 @@ admin_ha_prepare_detail_table_data <- function(data,
 
     parcalar <- trimws(strsplit(k, ",")[[1]])
     paste(
-      ifelse(parcalar %in% names(kategori_cevirisi), kategori_cevirisi[parcalar], parcalar),
+      ifelse(parcalar %in% names(kategori_cevirisi), kategori_cevirisi[parcalar],
+             htmltools::htmlEscape(parcalar)),
       collapse = ", "
     )
   }, character(1))
 
+  aciklama_ham <- ifelse(is.na(data$Aciklama), "", data$Aciklama)
   data$aciklama_display <- ifelse(
-    nchar(data$Aciklama) > 100,
-    paste0(substr(data$Aciklama, 1, 100), "..."),
-    data$Aciklama
+    nchar(aciklama_ham) > 100,
+    paste0(htmltools::htmlEscape(substr(aciklama_ham, 1, 100)), "..."),
+    htmltools::htmlEscape(aciklama_ham)
   )
 
   data$dosya_display <- vapply(seq_len(nrow(data)), function(i) {

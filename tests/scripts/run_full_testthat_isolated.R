@@ -146,11 +146,18 @@ writeLines(
     "Sys.setenv(",
     "  MERGEN_RUN_APP = 'false',",
     "  MERGEN_DISABLE_FUTURES = 'true',",
+    # testthat surumu cocuk surecte de ACIKCA bildirilir; bildirim yoksa
+    # find_edition() sessizce 2. surume duser ve izole kosum tests/testthat.R
+    # ile ayni surumu kosmaz.
+    "  TESTTHAT_EDITION = '3',",
     "  TZ = 'UTC'",
     ")",
     "options(warn = 1)",
     "library(testthat)",
-    "testthat::local_edition(3)",
+    # NOT: `testthat::local_edition(3)` cocuk betikte UST DUZEYDE cagrilmaz.
+    # Surum yukaridaki TESTTHAT_EDITION ile bildirilir; ust duzey cagri yalnizca
+    # kuresel ertelenmis isleyici kaydedip Rscript cikisinda
+    # "deferred_run fonksiyonu bulunamadi" hatasi uretiyordu.
 	sprintf(
 	  "res <- testthat::test_file(%s, reporter = 'summary', stop_on_failure = TRUE, stop_on_warning = TRUE)",
 	  r_string(test_file)

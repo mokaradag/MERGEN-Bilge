@@ -18,6 +18,28 @@ source(
 
 .stt_settings <- function() list(selected_character = "emre", font_size = "large")
 
+# Kabul sınırı testleri için gönderimi ASKIDA tutar: parça worker'a gerçekten
+# gitmez, bu yüzden `pending_stt_chunks` sayacı deterministik kalır. Kayıt
+# `.stt_env` içinde gölgelenir ve test sonunda önceki hâline döndürülür.
+.stt_askida_gonderim <- function() {
+  vardi <- exists("tracked_future_promise", envir = .stt_env, inherits = FALSE)
+  eski <- if (vardi) get("tracked_future_promise", envir = .stt_env) else NULL
+  .stt_env$tracked_future_promise <- function(...) {
+    promises::promise(function(resolve, reject) NULL)
+  }
+  withr::defer(
+    {
+      if (isTRUE(vardi)) {
+        assign("tracked_future_promise", eski, envir = .stt_env)
+      } else {
+        rm("tracked_future_promise", envir = .stt_env)
+      }
+    },
+    envir = parent.frame()
+  )
+  invisible(TRUE)
+}
+
 test_that("sttServer start_session ve final_text içeren liste döndürür", {
   skip_if_not_installed("shiny")
 
@@ -550,6 +572,169 @@ test_that("audio_chunk: kabul açık olsa bile API anahtarı yoksa STT çağrıs
 
       # Anahtar yokken POST yapılmamalı.
       expect_identical(kayit$post, 0L)
+    }
+  )
+})
+
+# ------------------------------------------------------------------------------
+# Kabul sınırları: parça boyutu ve uçuştaki iş sayısı
+# ------------------------------------------------------------------------------
+test_that("audio_chunk: boyut sınırını aşan parça worker'a gönderilmez", {
+  skip_if_not_installed("shiny")
+
+  withr::local_envvar(c(
+    MERGEN_STT_MAX_CHUNK_MB = "0.001",
+    LOCAL_STT_ENDPOINT = "http://127.0.0.1:9/stt",
+    LOCAL_STT_MODEL = "test-model",
+    LOCAL_STT_API_KEY = "test-key"
+  ))
+  .stt_askida_gonderim()
+
+  shiny::testServer(
+    .stt_env$sttServer,
+    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    {
+      # KABUL KAPISI AÇIK olmalı; aksi hâlde parça boyut denetimine hiç
+      # ulaşmadan kilitte düşer ve sınır kaldırılsa bile test yeşil kalırdı.
+      rv$accept_chunks <- TRUE
+      session$flushReact()
+      expect_true(shiny::isolate(rv$accept_chunks))
+
+      # Sınırın ALTINDAKİ parça gerçekten bir iş üretir (kapının açık olduğunu
+      # kanıtlar).
+      session$setInputs(audio_chunk = "ZHVtbXk=")
+      expect_identical(shiny::isolate(rv$pending_stt_chunks), 1L)
+
+      # ~4 KB base64: 0.001 MB (~1 KB) sınırının üzerinde.
+      buyuk <- paste(rep("A", 4096), collapse = "")
+      session$setInputs(audio_chunk = buyuk)
+
+      # Büyük parça reddedildiği için sayaç ARTMAMALI.
+      expect_identical(shiny::isolate(rv$pending_stt_chunks), 1L)
+    }
+  )
+})
+
+test_that("audio_chunk: uçuştaki parça sınırına ulaşınca yeni parça kabul edilmez", {
+  skip_if_not_installed("shiny")
+
+  withr::local_envvar(c(
+    MERGEN_STT_MAX_PENDING_CHUNKS = "1",
+    LOCAL_STT_ENDPOINT = "http://127.0.0.1:9/stt",
+    LOCAL_STT_MODEL = "test-model",
+    LOCAL_STT_API_KEY = "test-key"
+  ))
+  .stt_askida_gonderim()
+
+  shiny::testServer(
+    .stt_env$sttServer,
+    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    {
+      rv$accept_chunks <- TRUE
+      session$flushReact()
+
+      # İlk parça TAM OLARAK bir bekleyen iş üretmeli (kapı açık).
+      session$setInputs(audio_chunk = "ZHVtbXk=")
+      expect_identical(shiny::isolate(rv$pending_stt_chunks), 1L)
+
+      # Sınır 1: ikinci parça sayacı artırmamalı.
+      session$setInputs(audio_chunk = "c2Vjb25k")
+      expect_identical(shiny::isolate(rv$pending_stt_chunks), 1L)
+    }
+  )
+})
+
+# `tracked_future_promise()` gönderim anında SENKRON hata verebilir (worker planı
+# yok, serileştirme hatası). Bu dalda parça için hiçbir tamamlama kaydedilmezse
+# `next_append_seq` o sıra numarasında KİLİTLENİR: sonraki tüm parçalar
+# `completed_stt_chunks` içinde birikir, metin alanına hiç yazılmaz ve
+# "Onayla ve Gönder" boş metin üretir.
+.stt_senkron_hata_gonderim <- function() {
+  vardi <- exists("tracked_future_promise", envir = .stt_env, inherits = FALSE)
+  eski <- if (vardi) get("tracked_future_promise", envir = .stt_env) else NULL
+  .stt_env$tracked_future_promise <- function(...) {
+    stop("worker plani yok")
+  }
+  withr::defer(
+    {
+      if (isTRUE(vardi)) {
+        assign("tracked_future_promise", eski, envir = .stt_env)
+      } else {
+        rm("tracked_future_promise", envir = .stt_env)
+      }
+    },
+    envir = parent.frame()
+  )
+  invisible(TRUE)
+}
+
+test_that("audio_chunk: senkron gönderim hatası sıra numarasında boşluk bırakmaz", {
+  skip_if_not_installed("shiny")
+
+  withr::local_envvar(c(
+    LOCAL_STT_ENDPOINT = "http://127.0.0.1:9/stt",
+    LOCAL_STT_MODEL = "test-model",
+    LOCAL_STT_API_KEY = "test-key"
+  ))
+  .stt_senkron_hata_gonderim()
+
+  shiny::testServer(
+    .stt_env$sttServer,
+    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    {
+      rv$accept_chunks <- TRUE
+      session$flushReact()
+
+      onceki_append <- shiny::isolate(rv$next_append_seq)
+      session$setInputs(audio_chunk = "ZHVtbXk=")
+
+      # Sıra numarası ilerlemeli: boş tamamlama kaydedilip boşaltılmalıdır.
+      expect_identical(
+        shiny::isolate(rv$next_append_seq),
+        onceki_append + 1L
+      )
+      # Bekleyen iş sayacı da geri bırakılmalıdır.
+      expect_identical(shiny::isolate(rv$pending_stt_chunks), 0L)
+      # Kilitlenme olmadığının kanıtı: ikinci parça da sırayı ilerletir.
+      session$setInputs(audio_chunk = "c2Vjb25k")
+      expect_identical(
+        shiny::isolate(rv$next_append_seq),
+        onceki_append + 2L
+      )
+    }
+  )
+})
+
+
+# Regresyon: cok elemanli audio_chunk boyut sinirini asabiliyordu (yalnizca ilk
+# oge olculuyor, worker'a TUM vektor gidiyordu).
+test_that("audio_chunk: cok elemanli deger worker'a gonderilmez", {
+  skip_if_not_installed("shiny")
+
+  kayit <- new.env()
+  kayit$dispatch <- 0L
+
+  had_override <- exists("tracked_future_promise", envir = .stt_env, inherits = FALSE)
+  old_override <- if (had_override) get("tracked_future_promise", envir = .stt_env) else NULL
+  .stt_env$tracked_future_promise <- function(...) {
+    kayit$dispatch <- kayit$dispatch + 1L
+    promises::promise(function(resolve, reject) resolve(""))
+  }
+  on.exit({
+    if (had_override) {
+      assign("tracked_future_promise", old_override, envir = .stt_env)
+    } else if (exists("tracked_future_promise", envir = .stt_env, inherits = FALSE)) {
+      rm("tracked_future_promise", envir = .stt_env)
+    }
+  }, add = TRUE)
+
+  shiny::testServer(
+    .stt_env$sttServer,
+    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    {
+      session$setInputs(start_session = 1L)
+      session$setInputs(audio_chunk = c("ZHVtbXk=", "ZHVtbXk="))
+      expect_identical(kayit$dispatch, 0L)
     }
   )
 })

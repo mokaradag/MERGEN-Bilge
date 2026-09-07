@@ -97,3 +97,38 @@ test_that("mergen_clear_user_bucket fiziksel dosyaları siler ve index kovasın�
   expect_false(file.exists(fp))
   expect_null(.load_index()[[uid]])
 })
+
+test_that("mergen_clear_user_bucket alt dizindeki ve gizli dosyaları da siler", {
+  skip_if_not(.cfs_ready, "config_file_store yüklü değil")
+
+  uid <- "987655"
+  withr::defer({
+    idx <- .load_index()
+    if (!is.null(idx[[uid]])) {
+      idx[[uid]] <- NULL
+      .save_index(idx)
+    }
+  })
+
+  d <- mergen_user_upload_dir(uid)
+  alt <- file.path(d, "alt_klasor")
+  dir.create(alt, recursive = TRUE, showWarnings = FALSE)
+  kok_dosya <- file.path(d, "kok.txt")
+  alt_dosya <- file.path(alt, "ic.txt")
+  gizli <- file.path(d, ".gizli")
+  writeLines("k", kok_dosya)
+  writeLines("i", alt_dosya)
+  writeLines("g", gizli)
+
+  idx <- .load_index()
+  idx[[uid]] <- list(k = list(path = kok_dosya, display = "kok.txt"))
+  .save_index(idx)
+
+  expect_true(isTRUE(mergen_clear_user_bucket(uid)))
+  # `recursive = FALSE` alt dosyayı hiç görmüyor, indeks kaydı düşerken dosya
+  # diskte KAYITSIZ kalıyordu.
+  expect_false(file.exists(kok_dosya))
+  expect_false(file.exists(alt_dosya))
+  expect_false(file.exists(gizli))
+  expect_null(.load_index()[[uid]])
+})

@@ -52,20 +52,6 @@ cc_is_active_run <- function(rv, request_id = NULL) {
   !is.na(active) && nzchar(active) && identical(active, request_id)
 }
 
-#' Bir çalışma alanının aktif çalışma lease dosyasını bırak
-#'
-#' Terminal yolların aynı idempotent temizliği paylaşmasını sağlar. Boş veya
-#' daha önce kaldırılmış lease yolları başarıyla bırakılmış kabul edilir.
-cc_release_runtime_lease <- function(runtime_lease = NULL) {
-  lease <- tryCatch(as.character(runtime_lease %||% "")[1], error = function(e) "")
-  if (is.na(lease) || !nzchar(lease)) return(invisible(FALSE))
-
-  tryCatch({
-    unlink(lease, force = TRUE)
-    invisible(!file.exists(lease))
-  }, error = function(e) invisible(FALSE))
-}
-
 cc_abort_run_before_streaming <- function(rv, request_id = NULL) {
   if (!cc_is_active_run(rv, request_id)) {
     return(invisible(FALSE))
@@ -372,6 +358,10 @@ cc_handle_document_summary_run <- function(session,
     error = function(e) ""
   )
 
+  # tracked_future_promise() gönderim anında SENKRON hata verebilir (worker
+  # planı yok, serileştirme hatası). Yakalanmazsa ne then() ne catch() kurulur
+  # ve doküman çalıştırması kalıcı olarak asılı kalırdı.
+  gonderim <- tryCatch(
   tracked_future_promise(
     task_fn = function() {
       summarize_claude_code_documents_with_local_llm(
@@ -540,7 +530,10 @@ cc_handle_document_summary_run <- function(session,
             prompt = kullanici_prompt,
             tum_satirlar = character(0),
             calisma_dizini = calisma_dizini,
-            kaynak_calisma_dizini = kaynak_calisma_dizini
+            kaynak_calisma_dizini = kaynak_calisma_dizini,
+            # Sahip kapsamı: user_id verilmezse devam durumu güncellemesi
+            # UserID yüklemi olmadan çalışırdı.
+            user_id = effective_user_id
           ),
           status = if (isTRUE(sonuc$success)) "completed" else "failed",
           final_output = if (isTRUE(sonuc$success)) {
@@ -594,7 +587,10 @@ cc_handle_document_summary_run <- function(session,
             prompt = kullanici_prompt,
             tum_satirlar = character(0),
             calisma_dizini = calisma_dizini,
-            kaynak_calisma_dizini = kaynak_calisma_dizini
+            kaynak_calisma_dizini = kaynak_calisma_dizini,
+            # Sahip kapsamı: user_id verilmezse devam durumu güncellemesi
+            # UserID yüklemi olmadan çalışırdı.
+            user_id = effective_user_id
           ),
           status = "failed",
           final_output = hata_metni
@@ -630,7 +626,78 @@ cc_handle_document_summary_run <- function(session,
       )
 
       NULL
-    })
+    }),
+    error = function(e) e
+  )
+
+  if (inherits(gonderim, "condition")) {
+    cc_release_runtime_lease(runtime_lease)
+    gonderim_hata_metni <- conditionMessage(gonderim)
+    log_error(paste(
+      CLAUDE_CODE_LOG_PREFIX,
+      "Doküman özeti görevi gönderilemedi:",
+      gsub("[{}]", "", gonderim_hata_metni)
+    ))
+
+    if (cc_is_active_run(rv, run_request_id)) {
+      # KALICILAŞTIRMA ÖNCE: `session$sendCustomMessage()` kapanan oturumda hata
+      # verebilir; senkron gönderim hatası aksi hâlde ne son sonuç ne de terminal
+      # oturum durumu olarak yazılıyor, açılan oturum bayat "çalışıyor" durumunda
+      # kalıyordu.
+      rv$last_result <- list(
+        success = FALSE,
+        output = "",
+        error = gonderim_hata_metni,
+        duration = NA_real_,
+        tool_uses = list(),
+        session_id = NULL
+      )
+
+      if (exists("cc_persist_run_result", mode = "function", inherits = TRUE)) {
+        try(cc_persist_run_result(
+          rv = rv,
+          env = list(
+            prompt = kullanici_prompt,
+            tum_satirlar = character(0),
+            calisma_dizini = calisma_dizini,
+            kaynak_calisma_dizini = kaynak_calisma_dizini,
+            user_id = effective_user_id
+          ),
+          status = "failed",
+          final_output = gonderim_hata_metni
+        ), silent = TRUE)
+      }
+
+      # Bildirim hatası SONLANDIRMAYI engellememelidir; aksi hâlde çalıştırma
+      # etkin kalıp sonraki istekleri bloke ediyordu.
+      try(session$sendCustomMessage(
+        type = "cc-add-message",
+        message = list(
+          target = ns("output_area"),
+          type = "error",
+          content = htmltools::htmlEscape(paste0(
+            "Doküman özeti görevi başlatılamadı: ", gonderim_hata_metni
+          )),
+          timestamp = format(Sys.time(), "%H:%M:%S"),
+          welcomeId = ns("welcome_screen")
+        )
+      ), silent = TRUE)
+
+      # Oturum bu sırada kapanmışsa `finalize_streaming()` kendi
+      # `session$sendCustomMessage()` çağrılarından hata fırlatır; `rv$is_running`
+      # sıfırlansa bile korumasız hata `cc_handle_document_summary_run()`
+      # dışına yayılıyordu.
+      try(cc_finalize_if_active(
+        rv = rv,
+        request_id = run_request_id,
+        finalize_streaming = finalize_streaming,
+        durum_metin = "Hata",
+        durum_ikon = "exclamation-triangle",
+        durum_renk = "#E57373",
+        sure = NULL
+      ), silent = TRUE)
+    }
+  }
 
   invisible(TRUE)
 }

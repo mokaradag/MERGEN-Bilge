@@ -213,3 +213,28 @@ test_that("MCP Markdown tablo üretici temel tablo sözleşmesini korur", {
   expect_true(grepl("| --- | --- | --- |", md, fixed = TRUE, useBytes = TRUE))
   expect_true(grepl("| 1 | IT | 100 |", md, fixed = TRUE, useBytes = TRUE))
 })
+# `n_max` doğrulaması ÜST SINIR uygular (statik sözleşme).
+#
+# Regresyon: doğrulama üst sınır uygulamıyordu. `n_max = 3e9` sonlu/negatif
+# olmayan/tam sayı olduğu için geçiyor, sonraki `as.integer(3e9)` `NA_integer_`
+# üretiyor ve `fread()` `nrows = Inf`, `read.csv()` `nrows = -1L` alıyordu: ikisi
+# de SINIRSIZ okumadır ve büyük bir CSV worker belleğini tüketiyordu.
+testthat::test_that("safe_read_table_generic n_max ust sinir denetimi tasir", {
+  kok <- resolve_repo_root_for_tests()
+  ham <- readBin(
+    file.path(kok, "R", "helpers_mcp_table_readers.R"),
+    what = "raw",
+    n = file.info(file.path(kok, "R", "helpers_mcp_table_readers.R"))$size
+  )
+  metin <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
+
+  testthat::expect_true(
+    grepl("n_max <= .Machine$integer.max", metin, fixed = TRUE),
+    info = "n_max doğrulaması .Machine$integer.max üst sınırını uygulamalıdır."
+  )
+  testthat::expect_true(
+    grepl("integer.max", metin, fixed = TRUE) &&
+      grepl("arasında tam sayı veya Inf olmalı", metin, fixed = TRUE),
+    info = "Hata mesajı üst sınırı bildirmelidir."
+  )
+})

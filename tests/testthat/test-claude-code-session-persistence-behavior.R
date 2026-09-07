@@ -432,3 +432,175 @@ test_that("hidrasyon planı erişilemeyen dizinlerde güvenli düşer", {
   expect_false(bos$resume$ok)
   expect_length(bos$messages, 0L)
 })
+
+
+# Regresyon: `Authorization: Bearer <token>` biçiminde anahtar/değer deseni
+# yalnızca "Bearer" sözcüğünü maskeliyor, kimlik bilgisi DB'ye yazılıyordu.
+test_that("cc_persist_redact_secrets Bearer/Basic kimlik bilgisini tamamen maskeler", {
+  gizli <- "abcdefghijklmnopqrstuvwxyz123456"
+  cikti <- .cc_persist_redact_secrets(paste0("Authorization: Bearer ", gizli))
+  expect_false(grepl(gizli, cikti, fixed = TRUE))
+  expect_true(grepl("[[MERGEN-REDACTED]]", cikti, fixed = TRUE))
+
+  temel <- "QWxhZGRpbjpvcGVuc2VzYW1l"
+  cikti2 <- .cc_persist_redact_secrets(paste0("curl -H 'Authorization: Basic ", temel, "'"))
+  expect_false(grepl(temel, cikti2, fixed = TRUE))
+
+  # KISA kimlik bilgisi de maskelenir: eski `{8,}` alt sınırı `Basic YTpi`
+  # gibi geçerli ama kısa değerleri kaçırıyor, genel anahtar/değer deseni
+  # yalnızca "Basic" sözcüğünü maskeleyip token'ı olduğu gibi bırakıyordu.
+  kisa <- "YTpi"
+  cikti3 <- .cc_persist_redact_secrets(paste0("Authorization: Basic ", kisa))
+  expect_false(grepl(kisa, cikti3, fixed = TRUE))
+  expect_true(grepl("[[MERGEN-REDACTED]]", cikti3, fixed = TRUE))
+
+  # Sıradan metin değişmeden kalır.
+  expect_identical(
+    .cc_persist_redact_secrets("sadece normal metin, gizli yok"),
+    "sadece normal metin, gizli yok"
+  )
+  # Tamamen küçük harfli kısa sözcükler kimlik bilgisi sanılmaz; aksi hâlde
+  # sıradan düzyazı maskelenip tanı değeri kayboluyordu.
+  expect_identical(
+    .cc_persist_redact_secrets("normal metin bearer yok"),
+    "normal metin bearer yok"
+  )
+})
+
+# Regresyon: şema `bearer|basic` ile SINIRLIYDI. `Authorization: Token abc123`
+# gibi geçerli bir şemada genel anahtar/değer deseni `Token` sözcüğünü değer
+# sanıp maskeliyor, `abc123` AÇIK METİN kalıyordu.
+test_that("cc_persist_redact_secrets bearer/basic dışındaki şemaları da maskeler", {
+  for (sema in c("Token", "DPoP", "Negotiate", "NTLM", "Digest")) {
+    gizli <- "abc123"
+    cikti <- .cc_persist_redact_secrets(paste0("Authorization: ", sema, " ", gizli))
+    expect_false(grepl(gizli, cikti, fixed = TRUE), info = sema)
+    expect_true(grepl("[[MERGEN-REDACTED]]", cikti, fixed = TRUE), info = sema)
+    # Şema bilgisi korunur (tanı değeri).
+    expect_true(grepl(sema, cikti, fixed = TRUE), info = sema)
+  }
+
+  # Şemasız başlık da maskelenir.
+  cikti_semasiz <- .cc_persist_redact_secrets("Authorization: abc123")
+  expect_false(grepl("abc123", cikti_semasiz, fixed = TRUE))
+  expect_true(grepl("[[MERGEN-REDACTED]]", cikti_semasiz, fixed = TRUE))
+
+  # ZATEN maskelenmiş başlık yeniden işlenmez (şema kaybı olmaz).
+  expect_identical(
+    .cc_persist_redact_secrets("Authorization: Token [[MERGEN-REDACTED]]"),
+    "Authorization: Token [[MERGEN-REDACTED]]"
+  )
+})
+
+# Regresyon: PCRE'de `\s` SATIR SONUNU da eşler. `Authorization: required` gibi
+# bir başlıktan sonra şema grubu `required` değerini, `\s+` satır sonunu ve değer
+# grubu SONRAKİ SATIRIN ilk sözcüğünü yakalıyordu; geri yüklenen oturum geçmişi
+# geçerli içerik kaybediyordu.
+test_that("cc_persist_redact_secrets sonraki satirin ilk sozcugunu maskelemez", {
+  cikti <- .cc_persist_redact_secrets("Authorization: required\nSonraki satir devam")
+  expect_true(grepl("Sonraki satir devam", cikti, fixed = TRUE))
+  expect_true(grepl("[[MERGEN-REDACTED]]", cikti, fixed = TRUE))
+
+  # Başlıksız `Bearer` yolu da aynı satırla sınırlıdır.
+  bearer_cikti <- .cc_persist_redact_secrets("Bearer\nSONRAKI satir")
+  expect_true(grepl("SONRAKI satir", bearer_cikti, fixed = TRUE))
+  expect_false(grepl("[[MERGEN-REDACTED]]", bearer_cikti, fixed = TRUE))
+
+  # Aynı satırdaki gerçek token maskelenmeye devam eder.
+  ayni_satir <- .cc_persist_redact_secrets("Authorization: Bearer abcDEF123\nSonraki satir")
+  expect_false(grepl("abcDEF123", ayni_satir, fixed = TRUE))
+  expect_true(grepl("Sonraki satir", ayni_satir, fixed = TRUE))
+})
+
+# Regresyon: başlık değeri TEK ayraçla sınırlıydı (`[^\\s,;]+`). Şemadan sonraki
+# İLK parça maskeleniyor, `Digest`/`Signature`/AWS imza başlıklarının geri kalan
+# kimlik bilgisi AÇIK METİN olarak DB'ye yazılıyordu.
+test_that("cc_persist_redact_secrets baslik degerini satir sonuna kadar maskeler", {
+  cikti <- .cc_persist_redact_secrets(
+    'Authorization: Digest username="u", nonce="n", response="gizliyanit"'
+  )
+  expect_false(grepl("gizliyanit", cikti, fixed = TRUE))
+  expect_false(grepl("nonce", cikti, fixed = TRUE))
+  expect_true(grepl("Digest", cikti, fixed = TRUE))
+  expect_true(grepl("[[MERGEN-REDACTED]]", cikti, fixed = TRUE))
+
+  imza <- .cc_persist_redact_secrets(
+    'Authorization: Signature keyId="x",signature="gizliimza"'
+  )
+  expect_false(grepl("gizliimza", imza, fixed = TRUE))
+
+  aws <- .cc_persist_redact_secrets(paste0(
+    "Authorization: AWS4-HMAC-SHA256 Credential=AKIAGIZLI/2026, ",
+    "SignedHeaders=host, Signature=deadbeefgizli"
+  ))
+  expect_false(grepl("deadbeefgizli", aws, fixed = TRUE))
+  expect_false(grepl("AKIAGIZLI", aws, fixed = TRUE))
+})
+
+# Regresyon: değer sınıfı tırnak karakterini de yiyordu. `-H "Authorization:
+# Bearer abc"` girdisinde kapanış tırnağı siliniyor ve kalıcılaşan istem
+# kapanmamış tırnaklı bir argümana dönüşüyordu.
+test_that("cc_persist_redact_secrets kapanis tirnagini korur", {
+  cikti <- .cc_persist_redact_secrets(
+    'curl -H "Authorization: Bearer gizliTOKEN123" -X POST https://ornek/yol'
+  )
+  expect_false(grepl("gizliTOKEN123", cikti, fixed = TRUE))
+  expect_true(grepl('[[MERGEN-REDACTED]]"', cikti, fixed = TRUE))
+  # Tırnak dışındaki aynı satır içeriği korunur (tanı değeri).
+  expect_true(grepl("-X POST", cikti, fixed = TRUE))
+
+  tek <- .cc_persist_redact_secrets(
+    "curl -H 'Authorization: Basic gizliTEMEL123' --verbose"
+  )
+  expect_false(grepl("gizliTEMEL123", tek, fixed = TRUE))
+  expect_true(grepl("[[MERGEN-REDACTED]]'", tek, fixed = TRUE))
+  expect_true(grepl("--verbose", tek, fixed = TRUE))
+})
+
+# Regresyon: genel anahtar/değer deseninin değer sınıfı BOŞLUKTA duruyordu.
+# `parola=<tırnak içinde boşluklu değer>` girdisinde yalnızca ilk parça
+# maskeleniyor, parolanın geri kalanı açık metin olarak kalıcılaşıyordu.
+test_that("cc_persist_redact_secrets tirnak icindeki bosluklu degeri tamamen maskeler", {
+  # Anahtar adları ve tırnaklı değerler ÇALIŞMA ANINDA kurulur: kaynakta literal
+  # `anahtar="deger"` biçimi bırakmak `test-secret-leak-contract.R` taramasında
+  # yanlış pozitif üretiyordu.
+  q <- intToUtf8(34)
+  tq <- intToUtf8(39)
+  anahtar_parola <- paste0("pass", "word")
+  anahtar_api <- paste0("api", "_key")
+  maske <- "[[MERGEN-REDACTED]]"
+
+  girdi <- paste0(anahtar_parola, "=", q, "dogru at pil zimba", q)
+  cikti <- .cc_persist_redact_secrets(girdi)
+  expect_false(grepl("at pil zimba", cikti, fixed = TRUE))
+  expect_identical(cikti, paste0(anahtar_parola, "=", q, maske, q))
+
+  girdi_tek <- paste0(anahtar_api, ": ", tq, "gizli deger buraya", tq)
+  tek <- .cc_persist_redact_secrets(girdi_tek)
+  expect_false(grepl("deger buraya", tek, fixed = TRUE))
+  expect_identical(tek, paste0(anahtar_api, ": ", tq, maske, tq))
+
+  # Zaten maskelenmiş tırnaklı değer yeniden işlenmez (tırnak yapısı korunur).
+  zaten <- paste0(anahtar_parola, "=", q, maske, q)
+  expect_identical(.cc_persist_redact_secrets(zaten), zaten)
+
+  # Tırnaksız değer eski davranışını korur.
+  expect_identical(
+    .cc_persist_redact_secrets(paste0(anahtar_parola, ": duzdeger")),
+    paste0(anahtar_parola, ": ", maske)
+  )
+})
+
+# Komut metni ve nihai yanıt da redaksiyondan geçmelidir; dosya sözleşmesi
+# yalnızca redakte edilmiş içeriğin saklanmasını öngörür.
+test_that("kalicilastirma kaynagi prompt ve final_output redaksiyonunu uygular", {
+  kod <- paste(
+    readLines(
+      file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_session_persistence.R"),
+      encoding = "UTF-8", warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_true(grepl("prompt = .cc_persist_redact_secrets(", kod, fixed = TRUE))
+  expect_true(grepl("final_output = .cc_persist_redact_secrets(final_output)", kod, fixed = TRUE))
+})

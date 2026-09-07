@@ -133,6 +133,77 @@ test_that("taze kilit belgelenmis erisebilirlik-oncelikli davranisi korur", {
   )
 })
 
+test_that("kilit yalnizca marker hala bizim jetonumuzu tasiyorsa birakilir", {
+  .lock_test_prepare_runtime()
+  withr::defer(.lock_test_cleanup())
+
+  lock_dir <- .lock_test_lock_dir()
+
+  # Gecikmiş eski sahip senaryosu: kilit biz tutarken bayat sayılıp kırılır ve
+  # YENİ bir sahip kendi jetonuyla yeniden alır. İfade içinde marker'ı yabancı
+  # bir jetonla değiştirerek bu durumu birebir üretiyoruz.
+  sonuc <- .file_store_with_index_lock({
+    writeLines(
+      c("pid=999999", "token=baska-sahip"),
+      .lock_test_lock_marker(lock_dir),
+      useBytes = TRUE
+    )
+    "calisti"
+  })
+
+  expect_identical(sonuc, "calisti")
+  expect_true(
+    dir.exists(lock_dir),
+    info = "Yeni sahibin kilidi silinmemelidir (lost update koruması)."
+  )
+  # DİZİN yeterli değildir: bırakma yolu marker'ı silerse yeni sahip bayatlık
+  # denetimi için gereken mtime bilgisini kaybeder ve kilit erken kırılabilir.
+  marker <- .lock_test_lock_marker(lock_dir)
+  expect_true(file.exists(marker))
+  expect_true(any(grepl(
+    "token=baska-sahip", readLines(marker, warn = FALSE), fixed = TRUE
+  )))
+})
+
+# Regresyon: kilit alınamadığında mutasyon KİLİTSİZ çalışıyordu (lost update).
+test_that("kilit dogrulanamazsa require_lock ile hata verilir", {
+  .lock_test_prepare_runtime()
+  withr::defer(.lock_test_cleanup())
+
+  # Taze (aktif) kilit: bayat sayılmaz, timeout icinde alinamaz.
+  .lock_test_make_lock()
+
+  expect_error(
+    .file_store_with_index_lock(
+      "asla-calismamali",
+      timeout_sec = 0.2,
+      poll_sec = 0.05,
+      stale_lock_sec = 3600,
+      require_lock = TRUE
+    ),
+    # ASCII çapa: gerçek mesaj "İndeks kilidi alınamadı" biçimindedir.
+    "kilidi al"
+  )
+})
+
+test_that("kilitli bolum icindeki heartbeat marker mtime degerini tazeler", {
+  .lock_test_prepare_runtime()
+  withr::defer(.lock_test_cleanup())
+
+  lock_dir <- .lock_test_lock_dir()
+  marker <- .lock_test_lock_marker(lock_dir)
+
+  .file_store_with_index_lock({
+    # Marker'i yapay olarak ESKIT, sonra heartbeat ile tazele.
+    Sys.setFileTime(marker, Sys.time() - 3600)
+    eski <- file.info(marker)$mtime[1]
+    file_store_index_lock_heartbeat()
+    yeni <- file.info(marker)$mtime[1]
+    expect_true(as.numeric(difftime(yeni, eski, units = "secs")) > 1000)
+    invisible(NULL)
+  })
+})
+
 test_that("mutasyon yardimcisi stale kilit sonrasi indeks kaydini kaybetmez", {
   .lock_test_prepare_runtime()
   withr::defer(.lock_test_cleanup())

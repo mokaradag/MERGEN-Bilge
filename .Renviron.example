@@ -343,6 +343,22 @@ CLAUDE_CODE_PREPARE_TIMEOUT_SEC=180
 CLAUDE_CODE_FILE_SETTLE_TOTAL_MS=1200
 CLAUDE_CODE_RUNTIME_RETENTION_SEC=21600
 
+# Kopyalama sonrası hedef görünürlük beklemesi (ms). PAYLAŞILAN toplama
+# bütçesinden bağımsızdır; kopyalama bütçeyi tükettiğinde indirme kartının
+# üretilmemesini önler.
+CLAUDE_CODE_FILE_SETTLE_DEST_MS=250
+
+# Aktif çalışma lease dosyasının yetim sayılma yaşı (saniye). Retention
+# süresinden AYRIDIR: uzun süren bir çalıştırmanın çalışma alanı altından
+# silinemez. Lease poll döngüsünde ayrıca tazelenir.
+CLAUDE_CODE_RUNTIME_LEASE_ORPHAN_SEC=86400
+
+# Sistem Durumu sayfasının GERÇEKTEN denemesi gereken ek on-prem uç noktalar
+# (";" veya "," ile ayrılır). LOCAL_*_ENDPOINT / IMAGE_GEN_ENDPOINT /
+# LANGFLOW_BASE_URL / SSO_KEYCLOAK_URL zaten otomatik olarak on-prem sayılır;
+# bu liste yalnızca ek kurumsal DNS adresleri içindir.
+MERGEN_HEALTH_INTERNAL_ENDPOINTS=
+
 # ------------------------------------------------------------------------------
 # Araç Modelleri Yapılandırması
 # ------------------------------------------------------------------------------
@@ -502,7 +518,12 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 # MERGEN_MAX_CONCURRENT_MCP_EXCEL=0
 # MERGEN_MAX_CONCURRENT_SUMMARIZATION=0
 # MERGEN_MAX_CONCURRENT_FOLLOWUPS=0
-# MERGEN_BACKPRESSURE_TTL_SECONDS=180
+#   TTL AÇIKÇA verilmezse varsayılan, MERGEN_LLM_TIMEOUT_SEC + 60 sn tabanına
+#   yükseltilir: sabit 180 sn, 1800 sn'ye kadar sürebilen CANLI bir akışın
+#   slotunu geri toplayıp limitin üzerinde istek kabul edilmesine yol açıyordu.
+#   Bu yüzden ÖRNEK BİR DEĞER VERİLMEZ; boş bırakın (türetilen varsayılan
+#   kullanılır) veya MERGEN_LLM_TIMEOUT_SEC + 60'tan BÜYÜK bir değer yazın.
+# MERGEN_BACKPRESSURE_TTL_SECONDS=
 #
 # --- Savunmacı metin üst sınırları ---
 #   Sonlandırılan yanıt/akıl yürütme UTF-8 sınırında güvenle kırpılır; <=0 = sınırsız.
@@ -516,6 +537,23 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #   MB_Messages.MessageContent NVARCHAR(MAX)'tır; bu yalnızca kaçak içeriğe karşı
 #   uygulama tavanıdır. 1000 altı/geçersiz = 1000000.
 # MERGEN_MAX_MESSAGE_CHARS=1000000
+#
+# --- Görsel anlama (vision) istek sınırları ---
+#   Tek dosya sınırı 5 MB'tır; bunlar TOPLAM sınırlardır. Aşan görseller açık
+#   Türkçe notla atlanır (istek gövdesi ve worker belleği sınırsız büyümez).
+# MERGEN_VISION_MAX_IMAGES=4
+# MERGEN_VISION_MAX_TOTAL_MB=12
+#
+# --- Sesli Giriş (STT) kabul sınırları ---
+#   Parça boyutu ve uçuştaki iş sayısı, worker'a GÖNDERMEDEN ÖNCE denetlenir;
+#   aksi hâlde büyük/sık parçalar future kuyruğunu ve ffmpeg süreçlerini
+#   tüketerek Shiny worker havuzunu kilitleyebilir.
+# MERGEN_STT_MAX_CHUNK_MB=8
+# MERGEN_STT_MAX_PENDING_CHUNKS=6
+#
+# --- DOCX -> PDF dönüştürme zaman aşımı (saniye) ---
+#   Yanıt vermeyen LibreOffice süreci çağrıyı süresiz bloke ediyordu.
+# MERGEN_DOCX_PDF_TIMEOUT_SEC=120
 #
 # --- Tanılama (varsayılan KAPALI) ---
 #   Grep-dostu, sır-redakteli ilk-token/akış perf işaretleri için: MERGEN_PERF_LOG=1.

@@ -27,6 +27,8 @@
     "helpers_claude_code_bounded_scan.R",
     "helpers_claude_code_input_matching.R",
     "helpers_claude_code_runtime_prepare.R",
+    # Lease/temizlik kilidi manifestte output_sync'ten ÖNCE yüklenir.
+    "helpers_claude_code_runtime_lease.R",
     "helpers_claude_code_output_sync.R",
     "helpers_claude_code_runtime_resolver.R",
     "helpers_claude_code_runtime_workdir.R"
@@ -801,8 +803,9 @@ test_that("aktif runtime klasörü yaş temizliğinden korunur", {
 
 test_that("başarısız çıktı aktarımları başarılı sonuç sayılmaz", {
   env <- .cc_dispatch_env()
+  # Raporlama + gönderim katmanı ayrı dosyaya taşındı (cırcır bölmesi).
   source(
-    file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_run_completion.R"),
+    file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_run_output_dispatch.R"),
     encoding = "UTF-8", local = env
   )
   outputs <- list(sync_results = list(
@@ -810,8 +813,8 @@ test_that("başarısız çıktı aktarımları başarılı sonuç sayılmaz", {
     list(success = FALSE, dest_path = "yazilamadi.txt", error = "izin yok")
   ))
   expect_identical(length(env$cc_output_sync_failures(outputs)), 1L)
-  completion <- .cc_read_prepare_text("R/helpers_claude_code_run_completion.R")
-  expect_true(grepl("cc_report_output_sync_failure\\(ctx, outputs\\)", completion, perl = TRUE))
+  dispatch <- .cc_read_prepare_text("R/helpers_claude_code_run_output_dispatch.R")
+  expect_true(grepl("cc_report_output_sync_failure\\(ctx, outputs\\)", dispatch, perl = TRUE))
 })
 
 
@@ -1076,7 +1079,8 @@ test_that("bir oturumun büyük klasör hazırlığı ikinci oturumu bloke etmez
 
 test_that("hazırlık ve çıktı işleri açık bağımlılık modu ile gönderilir", {
   dispatch <- .cc_read_prepare_text("R/helpers_claude_code_run_dispatch.R")
-  completion <- .cc_read_prepare_text("R/helpers_claude_code_run_completion.R")
+  # Çıktı worker'ı gönderimi output_dispatch dosyasında yaşar.
+  completion <- .cc_read_prepare_text("R/helpers_claude_code_run_output_dispatch.R")
   modul <- .cc_read_prepare_text("R/module_claude_code.R")
 
   for (metin in list(dispatch, completion)) {
@@ -1117,7 +1121,8 @@ test_that("bloklayan bekleme döngüleri ana süreç dosyalarında kalmaz", {
     "R/module_claude_code.R",
     "R/module_claude_code_stream_poll.R",
     "R/helpers_claude_code_run_dispatch.R",
-    "R/helpers_claude_code_run_completion.R"
+    "R/helpers_claude_code_run_completion.R",
+    "R/helpers_claude_code_run_output_dispatch.R"
   )) {
     metin <- .cc_read_prepare_text(yol)
 

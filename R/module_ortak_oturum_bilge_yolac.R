@@ -105,9 +105,14 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
     )
   }
 
+  # Yetki zinciri: katılımcı satırı -> içerik erişimi (yalnızca "Katıldı") ->
+  # rol izni. Yalnızca ROL denetlemek, odadan ÇIKARILMIŞ bir katılımcının
+  # (rol satırı korunduğu için) yazma işlemlerini sürdürmesine izin veriyordu.
   calisma_alani_yazabilir <- function() {
     katilim <- ctx$benim_katilimim()
-    !is.null(katilim) && ortak_by_calisma_alani_yazabilir_mi(katilim$Rol[1])
+    if (is.null(katilim)) return(FALSE)
+    if (!isTRUE(ortak_icerik_erisimi_var_mi(katilim$KatilimDurumu[1]))) return(FALSE)
+    isTRUE(ortak_by_calisma_alani_yazabilir_mi(katilim$Rol[1]))
   }
 
   # Etkin çalışma dizini: kayıttaki özel dizin (varsa/erişilebilirse) veya
@@ -123,7 +128,7 @@ ortakOturumBilgeYolacBind <- function(input, output, session, ctx, motor) {
     katilim <- ctx$benim_katilimim()
     yeni_erisim <- !is.null(katilim) &&
       ortak_icerik_erisimi_var_mi(katilim$KatilimDurumu[1])
-    yeni_yazma <- !is.null(katilim) &&
+    yeni_yazma <- isTRUE(yeni_erisim) &&
       ortak_by_calisma_alani_yazabilir_mi(katilim$Rol[1])
 
     if (!identical(isolate(by_odasi_sinyali()), yeni_oda)) by_odasi_sinyali(yeni_oda)

@@ -70,7 +70,7 @@
     "create_utf8_stream_decoder", "find_last_utf8_boundary", "parse_llm_sse_event",
     "extract_llm_delta_text", "extract_llm_event_sources", "append_stream_delta_line",
     "append_stream_reasoning_line", "log_info", "log_warn",
-    "llm_worker_stream_content_looks_like_reasoning"
+    "llm_worker_stream_content_looks_like_reasoning", "streaming_should_stop"
   )
   for (nm in fn_names) {
     assign(nm, (function() function(...) NULL)(), envir = env)
@@ -120,8 +120,8 @@ test_that("fabrika tum kritik worker-export adlarini ve arg gecisini saglar", {
   )
 
   expect_true(is.list(g))
-  # 4 isteğe-özel arg + 25 yardımcı + %||% + api_config = 31 isim.
-  expect_identical(length(names(g)), 31L)
+  # 4 isteğe-özel arg + 26 yardımcı + %||% + api_config = 32 isim.
+  expect_identical(length(names(g)), 32L)
 
   # İsteğe-özel 4 nesne birebir geçer (kimlik).
   expect_identical(g$chat_history_for_sse, "CH")
@@ -136,6 +136,9 @@ test_that("fabrika tum kritik worker-export adlarini ve arg gecisini saglar", {
     "append_stream_delta_line", "append_stream_reasoning_line",
     "extract_llm_delta_bundle", "parse_llm_sse_event",
     "llm_worker_stream_content_looks_like_reasoning",
+    # streaming_should_stop explicit kipte worker'da ÇÖZÜLEMİYORDU: liste dışında
+    # kaldığında akış iptali worker tarafında "fonksiyon bulunamadı" ile düşüyordu.
+    "streaming_should_stop",
     "%||%", "api_config"
   )
   expect_true(all(protected %in% names(g)))

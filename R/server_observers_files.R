@@ -62,9 +62,10 @@ fileObserversInit <- function(input, session, settings_data, session_files,
     effective_uid <- resolve_runtime_user_id()
 
     processed_count <- 0
+    reddedilen_count <- 0
     for (file_info in files_to_add) {
       if (!(file_info$name %in% names(session_files()))) {
-        processAndSummarizeFile(
+        sonuc <- processAndSummarizeFile(
           file_info,
           current_user_id = effective_uid,
           session = session,
@@ -75,12 +76,29 @@ fileObserversInit <- function(input, session, settings_data, session_files,
           show_toast = FALSE,
           auto_attach = FALSE
         )
-        processed_count <- processed_count + 1
+        # SAYAÇ YALNIZCA KABUL EDİLEN dosya için artar. Sonuç yok sayıldığında
+        # kimlik/kopya/indeks yollarında REDDEDİLEN dosya da "AI bağlamına
+        # eklendi" sayılıyor ve kullanıcıya başarı bildirimi gösteriliyordu.
+        if (isTRUE(mergen_file_pipeline_accepted(sonuc))) {
+          processed_count <- processed_count + 1
+        } else {
+          reddedilen_count <- reddedilen_count + 1
+        }
       }
     }
   
     if (processed_count > 0) {
       showToast(session, paste(processed_count, "dosya AI bağlamına eklendi."), "success")
+    }
+
+    # Reddedilen dosyalar SESSİZ kalmaz: `show_toast = FALSE` ile çağrıldığı için
+    # tek tek bildirim gösterilmedi, toplu sonuç burada bildirilir.
+    if (reddedilen_count > 0) {
+      showToast(
+        session,
+        paste(reddedilen_count, "dosya AI bağlamına eklenemedi."),
+        "warning"
+      )
     }
   }, ignoreInit = TRUE)
   

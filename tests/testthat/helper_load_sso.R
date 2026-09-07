@@ -30,6 +30,13 @@ if (!exists("decode_jwt_payload", envir = globalenv(), inherits = FALSE) ||
 
   # İmza doğrulama yardımcıları helpers_sso.R'den ÖNCE yüklenmeli;
   # validate_jwt_token() artık sso_validate_jwt_signature() çağırır.
+  # JWKS önbelleği imza dosyasından önce gelir (çalışma zamanı manifest sırası).
+  source(
+    file.path(repo_root_for_tests, "R", "helpers_sso_jwks_cache.R"),
+    encoding = "UTF-8",
+    local = globalenv()
+  )
+
   source(
     file.path(repo_root_for_tests, "R", "helpers_sso_signature.R"),
     encoding = "UTF-8",

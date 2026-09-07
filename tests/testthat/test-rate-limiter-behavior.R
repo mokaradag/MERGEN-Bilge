@@ -22,6 +22,16 @@
   invisible(TRUE)
 }
 
+# `rate_limiter` bir LİSTEdir: `rate_limiter$max_users_cache <- n` yalnızca test
+# çerçevesinde yerel bir kopya üretir ve üretim kodu eski kapasiteyi görür.
+# (`requests`/`cleanup_state` ORTAM olduğu için referansla paylaşılır.)
+.ratelimit_set_kapasite <- function(n) {
+  rl <- get("rate_limiter", envir = globalenv())
+  rl$max_users_cache <- n
+  assign("rate_limiter", rl, envir = globalenv())
+  invisible(n)
+}
+
 # ------------------------------------------------------------------------------
 # check_rate_limit (kullanıcı başına)
 # ------------------------------------------------------------------------------
@@ -71,6 +81,80 @@ testthat::test_that("check_rate_limit farklı kullanıcıların kotalarını ayr
       rm(list = u, envir = rate_limiter$requests)
     }
   }
+})
+
+testthat::test_that("check_rate_limit süresi dolmuş kayıt varken yeni kullanıcıyı kabul eder", {
+  .ratelimit_source_once()
+
+  eski_kapasite <- rate_limiter$max_users_cache
+  eski_anahtarlar <- ls(envir = rate_limiter$requests)
+  eski_kayitlar <- mget(eski_anahtarlar, envir = rate_limiter$requests)
+  eski_temizlik <- rate_limiter$cleanup_state$last_cleanup
+  eski_sona_erme <- rate_limiter$cleanup_state$next_expiry
+  withr::defer({
+    rm(list = ls(envir = rate_limiter$requests), envir = rate_limiter$requests)
+    for (ad in names(eski_kayitlar)) {
+      rate_limiter$requests[[ad]] <- eski_kayitlar[[ad]]
+    }
+    .ratelimit_set_kapasite(eski_kapasite)
+    rate_limiter$cleanup_state$last_cleanup <- eski_temizlik
+    rate_limiter$cleanup_state$next_expiry <- eski_sona_erme
+  })
+
+  rm(list = ls(envir = rate_limiter$requests), envir = rate_limiter$requests)
+  rate_limiter$cleanup_state$last_cleanup <- NULL
+  rate_limiter$cleanup_state$next_expiry <- NULL
+  .ratelimit_set_kapasite(3L)
+
+  # Kayıtlar İLK çağrıda hâlâ CANLI; 0.3 sn sonra süreleri dolar.
+  for (i in seq_len(3L)) {
+    rate_limiter$requests[[paste0("tt_expired_", i)]] <-
+      list(Sys.time() - (rate_limiter$window_size - 0.2))
+  }
+
+  # İlk çağrı: kapasite dolu ve tüm kayıtlar canlı -> reddedilir, tam tarama
+  # damgası ŞİMDİ olur (bir saniyelik kelepçe devreye girer).
+  testthat::expect_false(check_rate_limit("tt_rate_limit_new_user_001"))
+
+  Sys.sleep(0.3)
+
+  # Kelepçe penceresi içindeyiz ama kayıtların süresi DOLDU. Eski davranış
+  # taramayı atlayıp yeni kullanıcıyı kalıcı olarak reddediyordu.
+  testthat::expect_true(check_rate_limit("tt_rate_limit_new_user_001b"))
+  testthat::expect_false(exists("tt_expired_1", envir = rate_limiter$requests,
+                                inherits = FALSE))
+})
+
+testthat::test_that("check_rate_limit tüm kayıtlar canlıyken kapasitede reddeder", {
+  .ratelimit_source_once()
+
+  eski_kapasite <- rate_limiter$max_users_cache
+  eski_anahtarlar <- ls(envir = rate_limiter$requests)
+  eski_kayitlar <- mget(eski_anahtarlar, envir = rate_limiter$requests)
+  eski_temizlik <- rate_limiter$cleanup_state$last_cleanup
+  eski_sona_erme <- rate_limiter$cleanup_state$next_expiry
+  withr::defer({
+    rm(list = ls(envir = rate_limiter$requests), envir = rate_limiter$requests)
+    for (ad in names(eski_kayitlar)) {
+      rate_limiter$requests[[ad]] <- eski_kayitlar[[ad]]
+    }
+    .ratelimit_set_kapasite(eski_kapasite)
+    rate_limiter$cleanup_state$last_cleanup <- eski_temizlik
+    rate_limiter$cleanup_state$next_expiry <- eski_sona_erme
+  })
+
+  rm(list = ls(envir = rate_limiter$requests), envir = rate_limiter$requests)
+  rate_limiter$cleanup_state$last_cleanup <- NULL
+  rate_limiter$cleanup_state$next_expiry <- NULL
+  .ratelimit_set_kapasite(3L)
+
+  for (i in seq_len(3L)) {
+    rate_limiter$requests[[paste0("tt_live_", i)]] <- list(Sys.time())
+  }
+
+  testthat::expect_false(check_rate_limit("tt_rate_limit_new_user_002"))
+  # Tarama bir sonraki sona erme anını saklar; kelepçe ancak o ana kadar geçerli.
+  testthat::expect_true(inherits(rate_limiter$cleanup_state$next_expiry, "POSIXct"))
 })
 
 # ------------------------------------------------------------------------------

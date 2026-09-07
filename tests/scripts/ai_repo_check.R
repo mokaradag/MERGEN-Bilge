@@ -432,9 +432,8 @@ if (profile == "quick") {
   quick_tests_literal <- r_character_vector_literal(quick_tests)
 
   test_expr <- paste0(
-    "Sys.setenv(MERGEN_RUN_APP='false', MERGEN_DISABLE_FUTURES='true', TZ='UTC'); ",
+    "Sys.setenv(MERGEN_RUN_APP='false', MERGEN_DISABLE_FUTURES='true', TESTTHAT_EDITION='3', TZ='UTC'); ",
     "library(testthat); ",
-    "testthat::local_edition(3); ",
     "tests <- ", quick_tests_literal, "; ",
     "tests <- tests[file.exists(tests)]; ",
     "cat('Focused tests:', length(tests), '\\n'); ",

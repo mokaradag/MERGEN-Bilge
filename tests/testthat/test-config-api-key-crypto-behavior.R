@@ -169,3 +169,71 @@ test_that("save_user_api_key tuz 0x00 bayt içerse de çökmeden kaydeder ve do�
   expect_true(.api_env$verify_user_api_key("nul_tuz_kullanici", "fake-nul-key"))
   expect_false(.api_env$verify_user_api_key("nul_tuz_kullanici", "fake-yanlis-key"))
 })
+# ------------------------------------------------------------------------------
+# Okuma yolları GEÇERSİZ kullanıcı adında İSTİSNA yerine GÜVENLİ sonuç döndürür
+# (Regresyon: `.api_user_file()` `stop()` çağırdığı için `load_user_api_key()`
+# `NULL`, `user_api_key_exists()`/`verify_user_api_key()` `FALSE` sözleşmesini
+# bozuyordu; `module_api_key.R` istisnayı `try-error` olarak görüp kullanıcıyı
+# anahtar hiç yokmuş gibi onboarding'e yönlendiriyordu.)
+# ------------------------------------------------------------------------------
+testthat::test_that("okuma yardimcilari gecersiz kullanici adinda guvenli sonuc doner", {
+  for (ad in c("DOMAIN\\kullanici", "a/b", "kotu:ad", "kotu*ad", "")) {
+    testthat::expect_null(.api_env$load_user_api_key(ad), info = ad)
+    testthat::expect_false(.api_env$user_api_key_exists(ad), info = ad)
+    testthat::expect_false(.api_env$verify_user_api_key(ad, "herhangi"), info = ad)
+  }
+
+  # YAZMA yolunda `stop()` KORUNUR: güvensiz ada sessizce yazılmaz.
+  testthat::expect_error(
+    .api_env$save_user_api_key("DOMAIN\\kullanici", "sahte-anahtar"),
+    "Geçersiz kullanıcı adı"
+  )
+})
+
+# ------------------------------------------------------------------------------
+# Bozuk kayıt biçimleri: `exists` TRUE dönüp `load` NULL döndürmemelidir
+# ------------------------------------------------------------------------------
+testthat::test_that("cozulemez enc bicimi exists denetiminden gecmez", {
+  kullanici <- "bozuk_kayit_kullanicisi"
+  yol <- file.path(.api_env$API_KEYS_DIR, sprintf("%s_api_key", kullanici))
+
+  # `enc` SKALER: `.dec_key()` içindeki `iv_b64`/`cipher_b64` erişimi hata verir.
+  jsonlite::write_json(
+    list(user = kullanici, enc = "invalid", salt_b64 = "eA==", hash_hex = "ab"),
+    yol, auto_unbox = TRUE
+  )
+  testthat::expect_false(.api_env$user_api_key_exists(kullanici))
+  testthat::expect_null(.api_env$load_user_api_key(kullanici))
+
+  # `enc` NESNE ama alanları eksik.
+  jsonlite::write_json(
+    list(user = kullanici, enc = list(iv_b64 = ""), salt_b64 = "eA==", hash_hex = "ab"),
+    yol, auto_unbox = TRUE
+  )
+  testthat::expect_false(.api_env$user_api_key_exists(kullanici))
+
+  unlink(yol, force = TRUE)
+})
+
+testthat::test_that("verify_user_api_key bozuk salt/hash bicimini FALSE dondurur", {
+  kullanici <- "bozuk_salt_kullanicisi"
+  yol <- file.path(.api_env$API_KEYS_DIR, sprintf("%s_api_key", kullanici))
+
+  # `salt_b64` SKALER DEĞİL: `base64enc::base64decode()` hata fırlatıyordu.
+  jsonlite::write_json(
+    list(user = kullanici, enc = list(iv_b64 = "eA==", cipher_b64 = "eA=="),
+         salt_b64 = list(), hash_hex = "ab"),
+    yol, auto_unbox = TRUE
+  )
+  testthat::expect_false(.api_env$verify_user_api_key(kullanici, "aday"))
+
+  # `hash_hex` boş: karşılaştırma yapılmadan FALSE döner.
+  jsonlite::write_json(
+    list(user = kullanici, enc = list(iv_b64 = "eA==", cipher_b64 = "eA=="),
+         salt_b64 = "eA==", hash_hex = ""),
+    yol, auto_unbox = TRUE
+  )
+  testthat::expect_false(.api_env$verify_user_api_key(kullanici, "aday"))
+
+  unlink(yol, force = TRUE)
+})

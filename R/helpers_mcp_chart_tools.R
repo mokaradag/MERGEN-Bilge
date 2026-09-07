@@ -19,6 +19,154 @@ if (!exists("helpers_mcp_tools", envir = globalenv(), inherits = FALSE) ||
 
 helpers_mcp_tools <- get("helpers_mcp_tools", envir = globalenv(), inherits = FALSE)
 
+# LLM üretimi filtrelerde MySQL/T-SQL tarzı tanımlayıcı tırnaklarını (`col`,
+# [col]) DuckDB'nin kabul ettiği çift tırnağa çevirir.
+#
+# DEĞİŞİM YALNIZCA DİZE DEĞİŞMEZLERİNİN DIŞINDA uygulanır. Tüm sorgu üzerinde
+# çalışan eski `gsub()` çağrıları `LIKE '%[Rev 2]%'` gibi bir DEĞERİ de
+# `LIKE '%"Rev 2"%'` yapıyordu: bellek içi filtre ve istatistik satırları
+# bulurken grafik BOŞ kalıyor ya da FARKLI satırlar dönüyordu. Çift tırnaklı
+# tanımlayıcıların içi de korunur; aksi hâlde `"col[1]"` tanımlayıcısı ortadan
+# bölünürdü.
+#
+# TARAYICI YORUMLARI DA İZLER. `--` satır yorumu ve `/* */` blok yorumu içindeki
+# kesme işareti (`x > 0 -- user's note`) tek tırnak durumunu ters çeviriyor, bu
+# yüzden sonraki satırdaki `[status]` hiç dönüştürülmüyordu; DuckDB sorgusu hata
+# veriyor, satır 297'deki `tryCatch()` özgün `dt` değerini koruduğu için grafik
+# FİLTRESİZ veriyle üretilmeye devam ediyordu. Köşeli parantez ve backtick ile
+# sınırlanan tanımlayıcıların İÇİ de artık ayrı bir durum olarak izlenir: aksi
+# hâlde `[a--b]` gibi bir ad yorum başlangıcı sanılırdı.
+.mcp_chart_identifier_quotes <- function(sql) {
+  metin <- as.character(sql)[1]
+  if (length(metin) != 1L || is.na(metin) || !nzchar(metin)) return("")
+
+  karakterler <- strsplit(metin, "", fixed = TRUE)[[1]]
+  n <- length(karakterler)
+
+  tek_tirnak <- FALSE     # '...' dize değişmezi
+  cift_tirnak <- FALSE    # "..." tanımlayıcısı
+  koseli <- FALSE         # [...] tanımlayıcısı
+  ters_tirnak <- FALSE    # `...` tanımlayıcısı
+  satir_yorumu <- FALSE   # -- ... satır sonuna kadar
+  blok_yorumu <- FALSE    # /* ... */
+
+  i <- 1L
+  while (i <= n) {
+    k <- karakterler[i]
+    sonraki <- if (i < n) karakterler[i + 1L] else ""
+
+    # 1) Yorum içinde hiçbir durum değişmez ve metne dokunulmaz.
+    if (satir_yorumu) {
+      if (identical(k, "\n")) satir_yorumu <- FALSE
+      i <- i + 1L
+      next
+    }
+    if (blok_yorumu) {
+      if (identical(k, "*") && identical(sonraki, "/")) {
+        blok_yorumu <- FALSE
+        i <- i + 2L
+        next
+      }
+      i <- i + 1L
+      next
+    }
+
+    # 2) Sınırlanmış tanımlayıcıların içi: yalnızca kapanış işareti çevrilir.
+    # KAÇIRILMIŞ KAPANIŞ İŞARETİ. T-SQL'de `]]`, MySQL'de çift ters tırnak
+    # tanımlayıcı İÇİNDEKİ tek bir literal karakteri gösterir. Tarayıcı ilk
+    # işareti kapanış sayıyor, `[a]]b]` (yani `a]b` sütunu) `"a""b"` oluyordu:
+    # DuckDB ya BAŞKA bir tanımlayıcı sorguluyor ya da sorguyu reddediyordu.
+    # Ayrıca tanımlayıcı içindeki ÇİFT TIRNAK, DuckDB çift-tırnaklı
+    # tanımlayıcısında `""` olarak KAÇIRILMALIDIR; aksi hâlde `[a"b]` girdisi
+    # `"a"b"` gibi GEÇERSİZ SQL üretiyordu.
+    if (koseli) {
+      if (identical(k, "]")) {
+        if (identical(sonraki, "]")) {
+          karakterler[i] <- "]"
+          karakterler[i + 1L] <- ""
+          i <- i + 2L
+          next
+        }
+        karakterler[i] <- "\""
+        koseli <- FALSE
+        i <- i + 1L
+        next
+      }
+      if (identical(k, "\"")) karakterler[i] <- "\"\""
+      i <- i + 1L
+      next
+    }
+    if (ters_tirnak) {
+      if (identical(k, "`")) {
+        if (identical(sonraki, "`")) {
+          karakterler[i] <- "`"
+          karakterler[i + 1L] <- ""
+          i <- i + 2L
+          next
+        }
+        karakterler[i] <- "\""
+        ters_tirnak <- FALSE
+        i <- i + 1L
+        next
+      }
+      if (identical(k, "\"")) karakterler[i] <- "\"\""
+      i <- i + 1L
+      next
+    }
+
+    # 3) Dize değişmezinin içi tümüyle korunur; `''` kaçışı aç/kapa ile izlenir.
+    if (tek_tirnak) {
+      if (identical(k, "'")) tek_tirnak <- FALSE
+      i <- i + 1L
+      next
+    }
+    if (cift_tirnak) {
+      if (identical(k, "\"")) cift_tirnak <- FALSE
+      i <- i + 1L
+      next
+    }
+
+    # 4) Buradan sonrası yorum/dize/tanımlayıcı DIŞIDIR.
+    if (identical(k, "-") && identical(sonraki, "-")) {
+      satir_yorumu <- TRUE
+      i <- i + 2L
+      next
+    }
+    if (identical(k, "/") && identical(sonraki, "*")) {
+      blok_yorumu <- TRUE
+      i <- i + 2L
+      next
+    }
+    if (identical(k, "'")) {
+      tek_tirnak <- TRUE
+      i <- i + 1L
+      next
+    }
+    if (identical(k, "\"")) {
+      cift_tirnak <- TRUE
+      i <- i + 1L
+      next
+    }
+    if (identical(k, "[")) {
+      karakterler[i] <- "\""
+      koseli <- TRUE
+      i <- i + 1L
+      next
+    }
+    if (identical(k, "`")) {
+      karakterler[i] <- "\""
+      ters_tirnak <- TRUE
+      i <- i + 1L
+      next
+    }
+    # Eşleşmeyen tek `]` (bozuk girdi) eski davranışta olduğu gibi çevrilir.
+    if (identical(k, "]")) karakterler[i] <- "\""
+    i <- i + 1L
+  }
+
+  paste0(karakterler, collapse = "")
+}
+
 .mcp_prepare_chart_data_fn <- function(
   file_name,
   chart_type,
@@ -241,18 +389,38 @@ helpers_mcp_tools <- get("helpers_mcp_tools", envir = globalenv(), inherits = FA
   }
 
   if (!is.null(filter_sql) && nzchar(filter_sql) && helpers_mcp_tools$safe_has_duckdb()) {
-    con <- DBI::dbConnect(duckdb::duckdb(), dbdir = ":memory:")
+    # filter_sql LLM kontrollüdür; sertleştirilmiş (harici erişimi kapalı)
+    # bağlantı kullanılır, aksi halde DuckDB dosya okuma fonksiyonlarıyla
+    # sunucu dosyaları okunabilirdi.
+    con <- helpers_mcp_tools$open_sandboxed_duckdb()
+    if (is.null(con)) {
+      # Diğer hata dönüşleriyle aynı sözleşme: isTRUE(result$ok) kullanan
+      # tüketiciler için `ok` alanı açıkça FALSE olmalıdır.
+      return(list(error = "Grafik filtresi güvenli kipte çalıştırılamadı.", ok = FALSE))
+    }
     on.exit(try(DBI::dbDisconnect(con, shutdown = TRUE), silent = TRUE), add = TRUE)
 
     DBI::dbWriteTable(con, "t", as.data.frame(dt), temporary = TRUE, overwrite = TRUE)
 
-    q <- sprintf("SELECT * FROM t WHERE %s", filter_sql)
-    q <- gsub("`", "\"", q, fixed = TRUE)
-    q <- gsub("\\[", "\"", q)
-    q <- gsub("\\]", "\"", q)
+    # Tanımlayıcı tırnakları yalnızca dize değişmezlerinin DIŞINDA normalleştirilir.
+    q <- sprintf("SELECT * FROM t WHERE %s", .mcp_chart_identifier_quotes(filter_sql))
 
+    # FİLTRE HATASI SESSİZCE YUTULMAZ. Eskiden hata durumunda özgün `dt`
+    # korunuyor, grafik TÜM satırlardan kuruluyor ve `ok = TRUE` dönüyordu:
+    # kullanıcı FİLTRELENMİŞ görünen ama tüm veriyi içeren bir grafik alıyordu
+    # (istatistikler ise filtrelenmiş veriden geliyordu). Bozuk bir tanımlayıcı
+    # (ör. kapanmamış `[`) tam olarak bu yola düşüyordu.
     filt <- tryCatch(DBI::dbGetQuery(con, q), error = function(e) e)
-    if (!inherits(filt, "error")) dt <- data.table::as.data.table(filt)
+    if (inherits(filt, "error")) {
+      return(list(
+        error = sprintf(
+          "Grafik filtresi uygulanamadı: %s",
+          conditionMessage(filt)
+        ),
+        ok = FALSE
+      ))
+    }
+    dt <- data.table::as.data.table(filt)
   }
 
   if (is.null(y)) {

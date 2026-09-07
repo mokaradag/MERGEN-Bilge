@@ -130,7 +130,8 @@ file_ingestion_queue_status <- function() {
     max_concurrent = file_ingestion_max_concurrent(),
     max_queue = file_ingestion_max_queue(),
     rejected_total = as.integer(state$rejected_total),
-    completed_total = as.integer(state$completed_total)
+    completed_total = as.integer(state$completed_total),
+    failed_start_total = as.integer(state$failed_start_total %||% 0L)
   )
 }
 
@@ -151,7 +152,28 @@ file_ingestion_pump <- function() {
     started <- tryCatch({
       job$run(job)
       TRUE
-    }, error = function(e) FALSE)
+    }, error = function(e) {
+      # Başlatılamayan iş sessizce yitmez: sayılır, loglanır ve varsa işin
+      # hata geri çağrısına bildirilir.
+      state$failed_start_total <- (state$failed_start_total %||% 0L) + 1L
+      msg <- sprintf(
+        "[FILE_INGESTION] İş başlatılamadı (batch=%s): %s",
+        as.character(job$id %||% "?")[1], conditionMessage(e)
+      )
+      if (exists("log_warn", mode = "function", inherits = TRUE)) {
+        try(log_warn(msg), silent = TRUE)
+      } else {
+        message(msg)
+      }
+      if (is.function(job$on_start_error)) try(job$on_start_error(e), silent = TRUE)
+      # Parti kullanıcıya bildirim yapılmadan kaybolmaz: submit_batch()
+      # tarafından verilen hata geri çağrısı da çalıştırılır (tek başına
+      # on_start_error kuyruk-içi başlatma hatasını UI'ya taşımıyordu).
+      if (is.function(job$on_failure)) {
+        try(job$on_failure(conditionMessage(e), job$tasks), silent = TRUE)
+      }
+      FALSE
+    })
 
     if (!isTRUE(started)) {
       state$active <- max(state$active - 1L, 0L)
@@ -181,6 +203,7 @@ file_ingestion_reset_state <- function() {
   state$pump_scheduled <- FALSE
   state$rejected_total <- 0L
   state$completed_total <- 0L
+  state$failed_start_total <- 0L
   invisible(TRUE)
 }
 

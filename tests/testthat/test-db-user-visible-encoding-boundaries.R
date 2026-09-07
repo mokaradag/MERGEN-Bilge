@@ -363,19 +363,19 @@ test_that("new MB_Messages writes have a post-insert encoding guard", {
   )
 
   expect_true(
-    .has_boundary_text(encoding_txt, "assert_mb_message_visible_encoding_clean <- function(conn, message_id)"),
+    .has_boundary_text(encoding_txt, "assert_mb_message_visible_encoding_clean <- function(conn, message_id"),
     label = "Post-insert MB_Messages encoding guard must exist."
   )
 
   expect_false(
-    .has_boundary_text(conn_txt, "assert_mb_message_visible_encoding_clean <- function(conn, message_id)"),
+    .has_boundary_text(conn_txt, "assert_mb_message_visible_encoding_clean <- function(conn, message_id"),
     label = "Post-insert MB_Messages encoding guard should stay in helpers_db_encoding.R, not helpers_db_connection.R."
   )
 
   expect_gte(
     .count_boundary_regex(
       txt,
-      "assert_mb_message_visible_encoding_clean\\(conn,\\s*(message_id|response_message_id)\\)"
+      "assert_mb_message_visible_encoding_clean\\(conn,\\s*(message_id|response_message_id)[,)]"
     ),
     2L,
     label = "Both main and worker MB_Messages write paths must verify encoding before commit."

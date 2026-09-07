@@ -184,3 +184,20 @@ test_that("server_init_user_session Shiny reactiveVal kullanımını namespace i
   expect_true(grepl("shiny::reactiveVal(NULL)", txt, fixed = TRUE))
   expect_false(grepl("user_config_rv <- reactiveVal(NULL)", txt, fixed = TRUE))
 })
+test_that("kullanıcı kimliği çözülemediğinde auth_ready TRUE olmaz (kapalı-başarısız)", {
+  fake_session <- list(userData = new.env(parent = emptyenv()))
+
+  user_session <- serverInitUserSession(
+    session = fake_session,
+    session_cache = list(setup_user_session = function(uid) paste0("cache/user_", uid)),
+    sso_state = NULL,
+    base_user_config = .test_base_user_config,
+    sso_enabled = FALSE,
+    resolve_identity_fn = function(...) .test_identity("local"),
+    # DB kullanıcıyı çözemedi: uid = 0.
+    get_or_create_user_fn = function(username, ...) 0L
+  )
+
+  expect_false(user_session$is_auth_ready())
+  expect_equal(user_session$resolve_current_user_id(), 0L)
+})

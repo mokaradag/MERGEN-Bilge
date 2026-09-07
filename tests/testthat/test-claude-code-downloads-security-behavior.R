@@ -36,6 +36,9 @@ testthat::local_edition(3)
   # sırası (bounded_scan -> downloads) test ortamında da yansıtılmalıdır.
   source(file.path(repo_root, "R", "helpers_claude_code_bounded_scan.R"), encoding = "UTF-8", local = env)
   source(file.path(repo_root, "R", "helpers_claude_code_path_policy.R"), encoding = "UTF-8", local = env)
+  # Bayt bütçesi yardımcıları (cc_fit_name_to_byte_budget) manifestte
+  # downloads.R'den ÖNCE yüklenir; izole zincir aynı sırayı korumalıdır.
+  source(file.path(repo_root, "R", "helpers_claude_code_output_buffer.R"), encoding = "UTF-8", local = env)
   source(file.path(repo_root, "R", "helpers_claude_code_downloads.R"), encoding = "UTF-8", local = env)
   env
 }
@@ -208,4 +211,33 @@ testthat::test_that("stage_claude_code_downloads boş girdide boş liste döner"
   dl_root <- tempfile("ccdl_root3_"); dir.create(dl_root)
   withr::local_options(mergen.claude_code_download_root = dl_root)
   testthat::expect_identical(env$stage_claude_code_downloads(character(0)), list())
+})
+
+# ---------------------------------------------------------------------------
+# cc_fit_name_to_byte_budget
+# ---------------------------------------------------------------------------
+testthat::test_that("cc_fit_name_to_byte_budget yalnızca sonunda ayrışan uzun adları ayırır", {
+  env <- .ccdl_env()
+
+  ortak <- strrep("uzun_rapor_adi_", 20L)
+  a <- paste0(ortak, "20260912.txt")
+  b <- paste0(ortak, "20260913.txt")
+
+  kirpik_a <- env$cc_fit_name_to_byte_budget("20260912_ab_", a, max_bytes = 80L)
+  kirpik_b <- env$cc_fit_name_to_byte_budget("20260912_ab_", b, max_bytes = 80L)
+
+  # Eski jeton adın İLK 4 BAYTINDAN türüyordu; bu baytlar korunan önekin
+  # parçası olduğu için iki ad aynı kırpılmış ada düşüyor ve ikinci indirme
+  # birincisinin üzerine yazıyordu.
+  testthat::expect_false(identical(kirpik_a, kirpik_b))
+  testthat::expect_true(nchar(kirpik_a, type = "bytes") <= 80L)
+  testthat::expect_true(nchar(kirpik_b, type = "bytes") <= 80L)
+})
+
+testthat::test_that("cc_fit_name_to_byte_budget bütçeye sığan adı değiştirmez", {
+  env <- .ccdl_env()
+  testthat::expect_identical(
+    env$cc_fit_name_to_byte_budget("on_", "rapor.txt", max_bytes = 255L),
+    "on_rapor.txt"
+  )
 })

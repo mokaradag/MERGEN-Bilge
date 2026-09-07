@@ -266,8 +266,14 @@ test_that("serverInitSessionState SSO reactiveValues alanını init sırasında 
     )
   )
 
+  # `eventExpr` artık `list(sso_state$authenticated, sso_state$user_claims)`
+  # biçimindedir: kullanıcı A -> B geçişinde `authenticated` TRUE kalıyor ve
+  # yalnızca onu izleyen gözlemci HİÇ çalışmıyordu (geri bildirim durumu eski
+  # kullanıcıda kalıyordu). Sözleşmenin AMACI korunur: alan yalnızca
+  # `observeEvent` eventExpr içinde izlenir, reactive context dışında okunmaz.
   expect_true(
-    .has_text(txt, "shiny::observeEvent(sso_state$authenticated"),
+    .has_text(txt, "shiny::observeEvent(sso_state$authenticated") ||
+      .has_text(txt, "list(sso_state$authenticated, sso_state$user_claims)"),
     label = "sso_state$authenticated yalnızca observeEvent eventExpr içinde izlenmelidir."
   )
 })

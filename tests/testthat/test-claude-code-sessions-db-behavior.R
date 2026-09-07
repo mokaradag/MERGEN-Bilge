@@ -254,6 +254,7 @@ test_that("devam durumu güncellemesi yalnızca verilen alanları yazar", {
       cli_session_id = "cli-abc-123",
       runtime_workdir = "C:/temp/runtime_2",
       status = "completed",
+      user_id = 7L,
       conn = conn
     )
     expect_true(ok)
@@ -271,7 +272,24 @@ test_that("devam durumu güncellemesi yalnızca verilen alanları yazar", {
     expect_identical(satir$SessionTitle[1], "t")
 
     # Hiç alan verilmezse (touch_last_run = FALSE) FALSE döner.
-    expect_false(cc_db_update_session_resume_state(sid, touch_last_run = FALSE, conn = conn))
+    expect_false(cc_db_update_session_resume_state(
+      sid, touch_last_run = FALSE, user_id = 7L, conn = conn
+    ))
+
+    # KULLANICI KAPSAMI ZORUNLUDUR: kapsamsız güncelleme reddedilir, yanlış
+    # sahiple yapılan güncelleme hiçbir satırı değiştirmez.
+    expect_false(cc_db_update_session_resume_state(
+      sid, cli_session_id = "kapsamsiz", conn = conn
+    ))
+    expect_false(cc_db_update_session_resume_state(
+      sid, cli_session_id = "yabanci", user_id = 99L, conn = conn
+    ))
+    korunan <- DBI::dbGetQuery(
+      conn,
+      "SELECT ClaudeCliSessionID FROM MB_ClaudeCode_Sessions WHERE ClaudeSessionRecordID = ?",
+      params = list(sid)
+    )
+    expect_identical(korunan$ClaudeCliSessionID[1], "cli-abc-123")
   })
 })
 
@@ -285,7 +303,7 @@ test_that("oturum listesi kullanıcı-izole çalışır ve filtreleri uygular", 
                                workdir = "C:/gizli", conn = conn)
 
     cc_db_save_run(a1, prompt = "p1", status = "completed", conn = conn)
-    cc_db_update_session_resume_state(a1, cli_session_id = "cli-1", conn = conn)
+    cc_db_update_session_resume_state(a1, cli_session_id = "cli-1", user_id = 1L, conn = conn)
 
     liste_a <- cc_db_list_sessions(user_id = 1L, conn = conn)
     expect_identical(nrow(liste_a), 2L)

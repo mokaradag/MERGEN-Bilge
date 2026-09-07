@@ -31,9 +31,16 @@ if (requireNamespace("shiny", quietly = TRUE)) {
   env$cc_release_runtime_lease <- function(...) invisible(TRUE)
   # Yalnızca süreç bitişi (!proc$is_alive()) dalına ulaşan testler için
   # gereklidir; erken dallar (durduruldu/zaman aşımı) buna hiç ulaşmaz.
-  env$parse_claude_code_json_output <- function(text) {
+  env$parse_claude_code_json_output <- function(text, prefer_result_text = FALSE) {
     list(text_output = "", tool_uses = list(), session_id = NULL)
   }
+  # Satır bütçesi ve ayrıştırma girdisi yardımcıları ORTAK dosyadadır
+  # (`cc_stream_all_lines` / `cc_stream_buffer_trimmed` / `cc_stream_append_line`);
+  # `cc_stream_collect_lines()` onları çağırır, bu yüzden izole ortama yüklenir.
+  source(file.path(resolve_repo_root_for_tests(), "R", "config_claude_code.R"),
+         encoding = "UTF-8", local = env)
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_output_buffer.R"),
+         encoding = "UTF-8", local = env)
   source(file.path(resolve_repo_root_for_tests(), "R", "module_claude_code_stream_poll.R"),
          encoding = "UTF-8", local = env)
   env

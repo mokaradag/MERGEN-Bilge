@@ -11,7 +11,8 @@
 .cc_codex_review_files <- function() {
   file.path(
     resolve_repo_root_for_tests(), "R",
-    c("helpers_claude_code_codex_runtime_fixes.R",
+    c("helpers_claude_code_codex_runtime_lock.R",
+      "helpers_claude_code_codex_runtime_fixes.R",
       "helpers_claude_code_codex_output_fixes.R")
   )
 }
@@ -119,11 +120,17 @@
     "helpers_claude_code_bounded_scan.R",
     "helpers_claude_code_input_matching.R",
     "helpers_claude_code_runtime_prepare.R",
+    "helpers_claude_code_runtime_lease.R",
     "helpers_claude_code_output_sync.R"
   )) {
     source(file.path(repo_root, "R", temel), encoding = "UTF-8", local = env)
   }
 
+  source(
+    file.path(repo_root, "R", "helpers_claude_code_codex_runtime_lock.R"),
+    encoding = "UTF-8",
+    local = env
+  )
   source(
     file.path(repo_root, "R", "helpers_claude_code_codex_runtime_fixes.R"),
     encoding = "UTF-8",
@@ -173,6 +180,7 @@ test_that("Codex hardening files parse and loader references both layers", {
   # Sertleştirme dosyaları kaynak manifestinden yüklenir. Manifest dışı
   # geç-yükleme, dosyaları seam sahipliği olmayan ölü koda çevirmişti.
   expect_source_manifest_contains_for_tests(c(
+    "R/helpers_claude_code_codex_runtime_lock.R",
     "R/helpers_claude_code_codex_runtime_fixes.R",
     "R/helpers_claude_code_codex_output_fixes.R"
   ))
@@ -184,6 +192,7 @@ test_that("Codex hardening files parse and loader references both layers", {
     "R/helpers_claude_code_runtime_prepare.R",
     "R/helpers_claude_code_output_sync.R",
     "R/helpers_claude_code_run_completion.R",
+    "R/helpers_claude_code_codex_runtime_lock.R",
     "R/helpers_claude_code_codex_runtime_fixes.R",
     "R/helpers_claude_code_codex_output_fixes.R"
   ))
@@ -284,6 +293,26 @@ test_that("runtime ownership marker is atomic and missing markers fail closed", 
 
   unlink(marker, force = TRUE)
   expect_false(env$cc_runtime_ownership_is(runtime, "request-a"))
+})
+
+test_that("dizin kilidi dayanikli sahiplik marker'i olmadan alinamaz", {
+  env <- .cc_codex_review_env()
+  taban <- withr::local_tempdir()
+  lock_dir <- file.path(taban, "kilit")
+
+  # Normal yol: marker yazılır, geri okunur ve jeton döner.
+  jeton <- env$.cc_codex_acquire_dir_lock(lock_dir, attempts = 1L)
+  expect_true(nzchar(jeton))
+  expect_identical(env$.cc_codex_lock_owner_token(lock_dir), jeton)
+  unlink(lock_dir, recursive = TRUE, force = TRUE)
+
+  # Marker yazılamayan dosya sistemi: sahiplik KANITLANAMAZ. Kilit alınmış
+  # sayılmamalı ve yeni oluşturulan kilit dizini geride bırakılmamalıdır
+  # (işaretsiz kilit 60 sn sonra ikinci bir worker tarafından devralınırdı).
+  env$writeLines <- function(...) invisible(NULL)
+  bos_jeton <- env$.cc_codex_acquire_dir_lock(lock_dir, attempts = 1L)
+  expect_identical(bos_jeton, "")
+  expect_false(dir.exists(lock_dir))
 })
 
 test_that("dispatch refuses reused runtime when ownership cannot be claimed", {
