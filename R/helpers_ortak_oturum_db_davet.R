@@ -596,7 +596,25 @@ ortak_db_canli_durumlar <- function(simdi = Sys.time(), conn = NULL) {
 
   sonuc$CanliDurum <- vapply(
     seq_len(nrow(sonuc)),
-    function(i) ortak_sunum_durumu(sonuc$SonKalpAtisiZamani[i], simdi = simdi_fallback),
+    function(i) {
+      ham <- sonuc$SonKalpAtisiZamani[i]
+      if (inherits(ham, "POSIXct")) {
+        # SABİT +3 SÖZLEŞMESİ: `MB_Ortak*` damgaları İstanbul duvar saatiyle
+        # yazılır ve bağlantıya saat dilimi verilmediği için `odbc` değeri UTC
+        # sayar. Saat dilimini FARKIN BÜYÜKLÜĞÜNDEN çıkarmak hatalıydı: tam 3
+        # saate yaklaşan eski bir kalp atışı `simdi` karşısında yalnızca birkaç
+        # saniye ileri görünüyor, tolerans aşılmadığı için +3 uygulanmıyor ve
+        # negatif fark sıfıra kırpılarak kullanıcı "Çevrimİçi" sınıflanıyordu.
+        # Metin damga dalı zaten `simdi_fallback` kullanır; iki dal artık aynı
+        # sözleşmeyi paylaşır.
+        return(ortak_sunum_durumu(ham, simdi = simdi_fallback))
+      }
+      # METİN damga: yukarıda TEMİZLENİP AYRIŞTIRILMIŞ değer kullanılır. Ham
+      # metin (`2026-09-09T10:00:00.123`) `ortak_sunum_durumu()` tarafından
+      # ayrıştırılamıyor, taze bir kalp atışı NA olup çevrim içi kullanıcı
+      # ÇevrimDışı sınıflanıyordu; temizleme tam da bunu önlemek içindi.
+      ortak_sunum_durumu(zamanlar[i], simdi = simdi_fallback)
+    },
     character(1),
     USE.NAMES = FALSE
   )

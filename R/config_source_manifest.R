@@ -41,8 +41,8 @@ source_manifest_sections <- list(
   ),
 
   # post_future_utils: Future cluster SONRASI yardımcılar: yol/güvenli yol,
-  # atomik yazma, upload doğrulama, log redaksiyonu, oturum temizliği, güvenli
-  # worker koşumu, dosya indeks ve Excel okuyucu.
+  # atomik yazma, upload doğrulama, log redaksiyonu, oturum temizliği,
+  # güvenli worker koşumu, dosya indeks ve Excel okuyucu.
   post_future_utils = c(
     "R/utils_path_helpers.R",
     "R/utils_safe_path.R",
@@ -55,8 +55,7 @@ source_manifest_sections <- list(
     "R/utils_excel_reader.R"
   ),
 
-  # config_app_core: SSO, dosya deposu (kilit/indeks/listeleme/registry),
-  # karakter/persona ve sürüm geçmişi.
+  # config_app_core: SSO, dosya deposu, karakter/persona ve sürüm geçmişi.
   config_app_core = c(
     "R/config_sso.R",
     "R/config_file_store.R",
@@ -137,9 +136,9 @@ source_manifest_sections <- list(
   ),
 
   # pk_query_metadata: PK sorgu metadata SÖZLEŞMESİ (Faz 3a). Sıra §6 ile
-  # ZORUNLU: Türkçe katlama önce, sonra dört veri katmanı; hepsi
-  # config_sql_loader.R'den ÖNCE biter. Yerel iki dosya BİLİNÇLİ opsiyoneldir
-  # (gitignore'lu); bulut checkout'unda yoklukları NORMALDİR.
+  # ZORUNLU: Türkçe katlama önce, sonra dört veri katmanı; config_sql_loader.R'den
+  # ÖNCE biter. Yerel iki dosya BİLİNÇLİ opsiyoneldir (gitignore'lu); bulut
+  # checkout'unda yoklukları NORMALDİR.
   pk_query_metadata = c(
     "R/helpers_pk_ascii_tokens.R", "R/helpers_pk_text_turkish.R",  # makine belirteçleri (ASCII katlama), sonra Türkçe metin
     "R/helpers_pk_query_meta_schema.R",
@@ -184,15 +183,14 @@ source_manifest_sections <- list(
     "R/helpers_chartlab.R"
   ),
 
-  # files_preview_pipeline: Görsel galeri, önizleme, dosya pipeline, dosya
-  # yol/okuma yardımcıları ve bloklamayan dosya alım (ingestion) hattı.
-  # Alım zinciri saf plan -> worker -> kuyruk -> ana süreç runtime sırasını
-  # korur ve copy_to_mcp_base tanımlandıktan SONRA yüklenir.
+  # files_preview_pipeline: galeri, önizleme, pipeline, yol/aşamalı kopya/okuma
+  # yardımcıları ve alım hattı (plan -> worker -> kuyruk -> runtime; copy SONRA).
   files_preview_pipeline = c(
     "R/helpers_image_gallery.R",
     "R/helpers_preview.R",
     "R/helpers_file_pipeline.R",
     "R/helpers_files_path.R",
+    "R/helpers_files_copy_promote.R",
     "R/helpers_files.R",
     "R/helpers_file_ingestion_task.R",
     "R/helpers_file_ingestion_worker.R",
@@ -201,8 +199,8 @@ source_manifest_sections <- list(
   ),
 
   # file_manager_helpers: Dosya Yönetimi yardımcı zinciri: politika, bağlam
-  # politikası, tablo, refresh guard, oturum registry, runtime, depolama, silme,
-  # state runtime ve attach/tablo runtime istemci yardımcıları.
+  # politikası, tablo, refresh guard, oturum registry, runtime, depolama,
+  # yan etki geri alma, yükleme/silme, state runtime ve attach/tablo runtime.
   file_manager_helpers = c(
     "R/helpers_file_manager_policy.R",
     "R/helpers_file_manager_context_policy.R",
@@ -211,6 +209,7 @@ source_manifest_sections <- list(
     "R/helpers_file_manager_session_registry.R",
     "R/helpers_file_manager_runtime.R",
     "R/helpers_file_manager_storage.R",
+    "R/helpers_file_manager_artifact_recovery.R",
     "R/helpers_file_manager_upload_runtime.R",
     "R/helpers_file_manager_delete_runtime.R",
     "R/helpers_file_manager_state_runtime.R",
@@ -368,9 +367,10 @@ source_manifest_sections <- list(
     "R/helpers_pk_query_selection_apply.R"
   ),
 
-  # sso_identity_helpers: SSO imza doğrulama, SSO akışı ve logout URL
-  # yardımcıları.
+  # sso_identity_helpers: JWKS önbelleği, SSO imza doğrulama, SSO akışı ve
+  # logout URL yardımcıları. JWKS önbelleği imza dosyasından ÖNCE yüklenir.
   sso_identity_helpers = c(
+    "R/helpers_sso_jwks_cache.R",
     "R/helpers_sso_signature.R",
     "R/helpers_sso.R",
     "R/helpers_logout_url.R"
@@ -434,6 +434,7 @@ source_manifest_sections <- list(
     # katmanından ÖNCE yüklenir; girdi ve doküman seçimi buna dayanır.
     "R/helpers_claude_code_input_matching.R",
     "R/helpers_claude_code_runtime_prepare.R",
+    "R/helpers_claude_code_runtime_lease.R",  # kilit: output_sync'ten ÖNCE
     "R/helpers_claude_code_output_sync.R",
     "R/helpers_claude_code_runtime_workdir.R",
     "R/helpers_claude_code_security_policy.R",
@@ -443,6 +444,7 @@ source_manifest_sections <- list(
     # Dizin gezgini numaralandırmasını ana olay döngüsünden çıkaran worker
     # global paketi; listeleme yardımcısından SONRA yüklenmelidir.
     "R/helpers_claude_code_dir_listing_async.R",
+    "R/helpers_claude_code_output_buffer.R",
     "R/helpers_claude_code.R",
     "R/helpers_claude_code_server_setup.R",
     "R/helpers_claude_code_streaming.R",
@@ -468,15 +470,16 @@ source_manifest_sections <- list(
     "R/helpers_claude_code_session_persistence.R",
     "R/helpers_claude_code_workbench_session_api.R",
     "R/helpers_claude_code_run_lifecycle.R",
-    # Ana süreç tarafı: hazırlık gönderimi/aşama durumu ve süreç başlatma,
-    # ardından çalıştırma sonrası çıktı işleme ve sonlandırma.
+    # Ana süreç tarafı: hazırlık gönderimi/aşama durumu ve süreç başlatma, sonra
+    # çıktı işleme (worker gövdesi) + deadline'lı gönderim (output_dispatch).
     "R/helpers_claude_code_run_dispatch.R",
     "R/helpers_claude_code_run_completion.R",
-    # PR #672 Codex inceleme sertleştirmeleri. Bu iki dosya yukarıdaki Bilge
-    # Yolaç yardımcılarında tanımlı fonksiyonların bir kısmını fail-closed
-    # sürümleriyle DEĞİŞTİRİR; bu yüzden zincirin EN SONUNDA ve runtime ->
-    # output sırasıyla yüklenmelidir. Manifest dışı geç-yükleme denenmemeli:
-    # o yol dosyaları sahipsiz bırakıp (seam doctor) sessizce ölü koda çevirir.
+    "R/helpers_claude_code_run_output_dispatch.R",
+    # PR #672 Codex sertleştirmeleri: yukarıdaki Bilge Yolaç fonksiyonlarının bir
+    # kısmını fail-closed sürümleriyle DEĞİŞTİRİR; zincirin EN SONUNDA ve
+    # lock -> runtime -> output sırasıyla yüklenmelidir (manifest dışı geç-yükleme
+    # dosyaları sahipsiz bırakıp sessizce ölü koda çevirir).
+    "R/helpers_claude_code_codex_runtime_lock.R",
     "R/helpers_claude_code_codex_runtime_fixes.R",
     "R/helpers_claude_code_codex_output_fixes.R"
   ),
@@ -585,15 +588,15 @@ source_manifest_sections <- list(
 
   # bilge_savunmasi: Bilge Savunması (kule savunma oyunu). Yapılandırma +
   # persona oyun manifesti önce, saf doğrulama/puanlama katmanı sonra, DB
-  # katmanı (çekirdek altyapı -> koşu yaşam döngüsü -> eşzamansız topluluk)
-  # ardından, UI ve sunucu modülü en sonda. MB_Game_* tabloları yoksa tüm
-  # katman güvenli boş sonuçla çalışır (docs/bilge-savunmasi.md).
+  # katmanı (çekirdek -> koşu -> topluluk -> savunma planı), UI ve sunucu
+  # modülü en sonda. MB_Game_* yoksa katman güvenli boş sonuçla çalışır.
   bilge_savunmasi = c(
     "R/config_bilge_savunmasi.R",
     "R/helpers_bilge_savunmasi_validation.R",
     "R/helpers_db_bilge_savunmasi_cekirdek.R",
     "R/helpers_db_bilge_savunmasi_kosu.R",
     "R/helpers_db_bilge_savunmasi_topluluk.R",
+    "R/helpers_db_bilge_savunmasi_plan.R",
     "R/module_bilge_savunmasi_ui.R",
     "R/module_bilge_savunmasi.R"
   ),

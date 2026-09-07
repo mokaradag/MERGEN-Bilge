@@ -169,3 +169,4 @@ test_that("boş veri grafikleri hatasız boş highchart döndürür", {
     }
   })
 })
+

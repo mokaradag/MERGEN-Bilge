@@ -31,7 +31,9 @@ resolve_claude_code_document_detail_level <- function(prompt) {
       "kapsamli",
       "ayrıntılı",
       "ayrintili",
-      "tam",
+      # "tam" sözcük sınırı olmadan "tamir", "tamam", "tamamlandı" gibi
+      # sözcüklerin içinde de eşleşiyordu ve detay seviyesi yanlış çözülüyordu.
+      "\\btam\\b",
       "tamamını",
       "tamamini",
       "satır satır",

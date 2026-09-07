@@ -661,5 +661,18 @@ get_safe_claude_cli_workdir <- function(workdir = NULL) {
     return(normalizePath(aday, winslash = "/", mustWork = FALSE))
   }
 
-  normalizePath(tempdir(), winslash = "/", mustWork = FALSE)
+  # `tempdir()` silinmişse aday döngüsü onu ATLAR ve fallback aynı var olmayan
+  # yolu döndürüyordu; sonraki `processx` çağrısı geçersiz `wd` ile başlamıyordu.
+  yedek <- tempdir()
+  if (!dir.exists(yedek)) {
+    try(dir.create(yedek, recursive = TRUE, showWarnings = FALSE), silent = TRUE)
+  }
+  if (!dir.exists(yedek)) {
+    stop(
+      "Bilge Yolaç için güvenli bir çalışma dizini oluşturulamadı.",
+      call. = FALSE
+    )
+  }
+
+  normalizePath(yedek, winslash = "/", mustWork = FALSE)
 }

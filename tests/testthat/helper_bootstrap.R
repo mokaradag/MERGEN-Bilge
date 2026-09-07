@@ -121,6 +121,9 @@ repo_root_for_tests <- resolve_repo_root_for_tests()
 # Testlerde kullanılan yardımcı fonksiyon ve dosyaları global ortama yükler.
 source(file.path(repo_root_for_tests, "R", "utils_safe_source.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "utils_text_encoding.R"), encoding = "UTF-8", local = .test_global)
+# Ortak temel yardımcılar (mergen_env_flag, safe_trimws vb.): üretim manifesti
+# bu dosyayı temel katmanda yükler; izole testler de aynı tanımları görsün.
+source(file.path(repo_root_for_tests, "R", "utils_common.R"), encoding = "UTF-8", local = .test_global)
 # Performans ölçüm yardımcısı: üretim manifesti bu dosyayı loglamadan hemen
 # sonra yükler. Test bootstrap'ı da aynı sırayı yansıtır ki opt-in [PERF]
 # kancaları (örn. DB bağlantı süreleri) izole testlerde de görünür olsun.
@@ -152,6 +155,7 @@ source(file.path(repo_root_for_tests, "R", "helpers_file_manager_refresh_guard.R
 source(file.path(repo_root_for_tests, "R", "helpers_file_manager_session_registry.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_file_manager_runtime.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_file_manager_storage.R"), encoding = "UTF-8", local = .test_global)
+source(file.path(repo_root_for_tests, "R", "helpers_file_manager_artifact_recovery.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_file_manager_delete_runtime.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_claude_code_session_context.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_claude_code_dir_ui.R"), encoding = "UTF-8", local = .test_global)

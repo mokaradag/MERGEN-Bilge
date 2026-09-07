@@ -63,6 +63,21 @@ test_that("canlı durum sınıflandırması POSIXct ve kesirli-saniye biçimleri
   expect_identical(ortak_sunum_durumu("gecersiz", simdi = simdi), .ood_cevrimdisi)
 })
 
+test_that("varsayılan referans yerel POSIXct kalp atışını ÇevrimDışı göstermez", {
+  # Regresyon: varsayılan `simdi` her girdi türü için +3 saat kaydırılıyordu.
+  # ODBC DATETIME2 çoğu sürücüde POSIXct döner ve bu değer zaten MUTLAK bir
+  # an'dır; şu an atılan bir kalp atışı 3 saat eski görünüp ÇevrimDışı
+  # sınıflanıyordu.
+  expect_identical(ortak_sunum_durumu(Sys.time()), .ood_cevrimici)
+  expect_identical(ortak_sunum_durumu(Sys.time() - 30), .ood_cevrimici)
+  expect_identical(ortak_sunum_durumu(Sys.time() - 3600), .ood_cevrimdisi)
+
+  # Metin değer Türkiye yerel saatinde saklanıp UTC gibi ayrıştırıldığı için
+  # varsayılan referans yalnızca bu durumda kaydırılmaya devam eder.
+  taze_metin <- format(Sys.time() + 3L * 3600L, "%Y-%m-%d %H:%M:%S", tz = "UTC")
+  expect_identical(ortak_sunum_durumu(taze_metin), .ood_cevrimici)
+})
+
 test_that("canlı durum saat dilimli POSIXct instant'ını korur (metne çevirmeden)", {
   simdi <- as.POSIXct("2026-07-05 12:00:00", tz = "UTC")
 

@@ -5,12 +5,16 @@
 # ==============================================================================
 
 .normalize_user_session_id <- function(user_id, allow_zero = TRUE) {
-  uid <- suppressWarnings(as.integer(user_id %||% 0L))
-
-  if (is.na(uid) || uid < 0L || (!isTRUE(allow_zero) && uid <= 0L)) {
-    return(0L)
+  # Kayıplı dönüşüm reddedilir (`as.integer(1.9)` -> 1): ortak kanonik
+  # doğrulayıcı sıfır olmayan yalnızca tam sayı kimlikleri kabul eder.
+  uid <- if (exists("mergen_canonical_user_id", mode = "function", inherits = TRUE)) {
+    mergen_canonical_user_id(user_id %||% 0L)
+  } else {
+    deger <- suppressWarnings(as.integer(user_id %||% 0L))
+    if (is.na(deger) || deger <= 0L) 0L else deger
   }
 
+  if (uid <= 0L) return(0L)
   uid
 }
 
@@ -150,6 +154,13 @@ make_user_session_data_accessors <- function(session) {
       set_value("sso_active", isTRUE(sso_active))
       set_value("auth_source", auth_source)
       set_value("auth_initialized", FALSE)
+      # Kimlik alanları da temizlenir: bunları doğrudan okuyan gözlemciler,
+      # token süresi dolduktan sonra önceki kullanıcının adını/yapılandırmasını
+      # kullanmaya devam ediyordu.
+      set_value("user_identity", NULL)
+      set_value("user_config", NULL)
+      set_value("user_first_name", NULL)
+      set_value("system_username", NULL)
 
       invisible(NULL)
     },
@@ -167,6 +178,12 @@ make_user_session_data_accessors <- function(session) {
 
     get_first_name = function(default = "") {
       get_value("user_first_name", default)
+    },
+
+    # SSO claim DEĞİŞİMİNİ (aynı oturumda ikinci kullanıcı) saptamak için
+    # gereklidir: gözlemci yalnızca aynı kullanıcı için erken dönebilmelidir.
+    get_system_username = function(default = "") {
+      get_value("system_username", default)
     },
 
     get_auth_source = function(default = NULL) {

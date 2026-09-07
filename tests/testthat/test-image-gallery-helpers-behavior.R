@@ -139,6 +139,63 @@ test_that("update_message_after_image_deletion GÖRSEL etiketini silinme mesajı
   expect_false(grepl("[GÖRSEL:foo.png]", yakalanan$p[[1]], fixed = TRUE))
 })
 
+# -----------------------------------------------------------------------------
+# delete_single_image: boş klasör temizliğinin yol sınırı
+# -----------------------------------------------------------------------------
+
+test_that("delete_single_image kök dışındaki klasörü chat_id ile silemez", {
+  # Ortam repo kökünden kurulur; çalışma dizini SONRA değiştirilir
+  # (delete_single_image kullanıcı kökünü getwd() üzerinden çözer).
+  env <- .ig_make_env()
+  env$update_message_after_image_deletion <- function(...) invisible(NULL)
+
+  kok <- withr::local_tempdir()
+  withr::local_dir(kok)
+
+  dir.create(file.path(kok, "user_images", "7", "42"), recursive = TRUE)
+  gorsel <- file.path(kok, "user_images", "7", "42", "a.png")
+  writeLines("x", gorsel)
+  disarida <- file.path(kok, "disarida_bos")
+  dir.create(disarida)
+
+  # Yol geçişi: istemciden gelen chat_id yol bileşeni olarak kullanılamaz.
+  expect_true(env$delete_single_image(gorsel, 7, "../../disarida_bos"))
+  expect_true(dir.exists(disarida))
+  expect_false(file.exists(gorsel))
+})
+
+test_that("delete_single_image geçerli chat_id ile boş klasörü temizler", {
+  env <- .ig_make_env()
+  env$update_message_after_image_deletion <- function(...) invisible(NULL)
+
+  kok <- withr::local_tempdir()
+  withr::local_dir(kok)
+
+  dir.create(file.path(kok, "user_images", "7", "43"), recursive = TRUE)
+  gorsel <- file.path(kok, "user_images", "7", "43", "b.png")
+  writeLines("x", gorsel)
+
+  expect_true(env$delete_single_image(gorsel, 7, "43"))
+  expect_false(dir.exists(file.path(kok, "user_images", "7", "43")))
+})
+
+test_that("delete_single_image gizli dosya içeren klasörü silmez", {
+  env <- .ig_make_env()
+  env$update_message_after_image_deletion <- function(...) invisible(NULL)
+
+  kok <- withr::local_tempdir()
+  withr::local_dir(kok)
+
+  sohbet <- file.path(kok, "user_images", "7", "44")
+  dir.create(sohbet, recursive = TRUE)
+  gorsel <- file.path(sohbet, "c.png")
+  writeLines("x", gorsel)
+  writeLines("gizli", file.path(sohbet, ".gizli"))
+
+  expect_true(env$delete_single_image(gorsel, 7, "44"))
+  expect_true(dir.exists(sohbet))
+})
+
 test_that("galeri silme düğmesi submit davranışına düşmez", {
   full_path <- file.path(resolve_repo_root_for_tests(), "R", "module_image_gallery.R")
   size <- file.info(full_path)$size[1]

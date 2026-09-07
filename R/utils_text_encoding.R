@@ -80,6 +80,12 @@ unicode_to_latin1_byte <- function(codepoint) {
     return(text)
   }
 
+  # Ucuz ön denetim: mojibake öncü baytı (0xC2-0xF4) yalnızca U+00C2-U+00F4
+  # (Â..ô) karakterlerinden gelir; metinde hiç yoksa döngüye girilmez.
+  if (!any(codepoints >= 0xC2L & codepoints <= 0xF4L)) {
+    return(text)
+  }
+
   bytes <- vapply(codepoints, byte_mapper, integer(1), USE.NAMES = FALSE)
   output <- character(length(codepoints))
   output_count <- 0L
@@ -372,6 +378,31 @@ normalize_text_for_log <- function(x) {
   )
 }
 
+# Ham baytların SONUNDAKİ eksik (yarım) UTF-8 dizisinin bayt uzunluğunu döner.
+# 0 => kuyruk eksik değildir (geçersiz bayt da 0 döner; kör kırpılmamalıdır).
+.mergen_utf8_eksik_kuyruk <- function(ham) {
+  n <- length(ham)
+  if (n == 0L) return(0L)
+  for (geri in 0:min(3L, n - 1L)) {
+    b <- as.integer(ham[n - geri])
+    if (bitwAnd(b, 0xC0L) == 0x80L) next          # devam baytı: daha geriye bak
+    beklenen <- if (bitwAnd(b, 0x80L) == 0x00L) {
+      1L
+    } else if (bitwAnd(b, 0xE0L) == 0xC0L) {
+      2L
+    } else if (bitwAnd(b, 0xF0L) == 0xE0L) {
+      3L
+    } else if (bitwAnd(b, 0xF8L) == 0xF0L) {
+      4L
+    } else {
+      return(0L)                                  # geçersiz baş bayt
+    }
+    mevcut <- geri + 1L
+    return(if (mevcut < beklenen) as.integer(mevcut) else 0L)
+  }
+  0L
+}
+
 read_text_lines_utf8 <- function(path,
                                  encodings = c("UTF-8", "WINDOWS-1254", "CP1254", "latin1"),
                                  repair_mojibake = FALSE,
@@ -394,28 +425,108 @@ read_text_lines_utf8 <- function(path,
   on.exit(close(con), add = TRUE)
 
   raw_content <- readBin(con, what = "raw", n = read_size)
-  iconv_sub <- if (is.null(max_bytes)) NA_character_ else ""
+  kesildi <- !is.null(max_bytes) && read_size < raw_size
 
-  for (encoding_name in encodings) {
-    txt <- tryCatch(
-      iconv(list(raw_content), from = encoding_name, to = "UTF-8", sub = iconv_sub)[[1]],
-      error = function(e) NA_character_
+  # Faz sırası: (0) TERCİH EDİLEN kodlama kırpmasız, (0b) tercih edilen kodlama
+  # yalnızca GERÇEKTEN eksik çok baytlı kuyruk kırpılarak, (1) kalan kodlamalar
+  # kırpmasız, (2) kesilmiş okumada tüm kodlamalar kör kırpmayla, (3) son çare
+  # ilk adayla kayıplı dönüşüm.
+  #
+  # Faz 0b olmadan, UTF-8 dosyası son çok baytlı karakterin ORTASINDAN
+  # kesildiğinde UTF-8 başarısız oluyor ve akış hemen WINDOWS-1254/latin1'e
+  # düşüyordu; bu tek baytlı kodlamalar genelde başarılı olduğu için SAKLANAN
+  # ÖNEKİN TAMAMI yanlış çözülüyordu. Kör kırpma faz 2'de kalır: kesik bir
+  # CP1254 dosyasının son GEÇERLİ baytı (ör. 0xFE = ş) düşürülüp metin UTF-8
+  # sayılmamalıdır (0xFE geçerli bir UTF-8 baş baytı değildir, bu yüzden faz 0b
+  # onu kırpmaz).
+  n_enc <- length(encodings)
+  kirpma_var <- kesildi && n_enc > 0L
+  eksik_kuyruk <- if (kirpma_var) .mergen_utf8_eksik_kuyruk(raw_content) else 0L
+  faz0b <- kirpma_var && eksik_kuyruk > 0L &&
+    identical(toupper(encodings[1]), "UTF-8")
+
+  adaylar <- c(
+    encodings[1],
+    if (faz0b) encodings[1] else NULL,
+    if (n_enc > 1L) encodings[-1] else NULL,
+    if (kirpma_var) encodings else NULL,
+    if (kirpma_var) encodings[1] else NULL
+  )
+  kirp <- c(
+    FALSE,
+    if (faz0b) TRUE else NULL,
+    if (n_enc > 1L) rep(FALSE, n_enc - 1L) else NULL,
+    if (kirpma_var) rep(TRUE, n_enc) else NULL,
+    if (kirpma_var) FALSE else NULL
+  )
+  kayipli <- c(
+    FALSE,
+    if (faz0b) FALSE else NULL,
+    if (n_enc > 1L) rep(FALSE, n_enc - 1L) else NULL,
+    if (kirpma_var) rep(FALSE, n_enc) else NULL,
+    if (kirpma_var) TRUE else NULL
+  )
+  # Faz 0b YALNIZCA doğrulanmış eksik kuyruğu düşürür; kör kırpmaya dönüşmez.
+  tam_kirpma <- c(
+    FALSE,
+    if (faz0b) FALSE else NULL,
+    if (n_enc > 1L) rep(FALSE, n_enc - 1L) else NULL,
+    if (kirpma_var) rep(TRUE, n_enc) else NULL,
+    if (kirpma_var) FALSE else NULL
+  )
+  secilen <- NA_character_
+
+  for (i in seq_along(adaylar)) {
+    encoding_name <- adaylar[i]
+    sub_degeri <- if (isTRUE(kayipli[i])) "" else NA_character_
+
+    txt <- try(
+      iconv(list(raw_content), from = encoding_name, to = "UTF-8", sub = sub_degeri)[[1]],
+      silent = TRUE
     )
+    if (inherits(txt, "try-error")) txt <- NA_character_
 
-    if (is.na(txt) || !nzchar(txt)) {
-      next
+    if (is.na(txt) && isTRUE(kirp[i]) && !isTRUE(tam_kirpma[i])) {
+      # Faz 0b: yalnızca doğrulanmış eksik UTF-8 kuyruğu düşürülür.
+      kirpik <- try(
+        iconv(
+          list(raw_content[seq_len(length(raw_content) - eksik_kuyruk)]),
+          from = encoding_name, to = "UTF-8", sub = NA_character_
+        )[[1]],
+        silent = TRUE
+      )
+      txt <- if (inherits(kirpik, "try-error")) NA_character_ else kirpik
+    } else if (is.na(txt) && isTRUE(kirp[i])) {
+      for (k in seq_len(min(3L, length(raw_content) - 1L))) {
+        kirpik <- try(
+          iconv(
+            list(raw_content[seq_len(length(raw_content) - k)]),
+            from = encoding_name, to = "UTF-8", sub = NA_character_
+          )[[1]],
+          silent = TRUE
+        )
+        if (inherits(kirpik, "try-error")) kirpik <- NA_character_
+        txt <- kirpik
+        if (!is.na(txt)) break
+      }
     }
 
-    bom <- intToUtf8(0xFEFF)
-    if (startsWith(txt, bom)) {
-      txt <- substring(txt, 2L)
+    if (!is.na(txt) && nzchar(txt)) {
+      secilen <- txt
+      break
     }
-
-    txt <- normalize_text_utf8(txt, repair_mojibake = repair_mojibake)
-
-    lines <- strsplit(txt, "\\r\\n|\\n|\\r", perl = TRUE)[[1]]
-    return(normalize_text_utf8(lines, repair_mojibake = repair_mojibake))
   }
 
-  character(0)
+  if (is.na(secilen)) {
+    return(character(0))
+  }
+
+  bom <- intToUtf8(0xFEFF)
+  if (startsWith(secilen, bom)) {
+    secilen <- substring(secilen, 2L)
+  }
+
+  secilen <- normalize_text_utf8(secilen, repair_mojibake = repair_mojibake)
+  lines <- strsplit(secilen, "\\r\\n|\\n|\\r", perl = TRUE)[[1]]
+  normalize_text_utf8(lines, repair_mojibake = repair_mojibake)
 }

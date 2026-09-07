@@ -19,6 +19,11 @@
     return(invisible(TRUE))
   }
   source(
+    file.path(resolve_repo_root_for_tests(), "R", "helpers_sso_jwks_cache.R"),
+    encoding = "UTF-8",
+    local = globalenv()
+  )
+  source(
     file.path(resolve_repo_root_for_tests(), "R", "helpers_sso_signature.R"),
     encoding = "UTF-8",
     local = globalenv()
@@ -400,7 +405,10 @@ testthat::test_that("validate_jwt_token imza açıkken geçerli imzalı token'ı
     }
   }, add = TRUE)
 
-  token <- .sig_make_signed_jwt(key, list(preferred_username = "imzali_user"))
+  token <- .sig_make_signed_jwt(key, list(
+    preferred_username = "imzali_user",
+    azp                = SSO_CONFIG$client_id
+  ))
   sonuc <- validate_jwt_token(token)
   testthat::expect_true(sonuc$valid)
   testthat::expect_identical(sonuc$payload$preferred_username, "imzali_user")
@@ -430,4 +438,235 @@ testthat::test_that("validate_jwt_token imza açıkken geçersiz imzalı token'�
   forged <- .sig_make_signed_jwt(attacker, list(preferred_username = "saldirgan"))
   sonuc <- validate_jwt_token(forged)
   testthat::expect_false(sonuc$valid)
+})
+
+# ------------------------------------------------------------------------------
+# JWKS NEGATİF ÖNBELLEK (bilinmeyen kid) SINIRLARI
+# ------------------------------------------------------------------------------
+
+testthat::test_that("başarısız JWKS getirme negatif önbelleğe YAZILMAZ", {
+  .sso_sig_source_once()
+  sso_jwks_cache_clear()
+  on.exit(sso_jwks_cache_clear(), add = TRUE)
+
+  cfg <- list(jwks_endpoint = "https://kc.local/certs", jwks_cache_ttl_secs = 3600L)
+  token <- .sig_kid_token("kc-yeni")
+  simdi <- Sys.time()
+
+  # Taşıma/HTTP hatası: fetch NULL döner.
+  calls <- new.env(parent = emptyenv()); calls$n <- 0L
+  hatali_fetch <- function(url) { calls$n <- calls$n + 1L; NULL }
+
+  testthat::expect_null(sso_resolve_signing_key(
+    token, config = cfg, fetch_fn = hatali_fetch, now = simdi
+  ))
+
+  jwk <- list(kid = "kc-yeni", kty = "RSA", n = "AAAA", e = "AQAB")
+  saglikli_fetch <- function(url) { calls$n <- calls$n + 1L; list(jwk) }
+
+  # GERİ ÇEKİLME PENCERESİ: başarısız yenilemeden hemen sonra yeni bir SENKRON
+  # istek başlatılmaz (tek iş parçacıklı süreç aksi hâlde her token
+  # doğrulamasında timeout bekliyordu).
+  testthat::expect_null(sso_resolve_signing_key(
+    token, config = cfg, fetch_fn = saglikli_fetch, now = simdi + 1
+  ))
+  testthat::expect_identical(calls$n, 1L)
+
+  # Pencere geçtiğinde yeniden DENENİR: başarısızlık KALICI negatif giriş
+  # üretmez, uç nokta toparlandığında geçerli token kabul edilir.
+  testthat::expect_false(is.null(sso_resolve_signing_key(
+    token, config = cfg, fetch_fn = saglikli_fetch,
+    now = simdi + .SSO_JWKS_FETCH_BACKOFF_SEC + 1
+  )))
+  testthat::expect_identical(calls$n, 2L)
+})
+
+testthat::test_that("başarılı yenilemede eksik kid negatif önbelleğe alınır", {
+  .sso_sig_source_once()
+  sso_jwks_cache_clear()
+  on.exit(sso_jwks_cache_clear(), add = TRUE)
+
+  cfg <- list(jwks_endpoint = "https://kc.local/certs", jwks_cache_ttl_secs = 3600L)
+  token <- .sig_kid_token("kc-bilinmeyen")
+  calls <- new.env(parent = emptyenv()); calls$n <- 0L
+  # Yenileme BAŞARILI ama istenen kid yok.
+  fetch <- function(url) {
+    calls$n <- calls$n + 1L
+    list(list(kid = "kc-baska", kty = "RSA", n = "AAAA", e = "AQAB"))
+  }
+
+  testthat::expect_null(sso_resolve_signing_key(token, config = cfg, fetch_fn = fetch))
+  testthat::expect_null(sso_resolve_signing_key(token, config = cfg, fetch_fn = fetch))
+  # Negatif TTL içinde ikinci istek JWKS getirmemeli.
+  testthat::expect_identical(calls$n, 1L)
+})
+
+testthat::test_that("negatif önbellek dolduğunda EN ESKİ giriş düşürülür", {
+  .sso_sig_source_once()
+  sso_jwks_cache_clear()
+  on.exit(sso_jwks_cache_clear(), add = TRUE)
+
+  cfg <- list(jwks_endpoint = "https://kc.local/certs", jwks_cache_ttl_secs = 3600L)
+  fetch <- function(url) list(list(kid = "kc-baska", kty = "RSA", n = "AAAA", e = "AQAB"))
+
+  simdi <- Sys.time()
+  # Kapasiteyi TAZE girişlerle doldur (yaş farkları eviction sırasını belirler).
+  # Aralık negatif TTL ÜST SINIRININ (60 sn) altında tutulur; saniyelik adım
+  # girişleri süresi dolmuş yapıp kapasiteyi hiç doldurmuyordu.
+  for (i in seq_len(.SSO_JWKS_NEGATIVE_CACHE_MAX)) {
+    invisible(sso_resolve_signing_key(
+      .sig_kid_token(paste0("kid-", i)), config = cfg, fetch_fn = fetch,
+      now = simdi + i / 1000
+    ))
+  }
+  negatifler <- .sso_jwks_negative_names()
+  testthat::expect_identical(length(negatifler), as.integer(.SSO_JWKS_NEGATIVE_CACHE_MAX))
+
+  # Yeni bir bilinmeyen kid: kapasite dolu olsa da ÖNBELLEĞE ALINMALI.
+  yeni_token <- .sig_kid_token("kid-yeni")
+  invisible(sso_resolve_signing_key(
+    yeni_token, config = cfg, fetch_fn = fetch,
+    now = simdi + (.SSO_JWKS_NEGATIVE_CACHE_MAX + 1) / 1000
+  ))
+  negatifler <- .sso_jwks_negative_names()
+  testthat::expect_identical(length(negatifler), as.integer(.SSO_JWKS_NEGATIVE_CACHE_MAX))
+  # Anahtar TAM eşleştirilir: "|kid-1" öneki "kid-10" ile de eşleşirdi.
+  testthat::expect_true("https://kc.local/certs|kid|kid-yeni" %in% negatifler)
+  # En eski giriş (kid-1) düşmüş olmalı.
+  testthat::expect_false("https://kc.local/certs|kid|kid-1" %in% negatifler)
+})
+
+# Regresyon: negatif önbellek ile getirme geri çekilmesi AYNI ad kalıbını
+# paylaşıyordu. Doğrulanmamış JWT başlığı rezerve etiketi `kid` olarak
+# gönderdiğinde başarılı bir yenileme geri çekilme kaydını ÜZERİNE yazıyor ve
+# 30 sn boyunca hem bayat önbellek tazelenemiyor hem de bilinmeyen kid
+# yenilenemiyordu (rotasyonda geçerli girişler reddediliyordu).
+testthat::test_that("rezerve kid değeri getirme geri çekilme kaydını ezemez", {
+  .sso_sig_source_once()
+  sso_jwks_cache_clear()
+  on.exit(sso_jwks_cache_clear(), add = TRUE)
+
+  cfg <- list(jwks_endpoint = "https://kc.local/certs", jwks_cache_ttl_secs = 3600L)
+  cagri <- new.env(parent = emptyenv())
+  cagri$n <- 0L
+  fetch <- function(url) {
+    cagri$n <- cagri$n + 1L
+    list(list(kid = "kc-gercek", kty = "RSA", n = "AAAA", e = "AQAB"))
+  }
+
+  simdi <- Sys.time()
+
+  # Rezerve etiketi `kid` olarak gönder: negatif giriş yazılır.
+  invisible(sso_resolve_signing_key(
+    .sig_kid_token("__fetch_backoff__"), config = cfg, fetch_fn = fetch, now = simdi
+  ))
+  testthat::expect_identical(cagri$n, 1L)
+
+  # Geri çekilme kaydı OLUŞMAMALIDIR (getirme başarılıydı).
+  testthat::expect_false(
+    exists(paste0("https://kc.local/certs", .SSO_JWKS_FETCH_BACKOFF_TAG),
+           envir = .sso_jwks_cache, inherits = FALSE)
+  )
+
+  # BAŞKA bir bilinmeyen kid hâlâ JWKS yenilemesi tetikleyebilmelidir.
+  invisible(sso_resolve_signing_key(
+    .sig_kid_token("kid-diger"), config = cfg, fetch_fn = fetch, now = simdi + 1
+  ))
+  testthat::expect_identical(cagri$n, 2L)
+
+  # GEÇERLİ kid de aynı pencerede çözülebilmelidir.
+  anahtar <- sso_resolve_signing_key(
+    .sig_kid_token("kc-gercek"), config = cfg, fetch_fn = fetch, now = simdi + 2
+  )
+  testthat::expect_false(is.null(anahtar))
+})
+
+testthat::test_that("süresi dolan negatif giriş ls() içinde kalmaz (rm ile silinir)", {
+  .sso_sig_source_once()
+  sso_jwks_cache_clear()
+  on.exit(sso_jwks_cache_clear(), add = TRUE)
+
+  cfg <- list(jwks_endpoint = "https://kc.local/certs", jwks_cache_ttl_secs = 3600L)
+  fetch <- function(url) list(list(kid = "kc-baska", kty = "RSA", n = "AAAA", e = "AQAB"))
+  simdi <- Sys.time()
+
+  invisible(sso_resolve_signing_key(.sig_kid_token("eski-kid"), config = cfg,
+                                    fetch_fn = fetch, now = simdi))
+  testthat::expect_true(any(grepl("eski-kid", ls(.sso_jwks_cache), fixed = TRUE)))
+
+  # negatif_ttl = max(30, ttl/10) = 360 sn; 400 sn sonra giriş süresi dolar ve
+  # bir sonraki yazımda BAĞLANTI olarak da kaldırılmalıdır (env[[x]] <- NULL
+  # bağlantıyı ls() içinde bırakıyordu).
+  invisible(sso_resolve_signing_key(.sig_kid_token("yeni-kid"), config = cfg,
+                                    fetch_fn = fetch, now = simdi + 400))
+  testthat::expect_false(any(grepl("eski-kid", ls(.sso_jwks_cache), fixed = TRUE)))
+})
+
+
+# ------------------------------------------------------------------------------
+# JWKS TTL TAZELİK SINIRI (fail-closed)
+# ------------------------------------------------------------------------------
+
+testthat::test_that("gecersiz JWKS TTL varsayilana duser", {
+  .sso_sig_source_once()
+  sso_jwks_cache_clear()
+  on.exit(sso_jwks_cache_clear(), add = TRUE)
+
+  jwk <- list(kid = "kc-1", kty = "RSA", n = "AAAA", e = "AQAB")
+  calls <- new.env(parent = emptyenv()); calls$n <- 0L
+  fake_fetch <- function(url) { calls$n <- calls$n + 1L; list(jwk) }
+  # TTL = 0: her dogrulamada SENKRON JWKS getirmeyi tetikliyordu.
+  cfg <- list(jwks_endpoint = "https://kc.local/certs", jwks_cache_ttl_secs = 0L)
+  token <- .sig_kid_token("kc-1")
+
+  invisible(sso_resolve_signing_key(token, config = cfg, fetch_fn = fake_fetch))
+  invisible(sso_resolve_signing_key(token, config = cfg, fetch_fn = fake_fetch))
+  testthat::expect_identical(calls$n, 1L)
+})
+
+testthat::test_that("bayat onbellek yenilenemezse eski anahtar KULLANILMAZ", {
+  .sso_sig_source_once()
+  sso_jwks_cache_clear()
+  on.exit(sso_jwks_cache_clear(), add = TRUE)
+
+  jwk <- list(kid = "kc-1", kty = "RSA", n = "AAAA", e = "AQAB")
+  cfg <- list(jwks_endpoint = "https://kc.local/certs", jwks_cache_ttl_secs = 60L)
+  token <- .sig_kid_token("kc-1")
+
+  simdi <- Sys.time()
+  testthat::expect_false(is.null(
+    sso_resolve_signing_key(token, config = cfg,
+                            fetch_fn = function(url) list(jwk), now = simdi)
+  ))
+
+  # TTL asildi ve yenileme basarisiz: rotasyona ugramis anahtar kesinti boyunca
+  # token dogrulamaya devam etmemelidir.
+  testthat::expect_null(
+    sso_resolve_signing_key(token, config = cfg,
+                            fetch_fn = function(url) NULL,
+                            now = simdi + 3600)
+  )
+})
+
+testthat::test_that("negatif onbellek bayat pozitif onbellegin tazelenmesini engellemez", {
+  .sso_sig_source_once()
+  sso_jwks_cache_clear()
+  on.exit(sso_jwks_cache_clear(), add = TRUE)
+
+  eski <- list(kid = "kc-eski", kty = "RSA", n = "AAAA", e = "AQAB")
+  yeni <- list(kid = "kc-yeni", kty = "RSA", n = "BBBB", e = "AQAB")
+  # Kucuk TTL: negatif TTL (>= 30 sn) pozitif TTL'i asar.
+  cfg <- list(jwks_endpoint = "https://kc.local/certs", jwks_cache_ttl_secs = 5L)
+  simdi <- Sys.time()
+
+  # 1) Bilinmeyen kid: basarili yenileme negatif giris yazar.
+  invisible(sso_resolve_signing_key(.sig_kid_token("kc-yeni"), config = cfg,
+                                    fetch_fn = function(url) list(eski), now = simdi))
+
+  # 2) Pozitif onbellek bayat; negatif giris HALA taze. Yenileme yine de
+  #    denenmeli ve rotasyonla gelen yeni anahtar cozulmelidir.
+  sonuc <- sso_resolve_signing_key(.sig_kid_token("kc-yeni"), config = cfg,
+                                   fetch_fn = function(url) list(eski, yeni),
+                                   now = simdi + 10)
+  testthat::expect_false(is.null(sonuc))
 })

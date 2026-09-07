@@ -178,16 +178,110 @@ testthat::test_that("cc_policy_permission_mode tehlikeli/bilinmeyen modu acceptE
   )
 })
 
-testthat::test_that("cc_policy_permission_mode oturum ayarı çevreyi geçersiz kılar", {
+testthat::test_that("cc_policy_permission_mode oturum ayarı merkezi modu yalnızca daraltabilir", {
   .ccsec_source_once()
-  donen <- .ccsec_with(
+
+  # Merkezi mod gevşekken oturum ayarı DARALTABİLİR.
+  daraltma <- .ccsec_with(
     .ccsec_neutral_cfg(),
-    list(CLAUDE_CODE_PERMISSION_MODE = "plan"),
+    list(CLAUDE_CODE_PERMISSION_MODE = "acceptEdits"),
+    cc_policy_permission_mode(
+      settings_data = list(claude_code_permission_mode = "plan")
+    )
+  )
+  testthat::expect_identical(daraltma, "plan")
+
+  # Aynı katılık seviyesi kabul edilir.
+  esit <- .ccsec_with(
+    .ccsec_neutral_cfg(),
+    list(CLAUDE_CODE_PERMISSION_MODE = "default"),
     cc_policy_permission_mode(
       settings_data = list(claude_code_permission_mode = "default")
     )
   )
-  testthat::expect_identical(donen, "default")
+  testthat::expect_identical(esit, "default")
+
+  # Merkezi `plan` kısıtı oturum ayarıyla GENİŞLETİLEMEZ (yetki yükseltme).
+  for (istenen in c("default", "acceptEdits")) {
+    genisletme <- .ccsec_with(
+      .ccsec_neutral_cfg(),
+      list(CLAUDE_CODE_PERMISSION_MODE = "plan"),
+      cc_policy_permission_mode(
+        settings_data = list(claude_code_permission_mode = istenen)
+      )
+    )
+    testthat::expect_identical(genisletme, "plan", info = istenen)
+  }
+
+  # Merkezi mod tanımsızsa oturum ayarı geçerli kalır.
+  merkezsiz <- .ccsec_with(
+    .ccsec_neutral_cfg(),
+    list(CLAUDE_CODE_PERMISSION_MODE = ""),
+    cc_policy_permission_mode(
+      settings_data = list(claude_code_permission_mode = "acceptEdits")
+    )
+  )
+  testthat::expect_identical(merkezsiz, "acceptEdits")
+})
+
+testthat::test_that("tehlikeli mod açıkken --disallowedTools yine uygulanır", {
+  .ccsec_source_once()
+
+  args <- .ccsec_with(
+    .ccsec_neutral_cfg(),
+    list(
+      CLAUDE_CODE_ALLOW_DANGEROUS_PERMISSIONS = "TRUE",
+      CLAUDE_CODE_DISALLOWED_TOOLS = "WebFetch;Bash"
+    ),
+    cc_policy_build_cli_args(prompt = "merhaba")
+  )
+
+  testthat::expect_true("--dangerously-skip-permissions" %in% args)
+  testthat::expect_true("--disallowedTools" %in% args)
+  testthat::expect_true(all(c("WebFetch", "Bash") %in% args))
+})
+
+testthat::test_that("izin listesi tanımlıyken tehlikeli kip reddedilir (kapsam/mcp)", {
+  .ccsec_source_once()
+
+  # `bypassPermissions` altında `--allowedTools` BAĞLAYICI DEĞİLDİR ve tümleyeni
+  # kapsam desenleri (`Bash(git status)`) ile `mcp__*` araçları için güvenle
+  # hesaplanamaz. Bu yüzden izin listesi tanımlıyken tehlikeli kip reddedilir.
+  for (liste in c("Read;Grep", "Bash(git status)", "mcp__sunucu__arac", "Bash(git *);Read")) {
+    args <- .ccsec_with(
+      .ccsec_neutral_cfg(),
+      list(
+        CLAUDE_CODE_ALLOW_DANGEROUS_PERMISSIONS = "TRUE",
+        CLAUDE_CODE_ALLOWED_TOOLS = liste
+      ),
+      cc_policy_build_cli_args(prompt = "merhaba")
+    )
+
+    testthat::expect_false("--dangerously-skip-permissions" %in% args, info = liste)
+    testthat::expect_true("--allowedTools" %in% args, info = liste)
+    # Kapsamlı/MCP araç adı tümleyen üzerinden YASAKLANMAZ.
+    testthat::expect_false("--disallowedTools" %in% args, info = liste)
+  }
+})
+
+testthat::test_that("izin listesi yokken tehlikeli kip yalnızca yasak listesini uygular", {
+  .ccsec_source_once()
+
+  args <- .ccsec_with(
+    .ccsec_neutral_cfg(),
+    list(
+      CLAUDE_CODE_ALLOW_DANGEROUS_PERMISSIONS = "TRUE",
+      CLAUDE_CODE_ALLOWED_TOOLS = "",
+      CLAUDE_CODE_DISALLOWED_TOOLS = "WebFetch"
+    ),
+    cc_policy_build_cli_args(prompt = "merhaba")
+  )
+
+  testthat::expect_true("--dangerously-skip-permissions" %in% args)
+  testthat::expect_true("--disallowedTools" %in% args)
+  testthat::expect_true("WebFetch" %in% args)
+  # İzin listesi YOK: tümleyen hiç üretilmez.
+  testthat::expect_false("--allowedTools" %in% args)
 })
 
 # ------------------------------------------------------------------------------

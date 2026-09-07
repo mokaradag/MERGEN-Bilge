@@ -9,17 +9,36 @@ mergen_new_send_message_request_id <- function(prefix = "req") {
   paste0(prefix, "_", format(Sys.time(), "%Y%m%d%H%M%OS3"), "_", sample(1000:9999, 1))
 }
 
+# Reaktif okumayı AKTİF BAĞLAM OLMADAN da güvenli yapar. Bu guard promise /
+# later geri çağrılarından çağrılır; oralarda reaktif ALAN vardır ama reaktif
+# BAĞLAM yoktur ve çıplak bir reactiveVal okuması "Operation not allowed
+# without an active reactive context" hatası fırlatır. Aşağıdaki tryCatch o
+# hatayı yutup NULL döndürürdü; sonuç, GEÇERLİ bir isteğin "stale" sayılması ve
+# görsel/özetleme geri çağrılarının erken dönüp #typing-animation-wrapper'ı hiç
+# kaldırmamasıydı. isolate() bir bağlam oluşturur; zaten bağlam içindeysek de
+# guard'ın reaktif BAĞIMLILIK kurmasını engeller (istenen davranış budur).
+.mergen_request_state_read <- function(fn) {
+  if (!is.function(fn)) {
+    return(NULL)
+  }
+
+  tryCatch(
+    if (requireNamespace("shiny", quietly = TRUE)) shiny::isolate(fn()) else fn(),
+    error = function(e) NULL
+  )
+}
+
 mergen_send_message_request_state <- function(active_request_id, req_id, stop_generation = NULL) {
   if (!is.function(active_request_id) || is.null(req_id) || !nzchar(as.character(req_id)[1])) {
     return("stale")
   }
 
-  current_id <- tryCatch(active_request_id(), error = function(e) NULL)
+  current_id <- .mergen_request_state_read(active_request_id)
   if (!identical(current_id, req_id)) {
     return("stale")
   }
 
-  if (is.function(stop_generation) && isTRUE(tryCatch(stop_generation(), error = function(e) FALSE))) {
+  if (is.function(stop_generation) && isTRUE(.mergen_request_state_read(stop_generation))) {
     return("stopped")
   }
 
@@ -45,7 +64,11 @@ mergen_remove_typing_wrapper_if_safe <- function(active_request_id = NULL,
       nzchar(as.character(req_id)[1]) &&
       is.function(active_request_id)) {
     request_id <- as.character(req_id)[1]
-    current_id <- tryCatch(active_request_id(), error = function(e) NULL)
+    # Temizlik promise/`later` geri çağrılarından çalışır; orada aktif reaktif
+    # bağlam YOKTUR ve doğrudan çağrı hata verip NULL döndürüyordu. Bu durumda
+    # karşılaştırma tutmuyor, `#typing-animation-wrapper` yanıt bittikten sonra
+    # ekranda kalıyordu. Paylaşılan güvenli okuma yardımcısı isolate() uygular.
+    current_id <- .mergen_request_state_read(active_request_id)
 
     if (!identical(current_id, request_id)) {
       return(invisible(FALSE))
@@ -78,7 +101,36 @@ mergen_build_send_message_prompt_snapshot <- function(prompt_text, session_files
 
   user_message_text <- trimws(prompt_text %||% "")
   current_session_files <- session_files()
-  uploaded_names <- if (length(current_session_files) > 0) names(current_session_files) else character(0)
+
+  # Kayıt defteri aynı dosyayı hem GÖRÜNEN AD hem de KİMLİK anahtarıyla tutar
+  # (çözümleme her ikisini de arar). Ad listesi bu yüzden aynı dosyayı iki kez
+  # sayıyor ve Kaynakça'da tekrarlıyordu; fiziksel yola göre tekilleştirilir.
+  # Ad anahtarı kimlik anahtarından ÖNCE yazıldığı için ilk görünüm korunur.
+  uploaded_names <- character(0)
+  if (length(current_session_files) > 0) {
+    yollar <- vapply(
+      current_session_files,
+      function(f) as.character((f$path %||% f$datapath %||% "")[1]),
+      character(1)
+    )
+    yollar[is.na(yollar)] <- ""
+    # HAM dize kıyası Windows'ta `C:\Data\a.pdf` ile `c:/data/a.pdf` değerlerini
+    # farklı sayıyor; aynı fiziksel dosya iki kez sayılıp Kaynakça'da
+    # tekrarlanıyor ve diğer dosyaların bağlam bütçesini daraltıyordu.
+    # Anahtar SÖZLÜKSELDİR: `normalizePath()` Windows'ta gerçek bir dosya
+    # sistemi çağrısıdır ve erişilemeyen bir ağ yolunda uzun süre bloke olabilir;
+    # tekilleştirme için çözümlemeye gerek yoktur.
+    # Yolu OLMAYAN girdiler ayrı kimlik alır (birleştirilmezler).
+    yol_kimligi <- vapply(seq_along(yollar), function(i) {
+      yol <- yollar[i]
+      if (!nzchar(yol)) return(paste0("<yol-yok>:", i))
+      yol <- sub("/+$", "", gsub("\\\\", "/", yol))
+      if (identical(.Platform$OS.type, "windows")) tolower(yol) else yol
+    }, character(1))
+    tut <- !duplicated(yol_kimligi)
+    uploaded_names <- names(current_session_files)[tut]
+  }
+
   uploaded_count <- length(uploaded_names)
 
   list(

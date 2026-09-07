@@ -361,6 +361,50 @@ sttServer <- function(id, parent_session, settings) {
       # Çeviri, gönderim anındaki üretim jetonu ile ilişkilendirilir; böylece
       # yeni oturum/temizle sonrası dönen bayat sonuçlar geçmişe eklenmez.
       chunk_b64 <- input$audio_chunk
+
+      # SKALER ZORUNLU: istemci Shiny girdisi üzerinden DİZİ gönderebilir.
+      # Boyut denetimi yalnızca ilk öğeyi ölçüyor, worker'a ise TÜM vektör
+      # gidiyordu; sınır altındaki çok sayıda öğe MERGEN_STT_MAX_CHUNK_MB
+      # sınırını aşabiliyordu.
+      if (!is.character(chunk_b64) || length(chunk_b64) != 1L ||
+          is.na(chunk_b64) || !nzchar(chunk_b64)) {
+        showNotification("Geçersiz ses parçası.", type = "warning", duration = 6)
+        return(NULL)
+      }
+
+      # KABUL SINIRLARI: parça boyutu ve uçuştaki iş sayısı, worker'a
+      # GÖNDERMEDEN ÖNCE denetlenir. Önceden her olay yeni bir future
+      # başlatıyor ve boyut yalnızca worker base64'ü çözüp av_audio_convert
+      # çalıştırdıktan SONRA denetleniyordu; büyük/sık parçalar gönderen bir
+      # istemci future kuyruğunu, belleği ve ffmpeg süreçlerini tüketerek
+      # Shiny worker havuzunu kilitleyebiliyordu.
+      max_chunk_mb <- suppressWarnings(as.numeric(Sys.getenv("MERGEN_STT_MAX_CHUNK_MB", "8")))
+      # `Inf` değeri `is.na()` denetimini geçiyor ve sonlu hiçbir parça sınırı
+      # aşamıyordu: yapılandırılmış sınır tamamen devre dışı kalıyordu.
+      if (!is.finite(max_chunk_mb) || max_chunk_mb <= 0) max_chunk_mb <- 8
+      chunk_bytes <- nchar(chunk_b64, type = "bytes")
+      if (is.na(chunk_bytes) || chunk_bytes > max_chunk_mb * 1024 * 1024) {
+        cat("[STT] Parça boyut sınırını aştı; atlandı.\n")
+        showNotification(
+          "Ses parçası çok büyük olduğu için işlenmedi; konuşmanın bir bölümü eksik olabilir.",
+          type = "warning",
+          duration = 6
+        )
+        return(NULL)
+      }
+
+      max_pending <- suppressWarnings(as.integer(Sys.getenv("MERGEN_STT_MAX_PENDING_CHUNKS", "6")))
+      if (is.na(max_pending) || max_pending <= 0L) max_pending <- 6L
+      if (isolate(rv$pending_stt_chunks) >= max_pending) {
+        cat("[STT] Uçuştaki parça sınırına ulaşıldı; parça atlandı.\n")
+        showNotification(
+          "Ses işleme kuyruğu dolu; bir parça atlandı ve metne eklenmedi.",
+          type = "warning",
+          duration = 6
+        )
+        return(NULL)
+      }
+
       dispatch_gen <- isolate(rv$transcribe_gen)
       chunk_seq <- isolate(rv$next_chunk_seq)
       rv$next_chunk_seq <- chunk_seq + 1L
@@ -371,7 +415,11 @@ sttServer <- function(id, parent_session, settings) {
       # AĞIR İŞ ARKA PLANDA: av dönüştürme + HTTP POST worker'a taşındı. Böylece
       # ana olay döngüsü bloklanmaz ve İptal/Onayla/Temizle/Durdur butonları
       # her zaman anında yanıt verir (issue #1).
-      promise <- tracked_future_promise(
+      # tracked_future_promise() gönderim anında SENKRON hata verebilir (worker
+      # havuzu yok). Yakalanmazsa artırılmış `pending_stt_chunks` sayacı hiç
+      # azalmıyor ve tekrarlanan hatalar tüm slotları kalıcı olarak tüketiyordu.
+      promise <- tryCatch(
+      tracked_future_promise(
         task_fn = function() {
           mergen_stt_transcribe_chunk(chunk_b64, api_url, api_model, api_key, stt_timeout)
         },
@@ -386,7 +434,41 @@ sttServer <- function(id, parent_session, settings) {
           api_key = api_key,
           stt_timeout = stt_timeout
         )
-      )
+      ),
+      error = function(e) {
+        cat("[STT] Parça gönderimi başarısız:", conditionMessage(e), "\n")
+        # Sessiz kayıp yerine görünür uyarı: kullanıcı aksi hâlde eksik metni
+        # fark etmeden "Onayla ve Gönder" diyebiliyordu.
+        showNotification(
+          "Ses işleme başlatılamadı; bir parça metne eklenmedi.",
+          type = "warning",
+          duration = 6
+        )
+        NULL
+      })
+
+      if (is.null(promise)) {
+        # Sıra boşluğu bırakılmaz: bu seq için BOŞ tamamlama kaydedilir.
+        # Aksi hâlde flush_completed_stt_chunks() beklediği anahtarı hiç
+        # göremiyor, next_append_seq o numarada kilitleniyor ve sonraki tüm
+        # parçalar metin alanına hiç yazılmıyordu (kullanıcı konuşmaya devam
+        # ediyor, hiçbir metin görmüyor, "Onayla ve Gönder" boş metin üretiyor).
+        if (identical(dispatch_gen, isolate(rv$transcribe_gen))) {
+          completed <- isolate(rv$completed_stt_chunks)
+          completed[[as.character(chunk_seq)]] <- ""
+          rv$completed_stt_chunks <- completed
+          flush_completed_stt_chunks()
+        }
+
+        rv$pending_stt_chunks <- max(0L, isolate(rv$pending_stt_chunks) - 1L)
+        # Promise dalları gibi: son bekleyen parça düştüğünde onaylama akışı
+        # tamamlanmalı; aksi hâlde "Onayla ve Gönder" kalıcı kilitli kalıyordu.
+        if (isTRUE(isolate(rv$accept_after_pending)) &&
+            isolate(rv$pending_stt_chunks) == 0L) {
+          finish_accept()
+        }
+        return(NULL)
+      }
 
       promise %...>% (function(clean_text) {
         # Yalnızca üretim (transcribe_gen) hâlâ aynıysa tamamlanma/sayaç

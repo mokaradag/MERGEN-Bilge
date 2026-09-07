@@ -220,6 +220,37 @@ test_that("dosya kararlılık bekleyicisi yalnızca mevcut dosyaları kanonik d�
   expect_true(file.exists(stable))
 })
 
+test_that("dosya kararlılık bekleyicisi ilk imza boşken beklemeye devam eder", {
+  test_env <- .source_cc_workdir_scan_for_test()
+
+  workdir <- withr::local_tempdir()
+  gec_gelen <- file.path(workdir, "gec_gorunur.txt")
+
+  # UNC/antivirüs görünürlük gecikmesi: dosya İLK yoklamada yok, ikinci turda
+  # görünüyor. Eski davranış hemen character(0) döndürüp dosyayı düşürüyordu.
+  cagri <- 0L
+  gercek_var <- base::file.exists
+  local_mocked_bindings(
+    file.exists = function(...) {
+      cagri <<- cagri + 1L
+      if (cagri <= 1L) return(rep(FALSE, length(c(...)[[1]])))
+      gercek_var(...)
+    },
+    .package = "base"
+  )
+
+  writeLines("içerik", gec_gelen, useBytes = TRUE)
+
+  stable <- test_env$wait_for_stable_claude_code_file_paths(
+    gec_gelen,
+    settle_ms = 0L,
+    max_attempts = 3L
+  )
+
+  expect_length(stable, 1L)
+  expect_equal(basename(stable), "gec_gorunur.txt")
+})
+
 test_that("download collector staging öncesi dosya kararlılık korumasını kullanır", {
   snapshot_text <- .read_repo_text_cc_workdir_scan_contract(
     "R/helpers_claude_code_workdir_snapshot.R"

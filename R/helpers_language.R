@@ -427,8 +427,14 @@ detect_language <- function(code) {
   # ============================================================
   scores$text <- NULL
 
-  if (max(unlist(scores)) > 0) {
-    return(names(which.max(scores)))
+  # which.max() liste üzerinde güvenilir değildir; sayısal vektöre indirgenir.
+  puanlar <- unlist(scores, use.names = TRUE)
+  puanlar <- suppressWarnings(as.numeric(puanlar))
+  names(puanlar) <- names(scores)
+  puanlar[is.na(puanlar)] <- 0
+
+  if (length(puanlar) && max(puanlar) > 0) {
+    return(names(puanlar)[which.max(puanlar)])
   }
 
   return("text")

@@ -71,3 +71,42 @@ test_that("Söyleşi Geçmişi DataTable kullanıcı/AI metnini raw HTML olarak 
     info = "Söyleşi Geçmişi tablosunda Soru/Cevap önizlemeleri raw HTML olarak render edilmemelidir."
   )
 })
+# ------------------------------------------------------------------------------
+# Yönetici paneli escape = FALSE tabloları
+# ------------------------------------------------------------------------------
+# Bu tablolar rozet/ikon HTML'i render ettiği için escape = FALSE kullanır.
+# Sözleşme: escape = FALSE kullanan her yönetici tablosunda, kullanıcı/LLM
+# kontrollü serbest metin sütunları htmltools::htmlEscape() ile kaçırılmalıdır.
+.admin_dt_escape_targets <- list(
+  list(
+    path = "R/module_admin_yanit_analizi_outputs.R",
+    columns = c("ModelUsed", "kullanici", "etiketler", "yorum", "onizleme")
+  ),
+  list(
+    path = "R/helpers_admin_geri_bildirim_output_tables.R",
+    columns = c("kullanici", "etiketler_display", "sevilen_display", "gelistirme_display")
+  )
+)
+
+test_that("yönetici escape = FALSE tabloları kullanıcı metnini htmlEscape ile kaçırır", {
+  for (hedef in .admin_dt_escape_targets) {
+    metin <- .read_repo_text_chat_history_dt_safety(hedef$path)
+    expect_true(nzchar(metin), info = hedef$path)
+
+    for (sutun in hedef$columns) {
+      # Sütun adı TAM eşleşmelidir: önek eşleşmesi (kullanici vs kullanici_adi)
+      # yalnızca daha uzun bir sütun kaçırıldığında da sözleşmeyi geçiriyordu.
+      # Atama ETKİN bir kod satırını başlatmalıdır: yorum satırındaki
+      # `# data$kullanici <- htmltools::htmlEscape(...)` da eşleşiyor ve etkin
+      # atama silinmişken sözleşme geçiyordu.
+      desen <- paste0(
+        "(?m)^[ \\t]*data\\$", sutun,
+        "(?![A-Za-z0-9._])\\s*<-\\s*htmltools::htmlEscape"
+      )
+      expect_true(
+        grepl(desen, metin, perl = TRUE),
+        info = paste0(hedef$path, " :: data$", sutun, " htmlEscape ile atanmalıdır.")
+      )
+    }
+  }
+})

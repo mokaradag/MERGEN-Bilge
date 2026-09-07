@@ -10,6 +10,221 @@
 .FILE_INDEX_CACHE <- new.env(parent = emptyenv())
 FILE_INDEX_TTL_MIN <- suppressWarnings(as.numeric(Sys.getenv("MCP_INDEX_TTL_MIN", "10")))
 if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 10
+# Önbellekte tutulan taban klasör sayısı üst sınırı (bellek sınırsız büyümez).
+.FILE_INDEX_MAX_ENTRIES <- 32L
+
+# Başarısız tarama sonrası kısa geri çekilme: aynı istek içindeki ardışık arama
+# adımlarının aynı 20 saniyelik taramayı tekrar başlatmasını engeller.
+FILE_INDEX_SCAN_FAIL_BACKOFF_SEC <- 30
+
+# Önbellek doluysa en eski girdi düşürülür (yeni anahtar eklenmeden önce).
+.file_index_cache_evict_if_full <- function(key) {
+  anahtarlar <- ls(envir = .FILE_INDEX_CACHE, all.names = TRUE)
+  if (key %in% anahtarlar || length(anahtarlar) < .FILE_INDEX_MAX_ENTRIES) return(invisible(NULL))
+  zamanlar <- vapply(anahtarlar, function(k) {
+    ts <- .FILE_INDEX_CACHE[[k]]$ts
+    if (inherits(ts, "POSIXct")) as.numeric(ts) else -Inf
+  }, numeric(1))
+  rm(list = anahtarlar[which.min(zamanlar)], envir = .FILE_INDEX_CACHE)
+  invisible(NULL)
+}
+
+# Sınırlı özyinelemeli tarama: dosya/dizin/derinlik/süre üst sınırları uygulanır
+# (ana süreçte sınırsız list.files(recursive = TRUE) yerine). Sınır aşımı
+# uyarı olarak loglanır; sınırlı tarayıcı yoksa eski yol kullanılır.
+.file_index_scan_bounded <- function(base_path, pattern) {
+  if (exists("cc_scan_directory_bounded", mode = "function", inherits = TRUE)) {
+    sonuc <- tryCatch(
+      cc_scan_directory_bounded(
+        base_path,
+        max_files = 50000L, max_dirs = 5000L, max_depth = 16L,
+        max_total_bytes = Inf, max_elapsed_ms = 20000L, max_file_bytes = Inf,
+        max_entries = 250000L
+        # exclude_dirs / exclude_rel_paths DEVRE DIŞI BIRAKILMAZ: boş vektör
+        # tarayıcının .git / node_modules / renv/library / document_support
+        # varsayılanlarını iptal ediyor ve 50.000 dosya bütçesi bağımlılık
+        # ağacında tükeniyordu (gerçek belge indekse hiç girmiyordu).
+      ),
+      error = function(e) NULL
+    )
+    if (is.list(sonuc)) {
+      if (!isTRUE(sonuc$ok)) {
+        # Sınırlı tarayıcı bilinçli olarak BAŞARISIZ döndü (ör. UNC'de dosya
+        # boyutu okunamıyor). Yerel yürüyüş boyut doğrulaması yapmadığı için
+        # tarayıcının reddettiği dosyaları indekslerdi; bu yüzden fallback'e
+        # DÜŞÜLMEZ, boş sonuç döner.
+        try(
+          log_warn("[INDEX] Sınırlı tarama başarısız; indeksleme atlandı: {base_path}"),
+          silent = TRUE
+        )
+        # Başarısızlık "eşleşen dosya yok" ile karıştırılmamalıdır: çağıran bu
+        # işareti görüp boş indeksi TTL boyunca önbelleğe almaz.
+        return(structure(character(0), scan_failed = TRUE))
+      }
+      if (isTRUE(sonuc$truncated)) {
+        log_warn("[INDEX] Tarama sınırı aşıldı ({sonuc$truncated_reason}); indeks kısmi: {base_path}")
+      }
+      dosyalar <- as.character(sonuc$files)
+      return(dosyalar[grepl(pattern, basename(dosyalar), ignore.case = TRUE, perl = TRUE)])
+    }
+  }
+
+  # Sınırsız `list.files(recursive = TRUE)` fallback'i KALDIRILDI: büyük veya
+  # yavaş bir UNC paylaşımında ana Shiny sürecini tarama bitene kadar
+  # blokluyordu. Yerine aynı sınırları uygulayan yerel yürüyüş kullanılır.
+  # Buraya yalnızca tarayıcı YOKSA veya istisna fırlattıysa gelinir.
+  .file_index_walk_bounded(base_path, pattern)
+}
+
+# Dizin girişi bir sembolik bağlantı / reparse point mi? Windows'ta
+# `Sys.readlink()` her yol için NA döndürdüğünden çözümlenmiş yol kendi sözlük
+# konumuyla karşılaştırılır (paylaşılan `cc_path_is_reparse_link` ile aynı
+# yaklaşım; o yardımcı yüklüyse doğrudan kullanılır).
+.file_index_baglanti_mi <- function(yol) {
+  if (exists("cc_path_is_reparse_link", mode = "function", inherits = TRUE)) {
+    return(isTRUE(tryCatch(cc_path_is_reparse_link(yol), error = function(e) TRUE)))
+  }
+  hedef <- suppressWarnings(Sys.readlink(yol))
+  if (length(hedef) == 1L && !is.na(hedef) && nzchar(hedef)) return(TRUE)
+  cozulmus <- tryCatch(normalizePath(yol, winslash = "/", mustWork = FALSE),
+                       error = function(e) NA_character_)
+  ust <- tryCatch(
+    normalizePath(dirname(yol), winslash = "/", mustWork = FALSE),
+    error = function(e) NA_character_
+  )
+  if (is.na(cozulmus) || is.na(ust)) return(FALSE)
+  !identical(dirname(cozulmus), ust)
+}
+
+# UCUZ dosya sondası: `.file_index_baglanti_mi()` giriş başına İKİ
+# `normalizePath()` çağırır ve bu Windows'ta gerçek bir dosya sistemi çağrısıdır;
+# on binlerce DOSYA girişine uygulandığında tarama dakikalarca sürüyordu.
+# `cc_scan_directory_bounded` ile AYNI sözleşme: giriş döngüsünde yalnızca ucuz
+# POSIX `Sys.readlink()` kullanılır (Windows'ta NA = bağlantı değil), pahalı
+# çözümlemeli denetim yalnızca DİZİNLERE uygulanır (asıl kaçış riski oradadır).
+.file_index_dosya_baglanti_mi <- function(yol) {
+  hedef <- suppressWarnings(tryCatch(Sys.readlink(yol), error = function(e) NA_character_))
+  length(hedef) == 1L && !is.na(hedef) && nzchar(hedef)
+}
+
+# Yerel sınırlı yürüyüş: `cc_scan_directory_bounded` yüklü olmadığında (izole
+# test, erken boot, worker) kullanılır. Dizin/dosya/derinlik/süre üst sınırları
+# uygulanır; sınır aşımında sonuç KISMİ döner ve uyarı loglanır.
+.file_index_walk_bounded <- function(base_path, pattern,
+                                     max_files = 50000L, max_dirs = 5000L,
+                                     max_depth = 16L, max_elapsed_ms = 20000L,
+                                     max_entries = 20000L) {
+  if (!isTRUE(dir.exists(base_path))) return(character(0))
+
+  son <- Sys.time() + (max_elapsed_ms / 1000)
+  bulunan <- character(0)
+  kuyruk <- list(list(yol = base_path, derinlik = 0L))
+  dizin_sayisi <- 0L
+  sinir_asildi <- FALSE
+
+  while (length(kuyruk)) {
+    if (Sys.time() > son || dizin_sayisi >= max_dirs || length(bulunan) >= max_files) {
+      sinir_asildi <- TRUE
+      break
+    }
+
+    dugum <- kuyruk[[1]]
+    kuyruk <- kuyruk[-1]
+    dizin_sayisi <- dizin_sayisi + 1L
+
+    girisler <- tryCatch(
+      list.files(dugum$yol, full.names = TRUE, no.. = TRUE),
+      error = function(e) character(0)
+    )
+    if (!length(girisler)) next
+
+    # TEK dizin listesi de sınırlanır: çok geniş bir klasör (yüz binlerce
+    # giriş) tek turda belleği doldurabilir.
+    if (length(girisler) > max_entries) {
+      sinir_asildi <- TRUE
+      girisler <- girisler[seq_len(max_entries)]
+    }
+
+    dizin_mi <- dir.exists(girisler)
+    # Bağlantı denetimi yalnızca DİZİN girişlerine uygulanıyordu; `rapor.pdf ->
+    # /etc/hosts` gibi bir DOSYA bağlantısı base_path dışındaki hedefi indekse
+    # taşıyabiliyordu (tarayıcı sözleşmesinden sapma). Dosyalar için UCUZ sonda
+    # kullanılır; pahalı çözümleme aşağıda yalnızca dizinlere uygulanır.
+    dosyalar <- girisler[!dizin_mi]
+    if (length(dosyalar)) {
+      dosyalar <- dosyalar[!vapply(
+        dosyalar, .file_index_dosya_baglanti_mi, logical(1), USE.NAMES = FALSE
+      )]
+    }
+    if (length(dosyalar)) {
+      eslesen <- dosyalar[grepl(pattern, basename(dosyalar), ignore.case = TRUE, perl = TRUE)]
+      # Kalan bütçeden fazlası eklenmez; döngü başındaki denetim tek başına
+      # `max_files` üzerine taşmayı engellemiyordu.
+      kalan <- max_files - length(bulunan)
+      if (length(eslesen) > kalan) {
+        sinir_asildi <- TRUE
+        eslesen <- eslesen[seq_len(max(0L, kalan))]
+      }
+      if (length(eslesen)) bulunan <- c(bulunan, eslesen)
+    }
+
+    if (dugum$derinlik >= max_depth && any(dizin_mi)) {
+      # En yüksek derinlikte alt dizinler taranmaz; sonuç KISMİDİR. İşaret
+      # konmazsa daha derindeki dosya sessizce indeks dışı kalıyor ve
+      # `search_file_in_folder()` "bulunamadı" diyordu.
+      sinir_asildi <- TRUE
+    }
+
+    if (dugum$derinlik < max_depth) {
+      for (alt in girisler[dizin_mi]) {
+        # `max_dirs` yalnızca kuyruktan düğüm ALINMADAN önce denetleniyordu;
+        # her dizin `max_entries` kadar alt dizin ekleyebildiği için kuyruk
+        # bellek tüketecek boyuta ulaşabiliyordu.
+        if ((dizin_sayisi + length(kuyruk)) >= max_dirs) {
+          sinir_asildi <- TRUE
+          break
+        }
+        # Sembolik bağlantı / Windows reparse point dizinleri atlanır:
+        # `cc_scan_directory_bounded(..., follow_symlinks = FALSE)` ile aynı
+        # sözleşme. Aksi hâlde `shared -> /other` gibi bir bağlantı base_path
+        # dışındaki dosyaları indekse taşırdı.
+        if (isTRUE(.file_index_baglanti_mi(alt))) next
+        kuyruk[[length(kuyruk) + 1L]] <- list(yol = alt, derinlik = dugum$derinlik + 1L)
+      }
+    }
+  }
+
+  if (isTRUE(sinir_asildi)) {
+    try(
+      log_warn("[INDEX] Yerel tarama sınırı aşıldı; sonuç kısmi: {base_path}"),
+      silent = TRUE
+    )
+  }
+
+  unique(bulunan)
+}
+
+# İndeks yollarını tabana göre göreli hale getirir (girdi başına normalizePath
+# çağırmadan; ham ve normalize edilmiş taban önekleri dize kıyasıyla denenir).
+.file_index_relative_paths <- function(paths, base_path) {
+  onekler <- unique(c(
+    paste0(sub("/+$", "", gsub("\\", "/", as.character(base_path), fixed = TRUE)), "/"),
+    paste0(sub("/+$", "", normalizePath(base_path, winslash = "/", mustWork = FALSE)), "/")
+  ))
+  out <- paths
+  # Windows'ta sürücü harfi/klasör adı farklı büyüklükte dönebilir; duyarlı
+  # kıyas hiçbir öneki eşleştirmiyor, mutlak yol korunuyor ve `.search_with_hint`
+  # taban yoldaki rastlantısal sözcüklerle yanlış dosya döndürebiliyordu.
+  kucult <- function(x) if (identical(.Platform$OS.type, "windows")) tolower(x) else x
+  paths_key <- kucult(paths)
+  kalan <- rep(TRUE, length(paths))
+  for (onek in onekler) {
+    hit <- kalan & startsWith(paths_key, kucult(onek))
+    out[hit] <- substring(paths[hit], nchar(onek) + 1L)
+    kalan <- kalan & !hit
+  }
+  out
+}
 
 # Belirtilen klasördeki dosyaları tarar ve basename -> tam yol haritası oluşturur
 .build_basename_index <- function(base_path, pattern = "\\.(docx|docm|doc|pdf|pptx|ppt|xlsx|xls|csv|txt|json|md|r|py|log)$", force = FALSE) {
@@ -24,9 +239,19 @@ if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 
     is_stale <- isTRUE(age > FILE_INDEX_TTL_MIN)
   }
 
+  # Taze başarısızlık belirteci: aynı istek içindeki sonraki arama adımları
+  # 20 saniyelik taramayı tekrar başlatmasın.
+  if (!isTRUE(force) && is.list(ent) && !is.null(ent$scan_failed_at)) {
+    hata_yasi <- as.numeric(difftime(now, ent$scan_failed_at, units = "secs"))
+    if (isTRUE(hata_yasi < FILE_INDEX_SCAN_FAIL_BACKOFF_SEC)) return(ent)
+  }
+
   if (force || is_stale || is.null(ent) || is.null(ent$map)) {
     if (!dir.exists(base_path)) {
       log_warn("[INDEX] Klasör yok, indeks oluşturulamadı: {base_path}")
+      # Bu erken yazım eviction denetimi yapmıyordu; farklı eksik taban
+      # yollarıyla tekrar çağrı önbelleği üst sınırın ötesine büyütüyordu.
+      .file_index_cache_evict_if_full(key)
       .FILE_INDEX_CACHE[[key]] <- list(ts = now, map = list())
       return(.FILE_INDEX_CACHE[[key]])
     }
@@ -35,20 +260,23 @@ if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 
     # Yalnızca yaygın belge türleri.
     # Windows VM / UNC klasörlerinde geçici erişim hataları tüm uygulamayı
     # düşürmemeli; indeks boş döner ve sonraki TTL döngüsünde tekrar denenir.
-    all_files <- tryCatch(
-      list.files(
-        base_path,
-        pattern = pattern,
-        full.names = TRUE,
-        recursive = TRUE,
-        include.dirs = FALSE,
-        ignore.case = TRUE
-      ),
-      error = function(e) {
-        log_warn("[INDEX] Klasör taraması başarısız: {base_path} | {conditionMessage(e)}")
-        character(0)
-      }
-    )
+    all_files <- .file_index_scan_bounded(base_path, pattern)
+
+    # Geçici tarama hatası (ör. UNC'de boyut okunamaması) boş indeks olarak
+    # önbelleğe alınırsa TTL boyunca her arama "bulunamadı" döner. Bu durumda
+    # önceki giriş korunur, zaman damgası tazelenmez ve sonraki istek tekrar
+    # dener.
+    if (isTRUE(attr(all_files, "scan_failed"))) {
+      if (is.list(ent) && !is.null(ent$map)) return(ent)
+      # Önceki indeks yoksa `ts = NULL` önbelleğe YAZILMIYOR ve aynı arama
+      # zinciri taramayı tekrar başlatıyordu (tek istekte 3 x 20 sn blokaj).
+      # Kısa ömürlü bir başarısızlık belirteci saklanır; NORMAL TTL tazelenmez.
+      .file_index_cache_evict_if_full(key)
+      .FILE_INDEX_CACHE[[key]] <- list(
+        ts = NULL, map = list(), scan_failed_at = now
+      )
+      return(.FILE_INDEX_CACHE[[key]])
+    }
 
     all_files <- enc2utf8(as.character(all_files))
     all_files <- gsub("\\", "/", all_files, fixed = TRUE)
@@ -56,6 +284,7 @@ if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 
 
     # basename -> tam yol listesi (aynı ad birden fazlaysa liste tut)
     map <- split(all_files, tolower(basename(all_files)))
+    .file_index_cache_evict_if_full(key)
     .FILE_INDEX_CACHE[[key]] <- list(ts = now, map = map)
   }
 
@@ -101,12 +330,7 @@ if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 
     return(NULL)
   }
 
-  base_norm <- normalizePath(base_path, winslash = "/", mustWork = FALSE)
-  cand_rel <- vapply(cand, function(p) {
-    p_norm <- normalizePath(p, winslash = "/", mustWork = FALSE)
-    prefix <- paste0(base_norm, "/")
-    if (startsWith(p_norm, prefix)) substr(p_norm, nchar(prefix) + 1L, nchar(p_norm)) else p_norm
-  }, character(1))
+  cand_rel <- .file_index_relative_paths(as.character(cand), base_path)
   scores <- vapply(cand_rel, .score_path_by_parts, integer(1), parts = left)
   # İpucu skoru yalnızca adayın taban klasöre göre göreli yolunda sol parçaların
   # TÜMÜ geçtiğinde güvenilir kabul edilir. Mutlak taban yolundaki rastlantısal
@@ -197,12 +421,7 @@ if (is.na(FILE_INDEX_TTL_MIN) || FILE_INDEX_TTL_MIN <= 0) FILE_INDEX_TTL_MIN <- 
   all_paths <- unlist(idx$map, use.names = FALSE)
   if (!length(all_paths)) return(NULL)
 
-  base_norm <- normalizePath(base_path, winslash = "/", mustWork = FALSE)
-  rel_paths <- vapply(all_paths, function(p) {
-    p_norm <- normalizePath(p, winslash = "/", mustWork = FALSE)
-    prefix <- paste0(base_norm, "/")
-    if (startsWith(p_norm, prefix)) substr(p_norm, nchar(prefix) + 1L, nchar(p_norm)) else p_norm
-  }, character(1))
+  rel_paths <- .file_index_relative_paths(as.character(all_paths), base_path)
   scores <- vapply(rel_paths, .score_path_by_parts, integer(1), parts = parts)
   if (max(scores) < length(parts)) return(NULL)
   ord <- order(scores, decreasing = TRUE, na.last = NA)

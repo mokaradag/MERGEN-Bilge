@@ -184,6 +184,7 @@ save_message_to_db <- function(chat_id, msg) {
     }
 
     log_warn("ReasoningContent sütunu bulunamadı; legacy mesaj kaydına düşülüyor.")
+    reasoning_content <<- NULL  # legacy yolda YAZILMADI; guard beklememeli
 
     dbGetQuery(
       conn,
@@ -199,7 +200,9 @@ save_message_to_db <- function(chat_id, msg) {
 	message_id <- as.integer(res$MessageID[1])
 
 	if (exists("assert_mb_message_visible_encoding_clean", mode = "function", inherits = TRUE)) {
-	  assert_mb_message_visible_encoding_clean(conn, message_id)
+	  assert_mb_message_visible_encoding_clean(conn, message_id,
+	                                           expected_content = msg$content,
+	                                           expected_reasoning = reasoning_content)
 	}
 
 	DBI::dbCommit(conn)
@@ -278,49 +281,59 @@ update_chat_title_in_db <- function(chat_id, new_title) {
   )
 }
 
+# Görsel klasörünü siler ve sonucu DOĞRULAR (`unlink()` hata fırlatmaz).
+.db_chat_remove_image_dir <- function(dizin) {
+  tryCatch({
+    if (!dir.exists(dizin)) return(invisible(TRUE))
+    ok <- identical(as.integer(suppressWarnings(
+      unlink(dizin, recursive = TRUE))), 0L) && !dir.exists(dizin)
+    cat("[DATABASE] Görsel klasörü", if (ok) "silindi:" else "SİLİNEMEDİ:", dizin, "\n")
+    invisible(ok)
+  }, error = function(e) { cat("[DATABASE] Görsel klasörü silinemedi:", e$message, "\n"); invisible(FALSE) })
+}
+
 # Chat deletion
 delete_chat_from_db <- function(chat_id, user_id) {
+  # Kimlikler KANONİK pozitif tam sayı olmalıdır (`as.integer(1.9)` -> 1).
+  chat_param <- mergen_canonical_user_id(chat_id %||% NA_integer_)
+  user_param <- mergen_canonical_user_id(user_id %||% NA_integer_)
+  if (chat_param <= 0L || user_param <= 0L) {
+    warning("delete_chat_from_db: geçersiz chat_id/user_id; silme yapılmadı.", call. = FALSE)
+    return(invisible(0L))
+  }
+
   conn_info <- get_connection()
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  # Önce sohbetin görsel klasörünü sil (varsa)
-  tryCatch({
-    image_dir <- file.path("user_images", as.character(user_id), as.character(chat_id))
-    if (dir.exists(image_dir)) {
-      # Klasördeki tüm dosyaları ve klasörün kendisini sil
-      unlink(image_dir, recursive = TRUE)
-      cat("[DATABASE] Görsel klasörü silindi:", image_dir, "\n")
-    }
-  }, error = function(e) {
-    cat("[DATABASE] Görsel klasörü silinirken hata:", e$message, "\n")
-  })
-
-  # Sohbeti silinmiş olarak işaretle
+  # Görsel klasörü yalnızca satır gerçekten bu kullanıcıya aitse silinir.
   query <- "UPDATE MB_Chats SET IsDeleted = 1 WHERE ChatID = ? AND UserID = ?"
-  dbExecute(conn, query, params = list(chat_id, user_id))
+  affected <- dbExecute(conn, query, params = normalize_db_params(list(chat_param, user_param)))
+
+  if (isTRUE(affected > 0)) .db_chat_remove_image_dir(
+    file.path("user_images", as.character(user_param), as.character(chat_param)))
+
+  invisible(affected)
 }
 
 clear_all_chats_from_db <- function(user_id) {
+  # delete_chat_from_db() ile AYNI sözleşme (kanonik kimlik + doğrulanmış silme).
+  user_param <- mergen_canonical_user_id(user_id %||% NA_integer_)
+  if (user_param <= 0L) {
+    warning("clear_all_chats_from_db: geçersiz user_id; silme yapılmadı.", call. = FALSE)
+    return(invisible(0L))
+  }
+
   conn_info <- get_connection()
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  # Önce kullanıcının tüm görsel klasörlerini sil
-  tryCatch({
-    user_image_dir <- file.path("user_images", as.character(user_id))
-    if (dir.exists(user_image_dir)) {
-      # Kullanıcının tüm görsel klasörlerini sil
-      unlink(user_image_dir, recursive = TRUE)
-      cat("[DATABASE] Kullanıcının tüm görsel klasörleri silindi:", user_image_dir, "\n")
-    }
-  }, error = function(e) {
-    cat("[DATABASE] Görsel klasörleri silinirken hata:", e$message, "\n")
-  })
-
-  # Tüm sohbetleri silinmiş olarak işaretle
   query <- "UPDATE MB_Chats SET IsDeleted = 1 WHERE UserID = ?"
-  dbExecute(conn, query, params = list(user_id))
+  affected <- dbExecute(conn, query, params = normalize_db_params(list(user_param)))
+
+  if (isTRUE(affected > 0)) .db_chat_remove_image_dir(file.path("user_images", user_param))
+
+  invisible(affected)
 }
 
 # -------------------------
@@ -391,7 +404,8 @@ worker_save_assistant_response <- function(chat_id, response_text,
 
 	if (!is.na(response_message_id) &&
 		exists("assert_mb_message_visible_encoding_clean", mode = "function", inherits = TRUE)) {
-	  assert_mb_message_visible_encoding_clean(conn, response_message_id)
+	  assert_mb_message_visible_encoding_clean(conn, response_message_id,
+	                                           expected_content = response_text)
 	}
 
 	DBI::dbCommit(conn)

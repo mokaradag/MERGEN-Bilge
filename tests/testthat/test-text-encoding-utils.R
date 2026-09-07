@@ -163,3 +163,53 @@ test_that("client encoding helper manifest ve Bilge Yolaç sözleşmesi korunur"
   )
   expect_match(ui_manifest, '"js/encoding_utils.js"')
 })
+
+
+# Regresyon: kesilmiş okumada kırpma faz sırası. Kırpma aday BAŞINA satır içi
+# yapıldığında, kesik bir CP1254 dosyasının son GEÇERLİ baytı (0xFE = ş)
+# düşürülüp metin UTF-8 sayılıyor ve WINDOWS-1254 adayı hiç denenmiyordu.
+test_that("read_text_lines_utf8 kesilmis CP1254 okumasinda son gecerli bayti kaybetmez", {
+  env <- .source_text_encoding_utils_for_test()
+
+  tmp <- withr::local_tempfile(fileext = ".log")
+  # "abc" + 0xFE (CP1254 'ş') + devam eden bayt. max_bytes son 0xFE baytinda keser.
+  writeBin(as.raw(c(0x61, 0x62, 0x63, 0xFE, 0x64, 0x65)), tmp)
+
+  satirlar <- env$read_text_lines_utf8(tmp, max_bytes = 4)
+
+  expect_length(satirlar, 1L)
+  expect_identical(satirlar[1], "abc\u015f")
+})
+
+# Regresyon: max_bytes UTF-8 dosyayi cok baytli karakterin ORTASINDAN kestiginde
+# kirpmasiz UTF-8 basarisiz oluyor ve akis hemen WINDOWS-1254/latin1'e dusuyordu;
+# bu tek baytli kodlamalar genelde basarili oldugu icin SAKLANAN ONEKIN TAMAMI
+# yanlis cozuluyordu.
+test_that("kesik UTF-8 okumasinda onek tek baytli kodlamayla bozulmaz", {
+  f <- tempfile()
+  on.exit(unlink(f), add = TRUE)
+  writeBin(charToRaw(enc2utf8("Türkçe metin şş")), f)
+
+  n <- file.info(f)$size
+  # Son baytin kesilmesi son 's' karakterini yarim birakir.
+  metin <- read_text_lines_utf8(f, max_bytes = n - 1L)
+
+  expect_true(validUTF8(metin))
+  expect_true(grepl("Türkçe metin", metin, fixed = TRUE))
+  # Mojibake yok: CP1254 ile cozulse "TÃ¼rkÃ§e" olurdu.
+  expect_false(grepl("Ã", metin, fixed = TRUE))
+})
+
+# Ters yon korunur: kesik CP1254 dosyasinin son GECERLI bayti (0xFE = s) kor
+# kirpmayla dusurulup metin UTF-8 sayilmamalidir.
+test_that("kesik CP1254 okumasinda son gecerli bayt dusurulmez", {
+  f <- tempfile()
+  on.exit(unlink(f), add = TRUE)
+  writeBin(c(charToRaw("Turkce "), as.raw(0xFE)), f)
+
+  metin <- read_text_lines_utf8(
+    f, max_bytes = 8L, encodings = c("UTF-8", "WINDOWS-1254")
+  )
+  expect_true(validUTF8(metin))
+  expect_true(grepl("ş", metin, fixed = TRUE))
+})

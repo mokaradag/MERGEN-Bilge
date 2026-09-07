@@ -103,7 +103,19 @@ run_claude_code <- function(prompt,
 	  windows_verbatim_args = isTRUE(komut$windows_verbatim_args)
 	)
 
-    proc$wait(timeout = timeout_sec * 1000)
+    # Boruları beklerken TÜKET: proc$wait() borulari boşaltmadığı için 64KB'lık
+    # OS boru tamponu dolduğunda çocuk süreç yazarken kilitlenir ve çalıştırma
+    # sahte "zaman aşımı" ile düşerdi. poll_io + read ile kilitlenme önlenir.
+    # SAKLANAN metin bayt bütçesiyle sınırlıdır: gürültülü ya da değiştirilmiş
+    # bir CLI zaman aşımına kadar worker belleğini tüketebiliyordu.
+    akis <- cc_drain_process_streams(proc, timeout_sec)
+    stdout_tampon <- akis$stdout_buffer
+    stderr_tampon <- akis$stderr_buffer
+
+    if (isTRUE(akis$limit_exceeded)) {
+      log_error(paste(CLAUDE_CODE_LOG_PREFIX, "Çıktı bayt sınırı aşıldı; süreç sonlandırıldı."))
+      return(cc_output_limit_result(difftime(Sys.time(), baslangic, units = "secs")))
+    }
 
     if (proc$is_alive()) {
       tryCatch(proc$kill(), error = function(e) NULL)
@@ -122,8 +134,16 @@ run_claude_code <- function(prompt,
       ))
     }
 
-    stdout_metin <- ensure_utf8(proc$read_all_output())
-    stderr_metin <- ensure_utf8(proc$read_all_error())
+    # Son okumada da bütçe denetlenir: aksi hâlde sıfır çıkışlı bir süreç
+    # kırpılmış JSON ile "başarılı" raporlanırdı.
+    son_ok <- cc_output_buffer_add(stdout_tampon, tryCatch(proc$read_all_output(), error = function(e) "")) &&
+      cc_output_buffer_add(stderr_tampon, tryCatch(proc$read_all_error(), error = function(e) ""))
+    if (!isTRUE(son_ok)) {
+      log_error(paste(CLAUDE_CODE_LOG_PREFIX, "Çıktı bayt sınırı aşıldı; sonuç reddedildi."))
+      return(cc_output_limit_result(difftime(Sys.time(), baslangic, units = "secs")))
+    }
+    stdout_metin <- ensure_utf8(cc_output_buffer_text(stdout_tampon))
+    stderr_metin <- ensure_utf8(cc_output_buffer_text(stderr_tampon))
     cikis_kodu <- proc$get_exit_status()
 
     sure <- as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
@@ -325,10 +345,23 @@ format_claude_code_output <- function(output) {
     return("")
   }
 
-  # Markdown'ı HTML'e dönüştür (commonmark paketi ile)
+  # Markdown'ı HTML'e dönüştür. Çıktı LLM/araç kontrollü olduğundan ham HTML
+  # önce kaçırılır (CLAUDE.md 1C markdown güvenlik sınırı); doğrudan
+  # commonmark::markdown_html() çağrısı XSS'e açıktı.
   # NOT: Mojibake düzeltmesi JavaScript tarafında yapılır (fixHtmlMojibake)
   tryCatch({
-    html <- commonmark::markdown_html(output, extensions = TRUE)
+    html <- if (exists("render_safe_markdown_html", mode = "function", inherits = TRUE)) {
+      # UZANTILAR AÇIKÇA verilir: güvenli dönüştürücünün varsayılanı yalnızca
+      # `strikethrough`/`table`; eski doğrudan çağrı `extensions = TRUE` idi ve
+      # bağlantılar/görev listeleri aksi hâlde düz metne düşüyordu.
+      render_safe_markdown_html(output, hardbreaks = FALSE,
+        extensions = c("strikethrough", "table", "autolink", "tasklist"))
+    } else {
+      commonmark::markdown_html(
+        htmltools::htmlEscape(output),
+        extensions = TRUE
+      )
+    }
     return(html)
   }, error = function(e) {
     # Dönüşüm başarısız olursa ham metni döndür

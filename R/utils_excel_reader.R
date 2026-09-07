@@ -27,12 +27,13 @@ normalize_excel_path <- function(path) {
   # İç yardımcı: baştaki tekrar eden dizin parçalarını temizle
   dedupe_leading_repeat <- function(p) {
     if (!nzchar(p)) return(p)
-    slashes <- sub("^(/*)", "\\1", p)
+    # Baştaki eğik çizgi öneki (UNC '//' dahil) korunur; yeniden kurulan yolda
+    # ezilmez.
+    onek <- regmatches(p, regexpr("^/*", p))
     parts <- strsplit(sub("^/+", "", p), "/", fixed = TRUE)[[1]]
     if (length(parts) < 4) return(p)
     if (identical(parts[1:2], parts[3:4])) {
-      rebuilt <- paste(c(slashes, parts[1:2], parts[-(1:4)]), collapse = "/")
-      return(gsub("/{2,}", "/", rebuilt))
+      return(paste0(onek, paste(c(parts[1:2], parts[-(1:4)]), collapse = "/")))
     }
     p
   }
@@ -135,15 +136,19 @@ safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols 
     return(readxl::read_xls)
   }
 
-  # 1. Ön Okuma: başlık satırını algıla (col_names = FALSE)
+  # 1. Ön Okuma: başlık satırını algıla (col_names = FALSE). Yalnızca ilk 20
+  # satır okunur; tüm sayfayı iki kez okumak büyük dosyalarda gereksizdir.
+  on_okuma_satir <- 20L
   raw <- tryCatch({
     reader <- pick_reader(path_prepared)
-    reader(path_prepared, sheet = sheet, col_names = FALSE, .name_repair = "minimal")
+    reader(path_prepared, sheet = sheet, col_names = FALSE, .name_repair = "minimal",
+           n_max = on_okuma_satir)
   }, error = function(e) {
     # Libxls uyumsuzluk kurtarması (ShortPath .XLS -> .xlsx içeriği)
     if (grepl("libxls error", conditionMessage(e), ignore.case = TRUE)) {
       return(readxl::read_xlsx(
-        path_prepared, sheet = sheet, col_names = FALSE, .name_repair = "minimal"
+        path_prepared, sheet = sheet, col_names = FALSE, .name_repair = "minimal",
+        n_max = on_okuma_satir
       ))
     }
     # Windows'ta kısa yolla yeniden dene
@@ -154,7 +159,8 @@ safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols 
       )
       if (!is.null(short_p) && nzchar(short_p)) {
         reader_s <- pick_reader(short_p)
-        return(reader_s(short_p, sheet = sheet, col_names = FALSE, .name_repair = "minimal"))
+        return(reader_s(short_p, sheet = sheet, col_names = FALSE, .name_repair = "minimal",
+                        n_max = on_okuma_satir))
       }
     }
     stop(e)
@@ -176,9 +182,19 @@ safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols 
   }
 
   # 3. Aralık Hesapla
+  # readxl, `range` verildiğinde `n_max` değerini YOK SAYAR; satır sınırı bu
+  # yüzden aralığın alt satırına yazılır (başlık satırı + n_max veri satırı).
+  son_satir <- if (length(n_max) == 1L && is.finite(n_max) &&
+                   n_max >= 0 && n_max <= .Machine$integer.max) {
+    header_row + as.integer(n_max)
+  } else {
+    NA_integer_
+  }
+  # SAĞ SINIR AÇIK: ön okuma yalnızca 20 satır aldığı için `ncol(raw)`, yalnızca
+  # ileri satırlarda dolan bir sütunu dışarıda bırakıp veriyi kırpıyordu.
   rng <- cellranger::cell_limits(
     ul = c(header_row, 1),
-    lr = c(NA, ncol(raw))
+    lr = c(son_satir, NA)
   )
 
   # 4. Son Okuma (gerçek başlıklarla)
@@ -188,8 +204,7 @@ safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols 
       path_prepared,
       sheet = sheet,
       range = rng,
-      col_names = TRUE,
-      n_max = if (is.finite(n_max)) n_max else NULL
+      col_names = TRUE
     )
   }, error = function(e) {
     # Libxls uyumsuzluk kurtarması
@@ -198,8 +213,7 @@ safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols 
         path_prepared,
         sheet = sheet,
         range = rng,
-        col_names = TRUE,
-        n_max = if (is.finite(n_max)) n_max else NULL
+        col_names = TRUE
       ))
     }
     # Windows'ta kısa yolla yeniden dene
@@ -214,8 +228,7 @@ safe_read_excel_table <- function(path, sheet = 1, n_max = Inf, min_header_cols 
           short_p,
           sheet = sheet,
           range = rng,
-          col_names = TRUE,
-          n_max = if (is.finite(n_max)) n_max else NULL
+          col_names = TRUE
         ))
       }
     }

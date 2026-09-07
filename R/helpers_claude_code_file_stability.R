@@ -100,10 +100,12 @@ wait_for_stable_claude_code_file_paths <- function(file_paths,
     isTRUE(same_size) && isTRUE(same_mtime)
   }
 
+  # İLK imza BOŞ olduğunda erken dönülmez: UNC/antivirüs görünürlük gecikmesi
+  # ilk yoklamada dosyaları gizleyebiliyor ve aşağıdaki yeniden deneme bütçesi
+  # hiç çalışmadan üretilen dosyalar düşüyordu. Döngü boş imzayla da sürer;
+  # `same_signature()` satır sayısı farkında FALSE döndüğü için ilk görünen
+  # imza referans alınır ve bütçe bittiğinde varlık denetimi yine uygulanır.
   previous <- file_signature(file_paths)
-  if (nrow(previous) == 0L) {
-    return(character(0))
-  }
 
   latest <- previous
 
@@ -117,7 +119,10 @@ wait_for_stable_claude_code_file_paths <- function(file_paths,
 
     current <- file_signature(file_paths)
     if (nrow(current) == 0L) {
-      return(character(0))
+      # UNC/ağ paylaşımında dosyalar anlık olarak görünmez olabilir; tüm listeyi
+      # hemen düşürmek üretilen dosyaları kaybettiriyordu. Tur atlanır ve son
+      # bilinen geçerli imza korunur.
+      next
     }
 
     latest <- current
@@ -129,5 +134,21 @@ wait_for_stable_claude_code_file_paths <- function(file_paths,
     previous <- current
   }
 
-  deduplicate_claude_code_file_paths(latest$path)
+  # Deneme/süre bütçesi tükendi. Geçici UNC görünmezliği toleransı korunur,
+  # ancak saklanan imza YENİDEN DOĞRULANIR: dosya gerçekten silinmiş/yeniden
+  # adlandırılmışsa çağıran var olmayan bir yol alıp bayat indirme/çıktı
+  # metaverisi üretiyordu.
+  son_yollar <- deduplicate_claude_code_file_paths(latest$path)
+  if (!length(son_yollar)) return(son_yollar)
+  var_olan <- vapply(
+    son_yollar,
+    # `file.exists()` DİZİN için de TRUE döner: çıktı dosyası silinip aynı yolda
+    # bir dizin oluşursa bu fonksiyon o dizini "kararlı dosya" olarak döndürüyordu.
+    function(p) isTRUE(tryCatch(
+      file.exists(p) && !dir.exists(p),
+      error = function(e) FALSE
+    )),
+    logical(1)
+  )
+  son_yollar[var_olan]
 }

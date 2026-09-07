@@ -197,7 +197,11 @@ bs_db_submit_challenge_entry <- function(user_id, sezon_id, kosu_id,
       params = normalize_db_params(list(as.integer(sezon_id), uid))
     )
 
-    if (nrow(mevcut) > 0L) {
+    # İyimser kilit: satır okunduktan sonra başka bir koşu tarafından
+    # güncellendiyse (GameRunID değişti) UPDATE uygulanmaz; kayıp güncelleme
+    # yerine satır yeniden okunur ve karşılaştırma sınırlı sayıda tekrarlanır.
+    for (deneme in seq_len(3L)) {
+      if (nrow(mevcut) == 0L) break
       # Aynı koşu zaten işlenmişse hiçbir şey değişmez (idempotent).
       if (identical(as.integer(mevcut$GameRunID[1]), as.integer(kosu_id))) {
         return(TRUE)
@@ -211,35 +215,105 @@ bs_db_submit_challenge_entry <- function(user_id, sezon_id, kosu_id,
       if (!.bs_db_giris_daha_iyi_mi(yeni, eski)) {
         return(TRUE)
       }
-      DBI::dbExecute(
+      etkilenen <- DBI::dbExecute(
         handle$conn,
         paste(
           "UPDATE MB_Game_ChallengeEntries SET GameRunID = ?, Score = ?,",
           "CoreHealth = ?, FinalWave = ?, DurationSeconds = ?, SubmittedAt = ?",
-          "WHERE ChallengeEntryID = ?"
+          "WHERE ChallengeEntryID = ? AND GameRunID = ?"
         ),
         params = normalize_db_params(list(
           as.integer(kosu_id), yeni$puan, yeni$cekirdek, yeni$dalga, yeni$sure,
-          .bs_db_now_stamp(), as.integer(mevcut$ChallengeEntryID[1])
+          .bs_db_now_stamp(), as.integer(mevcut$ChallengeEntryID[1]),
+          as.integer(mevcut$GameRunID[1])
         ))
       )
+      if (isTRUE(etkilenen > 0)) {
+        return(TRUE)
+      }
+      mevcut <- DBI::dbGetQuery(
+        handle$conn,
+        paste(
+          "SELECT ChallengeEntryID, GameRunID, Score, CoreHealth, FinalWave,",
+          "DurationSeconds FROM MB_Game_ChallengeEntries",
+          "WHERE ChallengeSeasonID = ? AND UserID = ?"
+        ),
+        params = normalize_db_params(list(as.integer(sezon_id), uid))
+      )
+      if (nrow(mevcut) > 0L && deneme == 3L) {
+        return(FALSE)
+      }
+    }
+
+    # İLK GÖNDERİM YARIŞI: iki eşzamanlı istek `nrow(mevcut) == 0` görüp
+    # koşulsuz INSERT'e gidebilir. `(ChallengeSeasonID, UserID)` benzersiz
+    # olduğu için biri ihlalle düşüyor ve eşzamanlılık-güvenli olması gereken
+    # bu yol FALSE döndürüyordu. İhlal yakalanır, satır yeniden okunur ve aynı
+    # karşılaştırma/güncelleme mantığı bir kez daha uygulanır.
+    ekleme <- tryCatch(
+      DBI::dbExecute(
+        handle$conn,
+        paste(
+          "INSERT INTO MB_Game_ChallengeEntries",
+          "(ChallengeSeasonID, UserID, GameRunID, Score, CoreHealth, FinalWave,",
+          "DurationSeconds, SubmittedAt)",
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        ),
+        params = normalize_db_params(list(
+          as.integer(sezon_id), uid, as.integer(kosu_id), yeni$puan,
+          yeni$cekirdek, yeni$dalga, yeni$sure, .bs_db_now_stamp()
+        ))
+      ),
+      error = function(e) e
+    )
+
+    if (!inherits(ekleme, "condition")) {
       return(TRUE)
     }
 
-    DBI::dbExecute(
+    yarisan <- tryCatch(
+      DBI::dbGetQuery(
+        handle$conn,
+        paste(
+          "SELECT ChallengeEntryID, GameRunID, Score, CoreHealth, FinalWave,",
+          "DurationSeconds FROM MB_Game_ChallengeEntries",
+          "WHERE ChallengeSeasonID = ? AND UserID = ?"
+        ),
+        params = normalize_db_params(list(as.integer(sezon_id), uid))
+      ),
+      error = function(e) NULL
+    )
+    if (!is.data.frame(yarisan) || nrow(yarisan) == 0L) {
+      stop(ekleme)
+    }
+    if (identical(as.integer(yarisan$GameRunID[1]), as.integer(kosu_id))) {
+      return(TRUE)
+    }
+
+    eski <- list(
+      puan = as.numeric(yarisan$Score[1] %||% 0),
+      cekirdek = as.numeric(yarisan$CoreHealth[1] %||% 0),
+      dalga = as.numeric(yarisan$FinalWave[1] %||% 0),
+      sure = as.numeric(yarisan$DurationSeconds[1] %||% 999999)
+    )
+    if (!.bs_db_giris_daha_iyi_mi(yeni, eski)) {
+      return(TRUE)
+    }
+
+    etkilenen <- DBI::dbExecute(
       handle$conn,
       paste(
-        "INSERT INTO MB_Game_ChallengeEntries",
-        "(ChallengeSeasonID, UserID, GameRunID, Score, CoreHealth, FinalWave,",
-        "DurationSeconds, SubmittedAt)",
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        "UPDATE MB_Game_ChallengeEntries SET GameRunID = ?, Score = ?,",
+        "CoreHealth = ?, FinalWave = ?, DurationSeconds = ?, SubmittedAt = ?",
+        "WHERE ChallengeEntryID = ? AND GameRunID = ?"
       ),
       params = normalize_db_params(list(
-        as.integer(sezon_id), uid, as.integer(kosu_id), yeni$puan,
-        yeni$cekirdek, yeni$dalga, yeni$sure, .bs_db_now_stamp()
+        as.integer(kosu_id), yeni$puan, yeni$cekirdek, yeni$dalga, yeni$sure,
+        .bs_db_now_stamp(), as.integer(yarisan$ChallengeEntryID[1]),
+        as.integer(yarisan$GameRunID[1])
       ))
     )
-    TRUE
+    isTRUE(etkilenen > 0)
   },
   fallback = FALSE,
   uyari = "Meydan okuma girişi kaydedilemedi:")
@@ -401,252 +475,6 @@ bs_db_challenge_leaderboard <- function(sezon_id, user_id = NULL, limit = 20L,
   },
   fallback = NULL,
   uyari = "Liderlik tablosu yüklenemedi:")
-}
-
-#' Savunma Planı Yayınla
-#'
-#' @description Kullanıcının SONUÇLANMIŞ bir koşusundan doğrulanmış savunma
-#' planı yayınlar. Plan yükü bs_plan_dogrula() süzgecinden geçirilir; yayın
-#' sonrası değiştirilemez. Başarıda plan kimliği döner.
-bs_db_publish_blueprint <- function(user_id, kosu_id, baslik, plan,
-                                    conn = NULL) {
-  uid <- .bs_db_kullanici_id(user_id)
-  if (is.null(uid)) return(NULL)
-
-  dogrulama <- bs_plan_dogrula(plan)
-  if (!isTRUE(dogrulama$gecerli)) return(NULL)
-
-  handle <- .bs_db_try(
-    .bs_db_acquire(conn),
-    fallback = NULL,
-    uyari = "Plan yayını için DB bağlantısı alınamadı:"
-  )
-  if (is.null(handle)) return(NULL)
-  on.exit(.bs_db_release(handle), add = TRUE)
-
-  .bs_db_try({
-    kosu <- DBI::dbGetQuery(
-      handle$conn,
-      paste(
-        "SELECT GameRunID, Status, Mode, MapID, Difficulty, Seed, Score, Stars,",
-        "FinalWave, CoreHealth",
-        "FROM MB_Game_Runs WHERE GameRunID = ? AND UserID = ?"
-      ),
-      params = normalize_db_params(list(as.integer(kosu_id), uid))
-    )
-    if (nrow(kosu) == 0L ||
-        !as.character(kosu$Status[1]) %in% c("Tamamlandı", "Yenilgi")) {
-      return(NULL)
-    }
-
-    # Haftalık meydan okuma koşuları o haftaya özgü bir değiştiriciyle
-    # (düşman hızı/kaynak/dalga yoğunluğu) oynanır; savunma planı yalnızca
-    # harita/zorluk/tohum taşır ve deneme (plan) modu hiçbir değiştirici
-    # uygulamaz. Böyle bir koşudan plan yayınlamak, yaratıcının
-    # değiştiriciyle elde ettiği sonucu değiştiricisiz bir tekrar oynanışla
-    # haksız biçimde kıyaslar; bu yüzden haftalık koşu kaynaklı yayın
-    # reddedilir.
-    if (identical(as.character(kosu$Mode[1]), "haftalik")) {
-      return(NULL)
-    }
-
-    # Plan, koşunun gerçek harita/zorluk/tohum üçlüsünü taşımalıdır.
-    p <- dogrulama$plan
-    if (!identical(p$harita, as.character(kosu$MapID[1])) ||
-        !identical(p$zorluk, as.character(kosu$Difficulty[1])) ||
-        !identical(p$tohum, as.integer(kosu$Seed[1]))) {
-      return(NULL)
-    }
-
-    plan_json <- .bs_db_json(p)
-    if (nchar(plan_json, type = "bytes") > BS_MAX_PLAN_KARAKTER) return(NULL)
-
-    baslik_temiz <- .bs_metin_temizle(baslik, 80L)
-    if (!nzchar(baslik_temiz)) baslik_temiz <- p$baslik
-
-    yaratici_ozet <- .bs_db_json(list(
-      puan = as.numeric(kosu$Score[1] %||% 0),
-      yildiz = as.integer(kosu$Stars[1] %||% 0L),
-      son_dalga = as.integer(kosu$FinalWave[1] %||% 0L),
-      cekirdek = as.numeric(kosu$CoreHealth[1] %||% 0)
-    ))
-
-    .bs_db_insert_returning_id(
-      conn = handle$conn,
-      insert_sql_tsql = paste(
-        "INSERT INTO MB_Game_Blueprints",
-        "(UserID, GameRunID, MapID, Difficulty, Seed, Title, PayloadJson,",
-        "SchemaVersion, CreatorResultJson, IsDeleted, CreatedAt)",
-        "OUTPUT INSERTED.BlueprintID AS id",
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)"
-      ),
-      insert_sql_plain = paste(
-        "INSERT INTO MB_Game_Blueprints",
-        "(UserID, GameRunID, MapID, Difficulty, Seed, Title, PayloadJson,",
-        "SchemaVersion, CreatorResultJson, IsDeleted, CreatedAt)",
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)"
-      ),
-      id_column = "BlueprintID",
-      params = normalize_db_params(list(
-        uid, as.integer(kosu_id),
-        normalize_db_technical_value(p$harita),
-        normalize_db_technical_value(p$zorluk),
-        p$tohum,
-        normalize_db_visible_value(baslik_temiz),
-        plan_json,
-        BS_SEMA_SURUMU,
-        yaratici_ozet,
-        .bs_db_now_stamp()
-      ))
-    )
-  },
-  fallback = NULL,
-  uyari = "Savunma planı yayınlanamadı:")
-}
-
-#' Yayınlanmış Savunma Planlarını Listele
-bs_db_list_blueprints <- function(user_id = NULL, limit = 30L, conn = NULL) {
-  handle <- .bs_db_try(
-    .bs_db_acquire(conn),
-    fallback = NULL,
-    uyari = "Plan listesi için DB bağlantısı alınamadı:"
-  )
-  if (is.null(handle)) return(NULL)
-  on.exit(.bs_db_release(handle), add = TRUE)
-
-  .bs_db_try({
-    planlar <- DBI::dbGetQuery(
-      handle$conn,
-      paste(
-        "SELECT BlueprintID, UserID, MapID, Difficulty, Seed, Title,",
-        "SchemaVersion, CreatorResultJson, CreatedAt",
-        "FROM MB_Game_Blueprints WHERE IsDeleted = 0",
-        "ORDER BY BlueprintID DESC"
-      )
-    )
-
-    n <- min(nrow(planlar), max(1L, as.integer(limit)))
-    if (nrow(planlar) > n) planlar <- planlar[seq_len(n), , drop = FALSE]
-
-    uid <- .bs_db_kullanici_id(user_id)
-    profiller <- .bs_db_kullanici_profilleri(handle$conn, planlar$UserID)
-    katalog <- bs_harita_katalogu()
-
-    lapply(seq_len(nrow(planlar)), function(i) {
-      satir_uid <- as.integer(planlar$UserID[i])
-      profil <- profiller[[as.character(satir_uid)]] %||%
-        list(ad = paste0("Oyuncu #", satir_uid), rumuz = "", departman = "")
-      baslik <- as.character(planlar$Title[i])
-      if (exists("normalize_db_read_visible_value", mode = "function", inherits = TRUE)) {
-        baslik <- normalize_db_read_visible_value(baslik)
-      }
-      yaratici_ozet <- tryCatch(
-        jsonlite::fromJSON(planlar$CreatorResultJson[i] %||% "{}",
-                           simplifyVector = FALSE),
-        error = function(e) list()
-      )
-      harita_id <- as.character(planlar$MapID[i])
-      list(
-        plan_id = as.integer(planlar$BlueprintID[i]),
-        baslik = baslik,
-        yaratici = profil$ad,
-        yaratici_departman = profil$departman,
-        benim = !is.null(uid) && identical(satir_uid, uid),
-        harita = harita_id,
-        harita_ad = katalog[[harita_id]]$ad %||% harita_id,
-        zorluk = as.character(planlar$Difficulty[i]),
-        sema = as.integer(planlar$SchemaVersion[i]),
-        yaratici_sonucu = yaratici_ozet,
-        yayin_zamani = as.character(planlar$CreatedAt[i])
-      )
-    })
-  },
-  fallback = NULL,
-  uyari = "Plan listesi yüklenemedi:")
-}
-
-#' Tek Savunma Planını Getir (Deneme Akışı)
-#'
-#' @description Silinmemiş planın doğrulanmış yükünü döndürür. Desteklenmeyen
-#' şema sürümü zarifçe reddedilir (NULL + neden).
-bs_db_get_blueprint <- function(plan_id, conn = NULL) {
-  handle <- .bs_db_try(
-    .bs_db_acquire(conn),
-    fallback = NULL,
-    uyari = "Plan getirme için DB bağlantısı alınamadı:"
-  )
-  if (is.null(handle)) return(NULL)
-  on.exit(.bs_db_release(handle), add = TRUE)
-
-  .bs_db_try({
-    satir <- DBI::dbGetQuery(
-      handle$conn,
-      paste(
-        "SELECT BlueprintID, UserID, MapID, Difficulty, Seed, Title,",
-        "PayloadJson, SchemaVersion, CreatorResultJson",
-        "FROM MB_Game_Blueprints WHERE BlueprintID = ? AND IsDeleted = 0"
-      ),
-      params = normalize_db_params(list(as.integer(plan_id)))
-    )
-    if (nrow(satir) == 0L) return(NULL)
-
-    if (!identical(as.integer(satir$SchemaVersion[1]), BS_SEMA_SURUMU)) {
-      return(list(desteklenmiyor = TRUE, sema = as.integer(satir$SchemaVersion[1])))
-    }
-
-    yuk <- bs_yuk_coz(satir$PayloadJson[1], sinir = BS_MAX_PLAN_KARAKTER)
-    if (is.null(yuk)) return(NULL)
-
-    baslik <- as.character(satir$Title[1])
-    if (exists("normalize_db_read_visible_value", mode = "function", inherits = TRUE)) {
-      baslik <- normalize_db_read_visible_value(baslik)
-    }
-
-    list(
-      plan_id = as.integer(satir$BlueprintID[1]),
-      sahip_id = as.integer(satir$UserID[1]),
-      baslik = baslik,
-      harita = as.character(satir$MapID[1]),
-      zorluk = as.character(satir$Difficulty[1]),
-      tohum = as.integer(satir$Seed[1]),
-      plan = yuk,
-      yaratici_sonucu = tryCatch(
-        jsonlite::fromJSON(satir$CreatorResultJson[1] %||% "{}",
-                           simplifyVector = FALSE),
-        error = function(e) list()
-      )
-    )
-  },
-  fallback = NULL,
-  uyari = "Savunma planı yüklenemedi:")
-}
-
-#' Savunma Planını Yumuşak Sil (Yalnızca Sahibi)
-bs_db_soft_delete_blueprint <- function(user_id, plan_id, conn = NULL) {
-  uid <- .bs_db_kullanici_id(user_id)
-  if (is.null(uid)) return(FALSE)
-
-  handle <- .bs_db_try(
-    .bs_db_acquire(conn),
-    fallback = NULL,
-    uyari = "Plan silme için DB bağlantısı alınamadı:"
-  )
-  if (is.null(handle)) return(FALSE)
-  on.exit(.bs_db_release(handle), add = TRUE)
-
-  .bs_db_try({
-    guncellenen <- DBI::dbExecute(
-      handle$conn,
-      paste(
-        "UPDATE MB_Game_Blueprints SET IsDeleted = 1",
-        "WHERE BlueprintID = ? AND UserID = ? AND IsDeleted = 0"
-      ),
-      params = normalize_db_params(list(as.integer(plan_id), uid))
-    )
-    guncellenen > 0L
-  },
-  fallback = FALSE,
-  uyari = "Savunma planı silinemedi:")
 }
 
 #' Haftalık Topluluk Operasyonu Katkısı Ekle (Koşu Bazında Idempotent)

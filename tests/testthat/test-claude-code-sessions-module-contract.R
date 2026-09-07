@@ -337,7 +337,13 @@ test_that("çalışma alanı runtime'ı kalıcı oturum köprüsünü doğru kul
   # Akış tamamlanınca başarılı VE başarısız çalıştırmalar kalıcılaştırılır.
   # Çalıştırma sonrası sonlandırma completion helper'ına taşındı; zaman aşımı
   # ve durdurma poll gözlemcisinde kalır.
-  completion <- .ccs_read_file_text(.ccs_repo_file("R", "helpers_claude_code_run_completion.R"))
+  # Raporlama + worker gönderimi ayrı dosyaya taşındı (cırcır bölmesi); terminal
+  # yolların TAMAMI iki dosyanın birleşiminde denetlenir.
+  completion <- paste(
+    .ccs_read_file_text(.ccs_repo_file("R", "helpers_claude_code_run_completion.R")),
+    .ccs_read_file_text(.ccs_repo_file("R", "helpers_claude_code_run_output_dispatch.R")),
+    sep = "\n"
+  )
   expect_true(grepl('status = "completed"', completion, fixed = TRUE))
   expect_true(grepl('status = "failed"', completion, fixed = TRUE))
   expect_true(grepl('status = "failed"', poll, fixed = TRUE))

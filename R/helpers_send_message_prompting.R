@@ -195,7 +195,14 @@ mergen_build_uploaded_files_context_messages <- function(tool_family,
 
   if (identical(tool_family, "none") && uploaded_count > 0) {
     total_budget <- 120000
-    per_file_cap <- max(4000, floor(total_budget / max(1, uploaded_count)))
+    # ALT SINIR toplam bütçeyi geçersiz kılamaz; sığmayan dosya eklenmez ve not yazılır.
+    per_file_cap <- max(1000, floor(total_budget / max(1, uploaded_count)))
+    max_context_files <- max(1L, floor(total_budget / per_file_cap))
+    atlanan <- max(0L, length(uploaded_names) - max_context_files)
+    if (atlanan > 0L) uploaded_names <- uploaded_names[seq_len(max_context_files)]
+    uploaded_count <- length(uploaded_names)
+    context_limit_note <- if (atlanan > 0L) sprintf(
+      "\n\n(Bağlam sınırı aşıldı: %d dosya bu isteğe eklenmedi.)", atlanan) else ""
 
     summary_store <- session_user_data_get_list(session, "file_summaries")
     current_file_store <- session_user_data_get_list(session, "current_session_files")
@@ -221,7 +228,8 @@ mergen_build_uploaded_files_context_messages <- function(tool_family,
       "Aşağıdaki dosya özetlerini ve/veya alıntılarını kullanarak isteği yanıtla. Araç KULLANILMAYACAKTIR (MCP kapalı).\n\n",
       paste(file_blocks, collapse = "\n\n"),
       "\n\nSoru: ", user_question,
-      "\n\nKaynakça:\n", citation_files_list
+      "\n\nKaynakça:\n", citation_files_list,
+      context_limit_note
     )
 
     # Vision aktif ve gerçekten kodlanmış görsel varsa kullanıcı içeriği OpenAI

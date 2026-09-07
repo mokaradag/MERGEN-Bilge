@@ -582,13 +582,32 @@ settingsYapilandirmaServer <- function(id, settings, parent_session = NULL) {
 
 	  api_key <- api_key_plan$key
 
+	  # `cc_policy_temp_workspace_root()` dir.create() başarısız olsa da yolu
+	  # DÖNDÜRÜR. Geçici dizin silinmiş ya da yazılamıyorsa worker var olmayan
+	  # bir çalışma diziniyle başlıyor ve SAHTE bağlantı hatası raporlanıyordu.
+	  cc_calisma_alani <- cc_policy_temp_workspace_root()
+	  if (!isTRUE(dir.exists(cc_calisma_alani))) {
+		settings$claude_code_connection_ok <- FALSE
+		showToast(
+		  session,
+		  "Bilge Yolaç için geçici çalışma alanı oluşturulamadı; bağlantı testi yapılamadı.",
+		  "error"
+		)
+		# Bu `observeEvent` kapsamında dış bir `on.exit` temizliği YOKTUR: düğme
+		# yalnızca promise işleyicilerinde yeniden etkinleşiyor. Erken dönüşte
+		# etkinleştirilmezse "Bağlantıyı Test Et" oturum boyunca devre dışı
+		# kalıyordu.
+		shinyjs::enable("cc_test_connection")
+		return(invisible(NULL))
+	  }
+
 	  # Worker tarafına bağımlılık aktarımı ve sağlık metrikleri için
 	  # doğrudan future_promise yerine tracked_future_promise kullanılır.
 	  tracked_future_promise(
 		task_fn = function() {
 		  test_claude_code_connection(
 			cli_path = cli_yolu,
-			workdir = tempdir(),
+			workdir = cc_calisma_alani,
 			api_key = api_key
 		  )
 		},

@@ -126,6 +126,10 @@ test_that("kaynak manifesti bilge_savunmasi bölümünü doğru sırayla taşır
     "R/helpers_db_bilge_savunmasi_cekirdek.R",
     "R/helpers_db_bilge_savunmasi_kosu.R",
     "R/helpers_db_bilge_savunmasi_topluluk.R",
+    # Savunma planı (blueprint) DB katmanı, topluluk dosyası 800 satır
+    # cırcırına dayandığı için ayrıldı; .bs_db_kullanici_profilleri'ni
+    # kullandığından topluluktan SONRA yüklenir.
+    "R/helpers_db_bilge_savunmasi_plan.R",
     "R/module_bilge_savunmasi_ui.R",
     "R/module_bilge_savunmasi.R"
   ))

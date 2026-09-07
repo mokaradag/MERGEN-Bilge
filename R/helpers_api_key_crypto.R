@@ -17,9 +17,34 @@
 API_KEYS_DIR <- normalizePath(file.path(getwd(), "api_keys"), winslash = "/", mustWork = FALSE)
 dir.create(API_KEYS_DIR, showWarnings = FALSE, recursive = TRUE)
 
+# Kayıt SAHİBİ doğrulaması. Harf büyüklüğüne duyarsız dosya sisteminde `Alice`
+# ve `alice` aynı dosyaya çözülüyor; kayıttaki `user` alanı kontrol edilmezse
+# bir kullanıcı diğerinin anahtarını okuyabiliyordu (IDOR). Eski kayıtlarda
+# `user` alanı yoksa geriye dönük uyumluluk için kabul edilir.
+.api_kayit_sahibi_mi <- function(rec, system_username) {
+  sahip <- as.character(rec$user %||% "")[1]
+  if (is.na(sahip) || !nzchar(sahip)) return(TRUE)
+  identical(sahip, as.character(system_username %||% "")[1])
+}
+
 # Kullanıcıya özel anahtar dosya yolu
 .api_user_file <- function(system_username) {
-  file.path(API_KEYS_DIR, sprintf("%s_api_key", system_username))
+  kullanici <- as.character(system_username %||% "")[1]
+  # Kullanıcı adı yol bileşeni olarak güvenli olmalı; ayraç içeren değer
+  # anahtar dosyasını API_KEYS_DIR dışına taşıyabilirdi. Ayraç ve basename
+  # denetimi traversal için YETERLİDİR; ayrıca ".." dizisini reddetmek
+  # `ad..soyad` gibi GEÇERLİ kullanıcı adlarında kişisel anahtar kaydını ve
+  # okumasını engelliyordu (üretilen `ad..soyad_api_key` bir geçiş bileşeni
+  # değildir).
+  # Windows `: * ? " < > |` karakterlerini dosya adında kabul etmez; bu değerler
+  # geçtiğinde kullanıcı anahtarını Windows'ta HİÇ kaydedemiyor/okuyamıyordu.
+  if (is.na(kullanici) || !nzchar(kullanici) ||
+      grepl("[/\\\\]", kullanici) ||
+      grepl("[:*?\"<>|]", kullanici, perl = TRUE) ||
+      !identical(basename(kullanici), kullanici)) {
+    stop("Geçersiz kullanıcı adı: API anahtarı dosya yolu üretilemedi.", call. = FALSE)
+  }
+  file.path(API_KEYS_DIR, sprintf("%s_api_key", kullanici))
 }
 
 # Tuzlu hash oluştur (SHA256 hex): SHA256(salt || key)
@@ -149,11 +174,27 @@ load_user_api_key <- function(system_username) {
   if (!nzchar(master)) return(NULL)
   rec <- try(jsonlite::read_json(f, simplifyVector = TRUE), silent = TRUE)
   if (inherits(rec, "try-error") || is.null(rec$enc)) return(NULL)
+  if (!.api_kayit_sahibi_mi(rec, system_username)) return(NULL)
   tryCatch(.dec_key(rec$enc, master), error = function(e) NULL)
 }
 
-# Kullanıcının kayıtlı API anahtarı var mı?
-user_api_key_exists <- function(system_username) file.exists(.api_user_file(system_username))
+# Kullanıcının kayıtlı API anahtarı var mı? (sahiplik de doğrulanır)
+# Geçerli ama EKSİK bir JSON nesnesi (`{}`) sahiplik denetiminden geçiyor ve
+# burada TRUE dönüyordu; `load_user_api_key()` ise NULL döndürdüğü için çağıran
+# "anahtar var ama okunamıyor" durumuna düşüyordu. Kayıt KULLANILABİLİR olmalı.
+user_api_key_exists <- function(system_username) {
+  f <- .api_user_file(system_username)
+  if (!file.exists(f)) return(FALSE)
+  rec <- try(jsonlite::read_json(f, simplifyVector = TRUE), silent = TRUE)
+  if (inherits(rec, "try-error") || !is.list(rec)) return(FALSE)
+  degerler <- c(
+    as.character(rec$enc %||% "")[1],
+    as.character(rec$salt_b64 %||% "")[1],
+    as.character(rec$hash_hex %||% "")[1]
+  )
+  if (length(degerler) != 3L || anyNA(degerler) || !all(nzchar(degerler))) return(FALSE)
+  .api_kayit_sahibi_mi(rec, system_username)
+}
 
 # Kullanıcının girdiği anahtarı mevcut kayıtla doğrula (hash karşılaştırması)
 verify_user_api_key <- function(system_username, candidate_plain) {
@@ -161,6 +202,7 @@ verify_user_api_key <- function(system_username, candidate_plain) {
   if (!file.exists(f)) return(FALSE)
   rec <- try(jsonlite::read_json(f, simplifyVector = TRUE), silent = TRUE)
   if (inherits(rec, "try-error")) return(FALSE)
+  if (!.api_kayit_sahibi_mi(rec, system_username)) return(FALSE)
   salt <- base64enc::base64decode(rec$salt_b64 %||% "")
   hash_hex <- .hash_key_hex(candidate_plain, salt)
   isTRUE(identical(tolower(hash_hex), tolower(rec$hash_hex %||% "")))

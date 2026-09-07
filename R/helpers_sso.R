@@ -2,6 +2,15 @@
 # Açıklama: SSO (Tek Oturum Açma) yardımcı fonksiyonları.
 #            JWT token çözümleme, doğrulama ve Keycloak claim işleme.
 
+# Sayısal claim'i GÜVENLE okur. `simplifyVector = FALSE` ile ayrıştırılan JSON
+# dizileri/nesneleri LİSTE olur ve `as.numeric(list(...))` UYARI değil HATA
+# verir; `suppressWarnings()` bunu yakalamaz. Tek değerli atomik olmayan her
+# şey NA_real_ olarak işlenir (fail-closed).
+sso_numeric_claim <- function(value) {
+  if (is.null(value) || !is.atomic(value) || length(value) != 1L) return(NA_real_)
+  suppressWarnings(as.numeric(value))
+}
+
 # ==============================================================================
 # JWT TOKEN ÇÖZÜMLEME
 # ==============================================================================
@@ -92,29 +101,70 @@ validate_jwt_token <- function(token) {
   }
 
   # 3. Zorunlu alan kontrolü: preferred_username
+  # Çok değerli claim `if` koşulunu uzunluk > 1 yapıp SSO kurulumunu çökertiyordu.
   username <- payload[[SSO_CLAIM_MAP$username]]
+  username <- if (is.null(username)) NULL else as.character(username)[1]
+  if (!is.null(username) && is.na(username)) username <- NULL
   if (is.null(username) || !nzchar(username)) {
     return(list(valid = FALSE, payload = payload, error = "Token'da kullanıcı adı (preferred_username) bulunamadı"))
   }
 
   # 4. Issuer doğrulaması
   if (isTRUE(SSO_CONFIG$validate_issuer) && nzchar(SSO_CONFIG$issuer_url %||% "")) {
-    token_issuer <- payload[["iss"]]
-    if (is.null(token_issuer) || !identical(token_issuer, SSO_CONFIG$issuer_url)) {
+    token_issuer <- as.character(payload[["iss"]] %||% "")[1]
+    if (is.na(token_issuer)) token_issuer <- ""
+    if (!nzchar(token_issuer) || !identical(token_issuer, SSO_CONFIG$issuer_url)) {
       log_warn("JWT issuer uyuşmazlığı: beklenen={SSO_CONFIG$issuer_url}, gelen={token_issuer %||% 'BOŞ'}")
       return(list(valid = FALSE, payload = payload, error = "Token kaynağı (issuer) doğrulanamadı"))
     }
   }
 
-  # 5. Süre dolum kontrolü
+  # 4b. Audience/client bağı: AYNI realm'deki BAŞKA bir istemci için üretilmiş
+  # geçerli imzalı bir token da kabul ediliyordu. Keycloak bu tokenlarda her
+  # zaman `azp` (ve genellikle `aud`) taşır; ikisi de yoksa bağ KANITLANAMAZ ve
+  # token reddedilir. Denetim issuer denetiminden BAĞIMSIZDIR (sıra korunur):
+  # `SSO_VALIDATE_ISSUER=FALSE` kurulumunda bağın hiç uygulanmaması, başka bir
+  # istemcinin tokenıyla oturum açılmasına izin veriyordu.
+  client_id <- as.character(SSO_CONFIG$client_id %||% "")[1]
+  if (!is.na(client_id) && nzchar(client_id)) {
+    aud <- as.character(payload[["aud"]] %||% character(0))
+    aud <- aud[!is.na(aud) & nzchar(aud)]
+    azp <- as.character(payload[["azp"]] %||% "")[1]
+    if (is.na(azp)) azp <- ""
+
+    if (!length(aud) && !nzchar(azp)) {
+      # KAPALI-BAŞARISIZ: istemci bağı KANITLANAMAYAN token kabul edilmez.
+      # Yalnızca uyarı yazmak, imza doğrulaması kapalı bir kurulumda issuer'ı
+      # eşleşen kendi üretimi bir JWT ile oturum açılmasına izin veriyordu.
+      log_warn("JWT token'da aud/azp yok; istemci bağı doğrulanamadı, token reddedildi.")
+      return(list(
+        valid = FALSE, payload = payload,
+        error = "Token bu uygulama için düzenlenmemiş (audience)"
+      ))
+    } else if (!(client_id %in% aud) && !identical(azp, client_id)) {
+      log_warn("JWT audience/client uyuşmazlığı: beklenen={client_id}")
+      return(list(valid = FALSE, payload = payload, error = "Token bu uygulama için düzenlenmemiş (audience)"))
+    }
+  }
+
+  # 5. Süre dolum kontrolü (KAPALI-BAŞARISIZ)
+  # `exp` claim'i yoksa token SÜRESİZ kabul ediliyordu; artık eksik/geçersiz
+  # `exp` doğrulamayı düşürür.
   if (isTRUE(SSO_CONFIG$validate_expiry)) {
-    exp_time <- payload[["exp"]]
-    if (!is.null(exp_time)) {
-      current_time <- as.numeric(Sys.time())
-      if (current_time > exp_time) {
-        log_warn("JWT token süresi dolmuş: exp={exp_time}, şimdi={current_time}")
-        return(list(valid = FALSE, payload = payload, error = "Token süresi dolmuş. Lütfen sayfayı yenileyiniz."))
-      }
+    # `jsonlite::fromJSON(..., simplifyVector = FALSE)` dizileri/nesneleri LİSTE
+    # döndürür; `as.numeric(list(...))` UYARI değil HATA verir ve
+    # `suppressWarnings()` bunu yakalamaz (observeEvent hata işlemesiz).
+    exp_time <- sso_numeric_claim(payload[["exp"]])
+
+    if (!is.finite(exp_time)) {
+      log_warn("JWT token'da geçerli exp claim'i yok; token reddedildi.")
+      return(list(valid = FALSE, payload = payload, error = "Token geçerlilik süresi (exp) bulunamadı"))
+    }
+
+    current_time <- as.numeric(Sys.time())
+    if (current_time > exp_time) {
+      log_warn("JWT token süresi dolmuş: exp={exp_time}, şimdi={current_time}")
+      return(list(valid = FALSE, payload = payload, error = "Token süresi dolmuş. Lütfen sayfayı yenileyiniz."))
     }
   }
 
@@ -138,13 +188,17 @@ extract_user_claims <- function(payload) {
     return(NULL)
   }
 
-  # Claim değerlerini güvenli şekilde al
+  # Claim değerlerini güvenli şekilde al. Çok değerli (uzunluk > 1) veya boş
+  # (uzunluk 0) claim `if` koşulunu skaler olmayan yapıp oturum kurulumunu
+  # çökertiyordu; validate_jwt_token gibi burada da İLK değer alınır.
   safe_claim <- function(field_name) {
     claim_key <- SSO_CLAIM_MAP[[field_name]]
     if (is.null(claim_key)) return(NULL)
     val <- payload[[claim_key]]
-    if (is.null(val) || !nzchar(as.character(val))) return(NULL)
-    tryCatch(enc2utf8(as.character(val)), error = function(e) as.character(val))
+    if (is.null(val) || !length(val)) return(NULL)
+    val <- tryCatch(as.character(val)[1], error = function(e) NA_character_)
+    if (is.na(val) || !nzchar(val)) return(NULL)
+    tryCatch(enc2utf8(val), error = function(e) val)
   }
 
   # Ham değerleri çıkar

@@ -203,7 +203,8 @@ resolve_local_llm_credentials <- function(model_id = NULL, config = api_config) 
 
   allow_user_key <- TRUE
   if (!is.null(endpoint_key) && nzchar(endpoint_key) && length(user_key_flags)) {
-    allow_user_key <- isTRUE(user_key_flags[[endpoint_key]])
+    # `[[` adlandırılmış vektörde eksik ad için hata verir; `[` NA/NULL döner.
+    allow_user_key <- isTRUE(unlist(user_key_flags[endpoint_key], use.names = FALSE)[1])
   }
 
   list(

@@ -209,16 +209,16 @@ admin_ha_overview_ui <- function(ns, data) {
   cozuldu_cnt <- 0
   kritik_cnt <- 0
 
+  # NULL Durum/Oncelik grubu NA indeks üretip kartları NA gösterirdi; NA-güvenli.
   if (nrow(data$durum_dagilim) > 0) {
-    acik_cnt <- sum(data$durum_dagilim$cnt[data$durum_dagilim$Durum == "acik"])
-  }
-
-  if (nrow(data$durum_dagilim) > 0) {
-    cozuldu_cnt <- sum(data$durum_dagilim$cnt[data$durum_dagilim$Durum %in% c("cozuldu", "kapandi")])
+    durum_vec <- as.character(data$durum_dagilim$Durum)
+    acik_cnt <- sum(data$durum_dagilim$cnt[!is.na(durum_vec) & durum_vec == "acik"], na.rm = TRUE)
+    cozuldu_cnt <- sum(data$durum_dagilim$cnt[!is.na(durum_vec) & durum_vec %in% c("cozuldu", "kapandi")], na.rm = TRUE)
   }
 
   if (nrow(data$oncelik_dagilim) > 0) {
-    kritik_cnt <- sum(data$oncelik_dagilim$cnt[data$oncelik_dagilim$Oncelik == "kritik"])
+    oncelik_vec <- as.character(data$oncelik_dagilim$Oncelik)
+    kritik_cnt <- sum(data$oncelik_dagilim$cnt[!is.na(oncelik_vec) & oncelik_vec == "kritik"], na.rm = TRUE)
   }
 
   cozum_oran <- if (toplam > 0) sprintf("%.0f%%", (cozuldu_cnt / toplam) * 100) else "N/A"

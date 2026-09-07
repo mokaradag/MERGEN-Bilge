@@ -128,6 +128,9 @@ cc_policy_normalize_path <- function(path, must_exist = FALSE) {
       if (!is.na(cozulen) && nzchar(cozulen)) {
         cozulen_slash <- gsub("\\", "/", cozulen, fixed = TRUE)
         if (grepl("^//", cozulen_slash, perl = TRUE)) {
+          # UNC yolunda da nokta segmentleri sadeleştirilmelidir; aksi hâlde
+          # `//sunucu/pay/../../disari` kök önek denetimini geçerdi (CWE-22).
+          cozulen_slash <- cc_policy_collapse_dot_segments(cozulen_slash)
           return(sub("/+$", "", cozulen_slash, perl = TRUE))
         }
       }
@@ -135,6 +138,7 @@ cc_policy_normalize_path <- function(path, must_exist = FALSE) {
 
     cleaned <- gsub("\\", "/", path, fixed = TRUE)
     cleaned <- paste0("//", sub("^/+", "", cleaned))
+    cleaned <- cc_policy_collapse_dot_segments(cleaned)
     return(sub("/+$", "", cleaned, perl = TRUE))
   }
 
@@ -209,10 +213,44 @@ cc_policy_allowed_workdir_roots <- function(user_id = NULL,
   )
 
   if (isTRUE(allow_system_temp)) {
-    configured <- c(configured, tempdir())
+    # Tüm tempdir() kökünü açmak, aynı R sürecindeki başka kullanıcının runtime
+    # klasörünü de erişilebilir kılıyordu. Yalnızca Bilge Yolaç'ın kendi geçici
+    # alt ağaçlarına izin verilir.
+    #
+    # Kullanıcı kimliği biliniyorsa ÜST kökler değil, YALNIZCA o kullanıcının
+    # runtime dizini açılır. `cc_policy_path_inside_roots()` yalnızca kök önekine
+    # baktığı için üst kök, başka kullanıcıların `user_<id>` alt ağaçlarını da
+    # çalışma dizini olarak seçilebilir kılıyordu.
+    kullanici_no <- suppressWarnings(as.integer(user_id %||% NA_integer_))
+    kullanici_kapsamli <- !is.na(kullanici_no) && kullanici_no > 0L &&
+      exists("cc_runtime_user_dir", mode = "function", inherits = TRUE)
+
+    if (isTRUE(kullanici_kapsamli)) {
+      # Kullanıcı çalışma alanı zaten cc_policy_default_user_workspace() ile
+      # eklendi; burada yalnızca runtime kökü kullanıcıya daraltılır.
+      configured <- c(configured, cc_runtime_user_dir(kullanici_no))
+    } else {
+      configured <- c(
+        configured,
+        file.path(tempdir(), "claude_code_runtime"),
+        file.path(tempdir(), "claude_code_workspaces")
+      )
+    }
   }
 
   cc_policy_normalize_roots(configured)
+}
+
+# `allow_system_temp` yalnızca Bilge Yolaç'ın kendi geçici alt ağaçlarını açar;
+# `tempdir()` KÖKÜ artık izinli değildir. Bağlantı testi gibi "boş ama izinli"
+# bir çalışma dizinine ihtiyaç duyan çağrılar bu kökü kullanmalıdır (dizin
+# yoksa oluşturulur; politika denetimi var olan dizin şartı arar).
+cc_policy_temp_workspace_root <- function() {
+  yol <- file.path(tempdir(), "claude_code_workspaces")
+  if (!dir.exists(yol)) {
+    dir.create(yol, recursive = TRUE, showWarnings = FALSE)
+  }
+  yol
 }
 
 cc_policy_allowed_output_roots <- function(user_id = NULL, workdir = "") {
@@ -379,4 +417,224 @@ cc_policy_filter_generated_file_paths <- function(file_paths,
   }
 
   unique(izinli)
+}
+
+# ------------------------------------------------------------------------------
+# Yerel klasör yüklemesinde hedef yolu güvenli biçimde çözer.
+#
+# Tarayıcıdan gelen göreli yol (webkitRelativePath) veya dosya adı doğrulanmadan
+# çalışma alanıyla birleştirildiğinde '..', mutlak yol ya da sürücü harfi taşıyan
+# bir girdi çalışma alanının DIŞINA yazabiliyordu (overwrite = TRUE ile başka
+# kullanıcı/runtime dosyalarının üzerine yazma). Güvenli değilse NULL döner.
+# ------------------------------------------------------------------------------
+# Karşılaştırma anahtarı: Windows'ta harf büyüklüğü ve kodlama işareti farkı
+# aynı yolu eşitsiz gösterir.
+.cc_yol_anahtari <- function(yol) {
+  yol <- enc2utf8(sub("/+$", "", gsub("\\\\", "/", as.character(yol))))
+  if (.Platform$OS.type == "windows") tolower(yol) else yol
+}
+
+# KALAN SINIR (bilinçli): base R yalnızca YOL TABANLI dosya çağrıları sunar
+# (`openat`/`renameat` gibi tanıtıcı-bağıl temel işlemler yoktur). Bu yüzden
+# son kimlik denetimi ile `file.rename()` arasındaki mikro pencere kapatılamaz;
+# çalışma alanına yazabilen YEREL bir saldırgan tam o anda bir atayı takas
+# ederse yazma dışarı düşebilir. Kod bu durumda BAŞARI BİLDİRMEZ ve hiçbir yol
+# tabanlı silme denemez; tam kapatma yerel bir C yardımcısı gerektirir.
+#
+# Yerel klasör yüklemesini doğrulama-sonrası takasa (TOCTOU) karşı yazar.
+# `file.copy(..., overwrite = TRUE)` son bileşendeki bağlantıyı İZLER: doğrulama
+# ile yazma arasında hedef veya bir atası bağlantıyla değiştirilirse servis
+# hesabı çalışma alanı DIŞINA yazar. Bu yüzden önce hedef dizinde geçici bir ada
+# kopyalanır, geçici dosyanın KANONİK yolu kökün altında mı diye bakılır (ata
+# takası burada yakalanır) ve ancak sonra file.rename() ile son ada taşınır;
+# rename son bileşendeki bağlantıyı izlemez, onu değiştirir.
+cc_yerel_yukleme_yaz <- function(kaynak, hedef, kok) {
+  hedef_dizin <- dirname(hedef)
+  if (!dir.exists(hedef_dizin)) {
+    dir.create(hedef_dizin, recursive = TRUE, showWarnings = FALSE)
+  }
+  if (!dir.exists(hedef_dizin)) {
+    return(FALSE)
+  }
+
+  kok_c <- try(normalizePath(kok, winslash = "/", mustWork = TRUE), silent = TRUE)
+  if (inherits(kok_c, "try-error")) {
+    return(FALSE)
+  }
+  kok_a <- .cc_yol_anahtari(kok_c)
+
+  # Hedef dizinin KOPYADAN ÖNCEKİ kanonik kimliği. Temizlik yalnızca geçici
+  # dosya hâlâ bu kimlikteki dizindeyken yapılır; aradaki bir ata takası
+  # kimliği değiştirir ve silme adımı hiç çalışmaz.
+  dizin_once <- try(normalizePath(hedef_dizin, winslash = "/", mustWork = TRUE), silent = TRUE)
+  if (inherits(dizin_once, "try-error")) {
+    return(FALSE)
+  }
+  dizin_once_a <- .cc_yol_anahtari(dizin_once)
+
+  # DEĞİŞMEZ KURAL: geçici dosya HEDEFİN KENDİ DİZİNİNDE üretilir. Böylece
+  # `hedef`in son bileşeni dışındaki HER atası aynı zamanda `gecici`nin de
+  # atasıdır. Doğrulama ile rename arasında bir ata bağlantıyla değiştirilirse
+  # KAYNAK yol da o bağlantının içine düşer, geçici dosya orada bulunmaz ve
+  # rename ENOENT ile başarısız olur; yazma çalışma alanının dışına taşamaz.
+  # Son bileşeni rename İZLEMEZ, değiştirir. Geçici dosyayı başka bir dizine
+  # (ör. tempdir()) taşımak bu korumayı ORTADAN KALDIRIR.
+  gecici <- file.path(
+    hedef_dizin,
+    paste0(".cc_yukleme_", basename(tempfile("")), ".part")
+  )
+  kopyalandi <- isTRUE(try(
+    suppressWarnings(file.copy(kaynak, gecici, overwrite = FALSE)),
+    silent = TRUE
+  ))
+  if (!kopyalandi) {
+    # Hiçbir dosya oluşturmadık; bu yolda unlink DENENMEZ. Ata takas edilmişse
+    # yol tabanlı silme başkasının dosyasını yok ederdi.
+    return(FALSE)
+  }
+
+  # `overwrite = FALSE` ile kopyalama başarılıysa bu yolda daha önce dosya
+  # YOKTU: geçici dosya bize aittir. Kanonik yolu bağlantıları çözer; kökün
+  # dışına düşüyorsa doğrulamadan sonra bir ata değiştirilmiştir.
+  gecici_c <- try(normalizePath(gecici, winslash = "/", mustWork = TRUE), silent = TRUE)
+  if (inherits(gecici_c, "try-error") ||
+      !startsWith(.cc_yol_anahtari(gecici_c), paste0(kok_a, "/"))) {
+    if (!inherits(gecici_c, "try-error") &&
+        identical(.cc_yol_anahtari(dirname(gecici_c)), dizin_once_a)) {
+      try(unlink(gecici_c, force = TRUE), silent = TRUE)
+    }
+    return(FALSE)
+  }
+
+  # Taşımadan HEMEN ÖNCE kimlik yeniden doğrulanır: bir ata bağlantıyla
+  # değiştirildiyse geçici dosya artık kopyadan önceki dizinde değildir ve
+  # taşıma hiç denenmez.
+  tasima_c <- try(normalizePath(gecici, winslash = "/", mustWork = TRUE), silent = TRUE)
+  if (inherits(tasima_c, "try-error") ||
+      !identical(.cc_yol_anahtari(dirname(tasima_c)), dizin_once_a)) {
+    return(FALSE)
+  }
+
+  # `file.rename()` izinler elverdiği sürece var olan hedefin ÜZERİNE yazar;
+  # ayrı bir silme adımına gerek yoktur. Başarısız rename'den sonra
+  # `unlink(hedef)` DENENMEZ: yol tabanlı silme ata bileşenlerini izler ve bir
+  # ata bağlantıyla değiştirilmişse çalışma alanının DIŞINDAKİ dosyayı silerdi.
+  # Kaynak olarak ham `gecici` kullanılır; paylaşılan-ata değişmezi ancak
+  # böyle korunur (kanonik kaynak, ata takasında hedefin dışarı kaymasına
+  # izin verirdi).
+  tasindi <- isTRUE(try(suppressWarnings(file.rename(gecici, hedef)), silent = TRUE))
+  if (!tasindi) {
+    # Temizlik KİMLİĞE bağlıdır: geçici dosya yeniden çözülür ve yalnızca hâlâ
+    # kopyadan önceki dizindeyse silinir. Ata takas edildiyse ya yol çözülemez
+    # ya da dizin kimliği tutmaz; her iki durumda da silme yapılmaz.
+    son_c <- try(normalizePath(gecici, winslash = "/", mustWork = TRUE), silent = TRUE)
+    if (!inherits(son_c, "try-error") &&
+        identical(.cc_yol_anahtari(dirname(son_c)), dizin_once_a)) {
+      try(unlink(son_c, force = TRUE), silent = TRUE)
+    }
+    return(FALSE)
+  }
+
+  # SON DOĞRULAMA: taşıma gerçekten çalışma alanının İÇİNE indi mi? Ata takası
+  # tam rename anında yapılırsa hem kaynak hem hedef dışarı çözülebilir; böyle
+  # bir durumda BAŞARI BİLDİRİLMEZ.
+  hedef_c <- try(normalizePath(hedef, winslash = "/", mustWork = TRUE), silent = TRUE)
+  if (inherits(hedef_c, "try-error") ||
+      !startsWith(.cc_yol_anahtari(hedef_c), paste0(kok_a, "/")) ||
+      !identical(.cc_yol_anahtari(dirname(hedef_c)), dizin_once_a)) {
+    return(FALSE)
+  }
+
+  TRUE
+}
+
+cc_setup_yerel_yukleme_hedefi <- function(calisma_alani, goreceli) {
+  goreceli <- as.character(goreceli %||% "")[1]
+  if (is.na(goreceli) || !nzchar(goreceli)) {
+    return(NULL)
+  }
+
+  goreceli <- gsub("\\\\", "/", goreceli)
+
+  # Mutlak yol, UNC ve sürücü harfi hiçbir biçimde kabul edilmez.
+  if (startsWith(goreceli, "/") || grepl("^[A-Za-z]:", goreceli, perl = TRUE)) {
+    return(NULL)
+  }
+
+  parcalar <- Filter(nzchar, strsplit(goreceli, "/", fixed = TRUE)[[1]])
+  if (!length(parcalar) || any(parcalar %in% c(".", ".."))) {
+    return(NULL)
+  }
+
+  hedef <- do.call(file.path, as.list(c(calisma_alani, parcalar)))
+
+  anahtar <- .cc_yol_anahtari
+
+  # Kanonik kapsama denetimi. normalizePath() yalnızca VAR OLAN yolu çözer;
+  # Windows'ta var olmayan yol 8.3 kısa adıyla (KULLAN~1) döner, kök ise uzun
+  # ada açılır ve geçerli her yükleme reddedilirdi. Bu yüzden var olan EN DERİN
+  # ata kanoniklestirilir (kardeş çıktı eşitleme yolu da aynı deseni kullanır).
+  kok <- try(normalizePath(calisma_alani, winslash = "/", mustWork = TRUE), silent = TRUE)
+  if (inherits(kok, "try-error")) {
+    return(NULL)
+  }
+  ata <- dirname(hedef)
+  while (!dir.exists(ata) && !identical(dirname(ata), ata)) {
+    ata <- dirname(ata)
+  }
+  coz <- try(normalizePath(ata, winslash = "/", mustWork = TRUE), silent = TRUE)
+  if (inherits(coz, "try-error")) {
+    return(NULL)
+  }
+  kok_a <- anahtar(kok)
+  coz_a <- anahtar(coz)
+  if (!identical(coz_a, kok_a) && !startsWith(coz_a, paste0(kok_a, "/"))) {
+    return(NULL)
+  }
+
+  # SON BİLEŞEN denetimi. Yukarıdaki kanoniklestirme yalnızca üst dizinler
+  # üzerinde çalışır; hedefin KENDİSİ çalışma alanı dışına işaret eden bir
+  # bağlantı ise file.copy(..., overwrite = TRUE) bağlantıyı İZLER ve harici
+  # dosyayı ezer.
+  taban <- parcalar[length(parcalar)]
+  ust_dizin <- dirname(hedef)
+  var_mi <- isTRUE(file.exists(hedef)) || isTRUE(dir.exists(hedef))
+
+  # SARKAN bağlantı (POSIX): file.exists() bağlantıyı izlediği için kırık bir
+  # symlink'te FALSE döner, ancak giriş üst dizin listesinde durur ve kopyalama
+  # yine bağlantıyı izler. Var olmayan ama listede görünen ad bu yüzden
+  # reddedilir (listeleme başarısızsa kapalı-başarısız). Windows'ta aynı giriş
+  # var sayıldığı için aşağıdaki var-olan-hedef dalından geçer.
+  if (!var_mi && dir.exists(ust_dizin)) {
+    girisler <- try(
+      suppressWarnings(list.files(ust_dizin, all.files = TRUE, no.. = TRUE)),
+      silent = TRUE
+    )
+    if (inherits(girisler, "try-error") || anahtar(taban) %in% anahtar(girisler)) {
+      return(NULL)
+    }
+  }
+
+  # Var olan hedef: bağlantı olmamalı, stat edilebilmeli ve kanonik olarak
+  # kökün altında kalmalı. Doğrulama yapılamıyorsa kapalı-başarısız davranılır.
+  if (var_mi) {
+    hedef_guvenli <- tryCatch({
+      bag_kontrol <- get0("cc_path_is_reparse_link", mode = "function")
+      # Stat edilemeyen giriş (sarkan bağlantı, erişilemeyen reparse point)
+      # çözülemez; üzerine yazmak bağlantıyı izleyip dışarıyı ezebilir.
+      stat_ok <- !is.na(suppressWarnings(file.info(hedef)$isdir[1]))
+      if (!is.function(bag_kontrol) || isTRUE(bag_kontrol(hedef)) || !isTRUE(stat_ok)) {
+        FALSE
+      } else {
+        hedef_coz <- anahtar(normalizePath(hedef, winslash = "/", mustWork = TRUE))
+        nzchar(hedef_coz) && startsWith(hedef_coz, paste0(kok_a, "/"))
+      }
+    }, error = function(e) FALSE)
+
+    if (!isTRUE(hedef_guvenli)) {
+      return(NULL)
+    }
+  }
+
+  hedef
 }

@@ -185,6 +185,10 @@ claudeCodePluginsServer <- function(input, output, session, ns, rv) {
             div(
               class = "cc-plugin-components",
               lapply(bilesenler, function(b) {
+                # Boş/NA bileşen adı `[[` erişiminde hata üretip panel render'ını
+                # düşürüyordu.
+                b <- as.character(b %||% "")[1]
+                if (is.na(b) || !nzchar(b)) return(NULL)
                 bilesen_bilgi <- claude_code_plugin_bilesenler[[b]]
                 if (!is.null(bilesen_bilgi)) {
                   tags$span(

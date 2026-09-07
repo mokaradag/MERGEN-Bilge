@@ -39,6 +39,16 @@ cc_run_prepare_worker_globals <- function(refresh = FALSE,
     "prepare_claude_code_document_context",
     "cc_snapshot_run_output_area",
     "cc_cleanup_stale_runtime_dirs",
+    "cc_reclaim_orphaned_runtime_dirs",
+    "cc_with_runtime_cleanup_lock",
+    "cc_runtime_cleanup_lock_dir",
+    "CC_RUNTIME_LOCK_DIR_NAME",
+    ".cc_codex_acquire_dir_lock",
+    ".cc_codex_reap_dir_lock",
+    ".cc_codex_lock_owner_token",
+    ".cc_codex_touch_dir_lock",
+    ".cc_codex_dir_lock_age",
+    ".CC_CODEX_REAPER_STALE_SEC",
     "cc_cleanup_stale_document_support_dirs",
     "claude_code_runtime_limits",
     "claude_code_config",
@@ -196,13 +206,20 @@ cc_acquire_reused_runtime_lease <- function(existing_runtime_workdir,
   }
 
   metadata_dir <- file.path(existing_runtime_workdir, "metadata")
-  dir.create(metadata_dir, recursive = TRUE, showWarnings = FALSE)
   lease <- file.path(
     metadata_dir,
     paste0("active-run-", gsub("[^A-Za-z0-9_.-]", "_", request_id), ".lease")
   )
 
-  if (!isTRUE(file.create(lease))) {
+  # Lease EDİNİMİ temizlikle AYNI kilit altında yapılır: aksi hâlde temizlik
+  # "lease yok" görüp aday dizini silerken biz lease'i oluşturuyor ve AKTİF
+  # çalışma alanı altımızdan kaldırılıyordu (TOCTOU).
+  olustu <- cc_with_runtime_cleanup_lock(existing_runtime_workdir, fallback = FALSE, {
+    dir.create(metadata_dir, recursive = TRUE, showWarnings = FALSE)
+    isTRUE(file.create(lease))
+  })
+
+  if (!isTRUE(olustu)) {
     stop("Yeniden kullanılan runtime için aktif çalışma lease'i oluşturulamadı.",
          call. = FALSE)
   }
@@ -359,18 +376,34 @@ cc_prepare_run_workspace <- function(request) {
   }
   if (isTRUE(mirrored) && !nzchar(runtime_lease) &&
       is.list(layout) && nzchar(layout$metadata %||% "")) {
-    dir.create(layout$metadata, recursive = TRUE, showWarnings = FALSE)
-    runtime_lease <- file.path(
+    aday_lease <- file.path(
       layout$metadata,
       paste0("active-run-", gsub("[^A-Za-z0-9_.-]", "_", request$request_id), ".lease")
     )
-    if (!isTRUE(file.create(runtime_lease))) runtime_lease <- ""
+    # Lease edinimi temizlikle AYNI kilit altında serileştirilir.
+    lease_olustu <- cc_with_runtime_cleanup_lock(layout$root %||% runtime_workdir,
+                                                 fallback = FALSE, {
+      dir.create(layout$metadata, recursive = TRUE, showWarnings = FALSE)
+      isTRUE(file.create(aday_lease))
+    })
+    runtime_lease <- if (isTRUE(lease_olustu)) aday_lease else ""
   }
 
   # Eskimiş runtime/doküman destek klasörlerini yaşa göre temizle; aktif
   # çalışmanın klasörleri korunur.
   tryCatch(
     cc_cleanup_stale_runtime_dirs(
+      user_id = request$user_id,
+      keep_paths = c(runtime_workdir, if (is.list(layout)) layout$root else NULL)
+    ),
+    error = function(e) NULL
+  )
+
+  # AYRI KURTARMA ADIMI: rutin temizlik lease taşıyan çalışma alanını asla
+  # silmez; çöken bir süreçten kalan lease'i yalnızca bu işlem, tüm tutucuların
+  # bıraktığını doğruladıktan sonra geri kazanır.
+  tryCatch(
+    cc_reclaim_orphaned_runtime_dirs(
       user_id = request$user_id,
       keep_paths = c(runtime_workdir, if (is.list(layout)) layout$root else NULL)
     ),

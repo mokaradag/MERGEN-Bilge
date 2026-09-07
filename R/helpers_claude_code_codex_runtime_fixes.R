@@ -5,6 +5,10 @@
 #           Çıktı ve deadline düzeltmeleri ayrı output hardening dosyasındadır.
 # ==============================================================================
 
+if (!exists(".cc_codex_acquire_dir_lock", mode = "function", inherits = TRUE)) {
+  stop("Codex runtime kilit katmanı yüklenmeden runtime hardening yüklenemez.", call. = FALSE)
+}
+
 .cc_codex_original_mirror_directory_to_local_workspace <- mirror_directory_to_local_workspace
 .cc_codex_original_cc_select_input_files <- cc_select_input_files
 .cc_codex_original_cc_scan_directory_bounded <- cc_scan_directory_bounded
@@ -27,18 +31,6 @@
 .cc_codex_guard_check <- function(guard) {
   if (is.function(guard)) guard()
   invisible(TRUE)
-}
-
-.cc_codex_acquire_dir_lock <- function(lock_dir, guard = NULL, attempts = 200L) {
-  attempts <- max(1L, suppressWarnings(as.integer(attempts[1])))
-  for (i in seq_len(attempts)) {
-    .cc_codex_guard_check(guard)
-    if (isTRUE(tryCatch(dir.create(lock_dir, showWarnings = FALSE), error = function(e) FALSE))) {
-      return(TRUE)
-    }
-    Sys.sleep(0.05)
-  }
-  FALSE
 }
 
 # Unknown sizes must fail closed. This protects preflight, input limits and output
@@ -200,12 +192,50 @@ mirror_directory_to_local_workspace <- function(source_dir,
   }
 
   .cc_codex_guard_check(ownership_guard)
-  if (!.cc_codex_acquire_dir_lock(lock_dir, ownership_guard)) {
+  kilit_jetonu <- .cc_codex_acquire_dir_lock(lock_dir, ownership_guard)
+  if (!nzchar(kilit_jetonu)) {
     unlink(staging, recursive = TRUE, force = TRUE)
     stop("Runtime input terfi kilidi alınamadı.", call. = FALSE)
   }
-  on.exit(unlink(lock_dir, recursive = TRUE, force = TRUE), add = TRUE)
+  # Kilit YALNIZCA okunabilir marker bizim jetonumuzu taşıyorsa bırakılır;
+  # okunamayan marker sahiplik kanıtı değildir.
+  # BIRAKMA SINIRLI OLARAK YENİDEN DENENİR: reaper dizinini o anda başka bir
+  # süreç tutuyorsa tek deneme `FALSE` dönüyor ve kilit bayat geri kazanımına
+  # kadar duruyordu; sonraki terfi gereksiz yere bekliyordu. Bu blok ARKA PLAN
+  # worker'ında çalışır (ana Shiny olay döngüsü değil), bu yüzden kısa bekleme
+  # güvenlidir; toplam bütçe ~150 ms ile sınırlıdır.
+  .kilidi_birak <- function() {
+    for (deneme in seq_len(3L)) {
+      if (!dir.exists(lock_dir)) return(invisible(TRUE))
+      if (isTRUE(.cc_codex_reap_dir_lock(lock_dir, kilit_jetonu))) {
+        return(invisible(TRUE))
+      }
+      Sys.sleep(0.05)
+    }
+    invisible(FALSE)
+  }
+  on.exit(.kilidi_birak(), add = TRUE)
 
+  # CANLI KİRA: aşağıdaki rename/temizlik/normalizePath adımları yavaş bir UNC
+  # paylaşımında bayatlık eşiğini meşru olarak aşabiliyor ve İKİNCİ bir worker
+  # kilidi kırıp aynı runtime ağacını eşzamanlı terfi ettirebiliyordu.
+  # TAZELEME SONUCU DENETLENİR: `FALSE` sahipliğin kaybedildiği anlamına gelir
+  # (kilit kırılmış ve başka bir worker almış olabilir). Bu durumda terfi
+  # DURDURULUR; yalnızca tazelemek eşzamanlı terfiyi engellemiyordu.
+  kirayi_tazele <- function(zorunlu = TRUE) {
+    tazelendi <- isTRUE(.cc_codex_touch_dir_lock(lock_dir, kilit_jetonu))
+    if (!tazelendi && isTRUE(zorunlu)) {
+      stop("Runtime input terfi kilidinin sahipliği kaybedildi; terfi durduruldu.",
+           call. = FALSE)
+    }
+    invisible(tazelendi)
+  }
+
+  if (!kirayi_tazele(zorunlu = FALSE)) {
+    unlink(staging, recursive = TRUE, force = TRUE)
+    stop("Runtime input terfi kilidinin sahipliği kaybedildi; terfi durduruldu.",
+         call. = FALSE)
+  }
   .cc_codex_guard_check(ownership_guard)
   had_target <- dir.exists(target_dir)
   if (had_target && !isTRUE(file.rename(target_dir, backup))) {
@@ -221,6 +251,7 @@ mirror_directory_to_local_workspace <- function(source_dir,
 
   promoted <- FALSE
   err <- tryCatch({
+    kirayi_tazele()
     .cc_codex_guard_check(ownership_guard)
     if (!isTRUE(file.rename(staging, target_dir))) {
       stop("Yeni runtime input alanı atomik olarak terfi ettirilemedi.", call. = FALSE)
@@ -235,18 +266,40 @@ mirror_directory_to_local_workspace <- function(source_dir,
     unlink(staging, recursive = TRUE, force = TRUE)
     stop(conditionMessage(err), call. = FALSE)
   }
+  # Terfi TAMAMLANDI: bu noktadan sonra sahiplik kaybı geri alınamaz, bu yüzden
+  # hata yerine uyarı yazılır (dosyalar zaten yerinde).
+  kirayi_tazele(zorunlu = FALSE)
   unlink(backup, recursive = TRUE, force = TRUE)
+  kirayi_tazele(zorunlu = FALSE)
 
   old_prefix <- paste0(normalizePath(staging, winslash = "/", mustWork = FALSE), "/")
   new_prefix <- paste0(normalizePath(target_dir, winslash = "/", mustWork = FALSE), "/")
+  # Karşılaştırma iki tarafta da AYNI kanonik biçimde yapılır: ham yol
+  # normalizePath'ten geçmediğinde Windows 8.3 kısa ad / harf büyüklüğü farkı
+  # eşleşmeyi düşürüyor ve yol silinecek staging dizinini göstermeye devam
+  # ediyordu (bozuk indirme bağlantısı).
+  old_prefix_key <- .cc_codex_path_key(old_prefix)
   remap <- function(x) {
     x <- gsub("\\", "/", as.character(x %||% character(0)), fixed = TRUE)
     vapply(x, function(path) {
-      if (startsWith(path, old_prefix)) {
-        paste0(new_prefix, substring(path, nchar(old_prefix) + 1L))
-      } else {
-        path
+      cozulen <- try(normalizePath(path, winslash = "/", mustWork = FALSE), silent = TRUE)
+      if (inherits(cozulen, "try-error")) cozulen <- path
+      kanonik <- gsub("\\", "/", cozulen, fixed = TRUE)
+      if (startsWith(.cc_codex_path_key(kanonik), old_prefix_key)) {
+        return(paste0(new_prefix, substring(kanonik, nchar(old_prefix) + 1L)))
       }
+      if (startsWith(path, old_prefix)) {
+        return(paste0(new_prefix, substring(path, nchar(old_prefix) + 1L)))
+      }
+      # Tam dosya sistemi yolu loglanmaz: redaksiyon katmanı bilinen sırları
+      # maskeler, keyfi yolları maskelemez. Yalnızca kararlı bir tanımlayıcı
+      # (dosya adı) yazılır.
+      try(log_warn(paste(
+        CLAUDE_CODE_LOG_PREFIX,
+        "Staging yolu hedefe eşlenemedi; yol olduğu gibi bırakıldı:",
+        basename(path)
+      )), silent = TRUE)
+      path
     }, character(1), USE.NAMES = FALSE)
   }
   sonuc$copy$copied <- remap(sonuc$copy$copied)
@@ -336,8 +389,21 @@ cc_claim_runtime_ownership <- function(runtime_workdir, request_id) {
   if (!nzchar(owner) || !nzchar(request_id)) return("")
   dir.create(dirname(owner), recursive = TRUE, showWarnings = FALSE)
   lock_dir <- paste0(owner, ".lock")
-  if (!.cc_codex_acquire_dir_lock(lock_dir, attempts = 100L)) return("")
-  on.exit(unlink(lock_dir, recursive = TRUE, force = TRUE), add = TRUE)
+  # Bu çağrı ana Shiny olay döngüsünde yapılır ve her bekleme TÜM oturumları
+  # geciktirir. Sahiplik talebi EN İYİ ÇABA'dır (başarısızlıkta "" döner ve
+  # çağıran güvenli yola düşer), bu yüzden ana süreçteki bekleme bütçesi
+  # ~250 ms'e (5 x 0.05 sn) indirilmiştir. Tam eşzamansız devralma, çalıştırma
+  # yaşam döngüsünün senkron sözleşmesini değiştirmeyi gerektirir; bu PR
+  # kapsamında bilinçli olarak yapılmadı.
+  kilit_jetonu <- .cc_codex_acquire_dir_lock(lock_dir, attempts = 5L)
+  if (!nzchar(kilit_jetonu)) return("")
+  # Kilit YALNIZCA okunabilir marker bizim jetonumuzu taşıyorsa bırakılır;
+  # okunamayan marker sahiplik kanıtı değildir.
+  # BURADA YENİDEN DENEME YOKTUR: bu fonksiyon ANA Shiny olay döngüsünde
+  # çalışır ve `on.exit` içindeki her `Sys.sleep()` TÜM oturumları geciktirir.
+  # Bırakma başarısız olursa kilit bayat geri kazanımıyla temizlenir; sahiplik
+  # talebi zaten EN İYİ ÇABA'dır (bkz. yukarıdaki bütçe notu).
+  on.exit(.cc_codex_reap_dir_lock(lock_dir, kilit_jetonu), add = TRUE)
 
   tmp <- paste0(owner, ".", Sys.getpid(), ".tmp")
   ok <- tryCatch({
@@ -447,9 +513,13 @@ cc_select_documents_for_request <- function(prompt,
   selected_idx <- integer(0)
   mode <- "auto"
   if (length(request_key)) {
-    selected_idx <- which(vapply(seq_along(documents), function(i) {
-      any(vapply(request_key, function(key) isTRUE(.cc_codex_doc_matches(key)[i]), logical(1)))
-    }, logical(1)))
+    # Her (dokuman, anahtar) cifti icin tum dokuman listesini yeniden tarayan
+    # eski kurgu O(n^2 * k) idi; anahtar basina TEK tarama ile ayni sonuc.
+    eslesme <- rep(FALSE, length(documents))
+    for (key in request_key) {
+      eslesme <- eslesme | .cc_codex_doc_matches(key)
+    }
+    selected_idx <- which(eslesme)
     if (length(selected_idx)) mode <- "prompt"
   }
 

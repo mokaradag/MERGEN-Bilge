@@ -102,6 +102,9 @@ ai_expert_chunk_pipeline_baslat <- function(parcalar, baslangic, synth_fn,
   durum$kablo <- baslangic - 1L          # sıradaki 0 tabanlı kablo indeksi
   durum$tampon_bildirildi <- FALSE
   durum$bosaldi_bildirildi <- FALSE
+  # Sonuçlandırılmış parça indeksleri: her parça sayacı YALNIZCA BİR KEZ
+  # düşürebilir (bkz. parca_sonuclandi).
+  durum$sonuclandi <- list()
 
   tampon_bildir <- function() {
     if (isTRUE(durum$tampon_bildirildi)) return(invisible(NULL))
@@ -142,12 +145,24 @@ ai_expert_chunk_pipeline_baslat <- function(parcalar, baslangic, synth_fn,
   }
 
   parca_sonuclandi <- function(idx, sonuc) {
+    anahtar <- as.character(idx)
+    # İDEMPOTENT: `teslim_et()` içindeki `queue_fn()` hata fırlattığında
+    # `onFulfilled` sarmalayıcısının hata işleyicisi aynı parça için bu
+    # fonksiyonu İKİNCİ kez çağırıyordu; `durum$aktif` iki kez azalıyor ve
+    # `sentez_surdur()` `policy$eszamanli_sinir` üstünde iş başlatabiliyordu.
+    if (isTRUE(durum$sonuclandi[[anahtar]])) return(invisible(NULL))
+    durum$sonuclandi[[anahtar]] <- TRUE
+
     durum$aktif <- durum$aktif - 1L
-    durum$sonuclar[[as.character(idx)]] <- sonuc
+    durum$sonuclar[[anahtar]] <- sonuc
+    # Teslim/tampon hatası hattı kalıcı durdurmasın: sentez ve boşalma
+    # bildirimi her durumda sürer.
+    on.exit({
+      try(sentez_surdur(), silent = TRUE)
+      try(bosaldi_bildir(), silent = TRUE)
+    }, add = TRUE)
     if (isTRUE(is_current_fn())) teslim_et()
     if (idx == baslangic) tampon_bildir()
-    sentez_surdur()
-    bosaldi_bildir()
     invisible(NULL)
   }
 
@@ -165,32 +180,57 @@ ai_expert_chunk_pipeline_baslat <- function(parcalar, baslangic, synth_fn,
       idx <- durum$siradaki_sentez
       durum$siradaki_sentez <- idx + 1L
       durum$aktif <- durum$aktif + 1L
+      # Senkron gönderim hatası (worker havuzu yok, promise üretilemedi) parçanın
+      # hiç sonuçlanmamasına ve hattın kalıcı asılı kalmasına yol açıyordu.
+      senkron_hata <- FALSE
       local({
         parca_idx <- idx
         parca_metin <- parcalar[[parca_idx]]
         # promises operatörleri global olarak bağlı olmayabilir (izole test/
         # worker bağlamı); açık promises::then çağrısı kullanılır.
-        promises::then(
-          synth_fn(parca_metin),
-          onFulfilled = function(res) {
-            tryCatch({
-              gecerli <- isTRUE(res$success) && nzchar(res$audio_src %||% "")
-              parca_sonuclandi(parca_idx, if (gecerli) {
-                list(text = parca_metin, audio_src = res$audio_src,
-                     duration = res$duration %||% 0)
-              } else {
-                FALSE
+        gonderildi <- tryCatch({
+          promises::then(
+            synth_fn(parca_metin),
+            onFulfilled = function(res) {
+              tryCatch({
+                gecerli <- isTRUE(res$success) && nzchar(res$audio_src %||% "")
+                parca_sonuclandi(parca_idx, if (gecerli) {
+                  list(text = parca_metin, audio_src = res$audio_src,
+                       duration = res$duration %||% 0)
+                } else {
+                  FALSE
+                })
+              }, error = function(e) {
+                cat(sprintf("[AI_EXPERT] Parça teslim hatası: %s\n", conditionMessage(e)))
+                # Sonuçlandırma yapılmazsa `durum$aktif` azalmıyor, `bosaldi_bildir()`
+                # hiç tamamlanmıyor ve istemci `aiExpertSequenceComplete` mesajını
+                # alamadan konuşma sırası kalıcı olarak bekliyordu.
+                try(parca_sonuclandi(parca_idx, FALSE), silent = TRUE)
               })
-            }, error = function(e) {
-              cat(sprintf("[AI_EXPERT] Parça teslim hatası: %s\n", conditionMessage(e)))
-            })
-          },
-          onRejected = function(e) {
-            tryCatch(parca_sonuclandi(parca_idx, FALSE), error = function(e2) NULL)
-          }
-        )
+            },
+            onRejected = function(e) {
+              try(parca_sonuclandi(parca_idx, FALSE), silent = TRUE)
+            }
+          )
+          TRUE
+        }, error = function(e) {
+          cat(sprintf("[AI_EXPERT] Senkron sentez gönderim hatası: %s\n",
+                      conditionMessage(e)))
+          FALSE
+        })
+        if (!isTRUE(gonderildi)) senkron_hata <<- TRUE
       })
+
+      if (isTRUE(senkron_hata)) {
+        durum$sonuclandi[[as.character(idx)]] <- TRUE
+        durum$aktif <- durum$aktif - 1L
+        durum$sonuclar[[as.character(idx)]] <- FALSE
+        if (isTRUE(is_current_fn())) try(teslim_et(), silent = TRUE)
+        if (idx == baslangic) try(tampon_bildir(), silent = TRUE)
+      }
     }
+    # Döngü senkron hatalarla bittiyse boşalma bildirimi burada tetiklenir.
+    bosaldi_bildir()
     invisible(NULL)
   }
 

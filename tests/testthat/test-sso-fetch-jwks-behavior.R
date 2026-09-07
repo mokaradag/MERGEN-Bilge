@@ -14,6 +14,8 @@
     env$.warn_kayitlari[[length(env$.warn_kayitlari) + 1L]] <- msg
     invisible(NULL)
   }
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_sso_jwks_cache.R"),
+         encoding = "UTF-8", local = env)
   source(file.path(resolve_repo_root_for_tests(), "R", "helpers_sso_signature.R"),
          encoding = "UTF-8", local = env)
   env

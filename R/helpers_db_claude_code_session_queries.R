@@ -91,11 +91,16 @@ cc_db_truncate_raw_stream <- function(raw_text, max_chars = NULL) {
                                        date_from,
                                        date_to,
                                        sort,
-                                       sqlite_yolu) {
+                                       sqlite_yolu,
+                                       only_deleted = FALSE) {
   where <- c("s.UserID = ?")
   params <- list(user_id)
 
-  if (!isTRUE(include_deleted)) {
+  # Arşiv görünümü süzgeci LIMIT'ten ÖNCE, SQL tarafında uygulanmalıdır; aksi
+  # halde ilk N satır arşivsizse arşivlenmiş oturumlar hiç listelenmiyordu.
+  if (isTRUE(only_deleted)) {
+    where <- c(where, "s.IsDeleted = 1")
+  } else if (!isTRUE(include_deleted)) {
     where <- c(where, "s.IsDeleted = 0")
   }
 

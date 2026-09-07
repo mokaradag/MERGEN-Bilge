@@ -78,6 +78,6 @@ test_that("atomic_write_text rename ve copy birlikte basarisiz olursa net hata v
 
   expect_error(
     atomic_env$atomic_write_text("x", hedef),
-    "hedefe tasima basarisiz"
+    "hedefe taşıma başarısız"
   )
 })

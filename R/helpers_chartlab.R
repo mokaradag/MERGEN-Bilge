@@ -33,10 +33,15 @@ build_chartlab_message <- function(raw_text, message_id, session) {
   for (p in parts) {
     if (identical(p$kind, "text")) {
       if (nzchar(trimws(p$value))) {
-        html_chunks <- append(
-          html_chunks,
-          commonmark::markdown_html(p$value, hardbreaks = TRUE, extensions = c("strikethrough", "table"))
-        )
+        # LLM metni ham HTML olarak geçemez; kanonik güvenli markdown yolu.
+        metin_html <- if (exists("render_safe_markdown_html", mode = "function", inherits = TRUE)) {
+          render_safe_markdown_html(p$value, hardbreaks = TRUE, extensions = c("strikethrough", "table"))
+        } else {
+          commonmark::markdown_html(
+            htmltools::htmlEscape(p$value), hardbreaks = TRUE, extensions = c("strikethrough", "table")
+          )
+        }
+        html_chunks <- append(html_chunks, as.character(metin_html))
       }
     } else if (identical(p$kind, "chart")) {
       chart_counter <- chart_counter + 1
@@ -44,6 +49,8 @@ build_chartlab_message <- function(raw_text, message_id, session) {
 
       spec <- NULL
       try(spec <- jsonlite::fromJSON(p$value, simplifyVector = TRUE), silent = TRUE)
+      # Liste olmayan JSON (skaler/dizi) `$` erişiminde hata verip sonlandırmayı kırardı.
+      if (!is.null(spec) && !is.list(spec)) spec <- NULL
 
       # Gömülü veri varsa doğrudan kullanılır; yoksa chart_store içindeki referans çözülür.
       if (!is.null(spec) && is.null(spec$data) && !is.null(spec$ref) &&
@@ -75,6 +82,7 @@ build_chartlab_message <- function(raw_text, message_id, session) {
 # Tek bir grafik çıktı kimliğini verilen grafik tanımına göre üretir.
 wire_chart_output <- function(output, out_id, spec) {
   # ---------- Grafik tanımını standartlaştır ----------
+  if (!is.list(spec)) spec <- list()
   spec <- chartlab_auto_guess_spec(spec)
   type   <- tolower(spec$type %||% "bar")
   map    <- spec$mapping %||% list()
@@ -83,7 +91,12 @@ wire_chart_output <- function(output, out_id, spec) {
 
   if (!is.null(df)) {
     num_cols <- names(df)[vapply(df, chartlab_is_numeric_or_date, logical(1))]
-    if (length(num_cols)) for (cn in num_cols) df[[cn]] <- ifelse(is.finite(df[[cn]]), df[[cn]], NA_real_)
+    # ifelse() tarih sınıfını düşürürdü; sınıf korunarak yalnızca sonsuz/NaN NA yapılır.
+    if (length(num_cols)) for (cn in num_cols) {
+      sutun <- df[[cn]]
+      sutun[!is.finite(sutun)] <- NA
+      df[[cn]] <- sutun
+    }
   }
 
   x     <- map$x; y <- map$y; grp <- map$group
@@ -312,6 +325,7 @@ build_chartlab_message_static <- function(raw_text, message_id) {
 
       spec <- NULL
       try(spec <- jsonlite::fromJSON(p$value, simplifyVector = TRUE), silent = TRUE)
+      if (!is.null(spec) && !is.list(spec)) spec <- NULL
 
       if (is.null(spec)) {
         html_chunks <- append(

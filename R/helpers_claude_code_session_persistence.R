@@ -55,8 +55,72 @@
     return(metin)
   }
 
+  # `Authorization: Bearer <token>` biçiminde anahtar/değer deseni yalnızca
+  # "Bearer" sözcüğünü maskeliyor, kimlik bilgisi olduğu gibi kalıyordu.
+  # Şema deseni anahtar/değer deseninden ÖNCE uygulanır; sonra uygulanırsa
+  # "Bearer" zaten maskelenmiş olur ve token hiç eşleşmez.
+  # `{8,}` alt sınırı `Basic YTpi` gibi GEÇERLİ ama kısa kimlik bilgilerini
+  # kaçırıyordu; genel anahtar/değer deseni yalnızca "Basic" sözcüğünü
+  # maskeleyip token'ı olduğu gibi bırakıyordu. Artık KISA token da eşleşir:
+  # ya 8+ karakter, ya da büyük harf/rakam/sembol içeren (base64 benzeri) bir
+  # değer. Tamamen küçük harfli kısa sözcükler ("bearer yok") eşleşmez; aksi
+  # hâlde sıradan düzyazı da maskelenip tanı değeri kayboluyordu.
+  # ŞEMA yalnızca AÇIK yetkilendirme bağlamında maskelenir: satır başında,
+  # `Authorization:` başlığından sonra ya da bir anahtar/değer ayracının
+  # ardında. Serbest düzyazıdaki "basic function" gibi ifadeler sekiz karakter
+  # kuralına takılıp `basic [[MERGEN-REDACTED]]` olarak kalıcılaşıyor ve geri
+  # yüklenen oturum geçmişi geçerli içerik kaybediyordu.
+  # AÇIK `Authorization:` başlığında token KOŞULSUZ maskelenir: bu bağlamda
+  # düzyazı yanlış-pozitifi oluşamaz. Uzunluk/karakter-sınıfı sezgisi
+  # `Authorization: Bearer abcdefg` (7 karakter, tamamı küçük harf) değerini
+  # kaçırıyor ve kimlik bilgisi açık metin olarak DB'ye yazılıyordu.
+  .cc_persist_baslik_degeri <- "([^\\s,;]+)"
+
+  # ŞEMA `bearer|basic` ile SINIRLI DEĞİLDİR: `Authorization: Token abc123`
+  # gibi geçerli bir şemada genel anahtar/değer deseni `Token` sözcüğünü değer
+  # sanıp maskeliyor ve `abc123` AÇIK METİN kalıyordu. RFC 7235 `token`
+  # karakter kümesi kullanılır.
+  .cc_persist_semasi <- "([!#$%&'*+.^_`|~A-Za-z0-9-]+)"
+
+  # BAŞLIKSIZ `Bearer <token>` biçimi düzyazıyla karışabilir. Bu yüzden yalnızca
+  # DESTEKLENEN TOKEN BİÇİMİ eşleşir: token karakterlerinden oluşur ve en az bir
+  # büyük harf/rakam/sembol içerir. Gerçek taşıyıcı tokenlar (JWT, base64url,
+  # onaltılık, `sk-`/`ghp_` önekli) bu koşulu her zaman sağlar; `Bearer
+  # instrument` gibi tamamen küçük harfli düz sözcükler maskelenmez (aksi hâlde
+  # geri yüklenen oturum geçmişi geçerli içerik kaybediyordu). AÇIK
+  # `Authorization:` başlığında ise bu sezgi UYGULANMAZ, token koşulsuz
+  # maskelenir.
+  .cc_persist_kimlik_degeri <-
+    "([A-Za-z0-9._~+/=-]*(?-i:[A-Z0-9._~+/=-])[A-Za-z0-9._~+/=-]*)"
+
+  metin <- gsub(
+    paste0("(?i)(authorization\\s*[:=]\\s*)", .cc_persist_semasi, "\\s+",
+           "(?!\\[\\[MERGEN-REDACTED)", .cc_persist_baslik_degeri),
+    "\\1\\2 [[MERGEN-REDACTED]]",
+    metin,
+    perl = TRUE
+  )
+
+  # `Bearer` şeması tek başına da tek anlamlıdır; başlıksız token maskelenir.
+  metin <- gsub(
+    paste0("(?i)\\b(bearer)\\s+", .cc_persist_kimlik_degeri),
+    "\\1 [[MERGEN-REDACTED]]",
+    metin,
+    perl = TRUE
+  )
+
+  # Genel anahtar/değer deseni ZATEN maskelenmiş değeri yeniden işlemez. Aksi
+  # hâlde `Authorization: Bearer [[MERGEN-REDACTED]]` metnindeki `Bearer`
+  # sözcüğü de maskeleniyor ve sonuç `Authorization: [[MERGEN-REDACTED]] ...`
+  # oluyordu (şema bilgisi kaybı + raporlanan bozuk çıktı).
   desenler <- c(
-    "(?i)(api[_-]?key|token|secret|password|passwd|pwd|authorization|bearer)(\\s*[:=]\\s*)([^\\s,;]+)",
+    paste0(
+      "(?i)(api[_-]?key|token|secret|password|passwd|pwd|authorization|bearer)",
+      "(\\s*[:=]\\s*)",
+      paste0("(?!", .cc_persist_semasi, "\\s+\\[\\[MERGEN-REDACTED\\]\\])"),
+      "(?!\\[\\[MERGEN-REDACTED)",
+      "([^\\s,;]+)"
+    ),
     "(?i)(sk-[A-Za-z0-9_-]{12,})",
     "(?i)(gh[pousr]_[A-Za-z0-9_]{12,})",
     "(?i)(xox[baprs]-[A-Za-z0-9-]{12,})"
@@ -129,7 +193,9 @@ cc_persist_session_begin <- function(rv,
     return(mevcut_id)
   }
 
-  baslik <- cc_db_generate_session_title(prompt)
+  # Başlık 80 karaktere kadar DB'ye yazılır; prompt'un başındaki bir kimlik
+  # bilgisi açık metin olarak kalıcılaşıyordu. Redaksiyon önce uygulanır.
+  baslik <- cc_db_generate_session_title(.cc_persist_redact_secrets(prompt))
 
   kayit_id <- .cc_persist_try(
     cc_db_create_session(
@@ -254,8 +320,10 @@ cc_persist_run_result <- function(rv,
     # redakte edilmiş/kısaltılmış tool metadata'sı saklanır.
     run_id <- cc_db_save_run(
       session_record_id = kayit_id,
-      prompt = .cc_persist_try(env$prompt, fallback = ""),
-      final_output = final_output,
+      prompt = .cc_persist_redact_secrets(
+        .cc_persist_try(env$prompt, fallback = "")
+      ),
+      final_output = .cc_persist_redact_secrets(final_output),
       status = status,
       exit_code = exit_code,
       duration_seconds = duration,
@@ -274,7 +342,8 @@ cc_persist_run_result <- function(rv,
       source_workdir = kaynak_dizin,
       runtime_workdir = runtime_dizin,
       runtime_model = .cc_persist_try(rv$current_runtime_model),
-      status = status
+      status = status,
+      user_id = .cc_persist_try(env$user_id)
     )
 
     !is.null(run_id)

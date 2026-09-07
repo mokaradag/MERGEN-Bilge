@@ -120,21 +120,112 @@ oo_ws_kopyalama_calistir <- function(kaynak_yollar, kaynak_adlar, ws) {
       next
     }
 
+    # Hedef ADI eşzamanlı bir kopyalama tarafından da oluşturulabilir. Doğrudan
+    # `hedef` üzerine kopyalayıp başarısızlıkta silmek, DİĞER kopyanın dosyasını
+    # yok ediyordu (sahiplik kanıtlanamıyor). Bu yüzden önce sahipliği kesin olan
+    # benzersiz geçici ada kopyalanır, sonra yalnızca hedef hâlâ boşsa taşınır.
+    gecici <- paste0(hedef, ".oo-tmp-", Sys.getpid(), "-", basename(tempfile("")))
+
     # Kopyalama uyarıları (ör. hedef oluşturulamadı) sayaçla raporlanır;
     # strict test koşucusunda uyarı gürültüsü üretilmez.
     kopyalandi <- tryCatch(
-      isTRUE(suppressWarnings(file.copy(yol, hedef, overwrite = FALSE))) && file.exists(hedef),
+      isTRUE(suppressWarnings(file.copy(yol, gecici, overwrite = FALSE))) && file.exists(gecici),
       error = function(e) FALSE
     )
 
-    if (kopyalandi) {
+    # KOPYA SONRASI KAPSAMA DENETİMİ: `kok_icinde` geçtikten sonra `ws`in bir
+    # atası bağlantıyla değiştirilirse `file.copy()` geçici dosyayı çalışma
+    # alanının DIŞINDA oluşturur. Kanonik yol kökün altında değilse terfi
+    # (link/rename) hiç denenmez ve temizlik de yapılmaz (yol tabanlı silme
+    # başkasının dosyasını yok edebilirdi).
+    # Kapsama denetimi kopyalama SONUCUNDAN bağımsızdır: `file.copy()` FALSE
+    # döndürüp yarım bir dosya bırakabilir (disk dolu / kesilmiş yazma). Bu
+    # dosyanın sahibi kesin olarak bu çalıştırmadır; kök içindeyse temizlenir,
+    # aksi hâlde ortak çalışma alanında kalıcı çöp olarak kalıyordu.
+    gecici_kok_icinde <- if (exists("mergen_path_inside_root", mode = "function", inherits = TRUE)) {
+      isTRUE(mergen_path_inside_root(gecici, ws))
+    } else {
+      TRUE
+    }
+
+    if (isTRUE(kopyalandi) && !isTRUE(gecici_kok_icinde)) {
+      kopyalandi <- FALSE
+      sonuc$basarisiz <- sonuc$basarisiz + 1L
+      sonuc$hatalar <- c(sonuc$hatalar, sprintf("%s: geçici dosya güvenli kök dışına düştü.", ad))
+      next
+    }
+
+    if (isTRUE(kopyalandi)) {
+      # ATOMİK REZERVASYON: `!file.exists()` + `file.rename()` arasında yarış
+      # vardı; iki oturum kontrolü hedef yokken geçip birbirinin dosyasını
+      # ezebiliyordu. `file.link()` hedef VARSA başarısız olur, bu yüzden
+      # hedefi yalnızca TEK bir çalıştırma sahiplenir.
+      baglandi <- isTRUE(tryCatch(
+        suppressWarnings(file.link(gecici, hedef)),
+        error = function(e) FALSE
+      ))
+
+      kopyalandi <- if (baglandi) {
+        TRUE
+      } else if (file.exists(hedef)) {
+        # Hedefi başka bir kopyalama sahiplendi; ÜZERİNE YAZILMAZ.
+        FALSE
+      } else {
+        # Sabit bağlantı desteklenmiyor (bazı ağ paylaşımları). `file.rename()`
+        # var olan hedefi DEĞİŞTİRİR; `file.exists()` + rename ikilisi ayrı
+        # işlemler olduğu için diğer oturumun dosyası eziliyordu. Terfi bu yüzden
+        # ATOMİK bir rezervasyon dizini (dir.create) altında yapılır: yalnızca
+        # tek çalıştırma rezervasyonu alır ve rename'i o çalıştırma dener.
+        rezerv <- paste0(hedef, ".oo-rsv")
+        alindi <- isTRUE(tryCatch(
+          dir.create(rezerv, showWarnings = FALSE), error = function(e) FALSE
+        ))
+        if (!alindi) {
+          # Çökmüş bir çalıştırmadan kalan rezervasyon kalıcı kilitlenme üretmez.
+          yas <- suppressWarnings(as.numeric(difftime(
+            Sys.time(), file.info(rezerv)$mtime[1], units = "secs"
+          )))
+          if (is.finite(yas) && yas > 60) {
+            unlink(rezerv, recursive = TRUE, force = TRUE)
+            alindi <- isTRUE(tryCatch(
+              dir.create(rezerv, showWarnings = FALSE), error = function(e) FALSE
+            ))
+          }
+        }
+        if (!alindi) {
+          FALSE
+        } else {
+          on.exit(unlink(rezerv, recursive = TRUE, force = TRUE), add = TRUE)
+          tasindi <- !file.exists(hedef) &&
+            isTRUE(tryCatch(file.rename(gecici, hedef), error = function(e) FALSE))
+          unlink(rezerv, recursive = TRUE, force = TRUE)
+          tasindi
+        }
+      }
+    }
+
+    # Yarım veya kullanılmayan geçici dosya temizlenir; bu dosyanın sahibi kesin
+    # olarak bu çalıştırmadır ve kapsama denetimi yukarıda geçmiştir.
+    artik_kaldi <- FALSE
+    if (isTRUE(gecici_kok_icinde) && file.exists(gecici)) {
+      # `unlink()` Windows dosya kilidi / antivirüs taraması / ağ paylaşımı
+      # hatasında sıfırdan farklı döner. Sonuç yok sayıldığında `.oo-tmp-*`
+      # artığı çalışma alanında kalırken işlem TAM BAŞARI bildiriyordu.
+      durum <- tryCatch(unlink(gecici, force = TRUE), error = function(e) 1L)
+      artik_kaldi <- !identical(as.integer(durum)[1], 0L) ||
+        isTRUE(tryCatch(file.exists(gecici), error = function(e) TRUE))
+    }
+
+    if (isTRUE(artik_kaldi)) {
+      sonuc$hatalar <- c(
+        sonuc$hatalar,
+        sprintf("%s: geçici dosya temizlenemedi (%s).", ad, basename(gecici))
+      )
+    }
+
+    if (isTRUE(kopyalandi)) {
       sonuc$kopyalanan <- sonuc$kopyalanan + 1L
     } else {
-      # Yarım kopya bırakma: hedef bu kopyalama için tahsis edilmiş taze bir
-      # addır (çakışma sayacı); başarısızlıkta kalan parça güvenle silinir.
-      if (file.exists(hedef)) {
-        tryCatch(unlink(hedef), error = function(e) NULL)
-      }
       sonuc$basarisiz <- sonuc$basarisiz + 1L
       sonuc$hatalar <- c(sonuc$hatalar, sprintf("%s: kopyalama başarısız.", ad))
     }

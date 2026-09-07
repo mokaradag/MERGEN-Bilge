@@ -204,11 +204,21 @@ ortak_mesaj_yonlendirme_plani <- function(mesaj_turu) {
 # olarak döndürebilir. Hangi biçim gelirse gelsin güvenli UTC an'a çözülür;
 # aksi halde bir biçim farkı çevrim içi kullanıcıyı sessizce ÇevrimDışı
 # göstermez (davet panelinde çevrim içi listenin boş kalmasının kök nedeni).
+# VARSAYILAN referans yalnızca METİN zaman damgaları için +3 saat kaydırılır:
+# MB_Ortak* metin değerleri Türkiye yerel saatinde (Europe/Istanbul) saklanıp
+# UTC gibi ayrıştırılır. Yerel POSIXct değeri (ODBC DATETIME2) zaten MUTLAK bir
+# an'dır; kaydırılırsa şu an atılan bir kalp atışı 3 saat eski görünüp
+# ÇevrimDışı sınıflanıyordu. Açık `simdi` geçiren çağrılar etkilenmez.
 ortak_sunum_durumu <- function(son_kalp_atisi,
-                               simdi = Sys.time(),
+                               simdi = NULL,
                                cevrimici_saniye = 120,
                                bosta_saniye = 300) {
   durumlar <- ortak_canli_durumlar()
+
+  if (is.null(simdi)) {
+    simdi <- Sys.time()
+    if (!inherits(son_kalp_atisi, "POSIXct")) simdi <- simdi + 3L * 3600L
+  }
 
   if (inherits(son_kalp_atisi, "POSIXct")) {
     zaman <- son_kalp_atisi[1]

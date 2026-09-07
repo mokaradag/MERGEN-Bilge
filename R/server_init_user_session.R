@@ -110,7 +110,10 @@ serverInitUserSession <- function(session,
       app_user_config = app_user_config,
       sso_active = sso_active,
       auth_source = auth_source,
-      auth_initialized = TRUE
+      # `auth_initialized` doğrudan okuyan tüketiciler uid = 0 iken oturumu
+      # hazır sayıyordu; yerel dalda get_or_create_user_fn() hata vermeden 0
+      # döndürdüğünde bu yol hâlâ erişilebilirdi.
+      auth_initialized = uid > 0L
     )
 
     user_config_rv(app_user_config)
@@ -123,7 +126,9 @@ serverInitUserSession <- function(session,
       try(touch_session_fn(uid), silent = TRUE)
     }
 
-    auth_ready <<- TRUE
+    # auth_ready yalnızca GERÇEK bir kullanıcı kimliği çözüldüğünde TRUE olur;
+    # uid = 0 iken TRUE dönmek kimlik doğrulamayı fail-open yapıyordu.
+    auth_ready <<- uid > 0L
 
     invisible(list(
       user_id = uid,
@@ -145,6 +150,28 @@ serverInitUserSession <- function(session,
       auth_source = "local"
     )
   } else {
+    # En son UYGULANAN (DB profili birleştirilmeden ÖNCEKİ) SSO kimliği.
+    # Aynı kullanıcı adı için gelen İKİNCİ token yetki (`auth_level`) veya
+    # görünür claim alanlarını değiştirdiğinde kimliğin yeniden uygulanması
+    # gerekir; aksi hâlde oturum önceki (daha yüksek) yetkiyi koruyordu.
+    son_uygulanan_kimlik <- NULL
+
+    # Başarısız kimlik kurulumu oturumu ÖNCEKİ kullanıcıda bırakmamalıdır:
+    # claim'ler A kullanıcısından B kullanıcısına geçtiğinde ve kurulum
+    # başarısız olduğunda `current_user_id` / `auth_ready` / `session$userData`
+    # hâlâ A kullanıcısını gösteriyor ve korumalı işlemler A adına sürüyordu.
+    sso_kimligini_sifirla <- function() {
+      set_current_user_id(0L)
+      auth_ready <<- FALSE
+      son_uygulanan_kimlik <<- NULL
+      user_config_rv(NULL)
+      session_data$set_auth_placeholder(
+        sso_active = TRUE,
+        auth_source = "keycloak"
+      )
+      invisible(NULL)
+    }
+
     set_current_user_id(0L)
     session_data$set_auth_placeholder(
       sso_active = TRUE,
@@ -160,13 +187,68 @@ serverInitUserSession <- function(session,
     # her zaman diğer auth observer'larından ÖNCE çalışması garanti
     # edilir; aksi halde ilk girişte dosya/sohbet yüklemesi user_id=0
     # ile atlanabilir ve yalnızca tarayıcı yenilemesinde düzelir.
-    observeEvent(sso_state$authenticated, {
+    # `user_claims` de izlenir: `authenticated` zaten TRUE iken gelen İKİNCİ
+    # token claim'leri değiştiriyor ancak gözlemci çalışmıyordu; oturum kimliği
+    # ilk kullanıcıda kalırken talepler ikinci kullanıcıyı gösteriyordu.
+    observeEvent(list(sso_state$authenticated, sso_state$user_claims), {
       req(isTRUE(sso_state$authenticated))
 
       claims <- sso_state$user_claims
       user_identity <- resolve_identity_fn(sso_claims = claims)
-      system_username <- user_identity$username
+      system_username <- as.character(user_identity$username %||% "")[1]
+
+      # Hazır-kimlik guard'ı YALNIZCA aynı kullanıcı için erken döner: token
+      # süresi dolup oturum sıfırlandıktan sonra yeniden doğrulama kimliği
+      # tekrar kurabilmelidir (aksi hâlde oturum kalıcı olarak uid = 0 kalır).
+      mevcut_kullanici <- as.character(session_data$get_system_username(default = "") %||% "")[1]
+      if (isTRUE(auth_ready) && nzchar(system_username) &&
+          identical(mevcut_kullanici, system_username)) {
+        # Kimlik DEĞİŞMEDİYSE (aynı yetki/claim kümesi) DB'ye gitmeye gerek yok.
+        if (identical(son_uygulanan_kimlik, user_identity)) {
+          return(invisible(NULL))
+        }
+
+        # Yetki/claim değişti: mevcut kullanıcı kimliğiyle (yeni DB araması
+        # yapılmadan) kimlik YENİDEN uygulanır, böylece düşürülen `yetki`
+        # oturuma da yansır.
+        setup_user_identity(
+          user_identity = user_identity,
+          user_id = current_user_id,
+          sso_active = TRUE,
+          auth_source = "keycloak"
+        )
+        son_uygulanan_kimlik <<- user_identity
+
+        log_info(
+          "SSO yetki talepleri yenilendi: kullanıcı={system_username}, yetki={user_identity$auth_level}"
+        )
+        return(invisible(NULL))
+      }
+
+      # Claim yokken kimlik "unauthenticated" döner; boş kullanıcı adıyla
+      # DB'ye gitmek validate_username üzerinden hata fırlatıyordu. Oturum
+      # yetkisiz durumda (uid = 0, auth_ready = FALSE) bırakılır.
+      if (is.na(system_username) || !nzchar(system_username)) {
+        log_warn("SSO doğrulandı ancak kullanıcı claim'leri yok; kimlik kurulmadı.")
+        sso_kimligini_sifirla()
+        return(invisible(NULL))
+      }
+
       uid <- get_or_create_user_fn(system_username, sso_claims = claims)
+
+      # Kimlik çözülemezse oturum uid = 0 / auth_ready = FALSE kalır ve
+      # `authenticated` yeniden değişmediği için gözlemci tekrar tetiklenmez.
+      # Sessiz kalmaz: operatör için açık hata kaydı bırakılır.
+      if (!isTRUE(suppressWarnings(as.integer(uid[1]) > 0L))) {
+        log_error(
+          "SSO kullanıcı kimliği çözülemedi: kullanıcı={system_username}; oturum yetkisiz kalıyor."
+        )
+        # Kurulum burada durur: setup_user_identity() `auth_initialized = TRUE`
+        # yazıyor ve akış başarısız kurulumu "SSO oturum kuruldu" olarak
+        # raporluyordu.
+        sso_kimligini_sifirla()
+        return(invisible(NULL))
+      }
 
       setup_user_identity(
         user_identity = user_identity,
@@ -174,11 +256,22 @@ serverInitUserSession <- function(session,
         sso_active = TRUE,
         auth_source = "keycloak"
       )
+      son_uygulanan_kimlik <<- user_identity
 
       log_info(
         "SSO oturum kuruldu: kullanıcı={system_username}, id={uid}, yetki={user_identity$auth_level}"
       )
-    }, ignoreInit = TRUE, once = TRUE, priority = 1000L)
+    }, ignoreInit = TRUE, priority = 1000L)
+
+    # SSO oturumu YETKİSİZLEŞTİĞİNDE (token süresi doldu) etkin kimlik
+    # sıfırlanır. Yalnızca session$userData temizlenirse canlı sağlayıcının
+    # kapanış anlık görüntüsü (`current_user_id`) hâlâ kimliği doğrulanmış
+    # kullanıcıyı döndürüyor ve korumalı gözlemciler çalışmaya devam ediyordu.
+    observeEvent(sso_state$authenticated, {
+      if (isTRUE(sso_state$authenticated)) return(invisible(NULL))
+
+      sso_kimligini_sifirla()
+    }, ignoreInit = TRUE, priority = 1000L)
   }
 
   get_user_config <- function(default = NULL) {

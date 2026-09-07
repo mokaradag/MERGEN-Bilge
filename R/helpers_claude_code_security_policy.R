@@ -43,10 +43,32 @@ cc_policy_permission_mode <- function(settings_data = NULL) {
     raw_mode <- env_mode
   }
 
+  # Oturum/kullanıcı ayarı merkezi modu yalnızca DARALTABİLİR. Aksi hâlde
+  # merkezi `plan` kısıtı, kullanıcı ayarındaki `acceptEdits` ile genişletilebilirdi.
   if (!is.null(settings_data) && !is.null(settings_data$claude_code_permission_mode)) {
     settings_mode <- as.character(settings_data$claude_code_permission_mode %||% "")[1]
     if (!is.na(settings_mode) && nzchar(settings_mode)) {
-      raw_mode <- settings_mode
+      katilik <- function(m) {
+        switch(
+          tolower(trimws(as.character(m %||% "")[1])),
+          "plan" = 3L,
+          "default" = 2L,
+          "acceptedits" = 1L,
+          NA_integer_
+        )
+      }
+      merkezi_puan <- katilik(raw_mode)
+      ayar_puan <- katilik(settings_mode)
+
+      if (is.na(merkezi_puan) || (!is.na(ayar_puan) && ayar_puan >= merkezi_puan)) {
+        raw_mode <- settings_mode
+      } else {
+        log_warn(paste(
+          CLAUDE_CODE_LOG_PREFIX,
+          "Oturum ayarı izin modunu genişletemez; merkezi mod korunuyor:",
+          raw_mode, "(istenen:", settings_mode, ")"
+        ))
+      }
     }
   }
 
@@ -89,6 +111,61 @@ cc_policy_permission_mode <- function(settings_data = NULL) {
   "acceptEdits"
 }
 
+# Yapılandırılmış araç listesini (izinli/yasak) tek kaynaktan çözer.
+cc_policy_tool_list <- function(kind = c("allowed", "disallowed")) {
+  kind <- match.arg(kind)
+  config_field <- if (identical(kind, "allowed")) "allowed_tools" else "disallowed_tools"
+  env_name <- if (identical(kind, "allowed")) {
+    "CLAUDE_CODE_ALLOWED_TOOLS"
+  } else {
+    "CLAUDE_CODE_DISALLOWED_TOOLS"
+  }
+
+  tools <- character(0)
+  if (exists("claude_code_config", inherits = TRUE)) {
+    tools <- c(tools, claude_code_config[[config_field]] %||% "")
+  }
+  tools <- c(tools, Sys.getenv(env_name, ""))
+  cc_policy_cli_list(tools)
+}
+
+# Yalnızca izinli araç argümanlarını üretir; tehlikeli mod dâhil her yolda
+# kullanılır. `bypassPermissions` altında --allowedTools düşerse listede
+# olmayan araçlar da çalıştırılabiliyordu.
+cc_policy_allowed_tool_args <- function() {
+  allowed_tools <- cc_policy_tool_list("allowed")
+  if (!length(allowed_tools)) return(character(0))
+  c("--allowedTools", allowed_tools)
+}
+
+# Yalnızca yasak araç argümanlarını üretir; tehlikeli mod dâhil her yolda kullanılır.
+cc_policy_disallowed_tool_args <- function() {
+  disallowed_tools <- cc_policy_tool_list("disallowed")
+  if (!length(disallowed_tools)) return(character(0))
+  c("--disallowedTools", disallowed_tools)
+}
+
+# İZİN LİSTESİ TEHLİKELİ KİPTE UYGULANAMAZ.
+#
+# `bypassPermissions` altında `--allowedTools` BAĞLAYICI DEĞİLDİR. Eski kod dar
+# bir izin listesini "bilinen araç kümesinin TÜMLEYENİNİ yasaklayarak" uygulamaya
+# çalışıyordu; bu yaklaşım iki yönden de hatalıdır:
+#   * `setdiff()` Claude Code KAPSAM desenlerini eşleştirmez. İzin listesinde
+#     `Bash(git status)` varken salt `Bash` tümleyene giriyor ve
+#     `--disallowedTools Bash` İZİN VERİLEN kuralı da engelliyordu.
+#   * `mcp__*` ve bilinen kümede olmayan yeni araçlar tümleyene HİÇ girmiyor;
+#     tehlikeli kipte izin listesi dışındaki bu araçlar kullanılabilir kalıyordu.
+# Araç ad uzayı AÇIK UÇLU olduğu için tümleyen numaralandırılamaz. Bu yüzden
+# izin listesi tanımlıyken tehlikeli kip KAPALI-BAŞARISIZ olarak reddedilir.
+cc_policy_allowlist_blocks_dangerous_mode <- function() {
+  length(cc_policy_tool_list("allowed")) > 0L
+}
+
+# Tehlikeli kipte yalnızca operatörün AÇIK yasak listesi uygulanabilir.
+cc_policy_dangerous_tool_args <- function() {
+  cc_policy_disallowed_tool_args()
+}
+
 cc_policy_permission_args <- function(settings_data = NULL) {
   mode <- cc_policy_permission_mode(settings_data = settings_data)
   args <- character(0)
@@ -97,27 +174,10 @@ cc_policy_permission_args <- function(settings_data = NULL) {
     args <- c(args, "--permission-mode", mode)
   }
 
-  allowed_tools <- character(0)
-  disallowed_tools <- character(0)
+  allowed_tools <- cc_policy_tool_list("allowed")
+  disallowed_tools <- cc_policy_tool_list("disallowed")
 
-  if (exists("claude_code_config", inherits = TRUE)) {
-    allowed_tools <- c(allowed_tools, claude_code_config$allowed_tools %||% "")
-    disallowed_tools <- c(disallowed_tools, claude_code_config$disallowed_tools %||% "")
-  }
-
-  allowed_tools <- c(allowed_tools, Sys.getenv("CLAUDE_CODE_ALLOWED_TOOLS", ""))
-  disallowed_tools <- c(disallowed_tools, Sys.getenv("CLAUDE_CODE_DISALLOWED_TOOLS", ""))
-
-  allowed_tools <- cc_policy_cli_list(allowed_tools)
-  disallowed_tools <- cc_policy_cli_list(disallowed_tools)
-
-  if (length(allowed_tools)) {
-    args <- c(args, "--allowedTools", allowed_tools)
-  }
-
-  if (length(disallowed_tools)) {
-    args <- c(args, "--disallowedTools", disallowed_tools)
-  }
+  args <- c(args, cc_policy_allowed_tool_args(), cc_policy_disallowed_tool_args())
 
   log_info(paste(
     CLAUDE_CODE_LOG_PREFIX,
@@ -207,8 +267,24 @@ cc_policy_build_cli_args <- function(prompt,
     settings_data = settings_data
   )
 
+  # İzin listesi TANIMLIYKEN tehlikeli kip reddedilir: `bypassPermissions`
+  # altında izin listesi uygulanamaz ve tümleyeni güvenle hesaplanamaz.
+  if (isTRUE(dangerous_allowed) && isTRUE(cc_policy_allowlist_blocks_dangerous_mode())) {
+    log_warn(paste(
+      CLAUDE_CODE_LOG_PREFIX,
+      "Tehlikeli izin atlama kipi REDDEDİLDİ: CLAUDE_CODE_ALLOWED_TOOLS tanımlı.",
+      "`bypassPermissions` kipinde izin listesi BAĞLAYICI DEĞİLDİR; kapsam",
+      "desenleri (`Bash(git status)`) ve `mcp__*` araçları için tümleyen",
+      "numaralandırılamaz. Normal (güvenli) izin kipine düşülüyor."
+    ))
+    dangerous_allowed <- FALSE
+  }
+
   if (isTRUE(dangerous_allowed)) {
     args <- c(args, "--dangerously-skip-permissions")
+
+    # İzin listesi YOK: yalnızca operatörün açık yasak listesi bağlayıcıdır.
+    args <- c(args, cc_policy_dangerous_tool_args())
 
     log_warn(paste(
       CLAUDE_CODE_LOG_PREFIX,

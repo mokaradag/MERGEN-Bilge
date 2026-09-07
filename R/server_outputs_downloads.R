@@ -38,7 +38,13 @@ downloadOutputsInit <- function(output, session, session_files, current_user_id)
               tags$button(
                 icon("times"),
                 class = "file-indicator-close action-button",
-                onclick = sprintf("Shiny.setInputValue('remove_file_from_prompt', { name: '%s', nonce: Math.random() }, {priority: 'event'})", filename)
+                # Dosya adı JS string literaline kaçışsız gömüldüğünde tırnak
+                # içeren ad saklı XSS üretiyordu; JSON serileştirme ile güvenli
+                # bir JS değişmezi elde edilir (HTML nitelik kaçışı Shiny'den).
+                onclick = sprintf(
+                  "Shiny.setInputValue('remove_file_from_prompt', { name: %s, nonce: Math.random() }, {priority: 'event'})",
+                  as.character(jsonlite::toJSON(as.character(filename)[1], auto_unbox = TRUE))
+                )
               )
             )
           )

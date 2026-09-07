@@ -284,8 +284,9 @@ snapshot_claude_code_workdir_files <- function(workdir,
     mtime_val <- suppressWarnings(as.numeric(bilgi$mtime[i]))
     size_val <- suppressWarnings(as.numeric(bilgi$size[i]))
 
-    # Anahtarı küçük harfe çevir (Windows case-insensitive)
-    anahtar <- tolower(yol_norm)
+    # Anahtar yalnızca Windows'ta küçük harfe çevrilir; Unix'te dosya adları
+    # harf duyarlıdır ve koşulsuz tolower() farklı dosyaları çakıştırıyordu.
+    anahtar <- if (.Platform$OS.type == "windows") tolower(yol_norm) else yol_norm
 
     sonuc[[anahtar]] <- list(
       path = yol_norm,
@@ -374,11 +375,22 @@ diff_claude_code_workdir_snapshot <- function(before_snapshot,
 
     degisti <- FALSE
 
-    if (!isTRUE(all.equal(eski$mtime, yeni$mtime))) {
+    # all.equal() göreli tolerans uygular: ~1.7e9'luk mtime değerlerinde bu
+    # yaklaşık 25 saniyelik bir kör alan demekti ve az önce üretilen dosyalar
+    # "değişmedi" sayılıyordu. Tam, NA-duyarlı eşitlik kullanılır.
+    .cc_scan_sayisal_esit <- function(a, b) {
+      a <- suppressWarnings(as.numeric(a %||% NA_real_)[1])
+      b <- suppressWarnings(as.numeric(b %||% NA_real_)[1])
+      if (is.na(a) && is.na(b)) return(TRUE)
+      if (is.na(a) || is.na(b)) return(FALSE)
+      isTRUE(a == b)
+    }
+
+    if (!.cc_scan_sayisal_esit(eski$mtime, yeni$mtime)) {
       degisti <- TRUE
     }
 
-    if (!isTRUE(all.equal(eski$size, yeni$size))) {
+    if (!.cc_scan_sayisal_esit(eski$size, yeni$size)) {
       degisti <- TRUE
     }
 

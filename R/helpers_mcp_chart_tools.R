@@ -241,7 +241,15 @@ helpers_mcp_tools <- get("helpers_mcp_tools", envir = globalenv(), inherits = FA
   }
 
   if (!is.null(filter_sql) && nzchar(filter_sql) && helpers_mcp_tools$safe_has_duckdb()) {
-    con <- DBI::dbConnect(duckdb::duckdb(), dbdir = ":memory:")
+    # filter_sql LLM kontrollüdür; sertleştirilmiş (harici erişimi kapalı)
+    # bağlantı kullanılır, aksi halde DuckDB dosya okuma fonksiyonlarıyla
+    # sunucu dosyaları okunabilirdi.
+    con <- helpers_mcp_tools$open_sandboxed_duckdb()
+    if (is.null(con)) {
+      # Diğer hata dönüşleriyle aynı sözleşme: isTRUE(result$ok) kullanan
+      # tüketiciler için `ok` alanı açıkça FALSE olmalıdır.
+      return(list(error = "Grafik filtresi güvenli kipte çalıştırılamadı.", ok = FALSE))
+    }
     on.exit(try(DBI::dbDisconnect(con, shutdown = TRUE), silent = TRUE), add = TRUE)
 
     DBI::dbWriteTable(con, "t", as.data.frame(dt), temporary = TRUE, overwrite = TRUE)

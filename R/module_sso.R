@@ -312,23 +312,82 @@ ssoAuthServer <- function(id) {
     }, ignoreNULL = TRUE, ignoreInit = TRUE)
 
     # --- Token yenileme zamanlayıcı ---
-    # Token süresinin dolmasına yakın kullanıcıyı uyar
+    # Token süresinin dolmasına yakın kullanıcıyı uyarır; süre GEÇTİĞİNDE ise
+    # oturumu KAPALI-BAŞARISIZ biçimde yetkisizleştirir.
+    #
+    # Önceden burada yalnızca `remaining_secs > 0` iken uyarı gönderiliyordu;
+    # `exp` geçtikten sonra hiçbir şey yapılmıyordu. Token doğrulaması sadece
+    # `sso_jwt_token` girdisi geldiğinde çalıştığı için, doğrulanmış bir Shiny
+    # bağlantısı açık kaldığı sürece süresi dolmuş kullanıcının kimliği, yetkisi
+    # ve kişisel API anahtarı sonraki işlemlerde kullanılmaya devam ediyordu.
     observe({
+      # invalidateLater() EN BAŞTA çağrılır: req() önce kısa devre yaparsa
+      # zamanlayıcı hiç kaydedilmez ve gözlemci kalıcı olarak ölür.
+      #
+      # DİKKAT: burada önceden `observe(...) |> bindEvent(invalidateLater(...))`
+      # kullanılıyordu. invalidateLater() invisible(NULL) döndürür ve bindEvent()
+      # varsayılan olarak ignoreNULL = TRUE olduğu için gözlemci HİÇ çalışmıyordu;
+      # yani süre dolum uyarısı da bu kontrol de üretimde hiçbir zaman tetiklenmedi.
+      invalidateLater(60000, session)  # Her dakika kontrol et
+
       req(sso_state$authenticated)
       claims <- sso_state$user_claims
 
-      if (!is.null(claims$token_exp)) {
-        remaining_secs <- claims$token_exp - as.numeric(Sys.time())
-        margin <- SSO_CONFIG$token_refresh_margin_secs
+      # Liste/nesne biçimindeki claim `as.numeric()` içinde HATA veriyordu.
+      token_exp <- sso_numeric_claim(claims$token_exp)
 
-        if (remaining_secs > 0 && remaining_secs <= margin) {
-          # Token süresi dolmak üzere - kullanıcıyı uyar
-          session$sendCustomMessage("sso_token_expiring", list(
-            remaining_seconds = round(remaining_secs)
-          ))
-        }
+      # Geçerli bir `exp` yoksa oturum düşürülmez (saat/ayrıştırma kaynaklı
+      # yanlış çıkışları önlemek için muhafazakâr davranış). Token doğrulaması
+      # zaten `exp` taşımayan token'ı reddeder.
+      if (!is.finite(token_exp)) {
+        return(invisible(NULL))
       }
-    }) |> bindEvent(invalidateLater(60000, session))  # Her dakika kontrol et
+
+      remaining_secs <- token_exp - as.numeric(Sys.time())
+      margin <- SSO_CONFIG$token_refresh_margin_secs
+
+      if (remaining_secs <= 0) {
+        log_warn("SSO: Token süresi doldu; oturum yetkisizleştiriliyor (exp={token_exp}).")
+
+        sso_state$authenticated <- FALSE
+        sso_state$auth_level    <- NULL
+        sso_state$user_claims   <- NULL
+        sso_state$raw_token     <- NULL
+
+        # Kimlik hazır bayrağı, ETKİN KULLANICI KİMLİĞİ ve kişisel API anahtarı
+        # temizlenir. `user_id` bırakılırsa canlı kimlik sağlayıcısını doğrudan
+        # okuyan gözlemciler (ör. Ortak Oturum oda yazma yetkisi) süresi dolmuş
+        # oturumla çalışmaya devam ediyordu.
+        # Alan kümesi `set_auth_placeholder()` (R/helpers_user_session_identity.R)
+        # ile AYNI olmalıdır: `user_identity` ve `system_username` bırakıldığında
+        # bu alanları doğrudan okuyan tüketiciler yetkisizleştirmeden sonra
+        # önceki kimliği kullanmaya devam ediyordu.
+        try({
+          session$userData$auth_initialized <- FALSE
+          session$userData$user_id <- 0L
+          session$userData$user_identity <- NULL
+          session$userData$user_config <- NULL
+          session$userData$user_first_name <- NULL
+          session$userData$system_username <- NULL
+          session$userData$ai_api_key <- NULL
+        }, silent = TRUE)
+
+        # İstemci tarafı `sso_auth_error` işleyicisi saklanan token'ı temizler ve
+        # yeniden kimlik doğrulama ekranını gösterir.
+        session$sendCustomMessage("sso_auth_error", list(
+          message = "Oturum süreniz doldu. Lütfen sayfayı yenileyerek tekrar giriş yapınız."
+        ))
+
+        return(invisible(NULL))
+      }
+
+      if (remaining_secs <= margin) {
+        # Token süresi dolmak üzere - kullanıcıyı uyar
+        session$sendCustomMessage("sso_token_expiring", list(
+          remaining_seconds = round(remaining_secs)
+        ))
+      }
+    })
 
     return(sso_state)
   })

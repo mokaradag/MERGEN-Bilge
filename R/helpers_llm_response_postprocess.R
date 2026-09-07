@@ -257,9 +257,28 @@ append_clickable_sources <- function(ai_content, sources_list) {
 
       for (j in seq_along(metadata_array)) {
         doc <- metadata_array[[j]]
-        filename <- doc[["name"]] %||% doc[["source"]]
+        # Liste olmayan öğe atlanır: atomik bir değerde `doc[["name"]]`
+        # "subscript out of bounds" fırlatıp tüm kaynakça üretimini düşürüyordu.
+        if (!is.list(doc)) next
+        # Skalerleştir: liste/uzunluk>1 değerde nzchar koşulu hata fırlatıyordu.
+        # İÇ İÇE liste değerinde `as.character()` de hata verip kaynakça
+        # üretimini tamamen durdurabiliyordu; paylaşılan metin normalleştirici
+        # kullanılır.
+        # HAM düğümdeki İLK boş olmayan değer seçilir: normalize_llm_text_node()
+        # karakter vektörünün TÜM öğelerini birleştiriyor, bu yüzden
+        # `name = c("a.pdf", "b.pdf")` değeri "a.pdfb.pdf" oluyor ve kaynak
+        # bağlantısı var olmayan bir dosya adı taşıyordu.
+        ham_ad <- doc[["name"]] %||% doc[["source"]] %||% ""
+        if (is.atomic(ham_ad) && length(ham_ad) > 1L) {
+          adaylar <- as.character(ham_ad)
+          adaylar <- adaylar[!is.na(adaylar) & nzchar(trimws(adaylar))]
+          ham_ad <- if (length(adaylar)) adaylar[1] else ""
+        }
+        filename <- normalize_llm_text_node(ham_ad)
+        filename <- as.character(filename)[1]
+        if (is.na(filename)) filename <- ""
 
-        if (!is.null(filename) && nzchar(filename) && !(filename %in% seen_filenames)) {
+        if (nzchar(filename) && !(filename %in% seen_filenames)) {
           seen_filenames <- c(seen_filenames, filename)
 
           process_num <- ""

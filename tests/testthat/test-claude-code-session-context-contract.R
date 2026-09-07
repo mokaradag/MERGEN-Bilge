@@ -131,6 +131,13 @@ test_that("Bilge Yolaç streaming finalizasyonu tekrar çağrıldığında no-op
     NULL
   }
 
+  # Lease yaşam döngüsü ayrı dosyada; manifest sırasına uygun olarak önce yüklenir.
+  source(
+    file.path(repo_root, "R", "helpers_claude_code_runtime_lease.R"),
+    encoding = "UTF-8",
+    local = test_env
+  )
+
   source(
     file.path(repo_root, "R", "helpers_claude_code_run_lifecycle.R"),
     encoding = "UTF-8",

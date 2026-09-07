@@ -170,29 +170,126 @@ mergen_clear_user_bucket <- function(user_id) {
   ))
   candidate_dirs <- candidate_dirs[!vapply(candidate_dirs, is.null, logical(1))]
 
-  # Her aday dizinde fiziksel dosyaları sil
-  for (dir in candidate_dirs) {
-    dir_ok <- tryCatch(dir.exists(dir), error = function(e) FALSE)
-    if (!dir_ok) {
-      # path_exists_relaxed ile de dene (UNC yolları için)
-      dir_ok <- tryCatch(path_exists_relaxed(dir), error = function(e) FALSE)
-    }
-    if (isTRUE(dir_ok)) {
-      files <- tryCatch(
-        list.files(dir, full.names = TRUE, recursive = FALSE, include.dirs = FALSE),
-        error = function(e) character(0)
-      )
-      for (f in files) try(unlink(f, force = TRUE), silent = TRUE)
-    }
+  # Fiziksel silme ve indeks temizliği TEK kilit altındadır: silme kilit dışında
+  # yapılırken eşzamanlı bir kayıt indekse var olmayan dosya yazabiliyordu.
+  # Yol karşılaştırma anahtarı (Windows'ta harf büyüklüğü ayırt edilmez).
+  # `gsub("\\\\", "/", ..., fixed = TRUE)` İKİ ardışık ters bölü arar; tek
+  # Windows ayracı (`C:\dizin\dosya.txt`) dokunulmadan kalıyor ve aynı dosyanın
+  # iki gösterimi eşleşmiyordu. `chartr()` HER ters bölüyü çevirir.
+  .kova_yol_anahtari <- function(x) {
+    yol <- chartr("\\", "/", as.character(x %||% "")[1])
+    if (identical(.Platform$OS.type, "windows")) tolower(yol) else yol
   }
 
-  # İndeks kovasını temizle
-  idx <- .load_index()
-  if (!is.null(idx[[uid]])) {
-    idx[[uid]] <- NULL
-    .save_index(idx)
+  temizle <- function() {
+    silinemeyen <- character(0)
+    # Dizin içeriği okunamadığında hangi dosyaların kaldığı BİLİNMEZ; indeks
+    # kovasını silmek diskte kayıtsız yetim dosya bırakır.
+    sayim_basarisiz <- FALSE
+
+    for (dir in candidate_dirs) {
+      dir_ok <- tryCatch(dir.exists(dir), error = function(e) FALSE)
+      if (!dir_ok) {
+        # path_exists_relaxed ile de dene (UNC yolları için)
+        dir_ok <- tryCatch(path_exists_relaxed(dir), error = function(e) FALSE)
+      }
+      if (isTRUE(dir_ok)) {
+        # `list.files()` OKUNAMAYAN dizinde de sessizce `character(0)` döndürür;
+        # bu boş sonuç "dizin boş" sayıldığında kova indeksi siliniyordu.
+        okunabilir <- tryCatch(
+          identical(as.integer(file.access(dir, mode = 4L))[1], 0L),
+          error = function(e) FALSE
+        )
+        # ÖZYİNELEMELİ listeleme: `recursive = FALSE` yalnızca kök dosyaları
+        # görüyordu. Alt dizin içeren bir kovada alt dosyalar hiç silinmiyor,
+        # `silinemeyen` boş kaldığı için indeks kaydı düşüyor ve fonksiyon
+        # `TRUE` dönerken dosyalar diskte KAYITSIZ kalıyordu. Gizli dosyalar da
+        # sayılır; aksi hâlde nokta ile başlayan girdiler geride kalırdı.
+        files <- tryCatch(
+          list.files(
+            dir, full.names = TRUE, recursive = TRUE,
+            all.files = TRUE, include.dirs = FALSE
+          ),
+          error = function(e) {
+            okunabilir <<- FALSE
+            character(0)
+          }
+        )
+        if (!isTRUE(okunabilir)) {
+          sayim_basarisiz <- TRUE
+          next
+        }
+        for (f in files) {
+          # `unlink()` hata FIRLATMAZ; Windows kilidi/izin hatasında sıfırdan
+          # farklı döner. Dönüş yok sayıldığında indeks kovası tamamen
+          # siliniyor, dosya diskte kalıyor ve dosya sistemi fallback'i onu
+          # yeniden sunabiliyordu.
+          durum <- tryCatch(unlink(f, force = TRUE), error = function(e) 1L)
+          hala_var <- tryCatch(file.exists(f), error = function(e) TRUE)
+          if (!identical(as.integer(durum)[1], 0L) || isTRUE(hala_var)) {
+            silinemeyen <- c(silinemeyen, .kova_yol_anahtari(f))
+          }
+          # Uzun/yavaş UNC kovasında silme 60 sn'yi aşabilir; marker tazelenmezse
+          # CANLI kilit bayat sayılıp başka bir yazar kritik bölüme girebiliyordu.
+          if (exists("file_store_index_lock_heartbeat", mode = "function", inherits = TRUE)) {
+            file_store_index_lock_heartbeat()
+          }
+        }
+      }
+    }
+
+    if (isTRUE(sayim_basarisiz)) {
+      warning(
+        "mergen_clear_user_bucket: kullanıcı klasörü listelenemedi; indeks kaydı korundu.",
+        call. = FALSE
+      )
+      return(invisible(FALSE))
+    }
+
+    idx <- .load_index()
+    if (!is.null(idx[[uid]])) {
+      kova <- idx[[uid]]
+      if (length(silinemeyen)) {
+        # Silinemeyen dosyaların indeks kaydı KORUNUR; aksi hâlde diskte kalan
+        # dosya kayıtsız yetim olur.
+        tut <- vapply(
+          kova,
+          function(e) {
+            # Eski ATOMİK indeks kayıtları düz karakter yol taşır; `e$path`
+            # böyle bir girdide hata fırlatıp `.save_index()` öncesinde
+            # temizliği yarıda kesiyordu.
+            yol <- if (is.list(e)) e$path else as.character(e %||% "")[1]
+            .kova_yol_anahtari(yol) %in% silinemeyen
+          },
+          logical(1)
+        )
+        idx[[uid]] <- if (any(tut)) kova[tut] else NULL
+      } else {
+        idx[[uid]] <- NULL
+      }
+      .save_index(idx)
+    }
+
+    if (length(silinemeyen)) {
+      warning(sprintf(
+        "mergen_clear_user_bucket: %d dosya silinemedi; indeks kayıtları korundu.",
+        length(silinemeyen)
+      ), call. = FALSE)
+      return(invisible(FALSE))
+    }
+
+    invisible(TRUE)
   }
-  invisible(TRUE)
+
+  # KİLİTSİZ TEMİZLİK YOK: kilit alınamazsa eşzamanlı bir kayıt indekse var
+  # olmayan dosya yazabiliyor ve `.load_index()`/`.save_index()` çifti kilit
+  # dışında kaldığı için yeni girdiyi eziyordu. Hata çağırana bildirilir.
+  sonuc <- if (exists(".file_store_with_index_lock", mode = "function", inherits = TRUE)) {
+    .file_store_with_index_lock(temizle(), require_lock = TRUE)
+  } else {
+    temizle()
+  }
+  invisible(isTRUE(sonuc))
 }
 
 # ==============================================================================

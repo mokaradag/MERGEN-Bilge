@@ -197,8 +197,22 @@ ortak_db_dosya_kaydet <- function(oturum_id,
   # özel proje dizininde çalışırken bir bağlantı çalışma alanı içinde görünse de
   # hedefi kullanıcı/oda kapsamı dışındaki hassas bir dosya olabilir;
   # file.copy() bağlantı hedefini kopyalayarak bu dosyayı tüm odaya açabilir.
-  baglanti_hedefi <- tryCatch(Sys.readlink(kaynak_yol), error = function(e) "")
-  if (length(baglanti_hedefi) > 0L && nzchar(as.character(baglanti_hedefi[1]))) {
+  # DİKKAT: Sys.readlink() Windows'ta HER yol için NA döner ve nzchar(NA) TRUE
+  # olduğundan bu denetim Windows'ta TÜM ortak belge kayıtlarını reddediyordu.
+  # Bağlantı tespiti, çözülen dizinle sözlüksel dizinin karşılaştırılmasıyla
+  # yapılır (POSIX sembolik bağlantı + Windows junction/reparse noktası).
+  .kaynak_baglanti_mi <- function() {
+    if (exists("cc_path_is_reparse_link", mode = "function", inherits = TRUE)) {
+      return(isTRUE(tryCatch(cc_path_is_reparse_link(kaynak_yol), error = function(e) FALSE)))
+    }
+    hedef <- tryCatch(Sys.readlink(kaynak_yol), error = function(e) NA_character_)
+    hedef <- as.character(hedef)[1]
+    !is.na(hedef) && nzchar(hedef)
+  }
+
+  baglanti_mi <- .kaynak_baglanti_mi()
+
+  if (isTRUE(baglanti_mi)) {
     .oo_db_log_warn("Sembolik bağlantı ortak belge olarak kaydedilemez; kayıt reddedildi.")
     return(NULL)
   }
@@ -253,6 +267,17 @@ ortak_db_dosya_kaydet <- function(oturum_id,
     uyari = "Ortak belge fiziksel kopyası başarısız:"
   )
   if (!isTRUE(kopyalandi)) {
+    return(NULL)
+  }
+
+  # KOPYA SONRASI YENİDEN DENETİM: doğrulama ile file.copy() arasında kaynak
+  # bir bağlantıyla değiştirilmiş olabilir (base R tanıtıcı-bağıl açma
+  # sunmadığı için pencere tamamen kapatılamaz). Bu durumda kopyalanan içerik
+  # kök içindeki hedeften SİLİNİR ve kayıt reddedilir; hassas dosya odaya
+  # açılmaz.
+  if (isTRUE(.kaynak_baglanti_mi())) {
+    .oo_db_try(unlink(hedef, force = TRUE), fallback = NULL)
+    .oo_db_log_warn("Kaynak kopyalama sırasında bağlantıya dönüştü; kayıt reddedildi.")
     return(NULL)
   }
 
