@@ -86,14 +86,19 @@ validate_message_content <- function(content) {
   content <- as.character(content)
 
   max_chars <- mergen_max_message_chars()
-  if (nchar(content) > max_chars) {
+  # Geçersiz çok baytlı içerikte nchar() hata fırlatmasın: bayt uzunluğuna düşülür.
+  n_chars <- suppressWarnings(nchar(content, type = "chars", allowNA = TRUE))
+  if (is.na(n_chars)) {
+    n_chars <- nchar(content, type = "bytes")
+  }
+  if (n_chars > max_chars) {
     stop(
       sprintf("Message content exceeds maximum length of %d characters.", max_chars),
       call. = FALSE
     )
   }
 
-  if (nchar(content) < 1) {
+  if (n_chars < 1) {
     stop("Message content cannot be empty.", call. = FALSE)
   }
 

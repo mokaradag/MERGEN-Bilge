@@ -226,13 +226,12 @@ get_claude_code_model_capabilities <- function() {
         )
       )
     ),
-    auto_fallback_non_thinking_for_binary_docs = isTRUE(
-      as.logical(
-        Sys.getenv(
-          "CLAUDE_CODE_AUTO_FALLBACK_NON_THINKING_FOR_BINARY_DOCS",
-          "TRUE"
-        )
-      )
+    # Ortam bayrağı toleranslı okunur: as.logical("1") NA döndürüp isTRUE ile
+    # varsayılanı sessizce KAPATIYORDU (bayrak varsayılanı TRUE olmasına rağmen).
+    auto_fallback_non_thinking_for_binary_docs = mergen_env_flag(
+      "CLAUDE_CODE_AUTO_FALLBACK_NON_THINKING_FOR_BINARY_DOCS",
+      default = TRUE,
+      invalid = TRUE
     )
   )
 }

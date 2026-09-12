@@ -34,6 +34,13 @@
   env <- new.env(parent = globalenv())
 
   source(file.path(repo_root, "R", "utils_common.R"), encoding = "UTF-8", local = env)
+  # Lease yaşam döngüsü (bırakma + heartbeat) manifest sırasına uygun olarak
+  # run_lifecycle'dan ÖNCE ayrı dosyadan yüklenir.
+  source(
+    file.path(repo_root, "R", "helpers_claude_code_runtime_lease.R"),
+    encoding = "UTF-8",
+    local = env
+  )
   source(
     file.path(repo_root, "R", "helpers_claude_code_run_lifecycle.R"),
     encoding = "UTF-8",
@@ -374,8 +381,14 @@ test_that("normal streaming finalization request id ile korunur", {
     )
   )
 
+  # Çıktı işleme gönderimi/raporlaması ayrı dosyaya taşındı (cırcır bölmesi);
+  # stale koruması artık orada doğrulanır.
+  dispatch_txt <- .read_repo_text_cc_run_lifecycle_contract(
+    "R/helpers_claude_code_run_output_dispatch.R"
+  )
+
   expect_true(
-    grepl("cc_is_active_run\\(ctx\\$rv, ctx\\$env\\$request_id\\)", txt, perl = TRUE),
+    grepl("cc_is_active_run\\(ctx\\$rv, ctx\\$env\\$request_id\\)", dispatch_txt, perl = TRUE),
     info = "Çıktı işleme geri çağrıları stale request'e karşı korunmalıdır."
   )
 })
@@ -480,6 +493,42 @@ test_that("runtime lease bırakma idempotenttir", {
   expect_false(env$cc_release_runtime_lease(""))
 })
 
+test_that("runtime lease heartbeat mtime tazeler ve olmayan lease'te sessiz kalır", {
+  env <- .source_cc_run_lifecycle_for_test()
+  lease <- tempfile(fileext = ".lease")
+  expect_true(file.create(lease))
+  Sys.setFileTime(lease, Sys.time() - 3600)
+  eski <- file.info(lease)$mtime[1]
+
+  expect_true(env$cc_touch_runtime_lease(lease))
+  expect_gt(as.numeric(file.info(lease)$mtime[1]), as.numeric(eski))
+
+  # Var olmayan / boş lease çalıştırmayı etkilemez.
+  expect_false(env$cc_touch_runtime_lease(tempfile(fileext = ".lease")))
+  expect_false(env$cc_touch_runtime_lease(""))
+})
+
+test_that("lease yaşam döngüsü ayrı dosyaya taşındı ve manifestte önce yüklenir", {
+  # Sahiplik sınırı: run_lifecycle küresel 24 fonksiyon tavanındaydı.
+  lease_txt <- .read_repo_text_cc_run_lifecycle_contract(
+    "R/helpers_claude_code_runtime_lease.R"
+  )
+  expect_match(lease_txt, "cc_release_runtime_lease <- function", fixed = TRUE)
+  expect_match(lease_txt, "cc_touch_runtime_lease <- function", fixed = TRUE)
+
+  lifecycle_txt <- .read_repo_text_cc_run_lifecycle_contract(
+    "R/helpers_claude_code_run_lifecycle.R"
+  )
+  expect_false(grepl("cc_release_runtime_lease <- function", lifecycle_txt, fixed = TRUE))
+
+  yollar <- source_manifest_paths_for_tests()
+  a <- match("R/helpers_claude_code_runtime_lease.R", yollar)
+  b <- match("R/helpers_claude_code_run_lifecycle.R", yollar)
+  expect_false(is.na(a))
+  expect_false(is.na(b))
+  expect_true(a < b)
+})
+
 test_that("terminal çalışma yolları runtime lease temizliğini taşır", {
   dispatch <- .read_repo_text_cc_run_lifecycle_contract(
     "R/helpers_claude_code_run_dispatch.R"
@@ -497,6 +546,8 @@ test_that("terminal çalışma yolları runtime lease temizliğini taşır", {
   expect_match(lifecycle, "on.exit\\(cc_release_runtime_lease\\(runtime_lease\\)", perl = TRUE)
   expect_match(akis, "cc_release_runtime_lease\\(rv\\$stream_env\\$runtime_lease", perl = TRUE)
   expect_match(poll, "cc_release_runtime_lease\\(env\\$runtime_lease", perl = TRUE)
+  # Uzun çalıştırmalarda lease heartbeat'i poll döngüsünde tazelenir.
+  expect_match(poll, "cc_touch_runtime_lease\\(env\\$runtime_lease", perl = TRUE)
 })
 
 # ------------------------------------------------------------------------------
@@ -504,6 +555,7 @@ test_that("terminal çalışma yolları runtime lease temizliğini taşır", {
 # ------------------------------------------------------------------------------
 
 test_that("doküman özeti worker'ı kaynak klasöre yazmaz", {
+  env <- .source_cc_run_lifecycle_for_test()
   lifecycle_txt <- .read_repo_text_cc_run_lifecycle_contract(
     "R/helpers_claude_code_run_lifecycle.R"
   )
@@ -535,9 +587,14 @@ test_that("doküman özeti worker'ı kaynak klasöre yazmaz", {
     info = "Dispatch, hazırlıktan gelen izole çıktı alanını iletmelidir."
   )
 
-  # Kaynak klasöre terfi yalnızca iptal korumasından SONRA yapılır.
-  guard_pos <- regexpr("if \\(!cc_is_active_run\\(rv, run_request_id\\)\\)", lifecycle_txt, perl = TRUE)[[1]]
-  write_pos <- regexpr("hedef_yol <- file\\.path\\(target_dir", lifecycle_txt, perl = TRUE)[[1]]
+  # Kaynak klasöre terfi yalnızca iptal korumasından SONRA yapılır. Sıralama
+  # dosya METNİ üzerinde değil, ÖZET HANDLER'ININ GÖVDESİ üzerinde ölçülür:
+  # `cc_is_active_run(rv, run_request_id)` bu dosyada birden çok fonksiyonda
+  # geçiyor, dosya genelinde ilk eşleşme başka bir fonksiyondan gelirse
+  # karşılaştırma boş yere geçebiliyordu.
+  govde <- paste(deparse(body(env$cc_handle_document_summary_run)), collapse = "\n")
+  guard_pos <- regexpr("if \\(!cc_is_active_run\\(rv, run_request_id\\)\\)", govde, perl = TRUE)[[1]]
+  write_pos <- regexpr("hedef_yol <- file\\.path\\(target_dir", govde, perl = TRUE)[[1]]
 
   expect_true(guard_pos > 0)
   expect_true(write_pos > guard_pos)

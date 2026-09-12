@@ -78,6 +78,10 @@ destek_geri_bildirim_kaydet <- function(user_id, memnuniyet, nps_puan = NULL,
   } else {
     destek_normalize_visible_db_text(en_cok_sevilen)
   }
+  # Uzunluğu 1 olmayan girdide nzchar() koşulu hata ile kaydı kesiyordu.
+  gelistirme <- if (is.null(gelistirme)) NULL else as.character(gelistirme)[1]
+  if (!is.null(gelistirme) && is.na(gelistirme)) gelistirme <- NULL
+
   safe_gelistirme <- if (is.null(gelistirme) || !nzchar(gelistirme)) {
     NA_character_
   } else {

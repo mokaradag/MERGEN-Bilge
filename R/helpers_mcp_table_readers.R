@@ -113,9 +113,30 @@ helpers_mcp_tools$safe_read_table_generic <- function(path, sheet = 1, n_max = I
 
   sanitize_names <- function(df) {
     nms <- names(df)
-    if (anyNA(nms) || any(nms == "")) nms <- paste0("X", seq_along(nms))
+    if (is.null(nms)) nms <- rep(NA_character_, ncol(df))
+    # Yalnızca BOŞ/NA adlar yeniden adlandırılır; tek bir boş ad tüm sütun
+    # adlarının X1..Xn ile değiştirilmesine yol açıyordu.
+    bos <- is.na(nms) | !nzchar(nms)
+    if (any(bos)) nms[bos] <- paste0("X", seq_along(nms))[bos]
     names(df) <- make.unique(nms, sep = "_")
     df
+  }
+
+  # n_max DOĞRULANIR: `-1` her iki okuyucuda da "sınırsız" anlamına geliyor,
+  # `NA`/`NaN` ise is.finite() üzerinden sınırsız okumaya düşüyordu; büyük bir
+  # CSV head() çalışmadan önce worker belleğini tüketebiliyordu.
+  n_max_ham <- n_max
+  if (length(n_max_ham) != 1L) {
+    stop("safe_read_table_generic: 'n_max' tek değer olmalı.", call. = FALSE)
+  }
+  n_max <- suppressWarnings(as.numeric(n_max_ham))
+  gecerli <- !is.na(n_max) && (is.infinite(n_max) && n_max > 0 ||
+    (is.finite(n_max) && n_max >= 0 && n_max == floor(n_max)))
+  if (!isTRUE(gecerli)) {
+    stop(
+      "safe_read_table_generic: 'n_max' negatif olmayan tam sayı veya Inf olmalı.",
+      call. = FALSE
+    )
   }
 
   if (ext %in% c("xlsx", "xls")) {
@@ -124,14 +145,37 @@ helpers_mcp_tools$safe_read_table_generic <- function(path, sheet = 1, n_max = I
   }
 
   if (ext %in% c("csv", "txt")) {
+    # n_max okuyucuya GEÇİRİLİR; eskiden tüm dosya belleğe alınıp sonra
+    # head() ile kırpılıyordu (büyük CSV'lerde worker belleği şişiyordu).
+    satir_siniri <- if (is.finite(n_max)) as.integer(n_max) else Inf
+
     df <- tryCatch(
-      data.table::fread(path_fixed, nThread = 1),
+      data.table::fread(
+        path_fixed,
+        nThread = 1,
+        nrows = if (is.finite(satir_siniri)) satir_siniri else Inf
+      ),
       error = function(e) {
-        read.csv(path_fixed, stringsAsFactors = FALSE, check.names = FALSE)
+        read.csv(
+          path_fixed,
+          stringsAsFactors = FALSE,
+          check.names = FALSE,
+          nrows = if (is.finite(satir_siniri)) satir_siniri else -1L
+        )
       }
     )
     if (is.finite(n_max)) df <- head(df, n_max)
     return(as_dt(sanitize_names(df)))
+  }
+
+  # Serileştirilmiş R dosyaları (.rds/.rdata) yükleme beyaz listesinde DEĞİLDİR
+  # ve okunmaları yükleme kancaları üzerinden kod çalıştırma riski taşır.
+  # Yalnızca operatör açıkça izin verirse okunur (derinlemesine savunma).
+  if (ext %in% c("rds", "rdata", "rda") &&
+      !isTRUE(helpers_mcp_tools$mcp_env_flag(
+        "MERGEN_MCP_ALLOW_SERIALIZED_R", default = FALSE, invalid = FALSE
+      ))) {
+    stop("Serileştirilmiş R dosyaları (.rds/.rdata) MCP çözümleyicisinde okunmaz.")
   }
 
   if (ext %in% c("rds")) {

@@ -17,17 +17,28 @@ claude_code_config <- list(
   # Varsayılan çalışma dizini (kullanıcı değiştirebilir)
   default_workdir = Sys.getenv("CLAUDE_CODE_DEFAULT_WORKDIR", ""),
 
-  # Maksimum istek süresi (saniye)
-  timeout_seconds = as.integer(Sys.getenv("CLAUDE_CODE_TIMEOUT", "14400")),
+  # Maksimum istek süresi (saniye); geçersiz/NA değer varsayılana düşer.
+  timeout_seconds = local({
+    v <- suppressWarnings(as.integer(Sys.getenv("CLAUDE_CODE_TIMEOUT", "14400")))
+    if (length(v) != 1L || is.na(v) || v <= 0L) 14400L else v
+  }),
 
   # Varsayılan model (boş ise settings.json'dan okunur)
   default_model = Sys.getenv("CLAUDE_CODE_MODEL", ""),
 
-  # İzin verilen maksimum eş zamanlı işlem sayısı
-  max_concurrent = as.integer(Sys.getenv("CLAUDE_CODE_MAX_CONCURRENT", "5")),
+  # İzin verilen maksimum eş zamanlı işlem sayısı; geçersiz/NA değer varsayılana düşer.
+  max_concurrent = local({
+    v <- suppressWarnings(as.integer(Sys.getenv("CLAUDE_CODE_MAX_CONCURRENT", "5")))
+    if (length(v) != 1L || is.na(v) || v <= 0L) 5L else v
+  }),
 
   # Oturum geçmişini sakla
-  persist_sessions = as.logical(Sys.getenv("CLAUDE_CODE_PERSIST_SESSIONS", "TRUE")),
+  # Toleranslı okuma: as.logical("1") NA döndürüp bayrağı sessizce düşürüyordu.
+  persist_sessions = mergen_env_flag(
+    "CLAUDE_CODE_PERSIST_SESSIONS",
+    default = TRUE,
+    invalid = TRUE
+  ),
 
   # Tehlikeli izin atlama yalnızca açık yönetici/geliştirme onayıyla etkinleşir
   allow_dangerous_permissions = as.logical(Sys.getenv(
@@ -79,8 +90,11 @@ claude_code_config <- list(
   ham <- Sys.getenv(env_name, "")
   if (!nzchar(ham)) return(default_value)
 
+  # SONLU olmalı: `Inf` lease yetim eşiğini sonsuz yapıp çökmüş çalışma
+  # dizinlerinin hiç temizlenmemesine, görünürlük beklemesini de sınırsız
+  # bırakmaya yol açıyordu.
   deger <- suppressWarnings(as.numeric(ham))
-  if (length(deger) != 1L || is.na(deger) || deger < 0) {
+  if (length(deger) != 1L || is.na(deger) || !is.finite(deger) || deger < 0) {
     return(default_value)
   }
 
@@ -142,8 +156,19 @@ claude_code_runtime_limits <- list(
   # Arka plan çıktı işleme (tarama/indirme sahneleme/kaynağa aktarım) zaman aşımı
   output_process_timeout_sec = .cc_limit_num("CLAUDE_CODE_OUTPUT_PROCESS_TIMEOUT_SEC", 180),
 
+  # Kopyalama sonrası hedef görünürlük beklemesi: PAYLAŞILAN toplama bütçesinden
+  # bağımsızdır, aksi hâlde kopyalama bütçeyi tüketince hazır dosya için indirme
+  # kartı hiç üretilmiyordu (Windows/UNC gecikmesi).
+  file_settle_dest_ms = .cc_limit_num("CLAUDE_CODE_FILE_SETTLE_DEST_MS", 250),
+
   # Eski runtime / doküman destek klasörlerinin saklanma süresi (saniye)
-  runtime_retention_sec = .cc_limit_num("CLAUDE_CODE_RUNTIME_RETENTION_SEC", 21600)
+  runtime_retention_sec = .cc_limit_num("CLAUDE_CODE_RUNTIME_RETENTION_SEC", 21600),
+
+  # Aktif çalışma lease dosyasının yetim sayılma yaşı. Retention süresinden
+  # AYRIDIR: uzun süren bir CLI çalıştırmasının çalışma alanı, retention dolduğu
+  # için ALTINDAN silinmemelidir. Lease poll döngüsünde tazelenir; bu eşik
+  # yalnızca çökmüş süreçten kalan lease için üst sınırdır.
+  runtime_lease_orphan_sec = .cc_limit_num("CLAUDE_CODE_RUNTIME_LEASE_ORPHAN_SEC", 86400)
 )
 
 #' Bilge Yolaç çalışma zamanı sınırını güvenli biçimde okur
@@ -378,6 +403,27 @@ claude_code_streaming_config <- list(
   # Kabuk komutları varsayılan olarak görünür mü
   shell_visible_default = TRUE
 )
+
+# ------------------------------------------------------------------------------
+# CANLI AKIŞ TAMPON ÜST SINIRLARI
+# Hem module_claude_code_stream_poll.R hem helpers_claude_code_streaming.R
+# kullanır; her ikisinden de ÖNCE yüklenen bu dosyada tanımlanır.
+# ------------------------------------------------------------------------------
+# Saklanan canlı akış satırı sayısı.
+CC_STREAM_MAX_LINES <- 20000L
+
+# Saklanan TOPLAM stdout baytı. Satır sayısı sınırı tek başına baytı
+# sınırlamıyordu: çok sayıda büyük satır tamponu doldurabiliyordu.
+CC_STREAM_MAX_STDOUT_BYTES <- 8388608L
+
+# TEK bir stdout kaydının üst sınırı; daha uzun kayıt kırpılarak saklanır.
+CC_STREAM_MAX_RECORD_BYTES <- 1048576L
+
+# stderr tamponu için toplam bayt sınırı. Boru HER TURDA boşaltılmaya devam
+# eder (çocuk süreç yazmada bloke olmasın), yalnızca SAKLANAN veri sınırlanır;
+# aksi hâlde sürekli stderr üreten bir CLI çalıştırması (varsayılan zaman aşımı
+# 14400 sn) R belleğini sınırsız tüketiyordu.
+CC_STREAM_MAX_STDERR_BYTES <- 262144L
 
 # ------------------------------------------------------------------------------
 # LOG AYARLARI

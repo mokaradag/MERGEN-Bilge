@@ -85,9 +85,18 @@ admin_gb_prepare_detay_table_data <- function(data) {
   data$nps_sort <- ifelse(!is.na(data$NPS_Puan), data$NPS_Puan, -1)
 
   data$tarih <- format(as.POSIXct(data$OlusturmaTarihi), "%d.%m.%Y %H:%M")
-  data$etiketler_display <- ifelse(!is.na(data$Etiketler) & nzchar(data$Etiketler), data$Etiketler, "-")
-  data$sevilen_display <- ifelse(!is.na(data$EnCokSevilen) & nzchar(data$EnCokSevilen), data$EnCokSevilen, "-")
-  data$gelistirme_display <- ifelse(!is.na(data$Gelistirme) & nzchar(data$Gelistirme), data$Gelistirme, "-")
+  # Tablo escape = FALSE ile render edilir; bu yalnızca UYGULAMA ÜRETİMİ rozet/ikon
+  # HTML'i içindir. Kullanıcı kontrollü serbest metinler tabloya girmeden ÖNCE
+  # kaçırılır, aksi hâlde etiket/yorum alanları ham HTML olarak çalışırdı.
+  data$etiketler_display <- htmltools::htmlEscape(
+    ifelse(!is.na(data$Etiketler) & nzchar(data$Etiketler), data$Etiketler, "-")
+  )
+  data$sevilen_display <- htmltools::htmlEscape(
+    ifelse(!is.na(data$EnCokSevilen) & nzchar(data$EnCokSevilen), data$EnCokSevilen, "-")
+  )
+  data$gelistirme_display <- htmltools::htmlEscape(
+    ifelse(!is.na(data$Gelistirme) & nzchar(data$Gelistirme), data$Gelistirme, "-")
+  )
 
   data$iletisim_display <- ifelse(
     data$IletisimIzni == 1,
@@ -99,7 +108,9 @@ admin_gb_prepare_detay_table_data <- function(data) {
     .admin_gb_mailto_icon(data[i, , drop = FALSE])
   }, character(1))
 
-  data$kullanici <- ifelse(!is.na(data$KullaniciAdi) & nzchar(data$KullaniciAdi), data$KullaniciAdi, "-")
+  data$kullanici <- htmltools::htmlEscape(
+    ifelse(!is.na(data$KullaniciAdi) & nzchar(data$KullaniciAdi), data$KullaniciAdi, "-")
+  )
 
   display_data <- data[, c(
     "row_num", "kullanici", "memn_display", "memn_sort",

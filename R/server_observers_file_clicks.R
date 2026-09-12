@@ -47,12 +47,28 @@ fileClickObserversInit <- function(input, session, settings_data, api_config,
     req(input$analysis_file_clicked)
     
     filepath_raw <- input$analysis_file_clicked$filepath
-    if (is.null(filepath_raw) || !nzchar(filepath_raw)) {
+    # SKALER ZORUNLU: çok elemanlı bir değerde trimws/gsub vektörü koruyor,
+    # aşağıdaki grepl() koşulu `if` içine uzunluk > 1 vektör veriyor ve önizleme
+    # açılmadan işlem hatayla düşüyordu.
+    # KARAKTER ZORUNLU: istemci tek elemanlı bir LİSTE gönderirse uzunluk
+    # denetimi geçiyor, nzchar() hata veriyor ve gözlemci kullanıcıya hiç
+    # bildirim göstermeden düşüyordu.
+    if (is.null(filepath_raw) || !is.character(filepath_raw) ||
+        length(filepath_raw) != 1L ||
+        is.na(filepath_raw) || !nzchar(filepath_raw)) {
       showToast(session, "Geçersiz dosya yolu.", "error")
       return(invisible(NULL))
     }
     
 	filepath_clean <- trimws(as.character(filepath_raw))
+
+	# Yalnızca boşluktan oluşan değer `nzchar()` denetimini geçiyor, kırpma
+	# sonrası boş yol mevcut `www` DİZİNİNE çözülüyor ve önizleme modalı
+	# reddetme yerine "Desteklenmeyen Dosya Türü" gösteriyordu.
+	if (!nzchar(filepath_clean)) {
+	  showToast(session, "Geçersiz dosya yolu.", "error")
+	  return(invisible(NULL))
+	}
 
 	repo_root_for_files <- Sys.getenv("MERGEN_REPO_ROOT", unset = "")
 	repo_candidates <- unique(Filter(nzchar, c(
@@ -75,31 +91,137 @@ fileClickObserversInit <- function(input, session, settings_data, api_config,
 	  }
 	}
 
-	full_path <- NULL
-	if (startsWith(filepath_clean, "www/")) {
-	  full_path <- file.path(repo_root_for_files, filepath_clean)
-	} else if (startsWith(filepath_clean, "/") ||
-			   grepl("^//", filepath_clean) ||
-			   grepl("^[A-Za-z]:", filepath_clean)) {
-	  full_path <- filepath_clean
-	} else {
-	  full_path <- file.path(repo_root_for_files, "www", filepath_clean)
+	filepath_slash <- gsub("\\", "/", filepath_clean, fixed = TRUE)
+
+	# '..' geçişi hiçbir biçimde kabul edilmez.
+	if (grepl("(^|/)\\.\\.(/|$)", filepath_slash, perl = TRUE)) {
+	  showToast(session, "Geçersiz dosya yolu.", "error")
+	  log_warn("[ANALYSIS_FILE] Yol geçişi reddedildi: {filepath_clean}", filepath_clean = filepath_clean)
+	  return(invisible(NULL))
 	}
-    
+
+	mutlak_mi <- startsWith(filepath_slash, "/") ||
+	  grepl("^//", filepath_slash) ||
+	  grepl("^[A-Za-z]:", filepath_slash)
+
+	full_path <- if (mutlak_mi) {
+	  filepath_clean
+	} else if (startsWith(filepath_slash, "www/")) {
+	  file.path(repo_root_for_files, filepath_slash)
+	} else {
+	  file.path(repo_root_for_files, "www", filepath_slash)
+	}
+
     full_path <- normalize_mcp_path(full_path, must_exist = FALSE)
-    
-	if (!path_exists_relaxed(full_path)) {
+
+	# Çözülen yol ONAYLI köklerden birinin içinde kalmalıdır. Eskiden istemciden
+	# gelen mutlak yol olduğu gibi kullanılıyordu ve sunucu hesabıyla keyfi yerel
+	# dosya okunup indirilebiliyordu.
+	.afc_kok_anahtar <- function(x) {
+	  x <- tryCatch(
+	    normalizePath(as.character(x)[1], winslash = "/", mustWork = FALSE),
+	    error = function(e) as.character(x)[1]
+	  )
+	  x <- sub("/+$", "", gsub("\\\\", "/", x))
+	  if (.Platform$OS.type == "windows") tolower(x) else x
+	}
+
+	tiklayan_uid <- tryCatch(
+	  resolve_effective_user_id(session = session),
+	  error = function(e) 0L
+	)
+
+	izinli_kokler <- unique(Filter(nzchar, c(
+	  file.path(repo_root_for_files, "www"),
+	  if (isTRUE(tiklayan_uid > 0L)) {
+	    tryCatch(mergen_user_upload_dir(tiklayan_uid), error = function(e) "")
+	  } else {
+	    ""
+	  }
+	)))
+
+	hedef_anahtar <- .afc_kok_anahtar(full_path)
+	kok_anahtarlari <- vapply(izinli_kokler, .afc_kok_anahtar, character(1), USE.NAMES = FALSE)
+
+	if (!any(hedef_anahtar == kok_anahtarlari |
+			 startsWith(hedef_anahtar, paste0(kok_anahtarlari, "/")))) {
+	  showToast(session, "Geçersiz dosya yolu.", "error")
+	  log_warn("[ANALYSIS_FILE] Onaylı kök dışındaki yol reddedildi: {hedef_anahtar}", hedef_anahtar = hedef_anahtar)
+	  return(invisible(NULL))
+	}
+
+	# Varlığı KANITLANAN varyant alınır: `path_exists_relaxed()` bir UNC ya da
+	# `enc2utf8()` varyantı üzerinden TRUE dönebiliyor, ancak kanonikleştirme
+	# ÖZGÜN yolu kullandığı için sonuç NA oluyor ve dosya "Geçersiz dosya yolu."
+	# ile reddediliyordu.
+	var_olan_varyant <- path_existing_variant(full_path)
+	if (is.na(var_olan_varyant)) {
 	  showToast(session, paste("Dosya bulunamadı:", basename(filepath_clean)), "error")
 	  log_error("[ANALYSIS_FILE] Dosya mevcut değil: {full_path}", full_path = full_path)
 	  return(invisible(NULL))
 	}
-    
+
+	# KANONİK YOL ZORUNLU: `normalizePath(..., mustWork = FALSE)` sembolik
+	# bağlantı / reparse point çözülemediğinde yolu SÖZDİZİMSEL hâliyle
+	# döndürebiliyor. Bu durumda izinli kök altındaki bir bağlantı önek
+	# denetiminden geçiyor, ancak `openAnyPreview()` kök DIŞINDAKİ hedefe
+	# erişiyordu. Varlık denetiminden SONRA hem hedef hem kökler `mustWork = TRUE`
+	# ile kanonikleştirilip yeniden karşılaştırılır ve önizlemeye KANONİK yol geçer.
+	kanonik_hedef <- tryCatch(
+	  normalizePath(var_olan_varyant, winslash = "/", mustWork = TRUE),
+	  error = function(e) NA_character_
+	)
+	kanonik_kokler <- vapply(
+	  izinli_kokler,
+	  function(k) tryCatch(
+	    normalizePath(k, winslash = "/", mustWork = TRUE),
+	    error = function(e) NA_character_
+	  ),
+	  character(1), USE.NAMES = FALSE
+	)
+	kanonik_kokler <- kanonik_kokler[!is.na(kanonik_kokler)]
+
+	if (is.na(kanonik_hedef) || !length(kanonik_kokler)) {
+	  showToast(session, "Geçersiz dosya yolu.", "error")
+	  log_warn("[ANALYSIS_FILE] Kanonik yol çözülemedi; erişim reddedildi.")
+	  return(invisible(NULL))
+	}
+
+	kanonik_hedef_anahtar <- .afc_kok_anahtar(kanonik_hedef)
+	kanonik_kok_anahtarlari <- vapply(kanonik_kokler, .afc_kok_anahtar, character(1), USE.NAMES = FALSE)
+
+	if (!any(kanonik_hedef_anahtar == kanonik_kok_anahtarlari |
+			 startsWith(kanonik_hedef_anahtar, paste0(kanonik_kok_anahtarlari, "/")))) {
+	  showToast(session, "Geçersiz dosya yolu.", "error")
+	  log_warn("[ANALYSIS_FILE] Kanonik kök dışındaki yol reddedildi.")
+	  return(invisible(NULL))
+	}
+
+	full_path <- kanonik_hedef
+
     file_info <- list(
       name = basename(full_path),
       datapath = full_path,
       size = suppressWarnings(file.info(full_path)$size)
     )
-    
+
+	# DOĞRULAMA ile OKUMA ARASINDAKİ PENCERE (TOCTOU): yol tabanlı erişim ata
+	# bileşenlerini İZLER; kanonik denetim ile önizleme arasında bir ata dizin
+	# bağlantı/junction ile takas edilirse okuma izinli kök DIŞINA çıkabiliyordu.
+	# Base R tanıtıcı-bağıl (openat / O_NOFOLLOW) temel işlem sunmadığı için
+	# pencere tamamen kapatılamaz; kanonik çözüm önizlemeden HEMEN ÖNCE yeniden
+	# yapılır ve fark hâlinde erişim REDDEDİLİR (asla "başarılı" raporlanmaz).
+	son_kanonik <- tryCatch(
+	  normalizePath(full_path, winslash = "/", mustWork = TRUE),
+	  error = function(e) NA_character_
+	)
+	if (is.na(son_kanonik) ||
+		!identical(.afc_kok_anahtar(son_kanonik), kanonik_hedef_anahtar)) {
+	  showToast(session, "Geçersiz dosya yolu.", "error")
+	  log_warn("[ANALYSIS_FILE] Kanonik yol önizleme öncesi değişti; erişim reddedildi.")
+	  return(invisible(NULL))
+	}
+
     log_info("[ANALYSIS_FILE] Önizleme açılıyor: {full_path}", full_path = full_path)
     openAnyPreview(file_info, session, filePreview)
     

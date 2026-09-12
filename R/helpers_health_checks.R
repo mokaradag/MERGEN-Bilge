@@ -161,11 +161,101 @@ health_derive_models_url <- function(endpoint) {
   if (grepl("/v1/", endpoint, fixed = TRUE)) sub("(/v1/).*", "\\1models", endpoint) else paste0(endpoint, "/v1/models")
 }
 
+# Host çıkarımı köşeli parantezli IPv6 adresini korur: ":" üzerinden kesmek
+# `http://[fd00::1]:8080` adresini `[fd00` yapıp yanlış sınıflandırıyordu.
+health_url_host <- function(value) {
+  host <- sub("^https?://", "", tolower(as.character(value %||% "")))
+  # Yol/sorgu/fragment ATILIR; aksi hâlde yoldaki "@" userinfo sanılır.
+  host <- sub("[/?#].*$", "", host)
+  # `https://user:pass@public.example.com` için host "user" dönüyor ve
+  # noktasız-host kuralı uç noktayı DAHİLİ sayıp genel isteği gönderiyordu.
+  host <- sub("^.*@", "", host)
+  host <- ifelse(
+    grepl("^\\[", host),
+    sub("^\\[([^]]*)\\].*$", "\\1", host),
+    # Köşeli parantezsiz ÇIPLAK IPv6 (birden fazla ":") ilk iki nokta üstünde
+    # kesiliyordu: `2001:db8::1` -> `2001`. Bu biçimde port ayrıştırılamaz.
+    ifelse(
+      lengths(regmatches(host, gregexpr(":", host, fixed = TRUE))) > 1L,
+      host,
+      sub(":.*$", "", host)
+    )
+  )
+  sub("\\.$", "", host)  # sondaki DNS kök noktası dahili son ek testini düşürüyordu
+}
+
+# Operatörün AÇIKÇA on-prem ilan ettiği host kümesi. Kurumsal DNS adı taşıyan
+# bir uç nokta (ör. https://tts.kurum.com.tr) literal RFC1918 adresi olmadığı
+# için "genel internet" sayılıyor ve HİÇ denenmeden warning raporlanıyordu.
+# Değer host ya da tam URL olabilir; ";", "," veya boşlukla ayrılır.
+health_internal_hosts <- function() {
+  ham <- Sys.getenv("MERGEN_HEALTH_INTERNAL_ENDPOINTS", "")
+  if (!nzchar(ham)) return(character(0))
+  parcalar <- unlist(strsplit(tolower(ham), "[;,[:space:]]+"))
+  parcalar <- parcalar[nzchar(parcalar)]
+  if (!length(parcalar)) return(character(0))
+  hostlar <- health_url_host(parcalar)
+  unique(hostlar[nzchar(hostlar)])
+}
+
+# Host'un DAHİLİ bir IP literali olup olmadığını söyler. NA => IP literali değil.
+# Önek eşleşmesi tek başına yetmez: `10.example.com` geçerli bir genel DNS adıdır
+# ve dört oktetli IPv4 doğrulaması yapılmadan "dahili" sayılıyordu.
+health_ip_literal_internal <- function(host) {
+  # Joker bağlama adresleri yerel dinleyicidir; `LOCAL_*_ENDPOINT` değeri
+  # `http://0.0.0.0:...` / `http://[::]:...` iken kontrol hiç yapılmıyordu.
+  if (identical(host, "0.0.0.0") || identical(host, "::")) return(TRUE)
+
+  if (grepl(":", host, fixed = TRUE)) {
+    # IPv4-EŞLEMELİ IPv6 (`::ffff:10.0.0.1`) gömülü IPv4 kuralıyla sınıflandırılır.
+    esleme <- sub("^(0*:)*0*ffff:", "", tolower(host), perl = TRUE)
+    if (!grepl(":", esleme, fixed = TRUE)) return(health_ip_literal_internal(esleme))
+    # `0:0:0:0:0:0:0:1` gibi genişletilmiş loopback biçimleri de normalize edilir.
+    parcalar <- strsplit(host, ":", fixed = TRUE)[[1]]
+    parcalar <- parcalar[nzchar(parcalar)]
+    # Boş hextet'ler ayıklandığı için `1::` ve `0:1::` de "son hextet 1" gibi
+    # görünüyor ve GENEL adresler dahili sınıflanıyordu; kıyas ORİJİNAL host
+    # üzerinde yapılır.
+    if (length(parcalar) &&
+        grepl("(^|:)0*1$", host, perl = TRUE) &&
+        all(grepl("^0*1?$", parcalar)) &&
+        sum(parcalar != "" & sub("^0+", "", parcalar) == "1") == 1L &&
+        identical(sub("^0+", "", parcalar[length(parcalar)]), "1")) {
+      return(TRUE)
+    }
+    # fc00::/7 benzersiz yerel adres aralığı ve bağlantı-yerel fe80::/10.
+    if (grepl("^(f[cd][0-9a-f]{2}:|fe[89ab][0-9a-f]:)", host, perl = TRUE)) return(TRUE)
+    return(NA)
+  }
+  if (!grepl("^[0-9]{1,3}(\\.[0-9]{1,3}){3}$", host, perl = TRUE)) return(NA)
+  oktet <- suppressWarnings(as.integer(strsplit(host, ".", fixed = TRUE)[[1]]))
+  if (anyNA(oktet) || any(oktet < 0L) || any(oktet > 255L)) return(NA)
+  # 10/8, 172.16/12, 192.168/16, 127/8 (loopback), 169.254/16 (bağlantı-yerel).
+  oktet[1] == 10L ||
+    oktet[1] == 127L ||
+    (oktet[1] == 172L && oktet[2] >= 16L && oktet[2] <= 31L) ||
+    (oktet[1] == 192L && oktet[2] == 168L) ||
+    (oktet[1] == 169L && oktet[2] == 254L)
+}
+
 health_is_public_url <- function(url) {
   url <- tolower(as.character(url %||% ""))
   if (!grepl("^https?://", url)) return(FALSE)
-  host <- sub("^https?://([^/:]+).*$", "\\1", url)
-  !(host %in% c("localhost", "127.0.0.1", "::1") || grepl("^(10\\.|192\\.168\\.|172\\.(1[6-9]|2[0-9]|3[0-1])\\.)", host))
+  host <- health_url_host(url)
+  if (identical(host, "localhost")) return(FALSE)
+  ip_dahili <- health_ip_literal_internal(host)
+  if (!is.na(ip_dahili)) return(!isTRUE(ip_dahili) && !(host %in% health_internal_hosts()))
+  # IPv6 adresi tek etiket gibi görünür; "nokta yok => dahili" kuralı buna
+  # uygulanamaz (genel bir IPv6 adresi dahili sayılırdı).
+  if (grepl(":", host, fixed = TRUE)) {
+    return(!(host %in% health_internal_hosts()))
+  }
+  # Tek etiketli intranet adı (nokta yok) ve bilinen dahili son ekler.
+  if (!grepl(".", host, fixed = TRUE)) return(FALSE)
+  if (grepl("\\.(local|internal|intranet|lan|corp)$", host, perl = TRUE)) return(FALSE)
+  # Operatörün açıkça on-prem ilan ettiği kurumsal DNS adları gerçekten denenir.
+  if (host %in% health_internal_hosts()) return(FALSE)
+  TRUE
 }
 
 health_check_http_endpoint <- function(id, label, endpoint, configured_required = FALSE, timeout_sec = 2, expect_json = FALSE) {
@@ -177,11 +267,9 @@ health_check_http_endpoint <- function(id, label, endpoint, configured_required 
       return(health_result(id, label, status, "Tanımlı değil", "Uç nokta yapılandırılmamış.", health_ms(start), remediation = "Gerekliyse ilgili LOCAL_*_ENDPOINT değerini tanımlayın."))
     }
 
-    endpoint_host <- tolower(sub("^https?://([^/:]+).*$", "\\1", endpoint))
-    if (grepl("\\.com\\.tr$", endpoint_host)) {
-      return(health_result(id, label, "ok", "Atlandı", ".com.tr on-prem uç nokta tanımlı; canlı çağrı yapılmadan sağlıklı kabul edildi.", health_ms(start), remediation = ""))
-    }
-
+    # `.com.tr` uç noktası HİÇ denenmeden "ok" raporlanıyordu (fail-open):
+    # kapalı bir servis sağlıklı görünüyordu. Bunlar on-prem kurumsal adresler
+    # olduğundan gerçekten denenir; yalnızca genel internet adresleri atlanır.
     if (health_is_public_url(endpoint)) {
       return(health_result(id, label, "warning", "Atlandı", "Genel internet adresi algılandı; offline sağlık sayfası public endpoint çağırmaz.", health_ms(start), remediation = "On-prem yerel uç nokta kullanın."))
     }
@@ -259,20 +347,42 @@ health_collect_checks <- function(perf_tracker = NULL, include_slow = TRUE) {
     index_path <- Sys.getenv("MERGEN_INDEX_PATH", "")
   }
 
+  # include_slow = FALSE iken atlanan kontroller için ortak "unknown" satırı.
+  # DB (ODBC + INFORMATION_SCHEMA), LLM (HTTP) ve disk (zaman aşımsız system())
+  # kontrolleri bayrağın DIŞINDA çalışıyor ve uç nokta/yol erişilemezken Shiny
+  # sürecini bekletebiliyordu.
+  atlandi <- function(id, label) {
+    health_result(id, label, "unknown", "Atlandı",
+                  "Yavaş kontroller devre dışı (include_slow = FALSE).", 0,
+                  remediation = "")
+  }
+  yavas <- function(id, label, expr) {
+    if (isTRUE(include_slow)) expr else atlandi(id, label)
+  }
+
   checks <- list(
     health_check_app_boot(),
     health_check_git_version(),
     health_check_sso_mode(),
     health_check_env_contract(),
-    health_check_db_connection("primary", "DB_DSN", "DB Primary"),
-    health_check_db_connection("secondary", "DB_DSN_2", "DB Secondary"),
-    health_check_db_connection("tertiary", "DB_DSN_3", "DB Tertiary"),
-    health_check_db_schema(),
-    health_check_llm_endpoint(),
+    yavas("db.primary", "DB Primary",
+          health_check_db_connection("primary", "DB_DSN", "DB Primary")),
+    yavas("db.secondary", "DB Secondary",
+          health_check_db_connection("secondary", "DB_DSN_2", "DB Secondary")),
+    yavas("db.tertiary", "DB Tertiary",
+          health_check_db_connection("tertiary", "DB_DSN_3", "DB Tertiary")),
+    yavas("db.schema", "DB Şema Hazırlığı", health_check_db_schema()),
+    yavas("llm.endpoint", "LLM Endpoint", health_check_llm_endpoint()),
     health_check_reasoning_readiness(),
-    health_check_http_endpoint("tts.endpoint", "TTS Endpoint", Sys.getenv("LOCAL_TTS_ENDPOINT", ""), FALSE, 2),
-    health_check_http_endpoint("stt.endpoint", "STT Endpoint", Sys.getenv("LOCAL_STT_ENDPOINT", ""), FALSE, 2),
-    health_check_http_endpoint("image.endpoint", "Görsel Üretim Endpoint", Sys.getenv("IMAGE_GEN_ENDPOINT", Sys.getenv("LOCAL_IMAGE_ENDPOINT", "")), FALSE, 2),
+    # include_slow = FALSE: ağ probu gerektiren yavaş kontroller atlanır.
+    # Parametre eskiden hiç kullanılmıyordu ve yavaş problar her zaman koşuyordu.
+    yavas("tts.endpoint", "TTS Endpoint", health_check_http_endpoint(
+      "tts.endpoint", "TTS Endpoint", Sys.getenv("LOCAL_TTS_ENDPOINT", ""), FALSE, 2)),
+    yavas("stt.endpoint", "STT Endpoint", health_check_http_endpoint(
+      "stt.endpoint", "STT Endpoint", Sys.getenv("LOCAL_STT_ENDPOINT", ""), FALSE, 2)),
+    yavas("image.endpoint", "Görsel Üretim Endpoint", health_check_http_endpoint(
+      "image.endpoint", "Görsel Üretim Endpoint",
+      Sys.getenv("IMAGE_GEN_ENDPOINT", Sys.getenv("LOCAL_IMAGE_ENDPOINT", "")), FALSE, 2)),
     # files_root: KÖK yazması zorunlu değil (asıl yazma hedefi index.json ayrı
     # kontrol edilir). Var olan bir kök, yazma testi UNC/izin nedeniyle geçmese
     # bile "kritik/bulunamadı" gösterilmemeli; require_write = FALSE.
@@ -281,8 +391,11 @@ health_collect_checks <- function(perf_tracker = NULL, include_slow = TRUE) {
     health_check_path_writable("storage.log_dir", "Log Dizini", Sys.getenv("MERGEN_LOG_DIR", file.path(getwd(), "logs")), TRUE),
     health_check_path_writable("storage.mcp_base", "MERGEN_MCP_BASE_DIR", Sys.getenv("MERGEN_MCP_BASE_DIR", ""), FALSE),
     health_check_index_json(index_path),
-    health_check_disk_free(getwd(), "storage.disk_free", "Uygulama Diski"),
-    health_check_disk_free(Sys.getenv("MERGEN_UPLOADS_DIR", getwd()), "storage.upload_disk_free", "Upload Root Boş Alan"),
+    yavas("storage.disk_free", "Uygulama Diski",
+          health_check_disk_free(getwd(), "storage.disk_free", "Uygulama Diski")),
+    yavas("storage.upload_disk_free", "Upload Root Boş Alan",
+          health_check_disk_free(Sys.getenv("MERGEN_UPLOADS_DIR", getwd()),
+                                 "storage.upload_disk_free", "Upload Root Boş Alan")),
     health_check_worker_info(),
     health_check_runtime_info(perf_tracker),
     health_check_package_sanity(),

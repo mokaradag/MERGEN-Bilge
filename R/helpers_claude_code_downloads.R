@@ -154,7 +154,8 @@ format_claude_code_download_size <- function(bytes) {
 resolve_claude_code_generated_path <- function(path_value,
                                                runtime_workdir = "",
                                                source_workdir = "",
-                                               allowed_roots = character(0)) {
+                                               allowed_roots = character(0),
+                                               cancel_fn = NULL) {
   yol <- as.character(path_value %||% "")[1]
   if (!nzchar(yol)) return("")
 
@@ -171,6 +172,11 @@ resolve_claude_code_generated_path <- function(path_value,
       normalize_mcp_path(aday, must_exist = FALSE),
       error = function(e) normalizePath(aday, winslash = "/", mustWork = FALSE)
     )
+
+    # İPTAL/DEADLINE görünürlük beklemesinden ÖNCE denetlenir: çok sayıda
+    # görünmez UNC adayında worker, iptal istendikten sonra da aday BAŞINA bir
+    # kez bekleyip zaman aşımının yerleşmesini geciktiriyordu.
+    if (isTRUE(cc_cancel_requested(cancel_fn))) return("")
 
     # Windows/UNC/ağ klasörlerinde yeni yazılan dosya bazen birkaç yüz ms
     # sonra bu süreç tarafından görünür hale geliyor. Ham yol fallback'ine
@@ -205,7 +211,8 @@ list_claude_code_generated_file_paths <- function(tool_uses,
                                                   runtime_workdir = "",
                                                   source_workdir = "",
                                                   allowed_roots = character(0),
-                                                  user_id = 0L) {
+                                                  user_id = 0L,
+                                                  cancel_fn = NULL) {
   if (!length(tool_uses)) return(character(0))
 
   if (!length(allowed_roots)) {
@@ -218,6 +225,10 @@ list_claude_code_generated_file_paths <- function(tool_uses,
   dosyalar <- character(0)
 
   for (arac in tool_uses) {
+    # Yol keşfi de iptal edilebilir: aksi hâlde her aday için görünürlük
+    # beklemesi yapılıp worker gereksiz yere tutuluyordu.
+    if (isTRUE(cc_cancel_requested(cancel_fn))) break
+
     arac_adi <- tolower(as.character(arac$name %||% "")[1])
     if (!nzchar(arac_adi)) next
 
@@ -233,7 +244,8 @@ list_claude_code_generated_file_paths <- function(tool_uses,
       path_value = hedef_yol,
       runtime_workdir = runtime_workdir,
       source_workdir = source_workdir,
-      allowed_roots = allowed_roots
+      allowed_roots = allowed_roots,
+      cancel_fn = cancel_fn
     )
 
     if (nzchar(cozulen_yol)) {
@@ -253,7 +265,8 @@ list_claude_code_generated_file_paths <- function(tool_uses,
 stage_claude_code_downloads <- function(file_paths,
                                         user_id = 0L,
                                         session_token = "",
-                                        allowed_roots = character(0)) {
+                                        allowed_roots = character(0),
+                                        cancel_fn = NULL) {
   file_paths <- unique(Filter(nzchar, as.character(file_paths %||% character(0))))
 
   if (!length(file_paths)) return(list())
@@ -269,6 +282,36 @@ stage_claude_code_downloads <- function(file_paths,
   )
 
   if (!length(file_paths)) return(list())
+
+  # Görünürlük bütçesi PAYLAŞILIR: pencere açılmadığında her dosya tam
+  # file_settle_total_ms kadar bekleyebiliyor ve toplam bekleme dosya sayısıyla
+  # çarpılıyordu. Dışarıda pencere zaten açıksa (worker tamamlama yolu) ona
+  # dokunulmaz.
+  if (is.null(.cc_path_visibility_budget$deadline)) {
+    return(cc_with_path_visibility_budget(
+      stage_claude_code_downloads(
+        file_paths = file_paths,
+        user_id = user_id,
+        session_token = session_token,
+        allowed_roots = allowed_roots,
+        cancel_fn = cancel_fn
+      )
+    ))
+  }
+
+  # Aşamalama adlarını eşzamanlı çalıştırmalar arasında benzersizleştiren jeton.
+  benzersiz_jeton <- paste0(Sys.getpid(), basename(tempfile("")))
+
+  # Kopyalama sonrası hedef denetimi PAYLAŞILAN bütçeden bağımsız küçük bir süre
+  # alır: kopyalama toplam bütçeyi tükettiğinde tek bir file.exists() denemesine
+  # düşülüyor ve başarıyla kopyalanan dosya için indirme kartı üretilmiyordu.
+  hedef_bekleme_ms <- suppressWarnings(as.numeric(
+    tryCatch(cc_runtime_limit("file_settle_dest_ms", 250), error = function(e) 250)
+  )[1])
+  if (length(hedef_bekleme_ms) != 1L || !is.finite(hedef_bekleme_ms) ||
+      hedef_bekleme_ms < 0) {
+    hedef_bekleme_ms <- 250
+  }
 
   kok <- get_claude_code_download_root()
 
@@ -290,6 +333,11 @@ stage_claude_code_downloads <- function(file_paths,
   sonuc <- list()
 
   for (i in seq_along(file_paths)) {
+    # İPTAL yineleme GİRİŞİNDE denetlenir: iptal zaten istenmişken ilk UNC yolu
+    # görünmüyorsa worker, durmadan önce paylaşılan görünürlük bütçesini
+    # tüketebiliyordu.
+    if (isTRUE(cc_cancel_requested(cancel_fn))) break
+
     kaynak <- file_paths[i]
 
     # Dosya yazma işlemi bitmiş görünse bile özellikle Windows/UNC üzerinde
@@ -320,6 +368,11 @@ stage_claude_code_downloads <- function(file_paths,
     if (length(yeniden_onayli) != 1L || !identical(yeniden_onayli[1], kaynak_key) ||
         isTRUE(baglanti)) next
 
+    # İPTAL/DEADLINE her dosyadan ÖNCE denetlenir: geniş bir çıktı kümesini
+    # tararken/kopyalarken süre dolduğunda worker, çalıştırma "failed" olarak
+    # raporlandıktan sonra da staging'e devam ediyordu.
+    if (isTRUE(cc_cancel_requested(cancel_fn))) break
+
     orijinal_ad <- basename(kaynak)
 
     guvenli_ad <- sanitize_claude_code_download_segment(
@@ -327,13 +380,22 @@ stage_claude_code_downloads <- function(file_paths,
       fallback = paste0("dosya_", i)
     )
 
-    hedef_ad <- paste0(
+    # Saniye çözünürlüklü zaman damgası + indeks eşzamanlı çalıştırmalarda
+    # benzersiz değildi; overwrite = TRUE ile bir çalıştırma diğerinin
+    # indirmesini eziyordu. Süreç kimliği + rastgele jeton eklenir.
+    onek <- paste0(
       format(Sys.time(), "%Y%m%d-%H%M%S"),
       "_",
       sprintf("%02d", i),
       "_",
-      guvenli_ad
+      benzersiz_jeton,
+      "_"
     )
+
+    # Benzersizlik jetonu ad bileşenini uzatır: daha önce sığan uzun bir
+    # basename dosya sistemi sınırını aşıp `file.copy()` başarısız oluyor ve
+    # kullanıcı hiçbir indirme kaydı alamıyordu.
+    hedef_ad <- cc_fit_name_to_byte_budget(onek, guvenli_ad)
 
     hedef_yol <- file.path(hedef_dizin, hedef_ad)
 
@@ -352,7 +414,7 @@ stage_claude_code_downloads <- function(file_paths,
 
     # URL/HTML kartı üretmeden önce staged hedef dosyanın gerçekten görünür
     # olduğundan emin ol. Böylece href, dosya hazır olmadan ekrana basılmaz.
-    cc_wait_for_path_visible(hedef_yol)
+    cc_wait_for_path_visible(hedef_yol, budget_ms = hedef_bekleme_ms)
 
     if (!isTRUE(file.exists(hedef_yol)) || isTRUE(dir.exists(hedef_yol))) next
 
@@ -398,7 +460,8 @@ collect_claude_code_generated_downloads <- function(tool_uses,
                                                     runtime_workdir = "",
                                                     source_workdir = "",
                                                     user_id = 0L,
-                                                    session_token = "") {
+                                                    session_token = "",
+                                                    cancel_fn = NULL) {
   allowed_roots <- cc_policy_allowed_output_roots(
     user_id = user_id,
     workdir = runtime_workdir %||% source_workdir
@@ -409,7 +472,8 @@ collect_claude_code_generated_downloads <- function(tool_uses,
     runtime_workdir = runtime_workdir,
     source_workdir = source_workdir,
     allowed_roots = allowed_roots,
-    user_id = user_id
+    user_id = user_id,
+    cancel_fn = cancel_fn
   )
 
   if (!length(dosya_yollari)) return(list())
@@ -418,7 +482,8 @@ collect_claude_code_generated_downloads <- function(tool_uses,
     file_paths = dosya_yollari,
     user_id = user_id,
     session_token = session_token,
-    allowed_roots = allowed_roots
+    allowed_roots = allowed_roots,
+    cancel_fn = cancel_fn
   )
 
   if (!length(indirmeler)) return(list())
@@ -455,7 +520,8 @@ cc_stage_tool_use_write_paths_as_downloads <- function(tool_uses,
                                                        user_id = 0L,
                                                        session_token = "",
                                                        layout = NULL,
-                                                       limits = NULL) {
+                                                       limits = NULL,
+                                                       cancel_fn = NULL) {
   if (!length(tool_uses)) return(list())
 
   allowed_roots <- cc_policy_allowed_output_roots(
@@ -483,6 +549,9 @@ cc_stage_tool_use_write_paths_as_downloads <- function(tool_uses,
     if (!nzchar(raw_yol)) next
 
     aday <- normalizePath(raw_yol, winslash = "/", mustWork = FALSE)
+
+    # Yedek keşif yolunda da iptal görünürlük beklemesinden ÖNCE denetlenir.
+    if (isTRUE(cc_cancel_requested(cancel_fn))) break
 
     # Yedek yolda da aynı zamanlama farkını tolere et.
     cc_wait_for_path_visible(aday)
@@ -517,7 +586,8 @@ cc_stage_tool_use_write_paths_as_downloads <- function(tool_uses,
       file_paths = yollar,
       user_id = user_id,
       session_token = session_token,
-      allowed_roots = allowed_roots
+      allowed_roots = allowed_roots,
+      cancel_fn = cancel_fn
     ),
     error = function(e) list()
   )
@@ -562,7 +632,8 @@ cc_collect_streaming_run_downloads <- function(before_snapshot,
                                                changed_files = NULL,
                                                exclude_dirs = NULL,
                                                limits = NULL,
-                                               layout = NULL) {
+                                               layout = NULL,
+                                               cancel_fn = NULL) {
   birincil <- tryCatch(
     collect_claude_code_workdir_changes_downloads(
       before_snapshot = before_snapshot,
@@ -574,7 +645,8 @@ cc_collect_streaming_run_downloads <- function(before_snapshot,
       changed_files = changed_files,
       exclude_dirs = exclude_dirs,
       limits = limits,
-      layout = layout
+      layout = layout,
+      cancel_fn = cancel_fn
     ),
     error = function(e) list()
   )
@@ -588,7 +660,8 @@ cc_collect_streaming_run_downloads <- function(before_snapshot,
     user_id = user_id,
     session_token = session_token,
     layout = layout,
-    limits = limits
+    limits = limits,
+    cancel_fn = cancel_fn
   )
 }
 

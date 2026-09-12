@@ -53,6 +53,9 @@ mergen_true_streaming_worker_globals <- function(chat_history_for_sse,
     extract_llm_event_sources = extract_llm_event_sources,
     append_stream_delta_line = append_stream_delta_line,
     append_stream_reasoning_line = append_stream_reasoning_line,
+    # Durdurma dosyası denetimi worker içinde yapılır; sembol açıkça taşınmazsa
+    # explicit bağımlılık kipinde "fonksiyon bulunamadı" ile düşerdi.
+    streaming_should_stop = streaming_should_stop,
     log_info = log_info,
     log_warn = log_warn,
     # SQL/Proje analizi non-streaming güvenlik ağı: işçi, akış yalnızca

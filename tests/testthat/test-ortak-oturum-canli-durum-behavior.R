@@ -113,6 +113,40 @@ test_that("gelecekte damgalı (saat kayması) kalp atışı TAZE sayılır, çev
   expect_identical(as.character(d$CanliDurum[1]), "Çevrimİçi")
 })
 
+test_that("yaş sorgusu düşerse yedek yol SABİT +3 sözleşmesini kullanır", {
+  conn <- .ocd_conn()
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+
+  # Yaklaşık 3 saat eski kalp atışı: eski yedek yol saat dilimini FARKIN
+  # BÜYÜKLÜĞÜNDEN çıkarıyordu ve bu değer yalnızca saniyeler ileride göründüğü
+  # için +3 uygulanmıyor, negatif fark sıfıra kırpılıp kullanıcı Çevrimİçi
+  # sınıflanıyordu.
+  .ocd_ekle(conn, 9L, offset_sn = -(3 * 3600 - 60))
+
+  # SQL Server dalını zorla: DATEDIFF ifadesi SQLite'ta hata verir ve üretimdeki
+  # yedek yol (R tarafı sınıflandırma) çalışır.
+  eski <- .oo_db_is_sqlite
+  .oo_db_is_sqlite <<- function(...) FALSE
+  withr::defer(.oo_db_is_sqlite <<- eski)
+
+  d <- ortak_db_canli_durumlar(conn = conn)
+
+  expect_equal(nrow(d), 1L)
+  expect_identical(as.character(d$CanliDurum[1]), "ÇevrimDışı")
+})
+
+test_that("yedek yolda saat dilimi farkın büyüklüğünden çıkarılmaz", {
+  kaynak <- readLines(
+    file.path(resolve_repo_root_for_tests(), "R", "helpers_ortak_oturum_db_davet.R"),
+    warn = FALSE, encoding = "UTF-8"
+  )
+  metin <- paste(kaynak, collapse = "\n")
+
+  # Eşik sabiti kaldırıldı; POSIXct ve METİN dalları aynı +3 tabanını kullanır.
+  expect_false(grepl("OO_CANLI_SAAT_TOLERANS_SN", metin, fixed = TRUE))
+  expect_true(grepl("ortak_sunum_durumu(ham, simdi = simdi_fallback)", metin, fixed = TRUE))
+})
+
 test_that("boş tabloda güvenli boş çerçeve döner", {
   conn <- .ocd_conn()
   on.exit(DBI::dbDisconnect(conn), add = TRUE)

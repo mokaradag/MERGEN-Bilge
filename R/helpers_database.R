@@ -42,8 +42,9 @@ get_or_create_user <- function(username, sso_claims = NULL) {
       user_details <- normalize_text_frame_utf8(user_details, repair_mojibake = TRUE)
     }
 
-    if (nrow(user_details) > 0 && nzchar(user_details$KaynakAdi[1] %||% "")) {
-      kaynak_adi <- user_details$KaynakAdi[1]
+    kaynak_aday <- if (nrow(user_details) > 0) user_details$KaynakAdi[1] else NA_character_
+    if (length(kaynak_aday) == 1L && !is.na(kaynak_aday) && nzchar(kaynak_aday)) {
+      kaynak_adi <- kaynak_aday
     }
   }
 
@@ -68,14 +69,55 @@ get_or_create_user <- function(username, sso_claims = NULL) {
     return(user_id)
   }
 
-  res <- dbGetQuery(
-    conn,
-    paste(
-      "INSERT INTO MB_Users (KullaniciAdi, KaynakAdi, LastLoginDate)",
-      "OUTPUT INSERTED.UserID AS UserID",
-      "VALUES (?, ?, GETDATE())"
+  # SELECT-INSERT yarışı: eşzamanlı ilk giriş aynı kullanıcıyı iki kez
+  # eklemeye çalışabilir; INSERT hatasında satır yeniden okunur.
+  res <- tryCatch(
+    dbGetQuery(
+      conn,
+      paste(
+        "INSERT INTO MB_Users (KullaniciAdi, KaynakAdi, LastLoginDate)",
+        "OUTPUT INSERTED.UserID AS UserID",
+        "VALUES (?, ?, GETDATE())"
+      ),
+      params = normalize_db_params(list(username, kaynak_adi))
     ),
-    params = normalize_db_params(list(username, kaynak_adi))
+    error = function(e) {
+      yeniden <- tryCatch(
+        dbGetQuery(
+          conn,
+          "SELECT UserID FROM MB_Users WHERE KullaniciAdi = ?",
+          params = normalize_db_params(list(username))
+        ),
+        error = function(e2) NULL
+      )
+      if (is.data.frame(yeniden) && nrow(yeniden) > 0) {
+        # Yarışı kaybeden istek KaynakAdi/LastLoginDate güncellemesini
+        # atlıyordu; farklı görünen-ad kaynaklarında MB_Users kazanan isteğin
+        # bayat değerinde kalıyordu.
+        # Hata GİZLENMEZ: `try(..., silent = TRUE)` başarısız güncellemeyi
+        # yutup UserID döndürüyor, KaynakAdi/LastLoginDate bayat kalıyordu.
+        guncelleme <- tryCatch(
+          dbExecute(
+            conn,
+            "UPDATE MB_Users SET KaynakAdi = ?, LastLoginDate = GETDATE() WHERE UserID = ?",
+            params = normalize_db_params(list(kaynak_adi, as.integer(yeniden$UserID[1])))
+          ),
+          error = function(e3) e3
+        )
+        if (inherits(guncelleme, "condition")) {
+          # #27/#54: Türkçe metin korunur ve hata YÜKSELTİLİR. Yalnızca uyarı
+          # yazıp `UserID` döndürmek çağırana "başarılı" görünüyor, KaynakAdi ve
+          # LastLoginDate ise eski değerinde kalıyordu.
+          log_warn(paste0(
+            "MB_Users görünen-ad güncellemesi başarısız: ",
+            gsub("[{}]", "", conditionMessage(guncelleme))
+          ))
+          stop(guncelleme)
+        }
+        return(yeniden)
+      }
+      stop(e)
+    }
   )
 
   if (nrow(res) == 0) {

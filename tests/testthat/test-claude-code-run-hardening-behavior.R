@@ -17,6 +17,15 @@
 #           Çevrimdışı ve deterministiktir; gerçek DB/LLM/CLI/tarayıcı yoktur.
 # ==============================================================================
 
+# Çıktı aşaması İKİ dosyaya bölünmüştür: istek/worker gövdesi
+# helpers_claude_code_run_completion.R, ana süreç tarafı (raporlama +
+# cc_dispatch_run_output_processing) helpers_claude_code_run_output_dispatch.R
+# içindedir. Manifest sırası korunarak ikisi birlikte yüklenir.
+.CC_CIKTI_DOSYALARI <- c(
+  "helpers_claude_code_run_completion.R",
+  "helpers_claude_code_run_output_dispatch.R"
+)
+
 .cc_hardening_env <- function(extra_files = character(0)) {
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
@@ -37,6 +46,7 @@
     "helpers_claude_code_bounded_scan.R",
     "helpers_claude_code_input_matching.R",
     "helpers_claude_code_runtime_prepare.R",
+    "helpers_claude_code_runtime_lease.R",
     "helpers_claude_code_output_sync.R",
     extra_files
   )
@@ -339,7 +349,7 @@ test_that("cc_cleanup_stale_document_support_dirs yapılandırılmış saklama s
 # ------------------------------------------------------------------------------
 
 test_that("cc_filter_download_candidates metadata ve doküman destek dosyalarını eler", {
-  env <- .cc_hardening_env(extra_files = "helpers_claude_code_run_completion.R")
+  env <- .cc_hardening_env(extra_files = .CC_CIKTI_DOSYALARI)
   runtime <- withr::local_tempdir()
 
   duzen <- list(
@@ -370,7 +380,7 @@ test_that("cc_filter_download_candidates metadata ve doküman destek dosyaların
 })
 
 test_that("cc_filter_download_candidates boyut sınırlarını staging öncesinde uygular", {
-  env <- .cc_hardening_env(extra_files = "helpers_claude_code_run_completion.R")
+  env <- .cc_hardening_env(extra_files = .CC_CIKTI_DOSYALARI)
   runtime <- withr::local_tempdir()
 
   duzen <- list(
@@ -399,7 +409,7 @@ test_that("cc_filter_download_candidates boyut sınırlarını staging öncesind
 })
 
 test_that("cc_filter_download_candidates düzen verilmezse bölge süzgeci uygulamaz", {
-  env <- .cc_hardening_env(extra_files = "helpers_claude_code_run_completion.R")
+  env <- .cc_hardening_env(extra_files = .CC_CIKTI_DOSYALARI)
   kok <- withr::local_tempdir()
 
   yol <- file.path(kok, "serbest.txt")
@@ -449,7 +459,7 @@ test_that("diff_claude_code_workdir_snapshot tarama meta verisini sonuca ilişti
 })
 
 test_that("cc_report_output_scan_truncation kesilmemiş taramayı başarısız saymaz", {
-  env <- .cc_hardening_env(extra_files = "helpers_claude_code_run_completion.R")
+  env <- .cc_hardening_env(extra_files = .CC_CIKTI_DOSYALARI)
 
   expect_false(
     env$cc_report_output_scan_truncation(
@@ -528,7 +538,7 @@ test_that("girdi kopyası sahipliği her dosya arasında yeniden doğrular", {
 })
 
 test_that("çalıştırma sonrası diff hatası çıktı işlemeyi başarısız kılar", {
-  env <- .cc_hardening_env(extra_files = "helpers_claude_code_run_completion.R")
+  env <- .cc_hardening_env(extra_files = .CC_CIKTI_DOSYALARI)
   runtime <- withr::local_tempdir()
   toplama_cagrildi <- FALSE
 
@@ -952,7 +962,7 @@ test_that("workdir_has_binary_documents ic ice kopyalanan dokumani algilar", {
 # ------------------------------------------------------------------------------
 
 test_that("sync hatasi cikti islemeyi basarisiz kilar (yutulmaz)", {
-  env <- .cc_hardening_env(extra_files = "helpers_claude_code_run_completion.R")
+  env <- .cc_hardening_env(extra_files = .CC_CIKTI_DOSYALARI)
   runtime <- withr::local_tempdir()
 
   env$diff_claude_code_workdir_snapshot <- function(...) character(0)
@@ -973,7 +983,7 @@ test_that("sync hatasi cikti islemeyi basarisiz kilar (yutulmaz)", {
 # ------------------------------------------------------------------------------
 
 test_that("guard dosyasi olusturulamazsa worker gonderilmeden acikca basarisiz olunur", {
-  env <- .cc_hardening_env(extra_files = "helpers_claude_code_run_completion.R")
+  env <- .cc_hardening_env(extra_files = .CC_CIKTI_DOSYALARI)
 
   worker_cagrildi <- FALSE
   rapor_edildi <- new.env(parent = emptyenv())
@@ -1227,7 +1237,7 @@ test_that("sync_claude_runtime_workdir_back degisiklik yoksa kok kaybolsa bile z
 # ------------------------------------------------------------------------------
 
 test_that("cikti taramasi kesilirse indirme sahnelemesi ve senkron hic cagrilmaz", {
-  env <- .cc_hardening_env(extra_files = "helpers_claude_code_run_completion.R")
+  env <- .cc_hardening_env(extra_files = .CC_CIKTI_DOSYALARI)
   runtime <- withr::local_tempdir()
 
   env$diff_claude_code_workdir_snapshot <- function(...) {
@@ -1264,7 +1274,7 @@ test_that("cc_dispatch_run_output_processing takilan worker'i bagimsiz deadline 
   env <- .cc_hardening_env(extra_files = c(
     "helpers_claude_code_run_lifecycle.R",
     "helpers_claude_code_run_dispatch.R",
-    "helpers_claude_code_run_completion.R"
+    .CC_CIKTI_DOSYALARI
   ))
   env$cc_runtime_limit <- function(name, default_value = Inf, limits = NULL) {
     if (identical(name, "output_process_timeout_sec")) 0.05 else default_value
@@ -1345,4 +1355,32 @@ test_that("list_directory_contents gercek listeleme hatasinda success FALSE done
 
   expect_false(isTRUE(sonuc$success))
   expect_identical(sonuc$error, "erisim reddedildi")
+})
+
+# ------------------------------------------------------------------------------
+# 28) SONSUZ (Inf) ÇALIŞMA ZAMANI SINIRI REDDEDİLİR
+# ------------------------------------------------------------------------------
+# `Inf` lease yetim eşiğini sonsuz yapıp çökmüş çalışma dizinlerinin hiç
+# temizlenmemesine, hedef görünürlük beklemesini de sınırsız bırakmaya yol
+# açıyordu. CLAUDE.md eşiğin SONLU kalmasını şart koşar.
+
+test_that("cc_limit_num sonsuz degeri reddeder ve varsayilana doner", {
+  repo_root <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+
+  withr::local_envvar(c(
+    CLAUDE_CODE_RUNTIME_LEASE_ORPHAN_SEC = "Inf",
+    CLAUDE_CODE_FILE_SETTLE_DEST_MS = "Inf",
+    CLAUDE_CODE_SCAN_MAX_FILES = "-Inf"
+  ))
+  source(file.path(repo_root, "R", "config_claude_code.R"),
+         local = env, encoding = "UTF-8")
+
+  sinirlar <- env$claude_code_runtime_limits
+  expect_true(is.finite(sinirlar$runtime_lease_orphan_sec))
+  expect_identical(sinirlar$runtime_lease_orphan_sec, 86400)
+  expect_true(is.finite(sinirlar$file_settle_dest_ms))
+  expect_identical(sinirlar$file_settle_dest_ms, 250)
+  expect_true(is.finite(sinirlar$scan_max_files))
+  expect_identical(sinirlar$scan_max_files, 2000)
 })

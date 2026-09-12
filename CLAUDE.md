@@ -97,6 +97,7 @@ Current contract:
 - Keep the UTF-8 and non-UTF-8 DB parameter paths explicitly separated. The helper that detects UTF-8 DB client encoding, such as `db_client_encoding_is_utf8()`, is part of the encoding safety boundary.
 - This change protects future writes; it is not an automatic data migration. Existing mojibake rows must only be repaired after a DB backup, after the write path is confirmed fixed in SSMS, and through a separate one-time repair plan.
 - New `MB_Messages` writes must be verified after insert and before commit. `save_message_to_db()` and `worker_save_assistant_response()` must call `assert_mb_message_visible_encoding_clean()` for the inserted message ID before committing. If the guard detects mojibake in `MessageContent` or `ReasoningContent`, the transaction must roll back.
+- The guard is fail-closed but must never roll back a message it cannot verify. When `save_message_to_db()` falls back to the LEGACY insert (no `MB_Messages.ReasoningContent` column) the reasoning text is NOT written, so the fallback branch clears `reasoning_content` and the guard is called without an expected reasoning value; passing the expected text there made the guard `stop()`, `dbRollback()` discarded the WHOLE message and every thinking-model answer was lost on an old schema. `assert_mb_message_visible_encoding_clean()` also resolves the table through `OBJECT_SCHEMA_NAME(OBJECT_ID(N'MB_Messages'))` instead of assuming `dbo`.
 - Historical mojibake data and future write regressions are separate concerns. Do not weaken the post-insert guard because old rows are dirty. Old rows may remain as legacy data unless a backup-approved, one-time repair run is explicitly requested.
 - `tests/scripts/run_vm_encoding_preflight_real.R` must keep transactional new-write validation strict when `MERGEN_PREFLIGHT_DB_ENCODING_WRITE_TEST=TRUE`. Recent/historical `MB_Messages` mojibake scan results are warning-only by default and become blocking only when `MERGEN_PREFLIGHT_FAIL_ON_LEGACY_MOJIBAKE=TRUE`.
 - `tests/scripts/repair_mb_messages_mojibake.R` is a maintenance-only, best-effort helper. It must be safe to run with `source(...)`, must not call `quit()`, and must not be treated as a guaranteed migration for every old corrupted fragment.
@@ -164,6 +165,10 @@ The startup skip-intro path must remain behaviorally aligned with the experience
 
 The File Manager header now includes a refresh action next to the clear action. Keep the refresh action scoped to reloading the file table from the persistent user folder through the existing refresh mechanism. Do not merge it with the destructive clear flow, and keep the refresh button visually distinct from the danger/clear button in both dark and light themes.
 
+`register_session_cleanup_on_end()` DEDUPLICATES the ledger: the same cleanup function registered twice (module rebind / Ctrl+Enter / `testServer`) was appended again while the early return skipped re-registration, so session shutdown ran that cleanup multiple times. New entries are filtered against the existing ledger with `identical()` before the ledger is updated.
+
+`ai_expert_chunk_pipeline_baslat()` finalizes each chunk EXACTLY ONCE (`durum$sonuclandi`). When `queue_fn()` threw from `teslim_et()`, the `onFulfilled` error handler called `parca_sonuclandi()` a second time for the same chunk, `durum$aktif` was decremented twice and `sentez_surdur()` could exceed `policy$eszamanli_sinir`.
+
 Fallback source guards for isolated test/debug loading must be working-directory independent. When a helper needs to source a sibling file only because the normal manifest/global load order is absent, candidate paths should cover the repository root, `tests/testthat`, and `MERGEN_REPO_ROOT` where applicable. Avoid `getwd()`-only assumptions.
 
 Behavior tests affected by helper-file refactors must source the real owning helper file, not an older file that happens to work only in the full suite. For API model/tool runtime helpers, source the runtime helper file when the function lives there so individual `testthat::test_file(...)` runs remain standalone.
@@ -190,12 +195,14 @@ Current contract:
 
 - Chat history tables are a separate browser display boundary. `R/module_chat_history.R` must keep the `Söyleşi Geçmişi` DataTable on `escape = TRUE` because `Söyleşi Adı`, `Tarih`, `Soru`, and `Cevap` are plain-text previews of stored user/LLM-controlled content. Do not switch this table back to `escape = FALSE` unless every rendered column is explicitly sanitized and the contract test is updated.
 
+- Admin DataTables that legitimately need `escape = FALSE` (they render app-produced badge/icon HTML) must escape every user/LLM-controlled column BEFORE it enters the frame. The escaped columns are `ModelUsed`, `kullanici`, `etiketler`, `yorum` and `onizleme` in `R/module_admin_yanit_analizi_outputs.R`, and `kullanici`, `etiketler_display`, `sevilen_display` and `gelistirme_display` in `admin_gb_prepare_detay_table_data()` (`R/helpers_admin_geri_bildirim_output_tables.R`). Feedback comments, tags and response previews are attacker-influenceable text, so `escape = FALSE` without per-column `htmltools::htmlEscape()` is stored XSS in the admin panel. A new `escape = FALSE` admin table must escape its free-text columns the same way and be added to `.admin_dt_escape_targets` in `tests/testthat/test-chat-history-datatable-safety-contract.R`.
+
 - Browser-side streaming markdown escaping belongs in `www/js/streaming_markdown_safety.js` and `www/js/markdown-parser.js`.
 - `www/js/markdown-parser.js` must escape raw prose before converting markdown tokens into the small allowed HTML subset used by the app.
 - The allowed streaming markdown output is intentionally small: headings, strong/emphasis, inline code, fenced code blocks, line breaks, unordered lists, and the existing app-controlled code block wrappers.
 - `www/js/streaming_manager.js` may assign to `innerHTML` only from the safe markdown parser. Parser-missing fallback must use `textContent`, not raw accumulated text as HTML.
 - UI asset order is part of the safety boundary: `www/js/streaming_markdown_safety.js` must load before `www/js/markdown-parser.js`, and `www/js/markdown-parser.js` must load before `www/js/streaming_manager.js`.
-- Server-side final and saved message markdown rendering must use `render_safe_markdown_html()` from `R/helpers_markdown_safety.R` for user/LLM-controlled prose. Do not call `commonmark::markdown_html()` directly on such prose unless raw HTML has first been escaped.
+- Server-side final and saved message markdown rendering must use `render_safe_markdown_html()` from `R/helpers_markdown_safety.R` for user/LLM-controlled prose. Do not call `commonmark::markdown_html()` directly on such prose unless raw HTML has first been escaped. Its `extensions` default is only `c("strikethrough", "table")`, so a call site that previously used `extensions = TRUE` must pass the set it needs EXPLICITLY: `format_claude_code_output()` (`R/helpers_claude_code.R`) adds `autolink` and `tasklist`, because routing it through the safe converter without them silently downgraded links and task lists in Bilge Yolaç output to plain text. `tagfilter` is intentionally not needed — raw HTML is already escaped by `mergen_escape_raw_html_for_markdown()` — and `autolink` output still passes through `mergen_sanitize_markdown_links()`.
 - The generated-image card markup (image + `MERGEN Bilge` watermark + download/copy/print action buttons + optional description) is a single canonical builder: `mergen_generated_image_card_html()` in `R/helpers_markdown_safety.R`. It escapes `message_id` and `description` (XSS boundary) and places the caller-trusted `img_src` into `src` as-is. It is loaded before `R/helpers_chat_message_formatting.R`, `R/module_image_generation.R`, and `R/module_image_generation_ui.R`. The live image path (`render_generated_image_html()`, `render_image_from_saved_path()` in `R/module_image_generation_ui.R`) and the saved-chat reload path (`db_message_render_image_html()` in `R/helpers_chat_message_formatting.R`) must delegate the card markup to this helper. Do not re-inline the `image-action-btn-modern` button markup in those consumers, and do not duplicate the card template in a third site. The not-found / not-loaded placeholder branches in `db_message_render_image_html()` are intentionally different (no image, no buttons) and stay local. Protected by `tests/testthat/test-generated-image-card-html-contract.R`.
 - User image `img_src` is served session-scoped, not inlined as base64. The canonical serving helper is `mergen_serve_image_data_url()` in `R/helpers_markdown_safety.R`: when an active Shiny session exists it serves the file via `session$registerDataObj(...)` (session-scoped, unguessable URL → preserves per-user isolation; the browser fetches the image directly/lazily/in parallel, avoiding multi-MB base64 over the websocket), and per-session it memoizes one registered URL per file path through `session$userData$mergen_image_url_cache`. With no session (tests/non-reactive context) or on registration error it falls back to the original `data:image/png;base64,...` data URI, so existing no-session behavior and tests are unchanged. The two consumers — `get_image_web_url()` (`R/module_image_generation.R`, live generation) and `db_message_get_image_base64()` (`R/helpers_chat_message_formatting.R`, saved-chat/gallery reload) — must prefer this helper through a guarded `exists("mergen_serve_image_data_url", ...)` check and keep their inline base64 path as the fallback. Do not regress this back to unconditional inline base64; that reintroduces the slow Görsel Galerisi conversation load. Do not switch user images to a plain `addResourcePath()` public path (that would break user isolation with guessable cross-user URLs).
 - Raw HTML/script/event-handler patterns such as script tags, image error handlers, javascript links, and malformed tags split across streaming chunks must remain escaped or inert.
@@ -728,7 +735,7 @@ Non-negotiable boundaries:
 - FULLSCREEN + LAYOUT: `bilge_savunmasi_sahne.js` (scene support layer) owns fullscreen (Fullscreen API + resize re-scale), menu/level music orchestration, tutorial text, blueprint guide, and the (idempotent) tower event bindings — `bilge_savunmasi_uygulama.js` delegates to it to stay under budget. The game view fills the remaining vertical space (`.bs-sayfa:has(.bs-oyun-gorunumu…)` + flex; no bottom gap) and styles `:fullscreen`. Keyboard: 1-5 heroes, 6-8 towers, Q ability, Space pause, F speed, Esc.
 - GAME-LOCAL MUSIC: the game plays its OWN music set; the MERGEN app background music AND idle AI talk are FULLY silenced on the game page. `bilge_savunmasi_ses.js` owns group-based playlists (menu + `bolum_1`/`bolum_2` level groups; random pick per group, consecutive-repeat avoidance, stale-track guard) fed from the server via `bs-init` `muzik` (`bs_muzik_katalogu()` scans `www/assets/bilge_savunmasi/muzik/<grup>/`, UTF-8 URL-encoded, `I()`-wrapped arrays; empty folders → silent, fully playable). The `oyun` duck owner triggers FULL silence in `audio_lifecycle_guard.js` (`owners.indexOf('oyun') >= 0` → volume 0), and `bilge_savunmasi` is in `mergen_speech_idle_muted_pages()`. Keep the owner model (never a boolean flag); no autoplay before first user interaction.
 - SERVER AUTHORITY: run identity is issued by the server (`bs_db_start_run`, `UserID + ClientToken` unique → idempotent retries). Final score/stars/XP are NEVER taken from the client: `bs_kosu_ozeti_dogrula()` re-computes score with per-wave caps, core/repair tolerance (+3 per wave, mirrored in the sim), duration plausibility against the server clock, version checks, and canonical hero ids. Invalid summaries mark the run `Reddedildi` and write NO progression. Finalization is one transaction (run + campaign + hero + profile + achievements) with rollback before connection release. Weekly-challenge tests that finalize INSTANTLY must use a map whose `dalga_sayisi*6 <= ~90` (the server upper bound when elapsed≈0); 14/16-wave maps only pass with real elapsed time.
-- PERSISTENCE: `MB_Game_*` family only (10 tables; manual idempotent DDL `docs/sql/2026-07-bilge-savunmasi.sql`, destructive rollback script separate). Never write game data into `MB_Chats`/`MB_Messages`/`MB_ClaudeCode_*`/`MB_Ortak*`. Missing tables must keep the game playable in non-persistent mode with an explanatory badge — never crash the app. Turkish stored states (`Aktif`, `Tamamlandı`, `Yenilgi`, `Bırakıldı`, `Reddedildi`; modes `kampanya`/`haftalik`/`plan`).
+- PERSISTENCE: `MB_Game_*` family only (10 tables; manual idempotent DDL `docs/sql/2026-07-bilge-savunmasi.sql`, destructive rollback script separate). Never write game data into `MB_Chats`/`MB_Messages`/`MB_ClaudeCode_*`/`MB_Ortak*`. Missing tables must keep the game playable in non-persistent mode with an explanatory badge — never crash the app. Turkish stored states (`Aktif`, `Tamamlandı`, `Yenilgi`, `Bırakıldı`, `Reddedildi`; modes `kampanya`/`haftalik`/`plan`). The DB layer loads in dependency order `cekirdek` → `kosu` → `topluluk` → `plan`: the defense-blueprint layer (publish / list / read / owner-scoped soft delete) lives in `R/helpers_db_bilge_savunmasi_plan.R` because `R/helpers_db_bilge_savunmasi_topluluk.R` reached the 796-line global ceiling, and it depends on that file's `.bs_db_kullanici_profilleri` masking helper. Do not merge them back.
 - PERSONA IDENTITY: `R/config_characters.R` stays the single source; `bs_persona_manifest()` only adds game role/ability metadata (ability ids are the canonical modern set: `cozum_dalgasi`, `sinyal_taramasi`, `rota_projesi`, `dogrulama_isini`, `rehber_halkasi`). No mythological ids/labels/art anywhere in game-facing files (scanned by `test-character-personas-contract.R`). Hero portraits load from canonical `characters/resim|avatar/<id>/` paths with an accent-colored initial fallback; faces are cover-cropped, never stretched.
 - ASYNC MULTIPLAYER ONLY: weekly challenge (deterministic Europe/Istanbul week code + seed via `bs_haftalik_meydan_okuma()`), immutable validated blueprints, and community totals. No real-time networking/PvP/chat. Leaderboards expose only `KaynakAdi`/`KullaniciAdi`/`Departman` (masked fallback), never email/sicil. Tie-breakers stay: score > core > wave > time > earliest submission (`bs_liderlik_sirala`).
 - FEATURE FLAG: `bilge_savunmasi_enabled()` (`MERGEN_BILGE_SAVUNMASI_ENABLED`, default ON) hides the menu item, skips server observers, and renders a calm disabled card; keep all three gates.
@@ -768,6 +775,165 @@ Focused validation:
 - `testthat::test_file("tests/testthat/test-claude-code-synthetic-tools-contract.R")`
 - `testthat::test_file("tests/testthat/test-claude-code-policy-split-contract.R")`
 
+
+### Identity fail-closed contract (PR #717)
+
+Authentication must never degrade into a MORE privileged identity.
+
+- `resolveUserIdentity()` (`R/module_user_identity.R`) must NOT fall through to the
+  local development branch when `SSO_ENABLED` is TRUE. That branch returns the
+  operating-system account with `auth_level = "ADMIN"`, so an SSO session whose
+  claims are missing was silently promoted to the Shiny service account as admin.
+  With SSO enabled and no claims it now fails closed: empty `username`,
+  `auth_level = "NONE"`, `auth_source = "unauthenticated"`, plus an error log.
+- `serverInitUserSession()` (`R/server_init_user_session.R`) sets `auth_ready`
+  only when the resolved `uid > 0`. Marking a session ready with `uid = 0` let
+  user-scoped modules (File Manager, Image Gallery, saved chats) run their first
+  refresh against a placeholder identity.
+- Session-scoped settings may only NARROW the central Claude Code permission mode
+  (`cc_policy_permission_mode()`, strictness `plan > default > acceptEdits`); a
+  session setting could previously widen a central `plan` restriction. Dangerous
+  bypass remains admin/env-only, and `--disallowedTools` is now applied even when
+  dangerous mode is on.
+- MCP SQL/chart DuckDB connections are sandboxed by `helpers_mcp_tools$open_sandboxed_duckdb()`
+  (`SET enable_external_access = false` + `SET lock_configuration = true`). `sql` and
+  `filter_sql` are LLM-controlled; without the sandbox `read_csv_auto()`,
+  `read_parquet()`, `ATTACH`, `COPY ... TO` and `INSTALL/LOAD` could read or write
+  arbitrary server files. Never open a raw `duckdb::duckdb()` connection for those
+  tools, and never re-enable external access from SQL.
+- Client-supplied paths are never trusted as filesystem targets: the analysis-file
+  click (`R/server_observers_file_clicks.R`) resolves only inside the repository
+  `www/` tree or the clicking user's own upload folder, the source-click `&&` hint
+  parts (`R/helpers_preview.R`) are rejected when they contain a separator, drive
+  letter or `..`, gallery deletion (`R/helpers_image_gallery.R`) is confined to the
+  owner's `user_images/<uid>` root — the POST-DELETE empty-folder cleanup is bound
+  by the SAME root: `chat_id` arrives from the client and was used as a raw path
+  component, so `chat_id = "../../x"` could point `unlink(..., recursive = TRUE)`
+  at an empty directory outside the root; it must be a digits-only scalar, the
+  path must be built from the VALIDATED `uid`, the canonical result must still
+  start with the user root, and emptiness is measured with `all.files = TRUE`
+  (hidden entries count) — and the bug-report attachment flow
+  (`R/module_destek_hata_bildir.R`) ignores the client `path` field entirely and
+  only deletes/persists paths inside `destek_uploads`.
+- `mergen_path_inside_root()` (`R/helpers_files_path.R`) FAILS CLOSED on an unknown
+  root: `NULL`, `NA` and `""` return `FALSE`, not `TRUE`. Containment cannot be
+  proven without a root, and the File Manager delete flow set `kullanici_koku <- ""`
+  whenever `get_user_upload_dir()` failed — so a path-based `unlink()` ran with no
+  validated root. That flow now returns `delete_failed = TRUE` when the root cannot
+  be resolved and reuses the SAME resolved value for its fallback candidate instead
+  of calling `get_user_upload_dir()` a second time.
+- `set_auth_placeholder()` (`R/helpers_user_session_identity.R`) also clears
+  `user_identity`, `user_config`, `user_first_name` and `system_username`.
+  Resetting only `user_id`/`auth_initialized` let observers that read those fields
+  directly keep serving the previous user's data after token expiry.
+- Bilge Yolaç document-summary persistence passes `user_id = effective_user_id`.
+  `cc_db_update_session_resume_state()` now REQUIRES a canonical positive
+  `user_id` and refuses the update without one: with the predicate optional, a
+  stale or wrong `ClaudeSessionRecordID` could overwrite another user's
+  `Workdir`/`RuntimeWorkdir`/`RuntimeModel`/`Status`. The only production caller
+  runs after `cc_require_ready_user_id()`, so a positive id is always available;
+  tests must pass `user_id` explicitly.
+- Env-flag parsing for `MERGEN_ALLOW_DEFAULT_API_KEY` /
+  `MERGEN_REQUIRE_PERSONAL_API_KEY` is SHARED between `R/config_api.R` and
+  `R/helpers_api_key_identity.R` through `mergen_env_flag()`. The two files
+  previously used different `as.logical()` paths, so `"0"` produced OPPOSITE
+  decisions (one treated a personal key as mandatory, the other did not). The
+  shared helper RECOGNIZES `"1"`/`"0"` (the old `as.logical` contract turned
+  `"1"` into NA); for an unrecognized value the PERMISSIVE flag stays fail-safe
+  (`invalid = FALSE`) and the RESTRICTIVE flag stays fail-closed
+  (`invalid = TRUE`). Protected by
+  `tests/testthat/test-api-key-identity-resolution-behavior.R`.
+- User ids are canonicalized with `mergen_canonical_user_id()` (`R/utils_common.R`)
+  wherever a scope predicate depends on them (chat delete/clear, chat readers,
+  Bilge Yolaç session updates, session identity). It REFUSES lossy conversion:
+  `as.integer(1.9)` silently became `1` and could scope a query to the WRONG
+  user; a character id must be pure decimal digits (`"1e2"` is refused) and a
+  logical is never an id.
+
+The SSO session itself is also fail-closed on expiry (`R/module_sso.R`):
+
+- The periodic observer must DOWNGRADE the session when `exp` has passed
+  (clear `authenticated`, `auth_level`, `user_claims`, `raw_token`, plus
+  `auth_initialized`/`ai_api_key`) and send `sso_auth_error`. Token validation
+  runs only on the `sso_jwt_token` input, so an already-authenticated Shiny
+  connection previously kept using the expired user's identity, authority and
+  personal API key indefinitely. A missing or unparseable `token_exp` does NOT
+  downgrade (conservative; validation already rejects a token without `exp`).
+- That observer MUST use the classic `invalidateLater(60000, session)` inside
+  the `observe({...})` body, with the `invalidateLater()` call BEFORE any
+  `req()` so a short-circuit cannot kill the timer. Never write it as
+  `observe(...) |> bindEvent(invalidateLater(...))`: `invalidateLater()`
+  returns `invisible(NULL)` and `bindEvent()` defaults to `ignoreNULL = TRUE`,
+  so the observer never runs at all — that form silently disabled both the
+  expiry downgrade and the "token expiring" warning.
+
+JWT validation is fail-closed on three axes (`R/helpers_sso.R`):
+
+- A missing or unparseable `exp` claim REJECTS the token. Previously a token
+  without `exp` was accepted indefinitely.
+- The audience/client binding is checked after the issuer check: a validly
+  signed token issued for ANOTHER client in the same realm is rejected when it
+  carries `aud` or `azp`. A token carrying NEITHER is ALSO rejected — the client
+  binding cannot be proven, and with `SSO_VALIDATE_SIGNATURE=FALSE` (an
+  operator-supported escape hatch) an issuer-matching self-issued JWT would
+  otherwise authenticate. Keycloak access tokens always carry `azp`, so real
+  deployments are unaffected. Do not downgrade this back to a warning.
+- Claims are scalarized before `if (...)`; a multi-valued `preferred_username`
+  used to crash SSO session setup.
+- `sso_get_signing_key()` (`R/helpers_sso_signature.R`) keeps a NEGATIVE cache
+  per `kid`: an unknown key id previously triggered a JWKS fetch on EVERY
+  verification attempt, so invalid tokens could flood Keycloak. Refresh for the
+  same unknown `kid` is retried at most every `jwks_cache_ttl / 10` seconds
+  (minimum 30), so key rotation is still picked up quickly. That negative cache
+  is BOUNDED (`.SSO_JWKS_NEGATIVE_CACHE_MAX`, 256 entries): expired negative
+  entries are swept before each write and no new entry is stored once the cap is
+  reached, so an unauthenticated client cannot grow it with unique `kid` values
+  for the lifetime of the process.
+- The NEGATIVE cache and the failed-fetch BACKOFF record live in SEPARATE name
+  spaces (`R/helpers_sso_jwks_cache.R`): negative entries are
+  `"<jwks_url>|kid|<kid>"` (`.SSO_JWKS_NEGATIVE_TAG`) and the backoff record is
+  `"<jwks_url>|backoff"` (`.SSO_JWKS_FETCH_BACKOFF_TAG`). They previously shared
+  the `"<jwks_url>|<kid>"` shape, so an UNVERIFIED JWT header carrying
+  `kid = "__fetch_backoff__"` made a SUCCESSFUL refresh overwrite the backoff
+  slot; for the next 30 seconds neither the stale positive cache nor an unknown
+  `kid` could refresh, and valid logins were rejected during key rotation. No
+  `kid` value can produce the `|backoff` name, so do not merge the two name
+  spaces again, and keep `.sso_jwks_negative_names()` filtering on the negative
+  tag (the backoff record must never count toward the negative capacity).
+
+Two further identity boundaries are part of this contract:
+
+- `serverInitUserSession()` (`R/server_init_user_session.R`) REAPPLIES the
+  identity when `sso_state$user_claims` changes for the SAME username. The
+  ready-identity guard used to return early, so a SECOND token that REDUCED
+  `yetki` left the session on the previous (higher) `auth_level`. The guard now
+  returns early only when the resolved identity is `identical()` to the last
+  applied one; otherwise `setup_user_identity()` runs again with the ALREADY
+  resolved user id (no second DB lookup).
+- EVERY failed identity-setup path resets the session through
+  `sso_kimligini_sifirla()` (current id, `auth_ready`, `user_config_rv` and the
+  `session$userData` auth placeholder). When claims moved from user A to user B
+  and `get_or_create_user_fn()` returned a non-positive id, the session kept
+  running protected operations as user A. `R/module_sso.R`'s expiry branch
+  clears the SAME field set as `set_auth_placeholder()` — `user_identity` and
+  `system_username` included.
+- `mergen_canonical_user_id()` (`R/utils_common.R`) rejects a near-integer with
+  an EXACT comparison (`sayi != trunc(sayi)`). `all.equal()` applies a tolerance,
+  so `2 + 1e-9` passed and `trunc()` turned it into `2L`, pointing a user- or
+  chat-scoped operation at the WRONG id.
+
+Protected by:
+
+- `tests/testthat/test-user-identity-behavior.R`
+- `tests/testthat/test-sso-session-identity-smoke.R`
+- `tests/testthat/test-server-user-session-context.R`
+- `tests/testthat/test-claude-code-security-policy-behavior.R`
+- `tests/testthat/test-mcp-duckdb-sandbox-behavior.R`
+- `tests/testthat/test-preview-source-click-path-guard-behavior.R`
+- `tests/testthat/test-file-click-observers-behavior.R`
+- `tests/testthat/test-sso-jwt.R`
+- `tests/testthat/test-sso-jwt-signature.R`
+- `tests/testthat/test-sso-auth-server-behavior.R`
 
 ### Log redaction and secret-fixture contract
 
@@ -1110,21 +1276,28 @@ Current contract:
 - Isolated File Store tests must load the refactored public API through `tests/testthat/helper_load_file_store.R`.
 - That helper must source `R/helpers_files_path.R` before the split `config_file_store_*` files so `normalize_for_path_compare` is available.
 - Do not re-inline these helper sources directly into individual tests.
-- Do not re-merge `R/config_file_store_index_lock.R`, `R/config_file_store_index_mutation.R`, `R/config_file_store_listing_helpers.R`, and `R/config_file_store_registry.R` back into `R/config_file_store.R`. The index lock helper (`.file_store_with_index_lock`, stale-lock breaking, lock owner marker) lives in `R/config_file_store_index_lock.R`; do not move it back into the mutation file.
+- Do not re-merge `R/config_file_store_index_lock.R`, `R/config_file_store_index_mutation.R`, `R/config_file_store_listing_helpers.R`, and `R/config_file_store_registry.R` back into `R/config_file_store.R`. The index lock helper (`.file_store_with_index_lock`, stale-lock breaking, lock owner marker) lives in `R/config_file_store_index_lock.R`; do not move it back into the mutation file. KNOWN RESIDUAL RISK (tracked, not closed): the ownership check and the marker write/delete are SEPARATE operations and base R offers no atomic compare-and-swap for the filesystem (same class as the `atomic_write_text()` durability limit), so a stale-lock reaper can theoretically remove the directory in between. The window is narrowed by RE-READING the token after `.write_lock_marker()` — `.refresh_lock_marker()` returns `FALSE` when ownership was lost instead of reporting a successful heartbeat. Do not describe this boundary as fully closed. The optional listing repairs (`.file_store_apply_rehydrated_paths()`, `.file_store_drop_stale_entries()`) must stay wrapped in `tryCatch`: `.file_store_mutate_index()` now REQUIRES the lock and throws on timeout, so an unguarded call made `mergen_list_user_files()` fail instead of returning the files it already had.
 
 File Store and Health Dashboard Guardrails:
 
 - Do not bypass `atomic_write_json()` for File Store index writes; index persistence must use atomic UTF-8 JSON writes to reduce partial or corrupt `index.json` risk.
 - Keep `atomic_write_text()` binary-safe for UTF-8 content and preserve the `file.rename()` to `file.copy()` fallback behavior for cross-filesystem or locked-file cases.
+- ATOMICITY vs DURABILITY is a KNOWN, TRACKED limit of `R/utils_atomic_write.R`, documented in its header. The temp-file + verify + rename sequence gives ATOMICITY (a reader sees the old or the new file, never a partial one). It does NOT claim DURABILITY: `flush()`/`close()` hand the bytes to the OS cache, the containing directory is not synced after the rename, and base R exposes no `fsync`/`fdatasync` or directory-sync primitive (closing this needs a compiled dependency; shelling out is not acceptable on this path). A sudden power loss can therefore still lose an index/manifest/API-key write that was reported as successful. Operator mitigation is disabling the write-back cache on the storage volume. Do not report this limit as resolved, and do not remove the header note. The rename-fallback path ALSO verifies that the validated backup was removed: `unlink()` fails silently on a locked Windows/UNC file, so every fallback write left another `.bak_*` copy behind; a surviving backup is now named in a warning instead of being reported as cleaned up. The fallback itself is NOT redesigned into a second staging+promote step: `tmp_path` already lives in the DESTINATION directory, so a rename that failed once fails again for the same reason (a locked target), and the existing ownership rules (`bizim_kismi`, verified restore) stay the boundary.
+- `mergen_clear_user_bucket()` ABORTS before `.save_index()` when a candidate directory cannot be enumerated. `list.files()` returns `character(0)` for an UNREADABLE directory too, so an empty result was treated as "bucket is empty", the index entry was removed and the files stayed on disk unregistered. Readability is checked separately (`file.access(dir, mode = 4L)`), and the bucket index is preserved with a warning plus `FALSE` to the caller. The listing is RECURSIVE (`recursive = TRUE, all.files = TRUE`): `recursive = FALSE` saw only root-level files, so a bucket containing a subdirectory kept its files on disk while `silinemeyen` stayed empty, the index entry was dropped and the function still returned `TRUE` — leaving unregistered files behind. The same loop tolerates LEGACY atomic index records: the retain filter extracts the path with a list-or-character lookup, because `e$path` on a plain character entry aborted cleanup before `.save_index()` ran. `.kova_yol_anahtari()` uses `chartr("\\", "/", ...)`; `gsub("\\\\", "/", ..., fixed = TRUE)` only replaced DOUBLE backslashes, so a single Windows separator never normalized and two spellings of the same file failed to match.
 - Do not let tests write File Store index/upload/MCP data to real repo, user, or network paths; force temporary roots for `MERGEN_FILES_ROOT`, `MERGEN_UPLOADS_DIR`, `MERGEN_INDEX_PATH`, `MERGEN_MCP_BASE_DIR`, and `MCP_FILES_BASE`.
 - Persistence smoke coverage must keep supported upload display names stable across repeated listings and must not expose timestamp/hash storage names.
 - Keep health path copyability strict: only an existing file or existing directory is copyable, not a missing child path whose parent exists.
 - Keep base health status/value/path formatting in `R/helpers_health_formatters.R`, keep the health checks table UI builder in `R/helpers_health_table.R`, and preserve source order as formatters first, then table builder, then downstream health modules.
 - Preserve maintainability ratchet constraints: no new 800+ line runtime files, no new 25+ function runtime files, and avoid adding anonymous function handlers to `R/helpers_health_formatters.R` unless absolutely necessary.
 
+STAGED COPY BOUNDARY: `copy_to_mcp_base()` no longer writes straight to the final name. `R/helpers_files_copy_promote.R` (manifest section `files_preview_pipeline`, loaded AFTER `R/helpers_files_path.R` and BEFORE `R/helpers_files.R`) owns `mergen_copy_upload_staged()` / `mergen_upload_staging_path()` / `MERGEN_UPLOAD_STAGING_SUFFIX`: the source is copied to `<hedef>.mergen-part` in the SAME directory, the size is verified against the source, and only then is the file promoted to the final name (`file.rename()`, falling back to copy + unlink). Before this split a size-mismatched copy stayed at its FINAL name whenever Windows held a lock and `unlink()` failed, and a later refresh listed the corrupt file as a valid upload. Every failure path cleans the staging file, and cleanup never leaves the approved root (`mergen_path_inside_root()`). Do not move this logic back into `R/helpers_files.R` (272 -> 230-line budget, TIGHTENED) and do not skip the staging step. Isolated tests that call `copy_to_mcp_base()` must source the new file in manifest order.
+
+FAIL-CLOSED PERSISTENCE: `processAndSummarizeFile()` (`R/helpers_file_pipeline.R`) ABORTS when `effective_user_id <= 0L` — logging only was copying the file into a `user_0` bucket and indexing it with `user_id = 0` (IDOR). It also aborts when `global_register_file()` fails: the copy is removed through `fm_cleanup_orphan_upload()` and no session/table state is created, because swallowing that error reported a successful upload while the persistent index did not contain the file.
+
 Key files:
 
 - R/config_file_store.R
+- R/helpers_files_copy_promote.R
 - R/config_file_store_index_lock.R
 - R/config_file_store_index_mutation.R
 - R/config_file_store_listing_helpers.R
@@ -1691,6 +1864,7 @@ Current execution contract:
 
 - `--dangerously-skip-permissions` must remain off by default.
 - Dangerous permission bypass may only be enabled through the central policy and an explicit admin/development override such as `CLAUDE_CODE_ALLOW_DANGEROUS_PERMISSIONS=TRUE`.
+- AN ALLOWLIST REFUSES DANGEROUS MODE (fail-closed). Under `bypassPermissions` the CLI does not enforce `--allowedTools`, and the allowlist CANNOT be enforced by disallowing the complement of a known tool set: `setdiff()` does not match Claude Code SCOPE patterns (`Bash(git status)` in the allowlist put the bare `Bash` into the complement and `--disallowedTools Bash` then blocked the ALLOWED rule), and `mcp__*` plus any tool outside the known set never enters the complement at all, so those stayed usable. The tool namespace is OPEN-ENDED, so the complement cannot be enumerated. `cc_policy_allowlist_blocks_dangerous_mode()` therefore makes `cc_policy_build_cli_args()` DROP `--dangerously-skip-permissions` (with a clear warning) whenever `CLAUDE_CODE_ALLOWED_TOOLS` / `claude_code_config$allowed_tools` is non-empty, and fall back to the normal safe permission args. `cc_policy_dangerous_tool_args()` now only forwards the operator's explicit disallow list; do not reintroduce `CLAUDE_CODE_KNOWN_TOOLS` or a complement calculation. Coverage must keep the `Bash(git status)`, scoped-name and `mcp__*` cases.
 - When dangerous mode is enabled, it must be logged clearly.
 - Normal UX must not require repeated Claude permission prompts for ordinary in-workdir read/write/edit tasks.
 - The safe default is `--permission-mode acceptEdits`.
@@ -1721,6 +1895,14 @@ Workdir and output contract:
 - Generated/downloadable files must be staged only when they are inside the selected workdir, runtime workdir, or an explicitly allowed output root.
 - Do not silently allow unrestricted filesystem access just to improve UX.
 - Do not regress to unconditional dangerous mode.
+
+Local-folder upload write boundary (`cc_yerel_yukleme_yaz()` in `R/helpers_claude_code_path_policy.R`):
+
+- The staging file MUST be created in `dirname(hedef)`. Every ancestor of `hedef` except its final component is then also an ancestor of the staging file, so an ancestor swap invalidates the source path too. Moving staging to `tempdir()` or any other directory REMOVES this protection (a negative control proves the same attack then succeeds).
+- The destination directory's canonical identity is captured BEFORE the copy. Every cleanup `unlink()` is bound to that identity: the staging path is re-resolved and removed only when its canonical parent still matches. A failed copy performs NO `unlink()` at all, because nothing was created and the only reachable target would be another process's file.
+- `unlink(hedef, ...)` after a failed `file.rename()` is FORBIDDEN. Path-based deletion follows ancestor components, so an ancestor swap made it delete a file OUTSIDE the workspace. `file.rename()` already overwrites an existing destination where permissions allow, so no separate removal step is needed.
+- The move is guarded on both sides: a directory-identity re-check immediately BEFORE `file.rename()`, and a verification AFTER it that `hedef` resolves under the root and in the same directory identity. A promotion that landed outside must return `FALSE`, never `TRUE`.
+- KNOWN RESIDUAL RISK (tracked, not closed): if an ancestor swap lands exactly between the pre-check and the `file.rename()` call, and the attacker has pre-seeded the external directory with the staged basename, the external destination is still overwritten. Base R exposes no descriptor-relative no-follow primitive (`openat`/`renameat`/`O_NOFOLLOW`) and cannot hold a directory handle, so this cannot be closed without a compiled dependency; the checks narrow the window and guarantee the operation is not reported as successful. Do not describe this boundary as fully closed, and do not remove the pre/post checks that bound it.
 
 Recommended safe environment baseline:
 
@@ -2109,6 +2291,37 @@ Focused validation after touching frontend JS/CSS assets, UI asset order, or Bil
 - `testthat::test_file("tests/testthat/test-frontend-maintainability-ratchet.R")`
 - `testthat::test_file("tests/testthat/test-ui-asset-manifest-contract.R")`
 - `testthat::test_file("tests/testthat/test-frontend-selector-contract.R")`
+
+### Subprocess pipe drain contract (PR #717)
+
+Any code that waits on a `processx` child MUST drain its pipes while waiting.
+`proc$wait()` does not read stdout/stderr, so once the ~64KB OS pipe buffer
+fills the child blocks on write, the wait expires and the run is reported as a
+bogus timeout. This bit three places at once and all three are now poll-and-read
+loops: `run_claude_code()` (`R/helpers_claude_code.R`), the standalone streaming
+helper (`R/helpers_claude_code_streaming.R`) and the Shiny poll observer
+(`R/module_claude_code_stream_poll.R`). stderr must be drained in EVERY poll
+round, not only at the end.
+
+Live output accumulation is bounded and O(n):
+
+- Lines are appended to a LIST buffer and joined once (`cc_stream_append_line()`
+  / `cc_stream_collect_lines()`); `c()` / `paste0()` per line was O(n^2).
+- `CC_STREAM_MAX_LINES` (20000) caps the buffer and drops the oldest quarter,
+  because JSONL result lines arrive at the END of the stream. Unbounded live
+  output could exhaust the worker.
+- A Stop pressed AFTER the process already exited must not run the cancel path:
+  `env$cikti_islendi` guards it, otherwise the stop observer deleted the running
+  output worker's sync guard and wrote a second "stopped" persistence record.
+  That branch is not silent: it sends one `cc-add-message` info line, otherwise
+  the Durdur button visibly did nothing while output sync was still running.
+- The byte budget is enforced on BOTH streams and on BOTH read points.
+  `cc_drain_process_streams()` keeps the stderr result and kills the child on a
+  stderr overflow too (a stderr-only child otherwise ran until timeout), and the
+  FINAL `proc$read_all_*()` reads are checked as well — their return value was
+  ignored, so a zero-exit process could report success with truncated JSON. Both
+  paths return the shared `cc_output_limit_result()`; truncated output is never
+  reported as success.
 
 ### Media and background music contract
 
@@ -2806,7 +3019,13 @@ Non-negotiable boundaries:
   one clock and even a positive R↔DB skew (DB ahead) cannot inflate a fresh
   heartbeat past the thresholds. Do not revert the write to an R-clock timestamp
   param; the write is logged on failure (`Canlı durum kalp atışı yazılamadı`), and
-  the DB-clock read is what makes the freshness check driver-timezone-immune.
+  the DB-clock read is what makes the freshness check driver-timezone-immune. The
+  R-side FALLBACK (used only when the age query fails) applies the SAME fixed +3
+  convention to BOTH the POSIXct and the text branch. Do NOT infer the timezone
+  from the MAGNITUDE of the difference: a "is the value more than N seconds in the
+  future?" test silently flips for a heartbeat close to 3 hours old (it then looks
+  only seconds ahead), `ortak_sunum_durumu()` clamps the negative difference to
+  zero and a long-absent user is reported `Çevrimİçi`.
 - TIMEZONE (Europe/Istanbul, fixed +3, no DST): ALL `MB_Ortak*` / `MB_Kullanici_CanliDurum`
   timestamps are stored in TURKEY LOCAL TIME so they read correctly in SSMS/UI
   (they were previously GMT/UTC). `.oo_db_now()` returns `Sys.time() + 3*3600`
@@ -3159,7 +3378,11 @@ Non-negotiable rules:
 - The document-summary worker writes ONLY into the isolated output area. `cc_start_streaming_run()` passes `cikti_dizini = prep$layout$output` and `cc_handle_document_summary_run()` gives the worker `output_dir = worker_cikti_dizini`; promotion of `dosya_aciklamalari.txt` into the source folder happens in the MAIN process, after the `cc_is_active_run()` check. Do not pass the source workdir to the worker again — a summary future that completes after Stop would then overwrite a source file outside the isolated area, the sync guard and the output diff. The empty/missing-directory fallback to `target_dir` exists only for callers that supply no layout.
 - Document preparation is request-specific: selection prefers explicit files, then prompt-mentioned files, then a bounded subset, limited by document count/size/total bytes on top of the existing PDF-page/Excel-sheet/DOCX-paragraph/character caps. `get_claude_code_document_support_dir(user_id, request_id, base_dir)` must NOT delete the shared per-user directory on every request; concurrent runs get isolated per-request folders and stale folders are removed by the age-based `cc_cleanup_stale_document_support_dirs()` / `cc_cleanup_stale_runtime_dirs()` policy that never touches an active run.
 - End-of-run work happens exactly ONCE per run. The poll observer guards with `env$cikti_islendi`, clears `rv$active_process` to stop polling, and must not call `collect_claude_code_workdir_changes_downloads()` or `cc_collect_streaming_run_downloads()` directly; the cached collection feeds download HTML, synthetic tool uses, `rv$last_result`, persistence, output history and the File Manager refresh decision. Do not reintroduce a second collection call in either the success or the error branch.
-- Blocking waits (`cc_wait_for_path_visible()`, `wait_for_stable_claude_code_file_paths()`) may only run in background workers, are bounded by `file_settle_total_ms`, and must never appear in `R/module_claude_code.R`, `R/module_claude_code_stream_poll.R`, `R/helpers_claude_code_run_dispatch.R` or `R/helpers_claude_code_run_completion.R`. Windows/UNC timing tolerance is preserved without making unrelated sessions wait.
+- Alt süreç çıktısı (stdout/stderr) SAKLAMASI bayt bütçesiyle sınırlıdır. `R/helpers_claude_code_output_buffer.R` bu bütçeyi tek kaynaktan sağlar (`cc_output_buffer_new/_add/_text`, `cc_drain_process_streams`); üst sınır sabitleri (`CC_STREAM_MAX_LINES`, `CC_STREAM_MAX_STDOUT_BYTES`, `CC_STREAM_MAX_RECORD_BYTES`, `CC_STREAM_MAX_STDERR_BYTES`) `R/config_claude_code.R` içindedir. `run_claude_code()` ve `run_claude_code_streaming()` bu katmanı PAYLAŞIR; boru her turda boşaltılmaya devam eder, yalnızca saklama sınırlanır. Bütçe aşılırsa çocuk süreç sonlandırılır ve açık bir çıktı-sınırı hatası döner. Bunları tekrar `c()` ile sınırsız biriktirmeye çevirmeyin (hem O(n^2) hem bellek riski).
+- Blocking waits (`cc_wait_for_path_visible()`, `wait_for_stable_claude_code_file_paths()`) may only run in background workers, are bounded by `file_settle_total_ms`, and must never appear in `R/module_claude_code.R`, `R/module_claude_code_stream_poll.R`, `R/helpers_claude_code_run_dispatch.R`, `R/helpers_claude_code_run_completion.R` or `R/helpers_claude_code_run_output_dispatch.R`. Windows/UNC timing tolerance is preserved without making unrelated sessions wait.
+- The output stage is split across TWO files and the split is a maintainability-ratchet boundary, not a behavior change. `R/helpers_claude_code_run_completion.R` owns the request builder (`cc_build_run_output_request()`), the download-candidate filter and the WORKER body (`cc_process_run_outputs()`); `R/helpers_claude_code_run_output_dispatch.R` (loaded immediately after it) owns the main-process side: sync-failure / truncated-scan / processing-failure reporting and `cc_dispatch_run_output_processing()`. Do not move these back together — completion sat at the 796-line / 24-function global ceiling. Static contract tests must assert against the NEW owner file rather than moving runtime code back.
+- The main process must carry the download root into the worker. `getOption("mergen.claude_code_download_root")` is set only in the main process, so `cc_build_run_output_request()` puts it in `request$download_root` and `cc_process_run_outputs()` restores the option in the worker; without it the worker resolved a `getwd()`-relative folder and download cards pointed at the wrong place.
+- The output deadline must be CANCELLED, not merely flagged. `later::later()`'s returned canceller is invoked in both promise callbacks; leaving only a `pending` flag kept the ctx/session closure alive for the full `output_process_timeout_sec`. The dispatch itself is wrapped in `tryCatch`: `tracked_future_promise()` can fail SYNCHRONOUSLY (no worker plan, serialization error), and an uncaught failure left the run stuck in "Çıktılar işleniyor" for the whole timeout. The document-summary dispatch in `R/helpers_claude_code_run_lifecycle.R` carries the same guard.
 - Bounded enumeration is not optional on the MAIN process either. `cc_scan_list_dir_bounded()` (`R/helpers_claude_code_bounded_scan.R`) is the single-directory, non-recursive bounded lister; `cc_list_dir_relaxed()` / `list_directory_contents()` (`R/helpers_claude_code_directory_listing.R`) must call it FIRST and only fall back to `list.files()` / `fs::dir_ls()` when it is unavailable. `list_directory_contents()` reads at most `max_items * 5` entries and reports `truncated`.
 - Bounding is NOT the same as non-blocking. `list.files()` materializes the whole directory before any `max_entries`/timeout check, so a flat folder with hundreds of thousands of entries (or a slow UNC share) still froze every session when the Bilge Yolaç directory browser ran it on the event loop. `observe_dir_contents()` (`R/helpers_claude_code_server_setup.R`) therefore dispatches `list_directory_contents()` to a `tracked_future_promise(..., dependency_mode = "explicit")` worker whenever `cc_dir_listing_async_available()` is TRUE, and applies the result through the single stale-guarded `uygula_icerik()` closure (`dir_refresh_guard$is_latest(refresh_id)` before any UI write). The worker global bundle is memoized once per process by `cc_dir_listing_worker_globals()` (`R/helpers_claude_code_dir_listing_async.R`); do not switch this dispatch to `dependency_mode = "auto"` and do not rebuild the bundle per refresh — that puts `codetools::findGlobals()` recursion back on the event loop. The synchronous call remains ONLY as the fallback for a non-async future plan and for a failed dispatch, so behavior degrades instead of showing an empty browser. `R/helpers_claude_code_dir_listing_async.R` is a deliberate small split that keeps `R/helpers_claude_code_directory_listing.R` inside its 260-line / 19-function budget.
 - DIRECTORY ENUMERATION MUST NEVER SHELL OUT. `.cc_scan_list_entries()` enumerates with base R `list.files()` (plus an `fs::dir_ls()` fallback for UNC shares that return a false-empty), NEVER `powershell.exe` / `find` / `system2()` / `processx`. A subprocess lister caused three production regressions at once on the Windows VM: (1) PowerShell writes pipe output in the console OEM codepage (CP857 on Turkish Windows) while R reads it as native ANSI (CP1254), so every Turkish filename came back as mojibake (`Ç`→`€`, `ş`→`Ÿ`, `ç`→`‡`, `İ`→`˜`, `ü`/`ı`→box) in Dizin İçeriği; (2) the PowerShell formatter wraps output at the console width (120 columns by default), so long UNC paths were split across lines into invalid paths; (3) the ~300-800 ms process spawn PER DIRECTORY blew the `scan_timeout_ms` budget after a handful of subdirectories. Because the corrupted/wrapped strings do not exist on disk, `file.info()` returned NA, directories were misclassified as files, nested files were never reached, and `cc_select_input_files()` had nothing to copy — the isolated `input/` folder stayed EMPTY and the agent answered "no files found" for a perfectly valid project folder. Do not reintroduce a shell-based lister for "boundedness": reading one directory with `list.files()` is cheaper than spawning a shell, and it is the only path that preserves Turkish filename bytes. Protected by `tests/testthat/test-claude-code-bounded-scan-behavior.R` (no-subprocess scan + Turkish filename round-trip that asserts `file.exists()` on the listed path).
@@ -3167,17 +3390,30 @@ Non-negotiable rules:
 - Download candidates are filtered BEFORE staging by `cc_filter_download_candidates()` (`R/helpers_claude_code_run_completion.R`): internal runtime zones (`metadata`, `document_support`) are rejected via `cc_runtime_zone_of_path()`, and `max_output_file_bytes` / `max_output_total_bytes` are enforced before normalization and copying so a single multi-GB artifact cannot fill the server's temp disk. Both the diff-derived and the tool-derived (fallback) paths take `layout` + `limits` and apply this filter.
 - Approved outputs skipped by size limits are surfaced, not swallowed. `cc_plan_output_sync()` records them in `skipped_approved`, and `cc_apply_output_sync_plan()` merges `cc_output_sync_skipped_results()` into its per-file results so `cc_output_sync_failures()` reports a partial failure. The SAME rule covers approved outputs that DISAPPEAR between the post-run diff and staging (antivirus quarantine, a delayed rename, UNC visibility lag): `cc_plan_output_sync()` computes the zone lexically BEFORE the existence check, so a missing path inside `layout$output` is recorded as `skipped_approved` with reason `missing_output` (`output_is_directory` when it turned into a directory) instead of a generic `skipped`. `changed_files` already proved the artifact existed, so a run must never finish successfully with neither a download nor a source copy. Missing paths in `input`/`metadata`/`document_support` stay ordinary skips.
 - Windows path/link semantics are part of this boundary, not an afterthought. `Sys.readlink()` returns `NA` for EVERY path on Windows and `nzchar(NA)` is `TRUE`, so a raw `nzchar(Sys.readlink(dest))` link check treats every existing destination as a link and blocks every re-generated output. Link detection at the sync destination and at `cc_runtime_ensure_layout()` therefore compares the RESOLVED path with its own lexical location (`cc_path_is_reparse_link()` in `R/helpers_claude_code_bounded_scan.R`), which catches POSIX symlinks and Windows junctions/reparse points alike. `.cc_scan_is_link()` stays the cheap POSIX-only per-entry check inside the scan loop (NA is read as "not a link"); the scan's own resolved-path + visited-set checks already block junction loops and allowed-root escapes, and adding two `normalizePath()` calls per entry would make UNC scans far slower. For the SAME reason the destination is canonicalized through `cc_output_sync_canonical_root(dirname(dest))` before the approved-root prefix comparison: Windows `tempdir()`/user-profile paths arrive in 8.3 SHORT form (`KULLAN~1`) while the approved root is expanded to its long form, and comparing the two forms silently rejected every valid output.
+- The LOCAL-FOLDER UPLOAD destination is validated by the same rules, final component included. `cc_setup_yerel_yukleme_hedefi()` (`R/helpers_claude_code_path_policy.R`) is the only way the "Yerel klasörü çalışma alanına kopyala" observer may build a destination: the browser-supplied `webkitRelativePath` / file name is rejected when it is absolute, carries a drive letter or a UNC prefix, or contains a `.`/`..` segment, and the resolved PARENT must stay inside the workspace root. That parent-only canonicalization is not sufficient on its own: `normalizePath(dirname(dest))` never touches the final component, so a destination that already exists AS a symlink/junction is followed by `file.copy(..., overwrite = TRUE)` and an external file is overwritten under the service account. The helper therefore also rejects an EXISTING destination whose final component is a link (`cc_path_is_reparse_link()`) or whose own `normalizePath(..., mustWork = TRUE)` result falls outside the workspace root — the same guard the sibling output-sync path applies. The helper lookup is FAIL-CLOSED: when the link check is unavailable or throws, an existing destination is refused rather than overwritten; a destination that does not exist yet is unaffected, so re-uploading a folder still overwrites its own ordinary files. A DANGLING link needs its own guard: `file.exists()` and `dir.exists()` both FOLLOW the link and return FALSE for a broken one, so the existence-gated check was skipped while `file.copy(..., overwrite = TRUE)` still followed it and created/overwrote the external target. The helper therefore also rejects a name that is ABSENT but still listed in its parent directory (`list.files(..., all.files = TRUE, no.. = TRUE)`; a failed listing is fail-closed). The containment comparison canonicalizes the deepest EXISTING ancestor with `mustWork = TRUE` instead of `dirname(dest)` with `mustWork = FALSE`: on Windows a not-yet-created directory comes back in 8.3 SHORT form while the workspace root expands to its long form, and comparing the two rejected EVERY valid subfolder upload (the sibling output-sync path at `cc_apply_output_sync_plan()` uses the same ancestor walk). Do not reintroduce a raw `file.path(calisma_alani, goreceli)` join in the observer, do not drop the final-component check back to a parent-only comparison, and do not gate the link/listing check on `file.exists()`. Protected by `tests/testthat/test-cc-yerel-yukleme-hedefi-behavior.R`.
 - Link detection compares DIRECTORIES, never basenames, and every path key is encoding-canonical. Two Windows-only defects made "Çalışma alanı hazırlanamadı: Gerekli girdi dosyaları kopyalanamadı: <Türkçe ad>" reject every valid input: (1) a full-path check of the shape `normalizePath(file) == normalizePath(dirname(file)) + "/" + basename(file)` is not stable on Windows, because `normalizePath()` expands 8.3 short names and returns the on-disk canonical case for the WHOLE path while the appended `basename()` keeps the caller's form; (2) `tolower()` is locale- AND encoding-sensitive, so on a Turkish single-byte locale a native-marked string folds `İ` to `ı` byte-wise while the UTF-8-marked side folds it to `i` through the wide-char path — the same filename then compares unequal. `.cc_scan_norm()` therefore returns `enc2utf8()` output, `.cc_scan_key()` / `.cc_codex_path_key()` apply `enc2utf8()` BEFORE folding, and `cc_path_is_reparse_link()` compares only `dirname(normalizePath(path))` against `normalizePath(dirname(path))`. The escape-outside-the-approved-root property is enforced separately by the root-prefix check, so dropping the basename from the link comparison loses no security. `cc_copy_files_to_runtime_input()`, `cc_apply_output_sync_plan()` (both the base and the hardened version) and `stage_claude_code_downloads()` all route through the shared helper; do not reintroduce a local basename comparison in any of them, and keep `stage_claude_code_downloads()`'s helper lookup FAIL-CLOSED (`error = function(e) TRUE`).
 - Uploaded files are stored with a `<timestamp>_<hash>_<hash>_<display name>` prefix, but users refer to them by the display name they see in Dizin İçeriği, and `cc_extract_prompt_file_mentions()` stops at whitespace so a spaced name yields only its last token. Name matching therefore lives in `R/helpers_claude_code_input_matching.R` (loaded BEFORE `R/helpers_claude_code_runtime_prepare.R`): `.cc_prepare_display_names()` strips the storage prefix (delegating to `recover_display_name_from_storage_name()` when available) and `.cc_prepare_key_matches()` accepts a mention that equals a key OR is a suffix of it preceded by `/`, `_`, `-` or a space. Both `.cc_prepare_mention_matches()` and the hardened `cc_select_documents_for_request()` use it, so "Yükleme Klasörüne git" + a question about a document no longer fails closed with `Açıkça istenen dokümanlar seçilen klasörde bulunamadı`. A genuinely absent document must still be rejected — that fail-closed contract is unchanged.
+- An EMPTY first `file_signature()` does not end the wait. `wait_for_stable_claude_code_file_paths()` returned `character(0)` immediately when the initial probe saw nothing, so the retry budget below it never ran and a UNC/antivirus visibility delay silently dropped every generated file; the loop now keeps polling (an empty signature can never match a non-empty one, so the first visible probe becomes the reference) and the final existence re-check still applies. The runtime-cleanup helpers also CHECK the `unlink()` status: `base::unlink()` returns `1` instead of throwing, so an unconditional `TRUE` counted directories that are still on disk as deleted.
+- `cc_fit_name_to_byte_budget()` derives its uniqueness token from EVERY byte of the name. The old form kept the first 8 hex digits — i.e. the first 4 BYTES — which are part of the preserved prefix, so two long names differing only in a trailing timestamp collapsed to the same truncated name and the second download overwrote the first. The checksum is computed in `double` (`as.numeric(charToRaw(...))`): an integer product overflows to `NA` with a warning on long names, which the strict runner treats as a failure.
 - Path-visibility waiting is a SHARED budget. `cc_with_path_visibility_budget()` opens one window per collection operation and `cc_wait_for_path_visible()` consumes only the REMAINING budget, so dozens of stale tool paths cannot each burn the full `file_settle_total_ms` and starve the worker pool.
 - Prompt/explicit file mentions are resolved even when the bounded scan was truncated before reaching them: `cc_resolve_mentioned_files_on_disk()` validates safe relative candidates directly under the source root (absolute paths, drive letters, UNC and `..` traversal are always rejected) before `cc_select_input_files()` falls back to the automatic subset.
 - A reused runtime has an OWNERSHIP marker. `cc_claim_runtime_ownership()` is called in the MAIN process at dispatch time; the worker re-checks `cc_runtime_ownership_is()` at start, after input copying and after the snapshot, and aborts without writing when a newer run took over. This is separate from, and additional to, the per-runtime lease that protects against stale cleanup.
+- The active-run LEASE lifecycle lives in `R/helpers_claude_code_runtime_lease.R` (`cc_release_runtime_lease()`, `cc_touch_runtime_lease()`, the shared cleanup lock `cc_with_runtime_cleanup_lock()` / `cc_runtime_cleanup_lock_dir()` / `CC_RUNTIME_LOCK_DIR_NAME`, and the explicit recovery operation `cc_reclaim_orphaned_runtime_dirs()`). It is loaded in the `claude_code_helpers` section immediately BEFORE `R/helpers_claude_code_output_sync.R` (the cleanup path calls the lock helper) and therefore also before `R/helpers_claude_code_run_lifecycle.R`. Isolated tests that execute any of these helpers must source the lease file in the same position.
+- LEASE EXISTENCE — not lease mtime — protects a workspace. `cc_cleanup_stale_runtime_dirs()` NEVER deletes a runtime directory that carries any `active-run-*.lease` file: `Sys.setFileTime()` can fail silently on a UNC share, and an aged mtime was deleting the ACTIVE workspace. `cc_touch_runtime_lease()` therefore falls back to REWRITING the lease file (writing refreshes mtime as a side effect) and only warns when both fail. Disk safety is preserved by the SEPARATE recovery operation `cc_reclaim_orphaned_runtime_dirs()`, invoked from `cc_prepare_run_workspace()` after the routine cleanup: it requires the FINITE `runtime_lease_orphan_sec` limit (`CLAUDE_CODE_RUNTIME_LEASE_ORPHAN_SEC`, default 24h), requires EVERY lease AND the workspace directory itself to be older than that window, and skips entirely when the metadata cannot be read.
+- LEASE CHECK AND DELETION RUN UNDER ONE LOCK. Inspecting leases and then `unlink()`-ing the candidate in separate steps let a new run create a lease in between, so the ACTIVE workspace was deleted (TOCTOU). Both cleanup paths and BOTH lease-acquisition sites (`cc_acquire_reused_runtime_lease()` and the `layout$metadata` branch of `cc_prepare_run_workspace()`) go through `cc_with_runtime_cleanup_lock()`. The lock directory lives in the `.cc-locks` SIBLING folder (so deleting a candidate cannot destroy a held lock) and that folder is skipped by both cleanup loops. When the lock cannot be taken the candidate is SKIPPED — a destructive step is never attempted unlocked.
+- REAPER TAKEOVER VERIFIES OWNERSHIP (`R/helpers_claude_code_codex_runtime_lock.R`). An age-only takeover let process B delete the reaper of a still-running A on a slow UNC share; A then removed B's reaper on exit and a THIRD process could enter the same critical section. Takeover now requires the token OBSERVED as stale to still be in place, re-validates the age, treats a durable marker as a PRECONDITION for holding the reaper, and `on.exit` removes the reaper only while it still carries OUR token.
+- `mirror_directory_to_local_workspace()` CHECKS the result of every `kirayi_tazele()`. Refreshing the marker without checking it did not stop a concurrent promotion: losing ownership BEFORE the promotion now aborts it (staging is cleaned), while losing it AFTER the promotion only warns (the files are already in place).
+- The post-copy destination visibility wait in `stage_claude_code_downloads()` uses its OWN budget (`file_settle_dest_ms`, `CLAUDE_CODE_FILE_SETTLE_DEST_MS`, default 250 ms), not the shared `cc_with_path_visibility_budget()` window. Copying large or numerous files consumed the shared budget, so the destination check degraded to a single `file.exists()` and a successfully copied file produced no download card on a slow Windows/UNC share.
+- `.cc_codex_acquire_dir_lock()` returns an OWNERSHIP TOKEN (empty string on failure) and writes it into an `owner` file inside the lock directory. Both call sites release the lock only while that token still matches (or the owner file never existed at all). A holder delayed past the stale threshold previously deleted the REPLACEMENT owner\'s lock on its unconditional `on.exit(unlink(lock_dir))`, letting a third worker into the runtime-input promotion critical section.
 - The preparation deadline is CANCELLED when the future settles. `later::later()`'s returned canceller must be retained and invoked in both the success and rejection callbacks; otherwise every run keeps a session/prompt/API-key closure alive for the full `prepare_timeout_sec`.
 - A non-async future plan is REJECTED, not silently run inline. `cc_future_plan_is_async()` detects the `sequential`/`uniprocess`/`transparent` fallback plan; `cc_dispatch_run_preparation()` then blocks the run with an explanatory Turkish message instead of executing the heavy preparation on the Shiny event loop where the deadline could never fire.
 - `cc_cleanup_stale_document_support_dirs()` resolves its retention from `cc_runtime_limit("runtime_retention_sec", 21600)` like the runtime cleanup; do not hard-code six hours back. Both cleanup helpers must keep the `length(max_age_sec) != 1L` guard — a `NULL` default otherwise makes `is.finite()` return `logical(0)` and the `if` errors out.
+- `cc_send_run_stage()` REPORTS a send failure. It still never throws (a stage banner must not fail a run), but it returns `FALSE` when `session$sendCustomMessage()` errors instead of the old unconditional `TRUE`. Both output dispatchers (`R/helpers_claude_code_run_output_dispatch.R` and the `codex_output_fixes.R` override) treat `FALSE` exactly like a raised error, so guard/lease cleanup and failure reporting actually run on a closed session. Keep the return value meaningful.
+- Both `cc_finalize_if_active()` calls in `cc_finish_streaming_run()` (`R/helpers_claude_code_run_completion.R`) are wrapped in `try(..., silent = TRUE)`, as is the document-summary failure path in `R/helpers_claude_code_run_lifecycle.R`. A closed session made `finalize_streaming()` throw out of the completion function BEFORE `rv$output_history` and the File Manager refresh ran, and the promise `catch()` stayed silent because `rv$active_request_id` was already cleared. The two output reporters (`cc_report_output_sync_failure()`, `cc_report_output_scan_truncation()`, plus the codex override) guard their own `sendCustomMessage()` calls the same way, so `"Aktarım Hatası"` / `"Çıktı Taraması Eksik"` still persist and finalize.
+- Cancellation is checked during PATH DISCOVERY, not only during staging. `list_claude_code_generated_file_paths()` and `resolve_claude_code_generated_path()` accept `cancel_fn` and check it before every `cc_wait_for_path_visible()`; `stage_claude_code_downloads()` and the tool-use fallback collector check at loop entry. Without this a cancelled run still burned one visibility wait per invisible UNC candidate and held the worker.
 - Structured timing logs are part of the field-diagnostic path: `[WORKDIR_PREFLIGHT]`, `[BOUNDED_SCAN]`, `[RUNTIME_PREPARE]`, `[INPUT_COPY]`, `[DOCUMENT_PREPARE]`, `[PROCESS_START]`, `[OUTPUT_DIFF]`, `[DOWNLOAD_STAGE]`, `[OUTPUT_SYNC]`. They carry counts, bytes, elapsed ms, truncation reason, request id and whether the work ran asynchronously — never API keys, document contents, or unnecessary sensitive full paths. Preparation/worker code logs through the failure-safe `cc_log_info()` / `cc_log_warn()` wrappers because a worker may have no logger appender.
 - Backward compatibility is preserved: UNC/Unicode/Windows paths, Claude CLI streaming and `--resume`, Stop behavior, model selection, generated download cards, persistent sessions, File Manager refresh, offline/on-prem operation, output path security controls and UTF-8 BOM normalization for generated `.txt`/`.log`/`.csv`/`.md`.
-- Manifest order in the `claude_code_helpers` section is dependency order and must be preserved: `helpers_claude_code_bounded_scan.R` → `helpers_claude_code_input_matching.R` → `helpers_claude_code_runtime_prepare.R` → `helpers_claude_code_output_sync.R` → `helpers_claude_code_runtime_workdir.R` → `helpers_claude_code_directory_listing.R` → `helpers_claude_code_dir_listing_async.R` → ... → `helpers_claude_code_workdir_scan.R` → `helpers_claude_code_file_stability.R` → `helpers_claude_code_workdir_snapshot.R` → document chain → `helpers_claude_code_run_prepare_task.R` → `helpers_claude_code_run_lifecycle.R` → `helpers_claude_code_run_dispatch.R` → `helpers_claude_code_run_completion.R` → `helpers_claude_code_codex_runtime_fixes.R` → `helpers_claude_code_codex_output_fixes.R`. Isolated tests that execute these helpers must source the same chain.
+- Manifest order in the `claude_code_helpers` section is dependency order and must be preserved: `helpers_claude_code_bounded_scan.R` → `helpers_claude_code_input_matching.R` → `helpers_claude_code_runtime_prepare.R` → `helpers_claude_code_runtime_lease.R` → `helpers_claude_code_output_sync.R` → `helpers_claude_code_runtime_workdir.R` → `helpers_claude_code_directory_listing.R` → `helpers_claude_code_dir_listing_async.R` → `helpers_claude_code_output_buffer.R` → ... → `helpers_claude_code_workdir_scan.R` → `helpers_claude_code_file_stability.R` → `helpers_claude_code_workdir_snapshot.R` → document chain → `helpers_claude_code_run_prepare_task.R` → `helpers_claude_code_run_lifecycle.R` → `helpers_claude_code_run_dispatch.R` → `helpers_claude_code_run_completion.R` → `helpers_claude_code_run_output_dispatch.R` → `helpers_claude_code_codex_runtime_fixes.R` → `helpers_claude_code_codex_output_fixes.R`. Isolated tests that execute these helpers must source the same chain.
 - The two Codex hardening files REPLACE fail-open definitions from earlier helpers, so they must stay LAST in the section and in `runtime` → `output` order. They are loaded through `R/config_source_manifest.R` like every other runtime file. Do NOT reintroduce the manifest-external late loader (`load_claude_code_codex_review_fixes()` in `R/server_observers_misc.R`): that pattern left both files unowned by any seam (`bash tools/seam_doctor.sh` reported `Sahipsiz R/ runtime dosyası`), invisible to the maintainability ratchet, and — once the loader was removed for boot safety — silently DEAD, so every hardening fix it carried stopped applying at runtime while its tests still passed in isolation. If these files are reported missing at boot, the checkout is stale (they are tracked in git); pull the branch rather than deleting the manifest entries.
 - The `optional` manifest marker keeps a PARTIAL working copy bootable; it is NOT a licence for the hardening to be absent. An absent file means every Codex hardening fix is silently inactive in that copy, so the absence must be LOUD in three places: `source_manifest_present_paths()` emits a once-per-process `[KAYNAK MANIFESTI] ... DEVRE DISI` message naming the missing file, `tests/testthat/test-claude-code-codex-review-fixes.R` fails one explicit "çalışma kopyasında mevcuttur" test instead of silently skipping its whole file, and the seam registry/doctor report the leftover as an orphan. All three run `source_manifest_similar_files()` / `agrep()` against the same directory and name any near-miss filename, because a partial or hand-made copy over a UNC share can land one character short (`..._runtime_fixe.R` instead of `..._runtime_fixes.R`) — which simultaneously produces a "missing" file and an "unowned" file and previously hid the real cause. Orphan lists are printed ONE PER LINE: a single long line is truncated by the Windows console and loses the end of the filename, which is exactly the part that differs. Do not collapse these back into one-line `paste(collapse = ", ")` messages, and do not restore the silent skip.
 - Multi-worker deployment (several R processes behind a load balancer) is an ADDITIONAL resilience measure only; it never replaces non-blocking application code.
@@ -3839,8 +4075,8 @@ safe_source("R/config_file_store_registry.R",       encoding = "UTF-8")
 Responsibilities:
 
 * `R/config_file_store.R`: file-store root paths, low-level UTF-8 index load/save helpers, environment validation, memory management, and scheduler-related configuration.
-* `R/config_file_store_index_lock.R`: the index lock boundary: `.file_store_with_index_lock`, stale-lock breaking by age, the lock owner marker file for Windows/UNC mtime reliability, and availability-first lock acquisition.
-* `R/config_file_store_index_mutation.R`: index mutation through the shared lock (`.file_store_mutate_index`), upload registration, display-name repair, storage-name recovery, public `global_register_file()` wrapper, and index removal.
+* `R/config_file_store_index_lock.R`: the index lock boundary: `.file_store_with_index_lock`, stale-lock breaking by age, the lock owner marker file for Windows/UNC mtime reliability, and availability-first lock acquisition. A DURABLE owner marker is a PRECONDITION for holding the lock: right after `dir.create()` the marker is written and read back, and when it cannot be read back the freshly created lock is removed and the documented lock-FREE path is taken. Release then requires `identical(.lock_owner_token(), lock_token)` and nothing else — directory `mtime` is NOT ownership proof (a Windows/UNC directory that was removed and recreated can carry the same value), and without proof the lock is left to stale-TTL recovery. Any weaker release rule let a delayed old owner delete the lock a NEW owner had already taken and run two `.save_index()` calls at once (lost update). The marker reader must stay warning-free (`file.exists()` first, then `suppressWarnings`): `tryCatch(error=)` does not catch the connection-open warning and the strict runner fails on it.
+* `R/config_file_store_index_mutation.R`: index mutation through the shared lock (`.file_store_mutate_index`), upload registration, display-name repair, storage-name recovery, public `global_register_file()` wrapper, and index removal. `mergen_register_uploaded_file()` copies the file OUTSIDE the lock, so it re-verifies the destination INSIDE the index mutation and refuses to register a path a concurrent `mergen_clear_user_bucket()` deleted in the meantime; the clear helper holds ONE `.file_store_with_index_lock` across physical deletion and index cleanup for the same reason.
 * `R/config_file_store_registry.R`: uploaded-file resolution, user upload directory resolution, display-name lookup, user file listing, stale index pruning, and filesystem fallback listing.
 
 Do not move `mergen_register_uploaded_file()`, `global_register_file()`, `resolve_uploaded_file()`, `mergen_user_upload_dir()`, `mergen_resolve_display_name()`, `recover_display_name_from_storage_name()`, `mergen_list_user_files()`, or `mergen_remove_from_index()` back into `R/config_file_store.R`.
@@ -5518,6 +5754,8 @@ Implementation split (keep responsibilities scoped):
 
 Health checks must remain safe, non-destructive, lightweight, and offline-compatible. They must not mutate production data and must not call public internet endpoints. Optional integrations should degrade to `not_configured` or `unknown` without unhandled errors.
 
+`health_is_public_url()` decides what is skipped. Besides localhost and literal RFC1918 addresses it also treats a single-label intranet hostname (no dot) and the `.local` / `.internal` / `.intranet` / `.lan` / `.corp` suffixes as on-prem. Corporate DNS names that look public (for example `https://tts.kurum.com.tr`) were reported `warning` WITHOUT ever being probed, so a down service looked healthy; operators declare those explicitly through `MERGEN_HEALTH_INTERNAL_ENDPOINTS` (`;`/`,`/whitespace separated hosts or URLs) and only then are they really probed. Two host-normalization rules are part of the same boundary: `health_url_host()` strips a TRAILING DNS ROOT DOT (`service.local.`), which otherwise defeated the internal-suffix test and skipped a real on-prem probe; and `health_ip_literal_internal()` classifies IPv4-MAPPED IPv6 (`::ffff:127.0.0.1`, `::ffff:10.0.0.1`) through its embedded IPv4 rules instead of returning `NA`, which had made a local listener look like the public internet. Do NOT widen this to "every configured `LOCAL_*_ENDPOINT` is internal" — `tests/testthat/test-health-checks-probes-behavior.R` locks that a genuinely external configured LLM endpoint stays skipped.
+
 Secrets must always be redacted: never print raw credentials, tokens, or API keys.
 
 Path actions intentionally copy full paths to clipboard instead of attempting direct folder open; users then paste into Windows File Explorer and press Enter.
@@ -5722,6 +5960,31 @@ Protected behavioral test files:
 stop_on_failure = TRUE
 stop_on_warning = TRUE
 ```
+
+### testthat edition declaration contract
+
+The repository has no `DESCRIPTION` and no `Config/testthat/edition`, so without an
+explicit declaration `find_edition()` silently resolves to edition 2 and CI turns
+green without anyone knowing which edition ran. The edition is therefore DECLARED
+through `TESTTHAT_EDITION` and the declared edition is **3**:
+
+- `tests/testthat.R` sets `TESTTHAT_EDITION=3` inside a `local({...})` block that
+  wraps ONLY the `test_dir()` call and restores the previous value (or unsets it)
+  through `on.exit`, so the process environment is not left dirty.
+- The isolated child runners (`tests/scripts/run_full_testthat_isolated.R`,
+  `tools/run_full_testthat_isolated.R`) and the `ai_repo_check` focused run declare
+  the same edition in the CHILD `Sys.setenv(...)`, so an isolated run cannot drift
+  to a different edition than the main runner.
+- `testthat::local_edition()` must still NEVER be called at TOP LEVEL (in any
+  runner or generated child script): it registers a global deferred handler and
+  Rscript then exits with "deferred_run fonksiyonu bulunamadı".
+- `testthat::teardown()` is deprecated in edition 3 (it warns, and the strict
+  runner fails on warnings). `teardown_env()` is NOT an equivalent replacement:
+  `teardown()` runs at the end of the FILE while `teardown_env()` defers to the end
+  of the WHOLE RUN, so global stubs would leak into later files. A test file that
+  installs global stubs restores them with a TOP-LEVEL call at the BOTTOM of the
+  file instead.
+- Protected by `tests/testthat/test-testthat-runner-edition-scope-contract.R`.
 
 Do not weaken the main runner to hide warnings. If a test produces noisy warnings only during full `test_dir()` execution, fix the test so it is deterministic and warning-safe. Source-inspection tests should avoid broad warning-prone recursive scans inside the main suite. Prefer targeted contract checks over scanning the whole repository when the test is part of the strict default runner.
 
@@ -6176,27 +6439,18 @@ The `process` and `app_expert` tools run enterprise Langflow flows (Chat Input /
 
 Langflow document sources are clickable in TWO shapes. (1) STRUCTURED JSON sources (`results$message$sources`, `data$sources`, `artifacts$sources`, top-level `sources`, `source_documents`, legacy `metadata`) are extracted by `extract_langflow_chat_sources()` in `R/helpers_langflow_sources.R`. (2) INLINE PROSE sources — some flows write sources NOT in JSON but as a trailing plain-text `Kaynak:` list (heading match is case-insensitive: `KAYNAK:`/`KAYNAKÇA:` too; blank lines between numbered entries do NOT end the list) plus inline `<sup>(1)</sup>` citations in the body — are handled by `R/helpers_langflow_inline_sources.R` (loaded AFTER `R/helpers_langflow_sources.R` in the `chat_send_message_runtime` manifest section). `mergen_langflow_finalize_answer(text, structured_sources)` is the single handler entry point: it converts `<sup>(n)</sup>` → `[n]` (survives markdown escaping; `citation_handler.js` renders `.citation-ref` superscripts that scroll to `.kaynakca-entry[data-entry=n]`), and — when there are no structured sources — parses the prose `Kaynak(lar/ça):` section (`mergen_langflow_parse_prose_sources()`), strips it (any trailing non-entry text is preserved, never silently dropped), and appends the SAME signed `mergen_langflow_kaynakca_marker_block()` marker so render/persistence/security are identical to the structured path. Both the single-chat handler (`R/server_handler_langflow.R`) and the Ortak Oturum path (`.oo_langflow_yanit_metni`) call it. `<sup>` conversion is gated TWICE for safety: (a) only runs when a real Kaynakça block was actually produced, and (b) only converts `<sup>` content that is "citation-shaped" (`.langflow_sup_is_citation_shaped()`: wholly parenthesized digit groups, e.g. `(1)`, `(1)(2)`, `(1, 2)`) — bare unparenthesized digits (`m<sup>2</sup>`) are ordinary superscripts (exponents/footnotes) and are left untouched, never mis-linked or stripped. Unmapped/out-of-range citation numbers are dropped (inert), never left pointing at the wrong Kaynakça entry. Prose-derived sources set `rec$path` to the real flat `&&`-separated filename (disk basename literally contains `&&`, `&&` is NOT a directory separator); `mergen_kaynakca_marker_html()` renders `&&` paths as a muted `.kaynakca-breadcrumb` prefix joined by `" - "` with ONLY the last segment clickable, while non-`&&` (structured) paths keep the title-clickable behavior. `data-filename` always carries the full `&&` name; `search_file_in_folder()` resolves it recursively, trying EXACT basename match FIRST (before the `&&`-hint scored search, which only keys on the hint's last segment and can otherwise return an unrelated file with a matching basename), then falling back to `.search_all_parts_contained()` (all `&&` parts contained) so files in subfolders resolve. The last-resort part-containment fallback is opt-in for EXTENSIONLESS final `&&` parts only — when the final part has an extension and the cited file genuinely doesn't exist on disk, "not found" is safer than fuzzy-matching an unrelated same-substring file. `.build_basename_index()` covers `docx`/`docm`/`doc`/`pdf`/`pptx`/`ppt`/`xlsx`/`xls` so prose-accepted extensions stay resolvable. Prose entries may carry a trailing page annotation after the extension (`dosya.pdf (Sayfa 3)`, `dosya.pdf, s. 3`); `.langflow_strip_page_suffix()` separates it before the extension check so the entry isn't rejected. Do not reintroduce raw `<sup>` into `innerHTML`, do not make the whole breadcrumb clickable, do not revert the exact-match-first search order, and keep the prose parser rejecting URL/absolute/drive/`..` and non-document entries (no fabricated sources). Protected by `tests/testthat/test-langflow-inline-sources-behavior.R`, `test-langflow-sources-behavior.R`, `test-langflow-handler-behavior.R`, `test-file-index.R`.
 
-SUPERSCRIPT CITATIONS SURVIVE A PROMPT CHANGE. The Langflow prompt no longer
-instructs the model to emit `<sup>(1)</sup>`; it now writes the citation as a
-UNICODE SUPERSCRIPT CHARACTER (`baslatilir` + U+00B9), which markdown carried
-through as plain text and `citation_handler.js` never saw. `R/helpers_langflow_inline_sources.R`
-therefore runs a SECOND converter, `.langflow_unicode_sup_to_citation()`, right
-after the `<sup>` one and under the SAME gate (only when a real Kaynakça block
-was produced). Its three rules are the contract:
-(a) **Exponents are not citations.** `.langflow_sup_looks_like_exponent()` rejects
-a superscript preceded by a digit (`10^6`) or by a measurement unit
-(`m`/`cm`/`mm`/`km`/`dm`/`um`/`in`/`ft`/`yd`), so `25 m²` stays untouched.
-(b) **Adjacent superscripts are disambiguated against the Kaynakça itself.** A run
-like U+00B9 U+00B2 is ambiguous (12, or 1 then 2); `.langflow_sup_resolve_nums()`
-takes the whole run when it is a valid entry index and otherwise splits it when
-every single digit is valid.
-(c) **Unverifiable runs are LEFT ALONE, never dropped.** The `<sup>` path may
-delete an unmatched citation because its parenthesized shape proves intent; a bare
-superscript has no such proof, so deleting it could destroy a real exponent.
-The superscript codepoints are written as `\uXXXX` escapes in both code and
-comments — U+2074 and above have no WINDOWS-1254 mapping (§1G), and the tests
-build fixtures with `intToUtf8()` for the same reason. Protected by
-`tests/testthat/test-langflow-inline-sources-behavior.R`.
+CITATION SHAPE IS `<sup>(n)</sup>` ONLY. The Langflow prompts were restored to emit
+explicit `<sup>(1)</sup>` citations, and the unicode-superscript-CHARACTER converter
+added in PR #715 (`.langflow_unicode_sup_to_citation()` and its `.LANGFLOW_SUP_DIGITS`
+table) was REMOVED because it never produced clickable references in production.
+Bare superscript characters (U+00B9, U+00B2, U+2074 ...) are intentionally left
+untouched by `mergen_langflow_finalize_answer()`; do not reintroduce a
+character-based converter — the citation contract is the explicit `<sup>(n)</sup>`
+tag, fix the prompt instead. The regression tests in
+`tests/testthat/test-langflow-inline-sources-behavior.R` prove that `<sup>(1)</sup>`
+and `<sup>(2)</sup>` become `[n]` for both Süreç Yönetimi (prose `Kaynak:` sources)
+and Uygulama Uzmanı (structured sources), that the rendered HTML carries the matching
+`.kaynakca-entry[data-entry=n]` targets, and that superscript characters stay inert.
 
 INTENTIONAL SCOPE LIMIT: in Ortak Oturum rooms, the inline `[n]` text stays plain (not a clickable/scrolling `.citation-ref` superscript) because `citation_handler.js`'s `MutationObserver` and click handler are scoped to `#chat_content_container` + `[id^="message_wrapper_"]`, and room messages (`.oo-mesaj`) don't have that wrapper id. This is a deliberate, confirmed decision (not a bug to silently "fix") — the room's Kaynakça source-link click-to-preview at the bottom already works (a separate, document-wide handler), and the original feature request was scoped to the single-session Süreç Yönetimi/Uygulama Uzmanı tools. Do not extend `citation_handler.js` to rooms without checking with the user first; it touches a shared, protected JS file and the room's poll/re-render lifecycle.
 - `LANGFLOW_BASE_URL`
@@ -6647,8 +6901,12 @@ If anything “works locally but not on VM”, SSO and encoding are the first th
 The SSO authentication boundary is security-sensitive. JWT claims must not be trusted until the token signature has been verified against Keycloak JWKS public keys.
 
 Current contract:
-- `R/helpers_sso_signature.R` owns JWT signature verification, JWK/JWKS handling, public-key conversion, and signature checking helpers.
-- `R/helpers_sso_signature.R` must be loaded before `R/helpers_sso.R` through `R/config_source_manifest.R`.
+- `R/helpers_sso_signature.R` owns JWT signature verification, JWK parsing, public-key conversion, and signature checking helpers.
+- `R/helpers_sso_jwks_cache.R` owns JWKS fetching plus the process-local key cache and the bounded NEGATIVE (unknown `kid`) cache: `sso_jwks_cache_clear()`, `sso_fetch_jwks()`, `sso_find_jwk_by_kid()`, `sso_resolve_signing_key()` and the `.sso_jwks_negative_*` helpers. Do not move them back into `R/helpers_sso_signature.R`; that file hit the global 24-function ceiling. Keep it loaded BEFORE `R/helpers_sso_signature.R`, and source both (cache first) in isolated tests.
+- `R/helpers_sso_jwks_cache.R` and `R/helpers_sso_signature.R` must both be loaded before `R/helpers_sso.R` through `R/config_source_manifest.R`.
+- A negative entry is written ONLY when the JWKS refresh actually succeeded but did not contain the requested `kid`. A transport/HTTP failure (`sso_fetch_jwks()` returning `NULL`) must NEVER create one; otherwise a valid token is rejected for the whole negative TTL after the endpoint recovers.
+- Negative entries are removed with `rm()`, never `env[[name]] <- NULL`: a `NULL` assignment leaves the binding in `ls()`, so expired entries keep counting toward the capacity and cleanup evaluates `giris$fetched_at` on `NULL`.
+- When the negative cache is full of FRESH entries, the OLDEST entry is evicted so a new unknown `kid` is still cached; otherwise every request for that `kid` re-fetched JWKS.
 - `validate_jwt_token()` must verify the JWT signature before trusting issuer, expiry, username, role, or any other claim.
 - Keep algorithm-confusion protection intact: reject `alg=none`, HMAC/HS algorithms, malformed tokens, tampered payloads, tampered signatures, missing or unknown `kid` values, and unusable JWKS keys.
 - The allowed asymmetric algorithms are RS256, RS384, and RS512 unless the implementation and focused tests are intentionally updated together.

@@ -10,6 +10,9 @@ rate_limiter <- list(
   max_requests_per_user = 10,
   window_size = 60,
   requests = new.env(),
+  # Son tam-tarama damgası KULLANICI anahtarlarından AYRI tutulur; aynı ortamda
+  # olsaydı `ls()` sayımına ve temizlik döngüsüne karışırdı.
+  cleanup_state = new.env(parent = emptyenv()),
   max_users_cache = 1000
 )
 
@@ -55,12 +58,60 @@ check_rate_limit <- function(user_id) {
   current_time <- Sys.time()
   user_key <- as.character(user_id)
   
-  # Önbellek boyutu kontrolü - çok büyürse eski kullanıcıları temizle
-  if (length(ls(envir = rate_limiter$requests)) > rate_limiter$max_users_cache) {
-    rm(list = ls(envir = rate_limiter$requests), envir = rate_limiter$requests)
+  # Önbellek boyutu kontrolü - çok büyürse yalnızca penceresi dolmuş
+  # kullanıcı kayıtları temizlenir (tüm limitler sıfırlanmaz; fail-open olmaz).
+  # `>=` bilinçli: tam kapasitede temizlik hiç çalışmazsa, tüm kayıtlar süresi
+  # dolmuş olsa bile yeni kullanıcı kalıcı olarak reddedilirdi.
+  # TAM TARAMA en fazla saniyede bir çalışır. Tüm kayıtlar etkinken temizlik
+  # hiçbir anahtarı kaldırmıyor, önbellek kapasitede kalıyor ve aynı tarama her
+  # istekte (1000 kullanıcı x 10 zaman damgası) Shiny olay döngüsünde senkron
+  # tekrarlanıyordu. Son temizlik damgası kullanıcı anahtarlarından AYRI bir
+  # ortamda tutulur; aksi hâlde `ls()` sayımına ve döngüye karışırdı.
+  if (length(ls(envir = rate_limiter$requests)) >= rate_limiter$max_users_cache) {
+    son_temizlik <- rate_limiter$cleanup_state$last_cleanup
+    # Bir saniyelik kelepçe, ARADA SÜRESİ DOLAN kayıt varken uygulanmaz: tam
+    # tarama kapasitede biter bitmez bir kayıt süresini doldurduğunda temizlik
+    # atlanıyor ve yeni kullanıcı "kapasite dolu" gerekçesiyle reddediliyordu.
+    # Tarama, hayatta kalan en eski damgadan bir sonraki sona erme anını saklar.
+    sonraki_sona_erme <- rate_limiter$cleanup_state$next_expiry
+    yakin_zamanda <- !is.null(son_temizlik) &&
+      isTRUE(difftime(current_time, son_temizlik, units = "secs") < 1) &&
+      (is.null(sonraki_sona_erme) || isTRUE(current_time < sonraki_sona_erme))
+
+    if (!yakin_zamanda) {
+      rate_limiter$cleanup_state$last_cleanup <- current_time
+      en_eski <- NULL
+      for (anahtar in ls(envir = rate_limiter$requests)) {
+        canli <- Filter(function(t) {
+          difftime(current_time, t, units = "secs") < rate_limiter$window_size
+        }, rate_limiter$requests[[anahtar]])
+        if (length(canli) == 0L) {
+          rm(list = anahtar, envir = rate_limiter$requests)
+        } else {
+          rate_limiter$requests[[anahtar]] <- canli
+          kayit_en_eski <- suppressWarnings(min(unlist(canli)))
+          if (is.finite(kayit_en_eski) &&
+              (is.null(en_eski) || kayit_en_eski < en_eski)) {
+            en_eski <- kayit_en_eski
+          }
+        }
+      }
+      rate_limiter$cleanup_state$next_expiry <- if (is.null(en_eski)) {
+        NULL
+      } else {
+        as.POSIXct(en_eski, origin = "1970-01-01", tz = "UTC") +
+          rate_limiter$window_size
+      }
+    }
   }
   
   if (!exists(user_key, envir = rate_limiter$requests)) {
+    # Temizlik sonrası kapasite hâlâ doluysa YENİ kullanıcı kaydı eklenmez.
+    # Aksi hâlde tüm kayıtlar canlıyken önbellek sınırsız büyüyor ve her istek
+    # bütün kullanıcı kayıtlarını taramak zorunda kalıyordu.
+    if (length(ls(envir = rate_limiter$requests)) >= rate_limiter$max_users_cache) {
+      return(FALSE)
+    }
     rate_limiter$requests[[user_key]] <- list()
   }
   

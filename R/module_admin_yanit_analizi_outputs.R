@@ -364,6 +364,10 @@ admin_yanit_outputs <- function(output, ya_data, etiket_sayilari, refresh) {
         sprintf('<span style="color:%s; font-weight:bold;">%.1f%%</span>', renk, o)
       })
 
+      # Model adı yapılandırmadan gelir ama tabloya girmeden önce kaçırılır;
+      # escape = FALSE yalnızca uygulama üretimi oran hücresi içindir.
+      data$ModelUsed <- htmltools::htmlEscape(as.character(data$ModelUsed))
+
       display_data <- data[, c("row_num", "ModelUsed", "toplam_yanit", "begeni", "begenmeme", "oran_display", "ort_sure")]
       colnames(display_data) <- c("#", "Model", "Toplam", "Beğeni", "Beğenmeme", "Oran", "Ort. Süre (sn)")
 
@@ -478,11 +482,21 @@ admin_yanit_outputs <- function(output, ya_data, etiket_sayilari, refresh) {
       data$tarih <- ifelse(!is.na(data$FeedbackTimestamp),
         paste0("<span data-order='", format(as.POSIXct(data$FeedbackTimestamp), "%Y-%m-%d %H:%M:%S"), "'>", format(as.POSIXct(data$FeedbackTimestamp), "%d.%m.%Y %H:%M"), "</span>"),
         "-")
-      data$kullanici <- ifelse(!is.na(data$KullaniciAdi) & nzchar(data$KullaniciAdi), data$KullaniciAdi, "-")
-      data$etiketler <- ifelse(!is.na(data$FeedbackTags) & nzchar(data$FeedbackTags), data$FeedbackTags, "-")
-      data$yorum <- ifelse(!is.na(data$FeedbackComment) & nzchar(data$FeedbackComment), data$FeedbackComment, "-")
-      data$onizleme <- ifelse(!is.na(data$YanitOnizleme) & nzchar(data$YanitOnizleme),
-        paste0(substr(data$YanitOnizleme, 1, 120), "..."), "-")
+      # escape = FALSE yalnızca UYGULAMA ÜRETİMİ sütunlar (tip/tarih) içindir;
+      # kullanıcı/LLM kontrollü metinler tabloya girmeden ÖNCE kaçırılır.
+      data$kullanici <- htmltools::htmlEscape(
+        ifelse(!is.na(data$KullaniciAdi) & nzchar(data$KullaniciAdi), data$KullaniciAdi, "-")
+      )
+      data$etiketler <- htmltools::htmlEscape(
+        ifelse(!is.na(data$FeedbackTags) & nzchar(data$FeedbackTags), data$FeedbackTags, "-")
+      )
+      data$yorum <- htmltools::htmlEscape(
+        ifelse(!is.na(data$FeedbackComment) & nzchar(data$FeedbackComment), data$FeedbackComment, "-")
+      )
+      data$onizleme <- htmltools::htmlEscape(ifelse(
+        !is.na(data$YanitOnizleme) & nzchar(data$YanitOnizleme),
+        paste0(substr(data$YanitOnizleme, 1, 120), "..."), "-"
+      ))
 
       display_data <- data[, c("row_num", "kullanici", "tip_display", "etiketler", "yorum", "onizleme", "tarih")]
       colnames(display_data) <- c("#", "Kullanıcı", "Tip", "Etiketler", "Yorum", "Yanıt Önizleme", "Tarih")
@@ -646,7 +660,10 @@ admin_yanit_outputs <- function(output, ya_data, etiket_sayilari, refresh) {
       data$row_num <- 1:nrow(data)
       data$begeni_oran <- ifelse(data$toplam > 0, round((data$begeni / data$toplam) * 100, 1), 0)
       data$son_bildirim <- format(as.POSIXct(data$son_bildirim), "%d.%m.%Y %H:%M")
-      data$kullanici <- ifelse(!is.na(data$KullaniciAdi) & nzchar(data$KullaniciAdi), data$KullaniciAdi, "-")
+      # Kullanıcı adı SSO/DB kaynaklıdır; escape = FALSE tablosunda kaçırılır.
+      data$kullanici <- htmltools::htmlEscape(
+        ifelse(!is.na(data$KullaniciAdi) & nzchar(data$KullaniciAdi), data$KullaniciAdi, "-")
+      )
 
       # Beğeni oranı renkli gösterim
       data$oran_display <- sapply(data$begeni_oran, function(o) {

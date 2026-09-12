@@ -432,3 +432,76 @@ test_that("hidrasyon planı erişilemeyen dizinlerde güvenli düşer", {
   expect_false(bos$resume$ok)
   expect_length(bos$messages, 0L)
 })
+
+
+# Regresyon: `Authorization: Bearer <token>` biçiminde anahtar/değer deseni
+# yalnızca "Bearer" sözcüğünü maskeliyor, kimlik bilgisi DB'ye yazılıyordu.
+test_that("cc_persist_redact_secrets Bearer/Basic kimlik bilgisini tamamen maskeler", {
+  gizli <- "abcdefghijklmnopqrstuvwxyz123456"
+  cikti <- .cc_persist_redact_secrets(paste0("Authorization: Bearer ", gizli))
+  expect_false(grepl(gizli, cikti, fixed = TRUE))
+  expect_true(grepl("[[MERGEN-REDACTED]]", cikti, fixed = TRUE))
+
+  temel <- "QWxhZGRpbjpvcGVuc2VzYW1l"
+  cikti2 <- .cc_persist_redact_secrets(paste0("curl -H 'Authorization: Basic ", temel, "'"))
+  expect_false(grepl(temel, cikti2, fixed = TRUE))
+
+  # KISA kimlik bilgisi de maskelenir: eski `{8,}` alt sınırı `Basic YTpi`
+  # gibi geçerli ama kısa değerleri kaçırıyor, genel anahtar/değer deseni
+  # yalnızca "Basic" sözcüğünü maskeleyip token'ı olduğu gibi bırakıyordu.
+  kisa <- "YTpi"
+  cikti3 <- .cc_persist_redact_secrets(paste0("Authorization: Basic ", kisa))
+  expect_false(grepl(kisa, cikti3, fixed = TRUE))
+  expect_true(grepl("[[MERGEN-REDACTED]]", cikti3, fixed = TRUE))
+
+  # Sıradan metin değişmeden kalır.
+  expect_identical(
+    .cc_persist_redact_secrets("sadece normal metin, gizli yok"),
+    "sadece normal metin, gizli yok"
+  )
+  # Tamamen küçük harfli kısa sözcükler kimlik bilgisi sanılmaz; aksi hâlde
+  # sıradan düzyazı maskelenip tanı değeri kayboluyordu.
+  expect_identical(
+    .cc_persist_redact_secrets("normal metin bearer yok"),
+    "normal metin bearer yok"
+  )
+})
+
+# Regresyon: şema `bearer|basic` ile SINIRLIYDI. `Authorization: Token abc123`
+# gibi geçerli bir şemada genel anahtar/değer deseni `Token` sözcüğünü değer
+# sanıp maskeliyor, `abc123` AÇIK METİN kalıyordu.
+test_that("cc_persist_redact_secrets bearer/basic dışındaki şemaları da maskeler", {
+  for (sema in c("Token", "DPoP", "Negotiate", "NTLM", "Digest")) {
+    gizli <- "abc123"
+    cikti <- .cc_persist_redact_secrets(paste0("Authorization: ", sema, " ", gizli))
+    expect_false(grepl(gizli, cikti, fixed = TRUE), info = sema)
+    expect_true(grepl("[[MERGEN-REDACTED]]", cikti, fixed = TRUE), info = sema)
+    # Şema bilgisi korunur (tanı değeri).
+    expect_true(grepl(sema, cikti, fixed = TRUE), info = sema)
+  }
+
+  # Şemasız başlık da maskelenir.
+  cikti_semasiz <- .cc_persist_redact_secrets("Authorization: abc123")
+  expect_false(grepl("abc123", cikti_semasiz, fixed = TRUE))
+  expect_true(grepl("[[MERGEN-REDACTED]]", cikti_semasiz, fixed = TRUE))
+
+  # ZATEN maskelenmiş başlık yeniden işlenmez (şema kaybı olmaz).
+  expect_identical(
+    .cc_persist_redact_secrets("Authorization: Token [[MERGEN-REDACTED]]"),
+    "Authorization: Token [[MERGEN-REDACTED]]"
+  )
+})
+
+# Komut metni ve nihai yanıt da redaksiyondan geçmelidir; dosya sözleşmesi
+# yalnızca redakte edilmiş içeriğin saklanmasını öngörür.
+test_that("kalicilastirma kaynagi prompt ve final_output redaksiyonunu uygular", {
+  kod <- paste(
+    readLines(
+      file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_session_persistence.R"),
+      encoding = "UTF-8", warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_true(grepl("prompt = .cc_persist_redact_secrets(", kod, fixed = TRUE))
+  expect_true(grepl("final_output = .cc_persist_redact_secrets(final_output)", kod, fixed = TRUE))
+})

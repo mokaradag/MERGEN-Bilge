@@ -1,5 +1,5 @@
 # ==============================================================================
-# Dosya Yolu: tests/scripts/run_full_testthat_isolated.R
+# Dosya Yolu: tools/run_full_testthat_isolated.R
 # Aciklama:
 #   Tam testthat suitini dosya dosya temiz Rscript cocuk sureclerinde kosar.
 #   Native Rscript.exe crash durumunda hangi test dosyasinin crash urettigini
@@ -36,6 +36,13 @@ if (!file.exists(rscript_bin)) {
 
 path_for_r <- function(path) {
   gsub("\\", "/", normalizePath(path, winslash = "/", mustWork = TRUE), fixed = TRUE)
+}
+
+# Yol R DIZE SABITI olarak serilestirilir: kesme isareti tasiyan bir yol
+# (Windows kullanici klasoru) ham tek tirnak enterpolasyonunda gecersiz R
+# sozdizimi uretiyordu.
+r_string <- function(path) {
+  encodeString(path_for_r(path), quote = "'")
 }
 
 test_files <- list.files(
@@ -89,14 +96,21 @@ for (i in seq_along(test_files)) {
     "Sys.setenv(",
     "  MERGEN_RUN_APP = 'false',",
     "  MERGEN_DISABLE_FUTURES = 'true',",
+    # testthat surumu cocuk surecte de ACIKCA bildirilir; bildirim yoksa
+    # find_edition() sessizce 2. surume duser ve izole kosum tests/testthat.R
+    # ile ayni surumu kosmaz.
+    "  TESTTHAT_EDITION = '3',",
     "  TZ = 'UTC'",
     ")",
     "options(warn = 1)",
     "library(testthat)",
-    "testthat::local_edition(3)",
+    # NOT: `testthat::local_edition(3)` cocuk betikte UST DUZEYDE cagrilmaz.
+    # Surum yukaridaki TESTTHAT_EDITION ile bildirilir; ust duzey cagri yalnizca
+    # kuresel ertelenmis isleyici kaydedip Rscript cikisinda
+    # "deferred_run fonksiyonu bulunamadi" hatasi uretiyordu.
     sprintf(
-      "res <- testthat::test_file('%s', reporter = 'summary', stop_on_failure = TRUE, stop_on_warning = TRUE)",
-      path_for_r(test_file)
+      "res <- testthat::test_file(%s, reporter = 'summary', stop_on_failure = TRUE, stop_on_warning = TRUE)",
+      r_string(test_file)
     ),
     "invisible(res)"
   )

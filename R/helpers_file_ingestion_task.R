@@ -107,6 +107,9 @@ file_ingestion_plan_batch <- function(uploads,
   if (!length(items)) return(plan)
 
   existing_names <- as.character(existing_names %||% character())
+  # Kabul edilen adlar da kümeye eklenir; aksi hâlde AYNI PARTİDE iki kez
+  # seçilen dosya iki ayrı worker görevine gidiyor ve indekste yarışıyordu.
+  gorulen_adlar <- tolower(existing_names)
   normalized_ext <- if (is.null(allowed_ext)) NULL else tolower(gsub("^\\.+", "", as.character(allowed_ext)))
   limit_bytes <- suppressWarnings(as.numeric(max_size_mb) * 1024 * 1024)
 
@@ -122,7 +125,8 @@ file_ingestion_plan_batch <- function(uploads,
       next
     }
 
-    if (name %in% existing_names) {
+    # İndeks anahtarı küçük harfe duyarsızdır; yinelenen ad denetimi de öyle olmalı.
+    if (tolower(name) %in% gorulen_adlar) {
       plan$duplicate_names <- c(plan$duplicate_names, name)
       next
     }
@@ -150,6 +154,7 @@ file_ingestion_plan_batch <- function(uploads,
       next
     }
 
+    gorulen_adlar <- c(gorulen_adlar, tolower(name))
     plan$tasks[[length(plan$tasks) + 1L]] <- file_ingestion_task_snapshot(
       upload = item,
       user_id = user_id,

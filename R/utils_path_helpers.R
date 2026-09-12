@@ -128,7 +128,13 @@ normalize_utf8_path <- function(path, mustWork = FALSE) {
     )
 
     if (!is.na(normalized) && nzchar(normalized)) {
-      normalized <- gsub("\\\\", "/", normalized, fixed = TRUE)
+      # Tek ters eğik çizgiler de '/' olur (fixed "\\\\" yalnızca çiftleri yakalardı).
+      # YALNIZCA Windows'ta: POSIX'te ters eğik çizgi geçerli bir dosya adı
+      # karakteridir ve `rapor\2026.csv` gibi GERÇEKTEN çözülmüş bir yolu
+      # `rapor/2026.csv` yapmak sonraki dosya işlemlerini başarısız kılıyordu.
+      if (identical(.Platform$OS.type, "windows")) {
+        normalized <- chartr("\\", "/", normalized)
+      }
       if (!isTRUE(mustWork)) {
         return(normalized)
       }
@@ -137,7 +143,14 @@ normalize_utf8_path <- function(path, mustWork = FALSE) {
     }
   }
 
-  fallback <- gsub("\\\\", "/", candidate_utf8, fixed = TRUE)
+  # Aynı platform koşulu FALLBACK için de geçerlidir: POSIX'te ters eğik çizgi
+  # geçerli bir dosya adı karakteridir ve `rapor\2026.csv` dönüştürülünce
+  # çağıran farklı bir yol alıp sonraki işlemleri yanlış konuma yapıyordu.
+  fallback <- if (identical(.Platform$OS.type, "windows")) {
+    chartr("\\", "/", candidate_utf8)
+  } else {
+    candidate_utf8
+  }
   if (!isTRUE(mustWork)) {
     return(fallback)
   }

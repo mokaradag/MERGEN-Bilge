@@ -218,6 +218,21 @@ BEGIN
     ON dbo.MB_Game_Blueprints (IsDeleted, BlueprintID DESC);
 END;
 
+-- Aynı koşudan yalnızca TEK aktif plan yayınlanabilir. Uygulama katmanındaki
+-- oku-sonra-yaz denetimi atomik değildir: iki eşzamanlı yayın isteği "plan yok"
+-- görüp iki satır ekleyebiliyordu. Yumuşak silme semantiği korunur (yalnızca
+-- IsDeleted = 0 satırlar benzersizdir), GameRunID NULL olan planlar kapsam dışıdır.
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE name = N'UX_MB_Game_Blueprints_ActiveRun'
+      AND object_id = OBJECT_ID(N'dbo.MB_Game_Blueprints')
+)
+BEGIN
+    CREATE UNIQUE INDEX UX_MB_Game_Blueprints_ActiveRun
+    ON dbo.MB_Game_Blueprints (UserID, GameRunID)
+    WHERE IsDeleted = 0 AND GameRunID IS NOT NULL;
+END;
+
 -- 10) Haftalık topluluk operasyonu katkıları -----------------------------------
 IF OBJECT_ID(N'dbo.MB_Game_CommunityContributions', N'U') IS NULL
 BEGIN

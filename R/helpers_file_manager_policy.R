@@ -131,7 +131,7 @@ fm_file_ext_icon_html <- function(ext) {
     "<i class='fa-regular fa-file' style='margin-right:6px;'></i>"
   )
 
-  paste0(ico, toupper(e))
+  paste0(ico, htmltools::htmlEscape(toupper(e)))
 }
 
 fm_format_file_timestamp <- function(path = NULL, fallback_time = Sys.time()) {

@@ -254,6 +254,7 @@ cc_bind_server_setup <- function(input,
     calisma_alani <- get_user_workspace(user_id)
 
     dosya_sayisi <- 0L
+    reddedilen <- 0L
     for (i in seq_len(nrow(dosyalar))) {
       goreceli <- if (!is.null(yollar) && length(yollar) >= i) {
         yollar[i]
@@ -261,24 +262,54 @@ cc_bind_server_setup <- function(input,
         dosyalar$name[i]
       }
 
-      hedef <- file.path(calisma_alani, goreceli)
-      hedef_dizin <- dirname(hedef)
-
-      if (!dir.exists(hedef_dizin)) {
-        dir.create(hedef_dizin, recursive = TRUE, showWarnings = FALSE)
+      # `yollar` TARAYICIDAN gelir (webkitRelativePath) ve `dosyalar$name` de
+      # istemci kontrollüdür. Doğrulanmadan birleştirildiğinde '..', mutlak yol
+      # veya sürücü harfi taşıyan bir girdi, uygulama hesabının yazabildiği
+      # başka kullanıcı/runtime dosyalarını overwrite = TRUE ile ezebilirdi.
+      hedef <- cc_setup_yerel_yukleme_hedefi(calisma_alani, goreceli)
+      if (is.null(hedef)) {
+        reddedilen <- reddedilen + 1L
+        log_warn(paste(
+          CLAUDE_CODE_LOG_PREFIX,
+          "Yerel klasör yüklemesinde güvensiz göreli yol reddedildi."
+        ))
+        next
       }
 
-      file.copy(dosyalar$datapath[i], hedef, overwrite = TRUE)
+      # Doğrulama ile yazma arasında hedef/ata bağlantıyla değiştirilebilir
+      # (TOCTOU); yazma geçici ad + rename ile yapılır ve sonucu denetlenir.
+      if (!isTRUE(cc_yerel_yukleme_yaz(dosyalar$datapath[i], hedef, calisma_alani))) {
+        reddedilen <- reddedilen + 1L
+        log_warn(paste(
+          CLAUDE_CODE_LOG_PREFIX,
+          "Yerel klasör yüklemesi yazılamadı veya doğrulama sonrası yol değişti."
+        ))
+        next
+      }
+
       dosya_sayisi <- dosya_sayisi + 1L
+    }
+
+    if (reddedilen > 0L) {
+      showNotification(
+        paste0(reddedilen, " dosya güvenli olmayan yol veya yazma hatası nedeniyle atlandı."),
+        type = "warning",
+        duration = 6
+      )
     }
 
     updateTextInput(session, "workdir", value = normalizePath(calisma_alani, winslash = "/"))
 
-    showNotification(
-      paste0(dosya_sayisi, " dosya yerel bilgisayardan yüklendi."),
-      type = "message",
-      duration = 5
-    )
+    # BAŞARI bildirimi yalnızca gerçekten dosya yazıldığında gösterilir: tüm
+    # dosyalar reddedildiğinde kullanıcı aynı anda hem uyarı hem "0 dosya
+    # yüklendi" başarısı görüyordu.
+    if (dosya_sayisi > 0L) {
+      showNotification(
+        paste0(dosya_sayisi, " dosya yerel bilgisayardan yüklendi."),
+        type = "message",
+        duration = 5
+      )
+    }
 
     log_info(paste(
       CLAUDE_CODE_LOG_PREFIX,

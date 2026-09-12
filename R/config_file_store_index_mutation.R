@@ -12,6 +12,8 @@
     stop("mutator fonksiyon olmalıdır.", call. = FALSE)
   }
 
+  # KİLİTSİZ MUTASYON YOK: sahiplik doğrulanamazsa eşzamanlı iki yazar aynı
+  # anlık görüntüyü kaydedip birbirinin indeks güncellemesini siliyordu.
   .file_store_with_index_lock({
     idx <- .load_index()
     next_idx <- mutator(idx)
@@ -22,7 +24,7 @@
 
     .save_index(next_idx)
     next_idx
-  })
+  }, require_lock = TRUE)
 }
 
 recover_display_name_from_storage_name <- function(file_path) {
@@ -211,23 +213,62 @@ mergen_register_uploaded_file <- function(src_path,
       (identical(src_cmp, base_cmp) || startsWith(src_cmp, paste0(base_cmp, "/"))))
   ) {
     dest_norm <- src_norm
+    kopyalandi <- FALSE
   } else {
-    unique_name <- paste0(
-      format(Sys.time(), "%Y%m%d%H%M%S"), "_",
-      sprintf("%04d", sample(0:9999, 1)), "_",
-      basename(as_name)
-    )
-    dest <- file.path(user_folder, unique_name)
-    copy_ok <- tryCatch({
-      fs::file_copy(src_path, dest, overwrite = TRUE)
-      TRUE
-    }, error = function(e) {
-      message(sprintf("[UPLOAD] Kopyalama başarısız: %s", e$message))
-      FALSE
-    })
+    kopyalandi <- TRUE
+    # Aynı saniyede aynı rastgele son ek üretilirse mevcut dosya EZİLMEZ:
+    # hedef varsa yeni ad üretilir ve kopya overwrite = FALSE ile yapılır.
+    # `file_exists` + `file_copy` atomik DEĞİLDİR: eşzamanlı bir yükleme aynı
+    # adı aradaki pencerede yaratırsa overwrite = FALSE hata verir. Kopyalama
+    # bu yüzden deneme döngüsünün İÇİNDE yapılır ve hedef-zaten-var hatasında
+    # kalan adaylarla devam edilir.
+    dest <- ""
+    son_hata <- ""
+    for (deneme in seq_len(5L)) {
+      unique_name <- paste0(
+        format(Sys.time(), "%Y%m%d%H%M%S"), "_",
+        sprintf("%04d", sample(0:9999, 1)), "_",
+        basename(as_name)
+      )
+      aday <- file.path(user_folder, unique_name)
+      if (fs::file_exists(aday)) next
 
-    if (!isTRUE(copy_ok) || !fs::file_exists(dest)) {
-      stop(sprintf("Dosya kopyalanamadı: %s -> %s", src_path, dest))
+      kopya <- tryCatch({
+        fs::file_copy(src_path, aday, overwrite = FALSE)
+        TRUE
+      }, error = function(e) {
+        son_hata <<- conditionMessage(e)
+        FALSE
+      })
+
+      if (!isTRUE(kopya)) next
+
+      # Windows/UNC hedefinde kopya kısa süre görünmeyebilir. Yeni adla
+      # yeniden kopyalamak diskte indekslenmemiş yetim dosyalar bırakıyordu;
+      # görünürlük için SINIRLI beklenir, süre aşılırsa aday TEMİZLENİR.
+      gorunur <- FALSE
+      for (bekleme in seq_len(10L)) {
+        if (isTRUE(fs::file_exists(aday)) || isTRUE(path_exists_relaxed(aday))) {
+          gorunur <- TRUE
+          break
+        }
+        Sys.sleep(0.05)
+      }
+
+      if (isTRUE(gorunur)) {
+        dest <- aday
+        break
+      }
+
+      son_hata <- sprintf("kopya görünür olmadı: %s", aday)
+      try(fs::file_delete(aday), silent = TRUE)
+    }
+
+    if (!nzchar(dest)) {
+      if (nzchar(son_hata)) {
+        message(sprintf("[UPLOAD] Kopyalama başarısız: %s", son_hata))
+      }
+      stop(sprintf("Dosya kopyalanamadı: %s -> %s", src_path, user_folder))
     }
 
     dest_norm <- gsub("\\\\", "/", as.character(dest), fixed = TRUE)
@@ -243,7 +284,31 @@ mergen_register_uploaded_file <- function(src_path,
   key <- kayit$key
   entry <- list(path = kayit$path, display = kayit$display)
 
-  .file_store_mutate_index(function(idx) {
+  # Kopyalama kilit DIŞINDA yapılır: eşzamanlı bir kova temizliği kopyayı bu
+  # aralıkta silmiş olabilir. Varlık denetimi indeks kilidinin İÇİNDE yapılır ki
+  # indekse var olmayan bir dosya yazılmasın.
+  # Kopya indeks kilidinin DIŞINDA tamamlanır: kilit edinimi ya da indeks yazımı
+  # düşerse kopya `user_folder` içinde indekslenmemiş kalıyordu. Her denemede
+  # yeni bir yetim dosya birikiyor ve dosya sistemi fallback'i bunu yükleme
+  # başarısız bildirildikten sonra da sunabiliyordu.
+  kayitli <- FALSE
+  # Mutator, `.save_index()` ÇAĞRILMADAN ÖNCE çalışır. `kayitli` mutator
+  # içinde TRUE yapıldığında `atomic_write_json()` hatasında `temizle_kopya()`
+  # kopyayı silmiyor ve indekssiz yetim dosya kalıyordu.
+  dosya_vardi <- FALSE
+  temizle_kopya <- function() {
+    if (isTRUE(kopyalandi) && !isTRUE(kayitli)) {
+      try(fs::file_delete(dest_norm), silent = TRUE)
+    }
+  }
+
+  tryCatch(.file_store_mutate_index(function(idx) {
+    # Varlık denetimi YENİDEN KULLANILAN yollar için de yapılır: kaynak zaten
+    # kalıcı kovadaysa `kopyalandi` FALSE olur ve eşzamanlı bir
+    # `mergen_clear_user_bucket()` dosyayı bu aralıkta silmiş olabilirdi;
+    # indekse var olmayan bir yol yazılıyordu.
+    if (!isTRUE(path_exists_relaxed(dest_norm))) return(idx)
+
     if (!is.null(user_id)) {
       uid <- as.character(user_id)
       if (is.null(idx[[uid]])) idx[[uid]] <- list()
@@ -252,8 +317,21 @@ mergen_register_uploaded_file <- function(src_path,
       idx[[key]] <- entry
     }
 
+    dosya_vardi <<- TRUE
     idx
+  }), error = function(e) {
+    temizle_kopya()
+    stop(e)
   })
+
+  # Kayıt YALNIZCA indeks yazımı (`.save_index()`) tamamlandıktan sonra
+  # başarılı sayılır.
+  kayitli <- isTRUE(dosya_vardi)
+
+  if (!isTRUE(kayitli)) {
+    temizle_kopya()
+    stop(sprintf("Kayıt sırasında dosya bulunamadı (eşzamanlı temizlik?): %s", dest_norm))
+  }
 
   dest_norm
 }

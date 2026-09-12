@@ -98,3 +98,25 @@ test_that("resolveUserIdentity SSO modunda yetki yoksa USER'a düşer ve full_na
   expect_equal(kimlik$full_name, "Deneme")
   expect_equal(kimlik$auth_source, "keycloak")
 })
+
+test_that("SSO etkinken claim yoksa yerel ADMIN yedeğine DÜŞÜLMEZ (kapalı-başarısız)", {
+  .uid_env$SSO_ENABLED <- TRUE
+  withr::defer(rm("SSO_ENABLED", envir = .uid_env))
+
+  # Yerel yol DB'ye gitmeye çalışırsa test bunu görsün: çağrılmamalı.
+  cagrildi <- FALSE
+  .uid_env$get_connection <- function() {
+    cagrildi <<- TRUE
+    stop("yerel yol SSO etkinken çalışmamalı")
+  }
+  withr::defer(rm("get_connection", envir = .uid_env))
+
+  kimlik <- .uid_env$resolveUserIdentity(sso_claims = NULL)
+
+  expect_false(cagrildi)
+  expect_identical(kimlik$username, "")
+  expect_identical(kimlik$auth_level, "NONE")
+  expect_identical(kimlik$auth_source, "unauthenticated")
+  # İşletim sistemi hesabı asla sızmamalıdır.
+  expect_false(identical(kimlik$username, unname(Sys.info()["user"])))
+})

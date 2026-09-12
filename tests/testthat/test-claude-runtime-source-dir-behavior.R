@@ -32,12 +32,25 @@ test_that("boş, NA ve NULL workdir için boş dize döner", {
   expect_identical(env$resolve_claude_runtime_source_dir(NULL), "")
 })
 
-test_that("relaxed çözücü boş olmayan değer dönerse o değer öncelik kazanır", {
-  env <- .rtdir_env(relaxed_value = "/cozulen/dizin")
-  expect_identical(
-    env$resolve_claude_runtime_source_dir("/herhangi/girdi"),
-    "/cozulen/dizin"
-  )
+test_that("relaxed çözücü GERÇEK dizin dönerse o değer öncelik kazanır", {
+  d <- file.path(tempdir(), paste0("rtdir_relaxed_", as.integer(runif(1, 1e6, 9e6))))
+  dir.create(d)
+  on.exit(unlink(d, recursive = TRUE), add = TRUE)
+
+  env <- .rtdir_env(relaxed_value = d)
+  expect_identical(env$resolve_claude_runtime_source_dir("/herhangi/girdi"), d)
+})
+
+# Regresyon: birincil relaxed sonuç DİZİN olarak doğrulanmıyordu. Paylaşılan
+# çözümleyici bir DOSYA yolunu kabul edebiliyor ve erken dönüş aşağıdaki dizin
+# denetimini atlıyordu; dosya yolu runtime çalışma dizini olarak kullanılırdı.
+test_that("relaxed çözücü DOSYA dönerse kabul edilmez", {
+  f <- tempfile(fileext = ".txt")
+  writeLines("x", f)
+  on.exit(unlink(f), add = TRUE)
+
+  env <- .rtdir_env(relaxed_value = f)
+  expect_identical(env$resolve_claude_runtime_source_dir("/herhangi/girdi"), "")
 })
 
 test_that("gerçek var olan dizin aday yoldan çözülür", {
@@ -54,4 +67,23 @@ test_that("var olmayan yol için boş dize döner", {
   env <- .rtdir_env(relaxed_value = "")
   yok <- file.path(tempdir(), paste0("yok_rtdir_", as.integer(runif(1, 1e6, 9e6))))
   expect_identical(env$resolve_claude_runtime_source_dir(yok), "")
+})
+
+test_that("dosya yolu kaynak dizin olarak kabul edilmez", {
+  env <- .rtdir_env()
+  # path_exists_relaxed dosyalar için de TRUE dönebilir; kaynak DİZİN çözümü
+  # bir dosyayı dizin gibi kabul etmemelidir.
+  env$path_exists_relaxed <- function(p) TRUE
+
+  gecici <- withr::local_tempdir()
+  dosya <- file.path(gecici, "rapor.txt")
+  writeLines("icerik", dosya)
+
+  expect_identical(env$resolve_claude_runtime_source_dir(dosya), "")
+
+  # Gerçek dizin hâlâ çözülebilir olmalıdır.
+  expect_identical(
+    gsub("\\\\", "/", env$resolve_claude_runtime_source_dir(gecici)),
+    gsub("\\\\", "/", gecici)
+  )
 })

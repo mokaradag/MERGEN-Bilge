@@ -196,6 +196,42 @@ test_that("prepare_context_blocks: vision AÇIK görseli data-url'e çevirir", {
   expect_true(grepl("analiz için isteğe eklendi", paste(res$file_blocks, collapse = "\n"), fixed = TRUE))
 })
 
+# Regresyon: toplam bütçe base64 kodlamadan ÖNCE uygulanır. Önceden bütçeye
+# sığmayacak görsel bile tam okunup kodlanıyor, sonra atılıyordu.
+test_that("prepare_context_blocks: toplam butce ilk gorselden kucukse kodlama yapilmaz", {
+  tf <- .make_tmp_png()
+  on.exit(unlink(tf), add = TRUE)
+  files <- list("kedi.png" = list(datapath = tf))
+
+  cagrildi <- FALSE
+  eski <- .vision_env$mergen_build_image_data_url
+  .vision_env$mergen_build_image_data_url <- function(...) {
+    cagrildi <<- TRUE
+    eski(...)
+  }
+  on.exit({
+    .vision_env$mergen_build_image_data_url <- eski
+  }, add = TRUE)
+
+  withr::local_envvar(c(MERGEN_VISION_MAX_TOTAL_MB = "0.000001"))
+
+  res <- .vision_env$mergen_vision_prepare_context_blocks(
+    uploaded_names = c("kedi.png"),
+    summary_store = list(),
+    current_file_store = files,
+    per_file_cap = 5000,
+    vision_active = TRUE
+  )
+
+  expect_length(res$image_data_urls, 0L)
+  expect_false(cagrildi)
+  # BUTCE reddi, "vision destegi kapali" mesajindan AYRI raporlanir; aksi halde
+  # kullanici zaten ETKIN olan ozelligi acmaya calisiyordu.
+  blok <- paste(res$file_blocks, collapse = "\n")
+  expect_true(grepl("g\u00f6rsel s\u0131n\u0131r\u0131na ula\u015f\u0131ld\u0131\u011f\u0131", blok, fixed = TRUE))
+  expect_false(grepl("analiz edilemiyor", blok, fixed = TRUE))
+})
+
 test_that("send_message none dalı: vision KAPALI metin (string) içerik üretir", {
   session <- list(userData = new.env(parent = emptyenv()))
   session$userData$file_summaries <- list()
@@ -340,7 +376,10 @@ test_that("vision AÇIK ama görsel okunamazsa metin yoluna güvenli düşer", {
 
   final <- plan$messages_to_process[[2]]$content
   expect_true(is.character(final))
-  expect_true(grepl("analiz edilemiyor", final, fixed = TRUE))
+  # Vision ETKİN olduğundan not "kapalı" DEĞİL, "okunamadı / boyut sınırı"
+  # olmalıdır; aksi hâlde kullanıcıya yanlış neden bildiriliyordu.
+  expect_true(grepl("Görsel okunamadı", final, fixed = TRUE))
+  expect_false(grepl("görsel anlama desteği etkin değil", final, fixed = TRUE))
 })
 
 test_that("çok-kipli içerik OpenAI uyumlu JSON gövdeye serileşir", {

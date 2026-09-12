@@ -249,6 +249,47 @@ test_that("prompt snapshot list ve string girdilerde dosya sayısını sabitler"
   expect_identical(snapshot$current_session_files, files)
 })
 
+test_that("aynı dosyanın ad ve kimlik anahtarı dosya sayısını iki katına çıkarmaz", {
+  # Kayıt defteri aynı dosyayı hem görünen ad hem kimlik anahtarıyla tutar;
+  # ad listesi bu yüzden aynı dosyayı iki kez sayıyor ve Kaynakça'da
+  # tekrarlıyordu.
+  files <- list(
+    "rapor.xlsx" = list(path = "/veri/rapor.xlsx"),
+    "file_abc123" = list(path = "/veri/rapor.xlsx"),
+    "özet.pdf" = list(path = "/veri/özet.pdf"),
+    "file_def456" = list(path = "/veri/özet.pdf")
+  )
+
+  snapshot <- mergen_build_send_message_prompt_snapshot(
+    "Soru",
+    session_files = function() files
+  )
+
+  expect_identical(snapshot$uploaded_names, c("rapor.xlsx", "özet.pdf"))
+  expect_identical(snapshot$uploaded_count, 2L)
+  # Kayıt defterinin kendisi DEĞİŞMEZ; çözümleme her iki anahtarı da arar.
+  expect_identical(snapshot$current_session_files, files)
+})
+
+test_that("yolu olmayan girdiler tekilleştirme sırasında düşürülmez", {
+  # İKİ yolsuz girdi: tek yolsuz girdiyle, yol anahtarına göre tekilleştiren bir
+  # gerileme (tüm yolsuz girdileri tek anahtara indiren) de bu testten geçerdi.
+  files <- list(
+    "a.txt" = list(path = "/veri/a.txt"),
+    "b.txt" = list(),
+    "b2.txt" = list(),
+    "c.txt" = list(datapath = "/veri/c.txt")
+  )
+
+  snapshot <- mergen_build_send_message_prompt_snapshot(
+    "Soru",
+    session_files = function() files
+  )
+
+  expect_identical(snapshot$uploaded_names, c("a.txt", "b.txt", "b2.txt", "c.txt"))
+  expect_identical(snapshot$uploaded_count, 4L)
+})
+
 test_that("chat creation defer kararı yalnızca güvenli true-streaming sohbet yolunda aktiftir", {
   current_settings <- list(enable_streaming = TRUE)
   settings_data <- list(enable_tts_audio = FALSE)
@@ -347,4 +388,74 @@ test_that("Düşünce Akışı badge çözülen runtime modelini gösterir", {
   expect_true(plan$thinking_model_active)
   expect_true(plan$show_thinking_wrapper)
   expect_true(plan$panel_simulated)
+})
+
+# ------------------------------------------------------------------------------
+# Reaktif BAĞLAM olmadan çağrılma (promise / later geri çağrıları)
+# ------------------------------------------------------------------------------
+# Görsel oluşturma, özetleme, Langflow, TTS akışı ve LLM yanıt işleyicileri bu
+# guard'ı promise geri çağrısından çağırır. Orada reaktif ALAN vardır ama
+# reaktif BAĞLAM yoktur; çıplak bir reactiveVal okuması hata fırlatır ve guard
+# GEÇERLİ isteği "stale" sayarsa geri çağrı erken döner, typing sarmalayıcısı
+# hiç kaldırılmaz. DİKKAT: shiny::testServer gövdesini aktif bir reaktif bağlam
+# içinde çalıştırdığı için bu hatayı MASKELER; bu yüzden çıplak
+# MockShinySession + withReactiveDomain kullanılır (CLAUDE.md Ortak Oturum dersi).
+# `later::loop_empty()` PAYLAŞILAN olay döngüsünü denetler; başka bir callback
+# kuyrukta kalırsa (ya da tekrarlayan bir callback varsa) döngü hiç bitmeyebilir.
+# Bu yüzden TESTE AİT sonuç, son teslim tarihiyle sınırlı olarak beklenir.
+.slc_bekle <- function(kosul, saniye = 5) {
+  bitis <- Sys.time() + saniye
+  while (!isTRUE(kosul()) && Sys.time() < bitis) later::run_now(0.05)
+  isTRUE(kosul())
+}
+
+test_that("istek durumu reaktif bağlam olmadan da doğru çözülür", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("later")
+
+  session <- shiny::MockShinySession$new()
+  tutucu <- new.env()
+
+  shiny::withReactiveDomain(session, {
+    tutucu$aktif <- shiny::reactiveVal("req_1")
+    tutucu$durdur <- shiny::reactiveVal(FALSE)
+  })
+
+  # Ön koşul: bağlam olmadan çıplak okuma gerçekten hata fırlatmalı, aksi hâlde
+  # bu test yanlışlıkla her zaman geçen bir teste dönüşür.
+  ciplak <- tryCatch({ tutucu$aktif(); "OK" }, error = function(e) "THROW")
+  expect_identical(ciplak, "THROW")
+
+  sonuc <- new.env()
+  later::later(function() {
+    sonuc$durum <- mergen_send_message_request_state(tutucu$aktif, "req_1", tutucu$durdur)
+    sonuc$guncel <- mergen_is_current_request(tutucu$aktif, "req_1", tutucu$durdur)
+  }, 0)
+  expect_true(.slc_bekle(function() !is.null(sonuc$guncel)))
+
+  expect_identical(sonuc$durum, "current")
+  expect_true(sonuc$guncel)
+})
+
+test_that("reaktif bağlam olmadan durdurma ve bayatlık hâlâ ayırt edilir", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("later")
+
+  session <- shiny::MockShinySession$new()
+  tutucu <- new.env()
+
+  shiny::withReactiveDomain(session, {
+    tutucu$aktif <- shiny::reactiveVal("req_2")
+    tutucu$durdur <- shiny::reactiveVal(TRUE)
+  })
+
+  sonuc <- new.env()
+  later::later(function() {
+    sonuc$durduruldu <- mergen_send_message_request_state(tutucu$aktif, "req_2", tutucu$durdur)
+    sonuc$bayat <- mergen_send_message_request_state(tutucu$aktif, "eski_req", tutucu$durdur)
+  }, 0)
+  expect_true(.slc_bekle(function() !is.null(sonuc$bayat)))
+
+  expect_identical(sonuc$durduruldu, "stopped")
+  expect_identical(sonuc$bayat, "stale")
 })

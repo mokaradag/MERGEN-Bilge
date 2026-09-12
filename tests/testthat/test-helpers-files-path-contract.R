@@ -42,6 +42,7 @@ local({
     file.path(repo_root_for_tests, "R", "utils_common.R"),
     file.path(repo_root_for_tests, "R", "utils_path_helpers.R"),
     file.path(repo_root_for_tests, "R", "helpers_files_path.R"),
+    file.path(repo_root_for_tests, "R", "helpers_files_copy_promote.R"),
     file.path(repo_root_for_tests, "R", "helpers_files.R")
   )
 

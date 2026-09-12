@@ -227,8 +227,47 @@ get_image_thumbnail_base64 <- function(file_path) {
 #' @return TRUE/FALSE
 delete_single_image <- function(file_path, user_id, chat_id) {
   tryCatch({
+    # Yol TEK, NA olmayan bir metin olmalıdır. Çok elemanlı bir değerde
+    # `normalizePath()`/`startsWith()` vektör döndürüyor, `if` koşulu uzunluk
+    # hatası veriyor ve çevreleyen `tryCatch()` bunu sessizce FALSE'a çeviriyordu
+    # (kullanıcı nedeni göremeden "Görsel silinemedi." görüyordu).
+    file_path <- as.character(file_path %||% "")
+    if (length(file_path) != 1L || is.na(file_path) || !nzchar(file_path)) {
+      cat("[IMAGE_GALLERY] Geçersiz dosya yolu; silme reddedildi.\n")
+      return(FALSE)
+    }
+
     # Dosya yolunu normalize et (URL encoding ve çift slash sorunlarını düzelt)
     file_path <- normalizePath(file_path, mustWork = FALSE)
+
+    # Silme YALNIZCA çağıran kullanıcının kendi görsel klasörüyle sınırlıdır.
+    # İstemciden gelen yol doğrulanmadığında başka kullanıcının (veya keyfi bir
+    # sunucu dosyasının) silinmesi mümkündü.
+    uid <- suppressWarnings(as.character(user_id %||% "")[1])
+    if (is.na(uid) || !nzchar(uid) || uid %in% c("0", "unknown", "NA", "null")) {
+      cat("[IMAGE_GALLERY] Geçersiz kullanıcı kimliği; silme reddedildi.\n")
+      return(FALSE)
+    }
+
+    kullanici_koku <- normalizePath(
+      file.path(getwd(), "user_images", uid),
+      mustWork = FALSE
+    )
+    kok_slash <- paste0(sub("/+$", "", gsub("\\\\", "/", kullanici_koku)), "/")
+    yol_slash <- gsub("\\\\", "/", file_path)
+
+    # Windows'ta `startsWith()` harf büyüklüğüne DUYARLIDIR; aynı dosyaya ait
+    # `C:/...` ve `c:/...` biçimleri eşleşmiyor ve arayüz geçerli bir görsel
+    # için "Görsel silinemedi." gösteriyordu (mergen_path_inside_root sözleşmesi).
+    if (identical(.Platform$OS.type, "windows")) {
+      kok_slash <- tolower(kok_slash)
+      yol_slash <- tolower(yol_slash)
+    }
+
+    if (!startsWith(yol_slash, kok_slash)) {
+      cat("[IMAGE_GALLERY] Kullanıcı klasörü dışındaki yol reddedildi:", file_path, "\n")
+      return(FALSE)
+    }
 
     if (!file.exists(file_path)) {
       cat("[IMAGE_GALLERY] Görsel zaten mevcut değil:", file_path, "\n")
@@ -262,10 +301,32 @@ delete_single_image <- function(file_path, user_id, chat_id) {
     # Veritabanındaki ilgili mesajı güncelle
     update_message_after_image_deletion(file_path, chat_id)
 
-    # Boş kalan klasörü temizle
-    chat_dir <- file.path(getwd(), "user_images", as.character(user_id), as.character(chat_id))
+    # Boş kalan klasörü temizle.
+    # `chat_id` İSTEMCİDEN gelir ve yol bileşeni olarak kullanılıyordu:
+    # `chat_id = "../../hedef"` ile `unlink(recursive = TRUE)` kullanıcı görsel
+    # kökü DIŞINDAKİ boş bir dizini silebiliyordu (`file_path` doğrulaması bu
+    # yolu kapsamıyor). Kimlik yalnızca rakamlardan oluşmalı, yol DOĞRULANMIŞ
+    # `uid` ile kurulmalı ve kanonik hâli kullanıcı kökü altında kalmalıdır.
+    cid <- as.character(chat_id %||% "")[1]
+    if (!is.na(cid) && nzchar(cid) && grepl("^[0-9]+$", cid)) {
+      chat_dir <- normalizePath(
+        file.path(getwd(), "user_images", uid, cid),
+        mustWork = FALSE
+      )
+      chat_slash <- gsub("\\\\", "/", chat_dir)
+      if (identical(.Platform$OS.type, "windows")) chat_slash <- tolower(chat_slash)
+      if (!startsWith(chat_slash, kok_slash)) {
+        cat("[IMAGE_GALLERY] Kullanıcı kökü dışındaki klasör reddedildi:", chat_dir, "\n")
+        return(TRUE)
+      }
+    } else {
+      cat("[IMAGE_GALLERY] Geçersiz sohbet kimliği; klasör temizliği atlandı.\n")
+      return(TRUE)
+    }
     if (dir.exists(chat_dir)) {
-      remaining <- list.files(chat_dir, recursive = FALSE)
+      # GİZLİ dosyalar da sayılır: `list.files()` varsayılanı nokta ile başlayan
+      # girdileri atlıyor ve içinde dosya bulunan dizin "boş" sayılabiliyordu.
+      remaining <- list.files(chat_dir, all.files = TRUE, no.. = TRUE, recursive = FALSE)
       if (length(remaining) == 0) {
         unlink(chat_dir, recursive = TRUE)
         cat("[IMAGE_GALLERY] Boş klasör silindi:", chat_dir, "\n")

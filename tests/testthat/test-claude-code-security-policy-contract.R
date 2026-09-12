@@ -274,6 +274,9 @@ test_that("açık override verildiğinde tehlikeli izin atlama argümanı ekleni
   test_env <- .source_cc_security_policy_for_test()
 
   test_env$claude_code_config$allow_dangerous_permissions <- TRUE
+  # İzin listesi TANIMLIYKEN tehlikeli kip reddedilir (aşağıdaki teste bakın);
+  # bu senaryo izin listesi OLMADAN açık override davranışını ölçer.
+  test_env$claude_code_config$allowed_tools <- ""
 
   args <- test_env$cc_policy_build_cli_args(
     prompt = "Merhaba",
@@ -284,6 +287,30 @@ test_that("açık override verildiğinde tehlikeli izin atlama argümanı ekleni
     "--dangerously-skip-permissions" %in% args,
     info = "Tehlikeli mod yalnızca açık override ile argümanlara eklenmelidir."
   )
+})
+
+# `bypassPermissions` altında `--allowedTools` BAĞLAYICI DEĞİLDİR. Tümleyeni
+# yasaklamak da güvenli değildir: `setdiff()` kapsam desenlerini eşleştirmez
+# (`Bash(git status)` varken salt `Bash` tümleyene girip İZİN VERİLEN kuralı
+# engelliyordu) ve `mcp__*` gibi bilinmeyen araçlar tümleyene hiç girmiyordu.
+test_that("izin listesi tanımlıyken tehlikeli kip kapalı-başarısız reddedilir", {
+  for (liste in c("Read;Grep", "Bash(git status)", "mcp__sunucu__arac", "Bash(git *);Read")) {
+    test_env <- .source_cc_security_policy_for_test()
+    test_env$claude_code_config$allow_dangerous_permissions <- TRUE
+    test_env$claude_code_config$allowed_tools <- liste
+
+    args <- test_env$cc_policy_build_cli_args(
+      prompt = "Merhaba",
+      output_format = "json"
+    )
+
+    expect_false("--dangerously-skip-permissions" %in% args, info = liste)
+    # Normal (güvenli) izin kipine düşülür ve izin listesi olduğu gibi geçer.
+    expect_true("--permission-mode" %in% args, info = liste)
+    expect_true("--allowedTools" %in% args, info = liste)
+    # Bilinen araç kümesinin TÜMLEYENİ artık yasaklanmaz.
+    expect_false("--disallowedTools" %in% args, info = liste)
+  }
 })
 
 test_that("çalışma dizini yalnızca izin verilen kökler altında kabul edilir", {

@@ -21,8 +21,70 @@
   (sürümleri ayırmak için)
 -->
 
-## v1.2 | 2026-07-22 | Kullanım İyileştirmeleri ve Düzeltmeler
+## v1.3 | 2026-09-04 | Güvenlik Sertleştirmesi ve Kararlılık Düzeltmeleri
 badge: Yeni
+
+### Öne Çıkanlar
+- Kimlik doğrulama artık her durumda kapalı-başarısız çalışır; eksik SSO bilgisinde yerel yönetici kimliğine düşülmez
+- Bilge Yolaç uzun çıktı üreten çalıştırmalarda takılmıyor; canlı çıktı belleği sınırlandı
+- Kaynak dosya ve görsel işlemleri yalnızca kullanıcının kendi klasörlerinde yapılabilir
+
+### İyileştirmeler | arrow-up-right-dots
+- Bilge Yolaç: çok çıktı üreten komutlarda oluşan sahte "zaman aşımı" giderildi
+- Bilge Yolaç: çalıştırma bittikten sonra basılan "Durdur", tamamlanan çalıştırmanın kaydını bozmuyor
+- Bilge Yolaç: arşivlenmiş oturumlar "Arşivlenmiş" filtresinde artık eksiksiz listeleniyor
+- Bilge Yolaç: eşzamanlı çalıştırmalarda indirme dosyaları birbirini ezmiyor
+- Ortak Oturum: ortak belge kaydı Windows'ta engellenmiyor; başarısız kopyalama önceki dosyayı silmiyor
+- Ortak Oturum: odadan çıkarılan katılımcı çalışma alanında değişiklik yapamıyor
+- Etiketsiz kod bloklarının ilk satırı artık silinmiyor
+- Yüklenen aynı dosya iki kez sayılmıyor; Kaynakça listesi tekrar etmiyor
+- Sistem Durumu: kurumsal uç noktalar gerçekten denenerek raporlanır
+- Bilge Yolaç: yerel klasör yüklemesinde alt klasör içeren dosyalar Windows'ta artık reddedilmiyor
+- Bilge Yolaç: uzun süren çalıştırmalarda çalışma alanı temizlik tarafından silinmiyor
+- Bilge Yolaç: kopyalanmış dosya için indirme kartının üretilmemesi giderildi
+- Sesli Giriş: gönderim hatasında parça sırası kilitlenmiyor; sonraki konuşmalar metin alanına yazılmaya devam eder
+- Aynı yükleme partisinde iki kez seçilen dosya artık yinelenen olarak bildirilir
+- Söyleşi Geçmişi: soru ile yanıtı aynı sırada olan kayıtlar artık listeden düşmüyor
+- Yanıt bittikten sonra "yazıyor" animasyonu ekranda kalmıyor
+- Bilge Yolaç: görünen model kademesi ile çalıştırılan model her zaman aynı
+- Hata bildirimi eki silinemediğinde ek listeden kaldırılmıyor
+- Grafik: boş filtre değeri verildiğinde grafik sessizce filtresiz üretilmiyor
+- DOCX önizleme: dönüştürme başarısız olduğunda eski PDF yeni sonuç gibi döndürülmüyor
+
+### Teknik | code
+- SSO etkinken kullanıcı bilgisi yoksa kimlik "NONE" olarak çözülür; işletim sistemi hesabı ADMIN olarak kullanılmaz
+- Oturum ayarı merkezi Bilge Yolaç izin modunu yalnızca daraltabilir; tehlikeli modda da yasak araç listesi uygulanır
+- MCP SQL/grafik araçlarının DuckDB bağlantısı yalıtıldı (harici dosya erişimi kapalı ve kilitli)
+- İstemciden gelen dosya yolları onaylı köklerle sınırlandırıldı (analiz dosyası, kaynak bağlantısı, görsel silme, hata bildirimi eki)
+- Yönetici paneli tablolarında geri bildirim metinleri güvenli biçimde gösterilir
+- Süresi dolan oturum artık yetkili kalmaz; yeniden giriş istenir
+- Sesli Giriş çok büyük/sık ses parçalarında uygulamayı yavaşlatmaz
+- Dosya deposu indeks kilidi sahiplik jetonu taşır; eskimiş kilit doğrulanarak kırılır
+- Eşzamanlı istek slotları canlı akış süresince geri toplanmaz (MERGEN_BACKPRESSURE_TTL_SECONDS)
+- DOCX -> PDF dönüştürmeye zaman aşımı eklendi (MERGEN_DOCX_PDF_TIMEOUT_SEC)
+- Yükleme hedefi kırık (sarkan) bağlantı olduğunda reddedilir; doğrulama sonrası ata takasında yazma başarı olarak bildirilmez
+- İstemci bağı (aud/azp) kanıtlanamayan JWT reddedilir
+- Bilinmeyen anahtar kimliği için tutulan JWKS negatif önbelleği üst sınırla korunur
+- Aktif çalışma lease dosyası çalıştırma boyunca tazelenir (CLAUDE_CODE_RUNTIME_LEASE_ORPHAN_SEC)
+- Kurumsal DNS adlı uç noktalar MERGEN_HEALTH_INTERNAL_ENDPOINTS ile gerçekten denenir
+- Ortam bayrakları Türkçe büyük harfli değerleri (AÇIK / KAPALI) doğru çözümler
+- Hız sınırlayıcı önbelleği kapasite dolduğunda sınırsız büyümez
+- Tanınmayan SSO_ENABLED değeri açılışı durdurur; boş değer POSIX'te geçersizdir, Windows boş değeri sildiği için orada tanımsız sayılır
+- Kimlik çözülemeyen SSO oturumunda kurulum durur; oturum "hazır" olarak işaretlenmez
+- Özellik anahtarı çözümü geçerli sahip kimliği ister; kimliksiz oturuma kurum anahtarı verilmez
+- JWKS negatif önbelleği yalnızca başarılı yenilemede yazılır ve dolduğunda en eski giriş düşürülür
+- Bilge Yolaç: tehlikeli izin modunda da izinli araç listesi uygulanır
+- Bilge Yolaç: alt süreç çıktısı bayt bütçesiyle sınırlıdır (stdout/stderr)
+- Bilge Yolaç: bayat çalışma kilidi devralma atomik hâle getirildi
+- Bilge Yolaç: geçici alan kökleri kullanıcıya daraltıldı
+- Dosya silme ve bozuk kopya temizliği yalnızca kullanıcının kendi kökü altında yapılır
+- ReasoningContent sütun önbelleği hedef veritabanına göre ayrılır
+- Akış dosyası okuma hatasında yayımlanmış satırlar ikinci kez gönderilmez
+
+---
+
+## v1.2 | 2026-07-22 | Kullanım İyileştirmeleri ve Düzeltmeler
+badge:
 
 ### Öne Çıkanlar
 - Sesli Giriş daha akıcı: butonlar her zaman anında yanıt verir ve konuşma metni silinmeden birikir

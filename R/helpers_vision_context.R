@@ -105,8 +105,31 @@ mergen_vision_active <- function(model_id, api_config = NULL) {
 
 # Görsel için açık/yardımcı Türkçe not (vision kapalı/desteksiz veya görsel
 # okunamadı durumlarında metin bloğuna eklenir).
-mergen_vision_unavailable_note <- function(fname) {
+# `neden`: "vision_kapali" (varsayılan) ya da "butce". Bütçe reddi ayrı
+# raporlanır; aksi hâlde kullanıcı ZATEN etkin olan bir özelliği açmaya
+# çalışıyor ve yanlış kurtarma adımı görüyordu.
+mergen_vision_unavailable_note <- function(fname, neden = "vision_kapali") {
   fname_chr <- as.character(fname %||% "")[1]
+  neden <- as.character(neden %||% "vision_kapali")[1]
+
+  if (identical(neden, "butce")) {
+    return(paste0(
+      "[Görsel dosyası: ", fname_chr, " — Bu istekte görsel sınırına ulaşıldığı ",
+      "için bu görsel analize eklenemedi. Lütfen daha az görsel ekleyin ya da ",
+      "görselleri ayrı isteklerde gönderin.]"
+    ))
+  }
+
+  # Vision ETKİN ama dosya okunamadı / dosya başına boyut sınırını aştı: bunu
+  # "görsel anlama kapalı" olarak bildirmek kullanıcıyı yanıltıyordu.
+  if (identical(neden, "kodlanamadi")) {
+    return(paste0(
+      "[Görsel dosyası: ", fname_chr, " — Görsel okunamadı veya dosya boyutu ",
+      "sınırını aştığı için analize eklenemedi. Lütfen daha küçük bir görsel ",
+      "yükleyin veya dosyayı yeniden ekleyin.]"
+    ))
+  }
+
   paste0(
     "[Görsel dosyası: ", fname_chr, " — Bu görselin içeriği bu sürümde yapay zekâ ",
     "tarafından analiz edilemiyor (görsel anlama desteği etkin değil). ",
@@ -193,16 +216,69 @@ mergen_vision_prepare_context_blocks <- function(uploaded_names,
   file_blocks <- character(0)
   image_data_urls <- character(0)
 
+  # Görsel data-url listesi için TOPLAM sayı ve TOPLAM bayt sınırı: tek dosya
+  # sınırı (5 MB) varken çok sayıda görsel istek gövdesini ve worker belleğini
+  # sınırsız büyütebiliyordu. Aşan görseller açık Türkçe notla atlanır.
+  max_gorsel <- suppressWarnings(as.integer(
+    Sys.getenv("MERGEN_VISION_MAX_IMAGES", "4")
+  ))
+  if (!length(max_gorsel) || is.na(max_gorsel) || max_gorsel < 1L) max_gorsel <- 4L
+
+  max_toplam_bayt <- suppressWarnings(as.numeric(
+    Sys.getenv("MERGEN_VISION_MAX_TOTAL_MB", "12")
+  )) * 1024 * 1024
+  if (!length(max_toplam_bayt) || !is.finite(max_toplam_bayt) || max_toplam_bayt <= 0) {
+    max_toplam_bayt <- 12 * 1024 * 1024
+  }
+
+  toplam_bayt <- 0
+
   for (fname in uploaded_names) {
     # GÖRSEL DOSYALAR: vision aktifse data-url, değilse açık not.
     if (mergen_is_image_file(fname)) {
       fobj <- current_file_store[[fname]] %||% NULL
       fpath <- if (is.list(fobj)) as.character(fobj$datapath %||% fobj$path %||% "")[1] else ""
 
-      data_url <- if (isTRUE(vision_active) && nzchar(fpath)) {
+      butce_doldu <- length(image_data_urls) >= max_gorsel
+
+      # Kalan bütçe dosya boyutundan tahmin edilir (base64 ~4/3 + önek);
+      # sığmayacak görsel okunup kodlanmadan atlanır.
+      kalan_bayt <- max_toplam_bayt - toplam_bayt
+      # `file.info()` YALNIZCA görsel kabul edilebilecekse çağrılır: erişilemeyen
+      # bir UNC yolu, kesin olarak atlanacak her görselde mesaj gönderme akışını
+      # (Shiny olay döngüsü) bloke edebiliyordu.
+      okunabilir_aday <- isTRUE(vision_active) && !isTRUE(butce_doldu) &&
+        !is.na(fpath) && nzchar(fpath)
+      dosya_bayt <- if (okunabilir_aday) {
+        suppressWarnings(as.numeric(file.info(fpath)$size[1]))
+      } else {
+        NA_real_
+      }
+      butce_asiliyor <- is.finite(dosya_bayt) &&
+        (dosya_bayt * 4 / 3 + 64) > kalan_bayt
+
+      data_url <- if (isTRUE(okunabilir_aday) && !butce_asiliyor) {
         mergen_build_image_data_url(fpath)
       } else {
         NULL
+      }
+      # Kodlama gerçekten denendi mi? Denenip NULL döndüyse neden "kapalı" değil,
+      # "okunamadı / dosya sınırı" olmalıdır.
+      kodlama_denendi <- isTRUE(okunabilir_aday) && !butce_asiliyor
+
+      if (!is.null(data_url)) {
+        url_bayt <- nchar(data_url, type = "bytes")
+        if (toplam_bayt + url_bayt > max_toplam_bayt) {
+          data_url <- NULL
+          # Tahmin (`dosya_bayt * 4 / 3 + 64`) kalan bütçeye sığdığı hâlde
+          # GERÇEK base64 uzunluğu bütçeyi aşabilir. Bu dalda bayrak
+          # işaretlenmezse neden "kodlanamadi" seçiliyor ve kullanıcı "görsel
+          # okunamadı" sanıp daha küçük bir görsel deniyordu; gerçek neden
+          # TOPLAM istek bütçesidir (daha az görsel gönderilmelidir).
+          butce_asiliyor <- TRUE
+        } else {
+          toplam_bayt <- toplam_bayt + url_bayt
+        }
       }
 
       if (!is.null(data_url)) {
@@ -212,9 +288,17 @@ mergen_vision_prepare_context_blocks <- function(uploaded_names,
           paste0("### ", fname, "\n[Görsel, analiz için isteğe eklendi.]")
         )
       } else {
+        # Vision ETKİN ama bütçe dolduysa neden farklıdır.
+        neden <- if (isTRUE(vision_active) && (isTRUE(butce_doldu) || isTRUE(butce_asiliyor))) {
+          "butce"
+        } else if (isTRUE(kodlama_denendi)) {
+          "kodlanamadi"
+        } else {
+          "vision_kapali"
+        }
         file_blocks <- c(
           file_blocks,
-          paste0("### ", fname, "\n", mergen_vision_unavailable_note(fname))
+          paste0("### ", fname, "\n", mergen_vision_unavailable_note(fname, neden))
         )
       }
       next

@@ -110,6 +110,14 @@ mergen_stream_dispatch_followups <- function(session,
   if (is.null(build_fn)) build_fn <- build_followup_suggestions
 
   later_fn(function() {
+    # Oturum kapandıysa bekleyen takip-soru işi çalıştırılmaz; aksi halde kapalı
+    # oturuma mesaj göndermeye çalışıp slot ve bağlamı boşuna tutuyordu.
+    oturum_kapali <- tryCatch(
+      !is.null(session) && is.function(session$isClosed) && isTRUE(session$isClosed()),
+      error = function(e) FALSE
+    )
+    if (isTRUE(oturum_kapali)) return(invisible(NULL))
+
     fu_admit <- mergen_followup_try_admit(plan)
     if (!isTRUE(fu_admit$run)) return(invisible(NULL))
     on.exit(mergen_send_message_release_slot(fu_admit$token), add = TRUE)

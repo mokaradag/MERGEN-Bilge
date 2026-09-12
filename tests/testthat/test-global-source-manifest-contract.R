@@ -225,10 +225,11 @@ test_that("Codex sertleştirme dosyaları opsiyonel işaretlidir", {
   opsiyonel <- env$source_manifest_optional_source_paths
 
   expect_true(is.character(opsiyonel))
+  expect_true("R/helpers_claude_code_codex_runtime_lock.R" %in% opsiyonel)
   expect_true("R/helpers_claude_code_codex_runtime_fixes.R" %in% opsiyonel)
   expect_true("R/helpers_claude_code_codex_output_fixes.R" %in% opsiyonel)
 
   # Opsiyonel liste dar tutulur; her yol manifestte de yer almalıdır.
   expect_true(all(opsiyonel %in% env$source_manifest_runtime_paths))
-  expect_lte(length(opsiyonel), 4L)
+  expect_lte(length(opsiyonel), 5L)
 })

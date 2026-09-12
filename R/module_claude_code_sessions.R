@@ -76,6 +76,9 @@ claudeCodeSessionsServer <- function(id,
 	    # "Tümü" gerçekten tüm durumları kapsamalı: aktif + arşivlenmiş.
 	    # "Arşivlenmiş" de arşiv satırlarını okuyabilmek için include_deleted ister.
 	    include_deleted = tum_gorunumu || arsiv_gorunumu,
+	    # Arşiv süzgeci SQL tarafında uygulanır; LIMIT sonrası R tarafı süzgeci
+	    # arşivlenmiş oturumların hiç görünmemesine yol açıyordu.
+	    only_deleted = arsiv_gorunumu,
 	    query = input$filter_query,
 	    status = if (tum_gorunumu || arsiv_gorunumu) NULL else durum,
 	    model = input$filter_model,

@@ -9,13 +9,28 @@
 # Bu değişken uygulamanın kimlik doğrulama modunu belirler:
 #   TRUE  -> Keycloak SSO aktif (sanal makine / üretim ortamı)
 #   FALSE -> Yerel geliştirme modu (sistem kullanıcı adı ile çalışır)
-SSO_ENABLED <- as.logical(Sys.getenv("SSO_ENABLED", "FALSE"))
-
-# Güvenlik kontrolü: geçersiz değer durumunda FALSE olarak ayarla
-if (is.na(SSO_ENABLED)) {
-  SSO_ENABLED <- FALSE
-  warning("SSO_ENABLED ortam değişkeni geçersiz. Yerel mod kullanılıyor.")
+# Toleranslı ayrıştırma (TRUE/1/yes/on, FALSE/0/no/off); tanınmayan değerde
+# KAPALI-BAŞARISIZ: kimlik doğrulama modu belirsizken sessizce yerel moda
+# düşülmez, açılış durdurulur. Açıkça boş bırakılan SSO_ENABLED= de geçersizdir;
+# aksi hâlde yerel mod (varsayılan ADMIN yetkisi) sessizce açılırdı. Windows
+# boş değeri değişkeni silerek sakladığı için (?Sys.setenv) orada bu durum
+# tanımsız değişkenle aynıdır ve belgelenen FALSE varsayılanına düşer.
+.sso_enabled_raw <- trimws(Sys.getenv("SSO_ENABLED", "FALSE"))
+.sso_enabled_key <- chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", .sso_enabled_raw)
+SSO_ENABLED <- if (.sso_enabled_key %in% c("true", "t", "1", "yes", "on")) {
+  TRUE
+} else if (.sso_enabled_key %in% c("false", "f", "0", "no", "off")) {
+  FALSE
+} else {
+  NA
 }
+if (is.na(SSO_ENABLED)) {
+  stop(sprintf(
+    "SSO_ENABLED ortam değişkeni geçersiz ('%s'). Kimlik doğrulama modu belirsizken uygulama başlatılmaz; TRUE veya FALSE verin.",
+    .sso_enabled_raw
+  ), call. = FALSE)
+}
+rm(.sso_enabled_raw, .sso_enabled_key)
 
 # ==============================================================================
 # KEYCLOAK YAPILANDIRMASI
@@ -97,7 +112,8 @@ if (nzchar(SSO_CONFIG$keycloak_base_url)) {
     paste0(issuer_base, "/protocol/openid-connect/certs")
   }
 } else if (isTRUE(SSO_ENABLED)) {
-  warning("SSO_ENABLED=TRUE ancak SSO_KEYCLOAK_URL tanımlanmamış! Keycloak çalışmayacak.")
+  # Issuer türetilemezse token doğrulaması sessizce zayıflar; KAPALI-BAŞARISIZ.
+  stop("SSO_ENABLED=TRUE ancak SSO_KEYCLOAK_URL tanımlanmamış; Keycloak issuer doğrulaması yapılamayacağı için uygulama başlatılmaz.", call. = FALSE)
 }
 
 # Issuer türetilemese bile açık bir JWKS override verilmişse onu kullan.

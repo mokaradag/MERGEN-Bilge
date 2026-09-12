@@ -663,82 +663,106 @@ test_that("search_file_in_folder ipucu skorunda taban klasör adındaki parçala
 })
 
 # ------------------------------------------------------------------------------
-# UNICODE ÜSTSİMGE ATIFLARI (Langflow istemi `<sup>` etiketini KALDIRDI)
-#
-# Karakterler `intToUtf8()` ile kurulur: kaynak dosya ASCII/CP1254 güvenli kalır
-# ve Windows konsol kod sayfası fixture'ı bozamaz.
+# REGRESYON (#715 geri alımı): Langflow istemleri açık `<sup>(n)</sup>` biçimine
+# geri döndü; tek dönüşüm yolu `.langflow_inline_sup_to_citation()`dır. Süreç
+# Yönetimi (process) ve Uygulama Uzmanı (app_expert) aynı
+# `mergen_langflow_finalize_answer()` yolunu paylaşır. Düz üstsimge KARAKTERLERİ
+# (U+00B9, U+00B2, ...) bilinçli olarak DÖNÜŞTÜRÜLMEZ; #715'in karakter tabanlı
+# dönüştürücüsü üretimde tıklanabilir atıf üretmediği için kaldırıldı.
 # ------------------------------------------------------------------------------
 
-.langflow_ust <- function(kod) intToUtf8(as.integer(kod))
-
-test_that("üstsimge KARAKTERİ atıfları [n]'e çevrilir", {
+test_that("<sup>(1)</sup> ve <sup>(2)</sup> atıfları Süreç Yönetimi ve Uygulama Uzmanı yanıtlarında [n] olur", {
+  # İmzalı Kaynakça işareti openssl gerektirir; yoksa test atlanır (aksi hâlde
+  # asgari bir ortamda alakasız doğrulama işleri kırmızıya düşerdi).
+  testthat::skip_if_not_installed("openssl")
   env <- .source_langflow_inline_env()
-  harita <- stats::setNames(as.character(1:4), as.character(1:4))
 
-  metin <- paste0("baslatilir", .langflow_ust(0x00B9), "; onay alinir",
-                  .langflow_ust(0x00B3), " ve rapor (EK-C)",
-                  .langflow_ust(0x2074), " hazirlanir.")
-  out <- env$.langflow_unicode_sup_to_citation(metin, harita)
+  # Süreç Yönetimi: kaynaklar metnin sonundaki düz "Kaynak:" bölümünden gelir.
+  surec <- paste0(
+    "Talep sistemde açılır.<sup>(1)</sup> Yönetici onayı alınır.<sup>(2)</sup>\n\n",
+    "Kaynak:\n",
+    "(1) Grup 1&&Kalite&&Talep Açma Prosedürü.docx\n",
+    "(2) Grup 1&&Kalite&&Onay Talimatı.pdf\n"
+  )
+  # Uygulama Uzmanı: kaynaklar yapısal JSON alanından gelir.
+  uygulama <- "Modül sistemde açılır.<sup>(1)</sup> Kayıt ekranından girilir.<sup>(2)</sup>"
+  uygulama_kaynaklar <- list(
+    list(title = "Uygulama Kılavuzu", path = "Uygulama Kılavuzu.pdf"),
+    list(title = "Kayıt Talimatı", path = "Kayıt Talimatı.docx")
+  )
 
-  expect_true(grepl("baslatilir[1];", out, fixed = TRUE))
-  expect_true(grepl("alinir[3]", out, fixed = TRUE))
-  expect_true(grepl("(EK-C)[4]", out, fixed = TRUE))
-})
+  ciktilar <- list(
+    process = env$mergen_langflow_finalize_answer(surec, list()),
+    app_expert = env$mergen_langflow_finalize_answer(uygulama, uygulama_kaynaklar)
+  )
 
-test_that("ÜS ifadeleri atıf sayılmaz", {
-  env <- .source_langflow_inline_env()
-  harita <- stats::setNames(as.character(1:6), as.character(1:6))
-
-  # Ölçü birimi ve sayı ardından gelen üstsimge bir üstür, atıf değildir.
-  for (metin in c(paste0("alan 25 m", .langflow_ust(0x00B2)),
-                  paste0("hacim 3 cm", .langflow_ust(0x00B3)),
-                  paste0("deger 10", .langflow_ust(0x2076)))) {
-    expect_identical(env$.langflow_unicode_sup_to_citation(metin, harita), metin)
+  for (arac in names(ciktilar)) {
+    out <- ciktilar[[arac]]
+    expect_true(grepl("açılır.[1]", out, fixed = TRUE), info = arac)
+    expect_true(grepl("[2]", out, fixed = TRUE), info = arac)
+    expect_false(grepl("<sup>", out, fixed = TRUE), info = arac)
+    expect_true(grepl("[KAYNAK 1]", out, fixed = TRUE), info = arac)
+    expect_true(grepl("[KAYNAK 2]", out, fixed = TRUE), info = arac)
   }
 })
 
-test_that("yan yana üstsimgeler KAYNAKÇA'ya sorularak çözülür", {
+test_that("<sup>(n)</sup> atıfları render'da tıklanabilir Kaynakça girişleriyle eşleşir", {
+  testthat::skip_if_not_installed("htmltools")
+  testthat::skip_if_not_installed("commonmark")
+  testthat::skip_if_not_installed("stringr")
+  testthat::skip_if_not_installed("openssl")
+
+  repo_root <- resolve_repo_root_for_tests()
   env <- .source_langflow_inline_env()
+  env$HTML <- htmltools::HTML
+  for (f in c("R/helpers_markdown_safety.R", "R/helpers_language.R", "R/helpers_messaging.R")) {
+    source(file.path(repo_root, f), encoding = "UTF-8", local = env)
+  }
 
-  metin <- paste0("dayanir", .langflow_ust(0x00B9), .langflow_ust(0x00B2), ".")
+  metin <- paste0(
+    "Talep açılır.<sup>(1)</sup> Onay alınır.<sup>(2)</sup>\n\n",
+    "Kaynak:\n",
+    "(1) Grup 1&&Kalite&&Talep Açma Prosedürü.docx\n",
+    "(2) Grup 1&&Kalite&&Onay Talimatı.pdf\n"
+  )
+  final_text <- env$mergen_langflow_finalize_answer(metin, list())
+  out <- env$process_message_content(final_text, "ai")
 
-  # 4 kaynak: "12" geçerli bir giriş DEĞİLDİR -> iki ayrı atıf.
-  dar <- stats::setNames(as.character(1:4), as.character(1:4))
-  expect_true(grepl("dayanir[1][2].", env$.langflow_unicode_sup_to_citation(metin, dar),
-                    fixed = TRUE))
-
-  # 12 kaynak: "12" geçerli bir giriştir -> TEK atıf.
-  genis <- stats::setNames(as.character(1:12), as.character(1:12))
-  expect_true(grepl("dayanir[12].", env$.langflow_unicode_sup_to_citation(metin, genis),
-                    fixed = TRUE))
+  # citation_handler.js `[n]` metnini `.citation-ref` üstsimgesine çevirir ve
+  # `.kaynakca-entry[data-entry=n]` girişine kaydırır; her iki uç da hazır olmalı.
+  expect_match(out$html, "[1]", fixed = TRUE)
+  expect_match(out$html, "[2]", fixed = TRUE)
+  expect_match(out$html, "data-entry='1'", fixed = TRUE)
+  expect_match(out$html, "data-entry='2'", fixed = TRUE)
+  expect_false(grepl("<sup>", out$html, fixed = TRUE))
 })
 
-test_that("KAYNAKÇA yokken üstsimge DEĞİŞMEZ", {
+test_that("düz üstsimge KARAKTERLERİ atıfa dönüştürülmez (#715 dönüştürücüsü kaldırıldı)", {
+  testthat::skip_if_not_installed("openssl")
   env <- .source_langflow_inline_env()
-  metin <- paste0("baslatilir", .langflow_ust(0x00B9), ".")
-
-  # Harita yok: doğrulanamayan atıf düşürülmez, metin korunur.
-  expect_identical(env$.langflow_unicode_sup_to_citation(metin, NULL), metin)
-  # Aralık dışı numara da etkisizdir.
-  expect_identical(
-    env$.langflow_unicode_sup_to_citation(paste0("x", .langflow_ust(0x2079)),
-                                          stats::setNames("1", "1")),
-    paste0("x", .langflow_ust(0x2079))
-  )
-})
-
-test_that("finalize üstsimge KARAKTERLERİNİ de tıklanabilir hâle getirir", {
-  env <- .source_langflow_inline_env()
-  kaynaklar <- list(
-    list(title = "Belge A", path = "belge_a.pdf"),
-    list(title = "Belge B", path = "Grup&&belge_b.pdf")
-  )
-  metin <- paste0("Ilk madde", .langflow_ust(0x00B9), " ve ikinci madde",
-                  .langflow_ust(0x00B2), ".")
+  kaynaklar <- list(list(title = "Belge A", path = "belge_a.pdf"))
+  bir <- intToUtf8(0x00B9L)
+  metin <- paste0("Ilk madde", bir, " ve devam.")
 
   out <- env$mergen_langflow_finalize_answer(metin, kaynaklar)
-  expect_true(grepl("Ilk madde[1]", out, fixed = TRUE))
-  expect_true(grepl("ikinci madde[2]", out, fixed = TRUE))
-  expect_true(grepl("[KAYNAK 1]", out, fixed = TRUE))
-  expect_true(grepl("[KAYNAK 2]", out, fixed = TRUE))
+  expect_true(grepl(paste0("Ilk madde", bir, " ve devam."), out, fixed = TRUE))
+  expect_false(grepl("[1]", out, fixed = TRUE))
+  expect_false(exists(".langflow_unicode_sup_to_citation", envir = env, inherits = FALSE))
+  expect_false(exists(".LANGFLOW_SUP_DIGITS", envir = env, inherits = FALSE))
+})
+
+test_that("Langflow işleyicisi ve citation_handler.js aynı [n] sözleşmesini paylaşır", {
+  repo_root <- resolve_repo_root_for_tests()
+  oku <- function(p) {
+    ham <- readBin(p, what = "raw", n = file.info(p)$size)
+    iconv(list(ham), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]]
+  }
+  handler <- oku(file.path(repo_root, "R", "server_handler_langflow.R"))
+  expect_true(grepl("mergen_langflow_finalize_answer(result$text, result$sources)",
+                    handler, fixed = TRUE, useBytes = TRUE))
+
+  js <- oku(file.path(repo_root, "www", "js", "citation_handler.js"))
+  expect_true(grepl("/\\[(\\d+)\\]/g", js, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("citation-ref", js, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl(".kaynakca-entry[data-entry=", js, fixed = TRUE, useBytes = TRUE))
 })

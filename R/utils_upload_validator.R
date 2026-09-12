@@ -57,6 +57,24 @@
   FALSE
 }
 
+# Windows ayrılmış aygıt adları (CON, PRN, AUX, NUL, COM1-9, LPT1-9): uzantı
+# olsa bile Windows'ta gerçek dosya oluşmaz; yükleme içeriği sessizce kaybolur.
+# Windows üst simge rakamlarını (U+00B9 / U+00B2 / U+00B3) da aygıt numarası
+# olarak çözer; COM<üst simge 1>.txt gibi adlar da ayrılmıştır.
+.upload_is_windows_reserved_name <- function(name) {
+  # `trimws()` yalnızca adın BAŞINDAKİ/SONUNDAKİ boşlukları kaldırır; uzantı
+  # atıldıktan sonra gövdede kalan boşluk (`NUL .txt` -> `"NUL "`) ayrılmış
+  # aygıt listesiyle eşleşmiyordu. Windows ad bileşeninin sonundaki noktalar da
+  # yok sayılır.
+  govde <- trimws(sub("\\..*$", "", trimws(as.character(name)[1])))
+  govde <- sub("\\.+$", "", govde)
+  govde <- chartr("abcdefghijklmnopqrstuvwxyz", "ABCDEFGHIJKLMNOPQRSTUVWXYZ", govde)
+  # Üst simge rakamlar sıradan rakama indirgenir (kaçış dizisi kullanılır:
+  # bu karakterlerin bir kısmının CP1254 karşılığı yoktur - CLAUDE.md 1G).
+  govde <- chartr("\u00B9\u00B2\u00B3", "123", govde)
+  govde %in% c("CON", "PRN", "AUX", "NUL", paste0("COM", 1:9), paste0("LPT", 1:9))
+}
+
 # Dosya adının UTF-8 geçerli olup olmadığını test eder. Geçersiz çok baytlı
 # dizi iconv tarafından NA olarak raporlanır.
 .upload_filename_is_utf8 <- function(name) {
@@ -120,6 +138,27 @@ validate_uploaded_file <- function(path,
     return(list(
       ok = FALSE,
       error = "Dosya adı güvenli değil: path karakterleri veya çıkış denemesi.",
+      code = "bad_filename"
+    ))
+  }
+
+  # Windows normal dosya adlarında `< > : " | ? *` karakterlerine izin vermez;
+  # doğrulama "başarılı" bildirdikten SONRA kalıcı kopyalama hata veriyordu.
+  # `:` de listededir: sürücü öneki denetimi yalnızca BAŞTAKİ `X:` biçimini
+  # yakaladığı için `rapor:final.txt` doğrulamadan geçiyordu (Windows'ta bu ad
+  # alternatif veri akışı sözdizimidir ve kopyalama hata verir).
+  if (grepl("[<>:\"|?*]", filename, perl = TRUE)) {
+    return(list(
+      ok = FALSE,
+      error = "Dosya adı Windows'ta geçersiz karakter içeriyor.",
+      code = "bad_filename"
+    ))
+  }
+
+  if (.upload_is_windows_reserved_name(filename)) {
+    return(list(
+      ok = FALSE,
+      error = "Dosya adı Windows'ta ayrılmış bir aygıt adı (CON, NUL, COM1 vb.).",
       code = "bad_filename"
     ))
   }

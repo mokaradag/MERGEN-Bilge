@@ -14,6 +14,95 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-09-04 Güvenlik sertleştirmesi ve kararlılık düzeltmeleri (PR #717)
+
+Geçmiş inceleme bulgularının (CodeRabbit + Aikido) kod üzerinde doğrulanarak
+kapatıldığı toplu düzeltme. Yanlış pozitifler değiştirilmedi; gerekçeleri PR
+gövdesinde listelenir.
+
+Kimlik ve yetkilendirme (kapalı-başarısız):
+
+- `resolveUserIdentity()` SSO etkinken claim yoksa artık yerel geliştirme
+  dalına DÜŞMEZ (o dal işletim sistemi hesabını `auth_level = "ADMIN"` ile
+  döndürüyordu). Kimlik `NONE` / `unauthenticated` olarak çözülür.
+- `serverInitUserSession()` `auth_ready` bayrağını yalnızca `uid > 0` iken
+  TRUE yapar; `uid = 0` ile hazır işaretlemek kullanıcı kapsamlı modülleri
+  yer tutucu kimlikle çalıştırıyordu.
+- Oturum ayarı merkezi Bilge Yolaç izin modunu yalnızca DARALTABİLİR; tehlikeli
+  izin modu açıkken bile `--disallowedTools` uygulanır.
+- Ortak Bilge Yolaç çalışma alanı yazma izni artık içerik erişimini
+  (`KatilimDurumu`) de denetler; odadan çıkarılan katılımcı rol satırı kaldığı
+  için yazmaya devam edebiliyordu.
+
+Yol/enjeksiyon sınırları:
+
+- MCP SQL ve grafik araçlarının DuckDB bağlantıları `enable_external_access = false`
+  + `lock_configuration = true` ile yalıtıldı; `read_csv_auto`, `read_parquet`,
+  `ATTACH`, `COPY ... TO` ve `INSTALL/LOAD` ile sunucu dosyası okuma/yazma kapandı.
+- Analiz dosyası tıklaması yalnızca depo `www/` ağacı veya kullanıcının kendi
+  yükleme klasörü içinde çözümlenir; mutlak yol artık olduğu gibi kullanılmaz.
+- Kaynak-tıklama `&&` ipucu parçaları ayırıcı/sürücü harfi/`..` içeriyorsa reddedilir.
+- Görsel silme kullanıcının kendi `user_images/<uid>` kökü ile sınırlandırıldı.
+- Hata bildirimi eki istemciden gelen `path` alanına güvenmez; silme ve kayıt
+  yalnızca `destek_uploads` kökündeki yollar için yapılır.
+- Bilge Yolaç UNC yol politikasında nokta segmentleri sadeleştirilir ve
+  `allow_system_temp` yalnızca Bilge Yolaç'ın kendi geçici alt ağaçlarını açar.
+- Dosya adı indirme kartındaki JS değişmezine JSON ile kaçırılır (saklı XSS).
+- Yönetici paneli `escape = FALSE` tablolarında kullanıcı/LLM kontrollü sütunlar
+  (`ModelUsed`, kullanıcı adı, etiketler, yorum, yanıt önizlemesi ve geri bildirim
+  serbest metinleri) tabloya girmeden önce `htmlEscape()` ile kaçırılır (saklı XSS).
+- Hata bildirimi eki için hedef dosya adı yalnızca taban addan üretilir; yol
+  ayırıcı veya `..` içeren tarayıcı adı `destek_uploads` kökünün dışına yazamaz.
+
+Bilge Yolaç kararlılığı:
+
+- `proc$wait()` boruları tüketmediği için 64KB boru tamponu dolduğunda CLI
+  kilitleniyor ve çalıştırma sahte "zaman aşımı" ile düşüyordu; stdout ve
+  stderr artık bekleme sırasında tüketilir.
+- Canlı akış satır birikimi O(n^2) idi ve sınırsız büyüyordu; liste tamponu ve
+  20.000 satır üst sınırı eklendi.
+- Süreç bittikten sonra basılan "Durdur" çalışan çıktı worker'ını sabote edip
+  ikinci bir kalıcı kayıt yazıyordu.
+- Çıktı işleme deadline'ı gerçekten iptal edilir ve `tracked_future_promise()`
+  senkron gönderim hatası yakalanır (çalıştırma 180 sn asılı kalmaz).
+- Eskimiş kilit dizini ve yetim lease dosyaları yaşa göre temizlenir; kalıcı
+  fail-closed ve sonsuz dolan disk durumları giderildi.
+- Süresi dolmuş SSO token'ı artık oturumu yetkili bırakmaz. Token doğrulaması
+  yalnızca `sso_jwt_token` girdisinde çalıştığı için, açık bir Shiny bağlantısı
+  `exp` geçtikten sonra da süresi dolmuş kullanıcının kimliği, yetkisi ve kişisel
+  API anahtarıyla çalışmaya devam ediyordu; periyodik gözlemci artık oturumu
+  kapalı-başarısız biçimde düşürür ve istemciye yeniden giriş bildirir. Aynı
+  gözlemci `observe(...) |> bindEvent(invalidateLater(...))` biçimiyle yazıldığı
+  için HİÇ tetiklenmiyordu (`invalidateLater()` `NULL` döndürür, `bindEvent()`
+  varsayılan `ignoreNULL = TRUE`); süre dolum uyarısı da bu nedenle hiç
+  gönderilmemişti. Klasik `invalidateLater()` biçimine alındı.
+- Bilge Yolaç yerel klasör yüklemesinde tarayıcıdan gelen göreli yol doğrulanır;
+  `..` / mutlak yol / sürücü harfi çalışma alanının dışına yazamaz. Hedefin SON
+  bileşeni de denetlenir: zaten çalışma alanı dışına işaret eden bir sembolik
+  bağlantı / Windows reparse point olarak duruyorsa `file.copy(overwrite = TRUE)`
+  bağlantıyı izleyip harici dosyayı ezebiliyordu.
+- Sesli Giriş (STT) parçaları için worker'a göndermeden ÖNCE boyut ve uçuştaki
+  iş sınırı uygulanır (`MERGEN_STT_MAX_CHUNK_MB`, `MERGEN_STT_MAX_PENDING_CHUNKS`).
+- `mergen_send_message_request_state()` reaktif okumaları `shiny::isolate()` ile
+  yapar. Promise geri çağrılarında reaktif BAĞLAM bulunmadığından çıplak okuma
+  hata fırlatıyor, `tryCatch` bunu yutup GEÇERLİ isteği "stale" sayıyordu; görsel
+  oluşturma / özetleme / Langflow / TTS akışı geri çağrıları erken dönüp
+  `#typing-animation-wrapper` sarmalayıcısını hiç kaldırmıyordu.
+- `mtime`/`size` karşılaştırması `all.equal()` toleransı yerine tam eşitlik
+  kullanır (1.7e9'luk mtime'da ~25 sn kör alan vardı).
+- Etiketsiz kod bloğunda AÇILIŞ ÇİTİ kod içeriğinde kalıyordu: dil etiketi yokken
+  `language` "auto" olur, `` ```auto `` deseni eşleşmez ve kod bloğunun ilk
+  satırında ``` görünürdü (kopyalanan kod bozuk çıkıyordu).
+- Bilge Savunması aktif koşu sorgusu da SQL tarafında tek satıra sınırlandı
+  (lehçeye göre `TOP (1)` / `LIMIT 1`); kontrol noktası sorgusuyla aynı biçim.
+
+Bakım-yapılabilirlik bölmeleri (davranış değişmez):
+
+- `R/helpers_claude_code_run_output_dispatch.R` ve
+  `R/helpers_db_bilge_savunmasi_plan.R` yeni dosyalar olarak ayrıldı; iki ana
+  dosya 796 satır / 24 fonksiyon küresel tavanına dayanmıştı. Skor 100/100,
+  800+ satır dosya sayısı 0 ve 25+ fonksiyon dosya sayısı 0 korunur.
+
 ### (Yayınlanmadı) 2026-08-18 Windows VM evidence gate yeniden doğrulaması
 
 - Windows VM'deki tam `tests/scripts/run_vm_evidence_gate.R` koşumu

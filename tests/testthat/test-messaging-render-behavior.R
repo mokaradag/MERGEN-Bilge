@@ -47,6 +47,36 @@ test_that("parse_ai_response_robustly tek kod çiti olduğunda kod bloğu üreti
   expect_true(grepl("x", sonuc$html, fixed = TRUE))
 })
 
+test_that("parse_ai_response_robustly etiketsiz kod bloğunda açılış çitini bırakmaz", {
+  skip_if_not_installed("commonmark")
+  skip_if_not_installed("shiny")
+
+  # Dil etiketi olmayan blokta `language` "auto" olur; bu bir DİL ADI DEĞİLDİR.
+  # "```auto" deseni eşleşmediği için açılış çiti kod içeriğinde kalıyor ve kod
+  # bloğunun ilk satırında ``` görünüyordu (kopyalanan kod bozuk oluyordu).
+  sonuc <- .msg_env$parse_ai_response_robustly("Önce metin\n```\nprint(1)\nx <- 2\n```\nSonra")
+
+  expect_true(isTRUE(sonuc$has_code))
+  expect_true(grepl("print(1)", sonuc$html, fixed = TRUE))
+  # Kod gövdesinde artık çit satırı kalmamalı. Ters tırnak HTML kaçışına
+  # girmediği için kaçırılmış biçim de ayrıca denetlenir.
+  expect_false(grepl("&#96;", sonuc$html, fixed = TRUE))
+  expect_false(grepl("```", sonuc$html, fixed = TRUE))
+})
+
+test_that("parse_ai_response_robustly etiketli kod bloğunun dilini korur", {
+  skip_if_not_installed("commonmark")
+  skip_if_not_installed("shiny")
+
+  sonuc <- .msg_env$parse_ai_response_robustly("```python\nx = 1\n```")
+  expect_true(isTRUE(sonuc$has_code))
+  expect_true(grepl("x = 1", sonuc$html, fixed = TRUE))
+  expect_false(grepl("```", sonuc$html, fixed = TRUE))
+  # Test adı DİL korumasını iddia eder; dil işareti gerçekten doğrulanmalıdır.
+  # Aksi hâlde parse_ai_response_robustly etiketi tamamen düşürse bile geçerdi.
+  expect_true(grepl("data-lang=\"python\"", sonuc$html, fixed = TRUE))
+})
+
 test_that("parse_ai_response_robustly literal \\n dizilerini gerçek satır sonuna çevirir", {
   skip_if_not_installed("commonmark")
 

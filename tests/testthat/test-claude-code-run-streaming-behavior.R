@@ -19,6 +19,10 @@
 .ccStreamEnv <- function() {
   env <- new.env(parent = globalenv())
   kok <- resolve_repo_root_for_tests()
+  # Turkce yorum: akis dosyasi bayt/satir butcesini paylasilan cikti tamponu
+  # katmanindan alir; TEK BASINA kosumda bu bagimliliklar globalenv'de yoktur.
+  source(file.path(kok, "R", "config_claude_code.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "helpers_claude_code_output_buffer.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "helpers_claude_code_streaming.R"), encoding = "UTF-8", local = env)
 
   env$CLAUDE_CODE_LOG_PREFIX <- "[CC]"

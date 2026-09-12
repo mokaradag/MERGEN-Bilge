@@ -152,19 +152,38 @@ testthat::test_that("mb_api_key_default_allowed yalnızca izin açık + kişisel
   Sys.unsetenv(c("MERGEN_ALLOW_DEFAULT_API_KEY", "MERGEN_REQUIRE_PERSONAL_API_KEY"))
 })
 
-testthat::test_that("mb_api_key_default_allowed as.logical sözleşmesine uyar ('1' truthy DEĞİL)", {
+testthat::test_that("mb_api_key_default_allowed ortak mergen_env_flag sözleşmesine uyar", {
   .apikeyid_source_once()
   Sys.unsetenv("MERGEN_REQUIRE_PERSONAL_API_KEY")
 
-  # as.logical('1') NA olduğu için '1' izinli sayılmaz.
+  # Ayrıştırma R/config_api.R ile ORTAKLAŞTIRILDI: iki taraf ayrı `as.logical()`
+  # yolları kullanırken "0" değeri KISITLAYICI bayrakta NA üretip zıt kararlar
+  # veriyordu. Ortak yardımcı "1"/"0" değerlerini TANIR.
   Sys.setenv(MERGEN_ALLOW_DEFAULT_API_KEY = "1")
+  testthat::expect_true(mb_api_key_default_allowed())
+
+  Sys.setenv(MERGEN_ALLOW_DEFAULT_API_KEY = "0")
   testthat::expect_false(mb_api_key_default_allowed())
 
-  # 'true' (küçük harf) as.logical ile TRUE'dur.
+  # 'true' (küçük harf) da TRUE'dur.
   Sys.setenv(MERGEN_ALLOW_DEFAULT_API_KEY = "true")
   testthat::expect_true(mb_api_key_default_allowed())
 
-  Sys.unsetenv("MERGEN_ALLOW_DEFAULT_API_KEY")
+  # TANINMAYAN değer: İZİN VEREN bayrak fail-safe (kapalı). Ortak yardımcı
+  # süreç başına bir kez uyarır; katı koşucu için bastırılır.
+  Sys.setenv(MERGEN_ALLOW_DEFAULT_API_KEY = "belki")
+  testthat::expect_false(suppressWarnings(mb_api_key_default_allowed()))
+
+  # TANINMAYAN değer: KISITLAYICI bayrak fail-closed (kişisel anahtar zorunlu).
+  Sys.setenv(MERGEN_ALLOW_DEFAULT_API_KEY = "true")
+  Sys.setenv(MERGEN_REQUIRE_PERSONAL_API_KEY = "belki")
+  testthat::expect_false(suppressWarnings(mb_api_key_default_allowed()))
+
+  # "0" KISITLAYICI bayrakta artık NA değildir: izin verilen yol açık kalır.
+  Sys.setenv(MERGEN_REQUIRE_PERSONAL_API_KEY = "0")
+  testthat::expect_true(mb_api_key_default_allowed())
+
+  Sys.unsetenv(c("MERGEN_ALLOW_DEFAULT_API_KEY", "MERGEN_REQUIRE_PERSONAL_API_KEY"))
 })
 
 # ------------------------------------------------------------------------------

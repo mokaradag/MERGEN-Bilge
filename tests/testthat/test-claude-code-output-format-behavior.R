@@ -40,6 +40,41 @@ test_that("format_claude_code_output Markdown'ı HTML'e çevirir ve Türkçe'yi 
   expect_true(grepl("<code>kod</code>", html, fixed = TRUE))
 })
 
+test_that("format_claude_code_output güvenli dönüştürücüde GFM uzantılarını korur", {
+  skip_if_not_installed("commonmark")
+
+  # Üretimde `render_safe_markdown_html()` yüklüdür; güvenli dal bu ortamda
+  # kurulur. Varsayılan uzantı kümesi yalnızca strikethrough/table olduğu için
+  # autolink ve tasklist AÇIKÇA verilmezse bağlantılar ve görev listeleri düz
+  # metne düşüyordu (eski doğrudan çağrı `extensions = TRUE` idi).
+  env <- new.env(parent = globalenv())
+  source(
+    file.path(resolve_repo_root_for_tests(), "R", "helpers_markdown_safety.R"),
+    encoding = "UTF-8", local = env
+  )
+  source(
+    file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code.R"),
+    encoding = "UTF-8", local = env
+  )
+
+  html <- env$format_claude_code_output(
+    "https://ornek.test/rapor
+
+- [x] tamamlandı
+- [ ] bekliyor
+
+~~eski~~"
+  )
+
+  expect_true(grepl("<a href=\"https://ornek.test/rapor\"", html, fixed = TRUE))
+  expect_true(grepl("type=\"checkbox\"", html, fixed = TRUE))
+  expect_true(grepl("<del>eski</del>", html, fixed = TRUE))
+
+  # Güvenlik sınırı korunur: ham HTML hâlâ kaçırılır.
+  kacis <- env$format_claude_code_output("<script>alert(1)</script>")
+  expect_false(grepl("<script>", kacis, fixed = TRUE))
+})
+
 # -----------------------------------------------------------------------------
 # get_thinking_message
 # -----------------------------------------------------------------------------

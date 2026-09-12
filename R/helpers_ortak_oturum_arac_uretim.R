@@ -259,20 +259,37 @@ oo_arac_mcp_uret <- function(gecmis, ayarlar, secili_belgeler_df,
   gecmis_kopya <- gecmis
   ayarlar_kopya <- ayarlar
 
-  prom <- tracked_future_promise(
-    task_fn = function() {
-      call_llm_worker(gecmis_kopya, ayarlar_kopya, api_endpoint, api_key_val)
-    },
-    task_type = "ortak_oturum_mcp_excel",
-    session_token = session_token,
-    globals = list(
-      call_llm_worker = call_llm_worker,
-      gecmis_kopya = gecmis_kopya,
-      ayarlar_kopya = ayarlar_kopya,
-      api_endpoint = api_endpoint,
-      api_key_val = api_key_val
-    )
+  # tracked_future_promise() gönderim anında SENKRON hata verebilir (worker
+  # planı yok, serileştirme hatası). Yakalanmazsa `bitir_fn` hiç çağrılmıyor ve
+  # ODA ÜRETİM KİLİDİ kalıcı olarak açık kalıyordu.
+  prom <- tryCatch(
+    tracked_future_promise(
+      task_fn = function() {
+        call_llm_worker(gecmis_kopya, ayarlar_kopya, api_endpoint, api_key_val)
+      },
+      task_type = "ortak_oturum_mcp_excel",
+      session_token = session_token,
+      globals = list(
+        call_llm_worker = call_llm_worker,
+        gecmis_kopya = gecmis_kopya,
+        ayarlar_kopya = ayarlar_kopya,
+        api_endpoint = api_endpoint,
+        api_key_val = api_key_val
+      )
+    ),
+    error = function(e) e
   )
+
+  if (inherits(prom, "condition")) {
+    if (exists("log_warn", mode = "function", inherits = TRUE)) {
+      tryCatch(
+        log_warn(paste("[ORTAK_MCP] Excel analizi gönderilemedi:", gsub("[{}]", "", conditionMessage(prom)))),
+        error = function(e2) NULL
+      )
+    }
+    bitir_fn(hata_metni = "Excel analizi başlatılamadı; lütfen tekrar deneyin.")
+    return(invisible(NULL))
+  }
 
   promises::then(
     prom,

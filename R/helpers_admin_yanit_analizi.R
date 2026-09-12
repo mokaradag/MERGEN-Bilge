@@ -173,7 +173,7 @@ admin_yanit_collect_data <- function(safe_query = admin_safe_query) {
       LEFT JOIN MB_Users u ON f.UserID = u.UserID
       LEFT JOIN MB_Messages m ON f.MessageID = m.MessageID
       WHERE f.FeedbackComment IS NOT NULL AND f.FeedbackComment <> ''
-      ORDER BY f.FeedbackTimestamp DESC
+      ORDER BY ISNULL(f.FeedbackTimestamp, m.MessageTimestamp) DESC
     "),
 
     kullanici_ozet = safe_query("
@@ -224,7 +224,11 @@ admin_yanit_collect_data <- function(safe_query = admin_safe_query) {
       FROM MB_Feedback f
       LEFT JOIN MB_Users u ON f.UserID = u.UserID
       LEFT JOIN MB_Messages m ON f.MessageID = m.MessageID
-      LEFT JOIN MB_Usage_Log ul ON m.MessageID = ul.MessageID
+      LEFT JOIN (
+        SELECT MessageID, MAX(ModelUsed) AS ModelUsed
+        FROM MB_Usage_Log
+        GROUP BY MessageID
+      ) ul ON m.MessageID = ul.MessageID
       ORDER BY ISNULL(f.FeedbackTimestamp, m.MessageTimestamp) DESC
     ")
   )
@@ -240,25 +244,19 @@ admin_yanit_tag_counts <- function(ham) {
     ))
   }
 
-  sonuc <- do.call(rbind, lapply(seq_len(nrow(ham)), function(i) {
-    raw_tags <- as.character(ham$FeedbackTags[i] %||% "")
-    if (is.na(raw_tags) || !nzchar(raw_tags)) {
-      return(NULL)
-    }
-
-    etiketler <- trimws(unlist(strsplit(raw_tags, ",")))
-    etiketler <- etiketler[!is.na(etiketler) & nzchar(etiketler)]
-
-    if (length(etiketler) == 0) {
-      return(NULL)
-    }
-
-    data.frame(
-      etiket = etiketler,
-      tip = ham$FeedbackType[i],
-      stringsAsFactors = FALSE
-    )
-  }))
+  # Vektörel ayrıştırma: satır başına data.frame + rbind tablo büyüdükçe
+  # her yenilemede doğrusal maliyet üretiyordu.
+  raw_tags <- as.character(ham$FeedbackTags)
+  raw_tags[is.na(raw_tags)] <- ""
+  parcalar <- strsplit(raw_tags, ",", fixed = TRUE)
+  etiket <- trimws(unlist(parcalar, use.names = FALSE))
+  tip <- rep(as.character(ham$FeedbackType), lengths(parcalar))
+  gecerli <- !is.na(etiket) & nzchar(etiket)
+  sonuc <- data.frame(
+    etiket = etiket[gecerli],
+    tip = tip[gecerli],
+    stringsAsFactors = FALSE
+  )
 
   if (is.null(sonuc) || nrow(sonuc) == 0) {
     return(data.frame(

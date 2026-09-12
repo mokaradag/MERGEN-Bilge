@@ -41,6 +41,18 @@ mb_api_key_get_feature_key_value <- function(session = NULL,
     error = function(e) NULL
   )
 
+  # require_auth: sahip çözülemediyse (kimlik henüz hazır değil) HİÇBİR anahtar
+  # verilmez; servis/eski yedek anahtarlar kimliksiz oturuma sızmamalı.
+  # `plan$owner` yalnızca NULL denetlenirse `list()` ya da kullanıcı adı
+  # taşımayan bir sahip nesnesi bu kapıdan geçiyor ve SSO hazır olmadan
+  # kurum/servis anahtarıyla işlem başlatılabiliyordu.
+  if (isTRUE(require_auth) &&
+      (!is.list(plan) ||
+       !is.list(plan$owner) ||
+       !nzchar(.mb_feature_api_key_scalar(plan$owner$username)))) {
+    return("")
+  }
+
   if (is.list(plan)) {
     plan_key <- .mb_feature_api_key_scalar(plan$key)
     plan_source <- .mb_feature_api_key_scalar(plan$source)

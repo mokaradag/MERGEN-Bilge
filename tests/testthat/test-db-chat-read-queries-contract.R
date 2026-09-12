@@ -145,3 +145,16 @@ test_that("geçmiş üreticisi CTE + placeholder + scoped uygular", {
   expect_true(grepl("c.ChatID IN (?)", un, fixed = TRUE))
   expect_false(grepl("AND c.UserID = ?", un, fixed = TRUE))
 })
+
+test_that("geçmiş eşleştirmesi MessageID eşitlik ayracını iki sınırda da uygular", {
+  sc <- .dbq("db_history_rows_query_sql")("?, ?", scoped = TRUE)
+
+  # Sıralama (MessageOrder, MessageID) ikilisidir. Sıkı `>` / `<` denetimleri
+  # eşit MessageOrder taşıyan satırları yanlış tarafta bırakıp soruyu geçmişten
+  # tamamen düşürüyordu.
+  expect_true(grepl("LEAD(MessageID) OVER (PARTITION BY ChatID", sc, fixed = TRUE))
+  expect_true(grepl("AS NextUserId", sc, fixed = TRUE))
+  expect_true(grepl("f.MessageOrder = u.MessageOrder AND f.MessageID > u.MessageID", sc, fixed = TRUE))
+  expect_true(grepl("f.MessageOrder = u.NextUserOrder AND f.MessageID < u.NextUserId", sc, fixed = TRUE))
+})
+

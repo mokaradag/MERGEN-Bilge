@@ -159,7 +159,8 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 
 - **Seam:** `kimlik_sso`
 - **Birincil R dosyaları:** `R/config_sso.R`, `R/helpers_sso.R`,
-  `R/helpers_sso_signature.R` (JWT imza/JWKS), `R/helpers_logout_url.R`,
+  `R/helpers_sso_jwks_cache.R` (JWKS getirme/önbellek),
+  `R/helpers_sso_signature.R` (JWT imza), `R/helpers_logout_url.R`,
   `R/server_init_user_session.R`, `R/helpers_user_session_identity.R`.
 - **UI/server modülleri:** `R/module_sso.R`, `www/js/sso_auth.js`, `www/css/sso_auth.css`.
   Bu seam ayrıca açılış/başlangıç ekranını da kapsar (`module_identity_startup`

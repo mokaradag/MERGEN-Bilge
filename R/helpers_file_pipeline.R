@@ -81,12 +81,25 @@ processAndSummarizeFile <- function(file_info,
   effective_user_id <- suppressWarnings(as.integer(session$userData$user_id %||% current_user_id %||% 0L))
   if (is.na(effective_user_id)) effective_user_id <- 0L
 
+  # KİMLİK ÇÖZÜLEMEZSE KALICILAŞTIRMA DURUR (kapalı-başarısız). Yalnızca log
+  # yazmak dosyayı `user_0` klasörüne kopyalıyor ve indeksi `user_id = 0` ile
+  # güncelliyordu; bu kova daha sonra kimliği doğrulanmış BAŞKA bir kullanıcıya
+  # da görünebiliyordu (IDOR).
   if (effective_user_id <= 0L) {
     cat(sprintf("[FILE PIPELINE] UYARI: effective_user_id=%d (session=%s, param=%s) - dosya: %s\n",
                 effective_user_id,
                 as.character(session$userData$user_id %||% "NULL"),
                 as.character(current_user_id %||% "NULL"),
                 file_info$name))
+    try(removeNotification(note_id), silent = TRUE)
+    if (isTRUE(show_toast)) {
+      showToast(
+        session,
+        "Kimlik doğrulama tamamlanmadan dosya kalıcı klasöre kaydedilemez.",
+        "warning"
+      )
+    }
+    return(invisible(NULL))
   }
 
   # Kalıcılaştırma TEK yerde yapılır. Dosya alım hattı (veya Dosya Yönetimi)
@@ -96,18 +109,50 @@ processAndSummarizeFile <- function(file_info,
   zaten_kalici <- isTRUE(already_persisted) || is_under_mcp_base(dest)
 
   if (!zaten_kalici) {
-    dest <- copy_to_mcp_base(list(name = file_info$name, datapath = file_info$datapath), effective_user_id)
+    # Kalıcılaştırma hatası bildirimi açık bırakmaz ve partiyi yarıda kesmez.
+    dest <- tryCatch(
+      copy_to_mcp_base(list(name = file_info$name, datapath = file_info$datapath), effective_user_id),
+      error = function(e) {
+        cat("[FILE PIPELINE] Kalıcılaştırma başarısız:", conditionMessage(e), "\n")
+        NULL
+      }
+    )
+    if (is.null(dest)) {
+      try(removeNotification(note_id), silent = TRUE)
+      if (isTRUE(show_toast)) {
+        showToast(session, paste(file_info$name, "kalıcı klasöre kaydedilemedi."), "error")
+      }
+      return(invisible(NULL))
+    }
 
-    tryCatch({
+    # İNDEKS KAYDI BAŞARISIZSA YÜKLEME DURUR. Hata yutulduğunda dosya oturum
+    # durumuna ekleniyor, arayüz "yüklendi" raporluyor ancak kalıcı indeks
+    # dosyayı HİÇ içermiyordu (yeniden başlatmada kayıp). Kopya da geri alınır:
+    # işlem ya tam başarılı olur ya da diskte iz bırakmaz.
+    indekslendi <- tryCatch({
       global_register_file(
         dest, file_info$name,
         user_id = effective_user_id,
         persist_under_mcp_base = TRUE
       )
       cat("[FILE PIPELINE] Dosya indekse kaydedildi:", file_info$name, "\n")
+      TRUE
     }, error = function(e) {
       cat("[FILE PIPELINE] İndeks kaydı başarısız:", conditionMessage(e), "\n")
+      FALSE
     })
+
+    if (!isTRUE(indekslendi)) {
+      # Yetim kopya yalnızca DOĞRULANMIŞ kullanıcı kökü altındaysa kaldırılır.
+      if (exists("fm_cleanup_orphan_upload", mode = "function", inherits = TRUE)) {
+        try(fm_cleanup_orphan_upload(dest), silent = TRUE)
+      }
+      try(removeNotification(note_id), silent = TRUE)
+      if (isTRUE(show_toast)) {
+        showToast(session, paste(file_info$name, "kalıcı indekse kaydedilemedi."), "error")
+      }
+      return(invisible(NULL))
+    }
   }
 
   # MCP araçları için oturum dosya kayıt defterini merkezi helper ile güncelle
@@ -118,8 +163,8 @@ processAndSummarizeFile <- function(file_info,
     list(name = file_info$name, datapath = dest, path = dest)
   )
 
-  # Snapshot settings once
-  settings_snapshot <- tryCatch(reactiveValuesToList(settings), error = function(e) list())
+  # Ayar anlık görüntüsü: reactiveValues VE düz liste için aynı yardımcı.
+  settings_snapshot <- tryCatch(as_llm_settings_list(settings), error = function(e) list())
   settings_snapshot$shiny_session <- NULL
 
   # Encoding-safe path for worker (UTF-8 dönüşümü)
@@ -269,6 +314,9 @@ handle_file_upload_batch <- function(uploads_df,
                 effective_user_id,
                 as.character(session$userData$user_id %||% "NULL"),
                 as.character(current_user_id %||% "NULL")))
+    # Kimlik hazır değilken yükleme kullanıcı kovasına yazılamaz; reddedilir.
+    showToast(session, "Kullanıcı kimliği henüz hazır değil; dosya yüklemesi reddedildi. Lütfen tekrar deneyin.", "error")
+    return(invisible(NULL))
   }
 
   # İzin verilen uzantılar tek kaynaktan (fm_normal_allowed_extensions) gelir;
@@ -286,7 +334,11 @@ handle_file_upload_batch <- function(uploads_df,
     existing_names = character(),
     user_id = effective_user_id,
     allowed_ext = allowed_exts,
-    max_size_mb = getOption("mergen.upload_max_mb", 25L),
+    max_size_mb = if (exists("fm_upload_limit_mb", mode = "function", inherits = TRUE)) {
+      fm_upload_limit_mb()
+    } else {
+      getOption("mergen.upload_max_mb", 25L)
+    },
     batch_id = batch_id
   )
 

@@ -73,19 +73,37 @@ test_that("release IDEMPOTENT'tir (cift birakma kapasiteyi bozmaz)", {
 })
 
 test_that("TTL ile kendi-iyilesme: birakilmayan slot TTL sonrasi geri toplanir", {
+  # TTL, LLM zaman asimi tabanini (max(180, timeout + 60)) KAPSAMAK zorundadir;
+  # bu yuzden acik deger tabanin uzerinde secilir.
   withr::with_envvar(c(MERGEN_MAX_CONCURRENT_LLM = "1",
-                       MERGEN_BACKPRESSURE_TTL_SECONDS = "10"), {
+                       MERGEN_LLM_TIMEOUT_SEC = "60",
+                       MERGEN_BACKPRESSURE_TTL_SECONDS = "300"), {
     mergen_backpressure_reset()
     s1 <- mergen_backpressure_try_acquire("llm", now = 2000)   # hic birakilmaz
     expect_true(s1$acquired)
 
     # TTL icinde -> reddedilir (slot hala canli).
-    s2 <- mergen_backpressure_try_acquire("llm", now = 2005)
+    s2 <- mergen_backpressure_try_acquire("llm", now = 2100)
     expect_false(s2$acquired)
 
     # TTL sonrasi -> bayat slot geri toplanir -> kabul.
-    s3 <- mergen_backpressure_try_acquire("llm", now = 2020)
+    s3 <- mergen_backpressure_try_acquire("llm", now = 2400)
     expect_true(s3$acquired)
+  })
+})
+
+# Regresyon: acik ama DUSUK TTL, canli uzun istegin slotunu geri topluyor ve
+# esizamanlilik ust siniri asiliyordu.
+test_that("acik TTL degeri LLM zaman asimi tabanina kelepcelenir", {
+  withr::with_envvar(c(MERGEN_LLM_TIMEOUT_SEC = "1800",
+                       MERGEN_BACKPRESSURE_TTL_SECONDS = "180"), {
+    expect_identical(mergen_backpressure_ttl_sec(), 1860)
+  })
+
+  # Taban ustundeki acik deger oldugu gibi korunur.
+  withr::with_envvar(c(MERGEN_LLM_TIMEOUT_SEC = "60",
+                       MERGEN_BACKPRESSURE_TTL_SECONDS = "900"), {
+    expect_identical(mergen_backpressure_ttl_sec(), 900)
   })
 })
 

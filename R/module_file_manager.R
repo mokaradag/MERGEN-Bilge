@@ -298,16 +298,15 @@ moduleServer(id, function(input, output, session) {
     remove_file_by_name <- file_action_helpers$remove_file_by_name
     process_uploaded_file <- file_action_helpers$process_uploaded_file
 
-    # Toplu yükleme arka planda çalıştığı için oturum/iptal koruması gerekir:
-    # kapanan oturumda UI'ya dokunulmaz, "Tümünü Temizle" sonrası uçuştaki
-    # partinin kopyaladığı dosyalar temizlenir ve indekse yazılmaz.
+    # Toplu yükleme arka planda çalışır: kapanan oturumda UI'ya dokunulmaz,
+    # "Tümünü Temizle" sonrası uçuştaki partinin kopyaları temizlenir.
     upload_runtime <- fm_create_upload_runtime(
       session = session,
       process_uploaded_file = process_uploaded_file,
       message_data = message_data,
       message_trigger = message_trigger,
       files_added_to_context = files_added_to_context,
-      fm_debug = fm_debug
+      fm_debug = fm_debug, get_user_upload_dir = get_user_upload_dir, rollback_uploaded_file = fm_make_upload_rollback(unregister_session_file, remove_file_by_name)
     )
 
 	# Dynamic downloads
@@ -418,14 +417,17 @@ moduleServer(id, function(input, output, session) {
     
 	  # 1) Fiziksel dosyayı ve kalıcı indeks kaydını helper üzerinden temizle.
       uid <- isolate(module_user_id_chr())
-      fm_delete_persisted_file_artifacts(
+      silme <- fm_delete_persisted_file_artifacts(
         info = info,
         uid = uid,
         get_user_upload_dir = get_user_upload_dir,
         fm_debug = fm_debug
       )
-    
-      # 2) Also drop any local temp we might have created (we no longer create one, but keep for safety)
+      if (isTRUE(silme$delete_failed)) {  # fiziksel silme başarısız: tablo/indeks korunur
+        showToast(session, paste("Dosya silinemedi:", info$name), "error"); return(invisible(NULL))
+      }
+
+      # 2) Kalan yerel geçici kopyayı da düşür.
       if (!is.null(session$userData$temp_files[[file_id]])) {
         try(unlink(session$userData$temp_files[[file_id]]), silent = TRUE)
         session$userData$temp_files[[file_id]] <- NULL
@@ -470,13 +472,15 @@ moduleServer(id, function(input, output, session) {
     observeEvent(input$confirm_clear_files, {
       removeModal()
 
-      # 0) Uçuştaki toplu yükleme partisi bu temizliği ezmesin: kopyaları
-      # temizlenir, indekse yazılmaz ve tabloya satır eklemez.
+      # 0) Uçuştaki toplu yükleme partisi bu temizliği ezmesin.
       file_ingestion_cancel_controller(upload_runtime$controller)
 
-      # 1) Physically delete everything in the user's persisted bucket and clear index
+      # 1) Kalıcı kova + indeks temizliği; hata bastırılırsa durum korunur.
       uid <- isolate(module_user_id_chr())
-      if (!is.null(uid)) try(mergen_clear_user_bucket(uid), silent = TRUE)
+      if (!isTRUE(fm_clear_user_bucket_safely(uid, fm_debug))) {
+        showToast(session, "Dosyalar kalıcı klasörden temizlenemedi; lütfen tekrar deneyin.", "error")
+        return(invisible(NULL))
+      }
     
       # 2) Notify parent that all files are gone
       for (file_id in names(module_values$file_contents)) file_removed(module_values$file_contents[[file_id]])
@@ -489,7 +493,6 @@ moduleServer(id, function(input, output, session) {
       session$userData$temp_files <- list()
       ensure_session_registry()
       session$userData$current_session_files <- list()
-    
       all_files_cleared(TRUE)
       showToast(session, "Tüm dosyalar (diskten de) temizlendi.", "warning")
 	  session$sendCustomMessage('resetBulkUploadCaption', list())

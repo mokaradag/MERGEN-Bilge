@@ -179,6 +179,59 @@ openAnyPreview <- function(file_info, session, filePreview) {
   invisible(TRUE)
 }
 
+# İstemciden gelen '&&' ipucu parçalarının güvenli olup olmadığını denetler.
+# '..', '.', mutlak yol, sürücü harfi ve yol ayırıcı içeren parçalar reddedilir.
+.preview_hint_parts_safe <- function(parts) {
+  parts <- as.character(parts %||% character(0))
+  if (!length(parts)) return(FALSE)
+
+  all(vapply(parts, function(p) {
+    p <- trimws(as.character(p)[1])
+    if (is.na(p) || !nzchar(p)) return(FALSE)
+    if (p %in% c(".", "..")) return(FALSE)
+    if (grepl("[/\\\\]", p, perl = TRUE)) return(FALSE)
+    if (grepl("^[A-Za-z]:", p, perl = TRUE)) return(FALSE)
+    TRUE
+  }, logical(1)))
+}
+
+# Çözülen adayın gerçekten kökün İÇİNDE kaldığını doğrular.
+# Aday ve kök AYNI normalleştiriciden geçmelidir. `handle_source_file_click()`
+# (b2) yolunu ham `api_config$local_model_paths` değerinden kurar; iki tarafı
+# ayrı `normalizePath()` çağrılarıyla çözmek Windows'ta UNC ile eşlenmiş sürücü
+# gösterimlerini farklı döndürebiliyor ve GEÇERLİ bir isabet kapsama denetiminde
+# düşüyordu. `normalize_mcp_path()` UNC biçimini korur.
+.preview_path_inside <- function(path, root) {
+  norm <- function(x) {
+    ham <- as.character(x)[1]
+    x <- if (exists("normalize_mcp_path", mode = "function", inherits = TRUE)) {
+      tryCatch(normalize_mcp_path(ham), error = function(e) ham)
+    } else {
+      tryCatch(
+        normalizePath(ham, winslash = "/", mustWork = FALSE),
+        error = function(e) ham
+      )
+    }
+    x <- gsub("\\", "/", as.character(x)[1], fixed = TRUE)
+    sub("/+$", "", x, perl = TRUE)
+  }
+
+  hedef <- norm(path)
+  kok <- norm(root)
+  if (!nzchar(hedef) || !nzchar(kok)) return(FALSE)
+
+  # normalizePath var olmayan yollarda '..' segmentlerini sadeleştirmez;
+  # sadeleşmemiş geçiş segmenti kalan yol reddedilir.
+  if (grepl("(^|/)\\.\\.(/|$)", hedef, perl = TRUE)) return(FALSE)
+
+  if (.Platform$OS.type == "windows") {
+    hedef <- tolower(hedef)
+    kok <- tolower(kok)
+  }
+
+  identical(hedef, kok) || startsWith(hedef, paste0(kok, "/"))
+}
+
 handle_source_file_click <- function(event_payload, settings_data, api_config, session, filePreview) {
   # Ham tıklama değeri (Kaynakça'daki data-filename olabilir; '&&' ile ipucu içerebilir)
   raw_hint <- if (is.character(event_payload)) event_payload[1] else (event_payload$filename %||% event_payload$name %||% "")
@@ -274,13 +327,16 @@ handle_source_file_click <- function(event_payload, settings_data, api_config, s
         break
       }
 
-      # 2) İpuçları direkt göreli yol oluşturuyorsa onu dene
-      if (length(rel_parts) > 0) {
+      # 2) İpuçları direkt göreli yol oluşturuyorsa onu dene.
+      #    İpucu parçaları İSTEMCİDEN gelir: doğrulanmadan birleştirildiğinde
+      #    '..', mutlak yol veya sürücü harfi ile model baz klasörünün dışına
+      #    çıkılabiliyordu. Parçalar süzülür ve sonuç kök içinde doğrulanır.
+      if (length(rel_parts) > 0 && .preview_hint_parts_safe(c(rel_parts, last_part))) {
         candidate_rel <- tryCatch(
           normalizePath(do.call(file.path, as.list(c(base_dir, rel_parts, last_part))), winslash = "/", mustWork = FALSE),
           error = function(e) do.call(file.path, as.list(c(base_dir, rel_parts, last_part)))
         )
-        if (path_exists_relaxed(candidate_rel)) {
+        if (.preview_path_inside(candidate_rel, base_dir) && path_exists_relaxed(candidate_rel)) {
           found_path <- candidate_rel
           log_info("[SRC_CLICK] (b2) ipucu ile direkt bulundu -> {found_path}")
           break

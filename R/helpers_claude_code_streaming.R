@@ -124,6 +124,22 @@ run_claude_code_streaming <- function(prompt,
     # Sonuç biriktirici
     tum_cikti <- ""
     tum_satirlar <- c()
+    # Satırlar ve stderr parçaları liste tamponunda toplanır; metin yalnızca
+    # gerekli olduğunda birleştirilir (O(n) birikim).
+    # Satır tamponu ORTAM içinde tutulur: bütçe uygulaması (satır sayısı +
+    # toplam stdout baytı) paylaşılan `cc_stream_line_budget_add()` ile yapılır.
+    # Doğrudan biriktirme, ayrıntılı CLI çıktısında worker belleğini tüketiyordu.
+    satir_env <- new.env(parent = emptyenv())
+    satir_env$satir_tamponu <- list()
+    satir_env$stdout_bayt <- 0
+    # stderr TANI amaçlıdır; boru boşaltılmaya devam eder ama SAKLANAN metin
+    # sabit bir bayt bütçesiyle sınırlanır (paylaşılan bayt bütçeli tampon).
+    stderr_tampon <- cc_output_buffer_new(CC_STREAM_MAX_STDERR_BYTES)
+    birikmis_cikti <- function() {
+      satirlar <- as.character(unlist(satir_env$satir_tamponu, use.names = FALSE))
+      if (!length(satirlar)) return("")
+      paste0(paste0(satirlar, collapse = "\n"), "\n")
+    }
     son_zaman <- Sys.time()
     zaman_asimi_ms <- timeout_sec * 1000
 
@@ -151,7 +167,7 @@ run_claude_code_streaming <- function(prompt,
         gecen <- as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
         log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Akış kullanıcı tarafından durduruldu"))
         return(list(
-          success = FALSE, output = tum_cikti,
+          success = FALSE, output = birikmis_cikti(),
           error = "Çalıştırma kullanıcı tarafından durduruldu.",
           duration = round(gecen, 1), tool_uses = list(), session_id = NULL,
           stopped = TRUE
@@ -164,7 +180,7 @@ run_claude_code_streaming <- function(prompt,
         tryCatch(proc$kill(), error = function(e) NULL)
         log_error(paste(CLAUDE_CODE_LOG_PREFIX, "Akış zaman aşımı:", timeout_sec, "sn"))
         return(list(
-          success = FALSE, output = tum_cikti,
+          success = FALSE, output = birikmis_cikti(),
           error = paste0("İşlem zaman aşımına uğradı (", timeout_sec, " saniye)."),
           duration = round(gecen_sure, 1), tool_uses = list(), session_id = NULL
         ))
@@ -175,13 +191,24 @@ run_claude_code_streaming <- function(prompt,
       proc$poll_io(200)
       yeni_veri <- tryCatch(ensure_utf8(proc$read_output_lines()), error = function(e) character(0))
 
+      # stderr borusunu da her turda boşalt: dolan stderr tamponu çocuk süreci
+      # yazarken kilitler ve akış sahte zaman aşımına düşer. Boşaltma her zaman
+      # yapılır; yalnızca SAKLAMA bütçeyle sınırlanır.
+      cc_output_buffer_add(
+        stderr_tampon,
+        tryCatch(proc$read_error(), error = function(e) "")
+      )
+
       if (length(yeni_veri) > 0) {
         for (satir in yeni_veri) {
           satir <- trimws(satir)
           if (!nzchar(satir)) next
 
-          tum_satirlar <- c(tum_satirlar, satir)
-          tum_cikti <- paste0(tum_cikti, satir, "\n")
+          # Liste tamponu: her satırda vektör kopyalayan c()/paste0() birikimi
+          # uzun akışlarda O(n^2) maliyet üretiyordu. Bütçe yalnızca SAKLANAN
+          # kopyayı sınırlar; satırı atlamak uzun akışlarda metni, araç
+          # olaylarını ve son `result` kaydını düşürüyordu.
+          cc_stream_line_budget_add(satir_env, satir)
 
           # Parçayı ayrıştır ve geri çağırmaya ilet
           if (!is.null(on_chunk)) {
@@ -208,8 +235,7 @@ run_claude_code_streaming <- function(prompt,
       for (satir in kalan_satirlar) {
         satir <- trimws(satir)
         if (!nzchar(satir)) next
-        tum_satirlar <- c(tum_satirlar, satir)
-        tum_cikti <- paste0(tum_cikti, satir, "\n")
+        cc_stream_line_budget_add(satir_env, satir)
 
         if (!is.null(on_chunk)) {
           parca <- parse_streaming_chunk(satir)
@@ -220,7 +246,14 @@ run_claude_code_streaming <- function(prompt,
       }
     }
 
-    stderr_metin <- tryCatch(ensure_utf8(proc$read_all_error()), error = function(e) "")
+    tum_satirlar <- as.character(unlist(satir_env$satir_tamponu, use.names = FALSE))
+    tum_cikti <- birikmis_cikti()
+
+    cc_output_buffer_add(
+      stderr_tampon,
+      tryCatch(proc$read_all_error(), error = function(e) "")
+    )
+    stderr_metin <- ensure_utf8(cc_output_buffer_text(stderr_tampon))
     cikis_kodu <- proc$get_exit_status()
     sure <- as.numeric(difftime(Sys.time(), baslangic, units = "secs"))
 

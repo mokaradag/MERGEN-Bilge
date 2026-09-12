@@ -206,8 +206,9 @@ session_runtime_store_reset <- function(session) {
 }
 
 # Bir Shiny oturumu sonlandığında tetiklenecek temizlik setini tek çağrı ile
-# kaydeder. Çağrı idempotent değildir: aynı oturum için iki kez çağrılırsa
-# iki callback birikir. Modüller bu yüzden oturum başına bir kez çağırmalı.
+# kaydeder. Oturum başına TEK bir onSessionEnded callback'i kaydedilir; sonraki
+# çağrıların extra_cleanup fonksiyonları oturum defterine EKLENİR ve aynı
+# callback tarafından çalıştırılır (sessizce düşürülmez).
 # Ek callback'ler extra_cleanup = list(function() {...}, function() {...})
 # olarak geçilebilir.
 register_session_cleanup_on_end <- function(session, extra_cleanup = list()) {
@@ -230,31 +231,61 @@ register_session_cleanup_on_end <- function(session, extra_cleanup = list()) {
     session$userData <- new.env(parent = emptyenv())
   }
 
+  # Ek temizlik fonksiyonları oturum defterinde birikir; tek callback hepsini çalıştırır.
+  # Tek fonksiyon geçilirse as.list() formals/body listesi üretir ve Filter()
+  # bunları eler; temizlik defteri boş kalıyordu. Fonksiyon önce sarmalanır.
+  girdi <- extra_cleanup %||% list()
+  if (is.function(girdi)) girdi <- list(girdi)
+  yeni_fnler <- Filter(is.function, as.list(girdi))
+  onceki_defter <- session$userData$mergen_session_cleanup_extra %||% list()
+
+  # AYNI temizlik fonksiyonu defterde İKİ KEZ birikmemelidir: tekrar çağrı
+  # (modül yeniden bağlama / Ctrl+Enter / testServer) fonksiyonu yeniden
+  # ekliyor, kayıt zaten yapıldığı için erken dönülüyor ve oturum kapanışında
+  # aynı temizlik birden çok kez çalışıyordu.
+  yeni_fnler <- Filter(
+    function(fn) !any(vapply(onceki_defter, identical, logical(1), fn)),
+    yeni_fnler
+  )
+
+  session$userData$mergen_session_cleanup_extra <- c(onceki_defter, yeni_fnler)
+
   if (isTRUE(session$userData$mergen_session_cleanup_registered)) {
     return(invisible(TRUE))
   }
 
-  session$userData$mergen_session_cleanup_registered <- TRUE
-
   session_token <- session$token %||% NA_character_
+  user_data <- session$userData
 
-  session$onSessionEnded(function() {
+  # Kayıt SENKRON hata verirse defter ÖNCEKİ hâline döndürülür: çağıran aynı
+  # fonksiyonla yeniden denediğinde defter onu iki kez taşıyor ve başarılı
+  # denemede aynı temizlik İKİ KEZ çalışıyordu.
+  kayit <- try(session$onSessionEnded(function() {
     # 1) Async görev defterini bu oturuma ait kayıtlardan temizle.
     if (exists("cleanup_worker_tasks_for_session",
                envir = globalenv(), inherits = FALSE)) {
       try(cleanup_worker_tasks_for_session(session_token), silent = TRUE)
     }
 
-    # 2) Çağıranın özel temizlik fonksiyonlarını çalıştır. Herhangi biri
+    # 2) Defterdeki tüm özel temizlik fonksiyonlarını çalıştır. Herhangi biri
     #    hata verirse diğerleri yine de çalışır; üretimde sessiz log'la.
-    if (length(extra_cleanup) > 0L) {
-      for (fn in extra_cleanup) {
-        if (is.function(fn)) {
-          try(fn(), silent = TRUE)
-        }
+    fnler <- tryCatch(user_data$mergen_session_cleanup_extra %||% list(), error = function(e) list())
+    for (fn in fnler) {
+      if (is.function(fn)) {
+        try(fn(), silent = TRUE)
       }
     }
-  })
+  }), silent = TRUE)
+
+  if (inherits(kayit, "try-error")) {
+    session$userData$mergen_session_cleanup_extra <- onceki_defter
+    stop(attr(kayit, "condition"))
+  }
+
+  # Bayrak KAYITTAN SONRA işaretlenir: onSessionEnded() senkron hata verirse
+  # bayrak TRUE kalıyor, sonraki çağrılar erken dönüyor ve ne callback ne de
+  # cleanup_worker_tasks_for_session() hiç çalışmıyordu.
+  session$userData$mergen_session_cleanup_registered <- TRUE
 
   invisible(TRUE)
 }

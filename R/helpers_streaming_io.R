@@ -76,23 +76,93 @@ mergen_stream_read_state_new <- function() {
   processed <- suppressWarnings(as.integer(state$processed_line_count %||% 0L))
   if (length(processed) == 0L || is.na(processed) || processed < 0L) processed <- 0L
 
-  all_lines <- suppressWarnings(tryCatch(
-    readLines(path, warn = FALSE, encoding = "UTF-8"),
-    error = function(e) tryCatch(
-      readLines(path, warn = FALSE),
-      error = function(e2) character(0)
-    )
-  ))
+  # Offset GERÇEKTEN okunan bayt sayısından türetilir. file.size() eşzamanlı
+  # yazan worker'da bayat-düşük kalabildiği için okuma öncesi boyutu offset
+  # yapmak, sonraki turda aynı baytları İKİNCİ kez yayımlıyordu; okuma sonrası
+  # boyut ise hiç yayımlanmamış baytları atlatıyordu.
+  ham <- raw(0)
+  con <- tryCatch(file(path, open = "rb"), error = function(e) NULL)
+  if (!is.null(con)) {
+    on.exit(try(close(con), silent = TRUE), add = TRUE)
+    # Parçalar listede toplanır; `c()` ile büyütmek O(n^2) kopyalama üretirdi.
+    parcalar <- list()
+    # OKUMA HATASI EOF DEĞİLDİR: `raw(0)` döndürüp döngüyü kırmak, dosyanın
+    # ORTASINDA oluşan geçici bir okuma hatasında (Windows/UNC'de eşzamanlı
+    # yazılan dosya) kısmi içeriği tam sanıyordu. `offset` ve
+    # `processed_line_count` daha önce tüketilen değerin ALTINA geri sarılıyor,
+    # sonraki yoklama aynı satırları ikinci kez yayımlıyordu.
+    okuma_hatasi <- FALSE
+    repeat {
+      parca <- tryCatch(
+        readBin(con, what = "raw", n = 1048576L),
+        error = function(e) {
+          okuma_hatasi <<- TRUE
+          raw(0)
+        }
+      )
+      if (!length(parca)) break
+      parcalar[[length(parcalar) + 1L]] <- parca
+    }
+    if (!okuma_hatasi && length(parcalar)) ham <- unlist(parcalar, use.names = FALSE)
+  }
+
+  if (!length(ham)) {
+    # Ham okuma yapılamadı (bağlantı açılamadı / readBin hata verdi) ya da dosya
+    # boş. Önceki durum OLDUĞU GİBİ korunur: `processed_line_count` sıfırlanırsa
+    # bir sonraki başarılı fallback okuması zaten yayımlanmış satırları İKİNCİ
+    # kez gönderiyor ve `accumulated_text` tekrarlanıyordu.
+    korunan_offset <- suppressWarnings(as.numeric(state$offset %||% 0))
+    if (length(korunan_offset) != 1L || !is.finite(korunan_offset) || korunan_offset < 0) {
+      korunan_offset <- 0
+    }
+    korunan_boyut <- suppressWarnings(as.numeric(state$last_size %||% 0))
+    if (length(korunan_boyut) != 1L || !is.finite(korunan_boyut) || korunan_boyut < 0) {
+      korunan_boyut <- 0
+    }
+    return(list(
+      lines = character(0),
+      state = list(
+        offset = korunan_offset,
+        partial = if (is.raw(state$partial)) state$partial else raw(0),
+        last_size = korunan_boyut,
+        processed_line_count = processed
+      ),
+      used_fallback = TRUE,
+      read_bytes = 0
+    ))
+  }
+
+  size <- length(ham)
+  # YALNIZCA LF ile sonlanan satırlar yayımlanır. Yarım kalan son satır ham
+  # bayt olarak `partial` içinde tutulur; aksi hâlde tamamlanmamış bir SSE
+  # olayı satır sanılıp yayımlanıyor, tamamlandığında `processed` onu zaten
+  # işlenmiş saydığı için kalan yarısı hiç görünmüyordu.
+  son_lf <- 0L
+  lf_konumlari <- which(ham == as.raw(0x0A))
+  if (length(lf_konumlari)) son_lf <- lf_konumlari[length(lf_konumlari)]
+
+  if (son_lf > 0L) {
+    metin <- .mergen_stream_decode_raw_utf8(ham[seq_len(son_lf)])
+    metin <- gsub("\r\n", "\n", metin, fixed = TRUE)
+    metin <- sub("\n$", "", metin)
+    all_lines <- if (nzchar(metin)) strsplit(metin, "\n", fixed = TRUE)[[1]] else character(0)
+  } else {
+    all_lines <- character(0)
+  }
+  kalan <- if (son_lf < length(ham)) ham[(son_lf + 1L):length(ham)] else raw(0)
 
   total <- length(all_lines)
+  # `processed > total` (dosya kısaldı) durumunda imleç BİLİNÇLİ olarak
+  # sıfırlanmaz. Akış dosyası istek başına benzersizdir
+  # (`tempfile("llm_sse_<req_id>_")`) ve her istek TAZE bir okuma durumuyla
+  # başlar; aynı durumla farklı bir akışa geçiş (rotasyon) OLUŞAMAZ. Bu yüzden
+  # kısalma yalnızca KESİLME anlamına gelir ve baştan okumak, zaten yayımlanmış
+  # deltaları kullanıcıya ikinci kez göndermek olurdu.
   new_lines <- if (total > processed) all_lines[seq.int(processed + 1L, total)] else character(0)
-
-  size <- file.size(path)
-  if (is.na(size)) size <- 0
 
   list(
     lines = new_lines,
-    state = list(offset = size, partial = raw(0), last_size = size, processed_line_count = total),
+    state = list(offset = size, partial = kalan, last_size = size, processed_line_count = total),
     used_fallback = TRUE,
     read_bytes = as.numeric(size)
   )

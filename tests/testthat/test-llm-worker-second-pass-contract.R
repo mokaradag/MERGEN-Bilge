@@ -46,7 +46,12 @@ repo_root_llm_worker_second_pass <- .find_repo_root_llm_worker_second_pass()
 })
 names(.second_pass_old_bindings) <- .second_pass_stub_names
 
-testthat::teardown({
+# `testthat::teardown()` 3. sürümde kullanımdan kaldırılmıştır (uyarı üretir ve
+# katı koşucuyu düşürür). `teardown_env()` ise TÜM koşumun sonuna ertelenir;
+# stub'lar bu dosyadan SONRAKİ dosyalara sızardı. Geri yükleme bu yüzden dosya
+# sonunda ÜST DÜZEY çağrı olarak yapılır: testthat dosyayı yukarıdan aşağıya
+# source ettiği için bu çağrı dosyadaki tüm test_that bloklarından sonra çalışır.
+.second_pass_restore_globals <- function() {
   for (nm in names(.second_pass_old_bindings)) {
     old_binding <- .second_pass_old_bindings[[nm]]
 
@@ -56,64 +61,74 @@ testthat::teardown({
       rm(list = nm, envir = globalenv())
     }
   }
+  invisible(NULL)
+}
+
+# Kurulum tek bir hata kapsamında yapılır: aşağıdaki `source()` çağrılarından
+# biri düşerse dosya sonundaki üst düzey geri yükleme HİÇ çalışmaz ve stub'lar
+# aynı oturumdaki sonraki test dosyalarına sızardı. Hata durumunda küresel
+# bağlamalar geri alınır ve hata yeniden fırlatılır.
+tryCatch({
+  assign(
+    "%||%",
+    function(x, y) if (is.null(x)) y else x,
+    envir = globalenv()
+  )
+
+  assign(
+    "log_info",
+    function(...) invisible(NULL),
+    envir = globalenv()
+  )
+
+  assign(
+    "log_warn",
+    function(...) invisible(NULL),
+    envir = globalenv()
+  )
+
+  assign(
+    "should_omit_temperature",
+    function(model_id, config = NULL) {
+      identical(model_id, "temperature-omitting-test-model")
+    },
+    envir = globalenv()
+  )
+
+  assign(
+    "format_answer_from_tool_results",
+    function(tool_results_raw) {
+      "Araç sonucu yedek yanıtı"
+    },
+    envir = globalenv()
+  )
+
+  assign(
+    "extract_llm_content_and_sources",
+    function(parsed, model_id = NULL) {
+      list(
+        content = parsed$content %||% "",
+        reasoning = parsed$reasoning %||% ""
+      )
+    },
+    envir = globalenv()
+  )
+
+  source(
+    file.path(repo_root_llm_worker_second_pass, "R", "helpers_llm_worker_payload.R"),
+    encoding = "UTF-8",
+    local = globalenv()
+  )
+
+  source(
+    file.path(repo_root_llm_worker_second_pass, "R", "helpers_llm_worker_second_pass.R"),
+    encoding = "UTF-8",
+    local = globalenv()
+  )
+}, error = function(e) {
+  .second_pass_restore_globals()
+  stop(e)
 })
-
-assign(
-  "%||%",
-  function(x, y) if (is.null(x)) y else x,
-  envir = globalenv()
-)
-
-assign(
-  "log_info",
-  function(...) invisible(NULL),
-  envir = globalenv()
-)
-
-assign(
-  "log_warn",
-  function(...) invisible(NULL),
-  envir = globalenv()
-)
-
-assign(
-  "should_omit_temperature",
-  function(model_id, config = NULL) {
-    identical(model_id, "temperature-omitting-test-model")
-  },
-  envir = globalenv()
-)
-
-assign(
-  "format_answer_from_tool_results",
-  function(tool_results_raw) {
-    "Araç sonucu yedek yanıtı"
-  },
-  envir = globalenv()
-)
-
-assign(
-  "extract_llm_content_and_sources",
-  function(parsed, model_id = NULL) {
-    list(
-      content = parsed$content %||% "",
-      reasoning = parsed$reasoning %||% ""
-    )
-  },
-  envir = globalenv()
-)
-
-source(
-  file.path(repo_root_llm_worker_second_pass, "R", "helpers_llm_worker_payload.R"),
-  encoding = "UTF-8",
-  local = globalenv()
-)
-
-source(
-  file.path(repo_root_llm_worker_second_pass, "R", "helpers_llm_worker_second_pass.R"),
-  encoding = "UTF-8",
-  local = globalenv()
-)
 
 test_that("ikinci geçiş mesajları system mesajlarını tek blokta öne alır", {
   history <- list(
@@ -333,3 +348,6 @@ test_that("düşünceye benzeyen stream içeriği model adından bağımsız yak
     stream_reasoning = "Düşünce metni"
   ))
 })
+
+# Dosya sonunda küresel stub'lar geri yüklenir (bkz. yukarıdaki not).
+.second_pass_restore_globals()

@@ -23,6 +23,29 @@
 #   yerel-bağımsız kalıp).
 # ==============================================================================
 
+# İZOLE YÜKLEME YEDEĞİ. `.pk_sql_extra_top_level_statement()` kardeş
+# R/helpers_pk_sql_statements.R dosyasındadır; üretimde manifest onu bu dosyadan
+# ÖNCE yükler ve bu blok hiç çalışmaz. Dosya tek başına source edildiğinde
+# (izole test, VM çalışma kopyasındaki kalıntı test, hata ayıklama) kapı
+# `pk_sql_classify_readonly()` içinde "fonksiyon bulunamadı" ile düşmesin diye
+# kardeş dosya çalışma dizininden BAĞIMSIZ adaylardan AYNI ortama yüklenir.
+# ÇALIŞMA ZAMANI KARDEŞ SOURCE YOK: `MERGEN_REPO_ROOT` veya çalışma dizinine
+# göreli ilk eşleşen dosyayı değerlendirmek, BAYAT bir checkout'un farklı bir
+# ayrıştırıcı sağlayıp `pk_sql_classify_readonly()` izin/ret kararını
+# değiştirmesine izin veriyordu. Bağımlılık kaynak manifestinde AÇIKTIR
+# (helpers_pk_sql_statements.R bu dosyadan ÖNCE yüklenir); eksikse kapalı-başarısız
+# davranılır ve gerekçe açıkça bildirilir.
+if (!exists(".pk_sql_extra_top_level_statement", mode = "function", inherits = TRUE)) {
+  stop(
+    paste(
+      "R/helpers_pk_sql_readonly.R: gerekli yardımcı",
+      "'.pk_sql_extra_top_level_statement' yüklü değil.",
+      "R/helpers_pk_sql_statements.R kaynak manifestinde bu dosyadan ÖNCE yüklenmelidir."
+    ),
+    call. = FALSE
+  )
+}
+
 # Salt-okunur olmayan / yan etkili her aile. Kelime sınırıyla aranır.
 PK_SQL_FORBIDDEN_KEYWORDS <- c(
   # MERGE listenin başındadır: `MERGE ... THEN UPDATE SET` biçimi aksi halde

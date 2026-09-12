@@ -304,3 +304,39 @@ test_that("DB Unicode kaçış belirteçleri UI okuma sınırında geri açılı
 
   expect_equal(restored, original)
 })
+
+test_that(".mb_messages_reasoning_cache_key şemayı süreç başına bir kez sorgular", {
+  skip_if_not_installed("DBI")
+
+  test_env <- new.env(parent = globalenv())
+  .source_db_encoding_for_local_test(test_env)
+
+  sorgu_sayisi <- 0L
+  conn <- structure(list(), class = "MbSahteBaglanti")
+
+  anahtarlar <- testthat::with_mocked_bindings(
+    {
+      c(
+        test_env$.mb_messages_reasoning_cache_key(conn),
+        test_env$.mb_messages_reasoning_cache_key(conn)
+      )
+    },
+    dbGetInfo = function(conn, ...) {
+      list(servername = "S1", dbname = "D1", username = "U1")
+    },
+    dbGetQuery = function(conn, statement, ...) {
+      sorgu_sayisi <<- sorgu_sayisi + 1L
+      data.frame(s = "ozel_sema", stringsAsFactors = FALSE)
+    },
+    .package = "DBI"
+  )
+
+  # Anahtar ŞEKLİ değişmedi: sınıf@sunucu|veritabanı|kullanıcı|şema.
+  expect_identical(anahtarlar[1], "MbSahteBaglanti@S1|D1|U1|ozel_sema")
+  expect_identical(anahtarlar[1], anahtarlar[2])
+
+  # Şema sorgusu her anahtar kurulumunda DEĞİL, üçlü başına BİR kez çalışır:
+  # `save_message_to_db()` bu denetimi UPDLOCK/HOLDLOCK altında yapıyor ve her
+  # mesaj yazımı kilidi fazladan bir gidiş-dönüş kadar uzatıyordu.
+  expect_identical(sorgu_sayisi, 1L)
+})
