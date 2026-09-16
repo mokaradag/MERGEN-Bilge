@@ -10,7 +10,11 @@
 withr::local_envvar(
   c(
     MERGEN_DISABLE_FUTURES = "true",
-    MERGEN_RUN_APP = "false"
+    MERGEN_RUN_APP = "false",
+    CLAUDE_CODE_PERMISSION_MODE = NA_character_,
+    CLAUDE_CODE_ALLOW_DANGEROUS_PERMISSIONS = NA_character_,
+    CLAUDE_CODE_ALLOWED_TOOLS = NA_character_,
+    CLAUDE_CODE_DISALLOWED_TOOLS = NA_character_
   ),
   .local_envir = .testthat_teardown_env
 )

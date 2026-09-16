@@ -32,6 +32,18 @@ local({
 # rv taklidi: reactiveValues yerine $ erişimli sade environment yeterlidir.
 .ccsp_new_rv <- function() new.env(parent = emptyenv())
 
+.ccsp_kaynak_metni <- function(rel_path) {
+  yol <- file.path(resolve_repo_root_for_tests(), rel_path)
+  boyut <- suppressWarnings(file.info(yol)$size[1])
+  if (is.na(boyut) || boyut <= 0) stop("Kaynak dosya okunamıyor.", call. = FALSE)
+  con <- file(yol, open = "rb")
+  on.exit(close(con), add = TRUE)
+  ham <- readBin(con, what = "raw", n = boyut)
+  metin <- suppressWarnings(iconv(list(ham), from = "UTF-8", to = "UTF-8")[[1]])
+  if (is.na(metin)) stop("Kaynak dosya geçerli UTF-8 değil.", call. = FALSE)
+  metin
+}
+
 # Testler globalenv'e geçici DB stub'ları kurar ve bitince temizler.
 .ccsp_with_db_stubs <- function(stubs, code) {
   isimler <- names(stubs)
@@ -594,13 +606,7 @@ test_that("cc_persist_redact_secrets tirnak icindeki bosluklu degeri tamamen mas
 # Komut metni ve nihai yanıt da redaksiyondan geçmelidir; dosya sözleşmesi
 # yalnızca redakte edilmiş içeriğin saklanmasını öngörür.
 test_that("kalicilastirma kaynagi prompt ve final_output redaksiyonunu uygular", {
-  kod <- paste(
-    readLines(
-      file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_session_persistence.R"),
-      encoding = "UTF-8", warn = FALSE
-    ),
-    collapse = "\n"
-  )
+  kod <- .ccsp_kaynak_metni("R/helpers_claude_code_session_persistence.R")
   expect_true(grepl("prompt = .cc_persist_redact_secrets(", kod, fixed = TRUE))
   expect_true(grepl("final_output = .cc_persist_redact_secrets(final_output)", kod, fixed = TRUE))
 })

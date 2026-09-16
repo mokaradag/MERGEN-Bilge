@@ -139,9 +139,11 @@ writeLines(
 )
 
   runner_lines <- c(
-    "for (.loc in c('C.UTF-8', 'en_US.UTF-8', 'tr_TR.UTF-8')) {",
-    "  ok <- tryCatch(nzchar(Sys.setlocale('LC_CTYPE', .loc)), error = function(e) FALSE, warning = function(w) FALSE)",
-    "  if (isTRUE(ok)) break",
+    "if (.Platform$OS.type != 'windows') {",
+    "  for (.loc in c('C.UTF-8', 'en_US.UTF-8', 'tr_TR.UTF-8')) {",
+    "    ok <- tryCatch(nzchar(Sys.setlocale('LC_CTYPE', .loc)), error = function(e) FALSE, warning = function(w) FALSE)",
+    "    if (isTRUE(ok)) break",
+    "  }",
     "}",
     "Sys.setenv(",
     "  MERGEN_RUN_APP = 'false',",
