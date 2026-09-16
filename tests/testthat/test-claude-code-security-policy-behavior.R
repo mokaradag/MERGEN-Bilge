@@ -14,6 +14,18 @@
 #           sırasında kontrol edilir ve geri yüklenir. processx/CLI/ağ GEREKMEZ.
 # ==============================================================================
 
+# Önceki testler config_api.R üzerinden .Renviron'u yeniden yükleyebilir.
+# Politika testleri VM ortam değerlerinden bağımsız başlamalıdır.
+withr::local_envvar(
+  c(
+    CLAUDE_CODE_PERMISSION_MODE = NA_character_,
+    CLAUDE_CODE_ALLOW_DANGEROUS_PERMISSIONS = NA_character_,
+    CLAUDE_CODE_ALLOWED_TOOLS = NA_character_,
+    CLAUDE_CODE_DISALLOWED_TOOLS = NA_character_
+  ),
+  .local_envir = testthat::teardown_env()
+)
+
 .ccsec_source_once <- function() {
   if (!exists("%||%", inherits = TRUE)) {
     assign("%||%", function(a, b) if (is.null(a)) b else a, envir = globalenv())
@@ -40,7 +52,13 @@
 .ccsec_with <- function(config, env, code) {
   had_cfg <- exists("claude_code_config", envir = globalenv(), inherits = FALSE)
   old_cfg <- if (had_cfg) get("claude_code_config", envir = globalenv()) else NULL
-  nms <- names(env)
+  policy_env <- c(
+    "CLAUDE_CODE_PERMISSION_MODE",
+    "CLAUDE_CODE_ALLOW_DANGEROUS_PERMISSIONS",
+    "CLAUDE_CODE_ALLOWED_TOOLS",
+    "CLAUDE_CODE_DISALLOWED_TOOLS"
+  )
+  nms <- unique(c(policy_env, names(env)))
   old_env <- as.list(Sys.getenv(nms, names = TRUE, unset = NA_character_))
 
   on.exit({
@@ -58,7 +76,13 @@
   assign("claude_code_config", config, envir = globalenv())
   for (nm in nms) {
     v <- env[[nm]]
-    if (is.na(v)) Sys.unsetenv(nm) else { a <- list(v); names(a) <- nm; do.call(Sys.setenv, a) }
+    if (is.null(v) || is.na(v)) {
+      Sys.unsetenv(nm)
+    } else {
+      a <- list(v)
+      names(a) <- nm
+      do.call(Sys.setenv, a)
+    }
   }
   force(code)
 }

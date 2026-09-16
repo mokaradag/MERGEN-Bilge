@@ -19,6 +19,22 @@
   env
 }
 
+.cc_yy_kaynak_metni <- function(rel_path) {
+  yol <- file.path(resolve_repo_root_for_tests(), rel_path)
+  boyut <- suppressWarnings(file.info(yol)$size[1])
+  if (is.na(boyut) || boyut <= 0) stop("Kaynak dosya okunamıyor.", call. = FALSE)
+  con <- file(yol, open = "rb")
+  on.exit(close(con), add = TRUE)
+  ham <- readBin(con, what = "raw", n = boyut)
+  metin <- suppressWarnings(iconv(list(ham), from = "UTF-8", to = "UTF-8")[[1]])
+  if (is.na(metin)) stop("Kaynak dosya geçerli UTF-8 değil.", call. = FALSE)
+  metin
+}
+
+.cc_yy_baglanti_dene <- function(expr) {
+  isTRUE(suppressWarnings(tryCatch(force(expr), error = function(e) FALSE)))
+}
+
 testthat::test_that("güvenli göreli yollar çalışma alanı altına çözülür", {
   env <- .cc_yy_env()
   ws <- withr::local_tempdir()
@@ -62,13 +78,7 @@ testthat::test_that("geçiş, mutlak yol ve sürücü harfi reddedilir", {
 testthat::test_that("yükleme gözlemcisi hedefi doğrulama yardımcısından alır", {
   # Statik sözleşme: gözlemci ham file.path(calisma_alani, goreceli) birleşimine
   # geri dönmemelidir.
-  metin <- paste(
-    readLines(
-      file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_server_setup.R"),
-      encoding = "UTF-8", warn = FALSE
-    ),
-    collapse = "\n"
-  )
+  metin <- .cc_yy_kaynak_metni("R/helpers_claude_code_server_setup.R")
   # Çağrı artık olay ömürlü listeleme önbelleğini de geçirir (dosya başına
   # `list.files()` Shiny olay döngüsünü O(N^2) maliyetle blokluyordu).
   testthat::expect_true(grepl("cc_setup_yerel_yukleme_hedefi(", metin, fixed = TRUE))
@@ -114,9 +124,9 @@ testthat::test_that("listeleme önbelleği aynı üst dizini tekrar listelemez",
 # bu yuzden orada dizin junction'i kullanilir (yonetici hakki gerekmez).
 .cc_yy_baglanti_kur <- function(hedef_yol, disari_dosya, disari_dizin) {
   if (.Platform$OS.type == "windows") {
-    isTRUE(tryCatch(Sys.junction(disari_dizin, hedef_yol), error = function(e) FALSE))
+    .cc_yy_baglanti_dene(Sys.junction(disari_dizin, hedef_yol))
   } else {
-    isTRUE(tryCatch(file.symlink(disari_dosya, hedef_yol), error = function(e) FALSE))
+    .cc_yy_baglanti_dene(file.symlink(disari_dosya, hedef_yol))
   }
 }
 
@@ -170,10 +180,9 @@ testthat::test_that("sarkan (kırık) bağlantı hedefi reddedilir", {
   # izlediği için FALSE döner, ancak kopyalama bağlantıyı izleyip dış dosyayı
   # oluşturur/ezer.
   kirik <- file.path(ws, "proje", "kirik.txt")
-  kuruldu <- isTRUE(tryCatch(
-    file.symlink(file.path(disari_kok, "olmayan.txt"), kirik),
-    error = function(e) FALSE
-  ))
+  kuruldu <- .cc_yy_baglanti_dene(
+    file.symlink(file.path(disari_kok, "olmayan.txt"), kirik)
+  )
   if (!kuruldu) {
     testthat::skip("Bu ortamda sembolik bağlantı oluşturulamıyor.")
   }
@@ -289,7 +298,7 @@ testthat::test_that("takas edilen hedef bağlantısı dış dosyayı ezmez", {
 
   dir.create(file.path(ws, "proje"), recursive = TRUE, showWarnings = FALSE)
   hedef <- file.path(ws, "proje", "x.txt")
-  if (!isTRUE(tryCatch(file.symlink(disari_dosya, hedef), error = function(e) FALSE))) {
+  if (!.cc_yy_baglanti_dene(file.symlink(disari_dosya, hedef))) {
     testthat::skip("Bu ortamda sembolik bağlantı oluşturulamıyor.")
   }
 
@@ -311,9 +320,9 @@ testthat::test_that("takas edilen ata dizini bağlantısında yazma reddedilir",
 
   bagli_ata <- file.path(ws, "altd")
   kuruldu <- if (.Platform$OS.type == "windows") {
-    isTRUE(tryCatch(Sys.junction(disari_dizin, bagli_ata), error = function(e) FALSE))
+    .cc_yy_baglanti_dene(Sys.junction(disari_dizin, bagli_ata))
   } else {
-    isTRUE(tryCatch(file.symlink(disari_dizin, bagli_ata), error = function(e) FALSE))
+    .cc_yy_baglanti_dene(file.symlink(disari_dizin, bagli_ata))
   }
   if (!kuruldu) {
     testthat::skip("Bu ortamda dizin bağlantısı oluşturulamıyor.")
@@ -328,25 +337,13 @@ testthat::test_that("takas edilen ata dizini bağlantısında yazma reddedilir",
 })
 
 testthat::test_that("yükleme gözlemcisi ham file.copy overwrite kullanmaz", {
-  metin <- paste(
-    readLines(
-      file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_server_setup.R"),
-      encoding = "UTF-8", warn = FALSE
-    ),
-    collapse = "\n"
-  )
+  metin <- .cc_yy_kaynak_metni("R/helpers_claude_code_server_setup.R")
   testthat::expect_true(grepl("cc_yerel_yukleme_yaz(dosyalar$datapath[i], hedef, calisma_alani)", metin, fixed = TRUE))
   testthat::expect_false(grepl("file.copy(dosyalar$datapath[i], hedef, overwrite = TRUE)", metin, fixed = TRUE))
 })
 
 testthat::test_that("son bileşen denetimi kaynakta korunur", {
-  metin <- paste(
-    readLines(
-      file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_path_policy.R"),
-      encoding = "UTF-8", warn = FALSE
-    ),
-    collapse = "\n"
-  )
+  metin <- .cc_yy_kaynak_metni("R/helpers_claude_code_path_policy.R")
   kod <- paste(
     Filter(function(satir) !grepl("^\\s*#", satir), strsplit(metin, "\n", fixed = TRUE)[[1]]),
     collapse = "\n"
@@ -387,9 +384,9 @@ testthat::test_that("dogrulama sonrasi ata takasinda yazma disari tasmaz", {
 
   baglanti_kur <- function(hedef_dizin, yol) {
     if (.Platform$OS.type == "windows") {
-      isTRUE(tryCatch(Sys.junction(hedef_dizin, yol), error = function(e) FALSE))
+      .cc_yy_baglanti_dene(Sys.junction(hedef_dizin, yol))
     } else {
-      isTRUE(tryCatch(file.symlink(hedef_dizin, yol), error = function(e) FALSE))
+      .cc_yy_baglanti_dene(file.symlink(hedef_dizin, yol))
     }
   }
 
@@ -443,9 +440,9 @@ testthat::test_that("basarisiz rename disaridaki dosyayi silmez", {
     if (cagri == 1L) {
       unlink(altd, recursive = TRUE, force = TRUE)
       takas_yapildi <<- if (.Platform$OS.type == "windows") {
-        isTRUE(tryCatch(Sys.junction(disari, altd), error = function(e) FALSE))
+        .cc_yy_baglanti_dene(Sys.junction(disari, altd))
       } else {
-        isTRUE(tryCatch(file.symlink(disari, altd), error = function(e) FALSE))
+        .cc_yy_baglanti_dene(file.symlink(disari, altd))
       }
       return(FALSE)
     }
@@ -491,9 +488,9 @@ testthat::test_that("gecici temizligi ata takasindaki dis dosyayi silmez", {
     writeLines("KURBAN", ekilen)
     unlink(altd, recursive = TRUE, force = TRUE)
     takas_yapildi <<- if (.Platform$OS.type == "windows") {
-      isTRUE(tryCatch(Sys.junction(disari, altd), error = function(e) FALSE))
+      .cc_yy_baglanti_dene(Sys.junction(disari, altd))
     } else {
-      isTRUE(tryCatch(file.symlink(disari, altd), error = function(e) FALSE))
+      .cc_yy_baglanti_dene(file.symlink(disari, altd))
     }
     FALSE
   }
@@ -535,9 +532,9 @@ testthat::test_that("tasima disari indiyse basari bildirilmez", {
     writeLines("EKILEN", file.path(disari, basename(from)))
     unlink(altd, recursive = TRUE, force = TRUE)
     takas_yapildi <<- if (.Platform$OS.type == "windows") {
-      isTRUE(tryCatch(Sys.junction(disari, altd), error = function(e) FALSE))
+      .cc_yy_baglanti_dene(Sys.junction(disari, altd))
     } else {
-      isTRUE(tryCatch(file.symlink(disari, altd), error = function(e) FALSE))
+      .cc_yy_baglanti_dene(file.symlink(disari, altd))
     }
     gercek_rename(from, to)
   }
@@ -555,13 +552,7 @@ testthat::test_that("tasima disari indiyse basari bildirilmez", {
 # Geçici dosyanın hedefin KENDİ dizininde üretilmesi bir güvenlik değişmezidir;
 # tempdir() gibi ayrı bir dizine taşınırsa ata takası koruması kaybolur.
 testthat::test_that("gecici dosya hedefin kendi dizininde uretilir", {
-  metin <- paste(
-    readLines(
-      file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_path_policy.R"),
-      encoding = "UTF-8", warn = FALSE
-    ),
-    collapse = "\n"
-  )
+  metin <- .cc_yy_kaynak_metni("R/helpers_claude_code_path_policy.R")
   kod <- paste(
     Filter(function(satir) !grepl("^\\s*#", satir), strsplit(metin, "\n", fixed = TRUE)[[1]]),
     collapse = "\n"
