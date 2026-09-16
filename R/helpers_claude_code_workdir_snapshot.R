@@ -327,7 +327,8 @@ collect_claude_code_workdir_changes_downloads <- function(before_snapshot,
                                                            changed_files = NULL,
                                                            exclude_dirs = NULL,
                                                            limits = NULL,
-                                                           layout = NULL) {
+                                                           layout = NULL,
+                                                           cancel_fn = NULL) {
   # 1) Yeni/değişmiş dosyalar: hazır liste verilmişse tarama tekrarlanmaz.
   #    Böylece aynı çalıştırma için diff/staging iki kez çalışmaz.
   yeni_dosyalar <- character(0)
@@ -425,7 +426,8 @@ collect_claude_code_workdir_changes_downloads <- function(before_snapshot,
       file_paths = tum_yollar,
       user_id = user_id,
       session_token = session_token,
-      allowed_roots = allowed_roots
+      allowed_roots = allowed_roots,
+      cancel_fn = cancel_fn
     ),
     error = function(e) list()
   )

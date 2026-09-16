@@ -60,6 +60,11 @@ call_local_llm_sse_worker <- function(chat_history,
                                       stop_file = NULL) {
   llm_start_time <- Sys.time()
 
+  # Hata dalı bu birikimleri okur; tryCatch bloğunun İÇİNDE tanımlanırsa akış
+  # başlamadan oluşan bir hatada "nesne bulunamadı" gerçek hatayı maskeliyordu.
+  accumulated_reasoning <- ""
+  accumulated_sources <- NULL
+
   tryCatch({
     selected_model <- current_settings$model_selection
     model_caps <- get_local_model_capabilities(selected_model)
@@ -262,8 +267,6 @@ call_local_llm_sse_worker <- function(chat_history,
 
 	event_buffer <- ""
 	accumulated_text <- ""
-	accumulated_reasoning <- ""
-	accumulated_sources <- NULL
 
 	reasoning_debug_event_count <- 0L
 	reasoning_debug_seen <- FALSE
@@ -289,7 +292,9 @@ call_local_llm_sse_worker <- function(chat_history,
 		  x_lower <- tolower(enc2utf8(x %||% ""))
 		  tag_lower <- tolower(enc2utf8(tag %||% ""))
 
-		  pos <- regexpr(tag_lower, x_lower, fixed = TRUE, useBytes = TRUE)[1]
+		  # useBytes = TRUE BAYT konumu döndürür; substr() KARAKTER konumu
+		  # bekler. Türkçe/çok baytlı içerikte iki konum kayıyordu.
+		  pos <- regexpr(tag_lower, x_lower, fixed = TRUE)[1]
 		  if (is.na(pos) || pos < 0) -1L else as.integer(pos)
 		}
 

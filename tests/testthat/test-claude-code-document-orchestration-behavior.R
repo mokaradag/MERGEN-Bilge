@@ -31,6 +31,7 @@
   source(file.path(kok, "R", "helpers_claude_code_bounded_scan.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "helpers_claude_code_input_matching.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "helpers_claude_code_runtime_prepare.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "helpers_claude_code_runtime_lease.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "helpers_claude_code_output_sync.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "helpers_claude_code_documents.R"), encoding = "UTF-8", local = env)
   # Özetleme orkestrasyonu (summarize/write_summary_file/build_summary_messages)

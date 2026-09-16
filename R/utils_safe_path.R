@@ -21,13 +21,20 @@ safe_join_path <- function(base_dir, user_segment) {
   if (is.null(user_segment) || length(user_segment) != 1L) {
     return(NULL)
   }
-  if (is.na(user_segment) || !nzchar(user_segment)) {
-    return(NULL)
-  }
+  # Tür normalizasyonu boşluk/NA denetiminden ÖNCE gelir; karakter olmayan
+  # girdi hata yerine NULL üretir.
   if (!is.character(user_segment)) {
-    user_segment <- tryCatch(as.character(user_segment), error = function(e) "")
-    if (!nzchar(user_segment)) return(NULL)
+    user_segment <- tryCatch(as.character(user_segment), error = function(e) NA_character_)
   }
+  # `nzchar("   ")` TRUE döner ve nokta-parça denetimi de bunu kabul ediyordu;
+  # sonuç, dosya sistemi işlemlerinde geçersiz bir yol bileşeniydi (Windows).
+  # GEÇERSİZ UTF-8 `trimws()` çağrısından ÖNCE reddedilir: geçersiz çok baytlı
+  # dizide `trimws()` "invalid multibyte string" hatası fırlatıyor ve
+  # `safe_join_path()` `NULL` döndürmek yerine yükleme/dosya işlemini
+  # kesiyordu.
+  if (length(user_segment) != 1L || is.na(user_segment)) return(NULL)
+  if (!isTRUE(validUTF8(user_segment))) return(NULL)
+  if (!nzchar(trimws(user_segment))) return(NULL)
 
   # NUL bayt tespiti (binary-safe).
   if (grepl("\\x00", user_segment, useBytes = TRUE)) return(NULL)
@@ -47,6 +54,38 @@ safe_join_path <- function(base_dir, user_segment) {
   # Herhangi bir parça yalnızca nokta veya whitespace ise reddet (Windows
   # ".", "..", " " gibi özel isimler rezerve olabilir).
   if (any(grepl("^\\s*\\.+\\s*$", parcalar))) return(NULL)
+
+  # Windows ad bileşeninin SONUNDAKİ boşluk ve noktaları YOK SAYAR: `"rapor "`
+  # ile `"rapor"` aynı dosyaya çözülür ve çağıranın istediğinden FARKLI bir
+  # dosya hedeflenebilir/üzerine yazılabilir. Bu bileşenler reddedilir.
+  if (any(grepl("[ .]$", parcalar))) return(NULL)
+
+  # Windows'ta geçersiz olan ad karakterleri ve kontrol karakterleri her
+  # bileşende reddedilir. Denetim bilinçli olarak PLATFORMDAN BAĞIMSIZDIR:
+  # üretim Windows/UNC paylaşımı üzerinde çalışır, bu yüzden Linux'ta geçerli
+  # görünen bir ad VM'de dosya sistemi hatasına düşer; kararın tek biçimli
+  # kalması testlerin iki platformda da aynı sonucu vermesini sağlar.
+  # `:` özellikle önemlidir: Windows bunu alternatif veri akışı (ADS) ayracı
+  # sayar ve `foo:bar` beklenen dosya yerine bir akışı hedefler.
+  if (any(grepl("[<>:\"|?*]", parcalar))) return(NULL)
+  if (any(grepl("[[:cntrl:]]", parcalar))) return(NULL)
+
+  # Windows aygıt adları (CON, NUL, COM1 ...) dosya olarak açılamaz; uzantı
+  # eklenmiş biçimleri de (`NUL.txt`) aynı aygıta çözülür.
+  # Gövde, `R/utils_upload_validator.R` içindeki
+  # `.upload_is_windows_reserved_name()` ile AYNI biçimde normalleştirilir; iki
+  # denetimin farklı sonuç vermesi `"NUL .txt"` gibi bir adı bu yoldan geçirip
+  # Windows'ta aygıta çözülmesine izin veriyordu.
+  govdeler <- trimws(sub("\\..*$", "", trimws(parcalar)))
+  # Windows ad bileşeninin sonundaki noktaları da yok sayar.
+  govdeler <- sub("\\.+$", "", govdeler)
+  govdeler <- chartr("abcdefghijklmnopqrstuvwxyz", "ABCDEFGHIJKLMNOPQRSTUVWXYZ", govdeler)
+  # Üst simge rakamlar aygıt numarası olarak çözülür (kaçış dizisi kullanılır:
+  # bu karakterlerin CP1254 karşılığı yoktur - CLAUDE.md 1G).
+  govdeler <- chartr("¹²³", "123", govdeler)
+  ayrilmis_adlar <- c("CON", "PRN", "AUX", "NUL",
+                      paste0("COM", 1:9), paste0("LPT", 1:9))
+  if (any(govdeler %in% ayrilmis_adlar)) return(NULL)
 
   # Güvenli göreli yolu tek tip ayraçla yeniden kur.
   goreli_yol <- paste(parcalar, collapse = "/")

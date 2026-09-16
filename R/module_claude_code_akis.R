@@ -48,7 +48,11 @@ create_akis_yardimcilari <- function(session, ns, rv) {
       session$sendCustomMessage(type = "cc-stream-chunk", message = mesaj)
     }
 
-    tip <- parca$tip
+    # tip NULL/boş/NA gelebilir; `==` karşılaştırması hata verip o turdaki tüm
+    # akış parçalarını düşürüyordu.
+    tip <- as.character(parca$tip %||% "")[1]
+    if (is.na(tip)) tip <- ""
+    if (!nzchar(tip)) return(invisible(NULL))
 
     if (tip == "text_delta") {
       # Metin parçası - anlık olarak istemciye ilet

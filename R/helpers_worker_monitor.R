@@ -233,6 +233,9 @@ worker_monitor_collect_nested_globals <- function(fn_obj, seen = character()) {
   }
 
   collected <- mget(available_names, envir = .GlobalEnv, inherits = TRUE)
+  # `seen` kümesi özyineleme DALLARI ARASINDA paylaşılır; her dala aynı
+  # başlangıç kümesini vermek aynı fonksiyonun tekrar tekrar açılmasına
+  # (yoğun çağrı grafiğinde üstel maliyet) yol açıyordu.
   next_seen <- unique(c(seen, available_names))
 
   nested <- list()
@@ -241,6 +244,7 @@ worker_monitor_collect_nested_globals <- function(fn_obj, seen = character()) {
     if (!is.function(obj)) next
 
     deeper <- worker_monitor_collect_nested_globals(obj, seen = next_seen)
+    next_seen <- unique(c(next_seen, names(deeper)))
     if (!length(deeper)) next
 
     for (deep_nm in names(deeper)) {

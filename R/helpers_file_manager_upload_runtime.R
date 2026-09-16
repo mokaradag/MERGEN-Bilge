@@ -1,10 +1,9 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_file_manager_upload_runtime.R
 # Açıklama: Dosya Yönetimi toplu yükleme gönderimi ve tamamlanma bağlayıcısı.
-#           Doğrulama, hash + kalıcı klasöre kopyalama ve bütünlük denetimi
-#           ARTIK burada senkron çalışmaz; ortak dosya alım hattına
-#           (R/helpers_file_ingestion_*.R) sınırlı eşzamanlılıkla devredilir.
-#           Bu dosyada yalnızca ucuz plan/bildirim ve ana süreç commit'i kalır.
+#           Doğrulama, hash + kopyalama ve bütünlük denetimi burada senkron
+#           ÇALIŞMAZ; ortak alım hattına (R/helpers_file_ingestion_*.R)
+#           devredilir. Burada ucuz plan/bildirim ve ana süreç commit'i kalır.
 # ==============================================================================
 
 # Toplu yükleme için oturum kapsamlı denetleyici ve commit bağlamını üretir.
@@ -14,7 +13,7 @@ fm_create_upload_runtime <- function(session,
                                      message_data,
                                      message_trigger,
                                      files_added_to_context,
-                                     fm_debug) {
+                                     fm_debug, rollback_uploaded_file = NULL, get_user_upload_dir = NULL) {
   list(
     controller = file_ingestion_create_controller(session = session, debug_fn = fm_debug),
     commit_ctx = list(
@@ -23,7 +22,10 @@ fm_create_upload_runtime <- function(session,
       message_data = message_data,
       message_trigger = message_trigger,
       files_added_to_context = files_added_to_context,
-      fm_debug = fm_debug
+      fm_debug = fm_debug,
+      # Çözümleyici olmadan yetim kopya temizliği kökü bulamaz.
+      get_user_upload_dir = get_user_upload_dir,
+      rollback_uploaded_file = rollback_uploaded_file
     )
   )
 }
@@ -31,19 +33,15 @@ fm_create_upload_runtime <- function(session,
 # Plan aşamasındaki ucuz redleri ve yinelenen adları kullanıcıya bildirir.
 fm_report_upload_plan_issues <- function(session, plan) {
   if (length(plan$duplicate_names) > 0L) {
-    showToast(
-      session,
-      paste("Dosya(lar) zaten mevcut:", paste(plan$duplicate_names, collapse = ", ")),
-      "warning"
-    )
+    showToast(session, paste(
+      "Dosya(lar) zaten mevcut:", paste(plan$duplicate_names, collapse = ", ")
+    ), "warning")
   }
 
   for (red in plan$rejected %||% list()) {
-    showToast(
-      session,
-      sprintf("Dosya reddedildi: %s - %s", red$name, red$error %||% "bilinmeyen doğrulama hatası"),
-      "error"
-    )
+    showToast(session, sprintf(
+      "Dosya reddedildi: %s - %s", red$name, red$error %||% "bilinmeyen doğrulama hatası"
+    ), "error")
   }
 
   invisible(TRUE)
@@ -62,18 +60,29 @@ fm_commit_bulk_upload_results <- function(results, ctx, batch_id = NULL) {
     for (sonuc in results %||% list()) {
       if (!isTRUE(sonuc$ok)) {
         ctx$fm_debug("upload_reject", sprintf("%s -> %s", sonuc$name, sonuc$code %||% "unknown"))
-        showToast(
-          ctx$session,
-          sprintf("Dosya kaydedilemedi: %s - %s", sonuc$name, sonuc$error %||% "bilinmeyen hata"),
-          "error"
-        )
+        showToast(ctx$session, sprintf(
+          "Dosya kaydedilemedi: %s - %s", sonuc$name, sonuc$error %||% "bilinmeyen hata"
+        ), "error")
         next
       }
 
-      saved <- ctx$process_uploaded_file(
+      # Tek dosyanın commit hatası partinin kalanını düşürmez.
+      saved <- try(ctx$process_uploaded_file(
         list(name = sonuc$name, datapath = sonuc$dest, size = sonuc$size, type = sonuc$type),
         generate_message = FALSE
-      )
+      ), silent = TRUE)
+
+      # ATOMİK DEĞİL: yan etkiler geri alınmazsa yetim kopya + görünmez kayıt
+      # kalır. `process_uploaded_file()` okunamayan yol / desteklenmeyen uzantıda
+      # HATA FIRLATMADAN NULL döner; `try()` bunu yakalamıyor ve kopya kalıyordu.
+      if (inherits(saved, "try-error")) {
+        hata_metni <- conditionMessage(attr(saved, "condition"))
+        fm_report_upload_rollback(sonuc, ctx, "upload_commit_error", hata_metni)
+        showToast(ctx$session, sprintf("Dosya tabloya eklenemedi: %s - %s", sonuc$name, hata_metni), "error")
+        saved <- NULL
+      } else if (is.null(saved)) {
+        fm_report_upload_rollback(sonuc, ctx, "upload_commit_null")
+      }
 
       if (!is.null(saved)) saved_infos[[length(saved_infos) + 1L]] <- saved
     }

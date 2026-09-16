@@ -42,6 +42,13 @@ local({
     file.path(repo_root_for_tests, "R", "utils_common.R"),
     file.path(repo_root_for_tests, "R", "utils_path_helpers.R"),
     file.path(repo_root_for_tests, "R", "helpers_files_path.R"),
+    # Rezervasyon primitifleri + sahiplik kanıtlı terfi adımı: aşamalı kopya
+    # bunlara bağlıdır ve manifest sırasıyla ÖNCE yüklenir.
+    file.path(repo_root_for_tests, "R", "utils_path_reservation.R"),
+    file.path(repo_root_for_tests, "R", "helpers_files_promote_probe.R"),
+    file.path(repo_root_for_tests, "R", "helpers_files_promote_target.R"),
+    file.path(repo_root_for_tests, "R", "helpers_files_staging_copy.R"),
+    file.path(repo_root_for_tests, "R", "helpers_files_copy_promote.R"),
     file.path(repo_root_for_tests, "R", "helpers_files.R")
   )
 

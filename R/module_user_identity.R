@@ -58,6 +58,35 @@ resolveUserIdentity <- function(sso_claims = NULL) {
   }
 
   # ===========================================================================
+  # SSO AÇIK AMA CLAIM YOK: KAPALI-BAŞARISIZ
+  # Aşağıdaki yerel mod, işletim sistemi hesabını ADMIN yetkisiyle döndürür.
+  # SSO etkinken buraya düşmek kimlik doğrulamayı tamamen atlatırdı (P0).
+  # ===========================================================================
+  if (isTRUE(SSO_ENABLED)) {
+    log_error(paste(
+      "SSO etkin ancak kullanıcı claim'leri yok;",
+      "kimlik KAPALI-BAŞARISIZ olarak çözümlendi (yerel ADMIN yedeği kullanılmadı)."
+    ))
+
+    return(list(
+      username        = "",
+      first_name      = "",
+      full_name       = "",
+      sicil           = NULL,
+      email           = NULL,
+      last_name       = NULL,
+      sektor          = NULL,
+      department      = NULL,
+      mudurluk        = NULL,
+      masraf_yeri_kodu = NULL,
+      auth_level      = "NONE",
+      keycloak_sid    = NULL,
+      keycloak_sub    = NULL,
+      auth_source     = "unauthenticated"
+    ))
+  }
+
+  # ===========================================================================
   # MOD 2: YEREL GELİŞTİRME (SSO kapalı)
   # ===========================================================================
   system_username <- Sys.info()["user"]

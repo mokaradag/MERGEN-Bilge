@@ -208,6 +208,27 @@ resolve_windows_cmd_path <- function() {
   "cmd.exe"
 }
 
+# Bir adayın processx `wd` değeri olarak Windows'ta güvenli olup olmadığını söyler
+#
+# UNC/ağ paylaşımı yolları ve ASCII dışı karakterler `cmd.exe` spawn bağlamında
+# tutarsız davranır. Bu karar ADAY DÖNGÜSÜ ile FALLBACK dalı arasında PAYLAŞILIR;
+# eskiden fallback aynı denetimden geçmiyordu ve döngünün REDDETTİĞİ bir
+# `tempdir()` (UNC'ye yönlendirilmiş ya da Türkçe karakter taşıyan geçici klasör)
+# yine de döndürülüyordu. Sonraki `processx` çağrısı geçersiz `wd` ile opak bir
+# hata veriyordu.
+cc_workdir_windows_safe <- function(path) {
+  if (.Platform$OS.type != "windows") return(TRUE)
+
+  aday <- as.character(path %||% "")[1]
+  if (length(aday) != 1L || is.na(aday) || !nzchar(aday)) return(FALSE)
+
+  aday_slash <- gsub("\\", "/", aday, fixed = TRUE)
+  if (grepl("^//", aday_slash) || grepl("^/[^/]", aday_slash)) return(FALSE)
+  if (grepl("[^ -~]", enc2utf8(aday), perl = TRUE)) return(FALSE)
+
+  TRUE
+}
+
 # processx'in sadece süreci başlatmak için kullanacağı güvenli yerel dizin
 get_safe_processx_launch_workdir <- function(preferred = NULL) {
   adaylar <- c(
@@ -228,18 +249,33 @@ get_safe_processx_launch_workdir <- function(preferred = NULL) {
 
     # cmd.exe processx tarafından başlatılırken wd yerel ve basit olmalı.
     # Gerçek çalışma dizinine komut satırı içinde cd /d veya pushd ile geçilecek.
-    # NOT: UNC/ağ paylaşımı kontrolünde tek ters slash'a göre değiştirme yapılır;
-    # böylece hem `\\server\share` hem `//server/share` formları yakalanır.
-    if (.Platform$OS.type == "windows") {
-      aday_slash <- gsub("\\", "/", aday_norm, fixed = TRUE)
-      if (grepl("^//", aday_slash) || grepl("^/[^/]", aday_slash)) next
-      if (grepl("[^ -~]", enc2utf8(aday_norm), perl = TRUE)) next
-    }
+    if (!isTRUE(cc_workdir_windows_safe(aday_norm))) next
 
     return(aday_norm)
   }
 
-  normalizePath(tempdir(), winslash = "/", mustWork = FALSE)
+  # `tempdir()` silinmişse aday döngüsü onu ATLAR ve fallback aynı var olmayan
+  # yolu döndürüyordu; `build_processx_command()` bu değeri `wd` olarak verdiği
+  # için başlatma açık bir çalışma dizini hatası yerine opak bir `processx`
+  # hatasıyla düşüyordu.
+  yedek <- tempdir()
+  if (!dir.exists(yedek)) {
+    try(dir.create(yedek, recursive = TRUE, showWarnings = FALSE), silent = TRUE)
+  }
+  if (!dir.exists(yedek)) {
+    stop(
+      "Bilge Yolaç için güvenli bir başlatma dizini oluşturulamadı.",
+      call. = FALSE
+    )
+  }
+  if (!isTRUE(cc_workdir_windows_safe(yedek))) {
+    stop(
+      "Bilge Yolaç için yerel bir başlatma dizini bulunamadı.",
+      call. = FALSE
+    )
+  }
+
+  normalizePath(yedek, winslash = "/", mustWork = FALSE)
 }
 
 # cmd.exe içinde gerçek çalışma dizinine geçip .cmd dosyasını çalıştıracak satırı kurar
@@ -370,8 +406,12 @@ build_processx_command <- function(cli_path, args, workdir = NULL) {
 #' Claude Code JSON çıktısını ayrıştırır
 #'
 #' @param ham_cikti CLI'dan gelen ham çıktı metni
+#' @param prefer_result_text Ham çıktı KIRPILMIŞ bir tampondan geliyorsa TRUE.
+#'   Delta tabanlı metin eksik olduğu için son `result` kaydındaki TAM metin
+#'   biriken deltaların YERİNE geçer. Tam akışta (varsayılan FALSE) davranış
+#'   değişmez: `result` metni ikinci kez eklenmez.
 #' @return Liste: text_output (metin çıktısı), tool_uses (araç kullanımları listesi)
-parse_claude_code_json_output <- function(ham_cikti) {
+parse_claude_code_json_output <- function(ham_cikti, prefer_result_text = FALSE) {
   sonuc <- list(text_output = "", tool_uses = list(), session_id = NULL)
 
   if (is.null(ham_cikti) || !nzchar(ham_cikti)) return(sonuc)
@@ -462,9 +502,16 @@ parse_claude_code_json_output <- function(ham_cikti) {
 
         } else if (olay_turu == "result") {
           sonuc_metin <- olay$result %||% ""
-          if (!isTRUE(metin_zaten_toplandi) && nzchar(sonuc_metin)) {
-            metin_parcalari <- c(metin_parcalari, sonuc_metin)
-            metin_zaten_toplandi <- TRUE
+          if (nzchar(sonuc_metin)) {
+            if (isTRUE(prefer_result_text)) {
+              # KIRPILMIŞ tamponda delta metni EKSİKTİR; tam `result` metni
+              # birikeni DEĞİŞTİRİR (eklenmez, yoksa metin çift görünürdü).
+              metin_parcalari <- sonuc_metin
+              metin_zaten_toplandi <- TRUE
+            } else if (!isTRUE(metin_zaten_toplandi)) {
+              metin_parcalari <- c(metin_parcalari, sonuc_metin)
+              metin_zaten_toplandi <- TRUE
+            }
           }
         }
 
@@ -499,9 +546,14 @@ parse_claude_code_json_output <- function(ham_cikti) {
 
       } else if (tur == "result") {
         sonuc_metin <- nesne$result %||% ""
-        if (!isTRUE(metin_zaten_toplandi) && nzchar(sonuc_metin)) {
-          metin_parcalari <- c(metin_parcalari, sonuc_metin)
-          metin_zaten_toplandi <- TRUE
+        if (nzchar(sonuc_metin)) {
+          if (isTRUE(prefer_result_text)) {
+            metin_parcalari <- sonuc_metin
+            metin_zaten_toplandi <- TRUE
+          } else if (!isTRUE(metin_zaten_toplandi)) {
+            metin_parcalari <- c(metin_parcalari, sonuc_metin)
+            metin_zaten_toplandi <- TRUE
+          }
         }
         if (!is.null(nesne$session_id) && nzchar(nesne$session_id %||% "")) {
           sonuc$session_id <- nesne$session_id
@@ -645,21 +697,32 @@ get_safe_claude_cli_workdir <- function(workdir = NULL) {
 
   for (aday in adaylar) {
     if (!nzchar(aday) || !dir.exists(aday)) next
-    # NOT: Tüm ters slash'ları forward slash'a çevirerek UNC/ağ paylaşımı
-    # varyantlarını tek bir kontrolde reddederiz. CLI durum kontrolü için
-    # güvenli yerel dizin gerekir; UNC yolları cmd.exe spawn bağlamında
-    # tutarsız davranır.
-    aday_slash <- gsub("\\", "/", aday, fixed = TRUE)
-
-    if (
-      .Platform$OS.type == "windows" &&
-      (
-        grepl("^//", aday_slash) ||
-          grepl("^/[^/]", aday_slash)
-      )
-    ) next
+    # CLI durum kontrolü için güvenli YEREL dizin gerekir; UNC/ağ paylaşımı ve
+    # ASCII dışı yollar paylaşılan yardımcı ile reddedilir.
+    if (!isTRUE(cc_workdir_windows_safe(aday))) next
     return(normalizePath(aday, winslash = "/", mustWork = FALSE))
   }
 
-  normalizePath(tempdir(), winslash = "/", mustWork = FALSE)
+  # `tempdir()` silinmişse aday döngüsü onu ATLAR ve fallback aynı var olmayan
+  # yolu döndürüyordu; sonraki `processx` çağrısı geçersiz `wd` ile başlamıyordu.
+  yedek <- tempdir()
+  if (!dir.exists(yedek)) {
+    try(dir.create(yedek, recursive = TRUE, showWarnings = FALSE), silent = TRUE)
+  }
+  if (!dir.exists(yedek)) {
+    stop(
+      "Bilge Yolaç için güvenli bir çalışma dizini oluşturulamadı.",
+      call. = FALSE
+    )
+  }
+  # Fallback aday döngüsüyle AYNI Windows denetiminden geçer; aksi hâlde
+  # döngünün reddettiği bir UNC/ASCII dışı `tempdir()` yine döndürülüyordu.
+  if (!isTRUE(cc_workdir_windows_safe(yedek))) {
+    stop(
+      "Bilge Yolaç için yerel bir çalışma dizini bulunamadı.",
+      call. = FALSE
+    )
+  }
+
+  normalizePath(yedek, winslash = "/", mustWork = FALSE)
 }

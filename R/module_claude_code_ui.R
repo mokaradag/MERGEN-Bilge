@@ -152,11 +152,29 @@ $(function(){
 				  var defaultModel = %s;
 				  var sent = false;
 
+				  function aktifKademeDegeri() {
+					// Varsayılan model boşken UI 'Dengeli' kademesini AKTİF gösteriyor
+					// ama input$model hiç gönderilmiyordu: çalıştırma --model olmadan
+					// gidiyor ve CLI başka bir varsayılan model kullanabiliyordu.
+					// Görünen kademe ile çalışan model hizalanır.
+					var btn = document.querySelector('.cc-model-tier-btn.active');
+					return btn ? (btn.getAttribute('data-value') || '') : '';
+				  }
+
 				  function sendDefaultModel() {
 					if (sent) return true;
 
+					var deger = defaultModel || aktifKademeDegeri();
+
+					// Gönderilecek geçerli bir değer yoksa boş dize gönderilmez;
+					// boş dize input$model'i geçerli bir seçim gibi gösteriyordu.
+					if (!deger) {
+					  sent = true;
+					  return true;
+					}
+
 					if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
-					  window.Shiny.setInputValue(inputId, defaultModel, { priority: 'event' });
+					  window.Shiny.setInputValue(inputId, deger, { priority: 'event' });
 					  sent = true;
 					  return true;
 					}

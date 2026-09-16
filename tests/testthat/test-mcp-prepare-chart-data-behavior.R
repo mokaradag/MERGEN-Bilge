@@ -109,3 +109,36 @@ test_that("prepare_chart_data auto_file_name ve normalize_chart_type'ı uygular"
   expect_identical(yakalanan$chart_type, "BAR")
   expect_identical(yakalanan$resolved_name, "cozumlenmis.xlsx")
 })
+
+# Regresyon: grafik filtresi DuckDB'ye gönderilmeden önce backtick/köşeli parantez
+# TÜM SORGU üzerinde çift tırnağa çevriliyordu. `LIKE '%[Rev 2]%'` gibi bir DEĞER
+# de `'%"Rev 2"%'` oluyor, bellek içi filtre/istatistik satır bulurken grafik BOŞ
+# kalıyordu. Normalleştirme yalnızca dize değişmezlerinin DIŞINDA uygulanır.
+test_that("grafik filtresi tanimlayici tirnaklarini dize degismezlerini bozmadan normallestirir", {
+  .chartDataChain()
+  normalize <- get(".mcp_chart_identifier_quotes", envir = globalenv(), inherits = FALSE)
+
+  # Tanımlayıcı tırnakları DuckDB çift tırnağına çevrilir.
+  expect_identical(normalize("`col` = 1"), "\"col\" = 1")
+  expect_identical(normalize("[col] = 1"), "\"col\" = 1")
+
+  # DİZE DEĞİŞMEZİNİN içi KORUNUR (asıl regresyon).
+  like_sql <- "LOWER(CAST(\"Sutun\" AS VARCHAR)) LIKE '%[rev 2]%' ESCAPE '\\'"
+  expect_identical(normalize(like_sql), like_sql)
+
+  # Tanımlayıcı çevrilir ama aynı ifadedeki değer korunur.
+  expect_identical(normalize("`Proje Adi` = 'A[1]B'"), "\"Proje Adi\" = 'A[1]B'")
+
+  # Çift tırnaklı tanımlayıcının içi de bölünmez.
+  expect_identical(normalize("\"col[1]\" = 5"), "\"col[1]\" = 5")
+
+  # `''` kaçışı doğru izlenir: değer korunur, tanımlayıcı çevrilir.
+  expect_identical(
+    normalize("a = 'it''s [x]' AND [b] = 2"),
+    "a = 'it''s [x]' AND \"b\" = 2"
+  )
+
+  # Boş/NA girdi güvenli boş dize döner.
+  expect_identical(normalize(""), "")
+  expect_identical(normalize(NA_character_), "")
+})

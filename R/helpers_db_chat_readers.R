@@ -9,13 +9,30 @@
 # - Yazma/mutasyon işlemleri R/helpers_db_chat_mutations.R içindedir.
 # ==============================================================================
 
-.db_chat_valid_user_id <- function(user_id) {
-  if (is.null(user_id) || length(user_id) == 0L) {
-    return(FALSE)
+# user_id geçerli değilse FALSE döner. `fn_name` verilirse KAPSAMSIZ (user_id'siz)
+# okuma isteği ayrıca loglanır; okuyucular bu durumda boş sonuçla kapanır.
+.db_chat_valid_user_id <- function(user_id, fn_name = NULL) {
+  gecerli <- FALSE
+
+  if (!is.null(user_id) && length(user_id) > 0L) {
+    # Kanonik tam sayı zorunlu: `as.integer(1.9)` 1 değerine düşüp sohbet
+    # sorgularını YANLIŞ kullanıcı kapsamına yönlendirebiliyordu.
+    gecerli <- mergen_canonical_user_id(user_id[1]) > 0L
   }
 
-  safe_user_id <- suppressWarnings(as.integer(user_id[1]))
-  !is.na(safe_user_id) && safe_user_id > 0L
+  if (!gecerli && !is.null(fn_name) && is.null(user_id)) {
+    msg <- sprintf(
+      "[DB] %s user_id olmadan çağrıldı; kullanıcı kapsamı zorunlu olduğu için boş sonuç döndürüldü.",
+      fn_name
+    )
+    if (exists("log_warn", mode = "function", inherits = TRUE)) {
+      try(log_warn(msg), silent = TRUE)
+    } else {
+      warning(msg, call. = FALSE)
+    }
+  }
+
+  gecerli
 }
 
 .db_chat_timestamp_missing <- function(value) {
@@ -194,7 +211,7 @@ load_chats_from_db <- function(user_id, include_messages = TRUE) {
   chat_list <- split(all_data, all_data$ChatID)
 
   formatted_chats <- lapply(chat_list, function(chat_df) {
-    messages <- format_chat_messages(chat_df)
+    messages <- format_chat_messages(chat_df, user_id = safe_user_id)
 
     last_msg_time <- if (nrow(chat_df) > 0 &&
                          "MessageTimestamp" %in% names(chat_df) &&
@@ -245,6 +262,18 @@ safe_select_messages_with_reasoning <- function(conn, query_with_reasoning, quer
 load_chat_messages_from_db <- function(chat_id, user_id = NULL) {
   stopifnot(!is.null(chat_id))
 
+  # Kullanıcı kapsamı zorunludur: user_id olmadan kapsamsız okuma yapılmaz
+  # (fail-closed; tüm üretim çağrıları canlı kullanıcı kimliğini geçirir).
+  # `0` bu depoda yerleşik yer tutucu kimliktir; kimlik henüz çözülmemişken
+  # hata fırlatmak sohbet listesini hiç yüklenmez hâle getiriyordu.
+  # Guard BAĞLANTIDAN ÖNCE çalışır: kimlik çözülmemişken DB de erişilemezse
+  # `get_connection()` hata fırlatıp belgelenen boş sonucu engelliyordu.
+  if (!.db_chat_valid_user_id(user_id, "load_chat_messages_from_db")) {
+    return(list(title = NULL, timestamp = NULL, messages = list(), message_count = 0L))
+  }
+
+  safe_user_id <- suppressWarnings(as.integer(user_id[1]))
+
   conn_info <- get_connection()
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
@@ -254,25 +283,11 @@ load_chat_messages_from_db <- function(chat_id, user_id = NULL) {
     chat_param <- chat_id
   }
 
-  if (is.null(user_id)) {
-    query_with_reasoning <- db_chat_messages_query_sql(with_reasoning = TRUE, scoped = FALSE)
+  query_with_reasoning <- db_chat_messages_query_sql(with_reasoning = TRUE, scoped = TRUE)
 
-    query_legacy <- db_chat_messages_query_sql(with_reasoning = FALSE, scoped = FALSE)
+  query_legacy <- db_chat_messages_query_sql(with_reasoning = FALSE, scoped = TRUE)
 
-    query_params <- normalize_db_params(list(chat_param))
-  } else {
-    if (!.db_chat_valid_user_id(user_id)) {
-      stop("Geçersiz user_id ile sohbet yükleme denendi.")
-    }
-
-    safe_user_id <- suppressWarnings(as.integer(user_id[1]))
-
-    query_with_reasoning <- db_chat_messages_query_sql(with_reasoning = TRUE, scoped = TRUE)
-
-    query_legacy <- db_chat_messages_query_sql(with_reasoning = FALSE, scoped = TRUE)
-
-    query_params <- normalize_db_params(list(chat_param, safe_user_id))
-  }
+  query_params <- normalize_db_params(list(chat_param, safe_user_id))
 
   chat_df <- safe_select_messages_with_reasoning(
     conn,
@@ -292,7 +307,7 @@ load_chat_messages_from_db <- function(chat_id, user_id = NULL) {
   }
 
   messages_df <- chat_df[!is.na(chat_df$MessageID), , drop = FALSE]
-  messages <- if (nrow(messages_df) > 0) format_chat_messages(messages_df) else list()
+  messages <- if (nrow(messages_df) > 0) format_chat_messages(messages_df, user_id = safe_user_id) else list()
 
   list(
     title = chat_df$ChatTitle[1],
@@ -324,27 +339,22 @@ load_chat_messages_batch <- function(chat_ids, user_id = NULL) {
     }
   })
 
+  # Guard BAĞLANTIDAN ÖNCE (bkz. load_chat_messages_from_db).
+  if (!.db_chat_valid_user_id(user_id, "load_chat_messages_batch")) {
+    return(list())
+  }
+
+  safe_user_id <- suppressWarnings(as.integer(user_id[1]))
+
   conn_info <- get_connection()
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  if (is.null(user_id)) {
-    query_with_reasoning <- db_chat_messages_batch_query_sql(placeholder, with_reasoning = TRUE, scoped = FALSE)
+  query_with_reasoning <- db_chat_messages_batch_query_sql(placeholder, with_reasoning = TRUE, scoped = TRUE)
 
-    query_legacy <- db_chat_messages_batch_query_sql(placeholder, with_reasoning = FALSE, scoped = FALSE)
-  } else {
-    if (!.db_chat_valid_user_id(user_id)) {
-      stop("Geçersiz user_id ile toplu sohbet yükleme denendi.")
-    }
+  query_legacy <- db_chat_messages_batch_query_sql(placeholder, with_reasoning = FALSE, scoped = TRUE)
 
-    safe_user_id <- suppressWarnings(as.integer(user_id[1]))
-
-    query_with_reasoning <- db_chat_messages_batch_query_sql(placeholder, with_reasoning = TRUE, scoped = TRUE)
-
-    query_legacy <- db_chat_messages_batch_query_sql(placeholder, with_reasoning = FALSE, scoped = TRUE)
-
-    param_values <- c(param_values, list(safe_user_id))
-  }
+  param_values <- c(param_values, list(safe_user_id))
 
   result <- safe_select_messages_with_reasoning(
     conn,
@@ -377,7 +387,7 @@ load_chat_messages_batch <- function(chat_ids, user_id = NULL) {
 
   formatted <- lapply(split_rows, function(chat_df) {
     messages_df <- chat_df[!is.na(chat_df$MessageID), , drop = FALSE]
-    messages <- if (nrow(messages_df) > 0) format_chat_messages(messages_df) else list()
+    messages <- if (nrow(messages_df) > 0) format_chat_messages(messages_df, user_id = safe_user_id) else list()
 
     last_ts <- if (nrow(messages_df) > 0 &&
                    "MessageTimestamp" %in% names(messages_df) &&
@@ -443,23 +453,20 @@ load_history_rows_batch <- function(chat_ids, user_id = NULL) {
     if (!is.na(numeric_id)) numeric_id else id
   })
 
+  # Guard BAĞLANTIDAN ÖNCE (bkz. load_chat_messages_from_db).
+  if (!.db_chat_valid_user_id(user_id, "load_history_rows_batch")) {
+    return(list())
+  }
+
+  safe_user_id <- suppressWarnings(as.integer(user_id[1]))
+
   conn_info <- get_connection()
   conn <- conn_info$conn
   on.exit(release_connection(conn_info))
 
-  if (is.null(user_id)) {
-    query <- db_history_rows_query_sql(placeholder, scoped = FALSE)
-  } else {
-    if (!.db_chat_valid_user_id(user_id)) {
-      stop("Geçersiz user_id ile geçmiş yükleme denendi.")
-    }
+  query <- db_history_rows_query_sql(placeholder, scoped = TRUE)
 
-    safe_user_id <- suppressWarnings(as.integer(user_id[1]))
-
-    query <- db_history_rows_query_sql(placeholder, scoped = TRUE)
-
-    param_values <- c(param_values, list(safe_user_id))
-  }
+  param_values <- c(param_values, list(safe_user_id))
 
   result <- dbGetQuery(
     conn,
@@ -483,8 +490,12 @@ load_history_rows_batch <- function(chat_ids, user_id = NULL) {
       return(format(value, "%d.%m.%Y - %H:%M", tz = attr(value, "tzone") %||% "UTC"))
     }
 
-    parsed <- suppressWarnings(as.POSIXct(value, tz = "UTC"))
-    if (!is.na(parsed)) {
+    # Bozuk tek bir zaman damgası tüm geçmiş okumasını düşürmemeli.
+    parsed <- tryCatch(
+      suppressWarnings(as.POSIXct(value, tz = "UTC")),
+      error = function(e) as.POSIXct(NA)
+    )
+    if (length(parsed) == 1L && !is.na(parsed)) {
       return(format(parsed, "%d.%m.%Y - %H:%M", tz = attr(parsed, "tzone") %||% "UTC"))
     }
 

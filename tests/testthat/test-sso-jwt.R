@@ -73,6 +73,7 @@ test_that("validate_jwt_token süresi dolmuş token'ı reddeder", {
 
   token <- .make_jwt_token(list(
     preferred_username = "eskiuser",
+    azp                = SSO_CONFIG$client_id,
     exp                = as.integer(Sys.time()) - 120L
   ))
 
@@ -124,10 +125,150 @@ test_that("validate_jwt_token geçerli token'ı kabul eder", {
   token <- .make_jwt_token(list(
     preferred_username = "gecerli_user",
     name               = "Geçerli Kullanıcı",
+    azp                = SSO_CONFIG$client_id,
     exp                = as.integer(Sys.time()) + 3600L
   ))
 
   sonuc <- validate_jwt_token(token)
   expect_true(sonuc$valid)
   expect_equal(sonuc$payload$preferred_username, "gecerli_user")
+})
+# exp claim'i YOKSA token süresiz kabul edilmemelidir (kapalı-başarısız).
+test_that("validate_jwt_token exp claim'i olmayan token'ı reddeder", {
+  eski_validate_issuer <- SSO_CONFIG$validate_issuer
+  eski_validate_expiry <- SSO_CONFIG$validate_expiry
+  eski_validate_signature <- SSO_CONFIG$validate_signature
+
+  SSO_CONFIG$validate_issuer <<- FALSE
+  SSO_CONFIG$validate_expiry <<- TRUE
+  SSO_CONFIG$validate_signature <<- FALSE
+  on.exit({
+    SSO_CONFIG$validate_issuer <<- eski_validate_issuer
+    SSO_CONFIG$validate_expiry <<- eski_validate_expiry
+    SSO_CONFIG$validate_signature <<- eski_validate_signature
+  })
+
+  token <- .make_jwt_token(list(
+    preferred_username = "testuser",
+    azp                = SSO_CONFIG$client_id
+  ))
+
+  sonuc <- validate_jwt_token(token)
+  expect_false(sonuc$valid)
+  expect_true(grepl("exp|süre", sonuc$error, ignore.case = TRUE))
+})
+
+# Aynı realm'deki BAŞKA istemci için üretilmiş token reddedilmelidir.
+test_that("validate_jwt_token farklı istemci için üretilmiş token'ı reddeder", {
+  eski_validate_issuer <- SSO_CONFIG$validate_issuer
+  eski_issuer_url      <- SSO_CONFIG$issuer_url
+  eski_client_id       <- SSO_CONFIG$client_id
+  eski_validate_expiry <- SSO_CONFIG$validate_expiry
+  eski_validate_signature <- SSO_CONFIG$validate_signature
+
+  SSO_CONFIG$validate_issuer <<- TRUE
+  SSO_CONFIG$issuer_url      <<- "https://dogru.ornek.com/realms/test"
+  SSO_CONFIG$client_id       <<- "mergen-bilge"
+  SSO_CONFIG$validate_expiry <<- FALSE
+  SSO_CONFIG$validate_signature <<- FALSE
+  on.exit({
+    SSO_CONFIG$validate_issuer <<- eski_validate_issuer
+    SSO_CONFIG$issuer_url      <<- eski_issuer_url
+    SSO_CONFIG$client_id       <<- eski_client_id
+    SSO_CONFIG$validate_expiry <<- eski_validate_expiry
+    SSO_CONFIG$validate_signature <<- eski_validate_signature
+  })
+
+  baska <- .make_jwt_token(list(
+    preferred_username = "testuser",
+    iss                = "https://dogru.ornek.com/realms/test",
+    azp                = "baska-uygulama",
+    aud                = "baska-uygulama"
+  ))
+  sonuc <- validate_jwt_token(baska)
+  expect_false(sonuc$valid)
+  expect_true(grepl("audience|uygulama", sonuc$error, ignore.case = TRUE))
+
+  # Doğru istemci için üretilmiş token kabul edilir.
+  dogru <- .make_jwt_token(list(
+    preferred_username = "testuser",
+    iss                = "https://dogru.ornek.com/realms/test",
+    azp                = "mergen-bilge"
+  ))
+  expect_true(validate_jwt_token(dogru)$valid)
+
+  # aud/azp taşımayan token istemci bağı KANITLANAMADIĞI için reddedilir.
+  bagsiz <- .make_jwt_token(list(
+    preferred_username = "testuser",
+    iss                = "https://dogru.ornek.com/realms/test"
+  ))
+  bagsiz_sonuc <- validate_jwt_token(bagsiz)
+  expect_false(bagsiz_sonuc$valid)
+  expect_true(grepl("audience|uygulama", bagsiz_sonuc$error, ignore.case = TRUE))
+})
+
+# İstemci bağı issuer denetiminden BAĞIMSIZDIR: SSO_VALIDATE_ISSUER=FALSE
+# kurulumunda da aynı realm'deki başka bir istemcinin tokenı reddedilmelidir.
+test_that("validate_jwt_token issuer denetimi kapalıyken de istemci bağını uygular", {
+  eski_validate_issuer <- SSO_CONFIG$validate_issuer
+  eski_client_id       <- SSO_CONFIG$client_id
+  eski_validate_expiry <- SSO_CONFIG$validate_expiry
+  eski_validate_signature <- SSO_CONFIG$validate_signature
+
+  SSO_CONFIG$validate_issuer <<- FALSE
+  SSO_CONFIG$client_id       <<- "mergen-bilge"
+  SSO_CONFIG$validate_expiry <<- FALSE
+  SSO_CONFIG$validate_signature <<- FALSE
+  on.exit({
+    SSO_CONFIG$validate_issuer <<- eski_validate_issuer
+    SSO_CONFIG$client_id       <<- eski_client_id
+    SSO_CONFIG$validate_expiry <<- eski_validate_expiry
+    SSO_CONFIG$validate_signature <<- eski_validate_signature
+  })
+
+  baska <- .make_jwt_token(list(
+    preferred_username = "testuser",
+    azp                = "baska-uygulama",
+    aud                = "baska-uygulama"
+  ))
+  sonuc <- validate_jwt_token(baska)
+  expect_false(sonuc$valid)
+  expect_true(grepl("audience|uygulama", sonuc$error, ignore.case = TRUE))
+
+  # Doğru istemci için üretilmiş token issuer denetimi kapalıyken de geçer.
+  dogru <- .make_jwt_token(list(
+    preferred_username = "testuser",
+    azp                = "mergen-bilge"
+  ))
+  expect_true(validate_jwt_token(dogru)$valid)
+})
+
+# Çok değerli claim SSO kurulumunu çökertmemelidir.
+test_that("validate_jwt_token çok değerli preferred_username claim'inde çökmez", {
+  eski_validate_issuer <- SSO_CONFIG$validate_issuer
+  eski_validate_expiry <- SSO_CONFIG$validate_expiry
+  eski_validate_signature <- SSO_CONFIG$validate_signature
+
+  SSO_CONFIG$validate_issuer <<- FALSE
+  SSO_CONFIG$validate_expiry <<- FALSE
+  SSO_CONFIG$validate_signature <<- FALSE
+  on.exit({
+    SSO_CONFIG$validate_issuer <<- eski_validate_issuer
+    SSO_CONFIG$validate_expiry <<- eski_validate_expiry
+    SSO_CONFIG$validate_signature <<- eski_validate_signature
+  })
+
+  token <- .make_jwt_token(list(
+    preferred_username = c("birinci", "ikinci"),
+    azp                = SSO_CONFIG$client_id
+  ))
+
+  sonuc <- validate_jwt_token(token)
+  expect_true(sonuc$valid)
+
+  # Doğrulamanın geçmesi yetmez: oturumu asıl kuran tüketici de skalerleştirmeli
+  # ve İLK değeri almalıdır. Aksi hâlde `extract_user_claims()` uzunluk 2 koşulla
+  # düşüyor ve SSO oturumu yine kurulamıyordu.
+  claims <- extract_user_claims(sonuc$payload)
+  expect_identical(claims$username, "birinci")
 })

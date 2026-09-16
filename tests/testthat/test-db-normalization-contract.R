@@ -304,3 +304,217 @@ test_that("DB Unicode kaçış belirteçleri UI okuma sınırında geri açılı
 
   expect_equal(restored, original)
 })
+
+test_that(".mb_messages_reasoning_cache_key şemayı süreç başına bir kez sorgular", {
+  skip_if_not_installed("DBI")
+
+  test_env <- new.env(parent = globalenv())
+  .source_db_encoding_for_local_test(test_env)
+
+  sorgu_sayisi <- 0L
+  conn <- structure(list(), class = "MbSahteBaglanti")
+
+  anahtarlar <- testthat::with_mocked_bindings(
+    {
+      c(
+        test_env$.mb_messages_reasoning_cache_key(conn),
+        test_env$.mb_messages_reasoning_cache_key(conn)
+      )
+    },
+    dbGetInfo = function(conn, ...) {
+      list(servername = "S1", dbname = "D1", username = "U1")
+    },
+    dbGetQuery = function(conn, statement, ...) {
+      sorgu_sayisi <<- sorgu_sayisi + 1L
+      data.frame(s = "ozel_sema", stringsAsFactors = FALSE)
+    },
+    .package = "DBI"
+  )
+
+  # Anahtar ŞEKLİ değişmedi: sınıf@sunucu|veritabanı|kullanıcı|şema.
+  expect_identical(anahtarlar[1], "MbSahteBaglanti@S1|D1|U1|ozel_sema")
+  expect_identical(anahtarlar[1], anahtarlar[2])
+
+  # Şema sorgusu her anahtar kurulumunda DEĞİL, üçlü başına BİR kez çalışır:
+  # `save_message_to_db()` bu denetimi UPDLOCK/HOLDLOCK altında yapıyor ve her
+  # mesaj yazımı kilidi fazladan bir gidiş-dönüş kadar uzatıyordu.
+  expect_identical(sorgu_sayisi, 1L)
+})
+# ------------------------------------------------------------------------------
+# #207: önbellek anahtarı İLK BOŞ OLMAYAN kimlik alternatifini kullanır
+# (Regresyon: `%||%` yalnızca `NULL` için yedeğe düştüğü için `servername = ""`
+# ve `sourcename = "DSN"` durumunda DSN ATILIYOR, aynı veritabanı/kullanıcı/şema
+# kombinasyonuna sahip İKİ SUNUCU tek önbellek anahtarını paylaşıyordu.)
+# ------------------------------------------------------------------------------
+test_that(".mb_messages_reasoning_cache_key bos kimlik alanlarinda DSN'i atmaz", {
+  skip_if_not_installed("DBI")
+
+  test_env <- new.env(parent = globalenv())
+  .source_db_encoding_for_local_test(test_env)
+  conn <- structure(list(), class = "MbSahteBaglanti")
+
+  anahtar <- testthat::with_mocked_bindings(
+    test_env$.mb_messages_reasoning_cache_key(conn),
+    dbGetInfo = function(conn, ...) {
+      list(servername = "", sourcename = "DSN_A", dbname = "", dbms.name = "D1",
+           username = "U1")
+    },
+    dbGetQuery = function(conn, statement, ...) {
+      data.frame(s = "dbo", stringsAsFactors = FALSE)
+    },
+    .package = "DBI"
+  )
+
+  expect_identical(anahtar, "MbSahteBaglanti@DSN_A|D1|U1|dbo")
+
+  # İKİNCİ sunucu (farklı DSN) AYNI anahtarı üretmez.
+  anahtar_b <- testthat::with_mocked_bindings(
+    test_env$.mb_messages_reasoning_cache_key(conn),
+    dbGetInfo = function(conn, ...) {
+      list(servername = "", sourcename = "DSN_B", dbname = "", dbms.name = "D1",
+           username = "U1")
+    },
+    dbGetQuery = function(conn, statement, ...) {
+      data.frame(s = "dbo", stringsAsFactors = FALSE)
+    },
+    .package = "DBI"
+  )
+  expect_false(identical(anahtar, anahtar_b))
+})
+
+# ------------------------------------------------------------------------------
+# #77: şema çözülemediyse önbellek anahtarı BOŞ olur (yanlış sonuç kalıcı
+# önbelleğe alınmaz)
+# ------------------------------------------------------------------------------
+test_that(".mb_messages_reasoning_cache_key sema cozulemezse bos doner", {
+  skip_if_not_installed("DBI")
+
+  test_env <- new.env(parent = globalenv())
+  .source_db_encoding_for_local_test(test_env)
+  conn <- structure(list(), class = "MbSahteSemasiz")
+
+  anahtar <- testthat::with_mocked_bindings(
+    test_env$.mb_messages_reasoning_cache_key(conn),
+    dbGetInfo = function(conn, ...) {
+      list(servername = "S9", dbname = "D9", username = "U9")
+    },
+    dbGetQuery = function(conn, statement, ...) {
+      # Şema sondası BOŞ sonuç döner (okunamadı).
+      data.frame(s = character(0), stringsAsFactors = FALSE)
+    },
+    .package = "DBI"
+  )
+
+  expect_identical(anahtar, "")
+})
+
+# ------------------------------------------------------------------------------
+# #218: guard geri okunan metni BEKLENEN değerle karşılaştırır
+# (Regresyon: `expected_content`/`expected_reasoning` kabul edilip HİÇ
+# kullanılmıyordu; ODBC bir değeri listelenen mojibake token'ı üretmeden
+# değiştirdiğinde guard BAŞARI dönüp bozuk metni commit ediyordu.)
+# ------------------------------------------------------------------------------
+test_that("assert_mb_message_visible_encoding_clean beklenen degerle karsilastirir", {
+  skip_if_not_installed("DBI")
+
+  test_env <- new.env(parent = globalenv())
+  .source_db_encoding_for_local_test(test_env)
+  conn <- structure(list(), class = "MbSahteGuard")
+
+  saklanan <- "Türkiye'nin başkenti"
+
+  # EŞİT değer: guard geçer.
+  expect_true(isTRUE(testthat::with_mocked_bindings(
+    test_env$assert_mb_message_visible_encoding_clean(
+      conn, 42L, expected_content = saklanan
+    ),
+    dbGetQuery = function(conn, statement, ...) {
+      if (grepl("INFORMATION_SCHEMA", statement, fixed = TRUE)) {
+        return(data.frame(COLUMN_NAME = "ReasoningContent", stringsAsFactors = FALSE))
+      }
+      data.frame(MessageContent = saklanan, ReasoningContent = NA_character_,
+                 stringsAsFactors = FALSE)
+    },
+    .package = "DBI"
+  )))
+
+  # SESSİZ DEĞİŞİKLİK (mojibake token'ı YOK, yalnızca `?` ikamesi): ASCII DIŞI
+  # karakter sayısı azaldığı için KANITLI kayıptır ve guard düşer. Yalnızca
+  # gösterim farkı (kayıp kanıtı yok) geri alma ÜRETMEZ; bkz. aşağıdaki durum.
+  expect_error(
+    testthat::with_mocked_bindings(
+      test_env$assert_mb_message_visible_encoding_clean(
+        conn, 42L, expected_content = saklanan
+      ),
+      dbGetQuery = function(conn, statement, ...) {
+        if (grepl("INFORMATION_SCHEMA", statement, fixed = TRUE)) {
+          return(data.frame(COLUMN_NAME = "ReasoningContent", stringsAsFactors = FALSE))
+        }
+        data.frame(MessageContent = "T?rkiye'nin ba?kenti",
+                   ReasoningContent = NA_character_, stringsAsFactors = FALSE)
+      },
+      .package = "DBI"
+    ),
+    "lost characters compared to the written value"
+  )
+
+  # GÖSTERİM FARKI (aynı uzunluk, aynı ASCII dışı karakter sayısı) geri alma
+  # ÜRETMEZ: `DB_CLIENT_ENCODING` UTF-8 değilken geri okunan değer aynı METNİ
+  # taşısa bile beklenen UTF-8 dizesiyle BAYT-AYNI olmayabilir. Koşulsuz `stop()`
+  # burada YANLIŞ POZİTİF bir `dbRollback()` üretip mesajın TAMAMINI düşürürdü.
+  farkli_gosterim <- "Türkiye'nin başkenta"
+  expect_true(isTRUE(testthat::with_mocked_bindings(
+    test_env$assert_mb_message_visible_encoding_clean(
+      conn, 42L, expected_content = saklanan
+    ),
+    dbGetQuery = function(conn, statement, ...) {
+      if (grepl("INFORMATION_SCHEMA", statement, fixed = TRUE)) {
+        return(data.frame(COLUMN_NAME = "ReasoningContent", stringsAsFactors = FALSE))
+      }
+      data.frame(MessageContent = farkli_gosterim,
+                 ReasoningContent = NA_character_, stringsAsFactors = FALSE)
+    },
+    .package = "DBI"
+  )))
+})
+
+# ------------------------------------------------------------------------------
+# #110: legacy şemada BİLİNMEYEN sonda sonucu `ReasoningContent` sorgulamaz
+# (Regresyon: `NA` sonda sonucu "sütun VAR" sayılıyor, legacy şemada sorgu hata
+# veriyor ve `dbRollback()` eklenen mesajın TAMAMINI düşürüyordu.)
+# ------------------------------------------------------------------------------
+test_that("guard legacy dalda ReasoningContent sutununu sorgulamaz", {
+  skip_if_not_installed("DBI")
+
+  test_env <- new.env(parent = globalenv())
+  .source_db_encoding_for_local_test(test_env)
+  conn <- structure(list(), class = "MbSahteLegacy")
+
+  sorgular <- character(0)
+  sonuc <- testthat::with_mocked_bindings(
+    test_env$assert_mb_message_visible_encoding_clean(
+      conn, 7L,
+      expected_content = "merhaba",
+      reasoning_column_absent = TRUE
+    ),
+    dbGetQuery = function(conn, statement, ...) {
+      sorgular <<- c(sorgular, statement)
+      # Şema sondası ve doğrudan yoklama BİLİNMEYEN bırakılır.
+      if (grepl("INFORMATION_SCHEMA", statement, fixed = TRUE)) {
+        stop("metadata kullanilamiyor")
+      }
+      if (grepl("SELECT TOP 0 ReasoningContent", statement, fixed = TRUE)) {
+        stop("baglanti hatasi")
+      }
+      data.frame(MessageContent = "merhaba", ReasoningContent = NA_character_,
+                 stringsAsFactors = FALSE)
+    },
+    .package = "DBI"
+  )
+
+  expect_true(isTRUE(sonuc))
+  # Seçim sorgusu `CAST(NULL ...)` yolunu kullanır; sütun SORGULANMAZ.
+  secim <- sorgular[grepl("FROM MB_Messages", sorgular, fixed = TRUE)]
+  expect_true(length(secim) >= 1L)
+  expect_true(any(grepl("CAST(NULL AS NVARCHAR(MAX))", secim, fixed = TRUE)))
+})

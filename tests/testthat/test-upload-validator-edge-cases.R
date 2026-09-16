@@ -159,3 +159,31 @@ test_that("validate_uploaded_file path traversal isimlerini reddetmeye devam ede
     expect_equal(sonuc$code, "bad_filename")
   }
 })
+
+# Windows'ta ad bileşeninde geçersiz olan karakterler doğrulamadan GEÇMEMELİDİR;
+# `:` sürücü öneki denetimine takılmadığı için kalıcı kopyalama aşamasında
+# hata veriyordu.
+test_that("Windows'ta geçersiz ad karakterleri reddedilir", {
+  path <- .make_temp_upload("guvenli.txt")
+
+  kotu_isimler <- c(
+    "rapor:final.txt",
+    "rapor<1>.txt",
+    "rapor|1.txt",
+    "rapor?.txt",
+    "rapor*.txt",
+    "rapor\".txt"
+  )
+
+  for (isim in kotu_isimler) {
+    sonuc <- validate_uploaded_file(
+      path = path,
+      filename = isim,
+      max_size_mb = 1,
+      allowed_ext = "txt"
+    )
+
+    expect_false(sonuc$ok, info = isim)
+    expect_equal(sonuc$code, "bad_filename", info = isim)
+  }
+})

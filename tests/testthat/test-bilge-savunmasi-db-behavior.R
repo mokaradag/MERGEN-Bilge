@@ -61,6 +61,11 @@ local({
     source(file.path(repo_root, "R", "helpers_db_bilge_savunmasi_topluluk.R"),
            encoding = "UTF-8", local = globalenv())
   }
+  # Savunma planı (blueprint) katmanı topluluk dosyasından AYRI dosyada yaşar
+  # (helpers_db_bilge_savunmasi_topluluk.R satır tavanına dayandığı için).
+  # Manifest sırası: topluluk -> plan.
+  source(file.path(repo_root, "R", "helpers_db_bilge_savunmasi_plan.R"),
+         encoding = "UTF-8", local = globalenv())
   if (!exists(".bs_srv_bitirme_sonrasi", mode = "function", inherits = TRUE)) {
     source(file.path(repo_root, "R", "module_bilge_savunmasi.R"),
            encoding = "UTF-8", local = globalenv())
@@ -142,6 +147,12 @@ local({
     "Difficulty TEXT NOT NULL, Seed INTEGER NOT NULL, Title TEXT NOT NULL,",
     "PayloadJson TEXT NOT NULL, SchemaVersion INTEGER NOT NULL,",
     "CreatorResultJson TEXT, IsDeleted INTEGER DEFAULT 0, CreatedAt TEXT)"
+  ))
+  # Uretim DDL'iyle ayni benzersizlik: ayni kosudan TEK aktif plan.
+  DBI::dbExecute(conn, paste(
+    "CREATE UNIQUE INDEX UX_MB_Game_Blueprints_ActiveRun",
+    "ON MB_Game_Blueprints (UserID, GameRunID)",
+    "WHERE IsDeleted = 0 AND GameRunID IS NOT NULL"
   ))
   DBI::dbExecute(conn, paste(
     "CREATE TABLE MB_Game_CommunityContributions (",

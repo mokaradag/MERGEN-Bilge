@@ -170,3 +170,38 @@ test_that("make_current_user_id_provider SSO placeholder 0 yerine canlı fallbac
 
   expect_equal(provider$current_user_id_provider(), 77L)
 })
+# ------------------------------------------------------------------------------
+# `.normalize_user_session_id()` YEDEK YOLU: mantıksal/liste kimlik reddedilir
+# (Regresyon: kanonik yardımcı yokken `as.numeric(TRUE)` değeri `1` üretiyor ve
+# mantıksal bir kimlik oturumu KULLANICI 1'e bağlayabiliyordu; liste biçimli bir
+# değer ise doğrulama hiç çalışmadan dönüşümde hata fırlatıyordu.)
+# ------------------------------------------------------------------------------
+test_that("normalize_user_session_id yedek yolu mantiksal ve liste kimligi reddeder", {
+  # Kanonik yardımcı GİZLENİR; yalnızca yedek yol çalışır.
+  yedek_env <- new.env(parent = baseenv())
+  yedek_env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  source(
+    file.path(repo_root_for_tests, "R", "helpers_user_session_identity.R"),
+    encoding = "UTF-8",
+    local = yedek_env
+  )
+  normalize <- yedek_env$.normalize_user_session_id
+
+  # Kanonik yardımcı gerçekten görünmez olmalı, aksi hâlde test yedek yolu
+  # sınamaz (tek başına çalıştırmada başka bir test dosyası onu yüklemiş olabilir).
+  expect_false(exists("mergen_canonical_user_id", envir = yedek_env,
+                      mode = "function", inherits = TRUE))
+
+  expect_identical(normalize(TRUE), 0L)
+  expect_identical(normalize(FALSE), 0L)
+  expect_identical(normalize(list(1L)), 0L)
+  expect_identical(normalize(c(1L, 2L)), 0L)
+  expect_identical(normalize("1e2"), 0L)
+  expect_identical(normalize(1.9), 0L)
+  expect_identical(normalize(NA), 0L)
+
+  # GEÇERLİ kimlikler etkilenmez.
+  expect_identical(normalize(7L), 7L)
+  expect_identical(normalize(7), 7L)
+  expect_identical(normalize(" 42 "), 42L)
+})

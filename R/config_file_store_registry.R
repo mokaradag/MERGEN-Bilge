@@ -369,13 +369,40 @@ mergen_list_user_files <- function(user_id, prune_missing = TRUE) {
       exists_now
     }, logical(1))
 
-	.file_store_apply_rehydrated_paths(uid, rehydrated)
+	# İSTEĞE BAĞLI onarım: `.file_store_mutate_index()` artık kilidi ZORUNLU
+	# kılıyor ve kilit alınamazsa `stop()` atıyor. Listeleme yolunda bu hata
+	# yakalanmazsa eşzamanlı bir mutasyon sürerken Dosya Yönetimi listesi hiç
+	# dönmüyordu. Onarım ERTELENİR; listeleme mevcut kayıtlarla devam eder.
+	tryCatch(
+	  .file_store_apply_rehydrated_paths(uid, rehydrated),
+	  error = function(e) {
+	    log_warn("[INDEX] Yol onarımı ertelendi (kilit alınamadı): {conditionMessage(e)}")
+	  }
+	)
 
     if (prune_missing && any(!exists_vec)) {
       missing_df <- df[!exists_vec, c("key", "path", "name"), drop = FALSE]
-      missing_names <- unique(missing_df$name)
-      log_warn("[INDEX] {nrow(missing_df)} kayıt bulunamadı (user={uid}): {paste(missing_names, collapse = ', ')} — indeks temizleniyor")
-      .file_store_drop_stale_entries(uid, missing_df)
+      # Üst klasörü de erişilemeyen kayıtlar (UNC/ağ kesintisi) İNDEKSTEN
+      # SİLİNMEZ; aksi halde geçici bir kesinti görünen adları kalıcı düşürür.
+      ust_erisilebilir <- vapply(dirname(as.character(missing_df$path)), function(d) {
+        isTRUE(tryCatch(path_exists_relaxed(d), error = function(e) FALSE))
+      }, logical(1), USE.NAMES = FALSE)
+      if (any(!ust_erisilebilir)) {
+        log_warn("[INDEX] {sum(!ust_erisilebilir)} kaydın klasörüne erişilemiyor (user={uid}); indeks korunuyor")
+      }
+      missing_df <- missing_df[ust_erisilebilir, , drop = FALSE]
+      if (nrow(missing_df) > 0) {
+        missing_names <- unique(missing_df$name)
+        log_warn("[INDEX] {nrow(missing_df)} kayıt bulunamadı (user={uid}): {paste(missing_names, collapse = ', ')} — indeks temizleniyor")
+        # Bayat kayıt temizliği de İSTEĞE BAĞLIDIR; kilit alınamadığında
+        # listeleme başarısız olmak yerine onarımı erteler.
+        tryCatch(
+          .file_store_drop_stale_entries(uid, missing_df),
+          error = function(e) {
+            log_warn("[INDEX] Bayat kayıt temizliği ertelendi: {conditionMessage(e)}")
+          }
+        )
+      }
     }
 
 	df <- df[exists_vec, , drop = FALSE]

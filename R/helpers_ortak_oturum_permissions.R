@@ -204,11 +204,28 @@ ortak_mesaj_yonlendirme_plani <- function(mesaj_turu) {
 # olarak döndürebilir. Hangi biçim gelirse gelsin güvenli UTC an'a çözülür;
 # aksi halde bir biçim farkı çevrim içi kullanıcıyı sessizce ÇevrimDışı
 # göstermez (davet panelinde çevrim içi listenin boş kalmasının kök nedeni).
+# VARSAYILAN referans yalnızca METİN zaman damgaları için +3 saat kaydırılır:
+# MB_Ortak* metin değerleri Türkiye yerel saatinde (Europe/Istanbul) saklanıp
+# UTC gibi ayrıştırılır. Yerel POSIXct değeri (ODBC DATETIME2) zaten MUTLAK bir
+# an'dır; kaydırılırsa şu an atılan bir kalp atışı 3 saat eski görünüp
+# ÇevrimDışı sınıflanıyordu. Açık `simdi` geçiren çağrılar etkilenmez.
 ortak_sunum_durumu <- function(son_kalp_atisi,
-                               simdi = Sys.time(),
+                               simdi = NULL,
                                cevrimici_saniye = 120,
                                bosta_saniye = 300) {
   durumlar <- ortak_canli_durumlar()
+
+  # `simdi` HİÇ KAYDIRILMAZ. Eskiden varsayılan `simdi` değerine metin dalı için
+  # +3 saat ekleniyordu; çağıran `simdi = Sys.time()` verdiğinde bu kaydırma
+  # UYGULANMIYOR, Türkiye-yerel DB metni ise UTC olarak ayrıştırılıp ÜÇ SAAT
+  # İLERİDE görünüyordu. Negatif fark sıfıra kenetlendiği için BAYAT bir kullanıcı
+  # neredeyse üç saat boyunca `Çevrimİçi` kalabiliyordu. Artık METİN, GERÇEK ANA
+  # çevrilir: sabit +3 (Europe/Istanbul, DST yok) sözleşmesi ayrıştırılan
+  # zamandan ÇIKARILIR. Aritmetik yapılır; `tz = "Europe/Istanbul"` adı minimal
+  # kaplarda (tzdata yok) çözülemeyebilir.
+  if (is.null(simdi)) {
+    simdi <- Sys.time()
+  }
 
   if (inherits(son_kalp_atisi, "POSIXct")) {
     zaman <- son_kalp_atisi[1]
@@ -220,7 +237,7 @@ ortak_sunum_durumu <- function(son_kalp_atisi,
     ham <- trimws(sub("T", " ", ham, fixed = TRUE))
     ham <- sub("\\.[0-9]+", "", ham)
     zaman <- if (nzchar(ham)) {
-      tryCatch(as.POSIXct(ham, tz = "UTC"), error = function(e) NA)
+      tryCatch(as.POSIXct(ham, tz = "UTC") - 3L * 3600L, error = function(e) NA)
     } else {
       NA
     }

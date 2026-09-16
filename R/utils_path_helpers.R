@@ -128,7 +128,13 @@ normalize_utf8_path <- function(path, mustWork = FALSE) {
     )
 
     if (!is.na(normalized) && nzchar(normalized)) {
-      normalized <- gsub("\\\\", "/", normalized, fixed = TRUE)
+      # Tek ters eğik çizgiler de '/' olur (fixed "\\\\" yalnızca çiftleri yakalardı).
+      # YALNIZCA Windows'ta: POSIX'te ters eğik çizgi geçerli bir dosya adı
+      # karakteridir ve `rapor\2026.csv` gibi GERÇEKTEN çözülmüş bir yolu
+      # `rapor/2026.csv` yapmak sonraki dosya işlemlerini başarısız kılıyordu.
+      if (identical(.Platform$OS.type, "windows")) {
+        normalized <- chartr("\\", "/", normalized)
+      }
       if (!isTRUE(mustWork)) {
         return(normalized)
       }
@@ -137,7 +143,14 @@ normalize_utf8_path <- function(path, mustWork = FALSE) {
     }
   }
 
-  fallback <- gsub("\\\\", "/", candidate_utf8, fixed = TRUE)
+  # Aynı platform koşulu FALLBACK için de geçerlidir: POSIX'te ters eğik çizgi
+  # geçerli bir dosya adı karakteridir ve `rapor\2026.csv` dönüştürülünce
+  # çağıran farklı bir yol alıp sonraki işlemleri yanlış konuma yapıyordu.
+  fallback <- if (identical(.Platform$OS.type, "windows")) {
+    chartr("\\", "/", candidate_utf8)
+  } else {
+    candidate_utf8
+  }
   if (!isTRUE(mustWork)) {
     return(fallback)
   }
@@ -292,6 +305,12 @@ read_env_path_safe <- function(var_name, fallback = "") {
 # NOT: Bu fonksiyon MERGEN_UPLOADS_DIR global değişkenine bağımlıdır
 #      ve config_file_store.R'de çağrılır.
 resolve_mcp_base_dir <- function() {
+  # NOT: `mergen.mcp_base_dir` SEÇENEĞİ BURADA OKUNMAZ. Bu fonksiyon
+  # `config_file_store.R` içinde o seçeneği AYARLAYAN kaynaktır; seçeneği önce
+  # okumak döngüsel bağımlılık kuruyor ve `MCP_FILES_BASE` / `MERGEN_UPLOADS_DIR`
+  # ortam geçersiz kılmaları ETKİSİZ kalıyordu. Yetim kopya temizliğinin
+  # `copy_to_mcp_base()` ile aynı kökü kullanması `R/helpers_file_pipeline.R`
+  # içinde kökü doğrudan `dest`ten türeterek sağlanır.
   raw <- read_env_path_safe("MCP_FILES_BASE", fallback = MERGEN_UPLOADS_DIR)
   if (!nzchar(raw)) {
     raw <- MERGEN_UPLOADS_DIR

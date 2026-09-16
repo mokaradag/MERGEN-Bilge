@@ -76,6 +76,17 @@ cc_build_run_output_request <- function(env, tool_uses = list()) {
     mirrored = isTRUE(env$mirror_kullanildi),
     request_id = env$request_id %||% "",
     active_guard = env$output_sync_guard %||% "",
+    # İndirme kökü worker'a AÇIKÇA taşınır: mergen.claude_code_download_root
+    # seçeneği yalnızca ana süreçte tanımlıdır ve worker'da getwd() tabanlı
+    # yanlış bir klasöre düşülüyordu.
+    download_root = tryCatch(
+      if (exists("get_claude_code_download_root", mode = "function", inherits = TRUE)) {
+        get_claude_code_download_root()
+      } else {
+        ""
+      },
+      error = function(e) ""
+    ),
     limits = tryCatch(
       get("claude_code_runtime_limits", inherits = TRUE),
       error = function(e) list()
@@ -149,6 +160,17 @@ cc_filter_download_candidates <- function(paths, layout = NULL, limits = NULL) {
 cc_process_run_outputs <- function(request) {
   baslangic <- Sys.time()
 
+  # Worker'da seçenek tanımsızdır; ana süreçten taşınan kök geri kurulur.
+  # Worker'lar görevler arasında yeniden kullanılır: seçenek görev sonunda geri
+  # alınmazsa, kökü boş gelen sonraki bir istek önceki çalıştırmanın kökünü
+  # devralırdı.
+  indirme_koku <- as.character(request$download_root %||% "")[1]
+  if (!is.na(indirme_koku) && nzchar(indirme_koku)) {
+    onceki_kok <- getOption("mergen.claude_code_download_root", NULL)
+    options(mergen.claude_code_download_root = indirme_koku)
+    on.exit(options(mergen.claude_code_download_root = onceki_kok), add = TRUE)
+  }
+
   gecen_ms <- function(from) {
     round(as.numeric(difftime(Sys.time(), from, units = "secs")) * 1000, 1)
   }
@@ -165,6 +187,17 @@ cc_process_run_outputs <- function(request) {
     haric_rel <- cc_scan_runtime_excluded_dirs()
   } else {
     haric_dir <- cc_scan_default_excluded_dirs()
+  }
+
+  # DEADLINE/İPTAL SİNYALİ: ana süreç zaman aşımında `active_guard` dosyasını
+  # siler. Worker pahalı aşamalar ARASINDA bunu denetlemezse çalıştırma
+  # kullanıcıya bitmiş görünürken worker havuzda meşgul kalmaya devam ediyordu.
+  .iptal_edildi <- function() {
+    g <- as.character(request$active_guard %||% "")[1]
+    nzchar(g) && !isTRUE(file.exists(g))
+  }
+  if (.iptal_edildi()) {
+    stop("Çıktı işleme iptal edildi (zaman aşımı veya yeni çalıştırma).", call. = FALSE)
   }
 
   diff_baslangic <- Sys.time()
@@ -210,6 +243,10 @@ cc_process_run_outputs <- function(request) {
     ))
   }
 
+  if (.iptal_edildi()) {
+    stop("Çıktı işleme iptal edildi (zaman aşımı veya yeni çalıştırma).", call. = FALSE)
+  }
+
   staging_baslangic <- Sys.time()
 
   indirmeler <- tryCatch(
@@ -224,13 +261,20 @@ cc_process_run_outputs <- function(request) {
         changed_files = degisenler,
         exclude_dirs = haric_dir,
         limits = request$limits,
-        layout = request$layout
+        layout = request$layout,
+        # İptal/deadline UZUN staging döngüsünün İÇİNDE de denetlenir; aksi
+        # hâlde süre dolduktan sonra worker kopyalamaya devam ediyordu.
+        cancel_fn = .iptal_edildi
       )
     ),
     error = function(e) list()
   )
 
   staging_ms <- gecen_ms(staging_baslangic)
+
+  if (.iptal_edildi()) {
+    stop("Çıktı işleme iptal edildi (zaman aşımı veya yeni çalıştırma).", call. = FALSE)
+  }
 
   sync_baslangic <- Sys.time()
   sync_sonuclari <- list()
@@ -274,225 +318,6 @@ cc_process_run_outputs <- function(request) {
   )
 }
 
-cc_output_sync_failures <- function(outputs) {
-  Filter(
-    function(x) is.list(x) && !isTRUE(x$success),
-    outputs$sync_results %||% list()
-  )
-}
-
-cc_report_output_sync_failure <- function(ctx, outputs) {
-  basarisiz <- cc_output_sync_failures(outputs)
-  if (!length(basarisiz)) return(FALSE)
-
-  yollar <- vapply(basarisiz, function(x) basename(x$dest_path %||% x$source_path %||% "dosya"), character(1))
-  mesaj <- paste0(
-    "Çalıştırma tamamlandı ancak ", length(basarisiz),
-    " çıktı kaynak klasöre aktarılamadı: ", paste(unique(yollar), collapse = ", ")
-  )
-  ctx$session$sendCustomMessage("cc-stream-end", list(target = ctx$ns("output_area")))
-  ctx$session$sendCustomMessage("cc-add-message", list(
-    target = ctx$ns("output_area"), type = "error",
-    content = htmltools::htmlEscape(mesaj), timestamp = format(Sys.time(), "%H:%M:%S")
-  ))
-  ctx$rv$last_result <- list(success = FALSE, output = "", error = mesaj)
-  if (exists("cc_persist_run_result", mode = "function", inherits = TRUE)) {
-    cc_persist_run_result(ctx$rv, ctx$env, status = "failed", final_output = mesaj)
-  }
-  cc_finalize_if_active(
-    ctx$rv, ctx$env$request_id, ctx$finalize_streaming,
-    durum_metin = "Aktarım Hatası", durum_ikon = "exclamation-triangle", durum_renk = "#E57373"
-  )
-  TRUE
-}
-
-cc_report_output_scan_truncation <- function(ctx, outputs) {
-  if (!isTRUE(outputs$output_scan_truncated)) return(FALSE)
-
-  neden <- as.character(outputs$output_scan_truncated_reason %||% "")[1]
-  mesaj <- paste0(
-    "Çalıştırma sonrası çıktı taraması güvenli sınırlar içinde tamamlanamadı",
-    if (nzchar(neden)) paste0(" (", neden, ")") else "",
-    "; üretilen dosyaların bir bölümü eksik kalabileceği için çalışma ",
-    "tamamlandı olarak işaretlenmedi."
-  )
-
-  cc_log_warn(paste(CLAUDE_CODE_LOG_PREFIX, "[OUTPUT_DIFF]", mesaj))
-
-  ctx$session$sendCustomMessage("cc-stream-end", list(target = ctx$ns("output_area")))
-  ctx$session$sendCustomMessage("cc-add-message", list(
-    target = ctx$ns("output_area"), type = "error",
-    content = htmltools::htmlEscape(mesaj), timestamp = format(Sys.time(), "%H:%M:%S")
-  ))
-  ctx$rv$last_result <- list(success = FALSE, output = "", error = mesaj)
-  if (exists("cc_persist_run_result", mode = "function", inherits = TRUE)) {
-    cc_persist_run_result(ctx$rv, ctx$env, status = "failed", final_output = mesaj)
-  }
-  cc_finalize_if_active(
-    ctx$rv, ctx$env$request_id, ctx$finalize_streaming,
-    durum_metin = "Çıktı Taraması Eksik", durum_ikon = "exclamation-triangle",
-    durum_renk = "#E57373"
-  )
-  TRUE
-}
-
-cc_report_output_processing_failure <- function(ctx, error) {
-  mesaj <- paste0(
-    "Claude işlemi tamamlandı ancak çıktı dosyaları güvenli biçimde işlenemedi: ",
-    gsub("[{}]", "", conditionMessage(error))
-  )
-  ctx$session$sendCustomMessage("cc-stream-end", list(target = ctx$ns("output_area")))
-  ctx$session$sendCustomMessage("cc-add-message", list(
-    target = ctx$ns("output_area"), type = "error",
-    content = htmltools::htmlEscape(mesaj), timestamp = format(Sys.time(), "%H:%M:%S")
-  ))
-  ctx$rv$last_result <- list(success = FALSE, output = "", error = mesaj)
-  if (exists("cc_persist_run_result", mode = "function", inherits = TRUE)) {
-    cc_persist_run_result(ctx$rv, ctx$env, status = "failed", final_output = mesaj)
-  }
-  cc_finalize_if_active(
-    ctx$rv, ctx$env$request_id, ctx$finalize_streaming,
-    durum_metin = "Çıktı İşleme Hatası", durum_ikon = "exclamation-triangle",
-    durum_renk = "#E57373"
-  )
-  invisible(TRUE)
-}
-
-#' Çıktı işlemesini arka plana gönder ve sonucunda çalıştırmayı sonlandır
-#'
-#' @param ctx Sonlandırma bağlamı (session, ns, rv, env, ayristirma, ...)
-#' @return invisible(TRUE)
-cc_dispatch_run_output_processing <- function(ctx) {
-  guard <- file.path(
-    ctx$env$runtime_layout$metadata %||% tempdir(),
-    paste0("output-sync-", gsub("[^A-Za-z0-9_.-]", "_", ctx$env$request_id %||% "run"), ".active")
-  )
-  dir.create(dirname(guard), recursive = TRUE, showWarnings = FALSE)
-
-  # file.create() sonucu kontrol edilmezse (ör. izin değişikliği veya geçici
-  # disk dolması), var olmayan bir guard ile worker gönderilir;
-  # cc_apply_output_sync_plan() eksik guard'ı iptal gibi yorumlayıp hiçbir
-  # başarısız sonuç eklemeden çıkar ve çalıştırma yanlışlıkla "Tamamlandı"
-  # görünür. Guard oluşturulamazsa worker hiç gönderilmeden açık bir hata
-  # olarak sonlandırılır.
-  guard_olusturuldu <- isTRUE(tryCatch(file.create(guard), error = function(e) FALSE)) &&
-    isTRUE(tryCatch(file.exists(guard), error = function(e) FALSE))
-
-  if (!isTRUE(guard_olusturuldu)) {
-    cc_log_warn(paste(
-      CLAUDE_CODE_LOG_PREFIX,
-      "[OUTPUT_SYNC] Aktarım koruma dosyası oluşturulamadı; çıktı işleme başlatılmadı."
-    ))
-    cc_report_output_processing_failure(
-      ctx,
-      simpleError(
-        "Çıktı aktarım koruma dosyası oluşturulamadı; çalıştırma güvenli biçimde tamamlanamadı."
-      )
-    )
-    return(invisible(TRUE))
-  }
-
-  ctx$env$output_sync_guard <- guard
-  istek <- cc_build_run_output_request(ctx$env, ctx$ayristirma$tool_uses %||% list())
-
-  cc_send_run_stage(ctx$session, ctx$ns, "cikti")
-
-  # Hazırlık aşamasındaki bağımsız deadline deseninin aynısı: takılan bir
-  # worker çalıştırmayı "Çıktılar işleniyor" durumunda sonsuza bırakmamalı.
-  cikti_zaman_asimi_sn <- cc_runtime_limit("output_process_timeout_sec", 180, istek$limits)
-  cikti_zaman_asimi_durumu <- new.env(parent = emptyenv())
-  cikti_zaman_asimi_durumu$pending <- TRUE
-  cikti_zaman_asimi_durumu$cancel <- later::later(function() {
-    if (isTRUE(cikti_zaman_asimi_durumu$pending) &&
-        cc_is_active_run(ctx$rv, ctx$env$request_id)) {
-      cikti_zaman_asimi_durumu$pending <- FALSE
-      unlink(istek$active_guard, force = TRUE)
-      unlink(ctx$env$runtime_lease %||% "", force = TRUE)
-      cc_report_output_processing_failure(ctx, simpleError(sprintf(
-        "Çıktı işleme zaman aşımına uğradı (%.0f saniye).", cikti_zaman_asimi_sn
-      )))
-    }
-  }, delay = cikti_zaman_asimi_sn)
-
-  tracked_future_promise(
-    task_fn = function() {
-      cc_process_run_outputs(istek)
-    },
-    task_type = "claude_code_run_outputs",
-    session_token = ctx$session$token,
-    dependency_mode = "explicit",
-    globals = c(
-      list(istek = istek),
-      cc_run_output_worker_globals()
-    ),
-    packages = c("tools", "utils")
-  ) |>
-    promises::then(function(outputs) {
-      cikti_zaman_asimi_durumu$pending <- FALSE
-      if (!cc_is_active_run(ctx$rv, ctx$env$request_id)) {
-        unlink(istek$active_guard, force = TRUE)
-        unlink(ctx$env$runtime_lease %||% "", force = TRUE)
-        return(NULL)
-      }
-
-      cc_log_info(sprintf(
-        paste0(
-          "%s [OUTPUT_DIFF] request=%s | async=TRUE | degisen=%d | diff_ms=%.0f | ",
-          "[DOWNLOAD_STAGE] indirme=%d | staging_ms=%.0f | ",
-          "[OUTPUT_SYNC] aktarilan=%d | sync_ms=%.0f"
-        ),
-        CLAUDE_CODE_LOG_PREFIX,
-        ctx$env$request_id %||% "",
-        outputs$metrics$changed_count %||% 0L,
-        outputs$metrics$diff_ms %||% 0,
-        outputs$metrics$download_count %||% 0L,
-        outputs$metrics$staging_ms %||% 0,
-        outputs$metrics$synced_count %||% 0L,
-        outputs$metrics$sync_ms %||% 0
-      ))
-
-      # Kaynak dizine gerçekten dosya aktarıldıysa bunu aşama olarak bildir.
-      if (length(outputs$sync_results %||% list()) > 0L) {
-        cc_send_run_stage(ctx$session, ctx$ns, "aktarim")
-      }
-
-      if (cc_report_output_scan_truncation(ctx, outputs)) {
-        unlink(istek$active_guard, force = TRUE)
-        unlink(ctx$env$runtime_lease %||% "", force = TRUE)
-        return(NULL)
-      }
-
-      if (cc_report_output_sync_failure(ctx, outputs)) {
-        unlink(istek$active_guard, force = TRUE)
-        unlink(ctx$env$runtime_lease %||% "", force = TRUE)
-        return(NULL)
-      }
-
-      cc_finish_streaming_run(ctx, outputs)
-      unlink(istek$active_guard, force = TRUE)
-      unlink(ctx$env$runtime_lease %||% "", force = TRUE)
-      NULL
-    }) |>
-    promises::catch(function(e) {
-      cikti_zaman_asimi_durumu$pending <- FALSE
-      unlink(istek$active_guard, force = TRUE)
-      unlink(ctx$env$runtime_lease %||% "", force = TRUE)
-      if (!cc_is_active_run(ctx$rv, ctx$env$request_id)) {
-        return(NULL)
-      }
-
-      cc_log_warn(paste(
-        CLAUDE_CODE_LOG_PREFIX,
-        "[OUTPUT_DIFF] Çıktı işleme başarısız:",
-        gsub("[{}]", "", conditionMessage(e))
-      ))
-
-      cc_report_output_processing_failure(ctx, e)
-      NULL
-    })
-
-  invisible(TRUE)
-}
 
 .cc_log_tool_use_debug <- function(env, ayristirma, olusan_dosyalar) {
   tryCatch({
@@ -650,7 +475,10 @@ cc_finish_streaming_run <- function(ctx, outputs) {
       error = function(e) ""
     )
 
-    session$sendCustomMessage(
+    # Kapanmış oturumda websocket gönderimi HATA verir ve `then()` reddedilip
+    # `catch()` dalına düşüyor; BAŞARIYLA tamamlanmış çalıştırma `failed` olarak
+    # kalıcılaşıyordu. Gönderim korunur; kalıcılaştırma her durumda çalışır.
+    try(session$sendCustomMessage(
       type = "cc-stream-end",
       message = list(
         target = ns("output_area"),
@@ -660,7 +488,7 @@ cc_finish_streaming_run <- function(ctx, outputs) {
         accentColor = env$karakter_renk,
         characterName = env$karakter_adi
       )
-    )
+    ), silent = TRUE)
 
     rv$last_result <- list(
       success = TRUE,
@@ -686,7 +514,12 @@ cc_finish_streaming_run <- function(ctx, outputs) {
       )
     }
 
-    cc_finalize_if_active(
+    # Kapanmış oturumda `finalize_streaming()` kendi `sendCustomMessage()`
+    # çağrılarından hata fırlatıyor; hata `cc_finish_streaming_run()` dışına
+    # yayılınca `rv$output_history` güncellemesi ve dosya yöneticisi yenilemesi
+    # HİÇ çalışmıyordu (promise `catch()` de `rv$active_request_id` temizlendiği
+    # için ikinci bir başarısızlık raporlamıyor).
+    try(cc_finalize_if_active(
       rv = rv,
       request_id = env$request_id,
       finalize_streaming = ctx$finalize_streaming,
@@ -694,7 +527,7 @@ cc_finish_streaming_run <- function(ctx, outputs) {
       durum_ikon = "check-circle",
       durum_renk = "#81C784",
       sure = sure
-    )
+    ), silent = TRUE)
   } else {
     hata_mesaji <- ctx$hata_mesaji %||% ""
 
@@ -706,36 +539,40 @@ cc_finish_streaming_run <- function(ctx, outputs) {
       gsub("[{}]", "", substr(hata_mesaji, 1, 200))
     ))
 
-    session$sendCustomMessage(
-      type = "cc-stream-end",
-      message = list(target = ns("output_area"))
-    )
-
-    session$sendCustomMessage(
-      type = "cc-add-message",
-      message = list(
-        target = ns("output_area"),
-        type = "error",
-        content = htmltools::htmlEscape(hata_mesaji),
-        timestamp = format(Sys.time(), "%H:%M:%S"),
-        welcomeId = ns("welcome_screen")
+    # Kapalı oturumda UI gönderimi hata verir; kalıcılaştırma ve sonlandırma
+    # her durumda çalışmalıdır (bkz. cc_report_output_processing_failure).
+    try({
+      session$sendCustomMessage(
+        type = "cc-stream-end",
+        message = list(target = ns("output_area"))
       )
-    )
 
-    if (nzchar(indirme_html)) {
       session$sendCustomMessage(
         type = "cc-add-message",
         message = list(
           target = ns("output_area"),
-          type = "ai",
-          content = indirme_html,
+          type = "error",
+          content = htmltools::htmlEscape(hata_mesaji),
           timestamp = format(Sys.time(), "%H:%M:%S"),
-          welcomeId = ns("welcome_screen"),
-          accentColor = env$karakter_renk,
-          characterName = env$karakter_adi
+          welcomeId = ns("welcome_screen")
         )
       )
-    }
+
+      if (nzchar(indirme_html)) {
+        session$sendCustomMessage(
+          type = "cc-add-message",
+          message = list(
+            target = ns("output_area"),
+            type = "ai",
+            content = indirme_html,
+            timestamp = format(Sys.time(), "%H:%M:%S"),
+            welcomeId = ns("welcome_screen"),
+            accentColor = env$karakter_renk,
+            characterName = env$karakter_adi
+          )
+        )
+      }
+    }, silent = TRUE)
 
     rv$last_result <- list(
       success = FALSE,
@@ -761,7 +598,8 @@ cc_finish_streaming_run <- function(ctx, outputs) {
       )
     }
 
-    cc_finalize_if_active(
+    # Aynı kapalı-oturum koruması hata dalında da geçerlidir.
+    try(cc_finalize_if_active(
       rv = rv,
       request_id = env$request_id,
       finalize_streaming = ctx$finalize_streaming,
@@ -769,7 +607,7 @@ cc_finish_streaming_run <- function(ctx, outputs) {
       durum_ikon = "exclamation-triangle",
       durum_renk = "#E57373",
       sure = sure
-    )
+    ), silent = TRUE)
   }
 
   rv$output_history <- c(

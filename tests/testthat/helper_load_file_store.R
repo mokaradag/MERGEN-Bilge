@@ -160,6 +160,14 @@ source(
   local = globalenv()
 )
 
+# Kova temizliği (mergen_clear_user_bucket) indeks kilidinden SONRA yüklenir:
+# fiziksel silme ve indeks uzlaştırması tek kilit altında yürür.
+source(
+  file.path(repo_root_for_tests, "R", "config_file_store_bucket_clear.R"),
+  encoding = "UTF-8",
+  local = globalenv()
+)
+
 source(
   file.path(repo_root_for_tests, "R", "config_file_store_index_mutation.R"),
   encoding = "UTF-8",

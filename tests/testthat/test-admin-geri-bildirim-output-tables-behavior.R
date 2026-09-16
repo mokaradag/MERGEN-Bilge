@@ -71,3 +71,34 @@ test_that("detay tablosu sıralama sütunlarını, iletişim iznini ve mail ikon
   expect_identical(sonuc[["\U0001F4E7"]][2], "")
   expect_identical(sonuc[["Tarih"]][1], "03.01.2026 10:05")
 })
+
+test_that("detay tablosu kullanıcı kontrollü metinleri HTML olarak kaçırır", {
+  # Tablo DT tarafında escape = FALSE ile render edildiği için, kullanıcı
+  # kontrollü serbest metinlerin veri hazırlama katmanında kaçırılması gerekir.
+  zararli <- "<img src=x onerror=alert(1)>"
+
+  veri <- data.frame(
+    GeriBildirimID = 1,
+    KullaniciAdi = zararli,
+    Memnuniyet = 3,
+    NPS_Puan = 7,
+    Etiketler = zararli,
+    EnCokSevilen = zararli,
+    Gelistirme = zararli,
+    IletisimIzni = 0,
+    EmailAddress = "",
+    OlusturmaTarihi = "2026-01-03 10:05:00",
+    stringsAsFactors = FALSE
+  )
+
+  sonuc <- .gbot_env$admin_gb_prepare_detay_table_data(veri)
+
+  for (sutun in c("Kullanıcı", "Etiketler", "En Çok Sevilen", "Geliştirilecek")) {
+    deger <- sonuc[[sutun]][1]
+    expect_false(grepl("<img", deger, fixed = TRUE), info = sutun)
+    expect_true(grepl("&lt;img", deger, fixed = TRUE), info = sutun)
+  }
+
+  # Uygulama üretimi rozet HTML'i kaçırılmadan kalmalı (escape = FALSE bunun içindir).
+  expect_match(sonuc[["İletişim İzni"]][1], "<span", fixed = TRUE)
+})

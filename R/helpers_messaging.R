@@ -136,7 +136,11 @@ parse_ai_response_robustly <- function(content) {
   lang_match <- stringr::str_match(full_code_block, "```(\\w*\\b)?\\n?")
   language <- if (!is.na(lang_match[1, 2]) && nchar(lang_match[1, 2]) > 0) lang_match[1, 2] else "auto"
   
-  code_content <- stringr::str_remove(full_code_block, paste0("```", language, "\\n?"))
+  # `language` etiketsiz blokta "auto" olur; bu bir DİL ADI DEĞİLDİR. "```auto"
+  # deseni eşleşmediği için açılış çiti kod içeriğinde kalıyor, kod bloğunun ilk
+  # satırında ``` görünüyor ve kopyalanan kod bozuk oluyordu.
+  cit_dili <- if (identical(language, "auto")) "" else language
+  code_content <- stringr::str_remove(full_code_block, paste0("```", cit_dili, "\\n?"))
   code_content <- stringr::str_remove(code_content, "```$")
   
   html_parts <- list()
@@ -269,8 +273,12 @@ process_message_content <- function(content, type = "user") {
       has_code <- TRUE
       # İlk satırdan dili çıkar
       lines <- strsplit(parts[i], "\n", fixed = TRUE)[[1]]
-      language <- if (length(lines) > 0 && nchar(lines[1]) > 0 && !grepl(" ", lines[1])) {
-        lines[1]
+      # İlk satır yalnızca DİL ETİKETİ biçimindeyse dil sayılır. Eskiden boşluk
+      # içermeyen her satır etiket kabul ediliyor ve etiketsiz kod bloğunun
+      # ilk kod satırı (ör. "foo()") sessizce siliniyordu.
+      language <- if (length(lines) > 1 &&
+                      grepl("^[A-Za-z][A-Za-z0-9+#._-]{0,19}$", trimws(lines[1]), perl = TRUE)) {
+        trimws(lines[1])
       } else {
         "auto"
       }

@@ -40,37 +40,57 @@ db_message_get_image_base64 <- function(file_path) {
 # ------------------------------------------------------------------------------
 # Veritabanında saklanan görsel yolunu gerçek dosya sisteminde çözmeye çalışır.
 # ------------------------------------------------------------------------------
-db_message_resolve_image_path <- function(image_path) {
+db_message_resolve_image_path <- function(image_path, user_id = NULL) {
   if (is.null(image_path) || length(image_path) != 1L || !nzchar(image_path)) {
     return(NULL)
   }
 
   image_path <- as.character(image_path[1])
 
-  # 1. Doğrudan yolu dene.
-  if (file.exists(image_path)) {
+  # SAHİPLİK KÖKÜ ÖNCE ÇÖZÜLÜR. Aksi hâlde `[GÖRSEL:<yol>]` taşıyan bir asistan
+  # mesajı, var olan HERHANGİ bir mutlak yolu (ya da gömülü `user_images/...`
+  # yolunu) doğrudan döndürüyor ve `db_message_get_image_base64()` başka bir
+  # kullanıcının görselini veya okunabilir bir sunucu dosyasını istemciye
+  # data-URI olarak gönderiyordu.
+  uid <- suppressWarnings(as.character(user_id %||% "")[1])
+  if (is.na(uid) || !nzchar(uid) || uid %in% c("0", "unknown", "NA", "null")) {
+    return(NULL)
+  }
+  sahip_koku <- file.path(getwd(), "user_images", uid)
+
+  kok_icinde <- function(aday) {
+    if (!nzchar(aday) || !file.exists(aday)) return(FALSE)
+    if (exists("mergen_path_inside_root", mode = "function", inherits = TRUE)) {
+      return(isTRUE(mergen_path_inside_root(aday, sahip_koku)))
+    }
+    coz <- suppressWarnings(normalizePath(aday, winslash = "/", mustWork = FALSE))
+    kok <- suppressWarnings(normalizePath(sahip_koku, winslash = "/", mustWork = FALSE))
+    isTRUE(nzchar(coz) && nzchar(kok) && startsWith(coz, paste0(sub("/+$", "", kok), "/")))
+  }
+
+  # 1. Doğrudan yol: yalnızca sahibin kökü içindeyse kabul edilir.
+  if (kok_icinde(image_path)) {
     return(image_path)
   }
 
-  # 2. user_images/ içeren göreli yolu çıkarmayı dene.
+  # 2. Gömülü user_images/ göreli yolu: aynı kapsama denetiminden geçer.
   user_images_match <- regmatches(
     image_path,
     regexec("(user_images/.+)$", image_path)
   )[[1]]
 
   if (length(user_images_match) >= 2) {
-    relative_path <- user_images_match[2]
-    candidate_path <- file.path(getwd(), relative_path)
-
-    if (file.exists(candidate_path)) {
+    candidate_path <- file.path(getwd(), user_images_match[2])
+    if (kok_icinde(candidate_path)) {
       return(candidate_path)
     }
   }
 
-  # 3. Sadece dosya adını al ve user_images altında ara.
+  # 3. Sadece dosya adını al ve YALNIZCA sahibin user_images klasöründe ara.
   filename <- basename(image_path)
-  search_pattern <- file.path(getwd(), "user_images", "*", "*", filename)
+  search_pattern <- file.path(sahip_koku, "*", filename)
   found_files <- Sys.glob(search_pattern)
+  found_files <- found_files[vapply(found_files, kok_icinde, logical(1))]
 
   if (length(found_files) > 0) {
     return(found_files[1])
@@ -82,8 +102,8 @@ db_message_resolve_image_path <- function(image_path) {
 # ------------------------------------------------------------------------------
 # Görsel mesajı için HTML oluşturur.
 # ------------------------------------------------------------------------------
-db_message_render_image_html <- function(image_path, description, message_id) {
-  resolved_path <- db_message_resolve_image_path(image_path)
+db_message_render_image_html <- function(image_path, description, message_id, user_id = NULL) {
+  resolved_path <- db_message_resolve_image_path(image_path, user_id = user_id)
 
   description_html <- if (!is.null(description) && nzchar(description)) {
     sprintf(
@@ -172,7 +192,7 @@ db_message_process_text_content <- function(content_text, msg_type, message_id) 
 # ------------------------------------------------------------------------------
 # Tek bir DB mesaj satırını uygulama mesaj nesnesine dönüştürür.
 # ------------------------------------------------------------------------------
-db_message_format_row <- function(row) {
+db_message_format_row <- function(row, user_id = NULL) {
   content_text <- row$MessageContent %||% ""
   msg_type <- row$MessageType %||% "user"
 
@@ -203,7 +223,8 @@ db_message_format_row <- function(row) {
       image_html <- db_message_render_image_html(
         image_path = image_path,
         description = image_description,
-        message_id = as.character(row$MessageID)
+        message_id = as.character(row$MessageID),
+        user_id = row$UserID %||% user_id
       )
 
       list(html = image_html, has_code = FALSE)
@@ -284,12 +305,13 @@ db_message_format_row <- function(row) {
 # DB mesaj veri çerçevesini uygulama mesaj listesine dönüştürür.
 # Bu fonksiyonun adı geriye dönük uyumluluk için korunur.
 # ------------------------------------------------------------------------------
-format_chat_messages <- function(chat_df) {
+# user_id: satırda UserID sütunu yoksa görsel yolu çözümü için kullanıcı kapsamı.
+format_chat_messages <- function(chat_df, user_id = NULL) {
   if (is.null(chat_df) || nrow(chat_df) == 0) {
     return(list())
   }
 
   lapply(seq_len(nrow(chat_df)), function(i) {
-    db_message_format_row(chat_df[i, , drop = FALSE])
+    db_message_format_row(chat_df[i, , drop = FALSE], user_id = user_id)
   })
 }

@@ -25,13 +25,30 @@ Sys.setenv(
   MERGEN_DISABLE_FUTURES = "true"
 )
 
-testthat::local_edition(3)
+# testthat SÜRÜMÜ AÇIKÇA BİLDİRİLİR. Depoda DESCRIPTION / Config/testthat/edition
+# yoktur; bildirim olmadan `find_edition()` sessizce 2. sürüme düşer ve CI hangi
+# sürümün koştuğunu bilmeden yeşile döner. Bildirim ortam değişkeniyle yapılır ve
+# YALNIZCA `test_dir()` çağrısını kapsar; `testthat::local_edition(3)` ÜST DÜZEYDE
+# çağrılmaz, çünkü küresel bir ertelenmiş işleyici kaydedip Rscript çıkışında
+# "deferred_run fonksiyonu bulunamadı" hatası üretiyordu.
+results <- local({
+  onceki_edition <- Sys.getenv("TESTTHAT_EDITION", unset = NA_character_)
+  on.exit({
+    if (is.na(onceki_edition)) {
+      Sys.unsetenv("TESTTHAT_EDITION")
+    } else {
+      Sys.setenv(TESTTHAT_EDITION = onceki_edition)
+    }
+  }, add = TRUE)
 
-results <- testthat::test_dir(
-  file.path("tests", "testthat"),
-  reporter = "summary",
-  stop_on_failure = TRUE,
-  stop_on_warning = TRUE
-)
+  Sys.setenv(TESTTHAT_EDITION = "3")
+
+  testthat::test_dir(
+    file.path("tests", "testthat"),
+    reporter = "summary",
+    stop_on_failure = TRUE,
+    stop_on_warning = TRUE
+  )
+})
 
 invisible(results)

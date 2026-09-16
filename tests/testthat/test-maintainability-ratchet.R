@@ -118,9 +118,20 @@ test_that("büyük dosya ve fonksiyon sayaçları mevcut taban çizgisinden köt
   # dört çalışma zamanı dosyası (PK çekirdek gövdesi, P1 guard'ları, işçi-PID
   # sondası, tüketmeyen köken okuması) `R/config_source_manifest.R` içinde
   # AÇIKÇA sıralandı. En büyük dosya artık SAF VERİ olan manifestin kendisidir
-  # (796 satır, 0 fonksiyon). 795 -> 796; "800+ dosya sayısı = 0" kuralı
-  # DEĞİŞMEDİ, yani manifeste yeni giriş eklemek artık bölüm bölmesi gerektirir.
-  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 796L)
+  # (797 satır, 0 fonksiyon). BİLİNÇLİ GÜNCELLEME (ÖLÇÜLEN): 796 -> 797, çünkü
+  # aktif çalışma "lease" yaşam döngüsü R/helpers_claude_code_runtime_lease.R
+  # dosyasına ayrıldı (run_lifecycle küresel 24 fonksiyon tavanındaydı) ve
+  # manifeste bir SATIRLIK veri girişi eklendi. "800+ dosya sayısı = 0" ve
+  # "en yüksek fonksiyon sayısı 24" kuralları DEĞİŞMEDİ.
+  # BİLİNÇLİ GÜNCELLEME (ÖLÇÜLEN): 797 -> 799. PR #717 inceleme düzeltmeleri iki
+  # ratchet bölünmesi gerektirdi ve manifeste İKİ SATIRLIK veri girişi eklendi:
+  # R/helpers_sso_jwks_cache.R (JWKS getirme/önbellek; helpers_sso_signature.R
+  # 24 fonksiyon tavanını aştı) ve R/helpers_claude_code_output_buffer.R (alt
+  # süreç çıktısı bayt bütçesi; helpers_claude_code.R satır, process yardımcısı
+  # fonksiyon tavanındaydı). En büyük dosya hâlâ SAF VERİ olan manifesttir
+  # (0 fonksiyon). "800+ dosya sayısı = 0" ve "en yüksek fonksiyon sayısı 24"
+  # kuralları DEĞİŞMEDİ.
+  max_file_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_LINES", 799L)
   max_file_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_FUNCTIONS", 24L)
 
   actual_large_files <- sum(score_report$lines >= 800)
@@ -262,7 +273,10 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # 726/23 -> 652/22'ye indi. Bütçe geri tırmanışı kilitler.
   assert_current_budget("R/server_ai_expert_handlers.R", 660L, 22L)
   assert_current_budget("R/helpers_ai_expert_handlers_support.R", 180L, 8L)
-  assert_current_budget("R/module_file_manager.R", 560L, 10L)
+  # BİLİNÇLİ GÜNCELLEME (ÖLÇÜLEN) 560 -> 580 satır, PR #717: "Tümünü Temizle"
+  # akışı kimlik kapısı arkasına alındı ve iptal ancak BAŞARILI temizlikten
+  # SONRA çalışır. Fonksiyon bütçesi (10) DEĞİŞMEDİ; küresel tavanlar korunur.
+  assert_current_budget("R/module_file_manager.R", 580L, 10L)
   # 140L/3 -> 175L/7 bilinçli güncelleme: senkron toplu yükleme döngüsü ortak
   # dosya alım hattına taşındı; dosya artık plan gönderimi + ana süreç commit'i
   # + yükleme runtime fabrikası sorumluluğunu taşıyor.
@@ -676,7 +690,10 @@ test_that("near-limit runtime files do not silently consume remaining headroom",
   # Bloklamayan dosya alım hattı: her katman tek sorumlulukta ve küçük kalmalı.
   # Saf plan / worker yürütme / kuyruk / ana süreç orkestrasyonu ayrımı geri
   # birleştirilmemelidir.
-  assert_current_budget("R/helpers_file_ingestion_task.R", 240L, 10L)
+  # BİLİNÇLİ GÜNCELLEME (ÖLÇÜLEN) 240/10 -> 260/11, PR #717: yinelenen-ad
+  # anahtarı KODLAMAYA DAYANIKLIDIR (`ad_anahtari`) ve geçersiz bir ad artık
+  # TÜM partiyi iptal etmek yerine yalnızca O DOSYAYI reddeder.
+  assert_current_budget("R/helpers_file_ingestion_task.R", 260L, 11L)
   assert_current_budget("R/helpers_file_ingestion_worker.R", 250L, 13L)
   assert_current_budget("R/helpers_file_ingestion_queue.R", 220L, 20L)
   assert_current_budget("R/helpers_file_ingestion_runtime.R", 265L, 19L)
@@ -775,13 +792,28 @@ test_that("mevcut büyük ve fonksiyon yoğun dosya taban çizgileri sessizce b�
   # config_api.R bölünmesi sonrası sıkılaştırılmış bütçe: Derin Düşünme yetenek
   # kaydı helpers_deep_thinking_model_capabilities.R, API anahtarı kripto katmanı
   # helpers_api_key_crypto.R içindedir; bu dosyaya geri taşınarak bütçe tüketilemez.
-  assert_file_budget("R/config_api.R", 520L, 6L)
+  # 520L -> 522L bilinçli güncelleme (PR #717 inceleme düzeltmeleri): TTS zaman
+  # aşımı NA/negatif korumasi ve validate_api_key skalerleştirme/endpoint NULL
+  # guard'ları. Fonksiyon bütçesi DEĞİŞMEDİ.
+  assert_file_budget("R/config_api.R", 522L, 6L)
   assert_file_budget("R/helpers_deep_thinking_model_capabilities.R", 160L, 4L)
-  assert_file_budget("R/helpers_api_key_crypto.R", 220L, 12L)
+  # BİLİNÇLİ GÜNCELLEME (ÖLÇÜLEN) 220/12 -> 275/13, PR #717: OKUMA yolları
+  # geçersiz kullanıcı adında `stop()` yerine GÜVENLİ sonuç döndürür
+  # (`must_work = FALSE`), `enc` alanı ÇÖZÜLEBİLİR biçim denetiminden geçer
+  # (`.api_enc_bicimi_gecerli`) ve doğrulama kaydı çözümlemeden ÖNCE denetlenir.
+  # YAZMA yolunda `stop()` KORUNUR. Küresel tavanlar (799/24) DEĞİŞMEDİ.
+  assert_file_budget("R/helpers_api_key_crypto.R", 275L, 13L)
   assert_file_budget("R/helpers_api_model_config.R", 360L, 18L)
   assert_file_budget("R/helpers_llm_worker.R", 799L, 8L)
   assert_file_budget("R/helpers_llm_worker_tool_results.R", 260L, 2L)
-  assert_file_budget("R/helpers_claude_code.R", 450L, 18L)
+  # 450L -> 482L bilinçli güncelleme (PR #717): proc$wait() boruları tüketmediği
+  # için 64KB boru tamponu dolduğunda CLI kilitleniyordu; poll_io + stdout/stderr
+  # tüketen döngü eklendi. Fonksiyon bütçesi DEĞİŞMEDİ.
+  # BİLİNÇLİ GÜNCELLEME (ÖLÇÜLEN) 482 -> 495 satır, PR #717: çıktı-sınırı
+  # sonucuna geçen süre `difftime` NESNESİ olarak veriliyordu; bu değer
+  # `round(as.numeric(...), 1)` ile sayısallaştırılır. Fonksiyon bütçesi (18)
+  # DEĞİŞMEDİ; küresel tavanlar (799/24) korunur.
+  assert_file_budget("R/helpers_claude_code.R", 495L, 18L)
   # BİLİNÇLİ GÜNCELLEME (PR #705 inceleme takibi): 260 -> 264 satır (ÖLÇÜLEN).
   # `cc_list_dir_relaxed()` artık bloklayan `fs::dir_ls()` yedeğini ana Shiny
   # olay döngüsünde ÇALIŞTIRMAZ: `setTimeLimit()` askıda kalmış YERLİ bir
@@ -799,9 +831,19 @@ test_that("mevcut büyük ve fonksiyon yoğun dosya taban çizgileri sessizce b�
   # "başarılı boş sync" yerine açık başarısızlık olarak raporlanması) 365 ->
   # 385'e çıkardı.
   assert_file_budget("R/helpers_claude_code_runtime_workdir.R", 385L, 14L)
-  assert_file_budget("R/helpers_claude_code_workdir_scan.R", 423L, 14L)
+  # 423L -> 435L bilinçli güncelleme (PR #717): all.equal() göreli toleransı
+  # mtime'da ~25 saniyelik kör alan üretiyordu; tam NA-duyarlı eşitlik ve
+  # platforma bağlı anahtar katlaması eklendi. Fonksiyon bütçesi DEĞİŞMEDİ.
+  assert_file_budget("R/helpers_claude_code_workdir_scan.R", 435L, 14L)
   assert_file_budget("R/helpers_claude_code_workdir_snapshot.R", 450L, 24L)
-  assert_file_budget("R/helpers_db_chat_mutations.R", 420L, 24L)
+  # 420L -> 434L bilinçli güncelleme (PR #717): sohbet silmede kimlik zorlama +
+  # sahiplik doğrulaması sonrası görsel klasörü temizliği ve encoding guard'ına
+  # beklenen değerlerin geçirilmesi. Fonksiyon bütçesi DEĞİŞMEDİ.
+  # BİLİNÇLİ GÜNCELLEME (ÖLÇÜLEN) 434 -> 455 satır, PR #717: legacy INSERT dalı
+  # sütun YOKLUĞUNU kodlama guard'ına bildirir (`reasoning_column_absent`) ve
+  # görsel klasörü temizliği normal DOSYA yolunu da siler. Fonksiyon bütçesi (24)
+  # DEĞİŞMEDİ; küresel tavanlar korunur.
+  assert_file_budget("R/helpers_db_chat_mutations.R", 455L, 24L)
   assert_file_budget("R/helpers_database.R", 320L, 12L)
   assert_file_budget("R/helpers_server_runtime_contracts.R", 160L, 7L)
   # SSO auth-ready / yenilenebilir modül wiring katmanı
@@ -813,8 +855,34 @@ test_that("mevcut büyük ve fonksiyon yoğun dosya taban çizgileri sessizce b�
   assert_file_budget("R/server_core_interaction_runtime.R", 360L, 8L)
   assert_file_budget("R/helpers_chartlab.R", 577L, 24L)
   assert_file_budget("R/helpers_chartlab_spec.R", 220L, 12L)
-  assert_file_budget("R/helpers_files_path.R", 220L, 18L)
-  assert_file_budget("R/helpers_files.R", 260L, 24L)
+  # BİLİNÇLİ GÜNCELLEME (ÖLÇÜLEN) 220/18 -> 225/19, PR #717: kök karşılaştırması
+  # KAYIPLI ASCII iskeletinden (`?` ile daralt) mojibake ONARILMIŞ kanonik biçime
+  # geçti. Eski iskelet `/srv/\u015Eube/mcp` ile `/srv/\u00C7ube/mcp` köklerini
+  # AYNI sayıyor, hızlı yol taban DIŞINDAKİ dosyayı "taban altında" bildiriyordu.
+  # KÜRESEL tavanlar (799 satır / 24 fonksiyon, 800+ ve 25+ dosya sayısı 0)
+  # DEĞİŞMEDİ.
+  assert_file_budget("R/helpers_files_path.R", 225L, 19L)
+  # 260L -> 270L bilinçli güncelleme (PR #717): kopyalama sonrası boyut
+  # doğrulaması (eksik/bozuk kopya artık sessizce kabul edilmez) ve yerel
+  # kodlama yedeğinin güvenli dönüşü. Fonksiyon bütçesi DEĞİŞMEDİ.
+  # 270L -> 272L (ÖLÇÜLEN, aynı PR): unlink() istisna atmadığı için bozuk
+  # hedefin gerçekten silindiği doğrulanır; başarısız temizlik artık loglanır.
+  # 272L -> 230L SIKILAŞTIRMA (aynı PR): aşamalı kopya + boyut doğrulama + kalıcı
+  # ada terfi R/helpers_files_copy_promote.R dosyasına taşındı (ÖLÇÜLEN 227).
+  assert_file_budget("R/helpers_files.R", 230L, 24L)
+  # Aşamalama sınırı: kopya `.mergen-part` adına yapılır, doğrulanmadan kalıcı
+  # ad HİÇ oluşmaz. Bu mantık helpers_files.R içine geri taşınamaz.
+  assert_file_budget("R/helpers_files_copy_promote.R", 130L, 12L)
+  # Terfi adımı (sahiplik kanıtlı `file.link()` -> rezervasyon -> `file.rename()`
+  # ve sınırlı görünürlük yoklaması) AYRI dosyadadır; aşamalama dosyasının 130
+  # satır bütçesi bu sayede gevşetilmedi. Geri birleştirilmemelidir.
+  # BİLİNÇLİ GÜNCELLEME (ÖLÇÜLEN) 130 -> 145 satır, PR #717: terfi sonucu artık
+  # `promoted` bayrağı taşır. Yavaş UNC paylaşımında `file.rename()` BAŞARILI
+  # olup hedef henüz görünmediğinde çağıran dosyayı SİLİYOR ve başarıyla terfi
+  # etmiş çıktı kayboluyordu. Bütçeyi korumak için katman İKİ kez BÖLÜNDÜ
+  # (`helpers_files_promote_probe.R`, `helpers_files_staging_copy.R`); fonksiyon
+  # bütçesi (6) DEĞİŞMEDİ ve küresel tavanlar korunur.
+  assert_file_budget("R/helpers_files_promote_target.R", 145L, 6L)
 })
 
 test_that("module_file_manager.R state runtime extraction sonrası 800 satır altı kalır", {
@@ -878,17 +946,32 @@ test_that("module_file_manager.R state runtime extraction sonrası 800 satır al
     info = "R/helpers_file_manager_delete_runtime.R maintainability raporunda tek satır olarak görünmelidir."
   )
 
-  max_fm_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_LINES", 560L)
+  # BİLİNÇLİ GÜNCELLEME (ÖLÇÜLEN) 560 -> 580, PR #717 (bkz. yukarıdaki
+  # `assert_current_budget("R/module_file_manager.R", ...)` notu).
+  max_fm_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_LINES", 580L)
   # 140L/3 -> 175L/7 bilinçli güncelleme: toplu yükleme artık olay döngüsünde
   # senkron for döngüsü çalıştırmıyor. Dosya, ortak alım hattına gönderim +
   # ana süreç commit'i + yükleme runtime fabrikası sorumluluğunu üstlendi;
   # pahalı doğrulama/kopyalama/bütünlük denetimi R/helpers_file_ingestion_*.R
   # dosyalarına taşındı. Bütçe yeni gerçek tabanı kilitler.
+  # Bütçe DEĞİŞMEDİ (175): yetim kopya temizliği oturum kapsamlı
+  # `get_user_upload_dir` çözümleyicisini commit bağlamı üzerinden alır ve kısmi
+  # geri alma hatası kullanıcıya bildirilir; eklenen satırlar aynı dosyada
+  # sıkıştırılarak karşılandı.
   max_upload_helper_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_UPLOAD_RUNTIME_LINES", 175L)
   max_upload_helper_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_UPLOAD_RUNTIME_FUNCTIONS", 7L)
-  max_helper_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_STATE_RUNTIME_LINES", 450L)
+  # BİLİNÇLİ GÜNCELLEME (ÖLÇÜLEN) 450 -> 460, PR #717: kova temizliği kimlik
+  # çözülemediğinde KAPALI-BAŞARISIZ davranır (`fm_clear_user_bucket_safely`).
+  max_helper_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_STATE_RUNTIME_LINES", 460L)
   max_helper_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_STATE_RUNTIME_FUNCTIONS", 10L)
-  max_delete_helper_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_DELETE_RUNTIME_LINES", 90L)
+  # Aday başına silme kararı (kök denetimi + KESİN DEĞİL/NA durumu) ortak
+  # kurtarma dosyasına bölündüğü için bu dosya 90 satır tavanının ALTINDA
+  # kalır; bütçe gevşetilmemiştir.
+  # BİLİNÇLİ GÜNCELLEME (ÖLÇÜLEN) 90 -> 105, PR #717: `deleted_physical` ve
+  # `delete_failed` AYNI ANDA TRUE olabilir (dosya gitti, indeks/artefakt
+  # temizliği KISMİ kaldı); tek koşullu erken dönüş indirilemeyen bir tablo
+  # satırı bırakıyordu. Kısmi başarısızlık ayrı raporlanır.
+  max_delete_helper_lines <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_DELETE_RUNTIME_LINES", 105L)
   max_delete_helper_functions <- .as_int_env("MERGEN_TEST_MAX_FILE_MANAGER_DELETE_RUNTIME_FUNCTIONS", 4L)
 
   expect_true(

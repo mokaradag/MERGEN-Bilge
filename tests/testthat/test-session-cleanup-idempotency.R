@@ -86,8 +86,9 @@ test_that("register_session_cleanup_on_end aynı oturumda yalnızca bir callback
 
   sess$trigger_end()
 
-  # Yalnızca ilk callback çalışmalı.
-  expect_equal(sayac, 1L)
+  # Tek callback, HER İKİ çağrının extra_cleanup fonksiyonlarını çalıştırmalı;
+  # ikinci çağrının temizliği sessizce düşürülmez.
+  expect_equal(sayac, 101L)
 })
 
 test_that("register_session_cleanup_on_end userData yoksa güvenli userData ortamı oluşturur", {

@@ -265,3 +265,41 @@ test_that("format_chat_messages assistant ChartLab mesajlarını Shiny grafik ou
     info = "Saved chat ChartLab render yolu ayrı JS renderer'a bağımlı kalmamalıdır."
   )
 })
+
+# ------------------------------------------------------------------------------
+# Regresyon: gorsel yolu cozumlemesi SAHIP kapsamini zorunlu kilar.
+# `[GORSEL:<yol>]` tasiyan bir asistan mesaji, var olan HERHANGI bir mutlak yolu
+# (veya baska kullanicinin user_images yolunu) dogrudan donduruyordu.
+# ------------------------------------------------------------------------------
+test_that("db_message_resolve_image_path sahip kapsami disindaki yolu reddeder", {
+  kok <- withr::local_tempdir()
+  withr::local_dir(kok)
+
+  # Sahibin (uid = 7) gercek gorseli.
+  sahip_dizin <- file.path(kok, "user_images", "7", "42")
+  dir.create(sahip_dizin, recursive = TRUE, showWarnings = FALSE)
+  sahip_gorsel <- file.path(sahip_dizin, "kedi.png")
+  writeBin(as.raw(c(0x89, 0x50)), sahip_gorsel)
+
+  # BASKA kullanicinin (uid = 8) gorseli ve kok disindaki rastgele bir dosya.
+  yabanci_dizin <- file.path(kok, "user_images", "8", "99")
+  dir.create(yabanci_dizin, recursive = TRUE, showWarnings = FALSE)
+  yabanci_gorsel <- file.path(yabanci_dizin, "gizli.png")
+  writeBin(as.raw(c(0x89, 0x50)), yabanci_gorsel)
+
+  disarida <- file.path(kok, "sunucu_gizli.png")
+  writeBin(as.raw(c(0x89, 0x50)), disarida)
+
+  # Sahip kendi gorselini cozebilir.
+  expect_false(is.null(db_message_resolve_image_path(sahip_gorsel, user_id = 7)))
+  expect_false(is.null(db_message_resolve_image_path("user_images/7/42/kedi.png", user_id = 7)))
+
+  # Baska kullanicinin gorseli ve kok disindaki dosya REDDEDILIR.
+  expect_null(db_message_resolve_image_path(yabanci_gorsel, user_id = 7))
+  expect_null(db_message_resolve_image_path("user_images/8/99/gizli.png", user_id = 7))
+  expect_null(db_message_resolve_image_path(disarida, user_id = 7))
+
+  # Sahip bilinmiyorsa hicbir sey cozulmez (kapali-basarisiz).
+  expect_null(db_message_resolve_image_path(sahip_gorsel, user_id = NULL))
+  expect_null(db_message_resolve_image_path(sahip_gorsel, user_id = 0))
+})

@@ -220,3 +220,41 @@ test_that("tek parçalı yanıt tamponu beklemez ve politika ortamdan ayarlanabi
     expect_identical(politika$baslangic_tampon_suresi_sn, 9)
   })
 })
+
+# Regresyon: `teslim_et()` içindeki `queue_fn()` hata fırlattığında
+# `onFulfilled` sarmalayıcısının hata işleyicisi aynı parça için
+# `parca_sonuclandi()` fonksiyonunu İKİNCİ kez çağırıyor, `durum$aktif` iki kez
+# azalıyor ve hat `eszamanli_sinir` üstünde iş başlatabiliyordu.
+test_that("parça sonuçlandırma idempotenttir (queue_fn hatası sayacı bozmaz)", {
+  sahte <- .aiexp_fake_synth()
+  parcalar <- as.list(paste0("p", seq_len(6)))
+
+  durum <- ai_expert_chunk_pipeline_baslat(
+    parcalar = parcalar,
+    baslangic = 2L,
+    synth_fn = sahte$synth_fn,
+    is_current_fn = function() TRUE,
+    queue_fn = function(index0, text, audio_src, duration) {
+      stop("teslim hatasi (test)")
+    },
+    policy = modifyList(ai_expert_chunk_pipeline_policy(),
+                        list(eszamanli_sinir = 2L, tampon_deadline_sn = 0))
+  )
+
+  # Sınır kadar iş başlatıldı.
+  expect_identical(durum$aktif, 2L)
+  expect_identical(length(sahte$kayit$resolvers), 2L)
+
+  # İlk parça başarıyla çözülür; `queue_fn` hata fırlatır ve hata işleyicisi
+  # aynı parçayı yeniden sonuçlandırmaya çalışır.
+  sahte$coz(1L, basari = TRUE)
+  .aiexp_drain()
+
+  # Sayaç bir kez düştü; eşzamanlılık sınırı AŞILMADI.
+  expect_true(durum$aktif <= 2L)
+  expect_true(length(sahte$kayit$resolvers) <= 3L)
+
+  sahte$coz(2L, basari = TRUE)
+  .aiexp_drain()
+  expect_true(durum$aktif <= 2L)
+})

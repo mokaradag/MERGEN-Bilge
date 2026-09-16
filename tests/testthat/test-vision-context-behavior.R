@@ -196,6 +196,42 @@ test_that("prepare_context_blocks: vision AÇIK görseli data-url'e çevirir", {
   expect_true(grepl("analiz için isteğe eklendi", paste(res$file_blocks, collapse = "\n"), fixed = TRUE))
 })
 
+# Regresyon: toplam bütçe base64 kodlamadan ÖNCE uygulanır. Önceden bütçeye
+# sığmayacak görsel bile tam okunup kodlanıyor, sonra atılıyordu.
+test_that("prepare_context_blocks: toplam butce ilk gorselden kucukse kodlama yapilmaz", {
+  tf <- .make_tmp_png()
+  on.exit(unlink(tf), add = TRUE)
+  files <- list("kedi.png" = list(datapath = tf))
+
+  cagrildi <- FALSE
+  eski <- .vision_env$mergen_build_image_data_url
+  .vision_env$mergen_build_image_data_url <- function(...) {
+    cagrildi <<- TRUE
+    eski(...)
+  }
+  on.exit({
+    .vision_env$mergen_build_image_data_url <- eski
+  }, add = TRUE)
+
+  withr::local_envvar(c(MERGEN_VISION_MAX_TOTAL_MB = "0.000001"))
+
+  res <- .vision_env$mergen_vision_prepare_context_blocks(
+    uploaded_names = c("kedi.png"),
+    summary_store = list(),
+    current_file_store = files,
+    per_file_cap = 5000,
+    vision_active = TRUE
+  )
+
+  expect_length(res$image_data_urls, 0L)
+  expect_false(cagrildi)
+  # BUTCE reddi, "vision destegi kapali" mesajindan AYRI raporlanir; aksi halde
+  # kullanici zaten ETKIN olan ozelligi acmaya calisiyordu.
+  blok <- paste(res$file_blocks, collapse = "\n")
+  expect_true(grepl("g\u00f6rsel s\u0131n\u0131r\u0131na ula\u015f\u0131ld\u0131\u011f\u0131", blok, fixed = TRUE))
+  expect_false(grepl("analiz edilemiyor", blok, fixed = TRUE))
+})
+
 test_that("send_message none dalı: vision KAPALI metin (string) içerik üretir", {
   session <- list(userData = new.env(parent = emptyenv()))
   session$userData$file_summaries <- list()
@@ -340,7 +376,10 @@ test_that("vision AÇIK ama görsel okunamazsa metin yoluna güvenli düşer", {
 
   final <- plan$messages_to_process[[2]]$content
   expect_true(is.character(final))
-  expect_true(grepl("analiz edilemiyor", final, fixed = TRUE))
+  # Vision ETKİN olduğundan not "kapalı" DEĞİL, "okunamadı / boyut sınırı"
+  # olmalıdır; aksi hâlde kullanıcıya yanlış neden bildiriliyordu.
+  expect_true(grepl("Görsel okunamadı", final, fixed = TRUE))
+  expect_false(grepl("görsel anlama desteği etkin değil", final, fixed = TRUE))
 })
 
 test_that("çok-kipli içerik OpenAI uyumlu JSON gövdeye serileşir", {
@@ -359,4 +398,69 @@ test_that("çok-kipli içerik OpenAI uyumlu JSON gövdeye serileşir", {
   expect_true(grepl('"type":"text"', json, fixed = TRUE))
   # role tek string olarak kalmalı (auto_unbox)
   expect_true(grepl('"role":"user"', json, fixed = TRUE))
+})
+
+# ------------------------------------------------------------------------------
+# Uzantı/MIME kararı ÖZGÜN ADDAN gelir, depolama yolundan değil
+# (Regresyon: dosya deposu listelemesi filesystem `path` ile ayrıca çözülmüş
+# `name` değerini eşleştirir ama uzantılarının aynı olmasını zorunlu tutmaz;
+# Shiny `datapath` de uzantısız olabilir. Denetim yola uygulandığında GEÇERLİ bir
+# PNG `NULL` dönüyor, görsel istekten düşüyor ve kullanıcıya "kodlanamadi" notu
+# gösteriliyordu.)
+# ------------------------------------------------------------------------------
+test_that("mergen_build_image_data_url uzantisiz yolda ozgun adi kullanir", {
+  png_bayt <- .vision_env$mergen_build_image_data_url  # yalnızca ortam denetimi
+  expect_true(is.function(png_bayt))
+
+  kaynak <- .make_tmp_png()
+  on.exit(unlink(kaynak), add = TRUE)
+
+  # UZANTISIZ depolama yolu (Shiny `datapath` biçimi).
+  uzantisiz <- file.path(tempdir(), paste0("gorsel_", as.integer(stats::runif(1, 1, 1e7))))
+  file.copy(kaynak, uzantisiz, overwrite = TRUE)
+  on.exit(unlink(uzantisiz), add = TRUE)
+
+  # Ad verilmezse eski davranış: uzantı yok -> NULL.
+  expect_null(.vision_env$mergen_build_image_data_url(uzantisiz))
+
+  # ÖZGÜN AD verilirse görsel kodlanır ve MIME türü ADDAN gelir.
+  du <- .vision_env$mergen_build_image_data_url(uzantisiz, name = "fotograf.png")
+  expect_true(is.character(du))
+  expect_true(startsWith(du, "data:image/png;base64,"))
+
+  # Desteklenmeyen ad (bmp/svg) uzantısız yola rağmen REDDEDİLİR.
+  expect_null(.vision_env$mergen_build_image_data_url(uzantisiz, name = "resim.bmp"))
+  expect_null(.vision_env$mergen_build_image_data_url(uzantisiz, name = "cizim.svg"))
+})
+
+# ------------------------------------------------------------------------------
+# ANİMASYONLU GIF isteğe girmez (sağlayıcı isteğin TAMAMINI reddedebilir)
+# ------------------------------------------------------------------------------
+test_that("animasyonlu GIF kodlanmaz, tek kareli GIF kodlanir", {
+  gce <- as.raw(c(0x21, 0xF9, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00))
+  basluk <- charToRaw("GIF89a")
+  govde <- as.raw(rep(0x00, 16))
+
+  tek_kare <- c(basluk, govde, gce, govde, as.raw(0x3B))
+  cok_kare <- c(basluk, govde, gce, govde, gce, govde, as.raw(0x3B))
+
+  expect_false(isTRUE(.vision_env$mergen_gif_bytes_animated(tek_kare)))
+  expect_true(isTRUE(.vision_env$mergen_gif_bytes_animated(cok_kare)))
+
+  # GIF olmayan baytlar animasyonlu sayılmaz.
+  expect_false(isTRUE(.vision_env$mergen_gif_bytes_animated(charToRaw("PNG"))))
+  expect_false(isTRUE(.vision_env$mergen_gif_bytes_animated(raw(0))))
+
+  # Uçtan uca: animasyonlu GIF dosyası data-url ÜRETMEZ.
+  anim_yol <- file.path(tempdir(), paste0("anim_", as.integer(stats::runif(1, 1, 1e7)), ".gif"))
+  writeBin(cok_kare, anim_yol)
+  on.exit(unlink(anim_yol), add = TRUE)
+  expect_null(.vision_env$mergen_build_image_data_url(anim_yol))
+
+  tek_yol <- file.path(tempdir(), paste0("tek_", as.integer(stats::runif(1, 1, 1e7)), ".gif"))
+  writeBin(tek_kare, tek_yol)
+  on.exit(unlink(tek_yol), add = TRUE)
+  du <- .vision_env$mergen_build_image_data_url(tek_yol)
+  expect_true(is.character(du))
+  expect_true(startsWith(du, "data:image/gif;base64,"))
 })

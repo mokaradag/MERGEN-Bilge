@@ -107,6 +107,23 @@ file_ingestion_plan_batch <- function(uploads,
   if (!length(items)) return(plan)
 
   existing_names <- as.character(existing_names %||% character())
+  # `tolower()` GEÇERSİZ çok baytlı adda "invalid multibyte string" hatası verir.
+  # Windows yerel kod sayfasından gelen tek bozuk ad, TÜM partinin
+  # planlanmasını durduruyor ve geçerli dosyalar için hiç görev üretilmiyordu.
+  # Anahtar üretimi kodlamaya dayanıklı tek bir yardımcıya alınır; başarısızlık
+  # YALNIZCA ilgili dosyayı reddeder.
+  ad_anahtari <- function(x) {
+    ad <- as.character(x)[1]
+    if (length(ad) != 1L || is.na(ad) || !nzchar(ad)) return(NA_character_)
+    if (!isTRUE(validUTF8(ad))) return(NA_character_)
+    anahtar <- tryCatch(tolower(ad), error = function(e) NA_character_)
+    if (length(anahtar) != 1L || is.na(anahtar)) NA_character_ else anahtar
+  }
+
+  # Kabul edilen adlar da kümeye eklenir; aksi hâlde AYNI PARTİDE iki kez
+  # seçilen dosya iki ayrı worker görevine gidiyor ve indekste yarışıyordu.
+  gorulen_adlar <- vapply(existing_names, ad_anahtari, character(1), USE.NAMES = FALSE)
+  gorulen_adlar <- gorulen_adlar[!is.na(gorulen_adlar)]
   normalized_ext <- if (is.null(allowed_ext)) NULL else tolower(gsub("^\\.+", "", as.character(allowed_ext)))
   limit_bytes <- suppressWarnings(as.numeric(max_size_mb) * 1024 * 1024)
 
@@ -122,7 +139,13 @@ file_ingestion_plan_batch <- function(uploads,
       next
     }
 
-    if (name %in% existing_names) {
+    # İndeks anahtarı küçük harfe duyarsızdır; yinelenen ad denetimi de öyle olmalı.
+    ad_key <- ad_anahtari(name)
+    if (is.na(ad_key)) {
+      reject(name, "bad_filename", "Dosya adı UTF-8 olarak geçerli değil.")
+      next
+    }
+    if (ad_key %in% gorulen_adlar) {
       plan$duplicate_names <- c(plan$duplicate_names, name)
       next
     }
@@ -133,7 +156,8 @@ file_ingestion_plan_batch <- function(uploads,
     }
 
     if (!is.null(normalized_ext)) {
-      ext <- tolower(tools::file_ext(name))
+      # Ad anahtarı zaten UTF-8 doğrulamasından geçti; uzantı ondan türetilir.
+      ext <- tools::file_ext(ad_key)
       if (!nzchar(ext) || !(ext %in% normalized_ext)) {
         reject(name, "ext_not_allowed", sprintf("Dosya uzantısı '%s' desteklenmiyor.", ext))
         next
@@ -150,6 +174,7 @@ file_ingestion_plan_batch <- function(uploads,
       next
     }
 
+    gorulen_adlar <- c(gorulen_adlar, ad_key)
     plan$tasks[[length(plan$tasks) + 1L]] <- file_ingestion_task_snapshot(
       upload = item,
       user_id = user_id,

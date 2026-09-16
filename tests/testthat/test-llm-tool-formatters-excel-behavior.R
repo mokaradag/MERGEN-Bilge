@@ -115,3 +115,29 @@ test_that("convert_docx_to_pdf var olmayan dosyada açık hata verir", {
     "bulunamadi"
   )
 })
+
+
+# -----------------------------------------------------------------------------
+# safe_read_excel_table satır sınırı
+# -----------------------------------------------------------------------------
+# Regresyon: readxl, `range` verildiğinde `n_max` değerini YOK SAYAR. Sınır
+# aralığın alt satırına taşınmadan önce n_max sessizce etkisizdi ve önizleme
+# uzun sayfalarda tüm satırları okuyordu.
+
+test_that("safe_read_excel_table n_max satir sinirini gercekten uygular", {
+  skip_if_not_installed("writexl")
+  skip_if_not_installed("readxl")
+
+  yol <- withr::local_tempfile(fileext = ".xlsx")
+  writexl::write_xlsx(
+    data.frame(ad = paste0("s", 1:50), deger = 1:50, stringsAsFactors = FALSE),
+    yol
+  )
+
+  dar <- .tf_env$safe_read_excel_table(yol, n_max = 5)
+  expect_identical(nrow(dar), 5L)
+  expect_identical(as.character(dar[[1]][1]), "s1")
+
+  tum <- .tf_env$safe_read_excel_table(yol)
+  expect_identical(nrow(tum), 50L)
+})

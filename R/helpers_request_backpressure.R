@@ -63,11 +63,36 @@ mergen_backpressure_limit <- function(kind = "llm") {
 
 # Slot TTL'i (saniye). Kendi-iyileşme penceresi; akış işlemleri uzun sürebildiği
 # için makul büyük tutulur. 0/geçersiz -> varsayılan 180.
+#
+# TTL, yapılandırılmış LLM zaman aşımını KAPSAMAK ZORUNDADIR: sabit 180 sn'lik
+# pencere, 1800 sn'ye kadar sürebilen CANLI bir akışın slotunu geri topluyor ve
+# aynı anda limitin üzerinde istek kabul edilmesine yol açıyordu.
+# AÇIK MERGEN_BACKPRESSURE_TTL_SECONDS değeri de bu tabana KELEPÇELENİR; eski
+# `180` değerini taşıyan bir dağıtım aksi hâlde aynı kusuru aynen tekrarlıyordu.
 mergen_backpressure_ttl_sec <- function() {
   raw <- trimws(Sys.getenv("MERGEN_BACKPRESSURE_TTL_SECONDS", unset = ""))
   val <- suppressWarnings(as.numeric(raw))
-  if (!is.finite(val) || val <= 0) return(180)
-  val
+
+  # ETKİN zaman aşımı iki kaynaktan gelir: `call_local_llm()` ortam değişkeni
+  # YOKSA `getOption("mergen.llm_timeout_sec")` kullanır. Yalnızca ortam
+  # değişkenini okumak, seçenek daha büyükken CANLI bir slotun erken geri
+  # toplanmasına ve limitin üzerinde istek kabulüne yol açıyordu.
+  llm_timeout <- suppressWarnings(as.numeric(
+    trimws(Sys.getenv("MERGEN_LLM_TIMEOUT_SEC", unset = ""))
+  ))
+  option_timeout <- suppressWarnings(as.numeric(
+    getOption("mergen.llm_timeout_sec", NA_real_)[1]
+  ))
+
+  adaylar <- c(llm_timeout, option_timeout)
+  adaylar <- adaylar[is.finite(adaylar) & adaylar > 0]
+  llm_timeout <- if (length(adaylar)) max(adaylar) else 1800
+
+  # Zaman aşımına kısa bir tampon eklenir; slot ancak istek gerçekten
+  # bittikten/düştükten sonra geri toplanır.
+  taban <- max(180, llm_timeout + 60)
+  if (is.finite(val) && val > 0) return(max(val, taban))
+  taban
 }
 
 .mergen_backpressure_stat_bump <- function(kind, field, by = 1L) {

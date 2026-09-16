@@ -33,12 +33,15 @@ resolve_readable_path <- function(path) {
   p
 }
 
-# Relaxed file.exists for UNC + long paths + Encoding variants
-path_exists_relaxed <- function(path) {
-  if (is.null(path) || length(path) == 0) return(FALSE)
+# Varlığı KANITLANAN yol varyantını döndürür (yoksa NA_character_).
+# `path_exists_relaxed()` yalnızca TRUE/FALSE döndürüyordu; çağıranlar
+# kanonikleştirme için ÖZGÜN yolu kullanmak zorunda kalıyor ve UNC/enc2utf8
+# varyantı üzerinden var olan bir dosya "Geçersiz dosya yolu" ile reddediliyordu.
+path_existing_variant <- function(path) {
+  if (is.null(path) || length(path) == 0) return(NA_character_)
 
   candidate <- as.character(path[1])
-  if (!nzchar(candidate)) return(FALSE)
+  if (is.na(candidate) || !nzchar(candidate)) return(NA_character_)
 
   # Generate variants: Slashes, Backslashes, UNC
   cand_slash <- gsub("\\\\", "/", candidate, fixed = TRUE)
@@ -54,18 +57,26 @@ path_exists_relaxed <- function(path) {
     gsub("/", "\\\\", cand_slash, fixed = TRUE)
   ))))
 
-  for (chk in variants) {
-    # 1. Check as is
-    if (tryCatch(isTRUE(file.exists(chk)), error = function(e) FALSE)) return(TRUE)
-    if (tryCatch(isTRUE(fs::file_exists(chk)), error = function(e) FALSE)) return(TRUE)
+  # Tek varyant sondası: base + fs denetimi tek hata kapsamında birleştirilir.
+  var_mi <- function(p) isTRUE(tryCatch(
+    isTRUE(file.exists(p)) || isTRUE(unname(fs::file_exists(p))),
+    error = function(e) FALSE
+  ))
 
-    # 2. Check UTF-8 encoded (for Turkish chars)
+  for (chk in variants) {
+    if (var_mi(chk)) return(chk)
+
+    # UTF-8 kodlanmış biçim (Türkçe adlar için)
     chk_utf8 <- tryCatch(enc2utf8(chk), error = function(e) chk)
-    if (tryCatch(isTRUE(file.exists(chk_utf8)), error = function(e) FALSE)) return(TRUE)
-    if (tryCatch(isTRUE(fs::file_exists(chk_utf8)), error = function(e) FALSE)) return(TRUE)
+    if (var_mi(chk_utf8)) return(chk_utf8)
   }
 
-  FALSE
+  NA_character_
+}
+
+# Relaxed file.exists for UNC + long paths + Encoding variants
+path_exists_relaxed <- function(path) {
+  !is.na(path_existing_variant(path))
 }
 
 normalize_for_path_compare <- function(path) {
@@ -88,6 +99,35 @@ normalize_for_path_compare <- function(path) {
   tolower(cleaned)
 }
 
+# Kök karşılaştırması için MOJIBAKE ONARILMIŞ kanonik biçim. Amaç, aynı fiziksel
+# kökün bozulmuş gösterimini (`Geliştirme` / mojibake biçimi) eşleştirirken
+# FARKLI bir kökü eşleştirmemektir.
+#
+# ESKİ KAYIPLI İSKELET KALDIRILDI: ASCII DIŞI bayt dizilerini tek `?` ile
+# değiştirmek `/srv/Şube/mcp` ile `/srv/Çube/mcp` köklerini AYNI sayıyordu.
+# Bu durumda `is_under_mcp_base()` hızlı yolu taban DIŞINDAKİ bir dosyayı
+# "taban altında" bildiriyor, `R/helpers_file_pipeline.R` onu `zaten_kalici`
+# sayıp MCP tabanına KOPYALAMIYOR ve `global_register_file()` hiç çağrılmıyordu.
+# Onarım, deponun tek kaynaklı mojibake yardımcısına devredilir; onarım
+# yapılamazsa karşılaştırma KESİN biçimler üzerinden yürür (kapalı-başarısız:
+# aşağıdaki normalize edilmiş önek denetimine düşülür).
+.mcp_kok_kanonik <- function(x) {
+  if (is.null(x)) return("")
+  metin <- as.character(x)[1]
+  if (is.na(metin) || !nzchar(metin)) return("")
+  if (exists("repair_text_mojibake", mode = "function", inherits = TRUE)) {
+    onarilmis <- tryCatch(as.character(repair_text_mojibake(metin))[1],
+                          error = function(e) metin)
+    if (length(onarilmis) == 1L && !is.na(onarilmis) && nzchar(onarilmis)) {
+      metin <- onarilmis
+    }
+  }
+  # `tolower()` GEÇERSİZ çok baytlı dizide "invalid multibyte string" hatası
+  # fırlatır ve `useBytes = TRUE` yalnızca `gsub()` çağrısını korur. ASCII
+  # harfler bayt düzeyinde küçültülür; ASCII dışı baytlara DOKUNULMAZ.
+  gsub("([A-Z])", "\\L\\1", metin, perl = TRUE, useBytes = TRUE)
+}
+
 # Is path under MCP base?
 is_under_mcp_base <- function(p) {
   # Önce doğru encoding'li seçeneği kullan (config_file_store.R'den)
@@ -106,21 +146,77 @@ is_under_mcp_base <- function(p) {
 
   if (!nzchar(np) || !nzchar(nb)) return(FALSE)
 
+  # Çözülmemiş '..' parçası taşıyan yol taban altında sayılmaz (önek kıyası
+  # '..' çıkışını göremez).
+  if (grepl("(^|/)\\.\\.(/|$)", np, perl = TRUE)) return(FALSE)
+
   # Türkçe karakter bozulsa bile son klasör segmentleri ASCII kaldığı için
   # önce bunlar üzerinden hızlı ve güvenli tespit yap.
   np_parent <- tryCatch(basename(dirname(np)), error = function(e) "")
   np_grand  <- tryCatch(basename(dirname(dirname(np))), error = function(e) "")
   nb_base   <- tryCatch(basename(nb), error = function(e) "")
 
+  # HIZLI YOL ARTIK KÖK ÖNEKİNİ DE DOĞRULAR. Yalnızca `user_<N>` ve taban ADI
+  # karşılaştırıldığında `/baska/kok/<taban_adi>/user_1/dosya.txt` de TRUE
+  # dönüyordu; `R/helpers_file_pipeline.R` bu sonucu `zaten_kalici` sayıp dosyayı
+  # MCP tabanına KOPYALAMIYOR ve `global_register_file()` çağırmıyordu.
+  # Mojibake toleransı KORUNUR: taban adını İÇEREN dizin zinciri MOJIBAKE
+  # ONARILMIŞ kanonik biçimle karşılaştırılır. Böylece aynı kökün bozulmuş
+  # gösterimi eşleşirken FARKLI bir kök (ör. `Şube` / `Çube`) eşleşmez.
   if (
-    grepl("^user_[0-9]+$", tolower(np_parent)) &&
+    grepl("^user_[0-9]+$", .mcp_kok_kanonik(np_parent)) &&
     nzchar(np_grand) &&
     nzchar(nb_base) &&
-    identical(tolower(np_grand), tolower(nb_base))
+    identical(.mcp_kok_kanonik(np_grand), .mcp_kok_kanonik(nb_base))
   ) {
-    return(TRUE)
+    # `dirname()` karakter skaleri üzerinde hata fırlatmaz; ek tryCatch gerekmez.
+    if (identical(.mcp_kok_kanonik(dirname(dirname(dirname(np)))),
+                  .mcp_kok_kanonik(dirname(nb)))) {
+      return(TRUE)
+    }
   }
 
   startsWith(normalize_for_path_compare(np), paste0(normalize_for_path_compare(nb), "/")) ||
     normalize_for_path_compare(np) == normalize_for_path_compare(nb)
 }
+
+# ------------------------------------------------------------------------------
+# KANONİK KAPSAMA DENETİMİ
+# Yol tabanlı `unlink()`/`file.copy()` ata bileşenlerini İZLER; doğrulama ile
+# işlem arasında bir ata bağlantı/junction ile değiştirilirse kök DIŞINDAKİ bir
+# dosya silinebilir/ezilebilir. Base R tanıtıcı-bağıl (openat/unlinkat) temel
+# işlem sunmadığı için pencere tamamen kapatılamaz; bu yardımcı yol tabanlı
+# kaçışı reddeder, kaçış tespit edilirse işlem HİÇ denenmez.
+# ------------------------------------------------------------------------------
+mergen_path_inside_root <- function(candidate, root) {
+  # `%||%` bu dosyada başka yerde kullanılmıyor; izole test/worker bağlamında
+  # tanımlı olmayabilir, bu yüzden açık NULL denetimi yapılır.
+  # Kök bilinmiyorsa kapsama KANITLANAMAZ: doğrulanmamış kökle silme/kopyalama
+  # yapılmaması için kapalı-başarısız davranılır.
+  if (is.null(root)) return(FALSE)
+  root <- as.character(root)[1]
+  if (is.na(root) || !nzchar(root)) return(FALSE)
+
+  kok <- try(normalizePath(root, winslash = "/", mustWork = FALSE), silent = TRUE)
+  coz <- try(normalizePath(as.character(candidate)[1], winslash = "/", mustWork = FALSE),
+             silent = TRUE)
+  if (inherits(kok, "try-error") || inherits(coz, "try-error")) return(FALSE)
+  if (is.na(kok[1]) || is.na(coz[1]) || !nzchar(kok[1]) || !nzchar(coz[1])) return(FALSE)
+  kok <- kok[1]
+  coz <- coz[1]
+
+  if (.Platform$OS.type == "windows") {
+    kok <- tolower(kok)
+    coz <- tolower(coz)
+  }
+  kok <- sub("/+$", "", kok)
+
+  # `normalizePath(..., mustWork = FALSE)` çözülemeyen yolu OLDUĞU GİBİ döndürür
+  # (ör. ata dizin geçiş izni vermiyorsa ya da yol diskte yoksa). Kalan '..'
+  # parçası önek kıyasını atlatıp kök DIŞINDAKİ bir yolu onaylatabiliyordu
+  # (bkz. is_under_mcp_base aynı denetim).
+  if (grepl("(^|/)\\.\\.(/|$)", coz, perl = TRUE)) return(FALSE)
+
+  identical(coz, kok) || startsWith(coz, paste0(kok, "/"))
+}
+

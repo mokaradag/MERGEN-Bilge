@@ -44,6 +44,26 @@ test_that("env contract required ve optional sonuçları üretir", {
   expect_false(any(grepl("secret", res$value, fixed = TRUE)))
 })
 
+# Regresyon: dahili adres sınıflandırması yalnızca ÖNEK eşleştirmesi yapıyordu.
+test_that("health_is_public_url dahili IP literallerini doğru sınıflar", {
+  withr::local_envvar(c(MERGEN_HEALTH_INTERNAL_ENDPOINTS = ""))
+
+  # Tüm 127/8 loopback aralığı ve IPv4 bağlantı-yerel 169.254/16 dahilidir.
+  expect_false(health_is_public_url("http://127.0.0.2:9000/v1/models"))
+  expect_false(health_is_public_url("http://169.254.10.5:9000/v1/models"))
+  # Genişletilmiş IPv6 loopback biçimi de dahilidir.
+  expect_false(health_is_public_url("http://[0:0:0:0:0:0:0:1]:8080/v1/models"))
+  expect_false(health_is_public_url("http://[::1]:8080/v1/models"))
+
+  # Geçerli GENEL DNS adları IPv4 öneki taşısa bile dahili sayılmaz.
+  expect_true(health_is_public_url("http://10.example.com/v1/models"))
+  expect_true(health_is_public_url("http://192.168.example.com/v1/models"))
+  expect_true(health_is_public_url("http://172.16.example.com/v1/models"))
+  # 172.16-31 dışı IPv4 literali gerçekten geneldir.
+  expect_true(health_is_public_url("http://172.32.0.1:9000/v1/models"))
+  expect_false(health_is_public_url("http://172.16.0.1:9000/v1/models"))
+})
+
 test_that("public internet URL sağlık sayfası için zorunlu değildir", {
   expect_true(health_is_public_url("https://example.com/v1/models"))
   res <- health_check_http_endpoint("public.test", "Public Test", "https://example.com/v1/models", configured_required = FALSE)

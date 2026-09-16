@@ -213,12 +213,122 @@ db_visible_text_has_mojibake <- function(value) {
   ))
 }
 
-assert_mb_message_visible_encoding_clean <- function(conn, message_id) {
-  if (is.null(conn) || is.null(message_id) || is.na(message_id)) {
-    return(invisible(TRUE))
+# ReasoningContent sütun varlığı süreç başına bir kez belirlenir; her mesaj
+# yazımında açık transaction içinde INFORMATION_SCHEMA sorgusu çalıştırılmaz.
+.mb_messages_reasoning_column_cache <- new.env(parent = emptyenv())
+
+# Önbellek anahtarı HEDEF ŞEMAYI de içerir. Yalnızca class(conn) ile anahtarlamak
+# aynı ODBC sınıfını paylaşan farklı veritabanlarını birbirine karıştırıyordu:
+# sütunu olmayan bir DB için önbelleğe alınan FALSE, sütunu olan ikinci DB'de
+# reasoning denetimini atlıyor; ters sırada ise post-insert sorgusu var olmayan
+# sütunu isteyip hata veriyordu.
+# Etkin şema adı (okunamazsa boş dize).
+# TABLOYU SAHİPLENEN şema çözülür. `SCHEMA_NAME()` yalnızca ÇAĞIRANIN varsayılan
+# şemasıdır: varsayılan şema `dbo` değilken niteliksiz `MB_Messages` sorgusu yine
+# `dbo.MB_Messages` tablosunu çözüyor, metaveri filtresi ise `SCHEMA_NAME()` ile
+# hiçbir satır bulamıyordu. Guard o durumda `CAST(NULL ...)` seçip
+# ReasoningContent mojibake denetimini atlıyor ve bozuk içerik commit ediliyordu.
+.mb_messages_current_schema <- function(conn) {
+  sahip <- tryCatch({
+    df <- DBI::dbGetQuery(
+      conn,
+      "SELECT OBJECT_SCHEMA_NAME(OBJECT_ID(N'MB_Messages')) AS s"
+    )
+    deger <- as.character(df[[1]][1])
+    if (length(deger) != 1L || is.na(deger)) "" else deger
+  }, error = function(e) "")
+
+  if (nzchar(sahip)) return(sahip)
+
+  tryCatch({
+    df <- DBI::dbGetQuery(conn, "SELECT SCHEMA_NAME() AS s")
+    deger <- as.character(df[[1]][1])
+    if (length(deger) != 1L || is.na(deger)) "" else deger
+  }, error = function(e) "")
+}
+
+# Şema adı da süreç başına ÖNBELLEKLENİR. Önceki biçim, önbellek anahtarını
+# kurarken her seferinde `SELECT OBJECT_SCHEMA_NAME(...)` çalıştırıyordu;
+# `save_message_to_db()` bu denetimi `UPDLOCK, HOLDLOCK` alındıktan SONRA ve
+# `dbCommit()` ÖNCESİNDE yaptığı için her mesaj yazımı kilidi fazladan bir
+# gidiş-dönüş kadar uzatıyordu (havuz kapalıyken her yazım yeni bağlantıdır,
+# bağlantı başına önbellek bu sorguyu kaldırmaz). Anahtar sunucu|veritabanı|
+# kullanıcı üçlüsüdür; şema bu üçlü için kararlıdır ve sonuç ANAHTARIN
+# parçası olmaya devam eder.
+.mb_messages_schema_cache <- new.env(parent = emptyenv())
+
+.mb_messages_cached_schema <- function(conn, taban) {
+  if (!nzchar(taban)) return(.mb_messages_current_schema(conn))
+
+  onbellek <- get0(taban, envir = .mb_messages_schema_cache, inherits = FALSE)
+  if (is.character(onbellek) && length(onbellek) == 1L && !is.na(onbellek)) {
+    return(onbellek)
   }
 
-  has_reasoning_content <- tryCatch({
+  sema <- .mb_messages_current_schema(conn)
+  # Boş sonuç (okunamadı) ÖNBELLEKLENMEZ; geçici bir hata kalıcı olmamalıdır.
+  if (nzchar(sema)) assign(taban, sema, envir = .mb_messages_schema_cache)
+  sema
+}
+
+.mb_messages_reasoning_cache_key <- function(conn) {
+  kimlik <- tryCatch({
+    bilgi <- DBI::dbGetInfo(conn)
+    # `%||%` YALNIZCA `NULL` için yedeğe düşer: `servername` boş dize ("") ve
+    # `sourcename` DSN'i taşıdığında DSN ATILIYORDU. Aynı veritabanı/kullanıcı/
+    # şema kombinasyonuna sahip İKİ SUNUCU tek önbellek anahtarını paylaşıyor ve
+    # önbelleklenen sonuç `ReasoningContent` doğrulamasını atlayabiliyor ya da
+    # var olmayan bir sütunu sorgulayabiliyordu. Her alternatif kümesinden İLK
+    # NA OLMAYAN VE BOŞ OLMAYAN değer seçilir.
+    kimlik_parcalari <- character(0)
+    for (adaylar in list(
+      c(bilgi$servername, bilgi$sourcename),
+      c(bilgi$dbname, bilgi$dbms.name),
+      c(bilgi$username)
+    )) {
+      metinler <- as.character(adaylar %||% "")
+      metinler <- metinler[!is.na(metinler) & nzchar(metinler)]
+      kimlik_parcalari <- c(
+        kimlik_parcalari,
+        if (length(metinler)) metinler[1] else ""
+      )
+    }
+    # NA ve BOŞ ayıklama KORUNUR: kimlik hiç okunamadığında anahtar boş kalmalı
+    # ve sonuç önbelleğe ALINMAMALIDIR. Sürücü alanları `NA` yerine boş dize
+    # döndürdüğünde taban `"||"` oluyor ve `nzchar()` denetimi bunu geçerli bir
+    # anahtar sayıyordu; iki farklı veritabanı aynı girişi paylaşabiliyordu.
+    kimlik_parcalari <- kimlik_parcalari[
+      !is.na(kimlik_parcalari) & nzchar(kimlik_parcalari)
+    ]
+    if (!length(kimlik_parcalari)) return("")
+    taban <- paste(kimlik_parcalari, collapse = "|")
+    # ETKİN ŞEMA da anahtara girer: aynı veritabanında farklı şemalardaki
+    # MB_Messages tabloları birbirinin sonucunu önbelleğe alabiliyordu.
+    # ŞEMA ÇÖZÜLEMEDİYSE anahtar BOŞ döner. Eskiden `paste()` yine `"...|"` ile
+    # biten boş olmayan bir anahtar üretiyor, GEÇİCİ bir şema sondası hatası
+    # YANLIŞ `ReasoningContent` sonucunu kalıcı olarak önbelleğe alabiliyordu.
+    sema <- .mb_messages_cached_schema(conn, taban)
+    if (length(sema) != 1L || is.na(sema) || !nzchar(sema)) return("")
+    paste(c(taban, sema), collapse = "|")
+  }, error = function(e) "")
+
+  # Kimlik okunamıyorsa ÖNBELLEKLENMEZ (boş anahtar). Sınıf adına geri dönmek
+  # farklı veritabanlarını yeniden aynı girişte birleştirirdi.
+  if (!nzchar(kimlik)) return("")
+
+  paste(paste(class(conn), collapse = "/"), kimlik, sep = "@")
+}
+
+.mb_messages_has_reasoning_column <- function(conn) {
+  anahtar <- .mb_messages_reasoning_cache_key(conn)
+  if (nzchar(anahtar)) {
+    cached <- get0(anahtar, envir = .mb_messages_reasoning_column_cache, inherits = FALSE)
+    if (is.logical(cached) && length(cached) == 1L && !is.na(cached)) {
+      return(cached)
+    }
+  }
+
+  sonuc <- tryCatch({
     cols <- DBI::dbGetQuery(
       conn,
       "
@@ -226,12 +336,72 @@ assert_mb_message_visible_encoding_clean <- function(conn, message_id) {
         FROM INFORMATION_SCHEMA.COLUMNS
         WHERE TABLE_NAME = 'MB_Messages'
           AND COLUMN_NAME = 'ReasoningContent'
+          AND TABLE_SCHEMA = OBJECT_SCHEMA_NAME(OBJECT_ID(N'MB_Messages'))
       "
     )
     nrow(cols) > 0L
   }, error = function(e) {
-    FALSE
+    # METADATA SORGUSU BAŞARISIZ: sütunun varlığı DOĞRUDAN yoklanır. Eskiden
+    # sonuç `NA` kalıyor, çağıran onu "sütun VAR" sayıp `ReasoningContent`
+    # sorgusunu deniyordu; sütun gerçekten yoksa bu sorgu eksik-sütun hatası
+    # veriyor ve mesaj işlemi GERİ ALINIYORDU (eklenen mesaj kayboluyordu).
+    tryCatch({
+      DBI::dbGetQuery(
+        conn,
+        "SELECT TOP 0 ReasoningContent FROM MB_Messages"
+      )
+      TRUE
+    }, error = function(e2) {
+      # Eksik sütun hatası KESİN bilgidir; başka bir hata (bağlantı/izin)
+      # BİLİNMEYEN kalır.
+      hata <- conditionMessage(e2)
+      if (grepl("ReasoningContent|Invalid column name|unknown column|no such column",
+                hata, ignore.case = TRUE)) {
+        FALSE
+      } else {
+        NA
+      }
+    })
   })
+
+  if (!is.na(sonuc) && nzchar(anahtar)) {
+    assign(anahtar, isTRUE(sonuc), envir = .mb_messages_reasoning_column_cache)
+  }
+
+  # BİLİNMEYEN durum (NA) korunur: şema sondası başarısızken `FALSE` dönmek
+  # `CAST(NULL ...)` seçtiriyor, ReasoningContent'teki mojibake saptanmıyor ve
+  # bozuk görünür içerik commit edilebiliyordu.
+  sonuc
+}
+
+# Geri okunan görünür metinde mojibake bulunursa işlem KOŞULSUZ geri alınır:
+# yeni hiçbir MB_Messages satırı bozuk metinle kalıcılaşmaz (depo sözleşmesi).
+# `expected_content` / `expected_reasoning` MUAFİYET ölçütü DEĞİLDİR; geri
+# okunan metnin BEKLENEN değerle eşit olduğunu doğrulamak için kullanılır (bkz.
+# aşağıdaki karşılaştırma bloğu).
+#
+# `reasoning_column_absent = TRUE`: çağıran legacy INSERT'e düştüyse sütunun YOK
+# olduğu KESİNDİR. Bilinmeyen sonda sonucunda bu bilgi kullanılır; aksi hâlde
+# guard sütun VARMIŞ gibi sorgulayıp legacy şemada hata veriyor ve
+# `dbRollback()` eklenen mesajın TAMAMINI düşürüyordu.
+assert_mb_message_visible_encoding_clean <- function(conn, message_id,
+                                                     expected_content = NULL,
+                                                     expected_reasoning = NULL,
+                                                     reasoning_column_absent = FALSE) {
+  if (is.null(conn) || is.null(message_id) || is.na(message_id)) {
+    return(invisible(TRUE))
+  }
+
+  has_reasoning_content <- .mb_messages_has_reasoning_column(conn)
+
+  # BİLİNMEYEN sonda sonucu (NA) "sütun yok" sayılmaz: sütun gerçekte varken
+  # ReasoningContent denetimi atlanıyor ve mojibake saptanmadan commit
+  # edilebiliyordu. Bilinmeyen durumda sütun VARMIŞ gibi denenir; sütun
+  # gerçekten yoksa sorgu hata verir ve guard KAPALI-BAŞARISIZ davranır.
+  # TEK İSTİSNA: çağıran legacy INSERT'e düşerek sütunun YOK olduğunu KANITLADI.
+  if (is.na(has_reasoning_content)) {
+    has_reasoning_content <- !isTRUE(reasoning_column_absent)
+  }
 
   query <- if (isTRUE(has_reasoning_content)) {
     "
@@ -259,11 +429,94 @@ assert_mb_message_visible_encoding_clean <- function(conn, message_id) {
     return(invisible(TRUE))
   }
 
+  # KOŞULSUZ: geri okunan değerde mojibake varsa işlem geri alınır. Girdinin
+  # kendisi bozuksa muafiyet tanımak, ZATEN bozuk bir kullanıcı/asistan metnini
+  # (ya da ODBC yazımının eklediği bozulmayı) yeni bir MB_Messages satırı olarak
+  # kalıcılaştırıyor ve guard'ı o sütun için tamamen devre dışı bırakıyordu.
+  # Görünür metin bağlamadan ÖNCE normalize_db_visible_value() ile onarılır.
   if (db_visible_text_has_mojibake(row$MessageContent) ||
       db_visible_text_has_mojibake(row$ReasoningContent)) {
     stop(
       sprintf(
         "MB_Messages encoding guard failed after insert. MessageID=%s. Transaction will be rolled back.",
+        as.character(message_id)
+      ),
+      call. = FALSE
+    )
+  }
+
+  # BEKLENEN DEĞERLE EŞİTLİK denetimi. `expected_*` argümanları kabul edilip hiç
+  # KULLANILMIYORDU: SQL Server/ODBC bir değeri LİSTELENEN mojibake token'ları
+  # üretmeden değiştirdiğinde (ör. desteklenmeyen karakterin `?` ile
+  # değiştirilmesi, sessiz kırpma) guard BAŞARI dönüyor ve bozuk metin commit
+  # ediliyordu. Geri okunan değer DB okuma sınırından geçirilir
+  # (`[[MERGEN-U+...]]` token'ları çözülür), sonra beklenen metinle kıyaslanır.
+  # LEGACY `NULL` reasoning durumu KORUNUR: beklenen değer `NULL` ise
+  # karşılaştırma yapılmaz.
+  for (alan in list(
+    list(ad = "MessageContent", beklenen = expected_content, okunan = row$MessageContent),
+    list(ad = "ReasoningContent", beklenen = expected_reasoning, okunan = row$ReasoningContent)
+  )) {
+    if (is.null(alan$beklenen)) next
+    beklenen <- as.character(alan$beklenen %||% "")[1]
+    if (length(beklenen) != 1L || is.na(beklenen) || !nzchar(beklenen)) next
+    beklenen <- enc2utf8(beklenen)
+
+    okunan <- as.character(alan$okunan %||% "")[1]
+    if (length(okunan) != 1L || is.na(okunan)) okunan <- ""
+    if (exists("normalize_db_read_visible_value", mode = "function", inherits = TRUE)) {
+      cozulen <- try(normalize_db_read_visible_value(okunan), silent = TRUE)
+      if (!inherits(cozulen, "try-error")) {
+        cozulen <- as.character(cozulen %||% okunan)[1]
+        if (length(cozulen) == 1L && !is.na(cozulen)) okunan <- cozulen
+      }
+    }
+    okunan <- enc2utf8(okunan)
+
+    if (identical(okunan, beklenen)) next
+
+    # EŞİTSİZLİK TEK BAŞINA GERİ ALMA GEREKÇESİ DEĞİLDİR. `DB_CLIENT_ENCODING`
+    # UTF-8 DEĞİLKEN yazılan değer `normalize_db_value()` üzerinden WINDOWS-1254
+    # sınırına hazırlanır; geri okunan gösterim, aynı METNİ taşısa bile beklenen
+    # UTF-8 dizesiyle BAYT-AYNI olmayabilir. Koşulsuz `stop()` burada YANLIŞ
+    # POZİTİF bir `dbRollback()` üretip mesajın TAMAMINI düşürürdü — kapatmaya
+    # çalıştığı kusurdan daha kötüsü.
+    #
+    # Bu yüzden yalnızca KANITLI VERİ KAYBI geri alma üretir:
+    #   * saklanan metin KISALMIŞSA (sessiz kırpma), ya da
+    #   * saklanan metne `?` GİRMİŞSE ama beklenen metinde HİÇ yoksa
+    #     (desteklenmeyen karakterin `?` ile değiştirilmesi — mojibake token'ı
+    #     üretmeyen sessiz bozulma).
+    # Diğer farklar yalnızca UYARI olarak loglanır (tanı değeri korunur).
+    #
+    # ASCII DIŞI BAYT SAYISI ÖLÇÜT DEĞİLDİR: WINDOWS-1254 gösteriminde bir Türkçe
+    # harf 1 bayt, UTF-8'de 2 bayttır; bayt sayımı MEŞRU bir değerde de azalır ve
+    # yanlış pozitif geri alma üretirdi.
+    beklenen_uzunluk <- nchar(beklenen, type = "chars", allowNA = TRUE)
+    okunan_uzunluk <- nchar(okunan, type = "chars", allowNA = TRUE)
+    if (is.na(beklenen_uzunluk)) beklenen_uzunluk <- nchar(beklenen, type = "bytes")
+    if (is.na(okunan_uzunluk)) okunan_uzunluk <- nchar(okunan, type = "bytes")
+
+    kayip <- isTRUE(okunan_uzunluk < beklenen_uzunluk) ||
+      (grepl("?", okunan, fixed = TRUE) && !grepl("?", beklenen, fixed = TRUE))
+
+    if (!isTRUE(kayip)) {
+      log_warn(paste(
+        "MB_Messages kodlama guard'i:", alan$ad,
+        "saklanan gosterim beklenen ile bayt-ayni degil ama veri kaybi kaniti yok;",
+        "MessageID =", as.character(message_id)
+      ))
+      next
+    }
+
+    stop(
+      sprintf(
+        paste0(
+          "MB_Messages encoding guard failed after insert: stored %s lost ",
+          "characters compared to the written value. MessageID=%s. ",
+          "Transaction will be rolled back."
+        ),
+        alan$ad,
         as.character(message_id)
       ),
       call. = FALSE

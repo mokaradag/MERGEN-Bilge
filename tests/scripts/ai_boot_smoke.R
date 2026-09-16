@@ -103,6 +103,13 @@ cleanup <- function() {
 }
 on.exit(cleanup(), add = TRUE)
 
+# Gövde 256 KB'de KESİLİR ve MERGEN index sayfası bundan büyüktür; kesme noktası
+# çok baytlı bir UTF-8 dizisinin ORTASINA düşebilir. `enc2utf8()` bu baytları
+# UTF-8 olarak İŞARETLER ama geçerli kılmaz; ardından `grepl(..., ignore.case)`
+# "unable to translate ... to a wide string" uyarısıyla FALSE döner ve SAĞLIKLI
+# bir uygulama "boot smoke failed" olarak raporlanır. Bayt güvenli okuyucu
+# (CLAUDE.md Windows tarama kuralı): geçersiz baytlar `?` ile değiştirilir, ASCII
+# çapalar bozulmaz.
 read_url <- function(target) {
   con <- NULL
   tryCatch(
@@ -111,7 +118,7 @@ read_url <- function(target) {
       raw <- readBin(con, what = "raw", n = 256 * 1024)
       if (length(raw) == 0L) return("")
       txt <- rawToChar(raw)
-      enc2utf8(txt)
+      iconv(txt, from = "UTF-8", to = "UTF-8", sub = "?")
     },
     error = function(e) {
       ""
@@ -148,7 +155,12 @@ repeat {
   if (nzchar(body)) {
     last_body <- body
 
-    looks_like_html <- grepl("<html|<!DOCTYPE|shiny|MERGEN|Bilge", body, ignore.case = TRUE)
+    # Çapalar ASCII olduğu için BAYT taraması aynı eşleşmeleri bulur; geniş
+    # karakter çevirisi gerektirmediği için kesilmiş/bozuk baytlarda da çalışır.
+    looks_like_html <- grepl(
+      "<html|<!DOCTYPE|shiny|MERGEN|Bilge", body,
+      ignore.case = TRUE, useBytes = TRUE
+    )
 
     if (isTRUE(looks_like_html)) {
       ok <- TRUE

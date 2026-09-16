@@ -381,6 +381,84 @@ testthat::test_that("release_evidence_log_health sınırlı pencerede ERROR/WARN
   testthat::expect_identical(bos$error_count, 0L)
 })
 
+# Regresyon: max_lines NA iken kuyruk penceresi geçersizleşiyor ve mevcut log
+# sessizce boş "found" özetine düşüyordu; Inf ise hem kuyruk sınırını hem son
+# pencere kırpmasını devre dışı bırakıyordu.
+testthat::test_that("release_evidence_log_health gecersiz max_lines degerinde varsayilana doner", {
+  env <- .releaseEvidenceEnv()
+  log_dir <- withr::local_tempdir()
+  log_yolu <- file.path(log_dir, sprintf("mergen_%s.log", format(Sys.Date(), "%Y%m%d")))
+
+  writeLines(c(
+    "INFO [2026-06-12 10:00:00] normal akis",
+    "ERROR [2026-06-12 10:02:00] hata bir",
+    "WARN [2026-06-12 10:05:00] uyari bir"
+  ), log_yolu, useBytes = TRUE)
+
+  for (gecersiz in list(NA_integer_, NA_real_, Inf, -1L, "abc", NULL)) {
+    ozet <- env$release_evidence_log_health(log_dir = log_dir, max_lines = gecersiz)
+    testthat::expect_true(ozet$found)
+    testthat::expect_identical(ozet$error_count, 1L)
+    testthat::expect_identical(ozet$warn_count, 1L)
+    testthat::expect_identical(ozet$window_lines, 3L)
+  }
+})
+
+# 3 satırlık sabit, 2000 satırlık VARSAYILAN pencereyi ölçemez: sınırsız (Inf)
+# yol da aynı sayıları üretir. Pencerenin gerçekten 2000'e indirgendiği ancak
+# dosya bu eşiği AŞTIĞINDA kanıtlanabilir.
+testthat::test_that("release_evidence_log_health gecersiz max_lines degerinde 2000 satirlik pencereye iner", {
+  env <- .releaseEvidenceEnv()
+  log_dir <- withr::local_tempdir()
+  log_yolu <- file.path(log_dir, sprintf("mergen_%s.log", format(Sys.Date(), "%Y%m%d")))
+
+  # Pencere DIŞINDA kalan ERROR + pencere İÇİNDE tek ERROR ve tek WARN.
+  satirlar <- c(
+    "ERROR [2026-06-12 09:00:00] pencere disinda kalmali",
+    rep("INFO [2026-06-12 10:00:00] normal akis", 2400L),
+    "ERROR [2026-06-12 10:02:00] hata bir",
+    "WARN [2026-06-12 10:05:00] uyari bir",
+    rep("INFO [2026-06-12 10:06:00] normal akis", 98L)
+  )
+  testthat::expect_gt(length(satirlar), 2000L)
+  writeLines(satirlar, log_yolu, useBytes = TRUE)
+
+  for (gecersiz in list(NA_integer_, NA_real_, Inf, -1L, "abc", NULL)) {
+    ozet <- env$release_evidence_log_health(log_dir = log_dir, max_lines = gecersiz)
+    testthat::expect_true(ozet$found)
+    testthat::expect_identical(ozet$window_lines, 2000L)
+    # Sınırsız yol iki ERROR sayardı; normalleştirilmiş pencere yalnızca birini.
+    testthat::expect_identical(ozet$error_count, 1L)
+    testthat::expect_identical(ozet$warn_count, 1L)
+  }
+})
+
+# Regresyon: kuyruk penceresi 512 bayt/satir TAHMINI ile hesaplaniyordu; ortalama
+# 2 KiB satirlarda `max_lines = 2000` istegi ~512 satira dusuyor ve atlanan
+# bolumdeki ERROR/WARN sayilmiyordu (kirpma da RAPORLANMIYORDU).
+testthat::test_that("release_evidence_log_health uzun satirlarda max_lines penceresini saglar", {
+  env <- .releaseEvidenceEnv()
+  log_dir <- withr::local_tempdir()
+  log_yolu <- file.path(log_dir, sprintf("mergen_%s.log", format(Sys.Date(), "%Y%m%d")))
+
+  # Her satir ~2 KiB: 512 bayt/satir tahmini penceresi dorde bolerdi.
+  dolgu <- paste(rep("x", 2000L), collapse = "")
+  satirlar <- c(
+    paste0("ERROR [2026-06-12 09:00:00] eski hata ", dolgu),
+    rep(paste0("INFO [2026-06-12 10:00:00] normal akis ", dolgu), 1500L),
+    paste0("WARN [2026-06-12 10:05:00] uyari bir ", dolgu)
+  )
+  writeLines(satirlar, log_yolu, useBytes = TRUE)
+
+  ozet <- env$release_evidence_log_health(log_dir = log_dir, max_lines = 2000L)
+  testthat::expect_true(ozet$found)
+  # Dosyanin TAMAMI 2000 satirin altinda: pencere tum dosyayi kapsamalidir.
+  testthat::expect_identical(ozet$window_lines, length(satirlar))
+  testthat::expect_identical(ozet$error_count, 1L)
+  testthat::expect_identical(ozet$warn_count, 1L)
+  testthat::expect_false(isTRUE(ozet$window_truncated))
+})
+
 # Kök neden regresyonu: Windows VM logları ANSI/WINDOWS-1254 bayt içerebilir.
 # Eski readLines(encoding="UTF-8") yolu geçersiz çok baytlı dizgede regexec ile
 # "input string is invalid" hatası fırlatır ve TÜM Doğrulama Kanıtı sekmesini

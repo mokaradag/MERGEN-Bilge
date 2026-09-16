@@ -17,6 +17,14 @@
   iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
 }
 
+# YORUM SATIRLARINI ATAR. "Tam olarak bir çağrı" sayımları ham metin üzerinde
+# yapıldığında AÇIKLAYICI bir yorumda geçen fonksiyon adı yanlış pozitif
+# üretiyordu (depo kuralı: bağımlılık/çağrı taramaları önce yorumları ayıklar).
+.ingestion_source_code <- function(relative_path) {
+  satirlar <- strsplit(.read_ingestion_source(relative_path), "\n", fixed = TRUE)[[1]]
+  paste(satirlar[!grepl("^\\s*#", satirlar)], collapse = "\n")
+}
+
 .ingestion_manifest_paths <- function() {
   kok <- resolve_repo_root_for_tests()
   manifest_env <- new.env(parent = globalenv())
@@ -102,11 +110,13 @@ test_that("her iki yükleme girişi de ORTAK alım hattını kullanır", {
 
 test_that("kalıcılaştırma tam olarak bir kez yapılır", {
   metin <- .read_ingestion_source("R/helpers_file_pipeline.R")
+  kod <- .ingestion_source_code("R/helpers_file_pipeline.R")
 
   expect_true(grepl("already_persisted", metin, fixed = TRUE))
   expect_true(grepl("zaten_kalici <- isTRUE(already_persisted) || is_under_mcp_base(dest)", metin, fixed = TRUE))
-  expect_equal(length(gregexpr("global_register_file(", metin, fixed = TRUE)[[1]]), 1L)
-  expect_equal(length(gregexpr("copy_to_mcp_base(", metin, fixed = TRUE)[[1]]), 1L)
+  # Sayımlar KOD üzerinde yapılır; yorumdaki ad çağrı sayılmaz.
+  expect_equal(length(gregexpr("global_register_file(", kod, fixed = TRUE)[[1]]), 1L)
+  expect_equal(length(gregexpr("copy_to_mcp_base(", kod, fixed = TRUE)[[1]]), 1L)
 })
 
 test_that("eşzamanlılık ve kuyruk sınırları yapılandırılabilir ve varsayılanları güvenlidir", {

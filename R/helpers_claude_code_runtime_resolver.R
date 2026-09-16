@@ -4,6 +4,27 @@
 #           çözümleme yardımcıları.
 # ==============================================================================
 
+# Adayın gerçekten DİZİN olduğunu doğrular: `path_exists_relaxed()` dosyaları da
+# "var" sayar ve kaynak dizin çözümünde dosya yolu hatalı çalışma dizini üretir.
+.cc_runtime_dizin_mi <- function(aday) {
+  # `file.exists()` DOSYA ile DİZİNİ ayırmaz. Eski kısa devre, UNC üzerinde
+  # `file.exists()` TRUE / `dir.exists()` FALSE dönen GEÇERLİ bir dizini de
+  # reddediyor ve aynalama atlanıyordu. Tür bilgisi `file.info()$isdir` ile
+  # alınır; yalnızca AÇIKÇA dosya olduğu belirlenen yol reddedilir.
+  isdir <- tryCatch(file.info(aday)$isdir[1], error = function(e) NA)
+  if (isTRUE(identical(isdir, FALSE))) return(FALSE)
+
+  # Denetimler AYRI korunur. Ortak `tryCatch` içinde `fs::dir_exists()` hata
+  # verdiğinde (`fs` zorunlu paket listesinde değildir) relaxed denetime hiç
+  # ulaşılmıyor ve `dir.exists()` FALSE dönen GEÇERLİ bir UNC dizini
+  # reddediliyordu; kaynak dizin boş çözülünce aynalama atlanıyordu.
+  guvenli <- function(ifade) isTRUE(tryCatch(ifade, error = function(e) FALSE))
+
+  guvenli(dir.exists(aday)) ||
+    guvenli(fs::dir_exists(aday)) ||
+    guvenli(path_exists_relaxed(aday))
+}
+
 # Runtime aynalama için mevcut dizini relaxed şekilde çözer
 resolve_claude_runtime_source_dir <- function(workdir) {
   ham_yol <- as.character(workdir %||% "")[1]
@@ -17,7 +38,12 @@ resolve_claude_runtime_source_dir <- function(workdir) {
       error = function(e) ""
     )
 
-    if (nzchar(relaxed)) {
+    # BİRİNCİL sonuç da DİZİN olarak doğrulanır. Paylaşılan relaxed çözümleyici,
+    # `dir.exists()`/`fs::dir_exists()` başarısız olup `path_exists_relaxed()`
+    # başarılı olduğunda bir DOSYA yolunu kabul edebiliyor; erken dönüş
+    # aşağıdaki dizin denetimini atlıyor ve dosya yolu runtime çalışma dizini
+    # olarak kullanılıyordu (UNC/native yol durumunda ulaşılabilir).
+    if (nzchar(relaxed) && .cc_runtime_dizin_mi(relaxed)) {
       return(relaxed)
     }
   }
@@ -42,14 +68,9 @@ resolve_claude_runtime_source_dir <- function(workdir) {
   )))
 
   for (aday in adaylar) {
-    var_mi <- tryCatch(
-      isTRUE(dir.exists(aday)) ||
-        isTRUE(fs::dir_exists(aday)) ||
-        isTRUE(path_exists_relaxed(aday)),
-      error = function(e) FALSE
-    )
-
-    if (!isTRUE(var_mi)) next
+    # path_exists_relaxed() dosyaları da "var" sayar; kaynak DİZİN çözümünde
+    # bir dosya yolunun dizin gibi kabul edilmesi hatalı çalışma dizini üretirdi.
+    if (!isTRUE(.cc_runtime_dizin_mi(aday))) next
 
     return(tryCatch(
       normalize_mcp_path(aday, must_exist = FALSE),

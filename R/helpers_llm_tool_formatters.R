@@ -25,6 +25,18 @@ convert_docx_to_pdf <- function(docx_path) {
 
   outdir <- dirname(docx_path)
 
+  # `system2(timeout = 0)` zaman aşımını KAPATIR; 0/negatif/geçersiz değer
+  # yanıt vermeyen soffice sürecinde çağrıyı süresiz bloke ediyordu.
+  timeout_sec <- suppressWarnings(as.numeric(
+    Sys.getenv("MERGEN_DOCX_PDF_TIMEOUT_SEC", "120")
+  )[1])
+  if (length(timeout_sec) != 1L || !is.finite(timeout_sec) || timeout_sec <= 0) {
+    timeout_sec <- 120
+  }
+  # `system2()` kesirli saniyeleri YOK SAYAR; 0.5 gibi bir değer timeout = 0
+  # (zaman aşımı kapalı) hâline gelip çağrıyı süresiz bloke ediyordu.
+  timeout_sec <- ceiling(timeout_sec)
+
   # Dönüştürme işlemi
   res <- try(
     system2(
@@ -37,16 +49,32 @@ convert_docx_to_pdf <- function(docx_path) {
         shQuote(docx_path)
       ),
       stdout = TRUE,
-      stderr = TRUE
+      stderr = TRUE,
+      # Yanıt vermeyen LibreOffice süreci çağrıyı süresiz bloke ediyordu.
+      timeout = timeout_sec
     ),
     silent = TRUE
   )
 
   pdf_path <- sub("\\.docx$", ".pdf", docx_path, ignore.case = TRUE)
 
+  # ÇIKIŞ DURUMU dosya denetiminden ÖNCE değerlendirilir. Aksi hâlde soffice
+  # başarısız olduğunda ya da zaman aşımına uğradığında ÖNCEDEN var olan eski
+  # bir PDF yeni dönüşüm sonucu gibi döndürülüyordu.
+  durum <- attr(res, "status")
+  basarisiz <- inherits(res, "try-error") ||
+    (!is.null(durum) && !identical(as.integer(durum)[1], 0L))
+
+  if (isTRUE(basarisiz)) {
+    stop(
+      "PDF \u00fcretilemedi (LibreOffice ba\u015Far\u0131s\u0131z veya zaman a\u015F\u0131m\u0131). \u00c7\u0131kt\u0131: ",
+      paste(as.character(res), collapse = "\n")
+    )
+  }
+
   if (!file.exists(pdf_path)) {
     stop(
-      "PDF uretilemedi. LibreOffice ciktisi: ",
+      "PDF \u00fcretilemedi. LibreOffice \u00e7\u0131kt\u0131s\u0131: ",
       paste(res, collapse = "\n")
     )
   }

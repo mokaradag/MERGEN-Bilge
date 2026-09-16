@@ -120,6 +120,47 @@ test_that("dosya kesilmesi guvenli tam-okuma fallback'ine duser ve cift uretmez"
   expect_identical(r2$lines, character(0))
 })
 
+test_that("fallback yarim SSE satirini yayimlamaz, tamamlaninca tam gonderir", {
+  tmp <- tempfile(fileext = ".jsonl")
+  on.exit(unlink(tmp), add = TRUE)
+
+  # Kesme senaryosu: once BUYUK dosya, sonra kucultulup yarim satirla biter
+  # (fallback yalnizca gozlemlenen boyut offset'in ALTINA dustugunde tetiklenir).
+  .write_bytes(tmp, paste0(paste(sprintf("L%03d", 1:40), collapse = "\n"), "\n"))
+  durum <- mergen_stream_read_new_lines(tmp, mergen_stream_read_state_new())$state
+
+  .write_bytes(tmp, 'data: {"a":1}\ndata: {"b":')
+  r1 <- mergen_stream_read_new_lines(tmp, durum)
+  expect_true(isTRUE(r1$used_fallback))
+  # Yarim satir YAYIMLANMAZ; ham baytlar partial icinde tutulur.
+  expect_false(any(grepl('{"b":', r1$lines, fixed = TRUE)))
+  expect_true(length(r1$state$partial) > 0L)
+
+  # Satir tamamlaninca TEK PARCA halinde gelir (iki yariya bolunmez).
+  .write_bytes(tmp, '2}\n', append = TRUE)
+  r2 <- mergen_stream_read_new_lines(tmp, r1$state)
+  # TEK PARCA: fallback ayni SSE satirini iki kez yayimlarsa istemci yinelenen
+  # olay alir; eslesme sayisi TAM OLARAK bir beklenir.
+  expect_identical(sum(grepl('data: {"b":2}', r2$lines, fixed = TRUE)), 1L)
+})
+
+test_that("fallback ham okuma basarisiz olursa islenmis satir sayaci korunur", {
+  tmp <- tempfile(fileext = ".jsonl")
+  on.exit(unlink(tmp), add = TRUE)
+  .write_bytes(tmp, "L1\nL2\nL3\n")
+
+  durum <- mergen_stream_read_new_lines(tmp, mergen_stream_read_state_new())$state
+  expect_identical(durum$processed_line_count, 3L)
+
+  # Dosya BOS: ham okuma icerik dondurmez. Sayac sifirlanirsa bir sonraki
+  # basarili fallback zaten yayimlanmis satirlari ikinci kez gonderirdi.
+  .write_bytes(tmp, "")
+  bos <- .mergen_stream_read_full_fallback(tmp, durum)
+  expect_identical(bos$lines, character(0))
+  expect_identical(bos$state$processed_line_count, 3L)
+  expect_identical(bos$state$offset, durum$offset)
+})
+
 test_that("bozuk UTF-8 baytlari cokmeden ele alinir", {
   tmp <- tempfile(fileext = ".jsonl")
   on.exit(unlink(tmp), add = TRUE)

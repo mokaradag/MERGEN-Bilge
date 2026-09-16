@@ -30,11 +30,20 @@ validate_chat_title <- function(title) {
 
   title <- as.character(title)
 
-  if (nchar(title) > 200) {
+  # Başlık LLM özetinden veya Windows yerel kod sayfasından geçersiz çok baytlı
+  # dizi taşıyabilir; korumasız `nchar()` "invalid multibyte string" hatası
+  # fırlatır ve kayıt akışı uzunluk gerekçesiyle REDDEDİLMEK yerine kesilir.
+  gecerli_utf8 <- isTRUE(suppressWarnings(validUTF8(title)))
+  n_title <- suppressWarnings(nchar(title, type = "chars", allowNA = TRUE))
+  if (is.na(n_title)) {
+    n_title <- nchar(title, type = "bytes")
+  }
+
+  if (n_title > 200) {
     stop("Chat title must be less than 200 characters.", call. = FALSE)
   }
 
-  if (nchar(title) < 1) {
+  if (n_title < 1) {
     stop("Chat title cannot be empty.", call. = FALSE)
   }
 
@@ -54,8 +63,12 @@ validate_chat_title <- function(title) {
     "\\bUNION\\b.*\\bSELECT\\b"
   )
 
+  # Aynı geçersiz çok baytlı girdi `grepl(..., perl = TRUE)` içinde de hata
+  # fırlatır; bu durumda desen taraması BAYT düzeyinde yapılır. Desenler ASCII
+  # olduğu için bayt taraması aynı eşleşmeleri bulur.
   for (pattern in dangerous_patterns) {
-    if (grepl(pattern, title, ignore.case = TRUE, perl = TRUE)) {
+    if (grepl(pattern, title,
+              ignore.case = TRUE, perl = TRUE, useBytes = !gecerli_utf8)) {
       stop("Chat title contains invalid SQL patterns.", call. = FALSE)
     }
   }
@@ -86,14 +99,19 @@ validate_message_content <- function(content) {
   content <- as.character(content)
 
   max_chars <- mergen_max_message_chars()
-  if (nchar(content) > max_chars) {
+  # Geçersiz çok baytlı içerikte nchar() hata fırlatmasın: bayt uzunluğuna düşülür.
+  n_chars <- suppressWarnings(nchar(content, type = "chars", allowNA = TRUE))
+  if (is.na(n_chars)) {
+    n_chars <- nchar(content, type = "bytes")
+  }
+  if (n_chars > max_chars) {
     stop(
       sprintf("Message content exceeds maximum length of %d characters.", max_chars),
       call. = FALSE
     )
   }
 
-  if (nchar(content) < 1) {
+  if (n_chars < 1) {
     stop("Message content cannot be empty.", call. = FALSE)
   }
 

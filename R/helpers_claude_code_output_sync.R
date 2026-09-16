@@ -436,29 +436,60 @@ cc_cleanup_stale_runtime_dirs <- function(user_id = NULL,
   simdi <- Sys.time()
   silinen <- 0L
 
+  kilit_klasoru <- if (exists("CC_RUNTIME_LOCK_DIR_NAME", inherits = TRUE)) {
+    CC_RUNTIME_LOCK_DIR_NAME
+  } else {
+    ".cc-locks"
+  }
+
   for (aday in adaylar) {
+    # Kilit klasörü bir runtime çalışma alanı DEĞİLDİR; temizlik adayı sayılırsa
+    # canlı bir kilidi silebilirdi.
+    if (identical(basename(aday), kilit_klasoru)) next
+
     aday_norm <- .cc_scan_norm(aday)
     if (.cc_scan_key(aday_norm) %in% koru) next
 
-    leases <- tryCatch(
-      list.files(
-        file.path(aday, "metadata"), pattern = "^active-run-.*\\.lease$", recursive = FALSE,
-        full.names = TRUE, include.dirs = FALSE
-      ),
-      error = function(e) character(0)
-    )
-    if (length(leases)) next
+    # LEASE DENETİMİ ile SİLME AYNI kilit altında yapılır: iki adım ayrıyken
+    # yeni bir çalıştırma aralıkta lease oluşturabiliyor ve AKTİF çalışma alanı
+    # siliniyordu (TOCTOU). Lease EDİNİMİ de aynı kilidi kullanır. Kilit
+    # alınamazsa aday ATLANIR; yıkıcı işlem hiç denenmez.
+    ok <- cc_with_runtime_cleanup_lock(aday, fallback = FALSE, {
+      leases <- tryCatch(
+        list.files(
+          file.path(aday, "metadata"), pattern = "^active-run-.*\\.lease$", recursive = FALSE,
+          full.names = TRUE, include.dirs = FALSE
+        ),
+        error = function(e) character(0)
+      )
 
-    mtime <- tryCatch(file.info(aday)$mtime[1], error = function(e) NA)
-    if (is.na(mtime)) next
-
-    yas <- as.numeric(difftime(simdi, mtime, units = "secs"))
-    if (!is.finite(yas) || yas < max_age_sec) next
-
-    ok <- tryCatch({
-      unlink(aday, recursive = TRUE, force = TRUE)
-      TRUE
-    }, error = function(e) FALSE)
+      # LEASE DOSYASININ VARLIĞI başlı başına bir sahiplik iddiasıdır. Rutin
+      # temizlik bir lease'i mtime'a, heartbeat'e ya da PID'e bakarak GERİ
+      # ALMAZ: `Sys.setFileTime()` sessizce başarısız olduğunda aktif çalışma
+      # alanı siliniyordu. Yetim geri kazanımı AYRI ve açık bir işlemdir
+      # (`cc_reclaim_orphaned_runtime_dirs`).
+      if (length(leases)) {
+        FALSE
+      } else {
+        # Aday dizinin mtime'ı retention denetiminde kullanılır.
+        mtime <- tryCatch(file.info(aday)$mtime[1], error = function(e) NA)
+        if (is.na(mtime)) {
+          FALSE
+        } else {
+          yas <- as.numeric(difftime(simdi, mtime, units = "secs"))
+          if (!is.finite(yas) || yas < max_age_sec) {
+            FALSE
+          } else {
+            # `unlink()` HATA FIRLATMAZ; başarısızlıkta 1 döner. Koşulsuz
+            # `TRUE`, diskte duran dizini "silindi" sayıp sayacı şişiriyordu.
+            isTRUE(tryCatch({
+              durum <- unlink(aday, recursive = TRUE, force = TRUE)
+              identical(as.integer(durum)[1], 0L) && !dir.exists(aday)
+            }, error = function(e) FALSE))
+          }
+        }
+      }
+    })
 
     if (isTRUE(ok)) silinen <- silinen + 1L
   }
@@ -520,9 +551,11 @@ cc_cleanup_stale_document_support_dirs <- function(user_id = NULL,
     yas <- as.numeric(difftime(simdi, mtime, units = "secs"))
     if (!is.finite(yas) || yas < max_age_sec) next
 
+    # `unlink()` başarısızlıkta hata yerine 1 döner; sonucu denetlemeyen sayaç
+    # silinemeyen dizinleri de "temizlendi" olarak raporluyordu.
     ok <- tryCatch({
-      unlink(aday, recursive = TRUE, force = TRUE)
-      TRUE
+      durum <- unlink(aday, recursive = TRUE, force = TRUE)
+      identical(as.integer(durum)[1], 0L) && !dir.exists(aday)
     }, error = function(e) FALSE)
 
     if (isTRUE(ok)) silinen <- silinen + 1L

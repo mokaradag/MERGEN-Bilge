@@ -133,3 +133,73 @@ testthat::test_that("dosya_bilgisi 10MB üstü dosyada boyut uyarısı verir", {
   })
   testthat::expect_true(any(grepl("10MB'dan büyük olamaz", .toast_msgs(fix$rec), fixed = TRUE)))
 })
+
+# ------------------------------------------------------------------------------
+# Ek dosya yol güvenliği (istemciden gelen `path` alanına güvenilmez)
+# ------------------------------------------------------------------------------
+testthat::test_that("dosya_bilgisi istemciden gelen path alanını saklamaz", {
+  fix <- .source_hata_bildir_for_test()
+  kurban <- withr::local_tempfile(fileext = ".txt")
+  writeLines("silinmemeli", kurban)
+
+  shiny::testServer(fix$env$destekHataBildirServer, args = list(current_user_id = 5L), {
+    session$setInputs(dosya_bilgisi = list(name = "rapor.txt", size = 10, path = kurban))
+    session$setInputs(dosya_bilgisi = list(name = "rapor2.txt", size = 11, path = kurban))
+    # Silme gözlemcisi istemci path'ini kullanamamalı: dosya yerinde kalmalı.
+    session$setInputs(dosya_sil = 1)
+    session$setInputs(dosya_sil = 2)
+  })
+
+  testthat::expect_true(file.exists(kurban))
+})
+
+testthat::test_that("ek yolu guard'ı destek_uploads kökü dışını reddeder", {
+  fix <- .source_hata_bildir_for_test()
+
+  shiny::testServer(fix$env$destekHataBildirServer, args = list(current_user_id = 5L), {
+    guvenli <- destek_ek_yolu_guvenli
+    temizle <- destek_ek_adi_temizle
+
+    testthat::expect_true(guvenli(file.path("destek_uploads", "5", "a.txt")))
+    testthat::expect_false(guvenli(file.path("destek_uploads", "..", "gizli.txt")))
+    testthat::expect_false(guvenli(tempfile(fileext = ".txt")))
+    testthat::expect_false(guvenli(""))
+    testthat::expect_false(guvenli(NULL))
+
+    testthat::expect_identical(temizle("../../etc/passwd"), "passwd")
+    testthat::expect_identical(temizle("rapor.pdf"), "rapor.pdf")
+    testthat::expect_identical(temizle(".."), "ek")
+    testthat::expect_identical(temizle("Türkçe dosya.png"), "Türkçe dosya.png")
+  })
+})
+
+# Regresyon: hedef dosya HENÜZ YOKKEN `normalizePath(..., mustWork = FALSE)`
+# POSIX'te göreli girdiyi olduğu gibi döndürüyor; `destek_ek_koku()` ise
+# `destek_uploads` GERÇEKTEN VAR olduğunda MUTLAK yol üretiyordu. Önek kıyası bu
+# yüzden FALSE oluyor ve kimliği doğrulanmış HER yükleme reddediliyordu.
+testthat::test_that("var olmayan yeni ek hedefi mutlak köke karşı doğrulanır", {
+  fix <- .source_hata_bildir_for_test()
+
+  calisma <- withr::local_tempdir()
+  withr::local_dir(calisma)
+  dir.create(file.path("destek_uploads", "5"), recursive = TRUE, showWarnings = FALSE)
+  # Kök GERÇEKTEN vardır: normalizePath() artık mutlak yol döndürür.
+  testthat::expect_true(dir.exists("destek_uploads"))
+
+  shiny::testServer(fix$env$destekHataBildirServer, args = list(current_user_id = 5L), {
+    guvenli <- destek_ek_yolu_guvenli
+
+    # Henüz oluşturulmamış hedef KABUL edilmelidir (file.copy öncesi denetim).
+    testthat::expect_true(guvenli(file.path("destek_uploads", "5", "yeni.txt"), 5L))
+    # Var olan hedef de kabul edilir.
+    writeLines("x", file.path("destek_uploads", "5", "var.txt"))
+    testthat::expect_true(guvenli(file.path("destek_uploads", "5", "var.txt"), 5L))
+
+    # BAŞKA kullanıcının alt klasörü reddedilir.
+    dir.create(file.path("destek_uploads", "9"), recursive = TRUE, showWarnings = FALSE)
+    testthat::expect_false(guvenli(file.path("destek_uploads", "9", "yeni.txt"), 5L))
+    # Kök dışı yol reddedilir.
+    testthat::expect_false(guvenli(file.path(calisma, "disarida.txt"), 5L))
+    testthat::expect_false(guvenli(file.path("destek_uploads", "5", "..", "x.txt"), 5L))
+  })
+})

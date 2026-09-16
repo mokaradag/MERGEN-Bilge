@@ -92,3 +92,20 @@ test_that("safe_join_path Türkçe karakterli güvenli yolu kabul eder", {
   expect_true(grepl("İstanbul", sonuc, fixed = TRUE))
   expect_true(grepl("Özet-Çalışma.docx", sonuc, fixed = TRUE))
 })
+
+# Windows ad bileşeninin SONUNDAKİ boşluk/noktaları yok sayar; `"rapor "` ile
+# `"rapor"` aynı dosyaya çözülür ve istenmeyen dosya hedeflenebilir.
+test_that("sondaki boşluk/nokta taşıyan bileşenler reddedilir", {
+  base <- tempfile("safe_join_trailing_")
+  dir.create(base, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(base, recursive = TRUE, force = TRUE), add = TRUE)
+
+  expect_null(safe_join_path(base, "rapor "))
+  expect_null(safe_join_path(base, "rapor."))
+  expect_null(safe_join_path(base, "alt /dosya.txt"))
+  expect_null(safe_join_path(base, "alt./dosya.txt"))
+
+  # Normal adlar etkilenmez.
+  expect_true(nzchar(safe_join_path(base, "rapor.txt") %||% ""))
+  expect_true(nzchar(safe_join_path(base, "alt/rapor.txt") %||% ""))
+})

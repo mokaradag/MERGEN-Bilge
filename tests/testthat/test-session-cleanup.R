@@ -42,16 +42,37 @@ test_that("register_session_cleanup_on_end extra callback'leri çalıştırır",
   sess <- .make_fake_session()
   sayac <- 0L
 
+  # Fonksiyonlar AYRIŞIK olmalıdır: aynı gövdeye ve aynı ortama sahip iki kapanış
+  # R'de `identical()` sayılır ve defter tekilleştirmesi bunları tek kayda
+  # indirir (bkz. aşağıdaki tekilleştirme testi).
   basari <- register_session_cleanup_on_end(sess, extra_cleanup = list(
     function() sayac <<- sayac + 1L,
-    function() sayac <<- sayac + 1L
+    function() sayac <<- sayac + 10L
   ))
 
   expect_true(basari)
   expect_equal(length(sess$callbacks), 1L)
 
   sess$trigger_end()
-  expect_equal(sayac, 2L)
+  expect_equal(sayac, 11L)
+})
+
+test_that("register_session_cleanup_on_end aynı çağrıdaki yinelemeyi tekilleştirir", {
+  sess <- .make_fake_session()
+  sayac <- 0L
+  artir <- function() sayac <<- sayac + 1L
+
+  # AYNI fonksiyon tek çağrıda iki kez verilirse defterde BİR kez durmalıdır;
+  # aksi hâlde oturum kapanışında aynı temizlik iki kez çalışıyordu.
+  register_session_cleanup_on_end(sess, extra_cleanup = list(artir, artir))
+  expect_equal(length(sess$userData$mergen_session_cleanup_extra), 1L)
+
+  # Sonraki çağrıda tekrar verilmesi de defteri büyütmez.
+  register_session_cleanup_on_end(sess, extra_cleanup = list(artir))
+  expect_equal(length(sess$userData$mergen_session_cleanup_extra), 1L)
+
+  sess$trigger_end()
+  expect_equal(sayac, 1L)
 })
 
 test_that("register_session_cleanup_on_end onSessionEnded yoksa sessizce atlar", {

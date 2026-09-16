@@ -29,6 +29,11 @@ local({
     .oo_db_log_warn <<- function(...) invisible(NULL)
   }
 
+  # Rezervasyon primitifleri GERÇEK dosyadan gelir: eksik olduğunda terfi yolu
+  # fail-closed davranır ve kopyalama testleri hedefe hiç ulaşmaz.
+  source(file.path(repo_root, "R", "utils_path_reservation.R"),
+         encoding = "UTF-8", local = globalenv())
+
   # Kök çözümleme + hedef adlandırma + kök-içi denetim gerçek dosyalardan gelir.
   source(file.path(repo_root, "R", "helpers_ortak_oturum_files.R"),
          encoding = "UTF-8", local = globalenv())

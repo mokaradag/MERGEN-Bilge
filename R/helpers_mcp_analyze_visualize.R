@@ -43,6 +43,20 @@ if (length(.mcp_analyze_visualize_missing) > 0L) {
 
 rm(.mcp_analyze_visualize_required, .mcp_analyze_visualize_missing)
 
+# YERELDEN BAĞIMSIZ harf katlama.
+#
+# `tolower()` Türkçe `LC_CTYPE` altında ASCII `I` harfini `\u0131` yapar; DuckDB
+# `LOWER()` ise yerelden bağımsız basit Unicode katlaması uygulayıp `i` üretir.
+# İki taraf ayrıştığında R filtresi satır bulurken DuckDB filtresi hiçbir satır
+# döndürmüyor ve GRAFİK BOŞ kalıyordu. ASCII harfler `chartr()` ile (yerelden
+# bağımsız) katlanır, Türkçe harfler `tolower()` ile katlanmaya devam eder.
+# Yardımcı `helpers_mcp_tools` ortamına BAĞLANIR: araç fonksiyonunun ortamı o
+# ortamdır, dosya kapsamındaki bir tanım orada görünmez.
+helpers_mcp_tools$.mcp_av_harf_katla <- function(x) {
+  metin <- as.character(x)
+  tolower(chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", metin))
+}
+
 # ==================================
 # Tool 5: analyze_and_visualize
 # ==================================
@@ -158,7 +172,17 @@ helpers_mcp_tools$analyze_and_visualize <- function(
 
     col_vals <- dt[[filter_column]]
     if (is.character(col_vals) || is.factor(col_vals)) {
-      filter_mask <- grepl(filter_value, as.character(col_vals), ignore.case = TRUE)
+      # fixed = TRUE: filtre değeri REGEX olarak yorumlanıyordu ("." her şeyi
+      # eşliyor, "(" hata veriyordu). Kullanıcı değeri düz metindir; harf
+      # duyarsızlık iki tarafı da küçülterek sağlanır.
+      # HARF KATLAMA YERELDEN BAĞIMSIZDIR (bkz. `.mcp_av_harf_katla`): grafik
+      # dalı aynı değeri DuckDB `LOWER()` ile karşılaştırdığı için Türkçe
+      # `LC_CTYPE` altında istatistik satır bulurken grafik BOŞ dönüyordu.
+      filter_mask <- grepl(
+        helpers_mcp_tools$.mcp_av_harf_katla(as.character(filter_value)[1]),
+        helpers_mcp_tools$.mcp_av_harf_katla(as.character(col_vals)),
+        fixed = TRUE
+      )
     } else {
       filter_val_num <- suppressWarnings(as.numeric(filter_value))
       if (!is.na(filter_val_num)) {
@@ -168,7 +192,14 @@ helpers_mcp_tools$analyze_and_visualize <- function(
       }
     }
 
-    dt <- dt[filter_mask, ]
+    # NA maskesi data.table'da satır ENJEKTE eder (NA satırı döner).
+    filter_mask[is.na(filter_mask)] <- FALSE
+
+    # `drop = FALSE`: TEK SÜTUNLU bir `data.frame` için `dt[mask, ]` VEKTÖR
+    # döndürüyordu. `nrow()` o zaman `NULL` olup `if (NULL == 0)` "argument is of
+    # length zero" hatası veriyor, grafik dalındaki `dt[[filter_column]]` de
+    # vektörde geçersiz kalıyordu.
+    dt <- dt[filter_mask, , drop = FALSE]
 
     if (nrow(dt) == 0) {
       return(list(
@@ -381,8 +412,53 @@ helpers_mcp_tools$analyze_and_visualize <- function(
       chart_type = chart_type %||% "bar",
       x = group_column,
       y = stat_column,
-      filter_sql = if (!is.null(filter_column) && !is.null(filter_value)) {
-        sprintf("\"%s\" = '%s'", filter_column, filter_value)
+      # Değerler doğrudan SQL metnine gömülüyordu; tek tırnak içeren bir değer
+      # (ör. "O'Brien") sorguyu bozuyor/enjeksiyona açıyordu. Tanımlayıcı ve
+      # değer SQL kurallarına göre kaçırılır.
+      # Boş değerlerde filtre SQL'i üretilmez: satır 132'deki akıllı sütun
+      # çözümlemesi de atlandığı için ham `filter_column` DuckDB hatasına yol
+      # açıyor, hata yutulup grafik FİLTRESİZ üretiliyordu.
+      #
+      # ANLAM BİRLİĞİ: karakter sütununda özet/gruplu istatistik harf DUYARSIZ
+      # ALT DİZE eşleşmesi yapar (`grepl(..., fixed = TRUE)`); grafik dalı TAM
+      # EŞİTLİK kurunca `filter_value = "Ank"` istatistikte "Ankara" ile
+      # eşleşirken grafik BOŞ dönüyordu. SAYISAL sütunda ise istatistik SAYISAL
+      # EŞİTLİK kullanır; metne çevirip LIKE kurmak `1` değerinde `10` ve `21`
+      # satırlarını da kapsıyordu. Bu yüzden SQL sütun TÜRÜNE göre üretilir.
+      filter_sql = if (!is.null(filter_column) && nzchar(filter_column) &&
+                       !is.null(filter_value) && nzchar(filter_value)) {
+        sutun <- gsub('"', '""', as.character(filter_column)[1], fixed = TRUE)
+        sayisal_sutun <- !is.null(dt[[filter_column]]) &&
+          !is.character(dt[[filter_column]]) && !is.factor(dt[[filter_column]])
+        filtre_sayi <- suppressWarnings(as.numeric(as.character(filter_value)[1]))
+
+        # TAM DEĞER KORUNUR: `format(..., scientific = FALSE)` yapılandırılmış
+        # GÖSTERİM hassasiyetini kullanır (varsayılan `digits = 7`), yani
+        # `0.123456789` değeri `0.1234568` olarak SQL'e giriyordu. Bellekteki
+        # filtre orijinal double ile karşılaştırdığı için istatistik eşleşen
+        # satır bulurken grafik boş kalıyor ya da FARKLI satırlar dönüyordu.
+        # Sonlu olmayan değer (NaN/Inf) filtre olarak kullanılamaz.
+        if (isTRUE(sayisal_sutun) && is.finite(filtre_sayi)) {
+          sayi_sql <- format(
+            filtre_sayi,
+            digits = 17,
+            scientific = FALSE,
+            trim = TRUE,
+            decimal.mark = "."
+          )
+          sprintf("\"%s\" = %s", sutun, sayi_sql)
+        } else {
+          # R filtresiyle AYNI katlama (bkz. `.mcp_av_harf_katla`).
+          deger <- helpers_mcp_tools$.mcp_av_harf_katla(as.character(filter_value)[1])
+          deger <- gsub("\\", "\\\\", deger, fixed = TRUE)
+          deger <- gsub("%", "\\%", deger, fixed = TRUE)
+          deger <- gsub("_", "\\_", deger, fixed = TRUE)
+          deger <- gsub("'", "''", deger, fixed = TRUE)
+          sprintf(
+            "LOWER(CAST(\"%s\" AS VARCHAR)) LIKE '%%%s%%' ESCAPE '\\'",
+            sutun, deger
+          )
+        }
       } else {
         NULL
       },

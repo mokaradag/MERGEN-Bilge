@@ -69,15 +69,32 @@ fm_create_file_action_helpers <- function(
     invisible(TRUE)
   }
 
-  remove_file_by_name <- function(filename, quiet = FALSE) {
+  remove_file_by_name <- function(filename, quiet = FALSE, exact_path = NULL) {
     module_values <- module_values_provider()
     if (!length(module_values$file_contents)) return(invisible(FALSE))
 
+    # KESİN YOL varsa ÖNCE onunla eşleştirilir. Yalnızca ada bakmak, AYNI ADLA
+    # güncel başka bir yükleme varken BAŞARISIZ olanın yerine ONU kaldırıyordu
+    # (geri alma yanlış kaydı siliyordu).
+    kesin <- as.character(exact_path %||% "")[1]
     fid <- NULL
-    for (id in names(module_values$file_contents)) {
-      if (identical(module_values$file_contents[[id]]$name, filename)) {
-        fid <- id
-        break
+    if (length(kesin) == 1L && !is.na(kesin) && nzchar(kesin)) {
+      for (id in names(module_values$file_contents)) {
+        girdi <- module_values$file_contents[[id]]
+        adaylar <- as.character(c(girdi$datapath, girdi$persisted_path, girdi$path))
+        if (any(!is.na(adaylar) & nzchar(adaylar) & adaylar == kesin)) {
+          fid <- id
+          break
+        }
+      }
+    }
+
+    if (is.null(fid)) {
+      for (id in names(module_values$file_contents)) {
+        if (identical(module_values$file_contents[[id]]$name, filename)) {
+          fid <- id
+          break
+        }
       }
     }
 

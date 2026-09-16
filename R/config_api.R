@@ -21,11 +21,13 @@ options(mergen.word_preview_mode = "html")
 # akışlar artık kurumsal Langflow ile karşılanır.
 primary_llm_endpoint   <- Sys.getenv("LOCAL_LLM_ENDPOINT", "")
 
-mergen_default_api_key_enabled <- isTRUE(as.logical(
-  Sys.getenv("MERGEN_ALLOW_DEFAULT_API_KEY", "FALSE")
-)) && !isTRUE(as.logical(
-  Sys.getenv("MERGEN_REQUIRE_PERSONAL_API_KEY", "FALSE")
-))
+# Ayrıştırma mb_api_key_default_allowed() ile AYNI yardımcıyı kullanır: yinelenen
+# `as.logical()` yolu "0" değerinde iki tarafa farklı karar verdiriyordu.
+mergen_default_api_key_enabled <- mergen_env_flag(
+  "MERGEN_ALLOW_DEFAULT_API_KEY", default = FALSE, invalid = FALSE
+) && !mergen_env_flag(
+  "MERGEN_REQUIRE_PERSONAL_API_KEY", default = FALSE, invalid = TRUE
+)
 
 mergen_default_api_key <- if (isTRUE(mergen_default_api_key_enabled)) {
   Sys.getenv("MERGEN_DEFAULT_API_KEY", "")
@@ -338,8 +340,13 @@ tts_config <- list(
   api_key         = Sys.getenv("LOCAL_TTS_API_KEY", ""),
   model           = Sys.getenv("LOCAL_TTS_MODEL", ""),
   default_voice   = Sys.getenv("LOCAL_TTS_VOICE", ""),
-  timeout_seconds = as.numeric(Sys.getenv("LOCAL_TTS_TIMEOUT", "90")),
-  verify_ssl      = isTRUE(as.logical(Sys.getenv("LOCAL_TTS_VERIFY_SSL", "TRUE")))
+  # Geçersiz/negatif zaman aşımı NA yerine varsayılana düşer; SSL doğrulaması
+  # tanınmayan değerde KAPALI-BAŞARISIZ (açık) kalır.
+  timeout_seconds = local({
+    v <- suppressWarnings(as.numeric(Sys.getenv("LOCAL_TTS_TIMEOUT", "90")))
+    if (length(v) != 1L || is.na(v) || !is.finite(v) || v <= 0) 90 else v
+  }),
+  verify_ssl      = isTRUE(mergen_env_flag("LOCAL_TTS_VERIFY_SSL", default = TRUE, invalid = TRUE))
 )
 
 # --- SES TANIMA (STT) YAPILANDIRMASI ---
@@ -363,9 +370,16 @@ try({
 
 # --- API ANAHTARI DOĞRULAMA ---
 validate_api_key <- function(api_key, model_id = NULL, endpoint = NULL, timeout_seconds = 5) {
-  if (!nzchar(api_key)) {
+  api_key <- as.character(api_key %||% "")[1]
+  if (is.na(api_key) || !nzchar(api_key)) {
     return(list(valid = FALSE, message = "Anahtar boş."))
   }
+
+  # endpoint NULL/NA gelebilir; nzchar(NULL) if() içinde hata verirdi.
+  endpoint <- as.character(endpoint %||% "")[1]
+  if (is.na(endpoint)) endpoint <- ""
+  model_id <- as.character(model_id %||% "")[1]
+  if (is.na(model_id)) model_id <- ""
 
   # 1) Model belirle
   if (is.null(model_id) || !nzchar(model_id)) {

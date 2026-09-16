@@ -228,6 +228,74 @@ destekHataBildirServer <- function(id, current_user_id) {
     yuklenen_dosyalar <- reactiveVal(list())
     basarili_trigger <- reactiveVal(0)
 
+    # Ek dosyaların fiziksel kökü sunucu tarafından belirlenir; istemciden gelen
+    # hiçbir yol bu kökün dışını gösteremez.
+    destek_ek_koku <- function() {
+      kok <- tryCatch(
+        normalizePath("destek_uploads", winslash = "/", mustWork = FALSE),
+        error = function(e) "destek_uploads"
+      )
+      sub("/+$", "", gsub("\\\\", "/", kok))
+    }
+
+    # Tarayıcı dosya adına güvenilmez: yol ayırıcı/'..' içeren bir ad hedef yolu
+    # destek_uploads kökünün dışına taşıyabilirdi. Yalnızca taban ad kullanılır.
+    destek_ek_adi_temizle <- function(ad) {
+      ad <- as.character(ad %||% "")[1]
+      if (is.na(ad)) ad <- ""
+      ad <- basename(gsub("\\\\", "/", ad))
+      ad <- gsub("[/\\\\]", "_", ad)
+      # Windows normal dosya adında `: * ? " < > |` kabul etmez; Windows DIŞI
+      # bir istemciden gelen `log:1.png` gibi bir ad `file.copy()` çağrısını
+      # sunucuda başarısız kılıyordu.
+      # VİRGÜL de değiştirilir: kayıt akışı yolları `paste(..., collapse = ",")`
+      # ile birleştirir, yönetici detay akışı `EkDosyaYollari` değerini virgülle
+      # böler. `rapor,v2.png` gibi bir dosya İKİ yol olarak okunuyor ve
+      # açılamıyordu.
+      ad <- gsub("[:*?\"<>|,]", "_", ad, perl = TRUE)
+      # Ad bileşeninin sonundaki nokta/boşluk da Windows'ta geçersizdir.
+      ad <- sub("[ .]+$", "", ad)
+      if (ad %in% c("", ".", "..")) ad <- "ek"
+      ad
+    }
+
+    # Ek yolu YALNIZCA ETKİN KULLANICININ kendi alt klasöründe olabilir. Ortak
+    # `destek_uploads` kökünü denetlemek yeterli değildi: aynı tarayıcı
+    # oturumunda kimlik değişirse (token süresi dolup yeniden giriş) yeni
+    # kullanıcı, eski kullanıcının ekini silebiliyor ya da kendi bildirimine
+    # ekleyebiliyordu.
+    destek_ek_yolu_guvenli <- function(yol, user_id = NULL) {
+      yol <- as.character(yol %||% "")[1]
+      if (is.na(yol) || !nzchar(yol)) return(FALSE)
+
+      yol_slash <- sub("/+$", "", gsub("\\\\", "/", yol))
+      if (!nzchar(yol_slash)) return(FALSE)
+      if (grepl("(^|/)\\.\\.(/|$)", yol_slash, perl = TRUE)) return(FALSE)
+
+      # HEDEF DOSYA HENÜZ VAR OLMAYABİLİR. POSIX'te
+      # `normalizePath(yol, mustWork = FALSE)` var olmayan yolu OLDUĞU GİBİ
+      # (göreli) döndürürken `destek_ek_koku()` MUTLAK yol üretiyor; önek kıyası
+      # bu yüzden FALSE oluyor ve kimliği doğrulanmış HER yükleme `file.copy()`
+      # çalışmadan reddediliyordu. ÜST DİZİN (çağrı anında zaten oluşturulmuştur)
+      # normalize edilir ve hedef `basename()` ile yeniden kurulur.
+      ust <- tryCatch(
+        normalizePath(dirname(yol_slash), winslash = "/", mustWork = FALSE),
+        error = function(e) dirname(yol_slash)
+      )
+      ust <- sub("/+$", "", gsub("\\\\", "/", ust))
+      hedef <- paste0(ust, "/", basename(yol_slash))
+      if (grepl("(^|/)\\.\\.(/|$)", hedef, perl = TRUE)) return(FALSE)
+
+      uid <- suppressWarnings(as.integer(user_id %||% NA_integer_)[1])
+      kok <- if (!is.na(uid) && uid > 0L) {
+        paste0(destek_ek_koku(), "/", as.character(uid), "/")
+      } else {
+        paste0(destek_ek_koku(), "/")
+      }
+
+      startsWith(hedef, kok)
+    }
+
     observeEvent(input$dosya_bilgisi, {
       dosya_verisi <- input$dosya_bilgisi
       if (is.null(dosya_verisi)) return()
@@ -239,9 +307,79 @@ destekHataBildirServer <- function(id, current_user_id) {
         return()
       }
 
-      mevcut[[length(mevcut) + 1]] <- dosya_verisi
+      # İstemciden gelen `path` alanına GÜVENİLMEZ: keyfi sunucu dosyasının
+      # silinmesine veya eke iliştirilmesine yol açıyordu. Fiziksel yol yalnızca
+      # gerçek fileInput yükleme yolunda sunucu tarafından üretilir.
+      mevcut[[length(mevcut) + 1]] <- list(
+        name = as.character(dosya_verisi$name %||% "")[1],
+        size = suppressWarnings(as.numeric(dosya_verisi$size %||% NA_real_)[1]),
+        path = NULL
+      )
       yuklenen_dosyalar(mevcut)
     }, ignoreInit = TRUE)
+
+    # Kimlik DEĞİŞİRSE ek durumu temizlenir: aksi hâlde yeni kullanıcı, önceki
+    # kullanıcının ek listesini görmeye devam ediyordu.
+    ek_sahibi_uid <- reactiveVal(NA_integer_)
+    # Silinemeyen ekler yeniden denenmek üzere kuyrukta tutulur; yeni kullanıcıya
+    # GÖRÜNMEZLER (liste her durumda temizlenir).
+    #
+    # Her öğe KENDİ sahibini taşır (`list(path=, owner=)`). Yalnızca yol
+    # saklandığında, bir sonraki kimlik değişiminde TÜM kuyruk o turun `onceki`
+    # sahibine göre doğrulanıyordu: A'nın silinemeyen dosyası A -> B geçişinde
+    # kuyruğa giriyor, B -> C geçişinde A'nın yolu B kökünde olmadığı için
+    # atlanıyor ve `kalan` listesine geri EKLENMEDİĞİ için dosya diskte kalıcı
+    # olarak yetim kalıyor, bir daha hiç denenmiyordu.
+    ek_silme_kuyrugu <- reactiveVal(list())
+
+    observe({
+      aktif <- suppressWarnings(as.integer(resolve_current_user_id())[1])
+      onceki <- isolate(ek_sahibi_uid())
+      if (identical(aktif, onceki)) return(invisible(NULL))
+
+      ek_sahibi_uid(aktif)
+      if (is.na(onceki)) return(invisible(NULL))
+
+      # GÖNDERİLMEMİŞ ekler diskte KALMAMALIDIR: hiçbir modül/oturum yaşam
+      # döngüsü `destek_uploads/<eski-uid>/...` dosyalarını kaldırmıyordu.
+      # Bu turda gönderilmemiş ekler ÖNCEKİ sahibe aittir; kuyruktakiler ise
+      # kendi sahiplerini zaten taşır.
+      adaylar <- c(
+        isolate(ek_silme_kuyrugu()),
+        lapply(isolate(yuklenen_dosyalar()), function(e) {
+          list(path = as.character(e$path %||% "")[1], owner = onceki)
+        })
+      )
+
+      yollar <- vapply(adaylar, function(e) as.character(e$path %||% "")[1], character(1))
+      anahtar <- paste0(
+        vapply(adaylar, function(e) as.character(e$owner %||% NA_integer_)[1], character(1)),
+        "|", yollar
+      )
+      adaylar <- adaylar[!is.na(yollar) & nzchar(yollar) & !duplicated(anahtar)]
+
+      kalan <- list()
+      for (ek in adaylar) {
+        ek_yolu <- as.character(ek$path %||% "")[1]
+        # Silme YALNIZCA ÖĞENİN KENDİ sahibinin alt klasöründe geçerlidir.
+        # Sahip çözülemezse KAPALI-BAŞARISIZ: `destek_ek_yolu_guvenli()` NA
+        # kimlikte ortak `destek_uploads` köküne düşer ve başka bir kullanıcının
+        # alt klasöründeki yol da denetimi geçebilirdi.
+        ek_sahibi <- suppressWarnings(as.integer(ek$owner %||% NA_integer_)[1])
+        if (is.na(ek_sahibi) || ek_sahibi <= 0L) next
+        if (!isTRUE(destek_ek_yolu_guvenli(ek_yolu, ek_sahibi))) next
+        if (!isTRUE(file.exists(ek_yolu))) next
+        silindi <- isTRUE(suppressWarnings(file.remove(ek_yolu))) &&
+          !isTRUE(file.exists(ek_yolu))
+        if (!silindi) kalan[[length(kalan) + 1L]] <- ek
+      }
+      ek_silme_kuyrugu(kalan)
+
+      if (length(isolate(yuklenen_dosyalar())) > 0L) {
+        yuklenen_dosyalar(list())
+        shinyjs::runjs(sprintf("destekUpdateFileList('%s', []);", ns("")))
+      }
+    })
 
     observeEvent(input$dosya_sil, {
       idx <- as.integer(input$dosya_sil)
@@ -249,9 +387,30 @@ destekHataBildirServer <- function(id, current_user_id) {
 
       mevcut <- yuklenen_dosyalar()
       if (idx >= 1 && idx <= length(mevcut)) {
-        if (!is.null(mevcut[[idx]]$path) && file.exists(mevcut[[idx]]$path)) {
-          file.remove(mevcut[[idx]]$path)
+        silinecek <- mevcut[[idx]]$path
+        aktif_uid <- resolve_current_user_id()
+        # Sahibi FARKLI olan ek silinemez: kayıt yalnızca sahibinin alt
+        # klasöründe geçerlidir.
+        if (!is.null(silinecek) &&
+            !isTRUE(destek_ek_yolu_guvenli(silinecek, aktif_uid))) {
+          showToast(session, "Bu ek bu oturuma ait değil.", "warning")
+          return(invisible(NULL))
         }
+        silme_tamam <- TRUE
+        if (!is.null(silinecek) && destek_ek_yolu_guvenli(silinecek, aktif_uid) &&
+            file.exists(silinecek)) {
+          # file.remove() kilitli dosya / erişim hatasında FALSE döner. Ek
+          # durumunu yine de kaldırmak, dosyayı destek_uploads altında bırakıp
+          # kullanıcıyı ne silebilir ne gönderebilir hâle getiriyordu.
+          silme_tamam <- isTRUE(suppressWarnings(file.remove(silinecek))) &&
+            !isTRUE(file.exists(silinecek))
+        }
+
+        if (!isTRUE(silme_tamam)) {
+          showToast(session, "Dosya silinemedi; lütfen tekrar deneyin.", "error")
+          return(invisible(NULL))
+        }
+
         mevcut[[idx]] <- NULL
         yuklenen_dosyalar(mevcut)
 
@@ -286,12 +445,35 @@ destekHataBildirServer <- function(id, current_user_id) {
           hedef_dir <- file.path("destek_uploads", as.character(effective_user_id))
           if (!dir.exists(hedef_dir)) dir.create(hedef_dir, recursive = TRUE)
 
+          # ÇARPIŞMA GÜVENLİ AD: yalnızca saniye çözünürlüklü damga, aynı
+          # saniyede yüklenen iki ekte aynı yolu üretiyor; `file.copy()`
+          # varsayılan `overwrite = FALSE` ile FALSE dönüyor ve yeni ek ESKİ
+          # dosyayı gösteriyordu.
           hedef_yol <- file.path(
             hedef_dir,
-            paste0(format(Sys.time(), "%Y%m%d%H%M%S"), "_", dosya$name)
+            paste0(
+              format(Sys.time(), "%Y%m%d%H%M%S"), "_",
+              basename(tempfile("")), "_",
+              destek_ek_adi_temizle(dosya$name)
+            )
           )
 
-          file.copy(dosya$datapath, hedef_yol)
+          if (!destek_ek_yolu_guvenli(hedef_yol, effective_user_id)) {
+            showToast(session, paste0(dosya$name, " dosyası güvenli konuma yazılamadı."), "error")
+            next
+          }
+
+          # KOPYA DOĞRULANIR: sonuç yok sayıldığında hiç kaydedilmemiş bir ek
+          # arayüzde/DB'de kayıtlı görünüyordu.
+          kopyalandi <- isTRUE(tryCatch(
+            suppressWarnings(file.copy(dosya$datapath, hedef_yol)),
+            error = function(e) FALSE
+          ))
+          if (!kopyalandi || !file.exists(hedef_yol)) {
+            try(unlink(hedef_yol, force = TRUE), silent = TRUE)
+            showToast(session, paste0(dosya$name, " dosyası kaydedilemedi."), "error")
+            next
+          }
 
           mevcut <- yuklenen_dosyalar()
           mevcut[[length(mevcut) + 1]] <- list(
@@ -352,8 +534,18 @@ destekHataBildirServer <- function(id, current_user_id) {
       }
 
       dosyalar <- yuklenen_dosyalar()
-      ek_yollari <- if (length(dosyalar) > 0) {
-        paste(sapply(dosyalar, function(d) d$path %||% ""), collapse = ",")
+      # Yalnızca ETKİN KULLANICININ kökü içindeki ve HÂLÂ VAR OLAN ek yolları
+      # kaydedilir. Yükleme ile gönderim arasında silinen bir ek, var olmayan
+      # yol olarak `ek_dosya_yollari` alanına yazılıyordu.
+      gecerli_yollar <- Filter(
+        function(yol) {
+          isTRUE(destek_ek_yolu_guvenli(yol, effective_user_id)) &&
+            isTRUE(file.exists(yol))
+        },
+        vapply(dosyalar, function(d) as.character(d$path %||% "")[1], character(1))
+      )
+      ek_yollari <- if (length(gecerli_yollar) > 0) {
+        paste(gecerli_yollar, collapse = ",")
       } else {
         NULL
       }

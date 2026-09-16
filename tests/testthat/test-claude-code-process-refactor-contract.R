@@ -248,6 +248,71 @@ test_that("Windows .cmd çalıştırması processx'e problemli wd vermez", {
   expect_true(dir.exists(komut$wd))
 })
 
+test_that("cc_workdir_windows_safe UNC ve ASCII dışı yolları reddeder", {
+  test_env <- .source_claude_code_process_for_test()
+
+  # `.Platform` sourced ortamda yeniden bağlanır; fonksiyon gövdesi onu LEKSİKAL
+  # olarak bu ortamdan çözer, böylece Windows kararı Linux'ta da sınanabilir.
+  test_env$.Platform <- list(OS.type = "windows")
+
+  guvenli <- c("C:/Temp/mergen", "C:\\Temp\\mergen", "D:/tmp")
+  for (yol in guvenli) {
+    expect_true(
+      isTRUE(test_env$cc_workdir_windows_safe(yol)),
+      info = yol
+    )
+  }
+
+  # UNC / tek-slash ağ yolu ve Türkçe karakter taşıyan geçici klasör reddedilir.
+  turkce_yol <- paste0("C:/Temp/", intToUtf8(c(0x00E7, 0x0061, 0x006C)))
+  reddedilen <- c(
+    "//rehisds/uygulamalar",
+    "\\\\rehisds\\uygulamalar",
+    "/rehisds/uygulamalar",
+    turkce_yol,
+    "",
+    NA_character_
+  )
+  for (yol in reddedilen) {
+    expect_false(
+      isTRUE(test_env$cc_workdir_windows_safe(yol)),
+      info = if (is.na(yol)) "NA" else yol
+    )
+  }
+
+  # Windows dışında karar her zaman TRUE'dur (yol kuralı platforma özgüdür).
+  test_env$.Platform <- list(OS.type = "unix")
+  expect_true(isTRUE(test_env$cc_workdir_windows_safe("//sunucu/pay")))
+})
+
+test_that("güvenli çalışma dizini fallback'leri aday döngüsüyle aynı denetimden geçer", {
+  test_env <- .source_claude_code_process_for_test()
+
+  # Her iki fallback de silinmiş `tempdir()` durumunda dizini YENİDEN oluşturup
+  # döndürür; eskiden var olmayan yol denetimsiz dönüyordu.
+  expect_true(dir.exists(test_env$get_safe_processx_launch_workdir()))
+  expect_true(dir.exists(test_env$get_safe_claude_cli_workdir()))
+
+  # Windows'ta tüm adaylar (ve fallback) reddedilirse AÇIK bir çalışma dizini
+  # hatası üretilir; eskiden aynı güvensiz yol sessizce döndürülüyordu ve
+  # `processx` opak bir hatayla düşüyordu.
+  test_env$.Platform <- list(OS.type = "windows")
+  test_env$cc_workdir_windows_safe <- function(path) FALSE
+
+  # NOT: Türkçe karakterler `\u` kaçışıyla yazılır; aynı dizede literal Türkçe
+  # karakterle KARIŞTIRILMAZ (Windows VM parser kuralı).
+  expect_error(
+    test_env$get_safe_processx_launch_workdir(),
+    "yerel bir ba\u015Flatma dizini bulunamad",
+    fixed = TRUE
+  )
+  expect_error(
+    test_env$get_safe_claude_cli_workdir(),
+    "yerel bir \u00E7al\u0131\u015Fma dizini bulunamad",
+    fixed = TRUE
+  )
+})
+
 test_that("Claude Code JSON çıktı ayrıştırma sözleşmesi korunur", {
   test_env <- .source_claude_code_process_for_test()
 

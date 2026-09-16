@@ -227,28 +227,46 @@ bs_db_get_or_create_profile <- function(user_id, conn = NULL) {
     )
 
     if (nrow(mevcut) == 0L) {
-      profil_id <- .bs_db_insert_returning_id(
-        conn = handle$conn,
-        insert_sql_tsql = paste(
-          "INSERT INTO MB_Game_Profiles",
-          "(UserID, PlayerLevel, TotalXP, TotalScore, SettingsJson, CreatedAt, UpdatedAt)",
-          "OUTPUT INSERTED.GameProfileID AS id",
-          "VALUES (?, 1, 0, 0, ?, ?, ?)"
+      # SELECT-INSERT yarışı: eşzamanlı ilk açılışta INSERT tekil kısıtına
+      # takılırsa satır yeniden okunur; profil ikilenmez.
+      profil_id <- tryCatch(
+        .bs_db_insert_returning_id(
+          conn = handle$conn,
+          insert_sql_tsql = paste(
+            "INSERT INTO MB_Game_Profiles",
+            "(UserID, PlayerLevel, TotalXP, TotalScore, SettingsJson, CreatedAt, UpdatedAt)",
+            "OUTPUT INSERTED.GameProfileID AS id",
+            "VALUES (?, 1, 0, 0, ?, ?, ?)"
+          ),
+          insert_sql_plain = paste(
+            "INSERT INTO MB_Game_Profiles",
+            "(UserID, PlayerLevel, TotalXP, TotalScore, SettingsJson, CreatedAt, UpdatedAt)",
+            "VALUES (?, 1, 0, 0, ?, ?, ?)"
+          ),
+          id_column = "GameProfileID",
+          params = normalize_db_params(list(
+            uid, "{}", .bs_db_now_stamp(), .bs_db_now_stamp()
+          ))
         ),
-        insert_sql_plain = paste(
-          "INSERT INTO MB_Game_Profiles",
-          "(UserID, PlayerLevel, TotalXP, TotalScore, SettingsJson, CreatedAt, UpdatedAt)",
-          "VALUES (?, 1, 0, 0, ?, ?, ?)"
-        ),
-        id_column = "GameProfileID",
-        params = normalize_db_params(list(
-          uid, "{}", .bs_db_now_stamp(), .bs_db_now_stamp()
-        ))
+        error = function(e) NULL
       )
-      return(list(
-        profil_id = profil_id, seviye = 1L, xp = 0L,
-        toplam_puan = 0L, ayarlar = list()
-      ))
+      if (!is.null(profil_id)) {
+        return(list(
+          profil_id = profil_id, seviye = 1L, xp = 0L,
+          toplam_puan = 0L, ayarlar = list()
+        ))
+      }
+      mevcut <- DBI::dbGetQuery(
+        handle$conn,
+        paste(
+          "SELECT GameProfileID, PlayerLevel, TotalXP, TotalScore, SettingsJson",
+          "FROM MB_Game_Profiles WHERE UserID = ?"
+        ),
+        params = normalize_db_params(list(uid))
+      )
+      if (nrow(mevcut) == 0L) {
+        stop("Oyun profili oluşturulamadı ve yeniden okunamadı.", call. = FALSE)
+      }
     }
 
     ayarlar <- tryCatch(

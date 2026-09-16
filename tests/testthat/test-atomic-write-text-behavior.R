@@ -97,3 +97,47 @@ testthat::test_that("atomic_write_text eksik üst dizini oluşturur", {
   testthat::expect_true(file.exists(hedef))
   testthat::expect_identical(.atomicwrite_read_utf8(hedef), "merhaba")
 })
+
+
+# Regresyon: kopya doğrulanamadığında ve geçerli yedek yokken kısmi hedef
+# yerinde kalıyordu; atomic_write_json() ile yazılan index bozuk JSON olurdu.
+test_that("atomic_write_text yedeksiz basarisizlikta kismi hedefi birakmaz", {
+  .atomicwrite_source_once()
+
+  kok <- withr::local_tempdir()
+  hedef <- file.path(kok, "index.json")
+
+  # rename başarısız olur, ardından kopya EKSİK bir dosya bırakır.
+  testthat::local_mocked_bindings(
+    file.rename = function(from, to) FALSE,
+    file.copy = function(from, to, ...) {
+      writeBin(as.raw(c(0x7b)), to)  # yarım JSON: "{"
+      TRUE
+    },
+    .package = "base"
+  )
+
+  # Hata mesajı SABİTLENİR: aksi hâlde erken bir hata (dizin/geçici dosya)
+  # da testi geçirir ve kısmi-kopya temizliği hiç çalışmamış olur.
+  expect_error(atomic_write_text('{"a":1}', hedef), "hedefe taşıma başarısız")
+  expect_false(file.exists(hedef))
+})
+
+# Regresyon: mevcut hedefin dogrulanmis yedegi alinamadiginda uzerine YAZILMAZ.
+test_that("atomic_write_text yedek alinamayan mevcut hedefi korur", {
+  .atomicwrite_source_once()
+
+  kok <- withr::local_tempdir()
+  hedef <- file.path(kok, "index.json")
+  writeBin(charToRaw('{"eski":true}'), hedef)
+
+  testthat::local_mocked_bindings(
+    file.rename = function(from, to) FALSE,
+    file.copy = function(from, to, ...) FALSE,
+    .package = "base"
+  )
+
+  expect_error(atomic_write_text('{"a":1}', hedef), "doğrulanmış yedek")
+  expect_true(file.exists(hedef))
+  expect_identical(.atomicwrite_read_utf8(hedef), '{"eski":true}')
+})

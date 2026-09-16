@@ -146,14 +146,17 @@ test_that("mesaj yönlendirme: yalnızca YapayZekaSorusu LLM tetikler", {
 test_that("canlı durum sınıflandırması eşiklere göre Türkçe değer döner", {
   simdi <- as.POSIXct("2026-07-05 12:00:00", tz = "UTC")
 
-  taze <- format(simdi - 30, "%Y-%m-%d %H:%M:%S")
-  expect_identical(ortak_sunum_durumu(taze, simdi = simdi), .oo_cevrimici)
+  # METİN kalp atışları TÜRKİYE YEREL saatinde saklanır (sabit +3, DST yok;
+  # bkz. CLAUDE.md "TIMEZONE" notu), bu yüzden fikstürler UTC referansına +3
+  # ekler. `format(..., tz = "UTC")` AÇIKÇA verilir: yerel makine saat dilimi
+  # testin ürettiği dizeyi kaydırmamalıdır.
+  yerel <- function(saniye) {
+    format(simdi + 3L * 3600L - saniye, "%Y-%m-%d %H:%M:%S", tz = "UTC")
+  }
 
-  orta <- format(simdi - 200, "%Y-%m-%d %H:%M:%S")
-  expect_identical(ortak_sunum_durumu(orta, simdi = simdi), .oo_bosta)
-
-  eski <- format(simdi - 3600, "%Y-%m-%d %H:%M:%S")
-  expect_identical(ortak_sunum_durumu(eski, simdi = simdi), .oo_cevrimdisi)
+  expect_identical(ortak_sunum_durumu(yerel(30), simdi = simdi), .oo_cevrimici)
+  expect_identical(ortak_sunum_durumu(yerel(200), simdi = simdi), .oo_bosta)
+  expect_identical(ortak_sunum_durumu(yerel(3600), simdi = simdi), .oo_cevrimdisi)
 
   expect_identical(ortak_sunum_durumu(NA, simdi = simdi), .oo_cevrimdisi)
   expect_identical(ortak_sunum_durumu("gecersiz-zaman", simdi = simdi), .oo_cevrimdisi)

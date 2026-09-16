@@ -19,6 +19,10 @@
 .ccStreamEnv <- function() {
   env <- new.env(parent = globalenv())
   kok <- resolve_repo_root_for_tests()
+  # Turkce yorum: akis dosyasi bayt/satir butcesini paylasilan cikti tamponu
+  # katmanindan alir; TEK BASINA kosumda bu bagimliliklar globalenv'de yoktur.
+  source(file.path(kok, "R", "config_claude_code.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "helpers_claude_code_output_buffer.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "helpers_claude_code_streaming.R"), encoding = "UTF-8", local = env)
 
   env$CLAUDE_CODE_LOG_PREFIX <- "[CC]"
@@ -42,7 +46,9 @@
   }
   # Türkçe yorum: akış parçası ayrıştırma stub'ı -> on_chunk her satır için tetiklensin
   env$parse_streaming_chunk <- function(satir) list(raw = satir)
-  env$parse_claude_code_json_output <- function(tum_cikti) {
+  # Türkçe yorum: `prefer_result_text` argümanı kırpılmış tamponda TAM `result`
+  # metnini tercih etmek için eklendi; stub imzası gerçek imzayı yansıtmalıdır.
+  env$parse_claude_code_json_output <- function(tum_cikti, prefer_result_text = FALSE) {
     list(text_output = "Birleşik cevap", tool_uses = list(list(name = "Write")), session_id = "sess-1")
   }
   env
