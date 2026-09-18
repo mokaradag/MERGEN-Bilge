@@ -1,0 +1,224 @@
+/* ==============================================================================
+ * Dosya Yolu: www/css/analysis_tools.css
+ * Açıklama:   Proje ve Kaynak Analizi aracı için sohbet içi kontroller,
+ *             Derin Düşünme butonu ve detay seviyesi dropdown stilleri.
+ *             Koyu tema tasarımı (dark mode).
+ * ============================================================================== */
+
+/* ------------------------------------------------------------------------------
+ * SOHBET İÇİ ANALİZ KONTROLLERİ (Ana Söyleşi)
+ * ------------------------------------------------------------------------------ */
+
+.analysis-chat-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  margin-right: 8px;
+  transition: all 0.3s ease;
+}
+
+.analysis-chat-controls.hidden {
+  display: none !important;
+}
+
+.analysis-control-item {
+  display: flex;
+  align-items: center;
+}
+
+/* --- Derin Düşünme Aç/Kapa Butonu --- */
+.deep-thinking-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #334155);
+  background: var(--bg-tertiary, #1e293b);
+  color: var(--text-secondary, #94a3b8);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.deep-thinking-toggle:hover {
+  border-color: rgba(16, 185, 129, 0.5);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.deep-thinking-toggle.active {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.2);
+}
+
+.deep-thinking-toggle .toggle-icon {
+  font-size: 13px;
+  transition: transform 0.3s ease;
+}
+
+.deep-thinking-toggle.active .toggle-icon {
+  transform: scale(1.1);
+  animation: deep-pulse 2s ease-in-out infinite;
+}
+
+.deep-thinking-toggle .toggle-label {
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}
+
+/* Derin düşünme butonu nabız animasyonu */
+@keyframes deep-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* --- Detay Seviyesi Dropdown --- */
+.analysis-detail-select {
+  background: var(--bg-tertiary, #1e293b);
+  color: var(--text-primary, #f1f5f9);
+  border: 1px solid var(--border-color, #334155);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+  min-width: 90px;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath fill='%2394a3b8' d='M0 0l4 5 4-5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  padding-right: 20px;
+  transition: all 0.3s ease;
+}
+
+.analysis-detail-select:hover {
+  border-color: #10b981;
+}
+
+.analysis-detail-select:focus {
+  border-color: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.analysis-detail-select:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* --- Kontrol Ayırıcı --- */
+.analysis-control-separator {
+  width: 1px;
+  height: 16px;
+  background: rgba(16, 185, 129, 0.3);
+  margin: 0 2px;
+}
+
+/* ------------------------------------------------------------------------------
+ * AYARLAR SAYFASI ANALİZ KARTI
+ * ------------------------------------------------------------------------------ */
+
+.analysis-settings-card {
+  border-left: 4px solid #10b981;
+}
+
+.analysis-settings-card .settings-title {
+  color: var(--text-primary, #f1f5f9);
+}
+
+/* Ayarlar sayfasında derin düşünme switch */
+.deep-thinking-switch-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.deep-thinking-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  cursor: pointer;
+}
+
+.deep-thinking-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.deep-thinking-switch .switch-slider {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-tertiary, #334155);
+  border-radius: 24px;
+  transition: all 0.3s ease;
+  border: 1px solid var(--border-color, #475569);
+}
+
+.deep-thinking-switch .switch-slider::before {
+  content: '';
+  position: absolute;
+  height: 18px;
+  width: 18px;
+  left: 2px;
+  bottom: 2px;
+  background: var(--text-secondary, #94a3b8);
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.deep-thinking-switch input:checked + .switch-slider {
+  background: rgba(16, 185, 129, 0.3);
+  border-color: #10b981;
+}
+
+.deep-thinking-switch input:checked + .switch-slider::before {
+  transform: translateX(20px);
+  background: #10b981;
+}
+
+.deep-thinking-label {
+  font-size: 14px;
+  color: var(--text-primary, #f1f5f9);
+  font-weight: 500;
+}
+
+/* ------------------------------------------------------------------------------
+ * RESPONSIVE DÜZENLEMELER
+ * ------------------------------------------------------------------------------ */
+
+@media (max-width: 768px) {
+  .analysis-chat-controls {
+    flex-wrap: wrap;
+    padding: 6px;
+  }
+
+  .analysis-detail-select {
+    min-width: 75px;
+    font-size: 11px;
+  }
+
+  .deep-thinking-toggle .toggle-label {
+    display: none;
+  }
+
+  .analysis-control-separator {
+    display: none;
+  }
+}
