@@ -69,13 +69,13 @@ test_that("initModernWelcome lifecycle moved out of generic Shiny message bridge
 })
 
 
-test_that("authoritative maintainer contract matches modern welcome ownership", {
-  claude_md <- .read_modern_welcome_split_text("CLAUDE.md")
+test_that("scoped maintainer contract preserves modern welcome ownership", {
+  frontend_contract <- .read_modern_welcome_split_text(
+    ".claude", "rules", "frontend-ui.md"
+  )
 
-  expect_true(grepl("www/js/modern_welcome_handler.js", claude_md, fixed = TRUE, useBytes = TRUE))
-  expect_true(grepl("initModernWelcome", claude_md, fixed = TRUE, useBytes = TRUE))
-  expect_true(grepl("authoritative owner", claude_md, fixed = TRUE, useBytes = TRUE))
-  expect_true(grepl("Keep this stateful boot/lifecycle boundary out of the generic Shiny", claude_md, fixed = TRUE, useBytes = TRUE))
-  expect_true(grepl("www/js/shiny_message_handlers.js", claude_md, fixed = TRUE, useBytes = TRUE))
-  expect_true(grepl("Do not move `initModernWelcome` back there", claude_md, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl('"www/**"', frontend_contract, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl('"tests/**/*welcome*.R"', frontend_contract, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("One lifecycle should have one owner.", frontend_contract, fixed = TRUE, useBytes = TRUE))
+  expect_true(grepl("modern-welcome ownership", frontend_contract, fixed = TRUE, useBytes = TRUE))
 })

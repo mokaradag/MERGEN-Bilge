@@ -11,11 +11,21 @@ local({
   onceki_adlar <- ls(globalenv(), all.names = TRUE)
   onceki_degerler <- mget(onceki_adlar, envir = globalenv(), inherits = FALSE)
   # Kaynaklama yarıda kalsa da eski bağlamalar geri yüklenir.
+  # Sentetik kurulum testi temizlik ortamını doğrudan geçer; böylece testthat
+  # namespace'ini mock'lamak zorunda kalmaz ve sürüm farklarından etkilenmez.
+  temizlik_ortami <- if (exists(".pk_meta_teardown_env_override", inherits = TRUE)) {
+    get(".pk_meta_teardown_env_override", inherits = TRUE)
+  } else {
+    testthat::teardown_env()
+  }
+  if (!is.environment(temizlik_ortami)) {
+    stop("PK metadata test temizlik ortamı geçersiz.")
+  }
   withr::defer({
     eklenen <- setdiff(ls(globalenv(), all.names = TRUE), onceki_adlar)
     if (length(eklenen)) rm(list = eklenen, envir = globalenv())
     list2env(onceki_degerler, envir = globalenv())
-  }, envir = testthat::teardown_env())
+  }, envir = temizlik_ortami)
 
   # KAPSAM `globalenv()` ILE SINIRLIDIR (PR #705 inceleme, P3).
   #
@@ -61,9 +71,7 @@ test_that("metadata test kurulumu eski globalleri geri yükler", {
       env <- new.env(parent = globalenv())
       env$resolve_repo_root_for_tests <- function() kok
       temizlik <- new.env(parent = emptyenv())
-      testthat::local_mocked_bindings(
-        teardown_env = function() temizlik, .package = "testthat"
-      )
+      env$.pk_meta_teardown_env_override <- temizlik
       if (kesinti) {
         env$source <- function(...) {
           base::source(...)
