@@ -70,7 +70,7 @@ test_that("metadata test kurulumu eski globalleri geri yükler", {
       adlar <- ls(globalenv(), all.names = TRUE)
       env <- new.env(parent = globalenv())
       env$resolve_repo_root_for_tests <- function() kok
-      temizlik <- new.env(parent = emptyenv())
+      temizlik <- environment()
       env$.pk_meta_teardown_env_override <- temizlik
       if (kesinti) {
         env$source <- function(...) {

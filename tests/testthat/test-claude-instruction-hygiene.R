@@ -88,7 +88,7 @@ test_that("tüm proje Claude kuralları paths frontmatter ile koşullu kalır", 
 
     frontmatter <- lines[seq.int(2L, fences[2] - 1L)]
     paths_index <- which(trimws(frontmatter) == "paths:")
-    expect_length(paths_index, 1L, info = basename(path))
+    expect_true(length(paths_index) == 1L, info = basename(path))
 
     if (length(paths_index) == 1L) {
       after_paths <- if (paths_index < length(frontmatter)) {
