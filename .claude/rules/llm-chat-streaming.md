@@ -5,6 +5,8 @@ paths:
   - "R/helpers_messaging.R"
   - "R/helpers_send_message*.R"
   - "R/helpers_followup_questions.R"
+  - "R/helpers_langflow*.R"
+  - "R/**/*vision*.R"
   - "R/module_chat*.R"
   - "R/module_saved_chats.R"
   - "R/server_*chat*.R"
@@ -15,6 +17,7 @@ paths:
   - "tests/**/*chat*.R"
   - "tests/**/*stream*.R"
   - "tests/**/*reasoning*.R"
+  - "tests/**/*vision*.R"
 ---
 
 # LLM, chat, reasoning and streaming

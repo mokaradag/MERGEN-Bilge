@@ -6,6 +6,8 @@ paths:
   - "version_history.md"
   - "ai_rehber.md"
   - ".Renviron.example"
+  - "R/config_version_history.R"
+  - "R/config_packages.R"
   - "docs/**"
   - ".claude/**"
   - "tools/*renv*.R"

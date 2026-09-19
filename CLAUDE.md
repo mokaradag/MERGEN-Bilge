@@ -38,6 +38,8 @@ live Claude instruction file.
 11. For bug fixes, add or update focused regression coverage when practical.
 12. Never claim a test, app boot, browser smoke, VM check, production check, or
     evidence gate passed unless that exact check ran successfully.
+13. Keep technical identifiers/protocol tokens ASCII-safe when practical, but
+    never Latinize user-visible Turkish text to achieve that.
 
 ## Ground truth, not snapshots
 

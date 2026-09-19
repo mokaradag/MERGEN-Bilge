@@ -59,7 +59,7 @@ Every H2–H4 heading from the former file is listed below. The archive remains 
 | 4 | H2 | Read this first | `CLAUDE.md` |
 | 36 | H2 | Purpose of This File | `CLAUDE.md` |
 | 57 | H2 | Non-Negotiable Repo Rules | `CLAUDE.md` |
-| 59 | H3 | 1) Preserve Turkish text integrity | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 59 | H3 | 1) Preserve Turkish text integrity | `CLAUDE.md` |
 | 70 | H3 | 1B) Text encoding and mojibake boundary contract | `.claude/rules/encoding-database.md` |
 | 124 | H3 | File Reading, Encoding, and Ratchet Notes | `.claude/rules/encoding-database.md` |
 | 132 | H3 | Windows VM focused test coverage and path/API-key encoding contract | `.claude/rules/encoding-database.md` |
@@ -87,7 +87,7 @@ Every H2–H4 heading from the former file is listed below. The archive remains 
 | 655 | H3 | Theme system and light-theme contract | `.claude/rules/frontend-ui.md` |
 | 674 | H3 | Sidebar user panel, Department, and version source contract | `.claude/rules/frontend-ui.md` |
 | 688 | H3 | Brand title single-source contract | `.claude/rules/frontend-ui.md` |
-| 697 | H3 | Tool contextual background animation contract | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 697 | H3 | Tool contextual background animation contract | `.claude/rules/frontend-ui.md` |
 | 712 | H3 | Tool-mode model lock and Excel/Coding deep-thinking contract | `.claude/rules/llm-chat-streaming.md` |
 | 728 | H3 | Bilge Savunması (tower defense) game contract | `.claude/rules/special-features.md` |
 | 750 | H3 | Bilge Yolaç / Claude Code security regression contract | `.claude/rules/security-identity.md` |
@@ -98,8 +98,8 @@ Every H2–H4 heading from the former file is listed below. The archive remains 
 | 1200 | H3 | Admin Hata Analizi heatmap data boundary contract | `.claude/rules/admin-health.md` |
 | 1243 | H3 | Source manifest and MCP load-order contract | `.claude/rules/runtime-architecture.md` |
 | 1286 | H3 | Frontend asset manifest and maintainability ratchet contract | `.claude/rules/frontend-ui.md` |
-| 1319 | H3 | Startup lane contract (Hızlı Başlangıç / Zengin Deneyim) | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 1346 | H3 | Startup media readiness and real-progress contract | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 1319 | H3 | Startup lane contract (Hızlı Başlangıç / Zengin Deneyim) | `.claude/rules/runtime-architecture.md` |
+| 1346 | H3 | Startup media readiness and real-progress contract | `.claude/rules/runtime-architecture.md` |
 | 1358 | H3 | Accessibility contract for main chat controls and toast notifications | `.claude/rules/frontend-ui.md` |
 | 1402 | H3 | 1C.0) Non-blocking file ingestion contract | `.claude/rules/files-storage.md` |
 | 1439 | H3 | 1C) File lifecycle and File Manager boundary contract | `.claude/rules/files-storage.md` |
@@ -108,11 +108,11 @@ Every H2–H4 heading from the former file is listed below. The archive remains 
 | 1619 | H3 | Tool-use visibility and stream-json compatibility | `.claude/rules/frontend-ui.md` |
 | 1631 | H3 | Stream-json parser compatibility | `.claude/rules/frontend-ui.md` |
 | 1641 | H3 | Windows VM, UNC, and runtime workdir compatibility | `.claude/rules/runtime-architecture.md` |
-| 1675 | H3 | 1A) Keep new code identifiers ASCII-safe when practical | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 1675 | H3 | 1A) Keep new code identifiers ASCII-safe when practical | `CLAUDE.md` |
 | 1678 | H3 | 1G) WINDOWS-1254 source-safety contract (Windows VM parse boundary) | `.claude/rules/encoding-database.md` |
-| 1719 | H3 | 2) Comments added to code must be in Turkish | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 1719 | H3 | 2) Comments added to code must be in Turkish | `CLAUDE.md` |
 | 1722 | H3 | 2A) Character / persona system contract | `.claude/rules/speech-media.md` |
-| 1744 | H3 | 3) Prefer surgical changes | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 1744 | H3 | 3) Prefer surgical changes | `CLAUDE.md` |
 | 1754 | H3 | 3B) Preserve UX while improving architecture and security | `.claude/rules/security-identity.md` |
 | 1850 | H3 | 3C) Bilge Yolaç Windows runtime and Claude Code CLI contract | `.claude/rules/runtime-architecture.md` |
 | 1889 | H3 | 4) Do not create unnecessary new files | `.claude/rules/files-storage.md` |
@@ -139,18 +139,18 @@ Every H2–H4 heading from the former file is listed below. The archive remains 
 | 2918 | H3 | Bilge Yolaç Oturumlar (kalıcı oturum) sayfası contract | `.claude/rules/bilge-yolac.md` |
 | 2932 | H3 | Ortak Oturumlar (Collaborative Sessions) contract | `.claude/rules/special-features.md` |
 | 3409 | H3 | Sesli Giriş (STT) async transcription contract | `.claude/rules/runtime-architecture.md` |
-| 3443 | H3 | Yazı Tipi Boyutu pending-until-save contract | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 3443 | H3 | Yazı Tipi Boyutu pending-until-save contract | `.claude/rules/frontend-ui.md` |
 | 3458 | H3 | Yapılandırma CSS-only setting tooltip contract | `.claude/rules/frontend-ui.md` |
 | 3490 | H3 | Yönetici Paneli CSS-only tooltip contract | `.claude/rules/frontend-ui.md` |
 | 3504 | H3 | Model reset / timeout / output-token notes | `.claude/rules/llm-chat-streaming.md` |
-| 3525 | H3 | Long code block integrity contract | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 3525 | H3 | Long code block integrity contract | `.claude/rules/llm-chat-streaming.md` |
 | 3551 | H3 | Bilge Yolaç run lifecycle request-id contract | `.claude/rules/bilge-yolac.md` |
 | 3579 | H3 | Bilge Yolaç non-blocking run pipeline contract | `.claude/rules/bilge-yolac.md` |
 | 3671 | H3 | Bilge Yolaç directory-listing contract | `.claude/rules/files-storage.md` |
 | 3709 | H3 | Windows VM real preflight SSO contract | `.claude/rules/security-identity.md` |
 | 3747 | H3 | User session initialization contract | `.claude/rules/security-identity.md` |
 | 3860 | H3 | ServerRuntimeContext contract | `.claude/rules/runtime-architecture.md` |
-| 3973 | H3 | Session userData list-store contract | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 3973 | H3 | Session userData list-store contract | `.claude/rules/runtime-architecture.md` |
 | 4073 | H3 | Core interaction runtime contract | `.claude/rules/runtime-architecture.md` |
 | 4106 | H3 | Server module wiring contract | `.claude/rules/runtime-architecture.md` |
 | 4199 | H3 | Database helper modularization contract | `.claude/rules/encoding-database.md` |
@@ -161,7 +161,7 @@ Every H2–H4 heading from the former file is listed below. The archive remains 
 | 4322 | H3 | Bilge Yolaç workdir scan and generated-download contract | `.claude/rules/files-storage.md` |
 | 4383 | H3 | Bilge Yolaç document extractor modularization contract | `.claude/rules/bilge-yolac.md` |
 | 4405 | H3 | Project/Resource Analysis security-summary helper contract | `.claude/rules/security-identity.md` |
-| 4441 | H3 | Send-message request lifecycle contract | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 4441 | H3 | Send-message request lifecycle contract | `.claude/rules/llm-chat-streaming.md` |
 | 4477 | H3 | LLM SSE stream I/O contract | `.claude/rules/llm-chat-streaming.md` |
 | 4501 | H3 | UTF-8 streaming chunk contract | `.claude/rules/llm-chat-streaming.md` |
 | 4507 | H3 | Thinking model capability contract | `.claude/rules/llm-chat-streaming.md` |
@@ -179,7 +179,7 @@ Every H2–H4 heading from the former file is listed below. The archive remains 
 | 5736 | H3 | Image generation UI/runtime split contract | `.claude/rules/runtime-architecture.md` |
 | 5760 | H3 | Admin Hata Analizi modularization contract | `.claude/rules/admin-health.md` |
 | 5788 | H3 | Admin Yanıt Analizi modularization contract | `.claude/rules/admin-health.md` |
-| 5857 | H3 | 7) Preserve existing UX wording | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 5857 | H3 | 7) Preserve existing UX wording | `CLAUDE.md` |
 | 5860 | H3 | 7A) Prefer canonical identity resolution helpers | `.claude/rules/security-identity.md` |
 | 5906 | H3 | 8) Async jobs visible in health metrics must use tracked wrapper | `.claude/rules/runtime-architecture.md` |
 | 5913 | H3 | 8A) tracked_future_promise() is also a worker dependency wrapper | `.claude/rules/runtime-architecture.md` |
@@ -194,7 +194,7 @@ Every H2–H4 heading from the former file is listed below. The archive remains 
 | 6094 | H3 | 9C) Logging wrappers must preserve caller-frame glue evaluation | `.claude/rules/admin-health.md` |
 | 6106 | H3 | Structured runtime error logging contract | `.claude/rules/runtime-architecture.md` |
 | 6116 | H2 | Test Suite and Execution Rules | `.claude/rules/testing-validation.md` |
-| 6143 | H3 | Focused behavioral regression contracts | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 6143 | H3 | Focused behavioral regression contracts | `.claude/rules/testing-validation.md` |
 | 6177 | H3 | Strict test runner rule | `.claude/rules/testing-validation.md` |
 | 6185 | H3 | testthat edition declaration contract | `.claude/rules/speech-media.md` |
 | 6222 | H3 | Current baseline coverage | **DERIVE LIVE — `tests/` + validation scripts; archive history only** |
@@ -212,122 +212,122 @@ Every H2–H4 heading from the former file is listed below. The archive remains 
 | 6513 | H3 | Critical note for CSS regressions | `.claude/rules/frontend-ui.md` |
 | 6522 | H2 | What MERGEN Bilge Is | `CLAUDE.md` |
 | 6554 | H2 | High-Level Boot Flow | `.claude/rules/runtime-architecture.md` |
-| 6556 | H3 | Entry point: `app.R` | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 6570 | H3 | Why `app.R` matters | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 6556 | H3 | Entry point: `app.R` | `.claude/rules/runtime-architecture.md` |
+| 6570 | H3 | Why `app.R` matters | `.claude/rules/runtime-architecture.md` |
 | 6581 | H3 | Production runtime entrypoint contract | `.claude/rules/runtime-architecture.md` |
-| 6591 | H3 | Production log viewing contract | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 6591 | H3 | Production log viewing contract | `.claude/rules/docs-operations.md` |
 | 6601 | H2 | Encoding and Safe Sourcing | `.claude/rules/encoding-database.md` |
 | 6618 | H3 | Source manifest newline normalization contract | `.claude/rules/runtime-architecture.md` |
-| 6622 | H3 | Practical rule | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 6627 | H2 | Required Environment Variables | `.claude/rules/runtime-architecture.md` |
-| 6639 | H3 | Important optional environment groups | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 6641 | H4 | Database | `.claude/rules/encoding-database.md` |
-| 6648 | H4 | LLM | `.claude/rules/llm-chat-streaming.md` |
-| 6658 | H4 | Kurumsal Langflow (Süreç Yönetimi / Uygulama Uzmanı) | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 6685 | H4 | Vision (görsel anlama) | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 6689 | H4 | TTS | `.claude/rules/speech-media.md` |
-| 6697 | H4 | STT | `.claude/rules/speech-media.md` |
-| 6701 | H4 | SSO / Keycloak | `.claude/rules/security-identity.md` |
-| 6711 | H4 | Bilge Yolaç / Claude Code | `.claude/rules/bilge-yolac.md` |
-| 6719 | H4 | Bilge Yolaç Plugins | `.claude/rules/bilge-yolac.md` |
-| 6722 | H4 | Image generation | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 6728 | H4 | Service desk | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 6732 | H4 | File storage | `.claude/rules/files-storage.md` |
+| 6622 | H3 | Practical rule | `.claude/rules/runtime-architecture.md` |
+| 6627 | H2 | Required Environment Variables | **DERIVE LIVE — `.Renviron.example` + owning config; scoped rule keeps invariants** |
+| 6639 | H3 | Important optional environment groups | **DERIVE LIVE — `.Renviron.example` + owning config; scoped rule keeps invariants** |
+| 6641 | H4 | Database | **DERIVE LIVE — `.Renviron.example` + owning config; scoped rule keeps invariants** |
+| 6648 | H4 | LLM | **DERIVE LIVE — `.Renviron.example` + owning config; scoped rule keeps invariants** |
+| 6658 | H4 | Kurumsal Langflow (Süreç Yönetimi / Uygulama Uzmanı) | `.claude/rules/llm-chat-streaming.md` |
+| 6685 | H4 | Vision (görsel anlama) | `.claude/rules/llm-chat-streaming.md` |
+| 6689 | H4 | TTS | **DERIVE LIVE — `.Renviron.example` + owning config; scoped rule keeps invariants** |
+| 6697 | H4 | STT | **DERIVE LIVE — `.Renviron.example` + owning config; scoped rule keeps invariants** |
+| 6701 | H4 | SSO / Keycloak | **DERIVE LIVE — `.Renviron.example` + owning config; scoped rule keeps invariants** |
+| 6711 | H4 | Bilge Yolaç / Claude Code | **DERIVE LIVE — `.Renviron.example` + owning config; scoped rule keeps invariants** |
+| 6719 | H4 | Bilge Yolaç Plugins | **DERIVE LIVE — `.Renviron.example` + owning config; scoped rule keeps invariants** |
+| 6722 | H4 | Image generation | `.claude/rules/frontend-ui.md` |
+| 6728 | H4 | Service desk | `.claude/rules/frontend-ui.md` |
+| 6732 | H4 | File storage | **DERIVE LIVE — `.Renviron.example` + owning config; scoped rule keeps invariants** |
 | 6737 | H2 | Real Architecture | `.claude/rules/runtime-architecture.md` |
-| 6739 | H2 | Root-Level Files | `.claude/rules/runtime-architecture.md` |
-| 6751 | H2 | Root-Level Directories (non-R/) | `.claude/rules/runtime-architecture.md` |
-| 6760 | H2 | `global.R` Load Order | `.claude/rules/runtime-architecture.md` |
-| 6764 | H3 | Group 1 - Foundation | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 6782 | H3 | Group 2 - Configuration | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 6801 | H3 | Group 3 - Database and SQL | `.claude/rules/encoding-database.md` |
-| 6813 | H3 | Group 4 - Core Helpers | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 6875 | H3 | Group 5 - LLM Integration Layer | `.claude/rules/llm-chat-streaming.md` |
-| 6886 | H3 | Group 6 - Shiny Modules | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 6889 | H4 | Chat and messaging | `.claude/rules/llm-chat-streaming.md` |
-| 6899 | H4 | Files and media | `.claude/rules/files-storage.md` |
-| 6908 | H4 | Settings | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 6915 | H4 | AI / audio / character experience | `.claude/rules/speech-media.md` |
-| 6923 | H4 | Identity / session / startup / Bilge Yolaç | `.claude/rules/security-identity.md` |
-| 6936 | H4 | Analysis | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 6939 | H4 | Support | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 6947 | H4 | Admin | `.claude/rules/admin-health.md` |
-| 6973 | H3 | Group 7 - Server-side Handlers and Observers | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 6739 | H2 | Root-Level Files | **DERIVE LIVE — repository tree/source manifest; scoped rules keep invariants** |
+| 6751 | H2 | Root-Level Directories (non-R/) | **DERIVE LIVE — repository tree/source manifest; scoped rules keep invariants** |
+| 6760 | H2 | `global.R` Load Order | **DERIVE LIVE — repository tree/source manifest; scoped rules keep invariants** |
+| 6764 | H3 | Group 1 - Foundation | **DERIVE LIVE — repository tree/source manifest; scoped rules keep invariants** |
+| 6782 | H3 | Group 2 - Configuration | **DERIVE LIVE — repository tree/source manifest; scoped rules keep invariants** |
+| 6801 | H3 | Group 3 - Database and SQL | **DERIVE LIVE — repository tree/source manifest; scoped rules keep invariants** |
+| 6813 | H3 | Group 4 - Core Helpers | **DERIVE LIVE — repository tree/source manifest; scoped rules keep invariants** |
+| 6875 | H3 | Group 5 - LLM Integration Layer | **DERIVE LIVE — repository tree/source manifest; scoped rules keep invariants** |
+| 6886 | H3 | Group 6 - Shiny Modules | **DERIVE LIVE — repository tree/source manifest; scoped rules keep invariants** |
+| 6889 | H4 | Chat and messaging | **DERIVE LIVE — repository tree/source manifest; scoped rules keep invariants** |
+| 6899 | H4 | Files and media | **DERIVE LIVE — repository tree/source manifest; scoped rules keep invariants** |
+| 6908 | H4 | Settings | **DERIVE LIVE — repository tree/source manifest; scoped rules keep invariants** |
+| 6915 | H4 | AI / audio / character experience | **DERIVE LIVE — repository tree/source manifest; scoped rules keep invariants** |
+| 6923 | H4 | Identity / session / startup / Bilge Yolaç | **DERIVE LIVE — repository tree/source manifest; scoped rules keep invariants** |
+| 6936 | H4 | Analysis | **DERIVE LIVE — repository tree/source manifest; scoped rules keep invariants** |
+| 6939 | H4 | Support | **DERIVE LIVE — repository tree/source manifest; scoped rules keep invariants** |
+| 6947 | H4 | Admin | **DERIVE LIVE — repository tree/source manifest; scoped rules keep invariants** |
+| 6973 | H3 | Group 7 - Server-side Handlers and Observers | **DERIVE LIVE — repository tree/source manifest; scoped rules keep invariants** |
 | 7010 | H2 | UI Structure | `.claude/rules/frontend-ui.md` |
-| 7014 | H3 | Main navigation | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 7014 | H3 | Main navigation | **DERIVE LIVE — UI/repository tree; frontend rule keeps invariants** |
 | 7032 | H3 | UI assets | `.claude/rules/frontend-ui.md` |
-| 7045 | H3 | Important static directories | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 7045 | H3 | Important static directories | **DERIVE LIVE — UI/repository tree; frontend rule keeps invariants** |
 | 7055 | H2 | Server Flow | `.claude/rules/runtime-architecture.md` |
 | 7061 | H3 | Current server initialization helper layer | **DERIVE LIVE — server/source manifest** |
 | 7099 | H3 | SSO behavior | `.claude/rules/security-identity.md` |
-| 7102 | H4 | Local development | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7109 | H4 | Production / VM / Keycloak | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 7102 | H4 | Local development | `.claude/rules/docs-operations.md` |
+| 7109 | H4 | Production / VM / Keycloak | `.claude/rules/security-identity.md` |
 | 7120 | H3 | SSO JWT signature and fail-closed authorization boundary | `.claude/rules/security-identity.md` |
 | 7145 | H4 | Windows VM / SSO / SQL Server Encoding Guardrails | `.claude/rules/encoding-database.md` |
-| 7172 | H2 | Major Functional Systems | `CLAUDE.md` or the closest scoped rule (see rationale) |
+| 7172 | H2 | Major Functional Systems | **DERIVE LIVE — current code; scoped rules own subsystem invariants** |
 | 7174 | H2 | 1) Welcome Screen and Quick Actions | `.claude/rules/frontend-ui.md` |
 | 7217 | H2 | 2) Character / Persona System | `.claude/rules/speech-media.md` |
-| 7243 | H3 | Default | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7246 | H3 | Helpers (single source of truth) | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7251 | H3 | Migration | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7256 | H3 | Practical note | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 7243 | H3 | Default | `.claude/rules/speech-media.md` |
+| 7246 | H3 | Helpers (single source of truth) | `.claude/rules/speech-media.md` |
+| 7251 | H3 | Migration | `.claude/rules/speech-media.md` |
+| 7256 | H3 | Practical note | `.claude/rules/speech-media.md` |
 | 7268 | H2 | 3) Chat / LLM Pipeline | `.claude/rules/llm-chat-streaming.md` |
-| 7289 | H3 | Critical pattern | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7315 | H3 | Worker payload snapshot contract | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 7289 | H3 | Critical pattern | `.claude/rules/llm-chat-streaming.md` |
+| 7315 | H3 | Worker payload snapshot contract | `.claude/rules/llm-chat-streaming.md` |
 | 7325 | H2 | 4) File Storage and Indexing | `.claude/rules/files-storage.md` |
-| 7346 | H3 | Important paths | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7354 | H3 | Key helpers | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7363 | H3 | Practical behavior | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 7346 | H3 | Important paths | `.claude/rules/files-storage.md` |
+| 7354 | H3 | Key helpers | `.claude/rules/files-storage.md` |
+| 7363 | H3 | Practical behavior | `.claude/rules/files-storage.md` |
 | 7382 | H2 | 5) Support Pages | `.claude/rules/frontend-ui.md` |
-| 7393 | H3 | Knowledge base | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 7393 | H3 | Knowledge base | `.claude/rules/docs-operations.md` |
 | 7402 | H3 | Version history | `.claude/rules/docs-operations.md` |
 | 7409 | H2 | 6) AI Expert | `.claude/rules/speech-media.md` |
-| 7427 | H3 | Important prompt sources | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7436 | H3 | Important behavior constraints | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 7427 | H3 | Important prompt sources | `.claude/rules/speech-media.md` |
+| 7436 | H3 | Important behavior constraints | `.claude/rules/speech-media.md` |
 | 7452 | H2 | 7) TTS / STT / Music | `.claude/rules/speech-media.md` |
 | 7485 | H2 | 8) Bilge Yolaç (Claude Code Integration) | `.claude/rules/bilge-yolac.md` |
-| 7551 | H3 | Document extraction and download flow | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7570 | H3 | bilge_yolac_downloads/ directory | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 7551 | H3 | Document extraction and download flow | `.claude/rules/bilge-yolac.md` |
+| 7570 | H3 | bilge_yolac_downloads/ directory | `.claude/rules/bilge-yolac.md` |
 | 7580 | H3 | Model tiers | `.claude/rules/llm-chat-streaming.md` |
 | 7587 | H3 | Streaming notes | `.claude/rules/llm-chat-streaming.md` |
 | 7603 | H3 | Streaming stop/cancel regression boundary | `.claude/rules/llm-chat-streaming.md` |
 | 7613 | H3 | Bilge Yolaç Plugin Subsystem | `.claude/rules/bilge-yolac.md` |
 | 7617 | H4 | Plugin architecture files | `.claude/rules/files-storage.md` |
-| 7624 | H4 | Plugin directory layout | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7639 | H4 | Recognized component directories | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7655 | H4 | Current plugin roster (15 plugins) | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7681 | H4 | Office plugin template framework | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 7624 | H4 | Plugin directory layout | `.claude/rules/bilge-yolac.md` |
+| 7639 | H4 | Recognized component directories | `.claude/rules/bilge-yolac.md` |
+| 7655 | H4 | Current plugin roster (15 plugins) | **DERIVE LIVE — `bilge_yolac_plugins/`; archive layout/history only** |
+| 7681 | H4 | Office plugin template framework | `.claude/rules/bilge-yolac.md` |
 | 7696 | H4 | Plugin panel UI behavior | `.claude/rules/frontend-ui.md` |
 | 7708 | H2 | 9) SSO | `.claude/rules/security-identity.md` |
-| 7722 | H3 | Practical rule | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 7722 | H3 | Practical rule | `.claude/rules/security-identity.md` |
 | 7734 | H2 | 10) Admin / Analytics | `.claude/rules/admin-health.md` |
 | 7759 | H2 | Worker Monitoring and Async Task Tracking | `.claude/rules/runtime-architecture.md` |
-| 7763 | H3 | What these metrics mean | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 7763 | H3 | What these metrics mean | `.claude/rules/admin-health.md` |
 | 7772 | H3 | Source files | `.claude/rules/files-storage.md` |
-| 7776 | H3 | Operational rule | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 7776 | H3 | Operational rule | `.claude/rules/admin-health.md` |
 | 7823 | H3 | Current tracked async families | **DERIVE LIVE — instrumentation/health code** |
-| 7835 | H2 | Front-End Structure Notes | `CLAUDE.md` or the closest scoped rule (see rationale) |
+| 7835 | H2 | Front-End Structure Notes | `.claude/rules/frontend-ui.md` |
 | 7837 | H2 | CSS | `.claude/rules/frontend-ui.md` |
 | 7853 | H2 | JS | `.claude/rules/frontend-ui.md` |
-| 7866 | H3 | Practical rule | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7871 | H2 | Current User-Facing Pages and What They Mean | **DERIVE LIVE — UI/module wiring** |
-| 7873 | H3 | `chat` | `.claude/rules/llm-chat-streaming.md` |
-| 7891 | H3 | `history` | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7894 | H3 | `saved_chats` | `.claude/rules/llm-chat-streaming.md` |
-| 7897 | H3 | `image_gallery` | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7900 | H3 | `claude_code` | `.claude/rules/bilge-yolac.md` |
-| 7903 | H3 | `files` | `.claude/rules/files-storage.md` |
-| 7906 | H3 | `settings_kisisel` | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7909 | H3 | `settings_yapilandirma` | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7912 | H3 | `destek_yardim` | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7915 | H3 | `destek_geri_bildirim` | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7918 | H3 | `destek_surum` | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7921 | H3 | `destek_hakkinda` | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7924 | H3 | `health` | `.claude/rules/admin-health.md` |
+| 7866 | H3 | Practical rule | `.claude/rules/frontend-ui.md` |
+| 7871 | H2 | Current User-Facing Pages and What They Mean | **DERIVE LIVE — UI/module wiring; archive description only** |
+| 7873 | H3 | `chat` | **DERIVE LIVE — UI/module wiring; archive description only** |
+| 7891 | H3 | `history` | **DERIVE LIVE — UI/module wiring; archive description only** |
+| 7894 | H3 | `saved_chats` | **DERIVE LIVE — UI/module wiring; archive description only** |
+| 7897 | H3 | `image_gallery` | **DERIVE LIVE — UI/module wiring; archive description only** |
+| 7900 | H3 | `claude_code` | **DERIVE LIVE — UI/module wiring; archive description only** |
+| 7903 | H3 | `files` | **DERIVE LIVE — UI/module wiring; archive description only** |
+| 7906 | H3 | `settings_kisisel` | **DERIVE LIVE — UI/module wiring; archive description only** |
+| 7909 | H3 | `settings_yapilandirma` | **DERIVE LIVE — UI/module wiring; archive description only** |
+| 7912 | H3 | `destek_yardim` | **DERIVE LIVE — UI/module wiring; archive description only** |
+| 7915 | H3 | `destek_geri_bildirim` | **DERIVE LIVE — UI/module wiring; archive description only** |
+| 7918 | H3 | `destek_surum` | **DERIVE LIVE — UI/module wiring; archive description only** |
+| 7921 | H3 | `destek_hakkinda` | **DERIVE LIVE — UI/module wiring; archive description only** |
+| 7924 | H3 | `health` | **DERIVE LIVE — UI/module wiring; archive description only** |
 | 7929 | H2 | Repo-Specific Working Preferences | `CLAUDE.md` |
-| 7933 | H3 | Prefer: | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7941 | H3 | Avoid: | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7948 | H3 | `server.R` editing rule | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7972 | H2 | Sensitive / Regression-Prone Areas | `CLAUDE.md` or the closest scoped rule (see rationale) |
+| 7933 | H3 | Prefer: | `CLAUDE.md` |
+| 7941 | H3 | Avoid: | `CLAUDE.md` |
+| 7948 | H3 | `server.R` editing rule | `.claude/rules/runtime-architecture.md` |
+| 7972 | H2 | Sensitive / Regression-Prone Areas | **SCOPED LIVE — relevant `.claude/rules/*.md` by subsystem** |
 | 7976 | H3 | 1) Encoding and mojibake | `.claude/rules/encoding-database.md` |
 | 7987 | H3 | 2) Welcome screen layout | `.claude/rules/frontend-ui.md` |
 | 7999 | H3 | 2A) Modern welcome frontend ownership | `.claude/rules/frontend-ui.md` |
@@ -340,18 +340,18 @@ Every H2–H4 heading from the former file is listed below. The archive remains 
 | 8057 | H3 | 6B) Saved-chat state freshness regressions | `.claude/rules/llm-chat-streaming.md` |
 | 8060 | H3 | 7) Streaming handlers | `.claude/rules/llm-chat-streaming.md` |
 | 8063 | H3 | 8) Async worker dependency export | `.claude/rules/runtime-architecture.md` |
-| 8073 | H3 | 8A) Startup guards must match their execution context | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 8082 | H3 | 8B) Path helper edge cases | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 8073 | H3 | 8A) Startup guards must match their execution context | `.claude/rules/runtime-architecture.md` |
+| 8082 | H3 | 8B) Path helper edge cases | `.claude/rules/files-storage.md` |
 | 8088 | H3 | 8C) ServerRuntimeContext and identity/cache drift | `.claude/rules/security-identity.md` |
-| 8097 | H2 | If You Add or Change a Module | `CLAUDE.md` or the closest scoped rule (see rationale) |
+| 8097 | H2 | If You Add or Change a Module | `.claude/rules/runtime-architecture.md` |
 | 8112 | H2 | If You Touch DB Logic | `.claude/rules/encoding-database.md` |
-| 8124 | H2 | If You Touch `ai_rehber.md` | `CLAUDE.md` or the closest scoped rule (see rationale) |
-| 8137 | H2 | If You Touch `version_history.md` | `CLAUDE.md` or the closest scoped rule (see rationale) |
+| 8124 | H2 | If You Touch `ai_rehber.md` | `.claude/rules/docs-operations.md` |
+| 8137 | H2 | If You Touch `version_history.md` | `.claude/rules/docs-operations.md` |
 | 8147 | H2 | If You Touch `www/js/claude_code_streaming.js` | `.claude/rules/frontend-ui.md` |
 | 8163 | H2 | Minimal Local Run Instructions | `.claude/rules/docs-operations.md` |
 | 8175 | H2 | Recommended Validation After a Patch | `.claude/rules/testing-validation.md` |
 | 8177 | H3 | Evidence hierarchy for Codex/cloud versus VM validation | `.claude/rules/testing-validation.md` |
-| 8187 | H3 | Core | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 8187 | H3 | Core | `.claude/rules/testing-validation.md` |
 | 8193 | H3 | Encoding | `.claude/rules/encoding-database.md` |
 | 8198 | H3 | Files | `.claude/rules/files-storage.md` |
 | 8203 | H3 | Chat | `.claude/rules/llm-chat-streaming.md` |
