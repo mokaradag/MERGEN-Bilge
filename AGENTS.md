@@ -1,11 +1,11 @@
 # AGENTS.md
 
-`CLAUDE.md` is the primary guide for this repository. It is the authoritative source for coding, testing, security, operational safeguards, and validation-honesty rules.
+`CLAUDE.md` is the compact always-loaded guide for this repository. Authoritative subsystem contracts live in the path-scoped `.claude/rules/*.md` files; before changing a sensitive subsystem, read the matching rule. The former long contract is preserved under `docs/maintainers/claude-code-full-contract-reference.md` for historical rationale only and must not be treated as current-state truth.
 
 ## Documentation map
 
 - Product entry point: `README.md`
-- Coding-agent and maintainer contract: `CLAUDE.md`
+- Coding-agent and maintainer contract: `CLAUDE.md` + path-scoped `.claude/rules/*.md`
 - Documentation hub: `docs/README.md`
 - Architecture map: `docs/architecture-map.md`
 - Database table structure: `docs/database-schema.md`

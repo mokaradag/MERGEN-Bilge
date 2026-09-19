@@ -7,8 +7,6 @@ paths:
   - "tools/pk/**"
   - "sql_queries/**"
   - "tests/**/*pk-*.R"
-  - "tests/**/*proje*.R"
-  - "tests/**/*kaynak*.R"
 ---
 
 # Proje ve Kaynak Analizi

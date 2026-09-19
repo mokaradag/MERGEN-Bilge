@@ -3,7 +3,6 @@ paths:
   - "R/config_claude_code*.R"
   - "R/helpers_claude_code*.R"
   - "R/module_claude_code*.R"
-  - "R/server_*claude*.R"
   - "www/**/*claude*.js"
   - "bilge_yolac_plugins/**"
   - "tests/**/*claude-code*.R"

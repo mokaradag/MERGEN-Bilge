@@ -1,6 +1,17 @@
 # MERGEN Bilge Dokümantasyon Merkezi
 
-Bu sayfa, MERGEN Bilge dokümantasyonunda doğru belgeye hızlı gitmek için hazırlanmış merkezdir. Ürün özeti için kök [`README.md`](../README.md) okunur; bakımcı/kodlama ajanı kuralları için İngilizce [`CLAUDE.md`](../CLAUDE.md) otoritatiftir.
+Bu sayfa, MERGEN Bilge dokümantasyonunda doğru belgeye hızlı gitmek için hazırlanmış merkezdir. Ürün özeti için kök [`README.md`](../README.md) okunur; bakımcı/kodlama ajanı kuralları için İngilizce [`CLAUDE.md`](../CLAUDE.md) ve gerektiğinde otomatik yüklenen `.claude/rules/*.md` dosyaları otoritatiftir.
+
+## Claude Code yönerge mimarisi
+
+Kök `CLAUDE.md` bilinçli olarak kısa tutulur. Alt sistem sözleşmeleri
+`.claude/rules/` altında yol-kapsamlıdır; eski kapsamlı sözleşme yalnızca
+tarihsel/audit başvurusu olarak
+[`maintainers/claude-code-full-contract-reference.md`](maintainers/claude-code-full-contract-reference.md)
+altında korunur. Taşıma haritası ve bayatlık denetimi için
+[`maintainers/claude-code-instruction-refactor-map.md`](maintainers/claude-code-instruction-refactor-map.md)
+ve [`maintainers/claude-code-staleness-audit.md`](maintainers/claude-code-staleness-audit.md)
+kullanılır. Arşiv canlı Claude yönergelerine `@` ile import edilmez.
 
 ## Nereden başlamalıyım?
 

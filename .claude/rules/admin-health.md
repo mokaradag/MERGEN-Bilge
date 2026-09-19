@@ -8,7 +8,6 @@ paths:
   - "tests/**/*admin*.R"
   - "tests/**/*health*.R"
   - "tests/**/*log*.R"
-  - "tests/scripts/*health*.R"
   - "tests/scripts/*smoke*.R"
 ---
 
