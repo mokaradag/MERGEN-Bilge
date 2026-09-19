@@ -80,18 +80,23 @@ if (!exists("pk_telemetry_log_analysis", mode = "function", inherits = TRUE)) {
 # İstenen toplulaştırma karşılanamadığında kullanıcıya açıkça bildirilir.
 # `finish()` ham satırları yine döndürür (v1 uyumluluğu), ama alt bilgi bunun
 # istenen ÖZET OLMADIĞINI söyler.
-.pk_dropped_aggregation_degradations <- function(dropped_aggregation) {
+.pk_dropped_aggregation_degradations <- function(dropped_aggregation,
+                                                 filtered = FALSE) {
   if (!is.list(dropped_aggregation) || length(dropped_aggregation) == 0L) return(list())
 
   tur <- as.character(dropped_aggregation$aggregation %||% "?")[1]
   neden <- as.character(dropped_aggregation$reason %||% "uygulanamadı")[1]
 
+  # KAPSAM DOĞRU ADLANDIRILIR (PR #719 inceleme, P3): filtresiz bir istekte v1
+  # YETKİLİ TÜM satırları döndürür; bunu "filtrelenmiş kayıt listesi" diye
+  # sunmak kullanıcıya YANLIŞ bir kapsam bildirirdi.
+  kapsam <- if (isTRUE(filtered)) "filtrelenmiş kayıt listesidir" else "kayıt listesidir"
+
   list(list(
     code = "aggregation_dropped",
     message = sprintf(
-      paste0("İstenen toplulaştırma (\"%s\") %s; aşağıdaki sonuç bir ÖZET ",
-             "değil, filtrelenmiş kayıt listesidir."),
-      tur, neden
+      "İstenen toplulaştırma (\"%s\") %s; aşağıdaki sonuç bir ÖZET değil, %s.",
+      tur, neden, kapsam
     )
   ))
 }
@@ -149,7 +154,10 @@ if (!exists("pk_telemetry_log_analysis", mode = "function", inherits = TRUE)) {
     # katılmaz ve aşağıdaki `filter_status` kurallarını ETKİLEMEZ.
     dropped_degradations <- c(
       dropped_degradations,
-      .pk_dropped_aggregation_degradations(filter_observation$dropped_aggregation)
+      .pk_dropped_aggregation_degradations(
+        filter_observation$dropped_aggregation,
+        filtered = length(filter_observation$applied_filters %||% list()) > 0L
+      )
     )
 
     if (length(info$filters %||% list()) > 0L &&

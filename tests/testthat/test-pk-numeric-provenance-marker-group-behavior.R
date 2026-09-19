@@ -45,9 +45,9 @@ if (!exists("%||%", mode = "function", inherits = TRUE)) {
 }
 
 .prov_grup_olgu <- function(id, value, unit = NULL, aggregation = NULL,
-                            kind = NULL) {
+                            kind = NULL, column = "SentetikSutun") {
   list(fact_id = id, value = value, unit = unit, aggregation = aggregation,
-       kind = kind, column = "SentetikSutun")
+       kind = kind, column = column)
 }
 
 .prov_grup_nedenler <- function(sonuc) {
@@ -245,6 +245,19 @@ test_that("grup icinde SIRASI karisik isaretler uzlastirilir", {
   )
 
   expect_length(sonuc$mismatches, 0L)
+
+  # BOS TARAMA DA "uyusmazlik yok" verir (PR #719 inceleme, P2): yalnizca
+  # uyusmazlik sayisina bakmak, gruplu isaretlerin dogrulamayi TAMAMEN
+  # ATLADIGI bir gerilemeyi yesil gosterirdi. Bu yuzden UC iddianin da
+  # tarandigi VE her sayinin KENDI olgusuna baglandigi dogrulanir.
+  expect_identical(sonuc$checked, 3L)
+
+  esleme <- vapply(sonuc$claims, function(x) as.character(x$fact_id)[1], character(1))
+  names(esleme) <- vapply(sonuc$claims, function(x) as.character(x$number_text)[1],
+                          character(1))
+  expect_identical(esleme[["27.707"]], "m_zamaninda.sum.overall.bbb")
+  expect_identical(esleme[["15.448"]], "m_geciken.sum.overall.ccc")
+  expect_identical(esleme[["3.823"]], "m_erken.sum.overall.ddd")
 })
 
 test_that("uzlastirma DEGER URETMEZ: esleme yoksa uyusmazlik raporlanir", {
@@ -313,15 +326,44 @@ test_that("niteliksel cumledeki isaret uyusmazlik uretmez, tanilamada gorunur", 
 # 6) BOYUTSUZ sayim birimi uydurma degildir; olcek tasiyan birim uydurmadir.
 # ---------------------------------------------------------------------------
 
-test_that("birimsiz olguya 'adet' yazmak uyusmazlik uretmez", {
+test_that("birimsiz SAYIM olgusuna 'adet' yazmak uyusmazlik uretmez", {
   env <- .prov_grup_env()
-  olgular <- list(.prov_grup_olgu("f.sum.overall.aaa", 50367, aggregation = "sum"))
+  # Uretim ornegi: SAYIM sutununun `sum` toplulastirmasi. Sayim kaniti
+  # SUTUN ADINDAN gelir; olgu birim beyan etmez.
+  olgular <- list(.prov_grup_olgu("f.sum.overall.aaa", 50367, aggregation = "sum",
+                                  column = "activity_total_count"))
 
   sonuc <- env$pk_numeric_provenance_validate(
     "Toplam 50.367 adet [fact:f.sum.overall.aaa].", olgular
   )
 
   expect_length(sonuc$mismatches, 0L)
+})
+
+test_that("SAYIM toplulastirmasi da muafiyet icin yeterlidir", {
+  env <- .prov_grup_env()
+  olgular <- list(.prov_grup_olgu("f.count.overall.aaa", 50367,
+                                  aggregation = "distinct_count"))
+
+  sonuc <- env$pk_numeric_provenance_validate(
+    "Toplam 50.367 adet [fact:f.count.overall.aaa].", olgular
+  )
+
+  expect_length(sonuc$mismatches, 0L)
+})
+
+test_that("SAYIM OLMAYAN birimsiz olguya 'adet' yazmak YAKALANIR", {
+  env <- .prov_grup_env()
+  # Birimsiz bir ORAN sayim degildir; "0,5 adet" olcek uydurmaktir ve
+  # dogrulamadan gecmemelidir.
+  olgular <- list(.prov_grup_olgu("oran.mean.overall.aaa", 0.5,
+                                  aggregation = "mean", column = "TamamlanmaOrani"))
+
+  sonuc <- env$pk_numeric_provenance_validate(
+    "Ortalama 0,5 adet [fact:oran.mean.overall.aaa].", olgular
+  )
+
+  expect_true("unit_mismatch" %in% .prov_grup_nedenler(sonuc))
 })
 
 test_that("birimsiz olguya OLCEK tasiyan birim yazmak hala yakalanir", {

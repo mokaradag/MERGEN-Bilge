@@ -704,6 +704,12 @@ test_that("sayi ile isaret arasindaki isim obegi CIFT uyusmazlik uretmez (PR #70
     "Toplam 15.574 bir iki uc dort bes [fact:f].", olgular
   )
   expect_length(uzun$mismatches %||% list(), 0L)
+  # UYUSMAZLIK YOKLUGU TEK BASINA YETMEZ (PR #719 inceleme, P2): tarayici
+  # gecerli sayi-isaret ciftini TAMAMEN DUSURSE de bu kontrol gecerdi. Ciftin
+  # gercekten BAGLI kaldigi acikca dogrulanir.
+  expect_identical(uzun$checked, 1L)
+  expect_identical(as.character(uzun$claims[[1]]$number_text)[1], "15.574")
+  expect_identical(as.character(uzun$claims[[1]]$fact_id)[1], "f")
 
   uzun_yanlis <- env$pk_numeric_provenance_validate(
     "Toplam 11.111 bir iki uc dort bes [fact:f].", olgular

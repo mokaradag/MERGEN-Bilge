@@ -44,11 +44,10 @@
 
 # Aciklama satirlari taranmaz: bu dosyalar KASITLI olarak "pk_tr_fold
 # kullanilmaz" / "MERGEN_PK_ENGINE arkasina saklanamaz" gibi cumleler icerir.
+# SATIR ICI YORUMLAR DA ATILIR (PR #719 inceleme, P3): kardes tarayicilarla
+# AYNI okuyucu kullanilir; dize icindeki `#` KORUNUR.
 .pk_rls_code_only <- function(rel_path) {
-  txt <- .pk_rls_read_bytes(rel_path)
-  satirlar <- strsplit(txt, "\n", fixed = TRUE)[[1]]
-  satirlar <- satirlar[!grepl("^\\s*#", satirlar, perl = TRUE, useBytes = TRUE)]
-  paste(satirlar, collapse = "\n")
+  pk_test_strip_r_comments(.pk_rls_read_bytes(rel_path))
 }
 
 test_that("beyan edilen RLS sutunu sonucta yoksa plan DURDURUR, atlamaz (D6)", {

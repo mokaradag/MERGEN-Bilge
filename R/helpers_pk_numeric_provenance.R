@@ -64,6 +64,24 @@ pk_parse_number_candidates <- function(txt) {
   negatif <- startsWith(ham, "-")
   if (negatif || startsWith(ham, "+")) ham <- substring(ham, 2L)
 
+  # BİLİMSEL GÖSTERİM (`1e6`, `2,5E-3`). `^[0-9.,]+$` kapısı bunu tamamen
+  # eliyordu; jeton sayısal bir iddiadır ve DEĞERİ doğrulanabilir olmalıdır.
+  # Mantis aynı Türkçe ayraç kurallarıyla çözülür (özyineleme, mantiste üs
+  # kalmadığı için tek adımdır).
+  ustel <- regmatches(ham, regexpr("[eE][+-]?[0-9]+$", ham, perl = TRUE))
+  if (length(ustel) && nzchar(ustel[1])) {
+    taban <- substring(ham, 1L, nchar(ham) - nchar(ustel[1]))
+    us <- suppressWarnings(as.integer(sub("^[eE]", "", ustel[1])))
+    if (!nzchar(taban) || length(us) != 1L || is.na(us)) return(numeric(0))
+    tabanlar <- pk_parse_number_candidates(taban)
+    if (!length(tabanlar)) return(numeric(0))
+    num <- tabanlar * (10 ^ us)
+    num <- num[!is.na(num) & is.finite(num)]
+    if (!length(num)) return(numeric(0))
+    if (negatif) num <- -num
+    return(unique(num))
+  }
+
   if (!grepl("^[0-9.,]+$", ham)) return(numeric(0))
 
   virgul <- gregexpr(",", ham, fixed = TRUE)[[1]]
@@ -271,6 +289,47 @@ pk_parse_number_tr <- function(txt) {
 .PK_PROV_KNOWN_UNITS_FOLDED <- unique(vapply(.PK_PROV_KNOWN_UNITS,
                                              .pk_prov_unit_fold, character(1),
                                              USE.NAMES = FALSE))
+
+# ALINTISIZ TARAMANIN BİRİM SÖZLÜĞÜ ÖLÇEK TAŞIMAYAN SAYIM BİRİMLERİNİ DE İÇERİR.
+#
+# Alıntılı yol `kayit`/`tane` birimlerini ZATEN tanır; alıntısız tarayıcı ise
+# yalnızca `.PK_PROV_KNOWN_UNITS_FOLDED` sözlüğüne bakıyordu. İşaretsiz bir
+# "47 kayit" iddiası ayraç/yüzde/4+ hane taşımadığı için düşüyor ve `warn`/
+# `block` kiplerinde `missing_fact_marker` ÜRETMEDEN yayımlanıyordu.
+.PK_PROV_UNCITED_UNITS <- unique(c(.PK_PROV_KNOWN_UNITS, .PK_PROV_COUNT_UNITS))
+.PK_PROV_UNCITED_UNITS_FOLDED <- unique(vapply(.PK_PROV_UNCITED_UNITS,
+                                               .pk_prov_unit_fold, character(1),
+                                               USE.NAMES = FALSE))
+
+# SAYIM OLGUSU KANITI (PR #719 inceleme, P2).
+#
+# "adet"/"kayit"/"tane" yazmak birim uydurmak DEĞİLDİR -- ama yalnızca olgu
+# GERÇEKTEN bir sayım ise. Muafiyet eskiden `unit` alanı boş olan HER olguya
+# açıktı; böylece birimsiz bir ORAN (`0,5`) düzyazıda "0,5 adet" diye sunulup
+# doğrulamadan geçebiliyordu. Kanıt iki yerden gelir: sayım toplulaştırması ya
+# da sayım adı taşıyan sütun/yetenek (üretimdeki `activity_total_count.sum`
+# örneği bu ikincisidir ve DESTEKLENMEYE DEVAM EDER).
+.PK_PROV_COUNT_AGG_PATTERN <- "(^|_)(count|rows|duplicates|outliers)$"
+# Ad kaniti iki bicimi de kabul eder: AYRILMIS jeton (`activity_total_count`)
+# ve SONEK (`ToplamSayi` -> katlanmis `toplamsayi`). Yalnizca ayrilmis jetona
+# bakmak, CamelCase Turkce sutun adlarini KACIRIR ve bu PR'in kapattigi yanlis
+# pozitifi (dogru bir sayimi "adet" diye sunmak) geri getirirdi.
+.PK_PROV_COUNT_NAME_PATTERN <- paste0(
+  "(^|[^a-z0-9])(count|counts|adet|adedi|sayi|sayisi|tane)([^a-z0-9]|$)",
+  "|(count|counts|adet|adedi|sayi|sayisi|tane)$"
+)
+
+.pk_prov_fact_is_count <- function(olgu) {
+  if (!is.list(olgu)) return(FALSE)
+
+  agg <- .pk_prov_unit_fold(olgu$aggregation %||% "")
+  if (nzchar(agg) && grepl(.PK_PROV_COUNT_AGG_PATTERN, agg, perl = TRUE)) {
+    return(TRUE)
+  }
+
+  ad <- .pk_prov_unit_fold(olgu$measure_capability %||% olgu$column %||% "")
+  nzchar(ad) && grepl(.PK_PROV_COUNT_NAME_PATTERN, ad, perl = TRUE)
+}
 
 .pk_prov_unit_vocabulary <- function(index) {
   bilinen <- vapply(index, function(o) .pk_prov_unit_fold(o$unit %||% ""), character(1))
@@ -508,7 +567,8 @@ pk_numeric_provenance_validate <- function(text, facts) {
     # üretiyordu). Ölçek taşıyan bir birim (%/TL/saat/gün) sözlükte olduğu
     # için YİNE uyuşmazlıktır; koruma daralmaz.
     if (!nzchar(olgu_birimi) && nzchar(iddia_birimi) &&
-        !(iddia_birimi %in% .PK_PROV_COUNT_UNITS) &&
+        !(iddia_birimi %in% .PK_PROV_COUNT_UNITS &&
+            .pk_prov_fact_is_count(olgu)) &&
         (isTRUE(iddia$percent) || iddia_birimi %in% sozluk)) {
       ekle(fact_id = iddia$fact_id, reason = "unit_mismatch",
            claimed = iddia$unit, actual = "(birimsiz)")

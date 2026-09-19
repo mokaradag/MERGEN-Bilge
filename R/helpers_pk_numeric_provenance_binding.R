@@ -45,11 +45,35 @@
 
 # Sayı jetonu deseni. Alıntılı ve alıntısız tarama AYNI deseni kullanır; iki
 # tarayıcının ayrışması üretimde çift sayımın kaynağıydı.
+#
+# ÖNEK PARA BİRİMİ VE ÜSTEL GÖSTERİM DESENE DAHİLDİR (PR #719 inceleme, P2).
+# Eski desen `\u20ba100` / `$100` jetonunu yalnızca `100` olarak, `1e6` jetonunu
+# ise `1` + tanınmayan `e6` birimi olarak görüyordu. Her iki durumda da veri
+# görünümü kapısı (ayraç/yüzde/birim/4+ hane) kapanıyor ve alıntılanmamış sayı
+# `warn`/`block` kiplerinde `missing_fact_marker` ÜRETMEDEN yayımlanıyordu.
 .PK_PROV_NUMBER_PATTERN <- paste0(
-  "(%\\s*)?-?[0-9][0-9.,]*\\s*",
+  "(%\\s*)?[\u20ba$\u20ac]?\\s*-?[0-9][0-9.,]*([eE][+-]?[0-9]+)?\\s*",
   "(%|[A-Za-zÇĞİÖŞÜçğıöşü\u20ba\u00b2\u00b3$\u20ac]",
   "[A-Za-z0-9ÇĞİÖŞÜçğıöşü\u20ba\u00b2\u00b3$\u20ac/.-]{0,23})?"
 )
+
+# Sayının ÖNÜNDE yazılan para birimi -> sözlükteki kanonik birim adı. Eşleme
+# bilinçli olarak DARDIR: yalnızca `.PK_PROV_KNOWN_UNITS` içinde karşılığı olan
+# simgeler taşınır, aksi hâlde tanınmayan bir birim uydurmuş oluruz.
+.PK_PROV_PREFIX_CURRENCIES <- c("\u20ba" = "TL", "$" = "USD", "\u20ac" = "EUR")
+
+# Sayı ile işaret arasındaki EN BÜYÜK sözcük mesafesi. Doğal Türkçe düzyazıda
+# üretimde ölçülen en uzun geçerli aralık altı sözcüktür
+# ("46.978 ile toplam aktivitelerin buyuk bolumunu olusturuyor [fact:f]");
+# tavan bunun üstünde tutulur ama SINIRSIZ DEĞİLDİR: sınır olmadan uzun bir
+# cümlenin BAŞINDAKİ ilgisiz yıl ("2024 yilinda ... dikkat cekicidir
+# [fact:geciken]") işarete bağlanıp `value_mismatch` üretiyor ve `block`
+# kipinde GEÇERLİ yanıtı düşürüyordu.
+.PK_PROV_MAX_GAP_WORDS <- 12L
+
+# Madde imi satırı: işaretin önünde yalnızca bu karakterler varsa satır başıdır.
+.PK_PROV_LIST_PREFIX <- "^[[:space:]\u00a0*`_>\\-]*$"
+.PK_PROV_LIST_NUMBER <- "^[0-9]+[.)][[:space:]\u00a0]"
 
 #' İşaretleri aynı uzunlukta bir nöbetçiyle maskele
 #'
@@ -119,10 +143,75 @@
 .pk_prov_parse_token <- function(ham) {
   yuzde <- grepl("%", ham, fixed = TRUE)
   govde <- trimws(gsub("%", "", ham))
-  birim <- trimws(sub("^-?[0-9][0-9.,]*\\s*", "", govde))
-  rakam <- regmatches(govde, regexpr("^-?[0-9][0-9.,]*", govde))
+
+  # ÖNEK PARA BİRİMİ SAYININ PARÇASIDIR. Eski ayrıştırıcı `^-?[0-9]` beklediği
+  # için `\u20ba100` gövdesinden hiç rakam çıkaramıyor, jeton tamamen
+  # düşüyordu; alıntılanmamış bir tutar böylece köken denetimini ATLIYORDU.
+  onek <- ""
+  onek_esle <- regmatches(govde, regexpr("^[\u20ba$\u20ac]", govde))
+  if (length(onek_esle) && nzchar(onek_esle[1])) {
+    # `[[` eşleşmeyen bir adda HATA fırlatır; `[` NA döndürür ve NA burada
+    # "birim yok" demektir (desen ile eşleme tablosu ayrışırsa fail-safe).
+    onek <- unname(.PK_PROV_PREFIX_CURRENCIES[onek_esle[1]])
+    if (length(onek) != 1L || is.na(onek)) onek <- ""
+    govde <- trimws(substring(govde, nchar(onek_esle[1]) + 1L))
+  }
+
+  birim <- trimws(sub("^-?[0-9][0-9.,]*([eE][+-]?[0-9]+)?\\s*", "", govde))
+  rakam <- regmatches(govde, regexpr("^-?[0-9][0-9.,]*([eE][+-]?[0-9]+)?", govde))
   rakam <- if (length(rakam)) sub("[.,]+$", "", rakam[1]) else ""
+  if (!nzchar(birim)) birim <- onek
   list(raw = ham, number_text = rakam, unit = birim, percent = yuzde)
+}
+
+#' Bir aralıktaki sözcük sayısını say (bitişiklik denetimi için)
+#'
+#' İşaret nöbetçisi (U+0001) ve noktalama sözcük SAYILMAZ; yalnızca harf/rakam
+#' taşıyan kümeler sayılır.
+.pk_prov_gap_words <- function(masked, bas, son) {
+  if (son < bas || bas < 1L) return(0L)
+  parca <- substr(masked, bas, son)
+
+  # AYRAÇ YALNIZCA BOŞLUKTUR, "ASCII OLMAYAN HER ŞEY" DEĞİL.
+  #
+  # PCRE'de `[:alnum:]` varsayılan olarak YALNIZCA ASCII eşler (`(*UCP)` yok).
+  # Türkçe harfleri ayraç sayan bir bölme `gecikme egilimi` ifadesini DÖRT
+  # yerine BEŞ sözcük sayıyor, mesafe tavanı Türkçe düzyazıda sistematik olarak
+  # DARALIYOR ve bu PR'ın kapattığı yanlış pozitif geri gelebiliyordu.
+  parcalar <- strsplit(parca, "[[:space:]\u00a0\u0001]+", perl = TRUE)[[1]]
+  parcalar <- parcalar[nzchar(parcalar)]
+
+  # Salt noktalama (`,` `-` `:`) sözcük SAYILMAZ; harf/rakam taşıması gerekir.
+  # ASCII olmayan harfler (Türkçe) açıkça sözcük karakteri sayılır.
+  sum(grepl("[[:alnum:]]|[^\\x00-\\x7F]", parcalar, perl = TRUE))
+}
+
+#' Aday sayıları BİTİŞİKLİK kuralına göre ele
+#'
+#' Adaylar işarete EN YAKINDAN başlayarak kabul edilir; bir aday ile bir sonraki
+#' kabul edilen öge (ya da işaret grubunun kendisi) arasındaki sözcük mesafesi
+#' tavanı aşarsa o aday ve ONDAN ÖNCEKİLERİN TAMAMI düşer. Aksi hâlde uzun bir
+#' cümlenin başındaki ilgisiz bir sayı (tipik olarak bir yıl) işarete bağlanır.
+.pk_prov_adjacent_candidates <- function(masked, adaylar, jetonlar, grup_basi) {
+  if (!length(adaylar)) return(integer(0))
+
+  kabul <- integer(0)
+  capa <- grup_basi
+  for (i in rev(seq_along(adaylar))) {
+    idx <- adaylar[i]
+    mesafe <- .pk_prov_gap_words(masked, jetonlar[[idx]]$end + 1L, capa - 1L)
+    if (mesafe > .PK_PROV_MAX_GAP_WORDS) break
+    kabul <- c(idx, kabul)
+    capa <- jetonlar[[idx]]$start
+  }
+  kabul
+}
+
+#' Bir konumun bulunduğu satırın başlangıç indeksi
+.pk_prov_line_start <- function(masked, konum) {
+  if (konum <= 1L) return(1L)
+  kesme <- gregexpr("[\n\r]", substr(masked, 1L, konum - 1L), perl = TRUE)[[1]]
+  if (identical(kesme[1], -1L)) 1L else as.integer(kesme[length(kesme)]) + 1L
 }
 
 #' Maskelenmiş metindeki tüm sayı jetonlarını konumlarıyla bul
@@ -159,16 +248,46 @@
 
     onceki <- if (bas > 1L) substr(masked, bas - 1L, bas - 1L) else "\n"
     sonraki <- if (son < nchar(masked)) substr(masked, son + 1L, son + 1L) else ""
-    madde <- grepl("^[\n\r]?$", onceki, perl = TRUE) &&
-      grepl("^[0-9]+[.)]?$", ham, perl = TRUE) &&
-      grepl("^[.)]$", sonraki, perl = TRUE)
+
+    # MADDE NUMARASI DESENİN İÇİNE SIZABİLİR (PR #719 inceleme, P2).
+    #
+    # Desen sayıyı izleyen sözcüğü de yutar: "1. Öneri: 5.000 TL" satırında
+    # jeton `1. Öneri` olur, `^[0-9]+[.)]?$` kalıbı artık TUTMAZ ve madde
+    # numarası bir olguya BAĞLANABİLİR hâle gelirdi. Bu yüzden satır ÖNEKİ
+    # ayrıca sınanır: satır başında `1.`/`1)` + boşluk bir listedir.
+    satir_bas <- .pk_prov_line_start(masked, bas)
+    onek <- if (bas > satir_bas) substr(masked, satir_bas, bas - 1L) else ""
+    satir_basi <- grepl(.PK_PROV_LIST_PREFIX, onek, perl = TRUE)
+
+    madde <- satir_basi && (
+      (grepl("^[0-9]+[.)]?$", ham, perl = TRUE) &&
+         grepl("^[.)]$", sonraki, perl = TRUE)) ||
+        grepl(.PK_PROV_LIST_NUMBER, ham, perl = TRUE)
+    )
     if (isTRUE(madde)) next
+
+    # SONDAKİ NOKTALAMA JETONUN PARÇASI DEĞİLDİR.
+    #
+    # `15.574. [fact:f]` biçiminde desen sondaki noktayı da yutar; ayrıştırıcı
+    # onu `number_text` içinden atar ama KAYITLI BİTİŞ konumu noktayı içermeye
+    # devam ederdi. Segment sınırı kuyruğu kırptığı için jeton içerilme
+    # denetiminden düşüyor, işaret sayısız kalıyor ve `15.574` alıntılanmamış
+    # sayılıyordu.
+    kuyruk <- regmatches(ham, regexpr("[.,]+$", ham, perl = TRUE))
+    if (length(kuyruk) && nzchar(kuyruk[1]) &&
+        !grepl("[.,]$", ayrisik$number_text, perl = TRUE)) {
+      kirpilan <- nchar(kuyruk[1])
+      son <- son - kirpilan
+      ham <- substr(ham, 1L, nchar(ham) - kirpilan)
+      if (son < bas || !nzchar(ham)) next
+      ayrisik$raw <- ham
+    }
 
     # RAKAMLARIN BİTİŞİ AYRICA KAYDEDİLİR. Eşleşme, sayıyı izleyen JETONU da
     # (birim adayı) içerir; bir sonraki sayının bağlamı yalnızca `end` sonrasından
     # başlatılırsa o sözcük GİZLENİR ve "Toplam 50.367, ortalama 57" ifadesinde
     # ikinci sayının toplulaştırma sözcüğü hiç görünmezdi.
-    rakam_konumu <- regexpr("-?[0-9][0-9.,]*", ham, perl = TRUE)
+    rakam_konumu <- regexpr("-?[0-9][0-9.,]*([eE][+-]?[0-9]+)?", ham, perl = TRUE)
     rakam_sonu <- if (rakam_konumu[1] > 0L) {
       bas + rakam_konumu[1] + attr(rakam_konumu, "match.length") - 2L
     } else {
@@ -266,7 +385,11 @@ pk_prov_bind_text <- function(text) {
       if (length(icinde) > length(grup$ids)) {
         icinde <- utils::tail(icinde, length(grup$ids))
       }
-      adaylar <- icinde
+      # BİTİŞİKLİK TAVANI: parça sınırı tek başına yeterli değildir. Uzun bir
+      # cümlenin başındaki ilgisiz sayı (çoğunlukla bir yıl) aynı parçada
+      # kalır ve işarete bağlanıp `value_mismatch` üretirdi.
+      adaylar <- .pk_prov_adjacent_candidates(masked, icinde, jetonlar,
+                                              grup$start)
     }
 
     bagli <- c(bagli, adaylar)

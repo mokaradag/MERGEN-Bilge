@@ -136,8 +136,19 @@ if (!exists("resolve_db_client_encoding", mode = "function", inherits = TRUE) ||
     stop("PK istek bütçesi tükendi; DB işlemi başlatılmadı.", call. = FALSE)
   }
 
-  simdi <- as.numeric(Sys.time())
   dis_son <- .db_elapsed_state$deadline_at
+
+  # İZLENMEYEN DIŞ SINIR KORUNUR (PR #719 inceleme, P3).
+  #
+  # Bütçe sonsuz VE izlenen bir son tarih yokken eski kod yine de
+  # `setTimeLimit(elapsed = Inf)` çağırıyordu; bu, çağıranın DOĞRUDAN kurduğu
+  # (bizim izlemediğimiz) geçen-süre sınırını KALDIRIYORDU. `on.exit` de onu
+  # geri getiremiyordu: `dis_son` NULL olduğu için `Inf` geri yükleniyor ve
+  # sonraki iş çağıranın zaman aşımını aşabiliyordu. Askıya alınacak izlenen bir
+  # sınır yoksa zaman sınırına HİÇ DOKUNULMAZ.
+  if (sonsuz && is.null(dis_son)) return(fn())
+
+  simdi <- as.numeric(Sys.time())
   etkin_son <- if (sonsuz) {
     Inf
   } else if (is.null(dis_son) || !isTRUE(honor_outer)) {

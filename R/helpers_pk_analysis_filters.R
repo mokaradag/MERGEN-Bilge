@@ -202,6 +202,29 @@ pk_filter_observation_take <- function(info) {
   observation
 }
 
+#' Karşılanamayan toplulaştırma için TEK kaynaklı gerekçe eşlemesi
+#'
+#' Boş girdi dalı ile geç geri düşüş dalı AYNI eşlemeyi kullanır; eşleme iki
+#' yerde tekrar edildiğinde boş sonuç yolunda bozulma hiç kaydedilmiyor,
+#' telemetri `aggregation_dropped` uyarısını HİÇ üretmiyordu.
+.pk_filter_dropped_aggregation <- function(agg_str, bos_girdi = FALSE) {
+  tur <- as.character(agg_str %||% "")[1]
+  if (is.na(tur) || !nzchar(tur) || identical(tur, "count")) return(NULL)
+
+  list(
+    aggregation = tur,
+    reason = if (isTRUE(bos_girdi)) {
+      "sonuç boş olduğu için uygulanamadı"
+    } else if (identical(tur, "sum")) {
+      "sonuçta sayısal sütun bulunmadığı için uygulanamadı"
+    } else if (identical(tur, "group_by")) {
+      "gruplama sütunu sonuçta bulunmadığı için uygulanamadı"
+    } else {
+      "desteklenmeyen toplulaştırma türü"
+    }
+  )
+}
+
 #' Filtreleri uygula ve aynı yürütme sırasında gözlem bilgisini kaydet
 #'
 #' Kritik sözleşme: filter_expression yalnızca bir kez değerlendirilir. Uygulanan
@@ -302,6 +325,10 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
     # ise sütunsuz boş bir sonuç üretiyordu. Girdi zaten 0 satırlıdır, yalnızca
     # şema taşınır. `as.data.frame()` data.table girdisinde de `drop` uyarısı
     # üretmeden düz çerçeve döndürür (katı paket uyarıyı hata sayar).
+    # BOŞ GİRDİDE DE BOZULMA KAYDEDİLİR (PR #719 inceleme, P3): bu erken dönüş
+    # geç geri düşüşten ÖNCE çalıştığı için `dusen_toplama` hiç atanmıyor,
+    # `aggregation_dropped` bildirimi kullanıcıya HİÇ ulaşmıyordu.
+    dusen_toplama <- .pk_filter_dropped_aggregation(agg_bos, bos_girdi = TRUE)
     return(finish(as.data.frame(data)[0, , drop = FALSE], 0L))
   }
 
@@ -569,16 +596,7 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
     }
 
     # Buraya düşmek, istenen toplulaştırmanın UYGULANAMADIĞI anlamına gelir.
-    dusen_toplama <- list(
-      aggregation = agg_str,
-      reason = if (identical(agg_str, "sum")) {
-        "sonuçta sayısal sütun bulunmadığı için uygulanamadı"
-      } else if (identical(agg_str, "group_by")) {
-        "gruplama sütunu sonuçta bulunmadığı için uygulanamadı"
-      } else {
-        "desteklenmeyen toplulaştırma türü"
-      }
-    )
+    dusen_toplama <- .pk_filter_dropped_aggregation(agg_str)
   }
 
   finish(as.data.frame(dt), matched_rows)

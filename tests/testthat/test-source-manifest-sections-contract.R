@@ -354,7 +354,8 @@
   # 19 -> 20: `helpers_pk_async_marker_store.R` (süreç-yerel işaret aynası)
   # `helpers_pk_async_request_markers.R` bakım ratchet'i sınırında olduğu için
   # AYRI dosyaya çıkarıldı.
-  server_handlers_send_message = list(first = "R/server_speech_assets_runtime.R", last = "R/server_send_message.R", n = 20L)
+  # 20 -> 21: PR #719, R/helpers_pk_async_artifact.R ratchet bölünmesi.
+  server_handlers_send_message = list(first = "R/server_speech_assets_runtime.R", last = "R/server_send_message.R", n = 21L)
 )
 
 test_that("source_manifest_sections beklenen sırada ve adlarda bölümler içerir", {
@@ -705,7 +706,12 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   #     yaşam döngüsü (korumalı edinme + idempotent bırakıcı + kısa ömürlü
   #     telemetri sağlayıcısı); `helpers_deep_analysis_reconcile.R` 293/19 ve
   #     `helpers_deep_analysis_sql.R` 210/15 tavanlarındaydı.
-  expect_equal(length(runtime), 496L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 496 -> 497: PR #719 inceleme düzeltmeleri, R/helpers_pk_async_artifact.R
+  # (işçi artefaktını gerçek oturumda sunma + URL doğrulaması + temizlik).
+  # `helpers_pk_async_lifecycle.R` 285 satırlık bütçesinin TAM tavanındaydı ve
+  # çip etiketi geri düşüş düzeltmesi oraya sığmıyordu. Ratchet bölünmesidir;
+  # yeni davranış eklemez (server_handlers_send_message +1).
+  expect_equal(length(runtime), 497L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

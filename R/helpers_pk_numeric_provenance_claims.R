@@ -37,13 +37,66 @@
   any(abs(adaylar - deger) <= .pk_prov_tolerance(jeton$number_text, deger, olgu))
 }
 
+#' Bir adayın olguya ANLAMSAL olarak da uyup uymadığını söyle
+#'
+#' Değer denetimi tek başına AYRIM YAPAMAZ: aynı değeri taşıyan iki olgu
+#' (ör. `100 TL` toplam ile `100` ortalama) arasında yeniden eşleştirme
+#' rastgele bir geçerli eşleme seçebilir ve doğrulayıcı sonradan DOĞRU bir
+#' yanıtı `unit_mismatch`/`aggregation_mismatch` ile reddederdi. Bu yüzden
+#' uzlaştırma ÖNCE birim ve toplulaştırma uyumunu arar.
+.pk_prov_semantics_fit <- function(jeton, baglam, olgu, sozluk) {
+  if (is.null(olgu)) return(FALSE)
+
+  olgu_birimi <- .pk_prov_unit_fold(olgu$unit %||% "")
+  iddia_birimi <- .pk_prov_unit_fold(jeton$unit %||% "")
+  if (nzchar(iddia_birimi) && !(iddia_birimi %in% sozluk)) {
+    iddia_birimi <- .pk_prov_unit_root(iddia_birimi, sozluk)
+  }
+
+  if (!identical(isTRUE(jeton$percent), identical(olgu_birimi, "%"))) {
+    return(FALSE)
+  }
+  if (nzchar(iddia_birimi) && nzchar(olgu_birimi) &&
+      !identical(iddia_birimi, olgu_birimi)) {
+    return(FALSE)
+  }
+
+  iddia_agg <- .pk_prov_claimed_aggregation(baglam)
+  olgu_agg <- as.character(olgu$aggregation %||% "")[1]
+  if (!is.null(iddia_agg) && nzchar(olgu_agg) &&
+      !identical(iddia_agg, olgu_agg) &&
+      olgu_agg %in% names(.PK_PROV_AGG_WORDS)) {
+    return(FALSE)
+  }
+  TRUE
+}
+
+#' Grup adaylarının toplulaştırma bağlamlarını METİN SIRASINDA üret
+#'
+#' Bağlam, jetonun METİNDEKİ bir öncekinden sonra başlar. Uzlaştırma işaret
+#' sırasını değiştirebildiği için bağlamı "önceki İŞARET" üzerinden kurmak
+#' yanlıştı: "Toplam 100, 50 [fact:sum50][fact:mean100]" örneğinde ilk işaret
+#' ikinci jetona eşlenince sonraki jetonun bağlamı BOŞ kalıyor ve `100`
+#' sayısının toplam diye sunulduğu hiç fark edilmiyordu.
+.pk_prov_group_contexts <- function(masked, jetonlar, grup) {
+  out <- list()
+  sirali <- sort(unique(grup$tokens %||% integer(0)))
+  onceki <- NA_integer_
+  for (idx in sirali) {
+    out[[as.character(idx)]] <- pk_prov_token_context(masked, jetonlar, idx,
+                                                      grup$segment_start, onceki)
+    onceki <- idx
+  }
+  out
+}
+
 #' Bir grubun işaretlerini adaylara eşle (konumsal, gerekirse uzlaştırılmış)
 #'
 #' Önce KONUMSAL eşleme denenir (model istem kuralına uyduğunda tek doğru
 #' okuma budur). Yalnızca konumsal eşleme değer denetiminden geçemezse, AYNI
 #' aday kümesi içinde her çiftin geçtiği birebir bir eşleme aranır. Hiçbir
 #' değer ÜRETİLMEZ; eşleme bulunamazsa konumsal sıra korunur.
-.pk_prov_group_pairing <- function(grup, jetonlar, index) {
+.pk_prov_group_pairing <- function(grup, jetonlar, index, baglamlar = list()) {
   k <- length(grup$ids)
   adaylar <- grup$tokens
   konumsal <- rep(NA_integer_, k)
@@ -57,17 +110,34 @@
   }
 
   olgular <- lapply(grup$ids, function(id) index[[id]])
+  sozluk <- .pk_prov_unit_vocabulary(index)
+
+  # İKİ MATRİS: `uygun` yalnızca DEĞER uyumudur, `tam` birim ve toplulaştırmayı
+  # da ister. Eşit değerli olgular ancak `tam` ile ayrışabilir.
   uygun <- matrix(FALSE, nrow = k, ncol = k)
-  for (i in seq_len(k)) {
-    for (j in seq_len(k)) {
-      uygun[i, j] <- .pk_prov_value_fits(jetonlar[[adaylar[j]]], olgular[[i]])
+  tam <- matrix(FALSE, nrow = k, ncol = k)
+  for (j in seq_len(k)) {
+    jeton <- jetonlar[[adaylar[j]]]
+    baglam <- as.character(baglamlar[[as.character(adaylar[j])]] %||% "")[1]
+    for (i in seq_len(k)) {
+      uygun[i, j] <- .pk_prov_value_fits(jeton, olgular[[i]])
+      tam[i, j] <- isTRUE(uygun[i, j]) &&
+        .pk_prov_semantics_fit(jeton, baglam, olgular[[i]], sozluk)
     }
   }
 
-  if (all(vapply(seq_len(k), function(i) isTRUE(uygun[i, i]), logical(1)))) {
-    return(konumsal)
+  kosegen <- function(m) {
+    all(vapply(seq_len(k), function(i) isTRUE(m[i, i]), logical(1)))
   }
 
+  # ÖNCELİK SIRASI: anlamsal köşegen -> anlamsal uzlaştırma -> değer köşegeni ->
+  # değer uzlaştırması. Böylece eşit değerli ama farklı birimli/toplulaştırmalı
+  # olgularda KEYFİ bir geçerli eşleme seçilmez.
+  if (kosegen(tam)) return(konumsal)
+  esleme <- pk_prov_repair_pairing(tam)
+  if (!is.null(esleme)) return(adaylar[esleme])
+
+  if (kosegen(uygun)) return(konumsal)
   esleme <- pk_prov_repair_pairing(uygun)
   if (is.null(esleme)) return(konumsal)
   adaylar[esleme]
@@ -82,8 +152,10 @@
   out <- list()
 
   for (grup in binding$groups) {
-    esleme <- .pk_prov_group_pairing(grup, jetonlar, index)
-    onceki <- NA_integer_
+    # BAĞLAM METİN SIRASINDA hesaplanır, eşleme SONRA uygulanır. Ters sırada
+    # kurulduğunda uzlaştırılmış bir grubun ikinci jetonu BOŞ bağlam alıyordu.
+    baglamlar <- .pk_prov_group_contexts(masked, jetonlar, grup)
+    esleme <- .pk_prov_group_pairing(grup, jetonlar, index, baglamlar)
 
     for (i in seq_along(grup$ids)) {
       idx <- esleme[i]
@@ -100,8 +172,7 @@
       }
 
       jeton <- jetonlar[[idx]]
-      baglam <- pk_prov_token_context(masked, jetonlar, idx, grup$segment_start, onceki)
-      onceki <- idx
+      baglam <- as.character(baglamlar[[as.character(idx)]] %||% "")[1]
 
       out[[length(out) + 1L]] <- list(
         fact_id = grup$ids[i],
@@ -166,9 +237,30 @@
     # sözcük gelse de ("2024 yilinda") yıl sayılır. ANCAK TANINAN BİR ÖLÇÜ
     # BİRİMİ YIL YORUMUNU BOZAR: "Toplam 2024 saat" işaretsiz kalırsa
     # uyuşmazlık üretmeden yayımlanırdı.
+    # BİRİM TANIMA ALINTILI YOLLA AYNI SÖZLÜĞÜ KULLANIR.
+    #
+    # Alıntılı yol hem ölçek taşıyan hem de boyutsuz sayım birimlerini tanır ve
+    # EKLİ biçimleri (`saatlik`, `adetlik`) köküne indirir. Alıntısız tarayıcı
+    # yalnızca ölçek sözlüğünün TAM girdilerine bakınca "47 saatlik" ve
+    # "47 kayit" gibi işaretsiz iddialar düşüyor, `warn`/`block` kiplerinde
+    # doğrulanmadan yayımlanıyordu.
     birim_ilk <- .pk_prov_unit_fold(sub("[[:space:]].*$", "", birim))
-    taninan_birim <- nzchar(birim_ilk) && birim_ilk %in% .PK_PROV_KNOWN_UNITS_FOLDED
-    yil_gibi <- !ayrac && !yuzde && haneler == 4L && !taninan_birim &&
+    birim_koku <- if (nzchar(birim_ilk)) {
+      .pk_prov_unit_root(birim_ilk, .PK_PROV_UNCITED_UNITS)
+    } else {
+      ""
+    }
+    taninan_birim <- nzchar(birim_ilk) &&
+      (birim_ilk %in% .PK_PROV_UNCITED_UNITS_FOLDED || nzchar(birim_koku))
+
+    # ÜSTEL GÖSTERİM ÖLÇEK İŞARETİDİR: `1e6` ayraç/yüzde taşımaz ve sade hâli
+    # kısa görünür, ama büyüklük iddiasıdır ve doğrulanmadan yayımlanamaz.
+    bilimsel <- grepl("[eE][+-]?[0-9]+$", rakam, perl = TRUE)
+
+    # İŞARETLİ SAYI YIL DEĞİLDİR: `gsub("[^0-9]", ...)` eksi imini SİLİYOR,
+    # böylece `-2024` yıl muafiyetine düşüp köken denetimini atlıyordu.
+    yil_gibi <- !grepl("^-", rakam, perl = TRUE) && !bilimsel &&
+      !ayrac && !yuzde && haneler == 4L && !taninan_birim &&
       suppressWarnings(!is.na(as.integer(sade))) &&
       as.integer(sade) >= 1900L && as.integer(sade) <= 2100L
     if (isTRUE(yil_gibi)) next
@@ -177,7 +269,7 @@
     # ifadeler veri iddiası değildir ve `block` kipinde geçerli yanıtları
     # düşürmemelidir. Ölçek işareti aranır: ayraç, yüzde, 4+ hane ya da TANINAN
     # bir ölçü birimi ("47 adet").
-    veri_gibi <- ayrac || yuzde || haneler >= 4L || taninan_birim
+    veri_gibi <- ayrac || yuzde || bilimsel || haneler >= 4L || taninan_birim
     if (!veri_gibi) next
 
     out[[length(out) + 1L]] <- list(raw = jeton$raw, number = rakam,

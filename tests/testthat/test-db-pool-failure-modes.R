@@ -189,3 +189,44 @@ test_that("havuz kapatildiktan sonra db_acquire_tx_connection guvenle dogrudan y
   db_release_tx_connection(ci)
   expect_equal(released$n, 1L)
 })
+
+# ---------------------------------------------------------------------------
+# HEDEF NORMALLESTIRME (PR #719 inceleme, P2)
+# ---------------------------------------------------------------------------
+
+test_that("factor hedef SAYISAL switch dagitimina dusmez", {
+  .dbfm_clean_state()
+  on.exit(.dbfm_clean_state(), add = TRUE)
+
+  # `switch()` bir factor ile cagrildiginda TAMSAYI KODUYLA dagitir:
+  # `factor("secondary")` tek seviyeli oldugu icin kod 1'dir ve BIRINCIL dalı
+  # ("DB_DSN") secerdi. Sonuc: `secondary` icin acilan havuz BIRINCIL
+  # veritabanina baglanirdi.
+  gorulen <- new.env(parent = emptyenv())
+  gorulen$hedef <- NULL
+
+  fabrika <- function() {
+    pool::dbPool(RSQLite::SQLite(), dbname = ":memory:", minSize = 1, maxSize = 2)
+  }
+
+  havuz <- init_db_pool_once(factor("secondary"), factory = fabrika, force = TRUE)
+  on.exit(suppressWarnings(try(close_db_pool_once("secondary"), silent = TRUE)),
+          add = TRUE)
+
+  # Havuz KARAKTER anahtarla kaydedilmis olmalidir.
+  expect_true(inherits(havuz, "Pool"))
+  expect_true(db_pool_is_active("secondary"))
+
+  # `primary` ETKILENMEZ: factor kodu birincil dala sizmadi.
+  expect_false(db_pool_is_active("primary"))
+})
+
+test_that("gecersiz hedef KAPALI BASARISIZ olur", {
+  .dbfm_clean_state()
+  on.exit(.dbfm_clean_state(), add = TRUE)
+
+  for (gecersiz in list(character(0), NA_character_, "", c("primary", "secondary"))) {
+    expect_error(init_db_pool_once(gecersiz, force = TRUE),
+                 regexp = "tek ogeli")
+  }
+})

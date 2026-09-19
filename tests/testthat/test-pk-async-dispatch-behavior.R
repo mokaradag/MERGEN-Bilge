@@ -33,7 +33,7 @@
                   "helpers_pk_async_marker_store.R", "helpers_pk_async_request_markers.R",
                   "helpers_pk_async_session_registry.R",
                   "helpers_pk_async_routing.R",
-                  "helpers_pk_async_lifecycle.R", "helpers_pk_async_apply.R")) {
+                  "helpers_pk_async_lifecycle.R", "helpers_pk_async_artifact.R", "helpers_pk_async_apply.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = env)
   }
   source(file.path(repo_root, "R", "server_handler_pk_async.R"),

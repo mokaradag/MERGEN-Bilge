@@ -773,7 +773,7 @@ source_manifest_sections <- list(
     "R/helpers_pk_async_marker_store.R", "R/helpers_pk_async_request_markers.R",  # süreç-yerel ayna -> oturum işaret semantiği
     "R/helpers_pk_async_session_registry.R",
     "R/helpers_pk_async_routing.R",
-    "R/helpers_pk_async_lifecycle.R",
+    "R/helpers_pk_async_lifecycle.R", "R/helpers_pk_async_artifact.R",  # tek istek yaşam döngüsü -> artefakt sunumu/URL doğrulaması/temizliği
     "R/helpers_pk_async_apply.R",
     "R/server_handler_pk_async.R",
     "R/server_llm_response_handlers.R",

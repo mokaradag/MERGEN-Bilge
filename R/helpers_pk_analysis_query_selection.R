@@ -140,6 +140,13 @@ pk_compute_heuristic_query_scores <- function(prompt, library) {
 }
 
 print_score_table <- function(scores_df) {
+  # BOŞ SKOR TABLOSU ERKEN DÖNER (PR #719 inceleme, P3).
+  #
+  # Kütüphane boşken `max(nchar(...))` `-Inf` üretiyor, `sprintf()` bu geçersiz
+  # dinamik genişliği REDDEDİYOR ve tanılama çıktısı başlık bandı basıldıktan
+  # SONRA, sütun başlığı basılmadan hata ile kesiliyordu.
+  if (!is.data.frame(scores_df) || !nrow(scores_df)) return(invisible(NULL))
+
   scores_df <- scores_df[order(-scores_df$final_score), ]
 
   cat("\n")
