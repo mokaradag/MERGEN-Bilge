@@ -230,3 +230,28 @@ test_that("gecersiz hedef KAPALI BASARISIZ olur", {
                  regexp = "tek ogeli")
   }
 })
+
+test_that("varsayılan kurucu factor hedefi ikincil DSN ile açar", {
+  testthat::skip_if_not_installed("odbc")
+  .dbfm_clean_state()
+  on.exit(.dbfm_clean_state(), add = TRUE)
+  withr::local_envvar(c(DB_DSN = "sentetik-primary", DB_DSN_2 = "sentetik-secondary"))
+  gorulen <- character()
+  asil_kurucu <- pool::dbPool
+  testthat::local_mocked_bindings(
+    dbPool = function(drv, dsn, ...) {
+      gorulen <<- c(gorulen, dsn)
+      asil_kurucu(RSQLite::SQLite(), dbname = ":memory:", minSize = 1, maxSize = 2)
+    },
+    .package = "pool"
+  )
+  havuz <- init_db_pool_once(factor("secondary"), force = TRUE, fail_fast = TRUE)
+  expect_s3_class(havuz, "Pool")
+  expect_identical(gorulen, "sentetik-secondary")
+  expect_identical(db_pool_get("secondary"), havuz)
+  expect_false(db_pool_is_active("primary"))
+
+  dogrudan <- .db_pool_build_default(factor("secondary"), db_pool_config())
+  on.exit(pool::poolClose(dogrudan), add = TRUE)
+  expect_identical(gorulen, rep("sentetik-secondary", 2L))
+})

@@ -85,6 +85,25 @@ test_that("madde numarasi olmayan cumle basi sayisi HALA olcudur", {
   expect_length(sonuc$mismatches %||% list(), 0L)
 })
 
+test_that("sayısal madde içeriği liste numarasına bağlanmaz", {
+  env <- .prov_tarama_env()
+  olgular <- list(.prov_tarama_olgu("a", 15574, aggregation = "count"),
+                 .prov_tarama_olgu("b", 15574, aggregation = "count"))
+  for (ayrac in c(" ", "\t", intToUtf8(0x00a0))) {
+    for (madde in c("1.", "12.", "1)", "12)")) {
+      metin <- paste0(madde, ayrac, "15.574 adet [fact:a][fact:b]")
+      sonuc <- env$pk_numeric_provenance_validate(metin, olgular)
+      expect_identical(sonuc$checked, 1L, info = metin)
+      expect_length(sonuc$mismatches, 0L)
+      expect_identical(sonuc$claims[[1]]$number_text, "15.574")
+      yanlis <- env$pk_numeric_provenance_validate(
+        sub("15.574", "11.111", metin, fixed = TRUE), olgular
+      )
+      expect_true("value_mismatch" %in% .prov_tarama_nedenler(yanlis))
+    }
+  }
+})
+
 # ---------------------------------------------------------------------------
 # 2) SONDAKI NOKTALAMA jetonun parcasi degildir.
 # ---------------------------------------------------------------------------
@@ -324,4 +343,22 @@ test_that("sayim kaniti toplulastirmadan VEYA sutun adindan gelir", {
   # Olgu OLMAYAN girdi guvenle FALSE doner.
   expect_false(env$.pk_prov_fact_is_count(NULL))
   expect_false(env$.pk_prov_fact_is_count("metin"))
+})
+
+test_that("yetenek adı sayım sütununun kanıtını gizlemez", {
+  env <- .prov_tarama_env()
+  for (capability in c("activity.total", "", "activity.count")) {
+    olgu <- .prov_tarama_olgu("a", 50367, aggregation = "sum",
+                             column = "ActivityTotalCount")
+    olgu$measure_capability <- capability
+    sonuc <- env$pk_numeric_provenance_validate("50.367 adet [fact:a]", list(olgu))
+    expect_identical(sonuc$checked, 1L)
+    expect_length(sonuc$mismatches, 0L)
+  }
+  olgu$column <- "ActivityTotal"
+  expect_true(env$.pk_prov_fact_is_count(olgu))
+  olgu$measure_capability <- "activity.total"
+  expect_false(env$.pk_prov_fact_is_count(olgu))
+  sonuc <- env$pk_numeric_provenance_validate("50.367 adet [fact:a]", list(olgu))
+  expect_true("unit_mismatch" %in% .prov_tarama_nedenler(sonuc))
 })

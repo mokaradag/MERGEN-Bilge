@@ -327,8 +327,9 @@ pk_parse_number_tr <- function(txt) {
     return(TRUE)
   }
 
-  ad <- .pk_prov_unit_fold(olgu$measure_capability %||% olgu$column %||% "")
-  nzchar(ad) && grepl(.PK_PROV_COUNT_NAME_PATTERN, ad, perl = TRUE)
+  adlar <- vapply(list(olgu$measure_capability, olgu$column),
+                  function(x) .pk_prov_unit_fold(x %||% ""), character(1))
+  any(nzchar(adlar) & grepl(.PK_PROV_COUNT_NAME_PATTERN, adlar, perl = TRUE))
 }
 
 .pk_prov_unit_vocabulary <- function(index) {

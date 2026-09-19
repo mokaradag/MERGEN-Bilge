@@ -362,9 +362,9 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
   # BOŞ/NULL İSTEM SIFIR UZUNLUKTA DEĞER ÜRETMEZ (PR #719 inceleme, P3):
   # `tolower(NULL)` -> `character(0)`, `grepl()` -> `logical(0)` ve `sapply()`
   # LİSTE döndürür; `any(list)` hata verip filtrelemeyi TAMAMEN düşürüyordu.
-  prompt_lower <- suppressWarnings(as.character(user_prompt %||% "")[1])
-  if (length(prompt_lower) != 1L || is.na(prompt_lower)) prompt_lower <- ""
-  prompt_lower <- tolower(prompt_lower)
+  user_prompt <- suppressWarnings(as.character(user_prompt %||% "")[1])
+  if (length(user_prompt) != 1L || is.na(user_prompt)) user_prompt <- ""
+  prompt_lower <- tolower(user_prompt)
   genel_soru_mu <- any(sapply(genel_soru_kaliplari, function(pattern) {
     grepl(pattern, prompt_lower, fixed = TRUE)
   }))

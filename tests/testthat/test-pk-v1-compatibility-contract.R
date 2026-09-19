@@ -112,6 +112,21 @@ test_that("v1 varsayilandir: bayrak verilmediginde motor v1'dir", {
   })
 })
 
+test_that("v1 boş ve çok öğeli istemleri tek metne indirger", {
+  env <- .pk_v1_env()
+  withr::local_envvar(c(MERGEN_PK_ENGINE = "v1"))
+  veri <- .pk_v1_data()
+  talimat <- list(filters = list(list(
+    column = "Durum", value = "Aktif", operation = "exact_match"
+  )))
+  for (istem in list(NULL, character(0), NA_character_, "",
+                    c("A123 projesini göster", "başka"), "Ali Veli projeleri")) {
+    utils::capture.output(sonuc <- env$apply_smart_filters(veri, talimat, istem))
+    expect_identical(as.character(sonuc$ProjeAdi), veri$ProjeAdi[1:2])
+    expect_equal(nrow(sonuc), 2L)
+  }
+})
+
 test_that("D1: v1 AYNI sutundaki filtreleri HALA kesistirir (davranis degismedi)", {
   # `withr` bu pakette OPSIYONELDIR; yoksa test SESSIZCE degil ACIKCA atlanir.
   testthat::skip_if_not_installed("withr")

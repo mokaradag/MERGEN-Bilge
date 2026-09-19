@@ -726,6 +726,11 @@ test_that("RLS DISI metinler yetki reddi sayilmaz", {
                    "DogrudanYanit")
   expect_identical(env$pk_direct_exit_outcome("**Yetki** disinda bir sey"),
                    "DogrudanYanit")
+  expect_identical(env$pk_direct_exit_outcome("**Yetki değerlendirmesi:** Sonuç hazır."),
+                   "DogrudanYanit")
+  expect_identical(env$pk_direct_exit_outcome(list(
+    type = "error_message", content = "**Yetki değerlendirmesi:** İşlem başarısız."
+  )), "Hata")
   # Durdurma ve hata dallari DEGISMEZ.
   expect_identical(env$pk_direct_exit_outcome("herhangi", stopped = TRUE), "Durduruldu")
   expect_identical(env$pk_direct_exit_outcome("herhangi", error = TRUE), "Hata")

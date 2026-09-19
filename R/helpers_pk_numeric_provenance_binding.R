@@ -262,6 +262,8 @@
     madde <- satir_basi && (
       (grepl("^[0-9]+[.)]?$", ham, perl = TRUE) &&
          grepl("^[.)]$", sonraki, perl = TRUE)) ||
+        (grepl("^[0-9]{1,2}[.)]$", ham, perl = TRUE) &&
+           grepl("^[[:space:]\u00a0]$", sonraki, perl = TRUE)) ||
         grepl(.PK_PROV_LIST_NUMBER, ham, perl = TRUE)
     )
     if (isTRUE(madde)) next

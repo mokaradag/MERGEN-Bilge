@@ -9,6 +9,13 @@ local({
   # ANLIK GÖRÜNTÜ `%||%` ATAMASINDAN ÖNCE ALINIR: sonra alınırsa operatör
   # `eklenen` kümesine GİRMEZ ve temizlik onu hiç kaldırmaz.
   onceki_adlar <- ls(globalenv(), all.names = TRUE)
+  onceki_degerler <- mget(onceki_adlar, envir = globalenv(), inherits = FALSE)
+  # Kaynaklama yarıda kalsa da eski bağlamalar geri yüklenir.
+  withr::defer({
+    eklenen <- setdiff(ls(globalenv(), all.names = TRUE), onceki_adlar)
+    if (length(eklenen)) rm(list = eklenen, envir = globalenv())
+    list2env(onceki_degerler, envir = globalenv())
+  }, envir = testthat::teardown_env())
 
   # KAPSAM `globalenv()` ILE SINIRLIDIR (PR #705 inceleme, P3).
   #
@@ -32,21 +39,6 @@ local({
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = globalenv())
   }
 
-  # SIZINTI TEMİZLENİR (PR #719 inceleme, P2): bu tanımlar `globalenv()` içinde
-  # KALIYORDU. Tam suite koşumunda sonraki dosyalar `exists(..., inherits = TRUE)`
-  # ile yoklayıp kendi fail-closed/yedek dallarını ATLIYOR ve tek başına geçen
-  # bir dosya paket koşumunda FARKLI davranıyordu (CLAUDE.md'de belgelenen
-  # `helpers_pk_analysis_filters_v2.R` sınıfı). Kardeş çözüm:
-  # test-pk-sql-execute-bounded-behavior.R. Yalnızca BU dosyanın eklediği adlar
-  # kaldırılır; `teardown_env()` testthat 3.3.2'de DOSYA sonunda çalışır
-  # (`test_one_file()` -> `withr::defer(teardown_run())`).
-  eklenen <- setdiff(ls(globalenv(), all.names = TRUE), onceki_adlar)
-  if (length(eklenen) && requireNamespace("withr", quietly = TRUE)) {
-    withr::defer(
-      suppressWarnings(try(rm(list = eklenen, envir = globalenv()), silent = TRUE)),
-      envir = testthat::teardown_env()
-    )
-  }
 })
 
 .review_registry <- function() {
@@ -56,6 +48,44 @@ local({
     "date.project_start" = list(role = "date", unit = NULL)
   )
 }
+
+test_that("metadata test kurulumu eski globalleri geri yükler", {
+  testthat::skip_if_not_installed("callr")
+  kok <- resolve_repo_root_for_tests()
+  for (kesinti in c(FALSE, TRUE)) {
+    sonuc <- callr::r(function(kok, kesinti) {
+      eski <- function(...) "önceki yardımcı"
+      assign("pk_meta_query_field_allowlist", eski, envir = globalenv())
+      assign("PK_META_STATUS_OK", "önceki sabit", envir = globalenv())
+      adlar <- ls(globalenv(), all.names = TRUE)
+      env <- new.env(parent = globalenv())
+      env$resolve_repo_root_for_tests <- function() kok
+      temizlik <- new.env(parent = emptyenv())
+      testthat::local_mocked_bindings(
+        teardown_env = function() temizlik, .package = "testthat"
+      )
+      if (kesinti) {
+        env$source <- function(...) {
+          base::source(...)
+          stop("sentetik kaynaklama hatası")
+        }
+      }
+      kurulum <- parse(file.path(kok, "tests/testthat",
+                                "test-pk-query-meta-review-hardening.R"),
+                       encoding = "UTF-8")[[1]]
+      hata <- tryCatch({ eval(kurulum, env); FALSE }, error = function(e) TRUE)
+      withr::deferred_run(temizlik)
+      list(hata = hata,
+           yardimci = identical(get("pk_meta_query_field_allowlist", globalenv()), eski),
+           sabit = identical(get("PK_META_STATUS_OK", globalenv()), "önceki sabit"),
+           yeni = setdiff(ls(globalenv(), all.names = TRUE), adlar))
+    }, args = list(kok, kesinti))
+    expect_identical(sonuc$hata, kesinti)
+    expect_true(sonuc$yardimci)
+    expect_true(sonuc$sabit)
+    expect_length(sonuc$yeni, 0L)
+  }
+})
 
 .review_meta <- function() {
   list(
