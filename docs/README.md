@@ -5,8 +5,8 @@ Bu sayfa, MERGEN Bilge dokümantasyonunda doğru belgeye hızlı gitmek için ha
 ## Claude Code yönerge mimarisi
 
 Kök `CLAUDE.md` bilinçli olarak kısa tutulur. Alt sistem sözleşmeleri
-`.claude/rules/` altında yol-kapsamlıdır; eski kapsamlı sözleşme yalnızca
-tarihsel/audit başvurusu olarak
+`.claude/rules/` altında yol-kapsamlı ve ayrıntılı alt sistem otoritesidir; eski
+kapsamlı sözleşme yalnızca audit ve edge-case başvurusu olarak
 [`maintainers/claude-code-full-contract-reference.md`](maintainers/claude-code-full-contract-reference.md)
 altında korunur. Taşıma haritası ve bayatlık denetimi için
 [`maintainers/claude-code-instruction-refactor-map.md`](maintainers/claude-code-instruction-refactor-map.md)
@@ -33,7 +33,7 @@ kullanılır. Arşiv canlı Claude yönergelerine `@` ile import edilmez.
 | Belge | Açıklama |
 |---|---|
 | [`../README.md`](../README.md) | Kısa, Türkçe, ilk giriş belgesi: ürün, hızlı başlangıç, doğrulama ve belge haritası. |
-| [`../CLAUDE.md`](../CLAUDE.md) | İngilizce ve bilinçli olarak korunmuş kodlama ajanı/bakımcı sözleşmesi. Detaylı kurallar burada otoritatiftir. |
+| [`../CLAUDE.md`](../CLAUDE.md) | İngilizce ve bilinçli olarak kısa tutulmuş kök kodlama ajanı/bakımcı sözleşmesi. Ayrıntılı alt sistem kuralları yol-kapsamlı `.claude/rules/*.md` dosyalarında otoritatiftir. |
 | [`../AGENTS.md`](../AGENTS.md) | Ajanlar için kısa repo notu, doğrulama dürüstlüğü ve belge yönlendirmeleri. |
 | [`../ai_rehber.md`](../ai_rehber.md) | Yardım Asistanı ve AI Uzman için kullanıcıya dönük davranış rehberi. |
 | [`architecture-map.md`](architecture-map.md) | Uygulama katmanları, gerçek dosya/dizin haritası ve korunan mimari sınırlar. |
@@ -57,7 +57,7 @@ kullanılır. Arşiv canlı Claude yönergelerine `@` ile import edilmez.
 
 ## Kısa Uyarılar
 
-- `CLAUDE.md` İngilizcedir ve bu durum bilinçlidir; kodlama ajanı/bakımcı davranışında otoritatif kaynak odur.
+- `CLAUDE.md` İngilizcedir ve bu durum bilinçlidir; kök sözleşmedir. Ayrıntılı alt sistem otoritesi eşleşen yol-kapsamlı `.claude/rules/*.md` dosyasındadır.
 - Faz 3b SQL uyumluluğu **genel bir çok-ifade izni değildir**. Yalnızca tam `SET NOCOUNT ON;` öneki, güvenli scalar `DECLARE @degisken ...` önekleri + tek sonuç sorgusu ve [`pk-sql-readonly-gate.md`](pk-sql-readonly-gate.md) içinde kanıtlanan yerel `#temp` analitik batch biçimi kabul edilir. Scalar `DECLARE` istisnası `TABLE`, `CURSOR`, sequence mutasyonu, DML/DDL veya `EXEC`'e izin vermez; yerel-temp indeksleri yalnızca daha önce oluşturulmuş `#temp` tabloları hedefleyebilir. Metadata-generator DB-yazma ratchet'leri gevşetilmez.
 - `MERGEN_LOG_DIR` merkezî/UNC hedefini yerel `logs` dizinine sessizce yönlendirmeyin. Güçlü mojibake yol içinde yerinde onarılır; ayrıntılı ve kanonik sözleşme [`production-log-paths.md`](production-log-paths.md) içindedir.
 - Üretim-kritik sınır sahipliği (seam kayıt defteri, `R/config_seam_registry.R`) ve frontend bölge sahipliği (`R/config_ui_asset_zones.R`) [`architecture-map.md`](architecture-map.md) içindeki yönetişim katmanı bölümünde haritalanır; yeni runtime R dosyası veya frontend varlığı eklerken oradaki disiplin kuralları geçerlidir (`bash tools/seam_doctor.sh` ile doğrulanabilir).

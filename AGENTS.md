@@ -1,6 +1,6 @@
 # AGENTS.md
 
-`CLAUDE.md` is the compact always-loaded guide for this repository. Authoritative subsystem contracts live in the path-scoped `.claude/rules/*.md` files; before changing a sensitive subsystem, read the matching rule. The former long contract is preserved under `docs/maintainers/claude-code-full-contract-reference.md` for historical rationale only and must not be treated as current-state truth.
+`CLAUDE.md` is the compact always-loaded guide for this repository. Authoritative subsystem contracts live in the path-scoped `.claude/rules/*.md` files; before changing a sensitive subsystem, read the matching rule. The former long contract is preserved under `docs/maintainers/claude-code-full-contract-reference.md` as an audit and edge-case reference, not startup memory or current-state authority.
 
 ## Documentation map
 
