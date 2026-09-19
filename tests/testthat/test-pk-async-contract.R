@@ -12,7 +12,12 @@
 
 .pk_async_read_bytes <- function(path) {
   ham <- readBin(path, what = "raw", n = file.info(path)$size %||% 0L)
-  iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
+  txt <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
+  if (identical(tolower(tools::file_ext(path)), "r")) {
+    pk_test_strip_r_comments(txt)
+  } else {
+    txt
+  }
 }
 
 .pk_async_has <- function(text, needle) {

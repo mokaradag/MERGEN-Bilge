@@ -219,6 +219,18 @@ test_that("factor hedef SAYISAL switch dagitimina dusmez", {
 
   # `primary` ETKILENMEZ: factor kodu birincil dala sizmadi.
   expect_false(db_pool_is_active("primary"))
+
+  # Tüm açık havuz işlemleri aynı hedef normalizasyonunu kullanır.
+  expect_identical(db_pool_get(factor("secondary")), havuz)
+  expect_true(db_pool_is_active(factor("secondary")))
+
+  ci <- db_acquire_tx_connection(factor("secondary"))
+  expect_true(isTRUE(ci$checked_out))
+  expect_identical(ci$target, "secondary")
+  db_release_tx_connection(ci)
+
+  close_db_pool_once(factor("secondary"))
+  expect_false(db_pool_is_active("secondary"))
 })
 
 test_that("gecersiz hedef KAPALI BASARISIZ olur", {

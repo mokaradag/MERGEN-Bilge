@@ -159,11 +159,24 @@ db_pool_config <- function() {
   invisible(NULL)
 }
 
+# Havuz hedefini tüm açık giriş noktalarında aynı biçimde çöz.
+.db_pool_normalize_target <- function(target, allow_multiple = FALSE) {
+  if (is.factor(target)) target <- as.character(target)
+  target <- suppressWarnings(as.character(target))
+  if (!length(target) || anyNA(target) || any(!nzchar(target)) ||
+      (!isTRUE(allow_multiple) && length(target) != 1L)) {
+    stop("DB havuz hedefi tek ogeli, bos olmayan bir metin olmalidir.",
+         call. = FALSE)
+  }
+  target
+}
+
 # ------------------------------------------------------------------------------
 # Aktif havuz nesnesini döndürür (yoksa NULL). Önce iç durum, sonra geriye dönük
 # `.GlobalEnv$pool` (yalnızca primary). Geçersiz/kapalı havuzları yok sayar.
 # ------------------------------------------------------------------------------
 db_pool_get <- function(target = "primary") {
+  target <- .db_pool_normalize_target(target)
   st <- .mergen_db_pool_state
   obj <- st$pools[[target]]
   if (!is.null(obj) && inherits(obj, "Pool") && isTRUE(.db_pool_object_valid(obj))) {
@@ -190,6 +203,7 @@ db_pool_get <- function(target = "primary") {
 }
 
 db_pool_is_active <- function(target = "primary") {
+  target <- .db_pool_normalize_target(target)
   !is.null(db_pool_get(target))
 }
 
@@ -208,18 +222,7 @@ db_pool_is_active <- function(target = "primary") {
 # ------------------------------------------------------------------------------
 init_db_pool_once <- function(target = "primary", factory = NULL, force = FALSE,
                               fail_fast = isTRUE(db_pool_config()$fail_fast)) {
-  # HEDEF ÖNCE SKALER KARAKTERE İNDİRGENİR (PR #719 incelemesi, P2).
-  #
-  # `factor("secondary")` gibi bir değer hem havuz durumu aramasında hem de
-  # `.db_pool_build_default()` içindeki `switch()` dağıtımında TAMSAYI KODU
-  # olarak yorumlanır; `switch` sayısal dalda birinci dalı ("DB_DSN") seçer ve
-  # `secondary` için açılan havuz BİRİNCİL veritabanına bağlanırdı.
-  if (is.factor(target)) target <- as.character(target)
-  target <- suppressWarnings(as.character(target))
-  if (length(target) != 1L || is.na(target) || !nzchar(target)) {
-    stop("DB havuz hedefi tek ogeli, bos olmayan bir metin olmalidir.",
-         call. = FALSE)
-  }
+  target <- .db_pool_normalize_target(target)
 
   if (!isTRUE(force) && !is_db_pool_enabled()) {
     .db_pool_record_event("init_skipped", list(target = target, reason = "disabled"))
@@ -400,7 +403,11 @@ init_db_pool_once <- function(target = "primary", factory = NULL, force = FALSE,
 # ------------------------------------------------------------------------------
 close_db_pool_once <- function(target = NULL) {
   st <- .mergen_db_pool_state
-  targets <- if (is.null(target)) names(st$pools) else target
+  targets <- if (is.null(target)) {
+    names(st$pools)
+  } else {
+    .db_pool_normalize_target(target, allow_multiple = TRUE)
+  }
   targets <- targets[nzchar(targets)]
 
   for (tg in targets) {
@@ -434,6 +441,7 @@ close_db_pool_once <- function(target = NULL) {
 # $checked_out, $target.
 # ------------------------------------------------------------------------------
 db_acquire_tx_connection <- function(target = "primary") {
+  target <- .db_pool_normalize_target(target)
   pool_obj <- db_pool_get(target)
   ci_direct <- NULL
 

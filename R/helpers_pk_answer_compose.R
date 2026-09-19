@@ -663,9 +663,12 @@ pk_compose_block <- function(decision, data, artifact = NULL, meta = list(),
       parcalar <- c(parcalar, if (isTRUE(ek_var)) {
         paste0("\n\n_(Etkileşimli tablo görünümü henüz etkin değil; yukarıdaki ",
                "önizleme ile birlikte tam sonuç ek dosyadadır.)_")
-      } else {
+      } else if (!is.null(onizleme)) {
         paste0("\n\n_(Etkileşimli tablo görünümü henüz etkin değil ve bu istek ",
                "için ek dosya üretilmedi; yukarıdaki önizleme ile sınırlıdır.)_")
+      } else {
+        paste0("\n\n_(Etkileşimli tablo görünümü henüz etkin değil; bu istek ",
+               "için ek dosya ya da gösterilebilir bir önizleme üretilmedi.)_")
       })
     }
   }

@@ -228,20 +228,6 @@ pk_parse_number_tr <- function(txt) {
 }
 .PK_PROV_TRAILING <- "[[:space:]\u00a0)\\]}>\"'’”»,.;:!?…\\-]"
 
-# SAYI İLE NÖBETÇİ ARASINA GİREN ÖLÇÜLEN VARLIK ADI (PR #705 incelemesi, P2).
-#
-# Prompt kuralı işareti sayının ARDINA koydurur, ama model doğal Türkçe yazınca
-# araya ölçülen varlığın adı girer: `Toplam 15.574 geciken aktivite [fact:f].`
-# Alıntı tarayıcısı sona dayalı desenle eşleşemeyip `no_number`, köken-siz
-# tarayıcı ise nöbetçiyi bulamayıp `missing_fact_marker` kaydediyordu; TEK bir
-# doğru alıntı için `checked = 2, mismatches = 2` üretiliyordu ve `block`
-# kipinde DOĞRU yanıt yedekle değiştiriliyordu.
-#
-# Boşluk SINIRLIDIR ve yalnızca RAKAM İÇERMEYEN sözcüklerden oluşabilir: araya
-# başka bir SAYI girerse alıntı yine köken-siz sayılır.
-.PK_PROV_MAX_GAP_WORDS <- 3L
-.PK_PROV_GAP_WORD <- "[A-Za-zÇĞİÖŞÜçğıöşü][A-Za-zÇĞİÖŞÜçğıöşü]{0,23}"
-
 .pk_prov_trim_tail <- function(txt) {
   metin <- as.character(txt %||% "")[1]
   if (is.na(metin)) return("")

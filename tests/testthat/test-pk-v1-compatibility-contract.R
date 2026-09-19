@@ -41,39 +41,19 @@
 # Yalnizca kod taranir; aciklama satirlari taranmaz (bayt guvenli okuma).
 .pk_v1_code_only <- function(rel_path) {
   full <- file.path(resolve_repo_root_for_tests(), rel_path)
-  # EKSİK DOSYA OLUMSUZ İDDİALARI KENDİLİĞİNDEN GEÇİRİR (bu dosyadaki motor
-  # sızıntısı taramaları `expect_false(grepl(...))` biçimindedir); önce VARLIK
-  # kanıtlanır, aksi hâlde yeniden adlandırılmış bir dosya sözleşmeyi VACUOUS
-  # geçirirdi.
   testthat::expect_true(file.exists(full), info = rel_path)
   size <- suppressWarnings(file.info(full)$size[1])
   if (is.na(size) || size <= 0) {
-    # BOŞ DOSYA DA VACUOUS GEÇİRİR: bu dosyalardaki taramaların çoğu
-    # `expect_false(grepl(...))` biçimindedir ve boş dize hepsini karşılar.
     stop(sprintf("Kaynak dosya BOŞ ya da okunamıyor: %s", full), call. = FALSE)
   }
   con <- file(full, open = "rb")
   on.exit(close(con), add = TRUE)
   raw_data <- readBin(con, what = "raw", n = size)
-  # `sub = "byte"` BILEREK KULLANILMAZ (PR #705 inceleme, P2).
-  #
-  # `sub = "byte"` gecersiz baytlari `<xx>` kacislarina cevirir ve sonuc ASLA
-  # `NA` olmaz; boylece hemen asagidaki "cozulemedi" korumasi OLU KOD haline
-  # gelir. Bozuk kodlanmis bir kaynak dosya sessizce taranir, Turkce metin
-  # kacislara donusur ve bu dosyadaki olumsuz taramalar (`expect_false(grepl(...))`)
-  # HICBIR ANLAM TASIMADAN gecer. Taranan dosyalar depo kaynagidir ve gecerli
-  # UTF-8 olmak ZORUNDADIR (CP1254 kaynak guvenligi sozlesmesi + parse sanity);
-  # cozulememesi gercek bir kusurdur ve GURULTULU bicimde durdurulur.
   txt <- suppressWarnings(iconv(list(raw_data), from = "UTF-8", to = "UTF-8")[[1]])
-  # BOZUK ÇEVRİM DE VACUOUS GEÇİRİR: boş metin bu dosyadaki motor-sızıntı
-  # taramalarının (`expect_false(grepl(...))`) TAMAMINI karşılar ve sözleşme
-  # hiçbir kaynak metni taranmadan "başarılı" raporlar.
   if (is.na(txt)) {
     stop(sprintf("Kaynak dosya UTF-8 olarak çözülemedi: %s", full), call. = FALSE)
   }
-  satirlar <- strsplit(enc2utf8(txt), "\n", fixed = TRUE)[[1]]
-  satirlar <- satirlar[!grepl("^\\s*#", satirlar, perl = TRUE, useBytes = TRUE)]
-  paste(satirlar, collapse = "\n")
+  pk_test_strip_r_comments(enc2utf8(txt))
 }
 
 .pk_v1_data <- function() {
@@ -331,10 +311,7 @@ test_that("motor kipi istek basina TEK KEZ cozulur (karisik hat yasagi)", {
   )
   expect_false(is.na(ham_metin),
                info = "Modul dosyasi UTF-8 olarak cozulemedi.")
-  metin <- enc2utf8(ham_metin)
-  satirlar <- strsplit(metin, "\n", fixed = TRUE)[[1]]
-  kod <- paste(satirlar[!grepl("^\\s*#", satirlar, perl = TRUE, useBytes = TRUE)],
-               collapse = "\n")
+  kod <- pk_test_strip_r_comments(enc2utf8(ham_metin))
   expect_true(nzchar(kod), info = "Modul kodu okunamadi.")
 
   # GERILEME: asagi akis kipi `selected_query$meta`den YENIDEN cozuyordu.

@@ -656,9 +656,7 @@ test_that("secim hata log'u BAGLANTI redaktorunu kullanir", {
   # ALINTILAYAN bir açıklama satırıyla geçebilir; olumsuz iddia ise ESKİ
   # yardımcıyı ANAN bir yorum yüzünden davranış DEĞİŞMEDEN kırılabilirdi
   # (bkz. `.pk_rls_code_only()`, test-pk-rls-failclosed-contract.R).
-  .satirlar <- strsplit(gsub("\r\n?", "\n", metin), "\n", fixed = TRUE)[[1]]
-  metin <- paste(.satirlar[!grepl("^\\s*#", .satirlar, perl = TRUE, useBytes = TRUE)],
-                 collapse = "\n")
+  metin <- pk_test_strip_r_comments(metin)
   expect_true(grepl("redact_connection_identifiers(metin)", metin, fixed = TRUE))
   expect_false(grepl("redact_sensitive_text(metin)", metin, fixed = TRUE))
 })

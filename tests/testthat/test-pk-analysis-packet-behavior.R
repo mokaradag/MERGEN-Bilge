@@ -30,8 +30,6 @@
   full <- file.path(resolve_repo_root_for_tests(), rel_path)
   size <- suppressWarnings(file.info(full)$size[1])
   if (is.na(size) || size <= 0) {
-    # BOŞ DOSYA DA VACUOUS GEÇİRİR: bu dosyalardaki taramaların çoğu
-    # `expect_false(grepl(...))` biçimindedir ve boş dize hepsini karşılar.
     stop(sprintf("Kaynak dosya BOŞ ya da okunamıyor: %s", full), call. = FALSE)
   }
   con <- file(full, open = "rb")
@@ -39,9 +37,7 @@
   raw_data <- readBin(con, what = "raw", n = size)
   txt <- suppressWarnings(iconv(list(raw_data), from = "UTF-8", to = "UTF-8", sub = "byte")[[1]])
   if (is.na(txt)) return("")
-  satirlar <- strsplit(enc2utf8(txt), "\n", fixed = TRUE)[[1]]
-  satirlar <- satirlar[!grepl("^\\s*#", satirlar, perl = TRUE, useBytes = TRUE)]
-  paste(satirlar, collapse = "\n")
+  pk_test_strip_r_comments(enc2utf8(txt))
 }
 
 .pk_packet_query <- function(column_meta = list(), extra = list()) {

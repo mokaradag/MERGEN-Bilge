@@ -22,10 +22,7 @@
 # bir yorum satırı kaldığında yeşil kalırdı. Kardeş sözleşmeler de kod-yalnız
 # okuyucu kullanır.
 .pk_local_temp_code_only <- function(rel_path) {
-  txt <- .pk_local_temp_read_bytes(rel_path)
-  satirlar <- strsplit(gsub("\r\n?", "\n", txt), "\n", fixed = TRUE)[[1]]
-  satirlar <- satirlar[!grepl("^\\s*#", satirlar, perl = TRUE, useBytes = TRUE)]
-  paste(satirlar, collapse = "\n")
+  pk_test_strip_r_comments(.pk_local_temp_read_bytes(rel_path))
 }
 
 .pk_local_temp_read_bytes <- function(rel_path) {

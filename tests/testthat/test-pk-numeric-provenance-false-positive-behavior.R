@@ -663,6 +663,14 @@ test_that("köken doğrulaması kaynak dosyada muafiyet listesi TAŞIMAZ", {
 
 test_that("sayi ile isaret arasindaki isim obegi CIFT uyusmazlik uretmez (PR #705 P2)", {
   env <- .prov_fp_env()
+
+  # Modül yedeği sonradan yeniden yüklense de bağlama katmanının 12 sözcüklük
+  # yakınlık bütçesini ezmemelidir.
+  expect_identical(env$.PK_PROV_MAX_GAP_WORDS, 12L)
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_pk_numeric_provenance.R"),
+         encoding = "UTF-8", local = env)
+  expect_identical(env$.PK_PROV_MAX_GAP_WORDS, 12L)
+
   olgular <- list(.prov_fp_fact("f", 15574))
 
   # DUZELTME ONCESI: alinti tarayicisi sona dayali desenle eslesemeyip

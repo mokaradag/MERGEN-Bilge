@@ -35,10 +35,7 @@
 # bu dosyalar zaten `pk_sql_readonly_guard()` adını anan açıklama taşıyor
 # (kardeş çözüm: `.pk_rls_code_only()`, test-pk-rls-failclosed-contract.R).
 .pk_sql_code_only <- function(rel_path) {
-  satirlar <- strsplit(gsub("\r\n?", "\n", .pk_sql_read_bytes(rel_path)),
-                       "\n", fixed = TRUE)[[1]]
-  paste(satirlar[!grepl("^\\s*#", satirlar, perl = TRUE, useBytes = TRUE)],
-        collapse = "\n")
+  pk_test_strip_r_comments(.pk_sql_read_bytes(rel_path))
 }
 
 test_that("tek bir salt-okunur SELECT ve CTE+SELECT kabul edilir", {

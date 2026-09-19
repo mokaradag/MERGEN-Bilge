@@ -295,11 +295,7 @@ test_that("nihai yanıt sonlandırma noktaları alt bilgiyi iliştirir", {
     path <- file.path(root, rel)
     raw_bytes <- readBin(path, what = "raw", n = file.info(path)$size)
     txt <- iconv(rawToChar(raw_bytes), from = "UTF-8", to = "UTF-8", sub = "byte")
-    # YORUM SATIRLARI KANIT SAYILMAZ: `grepl("pk_provenance_decorate", ...)` bir
-    # Türkçe yorumla da eşleşir. Gerçek çağrı kaldırılıp yalnızca yorum
-    # bırakılırsa muhafız yeşil kalırken alt bilgi HİÇ eklenmezdi.
-    satirlar <- strsplit(gsub("\r\n?", "\n", txt), "\n", fixed = TRUE)[[1]]
-    satirlar[!grepl("^\\s*#", satirlar, useBytes = TRUE)]
+    strsplit(pk_test_strip_r_comments(txt), "\n", fixed = TRUE)[[1]]
   }
 
   # `helpers_chat_runtime.R` ARTIK DOĞRUDAN DEKORE ETMEZ: benzetimli akış
