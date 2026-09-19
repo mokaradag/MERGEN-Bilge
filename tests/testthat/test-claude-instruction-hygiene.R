@@ -7,7 +7,7 @@
 
 .claude_instruction_text <- function(path) {
   repo_root <- resolve_repo_root_for_tests()
-  full_path <- file.path(repo_root, path)
+  full_path <- if (file.exists(path)) path else file.path(repo_root, path)
   size <- suppressWarnings(file.info(full_path)$size[1])
 
   if (is.na(size) || size <= 0) {
@@ -58,9 +58,7 @@ test_that("tüm proje Claude kuralları paths frontmatter ile koşullu kalır", 
   expect_gte(length(files), 10L)
 
   for (path in files) {
-    rel <- sub(paste0("^", gsub("\\", "/", repo_root, fixed = TRUE), "/?"), "",
-               gsub("\\", "/", path, fixed = TRUE))
-    lines <- .claude_instruction_lines(rel)
+    lines <- .claude_instruction_lines(path)
     fences <- which(lines == "---")
 
     expect_true(length(lines) >= 4L, info = basename(path))
