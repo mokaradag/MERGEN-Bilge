@@ -2,6 +2,20 @@
 
 This document records the conservative migration plan for the former 8,422-line root `CLAUDE.md`.
 
+## Live-rule disposition policy
+
+The initial heading map is deliberately lossless, but destination alone is not
+enough. During implementation each item is also classified as invariant,
+subsystem contract, historical rationale, dynamic snapshot, or stale snapshot.
+
+Dynamic/stale examples are documented in
+`docs/maintainers/claude-code-staleness-audit.md`. In particular,
+`Current Product Version Reference` is confirmed stale and is **not** migrated
+as a live version claim. The live rule points to `version_history.md`.
+
+A destination of a scoped rule means "preserve the operative constraint there";
+it does not mean every historical sentence, count or dated status is copied.
+
 ## Safety strategy
 
 - The former `CLAUDE.md` is preserved verbatim at `docs/maintainers/claude-code-full-contract-reference.md`.
@@ -183,7 +197,7 @@ Every H2–H4 heading from the former file is listed below. The archive remains 
 | 6143 | H3 | Focused behavioral regression contracts | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
 | 6177 | H3 | Strict test runner rule | `.claude/rules/testing-validation.md` |
 | 6185 | H3 | testthat edition declaration contract | `.claude/rules/speech-media.md` |
-| 6222 | H3 | Current baseline coverage | `.claude/rules/testing-validation.md` |
+| 6222 | H3 | Current baseline coverage | **DERIVE LIVE — `tests/` + validation scripts; archive history only** |
 | 6285 | H3 | Scripted validation flow (`tests/scripts/`) | `.claude/rules/testing-validation.md` |
 | 6301 | H3 | Admin Feedback Analysis modularization contract | `.claude/rules/admin-health.md` |
 | 6368 | H3 | Production operation | `.claude/rules/docs-operations.md` |
@@ -243,7 +257,7 @@ Every H2–H4 heading from the former file is listed below. The archive remains 
 | 7032 | H3 | UI assets | `.claude/rules/frontend-ui.md` |
 | 7045 | H3 | Important static directories | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
 | 7055 | H2 | Server Flow | `.claude/rules/runtime-architecture.md` |
-| 7061 | H3 | Current server initialization helper layer | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
+| 7061 | H3 | Current server initialization helper layer | **DERIVE LIVE — server/source manifest** |
 | 7099 | H3 | SSO behavior | `.claude/rules/security-identity.md` |
 | 7102 | H4 | Local development | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
 | 7109 | H4 | Production / VM / Keycloak | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
@@ -290,12 +304,12 @@ Every H2–H4 heading from the former file is listed below. The archive remains 
 | 7763 | H3 | What these metrics mean | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
 | 7772 | H3 | Source files | `.claude/rules/files-storage.md` |
 | 7776 | H3 | Operational rule | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7823 | H3 | Current tracked async families | `.claude/rules/runtime-architecture.md` |
+| 7823 | H3 | Current tracked async families | **DERIVE LIVE — instrumentation/health code** |
 | 7835 | H2 | Front-End Structure Notes | `CLAUDE.md` or the closest scoped rule (see rationale) |
 | 7837 | H2 | CSS | `.claude/rules/frontend-ui.md` |
 | 7853 | H2 | JS | `.claude/rules/frontend-ui.md` |
 | 7866 | H3 | Practical rule | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
-| 7871 | H2 | Current User-Facing Pages and What They Mean | `.claude/rules/frontend-ui.md` |
+| 7871 | H2 | Current User-Facing Pages and What They Mean | **DERIVE LIVE — UI/module wiring** |
 | 7873 | H3 | `chat` | `.claude/rules/llm-chat-streaming.md` |
 | 7891 | H3 | `history` | `docs/maintainers/claude-code-full-contract-reference.md` (reference-only unless covered by a scoped rule) |
 | 7894 | H3 | `saved_chats` | `.claude/rules/llm-chat-streaming.md` |
@@ -354,7 +368,7 @@ Every H2–H4 heading from the former file is listed below. The archive remains 
 | 8359 | H3 | Bilge Yolaç | `.claude/rules/bilge-yolac.md` |
 | 8365 | H3 | SSO-sensitive logic | `.claude/rules/security-identity.md` |
 | 8370 | H2 | Key Files to Read First | `CLAUDE.md` |
-| 8397 | H2 | Current Product Version Reference | `CLAUDE.md` or the closest scoped rule (see rationale) |
+| 8397 | H2 | Current Product Version Reference | **REFERENCE ONLY — confirmed stale; derive from `version_history.md`** |
 | 8408 | H2 | Final Guidance for Coding Agents | `CLAUDE.md` |
 
 ## Review rule
