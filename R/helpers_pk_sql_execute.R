@@ -335,8 +335,8 @@ pk_sql_execute_bounded <- function(conn, sql_text, unicode_param = TRUE,
                            overhead_factor = yuk_carpani),
     # PLANLAYICI HATASI güvenlik arızasıdır: çağıranın istediği parçaya
     # (normalde 5.000) dönmek, güvenli granülarite kurulamamışken büyük bir ilk
-    # `dbFetch()` yapmak olurdu. Kapalı başarısız: tek satır.
-    error = function(e) list(rows = 1L, bounded = FALSE,
+    # `dbFetch()` yapmak olurdu. TEK SATIR DA GÜVENLİ DEĞİLDİR (PR #719 inceleme, P3): `pk_sql_plan_chunk_rows()` aynı kanıt durumunda (`metadata_unavailable`) `refuse = TRUE` döndürür, çünkü TEK bir hücre `varchar(max)`/XML/image olabilir ve bayt kapısı ancak materyalizasyondan SONRA çalışır. Planlayıcı hatası daha da AZ kanıt taşır; `refuse` olmadan istek devam ediyor ve tek sınırsız hücre `MERGEN_PK_MAX_RESULT_MB` üzerinde materyalize olabiliyordu.
+    error = function(e) list(rows = 1L, bounded = FALSE, refuse = TRUE,
                              reason = "plan_failed")
   )
 

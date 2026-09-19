@@ -67,7 +67,10 @@
 }
 
 .pk_worker_token_root <- function() {
-  yol <- file.path(tempdir(), paste0("pk_worker_", as.integer(runif(1, 1, 1e9))))
+  # `runif()` OTURUM RNG akisini tuketir: tohumlanmis bir akisa dayanan sonraki
+  # her test dosya SIRASINA bagimli hale gelirdi. `tempfile()` ayni zamanda
+  # ayni tamsayinin iki kez cikma riskini de kaldirir.
+  yol <- tempfile("pk_worker_")
   dir.create(yol, recursive = TRUE, showWarnings = FALSE)
   yol
 }

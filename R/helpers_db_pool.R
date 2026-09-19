@@ -159,11 +159,24 @@ db_pool_config <- function() {
   invisible(NULL)
 }
 
+# Havuz hedefini tüm açık giriş noktalarında aynı biçimde çöz.
+.db_pool_normalize_target <- function(target, allow_multiple = FALSE) {
+  if (is.factor(target)) target <- as.character(target)
+  target <- suppressWarnings(as.character(target))
+  if (!length(target) || anyNA(target) || any(!nzchar(target)) ||
+      (!isTRUE(allow_multiple) && length(target) != 1L)) {
+    stop("DB havuz hedefi tek ogeli, bos olmayan bir metin olmalidir.",
+         call. = FALSE)
+  }
+  target
+}
+
 # ------------------------------------------------------------------------------
 # Aktif havuz nesnesini döndürür (yoksa NULL). Önce iç durum, sonra geriye dönük
 # `.GlobalEnv$pool` (yalnızca primary). Geçersiz/kapalı havuzları yok sayar.
 # ------------------------------------------------------------------------------
 db_pool_get <- function(target = "primary") {
+  target <- .db_pool_normalize_target(target)
   st <- .mergen_db_pool_state
   obj <- st$pools[[target]]
   if (!is.null(obj) && inherits(obj, "Pool") && isTRUE(.db_pool_object_valid(obj))) {
@@ -190,6 +203,7 @@ db_pool_get <- function(target = "primary") {
 }
 
 db_pool_is_active <- function(target = "primary") {
+  target <- .db_pool_normalize_target(target)
   !is.null(db_pool_get(target))
 }
 
@@ -208,6 +222,8 @@ db_pool_is_active <- function(target = "primary") {
 # ------------------------------------------------------------------------------
 init_db_pool_once <- function(target = "primary", factory = NULL, force = FALSE,
                               fail_fast = isTRUE(db_pool_config()$fail_fast)) {
+  target <- .db_pool_normalize_target(target)
+
   if (!isTRUE(force) && !is_db_pool_enabled()) {
     .db_pool_record_event("init_skipped", list(target = target, reason = "disabled"))
     return(invisible(NULL))
@@ -278,13 +294,30 @@ init_db_pool_once <- function(target = "primary", factory = NULL, force = FALSE,
     stop("Havuz icin 'odbc' paketi gerekli.", call. = FALSE)
   }
 
-  dsn_var <- switch(target,
+  # KAPALI BAŞARISIZ HEDEF ÇÖZÜMÜ (PR #719 incelemesi, P2).
+  #
+  # Eskiden hem BİLİNMEYEN bir hedef hem de TANIMSIZ `DB_DSN_2`/`DB_DSN_3`
+  # sessizce `DB_DSN`e düşüyordu: `secondary` için açılan havuz BİRİNCİL
+  # veritabanına bağlanıyor ve havuzlanmış her sorgu YANLIŞ veritabanında
+  # çalışıyordu. Boş-DSN muhafızı da hiç devreye girmiyordu (yedek değer
+  # doluydu). Yalnızca `primary` için yerleşik varsayılan korunur.
+  # İkinci savunma katmanı: doğrudan çağrılarda da sayısal `switch` dağıtımı
+  # olmasın diye hedef burada da karaktere indirgenir.
+  dsn_var <- switch(as.character(target)[1],
     "primary"   = "DB_DSN",
     "secondary" = "DB_DSN_2",
     "tertiary"  = "DB_DSN_3",
-    "DB_DSN"
+    NULL
   )
-  dsn_name <- Sys.getenv(dsn_var, Sys.getenv("DB_DSN", "TestConnection"))
+  if (is.null(dsn_var)) {
+    stop(sprintf("Havuz icin bilinmeyen hedef: '%s'.",
+                 as.character(target %||% "")[1]), call. = FALSE)
+  }
+  dsn_name <- if (identical(dsn_var, "DB_DSN")) {
+    Sys.getenv("DB_DSN", "TestConnection")
+  } else {
+    Sys.getenv(dsn_var, "")
+  }
   if (identical(dsn_name, "")) {
     stop(sprintf("Havuz icin '%s' DSN tanimi yok.", dsn_var), call. = FALSE)
   }
@@ -370,7 +403,11 @@ init_db_pool_once <- function(target = "primary", factory = NULL, force = FALSE,
 # ------------------------------------------------------------------------------
 close_db_pool_once <- function(target = NULL) {
   st <- .mergen_db_pool_state
-  targets <- if (is.null(target)) names(st$pools) else target
+  targets <- if (is.null(target)) {
+    names(st$pools)
+  } else {
+    .db_pool_normalize_target(target, allow_multiple = TRUE)
+  }
   targets <- targets[nzchar(targets)]
 
   for (tg in targets) {
@@ -404,6 +441,7 @@ close_db_pool_once <- function(target = NULL) {
 # $checked_out, $target.
 # ------------------------------------------------------------------------------
 db_acquire_tx_connection <- function(target = "primary") {
+  target <- .db_pool_normalize_target(target)
   pool_obj <- db_pool_get(target)
   ci_direct <- NULL
 

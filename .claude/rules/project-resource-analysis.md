@@ -28,6 +28,9 @@ paths:
   source-table/provenance and numeric precision contracts.
 - Async worker lifecycle, cancellation, markers, secrets and current-request
   checks remain non-blocking and fail-closed.
+- Keep artifact serving, URL verification and disk cleanup in
+  `R/helpers_pk_async_artifact.R`, loaded after the lifecycle helper and before
+  the apply helper. Isolated lifecycle tests must also source the artifact helper.
 - Generated query metadata/tooling is VM/operator-sensitive; do not claim cloud
   checks prove live DB metadata generation.
 - Current query/schema inventories must be derived from the query library and

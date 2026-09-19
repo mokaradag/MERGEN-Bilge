@@ -164,7 +164,8 @@ pk_degradations_from_filter_status <- function(status) {
 
   parts <- vapply(filters, function(f) {
     col <- .pk_footer_sanitize(f$column %||% "?", 60L)
-    val <- .pk_footer_sanitize(paste(as.character(f$value %||% ""), collapse = ", "), 80L)
+    # `[[` (kısmi eşleşme YOK): v2 yaprakları `values`, v1 filtreleri `value` taşır; `$` kurtarması TESADÜFİDİR ve "value" ile başlayan ikinci bir alan eklendiğinde BOŞ değere düşerdi.
+    val <- .pk_footer_sanitize(paste(as.character((f[["values"]] %||% f[["value"]]) %||% ""), collapse = ", "), 80L)
     sprintf("%s = \"%s\" (%s)", col, val, .pk_operation_label(f$operation))
   }, character(1))
 

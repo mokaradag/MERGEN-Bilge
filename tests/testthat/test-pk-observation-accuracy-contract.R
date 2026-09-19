@@ -257,3 +257,81 @@ test_that("düşürülen filtre stopped gibi özgül durumları ezmez", {
 
   expect_identical(captured$info$filter_status, "stopped")
 })
+
+# ---------------------------------------------------------------------------
+# KARSILANAMAYAN TOPLULASTIRMA: BOS GIRDI ve KAPSAM ADLANDIRMASI
+# (PR #719 inceleme, P3)
+# ---------------------------------------------------------------------------
+
+test_that("BOS girdide de dusen toplulastirma kaydedilir", {
+  pk_test_pin_config("MERGEN_PK_ENGINE", "v1")
+  env <- .pk_observation_test_env()
+  env$pk_provenance_current_request_id <- function(session) "req-bos"
+
+  # Bos girdi dali, gec geri dusmeden ONCE calisir; eskiden `dusen_toplama`
+  # hic atanmiyor ve `aggregation_dropped` bildirimi kullanicıya HIC
+  # ulasmiyordu.
+  sonuc <- local({
+    session <- list()
+    selected_query <- list(id = "q-bos", name = "Bos", engine = "v1")
+    env$apply_smart_filters(
+      data.frame(tur = character(0), tutar = numeric(0), stringsAsFactors = FALSE),
+      list(filters = list(), aggregation = "average", group_column = NULL),
+      "Ortalama nedir"
+    )
+  })
+
+  # SEMA KORUNUR (mevcut sozlesme).
+  expect_identical(nrow(sonuc), 0L)
+  expect_identical(ncol(sonuc), 2L)
+
+  gozlem <- env$pk_filter_observation_take(list(
+    request_id = "req-bos", query_id = "q-bos", query_name = "Bos",
+    question = "Ortalama nedir"
+  ))
+
+  expect_true(is.list(gozlem$dropped_aggregation))
+  expect_identical(as.character(gozlem$dropped_aggregation$aggregation)[1], "average")
+  expect_true(nzchar(as.character(gozlem$dropped_aggregation$reason)[1]))
+})
+
+test_that("BOS girdide `count` istegi bozulma URETMEZ", {
+  pk_test_pin_config("MERGEN_PK_ENGINE", "v1")
+  env <- .pk_observation_test_env()
+  env$pk_provenance_current_request_id <- function(session) "req-bos-count"
+
+  sonuc <- local({
+    session <- list()
+    selected_query <- list(id = "q-bc", name = "BosSayim", engine = "v1")
+    env$apply_smart_filters(
+      data.frame(tur = character(0), stringsAsFactors = FALSE),
+      list(filters = list(), aggregation = "count", group_column = NULL),
+      "Kac adet"
+    )
+  })
+
+  # `count` OTORITER cevabi sifirdir; bu bir bozulma DEGILDIR.
+  expect_identical(as.integer(sonuc$Adet[1]), 0L)
+
+  gozlem <- env$pk_filter_observation_take(list(
+    request_id = "req-bos-count", query_id = "q-bc", query_name = "BosSayim",
+    question = "Kac adet"
+  ))
+  expect_null(gozlem$dropped_aggregation)
+})
+
+test_that("filtresiz dusen toplulastirma kapsami FILTRELENMIS diye anlatmaz", {
+  env <- .pk_observation_test_env()
+  dusen <- list(aggregation = "average", reason = "desteklenmeyen toplulastirma turu")
+
+  filtresiz <- env$.pk_dropped_aggregation_degradations(dusen, filtered = FALSE)
+  expect_length(filtresiz, 1L)
+  expect_identical(filtresiz[[1]]$code, "aggregation_dropped")
+  # v1 filtresiz istekte YETKILI TUM satirlari dondurur; bunu "filtrelenmis
+  # kayit listesi" diye sunmak YANLIS bir kapsam bildirirdi.
+  expect_false(grepl("filtrelenmi", filtresiz[[1]]$message, fixed = TRUE))
+  expect_true(grepl("kayıt listesidir", filtresiz[[1]]$message, fixed = TRUE))
+
+  filtreli <- env$.pk_dropped_aggregation_degradations(dusen, filtered = TRUE)
+  expect_true(grepl("filtrelenmi", filtreli[[1]]$message, fixed = TRUE))
+})

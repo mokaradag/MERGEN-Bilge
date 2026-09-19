@@ -5,6 +5,28 @@
 
 local({
   repo_root <- resolve_repo_root_for_tests()
+
+  # ANLIK GÖRÜNTÜ `%||%` ATAMASINDAN ÖNCE ALINIR: sonra alınırsa operatör
+  # `eklenen` kümesine GİRMEZ ve temizlik onu hiç kaldırmaz.
+  onceki_adlar <- ls(globalenv(), all.names = TRUE)
+  onceki_degerler <- mget(onceki_adlar, envir = globalenv(), inherits = FALSE)
+  # Kaynaklama yarıda kalsa da eski bağlamalar geri yüklenir.
+  # Sentetik kurulum testi temizlik ortamını doğrudan geçer; böylece testthat
+  # namespace'ini mock'lamak zorunda kalmaz ve sürüm farklarından etkilenmez.
+  temizlik_ortami <- if (exists(".pk_meta_teardown_env_override", inherits = TRUE)) {
+    get(".pk_meta_teardown_env_override", inherits = TRUE)
+  } else {
+    testthat::teardown_env()
+  }
+  if (!is.environment(temizlik_ortami)) {
+    stop("PK metadata test temizlik ortamı geçersiz.")
+  }
+  withr::defer({
+    eklenen <- setdiff(ls(globalenv(), all.names = TRUE), onceki_adlar)
+    if (length(eklenen)) rm(list = eklenen, envir = globalenv())
+    list2env(onceki_degerler, envir = globalenv())
+  }, envir = temizlik_ortami)
+
   # KAPSAM `globalenv()` ILE SINIRLIDIR (PR #705 inceleme, P3).
   #
   # `inherits = TRUE` araması PAYLASILAN testthat yardimci ortamini da kapsar; o
@@ -26,6 +48,7 @@ local({
   )) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = globalenv())
   }
+
 })
 
 .review_registry <- function() {
@@ -35,6 +58,42 @@ local({
     "date.project_start" = list(role = "date", unit = NULL)
   )
 }
+
+test_that("metadata test kurulumu eski globalleri geri yükler", {
+  testthat::skip_if_not_installed("callr")
+  kok <- resolve_repo_root_for_tests()
+  for (kesinti in c(FALSE, TRUE)) {
+    sonuc <- callr::r(function(kok, kesinti) {
+      eski <- function(...) "önceki yardımcı"
+      assign("pk_meta_query_field_allowlist", eski, envir = globalenv())
+      assign("PK_META_STATUS_OK", "önceki sabit", envir = globalenv())
+      adlar <- ls(globalenv(), all.names = TRUE)
+      env <- new.env(parent = globalenv())
+      env$resolve_repo_root_for_tests <- function() kok
+      temizlik <- environment()
+      env$.pk_meta_teardown_env_override <- temizlik
+      if (kesinti) {
+        env$source <- function(...) {
+          base::source(...)
+          stop("sentetik kaynaklama hatası")
+        }
+      }
+      kurulum <- parse(file.path(kok, "tests/testthat",
+                                "test-pk-query-meta-review-hardening.R"),
+                       encoding = "UTF-8")[[1]]
+      hata <- tryCatch({ eval(kurulum, env); FALSE }, error = function(e) TRUE)
+      withr::deferred_run(temizlik)
+      list(hata = hata,
+           yardimci = identical(get("pk_meta_query_field_allowlist", globalenv()), eski),
+           sabit = identical(get("PK_META_STATUS_OK", globalenv()), "önceki sabit"),
+           yeni = setdiff(ls(globalenv(), all.names = TRUE), adlar))
+    }, args = list(kok, kesinti))
+    expect_identical(sonuc$hata, kesinti)
+    expect_true(sonuc$yardimci)
+    expect_true(sonuc$sabit)
+    expect_length(sonuc$yeni, 0L)
+  }
+})
 
 .review_meta <- function() {
   list(

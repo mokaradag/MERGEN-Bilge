@@ -319,7 +319,7 @@ pk_select_pass_a_payload <- function(library, cfg) {
   rol <- as.character(cm$role %||% "")[1]
   if (!is.na(rol) && nzchar(rol)) parcalar <- c(parcalar, sprintf("rol=%s", rol))
 
-  varlik <- as.character(cm$entity %||% "")[1]
+  varlik <- as.character(cm[["entity"]] %||% "")[1]  # TAM AD (PR #719 inceleme, P3): `$` listelerde KISMİ ad eşleşmesi yapar; yalnızca `entity_kinds` beyan eden bir sütunda `cm$entity` o değeri döndürüyor, `pk_select_query_entities()` ise aynı alanı `[[` ile okuyordu — iki taraf AYNI sütun için farklı varlık iddiası üretiyordu. `match` de `match_mode` tarafından kısmen eşleşir.
   if (!is.na(varlik) && nzchar(varlik)) parcalar <- c(parcalar, sprintf("varlik=%s", varlik))
 
   toplama <- as.character(cm$aggregate %||% "")[1]
@@ -339,7 +339,7 @@ pk_select_pass_a_payload <- function(library, cfg) {
     parcalar <- c(parcalar, sprintf("filtrelenebilir=%s", if (isTRUE(cm$filterable)) "evet" else "hayir"))
   }
 
-  eslesme <- as.character(cm$match %||% "")[1]
+  eslesme <- as.character(cm[["match"]] %||% "")[1]
   if (!is.na(eslesme) && nzchar(eslesme)) parcalar <- c(parcalar, sprintf("eslesme=%s", eslesme))
 
   if (!length(parcalar)) return(.pk_select_inline(etiket))

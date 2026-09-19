@@ -276,10 +276,14 @@ test_that("2^53 ustundeki integer64 olcusu YUVARLANMIS istatistik URETMEZ", {
 # tür açıklayıcı düzyazıyı taşır. Aynı normalleştirme bu dosyanın alt
 # bölümünde ve `.pk_rls_code_only()` içinde (test-pk-rls-failclosed-contract.R)
 # zaten kullanılıyordu; tek yardımcıya toplanır.
+# SATIR İÇİ YORUMLAR DA ATILIR (PR #719 inceleme, P3): eski biçim yalnızca TAM
+# SATIR yorumlarını atıyordu, `kod  # açıklama` biçimindeki satır içi yorum
+# taranan metinde KALIYORDU ve yasaklı ifadeyi alıntılayan bir açıklama
+# üretimde hiçbir gerileme olmadan olumsuz iddiayı kırabilirdi. Ortak okuyucu
+# ayrıştırıcı tabanlıdır ve dize içindeki `#` karakterini KORUR
+# (bkz. `tests/testthat/helper_pk_source_scan.R`).
 .pk_hardening_code_only <- function(metin) {
-  satirlar <- strsplit(gsub("\r\n?", "\n", metin), "\n", fixed = TRUE)[[1]]
-  paste(satirlar[!grepl("^\\s*#", satirlar, perl = TRUE, useBytes = TRUE)],
-        collapse = "\n")
+  pk_test_strip_r_comments(metin)
 }
 
 .pk_stat_test_env <- function() .pk_hardening_test_env("helpers_pk_statistical_summary.R")
@@ -306,13 +310,47 @@ test_that("additive BILDIRILMEMIS bir olcu toplulastirilmaz", {
 })
 
 test_that("v1 terminal geri dusmesi FILTRELEME UYARISINI korur", {
-  kok <- resolve_repo_root_for_tests()
-  yol <- file.path(kok, "R", "helpers_pk_statistical_summary.R")
-  ham <- readBin(yol, "raw", file.info(yol)$size)
-  metin <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
-  metin <- gsub("\r\n", "\n", metin, fixed = TRUE)
-  # Terminal geri dusmede uyari ARTIK motor bayragina bagli DEGILDIR.
-  expect_false(grepl("if (pk_v2 && isTRUE(user_filter_applied)", metin, fixed = TRUE))
+  # DAVRANIS SINANIR, KOSULUN YAZIM BICIMI DEGIL (PR #719 inceleme, P3).
+  #
+  # Eski surum yalnizca `if (pk_v2 && isTRUE(user_filter_applied)` dizesinin
+  # YOKLUGUNU ariyordu; kosul `if (isTRUE(user_filter_applied) && pk_v2)`
+  # bicimine donse v1 terminal geri dusmesi uyariyi YINE bastirir ve test
+  # yesil kalirdi. Artik geri dusme GERCEKTEN calistirilir.
+  env <- .pk_stat_test_env()
+
+  # Terminal geri dusmeye ZORLA: bicimlendirilmis ozet cok kucuk bir karakter
+  # butcesini asar ve fonksiyon temel ozete duser.
+  veri <- data.frame(
+    Kod = sprintf("K%03d", seq_len(40)),
+    Tutar = seq_len(40) * 1.5,
+    stringsAsFactors = FALSE
+  )
+
+  sonuc <- env$generate_statistical_summary(
+    veri,
+    max_total_chars = 200L,
+    mode = "full",
+    rls_total_rows = 500L,
+    user_filter_applied = TRUE
+  )
+
+  metin <- paste(sonuc$summary_text, collapse = "\n")
+  # Gercekten terminal geri dusmedeyiz (temel ozet biciminde).
+  expect_true(grepl("TOPLAM SATIR: 40", metin, fixed = TRUE))
+  # ... ve kapsam uyarisi KAYBOLMAMISTIR.
+  expect_true(grepl("F\u0130LTRELEME UYARISI", metin, fixed = TRUE))
+  expect_true(grepl("Yetki dahilinde toplam sat\u0131r: 500", metin, fixed = TRUE))
+
+  # KORUMA GEVSEMEZ: filtre uygulanmadiginda uyari URETILMEZ.
+  filtresiz <- env$generate_statistical_summary(
+    veri,
+    max_total_chars = 200L,
+    mode = "full",
+    rls_total_rows = 500L,
+    user_filter_applied = FALSE
+  )
+  expect_false(grepl("F\u0130LTRELEME UYARISI",
+                     paste(filtresiz$summary_text, collapse = "\n"), fixed = TRUE))
 })
 
 # --- Markdown çiti -------------------------------------------------------------
@@ -343,6 +381,7 @@ test_that("duzgun kapanmis blok DEGISTIRILMEZ", {
 
 test_that("kucuk harfli Turkce birim harfleri de katlanir", {
   env <- .pk_hardening_test_env(c("helpers_pk_numeric_provenance.R",
+                                  "helpers_pk_numeric_provenance_binding.R",
                                   "helpers_pk_numeric_provenance_claims.R"))
   gun_tr <- paste0("g", intToUtf8(0xFC), "n")  # "gün"
   expect_identical(env$.pk_prov_unit_fold(gun_tr), env$.pk_prov_unit_fold("gun"))
@@ -617,9 +656,7 @@ test_that("secim hata log'u BAGLANTI redaktorunu kullanir", {
   # ALINTILAYAN bir açıklama satırıyla geçebilir; olumsuz iddia ise ESKİ
   # yardımcıyı ANAN bir yorum yüzünden davranış DEĞİŞMEDEN kırılabilirdi
   # (bkz. `.pk_rls_code_only()`, test-pk-rls-failclosed-contract.R).
-  .satirlar <- strsplit(gsub("\r\n?", "\n", metin), "\n", fixed = TRUE)[[1]]
-  metin <- paste(.satirlar[!grepl("^\\s*#", .satirlar, perl = TRUE, useBytes = TRUE)],
-                 collapse = "\n")
+  metin <- pk_test_strip_r_comments(metin)
   expect_true(grepl("redact_connection_identifiers(metin)", metin, fixed = TRUE))
   expect_false(grepl("redact_sensitive_text(metin)", metin, fixed = TRUE))
 })
@@ -645,4 +682,54 @@ test_that("geri okunan buyuk tam sayi BILIMSEL GOSTERIMLE karsilastirilmaz", {
   ham <- readBin(yol, "raw", file.info(yol)$size)
   metin <- .pk_hardening_code_only(iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte"))
   expect_true(grepl("scientific = FALSE", metin, fixed = TRUE))
+})
+
+# --- RLS reddi siniflandirmasi -------------------------------------------------
+
+test_that("TUM RLS reddi baslikları 'Yetkisiz' olarak siniflandirilir", {
+  env <- .pk_hardening_test_env("helpers_pk_worker_observers.R")
+  kok <- resolve_repo_root_for_tests()
+  source(file.path(kok, "R", "helpers_pk_rls_identity.R"), encoding = "UTF-8",
+         local = env)
+
+  # BASLIKLAR URETIM URETICISINDEN ALINIR: sabit metin kopyalamak, uretimdeki
+  # baslik degisirse testi SESSIZCE anlamsiz birakirdi.
+  for (durum in list(list(db_error = TRUE), list(ambiguous = TRUE), list())) {
+    varsayilan <- env$pk_rls_denied_message(durum)
+    expect_identical(env$pk_direct_exit_outcome(varsayilan), "Yetkisiz")
+
+    # OZEL GEREKCE eklendiginde de taninir: `db_error`/`ambiguous` sonuclari
+    # bir `reason` tasidiginda mesaj KARARLI BASLIK + gerekce olur ve birebir
+    # esitlik karsilastirmasi bu yaniti kaciriyordu.
+    ozel <- env$pk_rls_denied_message(c(durum, list(reason = "Ozel gerekce metni.")))
+    expect_identical(env$pk_direct_exit_outcome(ozel), "Yetkisiz")
+  }
+})
+
+test_that("CIPLAK 'Yetki Hatasi' metni de taninmaya DEVAM eder", {
+  env <- .pk_hardening_test_env("helpers_pk_worker_observers.R")
+
+  # Kural kesin bir GENISLETMEDIR: markdown kalin imi TASIMAYAN eski bicim
+  # (uretimde baska yollarca uretilebilir) yetki reddi SAYILMAYA devam eder.
+  expect_identical(
+    env$pk_direct_exit_outcome("Yetki Hatası: bu veriye erisim yetkiniz yok."),
+    "Yetkisiz"
+  )
+})
+
+test_that("RLS DISI metinler yetki reddi sayilmaz", {
+  env <- .pk_hardening_test_env("helpers_pk_worker_observers.R")
+
+  expect_identical(env$pk_direct_exit_outcome("Beklenmeyen bir ariza olustu."),
+                   "DogrudanYanit")
+  expect_identical(env$pk_direct_exit_outcome("**Yetki** disinda bir sey"),
+                   "DogrudanYanit")
+  expect_identical(env$pk_direct_exit_outcome("**Yetki değerlendirmesi:** Sonuç hazır."),
+                   "DogrudanYanit")
+  expect_identical(env$pk_direct_exit_outcome(list(
+    type = "error_message", content = "**Yetki değerlendirmesi:** İşlem başarısız."
+  )), "Hata")
+  # Durdurma ve hata dallari DEGISMEZ.
+  expect_identical(env$pk_direct_exit_outcome("herhangi", stopped = TRUE), "Durduruldu")
+  expect_identical(env$pk_direct_exit_outcome("herhangi", error = TRUE), "Hata")
 })

@@ -123,11 +123,32 @@ if (!exists(".pk_p1_deep_holders", inherits = FALSE)) {
   if (is.null(cluster) || !length(cluster)) return(invisible(FALSE))
   for (node in cluster) {
     try(parallelly::killNode(node, signal = tools::SIGTERM), silent = TRUE)
+    # `parallelly` 1.45.0 ÖNCESİNDE başarılı bir `killNode()` düğümün `con`
+    # bağlantısını KAPATMAZ; desteklenen sürüm aralığı 1.44.0'ı da içerir ve
+    # tekrarlanan tek-kullanımlık istekler R bağlantı tablosunu tüketebilirdi.
+    # Kapatma idempotenttir: zaten kapalı bağlantıda `try()` sessizce geçer.
+    try(close(node$con), silent = TRUE)
   }
   invisible(TRUE)
 }
 
 .pk_p1_run_direct_disposable <- function(request) {
+  # TEK MUTLAK SON TARİH (PR #719 incelemesi, P3).
+  #
+  # `started_at_epoch` eksik/geçersizse iki yardımcı AYRIŞIYORDU:
+  # `.pk_p1_remaining_budget_sec()` TAM `deadline_sec` döndürüyor,
+  # `.pk_p1_direct_gate()` ise başlangıcı `Sys.time()` sanıyordu. Kümeyi
+  # başlatmak bütçenin çoğunu yediğinde yoklama döngüsü NEREDEYSE bir bütçe
+  # DAHA bekleyebiliyordu. Geçersiz başlangıç burada BİR KEZ sabitlenir; her iki
+  # yardımcı da AYNI anı görür. Geçerli bir başlangıç DEĞİŞTİRİLMEZ.
+  ham_baslangic <- suppressWarnings(as.numeric(
+    request$started_at_epoch %||% request$started_at %||% NA_real_
+  )[1])
+  if (length(ham_baslangic) != 1L || is.na(ham_baslangic) ||
+      !is.finite(ham_baslangic)) {
+    request$started_at_epoch <- as.numeric(Sys.time())
+  }
+
   gate <- .pk_p1_direct_gate(request)
   first_gate <- gate()
   if (isTRUE(first_gate$halt)) {

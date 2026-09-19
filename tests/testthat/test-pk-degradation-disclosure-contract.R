@@ -24,12 +24,17 @@
 # Bu dosyadaki POZİTİF kaynak taramaları ham metni okuyordu; bir refaktör
 # gerçek çağrıyı silip AÇIKLAYICI YORUMU bıraktığında iddialar yine geçiyor,
 # TTS köken sözleşmesi "başarılı" raporlanırken alt bilgi seslendirilebiliyordu.
+# SATIR ICI YORUMLAR DA ATILIR (PR #719 inceleme, P3): eski bicim yalnizca TAM
+# SATIR yorumlarini atiyordu; `kod  # aciklama` bicimindeki satir sonu yorumu
+# taranan metinde KALIYOR ve yasakli/aranan ifadeyi alintilayan bir aciklama
+# uretimde hicbir gerileme olmadan iddiayi etkileyebiliyordu. Kardes
+# tarayicilarla AYNI ortak okuyucu kullanilir; dize icindeki `#` KORUNUR
+# (bkz. `tests/testthat/helper_pk_source_scan.R`).
 .pk_deg_code_text <- function(path) {
   ham <- readBin(path, what = "raw", n = file.info(path)$size)
-  metin <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
-  satirlar <- strsplit(gsub("\r\n", "\n", metin, fixed = TRUE), "\n", fixed = TRUE)[[1]]
-  # Yalnizca TAM SATIR yorumlari atilir; satir sonu yorumlari kodu da tasir.
-  paste(satirlar[!grepl("^[[:space:]]*#", satirlar)], collapse = "\n")
+  pk_test_strip_r_comments(
+    iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
+  )
 }
 
 # Filtre yardımcısını izole bir ortama yükleyip LLM/kimlik bağımlılıklarını
@@ -290,11 +295,7 @@ test_that("nihai yanıt sonlandırma noktaları alt bilgiyi iliştirir", {
     path <- file.path(root, rel)
     raw_bytes <- readBin(path, what = "raw", n = file.info(path)$size)
     txt <- iconv(rawToChar(raw_bytes), from = "UTF-8", to = "UTF-8", sub = "byte")
-    # YORUM SATIRLARI KANIT SAYILMAZ: `grepl("pk_provenance_decorate", ...)` bir
-    # Türkçe yorumla da eşleşir. Gerçek çağrı kaldırılıp yalnızca yorum
-    # bırakılırsa muhafız yeşil kalırken alt bilgi HİÇ eklenmezdi.
-    satirlar <- strsplit(gsub("\r\n?", "\n", txt), "\n", fixed = TRUE)[[1]]
-    satirlar[!grepl("^\\s*#", satirlar, useBytes = TRUE)]
+    strsplit(pk_test_strip_r_comments(txt), "\n", fixed = TRUE)[[1]]
   }
 
   # `helpers_chat_runtime.R` ARTIK DOĞRUDAN DEKORE ETMEZ: benzetimli akış

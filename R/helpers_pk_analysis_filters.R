@@ -202,6 +202,29 @@ pk_filter_observation_take <- function(info) {
   observation
 }
 
+#' Karşılanamayan toplulaştırma için TEK kaynaklı gerekçe eşlemesi
+#'
+#' Boş girdi dalı ile geç geri düşüş dalı AYNI eşlemeyi kullanır; eşleme iki
+#' yerde tekrar edildiğinde boş sonuç yolunda bozulma hiç kaydedilmiyor,
+#' telemetri `aggregation_dropped` uyarısını HİÇ üretmiyordu.
+.pk_filter_dropped_aggregation <- function(agg_str, bos_girdi = FALSE) {
+  tur <- as.character(agg_str %||% "")[1]
+  if (is.na(tur) || !nzchar(tur) || identical(tur, "count")) return(NULL)
+
+  list(
+    aggregation = tur,
+    reason = if (isTRUE(bos_girdi)) {
+      "sonuç boş olduğu için uygulanamadı"
+    } else if (identical(tur, "sum")) {
+      "sonuçta sayısal sütun bulunmadığı için uygulanamadı"
+    } else if (identical(tur, "group_by")) {
+      "gruplama sütunu sonuçta bulunmadığı için uygulanamadı"
+    } else {
+      "desteklenmeyen toplulaştırma türü"
+    }
+  )
+}
+
 #' Filtreleri uygula ve aynı yürütme sırasında gözlem bilgisini kaydet
 #'
 #' Kritik sözleşme: filter_expression yalnızca bir kez değerlendirilir. Uygulanan
@@ -250,12 +273,22 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
     return(sonuc_v2)
   }
 
+  # KARŞILANAMAYAN TOPLULAŞTIRMA SESSİZ KALMAZ (PR #719 incelemesi, P2).
+  #
+  # v1 toplulaştırma bloğu yalnızca `count`/`sum`/`group_by` durumlarını
+  # karşılar. Tanınmayan bir değer ("average"), sayısal sütunu olmayan bir `sum`
+  # ya da sonuçta bulunmayan bir `group_column` SESSİZCE ham satır listesine
+  # düşüyordu: kullanıcı özet isteyip kayıt dökümü alıyor, yanıt metni ve köken
+  # alt bilgisi bu dökümü "istenen özet" gibi sunuyordu. Filtre düşürme
+  # sözleşmesinden AYRI tutulur; `filter_status` anlamı değişmez.
+  dusen_toplama <- NULL
   finish <- function(result, matched_rows) {
     try(
       .pk_filter_observation_store(context, list(
         matched_rows = as.integer(matched_rows),
         applied_filters = applied,
-        dropped_filters = dropped
+        dropped_filters = dropped,
+        dropped_aggregation = dusen_toplama
       )),
       silent = TRUE
     )
@@ -287,7 +320,16 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
         0L
       ))
     }
-    return(finish(data.frame(), 0L))
+    # SÜTUN ŞEMASI KORUNUR (PR #719 inceleme, P3): `data.frame()` 0x0 bir çerçeve
+    # döndürüyordu; `pk_compose_decide()` `ncol = 0` görüyor, paket/dışa aktarım
+    # ise sütunsuz boş bir sonuç üretiyordu. Girdi zaten 0 satırlıdır, yalnızca
+    # şema taşınır. `as.data.frame()` data.table girdisinde de `drop` uyarısı
+    # üretmeden düz çerçeve döndürür (katı paket uyarıyı hata sayar).
+    # BOŞ GİRDİDE DE BOZULMA KAYDEDİLİR (PR #719 inceleme, P3): bu erken dönüş
+    # geç geri düşüşten ÖNCE çalıştığı için `dusen_toplama` hiç atanmıyor,
+    # `aggregation_dropped` bildirimi kullanıcıya HİÇ ulaşmıyordu.
+    dusen_toplama <- .pk_filter_dropped_aggregation(agg_bos, bos_girdi = TRUE)
+    return(finish(as.data.frame(data)[0, , drop = FALSE], 0L))
   }
 
   dt <- data.table::as.data.table(data)
@@ -317,6 +359,11 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
     "en az", "ortalama", "maksimum", "minimum"
   )
 
+  # BOŞ/NULL İSTEM SIFIR UZUNLUKTA DEĞER ÜRETMEZ (PR #719 inceleme, P3):
+  # `tolower(NULL)` -> `character(0)`, `grepl()` -> `logical(0)` ve `sapply()`
+  # LİSTE döndürür; `any(list)` hata verip filtrelemeyi TAMAMEN düşürüyordu.
+  user_prompt <- suppressWarnings(as.character(user_prompt %||% "")[1])
+  if (length(user_prompt) != 1L || is.na(user_prompt)) user_prompt <- ""
   prompt_lower <- tolower(user_prompt)
   genel_soru_mu <- any(sapply(genel_soru_kaliplari, function(pattern) {
     grepl(pattern, prompt_lower, fixed = TRUE)
@@ -337,18 +384,28 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
     spesifik_varlik_var
   ))
 
+  # FİLTRE DEĞERİ LOGA GİRMEZ (PR #719 incelemesi, P1 — CWE-532).
+  #
+  # `filter_criteria` istemden türetilir ve proje adı, kişi adı, sicil ya da
+  # başka yetkiye tabi bir değer taşıyabilir. Sunucu çıktısı dosyaya alındığında
+  # bu değerler kalıcı olurdu. Tanılama için YAPI yeterlidir: sütun, işleç ve
+  # değer SAYISI. Sütun/işleç de serbest metindir ve redaksiyon zincirinden
+  # geçirilir.
   cat(sprintf("[SMART_FILTER] Filtre sayisi: %d\n", length(filters %||% list())))
   if (length(filters) > 0) {
+    guvenli <- if (exists("pk_safe_log_text", mode = "function", inherits = TRUE)) {
+      pk_safe_log_text
+    } else {
+      function(x) tryCatch(as.character(x %||% "")[1], error = function(e) "")
+    }
     for (i in seq_along(filters)) {
       f <- filters[[i]]
       cat(sprintf(
-        "[SMART_FILTER] Filtre #%d: sutun='%s', deger='%s', islem='%s'\n",
+        "[SMART_FILTER] Filtre #%d: sutun='%s', deger_sayisi=%d, islem='%s'\n",
         i,
-        f$column %||% "NULL",
-        # Çok değerli yaprakta `sprintf` vektörleşip filtre başına birden çok
-        # satır basardı; günlük tek satır kalsın diye değerler birleştirilir.
-        paste(as.character(unlist(f$value %||% "NULL", use.names = FALSE)), collapse = "|"),
-        f$operation %||% "NULL"
+        guvenli(f$column %||% "NULL"),
+        length(unlist(f$value %||% list(), use.names = FALSE)),
+        guvenli(f$operation %||% "NULL")
       ))
     }
   }
@@ -537,6 +594,9 @@ apply_smart_filters <- function(data, filter_instructions, user_prompt) {
     } else if (agg_str == "group_by" && !is.null(group_col) && group_col %in% names(dt)) {
       return(finish(as.data.frame(dt[, .N, by = group_col]), matched_rows))
     }
+
+    # Buraya düşmek, istenen toplulaştırmanın UYGULANAMADIĞI anlamına gelir.
+    dusen_toplama <- .pk_filter_dropped_aggregation(agg_str)
   }
 
   finish(as.data.frame(dt), matched_rows)

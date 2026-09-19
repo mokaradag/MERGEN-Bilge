@@ -34,9 +34,8 @@ test_that("kök CLAUDE.md kısa ve dinamik envanterlerden arındırılmış kal�
   lines <- .claude_instruction_lines("CLAUDE.md")
   text <- paste(lines, collapse = "\n")
 
-  expect_lte(
-    length(lines),
-    200L,
+  expect_true(
+    length(lines) <= 200L,
     info = "Kök CLAUDE.md 200 satırı aşmamalı; ayrıntıyı yol-kapsamlı kurala taşıyın."
   )
   expect_true(grepl("version_history.md", text, fixed = TRUE))
@@ -85,11 +84,11 @@ test_that("tüm proje Claude kuralları paths frontmatter ile koşullu kalır", 
 
     expect_true(length(lines) >= 4L, info = basename(path))
     expect_identical(lines[1], "---", info = basename(path))
-    expect_gte(length(fences), 2L, info = basename(path))
+    expect_true(length(fences) >= 2L, info = basename(path))
 
     frontmatter <- lines[seq.int(2L, fences[2] - 1L)]
     paths_index <- which(trimws(frontmatter) == "paths:")
-    expect_length(paths_index, 1L, info = basename(path))
+    expect_true(length(paths_index) == 1L, info = basename(path))
 
     if (length(paths_index) == 1L) {
       after_paths <- if (paths_index < length(frontmatter)) {

@@ -159,6 +159,15 @@
   height: 0;
 }
 
+/* Klavye odagi GORUNUR olmalidir: girdi sifir boyutlu ve seffaftir, gorunur
+   yuzey `.switch-slider`dir. Odak stili olmadan klavye kullanicisi hangi
+   kontrolde oldugunu goremiyordu. */
+.deep-thinking-switch input:focus-visible + .switch-slider {
+  outline: 2px solid var(--accent-primary, #3b82f6);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.35);
+}
+
 .deep-thinking-switch .switch-slider {
   position: absolute;
   top: 0;

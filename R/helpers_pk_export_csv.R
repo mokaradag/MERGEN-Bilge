@@ -395,6 +395,20 @@ pk_export_csv_bundle <- function(dir, base_name, plan, body,
   uretilenler <- character(0)
   tamamlandi <- FALSE
 
+  # PARÇASIZ PLAN BAŞARILI SAYILMAZ (PR #719 incelemesi, P3).
+  #
+  # `pk_export_plan()` `status = "empty"` ya da `"refuse"` durumunda
+  # `parts = list()` döner. Döngü hiç çalışmaz, parça sayısı denetimi (0 == 0)
+  # geçer ve fonksiyon YALNIZCA `Ozet`/`Bilgi` yan dosyalarını yazıp
+  # `ok = TRUE` dönerdi: kullanıcı veri İÇERMEYEN bir "başarılı" dışa aktarım
+  # alırdı. XLSX çağıranı bu durumları şu an önceden süzüyor; kapı burada da
+  # açık kalmamalıdır.
+  if (!length(plan$parts %||% list())) {
+    return(list(ok = FALSE, files = list(),
+                reason = sprintf("Dışa aktarım planı parça içermiyor (%s).",
+                                 as.character(plan$status %||% "?")[1])))
+  }
+
   geri_al <- function(reason) {
     if (exists("safe_unlink_if_exists", mode = "function", inherits = TRUE)) {
       for (y in uretilenler) safe_unlink_if_exists(y)

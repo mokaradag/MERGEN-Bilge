@@ -121,7 +121,11 @@ pk_direct_exit_outcome <- function(response_text, stopped = FALSE, error = FALSE
   metin <- pk_direct_exit_text(response_text)
 
   if (grepl("\u0130\u015flem Durduruldu", metin, fixed = TRUE)) return("Durduruldu")
-  if (grepl("Yetki Hatas\u0131", metin, fixed = TRUE)) return("Yetkisiz")
+  # Sabit RLS ret başlıkları ve eski yalın hata metni tanınır.
+  if (grepl("Yetki Hatas\u0131|\\*\\*Yetki (Bilgisi Okunamad\u0131|Kayd\u0131 Belirsiz):\\*\\*",
+            metin, perl = TRUE)) {
+    return("Yetkisiz")
+  }
   if (grepl("mevcut analiz k\u00fct\u00fcphanesinde bulunamad\u0131", metin, fixed = TRUE)) {
     return("EslesmeYok")
   }

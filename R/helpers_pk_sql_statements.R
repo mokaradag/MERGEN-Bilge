@@ -109,18 +109,34 @@
   chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", x)
 }
 
+#
+# `CREATE` LİSTEDEDİR (PR #719 incelemesi, P2). Yerel `#temp` indeks dalı
+# (`R/helpers_pk_sql_local_temp_batch.R`) denylist denetiminden `CREATE`
+# kelimesini ÇIKARIR — ifadenin KENDİSİ bir `CREATE INDEX` olduğu için. Bu,
+# aynı ifade metninde İKİNCİ bir `CREATE` bırakıyordu ve T-SQL ifadeler arasında
+# `;` zorunlu kılmadığı için `CREATE INDEX ix ON #T (a) CREATE TABLE dbo.X (c int)`
+# biçimi kapıdan geçip KALICI DDL çalıştırabiliyordu. İlk jeton ifadenin kendi
+# başlangıcıdır ve `i > 1L` koşuluyla atlanır; yalnızca SONRAKİ `CREATE`
+# reddedilir. Normal SELECT yolunda `CREATE` zaten `PK_SQL_FORBIDDEN_KEYWORDS`
+# tarafından reddedildiği için davranış değişmez.
 .PK_SQL_RESERVED_STATEMENT_STARTERS <- c(
-  "BREAK", "CHECKPOINT", "CLOSE", "CONTINUE", "DEALLOCATE", "GOTO", "IF",
-  "OPEN", "READTEXT", "RETURN", "REVERT", "SETUSER", "UPDATETEXT", "WHILE",
-  "WRITETEXT"
+  "BREAK", "CHECKPOINT", "CLOSE", "CONTINUE", "CREATE", "DEALLOCATE", "GOTO",
+  "IF", "OPEN", "READTEXT", "RETURN", "REVERT", "SETUSER", "UPDATETEXT",
+  "WHILE", "WRITETEXT"
 )
 
 # AYRILMAMIŞ ama tek başına çalışabilen yan etkili ifadeler yalnızca İKİLİ
 # biçimleriyle aranır; böylece `Enable` adlı bir sütun takma adı yanlışlıkla
 # reddedilmez.
+# `SEND ON` (Service Broker) DA İKİLİ BİÇİMDEDİR (PR #719 incelemesi, P1):
+# `SEND` yasak anahtar kelimelerde, ayrılmış başlatıcılarda ve ikililerde YOKTU;
+# `;` olmadan eklenen `SEND ON CONVERSATION @h MESSAGE TYPE [t] (@m)` ifadesi
+# sınıflandırıcının `SELECT` dalından geçip çalıştırılabiliyordu. Tek başına
+# `SEND` aranmaz: sıradan bir sütun takma adı olabilir.
 .PK_SQL_STATEMENT_STARTER_PAIRS <- list(
   c("DISABLE", "TRIGGER"),
-  c("ENABLE", "TRIGGER")
+  c("ENABLE", "TRIGGER"),
+  c("SEND", "ON")
 )
 
 # İkinci bir üst düzey ifade var mı? Varsa jeton adını döndürür, yoksa `NULL`.

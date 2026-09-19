@@ -168,3 +168,54 @@ test_that("dis sinir yokken cikis Inf'e doner (davranis korunur)", {
   expect_lt(abs(cagrilar[[1]] - 3), 0.5)  # MUTLAK sapma (bkz. yukarıdaki not).
   expect_true(is.infinite(cagrilar[[length(cagrilar)]]))
 })
+
+test_that("IZLENMEYEN dis sinir butcesiz temizlikte KORUNUR", {
+  # GERILEME (PR #719 inceleme, P3): butce sonsuz VE izlenen bir son tarih
+  # yokken `honor_outer = FALSE` yine de `setTimeLimit(elapsed = Inf)`
+  # cagiriyordu. Bu, cagiranin DOGRUDAN kurdugu (bizim izlemedigimiz)
+  # gecen-sure sinirini KALDIRIYOR, `on.exit` de `Inf` geri yukledigi icin
+  # sonraki is cagiranin zaman asimini ASABILIYORDU.
+  env <- new.env(parent = globalenv())
+  source(file.path(repo_root_for_tests, "R", "helpers_db_connection.R"),
+         encoding = "UTF-8", local = env)
+
+  cagrilar <- list()
+  env$setTimeLimit <- function(cpu = Inf, elapsed = Inf, transient = FALSE) {
+    cagrilar[[length(cagrilar) + 1L]] <<- elapsed
+    invisible(NULL)
+  }
+
+  sonuc <- env$.db_with_elapsed_budget(Inf, function() "temizlik",
+                                       honor_outer = FALSE)
+
+  expect_identical(sonuc, "temizlik")
+  # ZAMAN SINIRINA HIC DOKUNULMAZ.
+  expect_length(cagrilar, 0L)
+})
+
+test_that("IZLENEN dis sinir butcesiz temizlikte ASKIYA ALINIR ve geri gelir", {
+  # Koruma daralmaz: izlenen bir son tarih VARKEN butcesiz temizlik onu gecici
+  # olarak kaldirir (dbDisconnect kesilmesin diye) ve cikista KALANINI geri
+  # yukler.
+  env <- new.env(parent = globalenv())
+  source(file.path(repo_root_for_tests, "R", "helpers_db_connection.R"),
+         encoding = "UTF-8", local = env)
+
+  cagrilar <- list()
+  env$setTimeLimit <- function(cpu = Inf, elapsed = Inf, transient = FALSE) {
+    cagrilar[[length(cagrilar) + 1L]] <<- elapsed
+    invisible(NULL)
+  }
+
+  env$.db_with_elapsed_budget(30, function() {
+    env$.db_with_elapsed_budget(Inf, function() "temizlik", honor_outer = FALSE)
+  })
+
+  expect_gte(length(cagrilar), 3L)
+  expect_lt(abs(cagrilar[[1]] - 30), 0.5)
+  # Ic cagri sinirsiz kurar (izlenen dis sinir askiya alinir) ...
+  expect_true(is.infinite(cagrilar[[2]]))
+  # ... ve cikista dis sinirin KALANI geri yuklenir (Inf DEGIL).
+  expect_true(is.finite(cagrilar[[3]]))
+  expect_lte(cagrilar[[3]], 30 + 0.5)
+})

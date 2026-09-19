@@ -237,7 +237,13 @@ pk_export_build <- function(data, packet = list(), context = list(),
   # Bütçe yoksa (geri alma kipi / son tarih yayınlanmamış) davranış DEĞİŞMEZ.
   sinirli_asama <- function(fn) {
     if (!exists("pk_async_bounded_fs", mode = "function", inherits = TRUE)) {
-      return(list(ok = TRUE, value = fn()))
+      # SENKRON YEDEK DE TİPLİ SONUÇ DÖNER (PR #719 incelemesi, P3): `fn()`
+      # yakalanmadan değerlendirildiğinde gövde dilimleme/`transform()` hatası
+      # `pk_export_build()` tipli hata işlemesini ATLAYARAK dışarı sızıyor ve
+      # doğrudan çağıran belgelenmiş sonuç yerine ham bir condition alıyordu.
+      return(tryCatch(list(ok = TRUE, value = fn()),
+                      error = function(e) list(ok = FALSE, value = NULL,
+                                               error = conditionMessage(e))))
     }
     pk_async_bounded_fs(fn, getOption("mergen.pk.async.deadline_at", NULL))
   }

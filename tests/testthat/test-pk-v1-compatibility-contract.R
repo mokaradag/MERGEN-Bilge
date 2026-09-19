@@ -41,39 +41,19 @@
 # Yalnizca kod taranir; aciklama satirlari taranmaz (bayt guvenli okuma).
 .pk_v1_code_only <- function(rel_path) {
   full <- file.path(resolve_repo_root_for_tests(), rel_path)
-  # EKSİK DOSYA OLUMSUZ İDDİALARI KENDİLİĞİNDEN GEÇİRİR (bu dosyadaki motor
-  # sızıntısı taramaları `expect_false(grepl(...))` biçimindedir); önce VARLIK
-  # kanıtlanır, aksi hâlde yeniden adlandırılmış bir dosya sözleşmeyi VACUOUS
-  # geçirirdi.
   testthat::expect_true(file.exists(full), info = rel_path)
   size <- suppressWarnings(file.info(full)$size[1])
   if (is.na(size) || size <= 0) {
-    # BOŞ DOSYA DA VACUOUS GEÇİRİR: bu dosyalardaki taramaların çoğu
-    # `expect_false(grepl(...))` biçimindedir ve boş dize hepsini karşılar.
     stop(sprintf("Kaynak dosya BOŞ ya da okunamıyor: %s", full), call. = FALSE)
   }
   con <- file(full, open = "rb")
   on.exit(close(con), add = TRUE)
   raw_data <- readBin(con, what = "raw", n = size)
-  # `sub = "byte"` BILEREK KULLANILMAZ (PR #705 inceleme, P2).
-  #
-  # `sub = "byte"` gecersiz baytlari `<xx>` kacislarina cevirir ve sonuc ASLA
-  # `NA` olmaz; boylece hemen asagidaki "cozulemedi" korumasi OLU KOD haline
-  # gelir. Bozuk kodlanmis bir kaynak dosya sessizce taranir, Turkce metin
-  # kacislara donusur ve bu dosyadaki olumsuz taramalar (`expect_false(grepl(...))`)
-  # HICBIR ANLAM TASIMADAN gecer. Taranan dosyalar depo kaynagidir ve gecerli
-  # UTF-8 olmak ZORUNDADIR (CP1254 kaynak guvenligi sozlesmesi + parse sanity);
-  # cozulememesi gercek bir kusurdur ve GURULTULU bicimde durdurulur.
   txt <- suppressWarnings(iconv(list(raw_data), from = "UTF-8", to = "UTF-8")[[1]])
-  # BOZUK ÇEVRİM DE VACUOUS GEÇİRİR: boş metin bu dosyadaki motor-sızıntı
-  # taramalarının (`expect_false(grepl(...))`) TAMAMINI karşılar ve sözleşme
-  # hiçbir kaynak metni taranmadan "başarılı" raporlar.
   if (is.na(txt)) {
     stop(sprintf("Kaynak dosya UTF-8 olarak çözülemedi: %s", full), call. = FALSE)
   }
-  satirlar <- strsplit(enc2utf8(txt), "\n", fixed = TRUE)[[1]]
-  satirlar <- satirlar[!grepl("^\\s*#", satirlar, perl = TRUE, useBytes = TRUE)]
-  paste(satirlar, collapse = "\n")
+  pk_test_strip_r_comments(enc2utf8(txt))
 }
 
 .pk_v1_data <- function() {
@@ -110,6 +90,21 @@ test_that("v1 varsayilandir: bayrak verilmediginde motor v1'dir", {
       expect_false(isTRUE(env$pk_engine_is_v2()))
     })
   })
+})
+
+test_that("v1 boş ve çok öğeli istemleri tek metne indirger", {
+  env <- .pk_v1_env()
+  withr::local_envvar(c(MERGEN_PK_ENGINE = "v1"))
+  veri <- .pk_v1_data()
+  talimat <- list(filters = list(list(
+    column = "Durum", value = "Aktif", operation = "exact_match"
+  )))
+  for (istem in list(NULL, character(0), NA_character_, "",
+                    c("A123 projesini göster", "başka"), "Ali Veli projeleri")) {
+    utils::capture.output(sonuc <- env$apply_smart_filters(veri, talimat, istem))
+    expect_identical(as.character(sonuc$ProjeAdi), veri$ProjeAdi[1:2])
+    expect_equal(nrow(sonuc), 2L)
+  }
 })
 
 test_that("D1: v1 AYNI sutundaki filtreleri HALA kesistirir (davranis degismedi)", {
@@ -316,10 +311,7 @@ test_that("motor kipi istek basina TEK KEZ cozulur (karisik hat yasagi)", {
   )
   expect_false(is.na(ham_metin),
                info = "Modul dosyasi UTF-8 olarak cozulemedi.")
-  metin <- enc2utf8(ham_metin)
-  satirlar <- strsplit(metin, "\n", fixed = TRUE)[[1]]
-  kod <- paste(satirlar[!grepl("^\\s*#", satirlar, perl = TRUE, useBytes = TRUE)],
-               collapse = "\n")
+  kod <- pk_test_strip_r_comments(enc2utf8(ham_metin))
   expect_true(nzchar(kod), info = "Modul kodu okunamadi.")
 
   # GERILEME: asagi akis kipi `selected_query$meta`den YENIDEN cozuyordu.
@@ -469,7 +461,8 @@ test_that("v2 gozlemi filtre DEGERINI korur (koken alt bilgisi bos yazmaz)", {
               "helpers_pk_provenance.R", "helpers_pk_prompt_budget.R",
               "helpers_pk_analysis_prompts.R", "helpers_pk_precision.R", "helpers_pk_packet_stats.R", "helpers_pk_packet_context_facts.R",
               "helpers_pk_packet_keys.R", "helpers_pk_analysis_packet.R", "helpers_pk_packet_render.R",
-              "helpers_pk_numeric_provenance.R", "helpers_pk_numeric_provenance_claims.R",
+              "helpers_pk_numeric_provenance.R", "helpers_pk_numeric_provenance_binding.R",
+              "helpers_pk_numeric_provenance_claims.R",
               "helpers_pk_export_plan.R",
               "helpers_pk_export_xlsx.R", "helpers_pk_answer_compose.R",
               "helpers_pk_statistical_summary.R", "helpers_pk_analysis_result.R")) {

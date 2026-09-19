@@ -714,6 +714,10 @@ local({
          encoding = "UTF-8", local = globalenv())
   source(file.path(repo_root, "R", "helpers_pk_async_lifecycle.R"),
          encoding = "UTF-8", local = globalenv())
+  # Artefakt sunumu/temizligi PR #719 ratchet bolunmesiyle AYRI dosyadadir;
+  # uretim manifesti de bu sirayla yukler.
+  source(file.path(repo_root, "R", "helpers_pk_async_artifact.R"),
+         encoding = "UTF-8", local = globalenv())
   source(file.path(repo_root, "R", "helpers_pk_export_serve.R"),
          encoding = "UTF-8", local = globalenv())
   source(file.path(repo_root, "R", "helpers_deep_analysis_phase6.R"),
@@ -815,6 +819,18 @@ test_that("çip etiketi BOŞ `name` alanında kimliğe düşer", {
   ))
   expect_identical(etiketler, c("q001", "q002", "Gerçek Ad", "q004"))
 
+  # `name = NA_character_` DE `label` ADAYINA DUSER (PR #719 inceleme, P3).
+  #
+  # `%||%` yalnizca `NULL` atlar; `NA` gelince eski kod `label` adayini HIC
+  # denemeden `id`/`value` degerine dusuyordu. Cozumleyici cipleri `label`
+  # tasidigi icin kullaniciya KIMLIK gorunuyordu.
+  na_adli <- .mergen_pk_chip_labels(list(
+    list(id = "q010", name = NA_character_, label = "Etiket Metni"),
+    list(id = "q011", name = NA_character_),
+    list(value = "v012", label = NA_character_, name = NA_character_)
+  ))
+  expect_identical(na_adli, c("Etiket Metni", "q011", "v012"))
+
   # ADLI çip listesi ADSIZ dizi üretmelidir: adlı vektör `as.list()` sonrası
   # JSON NESNESİ olur ve tarayıcı yine "[object Object]" basar.
   adli <- .mergen_pk_chip_labels(list(a = list(id = "q001", name = "Bir"),
@@ -863,7 +879,11 @@ test_that("derin Faz 6 kurulumu YAYINLANMIŞ başlangıcı SIFIRLAMAZ", {
   options(mergen.pk.async.started_at = yayinlanan)
 
   kurulum <- pk_deep_phase6_setup(list(), session = NULL, request_id = "req-x")
-  on.exit(try(kurulum$restore(), silent = TRUE), add = TRUE)
+  # `after = FALSE`: `on.exit(add = TRUE)` isleyicileri KAYIT SIRASINDA calisir.
+  # Kurulum geri yukleyicisi SONRA calisirsa yakaladigi `yayinlanan` degerini
+  # geri yaziyor ve dis geri yuklemeyi EZIYOR; `mergen.pk.async.started_at`
+  # ayni R surecindeki sonraki testler icin BAYAT kaliyordu.
+  on.exit(try(kurulum$restore(), silent = TRUE), add = TRUE, after = FALSE)
 
   guncel <- getOption("mergen.pk.async.started_at", NULL)
   expect_true(inherits(guncel, "POSIXct"))

@@ -587,6 +587,19 @@ test_that("Turkce liste/dokum ifadeleri yerelden bagimsiz yakalanir", {
   expect_false(env$pk_compose_wants_export("hangi projeler gecikti"))
 })
 
+test_that("dt bos sonuc var olmayan onizlemeye atif yapmaz", {
+  env <- .pk_export_env()
+  bos <- .pk_export_data(0L)
+  karar <- list(mode = "dt", preview_rows = 10L)
+
+  blok <- env$pk_compose_block(
+    karar, bos, artifact = NULL, meta = .pk_export_query()$meta
+  )
+
+  expect_true(grepl("gösterilebilir bir önizleme üretilmedi", blok, fixed = TRUE))
+  expect_false(grepl("yukarıdaki önizleme", blok, fixed = TRUE))
+})
+
 test_that("Baloncuk TABLO DUVARI degildir: buyuk sonuc onizleme + ek olur", {
   skip_if_not_installed("withr")
   env <- .pk_export_env()

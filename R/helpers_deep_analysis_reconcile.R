@@ -141,32 +141,10 @@ pk_deep_packet_comparability <- function(provenance) {
 
 # ------------------------------------------------------------------------------
 # Gözlem + birleşik köken alt bilgisi fabrikası
+#
+# Birincil bağlantı YAŞAM DÖNGÜSÜ (edinme/bırakma/kısa ömürlü sağlayıcı) bu
+# dosyada DEĞİLDİR: `R/helpers_deep_analysis_connection.R` sahibidir.
 # ------------------------------------------------------------------------------
-
-#' Birincil bağlantı için İDEMPOTENT bırakıcı: çekirdek onu RLS okumasından
-#' hemen sonra bırakır ama hata yolları için `on.exit` da kurar.
-pk_deep_primary_connection_release <- function(conn_list) {
-  durum <- new.env(parent = emptyenv())
-  durum$serbest <- FALSE
-
-  list(release = function() {
-    if (isTRUE(durum$serbest)) return(invisible(FALSE))
-    durum$serbest <- TRUE
-    try(release_connection(conn_list), silent = TRUE)
-    invisible(TRUE)
-  })
-}
-
-#' Telemetri için KISA ÖMÜRLÜ bağlantı sağlayıcısı: her gözlem kendi
-#' bağlantısını açıp hemen bırakır, böylece derin analiz boyunca kullanılmayan
-#' bir birincil bağlantı tutulmaz. Açılamazsa `NULL` (telemetri fail-soft'tur).
-pk_deep_short_lived_conn_provider <- function() {
-  function() {
-    liste <- tryCatch(get_connection(), error = function(e) NULL)
-    if (!is.list(liste)) return(NULL)
-    list(conn = liste$conn, release = function() release_connection(liste))
-  }
-}
 
 #' @param conn_provider İsteğe bağlı kısa ömürlü bağlantı sağlayıcısı
 #'   (`list(conn=, release=)`); ana süreç sarmalayıcısı bunu zaten yapıyordu ama

@@ -718,6 +718,10 @@ pk_filter_compile <- function(data, filters, noop_ratio = NULL, query = NULL) {
     bos$mask <- agac_maskesi
     bos$dropped <- dusen
     bos$requested <- istenen
+    # UYGULANAN MANTIK GRUBU BU DALDA DA KORUNUR (PR #719 inceleme, P2): grup düşünce `pk_filter_zero_match_policy()` `sifir_gruplar` görmüyor, sıfır-eşleşme reddi ve açıklaması ATLANIYOR, köken/`Bilgi` sayfası da aynı kısıtı kaybediyordu.
+    if (length(agac_uygulanan)) bos$groups <- .pk_filter_tree_groups(
+      agac_uygulanan, agac_maskesi, n
+    )
     # HİÇBİR yaprak uygulanamadı: çağıran taraf bunu "filtre yoktu" ile
     # KARIŞTIRMAMALIDIR; politika katmanı bu bayrağı görüp reddeder.
     bos$all_dropped <- isTRUE(agac_reddedildi) || !length(agac_uygulanan)  # REDDEDİLEN MANTIK GRUBU BU YOLDA DA SAYILIR: aşağıdaki ana dönüş `agac_reddedildi` bayrağını birleştiriyordu, bu erken dönüş birleştirmiyordu; reddetme yalnızca `__group__` düşme kaydına bağlı kalıyordu.

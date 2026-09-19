@@ -35,10 +35,7 @@
 # bu dosyalar zaten `pk_sql_readonly_guard()` adını anan açıklama taşıyor
 # (kardeş çözüm: `.pk_rls_code_only()`, test-pk-rls-failclosed-contract.R).
 .pk_sql_code_only <- function(rel_path) {
-  satirlar <- strsplit(gsub("\r\n?", "\n", .pk_sql_read_bytes(rel_path)),
-                       "\n", fixed = TRUE)[[1]]
-  paste(satirlar[!grepl("^\\s*#", satirlar, perl = TRUE, useBytes = TRUE)],
-        collapse = "\n")
+  pk_test_strip_r_comments(.pk_sql_read_bytes(rel_path))
 }
 
 test_that("tek bir salt-okunur SELECT ve CTE+SELECT kabul edilir", {
@@ -282,7 +279,11 @@ test_that("kapi TUM PK SQL yurutme yollarinda baglidir (v1 / v2 / derin mod)", {
 })
 
 test_that("kapi MERGEN_PK_ENGINE bayragindan BAGIMSIZDIR", {
-  metin <- .pk_sql_read_bytes("R/helpers_pk_sql_readonly.R")
+  # YORUMLAR ÇIKARILIR (PR #719 inceleme, P3): olumsuz tarama yorum satırlarını
+  # da görüyordu; kapının motor bayrağından BAĞIMSIZ olduğunu AÇIKLAYAN bir
+  # yorum eklendiğinde bu sözleşme, kod hâlâ doğruyken KIRILIRDI. Aynı dosyadaki
+  # `.pk_sql_code_only()` kardeş taramaları zaten bu biçimi kullanıyor.
+  metin <- .pk_sql_code_only("R/helpers_pk_sql_readonly.R")
 
   # EKSİK DOSYA OLUMSUZ İDDİALARI KENDİLİĞİNDEN GEÇİRİR: `.pk_sql_read_bytes()`
   # okunamayan dosya için "" döner ve `grepl()` her zaman FALSE olur. Dosya
@@ -509,6 +510,35 @@ test_that("SELECT sonrasi SELECT DISI ust duzey ifade de reddedilir", {
   }
 })
 
+# SERVICE BROKER `SEND` NOKTALI VIRGULSUZ BICIMDE DE REDDEDILIR (PR #719, P1).
+#
+# `SEND` ne `PK_SQL_FORBIDDEN_KEYWORDS` ne de ayrilmis baslaticilar arasindaydi;
+# `;` olmadan eklenen `SEND ON CONVERSATION ...` ifadesi kapinin `SELECT`
+# dalindan gecip CALISTIRILABILIYORDU. Tek basina `SEND` ise mesru bir sutun
+# takma adi olabilir, bu yuzden yalnizca `SEND ON` IKILISI aranir.
+test_that("SEND ON CONVERSATION ikinci ifadesi noktali virgulsuz de reddedilir", {
+  env <- .pk_sql_gate_env()
+
+  for (ifade in c(
+    "SELECT 1 AS a\nSEND ON CONVERSATION @h MESSAGE TYPE [t] (@m)",
+    "SELECT a FROM dbo.t SEND ON CONVERSATION @h MESSAGE TYPE [t] (@m)",
+    "SELECT 1 AS a; SEND ON CONVERSATION @h MESSAGE TYPE [t] (@m)"
+  )) {
+    sonuc <- env$pk_sql_classify_readonly(ifade)
+    expect_false(isTRUE(sonuc$allowed), info = ifade)
+  }
+
+  noktasiz <- env$pk_sql_classify_readonly(
+    "SELECT 1 AS a\nSEND ON CONVERSATION @h MESSAGE TYPE [t] (@m)"
+  )
+  expect_identical(noktasiz$reason, "multiple_statements")
+  expect_identical(noktasiz$statement_kind, "send_on")
+
+  # YANLIS POZITIF KORUMASI: tek basina `Send` ayrilmis bir kelime degildir.
+  takma <- env$pk_sql_classify_readonly("SELECT a AS Send FROM dbo.t")
+  expect_true(isTRUE(takma$allowed))
+})
+
 # YANLIS POZITIF KORUMASI: `OFFSET ... FETCH NEXT ... ROWS ONLY` mesru ve
 # yaygin bir SELECT sayfalama bicimidir; `FETCH`/`NEXT` baslatici SAYILMAZ.
 test_that("OFFSET/FETCH sayfalamasi ve ayrilmamis takma adlar reddedilmez", {
@@ -579,4 +609,38 @@ test_that("parantezli ilk ifade ikinci bir SELECT'i GIZLEMEZ (PR #705 P3)", {
   )) {
     expect_true(isTRUE(env$pk_sql_classify_readonly(iyi)$allowed), info = iyi)
   }
+})
+
+test_that("SQL yukleyici yer tutucusu salt-okunur kapida REDDEDILIR (PR #719 P3)", {
+  # SOZLESME BAGI: `.sql_placeholder_text()` (R/config_sql_loader.R) ile
+  # `PK_SQL_LOADER_PLACEHOLDER_MARKER` (R/helpers_pk_sql_readonly.R) AYNI metni
+  # tasimak zorundadir; yukleyici kapidan ONCE yuklendigi icin sabit oraya
+  # kopyalanamaz. Isaret degisir de uretici guncellenmezse yer tutucu SELECT
+  # sozdizimsel olarak gecerli oldugu icin kapidan GECER ve strict kip kapaliyken
+  # analize SAHTE tek satir olarak ulasirdi. Uretici CIKTISI dogrudan kapiya
+  # verilerek bag kilitlenir.
+  kok <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(x, y) if (is.null(x)) y else x
+  for (dosya in c("helpers_pk_sql_statements.R", "helpers_pk_sql_readonly.R")) {
+    source(file.path(kok, "R", dosya), encoding = "UTF-8", local = env)
+  }
+  # Yukleyici yan etkilerini calistirmadan YALNIZCA uretici fonksiyonu alinir.
+  loader <- parse(file.path(kok, "R", "config_sql_loader.R"), encoding = "UTF-8")
+  uretici <- NULL
+  for (ifade in as.list(loader)) {
+    if (length(ifade) >= 3L && identical(as.character(ifade[[1]]), "<-") &&
+        identical(as.character(ifade[[2]]), ".sql_placeholder_text")) {
+      uretici <- eval(ifade[[3]], envir = env)
+      break
+    }
+  }
+  expect_true(is.function(uretici))
+
+  metin <- uretici("gen_00")
+  expect_true(grepl(env$PK_SQL_LOADER_PLACEHOLDER_MARKER, metin, fixed = TRUE))
+
+  sonuc <- env$pk_sql_classify_readonly(metin)
+  expect_false(isTRUE(sonuc$allowed))
+  expect_identical(as.character(sonuc$reason)[1], "loader_placeholder")
 })

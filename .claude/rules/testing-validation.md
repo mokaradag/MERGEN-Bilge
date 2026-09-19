@@ -17,6 +17,9 @@ paths:
   dependencies explicitly instead of relying on a developer machine.
 - Test bootstrap/source order should mirror runtime where the subsystem requires
   it, especially encoding/DB helpers.
+- PK source scans must use `tests/testthat/helper_pk_source_scan.R` to strip
+  inline comments while preserving string literals and Turkish source text;
+  do not reintroduce separate full-line-only readers.
 - Windows-sensitive fixtures must avoid locale/console-dependent assumptions;
   use deterministic byte/Unicode construction where needed.
 - Tests must stay offline/deterministic unless explicitly designated as
