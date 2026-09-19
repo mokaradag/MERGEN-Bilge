@@ -14,8 +14,10 @@
     "helpers_pk_config.R",
     "helpers_pk_text_turkish.R",
     "helpers_pk_numeric_provenance.R",
+    "helpers_pk_numeric_provenance_binding.R",
     "helpers_pk_numeric_provenance_claims.R",
     "helpers_pk_provenance.R",
+    "helpers_deep_analysis_connection.R",
     "helpers_deep_analysis_reconcile.R",
     "helpers_pk_query_selection_deep.R"
   )) {

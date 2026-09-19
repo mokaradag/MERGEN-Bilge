@@ -289,8 +289,13 @@ pk_meta_validate_column <- function(query_id, column, cmeta, registry = NULL) {
     }
   }
 
-  if (!is.null(cmeta$high_cardinality) &&
-      !.pk_meta_is_scalar_logical_or_na(cmeta$high_cardinality)) {
+  # TAM AD ile okunur: `$` kısmi ad eşleşmesi yapar ve yalnızca üretici alanı
+  # `high_cardinality_proved` beyan eden bir sütunda `cmeta$high_cardinality` o
+  # değeri döndürüyordu; beyan edilen sözleşme HİÇ denetlenmiyor, üretici alanı
+  # skaler mantıksal değilse küratörün hiç yazmadığı alan için hata bildiriliyordu.
+  .yuksek_kardinalite <- .pk_meta_field(cmeta, "high_cardinality")
+  if (!is.null(.yuksek_kardinalite) &&
+      !.pk_meta_is_scalar_logical_or_na(.yuksek_kardinalite)) {
     hatalar <- c(hatalar, .pk_meta_err(query_id, onek,
       " high_cardinality tek TRUE/FALSE/NA olmalidir."))
   }

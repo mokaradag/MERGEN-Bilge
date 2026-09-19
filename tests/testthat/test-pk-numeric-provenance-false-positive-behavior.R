@@ -50,6 +50,8 @@ if (!exists("%||%", mode = "function", inherits = TRUE)) {
   # yukleme sirasi test edilmis olur.
   source(file.path(kok, "R", "helpers_pk_precision.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "helpers_pk_numeric_provenance.R"), encoding = "UTF-8", local = env)
+  # Isaret/sayi baglama katmani AYRI dosyadadir; uretim manifesti de bu sirayla yukler.
+  source(file.path(kok, "R", "helpers_pk_numeric_provenance_binding.R"), encoding = "UTF-8", local = env)
   # Duzyazi iddia tarayicilari AYRI dosyadadir; uretim manifesti de bu sirayla yukler.
   source(file.path(kok, "R", "helpers_pk_numeric_provenance_claims.R"), encoding = "UTF-8", local = env)
   env
@@ -644,6 +646,7 @@ test_that("köken doğrulaması kaynak dosyada muafiyet listesi TAŞIMAZ", {
   # doğrulamaya gireceğine o dosya karar verir; tek dosyayı taramak muhafızı
   # sözleşme bozukken de geçirirdi.
   for (dosya in c("helpers_pk_numeric_provenance.R",
+                  "helpers_pk_numeric_provenance_binding.R",
                   "helpers_pk_numeric_provenance_claims.R")) {
     yol <- file.path(kok, "R", dosya)
     expect_true(file.exists(yol), info = dosya)
@@ -687,11 +690,44 @@ test_that("sayi ile isaret arasindaki isim obegi CIFT uyusmazlik uretmez (PR #70
   )
   expect_gt(length(arada_sayi$mismatches %||% list()), 0L)
 
-  # SINIRLI bosluk: sinirdan fazla sozcuk atlanmaz.
+  # SOZCUK SAYISI ARTIK SINIR DEGILDIR (uretim bulgusu, PR #719).
+  #
+  # Eski kural sayi ile isaret arasinda EN FAZLA uc sozcuge izin veriyordu.
+  # Uretimde model dogal Turkce yazinca araya bes-alti sozcuk giriyor
+  # ("46.978 ile toplam aktivitelerin buyuk bolumunu olusturuyor [fact:f]") ve
+  # TAMAMEN DOGRU bir alinti `no_number` + `missing_fact_marker` uretiyordu.
+  # Baglama artik CUMLE PARCASI temellidir; mesafe tek basina bir sey kanitlamaz,
+  # DEGER denetimi kanitlar. Asagidaki uc assertion korumanin yerinde oldugunu
+  # gosterir: dogru deger gecer, YANLIS deger ayni mesafede yine reddedilir ve
+  # ayni cumledeki ALINTILANMAMIS ikinci sayi yine raporlanir.
   uzun <- env$pk_numeric_provenance_validate(
     "Toplam 15.574 bir iki uc dort bes [fact:f].", olgular
   )
-  expect_gt(length(uzun$mismatches %||% list()), 0L)
+  expect_length(uzun$mismatches %||% list(), 0L)
+  # UYUSMAZLIK YOKLUGU TEK BASINA YETMEZ (PR #719 inceleme, P2): tarayici
+  # gecerli sayi-isaret ciftini TAMAMEN DUSURSE de bu kontrol gecerdi. Ciftin
+  # gercekten BAGLI kaldigi acikca dogrulanir.
+  expect_identical(uzun$checked, 1L)
+  expect_identical(as.character(uzun$claims[[1]]$number_text)[1], "15.574")
+  expect_identical(as.character(uzun$claims[[1]]$fact_id)[1], "f")
+
+  uzun_yanlis <- env$pk_numeric_provenance_validate(
+    "Toplam 11.111 bir iki uc dort bes [fact:f].", olgular
+  )
+  expect_true("value_mismatch" %in% .prov_fp_reasons(uzun_yanlis))
+
+  # Ayni cumlede ikinci bir VERI gorunumlu sayi varsa ve isaret tek ise, isaret
+  # SON sayiya baglanir ve digeri koken-siz kalir: koruma gevsemedi.
+  ikinci_sayi <- env$pk_numeric_provenance_validate(
+    "Toplam 15.574 kayit ve 99.999 saat uretildi [fact:f].", olgular
+  )
+  expect_gt(length(ikinci_sayi$mismatches %||% list()), 0L)
+
+  # CUMLE SINIRI hala kesicidir: onceki cumlenin sayisi bu isarete baglanmaz.
+  cumle_disi <- env$pk_numeric_provenance_validate(
+    "Toplam 15.574 kayit bulundu. Durum degerlendirildi [fact:f].", olgular
+  )
+  expect_length(cumle_disi$claims, 0L)
 
   # Yanlis deger, isim obegi arada olsa da YAKALANIR.
   yanlis <- env$pk_numeric_provenance_validate(

@@ -78,8 +78,15 @@ test_that("Faz 6 dosyaları var ve manifestte DOĞRU SIRADA yer alır", {
   ))
 
   # Uzlaştırma katmanı bağlam kurucudan ve orkestratörden ÖNCE yüklenmelidir.
+  #
+  # BAĞLANTI KATMANI DA SIRALAMAYA DAHİLDİR (PR #719 inceleme, P2): sabit
+  # manifest sayımı yalnızca dosyanın TAMAMEN eksilmesini yakalar; bölüm
+  # sözleşmesi dosya İÇİ sırayı denetlemez. Bu dosya listede olmayınca
+  # `helpers_deep_analysis_reconcile.R` sonrasına taşınması testleri GEÇİYORDU,
+  # oysa hem orkestratör hem gözlem fabrikası onu çağırır.
   expect_source_manifest_order_for_tests(c(
     "R/helpers_deep_analysis_sql.R",
+    "R/helpers_deep_analysis_connection.R",
     "R/helpers_deep_analysis_reconcile.R",
     "R/helpers_deep_analysis_context.R",
     "R/helpers_deep_analysis.R"
@@ -89,6 +96,7 @@ test_that("Faz 6 dosyaları var ve manifestte DOĞRU SIRADA yer alır", {
   expect_source_manifest_order_for_tests(c(
     "R/helpers_pk_async_session_registry.R",
     "R/helpers_pk_async_lifecycle.R",
+    "R/helpers_pk_async_artifact.R",
     "R/helpers_pk_async_apply.R",
     "R/server_handler_pk_async.R",
     "R/server_send_message.R"
@@ -663,7 +671,13 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # (`message`/`answer`/`text`/`content`); onceden ilk alan BOS/`NA` oldugunda
     # sonraki alanlar HIC denenmiyor ve telemetri bos metin kaydediyordu.
     # Fonksiyon sayisi AYNI.
-    "R/helpers_pk_worker_observers.R" = c(173L, 10L),
+    # BILINCLI GUNCELLEME (PR #719 inceleme, P3): `pk_direct_exit_outcome()`
+    # artik UC RLS reddi basligini da taniyor (`Yetki Hatasi` disindaki iki
+    # baslik `"Hata"` sayiliyor ve yetki reddi metrikleri EKSIK kaliyordu).
+    # Kural kesin bir GENISLETMEDIR: eski ciplak `Yetki Hatasi` alt dizesi de
+    # KORUNUR. Olculen taban 173 -> 184; KURESEL tavanlar (799 satir /
+    # 24 fonksiyon) DEGISMEDI ve fonksiyon sayisi AYNI.
+    "R/helpers_pk_worker_observers.R" = c(184L, 10L),
     # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 145/11 -> 155/12 (OLCULEN).
     # Dogrudan cikis artik CIKARILAN metni `pk_direct_exit_is_db_failure()`
     # fonksiyonuna gecirir; eskiden ham liste gecildigi icin DB hatasi tespiti
@@ -693,7 +707,14 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # `stash_deep_footer()` artik olgu TASIYAN kayitlari altbilgi BOS olsa da
     # saklar; onceden yalnizca bos-olmayan altbilgiye bakiliyor, olgulari olan
     # bir paket koken denetiminden DUSUYORDU. Fonksiyon sayisi AYNI.
-    "R/helpers_deep_analysis_reconcile.R" = c(293L, 19L),
+    # BILINCLI BOLME (PR #719 inceleme): 293/19 -> 271/17 (OLCULEN). Birincil
+    # baglanti yasam dongusu (idempotent birakici + kisa omurlu saglayici)
+    # `helpers_deep_analysis_connection.R` dosyasina TASINDI; oraya korumali
+    # EDINME kapisi da eklendi. Bu bir BOLME'dir, buyume degil: iki dosyanin
+    # toplami 293 -> 356 satir, cunku edinme kapisi YENI islevdir (ham
+    # `get_connection()` hatasi orkestratorden disari siziyordu).
+    "R/helpers_deep_analysis_reconcile.R" = c(271L, 17L),
+    "R/helpers_deep_analysis_connection.R" = c(85L, 7L),
     # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 250 -> 260 satir, 19 -> 20
     # fonksiyon (OLCULEN). `pk_deep_halt_status()` eklendi: `stop_check()` iki
     # AYRI nedeni tek boole'de birlestirdigi icin derin yol her durdurmayi ham
@@ -812,7 +833,12 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # cip listeden tamamen dusuyordu); (b) etiket vektorunun ADLARI dusurulur,
     # aksi halde `as.list()` JSON NESNESI uretir ve tarayici yine "[object
     # Object]" basardi. Fonksiyon sayisi AYNI.
-    "R/helpers_pk_async_lifecycle.R" = c(285L, 18L),
+    # BILINCLI GUNCELLEME (PR #719): artefakt sunumu/temizligi
+    # `helpers_pk_async_artifact.R` dosyasina BOLUNDU; bu dosya 285 satir
+    # tavanindaydi ve cip etiketi geri dusus duzeltmesi sigmiyordu. Olculen
+    # taban 285/18 -> 209/15; butce OLCULEN degere SIKILASTIRILIR.
+    "R/helpers_pk_async_lifecycle.R" = c(209L, 14L),
+    "R/helpers_pk_async_artifact.R" = c(105L, 4L),
     # BILINCLI GUNCELLEME (PR #705): `pk_stopped` artik tipli `pk_halt_status`
     # tasir; son tarih kullanici iptali gibi raporlanmaz.
     # Tavan 1 satir bayatti (olculen 223); TAM olculen degere cekildi.

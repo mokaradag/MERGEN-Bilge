@@ -382,17 +382,18 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
   }
   username <- identity_state$username
 
-  conn_list <- get_connection()
-  conn <- conn_list$conn
-  # BAĞLANTI RLS OKUMASINDAN HEMEN SONRA BIRAKILIR.
-  #
-  # Bu birincil bağlantı yalnızca yetki okuması için gerekir; eskiden TÜM derin
-  # analiz boyunca (5 sorgu + LLM) açık kalıyordu ve her sorgu AYRICA kendi
-  # hedef bağlantısını açıyordu. Ana süreçteki erken-bırakma sarmalayıcısı
-  # (`server_chat_engine_dependencies.R`) worker bootstrap'ına DÂHİL DEĞİLDİR,
-  # bu yüzden eşzamanlı asenkron derin işçiler kullanılmayan birincil
-  # bağlantıları tutup SQL Server oturumlarını tüketebiliyordu. Bırakma
-  # `conn_serbest` ile İDEMPOTENTTİR; hata yolları için `on.exit` korunur.
+  # BAĞLANTI ALMA KORUMALIDIR (PR #719 incelemesi, P2): kapı ve tipli Türkçe mesaj `pk_deep_acquire_primary_connection()` içindedir (kimlik kapısıyla aynı DB/yetki sınırı dosyası).
+  .baglanti <- pk_deep_acquire_primary_connection()  # KORUMALI ALMA (PR #719 incelemesi, P2): kapı ve tipli Türkçe hata `helpers_deep_analysis_sql.R` içindedir (kimlik kapısıyla AYNI DB/yetki sınırı dosyası).
+  if (is.null(.baglanti$conn)) return(.baglanti$message)
+  conn_list <- .baglanti$conn_list; conn <- .baglanti$conn
+  # BAĞLANTI RLS OKUMASINDAN HEMEN SONRA BIRAKILIR: bu birincil bağlantı yalnızca
+  # yetki okuması için gerekir; eskiden TÜM derin analiz boyunca (5 sorgu + LLM)
+  # açık kalıyordu ve her sorgu AYRICA kendi hedef bağlantısını açıyordu. Ana
+  # süreçteki erken-bırakma sarmalayıcısı (`server_chat_engine_dependencies.R`)
+  # worker bootstrap'ına DÂHİL DEĞİLDİR, bu yüzden eşzamanlı asenkron derin
+  # işçiler kullanılmayan birincil bağlantıları tutup SQL Server oturumlarını
+  # tüketebiliyordu. Bırakma `conn_serbest` ile İDEMPOTENTTİR; hata yolları için
+  # `on.exit` korunur.
   birakici <- pk_deep_primary_connection_release(conn_list)
   birak_conn <- birakici$release
   on.exit(birak_conn(), add = TRUE)
@@ -540,8 +541,7 @@ pk_deep_analysis_process <- function(user_prompt, chat_history, session,
         chat_history = chat_history
       ),
       error = function(e) {
-        # HAM İSTİSNA METNİ KULLANICIYA/MODELE GİTMEZ.
-        #
+        # HAM İSTİSNA METNİ KULLANICIYA/MODELE GİTMEZ:
         # `build_deep_analysis_context()` bu metni ya tüm-sorgular-başarısız
         # yanıtında DOĞRUDAN gösterir ya da "başarısızlık nedenini bildir"
         # talimatıyla modele verir. Beklenmeyen bir istisna sürücü, DSN, dosya

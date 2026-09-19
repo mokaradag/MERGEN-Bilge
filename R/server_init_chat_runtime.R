@@ -222,14 +222,30 @@ if (!exists("pk_hook_single_exit_fix_install", mode = "function",
     # metinleri tek yerden tanınır.
     unauthorized <- grepl("Yetki Hatası", response_text, fixed = TRUE) ||
       (exists("pk_rls_denied_message", mode = "function", inherits = TRUE) &&
-         isTRUE(tryCatch(
-           any(vapply(c("db_error", "ambiguous", "not_found"), function(durum) {
-             mesaj <- as.character(pk_rls_denied_message(durum))[1]
-             is.character(mesaj) && nzchar(mesaj) &&
-               identical(trimws(response_text), trimws(mesaj))
-           }, logical(1))),
-           error = function(e) FALSE
-         )))
+         isTRUE(tryCatch({
+           # `pk_rls_denied_message()` bir `rls_info` LİSTESİ bekler ve
+           # `reason`/`db_error`/`ambiguous` alanlarını okur. Buraya DÜZ
+           # karakter dizisi geçilince üç çağrı da AYNI varsayılan metni
+           # döndürüyor, `db_error`/`ambiguous` reddi eşleşmiyor ve istek yine
+           # `"Hata"` olarak kaydediliyordu (PR #719 incelemesi, P3).
+           #
+           # TAM METİN KARŞILAŞTIRMASI DA YETMEZ (PR #719 inceleme, P3):
+           # `db_error`/`ambiguous` sonuçları bir `reason` taşıdığında mesaj
+           # KARARLI BAŞLIK + gerekçe olur; birebir eşitlik o yanıtı kaçırıyor
+           # ve yetki reddi yine `"Hata"` sayılıyordu. Bu yüzden yalnızca
+           # `:**` imine kadar olan kararlı başlık ÖNEK olarak aranır.
+           basliklar <- vapply(
+             list(list(db_error = TRUE), list(ambiguous = TRUE), list()),
+             function(durum) {
+               mesaj <- as.character(pk_rls_denied_message(durum))[1]
+               if (!is.character(mesaj) || is.na(mesaj) || !nzchar(mesaj)) return("")
+               konum <- regexpr(":\\*\\*", mesaj, perl = TRUE)
+               if (konum[1] < 0L) return(mesaj)
+               substr(mesaj, 1L, konum[1] + attr(konum, "match.length") - 1L)
+             }, character(1)
+           )
+           any(nzchar(basliklar) & startsWith(trimws(response_text), basliklar))
+         }, error = function(e) FALSE)))
 
     outcome <- if (stopped) {
       "Durduruldu"

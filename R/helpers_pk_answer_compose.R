@@ -655,11 +655,18 @@ pk_compose_block <- function(decision, data, artifact = NULL, meta = list(),
     # bağlama + kayıtlı söyleşide yeniden bağlama) henüz yoktur. Kullanıcıya
     # var olmayan bir özellik ima etmemek için durum AÇIKÇA yazılır; veriye
     # erişim ek dosya üzerinden korunur.
+    # NOT EK DOSYAYA BAĞLIDIR (PR #719 incelemesi, P3): dışa aktarım
+    # reddedildiğinde/başarısız olduğunda `pk_compose_attachment_card()` "Dışa
+    # aktarım yapılmadı" yazarken bu not AYNI mesajda tam sonucun ek dosyada
+    # olduğunu söylüyordu; kullanıcı hiç üretilmemiş bir dosyayı arıyordu.
     if (identical(decision$mode, "dt")) {
-      parcalar <- c(parcalar, paste0(
-        "\n\n_(Etkileşimli tablo görünümü henüz etkin değil; yukarıdaki önizleme ",
-        "ile birlikte tam sonuç ek dosyadadır.)_"
-      ))
+      parcalar <- c(parcalar, if (isTRUE(ek_var)) {
+        paste0("\n\n_(Etkileşimli tablo görünümü henüz etkin değil; yukarıdaki ",
+               "önizleme ile birlikte tam sonuç ek dosyadadır.)_")
+      } else {
+        paste0("\n\n_(Etkileşimli tablo görünümü henüz etkin değil ve bu istek ",
+               "için ek dosya üretilmedi; yukarıdaki önizleme ile sınırlıdır.)_")
+      })
     }
   }
 

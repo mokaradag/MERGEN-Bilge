@@ -208,6 +208,19 @@ db_pool_is_active <- function(target = "primary") {
 # ------------------------------------------------------------------------------
 init_db_pool_once <- function(target = "primary", factory = NULL, force = FALSE,
                               fail_fast = isTRUE(db_pool_config()$fail_fast)) {
+  # HEDEF ÖNCE SKALER KARAKTERE İNDİRGENİR (PR #719 incelemesi, P2).
+  #
+  # `factor("secondary")` gibi bir değer hem havuz durumu aramasında hem de
+  # `.db_pool_build_default()` içindeki `switch()` dağıtımında TAMSAYI KODU
+  # olarak yorumlanır; `switch` sayısal dalda birinci dalı ("DB_DSN") seçer ve
+  # `secondary` için açılan havuz BİRİNCİL veritabanına bağlanırdı.
+  if (is.factor(target)) target <- as.character(target)
+  target <- suppressWarnings(as.character(target))
+  if (length(target) != 1L || is.na(target) || !nzchar(target)) {
+    stop("DB havuz hedefi tek ogeli, bos olmayan bir metin olmalidir.",
+         call. = FALSE)
+  }
+
   if (!isTRUE(force) && !is_db_pool_enabled()) {
     .db_pool_record_event("init_skipped", list(target = target, reason = "disabled"))
     return(invisible(NULL))
@@ -278,13 +291,30 @@ init_db_pool_once <- function(target = "primary", factory = NULL, force = FALSE,
     stop("Havuz icin 'odbc' paketi gerekli.", call. = FALSE)
   }
 
-  dsn_var <- switch(target,
+  # KAPALI BAŞARISIZ HEDEF ÇÖZÜMÜ (PR #719 incelemesi, P2).
+  #
+  # Eskiden hem BİLİNMEYEN bir hedef hem de TANIMSIZ `DB_DSN_2`/`DB_DSN_3`
+  # sessizce `DB_DSN`e düşüyordu: `secondary` için açılan havuz BİRİNCİL
+  # veritabanına bağlanıyor ve havuzlanmış her sorgu YANLIŞ veritabanında
+  # çalışıyordu. Boş-DSN muhafızı da hiç devreye girmiyordu (yedek değer
+  # doluydu). Yalnızca `primary` için yerleşik varsayılan korunur.
+  # İkinci savunma katmanı: doğrudan çağrılarda da sayısal `switch` dağıtımı
+  # olmasın diye hedef burada da karaktere indirgenir.
+  dsn_var <- switch(as.character(target)[1],
     "primary"   = "DB_DSN",
     "secondary" = "DB_DSN_2",
     "tertiary"  = "DB_DSN_3",
-    "DB_DSN"
+    NULL
   )
-  dsn_name <- Sys.getenv(dsn_var, Sys.getenv("DB_DSN", "TestConnection"))
+  if (is.null(dsn_var)) {
+    stop(sprintf("Havuz icin bilinmeyen hedef: '%s'.",
+                 as.character(target %||% "")[1]), call. = FALSE)
+  }
+  dsn_name <- if (identical(dsn_var, "DB_DSN")) {
+    Sys.getenv("DB_DSN", "TestConnection")
+  } else {
+    Sys.getenv(dsn_var, "")
+  }
   if (identical(dsn_name, "")) {
     stop(sprintf("Havuz icin '%s' DSN tanimi yok.", dsn_var), call. = FALSE)
   }

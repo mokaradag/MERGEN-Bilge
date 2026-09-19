@@ -250,20 +250,20 @@ pk_select_decide <- function(pass_b, candidates_ids, library_index, cfg,
     ))
   }
 
+  # DIŞLANAN SORGU ÇİPLERDEN ANLAMSAL KAPIDAN ÖNCE ÇIKARILIR (PR #719 incelemesi, P2): filtreleme eskiden yalnızca aşağıdaki `not_for` dalındaydı, ama `.pk_select_semantic_gate()` ONDAN ÖNCE çalışır ve her erken dönüşünde `cipler` listesini OLDUĞU GİBİ yayımlar. `missing_info` dönüşünde saklanan gereksinimler onayı geçebildiği için kullanıcı, metadata'nın UYGUN DEĞİL işaretlediği sorguyu çipe basarak çalıştırabiliyordu; `pk_select_confirmed_decision()` `not_for` denetimini YENİDEN yapmaz.
+  if (isTRUE(lexical$excluded_by_not_for)) cipler <- Filter(function(cip) !identical(as.character(cip$id %||% "")[1], as.character(pass_b$id %||% "")[1]), cipler %||% list())
+
   erken <- .pk_select_semantic_gate(pass_b, dogrulama, cipler, ortak, kapasite_uyarisi)
   if (!is.null(erken)) return(erken)
 
   # `not_for` DIŞLAMASI BÜTÜN diğer kurallardan ÖNCE gelir: kapı eskiden ikinci-aday kuralından SONRA duruyordu; Geçiş B tek aday bildirdiğinde `no_runner_up` erken dönüyor ve REDDEDİLEN sorgu çip olarak GERİ TEKLİF ediliyordu. Onay yolu yalnızca saklanan gereksinimleri doğrular, `not_for`u YENİDEN değerlendirmez; kullanıcı o çipe basarak metadata'nın uygunsuz işaretlediği sorguyu çalıştırabiliyordu. `aciklamalar` bu noktada henüz tanımlı değildir; ret metni zaten kendi gerekçesini taşır.
   if (isTRUE(lexical$excluded_by_not_for)) {
-    # REDDEDİLEN SORGU GERİ TEKLİF EDİLMEZ.
-    .not_for_id <- as.character(pass_b$id %||% "")[1]
-    not_for_cipler <- Filter(function(cip) !identical(as.character(cip$id %||% "")[1], .not_for_id), cipler %||% list())
     return(do.call(.pk_select_decision, c(
       list(PK_SELECT_STATUS_CAPABILITY_MISSING, message_tr = paste0(
         "Seçilen analizin tanımı bu tür bir soru için UYGUN OLMADIĞINI açıkça ",
         "belirtiyor; yanlış bir sonuç üretmemek adına analiz çalıştırılmadı. ",
         "Lütfen aşağıdaki seçeneklerden birini belirtin ya da sorunuzu netleştirin."
-      ), chips = not_for_cipler, disclosures = kapasite_uyarisi),
+      ), chips = cipler, disclosures = kapasite_uyarisi),
       ortak
     )))
   }

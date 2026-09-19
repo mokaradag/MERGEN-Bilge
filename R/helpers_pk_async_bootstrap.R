@@ -384,7 +384,7 @@ pk_async_worker_bootstrap <- function(repo_root, files,
   }
 
   sonuc <- tryCatch(.pk_async_worker_db_pool_init(hedef, workers = workers),
-                    error = function(e) list(ok = FALSE, enabled = TRUE, fatal = FALSE))
+                    error = function(e) list(ok = FALSE, enabled = TRUE, fatal = FALSE, admission = FALSE))
   if (isTRUE(sonuc$ok)) {
     # `%||%` `NA`yı DEĞİŞTİRMEZ: çözülemeyen bir parmak izi bayrağı `NA` yapıyor
     # ve yukarıdaki `!is.na(parmak)` denetimi her istekte başarısız olduğu için

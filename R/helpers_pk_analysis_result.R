@@ -138,6 +138,19 @@
   meta <- .pk_result_meta(query)
   etkin_filtreler <- .pk_result_effective_filters(policy, filter_criteria)
 
+  # `filtered_rows` FİLTRE SONRASI POPÜLASYONDUR, ÇIKTI SATIRI DEĞİL (PR #719
+  # inceleme, P2): `pk_apply_smart_filters_v2()` eşleşen çerçeveyi TEK SATIRLIK
+  # bir `count` ya da N satırlık bir `group_by` özetiyle DEĞİŞTİREBİLİR ve
+  # `nrow(filtered_data)` o zaman alt bilgide "3.000.000 (yetkiniz dâhilinde)
+  # -> 1 (filtre sonrası)" gibi GERÇEK DIŞI bir kapsam bildiriyordu; aynı
+  # sayı `pk_scope_signature()` ve köken alt bilgisine de giriyor. Politika
+  # TOPLULAŞTIRMA ÖNCESİ sayımı `matched_rows` alanında taşır; telemetri tarafı
+  # (`module_proje_kaynak_analizi.R`) zaten bu kuralı uyguluyordu.
+  pk_filtreli_satir <- local({
+    ham <- suppressWarnings(as.integer(policy$matched_rows)[1])
+    if (length(ham) == 1L && !is.na(ham) && ham >= 0L) ham else nrow(filtered_data)
+  })
+
   # PAKET KURULUMU KALAN BÜTÇEYLE SINIRLIDIR.
   #
   # `pk_packet_build()` büyük ama izinli bir sonuçta TÜM ÇERÇEVE üzerinde
@@ -153,7 +166,7 @@
       function() {
         pk_packet_build(filtered_data, query, list(
           authorized_rows = nrow(secure_data),
-          filtered_rows = nrow(filtered_data),
+          filtered_rows = pk_filtreli_satir,
           filters = etkin_filtreler,
           filter_status = filter_criteria$status,
           degradations = if (exists("pk_degradations_from_filter_status", mode = "function",
@@ -196,7 +209,7 @@
   } else {
     paket <- pk_packet_build(filtered_data, query, list(
       authorized_rows = nrow(secure_data),
-      filtered_rows = nrow(filtered_data),
+      filtered_rows = pk_filtreli_satir,
       filters = etkin_filtreler,
       filter_status = filter_criteria$status,
       degradations = if (exists("pk_degradations_from_filter_status", mode = "function",
@@ -306,7 +319,9 @@
           username = as.character(username %||%
             tryCatch(session$userData$user_config$name, error = function(e) NULL) %||% "?")[1],
           filters = etkin_filtreler,
-          authorized_rows = nrow(secure_data), filtered_rows = nrow(filtered_data),
+          # Dışa aktarımın `Bilgi` sayfasındaki alan da "Filtre Sonrasi Satir"
+          # etiketlidir; AYNI popülasyon sayısıdır (yukarı bak).
+          authorized_rows = nrow(secure_data), filtered_rows = pk_filtreli_satir,
           rls_scope = "Kullanici yetkisi uygulandi"
         ),
         base_name = query$id %||% "pk_analiz", query = query, format = karar$format,

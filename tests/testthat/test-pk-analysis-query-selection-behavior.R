@@ -12,9 +12,10 @@
 .source_pk_qsel_behavior_env <- function() {
   pk_env <- new.env(parent = globalenv())
 
-  pk_env$`%||%` <- function(x, y) {
-    if (is.null(x) || length(x) == 0) y else x
-  }
+  # ÜRETİM OPERATÖRÜYLE AYNI (`R/utils_common.R`): YALNIZCA `NULL` yedeğe düşer.
+  # Stub `length(x) == 0` durumunu da yedeğe düşürdüğünde test ortamı üretimden
+  # DAHA TOLERANSLI oluyor ve `character(0)` sınırındaki gerçek kusur GÖRÜNMÜYOR.
+  pk_env$`%||%` <- function(x, y) if (is.null(x)) y else x
 
   source(
     file.path(repo_root_for_tests, "R", "helpers_pk_analysis_query_selection.R"),
@@ -124,4 +125,29 @@ test_that("pk_compute_heuristic_query_scores tüm skorlar 0 ise eşiği geçmez"
   expect_equal(res$all_scores$final_score, c(0, 0))
   expect_equal(res$max_score_raw, 0)
   expect_false(res$passes_threshold)
+})
+
+test_that("print_score_table BOS tabloda erken doner (gecersiz genislik uretmez)", {
+  # GERILEME (PR #719 inceleme, P3): kutuphane bosken `max(nchar(...))` `-Inf`
+  # uretiyor, `sprintf()` bu gecersiz dinamik genisligi REDDEDIYOR ve tanilama
+  # ciktisi baslik bandi basildiktan SONRA hata ile kesiliyordu.
+  pk_env <- .source_pk_qsel_behavior_env()
+
+  bos <- pk_env$pk_init_query_score_table(list())
+  expect_identical(nrow(bos), 0L)
+
+  cikti <- utils::capture.output(
+    expect_silent(pk_env$print_score_table(bos))
+  )
+  # HICBIR sey basilmaz: ne baslik bandi ne de sutun basligi.
+  expect_length(cikti, 0L)
+
+  # DOLU tabloda davranis DEGISMEZ.
+  dolu <- pk_env$pk_init_query_score_table(list(
+    list(id = "A1", name = "Birinci Sorgu", description = "d1")
+  ))
+  dolu$final_score <- 42
+  dolu_cikti <- utils::capture.output(pk_env$print_score_table(dolu))
+  expect_gt(length(dolu_cikti), 0L)
+  expect_true(any(grepl("Birinci Sorgu", dolu_cikti, fixed = TRUE)))
 })

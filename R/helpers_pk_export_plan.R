@@ -67,15 +67,17 @@ pk_export_plan <- function(data, base_name = "Veri", query_meta = NULL,
                            max_rows = NULL, max_parts = NULL) {
   toplam <- if (is.data.frame(data)) nrow(data) else 0L
 
-  max_rows <- suppressWarnings(as.integer(
-    max_rows %||% .pk_export_cfg("MERGEN_PK_EXPORT_MAX_ROWS", query_meta, 100000L)
-  ))
-  if (is.na(max_rows) || max_rows < 1L) max_rows <- 100000L
-
-  max_parts <- suppressWarnings(as.integer(
-    max_parts %||% .pk_export_cfg("MERGEN_PK_EXPORT_MAX_PARTS", query_meta, 20L)
-  ))
-  if (is.na(max_parts) || max_parts < 1L) max_parts <- 20L
+  # SIFIR UZUNLUKLU AÇIK DEĞER VARSAYILANA DÜŞER (PR #719 inceleme, P3): `%||%`
+  # yalnızca `NULL` yakalar, bu yüzden `integer(0)`/`character(0)` bir tavan
+  # `as.integer()` sonrası `integer(0)` kalıyor ve `if (is.na(...))` "argument is
+  # of length zero" ile TÜM dışa aktarım planını TİPSİZ bir R hatasıyla
+  # düşürüyordu. Çok ögeli bir değer de skalere indirilir.
+  .tavan <- function(deger, varsayilan) {
+    ham <- suppressWarnings(as.integer(deger)[1])
+    if (length(ham) != 1L || is.na(ham) || ham < 1L) as.integer(varsayilan) else ham
+  }
+  max_rows <- .tavan(max_rows %||% .pk_export_cfg("MERGEN_PK_EXPORT_MAX_ROWS", query_meta, 100000L), 100000L)
+  max_parts <- .tavan(max_parts %||% .pk_export_cfg("MERGEN_PK_EXPORT_MAX_PARTS", query_meta, 20L), 20L)
 
   if (toplam == 0L) {
     return(list(status = "empty", parts = list(), total_rows = 0L, max_rows = max_rows,

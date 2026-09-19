@@ -27,7 +27,8 @@
                      "helpers_pk_query_meta_access.R", "helpers_pk_rls.R",
                      "helpers_pk_config.R", "helpers_pk_async_cancel.R",
                      "helpers_pk_exec_context.R", "helpers_pk_result_columns.R", "helpers_pk_result_size.R", "helpers_pk_sql_execute.R", "helpers_pk_sql_connection.R",
-                     "helpers_deep_analysis_sql.R", "helpers_deep_analysis_reconcile.R",
+                     "helpers_deep_analysis_sql.R", "helpers_deep_analysis_connection.R",
+                     "helpers_deep_analysis_reconcile.R",
                      "helpers_pk_query_selection_deep.R",
                      "helpers_deep_analysis_phase6.R",
                      "helpers_deep_analysis_selector.R")) {
@@ -46,6 +47,7 @@
                        "helpers_pk_precision.R", "helpers_pk_packet_stats.R", "helpers_pk_packet_context_facts.R", "helpers_pk_packet_keys.R", "helpers_pk_analysis_packet.R",
                        "helpers_pk_packet_render.R", "helpers_pk_answer_compose.R",
                        "helpers_pk_numeric_provenance.R",
+                       "helpers_pk_numeric_provenance_binding.R",
                        "helpers_pk_numeric_provenance_claims.R")) {
       source(file.path(kok, "R", yardimci), encoding = "UTF-8", local = env)
     }

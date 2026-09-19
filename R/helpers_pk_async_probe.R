@@ -55,19 +55,18 @@
   if (is.na(butce_sn) || !is.finite(butce_sn) || butce_sn < 0) butce_sn <- 1
 
   # ÖLÇÜLEMEYEN SONUÇ KISA SÜRE HATIRLANIR; BEKLEYEN SONDA YENİDEN KULLANILIR.
-  #
-  # Eskiden her çağrı YENİ bir `Sys.getpid()` future'ı kuyruğa alıyor ve tam
-  # bütçe boyunca ana süreçte uyuyordu; tek işçili planda sondalar gerçek
-  # analiz işinin ÖNÜNE diziliyor, her istek yoklama gecikmesini yeniden
-  # ödüyordu. `MERGEN_PK_ASYNC_PROBE_RETRY_SEC` (varsayılan 30 sn) soğuma
-  # penceresidir; `force = TRUE` pencereyi atlar.
+  # Eskiden her çağrı YENİ bir `Sys.getpid()` future'ı kuyruğa alıyor ve tam bütçe boyunca ana süreçte uyuyordu; tek işçili planda sondalar gerçek analiz işinin ÖNÜNE diziliyor, her istek yoklama gecikmesini yeniden ödüyordu.
+  # `MERGEN_PK_ASYNC_PROBE_RETRY_SEC` (varsayılan 30 sn) soğuma penceresidir; `force = TRUE` pencereyi atlar.
   soguma_sn <- suppressWarnings(as.numeric(
     Sys.getenv("MERGEN_PK_ASYNC_PROBE_RETRY_SEC", unset = "30")
   )[1])
   if (is.na(soguma_sn) || !is.finite(soguma_sn) || soguma_sn < 0) soguma_sn <- 30
+  # SOĞUMA YENİ İŞ BAŞLATMAK İÇİNDİR: bekleyen sonda ZATEN bittiyse ölçüm beklemeden okunur, aksi hâlde hazır bir sonuç soğuma penceresi boyunca yok sayılır ve asenkron yol gereksiz yere kapalı kalırdı.
+  bekleyen_hazir <- inherits(.pk_async_plan_probe_cache$pending, "Future") &&
+    isTRUE(try(future::resolved(.pk_async_plan_probe_cache$pending), silent = TRUE))
   na_kadar <- .pk_async_plan_probe_cache$na_until
-  if (!isTRUE(force) && inherits(na_kadar, "POSIXct") && length(na_kadar) == 1L &&
-      !is.na(na_kadar) && Sys.time() < na_kadar) return(NA)
+  if (!bekleyen_hazir && !isTRUE(force) && inherits(na_kadar, "POSIXct") &&
+      length(na_kadar) == 1L && !is.na(na_kadar) && Sys.time() < na_kadar) return(NA)
 
   sonuc <- tryCatch({
     f <- .pk_async_plan_probe_cache$pending
@@ -100,12 +99,12 @@
       f <- future::future(Sys.getpid(), lazy = FALSE, seed = TRUE)
       .pk_async_plan_probe_cache$pending <- f
     }
+    # ANA OLAY DÖNGÜSÜ İSTEK YOLUNDA UYUTULMAZ (PR #719 incelemesi, P2): eski `Sys.sleep()` döngüsü Shiny sürecini bütçe kadar (varsayılan 1 sn) durdurup AYNI SÜREÇTEKİ diğer oturumları da bekletiyordu. Bekleyen sonda önbelleklenir; çözülmemişse sonuç "ölçülemedi" olur (bu istek senkron yoldan gider) ve bir sonraki çağrı yukarıdaki hazır-ölçüm kapısından BLOKSUZ okur. Bekleme yalnızca AÇIK tanılama çağrısında (`force = TRUE`) uygulanır; orada olay döngüsü söz konusu değildir.
+    cozuldu <- isTRUE(future::resolved(f))
     bitis <- Sys.time() + butce_sn
-    cozuldu <- FALSE
-    repeat {
-      cozuldu <- isTRUE(future::resolved(f))
-      if (cozuldu || Sys.time() >= bitis) break
+    while (!cozuldu && isTRUE(force) && Sys.time() < bitis) {
       Sys.sleep(0.025)
+      cozuldu <- isTRUE(future::resolved(f))
     }
     if (!cozuldu) NA else {
       .pk_async_plan_probe_cache$pending <- NULL

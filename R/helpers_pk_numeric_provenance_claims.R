@@ -1,126 +1,192 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_pk_numeric_provenance_claims.R
-# Açıklama: Düzyazıdaki SAYISAL İDDİA tarayıcıları — master plan §5.11.
+# Açıklama: Düzyazıdaki SAYISAL İDDİA tarayıcısı — master plan §5.11.
 #
 #           `R/helpers_pk_numeric_provenance.R` dosyasından AYRILDI: doğrulayıcı
 #           katmanı (kip çözümleme, sayı ayrıştırma, tolerans, doğrulama/uygulama
 #           ve raporlama) ile düzyazı TARAMA katmanı ayrı sorumluluklardır ve tek
 #           dosyada 800 satır bakım ratchet'ini aşıyordu.
 #
-#           Bu dosya İKİ tarayıcı içerir ve ikisi AYNI bitişiklik kuralını
-#           uygular (PR #705 incelemesi, P2): sayı ile `[fact:...]` işareti
-#           arasında RAKAM İÇERMEYEN en fazla `.PK_PROV_MAX_GAP_WORDS` sözcük
-#           bulunabilir. Kural yalnızca birinde uygulanırsa TEK bir doğru alıntı
-#           iki ayrı uyuşmazlık olarak sayılır ve `block` kipinde DOĞRU yanıt
-#           deterministik yedekle değiştirilir.
+#           TEK GEÇİŞ SÖZLEŞMESİ: eskiden İKİ bağımsız tarayıcı vardı (alıntılı
+#           ve alıntısız) ve ikisi de bitişikliğe KENDİ kuralıyla karar
+#           veriyordu. Kurallar ayrıştığında AYNI doğru sayı bir tarayıcıda
+#           alıntılı, diğerinde köksüz görünüyor; tek iddia hem PAYI hem PAYDAYI
+#           şişiriyordu. Artık bağlama `pk_prov_bind_text()` içinde BİR KEZ
+#           yapılır: bağlanan jeton alıntıdır, bağlanmayan jeton köken adayıdır.
+#           İki kümenin kesişimi yapısal olarak BOŞTUR.
 #
-#           Yükleme sırası: bu dosya `R/helpers_pk_numeric_provenance.R`
-#           dosyasından SONRA yüklenir; tarayıcılar orada tanımlanan
-#           `.PK_PROV_*` sabitlerini ve `pk_parse_number_*()` /
-#           `.pk_prov_*()` yardımcılarını ÇAĞRI ANINDA çözer.
+#           Yükleme sırası: bu dosya `R/helpers_pk_numeric_provenance.R` ve
+#           `R/helpers_pk_numeric_provenance_binding.R` dosyalarından SONRA
+#           yüklenir; sabitleri ve yardımcıları ÇAĞRI ANINDA çözer.
 #
 #           Dosya bilerek SAFTIR: Shiny/reactive/DB/ağ/LLM bağımlılığı yoktur.
 # ==============================================================================
 
-# Metindeki her `[fact:...]` referansını ve hemen ÖNCESİNDEKİ sayıyı çıkarır.
-.pk_prov_claims <- function(text) {
-  txt <- as.character(text %||% "")[1]
-  if (is.na(txt) || !nzchar(txt)) return(list())
+#' Bir aday sayının olguya UYGUN olup olmadığını söyle (yalnızca DEĞER denetimi)
+#'
+#' Birim/toplulaştırma denetimleri doğrulayıcıda kalır; yeniden eşleştirme
+#' yalnızca değer uyumuna bakar, çünkü çözdüğü sorun işaret SIRASIDIR.
+.pk_prov_value_fits <- function(jeton, olgu) {
+  if (is.null(olgu)) return(FALSE)
+  deger <- suppressWarnings(as.numeric(olgu$value %||% NA_real_))
+  if (is.null(olgu$value) || length(deger) != 1L || is.na(deger) || !is.finite(deger)) {
+    return(FALSE)
+  }
+  adaylar <- pk_parse_number_candidates(jeton$number_text)
+  if (!length(adaylar)) return(FALSE)
+  any(abs(adaylar - deger) <= .pk_prov_tolerance(jeton$number_text, deger, olgu))
+}
 
-  konum <- gregexpr(.PK_PROV_MARKER, txt, perl = TRUE)[[1]]
-  if (identical(konum[1], -1L)) return(list())
+#' Bir adayın olguya ANLAMSAL olarak da uyup uymadığını söyle
+#'
+#' Değer denetimi tek başına AYRIM YAPAMAZ: aynı değeri taşıyan iki olgu
+#' (ör. `100 TL` toplam ile `100` ortalama) arasında yeniden eşleştirme
+#' rastgele bir geçerli eşleme seçebilir ve doğrulayıcı sonradan DOĞRU bir
+#' yanıtı `unit_mismatch`/`aggregation_mismatch` ile reddederdi. Bu yüzden
+#' uzlaştırma ÖNCE birim ve toplulaştırma uyumunu arar.
+.pk_prov_semantics_fit <- function(jeton, baglam, olgu, sozluk) {
+  if (is.null(olgu)) return(FALSE)
 
-  uzunluk <- attr(konum, "match.length")
+  olgu_birimi <- .pk_prov_unit_fold(olgu$unit %||% "")
+  iddia_birimi <- .pk_prov_unit_fold(jeton$unit %||% "")
+  if (nzchar(iddia_birimi) && !(iddia_birimi %in% sozluk)) {
+    iddia_birimi <- .pk_prov_unit_root(iddia_birimi, sozluk)
+  }
+
+  if (!identical(isTRUE(jeton$percent), identical(olgu_birimi, "%"))) {
+    return(FALSE)
+  }
+  if (nzchar(iddia_birimi) && nzchar(olgu_birimi) &&
+      !identical(iddia_birimi, olgu_birimi)) {
+    return(FALSE)
+  }
+
+  iddia_agg <- .pk_prov_claimed_aggregation(baglam)
+  olgu_agg <- as.character(olgu$aggregation %||% "")[1]
+  if (!is.null(iddia_agg) && nzchar(olgu_agg) &&
+      !identical(iddia_agg, olgu_agg) &&
+      olgu_agg %in% names(.PK_PROV_AGG_WORDS)) {
+    return(FALSE)
+  }
+  TRUE
+}
+
+#' Grup adaylarının toplulaştırma bağlamlarını METİN SIRASINDA üret
+#'
+#' Bağlam, jetonun METİNDEKİ bir öncekinden sonra başlar. Uzlaştırma işaret
+#' sırasını değiştirebildiği için bağlamı "önceki İŞARET" üzerinden kurmak
+#' yanlıştı: "Toplam 100, 50 [fact:sum50][fact:mean100]" örneğinde ilk işaret
+#' ikinci jetona eşlenince sonraki jetonun bağlamı BOŞ kalıyor ve `100`
+#' sayısının toplam diye sunulduğu hiç fark edilmiyordu.
+.pk_prov_group_contexts <- function(masked, jetonlar, grup) {
+  out <- list()
+  sirali <- sort(unique(grup$tokens %||% integer(0)))
+  onceki <- NA_integer_
+  for (idx in sirali) {
+    out[[as.character(idx)]] <- pk_prov_token_context(masked, jetonlar, idx,
+                                                      grup$segment_start, onceki)
+    onceki <- idx
+  }
+  out
+}
+
+#' Bir grubun işaretlerini adaylara eşle (konumsal, gerekirse uzlaştırılmış)
+#'
+#' Önce KONUMSAL eşleme denenir (model istem kuralına uyduğunda tek doğru
+#' okuma budur). Yalnızca konumsal eşleme değer denetiminden geçemezse, AYNI
+#' aday kümesi içinde her çiftin geçtiği birebir bir eşleme aranır. Hiçbir
+#' değer ÜRETİLMEZ; eşleme bulunamazsa konumsal sıra korunur.
+.pk_prov_group_pairing <- function(grup, jetonlar, index, baglamlar = list()) {
+  k <- length(grup$ids)
+  adaylar <- grup$tokens
+  konumsal <- rep(NA_integer_, k)
+  if (length(adaylar)) {
+    n <- min(k, length(adaylar))
+    konumsal[seq_len(n)] <- adaylar[seq_len(n)]
+  }
+
+  if (is.null(index) || length(adaylar) != k || k < 2L || k > .PK_PROV_MAX_GROUP) {
+    return(konumsal)
+  }
+
+  olgular <- lapply(grup$ids, function(id) index[[id]])
+  sozluk <- .pk_prov_unit_vocabulary(index)
+
+  # İKİ MATRİS: `uygun` yalnızca DEĞER uyumudur, `tam` birim ve toplulaştırmayı
+  # da ister. Eşit değerli olgular ancak `tam` ile ayrışabilir.
+  uygun <- matrix(FALSE, nrow = k, ncol = k)
+  tam <- matrix(FALSE, nrow = k, ncol = k)
+  for (j in seq_len(k)) {
+    jeton <- jetonlar[[adaylar[j]]]
+    baglam <- as.character(baglamlar[[as.character(adaylar[j])]] %||% "")[1]
+    for (i in seq_len(k)) {
+      uygun[i, j] <- .pk_prov_value_fits(jeton, olgular[[i]])
+      tam[i, j] <- isTRUE(uygun[i, j]) &&
+        .pk_prov_semantics_fit(jeton, baglam, olgular[[i]], sozluk)
+    }
+  }
+
+  kosegen <- function(m) {
+    all(vapply(seq_len(k), function(i) isTRUE(m[i, i]), logical(1)))
+  }
+
+  # ÖNCELİK SIRASI: anlamsal köşegen -> anlamsal uzlaştırma -> değer köşegeni ->
+  # değer uzlaştırması. Böylece eşit değerli ama farklı birimli/toplulaştırmalı
+  # olgularda KEYFİ bir geçerli eşleme seçilmez.
+  if (kosegen(tam)) return(konumsal)
+  esleme <- pk_prov_repair_pairing(tam)
+  if (!is.null(esleme)) return(adaylar[esleme])
+
+  if (kosegen(uygun)) return(konumsal)
+  esleme <- pk_prov_repair_pairing(uygun)
+  if (is.null(esleme)) return(konumsal)
+  adaylar[esleme]
+}
+
+#' Alıntılı (işaretli) sayısal iddiaları çıkar
+#'
+#' @param binding `pk_prov_bind_text()` çıktısı.
+#' @param index Olgu indeksi; verildiğinde grup içi uzlaştırma etkinleşir.
+.pk_prov_claims_from_binding <- function(masked, binding, index = NULL) {
+  jetonlar <- binding$tokens
   out <- list()
 
-  for (i in seq_along(konum)) {
-    isaret <- substr(txt, konum[i], konum[i] + uzunluk[i] - 1L)
-    fact_id <- sub("^\\[fact:", "", sub("\\]$", "", isaret))
+  for (grup in binding$groups) {
+    # BAĞLAM METİN SIRASINDA hesaplanır, eşleme SONRA uygulanır. Ters sırada
+    # kurulduğunda uzlaştırılmış bir grubun ikinci jetonu BOŞ bağlam alıyordu.
+    baglamlar <- .pk_prov_group_contexts(masked, jetonlar, grup)
+    esleme <- .pk_prov_group_pairing(grup, jetonlar, index, baglamlar)
 
-    # Bağlam penceresi hem sayıyı hem de iddia edilen toplulaştırma sözcüğünü
-    # ("toplam", "ortalama", ...) yakalayacak kadar geniştir.
-    onceki <- substr(txt, max(1L, konum[i] - 160L), konum[i] - 1L)
-    # PENCERE ÖNCEKİ İDDİANIN SINIRINDA KESİLİR.
-    #
-    # 160 karakterlik pencere iddia sınırlarını aşabiliyordu: "Ortalama süre 5
-    # saat [fact:mean]. Bütçe 100 TL [fact:sum]" metninde ikinci iddianın kendi
-    # toplulaştırma sözcüğü yoktur ve pencerede bulunan en sağdaki terim
-    # `Ortalama` olduğu için DOĞRU `sum` olgusu `aggregation_mismatch`
-    # bildiriyordu; `block` kipinde geçerli yanıt düşüyordu. Pencere önce
-    # ÖNCEKİ İŞARETTE, sonra son cümle sınırında kesilir.
-    if (i > 1L) {
-      onceki_son <- konum[i - 1L] + uzunluk[i - 1L] - 1L
-      if (onceki_son >= max(1L, konum[i] - 160L)) {
-        onceki <- substr(txt, onceki_son + 1L, konum[i] - 1L)
+    for (i in seq_along(grup$ids)) {
+      idx <- esleme[i]
+      if (is.na(idx)) {
+        # İşaret var, sayı yok. Bu bir SAYISAL hata değildir (uydurulmuş bir
+        # değer yayımlanmaz); niteliksel bir cümle de bir olguya atıf yapabilir.
+        # Tanılama için ayrı raporlanır, uyuşmazlık sayılmaz.
+        out[[length(out) + 1L]] <- list(
+          fact_id = grup$ids[i], marker = paste0("[fact:", grup$ids[i], "]"),
+          raw = "", number_text = "", value = NULL, candidates = numeric(0),
+          percent = FALSE, unit = "", context = "", numberless = TRUE
+        )
+        next
       }
+
+      jeton <- jetonlar[[idx]]
+      baglam <- as.character(baglamlar[[as.character(idx)]] %||% "")[1]
+
+      out[[length(out) + 1L]] <- list(
+        fact_id = grup$ids[i],
+        marker = paste0("[fact:", grup$ids[i], "]"),
+        raw = jeton$raw,
+        number_text = jeton$number_text,
+        value = pk_parse_number_tr(jeton$number_text),
+        candidates = pk_parse_number_candidates(jeton$number_text),
+        percent = jeton$percent,
+        unit = jeton$unit,
+        context = baglam,
+        numberless = FALSE
+      )
     }
-    # CÜMLE SONU DESENİ ONDALIK/BİNLİK NOKTAYI SAYMAZ: `18.420` içindeki nokta
-    # sınır sayılsaydı iddia edilen değer `420` olur ve DOĞRU alıntı
-    # `value_mismatch` bildirilirdi. Sınır, ardından boşluk/son gelen `.!?`.
-    # İŞARETE KOMŞU NOKTALAMA CÜMLE SINIRI SAYILMAZ: `Toplam 15.574 kayıt bulundu. [fact:f]` metninde pencerenin SONUNDAKİ nokta sınır sayılınca pencere yalnızca boşluğa iniyor ve DOĞRU alıntı `no_number` bildiriliyordu. Kuyruk ÖNCE kırpılır, sınır SONRA aranır.
-    onceki <- .pk_prov_trim_tail(onceki)
-    cumle <- gregexpr("[.!?](?=\\s|$)", onceki, perl = TRUE)[[1]]
-    if (!identical(cumle[1], -1L)) {
-      onceki <- substr(onceki, cumle[length(cumle)] + 1L, nchar(onceki))
-    }
-    # PENCERE, İZİN VERİLEN SÖZCÜK BOŞLUĞUNU KAPSAR: 60 karakter, `.PK_PROV_MAX_GAP_WORDS`
-    # (3) sözcüklük boşluk izninden DAR kalıyordu; araya giren isim öbeği uzun
-    # olduğunda sayı pencerenin DIŞINDA kalıyor, aşağıdaki kırpma döngüsü onu
-    # geri getiremiyor ve DOĞRU alıntı `no_number` bildiriliyordu. Alıntısız
-    # tarayıcı (aşağıda) zaten AYNI bütçeyi kullanır; iki tarayıcının aynı
-    # bitişiklik kuralını uygulaması dosya sözleşmesidir.
-    prov_pencere <- 60L + .PK_PROV_MAX_GAP_WORDS * 26L
-    yakin <- .pk_prov_trim_tail(substr(onceki, max(1L, nchar(onceki) - prov_pencere), nchar(onceki)))
-
-    # Birim yalnızca 1-12 harf değildir: `kişi/saat`, `adam-saat`, `m²`, `TL`
-    # gibi bileşik/simgesel birimler de olgunun gösteriminde geçebilir.
-    #
-    # DEVAM SINIFI RAKAM DA İÇERİR. `.PK_PROV_KNOWN_UNITS` `m2` biçimini kabul
-    # ederken devam sınıfında `0-9` yoktu; `12 m2 [fact:...]` metninde sona
-    # dayalı desen "12 m2" ile eşleşemiyor, geriye dönüp yalnızca sondaki `2`
-    # ile eşleşiyordu. Doğrulayıcı da iddia edilen değeri `2` sanıp
-    # `value_mismatch` bildiriyor, `block` kipinde DOĞRU yanıt yedekle
-    # değiştiriliyordu. Birimin İLK karakteri hâlâ rakam OLAMAZ (aksi hâlde
-    # "12 34" ifadesinde `34` birim sanılırdı).
-    sayi_deseni <- paste0("(%\\s*)?-?[0-9][0-9.,]*\\s*",
-                          "(%|[A-Za-zÇĞİÖŞÜçğıöşü\u20ba\u00b2\u00b3$\u20ac]",
-                          "[A-Za-z0-9ÇĞİÖŞÜçğıöşü\u20ba\u00b2\u00b3$\u20ac/.-]{0,23})?\\s*$")
-    eslesme <- regmatches(yakin, gregexpr(sayi_deseni, yakin, perl = TRUE))[[1]]
-
-    # ÖNCE mevcut (bitişik) davranış denenir; birim yakalaması KORUNUR. Yalnızca
-    # hiç sayı bulunamadığında araya giren en fazla `.PK_PROV_MAX_GAP_WORDS`
-    # sözcük tek tek kırpılıp yeniden denenir. Kırpılan sözcükler RAKAM
-    # İÇERMEZ, bu yüzden araya giren ikinci bir sayı bu yolu AÇMAZ.
-    if (!length(eslesme) || !nzchar(trimws(eslesme[length(eslesme)]))) {
-      kalan <- yakin
-      for (adim in seq_len(.PK_PROV_MAX_GAP_WORDS)) {
-        kirpik <- sub(paste0("\\s+", .PK_PROV_GAP_WORD,
-                             "[.,;:!?]*\\s*$"), "", kalan, perl = TRUE)
-        if (identical(kirpik, kalan)) break
-        kalan <- kirpik
-        eslesme <- regmatches(kalan, gregexpr(sayi_deseni, kalan, perl = TRUE))[[1]]
-        if (length(eslesme) && nzchar(trimws(eslesme[length(eslesme)]))) break
-      }
-    }
-
-    ham <- if (length(eslesme)) trimws(eslesme[length(eslesme)]) else ""
-    yuzde <- grepl("%", ham, fixed = TRUE)
-    sayi_metni <- trimws(gsub("%", "", ham))
-    birim <- sub("^-?[0-9][0-9.,]*\\s*", "", sayi_metni)
-    sayi_metni <- regmatches(sayi_metni, regexpr("^-?[0-9][0-9.,]*", sayi_metni))
-    sayi_metni <- if (length(sayi_metni)) sayi_metni[1] else ""
-
-    out[[length(out) + 1L]] <- list(
-      fact_id = fact_id,
-      marker = isaret,
-      raw = ham,
-      number_text = sayi_metni,
-      value = pk_parse_number_tr(sayi_metni),
-      candidates = pk_parse_number_candidates(sayi_metni),
-      percent = yuzde,
-      unit = trimws(birim),
-      context = onceki
-    )
   }
 
   out
@@ -128,98 +194,30 @@
 
 # İŞARETSİZ (KÖKENSİZ) SAYISAL İDDİALARI BUL.
 #
-# `.pk_prov_claims()` YALNIZCA bir `[fact:...]` işaretinin ÖNÜNDEKİ sayıyı
-# görür. Model istem kuralını yok sayıp `Toplam 99.999 saat` yazdığında iddia
-# kümesi BOŞ kalıyor, doğrulayıcı "uyuşmazlık yok" diyor ve `warn`/`block`
-# kipleri bile halüsinasyon sayıyı DEĞİŞMEDEN yayımlıyordu; yani yapılandırılan
-# köken zorunluluğu bozuk model çıktısıyla ATLATILABİLİYORDU.
+# Model istem kuralını yok sayıp `Toplam 99.999 saat` yazdığında iddia kümesi
+# BOŞ kalıyor, doğrulayıcı "uyuşmazlık yok" diyor ve `warn`/`block` kipleri bile
+# halüsinasyon sayıyı DEĞİŞMEDEN yayımlıyordu; yani yapılandırılan köken
+# zorunluluğu bozuk model çıktısıyla ATLATILABİLİYORDU.
 #
 # Yanlış pozitiften kaçınmak için yalnızca VERİ görünümlü sayılar sayılır:
-# ondalık/binlik ayraç taşıyanlar, yüzde işaretliler, birim ekli olanlar ya da
-# dört haneden uzun tam sayılar. Yıl (1900-2100), madde numarası ve birimsiz
-# küçük tam sayılar KAPSAM DIŞIDIR.
-.pk_prov_uncited_claims <- function(text) {
-  txt <- as.character(text %||% "")[1]
-  if (is.na(txt) || !nzchar(txt)) return(list())
-
-  # Isaretin kendisi taranmaz, ancak YERI korunur: bir sayinin ARDINDAN
-  # gelen nobetci, o sayinin ALINTILANDIGINI gosterir.
-  nobetci <- intToUtf8(1L)
-  maskeli <- gsub(.PK_PROV_MARKER, nobetci, txt, perl = TRUE)
-
-  # ALT ÇİZGİ VURGUSU MASKELİ KOPYADA NÖTRLENİR: işaretler yukarıda nöbetçiye
-  # çevrildiği için `_` artık hiçbir olgu kimliğinin parçası değildir.
-  # Korunduğunda alt çizgiyle vurgulanmış DOĞRU alıntılanmış bir sayı hem
-  # geçerli sayılıyor hem `missing_fact_marker` kaydediliyordu (`block` kipinde
-  # doğru yanıt yedekle değiştirilirdi). Silinmez, boşlukla değiştirilir.
-  maskeli <- gsub("_", " ", maskeli, fixed = TRUE)
-
-  # DEVAM SINIFI RAKAM DA İÇERİR (alıntılı taramayla AYNI sınıf). Aksi hâlde
-  # `1.234 m2 [fact:alan]` eşleşmesi `1.234 m` ile duruyor, artakalan `2`
-  # nöbetçi denetimini bloke ediyor ve DOĞRU alıntılanmış bir sayı
-  # `missing_fact_marker` kaydediliyordu; `block` kipinde geçerli yanıt yedekle
-  # değiştiriliyordu.
-  desen <- paste0("(%\\s*)?-?[0-9][0-9.,]*\\s*",
-                  "(%|[A-Za-zÇĞİÖŞÜçğıöşü\u20ba\u00b2\u00b3$\u20ac]",
-                  "[A-Za-z0-9ÇĞİÖŞÜçğıöşü\u20ba\u00b2\u00b3$\u20ac/.-]{0,23})?")
-
-  konum <- gregexpr(desen, maskeli, perl = TRUE)[[1]]
-  if (identical(konum[1], -1L)) return(list())
-  uzunluk <- attr(konum, "match.length")
+# ondalık/binlik ayraç taşıyanlar, yüzde işaretliler, tanınan bir ölçü birimi
+# taşıyanlar ya da dört haneden uzun tam sayılar. Yıl (1900-2100), tarih, madde
+# numarası ve birimsiz küçük tam sayılar KAPSAM DIŞIDIR.
+.pk_prov_uncited_from_binding <- function(binding) {
+  jetonlar <- binding$tokens
+  if (!length(jetonlar)) return(list())
+  bagli <- binding$bound %||% integer(0)
 
   out <- list()
-  for (i in seq_along(konum)) {
-    ham <- trimws(substr(maskeli, konum[i], konum[i] + uzunluk[i] - 1L))
-    if (!nzchar(ham)) next
+  for (i in seq_along(jetonlar)) {
+    if (i %in% bagli) next
+    jeton <- jetonlar[[i]]
 
-    # Hemen ARDINDAN gelen nobetci bu sayinin ALINTILANDIGI anlamina gelir.
-    #
-    # Pencere BILEREK genistir ve anlamsiz ayraclar (markdown vurgusu, kapanis
-    # parantezi, noktalama, Turkce kesme eki) atlanir: `**15.574 adet**[fact:x]`
-    # dogru bicimde ALINTILANMISTIR ve `missing_fact_marker` sayilamaz. Sadece
-    # ayraclar atlanir; araya baska bir SAYI ya da harf girerse nobetci
-    # bulunamaz ve iddia yine kokensiz sayilir.
-    # Pencere, araya girebilecek en fazla `.PK_PROV_MAX_GAP_WORDS` sözcüğü de
-    # kapsayacak kadar geniştir; sözcük atlama aşağıda AYRICA sınırlanır.
-    kuyruk <- substr(maskeli, konum[i] + uzunluk[i],
-                     min(nchar(maskeli),
-                         konum[i] + uzunluk[i] + 24L +
-                           .PK_PROV_MAX_GAP_WORDS * 26L))
-    .prov_kirp <- function(x) {
-      x <- gsub(.PK_PROV_EMPHASIS, "", x, perl = TRUE)
-      x <- sub("^['’][A-Za-zÇĞİÖŞÜçğıöşü]*", "", x, perl = TRUE)
-      sub(paste0("^", .PK_PROV_TRAILING, "+"), "", x, perl = TRUE)
-    }
-    kuyruk <- .prov_kirp(kuyruk)
-
-    # ARAYA GİREN İSİM ÖBEĞİ NÖBETÇİYİ GİZLEMEZ (PR #705 incelemesi, P2).
-    #
-    # Alıntı tarayıcısıyla AYNI bitişiklik kuralı uygulanır: rakam içermeyen en
-    # fazla `.PK_PROV_MAX_GAP_WORDS` sözcük atlanır. Araya başka bir SAYI
-    # girerse desen eşleşmez ve iddia köken-siz sayılmaya DEVAM eder.
-    if (!startsWith(kuyruk, nobetci)) {
-      atlanan <- kuyruk
-      for (adim in seq_len(.PK_PROV_MAX_GAP_WORDS)) {
-        yeni <- sub(paste0("^", .PK_PROV_GAP_WORD), "", atlanan, perl = TRUE)
-        if (identical(yeni, atlanan)) break
-        atlanan <- .prov_kirp(yeni)
-        if (startsWith(atlanan, nobetci)) break
-      }
-      kuyruk <- atlanan
-    }
-    if (startsWith(kuyruk, nobetci)) next
-
-    yuzde <- grepl("%", ham, fixed = TRUE)
-    sayi_metni <- trimws(gsub("%", "", ham))
-    birim <- trimws(sub("^-?[0-9][0-9.,]*\\s*", "", sayi_metni))
-    rakam <- regmatches(sayi_metni, regexpr("^-?[0-9][0-9.,]*", sayi_metni))
-    rakam <- if (length(rakam)) rakam[1] else ""
+    rakam <- jeton$number_text
     if (!nzchar(rakam)) next
 
-    # Sondaki nokta/virgul AYRAC DEGILDIR: "1." bir madde numarasidir.
-    rakam <- sub("[.,]+$", "", rakam)
-    if (!nzchar(rakam)) next
-
+    yuzde <- isTRUE(jeton$percent)
+    birim <- jeton$unit
     ayrac <- grepl("[.,]", rakam, perl = TRUE)
     sade <- gsub("[^0-9]", "", rakam)
     haneler <- nchar(sade)
@@ -235,35 +233,63 @@
     )
     if (isTRUE(tarih_gibi)) next
 
-    # Yıl gibi görünen çıplak sayı: veri iddiası sayılmaz.
-    # Yil, ARDINDAN bir sozcuk gelse de ("2024 yilinda") yil sayilir.
+    # Yıl gibi görünen çıplak sayı: veri iddiası sayılmaz. Yıl, ARDINDAN bir
+    # sözcük gelse de ("2024 yilinda") yıl sayılır. ANCAK TANINAN BİR ÖLÇÜ
+    # BİRİMİ YIL YORUMUNU BOZAR: "Toplam 2024 saat" işaretsiz kalırsa
+    # uyuşmazlık üretmeden yayımlanırdı.
+    # BİRİM TANIMA ALINTILI YOLLA AYNI SÖZLÜĞÜ KULLANIR.
     #
-    # ANCAK TANINAN BİR ÖLÇÜ BİRİMİ YIL YORUMUNU BOZAR: "Toplam 2024 saat"
-    # 1900-2100 aralığında olduğu için köken taramasından KAÇIYOR ve işaretsiz
-    # sayı `warn`/`block` kipinde uyuşmazlık üretmeden yayımlanıyordu.
-    birim_ilk_yil <- .pk_prov_unit_fold(sub("[[:space:]].*$", "", birim))
-    yil_gibi <- !ayrac && !yuzde && haneler == 4L &&
-      !(nzchar(birim_ilk_yil) && birim_ilk_yil %in% .PK_PROV_KNOWN_UNITS_FOLDED) &&
+    # Alıntılı yol hem ölçek taşıyan hem de boyutsuz sayım birimlerini tanır ve
+    # EKLİ biçimleri (`saatlik`, `adetlik`) köküne indirir. Alıntısız tarayıcı
+    # yalnızca ölçek sözlüğünün TAM girdilerine bakınca "47 saatlik" ve
+    # "47 kayit" gibi işaretsiz iddialar düşüyor, `warn`/`block` kiplerinde
+    # doğrulanmadan yayımlanıyordu.
+    birim_ilk <- .pk_prov_unit_fold(sub("[[:space:]].*$", "", birim))
+    birim_koku <- if (nzchar(birim_ilk)) {
+      .pk_prov_unit_root(birim_ilk, .PK_PROV_UNCITED_UNITS)
+    } else {
+      ""
+    }
+    taninan_birim <- nzchar(birim_ilk) &&
+      (birim_ilk %in% .PK_PROV_UNCITED_UNITS_FOLDED || nzchar(birim_koku))
+
+    # ÜSTEL GÖSTERİM ÖLÇEK İŞARETİDİR: `1e6` ayraç/yüzde taşımaz ve sade hâli
+    # kısa görünür, ama büyüklük iddiasıdır ve doğrulanmadan yayımlanamaz.
+    bilimsel <- grepl("[eE][+-]?[0-9]+$", rakam, perl = TRUE)
+
+    # İŞARETLİ SAYI YIL DEĞİLDİR: `gsub("[^0-9]", ...)` eksi imini SİLİYOR,
+    # böylece `-2024` yıl muafiyetine düşüp köken denetimini atlıyordu.
+    yil_gibi <- !grepl("^-", rakam, perl = TRUE) && !bilimsel &&
+      !ayrac && !yuzde && haneler == 4L && !taninan_birim &&
       suppressWarnings(!is.na(as.integer(sade))) &&
       as.integer(sade) >= 1900L && as.integer(sade) <= 2100L
     if (isTRUE(yil_gibi)) next
 
     # BİRİM VARLIĞI TEK BAŞINA YETMEZ: "3 kez" / "2. madde" gibi sıradan
     # ifadeler veri iddiası değildir ve `block` kipinde geçerli yanıtları
-    # düşürmemelidir. Ölçek işareti aranır: ayraç, yüzde ya da 4+ hane.
-    #
-    # ANCAK TANINAN BİR ÖLÇÜ BİRİMİ DE ÖLÇEK İŞARETİDİR. "47 adet" ayraç, yüzde
-    # ya da dört hane taşımaz; eski kapı onu veri DIŞI sayıyordu. Sonuç: `block`
-    # kipinde köksüz bir sayı HİÇ uyuşmazlık üretmeden yayımlanıyor, yapılandırılan
-    # köken zorlaması tam da hedeflediği durumda atlanıyordu. Sıra sayıları
-    # ("2. madde") ve "kez" sözlükte YOKTUR; dışarıda kalmaya devam ederler.
-    birim_ilk <- birim_ilk_yil
-    veri_gibi <- ayrac || yuzde || haneler >= 4L ||
-      (nzchar(birim_ilk) && birim_ilk %in% .PK_PROV_KNOWN_UNITS_FOLDED)
+    # düşürmemelidir. Ölçek işareti aranır: ayraç, yüzde, 4+ hane ya da TANINAN
+    # bir ölçü birimi ("47 adet").
+    veri_gibi <- ayrac || yuzde || bilimsel || haneler >= 4L || taninan_birim
     if (!veri_gibi) next
 
-    out[[length(out) + 1L]] <- list(raw = ham, number = rakam, unit = birim,
-                                    percent = yuzde)
+    out[[length(out) + 1L]] <- list(raw = jeton$raw, number = rakam,
+                                    unit = birim, percent = yuzde)
   }
   out
+}
+
+#' Metni TEK geçişte tara: alıntılı iddialar + köken-siz sayılar
+#'
+#' @return `list(claims=, uncited=)`
+pk_prov_scan_claims <- function(text, index = NULL) {
+  txt <- as.character(text %||% "")[1]
+  if (is.na(txt) || !nzchar(txt)) return(list(claims = list(), uncited = list()))
+
+  binding <- pk_prov_bind_text(txt)
+  masked <- .pk_prov_mask_markers(txt)$masked
+
+  list(
+    claims = .pk_prov_claims_from_binding(masked, binding, index),
+    uncited = .pk_prov_uncited_from_binding(binding)
+  )
 }

@@ -121,7 +121,18 @@ pk_direct_exit_outcome <- function(response_text, stopped = FALSE, error = FALSE
   metin <- pk_direct_exit_text(response_text)
 
   if (grepl("\u0130\u015flem Durduruldu", metin, fixed = TRUE)) return("Durduruldu")
-  if (grepl("Yetki Hatas\u0131", metin, fixed = TRUE)) return("Yetkisiz")
+  # HER RLS REDDİ BAŞLIĞI TANINIR (PR #719 inceleme, P3).
+  #
+  # `pk_rls_denied_message()` ÜÇ kararlı başlık üretir: `Yetki Hatası`
+  # (kayıt yok), `Yetki Bilgisi Okunamadı` (db_error) ve `Yetki Kaydı Belirsiz`
+  # (ambiguous). Yalnızca birincisi aranıyordu; diğer iki reddi taşıyan yanıt
+  # `"Hata"` olarak kaydediliyor ve yetki reddi metrikleri EKSİK sayıyordu.
+  # Başlıklar ayrıca bir GEREKÇE metni ekleyebildiği için birebir eşitlik değil,
+  # `**Yetki ...:**` KALIBI aranır. Eski çıplak `Yetki Hatası` alt dizesi de
+  # KORUNUR: kural kesin bir GENİŞLETMEDİR, daraltma DEĞİLDİR.
+  if (grepl("Yetki Hatas\u0131|\\*\\*Yetki [^*]{1,60}:\\*\\*", metin, perl = TRUE)) {
+    return("Yetkisiz")
+  }
   if (grepl("mevcut analiz k\u00fct\u00fcphanesinde bulunamad\u0131", metin, fixed = TRUE)) {
     return("EslesmeYok")
   }

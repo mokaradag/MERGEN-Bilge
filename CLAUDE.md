@@ -4736,10 +4736,16 @@ Non-negotiable rules:
   id, so `mergen_pk_bump_chat_epoch()` / `mergen_pk_chat_identity()` add a
   generation counter: without it a worker finishing after Yeni Söyleşi would land
   its answer in the new conversation. The per-request main-process lifecycle
-  (send-time snapshot, residual budget, clarification chips, worker artifact
-  serving/cleanup) is the separate `R/helpers_pk_async_lifecycle.R`; do not merge
-  these three files back into `R/helpers_pk_async_apply.R`, which sat at the
-  25-function ceiling.
+  (send-time snapshot, residual budget, clarification chips) is the separate
+  `R/helpers_pk_async_lifecycle.R`, and the worker artifact lifecycle (serving
+  the export through `registerDataObj`, verifying every served file got a URL,
+  and cleaning the artifact off disk) is `R/helpers_pk_async_artifact.R`, loaded
+  IMMEDIATELY after it and BEFORE `R/helpers_pk_async_apply.R`. That last split
+  is a ratchet split with NO behavior change: the lifecycle file sat at its exact
+  285-line budget and the chip-label fallback fix did not fit; its budget is
+  TIGHTENED to the measured 209/14. Do not merge these four files back into
+  `R/helpers_pk_async_apply.R`, which sat at the 25-function ceiling. A test that
+  sources the lifecycle helper in isolation must source the artifact helper too.
 - **Worker-side PK observer wrappers are idempotent**
   (`R/helpers_pk_worker_observers.R`). The deep-observer wrapper is always
   installed and guarded by a `.pk_deep_observation_helpers_core` sentinel so a
@@ -5074,6 +5080,21 @@ PR #703 review hardening (these are now part of the same contract):
   compares the destination chat id with the current one; re-selecting the
   already-open chat no longer cancels a valid in-flight PK analysis, while
   A -> B -> A stale-callback protection is unchanged.
+- **PK source scans strip INLINE comments, not just full-line ones.** A negative
+  assertion ("this call is gone") ran over text that still carried
+  `kod  # aciklama` tails, so an explanatory comment quoting the forbidden
+  expression could fail the test with no production regression — and a positive
+  assertion could pass on a comment after the real call was deleted.
+  `tests/testthat/helper_pk_source_scan.R` owns the single reader
+  (`pk_test_strip_r_comments()` / `pk_test_code_only_file()`): it locates
+  comments through `getParseData()`, so a `#` inside a string literal is
+  PRESERVED, and it VALIDATES the reported column against the comment text
+  before cutting (column semantics can be bytes or characters depending on
+  platform, and a byte index plus `substr()` would delete Turkish-bearing code
+  on Windows). An unparseable file falls back to the old full-line behavior, so
+  a scan never silently empties. `.pk_hardening_code_only()`,
+  `.pk_rls_code_only()` and `.pk_deg_code_text()` all delegate here; do not
+  reintroduce a local full-line-only reader.
 
 Protected by:
 

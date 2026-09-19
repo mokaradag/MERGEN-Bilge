@@ -170,6 +170,10 @@ test_that("pk_analiz_process_request sorgu seçiminden sonra durdurma talebinde 
   stop_check <- function() { sayac$n <- sayac$n + 1L; sayac$n >= 3L }
   res <- env$pk_analiz_process_request("soru", list(), .pkSession(), stop_check = stop_check)
   expect_true(grepl("İşlem Durduruldu", res, fixed = TRUE))
+  # ÇAĞRI SAYISI DA SABİTLENİR: bu fikstür bir sorgu SEÇER, bu yüzden seçim
+  # sonrası kapı kaldırılsa bile akış SQL sonrası kapıya ulaşır ve AYNI metni
+  # döndürürdü; yalnızca metni doğrulamak hedeflenen kapıyı sınamıyordu.
+  expect_identical(sayac$n, 3L)
 })
 
 test_that("pk_analiz_process_request boş SQL için yapılandırma hatası döner", {

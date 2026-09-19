@@ -103,9 +103,9 @@ pk_async_config_snapshot <- function() {
   cikti
 }
 
-#' Anlık görüntü EKSİKSİZ mi? (güvenlik yapılandırması kapalı başarısız)
+#' Anlık görüntü EKSİKSİZ mi? (güvenlik yapılandırması kapalı başarısız). BOŞ görüntü de EKSİKSİZ DEĞİLDİR: `pk_async_config_snapshot()` spec çözülemeyince ÖZNİTELİKSİZ `list()` döner, öznitelik yokluğu "eksik anahtar yok" diye okunur, işçi kurulumu `length(request$pk_config) == 0` yüzünden ATLANIR ve SICAK işçi kendi BAYAT limitleriyle çalışmaya devam ederdi.
 pk_async_config_snapshot_complete <- function(snapshot) {
-  if (!is.list(snapshot)) return(FALSE)
+  if (!is.list(snapshot) || !length(snapshot)) return(FALSE)
   eksik <- attr(snapshot, "pk_missing_keys", exact = TRUE)
   length(as.character(eksik %||% character(0))) == 0L
 }

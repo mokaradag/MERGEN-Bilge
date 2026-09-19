@@ -469,7 +469,8 @@ test_that("v2 gozlemi filtre DEGERINI korur (koken alt bilgisi bos yazmaz)", {
               "helpers_pk_provenance.R", "helpers_pk_prompt_budget.R",
               "helpers_pk_analysis_prompts.R", "helpers_pk_precision.R", "helpers_pk_packet_stats.R", "helpers_pk_packet_context_facts.R",
               "helpers_pk_packet_keys.R", "helpers_pk_analysis_packet.R", "helpers_pk_packet_render.R",
-              "helpers_pk_numeric_provenance.R", "helpers_pk_numeric_provenance_claims.R",
+              "helpers_pk_numeric_provenance.R", "helpers_pk_numeric_provenance_binding.R",
+              "helpers_pk_numeric_provenance_claims.R",
               "helpers_pk_export_plan.R",
               "helpers_pk_export_xlsx.R", "helpers_pk_answer_compose.R",
               "helpers_pk_statistical_summary.R", "helpers_pk_analysis_result.R")) {

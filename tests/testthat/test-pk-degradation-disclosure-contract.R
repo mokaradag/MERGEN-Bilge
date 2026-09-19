@@ -24,12 +24,17 @@
 # Bu dosyadaki POZİTİF kaynak taramaları ham metni okuyordu; bir refaktör
 # gerçek çağrıyı silip AÇIKLAYICI YORUMU bıraktığında iddialar yine geçiyor,
 # TTS köken sözleşmesi "başarılı" raporlanırken alt bilgi seslendirilebiliyordu.
+# SATIR ICI YORUMLAR DA ATILIR (PR #719 inceleme, P3): eski bicim yalnizca TAM
+# SATIR yorumlarini atiyordu; `kod  # aciklama` bicimindeki satir sonu yorumu
+# taranan metinde KALIYOR ve yasakli/aranan ifadeyi alintilayan bir aciklama
+# uretimde hicbir gerileme olmadan iddiayi etkileyebiliyordu. Kardes
+# tarayicilarla AYNI ortak okuyucu kullanilir; dize icindeki `#` KORUNUR
+# (bkz. `tests/testthat/helper_pk_source_scan.R`).
 .pk_deg_code_text <- function(path) {
   ham <- readBin(path, what = "raw", n = file.info(path)$size)
-  metin <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
-  satirlar <- strsplit(gsub("\r\n", "\n", metin, fixed = TRUE), "\n", fixed = TRUE)[[1]]
-  # Yalnizca TAM SATIR yorumlari atilir; satir sonu yorumlari kodu da tasir.
-  paste(satirlar[!grepl("^[[:space:]]*#", satirlar)], collapse = "\n")
+  pk_test_strip_r_comments(
+    iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
+  )
 }
 
 # Filtre yardımcısını izole bir ortama yükleyip LLM/kimlik bağımlılıklarını
