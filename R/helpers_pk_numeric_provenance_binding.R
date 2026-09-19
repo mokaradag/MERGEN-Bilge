@@ -51,16 +51,31 @@
 # ise `1` + tanınmayan `e6` birimi olarak görüyordu. Her iki durumda da veri
 # görünümü kapısı (ayraç/yüzde/birim/4+ hane) kapanıyor ve alıntılanmamış sayı
 # `warn`/`block` kiplerinde `missing_fact_marker` ÜRETMEDEN yayımlanıyordu.
+.PK_PROV_TL_SIGN <- intToUtf8(0x20BA)
+.PK_PROV_EUR_SIGN <- intToUtf8(0x20AC)
+.PK_PROV_SUPERSCRIPT_2 <- intToUtf8(0x00B2)
+.PK_PROV_SUPERSCRIPT_3 <- intToUtf8(0x00B3)
+.PK_PROV_CURRENCY_CLASS <- paste0(.PK_PROV_TL_SIGN, "$", .PK_PROV_EUR_SIGN)
+.PK_PROV_UNIT_SYMBOL_CLASS <- paste0(
+  .PK_PROV_TL_SIGN, .PK_PROV_SUPERSCRIPT_2, .PK_PROV_SUPERSCRIPT_3,
+  "$", .PK_PROV_EUR_SIGN
+)
+
 .PK_PROV_NUMBER_PATTERN <- paste0(
-  "(%\\s*)?[\u20ba$\u20ac]?\\s*-?[0-9][0-9.,]*([eE][+-]?[0-9]+)?\\s*",
-  "(%|[A-Za-zÇĞİÖŞÜçğıöşü\u20ba\u00b2\u00b3$\u20ac]",
-  "[A-Za-z0-9ÇĞİÖŞÜçğıöşü\u20ba\u00b2\u00b3$\u20ac/.-]{0,23})?"
+  "(%\\s*)?[", .PK_PROV_CURRENCY_CLASS,
+  "]?\\s*-?[0-9][0-9.,]*([eE][+-]?[0-9]+)?\\s*",
+  "(%|[A-Za-zÇĞİÖŞÜçğıöşü", .PK_PROV_UNIT_SYMBOL_CLASS, "]",
+  "[A-Za-z0-9ÇĞİÖŞÜçğıöşü", .PK_PROV_UNIT_SYMBOL_CLASS, "/.-]{0,23})?"
 )
 
 # Sayının ÖNÜNDE yazılan para birimi -> sözlükteki kanonik birim adı. Eşleme
-# bilinçli olarak DARDIR: yalnızca `.PK_PROV_KNOWN_UNITS` içinde karşılığı olan
+# bilinçli olarak DARDIR: yalnızca bilinen birimlerde karşılığı olan
 # simgeler taşınır, aksi hâlde tanınmayan bir birim uydurmuş oluruz.
-.PK_PROV_PREFIX_CURRENCIES <- c("\u20ba" = "TL", "$" = "USD", "\u20ac" = "EUR")
+.PK_PROV_PREFIX_CURRENCIES <- stats::setNames(
+  c("TL", "USD", "EUR"),
+  c(.PK_PROV_TL_SIGN, "$", .PK_PROV_EUR_SIGN)
+)
+.PK_PROV_PREFIX_CURRENCY_PATTERN <- paste0("^[", .PK_PROV_CURRENCY_CLASS, "]")
 
 # Sayı ile işaret arasındaki EN BÜYÜK sözcük mesafesi. Doğal Türkçe düzyazıda
 # üretimde ölçülen en uzun geçerli aralık altı sözcüktür
@@ -148,7 +163,10 @@
   # için `\u20ba100` gövdesinden hiç rakam çıkaramıyor, jeton tamamen
   # düşüyordu; alıntılanmamış bir tutar böylece köken denetimini ATLIYORDU.
   onek <- ""
-  onek_esle <- regmatches(govde, regexpr("^[\u20ba$\u20ac]", govde))
+  onek_esle <- regmatches(
+    govde,
+    regexpr(.PK_PROV_PREFIX_CURRENCY_PATTERN, govde, perl = TRUE)
+  )
   if (length(onek_esle) && nzchar(onek_esle[1])) {
     # `[[` eşleşmeyen bir adda HATA fırlatır; `[` NA döndürür ve NA burada
     # "birim yok" demektir (desen ile eşleme tablosu ayrışırsa fail-safe).
