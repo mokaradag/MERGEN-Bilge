@@ -693,7 +693,14 @@ test_that("Faz 6 dosyaları bakım ratchet bütçelerine uyar", {
     # `stash_deep_footer()` artik olgu TASIYAN kayitlari altbilgi BOS olsa da
     # saklar; onceden yalnizca bos-olmayan altbilgiye bakiliyor, olgulari olan
     # bir paket koken denetiminden DUSUYORDU. Fonksiyon sayisi AYNI.
-    "R/helpers_deep_analysis_reconcile.R" = c(293L, 19L),
+    # BILINCLI BOLME (PR #719 inceleme): 293/19 -> 271/17 (OLCULEN). Birincil
+    # baglanti yasam dongusu (idempotent birakici + kisa omurlu saglayici)
+    # `helpers_deep_analysis_connection.R` dosyasina TASINDI; oraya korumali
+    # EDINME kapisi da eklendi. Bu bir BOLME'dir, buyume degil: iki dosyanin
+    # toplami 293 -> 356 satir, cunku edinme kapisi YENI islevdir (ham
+    # `get_connection()` hatasi orkestratorden disari siziyordu).
+    "R/helpers_deep_analysis_reconcile.R" = c(271L, 17L),
+    "R/helpers_deep_analysis_connection.R" = c(85L, 7L),
     # BILINCLI GUNCELLEME (PR #705 inceleme takibi): 250 -> 260 satir, 19 -> 20
     # fonksiyon (OLCULEN). `pk_deep_halt_status()` eklendi: `stop_check()` iki
     # AYRI nedeni tek boole'de birlestirdigi icin derin yol her durdurmayi ham

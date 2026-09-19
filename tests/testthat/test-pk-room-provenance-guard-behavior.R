@@ -20,6 +20,7 @@
   for (dosya in c("helpers_pk_config.R", "helpers_pk_precision.R",
                   "helpers_pk_packet_stats.R", "helpers_pk_packet_context_facts.R",
                   "helpers_pk_numeric_provenance.R",
+                  "helpers_pk_numeric_provenance_binding.R",
                   "helpers_pk_numeric_provenance_claims.R")) {
     source(file.path(kok, "R", dosya), encoding = "UTF-8", local = env)
   }

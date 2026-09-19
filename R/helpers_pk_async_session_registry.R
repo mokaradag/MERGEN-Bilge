@@ -51,11 +51,11 @@ mergen_pk_active_registry <- function(session) {
   if (is.null(ud)) return(NULL)
   kayit <- try(ud[["pk_active_requests"]], silent = TRUE)
   if (!is.environment(kayit)) {
+    # LİSTE `userData` YAZIMI OTURUMA ULAŞMAZ (PR #719 inceleme, P3): kopya semantiği yüzünden geri okuma da AYNI yerel kopyayı okur ve yazım BAŞARILI sanılırdı.
+    if (!is.environment(ud)) return(NULL)
     kayit <- new.env(parent = emptyenv())
     yazildi <- try({ ud[["pk_active_requests"]] <- kayit; TRUE }, silent = TRUE)
-    # Kayıt defteri OTURUMA BAĞLANAMADIYSA yerel ortamı döndürmek, "kayıt
-    # başarılı" görüntüsü verip ERİŞİLEMEYEN bir deftere yazmak olurdu: sonraki
-    # Durdur/oturum-sonu araması o isteği ne iptal edebilir ne serbest bırakabilirdi.
+    # Defter OTURUMA BAĞLANAMADIYSA yerel ortamı döndürmek "kayıt başarılı" görüntüsü verip ERİŞİLEMEYEN bir deftere yazmak olurdu: sonraki Durdur/oturum-sonu araması o isteği ne iptal edebilir ne serbest bırakabilirdi.
     if (!identical(yazildi, TRUE)) return(NULL)
     # Geri okuma DOĞRULAMASI: bazı sahte/salt-okunur `userData` uygulamaları
     # atamayı sessizce yutar.
@@ -229,7 +229,7 @@ mergen_pk_bump_chat_epoch <- function(session) {
   # kaydedilmemiş söyleşi AYNI kimliğe (`<new-chat>:0`) düşer. Geç biten bir
   # işçi sonucu o zaman YENİ söyleşiye uygulanabilirdi. Yazım doğrulanamazsa
   # arayan `NA` görür ve kimlik çakışmasını varsaymaz.
-  yazildi <- tryCatch({
+  yazildi <- is.environment(ud) && tryCatch({  # ORTAM ZORUNLU (PR #719 inceleme, P3): `userData` düz bir liste olduğunda `ud` bir KOPYADIR; yazım oturuma ULAŞMAZ ama geri okuma KOPYAYI okuyup BAŞARILI raporluyor, ayna yedeği ATLANIYOR ve iki kaydedilmemiş söyleşi aynı `:1` kimliğine düşüyordu (bkz. aynı dosyadaki `.pk_marker_*` ortam denetimi).
     ud[["pk_unsaved_chat_epoch"]] <- yeni
     okunan <- suppressWarnings(as.integer(ud[["pk_unsaved_chat_epoch"]])[1])
     length(okunan) == 1L && !is.na(okunan) && identical(okunan, yeni)

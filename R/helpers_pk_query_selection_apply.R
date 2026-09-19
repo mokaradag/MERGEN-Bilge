@@ -88,12 +88,8 @@ pk_select_refusal_message <- function(decision) {
 
 #' Satır tabanlı günlüğe girecek metni temizle — REDAKSİYON DÂHİL
 #'
-#' Bu yardımcı yalnızca denetim karakterlerini siliyor ve kırpıyordu; yakalanan
-#' sürücü/DSN ayrıntısı ya da modelin ürettiği (kullanıcı metnini yankılayan)
-#' gerekçe doğrudan stdout'a yazılabiliyordu. `config_logging.R` uygulama
-#' günlüklerini `redact_sensitive_text()` üzerinden geçirir; bu doğrudan konsol
-#' yazımları o sınırı ATLIYORDU. Redaksiyon KAPALI BAŞARISIZDIR: redaktör
-#' yüklenmemişse ya da hata verirse metin yayımlanmaz.
+#' Bu yardımcı yalnızca denetim karakterlerini siliyor ve kırpıyordu; yakalanan sürücü/DSN ayrıntısı ya da modelin ürettiği (kullanıcı metnini yankılayan) gerekçe doğrudan stdout'a yazılabiliyordu. `config_logging.R` uygulama günlüklerini
+#' `redact_sensitive_text()` üzerinden geçirir; bu doğrudan konsol yazımları o sınırı ATLIYORDU. Redaksiyon KAPALI BAŞARISIZDIR: redaktör yüklenmemişse ya da hata verirse metin yayımlanmaz.
 .pk_select_log_safe <- function(text, max_chars = 300L) {
   if (is.null(text) || !length(text) || is.na(text[1])) return("")
   metin <- as.character(text)[1]
@@ -114,6 +110,8 @@ pk_select_refusal_message <- function(decision) {
     return("(redaktor yuklenmedi)")
   }
 
+  metin <- suppressWarnings(iconv(metin, "UTF-8", "UTF-8", sub = "?"))  # GEÇERSİZ UTF-8 TEMİZLENİR (PR #719 inceleme, P2): sürücü/ODBC hata metni Windows VM'de geçersiz bayt dizisi taşıyabilir; aşağıdaki `gsub(perl = TRUE)`, `trimws()`, `nchar()` ve `substr()` çağrılarının HEPSİ "invalid UTF-8"/"invalid multibyte string" ile FIRLATIYOR ve bu HATA-GÜVENLİ log yardımcısının dışına sızıyordu. `NA` sonucu da tipli yedeğe düşer (aşağıdaki denetim).
+  if (!is.character(metin) || length(metin) != 1L || is.na(metin)) return("(metin cozumlenemedi)")
   metin <- gsub("[[:cntrl:]]+", " ", metin, perl = TRUE)
   metin <- gsub("[[:space:]]+", " ", trimws(metin), perl = TRUE)
   if (nchar(metin) > max_chars) metin <- paste0(substr(metin, 1L, max_chars - 1L), "…")

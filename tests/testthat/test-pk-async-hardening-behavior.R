@@ -863,7 +863,11 @@ test_that("derin Faz 6 kurulumu YAYINLANMIŞ başlangıcı SIFIRLAMAZ", {
   options(mergen.pk.async.started_at = yayinlanan)
 
   kurulum <- pk_deep_phase6_setup(list(), session = NULL, request_id = "req-x")
-  on.exit(try(kurulum$restore(), silent = TRUE), add = TRUE)
+  # `after = FALSE`: `on.exit(add = TRUE)` isleyicileri KAYIT SIRASINDA calisir.
+  # Kurulum geri yukleyicisi SONRA calisirsa yakaladigi `yayinlanan` degerini
+  # geri yaziyor ve dis geri yuklemeyi EZIYOR; `mergen.pk.async.started_at`
+  # ayni R surecindeki sonraki testler icin BAYAT kaliyordu.
+  on.exit(try(kurulum$restore(), silent = TRUE), add = TRUE, after = FALSE)
 
   guncel <- getOption("mergen.pk.async.started_at", NULL)
   expect_true(inherits(guncel, "POSIXct"))

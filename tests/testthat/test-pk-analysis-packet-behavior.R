@@ -663,6 +663,7 @@ test_that("dogru alintilanan bir pay iddiasi `unit_mismatch` uretmez", {
   env <- .pk_packet_env()
   kok <- resolve_repo_root_for_tests()
   for (dosya in c("helpers_pk_ascii_tokens.R", "helpers_pk_numeric_provenance.R",
+                  "helpers_pk_numeric_provenance_binding.R",
                   "helpers_pk_numeric_provenance_claims.R")) {
     source(file.path(kok, "R", dosya), encoding = "UTF-8", local = env)
   }

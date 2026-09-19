@@ -29,9 +29,17 @@ pk_init_query_score_table <- function(library) {
     stringsAsFactors = FALSE
   )
 
+  # SKALER ZORUNLULUĞU: `%||%` yalnızca `NULL` yakalar. Çok ögeli bir `id`/`name`
+  # (metadata katmanından gelebilir) atamayı "number of items to replace is not
+  # a multiple" hatasıyla düşürür ve skor tablosu HİÇ kurulamazdı.
+  .skaler <- function(x, yedek) {
+    ham <- tryCatch(as.character(x %||% yedek)[1], error = function(e) yedek)
+    if (length(ham) != 1L || is.na(ham)) yedek else ham
+  }
+
   for (i in seq_along(library)) {
-    all_scores$query_id[i] <- library[[i]]$id %||% as.character(i)
-    all_scores$query_name[i] <- library[[i]]$name %||% ""
+    all_scores$query_id[i] <- .skaler(library[[i]]$id, as.character(i))
+    all_scores$query_name[i] <- .skaler(library[[i]]$name, "")
     all_scores$ai_score[i] <- 0
     all_scores$heuristic_score[i] <- 0
     all_scores$final_score[i] <- 0
@@ -46,13 +54,24 @@ pk_init_query_score_table <- function(library) {
 pk_score_query_relevance <- function(q, prompt_clean, prompt_words) {
   score <- 0
 
-  desc_clean <- tolower(q$description)
-  name_clean <- tolower(q$name)
+  # `name`/`description` ZORUNLU DEĞİLDİR. `.pk_meta_validate_query_library()`
+  # yalnızca `id` ve `sql` ister; eksik bir `name` ile `tolower(NULL)` sonucu
+  # `character(0)` olur ve `if (grepl(...))` "argument is of length zero" ile
+  # TÜM sezgisel skorlamayı düşürürdü (AI yolu eşiği geçemediğinde bu yol
+  # ÇALIŞIR). Boş ad ayrıca +50 bonusunu HAK ETMEZ: `grepl("", ...)` her zaman
+  # TRUE döner ve ilgisiz bir sorgu en yüksek skoru alırdı.
+  .metin <- function(x) {
+    ham <- tryCatch(as.character(x %||% "")[1], error = function(e) "")
+    if (length(ham) != 1L || is.na(ham)) "" else ham
+  }
+
+  desc_clean <- tolower(.metin(q$description))
+  name_clean <- tolower(.metin(q$name))
 
   desc_words <- unlist(strsplit(desc_clean, "\\W+"))
   name_words <- unlist(strsplit(name_clean, "\\W+"))
 
-  if (grepl(name_clean, prompt_clean, fixed = TRUE)) {
+  if (nzchar(name_clean) && grepl(name_clean, prompt_clean, fixed = TRUE)) {
     score <- score + 50
   }
 
@@ -83,11 +102,16 @@ pk_compute_heuristic_query_scores <- function(prompt, library) {
   prompt_words <- unlist(strsplit(prompt_clean, "\\W+"))
   prompt_words <- prompt_words[nchar(prompt_words) > 2]
 
-  scores <- sapply(seq_along(library), function(i) {
-    pk_score_query_relevance(library[[i]], prompt_clean, prompt_words)
-  })
+  # BOŞ KÜTÜPHANE TİP HATASINA DÖNÜŞMEZ (PR #719 inceleme, P3): `sapply()` boş
+  # girdide `list()` döndürür ve `max(list())` "invalid 'type' (list)" ile
+  # skorlamayı düşürürdü. `vapply()` her durumda `numeric` döner.
+  scores <- vapply(seq_along(library), function(i) {
+    suppressWarnings(as.numeric(
+      pk_score_query_relevance(library[[i]], prompt_clean, prompt_words)
+    )[1])
+  }, numeric(1))
 
-  max_heuristic <- max(scores, na.rm = TRUE)
+  max_heuristic <- if (length(scores)) max(scores, na.rm = TRUE) else 0
   if (max_heuristic > 0) {
     scores_normalized <- (scores / max_heuristic) * 100
   } else {

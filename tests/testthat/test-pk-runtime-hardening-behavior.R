@@ -309,9 +309,15 @@ test_that("v1 terminal geri dusmesi FILTRELEME UYARISINI korur", {
   kok <- resolve_repo_root_for_tests()
   yol <- file.path(kok, "R", "helpers_pk_statistical_summary.R")
   ham <- readBin(yol, "raw", file.info(yol)$size)
-  metin <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
+  # KOD-YALNIZ okuyucu (kardes taramalarla AYNI): ham metin yorum satirlarini da
+  # icerir ve eski ifadeyi ALINTILAYAN aciklayici bir yorum, uretimde hicbir
+  # regresyon olmadan bu olumsuz assertion'i kirardi.
+  metin <- .pk_hardening_code_only(
+    iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
+  )
   metin <- gsub("\r\n", "\n", metin, fixed = TRUE)
   # Terminal geri dusmede uyari ARTIK motor bayragina bagli DEGILDIR.
+  expect_true(nzchar(metin))
   expect_false(grepl("if (pk_v2 && isTRUE(user_filter_applied)", metin, fixed = TRUE))
 })
 
@@ -343,6 +349,7 @@ test_that("duzgun kapanmis blok DEGISTIRILMEZ", {
 
 test_that("kucuk harfli Turkce birim harfleri de katlanir", {
   env <- .pk_hardening_test_env(c("helpers_pk_numeric_provenance.R",
+                                  "helpers_pk_numeric_provenance_binding.R",
                                   "helpers_pk_numeric_provenance_claims.R"))
   gun_tr <- paste0("g", intToUtf8(0xFC), "n")  # "gün"
   expect_identical(env$.pk_prov_unit_fold(gun_tr), env$.pk_prov_unit_fold("gun"))

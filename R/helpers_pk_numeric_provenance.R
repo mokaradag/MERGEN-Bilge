@@ -395,11 +395,16 @@ pk_facts_index <- function(facts) {
 #' @return `list(checked=, mismatches=, rate=, claims=)`
 pk_numeric_provenance_validate <- function(text, facts) {
   index <- pk_facts_index(facts)
-  # Doğrulama, biçimlendirmeden ARINDIRILMIŞ bir kopya üzerinde çalışır; her
-  # iki tarayıcı (alıntılı ve alıntısız) AYNI metni görmelidir, aksi hâlde
-  # aynı sayı bir tarayıcıda alıntılı, diğerinde köksüz görünür.
+  # Doğrulama, biçimlendirmeden ARINDIRILMIŞ bir kopya üzerinde çalışır; tarama
+  # TEK geçiştir (bkz. `pk_prov_scan_claims()`), bu yüzden aynı sayının bir
+  # tarayıcıda alıntılı, diğerinde köksüz görünmesi artık MÜMKÜN DEĞİLDİR.
   metin <- .pk_prov_normalize_markup(text)
-  iddialar <- .pk_prov_claims(metin)
+  tarama <- pk_prov_scan_claims(metin, index)
+  # SAYISIZ İŞARET UYUŞMAZLIK DEĞİLDİR: niteliksel bir cümle de bir olguya atıf
+  # yapabilir ("Gecikme oranı yüksektir [fact:x]") ve bu, yayımlanan hiçbir
+  # sayıyı doğrulanmamış bırakmaz. Tanılama için AYRI tutulur.
+  sayisiz <- Filter(function(x) isTRUE(x$numberless), tarama$claims)
+  iddialar <- Filter(function(x) !isTRUE(x$numberless), tarama$claims)
   sozluk <- .pk_prov_unit_vocabulary(index)
   uyusmazliklar <- list()
 
@@ -492,19 +497,18 @@ pk_numeric_provenance_validate <- function(text, facts) {
     # BİRİMSİZ bir olguya birim UYDURULAMAZ. Sıradan düzyazı sözcükleri
     # ("47 farkli kaynak") işaretlenmesin diye yalnızca GERÇEK bir birim
     # sözlüğüne düşen jetonlar uyuşmazlık sayılır.
-    # SAYIM OLGUSUNA "adet" YAZMAK BİRİM UYDURMAK DEĞİLDİR.
+    # BOYUTSUZ SAYIM BİRİMİ YAZMAK BİRİM UYDURMAK DEĞİLDİR.
     #
-    # Bağlam olguları (satır sayısı, farklı değer sayısı, kategori/tarih
-    # sayısı, grup satırı) `unit` beyan etmez; modelin doğal Türkçesi ise
-    # "50.045 adet" der. Bu, birimsiz bir ölçüye ölçek uydurmak DEĞİLDİR:
-    # sayımın boyutsuz birimidir. Ölçek taşıyan bir birim (saat/TL/%) yine
-    # uyuşmazlıktır.
-    sayim_olgusu <- identical(as.character(olgu$kind %||% "")[1], "context") ||
-      identical(as.character(olgu$aggregation %||% "")[1], "count") ||
-      grepl("count|rows|duplicates", as.character(olgu$aggregation %||% "")[1], perl = TRUE)
-
+    # Olgular `unit` beyan etmeyebilir; modelin doğal Türkçesi ise "50.045
+    # adet" der. Bu, birimsiz bir ölçüye ölçek uydurmak DEĞİLDİR: "adet"
+    # yalnızca "kaç tane" der ve HİÇBİR ölçek bilgisi taşımaz. Kural eskiden
+    # yalnızca `kind = "context"` / `aggregation = "count"` olgularına
+    # açıktı; oysa bir SAYIM sütununun `sum` toplulaştırması da sayımdır
+    # (üretimde `activity_total_count.sum` iddiası bu yüzden `unit_mismatch`
+    # üretiyordu). Ölçek taşıyan bir birim (%/TL/saat/gün) sözlükte olduğu
+    # için YİNE uyuşmazlıktır; koruma daralmaz.
     if (!nzchar(olgu_birimi) && nzchar(iddia_birimi) &&
-        !(isTRUE(sayim_olgusu) && iddia_birimi %in% .PK_PROV_COUNT_UNITS) &&
+        !(iddia_birimi %in% .PK_PROV_COUNT_UNITS) &&
         (isTRUE(iddia$percent) || iddia_birimi %in% sozluk)) {
       ekle(fact_id = iddia$fact_id, reason = "unit_mismatch",
            claimed = iddia$unit, actual = "(birimsiz)")
@@ -529,7 +533,7 @@ pk_numeric_provenance_validate <- function(text, facts) {
   # hem `checked` hem de payda onları KAPSAYACAK biçimde genişletilir; aksi
   # hâlde tamamı işaretsiz bir yanıtta `rate` sıfır çıkar ve eşik tabanlı
   # kipler hiçbir şey yakalamaz.
-  kokensizler <- .pk_prov_uncited_claims(metin)
+  kokensizler <- tarama$uncited
   for (k in kokensizler) {
     ekle(fact_id = NA_character_, reason = "missing_fact_marker",
          claimed = k$raw, actual = NA_character_)
@@ -542,7 +546,8 @@ pk_numeric_provenance_validate <- function(text, facts) {
     mismatches = uyusmazliklar,
     rate = if (toplam) length(uyusmazliklar) / toplam else 0,
     claims = iddialar,
-    uncited = kokensizler
+    uncited = kokensizler,
+    numberless = sayisiz
   )
 }
 
@@ -640,26 +645,54 @@ pk_numeric_provenance_apply <- function(text, facts, mode = NULL, fallback_text 
 
   list(
     text = temiz, mode = kip, checked = sonuc$checked,
-    mismatches = sonuc$mismatches, rate = sonuc$rate, blocked = engellendi
+    mismatches = sonuc$mismatches, rate = sonuc$rate, blocked = engellendi,
+    numberless = sonuc$numberless %||% list()
   )
 }
 
+.PK_PROV_REPORT_MAX_IDS <- 8L
+
 #' Ölçülen uyuşmazlık oranını sunucu tarafında raporla (sırsız)
 #'
-#' Yalnızca sayaç/oran ve uyuşmazlık nedenleri yazılır; düzyazı, soru metni ya
-#' da herhangi bir veri değeri LOGA GİRMEZ.
+#' Yalnızca sayaç/oran, uyuşmazlık NEDENLERİ ve yapısal olgu KİMLİKLERİ yazılır.
+#' Düzyazı, soru metni, iddia edilen/gerçek DEĞERLER ve satır verisi LOGA
+#' GİRMEZ: olgu kimliği bir şema tanımlayıcısıdır, veri değeri değildir.
+#'
+#' Tek bir toplu neden listesi (`nedenler=a,b,c`) yinelenen üretim arızalarını
+#' teşhis etmeye yetmiyordu: hangi nedenin baskın olduğu görünmüyordu. Neden
+#' başına SAYAÇ ve uyuşmazlık üreten olgu kimlikleri (sınırlı) eklenir.
 pk_numeric_provenance_report <- function(result, query_id = NULL) {
   if (!is.list(result)) return(invisible(NULL))
 
-  nedenler <- vapply(result$mismatches %||% list(),
+  uyusmazliklar <- result$mismatches %||% list()
+  nedenler <- vapply(uyusmazliklar,
                      function(m) as.character(m$reason %||% "?")[1], character(1))
   ozet <- if (length(nedenler)) paste(sort(unique(nedenler)), collapse = ",") else "-"
 
+  sayaclar <- "-"
+  if (length(nedenler)) {
+    tablo <- table(nedenler)
+    sayaclar <- paste(sprintf("%s=%d", names(tablo), as.integer(tablo)),
+                      collapse = " ")
+  }
+
+  kimlikler <- vapply(uyusmazliklar,
+                      function(m) as.character(m$fact_id %||% NA_character_)[1],
+                      character(1))
+  kimlikler <- unique(kimlikler[!is.na(kimlikler) & nzchar(kimlikler)])
+  kimlik_ozeti <- if (!length(kimlikler)) {
+    "-"
+  } else {
+    paste0(paste(utils::head(kimlikler, .PK_PROV_REPORT_MAX_IDS), collapse = ","),
+           if (length(kimlikler) > .PK_PROV_REPORT_MAX_IDS) ",..." else "")
+  }
+
   cat(sprintf(
-    "[PK_ANALIZ] Sayisal koken | kip=%s | sorgu=%s | iddia=%d | uyusmazlik=%d | oran=%.3f | nedenler=%s\n",
+    "[PK_ANALIZ] Sayisal koken | kip=%s | sorgu=%s | iddia=%d | uyusmazlik=%d | oran=%.3f | nedenler=%s | dagilim=%s | sayisiz_isaret=%d | olgular=%s\n",
     result$mode %||% "?", as.character(query_id %||% "?")[1],
-    as.integer(result$checked %||% 0L), length(result$mismatches %||% list()),
-    as.numeric(result$rate %||% 0), ozet
+    as.integer(result$checked %||% 0L), length(uyusmazliklar),
+    as.numeric(result$rate %||% 0), ozet, sayaclar,
+    length(result$numberless %||% list()), kimlik_ozeti
   ))
 
   invisible(result)

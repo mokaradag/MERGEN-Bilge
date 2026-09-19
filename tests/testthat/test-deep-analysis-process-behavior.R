@@ -31,7 +31,11 @@
                   # yüklenmezse test TEK BAŞINA çalıştığında
                   # "could not find function" ile düşerdi.
                   "helpers_pk_analysis_security_summary.R",
-                  "helpers_deep_analysis_sql.R", "helpers_deep_analysis_reconcile.R",
+                  "helpers_deep_analysis_sql.R",
+                  # Manifest sırası: birincil bağlantı yaşam döngüsü (edinme/bırakma/
+                  # kısa ömürlü sağlayıcı) uzlaştırma katmanından ÖNCE yüklenir.
+                  "helpers_deep_analysis_connection.R",
+                  "helpers_deep_analysis_reconcile.R",
                   "helpers_pk_query_selection_deep.R",
                      "helpers_deep_analysis_phase6.R",
                      "helpers_deep_analysis_selector.R")) {

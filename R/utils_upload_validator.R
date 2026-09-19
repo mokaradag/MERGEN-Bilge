@@ -71,7 +71,7 @@
   govde <- chartr("abcdefghijklmnopqrstuvwxyz", "ABCDEFGHIJKLMNOPQRSTUVWXYZ", govde)
   # Üst simge rakamlar sıradan rakama indirgenir (kaçış dizisi kullanılır:
   # bu karakterlerin bir kısmının CP1254 karşılığı yoktur - CLAUDE.md 1G).
-  govde <- chartr("\u00B9\u00B2\u00B3", "123", govde)
+  govde <- chartr(intToUtf8(c(0x00B9L, 0x00B2L, 0x00B3L)), "123", govde)  # `intToUtf8()` ZORUNLUDUR (PR #719 inceleme, P2): kaçış dizisi kaynağı ASCII tutar ama UTF-8 OLMAYAN yerelde (üretim Windows/Türkçe VM) 3 karakter değil 6 BAYT ve `Encoding() == "unknown"` üretir; `chartr()` "invalid multibyte string 'old'" ile FIRLATIR ve ayrılmış-ad denetimi doğrulayıcının dışına hata sızdırırdı.
   govde %in% c("CON", "PRN", "AUX", "NUL", paste0("COM", 1:9), paste0("LPT", 1:9))
 }
 

@@ -76,7 +76,14 @@
 # collation'ı (`Turkish_CI_AS`) `i` ile `İ`yi zaten eşit sayar; ayırmak
 # YETKİLİ bir kullanıcının kapsamını boşaltırdı (yedek yol bunları hâlâ ayrı
 # tutar, orada DB kararı YOKTUR).
-.PK_RLS_DB_FOLD_FROM <- "\u0130\u0131"
+# `intToUtf8()` ZORUNLUDUR, `enc2utf8()` YETMEZ (PR #719 inceleme, P2): UTF-8
+# OLMAYAN yerelde (\u00fcretim Windows/T\u00fcrk\u00e7e VM, `LC_CTYPE=C` CI) `"\u0130\u0131"`
+# ka\u00e7\u0131\u015f\u0131 2 karakter DE\u011e\u0130L 4 BAYT ve `Encoding() == "unknown"` \u00fcretiyor; a\u015fa\u011f\u0131daki
+# `chartr()` "invalid multibyte string 'old'" ile FIRLATIYOR ve RLS kimlik
+# e\u015fle\u015fmesi \u00e7\u00f6k\u00fcyordu (kapal\u0131 ba\u015far\u0131s\u0131z: yetkili kullan\u0131c\u0131 kapsams\u0131z kal\u0131r).
+# `enc2utf8()` "unknown" dizeyi YERELDEN d\u00f6n\u00fc\u015ft\u00fcrd\u00fc\u011f\u00fc i\u00e7in ayn\u0131 hatay\u0131 verir;
+# `intToUtf8()` her yerelde UTF-8 i\u015faretli 2 karakter d\u00f6nd\u00fcr\u00fcr.
+.PK_RLS_DB_FOLD_FROM <- intToUtf8(c(0x0130L, 0x0131L))
 .PK_RLS_DB_FOLD_TO   <- "ii"
 
 .pk_rls_db_match_key <- function(x) {

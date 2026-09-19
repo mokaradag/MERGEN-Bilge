@@ -141,6 +141,7 @@ source_manifest_sections <- list(
   # checkout'unda yoklukları NORMALDİR.
   pk_query_metadata = c(
     "R/helpers_pk_ascii_tokens.R", "R/helpers_pk_text_turkish.R",  # makine belirteçleri (ASCII katlama), sonra Türkçe metin
+    "R/helpers_pk_config.R",  # ZORUNLU: `pk_meta_query_field_allowlist()` sorgu bazlı `MERGEN_PK_*` ezme adlarını `pk_config_spec`/`pk_config_meta_key()` üzerinden TÜRETİR. Bu dosya eskiden `analysis_helpers` bölümündeydi, yani `config_sql_loader.R`'nin `pk_query_meta_attach()` doğrulamasından SONRA yükleniyordu: izin listesi o anda yapılandırma anahtarlarını İÇERMİYOR ve geçerli bir per-sorgu ezmesi bildiren metadata AÇILIŞTA "bilinmeyen alan" diye reddediliyordu. Yalnızca `pk_ascii_lower`a bağlıdır (üstteki satır), seam sahibi DEĞİŞMEZ.
     "R/helpers_pk_query_meta_schema.R",
     "R/helpers_pk_query_meta_access.R",
     "R/library_query_meta_auto.R",
@@ -251,9 +252,8 @@ source_manifest_sections <- list(
   # analysis_helpers: Derin analiz ve Proje/Kaynak Analizi çekirdek/RLS-güvenlik
   # özeti/filtre/sorgu-seçimi yardımcıları.
   analysis_helpers = c(
-    # Faz 0: yapılandırma -> köken -> telemetri kaydı (saf) -> telemetri
-    # yazımı (DB). Sıra ZORUNLUDUR: yazım katmanı diğer üçünü de kullanır.
-    "R/helpers_pk_config.R",
+    # Faz 0 köken -> telemetri kaydı (saf) -> telemetri yazımı (DB) sırası
+    # ZORUNLUDUR (aşağıda); yapılandırma `pk_query_metadata` bölümüne taşındı.
     # Faz 6 (§5.10) bloklamayan yürütme; sıra ZORUNLU (bkz. dosya başlıkları).
     "R/helpers_pk_async_cancel.R",
     "R/helpers_pk_exec_context.R",
@@ -316,16 +316,16 @@ source_manifest_sections <- list(
     "R/helpers_pk_precision.R", "R/helpers_pk_packet_stats.R", "R/helpers_pk_packet_context_facts.R",  # olgu çekirdeği -> bağlam olguları
     "R/helpers_pk_packet_keys.R", "R/helpers_pk_analysis_packet.R",  # saf gruplama anahtarı/etiketi -> paket kurucusu
     "R/helpers_pk_packet_render.R",
-    "R/helpers_pk_numeric_provenance.R", "R/helpers_pk_numeric_provenance_claims.R",  # ikincisi: düzyazı iddia tarayıcıları, doğrulayıcıdan SONRA yüklenir (sabitleri ÇAĞRI ANINDA çözer)
+    "R/helpers_pk_numeric_provenance.R", "R/helpers_pk_numeric_provenance_binding.R", "R/helpers_pk_numeric_provenance_claims.R",  # sonraki ikisi: işaret/sayı bağlama ve düzyazı iddia tarayıcısı, doğrulayıcıdan SONRA yüklenir (sabitleri ÇAĞRI ANINDA çözer)
     "R/helpers_pk_export_plan.R",
     "R/helpers_pk_export_csv.R",
     "R/helpers_pk_export_xlsx.R",
     "R/helpers_pk_export_serve.R",
     "R/helpers_pk_answer_compose.R",
     "R/helpers_pk_analysis_result.R",
-    # Derin analiz: detay kataloğu + bağlam kurucu orkestratörden ÖNCE; Faz 6
-    # (D16) uzlaştırma katmanı ikisinden de ÖNCE (ikisi de onu çağırır).
+    # Derin analiz: detay kataloğu + bağlam kurucu orkestratörden ÖNCE; Faz 6 (D16) uzlaştırma katmanı ikisinden de ÖNCE (ikisi de onu çağırır).
     "R/helpers_deep_analysis_sql.R",
+    "R/helpers_deep_analysis_connection.R",  # birincil bağlantı yaşam döngüsü (edinme/bırakma/kısa ömürlü sağlayıcı); uzlaştırma katmanından ÖNCE, orkestratör ve gözlem fabrikası ikisi de çağırır
     "R/helpers_deep_analysis_reconcile.R",
     "R/helpers_deep_analysis_phase6.R",
     "R/helpers_deep_analysis_selector.R",

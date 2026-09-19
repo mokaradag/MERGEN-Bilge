@@ -5,6 +5,11 @@
 
 local({
   repo_root <- resolve_repo_root_for_tests()
+
+  # ANLIK GÖRÜNTÜ `%||%` ATAMASINDAN ÖNCE ALINIR: sonra alınırsa operatör
+  # `eklenen` kümesine GİRMEZ ve temizlik onu hiç kaldırmaz.
+  onceki_adlar <- ls(globalenv(), all.names = TRUE)
+
   # KAPSAM `globalenv()` ILE SINIRLIDIR (PR #705 inceleme, P3).
   #
   # `inherits = TRUE` araması PAYLASILAN testthat yardimci ortamini da kapsar; o
@@ -25,6 +30,22 @@ local({
     "helpers_pk_query_meta.R"
   )) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = globalenv())
+  }
+
+  # SIZINTI TEMİZLENİR (PR #719 inceleme, P2): bu tanımlar `globalenv()` içinde
+  # KALIYORDU. Tam suite koşumunda sonraki dosyalar `exists(..., inherits = TRUE)`
+  # ile yoklayıp kendi fail-closed/yedek dallarını ATLIYOR ve tek başına geçen
+  # bir dosya paket koşumunda FARKLI davranıyordu (CLAUDE.md'de belgelenen
+  # `helpers_pk_analysis_filters_v2.R` sınıfı). Kardeş çözüm:
+  # test-pk-sql-execute-bounded-behavior.R. Yalnızca BU dosyanın eklediği adlar
+  # kaldırılır; `teardown_env()` testthat 3.3.2'de DOSYA sonunda çalışır
+  # (`test_one_file()` -> `withr::defer(teardown_run())`).
+  eklenen <- setdiff(ls(globalenv(), all.names = TRUE), onceki_adlar)
+  if (length(eklenen) && requireNamespace("withr", quietly = TRUE)) {
+    withr::defer(
+      suppressWarnings(try(rm(list = eklenen, envir = globalenv()), silent = TRUE)),
+      envir = testthat::teardown_env()
+    )
   }
 })
 

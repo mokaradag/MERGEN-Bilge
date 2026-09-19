@@ -278,13 +278,28 @@ init_db_pool_once <- function(target = "primary", factory = NULL, force = FALSE,
     stop("Havuz icin 'odbc' paketi gerekli.", call. = FALSE)
   }
 
+  # KAPALI BAŞARISIZ HEDEF ÇÖZÜMÜ (PR #719 incelemesi, P2).
+  #
+  # Eskiden hem BİLİNMEYEN bir hedef hem de TANIMSIZ `DB_DSN_2`/`DB_DSN_3`
+  # sessizce `DB_DSN`e düşüyordu: `secondary` için açılan havuz BİRİNCİL
+  # veritabanına bağlanıyor ve havuzlanmış her sorgu YANLIŞ veritabanında
+  # çalışıyordu. Boş-DSN muhafızı da hiç devreye girmiyordu (yedek değer
+  # doluydu). Yalnızca `primary` için yerleşik varsayılan korunur.
   dsn_var <- switch(target,
     "primary"   = "DB_DSN",
     "secondary" = "DB_DSN_2",
     "tertiary"  = "DB_DSN_3",
-    "DB_DSN"
+    NULL
   )
-  dsn_name <- Sys.getenv(dsn_var, Sys.getenv("DB_DSN", "TestConnection"))
+  if (is.null(dsn_var)) {
+    stop(sprintf("Havuz icin bilinmeyen hedef: '%s'.",
+                 as.character(target %||% "")[1]), call. = FALSE)
+  }
+  dsn_name <- if (identical(dsn_var, "DB_DSN")) {
+    Sys.getenv("DB_DSN", "TestConnection")
+  } else {
+    Sys.getenv(dsn_var, "")
+  }
   if (identical(dsn_name, "")) {
     stop(sprintf("Havuz icin '%s' DSN tanimi yok.", dsn_var), call. = FALSE)
   }

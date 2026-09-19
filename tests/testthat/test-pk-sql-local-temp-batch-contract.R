@@ -478,3 +478,33 @@ test_that("CREATE INDEX dalina eklenen ikinci ifade REDDEDILIR (PR #705 P2)", {
     expect_false(isTRUE(sonuc$allowed), info = kotu)
   }
 })
+
+test_that("CREATE INDEX dalina eklenen ikinci CREATE de REDDEDILIR (PR #719 P2)", {
+  env <- .pk_local_temp_env()
+
+  # Indeks dali denylist denetiminden `CREATE` kelimesini CIKARIR (ifadenin
+  # KENDISI bir `CREATE INDEX`tir) ve `CREATE` ayrilmis ifade baslaticilari
+  # listesinde YOKTU; `;` T-SQL'de zorunlu olmadigi icin ayni ifade metninde
+  # birakilan IKINCI bir `CREATE` kapidan gecip KALICI DDL calistirabiliyordu.
+  toplu <- function(indeks) paste(
+    "SELECT s.Id AS Id INTO #AktifProjeler FROM dbo.EPS s;",
+    indeks,
+    "SELECT Id FROM #AktifProjeler;",
+    "DROP TABLE #AktifProjeler;",
+    sep = "\n"
+  )
+
+  for (kotu in c(
+    "CREATE INDEX ix ON #AktifProjeler(Id) CREATE TABLE dbo.KaliciSonda (c int);",
+    "CREATE CLUSTERED INDEX IX_A ON #AktifProjeler(Id) CREATE VIEW dbo.V AS SELECT 1 AS x;",
+    "CREATE NONCLUSTERED INDEX IX_A ON #AktifProjeler(Id)\n  CREATE TABLE dbo.KaliciSonda (c int);"
+  )) {
+    sonuc <- env$pk_sql_classify_readonly(toplu(kotu))
+    expect_false(isTRUE(sonuc$allowed), info = kotu)
+  }
+
+  # KONTROL: ifadenin KENDI `CREATE`i (ilk jeton) kapiyi KAPATMAZ.
+  expect_true(isTRUE(env$pk_sql_classify_readonly(
+    toplu("CREATE CLUSTERED INDEX IX_A ON #AktifProjeler(Id);")
+  )$allowed))
+})

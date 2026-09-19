@@ -74,6 +74,24 @@ window.getAnalysisSettings = function() {
 // ------------------------------------------------------------------------------
 
 /**
+ * Shiny `selectInput()` varsayilan olarak selectize kullanir: yalnizca
+ * `el.value` yazip `change` tetiklemek Shiny degerini gunceller ama GORUNUR
+ * selectize etiketini guncellemez (kullanici eski secimi okumaya devam eder).
+ * Selectize varsa onun API'si kullanilir, yoksa eski davranis korunur.
+ */
+function setSelectValue(el, value) {
+  if (!el || typeof value === 'undefined' || value === null) return;
+  var sel = el.selectize || (el.parentNode && el.parentNode.querySelector &&
+    el.parentNode.querySelector('.selectize-control') ? $(el)[0].selectize : null);
+  if (sel && typeof sel.setValue === 'function') {
+    sel.setValue(value, false);
+    return;
+  }
+  el.value = value;
+  $(el).trigger('change');
+}
+
+/**
  * Analiz ayarlarını sohbet ve ayarlar sayfaları arasında senkronize et
  * @param {string} source - 'chat' veya 'settings'
  */
@@ -86,8 +104,7 @@ window.syncAnalysisSettings = function(source) {
   if (source === 'chat') {
     // Sohbet → Ayarlar
     if (settingsDetail && chatDetail) {
-      settingsDetail.value = chatDetail.value;
-      $(settingsDetail).trigger('change');
+      setSelectValue(settingsDetail, chatDetail.value);
     }
     if (settingsDeep && chatDeepBtn) {
       var isActive = chatDeepBtn.classList.contains('active');
@@ -185,8 +202,7 @@ if (window.Shiny) {
     var settingsDeep = document.getElementById('settings_yapilandirma_module-analysis_deep_thinking');
 
     if (settingsDetail && data.detail_level) {
-      settingsDetail.value = data.detail_level;
-      $(settingsDetail).trigger('change');
+      setSelectValue(settingsDetail, data.detail_level);
     }
     if (settingsDeep && typeof data.deep_thinking !== 'undefined') {
       settingsDeep.checked = data.deep_thinking;

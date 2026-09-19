@@ -127,7 +127,12 @@
   # doğrulayıcı + erişimci yardımcıları, ardından dört veri katmanı
   # (iskelet -> üretilen -> küre edilmiş -> yerel alias) ve birleştirici;
   # hepsi R/config_sql_loader.R'den ÖNCE (master plan §6 zorunlu sırası).
-  pk_query_metadata = list(first = "R/helpers_pk_ascii_tokens.R", last = "R/helpers_pk_query_meta.R", n = 10L),
+  # pk_query_metadata 10 -> 11 / analysis_helpers 100 -> 99 (first anchor da
+  # değişti) BİLİNÇLİ GÜNCELLEME (PR #719 inceleme, P2): `helpers_pk_config.R`
+  # `analysis_helpers`ten buraya TAŞINDI. `pk_meta_query_field_allowlist()`
+  # sorgu bazlı `MERGEN_PK_*` ezme adlarını `pk_config_spec` üzerinden türetir
+  # ve `config_sql_loader.R` doğrulaması ondan ÖNCE çalışıyordu. Toplam DEĞİŞMEZ.
+  pk_query_metadata = list(first = "R/helpers_pk_ascii_tokens.R", last = "R/helpers_pk_query_meta.R", n = 11L),
   sql_library = list(first = "R/library_queries.R", last = "R/config_sql_loader.R", n = 2L),
   language_messaging = list(first = "R/helpers_language.R", last = "R/helpers_messaging.R", n = 2L),
   mcp_tools = list(first = "R/helpers_mcp_context.R", last = "R/helpers_mcp_tools.R", n = 9L),
@@ -237,7 +242,11 @@
   # BİLİNÇLİ GÜNCELLEME (PR #705 üretim düzeltmesi): 98 -> 99.
   # `helpers_pk_query_selection_compact.R` seçim istemlerini bütçeye sığdırır
   # ve yük kurucusundan ÖNCE yüklenir.
-  analysis_helpers = list(first = "R/helpers_pk_config.R", last = "R/helpers_pk_query_selection_apply.R", n = 99L),
+  # analysis_helpers 99 -> 100 BİLİNÇLİ GÜNCELLEME (PR #719 inceleme): derin
+  # analiz BİRİNCİL BAĞLANTI YAŞAM DÖNGÜSÜ `helpers_deep_analysis_connection.R`
+  # dosyasına BÖLÜNDÜ (bırakıcı + kısa ömürlü sağlayıcı `reconcile`den taşındı,
+  # korumalı edinme kapısı eklendi). Büyüme değil, bölme.
+  analysis_helpers = list(first = "R/helpers_pk_async_cancel.R", last = "R/helpers_pk_query_selection_apply.R", n = 100L),
   sso_identity_helpers = list(first = "R/helpers_sso_jwks_cache.R", last = "R/helpers_logout_url.R", n = 4L),
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
   # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
@@ -656,6 +665,11 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # #temp batch istisnasını taşır. `helpers_pk_sql_readonly.R` KÜRESEL 796
   # satır tavanındaydı ve yer tutucu SQL reddi eklenemiyordu. Ratchet
   # bölünmesidir; yeni davranış eklemez.
+  # 494 -> 495: PR #719 uretim duzeltmesi, R/helpers_pk_numeric_provenance_binding.R
+  # (isaret grubu/sayi baglama katmani). `helpers_pk_numeric_provenance.R` 699
+  # satirdaydi ve baglama katmani KURESEL 800 satir tavanini asardi; tarama
+  # dosyasi ise ayri bir sorumluluktur (iddia secimi). Ratchet bolunmesidir,
+  # davranis degisikligi bu dosyanin KENDI sozlesmesindedir (analysis_helpers +1).
   # 478 -> 479: PR #705 inceleme takibi, R/helpers_pk_numeric_provenance_claims.R
   # (sayısal köken düzyazı tarayıcıları; küresel 800 satır ratchet'i için ayrıldı).
   # 479 -> 480: PR #705 inceleme takibi, R/helpers_pk_packet_keys.R (saf
@@ -687,7 +701,11 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   #   * R/config_file_store_bucket_clear.R — kova temizliği (üç durumlu dizin
   #     varlık kararı + sahiplik kaybı uzlaştırması); `config_file_store.R`
   #     KÜRESEL 25 fonksiyon tavanını aşacaktı.
-  expect_equal(length(runtime), 494L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  #   * R/helpers_deep_analysis_connection.R — derin analiz birincil bağlantı
+  #     yaşam döngüsü (korumalı edinme + idempotent bırakıcı + kısa ömürlü
+  #     telemetri sağlayıcısı); `helpers_deep_analysis_reconcile.R` 293/19 ve
+  #     `helpers_deep_analysis_sql.R` 210/15 tavanlarındaydı.
+  expect_equal(length(runtime), 496L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

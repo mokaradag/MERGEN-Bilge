@@ -77,6 +77,25 @@ if (!exists("pk_telemetry_log_analysis", mode = "function", inherits = TRUE)) {
   ))
 }
 
+# İstenen toplulaştırma karşılanamadığında kullanıcıya açıkça bildirilir.
+# `finish()` ham satırları yine döndürür (v1 uyumluluğu), ama alt bilgi bunun
+# istenen ÖZET OLMADIĞINI söyler.
+.pk_dropped_aggregation_degradations <- function(dropped_aggregation) {
+  if (!is.list(dropped_aggregation) || length(dropped_aggregation) == 0L) return(list())
+
+  tur <- as.character(dropped_aggregation$aggregation %||% "?")[1]
+  neden <- as.character(dropped_aggregation$reason %||% "uygulanamadı")[1]
+
+  list(list(
+    code = "aggregation_dropped",
+    message = sprintf(
+      paste0("İstenen toplulaştırma (\"%s\") %s; aşağıdaki sonuç bir ÖZET ",
+             "değil, filtrelenmiş kayıt listesidir."),
+      tur, neden
+    )
+  ))
+}
+
 .pk_observation_session_user_id <- function(session) {
   value <- tryCatch(session$userData$user_id, error = function(e) NULL)
   if (is.null(value) || length(value) == 0L) return(NULL)
@@ -125,6 +144,12 @@ if (!exists("pk_telemetry_log_analysis", mode = "function", inherits = TRUE)) {
     info$filters <- filter_observation$applied_filters %||% list()
     dropped_degradations <- .pk_dropped_filter_degradations(
       filter_observation$dropped_filters %||% list()
+    )
+    # TOPLULAŞTIRMA BOZULMASI AYRI RAPORLANIR: filtre düşürme metnine
+    # katılmaz ve aşağıdaki `filter_status` kurallarını ETKİLEMEZ.
+    dropped_degradations <- c(
+      dropped_degradations,
+      .pk_dropped_aggregation_degradations(filter_observation$dropped_aggregation)
     )
 
     if (length(info$filters %||% list()) > 0L &&

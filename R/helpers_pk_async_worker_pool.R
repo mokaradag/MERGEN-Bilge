@@ -367,7 +367,7 @@ pk_async_worker_pool_retire <- function(hedef) {
   }
 
   baslat <- get0("init_db_pool_once", envir = hedef, inherits = TRUE)
-  if (!is.function(baslat)) return(list(ok = FALSE, enabled = TRUE, fatal = FALSE))
+  if (!is.function(baslat)) return(list(ok = FALSE, enabled = TRUE, fatal = FALSE, admission = FALSE))  # `admission = FALSE` HER "etkin ama hazir degil" donusunde verilir (PR #719 inceleme, P2): alan eksik kalinca bootstrap kapilari yalnizca `fatal`e bakip `ok = TRUE` donuyordu ve isci dogrudan `dbConnect()` yoluna dusup KURESEL oturum tavanini bypass ediyordu.
 
   # Yeniden source sonrası ÖKSÜZ kalmış havuz varsa önce o kapatılır.
   pk_async_worker_pool_retire(hedef)
@@ -415,7 +415,7 @@ pk_async_worker_pool_retire <- function(hedef) {
   # `init_db_pool_once()` `MERGEN_DB_POOL_FAIL_FAST=true` iken BİLEREK hata
   # atar. Bu hatayı yutmak, operatör tam da "kapalı başarısız ol" dediğinde
   # işçiyi doğrudan `dbConnect()` yoluna düşürür ve admisyon tavanını atlar.
-  list(ok = FALSE, enabled = TRUE, fatal = isTRUE(kapali_basarisiz))
+  list(ok = FALSE, enabled = TRUE, fatal = isTRUE(kapali_basarisiz), admission = FALSE)
 }
 
 .pk_async_pool_log <- function(fmt, ...) {

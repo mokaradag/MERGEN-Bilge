@@ -12,9 +12,10 @@
 .source_pk_qsel_behavior_env <- function() {
   pk_env <- new.env(parent = globalenv())
 
-  pk_env$`%||%` <- function(x, y) {
-    if (is.null(x) || length(x) == 0) y else x
-  }
+  # ÜRETİM OPERATÖRÜYLE AYNI (`R/utils_common.R`): YALNIZCA `NULL` yedeğe düşer.
+  # Stub `length(x) == 0` durumunu da yedeğe düşürdüğünde test ortamı üretimden
+  # DAHA TOLERANSLI oluyor ve `character(0)` sınırındaki gerçek kusur GÖRÜNMÜYOR.
+  pk_env$`%||%` <- function(x, y) if (is.null(x)) y else x
 
   source(
     file.path(repo_root_for_tests, "R", "helpers_pk_analysis_query_selection.R"),

@@ -223,7 +223,13 @@ if (!exists("pk_hook_single_exit_fix_install", mode = "function",
     unauthorized <- grepl("Yetki Hatası", response_text, fixed = TRUE) ||
       (exists("pk_rls_denied_message", mode = "function", inherits = TRUE) &&
          isTRUE(tryCatch(
-           any(vapply(c("db_error", "ambiguous", "not_found"), function(durum) {
+           # `pk_rls_denied_message()` bir `rls_info` LİSTESİ bekler ve
+           # `reason`/`db_error`/`ambiguous` alanlarını okur. Buraya DÜZ
+           # karakter dizisi geçilince üç çağrı da AYNI varsayılan metni
+           # döndürüyor, `db_error`/`ambiguous` reddi eşleşmiyor ve istek yine
+           # `"Hata"` olarak kaydediliyordu (PR #719 incelemesi, P3).
+           any(vapply(list(list(db_error = TRUE), list(ambiguous = TRUE), list()),
+                      function(durum) {
              mesaj <- as.character(pk_rls_denied_message(durum))[1]
              is.character(mesaj) && nzchar(mesaj) &&
                identical(trimws(response_text), trimws(mesaj))

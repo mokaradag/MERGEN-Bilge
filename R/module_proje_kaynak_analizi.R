@@ -374,7 +374,8 @@ pk_analiz_process_request <- function(user_prompt, chat_history, session, stop_c
 	   cat(sprintf("[PK_ANALIZ] Hedef DB 'primary' degil (%s). Baglanti degistiriliyor...\n", target_db))
 	   
 	   release_connection(conn_list)
-	   
+	   # SERBEST BIRAKILAN TUTAMAÇ ÖNCE TEMİZLENİR: `get_connection()` hata verirse `on.exit` aynı (zaten kapatılmış) tutamacı İKİNCİ kez kapatmaya çalışıyor ve sahte bir "kapatılamadı" uyarısı/telemetrisi üretiyordu.
+	   conn_list <- NULL; conn <- NULL
 	   conn_list <- get_connection(target = target_db)
 	   conn <- conn_list$conn
 	}

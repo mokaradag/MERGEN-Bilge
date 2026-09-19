@@ -103,9 +103,9 @@ mergen_pk_residual_budget_sec <- function(request) {
 .mergen_pk_chip_labels <- function(chips) {
   if (!is.list(chips) || !length(chips)) return(character(0))
   etiketler <- vapply(chips, function(cip) {
-    ad <- if (is.list(cip)) suppressWarnings(trimws(as.character(cip$name)[1])) else NA
-    # BOŞ ad KİMLİĞE düşer: `%||%` yalnızca `NULL` yakalar, boş ad çipi düşürürdü.
-    ham <- if (length(ad) == 1L && !is.na(ad) && nzchar(ad)) ad else if (is.list(cip)) cip$id else cip
+    ad <- if (is.list(cip)) suppressWarnings(trimws(as.character(cip[["name"]] %||% cip[["label"]])[1])) else NA
+    # BOŞ ad KİMLİĞE/DEĞERE düşer (`%||%` yalnızca `NULL` yakalar). ÇÖZÜMLEYİCİ ÇİPLERİ `label`/`value` taşır; yalnızca `name`/`id` okununca etiketler BOŞ kalıyor ve tıklanabilir seçenek HİÇ gösterilmiyordu (PR #719 inceleme, P2).
+    ham <- if (length(ad) == 1L && !is.na(ad) && nzchar(ad)) ad else if (is.list(cip)) (cip[["id"]] %||% cip[["value"]]) else cip
     deger <- suppressWarnings(trimws(as.character(ham)[1]))
     if (length(deger) != 1L || is.na(deger)) "" else deger
   }, character(1))

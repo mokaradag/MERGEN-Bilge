@@ -123,14 +123,24 @@ if (!exists("resolve_db_client_encoding", mode = "function", inherits = TRUE) ||
 # AÇIK kalırdı (aşağıdaki `release_connection()` yorumunun bildirdiği sözleşme).
 .db_with_elapsed_budget <- function(budget_sec, fn, honor_outer = TRUE) {
   butce <- suppressWarnings(as.numeric(budget_sec)[1])
-  if (length(butce) != 1L || is.na(butce) || !is.finite(butce)) return(fn())
-  if (butce <= 0) {
+  sonsuz <- length(butce) != 1L || is.na(butce) || !is.finite(butce)
+  # BÜTÇESİZ TEMİZLİK DIŞ SINIRI DA KALDIRIR (PR #719 inceleme, P3): sonsuz bütçe
+  # eskiden `fn()`'i DOĞRUDAN çağırıyordu, ama DIŞ çağıranın `setTimeLimit()`'i
+  # HÂLÂ kuruluydu. PK son tarihi yokken (`Inf` teardown bütçesi) bile
+  # `db_pool_healthy(timeout_sec = 5)` zincirinde dış bütçe sorguda tükeniyor ve
+  # `dbDisconnect()` KESİLİYORDU: bağlantı kirli ilan edilip fiziksel oturum
+  # finalizer'a kadar açık kalırdı. `honor_outer = FALSE` (yalnızca temizlik)
+  # artık dış sınırı da geçici olarak kaldırır; çıkışta dışın KALANI geri yüklenir.
+  if (sonsuz && isTRUE(honor_outer)) return(fn())
+  if (!sonsuz && butce <= 0) {
     stop("PK istek bütçesi tükendi; DB işlemi başlatılmadı.", call. = FALSE)
   }
 
   simdi <- as.numeric(Sys.time())
   dis_son <- .db_elapsed_state$deadline_at
-  etkin_son <- if (is.null(dis_son) || !isTRUE(honor_outer)) {
+  etkin_son <- if (sonsuz) {
+    Inf
+  } else if (is.null(dis_son) || !isTRUE(honor_outer)) {
     simdi + butce
   } else {
     min(dis_son, simdi + butce)
@@ -143,7 +153,8 @@ if (!exists("resolve_db_client_encoding", mode = "function", inherits = TRUE) ||
   }, add = TRUE)
 
   .db_elapsed_state$deadline_at <- etkin_son
-  setTimeLimit(cpu = Inf, elapsed = max(0.05, etkin_son - simdi), transient = TRUE)
+  setTimeLimit(cpu = Inf, transient = TRUE,
+               elapsed = if (is.finite(etkin_son)) max(0.05, etkin_son - simdi) else Inf)
   fn()
 }
 
