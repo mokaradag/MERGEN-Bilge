@@ -174,6 +174,16 @@ test_that("onek para birimi ALINTILI yolda birim olarak cozulur", {
   expect_length(sonuc$mismatches %||% list(), 0L)
 })
 
+test_that("TL simgesi kaynak parse asamasinda native encodinge bagli kacis kullanmaz", {
+  kod <- pk_test_code_only_file("R/helpers_pk_numeric_provenance_binding.R")
+  expect_false(grepl("\\u20ba", kod, fixed = TRUE, ignore.case = TRUE))
+
+  env <- .prov_tarama_env()
+  tl <- intToUtf8(0x20BA)
+  expect_identical(env$.PK_PROV_TL_SIGN, tl)
+  expect_identical(unname(env$.PK_PROV_PREFIX_CURRENCIES[tl]), "TL")
+})
+
 # ---------------------------------------------------------------------------
 # 4) ALINTISIZ tarayici, alintili yolla AYNI birim sozlugunu kullanir.
 # ---------------------------------------------------------------------------
