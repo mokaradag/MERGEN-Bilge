@@ -129,7 +129,7 @@ pk_build_analysis_system_prompt <- function(analysis_mode, query) {
 }
 
 # ==============================================================================
-# Faz 2 — v2 sistem istemi (§5.8 / D20)
+# Faz 2 — v2 sistem istemi (§5.8 / D20 / §5.11)
 #
 # v1 istemi aynı anda "KÖK SEBEP analizi yap" ve "sektör benchmarks'leri ver"
 # istiyor, ne nedensel kanıt ne de herhangi bir benchmark verisi sağlıyor, sonra
@@ -139,14 +139,18 @@ pk_build_analysis_system_prompt <- function(analysis_mode, query) {
 # kaynağıdır; v2'de tabloyu R üretir.
 #
 # Yerine gelen sözleşme:
-#   * Epistemik etiketleme: Gözlem / Yorum / Olası açıklama / Öneri / Sınırlılık.
-#     Bir hipotez ASLA kanıtlanmış kök sebep gibi sunulmaz.
-#   * Her sayısal iddianın yanında `[fact:...]` referansı zorunludur; referans
-#     doğrulamadan (§5.11) sonra gösterimden silinir.
+#   * SAYIYI MODEL YAZMAZ. Sayının geçmesi gereken yere `{{fact:...}}` yuvası
+#     yazılır; değeri, birimi ve biçimini R basar (§5.11). Böylece "modelin
+#     yazdığı sayıyı düzyazıda bulup olguya geri eşleştirme" problemi ortadan
+#     kalkar.
+#   * Epistemik ayrım (gözlem / yorum / olası açıklama / öneri / sınırlılık)
+#     DİLDE korunur ama ZORUNLU BAŞLIK hâline getirilmez: yanıtın biçimi
+#     SORUYA uyar. Dar bir soruya rapor şablonu dayatmak, üretimde en çok
+#     şikâyet edilen davranıştı.
 #   * Model hiçbir aritmetik yapmaz ve tablo/ek üretmez.
 # ==============================================================================
 
-#' v2 analiz sistem istemini kur (epistemik etiketleme + olgu referansı)
+#' v2 analiz sistem istemini kur (anlamsal olgu yuvaları + soruya uyan biçim)
 pk_build_analysis_system_prompt_v2 <- function(analysis_mode, query) {
   query <- if (is.list(query)) query else list()
 
@@ -158,53 +162,62 @@ pk_build_analysis_system_prompt_v2 <- function(analysis_mode, query) {
     "SORGU: ", query$name %||% "", "\n",
     "AMACI: ", query$description %||% "", "\n\n",
 
-    "\U000026A0\U0000FE0F TEMEL KURALLAR:\n",
-    "1. HESAPLAMA YAPMA. Toplama, ortalama, oran veya yüzde HESAPLAMA; pakette ",
-    "hazır bulunmayan hiçbir sayıyı yazma.\n",
-    "2. Her sayısal iddianın hemen ardına İLGİLİ OLGUNUN referansını koy: ",
-    "`[fact:OLGU_KIMLIGI]`. HER SAYININ KENDİ REFERANSI, KENDİ YANINDA olur; ",
-    "referansları cümlenin sonunda TOPLAMA.\n",
-    "   DOĞRU: Zamanında biten 27.707 [fact:a], geciken 15.448 [fact:b], ",
-    "erken biten 3.823 [fact:c].\n",
-    "   YANLIŞ: Zamanında 27.707, geciken 15.448, erken 3.823 ",
-    "[fact:a][fact:b][fact:c].\n",
-    "   Referans, doğrulamadan sonra kullanıcıya gösterilen metinden otomatik ",
-    "olarak silinir.\n",
-    "3. Pakette 'KULLANILAMAZ' durumdaki bir olgunun sayısını ASLA uydurma; o ",
-    "değerin neden hesaplanamadığını Sınırlılık olarak yaz.\n",
-    "4. TABLO ÜRETME. Sonuç tablosu ve Excel eki R tarafından üretilir ve senin ",
-    "yanıtının altına otomatik eklenir.\n",
-    "5. 'FİLTRELEME UYARISI' varsa satır sayısı YALNIZCA kullanıcının filtresine ",
+    "\U000026A0\U0000FE0F SAYI YAZIM KURALI (en önemli kural):\n",
+    "1. HİÇBİR SAYIYI KENDİN YAZMA. Pakette her sayının yanında o sayının ",
+    "yuvası bulunur: `{{fact:OLGU_KIMLIGI}}`. Yanıtında sayının geçmesi ",
+    "gereken yere SADECE bu yuvayı koy; değeri, binlik/ondalık ayracını, ",
+    "yüzdeyi ve para birimini R yerleştirir.\n",
+    "   DOĞRU: Özellikle {{fact:activity_late.sum.overall.ab12cd}} geciken ",
+    "aktivite program takibini zorlaştırıyor.\n",
+    "   YANLIŞ: Özellikle 15.448 geciken aktivite... (sayıyı sen yazdın)\n",
+    "   YANLIŞ: Özellikle 15.448 {{fact:activity_late.sum.overall.ab12cd}} ",
+    "geciken aktivite... (hem sayı hem yuva yazılmış)\n",
+    "2. HESAPLAMA YAPMA. Toplama, çıkarma, ortalama, oran, yüzde, gün farkı ",
+    "veya süre HESAPLAMA. 'Yaklaşık 5 günlük pencere', '4 gün kaldı' gibi ",
+    "türetilmiş sayılar YASAKTIR; böyle bir değer pakette hazır bir yuva ",
+    "olarak yoksa niteliksel anlat (ör. 'bitişine çok az kaldı').\n",
+    "3. Kullanıcının kendi kriteri de pakette yuvalıdır ('Uygulanan filtre ",
+    "(kullanici kriteri)' satırı). O eşiği anacaksan onun yuvasını kullan.\n",
+    "4. Pakette YALNIZCA basılı olan kimlikler kullanılabilir; kimlik UYDURMA. ",
+    "'KULLANILAMAZ' durumdaki bir olgunun sayısını asla tahmin etme; neden ",
+    "hesaplanamadığını bir sınırlılık olarak yaz.\n",
+    "5. TABLO ÜRETME. Sonuç tablosu ve Excel eki R tarafından üretilir ve senin ",
+    "yanıtının altına otomatik eklenir. Tabloya doğal biçimde atıfta ",
+    "bulunabilirsin ama içeriğini yeniden yazma.\n",
+    "6. 'FİLTRELEME UYARISI' varsa satır sayısı YALNIZCA kullanıcının filtresine ",
     "aittir; 'X/Y' biçiminde oran verme, payda olarak yalnızca filtre sonrası ",
     "satır sayısını kullan.\n",
-    "6. Elinde benchmark verisi YOKTUR; sektör kıyaslaması uydurma.\n\n",
+    "7. Elinde benchmark verisi YOKTUR; sektör kıyaslaması uydurma.\n\n",
 
-    "EPİSTEMİK ETİKETLEME (zorunlu):\n",
-    "- **Gözlem**: Doğrudan pakette bulunan hesaplanmış olgu.\n",
-    "- **Yorum**: Gözlemlerden savunulabilir çıkarım.\n",
-    "- **Olası açıklama**: Doğrulanması gereken hipotez. Kanıtlanmış kök sebep ",
-    "gibi SUNULAMAZ; 'olası' ifadesi korunur.\n",
-    "- **Öneri**: Somut, uygulanabilir adım.\n",
-    "- **Sınırlılık**: Bu sorgunun/paketin cevaplayamadığı şey, eksik veri, ",
-    "kırpılan bölüm.\n\n",
-
-    "ZORUNLU YAPI:\n",
-    "- **\U0001F4CB Özet**: 2-3 cümlede kritik bulgular (Gözlem etiketiyle).\n",
-    "- **\U0001F4CA Gözlemler**: Paketteki olgulara dayalı bulgular, her biri ",
-    "`[fact:...]` referanslı.\n",
+    "YANITIN BİÇİMİ SORUYA UYAR:\n",
+    "- Dar ve somut bir soruya (ör. 'Ana aşaması tanımlanmamış projeler ",
+    "hangileri?', 'Bitişine az kalan aktiviteler') DOĞRUDAN, kısa ve akıcı ",
+    "cevap ver. Başlık şablonu kurma; listeyi/tabloyu R ekleyecek.\n",
+    "- Geniş bir soruya (ör. 'Projeleri özetle', 'genel durum nedir') ",
+    "yönetici üslubunda, bölümlenmiş bir değerlendirme uygun olabilir.\n",
     if (detayli) {
-      "- **\U0001F50D Detaylı İnceleme**: Kritik ölçü/boyut başına ayrı bölüm.\n"
+      paste0("- Bu sorgu DETAYLI incelemeye uygundur; soru gerektiriyorsa ",
+             "kritik ölçü/boyut başına ayrı paragraf ya da bölüm kullan.\n")
     } else {
       ""
     },
-    "- **\U0001F4A1 Yorum ve Olası Açıklamalar**: Etiketleri açıkça kullan.\n",
-    "- **\U0001F3AF Öneriler**: Önceliklendirilmiş somut adımlar.\n",
-    "- **\U000026A0\U0000FE0F Sınırlılıklar**: Paketin 'SINIRLILIKLAR' bölümünü ve ",
-    "kullanılamaz olguları burada özetle.\n\n",
+    "- Özet / Gözlemler / Yorum / Öneriler / Sınırlılıklar başlıklarını ",
+    "MECBUREN kullanma. Yalnızca soru gerçekten böyle bir yapıyı hak ",
+    "ediyorsa başlık aç.\n\n",
 
-    "TON: Doğal, akıcı, profesyonel Türkçe. 'Muhtemelen', 'sanırım' gibi ",
-    "belirsiz doldurma ifadelerinden kaçın; belirsizliği 'Olası açıklama' ",
-    "etiketiyle ifade et.\n"
+    "EPİSTEMİK DÜRÜSTLÜK (başlık değil, DİL):\n",
+    "- Pakette hesaplanmış olanı gözlem olarak, ondan çıkardığını yorum olarak ",
+    "ifade et.\n",
+    "- Doğrulanmamış bir neden-sonuç ilişkisini kanıtlanmış gibi sunma; 'olası ",
+    "açıklama' olduğunu cümle içinde belirt.\n",
+    "- Önerilerini somut ve uygulanabilir tut.\n",
+    "- Paketin cevaplayamadığı bir şey varsa bunu sınırlılık olarak, kısa ve ",
+    "net söyle.\n\n",
+
+    "TON: Deneyimli bir analist gibi; doğal, akıcı, profesyonel Türkçe. ",
+    "'Metrik: ... Değer: ... Yorum: ...' biçiminde mekanik listeler yazma. ",
+    "'Muhtemelen', 'sanırım' gibi belirsiz doldurma ifadelerinden kaçın; ",
+    "belirsizliği açıkça 'olası açıklama' diyerek ifade et.\n"
   )
 
   # v2'de metadata bağlantıları MODELE devredilmez. Ham HTML'i modele yazdırmak

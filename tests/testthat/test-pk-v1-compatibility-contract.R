@@ -461,8 +461,8 @@ test_that("v2 gozlemi filtre DEGERINI korur (koken alt bilgisi bos yazmaz)", {
               "helpers_pk_provenance.R", "helpers_pk_prompt_budget.R",
               "helpers_pk_analysis_prompts.R", "helpers_pk_precision.R", "helpers_pk_packet_stats.R", "helpers_pk_packet_context_facts.R",
               "helpers_pk_packet_keys.R", "helpers_pk_analysis_packet.R", "helpers_pk_packet_render.R",
-              "helpers_pk_numeric_provenance.R", "helpers_pk_numeric_provenance_binding.R",
-              "helpers_pk_numeric_provenance_claims.R",
+              "helpers_pk_fact_reference.R", "helpers_pk_fact_reference_scan.R",
+              "helpers_pk_numeric_provenance.R",
               "helpers_pk_export_plan.R",
               "helpers_pk_export_xlsx.R", "helpers_pk_answer_compose.R",
               "helpers_pk_statistical_summary.R", "helpers_pk_analysis_result.R")) {
@@ -545,21 +545,28 @@ test_that("D20: 'markdown tablo uret' talimati v1'de DURUYOR, v2'de KALDIRILDI",
   }
 })
 
-test_that("D20: v2 istemi epistemik etiketleme kullanir ve benchmark istemez", {
+test_that("D20: v2 istemi sayiyi MODELDEN almaz ve benchmark istemez", {
   env <- .pk_v2_result_env()
   istem <- env$pk_build_analysis_system_prompt_v2("summary", .pk_v2_query())
 
-  for (etiket in c("Gözlem", "Yorum", "Olası açıklama", "Öneri", "Sınırlılık")) {
-    expect_true(grepl(etiket, istem, fixed = TRUE),
-                info = sprintf("'%s' etiketi v2 isteminde yok.", etiket))
+  # Epistemik ayrim DILDE korunur; ZORUNLU BASLIK olarak dayatilmaz.
+  for (kavram in c("gözlem", "yorum", "olası açıklama", "sınırlılık")) {
+    expect_true(grepl(kavram, istem, fixed = TRUE),
+                info = sprintf("'%s' kavrami v2 isteminde yok.", kavram))
   }
+  expect_true(grepl("MECBUREN kullanma", istem, fixed = TRUE))
+
   # TEST ADI "benchmark ISTEMEZ" diyor ama cıplak belirtec, modele benchmark
   # URETMESINI soyleyen bir istemde de bulunurdu. TAM OLUMSUZ ifade aranır.
   expect_true(grepl("Elinde benchmark verisi YOKTUR", istem, fixed = TRUE))
   expect_false(grepl("sektör benchmarks'leri ver", istem, fixed = TRUE))
   expect_true(grepl("uydurma", istem, fixed = TRUE))
   expect_false(grepl("KÖK SEBEP", istem, fixed = TRUE))
-  expect_true(grepl("[fact:", istem, fixed = TRUE))
+
+  # SAYI YAZIM KURALI: yuva soz dizimi ogretilir, sayiyi model YAZMAZ.
+  expect_true(grepl("HİÇBİR SAYIYI KENDİN YAZMA", istem, fixed = TRUE))
+  expect_true(grepl("{{fact:", istem, fixed = TRUE))
+  expect_true(grepl("HESAPLAMA YAPMA", istem, fixed = TRUE))
 })
 
 test_that("Olgular, R'ye ait blok ve ek YALNIZCA v2 sonucunda bulunur", {
@@ -583,7 +590,7 @@ test_that("Olgular, R'ye ait blok ve ek YALNIZCA v2 sonucunda bulunur", {
   expect_true(length(v2$pk_facts) > 0L)
   expect_true(is.character(v2$pk_answer_block))
   expect_true(grepl("Sonuç tablosu", v2$pk_answer_block, fixed = TRUE))
-  expect_true(grepl("[fact:", v2$user_context, fixed = TRUE))
+  expect_true(grepl("{{fact:", v2$user_context, fixed = TRUE))
 })
 
 test_that("v1 yuku eski istatistiksel ozet bicimini KORUR", {
@@ -606,7 +613,8 @@ test_that("v1 yuku eski istatistiksel ozet bicimini KORUR", {
 
 test_that("Faz 2 dosyalari motor bayragina BAGLI kalir (sizinti yok)", {
   # Sonuc kurucusu ayrimi yapan TEK yerdir; alt katmanlar bayragi okumaz.
-  for (dosya in c("R/helpers_pk_analysis_packet.R", "R/helpers_pk_packet_render.R",
+  for (dosya in c("R/helpers_pk_fact_reference.R", "R/helpers_pk_fact_reference_scan.R",
+                  "R/helpers_pk_analysis_packet.R", "R/helpers_pk_packet_render.R",
                   "R/helpers_pk_export_plan.R", "R/helpers_pk_export_xlsx.R",
                   "R/helpers_pk_answer_compose.R", "R/helpers_pk_packet_stats.R")) {
     kod <- .pk_v1_code_only(dosya)
@@ -662,13 +670,15 @@ test_that("Olgu saklandiginda isaretler silinir ve blok alt bilginin ONUNE gelir
   metin <- NULL
   utils::capture.output(
     metin <- env$pk_provenance_decorate(
-      sprintf("Toplam 6,0 saat [fact:%s].", kimlik), oturum, request_id = "r1"
+      sprintf("Toplam %s harcandi.", env$pk_fact_reference_token(kimlik)),
+      oturum, request_id = "r1"
     ),
     type = "output"
   )
 
-  expect_false(grepl("[fact:", metin, fixed = TRUE))
-  expect_true(grepl("Toplam 6,0 saat.", metin, fixed = TRUE))
+  # Yuva kullanici metninde GORUNMEZ; yerine R'nin kanonik gosterimi gecer.
+  expect_false(grepl("{{fact:", metin, fixed = TRUE))
+  expect_true(grepl("Toplam 6,0 saat harcandi.", metin, fixed = TRUE))
   # HER İKİ İŞARETÇİNİN VARLIĞI ÖNCE KANITLANIR. `regexpr()` desen yoksa `-1`
   # döner; önizleme bloğu üretilmez olsa bile `-1 < <konum>` DOĞRU kalır ve
   # test bozuk üretim çıktısı için BAŞARILI raporlardı.

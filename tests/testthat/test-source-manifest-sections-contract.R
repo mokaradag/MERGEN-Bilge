@@ -236,6 +236,10 @@
   # `helpers_pk_numeric_provenance_claims.R` eklendi: düzyazı iddia
   # tarayıcıları, doğrulayıcı katmanından AYRILDI (küresel 800 satır bakım
   # ratchet'i). Tarayıcılar doğrulayıcıdan SONRA yüklenir.
+  # SONRAKİ MİMARİ (anlamsal olgu referansı, §5.11): ters eşleştirme yolu
+  # KALDIRILDI. `helpers_pk_numeric_provenance_binding.R` ve
+  # `..._claims.R` SİLİNDİ; yerlerine `helpers_pk_fact_reference.R` ve
+  # `helpers_pk_fact_reference_scan.R` geldi. Sayı NET olarak DEĞİŞMEZ.
   # BİLİNÇLİ GÜNCELLEME (PR incelemesi): 97 -> 98. `helpers_pk_analysis_packet.R`
   # bakım ratchet'inin satır tavanındaydı; saf gruplama anahtarı/etiketi
   # yardımcıları `helpers_pk_packet_keys.R` dosyasına ayrıldı (davranış AYNI).
@@ -671,6 +675,10 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # satirdaydi ve baglama katmani KURESEL 800 satir tavanini asardi; tarama
   # dosyasi ise ayri bir sorumluluktur (iddia secimi). Ratchet bolunmesidir,
   # davranis degisikligi bu dosyanin KENDI sozlesmesindedir (analysis_helpers +1).
+  # ANLAMSAL OLGU REFERANSI (§5.11): yukaridaki IKI baglama/tarama dosyasi
+  # SILINDI ve yerlerine `helpers_pk_fact_reference.R` +
+  # `helpers_pk_fact_reference_scan.R` geldi. Iki sildik, iki ekledik: toplam
+  # DEGISMEZ.
   # 478 -> 479: PR #705 inceleme takibi, R/helpers_pk_numeric_provenance_claims.R
   # (sayısal köken düzyazı tarayıcıları; küresel 800 satır ratchet'i için ayrıldı).
   # 479 -> 480: PR #705 inceleme takibi, R/helpers_pk_packet_keys.R (saf

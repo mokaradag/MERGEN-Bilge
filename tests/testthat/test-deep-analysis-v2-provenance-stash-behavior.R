@@ -13,9 +13,9 @@
   for (dosya in c(
     "helpers_pk_config.R",
     "helpers_pk_text_turkish.R",
+    "helpers_pk_fact_reference.R",
+    "helpers_pk_fact_reference_scan.R",
     "helpers_pk_numeric_provenance.R",
-    "helpers_pk_numeric_provenance_binding.R",
-    "helpers_pk_numeric_provenance_claims.R",
     "helpers_pk_provenance.R",
     "helpers_deep_analysis_connection.R",
     "helpers_deep_analysis_reconcile.R",
@@ -129,7 +129,8 @@ test_that("stash'teki Deep v2 fact registry halüsinasyon sayıyı nihai block m
     mode = "block"
   )))
 
-  model_text <- sprintf("Ağırlıklı ilerleme %%99,0 [fact:%s].", fact_id)
+  # Model sayıyı KENDİ yazdı: hiçbir olguya bağlanmaz.
+  model_text <- "Ağırlıklı ilerleme %99,0 seviyesinde."
   decorated <- env$pk_provenance_decorate(
     model_text, session, request_id = "req-block"
   )
@@ -141,9 +142,9 @@ test_that("stash'teki Deep v2 fact registry halüsinasyon sayıyı nihai block m
 })
 
 # KABUL YOLU: reddetme testleri, yedek metnin içindeki `%60,0` ile eşleştiği
-# için virgüllü DEĞER eşleştirmesindeki bir gerileme fark edilmeden kalabiliyordu.
-# Bu test modelin DOĞRU değeri alıntıladığı yolu açıkça sınar.
-test_that("DOĞRU virgüllü değer alıntılandığında yanıt ENGELLENMEZ", {
+# için virgüllü DEĞER basımındaki bir gerileme fark edilmeden kalabiliyordu.
+# Bu test modelin YUVAYI kullandığı yolu açıkça sınar: değeri R basar.
+test_that("YUVA kullanıldığında virgüllü değer basılır ve yanıt ENGELLENMEZ", {
   env <- .deep_v2_stash_env()
   fact_id <- "progress.weighted.weighted_mean.overall.abc123"
   fact <- .deep_v2_fact(fact_id)
@@ -168,7 +169,8 @@ test_that("DOĞRU virgüllü değer alıntılandığında yanıt ENGELLENMEZ", {
     mode = "block"
   )))
 
-  model_text <- sprintf("Ağırlıklı ilerleme %%60,0 [fact:%s].", fact_id)
+  model_text <- sprintf("Ağırlıklı ilerleme %s seviyesinde.",
+                        env$pk_fact_reference_token(fact_id))
   decorated <- env$pk_provenance_decorate(
     model_text, session, request_id = "req-accept"
   )

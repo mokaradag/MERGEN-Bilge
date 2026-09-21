@@ -236,8 +236,10 @@
   kuyruk_talimati <- paste0(
     "\n\n--- PAKET SONU ---\n\n",
     "Talimat: YALNIZCA yukaridaki paketteki olgulari kullanarak cevap ver. ",
-    "Her sayisal iddianin yanina ilgili fact referansini koy. Hesaplama yapma, ",
-    "tablo uretme; tablo ve ek R tarafindan eklenecektir."
+    "Sayilari KENDIN YAZMA; sayinin gecmesi gereken yere ilgili {{fact:...}} ",
+    "yuvasini koy, degeri R yerlestirir. Hesaplama yapma, tablo uretme; tablo ",
+    "ve ek R tarafindan eklenecektir. Yanitin bicimini soruya uydur; zorunlu ",
+    "baslik sablonu yoktur."
   )
   bas_talimati <- paste0("KULLANICI SORUSU:\n", user_prompt,
                          "\n\n--- R TARAFINDAN HESAPLANAN ANALIZ PAKETI ---\n")

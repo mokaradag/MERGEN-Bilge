@@ -380,13 +380,16 @@ test_that("duzgun kapanmis blok DEGISTIRILMEZ", {
 # --- Birim katlaması -----------------------------------------------------------
 
 test_that("kucuk harfli Turkce birim harfleri de katlanir", {
-  env <- .pk_hardening_test_env(c("helpers_pk_numeric_provenance.R",
-                                  "helpers_pk_numeric_provenance_binding.R",
-                                  "helpers_pk_numeric_provenance_claims.R"))
+  env <- .pk_hardening_test_env(c("helpers_pk_fact_reference.R",
+                                  "helpers_pk_fact_reference_scan.R",
+                                  "helpers_pk_numeric_provenance.R"))
+  # Katlama YEREL AYARDAN BAGIMSIZDIR: "gün"/"gun" ve "kişi"/"kisi" ayni
+  # jetona duser. Birim jetonu yalnizca sayi tarayicisinin "veri gibi" kapisi
+  # icindir; olgu eslestirmesinde KULLANILMAZ.
   gun_tr <- paste0("g", intToUtf8(0xFC), "n")  # "gün"
-  expect_identical(env$.pk_prov_unit_fold(gun_tr), env$.pk_prov_unit_fold("gun"))
+  expect_identical(env$.pk_scan_fold(gun_tr), env$.pk_scan_fold("gun"))
   kisi_tr <- paste0("ki", intToUtf8(0x15F), "i")  # "kişi"
-  expect_identical(env$.pk_prov_unit_fold(kisi_tr), env$.pk_prov_unit_fold("kisi"))
+  expect_identical(env$.pk_scan_fold(kisi_tr), env$.pk_scan_fold("kisi"))
 })
 
 # --- Olgu ad alanı -------------------------------------------------------------
@@ -431,13 +434,13 @@ test_that("ad alani KISALTILMAMIS sorgu kimligiyle carpismaya dayaniklidir", {
 test_that("NA olgu kimligi ad alanlama sirasinda HATA firlatmaz", {
   env <- .pk_deep_test_env()
   sonuc <- env$.pk_deep_namespace_facts(
-    "metin [fact:a] son",
+    "metin {{fact:a}} son",
     list(list(fact_id = NA_character_), list(fact_id = "a"), list(fact_id = character(0))),
     "q1"
   )
   expect_length(sonuc$facts, 3L)
   expect_true(is.na(sonuc$facts[[1]]$fact_id))
-  expect_true(grepl("[fact:q1_", sonuc$text, fixed = TRUE))
+  expect_true(grepl("{{fact:q1_", sonuc$text, fixed = TRUE))
 })
 
 # --- Eşzamansız istek sözleşmesi ----------------------------------------------

@@ -311,12 +311,12 @@ source_manifest_sections <- list(
     # bunları yalnızca tüketir (modül KÜÇÜLMELİ, büyümemeli).
     "R/helpers_pk_prompt_budget.R",
     "R/helpers_pk_analysis_prompts.R",
-    # Faz 2 (v2 arkasında) bağımlılık sırası: olgu çekirdeği -> paket -> paket
-    # metni -> sayısal köken -> dışa aktarım planı/G-Ç -> kompozisyon -> sonuç.
+    # Faz 2 (v2 arkasında) bağımlılık sırası: §5.11 olgu referansı -> olgu
+    # çekirdeği -> paket -> paket metni -> köken -> dışa aktarım -> sonuç.
+    "R/helpers_pk_fact_reference.R", "R/helpers_pk_fact_reference_scan.R",  # yuva jetonu/çözümleyici -> beklenmeyen sayı taraması; SAFTIR ve paket yazıcısı jetonu onlardan aldığı için ÖNCE yüklenir
     "R/helpers_pk_precision.R", "R/helpers_pk_packet_stats.R", "R/helpers_pk_packet_context_facts.R",  # olgu çekirdeği -> bağlam olguları
     "R/helpers_pk_packet_keys.R", "R/helpers_pk_analysis_packet.R",  # saf gruplama anahtarı/etiketi -> paket kurucusu
-    "R/helpers_pk_packet_render.R",
-    "R/helpers_pk_numeric_provenance.R", "R/helpers_pk_numeric_provenance_binding.R", "R/helpers_pk_numeric_provenance_claims.R",  # sonraki ikisi: işaret/sayı bağlama ve düzyazı iddia tarayıcısı, doğrulayıcıdan SONRA yüklenir (sabitleri ÇAĞRI ANINDA çözer)
+    "R/helpers_pk_packet_render.R", "R/helpers_pk_numeric_provenance.R",  # paket metni -> kip/uygulama katmanı (çözümleyici + tarayıcı üzerine kurulur)
     "R/helpers_pk_export_plan.R",
     "R/helpers_pk_export_csv.R",
     "R/helpers_pk_export_xlsx.R",

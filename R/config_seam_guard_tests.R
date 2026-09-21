@@ -119,6 +119,11 @@ mergen_seam_guard_tests <- function() {
         "tests/testthat/test-pk-query-meta-contract.R",
         "tests/testthat/test-pk-analysis-packet-behavior.R",
         "tests/testthat/test-pk-numeric-provenance-contract.R",
+        # §5.11 anlamsal olgu referansı: çözümleme/iddia düzeyinde ayıklama ve
+        # beklenmeyen model sayısı taraması. Kayıtlı olmadıklarında R'nin sayı
+        # sahipliği bozulsa bile seam doğrulaması YEŞİL raporlardı.
+        "tests/testthat/test-pk-fact-reference-behavior.R",
+        "tests/testthat/test-pk-fact-reference-scan-behavior.R",
         "tests/testthat/test-pk-export-xlsx-behavior.R",
         # Teslim/doğrulama sözleşmeleri de bu seam'e aittir: paket doğru kurulsa
         # bile yanıt teslimi veya sayısal köken bozuksa seam YEŞİL olmamalıdır.
@@ -164,6 +169,7 @@ mergen_seam_guard_tests <- function() {
         "testthat::test_file(\"tests/testthat/test-pk-analysis-packet-behavior.R\")",
         "testthat::test_file(\"tests/testthat/test-pk-export-xlsx-behavior.R\")",
         "testthat::test_file(\"tests/testthat/test-pk-numeric-provenance-contract.R\")",
+        "testthat::test_file(\"tests/testthat/test-pk-fact-reference-behavior.R\")",
         "testthat::test_file(\"tests/testthat/test-pk-provenance-delivery-contract.R\")"
       )
     ),

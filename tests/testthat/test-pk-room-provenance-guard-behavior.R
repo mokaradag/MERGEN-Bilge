@@ -19,9 +19,9 @@
 
   for (dosya in c("helpers_pk_config.R", "helpers_pk_precision.R",
                   "helpers_pk_packet_stats.R", "helpers_pk_packet_context_facts.R",
-                  "helpers_pk_numeric_provenance.R",
-                  "helpers_pk_numeric_provenance_binding.R",
-                  "helpers_pk_numeric_provenance_claims.R")) {
+                  "helpers_pk_fact_reference.R",
+                  "helpers_pk_fact_reference_scan.R",
+                  "helpers_pk_numeric_provenance.R")) {
     source(file.path(kok, "R", dosya), encoding = "UTF-8", local = env)
   }
 
@@ -107,7 +107,8 @@ test_that("oda alt bilgisi eklenmeden ÖNCE sayısal köken doğrulanır", {
   kimlik <- .pk_oda_kimlik(olgular)
 
   # UYDURMA SAYI: olgu 18.420,5 saat; model 99.999,9 saat iddia ediyor.
-  yanit <- sprintf("Toplam 99.999,9 saat [fact:%s].", kimlik)
+  # Model sayıyı KENDİ yazdı: hiçbir olguya bağlanmaz.
+  yanit <- "Toplam 99.999,9 saat harcandi."
   alt_bilgi <- "\n\n---\nAnaliz Kaynağı: sentetik"
 
   sonuc <- env$.pk_hook_room_footer_append(
@@ -121,8 +122,8 @@ test_that("oda alt bilgisi eklenmeden ÖNCE sayısal köken doğrulanır", {
   expect_true(grepl("SENTETIK DETERMINISTIK OZET", sonuc, fixed = TRUE))
   # Alt bilgi yine eklenir (kaynak şeffaflığı korunur).
   expect_true(grepl("Analiz Kaynağı", sonuc, fixed = TRUE))
-  # Referans işareti kullanıcıya SIZMAZ.
-  expect_false(grepl("[fact:", sonuc, fixed = TRUE))
+  # İç söz dizimi kullanıcıya SIZMAZ.
+  expect_false(grepl("{{fact:", sonuc, fixed = TRUE))
 })
 
 test_that("DOĞRU sayı taşıyan oda yanıtı olduğu gibi teslim edilir", {
@@ -130,7 +131,8 @@ test_that("DOĞRU sayı taşıyan oda yanıtı olduğu gibi teslim edilir", {
   olgular <- .pk_oda_olgular(env)
   kimlik <- .pk_oda_kimlik(olgular)
 
-  yanit <- sprintf("Toplam 18.420,5 saat [fact:%s].", kimlik)
+  # Model yuvayı yazdı: değeri R basar.
+  yanit <- sprintf("Toplam %s kaldi.", env$pk_fact_reference_token(kimlik))
   alt_bilgi <- "\n\n---\nAnaliz Kaynağı: sentetik"
 
   sonuc <- env$.pk_hook_room_footer_append(
@@ -142,7 +144,7 @@ test_that("DOĞRU sayı taşıyan oda yanıtı olduğu gibi teslim edilir", {
   expect_true(grepl("18.420,5 saat", sonuc, fixed = TRUE))
   expect_false(grepl("SENTETIK DETERMINISTIK OZET", sonuc, fixed = TRUE))
   expect_true(grepl("Analiz Kaynağı", sonuc, fixed = TRUE))
-  expect_false(grepl("[fact:", sonuc, fixed = TRUE))
+  expect_false(grepl("{{fact:", sonuc, fixed = TRUE))
 })
 
 test_that("olgu YOKSA (v1 yolu) davranış DEĞİŞMEZ", {

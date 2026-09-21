@@ -315,8 +315,10 @@ pk_compose_close_markdown <- function(text) {
   txt <- gsub("[\r\n\t]+", " ", txt)
   txt <- gsub("|", "\\|", txt, fixed = TRUE)
   # `[etiket](url)` ve `![](url)` veri hücresinden ETKİN bağlantı/görsel
-  # üretemez; köşeli parantezler sökülür.
-  txt <- gsub("[][]", "", txt)
+  # üretemez; köşeli parantezler sökülür. Küme parantezi de sökülür: R'ye ait
+  # blok köken çözümlemesinden SONRA eklenir, dolayısıyla bir hücredeki
+  # `{{fact:...}}` metni çözülmez ve kullanıcıya HAM jeton olarak görünürdü.
+  txt <- gsub("[][{}]", "", txt)
   txt <- gsub("`", "'", txt, fixed = TRUE)
   txt <- trimws(gsub("[[:space:]]+", " ", txt))
 

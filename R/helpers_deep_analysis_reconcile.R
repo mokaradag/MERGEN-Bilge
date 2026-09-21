@@ -229,7 +229,7 @@ pk_deep_observation_helpers <- function(session, conn, username, user_prompt,
     # orkestratörün `pk_deep_collect_v2_provenance()` ile taşıdığı OLGULARI da
     # düşürüyordu: istek için bekleyen köken kaydı hiç oluşmuyor,
     # `pk_provenance_blocks_streaming()` ve §5.11 sayısal doğrulaması
-    # denetleyecek bir şey bulamıyor ve `[fact:...]` işaretleri taşıyan
+    # denetleyecek bir şey bulamıyor ve çözülmemiş yuva jetonları taşıyan
     # DOĞRULANMAMIŞ model düzyazısı teslim ediliyordu.
     # `R/helpers_pk_telemetry.R` tekil yolda olgu-yalnız kayıtları ZATEN
     # saklıyor; derin yol AYNI kuralı uygular. Alt bilgi gövdesi yoksa boş

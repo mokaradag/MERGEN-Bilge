@@ -46,9 +46,9 @@
     for (yardimci in c("helpers_pk_text_turkish.R", "helpers_pk_prompt_budget.R",
                        "helpers_pk_precision.R", "helpers_pk_packet_stats.R", "helpers_pk_packet_context_facts.R", "helpers_pk_packet_keys.R", "helpers_pk_analysis_packet.R",
                        "helpers_pk_packet_render.R", "helpers_pk_answer_compose.R",
-                       "helpers_pk_numeric_provenance.R",
-                       "helpers_pk_numeric_provenance_binding.R",
-                       "helpers_pk_numeric_provenance_claims.R")) {
+                       "helpers_pk_fact_reference.R",
+                       "helpers_pk_fact_reference_scan.R",
+                       "helpers_pk_numeric_provenance.R")) {
       source(file.path(kok, "R", yardimci), encoding = "UTF-8", local = env)
     }
   }
@@ -293,7 +293,7 @@ test_that("v2 Deep Thinking legacy özet yerine gerçek kanonik packet/fact hatt
   expect_identical(res$pk_engine_mode, "v2")
   expect_true(is.list(res$pk_packet))
   expect_true(length(res$pk_facts) > 0L)
-  expect_true(grepl("[fact:", res$pk_packet_text, fixed = TRUE))
+  expect_true(grepl("{{fact:", res$pk_packet_text, fixed = TRUE))
   expect_null(res$summary_text)
   expect_identical(res$query_id, "q_deep_v2_sentetik")
   expect_identical(res$query_meta, .deepV2Query()$meta)
@@ -341,7 +341,7 @@ test_that("v2 Deep Thinking weighted/non-additive, latest ve yüzde ölçeğini 
   expect_identical(latest$unit, "TL")
 })
 
-test_that("v2 Deep Thinking fact registry halüsinasyon sayıyı provenance block modunda engeller", {
+test_that("v2 Deep Thinking olgu kataloğu modelin kendi yazdığı sayıyı block modunda engeller", {
   env <- .deepQueryEnv(v2_packets = TRUE)
   veri <- .deepV2Data()
   env$pk_deep_execute_sql <- function(conn, sql_text, ...) {
@@ -357,16 +357,30 @@ test_that("v2 Deep Thinking fact registry halüsinasyon sayıyı provenance bloc
 
   weighted <- Filter(function(f) is.list(f) && identical(f$column, "Progress") &&
                        identical(f$aggregation, "weighted_mean"), res$pk_facts)[[1]]
-  model_text <- sprintf("İlerleme %%99,0 [fact:%s].", weighted$fact_id)
-  checked <- env$pk_numeric_provenance_apply(
-    model_text, res$pk_facts, mode = "block", fallback_text = res$pk_fallback_text
-  )
 
-  expect_true(checked$blocked)
-  expect_true(any(vapply(checked$mismatches,
-                         function(x) identical(x$reason, "value_mismatch"), logical(1))))
-  expect_false(grepl("99,0", checked$text, fixed = TRUE))
-  expect_true(grepl("R tarafından hesaplanmıştır", checked$text, fixed = TRUE))
+  # Model sayıyı KENDİ yazarsa değer hiçbir olguya eşleştirilmez; `block`
+  # kipinde iddia ayıklanır ve geriye içerik kalmadığı için deterministik
+  # özete inilir.
+  uydurma <- env$pk_numeric_provenance_apply(
+    "İlerleme %99,0 seviyesindedir.", res$pk_facts, mode = "block",
+    fallback_text = res$pk_fallback_text
+  )
+  expect_true(uydurma$blocked)
+  expect_true(any(vapply(uydurma$mismatches,
+                         function(x) identical(x$reason, "model_numeric_literal"),
+                         logical(1))))
+  expect_false(grepl("99,0", uydurma$text, fixed = TRUE))
+  expect_true(grepl("R tarafından hesaplanmıştır", uydurma$text, fixed = TRUE))
+
+  # Aynı olgunun YUVASI kullanıldığında değer R tarafından basılır ve
+  # engelleme OLMAZ.
+  dogru <- env$pk_numeric_provenance_apply(
+    sprintf("İlerleme %s seviyesindedir.",
+            env$pk_fact_reference_token(weighted$fact_id)),
+    res$pk_facts, mode = "block", fallback_text = res$pk_fallback_text
+  )
+  expect_false(dogru$blocked)
+  expect_true(grepl(weighted$display, dogru$text, fixed = TRUE))
 })
 
 test_that("v2 Deep Thinking paket kurulumu deadline olursa typed halt döner", {

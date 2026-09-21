@@ -86,7 +86,15 @@ pk_fmt_number <- function(x, decimals = NULL, unit = NULL) {
   if (negatif) out <- paste0("-", out)
 
   birim <- as.character(unit %||% "")[1]
-  if (!is.na(birim) && nzchar(birim)) out <- paste0(out, " ", birim)
+  if (!is.na(birim) && nzchar(birim)) {
+    # TÜRKÇEDE YÜZDE İŞARETİ SAYIDAN ÖNCE GELİR (`%61,3`), sonra değil.
+    #
+    # Olgu gösterimi artık KULLANICIYA GÖRÜNEN yanıta doğrudan yerleştiriliyor
+    # (§5.11 yuva çözümlemesi), dolayısıyla bu biçim bir iç ayrıntı değildir.
+    # `pk_fmt_share()`, satır içi tablo hücreleri ve dışa aktarım ZATEN önek
+    # biçimini kullanıyordu; üç yol artık aynı sözleşmededir.
+    out <- if (identical(birim, "%")) paste0("%", out) else paste0(out, " ", birim)
+  }
 
   out
 }
@@ -132,7 +140,7 @@ pk_fact_slug <- function(x) {
   #
   # Bu noktada metin zaten ASCII'ye indirgenmiştir; ancak Türkçe yerelde
   # `tolower("I")` noktasız `ı` (ASCII DIŞI) üretir ve kimlik VM ile CI
-  # arasında farklılaşır. Aynı olgu iki farklı `[fact:...]` kimliği alır,
+  # arasında farklılaşır. Aynı olgu iki farklı `{{fact:...}}` kimliği alır,
   # modelin işareti doğrulamada bulunamaz ve geçerli sayı reddedilir.
   # Yerelden BAGIMSIZ ASCII kucuk harf; Turkce yerelde tolower("I") -> "i"
   # (noktasiz) uretir ve olgu kimligi VM ile CI arasinda FARKLILASIR.
@@ -161,7 +169,7 @@ pk_fact_checksum <- function(parts) {
 #' Bir olgu kimliğini kur (kayıt kurmadan)
 #'
 #' Paket kurucusu ile paket yazıcısı AYNI kimliği üretmek zorundadır: yazıcı
-#' `[fact:...]` işaretini basar, doğrulayıcı ise kurucunun ürettiği indeksi
+#' `{{fact:...}}` yuvasını basar, çözümleyici ise kurucunun ürettiği indeksi
 #' okur. Kimlik üretimi bu yüzden tek bir yerden gelir.
 pk_fact_id <- function(identity, aggregation, group_keys = character(0)) {
   gruplar <- as.character(group_keys %||% character(0))

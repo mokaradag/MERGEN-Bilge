@@ -137,8 +137,8 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
     "- TÜM başarılı sorguları mutlaka raporla - hiçbirini atlama!\n",
     if (v2_present) paste0(
       "\n### v2 SAYISAL KÖKEN KURALI (ZORUNLU):\n",
-      "- v2 ANALİZ PAKETİ içindeki her sayısal iddianın hemen ardına pakette basılı ilgili `[fact:...]` referansını AYNEN koy.\n",
-      "- Yeni fact kimliği UYDURMA; pakette bulunmayan sayıyı yazma ve paketler arasında aritmetik HESAPLAMA.\n",
+      "- v2 ANALİZ PAKETİ içindeki sayıları KENDİN YAZMA. Sayının geçmesi gereken yere pakette basılı `{{fact:...}}` yuvasını AYNEN koy; değeri ve biçimini R yerleştirir.\n",
+      "- Yeni fact kimliği UYDURMA; pakette bulunmayan bir sayıyı yazma ve paketler arasında aritmetik HESAPLAMA.\n",
       "- `KULLANILAMAZ` durumundaki olgular için sayı üretme; sınırlılığı açıkça belirt.\n"
     ) else "",
     # Faz 6 (D16, §10): paketler arası ARİTMETİK yasağı. "Sorgular arası

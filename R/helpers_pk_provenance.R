@@ -442,7 +442,7 @@ pk_provenance_take <- function(session, request_id = NULL, full = FALSE) {
 #' İdempotentlik MODEL METNİNE DEĞİL, istek kimliğine bağlıdır: eskiden metinde
 #' `**Analiz Kaynağı**` başlığını görmek dekorasyonu tamamen atlatıyordu, yani
 #' modelin (ya da bir veri değerinin yönlendirmesiyle) o başlığı yazması
-#' doğrulanmamış düzyazıyı `[fact:...]` işaretleriyle birlikte geçirir, R'ye ait
+#' doğrulanmamış düzyazıyı çözülmemiş yuva jetonlarıyla birlikte geçirir, R'ye ait
 #' bloğu ve alt bilgiyi düşürürdü.
 #'
 # BLOCK KİPİ DETERMİNİSTİK REDDETME METNİ (TEK SAHİP).
@@ -519,7 +519,7 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
         #
         # Kayıt yukarıda zaten TÜKETİLDİ (geri konulamaz). Eskiden bu dal ham
         # `text` döndürüyordu: `block` kipinde kullanıcıya DOĞRULANMAMIŞ,
-        # `[fact:...]` işaretleri duran ve alt bilgisi olmayan bir metin
+        # çözülmemiş yuva jetonları duran ve alt bilgisi olmayan bir metin
         # gidiyordu. Deterministik yedek varsa O kullanılır.
         if (!is.null(guvenli_yedek)) return(guvenli_yedek)
         # `fallback_text` BEYAN EDİLMEMİŞSE DE BLOCK KİPİ AÇIK BAŞARISIZ OLAMAZ.
@@ -536,9 +536,9 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
       store[[.pk_provenance_done_slot]] <- utils::tail(unique(c(bitenler, kimlik)), 20L)
     }
 
-    # §5.11: Sayısal iddialar olgulara karşı doğrulanır ve `[fact:...]`
-    # referansları YALNIZCA doğrulamadan SONRA gösterimden silinir. Olgu
-    # saklanmamışsa (v1 yolu) bu adım tamamen atlanır.
+    # §5.11: Anlamsal olgu yuvaları KANONİK değerlerle doldurulur; çözülemeyen
+    # bir yuva hiçbir değer basmaz. Olgu saklanmamışsa (v1 yolu) bu adım
+    # tamamen atlanır.
     #
     # KAPALI BAŞARISIZLIK: doğrulama kendi içinde hata verse bile
     # `pk_numeric_provenance_apply()` deterministik yedek metni döndürür

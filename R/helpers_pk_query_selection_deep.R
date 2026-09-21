@@ -469,7 +469,7 @@ pk_deep_build_v2_packet_result <- function(filtered_data, secure_data, query,
   # BÜTÇE AD ALANLAMA SONRASINDA YENİDEN ÖLÇÜLÜR.
   #
   # `pk_packet_render()` bütçeyi ad alanlamadan ÖNCEKİ metin üzerinde hesaplar.
-  # Her `[fact:...]` işaretine eklenen `slug_hash__` öneki metni BÜYÜTÜR; bütçe
+  # Her `{{fact:...}}` yuvasına eklenen `slug_hash__` öneki metni BÜYÜTÜR; bütçe
   # sınırına yakın ve çok işaretli bir paket, ölçülmüş `FALSE` değeriyle
   # BÜTÇEYİ AŞMIŞ hâlde "başarılı" dönüyordu. Bütçe bilinmiyorsa (ör. sahte
   # kurucu) eski karar korunur.
@@ -539,9 +539,9 @@ pk_deep_build_v2_packet_result <- function(filtered_data, secure_data, query,
 
 #' Bir v2 paketinin olgu kimliklerini SORGUYA göre ad alanına al
 #'
-#' Basılan `[fact:...]` işaretleri ile toplanan olgu kayıtları AYNI dönüşümden
-#' geçer; aksi hâlde model doğru işareti alıntılar ama doğrulayıcı o kimliği
-#' bulamazdı. Saf metin/veri dönüşümüdür.
+#' Basılan `{{fact:...}}` yuvaları ile toplanan olgu kayıtları AYNI dönüşümden
+#' geçer; aksi hâlde model doğru yuvayı kopyalar ama çözümleyici o kimliği
+#' bulamaz ve değer basılamazdı. Saf metin/veri dönüşümüdür.
 .pk_deep_namespace_facts <- function(text, facts, query_id) {
   metin <- as.character(text %||% "")[1]
   if (is.na(metin)) metin <- ""
@@ -578,8 +578,8 @@ pk_deep_build_v2_packet_result <- function(filtered_data, secure_data, query,
     olgu
   })
 
-  yeni_metin <- gsub("\\[fact:([A-Za-z0-9_.]+)\\]",
-                     paste0("[fact:", onek, "\\1]"), metin, perl = TRUE)
+  yeni_metin <- gsub("\\{\\{fact:([A-Za-z0-9_.]+)\\}\\}",
+                     paste0("{{fact:", onek, "\\1}}"), metin, perl = TRUE)
 
   list(text = yeni_metin, facts = yeni_olgular)
 }

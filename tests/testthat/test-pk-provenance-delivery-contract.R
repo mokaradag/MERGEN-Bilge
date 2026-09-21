@@ -256,3 +256,155 @@ test_that("KIMLIKSIZ kayit YAZILMAZ (sahiplik denetimi uygulanamaz)", {
   expect_null(env$pk_provenance_take(oturum, request_id = "r2"))
   expect_identical(env$pk_provenance_take(oturum, request_id = "r1"), "alt bilgi")
 })
+
+# ==============================================================================
+# §5.11 — AYNI RENDER EDİLMİŞ YANIT: akış / akış-dışı / kalıcılık / TTS
+# ==============================================================================
+#
+# Olgu yuvaları çözümlendikten sonra ortaya çıkan metin TEK bir gerçektir.
+# Gerçek akış sonlandırması, benzetilmiş akış sonlandırması, kalıcılaştırılan
+# mesaj ve TTS yükü AYNI gövdeyi kullanmak zorundadır; aksi hâlde kullanıcı
+# ekranda bir şey görüp başka bir şey duyabilir ya da kayıtlı söyleşide ham
+# iç jetonlar kalabilir.
+
+.pk_delivery_render_env <- function() {
+  kok <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(x, y) if (is.null(x)) y else x
+
+  for (dosya in c("helpers_pk_config.R", "helpers_pk_fact_reference.R",
+                  "helpers_pk_fact_reference_scan.R", "helpers_pk_precision.R",
+                  "helpers_pk_packet_stats.R", "helpers_pk_packet_context_facts.R",
+                  "helpers_pk_provenance.R", "helpers_pk_provenance_peek.R",
+                  "helpers_pk_numeric_provenance.R")) {
+    source(file.path(kok, "R", dosya), encoding = "UTF-8", local = env)
+  }
+  env
+}
+
+.pk_delivery_stash <- function(env, oturum, kip, olgu, alt_bilgi) {
+  env$pk_provenance_clear(oturum, request_id = "req-render")
+  env$pk_provenance_stash(
+    oturum, alt_bilgi, request_id = "req-render", facts = list(olgu),
+    fallback_text = "**Hesaplanan değerler**\n- Kalan iscilik (sum): 18.420,5 saat",
+    query_id = "q_render", mode = kip
+  )
+}
+
+test_that("akis, akis-disi, kalicilik ve TTS AYNI render edilmis govdeyi kullanir", {
+  env <- .pk_delivery_render_env()
+  olgu <- env$pk_fact_record("measure", "KalanIscilik", "sum", 18420.5,
+                             list(label = "Kalan iscilik", unit = "saat", decimals = 1L,
+                                  capability = "labor.remaining_hours"))
+  alt_bilgi <- "\n\n---\n**Analiz Kaynağı**\n- **Sorgu:** q_render\n"
+  model_metni <- paste0("Kalan is yuku ", env$pk_fact_reference_token(olgu$fact_id),
+                        " duzeyindedir.")
+  beklenen_govde <- "Kalan is yuku 18.420,5 saat duzeyindedir."
+
+  # 1) GERÇEK AKIŞ sonlandırması.
+  oturum <- list(userData = new.env(parent = emptyenv()))
+  .pk_delivery_stash(env, oturum, "log", olgu, alt_bilgi)
+  akis <- NULL
+  utils::capture.output(
+    akis <- env$mergen_pk_stream_validated_text(model_metni, oturum, "req-render",
+                                                block_mode = FALSE),
+    type = "output"
+  )
+
+  # 2) AKIŞ DIŞI / doğrudan yanıt yolu.
+  oturum2 <- list(userData = new.env(parent = emptyenv()))
+  .pk_delivery_stash(env, oturum2, "log", olgu, alt_bilgi)
+  dogrudan <- NULL
+  utils::capture.output(
+    dogrudan <- env$mergen_pk_validated_texts(model_metni, oturum2,
+                                              request_id = "req-render"),
+    type = "output"
+  )
+
+  # 3) BENZETİLMİŞ akış sonlandırması (kalıcılaştırılan metin bu yoldan gelir).
+  oturum3 <- list(userData = new.env(parent = emptyenv()))
+  .pk_delivery_stash(env, oturum3, "log", olgu, alt_bilgi)
+  benzetim <- NULL
+  utils::capture.output(
+    benzetim <- env$pk_stream_display_text(model_metni, oturum3, "req-render",
+                                           block_mode = FALSE),
+    type = "output"
+  )
+
+  # EKRANA giden metin ÜÇ yolda da aynıdır ve alt bilgiyi taşır.
+  expect_identical(akis$display, dogrudan$display)
+  expect_identical(akis$display, benzetim)
+  expect_identical(akis$display, paste0(beklenen_govde, alt_bilgi))
+
+  # TTS gövdesi alt bilgisiz AYNI gövdedir.
+  expect_identical(akis$tts, beklenen_govde)
+  expect_identical(dogrudan$tts, beklenen_govde)
+
+  # İÇ SÖZ DİZİMİ HİÇBİR YOLDA SIZMAZ.
+  for (metin in c(akis$display, akis$tts, dogrudan$display, dogrudan$tts, benzetim)) {
+    expect_false(grepl("{{", metin, fixed = TRUE))
+    expect_false(grepl("fact:", metin, fixed = TRUE))
+  }
+  expect_true(akis$validated)
+})
+
+test_that("log kipinde bozuk referans yaniti BASTIRMAZ ve tum yollar ayni kalir", {
+  env <- .pk_delivery_render_env()
+  olgu <- env$pk_fact_record("measure", "KalanIscilik", "sum", 18420.5,
+                             list(label = "Kalan iscilik", unit = "saat", decimals = 1L,
+                                  capability = "labor.remaining_hours"))
+  alt_bilgi <- "\n\n---\n**Analiz Kaynağı**\n- **Sorgu:** q_render\n"
+  model_metni <- paste0(
+    "Genel gorunum baskiya isaret ediyor. Kalan is yuku ",
+    env$pk_fact_reference_token(olgu$fact_id),
+    " duzeyindedir. Sonuc {{fact:uydurma.sum.overall.ffffff}} olarak olculdu."
+  )
+
+  oturum <- list(userData = new.env(parent = emptyenv()))
+  .pk_delivery_stash(env, oturum, "log", olgu, alt_bilgi)
+  akis <- NULL
+  utils::capture.output(
+    akis <- env$mergen_pk_stream_validated_text(model_metni, oturum, "req-render",
+                                                block_mode = FALSE),
+    type = "output"
+  )
+
+  # Kullanıcı yanıtı ALIR; "Yanıt doğrulanamadı" ile DEĞİŞTİRİLMEZ.
+  expect_true(grepl("Genel gorunum baskiya isaret ediyor", akis$display, fixed = TRUE))
+  expect_true(grepl("18.420,5 saat", akis$display, fixed = TRUE))
+  expect_false(grepl("Yanıt doğrulanamadı", akis$display))
+  expect_false(grepl("Hesaplanan değerler", akis$display, fixed = TRUE))
+  # Çözülemeyen iddia HİÇBİR değer basmaz.
+  expect_false(grepl("uydurma", akis$display, fixed = TRUE))
+  expect_true(grepl("değer yok", akis$display))
+})
+
+test_that("block kipinde ekran ve TTS AYNI ayiklanmis govdeyi alir", {
+  env <- .pk_delivery_render_env()
+  olgu <- env$pk_fact_record("measure", "KalanIscilik", "sum", 18420.5,
+                             list(label = "Kalan iscilik", unit = "saat", decimals = 1L,
+                                  capability = "labor.remaining_hours"))
+  alt_bilgi <- "\n\n---\n**Analiz Kaynağı**\n- **Sorgu:** q_render\n"
+  model_metni <- paste0(
+    "Kalan is yuku ", env$pk_fact_reference_token(olgu$fact_id), " duzeyindedir. ",
+    "Ayrica 99.999 saat harcandi."
+  )
+
+  oturum <- list(userData = new.env(parent = emptyenv()))
+  .pk_delivery_stash(env, oturum, "block", olgu, alt_bilgi)
+  expect_true(env$pk_provenance_blocks_streaming(oturum, request_id = "req-render"))
+
+  metinler <- NULL
+  utils::capture.output(
+    metinler <- env$mergen_pk_block_mode_texts(model_metni, oturum,
+                                               request_id = "req-render"),
+    type = "output"
+  )
+
+  # Sorunlu cümle AYIKLANIR, geçerli cümle KORUNUR.
+  expect_true(grepl("18.420,5 saat", metinler$display, fixed = TRUE))
+  expect_false(grepl("99.999", metinler$display, fixed = TRUE))
+  # TTS, ekranda kalan alt bilgiyi TAŞIMAZ ama AYNI gövdedir.
+  expect_identical(metinler$display, paste0(metinler$tts, alt_bilgi))
+  expect_false(grepl("{{", metinler$tts, fixed = TRUE))
+})

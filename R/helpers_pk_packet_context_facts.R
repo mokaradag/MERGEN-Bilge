@@ -20,8 +20,8 @@
 # `unit`/`decimals` PARAMETREDİR, sabit DEĞİL. Bağlam olgularının çoğu tam
 # sayı SAYIMDIR; ancak `other_share` / `category_share` bir ondalıkla
 # yuvarlanmış YÜZDE taşır. Sabit `decimals = 0L` ve birimsiz kayıt, yazıcının
-# bastığı `%25,0` biçimindeki iddiayı `unit_mismatch` yapıyor ve `block`
-# kipinde GEÇERLİ yanıtı determinist yedekle değiştiriyordu.
+# bastığı `%25,0` gösterimini olgu kaydından AYIRIYORDU; artık yanıta basılan
+# değer doğrudan bu kayıttan geldiği için ölçek/birim burada doğru olmalıdır.
 # `%||%` YALNIZCA `NULL` ATLAR: paket kurucusu daraltılmış satır/grup sayısını `NA_integer_` olarak da bildirebilir; `if (NA > 0L)` "missing value where TRUE/FALSE needed" hatasıyla TÜM olgu üretimini düşürüyordu. `R/helpers_pk_packet_render.R` içindeki `.pk_render_count()` ile AYNI indirgeme, izole kullanım için yerel tutulur.
 .pk_ctx_count <- function(x) {
   d <- suppressWarnings(as.numeric(x)[1])
@@ -45,7 +45,7 @@
 #' bulgulardan birini alıntılamak istediğinde ya sayıyı atlamak, ya olmayan bir
 #' kimlik uydurmak, ya da doğrulamayı atlayan işaretsiz bir sayı yazmak
 #' zorunda kalıyordu. Bu fonksiyon aynı sayılar için yapılandırılmış olgu
-#' üretir; kimlikler yazıcının bastığı `[fact:...]` işaretleriyle BİREBİR
+#' üretir; kimlikler yazıcının bastığı `{{fact:...}}` yuvalarıyla BİREBİR
 #' aynıdır.
 pk_packet_context_facts <- function(packet, scope = NULL) {
   tanimlar <- list()
@@ -102,10 +102,9 @@ pk_packet_context_facts <- function(packet, scope = NULL) {
         label = sprintf("%s: %s", k$label %||% k$column, as.character(t$value)[1]),
         group = as.character(t$value)[1]
       )))
-      # PAY DA KENDİ OLGUSUNU TAŞIR. Eskiden sayım işareti yüzdeden SONRA
-      # basılıyordu: köken ayrıştırıcısı işaretin HEMEN ÖNÜNDEKİ sayı olarak
-      # YÜZDEYİ okuyor ve onu SAYIM değeriyle karşılaştırıp `value_mismatch`
-      # üretiyordu; `block` kipinde geçerli bir kategori iddiası düşüyordu.
+      # PAY DA KENDİ OLGUSUNU TAŞIR: sayım ve pay AYRI yuvalardır, böylece
+      # model ikisinden hangisini anlattığını kimlikle söyler ve değerlerini
+      # R ayrı ayrı basar.
       pay_degeri <- if (is.numeric(k$total) && length(k$total) == 1L &&
                         is.finite(k$total) && k$total > 0) {
         round(as.numeric(t$count) / as.numeric(k$total) * 100, 1L)
@@ -166,8 +165,8 @@ pk_packet_context_facts <- function(packet, scope = NULL) {
   }
 
   # Yazıcının bastığı "Sonlu gozlem / disarida birakilan" sayıları da OLGUDUR:
-  # dört haneli işaretsiz bir sayım `block` kipinde `missing_fact_marker` üretip
-  # TÜM yanıtı determinist yedekle değiştirirdi. TERS gezilir: son yazan kazandığı için yazıcıyla AYNI (sütunun İLK) olgusu geçerli olur.
+  # yuvası olmayan bir sayıyı model ancak ELLE yazabilir ve o sayı R'ye ait
+  # olmaz. TERS gezilir: son yazan kazandığı için yazıcıyla AYNI (sütunun İLK) olgusu geçerli olur.
   for (o in rev(packet$facts %||% list())) tanimlar <- c(tanimlar, list(
     list(id = o$column, agg = "finite_count", value = o$n_finite,
          label = sprintf("%s sonlu gozlem", o$column)),
@@ -188,11 +187,82 @@ pk_packet_context_facts <- function(packet, scope = NULL) {
   unname(out)
 }
 
-#' Paketin DOĞRULANABİLİR tüm olguları (ölçü + grup + bağlam)
+# İSTEK DEĞERİ METNİ: tek satır, yuva söz dizimi taşımaz, sınırlı uzunluk.
+# Bu metin KULLANICIYA GÖRÜNEN yanıta yerleştirilebildiği için veriden/LLM'den
+# gelen bir filtre değeri yapıyı bozamaz ya da sahte bir referans kuramaz.
+.pk_request_safe_text <- function(x, max_chars = 80L) {
+  txt <- suppressWarnings(as.character(x %||% "")[1])
+  if (length(txt) != 1L || is.na(txt)) return("")
+  txt <- gsub("[[:cntrl:]]+", " ", txt)
+  txt <- gsub("[][{}`|]", "", txt)
+  txt <- trimws(gsub("[[:space:]]+", " ", txt))
+  if (nchar(txt) > max_chars) txt <- paste0(substr(txt, 1L, max_chars), "…")
+  txt
+}
+
+#' GÜVENİLİR İSTEK GİRDİLERİ: kullanıcının kendi kriterleri (§5.11)
 #'
-#' Grup kırılımındaki ölçü olguları da `[fact:...]` işaretiyle basıldığı hâlde
-#' indekse girmiyordu; doğru alıntılanmış bir grup toplamı `unknown_fact`
-#' sayılırdı (kimliğe göre tekilleştirilir).
+#' "Bitişine 30 günden az kalan aktiviteler" isteğindeki `30` KULLANICIDAN
+#' gelir; hesaplanmış bir veritabanı ölçüsü DEĞİLDİR ve ölçü olgularıyla aynı
+#' kökenlilik yolundan geçmemelidir. Bu değerler `kind = "request_input"`
+#' türünde AÇIKÇA taşınır; böylece:
+#'   * model onları da bir yuva jetonuyla anabilir (gösterimi yine R basar),
+#'   * sayı tarayıcısı onları TAHMİNLE değil, taşınan kümeye karşı TAM
+#'     eşleşmeyle tanır ve protokol ihlali saymaz.
+#'
+#' Kaynak, LLM'in ÇIKARDIĞI ham küme değil, gerçekten UYGULANAN filtre
+#' kümesidir; düşürülen bir filtre buraya girmez.
+pk_packet_request_facts <- function(packet) {
+  uygulanan <- packet$filters$applied %||% list()
+  if (!length(uygulanan)) return(list())
+
+  out <- list()
+  for (i in seq_along(uygulanan)) {
+    f <- uygulanan[[i]]
+    if (!is.list(f)) next
+    sutun <- .pk_request_safe_text(f$column %||% "?", 60L)
+    islem <- .pk_request_safe_text(f$operation %||% "exact_match", 40L)
+    ham <- (f[["values"]] %||% f[["value"]]) %||% character(0)
+    degerler <- vapply(as.character(ham), .pk_request_safe_text, character(1),
+                       USE.NAMES = FALSE)
+    degerler <- degerler[nzchar(degerler)]
+    if (!nzchar(sutun) || !length(degerler)) next
+
+    gosterim <- paste(degerler, collapse = ", ")
+    sayisal <- suppressWarnings(as.numeric(gsub(",", ".", degerler[1], fixed = TRUE)))
+    out[[length(out) + 1L]] <- list(
+      fact_id = pk_fact_id(paste0("__istek__:", sutun), islem, degerler),
+      kind = "request_input",
+      column = sutun,
+      label = sprintf("Istek kriteri: %s (%s)", sutun, islem),
+      measure_capability = NULL,
+      aggregation = islem,
+      value = if (length(degerler) == 1L && length(sayisal) == 1L &&
+                  !is.na(sayisal) && is.finite(sayisal)) sayisal else NULL,
+      unit = NULL, decimals = NULL,
+      status = PK_FACT_OK,
+      scope = packet$scope$scope_signature,
+      group_keys = character(0),
+      # Ham değerler AYRI taşınır: çok değerli bir kriterde ("30, 60") birleşik
+      # gösterimin rakam anahtarı tek tek değerlerle eşleşmezdi.
+      request_values = degerler,
+      # Yazıcı, hangi filtre satırının hangi yuvayı taşıdığını KONUMSAL
+      # tahminle değil bu alanla bulur (geçersiz filtreler atlandığı için
+      # iki listenin sırası ayrışabilir).
+      source_index = i,
+      n_finite = NA_integer_, n_excluded = NA_integer_, note = NULL,
+      display = gosterim
+    )
+  }
+
+  out
+}
+
+#' Paketin DOĞRULANABİLİR tüm olguları (ölçü + grup + bağlam + istek girdisi)
+#'
+#' Grup kırılımındaki ölçü olguları da yuva jetonuyla basıldığı hâlde indekse
+#' girmiyordu; doğru alıntılanmış bir grup toplamı `unknown_fact` sayılırdı
+#' (kimliğe göre tekilleştirilir).
 pk_packet_all_facts <- function(packet) {
   grup_olgulari <- unlist(
     lapply(packet$groups$top %||% list(), function(satir) satir$facts %||% list()),
@@ -200,7 +270,8 @@ pk_packet_all_facts <- function(packet) {
   )
 
   hepsi <- c(packet$facts %||% list(), grup_olgulari %||% list(),
-             pk_packet_context_facts(packet, scope = packet$scope$scope_signature))
+             pk_packet_context_facts(packet, scope = packet$scope$scope_signature),
+             pk_packet_request_facts(packet))
 
   # ÇAKIŞAN KİMLİKLER DOĞRULAYICIYA ULAŞMADAN ATILMAZ.
   #
