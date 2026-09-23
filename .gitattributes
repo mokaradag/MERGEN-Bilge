@@ -1,2 +1,6 @@
 # Contract tests compare exact multiline runtime literals on Windows CI.
 R/module_proje_kaynak_analizi.R text eol=lf
+
+# Vendored CodeMirror dosyaları bayt bayt korunur (satır sonu dönüşümü yok);
+# www/codemirror/README.md içindeki SHA-256 değerleri Windows'ta da geçerli kalır.
+www/codemirror/** -text

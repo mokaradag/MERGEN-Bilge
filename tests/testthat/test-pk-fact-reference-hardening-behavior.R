@@ -486,6 +486,18 @@ test_that("sorudaki gun/ay/yil sayilari donem istek girdisine donusur", {
   )
   expect_identical(env$pk_request_period_values("Projeleri ozetle"), character(0))
   expect_identical(env$pk_request_period_values(NULL), character(0))
+
+  # Birim tam kelimedir: birimle BAŞLAYAN başka kelimeler dönem değildir.
+  for (metin in c("3 ayrı proje", "2 aynı kod", "son 3 güncel kayıt", "2 güney bölge",
+                  "5 yıldız", "3 yılan")) {
+    expect_identical(env$pk_request_period_values(metin), character(0), info = metin)
+  }
+  # Takvim yılı süre değildir; gerçek süreler ekli biçimleriyle korunur.
+  expect_identical(env$pk_request_period_values("2024 yılında başlayan, 2023 yılı projeleri"), character(0))
+  expect_identical(
+    env$pk_request_period_values("12 aylık plan, 2 yıldır süren, 7 gündür, 3 aylarda"),
+    c("12 ay", "2 yıl", "7 gün", "3 ay")
+  )
 })
 
 test_that("donem istek girdisi yuvayla basilir; duz yinelemesi ihlal sayilmaz", {

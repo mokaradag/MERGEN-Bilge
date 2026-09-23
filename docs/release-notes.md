@@ -14,6 +14,30 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-09-23 Kod bloklarında gerçek sözdizimi vurgulaması geri geldi
+
+PR #692 kod görüntüleyicisini, belgeyi düz metin olarak çizen uygulama içi bir
+uyumluluk katmanına geçirmişti; depo içindeki `www/codemirror/*` dosyaları da
+yalnızca yer tutucuydu. Anahtar sözcük, tanım, değişken, dize, sayı ve yorum
+renkleri kaybolmuş, koyu temada satırlar açık zeminle çiziliyordu.
+
+- Uygulama yeniden GERÇEK, çevrimdışı CodeMirror 5 (5.65.21) kullanır: çekirdek,
+  dil modları, `material-darker` teması, katlama/yorum eklentileri depoda
+  vendored olarak durur; internet/CDN gerekmez. Kaynak ve SHA-256 özetleri:
+  `www/codemirror/README.md`.
+- Koyu ve açık temada gerçek belirteç renkleri, okunur satır numaraları ve
+  çalışan kod katlama; uzun kodun tamamı çizilir (PR #692'nin kırpma düzeltmesi
+  korunur), kopyalama tam özgün kodu verir.
+- Açık temada kod başlığındaki Kopyala/Daralt simgeleri artık okunur (markdown
+  italik rengi simgeleri de boyuyordu).
+- Yeni diller: YAML, JSON, Markdown, Diff, Dockerfile, TOML, INI/properties,
+  Rust, Perl, Lua ve T-SQL/MySQL/PostgreSQL/PL-SQL/SQLite SQL lehçeleri;
+  `py`, `js`, `sh`, `ts`, `yml` gibi kod çiti kısaltmaları tanınır.
+
+On-prem kurulum notu: VM çalışma kopyasındaki eski `www/codemirror/` dosyaları
+depo sürümüyle DEĞİŞTİRİLMELİDİR (yerel değişiklikler varsa önce geri alın).
+Doğrulama: `Get-FileHash -Algorithm SHA256` çıktısı README tablosuyla eşleşmeli.
+
 ### (Yayınlanmadı) 2026-09-23 Süreç Yönetimi kaynak tıklaması taramasız açılır
 
 Yanıttaki bir kaynağa tıklamak ~1000 belgelik bir UNC model klasöründe yaklaşık

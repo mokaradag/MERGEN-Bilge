@@ -390,7 +390,8 @@ pk_deep_bounded_summary_failure <- function(bounded, detail_config, finish_resul
 pk_deep_build_v2_packet_result <- function(filtered_data, secure_data, query,
                                            filter_status, applied_filters,
                                            detail_config, finish_result,
-                                           pre_rls_rows, stop_check = NULL) {
+                                           pre_rls_rows, stop_check = NULL,
+                                           user_prompt = NULL) {
   query_name <- query$name %||% "Bilinmeyen Sorgu"
   gerekli <- c("pk_packet_build", "pk_packet_render", "pk_packet_all_facts",
                "pk_compose_facts_summary")
@@ -423,6 +424,13 @@ pk_deep_build_v2_packet_result <- function(filtered_data, secure_data, query,
   packet_context <- list(
     authorized_rows = nrow(secure_data), filtered_rows = nrow(filtered_data),
     filters = applied_filters, filter_status = filter_status,
+    # Tekil sorgu yoluyla aynı: sorudaki dönem sayıları ("son 6 ayda") güvenilir
+    # istek girdisidir; filtre çıkarıcı onları mutlak tarihe çevirdiği için
+    # aksi hâlde modelin "6 ay" yinelemesi kaynaksız sayı sayılırdı.
+    request_periods = if (exists("pk_request_period_values", mode = "function",
+                                 inherits = TRUE)) {
+      pk_request_period_values(user_prompt)
+    } else character(0),
     degradations = if (exists("pk_degradations_from_filter_status", mode = "function",
                               inherits = TRUE)) {
       pk_degradations_from_filter_status(filter_status)

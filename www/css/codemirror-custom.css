@@ -5,6 +5,7 @@
   height: auto !important;
   min-height: 100px !important;
   background: #1e1e1e !important;
+  color: #abb2bf !important;
   font-family: var(--font-mono) !important;
   border-radius: 8px;
 }
@@ -19,20 +20,21 @@
   border: 1px solid #333;
 }
 
-/* Atom One Dark tema token renkleri */
+/* Atom One Dark tema token renkleri. Değişken ve operatörler düz metinden
+ * ayrışır (One Dark Pro); yorum rengi #1e1e1e zeminde okunur kontrasttadır. */
 .CodeMirror .cm-keyword { color: #c678dd !important; }
 .CodeMirror .cm-def { color: #61aeee !important; }
-.CodeMirror .cm-variable { color: #abb2bf !important; }
-.CodeMirror .cm-variable-2 { color: #abb2bf !important; }
+.CodeMirror .cm-variable { color: #e06c75 !important; }
+.CodeMirror .cm-variable-2 { color: #e06c75 !important; }
 .CodeMirror .cm-variable-3 { color: #abb2bf !important; }
 .CodeMirror .cm-type { color: #e6c07b !important; }
 .CodeMirror .cm-property { color: #abb2bf !important; }
-.CodeMirror .cm-operator { color: #abb2bf !important; }
+.CodeMirror .cm-operator { color: #56b6c2 !important; }
 .CodeMirror .cm-string { color: #98c379 !important; }
 .CodeMirror .cm-string-2 { color: #98c379 !important; }
 .CodeMirror .cm-number { color: #d19a66 !important; }
 .CodeMirror .cm-atom { color: #d19a66 !important; }
-.CodeMirror .cm-comment { color: #5c6370 !important; font-style: italic; }
+.CodeMirror .cm-comment { color: #7f848e !important; font-style: italic; }
 .CodeMirror .cm-qualifier { color: #abb2bf !important; }
 .CodeMirror .cm-builtin { color: #e6c07b !important; }
 .CodeMirror .cm-bracket { color: #abb2bf !important; }
@@ -64,12 +66,17 @@
   font-size: 10px;
 }
 
-.CodeMirror-fold-range {
-  background-color: var(--background-medium) !important;
-  border: 1px solid var(--border-color) !important;
+/* Katlanmış aralığın yer tutucusu (addon/fold/foldcode). Upstream stil mavi
+ * metin + gölge kullanır; koyu zeminde görünmüyordu. */
+.CodeMirror .CodeMirror-foldmarker {
+  color: #abb2bf;
+  background-color: #3a3f4b;
   border-radius: 4px;
   padding: 0 4px;
   margin: 0 2px;
+  font-family: inherit;
+  line-height: 1;
+  text-shadow: none;
   cursor: pointer;
 }
 
@@ -77,6 +84,12 @@
 .CodeMirror-gutters {
   background-color: #2d2d2d !important;
   border-right: 1px solid #333;
+}
+
+/* Satır numaraları: material-darker #545454 bu olukta okunmuyordu (tema
+ * dosyası sonra yüklendiği için seçici ondan daha özgüldür). */
+.CodeMirror.cm-s-material-darker .CodeMirror-linenumber {
+  color: #858585;
 }
 
 .CodeMirror-linenumbers, 
@@ -124,6 +137,10 @@ html[data-theme="light"] .CodeMirror-matchingbracket {
 }
 html[data-theme="light"] .CodeMirror-nonmatchingbracket {
   color: #cf222e !important;
+}
+html[data-theme="light"] .CodeMirror .CodeMirror-foldmarker {
+  color: #1f2328;
+  background-color: #d8dee4;
 }
 
 /* KÖK NEDEN (CodeMirror-line koyu zemin): CodeMirror her satırı bir

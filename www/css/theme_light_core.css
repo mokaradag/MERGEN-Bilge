@@ -619,6 +619,22 @@ html[data-theme="light"] .code-copy-btn:hover {
   color: var(--mb-brand-primary, #003087) !important;
 }
 
+/* Kod başlığı simgeleri: `.message-content i` (markdown italik rengi #c7d2fe)
+ * Font Awesome simgesini de boyuyor, açık başlıkta simge okunmuyordu.
+ * Simge düğmenin rengini alır; daralt düğmesi kopyala ile aynı renktedir. */
+html[data-theme="light"] .code-header-actions i {
+  color: inherit !important;
+}
+
+html[data-theme="light"] .code-collapse-btn {
+  color: #57606a !important;
+}
+
+html[data-theme="light"] .code-collapse-btn:hover {
+  background: rgba(0, 48, 135, 0.08) !important;
+  color: var(--mb-brand-primary, #003087) !important;
+}
+
 html[data-theme="light"] .hljs {
   background: #f6f8fa !important;
   color: #1f2328 !important;
@@ -675,7 +691,7 @@ html[data-theme="light"] .CodeMirror-gutters {
 }
 
 html[data-theme="light"] .CodeMirror-linenumber {
-  color: #8c959f !important;
+  color: #6e7781 !important;
 }
 
 html[data-theme="light"] .CodeMirror-cursor {
@@ -701,9 +717,16 @@ html[data-theme="light"] .cm-atom {
   color: #0550ae !important;
 }
 
+/* GitHub Light: tanım (fonksiyon) adı mor, değişken kahverengi; özellik düz metin. */
+html[data-theme="light"] .cm-def {
+  color: #8250df !important;
+}
+
 html[data-theme="light"] .cm-variable,
-html[data-theme="light"] .cm-variable-2,
-html[data-theme="light"] .cm-def,
+html[data-theme="light"] .cm-variable-2 {
+  color: #953800 !important;
+}
+
 html[data-theme="light"] .cm-property {
   color: #1f2328 !important;
 }

@@ -454,6 +454,30 @@ pk_fact_display_value <- function(olgu) {
   FALSE
 }
 
+# GÜVENİLİR İSTEK DEĞERİ KENDİ YUVASININ YANINDA YİNELENİRSE: paket istek
+# girdisini "6 ay {{yuva}}" biçiminde gösterir; model ikisini birden kopyalarsa
+# "Son 6 ay 6 içinde" basılıyordu. Değer kullanıcının kendi değeridir ve tam
+# anahtarla (sayı + birim) eşleşmiştir; bu yüzden modelin sözcükleri KORUNUR,
+# yalnızca yinelenen yuva gösterimi boşaltılır. Başka bir olgunun yuvasına komşu
+# güvenilir değer ("Son 30 günde {{gecikme}}") ASLA silinmez; anlam değişirdi.
+.pk_fact_ref_trusted_echo <- function(txt, duzenlemeler, guvenli, index) {
+  for (jeton in (guvenli %||% list())) {
+    for (i in seq_along(duzenlemeler)) {
+      d <- duzenlemeler[[i]]
+      if (!identical(d$category, "ok") || !nzchar(as.character(d$fact_id %||% "")[1])) next
+      olgu <- index[[d$fact_id]]
+      if (!identical(as.character(olgu$kind %||% "")[1], "request_input")) next
+      if (!(jeton$key %in% pk_fact_trusted_input_keys(list(olgu)))) next
+      if (!.pk_fact_ref_adjacent(txt, jeton, list(d))) next
+      duzenlemeler[[i]]$kept <- ""
+      duzenlemeler[[i]]$reason <- "duplicate_numeric_literal"
+      duzenlemeler[[i]]$category <- "protocol"
+      break
+    }
+  }
+  duzenlemeler
+}
+
 # Yinelenen sayısal iddiada silinecek aralığın sonu: ölçek taşıyan birim jetona
 # dâhilse jetonun sonu, değilse rakam dizisinin sonu.
 .pk_fact_ref_literal_end <- function(jeton) {
@@ -484,7 +508,7 @@ pk_fact_reference_render <- function(text, index = list(), literals = NULL) {
   }
 
   ref <- .pk_fact_ref_reference_edits(txt, index)
-  duzenlemeler <- ref$edits
+  duzenlemeler <- .pk_fact_ref_trusted_echo(txt, ref$edits, literals$trusted, index)
 
   # BEKLENMEYEN SAYISAL MATERYAL: modelin kendi yazdığı, hiçbir olguya
   # karşılık gelmeyen veri görünümlü sayı. Hangi olguya ait olduğu TAHMİN

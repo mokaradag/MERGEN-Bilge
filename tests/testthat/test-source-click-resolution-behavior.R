@@ -480,6 +480,58 @@ test_that("tarayıcı sınır aşımını KISMİ olarak işaretler", {
   expect_true(isTRUE(attr(env$.file_index_scan_bounded(base, "\\.pdf$", max_depth = 1L), "scan_partial")))
 })
 
+test_that("alt klasör listelenemezse indeks KISMİ olur ve TTL boyunca önbelleğe alınmaz", {
+  env <- .scr_env()
+  base <- withr::local_tempdir(pattern = "scr-")
+  .scr_touch(base, "Kalite", "rapor.pdf")
+  .scr_touch(base, "Erisilemez", "gizli_belge.pdf")
+  gercek_liste <- env$.file_index_list_dir
+  # Geçici UNC/erişim hatası: alt klasör listelenemez (ok = FALSE).
+  env$.file_index_list_dir <- function(yol, kalan_ms, max_entries) {
+    if (identical(basename(yol), "Erisilemez")) {
+      return(list(entries = character(0), truncated = FALSE, ok = FALSE))
+    }
+    gercek_liste(yol, kalan_ms, max_entries)
+  }
+
+  out <- env$.file_index_scan_bounded(base, "\\.pdf$")
+  expect_identical(basename(out), "rapor.pdf")
+  expect_true(isTRUE(attr(out, "scan_partial")))
+
+  ent <- env$.build_basename_index(base)
+  expect_null(ent$ts)
+  expect_false(identical(env$.file_index_entry_state(ent), "fresh"))
+})
+
+test_that("klasör geçici olarak görünmezse önceki indeks korunur; taze boş indeks yazılmaz", {
+  env <- .scr_env()
+  env$FILE_INDEX_SCAN_FAIL_BACKOFF_SEC <- 30
+  base <- withr::local_tempdir(pattern = "scr-")
+  .scr_touch(base, "Arsiv", "Grup&&Kalite&&prosedur.pdf")
+  ilk <- env$.build_basename_index(base)
+  expect_identical(env$.file_index_entry_state(ilk), "fresh")
+  expect_true("grup&&kalite&&prosedur.pdf" %in% names(ilk$map))
+
+  # UNC kopması: klasör görünmüyor.
+  env$dir.exists <- function(paths) rep(FALSE, length(paths))
+  sonra <- env$.build_basename_index(base, force = TRUE)
+  expect_identical(sonra$map, ilk$map)
+  expect_identical(sonra$ts, ilk$ts)
+  expect_false(is.null(sonra$scan_failed_at))
+  expect_identical(env$.file_index_entry_state(sonra), "backoff")
+
+  # Önceki indeks yokken de boş harita TAZE sayılmaz; geri çekilme sonrası
+  # yeniden taranır.
+  rm(list = env$.file_index_key(base), envir = env$.FILE_INDEX_CACHE)
+  bos <- env$.build_basename_index(base)
+  expect_length(bos$map, 0L)
+  expect_null(bos$ts)
+  expect_identical(env$.file_index_entry_state(bos), "backoff")
+
+  # Tarayıcı kök kaybolduğunda "boş klasör" değil BAŞARISIZ tarama bildirir.
+  expect_true(isTRUE(attr(env$.file_index_scan_bounded(base, "\\.pdf$"), "scan_failed")))
+})
+
 test_that("tarayıcı sembolik bağlantılı dosya ve klasörleri indekse almaz", {
   skip_on_os("windows")
   env <- .scr_env()

@@ -138,8 +138,19 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
     "- Her yorum veriye dayalı olmalı\n",
     "- Profesyonel, güvenilir ve net Türkçe kullan\n",
     "- \"Muhtemelen\", \"belki\" gibi belirsizliklerden kaçın\n",
-    "- Markdown tablo formatını listeleme/sıralama için kullan\n",
-    "- FİLTRELEME UYARISI varsa, oran belirtirken dikkatli ol\n",
+    # v2'de tablo hücresindeki ya da oran olarak yazılan sayı da modelin
+    # kendi sayısıdır; yuva kuralıyla çelişen bu iki talimat v1'de kalır.
+    if (v2_present) {
+      paste0(
+        "- Tablo kullanırsan sayısal hücrelere YALNIZCA paketteki yuva jetonunu yaz; tabloda kendi sayını üretme\n",
+        "- FİLTRELEME UYARISI varsa oran/yüzde HESAPLAMA; yalnızca pakette yuvası olan değerleri an\n"
+      )
+    } else {
+      paste0(
+        "- Markdown tablo formatını listeleme/sıralama için kullan\n",
+        "- FİLTRELEME UYARISI varsa, oran belirtirken dikkatli ol\n"
+      )
+    },
     "- Başarısız sorgular varsa, bunları da raporla (hangileri ve neden başarısız olduklarını kısaca belirt)\n",
     "- TÜM başarılı sorguları mutlaka raporla - hiçbirini atlama!\n",
     if (v2_present) paste0(

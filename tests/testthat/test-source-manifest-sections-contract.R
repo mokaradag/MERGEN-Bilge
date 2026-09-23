@@ -255,7 +255,10 @@
   # aşımında İSTEME giden özetin yuva taşıması gerekiyordu ve ek fonksiyonlar
   # `helpers_pk_answer_compose.R` dosyasını 25 fonksiyon ratchet'ine taşıyordu.
   # Büyüme değil, bölme.
-  analysis_helpers = list(first = "R/helpers_pk_async_cancel.R", last = "R/helpers_pk_query_selection_apply.R", n = 101L),
+  # 101 -> 102: `helpers_pk_stream_slot_guard.R` canlı akışta ham yuva
+  # koruyucularını taşır; `helpers_pk_provenance_peek.R` büyük dosya /
+  # fonksiyon yoğunluğu ratchet'i sınırındaydı. Ratchet bölünmesidir.
+  analysis_helpers = list(first = "R/helpers_pk_async_cancel.R", last = "R/helpers_pk_query_selection_apply.R", n = 102L),
   sso_identity_helpers = list(first = "R/helpers_sso_jwks_cache.R", last = "R/helpers_logout_url.R", n = 4L),
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
   # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
@@ -726,7 +729,9 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # yeni davranış eklemez (server_handlers_send_message +1).
   # 497 -> 498: `helpers_pk_answer_facts_summary.R` (olgu özetleri; fonksiyon
   # ratchet'i için `helpers_pk_answer_compose.R` dosyasından ayrıldı).
-  expect_equal(length(runtime), 498L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 498 -> 499: `helpers_pk_stream_slot_guard.R` (canlı akışta ham yuva
+  # koruyucusu; `helpers_pk_provenance_peek.R` ratchet sınırındaydı).
+  expect_equal(length(runtime), 499L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

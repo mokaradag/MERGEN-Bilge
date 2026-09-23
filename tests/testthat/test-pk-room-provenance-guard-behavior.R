@@ -201,15 +201,28 @@ test_that("doğrulayıcı HATA verirse block kipi ham düzyazıyı TESLİM ETMEZ
   expect_false(grepl("99.999,9", sonuc, fixed = TRUE))
   expect_true(grepl("SENTETIK RED METNI", sonuc, fixed = TRUE))
 
-  # Bloklamayan kiplerde de çözülmemiş yuva jetonu kullanıcıya ulaşmaz.
-  for (kip in c("off", "log", "warn")) {
-    ham <- env$.pk_hook_room_footer_append(
+  # Bloklamayan kiplerde de çözülmemiş yuva jetonu kullanıcıya ulaşmaz: hem
+  # ÇÖKEN doğrulayıcıyla (hata yedeği) hem GERÇEK doğrulayıcıyla (normal yol).
+  gercek <- .pk_oda_env()
+  for (ortam in list(cokme = env, gercek = gercek)) for (kip in c("off", "log", "warn")) {
+    ham <- ortam$.pk_hook_room_footer_append(
       "Toplam {{fact:olcu.sum.overall.abc123}} saat.",
       list(footer = "\n\n---\nAnaliz Kaynağı: sentetik", facts = olgular,
            mode = kip, fallback_text = NULL, query_id = "q-oda")
     )
     expect_false(grepl("{{fact:", ham, fixed = TRUE), info = kip)
     expect_true(grepl("Analiz Kaynağı", ham, fixed = TRUE), info = kip)
+  }
+
+  # Normal yol gerçekten ÇÖZER: bilinen yuva R'nin değeriyle basılır.
+  for (kip in c("off", "log", "warn")) {
+    cozulen <- gercek$.pk_hook_room_footer_append(
+      paste0("Kalan ", gercek$pk_fact_reference_token(.pk_oda_kimlik(olgular)), " iscilik var."),
+      list(footer = "\n\n---\nAnaliz Kaynağı: sentetik", facts = olgular,
+           mode = kip, fallback_text = NULL, query_id = "q-oda")
+    )
+    expect_true(grepl("Kalan 18.420,5 saat iscilik var.", cozulen, fixed = TRUE), info = kip)
+    expect_false(grepl("{{fact:", cozulen, fixed = TRUE), info = kip)
   }
 })
 

@@ -279,9 +279,11 @@ pk_fact_trusted_input_keys <- function(facts) {
 #' @param text Model metni (referans jetonları hâlâ yerinde).
 #' @param trusted_keys `pk_fact_trusted_input_keys()` çıktısı.
 #' @return `list(tokens = list(list(start=, end=, raw=, number_end=,
-#'   scale_unit=)))` — konumlar ÖZGÜN metin koordinatlarındadır. `number_end`
-#'   rakam dizisinin son konumudur; yinelenen bir iddia silinirken jetona
-#'   iliştirilmiş sıradan sözcük KORUNSUN diye ayrı taşınır.
+#'   scale_unit=)), trusted = list(...))` — konumlar ÖZGÜN metin
+#'   koordinatlarındadır. `number_end` rakam dizisinin son konumudur; yinelenen
+#'   bir iddia silinirken jetona iliştirilmiş sıradan sözcük KORUNSUN diye ayrı
+#'   taşınır. `trusted` güvenilir istek değeriyle eşleşen jetonlardır (ihlal
+#'   DEĞİL; eşleşen anahtar `key` alanındadır).
 pk_fact_literal_scan <- function(text, trusted_keys = character(0)) {
   txt <- suppressWarnings(as.character(text %||% "")[1])
   if (length(txt) != 1L || is.na(txt) || !nzchar(txt)) return(list(tokens = list()))
@@ -293,22 +295,45 @@ pk_fact_literal_scan <- function(text, trusted_keys = character(0)) {
   uzunluk <- attr(konum, "match.length")
   guvenilir <- as.character(trusted_keys %||% character(0))
   out <- list()
+  guvenli <- list()
 
   for (i in seq_along(konum)) {
     jeton <- .pk_scan_token_at(maskeli, as.integer(konum[i]),
                                as.integer(konum[i]) + as.integer(uzunluk[i]) - 1L)
     if (is.null(jeton)) next
-    if (.pk_scan_is_exempt(maskeli, jeton, guvenilir)) next
 
-    out[[length(out) + 1L]] <- list(
+    kayit <- list(
       start = jeton$start, end = jeton$end,
       number_end = jeton$number_end,
       scale_unit = pk_fact_unit_key(jeton$parsed),
       raw = substr(txt, jeton$start, jeton$end)
     )
+    # GÜVENİLİR İSTEK DEĞERİ ihlal değildir ama AYRI taşınır: kendi yuvasının
+    # yanında yinelenirse ("Son 6 ay {{yuva}}") çözücü yinelemeyi temizler.
+    anahtar <- .pk_scan_trusted_key(jeton, guvenilir)
+    if (nzchar(anahtar)) {
+      kayit$key <- anahtar
+      guvenli[[length(guvenli) + 1L]] <- kayit
+      next
+    }
+    if (.pk_scan_is_exempt(maskeli, jeton)) next
+
+    out[[length(out) + 1L]] <- kayit
   }
 
-  list(tokens = out)
+  list(tokens = out, trusted = guvenli)
+}
+
+# Jeton kullanıcının güvenilir bir istek değeriyle mi eşleşiyor? Birim de
+# karşılaştırmaya girer; `1000` eşiği `1.000 saat` iddiasını kapsamaz.
+# Eşleşen anahtarı, yoksa "" döndürür.
+.pk_scan_trusted_key <- function(jeton, guvenilir) {
+  if (!length(guvenilir)) return("")
+  anahtar <- pk_fact_number_key(jeton$parsed$number_text)
+  if (!nzchar(anahtar)) return("")
+  birim <- pk_fact_unit_key(jeton$parsed)
+  aranan <- if (nzchar(birim)) paste0(anahtar, "|", birim) else anahtar
+  if (aranan %in% guvenilir) aranan else ""
 }
 
 # Ham eşleşmeyi ANLAMLI sınırlara oturtur ve parçalarını çözer. `NULL` dönerse
@@ -344,20 +369,15 @@ pk_fact_literal_scan <- function(text, trusted_keys = character(0)) {
 
 # Bir jeton veri iddiası SAYILMAZ mı? (muafiyetler + "veri gibi" kapısı)
 #
-# Muafiyetler: güvenilir istek değeri, teknik kimlik, tarih, çıplak yıl, madde
-# numarası. Kapı: ayraç / yüzde / para birimi / bilimsel gösterim / 4+ hane /
-# ölçek taşıyan birim / oran biçimi.
-.pk_scan_is_exempt <- function(maskeli, jeton, guvenilir) {
+# Muafiyetler: teknik kimlik, tarih, çıplak yıl, madde numarası (güvenilir
+# istek değeri `.pk_scan_trusted_key()` ile AYRICA ele alınır). Kapı: ayraç /
+# yüzde / para birimi / bilimsel gösterim / 4+ hane / ölçek taşıyan birim /
+# oran biçimi.
+.pk_scan_is_exempt <- function(maskeli, jeton) {
   ayrisik <- jeton$parsed
   rakam <- ayrisik$number_text
   yuzde <- isTRUE(ayrisik$percent)
   birim <- pk_fact_unit_key(ayrisik)
-
-  # GÜVENİLİR İSTEK DEĞERİ: kullanıcının kendi kriteri ihlal değildir. Birim
-  # de karşılaştırmaya girer; `1000` eşiği `1.000 saat` iddiasını kapsamaz.
-  anahtar <- pk_fact_number_key(rakam)
-  aranan <- if (nzchar(birim)) paste0(anahtar, "|", birim) else anahtar
-  if (nzchar(anahtar) && aranan %in% guvenilir) return(TRUE)
 
   # TEKNİK KİMLİK: `P1234`, `A1000`, `ISO9001` içindeki rakam bir ölçü değildir.
   onceki <- if (jeton$start > 1L) substr(maskeli, jeton$start - 1L, jeton$start - 1L) else ""

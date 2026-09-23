@@ -212,7 +212,9 @@ savedChatsServer <- function(id, saved_chats) {
           })
 
           if (!any(matches)) {
-            matches <- grepl(search_term, meta$title, ignore.case = TRUE, fixed = TRUE)
+            # `fixed = TRUE` iken `ignore.case` YOK SAYILIR (R uyarı verir ve arama
+            # sessizce büyük/küçük harf duyarlı olur); düz eşleşme küçültülerek yapılır.
+            matches <- grepl(tolower(search_term), tolower(meta$title), fixed = TRUE)
           }
 
           meta <- meta[matches, , drop = FALSE]

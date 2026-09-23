@@ -245,6 +245,41 @@ test_that("kullanici esigi DUZ YAZILDIGINDA protokol ihlali sayilmaz", {
   expect_identical(kaynaksiz$mismatches[[1]]$reason, "model_numeric_literal")
 })
 
+test_that("guvenilir istek degeri KENDI yuvasinin yaninda yinelenirse bir kez basilir", {
+  env <- .pk_ref_env()
+  paket <- list(scope = list(), filters = list(
+    applied = list(list(column = "KalanIscilik", value = "1.000", operation = "greater_than")),
+    request_periods = "6 ay"
+  ))
+  istek <- env$pk_packet_request_facts(paket)
+  olgular <- c(.pk_ref_facts(env), istek)
+  donem <- Filter(function(o) identical(o$column, "__istek_donem__"), istek)[[1]]
+  esik <- Filter(function(o) identical(o$column, "KalanIscilik"), istek)[[1]]
+  yuva <- function(o) env$pk_fact_reference_token(o$fact_id)
+
+  # Paket istek girdisini "6 ay {{yuva}}" / "1.000 {{yuva}}" gösterir; model
+  # ikisini birden kopyalarsa değer iki kez basılmamalı (sözcükler korunur).
+  for (kip in c("log", "block")) {
+    s <- env$pk_numeric_provenance_apply(
+      paste0("Son 6 ay ", yuva(donem), " icinde baslayanlar."), olgular, mode = kip)
+    expect_identical(s$text, "Son 6 ay icinde baslayanlar.", info = kip)
+    s <- env$pk_numeric_provenance_apply(
+      paste0("Kalan isciligi 1.000 ", yuva(esik), " uzerinde olanlar."), olgular, mode = kip)
+    expect_identical(s$text, "Kalan isciligi 1.000 uzerinde olanlar.", info = kip)
+  }
+  kayit <- env$pk_numeric_provenance_apply(
+    paste0("Son 6 ay ", yuva(donem), " icinde baslayanlar."), olgular, mode = "log")
+  expect_identical(kayit$mismatches[[1]]$reason, "duplicate_numeric_literal")
+  expect_true(isTRUE(kayit$mismatches[[1]]$recoverable))
+
+  # BAŞKA bir olgunun yuvasına komşu güvenilir değer SİLİNMEZ: anlam değişirdi.
+  olcu <- .pk_ref_token(env, olgular, "GecikenAktivite", "sum")
+  s <- env$pk_numeric_provenance_apply(
+    paste0("Son 6 ay ", olcu, " aktivite gecikti."), olgular, mode = "block")
+  expect_identical(s$text, "Son 6 ay 15.448 aktivite gecikti.")
+  expect_identical(s$protocol, 0L)
+})
+
 # ---------------------------------------------------------------------------
 # 5) TÜRETİLMİŞ SAYI — model aritmetik uyduramaz, R hesaplarsa basılır
 # ---------------------------------------------------------------------------

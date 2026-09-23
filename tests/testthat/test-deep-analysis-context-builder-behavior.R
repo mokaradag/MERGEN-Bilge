@@ -101,6 +101,11 @@ test_that("v2 bağlamı reconciled kanonik packet metnini kullanır, legacy öze
   # ÇELİŞEN KURAL YOK: v2 isteminde "sayıları doğrudan kullan" talimatı
   # bulunmaz ve istem kanonik biçimli (kopyalanabilir) bir ÖRNEK jeton taşımaz.
   expect_false(grepl("Sayıları DOĞRUDAN kullan", out$prompt_context, fixed = TRUE))
+  # Model sayısı üreten tablo ve oran talimatları v2 istemine sızmaz.
+  expect_false(grepl("Markdown tablo formatını listeleme", out$prompt_context, fixed = TRUE))
+  expect_false(grepl("oran belirtirken dikkatli ol", out$prompt_context, fixed = TRUE))
+  expect_true(grepl("oran/yüzde HESAPLAMA", out$prompt_context, fixed = TRUE))
+  expect_true(grepl("sayısal hücrelere YALNIZCA paketteki yuva jetonunu", out$prompt_context, fixed = TRUE))
   kanonik <- "\\{\\{[[:space:]]*fact[[:space:]]*:[[:space:]]*[A-Za-z0-9_.]+[[:space:]]*\\}\\}"
   expect_false(grepl(kanonik, out$prompt_context, perl = TRUE))
 
@@ -125,6 +130,8 @@ test_that("v1 derin analiz istemi eski sayi kuralini KORUR", {
   )
   expect_true(grepl("Sayıları DOĞRUDAN kullan", out$prompt_context, fixed = TRUE))
   expect_false(grepl("v2 SAYISAL KÖKEN KURALI", out$prompt_context, fixed = TRUE))
+  expect_true(grepl("Markdown tablo formatını listeleme/sıralama için kullan", out$prompt_context, fixed = TRUE))
+  expect_true(grepl("FİLTRELEME UYARISI varsa, oran belirtirken dikkatli ol", out$prompt_context, fixed = TRUE))
 })
 
 test_that("v2 başarılı kayıt kanonik packet metni yoksa legacy summary fail-closed kullanılmaz", {

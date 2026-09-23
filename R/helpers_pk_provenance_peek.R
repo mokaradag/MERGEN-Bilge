@@ -84,7 +84,15 @@ pk_provenance_defers_streaming <- function(session, request_id = NULL) {
 #
 # `block` kipi etkin değilse metin DEĞİŞMEDEN döner (davranış korunur).
 mergen_pk_block_mode_texts <- function(full_response, session, request_id = NULL) {
-  varsayilan <- list(display = full_response, tts = full_response)
+  # KAYIT OLMASA DA HAM YUVA GÖSTERİLMEZ/SESLENDİRİLMEZ: olgu kaydı saklanamadıysa
+  # (bayat istek, depo yok) çözülmemiş `{{fact:...}}` benzetimli akışa ve TTS'e
+  # gidiyordu. Yalnızca `fact` önekli biçimler nötrlenir; PK dışı metin değişmez.
+  notr <- if (exists("pk_fact_reference_neutralize", mode = "function", inherits = TRUE)) {
+    pk_fact_reference_neutralize(full_response)
+  } else {
+    full_response
+  }
+  varsayilan <- list(display = notr, tts = notr)
 
   if (!exists("pk_provenance_blocks_streaming", mode = "function", inherits = TRUE)) {
     return(varsayilan)

@@ -314,7 +314,7 @@ handle_true_streaming_mode <- function(ctx) {
     # bir sütunda (MB_Messages.ReasoningContent) saklanır ve geçmişten
     # yüklenen mesajlarda <details> arşivi olarak geri üretilir.
     reasoning_trace <- mergen_stream_apply_text_cap(
-      stream_env$accumulated_reasoning %||% "", mergen_stream_text_char_limit("reasoning"),
+      mergen_pk_neutral_text(stream_env$accumulated_reasoning %||% ""), mergen_stream_text_char_limit("reasoning"),
       metric_name = "stream_reasoning_truncated"
     )$text
     reasoning_trace_value <- if (nzchar(reasoning_trace)) reasoning_trace else NULL
@@ -569,17 +569,18 @@ handle_true_streaming_mode <- function(ctx) {
       if (batches$reasoning_count > 0) {
         stream_env$first_reasoning_ms <- stream_env$first_reasoning_ms %||% (as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs")) * 1000)
         stream_env$accumulated_reasoning <- paste0(stream_env$accumulated_reasoning, batches$reasoning_text)
-
-        session$sendCustomMessage("streamingReasoningDelta", list(
-          id = stream_env$msg_id,
-          delta = batches$reasoning_text,
-          started = !isTRUE(stream_env$reasoning_stream_started),
-          requestId = stream_env$req_id
-        ))
-        stream_env$reasoning_stream_started <- TRUE
+        # §5.11: parça nötrlenir; kapanmamış yuva açıcısı tamamlanana kadar tutulur.
+        parca <- mergen_pk_stream_reasoning_step(stream_env, FALSE)
+        if (nzchar(parca)) {
+          session$sendCustomMessage("streamingReasoningDelta", list(id = stream_env$msg_id, delta = parca,
+            started = !isTRUE(stream_env$reasoning_stream_started), requestId = stream_env$req_id))
+          stream_env$reasoning_stream_started <- TRUE
+        }
       }
 
       if (batches$delta_count > 0) {
+        # §5.11: ham `{{fact:` kayıt olmasa da ertelemeyi tetikler; yarım açıcı tutulur.
+        gorunur <- mergen_pk_stream_visible_step(stream_env)
         # TAMPON AKTİFKEN BALONCUK AÇILMAZ.
         #
         # `ensure_stream_ui_started()` yazma animasyonunu KALDIRIR ve BOŞ bir
@@ -600,17 +601,17 @@ handle_true_streaming_mode <- function(ctx) {
         # kullanıcı desteklenmeyen sayıları GÖRMÜŞ olur ve geri alınamaz. Metin
         # tamponlanır; `finalize_stream_message` doğrulanmış HTML'i tek seferde
         # gönderir. Tampon aktifken istemciye "üretiliyor" durumu kalır.
-        if (isTRUE(stream_env$defer_visible_text)) {
+        if (is.null(gorunur)) {
         } else if (isTRUE(use_delta_transport)) {
           session$sendCustomMessage("streamingDelta", list(
             id = stream_env$msg_id,
-            delta = batches$delta_text,
+            delta = gorunur$delta,
             requestId = stream_env$req_id
           ))
         } else {
           session$sendCustomMessage("streamingUpdate", list(
             id = stream_env$msg_id,
-            text = stream_env$accumulated_text,
+            text = gorunur$text,
             isPartial = TRUE,
             requestId = stream_env$req_id
           ))
@@ -657,17 +658,13 @@ handle_true_streaming_mode <- function(ctx) {
 
     if (!identical(recovery_plan$action, "none")) {
       stream_env$accumulated_reasoning <- recovery_plan$accumulated
-
-      session$sendCustomMessage("streamingReasoningDelta", list(
-        id = stream_env$msg_id,
-        delta = recovery_plan$delta,
-        started = recovery_plan$started_payload,
-        requestId = stream_env$req_id
-      ))
-
-      if (isTRUE(recovery_plan$mark_stream_started)) {
-        stream_env$reasoning_stream_started <- TRUE
-      }
+    }
+    # Akışta tutulan ve geri kazanılan kuyruk (canlı metnin devamı) nötrlenerek gönderilir.
+    parca <- mergen_pk_stream_reasoning_step(stream_env, TRUE)
+    if (nzchar(parca)) {
+      session$sendCustomMessage("streamingReasoningDelta", list(id = stream_env$msg_id, delta = parca,
+        started = !isTRUE(stream_env$reasoning_stream_started), requestId = stream_env$req_id))
+      stream_env$reasoning_stream_started <- TRUE
     }
 
     base_final_text <- enc2utf8(normalize_llm_scalar_content(result$content))

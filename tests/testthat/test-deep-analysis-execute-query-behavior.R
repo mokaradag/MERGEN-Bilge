@@ -300,6 +300,39 @@ test_that("v2 Deep Thinking legacy özet yerine gerçek kanonik packet/fact hatt
   expect_identical(res$data, veri)
 })
 
+test_that("v2 Deep Thinking paketi sorudaki dönem sayısını güvenilir istek girdisi taşır", {
+  env <- .deepQueryEnv(v2_packets = TRUE)
+  veri <- .deepV2Data()
+  env$pk_deep_execute_sql <- function(conn, sql_text, ...) {
+    list(status = "ok", data = veri, rows = nrow(veri), error = NA_character_)
+  }
+  env$generate_statistical_summary <- function(...) stop("legacy özet çağrıldı")
+
+  res <- env$execute_single_deep_query(
+    query = .deepV2Query(), user_prompt = "Son 6 ayda başlayan projelerin ilerlemesi",
+    session = NULL, rls_info = list(), detail_config = .detailCfg
+  )
+  expect_true(res$success)
+
+  donem <- Filter(function(f) is.list(f) && identical(f$kind, "request_input") &&
+                    identical(f$column, "__istek_donem__"), res$pk_facts)
+  expect_length(donem, 1L)
+  expect_identical(donem[[1]]$display, "6")
+  expect_identical(donem[[1]]$request_values, "6 ay")
+  # Yuva pakette basılır; modelin "6 ay" yinelemesi protokol ihlali sayılmaz.
+  expect_true(grepl(env$pk_fact_reference_token(donem[[1]]$fact_id), res$pk_packet_text, fixed = TRUE))
+  sonuc <- env$pk_numeric_provenance_apply("Son 6 ay icinde baslayan projeler incelendi.",
+                                           res$pk_facts, mode = "log")
+  expect_identical(sonuc$protocol, 0L)
+
+  # Dönem içermeyen soru dönem olgusu üretmez.
+  yok <- env$execute_single_deep_query(
+    query = .deepV2Query(), user_prompt = "ilerleme ve son maliyet",
+    session = NULL, rls_info = list(), detail_config = .detailCfg
+  )
+  expect_length(Filter(function(f) is.list(f) && identical(f$column, "__istek_donem__"), yok$pk_facts), 0L)
+})
+
 test_that("v2 Deep Thinking weighted/non-additive, latest ve yüzde ölçeğini kanonik korur", {
   env <- .deepQueryEnv(v2_packets = TRUE)
   veri <- .deepV2Data()

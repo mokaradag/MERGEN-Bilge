@@ -275,7 +275,7 @@ source_manifest_sections <- list(
     "R/helpers_pk_async_request.R",
     "R/helpers_pk_async_worker_sql.R",
     "R/helpers_pk_async_worker.R",
-    "R/helpers_pk_provenance.R", "R/helpers_pk_provenance_peek.R",  # sahip -> tüketmeyen okuma
+    "R/helpers_pk_provenance.R", "R/helpers_pk_provenance_peek.R", "R/helpers_pk_stream_slot_guard.R",  # sahip -> tüketmeyen okuma -> canlı akış yuva koruyucusu
     "R/helpers_pk_telemetry_record.R",
     "R/helpers_pk_telemetry_base.R",
     "R/helpers_pk_telemetry.R",

@@ -226,15 +226,30 @@ pk_packet_context_facts <- function(packet, scope = NULL) {
 #' sayılıyordu. Yalnızca gün/ay/yıl birimli sayılar alınır (dar kapsam); ham
 #' soru pakette SAKLANMAZ, yalnızca "6 ay" biçimli değerler taşınır.
 pk_request_period_values <- function(text, max_values = 5L) {
-  txt <- .pk_request_safe_text(text, 2000L)
+  txt <- enc2utf8(.pk_request_safe_text(text, 2000L))
   if (!nzchar(txt)) return(character(0))
-  esle <- regmatches(txt, gregexpr("(?i)(?<![0-9.,])([0-9]{1,4})[[:space:]]*(gün|gun|ay|yıl|yil)",
-                                   txt, perl = TRUE))[[1]]
+  # Birim TAM kelimedir: yalnızca Türkçe hâl/çoğul/yapım ekleri kabul edilir
+  # ve ardından harf gelemez; "3 ayrı", "2 aynı", "3 güncel", "5 yıldız"
+  # dönem sayılmaz.
+  desen <- paste0(
+    "(?i)(?<![0-9.,])([0-9]{1,4})[[:space:]]*(gün|gun|ay|yıl|yil)",
+    "(?:l[ae]r|l[ıiuü]k)?",
+    "(?:d[ae]n|t[ae]n|d[ae]|t[ae]|d[ıiuü]r|[ıiuü]n|[ıiuü]|[ae]|c[ae])?",
+    "(?!\\p{L})"
+  )
+  esle <- regmatches(txt, gregexpr(desen, txt, perl = TRUE))[[1]]
   if (!length(esle)) return(character(0))
   sayi <- sub("^([0-9]+).*$", "\\1", esle, perl = TRUE)
   # Birim kanonik yazıma indirgenir (büyük harf / ASCII yazım farkı).
   ilk <- tolower(substr(sub("^[0-9]+[[:space:]]*", "", esle, perl = TRUE), 1L, 1L))
   birim <- ifelse(ilk == "g", "gün", ifelse(ilk == "a", "ay", "yıl"))
+  # "2024 yılında" bir takvim yılıdır, süre değildir.
+  yil_no <- suppressWarnings(as.integer(sayi))
+  takvim <- birim == "yıl" & nchar(sayi) == 4L & !is.na(yil_no) &
+    yil_no >= 1900L & yil_no <= 2100L
+  sayi <- sayi[!takvim]
+  birim <- birim[!takvim]
+  if (!length(sayi)) return(character(0))
   utils::head(unique(paste(sayi, birim)), max_values)
 }
 

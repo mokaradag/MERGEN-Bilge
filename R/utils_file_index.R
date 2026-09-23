@@ -121,7 +121,8 @@ FILE_INDEX_PDF_WORD_EXTS <- c("docx", "docm", "doc")
                                      max_files = 50000L, max_dirs = 5000L,
                                      max_depth = 16L, max_elapsed_ms = 20000L,
                                      max_entries = 20000L) {
-  if (!isTRUE(dir.exists(base_path))) return(character(0))
+  # Kök görünmüyorsa (UNC kopması) sonuç "boş klasör" değil BAŞARISIZ taramadır.
+  if (!isTRUE(dir.exists(base_path))) return(structure(character(0), scan_failed = TRUE))
 
   # Bağımlılık/önbellek ağaçları atlanır (tarayıcı varsayılanlarıyla aynı);
   # aksi hâlde dosya bütçesi gerçek belgelere ulaşmadan tükeniyordu.
@@ -159,8 +160,10 @@ FILE_INDEX_PDF_WORD_EXTS <- c("docx", "docm", "doc")
       try(log_warn("[INDEX] Kök klasör listelenemedi; indeksleme atlandı: {base_path}"), silent = TRUE)
       return(structure(character(0), scan_failed = TRUE))
     }
-    # Tek dizin listesi de sınırlıdır (çok geniş klasör / süre bitimi).
-    if (isTRUE(liste$truncated)) sinir_asildi <- TRUE
+    # Tek dizin listesi de sınırlıdır (çok geniş klasör / süre bitimi). Alt
+    # dizin listelenemediyse (geçici UNC/erişim hatası) o alt ağaç eksiktir;
+    # indeks TAM sayılıp TTL boyunca önbelleğe alınmaz.
+    if (isTRUE(liste$truncated) || !isTRUE(liste$ok)) sinir_asildi <- TRUE
     girisler <- as.character(liste$entries)
     if (!length(girisler)) next
 
@@ -254,13 +257,22 @@ FILE_INDEX_PDF_WORD_EXTS <- c("docx", "docm", "doc")
   # TTL tazeliği taramanın BAŞLANGICINDAN (veri o andan beri değişmiş olabilir),
   # geri çekilme ise BİTİŞİNDEN ölçülür.
   baslangic <- Sys.time()
+
+  # Geçici tarama hatası (klasör görünmüyor / kök listelenemedi) boş indeks
+  # olarak TTL boyunca önbelleğe alınırsa her arama "bulunamadı" döner. Önceki
+  # harita korunur, `ts` TAZELENMEZ ve geri çekilme damgası yazılır; eviction
+  # denetimi de yapılır (farklı eksik taban yolları önbelleği büyütmez).
+  basarisiz_kaydet <- function(zaman) {
+    .file_index_cache_evict_if_full(key)
+    onceki <- if (is.list(ent) && !is.null(ent$map)) ent$map else list()
+    onceki_ts <- if (is.list(ent)) ent$ts else NULL
+    .FILE_INDEX_CACHE[[key]] <- list(ts = onceki_ts, map = onceki, scan_failed_at = zaman)
+    .FILE_INDEX_CACHE[[key]]
+  }
+
   if (!dir.exists(base_path)) {
     log_warn("[INDEX] Klasör yok, indeks oluşturulamadı: {base_path}")
-    # Bu erken yazım eviction denetimi yapmıyordu; farklı eksik taban
-    # yollarıyla tekrar çağrı önbelleği üst sınırın ötesine büyütüyordu.
-    .file_index_cache_evict_if_full(key)
-    .FILE_INDEX_CACHE[[key]] <- list(ts = baslangic, map = list())
-    return(.FILE_INDEX_CACHE[[key]])
+    return(basarisiz_kaydet(baslangic))
   }
   log_info("[INDEX] Taranıyor (TTL {FILE_INDEX_TTL_MIN}dk): {base_path}")
 
@@ -269,17 +281,7 @@ FILE_INDEX_PDF_WORD_EXTS <- c("docx", "docm", "doc")
   all_files <- .file_index_scan_bounded(base_path, pattern)
   bitis <- Sys.time()
 
-  # Geçici tarama hatası boş indeks olarak TTL boyunca önbelleğe alınırsa her
-  # arama "bulunamadı" döner. Önceki harita korunur, `ts` TAZELENMEZ ve geri
-  # çekilme damgası yazılır (eskiden hiç yazılmıyor, arama adımları taramayı
-  # yeniden başlatıyordu).
-  if (isTRUE(attr(all_files, "scan_failed"))) {
-    .file_index_cache_evict_if_full(key)
-    onceki <- if (is.list(ent) && !is.null(ent$map)) ent$map else list()
-    onceki_ts <- if (is.list(ent)) ent$ts else NULL
-    .FILE_INDEX_CACHE[[key]] <- list(ts = onceki_ts, map = onceki, scan_failed_at = bitis)
-    return(.FILE_INDEX_CACHE[[key]])
-  }
+  if (isTRUE(attr(all_files, "scan_failed"))) return(basarisiz_kaydet(bitis))
 
   kismi <- isTRUE(attr(all_files, "scan_partial"))
 

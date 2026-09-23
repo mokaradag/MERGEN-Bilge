@@ -152,8 +152,9 @@ ui_asset_css_groups <- list(
       "css/bilge_savunmasi.css"
     )
   )),
+  # Gerçek CodeMirror 5 (çevrimdışı; www/codemirror/README.md); renkler codemirror-custom.css.
   codemirror = c(
-    "css/codemirror_compat.css",
+    "codemirror/codemirror.min.css",
     "codemirror/theme/material-darker.min.css",
     "codemirror/addon/fold/foldgutter.min.css"
   )
@@ -164,37 +165,27 @@ ui_asset_js_groups <- list(
     "js/console_error_probe.js"
   ),
   codemirror_core = c(
-    "js/codemirror_compat.js"
+    "codemirror/codemirror.min.js"
   ),
+  # Modlar tanımlarını çekirdeğe kaydeder; rust/dockerfile yüklenirken
+  # defineSimpleMode çağırdığı için addon/mode/simple onlardan önce gelir.
   codemirror_modes = c(
-    "codemirror/mode/r.min.js",
-    "codemirror/mode/python.min.js",
-    "codemirror/mode/javascript.min.js",
-    "codemirror/mode/sql.min.js",
-    "codemirror/mode/shell.min.js",
-    "codemirror/mode/css.min.js",
-    "codemirror/mode/xml.min.js",
-    "codemirror/mode/htmlmixed.min.js",
-    "codemirror/mode/clike.min.js",
-    "codemirror/mode/php.min.js",
-    "codemirror/mode/ruby.min.js",
-    "codemirror/mode/go.min.js",
-    "codemirror/mode/swift.min.js",
-    "codemirror/mode/powershell.min.js",
-    "codemirror/mode/commonlisp.min.js",
-    "codemirror/mode/vb.min.js",
-    "codemirror/mode/fortran.min.js",
-    "codemirror/mode/octave.min.js",
-    "codemirror/mode/julia.min.js"
+    paste0("codemirror/mode/", c(
+      "meta", "r", "python", "javascript", "sql", "shell", "css", "xml",
+      "htmlmixed", "clike", "php", "ruby", "go", "swift", "powershell",
+      "commonlisp", "vb", "fortran", "octave", "julia", "yaml", "markdown",
+      "diff", "toml", "properties", "perl", "lua"
+    ), ".min.js"),
+    "codemirror/addon/mode/simple.min.js",
+    "codemirror/mode/rust.min.js",
+    "codemirror/mode/dockerfile.min.js"
   ),
   codemirror_addons = c(
     "codemirror/addon/comment/comment.min.js",
-    "codemirror/addon/fold/foldcode.min.js",
-    "codemirror/addon/fold/foldgutter.min.js",
-    "codemirror/addon/fold/brace-fold.min.js",
-    "codemirror/addon/fold/comment-fold.min.js",
-    "codemirror/addon/fold/indent-fold.min.js",
-    "codemirror/addon/fold/xml-fold.js"
+    paste0("codemirror/addon/fold/",
+           c("foldcode", "foldgutter", "brace-fold", "comment-fold", "indent-fold"), ".min.js"),
+    "codemirror/addon/fold/xml-fold.js",
+    "codemirror/addon/fold/markdown-fold.min.js"
   ),
   threejs = c(
     "lib/threejs/three.min.js",
@@ -346,12 +337,14 @@ ui_asset_js_render_plan <- list(
 # Bu kurallar kullanıcı deneyimini değiştirmez; manifest bakımında yanlış
 # sıralamayı erken yakalamak için doğrulanır.
 ui_asset_js_order_rules <- list(
-  c("js/console_error_probe.js", "js/codemirror_compat.js"),
+  c("js/console_error_probe.js", "codemirror/codemirror.min.js"),
   c("js/console_error_probe.js", "js/sso_auth.js"),
   c("js/console_error_probe.js", "js/utils.js"),
 
-  c("js/codemirror_compat.js", "codemirror/mode/r.min.js"),
-  c("js/codemirror_compat.js", "codemirror/addon/fold/foldcode.min.js"),
+  c("codemirror/codemirror.min.js", "codemirror/mode/r.min.js"),
+  c("codemirror/codemirror.min.js", "codemirror/addon/fold/foldcode.min.js"),
+  c("codemirror/addon/mode/simple.min.js", "codemirror/mode/rust.min.js"),
+  c("codemirror/addon/mode/simple.min.js", "codemirror/mode/dockerfile.min.js"),
 
   c("lib/threejs/three.min.js", "lib/threejs/OrbitControls.js"),
   c("lib/threejs/three.min.js", "lib/threejs/Pass.js"),

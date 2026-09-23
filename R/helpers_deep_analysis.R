@@ -284,7 +284,7 @@ execute_single_deep_query <- function(query, user_prompt, session, rls_info,
 
   if (deep_engine_v2) return(pk_deep_build_v2_packet_result(
     filtered_data, secure_data, query, filter_status, applied_filters,
-    detail_config, finish_result, nrow(raw_data), stop_check
+    detail_config, finish_result, nrow(raw_data), stop_check, user_prompt = user_prompt
   ))
 
   preview_rows <- detail_config$preview_rows %||% 20
