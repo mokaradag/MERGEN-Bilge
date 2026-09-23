@@ -40,7 +40,8 @@ PK_PROV_MODES <- c("off", "log", "warn", "block")
 PK_PROV_PROTOCOL_REASONS <- c("malformed_reference", "legacy_reference",
                               "model_numeric_literal", "duplicate_numeric_literal",
                               "render_degraded")
-PK_PROV_TRUST_REASONS <- c("unknown_fact", "unavailable_fact", "ambiguous_fact")
+PK_PROV_TRUST_REASONS <- c("unknown_fact", "unavailable_fact", "ambiguous_fact",
+                           "unit_conflict")
 
 # Kullanıcıya görünen (yalnızca `warn`) kısa Türkçe karşılıklar. Ham değer,
 # satır verisi ya da olgu kimliği KULLANICIYA DA LOGA DA yazılmaz.
@@ -52,7 +53,8 @@ PK_PROV_TRUST_REASONS <- c("unknown_fact", "unavailable_fact", "ambiguous_fact")
   render_degraded = "çözümleme bozulması",
   unknown_fact = "bilinmeyen olgu",
   unavailable_fact = "hesaplanamayan olgu",
-  ambiguous_fact = "belirsiz olgu"
+  ambiguous_fact = "belirsiz olgu",
+  unit_conflict = "olguyla uyuşmayan birim"
 )
 
 pk_numeric_provenance_mode <- function(query_meta = NULL) {
@@ -126,18 +128,28 @@ pk_numeric_provenance_validate <- function(text, facts) {
 
 # Çözümleyici uç durumda düşerse: kalibrasyon kipleri (off/log) kullanıcıya
 # görünen yanıtı DEĞİŞTİRMEZ, zorlama kipleri (warn/block) kapalı başarısız olur.
+# Kapalı başarısızlık KİPTEN BAĞIMSIZDIR: hiçbir kipte çözülmemiş bir referans
+# basılmaz.
 .pk_prov_degraded_result <- function(ham, kip, fallback_text) {
   bulgu <- list(list(reason = "render_degraded", category = "protocol",
                      fact_id = NA_character_))
+  # ORAN ESASA İLİŞKİNDİR: sıfır referanslı bir protokol bozulması `1.000`
+  # güven oranı raporlayıp metrik sözleşmesini bozuyordu.
   temel <- list(mode = kip, checked = 0L, references = 0L, resolved = 0L,
-                mismatches = bulgu, protocol = 1L, trust = 0L, rate = 1,
+                mismatches = bulgu, protocol = 1L, trust = 0L, rate = 0,
                 degraded = TRUE)
 
+  # YUVA JETONU KULLANICIYA ULAŞMAZ: çözümleyici düştüğünde bile jetonların
+  # yerine nötr metin konur; aksi hâlde `log` kipinde sayının durması gereken
+  # HER noktada iç söz dizimi (`{{fact:...}}`) görünüyordu.
+  notr <- tryCatch(pk_fact_reference_neutralize(ham, strict = TRUE),
+                   error = function(e) "")
+
   if (kip %in% c("off", "log")) {
-    return(c(list(text = ham, blocked = FALSE), temel))
+    return(c(list(text = notr, blocked = FALSE), temel))
   }
   if (identical(kip, "warn")) {
-    return(c(list(text = paste0(ham, .pk_prov_warn_note(bulgu)), blocked = FALSE),
+    return(c(list(text = paste0(notr, .pk_prov_warn_note(bulgu)), blocked = FALSE),
              temel))
   }
   c(list(text = .pk_prov_block_fallback(fallback_text), blocked = TRUE), temel)
@@ -193,8 +205,12 @@ pk_numeric_provenance_apply <- function(text, facts, mode = NULL, fallback_text 
     return(c(list(text = kati, blocked = FALSE), temel))
   }
 
-  if (identical(kip, "warn") && length(bulgular)) {
-    return(c(list(text = paste0(sonuc$kept, .pk_prov_warn_note(bulgular)),
+  # KURTARILABİLİR BULGU KULLANICIYA "BAĞLANAMADI" DEDİRTMEZ. Çözülmüş bir
+  # yuvanın yanındaki yinelenen sayı/işaret silinir ve hiçbir yanlış değer
+  # yayımlanmaz; not yalnızca telemetriye girer.
+  gorunur <- Filter(function(b) !isTRUE(b$recoverable), bulgular)
+  if (identical(kip, "warn") && length(gorunur)) {
+    return(c(list(text = paste0(sonuc$kept, .pk_prov_warn_note(gorunur)),
                   blocked = FALSE), temel))
   }
 

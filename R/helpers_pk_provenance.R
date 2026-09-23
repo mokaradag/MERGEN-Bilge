@@ -484,10 +484,18 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
   # kayıt tüketildiği anda hatırlanır; `fallback_text` beyan edilmemiş olabilir.
   blok_kipi <- FALSE
   blok_alt_bilgi <- ""
+  # ÇÖZÜMLENMEDEN DÖNEN HER YOL YUVA JETONUNU NÖTRLER: kaydı daha yeni bir istek
+  # temizlemişse bayat akış sonlandırması ham `{{fact:...}}` metnini gösterirdi.
+  # Yalnızca `fact` önekli biçimlere dokunulur; PK dışı metin DEĞİŞMEZ.
+  notr_metin <- if (exists("pk_fact_reference_neutralize", mode = "function", inherits = TRUE)) {
+    pk_fact_reference_neutralize(text)
+  } else {
+    text
+  }
 
   tryCatch({
     pending <- pk_provenance_take(session, request_id = request_id, full = TRUE)
-    if (is.null(pending) || !is.list(pending)) return(text)
+    if (is.null(pending) || !is.list(pending)) return(notr_metin)
 
     # `block` kipinde TÜKETİLMİŞ kayıt için güvenli geri düşme metni hazırlanır.
     if (identical(as.character(pending$mode %||% "")[1], "block")) {
@@ -504,7 +512,7 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
     if (is.na(footer)) footer <- ""
     # ALT BİLGİSİZ AMA OLGULU KAYIT DA DOĞRULANIR: erken dönüş yalnızca
     # gerçekten yapılacak iş kalmadığında (ne alt bilgi ne olgu) geçerlidir.
-    if (!nzchar(footer) && is.null(pending$facts)) return(text)
+    if (!nzchar(footer) && is.null(pending$facts)) return(notr_metin)
 
     base_txt <- if (is.null(text) || length(text) == 0L) "" else as.character(text)[1]
     if (is.na(base_txt)) base_txt <- ""
@@ -531,7 +539,7 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
         if (isTRUE(blok_kipi)) {
           return(paste0(PK_PROVENANCE_BLOCK_REFUSAL_TR, blok_alt_bilgi))
         }
-        return(text)
+        return(notr_metin)
       }
       store[[.pk_provenance_done_slot]] <- utils::tail(unique(c(bitenler, kimlik)), 20L)
     }
@@ -575,6 +583,6 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
     if (isTRUE(blok_kipi)) {
       return(paste0(PK_PROVENANCE_BLOCK_REFUSAL_TR, blok_alt_bilgi))
     }
-    text
+    notr_metin
   })
 }

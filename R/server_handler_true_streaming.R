@@ -75,11 +75,12 @@ handle_true_streaming_mode <- function(ctx) {
   # KAPALI BAŞARISIZ: kip OKUNAMAZSA metin ERTELENİR. Eski `FALSE` yedeği, bozuk
   # bir bekleyen kayıt kip sorgusunu düşürdüğünde ham delta'ları doğrulamadan
   # ÖNCE gönderiyordu; kullanıcı onaylanmayan sayıları GÖRÜRDÜ (geri alınamaz).
-  stream_env$defer_visible_text <- isTRUE(tryCatch(
+  stream_env$pk_block_mode <- isTRUE(tryCatch(
     exists("pk_provenance_blocks_streaming", mode = "function", inherits = TRUE) &&
       pk_provenance_blocks_streaming(session, request_id = req_id),
     error = function(e) TRUE
   ))
+  stream_env$defer_visible_text <- stream_env$pk_block_mode || (exists("pk_provenance_defers_streaming", mode = "function", inherits = TRUE) && isTRUE(pk_provenance_defers_streaming(session, request_id = req_id)))  # §5.11: yuvalı kaydın ham delta'sı `{{fact:...}}` taşır; HER kipte tamponlanır (kapalı başarısızlık kararı yine yalnızca `block`).
 
   find_message_index <- function() {
     which(vapply(values$messages, function(m) identical(m$id, stream_env$msg_id), logical(1)))
@@ -280,18 +281,18 @@ handle_true_streaming_mode <- function(ctx) {
     pk_akis <- tryCatch(
       mergen_pk_stream_validated_text(
         final_text, session, stream_env$req_id,
-        isTRUE(stream_env$defer_visible_text)
+        isTRUE(stream_env$pk_block_mode)
       ),
       error = function(e) {
         try(log_warn(sprintf("[PK] Koken dogrulamasi hazirlanamadi: %s", conditionMessage(e)[1])), silent = TRUE)
         # KAPALI BASARISIZ: `defer_visible_text` TRUE iken delta'lar BASTIRILDI, yani tamponlanan metin HIC dogrulanmadi ve yayimlanamaz.
-        if (!isTRUE(stream_env$defer_visible_text)) return(list(display = final_text, tts = final_text, validated = FALSE))
+        if (!isTRUE(stream_env$pk_block_mode)) { notr <- if (exists("pk_block_mode_fallback_text", mode = "function", inherits = TRUE)) pk_block_mode_fallback_text(FALSE, final_text) else final_text; return(list(display = notr, tts = notr, validated = FALSE)) }
         yedek <- if (exists("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)) as.character(get("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE))[1] else paste0("\U000026A0\U0000FE0F **Analiz Kayna\u011f\u0131 Do\u011frulanamad\u0131:** Yan\u0131t yay\u0131mlanmad\u0131.")
         list(display = yedek, tts = yedek, validated = FALSE)
       }  # dis `if (!is.list(pk_akis))` yedegi asagida
     )
     if (!is.list(pk_akis)) {  # KAPALI BAŞARISIZ: bu DIŞ yedek de `block` kipini UYGULAR. İçteki `tryCatch` işleyicisi `defer_visible_text` TRUE iken reddetme metnini döndürüyordu; bu dal ise `mergen_pk_stream_validated_text()` HATA FIRLATMADAN liste dışı bir değer (ör. `NULL`) döndürdüğünde `display = final_text` atıyordu. `final_text` tamponlanmış, HİÇ doğrulanmamış model metnidir: bastırılan deltalar tek seferde ham hâlde yayımlanıyor, `validated = FALSE` ise yalnızca takip önerilerini susturuyordu -- `block` kipinin tam da engellemek için var olduğu çıktı.
-      yedek <- if (!isTRUE(stream_env$defer_visible_text)) final_text else if (exists("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)) as.character(get("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE))[1] else paste0("\U000026A0\U0000FE0F **Analiz Kaynağı Doğrulanamadı:** Yanıt yayımlanmadı.")
+      yedek <- if (!isTRUE(stream_env$pk_block_mode)) { if (exists("pk_block_mode_fallback_text", mode = "function", inherits = TRUE)) pk_block_mode_fallback_text(FALSE, final_text) else final_text } else if (exists("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)) as.character(get("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE))[1] else paste0("\U000026A0\U0000FE0F **Analiz Kaynağı Doğrulanamadı:** Yanıt yayımlanmadı.")
       pk_akis <- list(display = yedek, tts = yedek, validated = FALSE)
     }
     final_text <- pk_akis$display

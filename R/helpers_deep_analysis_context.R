@@ -127,7 +127,14 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
     "- Bütünsel öneriler\n",
     "- Uyarılar ve riskler\n\n",
     "### KRİTİK KURALLAR:\n",
-    "- Sayıları DOĞRUDAN kullan, tahmin veya varsayım YAPMA\n",
+    # ÇELİŞEN İKİ KURAL AYNI İSTEMDE BULUNMAZ. v2 paketinde sayıyı R basar;
+    # "sayıları doğrudan kullan" talimatı modele paketteki gösterimi KOPYALAT
+    # ve yuva sözleşmesini bozardı. Kural bu yüzden v1 yoluna kalır.
+    if (v2_present) {
+      "- Sayıları YALNIZCA aşağıdaki yuva kuralıyla aktar, tahmin veya varsayım YAPMA\n"
+    } else {
+      "- Sayıları DOĞRUDAN kullan, tahmin veya varsayım YAPMA\n"
+    },
     "- Her yorum veriye dayalı olmalı\n",
     "- Profesyonel, güvenilir ve net Türkçe kullan\n",
     "- \"Muhtemelen\", \"belki\" gibi belirsizliklerden kaçın\n",
@@ -137,7 +144,7 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
     "- TÜM başarılı sorguları mutlaka raporla - hiçbirini atlama!\n",
     if (v2_present) paste0(
       "\n### v2 SAYISAL KÖKEN KURALI (ZORUNLU):\n",
-      "- v2 ANALİZ PAKETİ içindeki sayıları KENDİN YAZMA. Sayının geçmesi gereken yere pakette basılı `{{fact:...}}` yuvasını AYNEN koy; değeri ve biçimini R yerleştirir.\n",
+      "- v2 ANALİZ PAKETİ içindeki sayıları KENDİN YAZMA. Sayının geçmesi gereken yere o olgunun pakette basılı yuva jetonunu (`{{fact:` ile başlayan) AYNEN kopyala; değeri ve biçimini R yerleştirir.\n",
       "- Yeni fact kimliği UYDURMA; pakette bulunmayan bir sayıyı yazma ve paketler arasında aritmetik HESAPLAMA.\n",
       "- `KULLANILAMAZ` durumundaki olgular için sayı üretme; sınırlılığı açıkça belirt.\n"
     ) else "",

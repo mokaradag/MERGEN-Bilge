@@ -57,7 +57,14 @@
   # Not, başarılı olgularda da korunur: ağırlıklı ortalamada DIŞARIDA BIRAKILAN
   # satır sayısı, `latest` icin secilen damga ve IQR sınırları yalnızca burada
   # yaşıyordu ve modele hiç ulaşmıyordu.
-  not <- if (is.null(olgu$note)) "" else paste0(" - ", .pk_render_safe_text(olgu$note, 220L))
+  sinir <- .pk_render_iqr_bounds(olgu)
+  not <- if (!is.null(sinir)) {
+    paste0(" - ", sinir)
+  } else if (is.null(olgu$note)) {
+    ""
+  } else {
+    paste0(" - ", .pk_render_safe_text(olgu$note, 220L))
+  }
 
   if (is.null(olgu$value)) {
     return(sprintf("  - %s: KULLANILAMAZ (%s)%s", etiket, olgu$status, not))
@@ -66,6 +73,19 @@
   ek <- if (identical(olgu$status, PK_FACT_SINGLE)) " [tek gozlem]" else ""
   sprintf("  - %s: %s %s%s%s", etiket, olgu$display,
           pk_fact_reference_token(olgu$fact_id), ek, not)
+}
+
+# IQR SINIRLARI YUVALIDIR: "her sayının bir yuvası vardır" sözleşmesi notu da
+# kapsar. Sınır sonlu değilse bağlam olgusu da üretilmez; `NULL` dönüşü özgün
+# nota düşer (orada sonlu olmayan sınır zaten "?" basılır).
+.pk_render_iqr_bounds <- function(olgu) {
+  if (!identical(olgu$aggregation, "iqr_outliers") || is.null(olgu$bounds)) return(NULL)
+  sinir <- suppressWarnings(as.numeric(olgu$bounds))
+  if (length(sinir) != 2L || any(!is.finite(sinir))) return(NULL)
+  ondalik <- olgu$bounds_decimals %||% NA_integer_
+  sprintf("Sinirlar: %s %s / %s %s",
+          pk_fmt_number(sinir[1], ondalik), .pk_render_marker(olgu$column, "iqr_lower"),
+          pk_fmt_number(sinir[2], ondalik), .pk_render_marker(olgu$column, "iqr_upper"))
 }
 
 .pk_render_boundary <- function() {

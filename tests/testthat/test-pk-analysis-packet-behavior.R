@@ -609,8 +609,12 @@ test_that("ayni sutunun BIRDEN COK olgusunda sayim, yazicinin bastigi ILK olguda
   olgular <- env$pk_packet_all_facts(paket)
   kimlikler <- vapply(olgular, function(o) o$fact_id, character(1))
 
-  isaretler <- gsub("^\\[fact:|\\]$", "",
-                    regmatches(metin, gregexpr("\\[fact:[^]]+\\]", metin))[[1]])
+  # YAZICI ARTIK `{{fact:...}}` BASAR. Eski `[fact:...]` cikarimi hicbir sey
+  # bulamiyor, `setdiff(character(0), ...)` her cikti icin BOS donuyordu; test
+  # kaydi olmayan bir yuva basilsa bile GECIYORDU.
+  isaretler <- regmatches(metin, gregexpr("\\{\\{fact:[^}]+\\}\\}", metin))[[1]]
+  isaretler <- gsub("^\\{\\{fact:|\\}\\}$", "", isaretler)
+  expect_true(length(isaretler) >= 2L)
   expect_identical(setdiff(isaretler, kimlikler), character(0))
 
   sayim <- Filter(function(o) identical(o$aggregation, "finite_count"), olgular)

@@ -163,15 +163,20 @@ pk_build_analysis_system_prompt_v2 <- function(analysis_mode, query) {
     "AMACI: ", query$description %||% "", "\n\n",
 
     "\U000026A0\U0000FE0F SAYI YAZIM KURALI (en önemli kural):\n",
-    "1. HİÇBİR SAYIYI KENDİN YAZMA. Pakette her sayının yanında o sayının ",
-    "yuvası bulunur: `{{fact:OLGU_KIMLIGI}}`. Yanıtında sayının geçmesi ",
-    "gereken yere SADECE bu yuvayı koy; değeri, binlik/ondalık ayracını, ",
-    "yüzdeyi ve para birimini R yerleştirir.\n",
-    "   DOĞRU: Özellikle {{fact:activity_late.sum.overall.ab12cd}} geciken ",
-    "aktivite program takibini zorlaştırıyor.\n",
+    # ÖRNEK JETON BASILMAZ: kanonik biçimli bir örnek, olgu dizininde karşılığı
+    # olmayan bir kimlikle isteme girer; modelin onu kopyalaması `unknown_fact`
+    # üretir, `block` kipinde de cümleyi düşürürdü. Kural TARİF EDİLİR; gerçek
+    # jetonlar zaten paketteki her sayının yanında durur.
+    "1. HİÇBİR SAYIYI KENDİN YAZMA. Pakette her sayının yanında o sayıya ait ",
+    "bir YUVA jetonu basılıdır: `{{fact:` ile başlar, olgu kimliğiyle sürer ve ",
+    "iki kapanış süslü parantezle biter. Yanıtında sayının geçmesi gereken ",
+    "yere SADECE paketten OLDUĞU GİBİ kopyaladığın o jetonu koy; değeri, ",
+    "binlik/ondalık ayracını, yüzdeyi ve para birimini R yerleştirir.\n",
+    "   DOĞRU: 'Özellikle ' + geciken aktivite sayısının paketteki yuvası + ",
+    "' geciken aktivite program takibini zorlaştırıyor.'\n",
     "   YANLIŞ: Özellikle 15.448 geciken aktivite... (sayıyı sen yazdın)\n",
-    "   YANLIŞ: Özellikle 15.448 {{fact:activity_late.sum.overall.ab12cd}} ",
-    "geciken aktivite... (hem sayı hem yuva yazılmış)\n",
+    "   YANLIŞ: Sayıyı ve yuvayı YAN YANA yazmak (ikisi birden).\n",
+    "   YANLIŞ: Pakette basılı olmayan bir kimlikten yuva kurmak.\n",
     "2. HESAPLAMA YAPMA. Toplama, çıkarma, ortalama, oran, yüzde, gün farkı ",
     "veya süre HESAPLAMA. 'Yaklaşık 5 günlük pencere', '4 gün kaldı' gibi ",
     "türetilmiş sayılar YASAKTIR; böyle bir değer pakette hazır bir yuva ",

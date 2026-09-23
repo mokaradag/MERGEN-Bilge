@@ -36,7 +36,7 @@
                   "helpers_pk_export_plan.R",
                   "helpers_pk_export_csv.R", "helpers_pk_export_xlsx.R",
                   "helpers_pk_export_serve.R",
-                  "helpers_pk_answer_compose.R")) {
+                  "helpers_pk_answer_compose.R", "helpers_pk_answer_facts_summary.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = env)
   }
   env
@@ -648,7 +648,23 @@ test_that("P1: cozumleyici hata verirse ZORLAMA kiplerinde HAM metin gosterilmez
     expect_identical(sonuc$text, "Uydurma 999 saat.", info = kip)
     nedenler <- vapply(sonuc$mismatches, function(m) as.character(m$reason)[1], character(1))
     expect_true("render_degraded" %in% nedenler, info = kip)
+    # Sıfır referanslı protokol bozulması GÜVEN oranını şişirmez.
+    expect_identical(sonuc$rate, 0, info = kip)
+
+    # ÇÖZÜLMEMİŞ REFERANS BU YOLDA DA KAPALI BAŞARISIZDIR: metin korunur ama
+    # yuva jetonu değer basmadan nötrlenir; iç söz dizimi kullanıcıya ulaşmaz.
+    yuvali <- env$pk_numeric_provenance_apply(
+      "Geciken {{fact:olcu.sum.overall.ab12cd}} is ve {{fact:yarim", list(),
+      mode = kip, fallback_text = "**Hesaplanan**"
+    )
+    expect_false(grepl("{{", yuvali$text, fixed = TRUE), info = kip)
+    expect_true(grepl("Geciken", yuvali$text, fixed = TRUE), info = kip)
+    expect_true(grepl("değer yok", yuvali$text), info = kip)
   }
+  uyari_yuvali <- env$pk_numeric_provenance_apply(
+    "Geciken {{fact:olcu.sum.overall.ab12cd}} is.", list(), mode = "warn"
+  )
+  expect_false(grepl("{{", uyari_yuvali$text, fixed = TRUE))
 })
 
 

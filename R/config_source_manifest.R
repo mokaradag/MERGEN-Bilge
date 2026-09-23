@@ -321,7 +321,7 @@ source_manifest_sections <- list(
     "R/helpers_pk_export_csv.R",
     "R/helpers_pk_export_xlsx.R",
     "R/helpers_pk_export_serve.R",
-    "R/helpers_pk_answer_compose.R",
+    "R/helpers_pk_answer_compose.R", "R/helpers_pk_answer_facts_summary.R",  # kompozisyon -> deterministik olgu özetleri (kullanıcıya görünen + isteme giden yuvalı)
     "R/helpers_pk_analysis_result.R",
     # Derin analiz: detay kataloğu + bağlam kurucu orkestratörden ÖNCE; Faz 6 (D16) uzlaştırma katmanı ikisinden de ÖNCE (ikisi de onu çağırır).
     "R/helpers_deep_analysis_sql.R",

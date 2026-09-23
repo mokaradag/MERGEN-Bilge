@@ -54,7 +54,9 @@ pk_required_helpers <- list(
   # İZOLE yüklemede KORUMASIZ çağrılan yardımcılar; sıra manifest sırasıdır.
   list(
     functions = c("pk_row_cap_stage", "pk_user_error_text", "pk_report_db_error", "pk_sql_readonly_guard", "pk_meta_actual_column_gate", "pk_build_analysis_result"),
-    path = file.path("R", c("helpers_pk_result_size.R", "helpers_pk_safe_errors.R", "helpers_pk_sql_statements.R", "helpers_pk_sql_readonly.R", "helpers_pk_rls.R", "helpers_pk_precision.R", "helpers_pk_packet_stats.R", "helpers_pk_analysis_packet.R", "helpers_pk_packet_render.R", "helpers_pk_numeric_provenance.R", "helpers_pk_export_plan.R", "helpers_pk_export_csv.R", "helpers_pk_export_xlsx.R", "helpers_pk_export_serve.R", "helpers_pk_answer_compose.R", "helpers_pk_analysis_result.R"))
+    # Sıra MANİFEST sırasıdır: eksik bir §5.11 yardımcısı izole yüklemede
+    # `pk_fact_reference_token()` tanımsız bırakır ve v2 paketi çalışma anında düşer.
+    path = file.path("R", c("helpers_pk_result_size.R", "helpers_pk_safe_errors.R", "helpers_pk_sql_statements.R", "helpers_pk_sql_readonly.R", "helpers_pk_rls.R", "helpers_pk_fact_reference.R", "helpers_pk_fact_reference_scan.R", "helpers_pk_precision.R", "helpers_pk_packet_stats.R", "helpers_pk_packet_context_facts.R", "helpers_pk_analysis_packet.R", "helpers_pk_packet_render.R", "helpers_pk_numeric_provenance.R", "helpers_pk_export_plan.R", "helpers_pk_export_csv.R", "helpers_pk_export_xlsx.R", "helpers_pk_export_serve.R", "helpers_pk_answer_compose.R", "helpers_pk_answer_facts_summary.R", "helpers_pk_analysis_result.R"))
   )
 )
 

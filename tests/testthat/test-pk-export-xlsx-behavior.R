@@ -39,7 +39,7 @@
                   "helpers_pk_packet_render.R", "helpers_pk_export_plan.R",
                   "helpers_pk_export_csv.R", "helpers_pk_export_xlsx.R",
                   "helpers_pk_export_serve.R",
-                  "helpers_pk_answer_compose.R")) {
+                  "helpers_pk_answer_compose.R", "helpers_pk_answer_facts_summary.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = env)
   }
   env

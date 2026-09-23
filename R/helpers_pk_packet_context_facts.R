@@ -173,6 +173,17 @@ pk_packet_context_facts <- function(packet, scope = NULL) {
     list(id = o$column, agg = "excluded_count", value = o$n_excluded,
          label = sprintf("%s disarida birakilan", o$column))))
 
+  # IQR uç değer SINIRLARI: yazıcı nottaki iki sınırı yuvayla basar
+  # (`.pk_render_iqr_bounds()`); gösterim ölçek/ondalık sözleşmesi AYNIDIR.
+  for (o in (packet$facts %||% list())) {
+    sinir <- suppressWarnings(as.numeric(o$bounds %||% numeric(0)))
+    if (!identical(o$aggregation, "iqr_outliers") || length(sinir) != 2L) next
+    tanimlar <- c(tanimlar, lapply(1:2, function(i) list(
+      id = o$column, agg = c("iqr_lower", "iqr_upper")[i], value = sinir[i],
+      label = sprintf("%s IQR %s sinir", o$column, c("alt", "ust")[i]),
+      decimals = o$bounds_decimals %||% NA_integer_)))
+  }
+
   out <- list()
   for (t in tanimlar) {
     deger <- suppressWarnings(as.numeric(t$value %||% NA_real_))
@@ -229,7 +240,11 @@ pk_packet_request_facts <- function(packet) {
     if (!nzchar(sutun) || !length(degerler)) next
 
     gosterim <- paste(degerler, collapse = ", ")
-    sayisal <- suppressWarnings(as.numeric(gsub(",", ".", degerler[1], fixed = TRUE)))
+    # SAYISAL DEĞER KANONİK ANAHTARDAN ÇÖZÜLÜR: düz virgül->nokta çevirisi
+    # binlik ayracını ondalık sanıyor ("12.500" -> 12,5) ve olgu değeri gerçek
+    # istekten sapıyordu.
+    anahtar <- pk_fact_number_key(degerler[1])
+    sayisal <- if (nzchar(anahtar)) suppressWarnings(as.numeric(anahtar)) else NA_real_
     out[[length(out) + 1L]] <- list(
       fact_id = pk_fact_id(paste0("__istek__:", sutun), islem, degerler),
       kind = "request_input",

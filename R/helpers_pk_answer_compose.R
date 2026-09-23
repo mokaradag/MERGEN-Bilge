@@ -315,10 +315,15 @@ pk_compose_close_markdown <- function(text) {
   txt <- gsub("[\r\n\t]+", " ", txt)
   txt <- gsub("|", "\\|", txt, fixed = TRUE)
   # `[etiket](url)` ve `![](url)` veri hücresinden ETKİN bağlantı/görsel
-  # üretemez; köşeli parantezler sökülür. Küme parantezi de sökülür: R'ye ait
-  # blok köken çözümlemesinden SONRA eklenir, dolayısıyla bir hücredeki
-  # `{{fact:...}}` metni çözülmez ve kullanıcıya HAM jeton olarak görünürdü.
-  txt <- gsub("[][{}]", "", txt)
+  # üretemez; köşeli parantezler sökülür.
+  txt <- gsub("[][]", "", txt)
+  # KÜME PARANTEZİ SİLİNMEZ, ÇİFTİ BOZULUR. R'ye ait blok köken çözümlemesinden
+  # SONRA eklenir; bir hücredeki yuva söz dizimi çözülmez ve kullanıcıya HAM
+  # jeton olarak görünürdü. Her parantezi silmek ise meşru veri değerlerini
+  # (`Proje {A-17}`, JSON hücreleri) bozuyor, `A{B}` ile `AB` gibi FARKLI
+  # değerleri aynı gösterime indiriyordu; yalnızca çift parantez ayrılır.
+  txt <- gsub("{{", "{ {", txt, fixed = TRUE)
+  txt <- gsub("}}", "} }", txt, fixed = TRUE)
   txt <- gsub("`", "'", txt, fixed = TRUE)
   txt <- trimws(gsub("[[:space:]]+", " ", txt))
 
@@ -503,64 +508,6 @@ pk_compose_attachment_card <- function(artifact) {
   }
 
   paste0(basi, paste(satirlar, collapse = "\n"))
-}
-
-#' Olgulardan deterministik kısa özet
-#'
-#' `block` kipinde (§5.11) model düzyazısı reddedildiğinde kullanıcıya
-#' gösterilecek metin budur: yalnızca R'nin hesapladığı değerler. Her ÖLÇÜ için
-#' önce bir birincil olgu seçilir; aksi hâlde ilk ölçünün istatistikleri
-#' bütçenin tamamını yiyor ve sonraki ölçüler sessizce kayboluyordu.
-#' @param attachment_available Bir EK GERÇEKTEN sunuluyor mu? `inline_table`
-#'   kipinde `pk_compose_block()` hiç artefakt üretmez; bu metin blok kipinde
-#'   köken doğrulaması model prozasını reddettiğinde kullanıldığı için,
-#'   kullanıcı VAR OLMAYAN bir `Ozet` sayfasına yönlendiriliyordu.
-pk_compose_facts_summary <- function(facts, limit = 12L,
-                                     attachment_available = TRUE) {
-  kullanilabilir <- Filter(function(o) is.list(o) && !is.null(o$value), facts %||% list())
-  if (!length(kullanilabilir)) return("")
-
-  # SINIR TAM SAYIYA İNDİRGENİR: `as.integer()` sayısal olmayan/`NA` bir değer
-  # için `NA_integer_` döner, `max(1L, NA)` yine `NA` kalır ve aşağıdaki
-  # `utils::head(..., NA)` HATA fırlatırdı; bu metin `block` kipinde model
-  # düzyazısı reddedildiğinde GÖSTERİLEN yedektir.
-  limit <- .pk_compose_int_or(limit, 12L)
-  oncelik <- c("sum", "weighted_mean", "latest", "mean", "median", "max", "min")
-
-  sutunlar <- unique(vapply(kullanilabilir, function(o) as.character(o$column)[1], character(1)))
-  birincil <- list()
-  for (sutun in sutunlar) {
-    alt <- Filter(function(o) identical(as.character(o$column)[1], sutun), kullanilabilir)
-    sira <- match(vapply(alt, function(o) as.character(o$aggregation)[1], character(1)), oncelik)
-    sira[is.na(sira)] <- length(oncelik) + 1L
-    birincil[[length(birincil) + 1L]] <- alt[[which.min(sira)]]
-  }
-
-  secilen <- utils::head(birincil, limit)
-  kalan_kota <- limit - length(secilen)
-  if (kalan_kota > 0L) {
-    kimlikler <- vapply(secilen, function(o) as.character(o$fact_id)[1], character(1))
-    digerleri <- Filter(function(o) !(as.character(o$fact_id)[1] %in% kimlikler), kullanilabilir)
-    secilen <- c(secilen, utils::head(digerleri, kalan_kota))
-  }
-
-  satirlar <- vapply(secilen, function(o) {
-    sprintf("- %s (%s): %s", as.character(o$label %||% o$column)[1],
-            as.character(o$aggregation)[1], as.character(o$display)[1])
-  }, character(1))
-
-  atlanan <- length(kullanilabilir) - length(secilen)
-  if (atlanan > 0L) {
-    satirlar <- c(satirlar, if (isTRUE(attachment_available)) {
-      sprintf("- _(%s hesaplanan değer daha var; tamamı ek dosyanın `Ozet` sayfasındadır.)_",
-              pk_fmt_number(atlanan, 0L))
-    } else {
-      sprintf("- _(%s hesaplanan değer daha var; bu yanıtta gösterilmedi.)_",
-              pk_fmt_number(atlanan, 0L))
-    })
-  }
-
-  paste(c("**Hesaplanan değerler**", satirlar), collapse = "\n")
 }
 
 # HTML öznitelik kaçışı: metadata'daki tırnak/açılı ayraç üretilen işaretlemeyi

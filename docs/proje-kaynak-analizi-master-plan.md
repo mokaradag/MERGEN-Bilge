@@ -1535,11 +1535,21 @@ problems. The server log now reports the two families separately:
             guven_dagilim=unknown_fact=1 | olgular=<bounded fact id list>
 ```
 
-*Protocol/structure*: `malformed_reference`, `legacy_reference`,
-`model_numeric_literal`, `duplicate_numeric_literal`, `render_degraded`.
-*Content/trust*: `unknown_fact`, `unavailable_fact`, `ambiguous_fact`.
+*Protocol/structure*: `malformed_reference` (including an unterminated `{{fact:`
+opener), `legacy_reference`, `model_numeric_literal`, `duplicate_numeric_literal`,
+`render_degraded`.
+*Content/trust*: `unknown_fact`, `unavailable_fact`, `ambiguous_fact`, `unit_conflict`
+(a scale-bearing unit the model appended right after a slot contradicts the fact's own
+unit, e.g. a unitless count followed by `TL`).
 `guven_orani` is the substantive rate (trust findings / references) and is no longer
-inflated by formatting defects. Prose, the question text, claimed/actual values and row
+inflated by formatting defects. Recoverable findings — a duplicate literal or a legacy
+marker at zero distance from a resolved slot — are removed silently: they reach
+telemetry but never the `warn` note, because R printed the value and nothing wrong was
+published.
+
+A fact-bearing pending record defers visible streaming in **every** mode, not only
+`block`: the raw deltas carry slot tokens, so the answer is shown (and spoken by TTS)
+only after R resolves them. The fail-closed refusal remains `block`-only. Prose, the question text, claimed/actual values and row
 data never enter the log; fact IDs are schema identifiers and are bounded to eight
 entries. `off` writes nothing at all.
 

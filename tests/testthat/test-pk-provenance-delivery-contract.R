@@ -360,23 +360,94 @@ test_that("log kipinde bozuk referans yaniti BASTIRMAZ ve tum yollar ayni kalir"
     " duzeyindedir. Sonuc {{fact:uydurma.sum.overall.ffffff}} olarak olculdu."
   )
 
+  # TEST ADI "tum yollar" diyor: gercek akis, dogrudan yanit ve benzetilmis
+  # akis AYNI girdiyle ayri oturumlarda kosulur (kayit her yolda TUKETILIR).
+  yol <- function(calistir) {
+    oturum <- list(userData = new.env(parent = emptyenv()))
+    .pk_delivery_stash(env, oturum, "log", olgu, alt_bilgi)
+    sonuc <- NULL
+    utils::capture.output(sonuc <- calistir(oturum), type = "output")
+    sonuc
+  }
+  akis <- yol(function(o) env$mergen_pk_stream_validated_text(
+    model_metni, o, "req-render", block_mode = FALSE))
+  dogrudan <- yol(function(o) env$mergen_pk_validated_texts(
+    model_metni, o, request_id = "req-render"))
+  benzetim <- yol(function(o) env$pk_stream_display_text(
+    model_metni, o, "req-render", block_mode = FALSE))
+
+  expect_identical(akis$display, dogrudan$display)
+  expect_identical(akis$display, benzetim)
+  expect_identical(akis$tts, dogrudan$tts)
+
+  for (gosterim in c(akis$display, dogrudan$display, benzetim)) {
+    # Kullanıcı yanıtı ALIR; "Yanıt doğrulanamadı" ile DEĞİŞTİRİLMEZ.
+    expect_true(grepl("Genel gorunum baskiya isaret ediyor", gosterim, fixed = TRUE))
+    expect_true(grepl("18.420,5 saat", gosterim, fixed = TRUE))
+    expect_false(grepl("Yanıt doğrulanamadı", gosterim))
+    expect_false(grepl("Hesaplanan değerler", gosterim, fixed = TRUE))
+    # Çözülemeyen iddia HİÇBİR değer basmaz ve ham jeton sızmaz.
+    expect_false(grepl("uydurma", gosterim, fixed = TRUE))
+    expect_false(grepl("{{", gosterim, fixed = TRUE))
+    expect_true(grepl("değer yok", gosterim))
+  }
+})
+
+test_that("yuvali kayit log kipinde de akisi ERTELER ve TTS ham jeton okumaz", {
+  env <- .pk_delivery_render_env()
+  olgu <- env$pk_fact_record("measure", "KalanIscilik", "sum", 18420.5,
+                             list(label = "Kalan iscilik", unit = "saat", decimals = 1L,
+                                  capability = "labor.remaining_hours"))
+  alt_bilgi <- "\n\n---\n**Analiz Kaynağı**\n- **Sorgu:** q_render\n"
+  model_metni <- paste0("Kalan is yuku ", env$pk_fact_reference_token(olgu$fact_id),
+                        " duzeyindedir.")
+
   oturum <- list(userData = new.env(parent = emptyenv()))
   .pk_delivery_stash(env, oturum, "log", olgu, alt_bilgi)
-  akis <- NULL
+  # `block` DEĞİL ama yuvalı: ham delta gönderilmez, kapalı başarısızlık yok.
+  expect_false(env$pk_provenance_blocks_streaming(oturum, request_id = "req-render"))
+  expect_true(env$pk_provenance_defers_streaming(oturum, request_id = "req-render"))
+
+  metinler <- NULL
   utils::capture.output(
-    akis <- env$mergen_pk_stream_validated_text(model_metni, oturum, "req-render",
-                                                block_mode = FALSE),
+    metinler <- env$mergen_pk_block_mode_texts(model_metni, oturum,
+                                               request_id = "req-render"),
     type = "output"
   )
+  expect_identical(metinler$tts, "Kalan is yuku 18.420,5 saat duzeyindedir.")
+  expect_identical(metinler$display, paste0(metinler$tts, alt_bilgi))
 
-  # Kullanıcı yanıtı ALIR; "Yanıt doğrulanamadı" ile DEĞİŞTİRİLMEZ.
-  expect_true(grepl("Genel gorunum baskiya isaret ediyor", akis$display, fixed = TRUE))
-  expect_true(grepl("18.420,5 saat", akis$display, fixed = TRUE))
-  expect_false(grepl("Yanıt doğrulanamadı", akis$display))
-  expect_false(grepl("Hesaplanan değerler", akis$display, fixed = TRUE))
-  # Çözülemeyen iddia HİÇBİR değer basmaz.
-  expect_false(grepl("uydurma", akis$display, fixed = TRUE))
-  expect_true(grepl("değer yok", akis$display))
+  # Olgusuz (v1) kayıt ertelenmez; kayıt yoksa da ertelenmez.
+  oturum_v1 <- list(userData = new.env(parent = emptyenv()))
+  env$pk_provenance_clear(oturum_v1, request_id = "req-v1")
+  env$pk_provenance_stash(oturum_v1, alt_bilgi, request_id = "req-v1", mode = "log")
+  expect_false(env$pk_provenance_defers_streaming(oturum_v1, request_id = "req-v1"))
+  bos <- list(userData = new.env(parent = emptyenv()))
+  expect_false(env$pk_provenance_defers_streaming(bos, request_id = "yok"))
+})
+
+test_that("kaydi olmayan (bayat) sonlandirma yuva jetonunu NOTRLER, sablon metnini korur", {
+  env <- .pk_delivery_render_env()
+  oturum <- list(userData = new.env(parent = emptyenv()))
+
+  metin <- NULL
+  utils::capture.output(
+    metin <- env$pk_provenance_decorate(
+      "Toplam {{fact:olcu.sum.overall.abc123}} kayit [fact:x] var.", oturum,
+      request_id = "bayat"
+    ),
+    type = "output"
+  )
+  expect_false(grepl("{{", metin, fixed = TRUE))
+  expect_false(grepl("[fact:", metin, fixed = TRUE))
+  expect_true(grepl("değer yok", metin))
+
+  # PK dışı sıradan yanıttaki şablon söz dizimi DEĞİŞMEZ.
+  sablon <- "Jinja icin {{ ad }} yazin."
+  expect_identical(env$pk_provenance_decorate(sablon, oturum, request_id = "bayat"), sablon)
+  expect_identical(env$pk_block_mode_fallback_text(FALSE, sablon), sablon)
+  expect_false(grepl("{{fact:", env$pk_block_mode_fallback_text(FALSE, "A {{fact:q.sum.o.1}}"),
+                     fixed = TRUE))
 })
 
 test_that("block kipinde ekran ve TTS AYNI ayiklanmis govdeyi alir", {

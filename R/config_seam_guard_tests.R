@@ -124,6 +124,7 @@ mergen_seam_guard_tests <- function() {
         # sahipliği bozulsa bile seam doğrulaması YEŞİL raporlardı.
         "tests/testthat/test-pk-fact-reference-behavior.R",
         "tests/testthat/test-pk-fact-reference-scan-behavior.R",
+        "tests/testthat/test-pk-fact-reference-hardening-behavior.R",
         "tests/testthat/test-pk-export-xlsx-behavior.R",
         # Teslim/doğrulama sözleşmeleri de bu seam'e aittir: paket doğru kurulsa
         # bile yanıt teslimi veya sayısal köken bozuksa seam YEŞİL olmamalıdır.

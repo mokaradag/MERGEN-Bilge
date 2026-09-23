@@ -93,7 +93,12 @@ pk_fmt_number <- function(x, decimals = NULL, unit = NULL) {
     # (§5.11 yuva çözümlemesi), dolayısıyla bu biçim bir iç ayrıntı değildir.
     # `pk_fmt_share()`, satır içi tablo hücreleri ve dışa aktarım ZATEN önek
     # biçimini kullanıyordu; üç yol artık aynı sözleşmededir.
-    out <- if (identical(birim, "%")) paste0("%", out) else paste0(out, " ", birim)
+    # EKSİ İŞARETİ YÜZDE SİMGESİNİN ÖNÜNDE KALIR: "%-61,3" değil "-%61,3".
+    out <- if (identical(birim, "%")) {
+      if (negatif) paste0("-%", substring(out, 2L)) else paste0("%", out)
+    } else {
+      paste0(out, " ", birim)
+    }
   }
 
   out
@@ -474,11 +479,17 @@ pk_measure_facts <- function(values, column, spec = list(), scope = NULL,
   # aktardığı sınırın karşılığı olan bir olgu bulunmuyordu.
   not_olcegi <- if (identical(as.character(spec$unit %||% "")[1], "%") &&
                     identical(as.character(spec$percent_scale %||% "")[1], "fraction")) 100 else 1
-  out[[length(out) + 1L]] <- yap(
+  uc <- yap(
     "iqr_outliers", sum(v < alt | v > ust), PK_FACT_OK,
     sprintf("Sinirlar: %s / %s", pk_fmt_number(alt * not_olcegi, spec$decimals),
             pk_fmt_number(ust * not_olcegi, spec$decimals))
   )
+  # SINIRLAR DA OLGUDUR: not metnindeki çıplak sınırlar modelin ancak ELLE
+  # yazabileceği sayılardı. Sayısal değerler taşınır; `pk_packet_context_facts()`
+  # onları `iqr_lower` / `iqr_upper` bağlam olgusuna, yazıcı yuvaya çevirir.
+  uc$bounds <- c(alt, ust) * not_olcegi
+  uc$bounds_decimals <- suppressWarnings(as.integer(spec$decimals %||% NA_integer_)[1])
+  out[[length(out) + 1L]] <- uc
 
   out
 }

@@ -236,8 +236,11 @@
   kuyruk_talimati <- paste0(
     "\n\n--- PAKET SONU ---\n\n",
     "Talimat: YALNIZCA yukaridaki paketteki olgulari kullanarak cevap ver. ",
-    "Sayilari KENDIN YAZMA; sayinin gecmesi gereken yere ilgili {{fact:...}} ",
-    "yuvasini koy, degeri R yerlestirir. Hesaplama yapma, tablo uretme; tablo ",
+    # Tam bir ornek jeton BASILMAZ; kopyalanan uydurma kimlik `unknown_fact`
+    # uretiyordu. Soz dizimi tarif edilir, jetonun kendisi pakettedir.
+    "Sayilari KENDIN YAZMA; sayinin gecmesi gereken yere o olgunun pakette ",
+    "basili yuva jetonunu (`{{fact:` ile baslayan) AYNEN kopyala, degeri R ",
+    "yerlestirir. Hesaplama yapma, tablo uretme; tablo ",
     "ve ek R tarafindan eklenecektir. Yanitin bicimini soruya uydur; zorunlu ",
     "baslik sablonu yoktur."
   )
@@ -274,12 +277,16 @@
   # paketi olduğu gibi göndermek, uç noktanın bağlam sınırını aşıp analizin
   # TAMAMINI düşürebilirdi; deterministik özete inilir.
   if (isTRUE(yazi$over_budget)) {
+    # ISTEME GIDEN OZET YUVA TASIR. Kullaniciya gosterilen deterministik yedek
+    # yalnizca etiket + bicimlenmis deger basar; ayni metni pakete koymak modele
+    # hicbir MESRU yuva birakmiyor, gorunen degeri kopyalamaya itiyordu.
     ozet <- paste(c(
       "### BUTCE ASIMI",
       paste("- Analiz paketi yapilandirilmis bicimde istem butcesine SIGMADI;",
-            "asagida yalnizca R tarafindan hesaplanan degerler yer aliyor."),
+            "asagida yalnizca R tarafindan hesaplanan olgularin YUVALARI yer",
+            "aliyor. Sayilari yine yazma; ilgili yuvayi kopyala."),
       "",
-      yedek_metin
+      pk_compose_facts_prompt_summary(paket$facts)
     ), collapse = "\n")
 
     if (nchar(ozet, type = "chars") <= yazi$budget) {

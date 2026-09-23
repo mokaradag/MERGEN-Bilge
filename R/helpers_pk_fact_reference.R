@@ -37,12 +37,24 @@ PK_FACT_REF_PATTERN <-
 # Yapısal protokol ihlalidir: değer basılmaz, yerine nötr metin konur.
 PK_FACT_REF_MALFORMED_PATTERN <- "\\{\\{[^{}]{0,160}\\}\\}"
 
+# SONLANDIRILMAMIŞ yuva açıcısı (`{{fact:bogus` — kapanış yok). Kanonik ya da
+# bozuk jeton desenlerinin hiçbirine uymadığı için metinde HAM kalıyordu; model
+# o noktaya bir değer koymak istediğinden iddia da denetimsiz yayımlanıyordu.
+# Açıcı SATIR SONUNA kadar (CRLF dâhil) bir protokol ihlali olarak tanınır.
+PK_FACT_REF_OPEN_PATTERN <- "\\{\\{[^{}\r\n]{0,160}(?=[\r\n]|$)"
+
 # ESKİ ALINTI SÖZ DİZİMİ (`[fact:x]`). Önceki mimaride model sayıyı yazıp
 # yanına bu işareti koyardı. Artık jeton SAYININ KENDİSİDİR; eski biçim
 # yapısal bir protokol ihlali olarak raporlanır ve SİLİNİR. Modelin yazdığı
 # sayı bu yolla ASLA doğrulanmış gibi yayımlanmaz (sayı, sayı tarayıcısının
 # ayrı bulgusudur).
 PK_FACT_REF_LEGACY_PATTERN <- "\\[fact:[A-Za-z0-9_.]*\\]"
+
+# YALNIZCA `fact` ÖNEKLİ bozuk/sonlandırılmamış yuvalar. Doğrulayıcının hiç
+# çalışmadığı yollarda (bayat istek, eksik kayıt) PK dışı sıradan bir yanıt da
+# bu kapıdan geçer; oradaki şablon söz dizimi (`{{ ad }}`) KORUNMALIDIR.
+.PK_FACT_REF_FACT_MALFORMED_PATTERN <- "\\{\\{[[:space:]]*fact[[:space:]]*:[^{}]{0,160}\\}\\}"
+.PK_FACT_REF_FACT_OPEN_PATTERN <- "\\{\\{[[:space:]]*fact[[:space:]]*:[^{}\r\n]{0,160}(?=[\r\n]|$)"
 
 # Çözülemeyen bir referansın yerine geçen NÖTR metin. Bir değer İDDİA ETMEZ;
 # cümlenin geri kalanı okunur kalır ve tek bir bozuk referans 30 geçerli
@@ -56,6 +68,37 @@ PK_FACT_REF_UNRESOLVED_TR <- "(değer yok)"
 .pk_fact_ref_scalar <- function(x) {
   txt <- suppressWarnings(as.character(x %||% "")[1])
   if (length(txt) != 1L || is.na(txt)) "" else txt
+}
+
+#' Olgu referanslarını DEĞER BASMADAN nötrle (tek sahip)
+#'
+#' Çözümleyicinin ÇALIŞMADIĞI her yol (bozulma, bayat istek, tüketilmiş kayıt)
+#' ham model metnini döndürüyordu; yuva jetonları kullanıcıya iç söz dizimi
+#' olarak ulaşıyordu. Kanonik jetonun yerine nötr metin konur, eski alıntı
+#' işareti silinir.
+#'
+#' @param strict `TRUE` ise her `{{...}}` çifti ihlaldir (metnin v2 yanıtı
+#'   olduğu BİLİNİR). `FALSE` yalnızca `fact` önekli biçimlere dokunur.
+pk_fact_reference_neutralize <- function(text, strict = FALSE) {
+  if (!is.character(text) || length(text) != 1L || is.na(text)) return(text)
+  if (!grepl("{{", text, fixed = TRUE) && !grepl("[fact:", text, fixed = TRUE)) {
+    return(text)
+  }
+  desenler <- if (isTRUE(strict)) {
+    c(PK_FACT_REF_PATTERN, PK_FACT_REF_MALFORMED_PATTERN, PK_FACT_REF_OPEN_PATTERN)
+  } else {
+    c(PK_FACT_REF_PATTERN, .PK_FACT_REF_FACT_MALFORMED_PATTERN,
+      .PK_FACT_REF_FACT_OPEN_PATTERN)
+  }
+  # Bu yardımcı HATA FIRLATMAZ: çağıranlar hata yakalayıcıların İÇİNDEDİR ve
+  # geçersiz kodlamalı bir metin `gsub(perl = TRUE)` ile düşebilir.
+  tryCatch({
+    notr <- text
+    for (desen in desenler) {
+      notr <- gsub(desen, PK_FACT_REF_UNRESOLVED_TR, notr, perl = TRUE)
+    }
+    gsub(PK_FACT_REF_LEGACY_PATTERN, "", notr, perl = TRUE)
+  }, error = function(e) text)
 }
 
 #' Bir olgu kimliğinin YUVA jetonu (tek sahip)
@@ -153,6 +196,26 @@ pk_fact_display_value <- function(olgu) {
        reason = reason, category = category, fact_id = fact_id)
 }
 
+# Yuvanın hemen ardına modelin İLİŞTİRDİĞİ birim, olgunun kendi birimiyle
+# çelişiyor mu?
+#
+# Kimlik doğru olsa bile anlam değişebilir: birimsiz bir satır sayımı
+# "{{fact:...}} TL" yazılarak makul ama YANLIŞ bir bütçe iddiasına dönüşüyor ve
+# hiçbir kipte bulgu üretmiyordu. Denetim YAPISALDIR: yalnızca araya sözcük
+# girmeyen, ÖLÇEK TAŞIYAN bir birim okunur; mesafe/tolerans hesabı yoktur.
+.pk_fact_ref_unit_conflict <- function(txt, son, olgu) {
+  if (!exists("pk_fact_unit_after", mode = "function", inherits = TRUE)) return(FALSE)
+  komsu <- pk_fact_unit_after(txt, son)
+  if (!nzchar(komsu)) return(FALSE)
+
+  olgu_birim <- pk_fact_unit_key(as.character(olgu$unit %||% "")[1])
+  if (identical(komsu, olgu_birim)) return(FALSE)
+  # Birimsiz olguya yalnızca PARA/YÜZDE iliştirmek ölçüyü değiştirir; "gün",
+  # "adet" gibi sözcükler cümlenin doğal parçası olabilir.
+  if (!nzchar(olgu_birim)) return(komsu %in% c("%", "tl", "try", "usd", "eur"))
+  TRUE
+}
+
 # Kanonik referansları çöz; her biri için bir düzenleme üret.
 .pk_fact_ref_reference_edits <- function(txt, index) {
   duzenlemeler <- list()
@@ -178,8 +241,11 @@ pk_fact_display_value <- function(olgu) {
     }
 
     cozulen <- cozulen + 1L
+    catisma <- .pk_fact_ref_unit_conflict(txt, vurus$end, olgu)
     duzenlemeler[[length(duzenlemeler) + 1L]] <- .pk_fact_ref_edit(
-      vurus$start, vurus$end, gosterim, FALSE, "resolved", "ok", kimlik
+      vurus$start, vurus$end, gosterim, catisma,
+      if (catisma) "unit_conflict" else "resolved",
+      if (catisma) "trust" else "ok", kimlik
     )
   }
   list(edits = duzenlemeler, resolved = cozulen)
@@ -193,21 +259,32 @@ pk_fact_display_value <- function(olgu) {
   }
 
   duzenlemeler <- list()
-  for (vurus in .pk_fact_ref_matches(txt, PK_FACT_REF_MALFORMED_PATTERN)) {
-    if (kapsanan(vurus$start, vurus$end)) next
-    # Model o noktaya bir DEĞER koymak istemişti; sağlayamıyoruz. Nötr metin
-    # konur ve `block` kipinde cümle ayıklanır.
-    duzenlemeler[[length(duzenlemeler) + 1L]] <- .pk_fact_ref_edit(
-      vurus$start, vurus$end, PK_FACT_REF_UNRESOLVED_TR, TRUE,
-      "malformed_reference", "protocol"
-    )
+  ortulu <- function(bas, son) {
+    length(duzenlemeler) > 0L &&
+      any(vapply(duzenlemeler, function(d) bas >= d$start && son <= d$end, logical(1)))
+  }
+
+  for (desen in c(PK_FACT_REF_MALFORMED_PATTERN, PK_FACT_REF_OPEN_PATTERN)) {
+    for (vurus in .pk_fact_ref_matches(txt, desen)) {
+      if (kapsanan(vurus$start, vurus$end) || ortulu(vurus$start, vurus$end)) next
+      # Model o noktaya bir DEĞER koymak istemişti; sağlayamıyoruz. Nötr metin
+      # konur ve `block` kipinde cümle ayıklanır. Kapanışı yazılmamış bir açıcı
+      # da aynı ihlaldir: ham jeton kullanıcıya ulaşmaz.
+      duzenlemeler[[length(duzenlemeler) + 1L]] <- .pk_fact_ref_edit(
+        vurus$start, vurus$end, PK_FACT_REF_UNRESOLVED_TR, TRUE,
+        "malformed_reference", "protocol"
+      )
+    }
   }
   for (vurus in .pk_fact_ref_matches(txt, PK_FACT_REF_LEGACY_PATTERN)) {
-    # Eski işaret bir ALINTI idi, bir değer yuvası DEĞİL: silinmesi hiçbir
-    # değeri kaybetmez. Cümle ayıklanmaz; modelin yazdığı sayı varsa onu
-    # sayı tarayıcısı ayrıca bulur.
+    # Eski işaret bir ALINTI idi: yanındaki sayıyı MODEL yazmıştı ve hangi
+    # olguya dayandığı DOĞRULANAMAZ. İşaret silinir, iddia ise `block` kipinde
+    # ayıklanır; aksi hâlde "47 proje [fact:bogus]" kaynaksız yayımlanıyordu.
+    # Çözülmüş bir yuvaya SIFIR MESAFEDE duran işaret ise değeri R'nin bastığı
+    # bir YİNELEMEDİR: silinmesi yeter, geçerli cümle düşürülmez.
+    yineleme <- .pk_fact_ref_adjacent(txt, vurus, kanonik)
     duzenlemeler[[length(duzenlemeler) + 1L]] <- .pk_fact_ref_edit(
-      vurus$start, vurus$end, "", FALSE, "legacy_reference", "protocol"
+      vurus$start, vurus$end, "", !yineleme, "legacy_reference", "protocol"
     )
   }
   duzenlemeler
@@ -327,6 +404,17 @@ pk_fact_display_value <- function(olgu) {
   FALSE
 }
 
+# Yinelenen sayısal iddiada silinecek aralığın sonu: ölçek taşıyan birim jetona
+# dâhilse jetonun sonu, değilse rakam dizisinin sonu.
+.pk_fact_ref_literal_end <- function(jeton) {
+  if (nzchar(as.character(jeton$scale_unit %||% "")[1])) return(jeton$end)
+  son <- suppressWarnings(as.integer(jeton$number_end %||% NA_integer_))
+  if (length(son) != 1L || is.na(son) || son < jeton$start || son > jeton$end) {
+    return(jeton$end)
+  }
+  son
+}
+
 #' Model metnindeki anlamsal olgu referanslarını çöz ve kanonik değerleri bas
 #'
 #' @param text Model düzyazısı (yuva jetonları içerir).
@@ -354,7 +442,11 @@ pk_fact_reference_render <- function(text, index = list(), literals = NULL) {
   for (jeton in (literals$tokens %||% list())) {
     yineleme <- .pk_fact_ref_adjacent(txt, jeton, duzenlemeler)
     duzenlemeler[[length(duzenlemeler) + 1L]] <- if (yineleme) {
-      .pk_fact_ref_edit(jeton$start, jeton$end, "", FALSE,
+      # YİNELEME SİLİNİRKEN SIRADAN SÖZCÜK KORUNUR. Jeton bir izleyen sözcüğü
+      # de kapsayabiliyor ("15.448 aktivite"); tüm aralığı silmek cümleden
+      # "aktivite"yi düşürüyordu. Yalnızca rakam aralığı, ölçek taşıyan bir
+      # birim varsa onunla birlikte silinir.
+      .pk_fact_ref_edit(jeton$start, .pk_fact_ref_literal_end(jeton), "", FALSE,
                         "duplicate_numeric_literal", "protocol")
     } else {
       .pk_fact_ref_edit(jeton$start, jeton$end, jeton$raw, TRUE,
@@ -365,9 +457,12 @@ pk_fact_reference_render <- function(text, index = list(), literals = NULL) {
   duzenlemeler <- c(duzenlemeler, .pk_fact_ref_protocol_edits(txt, ref$edits))
   uygulanan <- .pk_fact_ref_apply_edits(txt, duzenlemeler)
 
+  # `recoverable`: R değeri bastı ve yanlış bir sayı yayımlanmadı (nöbetçisiz
+  # düzenleme). Telemetriye girer ama kullanıcıya "bağlanamadı" denmez.
   bulgular <- lapply(
     Filter(function(d) !identical(d$category, "ok"), duzenlemeler),
-    function(d) list(reason = d$reason, category = d$category, fact_id = d$fact_id)
+    function(d) list(reason = d$reason, category = d$category, fact_id = d$fact_id,
+                     recoverable = !isTRUE(d$sentinel))
   )
 
   list(

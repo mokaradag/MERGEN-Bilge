@@ -561,6 +561,7 @@ test_that("telemetri protokol ve guven bulgularini AYRI sayaclarla yazar", {
 test_that("kip cozumlemesi gecersiz degerde log'a duser ve sozlesme degerlerini korur", {
   env <- .pk_ref_env()
   expect_identical(env$PK_PROV_MODES, c("off", "log", "warn", "block"))
+  testthat::skip_if_not_installed("withr")
 
   withr::with_envvar(list(MERGEN_PK_NUMERIC_PROVENANCE_MODE = NA_character_), {
     expect_identical(env$pk_numeric_provenance_mode(), "log")

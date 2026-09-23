@@ -464,7 +464,7 @@ test_that("v2 gozlemi filtre DEGERINI korur (koken alt bilgisi bos yazmaz)", {
               "helpers_pk_fact_reference.R", "helpers_pk_fact_reference_scan.R",
               "helpers_pk_numeric_provenance.R",
               "helpers_pk_export_plan.R",
-              "helpers_pk_export_xlsx.R", "helpers_pk_answer_compose.R",
+              "helpers_pk_export_xlsx.R", "helpers_pk_answer_compose.R", "helpers_pk_answer_facts_summary.R",
               "helpers_pk_statistical_summary.R", "helpers_pk_analysis_result.R")) {
     source(file.path(repo_root, "R", f), encoding = "UTF-8", local = env)
   }
@@ -609,6 +609,9 @@ test_that("v1 yuku eski istatistiksel ozet bicimini KORUR", {
   expect_true(grepl("ÖRNEK SATIRLAR (JSON)", v1$user_context, fixed = TRUE))
   expect_false(grepl("ANALIZ PAKETI", v1$user_context, fixed = TRUE))
   expect_false(grepl("[fact:", v1$user_context, fixed = TRUE))
+  # GÜNCEL YUVA SÖZ DİZİMİ de v1 yüküne SIZMAZ; yalnızca emekli `[fact:`
+  # biçimini reddetmek, hiçbir üreticinin artık basmadığı bir şeyi denetlerdi.
+  expect_false(grepl("{{fact:", v1$user_context, fixed = TRUE))
 })
 
 test_that("Faz 2 dosyalari motor bayragina BAGLI kalir (sizinti yok)", {
@@ -616,7 +619,8 @@ test_that("Faz 2 dosyalari motor bayragina BAGLI kalir (sizinti yok)", {
   for (dosya in c("R/helpers_pk_fact_reference.R", "R/helpers_pk_fact_reference_scan.R",
                   "R/helpers_pk_analysis_packet.R", "R/helpers_pk_packet_render.R",
                   "R/helpers_pk_export_plan.R", "R/helpers_pk_export_xlsx.R",
-                  "R/helpers_pk_answer_compose.R", "R/helpers_pk_packet_stats.R")) {
+                  "R/helpers_pk_answer_compose.R", "R/helpers_pk_answer_facts_summary.R",
+                  "R/helpers_pk_packet_stats.R")) {
     kod <- .pk_v1_code_only(dosya)
     expect_false(grepl("pk_engine_is_v2", kod, fixed = TRUE, useBytes = TRUE),
                  info = sprintf("%s motor bayragini okumamalidir.", dosya))
@@ -636,11 +640,12 @@ test_that("Sayisal koken dogrulamasi olgu SAKLANMAMISSA hic calismaz (v1 yolu)",
   env$pk_provenance_clear(oturum, request_id = "r1")
   env$pk_provenance_stash(oturum, "\n\n---\n**Analiz Kaynağı**\n- Sorgu: q\n",
                           request_id = "r1")
-  metin <- env$pk_provenance_decorate("Yanit 999 [fact:uydurma.sum.overall].", oturum,
+  metin <- env$pk_provenance_decorate("Yanit 999 {{fact:uydurma.sum.overall}}.", oturum,
                                       request_id = "r1")
 
-  # Olgu yoksa dogrulama devreye girmez ve metin oldugu gibi kalir.
-  expect_true(grepl("[fact:uydurma.sum.overall]", metin, fixed = TRUE))
+  # Olgu yoksa dogrulama devreye girmez ve metin oldugu gibi kalir (GÜNCEL
+  # yuva söz dizimiyle denetlenir; emekli `[fact:` biçimi hiçbir şey kanıtlamaz).
+  expect_true(grepl("{{fact:uydurma.sum.overall}}", metin, fixed = TRUE))
   expect_true(grepl("Analiz Kaynağı", metin, fixed = TRUE))
 })
 
