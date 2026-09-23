@@ -16,8 +16,10 @@ internete/CDN'e ERİŞMEZ; tüm dosyalar bu klasörden sunulur.
 | CSS küçültme | `clean-css@5.3.3` (`level: 1`; kaynak/lisans satırı eklenir) |
 
 Dosya adları, on-prem kopyadaki düz yerleşimle aynıdır
-(`mode/<dil>.min.js`, `addon/fold/*.min.js`). `addon/fold/xml-fold.js` ve
-`LICENSE` değiştirilmeden kopyalanmıştır.
+(`mode/<dil>.min.js`, `addon/fold/*.min.js`). `addon/fold/xml-fold.js`
+on-prem adını korur ama diğerleri gibi terser ile küçültülmüştür (upstream
+kaynaktaki gereksiz `\-\:\.` kaçışları CodeQL uyarısı üretiyordu; davranış
+aynıdır). `LICENSE` değiştirilmeden kopyalanmıştır.
 
 Yükleme sırası ve dil/katlama eşlemesi bu klasörde değil,
 `R/config_ui_assets.R` ve `www/js/codemirror-manager.js` içindedir. MERGEN'e
@@ -73,7 +75,7 @@ dosyalarla karşılaştırır.
 | `addon/fold/comment-fold.min.js` | `addon/fold/comment-fold.js` | terser | `caecb1dcd317ecc5fae3fca140072834c98e4d3fae6cdd2f6fe01917d3e16ea5` |
 | `addon/fold/indent-fold.min.js` | `addon/fold/indent-fold.js` | terser | `13f35cf529c8084d1ea9efe0e27bbbf1f4004de134154fb1065b85f10b083cb7` |
 | `addon/fold/markdown-fold.min.js` | `addon/fold/markdown-fold.js` | terser | `11f05c21cc782611993fcf4079f9c5c211e80bc538fe59f89384f5ad627b0959` |
-| `addon/fold/xml-fold.js` | `addon/fold/xml-fold.js` | verbatim | `4ad0fdc2f93882174c9071e9a3c2324d15d4deb0c43fe607f9efe01dda1af9b4` |
+| `addon/fold/xml-fold.js` | `addon/fold/xml-fold.js` | terser | `3c60c61f385a506ae9c4710a7c921c8e35b6e13f6c1ae3087797b3a282cf45e3` |
 | `addon/mode/simple.min.js` | `addon/mode/simple.js` | terser | `c6e9bb186d15c168715826168fd1b4c1163ad18427a87760ca341e9dabc6614e` |
 | `LICENSE` | `LICENSE` | verbatim | `168a4becc968f5001e2ee2e0291b6e4daabafc1894a11ade1e11d56e96096e07` |
 

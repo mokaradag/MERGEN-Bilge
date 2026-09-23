@@ -43,6 +43,22 @@
 .CodeMirror .cm-meta { color: #abb2bf !important; }
 .CodeMirror .cm-punctuation { color: #abb2bf !important; }
 
+/* Diff / Markdown / JSON belirteçleri. Markdown modu liste satırının tüm
+ * metnine variable-2/3 verir; liste metni düz kalır (JS yerel değişken rengi
+ * buraya taşmaz). JSON anahtarı (string + property) değerden ayrışır.
+ * 3 sınıflı kuralların açık tema karşılığı aşağıdaki tamamlayıcıdadır. */
+.CodeMirror .cm-positive { color: #98c379 !important; }
+.CodeMirror .cm-negative { color: #e06c75 !important; }
+.CodeMirror .cm-header { color: #e06c75 !important; }
+.CodeMirror .cm-quote,
+.CodeMirror .cm-hr { color: #7f848e !important; }
+.CodeMirror .cm-string.cm-property { color: #e06c75 !important; }
+.CodeMirror[data-lang="diff"] .cm-meta { color: #c678dd !important; }
+.CodeMirror[data-lang="markdown"] .cm-variable-2,
+.CodeMirror[data-lang="markdown"] .cm-variable-3 { color: #abb2bf !important; }
+.CodeMirror[data-lang="markdown"] .cm-link { color: #61aeee !important; }
+.CodeMirror[data-lang="markdown"] .cm-url { color: #56b6c2 !important; }
+
 /* Kod katlama stilleri */
 .CodeMirror-foldgutter {
   width: 1em !important;
@@ -123,6 +139,19 @@ html[data-theme="light"] .CodeMirror .cm-qualifier,
 html[data-theme="light"] .CodeMirror .cm-meta,
 html[data-theme="light"] .CodeMirror .cm-bracket,
 html[data-theme="light"] .CodeMirror .cm-punctuation { color: #1f2328 !important; }
+/* Diff / Markdown / JSON: genel `html[data-theme="light"] span { color: inherit }`
+ * kuralı bu belirteçleri düz metne çeviriyordu (+/- satırları ayırt edilmiyordu). */
+html[data-theme="light"] .CodeMirror .cm-positive { color: #116329 !important; }
+html[data-theme="light"] .CodeMirror .cm-negative { color: #82071e !important; }
+html[data-theme="light"] .CodeMirror .cm-header { color: #0550ae !important; }
+html[data-theme="light"] .CodeMirror .cm-quote,
+html[data-theme="light"] .CodeMirror .cm-hr { color: #6e7781 !important; }
+html[data-theme="light"] .CodeMirror .cm-string.cm-property { color: #0550ae !important; }
+html[data-theme="light"] .CodeMirror[data-lang="diff"] .cm-meta { color: #8250df !important; }
+html[data-theme="light"] .CodeMirror[data-lang="markdown"] .cm-variable-2,
+html[data-theme="light"] .CodeMirror[data-lang="markdown"] .cm-variable-3 { color: #1f2328 !important; }
+html[data-theme="light"] .CodeMirror[data-lang="markdown"] .cm-link,
+html[data-theme="light"] .CodeMirror[data-lang="markdown"] .cm-url { color: #0a3069 !important; }
 
 html[data-theme="light"] .CodeMirror-activeline-background {
   background: rgba(0, 48, 135, 0.05) !important;

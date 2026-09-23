@@ -30,6 +30,9 @@ renkleri kaybolmuş, koyu temada satırlar açık zeminle çiziliyordu.
   korunur), kopyalama tam özgün kodu verir.
 - Açık temada kod başlığındaki Kopyala/Daralt simgeleri artık okunur (markdown
   italik rengi simgeleri de boyuyordu).
+- Diff bloklarında eklenen/silinen satırlar ve `@@` başlıkları iki temada da
+  renklidir (açık temada düz metin görünüyordu); Markdown başlık/alıntı/bağlantı
+  renkli, liste metni düz; JSON anahtarları değerlerden ayrışır.
 - Yeni diller: YAML, JSON, Markdown, Diff, Dockerfile, TOML, INI/properties,
   Rust, Perl, Lua ve T-SQL/MySQL/PostgreSQL/PL-SQL/SQLite SQL lehçeleri;
   `py`, `js`, `sh`, `ts`, `yml` gibi kod çiti kısaltmaları tanınır.

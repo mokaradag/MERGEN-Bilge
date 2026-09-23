@@ -99,7 +99,33 @@ cm_render_check_fixtures <- function(repo_root) {
       "SELECT p.ProjeAdi, COUNT(*) AS AktiviteSayisi",
       "FROM dbo.Projeler p JOIN dbo.Aktiviteler a ON a.ProjeId = p.Id",
       "WHERE p.Durum = 'Aktif' AND a.Gecikme > 30",
-      "GROUP BY p.ProjeAdi;", sep = "\n"))
+      "GROUP BY p.ProjeAdi;", sep = "\n")),
+    xml = list(lang = "xml", code = paste(
+      "<proje ad=\"Merkez\">",
+      "  <aktivite kod=\"A-1\">",
+      "    <sure>30</sure>",
+      "  </aktivite>",
+      "</proje>", sep = "\n")),
+    diff = list(lang = "diff", code = paste(
+      "--- a/R/rapor.R",
+      "+++ b/R/rapor.R",
+      "@@ -10,2 +10,2 @@ ozet_uret <- function(df) {",
+      "-  ort <- mean(df$deger)",
+      "+  ort <- mean(df$deger, na.rm = TRUE)",
+      "   list(ort = ort)", sep = "\n")),
+    markdown = list(lang = "md", code = paste(
+      "# Proje Ozeti",
+      "",
+      "- Kritik aktiviteler",
+      "- Ayrinti icin [rapor](https://ornek.local/rapor)",
+      "",
+      "> Not: degerler R tarafindan hesaplanir.", sep = "\n")),
+    json = list(lang = "json", code = paste(
+      "{",
+      "  \"proje\": \"Merkez\",",
+      "  \"aktivite_sayisi\": 42,",
+      "  \"etkin\": true",
+      "}", sep = "\n"))
   )
   uzun <- unlist(lapply(seq_len(600L), function(i) c(
     sprintf("def islem_%04d(deger):", i),

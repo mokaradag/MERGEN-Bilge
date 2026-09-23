@@ -64,7 +64,10 @@
     python: ['cm-keyword', 'cm-def', 'cm-variable', 'cm-number', 'cm-string', 'cm-comment', 'cm-operator', 'cm-builtin'],
     r: ['cm-keyword', 'cm-variable', 'cm-number', 'cm-string', 'cm-comment', 'cm-atom'],
     javascript: ['cm-keyword', 'cm-def', 'cm-variable-2', 'cm-number', 'cm-string', 'cm-comment', 'cm-operator'],
-    sql: ['cm-keyword', 'cm-string', 'cm-number', 'cm-comment']
+    sql: ['cm-keyword', 'cm-string', 'cm-number', 'cm-comment'],
+    diff: ['cm-positive', 'cm-negative', 'cm-meta'],
+    markdown: ['cm-header', 'cm-quote', 'cm-link'],
+    json: ['cm-string', 'cm-number', 'cm-atom']
   };
 
   function checkTheme(theme, blocks) {
@@ -97,6 +100,21 @@
         }
       });
     });
+
+    // Markdown liste metni düz metin rengindedir (JS yerel değişken rengi taşmaz);
+    // JSON anahtarı değerden ayrışır.
+    var md = blocks.markdown.el;
+    var listSpan = Array.prototype.filter.call(md.querySelectorAll('.CodeMirror-code span'),
+      function (s) { return s.className === 'cm-variable-2'; })[0];
+    var mdText = rgb(getComputedStyle(md.querySelector('.CodeMirror-line')).color);
+    check(!!listSpan && sameColor(rgb(getComputedStyle(listSpan).color), mdText),
+          theme + '/markdown: liste metni düz metin renginde');
+    var json = blocks.json.el;
+    var key = json.querySelector('.cm-string.cm-property');
+    var val = Array.prototype.filter.call(json.querySelectorAll('.cm-string'),
+      function (s) { return !/cm-property/.test(s.className); })[0];
+    check(!!key && !!val && !sameColor(rgb(getComputedStyle(key).color), rgb(getComputedStyle(val).color)),
+          theme + '/json: anahtar değerden ayrışır');
   }
 
   async function run() {
@@ -161,6 +179,15 @@
       check(folded === 1 && after < before, 'python: oluk tıklaması kodu katlar (' + before + ' -> ' + after + ')');
       check(py.cm.getValue() === py.fx.code, 'python: katlama editör değerini değiştirmez');
       check(blocks.r.el.querySelectorAll('.CodeMirror-foldgutter-open').length > 0, 'r: süslü parantez katlaması çalışır');
+
+      // XML/HTML etiket katlaması (addon/fold/xml-fold).
+      var xml = blocks.xml;
+      var xmlBefore = xml.el.querySelectorAll('.CodeMirror-code > div').length;
+      xml.cm.foldCode(CodeMirror.Pos(0, 0));
+      await wait(50);
+      var xmlAfter = xml.el.querySelectorAll('.CodeMirror-code > div').length;
+      check(typeof CodeMirror.fold.xml === 'function' && xmlAfter < xmlBefore,
+            'xml: etiket katlaması çalışır (' + xmlBefore + ' -> ' + xmlAfter + ')');
 
       // Kopyalama: katlıyken bile TAM orijinal kod panoya gider.
       long.cm.foldCode(CodeMirror.Pos(0, 0));
