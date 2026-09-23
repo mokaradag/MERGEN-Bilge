@@ -14,6 +14,35 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-09-23 Süreç Yönetimi kaynak tıklaması taramasız açılır
+
+Yanıttaki bir kaynağa tıklamak ~1000 belgelik bir UNC model klasöründe yaklaşık
+3 dakika sürebiliyordu: tek tıklama aynı klasörü üç kez baştan sona tarıyordu.
+Nedenler ve düzeltmeler (ayrıntı: `technical-reference.md` > "Kaynak tıklama
+çözümleme sözleşmesi"):
+
+- Ucuz, belirleyici göreli yol denemesi pahalı indeks aramasından SONRA
+  geliyordu. Artık önce tüm model tabanlarında ipucunun düz (`A&&B&&C.pdf`) ve iç
+  içe (`A/B/C.pdf`) yerleşimi, PDF atfı için aynı gövdeli `.docx`/`.docm`/`.doc`
+  eşdeğerleri denenir; bilinen kaynak dizin TARANMADAN açılır.
+- Arama aşamaları (tam ad, ipucu, Word eşdeğeri, parça içerme, dosya adı) her
+  biri kendi indeksini kuruyordu; artık tek indeksi paylaşır ve bir tıklama bir
+  tabanı en fazla bir kez tarar. Önbellekteki (kısmi olsa bile) indeks taramadan
+  önce kullanılır.
+- Başarısız/kısmi tarama geri çekilmesi taramanın başlangıcından ölçülüyordu;
+  40-70 sn süren tarama bittiğinde süre dolmuş sayılıyordu. Artık BİTİŞ anından
+  ölçülür.
+- İndeks taraması dosya başına iki `normalizePath()` ve boyut okuması yapan genel
+  tarayıcı yerine yalnızca ad listeleyen sınırlı yürüyüşü kullanır; kanonik kök
+  denetimi açılacak TEK aday için yapılır.
+- Güvenlik korunur/sertleşir: ipucu parçalarında `:` (NTFS ADS) ve kontrol
+  karakterleri de reddedilir; indeks isabeti dahil her aday açılmadan önce
+  dosya olarak ve model tabanı içinde doğrulanır; kişisel kova ve `model_bases`
+  kapsamı değişmedi.
+
+Doğrulama sınırı: davranış ve tarama sayısı sözleşmesi bulut testleriyle
+kanıtlanır; gerçek UNC paylaşımındaki süre Windows VM'de ölçülmelidir.
+
 ### (Yayınlanmadı) 2026-09-04 Güvenlik sertleştirmesi ve kararlılık düzeltmeleri (PR #717)
 
 Geçmiş inceleme bulgularının (CodeRabbit + Aikido) kod üzerinde doğrulanarak

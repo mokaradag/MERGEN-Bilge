@@ -77,22 +77,22 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
 
   data_blocks <- vapply(seq_along(successful), function(i) {
     r <- successful[[i]]
+    v2_blok <- identical(as.character(r$pk_engine_mode %||% "")[1], "v2")
+    # v2 BAŞLIĞI YUVASIZ SAYI BASMAZ: satır sayısı paketin içinde yuvalıdır
+    # (`__kapsam__`), ilgililik puanının olgusu yoktur. Çıplak basılan bir
+    # sayıyı model ancak elle yazabilir ve tarayıcı onu kaynaksız sayardı.
     header <- paste0(
       sprintf("\n\n==========================================\n"),
       sprintf("\U0001F4CA SORGU %d/%d: %s\n", i, query_count, r$query_name),
       sprintf("Açıklama: %s\n", r$query_desc),
-      sprintf("Toplam Satır: %d | İlgililik: %.0f%%\n", r$row_count, r$relevance),
+      if (v2_blok) "" else sprintf("Toplam Satır: %d | İlgililik: %.0f%%\n", r$row_count, r$relevance),
       sprintf("==========================================\n")
     )
 
-    if (identical(as.character(r$pk_engine_mode %||% "")[1], "v2")) {
+    if (v2_blok) {
       # v2: doğrudan pk_packet_render() çıktısı. summary_text/preview_json
       # okunmaz; legacy özet üzerinden dolaylı bir geri düşüş yoktur.
-      return(paste0(
-        header,
-        as.character(r$pk_packet_text)[1],
-        sprintf("\n(Bu sorgu %d satırlık veri içermektedir)\n", r$row_count)
-      ))
+      return(paste0(header, as.character(r$pk_packet_text)[1], "\n"))
     }
 
     # v1: mevcut legacy sözleşme BİREBİR korunur.

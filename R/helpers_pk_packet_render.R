@@ -83,9 +83,10 @@
   sinir <- suppressWarnings(as.numeric(olgu$bounds))
   if (length(sinir) != 2L || any(!is.finite(sinir))) return(NULL)
   ondalik <- olgu$bounds_decimals %||% NA_integer_
+  birim <- olgu$bounds_unit
   sprintf("Sinirlar: %s %s / %s %s",
-          pk_fmt_number(sinir[1], ondalik), .pk_render_marker(olgu$column, "iqr_lower"),
-          pk_fmt_number(sinir[2], ondalik), .pk_render_marker(olgu$column, "iqr_upper"))
+          pk_fmt_number(sinir[1], ondalik, birim), .pk_render_marker(olgu$column, "iqr_lower"),
+          pk_fmt_number(sinir[2], ondalik, birim), .pk_render_marker(olgu$column, "iqr_upper"))
 }
 
 .pk_render_boundary <- function() {
@@ -198,6 +199,15 @@
   } else {
     satirlar <- c(satirlar, "- Uygulanan filtre: yok")
   }
+  donemler <- Filter(function(o) identical(o$column, "__istek_donem__"),
+                     pk_packet_request_facts(packet))
+  if (length(donemler)) {
+    satirlar <- c(satirlar, sprintf(
+      "- Kullanici donem ifadesi (kullanici kriteri): %s",
+      paste(vapply(donemler, function(o) paste(o$request_values[1],
+                                                pk_fact_reference_token(o$fact_id)),
+                   character(1)), collapse = " ; ")))
+  }
 
   # D8: Bu blok bütçe düşürmelerinin HİÇBİRİNDE kaybolmaz.
   if (isTRUE(f$user_filter_applied)) {
@@ -219,7 +229,7 @@
                 .pk_render_marker("__kapsam__", "filtered_rows"))
       } else "",
       "- BU SATIRLAR SPESIFIK FILTRELEME KRITERINE AITTIR (tum veri icin degil!)\n",
-      "- Oran/yuzde hesaplarken SADECE filtre sonrasi satir sayisini payda al"
+      "- Oran/yuzde HESAPLAMA; yalnizca pakette yuvasi basili paylari kullan"
     ))
   }
 
@@ -531,7 +541,9 @@
 
   if (length(eksikler)) {
     parcalar <- vapply(eksikler, function(m) {
-      sprintf("%s=%s (%s %s)", m$column, pk_fmt_share(m$missing, c_$rows),
+      pay <- pk_fmt_share(m$missing, c_$rows)
+      sprintf("%s=%s%s (%s %s)", m$column, pay,
+              if (identical(pay, "?")) "" else paste0(" ", .pk_render_marker(m$column, "missing_share")),
               pk_fmt_number(m$missing, 0L),
               .pk_render_marker(m$column, "missing_count"))
     }, character(1))

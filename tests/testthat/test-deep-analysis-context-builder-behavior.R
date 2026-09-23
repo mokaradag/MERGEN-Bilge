@@ -103,6 +103,20 @@ test_that("v2 bağlamı reconciled kanonik packet metnini kullanır, legacy öze
   expect_false(grepl("Sayıları DOĞRUDAN kullan", out$prompt_context, fixed = TRUE))
   kanonik <- "\\{\\{[[:space:]]*fact[[:space:]]*:[[:space:]]*[A-Za-z0-9_.]+[[:space:]]*\\}\\}"
   expect_false(grepl(kanonik, out$prompt_context, perl = TRUE))
+
+  # v2 BLOK BAŞLIĞI YUVASIZ SAYI BASMAZ: satır sayısı ve ilgililik puanı
+  # modelin elle yazmak zorunda kalacağı çıplak sayılardı.
+  expect_false(grepl("Toplam Satır:", out$user_context, fixed = TRUE))
+  expect_false(grepl("İlgililik:", out$user_context, fixed = TRUE))
+  expect_false(grepl("satırlık veri", out$user_context, fixed = TRUE))
+})
+
+test_that("v1 derin analiz blok başlığı satır sayısı ve ilgililiği KORUR", {
+  out <- .dac_env$build_deep_analysis_context(
+    list(.dac_ok("V1")), "soru", list(instruction = "", max_tokens = 3000)
+  )
+  expect_true(grepl("Toplam Satır: 5 | İlgililik: 50%", out$user_context, fixed = TRUE))
+  expect_true(grepl("(Bu sorgu 5 satırlık veri içermektedir)", out$user_context, fixed = TRUE))
 })
 
 test_that("v1 derin analiz istemi eski sayi kuralini KORUR", {

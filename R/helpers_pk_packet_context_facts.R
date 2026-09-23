@@ -70,6 +70,14 @@ pk_packet_context_facts <- function(packet, scope = NULL) {
     tanimlar <- c(tanimlar, list(list(
       id = m$column, agg = "missing_count", value = m$missing,
       label = sprintf("%s bos deger", m$column)
+    ), list(
+      # Yazıcının bastığı boş değer ORANI da olgudur (`pk_fmt_share()` ile aynı
+      # kapı: satır sayısı sonlu ve pozitif değilse pay basılmaz).
+      id = m$column, agg = "missing_share",
+      value = if (.pk_ctx_count(kapsama$rows) > 0) {
+        round(as.numeric(m$missing) / as.numeric(kapsama$rows) * 100, 1L)
+      } else NULL,
+      label = sprintf("%s bos deger payi", m$column), unit = "%", decimals = 1L
     )))
   }
 
@@ -181,7 +189,7 @@ pk_packet_context_facts <- function(packet, scope = NULL) {
     tanimlar <- c(tanimlar, lapply(1:2, function(i) list(
       id = o$column, agg = c("iqr_lower", "iqr_upper")[i], value = sinir[i],
       label = sprintf("%s IQR %s sinir", o$column, c("alt", "ust")[i]),
-      decimals = o$bounds_decimals %||% NA_integer_)))
+      decimals = o$bounds_decimals %||% NA_integer_, unit = o$bounds_unit)))
   }
 
   out <- list()
@@ -211,6 +219,25 @@ pk_packet_context_facts <- function(packet, scope = NULL) {
   txt
 }
 
+#' Kullanıcı sorusundaki DÖNEM sayıları ("son 6 ayda", "30 günden az")
+#'
+#' Filtre çıkarıcı göreli dönemi çoğu zaman MUTLAK bir tarihe çevirir ve özgün
+#' sayı kaybolur; model onu yeniden anınca ("6 ay içinde") kaynaksız sayı
+#' sayılıyordu. Yalnızca gün/ay/yıl birimli sayılar alınır (dar kapsam); ham
+#' soru pakette SAKLANMAZ, yalnızca "6 ay" biçimli değerler taşınır.
+pk_request_period_values <- function(text, max_values = 5L) {
+  txt <- .pk_request_safe_text(text, 2000L)
+  if (!nzchar(txt)) return(character(0))
+  esle <- regmatches(txt, gregexpr("(?i)(?<![0-9.,])([0-9]{1,4})[[:space:]]*(gün|gun|ay|yıl|yil)",
+                                   txt, perl = TRUE))[[1]]
+  if (!length(esle)) return(character(0))
+  sayi <- sub("^([0-9]+).*$", "\\1", esle, perl = TRUE)
+  # Birim kanonik yazıma indirgenir (büyük harf / ASCII yazım farkı).
+  ilk <- tolower(substr(sub("^[0-9]+[[:space:]]*", "", esle, perl = TRUE), 1L, 1L))
+  birim <- ifelse(ilk == "g", "gün", ifelse(ilk == "a", "ay", "yıl"))
+  utils::head(unique(paste(sayi, birim)), max_values)
+}
+
 #' GÜVENİLİR İSTEK GİRDİLERİ: kullanıcının kendi kriterleri (§5.11)
 #'
 #' "Bitişine 30 günden az kalan aktiviteler" isteğindeki `30` KULLANICIDAN
@@ -225,8 +252,6 @@ pk_packet_context_facts <- function(packet, scope = NULL) {
 #' kümesidir; düşürülen bir filtre buraya girmez.
 pk_packet_request_facts <- function(packet) {
   uygulanan <- packet$filters$applied %||% list()
-  if (!length(uygulanan)) return(list())
-
   out <- list()
   for (i in seq_along(uygulanan)) {
     f <- uygulanan[[i]]
@@ -267,6 +292,24 @@ pk_packet_request_facts <- function(packet) {
       source_index = i,
       n_finite = NA_integer_, n_excluded = NA_integer_, note = NULL,
       display = gosterim
+    )
+  }
+
+  # Sorudaki DÖNEM sayıları da istek girdisidir: gösterim yalnızca sayıdır
+  # ("Son {{yuva}} ayda" doğal okunur); birimli ham değer, modelin "6 ay"
+  # yazdığı yinelemeyi sayı + birim anahtarıyla tanıtır.
+  for (donem in as.character(packet$filters$request_periods %||% character(0))) {
+    parca <- strsplit(donem, " ", fixed = TRUE)[[1]]
+    if (length(parca) != 2L || !grepl("^[0-9]{1,4}$", parca[1])) next
+    out[[length(out) + 1L]] <- list(
+      fact_id = pk_fact_id("__istek_donem__", parca[2], parca[1]),
+      kind = "request_input", column = "__istek_donem__",
+      label = sprintf("Istek donemi: %s", donem), measure_capability = NULL,
+      aggregation = "period", value = as.numeric(parca[1]), unit = NULL,
+      decimals = 0L, status = PK_FACT_OK, scope = packet$scope$scope_signature,
+      group_keys = character(0), request_values = donem, source_index = NA_integer_,
+      n_finite = NA_integer_, n_excluded = NA_integer_, note = NULL,
+      display = parca[1]
     )
   }
 

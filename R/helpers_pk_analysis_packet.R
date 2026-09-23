@@ -742,6 +742,8 @@ pk_packet_build <- function(data, query, context = list()) {
     filters = list(
       status = context$filter_status,
       applied = context$filters %||% list(),
+      # Sorudaki DÖNEM sayıları ("son 6 ay"); ham soru pakette saklanmaz.
+      request_periods = as.character(context$request_periods %||% character(0)),
       degradations = context$degradations %||% list(),
       user_filter_applied = filtre_uygulandi
     ),

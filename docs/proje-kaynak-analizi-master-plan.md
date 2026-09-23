@@ -1474,8 +1474,23 @@ language**, not as mandatory headings.
 aktiviteleri göster"* the `30` came from the user. Those values are carried forward
 explicitly as facts of kind `request_input` (built by `pk_packet_request_facts()` from the
 *applied* filter set, not the raw LLM-extracted set): the model may reference them by slot
-like any other fact, and the structural literal scanner recognises them by exact
-digit-key match rather than by heuristic classification of prose.
+like any other fact, and the structural literal scanner recognises them by an exact
+number-plus-unit key (`1,5` is not `15`; a unitless `1000` threshold does not exempt a
+model-written `1.000 saat`) rather than by heuristic classification of prose. Relative
+periods are usually compiled into an absolute date, which loses the user's own count; so
+`gün`/`ay`/`yıl` counts in the user's question ("son 6 ayda", "30 günden az") are carried
+as `request_input` facts too (`pk_request_period_values()`; only the normalised `6 ay`
+values travel in the packet, never the raw question) and printed with a slot on the
+"Kullanici donem ifadesi" line.
+
+**Every number the model can see has a slot.** Besides measures this covers coverage
+counts *and* the empty-value share (`missing_share`, `%` with one decimal, printed only
+when the row count is finite and positive), categorical counts/shares, date buckets,
+group rows and IQR outlier bounds; the bounds carry the measure's own unit, so a correct
+`… TL` or `%…` bound is not a `unit_conflict`. The v2 deep-analysis block header prints no
+bare row count or relevance score (the row count already has its `__kapsam__` slot), and
+neither the v2 prompt nor the `FİLTRELEME UYARISI` block describes a ratio denominator:
+ratios/percentages are never computed by the model.
 
 **Derived numbers.** The model may not invent arithmetic ("5 günlük pencere", "4 gün
 kaldı"). If such a figure is useful R computes it and exposes it as a fact with its own
@@ -1486,8 +1501,10 @@ in the existing answer-generation call.
 **Unexpected model numeric literals** are detected *structurally*, never reverse-matched.
 `pk_fact_literal_scan()` is deliberately narrow: it flags a numeric token only when it
 carries a scale signal (separator, percent, scientific notation, four-plus digits, or a
-short list of scale-bearing units) and exempts bare years, dates, list numbering and
-trusted request values. It reports *that* a literal exists; it never guesses which fact it
+short list of scale-bearing units) and exempts bare years, dates, list numbering,
+digits inside identifiers (`P1234`, `PRJ-2045`, `P.01.02`), multi-separator codes that are
+not valid numbers (WBS `1.2.3`, `10.0.0.1`; a grouped number such as `1.234.567` stays in
+scope) and trusted request values. It reports *that* a literal exists; it never guesses which fact it
 meant. A literal sitting at **zero distance** from a slot (only whitespace/emphasis
 between) is treated as a redundant echo of the value R is about to insert and is removed —
 this is lexical de-duplication, not identity inference, and it is still reported.
@@ -1515,7 +1532,11 @@ Enforcement is staged through `MERGEN_PK_NUMERIC_PROVENANCE_MODE`:
 
 The fail-closed guarantee — never render an unresolvable reference, never invent an
 unavailable value, never expose an unauthorized fact — holds in **every** mode, including
-`off` and `log`. What the mode changes is how much of a *recoverable* problem the user is
+`off` and `log`. It also holds on paths where no validation runs: a stored record without
+facts (v1 answer, or a v2 packet that could not be built) still neutralizes `fact`-prefixed
+slots before the provenance footer is appended, in the single-chat path
+(`pk_provenance_decorate()`) and the Ortak Oturum room hook alike; ordinary template
+syntax such as `{{ ad }}` is left untouched. What the mode changes is how much of a *recoverable* problem the user is
 shown, not whether untrusted values can be published.
 
 Both the code default (`R/helpers_pk_config.R`) and the deployment template
@@ -1536,11 +1557,19 @@ problems. The server log now reports the two families separately:
 ```
 
 *Protocol/structure*: `malformed_reference` (including an unterminated `{{fact:`
-opener), `legacy_reference`, `model_numeric_literal`, `duplicate_numeric_literal`,
+opener and a broken one such as `{{fact:x}` or an over-long unclosed opener — none of
+them ever reaches the user raw, and their digits are never scanned as model numbers),
+`legacy_reference`, `model_numeric_literal`, `duplicate_numeric_literal`,
 `render_degraded`.
 *Content/trust*: `unknown_fact`, `unavailable_fact`, `ambiguous_fact`, `unit_conflict`
 (a scale-bearing unit the model appended right after a slot contradicts the fact's own
-unit, e.g. a unitless count followed by `TL`).
+unit, e.g. a unitless count followed by `TL`; a unit appended to the user's own
+`request_input` criterion is not a conflict). When the model repeats the unit the display
+already carries (`{{fact:x}} saat`, `%{{fact:y}}`) the echo is dropped silently — as a
+separate edit, so it can never leave a slot unresolved, and never when the unit belongs to
+an adjacent number (`%5`). In `block` mode a list marker (`1.`, `-`) stays with its item:
+a fully dropped item leaves no orphan `1.` line. The `warn` note says the displayed numbers
+come from R only when no unsourced model literal is still visible.
 `guven_orani` is the substantive rate (trust findings / references) and is no longer
 inflated by formatting defects. Recoverable findings — a duplicate literal or a legacy
 marker at zero distance from a resolved slot — are removed silently: they reach

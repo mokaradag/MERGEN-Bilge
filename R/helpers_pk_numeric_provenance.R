@@ -105,11 +105,15 @@ pk_numeric_provenance_validate <- function(text, facts) {
     sprintf("%s (%d)", etiket, as.integer(tablo[[n]]))
   }, character(1), USE.NAMES = FALSE)
 
+  # KAYNAKSIZ SAYI GÖRÜNÜR KALIYORSA "sayılar R'den" DENMEZ: `warn` kipi modelin
+  # yazdığı sayıyı metinde bırakır; o sayıyı doğrulanmış gibi sunmak yanlıştı.
+  kaynaksiz <- "model_numeric_literal" %in% nedenler
   paste0(
     "\n\n\U000026A0\U0000FE0F **Doğrulama notu:** Bu yanıtta bazı ",
     "ifadeler analiz olgularına bağlanamadı: ",
-    paste(sort(parcalar), collapse = ", "),
-    ". Gösterilen sayısal değerler R tarafından hesaplanmıştır; ",
+    paste(sort(parcalar), collapse = ", "), ". ",
+    if (kaynaksiz) "Metindeki bazı sayılar doğrulanmamıştır; " else
+      "Gösterilen sayısal değerler R tarafından hesaplanmıştır; ",
     "kritik kararlarda ekteki deterministik tabloyu esas alın."
   )
 }

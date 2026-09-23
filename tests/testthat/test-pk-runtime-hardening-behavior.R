@@ -561,6 +561,31 @@ test_that("pk_required_helpers her BILDIRILEN fonksiyonu gercekten yukler", {
   }
 })
 
+test_that("paket kurucusunun izole yukleme zinciri manifestin Faz 2 blogunu AYNEN yansitir", {
+  # `helpers_pk_packet_keys.R` zincirden eksikti: `pk_build_analysis_result`
+  # yoksa calisan bu yolda ilk gruplu v2 paketi "could not find function
+  # .pk_join_key" ile dusuyordu. Fonksiyon VARLIGI denetimi bunu yakalamaz.
+  kok <- resolve_repo_root_for_tests()
+  satirlar <- sub("\\r$", "", readLines(
+    file.path(kok, "R", "module_proje_kaynak_analizi.R"), encoding = "UTF-8", warn = FALSE
+  ))
+  bas <- which(satirlar == "pk_required_helpers <- list(")
+  son <- min(which(satirlar == ")")[which(satirlar == ")") > bas])
+  env <- new.env(parent = globalenv())
+  eval(parse(text = paste(satirlar[bas:son], collapse = "\n")), envir = env)
+  spec <- Filter(function(x) "pk_build_analysis_result" %in% x$functions, env$pk_required_helpers)
+  expect_length(spec, 1L)
+  zincir <- gsub("\\\\", "/", spec[[1]]$path)
+
+  manifest <- new.env(parent = globalenv())
+  source(file.path(kok, "R", "config_source_manifest.R"), encoding = "UTF-8", local = manifest)
+  tum <- manifest$source_manifest_runtime_paths
+  blok <- tum[seq(which(tum == "R/helpers_pk_fact_reference.R"),
+                  which(tum == "R/helpers_pk_analysis_result.R"))]
+  expect_true("R/helpers_pk_packet_keys.R" %in% blok)
+  expect_identical(zincir[zincir %in% blok], blok)
+})
+
 test_that("v2 secim zinciri MODUL-ONLY yuklemede GERCEK bir secim uretir", {
   # Fonksiyon varligi yetmez: zincirde eksik bir yardimci ancak GERCEK bir istek
   # calisirken "could not find function" ile dusuyor ve istek v2 ic hata yoluna

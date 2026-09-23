@@ -1201,7 +1201,7 @@ Phase-2 files are statically proven free of `pk_engine_is_v2`.
 | `R/helpers_pk_analysis_packet.R` | Packet assembly: scope, filters, coverage, facts, categorical (ALL dimensions), dates, groups, stratified examples, limitations. | pure |
 | `R/helpers_pk_packet_render.R` | Packet → Turkish text + budget accountant with an explicit degradation ladder. | pure |
 | `R/helpers_pk_fact_reference.R` | Semantic fact-reference resolution: `{{fact:<id>}}` slot grammar (single owner via `pk_fact_reference_token()`), fact index, single-pass substitution of R's canonical display, claim-level neutralization and `block`-mode sentence isolation. | pure |
-| `R/helpers_pk_fact_reference_scan.R` | Deliberately narrow structural scan for unexpected model numeric literals + trusted `request_input` digit keys. Not a matcher: it never infers which fact a literal meant. | pure |
+| `R/helpers_pk_fact_reference_scan.R` | Deliberately narrow structural scan for unexpected model numeric literals + trusted `request_input` number-plus-unit keys (applied filter values and the question's `gün`/`ay`/`yıl` period counts). Not a matcher: it never infers which fact a literal meant. | pure |
 | `R/helpers_pk_numeric_provenance.R` | Mode resolution (`off/log/warn/block`), apply layer, and secret-safe telemetry that reports **protocol/structure** findings separately from **content/trust** findings. | pure |
 | `R/helpers_pk_export_plan.R` | Row ordinals, part planning / explicit refusal, writer-specific percent contract, CSV formula neutralization, `Bilgi` + `Özet` sheets, multiset verification. | pure |
 | `R/helpers_pk_export_xlsx.R` | writexl baseline + gated openxlsx formatting, `readxl` read-back verification, BOM CSV fallback, session-scoped serving + cleanup. | I/O |

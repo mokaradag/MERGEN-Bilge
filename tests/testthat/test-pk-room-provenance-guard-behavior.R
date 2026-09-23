@@ -162,6 +162,16 @@ test_that("olgu YOKSA (v1 yolu) davranış DEĞİŞMEZ", {
     env$.pk_hook_room_footer_append("Serbest metin yanıt.", list(footer = "")),
     "Serbest metin yanıt."
   )
+
+  # Olgusuz kayıtta `fact` önekli yuva jetonu alt bilginin yanında HAM kalmaz;
+  # sıradan şablon söz dizimi korunur.
+  jetonlu <- env$.pk_hook_room_footer_append(
+    "Deger {{fact:uydurma.sum.overall}} ve {{ ad }}.",
+    list(footer = alt_bilgi, facts = NULL, mode = NULL, fallback_text = NULL)
+  )
+  expect_false(grepl("{{fact:", jetonlu, fixed = TRUE))
+  expect_true(grepl("{{ ad }}", jetonlu, fixed = TRUE))
+  expect_true(grepl("Analiz Kaynağı", jetonlu, fixed = TRUE))
 })
 
 test_that("doğrulayıcı HATA verirse block kipi ham düzyazıyı TESLİM ETMEZ", {
@@ -190,6 +200,17 @@ test_that("doğrulayıcı HATA verirse block kipi ham düzyazıyı TESLİM ETMEZ
 
   expect_false(grepl("99.999,9", sonuc, fixed = TRUE))
   expect_true(grepl("SENTETIK RED METNI", sonuc, fixed = TRUE))
+
+  # Bloklamayan kiplerde de çözülmemiş yuva jetonu kullanıcıya ulaşmaz.
+  for (kip in c("off", "log", "warn")) {
+    ham <- env$.pk_hook_room_footer_append(
+      "Toplam {{fact:olcu.sum.overall.abc123}} saat.",
+      list(footer = "\n\n---\nAnaliz Kaynağı: sentetik", facts = olgular,
+           mode = kip, fallback_text = NULL, query_id = "q-oda")
+    )
+    expect_false(grepl("{{fact:", ham, fixed = TRUE), info = kip)
+    expect_true(grepl("Analiz Kaynağı", ham, fixed = TRUE), info = kip)
+  }
 })
 
 test_that("kayıt normalleştirme liste OLMAYAN alt bilgiyi de kabul eder", {

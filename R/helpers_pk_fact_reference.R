@@ -56,10 +56,19 @@ PK_FACT_REF_LEGACY_PATTERN <- "\\[fact:[A-Za-z0-9_.]*\\]"
 .PK_FACT_REF_FACT_MALFORMED_PATTERN <- "\\{\\{[[:space:]]*fact[[:space:]]*:[^{}]{0,160}\\}\\}"
 .PK_FACT_REF_FACT_OPEN_PATTERN <- "\\{\\{[[:space:]]*fact[[:space:]]*:[^{}\r\n]{0,160}(?=[\r\n]|$)"
 
+# KIRIK `fact` AÇICISI: tek kapanışlı (`{{fact:x}`) ya da 160 karakterden uzun
+# bir satırda kapanışsız kalan (`{{fact:bogus ...`) açıcı yukarıdaki desenlerin
+# hiçbirine uymuyor ve HAM söz dizimi kullanıcıya ulaşıyordu. Kanonik ve bozuk
+# desenlerden SONRA uygulanır; onların kapsadığı aralıklar yeniden işlenmez.
+PK_FACT_REF_BROKEN_OPENER_PATTERN <- "\\{\\{[[:space:]]*fact[[:space:]]*:[A-Za-z0-9_.]*\\}?"
+
 # Çözülemeyen bir referansın yerine geçen NÖTR metin. Bir değer İDDİA ETMEZ;
 # cümlenin geri kalanı okunur kalır ve tek bir bozuk referans 30 geçerli
 # cümleyi düşürmez.
 PK_FACT_REF_UNRESOLVED_TR <- "(değer yok)"
+
+# Satır başı madde öneki: madde imleri ve "1." / "2)" numaraları (iç içe dâhil).
+.PK_FACT_REF_ITEM_PREFIX <- "^[[:space:]]*(?:(?:[-*+>]|[0-9]{1,3}[.)])[[:space:]]+)+"
 
 # Sorunlu noktaları işaretleyen iç nöbetçi. Kullanıcıya ASLA ulaşmaz: `block`
 # kipinde cümle ayıklamasından sonra, diğer kiplerde doğrudan silinir.
@@ -85,10 +94,11 @@ pk_fact_reference_neutralize <- function(text, strict = FALSE) {
     return(text)
   }
   desenler <- if (isTRUE(strict)) {
-    c(PK_FACT_REF_PATTERN, PK_FACT_REF_MALFORMED_PATTERN, PK_FACT_REF_OPEN_PATTERN)
+    c(PK_FACT_REF_PATTERN, PK_FACT_REF_MALFORMED_PATTERN, PK_FACT_REF_OPEN_PATTERN,
+      PK_FACT_REF_BROKEN_OPENER_PATTERN)
   } else {
     c(PK_FACT_REF_PATTERN, .PK_FACT_REF_FACT_MALFORMED_PATTERN,
-      .PK_FACT_REF_FACT_OPEN_PATTERN)
+      .PK_FACT_REF_FACT_OPEN_PATTERN, PK_FACT_REF_BROKEN_OPENER_PATTERN)
   }
   # Bu yardımcı HATA FIRLATMAZ: çağıranlar hata yakalayıcıların İÇİNDEDİR ve
   # geçersiz kodlamalı bir metin `gsub(perl = TRUE)` ile düşebilir.
@@ -210,15 +220,47 @@ pk_fact_display_value <- function(olgu) {
 
   olgu_birim <- pk_fact_unit_key(as.character(olgu$unit %||% "")[1])
   if (identical(komsu, olgu_birim)) return(FALSE)
+  # KULLANICI KRİTERİ bir ölçü DEĞİLDİR: uygulanan filtre değeri birim taşımaz
+  # ("butce > 1000000") ve modelin eşiğe sütunun birimini eklemesi ("... TL
+  # üzeri") ölçüyü değiştirmez; güven bulgusu sayılması geçerli cümleyi düşürürdü.
+  if (!nzchar(olgu_birim) &&
+      identical(as.character(olgu$kind %||% "")[1], "request_input")) {
+    return(FALSE)
+  }
   # Birimsiz olguya yalnızca PARA/YÜZDE iliştirmek ölçüyü değiştirir; "gün",
   # "adet" gibi sözcükler cümlenin doğal parçası olabilir.
   if (!nzchar(olgu_birim)) return(komsu %in% c("%", "tl", "try", "usd", "eur"))
   TRUE
 }
 
-# Kanonik referansları çöz; her biri için bir düzenleme üret.
+# Olgu gösterimi birimi ZATEN taşır ("18.420,5 saat", "%61,3"). Modelin yuvanın
+# hemen ardına (ya da yüzde/para simgesini hemen önüne) yazdığı AYNI birim
+# ikinci kez basılmaz ("100 saat saat", "%%61,3"). Silme AYRI bir düzenlemedir:
+# yuvanın kendi aralığı genişletilmez, böylece örtüşme hiçbir koşulda yuvayı
+# çözümsüz bırakamaz. Kurtarılabilir biçim gürültüsüdür; bulgu üretmez.
+.pk_fact_ref_unit_echo_edits <- function(txt, vurus, olgu) {
+  if (!exists("pk_fact_unit_span", mode = "function", inherits = TRUE)) return(list())
+  birim <- pk_fact_unit_key(as.character(olgu$unit %||% "")[1])
+  if (!nzchar(birim)) return(list())
+  out <- list()
+  onde <- pk_fact_unit_span(txt, vurus$start, "before")
+  if (identical(onde$key, birim) && onde$length > 0L) {
+    out[[1L]] <- .pk_fact_ref_edit(vurus$start - onde$length, vurus$start - 1L, "",
+                                   FALSE, "duplicate_unit", "ok")
+  }
+  sonra <- pk_fact_unit_span(txt, vurus$end, "after")
+  if (identical(sonra$key, birim) && sonra$length > 0L) {
+    out[[length(out) + 1L]] <- .pk_fact_ref_edit(vurus$end + 1L, vurus$end + sonra$length,
+                                                 "", FALSE, "duplicate_unit", "ok")
+  }
+  out
+}
+
+# Kanonik referansları çöz; her biri için bir düzenleme üret. Yinelenen birim
+# silmeleri `unit_edits` içinde AYRI döner (komşuluk denetimine girmez).
 .pk_fact_ref_reference_edits <- function(txt, index) {
   duzenlemeler <- list()
+  birim_silme <- list()
   cozulen <- 0L
   for (vurus in .pk_fact_ref_matches(txt, PK_FACT_REF_PATTERN)) {
     kimlik <- .pk_fact_ref_id(substr(txt, vurus$start, vurus$end))
@@ -247,8 +289,9 @@ pk_fact_display_value <- function(olgu) {
       if (catisma) "unit_conflict" else "resolved",
       if (catisma) "trust" else "ok", kimlik
     )
+    if (!catisma) birim_silme <- c(birim_silme, .pk_fact_ref_unit_echo_edits(txt, vurus, olgu))
   }
-  list(edits = duzenlemeler, resolved = cozulen)
+  list(edits = duzenlemeler, unit_edits = birim_silme, resolved = cozulen)
 }
 
 # Kanonik olmayan yuva jetonları ve eski alıntı işaretleri: YAPISAL ihlal.
@@ -264,7 +307,8 @@ pk_fact_display_value <- function(olgu) {
       any(vapply(duzenlemeler, function(d) bas >= d$start && son <= d$end, logical(1)))
   }
 
-  for (desen in c(PK_FACT_REF_MALFORMED_PATTERN, PK_FACT_REF_OPEN_PATTERN)) {
+  for (desen in c(PK_FACT_REF_MALFORMED_PATTERN, PK_FACT_REF_OPEN_PATTERN,
+                  PK_FACT_REF_BROKEN_OPENER_PATTERN)) {
     for (vurus in .pk_fact_ref_matches(txt, desen)) {
       if (kapsanan(vurus$start, vurus$end) || ortulu(vurus$start, vurus$end)) next
       # Model o noktaya bir DEĞER koymak istemişti; sağlayamıyoruz. Nötr metin
@@ -342,7 +386,13 @@ pk_fact_display_value <- function(olgu) {
   for (i in seq_along(satirlar)) {
     if (!grepl(.PK_FACT_REF_SENTINEL, satirlar[i], fixed = TRUE)) next
 
-    parcalar <- .pk_fact_ref_sentences(satirlar[i])
+    # MADDE ÖNEKİ ("1. ", "- ", "2) ") cümle DEĞİLDİR: bölücü onu ayrı bir
+    # "cümle" sayıyor, işaretli madde düşünce kullanıcı yetim bir "1." satırı
+    # görüyordu. Önek ayrılır; madde gövdesi boşalırsa satır tümüyle düşer.
+    onek <- regmatches(satirlar[i], regexpr(.PK_FACT_REF_ITEM_PREFIX, satirlar[i], perl = TRUE))
+    onek <- if (length(onek)) onek[1] else ""
+    govde <- substr(satirlar[i], nchar(onek) + 1L, nchar(satirlar[i]))
+    parcalar <- .pk_fact_ref_sentences(govde)
     kalan <- parcalar[!grepl(.PK_FACT_REF_SENTINEL, parcalar, fixed = TRUE)]
     # MARKDOWN YAPISI KORUNUR: yalnızca AYIKLAMA sonucu boşalan satır düşer.
     # Özgün boş satırlar (paragraf sınırı) KORUNUR; aksi hâlde başlık, madde
@@ -351,7 +401,7 @@ pk_fact_display_value <- function(olgu) {
       tut[i] <- FALSE
       next
     }
-    satirlar[i] <- trimws(paste(kalan, collapse = ""), which = "right")
+    satirlar[i] <- paste0(onek, trimws(paste(kalan, collapse = ""), which = "right"))
   }
 
   kalanlar <- satirlar[tut]
@@ -454,7 +504,8 @@ pk_fact_reference_render <- function(text, index = list(), literals = NULL) {
     }
   }
 
-  duzenlemeler <- c(duzenlemeler, .pk_fact_ref_protocol_edits(txt, ref$edits))
+  duzenlemeler <- c(duzenlemeler, .pk_fact_ref_protocol_edits(txt, ref$edits),
+                    ref$unit_edits)
   uygulanan <- .pk_fact_ref_apply_edits(txt, duzenlemeler)
 
   # `recoverable`: R değeri bastı ve yanlış bir sayı yayımlanmadı (nöbetçisiz

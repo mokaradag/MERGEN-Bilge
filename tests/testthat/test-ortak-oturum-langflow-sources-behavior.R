@@ -90,37 +90,39 @@ test_that("oo_mesaj_html kaynaksız yanıtı ve bütünlük kodu geçersiz sahte
 
 # handle_source_file_click kapsam kuralı: model_bases kapsamında kişisel kova
 # çözümlemesi (resolve_uploaded_file) ÇAĞRILMAZ; yalnızca model taban klasörleri
-# (search_file_in_folder) taranır.
+# kullanılır. Gerçek geçici model tabanı kurulur: bilinen kaynak belirleyici
+# göreli adayla açılır ve dizin TARANMAZ (tarayıcı çağrılırsa test düşer).
 .oo_source_click_env <- function() {
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
-  for (f in c("R/utils_common.R")) {
+  for (f in c("R/utils_common.R", "R/utils_path_helpers.R", "R/helpers_files_path.R",
+              "R/utils_file_index.R", "R/helpers_preview.R")) {
     source(file.path(repo_root, f), encoding = "UTF-8", local = env)
   }
 
   # Yan etkisiz stub'lar + çağrı izleme.
   env$log_info <- function(...) invisible(NULL)
   env$log_debug <- function(...) invisible(NULL)
+  env$log_warn <- function(...) invisible(NULL)
   env$log_error <- function(...) invisible(NULL)
   env$showToast <- function(...) invisible(NULL)
-  env$path_exists_relaxed <- function(p) TRUE
-  env$normalize_mcp_path <- function(p, ...) p
-  env$normalizePath <- function(p, ...) p
+  env$.file_index_scan_bounded <- function(...) stop("bilinen kaynak için tarama yapılmamalı")
 
-  # Kişisel kova çözümleyicisi: ÇAĞRILIRSA kaydeder (model_bases'te olmamalı).
+  # Kişisel kova: gerçek bir geçici dosya döndürür; ÇAĞRILIRSA kaydeder
+  # (model_bases kapsamında olmamalı).
+  env$.kisisel <- file.path(withr::local_tempdir(.local_envir = testthat::teardown_env()), "ayni_ad.pdf")
+  writeLines("kisisel", env$.kisisel)
   env$.resolve_calls <- 0L
   env$resolve_uploaded_file <- function(name, user_id = NULL, ...) {
     env$.resolve_calls <- env$.resolve_calls + 1L
-    "/kisisel/kova/ayni_ad.pdf"
-  }
-  # Model taban araması: her zaman kurumsal yol döndürür.
-  env$.search_calls <- 0L
-  env$search_file_in_folder <- function(base_dir, hint, ...) {
-    env$.search_calls <- env$.search_calls + 1L
-    "/kurumsal/model_baz/surecler/kalite/prosedur.pdf"
+    env$.kisisel
   }
 
-  source(file.path(repo_root, "R", "helpers_preview.R"), encoding = "UTF-8", local = env)
+  # Kurumsal model tabanı: kaynak iç içe klasörde durur.
+  env$.model_baz <- withr::local_tempdir(.local_envir = testthat::teardown_env())
+  env$.kurumsal <- file.path(env$.model_baz, "surecler", "kalite", "prosedur.pdf")
+  dir.create(dirname(env$.kurumsal), recursive = TRUE)
+  writeLines("kurumsal", env$.kurumsal)
 
   # openAnyPreview aynı dosyada tanımlıdır; gerçek önizlemeyi açmasın diye
   # source SONRASINDA yakalayıcı stub ile geçersiz kılınır.
@@ -138,29 +140,33 @@ test_that("oo_mesaj_html kaynaksız yanıtı ve bütünlük kodu geçersiz sahte
   se
 }
 
+.oo_ayni_yol <- function(a, b) {
+  identical(normalizePath(a, winslash = "/", mustWork = TRUE),
+            normalizePath(b, winslash = "/", mustWork = TRUE))
+}
+
 test_that("handle_source_file_click model_bases kapsamında kişisel kovayı atlar, yalnızca model tabanında çözer", {
   env <- .oo_source_click_env()
   api_config <- list(
     local_models = c("M" = "m1"),
-    local_model_paths = list("m1" = "/kurumsal/model_baz")
+    local_model_paths = list("m1" = env$.model_baz)
   )
   settings_data <- list(model_selection = "m1")
 
   ev <- list(filename = "surecler&&kalite&&prosedur.pdf", scope = "model_bases", nonce = 1)
   env$handle_source_file_click(ev, settings_data, api_config, .oo_click_session(), filePreview = NULL)
 
-  # Kişisel kova çözümleyicisi HİÇ çağrılmadı; model tabanı arandı; önizleme açıldı.
+  # Kişisel kova çözümleyicisi HİÇ çağrılmadı; kurumsal dosya taramasız açıldı.
   expect_equal(env$.resolve_calls, 0L)
-  expect_true(env$.search_calls >= 1L)
   expect_false(is.null(env$.preview_opened))
-  expect_identical(env$.preview_opened$datapath, "/kurumsal/model_baz/surecler/kalite/prosedur.pdf")
+  expect_true(.oo_ayni_yol(env$.preview_opened$datapath, env$.kurumsal))
 })
 
 test_that("handle_source_file_click varsayılan (personal) kapsamda kişisel kovayı önce dener (mevcut davranış)", {
   env <- .oo_source_click_env()
   api_config <- list(
     local_models = c("M" = "m1"),
-    local_model_paths = list("m1" = "/kurumsal/model_baz")
+    local_model_paths = list("m1" = env$.model_baz)
   )
   settings_data <- list(model_selection = "m1")
 
@@ -170,5 +176,5 @@ test_that("handle_source_file_click varsayılan (personal) kapsamda kişisel kov
 
   expect_true(env$.resolve_calls >= 1L)
   expect_false(is.null(env$.preview_opened))
-  expect_identical(env$.preview_opened$datapath, "/kisisel/kova/ayni_ad.pdf")
+  expect_true(.oo_ayni_yol(env$.preview_opened$datapath, env$.kisisel))
 })

@@ -226,6 +226,9 @@ test_that("Raporlanan olgu kimlikleri SINIRLIDIR", {
     env$pk_numeric_provenance_report(sahte, "q")
   ), collapse = "\n")
   expect_true(grepl(",...", cikti, fixed = TRUE))
+  # Sınır GERÇEKTEN uygulanır: ilk kimlik yazılır, sondaki yazılmaz.
+  expect_true(grepl("olcu01.sum.overall.aaaaaa", cikti, fixed = TRUE))
+  expect_false(grepl("olcu20.sum.overall.aaaaaa", cikti, fixed = TRUE))
 })
 
 # --- Kapalı başarısızlık kipe göre değişir -----------------------------------

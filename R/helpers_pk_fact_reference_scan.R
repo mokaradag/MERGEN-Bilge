@@ -141,18 +141,37 @@ pk_fact_unit_key <- function(ayrisik) {
 #' Yalnızca araya sözcük girmeyen komşuluk okunur; amaç kimlik çıkarımı değil,
 #' R'nin bastığı kanonik gösterime model tarafından İLİŞTİRİLEN birimi görmek.
 pk_fact_unit_after <- function(txt, pos) {
+  pk_fact_unit_span(txt, pos, "after")$key
+}
+
+#' Yuvaya bitişik ölçek birimi: anahtar ve (boşluk dâhil) karakter uzunluğu
+#'
+#' `after`: `pos` konumundan SONRA gelen birim sözcüğü/simgesi. `before`: `pos`
+#' konumundan ÖNCE gelen yüzde/para SİMGESİ (`%{{fact:x}}`). Birim komşu bir
+#' SAYIYA aitse (`%5`, `61,3 %`) uzunluk 0 döner: silinmesi sayıyı bozardı.
+pk_fact_unit_span <- function(txt, pos, yon = c("after", "before")) {
+  yon <- match.arg(yon)
+  bos <- list(key = "", length = 0L)
   metin <- suppressWarnings(as.character(txt %||% "")[1])
-  if (length(metin) != 1L || is.na(metin)) return("")
-  kuyruk <- substr(metin, pos + 1L, min(nchar(metin), pos + 24L))
-  esle <- regmatches(
-    kuyruk,
-    regexpr(paste0("^[[:space:]\u00a0]*(%|[A-Za-zÇĞİÖŞÜçğıöşü",
-                   .PK_SCAN_CURRENCY, "][A-Za-z0-9ÇĞİÖŞÜçğıöşü",
-                   .PK_SCAN_SUPERSCRIPT, "-]{0,15})"),
-            kuyruk, perl = TRUE)
-  )
-  if (!length(esle) || !nzchar(esle[1])) return("")
-  .pk_scan_unit_from_text(trimws(esle[1]))
+  if (length(metin) != 1L || is.na(metin)) return(bos)
+  if (identical(yon, "after")) {
+    kuyruk <- substr(metin, pos + 1L, min(nchar(metin), pos + 24L))
+    desen <- paste0("^[[:space:]\u00a0]*(%|[A-Za-zÇĞİÖŞÜçğıöşü", .PK_SCAN_CURRENCY,
+                    "][A-Za-z0-9ÇĞİÖŞÜçğıöşü", .PK_SCAN_SUPERSCRIPT, "-]{0,15})")
+    esle <- regmatches(kuyruk, regexpr(desen, kuyruk, perl = TRUE))
+    if (!length(esle) || !nzchar(esle[1])) return(bos)
+    sonraki <- substr(kuyruk, nchar(esle[1]) + 1L, nchar(kuyruk))
+    uzunluk <- if (grepl("^[[:space:]\u00a0]*[0-9]", sonraki, perl = TRUE)) 0L else nchar(esle[1])
+    return(list(key = .pk_scan_unit_from_text(trimws(esle[1])), length = uzunluk))
+  }
+  bas <- max(1L, pos - 4L)
+  on <- if (pos > 1L) substr(metin, bas, pos - 1L) else ""
+  esle <- regmatches(on, regexpr(paste0("[%", .PK_SCAN_CURRENCY, "][[:space:]\u00a0]*$"),
+                                 on, perl = TRUE))
+  if (!length(esle) || !nzchar(esle[1])) return(bos)
+  sol <- substr(metin, 1L, pos - nchar(esle[1]) - 1L)
+  if (grepl("[0-9][[:space:]\u00a0]*$", sol, perl = TRUE)) return(bos)
+  list(key = .pk_scan_unit_from_text(substr(esle[1], 1L, 1L)), length = nchar(esle[1]))
 }
 
 # Bir konumun satır başlangıcı (madde numarası denetimi için).
@@ -173,7 +192,8 @@ pk_fact_unit_after <- function(txt, pos) {
 .pk_scan_mask_references <- function(txt) {
   maskeli <- txt
   for (desen in c(PK_FACT_REF_PATTERN, PK_FACT_REF_MALFORMED_PATTERN,
-                  PK_FACT_REF_OPEN_PATTERN, PK_FACT_REF_LEGACY_PATTERN)) {
+                  PK_FACT_REF_OPEN_PATTERN, PK_FACT_REF_LEGACY_PATTERN,
+                  PK_FACT_REF_BROKEN_OPENER_PATTERN)) {
     konum <- gregexpr(desen, maskeli, perl = TRUE)[[1]]
     if (identical(konum[1], -1L)) next
     uzunluk <- attr(konum, "match.length")
@@ -342,6 +362,20 @@ pk_fact_literal_scan <- function(text, trusted_keys = character(0)) {
   # TEKNİK KİMLİK: `P1234`, `A1000`, `ISO9001` içindeki rakam bir ölçü değildir.
   onceki <- if (jeton$start > 1L) substr(maskeli, jeton$start - 1L, jeton$start - 1L) else ""
   if (nzchar(onceki) && grepl(paste0("^", .PK_SCAN_IDENT_CHAR, "$"), onceki, perl = TRUE)) {
+    return(TRUE)
+  }
+  # NOKTALI/TİRELİ KOD (`P.01.02`, `A-12`): ayraçtan önce kimlik karakteri var.
+  if (onceki %in% c(".", "-", "/") && jeton$start > 2L &&
+      grepl(paste0("^", .PK_SCAN_IDENT_CHAR, "$"),
+            substr(maskeli, jeton$start - 2L, jeton$start - 2L), perl = TRUE)) {
+    return(TRUE)
+  }
+  # ÇOK AYRAÇLI SAYI OLMAYAN DİZİ (`1.2.3` WBS kodu, `10.0.0.1`) bir ölçü değildir.
+  # Binlik gruplu geçerli sayı (`1.234.567`) kanonik anahtar ürettiği için MUAF
+  # DEĞİLDİR; yüzde ve bilimsel gösterim de muaf değildir.
+  if (!isTRUE(ayrisik$percent) && !grepl("[eE]", rakam) &&
+      lengths(regmatches(rakam, gregexpr("[.,]", rakam))) >= 2L &&
+      !nzchar(pk_fact_number_key(rakam))) {
     return(TRUE)
   }
 

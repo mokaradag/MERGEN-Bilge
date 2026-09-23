@@ -269,3 +269,242 @@ test_that("notrleyici yalnizca fact onekli bicimlere dokunur (strict disinda)", 
                    "A (değer yok) B")
   expect_null(env$pk_fact_reference_neutralize(NULL))
 })
+
+# ---------------------------------------------------------------------------
+# 7) KIRIK `fact` AÇICISI hiçbir kipte ham söz dizimi olarak kalmaz
+# ---------------------------------------------------------------------------
+
+test_that("tek kapanisli ve uzun kapanissiz fact acicisi notrlenir ve rapor edilir", {
+  env <- .pk_hard_env()
+  olgular <- .pk_hard_facts(env)
+  uzun <- paste(rep("x", 200L), collapse = "")
+  for (metin in c("Toplam {{fact:x} saat harcandi.",
+                  paste0("Toplam {{fact:bogus ", uzun, " sonuc."),
+                  "Kod {{fact:12345} olarak gorunuyor.")) {
+    for (kip in c("off", "log", "warn")) {
+      sonuc <- env$pk_numeric_provenance_apply(metin, olgular, mode = kip)
+      expect_false(grepl("{{fact", sonuc$text, fixed = TRUE), info = paste(kip, metin))
+      expect_false(grepl("12345", sonuc$text, fixed = TRUE), info = paste(kip, metin))
+    }
+    log_sonuc <- env$pk_numeric_provenance_apply(metin, olgular, mode = "log")
+    expect_true("malformed_reference" %in% .pk_hard_reasons(log_sonuc))
+    # Kimlik içindeki rakamlar model sayısı SAYILMAZ.
+    expect_false("model_numeric_literal" %in% .pk_hard_reasons(log_sonuc))
+  }
+  # Doğrulayıcı dışı yol da kırık açıcıyı nötrler; sıradan şablon korunur.
+  expect_identical(env$pk_fact_reference_neutralize("A {{fact:x} B {{ ad }}"),
+                   "A (değer yok) B {{ ad }}")
+})
+
+# ---------------------------------------------------------------------------
+# 8) YİNELENEN BİRİM ikinci kez basılmaz; komşu sayı bozulmaz
+# ---------------------------------------------------------------------------
+
+test_that("yuvanin ardindaki ya da onundeki AYNI birim yinelenmez", {
+  env <- .pk_hard_env()
+  saat <- env$pk_fact_record("measure", "Saat", "sum", 100,
+                             list(label = "Saat", unit = "saat", decimals = 0L))
+  yuzde <- env$pk_fact_record("measure", "Oran", "mean", 61.3,
+                              list(label = "Oran", unit = "%", decimals = 1L))
+  tutar <- env$pk_fact_record("measure", "Tutar", "sum", 1250,
+                              list(label = "Tutar", unit = "TL", decimals = 0L))
+  jeton <- function(o) env$pk_fact_reference_token(o$fact_id)
+  olgular <- list(saat, yuzde, tutar)
+  tl <- intToUtf8(0x20BA)
+
+  sonuc <- env$pk_numeric_provenance_apply(
+    paste0("Toplam ", jeton(saat), " saat, oran %", jeton(yuzde), ", tutar ",
+           tl, jeton(tutar), " TL oldu."), olgular, mode = "log")
+  expect_identical(sonuc$text, "Toplam 100 saat, oran %61,3, tutar 1.250 TL oldu.")
+  expect_length(sonuc$mismatches, 0L)
+
+  # Birim komşu bir SAYIYA aitse silinmez: sayı birleşip bozulamaz.
+  komsu <- env$pk_numeric_provenance_apply(
+    paste0("Oran ", jeton(yuzde), " %5 artti."), olgular, mode = "log")
+  expect_false(grepl("61,35", komsu$text, fixed = TRUE))
+  expect_true(grepl("%61,3", komsu$text, fixed = TRUE))
+})
+
+# ---------------------------------------------------------------------------
+# 9) `block`: numaralı madde düşerken yetim "1." satırı kalmaz
+# ---------------------------------------------------------------------------
+
+test_that("block kipi numarali maddeyi tumuyle dusurur, kalan cumlede oneki korur", {
+  env <- .pk_hard_env()
+  olgular <- .pk_hard_facts(env)
+  metin <- paste0(
+    "Oneriler:\n",
+    "1. Kapasite {{fact:bilinmeyen.olgu}} kisi gorunuyor.\n",
+    "2. Planlama ekibi guclendirilmeli.\n",
+    "- Birinci cumle korunur. Ikinci cumle {{fact:bilinmeyen.olgu}} duser."
+  )
+  blok <- env$pk_numeric_provenance_apply(metin, olgular, mode = "block")
+  satirlar <- strsplit(blok$text, "\n", fixed = TRUE)[[1]]
+  expect_false(any(grepl("^[[:space:]]*1\\.[[:space:]]*$", satirlar)))
+  expect_false(any(grepl("Kapasite", satirlar, fixed = TRUE)))
+  expect_true("2. Planlama ekibi guclendirilmeli." %in% satirlar)
+  expect_true("- Birinci cumle korunur." %in% satirlar)
+})
+
+# ---------------------------------------------------------------------------
+# 10) IQR SINIRLARI ölçünün BİRİMİNİ taşır (TL / kesir yüzdesi)
+# ---------------------------------------------------------------------------
+
+test_that("IQR sinir olgulari olcunun birimini tasir; dogru birim catisma sayilmaz", {
+  env <- .pk_hard_env()
+  olgular <- env$pk_measure_facts(c(10, 20, 30, 40, 50, 60, 70, 80, 5000), "Butce",
+                                  list(label = "Butce", unit = "TL", decimals = 0L))
+  paket <- list(facts = olgular, scope = list(scope_signature = "sentetik"),
+                coverage = list(rows = 9L, columns = 1L))
+  hepsi <- env$pk_packet_all_facts(paket)
+  ust <- Filter(function(o) identical(o$aggregation, "iqr_upper"), hepsi)[[1]]
+  expect_identical(ust$unit, "TL")
+  expect_true(grepl(" TL$", ust$display))
+  expect_true(grepl(ust$display, env$.pk_render_facts(paket), fixed = TRUE))
+
+  sonuc <- env$pk_numeric_provenance_apply(
+    paste0("Ust sinir ", env$pk_fact_reference_token(ust$fact_id), " TL olarak hesaplandi."),
+    hepsi, mode = "log")
+  expect_false("unit_conflict" %in% .pk_hard_reasons(sonuc))
+  expect_false(grepl("TL TL", sonuc$text, fixed = TRUE))
+
+  kesir <- env$pk_measure_facts(c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.99), "Ilerleme",
+                                list(label = "Ilerleme", unit = "%", decimals = 1L,
+                                     percent_scale = "fraction"))
+  paket2 <- list(facts = kesir, scope = list(), coverage = list(rows = 9L, columns = 1L))
+  alt <- Filter(function(o) identical(o$aggregation, "iqr_lower"),
+                env$pk_packet_all_facts(paket2))[[1]]
+  expect_true(startsWith(alt$display, "%") || startsWith(alt$display, "-%"))
+})
+
+# ---------------------------------------------------------------------------
+# 11) `warn` notu kaynaksız sayı görünürken "sayılar R'den" DEMEZ
+# ---------------------------------------------------------------------------
+
+test_that("warn notu kaynaksiz sayi varsa dogrulanmamis der, yoksa R hesabini belirtir", {
+  env <- .pk_hard_env()
+  olgular <- .pk_hard_facts(env)
+  kaynaksiz <- env$pk_numeric_provenance_apply("Toplam 99.999 saat harcandi.",
+                                               olgular, mode = "warn")
+  expect_true(grepl("doğrulanmamıştır", kaynaksiz$text, fixed = TRUE))
+  expect_false(grepl("R tarafından hesaplanmıştır", kaynaksiz$text, fixed = TRUE))
+
+  bilinmeyen <- env$pk_numeric_provenance_apply("Deger {{fact:yok.olgu}} oldu.",
+                                                olgular, mode = "warn")
+  expect_true(grepl("R tarafından hesaplanmıştır", bilinmeyen$text, fixed = TRUE))
+})
+
+# ---------------------------------------------------------------------------
+# 12) Tarayıcı: noktalı kodlar ölçü değildir; binlik gruplu sayı ölçüdür
+# ---------------------------------------------------------------------------
+
+test_that("WBS ve noktali kimlik kodlari muaf, gecerli binlik sayi muaf degil", {
+  env <- .pk_hard_env()
+  tara <- function(x) length(env$pk_fact_literal_scan(x, character(0))$tokens)
+  expect_identical(tara("WBS 1.2.3 kalemi gecikti."), 0L)
+  expect_identical(tara("Aktivite P.01.02 tamamlandi."), 0L)
+  expect_identical(tara("Sunucu 10.0.0.1 adresinde."), 0L)
+  expect_identical(tara("Toplam 1.234.567 saat harcandi."), 1L)
+  expect_identical(tara("Butce 1.234,5 TL oldu."), 1L)
+})
+
+# ---------------------------------------------------------------------------
+# 13) Kullanıcı kriterine birim eklemek güven bulgusu DEĞİLDİR
+# ---------------------------------------------------------------------------
+
+test_that("istek girdisi yuvasina eklenen para birimi unit_conflict sayilmaz", {
+  env <- .pk_hard_env()
+  paket <- list(filters = list(applied = list(
+    list(column = "Butce", operation = "greater_than", values = "1000000")
+  )), scope = list(scope_signature = "sentetik"))
+  istek <- env$pk_packet_request_facts(paket)
+  metin <- paste0("Butcesi ", env$pk_fact_reference_token(istek[[1]]$fact_id),
+                  " TL uzerindeki projeler listelendi.")
+  for (kip in c("log", "block")) {
+    sonuc <- env$pk_numeric_provenance_apply(metin, istek, mode = kip)
+    expect_false("unit_conflict" %in% .pk_hard_reasons(sonuc), info = kip)
+    expect_true(grepl("1000000 TL uzerindeki", sonuc$text, fixed = TRUE), info = kip)
+  }
+  # Ölçü olgusu için kural DEĞİŞMEZ: birimsiz sayıma TL eklemek bulgudur.
+  olgular <- .pk_hard_facts(env)
+  olcu <- env$pk_numeric_provenance_apply(
+    paste0("Toplam ", .pk_hard_token(env, olgular, 1), " TL."), olgular, mode = "log")
+  expect_true("unit_conflict" %in% .pk_hard_reasons(olcu))
+})
+
+# ---------------------------------------------------------------------------
+# 14) İstem ve paket oran HESAPLATMAZ; boş değer oranı da yuvalıdır
+# ---------------------------------------------------------------------------
+
+test_that("v2 istemi ve filtre uyarisi payda tarif etmez, oran hesaplamayi yasaklar", {
+  env <- .pk_hard_env()
+  istem <- env$pk_build_analysis_system_prompt_v2("summary", list(name = "S", description = "D"))
+  expect_false(grepl("payda", istem, fixed = TRUE))
+  expect_true(grepl("oran/yüzde HESAPLAMA", istem, fixed = TRUE))
+
+  paket <- list(scope = list(authorized_rows = 100L, filtered_rows = 40L),
+                filters = list(user_filter_applied = TRUE, applied = list()))
+  uyari <- env$.pk_render_filters(paket)
+  expect_false(grepl("payda", uyari, fixed = TRUE))
+  expect_true(grepl("Oran/yuzde HESAPLAMA", uyari, fixed = TRUE))
+})
+
+test_that("bos deger orani yuvayla basilir ve olgu dizininde cozulur", {
+  env <- .pk_hard_env()
+  paket <- list(coverage = list(rows = 8L, columns = 2L,
+                                missing = list(list(column = "Bitis", missing = 2L))),
+                scope = list(scope_signature = "sentetik"))
+  metin <- env$.pk_render_coverage(paket)
+  satir <- grep("Bos deger orani", strsplit(metin, "\n", fixed = TRUE)[[1]], value = TRUE)
+  expect_length(satir, 1L)
+  pay <- Filter(function(o) identical(o$aggregation, "missing_share"),
+                env$pk_packet_all_facts(paket))
+  expect_length(pay, 1L)
+  expect_identical(pay[[1]]$display, "%25,0")
+  expect_true(grepl(paste0("%25,0 ", env$pk_fact_reference_token(pay[[1]]$fact_id)),
+                    satir, fixed = TRUE))
+  # Yuvasız sayı kalmaz: tarayıcı satırda model sayısı sanacağı değer bulmaz.
+  kalan <- env$pk_fact_literal_scan(sub("^.*orani: ", "", satir), character(0))$tokens
+  expect_true(all(vapply(kalan, function(j) j$raw, character(1)) %in%
+                    c("%25,0", "2")))
+
+  # Satır sayısı yoksa pay da yuvası da basılmaz.
+  bos <- env$.pk_render_coverage(list(coverage = list(
+    missing = list(list(column = "Bitis", missing = 2L)))))
+  expect_false(grepl("missing_share", bos, fixed = TRUE))
+})
+
+# ---------------------------------------------------------------------------
+# 15) Sorudaki DÖNEM sayısı güvenilir istek girdisidir ("son 6 ayda")
+# ---------------------------------------------------------------------------
+
+test_that("sorudaki gun/ay/yil sayilari donem istek girdisine donusur", {
+  env <- .pk_hard_env()
+  expect_identical(
+    env$pk_request_period_values("Son 6 ayda baslayan, 30 günden az kalan; 2 YIL; 1.5 ay"),
+    c("6 ay", "30 gün", "2 yıl")
+  )
+  expect_identical(env$pk_request_period_values("Projeleri ozetle"), character(0))
+  expect_identical(env$pk_request_period_values(NULL), character(0))
+})
+
+test_that("donem istek girdisi yuvayla basilir; duz yinelemesi ihlal sayilmaz", {
+  env <- .pk_hard_env()
+  paket <- list(scope = list(scope_signature = "sentetik"),
+                filters = list(applied = list(), request_periods = "6 ay"))
+  istek <- env$pk_packet_request_facts(paket)
+  expect_length(istek, 1L)
+  expect_identical(istek[[1]]$kind, "request_input")
+  expect_identical(istek[[1]]$display, "6")
+  expect_true(grepl(env$pk_fact_reference_token(istek[[1]]$fact_id),
+                    env$.pk_render_filters(paket), fixed = TRUE))
+
+  metin <- "Son 6 ay icinde baslayan projeler listelendi."
+  expect_identical(env$pk_numeric_provenance_apply(metin, istek, mode = "log")$protocol, 0L)
+  expect_identical(env$pk_numeric_provenance_apply(metin, list(), mode = "log")$protocol, 1L)
+
+  yuvali <- env$pk_numeric_provenance_apply(
+    paste0("Son ", env$pk_fact_reference_token(istek[[1]]$fact_id), " ayda baslayanlar."),
+    istek, mode = "block")
+  expect_identical(yuvali$text, "Son 6 ayda baslayanlar.")
+})

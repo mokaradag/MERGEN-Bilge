@@ -510,6 +510,16 @@ test_that("D21: v1 filtre ONCESI cerceveyi dondurur, v2 filtre SONRASI cerceveyi
   expect_identical(v2$type, "data_analysis")
 })
 
+test_that("v2 paketi sorudaki donem sayisini istek girdisi olarak tasir (ham soru degil)", {
+  env <- .pk_v2_result_env()
+  cerceve <- .pk_v2_frames()
+  v2 <- env$pk_build_analysis_result(cerceve$filtered, cerceve$secure, .pk_v2_query(),
+                                     "Son 6 ayda baslayan isleri ozetle",
+                                     engine_is_v2 = TRUE)
+  expect_true(grepl("Kullanici donem ifadesi (kullanici kriteri): 6 ay {{fact:",
+                    v2$user_context, fixed = TRUE))
+})
+
 test_that("Ortak Oturum koprusunun okudugu alanlar HER IKI motorda da korunur", {
   env <- .pk_v2_result_env()
   cerceve <- .pk_v2_frames()
@@ -643,9 +653,11 @@ test_that("Sayisal koken dogrulamasi olgu SAKLANMAMISSA hic calismaz (v1 yolu)",
   metin <- env$pk_provenance_decorate("Yanit 999 {{fact:uydurma.sum.overall}}.", oturum,
                                       request_id = "r1")
 
-  # Olgu yoksa dogrulama devreye girmez ve metin oldugu gibi kalir (GÜNCEL
-  # yuva söz dizimiyle denetlenir; emekli `[fact:` biçimi hiçbir şey kanıtlamaz).
-  expect_true(grepl("{{fact:uydurma.sum.overall}}", metin, fixed = TRUE))
+  # Olgu yoksa DOĞRULAMA devreye girmez (sayı çözülmez, "999" korunur); ancak
+  # `fact` önekli yuva jetonu otoriter alt bilginin yanında HAM kalmaz.
+  expect_false(grepl("{{fact:", metin, fixed = TRUE))
+  expect_true(grepl("(değer yok)", metin, fixed = TRUE))
+  expect_true(grepl("Yanit 999", metin, fixed = TRUE))
   expect_true(grepl("Analiz Kaynağı", metin, fixed = TRUE))
 })
 

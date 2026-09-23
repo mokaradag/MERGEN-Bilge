@@ -190,8 +190,8 @@ pk_build_analysis_system_prompt_v2 <- function(analysis_mode, query) {
     "yanıtının altına otomatik eklenir. Tabloya doğal biçimde atıfta ",
     "bulunabilirsin ama içeriğini yeniden yazma.\n",
     "6. 'FİLTRELEME UYARISI' varsa satır sayısı YALNIZCA kullanıcının filtresine ",
-    "aittir; 'X/Y' biçiminde oran verme, payda olarak yalnızca filtre sonrası ",
-    "satır sayısını kullan.\n",
+    "aittir; 'X/Y' biçiminde oran verme ve oran/yüzde HESAPLAMA (bkz. kural 2). ",
+    "Yalnızca pakette yuvası basılı payları kullan.\n",
     "7. Elinde benchmark verisi YOKTUR; sektör kıyaslaması uydurma.\n\n",
 
     "YANITIN BİÇİMİ SORUYA UYAR:\n",

@@ -161,6 +161,7 @@
   # geçen süre bütçesi onu gerçekten kesebilir.
   if (!is.null(halt_durumu())) return(iptal_sonucu())
 
+  donemler <- pk_request_period_values(user_prompt)
   paket_sonucu <- if (exists("pk_async_bounded_fs", mode = "function", inherits = TRUE)) {
     pk_async_bounded_fs(
       function() {
@@ -168,6 +169,7 @@
           authorized_rows = nrow(secure_data),
           filtered_rows = pk_filtreli_satir,
           filters = etkin_filtreler,
+          request_periods = donemler,
           filter_status = filter_criteria$status,
           degradations = if (exists("pk_degradations_from_filter_status", mode = "function",
                                     inherits = TRUE)) {
@@ -211,6 +213,7 @@
       authorized_rows = nrow(secure_data),
       filtered_rows = pk_filtreli_satir,
       filters = etkin_filtreler,
+      request_periods = donemler,
       filter_status = filter_criteria$status,
       degradations = if (exists("pk_degradations_from_filter_status", mode = "function",
                                 inherits = TRUE)) {

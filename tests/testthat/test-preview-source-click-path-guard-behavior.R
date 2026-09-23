@@ -32,6 +32,14 @@ testthat::test_that("ipucu parçaları yol geçişi ve mutlak yol içeremez", {
   testthat::expect_false(env$.preview_hint_parts_safe(c("C:", "rapor.pdf")))
   testthat::expect_false(env$.preview_hint_parts_safe(character(0)))
   testthat::expect_false(env$.preview_hint_parts_safe(c("", "rapor.pdf")))
+  # ':' her konumda reddedilir (NTFS alternatif veri akışı / sürücü göreli yol).
+  testthat::expect_false(env$.preview_hint_parts_safe(c("alt", "rapor.pdf:gizli")))
+  testthat::expect_false(env$.preview_hint_parts_safe(c("x:y", "rapor.pdf")))
+  # Kontrol karakteri taşıyan parça reddedilir.
+  testthat::expect_false(env$.preview_hint_parts_safe(c("alt", paste0("rapor", intToUtf8(10L), ".pdf"))))
+  # Türkçe ve '&&' düz adları geçerlidir.
+  testthat::expect_true(env$.preview_hint_parts_safe(c("Süreç Yönetimi", "Çalışma Talimatı.pdf")))
+  testthat::expect_true(env$.preview_hint_parts_safe("A&&B&&C.pdf"))
 })
 
 testthat::test_that("çözülen aday kökün dışındaysa reddedilir", {

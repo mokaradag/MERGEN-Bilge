@@ -412,6 +412,10 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
   }
 
   govde <- .pk_hook_scalar_text(text)
+  notrle <- exists("pk_fact_reference_neutralize", mode = "function", inherits = TRUE)
+  # OLGUSUZ KAYITTA doğrulama çalışmaz; `fact` önekli yuva jetonu yine HAM
+  # yayımlanmaz (tekil sohbetteki `pk_provenance_decorate()` ile aynı sözleşme).
+  if (is.null(kayit$facts) && notrle) govde <- pk_fact_reference_neutralize(govde)
 
   # DOĞRULAMA ALT BİLGİDEN ÖNCE. Olgu saklanmamışsa (v1 yolu) adım atlanır ve
   # davranış değişmez. Doğrulayıcı kendi içinde KAPALI başarısız olur:
@@ -469,7 +473,8 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
         yedek <- .blok_yedegi()
         if (nzchar(yedek)) return(yedek)
       }
-      govde
+      # Diğer kiplerde de çözülmemiş yuva jetonu kullanıcıya ulaşmaz.
+      if (notrle) pk_fact_reference_neutralize(govde, strict = TRUE) else govde
     })
   }
 

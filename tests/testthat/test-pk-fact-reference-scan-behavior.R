@@ -79,12 +79,19 @@ test_that("yil bicimindeki sayi OLCEK BIRIMI tasiyorsa muaf DEGILDIR", {
 test_that("guvenilir istek degeri taranan metinde ihlal SAYILMAZ", {
   env <- .pk_scan_env()
 
+  # Veri gorunumlu esik: guven OLMADAN yakalanir, guvenle muaf tutulur.
   expect_length(
-    env$pk_fact_literal_scan("Bitisine 30 gunden az kalan isler.", "30")$tokens, 0L
+    env$pk_fact_literal_scan("Kalan isciligi 1.500 uzerindeki isler.", "1500")$tokens, 0L
+  )
+  expect_length(
+    env$pk_fact_literal_scan("Kalan isciligi 1.500 uzerindeki isler.", character(0))$tokens, 1L
   )
   # Bicim farki (binlik ayraci) ayni anahtara duser.
   expect_length(
     env$pk_fact_literal_scan("Esik 1.000 olarak verildi.", "1000")$tokens, 0L
+  )
+  expect_length(
+    env$pk_fact_literal_scan("Esik 1.000 olarak verildi.", character(0))$tokens, 1L
   )
   # BASKA bir sayi muafiyeti PAYLASMAZ.
   expect_length(

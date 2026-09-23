@@ -516,6 +516,12 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
 
     base_txt <- if (is.null(text) || length(text) == 0L) "" else as.character(text)[1]
     if (is.na(base_txt)) base_txt <- ""
+    # OLGUSUZ KAYIT (v1 yolu ya da kurulamayan v2 paketi) doğrulanmaz; yine de
+    # `fact` önekli bir yuva jetonu otoriter alt bilginin yanında HAM kalmaz.
+    if (is.null(pending$facts) &&
+        exists("pk_fact_reference_neutralize", mode = "function", inherits = TRUE)) {
+      base_txt <- pk_fact_reference_neutralize(base_txt)
+    }
 
     # Bant dışı idempotentlik: aynı istek ikinci kez dekore edilmez.
     store <- .pk_provenance_store(session)

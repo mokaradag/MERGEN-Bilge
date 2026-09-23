@@ -489,6 +489,8 @@ pk_measure_facts <- function(values, column, spec = list(), scope = NULL,
   # onları `iqr_lower` / `iqr_upper` bağlam olgusuna, yazıcı yuvaya çevirir.
   uc$bounds <- c(alt, ust) * not_olcegi
   uc$bounds_decimals <- suppressWarnings(as.integer(spec$decimals %||% NA_integer_)[1])
+  # Sınır ÖLÇÜNÜN birimini taşır (sayım olgusu `sayim_spec` ile birimsizdir).
+  uc$bounds_unit <- spec$unit
   out[[length(out) + 1L]] <- uc
 
   out

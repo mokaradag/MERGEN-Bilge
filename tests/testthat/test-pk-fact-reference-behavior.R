@@ -126,8 +126,11 @@ test_that("ayni sayisal degere sahip iki olgu KIMLIGE gore ayrisir", {
   sonuc <- env$pk_numeric_provenance_apply(metin, list(saat, tutar), mode = "log")
 
   expect_true(grepl("100 TL tutar", sonuc$text, fixed = TRUE))
-  expect_true(grepl("100 saat saat", sonuc$text, fixed = TRUE))
+  # Gösterim birimi ZATEN taşır; modelin yinelediği birim ikinci kez basılmaz.
+  expect_true(grepl("100 saat degerlendirildi", sonuc$text, fixed = TRUE))
+  expect_false(grepl("saat saat", sonuc$text, fixed = TRUE))
   expect_identical(sonuc$resolved, 2L)
+  expect_length(sonuc$mismatches, 0L)
 })
 
 test_that("AYNI kimlige dusen iki FARKLI olgu hicbir deger basmaz", {
@@ -218,19 +221,21 @@ test_that("kullanicinin kendi esigi GUVENILIR ISTEK GIRDISI olarak tasinir", {
 
 test_that("kullanici esigi DUZ YAZILDIGINDA protokol ihlali sayilmaz", {
   env <- .pk_ref_env()
+  # VERİ GÖRÜNÜMLÜ eşik (binlik ayraçlı): güven OLMADAN tarayıcı onu yakalar,
+  # dolayısıyla muafiyet yalnızca istek olgusundan gelebilir.
   paket <- list(
     scope = list(),
     filters = list(applied = list(
-      list(column = "KalanGun", value = "30", operation = "less_than")
+      list(column = "KalanIscilik", value = "1.000", operation = "greater_than")
     ))
   )
+  metin <- "Kalan isciligi 1.000 uzerinde olan aktiviteler bu listede yer aliyor."
   olgular <- c(.pk_ref_facts(env), env$pk_packet_request_facts(paket))
 
-  sonuc <- env$pk_numeric_provenance_apply(
-    "Bitisine 30 gunden az kalan aktiviteler bu listede yer aliyor.",
-    olgular, mode = "log"
-  )
+  sonuc <- env$pk_numeric_provenance_apply(metin, olgular, mode = "log")
   expect_identical(sonuc$protocol, 0L)
+  guvensiz <- env$pk_numeric_provenance_apply(metin, .pk_ref_facts(env), mode = "log")
+  expect_identical(guvensiz$protocol, 1L)
 
   # ANALITIK bir sayi ayni muafiyeti ALMAZ.
   kaynaksiz <- env$pk_numeric_provenance_apply(
