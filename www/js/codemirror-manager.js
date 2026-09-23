@@ -193,7 +193,9 @@
 
       try {
         const editor = CodeMirror.fromTextArea(ta, options);
-        editor.getWrapperElement().setAttribute('data-lang', config.key);
+        const wrapper = editor.getWrapperElement();
+        wrapper.setAttribute('data-lang', config.key);
+        wrapper.classList.add('cm-lang-' + config.key);
 
         editor.setSize('100%', 'auto');
 

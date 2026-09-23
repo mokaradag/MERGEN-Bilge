@@ -316,6 +316,8 @@ openAnyPreview <- function(file_info, session, filePreview) {
 # tabanların önbellekteki indeksleri, (3) taban başına en fazla bir tarama.
 # Böylece bir tabanın taraması başka tabandaki ucuz isabeti hiç bekletmez.
 .preview_resolve_model_bases <- function(bases, filename_full, filename_base, parts) {
+  parts <- as.character(parts %||% character(0))
+  if (!length(parts) || !nzchar(trimws(filename_full %||% ""))) return(NULL)
   rel_adaylar <- .preview_direct_rel_candidates(filename_full, parts)
   for (base_dir in bases) {
     hit <- .preview_probe_direct(base_dir, rel_adaylar)

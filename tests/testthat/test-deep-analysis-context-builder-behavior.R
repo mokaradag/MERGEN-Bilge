@@ -134,6 +134,20 @@ test_that("v1 derin analiz istemi eski sayi kuralini KORUR", {
   expect_true(grepl("FİLTRELEME UYARISI varsa, oran belirtirken dikkatli ol", out$prompt_context, fixed = TRUE))
 })
 
+test_that("v1 ve v2 başarılı blokları tek istemde karıştırılmaz", {
+  v2 <- list(
+    success = TRUE, query_name = "V2", query_desc = "kanonik",
+    row_count = 1L, relevance = 90, pk_engine_mode = "v2",
+    pk_packet_text = "KANONIK {{fact:progress.sum.overall.abc123}}",
+    summary_text = "KULLANILMAMALI", preview_json = "[]"
+  )
+  out <- .dac_env$build_deep_analysis_context(
+    list(.dac_ok("V1"), v2), "soru", list(instruction = "", max_tokens = 3000)
+  )
+  expect_identical(out$type, "error_message")
+  expect_true(grepl("aynı yanıt bağlamında", out$content, fixed = TRUE))
+})
+
 test_that("v2 başarılı kayıt kanonik packet metni yoksa legacy summary fail-closed kullanılmaz", {
   qr <- list(list(
     success = TRUE,

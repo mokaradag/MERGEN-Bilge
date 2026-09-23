@@ -103,6 +103,42 @@ pk_deep_reconcile_packets <- function(query_results) {
     }
   }
 
+  # v1 ve v2 farklı sayısal sözleşmeler taşır. Aynı model yanıtında karışırlarsa
+  # v1'in doğrudan sayıları v2'nin olgu-yuvası doğrulamasında reddedilebilir.
+  # İlk başarılı paketin motoru korunur; diğer motorun paketleri açıkça düşürülür.
+  basarili_oncesi <- vapply(koken, function(k) isTRUE(k$success), logical(1))
+  motorlar <- vapply(seq_along(paketler), function(i) {
+    if (!isTRUE(basarili_oncesi[[i]])) return(NA_character_)
+    if (identical(as.character(paketler[[i]]$pk_engine_mode %||% "")[1], "v2")) "v2" else "v1"
+  }, character(1))
+  karma_motor_dusurulen <- integer(0)
+  etkin_motorlar <- unique(motorlar[!is.na(motorlar)])
+
+  if (length(etkin_motorlar) > 1L) {
+    korunan_motor <- motorlar[[which(basarili_oncesi)[1]]]
+    karma_motor_dusurulen <- which(
+      basarili_oncesi & !is.na(motorlar) & motorlar != korunan_motor
+    )
+    dusurme_sebebi <- paste0(
+      "v1 ve v2 derin analiz sonuçları aynı yanıt sözleşmesinde ",
+      "birleştirilmedi."
+    )
+    for (i in karma_motor_dusurulen) {
+      koken[[i]]$success <- FALSE
+      koken[[i]]$error <- .pk_deep_coalesce_text(koken[[i]]$error, dusurme_sebebi)
+      paketler[[i]]$success <- FALSE
+      paketler[[i]]$error_msg <- .pk_deep_coalesce_text(
+        paketler[[i]]$error_msg, dusurme_sebebi
+      )
+      if (is.list(paketler[[i]]$pk_observation)) {
+        paketler[[i]]$pk_observation$outcome <- "Hata"
+        paketler[[i]]$pk_observation$error_message <- .pk_deep_coalesce_text(
+          paketler[[i]]$pk_observation$error_message, dusurme_sebebi
+        )
+      }
+    }
+  }
+
   basarili <- vapply(koken, function(k) isTRUE(k$success), logical(1))
 
   list(
@@ -111,6 +147,7 @@ pk_deep_reconcile_packets <- function(query_results) {
     successful = sum(basarili),
     failed = length(koken) - sum(basarili),
     degraded_filter = sum(bozuk_filtre),
+    mixed_engine_dropped = length(karma_motor_dusurulen),
     cross_query_arithmetic_allowed = FALSE,
     instruction = PK_DEEP_NO_CROSS_ARITHMETIC_INSTRUCTION,
     comparability = pk_deep_packet_comparability(koken)

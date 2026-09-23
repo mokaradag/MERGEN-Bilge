@@ -327,6 +327,7 @@ test_that("bozuk tıklama yükleri çökmeden reddedilir", {
                    list(filename = ""), list(filename = "&&&&"))) {
     expect_null(.scr_click(env, yuk, base))
   }
+  expect_length(env$.scan_calls, 0L)
 })
 
 test_that("yol geçişi, mutlak yol ve ADS ipuçları kök dışını açamaz", {

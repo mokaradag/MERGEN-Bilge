@@ -53,11 +53,16 @@
 .CodeMirror .cm-quote,
 .CodeMirror .cm-hr { color: #7f848e !important; }
 .CodeMirror .cm-string.cm-property { color: #e06c75 !important; }
-.CodeMirror[data-lang="diff"] .cm-meta { color: #c678dd !important; }
+.CodeMirror[data-lang="diff"] .cm-meta,
+.CodeMirror.cm-lang-diff .cm-meta { color: #c678dd !important; }
 .CodeMirror[data-lang="markdown"] .cm-variable-2,
-.CodeMirror[data-lang="markdown"] .cm-variable-3 { color: #abb2bf !important; }
-.CodeMirror[data-lang="markdown"] .cm-link { color: #61aeee !important; }
-.CodeMirror[data-lang="markdown"] .cm-url { color: #56b6c2 !important; }
+.CodeMirror[data-lang="markdown"] .cm-variable-3,
+.CodeMirror.cm-lang-markdown .cm-variable-2,
+.CodeMirror.cm-lang-markdown .cm-variable-3 { color: #abb2bf !important; }
+.CodeMirror[data-lang="markdown"] .cm-link,
+.CodeMirror.cm-lang-markdown .cm-link { color: #61aeee !important; }
+.CodeMirror[data-lang="markdown"] .cm-url,
+.CodeMirror.cm-lang-markdown .cm-url { color: #56b6c2 !important; }
 
 /* Kod katlama stilleri */
 .CodeMirror-foldgutter {
@@ -147,11 +152,16 @@ html[data-theme="light"] .CodeMirror .cm-header { color: #0550ae !important; }
 html[data-theme="light"] .CodeMirror .cm-quote,
 html[data-theme="light"] .CodeMirror .cm-hr { color: #6e7781 !important; }
 html[data-theme="light"] .CodeMirror .cm-string.cm-property { color: #0550ae !important; }
-html[data-theme="light"] .CodeMirror[data-lang="diff"] .cm-meta { color: #8250df !important; }
+html[data-theme="light"] .CodeMirror[data-lang="diff"] .cm-meta,
+html[data-theme="light"] .CodeMirror.cm-lang-diff .cm-meta { color: #8250df !important; }
 html[data-theme="light"] .CodeMirror[data-lang="markdown"] .cm-variable-2,
-html[data-theme="light"] .CodeMirror[data-lang="markdown"] .cm-variable-3 { color: #1f2328 !important; }
+html[data-theme="light"] .CodeMirror[data-lang="markdown"] .cm-variable-3,
+html[data-theme="light"] .CodeMirror.cm-lang-markdown .cm-variable-2,
+html[data-theme="light"] .CodeMirror.cm-lang-markdown .cm-variable-3 { color: #1f2328 !important; }
 html[data-theme="light"] .CodeMirror[data-lang="markdown"] .cm-link,
-html[data-theme="light"] .CodeMirror[data-lang="markdown"] .cm-url { color: #0a3069 !important; }
+html[data-theme="light"] .CodeMirror[data-lang="markdown"] .cm-url,
+html[data-theme="light"] .CodeMirror.cm-lang-markdown .cm-link,
+html[data-theme="light"] .CodeMirror.cm-lang-markdown .cm-url { color: #0a3069 !important; }
 
 html[data-theme="light"] .CodeMirror-activeline-background {
   background: rgba(0, 48, 135, 0.05) !important;

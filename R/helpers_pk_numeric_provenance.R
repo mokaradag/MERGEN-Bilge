@@ -107,7 +107,7 @@ pk_numeric_provenance_validate <- function(text, facts) {
 
   # KAYNAKSIZ SAYI GÖRÜNÜR KALIYORSA "sayılar R'den" DENMEZ: `warn` kipi modelin
   # yazdığı sayıyı metinde bırakır; o sayıyı doğrulanmış gibi sunmak yanlıştı.
-  kaynaksiz <- "model_numeric_literal" %in% nedenler
+  kaynaksiz <- any(nedenler %in% c("model_numeric_literal", "render_degraded"))
   paste0(
     "\n\n\U000026A0\U0000FE0F **Doğrulama notu:** Bu yanıtta bazı ",
     "ifadeler analiz olgularına bağlanamadı: ",

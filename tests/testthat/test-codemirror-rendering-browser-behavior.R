@@ -25,10 +25,15 @@ test_that("kod blokları gerçek CodeMirror ile vurgulanır, katlanır ve tam ko
   for (expr in exprs) eval(expr, runner)
 
   browser <- runner$cm_render_check_find_browser()
-  skip_if(!nzchar(browser), "Yerel Chrome/Chromium/Edge bulunamadı (MERGEN_BROWSER_BIN).")
+  required <- nzchar(Sys.getenv("MERGEN_BROWSER_BIN", unset = ""))
+  if (!nzchar(browser)) {
+    if (required) fail("MERGEN_BROWSER_BIN ayarlı ama tarayıcı bulunamadı.")
+    skip("Yerel Chrome/Chromium/Edge bulunamadı (MERGEN_BROWSER_BIN).")
+  }
 
   res <- runner$cm_render_check_run(root, browser)
-  skip_if(!isTRUE(res$page_rendered) && !identical(res$browser_status, 0L),
+  skip_if(!required && !isTRUE(res$page_rendered) &&
+            !identical(res$browser_status, 0L) && !identical(res$browser_status, 124L),
           paste("Tarayıcı başlatılamadı:", substr(res$stderr, 1L, 300L)))
 
   report <- runner$cm_render_check_plain(paste(res$status, res$log, sep = "\n"))

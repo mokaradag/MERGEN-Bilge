@@ -394,6 +394,22 @@ test_that("warn notu kaynaksiz sayi varsa dogrulanmamis der, yoksa R hesabini be
   expect_true(grepl("R tarafından hesaplanmıştır", bilinmeyen$text, fixed = TRUE))
 })
 
+test_that("warn notu çözümleyici bozulduğunda R hesabı iddiası yapmaz", {
+  env <- .pk_hard_env()
+  olgular <- .pk_hard_facts(env)
+  env$pk_numeric_provenance_validate <- function(...) stop("sentetik çözümleyici hatası")
+
+  sonuc <- env$pk_numeric_provenance_apply(
+    "Uydurma 999 saat. Deger {{fact:geciken.sum.overall.abc123}}.",
+    olgular, mode = "warn"
+  )
+
+  expect_true(isTRUE(sonuc$degraded))
+  expect_true(grepl("doğrulanmamıştır", sonuc$text, fixed = TRUE))
+  expect_false(grepl("R tarafından hesaplanmıştır", sonuc$text, fixed = TRUE))
+  expect_false(grepl("{{fact:", sonuc$text, fixed = TRUE))
+})
+
 # ---------------------------------------------------------------------------
 # 12) Tarayıcı: noktalı kodlar ölçü değildir; binlik gruplu sayı ölçüdür
 # ---------------------------------------------------------------------------

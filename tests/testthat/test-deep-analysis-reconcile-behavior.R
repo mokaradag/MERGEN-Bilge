@@ -387,6 +387,24 @@ test_that("her paket KENDİ kökenini korur", {
   expect_equal(uzlasma$provenance[[2]]$filter_status, "not_reached")
 })
 
+test_that("v1 ve v2 başarılı paketleri aynı yanıta karıştırılmaz", {
+  env <- .pk_reconcile_env()
+  sonuclar <- list(
+    list(query_name = "V2", success = TRUE, pk_engine_mode = "v2",
+         pk_observation = list(query_id = "q-v2", filter_status = "ok_filtered")),
+    list(query_name = "V1", success = TRUE, pk_engine_mode = "v1",
+         pk_observation = list(query_id = "q-v1", filter_status = "ok_filtered"))
+  )
+  uzlasma <- env$pk_deep_reconcile_packets(sonuclar)
+  expect_equal(uzlasma$successful, 1L)
+  expect_equal(uzlasma$failed, 1L)
+  expect_equal(uzlasma$mixed_engine_dropped, 1L)
+  expect_true(isTRUE(uzlasma$packets[[1]]$success))
+  expect_false(isTRUE(uzlasma$packets[[2]]$success))
+  expect_true(grepl("aynı yanıt sözleşmesinde", uzlasma$packets[[2]]$error_msg, fixed = TRUE))
+  expect_identical(uzlasma$packets[[2]]$pk_observation$outcome, "Hata")
+})
+
 test_that("ÇAPRAZ SORGU ARİTMETİĞİ her koşulda YASAKTIR", {
   env <- .pk_reconcile_env()
 

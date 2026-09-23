@@ -45,6 +45,22 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
 
   successful <- Filter(function(r) isTRUE(r$success), query_results)
   failed <- Filter(function(r) !isTRUE(r$success), query_results)
+  successful_modes <- unique(vapply(successful, function(r) {
+    if (identical(as.character(r$pk_engine_mode %||% "")[1], "v2")) "v2" else "v1"
+  }, character(1)))
+
+  # v1 blokları doğrudan sayılar, v2 blokları olgu yuvaları taşır. İki sözleşme
+  # tek model yanıtında güvenli biçimde doğrulanamaz; normal akış bunu uzlaştırma
+  # katmanında ayırır, bu koruma ise doğrudan çağrıları kapalı başarısız yapar.
+  if (length(successful_modes) > 1L) {
+    return(list(
+      type = "error_message",
+      content = paste0(
+        "\U0001F50D **Derin Analiz Sonucu:** v1 ve v2 analiz sonuçları aynı ",
+        "yanıt bağlamında güvenli biçimde birleştirilemedi. Lütfen analizi yeniden çalıştırın."
+      )
+    ))
+  }
 
   if (length(successful) == 0) {
     return(list(
@@ -64,9 +80,7 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
   detail_instruction <- detail_config$instruction %||% ""
   base_max_tokens <- detail_config$max_tokens %||% 3000
   query_count <- length(successful)
-  v2_present <- any(vapply(successful, function(r) {
-    identical(as.character(r$pk_engine_mode %||% "")[1], "v2")
-  }, logical(1)))
+  v2_present <- identical(successful_modes, "v2")
 
   if (query_count > 1) {
     scale_factor <- 1 + (query_count - 1) * 0.3
