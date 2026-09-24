@@ -193,6 +193,6 @@ html[data-theme="light"] .CodeMirror pre,
 html[data-theme="light"] .CodeMirror-line,
 html[data-theme="light"] .CodeMirror-line-like {
   background: transparent !important;
-  color: inherit !important;
+  color: #1f2328 !important;
   border: none !important;
 }
