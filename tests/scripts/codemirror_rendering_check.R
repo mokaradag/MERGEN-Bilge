@@ -203,10 +203,13 @@ cm_render_check_run <- function(repo_root, browser_bin, timeout_seconds = 120L,
       args <- c(args, "--no-sandbox")
     }
     args <- c(args, "--dump-dom", sprintf("http://127.0.0.1:%d/__cm_check/index.html", port))
-    tryCatch(
+    # 127: tarayıcı başlatılamadı; 124 yalnızca GERÇEK zaman aşımıdır.
+    res <- tryCatch(
       processx::run(browser_bin, args, error_on_status = FALSE, timeout = timeout_seconds),
-      error = function(e) list(status = 124L, stdout = "", stderr = conditionMessage(e))
+      error = function(e) list(status = 127L, stdout = "", stderr = conditionMessage(e))
     )
+    if (isTRUE(res$timeout)) res$status <- 124L
+    res
   }
 
   res <- run_browser("--headless=new")

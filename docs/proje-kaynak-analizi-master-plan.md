@@ -1480,8 +1480,10 @@ model-written `1.000 saat`) rather than by heuristic classification of prose. Re
 periods are usually compiled into an absolute date, which loses the user's own count; so
 `gün`/`ay`/`yıl` counts in the user's question ("son 6 ayda", "30 günden az") are carried
 as `request_input` facts too (`pk_request_period_values()`; only the normalised `6 ay`
-values travel in the packet, never the raw question) and printed with a slot on the
-"Kullanici donem ifadesi" line.
+values travel in the packet, never the raw question) and printed as `6 {{slot}} ay` on the
+"Kullanici donem ifadesi" line (the slot resolves to the number only; the unit stays the
+model's own text). A period is a user criterion only while an applied range filter exists:
+with filters disabled, dropped or timed out, no period fact and no trusted key is emitted.
 
 **Every number the model can see has a slot.** Besides measures this covers coverage
 counts *and* the empty-value share (`missing_share`, `%` with one decimal, printed only

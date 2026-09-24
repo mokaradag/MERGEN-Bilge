@@ -322,8 +322,9 @@ pk_compose_close_markdown <- function(text) {
   # jeton olarak görünürdü. Her parantezi silmek ise meşru veri değerlerini
   # (`Proje {A-17}`, JSON hücreleri) bozuyor, `A{B}` ile `AB` gibi FARKLI
   # değerleri aynı gösterime indiriyordu; yalnızca çift parantez ayrılır.
-  txt <- gsub("{{", "{ {", txt, fixed = TRUE)
-  txt <- gsub("}}", "} }", txt, fixed = TRUE)
+  # Üç ve daha uzun diziler de ayrılır (`{{{fact:x}}}`): her bitişik çift bölünür.
+  txt <- gsub("\\{(?=\\{)", "{ ", txt, perl = TRUE)
+  txt <- gsub("\\}(?=\\})", "} ", txt, perl = TRUE)
   txt <- gsub("`", "'", txt, fixed = TRUE)
   txt <- trimws(gsub("[[:space:]]+", " ", txt))
 

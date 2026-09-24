@@ -162,6 +162,12 @@ test_that("olgu YOKSA (v1 yolu) davranış DEĞİŞMEZ", {
     env$.pk_hook_room_footer_append("Serbest metin yanıt.", list(footer = "")),
     "Serbest metin yanıt."
   )
+  # Kayıt HİÇ yokken de `fact` önekli yuva ham yayımlanmaz; şablon korunur.
+  kayitsiz <- env$.pk_hook_room_footer_append(
+    "Deger {{fact:uydurma.sum.overall}} ve {{ ad }}.", list(footer = "")
+  )
+  expect_false(grepl("{{fact:", kayitsiz, fixed = TRUE))
+  expect_true(grepl("{{ ad }}", kayitsiz, fixed = TRUE))
 
   # Olgusuz kayıtta `fact` önekli yuva jetonu alt bilginin yanında HAM kalmaz;
   # sıradan şablon söz dizimi korunur.

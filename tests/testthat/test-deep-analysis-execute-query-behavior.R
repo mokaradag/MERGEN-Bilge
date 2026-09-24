@@ -308,6 +308,19 @@ test_that("v2 Deep Thinking paketi sorudaki dönem sayısını güvenilir istek 
   }
   env$generate_statistical_summary <- function(...) stop("legacy özet çağrıldı")
 
+  # Filtre KAPALIYKEN dönem kullanıcı kriteri değildir: olgu ve güvenilir anahtar yok.
+  filtresiz <- env$execute_single_deep_query(
+    query = .deepV2Query(), user_prompt = "Son 6 ayda başlayan projelerin ilerlemesi",
+    session = NULL, rls_info = list(), detail_config = .detailCfg
+  )
+  expect_true(filtresiz$success)
+  expect_length(Filter(function(f) is.list(f) && identical(f$column, "__istek_donem__"),
+                       filtresiz$pk_facts), 0L)
+
+  # Uygulanan bir tarih aralığı filtresiyle dönem istek girdisi olur.
+  env$pk_deep_effective_filters <- function(...) {
+    list(list(column = "Snapshot", operation = "greater_or_equal", values = "2026-03-24"))
+  }
   res <- env$execute_single_deep_query(
     query = .deepV2Query(), user_prompt = "Son 6 ayda başlayan projelerin ilerlemesi",
     session = NULL, rls_info = list(), detail_config = .detailCfg

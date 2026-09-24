@@ -99,12 +99,28 @@ test_that("yinelenen sayi silinirken siradan sozcuk KORUNUR", {
   env <- .pk_hard_env()
   olgular <- .pk_hard_facts(env)
   sonuc <- env$pk_numeric_provenance_apply(
-    paste0("Toplam 15.448 aktivite ", .pk_hard_token(env, olgular, 1), " gecikti."),
+    paste0("Toplam ", .pk_hard_token(env, olgular, 1), " 15.448 aktivite gecikti."),
     olgular, mode = "log"
   )
   expect_true(grepl("aktivite", sonuc$text, fixed = TRUE))
   expect_identical(sonuc$mismatches[[1]]$reason, "duplicate_numeric_literal")
-  expect_false(grepl("15.448 aktivite 15.448", sonuc$text, fixed = TRUE))
+  expect_false(grepl("15.448 15.448", sonuc$text, fixed = TRUE))
+})
+
+test_that("araya sozcuk giren model sayisi yineleme sayilip SILINMEZ", {
+  env <- .pk_hard_env()
+  olgular <- .pk_hard_facts(env)
+  metin <- paste0("Son 1.200 aktivite ", .pk_hard_token(env, olgular, 1), " gecikti.")
+  sonuc <- env$pk_numeric_provenance_apply(metin, olgular, mode = "log")
+  expect_true(grepl("1.200 aktivite", sonuc$text, fixed = TRUE))
+  expect_identical(sonuc$mismatches[[1]]$reason, "model_numeric_literal")
+  expect_false(isTRUE(sonuc$mismatches[[1]]$recoverable))
+  # Olcek birimi rakama bitisikse komsuluk korunur ve yineleme silinir.
+  saat <- env$pk_numeric_provenance_apply(
+    paste0("Toplam 15.448 saat ", .pk_hard_token(env, olgular, 1), " harcandi."),
+    olgular, mode = "log"
+  )
+  expect_identical(saat$mismatches[[1]]$reason, "duplicate_numeric_literal")
 })
 
 test_that("warn notu yalnizca KURTARILAMAZ bulgular icin gorunur", {
@@ -218,6 +234,10 @@ test_that("isteme giden butce asimi ozeti DEGER degil YUVA tasir", {
   expect_true(grepl(.pk_hard_token(env, olgular, 1), ozet, fixed = TRUE))
   expect_false(grepl("15.448", ozet, fixed = TRUE))
   expect_false(grepl("18.420,5", ozet, fixed = TRUE))
+  # Kesilen listede atlanan sayisi da yuvasiz sayi olarak isteme girmez.
+  kesik <- env$pk_compose_facts_prompt_summary(olgular, limit = 1L)
+  expect_true(grepl("bu listede yok", kesik, fixed = TRUE))
+  expect_false(grepl("[0-9]", gsub("\\{\\{fact:[^}]*\\}\\}", "", kesik, perl = TRUE)))
 
   # Kullaniciya giden deterministik ozet DEGERI tasir, yuva tasimaz.
   kullanici <- env$pk_compose_facts_summary(olgular)
@@ -518,14 +538,25 @@ test_that("sorudaki gun/ay/yil sayilari donem istek girdisine donusur", {
 
 test_that("donem istek girdisi yuvayla basilir; duz yinelemesi ihlal sayilmaz", {
   env <- .pk_hard_env()
+  # Filtre uygulanmadıysa dönem kullanıcı kriteri gibi sunulmaz.
+  filtresiz <- list(scope = list(scope_signature = "sentetik"),
+                    filters = list(applied = list(), request_periods = "6 ay"))
+  expect_length(env$pk_packet_request_facts(filtresiz), 0L)
+  expect_false(grepl("donem ifadesi", env$.pk_render_filters(filtresiz), fixed = TRUE))
+
   paket <- list(scope = list(scope_signature = "sentetik"),
-                filters = list(applied = list(), request_periods = "6 ay"))
-  istek <- env$pk_packet_request_facts(paket)
+                filters = list(applied = list(list(column = "Baslangic", operation = "greater_than",
+                                                   values = "2026-03-24")),
+                               request_periods = "6 ay"))
+  istek <- Filter(function(o) identical(o$column, "__istek_donem__"),
+                  env$pk_packet_request_facts(paket))
   expect_length(istek, 1L)
   expect_identical(istek[[1]]$kind, "request_input")
   expect_identical(istek[[1]]$display, "6")
-  expect_true(grepl(env$pk_fact_reference_token(istek[[1]]$fact_id),
-                    env$.pk_render_filters(paket), fixed = TRUE))
+  # Paket satırı "6 {{yuva}} ay" basar: yuva yalnızca sayıya çözülür, birim
+  # modelin kendi metnidir.
+  jeton <- env$pk_fact_reference_token(istek[[1]]$fact_id)
+  expect_true(grepl(paste0("6 ", jeton, " ay"), env$.pk_render_filters(paket), fixed = TRUE))
 
   metin <- "Son 6 ay icinde baslayan projeler listelendi."
   expect_identical(env$pk_numeric_provenance_apply(metin, istek, mode = "log")$protocol, 0L)
@@ -535,4 +566,109 @@ test_that("donem istek girdisi yuvayla basilir; duz yinelemesi ihlal sayilmaz", 
     paste0("Son ", env$pk_fact_reference_token(istek[[1]]$fact_id), " ayda baslayanlar."),
     istek, mode = "block")
   expect_identical(yuvali$text, "Son 6 ayda baslayanlar.")
+})
+
+# ---------------------------------------------------------------------------
+# 16) İnceleme uç durumları: dönem ekleri, sayı anahtarı, nötrleyici, birim,
+#     block başlık artığı, eski işaret notu, parantez dizileri, filtre gösterimi
+# ---------------------------------------------------------------------------
+
+test_that("donem cikarici iyelik ve -ki eklerini tanir, benzer sozcukleri almaz", {
+  env <- .pk_hard_env()
+  expect_identical(env$pk_request_period_values("Son 6 aydaki projeler, 30 gündeki işler"),
+                   c("6 ay", "30 gün"))
+  expect_identical(env$pk_request_period_values("6 ayında bitenler ve 1 yıldaki kayıtlar"),
+                   c("6 ay", "1 yıl"))
+  for (metin in c("2 aynı kod", "3 yılan", "5 yıldız", "3 ayrı proje")) {
+    expect_identical(env$pk_request_period_values(metin), character(0), info = metin)
+  }
+})
+
+test_that("sifirla baslayan ondalik binlik gruplu sayi sayilmaz", {
+  env <- .pk_hard_env()
+  expect_identical(env$pk_fact_number_key("0,125"), "0.125")
+  expect_identical(env$pk_fact_number_key("0.500"), "0.5")
+  expect_identical(env$pk_fact_number_key("1.000"), "1000")
+  # `500` isteği modelin `0,500` iddiasını muaf KILMAZ.
+  paket <- list(scope = list(), filters = list(applied = list(
+    list(column = "Esik", operation = "greater_than", values = "500"))))
+  istek <- env$pk_packet_request_facts(paket)
+  expect_identical(env$pk_numeric_provenance_apply("Esik 0,500 olarak belirlendi.", istek,
+                                                   mode = "log")$protocol, 1L)
+})
+
+test_that("notrleyici gecersiz kodlamada da ham jeton sizdirmaz", {
+  env <- .pk_hard_env()
+  bozuk <- paste0("A {{fact:x.sum.o.1}} ", rawToChar(as.raw(c(0xff, 0xfe))), " B")
+  Encoding(bozuk) <- "UTF-8"
+  sonuc <- suppressWarnings(env$pk_fact_reference_neutralize(bozuk))
+  expect_false(grepl("{{fact:", sonuc, fixed = TRUE, useBytes = TRUE))
+  # Bayt düzeyi deneme de düşerse metin boş döner, ham metin değil.
+  env$gsub <- function(...) stop("sentetik gsub hatası")
+  expect_identical(env$pk_fact_reference_neutralize("A {{fact:x.sum.o.1}} B"), "")
+})
+
+test_that("olcek listesi disindaki birim yuvanin ardinda ikinci kez basilmaz", {
+  env <- .pk_hard_env()
+  ton <- env$pk_fact_record("measure", "Sevk", "sum", 1250,
+                            list(label = "Sevk", unit = "ton", decimals = 0L))
+  jeton <- env$pk_fact_reference_token(ton$fact_id)
+  sonuc <- env$pk_numeric_provenance_apply(paste0("Toplam ", jeton, " ton sevk edildi."),
+                                           list(ton), mode = "log")
+  expect_identical(sonuc$text, "Toplam 1.250 ton sevk edildi.")
+  expect_length(sonuc$mismatches, 0L)
+  # Birimle başlayan başka bir sözcük silinmez.
+  expect_identical(env$pk_numeric_provenance_apply(paste0("Toplam ", jeton, " tonaj."),
+                                                   list(ton), mode = "log")$text,
+                   "Toplam 1.250 ton tonaj.")
+})
+
+test_that("block kipinde yalnizca basliklar kalirsa deterministik ozete dusulur", {
+  env <- .pk_hard_env()
+  olgular <- .pk_hard_facts(env)
+  metin <- paste0("## Genel durum\n\nToplam {{fact:yok.olgu}} gecikti.\n\n",
+                  "### Öneriler\n\n- Son 99.999 saat harcandi.")
+  blok <- env$pk_numeric_provenance_apply(metin, olgular, mode = "block",
+                                          fallback_text = "DETERMINISTIK OZET")
+  expect_true(isTRUE(blok$blocked))
+  expect_true(grepl("DETERMINISTIK OZET", blok$text, fixed = TRUE))
+  expect_false(grepl("## Genel durum", blok$text, fixed = TRUE))
+
+  # Başlığın altında kullanılabilir düzyazı kalırsa yanıt korunur.
+  korunan <- env$pk_numeric_provenance_apply(
+    paste0("## Genel durum\n\nToplam ", .pk_hard_token(env, olgular, 1),
+           " aktivite gecikti.\n\n### Öneriler\n\n- Son 99.999 saat harcandi."),
+    olgular, mode = "block", fallback_text = "DETERMINISTIK OZET")
+  expect_false(isTRUE(korunan$blocked))
+  expect_true(grepl("Toplam 15.448 aktivite gecikti.", korunan$text, fixed = TRUE))
+})
+
+test_that("warn notu eski isaretin yanindaki kaynaksiz sayiyi R hesabi saymaz", {
+  env <- .pk_hard_env()
+  sonuc <- env$pk_numeric_provenance_apply("Toplam 47 proje [fact:x] gecikti.",
+                                           .pk_hard_facts(env), mode = "warn")
+  expect_true(grepl("doğrulanmamıştır", sonuc$text, fixed = TRUE))
+  expect_false(grepl("R tarafından hesaplanmıştır", sonuc$text, fixed = TRUE))
+})
+
+test_that("tablo hucresinde uc ve daha uzun parantez dizisi de bolunur", {
+  env <- .pk_hard_env()
+  hucre <- env$.pk_compose_escape("x {{{fact:olcu.sum.overall.abc123}}} y")$text
+  expect_false(grepl("{{", hucre, fixed = TRUE))
+  expect_false(grepl("}}", hucre, fixed = TRUE))
+  expect_false(grepl(env$PK_FACT_REF_BROKEN_OPENER_PATTERN, hucre, perl = TRUE))
+})
+
+test_that("uygulanan filtre degeri yuvanin cozulecegi gosterimle basilir", {
+  env <- .pk_hard_env()
+  paket <- list(scope = list(), filters = list(applied = list(
+    list(column = "Durum", operation = "exact_match", values = "A|B`C"),
+    list(column = "Tip", operation = "exact_match", value = "X"))))
+  istek <- env$pk_packet_request_facts(paket)
+  satir <- env$.pk_render_filters(paket)
+  for (o in istek) {
+    expect_true(grepl(paste0("\"", o$display, "\" ", env$pk_fact_reference_token(o$fact_id)),
+                      satir, fixed = TRUE), info = o$column)
+  }
+  expect_false(grepl("A|B", satir, fixed = TRUE))
 })

@@ -99,9 +99,23 @@ test_that("gerçek CodeMirror uzun kodu tam çizer, yalnızca genişlik değişi
   expect_true(grepl("viewportMargin: Infinity", manager_js, fixed = TRUE))
   # Gerçek motorda refresh() tüm satırları yeniden çizer: başlatma sonrası
   # zamanlayıcı yağmuru ve editör başına pencere resize dinleyicisi olmamalı.
-  expect_false(grepl("setTimeout\\(\\s*\\(\\)\\s*=>\\s*editor\\.refresh", manager_js, perl = TRUE))
-  expect_false(grepl("addEventListener('resize'", manager_js, fixed = TRUE))
+  # Ok/fonksiyon geri çağrısı (süslü parantezli ya da değil) ve her tırnak biçimi.
+  zamanlayici <- "setTimeout\\([^;]{0,120}?editor\\.refresh\\s*\\("
+  yeniden_boyut <- "addEventListener\\(\\s*['\"`]resize['\"`]"
+  for (yasak in c("setTimeout(() => editor.refresh(), 10)",
+                  "setTimeout(() => { editor.refresh(); }, 50)",
+                  "setTimeout(function () { editor.refresh(); })")) {
+    expect_true(grepl(zamanlayici, yasak, perl = TRUE), info = yasak)
+  }
+  for (yasak in c("addEventListener('resize', f)", "window.addEventListener(\"resize\", f)")) {
+    expect_true(grepl(yeniden_boyut, yasak, perl = TRUE), info = yasak)
+  }
+  expect_false(grepl(zamanlayici, manager_js, perl = TRUE))
+  expect_false(grepl(yeniden_boyut, manager_js, perl = TRUE))
   expect_true(grepl("new ResizeObserver(", manager_js, fixed = TRUE))
+  # JSX modu vendored değildir: jsx/tsx etiketleri JS/TS moduna eşlenip yanlış
+  # vurgulanmaz, düz metin kalır.
+  expect_false(grepl("\\b(jsx|tsx)\\s*:", manager_js, perl = TRUE))
   expect_true(grepl("measuredWidths.get(wrapper) === width", manager_js, fixed = TRUE))
 })
 

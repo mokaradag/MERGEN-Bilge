@@ -272,15 +272,26 @@ openAnyPreview <- function(file_info, session, filePreview) {
   unique(c(yerlesimler, unlist(word, recursive = FALSE)))
 }
 
-# Aday kökün İÇİNDE, var olan bir DOSYA mı? Var olan yol varyantını döndürür.
+# Var olan yolun kanonik biçimi (bağlantılar çözülmüş); çözülemezse NA.
+.preview_canonical_path <- function(x) {
+  tryCatch(normalizePath(as.character(x)[1], winslash = "/", mustWork = TRUE),
+           error = function(e) NA_character_)
+}
+
+# Aday kökün İÇİNDE, var olan bir DOSYA mı? Sözcüksel denetime ek olarak aday
+# ve kök KANONİK biçimde (bağlantı/reparse point çözülmüş) karşılaştırılır:
+# UNC yolunda `normalize_mcp_path()` bağlantıyı çözmez; kök içindeki bir dosya
+# bağlantısı sözcüksel denetimi geçip kök dışını açabilirdi. Kanonik yol döner.
 .preview_accept_candidate <- function(aday, base_dir) {
   var <- path_existing_variant(aday)
   if (is.na(var) || isTRUE(dir.exists(var))) return(NULL)
-  if (!.preview_path_inside(var, base_dir)) {
+  kanonik <- c(.preview_canonical_path(var), .preview_canonical_path(base_dir))
+  if (!.preview_path_inside(var, base_dir) || anyNA(kanonik) ||
+      !.preview_path_inside(kanonik[1], kanonik[2])) {
     log_warn("[SRC_CLICK] aday kök dışına çözüldü, reddedildi: {aday}")
     return(NULL)
   }
-  var
+  kanonik[1]
 }
 
 # Belirleyici adayları yoklar: sabit sayıda varlık denetimi, dizin taraması YOK.
@@ -292,45 +303,58 @@ openAnyPreview <- function(file_info, session, filePreview) {
   NULL
 }
 
-# İndeks katmanı (tek taban). `tarama_izni = FALSE`: TAM ipucu yalnızca
-# ÖNBELLEKTEKİ indekste aranır (tarama yok). `TRUE`: indeks yetkili değilse
-# ("stale") TEK tarama yapılıp tam ipucu yeniden aranır; ardından yalnızca dosya
-# adıyla zayıf arama AYNI indeks girdisiyle yapılır (ikinci tarama olmaz).
-.preview_index_resolve <- function(base_dir, filename_full, filename_base, tarama_izni = FALSE) {
-  ara <- function(idx, hedef) {
-    if (!is.list(idx) || !length(idx$map)) return(NULL)
-    tryCatch(search_file_in_folder(base_dir, hedef, idx = idx), error = function(e) NULL)
-  }
+# ÖNBELLEKTEKİ indekste tek bir güç kademesi arar; TARAMA YAPMAZ. "tam": tam ad
+# ve '&&' skorlu arama; "word": PDF -> Word ve parça içerme; "ad": yalnızca
+# dosya adıyla zayıf arama.
+.preview_index_lookup <- function(base_dir, kademe, filename_full, filename_base) {
   idx <- .file_index_peek(base_dir)
-  if (!isTRUE(tarama_izni)) return(.preview_accept_candidate(ara(idx, filename_full), base_dir))
-  hit <- NULL
-  if (identical(.file_index_entry_state(idx), "stale")) {
-    idx <- .build_basename_index(base_dir)
-    hit <- ara(idx, filename_full)
-  }
-  if (is.null(hit) && !identical(filename_base, filename_full)) hit <- ara(idx, filename_base)
+  if (!is.list(idx) || !length(idx$map)) return(NULL)
+  ipucu <- grepl("&&", filename_full, fixed = TRUE)
+  hit <- tryCatch(switch(
+    kademe,
+    tam = .search_from_index(base_dir, filename_full, idx = idx) %||%
+      (if (ipucu) .search_with_hint(base_dir, filename_full, idx = idx)),
+    word = .search_pdf_word_fallback(base_dir, filename_full, idx = idx) %||%
+      (if (ipucu) .search_all_parts_contained(base_dir, filename_full, idx = idx)),
+    ad = if (!identical(filename_base, filename_full)) {
+      .search_from_index(base_dir, filename_base, idx = idx)
+    }
+  ), error = function(e) NULL)
   .preview_accept_candidate(hit, base_dir)
 }
 
-# Model tabanlarında çözümleme: (1) TÜM tabanlarda belirleyici adaylar, (2) tüm
-# tabanların önbellekteki indeksleri, (3) taban başına en fazla bir tarama.
-# Böylece bir tabanın taraması başka tabandaki ucuz isabeti hiç bekletmez.
+# Model tabanlarında çözümleme; her adım TÜM tabanlarda denenir, sonra bir
+# sonrakine geçilir: (1) tam belirleyici adaylar, (2) önbellekteki indekste tam
+# ad, (3) Word belirleyici adayları ve önbellekte Word eşdeğeri, (4) indeksi
+# yetkili olmayan taban için EN FAZLA BİR tarama ve tam ad, (5) Word eşdeğeri,
+# (6) yalnızca dosya adıyla zayıf eşleşme. Böylece bir tabanın taraması başka
+# tabandaki ucuz TAM isabeti bekletmez; zayıf eşleşme ise başka tabandaki tam
+# dosyanın önüne geçemez.
 .preview_resolve_model_bases <- function(bases, filename_full, filename_base, parts) {
   parts <- as.character(parts %||% character(0))
   if (!length(parts) || !nzchar(trimws(filename_full %||% ""))) return(NULL)
   rel_adaylar <- .preview_direct_rel_candidates(filename_full, parts)
-  for (base_dir in bases) {
-    hit <- .preview_probe_direct(base_dir, rel_adaylar)
-    if (!is.null(hit)) {
-      log_info("[SRC_CLICK] (b1) belirleyici aday ile bulundu -> {hit}")
-      return(hit)
-    }
-  }
-  for (tarama_izni in c(FALSE, TRUE)) {
+  uzanti <- tolower(tools::file_ext(parts[length(parts)]))
+  tam_aday <- vapply(rel_adaylar, function(segs) {
+    identical(tolower(tools::file_ext(segs[length(segs)])), uzanti)
+  }, logical(1))
+  for (adim in c("b1", "b2", "b1_word", "b2_word", "b3", "b3_word", "b3_ad")) {
     for (base_dir in bases) {
-      hit <- .preview_index_resolve(base_dir, filename_full, filename_base, tarama_izni)
+      hit <- switch(
+        adim,
+        b1 = .preview_probe_direct(base_dir, rel_adaylar[tam_aday]),
+        b1_word = .preview_probe_direct(base_dir, rel_adaylar[!tam_aday]),
+        b2 = .preview_index_lookup(base_dir, "tam", filename_full, filename_base),
+        b2_word = ,
+        b3_word = .preview_index_lookup(base_dir, "word", filename_full, filename_base),
+        b3 = if (identical(.file_index_entry_state(.file_index_peek(base_dir)), "stale")) {
+          .build_basename_index(base_dir)
+          .preview_index_lookup(base_dir, "tam", filename_full, filename_base)
+        },
+        b3_ad = .preview_index_lookup(base_dir, "ad", filename_full, filename_base)
+      )
       if (!is.null(hit)) {
-        log_info("[SRC_CLICK] (b2) indeks ile bulundu -> {hit}")
+        log_info("[SRC_CLICK] ({adim}) bulundu -> {hit}")
         return(hit)
       }
     }

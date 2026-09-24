@@ -94,10 +94,12 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
     v2_blok <- identical(as.character(r$pk_engine_mode %||% "")[1], "v2")
     # v2 BAŞLIĞI YUVASIZ SAYI BASMAZ: satır sayısı paketin içinde yuvalıdır
     # (`__kapsam__`), ilgililik puanının olgusu yoktur. Çıplak basılan bir
-    # sayıyı model ancak elle yazabilir ve tarayıcı onu kaynaksız sayardı.
+    # sayıyı model ancak elle yazabilir ve tarayıcı onu kaynaksız sayardı;
+    # sıra numarası ("1/3") da bu yüzden yalnızca v1 başlığında kalır.
     header <- paste0(
       sprintf("\n\n==========================================\n"),
-      sprintf("\U0001F4CA SORGU %d/%d: %s\n", i, query_count, r$query_name),
+      if (v2_blok) sprintf("\U0001F4CA SORGU - %s\n", r$query_name) else
+        sprintf("\U0001F4CA SORGU %d/%d: %s\n", i, query_count, r$query_name),
       sprintf("Açıklama: %s\n", r$query_desc),
       if (v2_blok) "" else sprintf("Toplam Satır: %d | İlgililik: %.0f%%\n", r$row_count, r$relevance),
       sprintf("==========================================\n")

@@ -66,6 +66,12 @@ Nedenler ve düzeltmeler (ayrıntı: `technical-reference.md` > "Kaynak tıklama
   karakterleri de reddedilir; indeks isabeti dahil her aday açılmadan önce
   dosya olarak ve model tabanı içinde doğrulanır; kişisel kova ve `model_bases`
   kapsamı değişmedi.
+- Aday ve model tabanı ayrıca KANONİK yol (bağlantı/reparse point çözülmüş)
+  üzerinden karşılaştırılır: UNC tabanında kök içindeki bir dosya bağlantısı
+  kök dışını açamaz.
+- Öncelik tabanlar arasında korunur: başka tabandaki tam PDF, aynı gövdeli Word
+  belgesinin; taranmamış tabandaki tam dosya, başka tabandaki yalnızca dosya
+  adı eşleşmesinin önüne geçer (taban başına en fazla bir tarama sürer).
 
 Doğrulama sınırı: davranış ve tarama sayısı sözleşmesi bulut testleriyle
 kanıtlanır; gerçek UNC paylaşımındaki süre Windows VM'de ölçülmelidir.

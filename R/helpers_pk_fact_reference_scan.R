@@ -223,9 +223,10 @@ pk_fact_number_key <- function(txt) {
   ham <- sub("^[+-]", "", ham)
   if (!grepl("^[0-9][0-9.,]*$", ham, perl = TRUE)) return("")
 
-  if (grepl("^[0-9]{1,3}([.][0-9]{3})+([,][0-9]+)?$", ham, perl = TRUE)) {
+  # Binlik gruplu sayı `0` ile başlamaz: `0,125` / `0.500` ondalıktır.
+  if (grepl("^[1-9][0-9]{0,2}([.][0-9]{3})+([,][0-9]+)?$", ham, perl = TRUE)) {
     ham <- gsub(".", "", ham, fixed = TRUE)
-  } else if (grepl("^[0-9]{1,3}([,][0-9]{3})+([.][0-9]+)?$", ham, perl = TRUE)) {
+  } else if (grepl("^[1-9][0-9]{0,2}([,][0-9]{3})+([.][0-9]+)?$", ham, perl = TRUE)) {
     ham <- gsub(",", "", ham, fixed = TRUE)
   }
   ham <- sub(",", ".", ham, fixed = TRUE)

@@ -103,6 +103,12 @@ FILE_INDEX_PDF_WORD_EXTS <- c("docx", "docm", "doc")
   }
   girisler <- try(list.files(yol, full.names = TRUE, no.. = TRUE), silent = TRUE)
   hata <- inherits(girisler, "try-error")
+  # `list.files()` okunamayan klasörde hata vermez; boş sonuç yalnızca okunabilir
+  # bir klasörde "boş" sayılır.
+  if (!hata && !length(girisler)) {
+    hata <- !isTRUE(dir.exists(yol)) ||
+      !identical(unname(suppressWarnings(file.access(yol, 4L))), 0L)
+  }
   list(entries = if (hata) character(0) else as.character(girisler),
        truncated = FALSE, ok = !hata)
 }

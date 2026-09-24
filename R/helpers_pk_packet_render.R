@@ -183,16 +183,19 @@
     # ÜRETİLEN olgunun kimliğinden gelir; iki taraf tek kaynaktan okur.
     istek <- list()
     for (o in pk_packet_request_facts(packet)) {
-      istek[[as.character(o$source_index)]] <- o$fact_id
+      if (!is.na(o$source_index)) istek[[as.character(o$source_index)]] <- o
     }
     parcalar <- vapply(seq_along(uygulanan), function(i) {
       x <- uygulanan[[i]]
-      kimlik <- istek[[as.character(i)]]
-      jeton <- if (is.null(kimlik)) "" else paste0(" ", pk_fact_reference_token(kimlik))
+      olgu <- istek[[as.character(i)]]
+      # Değer, yuvanın çözüleceği gösterimin AYNISIDIR (tek kaynak).
+      deger <- if (is.null(olgu)) {
+        .pk_render_safe_text(paste(as.character((x[["values"]] %||% x[["value"]]) %||% ""),
+                                   collapse = ", "), 160L)
+      } else olgu$display
+      jeton <- if (is.null(olgu)) "" else paste0(" ", pk_fact_reference_token(olgu$fact_id))
       sprintf("%s %s \"%s\"%s", .pk_render_safe_text(x$column %||% "?", 80L),
-              .pk_render_safe_text(x$operation %||% "eslesme", 40L),
-              .pk_render_safe_text(paste(as.character(x$value %||% ""), collapse = ", "), 160L),
-              jeton)
+              .pk_render_safe_text(x$operation %||% "eslesme", 40L), deger, jeton)
     }, character(1))
     satirlar <- c(satirlar, sprintf("- Uygulanan filtre (kullanici kriteri): %s",
                                     paste(parcalar, collapse = " ; ")))
@@ -202,11 +205,14 @@
   donemler <- Filter(function(o) identical(o$column, "__istek_donem__"),
                      pk_packet_request_facts(packet))
   if (length(donemler)) {
+    # Yuva yalnızca sayıya çözülür; birim jetondan SONRA basılır ki model onu
+    # kendi metni olarak yazsın ("Son {{yuva}} ay" -> "Son 6 ay").
     satirlar <- c(satirlar, sprintf(
       "- Kullanici donem ifadesi (kullanici kriteri): %s",
-      paste(vapply(donemler, function(o) paste(o$request_values[1],
-                                                pk_fact_reference_token(o$fact_id)),
-                   character(1)), collapse = " ; ")))
+      paste(vapply(donemler, function(o) {
+        birim <- sub("^[0-9]+[[:space:]]*", "", as.character(o$request_values[1]))
+        paste(o$display, pk_fact_reference_token(o$fact_id), birim)
+      }, character(1)), collapse = " ; ")))
   }
 
   # D8: Bu blok bütçe düşürmelerinin HİÇBİRİNDE kaybolmaz.

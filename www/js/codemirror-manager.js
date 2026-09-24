@@ -54,8 +54,9 @@
   const LANG_ALIASES = {
     rscript: 'r',
     py: 'python', py3: 'python', python3: 'python',
-    js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript', node: 'javascript',
-    ts: 'typescript', tsx: 'typescript',
+    // jsx/tsx eşlenmez: JSX modu vendored değildir, etiketler düz metin kalır.
+    js: 'javascript', mjs: 'javascript', cjs: 'javascript', node: 'javascript',
+    ts: 'typescript',
     jsonc: 'json', json5: 'json',
     cs: 'csharp', 'c#': 'csharp',
     'c++': 'cpp', cc: 'cpp', cxx: 'cpp', hpp: 'cpp', h: 'c',

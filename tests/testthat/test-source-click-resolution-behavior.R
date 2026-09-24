@@ -314,6 +314,65 @@ test_that("önbellekte isabet eden taban, diğer tabanın taramasını beklemez"
   expect_length(env$.scan_calls, onceki)
 })
 
+test_that("tam PDF, başka tabandaki aynı gövdeli Word belgesinin önüne geçer", {
+  env <- .scr_forbid_scan(.scr_env())
+  b1 <- withr::local_tempdir(pattern = "scr-b1-")
+  b2 <- withr::local_tempdir(pattern = "scr-b2-")
+  .scr_touch(b1, "A", "B", "C.docx")
+  pdf <- .scr_touch(b2, "A", "B", "C.pdf")
+
+  expect_true(.scr_same(.scr_click(env, "A&&B&&C.pdf", c(b1, b2))$datapath, pdf))
+})
+
+test_that("önbellekteki tam ad, kökteki Word eşdeğerinden önce gelir", {
+  env <- .scr_env()
+  base <- withr::local_tempdir(pattern = "scr-")
+  pdf <- .scr_touch(base, "Alt", "rapor.pdf")
+  .scr_touch(base, "rapor.docx")
+  env$.build_basename_index(base)
+  onceki <- length(env$.scan_calls)
+
+  expect_true(.scr_same(.scr_click(env, "rapor.pdf", base)$datapath, pdf))
+  expect_length(env$.scan_calls, onceki)
+})
+
+test_that("yalnızca dosya adı eşleşmesi, başka tabandaki tam dosyanın önüne geçmez", {
+  env <- .scr_env()
+  b1 <- withr::local_tempdir(pattern = "scr-b1-")
+  b2 <- withr::local_tempdir(pattern = "scr-b2-")
+  .scr_touch(b1, "Diger", "C.pdf")
+  hedef <- .scr_touch(b2, "Arsiv", "A&&B&&C.pdf")
+
+  expect_true(.scr_same(.scr_click(env, "A&&B&&C.pdf", c(b1, b2))$datapath, hedef))
+  # Her taban en fazla bir kez taranır.
+  expect_identical(as.integer(table(env$.scan_calls)), c(1L, 1L))
+})
+
+test_that("tarama gerekmiyorsa önbellekteki dosya adı eşleşmesi taramasız kullanılır", {
+  env <- .scr_env()
+  b1 <- withr::local_tempdir(pattern = "scr-b1-")
+  b2 <- withr::local_tempdir(pattern = "scr-b2-")
+  .scr_touch(b1, "Kalite", "baska.pdf")
+  hedef <- .scr_touch(b2, "Diger", "rapor.pdf")
+  env$.build_basename_index(b1)
+  env$.build_basename_index(b2)
+  onceki <- length(env$.scan_calls)
+
+  expect_true(.scr_same(.scr_click(env, "X&&rapor.pdf", c(b1, b2))$datapath, hedef))
+  expect_length(env$.scan_calls, onceki)
+})
+
+test_that("yedek listeleyici okunamayan ya da kaybolan klasörü BAŞARISIZ sayar", {
+  env <- .scr_env()
+  skip_if(exists("cc_scan_list_dir_bounded", envir = env, inherits = TRUE))
+  bos <- withr::local_tempdir(pattern = "scr-bos-")
+
+  expect_true(isTRUE(env$.file_index_list_dir(bos, 1000, 100L)$ok))
+  expect_false(isTRUE(env$.file_index_list_dir(file.path(bos, "yok"), 1000, 100L)$ok))
+  env$file.access <- function(names, mode = 0L) stats::setNames(rep(-1L, length(names)), names)
+  expect_false(isTRUE(env$.file_index_list_dir(bos, 1000, 100L)$ok))
+})
+
 # ------------------------------------------------------------------------------
 # Güvenlik ve gizlilik sınırları
 # ------------------------------------------------------------------------------
@@ -379,6 +438,25 @@ test_that("sembolik bağlantı adayı kök dışına çözülürse reddedilir", 
   expect_null(.scr_click(env, "baglanti.pdf", base))
 })
 
+test_that("sözcüksel kapsamayı geçen bağlantı KANONİK yolda kök dışındaysa reddedilir", {
+  skip_on_os("windows")
+  env <- .scr_env()
+  # UNC'de `normalize_mcp_path()` bağlantıyı çözmez; burada aynı sözcüksel
+  # davranış taklit edilir, kanonik denetim yine de kaçışı yakalamalıdır.
+  env$normalize_mcp_path <- function(candidate, ...) gsub("\\\\", "/", as.character(candidate)[1])
+  ust <- withr::local_tempdir(pattern = "scr-ust-")
+  base <- file.path(ust, "model")
+  dir.create(base)
+  disarida <- .scr_touch(ust, "gizli.pdf")
+  icerideki <- .scr_touch(base, "acik.pdf")
+  skip_if_not(isTRUE(file.symlink(disarida, file.path(base, "baglanti.pdf"))))
+
+  expect_true(env$.preview_path_inside(file.path(base, "baglanti.pdf"), base))
+  expect_null(env$.preview_accept_candidate(file.path(base, "baglanti.pdf"), base))
+  expect_null(.scr_click(env, "baglanti.pdf", base))
+  expect_true(.scr_same(env$.preview_accept_candidate(icerideki, base), icerideki))
+})
+
 test_that("klasör, dosya adayı olarak açılmaz", {
   env <- .scr_env()
   base <- withr::local_tempdir(pattern = "scr-")
@@ -431,6 +509,8 @@ test_that("UNC kökünde belirleyici aday dize düzeyinde kurulur ve kapsama kor
     yol <- gsub("\\\\", "/", as.character(path)[1])
     if (identical(yol, "//sunucu/pay/Model/Surec/Alt/Talimat.docx")) yol else NA_character_
   }
+  # Kanonikleştirici de dosya sistemine gitmez: gerçek paylaşımda aynı yol döner.
+  env$.preview_canonical_path <- function(x) gsub("\\\\", "/", as.character(x)[1])
   adaylar <- env$.preview_direct_rel_candidates("Surec&&Alt&&Talimat.pdf",
                                                 c("Surec", "Alt", "Talimat.pdf"))
   expect_identical(adaylar[[1]], "Surec&&Alt&&Talimat.pdf")

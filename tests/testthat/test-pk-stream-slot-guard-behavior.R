@@ -99,9 +99,10 @@ test_that("köken kaydı yokken TTS ve benzetimli akış metni ham yuva taşıma
 })
 
 test_that("gerçek akış işleyicisi görünür ve düşünce metnini koruyucudan geçirir", {
-  kaynak <- paste(readLines(file.path(resolve_repo_root_for_tests(), "R",
-                                      "server_handler_true_streaming.R"),
-                            warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  # Yorumlar ayıklanır: yorumda alıntılanan çağrı, silinmiş kodu gizleyemez.
+  kaynak <- pk_test_strip_r_comments(paste(readLines(
+    file.path(resolve_repo_root_for_tests(), "R", "server_handler_true_streaming.R"),
+    warn = FALSE, encoding = "UTF-8"), collapse = "\n"))
   expect_true(grepl("gorunur <- mergen_pk_stream_visible_step(stream_env)", kaynak, fixed = TRUE))
   expect_true(grepl("delta = gorunur$delta", kaynak, fixed = TRUE))
   expect_true(grepl("mergen_pk_stream_reasoning_step(stream_env, FALSE)", kaynak, fixed = TRUE))

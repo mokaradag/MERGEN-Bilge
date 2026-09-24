@@ -90,7 +90,10 @@ PK_FACT_REF_UNRESOLVED_TR <- "(değer yok)"
 #'   olduğu BİLİNİR). `FALSE` yalnızca `fact` önekli biçimlere dokunur.
 pk_fact_reference_neutralize <- function(text, strict = FALSE) {
   if (!is.character(text) || length(text) != 1L || is.na(text)) return(text)
-  if (!grepl("{{", text, fixed = TRUE) && !grepl("[fact:", text, fixed = TRUE)) {
+  # Ön denetim bayt düzeyindedir: geçersiz UTF-8 metinde karakter düzeyi
+  # `grepl()` uyarıyla FALSE döner ve jeton nötrlenmeden sızardı.
+  if (!grepl("{{", text, fixed = TRUE, useBytes = TRUE) &&
+      !grepl("[fact:", text, fixed = TRUE, useBytes = TRUE)) {
     return(text)
   }
   desenler <- if (isTRUE(strict)) {
@@ -101,14 +104,23 @@ pk_fact_reference_neutralize <- function(text, strict = FALSE) {
       .PK_FACT_REF_FACT_OPEN_PATTERN, PK_FACT_REF_BROKEN_OPENER_PATTERN)
   }
   # Bu yardımcı HATA FIRLATMAZ: çağıranlar hata yakalayıcıların İÇİNDEDİR ve
-  # geçersiz kodlamalı bir metin `gsub(perl = TRUE)` ile düşebilir.
-  tryCatch({
-    notr <- text
-    for (desen in desenler) {
-      notr <- gsub(desen, PK_FACT_REF_UNRESOLVED_TR, notr, perl = TRUE)
-    }
-    gsub(PK_FACT_REF_LEGACY_PATTERN, "", notr, perl = TRUE)
-  }, error = function(e) text)
+  # geçersiz kodlamalı bir metin `gsub(perl = TRUE)` ile düşebilir. Desenler
+  # ASCII olduğundan bayt düzeyinde yeniden denenir; o da düşerse ham jeton
+  # sızdırılmaz, boş metin döner.
+  for (bayt in c(FALSE, TRUE)) {
+    notr <- tryCatch({
+      notr <- text
+      for (desen in desenler) {
+        notr <- gsub(desen, PK_FACT_REF_UNRESOLVED_TR, notr, perl = TRUE, useBytes = bayt)
+      }
+      notr <- gsub(PK_FACT_REF_LEGACY_PATTERN, "", notr, perl = TRUE, useBytes = bayt)
+      # Bayt düzeyi sonuç işaretsiz döner; Türkçe yedek metin UTF-8'dir.
+      if (bayt) Encoding(notr) <- "UTF-8"
+      notr
+    }, error = function(e) NULL)
+    if (!is.null(notr)) return(notr)
+  }
+  ""
 }
 
 #' Bir olgu kimliğinin YUVA jetonu (tek sahip)
@@ -241,7 +253,25 @@ pk_fact_display_value <- function(olgu) {
 .pk_fact_ref_unit_echo_edits <- function(txt, vurus, olgu) {
   if (!exists("pk_fact_unit_span", mode = "function", inherits = TRUE)) return(list())
   birim <- pk_fact_unit_key(as.character(olgu$unit %||% "")[1])
-  if (!nzchar(birim)) return(list())
+  if (!nzchar(birim)) {
+    # Ölçek listesi dışındaki birim ("ton", "km") de gösterimdedir; yuvanın
+    # hemen ardında yinelenen AYNI sözcük ("1.250 ton ton") silinir.
+    ham <- trimws(.pk_fact_ref_scalar(olgu$unit))
+    gosterim <- .pk_scan_fold(pk_fact_display_value(olgu))
+    if (!nzchar(ham) || !endsWith(gosterim, .pk_scan_fold(ham))) {
+      return(list())
+    }
+    kuyruk <- substr(txt, vurus$end + 1L, min(nchar(txt), vurus$end + nchar(ham) + 8L))
+    bosluk <- attr(regexpr("^[[:space:]\u00a0]*", kuyruk, perl = TRUE), "match.length")
+    aday <- substr(kuyruk, bosluk + 1L, bosluk + nchar(ham))
+    sonraki <- substr(kuyruk, bosluk + nchar(ham) + 1L, bosluk + nchar(ham) + 1L)
+    if (!identical(.pk_scan_fold(aday), .pk_scan_fold(ham)) ||
+        grepl("^[\\p{L}\\p{N}]", sonraki, perl = TRUE)) {
+      return(list())
+    }
+    return(list(.pk_fact_ref_edit(vurus$end + 1L, vurus$end + bosluk + nchar(ham), "",
+                                  FALSE, "duplicate_unit", "ok")))
+  }
   out <- list()
   onde <- pk_fact_unit_span(txt, vurus$start, "before")
   if (identical(onde$key, birim) && onde$length > 0L) {
@@ -514,7 +544,11 @@ pk_fact_reference_render <- function(text, index = list(), literals = NULL) {
   # karşılık gelmeyen veri görünümlü sayı. Hangi olguya ait olduğu TAHMİN
   # EDİLMEZ; yalnızca yapısal ihlal olarak işaretlenir.
   for (jeton in (literals$tokens %||% list())) {
-    yineleme <- .pk_fact_ref_adjacent(txt, jeton, duzenlemeler)
+    # Komşuluk RAKAM aralığından ölçülür: jetona iliştirilmiş sıradan sözcük
+    # araya giren bir sözcüktür ve komşuluğu bozar.
+    sayi_araligi <- jeton
+    sayi_araligi$end <- .pk_fact_ref_literal_end(jeton)
+    yineleme <- .pk_fact_ref_adjacent(txt, sayi_araligi, duzenlemeler)
     duzenlemeler[[length(duzenlemeler) + 1L]] <- if (yineleme) {
       # YİNELEME SİLİNİRKEN SIRADAN SÖZCÜK KORUNUR. Jeton bir izleyen sözcüğü
       # de kapsayabiliyor ("15.448 aktivite"); tüm aralığı silmek cümleden

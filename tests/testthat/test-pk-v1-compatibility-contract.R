@@ -513,11 +513,20 @@ test_that("D21: v1 filtre ONCESI cerceveyi dondurur, v2 filtre SONRASI cerceveyi
 test_that("v2 paketi sorudaki donem sayisini istek girdisi olarak tasir (ham soru degil)", {
   env <- .pk_v2_result_env()
   cerceve <- .pk_v2_frames()
+  # Uygulanan bir tarih aralığı filtresi varken dönem kullanıcı kriteridir.
+  filtre <- list(status = "ok_filtered", filters = list(
+    list(column = "Baslangic", operation = "greater_than", value = "2026-03-24")))
   v2 <- env$pk_build_analysis_result(cerceve$filtered, cerceve$secure, .pk_v2_query(),
                                      "Son 6 ayda baslayan isleri ozetle",
-                                     engine_is_v2 = TRUE)
-  expect_true(grepl("Kullanici donem ifadesi (kullanici kriteri): 6 ay {{fact:",
+                                     filter_criteria = filtre, engine_is_v2 = TRUE)
+  expect_true(grepl("Kullanici donem ifadesi (kullanici kriteri): 6 {{fact:",
                     v2$user_context, fixed = TRUE))
+
+  # Filtre yokken "6 ay" kullanıcı kriteri gibi sunulmaz.
+  filtresiz <- env$pk_build_analysis_result(cerceve$filtered, cerceve$secure, .pk_v2_query(),
+                                            "Son 6 ayda baslayan isleri ozetle",
+                                            engine_is_v2 = TRUE)
+  expect_false(grepl("Kullanici donem ifadesi", filtresiz$user_context, fixed = TRUE))
 })
 
 test_that("Ortak Oturum koprusunun okudugu alanlar HER IKI motorda da korunur", {

@@ -107,7 +107,8 @@ pk_numeric_provenance_validate <- function(text, facts) {
 
   # KAYNAKSIZ SAYI GÖRÜNÜR KALIYORSA "sayılar R'den" DENMEZ: `warn` kipi modelin
   # yazdığı sayıyı metinde bırakır; o sayıyı doğrulanmış gibi sunmak yanlıştı.
-  kaynaksiz <- any(nedenler %in% c("model_numeric_literal", "render_degraded"))
+  kaynaksiz <- any(nedenler %in% c("model_numeric_literal", "render_degraded",
+                                   "legacy_reference"))
   paste0(
     "\n\n\U000026A0\U0000FE0F **Doğrulama notu:** Bu yanıtta bazı ",
     "ifadeler analiz olgularına bağlanamadı: ",
@@ -202,7 +203,12 @@ pk_numeric_provenance_apply <- function(text, facts, mode = NULL, fallback_text 
 
   if (identical(kip, "block")) {
     kati <- .pk_prov_scalar(sonuc$strict)
-    if (!nzchar(trimws(kati))) {
+    # Yalnızca başlık/madde işareti/ayraç kalan yanıt kullanılabilir içerik
+    # değildir; deterministik özete düşülür.
+    icerik <- strsplit(kati, "\n", fixed = TRUE)[[1]]
+    icerik <- icerik[!grepl(paste0("^[[:space:]]*(#{1,6}[[:space:]].*|\\*\\*[^*]+\\*\\*:?|",
+                                   "[0-9]+[.)]|[-*+>_=]*)[[:space:]]*$"), icerik, perl = TRUE)]
+    if (!nzchar(trimws(paste(icerik, collapse = "")))) {
       return(c(list(text = .pk_prov_block_fallback(fallback_text), blocked = TRUE),
                temel))
     }

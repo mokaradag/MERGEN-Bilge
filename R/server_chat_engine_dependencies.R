@@ -407,12 +407,13 @@ if (exists("pk_deep_analysis_process", mode = "function", inherits = TRUE) &&
   # yapılacak iş kalmadığında (alt bilgi yok + olgu yok + kip `block` değil)
   # erken dönülür; aksi hâlde doğrulama koşar ve yalnızca alt bilgi birleştirme
   # adımı boş kalır.
+  notrle <- exists("pk_fact_reference_neutralize", mode = "function", inherits = TRUE)
+  # Kayıtsız yanıtta da `fact` önekli yuva HAM yayımlanmaz (tekil sohbetle aynı).
   if (!nzchar(kayit$footer) && is.null(kayit$facts) && !identical(kip, "block")) {
-    return(text)
+    return(if (notrle) pk_fact_reference_neutralize(text) else text)
   }
 
   govde <- .pk_hook_scalar_text(text)
-  notrle <- exists("pk_fact_reference_neutralize", mode = "function", inherits = TRUE)
   # OLGUSUZ KAYITTA doğrulama çalışmaz; `fact` önekli yuva jetonu yine HAM
   # yayımlanmaz (tekil sohbetteki `pk_provenance_decorate()` ile aynı sözleşme).
   if (is.null(kayit$facts) && notrle) govde <- pk_fact_reference_neutralize(govde)

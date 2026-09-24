@@ -228,13 +228,15 @@ pk_packet_context_facts <- function(packet, scope = NULL) {
 pk_request_period_values <- function(text, max_values = 5L) {
   txt <- enc2utf8(.pk_request_safe_text(text, 2000L))
   if (!nzchar(txt)) return(character(0))
-  # Birim TAM kelimedir: yalnızca Türkçe hâl/çoğul/yapım ekleri kabul edilir
-  # ve ardından harf gelemez; "3 ayrı", "2 aynı", "3 güncel", "5 yıldız"
-  # dönem sayılmaz.
+  # Birim TAM kelimedir: yalnızca Türkçe hâl/çoğul/iyelik/yapım ve "-ki" ekleri
+  # kabul edilir ve ardından harf gelemez; "3 ayrı", "2 aynı", "3 güncel",
+  # "5 yıldız" dönem sayılmaz ("6 ayında", "6 aydaki" sayılır).
   desen <- paste0(
     "(?i)(?<![0-9.,])([0-9]{1,4})[[:space:]]*(gün|gun|ay|yıl|yil)",
     "(?:l[ae]r|l[ıiuü]k)?",
+    "(?:[ıiuü]n)?",
     "(?:d[ae]n|t[ae]n|d[ae]|t[ae]|d[ıiuü]r|[ıiuü]n|[ıiuü]|[ae]|c[ae])?",
+    "(?:ki)?",
     "(?!\\p{L})"
   )
   esle <- regmatches(txt, gregexpr(desen, txt, perl = TRUE))[[1]]
@@ -279,7 +281,8 @@ pk_packet_request_facts <- function(packet) {
     degerler <- degerler[nzchar(degerler)]
     if (!nzchar(sutun) || !length(degerler)) next
 
-    gosterim <- paste(degerler, collapse = ", ")
+    # Yazıcı değeri bu gösterimden basar; birleşik metin de sınırlıdır.
+    gosterim <- .pk_request_safe_text(paste(degerler, collapse = ", "), 160L)
     # SAYISAL DEĞER KANONİK ANAHTARDAN ÇÖZÜLÜR: düz virgül->nokta çevirisi
     # binlik ayracını ondalık sanıyor ("12.500" -> 12,5) ve olgu değeri gerçek
     # istekten sapıyordu.
@@ -312,8 +315,16 @@ pk_packet_request_facts <- function(packet) {
 
   # Sorudaki DÖNEM sayıları da istek girdisidir: gösterim yalnızca sayıdır
   # ("Son {{yuva}} ayda" doğal okunur); birimli ham değer, modelin "6 ay"
-  # yazdığı yinelemeyi sayı + birim anahtarıyla tanıtır.
-  for (donem in as.character(packet$filters$request_periods %||% character(0))) {
+  # yazdığı yinelemeyi sayı + birim anahtarıyla tanıtır. Dönem YALNIZCA
+  # uygulanmış bir aralık filtresi varken kullanıcı kriteridir; filtre
+  # kapalı/düşürülmüşse "6 ay" kapsam gibi sunulmaz, güvenilir anahtar almaz.
+  aralik_ops <- c("greater_than", "greater_or_equal", "from", "min",
+                  "less_than", "less_or_equal", "to", "max")
+  aralik_var <- any(vapply(uygulanan, function(f) {
+    is.list(f) && tolower(as.character(f$operation %||% "")[1]) %in% aralik_ops
+  }, logical(1)))
+  donemler <- if (aralik_var) packet$filters$request_periods %||% character(0) else character(0)
+  for (donem in as.character(donemler)) {
     parca <- strsplit(donem, " ", fixed = TRUE)[[1]]
     if (length(parca) != 2L || !grepl("^[0-9]{1,4}$", parca[1])) next
     out[[length(out) + 1L]] <- list(

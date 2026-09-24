@@ -114,12 +114,16 @@ test_that("v2 bağlamı reconciled kanonik packet metnini kullanır, legacy öze
   expect_false(grepl("Toplam Satır:", out$user_context, fixed = TRUE))
   expect_false(grepl("İlgililik:", out$user_context, fixed = TRUE))
   expect_false(grepl("satırlık veri", out$user_context, fixed = TRUE))
+  # Sıra numarası ("1/1") da yuvasız bir orandır; v2 başlığı sorgu adıyla basılır.
+  expect_false(grepl("SORGU [0-9]+/[0-9]+", out$user_context, perl = TRUE))
+  expect_true(grepl("\U0001F4CA SORGU - ", out$user_context, fixed = TRUE))
 })
 
 test_that("v1 derin analiz blok başlığı satır sayısı ve ilgililiği KORUR", {
   out <- .dac_env$build_deep_analysis_context(
     list(.dac_ok("V1")), "soru", list(instruction = "", max_tokens = 3000)
   )
+  expect_true(grepl("SORGU 1/1: ", out$user_context, fixed = TRUE))
   expect_true(grepl("Toplam Satır: 5 | İlgililik: 50%", out$user_context, fixed = TRUE))
   expect_true(grepl("(Bu sorgu 5 satırlık veri içermektedir)", out$user_context, fixed = TRUE))
 })

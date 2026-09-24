@@ -69,10 +69,9 @@ pk_compose_facts_prompt_summary <- function(facts, limit = 12L) {
             pk_fact_reference_token(as.character(o$fact_id)[1]))
   }, character(1))
 
+  # Atlanan sayısı YUVASIZ bir sayı olarak isteme girmez; model onu kopyalardı.
   if (secim$omitted > 0L) {
-    satirlar <- c(satirlar,
-                  sprintf("- _(%s hesaplanan deger daha var; bu listede yok.)_",
-                          pk_fmt_number(secim$omitted, 0L)))
+    satirlar <- c(satirlar, "- _(Diger hesaplanan degerler bu listede yok.)_")
   }
 
   paste(c("**Hesaplanan degerler (yuvali)**", satirlar), collapse = "\n")
