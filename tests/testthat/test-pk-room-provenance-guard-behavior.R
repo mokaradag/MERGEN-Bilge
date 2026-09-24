@@ -19,9 +19,9 @@
 
   for (dosya in c("helpers_pk_config.R", "helpers_pk_precision.R",
                   "helpers_pk_packet_stats.R", "helpers_pk_packet_context_facts.R",
-                  "helpers_pk_numeric_provenance.R",
-                  "helpers_pk_numeric_provenance_binding.R",
-                  "helpers_pk_numeric_provenance_claims.R")) {
+                  "helpers_pk_fact_reference.R",
+                  "helpers_pk_fact_reference_scan.R",
+                  "helpers_pk_numeric_provenance.R")) {
     source(file.path(kok, "R", dosya), encoding = "UTF-8", local = env)
   }
 
@@ -107,7 +107,8 @@ test_that("oda alt bilgisi eklenmeden ÖNCE sayısal köken doğrulanır", {
   kimlik <- .pk_oda_kimlik(olgular)
 
   # UYDURMA SAYI: olgu 18.420,5 saat; model 99.999,9 saat iddia ediyor.
-  yanit <- sprintf("Toplam 99.999,9 saat [fact:%s].", kimlik)
+  # Model sayıyı KENDİ yazdı: hiçbir olguya bağlanmaz.
+  yanit <- "Toplam 99.999,9 saat harcandi."
   alt_bilgi <- "\n\n---\nAnaliz Kaynağı: sentetik"
 
   sonuc <- env$.pk_hook_room_footer_append(
@@ -121,8 +122,8 @@ test_that("oda alt bilgisi eklenmeden ÖNCE sayısal köken doğrulanır", {
   expect_true(grepl("SENTETIK DETERMINISTIK OZET", sonuc, fixed = TRUE))
   # Alt bilgi yine eklenir (kaynak şeffaflığı korunur).
   expect_true(grepl("Analiz Kaynağı", sonuc, fixed = TRUE))
-  # Referans işareti kullanıcıya SIZMAZ.
-  expect_false(grepl("[fact:", sonuc, fixed = TRUE))
+  # İç söz dizimi kullanıcıya SIZMAZ.
+  expect_false(grepl("{{fact:", sonuc, fixed = TRUE))
 })
 
 test_that("DOĞRU sayı taşıyan oda yanıtı olduğu gibi teslim edilir", {
@@ -130,7 +131,8 @@ test_that("DOĞRU sayı taşıyan oda yanıtı olduğu gibi teslim edilir", {
   olgular <- .pk_oda_olgular(env)
   kimlik <- .pk_oda_kimlik(olgular)
 
-  yanit <- sprintf("Toplam 18.420,5 saat [fact:%s].", kimlik)
+  # Model yuvayı yazdı: değeri R basar.
+  yanit <- sprintf("Toplam %s kaldi.", env$pk_fact_reference_token(kimlik))
   alt_bilgi <- "\n\n---\nAnaliz Kaynağı: sentetik"
 
   sonuc <- env$.pk_hook_room_footer_append(
@@ -142,7 +144,7 @@ test_that("DOĞRU sayı taşıyan oda yanıtı olduğu gibi teslim edilir", {
   expect_true(grepl("18.420,5 saat", sonuc, fixed = TRUE))
   expect_false(grepl("SENTETIK DETERMINISTIK OZET", sonuc, fixed = TRUE))
   expect_true(grepl("Analiz Kaynağı", sonuc, fixed = TRUE))
-  expect_false(grepl("[fact:", sonuc, fixed = TRUE))
+  expect_false(grepl("{{fact:", sonuc, fixed = TRUE))
 })
 
 test_that("olgu YOKSA (v1 yolu) davranış DEĞİŞMEZ", {
@@ -160,6 +162,22 @@ test_that("olgu YOKSA (v1 yolu) davranış DEĞİŞMEZ", {
     env$.pk_hook_room_footer_append("Serbest metin yanıt.", list(footer = "")),
     "Serbest metin yanıt."
   )
+  # Kayıt HİÇ yokken de `fact` önekli yuva ham yayımlanmaz; şablon korunur.
+  kayitsiz <- env$.pk_hook_room_footer_append(
+    "Deger {{fact:uydurma.sum.overall}} ve {{ ad }}.", list(footer = "")
+  )
+  expect_false(grepl("{{fact:", kayitsiz, fixed = TRUE))
+  expect_true(grepl("{{ ad }}", kayitsiz, fixed = TRUE))
+
+  # Olgusuz kayıtta `fact` önekli yuva jetonu alt bilginin yanında HAM kalmaz;
+  # sıradan şablon söz dizimi korunur.
+  jetonlu <- env$.pk_hook_room_footer_append(
+    "Deger {{fact:uydurma.sum.overall}} ve {{ ad }}.",
+    list(footer = alt_bilgi, facts = NULL, mode = NULL, fallback_text = NULL)
+  )
+  expect_false(grepl("{{fact:", jetonlu, fixed = TRUE))
+  expect_true(grepl("{{ ad }}", jetonlu, fixed = TRUE))
+  expect_true(grepl("Analiz Kaynağı", jetonlu, fixed = TRUE))
 })
 
 test_that("doğrulayıcı HATA verirse block kipi ham düzyazıyı TESLİM ETMEZ", {
@@ -188,6 +206,30 @@ test_that("doğrulayıcı HATA verirse block kipi ham düzyazıyı TESLİM ETMEZ
 
   expect_false(grepl("99.999,9", sonuc, fixed = TRUE))
   expect_true(grepl("SENTETIK RED METNI", sonuc, fixed = TRUE))
+
+  # Bloklamayan kiplerde de çözülmemiş yuva jetonu kullanıcıya ulaşmaz: hem
+  # ÇÖKEN doğrulayıcıyla (hata yedeği) hem GERÇEK doğrulayıcıyla (normal yol).
+  gercek <- .pk_oda_env()
+  for (ortam in list(cokme = env, gercek = gercek)) for (kip in c("off", "log", "warn")) {
+    ham <- ortam$.pk_hook_room_footer_append(
+      "Toplam {{fact:olcu.sum.overall.abc123}} saat.",
+      list(footer = "\n\n---\nAnaliz Kaynağı: sentetik", facts = olgular,
+           mode = kip, fallback_text = NULL, query_id = "q-oda")
+    )
+    expect_false(grepl("{{fact:", ham, fixed = TRUE), info = kip)
+    expect_true(grepl("Analiz Kaynağı", ham, fixed = TRUE), info = kip)
+  }
+
+  # Normal yol gerçekten ÇÖZER: bilinen yuva R'nin değeriyle basılır.
+  for (kip in c("off", "log", "warn")) {
+    cozulen <- gercek$.pk_hook_room_footer_append(
+      paste0("Kalan ", gercek$pk_fact_reference_token(.pk_oda_kimlik(olgular)), " iscilik var."),
+      list(footer = "\n\n---\nAnaliz Kaynağı: sentetik", facts = olgular,
+           mode = kip, fallback_text = NULL, query_id = "q-oda")
+    )
+    expect_true(grepl("Kalan 18.420,5 saat iscilik var.", cozulen, fixed = TRUE), info = kip)
+    expect_false(grepl("{{fact:", cozulen, fixed = TRUE), info = kip)
+  }
 })
 
 test_that("kayıt normalleştirme liste OLMAYAN alt bilgiyi de kabul eder", {

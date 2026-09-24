@@ -236,7 +236,7 @@ if (!exists("pk_telemetry_log_analysis", mode = "function", inherits = TRUE)) {
 #' `tryCatch` filtre gözlemini, alt bilgi kurulumunu, saklamayı ve telemetriyi
 #' birlikte sarıyordu; saklamadan ÖNCEKİ herhangi bir hata boş dize döndürüyor
 #' ve istek devam ederken R'ye ait tablo/ek eklenmiyor, sayısal köken hiç
-#' uygulanmıyor, `[fact:...]` işaretleri ham düzyazıda kalabiliyordu.
+#' uygulanmıyor, yuva jetonları ham düzyazıda kalabiliyordu.
 pk_analysis_observe <- function(session, conn, info) {
   info <- if (is.list(info)) info else list()
 
@@ -275,7 +275,7 @@ pk_analysis_observe <- function(session, conn, info) {
   # teslim edilir.
   # OLGU VARSA KAYIT HER HÂLÜKÂRDA SAKLANIR: alt bilgi ve R'ye ait blok boş
   # olsa bile §5.11 doğrulaması çalışmalıdır; aksi hâlde doğrulanmamış model
-  # düzyazısı `[fact:...]` işaretleriyle birlikte teslim edilirdi.
+  # düzyazısı çözülmemiş yuva jetonlarıyla birlikte teslim edilirdi.
   if (nzchar(footer) || nzchar(blok) || !is.null(info$facts)) {
     try(pk_provenance_stash(
       session, paste0(blok, footer),

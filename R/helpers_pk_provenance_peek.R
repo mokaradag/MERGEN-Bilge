@@ -55,6 +55,22 @@ pk_provenance_blocks_streaming <- function(session, request_id = NULL) {
   identical(pk_provenance_pending_mode(session, request_id), "block")
 }
 
+#' Görünür metin tamamlanmaya kadar ERTELENMELİ mi? (`block` ya da yuvalı kayıt)
+#'
+#' §5.11 sonrası v2 düzyazısı `{{fact:...}}` yuvaları taşır ve değerleri R
+#' tamamlanma anında basar; bu `off`/`log`/`warn` kiplerinde de geçerlidir. Ham
+#' delta'lar gönderilirse kullanıcı akış boyunca çözülmemiş iç söz dizimini
+#' görür, TTS de onu seslendirirdi. `block` kipine özgü kapalı başarısızlık
+#' kararı AYRIDIR (`pk_provenance_blocks_streaming()`).
+#' KAPALI BAŞARISIZ: kayıt okunamazsa `TRUE` döner (çağıranlar sarmalamaz).
+pk_provenance_defers_streaming <- function(session, request_id = NULL) {
+  isTRUE(tryCatch({
+    bekleyen <- pk_provenance_peek(session, request_id = request_id)
+    is.list(bekleyen) &&
+      (identical(as.character(bekleyen$mode %||% "")[1], "block") || !is.null(bekleyen$facts))
+  }, error = function(e) TRUE))
+}
+
 # BLOCK KİPİ METİNLERİ: EKRANA GİDEN ve SESLENDİRİLEN metni birlikte üretir.
 #
 # Köken doğrulaması (§5.11) desteklenmeyen sayısal iddia bulduğunda model
@@ -68,7 +84,15 @@ pk_provenance_blocks_streaming <- function(session, request_id = NULL) {
 #
 # `block` kipi etkin değilse metin DEĞİŞMEDEN döner (davranış korunur).
 mergen_pk_block_mode_texts <- function(full_response, session, request_id = NULL) {
-  varsayilan <- list(display = full_response, tts = full_response)
+  # KAYIT OLMASA DA HAM YUVA GÖSTERİLMEZ/SESLENDİRİLMEZ: olgu kaydı saklanamadıysa
+  # (bayat istek, depo yok) çözülmemiş `{{fact:...}}` benzetimli akışa ve TTS'e
+  # gidiyordu. Yalnızca `fact` önekli biçimler nötrlenir; PK dışı metin değişmez.
+  notr <- if (exists("pk_fact_reference_neutralize", mode = "function", inherits = TRUE)) {
+    pk_fact_reference_neutralize(full_response)
+  } else {
+    full_response
+  }
+  varsayilan <- list(display = notr, tts = notr)
 
   if (!exists("pk_provenance_blocks_streaming", mode = "function", inherits = TRUE)) {
     return(varsayilan)
@@ -77,7 +101,10 @@ mergen_pk_block_mode_texts <- function(full_response, session, request_id = NULL
     pk_provenance_blocks_streaming(session, request_id = request_id),
     error = function(e) FALSE
   ))
-  if (!bloklu) return(varsayilan)
+  # YUVALI KAYIT HER KİPTE AKIŞTAN ÖNCE ÇÖZÜLÜR: aksi hâlde benzetimli akış ve
+  # TTS `log`/`warn` kipinde ham `{{fact:...}}` jetonlarını gösterip okurdu.
+  yuvali <- !bloklu && pk_provenance_defers_streaming(session, request_id = request_id)
+  if (!bloklu && !yuvali) return(varsayilan)
 
   bekleyen <- tryCatch(pk_provenance_peek(session, request_id = request_id),
                        error = function(e) NULL)
@@ -95,6 +122,8 @@ mergen_pk_block_mode_texts <- function(full_response, session, request_id = NULL
     error = function(e) {
       cat(sprintf("[PK] Köken dekorasyonu başarısız (block kipi): %s\n",
                   conditionMessage(e)))
+      # `block` DIŞINDA yanıt yine teslim edilir, ama yuvalar NÖTRLENİR.
+      if (!bloklu) return(pk_block_mode_fallback_text(FALSE, full_response))
       yedek <- as.character(bekleyen$fallback_text %||% "")[1]
       if (!is.na(yedek) && nzchar(yedek)) {
         paste0(yedek, if (!is.na(alt_bilgi)) alt_bilgi else "")
@@ -320,10 +349,17 @@ pk_stream_display_text <- function(final_text, session, request_id,
 #' deterministik bir reddetme metni dondurulur.
 #'
 #' @param block_active `block` kipi etkin mi (mantiksal skaler).
-#' @param raw_text Kip etkin DEGILSE dondurulecek ham metin.
+#' @param raw_text Kip etkin DEGILSE dondurulecek ham metin (yuva jetonlari notrlenir).
 #' @return Tek ogeli karakter.
 pk_block_mode_fallback_text <- function(block_active, raw_text) {
-  if (!isTRUE(block_active)) return(raw_text)
+  # Kip etkin DEĞİLSE de doğrulanmamış metindeki yuva jetonları NÖTRLENİR; bu
+  # yol çözümleyicinin hiç çalışmadığı yedektir. PK dışı metin DEĞİŞMEZ.
+  if (!isTRUE(block_active)) {
+    if (!exists("pk_fact_reference_neutralize", mode = "function", inherits = TRUE)) {
+      return(raw_text)
+    }
+    return(pk_fact_reference_neutralize(raw_text))
+  }
 
   if (exists("PK_PROVENANCE_BLOCK_REFUSAL_TR", inherits = TRUE)) {
     sabit <- suppressWarnings(as.character(

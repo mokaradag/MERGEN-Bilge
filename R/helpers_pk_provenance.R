@@ -442,7 +442,7 @@ pk_provenance_take <- function(session, request_id = NULL, full = FALSE) {
 #' İdempotentlik MODEL METNİNE DEĞİL, istek kimliğine bağlıdır: eskiden metinde
 #' `**Analiz Kaynağı**` başlığını görmek dekorasyonu tamamen atlatıyordu, yani
 #' modelin (ya da bir veri değerinin yönlendirmesiyle) o başlığı yazması
-#' doğrulanmamış düzyazıyı `[fact:...]` işaretleriyle birlikte geçirir, R'ye ait
+#' doğrulanmamış düzyazıyı çözülmemiş yuva jetonlarıyla birlikte geçirir, R'ye ait
 #' bloğu ve alt bilgiyi düşürürdü.
 #'
 # BLOCK KİPİ DETERMİNİSTİK REDDETME METNİ (TEK SAHİP).
@@ -484,10 +484,18 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
   # kayıt tüketildiği anda hatırlanır; `fallback_text` beyan edilmemiş olabilir.
   blok_kipi <- FALSE
   blok_alt_bilgi <- ""
+  # ÇÖZÜMLENMEDEN DÖNEN HER YOL YUVA JETONUNU NÖTRLER: kaydı daha yeni bir istek
+  # temizlemişse bayat akış sonlandırması ham `{{fact:...}}` metnini gösterirdi.
+  # Yalnızca `fact` önekli biçimlere dokunulur; PK dışı metin DEĞİŞMEZ.
+  notr_metin <- if (exists("pk_fact_reference_neutralize", mode = "function", inherits = TRUE)) {
+    pk_fact_reference_neutralize(text)
+  } else {
+    text
+  }
 
   tryCatch({
     pending <- pk_provenance_take(session, request_id = request_id, full = TRUE)
-    if (is.null(pending) || !is.list(pending)) return(text)
+    if (is.null(pending) || !is.list(pending)) return(notr_metin)
 
     # `block` kipinde TÜKETİLMİŞ kayıt için güvenli geri düşme metni hazırlanır.
     if (identical(as.character(pending$mode %||% "")[1], "block")) {
@@ -504,10 +512,16 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
     if (is.na(footer)) footer <- ""
     # ALT BİLGİSİZ AMA OLGULU KAYIT DA DOĞRULANIR: erken dönüş yalnızca
     # gerçekten yapılacak iş kalmadığında (ne alt bilgi ne olgu) geçerlidir.
-    if (!nzchar(footer) && is.null(pending$facts)) return(text)
+    if (!nzchar(footer) && is.null(pending$facts)) return(notr_metin)
 
     base_txt <- if (is.null(text) || length(text) == 0L) "" else as.character(text)[1]
     if (is.na(base_txt)) base_txt <- ""
+    # OLGUSUZ KAYIT (v1 yolu ya da kurulamayan v2 paketi) doğrulanmaz; yine de
+    # `fact` önekli bir yuva jetonu otoriter alt bilginin yanında HAM kalmaz.
+    if (is.null(pending$facts) &&
+        exists("pk_fact_reference_neutralize", mode = "function", inherits = TRUE)) {
+      base_txt <- pk_fact_reference_neutralize(base_txt)
+    }
 
     # Bant dışı idempotentlik: aynı istek ikinci kez dekore edilmez.
     store <- .pk_provenance_store(session)
@@ -519,7 +533,7 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
         #
         # Kayıt yukarıda zaten TÜKETİLDİ (geri konulamaz). Eskiden bu dal ham
         # `text` döndürüyordu: `block` kipinde kullanıcıya DOĞRULANMAMIŞ,
-        # `[fact:...]` işaretleri duran ve alt bilgisi olmayan bir metin
+        # çözülmemiş yuva jetonları duran ve alt bilgisi olmayan bir metin
         # gidiyordu. Deterministik yedek varsa O kullanılır.
         if (!is.null(guvenli_yedek)) return(guvenli_yedek)
         # `fallback_text` BEYAN EDİLMEMİŞSE DE BLOCK KİPİ AÇIK BAŞARISIZ OLAMAZ.
@@ -531,14 +545,14 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
         if (isTRUE(blok_kipi)) {
           return(paste0(PK_PROVENANCE_BLOCK_REFUSAL_TR, blok_alt_bilgi))
         }
-        return(text)
+        return(notr_metin)
       }
       store[[.pk_provenance_done_slot]] <- utils::tail(unique(c(bitenler, kimlik)), 20L)
     }
 
-    # §5.11: Sayısal iddialar olgulara karşı doğrulanır ve `[fact:...]`
-    # referansları YALNIZCA doğrulamadan SONRA gösterimden silinir. Olgu
-    # saklanmamışsa (v1 yolu) bu adım tamamen atlanır.
+    # §5.11: Anlamsal olgu yuvaları KANONİK değerlerle doldurulur; çözülemeyen
+    # bir yuva hiçbir değer basmaz. Olgu saklanmamışsa (v1 yolu) bu adım
+    # tamamen atlanır.
     #
     # KAPALI BAŞARISIZLIK: doğrulama kendi içinde hata verse bile
     # `pk_numeric_provenance_apply()` deterministik yedek metni döndürür
@@ -575,6 +589,6 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
     if (isTRUE(blok_kipi)) {
       return(paste0(PK_PROVENANCE_BLOCK_REFUSAL_TR, blok_alt_bilgi))
     }
-    text
+    notr_metin
   })
 }

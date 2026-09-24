@@ -119,11 +119,18 @@ mergen_seam_guard_tests <- function() {
         "tests/testthat/test-pk-query-meta-contract.R",
         "tests/testthat/test-pk-analysis-packet-behavior.R",
         "tests/testthat/test-pk-numeric-provenance-contract.R",
+        # §5.11 anlamsal olgu referansı: çözümleme/iddia düzeyinde ayıklama ve
+        # beklenmeyen model sayısı taraması. Kayıtlı olmadıklarında R'nin sayı
+        # sahipliği bozulsa bile seam doğrulaması YEŞİL raporlardı.
+        "tests/testthat/test-pk-fact-reference-behavior.R",
+        "tests/testthat/test-pk-fact-reference-scan-behavior.R",
+        "tests/testthat/test-pk-fact-reference-hardening-behavior.R",
         "tests/testthat/test-pk-export-xlsx-behavior.R",
         # Teslim/doğrulama sözleşmeleri de bu seam'e aittir: paket doğru kurulsa
         # bile yanıt teslimi veya sayısal köken bozuksa seam YEŞİL olmamalıdır.
         "tests/testthat/test-pk-provenance-delivery-contract.R",
         "tests/testthat/test-pk-observation-accuracy-contract.R",
+        "tests/testthat/test-pk-stream-slot-guard-behavior.R",
         # Faz 4 (§5.4) varlık çözümleme. Bu testler bu seam'e AİTTİR: kayıtlı
         # olmadıklarında normalleştirme/puanlama/karar/geçmiş bozulsa bile
         # değişiklik kapsamlı seam doğrulaması YEŞİL raporlar ve kusuru
@@ -164,6 +171,7 @@ mergen_seam_guard_tests <- function() {
         "testthat::test_file(\"tests/testthat/test-pk-analysis-packet-behavior.R\")",
         "testthat::test_file(\"tests/testthat/test-pk-export-xlsx-behavior.R\")",
         "testthat::test_file(\"tests/testthat/test-pk-numeric-provenance-contract.R\")",
+        "testthat::test_file(\"tests/testthat/test-pk-fact-reference-behavior.R\")",
         "testthat::test_file(\"tests/testthat/test-pk-provenance-delivery-contract.R\")"
       )
     ),
@@ -244,7 +252,9 @@ mergen_seam_guard_tests <- function() {
         "tests/testthat/test-server-core-observer-runtime-contract.R",
         "tests/testthat/test-server-module-wiring-contract.R",
         "tests/testthat/test-server-live-user-provider-contract.R",
-        "tests/testthat/test-session-user-data-store.R"
+        "tests/testthat/test-session-user-data-store.R",
+        # Ortak Oturum yanıt kancası (`R/server_chat_engine_dependencies.R`).
+        "tests/testthat/test-pk-room-provenance-guard-behavior.R"
       ),
       focused_validation = c(
         "testthat::test_file(\"tests/testthat/test-server-runtime-context.R\")",

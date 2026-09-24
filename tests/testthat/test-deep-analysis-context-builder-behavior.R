@@ -82,7 +82,7 @@ test_that("v2 bağlamı reconciled kanonik packet metnini kullanır, legacy öze
     row_count = 3L,
     relevance = 90,
     pk_engine_mode = "v2",
-    pk_packet_text = "KANONIK-V2-DEGER %60,0 [fact:progress.weighted.weighted_mean.overall.abc123]",
+    pk_packet_text = "KANONIK-V2-DEGER %60,0 {{fact:progress.weighted.weighted_mean.overall.abc123}}",
     summary_text = "LEGACY-OZET-YASAK",
     preview_json = "LEGACY-JSON-YASAK"
   ))
@@ -93,10 +93,63 @@ test_that("v2 bağlamı reconciled kanonik packet metnini kullanır, legacy öze
 
   expect_identical(out$type, "data_analysis")
   expect_true(grepl("KANONIK-V2-DEGER", out$user_context, fixed = TRUE))
-  expect_true(grepl("[fact:", out$user_context, fixed = TRUE))
+  expect_true(grepl("{{fact:", out$user_context, fixed = TRUE))
   expect_false(grepl("LEGACY-OZET-YASAK", out$user_context, fixed = TRUE))
   expect_false(grepl("LEGACY-JSON-YASAK", out$user_context, fixed = TRUE))
   expect_true(grepl("v2 SAYISAL KÖKEN KURALI", out$prompt_context, fixed = TRUE))
+
+  # ÇELİŞEN KURAL YOK: v2 isteminde "sayıları doğrudan kullan" talimatı
+  # bulunmaz ve istem kanonik biçimli (kopyalanabilir) bir ÖRNEK jeton taşımaz.
+  expect_false(grepl("Sayıları DOĞRUDAN kullan", out$prompt_context, fixed = TRUE))
+  # Model sayısı üreten tablo ve oran talimatları v2 istemine sızmaz.
+  expect_false(grepl("Markdown tablo formatını listeleme", out$prompt_context, fixed = TRUE))
+  expect_false(grepl("oran belirtirken dikkatli ol", out$prompt_context, fixed = TRUE))
+  expect_true(grepl("oran/yüzde HESAPLAMA", out$prompt_context, fixed = TRUE))
+  expect_true(grepl("sayısal hücrelere YALNIZCA paketteki yuva jetonunu", out$prompt_context, fixed = TRUE))
+  kanonik <- "\\{\\{[[:space:]]*fact[[:space:]]*:[[:space:]]*[A-Za-z0-9_.]+[[:space:]]*\\}\\}"
+  expect_false(grepl(kanonik, out$prompt_context, perl = TRUE))
+
+  # v2 BLOK BAŞLIĞI YUVASIZ SAYI BASMAZ: satır sayısı ve ilgililik puanı
+  # modelin elle yazmak zorunda kalacağı çıplak sayılardı.
+  expect_false(grepl("Toplam Satır:", out$user_context, fixed = TRUE))
+  expect_false(grepl("İlgililik:", out$user_context, fixed = TRUE))
+  expect_false(grepl("satırlık veri", out$user_context, fixed = TRUE))
+  # Sıra numarası ("1/1") da yuvasız bir orandır; v2 başlığı sorgu adıyla basılır.
+  expect_false(grepl("SORGU [0-9]+/[0-9]+", out$user_context, perl = TRUE))
+  expect_true(grepl("\U0001F4CA SORGU - ", out$user_context, fixed = TRUE))
+})
+
+test_that("v1 derin analiz blok başlığı satır sayısı ve ilgililiği KORUR", {
+  out <- .dac_env$build_deep_analysis_context(
+    list(.dac_ok("V1")), "soru", list(instruction = "", max_tokens = 3000)
+  )
+  expect_true(grepl("SORGU 1/1: ", out$user_context, fixed = TRUE))
+  expect_true(grepl("Toplam Satır: 5 | İlgililik: 50%", out$user_context, fixed = TRUE))
+  expect_true(grepl("(Bu sorgu 5 satırlık veri içermektedir)", out$user_context, fixed = TRUE))
+})
+
+test_that("v1 derin analiz istemi eski sayi kuralini KORUR", {
+  out <- .dac_env$build_deep_analysis_context(
+    list(.dac_ok("V1")), "soru", list(instruction = "", max_tokens = 3000)
+  )
+  expect_true(grepl("Sayıları DOĞRUDAN kullan", out$prompt_context, fixed = TRUE))
+  expect_false(grepl("v2 SAYISAL KÖKEN KURALI", out$prompt_context, fixed = TRUE))
+  expect_true(grepl("Markdown tablo formatını listeleme/sıralama için kullan", out$prompt_context, fixed = TRUE))
+  expect_true(grepl("FİLTRELEME UYARISI varsa, oran belirtirken dikkatli ol", out$prompt_context, fixed = TRUE))
+})
+
+test_that("v1 ve v2 başarılı blokları tek istemde karıştırılmaz", {
+  v2 <- list(
+    success = TRUE, query_name = "V2", query_desc = "kanonik",
+    row_count = 1L, relevance = 90, pk_engine_mode = "v2",
+    pk_packet_text = "KANONIK {{fact:progress.sum.overall.abc123}}",
+    summary_text = "KULLANILMAMALI", preview_json = "[]"
+  )
+  out <- .dac_env$build_deep_analysis_context(
+    list(.dac_ok("V1"), v2), "soru", list(instruction = "", max_tokens = 3000)
+  )
+  expect_identical(out$type, "error_message")
+  expect_true(grepl("aynı yanıt bağlamında", out$content, fixed = TRUE))
 })
 
 test_that("v2 başarılı kayıt kanonik packet metni yoksa legacy summary fail-closed kullanılmaz", {

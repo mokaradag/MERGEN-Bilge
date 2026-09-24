@@ -73,33 +73,39 @@ pk_deep_reconcile_packets <- function(query_results) {
   # kümeyi döndürebilir; paketi "başarılı" saymak, filtreli bir soruya tam-küme
   # istatistiğini KENDİNDEN EMİN biçimde raporlamak olurdu.
   bozuk_filtre <- vapply(koken, function(k) {
-    if (!exists("pk_filter_status_is_degraded", mode = "function", inherits = TRUE)) {
-      return(FALSE)
-    }
-    isTRUE(tryCatch(pk_filter_status_is_degraded(k$filter_status), error = function(e) FALSE))
+    exists("pk_filter_status_is_degraded", mode = "function", inherits = TRUE) &&
+      isTRUE(tryCatch(pk_filter_status_is_degraded(k$filter_status), error = function(e) FALSE))
   }, logical(1))
+  sebep <- rep(NA_character_, length(koken))
+  sebep[bozuk_filtre] <- "Filtre planı üretilemedi; paket kanıt olarak kullanılmadı."
 
-  if (any(bozuk_filtre)) {
-    # `%||%` bu repoda YALNIZCA `NULL` için yedeğe düşer. `koken[[i]]$error`
-    # yukarıda `NA_character_` ile ilklendirildiği için `%||%` kullanmak
-    # açıklama yerine `NA` KORURDU (aynı desen `error_msg` için de geçerli).
-    dusurme_sebebi <- "Filtre planı üretilemedi; paket kanıt olarak kullanılmadı."
-    for (i in which(bozuk_filtre)) {
-      koken[[i]]$success <- FALSE
-      koken[[i]]$error <- .pk_deep_coalesce_text(koken[[i]]$error, dusurme_sebebi)
-      if (i <= length(paketler) && is.list(paketler[[i]])) {
-        paketler[[i]]$success <- FALSE
-        paketler[[i]]$error_msg <- .pk_deep_coalesce_text(paketler[[i]]$error_msg, dusurme_sebebi)
-        # DÜŞÜRME GÖZLEME DE YAZILIR: telemetri/alt bilgi `pk_observation`
-        # üzerinden üretilir; yalnızca `success` alanını düşürmek, aynı paketi
-        # kullanıcıya ve `MB_Analiz_Log`'a HÂLÂ başarılı gösterirdi.
-        if (is.list(paketler[[i]]$pk_observation)) {
-          paketler[[i]]$pk_observation$outcome <- "Hata"
-          paketler[[i]]$pk_observation$error_message <- .pk_deep_coalesce_text(
-            paketler[[i]]$pk_observation$error_message, dusurme_sebebi
-          )
-        }
-      }
+  # v1 ve v2 farklı sayısal sözleşmeler taşır; aynı yanıtta karışırlarsa v1'in
+  # doğrudan sayıları v2'nin olgu-yuvası doğrulamasında reddedilebilir. İlk
+  # başarılı paketin motoru korunur, diğer motorun paketleri açıkça düşürülür.
+  motorlar <- vapply(seq_along(paketler), function(i) {
+    if (!isTRUE(koken[[i]]$success) || !is.na(sebep[[i]])) return(NA_character_)
+    if (identical(as.character(paketler[[i]]$pk_engine_mode %||% "")[1], "v2")) "v2" else "v1"
+  }, character(1))
+  karma_motor_dusurulen <- integer(0)
+  if (length(unique(motorlar[!is.na(motorlar)])) > 1L) {
+    korunan_motor <- motorlar[!is.na(motorlar)][1]
+    karma_motor_dusurulen <- which(!is.na(motorlar) & motorlar != korunan_motor)
+    sebep[karma_motor_dusurulen] <-
+      "v1 ve v2 derin analiz sonuçları aynı yanıt sözleşmesinde birleştirilmedi."
+  }
+
+  # Düşürme gözleme de yazılır (telemetri/alt bilgi `pk_observation`'dan üretilir);
+  # `%||%` yalnızca `NULL` için yedeğe düştüğünden `NA` alanlar birleştiriciyle dolar.
+  for (i in which(!is.na(sebep))) {
+    koken[[i]]$success <- FALSE
+    koken[[i]]$error <- .pk_deep_coalesce_text(koken[[i]]$error, sebep[[i]])
+    paketler[[i]]$success <- FALSE
+    paketler[[i]]$error_msg <- .pk_deep_coalesce_text(paketler[[i]]$error_msg, sebep[[i]])
+    if (is.list(paketler[[i]]$pk_observation)) {
+      paketler[[i]]$pk_observation$outcome <- "Hata"
+      paketler[[i]]$pk_observation$error_message <- .pk_deep_coalesce_text(
+        paketler[[i]]$pk_observation$error_message, sebep[[i]]
+      )
     }
   }
 
@@ -111,6 +117,7 @@ pk_deep_reconcile_packets <- function(query_results) {
     successful = sum(basarili),
     failed = length(koken) - sum(basarili),
     degraded_filter = sum(bozuk_filtre),
+    mixed_engine_dropped = length(karma_motor_dusurulen),
     cross_query_arithmetic_allowed = FALSE,
     instruction = PK_DEEP_NO_CROSS_ARITHMETIC_INSTRUCTION,
     comparability = pk_deep_packet_comparability(koken)
@@ -222,18 +229,10 @@ pk_deep_observation_helpers <- function(session, conn, username, user_prompt,
     footers <- as.character(footers)
     footers <- footers[!is.na(footers) & nzchar(footers)]
     # OLGU VARSA KAYIT ALT BİLGİSİZ DE SAKLANIR (PR #705 inceleme, P2).
-    #
-    # `pk_observe_deep()` her fail-soft yolda `""` döndürür (telemetri için
-    # kısa ömürlü bağlantı açılamaması, `pk_analysis_observe` yardımcısının
-    # yüklü olmaması). TÜM sorgular boş alt bilgi ürettiğinde bu erken dönüş,
-    # orkestratörün `pk_deep_collect_v2_provenance()` ile taşıdığı OLGULARI da
-    # düşürüyordu: istek için bekleyen köken kaydı hiç oluşmuyor,
-    # `pk_provenance_blocks_streaming()` ve §5.11 sayısal doğrulaması
-    # denetleyecek bir şey bulamıyor ve `[fact:...]` işaretleri taşıyan
-    # DOĞRULANMAMIŞ model düzyazısı teslim ediliyordu.
-    # `R/helpers_pk_telemetry.R` tekil yolda olgu-yalnız kayıtları ZATEN
-    # saklıyor; derin yol AYNI kuralı uygular. Alt bilgi gövdesi yoksa boş
-    # kalır, yalnızca olgular taşınır.
+    # `pk_observe_deep()` her fail-soft yolda `""` döndürür; tüm alt bilgiler
+    # boşken erken dönüş olguları da düşürür, bekleyen köken kaydı oluşmaz ve
+    # çözülmemiş yuva jetonları taşıyan DOĞRULANMAMIŞ düzyazı teslim edilirdi.
+    # Tekil yol (`R/helpers_pk_telemetry.R`) ile AYNI kural uygulanır.
     if (length(footers) == 0L && is.null(facts)) return(invisible(FALSE))
     if (length(footers) == 0L) {
       return(pk_provenance_stash(

@@ -161,6 +161,7 @@
   # geçen süre bütçesi onu gerçekten kesebilir.
   if (!is.null(halt_durumu())) return(iptal_sonucu())
 
+  donemler <- pk_request_period_values(user_prompt)
   paket_sonucu <- if (exists("pk_async_bounded_fs", mode = "function", inherits = TRUE)) {
     pk_async_bounded_fs(
       function() {
@@ -168,6 +169,7 @@
           authorized_rows = nrow(secure_data),
           filtered_rows = pk_filtreli_satir,
           filters = etkin_filtreler,
+          request_periods = donemler,
           filter_status = filter_criteria$status,
           degradations = if (exists("pk_degradations_from_filter_status", mode = "function",
                                     inherits = TRUE)) {
@@ -211,6 +213,7 @@
       authorized_rows = nrow(secure_data),
       filtered_rows = pk_filtreli_satir,
       filters = etkin_filtreler,
+      request_periods = donemler,
       filter_status = filter_criteria$status,
       degradations = if (exists("pk_degradations_from_filter_status", mode = "function",
                                 inherits = TRUE)) {
@@ -236,8 +239,13 @@
   kuyruk_talimati <- paste0(
     "\n\n--- PAKET SONU ---\n\n",
     "Talimat: YALNIZCA yukaridaki paketteki olgulari kullanarak cevap ver. ",
-    "Her sayisal iddianin yanina ilgili fact referansini koy. Hesaplama yapma, ",
-    "tablo uretme; tablo ve ek R tarafindan eklenecektir."
+    # Tam bir ornek jeton BASILMAZ; kopyalanan uydurma kimlik `unknown_fact`
+    # uretiyordu. Soz dizimi tarif edilir, jetonun kendisi pakettedir.
+    "Sayilari KENDIN YAZMA; sayinin gecmesi gereken yere o olgunun pakette ",
+    "basili yuva jetonunu (`{{fact:` ile baslayan) AYNEN kopyala, degeri R ",
+    "yerlestirir. Hesaplama yapma, tablo uretme; tablo ",
+    "ve ek R tarafindan eklenecektir. Yanitin bicimini soruya uydur; zorunlu ",
+    "baslik sablonu yoktur."
   )
   bas_talimati <- paste0("KULLANICI SORUSU:\n", user_prompt,
                          "\n\n--- R TARAFINDAN HESAPLANAN ANALIZ PAKETI ---\n")
@@ -272,12 +280,16 @@
   # paketi olduğu gibi göndermek, uç noktanın bağlam sınırını aşıp analizin
   # TAMAMINI düşürebilirdi; deterministik özete inilir.
   if (isTRUE(yazi$over_budget)) {
+    # ISTEME GIDEN OZET YUVA TASIR. Kullaniciya gosterilen deterministik yedek
+    # yalnizca etiket + bicimlenmis deger basar; ayni metni pakete koymak modele
+    # hicbir MESRU yuva birakmiyor, gorunen degeri kopyalamaya itiyordu.
     ozet <- paste(c(
       "### BUTCE ASIMI",
       paste("- Analiz paketi yapilandirilmis bicimde istem butcesine SIGMADI;",
-            "asagida yalnizca R tarafindan hesaplanan degerler yer aliyor."),
+            "asagida yalnizca R tarafindan hesaplanan olgularin YUVALARI yer",
+            "aliyor. Sayilari yine yazma; ilgili yuvayi kopyala."),
       "",
-      yedek_metin
+      pk_compose_facts_prompt_summary(paket$facts)
     ), collapse = "\n")
 
     if (nchar(ozet, type = "chars") <= yazi$budget) {

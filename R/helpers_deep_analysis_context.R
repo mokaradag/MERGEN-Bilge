@@ -45,6 +45,22 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
 
   successful <- Filter(function(r) isTRUE(r$success), query_results)
   failed <- Filter(function(r) !isTRUE(r$success), query_results)
+  successful_modes <- unique(vapply(successful, function(r) {
+    if (identical(as.character(r$pk_engine_mode %||% "")[1], "v2")) "v2" else "v1"
+  }, character(1)))
+
+  # v1 blokları doğrudan sayılar, v2 blokları olgu yuvaları taşır. İki sözleşme
+  # tek model yanıtında güvenli biçimde doğrulanamaz; normal akış bunu uzlaştırma
+  # katmanında ayırır, bu koruma ise doğrudan çağrıları kapalı başarısız yapar.
+  if (length(successful_modes) > 1L) {
+    return(list(
+      type = "error_message",
+      content = paste0(
+        "\U0001F50D **Derin Analiz Sonucu:** v1 ve v2 analiz sonuçları aynı ",
+        "yanıt bağlamında güvenli biçimde birleştirilemedi. Lütfen analizi yeniden çalıştırın."
+      )
+    ))
+  }
 
   if (length(successful) == 0) {
     return(list(
@@ -64,9 +80,7 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
   detail_instruction <- detail_config$instruction %||% ""
   base_max_tokens <- detail_config$max_tokens %||% 3000
   query_count <- length(successful)
-  v2_present <- any(vapply(successful, function(r) {
-    identical(as.character(r$pk_engine_mode %||% "")[1], "v2")
-  }, logical(1)))
+  v2_present <- identical(successful_modes, "v2")
 
   if (query_count > 1) {
     scale_factor <- 1 + (query_count - 1) * 0.3
@@ -77,22 +91,24 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
 
   data_blocks <- vapply(seq_along(successful), function(i) {
     r <- successful[[i]]
+    v2_blok <- identical(as.character(r$pk_engine_mode %||% "")[1], "v2")
+    # v2 BAŞLIĞI YUVASIZ SAYI BASMAZ: satır sayısı paketin içinde yuvalıdır
+    # (`__kapsam__`), ilgililik puanının olgusu yoktur. Çıplak basılan bir
+    # sayıyı model ancak elle yazabilir ve tarayıcı onu kaynaksız sayardı;
+    # sıra numarası ("1/3") da bu yüzden yalnızca v1 başlığında kalır.
     header <- paste0(
       sprintf("\n\n==========================================\n"),
-      sprintf("\U0001F4CA SORGU %d/%d: %s\n", i, query_count, r$query_name),
+      if (v2_blok) sprintf("\U0001F4CA SORGU - %s\n", r$query_name) else
+        sprintf("\U0001F4CA SORGU %d/%d: %s\n", i, query_count, r$query_name),
       sprintf("Açıklama: %s\n", r$query_desc),
-      sprintf("Toplam Satır: %d | İlgililik: %.0f%%\n", r$row_count, r$relevance),
+      if (v2_blok) "" else sprintf("Toplam Satır: %d | İlgililik: %.0f%%\n", r$row_count, r$relevance),
       sprintf("==========================================\n")
     )
 
-    if (identical(as.character(r$pk_engine_mode %||% "")[1], "v2")) {
+    if (v2_blok) {
       # v2: doğrudan pk_packet_render() çıktısı. summary_text/preview_json
       # okunmaz; legacy özet üzerinden dolaylı bir geri düşüş yoktur.
-      return(paste0(
-        header,
-        as.character(r$pk_packet_text)[1],
-        sprintf("\n(Bu sorgu %d satırlık veri içermektedir)\n", r$row_count)
-      ))
+      return(paste0(header, as.character(r$pk_packet_text)[1], "\n"))
     }
 
     # v1: mevcut legacy sözleşme BİREBİR korunur.
@@ -127,18 +143,36 @@ build_deep_analysis_context <- function(query_results, user_prompt, detail_confi
     "- Bütünsel öneriler\n",
     "- Uyarılar ve riskler\n\n",
     "### KRİTİK KURALLAR:\n",
-    "- Sayıları DOĞRUDAN kullan, tahmin veya varsayım YAPMA\n",
+    # ÇELİŞEN İKİ KURAL AYNI İSTEMDE BULUNMAZ. v2 paketinde sayıyı R basar;
+    # "sayıları doğrudan kullan" talimatı modele paketteki gösterimi KOPYALAT
+    # ve yuva sözleşmesini bozardı. Kural bu yüzden v1 yoluna kalır.
+    if (v2_present) {
+      "- Sayıları YALNIZCA aşağıdaki yuva kuralıyla aktar, tahmin veya varsayım YAPMA\n"
+    } else {
+      "- Sayıları DOĞRUDAN kullan, tahmin veya varsayım YAPMA\n"
+    },
     "- Her yorum veriye dayalı olmalı\n",
     "- Profesyonel, güvenilir ve net Türkçe kullan\n",
     "- \"Muhtemelen\", \"belki\" gibi belirsizliklerden kaçın\n",
-    "- Markdown tablo formatını listeleme/sıralama için kullan\n",
-    "- FİLTRELEME UYARISI varsa, oran belirtirken dikkatli ol\n",
+    # v2'de tablo hücresindeki ya da oran olarak yazılan sayı da modelin
+    # kendi sayısıdır; yuva kuralıyla çelişen bu iki talimat v1'de kalır.
+    if (v2_present) {
+      paste0(
+        "- Tablo kullanırsan sayısal hücrelere YALNIZCA paketteki yuva jetonunu yaz; tabloda kendi sayını üretme\n",
+        "- FİLTRELEME UYARISI varsa oran/yüzde HESAPLAMA; yalnızca pakette yuvası olan değerleri an\n"
+      )
+    } else {
+      paste0(
+        "- Markdown tablo formatını listeleme/sıralama için kullan\n",
+        "- FİLTRELEME UYARISI varsa, oran belirtirken dikkatli ol\n"
+      )
+    },
     "- Başarısız sorgular varsa, bunları da raporla (hangileri ve neden başarısız olduklarını kısaca belirt)\n",
     "- TÜM başarılı sorguları mutlaka raporla - hiçbirini atlama!\n",
     if (v2_present) paste0(
       "\n### v2 SAYISAL KÖKEN KURALI (ZORUNLU):\n",
-      "- v2 ANALİZ PAKETİ içindeki her sayısal iddianın hemen ardına pakette basılı ilgili `[fact:...]` referansını AYNEN koy.\n",
-      "- Yeni fact kimliği UYDURMA; pakette bulunmayan sayıyı yazma ve paketler arasında aritmetik HESAPLAMA.\n",
+      "- v2 ANALİZ PAKETİ içindeki sayıları KENDİN YAZMA. Sayının geçmesi gereken yere o olgunun pakette basılı yuva jetonunu (`{{fact:` ile başlayan) AYNEN kopyala; değeri ve biçimini R yerleştirir.\n",
+      "- Yeni fact kimliği UYDURMA; pakette bulunmayan bir sayıyı yazma ve paketler arasında aritmetik HESAPLAMA.\n",
       "- `KULLANILAMAZ` durumundaki olgular için sayı üretme; sınırlılığı açıkça belirt.\n"
     ) else "",
     # Faz 6 (D16, §10): paketler arası ARİTMETİK yasağı. "Sorgular arası

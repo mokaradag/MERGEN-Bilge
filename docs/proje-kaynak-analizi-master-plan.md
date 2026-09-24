@@ -1426,37 +1426,166 @@ per-stage latency, degradation flags, attachment produced. This is how the tool
 becomes measurable — and it is what tells you which 30 of 169 queries deserve
 metadata first.
 
-**Numeric provenance check — semantic enforcement, not token membership.** A bare
-comparison of numeric tokens is insufficient: if `47` is a distinct-person count, prose
-that says *"tamamlanma %47"* must fail even though the packet contains the token `47`.
-The packet therefore exposes structured facts with `fact_id`, capability/label, value,
-unit, aggregation, authorized/filter scope, grouping keys and time window. The
-composition prompt requires every numeric claim to carry an adjacent machine-readable
-fact reference (for example `[fact:people.distinct.overall]`), which is removed from the
-final display only after validation.
+**Numeric provenance — semantic fact references, not reverse matching.** The earlier
+design asked the model to type the number and place an adjacent `[fact:...]` citation,
+then scanned the generated Turkish prose, guessed which fact each number belonged to and
+validated value/unit/aggregation. Production measurement killed that architecture: over
+40 questions in `log` mode produced useful, mostly correct answers while the scanner kept
+reporting mismatches dominated by `missing_fact_marker` — i.e. the model had written a
+*correct* number but had not obeyed a hidden citation-placement convention. Reverse
+matching conflated a formatting/protocol failure with a wrong number, and in `block` mode
+a protocol failure could replace an otherwise useful answer.
 
-The validator checks the rendered number and its semantic use against the referenced
-fact: correct measure capability, unit, aggregation, scope/group and date window, with
-only declared rounding/formatting tolerance. Unknown fact IDs, a correct value cited for
-the wrong measure, or a changed scope are mismatches. Bare token membership may remain
-a diagnostic signal but can never authorize a claim. Deterministic tables/attachments
-carry fact IDs internally and bypass LLM claim parsing because R owns their semantics.
-Logging alone still does **not** satisfy the packet-only-facts contract: the invented or
-mislabelled figure would reach the user and merely increment a counter.
+The responsibility split is now explicit:
+
+* **The LLM owns** language, explanation, interpretation, possible explanations,
+  recommendations, narrative order, and *which* trusted fact is relevant.
+* **R owns** the numeric value, its formatting (thousands/decimal separators,
+  percentages, currencies, units), fact identity, authorization/RLS, deterministic
+  tables/exports and the final rendering of trusted facts.
+
+Concretely: the packet prints, next to every number the model can see, that number's
+**slot token** `{{fact:<fact_id>}}`. The model writes prose and places the slot where the
+number belongs — it never types the number. R resolves the slot against the fact
+catalogue of the *current authorized request* and substitutes the canonical display.
+Resolution is single-pass and the substituted display is never re-scanned, so a fake slot
+smuggled through a data value cannot be expanded (`.pk_render_safe_text()` strips both
+square and curly brackets from every data-derived string).
+
+```
+"Projelerin genel görünümünde gecikmeler belirli alanlarda yoğunlaşıyor. Özellikle "
+{{fact:activity_late_count.sum.overall.3b150a}}
+" geciken aktivite, program takibinde daha ayrıntılı inceleme gerektiriyor."
+   ->
+"Projelerin genel görünümünde gecikmeler belirli alanlarda yoğunlaşıyor. Özellikle
+ 15.448 geciken aktivite, program takibinde daha ayrıntılı inceleme gerektiriyor."
+```
+
+The internal representation is structured; the **user-visible answer is not**. The v2
+system prompt no longer forces every question through a fixed Özet/Gözlemler/Yorum/
+Öneriler/Sınırlılıklar template. Broad questions ("Projeleri özetle") may justify a
+sectioned executive answer; narrow ones ("Ana aşaması hiç tanımlanmamış projeler
+hangileri?", "Bitişine 30 günden az kalan aktiviteleri göster") are answered directly and
+naturally alongside the R-owned table/list. The epistemic distinction between observation,
+interpretation, possible explanation, recommendation and limitation is preserved **in the
+language**, not as mandatory headings.
+
+**Trusted request inputs are not database facts.** In *"Bitişine 30 günden az kalan
+aktiviteleri göster"* the `30` came from the user. Those values are carried forward
+explicitly as facts of kind `request_input` (built by `pk_packet_request_facts()` from the
+*applied* filter set, not the raw LLM-extracted set): the model may reference them by slot
+like any other fact, and the structural literal scanner recognises them by an exact
+number-plus-unit key (`1,5` is not `15`; a unitless `1000` threshold does not exempt a
+model-written `1.000 saat`) rather than by heuristic classification of prose. Relative
+periods are usually compiled into an absolute date, which loses the user's own count; so
+`gün`/`ay`/`yıl` counts in the user's question ("son 6 ayda", "30 günden az") are carried
+as `request_input` facts too (`pk_request_period_values()`; only the normalised `6 ay`
+values travel in the packet, never the raw question) and printed as `6 {{slot}} ay` on the
+"Kullanici donem ifadesi" line (the slot resolves to the number only; the unit stays the
+model's own text). A period is a user criterion only while an applied range filter exists:
+with filters disabled, dropped or timed out, no period fact and no trusted key is emitted.
+
+**Every number the model can see has a slot.** Besides measures this covers coverage
+counts *and* the empty-value share (`missing_share`, `%` with one decimal, printed only
+when the row count is finite and positive), categorical counts/shares, date buckets,
+group rows and IQR outlier bounds; the bounds carry the measure's own unit, so a correct
+`… TL` or `%…` bound is not a `unit_conflict`. The v2 deep-analysis block header prints no
+bare row count or relevance score (the row count already has its `__kapsam__` slot), and
+neither the v2 prompt nor the `FİLTRELEME UYARISI` block describes a ratio denominator:
+ratios/percentages are never computed by the model.
+
+**Derived numbers.** The model may not invent arithmetic ("5 günlük pencere", "4 gün
+kaldı"). If such a figure is useful R computes it and exposes it as a fact with its own
+slot; otherwise the model expresses the interpretation qualitatively. No second LLM call
+is made to calculate, validate, repair or rewrite anything — the slot output is produced
+in the existing answer-generation call.
+
+**Unexpected model numeric literals** are detected *structurally*, never reverse-matched.
+`pk_fact_literal_scan()` is deliberately narrow: it flags a numeric token only when it
+carries a scale signal (separator, percent, scientific notation, four-plus digits, or a
+short list of scale-bearing units) and exempts bare years, dates, list numbering,
+digits inside identifiers (`P1234`, `PRJ-2045`, `P.01.02`), multi-separator codes that are
+not valid numbers (WBS `1.2.3`, `10.0.0.1`; a grouped number such as `1.234.567` stays in
+scope) and trusted request values. It reports *that* a literal exists; it never guesses which fact it
+meant. A literal sitting at **zero distance** from a slot (only whitespace/emphasis
+between) is treated as a redundant echo of the value R is about to insert and is removed —
+this is lexical de-duplication, not identity inference, and it is still reported.
+
+**Failure is handled at claim level.** Each slot is one claim:
+
+| Outcome | Behavior |
+|---|---|
+| valid reference | canonical display substituted |
+| unknown / unavailable / ambiguous fact | no value invented; the claim is neutralized in place |
+| unauthorized fact | **fail closed** — a fact ID from another request/session is simply absent from the index, so it can never render |
+| malformed slot token | protocol violation; no value printed |
+| legacy `[fact:...]` citation | protocol violation; the marker is removed (the model's own number, if any, is reported separately) |
+
+A single malformed reference therefore cannot discard thirty valid sentences.
 
 Enforcement is staged through `MERGEN_PK_NUMERIC_PROVENANCE_MODE`:
 
 | Mode | Behavior |
 |---|---|
-| `off` | disabled |
-| `log` | semantic mismatches recorded in telemetry only — **calibration mode**, used to measure the false-positive rate before enforcing |
-| `warn` | the answer is shown with unsupported or semantically mis-cited figures visibly marked and a Turkish note that they could not be verified against the computed fact |
-| `block` | the answer is rejected and regenerated once; on a second failure the deterministic table plus a short factual summary is shown without the prose |
+| `off` | slots are still resolved (numbers still come from R); no telemetry, no visible marking |
+| `log` | slots resolved; findings recorded **server-side only** and the user's answer is delivered unchanged — **calibration mode and the operational safety net** |
+| `warn` | `log` plus a bounded, user-visible Turkish verification note listing finding *categories* and counts (never raw values or fact IDs) |
+| `block` | problem claims are removed at **sentence** level; only if no usable content remains does the answer fall back to R's deterministic computed-value summary |
 
-Ship in `log`, review the real mismatch rate on the VM, then move to `warn`. Do **not**
-start in `block`: a legitimate phrase such as *"yaklaşık üçte biri"* can trip a naive
-matcher, and silently withholding a correct answer is its own failure mode. Acceptance
-criteria must name the active mode rather than asserting an absolute.
+The fail-closed guarantee — never render an unresolvable reference, never invent an
+unavailable value, never expose an unauthorized fact — holds in **every** mode, including
+`off` and `log`. It also holds on paths where no validation runs: a stored record without
+facts (v1 answer, or a v2 packet that could not be built) still neutralizes `fact`-prefixed
+slots before the provenance footer is appended, in the single-chat path
+(`pk_provenance_decorate()`) and the Ortak Oturum room hook alike; ordinary template
+syntax such as `{{ ad }}` is left untouched. What the mode changes is how much of a *recoverable* problem the user is
+shown, not whether untrusted values can be published.
+
+Both the code default (`R/helpers_pk_config.R`) and the deployment template
+(`.Renviron.example`) ship `log`. This is deliberate: `log` is the mode whose production
+behavior has actually been measured, and the false-positive profile of the new resolver on
+the Windows VM is not yet known. Promote to `warn`, then `block`, once VM telemetry is
+reviewed.
+
+**Telemetry separates protocol from trust.** A single mismatch rate was misleading —
+`uyusmazlik=16 oran=0.286` could mean 13 citation-placement defects and only 3 real
+problems. The server log now reports the two families separately:
+
+```
+[PK_ANALIZ] Olgu referansi | kip=log | sorgu=q_x | referans=12 | cozulen=11 |
+            protokol=1 | guven=1 | guven_orani=0.083 |
+            protokol_dagilim=model_numeric_literal=1 |
+            guven_dagilim=unknown_fact=1 | olgular=<bounded fact id list>
+```
+
+*Protocol/structure*: `malformed_reference` (including an unterminated `{{fact:`
+opener and a broken one such as `{{fact:x}` or an over-long unclosed opener — none of
+them ever reaches the user raw, and their digits are never scanned as model numbers),
+`legacy_reference`, `model_numeric_literal`, `duplicate_numeric_literal`,
+`render_degraded`.
+*Content/trust*: `unknown_fact`, `unavailable_fact`, `ambiguous_fact`, `unit_conflict`
+(a scale-bearing unit the model appended right after a slot contradicts the fact's own
+unit, e.g. a unitless count followed by `TL`; a unit appended to the user's own
+`request_input` criterion is not a conflict). When the model repeats the unit the display
+already carries (`{{fact:x}} saat`, `%{{fact:y}}`) the echo is dropped silently — as a
+separate edit, so it can never leave a slot unresolved, and never when the unit belongs to
+an adjacent number (`%5`). In `block` mode a list marker (`1.`, `-`) stays with its item:
+a fully dropped item leaves no orphan `1.` line. The `warn` note says the displayed numbers
+come from R only when no unsourced model literal is still visible.
+`guven_orani` is the substantive rate (trust findings / references) and is no longer
+inflated by formatting defects. Recoverable findings — a duplicate literal or a legacy
+marker at zero distance from a resolved slot — are removed silently: they reach
+telemetry but never the `warn` note, because R printed the value and nothing wrong was
+published.
+
+A fact-bearing pending record defers visible streaming in **every** mode, not only
+`block`: the raw deltas carry slot tokens, so the answer is shown (and spoken by TTS)
+only after R resolves them. The fail-closed refusal remains `block`-only. Prose, the question text, claimed/actual values and row
+data never enter the log; fact IDs are schema identifiers and are bounded to eight
+entries. `off` writes nothing at all.
+
+Deterministic tables and attachments never pass through this path at all: R owns their
+semantics and they are appended *after* resolution.
 
 **Empty-result taxonomy is richer internally than it is user-visible.** Restricted
 telemetry may distinguish `no_rows_pre_rls`, `out_of_scope_only`, `filter_zero` and
@@ -1880,7 +2009,7 @@ by serializing a helper closure (same rule as `MERGEN_LLM_TIMEOUT_SEC`).
 | `MERGEN_PK_CACHE_TTL_SEC` | `300` | `(query_id, rls_signature, filter_signature)` cache lifetime |
 | `MERGEN_PK_TELEMETRY` | `true` | Write `MB_Analiz_Log`. Applies to **both** engines — see §10 |
 | `MERGEN_PK_LOG_QUESTION_TEXT` | `false` | **Privacy:** store the raw question, or only a keyed fingerprint. With `false`, the fingerprint MUST be a normalized, server-keyed **HMAC** with key rotation — a plain unsalted hash does not protect low-entropy prompts drawn from a finite project vocabulary, since anyone who can read the table can hash the candidate questions and recover matches. If no key can be managed, omit the fingerprint entirely |
-| `MERGEN_PK_NUMERIC_PROVENANCE_MODE` | `warn` (dağıtım şablonu) / `log` (kod varsayılanı) | `off` / `log` / `warn` / `block` — enforcement level for answer facts that are absent or semantically mis-cited (§5.11). The deployment template ships in `warn` so a mismatch is never silent; move to `block` once the false-positive rate is calibrated on the VM |
+| `MERGEN_PK_NUMERIC_PROVENANCE_MODE` | `log` (code default **and** deployment template) | `off` / `log` / `warn` / `block` — how much of a *recoverable* fact-reference problem the user is shown (§5.11). The fail-closed guarantee (never render an unresolvable reference, never invent an unavailable value, never expose an unauthorized fact) applies in **every** mode. Template and code default agree on `log` because that is the mode whose production behavior has been measured; promote to `warn`, then `block`, after reviewing VM telemetry |
 | `MERGEN_PK_META_MODE` | `describe` | Generator mode: `describe` or `sample`. An invalid value is **rejected**, never silently defaulted. The default is the **non-executing** mode: an unset variable must never make a bare `source(...)` run the whole production query library |
 | `MERGEN_PK_META_SAMPLE_ROWS` | `500` | Maximum rows **transferred** per query in `sample` mode; the sample method and evidentiary limits must be recorded. This is not a server-work bound (`dbSendQuery()` runs the SELECT) — the real bounds are the timeout and the byte ceiling below |
 | `MERGEN_PK_META_HIGH_CARD_MIN` | `50` | Distinct-value count above which `high_cardinality = TRUE` is **proved** (one-sided; below it proves nothing). Must be strictly below `MERGEN_PK_META_SAMPLE_ROWS`, otherwise the proof is unreachable and the generator rejects the configuration |

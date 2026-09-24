@@ -236,6 +236,10 @@
   # `helpers_pk_numeric_provenance_claims.R` eklendi: düzyazı iddia
   # tarayıcıları, doğrulayıcı katmanından AYRILDI (küresel 800 satır bakım
   # ratchet'i). Tarayıcılar doğrulayıcıdan SONRA yüklenir.
+  # SONRAKİ MİMARİ (anlamsal olgu referansı, §5.11): ters eşleştirme yolu
+  # KALDIRILDI. `helpers_pk_numeric_provenance_binding.R` ve
+  # `..._claims.R` SİLİNDİ; yerlerine `helpers_pk_fact_reference.R` ve
+  # `helpers_pk_fact_reference_scan.R` geldi. Sayı NET olarak DEĞİŞMEZ.
   # BİLİNÇLİ GÜNCELLEME (PR incelemesi): 97 -> 98. `helpers_pk_analysis_packet.R`
   # bakım ratchet'inin satır tavanındaydı; saf gruplama anahtarı/etiketi
   # yardımcıları `helpers_pk_packet_keys.R` dosyasına ayrıldı (davranış AYNI).
@@ -246,7 +250,15 @@
   # analiz BİRİNCİL BAĞLANTI YAŞAM DÖNGÜSÜ `helpers_deep_analysis_connection.R`
   # dosyasına BÖLÜNDÜ (bırakıcı + kısa ömürlü sağlayıcı `reconcile`den taşındı,
   # korumalı edinme kapısı eklendi). Büyüme değil, bölme.
-  analysis_helpers = list(first = "R/helpers_pk_async_cancel.R", last = "R/helpers_pk_query_selection_apply.R", n = 100L),
+  # analysis_helpers 100 -> 101 BİLİNÇLİ GÜNCELLEME (PR incelemesi): olgu
+  # özetleri `helpers_pk_answer_facts_summary.R` dosyasına BÖLÜNDÜ. Bütçe
+  # aşımında İSTEME giden özetin yuva taşıması gerekiyordu ve ek fonksiyonlar
+  # `helpers_pk_answer_compose.R` dosyasını 25 fonksiyon ratchet'ine taşıyordu.
+  # Büyüme değil, bölme.
+  # 101 -> 102: `helpers_pk_stream_slot_guard.R` canlı akışta ham yuva
+  # koruyucularını taşır; `helpers_pk_provenance_peek.R` büyük dosya /
+  # fonksiyon yoğunluğu ratchet'i sınırındaydı. Ratchet bölünmesidir.
+  analysis_helpers = list(first = "R/helpers_pk_async_cancel.R", last = "R/helpers_pk_query_selection_apply.R", n = 102L),
   sso_identity_helpers = list(first = "R/helpers_sso_jwks_cache.R", last = "R/helpers_logout_url.R", n = 4L),
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
   # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
@@ -671,6 +683,10 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # satirdaydi ve baglama katmani KURESEL 800 satir tavanini asardi; tarama
   # dosyasi ise ayri bir sorumluluktur (iddia secimi). Ratchet bolunmesidir,
   # davranis degisikligi bu dosyanin KENDI sozlesmesindedir (analysis_helpers +1).
+  # ANLAMSAL OLGU REFERANSI (§5.11): yukaridaki IKI baglama/tarama dosyasi
+  # SILINDI ve yerlerine `helpers_pk_fact_reference.R` +
+  # `helpers_pk_fact_reference_scan.R` geldi. Iki sildik, iki ekledik: toplam
+  # DEGISMEZ.
   # 478 -> 479: PR #705 inceleme takibi, R/helpers_pk_numeric_provenance_claims.R
   # (sayısal köken düzyazı tarayıcıları; küresel 800 satır ratchet'i için ayrıldı).
   # 479 -> 480: PR #705 inceleme takibi, R/helpers_pk_packet_keys.R (saf
@@ -711,7 +727,11 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # `helpers_pk_async_lifecycle.R` 285 satırlık bütçesinin TAM tavanındaydı ve
   # çip etiketi geri düşüş düzeltmesi oraya sığmıyordu. Ratchet bölünmesidir;
   # yeni davranış eklemez (server_handlers_send_message +1).
-  expect_equal(length(runtime), 497L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 497 -> 498: `helpers_pk_answer_facts_summary.R` (olgu özetleri; fonksiyon
+  # ratchet'i için `helpers_pk_answer_compose.R` dosyasından ayrıldı).
+  # 498 -> 499: `helpers_pk_stream_slot_guard.R` (canlı akışta ham yuva
+  # koruyucusu; `helpers_pk_provenance_peek.R` ratchet sınırındaydı).
+  expect_equal(length(runtime), 499L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

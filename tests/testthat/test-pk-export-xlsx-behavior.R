@@ -34,11 +34,12 @@
   }
 
   for (dosya in c("helpers_pk_config.R", "helpers_pk_text_turkish.R",
+                  "helpers_pk_fact_reference.R", "helpers_pk_fact_reference_scan.R",
                   "helpers_pk_precision.R", "helpers_pk_packet_stats.R", "helpers_pk_packet_context_facts.R", "helpers_pk_packet_keys.R", "helpers_pk_analysis_packet.R",
                   "helpers_pk_packet_render.R", "helpers_pk_export_plan.R",
                   "helpers_pk_export_csv.R", "helpers_pk_export_xlsx.R",
                   "helpers_pk_export_serve.R",
-                  "helpers_pk_answer_compose.R")) {
+                  "helpers_pk_answer_compose.R", "helpers_pk_answer_facts_summary.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = env)
   }
   env

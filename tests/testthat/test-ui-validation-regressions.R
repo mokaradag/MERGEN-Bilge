@@ -2,9 +2,10 @@
 # Dosya Yolu: tests/testthat/test-ui-validation-regressions.R
 # Açıklama: PR #705 incelemesinden çıkan, birbirinden bağımsız arayüz/doğrulama
 #           sözleşmesi gerilemelerini doğrular: selectize ipucu bastırma, mesaj
-#           uzunluk tavanı taşması, MCP ikinci geçiş token ayarı, yerel
-#           CodeMirror yapısı/ratchet kapsamı ve ayar ipuçlarının erişilebilir
-#           açıklamalara bağlanması.
+#           uzunluk tavanı taşması, MCP ikinci geçiş token ayarı, gerçek
+#           CodeMirror çekirdeği/uzun kod çizimi ve ayar ipuçlarının erişilebilir
+#           açıklamalara bağlanması. Vendored varlık ayrıntıları
+#           test-codemirror-vendored-assets-contract.R içindedir.
 #
 #           BU DOSYA VARLIK/ALIAS ÇÖZÜMLEMESİNİ KAPSAMAZ. Eskiden
 #           `test-pk-entity-alias-regressions.R` adını taşıyordu; ad ve başlık
@@ -91,32 +92,41 @@ test_that("MCP ikinci geçişi çıktı token ortam ayarını uygular", {
   })
 })
 
-test_that("yerel CodeMirror yapısı tam çizim ve ucuz refresh sağlar", {
-  core_js <- .read_pk_entity_alias("www", "js", "codemirror_compat.js")
+test_that("gerçek CodeMirror uzun kodu tam çizer, yalnızca genişlik değişince yeniler", {
   manager_js <- .read_pk_entity_alias("www", "js", "codemirror-manager.js")
-  core_css <- .read_pk_entity_alias("www", "css", "codemirror_compat.css")
 
-  expect_false(grepl("extension placeholder", core_js, fixed = TRUE))
-  expect_true(grepl("OfflineCodeMirror.prototype.on", core_js, fixed = TRUE))
-  expect_true(grepl("OfflineCodeMirror.prototype.setSize", core_js, fixed = TRUE))
-  expect_true(grepl("OfflineCodeMirror.prototype.refresh", core_js, fixed = TRUE))
-  expect_true(grepl("this._wrapper.CodeMirror = this", core_js, fixed = TRUE))
-  expect_true(grepl("self._code.appendChild(row)", core_js, fixed = TRUE))
-  expect_true(grepl("OfflineCodeMirror.prototype._needsRender", core_js, fixed = TRUE))
-  expect_true(grepl("if (this._needsRender()) this._render();", core_js, fixed = TRUE))
+  # Otomatik yükseklikte sanallaştırma uzun kodu kırpıyordu; tüm belge çizilir.
   expect_true(grepl("viewportMargin: Infinity", manager_js, fixed = TRUE))
-  expect_true(grepl(".CodeMirror-line-row", core_css, fixed = TRUE))
-  expect_false(grepl("min-width: max-content", core_css, fixed = TRUE))
-  expect_true(grepl("flex: 1 1 auto", core_css, fixed = TRUE))
+  # Gerçek motorda refresh() tüm satırları yeniden çizer: başlatma sonrası
+  # zamanlayıcı yağmuru ve editör başına pencere resize dinleyicisi olmamalı.
+  # Ok/fonksiyon geri çağrısı (süslü parantezli ya da değil) ve her tırnak biçimi.
+  zamanlayici <- "setTimeout\\([^;]{0,120}?editor\\.refresh\\s*\\("
+  yeniden_boyut <- "addEventListener\\(\\s*['\"`]resize['\"`]"
+  for (yasak in c("setTimeout(() => editor.refresh(), 10)",
+                  "setTimeout(() => { editor.refresh(); }, 50)",
+                  "setTimeout(function () { editor.refresh(); })")) {
+    expect_true(grepl(zamanlayici, yasak, perl = TRUE), info = yasak)
+  }
+  for (yasak in c("addEventListener('resize', f)", "window.addEventListener(\"resize\", f)")) {
+    expect_true(grepl(yeniden_boyut, yasak, perl = TRUE), info = yasak)
+  }
+  expect_false(grepl(zamanlayici, manager_js, perl = TRUE))
+  expect_false(grepl(yeniden_boyut, manager_js, perl = TRUE))
+  expect_true(grepl("new ResizeObserver(", manager_js, fixed = TRUE))
+  # JSX modu vendored değildir: jsx/tsx etiketleri JS/TS moduna eşlenip yanlış
+  # vurgulanmaz, düz metin kalır.
+  expect_false(grepl("\\b(jsx|tsx)\\s*:", manager_js, perl = TRUE))
+  expect_true(grepl("measuredWidths.get(wrapper) === width", manager_js, fixed = TRUE))
 })
 
-test_that("özel CodeMirror varlıkları app-owned ratchet kapsamındadır", {
+test_that("CodeMirror çekirdeği vendored gerçek dağıtımdır; uyumluluk motoru yoktur", {
   manifest <- .read_pk_entity_alias("R", "config_ui_assets.R")
 
-  expect_true(grepl('"js/codemirror_compat.js"', manifest, fixed = TRUE))
-  expect_true(grepl('"css/codemirror_compat.css"', manifest, fixed = TRUE))
-  expect_false(grepl('"codemirror/codemirror.min.js"', manifest, fixed = TRUE))
-  expect_false(grepl('"codemirror/codemirror.min.css"', manifest, fixed = TRUE))
+  expect_true(grepl('"codemirror/codemirror.min.js"', manifest, fixed = TRUE))
+  expect_true(grepl('"codemirror/codemirror.min.css"', manifest, fixed = TRUE))
+  expect_false(grepl("codemirror_compat", manifest, fixed = TRUE))
+  expect_false(file.exists(file.path(repo_root_pk_entity_alias, "www", "js", "codemirror_compat.js")))
+  expect_false(file.exists(file.path(repo_root_pk_entity_alias, "www", "css", "codemirror_compat.css")))
 })
 
 test_that("yapılandırma ipuçları erişilebilir açıklamalara bağlanır", {

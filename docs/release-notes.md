@@ -14,6 +14,68 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-09-23 Kod bloklarında gerçek sözdizimi vurgulaması geri geldi
+
+PR #692 kod görüntüleyicisini, belgeyi düz metin olarak çizen uygulama içi bir
+uyumluluk katmanına geçirmişti; depo içindeki `www/codemirror/*` dosyaları da
+yalnızca yer tutucuydu. Anahtar sözcük, tanım, değişken, dize, sayı ve yorum
+renkleri kaybolmuş, koyu temada satırlar açık zeminle çiziliyordu.
+
+- Uygulama yeniden GERÇEK, çevrimdışı CodeMirror 5 (5.65.21) kullanır: çekirdek,
+  dil modları, `material-darker` teması, katlama/yorum eklentileri depoda
+  vendored olarak durur; internet/CDN gerekmez. Kaynak ve SHA-256 özetleri:
+  `www/codemirror/README.md`.
+- Koyu ve açık temada gerçek belirteç renkleri, okunur satır numaraları ve
+  çalışan kod katlama; uzun kodun tamamı çizilir (PR #692'nin kırpma düzeltmesi
+  korunur), kopyalama tam özgün kodu verir.
+- Açık temada kod başlığındaki Kopyala/Daralt simgeleri artık okunur (markdown
+  italik rengi simgeleri de boyuyordu).
+- Diff bloklarında eklenen/silinen satırlar ve `@@` başlıkları iki temada da
+  renklidir (açık temada düz metin görünüyordu); Markdown başlık/alıntı/bağlantı
+  renkli, liste metni düz; JSON anahtarları değerlerden ayrışır.
+- Yeni diller: YAML, JSON, Markdown, Diff, Dockerfile, TOML, INI/properties,
+  Rust, Perl, Lua ve T-SQL/MySQL/PostgreSQL/PL-SQL/SQLite SQL lehçeleri;
+  `py`, `js`, `sh`, `ts`, `yml` gibi kod çiti kısaltmaları tanınır.
+
+On-prem kurulum notu: VM çalışma kopyasındaki eski `www/codemirror/` dosyaları
+depo sürümüyle DEĞİŞTİRİLMELİDİR (yerel değişiklikler varsa önce geri alın).
+Doğrulama: `Get-FileHash -Algorithm SHA256` çıktısı README tablosuyla eşleşmeli.
+
+### (Yayınlanmadı) 2026-09-23 Süreç Yönetimi kaynak tıklaması taramasız açılır
+
+Yanıttaki bir kaynağa tıklamak ~1000 belgelik bir UNC model klasöründe yaklaşık
+3 dakika sürebiliyordu: tek tıklama aynı klasörü üç kez baştan sona tarıyordu.
+Nedenler ve düzeltmeler (ayrıntı: `technical-reference.md` > "Kaynak tıklama
+çözümleme sözleşmesi"):
+
+- Ucuz, belirleyici göreli yol denemesi pahalı indeks aramasından SONRA
+  geliyordu. Artık önce tüm model tabanlarında ipucunun düz (`A&&B&&C.pdf`) ve iç
+  içe (`A/B/C.pdf`) yerleşimi, PDF atfı için aynı gövdeli `.docx`/`.docm`/`.doc`
+  eşdeğerleri denenir; bilinen kaynak dizin TARANMADAN açılır.
+- Arama aşamaları (tam ad, ipucu, Word eşdeğeri, parça içerme, dosya adı) her
+  biri kendi indeksini kuruyordu; artık tek indeksi paylaşır ve bir tıklama bir
+  tabanı en fazla bir kez tarar. Önbellekteki (kısmi olsa bile) indeks taramadan
+  önce kullanılır.
+- Başarısız/kısmi tarama geri çekilmesi taramanın başlangıcından ölçülüyordu;
+  40-70 sn süren tarama bittiğinde süre dolmuş sayılıyordu. Artık BİTİŞ anından
+  ölçülür.
+- İndeks taraması dosya başına iki `normalizePath()` ve boyut okuması yapan genel
+  tarayıcı yerine yalnızca ad listeleyen sınırlı yürüyüşü kullanır; kanonik kök
+  denetimi açılacak TEK aday için yapılır.
+- Güvenlik korunur/sertleşir: ipucu parçalarında `:` (NTFS ADS) ve kontrol
+  karakterleri de reddedilir; indeks isabeti dahil her aday açılmadan önce
+  dosya olarak ve model tabanı içinde doğrulanır; kişisel kova ve `model_bases`
+  kapsamı değişmedi.
+- Aday ve model tabanı ayrıca KANONİK yol (bağlantı/reparse point çözülmüş)
+  üzerinden karşılaştırılır: UNC tabanında kök içindeki bir dosya bağlantısı
+  kök dışını açamaz.
+- Öncelik tabanlar arasında korunur: başka tabandaki tam PDF, aynı gövdeli Word
+  belgesinin; taranmamış tabandaki tam dosya, başka tabandaki yalnızca dosya
+  adı eşleşmesinin önüne geçer (taban başına en fazla bir tarama sürer).
+
+Doğrulama sınırı: davranış ve tarama sayısı sözleşmesi bulut testleriyle
+kanıtlanır; gerçek UNC paylaşımındaki süre Windows VM'de ölçülmelidir.
+
 ### (Yayınlanmadı) 2026-09-04 Güvenlik sertleştirmesi ve kararlılık düzeltmeleri (PR #717)
 
 Geçmiş inceleme bulgularının (CodeRabbit + Aikido) kod üzerinde doğrulanarak

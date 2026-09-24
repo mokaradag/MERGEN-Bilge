@@ -665,27 +665,30 @@ MERGEN_PK_EXPORT_MAX_PARTS=20
 #   akışlı CSV yoluna geçilir. Sessiz kırpma DEĞİLDİR: tüm satırlar aktarılır.
 MERGEN_PK_EXPORT_MAX_CELLS=2000000
 
-#   SAYISAL KÖKEN DOĞRULAMASI. Modelin ürettiği her sayı, R'nin hesapladığı
-#   yapılandırılmış olguya karşı denetlenir (değer + birim + kullanılabilirlik).
-#     off   -> kapalı
-#     log   -> uyuşmazlıklar yalnızca sunucu tarafında kaydedilir (KALİBRASYON)
-#     warn  -> doğrulanamayan sayılar kullanıcıya görünür biçimde işaretlenir
-#     block -> düzyazı reddedilir, R'nin hesapladığı değerler gösterilir
-#   DAĞITIM ŞABLONU VARSAYILANI `block`'TUR (KAPALI BAŞARISIZ YÖNÜ).
-#   `log` kipinde uyuşmazlık YALNIZCA sunucuya yazılır; kullanıcı doğrulanmamış
-#   sayıyı hiçbir işaret olmadan GÖRÜR. `warn` kipi işaret koyar ama yapısal
-#   olguyla UYUŞMAYAN sayıyı YİNE DE GÖSTERİR: model desteklenmeyen bir sayısal
-#   iddia ürettiğinde kullanıcı o iddiayı okumaya (ve seslendirme açıksa
-#   DUYMAYA) devam eder. Söylenmiş ses geri alınamaz.
-#   `block` kipinde reddedilen düzyazı yerine DETERMİNİSTİK yedek metin gösterilir
-#   (R'nin hesapladığı değerler); bkz. `pk_block_mode_fallback_text()` ve
-#   `mergen_pk_block_mode_texts()`. Bu yüzden şablon varsayılanı `block`'tur.
-#   GERİ ALMA: kalibrasyon sırasında yanlış-pozitif oranını ölçmek için bu satır
-#   geçici olarak `log` ya da `warn` yapılabilir. ÇALIŞMA ZAMANI varsayılanı
-#   (`R/helpers_pk_numeric_provenance.R`) hâlâ `log`'dur; bu değişiklik yalnızca
-#   YENİ dağıtımların kopyaladığı şablonu etkiler, mevcut `.Renviron` dosyalarını
-#   DEĞİŞTİRMEZ.
-MERGEN_PK_NUMERIC_PROVENANCE_MODE=block
+#   SAYISAL KÖKEN (ANLAMSAL OLGU REFERANSI). Model analitik sayı YAZMAZ:
+#   sayının geçmesi gereken yere pakette basılı `{{fact:...}}` yuvasını koyar ve
+#   kanonik değeri (biçim, birim, yüzde, para birimi dâhil) R basar. Bu yüzden
+#   "modelin yazdığı sayıyı düzyazıdan bulup olguya geri eşleştirme" adımı
+#   ARTIK YOKTUR; bu ayar, yuva çözümlemesinde ortaya çıkan sorunlara nasıl
+#   davranılacağını belirler.
+#     off   -> referanslar çözülür (sayılar yine R'den gelir); telemetri ve
+#              görünür işaret üretilmez.
+#     log   -> referanslar çözülür; sorunlar YALNIZCA sunucuya kaydedilir ve
+#              kullanıcı yanıtı DEĞİŞMEDEN alır (KALİBRASYON / İŞLETİM AĞI).
+#     warn  -> `log` + kullanıcıya görünen, sınırlı bir doğrulama notu.
+#     block -> sorunlu İDDİA düzeyinde ayıklanır (yalnızca sorunlu cümleler
+#              düşer). Geriye kullanılabilir içerik kalmazsa R'nin hesapladığı
+#              deterministik özet gösterilir.
+#   HER KİPTE geçerli olan kapalı başarısızlık: çözülemeyen bir referans ASLA
+#   değer basmaz, yetkisiz/bilinmeyen bir kimlik değer üretmez ve kullanılamaz
+#   bir olgu için sayı uydurulmaz. Bu koruma kipten BAĞIMSIZDIR.
+#   DAĞITIM ŞABLONU VARSAYILANI `log`'DUR ve ÇALIŞMA ZAMANI varsayılanıyla
+#   (`R/helpers_pk_config.R`) AYNIDIR. Gerekçe: üretimde ölçülen davranış `log`
+#   kipinde doğrulanmıştır ve yeni mimarinin VM üzerindeki yanlış-pozitif
+#   profili henüz ölçülmemiştir. Telemetri protokol/yapı sorunlarını esasa
+#   ilişkin güven sorunlarından AYRI raporlar; kalibrasyon bu iki sayaç üzerinden
+#   yapılır ve ardından `warn`, sonra `block` kipine geçilebilir.
+MERGEN_PK_NUMERIC_PROVENANCE_MODE=log
 
 #   Faz 4 — VARLIK ÇÖZÜMLEME EŞİKLERİ (master plan §5.4). Kullanıcının yazdığı
 #   ifade, sütunun GERÇEK ayrık değerlerinden oluşan kapalı sözlüğe karşı altı

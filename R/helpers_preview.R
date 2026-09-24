@@ -181,6 +181,8 @@ openAnyPreview <- function(file_info, session, filePreview) {
 
 # İstemciden gelen '&&' ipucu parçalarının güvenli olup olmadığını denetler.
 # '..', '.', mutlak yol, sürücü harfi ve yol ayırıcı içeren parçalar reddedilir.
+# ':' HER KONUMDA reddedilir: Windows'ta `rapor.pdf:gizli` NTFS alternatif veri
+# akışıdır; Kaynakça işaretleyici sözleşmesi de ':' içeren parçayı kabul etmez.
 .preview_hint_parts_safe <- function(parts) {
   parts <- as.character(parts %||% character(0))
   if (!length(parts)) return(FALSE)
@@ -190,7 +192,8 @@ openAnyPreview <- function(file_info, session, filePreview) {
     if (is.na(p) || !nzchar(p)) return(FALSE)
     if (p %in% c(".", "..")) return(FALSE)
     if (grepl("[/\\\\]", p, perl = TRUE)) return(FALSE)
-    if (grepl("^[A-Za-z]:", p, perl = TRUE)) return(FALSE)
+    if (grepl(":", p, fixed = TRUE)) return(FALSE)
+    if (grepl("[[:cntrl:]]", p, perl = TRUE)) return(FALSE)
     TRUE
   }, logical(1)))
 }
@@ -241,9 +244,130 @@ openAnyPreview <- function(file_info, session, filePreview) {
   identical(hedef, kok) || startsWith(hedef, paste0(kok, "/"))
 }
 
+# --- KAYNAK TIKLAMA ÇÖZÜMLEMESİ (model tabanları) ---
+# Sözleşme: (1) TÜM tabanlarda belirleyici göreli adaylar, dizin taraması YOK;
+# (2) önbellekteki indeks, tarama YOK; (3) yalnızca indeks yetkili değilse taban
+# başına EN FAZLA BİR sınırlı tarama ve tüm arama aşamaları o indeksi paylaşır.
+# Her sonuç, açılmadan önce kök içinde ve var olan bir DOSYA olarak doğrulanır.
+
+# İpucunun belirleyici göreli adayları (parça vektörleri listesi, öncelik
+# sırasıyla). '&&' hem düz dosya adının parçası (`A&&B&&C.pdf`) hem de alt klasör
+# ayracı (`A/B/C.pdf`) olabildiği için iki yerleşim de denenir. PDF atfı için
+# aynı gövdeli Word uzantıları, tam PDF adaylarından SONRA eklenir.
+.preview_direct_rel_candidates <- function(filename_full, parts) {
+  parts <- as.character(parts %||% character(0))
+  if (!length(parts) || !.preview_hint_parts_safe(parts)) return(list())
+  yerlesimler <- list(parts)
+  duz <- trimws(as.character(filename_full %||% "")[1])
+  if (length(parts) > 1L && !is.na(duz) && .preview_hint_parts_safe(duz)) {
+    yerlesimler <- c(list(duz), yerlesimler)
+  }
+  son <- parts[length(parts)]
+  if (!identical(tolower(tools::file_ext(son)), "pdf")) return(yerlesimler)
+  word <- lapply(FILE_INDEX_PDF_WORD_EXTS, function(ext) lapply(yerlesimler, function(segs) {
+    n <- length(segs)
+    segs[n] <- paste0(tools::file_path_sans_ext(segs[n]), ".", ext)
+    segs
+  }))
+  unique(c(yerlesimler, unlist(word, recursive = FALSE)))
+}
+
+# Var olan yolun kanonik biçimi (bağlantılar çözülmüş); çözülemezse NA.
+.preview_canonical_path <- function(x) {
+  tryCatch(normalizePath(as.character(x)[1], winslash = "/", mustWork = TRUE),
+           error = function(e) NA_character_)
+}
+
+# Aday kökün İÇİNDE, var olan bir DOSYA mı? Sözcüksel denetime ek olarak aday
+# ve kök KANONİK biçimde (bağlantı/reparse point çözülmüş) karşılaştırılır:
+# UNC yolunda `normalize_mcp_path()` bağlantıyı çözmez; kök içindeki bir dosya
+# bağlantısı sözcüksel denetimi geçip kök dışını açabilirdi. Kanonik yol döner.
+.preview_accept_candidate <- function(aday, base_dir) {
+  var <- path_existing_variant(aday)
+  if (is.na(var) || isTRUE(dir.exists(var))) return(NULL)
+  kanonik <- c(.preview_canonical_path(var), .preview_canonical_path(base_dir))
+  if (!.preview_path_inside(var, base_dir) || anyNA(kanonik) ||
+      !.preview_path_inside(kanonik[1], kanonik[2])) {
+    log_warn("[SRC_CLICK] aday kök dışına çözüldü, reddedildi: {aday}")
+    return(NULL)
+  }
+  kanonik[1]
+}
+
+# Belirleyici adayları yoklar: sabit sayıda varlık denetimi, dizin taraması YOK.
+.preview_probe_direct <- function(base_dir, rel_adaylar) {
+  for (segs in rel_adaylar) {
+    hit <- .preview_accept_candidate(do.call(file.path, as.list(c(base_dir, segs))), base_dir)
+    if (!is.null(hit)) return(hit)
+  }
+  NULL
+}
+
+# ÖNBELLEKTEKİ indekste tek bir güç kademesi arar; TARAMA YAPMAZ. "tam": tam ad
+# ve '&&' skorlu arama; "word": PDF -> Word ve parça içerme; "ad": yalnızca
+# dosya adıyla zayıf arama.
+.preview_index_lookup <- function(base_dir, kademe, filename_full, filename_base) {
+  idx <- .file_index_peek(base_dir)
+  if (!is.list(idx) || !length(idx$map)) return(NULL)
+  ipucu <- grepl("&&", filename_full, fixed = TRUE)
+  hit <- tryCatch(switch(
+    kademe,
+    tam = .search_from_index(base_dir, filename_full, idx = idx) %||%
+      (if (ipucu) .search_with_hint(base_dir, filename_full, idx = idx)),
+    word = .search_pdf_word_fallback(base_dir, filename_full, idx = idx) %||%
+      (if (ipucu) .search_all_parts_contained(base_dir, filename_full, idx = idx)),
+    ad = if (!identical(filename_base, filename_full)) {
+      .search_from_index(base_dir, filename_base, idx = idx)
+    }
+  ), error = function(e) NULL)
+  .preview_accept_candidate(hit, base_dir)
+}
+
+# Model tabanlarında çözümleme; her adım TÜM tabanlarda denenir, sonra bir
+# sonrakine geçilir: (1) tam belirleyici adaylar, (2) önbellekteki indekste tam
+# ad, (3) Word belirleyici adayları ve önbellekte Word eşdeğeri, (4) indeksi
+# yetkili olmayan taban için EN FAZLA BİR tarama ve tam ad, (5) Word eşdeğeri,
+# (6) yalnızca dosya adıyla zayıf eşleşme. Böylece bir tabanın taraması başka
+# tabandaki ucuz TAM isabeti bekletmez; zayıf eşleşme ise başka tabandaki tam
+# dosyanın önüne geçemez.
+.preview_resolve_model_bases <- function(bases, filename_full, filename_base, parts) {
+  parts <- as.character(parts %||% character(0))
+  if (!length(parts) || !nzchar(trimws(filename_full %||% ""))) return(NULL)
+  rel_adaylar <- .preview_direct_rel_candidates(filename_full, parts)
+  uzanti <- tolower(tools::file_ext(parts[length(parts)]))
+  tam_aday <- vapply(rel_adaylar, function(segs) {
+    identical(tolower(tools::file_ext(segs[length(segs)])), uzanti)
+  }, logical(1))
+  for (adim in c("b1", "b2", "b1_word", "b2_word", "b3", "b3_word", "b3_ad")) {
+    for (base_dir in bases) {
+      hit <- switch(
+        adim,
+        b1 = .preview_probe_direct(base_dir, rel_adaylar[tam_aday]),
+        b1_word = .preview_probe_direct(base_dir, rel_adaylar[!tam_aday]),
+        b2 = .preview_index_lookup(base_dir, "tam", filename_full, filename_base),
+        b2_word = ,
+        b3_word = .preview_index_lookup(base_dir, "word", filename_full, filename_base),
+        b3 = if (identical(.file_index_entry_state(.file_index_peek(base_dir)), "stale")) {
+          .build_basename_index(base_dir)
+          .preview_index_lookup(base_dir, "tam", filename_full, filename_base)
+        },
+        b3_ad = .preview_index_lookup(base_dir, "ad", filename_full, filename_base)
+      )
+      if (!is.null(hit)) {
+        log_info("[SRC_CLICK] ({adim}) bulundu -> {hit}")
+        return(hit)
+      }
+    }
+  }
+  NULL
+}
+
 handle_source_file_click <- function(event_payload, settings_data, api_config, session, filePreview) {
   # Ham tıklama değeri (Kaynakça'daki data-filename olabilir; '&&' ile ipucu içerebilir)
   raw_hint <- if (is.character(event_payload)) event_payload[1] else (event_payload$filename %||% event_payload$name %||% "")
+  # Bozuk yük (liste, NA, sayı) skaler metne indirgenir; çözümleme çökmeden
+  # "bulunamadı" ile sonlanır.
+  raw_hint <- if (is.character(raw_hint) && length(raw_hint) >= 1L && !is.na(raw_hint[1])) raw_hint[1] else ""
   log_info("[SRC_CLICK] alındı: raw='{raw_hint}'")
 
   # Çözümleme kapsamı: ortak oturum odalarındaki kaynaklar scope="model_bases"
@@ -286,9 +410,10 @@ handle_source_file_click <- function(event_payload, settings_data, api_config, s
 
   # --- ÇÖZÜMLEME STRATEJİSİ ---
   # (a) Önce kullanıcı kovası (tam ipucu -> basename)
-  # (b) Ardından TÜM model bazlarında '&&' ipucunu kullanarak doğrudan göreli yolu dene,
-  #     bulunamazsa aynı baz altında indeksli/rekürsif dosya adı araması yap
-  # (c) En son küresel önbellek (index.json) üzerinden çözümle (tam ipucu -> basename)
+  # (b) Model bazları: belirleyici göreli adaylar (tarama yok) -> önbellekteki
+  #     indeks -> taban başına en fazla bir sınırlı tarama
+  #     (bkz. `.preview_resolve_model_bases()`)
+  # (c) Küresel/çapraz kullanıcı çözümleme KAPALIDIR
 
   found_path <- NULL
 
@@ -324,48 +449,7 @@ handle_source_file_click <- function(event_payload, settings_data, api_config, s
 
   # (b) Tüm model bazları + '&&' yol ipucu
   if (is.null(found_path) && length(all_bases) > 0) {
-    rel_parts <- if (length(parts) > 1) parts[seq_len(length(parts) - 1)] else character(0)
-
-    for (base_dir in all_bases) {
-      # 1) İpucuyla (A&&B&&C) indeks üzerinden adayları puanlayarak ara
-      log_debug("[SRC_CLICK] (b1) ipucu ile arama: base='{base_dir}', hint='{filename_full}'")
-      cand_hint <- try(search_file_in_folder(base_dir, filename_full), silent = TRUE)
-      if (!inherits(cand_hint, "try-error") && !is.null(cand_hint) && file.exists(cand_hint)) {
-        found_path <- normalizePath(cand_hint, winslash = "/", mustWork = FALSE)
-        log_info("[SRC_CLICK] (b1) ipucu ile bulundu -> {found_path}")
-        break
-      }
-
-      # 2) İpuçları direkt göreli yol oluşturuyorsa onu dene.
-      #    İpucu parçaları İSTEMCİDEN gelir: doğrulanmadan birleştirildiğinde
-      #    '..', mutlak yol veya sürücü harfi ile model baz klasörünün dışına
-      #    çıkılabiliyordu. Parçalar süzülür ve sonuç kök içinde doğrulanır.
-      if (length(rel_parts) > 0 && .preview_hint_parts_safe(c(rel_parts, last_part))) {
-        # ADAY VE KÖK AYNI NORMALLEŞTİRİCİDEN GEÇMELİDİR. Burada `normalizePath()`
-        # kullanılıyor, `.preview_path_inside()` ise iki tarafa da
-        # `normalize_mcp_path()` uyguluyordu. Windows'ta `normalizePath()` bir UNC
-        # yolunu eşlenmiş sürücü biçimine (`M:/...`) çözebilir, `normalize_mcp_path()`
-        # ise UNC biçimini korur: `api_config$local_model_paths` bir UNC kökü
-        # taşıdığında GEÇERLİ ve güvenli bir isabet kapsama denetiminde
-        # reddediliyor ve akış pahalı rekürsif taramaya düşüyordu. Aday HAM
-        # biçimde kurulur; normalleştirmeyi tek noktada kapsama denetimi yapar.
-        candidate_rel <- do.call(file.path, as.list(c(base_dir, rel_parts, last_part)))
-        if (.preview_path_inside(candidate_rel, base_dir) && path_exists_relaxed(candidate_rel)) {
-          found_path <- candidate_rel
-          log_info("[SRC_CLICK] (b2) ipucu ile direkt bulundu -> {found_path}")
-          break
-        }
-      }
-
-      # 3) Son çare: sadece dosya adına göre arama
-      log_debug("[SRC_CLICK] (b3) rekürsif dosya adı araması: base='{base_dir}', name='{filename_base}'")
-      candidate_scan <- try(search_file_in_folder(base_dir, filename_base), silent = TRUE)
-      if (!inherits(candidate_scan, "try-error") && !is.null(candidate_scan) && path_exists_relaxed(candidate_scan)) {
-        found_path <- normalizePath(candidate_scan, winslash = "/", mustWork = FALSE)
-        log_info("[SRC_CLICK] (b3) rekürsif aramada bulundu -> {found_path}")
-        break
-      }
-    }
+    found_path <- .preview_resolve_model_bases(all_bases, filename_full, filename_base, parts)
   }
 
 	# (c) Genel index / çapraz kullanıcı çözümleme güvenlik nedeniyle kapalıdır.

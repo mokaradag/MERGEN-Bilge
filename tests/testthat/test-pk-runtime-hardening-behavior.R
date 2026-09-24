@@ -380,13 +380,16 @@ test_that("duzgun kapanmis blok DEGISTIRILMEZ", {
 # --- Birim katlaması -----------------------------------------------------------
 
 test_that("kucuk harfli Turkce birim harfleri de katlanir", {
-  env <- .pk_hardening_test_env(c("helpers_pk_numeric_provenance.R",
-                                  "helpers_pk_numeric_provenance_binding.R",
-                                  "helpers_pk_numeric_provenance_claims.R"))
+  env <- .pk_hardening_test_env(c("helpers_pk_fact_reference.R",
+                                  "helpers_pk_fact_reference_scan.R",
+                                  "helpers_pk_numeric_provenance.R"))
+  # Katlama YEREL AYARDAN BAGIMSIZDIR: "gün"/"gun" ve "kişi"/"kisi" ayni
+  # jetona duser. Birim jetonu yalnizca sayi tarayicisinin "veri gibi" kapisi
+  # icindir; olgu eslestirmesinde KULLANILMAZ.
   gun_tr <- paste0("g", intToUtf8(0xFC), "n")  # "gün"
-  expect_identical(env$.pk_prov_unit_fold(gun_tr), env$.pk_prov_unit_fold("gun"))
+  expect_identical(env$.pk_scan_fold(gun_tr), env$.pk_scan_fold("gun"))
   kisi_tr <- paste0("ki", intToUtf8(0x15F), "i")  # "kişi"
-  expect_identical(env$.pk_prov_unit_fold(kisi_tr), env$.pk_prov_unit_fold("kisi"))
+  expect_identical(env$.pk_scan_fold(kisi_tr), env$.pk_scan_fold("kisi"))
 })
 
 # --- Olgu ad alanı -------------------------------------------------------------
@@ -431,13 +434,13 @@ test_that("ad alani KISALTILMAMIS sorgu kimligiyle carpismaya dayaniklidir", {
 test_that("NA olgu kimligi ad alanlama sirasinda HATA firlatmaz", {
   env <- .pk_deep_test_env()
   sonuc <- env$.pk_deep_namespace_facts(
-    "metin [fact:a] son",
+    "metin {{fact:a}} son",
     list(list(fact_id = NA_character_), list(fact_id = "a"), list(fact_id = character(0))),
     "q1"
   )
   expect_length(sonuc$facts, 3L)
   expect_true(is.na(sonuc$facts[[1]]$fact_id))
-  expect_true(grepl("[fact:q1_", sonuc$text, fixed = TRUE))
+  expect_true(grepl("{{fact:q1_", sonuc$text, fixed = TRUE))
 })
 
 # --- Eşzamansız istek sözleşmesi ----------------------------------------------
@@ -556,6 +559,31 @@ test_that("pk_required_helpers her BILDIRILEN fonksiyonu gercekten yukler", {
                   info = paste(fn, "<-", paste(spec$path, collapse = ",")))
     }
   }
+})
+
+test_that("paket kurucusunun izole yukleme zinciri manifestin Faz 2 blogunu AYNEN yansitir", {
+  # `helpers_pk_packet_keys.R` zincirden eksikti: `pk_build_analysis_result`
+  # yoksa calisan bu yolda ilk gruplu v2 paketi "could not find function
+  # .pk_join_key" ile dusuyordu. Fonksiyon VARLIGI denetimi bunu yakalamaz.
+  kok <- resolve_repo_root_for_tests()
+  satirlar <- sub("\\r$", "", readLines(
+    file.path(kok, "R", "module_proje_kaynak_analizi.R"), encoding = "UTF-8", warn = FALSE
+  ))
+  bas <- which(satirlar == "pk_required_helpers <- list(")
+  son <- min(which(satirlar == ")")[which(satirlar == ")") > bas])
+  env <- new.env(parent = globalenv())
+  eval(parse(text = paste(satirlar[bas:son], collapse = "\n")), envir = env)
+  spec <- Filter(function(x) "pk_build_analysis_result" %in% x$functions, env$pk_required_helpers)
+  expect_length(spec, 1L)
+  zincir <- gsub("\\\\", "/", spec[[1]]$path)
+
+  manifest <- new.env(parent = globalenv())
+  source(file.path(kok, "R", "config_source_manifest.R"), encoding = "UTF-8", local = manifest)
+  tum <- manifest$source_manifest_runtime_paths
+  blok <- tum[seq(which(tum == "R/helpers_pk_fact_reference.R"),
+                  which(tum == "R/helpers_pk_analysis_result.R"))]
+  expect_true("R/helpers_pk_packet_keys.R" %in% blok)
+  expect_identical(zincir[zincir %in% blok], blok)
 })
 
 test_that("v2 secim zinciri MODUL-ONLY yuklemede GERCEK bir secim uretir", {

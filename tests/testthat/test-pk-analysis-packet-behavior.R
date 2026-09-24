@@ -18,7 +18,9 @@
   env$`%||%` <- function(x, y) if (is.null(x)) y else x
 
   for (dosya in c("helpers_pk_config.R", "helpers_pk_text_turkish.R",
-                  "helpers_pk_prompt_budget.R", "helpers_pk_precision.R", "helpers_pk_packet_stats.R", "helpers_pk_packet_context_facts.R",
+                  "helpers_pk_prompt_budget.R", "helpers_pk_fact_reference.R",
+                  "helpers_pk_fact_reference_scan.R",
+                  "helpers_pk_precision.R", "helpers_pk_packet_stats.R", "helpers_pk_packet_context_facts.R",
                   "helpers_pk_packet_keys.R", "helpers_pk_analysis_packet.R", "helpers_pk_packet_render.R")) {
     source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = env)
   }
@@ -72,8 +74,9 @@ test_that("D19: sayilar bilimsel gosterime DUSMEZ ve yerelden bagimsizdir", {
 })
 
 test_that("D19: paket metni capture.output/print kullanmaz", {
-  for (dosya in c("R/helpers_pk_packet_stats.R", "R/helpers_pk_packet_context_facts.R", "R/helpers_pk_analysis_packet.R",
-                  "R/helpers_pk_packet_render.R")) {
+  for (dosya in c("R/helpers_pk_fact_reference.R", "R/helpers_pk_fact_reference_scan.R",
+                  "R/helpers_pk_packet_stats.R", "R/helpers_pk_packet_context_facts.R",
+                  "R/helpers_pk_analysis_packet.R", "R/helpers_pk_packet_render.R")) {
     kod <- .pk_packet_code_only(dosya)
     expect_false(grepl("capture.output", kod, fixed = TRUE, useBytes = TRUE),
                  info = sprintf("%s capture.output kullanmamalidir.", dosya))
@@ -301,12 +304,13 @@ test_that("D17: ilk-K disinda kalan degerler 'Diger' olarak toplanir", {
   # inceleme bulgusu: "Diğer" artık yalnızca kaç FARKLI değer kaldığını
   # değil, KAÇ SATIR tuttuğunu ve payını da söyler (uzun kuyruk sayısız bir
   # dipnot olarak görünemez).
-  # Her sayı KENDİ `[fact:...]` işaretini taşır (dosya sözleşmesi): işaretsiz
-  # basılan bir sayı `block` kipinde köksüz iddia sayılıp yanıtı düşürüyordu.
+  # Her sayı KENDİ `{{fact:...}}` YUVASINI taşır (dosya sözleşmesi): yuvasız
+  # basılan bir sayıyı model yanıta yazmak zorunda kalır ve o sayı R'ye ait
+  # olmaz.
   metin <- env$pk_packet_render(paket, 200000L)$text
-  expect_true(grepl("Diger (15 deger [fact:", metin, fixed = TRUE))
-  expect_true(grepl("15 satir [fact:", metin, fixed = TRUE))
-  expect_true(grepl("%60,0 [fact:", metin, fixed = TRUE))
+  expect_true(grepl("Diger (15 deger {{fact:", metin, fixed = TRUE))
+  expect_true(grepl("15 satir {{fact:", metin, fixed = TRUE))
+  expect_true(grepl("%60,0 {{fact:", metin, fixed = TRUE))
 })
 
 # --- D18: konumsal yanli olmayan ornek ----------------------------------------
@@ -560,11 +564,11 @@ test_that("Sonlu gozlem / disarida birakilan sayilari ISARETLI basilir ve olgu k
   metin <- env$.pk_render_facts(paket)
   expect_true(grepl("Sonlu gozlem", metin, fixed = TRUE))
 
-  # Yazicinin BASTIGI her isaret, olgu kaydinda GERCEKTEN bulunmalidir; aksi
-  # halde dort haneli bir sayim `block` kipinde `missing_fact_marker` uretip
-  # TUM yaniti determinist yedekle degistiriyordu.
-  isaretler <- regmatches(metin, gregexpr("\\[fact:[^]]+\\]", metin))[[1]]
-  isaretler <- gsub("^\\[fact:|\\]$", "", isaretler)
+  # Yazicinin BASTIGI her yuva, olgu kaydinda GERCEKTEN bulunmalidir; aksi
+  # halde model o yuvayi kullandiginda hicbir deger basilamaz ve iddia
+  # `unknown_fact` olur.
+  isaretler <- regmatches(metin, gregexpr("\\{\\{fact:[^}]+\\}\\}", metin))[[1]]
+  isaretler <- gsub("^\\{\\{fact:|\\}\\}$", "", isaretler)
   expect_true(length(isaretler) >= 3L)
 
   olgular <- env$pk_packet_all_facts(paket)
@@ -605,8 +609,12 @@ test_that("ayni sutunun BIRDEN COK olgusunda sayim, yazicinin bastigi ILK olguda
   olgular <- env$pk_packet_all_facts(paket)
   kimlikler <- vapply(olgular, function(o) o$fact_id, character(1))
 
-  isaretler <- gsub("^\\[fact:|\\]$", "",
-                    regmatches(metin, gregexpr("\\[fact:[^]]+\\]", metin))[[1]])
+  # YAZICI ARTIK `{{fact:...}}` BASAR. Eski `[fact:...]` cikarimi hicbir sey
+  # bulamiyor, `setdiff(character(0), ...)` her cikti icin BOS donuyordu; test
+  # kaydi olmayan bir yuva basilsa bile GECIYORDU.
+  isaretler <- regmatches(metin, gregexpr("\\{\\{fact:[^}]+\\}\\}", metin))[[1]]
+  isaretler <- gsub("^\\{\\{fact:|\\}\\}$", "", isaretler)
+  expect_true(length(isaretler) >= 2L)
   expect_identical(setdiff(isaretler, kimlikler), character(0))
 
   sayim <- Filter(function(o) identical(o$aggregation, "finite_count"), olgular)
@@ -658,9 +666,9 @@ test_that("pay olgulari `%` birimi ve BIR ondalik tasir", {
 test_that("dogru alintilanan bir pay iddiasi `unit_mismatch` uretmez", {
   env <- .pk_packet_env()
   kok <- resolve_repo_root_for_tests()
-  for (dosya in c("helpers_pk_ascii_tokens.R", "helpers_pk_numeric_provenance.R",
-                  "helpers_pk_numeric_provenance_binding.R",
-                  "helpers_pk_numeric_provenance_claims.R")) {
+  for (dosya in c("helpers_pk_ascii_tokens.R", "helpers_pk_fact_reference.R",
+                  "helpers_pk_fact_reference_scan.R",
+                  "helpers_pk_numeric_provenance.R")) {
     source(file.path(kok, "R", dosya), encoding = "UTF-8", local = env)
   }
 
@@ -686,21 +694,16 @@ test_that("dogru alintilanan bir pay iddiasi `unit_mismatch` uretmez", {
   expect_false(is.null(pay))
   expect_true(is.character(pay$fact_id) && nzchar(pay$fact_id))
 
-  metin <- sprintf("Aktif orani %%25,0 [fact:%s] seviyesindedir.", pay$fact_id)
-  expect_length(metin, 1L)
-  sonuc <- env$pk_numeric_provenance_validate(metin, olgular)
-  # IDDIA GERCEKTEN TARANDI: bos tarama sonucu da asagidaki olumsuz iddiayi
-  # kendiliginden gecirirdi.
-  expect_gte(sonuc$checked, 1L)
+  # PAY OLGUSU YUZDE OLCEGINI TASIR: yuva cozuldugunde gosterim `%25,0`
+  # olmalidir. Birim/olcek karari MODELE degil olgu kaydina aittir.
+  expect_identical(pay$unit, "%")
+  metin <- sprintf("Aktif orani %s seviyesindedir.",
+                   env$pk_fact_reference_token(pay$fact_id))
+  sonuc <- env$pk_numeric_provenance_apply(metin, olgular, mode = "log")
 
-  # `%||%` BU DOSYADA YEREL OLARAK TANIMLANIR: `.pk_packet_env()` operatörü
-  # yalnızca kendi izole ortamına koyar ve R 4.4.0 ÖNCESİ sürümlerde base
-  # karşılığı YOKTUR; başka bir test dosyasının `globalenv()` içine sızdırdığı
-  # bağlantıya güvenmek TEST SIRASI BAĞIMLILIĞI yaratırdı.
-  `%||%` <- function(a, b) if (is.null(a)) b else a
-  nedenler <- vapply(sonuc$mismatches %||% list(),
-                     function(m) as.character(m$reason)[1], character(1))
-  expect_false("unit_mismatch" %in% nedenler)
+  expect_identical(sonuc$resolved, 1L)
+  expect_identical(sonuc$text, "Aktif orani %25,0 seviyesindedir.")
+  expect_length(sonuc$mismatches, 0L)
 })
 
 # ---------------------------------------------------------------------------

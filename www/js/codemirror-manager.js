@@ -2,6 +2,156 @@
 (function() {
   'use strict';
 
+  // Desteklenen diller: her anahtarın modu www/codemirror altında gerçek
+  // olarak yüklenir (R/config_ui_assets.R codemirror_modes). fold, katlama
+  // oluğunun önce deneyeceği yardımcılardır; ardından modun kendi (auto)
+  // katlaması denenir.
+  const LANG_CONFIG = {
+    r: { mode: 'r', fold: 'brace' },
+    python: { mode: 'python', fold: 'indent' },
+    javascript: { mode: 'javascript', fold: 'brace' },
+    typescript: { mode: 'text/typescript', fold: 'brace' },
+    json: { mode: 'application/json', fold: 'brace' },
+    java: { mode: 'text/x-java', fold: 'brace' },
+    csharp: { mode: 'text/x-csharp', fold: 'brace' },
+    cpp: { mode: 'text/x-c++src', fold: 'brace' },
+    c: { mode: 'text/x-csrc', fold: 'brace' },
+    kotlin: { mode: 'text/x-kotlin', fold: 'brace' },
+    scala: { mode: 'text/x-scala', fold: 'brace' },
+    php: { mode: 'php', fold: ['brace', 'comment'] },
+    bash: { mode: 'shell', fold: 'indent' },
+    powershell: { mode: 'powershell', fold: 'brace' },
+    swift: { mode: 'swift', fold: 'brace' },
+    go: { mode: 'go', fold: 'brace' },
+    rust: { mode: 'rust', fold: 'brace' },
+    ruby: { mode: 'ruby', fold: 'indent' },
+    perl: { mode: 'perl', fold: 'brace' },
+    lua: { mode: 'lua', fold: 'indent' },
+    julia: { mode: 'julia', fold: 'indent' },
+    lisp: { mode: 'commonlisp', fold: 'indent' },
+    vbnet: { mode: 'vb', fold: 'indent' },
+    fortran: { mode: 'fortran', fold: 'indent' },
+    matlab: { mode: 'octave', fold: 'indent' },
+    sql: { mode: 'text/x-sql', fold: 'comment' },
+    tsql: { mode: 'text/x-mssql', fold: 'comment' },
+    mysql: { mode: 'text/x-mysql', fold: 'comment' },
+    pgsql: { mode: 'text/x-pgsql', fold: 'comment' },
+    plsql: { mode: 'text/x-plsql', fold: 'comment' },
+    sqlite: { mode: 'text/x-sqlite', fold: 'comment' },
+    css: { mode: 'css', fold: 'brace' },
+    html: { mode: 'htmlmixed', fold: 'xml' },
+    xml: { mode: 'xml', fold: 'xml' },
+    yaml: { mode: 'yaml', fold: 'indent' },
+    toml: { mode: 'toml', fold: 'indent' },
+    properties: { mode: 'properties', fold: 'indent' },
+    markdown: { mode: 'markdown', fold: 'markdown' },
+    dockerfile: { mode: 'dockerfile', fold: 'indent' },
+    diff: { mode: 'diff', fold: 'indent' },
+    text: { mode: 'text/plain', fold: 'indent' }
+  };
+
+  // Kod çiti etiketlerinde sık görülen kısaltmalar -> kanonik anahtar.
+  const LANG_ALIASES = {
+    rscript: 'r',
+    py: 'python', py3: 'python', python3: 'python',
+    // jsx/tsx eşlenmez: JSX modu vendored değildir, etiketler düz metin kalır.
+    js: 'javascript', mjs: 'javascript', cjs: 'javascript', node: 'javascript',
+    ts: 'typescript',
+    jsonc: 'json', json5: 'json',
+    cs: 'csharp', 'c#': 'csharp',
+    'c++': 'cpp', cc: 'cpp', cxx: 'cpp', hpp: 'cpp', h: 'c',
+    kt: 'kotlin', kts: 'kotlin',
+    sh: 'bash', shell: 'bash', zsh: 'bash', ksh: 'bash', console: 'bash',
+    ps1: 'powershell', pwsh: 'powershell',
+    golang: 'go', rs: 'rust', rb: 'ruby', pl: 'perl', pm: 'perl', jl: 'julia',
+    commonlisp: 'lisp', elisp: 'lisp',
+    vb: 'vbnet', vba: 'vbnet', 'vb.net': 'vbnet',
+    octave: 'matlab', f90: 'fortran', f95: 'fortran',
+    mssql: 'tsql', sqlserver: 'tsql', 't-sql': 'tsql', mariadb: 'mysql',
+    postgres: 'pgsql', postgresql: 'pgsql', psql: 'pgsql', oracle: 'plsql',
+    htm: 'html', xhtml: 'html', svg: 'xml', xsl: 'xml', xaml: 'xml',
+    yml: 'yaml', ini: 'properties', cfg: 'properties', conf: 'properties',
+    md: 'markdown', docker: 'dockerfile', containerfile: 'dockerfile',
+    patch: 'diff',
+    txt: 'text', plaintext: 'text', plain: 'text', output: 'text', log: 'text'
+  };
+
+  const warnedLanguages = Object.create(null);
+
+  function isModeRegistered(spec) {
+    if (spec === 'text/plain') return true;
+    const resolved = CodeMirror.resolveMode(spec);
+    return !!(resolved && resolved.name && resolved.name !== 'null' &&
+              CodeMirror.modes[resolved.name]);
+  }
+
+  // Dil etiketini gerçekten yüklenmiş bir moda çözer. Desteklenmeyen dil
+  // düz metin olarak gösterilir; desteklenen dilin modu eksikse bu bir
+  // dağıtım hatasıdır ve bir kez uyarılır.
+  function resolveLanguage(rawLang) {
+    const lang = String(rawLang || 'text').trim().toLowerCase();
+    const key = LANG_CONFIG[lang] ? lang : (LANG_ALIASES[lang] || null);
+
+    if (key) {
+      const config = LANG_CONFIG[key];
+      if (isModeRegistered(config.mode)) return { key: key, mode: config.mode, fold: config.fold };
+      if (!warnedLanguages[key]) {
+        warnedLanguages[key] = true;
+        console.warn('[MERGEN] CodeMirror modu yüklenmemiş: ' + key + ' (' + config.mode + ')');
+      }
+      return { key: 'text', mode: 'text/plain', fold: LANG_CONFIG.text.fold };
+    }
+
+    // Upstream mod meta verisi (mode/meta) başka takma adları da çözer.
+    const info = (CodeMirror.findModeByName && CodeMirror.findModeByName(lang)) ||
+                 (CodeMirror.findModeByExtension && CodeMirror.findModeByExtension(lang));
+    if (info && info.mode && CodeMirror.modes[info.mode]) {
+      return { key: lang, mode: info.mime || info.mode, fold: 'indent' };
+    }
+    return { key: 'text', mode: 'text/plain', fold: LANG_CONFIG.text.fold };
+  }
+
+  function buildRangeFinder(fold) {
+    const names = Array.isArray(fold) ? fold : [fold];
+    const finders = names
+      .map(function(name) { return CodeMirror.fold && CodeMirror.fold[name]; })
+      .filter(function(finder) { return typeof finder === 'function'; });
+    if (CodeMirror.fold && CodeMirror.fold.auto) finders.push(CodeMirror.fold.auto);
+    if (!finders.length) return undefined;
+    return finders.length === 1 ? finders[0] : CodeMirror.fold.combine.apply(null, finders);
+  }
+
+  // Editör genişliği değişince (yerleşimin oturması, gizli kabın açılması,
+  // kenar çubuğu/geniş ekran geçişi) satır sarması yeniden ölçülür. Tam
+  // yenileme uzun belgede tüm satırları yeniden çizdiğinden (viewportMargin:
+  // Infinity) yalnızca genişlik GERÇEKTEN değiştiğinde yapılır.
+  const measuredWidths = new WeakMap();
+  const widthObserver = typeof ResizeObserver === 'function'
+    ? new ResizeObserver(function(entries) {
+        entries.forEach(function(entry) {
+          const wrapper = entry.target;
+          if (!wrapper.isConnected) { widthObserver.unobserve(wrapper); return; }
+          const width = wrapper.clientWidth;
+          if (!width || measuredWidths.get(wrapper) === width) return;
+          measuredWidths.set(wrapper, width);
+          if (wrapper.CodeMirror) wrapper.CodeMirror.refresh();
+        });
+      })
+    : null;
+
+  function watchEditorLayout(editor) {
+    const wrapper = editor.getWrapperElement();
+    measuredWidths.set(wrapper, wrapper.clientWidth);
+    if (widthObserver) widthObserver.observe(wrapper);
+    // Yazı tipi sonradan yüklenirse karakter ölçüleri değişir.
+    if (document.fonts && document.fonts.status !== 'loaded' && document.fonts.ready) {
+      document.fonts.ready.then(function() { editor.refresh(); });
+    }
+  }
+
+  window.mergenCodeMirrorResolveLanguage = resolveLanguage;
+  window.mergenCodeMirrorLanguages = function() { return Object.keys(LANG_CONFIG); };
+
   // Initialize CodeMirror
   window.initializeCodeMirrorInElement = function(elementId) {
     if (typeof CodeMirror === 'undefined') {
@@ -10,7 +160,7 @@
     }
     const container = document.getElementById(elementId);
     if (!container) return;
-    
+
     container.querySelectorAll('textarea.codemirror-textarea').forEach((ta, idx) => {
       if (!ta.hasAttribute('id') && !ta.hasAttribute('name')) {
         const uid = (ta.dataset.codeId || (elementId + '_' + idx));
@@ -21,75 +171,39 @@
     const textareas = container.querySelectorAll('.codemirror-textarea:not(.cm-initialized)');
 
     textareas.forEach(ta => {
-      const lang = ta.dataset.lang || 'text';
-      const langConfig = {
-        r: { mode: 'r', fold: 'brace' },
-        python: { mode: 'python', fold: 'indent' },
-        javascript: { mode: 'javascript', fold: 'brace' },
-        java: { mode: 'text/x-java', fold: 'brace' },
-        csharp: { mode: 'text/x-csharp', fold: 'brace' },
-        cpp: { mode: 'text/x-c++src', fold: 'brace' },
-        c: { mode: 'text/x-csrc', fold: 'brace' },
-        php: { mode: 'php', fold: ['brace', 'comment'] },
-        bash: { mode: 'shell', fold: 'indent' },
-        swift: { mode: 'swift', fold: 'brace' },
-        typescript: { mode: 'text/typescript', fold: 'brace' },
-        kotlin: { mode: 'text/x-kotlin', fold: 'brace' },
-        scala: { mode: 'text/x-scala', fold: 'brace' },
-        julia: { mode: 'julia', fold: 'indent' },
-        ruby: { mode: 'ruby', fold: 'indent' },
-        go: { mode: 'go', fold: 'brace' },
-        powershell: { mode: 'powershell', fold: 'brace' },
-        lisp: { mode: 'commonlisp', fold: 'indent' },
-        vbnet: { mode: 'vb', fold: 'indent' },
-        fortran: { mode: 'fortran', fold: 'indent' },
-        matlab: { mode: 'octave', fold: 'indent' },
-        sql: { mode: 'text/x-sql', fold: 'comment' },
-        css: { mode: 'css', fold: 'brace' },
-        html: { mode: 'htmlmixed', fold: 'xml' },
-        text: { mode: 'text/plain', fold: 'indent' }
-      };
+      const config = resolveLanguage(ta.dataset.lang);
+      const rangeFinder = buildRangeFinder(config.fold);
 
-      const config = langConfig[lang] || langConfig.text;
+      const options = {
+        mode: config.mode,
+        theme: 'material-darker',
+        lineNumbers: true,
+        readOnly: true,
+        lineWrapping: true,
+        // Katlama oluğu tıklamayı kendisi işler (addon/fold/foldgutter).
+        foldGutter: true,
+        gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"],
+        // Yukseklik 'auto' oldugundan viewport sanallastirmasi uzun kodu
+        // kirpiyordu; Infinity belgenin tamamini render eder.
+        viewportMargin: Infinity
+      };
+      if (rangeFinder) {
+        options.foldGutter = { rangeFinder: rangeFinder };
+        options.foldOptions = { rangeFinder: rangeFinder };
+      }
 
       try {
-        const editor = CodeMirror.fromTextArea(ta, {
-          mode: config.mode,
-          theme: 'material-darker',
-          lineNumbers: true,
-          readOnly: true,
-          lineWrapping: true,
-          foldGutter: true,
-          gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"],
-          autoRefresh: true,
-          // Yukseklik 'auto' oldugundan viewport sanallastirmasi uzun kodu
-          // kirpiyordu; Infinity belgenin tamamini render eder.
-          viewportMargin: Infinity
-        });
-        
-        editor.on('gutterClick', function(cm, line, gutter, event) {
-          if (gutter === 'CodeMirror-foldgutter') {
-            if (!cm._isFolding) {
-              cm._isFolding = true;
-              setTimeout(() => { cm._isFolding = false; }, 200);
-            }
-          }
-        });
-        
+        const editor = CodeMirror.fromTextArea(ta, options);
+        const wrapper = editor.getWrapperElement();
+        wrapper.setAttribute('data-lang', config.key);
+        wrapper.classList.add('cm-lang-' + config.key);
+
         editor.setSize('100%', 'auto');
-        
-        const robustRefresh = () => {
-          try {
-            editor.refresh();
-            setTimeout(() => editor.refresh(), 50);
-            setTimeout(() => editor.refresh(), 200);
-            requestAnimationFrame(() => editor.refresh());
-          } catch(e) {}
-        };
-        
+
         ta.classList.add('cm-initialized');
-        robustRefresh();
-        window.addEventListener('resize', robustRefresh, { passive: true });
+        // Pencere yeniden boyutlanınca CodeMirror canlı editörleri kendisi
+        // yeniden ölçer; diğer genişlik değişimlerini watchEditorLayout izler.
+        watchEditorLayout(editor);
       } catch (e) {
         console.error('Failed to initialize CodeMirror for textarea:', ta, e);
       }
