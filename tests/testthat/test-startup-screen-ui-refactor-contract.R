@@ -133,6 +133,11 @@ test_that(".startup_mode_feature_icon açık/kapalı durum sınıfı, ikon ve ip
   expect_true(grepl('class="cinematic-feature-icon on"', on_html, fixed = TRUE))
   expect_true(grepl('data-tooltip="Sesli Yanıt: Aktif"', on_html, fixed = TRUE))
   expect_true(grepl('class="fas fa-volume-up"', on_html, fixed = TRUE))
+
+  # Özellik adı ve durumu ipucuna gizlenmeden satırda okunur.
+  expect_true(grepl('<span class="cinematic-feature-label">Sesli Yanıt</span>', on_html, fixed = TRUE))
+  expect_true(grepl('<span class="cinematic-feature-state">Aktif</span>', on_html, fixed = TRUE))
+  expect_true(grepl('<span class="cinematic-feature-state">Kapalı</span>', off_html, fixed = TRUE))
 })
 
 # -----------------------------------------------------------------------------

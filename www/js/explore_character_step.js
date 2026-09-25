@@ -25,9 +25,6 @@
   // Çift tıklama koruma kilidi
   var _confirmInProgress = false;
 
-  // Yazma animasyonu zamanlayıcıları
-  var _loreTypingTimer = null;
-  var _subtitleTypingTimer = null;
   
   // (Kaldırıldı: Eski 8 saniyelik ek bekleme gereksiz gecikmeye neden oluyordu)
 
@@ -130,10 +127,6 @@
       window.ExploreCharVideo.stopEverything();
     }
 
-    // Yazma animasyonlarını durdur
-    stopLoreTyping();
-    stopSubtitleTyping();
-
     // 2. adım içeriğini gizle
     var charStep = document.getElementById('cinematic-character-step');
     if (charStep) charStep.classList.remove('active');
@@ -168,8 +161,6 @@
     if (window.ExploreCharVideo) {
       window.ExploreCharVideo.stopEverything();
     }
-    stopLoreTyping();
-    stopSubtitleTyping();
 
     // Önce 1. adıma dön (durumu sıfırla)
     _currentStep = 1;
@@ -207,114 +198,6 @@
     }
     if (line) {
       line.classList.toggle('completed', step > 1);
-    }
-  }
-
-  // ============================================================
-  // YAZMA EFEKTİ (Kişiselleştirme sayfasıyla aynı)
-  // ============================================================
-  function typeLoreText(element, text) {
-    stopLoreTyping();
-    if (!element || !text) return;
-
-    var index = 0;
-    element.innerHTML = '<span class="cinematic-lore-cursor"></span>';
-
-    function typeNext() {
-      if (index >= text.length) {
-        // Yazma tamamlandı, imleci kaldır
-        var cursor = element.querySelector('.cinematic-lore-cursor');
-        if (cursor) {
-          setTimeout(function() { if (cursor.parentNode) cursor.remove(); }, 1500);
-        }
-        _loreTypingTimer = null;
-        return;
-      }
-
-      var ch = text.charAt(index);
-      var cursor = element.querySelector('.cinematic-lore-cursor');
-      if (cursor) cursor.remove();
-
-      element.appendChild(document.createTextNode(ch));
-
-      var newCursor = document.createElement('span');
-      newCursor.className = 'cinematic-lore-cursor';
-      element.appendChild(newCursor);
-
-      index++;
-
-      // Doğal yazma hızı
-      var delay = 18 + (Math.random() * 15 - 7);
-      if (ch === '.' || ch === ',' || ch === '!' || ch === '?') {
-        delay += 250;
-      } else if (ch === ' ') {
-        delay += 30;
-      }
-
-      _loreTypingTimer = setTimeout(typeNext, delay);
-    }
-
-    _loreTypingTimer = setTimeout(typeNext, 50);
-  }
-
-  function stopLoreTyping() {
-    if (_loreTypingTimer) {
-      clearTimeout(_loreTypingTimer);
-      _loreTypingTimer = null;
-    }
-  }
-
-  // ============================================================
-  // ALT BAŞLIK YAZMA EFEKTİ
-  // ============================================================
-  function typeSubtitleText(element, text) {
-    stopSubtitleTyping();
-    if (!element || !text) return;
-
-    var index = 0;
-    element.innerHTML = '<span class="cinematic-subtitle-cursor"></span>';
-
-    function typeNext() {
-      if (index >= text.length) {
-        // Yazma tamamlandı, imleci kaldır
-        var cursor = element.querySelector('.cinematic-subtitle-cursor');
-        if (cursor) {
-          setTimeout(function() { if (cursor.parentNode) cursor.remove(); }, 1200);
-        }
-        _subtitleTypingTimer = null;
-        return;
-      }
-
-      var ch = text.charAt(index);
-      var cursor = element.querySelector('.cinematic-subtitle-cursor');
-      if (cursor) cursor.remove();
-
-      element.appendChild(document.createTextNode(ch));
-
-      var newCursor = document.createElement('span');
-      newCursor.className = 'cinematic-subtitle-cursor';
-      element.appendChild(newCursor);
-
-      index++;
-
-      // Alt başlık için biraz daha hızlı yazma
-      var delay = 14 + (Math.random() * 10 - 5);
-      if (ch === ',' || ch === '.' || ch === '!' || ch === '?') {
-        delay += 180;
-      } else if (ch === ' ') {
-        delay += 20;
-      }
-
-      _subtitleTypingTimer = setTimeout(typeNext, delay);
-    }
-
-    _subtitleTypingTimer = setTimeout(typeNext, 30);
-  }
-
-  function stopSubtitleTyping() {
-    if (_subtitleTypingTimer) {
-      clearTimeout(_subtitleTypingTimer);
-      _subtitleTypingTimer = null;
     }
   }
 
@@ -372,28 +255,24 @@
       }
     }
 
-    // İsim ve alt başlığı sağ panelde güncelle (isim rengi karakter temasına göre)
+    // Persona aksanı tek CSS değişkeniyle verilir (isim çizgisi, metrikler,
+    // seçili düğme); metinler daktilo efekti olmadan doğrudan yazılır.
+    var charStepEl = document.getElementById('cinematic-character-step');
+    if (charStepEl && charData.accent) {
+      charStepEl.style.setProperty('--char-accent', charData.accent);
+    }
     var displayName = document.querySelector('.cinematic-char-info .cinematic-char-display-name');
     var subtitleEl = document.querySelector('.cinematic-char-info .cinematic-char-subtitle-text');
     if (displayName) {
       displayName.textContent = charData.display_name;
-      if (charData.accent) {
-        displayName.style.color = charData.accent;
-      }
     }
     if (subtitleEl) {
-      var subtitleText = charData.style_tr || charData.subtitle;
-      if (animate !== false) {
-        typeSubtitleText(subtitleEl, subtitleText);
-      } else {
-        subtitleEl.textContent = subtitleText;
-      }
+      subtitleEl.textContent = charData.style_tr || charData.subtitle || '';
     }
 
-    // Hikaye metnini yazma efektiyle güncelle
     var loreEl = document.querySelector('.cinematic-char-lore');
     if (loreEl) {
-      typeLoreText(loreEl, charData.lore_tr);
+      loreEl.textContent = charData.lore_tr || '';
     }
 
     // Metrikleri güncelle (animasyonlu)
@@ -406,7 +285,7 @@
         metricEl.innerHTML =
           '<span class="cinematic-char-metric-label">' + metric.label + '</span>' +
           '<div class="cinematic-char-metric-bar">' +
-            '<div class="cinematic-char-metric-fill" style="background: ' + charData.accent + ';"></div>' +
+            '<div class="cinematic-char-metric-fill"></div>' +
           '</div>' +
           '<span class="cinematic-char-metric-value">' + metric.value + '</span>';
         metricsContainer.appendChild(metricEl);
@@ -431,13 +310,6 @@
         tag.textContent = move;
         sigContainer.appendChild(tag);
       });
-    }
-
-    // Seç butonunun rengini güncelle
-    var selectBtn = document.querySelector('.cinematic-char-select-btn');
-    if (selectBtn && charData.accent) {
-      selectBtn.style.background = 'linear-gradient(135deg, ' + charData.accent + ' 0%, rgba(52, 211, 153, 0.4) 100%)';
-      selectBtn.style.boxShadow = '0 4px 24px ' + charData.accent + '33';
     }
   }
 
@@ -482,8 +354,6 @@
       if (window.ExploreCharVideo) {
         window.ExploreCharVideo.stopEverything();
       }
-      stopLoreTyping();
-      stopSubtitleTyping();
 
       // Karakter adımı DOM durumunu temizle (2. adım → 1. adım sıfırlaması)
       var charStep = document.getElementById('cinematic-character-step');

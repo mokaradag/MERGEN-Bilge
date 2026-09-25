@@ -34,6 +34,19 @@ testthat::test_that("api_key_choice_request_url güvenli çözümleme yapar", {
   )
 })
 
+testthat::test_that("kurum anahtarı seçimi yalnızca bastırma bayrağını hatırlatır", {
+  env <- .akc_src()
+  mesajlar <- list()
+  oturum <- list(sendCustomMessage = function(type, message) {
+    mesajlar[[length(mesajlar) + 1L]] <<- list(type = type, message = message)
+  })
+  testthat::expect_true(env$remember_api_key_choice_default(oturum))
+  testthat::expect_length(mesajlar, 1L)
+  testthat::expect_identical(mesajlar[[1]]$type, "mergenApiKeyChoiceRemember")
+  testthat::expect_identical(mesajlar[[1]]$message, list(settingsKey = "api_key_onboarding_suppressed"))
+  testthat::expect_false(env$remember_api_key_choice_default(NULL))
+})
+
 testthat::test_that(".api_key_choice_personal_card korumalı input kimliklerini üretir", {
   env <- .akc_src()
   txt <- .akc_text(env$.api_key_choice_personal_card(NS("a")))

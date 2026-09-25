@@ -340,3 +340,17 @@ show_api_key_choice_modal <- function(session,
 
   invisible(TRUE)
 }
+
+# Kurum anahtarı seçimini tarayıcıda hatırlatır: yalnızca bastırma bayrağı
+# (api_key_onboarding_suppressed) yazılır; hiçbir anahtar değeri gönderilmez.
+remember_api_key_choice_default <- function(session) {
+  if (is.null(session)) {
+    return(invisible(FALSE))
+  }
+
+  session$sendCustomMessage(
+    "mergenApiKeyChoiceRemember",
+    list(settingsKey = "api_key_onboarding_suppressed")
+  )
+  invisible(TRUE)
+}

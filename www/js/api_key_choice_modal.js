@@ -184,6 +184,17 @@
     });
   }
 
+  // Kurum anahtarıyla devam seçildiğinde sunucu onaylar ve tercih hatırlanır;
+  // sonraki oturumlarda seçim ekranı açılmaz (Yapılandırma'dan geri açılır).
+  if (window.Shiny && typeof Shiny.addCustomMessageHandler === "function") {
+    Shiny.addCustomMessageHandler("mergenApiKeyChoiceRemember", function (message) {
+      void message;
+      writeSettingKey(SUPPRESS_KEY, true);
+      reportToServer();
+      syncSettingsToggle();
+    });
+  }
+
   function syncSettingsToggleSoon() {
     setTimeout(function () {
       syncSettingsToggle(document, true);

@@ -16,10 +16,14 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
     # Kullanıcı "bu ekranı bir daha gösterme" dediyse veya Yapılandırma'dan
     # kapattıysa, mergen_settings.api_key_onboarding_suppressed=true olur ve
     # onboarding modalı yeni oturumda tekrar gösterilmez.
-    session$sendCustomMessage("mergenApiKeyChoiceReportPref", list(
-      inputId     = ns("api_key_onboarding_suppressed"),
-      settingsKey = "api_key_onboarding_suppressed"
-    ))
+    tercih_iste <- function() {
+      session$sendCustomMessage("mergenApiKeyChoiceReportPref", list(
+        inputId     = ns("api_key_onboarding_suppressed"),
+        settingsKey = "api_key_onboarding_suppressed"
+      ))
+    }
+    tercih_iste()
+    tercih_istek_zamani <- Sys.time()
 
     # --- İç işlem: premium API anahtarı seçim modalını aç ---
     # Modal içeriği R/module_api_key_choice_modal.R içinde üretilir. Burada
@@ -127,7 +131,14 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
       }
       session$userData$api_key_onboarding_done <- TRUE
       removeModal()
-      showToast(session, "Varsayılan kurum API anahtarıyla devam ediyorsunuz.", "info")
+      # Kurum anahtarını seçen kullanıcıya (ör. yöneticiler) her girişte
+      # tekrar sorulmaz; tercih Ayarlar > Yapılandırma'dan geri açılabilir.
+      if (exists("remember_api_key_choice_default", mode = "function")) {
+        remember_api_key_choice_default(session)
+      }
+      showToast(session, paste("Varsayılan kurum API anahtarıyla devam ediyorsunuz.",
+                               "Seçiminiz hatırlanacak; Ayarlar > Yapılandırma'dan değiştirebilirsiniz."),
+                "info")
     }, ignoreInit = TRUE)
 
     # --- Başlangıçta: anahtarı yükle veya kullanıcıdan iste ---
@@ -180,6 +191,14 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
 
       elapsed <- as.numeric(difftime(Sys.time(), api_key_decision_start, units = "secs"))
 
+      # Zengin başlangıçta tarayıcı meşgulken bayrak geç gelebilir; ilk istek
+      # kaybolmuşsa yanıt gelene kadar saniyede bir yeniden istenir.
+      if (!flag_arrived &&
+          as.numeric(difftime(Sys.time(), tercih_istek_zamani, units = "secs")) >= 1) {
+        tercih_iste()
+        tercih_istek_zamani <<- Sys.time()
+      }
+
       # Bastırma yalnızca varsayılan kurum anahtarı varken geçerlidir; aksi
       # halde kullanıcı anahtarsız kalır, bu yüzden yine de modalı gösteririz.
       if (suppressed && default_available) {
@@ -189,7 +208,7 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
       }
 
       # Bayrak geldiyse (ve bastırma yoksa) ya da tolerans dolduysa karar ver.
-      if (flag_arrived || elapsed >= 2.5) {
+      if (flag_arrived || elapsed >= 6) {
         session$userData$api_key_onboarding_done <- TRUE
         api_key_load_observer$destroy()
         shinyjs::delay(300, openModal())

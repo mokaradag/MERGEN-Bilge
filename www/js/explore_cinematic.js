@@ -1,7 +1,7 @@
 // www/js/explore_cinematic.js
 // Dosya Yolu: www/js/explore_cinematic.js
 // Açıklama: Sinematik Keşfet butonu ve mod seçim modalı etkileşim mantığı.
-// Spotlight kart ışıması, yazma animasyonu, kart seçim geçişleri ve
+// Spotlight kart ışıması, kart seçim geçişleri ve
 // modal açma/kapama işlemlerini yönetir.
 
 (function() {
@@ -47,82 +47,11 @@
     }
   };
 
-  // Yazma animasyonu zamanlayıcıları
-  var _typingTimers = {};
-
   // Seçili mod (seçim kilidi)
   var _selectedModeId = null;
 
   // Üzerinde durulan kart
   var _hoveredModeId = null;
-
-  // ============================================================
-  // YAZMA ANİMASYONU (Doğal ritimli daktilo efekti)
-  // ============================================================
-  function typeText(element, text, cardId) {
-    // Önceki animasyonu temizle
-    if (_typingTimers[cardId]) {
-      clearTimeout(_typingTimers[cardId]);
-      _typingTimers[cardId] = null;
-    }
-
-    var index = 0;
-    element.innerHTML = '<span class="typing-cursor"></span>';
-
-    function typeNextChar() {
-      if (index >= text.length) {
-        // Yazma tamamlandı, imleci kısa süre sonra kaldır
-        var cursor = element.querySelector('.typing-cursor');
-        if (cursor) {
-          setTimeout(function() { if (cursor.parentNode) cursor.remove(); }, 1500);
-        }
-        _typingTimers[cardId] = null;
-        return;
-      }
-
-      var currentChar = text.charAt(index);
-
-      // İmleci kaldır, metin ekle, imleci tekrar ekle
-      var cursor = element.querySelector('.typing-cursor');
-      if (cursor) cursor.remove();
-
-      var textNode = document.createTextNode(currentChar);
-      element.appendChild(textNode);
-
-      var newCursor = document.createElement('span');
-      newCursor.className = 'typing-cursor';
-      element.appendChild(newCursor);
-
-      index++;
-
-      // Dinamik hız (doğal daktilo/klavye efekti)
-      var delay = 20 + (Math.random() * 20 - 10);
-
-      if (currentChar === '.' || currentChar === ',' ||
-          currentChar === '!' || currentChar === '?') {
-        delay += 300; // Noktalama işaretlerinde belirgin duraksama
-      } else if (currentChar === ' ') {
-        delay += 40; // Boşluklarda hafif duraksama
-      } else if (Math.random() > 0.9) {
-        delay += 80; // Arada doğal takılmalar
-      }
-
-      _typingTimers[cardId] = setTimeout(typeNextChar, delay);
-    }
-
-    _typingTimers[cardId] = setTimeout(typeNextChar, 20);
-  }
-
-  // Yazma animasyonunu sıfırla
-  function resetTypeText(element, cardId) {
-    if (_typingTimers[cardId]) {
-      clearTimeout(_typingTimers[cardId]);
-      _typingTimers[cardId] = null;
-    }
-    if (element) {
-      element.innerHTML = '';
-    }
-  }
 
   // ============================================================
   // SPOTLIGHT KART İŞARETÇİ IŞIMASI
@@ -141,24 +70,12 @@
 
   function handleCardMouseEnter(card) {
     if (_selectedModeId) return;
-    var mode = card.getAttribute('data-mode');
-    _hoveredModeId = mode;
-
-    // Yazma animasyonunu başlat
-    var desc = card.querySelector('.cinematic-card-desc');
-    if (desc && CINEMATIC_MODES[mode]) {
-      typeText(desc, CINEMATIC_MODES[mode].description, 'cine_' + mode);
-    }
+    _hoveredModeId = card.getAttribute('data-mode');
   }
 
   function handleCardMouseLeave(card) {
     if (_selectedModeId) return;
-    var mode = card.getAttribute('data-mode');
     _hoveredModeId = null;
-
-    // Yazma animasyonunu durdur ve temizle
-    var desc = card.querySelector('.cinematic-card-desc');
-    resetTypeText(desc, 'cine_' + mode);
   }
 
   // ============================================================
@@ -269,8 +186,10 @@
     var allCards = overlay.querySelectorAll('.cinematic-mode-card');
     allCards.forEach(function(card) {
       card.classList.remove('selected', 'other-selected');
+      // Açıklama baştan tam görünür (daktilo efekti yok).
       var desc = card.querySelector('.cinematic-card-desc');
-      if (desc) desc.innerHTML = '';
+      var tanim = CINEMATIC_MODES[card.getAttribute('data-mode')];
+      if (desc) desc.textContent = tanim ? tanim.description : '';
     });
 
     overlay.classList.add('active');
@@ -307,14 +226,6 @@
     if (!overlay) return;
 
     overlay.classList.remove('active');
-
-    // Yazma animasyonlarını durdur
-    Object.keys(_typingTimers).forEach(function(key) {
-      if (key.indexOf('cine_') === 0 && _typingTimers[key]) {
-        clearTimeout(_typingTimers[key]);
-        _typingTimers[key] = null;
-      }
-    });
 
     // Kart durumlarını sıfırla
     setTimeout(function() {
@@ -403,12 +314,12 @@
       handleCardMouseMove(e);
     });
 
-    // Kart fare girişi (yazma animasyonu başlat)
+    // Kart fare girişi
     $(document).on('mouseenter', '.cinematic-mode-card', function() {
       handleCardMouseEnter(this);
     });
 
-    // Kart fare çıkışı (yazma animasyonunu durdur)
+    // Kart fare çıkışı
     $(document).on('mouseleave', '.cinematic-mode-card', function() {
       handleCardMouseLeave(this);
     });

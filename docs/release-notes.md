@@ -51,6 +51,17 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   belge test tarafından yakalanır.
 - **Windows testi:** CodeMirror tarayıcı testi `options(encoding = "UTF-8")`
   altında CP1254 VM'de "invalid UTF-8" hatası vermez.
+- **Sistem Durumu ikonları:** metrik kartı ikonları gri zemin yerine durum
+  renginin açık tonlu çipinde çizilir; iki temada ve tüm sekmelerde ikon
+  kontrastı 3:1 üzerindedir (etkin sekme hapı ve ADMIN rozeti dahil).
+- **Kurum anahtarı seçimi hatırlanır:** "Kurum Anahtarı ile Devam Et" seçen
+  kullanıcıya (ör. yöneticiler) sonraki girişlerde API anahtarı ekranı tekrar
+  gösterilmez; Ayarlar > Yapılandırma'dan geri açılabilir. "Bir daha
+  gösterme" tercihi Zengin Deneyim açılışında da güvenilir biçimde uygulanır.
+- **Keşfet akışı yenilendi:** Keşfet düğmesi, mod seçimi ve asistan seçimi
+  ekranları sade ve okunaklı bir tasarıma geçti; mod açıklamaları ve özellik
+  durumları baştan görünür, yoğun sürekli animasyonlar kaldırıldı ve ekran
+  1366x768 dizüstünde kaydırmasız sığar.
 
 ### (Yayınlanmadı) 2026-09-23 Kod bloklarında gerçek sözdizimi vurgulaması geri geldi
 

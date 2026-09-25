@@ -28,6 +28,7 @@ suppressMessages(library(shiny))
   env$.kaydedilen <- list()
   env$.oturum_anahtarlari <- list()
   env$.modal_acilislari <- 0L
+  env$.hatirlatmalar <- 0L
 
   # --- Anahtar yardımcısı stub'ları (asla gerçek anahtar/dosya kullanmaz) ---
   env$mb_api_key_clear_session_key <- function(session) invisible(NULL)
@@ -51,6 +52,10 @@ suppressMessages(library(shiny))
                                             service_desk = NULL) {
     env$.modal_acilislari <- env$.modal_acilislari + 1L
     invisible(NULL)
+  }
+  env$remember_api_key_choice_default <- function(session) {
+    env$.hatirlatmalar <- env$.hatirlatmalar + 1L
+    invisible(TRUE)
   }
   env$showToast <- function(session, message, type = "info", duration = NULL) {
     env$.toastlar[[length(env$.toastlar) + 1L]] <- list(message = message, type = type)
@@ -214,6 +219,7 @@ testthat::test_that("api_key_use_default_btn kurum anahtarı varsa devam eder, y
       grepl("kullanılamıyor", t$message, fixed = TRUE), logical(1))))
     testthat::expect_identical(removeModal_sayisi, 0L)
     testthat::expect_false(isTRUE(session$userData$api_key_onboarding_done))
+    testthat::expect_identical(env$.hatirlatmalar, 0L)
 
     # 2) Varsayılan anahtar VAR: onboarding tamam, modal kapanır, bilgi toast'ı
     env$.durum$default_key <- "sahte-kurum-anahtari"
@@ -221,6 +227,8 @@ testthat::test_that("api_key_use_default_btn kurum anahtarı varsa devam eder, y
 
     testthat::expect_true(isTRUE(session$userData$api_key_onboarding_done))
     testthat::expect_identical(removeModal_sayisi, 1L)
+    # Kurum anahtarı seçimi sonraki girişler için hatırlanır.
+    testthat::expect_identical(env$.hatirlatmalar, 1L)
 
     bilgiler <- .toastlarTip(env, "info")
     testthat::expect_true(any(vapply(bilgiler, function(t)
@@ -252,5 +260,54 @@ testthat::test_that("apiKeyServer açık modül API'si döndürür ve open modal
 
     api$open("API Anahtarı")
     testthat::expect_identical(env$.modal_acilislari, 1L)
+  })
+})
+
+testthat::test_that("geç gelen 'bir daha gösterme' bayrağı tolerans içinde dikkate alınır", {
+  env <- .apiKeyEnv()
+  env$.durum$default_key <- "sahte-kurum-anahtari"
+  env$.durum$owner <- list(username = "yonetici")
+  env$.saat <- as.POSIXct("2026-01-01 09:00:00", tz = "UTC")
+  env$Sys.time <- function() env$.saat
+
+  testthat::local_mocked_bindings(
+    runjs = function(...) invisible(NULL),
+    delay = function(ms, expr) force(expr),
+    .package = "shinyjs"
+  )
+
+  ilerlet <- function(session, saniye) {
+    env$.saat <- env$.saat + saniye
+    session$elapse(200)
+  }
+
+  shiny::testServer(env$apiKeyServer,
+                    args = list(id = "api_key", serviceDesk = list(),
+                                api_config = list()), {
+    ilerlet(session, 0)
+    # Eski 2.5 sn sınırı geçildi; bayrak gelmediği için hâlâ beklenir.
+    ilerlet(session, 3)
+    testthat::expect_identical(env$.modal_acilislari, 0L)
+
+    # Bayrak geç geldi: bastırma geçerli, modal hiç açılmaz.
+    session$setInputs(api_key_onboarding_suppressed = TRUE)
+    ilerlet(session, 1)
+    ilerlet(session, 5)
+    testthat::expect_identical(env$.modal_acilislari, 0L)
+    testthat::expect_true(isTRUE(session$userData$api_key_onboarding_done))
+  })
+
+  env2 <- .apiKeyEnv()
+  env2$.durum$default_key <- "sahte-kurum-anahtari"
+  env2$.durum$owner <- list(username = "kullanici")
+  env2$.saat <- as.POSIXct("2026-01-01 09:00:00", tz = "UTC")
+  env2$Sys.time <- function() env2$.saat
+  shiny::testServer(env2$apiKeyServer,
+                    args = list(id = "api_key", serviceDesk = list(),
+                                api_config = list()), {
+    env2$.saat <- env2$.saat + 0; session$elapse(200)
+    env2$.saat <- env2$.saat + 7; session$elapse(200)
+    # Bayrak hiç gelmezse tolerans sonunda modal yine gösterilir.
+    testthat::expect_identical(env2$.modal_acilislari, 1L)
   })
 })
