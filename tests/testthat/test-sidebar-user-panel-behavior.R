@@ -65,6 +65,15 @@ test_that("avatar adresi MERGEN_USER_AVATAR_URL_TEMPLATE ile kod değiştirmeden
 
   withr::local_envvar(c(MERGEN_USER_AVATAR_URL_TEMPLATE = "/avatars/{user_id}.png"))
   expect_identical(.sb_env$mb_sidebar_user_avatar_url(7), "/avatars/7.png")
+
+  # Taban adresteki sorgu dizesi korunur; kimlik yola eklenir.
+  withr::local_envvar(c(MERGEN_USER_AVATAR_URL_TEMPLATE = "https://foto.kurum.local/personel?size=64"))
+  expect_identical(.sb_env$mb_sidebar_user_avatar_url(42), "https://foto.kurum.local/personel/42.jpg?size=64")
+
+  # Kimlikteki yüzde dizisi de kodlanır; "A%2FB" ile "A/B" ayrışır.
+  withr::local_envvar(c(MERGEN_USER_AVATAR_URL_TEMPLATE = "https://foto.kurum.local/{user_id}.jpg"))
+  expect_identical(.sb_env$mb_sidebar_user_avatar_url("A%2FB"), "https://foto.kurum.local/A%252FB.jpg")
+  expect_identical(.sb_env$mb_sidebar_user_avatar_url("A/B"), "https://foto.kurum.local/A%2FB.jpg")
 })
 
 test_that("geçersiz avatar şablonu yer tutucu varsayılana düşer", {

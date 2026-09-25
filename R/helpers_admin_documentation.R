@@ -513,5 +513,41 @@ admin_doc_render_document <- function(doc_id, root = admin_doc_repo_root()) {
   rendered <- admin_doc_render_markdown(content)
 
   list(ok = TRUE, doc_id = doc_id, title = entry$title, source = entry$file,
-       html = rendered$html, toc = rendered$toc, message = "")
+       html = admin_doc_rewrite_links(rendered$html, entry$file),
+       toc = rendered$toc, message = "")
+}
+
+# Belge gövdesindeki bağlantılar uygulamadan ayrılmaz (Shiny oturumu kopardı):
+# kayıtlı belgeye giden göreli bağlantı sayfa içinde o belgeyi açar
+# (data-doc-id, izin listesiyle doğrulanır), dış adres yeni sekmede açılır,
+# kayıtsız göreli yol (ör. .R şablonu) tıklanamaz metin olarak kalır.
+admin_doc_rewrite_links <- function(html, source_file) {
+  if (!is.character(html) || length(html) != 1L || !nzchar(html)) return(html)
+  eslesme <- gregexpr("<a href=\"([^\"]*)\"", html, perl = TRUE)
+  etiketler <- regmatches(html, eslesme)[[1]]
+  if (!length(etiketler)) return(html)
+  kayitli <- list()
+  for (g in admin_doc_registry()) for (d in g$docs) kayitli[[d$file]] <- d$id
+  taban <- dirname(as.character(source_file %||% "")[1])
+  regmatches(html, eslesme) <- list(vapply(etiketler, function(etiket) {
+    href <- sub("^<a href=\"([^\"]*)\"$", "\\1", etiket, perl = TRUE)
+    if (grepl("^(https?|mailto):", href, ignore.case = TRUE)) {
+      return(paste0(etiket, " target=\"_blank\" rel=\"noopener noreferrer\""))
+    }
+    if (startsWith(href, "#")) return(etiket)
+    ham <- sub("[?#].*$", "", href)
+    parcalar <- strsplit(if (taban %in% c("", ".")) ham else paste(taban, ham, sep = "/"),
+                         "/", fixed = TRUE)[[1]]
+    yol <- character(0)
+    for (p in parcalar) {
+      if (p %in% c("", ".")) next
+      yol <- if (identical(p, "..")) utils::head(yol, -1L) else c(yol, p)
+    }
+    hedef <- paste(yol, collapse = "/")
+    if (!is.null(kayitli[[hedef]])) {
+      return(sprintf("<a href=\"#\" data-doc-id=\"%s\"", kayitli[[hedef]]))
+    }
+    sprintf("<a class=\"mb-doc-link-offline\" title=\"%s\"", paste("Uygulama içinde açılamaz:", hedef))
+  }, character(1), USE.NAMES = FALSE))
+  html
 }

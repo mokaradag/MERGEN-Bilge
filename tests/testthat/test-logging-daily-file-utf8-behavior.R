@@ -7,7 +7,22 @@
 #           karakterler mojibake görünüyordu.
 # ==============================================================================
 
+# config_logging.R'yi yükler ve logger'ın süreç-global durumunu (threshold,
+# appender/layout, shiny.error) çağıran test bitince geri yükler; geri yükleme
+# local_tempdir() dizini silinmeden önce çalışır (defer LIFO).
 .log_utf8_env <- function(log_dir) {
+  eski_threshold <- logger::log_threshold()
+  eski_app1 <- tryCatch(logger::log_appender(index = 1), error = function(e) NULL)
+  eski_lay1 <- tryCatch(logger::log_layout(index = 1), error = function(e) NULL)
+  eski_shiny_error <- getOption("shiny.error")
+  withr::defer({
+    tryCatch(logger::delete_logger_index(index = 2), error = function(e) NULL)
+    if (!is.null(eski_app1)) tryCatch(logger::log_appender(eski_app1, index = 1), error = function(e) NULL)
+    if (!is.null(eski_lay1)) tryCatch(logger::log_layout(eski_lay1, index = 1), error = function(e) NULL)
+    tryCatch(logger::log_threshold(eski_threshold), error = function(e) NULL)
+    options(shiny.error = eski_shiny_error)
+  }, envir = parent.frame())
+
   env <- new.env(parent = globalenv())
   withr::with_envvar(c(MERGEN_LOG_DIR = log_dir, MERGEN_LOG_THRESHOLD = "info"), {
     suppressMessages(source(

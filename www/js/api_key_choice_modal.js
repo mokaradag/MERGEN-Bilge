@@ -6,7 +6,7 @@
  *           arka plan bulanıklığı, animasyonlar, video) tamamen R/CSS/HTML ile
  *           çalışır ve bu dosyaya BAĞIMLI DEĞİLDİR. Bu dosya yalnızca
  *           "Bu ekranı bir daha gösterme" kolaylık tercihini yönetir:
- *             1) Tercihi mergen_settings localStorage bayrağında saklar,
+ *             1) Tercihi mergen_settings içinde kullanıcı etiketiyle saklar,
  *             2) Modal içindeki onay kutusu ve Yapılandırma anahtarını eşitler,
  *             3) Tercihi sunucuya bildirir (R modalı tekrar göstermesin diye).
  *
@@ -21,6 +21,9 @@
   "use strict";
 
   var SUPPRESS_KEY = "api_key_onboarding_suppressed";
+  // Bayrak kullanıcıya özgü etiket altında tutulur; etiketi sunucu kimlik hazır
+  // olunca gönderir. Aynı tarayıcıdaki başka kullanıcı tercihi devralmaz.
+  var SUPPRESS_BY_USER_KEY = "api_key_onboarding_suppressed_by_user";
   var SETTINGS_LS = "mergen_settings";
 
   // Shiny custom message handler'ları dosya yüklenirken kaydolur.
@@ -28,6 +31,7 @@
   // tanımsız kalmamalıdır.
   window.MergenApiKeyChoice = window.MergenApiKeyChoice || {};
   window.MergenApiKeyChoice._inputId = window.MergenApiKeyChoice._inputId || null;
+  window.MergenApiKeyChoice._userTag = window.MergenApiKeyChoice._userTag || "";
 
   function readSettings() {
     try {
@@ -37,19 +41,46 @@
     }
   }
 
-  // Mevcut mergen_settings nesnesini KORUYARAK tek anahtarı yaz (merge).
-  function writeSettingKey(key, value) {
-    try {
-      var s = readSettings();
-      s[key] = value;
-      window.localStorage.setItem(SETTINGS_LS, JSON.stringify(s));
-    } catch (e) {
-      /* sessizce yoksay */
-    }
+  function currentUserTag() {
+    var tag = (window.MergenApiKeyChoice || {})._userTag;
+    return typeof tag === "string" ? tag : "";
   }
 
+  function suppressMap(settings) {
+    var map = settings[SUPPRESS_BY_USER_KEY];
+    return map && typeof map === "object" && !Array.isArray(map) ? map : {};
+  }
+
+  // Kullanıcı etiketi bilinmeden bastırma yoktur (seçim ekranı gösterilir).
   function isSuppressed() {
-    return readSettings()[SUPPRESS_KEY] === true;
+    var tag = currentUserTag();
+    return !!tag && suppressMap(readSettings())[tag] === true;
+  }
+
+  // mergen_settings nesnesini KORUYARAK yalnız bu kullanıcının bayrağını yaz;
+  // kimliksiz eski tarayıcı geneli bayrak kaldırılır.
+  // Yazımın gerçekten kalıcı olduğu geri okunarak doğrulanır (ör. dolu ya da
+  // kapalı depolama); sonuç kurum anahtarı onayında sunucuya bildirilir.
+  function writeSuppressed(value) {
+    var tag = currentUserTag();
+    if (!tag) {
+      return false;
+    }
+    try {
+      var s = readSettings();
+      var map = suppressMap(s);
+      if (value) {
+        map[tag] = true;
+      } else {
+        delete map[tag];
+      }
+      s[SUPPRESS_BY_USER_KEY] = map;
+      delete s[SUPPRESS_KEY];
+      window.localStorage.setItem(SETTINGS_LS, JSON.stringify(s));
+      return isSuppressed() === !!value;
+    } catch (e) {
+      return false;
+    }
   }
 
   // Sunucuya güncel bastırma bayrağını bildir (varsa kayıtlı namespaced id'ye).
@@ -121,7 +152,7 @@
 
       // Modal içindeki "bir daha gösterme" kutusu.
       if (el.classList && el.classList.contains("akc-dontshow-input")) {
-        writeSettingKey(SUPPRESS_KEY, !!el.checked);
+        writeSuppressed(!!el.checked);
         reportToServer();
         syncSettingsToggle();
         return;
@@ -130,7 +161,7 @@
       // Yapılandırma sayfasındaki "göster" anahtarı (ns ön ekli olabilir).
       if (el.id && /show_api_key_onboarding$/.test(el.id)) {
         // "göster" kapalıysa onboarding bastırılır.
-        writeSettingKey(SUPPRESS_KEY, !el.checked);
+        writeSuppressed(!el.checked);
         reportToServer();
         return;
       }
@@ -158,8 +189,11 @@
           return;
         }
         window.MergenApiKeyChoice = window.MergenApiKeyChoice || {};
+        window.MergenApiKeyChoice._userTag =
+          typeof message.userTag === "string" ? message.userTag : "";
         window.MergenApiKeyChoice._inputId = message.inputId;
         reportToServer();
+        syncSettingsToggle(document, true);
       }
     );
 
@@ -184,14 +218,22 @@
     });
   }
 
-  // Kurum anahtarıyla devam seçildiğinde sunucu onaylar ve tercih hatırlanır;
-  // sonraki oturumlarda seçim ekranı açılmaz (Yapılandırma'dan geri açılır).
+  // Kurum anahtarıyla devam seçildiğinde sunucu onaylar ve tercih o kullanıcı
+  // için hatırlanır; seçim ekranı açılmaz (Yapılandırma'dan geri açılır).
   if (window.Shiny && typeof Shiny.addCustomMessageHandler === "function") {
     Shiny.addCustomMessageHandler("mergenApiKeyChoiceRemember", function (message) {
-      void message;
-      writeSettingKey(SUPPRESS_KEY, true);
+      if (message && typeof message.userTag === "string" && message.userTag) {
+        window.MergenApiKeyChoice._userTag = message.userTag;
+      }
+      var kaydedildi = writeSuppressed(true);
       reportToServer();
       syncSettingsToggle();
+      if (message && message.resultInputId && window.Shiny &&
+          typeof Shiny.setInputValue === "function") {
+        Shiny.setInputValue(message.resultInputId, { ok: kaydedildi, t: Date.now() }, {
+          priority: "event"
+        });
+      }
     });
   }
 
@@ -223,11 +265,11 @@
   window.MergenApiKeyChoice.settingsKey = SUPPRESS_KEY;
   window.MergenApiKeyChoice.isSuppressed = isSuppressed;
   window.MergenApiKeyChoice.suppress = function () {
-    writeSettingKey(SUPPRESS_KEY, true);
+    writeSuppressed(true);
     reportToServer();
   };
   window.MergenApiKeyChoice.allow = function () {
-    writeSettingKey(SUPPRESS_KEY, false);
+    writeSuppressed(false);
     reportToServer();
   };
 })();

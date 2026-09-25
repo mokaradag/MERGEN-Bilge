@@ -341,16 +341,39 @@ show_api_key_choice_modal <- function(session,
   invisible(TRUE)
 }
 
-# Kurum anahtarı seçimini tarayıcıda hatırlatır: yalnızca bastırma bayrağı
-# (api_key_onboarding_suppressed) yazılır; hiçbir anahtar değeri gönderilmez.
-remember_api_key_choice_default <- function(session) {
-  if (is.null(session)) {
+# Tercih etiketi: kanonik kullanıcı adının kısaltılmış SHA-256 özeti. Bastırma
+# bayrağı tarayıcıda bu etiket altında tutulur; aynı tarayıcı profilini
+# kullanan başka kullanıcı önceki kullanıcının tercihini devralmaz. Özet
+# üretilemezse NULL döner ve tercih uygulanmaz (seçim ekranı gösterilir).
+api_key_pref_user_tag <- function(username) {
+  ad <- enc2utf8(as.character(username %||% "")[1])
+  if (is.na(ad) || !nzchar(trimws(ad))) {
+    return(NULL)
+  }
+  metin <- paste0("mergen-api-key-pref:", ad)
+  if (requireNamespace("openssl", quietly = TRUE)) {
+    return(substr(paste(as.character(openssl::sha256(charToRaw(metin))), collapse = ""), 1L, 24L))
+  }
+  if (requireNamespace("digest", quietly = TRUE)) {
+    return(substr(digest::digest(metin, algo = "sha256", serialize = FALSE), 1L, 24L))
+  }
+  NULL
+}
+
+# Kurum anahtarı seçimini tarayıcıda o kullanıcı için hatırlatır: yalnızca
+# bastırma bayrağı ve kullanıcı etiketi gönderilir; anahtar değeri gönderilmez.
+# result_input verilirse tarayıcı kaydın gerçekten yazılıp yazılmadığını
+# ({ok}) bu girdiye bildirir; onay mesajı ancak o zaman gösterilir.
+remember_api_key_choice_default <- function(session, username = NULL, result_input = NULL) {
+  etiket <- api_key_pref_user_tag(username)
+  if (is.null(session) || is.null(etiket)) {
     return(invisible(FALSE))
   }
 
-  session$sendCustomMessage(
-    "mergenApiKeyChoiceRemember",
-    list(settingsKey = "api_key_onboarding_suppressed")
-  )
+  mesaj <- list(settingsKey = "api_key_onboarding_suppressed", userTag = etiket)
+  if (is.character(result_input) && length(result_input) == 1L && nzchar(result_input)) {
+    mesaj$resultInputId <- result_input
+  }
+  session$sendCustomMessage("mergenApiKeyChoiceRemember", mesaj)
   invisible(TRUE)
 }

@@ -104,19 +104,38 @@ pk_tr_fold_is_blank <- function(x) {
 # Türkçe CP1254 baytları Latin-1/CP1252 olarak çözüldüğünde ı/ş/ğ/İ/Ş/Ğ harfleri
 # Latin-1 karşılıklarına (U+00FD/U+00FE/U+00F0/U+00DD/U+00DE/U+00D0) dönüşür
 # (ör. Latin1 harmanlamalı sütunda saklanmış Türkçe metin NVARCHAR okunduğunda).
-# Bu harfler Türkçede bulunmadığından ICU (stringi) ile yerelden bağımsız birebir
-# geri çevrilir. ODBC'nin kayıplı en-yakın dönüşümü ("y"/"?") ONARILAMAZ.
+# Bu harfler İzlandaca/Faroece gibi dillerde gerçek harf olduğundan onarım
+# SÜTUN düzeyinde kanıta bağlıdır (x tek sütun kabul edilir):
+#   * Sütundaki her ASCII dışı harf, CP1254 Türkçe baytlarının Latin-1
+#     görüntüsünde bulunabilen harflerdendir (ç ö ü â î û ve büyükleri ile altı
+#     benzer harf). á/í/ó/ø/æ gibi başka harf ya da gerçek ı/ş/ğ görülürse sütun
+#     doğru çözülmüştür ve DOKUNULMAZ.
+#   * Türkçe kanıtı vardır: ı/İ karşılığı (U+00FD/U+00DD) ya da İzlandaca ve
+#     Faroecede bulunmayan ç/ü (ve büyükleri).
+# Dönüşüm ICU (stringi) ile yerelden bağımsızdır. ODBC'nin kayıplı en-yakın
+# dönüşümü ("y"/"?") ONARILAMAZ.
 repair_turkish_latin1_letters <- function(x) {
   if (is.null(x) || !is.character(x) || !length(x)) return(x)
   if (!requireNamespace("stringi", quietly = TRUE)) return(x)
 
   kaynak <- intToUtf8(c(0x00FDL, 0x00FEL, 0x00F0L, 0x00DDL, 0x00DEL, 0x00D0L))
   hedef <- intToUtf8(c(0x0131L, 0x015FL, 0x011FL, 0x0130L, 0x015EL, 0x011EL))
+  ortak <- intToUtf8(c(0x00E7L, 0x00F6L, 0x00FCL, 0x00E2L, 0x00EEL, 0x00FBL,
+                       0x00C7L, 0x00D6L, 0x00DCL, 0x00C2L, 0x00CEL, 0x00DBL))
+  kanit <- intToUtf8(c(0x00FDL, 0x00DDL, 0x00E7L, 0x00C7L, 0x00FCL, 0x00DCL))
   utf8 <- enc2utf8(x)
-  aday <- !is.na(utf8) & validUTF8(utf8)
-  aday[aday] <- stringi::stri_detect_regex(utf8[aday], paste0("[", kaynak, "]"))
-  if (!any(aday)) return(x)
+  gecerli <- !is.na(utf8) & validUTF8(utf8)
+  if (!any(gecerli)) return(x)
+  sutun <- utf8[gecerli]
 
-  x[aday] <- stringi::stri_trans_char(utf8[aday], kaynak, hedef)
+  aday <- stringi::stri_detect_regex(sutun, paste0("[", kaynak, "]"))
+  if (!any(aday)) return(x)
+  yabanci <- paste0("[[\\p{L}\\p{M}]--[\\x{00}-\\x{7F}", kaynak, ortak, "]]")
+  if (any(stringi::stri_detect_regex(sutun, yabanci))) return(x)
+  if (!any(stringi::stri_detect_regex(sutun, paste0("[", kanit, "]")))) return(x)
+
+  onarilacak <- gecerli
+  onarilacak[gecerli] <- aday
+  x[onarilacak] <- stringi::stri_trans_char(utf8[onarilacak], kaynak, hedef)
   x
 }

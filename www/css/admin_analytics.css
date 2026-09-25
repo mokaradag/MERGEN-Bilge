@@ -103,7 +103,7 @@ section.content,
 .admin-tabs-container .nav-pills > li.active > a:hover,
 .admin-tabs-container .nav-pills > li.active > a:focus {
   /* Beyaz yazı/ikon 3:1 üzerinde kalsın diye marka turuncusunun koyu tonu. */
-  background: linear-gradient(135deg, #e8500f 0%, #c2410c 100%) !important;
+  background: linear-gradient(135deg, #c9440c 0%, #c2410c 100%) !important;
   color: white !important;
   box-shadow: 
     0 6px 20px rgba(255, 107, 53, 0.4),

@@ -214,9 +214,36 @@ test_that("repair_turkish_latin1_letters CP1254-Latin1 harflerini Türkçeye dö
   dogru <- intToUtf8(c(0x130, 0x73, 0x74, 0x61, 0x6E, 0x62, 0x75, 0x6C, 0x20, 0x15E, 0x75, 0x62,
                        0x61, 0x74, 0x20, 0x11E, 0x20, 0x6B, 0x131, 0x72, 0x20, 0x15F, 0x11F))
 
-  sonuc <- repair_turkish_latin1_letters(c(bozuk, NA_character_, "ASCII metin", dogru))
-  expect_identical(sonuc, c(dogru, NA_character_, "ASCII metin", dogru))
+  sonuc <- repair_turkish_latin1_letters(c(bozuk, NA_character_, "ASCII metin"))
+  expect_identical(sonuc, c(dogru, NA_character_, "ASCII metin"))
   expect_identical(Encoding(sonuc[1]), "UTF-8")
+  expect_identical(repair_turkish_latin1_letters(dogru), dogru)
+  # ı yok ama ç/ü kanıtı olan sütun da onarılır: "Şube Müdürü".
+  expect_identical(
+    repair_turkish_latin1_letters(intToUtf8(c(0xDE, 0x75, 0x62, 0x65, 0x20, 0x4D, 0xFC, 0x64, 0xFC, 0x72, 0xFC))),
+    intToUtf8(c(0x15E, 0x75, 0x62, 0x65, 0x20, 0x4D, 0xFC, 0x64, 0xFC, 0x72, 0xFC))
+  )
+})
+
+test_that("repair_turkish_latin1_letters Latin-1 kökenli olmayan sütundaki gerçek harflere dokunmaz", {
+  testthat::skip_if_not_installed("stringi")
+  bozuk <- intToUtf8(c(0xDD, 0x73, 0x74, 0x61, 0x6E, 0x62, 0x75, 0x6C, 0x20, 0x6B, 0xFD, 0x72))
+  # İzlandaca "Thordur", "Reykjavík": á/í/ó gibi harfler Türkçe CP1254 görüntüsünde yoktur.
+  izlanda <- c(intToUtf8(c(0xDE, 0xF3, 0x72, 0xF0, 0x75, 0x72)),
+               intToUtf8(c(0x52, 0x65, 0x79, 0x6B, 0x6A, 0x61, 0x76, 0xED, 0x6B)))
+  expect_identical(repair_turkish_latin1_letters(izlanda), izlanda)
+  # Türkçe kanıtı (ı karşılığı ya da ç/ü) olmayan tek ad: "Sigurdur".
+  sigurdur <- intToUtf8(c(0x53, 0x69, 0x67, 0x75, 0x72, 0xF0, 0x75, 0x72))
+  expect_identical(repair_turkish_latin1_letters(sigurdur), sigurdur)
+  # Faroece ø aynı sütunda: hiçbir değer onarılmaz.
+  faroe <- c(bozuk, intToUtf8(c(0x46, 0xF8, 0x72, 0x6F, 0x79, 0x61, 0x72)))
+  expect_identical(repair_turkish_latin1_letters(faroe), faroe)
+  # Gerçek ı/ş/ğ içeren sütun zaten doğru çözülmüştür.
+  karisik <- c(bozuk, intToUtf8(c(0x6B, 0x131, 0x72)))
+  expect_identical(repair_turkish_latin1_letters(karisik), karisik)
+  # Ayrışık aksan (a + U+0301) da yabancı harf sayılır.
+  ayrisik <- c(bozuk, intToUtf8(c(0x61, 0x301)))
+  expect_identical(repair_turkish_latin1_letters(ayrisik), ayrisik)
 })
 
 test_that("repair_turkish_latin1_letters gecersiz ve karakter disi girdiye dokunmaz", {

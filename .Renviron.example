@@ -172,9 +172,13 @@ MERGEN_MCP_BASE_DIR="//mainserver/MERGEN Bilge/mergen_uploads"
 # Ayrıntılı alım metrikleri (dosya adı/yol içermez; varsayılan KAPALI):
 #   MERGEN_FILE_INGESTION_METRICS=false
 # Yüklenen dosyaların arka plan LLM özetleri aynı worker havuzunu kullanır.
-# Aynı anda en fazla bu kadar özet çalışır, kalanlar sırayla başlar; toplu
-# yüklemede diğer kullanıcıların sohbet istekleri beklemez:
+# Aynı anda en fazla bu kadar özet çalışır (işçi sayısının bir eksiğini aşmaz;
+# en az bir işçi sohbete ayrılır), kalanlar sırayla başlar; toplu yüklemede
+# diğer kullanıcıların sohbet istekleri beklemez:
 #   MERGEN_FILE_SUMMARY_MAX_CONCURRENT=2
+# Sırada bekleyebilecek en fazla özet işi; dolunca dosya yine eklenir ama
+# özeti atlanır ve kullanıcı uyarılır:
+#   MERGEN_FILE_SUMMARY_MAX_QUEUE=64
 
 # Günlük log dizini. `app.R`, `run_mergen_prod.R` ve çok-worker çocuk süreçleri
 # aynı erken bootstrap katmanını kullanır; `mergen_YYYYMMDD.log` ile

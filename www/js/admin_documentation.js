@@ -5,6 +5,7 @@
                - Belge karti tiklamasi -> namespaced Shiny girdisi (doc_select)
                - Icindekiler baglantisi -> ilgili basliga yumusak kaydirma
                - Icindekiler ac/kapat dugmesi
+               - Belge ici kayitli belge baglantisi -> ayni sayfada o belge
              Tek delege click handler kullanilir. CDN / agir bagimlilik yoktur.
              Guvenlik: secilen ASCII slug id'leri CSS.escape ile kullanilir,
              dosya adi gibi degerler selector'a enjekte edilmez.
@@ -65,7 +66,16 @@
         return;
       }
 
-      // 3) Icindekiler ac/kapat
+      // 3) Belge govdesindeki kayitli belge baglantisi -> uygulama icinde acilir
+      var docLink = ev.target.closest(".mb-doc-body a[data-doc-id]");
+      if (docLink) {
+        ev.preventDefault();
+        var wrap = docLink.closest(".mb-doc-wrapper") || document;
+        setDocInput(wrap.querySelector(".mb-doc-card-list"), docLink.getAttribute("data-doc-id"));
+        return;
+      }
+
+      // 4) Icindekiler ac/kapat
       var toggle = ev.target.closest(".mb-doc-toc-toggle");
       if (toggle) {
         var wrapper = toggle.closest(".mb-doc-wrapper");

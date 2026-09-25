@@ -432,6 +432,50 @@ testthat::test_that("adminDokumantasyonServer belge seçimi ve grup geçişini y
   })
 })
 
+testthat::test_that("belge içi bağlantılar uygulamadan ayrılmaz; kayıtlı belge sayfa içinde açılır", {
+  env <- .source_admin_doc_env()
+  html <- paste0(
+    "<p><a href=\"release-notes.md\">notlar</a> <a href=\"../RENV_LOCK_STATUS.md#ozet\">renv</a> ",
+    "<a href=\"templates/library_query_aliases_local.template.R\">sablon</a> ",
+    "<a href=\"https://ornek.kurum.local/x\">dis</a> <a href=\"#baslik\">capa</a></p>"
+  )
+  sonuc <- env$admin_doc_rewrite_links(html, "docs/README.md")
+  testthat::expect_true(grepl("<a href=\"#\" data-doc-id=\"release_notes\">notlar", sonuc, fixed = TRUE))
+  testthat::expect_true(grepl("<a href=\"#\" data-doc-id=\"renv_status\">renv", sonuc, fixed = TRUE))
+  testthat::expect_true(grepl("<a class=\"mb-doc-link-offline\"", sonuc, fixed = TRUE))
+  testthat::expect_false(grepl("href=\"templates/", sonuc, fixed = TRUE))
+  testthat::expect_true(grepl("href=\"https://ornek.kurum.local/x\" target=\"_blank\" rel=\"noopener noreferrer\"",
+                              sonuc, fixed = TRUE))
+  testthat::expect_true(grepl("<a href=\"#baslik\">capa", sonuc, fixed = TRUE))
+
+  # Dokümantasyon haritasının gerçek render çıktısında göreli href kalmaz.
+  render <- env$admin_doc_render_document("docs_readme", resolve_repo_root_for_tests())
+  hrefler <- regmatches(render$html, gregexpr("href=\"[^\"]*\"", render$html))[[1]]
+  testthat::expect_true(length(hrefler) > 0L)
+  testthat::expect_true(all(grepl("^href=\"(#|https?:|mailto:)", hrefler)))
+  testthat::expect_true(grepl("data-doc-id=\"pk_operator\"", render$html, fixed = TRUE))
+})
+
+testthat::test_that("başka gruptaki belge seçilince grup sekmesi de o gruba geçer", {
+  env <- .source_admin_doc_env()
+  env$showToast <- function(...) invisible(NULL)
+  secilen <- character(0)
+  testthat::local_mocked_bindings(
+    updateTabsetPanel = function(session, inputId, selected = NULL) {
+      secilen <<- c(secilen, paste(inputId, selected))
+      invisible(NULL)
+    },
+    .package = "shiny"
+  )
+  shiny::testServer(env$adminDokumantasyonServer, {
+    session$setInputs(admin_tabs = "baslangic")
+    session$setInputs(doc_select = "release_notes")
+    testthat::expect_identical(secilen, "admin_tabs urun")
+    session$setInputs(doc_select = "readme")
+    testthat::expect_identical(secilen, "admin_tabs urun")
+  })
+})
+
 testthat::test_that("adminDokumantasyonServer yenile butonu önbelleği temizler ve toast gönderir", {
   env <- .source_admin_doc_env()
   toast_recorder <- new.env(parent = emptyenv())

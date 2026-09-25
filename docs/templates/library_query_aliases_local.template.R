@@ -92,6 +92,12 @@ pk_query_aliases_local <- local({
   # --------------------------------------------------------------------------
   sonuc <- list()
   for (baglama in baglamalar) {
+    # Yanlış yazılmış alan (ör. "hartia") bağlamayı sessizce düşürmesin.
+    eksik <- setdiff(c("sorgu", "sutun", "harita"), names(baglama))
+    if (length(eksik)) {
+      stop("baglamalar: her bağlama list(sorgu = , sutun = , harita = ) biçiminde olmalıdır; eksik alan: ",
+           paste(eksik, collapse = ", "), call. = FALSE)
+    }
     if (!length(baglama$harita)) next
     sorgu <- as.character(baglama$sorgu)[1]
     sutun <- as.character(baglama$sutun)[1]

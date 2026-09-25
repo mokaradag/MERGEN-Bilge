@@ -53,9 +53,19 @@ suppressMessages(library(shiny))
     env$.modal_acilislari <- env$.modal_acilislari + 1L
     invisible(NULL)
   }
-  env$remember_api_key_choice_default <- function(session) {
+  env$.hatirlanan_kullanicilar <- character(0)
+  env$.hatirlatma_sonucu <- TRUE
+  env$.hatirlatma_girdisi <- NULL
+  env$remember_api_key_choice_default <- function(session, username = NULL, result_input = NULL) {
     env$.hatirlatmalar <- env$.hatirlatmalar + 1L
-    invisible(TRUE)
+    env$.hatirlanan_kullanicilar <- c(env$.hatirlanan_kullanicilar, username %||% NA_character_)
+    env$.hatirlatma_girdisi <- result_input
+    invisible(env$.hatirlatma_sonucu)
+  }
+  env$.etiket_istekleri <- character(0)
+  env$api_key_pref_user_tag <- function(username) {
+    env$.etiket_istekleri <- c(env$.etiket_istekleri, username %||% NA_character_)
+    paste0("etiket-", username)
   }
   env$showToast <- function(session, message, type = "info", duration = NULL) {
     env$.toastlar[[length(env$.toastlar) + 1L]] <- list(message = message, type = type)
@@ -223,16 +233,36 @@ testthat::test_that("api_key_use_default_btn kurum anahtarı varsa devam eder, y
 
     # 2) Varsayılan anahtar VAR: onboarding tamam, modal kapanır, bilgi toast'ı
     env$.durum$default_key <- "sahte-kurum-anahtari"
+    env$.durum$owner <- list(username = "yonetici")
     session$setInputs(api_key_use_default_btn = 3)
 
     testthat::expect_true(isTRUE(session$userData$api_key_onboarding_done))
     testthat::expect_identical(removeModal_sayisi, 1L)
-    # Kurum anahtarı seçimi sonraki girişler için hatırlanır.
+    # Kurum anahtarı seçimi sonraki girişler için o kullanıcıya hatırlanır.
     testthat::expect_identical(env$.hatirlatmalar, 1L)
+    testthat::expect_identical(env$.hatirlanan_kullanicilar, "yonetici")
 
     bilgiler <- .toastlarTip(env, "info")
     testthat::expect_true(any(vapply(bilgiler, function(t)
       grepl("Varsayılan kurum", t$message, fixed = TRUE), logical(1))))
+    # "Hatırlanacak" onayı tarayıcı kaydı doğrulamadan verilmez.
+    testthat::expect_false(any(vapply(env$.toastlar, function(t)
+      grepl("hatırlanacak", t$message, fixed = TRUE), logical(1))))
+    testthat::expect_identical(env$.hatirlatma_girdisi, "api_key_module-api_key_choice_remembered")
+
+    session$setInputs(api_key_choice_remembered = list(ok = TRUE, t = 1))
+    testthat::expect_true(any(vapply(.toastlarTip(env, "info"), function(t)
+      grepl("hatırlanacak", t$message, fixed = TRUE), logical(1))))
+
+    session$setInputs(api_key_choice_remembered = list(ok = FALSE, t = 2))
+    testthat::expect_true(any(vapply(.toastlarTip(env, "warning"), function(t)
+      grepl("kaydedilemedi", t$message, fixed = TRUE), logical(1))))
+
+    # Kimlik etiketi yoksa tercih gönderilmez ve kullanıcı uyarılır.
+    env$.hatirlatma_sonucu <- FALSE
+    session$setInputs(api_key_use_default_btn = 4)
+    testthat::expect_true(any(vapply(.toastlarTip(env, "warning"), function(t)
+      grepl("hatırlanamadı", t$message, fixed = TRUE), logical(1))))
   })
 })
 
@@ -309,5 +339,36 @@ testthat::test_that("geç gelen 'bir daha gösterme' bayrağı tolerans içinde 
     env2$.saat <- env2$.saat + 7; session$elapse(200)
     # Bayrak hiç gelmezse tolerans sonunda modal yine gösterilir.
     testthat::expect_identical(env2$.modal_acilislari, 1L)
+  })
+})
+
+testthat::test_that("bastırma tercihi kimlik hazır olunca kullanıcı etiketiyle istenir", {
+  env <- .apiKeyEnv()
+  env$.durum$default_key <- "sahte-kurum-anahtari"
+  env$.saat <- as.POSIXct("2026-01-01 09:00:00", tz = "UTC")
+  env$Sys.time <- function() env$.saat
+
+  testthat::local_mocked_bindings(
+    runjs = function(...) invisible(NULL),
+    delay = function(ms, expr) force(expr),
+    .package = "shinyjs"
+  )
+
+  shiny::testServer(env$apiKeyServer,
+                    args = list(id = "api_key", serviceDesk = list(),
+                                api_config = list()), {
+    # Kimlik yokken tercih istenmez: tarayıcıdaki bayrak kime ait bilinmez.
+    session$elapse(200)
+    env$.saat <- env$.saat + 2; session$elapse(200)
+    testthat::expect_length(env$.etiket_istekleri, 0L)
+
+    env$.durum$owner <- list(username = "ayilmaz")
+    session$elapse(200)
+    testthat::expect_identical(env$.etiket_istekleri, "ayilmaz")
+
+    session$setInputs(api_key_onboarding_suppressed = TRUE)
+    session$elapse(200)
+    testthat::expect_identical(env$.modal_acilislari, 0L)
+    testthat::expect_true(isTRUE(session$userData$api_key_onboarding_done))
   })
 })

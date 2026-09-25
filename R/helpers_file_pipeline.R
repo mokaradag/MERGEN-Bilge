@@ -116,6 +116,37 @@ Eksik bilgi bırakma. İçeriği maddeler halinde, hiyerarşik ve okunabilir şe
   })
 }
 
+# Özet görevi üst düzey fabrikadan üretilir: gövde her dosyada aynı olduğundan
+# bağımlılık taraması açılışta bir kez ısıtılabilir (file_summary_warm_dependencies).
+file_summary_task_fn <- function(file_name_safe, dest_safe, settings_snapshot) {
+  force(file_name_safe)
+  force(dest_safe)
+  force(settings_snapshot)
+  function() {
+    file_ext <- tolower(tools::file_ext(file_name_safe))
+
+    # Özet çıkarma - hata durumunda basit bilgi döndür
+    digest <- tryCatch({
+      switch(file_ext,
+        "xlsx" = , "xls" = build_excel_digest_json(dest_safe, top_levels = 12),
+        {
+          txt <- readFileContentToString(list(name = file_name_safe, datapath = dest_safe, size = file.info(dest_safe)$size))
+          substr(txt, 1, 50000)
+        }
+      )
+    }, error = function(e) {
+      sprintf("Dosya: %s\nBoyut: %s bayt\nTip: %s\n(Detaylı içerik okunamadı: %s)",
+              file_name_safe,
+              file.info(dest_safe)$size %||% "bilinmiyor",
+              file_ext,
+              conditionMessage(e))
+    })
+
+    summary_text <- summarize_file_with_llm(digest, file_name_safe, settings_snapshot)
+    list(summary = summary_text, dest = dest_safe, ext = file_ext)
+  }
+}
+
 processAndSummarizeFile <- function(file_info,
                                     current_user_id,
                                     session,
@@ -258,46 +289,40 @@ processAndSummarizeFile <- function(file_info,
   dest_safe <- tryCatch(enc2utf8(as.character(dest)), error = function(e) as.character(dest))
   file_name_safe <- tryCatch(enc2utf8(as.character(file_info$name)), error = function(e) as.character(file_info$name))
 
+  # Özet sırada/işçide beklerken aynı Shiny oturumu başka kullanıcıya geçebilir
+  # (SSO yeniden kimlik). Kimlik başlatmadan ve sonuç işlenmeden önce yeniden
+  # denetlenir; A'nın dosya özeti B'nin oturum durumuna yazılmaz.
   ozet_baslat <- function() {
-	ozet_gorevi <- function() {
-		file_ext <- tolower(tools::file_ext(file_name_safe))
-
-		# Özet çıkarma - hata durumunda basit bilgi döndür
-		digest <- tryCatch({
-		  switch(file_ext,
-			"xlsx" = , "xls" = build_excel_digest_json(dest_safe, top_levels = 12),
-			{
-			  txt <- readFileContentToString(list(name = file_name_safe, datapath = dest_safe, size = file.info(dest_safe)$size))
-			  substr(txt, 1, 50000)
-			}
-		  )
-		}, error = function(e) {
-		  # Özet çıkarılamadı - basit bir açıklama döndür
-		  sprintf("Dosya: %s\nBoyut: %s bayt\nTip: %s\n(Detaylı içerik okunamadı: %s)",
-				  file_name_safe,
-				  file.info(dest_safe)$size %||% "bilinmiyor",
-				  file_ext,
-				  conditionMessage(e))
-		})
-
-		summary_text <- summarize_file_with_llm(digest, file_name_safe, settings_snapshot)
-		list(summary = summary_text, dest = dest_safe, ext = file_ext)
+	if (!identical(.file_pipeline_effective_uid(session$userData$user_id, effective_user_id), effective_user_id)) {
+	  try(removeNotification(note_id), silent = TRUE)
+	  cat("[FILE PIPELINE] Oturum kimliği değişti, kuyruktaki özet başlatılmadı.\n")
+	  return(invisible(NULL))
 	}
-	# Bağımlılıklar süreç başına bir kez taranır ve görev İZOLE ortamla gönderilir:
-	# otomatik kip Shiny oturumunu taşıyan çağıran çerçeveyi de serileştiriyordu.
+	ozet_gorevi <- file_summary_task_fn(file_name_safe, dest_safe, settings_snapshot)
+	# Bağımlılıklar süreç başına bir kez taranır (açılışta ısıtılır) ve görev İZOLE
+	# ortamla gönderilir: otomatik kip oturumu taşıyan çerçeveyi serileştiriyordu.
 	bagimlilik <- if (exists("worker_monitor_auto_globals", mode = "function")) {
 	  try(worker_monitor_auto_globals("file_summary", ozet_gorevi), silent = TRUE)
 	}
-	if (inherits(bagimlilik, "try-error")) bagimlilik <- NULL
-	tracked_future_promise(
+	if (inherits(bagimlilik, "try-error") || !isTRUE(bagimlilik$ok)) bagimlilik <- NULL
+	# Eşzamanlı gönderim hatası reddedilmiş söze çevrilir: bildirim kapanır,
+	# uyarı ve günlük aşağıdaki ortak hata yolundan verilir.
+	gonderim <- try(tracked_future_promise(
 	  task_fn = ozet_gorevi,
 	  task_type = "file_summary",
 	  session_token = session$token,
 	  dependency_mode = if (is.null(bagimlilik)) "auto" else "explicit",
 	  globals = bagimlilik$globals,
 	  packages = bagimlilik$packages
-	) %...>%
+	), silent = TRUE)
+	if (inherits(gonderim, "try-error")) gonderim <- promises::promise_reject(attr(gonderim, "condition"))
+	gonderim %...>%
     (function(res) {
+      if (!identical(.file_pipeline_effective_uid(session$userData$user_id, effective_user_id), effective_user_id)) {
+        removeNotification(note_id)
+        cat("[FILE PIPELINE] Oturum kimliği değişti, özet sonucu uygulanmadı.\n")
+        return(invisible(NULL))
+      }
       if (isTRUE(auto_attach)) {
         current_files <- session_files_reactive() %||% list()
         current_files[[file_info$name]] <- list(
@@ -334,14 +359,25 @@ processAndSummarizeFile <- function(file_info,
       # Dosya zaten indekse kaydedildi, sadece özetleme başarısız oldu
       msg <- tryCatch(enc2utf8(conditionMessage(e)), error = function(err) conditionMessage(e))
       cat("[FILE PIPELINE] Özetleme hatası:", msg, "\n")
-      showToast(session, paste(file_info$name, "yüklendi ancak özet çıkarılamadı."), "warning")
+      if (identical(.file_pipeline_effective_uid(session$userData$user_id, effective_user_id), effective_user_id)) {
+        showToast(session, paste(file_info$name, "yüklendi ancak özet çıkarılamadı."), "warning")
+      }
     })
   }
 
-  if (exists("file_summary_schedule", mode = "function")) {
+  ozet_kuyrukta <- if (exists("file_summary_schedule", mode = "function")) {
     file_summary_schedule(ozet_baslat, session = session)
   } else {
     ozet_baslat()
+    TRUE
+  }
+  # Özet kuyruğu doluysa dosya yine kabul edilir; yalnız özet atlanır ve söylenir.
+  if (identical(ozet_kuyrukta, FALSE)) {
+    try(removeNotification(note_id), silent = TRUE)
+    cat("[FILE PIPELINE] Özet kuyruğu dolu, özet atlandı:", file_name_safe, "\n")
+    if (isTRUE(show_toast)) {
+      showToast(session, paste(file_info$name, "yüklendi; özet kuyruğu dolu olduğundan özet çıkarılmadı."), "warning")
+    }
   }
 
   # Dosya KABUL edildi: kalıcılaştırma ve indeks kaydı tamamlandı. Özetleme

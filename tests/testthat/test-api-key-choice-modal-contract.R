@@ -99,6 +99,21 @@ test_that("seçim modalı varsayılan kurum anahtarı değerini gömmez / sızd�
   expect_true(any(grepl("api_key_onboarding_suppressed", js_lines, fixed = TRUE)))
 })
 
+test_that("bastırma tercihi tarayıcı geneli değil kullanıcı etiketiyle saklanır", {
+  js_text <- .akc_text("www/js/api_key_choice_modal.js")
+  module_text <- .akc_text("R/module_api_key.R")
+
+  expect_true(grepl("api_key_onboarding_suppressed_by_user", js_text, fixed = TRUE))
+  expect_true(grepl("message.userTag", js_text, fixed = TRUE))
+  # Etiket yoksa bastırma yoktur ve bayrak yazılmaz.
+  expect_true(grepl("return !!tag && suppressMap(readSettings())[tag] === true;", js_text, fixed = TRUE))
+  expect_false(grepl("readSettings()[SUPPRESS_KEY] === true", js_text, fixed = TRUE))
+  expect_false(grepl("s[SUPPRESS_KEY] =", js_text, fixed = TRUE))
+  # Sunucu tercihi kullanıcı etiketiyle ister.
+  expect_true(grepl("userTag     = etiket", module_text, fixed = TRUE))
+  expect_true(grepl("etiket <- api_key_pref_user_tag(owner$username)", module_text, fixed = TRUE))
+})
+
 test_that("seçim modalı iki yollu/tek yollu mantığı, input id'leri ve dontshow kutusunu korur", {
   helper_text <- paste(
     .akc_text("R/module_api_key_choice_modal.R"),

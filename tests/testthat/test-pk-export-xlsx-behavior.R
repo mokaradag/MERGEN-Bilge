@@ -680,12 +680,17 @@ test_that("Latin1 sutunda saklanmis Turkce metnin y/s/g harfleri disa aktarimda 
                        0x6C, 0x6D, 0xFD, 0xFE, 0x20, 0x64, 0x65, 0xF0, 0x65, 0x72))
   dogru <- intToUtf8(c(0x6B, 0x131, 0x72, 0x131, 0x6C, 0x131, 0x6D, 0x20, 0x61, 0xE7, 0x131,
                        0x6C, 0x6D, 0x131, 0x15F, 0x20, 0x64, 0x65, 0x11F, 0x65, 0x72))
-  veri <- data.frame(Aciklama = c(bozuk, dogru), Deger = c(1, 2), stringsAsFactors = FALSE)
+  # İzlandaca sütun ("Thordur", "Reykjavík") Latin-1 kökenli sayılmaz, olduğu gibi kalır.
+  izlanda <- c(intToUtf8(c(0xDE, 0xF3, 0x72, 0xF0, 0x75, 0x72)),
+               intToUtf8(c(0x52, 0x65, 0x79, 0x6B, 0x6A, 0x61, 0x76, 0xED, 0x6B)))
+  veri <- data.frame(Aciklama = c(bozuk, "Toplam"), Ad = izlanda, Deger = c(1, 2),
+                     stringsAsFactors = FALSE)
 
   artefakt <- env$pk_export_build(veri, list(facts = list()), list(),
                                   base_name = "sentetik", dir = .pk_export_dir())
 
   expect_identical(artefakt$status, "ok")
   okunan <- as.data.frame(readxl::read_excel(artefakt$files[[1]]$path, sheet = "Veri"))
-  expect_identical(okunan$Aciklama, c(dogru, dogru))
+  expect_identical(okunan$Aciklama, c(dogru, "Toplam"))
+  expect_identical(okunan$Ad, izlanda)
 })

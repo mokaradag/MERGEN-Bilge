@@ -34,17 +34,41 @@ testthat::test_that("api_key_choice_request_url güvenli çözümleme yapar", {
   )
 })
 
-testthat::test_that("kurum anahtarı seçimi yalnızca bastırma bayrağını hatırlatır", {
+testthat::test_that("kurum anahtarı seçimi bastırma bayrağını yalnız o kullanıcı için hatırlatır", {
   env <- .akc_src()
   mesajlar <- list()
   oturum <- list(sendCustomMessage = function(type, message) {
     mesajlar[[length(mesajlar) + 1L]] <<- list(type = type, message = message)
   })
-  testthat::expect_true(env$remember_api_key_choice_default(oturum))
+  testthat::expect_true(env$remember_api_key_choice_default(oturum, "ayilmaz"))
   testthat::expect_length(mesajlar, 1L)
   testthat::expect_identical(mesajlar[[1]]$type, "mergenApiKeyChoiceRemember")
-  testthat::expect_identical(mesajlar[[1]]$message, list(settingsKey = "api_key_onboarding_suppressed"))
-  testthat::expect_false(env$remember_api_key_choice_default(NULL))
+  testthat::expect_identical(
+    mesajlar[[1]]$message,
+    list(settingsKey = "api_key_onboarding_suppressed", userTag = env$api_key_pref_user_tag("ayilmaz"))
+  )
+  # Sonuç girdisi verilirse tarayıcı kaydın yazıldığını bu girdiye bildirir.
+  testthat::expect_true(env$remember_api_key_choice_default(oturum, "ayilmaz", result_input = "ak-sonuc"))
+  testthat::expect_identical(mesajlar[[2]]$message$resultInputId, "ak-sonuc")
+  mesajlar <- mesajlar[1]
+  # Kimlik yoksa tercih hatırlanmaz (tarayıcı geneli bayrak yazılmaz).
+  testthat::expect_false(env$remember_api_key_choice_default(oturum, NULL))
+  testthat::expect_false(env$remember_api_key_choice_default(oturum))
+  testthat::expect_length(mesajlar, 1L)
+  testthat::expect_false(env$remember_api_key_choice_default(NULL, "ayilmaz"))
+})
+
+testthat::test_that("api_key_pref_user_tag kullanıcıya özgü, kararlı ve kimliksiz durumda NULL'dır", {
+  env <- .akc_src()
+  etiket <- env$api_key_pref_user_tag("ayilmaz")
+  testthat::expect_match(etiket, "^[0-9a-f]{24}$")
+  testthat::expect_identical(etiket, env$api_key_pref_user_tag("ayilmaz"))
+  testthat::expect_false(identical(etiket, env$api_key_pref_user_tag("bdemir")))
+  # Etiket kullanıcı adını açık metin taşımaz.
+  testthat::expect_false(grepl("ayilmaz", etiket, fixed = TRUE))
+  testthat::expect_null(env$api_key_pref_user_tag(NULL))
+  testthat::expect_null(env$api_key_pref_user_tag("  "))
+  testthat::expect_null(env$api_key_pref_user_tag(NA_character_))
 })
 
 testthat::test_that(".api_key_choice_personal_card korumalı input kimliklerini üretir", {

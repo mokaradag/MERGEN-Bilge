@@ -248,8 +248,11 @@ worker_monitor_auto_globals <- function(task_type, task_fn, promise_globals = li
     )
   }
 
+  # Tarama durumu çağırana taşınır: başarısız tarama "explicit" gönderime
+  # eksik bağımlılıkla dönüşmemelidir.
   list(globals = c(promise_globals, expanded_globals),
        packages = detected_future_deps$packages,
+       ok = isTRUE(detected_future_deps$ok %||% TRUE),
        detect_ms = detect_ms, expand_ms = expand_ms)
 }
 

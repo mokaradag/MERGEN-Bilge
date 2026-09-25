@@ -80,7 +80,8 @@ mb_sidebar_user_avatar_url <- function(user_id) {
   if (is.na(user_id) || !nzchar(user_id) || user_id %in% c("0", "unknown")) {
     return("")
   }
-  gsub("{user_id}", utils::URLencode(user_id, reserved = TRUE),
+  # repeated = TRUE: kimlikteki "%2F" gibi diziler de kodlanır, ayrı kimlik kalır.
+  gsub("{user_id}", utils::URLencode(user_id, reserved = TRUE, repeated = TRUE),
        mb_user_avatar_url_template(), fixed = TRUE)
 }
 
@@ -95,7 +96,10 @@ mb_user_avatar_url_template <- function() {
     return(varsayilan)
   }
   if (!grepl("{user_id}", sablon, fixed = TRUE)) {
-    sablon <- paste0(sub("/*$", "/", sablon), "{user_id}.jpg")
+    # Sorgu/parça (ör. "?size=64") korunur; "<id>.jpg" yola, ondan önce eklenir.
+    yol <- sub("[?#].*$", "", sablon)
+    sablon <- paste0(sub("/*$", "/", yol), "{user_id}.jpg",
+                     substr(sablon, nchar(yol) + 1L, nchar(sablon)))
   }
   sablon
 }

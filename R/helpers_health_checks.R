@@ -179,7 +179,7 @@ health_check_http_endpoint <- function(id, label, endpoint, configured_required 
     if (!requireNamespace("httr", quietly = TRUE)) {
       return(health_result(id, label, "unknown", endpoint, "httr paketi yok.", health_ms(start), remediation = "httr paket kurulumunu kontrol edin."))
     }
-    res <- try(httr::GET(endpoint, httr::timeout(timeout_sec)), silent = TRUE)
+    res <- try(httr::GET(health_probe_url(endpoint), httr::timeout(timeout_sec)), silent = TRUE)
     if (inherits(res, "try-error")) {
       return(health_result(id, label, "warning", endpoint, "Uç noktaya erişilemedi veya timeout oluştu.", health_ms(start), remediation = "Servisin çalıştığını ve VM firewall ayarlarını kontrol edin."))
     }

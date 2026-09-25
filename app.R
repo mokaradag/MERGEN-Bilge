@@ -202,6 +202,10 @@ create_mergen_app <- function() {
           try(close_db_pool_once(), silent = TRUE)
         })
       }
+      # İlk dosya özetinin bağımlılık taraması oturumlar gelmeden yapılır.
+      if (exists("file_summary_warm_dependencies", mode = "function", inherits = TRUE)) {
+        try(file_summary_warm_dependencies(), silent = TRUE)
+      }
     }
   )
 }

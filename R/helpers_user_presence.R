@@ -45,22 +45,52 @@ mb_presence_profile <- function(session) {
        mudurluk = al("mudurluk", "Mudurluk"))
 }
 
+mb_presence_uid <- function(x) {
+  deger <- suppressWarnings(as.integer(x %||% 0L)[1])
+  if (length(deger) != 1L || is.na(deger) || deger < 0L) 0L else deger
+}
+
 # Nabız kaydı: ilk bağlantı anı korunur, boş profil önceki dolu profili ezmez.
+# Kimlik geçici olarak 0'a düşerse son bilinen kullanıcı korunur; oturum başka
+# kullanıcıya geçtiyse önceki kullanıcının profili ve başlangıcı devralınmaz.
 mb_presence_session_entry <- function(previous, user_id, profile, now = Sys.time()) {
+  onceki <- mb_presence_uid(previous$user_id)
+  yeni <- mb_presence_uid(user_id)
+  if (yeni == 0L) yeni <- onceki
+  if (onceki > 0L && yeni != onceki) previous <- NULL
   profil <- previous$profile %||% list()
   for (alan in names(profile)) {
     if (nzchar(profile[[alan]] %||% "")) profil[[alan]] <- profile[[alan]]
   }
-  list(user_id = user_id, last_seen = now,
+  list(user_id = yeni, last_seen = now,
        started_at = previous$started_at %||% now, profile = profil)
 }
 
+# Oturumun nabzını yazar. Aynı Shiny oturumu başka kullanıcıya geçtiyse önceki
+# kullanıcının oturumu bitmiş sayılır ve geçmişe ayrı anahtarla yazılır.
+mb_presence_touch <- function(active_env, token, user_id, profile, now = Sys.time(),
+                              history_env = mb_presence_env(".mergen_presence_history")) {
+  anahtar <- as.character(token)[1]
+  onceki <- if (exists(anahtar, envir = active_env, inherits = FALSE)) active_env[[anahtar]] else NULL
+  eski_uid <- mb_presence_uid(onceki$user_id)
+  yeni_uid <- mb_presence_uid(user_id)
+  if (eski_uid > 0L && yeni_uid > 0L && yeni_uid != eski_uid) {
+    mb_presence_record_end(paste0(anahtar, "#", eski_uid), onceki, ended_at = now,
+                           history_env = history_env, now = now)
+  }
+  assign(anahtar, mb_presence_session_entry(onceki, user_id, profile, now), envir = active_env)
+  invisible(active_env[[anahtar]])
+}
+
+# Budama bitiş anına değil GÜNCEL zamana göre yapılır; bayat oturum temizliği
+# geçmiş bir bitiş anı verse de pencere geriye kaymaz.
 mb_presence_record_end <- function(token, entry, ended_at = Sys.time(),
-                                   history_env = mb_presence_env(".mergen_presence_history")) {
+                                   history_env = mb_presence_env(".mergen_presence_history"),
+                                   now = Sys.time()) {
   if (!is.list(entry) || is.null(entry$last_seen)) return(invisible(FALSE))
   entry$ended_at <- ended_at
   assign(as.character(token)[1], entry, envir = history_env)
-  mb_presence_prune(history_env, ended_at)
+  mb_presence_prune(history_env, now)
   invisible(TRUE)
 }
 
@@ -124,6 +154,8 @@ mb_presence_snapshot <- function(active_env = mb_presence_env(".mergen_active_se
                                  history_env = mb_presence_env(".mergen_presence_history"),
                                  now = Sys.time()) {
   pencere <- mb_presence_windows()
+  # Oturum kapanmasa da 24 saatten eski geçmiş kayıtları bellekte kalmaz.
+  if (is.environment(history_env)) mb_presence_prune(history_env, now)
   oturumlar <- mb_presence_session_rows(active_env, history_env, now)
   simdi <- as.numeric(now)
   oturumlar <- oturumlar[!is.na(oturumlar$last_seen) &

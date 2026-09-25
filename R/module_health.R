@@ -67,6 +67,22 @@ health_source_optional("R/module_health_diagnostics.R")
 health_source_optional("R/module_health_release.R")
 health_source_optional("R/module_health_presence.R")
 
+# Sistem Durumu yalnız yöneticiye açıktır. Menüyü gizlemek yetkilendirme
+# değildir: tüm oturumlarda çalışan modül, istemcinin gönderdiği sekme
+# değerine bakmadan önce yetkiyi sunucuda oturum kimliğinden okur (karar
+# yönetici menüsüyle aynıdır: server_observers_misc.R mevcut_yetki).
+health_session_is_admin <- function(session) {
+  cfg <- tryCatch({
+    if (exists("make_user_session_data_accessors", mode = "function")) {
+      make_user_session_data_accessors(session)$get_user_config(NULL)
+    } else {
+      get0("user_config", envir = session$userData, inherits = FALSE)
+    }
+  }, error = function(e) NULL)
+  seviye <- if (is.list(cfg)) cfg$auth_level else NULL
+  identical(toupper(trimws(as.character(seviye %||% "")[1])), "ADMIN")
+}
+
 healthUI <- function(id) {
   ns <- NS(id)
 
@@ -189,6 +205,9 @@ healthServer <- function(id, perf_tracker) {
 
     output$health_tab_content <- renderUI({
       tab <- input$health_tabs %||% "overview"
+      if (!health_session_is_admin(session)) {
+        return(div(class = "health-empty", icon("lock"), " Bu sayfa yalnızca yöneticilere açıktır."))
+      }
       # Çevrimiçi sekmesi yalnız bellek-içi defteri okur; sağlık probe'larını
       # tetiklemez ve yalnızca açıkken 30 saniyede bir yenilenir.
       if (identical(tab, "presence")) {
@@ -222,6 +241,7 @@ healthServer <- function(id, perf_tracker) {
     })
 
     observeEvent(input$refresh_health, {
+      if (!health_session_is_admin(session)) return(invisible(NULL))
       session$sendCustomMessage("removeHealthTooltips", list())
       shinyjs::runjs("$('.tooltip').remove();")
       health_refresh_trigger(health_refresh_trigger() + 1)

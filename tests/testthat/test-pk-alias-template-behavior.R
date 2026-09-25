@@ -71,6 +71,15 @@ test_that("açılan şablon örnekleri üretim alias doğrulayıcısından hatas
   expect_identical(sonuc$meta$gen_00$column_meta[[proje_adi]]$alias_provenance, "local_overlay")
 })
 
+test_that("şablon eksik ya da yanlış yazılmış bağlama alanını açık hatayla reddeder", {
+  satirlar <- .alias_sablon_satirlari()
+  acik <- sub("^(\\s*)# (\"[^\"]+\"\\s*= c\\(.*)$", "\\1\\2", satirlar, perl = TRUE)
+  acik <- sub("^(\\s*)# (list\\(sorgu = .*)$", "\\1\\2", acik, perl = TRUE)
+  bozuk <- sub("harita = programlar", "hartia = programlar", acik, fixed = TRUE)
+  expect_false(identical(bozuk, acik))
+  expect_error(.alias_sablon_calistir(bozuk), "harita")
+})
+
 test_that("şablon yardımcısı adsız alias grubunu açık hatayla reddeder", {
   satirlar <- .alias_sablon_satirlari()
   bozuk <- sub("^(\\s*)# \"Altyap[^\"]*\"\\s*= (c\\(.*)$", "\\1\\2", satirlar, perl = TRUE)

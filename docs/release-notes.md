@@ -23,32 +23,51 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   (`R/helpers_worker_dep_cache.R`); dosya özetleri oturum çerçevesini taşımadan
   gönderilir ve eşzamanlı özet sayısı sınırlanır
   (`MERGEN_FILE_SUMMARY_MAX_CONCURRENT`, varsayılan 2) ki sohbet istekleri işçi
-  beklemesin.
+  beklemesin; sınır işçi havuzundan türetilir ve en az bir işçi etkileşimli
+  işe ayrılır (tek işçili havuzda özet yalnız işçi boştayken başlar). Kuyruktaki
+  özet, oturum başka kullanıcıya geçtiyse başlamaz ve sonucu yeni kullanıcıya
+  yazılmaz. Bekleyen özet kuyruğu da sınırlıdır
+  (`MERGEN_FILE_SUMMARY_MAX_QUEUE`, varsayılan 64); dolunca dosya yine eklenir,
+  özeti atlanır ve kullanıcı uyarılır. Özet görevinin bağımlılık taraması
+  açılışta bir kez yapılır; süreç yeniden başladıktan sonraki ilk yükleme de
+  olay döngüsünü dondurmaz. Gönderim anında oluşan hata da bildirimi kapatır
+  ve "özet çıkarılamadı" uyarısı verir.
 - **Günlük log dosyaları UTF-8.** `mergen_yyyymmdd.log` ve AI hata ayıklama
   dökümleri Windows kod sayfasına göre değil UTF-8 bayt olarak yazılır; Türkçe
   karakterler bozulmaz.
 - **Konsol logu sadeleşti.** `[CHAT PERF] SSE işçide ilk ham HTTP parçası
   alındı` satırı her parçada değil istek başına bir kez yazılır.
 - **Proje ve Kaynak Analizi Excel eki:** Latin1 sütundan NVARCHAR olarak okunan
-  Türkçe metnin `ý/þ/ð` harfleri `ı/ş/ğ` olarak dışa aktarılır. ODBC'nin kayıplı
+  Türkçe metnin `ý/þ/ð` harfleri `ı/ş/ğ` olarak dışa aktarılır. Onarım sütun
+  düzeyinde kanıta bağlıdır: sütunda Türkçe kanıtı (`ý` ya da `ç/ü`) yoksa veya
+  başka dil harfi (ör. İzlandaca `á/í/ó`) ya da gerçek `ı/ş/ğ` varsa sütuna
+  dokunulmaz. ODBC'nin kayıplı
   `y`/`?` dönüşümü istemcide onarılamaz; sorgu tarafı çözümü RUNBOOK §13'tedir.
   Yerel alias şablonu: `docs/templates/library_query_aliases_local.template.R`.
 - **Tanılama yanlış uyarıları giderildi.** Yapılandırılmış servis uç noktaları
   (`LOCAL_*_ENDPOINT`, `IMAGE_GEN_ENDPOINT`, `LANGFLOW_BASE_URL`,
   `SSO_KEYCLOAK_URL`, api_config LLM uç noktaları) kurumsal DNS adı taşısa da
   on-prem sayılır ve gerçekten denenir; "Genel internet adresi algılandı"
-  uyarısı yalnız yapılandırılmamış genel adresler için kalır.
+  uyarısı yalnız yapılandırılmamış genel adresler için kalır. `0.0.0.0` / `[::]`
+  bağlama adresli uç noktalar yerel döngü adresinden (`127.0.0.1` / `[::1]`)
+  denenir; yüzde kodlu genel host adları intranet sayılmaz.
 - **Kullanıcı fotoğraf adresi yapılandırılabilir:** `MERGEN_USER_AVATAR_URL_TEMPLATE`
-  (`{user_id}` yer tutucusu). Fotoğraf yüklenemezse baş harfler gösterilir.
+  (`{user_id}` yer tutucusu; yoksa `<id>.jpg` yola, varsa sorgu dizesinden önce
+  eklenir). Fotoğraf yüklenemezse baş harfler gösterilir.
 - **Sistem Durumu açık tema** tüm sekmelerde okunur: skor halkası, kutucuk ve
   kahraman alanı renkleri, İşçi İzleyici değerleri ve CPU çekirdek görseli.
 - **Yeni "Çevrimiçi" sekmesi (Sistem Durumu):** şu anda / son 15 dakika / son 24
   saat çevrimiçi kullanıcı, açık oturum ve aktif birim sayaçları ile kullanıcı
   oturum takip tablosu. Veri süreç belleğindedir; yeniden başlatmada sıfırlanır.
+  Sistem Durumu içeriği yalnız ADMIN oturumuna üretilir; yetki menüde değil
+  sunucuda denetlenir. Aynı oturum başka kullanıcıya geçerse önceki kullanıcının
+  oturumu bitmiş sayılır; "Son 24 Saat" uygulamayı kullanan kullanıcıyı sayar.
 - **AI Uzman altyazı şeridi** açık temada açık yüzey ve koyu metinle çizilir.
 - **Dokümantasyon sayfası** kök, `docs/` ve varlık klasörlerindeki belgeleri yeni
   sekmelerle (Doğrulama, Özellikler, Konuşma, Varlıklar) gösterir; kayıtsız yeni
-  belge test tarafından yakalanır.
+  belge test tarafından yakalanır. Belge içindeki bağlantılar artık uygulamadan
+  çıkarmaz: kayıtlı belgeye giden bağlantı aynı sayfada açılır, dış adres yeni
+  sekmede açılır.
 - **Windows testi:** CodeMirror tarayıcı testi `options(encoding = "UTF-8")`
   altında CP1254 VM'de "invalid UTF-8" hatası vermez.
 - **Sistem Durumu ikonları:** metrik kartı ikonları gri zemin yerine durum
@@ -58,6 +77,9 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   kullanıcıya (ör. yöneticiler) sonraki girişlerde API anahtarı ekranı tekrar
   gösterilmez; Ayarlar > Yapılandırma'dan geri açılabilir. "Bir daha
   gösterme" tercihi Zengin Deneyim açılışında da güvenilir biçimde uygulanır.
+  Tercih tarayıcıda kullanıcıya özgü etiketle saklanır: aynı tarayıcıyı
+  kullanan başka kullanıcı bu seçimi devralmaz. Önceki tarayıcı geneli bayrak
+  artık okunmaz; bu yüzden tercih kullanıcı başına bir kez yeniden sorulur.
 - **Keşfet akışı yenilendi:** Keşfet düğmesi, mod seçimi ve asistan seçimi
   ekranları sade ve okunaklı bir tasarıma geçti; mod açıklamaları ve özellik
   durumları baştan görünür, yoğun sürekli animasyonlar kaldırıldı ve ekran

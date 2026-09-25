@@ -214,6 +214,39 @@ test_that("health_check_http_endpoint yerel uç noktada mock GET ile ok döner",
   expect_true(grepl("HTTP 200", r$value[1], fixed = TRUE))
 })
 
+test_that("joker bağlama adresli uç nokta yerel döngü adresinden denenir", {
+  env <- .fresh_health_env()
+  cagrilan <- character(0)
+  testthat::local_mocked_bindings(
+    GET = function(url, ...) {
+      cagrilan <<- c(cagrilan, url)
+      structure(list(), class = "response")
+    },
+    status_code = function(res) 200L,
+    timeout = function(...) NULL,
+    .package = "httr"
+  )
+  r <- env$health_check_http_endpoint("tts.endpoint", "TTS", "http://0.0.0.0:9000/health")
+  expect_identical(r$status[1], "ok")
+  env$health_check_http_endpoint("stt.endpoint", "STT", "http://[::]:9001/v1")
+  expect_identical(cagrilan, c("http://127.0.0.1:9000/health", "http://[::1]:9001/v1"))
+  # Joker olmayan adresler ve benzer görünen hostlar değişmez.
+  expect_identical(env$health_probe_url("http://0.0.0.01:80/x"), "http://0.0.0.01:80/x")
+  expect_identical(env$health_probe_url("https://10.0.0.5:8443/v1"), "https://10.0.0.5:8443/v1")
+  expect_identical(env$health_probe_url("http://0.0.0.0"), "http://127.0.0.1")
+})
+
+test_that("yüzde kodlu genel host adı intranet sayılmaz", {
+  env <- .fresh_health_env()
+  withr::local_envvar(c(MERGEN_HEALTH_INTERNAL_ENDPOINTS = ""))
+  expect_identical(env$health_url_host("https://public%2eexample%2ecom/"), "public.example.com")
+  expect_true(env$health_is_public_url("https://public%2eexample%2ecom/"))
+  expect_true(env$health_is_public_url("https://PUBLIC%2EEXAMPLE%2ECOM/v1"))
+  # Tek etiketli intranet adı ve IPv6 bölge kimliği davranışı değişmez.
+  expect_false(env$health_is_public_url("http://intranet-servis:8080/v1"))
+  expect_false(env$health_is_public_url("http://[fe80::1%25eth0]:8080/v1"))
+})
+
 test_that("health_check_http_endpoint boş uç nokta zorunlu değilse not_configured döner", {
   env <- .fresh_health_env()
   r <- env$health_check_http_endpoint("tts.endpoint", "TTS", "", configured_required = FALSE)

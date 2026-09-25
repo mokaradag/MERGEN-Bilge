@@ -13,6 +13,10 @@ health_url_host <- function(value) {
   # `https://user:pass@public.example.com` için host "user" dönüyor ve
   # noktasız-host kuralı uç noktayı DAHİLİ sayıp genel isteği gönderiyordu.
   host <- sub("^.*@", "", host)
+  # Yüzde kodlu host (`public%2eexample%2ecom`) HTTP istemcisince çözülür;
+  # noktasız görünüp intranet sayılmasın diye sınıflandırmadan önce çözülür.
+  host <- tolower(vapply(host, function(h) tryCatch(utils::URLdecode(h), error = function(e) h),
+                         character(1), USE.NAMES = FALSE))
   host <- ifelse(
     grepl("^\\[", host),
     sub("^\\[([^]]*)\\].*$", "\\1", host),
@@ -105,6 +109,16 @@ health_ip_literal_internal <- function(host) {
     (oktet[1] == 172L && oktet[2] >= 16L && oktet[2] <= 31L) ||
     (oktet[1] == 192L && oktet[2] == 168L) ||
     (oktet[1] == 169L && oktet[2] == 254L)
+}
+
+# Joker bağlama adresi (0.0.0.0 / [::]) istemci hedefi değildir (Windows'ta
+# bağlantı kurulamaz); deneme aynı porttaki yerel döngü adresine yapılır.
+health_probe_url <- function(url) {
+  url <- as.character(url %||% "")
+  url <- sub("^(https?://(?:[^/?#@]*@)?)0\\.0\\.0\\.0(?=[:/?#]|$)", "\\1127.0.0.1",
+             url, perl = TRUE, ignore.case = TRUE)
+  sub("^(https?://(?:[^/?#@]*@)?)\\[::\\](?=[:/?#]|$)", "\\1[::1]",
+      url, perl = TRUE, ignore.case = TRUE)
 }
 
 health_is_public_url <- function(url) {

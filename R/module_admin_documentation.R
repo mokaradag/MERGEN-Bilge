@@ -213,6 +213,13 @@ adminDokumantasyonServer <- function(id) {
       if (is.character(did) && length(did) == 1L && nzchar(did) &&
           admin_doc_is_known(did)) {
         selected_doc(did)
+        # Belge içi bağlantı başka gruptaki belgeyi açabilir; grup sekmesi izler.
+        for (g in admin_doc_registry()) {
+          if (did %in% vapply(g$docs, function(d) d$id, character(1)) &&
+              !identical(g$id, input$admin_tabs)) {
+            updateTabsetPanel(session, "admin_tabs", selected = g$id)
+          }
+        }
       }
     }, ignoreInit = TRUE)
 

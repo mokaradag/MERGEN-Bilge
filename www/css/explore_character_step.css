@@ -416,6 +416,19 @@
   outline-offset: 2px;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .cinematic-char-select-btn,
+  .cinematic-char-select-btn i,
+  .cinematic-char-metric-fill {
+    transition: none;
+  }
+
+  .cinematic-char-select-btn:hover,
+  .cinematic-char-select-btn:hover i {
+    transform: none;
+  }
+}
+
 /* ============================================================= */
 /* 1. ADIM GİZLE/GÖSTER GEÇİŞLERİ                                */
 /* ============================================================= */

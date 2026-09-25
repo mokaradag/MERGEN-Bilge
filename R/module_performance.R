@@ -101,14 +101,10 @@ performanceStatsServer <- function(id, current_user_id_provider) {
       uid <- suppressWarnings(as.integer(user_id %||% get_current_user_id()))
       if (is.na(uid)) uid <- 0L
 
-      active_sessions_env[[session$token]] <- if (exists("mb_presence_session_entry", mode = "function")) {
-        mb_presence_session_entry(
-          previous = active_sessions_env[[session$token]],
-          user_id = uid,
-          profile = mb_presence_profile(session)
-        )
+      if (exists("mb_presence_touch", mode = "function")) {
+        mb_presence_touch(active_sessions_env, session$token, uid, mb_presence_profile(session))
       } else {
-        list(user_id = uid, last_seen = Sys.time())
+        active_sessions_env[[session$token]] <- list(user_id = uid, last_seen = Sys.time())
       }
 
       stats$active_users <- count_active_users()

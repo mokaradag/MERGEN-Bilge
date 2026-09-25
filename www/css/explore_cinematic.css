@@ -407,9 +407,16 @@
 @media (prefers-reduced-motion: reduce) {
   .cinematic-mode-card,
   .cinematic-modal-container,
-  .explore-cinematic-btn {
+  .explore-cinematic-btn,
+  .explore-btn-arrow,
+  .cinematic-card-arrow i {
     animation: none;
     transition: none;
+  }
+
+  .explore-cinematic-btn:hover .explore-btn-arrow,
+  .cinematic-mode-card:hover .cinematic-card-arrow i {
+    transform: none;
   }
 }
 

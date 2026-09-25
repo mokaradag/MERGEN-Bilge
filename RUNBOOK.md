@@ -673,9 +673,14 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
   süreç yalnız kendi oturumlarını gösterir. Sekme yalnız açıkken 30 saniyede bir
   yenilenir ve sağlık probe'larını tetiklemez.
 - **Toplu yükleme ve özet eşzamanlılığı:** yüklenen dosyaların LLM özetleri
-  `MERGEN_FILE_SUMMARY_MAX_CONCURRENT` (varsayılan 2) ile sınırlanır; kalanlar
+  `MERGEN_FILE_SUMMARY_MAX_CONCURRENT` (varsayılan 2; en fazla işçi sayısının bir
+  eksiği, en az bir işçi sohbet/LLM işine boş kalır) ile sınırlanır; kalanlar
   sırayla başlar, böylece özetler paylaşılan işçi havuzunu doldurup sohbet
-  isteklerini bekletmez.
+  isteklerini bekletmez. Bekleyen kuyruk `MERGEN_FILE_SUMMARY_MAX_QUEUE`
+  (varsayılan 64) ile sınırlıdır; dolunca dosya yine eklenir, özeti atlanır ve
+  kullanıcı uyarılır. Özet görevinin işçi bağımlılıkları uygulama açılışında
+  (`app.R` onStart) bir kez taranır; açılış bu nedenle birkaç saniye uzayabilir,
+  ilk yükleme ise olay döngüsünü dondurmaz.
 - Loglarda secret, token, API key, auth header veya parola bulunmamalıdır.
 - **Sistem Durumu > Doğrulama Kanıtı sekmesi:** Operatör, uygulamayı kapatmadan en
   son doğrulama kanıtlarını görebilir. Sekme `R/helpers_release_evidence.R` saf
@@ -723,6 +728,8 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
   - Sorguda ilgili sütunu `CAST(Sutun AS NVARCHAR(4000)) AS Sutun` (uygun uzunlukla)
     döndürün. Harfler bu durumda `ý/þ/ð/Ý/Þ/Ð` olarak gelir; Excel dışa aktarımı
     bunları `ı/ş/ğ/İ/Ş/Ğ` harflerine çevirir (`repair_turkish_latin1_letters()`).
+    Çeviri sütun düzeyinde kanıta bağlıdır; başka dil harfi (`á/í/ó/ø`) ya da
+    gerçek `ı/ş/ğ` içeren sütuna dokunulmaz.
   - Sorgudaki Türkçe sabitleri `N'...'` önekiyle yazın.
   - Kalıcı çözüm sütunun `NVARCHAR` ya da Türkçe harmanlamaya taşınmasıdır (DBA
     işi; yedekli ve planlı).

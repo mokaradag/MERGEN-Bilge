@@ -12,18 +12,19 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
     # uygulama kullanıcısına ait anahtar tekrar yüklenir.
     mb_api_key_clear_session_key(session)
 
-    # İstemci tercihini (yalnızca bastırma bayrağı; ANAHTAR DEĞİL) erken oku.
+    # İstemci tercihini (yalnızca bastırma bayrağı; ANAHTAR DEĞİL) oku.
     # Kullanıcı "bu ekranı bir daha gösterme" dediyse veya Yapılandırma'dan
-    # kapattıysa, mergen_settings.api_key_onboarding_suppressed=true olur ve
-    # onboarding modalı yeni oturumda tekrar gösterilmez.
-    tercih_iste <- function() {
+    # kapattıysa onboarding modalı yeni oturumda tekrar gösterilmez. Bayrak
+    # tarayıcıda kullanıcıya özgü etiket altında tutulur; etiket kimlik hazır
+    # olunca gönderilir, aynı tarayıcıdaki başka kullanıcı tercihi devralmaz.
+    tercih_iste <- function(etiket) {
       session$sendCustomMessage("mergenApiKeyChoiceReportPref", list(
         inputId     = ns("api_key_onboarding_suppressed"),
-        settingsKey = "api_key_onboarding_suppressed"
+        settingsKey = "api_key_onboarding_suppressed",
+        userTag     = etiket
       ))
     }
-    tercih_iste()
-    tercih_istek_zamani <- Sys.time()
+    tercih_istek_zamani <- NULL
 
     # --- İç işlem: premium API anahtarı seçim modalını aç ---
     # Modal içeriği R/module_api_key_choice_modal.R içinde üretilir. Burada
@@ -131,14 +132,28 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
       }
       session$userData$api_key_onboarding_done <- TRUE
       removeModal()
+      showToast(session, "Varsayılan kurum API anahtarıyla devam ediyorsunuz.", "info")
       # Kurum anahtarını seçen kullanıcıya (ör. yöneticiler) her girişte
       # tekrar sorulmaz; tercih Ayarlar > Yapılandırma'dan geri açılabilir.
+      # "Hatırlanacak" onayı tarayıcı kaydı doğruladıktan sonra verilir.
+      hatirlatildi <- FALSE
       if (exists("remember_api_key_choice_default", mode = "function")) {
-        remember_api_key_choice_default(session)
+        sahip <- mb_api_key_resolve_owner(session, require_auth = TRUE)
+        hatirlatildi <- isTRUE(remember_api_key_choice_default(
+          session, sahip$username, result_input = ns("api_key_choice_remembered")
+        ))
       }
-      showToast(session, paste("Varsayılan kurum API anahtarıyla devam ediyorsunuz.",
-                               "Seçiminiz hatırlanacak; Ayarlar > Yapılandırma'dan değiştirebilirsiniz."),
-                "info")
+      if (!hatirlatildi) {
+        showToast(session, "Seçiminiz bu tarayıcıda hatırlanamadı; seçim ekranı sonraki girişte yeniden gösterilebilir.", "warning")
+      }
+    }, ignoreInit = TRUE)
+
+    observeEvent(input$api_key_choice_remembered, {
+      if (isTRUE(input$api_key_choice_remembered$ok)) {
+        showToast(session, "Seçiminiz hatırlanacak; Ayarlar > Yapılandırma'dan değiştirebilirsiniz.", "info")
+      } else {
+        showToast(session, "Seçiminiz bu tarayıcıda kaydedilemedi; seçim ekranı sonraki girişte yeniden gösterilebilir.", "warning")
+      }
     }, ignoreInit = TRUE)
 
     # --- Başlangıçta: anahtarı yükle veya kullanıcıdan iste ---
@@ -191,11 +206,13 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
 
       elapsed <- as.numeric(difftime(Sys.time(), api_key_decision_start, units = "secs"))
 
-      # Zengin başlangıçta tarayıcı meşgulken bayrak geç gelebilir; ilk istek
+      # Tercih kimlik hazır olunca kullanıcı etiketiyle istenir. Zengin
+      # başlangıçta tarayıcı meşgulken bayrak geç gelebilir; ilk istek
       # kaybolmuşsa yanıt gelene kadar saniyede bir yeniden istenir.
-      if (!flag_arrived &&
-          as.numeric(difftime(Sys.time(), tercih_istek_zamani, units = "secs")) >= 1) {
-        tercih_iste()
+      if (!flag_arrived && (is.null(tercih_istek_zamani) ||
+          as.numeric(difftime(Sys.time(), tercih_istek_zamani, units = "secs")) >= 1)) {
+        etiket <- api_key_pref_user_tag(owner$username) %||% ""
+        tercih_iste(etiket)
         tercih_istek_zamani <<- Sys.time()
       }
 

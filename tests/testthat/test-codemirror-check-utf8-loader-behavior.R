@@ -62,7 +62,12 @@ test_that("denetim betiği ve tarayıcı testi kaynakları readLines/parse(text=
   root <- resolve_repo_root_for_tests()
   for (rel in c("tests/scripts/codemirror_rendering_check.R",
                 "tests/testthat/test-codemirror-rendering-browser-behavior.R")) {
-    kod <- readLines(file.path(root, rel), warn = FALSE, encoding = "UTF-8")
+    # Ham bayt okuması: options(encoding = "UTF-8") altındaki CP1254 oturumunda
+    # readLines() geçersiz UTF-8 döndürebilir.
+    yol <- file.path(root, rel)
+    metin <- rawToChar(readBin(yol, what = "raw", n = file.info(yol)$size))
+    Encoding(metin) <- "UTF-8"
+    kod <- strsplit(sub("^\ufeff", "", metin), "\r?\n")[[1]]
     kod <- kod[!grepl("^\\s*#", kod)]
     expect_false(any(grepl("parse\\(\\s*text\\s*=", kod)), info = rel)
     expect_false(any(grepl("readLines(", kod, fixed = TRUE)), info = rel)

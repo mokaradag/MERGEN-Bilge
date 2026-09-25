@@ -28,7 +28,8 @@
 # ==============================================================================
 
 # Dışa aktarım yalnızca GÖRÜNÜR çıktıdır (RLS/filtre bu noktadan önce biter);
-# Latin1 sütunda saklanmış Türkçe metnin Latin-1 harfleri burada ı/ş/ğ'ye döner.
+# Latin1 sütunda saklanmış Türkçe metnin Latin-1 harfleri burada sütun kanıtıyla
+# ı/ş/ğ'ye döner.
 .pk_export_norm <- function(df) {
   if (exists("normalize_pk_dataframe_utf8", mode = "function", inherits = TRUE)) {
     df <- normalize_pk_dataframe_utf8(df)

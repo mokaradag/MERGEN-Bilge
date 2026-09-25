@@ -81,6 +81,48 @@ test_that("nabız kaydı ilk bağlantı anını ve dolu profil alanlarını koru
   expect_identical(sonra$profile$sicil, "77")
 })
 
+test_that("oturum başka kullanıcıya geçince profil ve başlangıç devralınmaz", {
+  env <- .presence_env()
+  t0 <- as.POSIXct("2026-09-25 09:00:00", tz = "UTC")
+  a <- env$mb_presence_session_entry(NULL, 5L, list(full_name = "A Kisi", sicil = "11"), now = t0)
+  # Kimlik geçici olarak 0'a düşerse son bilinen kullanıcı korunur.
+  bos <- env$mb_presence_session_entry(a, 0L, list(full_name = "", sicil = ""), now = t0 + 30)
+  expect_identical(bos$user_id, 5L)
+  expect_identical(bos$profile$sicil, "11")
+
+  b <- env$mb_presence_session_entry(bos, 6L, list(full_name = "B Kisi", sicil = ""), now = t0 + 60)
+  expect_identical(b$user_id, 6L)
+  expect_identical(b$started_at, t0 + 60)
+  expect_identical(b$profile$full_name, "B Kisi")
+  expect_null(b$profile$sicil)
+
+  aktif <- new.env(parent = emptyenv())
+  gecmis <- new.env(parent = emptyenv())
+  env$mb_presence_touch(aktif, "tok", 5L, list(full_name = "A Kisi", sicil = "11"), now = t0, history_env = gecmis)
+  env$mb_presence_touch(aktif, "tok", 6L, list(full_name = "B Kisi", sicil = ""), now = t0 + 60, history_env = gecmis)
+  expect_identical(aktif$tok$user_id, 6L)
+  expect_null(aktif$tok$profile$sicil)
+  expect_identical(ls(gecmis), "tok#5")
+  expect_identical(gecmis[["tok#5"]]$profile$sicil, "11")
+  expect_identical(gecmis[["tok#5"]]$ended_at, t0 + 60)
+})
+
+test_that("geçmiş defter güncel zamana göre budanır", {
+  env <- .presence_env()
+  now <- as.POSIXct("2026-09-25 10:00:00", tz = "UTC")
+  gecmis <- new.env(parent = emptyenv())
+  gecmis$eski <- list(user_id = 1L, last_seen = now - 87000, ended_at = now - 87000)
+  # Bayat oturum temizliği geçmiş bir bitiş anı verir; pencere geriye kaymaz.
+  env$mb_presence_record_end("bayat", list(user_id = 2L, last_seen = now - 2000),
+                             ended_at = now - 2000, history_env = gecmis, now = now)
+  expect_identical(ls(gecmis), "bayat")
+
+  # Hiç oturum kapanmasa da anlık görüntü eski kayıtları bellekten atar.
+  gecmis$eski <- list(user_id = 1L, last_seen = now - 87000, ended_at = now - 87000)
+  env$mb_presence_snapshot(new.env(), gecmis, now)
+  expect_identical(ls(gecmis), "bayat")
+})
+
 test_that("oturum sonu kaydı 24 saat ve kayıt tavanıyla budanır", {
   env <- .presence_env()
   gecmis <- new.env(parent = emptyenv())
@@ -140,7 +182,7 @@ test_that("Çevrimiçi sekmesi sayaçları, tabloyu ve kaçışlı adları üret
   expect_true(grepl("&lt;script&gt;", html, fixed = TRUE))
 
   bos <- as.character(env$health_presence_ui(env$mb_presence_snapshot(new.env(), new.env(), now)))
-  expect_true(grepl("oturum açan kullanıcı görünmüyor", bos, fixed = TRUE))
+  expect_true(grepl("uygulamayı kullanan kullanıcı görünmüyor", bos, fixed = TRUE))
   expect_true(grepl("bilgisi alınamadı", as.character(env$health_presence_ui(NULL)), fixed = TRUE))
 })
 

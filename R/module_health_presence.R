@@ -29,7 +29,7 @@ health_presence_time_cell <- function(epoch, now) {
 
 health_presence_table <- function(users, now) {
   if (is.null(users) || !nrow(users)) {
-    return(div(class = "health-empty", "Son 24 saatte oturum açan kullanıcı görünmüyor."))
+    return(div(class = "health-empty", "Son 24 saatte uygulamayı kullanan kullanıcı görünmüyor."))
   }
   bas_harf <- if (exists("mb_sidebar_user_initials", mode = "function")) {
     mb_sidebar_user_initials
@@ -88,7 +88,7 @@ health_presence_ui <- function(snapshot) {
       health_metric_tile("Son 15 Dakika", m$recent, "clock", sayi_durumu(m$recent),
                          "Son 15 dakikada uygulamayı kullanan kullanıcı"),
       health_metric_tile("Son 24 Saat", m$day, "calendar-day", "unknown",
-                         "Son 24 saatte oturum açan kullanıcı"),
+                         "Son 24 saatte uygulamayı kullanan kullanıcı"),
       health_metric_tile("Açık Oturum", m$open_sessions, "window-restore", "unknown",
                          "Bağlı tarayıcı sekmesi sayısı (kimliği henüz çözülmeyenler dahil)"),
       health_metric_tile("Aktif Birim", m$departments, "sitemap", "unknown",
