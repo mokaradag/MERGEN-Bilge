@@ -238,9 +238,13 @@ createStartupScreenUI <- function() {
     .startup_mode_feature_icon(f, isTRUE(def$states[[f$key]]))
   })
 
+  # Klavyeyle de seçilebilir: odaklanır, Enter/Boşluk ile seçer (explore_cinematic.js).
   tags$div(
     class = "cinematic-mode-card spotlight-card",
     `data-mode` = def$mode,
+    role = "button",
+    tabindex = "0",
+    `aria-label` = paste(def$title, "modunu seç"),
     tags$div(
       class = "cinematic-card-inner",
       tags$div(

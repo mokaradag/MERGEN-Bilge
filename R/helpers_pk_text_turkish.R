@@ -110,32 +110,44 @@ pk_tr_fold_is_blank <- function(x) {
 #     görüntüsünde bulunabilen harflerdendir (ç ö ü â î û ve büyükleri ile altı
 #     benzer harf). á/í/ó/ø/æ gibi başka harf ya da gerçek ı/ş/ğ görülürse sütun
 #     doğru çözülmüştür ve DOKUNULMAZ.
-#   * Türkçe kanıtı vardır: ı/İ karşılığı (U+00FD/U+00DD) ya da İzlandaca ve
-#     Faroecede bulunmayan ç/ü (ve büyükleri).
+#   * Türkçe kanıtı vardır: İzlandaca ve Faroecede bulunmayan ç/ü (ve
+#     büyükleri). U+00FD/U+00DD tek başına kanıt DEĞİLDİR (U+00DD ile başlayan
+#     "Ymir" ya da U+00DE ile başlayan "Thing" geçerli İzlandacadır); kanıtsız
+#     sütun belirsiz sayılır ve olduğu gibi kalır.
+# Karar tam sütun üzerinde verilir (turkish_latin1_repair_eligible); CSV gibi
+# dilimli yazımlarda aynı karar her dilime `eligible` ile taşınır.
 # Dönüşüm ICU (stringi) ile yerelden bağımsızdır. ODBC'nin kayıplı en-yakın
 # dönüşümü ("y"/"?") ONARILAMAZ.
-repair_turkish_latin1_letters <- function(x) {
+.pk_tr_latin1_letters <- function() {
+  list(kaynak = intToUtf8(c(0x00FDL, 0x00FEL, 0x00F0L, 0x00DDL, 0x00DEL, 0x00D0L)),
+       hedef = intToUtf8(c(0x0131L, 0x015FL, 0x011FL, 0x0130L, 0x015EL, 0x011EL)),
+       ortak = intToUtf8(c(0x00E7L, 0x00F6L, 0x00FCL, 0x00E2L, 0x00EEL, 0x00FBL,
+                           0x00C7L, 0x00D6L, 0x00DCL, 0x00C2L, 0x00CEL, 0x00DBL)),
+       kanit = intToUtf8(c(0x00E7L, 0x00C7L, 0x00FCL, 0x00DCL)))
+}
+
+turkish_latin1_repair_eligible <- function(x) {
+  if (is.null(x) || !is.character(x) || !length(x)) return(FALSE)
+  if (!requireNamespace("stringi", quietly = TRUE)) return(FALSE)
+  h <- .pk_tr_latin1_letters()
+  utf8 <- enc2utf8(x)
+  sutun <- utf8[!is.na(utf8) & validUTF8(utf8)]
+  if (!length(sutun)) return(FALSE)
+  if (!any(stringi::stri_detect_regex(sutun, paste0("[", h$kaynak, "]")))) return(FALSE)
+  yabanci <- paste0("[[\\p{L}\\p{M}]--[\\x{00}-\\x{7F}", h$kaynak, h$ortak, "]]")
+  if (any(stringi::stri_detect_regex(sutun, yabanci))) return(FALSE)
+  any(stringi::stri_detect_regex(sutun, paste0("[", h$kanit, "]")))
+}
+
+repair_turkish_latin1_letters <- function(x, eligible = NULL) {
   if (is.null(x) || !is.character(x) || !length(x)) return(x)
   if (!requireNamespace("stringi", quietly = TRUE)) return(x)
-
-  kaynak <- intToUtf8(c(0x00FDL, 0x00FEL, 0x00F0L, 0x00DDL, 0x00DEL, 0x00D0L))
-  hedef <- intToUtf8(c(0x0131L, 0x015FL, 0x011FL, 0x0130L, 0x015EL, 0x011EL))
-  ortak <- intToUtf8(c(0x00E7L, 0x00F6L, 0x00FCL, 0x00E2L, 0x00EEL, 0x00FBL,
-                       0x00C7L, 0x00D6L, 0x00DCL, 0x00C2L, 0x00CEL, 0x00DBL))
-  kanit <- intToUtf8(c(0x00FDL, 0x00DDL, 0x00E7L, 0x00C7L, 0x00FCL, 0x00DCL))
+  uygun <- if (is.null(eligible)) turkish_latin1_repair_eligible(x) else isTRUE(eligible)
+  if (!uygun) return(x)
+  h <- .pk_tr_latin1_letters()
   utf8 <- enc2utf8(x)
-  gecerli <- !is.na(utf8) & validUTF8(utf8)
-  if (!any(gecerli)) return(x)
-  sutun <- utf8[gecerli]
-
-  aday <- stringi::stri_detect_regex(sutun, paste0("[", kaynak, "]"))
-  if (!any(aday)) return(x)
-  yabanci <- paste0("[[\\p{L}\\p{M}]--[\\x{00}-\\x{7F}", kaynak, ortak, "]]")
-  if (any(stringi::stri_detect_regex(sutun, yabanci))) return(x)
-  if (!any(stringi::stri_detect_regex(sutun, paste0("[", kanit, "]")))) return(x)
-
-  onarilacak <- gecerli
-  onarilacak[gecerli] <- aday
-  x[onarilacak] <- stringi::stri_trans_char(utf8[onarilacak], kaynak, hedef)
+  onarilacak <- !is.na(utf8) & validUTF8(utf8)
+  onarilacak[onarilacak] <- stringi::stri_detect_regex(utf8[onarilacak], paste0("[", h$kaynak, "]"))
+  x[onarilacak] <- stringi::stri_trans_char(utf8[onarilacak], h$kaynak, h$hedef)
   x
 }

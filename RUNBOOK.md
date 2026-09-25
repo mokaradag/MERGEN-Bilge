@@ -677,8 +677,13 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
   eksiği, en az bir işçi sohbet/LLM işine boş kalır) ile sınırlanır; kalanlar
   sırayla başlar, böylece özetler paylaşılan işçi havuzunu doldurup sohbet
   isteklerini bekletmez. Bekleyen kuyruk `MERGEN_FILE_SUMMARY_MAX_QUEUE`
-  (varsayılan 64) ile sınırlıdır; dolunca dosya yine eklenir, özeti atlanır ve
-  kullanıcı uyarılır. Özet görevinin işçi bağımlılıkları uygulama açılışında
+  (varsayılan 64) ile, tek oturumun payı `MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION`
+  (varsayılan 16) ile sınırlıdır; dolunca dosya yine eklenir, özeti atlanır ve
+  kullanıcı uyarılır. Sıradaki özet en az özeti çalışan oturumdan seçilir; boş
+  işçi sayısı ölçülemezse özet başlamaz. Bekleyen özetler Sistem Durumu işçi
+  kartında "Kuyruktaki İş" ve `file_summary_queued` olarak görünür. Oturum
+  kapanınca özetin kuyruk yuvası bırakılır ve işçi LLM çağrısını atlar.
+  Özet görevinin işçi bağımlılıkları uygulama açılışında
   (`app.R` onStart) bir kez taranır; açılış bu nedenle birkaç saniye uzayabilir,
   ilk yükleme ise olay döngüsünü dondurmaz.
 - Loglarda secret, token, API key, auth header veya parola bulunmamalıdır.
@@ -728,8 +733,10 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
   - Sorguda ilgili sütunu `CAST(Sutun AS NVARCHAR(4000)) AS Sutun` (uygun uzunlukla)
     döndürün. Harfler bu durumda `ý/þ/ð/Ý/Þ/Ð` olarak gelir; Excel dışa aktarımı
     bunları `ı/ş/ğ/İ/Ş/Ğ` harflerine çevirir (`repair_turkish_latin1_letters()`).
-    Çeviri sütun düzeyinde kanıta bağlıdır; başka dil harfi (`á/í/ó/ø`) ya da
-    gerçek `ı/ş/ğ` içeren sütuna dokunulmaz.
+    Çeviri tam sütun düzeyinde kanıta bağlıdır: sütunda `ç/ü` gibi Türkçe
+    kanıtı gerekir (`ý/Ý` tek başına yetmez); başka dil harfi (`á/í/ó/ø`) ya da
+    gerçek `ı/ş/ğ` içeren sütuna dokunulmaz. Kanıtsız kalan sütun için kalıcı
+    çözüm aşağıdaki sorgu/harmanlama düzeltmesidir.
   - Sorgudaki Türkçe sabitleri `N'...'` önekiyle yazın.
   - Kalıcı çözüm sütunun `NVARCHAR` ya da Türkçe harmanlamaya taşınmasıdır (DBA
     işi; yedekli ve planlı).

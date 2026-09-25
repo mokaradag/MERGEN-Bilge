@@ -80,6 +80,18 @@ test_that("şablon eksik ya da yanlış yazılmış bağlama alanını açık ha
   expect_error(.alias_sablon_calistir(bozuk), "harita")
 })
 
+test_that("şablon birden çok değerli ya da boş sorgu/sütun bağlamasını reddeder", {
+  satirlar <- .alias_sablon_satirlari()
+  acik <- sub("^(\\s*)# (\"[^\"]+\"\\s*= c\\(.*)$", "\\1\\2", satirlar, perl = TRUE)
+  acik <- sub("^(\\s*)# (list\\(sorgu = .*)$", "\\1\\2", acik, perl = TRUE)
+  # c("gen_00", "q042") ilkini alıp q042 bağlamasını sessizce düşürürdü.
+  coklu <- sub("sorgu = \"q042\"", "sorgu = c(\"gen_00\", \"q042\")", acik, fixed = TRUE)
+  expect_false(identical(coklu, acik))
+  expect_error(.alias_sablon_calistir(coklu), "sorgu")
+  bos <- sub("sorgu = \"q042\"", "sorgu = \"\"", acik, fixed = TRUE)
+  expect_error(.alias_sablon_calistir(bos), "sorgu")
+})
+
 test_that("şablon yardımcısı adsız alias grubunu açık hatayla reddeder", {
   satirlar <- .alias_sablon_satirlari()
   bozuk <- sub("^(\\s*)# \"Altyap[^\"]*\"\\s*= (c\\(.*)$", "\\1\\2", satirlar, perl = TRUE)

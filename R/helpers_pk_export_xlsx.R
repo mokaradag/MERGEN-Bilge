@@ -29,8 +29,10 @@
 
 # Dışa aktarım yalnızca GÖRÜNÜR çıktıdır (RLS/filtre bu noktadan önce biter);
 # Latin1 sütunda saklanmış Türkçe metnin Latin-1 harfleri burada sütun kanıtıyla
-# ı/ş/ğ'ye döner.
-.pk_export_norm <- function(df) {
+# ı/ş/ğ'ye döner. Sütun adları da aynı kurala tabidir (başlık hazırlığından
+# önce). `repair_cols` verilirse karar tam sütunda önceden verilmiştir (CSV
+# dilimleri); aksi halde bu çerçevenin kendi sütunlarından çıkarılır.
+.pk_export_norm <- function(df, repair_cols = NULL) {
   if (exists("normalize_pk_dataframe_utf8", mode = "function", inherits = TRUE)) {
     df <- normalize_pk_dataframe_utf8(df)
   }
@@ -39,8 +41,13 @@
     return(df)
   }
   for (j in seq_along(df)) {
-    if (is.character(df[[j]])) df[[j]] <- repair_turkish_latin1_letters(df[[j]])
+    if (is.character(df[[j]])) {
+      uygun <- if (is.null(repair_cols)) NULL else names(df)[j] %in% repair_cols
+      df[[j]] <- repair_turkish_latin1_letters(df[[j]], eligible = uygun)
+    }
   }
+  adlar <- repair_turkish_latin1_letters(names(df))
+  if (!anyDuplicated(adlar)) names(df) <- adlar
   df
 }
 
@@ -172,8 +179,8 @@
 # CSV yedeği için gövdeyi YENİDEN hazırlar. `formatted = TRUE` yolunda yüzde
 # puanları Excel stiline güvenilerek kesre bölünür (61,3 -> 0,613); aynı yükü
 # stilsiz CSV'ye yazmak kullanıcıya %61,3 yerine 0,613 gösterirdi.
-.pk_export_csv_body <- function(data, meta) {
-  hazir <- pk_export_prepare_percent(.pk_export_norm(data), meta, formatted = FALSE)
+.pk_export_csv_body <- function(data, meta, repair_cols = NULL) {
+  hazir <- pk_export_prepare_percent(.pk_export_norm(data, repair_cols), meta, formatted = FALSE)
   govde <- hazir$data
   names(govde) <- .pk_export_apply_labels(hazir$data, hazir$headers, meta)
   list(body = govde, notes = hazir$notes)
@@ -433,8 +440,27 @@ pk_export_build <- function(data, packet = list(), context = list(),
   # katına çıkarıyordu. Yüzde/etiket hazırlığı YALNIZCA metadata'ya bağlı
   # olduğundan (veriye değil), dönüşümü parça başına uygulamak tüm çerçeveyi
   # dönüştürüp bölmekle AYNI sonucu verir.
+  # Latin-1 onarım kararı dilim başına değil TAM sütunda bir kez verilir;
+  # aksi halde bir dilimde onarılan değer diğer dilimde olduğu gibi kalırdı.
+  # Sütunlar tek tek normalize edilir (tam çerçeve kopyası oluşmaz).
+  onarim_sutunlari <- if (exists("turkish_latin1_repair_eligible", mode = "function", inherits = TRUE)) {
+    uygunluk <- vapply(seq_along(data), function(j) {
+      sutun <- data[, j, drop = FALSE]
+      if (exists("normalize_pk_dataframe_utf8", mode = "function", inherits = TRUE)) {
+        sutun <- normalize_pk_dataframe_utf8(sutun)
+      }
+      is.character(sutun[[1L]]) && isTRUE(turkish_latin1_repair_eligible(sutun[[1L]]))
+    }, logical(1))
+    adlar <- names(data)
+    if (exists("normalize_pk_text_utf8", mode = "function", inherits = TRUE)) {
+      adlar <- normalize_pk_text_utf8(adlar)
+    }
+    adlar[uygunluk]
+  } else {
+    character(0)
+  }
   csv_sonda <- tryCatch(
-    .pk_export_csv_body(data[0L, , drop = FALSE], meta),
+    .pk_export_csv_body(data[0L, , drop = FALSE], meta, onarim_sutunlari),
     error = function(e) NULL
   )
   csv_notlari <- if (is.list(csv_sonda)) csv_sonda$notes else character(0)
@@ -448,7 +474,7 @@ pk_export_build <- function(data, packet = list(), context = list(),
     pk_export_csv_bundle(
       dizin, base_name, plan, data,
       summary_sheet = ozet_sayfasi, info_sheet = bilgi_sayfasi,
-      transform = function(dilim) .pk_export_csv_body(dilim, meta)$body,
+      transform = function(dilim) .pk_export_csv_body(dilim, meta, onarim_sutunlari)$body,
       stop_check = durduruldu
     )
   })

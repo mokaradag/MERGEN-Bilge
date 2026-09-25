@@ -521,6 +521,9 @@ admin_doc_render_document <- function(doc_id, root = admin_doc_repo_root()) {
 # kayıtlı belgeye giden göreli bağlantı sayfa içinde o belgeyi açar
 # (data-doc-id, izin listesiyle doğrulanır), dış adres yeni sekmede açılır,
 # kayıtsız göreli yol (ör. .R şablonu) tıklanamaz metin olarak kalır.
+# `#bolum` parçası korunur (data-doc-anchor): başlık kimliğiyle aynı ASCII
+# anahtara indirgenir ve belge açıldıktan sonra o başlığa kaydırılır. `/` ile
+# başlayan bağlantı depo kökünden çözülür.
 admin_doc_rewrite_links <- function(html, source_file) {
   if (!is.character(html) || length(html) != 1L || !nzchar(html)) return(html)
   eslesme <- gregexpr("<a href=\"([^\"]*)\"", html, perl = TRUE)
@@ -534,9 +537,18 @@ admin_doc_rewrite_links <- function(html, source_file) {
     if (grepl("^(https?|mailto):", href, ignore.case = TRUE)) {
       return(paste0(etiket, " target=\"_blank\" rel=\"noopener noreferrer\""))
     }
-    if (startsWith(href, "#")) return(etiket)
     ham <- sub("[?#].*$", "", href)
-    parcalar <- strsplit(if (taban %in% c("", ".")) ham else paste(taban, ham, sep = "/"),
+    parca <- if (grepl("#", href, fixed = TRUE)) sub("^[^#]*#", "", href) else ""
+    capa <- ""
+    if (nzchar(parca)) {
+      cozulen <- try(utils::URLdecode(parca), silent = TRUE)
+      if (inherits(cozulen, "try-error")) cozulen <- parca
+      Encoding(cozulen) <- "UTF-8"
+      capa <- sprintf(" data-doc-anchor=\"%s\"", gsub("-", "", admin_doc_slugify(cozulen), fixed = TRUE))
+    }
+    if (!nzchar(ham)) return(paste0("<a href=\"#\"", capa))
+    kokten <- startsWith(ham, "/")
+    parcalar <- strsplit(if (kokten || taban %in% c("", ".")) ham else paste(taban, ham, sep = "/"),
                          "/", fixed = TRUE)[[1]]
     yol <- character(0)
     for (p in parcalar) {
@@ -545,7 +557,7 @@ admin_doc_rewrite_links <- function(html, source_file) {
     }
     hedef <- paste(yol, collapse = "/")
     if (!is.null(kayitli[[hedef]])) {
-      return(sprintf("<a href=\"#\" data-doc-id=\"%s\"", kayitli[[hedef]]))
+      return(sprintf("<a href=\"#\" data-doc-id=\"%s\"%s", kayitli[[hedef]], capa))
     }
     sprintf("<a class=\"mb-doc-link-offline\" title=\"%s\"", paste("Uygulama içinde açılamaz:", hedef))
   }, character(1), USE.NAMES = FALSE))

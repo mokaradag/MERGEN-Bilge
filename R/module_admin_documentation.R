@@ -168,6 +168,13 @@ admin_doc_build_content_ui <- function(ns, group_id, selected_doc_id, render) {
 # SERVER FONKSİYONU
 # ==============================================================================
 
+# Belgeler (VM kanıtı, operatör runbook'ları) yalnız yöneticiye açıktır. Karar
+# Sistem Durumu ile aynı sunucu tarafı denetimidir; denetim yoksa kapalı-başarısız.
+admin_doc_session_is_admin <- function(session) {
+  exists("health_session_is_admin", mode = "function") &&
+    isTRUE(health_session_is_admin(session))
+}
+
 adminDokumantasyonServer <- function(id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
@@ -178,9 +185,26 @@ adminDokumantasyonServer <- function(id) {
     # Render önbelleği: doc_id -> render sonucu (büyük belgeler tek kez render edilir)
     render_cache <- new.env(parent = emptyenv())
 
-    # Reaktif durum
+    # Reaktif durum. Grup sunucuda tutulur: başka gruptaki belgeye giden bağlantı
+    # grup ve belgeyi AYNI anda değiştirir; istemcinin sekme yanıtı beklenmeden
+    # bir grubun kartlarıyla diğer grubun belgesi birlikte çizilmez.
     selected_doc <- reactiveVal(admin_doc_default_doc_id())
+    selected_group <- reactiveVal(admin_doc_default_group_id())
     refresh_token <- reactiveVal(0L)
+
+    # Modül bir kez başlatılır ve oturum boyunca yaşar; aynı oturum yönetici
+    # olmayan kullanıcıya geçerse (SSO) seçim/çizim reddedilir ve çizilmiş
+    # içerik 2 sn içinde kilit mesajına döner.
+    yonetici_durumu <- reactiveVal(admin_doc_session_is_admin(session))
+    observe({
+      invalidateLater(2000)
+      yonetici <- admin_doc_session_is_admin(session)
+      if (!yonetici) {
+        eski <- ls(render_cache)
+        if (length(eski)) rm(list = eski, envir = render_cache)
+      }
+      yonetici_durumu(yonetici)
+    })
 
     send_timestamp <- function() {
       session$sendCustomMessage("updateAdminTimestamp", list(
@@ -196,11 +220,13 @@ adminDokumantasyonServer <- function(id) {
 
     # Grup (pills) değişince, mevcut seçim o grupta değilse ilk belgeye geç
     observeEvent(input$admin_tabs, {
+      if (!admin_doc_session_is_admin(session)) return(invisible(NULL))
       grp <- input$admin_tabs
       docs <- admin_doc_docs_in_group(grp)
       if (length(docs)) {
+        selected_group(grp)
         ids <- vapply(docs, function(d) d$id, character(1))
-        if (!(selected_doc() %in% ids)) {
+        if (!(isolate(selected_doc()) %in% ids)) {
           selected_doc(ids[1])
         }
       }
@@ -209,22 +235,28 @@ adminDokumantasyonServer <- function(id) {
     # Belge kartı seçimi (tarayıcı tarafı JS -> doc_select). Yalnızca izin listeli
     # kimlik kabul edilir; rastgele yol/girdi reddedilir.
     observeEvent(input$doc_select, {
+      if (!admin_doc_session_is_admin(session)) return(invisible(NULL))
       did <- input$doc_select
       if (is.character(did) && length(did) == 1L && nzchar(did) &&
           admin_doc_is_known(did)) {
-        selected_doc(did)
-        # Belge içi bağlantı başka gruptaki belgeyi açabilir; grup sekmesi izler.
+        # Belge içi bağlantı başka gruptaki belgeyi açabilir; grup ve belge
+        # birlikte değişir, istemcinin grup sekmesi de izler.
         for (g in admin_doc_registry()) {
-          if (did %in% vapply(g$docs, function(d) d$id, character(1)) &&
-              !identical(g$id, input$admin_tabs)) {
-            updateTabsetPanel(session, "admin_tabs", selected = g$id)
+          if (did %in% vapply(g$docs, function(d) d$id, character(1))) {
+            selected_group(g$id)
+            if (!identical(g$id, input$admin_tabs)) {
+              updateTabsetPanel(session, "admin_tabs", selected = g$id)
+            }
+            break
           }
         }
+        selected_doc(did)
       }
     }, ignoreInit = TRUE)
 
     # Yenile: önbelleği temizle, belgeyi diskten tekrar oku, zaman damgasını yenile
     observeEvent(input$refresh_analytics, {
+      if (!admin_doc_session_is_admin(session)) return(invisible(NULL))
       if (requireNamespace("shinyjs", quietly = TRUE)) {
         shinyjs::runjs("$('.tooltip').remove();")
       }
@@ -249,11 +281,19 @@ adminDokumantasyonServer <- function(id) {
       res
     })
 
-    # İçerik alanı
+    # İçerik alanı (yetki çizim anında da denetlenir; bağımlılık kayıttan
+    # SONRA alınır ki yoklama yalnız gerçek değişimde yeniden çizdirsin)
     output$tab_content_area <- renderUI({
-      grp <- input$admin_tabs
-      if (is.null(grp)) grp <- admin_doc_default_group_id()
-      admin_doc_build_content_ui(ns, grp, selected_doc(), current_render())
+      grp <- selected_group()
+      did <- selected_doc()
+      yonetici <- admin_doc_session_is_admin(session)
+      if (!identical(isolate(yonetici_durumu()), yonetici)) yonetici_durumu(yonetici)
+      yonetici_durumu()
+      if (!yonetici) {
+        return(div(class = "mb-doc-empty", icon("lock"),
+                   tags$p("Bu sayfa yalnızca yöneticilere açıktır.")))
+      }
+      admin_doc_build_content_ui(ns, grp, did, current_render())
     })
   })
 }

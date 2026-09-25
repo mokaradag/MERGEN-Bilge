@@ -404,7 +404,13 @@
   transform: translateX(3px);
 }
 
+.cinematic-mode-card:focus-visible {
+  outline: 2px solid rgba(248, 250, 252, 0.85);
+  outline-offset: 3px;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .cinematic-modal-overlay,
   .cinematic-mode-card,
   .cinematic-modal-container,
   .explore-cinematic-btn,

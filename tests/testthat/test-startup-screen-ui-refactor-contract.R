@@ -195,3 +195,26 @@ test_that("Dinamik kartı karışık durumları (takip/müzik/ses açık, tts/ka
   expect_true(grepl('data-tooltip="Arka Plan Müziği: Aktif"', html, fixed = TRUE))
   expect_true(grepl('class="fas fa-bell"', html, fixed = TRUE))  # ses açık
 })
+
+test_that("mod kartları klavyeyle seçilebilir ve hareket azaltma tercihine uyulur", {
+  skip_if_not_installed("shiny")
+  html <- .startup_card_html("odak")
+  expect_true(grepl('role="button"', html, fixed = TRUE))
+  expect_true(grepl('tabindex="0"', html, fixed = TRUE))
+
+  js <- .startup_read_bytes(file.path(.startup_repo_root, "www", "js", "explore_cinematic.js"))
+  expect_true(grepl("on('keydown', '.cinematic-mode-card'", js, fixed = TRUE))
+  expect_true(grepl("e.key === 'Enter' || e.key === ' '", js, fixed = TRUE))
+
+  hareket_blogu <- function(css) {
+    regmatches(css, gregexpr("@media \\(prefers-reduced-motion: reduce\\) \\{[\\s\\S]*?\\n\\}", css, perl = TRUE))[[1]]
+  }
+  sinema <- gsub("\r\n?", "\n", .startup_read_bytes(file.path(.startup_repo_root, "www", "css", "explore_cinematic.css")))
+  expect_true(any(grepl(".cinematic-modal-overlay", hareket_blogu(sinema), fixed = TRUE)))
+  karakter <- gsub("\r\n?", "\n", .startup_read_bytes(file.path(.startup_repo_root, "www", "css", "explore_character_step.css")))
+  karakter_hareket <- hareket_blogu(karakter)
+  expect_true(any(grepl(".cinematic-character-step {\n    animation: none;", karakter_hareket, fixed = TRUE)))
+  # Başlık sarınca persona seçici daralabilir (sağdaki düğmeler kırpılmaz).
+  expect_true(grepl("min-width: 0;", karakter, fixed = TRUE))
+  expect_true(grepl("flex-shrink: 1;", karakter, fixed = TRUE))
+})

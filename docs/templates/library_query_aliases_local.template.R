@@ -98,9 +98,18 @@ pk_query_aliases_local <- local({
       stop("baglamalar: her bağlama list(sorgu = , sutun = , harita = ) biçiminde olmalıdır; eksik alan: ",
            paste(eksik, collapse = ", "), call. = FALSE)
     }
+    # sorgu/sutun tek değer olmalıdır: c("gen_00", "q042") ilkini sessizce
+    # alıp diğerini düşürürdü. Her sorgu/sütun için ayrı bağlama yazın.
+    for (alan in c("sorgu", "sutun")) {
+      deger <- baglama[[alan]]
+      if (!is.character(deger) || length(deger) != 1L || is.na(deger) || !nzchar(trimws(deger))) {
+        stop("baglamalar: '", alan, "' tek ve boş olmayan bir metin olmalıdır; ",
+             "her sorgu/sütun için ayrı bağlama yazın.", call. = FALSE)
+      }
+    }
     if (!length(baglama$harita)) next
-    sorgu <- as.character(baglama$sorgu)[1]
-    sutun <- as.character(baglama$sutun)[1]
+    sorgu <- baglama$sorgu
+    sutun <- baglama$sutun
     if (is.null(sonuc[[sorgu]])) sonuc[[sorgu]] <- list()
     sonuc[[sorgu]][[sutun]] <- c(sonuc[[sorgu]][[sutun]], baglama$harita)
   }

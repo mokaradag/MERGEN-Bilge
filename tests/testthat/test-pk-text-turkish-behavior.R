@@ -214,8 +214,10 @@ test_that("repair_turkish_latin1_letters CP1254-Latin1 harflerini Türkçeye dö
   dogru <- intToUtf8(c(0x130, 0x73, 0x74, 0x61, 0x6E, 0x62, 0x75, 0x6C, 0x20, 0x15E, 0x75, 0x62,
                        0x61, 0x74, 0x20, 0x11E, 0x20, 0x6B, 0x131, 0x72, 0x20, 0x15F, 0x11F))
 
-  sonuc <- repair_turkish_latin1_letters(c(bozuk, NA_character_, "ASCII metin"))
-  expect_identical(sonuc, c(dogru, NA_character_, "ASCII metin"))
+  # Sütunda Türkçe kanıtı (ç) bulunur: "Çorum".
+  corum <- intToUtf8(c(0xC7, 0x6F, 0x72, 0x75, 0x6D))
+  sonuc <- repair_turkish_latin1_letters(c(bozuk, NA_character_, "ASCII metin", corum))
+  expect_identical(sonuc, c(dogru, NA_character_, "ASCII metin", corum))
   expect_identical(Encoding(sonuc[1]), "UTF-8")
   expect_identical(repair_turkish_latin1_letters(dogru), dogru)
   # ı yok ama ç/ü kanıtı olan sütun da onarılır: "Şube Müdürü".
@@ -238,6 +240,17 @@ test_that("repair_turkish_latin1_letters Latin-1 kökenli olmayan sütundaki ger
   # Faroece ø aynı sütunda: hiçbir değer onarılmaz.
   faroe <- c(bozuk, intToUtf8(c(0x46, 0xF8, 0x72, 0x6F, 0x79, 0x61, 0x72)))
   expect_identical(repair_turkish_latin1_letters(faroe), faroe)
+  # Yalnız benzer harf + ASCII içeren geçerli İzlandaca adlar kanıt sayılmaz:
+  # U+00DD ile "Ymir" ve U+00DE ile "Thing" tek başına ya da birlikte değişmez.
+  ymir <- intToUtf8(c(0xDD, 0x6D, 0x69, 0x72))
+  thing <- intToUtf8(c(0xDE, 0x69, 0x6E, 0x67))
+  expect_identical(repair_turkish_latin1_letters(ymir), ymir)
+  expect_identical(repair_turkish_latin1_letters(c(ymir, thing)), c(ymir, thing))
+  expect_false(turkish_latin1_repair_eligible(c(ymir, thing)))
+  # Önceden verilmiş sütun kararı (CSV dilimleri) dilimin kendi kanıtını ezer.
+  expect_identical(repair_turkish_latin1_letters(ymir, eligible = FALSE), ymir)
+  expect_identical(repair_turkish_latin1_letters(bozuk, eligible = TRUE),
+                   intToUtf8(c(0x130, 0x73, 0x74, 0x61, 0x6E, 0x62, 0x75, 0x6C, 0x20, 0x6B, 0x131, 0x72)))
   # Gerçek ı/ş/ğ içeren sütun zaten doğru çözülmüştür.
   karisik <- c(bozuk, intToUtf8(c(0x6B, 0x131, 0x72)))
   expect_identical(repair_turkish_latin1_letters(karisik), karisik)

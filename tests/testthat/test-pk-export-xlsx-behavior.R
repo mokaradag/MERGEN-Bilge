@@ -685,12 +685,60 @@ test_that("Latin1 sutunda saklanmis Turkce metnin y/s/g harfleri disa aktarimda 
                intToUtf8(c(0x52, 0x65, 0x79, 0x6B, 0x6A, 0x61, 0x76, 0xED, 0x6B)))
   veri <- data.frame(Aciklama = c(bozuk, "Toplam"), Ad = izlanda, Deger = c(1, 2),
                      stringsAsFactors = FALSE)
+  # Başlık da Latin1 görüntüsüyle gelmiş olabilir: "Açıklama Türü".
+  bozuk_baslik <- intToUtf8(c(0x41, 0xE7, 0xFD, 0x6B, 0x6C, 0x61, 0x6D, 0x61, 0x20, 0x54, 0xFC, 0x72, 0xFC))
+  dogru_baslik <- intToUtf8(c(0x41, 0xE7, 0x131, 0x6B, 0x6C, 0x61, 0x6D, 0x61, 0x20, 0x54, 0xFC, 0x72, 0xFC))
+  veri[[bozuk_baslik]] <- c("a", "b")
 
-  artefakt <- env$pk_export_build(veri, list(facts = list()), list(),
-                                  base_name = "sentetik", dir = .pk_export_dir())
+  # Eşikler sabitlenir: devralınan MERGEN_PK_EXPORT_* değerleri tek "Veri"
+  # sayfası yerine numaralı sayfalar üretirdi.
+  testthat::skip_if_not_installed("withr")
+  artefakt <- withr::with_envvar(
+    list(MERGEN_PK_EXPORT_MAX_ROWS = NA_character_,
+         MERGEN_PK_EXPORT_MAX_BYTES_MB = NA_character_,
+         MERGEN_PK_EXPORT_MAX_PARTS = NA_character_,
+         MERGEN_PK_EXPORT_MAX_CELLS = NA_character_),
+    env$pk_export_build(veri, list(facts = list()), list(),
+                        base_name = "sentetik", dir = .pk_export_dir())
+  )
 
   expect_identical(artefakt$status, "ok")
   okunan <- as.data.frame(readxl::read_excel(artefakt$files[[1]]$path, sheet = "Veri"))
   expect_identical(okunan$Aciklama, c(dogru, "Toplam"))
   expect_identical(okunan$Ad, izlanda)
+  expect_true(dogru_baslik %in% names(okunan))
+  expect_false(bozuk_baslik %in% names(okunan))
+})
+
+test_that("CSV dilimlerinde Latin-1 onarım kararı tam sütunda bir kez verilir", {
+  testthat::skip_if_not_installed("withr")
+  testthat::skip_if_not_installed("stringi")
+  env <- .pk_export_env()
+  u <- function(...) intToUtf8(c(...))
+  # Sütun 1: ilk dilimde kanıtsız "Istanbul" (U+00DD ile), son dilimde ç kanıtı -> hepsi onarılır.
+  # Sütun 2: ilk dilimde "Sube Müdürü" (U+00DE ile), son dilimde İzlandaca "Reykjavík" -> hiçbiri onarılmaz.
+  veri <- data.frame(
+    Il = c(u(0xDD, 0x73, 0x74, 0x61, 0x6E, 0x62, 0x75, 0x6C), "Ankara", "Konya",
+           u(0xC7, 0x61, 0x72, 0xFE, 0xFD)),
+    Birim = c(u(0xDE, 0x75, 0x62, 0x65, 0x20, 0x4D, 0xFC, 0x64, 0xFC, 0x72, 0xFC), "Merkez", "Saha",
+              u(0x52, 0x65, 0x79, 0x6B, 0x6A, 0x61, 0x76, 0xED, 0x6B)),
+    stringsAsFactors = FALSE
+  )
+  dizin <- .pk_export_dir()
+  artefakt <- withr::with_envvar(
+    list(MERGEN_PK_EXPORT_MAX_ROWS = "2", MERGEN_PK_EXPORT_MAX_PARTS = NA_character_,
+         MERGEN_PK_EXPORT_MAX_BYTES_MB = NA_character_),
+    env$pk_export_build(veri, list(facts = list()), list(), base_name = "sentetik",
+                        dir = dizin, format = "csv")
+  )
+  expect_true(length(artefakt$files) >= 2L)
+  metin <- paste(vapply(artefakt$files, function(f) {
+    parca <- rawToChar(readBin(f$path, "raw", file.info(f$path)$size))
+    Encoding(parca) <- "UTF-8"
+    parca
+  }, character(1)), collapse = "\n")
+  expect_true(grepl(u(0x130, 0x73, 0x74, 0x61, 0x6E, 0x62, 0x75, 0x6C), metin, fixed = TRUE))
+  expect_true(grepl(u(0xC7, 0x61, 0x72, 0x15F, 0x131), metin, fixed = TRUE))
+  expect_true(grepl(u(0xDE, 0x75, 0x62, 0x65, 0x20, 0x4D, 0xFC, 0x64, 0xFC, 0x72, 0xFC), metin, fixed = TRUE))
+  expect_false(grepl(u(0x15E, 0x75, 0x62, 0x65), metin, fixed = TRUE))
 })

@@ -103,12 +103,16 @@ test_that("bastırma tercihi tarayıcı geneli değil kullanıcı etiketiyle sak
   js_text <- .akc_text("www/js/api_key_choice_modal.js")
   module_text <- .akc_text("R/module_api_key.R")
 
-  expect_true(grepl("api_key_onboarding_suppressed_by_user", js_text, fixed = TRUE))
   expect_true(grepl("message.userTag", js_text, fixed = TRUE))
+  # Her kullanıcının bayrağı ayrı anahtardadır; ortak nesne okunup yazılmaz.
+  expect_true(grepl("SUPPRESS_USER_PREFIX + tag", js_text, fixed = TRUE))
+  expect_false(grepl("suppressMap(", js_text, fixed = TRUE))
   # Etiket yoksa bastırma yoktur ve bayrak yazılmaz.
-  expect_true(grepl("return !!tag && suppressMap(readSettings())[tag] === true;", js_text, fixed = TRUE))
   expect_false(grepl("readSettings()[SUPPRESS_KEY] === true", js_text, fixed = TRUE))
   expect_false(grepl("s[SUPPRESS_KEY] =", js_text, fixed = TRUE))
+  # Sunucuya giden bayrak etiketini taşır; modal kutusu seçim yapılana dek bekler.
+  expect_true(grepl("tag: currentUserTag()", js_text, fixed = TRUE))
+  expect_true(grepl("reportDontShowPending(el.checked)", js_text, fixed = TRUE))
   # Sunucu tercihi kullanıcı etiketiyle ister.
   expect_true(grepl("userTag     = etiket", module_text, fixed = TRUE))
   expect_true(grepl("etiket <- api_key_pref_user_tag(owner$username)", module_text, fixed = TRUE))
@@ -321,7 +325,8 @@ test_that("seçim modalı Shiny custom message handler imzalarını korur", {
     js_text,
     perl = TRUE
   ))
-  expect_true(grepl("void message;", js_text, fixed = TRUE))
+  # Açılış mesajı bekleyen onay kutusu girdisinin kimliğini taşır.
+  expect_true(grepl("message.dontShowInputId", js_text, fixed = TRUE))
 })
 
 test_that("seçim modalı kontrol yüzeyini handler'lardan önce hazırlar", {

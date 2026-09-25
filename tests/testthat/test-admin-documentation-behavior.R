@@ -27,7 +27,17 @@
   source(file.path(root, "R", "utils_text_encoding.R"), encoding = "UTF-8", local = env)
   source(file.path(root, "R", "helpers_admin_documentation.R"), encoding = "UTF-8", local = env)
   source(file.path(root, "R", "module_admin_documentation.R"), encoding = "UTF-8", local = env)
+  # Yönetici denetimi Sistem Durumu modülündeki gerçek denetimdir; modülün üst
+  # düzey kaynak yüklemeleri etkisizleştirilerek yalnız tanımları okunur.
+  env$safe_source <- function(...) invisible(TRUE)
+  source(file.path(root, "R", "module_health.R"), encoding = "UTF-8", local = env)
   env
+}
+
+# testServer oturumunu yönetici yapar (yetki sunucuda oturum kimliğinden okunur).
+.admin_doc_as_admin <- function(session) {
+  session$userData$user_config <- list(auth_level = "ADMIN")
+  invisible(session)
 }
 
 # renderUI çıktısını metne çevirir (testServer hem liste hem karakter dönebilir).
@@ -410,6 +420,7 @@ testthat::test_that("adminDokumantasyonServer belge seçimi ve grup geçişini y
   env$showToast <- function(...) invisible(NULL)
 
   shiny::testServer(env$adminDokumantasyonServer, {
+    .admin_doc_as_admin(session)
     # Başlangıç: README (baslangic grubu)
     out0 <- .admin_doc_read_ui(output$tab_content_area)
     testthat::expect_true(grepl("README.md", out0, fixed = TRUE))
@@ -441,12 +452,14 @@ testthat::test_that("belge içi bağlantılar uygulamadan ayrılmaz; kayıtlı b
   )
   sonuc <- env$admin_doc_rewrite_links(html, "docs/README.md")
   testthat::expect_true(grepl("<a href=\"#\" data-doc-id=\"release_notes\">notlar", sonuc, fixed = TRUE))
-  testthat::expect_true(grepl("<a href=\"#\" data-doc-id=\"renv_status\">renv", sonuc, fixed = TRUE))
+  # Bölüm parçası korunur ve başlık kimliğiyle aynı anahtara indirgenir.
+  testthat::expect_true(grepl("<a href=\"#\" data-doc-id=\"renv_status\" data-doc-anchor=\"ozet\">renv",
+                              sonuc, fixed = TRUE))
   testthat::expect_true(grepl("<a class=\"mb-doc-link-offline\"", sonuc, fixed = TRUE))
   testthat::expect_false(grepl("href=\"templates/", sonuc, fixed = TRUE))
   testthat::expect_true(grepl("href=\"https://ornek.kurum.local/x\" target=\"_blank\" rel=\"noopener noreferrer\"",
                               sonuc, fixed = TRUE))
-  testthat::expect_true(grepl("<a href=\"#baslik\">capa", sonuc, fixed = TRUE))
+  testthat::expect_true(grepl("<a href=\"#\" data-doc-anchor=\"baslik\">capa", sonuc, fixed = TRUE))
 
   # Dokümantasyon haritasının gerçek render çıktısında göreli href kalmaz.
   render <- env$admin_doc_render_document("docs_readme", resolve_repo_root_for_tests())
@@ -454,6 +467,65 @@ testthat::test_that("belge içi bağlantılar uygulamadan ayrılmaz; kayıtlı b
   testthat::expect_true(length(hrefler) > 0L)
   testthat::expect_true(all(grepl("^href=\"(#|https?:|mailto:)", hrefler)))
   testthat::expect_true(grepl("data-doc-id=\"pk_operator\"", render$html, fixed = TRUE))
+})
+
+testthat::test_that("bölüm bağlantısı hedef başlığın anahtarını taşır; kök-göreli yol depo kökünden çözülür", {
+  env <- .source_admin_doc_env()
+  html <- paste0(
+    "<p><a href=\"operational-soak-gate.md#13a-2026-06-2627-windows-vm-proxy\">soak</a> ",
+    "<a href=\"/README.md\">kok</a> <a href=\"/docs/technical-reference.md#%C5%9Fema\">tr</a> ",
+    "<a href=\"/docs/../RUNBOOK.md\">rb</a></p>"
+  )
+  sonuc <- env$admin_doc_rewrite_links(html, "docs/release-notes.md")
+  testthat::expect_true(grepl("data-doc-anchor=\"13a2026062627windowsvmproxy\">soak", sonuc, fixed = TRUE))
+  testthat::expect_true(grepl("<a href=\"#\" data-doc-id=\"readme\">kok", sonuc, fixed = TRUE))
+  testthat::expect_true(grepl("data-doc-anchor=\"sema\">tr", sonuc, fixed = TRUE))
+  testthat::expect_true(grepl("data-doc-id=\"runbook\">rb", sonuc, fixed = TRUE))
+  testthat::expect_false(grepl("mb-doc-link-offline", sonuc, fixed = TRUE))
+  # Başlık kimliğinden aynı anahtar türetilir (istemci eşleştirmesi).
+  toc <- env$admin_doc_extract_toc("<h2>13a. 2026-06-26/27 Windows VM proxy</h2>")$toc[[1]]$id
+  testthat::expect_identical(gsub("[^a-z0-9]", "", sub("^mbdoc-", "", toc)), "13a2026062627windowsvmproxy")
+})
+
+testthat::test_that("yönetici olmayan ya da yetkisi düşen oturum belge görmez ve seçim yapamaz", {
+  env <- .source_admin_doc_env()
+  env$showToast <- function(...) invisible(NULL)
+  shiny::testServer(env$adminDokumantasyonServer, {
+    session$userData$user_config <- list(auth_level = "USER")
+    session$setInputs(doc_select = "vm_evidence")
+    cikti <- .admin_doc_read_ui(output$tab_content_area)
+    testthat::expect_true(grepl("yalnızca yöneticilere", cikti, fixed = TRUE))
+    testthat::expect_false(grepl("Kaynak dosya", cikti, fixed = TRUE))
+
+    .admin_doc_as_admin(session)
+    session$setInputs(doc_select = "runbook")
+    testthat::expect_true(grepl("RUNBOOK.md", .admin_doc_read_ui(output$tab_content_area), fixed = TRUE))
+
+    # Aynı oturum yönetici olmayan kullanıcıya geçer: içerik kilitlenir, seçim reddedilir.
+    session$userData$user_config <- NULL
+    session$elapse(2500)
+    testthat::expect_true(grepl("yalnızca yöneticilere", .admin_doc_read_ui(output$tab_content_area), fixed = TRUE))
+    session$setInputs(doc_select = "readme")
+    .admin_doc_as_admin(session)
+    session$elapse(2500)
+    testthat::expect_true(grepl("RUNBOOK.md", .admin_doc_read_ui(output$tab_content_area), fixed = TRUE))
+  })
+})
+
+testthat::test_that("başka gruptaki belge grup sekmesinin geri dönüşü beklenmeden tutarlı çizilir", {
+  env <- .source_admin_doc_env()
+  env$showToast <- function(...) invisible(NULL)
+  testthat::local_mocked_bindings(updateTabsetPanel = function(...) invisible(NULL), .package = "shiny")
+  shiny::testServer(env$adminDokumantasyonServer, {
+    .admin_doc_as_admin(session)
+    session$setInputs(admin_tabs = "baslangic")
+    # İstemci hâlâ "baslangic" sekmesinde: kartlar "urun" grubundan gelmelidir.
+    session$setInputs(doc_select = "release_notes")
+    cikti <- .admin_doc_read_ui(output$tab_content_area)
+    testthat::expect_true(grepl("data-doc-id=\"release_notes\"", cikti, fixed = TRUE))
+    testthat::expect_false(grepl("data-doc-id=\"docs_readme\"", cikti, fixed = TRUE))
+    testthat::expect_true(grepl("docs/release-notes.md", cikti, fixed = TRUE))
+  })
 })
 
 testthat::test_that("başka gruptaki belge seçilince grup sekmesi de o gruba geçer", {
@@ -468,11 +540,15 @@ testthat::test_that("başka gruptaki belge seçilince grup sekmesi de o gruba ge
     .package = "shiny"
   )
   shiny::testServer(env$adminDokumantasyonServer, {
+    .admin_doc_as_admin(session)
     session$setInputs(admin_tabs = "baslangic")
     session$setInputs(doc_select = "release_notes")
     testthat::expect_identical(secilen, "admin_tabs urun")
-    session$setInputs(doc_select = "readme")
+    # İstemci sekmeyi gerçekten "urun"a geçirir; geri dönüş yeniden istenir.
+    session$setInputs(admin_tabs = "urun")
     testthat::expect_identical(secilen, "admin_tabs urun")
+    session$setInputs(doc_select = "readme")
+    testthat::expect_identical(secilen, c("admin_tabs urun", "admin_tabs baslangic"))
   })
 })
 
@@ -488,6 +564,7 @@ testthat::test_that("adminDokumantasyonServer yenile butonu önbelleği temizler
   testthat::local_mocked_bindings(runjs = function(...) invisible(NULL), .package = "shinyjs")
 
   shiny::testServer(env$adminDokumantasyonServer, {
+    .admin_doc_as_admin(session)
     # observeEvent(ignoreInit = TRUE): ilk set init olarak tüketilir, ikinci set tetikler
     session$setInputs(refresh_analytics = 1)
     session$setInputs(refresh_analytics = 2)

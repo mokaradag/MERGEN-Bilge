@@ -10,6 +10,7 @@
 # sohbet istekleri kuyrukta bekliyordu.
 .FILE_SUMMARY_QUEUE <- new.env(parent = emptyenv())
 .FILE_SUMMARY_QUEUE$active <- 0L
+.FILE_SUMMARY_QUEUE$active_by <- integer(0)
 .FILE_SUMMARY_QUEUE$pending <- list()
 .FILE_SUMMARY_QUEUE$rejected_total <- 0L
 .FILE_SUMMARY_QUEUE$pump_scheduled <- FALSE
@@ -44,10 +45,12 @@ file_summary_effective_limit <- function() {
   min(file_summary_max_concurrent(), havuz - 1L)
 }
 
+# Boş işçi sayısı ölçülemezse özet başlamaz (kapalı-başarısız); kuyruk saniyede
+# bir yeniden dener.
 file_summary_has_capacity <- function() {
   if (.FILE_SUMMARY_QUEUE$active >= file_summary_effective_limit()) return(FALSE)
   bos <- file_summary_free_workers()
-  if (is.na(bos)) return(TRUE)
+  if (is.na(bos)) return(FALSE)
   bos > (if (file_summary_pool_size() >= 2L) 1L else 0L)
 }
 
@@ -57,17 +60,37 @@ file_summary_max_queue <- function() {
   file_summary_int_setting("MERGEN_FILE_SUMMARY_MAX_QUEUE", 64L)
 }
 
+# Tek oturum ortak bekleme bütçesini tüketemez
+# (MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION, varsayılan 16).
+file_summary_max_queue_per_session <- function() {
+  min(file_summary_int_setting("MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION", 16L),
+      file_summary_max_queue())
+}
+
+file_summary_session_key <- function(session) {
+  anahtar <- as.character(session$token %||% "")[1]
+  if (length(anahtar) != 1L || is.na(anahtar)) "" else anahtar
+}
+
 # Kuyruk doluysa iş sessizce düşürülmez: FALSE döner ve çağıran kullanıcıyı uyarır.
 file_summary_schedule <- function(start_fn, session = NULL) {
   file_summary_prune_closed()
-  if (length(.FILE_SUMMARY_QUEUE$pending) >= file_summary_max_queue()) {
+  anahtar <- file_summary_session_key(session)
+  bekleyen <- .FILE_SUMMARY_QUEUE$pending
+  ayni_oturum <- sum(vapply(bekleyen, function(k) identical(k$anahtar, anahtar), logical(1)))
+  if (length(bekleyen) >= file_summary_max_queue() ||
+      (nzchar(anahtar) && ayni_oturum >= file_summary_max_queue_per_session())) {
     .FILE_SUMMARY_QUEUE$rejected_total <- .FILE_SUMMARY_QUEUE$rejected_total + 1L
     return(FALSE)
   }
-  .FILE_SUMMARY_QUEUE$pending[[length(.FILE_SUMMARY_QUEUE$pending) + 1L]] <-
-    list(start = start_fn, session = session)
+  .FILE_SUMMARY_QUEUE$pending[[length(bekleyen) + 1L]] <-
+    list(start = start_fn, session = session, anahtar = anahtar)
   file_summary_pump()
   TRUE
+}
+
+file_summary_pending_count <- function() {
+  as.integer(length(.FILE_SUMMARY_QUEUE$pending))
 }
 
 file_summary_session_alive <- function(session) {
@@ -86,25 +109,55 @@ file_summary_prune_closed <- function() {
   invisible(sum(!canli))
 }
 
+# Sıradaki iş, o an en az özeti çalışan oturumdan seçilir (eşitlikte FIFO);
+# tek oturumun toplu yüklemesi diğer kullanıcıların özetlerini geciktirmez.
+file_summary_next_index <- function() {
+  aktif <- .FILE_SUMMARY_QUEUE$active_by
+  yuk <- vapply(.FILE_SUMMARY_QUEUE$pending, function(k) {
+    n <- if (nzchar(k$anahtar %||% "")) aktif[k$anahtar] else NA_integer_
+    if (length(n) != 1L || is.na(n)) 0L else as.integer(n)
+  }, integer(1))
+  which.min(yuk)
+}
+
 file_summary_pump <- function() {
   file_summary_prune_closed()
   while (length(.FILE_SUMMARY_QUEUE$pending) > 0L && file_summary_has_capacity()) {
-    kayit <- .FILE_SUMMARY_QUEUE$pending[[1L]]
-    .FILE_SUMMARY_QUEUE$pending[[1L]] <- NULL
+    sira <- file_summary_next_index()
+    kayit <- .FILE_SUMMARY_QUEUE$pending[[sira]]
+    .FILE_SUMMARY_QUEUE$pending[[sira]] <- NULL
     # Kapanan oturumun kuyruktaki özeti başlatılmaz.
     if (!file_summary_session_alive(kayit$session)) next
 
+    anahtar <- kayit$anahtar %||% ""
     .FILE_SUMMARY_QUEUE$active <- .FILE_SUMMARY_QUEUE$active + 1L
+    if (nzchar(anahtar)) {
+      onceki <- .FILE_SUMMARY_QUEUE$active_by[anahtar]
+      .FILE_SUMMARY_QUEUE$active_by[anahtar] <- if (is.na(onceki)) 1L else onceki + 1L
+    }
     serbest <- local({
       birakildi <- FALSE
       function(...) {
         if (birakildi) return(invisible(NULL))
         birakildi <<- TRUE
         .FILE_SUMMARY_QUEUE$active <- max(0L, .FILE_SUMMARY_QUEUE$active - 1L)
+        if (nzchar(anahtar) && !is.na(.FILE_SUMMARY_QUEUE$active_by[anahtar])) {
+          kalan <- .FILE_SUMMARY_QUEUE$active_by[anahtar] - 1L
+          .FILE_SUMMARY_QUEUE$active_by <- if (kalan > 0L) {
+            replace(.FILE_SUMMARY_QUEUE$active_by, anahtar, kalan)
+          } else {
+            .FILE_SUMMARY_QUEUE$active_by[names(.FILE_SUMMARY_QUEUE$active_by) != anahtar]
+          }
+        }
         later::later(file_summary_pump, 0)
         invisible(NULL)
       }
     })
+    # Oturum kapanınca yuva hemen bırakılır; işçi tarafı durdurma dosyasını
+    # (processAndSummarizeFile) görüp LLM çağrısını atlar.
+    if (is.function(kayit$session$onSessionEnded)) {
+      try(kayit$session$onSessionEnded(serbest), silent = TRUE)
+    }
     # Başlatma hatası kuyruğu kilitlemez ama sessizce de yutulmaz.
     p <- tryCatch(kayit$start(), error = function(e) {
       cat("[FILE SUMMARY] Özet işi başlatılamadı:", conditionMessage(e), "\n")
@@ -130,14 +183,19 @@ file_summary_pump <- function() {
 }
 
 # İlk dosya özetindeki bağımlılık taraması (büyük .GlobalEnv'de saniyeler) olay
-# döngüsünü dondurmasın: tarama oturum kabul edilmeden önce bir kez yapılır
-# (app.R onStart). Yalnız adlar önbelleğe girer; değerler her gönderimde tazedir.
-file_summary_warm_dependencies <- function() {
+# döngüsünü dondurmasın: tarama oturum kabul edilmeden önce yapılır (app.R
+# onStart). Başarısız tarama önbelleğe girmez; bir kez yeniden denenir ve
+# sonuç günlüğe yazılır. Yalnız adlar önbelleğe girer; değerler her gönderimde tazedir.
+file_summary_warm_dependencies <- function(attempts = 2L) {
   if (!exists("file_summary_task_fn", mode = "function") ||
       !exists("worker_monitor_auto_globals", mode = "function")) {
     return(invisible(FALSE))
   }
-  sonuc <- try(worker_monitor_auto_globals("file_summary", file_summary_task_fn("", "", list())),
-               silent = TRUE)
-  invisible(!inherits(sonuc, "try-error"))
+  for (deneme in seq_len(max(1L, as.integer(attempts)))) {
+    sonuc <- try(worker_monitor_auto_globals("file_summary", file_summary_task_fn("", "", list())),
+                 silent = TRUE)
+    if (!inherits(sonuc, "try-error") && isTRUE(sonuc$ok)) return(invisible(TRUE))
+  }
+  cat("[FILE SUMMARY] UYARI: Özet bağımlılık ısıtması başarısız; ilk özet taramayı yeniden yapacak.\n")
+  invisible(FALSE)
 }

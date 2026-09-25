@@ -44,10 +44,13 @@ health_configured_endpoint_values <- function() {
   if (exists("api_config", inherits = TRUE)) {
     cfg <- get("api_config", inherits = TRUE)
     if (is.list(cfg)) {
+      # Model eşlemesindeki doğrudan URL değerleri de çözücünün (resolve_local_llm_endpoint)
+      # gerçekten kullandığı uç noktalardır.
+      harita <- as.character(unlist(cfg$local_model_endpoint_map, use.names = FALSE))
       degerler <- c(degerler, unlist(
         list(cfg$local_llm_endpoint, cfg$local_llm$endpoint, cfg$local_llm_endpoints),
         use.names = FALSE
-      ))
+      ), harita[grepl("^https?://", harita, ignore.case = TRUE)])
     }
   }
   degerler <- as.character(degerler)
@@ -71,13 +74,48 @@ health_internal_hosts <- function() {
   unique(hostlar[nzchar(hostlar)])
 }
 
+# Sayısal IPv4 host'u libcurl'ün (httr) çözdüğü gibi kanonik noktalı dörtlüye
+# çevirir: noktasız ondalık (`134744072`), onaltılık (`0x8080808`), sekizlik
+# (`010.010.010.010`) ve kısa (`127.1`) biçimler. Sayısal değilse NULL,
+# sayısal ama geçersizse NA döner (çağıran kapalı-başarısız davranır).
+health_ipv4_canonical <- function(host) {
+  parcalar <- strsplit(tolower(as.character(host %||% "")), ".", fixed = TRUE)[[1]]
+  if (!length(parcalar) || length(parcalar) > 4L ||
+      !all(grepl("^(0x[0-9a-f]*|[0-9]+)$", parcalar, perl = TRUE))) {
+    return(NULL)
+  }
+  deger <- vapply(parcalar, function(p) {
+    taban <- if (startsWith(p, "0x")) 16 else if (nchar(p) > 1L && startsWith(p, "0")) 8 else 10
+    rakam <- if (taban == 16) substring(p, 3L) else p
+    if (!nzchar(rakam)) return(0)
+    d <- match(strsplit(rakam, "", fixed = TRUE)[[1]], c(0:9, letters[1:6])) - 1
+    if (anyNA(d) || any(d >= taban)) return(NA_real_)
+    sum(d * taban^(rev(seq_along(d)) - 1))
+  }, numeric(1), USE.NAMES = FALSE)
+  n <- length(deger)
+  if (anyNA(deger) || any(deger > c(rep(255, n - 1L), 256^(5L - n) - 1))) return(NA_character_)
+  toplam <- sum(deger[-n] * 256^(3:(5L - n))[seq_len(n - 1L)]) + deger[n]
+  paste(c(toplam %/% 256^3, (toplam %/% 256^2) %% 256, (toplam %/% 256) %% 256, toplam %% 256),
+        collapse = ".")
+}
+
+# Joker bağlama adresi: 0.0.0.0 (ve kısa/sayısal yazımları) ile IPv6 `::`
+# (`0:0:0:0:0:0:0:0` gibi her yazımı).
+health_host_unspecified <- function(host) {
+  host <- tolower(as.character(host %||% ""))
+  if (grepl(":", host, fixed = TRUE)) {
+    return(grepl("^[0:]+$", host) && grepl("::|^(0+:){7}0+$", host))
+  }
+  identical(health_ipv4_canonical(host), "0.0.0.0")
+}
+
 # Host'un DAHİLİ bir IP literali olup olmadığını söyler. NA => IP literali değil.
 # Önek eşleşmesi tek başına yetmez: `10.example.com` geçerli bir genel DNS adıdır
 # ve dört oktetli IPv4 doğrulaması yapılmadan "dahili" sayılıyordu.
 health_ip_literal_internal <- function(host) {
   # Joker bağlama adresleri yerel dinleyicidir; `LOCAL_*_ENDPOINT` değeri
   # `http://0.0.0.0:...` / `http://[::]:...` iken kontrol hiç yapılmıyordu.
-  if (identical(host, "0.0.0.0") || identical(host, "::")) return(TRUE)
+  if (isTRUE(health_host_unspecified(host))) return(TRUE)
 
   if (grepl(":", host, fixed = TRUE)) {
     # IPv4-EŞLEMELİ IPv6 (`::ffff:10.0.0.1`) gömülü IPv4 kuralıyla sınıflandırılır.
@@ -100,9 +138,12 @@ health_ip_literal_internal <- function(host) {
     if (grepl("^(f[cd][0-9a-f]{2}:|fe[89ab][0-9a-f]:)", host, perl = TRUE)) return(TRUE)
     return(NA)
   }
-  if (!grepl("^[0-9]{1,3}(\\.[0-9]{1,3}){3}$", host, perl = TRUE)) return(NA)
-  oktet <- suppressWarnings(as.integer(strsplit(host, ".", fixed = TRUE)[[1]]))
-  if (anyNA(oktet) || any(oktet < 0L) || any(oktet > 255L)) return(NA)
+  # Sayısal host libcurl gibi çözülür; `010.010.010.010` 10.10.10.10 değil
+  # 8.8.8.8'dir. Geçersiz sayısal host genel sayılır (kapalı-başarısız).
+  kanonik <- health_ipv4_canonical(host)
+  if (is.null(kanonik)) return(NA)
+  if (is.na(kanonik)) return(FALSE)
+  oktet <- as.integer(strsplit(kanonik, ".", fixed = TRUE)[[1]])
   # 10/8, 172.16/12, 192.168/16, 127/8 (loopback), 169.254/16 (bağlantı-yerel).
   oktet[1] == 10L ||
     oktet[1] == 127L ||
@@ -111,14 +152,16 @@ health_ip_literal_internal <- function(host) {
     (oktet[1] == 169L && oktet[2] == 254L)
 }
 
-# Joker bağlama adresi (0.0.0.0 / [::]) istemci hedefi değildir (Windows'ta
-# bağlantı kurulamaz); deneme aynı porttaki yerel döngü adresine yapılır.
+# Joker bağlama adresi (0.0.0.0 / [::], her yazımıyla) istemci hedefi değildir
+# (Windows'ta bağlantı kurulamaz); deneme aynı porttaki yerel döngü adresine yapılır.
 health_probe_url <- function(url) {
   url <- as.character(url %||% "")
-  url <- sub("^(https?://(?:[^/?#@]*@)?)0\\.0\\.0\\.0(?=[:/?#]|$)", "\\1127.0.0.1",
-             url, perl = TRUE, ignore.case = TRUE)
-  sub("^(https?://(?:[^/?#@]*@)?)\\[::\\](?=[:/?#]|$)", "\\1[::1]",
-      url, perl = TRUE, ignore.case = TRUE)
+  m <- regmatches(url, regexec("^(https?://(?:[^/?#@]*@)?)(\\[[^]/?#]*\\]|[^:/?#]*)(.*)$",
+                               url, perl = TRUE, ignore.case = TRUE))[[1]]
+  if (length(m) != 4L) return(url)
+  host <- sub("^\\[(.*)\\]$", "\\1", m[3])
+  if (!health_host_unspecified(host)) return(url)
+  paste0(m[2], if (startsWith(m[3], "[")) "[::1]" else "127.0.0.1", m[4])
 }
 
 health_is_public_url <- function(url) {

@@ -247,6 +247,59 @@ test_that("yüzde kodlu genel host adı intranet sayılmaz", {
   expect_false(env$health_is_public_url("http://[fe80::1%25eth0]:8080/v1"))
 })
 
+test_that("sayısal IPv4 yazımları libcurl gibi çözülür; genel adres intranet sayılmaz", {
+  env <- .fresh_health_env()
+  withr::local_envvar(c(MERGEN_HEALTH_INTERNAL_ENDPOINTS = ""))
+  expect_identical(env$health_ipv4_canonical("134744072"), "8.8.8.8")
+  expect_identical(env$health_ipv4_canonical("0x8080808"), "8.8.8.8")
+  expect_identical(env$health_ipv4_canonical("010.010.010.010"), "8.8.8.8")
+  expect_identical(env$health_ipv4_canonical("127.1"), "127.0.0.1")
+  expect_null(env$health_ipv4_canonical("intranet"))
+  expect_true(is.na(env$health_ipv4_canonical("08.1.1.1")))
+  expect_true(env$health_is_public_url("http://134744072/"))
+  expect_true(env$health_is_public_url("http://0x8080808:8080/v1"))
+  expect_true(env$health_is_public_url("http://010.010.010.010/"))
+  expect_true(env$health_is_public_url("http://300.1.1.1/"))
+  expect_false(env$health_is_public_url("http://127.1:9000/"))
+  expect_false(env$health_is_public_url("http://012.0.0.1/"))
+})
+
+test_that("IPv6 joker adresinin tüm yazımları yerel döngüden denenir", {
+  env <- .fresh_health_env()
+  expect_identical(env$health_probe_url("http://[0:0:0:0:0:0:0:0]:9000/x"), "http://[::1]:9000/x")
+  expect_identical(env$health_probe_url("http://[0::0]:9000/x"), "http://[::1]:9000/x")
+  expect_identical(env$health_probe_url("http://0:8000/"), "http://127.0.0.1:8000/")
+  expect_identical(env$health_probe_url("http://[::1]:9000/x"), "http://[::1]:9000/x")
+  expect_identical(env$health_probe_url("http://[fd00::]:9000/x"), "http://[fd00::]:9000/x")
+})
+
+test_that("model eşlemesindeki doğrudan URL on-prem host kümesine girer", {
+  env <- .fresh_health_env()
+  withr::local_envvar(c(MERGEN_HEALTH_INTERNAL_ENDPOINTS = ""))
+  env$api_config <- list(local_model_endpoint_map = c(model2 = "https://model2.kurum.com.tr/v1",
+                                                      model1 = "primary"))
+  expect_false(env$health_is_public_url("https://model2.kurum.com.tr/v1/models"))
+  expect_true(env$health_is_public_url("https://primary.example.com/v1"))
+})
+
+test_that("sağlık denemesi HTTP yönlendirmesini izlemez", {
+  skip_if_not_installed("httr")
+  env <- .fresh_health_env()
+  yakalanan <- list()
+  testthat::local_mocked_bindings(
+    GET = function(url, ...) {
+      yakalanan <<- list(...)
+      structure(list(), class = "response")
+    },
+    status_code = function(res) 302L,
+    .package = "httr"
+  )
+  r <- env$health_check_http_endpoint("tts.endpoint", "TTS", "http://127.0.0.1:9000/health")
+  ayar <- Filter(function(x) inherits(x, "request"), yakalanan)
+  expect_true(any(vapply(ayar, function(x) identical(x$options$followlocation, 0L), logical(1))))
+  expect_identical(r$status[1], "ok")
+})
+
 test_that("health_check_http_endpoint boş uç nokta zorunlu değilse not_configured döner", {
   env <- .fresh_health_env()
   r <- env$health_check_http_endpoint("tts.endpoint", "TTS", "", configured_required = FALSE)

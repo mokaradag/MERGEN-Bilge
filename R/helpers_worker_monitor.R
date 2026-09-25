@@ -161,9 +161,19 @@ get_worker_monitor_info <- function() {
   task_ids <- ls(envir = monitor_env$tasks)
   active_jobs <- length(task_ids)
 
+  # Özet kuyruğunda bekleyen işler henüz izleme defterinde değildir (gönderimde
+  # kaydolur); kuyruk ve tür dağılımına ayrıca eklenir, çift sayılmaz.
+  bekleyen_ozet <- if (exists("file_summary_pending_count", mode = "function")) {
+    as.integer(file_summary_pending_count())
+  } else {
+    0L
+  }
+  breakdown <- summarize_worker_tasks_by_type()
+  if (bekleyen_ozet > 0L) breakdown[["file_summary_queued"]] <- bekleyen_ozet
+
   active_workers <- min(active_jobs, total_workers)
   free_workers <- max(total_workers - active_workers, 0L)
-  queued_jobs <- max(active_jobs - total_workers, 0L)
+  queued_jobs <- max(active_jobs - total_workers, 0L) + bekleyen_ozet
   usage_pct <- if (total_workers > 0) round((active_workers / total_workers) * 100, 1) else 0
 
   list(
@@ -173,7 +183,7 @@ get_worker_monitor_info <- function() {
     free_workers = as.integer(free_workers),
     queued_jobs = as.integer(queued_jobs),
     usage_pct = usage_pct,
-    task_type_breakdown = summarize_worker_tasks_by_type(),
+    task_type_breakdown = breakdown,
     note = paste(
       "Bu metrikler, uygulamanın future_promise ile başlattığı asenkron işleri izler.",
       "Doğrudan cluster içi düşük seviye worker telemetrisi değil, uygulama düzeyi iş yükü görünümüdür."
@@ -214,7 +224,8 @@ worker_monitor_detect_task_deps <- function(task_fn) {
 worker_monitor_auto_globals <- function(task_type, task_fn, promise_globals = list()) {
   promise_globals <- promise_globals %||% list()
   onbellek_var <- exists("worker_monitor_dep_cache_get", mode = "function")
-  onbellek <- if (onbellek_var) worker_monitor_dep_cache_get(task_type, task_fn) else NULL
+  onbellek <- if (onbellek_var) worker_monitor_dep_cache_get(task_type, task_fn, promise_globals) else NULL
+  verilen_globals <- promise_globals
   detect_started <- Sys.time()
   detected_future_deps <- if (is.null(onbellek)) {
     worker_monitor_detect_task_deps(task_fn)
@@ -244,7 +255,8 @@ worker_monitor_auto_globals <- function(task_type, task_fn, promise_globals = li
       task_type, task_fn,
       detected_globals = detected_future_deps$globals,
       expanded_names = names(expanded_globals),
-      packages = detected_future_deps$packages
+      packages = detected_future_deps$packages,
+      promise_globals = verilen_globals
     )
   }
 
@@ -388,6 +400,12 @@ tracked_future_promise <- function(task_fn,
     environment(task_fn) <- fn_env
   } else {
     otomatik <- worker_monitor_auto_globals(task_type, task_fn, promise_globals)
+    # Başarısız tarama eksik bağımlılıkla işçiye gönderilmez; iş düzgünce reddedilir.
+    if (!isTRUE(otomatik$ok)) {
+      finish_worker_task(task_id)
+      stop(sprintf("Bağımlılık taraması başarısız; '%s' işi gönderilmedi.",
+                   as.character(task_type %||% "generic")[1]), call. = FALSE)
+    }
     promise_globals <- otomatik$globals
     detect_ms <- otomatik$detect_ms
     expand_ms <- otomatik$expand_ms

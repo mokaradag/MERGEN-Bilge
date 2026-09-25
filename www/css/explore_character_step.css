@@ -290,6 +290,7 @@
   padding: 4px;
   flex-shrink: 0;
   flex-wrap: nowrap;
+  min-width: 0;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
@@ -417,6 +418,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .cinematic-character-step {
+    animation: none;
+  }
+
   .cinematic-char-select-btn,
   .cinematic-char-select-btn i,
   .cinematic-char-metric-fill {
@@ -459,8 +464,11 @@
     flex-wrap: wrap;
   }
 
+  /* Başlık sarınca seçici daralabilsin; yoksa sağdaki personalar kırpılır. */
   .cinematic-char-buttons {
+    flex-shrink: 1;
     flex-wrap: wrap;
+    max-width: 100%;
   }
 
   .cinematic-char-actions {

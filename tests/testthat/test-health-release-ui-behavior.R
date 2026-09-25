@@ -370,6 +370,14 @@ testthat::test_that("healthServer yönetici olmayan oturuma sekme içeriği ve v
     cikti <- paste(as.character(output$health_tab_content), collapse = "\n")
     testthat::expect_true(grepl("Oturum Takibi", cikti, fixed = TRUE))
     testthat::expect_identical(sayac$varlik, 1L)
+
+    # Yetki düşünce (SSO süresi doldu / kullanıcı değişti) çizilmiş içerik
+    # sekme değişimini beklemeden kilit mesajına döner.
+    session$userData$user_config <- NULL
+    session$elapse(2500)
+    cikti <- paste(as.character(output$health_tab_content), collapse = "\n")
+    testthat::expect_true(grepl("yalnızca yöneticilere", cikti, fixed = TRUE))
+    testthat::expect_identical(sayac$varlik, 1L)
   })
 
   testthat::expect_false(env$health_session_is_admin(list(userData = new.env())))

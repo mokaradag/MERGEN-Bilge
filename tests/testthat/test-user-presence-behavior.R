@@ -123,7 +123,7 @@ test_that("geçmiş defter güncel zamana göre budanır", {
   expect_identical(ls(gecmis), "bayat")
 })
 
-test_that("oturum sonu kaydı 24 saat ve kayıt tavanıyla budanır", {
+test_that("oturum sonu kaydı 24 saat ile budanır, tavan pencere içindeki kullanıcıyı silmez", {
   env <- .presence_env()
   gecmis <- new.env(parent = emptyenv())
   now <- Sys.time()
@@ -135,12 +135,77 @@ test_that("oturum sonu kaydı 24 saat ve kayıt tavanıyla budanır", {
   expect_false(env$mb_presence_record_end("bos", NULL, history_env = gecmis))
 
   env$mb_presence_windows <- function() list(online = 180, recent = 900, history = 86400,
-                                             stale = 1800, max_history = 2L)
+                                             stale = 1800, max_history = 2L, skew = 120)
+  rm(list = ls(gecmis), envir = gecmis)
+  # Farklı kullanıcılar 24 saat içindeyse tavan aşılsa da hiçbiri silinmez.
   for (i in 1:3) {
     env$mb_presence_record_end(paste0("k", i), list(user_id = i, last_seen = now),
-                               ended_at = now + i, history_env = gecmis)
+                               ended_at = now - 10 + i, history_env = gecmis)
   }
-  expect_identical(sort(ls(gecmis)), c("k2", "k3"))
+  expect_identical(sort(ls(gecmis)), c("k1", "k2", "k3"))
+  expect_identical(env$mb_presence_snapshot(new.env(), gecmis, now)$metrics$day, 3L)
+
+  # Aynı kullanıcının eski kayıtları en son kayda sıkıştırılır; profil korunur.
+  rm(list = ls(gecmis), envir = gecmis)
+  env$mb_presence_record_end("a1", list(user_id = 4L, last_seen = now - 30, profile = list(sicil = "44")),
+                             ended_at = now - 30, history_env = gecmis, now = now)
+  env$mb_presence_record_end("a2", list(user_id = 4L, last_seen = now - 20, profile = list(sicil = "")),
+                             ended_at = now - 20, history_env = gecmis, now = now)
+  env$mb_presence_record_end("z", list(user_id = 0L, last_seen = now - 15),
+                             ended_at = now - 15, history_env = gecmis, now = now)
+  expect_identical(ls(gecmis), "a2")
+  expect_identical(gecmis$a2$profile$sicil, "44")
+})
+
+test_that("A->B->A->B geçişinde önceki oturumlar geçmişte ezilmez", {
+  env <- .presence_env()
+  t0 <- as.POSIXct("2026-09-25 09:00:00", tz = "UTC")
+  aktif <- new.env(parent = emptyenv())
+  gecmis <- new.env(parent = emptyenv())
+  for (i in 0:3) {
+    env$mb_presence_touch(aktif, "tok", if (i %% 2L) 6L else 5L, list(), now = t0 + i * 60,
+                          history_env = gecmis)
+  }
+  expect_length(ls(gecmis), 3L)
+  bitisler <- vapply(ls(gecmis), function(k) as.numeric(gecmis[[k]]$ended_at), numeric(1))
+  expect_identical(sort(unname(bitisler)), as.numeric(t0) + c(60, 120, 180))
+})
+
+test_that("kimlik açıkça düşünce önceki kullanıcı nabızla çevrimiçi kalmaz", {
+  env <- .presence_env()
+  t0 <- as.POSIXct("2026-09-25 09:00:00", tz = "UTC")
+  aktif <- new.env(parent = emptyenv())
+  gecmis <- new.env(parent = emptyenv())
+  env$mb_presence_touch(aktif, "tok", 5L, list(full_name = "A"), now = t0, history_env = gecmis)
+  # Geçici 0 son bilinen kullanıcıyı korur.
+  env$mb_presence_touch(aktif, "tok", 0L, list(), now = t0 + 30, history_env = gecmis)
+  expect_identical(aktif$tok$user_id, 5L)
+  # SSO süresi doldu: önceki oturum biter, sonraki nabızlar kullanıcıyı canlı tutmaz.
+  env$mb_presence_touch(aktif, "tok", 0L, list(), now = t0 + 90, history_env = gecmis, auth_lost = TRUE)
+  env$mb_presence_touch(aktif, "tok", 0L, list(), now = t0 + 150, history_env = gecmis, auth_lost = TRUE)
+  expect_identical(aktif$tok$user_id, 0L)
+  expect_identical(ls(gecmis), "tok#5")
+  s <- env$mb_presence_snapshot(aktif, gecmis, t0 + 160)
+  expect_identical(s$metrics$online, 0L)
+  expect_identical(s$users$status, "ayrildi")
+})
+
+test_that("geçersiz ya da gelecekteki zaman damgaları çevrimiçi sayılmaz ve budamayı bozmaz", {
+  env <- .presence_env()
+  now <- as.POSIXct("2026-09-25 10:00:00", tz = "UTC")
+  gecmis <- new.env(parent = emptyenv())
+  expect_false(env$mb_presence_record_end("na", list(user_id = 3L, last_seen = as.POSIXct(NA)),
+                                          history_env = gecmis, now = now))
+  gecmis$bozuk <- list(user_id = 3L, last_seen = now - 5, ended_at = NA)
+  expect_silent(env$mb_presence_prune(gecmis, now))
+  expect_false("bozuk" %in% ls(gecmis))
+
+  aktif <- new.env(parent = emptyenv())
+  aktif$gelecek <- list(user_id = 5L, last_seen = now + 3600, started_at = now - 60)
+  aktif$kayma <- list(user_id = 6L, last_seen = now + 30, started_at = now - 60)
+  s <- env$mb_presence_snapshot(aktif, gecmis, now)
+  expect_identical(s$users$user_id, 6L)
+  expect_identical(s$metrics$online, 1L)
 })
 
 test_that("profil yalnızca görünen kimlik alanlarını okur", {
@@ -214,4 +279,38 @@ test_that("performans modülü profili kaydeder ve kapanan oturumu geçmişe ta�
   expect_false(sonuc$token %in% ls(aktif))
   expect_true(sonuc$token %in% ls(gecmis))
   expect_identical(gecmis[[sonuc$token]]$profile$username, "tkisi")
+})
+
+test_that("performans modülü geçersiz last_seen kaydını geçmişe yazmadan atar ve düşen kimliği bitirir", {
+  testthat::skip_if_not_installed("shiny")
+  suppressMessages(library(shiny))
+  env <- .presence_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "module_performance.R"),
+         encoding = "UTF-8", local = env)
+  gecmis <- env$mb_presence_env(".mergen_presence_history")
+  sonuc <- new.env()
+  tmp <- withr::local_tempdir()
+  invisible(utils::capture.output(withr::with_dir(tmp, {
+    shiny::testServer(env$performanceStatsServer,
+                      args = list(current_user_id_provider = function() 5L), {
+      aktif <- get(".mergen_active_sessions", envir = globalenv())
+      aktif[["bozuk-tok"]] <- list(user_id = 3L, last_seen = as.POSIXct(NA))
+      session$userData$user_id <- 5L
+      session$userData$auth_initialized <- TRUE
+      session$returned$touch_session()
+      sonuc$bozuk_aktif <- "bozuk-tok" %in% ls(aktif)
+      # SSO süresi doldu: sağlayıcı hâlâ 5 döndürse de nabız 0 yazar.
+      session$userData$user_id <- 0L
+      session$userData$auth_initialized <- FALSE
+      session$returned$touch_session()
+      sonuc$token <- session$token
+      sonuc$kayit <- aktif[[session$token]]
+    })
+  })))
+  withr::defer(suppressWarnings(rm(list = c(sonuc$token, paste0(sonuc$token, "#5")), envir = gecmis)))
+
+  expect_false(sonuc$bozuk_aktif)
+  expect_false("bozuk-tok" %in% ls(gecmis))
+  expect_identical(sonuc$kayit$user_id, 0L)
+  expect_true(paste0(sonuc$token, "#5") %in% ls(gecmis))
 })

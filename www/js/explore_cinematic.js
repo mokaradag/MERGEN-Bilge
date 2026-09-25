@@ -329,6 +329,14 @@
       selectMode(this);
     });
 
+    // Klavye ile mod seçimi (Enter / Boşluk); kart role="button" taşır.
+    $(document).on('keydown', '.cinematic-mode-card', function(e) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();
+        selectMode(this);
+      }
+    });
+
     // Giriş ekranını atla onay kutusu
     $(document).on('change', '#skip-intro-checkbox', function() {
       var checked = $(this).prop('checked');

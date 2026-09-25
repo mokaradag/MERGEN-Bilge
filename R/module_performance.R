@@ -61,8 +61,17 @@ performanceStatsServer <- function(id, current_user_id_provider) {
           next
         }
 
-        age_secs <- as.numeric(difftime(current_time, entry$last_seen, units = "secs"))
-        if (is.na(age_secs) || age_secs > session_timeout_secs) {
+        age_secs <- tryCatch(
+          suppressWarnings(as.numeric(difftime(current_time, entry$last_seen, units = "secs"))),
+          error = function(e) NA_real_
+        )
+        # Geçersiz zaman damgalı kayıt geçmişe yazılmadan atılır; aksi halde
+        # varlık defterinin budaması NA indeksle bozuluyordu.
+        if (length(age_secs) != 1L || is.na(age_secs)) {
+          try(rm(list = tok, envir = active_sessions_env), silent = TRUE)
+          next
+        }
+        if (age_secs > session_timeout_secs) {
           # Kopan oturum Çevrimiçi sekmesinde son nabız anında "ayrıldı" görünür.
           if (exists("mb_presence_record_end", mode = "function")) {
             try(mb_presence_record_end(tok, entry, ended_at = entry$last_seen), silent = TRUE)
@@ -100,9 +109,16 @@ performanceStatsServer <- function(id, current_user_id_provider) {
     touch_session <- function(user_id = NULL) {
       uid <- suppressWarnings(as.integer(user_id %||% get_current_user_id()))
       if (is.na(uid)) uid <- 0L
+      # SSO süresi dolunca oturum kimliği açıkça 0 olur ama kullanıcı kimliği
+      # sağlayıcısı son bilinen kimliği döndürebilir; nabız o kullanıcıyı canlı
+      # tutmaz, önceki oturum bitmiş sayılır.
+      oturum_uid <- suppressWarnings(as.integer(session$userData$user_id %||% NA_integer_)[1])
+      kimlik_dustu <- isTRUE(oturum_uid == 0L) && !isTRUE(session$userData$auth_initialized)
+      if (kimlik_dustu) uid <- 0L
 
       if (exists("mb_presence_touch", mode = "function")) {
-        mb_presence_touch(active_sessions_env, session$token, uid, mb_presence_profile(session))
+        mb_presence_touch(active_sessions_env, session$token, uid, mb_presence_profile(session),
+                          auth_lost = kimlik_dustu)
       } else {
         active_sessions_env[[session$token]] <- list(user_id = uid, last_seen = Sys.time())
       }

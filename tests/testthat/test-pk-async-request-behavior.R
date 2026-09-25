@@ -337,11 +337,21 @@ test_that("bootstrap UTF-8 kaynaktaki Türkçe dize sabitlerini bozmadan yükler
   }, add = TRUE)
   suppressWarnings(rm(list = .PK_ASYNC_BOOTSTRAP_FLAG, envir = globalenv()))
 
-  withr::local_options(encoding = "native.enc")
+  # UTF-8 OLMAYAN giriş kodlaması: eski yükleyici (seçeneğe bağlı okuma) bu
+  # koşulda sabitleri bozardı; bayt tabanlı yükleyici etkilenmez.
+  withr::local_options(encoding = "latin1")
   sonuc <- pk_async_worker_bootstrap(kok, "R/turkce.R", required_files = character(0))
   expect_true(sonuc$ok)
   expect_identical(enc2utf8(get(".pk_boot_enc_value", envir = globalenv())), beklenen)
-  expect_identical(getOption("encoding"), "native.enc")
+  expect_identical(getOption("encoding"), "latin1")
+
+  # Operatörün CP1254 kaydettiği yerel dosya da (ana süreçteki safe_source gibi) yüklenir.
+  cp1254 <- iconv(satir, from = "UTF-8", to = "WINDOWS-1254", toRaw = TRUE)[[1]]
+  writeBin(cp1254, file.path(kok, "R", "yerel_cp1254.R"))
+  suppressWarnings(rm(list = c(.PK_ASYNC_BOOTSTRAP_FLAG, ".pk_boot_enc_value"), envir = globalenv()))
+  sonuc2 <- pk_async_worker_bootstrap(kok, "R/yerel_cp1254.R", required_files = character(0))
+  expect_true(sonuc2$ok)
+  expect_identical(enc2utf8(get(".pk_boot_enc_value", envir = globalenv())), beklenen)
 })
 
 test_that("bootstrap geçersiz kök ve boş liste için TİPLİ hata döner", {

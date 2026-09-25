@@ -44,10 +44,10 @@ test_that("mb_sidebar_user_initials isim yoksa 'MB' varsayılanına döner", {
 # -----------------------------------------------------------------------------
 
 test_that("mb_sidebar_user_avatar_url geçerli id için .jpg URL'si üretir", {
+  # Şablon sabitlenir: dışarıdan .png şablonu ayarlanmış ortam sonucu değiştirmez.
+  withr::local_envvar(c(MERGEN_USER_AVATAR_URL_TEMPLATE = "https://foto.kurum.local/{user_id}.jpg"))
   url <- .sb_env$mb_sidebar_user_avatar_url(42)
-  expect_true(nzchar(url))
-  expect_true(grepl("42", url, fixed = TRUE))
-  expect_true(grepl("\\.jpg$", url))
+  expect_identical(url, "https://foto.kurum.local/42.jpg")
 })
 
 test_that("mb_sidebar_user_avatar_url placeholder/geçersiz id için boş string döner", {

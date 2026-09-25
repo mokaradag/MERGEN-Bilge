@@ -37,14 +37,39 @@
   TRUE
 }
 
-worker_monitor_dep_cache_get <- function(task_type, task_fn) {
+# Önbellekteki her adın varlık/tür imzası. Kaybolan, işleve dönüşen ya da
+# sınıfı/paketi değişen bağımlılık yeniden tarama gerektirir: paket kümesi
+# değerin sınıfına bağlı olabilir ve yeni işlevin yardımcıları genişletilmelidir.
+.worker_monitor_dep_cache_signature <- function(adlar, ortam, miras) {
+  vapply(as.character(adlar), function(nm) {
+    if (!nzchar(nm) || !exists(nm, envir = ortam, inherits = miras)) return("<yok>")
+    deger <- get(nm, envir = ortam, inherits = miras)
+    if (is.function(deger)) return("<fn>")
+    paste(c(class(deger), attr(class(deger), "package")), collapse = "/")
+  }, character(1), USE.NAMES = FALSE)
+}
+
+# Çağıranın verdiği globals da anahtara girer: adları genişletmeyi (seen kümesi),
+# işlevleri ise hangi yardımcıların taşınacağını belirler.
+.worker_monitor_dep_cache_given <- function(promise_globals) {
+  promise_globals <- promise_globals %||% list()
+  adlar <- sort(as.character(names(promise_globals)))
+  list(names = adlar,
+       fns = Filter(is.function, promise_globals[adlar]))
+}
+
+worker_monitor_dep_cache_get <- function(task_type, task_fn, promise_globals = list()) {
   govde <- .worker_monitor_dep_cache_body(task_fn)
   fn_env <- environment(task_fn)
   if (!is.environment(fn_env)) fn_env <- globalenv()
+  verilen <- .worker_monitor_dep_cache_given(promise_globals)
   for (kayit in .WORKER_MONITOR_DEP_CACHE[[as.character(task_type)[1]]]) {
     if (identical(kayit$body, govde) &&
+        identical(kayit$given, verilen) &&
         .worker_monitor_dep_cache_refs_same(kayit$fn_detected, fn_env, TRUE) &&
-        .worker_monitor_dep_cache_refs_same(kayit$fn_expanded, .GlobalEnv, FALSE)) {
+        .worker_monitor_dep_cache_refs_same(kayit$fn_expanded, .GlobalEnv, FALSE) &&
+        identical(kayit$sig_detected, .worker_monitor_dep_cache_signature(kayit$detected, fn_env, TRUE)) &&
+        identical(kayit$sig_expanded, .worker_monitor_dep_cache_signature(kayit$expanded, .GlobalEnv, FALSE))) {
       return(kayit)
     }
   }
@@ -52,7 +77,7 @@ worker_monitor_dep_cache_get <- function(task_type, task_fn) {
 }
 
 worker_monitor_dep_cache_put <- function(task_type, task_fn, detected_globals,
-                                         expanded_names, packages) {
+                                         expanded_names, packages, promise_globals = list()) {
   anahtar <- as.character(task_type)[1]
   detected_names <- names(detected_globals)
   fn_env <- environment(task_fn)
@@ -67,13 +92,17 @@ worker_monitor_dep_cache_put <- function(task_type, task_fn, detected_globals,
                        error = function(e) character(0))
   arama <- parent.env(globalenv())
   dogrudan <- dogrudan[!vapply(dogrudan, exists, logical(1), envir = arama, inherits = TRUE)]
+  tespit <- unique(c(as.character(detected_names), dogrudan))
   kayit <- list(body = .worker_monitor_dep_cache_body(task_fn),
-                detected = unique(c(as.character(detected_names), dogrudan)),
+                given = .worker_monitor_dep_cache_given(promise_globals),
+                detected = tespit,
                 sabit = detected_globals[sabit_adlar],
                 expanded = as.character(expanded_names),
                 packages = as.character(packages),
                 fn_detected = .worker_monitor_dep_cache_fn_refs(detected_names, fn_env, TRUE),
-                fn_expanded = .worker_monitor_dep_cache_fn_refs(expanded_names, .GlobalEnv, FALSE))
+                fn_expanded = .worker_monitor_dep_cache_fn_refs(expanded_names, .GlobalEnv, FALSE),
+                sig_detected = .worker_monitor_dep_cache_signature(tespit, fn_env, TRUE),
+                sig_expanded = .worker_monitor_dep_cache_signature(expanded_names, .GlobalEnv, FALSE))
   mevcut <- .WORKER_MONITOR_DEP_CACHE[[anahtar]] %||% list()
   .WORKER_MONITOR_DEP_CACHE[[anahtar]] <- utils::tail(c(mevcut, list(kayit)), 8L)
   invisible(kayit)

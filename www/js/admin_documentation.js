@@ -6,6 +6,7 @@
                - Icindekiler baglantisi -> ilgili basliga yumusak kaydirma
                - Icindekiler ac/kapat dugmesi
                - Belge ici kayitli belge baglantisi -> ayni sayfada o belge
+               - Baglantidaki #bolum (data-doc-anchor) -> belge acilinca basliga
              Tek delege click handler kullanilir. CDN / agir bagimlilik yoktur.
              Guvenlik: secilen ASCII slug id'leri CSS.escape ile kullanilir,
              dosya adi gibi degerler selector'a enjekte edilmez.
@@ -26,6 +27,26 @@
       return;
     }
     window.Shiny.setInputValue(inputId, docId, { priority: "event" });
+  }
+
+  // Baglantidaki #bolum, sunucuda baslik kimligiyle ayni ASCII anahtara
+  // indirgenir (data-doc-anchor); belge yeniden cizilince bu basliga gidilir.
+  var pendingAnchor = null;
+
+  function scrollToAnchor(scope, key) {
+    if (!key) {
+      return false;
+    }
+    var heads = (scope || document).querySelectorAll(".mb-doc-body [id^='mbdoc-']");
+    for (var i = 0; i < heads.length; i++) {
+      if (heads[i].id.slice(6).replace(/[^a-z0-9]/g, "") === key) {
+        if (typeof heads[i].scrollIntoView === "function") {
+          heads[i].scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+        return true;
+      }
+    }
+    return false;
   }
 
   // Bir hedef id'yi guvenli bicimde CSS selector'a cevirir.
@@ -66,12 +87,29 @@
         return;
       }
 
-      // 3) Belge govdesindeki kayitli belge baglantisi -> uygulama icinde acilir
+      // 3) Belge govdesindeki kayitli belge baglantisi -> uygulama icinde acilir;
+      //    #bolum varsa belge cizildikten sonra o basliga kaydirilir.
       var docLink = ev.target.closest(".mb-doc-body a[data-doc-id]");
       if (docLink) {
         ev.preventDefault();
         var wrap = docLink.closest(".mb-doc-wrapper") || document;
-        setDocInput(wrap.querySelector(".mb-doc-card-list"), docLink.getAttribute("data-doc-id"));
+        var targetDoc = docLink.getAttribute("data-doc-id");
+        var anchor = docLink.getAttribute("data-doc-anchor");
+        var active = wrap.querySelector(".mb-doc-card-active[data-doc-id]");
+        if (active && active.getAttribute("data-doc-id") === targetDoc) {
+          scrollToAnchor(wrap, anchor);
+          return;
+        }
+        pendingAnchor = anchor || null;
+        setDocInput(wrap.querySelector(".mb-doc-card-list"), targetDoc);
+        return;
+      }
+
+      // 3b) Ayni belgedeki #bolum baglantisi -> basliga kaydir
+      var anchorLink = ev.target.closest(".mb-doc-body a[data-doc-anchor]");
+      if (anchorLink) {
+        ev.preventDefault();
+        scrollToAnchor(anchorLink.closest(".mb-doc-wrapper"), anchorLink.getAttribute("data-doc-anchor"));
         return;
       }
 
@@ -125,7 +163,13 @@
     if (!ev || !ev.name || ev.name.indexOf("tab_content_area") === -1) {
       return;
     }
-    setTimeout(syncDocHeadOffset, 0);
+    setTimeout(function () {
+      syncDocHeadOffset();
+      if (pendingAnchor) {
+        scrollToAnchor(document, pendingAnchor);
+        pendingAnchor = null;
+      }
+    }, 0);
   });
 
   setTimeout(syncDocHeadOffset, 0);

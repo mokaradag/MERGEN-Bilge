@@ -8,8 +8,8 @@
 # anında (lexical scope, call time) okurlar, bu yüzden burada hiçbir şey çağrılmaz.
 #
 # Maintainability: günlük log dosyası kümesi, config_logging.R'nin fonksiyon
-# yoğunluğu tavanını aşmaması için bu odaklı dosyaya ayrılmıştır. Davranış,
-# dosya içeriği, kodlaması ve günlük devir anlamı eskisiyle BİREBİR aynıdır.
+# yoğunluğu tavanını aşmaması için bu odaklı dosyaya ayrılmıştır. Günlük devir
+# anlamı korunur; dosya içeriği her zaman UTF-8'dir.
 # ==============================================================================
 
 # --- GÜNLÜK LOG DOSYASI ÇÖZÜMLEME (TARİH-DUYARLI) ---
@@ -55,6 +55,46 @@ mergen_log_append_utf8 <- function(lines, target_file) {
   invisible(TRUE)
 }
 
+# Günlük dosya bu süreçte ilk kez yazılmadan önce bir kez denetlenir: eski
+# cat(file=) yazıcısının yerel kod sayfasıyla (CP1254) bıraktığı satırlar
+# UTF-8'e çevrilir; aksi halde aynı günün dosyası karışık kodlamalı kalır ve
+# UTF-8 görüntüleyicide eski satırlar bozuk görünürdü. Geçerli UTF-8 satıra ve
+# zaten UTF-8 olan dosyaya dokunulmaz; çok büyük dosya taranmaz.
+.MERGEN_LOG_UTF8_CHECKED <- new.env(parent = emptyenv())
+
+mergen_log_upgrade_legacy_file <- function(target_file, max_bytes = 32 * 1024^2) {
+  anahtar <- normalizePath(target_file, winslash = "/", mustWork = FALSE)
+  if (isTRUE(.MERGEN_LOG_UTF8_CHECKED[[anahtar]])) return(invisible(FALSE))
+  .MERGEN_LOG_UTF8_CHECKED[[anahtar]] <- TRUE
+  boyut <- suppressWarnings(file.info(target_file)$size)
+  if (length(boyut) != 1L || is.na(boyut) || boyut <= 0 || boyut > max_bytes) return(invisible(FALSE))
+  ham <- readBin(target_file, what = "raw", n = boyut)
+  if (any(ham == as.raw(0L)) || validUTF8(rawToChar(ham))) return(invisible(FALSE))
+  yerel <- tryCatch(utils::localeToCharset()[1], error = function(e) NA_character_)
+  kodlar <- unique(c(yerel[!is.na(yerel) & !grepl("UTF-?8", yerel, ignore.case = TRUE)],
+                     "WINDOWS-1254", "latin1"))
+  satirlar <- strsplit(rawToChar(ham), "\n", fixed = TRUE, useBytes = TRUE)[[1]]
+  gecerli <- validUTF8(satirlar)
+  Encoding(satirlar[gecerli]) <- "UTF-8"
+  for (i in which(!gecerli)) {
+    for (kod in kodlar) {
+      cevrilen <- iconv(satirlar[i], from = kod, to = "UTF-8", sub = NA)
+      if (!is.na(cevrilen)) {
+        satirlar[i] <- cevrilen
+        break
+      }
+    }
+  }
+  yeni <- paste0(paste(satirlar, collapse = "\n"), if (ham[length(ham)] == as.raw(10L)) "\n" else "")
+  gecici <- paste0(target_file, ".utf8tmp")
+  writeBin(charToRaw(enc2utf8(yeni)), gecici)
+  if (!isTRUE(file.rename(gecici, target_file))) {
+    unlink(gecici)
+    return(invisible(FALSE))
+  }
+  invisible(TRUE)
+}
+
 # Hem konsola hem dosyaya log yaz.
 # Satır ayrımı logger::appender_file ile aynıdır (her satır "\n" ile biter);
 # dosya kodlaması ise yerel ayardan bağımsız olarak her zaman UTF-8'dir.
@@ -71,7 +111,10 @@ mergen_daily_file_appender <- function(lines) {
 
   target_file <- current_mergen_log_file_path()
   tryCatch(
-    mergen_log_append_utf8(lines, target_file),
+    {
+      mergen_log_upgrade_legacy_file(target_file)
+      mergen_log_append_utf8(lines, target_file)
+    },
     error = function(e) {
       message(sprintf(
         "[MERGEN LOGGING ERROR] Gunluk log dosyasina yazilamadi (%s): %s",
@@ -102,7 +145,10 @@ mergen_ensure_daily_log_file <- function() {
     target_file
   )
   tryCatch(
-    mergen_log_append_utf8(banner, target_file),
+    {
+      mergen_log_upgrade_legacy_file(target_file)
+      mergen_log_append_utf8(banner, target_file)
+    },
     error = function(e) {
       message(sprintf(
         "[MERGEN LOGGING ERROR] Acilis gunluk log dosyasi olusturulamadi (%s): %s",

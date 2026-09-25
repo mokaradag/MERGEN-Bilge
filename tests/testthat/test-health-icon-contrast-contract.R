@@ -84,3 +84,34 @@ test_that("nötr durum çipleri gri gradyana dönmez", {
   css <- .hic_css()
   expect_false(grepl("health-metric-icon\\s*\\{[^}]*#64748b 0%, #475569", css, perl = TRUE))
 })
+
+test_that("Çevrimiçi sekmesi baş harfleri ve ayrılan oturum metni okunur kalır", {
+  css <- .hic_css()
+  avatar <- .hic_rule(css, ".health-presence-avatar")
+  expect_false(is.na(avatar))
+  degrade <- sub("(?s).*linear-gradient\\(", "", avatar, perl = TRUE)
+  duraklar <- regmatches(degrade, gregexpr("#[0-9a-fA-F]{6}", degrade))[[1]]
+  expect_length(duraklar, 2L)
+  beyaz <- c(255, 255, 255)
+  for (d in duraklar) {
+    rgb <- strtoi(substring(sub("#", "", d), c(1, 3, 5), c(2, 4, 6)), 16L)
+    expect_gte(.hic_contrast(rgb, beyaz), 4.5)
+  }
+  # Açık temada ayrılan satır saydamlaştırılmaz ve ikincil metin koyulaşır.
+  satir <- .hic_rule(css, 'html[data-theme="light"] .health-presence-left td')
+  expect_true(grepl("opacity: 1", satir, fixed = TRUE))
+  alt <- .hic_rule(css, 'html[data-theme="light"] .health-presence-left .health-presence-sub')
+  expect_gte(.hic_contrast(.hic_hex(alt), beyaz), 4.5)
+})
+
+test_that("ADMIN rozeti degradesi beyaz 12px metinle 4.5:1 sağlar", {
+  yol <- file.path(resolve_repo_root_for_tests(), "www", "css", "admin_analytics.css")
+  css <- rawToChar(readBin(yol, what = "raw", n = file.info(yol)$size))
+  rozet <- regmatches(css, gregexpr("admin-badge[^{]*\\{[^}]*\\}", css, perl = TRUE))[[1]]
+  duraklar <- unique(unlist(regmatches(rozet, gregexpr("linear-gradient\\(135deg, #[0-9a-fA-F]{6}", rozet))))
+  expect_true(length(duraklar) >= 1L)
+  for (d in sub(".*#", "", duraklar)) {
+    rgb <- strtoi(substring(d, c(1, 3, 5), c(2, 4, 6)), 16L)
+    expect_gte(.hic_contrast(rgb, c(255, 255, 255)), 4.5)
+  }
+})

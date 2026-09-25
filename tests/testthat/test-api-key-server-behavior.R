@@ -231,14 +231,27 @@ testthat::test_that("api_key_use_default_btn kurum anahtarı varsa devam eder, y
     testthat::expect_false(isTRUE(session$userData$api_key_onboarding_done))
     testthat::expect_identical(env$.hatirlatmalar, 0L)
 
-    # 2) Varsayılan anahtar VAR: onboarding tamam, modal kapanır, bilgi toast'ı
+    # 2) Varsayılan anahtar VAR ama kimlik düşmüş: karar verilmez, modal açık kalır.
     env$.durum$default_key <- "sahte-kurum-anahtari"
-    env$.durum$owner <- list(username = "yonetici")
     session$setInputs(api_key_use_default_btn = 3)
+    testthat::expect_false(isTRUE(session$userData$api_key_onboarding_done))
+    testthat::expect_identical(removeModal_sayisi, 0L)
+    testthat::expect_identical(env$.hatirlatmalar, 0L)
+    testthat::expect_true(any(vapply(.toastlarTip(env, "warning"), function(t)
+      grepl("Kimlik doğrulaması geçerli değil", t$message, fixed = TRUE), logical(1))))
 
+    # 3) "Bu ekranı bir daha gösterme" işaretsiz: yalnız bu oturum için devam edilir.
+    env$.durum$owner <- list(username = "yonetici")
+    session$setInputs(api_key_use_default_btn = 4)
     testthat::expect_true(isTRUE(session$userData$api_key_onboarding_done))
+    testthat::expect_identical(session$userData$api_key_onboarding_owner, "yonetici")
     testthat::expect_identical(removeModal_sayisi, 1L)
-    # Kurum anahtarı seçimi sonraki girişler için o kullanıcıya hatırlanır.
+    testthat::expect_identical(env$.hatirlatmalar, 0L)
+
+    # 4) Kutu işaretli: kurum anahtarı seçimi sonraki girişler için hatırlanır.
+    session$setInputs(api_key_dontshow = TRUE)
+    session$setInputs(api_key_use_default_btn = 5)
+    testthat::expect_identical(removeModal_sayisi, 2L)
     testthat::expect_identical(env$.hatirlatmalar, 1L)
     testthat::expect_identical(env$.hatirlanan_kullanicilar, "yonetici")
 
@@ -258,9 +271,9 @@ testthat::test_that("api_key_use_default_btn kurum anahtarı varsa devam eder, y
     testthat::expect_true(any(vapply(.toastlarTip(env, "warning"), function(t)
       grepl("kaydedilemedi", t$message, fixed = TRUE), logical(1))))
 
-    # Kimlik etiketi yoksa tercih gönderilmez ve kullanıcı uyarılır.
+    # Tercih tarayıcıya gönderilemezse kullanıcı uyarılır.
     env$.hatirlatma_sonucu <- FALSE
-    session$setInputs(api_key_use_default_btn = 4)
+    session$setInputs(api_key_use_default_btn = 6)
     testthat::expect_true(any(vapply(.toastlarTip(env, "warning"), function(t)
       grepl("hatırlanamadı", t$message, fixed = TRUE), logical(1))))
   })
@@ -300,9 +313,12 @@ testthat::test_that("geç gelen 'bir daha gösterme' bayrağı tolerans içinde 
   env$.saat <- as.POSIXct("2026-01-01 09:00:00", tz = "UTC")
   env$Sys.time <- function() env$.saat
 
+  # Gecikmeli açılış tarayıcı yanıtı beklemeden hemen çalıştırılır; her iki
+  # yarı da bu sahteyi kullanır ve çağrı sayısı doğrulanır.
+  gecikmeler <- 0L
   testthat::local_mocked_bindings(
     runjs = function(...) invisible(NULL),
-    delay = function(ms, expr) force(expr),
+    delay = function(ms, expr) { gecikmeler <<- gecikmeler + 1L; force(expr) },
     .package = "shinyjs"
   )
 
@@ -319,13 +335,19 @@ testthat::test_that("geç gelen 'bir daha gösterme' bayrağı tolerans içinde 
     ilerlet(session, 3)
     testthat::expect_identical(env$.modal_acilislari, 0L)
 
+    # Başka kullanıcının etiketini taşıyan yanıt devralınmaz.
+    session$setInputs(api_key_onboarding_suppressed = list(suppressed = TRUE, tag = "etiket-baskasi"))
+    ilerlet(session, 1)
+    testthat::expect_false(isTRUE(session$userData$api_key_onboarding_done))
+
     # Bayrak geç geldi: bastırma geçerli, modal hiç açılmaz.
-    session$setInputs(api_key_onboarding_suppressed = TRUE)
+    session$setInputs(api_key_onboarding_suppressed = list(suppressed = TRUE, tag = "etiket-yonetici"))
     ilerlet(session, 1)
     ilerlet(session, 5)
     testthat::expect_identical(env$.modal_acilislari, 0L)
     testthat::expect_true(isTRUE(session$userData$api_key_onboarding_done))
   })
+  testthat::expect_identical(gecikmeler, 0L)
 
   env2 <- .apiKeyEnv()
   env2$.durum$default_key <- "sahte-kurum-anahtari"
@@ -338,6 +360,7 @@ testthat::test_that("geç gelen 'bir daha gösterme' bayrağı tolerans içinde 
     env2$.saat <- env2$.saat + 0; session$elapse(200)
     env2$.saat <- env2$.saat + 7; session$elapse(200)
     # Bayrak hiç gelmezse tolerans sonunda modal yine gösterilir.
+    testthat::expect_identical(gecikmeler, 1L)
     testthat::expect_identical(env2$.modal_acilislari, 1L)
   })
 })
@@ -366,9 +389,74 @@ testthat::test_that("bastırma tercihi kimlik hazır olunca kullanıcı etiketiy
     session$elapse(200)
     testthat::expect_identical(env$.etiket_istekleri, "ayilmaz")
 
-    session$setInputs(api_key_onboarding_suppressed = TRUE)
+    session$setInputs(api_key_onboarding_suppressed = list(suppressed = TRUE, tag = "etiket-ayilmaz"))
     session$elapse(200)
     testthat::expect_identical(env$.modal_acilislari, 0L)
     testthat::expect_true(isTRUE(session$userData$api_key_onboarding_done))
+  })
+})
+
+testthat::test_that("kişisel anahtar yolu da tercih etiketini gönderir", {
+  env <- .apiKeyEnv()
+  env$.durum$owner <- list(username = "ayilmaz")
+  env$load_user_api_key <- function(username) "sahte-kisisel-anahtar"
+  testthat::local_mocked_bindings(
+    runjs = function(...) invisible(NULL),
+    delay = function(ms, expr) force(expr),
+    .package = "shinyjs"
+  )
+  shiny::testServer(env$apiKeyServer,
+                    args = list(id = "api_key", serviceDesk = list(), api_config = list()), {
+    session$elapse(200)
+    testthat::expect_identical(env$.etiket_istekleri, "ayilmaz")
+    testthat::expect_length(env$.oturum_anahtarlari, 1L)
+    testthat::expect_identical(env$.modal_acilislari, 0L)
+  })
+})
+
+testthat::test_that("aynı oturum başka kullanıcıya geçince onboarding kararı yeniden işler", {
+  env <- .apiKeyEnv()
+  env$.durum$default_key <- "sahte-kurum-anahtari"
+  env$.durum$owner <- list(username = "a_kisi")
+  env$.saat <- as.POSIXct("2026-01-01 09:00:00", tz = "UTC")
+  env$Sys.time <- function() env$.saat
+  anahtarlar <- list(b_kisi = "sahte-b-anahtari")
+  env$load_user_api_key <- function(username) anahtarlar[[username]] %||% ""
+  testthat::local_mocked_bindings(
+    runjs = function(...) invisible(NULL),
+    delay = function(ms, expr) force(expr),
+    .package = "shinyjs"
+  )
+  shiny::testServer(env$apiKeyServer,
+                    args = list(id = "api_key", serviceDesk = list(), api_config = list()), {
+    session$elapse(200)
+    session$setInputs(api_key_onboarding_suppressed = list(suppressed = TRUE, tag = "etiket-a_kisi"))
+    session$elapse(200)
+    testthat::expect_identical(session$userData$api_key_onboarding_owner, "a_kisi")
+    testthat::expect_length(env$.oturum_anahtarlari, 0L)
+
+    # Karar sonrası kimlik seyrek izlenir; geçiş algılanana dek zaman ilerletilir.
+    gecisi_bekle <- function(kullanici) {
+      for (i in seq_len(15L)) {
+        if (identical(tail(env$.etiket_istekleri, 1L), kullanici)) break
+        session$elapse(200)
+      }
+    }
+
+    # B'ye geçiş: A'nın bayrağı/kararı devralınmaz, B'nin kişisel anahtarı yüklenir.
+    env$.durum$owner <- list(username = "b_kisi")
+    gecisi_bekle("b_kisi")
+    testthat::expect_length(env$.oturum_anahtarlari, 1L)
+    testthat::expect_identical(env$.oturum_anahtarlari[[1]]$owner$username, "b_kisi")
+    testthat::expect_identical(tail(env$.etiket_istekleri, 1L), "b_kisi")
+
+    # C'ye geçiş: anahtarı yok; A'nın bastırma yanıtı C için geçerli sayılmaz.
+    env$.durum$owner <- list(username = "c_kisi")
+    gecisi_bekle("c_kisi")
+    testthat::expect_identical(env$.modal_acilislari, 0L)
+    env$.saat <- env$.saat + 7
+    session$elapse(200)
+    testthat::expect_identical(env$.modal_acilislari, 1L)
+    testthat::expect_identical(session$userData$api_key_onboarding_owner, "c_kisi")
   })
 })

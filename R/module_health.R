@@ -203,9 +203,23 @@ healthServer <- function(id, perf_tracker) {
 	  }, error = function(e) NULL)
 	})
 
+    # Yetki oturum kimliğinden 2 sn'de bir yeniden okunur: SSO süresi dolunca ya
+    # da oturum yönetici olmayan kullanıcıya geçince çizilmiş içerik hemen kilit
+    # mesajına döner (değer değişmedikçe yeniden çizim tetiklenmez).
+    yonetici_durumu <- reactiveVal(health_session_is_admin(session))
+    observe({
+      invalidateLater(2000)
+      yonetici_durumu(health_session_is_admin(session))
+    })
+
     output$health_tab_content <- renderUI({
       tab <- input$health_tabs %||% "overview"
-      if (!health_session_is_admin(session)) {
+      # Çizim anındaki yetki kaydedilir; bağımlılık kayıttan SONRA alınır ki
+      # yoklama yalnız gerçek değişimde yeniden çizdirsin.
+      yonetici <- health_session_is_admin(session)
+      if (!identical(isolate(yonetici_durumu()), yonetici)) yonetici_durumu(yonetici)
+      yonetici_durumu()
+      if (!yonetici) {
         return(div(class = "health-empty", icon("lock"), " Bu sayfa yalnızca yöneticilere açıktır."))
       }
       # Çevrimiçi sekmesi yalnız bellek-içi defteri okur; sağlık probe'larını

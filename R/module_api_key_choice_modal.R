@@ -256,8 +256,9 @@ api_key_choice_modal_dialog <- function(ns,
       class = "akc-foot",
       # "Bu ekranı bir daha gösterme" yalnızca varsayılan kurum anahtarı
       # varken sunulur; aksi halde modalı bastırmak kullanıcıyı anahtarsız
-      # bırakır. İşaretlenince tercih istemci tarafında mergen_settings
-      # içine yazılır (yalnızca bayrak; ANAHTAR DEĞİL).
+      # bırakır. İşaret beklemede kalır ve yalnız kurum anahtarı seçilince
+      # o kullanıcı için kalıcılaşır; "Daha Sonra Karar Ver" hiçbir şey
+      # yazmaz (yalnızca bayrak; ANAHTAR DEĞİL).
       if (default_available) {
         tags$label(
           class = "akc-dontshow",
@@ -332,9 +333,10 @@ show_api_key_choice_modal <- function(session,
     "mergenApiKeyChoiceInit",
     list(
       defaultAvailable = default_available,
-      # Tercih, mergen_settings localStorage nesnesi içindeki bu anahtara
-      # yazılır (yalnızca bayrak; ASLA API anahtarı değeri değil).
-      settingsKey = "api_key_onboarding_suppressed"
+      # Tercih yalnızca bayraktır (ASLA API anahtarı değeri değil). Onay
+      # kutusunun bekleyen durumu bu girdiye bildirilir.
+      settingsKey = "api_key_onboarding_suppressed",
+      dontShowInputId = ns("api_key_dontshow")
     )
   )
 

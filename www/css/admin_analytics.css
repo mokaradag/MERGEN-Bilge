@@ -46,7 +46,7 @@ section.content,
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
   color: white;
   padding: 4px 12px;
   border-radius: 20px;
@@ -627,7 +627,7 @@ html[data-theme="light"] .admin-header-fixed .chat-header .admin-badge {
   justify-content: center !important;
   gap: 6px !important;
 
-  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%) !important;
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
   color: #ffffff !important;
 
   padding: 4px 12px !important;

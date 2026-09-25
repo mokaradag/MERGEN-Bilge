@@ -25,10 +25,13 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   (`MERGEN_FILE_SUMMARY_MAX_CONCURRENT`, varsayılan 2) ki sohbet istekleri işçi
   beklemesin; sınır işçi havuzundan türetilir ve en az bir işçi etkileşimli
   işe ayrılır (tek işçili havuzda özet yalnız işçi boştayken başlar). Kuyruktaki
-  özet, oturum başka kullanıcıya geçtiyse başlamaz ve sonucu yeni kullanıcıya
-  yazılmaz. Bekleyen özet kuyruğu da sınırlıdır
-  (`MERGEN_FILE_SUMMARY_MAX_QUEUE`, varsayılan 64); dolunca dosya yine eklenir,
-  özeti atlanır ve kullanıcı uyarılır. Özet görevinin bağımlılık taraması
+  özet, oturum başka kullanıcıya geçtiyse ya da kimliğin süresi dolduysa
+  başlamaz ve sonucu yazılmaz; toplu yükleme partisi de o durumda yeni
+  kullanıcının sohbet bağlamına eklenmez. Bekleyen özet kuyruğu da sınırlıdır
+  (`MERGEN_FILE_SUMMARY_MAX_QUEUE`, varsayılan 64; oturum başına
+  `MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION`, varsayılan 16); dolunca dosya
+  yine eklenir, özeti atlanır ve kullanıcı uyarılır. Bekleyen özetler işçi
+  metriklerinde görünür; oturum kapanınca çalışan özetin yuvası bırakılır. Özet görevinin bağımlılık taraması
   açılışta bir kez yapılır; süreç yeniden başladıktan sonraki ilk yükleme de
   olay döngüsünü dondurmaz. Gönderim anında oluşan hata da bildirimi kapatır
   ve "özet çıkarılamadı" uyarısı verir.
@@ -38,10 +41,12 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 - **Konsol logu sadeleşti.** `[CHAT PERF] SSE işçide ilk ham HTTP parçası
   alındı` satırı her parçada değil istek başına bir kez yazılır.
 - **Proje ve Kaynak Analizi Excel eki:** Latin1 sütundan NVARCHAR olarak okunan
-  Türkçe metnin `ý/þ/ð` harfleri `ı/ş/ğ` olarak dışa aktarılır. Onarım sütun
-  düzeyinde kanıta bağlıdır: sütunda Türkçe kanıtı (`ý` ya da `ç/ü`) yoksa veya
-  başka dil harfi (ör. İzlandaca `á/í/ó`) ya da gerçek `ı/ş/ğ` varsa sütuna
-  dokunulmaz. ODBC'nin kayıplı
+  Türkçe metnin `ý/þ/ð` harfleri `ı/ş/ğ` olarak dışa aktarılır; sütun adları da
+  aynı kurala tabidir. Onarım tam sütun düzeyinde kanıta bağlıdır ve CSV
+  dilimlerinde aynı karar her dilime uygulanır: sütunda İzlandaca/Faroecede
+  bulunmayan Türkçe kanıtı (`ç/ü`) yoksa (`ý/Ý` tek başına kanıt değildir; ör.
+  "Ýmir") veya başka dil harfi (ör. İzlandaca `á/í/ó`) ya da gerçek `ı/ş/ğ`
+  varsa sütuna dokunulmaz. ODBC'nin kayıplı
   `y`/`?` dönüşümü istemcide onarılamaz; sorgu tarafı çözümü RUNBOOK §13'tedir.
   Yerel alias şablonu: `docs/templates/library_query_aliases_local.template.R`.
 - **Tanılama yanlış uyarıları giderildi.** Yapılandırılmış servis uç noktaları
@@ -73,12 +78,15 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 - **Sistem Durumu ikonları:** metrik kartı ikonları gri zemin yerine durum
   renginin açık tonlu çipinde çizilir; iki temada ve tüm sekmelerde ikon
   kontrastı 3:1 üzerindedir (etkin sekme hapı ve ADMIN rozeti dahil).
-- **Kurum anahtarı seçimi hatırlanır:** "Kurum Anahtarı ile Devam Et" seçen
-  kullanıcıya (ör. yöneticiler) sonraki girişlerde API anahtarı ekranı tekrar
-  gösterilmez; Ayarlar > Yapılandırma'dan geri açılabilir. "Bir daha
-  gösterme" tercihi Zengin Deneyim açılışında da güvenilir biçimde uygulanır.
-  Tercih tarayıcıda kullanıcıya özgü etiketle saklanır: aynı tarayıcıyı
-  kullanan başka kullanıcı bu seçimi devralmaz. Önceki tarayıcı geneli bayrak
+- **Kurum anahtarı seçimi hatırlanır:** "Bu ekranı bir daha gösterme"yi
+  işaretleyip "Kurum Anahtarı ile Devam Et" seçen kullanıcıya (ör. yöneticiler)
+  sonraki girişlerde API anahtarı ekranı tekrar gösterilmez; Ayarlar >
+  Yapılandırma'dan geri açılabilir. Kutu seçim yapılana dek bekler: "Daha
+  Sonra Karar Ver" hiçbir tercih yazmaz. "Bir daha gösterme" tercihi Zengin
+  Deneyim açılışında da güvenilir biçimde uygulanır. Tercih tarayıcıda
+  kullanıcıya özgü ayrı bir anahtarda saklanır: aynı tarayıcıyı kullanan
+  başka kullanıcı bu seçimi devralmaz, aynı oturum başka kullanıcıya geçerse
+  karar yeni kullanıcı için yeniden verilir. Önceki tarayıcı geneli bayrak
   artık okunmaz; bu yüzden tercih kullanıcı başına bir kez yeniden sorulur.
 - **Keşfet akışı yenilendi:** Keşfet düğmesi, mod seçimi ve asistan seçimi
   ekranları sade ve okunaklı bir tasarıma geçti; mod açıklamaları ve özellik

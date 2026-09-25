@@ -179,6 +179,9 @@ MERGEN_MCP_BASE_DIR="//mainserver/MERGEN Bilge/mergen_uploads"
 # Sırada bekleyebilecek en fazla özet işi; dolunca dosya yine eklenir ama
 # özeti atlanır ve kullanıcı uyarılır:
 #   MERGEN_FILE_SUMMARY_MAX_QUEUE=64
+# Tek oturumun sırada tutabileceği en fazla özet (bir kullanıcının toplu
+# yüklemesi ortak kuyruğu doldurup diğer kullanıcıların özetlerini engellemez):
+#   MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION=16
 
 # Günlük log dizini. `app.R`, `run_mergen_prod.R` ve çok-worker çocuk süreçleri
 # aynı erken bootstrap katmanını kullanır; `mergen_YYYYMMDD.log` ile

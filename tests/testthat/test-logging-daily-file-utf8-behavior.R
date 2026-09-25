@@ -38,6 +38,14 @@
   readBin(path, what = "raw", n = file.info(path)$size)
 }
 
+# Kaynak dosyayı yerel kod sayfasından bağımsız UTF-8 metin olarak okur
+# (CP1254 oturumunda readLines(encoding = "UTF-8") geçersiz UTF-8 verebilir).
+.log_utf8_source_text <- function(rel_path) {
+  metin <- rawToChar(.log_utf8_bytes(file.path(resolve_repo_root_for_tests(), rel_path)))
+  Encoding(metin) <- "UTF-8"
+  gsub("\r\n?", "\n", sub("^\ufeff", "", metin))
+}
+
 test_that("günlük dosya appender'ı Türkçe satırı options(encoding) ne olursa olsun UTF-8 yazar", {
   skip_if_not_installed("logger")
   tmp <- withr::local_tempdir()
@@ -67,15 +75,45 @@ test_that("NA satırı ve Türkçe metin ayrı dosyaya da UTF-8 bayt olarak ekle
 })
 
 test_that("açılış başlığı ve dbg_dump da UTF-8 ikili yazımı kullanır", {
-  kaynak <- paste(readLines(file.path(resolve_repo_root_for_tests(), "R", "config_logging_daily_file.R"),
-                            warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  kaynak <- .log_utf8_source_text("R/config_logging_daily_file.R")
+  expect_true(validUTF8(kaynak))
   kod <- gsub("#[^\n]*", "", kaynak)
   expect_false(grepl("cat(", kod, fixed = TRUE))
   expect_true(grepl("open = \"ab\"", kod, fixed = TRUE))
 
-  logging <- paste(readLines(file.path(resolve_repo_root_for_tests(), "R", "config_logging.R"),
-                             warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  logging <- .log_utf8_source_text("R/config_logging.R")
+  expect_true(validUTF8(logging))
   dbg <- regmatches(logging, regexpr("dbg_dump <- function[\\s\\S]*?\n}\n", logging, perl = TRUE))
   expect_length(dbg, 1L)
   expect_true(grepl("mergen_log_append_utf8(", dbg, fixed = TRUE))
+})
+
+test_that("eski yazıcının CP1254 satırları ilk UTF-8 eklemeden önce UTF-8'e çevrilir", {
+  skip_if_not_installed("logger")
+  tmp <- withr::local_tempdir()
+  env <- .log_utf8_env(tmp)
+  hedef <- env$current_mergen_log_file_path()
+  eski <- paste0("INFO [x] ", intToUtf8(c(0x0130L, 0x015FL, 0x0131L, 0x011FL)))
+  utf8_satir <- paste0("INFO [y] ", intToUtf8(c(0x00E7L, 0x00FCL)))
+  # Aynı gün dosyası: eski yazıcının CP1254 satırı + zaten UTF-8 olan bir satır.
+  writeBin(c(iconv(paste0(eski, "\n"), from = "UTF-8", to = "WINDOWS-1254", toRaw = TRUE)[[1]],
+             charToRaw(enc2utf8(paste0(utf8_satir, "\n")))), hedef)
+  expect_false(validUTF8(rawToChar(.log_utf8_bytes(hedef))))
+
+  # Yerel kod sayfası UTF-8 kabul edilir (CI/bulut); eski satır WINDOWS-1254'ten çevrilir.
+  testthat::local_mocked_bindings(localeToCharset = function(...) "UTF-8", .package = "utils")
+  # Yeni süreç: dosya bu süreçte henüz denetlenmedi; ilk UTF-8 ekleme öncesi çevrilir.
+  denetlenen <- env$.MERGEN_LOG_UTF8_CHECKED
+  rm(list = ls(denetlenen, all.names = TRUE), envir = denetlenen)
+  yeni <- paste0("INFO [z] ", intToUtf8(c(0x015EL, 0x0130L)))
+  withr::local_options(encoding = "latin1")
+  env$mergen_daily_file_appender(yeni)
+
+  icerik <- rawToChar(.log_utf8_bytes(hedef))
+  expect_true(validUTF8(icerik))
+  Encoding(icerik) <- "UTF-8"
+  expect_identical(icerik, paste0(eski, "\n", utf8_satir, "\n", yeni, "\n"))
+
+  # Zaten UTF-8 olan dosyaya ikinci kez dokunulmaz (süreç başına tek denetim).
+  expect_false(env$mergen_log_upgrade_legacy_file(hedef))
 })
