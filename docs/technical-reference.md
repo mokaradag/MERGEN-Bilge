@@ -1977,7 +1977,14 @@ Bu metrikler **kullanıcı sayısını göstermez**. Bunlar; LLM çağrısı, TT
 
 ### İlgili dosyalar
 - `R/helpers_worker_monitor.R`
+- `R/helpers_worker_dep_cache.R` (otomatik kip bağımlılık önbelleği)
 - `R/module_health_worker_metrics.R`
+
+Otomatik bağımlılık kipinde (`dependency_mode = "auto"`) global/paket taraması
+görev gövdesi başına bir kez yapılır ve adlar önbelleğe alınır; değerler her
+çağrıda görev ortamından taze okunur. Tarama büyük `.GlobalEnv` üzerinde
+saniyeler sürdüğü için her gönderimde tekrarlanması ana süreci (tüm
+kullanıcıları) donduruyordu. Başarısız tarama önbelleğe alınmaz.
 
 İzleme uygulaması `tracked_future_promise(...)` sarmalayıcısı ile yürütülür. Asenkron çalışan yeni bir akış eklenirse, sağlık ekranında doğru görünmesi için ilgili future çağrısının izlemeli sarmalayıcı üzerinden başlatılması gerekir.
 

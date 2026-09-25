@@ -36,17 +36,34 @@ current_mergen_log_file_path <- function() {
   )
 }
 
+# Satırları günlük dosyaya İKİLİ kipte UTF-8 bayt olarak ekler. cat(file=)
+# yazımı options(encoding) ve yerel kod sayfasına bağlıydı; Windows VM'de
+# (CP1254) dosyaya CP1254 baytları düşüyor, UTF-8 okuyan canlı log
+# görüntüleyicisinde Türkçe karakterler mojibake görünüyordu.
+mergen_log_append_utf8 <- function(lines, target_file) {
+  lines <- as.character(lines)
+  lines[is.na(lines)] <- "NA"
+  lines <- if (exists("normalize_text_utf8", mode = "function")) {
+    normalize_text_utf8(lines)
+  } else {
+    enc2utf8(lines)
+  }
+  payload <- enc2utf8(paste0(paste(lines, collapse = "\n"), "\n"))
+  con <- file(target_file, open = "ab")
+  on.exit(close(con), add = TRUE)
+  writeBin(charToRaw(payload), con)
+  invisible(TRUE)
+}
+
 # Hem konsola hem dosyaya log yaz.
-# Bu appender, logger::appender_file ile AYNI yazım anlamını korur
-# (cat(lines, sep = "\n", append = TRUE)); böylece dosya içeriği, kodlaması ve
-# satır ayrımı eskisiyle bayt-bayt aynı kalır. Eklenen tek fark üç üretim
-# güvenilirliği iyileştirmesidir:
+# Satır ayrımı logger::appender_file ile aynıdır (her satır "\n" ile biter);
+# dosya kodlaması ise yerel ayardan bağımsız olarak her zaman UTF-8'dir.
+# Üç üretim güvenilirliği iyileştirmesi:
 #   1) Hedef dosya her satırda güncel tarihe göre yeniden çözülür (günlük devir).
 #   2) Log dizini her yazımdan önce garanti edilir (UNC/ağ paylaşımı dayanıklılığı).
 #   3) Yazma hatası SESSİZCE yutulmaz; konsola bildirilir; böylece bir paylaşım
 #      hatası günlerce fark edilmeden log üretimini durduramaz.
-# Not: cat() bir useBytes argümanı KABUL ETMEZ (o writeLines'a aittir); bu yüzden
-# burada kullanılmaz. Konsol native-dönüşümü ayrı appender'da yapılır.
+# Konsol native-dönüşümü ayrı appender'da yapılır.
 mergen_daily_file_appender <- function(lines) {
   if (!dir.exists(mergen_log_dir)) {
     dir.create(mergen_log_dir, recursive = TRUE, showWarnings = FALSE)
@@ -54,7 +71,7 @@ mergen_daily_file_appender <- function(lines) {
 
   target_file <- current_mergen_log_file_path()
   tryCatch(
-    cat(lines, sep = "\n", file = target_file, append = TRUE),
+    mergen_log_append_utf8(lines, target_file),
     error = function(e) {
       message(sprintf(
         "[MERGEN LOGGING ERROR] Gunluk log dosyasina yazilamadi (%s): %s",
@@ -70,11 +87,10 @@ mergen_daily_file_appender <- function(lines) {
 # Kök neden ne olursa olsun (yüksek MERGEN_LOG_THRESHOLD ilk INFO satırını
 # filtreliyor; logger appender dağıtımı ilk çağrıda dosyaya ulaşmıyor; vb.),
 # logger appender'ı dosyayı YALNIZCA eşiği geçen bir satır yazıldığında
-# oluşturur. Bu yardımcı, her açılışta günün dosyasını DOĞRUDAN cat() ile
-# (logger ve threshold'dan tamamen bağımsız) oluşturup açılış başlığını yazar;
-# böylece dosyanın her gün, her yeniden başlatmada var olması garanti edilir.
-# Yazım anlamı dosya appender'ı ile aynıdır (cat(..., append = TRUE)), dosya
-# içeriği/kodlaması bayt-bayt uyumlu kalır.
+# oluşturur. Bu yardımcı, her açılışta günün dosyasını DOĞRUDAN (logger ve
+# threshold'dan tamamen bağımsız) oluşturup açılış başlığını yazar; böylece
+# dosyanın her gün, her yeniden başlatmada var olması garanti edilir.
+# Yazım yolu dosya appender'ı ile aynıdır (UTF-8 ikili ekleme).
 mergen_ensure_daily_log_file <- function() {
   if (!dir.exists(mergen_log_dir)) {
     dir.create(mergen_log_dir, recursive = TRUE, showWarnings = FALSE)
@@ -86,7 +102,7 @@ mergen_ensure_daily_log_file <- function() {
     target_file
   )
   tryCatch(
-    cat(banner, sep = "\n", file = target_file, append = TRUE),
+    mergen_log_append_utf8(banner, target_file),
     error = function(e) {
       message(sprintf(
         "[MERGEN LOGGING ERROR] Acilis gunluk log dosyasi olusturulamadi (%s): %s",

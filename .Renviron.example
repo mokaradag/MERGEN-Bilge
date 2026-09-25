@@ -171,6 +171,10 @@ MERGEN_MCP_BASE_DIR="//mainserver/MERGEN Bilge/mergen_uploads"
 #   MERGEN_FILE_INGESTION_MAX_QUEUE=32
 # Ayrıntılı alım metrikleri (dosya adı/yol içermez; varsayılan KAPALI):
 #   MERGEN_FILE_INGESTION_METRICS=false
+# Yüklenen dosyaların arka plan LLM özetleri aynı worker havuzunu kullanır.
+# Aynı anda en fazla bu kadar özet çalışır, kalanlar sırayla başlar; toplu
+# yüklemede diğer kullanıcıların sohbet istekleri beklemez:
+#   MERGEN_FILE_SUMMARY_MAX_CONCURRENT=2
 
 # Günlük log dizini. `app.R`, `run_mergen_prod.R` ve çok-worker çocuk süreçleri
 # aynı erken bootstrap katmanını kullanır; `mergen_YYYYMMDD.log` ile
@@ -355,9 +359,18 @@ CLAUDE_CODE_RUNTIME_LEASE_ORPHAN_SEC=86400
 
 # Sistem Durumu sayfasının GERÇEKTEN denemesi gereken ek on-prem uç noktalar
 # (";" veya "," ile ayrılır). LOCAL_*_ENDPOINT / IMAGE_GEN_ENDPOINT /
-# LANGFLOW_BASE_URL / SSO_KEYCLOAK_URL zaten otomatik olarak on-prem sayılır;
-# bu liste yalnızca ek kurumsal DNS adresleri içindir.
+# LANGFLOW_BASE_URL / SSO_KEYCLOAK_URL ve api_config LLM uç noktaları zaten
+# otomatik olarak on-prem sayılır; bu liste yalnızca ek kurumsal DNS adresleri
+# içindir.
 MERGEN_HEALTH_INTERNAL_ENDPOINTS=
+
+# Kullanıcı avatar fotoğrafı adres şablonu (tarayıcı yükler; sunucu çağırmaz).
+# {user_id} kullanıcı kimliğiyle değiştirilir; {user_id} yoksa değer taban adres
+# sayılır ve sonuna "<id>.jpg" eklenir. Yalnızca http(s) ya da "/" ile başlayan
+# yol kabul edilir. Boş bırakılırsa kodlanmış yer tutucu adres yüklenemez ve
+# avatar yerine baş harfler/simge gösterilir.
+# Örnek: https://foto.kurum.local/personel/{user_id}.jpg
+MERGEN_USER_AVATAR_URL_TEMPLATE=
 
 # ------------------------------------------------------------------------------
 # Araç Modelleri Yapılandırması

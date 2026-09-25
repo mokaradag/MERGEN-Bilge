@@ -14,6 +14,44 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-09-25 Toplu yükleme donması, Windows kodlama ve Sistem Durumu düzeltmeleri
+
+- **Toplu yükleme artık uygulamayı dondurmuyor.** Her dosya özeti gönderiminde
+  işçi bağımlılıkları büyük `.GlobalEnv` üzerinde yeniden taranıyor (gönderim
+  başına saniyeler) ve bu süre boyunca TÜM kullanıcıların düğme, istem ve
+  bildirimleri bekliyordu. Tarama görev gövdesi başına bir kez yapılır
+  (`R/helpers_worker_dep_cache.R`); dosya özetleri oturum çerçevesini taşımadan
+  gönderilir ve eşzamanlı özet sayısı sınırlanır
+  (`MERGEN_FILE_SUMMARY_MAX_CONCURRENT`, varsayılan 2) ki sohbet istekleri işçi
+  beklemesin.
+- **Günlük log dosyaları UTF-8.** `mergen_yyyymmdd.log` ve AI hata ayıklama
+  dökümleri Windows kod sayfasına göre değil UTF-8 bayt olarak yazılır; Türkçe
+  karakterler bozulmaz.
+- **Konsol logu sadeleşti.** `[CHAT PERF] SSE işçide ilk ham HTTP parçası
+  alındı` satırı her parçada değil istek başına bir kez yazılır.
+- **Proje ve Kaynak Analizi Excel eki:** Latin1 sütundan NVARCHAR olarak okunan
+  Türkçe metnin `ý/þ/ð` harfleri `ı/ş/ğ` olarak dışa aktarılır. ODBC'nin kayıplı
+  `y`/`?` dönüşümü istemcide onarılamaz; sorgu tarafı çözümü RUNBOOK §13'tedir.
+  Yerel alias şablonu: `docs/templates/library_query_aliases_local.template.R`.
+- **Tanılama yanlış uyarıları giderildi.** Yapılandırılmış servis uç noktaları
+  (`LOCAL_*_ENDPOINT`, `IMAGE_GEN_ENDPOINT`, `LANGFLOW_BASE_URL`,
+  `SSO_KEYCLOAK_URL`, api_config LLM uç noktaları) kurumsal DNS adı taşısa da
+  on-prem sayılır ve gerçekten denenir; "Genel internet adresi algılandı"
+  uyarısı yalnız yapılandırılmamış genel adresler için kalır.
+- **Kullanıcı fotoğraf adresi yapılandırılabilir:** `MERGEN_USER_AVATAR_URL_TEMPLATE`
+  (`{user_id}` yer tutucusu). Fotoğraf yüklenemezse baş harfler gösterilir.
+- **Sistem Durumu açık tema** tüm sekmelerde okunur: skor halkası, kutucuk ve
+  kahraman alanı renkleri, İşçi İzleyici değerleri ve CPU çekirdek görseli.
+- **Yeni "Çevrimiçi" sekmesi (Sistem Durumu):** şu anda / son 15 dakika / son 24
+  saat çevrimiçi kullanıcı, açık oturum ve aktif birim sayaçları ile kullanıcı
+  oturum takip tablosu. Veri süreç belleğindedir; yeniden başlatmada sıfırlanır.
+- **AI Uzman altyazı şeridi** açık temada açık yüzey ve koyu metinle çizilir.
+- **Dokümantasyon sayfası** kök, `docs/` ve varlık klasörlerindeki belgeleri yeni
+  sekmelerle (Doğrulama, Özellikler, Konuşma, Varlıklar) gösterir; kayıtsız yeni
+  belge test tarafından yakalanır.
+- **Windows testi:** CodeMirror tarayıcı testi `options(encoding = "UTF-8")`
+  altında CP1254 VM'de "invalid UTF-8" hatası vermez.
+
 ### (Yayınlanmadı) 2026-09-23 Kod bloklarında gerçek sözdizimi vurgulaması geri geldi
 
 PR #692 kod görüntüleyicisini, belgeyi düz metin olarak çizen uygulama içi bir

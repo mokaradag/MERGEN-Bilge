@@ -521,6 +521,7 @@ source_manifest_required_order <- list(
   c("R/utils_text_encoding.R", "R/config_logging.R"),
   c("R/config_logging.R", "R/utils_rate_limiter.R"),
   c("R/utils_rate_limiter.R", "R/helpers_worker_monitor.R"),
+  c("R/helpers_worker_monitor.R", "R/helpers_worker_dep_cache.R"),
 
   c("R/config_file_store.R", "R/config_file_store_index_mutation.R"),
   c("R/config_file_store_index_mutation.R", "R/config_file_store_listing_helpers.R"),
@@ -592,6 +593,7 @@ source_manifest_required_order <- list(
 
   c("R/helpers_health_formatters.R", "R/helpers_health_runtime_checks.R"),
   c("R/helpers_health_runtime_checks.R", "R/helpers_health_checks.R"),
+  c("R/helpers_health_endpoint_scope.R", "R/helpers_health_checks.R"),
   c("R/helpers_health_checks.R", "R/module_health.R"),
 
   c("R/helpers_claude_code_user_guard.R", "R/helpers_claude_code_server_setup.R"),

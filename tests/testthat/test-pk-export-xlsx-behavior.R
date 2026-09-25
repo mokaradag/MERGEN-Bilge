@@ -669,3 +669,23 @@ test_that("Olgu ozeti block kipi icin deterministik metin uretir", {
   expect_true(grepl("6,0 saat", ozet, fixed = TRUE))
   expect_false(grepl("KULLANILAMAZ", ozet, fixed = TRUE))
 })
+
+test_that("Latin1 sutunda saklanmis Turkce metnin y/s/g harfleri disa aktarimda onarilir", {
+  skip_if_not_installed("writexl")
+  skip_if_not_installed("readxl")
+
+  env <- .pk_export_env()
+  # "kırılımlarının açılmış değerlendirilmeli" -> CP1254 baytlarının Latin-1 okuması.
+  bozuk <- intToUtf8(c(0x6B, 0xFD, 0x72, 0xFD, 0x6C, 0xFD, 0x6D, 0x20, 0x61, 0xE7, 0xFD,
+                       0x6C, 0x6D, 0xFD, 0xFE, 0x20, 0x64, 0x65, 0xF0, 0x65, 0x72))
+  dogru <- intToUtf8(c(0x6B, 0x131, 0x72, 0x131, 0x6C, 0x131, 0x6D, 0x20, 0x61, 0xE7, 0x131,
+                       0x6C, 0x6D, 0x131, 0x15F, 0x20, 0x64, 0x65, 0x11F, 0x65, 0x72))
+  veri <- data.frame(Aciklama = c(bozuk, dogru), Deger = c(1, 2), stringsAsFactors = FALSE)
+
+  artefakt <- env$pk_export_build(veri, list(facts = list()), list(),
+                                  base_name = "sentetik", dir = .pk_export_dir())
+
+  expect_identical(artefakt$status, "ok")
+  okunan <- as.data.frame(readxl::read_excel(artefakt$files[[1]]$path, sheet = "Veri"))
+  expect_identical(okunan$Aciklama, c(dogru, dogru))
+})

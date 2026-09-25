@@ -21,6 +21,7 @@ testthat::local_edition(3)
   env <- new.env(parent = temiz)
   source(file.path(kok, "R", "helpers_health_formatters.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "helpers_health_runtime_checks.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "helpers_health_endpoint_scope.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "helpers_health_checks.R"), encoding = "UTF-8", local = env)
   env
 }
@@ -139,13 +140,65 @@ test_that("health_check_db_schema bağlantı yoksa unknown döner", {
 # LLM endpoint (public internet adresi atlama sözleşmesi)
 # -----------------------------------------------------------------------------
 
-test_that("health_check_llm_endpoint public internet adresini çağırmadan atlar (warning)", {
+test_that("yapılandırılmamış genel internet adresi çağrılmadan atlanır (warning)", {
+  skip_if_not_installed("httr")
   env <- .fresh_health_env()
-  # api_config yok; LOCAL_LLM_ENDPOINT public-benzeri bir host.
-  withr::local_envvar(c(LOCAL_LLM_ENDPOINT = "http://dis-servis.example.com/v1"))
-  r <- env$health_check_llm_endpoint()
+  withr::local_envvar(c(LOCAL_LLM_ENDPOINT = "http://test.local/v1",
+                        MERGEN_HEALTH_INTERNAL_ENDPOINTS = ""))
+  testthat::local_mocked_bindings(
+    GET = function(url, ...) stop("genel adres çağrılmamalıydı"),
+    .package = "httr"
+  )
+  r <- env$health_check_http_endpoint("dis.test", "Dış Servis", "http://dis-servis.example.com/v1")
   expect_identical(r$status[1], "warning")
   expect_identical(r$value[1], "Atlandı")
+})
+
+# .Renviron.example sözleşmesi: LOCAL_*_ENDPOINT / IMAGE_GEN_ENDPOINT /
+# LANGFLOW_BASE_URL / SSO_KEYCLOAK_URL otomatik on-prem sayılır. Kurumsal DNS
+# adındaki (ör. *.com.tr) yapılandırılmış uç noktalar eskiden "Genel internet
+# adresi" diye atlanıyor ve Tanılama sekmesinde yanlış uyarı üretiyordu.
+test_that("yapılandırılmış LOCAL_LLM_ENDPOINT kurumsal DNS adıyla gerçekten denenir", {
+  skip_if_not_installed("httr")
+  env <- .fresh_health_env()
+  withr::local_envvar(c(LOCAL_LLM_ENDPOINT = "https://llm.kurum.com.tr/v1/chat/completions",
+                        MERGEN_HEALTH_INTERNAL_ENDPOINTS = ""))
+  cagrilan <- character(0)
+  testthat::local_mocked_bindings(
+    GET = function(url, ...) {
+      cagrilan <<- c(cagrilan, url)
+      structure(list(), class = "response")
+    },
+    status_code = function(res) 200L,
+    timeout = function(...) NULL,
+    .package = "httr"
+  )
+  r <- env$health_check_llm_endpoint()
+  expect_identical(r$status[1], "ok")
+  expect_identical(cagrilan, "https://llm.kurum.com.tr/v1/models")
+})
+
+test_that("TTS/STT/görsel/SSO uç noktalarının hostları otomatik on-prem sayılır", {
+  env <- .fresh_health_env()
+  withr::local_envvar(c(
+    LOCAL_TTS_ENDPOINT = "https://ses.kurum.com.tr/v1",
+    LOCAL_STT_ENDPOINT = "https://yazi.kurum.gov.tr:8443/v1/audio/transcriptions",
+    IMAGE_GEN_ENDPOINT = "https://gorsel.kurum.com.tr/v1/images/generations",
+    SSO_KEYCLOAK_URL = "https://sso.kurum.com.tr/realms/x",
+    MERGEN_HEALTH_INTERNAL_ENDPOINTS = ""
+  ))
+  expect_false(env$health_is_public_url("https://ses.kurum.com.tr/v1"))
+  expect_false(env$health_is_public_url("https://yazi.kurum.gov.tr:8443/health"))
+  expect_false(env$health_is_public_url("https://gorsel.kurum.com.tr/v1/images/generations"))
+  expect_false(env$health_is_public_url("https://sso.kurum.com.tr/realms/x"))
+  expect_true(env$health_is_public_url("https://api.example.com/v1"))
+})
+
+test_that("api_config LLM uç nokta listesi de on-prem host kümesine girer", {
+  env <- .fresh_health_env()
+  withr::local_envvar(c(MERGEN_HEALTH_INTERNAL_ENDPOINTS = ""))
+  env$api_config <- list(local_llm_endpoints = list(buyuk = "https://model2.kurum.com.tr/v1/chat/completions"))
+  expect_false(env$health_is_public_url("https://model2.kurum.com.tr/v1/models"))
 })
 
 test_that("health_check_http_endpoint yerel uç noktada mock GET ile ok döner", {

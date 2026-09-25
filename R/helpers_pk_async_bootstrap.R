@@ -315,9 +315,9 @@ pk_async_worker_bootstrap <- function(repo_root, files,
     # zaten `globalenv()`'tir; bu argüman işçiyi AYNI davranışa hizalar.
     # Sembol izolasyonu KORUNUR: değerler hâlâ `sahne` içine yazılır.
     yukleme <- pk_async_bounded_fs(function() {
+      kodlama <- options(encoding = "UTF-8"); on.exit(options(kodlama))  # temiz işçi CP1254 okurdu
       suppressWarnings(suppressMessages(
-        sys.source(tam, envir = sahne, keep.source = FALSE,
-                   toplevel.env = globalenv())
+        sys.source(tam, envir = sahne, keep.source = FALSE, toplevel.env = globalenv())
       ))
       TRUE
     }, deadline_at)

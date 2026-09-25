@@ -258,8 +258,8 @@ processAndSummarizeFile <- function(file_info,
   dest_safe <- tryCatch(enc2utf8(as.character(dest)), error = function(e) as.character(dest))
   file_name_safe <- tryCatch(enc2utf8(as.character(file_info$name)), error = function(e) as.character(file_info$name))
 
-	tracked_future_promise(
-	  task_fn = function() {
+  ozet_baslat <- function() {
+	ozet_gorevi <- function() {
 		file_ext <- tolower(tools::file_ext(file_name_safe))
 
 		# Özet çıkarma - hata durumunda basit bilgi döndür
@@ -282,9 +282,20 @@ processAndSummarizeFile <- function(file_info,
 
 		summary_text <- summarize_file_with_llm(digest, file_name_safe, settings_snapshot)
 		list(summary = summary_text, dest = dest_safe, ext = file_ext)
-	  },
+	}
+	# Bağımlılıklar süreç başına bir kez taranır ve görev İZOLE ortamla gönderilir:
+	# otomatik kip Shiny oturumunu taşıyan çağıran çerçeveyi de serileştiriyordu.
+	bagimlilik <- if (exists("worker_monitor_auto_globals", mode = "function")) {
+	  try(worker_monitor_auto_globals("file_summary", ozet_gorevi), silent = TRUE)
+	}
+	if (inherits(bagimlilik, "try-error")) bagimlilik <- NULL
+	tracked_future_promise(
+	  task_fn = ozet_gorevi,
 	  task_type = "file_summary",
-	  session_token = session$token
+	  session_token = session$token,
+	  dependency_mode = if (is.null(bagimlilik)) "auto" else "explicit",
+	  globals = bagimlilik$globals,
+	  packages = bagimlilik$packages
 	) %...>%
     (function(res) {
       if (isTRUE(auto_attach)) {
@@ -325,6 +336,13 @@ processAndSummarizeFile <- function(file_info,
       cat("[FILE PIPELINE] Özetleme hatası:", msg, "\n")
       showToast(session, paste(file_info$name, "yüklendi ancak özet çıkarılamadı."), "warning")
     })
+  }
+
+  if (exists("file_summary_schedule", mode = "function")) {
+    file_summary_schedule(ozet_baslat, session = session)
+  } else {
+    ozet_baslat()
+  }
 
   # Dosya KABUL edildi: kalıcılaştırma ve indeks kaydı tamamlandı. Özetleme
   # asenkron sürer; sayaç/başarı bildirimi bu karara göre verilir.

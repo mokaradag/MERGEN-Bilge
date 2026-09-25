@@ -27,9 +27,18 @@
 #           bitince silinir.
 # ==============================================================================
 
+# Dışa aktarım yalnızca GÖRÜNÜR çıktıdır (RLS/filtre bu noktadan önce biter);
+# Latin1 sütunda saklanmış Türkçe metnin Latin-1 harfleri burada ı/ş/ğ'ye döner.
 .pk_export_norm <- function(df) {
   if (exists("normalize_pk_dataframe_utf8", mode = "function", inherits = TRUE)) {
-    return(normalize_pk_dataframe_utf8(df))
+    df <- normalize_pk_dataframe_utf8(df)
+  }
+  if (!is.data.frame(df) ||
+      !exists("repair_turkish_latin1_letters", mode = "function", inherits = TRUE)) {
+    return(df)
+  }
+  for (j in seq_along(df)) {
+    if (is.character(df[[j]])) df[[j]] <- repair_turkish_latin1_letters(df[[j]])
   }
   df
 }

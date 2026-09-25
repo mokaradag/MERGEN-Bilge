@@ -301,7 +301,9 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
 
 - **Seam:** `destek_yonetici_saglik`
 - **Birincil R dosyaları:** `R/helpers_health_checks.R`, `R/helpers_health_runtime_checks.R`,
+  `R/helpers_health_endpoint_scope.R` (uç nokta host / on-prem sınıflandırması),
   `R/helpers_health_formatters.R`, `R/helpers_health_table.R`,
+  `R/helpers_user_presence.R` (Çevrimiçi sekmesi varlık defteri),
   `R/helpers_release_evidence.R` (release kanıt artifact okuyucu; VM evidence,
   ai-validation, **post-deploy smoke** ve günlük log sağlık özetleri),
   `R/helpers_admin_analytics.R`, `R/helpers_admin_*` aileleri.
@@ -312,7 +314,8 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   `mergen_post_deploy_smoke_artifact_record`).
 - **UI/server modülleri:** `R/module_health*.R` (Sistem Durumu sekmeleri:
   `R/module_health_overview.R`...`R/module_health_diagnostics.R` +
-  `R/module_health_release.R` "Doğrulama Kanıtı" sekmesi), `R/module_admin_*.R`,
+  `R/module_health_release.R` "Doğrulama Kanıtı" ve `R/module_health_presence.R`
+  "Çevrimiçi" sekmeleri), `R/module_admin_*.R`,
   `www/js/health_dashboard.js`, `www/css/health_dashboard.css`.
 - **DB/servis:** `MB_*` analitik okumaları; DB/LLM/file-store sağlık probe'ları
   (mock'lanır, gerçek internet uç noktası çağrılmaz); release kanıt sekmesi

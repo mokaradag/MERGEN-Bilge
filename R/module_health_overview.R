@@ -17,7 +17,9 @@ health_overview_ui <- function(checks, last_update) {
     div(
       class = paste("health-hero", health_status_class(overall)),
       `data-health-tooltip` = "Genel skor; kritik ve uyarı seviyesindeki kontrollerin ağırlıklı özetidir.",
-      div(class = "health-score-ring", span(score), tags$small("/100")),
+      div(class = "health-score-ring",
+          style = sprintf("--health-score: %s;", max(0, min(100, suppressWarnings(as.numeric(score)[1]) %||% 0), na.rm = TRUE)),
+          span(score), tags$small("/100")),
       div(class = "health-hero-copy",
           h2("Sistem Durumu"),
           p("MERGEN Bilge on-prem çalışma ortamı için özet sağlık görünümü."),

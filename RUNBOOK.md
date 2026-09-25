@@ -661,6 +661,21 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
   `MERGEN_LOG_DIR`'in oraya çözülmesi önerilir (ayrıntı ve "günlük log boş"
   sorun giderme: bölüm "4. İzleme ve Olay Müdahalesi").
 - Son uygulama logunu görüntülemek için `view_latest_mergen_app_log.bat` kullanılabilir.
+- **Tanılama uç nokta kapsamı:** `.Renviron` içinde yapılandırılmış servis uç
+  noktaları (`LOCAL_*_ENDPOINT`, `IMAGE_GEN_ENDPOINT`, `LANGFLOW_BASE_URL`,
+  `SSO_KEYCLOAK_URL`) ve api_config LLM uç noktaları kurumsal DNS adı taşısa da
+  on-prem sayılır ve gerçekten denenir. Yapılandırılmamış ek kurumsal hostlar
+  için `MERGEN_HEALTH_INTERNAL_ENDPOINTS` kullanılır.
+- **Sistem Durumu > Çevrimiçi:** şu anda çevrimiçi (bağlı oturumunda son 3
+  dakikada nabız görülen), son 15 dakika ve son 24 saat kullanıcı sayıları ile
+  oturum takip tablosu. Veri uygulama sürecinin belleğindedir: yeniden
+  başlatmada sıfırlanır; `MERGEN_WORKERS` ile birden çok süreç çalışıyorsa her
+  süreç yalnız kendi oturumlarını gösterir. Sekme yalnız açıkken 30 saniyede bir
+  yenilenir ve sağlık probe'larını tetiklemez.
+- **Toplu yükleme ve özet eşzamanlılığı:** yüklenen dosyaların LLM özetleri
+  `MERGEN_FILE_SUMMARY_MAX_CONCURRENT` (varsayılan 2) ile sınırlanır; kalanlar
+  sırayla başlar, böylece özetler paylaşılan işçi havuzunu doldurup sohbet
+  isteklerini bekletmez.
 - Loglarda secret, token, API key, auth header veya parola bulunmamalıdır.
 - **Sistem Durumu > Doğrulama Kanıtı sekmesi:** Operatör, uygulamayı kapatmadan en
   son doğrulama kanıtlarını görebilir. Sekme `R/helpers_release_evidence.R` saf
@@ -698,6 +713,22 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
 - Toplu DB repair veya destructive düzeltme yalnızca bilinçli, yedekli ve kapsamı açık operasyon olarak yapılmalıdır.
 - Mailto, JSON, log, file path ve tarayıcı rendering sınırlarında merkezi helper yaklaşımı korunmalıdır.
 - Türkçe karakterli dosya adları ve UNC path davranışı VM üzerinde doğrulanmalıdır.
+- **Proje ve Kaynak Analizi kaynak verisi:** Excel ekinde veya yanıtta "kırılım"
+  yerine `kyrylym`, "açılmış" yerine `açylmy?`, "değerlendirilmeli" yerine
+  `de?erlendirilmeli` görülüyorsa metin uygulamada değil kaynak sütunda bozuluyordur.
+  Türkçe metin Latin1 harmanlamalı (`SQL_Latin1_General_CP1_*`) bir `varchar`
+  sütunda saklanmıştır; ODBC sürücüsünün AutoTranslate dönüşümü ı/ş/ğ harflerini
+  en yakın `y`/`?` karşılığına indirir. Bu kayıp istemcide geri alınamaz ve
+  uygulama tahmin üretmez.
+  - Sorguda ilgili sütunu `CAST(Sutun AS NVARCHAR(4000)) AS Sutun` (uygun uzunlukla)
+    döndürün. Harfler bu durumda `ý/þ/ð/Ý/Þ/Ð` olarak gelir; Excel dışa aktarımı
+    bunları `ı/ş/ğ/İ/Ş/Ğ` harflerine çevirir (`repair_turkish_latin1_letters()`).
+  - Sorgudaki Türkçe sabitleri `N'...'` önekiyle yazın.
+  - Kalıcı çözüm sütunun `NVARCHAR` ya da Türkçe harmanlamaya taşınmasıdır (DBA
+    işi; yedekli ve planlı).
+  - Sürücü düzeyinde `AutoTranslate=no` yalnızca salt-okunur analiz DSN'i için ve
+    VM'de doğrulandıktan sonra düşünülmelidir; parametreler dar bayt olarak
+    bağlandığından yazma yapan DSN'lerde kullanılmaz.
 
 ## 14. Yaygın Hatalar ve Kontrol Noktaları
 

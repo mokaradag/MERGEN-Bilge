@@ -206,3 +206,27 @@ test_that("yükleme sırası: Türkçe katlama yardımcısı metadata katmanlar�
     info = "Metadata katmanı R/config_sql_loader.R sonrasına kaymış."
   )
 })
+
+test_that("repair_turkish_latin1_letters CP1254-Latin1 harflerini Türkçeye döndürür", {
+  testthat::skip_if_not_installed("stringi")
+  bozuk <- intToUtf8(c(0xDD, 0x73, 0x74, 0x61, 0x6E, 0x62, 0x75, 0x6C, 0x20, 0xDE, 0x75, 0x62,
+                       0x61, 0x74, 0x20, 0xD0, 0x20, 0x6B, 0xFD, 0x72, 0x20, 0xFE, 0xF0))
+  dogru <- intToUtf8(c(0x130, 0x73, 0x74, 0x61, 0x6E, 0x62, 0x75, 0x6C, 0x20, 0x15E, 0x75, 0x62,
+                       0x61, 0x74, 0x20, 0x11E, 0x20, 0x6B, 0x131, 0x72, 0x20, 0x15F, 0x11F))
+
+  sonuc <- repair_turkish_latin1_letters(c(bozuk, NA_character_, "ASCII metin", dogru))
+  expect_identical(sonuc, c(dogru, NA_character_, "ASCII metin", dogru))
+  expect_identical(Encoding(sonuc[1]), "UTF-8")
+})
+
+test_that("repair_turkish_latin1_letters gecersiz ve karakter disi girdiye dokunmaz", {
+  testthat::skip_if_not_installed("stringi")
+  gecersiz <- rawToChar(as.raw(c(0x61, 0xFD, 0x62)))
+  Encoding(gecersiz) <- "UTF-8"
+  expect_identical(repair_turkish_latin1_letters(gecersiz), gecersiz)
+  expect_identical(repair_turkish_latin1_letters(1:3), 1:3)
+  expect_null(repair_turkish_latin1_letters(NULL))
+  expect_identical(repair_turkish_latin1_letters(character(0)), character(0))
+  # Kayıplı ODBC en-yakın dönüşümü ("y"/"?") onarılmaz; yanlış tahmin üretilmez.
+  expect_identical(repair_turkish_latin1_letters("kyrylym de?er"), "kyrylym de?er")
+})

@@ -267,6 +267,9 @@ call_local_llm_sse_worker <- function(chat_history,
 
 	event_buffer <- ""
 	accumulated_text <- ""
+	# Düşünen modellerde yanıt metni uzun süre boş kalır; "ilk ham parça" satırı
+	# her parçada değil yalnızca bir kez yazılır (konsol logu şişiyordu).
+	first_raw_chunk_logged <- FALSE
 
 	reasoning_debug_event_count <- 0L
 	reasoning_debug_seen <- FALSE
@@ -529,7 +532,8 @@ call_local_llm_sse_worker <- function(chat_history,
           return(invisible(NULL))
         }
 
-        if (!nzchar(accumulated_text)) {
+        if (!isTRUE(first_raw_chunk_logged)) {
+          first_raw_chunk_logged <<- TRUE
           log_info(sprintf(
             "[CHAT PERF] SSE işçide ilk ham HTTP parçası alındı - %.3f sn",
             as.numeric(difftime(Sys.time(), llm_start_time, units = "secs"))

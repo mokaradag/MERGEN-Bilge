@@ -82,7 +82,10 @@
   # (R/helpers_request_backpressure.R) ve sağlık/hazırlık + kök sayfa
   # yönlendiricisi (R/helpers_app_http_routes.R) yatay-ölçekleme/performans için
   # eklendi; metrikler index önbelleğinden ÖNCE, router index önbelleğinden SONRA.
-  foundation = list(first = "R/config_packages.R", last = "R/helpers_worker_monitor.R", n = 13L),
+  # 13 -> 14 bilinçli güncelleme: otomatik kip bağımlılık önbelleği
+  # (R/helpers_worker_dep_cache.R) worker monitor fonksiyon tavanı nedeniyle
+  # ayrı dosyaya alındı; worker monitor'dan SONRA yüklenir.
+  foundation = list(first = "R/config_packages.R", last = "R/helpers_worker_dep_cache.R", n = 14L),
   # post_future_utils n = 9L -> 10L bilinçli güncelleme: hedef yolu sahiplik
   # jetonuyla rezerve eden ortak primitifler (R/utils_path_reservation.R)
   # atomik yazma ile aynı katmana eklendi; üç ayrı terfi yolu bu tek kaynağı
@@ -148,7 +151,10 @@
   # kalıcı-ada terfi adımı (R/helpers_files_promote_target.R) ayrı dosyaya
   # alındı; helpers_files_copy_promote.R 130 satır bütçesinde kaldı ve terfi
   # artık hedefi hiçbir koşulda ezmez. Terfi yardımcısı ondan ÖNCE yüklenir.
-  files_preview_pipeline = list(first = "R/helpers_image_gallery.R", last = "R/helpers_file_ingestion_runtime.R", n = 13L),
+  # files_preview_pipeline n = 13L -> 14L bilinçli güncelleme: dosya özeti
+  # eşzamanlılık kuyruğu (R/helpers_file_summary_queue.R) pipeline fonksiyon
+  # tavanı nedeniyle ayrı dosyaya alındı; pipeline'dan ÖNCE yüklenir.
+  files_preview_pipeline = list(first = "R/helpers_image_gallery.R", last = "R/helpers_file_ingestion_runtime.R", n = 14L),
   file_manager_helpers = list(first = "R/helpers_file_manager_policy.R", last = "R/helpers_file_manager_table_runtime.R", n = 13L),
   # Bilinçli güncelleme: R/helpers_langflow_runtime.R (kurumsal Langflow akış
   # çağrısı saf yardımcıları) send_message core'dan sonra bölüme eklendi; 11 -> 12.
@@ -262,7 +268,10 @@
   sso_identity_helpers = list(first = "R/helpers_sso_jwks_cache.R", last = "R/helpers_logout_url.R", n = 4L),
   # Bilinçli güncelleme: R/helpers_release_evidence.R (release kanıt artifact
   # okuyucusu) health_checks'ten önce bölüme eklendi; 6 -> 7 dosya.
-  support_admin_health_helpers = list(first = "R/helpers_destek_database.R", last = "R/helpers_health_checks.R", n = 7L),
+  # n = 7L -> 8L bilinçli güncelleme: uç nokta host sınıflandırması
+  # (R/helpers_health_endpoint_scope.R) satır bütçesi nedeniyle ayrı dosyaya
+  # alındı; helpers_health_checks.R'den ÖNCE yüklenir.
+  support_admin_health_helpers = list(first = "R/helpers_destek_database.R", last = "R/helpers_health_checks.R", n = 8L),
   # Bilinçli güncelleme: R/helpers_ai_expert_handlers_support.R (AI Uzman handler
   # saf karar yardımcıları) bölüm sonuna eklendi; 3 -> 4 dosya.
   ai_expert_helpers = list(first = "R/helpers_ai_expert_user_data.R", last = "R/helpers_ai_expert_handlers_support.R", n = 5L),
@@ -307,7 +316,9 @@
   # yardımcıları (R/helpers_startup_lane.R; appLoadingUI ortam varsayılanını
   # gömer) ve şerit sunucu gözlemcileri (R/module_startup_lane.R;
   # startupScreenObserversInit delege eder) bölüme eklendi. 12 -> 14.
-  module_identity_startup = list(first = "R/module_sso.R", last = "R/module_quick_actions.R", n = 14L),
+  # n = 14L -> 15L bilinçli güncelleme: Sistem Durumu "Çevrimiçi" sekmesinin
+  # varlık defteri (R/helpers_user_presence.R) performans modülünden ÖNCE.
+  module_identity_startup = list(first = "R/module_sso.R", last = "R/module_quick_actions.R", n = 15L),
   # 5 -> 7 bilinçli güncelleme: Bilge Yolaç Oturumları sayfası
   # (R/module_claude_code_sessions_ui.R + R/module_claude_code_sessions.R)
   # stream_poll'dan sonra, ana server modülünden önce eklendi.
@@ -345,7 +356,9 @@
   # modülleriyle aynı desen. module_admin_gelismis_analizler.R'den sonra,
   # koordinatör module_admin_analytics.R'den önce eklendi.
   module_admin = list(first = "R/module_admin_genel_bakis.R", last = "R/module_admin_documentation.R", n = 23L),
-  module_health_chartlab = list(first = "R/module_health_worker_metrics.R", last = "R/module_chartlab.R", n = 10L),
+  # n = 10L -> 11L bilinçli güncelleme: "Çevrimiçi" sekmesi UI'ı
+  # (R/module_health_presence.R) module_health.R'den ÖNCE eklendi.
+  module_health_chartlab = list(first = "R/module_health_worker_metrics.R", last = "R/module_chartlab.R", n = 11L),
   # Bilinçli güncelleme: SSO auth-ready / yenilenebilir modül wiring katmanı
   # R/server_runtime_auth_ready.R dosyasına ayrıldı (server_runtime_context.R'den
   # sonra). 13 -> 14.
@@ -731,7 +744,13 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # ratchet'i için `helpers_pk_answer_compose.R` dosyasından ayrıldı).
   # 498 -> 499: `helpers_pk_stream_slot_guard.R` (canlı akışta ham yuva
   # koruyucusu; `helpers_pk_provenance_peek.R` ratchet sınırındaydı).
-  expect_equal(length(runtime), 499L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 499 -> 502: üç ratchet bölünmesi — `helpers_worker_dep_cache.R` (otomatik
+  # kip bağımlılık önbelleği), `helpers_file_summary_queue.R` (dosya özeti
+  # eşzamanlılık kuyruğu) ve `helpers_health_endpoint_scope.R` (sağlık uç nokta
+  # host sınıflandırması).
+  # 502 -> 504: Sistem Durumu "Çevrimiçi" sekmesi — `helpers_user_presence.R`
+  # (varlık defteri) ve `module_health_presence.R` (sekme UI).
+  expect_equal(length(runtime), 504L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

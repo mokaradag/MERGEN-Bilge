@@ -343,15 +343,16 @@ dbg_dump <- function(label, payload) {
     payload_json <- .sanitize_log_value(payload_json)
     label <- .sanitize_log_value(as.character(label))
 
-    cat(
-      sprintf("[%s] %s\n", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), label),
-      payload_json,
-      "\n---\n",
-      file = file.path(
+    mergen_log_append_utf8(
+      c(
+        sprintf("[%s] %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), label),
+        as.character(payload_json),
+        "---"
+      ),
+      file.path(
         mergen_log_dir,
         sprintf("ai_debug_%s.log", format(current_mergen_log_date(), "%Y%m%d"))
-      ),
-      append = TRUE
+      )
     )
   }, silent = TRUE)
 }

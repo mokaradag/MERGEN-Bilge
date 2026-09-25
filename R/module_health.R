@@ -44,9 +44,11 @@ health_source_optional <- function(path) {
 # global.R kaynak sırası güncel değilse bile modül kendi bağımlılıklarını güvenli yükler.
 if (!exists("health_collect_checks", mode = "function") ||
     !exists("health_status_pill", mode = "function") ||
-    !exists("health_check_runtime_info", mode = "function")) {
+    !exists("health_check_runtime_info", mode = "function") ||
+    !exists("health_is_public_url", mode = "function")) {
   health_source_optional("R/helpers_health_formatters.R")
   health_source_optional("R/helpers_health_runtime_checks.R")
+  health_source_optional("R/helpers_health_endpoint_scope.R")
   health_source_optional("R/helpers_health_checks.R")
 }
 
@@ -63,6 +65,7 @@ health_source_optional("R/module_health_runtime.R")
 health_source_optional("R/module_health_security.R")
 health_source_optional("R/module_health_diagnostics.R")
 health_source_optional("R/module_health_release.R")
+health_source_optional("R/module_health_presence.R")
 
 healthUI <- function(id) {
   ns <- NS(id)
@@ -94,6 +97,10 @@ healthUI <- function(id) {
           tabPanel(
             title = tags$span(title = "Worker, bellek ve süreç bilgileri", tagList(icon("server"), " Çalışma Zamanı")),
             value = "runtime"
+          ),
+          tabPanel(
+            title = tags$span(title = "Çevrimiçi kullanıcılar ve oturum takibi", tagList(icon("users"), " Çevrimiçi")),
+            value = "presence"
           ),
           tabPanel(
             title = tags$span(title = "SSO, ortam değişkenleri ve şema", tagList(icon("shield-alt"), " Güvenlik & Yapılandırma")),
@@ -181,8 +188,15 @@ healthServer <- function(id, perf_tracker) {
 	})
 
     output$health_tab_content <- renderUI({
-      checks <- checks_data()
       tab <- input$health_tabs %||% "overview"
+      # Çevrimiçi sekmesi yalnız bellek-içi defteri okur; sağlık probe'larını
+      # tetiklemez ve yalnızca açıkken 30 saniyede bir yenilenir.
+      if (identical(tab, "presence")) {
+        health_refresh_trigger()
+        invalidateLater(30000)
+        return(health_presence_ui(tryCatch(mb_presence_snapshot(), error = function(e) NULL)))
+      }
+      checks <- checks_data()
 
       switch(tab,
         overview = health_overview_ui(checks, health_last_update()),

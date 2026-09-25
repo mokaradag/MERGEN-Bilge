@@ -19,10 +19,10 @@ test_that("kod blokları gerçek CodeMirror ile vurgulanır, katlanır ve tam ko
 
   root <- resolve_repo_root_for_tests()
   runner <- new.env(parent = globalenv())
-  exprs <- parse(text = readLines(file.path(root, "tests", "scripts", "codemirror_rendering_check.R"),
-                                 warn = FALSE, encoding = "UTF-8"),
-                 keep.source = FALSE, encoding = "UTF-8")
-  for (expr in exprs) eval(expr, runner)
+  # CP1254 Windows'ta readLines() + parse(text=) geçersiz UTF-8 üretebilir.
+  for (expr in parse_r_file_utf8(file.path(root, "tests", "scripts", "codemirror_rendering_check.R"))) {
+    eval(expr, runner)
+  }
 
   browser <- runner$cm_render_check_find_browser()
   required <- nzchar(Sys.getenv("MERGEN_BROWSER_BIN", unset = ""))

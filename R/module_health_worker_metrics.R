@@ -4,12 +4,15 @@
 # ==============================================================================
 
 render_worker_health_html <- function(worker_info) {
+  # Renkler tema CSS'inde (www/css/health_dashboard.css); satır içi beyaz yazı
+  # açık temada okunmuyordu. İş türü adları kaçırılarak yazılır.
+  kacis <- function(x) htmltools::htmlEscape(as.character(x %||% ""))
   breakdown <- worker_info$task_type_breakdown %||% list()
 
   breakdown_text <- if (length(breakdown) > 0) {
     paste(
       vapply(names(breakdown), function(nm) {
-        paste0(nm, ": ", breakdown[[nm]])
+        paste0(kacis(nm), ": ", kacis(breakdown[[nm]]))
       }, character(1)),
       collapse = "<br>"
     )
@@ -17,27 +20,22 @@ render_worker_health_html <- function(worker_info) {
     "Aktif asenkron iş yok"
   }
 
-  HTML(sprintf(
-    '<div style="line-height: 2;">
-      <span style="color: #60a5fa;">Toplam İşçi:</span> <span style="color: #fff;">%d</span><br>
-      <span style="color: #60a5fa;">Boş İşçi:</span> <span style="color: #fff;">%d</span><br>
-      <span style="color: #60a5fa;">Aktif İşçi:</span> <span style="color: #fff;">%d</span><br>
-      <span style="color: #60a5fa;">Aktif İş:</span> <span style="color: #fff;">%d</span><br>
-      <span style="color: #60a5fa;">Kuyruktaki İş:</span> <span style="color: #fff;">%d</span><br>
-      <span style="color: #60a5fa;">Kullanım Oranı:</span> <span style="color: #fff;">%.1f%%</span><br><br>
+  satir <- function(etiket, deger) {
+    sprintf('<span class="health-worker-stat-label">%s</span> <span class="health-worker-stat-value">%s</span><br>',
+            etiket, deger)
+  }
 
-      <span style="color: #a78bfa; font-weight: bold;">İş Türleri:</span><br>
-      <span style="color: #fff; margin-left: 10px;">%s</span><br><br>
-
-      <span style="color: #94a3b8;">%s</span>
-    </div>',
-    worker_info$total_workers,
-    worker_info$free_workers,
-    worker_info$active_workers,
-    worker_info$active_jobs,
-    worker_info$queued_jobs,
-    worker_info$usage_pct,
-    breakdown_text,
-    worker_info$note
+  HTML(paste0(
+    '<div class="health-worker-stats">',
+    satir("Toplam İşçi:", sprintf("%d", as.integer(worker_info$total_workers))),
+    satir("Boş İşçi:", sprintf("%d", as.integer(worker_info$free_workers))),
+    satir("Aktif İşçi:", sprintf("%d", as.integer(worker_info$active_workers))),
+    satir("Aktif İş:", sprintf("%d", as.integer(worker_info$active_jobs))),
+    satir("Kuyruktaki İş:", sprintf("%d", as.integer(worker_info$queued_jobs))),
+    satir("Kullanım Oranı:", sprintf("%.1f%%", as.numeric(worker_info$usage_pct))),
+    '<br><span class="health-worker-types-title">İş Türleri:</span><br>',
+    '<span class="health-worker-types">', breakdown_text, '</span><br><br>',
+    '<span class="health-worker-note">', kacis(worker_info$note), '</span>',
+    '</div>'
   ))
 }

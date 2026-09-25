@@ -55,3 +55,23 @@ test_that("mb_sidebar_user_avatar_url placeholder/geçersiz id için boş string
   expect_equal(.sb_env$mb_sidebar_user_avatar_url("unknown"), "")
   expect_equal(.sb_env$mb_sidebar_user_avatar_url(NULL), "")
 })
+
+test_that("avatar adresi MERGEN_USER_AVATAR_URL_TEMPLATE ile kod değiştirmeden yapılandırılır", {
+  withr::local_envvar(c(MERGEN_USER_AVATAR_URL_TEMPLATE = "https://foto.kurum.local/personel/{user_id}.jpg"))
+  expect_identical(.sb_env$mb_sidebar_user_avatar_url(42), "https://foto.kurum.local/personel/42.jpg")
+
+  withr::local_envvar(c(MERGEN_USER_AVATAR_URL_TEMPLATE = "https://foto.kurum.local/personel/"))
+  expect_identical(.sb_env$mb_sidebar_user_avatar_url("A 1"), "https://foto.kurum.local/personel/A%201.jpg")
+
+  withr::local_envvar(c(MERGEN_USER_AVATAR_URL_TEMPLATE = "/avatars/{user_id}.png"))
+  expect_identical(.sb_env$mb_sidebar_user_avatar_url(7), "/avatars/7.png")
+})
+
+test_that("geçersiz avatar şablonu yer tutucu varsayılana düşer", {
+  for (deger in c("javascript:alert(1)", "//dis.example/x", "ftp://x/{user_id}", "")) {
+    withr::local_envvar(c(MERGEN_USER_AVATAR_URL_TEMPLATE = deger))
+    url <- .sb_env$mb_sidebar_user_avatar_url(42)
+    expect_true(startsWith(url, "https://url"), info = deger)
+    expect_true(grepl("42\\.jpg$", url), info = deger)
+  }
+})

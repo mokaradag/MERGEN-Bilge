@@ -52,6 +52,7 @@ if (!exists("e2e_health_config", envir = globalenv(), inherits = FALSE)) {
 
 source(file.path(repo_root_e2e_health, "R", "utils_common.R"), encoding = "UTF-8", local = globalenv())
 source(file.path(repo_root_e2e_health, "R", "helpers_health_formatters.R"), encoding = "UTF-8", local = globalenv())
+source(file.path(repo_root_e2e_health, "R", "helpers_health_endpoint_scope.R"), encoding = "UTF-8", local = globalenv())
 source(file.path(repo_root_e2e_health, "R", "helpers_health_checks.R"), encoding = "UTF-8", local = globalenv())
 
 test_that("health snapshot redacts secrets and skips public endpoint probes", {

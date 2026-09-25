@@ -100,3 +100,23 @@ pk_tr_fold_is_blank <- function(x) {
   if (!length(katlanmis)) return(TRUE)
   is.na(katlanmis) | !nzchar(katlanmis)
 }
+
+# Türkçe CP1254 baytları Latin-1/CP1252 olarak çözüldüğünde ı/ş/ğ/İ/Ş/Ğ harfleri
+# Latin-1 karşılıklarına (U+00FD/U+00FE/U+00F0/U+00DD/U+00DE/U+00D0) dönüşür
+# (ör. Latin1 harmanlamalı sütunda saklanmış Türkçe metin NVARCHAR okunduğunda).
+# Bu harfler Türkçede bulunmadığından ICU (stringi) ile yerelden bağımsız birebir
+# geri çevrilir. ODBC'nin kayıplı en-yakın dönüşümü ("y"/"?") ONARILAMAZ.
+repair_turkish_latin1_letters <- function(x) {
+  if (is.null(x) || !is.character(x) || !length(x)) return(x)
+  if (!requireNamespace("stringi", quietly = TRUE)) return(x)
+
+  kaynak <- intToUtf8(c(0x00FDL, 0x00FEL, 0x00F0L, 0x00DDL, 0x00DEL, 0x00D0L))
+  hedef <- intToUtf8(c(0x0131L, 0x015FL, 0x011FL, 0x0130L, 0x015EL, 0x011EL))
+  utf8 <- enc2utf8(x)
+  aday <- !is.na(utf8) & validUTF8(utf8)
+  aday[aday] <- stringi::stri_detect_regex(utf8[aday], paste0("[", kaynak, "]"))
+  if (!any(aday)) return(x)
+
+  x[aday] <- stringi::stri_trans_char(utf8[aday], kaynak, hedef)
+  x
+}

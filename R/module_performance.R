@@ -63,6 +63,10 @@ performanceStatsServer <- function(id, current_user_id_provider) {
 
         age_secs <- as.numeric(difftime(current_time, entry$last_seen, units = "secs"))
         if (is.na(age_secs) || age_secs > session_timeout_secs) {
+          # Kopan oturum Çevrimiçi sekmesinde son nabız anında "ayrıldı" görünür.
+          if (exists("mb_presence_record_end", mode = "function")) {
+            try(mb_presence_record_end(tok, entry, ended_at = entry$last_seen), silent = TRUE)
+          }
           try(rm(list = tok, envir = active_sessions_env), silent = TRUE)
         }
       }
@@ -97,10 +101,15 @@ performanceStatsServer <- function(id, current_user_id_provider) {
       uid <- suppressWarnings(as.integer(user_id %||% get_current_user_id()))
       if (is.na(uid)) uid <- 0L
 
-      active_sessions_env[[session$token]] <- list(
-        user_id = uid,
-        last_seen = Sys.time()
-      )
+      active_sessions_env[[session$token]] <- if (exists("mb_presence_session_entry", mode = "function")) {
+        mb_presence_session_entry(
+          previous = active_sessions_env[[session$token]],
+          user_id = uid,
+          profile = mb_presence_profile(session)
+        )
+      } else {
+        list(user_id = uid, last_seen = Sys.time())
+      }
 
       stats$active_users <- count_active_users()
       invisible(NULL)
@@ -171,6 +180,9 @@ performanceStatsServer <- function(id, current_user_id_provider) {
 
     # Oturum kapanınca defterden çıkar
     session$onSessionEnded(function() {
+      if (exists("mb_presence_record_end", mode = "function")) {
+        try(mb_presence_record_end(session$token, active_sessions_env[[session$token]]), silent = TRUE)
+      }
       try(rm(list = session$token, envir = active_sessions_env), silent = TRUE)
     })
 

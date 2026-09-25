@@ -315,6 +315,35 @@ test_that("bootstrap SÜREÇ BAŞINA BİR KEZ çalışır (memoize) ve tekrar ok
   expect_equal(get(".pk_boot_test_counter", envir = globalenv()), 1L)
 })
 
+test_that("bootstrap UTF-8 kaynaktaki Türkçe dize sabitlerini bozmadan yükler", {
+  # Temiz PSOCK işçisinde `encoding` seçeneği yerel kod sayfasıdır; CP1254
+  # VM'de UTF-8 kaynak bayt bayt CP1254 okunuyor ve sabitler bozuluyordu.
+  kok <- file.path(tempdir(), paste0("pk_boot_enc_", as.integer(runif(1, 1, 1e9))))
+  dir.create(file.path(kok, "R"), recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(kok, recursive = TRUE), add = TRUE)
+  beklenen <- intToUtf8(c(0x50, 0x72, 0x6F, 0x6A, 0x65, 0x20, 0x41, 0x64, 0x131,
+                          0x20, 0x15F, 0x11F, 0xFC, 0x130))
+  satir <- paste0('assign(".pk_boot_enc_value", "', beklenen, '", envir = globalenv())')
+  writeBin(charToRaw(enc2utf8(satir)), file.path(kok, "R", "turkce.R"))
+
+  eski_flag <- get0(.PK_ASYNC_BOOTSTRAP_FLAG, envir = globalenv(), ifnotfound = NULL)
+  on.exit({
+    if (is.null(eski_flag)) {
+      suppressWarnings(rm(list = .PK_ASYNC_BOOTSTRAP_FLAG, envir = globalenv()))
+    } else {
+      assign(.PK_ASYNC_BOOTSTRAP_FLAG, eski_flag, envir = globalenv())
+    }
+    suppressWarnings(rm(list = ".pk_boot_enc_value", envir = globalenv()))
+  }, add = TRUE)
+  suppressWarnings(rm(list = .PK_ASYNC_BOOTSTRAP_FLAG, envir = globalenv()))
+
+  withr::local_options(encoding = "native.enc")
+  sonuc <- pk_async_worker_bootstrap(kok, "R/turkce.R", required_files = character(0))
+  expect_true(sonuc$ok)
+  expect_identical(enc2utf8(get(".pk_boot_enc_value", envir = globalenv())), beklenen)
+  expect_identical(getOption("encoding"), "native.enc")
+})
+
 test_that("bootstrap geçersiz kök ve boş liste için TİPLİ hata döner", {
   eski_flag <- get0(.PK_ASYNC_BOOTSTRAP_FLAG, envir = globalenv(), ifnotfound = NULL)
   on.exit({

@@ -23,10 +23,23 @@
 
 # Yerel ayardan bağımsız yükleme: dosya UTF-8 metin olarak ayrıştırılır
 # (POSIX/Windows kod sayfasında source(encoding=) Türkçe yorumda düşebilir).
+# readLines() options(encoding = "UTF-8") altında CP1254 oturumda baytları
+# yerel koda çevirip UTF-8 diye işaretler (geçersiz UTF-8); bu yüzden ham
+# baytlar okunur ve testthat gibi UTF-8 bağlantıdan ayrıştırılır.
+cm_render_check_read_utf8_lines <- function(path) {
+  metin <- rawToChar(readBin(path, what = "raw", n = file.info(path)$size))
+  Encoding(metin) <- "UTF-8"
+  strsplit(sub("^\ufeff", "", metin), "\r?\n")[[1]]
+}
+
+cm_render_check_parse_utf8 <- function(path) {
+  con <- textConnection(cm_render_check_read_utf8_lines(path), encoding = "UTF-8")
+  on.exit(close(con), add = TRUE)
+  parse(con, keep.source = FALSE, encoding = "UTF-8")
+}
+
 cm_render_check_source <- function(path, envir) {
-  exprs <- parse(text = readLines(path, warn = FALSE, encoding = "UTF-8"),
-                 keep.source = FALSE, encoding = "UTF-8")
-  for (expr in exprs) eval(expr, envir)
+  for (expr in cm_render_check_parse_utf8(path)) eval(expr, envir)
   invisible(envir)
 }
 
@@ -151,8 +164,8 @@ cm_render_check_page <- function(repo_root, fixtures) {
 
   fixtures_json <- jsonlite::toJSON(fixtures, auto_unbox = TRUE)
   fixtures_json <- gsub("</", "<\\/", fixtures_json, fixed = TRUE)
-  probe <- paste(readLines(file.path(repo_root, "tests", "scripts", "codemirror_rendering_probe.js"),
-                           warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  probe <- paste(cm_render_check_read_utf8_lines(
+    file.path(repo_root, "tests", "scripts", "codemirror_rendering_probe.js")), collapse = "\n")
 
   paste0(
     "<!doctype html>\n<html lang=\"tr\" data-theme=\"dark\"><head><meta charset=\"UTF-8\">",

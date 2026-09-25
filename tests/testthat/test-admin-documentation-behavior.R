@@ -39,26 +39,59 @@
 # ------------------------------------------------------------------------------
 # Kayıt defteri (allowlist) içeriği
 # ------------------------------------------------------------------------------
-testthat::test_that("kayıt defteri beklenen 10 belgeyi ve 4 grubu içerir", {
+testthat::test_that("kayıt defteri beklenen grupları ve temel belgeleri içerir", {
   env <- .source_admin_doc_env()
   groups <- env$admin_doc_registry()
-  testthat::expect_equal(length(groups), 4L)
   testthat::expect_equal(
     vapply(groups, function(g) g$id, character(1)),
-    c("baslangic", "mimari", "operasyon", "urun")
+    c("baslangic", "mimari", "operasyon", "kalite", "ozellikler",
+      "konusma", "varliklar", "urun")
   )
 
   docs <- env$admin_doc_all_docs()
-  testthat::expect_equal(length(docs), 10L)
+  ids <- vapply(docs, function(d) d$id, character(1))
+  testthat::expect_equal(length(unique(ids)), length(ids))
 
   files <- vapply(docs, function(d) d$file, character(1))
+  testthat::expect_equal(length(unique(files)), length(files))
   beklenen <- c(
     "README.md", "docs/README.md", "docs/architecture-map.md",
     "docs/database-schema.md", "docs/technical-reference.md",
     "RUNBOOK.md", "docs/dependency-locking.md", "RENV_LOCK_STATUS.md",
-    "ai_rehber.md", "docs/release-notes.md"
+    "ai_rehber.md", "docs/release-notes.md", "docs/ortak-oturumlar.md",
+    "docs/pk-phase3b-operator-runbook.md", "docs/speech-operator-runbook.md",
+    "docs/vm-evidence-status.md", "offline_asset_checklist.md"
   )
   testthat::expect_true(all(beklenen %in% files))
+})
+
+testthat::test_that("kayıtlı her belge depoda vardır ve güvenli yola çözülür", {
+  env <- .source_admin_doc_env()
+  root <- resolve_repo_root_for_tests()
+  for (d in env$admin_doc_all_docs()) {
+    p <- env$admin_doc_resolve_path(d$id, root)
+    testthat::expect_true(nzchar(p) && file.exists(p), info = d$file)
+    testthat::expect_true(nzchar(d$title) && nzchar(d$desc), info = d$id)
+  }
+})
+
+# Yeni eklenen belgeler sayfada sessizce görünmez kalmasın: kök ve docs/
+# altındaki her Markdown belgesi ya kayıt defterindedir ya da bilinçli dışlanır.
+testthat::test_that("kök ve docs/ Markdown belgelerinin tamamı kayıtlı ya da dışlanmıştır", {
+  env <- .source_admin_doc_env()
+  root <- resolve_repo_root_for_tests()
+  kayitli <- vapply(env$admin_doc_all_docs(), function(d) d$file, character(1))
+  mevcut <- c(
+    list.files(root, pattern = "\\.md$", ignore.case = TRUE),
+    file.path("docs", list.files(file.path(root, "docs"), pattern = "\\.md$",
+                                 ignore.case = TRUE, recursive = TRUE))
+  )
+  # AI ajan sözleşmeleri ve bakımcı arşivi uygulamada gösterilmez.
+  dislanan <- mevcut %in% c("CLAUDE.md", "AGENTS.md") |
+    startsWith(mevcut, "docs/maintainers/")
+  eksik <- setdiff(mevcut[!dislanan], kayitli)
+  testthat::expect_identical(eksik, character(0),
+                             info = paste("Kayıtsız belge:", paste(eksik, collapse = ", ")))
 })
 
 testthat::test_that("CLAUDE.md ve AGENTS.md kayıt defterinde gösterilmez", {

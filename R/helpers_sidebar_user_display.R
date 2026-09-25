@@ -80,7 +80,24 @@ mb_sidebar_user_avatar_url <- function(user_id) {
   if (is.na(user_id) || !nzchar(user_id) || user_id %in% c("0", "unknown")) {
     return("")
   }
-  paste0("https://url......./", user_id, ".jpg")
+  gsub("{user_id}", utils::URLencode(user_id, reserved = TRUE),
+       mb_user_avatar_url_template(), fixed = TRUE)
+}
+
+# Kurum içi fotoğraf adresi kodda tutulmaz; .Renviron'daki
+# MERGEN_USER_AVATAR_URL_TEMPLATE okunur (ör. https://foto.kurum/{user_id}.jpg).
+# {user_id} yoksa değer taban adres sayılır ve "<id>.jpg" eklenir. Yalnızca
+# http(s) ya da kök-göreli yol kabul edilir; aksi hâlde yer tutucu kullanılır.
+mb_user_avatar_url_template <- function() {
+  varsayilan <- "https://url......./{user_id}.jpg"
+  sablon <- trimws(Sys.getenv("MERGEN_USER_AVATAR_URL_TEMPLATE", ""))
+  if (!nzchar(sablon) || !grepl("^(https?://[^[:space:]]+|/[^/[:space:]][^[:space:]]*)$", sablon, perl = TRUE)) {
+    return(varsayilan)
+  }
+  if (!grepl("{user_id}", sablon, fixed = TRUE)) {
+    sablon <- paste0(sub("/*$", "/", sablon), "{user_id}.jpg")
+  }
+  sablon
 }
 
 #' Departman değerini güvenli şekilde çöz
