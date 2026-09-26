@@ -18,7 +18,7 @@ health_overview_ui <- function(checks, last_update) {
       class = paste("health-hero", health_status_class(overall)),
       `data-health-tooltip` = "Genel skor; kritik ve uyarı seviyesindeki kontrollerin ağırlıklı özetidir.",
       div(class = "health-score-ring",
-          style = sprintf("--health-score: %s;", max(0, min(100, suppressWarnings(as.numeric(score)[1]) %||% 0), na.rm = TRUE)),
+          style = sprintf("--health-score: %g;", health_score_css_value(score)),
           span(score), tags$small("/100")),
       div(class = "health-hero-copy",
           h2("Sistem Durumu"),
@@ -63,4 +63,12 @@ health_overview_ui <- function(checks, last_update) {
       )
     )
   )
+}
+
+# Skor halkasının CSS değeri: sayısal, 0-100 aralığında; eksik/NA skor 0 sayılır
+# (NA eskiden min(..., na.rm = TRUE) ile 100 gibi dolu görünüyordu).
+health_score_css_value <- function(score) {
+  deger <- suppressWarnings(as.numeric(score %||% NA)[1])
+  if (length(deger) != 1L || is.na(deger)) return(0)
+  max(0, min(100, deger))
 }

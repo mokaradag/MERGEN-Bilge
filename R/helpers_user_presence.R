@@ -7,14 +7,15 @@
 #
 #           Çevrimiçi = uygulamaya bağlı oturumu olan ve son 3 dakikada nabız
 #           görülen kullanıcı (nabız bağlı oturumda dakikada bir yazılır).
-#           Veri süreç belleğindedir: yeniden başlatmada sıfırlanır ve birden
-#           çok uygulama süreci varsa her süreç kendi oturumlarını görür.
+#           Veri süreç belleğindedir ve yeniden başlatmada sıfırlanır; çok-süreçli
+#           dağıtımda diğer süreçlerin satırları paylaşılan dizinden eklenir
+#           (R/helpers_user_presence_shared.R).
 #           Saf yardımcılardır; Shiny/DB/ağ erişimi yapmaz.
 # ==============================================================================
 
 mb_presence_windows <- function() {
   list(online = 180, recent = 900, history = 86400, stale = 1800, max_history = 1000L,
-       skew = 120)
+       skew = 120, publish_stale = 150)
 }
 
 mb_presence_env <- function(name) {
@@ -208,6 +209,11 @@ mb_presence_snapshot <- function(active_env = mb_presence_env(".mergen_active_se
   # Oturum kapanmasa da 24 saatten eski geçmiş kayıtları bellekte kalmaz.
   if (is.environment(history_env)) mb_presence_prune(history_env, now)
   oturumlar <- mb_presence_session_rows(active_env, history_env, now)
+  # Çok-süreçli dağıtımda diğer uygulama süreçlerinin oturumları da sayılır.
+  if (exists("mb_presence_remote_rows", mode = "function")) {
+    uzak <- tryCatch(mb_presence_remote_rows(now), error = function(e) NULL)
+    if (is.data.frame(uzak) && nrow(uzak)) oturumlar <- rbind(oturumlar, uzak[names(oturumlar)])
+  }
   simdi <- as.numeric(now)
   oturumlar <- oturumlar[!is.na(oturumlar$last_seen) &
                            simdi - oturumlar$last_seen <= pencere$history, , drop = FALSE]

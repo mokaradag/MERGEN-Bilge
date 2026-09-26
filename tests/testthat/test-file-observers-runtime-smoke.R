@@ -158,11 +158,16 @@ testthat::test_that("fileObserversInit kuyruk dolu olduğu için özeti atlanan 
   had_pas <- exists("processAndSummarizeFile", envir = globalenv(), inherits = FALSE)
   old_pas <- if (had_pas) get("processAndSummarizeFile", envir = globalenv()) else NULL
   assign("processAndSummarizeFile", function(file_info, ...) {
-    list(status = "kabul", reason = if (identical(file_info$name, "b.txt")) "ozet_atlandi" else "")
+    # Eski uyumlu kabul sonucu (skaler TRUE) nedeni olmadan döner.
+    if (identical(file_info$name, "c.txt")) return(TRUE)
+    neden <- switch(file_info$name, b.txt = "ozet_atlandi", d.txt = "ozet_atlandi_isci", "")
+    list(status = "kabul", reason = neden)
   }, envir = globalenv())
   had_acc <- exists("mergen_file_pipeline_accepted", envir = globalenv(), inherits = FALSE)
   if (!had_acc) {
-    assign("mergen_file_pipeline_accepted", function(r) identical(r$status, "kabul"), envir = globalenv())
+    assign("mergen_file_pipeline_accepted", function(r) {
+      if (is.list(r)) identical(r$status, "kabul") else isTRUE(r)
+    }, envir = globalenv())
   }
   on.exit({
     if (had_toast) assign("showToast", old_toast, envir = globalenv()) else rm("showToast", envir = globalenv())
@@ -182,9 +187,12 @@ testthat::test_that("fileObserversInit kuyruk dolu olduğu için özeti atlanan 
     session$userData$.eklenen <- eklenen
   }, {
     session$flushReact()
-    session$userData$.eklenen(list(list(name = "a.txt"), list(name = "b.txt")))
+    session$userData$.eklenen(list(list(name = "a.txt"), list(name = "b.txt"),
+                                   list(name = "c.txt"), list(name = "d.txt")))
     session$flushReact()
-    testthat::expect_true(any(grepl("^success 2 dosya AI bağlamına eklendi", toast_rec$mesajlar)))
-    testthat::expect_true(any(grepl("^warning 1 dosyanın özeti", toast_rec$mesajlar)))
+    testthat::expect_true(any(grepl("^success 4 dosya AI bağlamına eklendi", toast_rec$mesajlar)))
+    testthat::expect_true(any(grepl("^warning 1 dosyanın özeti, özet kuyruğu dolu", toast_rec$mesajlar)))
+    # İşçi yokluğu kuyruk doluluğu olarak bildirilmez.
+    testthat::expect_true(any(grepl("^warning 1 dosyanın özeti, arka plan özet kapasitesi", toast_rec$mesajlar)))
   })
 })

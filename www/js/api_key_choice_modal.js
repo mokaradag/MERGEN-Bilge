@@ -57,8 +57,9 @@
   }
 
   // Kullanıcı etiketi bilinmeden bastırma yoktur (seçim ekranı gösterilir).
-  function readPref() {
-    var tag = currentUserTag();
+  // Etiket verilirse o kullanıcının kaydı okunur (etkin etiket değişmez).
+  function readPref(etiket) {
+    var tag = typeof etiket === "string" ? etiket : currentUserTag();
     if (!tag) {
       return "";
     }
@@ -74,8 +75,8 @@
     return deger === "1" || deger === "default";
   }
 
-  function rememberedSource() {
-    return readPref() === "default" ? "default" : "";
+  function rememberedSource(etiket) {
+    return readPref(etiket) === "default" ? "default" : "";
   }
 
   // mergen_settings içindeki eski ortak kayıtlar yalnız varsa kaldırılır.
@@ -96,8 +97,8 @@
   // Yalnız bu kullanıcının anahtarı yazılır. Yazımın gerçekten kalıcı olduğu
   // geri okunarak doğrulanır (ör. dolu ya da kapalı depolama). Ekranı yeniden
   // açmak hatırlanan kurum seçimini de kaldırır.
-  function writePref(deger) {
-    var tag = currentUserTag();
+  function writePref(deger, etiket) {
+    var tag = typeof etiket === "string" ? etiket : currentUserTag();
     if (!tag) {
       return false;
     }
@@ -108,7 +109,7 @@
         window.localStorage.removeItem(SUPPRESS_USER_PREFIX + tag);
       }
       dropLegacyFlags();
-      return readPref() === deger;
+      return readPref(tag) === deger;
     } catch (e) {
       return false;
     }
@@ -122,12 +123,17 @@
   }
 
   // "default": kurum seçimi hatırlanır; "personal": kişisel anahtar kaydedildi,
-  // hatırlanan kurum seçimi bastırma korunarak kaldırılır.
-  function writeSource(source) {
+  // hatırlanan kurum seçimi bastırma korunarak kaldırılır; "clear": kullanıcı
+  // "bir daha gösterme" işaretini kaldırdı, tercih silinir. Yazım yalnız
+  // verilen etiketin kaydına yapılır.
+  function writeSource(source, etiket) {
     if (source === "personal") {
-      return rememberedSource() !== "default" || writePref("1");
+      return rememberedSource(etiket) !== "default" || writePref("1", etiket);
     }
-    return writePref("default");
+    if (source === "clear") {
+      return writePref("", etiket);
+    }
+    return writePref("default", etiket);
   }
 
   // Sunucuya güncel bastırma bayrağını etiketiyle bildir; sunucu yalnız
@@ -308,10 +314,17 @@
   // için hatırlanır; seçim ekranı açılmaz (Yapılandırma'dan geri açılır).
   if (window.Shiny && typeof Shiny.addCustomMessageHandler === "function") {
     Shiny.addCustomMessageHandler("mergenApiKeyChoiceRemember", function (message) {
+      // Onay, yazımın etiketi ve jetonuyla gider; sunucu başka kullanıcının ya
+      // da eski yazımın onayını kabul etmez.
       var sonucBildir = function (ok) {
         if (message && message.resultInputId && window.Shiny &&
             typeof Shiny.setInputValue === "function") {
-          Shiny.setInputValue(message.resultInputId, { ok: ok, t: Date.now() }, {
+          Shiny.setInputValue(message.resultInputId, {
+            ok: ok,
+            tag: typeof message.userTag === "string" ? message.userTag : "",
+            nonce: typeof message.nonce === "string" ? message.nonce : "",
+            t: Date.now()
+          }, {
             priority: "event"
           });
         }
@@ -321,10 +334,14 @@
         sonucBildir(false);
         return;
       }
-      window.MergenApiKeyChoice._userTag = message.userTag;
-      var kaydedildi = writeSource(message.source === "personal" ? "personal" : "default");
-      reportToServer();
-      syncSettingsToggle();
+      // Geç gelen mesaj etkin tarayıcı kimliğini değiştirmez; yazım yalnız
+      // mesajın etiketine yapılır, eşitleme etiket etkin kullanıcıya aitse yapılır.
+      var kaynak = message.source === "personal" || message.source === "clear" ? message.source : "default";
+      var kaydedildi = writeSource(kaynak, message.userTag);
+      if (message.userTag === currentUserTag()) {
+        reportToServer();
+        syncSettingsToggle();
+      }
       sonucBildir(kaydedildi);
     });
   }

@@ -126,6 +126,7 @@ performanceStatsServer <- function(id, current_user_id_provider) {
       }
 
       stats$active_users <- count_active_users()
+      if (exists("mb_presence_publish", mode = "function")) try(mb_presence_publish(active_sessions_env), silent = TRUE)
       invisible(NULL)
     }
 
@@ -183,8 +184,16 @@ performanceStatsServer <- function(id, current_user_id_provider) {
       }
     })
 
-    # Bu oturumu kaydet
+    # Bu oturumu kaydet. Kimlik değişince/düşünce (SSO süresi doldu, başka
+    # kullanıcı) nabız beklenmeden hemen yazılır; eski kullanıcı çevrimiçi kalmaz.
     touch_session(get_current_user_id())
+    kimlik_sinyali <- if (exists("mergen_session_identity_signal", mode = "function")) {
+      mergen_session_identity_signal(session)
+    }
+    observe({
+      if (is.function(kimlik_sinyali)) kimlik_sinyali()
+      isolate(touch_session(get_current_user_id()))
+    })
 
     # Oturum yaşadığı sürece heartbeat gönder
     observe({
@@ -198,6 +207,7 @@ performanceStatsServer <- function(id, current_user_id_provider) {
         try(mb_presence_record_end(session$token, active_sessions_env[[session$token]]), silent = TRUE)
       }
       try(rm(list = session$token, envir = active_sessions_env), silent = TRUE)
+      if (exists("mb_presence_publish", mode = "function")) try(mb_presence_publish(active_sessions_env), silent = TRUE)
     })
 
     # --- BAŞARILI İSTEK TAKİBİ ---

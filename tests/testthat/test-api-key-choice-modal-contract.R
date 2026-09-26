@@ -368,4 +368,8 @@ test_that("seçim modalı bekleyen kutu değerini jeton/etiketle bildirir ve eti
   expect_length(hatirlat, 1L)
   expect_true(grepl("sonucBildir(false);", hatirlat, fixed = TRUE))
   expect_true(grepl("typeof message.userTag !== \"string\" || !message.userTag", hatirlat, fixed = TRUE))
+  # Geç gelen mesaj etkin tarayıcı kimliğini değiştirmez; onay etiket ve jeton taşır.
+  expect_false(grepl("_userTag = message.userTag", hatirlat, fixed = TRUE))
+  expect_true(grepl("writeSource(kaynak, message.userTag)", hatirlat, fixed = TRUE))
+  expect_true(grepl("nonce: typeof message.nonce", hatirlat, fixed = TRUE))
 })

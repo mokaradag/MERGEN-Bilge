@@ -2,6 +2,7 @@
 # Dosya Yolu: R/helpers_file_summary_queue.R
 # Açıklama: Yüklenen dosyaların LLM özet işleri için eşzamanlılık sınırlı kuyruk
 #           (R/helpers_file_pipeline.R processAndSummarizeFile kullanır).
+#           Kapasite/sınır kararları R/helpers_file_summary_capacity.R'dedir.
 # ==============================================================================
 
 # Dosya özetleri paylaşılan işçi havuzunu tüketmesin diye eşzamanlı özet işi
@@ -17,83 +18,39 @@
 .FILE_SUMMARY_QUEUE$rejected_total <- 0L
 .FILE_SUMMARY_QUEUE$pump_scheduled <- FALSE
 
-file_summary_int_setting <- function(env_name, default_value) {
-  deger <- suppressWarnings(as.integer(Sys.getenv(env_name, as.character(default_value))))
-  if (length(deger) != 1L || is.na(deger) || deger < 1L) default_value else deger
-}
-
-file_summary_max_concurrent <- function() {
-  file_summary_int_setting("MERGEN_FILE_SUMMARY_MAX_CONCURRENT", 2L)
-}
-
-# Eşzamansız olmayan planda (sequential: küme kurulamadı ya da futures kapalı)
-# özet ana olay döngüsünde çalışıp tüm oturumları dondurur; kapasite 0 sayılır.
-file_summary_pool_size <- function() {
-  plan_sinifi <- tryCatch(class(future::plan("list")[[1]]), error = function(e) character(0))
-  if (!length(plan_sinifi) || any(c("sequential", "uniprocess", "transparent") %in% plan_sinifi)) return(0L)
-  n <- tryCatch(suppressWarnings(as.integer(future::nbrOfWorkers())), error = function(e) NA_integer_)
-  if (length(n) != 1L || is.na(n) || n < 1L) 1L else n
-}
-
-file_summary_free_workers <- function() {
-  n <- tryCatch(suppressWarnings(as.integer(future::nbrOfFreeWorkers())), error = function(e) NA_integer_)
-  if (length(n) != 1L) NA_integer_ else n
-}
-
-# Özetler paylaşılan havuzun tamamını tutamaz. En az iki işçili havuzda özet
-# sınırı havuzdan bir eksiktir ve özet yalnız bir işçi etkileşimli işe (sohbet,
-# LLM) boş kalacaksa başlar. Tek işçili havuz bölünemez: orada özet yalnız işçi
-# boştayken ve tek tek çalışır (işçi sayısı çekirdek - 1 ile sınırlıdır; ayrık
-# kapasite en az üç çekirdek ister).
-file_summary_effective_limit <- function() {
-  havuz <- file_summary_pool_size()
-  if (havuz < 1L) return(0L)
-  if (havuz < 2L) return(1L)
-  min(file_summary_max_concurrent(), havuz - 1L)
-}
-
-# Boş işçi sayısı ölçülemezse özet başlamaz (kapalı-başarısız); kuyruk saniyede
-# bir yeniden dener.
-file_summary_has_capacity <- function() {
-  sinir <- file_summary_effective_limit()
-  if (sinir < 1L || .FILE_SUMMARY_QUEUE$active >= sinir) return(FALSE)
-  bos <- file_summary_free_workers()
-  if (is.na(bos)) return(FALSE)
-  bos > (if (file_summary_pool_size() >= 2L) 1L else 0L)
-}
-
-# Bekleyen kuyruk da sınırlıdır (MERGEN_FILE_SUMMARY_MAX_QUEUE, varsayılan 64):
-# her kayıt oturum ve dosya durumunu tuttuğundan sınırsız büyüyemez.
-file_summary_max_queue <- function() {
-  file_summary_int_setting("MERGEN_FILE_SUMMARY_MAX_QUEUE", 64L)
-}
-
-# Tek oturum ortak bekleme bütçesini tüketemez
-# (MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION, varsayılan 16).
-file_summary_max_queue_per_session <- function() {
-  min(file_summary_int_setting("MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION", 16L),
-      file_summary_max_queue())
-}
-
-file_summary_session_key <- function(session) {
+# Kuyruk bütçesi ve adillik oturum (sekme) değil KULLANICI başınadır: kimliği
+# doğrulanmış sahip varsa anahtar odur; yoksa oturum jetonu kullanılır.
+file_summary_session_key <- function(session, sahip = NULL) {
+  uid <- suppressWarnings(as.integer(sahip %||% NA_integer_))[1]
+  if (length(uid) == 1L && !is.na(uid) && uid > 0L) return(paste0("u:", uid))
   anahtar <- as.character(session$token %||% "")[1]
   if (length(anahtar) != 1L || is.na(anahtar)) "" else anahtar
 }
 
 # Kuyruk doluysa ya da arka plan işçisi yoksa iş sessizce düşürülmez: FALSE
-# döner ve çağıran kullanıcıyı uyarır.
-file_summary_schedule <- function(start_fn, session = NULL) {
+# döner (`neden` özniteliği: "isci_yok" ya da "kuyruk_dolu") ve çağıran
+# kullanıcıyı uyarır. `sahip` kaydı yükleyen kullanıcıya bağlar; oturum başka
+# kullanıcıya geçerse kayıt bırakılır. `on_drop` kayıt başlatılamadığında ya da
+# bırakıldığında çağrılır (bildirim kapanır, kullanıcı uyarılır).
+file_summary_schedule <- function(start_fn, session = NULL, sahip = NULL, on_drop = NULL) {
   file_summary_prune_closed()
-  anahtar <- file_summary_session_key(session)
+  anahtar <- file_summary_session_key(session, sahip)
   bekleyen <- .FILE_SUMMARY_QUEUE$pending
-  ayni_oturum <- sum(vapply(bekleyen, function(k) identical(k$anahtar, anahtar), logical(1)))
-  if (file_summary_effective_limit() < 1L || length(bekleyen) >= file_summary_max_queue() ||
-      (nzchar(anahtar) && ayni_oturum >= file_summary_max_queue_per_session())) {
+  ayni_sahip <- sum(vapply(bekleyen, function(k) identical(k$anahtar, anahtar), logical(1)))
+  neden <- if (file_summary_effective_limit() < 1L) {
+    "isci_yok"
+  } else if (length(bekleyen) >= file_summary_max_queue() ||
+             (nzchar(anahtar) && ayni_sahip >= file_summary_max_queue_per_session())) {
+    "kuyruk_dolu"
+  } else {
+    ""
+  }
+  if (nzchar(neden)) {
     .FILE_SUMMARY_QUEUE$rejected_total <- .FILE_SUMMARY_QUEUE$rejected_total + 1L
-    return(FALSE)
+    return(structure(FALSE, neden = neden))
   }
   .FILE_SUMMARY_QUEUE$pending[[length(bekleyen) + 1L]] <-
-    list(start = start_fn, session = session, anahtar = anahtar)
+    list(start = start_fn, session = session, anahtar = anahtar, sahip = sahip, on_drop = on_drop)
   file_summary_pump()
   TRUE
 }
@@ -109,13 +66,34 @@ file_summary_session_alive <- function(session) {
   !isTRUE(kapali)
 }
 
-# Kapanan oturumların bekleyen kayıtları sıranın başına gelmeden bırakılır.
+# Kayıt yalnız oturumu açık ve (sahibi varsa) oturumun canlı kimliği hâlâ o
+# sahipse geçerlidir; A -> B geçişinde A'nın işleri B'nin bütçesini tüketmez.
+file_summary_record_live <- function(kayit) {
+  if (!file_summary_session_alive(kayit$session)) return(FALSE)
+  sahip <- suppressWarnings(as.integer(kayit$sahip %||% NA_integer_))[1]
+  if (length(sahip) != 1L || is.na(sahip) || sahip <= 0L) return(TRUE)
+  canli <- tryCatch(kayit$session$userData$user_id, error = function(e) NULL)
+  canli <- if (exists("mergen_canonical_user_id", mode = "function")) {
+    mergen_canonical_user_id(canli %||% 0L)
+  } else {
+    suppressWarnings(as.integer(canli %||% 0L))[1]
+  }
+  identical(as.integer(canli), sahip)
+}
+
+# Geçersizleşen bekleyen kayıtlar sıranın başına gelmeden bırakılır; sahip
+# değişimiyle bırakılan kayıt çağıranına bildirilir.
 file_summary_prune_closed <- function() {
   bekleyen <- .FILE_SUMMARY_QUEUE$pending
-  if (!length(bekleyen)) return(invisible(0L))
-  canli <- vapply(bekleyen, function(kayit) file_summary_session_alive(kayit$session), logical(1))
+  canli <- vapply(bekleyen, file_summary_record_live, logical(1))
   .FILE_SUMMARY_QUEUE$pending <- bekleyen[canli]
-  # Bekleyen ya da çalışan işi kalmayan oturumun sıra kaydı tutulmaz.
+  for (kayit in bekleyen[!canli]) {
+    if (is.function(kayit$on_drop) && file_summary_session_alive(kayit$session)) {
+      try(kayit$on_drop(simpleError("Oturum kimliği değişti; özet iptal edildi.")), silent = TRUE)
+    }
+  }
+  # Bekleyen ya da çalışan işi kalmayan anahtarın sıra kaydı tutulmaz (kuyruk
+  # boşken de temizlenir; süreç boyunca büyümez).
   kullanilan <- c(vapply(.FILE_SUMMARY_QUEUE$pending, function(k) k$anahtar %||% "", character(1)),
                   names(.FILE_SUMMARY_QUEUE$active_by))
   son <- .FILE_SUMMARY_QUEUE$last_served
@@ -166,8 +144,8 @@ file_summary_pump <- function() {
     sira <- file_summary_next_index()
     kayit <- .FILE_SUMMARY_QUEUE$pending[[sira]]
     .FILE_SUMMARY_QUEUE$pending[[sira]] <- NULL
-    # Kapanan oturumun kuyruktaki özeti başlatılmaz.
-    if (!file_summary_session_alive(kayit$session)) next
+    # Kapanan ya da sahibi değişen oturumun kuyruktaki özeti başlatılmaz.
+    if (!file_summary_record_live(kayit)) next
 
     anahtar <- kayit$anahtar %||% ""
     .FILE_SUMMARY_QUEUE$active <- .FILE_SUMMARY_QUEUE$active + 1L
@@ -180,9 +158,11 @@ file_summary_pump <- function() {
     # Oturum kapanınca işçi durdurma dosyasını (processAndSummarizeFile) görüp
     # LLM çağrısını atlar; yuva yine sözün kapanışında bırakılır.
     serbest <- file_summary_release_fn(anahtar)
-    # Başlatma hatası kuyruğu kilitlemez ama sessizce de yutulmaz.
+    # Başlatma hatası kuyruğu kilitlemez ve sessizce de yutulmaz: çağıranın
+    # hata yolu (bildirim kapatma, kullanıcı uyarısı) çalışır.
     p <- tryCatch(kayit$start(), error = function(e) {
       cat("[FILE SUMMARY] Özet işi başlatılamadı:", conditionMessage(e), "\n")
+      if (is.function(kayit$on_drop)) try(kayit$on_drop(e), silent = TRUE)
       NULL
     })
     if (promises::is.promising(p)) {

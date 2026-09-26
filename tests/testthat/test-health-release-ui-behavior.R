@@ -302,6 +302,7 @@ testthat::test_that("health_release_ui koşu seçici tam artifact yolunu sızdı
   # globalenv'e kaynar; bu yüzden health_source_optional'ı no-op'a çeviririz.
   env$safe_source <- function(...) invisible(TRUE)
   env$health_source_optional <- function(...) invisible(TRUE)
+  source(file.path(kok, "R", "helpers_user_session_identity.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "module_health.R"), encoding = "UTF-8", local = env)
   env
 }
@@ -373,8 +374,11 @@ testthat::test_that("healthServer yönetici olmayan oturuma sekme içeriği ve v
 
     # Yetki düşünce (SSO süresi doldu / kullanıcı değişti) çizilmiş içerik
     # sekme değişimini beklemeden kilit mesajına döner.
+    # Kimlik sinyali (write_identity/set_auth_placeholder) çizimi hemen yeniler.
     session$userData$user_config <- NULL
-    session$elapse(2500)
+    sinyal <- session$userData$kimlik_sinyali
+    sinyal(shiny::isolate(sinyal()) + 1L)
+    session$flushReact()
     cikti <- paste(as.character(output$health_tab_content), collapse = "\n")
     testthat::expect_true(grepl("yalnızca yöneticilere", cikti, fixed = TRUE))
     testthat::expect_identical(sayac$varlik, 1L)

@@ -154,7 +154,10 @@
   # files_preview_pipeline n = 13L -> 14L bilinçli güncelleme: dosya özeti
   # eşzamanlılık kuyruğu (R/helpers_file_summary_queue.R) pipeline fonksiyon
   # tavanı nedeniyle ayrı dosyaya alındı; pipeline'dan ÖNCE yüklenir.
-  files_preview_pipeline = list(first = "R/helpers_image_gallery.R", last = "R/helpers_file_ingestion_runtime.R", n = 14L),
+  # n = 14L -> 16L: kuyruk ve pipeline fonksiyon tavanındaydı; özet kapasite
+  # kararları (R/helpers_file_summary_capacity.R) ve işçi görevi
+  # (R/helpers_file_summary_task.R) ayrı dosyalara alındı (ratchet bölünmesi).
+  files_preview_pipeline = list(first = "R/helpers_image_gallery.R", last = "R/helpers_file_ingestion_runtime.R", n = 16L),
   file_manager_helpers = list(first = "R/helpers_file_manager_policy.R", last = "R/helpers_file_manager_table_runtime.R", n = 13L),
   # Bilinçli güncelleme: R/helpers_langflow_runtime.R (kurumsal Langflow akış
   # çağrısı saf yardımcıları) send_message core'dan sonra bölüme eklendi; 11 -> 12.
@@ -318,7 +321,9 @@
   # startupScreenObserversInit delege eder) bölüme eklendi. 12 -> 14.
   # n = 14L -> 15L bilinçli güncelleme: Sistem Durumu "Çevrimiçi" sekmesinin
   # varlık defteri (R/helpers_user_presence.R) performans modülünden ÖNCE.
-  module_identity_startup = list(first = "R/module_sso.R", last = "R/module_quick_actions.R", n = 15L),
+  # n = 15L -> 16L: çok-süreçli varlık paylaşımı (R/helpers_user_presence_shared.R)
+  # varlık defterinden SONRA, performans modülünden ÖNCE.
+  module_identity_startup = list(first = "R/module_sso.R", last = "R/module_quick_actions.R", n = 16L),
   # 5 -> 7 bilinçli güncelleme: Bilge Yolaç Oturumları sayfası
   # (R/module_claude_code_sessions_ui.R + R/module_claude_code_sessions.R)
   # stream_poll'dan sonra, ana server modülünden önce eklendi.
@@ -750,7 +755,10 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # host sınıflandırması).
   # 502 -> 504: Sistem Durumu "Çevrimiçi" sekmesi — `helpers_user_presence.R`
   # (varlık defteri) ve `module_health_presence.R` (sekme UI).
-  expect_equal(length(runtime), 504L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 504 -> 507: üç ratchet/özellik bölünmesi — `helpers_file_summary_capacity.R`,
+  # `helpers_file_summary_task.R` (özet kuyruğu/pipeline fonksiyon tavanı) ve
+  # `helpers_user_presence_shared.R` (çok-süreçli Çevrimiçi birleştirmesi).
+  expect_equal(length(runtime), 507L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

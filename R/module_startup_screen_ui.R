@@ -246,6 +246,9 @@ createStartupScreenUI <- function() {
     tabindex = "0",
     # Erişilebilir ad görünen eylem metnini ("Bu modu seç") içerir (sesli komut).
     `aria-label` = paste(def$title, "\u2014 Bu modu seç"),
+    # Ekran okuyucu kısa/uzun açıklamayı ve özellik durumlarını da duyar.
+    `aria-describedby` = paste(sprintf("mode-card-%s-%s", def$mode, c("short", "desc", "features")),
+                               collapse = " "),
     tags$div(
       class = "cinematic-card-inner",
       tags$div(
@@ -253,12 +256,13 @@ createStartupScreenUI <- function() {
         tags$i(class = paste("fas", def$icon, "cinematic-card-icon"))
       ),
       tags$h3(class = "cinematic-card-title", def$title),
-      tags$p(class = "cinematic-card-short", def$short),
+      tags$p(class = "cinematic-card-short", id = sprintf("mode-card-%s-short", def$mode), def$short),
       tags$div(class = "cinematic-card-desc-area",
-        tags$div(class = "cinematic-card-desc")
+        tags$div(class = "cinematic-card-desc", id = sprintf("mode-card-%s-desc", def$mode))
       ),
       tags$div(
         class = "cinematic-feature-indicators",
+        id = sprintf("mode-card-%s-features", def$mode),
         indicators
       ),
       tags$div(class = "cinematic-card-arrow",

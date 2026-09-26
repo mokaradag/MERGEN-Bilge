@@ -207,11 +207,14 @@ test_that("yapılandırılmış olmak tek başına on-prem sayılmaz; DNS kanıt
   expect_true(env$health_is_public_url("https://yok.example.com/v1"))
   expect_true(env$health_is_public_url("https://sinkhole.example.com/"))
   expect_true(env$health_is_public_url("https://8.8.4.4/realms/x"))
-  # Yapılandırılmamış host için DNS sorgusu yapılmaz; sonuç önbellekten gelir.
-  expect_true(env$health_is_public_url("https://baska.example.com/v1"))
+  # Yapılandırılmamış host için DNS sorgusu yapılmaz; genel çıkan sonuç önbellekten gelir.
   once <- sorgu
-  expect_false(env$health_is_public_url("https://ozel.kurum.com.tr/health"))
+  expect_true(env$health_is_public_url("https://baska.example.com/v1"))
+  expect_true(env$health_is_public_url("https://genel.example.com/v1"))
   expect_identical(sorgu, once)
+  # Özel karar deneme yetkisi olarak önbelleklenmez; her denemede yeniden çözülür.
+  expect_false(env$health_is_public_url("https://ozel.kurum.com.tr/health"))
+  expect_identical(sorgu, once + 1L)
   # Operatörün açık ilanı DNS'ten bağımsız geçerlidir.
   withr::local_envvar(c(MERGEN_HEALTH_INTERNAL_ENDPOINTS = "genel.example.com"))
   expect_false(env$health_is_public_url("https://genel.example.com/v1"))
@@ -283,8 +286,11 @@ test_that("yüzde kodlu genel host adı intranet sayılmaz", {
   expect_identical(env$health_url_host("https://public%2eexample%2ecom/"), "public.example.com")
   expect_true(env$health_is_public_url("https://public%2eexample%2ecom/"))
   expect_true(env$health_is_public_url("https://PUBLIC%2EEXAMPLE%2ECOM/v1"))
-  # Tek etiketli intranet adı ve IPv6 bölge kimliği davranışı değişmez.
+  # Tek etiketli intranet adı yalnız özel adrese çözülürse denenir; IPv6 bölge
+  # kimliği davranışı değişmez.
+  env$health_resolve_host_ips <- function(host) if (identical(host, "intranet-servis")) "10.0.0.8" else "8.8.8.8"
   expect_false(env$health_is_public_url("http://intranet-servis:8080/v1"))
+  expect_true(env$health_is_public_url("http://servis-genel:8080/v1"))
   expect_false(env$health_is_public_url("http://[fe80::1%25eth0]:8080/v1"))
 })
 
@@ -405,7 +411,8 @@ test_that("health_url_host sondaki DNS kök noktasını kaldırır", {
 
   expect_identical(env$health_url_host("https://service.local./v1"), "service.local")
   expect_identical(env$health_url_host("https://servis.intranet.:8443/x"), "servis.intranet")
-  # Dahili son ek testi artık düşmez; canlı sonda atlanmaz.
+  # Dahili son ek testi artık düşmez; özel adrese çözülen ad denenir.
+  env$health_resolve_host_ips <- function(host) "10.3.3.3"
   expect_false(env$health_is_public_url("https://service.local./v1"))
   expect_false(env$health_is_public_url("https://servis.intranet.:8443/x"))
   # Genel adres sondaki noktayla da genel kalır.
@@ -427,4 +434,74 @@ test_that("IPv4-eşlemeli IPv6 gömülü IPv4 kuralıyla sınıflandırılır", 
   # Gerçek (eşlemeli olmayan) IPv6 davranışı DEĞİŞMEZ.
   expect_true(isTRUE(env$health_ip_literal_internal("fd00::1")))
   expect_true(is.na(env$health_ip_literal_internal("2001:db8::1")))
+})
+
+test_that("dahili görünümlü ad ve son ek genel adrese çözülürse denenmez; çözülmezse neden söylenir", {
+  env <- .fresh_health_env()
+  withr::local_envvar(c(MERGEN_HEALTH_INTERNAL_ENDPOINTS = ""))
+  env$health_resolve_host_ips <- function(host) switch(host, "servis.corp" = "93.184.216.34",
+                                                       "ic-servis" = "8.8.8.8", character(0))
+  expect_true(env$health_is_public_url("https://servis.corp/v1"))
+  expect_true(env$health_is_public_url("http://ic-servis/v1"))
+  expect_identical(env$health_endpoint_scope("http://yok.internal/v1")$neden, "cozulmedi")
+  # Operatör ilanı çözümlemeden bağımsız geçerlidir.
+  withr::local_envvar(c(MERGEN_HEALTH_INTERNAL_ENDPOINTS = "servis.corp"))
+  expect_false(env$health_is_public_url("https://servis.corp/v1"))
+})
+
+test_that("başarısız DNS çözümü genel sonuç olarak önbelleklenmez", {
+  env <- .fresh_health_env()
+  cevap <- character(0)
+  env$health_resolve_host_ips <- function(host) cevap
+  withr::local_envvar(c(LOCAL_TTS_ENDPOINT = "https://ses.kurum.com.tr/v1", MERGEN_HEALTH_INTERNAL_ENDPOINTS = ""))
+  expect_true(env$health_is_public_url("https://ses.kurum.com.tr/v1"))
+  cevap <- "10.1.2.3"
+  expect_false(env$health_is_public_url("https://ses.kurum.com.tr/v1"))
+})
+
+test_that("DNS ile onaylanan uç nokta denetlenen özel adrese sabitlenir", {
+  env <- .fresh_health_env()
+  withr::local_envvar(c(LOCAL_STT_ENDPOINT = "https://yazi.kurum.com.tr:8443/v1", MERGEN_HEALTH_INTERNAL_ENDPOINTS = ""))
+  env$health_resolve_host_ips <- function(host) c("10.4.4.4", "fd00::7")
+  kapsam <- env$health_endpoint_scope("https://yazi.kurum.com.tr:8443/v1/health")
+  expect_false(kapsam$public)
+  expect_identical(kapsam$pin, c("yazi.kurum.com.tr:8443:10.4.4.4", "yazi.kurum.com.tr:8443:[fd00::7]"))
+  expect_identical(env$health_endpoint_scope("http://127.0.0.1:9000/")$pin, character(0))
+  ayarlar <- NULL
+  testthat::local_mocked_bindings(
+    GET = function(url, ...) { ayarlar <<- list(...); structure(list(), class = "response") },
+    status_code = function(res) 200L,
+    .package = "httr"
+  )
+  r <- env$health_check_http_endpoint("stt.endpoint", "STT", "https://yazi.kurum.com.tr:8443/v1/health")
+  expect_identical(r$status[1], "ok")
+  cfg <- Filter(function(x) inherits(x, "request"), ayarlar)
+  expect_true(any(vapply(cfg, function(x) identical(x$options$resolve, kapsam$pin), logical(1))))
+})
+
+test_that("HTTP(S) dışı şema denenmez", {
+  env <- .fresh_health_env()
+  testthat::local_mocked_bindings(GET = function(url, ...) stop("çağrılmamalıydı"), .package = "httr")
+  r <- env$health_check_http_endpoint("x", "X", "ftp://dosya.example.com/pub")
+  expect_identical(r$value[1], "Atlandı")
+  expect_true(grepl("HTTP(S)", r$detail[1], fixed = TRUE))
+})
+
+test_that("IDNA nokta eşdeğerleri noktaya çevrilir; genel ad intranet sayılmaz", {
+  env <- .fresh_health_env()
+  withr::local_envvar(c(MERGEN_HEALTH_INTERNAL_ENDPOINTS = ""))
+  env$health_resolve_host_ips <- function(host) "8.8.8.8"
+  expect_identical(env$health_url_host("http://public\u3002example\uff0ecom/"), "public.example.com")
+  expect_true(env$health_is_public_url("http://public\uff61example\u3002com/v1"))
+})
+
+test_that("bozuk IPv6 joker yazımı yerel döngüye çevrilmez", {
+  env <- .fresh_health_env()
+  expect_true(env$health_host_unspecified("::"))
+  expect_true(env$health_host_unspecified("0:0:0:0:0:0:0:0"))
+  expect_true(env$health_host_unspecified("0::0"))
+  for (bozuk in c("0:::0", ":::", "0::0::0", ":0::", "0:0:0:0:0:0:0:0:0", "00000::")) {
+    expect_false(env$health_host_unspecified(bozuk), info = bozuk)
+  }
+  expect_identical(env$health_probe_url("http://[0:::0]:8000/x"), "http://[0:::0]:8000/x")
 })

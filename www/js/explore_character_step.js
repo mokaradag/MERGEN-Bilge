@@ -25,6 +25,10 @@
   // Çift tıklama koruma kilidi
   var _confirmInProgress = false;
 
+  // Seçim nesli: iptal edilen (geri/kapat/Esc) seçim dizisinin geç gelen
+  // tamamlanma çağrısı seçimi uygulamaz.
+  var _selectionGeneration = 0;
+
   
   // (Kaldırıldı: Eski 8 saniyelik ek bekleme gereksiz gecikmeye neden oluyordu)
 
@@ -121,6 +125,7 @@
   // ============================================================
   function showModeStep() {
     _currentStep = 1;
+    cancelPendingSelection();
 
     // Video oynatmayı durdur
     if (window.ExploreCharVideo) {
@@ -156,13 +161,20 @@
   // ============================================================
   // MODALI KAPAT (2. ADIMDAN)
   // ============================================================
-  function closeFromCharStep() {
-    // Video oynatmayı durdur
+  // Süren seçim dizisini iptal eder: onay kilidi bırakılır, geç tamamlanma yok sayılır.
+  function cancelPendingSelection() {
+    _selectionGeneration += 1;
+    _confirmInProgress = false;
+  }
+
+  // 2. adım durumunu modalı kapatmadan temizler (video, DOM, adım göstergesi,
+  // onay kilidi). Genel kapatma yolları (Esc, arka plan) da bunu çağırır.
+  function resetCharStep() {
+    cancelPendingSelection();
     if (window.ExploreCharVideo) {
       window.ExploreCharVideo.stopEverything();
     }
 
-    // Önce 1. adıma dön (durumu sıfırla)
     _currentStep = 1;
     var charStep = document.getElementById('cinematic-character-step');
     if (charStep) charStep.classList.remove('active');
@@ -171,6 +183,11 @@
     var modalHeader = document.querySelector('.cinematic-modal-header');
     if (cardsGrid) cardsGrid.classList.remove('hidden-step');
     if (modalHeader) modalHeader.classList.remove('hidden-step');
+    updateStepIndicator(1);
+  }
+
+  function closeFromCharStep() {
+    resetCharStep();
 
     // Modalı kapat
     if (window.CinematicExplore) {
@@ -226,9 +243,11 @@
     });
 
     // Görseli güncelle (geçiş animasyonuyla)
+    // Hareket azaltma tercihinde portre gizlenip gecikmeyle gösterilmez.
+    var azHareket = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     var img = document.getElementById('cinematic-char-preview-img');
     if (img) {
-      if (animate !== false) {
+      if (animate !== false && !azHareket) {
         img.style.opacity = '0';
         setTimeout(function() {
           img.src = charData.image;
@@ -283,23 +302,30 @@
     if (metricsContainer && charData.profile_metrics) {
       metricsContainer.innerHTML = '';
       charData.profile_metrics.forEach(function(metric, idx) {
+        // Öğeler textContent ile kurulur; metrik metni HTML olarak yorumlanmaz.
         var metricEl = document.createElement('div');
         metricEl.className = 'cinematic-char-metric';
-        metricEl.innerHTML =
-          '<span class="cinematic-char-metric-label">' + metric.label + '</span>' +
-          '<div class="cinematic-char-metric-bar">' +
-            '<div class="cinematic-char-metric-fill"></div>' +
-          '</div>' +
-          '<span class="cinematic-char-metric-value">' + metric.value + '</span>';
+        var labelEl = document.createElement('span');
+        labelEl.className = 'cinematic-char-metric-label';
+        labelEl.textContent = metric.label;
+        var barEl = document.createElement('div');
+        barEl.className = 'cinematic-char-metric-bar';
+        var fill = document.createElement('div');
+        fill.className = 'cinematic-char-metric-fill';
+        barEl.appendChild(fill);
+        var valueEl = document.createElement('span');
+        valueEl.className = 'cinematic-char-metric-value';
+        valueEl.textContent = metric.value;
+        metricEl.appendChild(labelEl);
+        metricEl.appendChild(barEl);
+        metricEl.appendChild(valueEl);
         metricsContainer.appendChild(metricEl);
 
-        // Çubuk animasyonu
-        var fill = metricEl.querySelector('.cinematic-char-metric-fill');
-        if (fill) {
-          setTimeout(function() {
-            fill.style.width = metric.value + '%';
-          }, 100 + idx * 80);
-        }
+        // Çubuk animasyonu (yalnız sayısal yüzde uygulanır)
+        var yuzde = Math.max(0, Math.min(100, Number(metric.value) || 0));
+        setTimeout(function() {
+          fill.style.width = yuzde + '%';
+        }, 100 + idx * 80);
       });
     }
 
@@ -348,7 +374,10 @@
     // Seçim videosu bittiğinde geçiş yapacak fonksiyon
     // Not: Shiny bildirimi, giriş ekranı kapandıktan sonra gönderilir.
     // Bu sayede müzik ancak geçiş tamamlandığında başlar (yarış durumu önlenir).
+    var nesil = _selectionGeneration;
     function onVideoComplete() {
+      // Kullanıcı bu arada geri döndü ya da modalı kapattıysa seçim uygulanmaz.
+      if (nesil !== _selectionGeneration) return;
       // Adımı hemen sıfırla: geç gelen ön yükleme yanıtlarının
       // loadCharacter çağırmasını engeller (_currentStep === 2 koruması)
       _currentStep = 1;
@@ -366,9 +395,11 @@
       if (cardsGrid) cardsGrid.classList.remove('hidden-step');
       if (modalHeader) modalHeader.classList.remove('hidden-step');
 
-      // Modalı kapat
+      updateStepIndicator(1);
+
+      // Modalı kapat (başarılı seçim: odak ana uygulamaya taşınır)
       if (window.CinematicExplore) {
-        window.CinematicExplore.closeModal();
+        window.CinematicExplore.closeModal(true);
       }
 
 		// Giriş ekranını kapat; Shiny mod seçimini audio callback'ine bağımlı bırakma.
@@ -473,7 +504,9 @@
     loadCharactersData: loadCharactersData,
     loadCharacterVideoData: loadCharacterVideoData,
     confirmSelection: confirmCharacterSelection,
-    closeFromCharStep: closeFromCharStep
+    closeFromCharStep: closeFromCharStep,
+    reset: resetCharStep,
+    isActive: function() { return _currentStep === 2; }
   };
 
 })();

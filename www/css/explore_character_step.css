@@ -425,7 +425,9 @@
   .cinematic-char-select-btn,
   .cinematic-char-select-btn i,
   .cinematic-char-metric-fill,
-  .cinematic-step-dot {
+  .cinematic-step-dot,
+  .cinematic-step-indicator,
+  #cinematic-char-preview-img {
     transition: none;
   }
 

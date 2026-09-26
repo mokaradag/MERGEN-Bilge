@@ -523,6 +523,16 @@ call_local_llm_sse_worker <- function(chat_history,
           stop("STREAM_ABORTED_BY_USER")
         }
 
+        # İlk bayt zamanı UTF-8 çözümünden ÖNCE ölçülür: yarım çok baytlı harfle
+        # biten ilk parça çözücüde bekletilse de ölçüm gecikmez.
+        if (!isTRUE(first_raw_chunk_logged) && length(raw_chunk)) {
+          first_raw_chunk_logged <<- TRUE
+          log_info(sprintf(
+            "[CHAT PERF] SSE işçide ilk ham HTTP parçası alındı - %.3f sn",
+            as.numeric(difftime(Sys.time(), llm_start_time, units = "secs"))
+          ))
+        }
+
         chunk_text <- tryCatch(
           chunk_decoder$decode(raw_chunk),
           error = function(e) ""
@@ -530,14 +540,6 @@ call_local_llm_sse_worker <- function(chat_history,
 
         if (!nzchar(chunk_text)) {
           return(invisible(NULL))
-        }
-
-        if (!isTRUE(first_raw_chunk_logged)) {
-          first_raw_chunk_logged <<- TRUE
-          log_info(sprintf(
-            "[CHAT PERF] SSE işçide ilk ham HTTP parçası alındı - %.3f sn",
-            as.numeric(difftime(Sys.time(), llm_start_time, units = "secs"))
-          ))
         }
 
         event_buffer <<- paste0(event_buffer, chunk_text)

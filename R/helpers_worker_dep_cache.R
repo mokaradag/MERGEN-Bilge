@@ -62,6 +62,20 @@
   FALSE
 }
 
+# Paket/base üzerinden çözülen adın sağlayıcısı (arama yolundaki ilk ortam).
+# Arama yolu değişirse (ör. aynı adı dışa aktaran yeni paket öne eklenirse)
+# ad başka paketten çözülür; önbellekteki paket kümesi geçersizleşir.
+.worker_monitor_dep_cache_providers <- function(adlar) {
+  vapply(as.character(adlar), function(nm) {
+    e <- parent.env(globalenv())
+    while (!identical(e, emptyenv())) {
+      if (exists(nm, envir = e, inherits = FALSE)) return(environmentName(e))
+      e <- parent.env(e)
+    }
+    "<yok>"
+  }, character(1), USE.NAMES = FALSE)
+}
+
 # Çağıranın verdiği globals da anahtara girer: adları genişletmeyi (seen kümesi),
 # işlevleri ise hangi yardımcıların taşınacağını belirler.
 .worker_monitor_dep_cache_given <- function(promise_globals) {
@@ -83,7 +97,9 @@ worker_monitor_dep_cache_get <- function(task_type, task_fn, promise_globals = l
         .worker_monitor_dep_cache_refs_same(kayit$fn_expanded, .GlobalEnv, FALSE) &&
         identical(kayit$sig_detected, .worker_monitor_dep_cache_signature(kayit$detected, fn_env, TRUE)) &&
         identical(kayit$sig_expanded, .worker_monitor_dep_cache_signature(kayit$expanded, .GlobalEnv, FALSE)) &&
-        !any(vapply(kayit$shadow, .worker_monitor_dep_cache_shadowed, logical(1), ortam = fn_env))) {
+        !any(vapply(kayit$shadow, .worker_monitor_dep_cache_shadowed, logical(1), ortam = fn_env)) &&
+        (identical(kayit$search, search()) ||
+         identical(kayit$providers, .worker_monitor_dep_cache_providers(kayit$shadow)))) {
       return(kayit)
     }
   }
@@ -120,7 +136,9 @@ worker_monitor_dep_cache_put <- function(task_type, task_fn, detected_globals,
                 fn_expanded = .worker_monitor_dep_cache_fn_refs(expanded_names, .GlobalEnv, FALSE),
                 sig_detected = .worker_monitor_dep_cache_signature(tespit, fn_env, TRUE),
                 sig_expanded = .worker_monitor_dep_cache_signature(expanded_names, .GlobalEnv, FALSE),
-                shadow = as.character(golge))
+                shadow = as.character(golge),
+                search = search(),
+                providers = .worker_monitor_dep_cache_providers(golge))
   mevcut <- .WORKER_MONITOR_DEP_CACHE[[anahtar]] %||% list()
   .WORKER_MONITOR_DEP_CACHE[[anahtar]] <- utils::tail(c(mevcut, list(kayit)), 8L)
   invisible(kayit)

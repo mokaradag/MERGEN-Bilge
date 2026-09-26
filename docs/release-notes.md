@@ -24,13 +24,16 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   gönderilir ve eşzamanlı özet sayısı sınırlanır
   (`MERGEN_FILE_SUMMARY_MAX_CONCURRENT`, varsayılan 2) ki sohbet istekleri işçi
   beklemesin; sınır işçi havuzundan türetilir ve en az bir işçi etkileşimli
-  işe ayrılır (tek işçili havuzda özet yalnız işçi boştayken başlar). Kuyruktaki
-  özet, oturum başka kullanıcıya geçtiyse ya da kimliğin süresi dolduysa
-  başlamaz ve sonucu yazılmaz; toplu yükleme partisi de o durumda yeni
-  kullanıcının sohbet bağlamına eklenmez. Bekleyen özet kuyruğu da sınırlıdır
-  (`MERGEN_FILE_SUMMARY_MAX_QUEUE`, varsayılan 64; oturum başına
-  `MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION`, varsayılan 16); dolunca dosya
-  yine eklenir, özeti atlanır ve kullanıcı uyarılır. Bekleyen özetler işçi
+  işe ayrılır (ikiden az işçili havuzda özet çalışmaz). Çok-süreçli dağıtımda
+  sınır ve kuyruk dağıtım genelidir ve süreçler arasında paylaştırılır.
+  Kuyruktaki ya da çalışan özet, oturum başka kullanıcıya geçtiyse ya da
+  kimliğin süresi dolduysa durdurulur ve sonucu yazılmaz; aynı Shiny oturumu
+  başka kullanıcıya geçince önceki kullanıcının dosya kayıt defteri, ekli
+  dosyaları ve kişisel API anahtarı oturumdan temizlenir. Bağlamdan çıkarılan
+  ya da aynı adla yeniden yüklenen dosyanın eski özet sonucu uygulanmaz. Bekleyen
+  özet kuyruğu da sınırlıdır (`MERGEN_FILE_SUMMARY_MAX_QUEUE`, varsayılan 64;
+  kullanıcı başına `MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION`, varsayılan 16);
+  dolunca dosya yine eklenir, özeti atlanır ve kullanıcı uyarılır. Bekleyen özetler işçi
   metriklerinde görünür; oturum kapanınca işçi başlamamış LLM çağrısını atlar,
   yuva ise iş bittiğinde bırakılır. Sıra oturumlar arasında döner ve
   `sequential` planda özet ana süreçte çalıştırılmaz. Özet görevinin bağımlılık taraması
@@ -42,17 +45,22 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   karakterler bozulmaz. Yükseltme günü günün dosyası eski yazıcının CP1254
   satırlarını taşıyorsa dosya dönüştürülmez: süreçler arası kilit altında bayt
   bayt `mergen_yyyymmdd.legacy-SSDDss-PID.log` adına taşınır ve yeni satırlar
-  temiz UTF-8 dosyada başlar (taşınamazsa `*.utf8.log` yedeğine yazılır).
+  temiz UTF-8 dosyada başlar (taşınamazsa `*.utf8.log` yedeğine yazılır ve bu
+  satırlar dosya temizlenince günlük dosyaya eklenir). Başka bir yazıcı sonradan
+  eski kodlamayla ekleme yaparsa yalnız yeni baytlar yeniden denetlenir; kilit
+  sahipliği doğrulanır. Çok-süreçli dağıtımda eklemeler süreçler arası kilitle
+  sıralanır.
 - **Konsol logu sadeleşti.** `[CHAT PERF] SSE işçide ilk ham HTTP parçası
   alındı` satırı her parçada değil istek başına bir kez yazılır.
 - **Proje ve Kaynak Analizi Excel eki:** Latin1 sütundan NVARCHAR olarak okunan
   Türkçe metnin `ý/þ/ð` harfleri `ı/ş/ğ` olarak dışa aktarılır; sütun adları da
-  (metadata etiketi almamış) aynı kurala tabidir. Onarım tam sütun düzeyinde
-  kanıta bağlıdır ve CSV dilimlerinde aynı karar (sütun sırasıyla) her dilime
-  uygulanır: sütunda İzlandaca/Faroecede bulunmayan Türkçe kanıtı (`ç/ü`) aynı
-  değerde benzer harfle birlikte görülmezse (`ý/Ý` tek başına kanıt değildir;
-  ör. "Ýmir") veya başka dil harfi (ör. İzlandaca `á/í/ó`) ya da gerçek `ı/ş/ğ`
-  varsa sütuna dokunulmaz. ODBC'nin kayıplı
+  (gerçek metadata etiketi almamış; birim-yalnız metadata etiket sayılmaz; her ad
+  ayrı değerlendirilir) aynı kurala tabidir. Sütun kapısı tam sütunda verilir ve
+  CSV dilimlerinde aynı karar (sütun sırasıyla) her dilime uygulanır; başka dil
+  harfi (ör. İzlandaca `á/í/ó`) ya da gerçek `ı/ş/ğ` varsa sütuna dokunulmaz.
+  Uygun sütunda da yalnız AYNI değerde İzlandaca/Faroecede bulunmayan Türkçe
+  kanıtı (`ç/ü/â/î/û`) taşıyan değer çevrilir (`ý/Ý` tek başına kanıt değildir;
+  ör. "Ýmir", "Þing" değişmez). ODBC'nin kayıplı
   `y`/`?` dönüşümü istemcide onarılamaz; sorgu tarafı çözümü RUNBOOK §13'tedir.
   Yerel alias şablonu: `docs/templates/library_query_aliases_local.template.R`.
 - **Tanılama yanlış uyarıları giderildi.** Yapılandırılmış servis uç noktaları
@@ -60,17 +68,21 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   `SSO_KEYCLOAK_URL`, api_config LLM uç noktaları) kurumsal DNS adı taşısa da
   adı yalnız özel adreslere çözülüyorsa on-prem sayılır ve gerçekten denenir;
   genel adrese çözülen host yapılandırılmış olsa da denenmez
-  (`MERGEN_HEALTH_INTERNAL_ENDPOINTS` açık ilanı geçerlidir). `0.0.0.0` / `[::]`
+  (`MERGEN_HEALTH_INTERNAL_ENDPOINTS` açık ilanı geçerlidir). Noktasız ad ve
+  `.local/.corp` gibi son ekler de çözümlenir; istek denetlenen özel adrese
+  sabitlenir, HTTP(S) dışı şema denenmez. `0.0.0.0` / `[::]`
   bağlama adresli uç noktalar yerel döngü adresinden (`127.0.0.1` / `[::1]`)
   denenir; yüzde kodlu genel host adları intranet sayılmaz.
 - **Kullanıcı fotoğraf adresi yapılandırılabilir:** `MERGEN_USER_AVATAR_URL_TEMPLATE`
   (`{user_id}` yer tutucusu; yoksa `<id>.jpg` yola, varsa sorgu dizesinden önce
-  eklenir). Fotoğraf yüklenemezse baş harfler gösterilir.
+  eklenir). Şablon tanımsızsa görsel isteği yapılmaz; fotoğraf yoksa ya da
+  yüklenemezse baş harfler/simge gösterilir.
 - **Sistem Durumu açık tema** tüm sekmelerde okunur: skor halkası, kutucuk ve
   kahraman alanı renkleri, İşçi İzleyici değerleri ve CPU çekirdek görseli.
 - **Yeni "Çevrimiçi" sekmesi (Sistem Durumu):** şu anda / son 15 dakika / son 24
   saat çevrimiçi kullanıcı, açık oturum ve aktif birim sayaçları ile kullanıcı
   oturum takip tablosu. Veri süreç belleğindedir; yeniden başlatmada sıfırlanır.
+  Çok-süreçli dağıtımda süreçler paylaşılan dizin üzerinden birleştirilir.
   Sistem Durumu içeriği yalnız ADMIN oturumuna üretilir; yetki menüde değil
   sunucuda denetlenir. Aynı oturum başka kullanıcıya geçerse önceki kullanıcının
   oturumu bitmiş sayılır; "Son 24 Saat" uygulamayı kullanan kullanıcıyı sayar.
@@ -99,6 +111,13 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   anahtar silinmez; yeni kişisel anahtar kaydı ya da ekranın yeniden açılması
   kurum seçimini kaldırır). Kutu değeri yalnız o modal ve o kullanıcı için
   geçerlidir; kimlik düşüp geri gelince kişisel anahtar yeniden yüklenir.
+  Kurum anahtarı varken kayıtlı kişisel anahtar, hatırlanan tercih bilinene dek
+  oturuma açılmaz; tolerans sonrasında gelen tercih de (açık seçim yapılmadıysa)
+  uygulanır. İşaret kaldırılarak yapılan kurum seçimi önceki tercihi siler.
+  Oturum başka kullanıcıya geçince açık modal ve yazılmış anahtar kaldırılır;
+  tarayıcı kayıt onayları yalnız ilgili kullanıcı ve yazım için gösterilir.
+  Onboarding ve Sistem Durumu/Dokümantasyon yetki denetimi artık saniyelik
+  yoklama yerine oturum kimlik sinyaline bağlıdır.
 - **Keşfet akışı yenilendi:** Keşfet düğmesi, mod seçimi ve asistan seçimi
   ekranları sade ve okunaklı bir tasarıma geçti; mod açıklamaları ve özellik
   durumları baştan görünür, yoğun sürekli animasyonlar kaldırıldı ve ekran

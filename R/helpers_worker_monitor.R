@@ -399,9 +399,10 @@ tracked_future_promise <- function(task_fn,
     }
     environment(task_fn) <- fn_env
   } else {
-    otomatik <- worker_monitor_auto_globals(task_type, task_fn, promise_globals)
+    # Hazırlık istisnası da (önbellek/değer okuma, genişletme) kaydı bırakır.
+    otomatik <- try(worker_monitor_auto_globals(task_type, task_fn, promise_globals), silent = TRUE)
     # Başarısız tarama eksik bağımlılıkla işçiye gönderilmez; iş düzgünce reddedilir.
-    if (!isTRUE(otomatik$ok)) {
+    if (inherits(otomatik, "try-error") || !isTRUE(otomatik$ok)) {
       finish_worker_task(task_id)
       stop(sprintf("Bağımlılık taraması başarısız; '%s' işi gönderilmedi.",
                    as.character(task_type %||% "generic")[1]), call. = FALSE)

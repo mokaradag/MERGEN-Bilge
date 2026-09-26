@@ -186,3 +186,11 @@ testthat::test_that("health_diagnostics_ui hiç kritik/uyarı yoksa boş durum m
   html <- paste(as.character(env$health_diagnostics_ui(checks)), collapse = "\n")
   testthat::expect_true(grepl("Aktif kritik uyarı yok.", html, fixed = TRUE))
 })
+testthat::test_that("skor halkası CSS değeri sayısal ve sınırlıdır; eksik skor dolu görünmez", {
+  env <- .source_health_tabs_for_test()
+  testthat::expect_identical(env$health_score_css_value(87L), 87)
+  testthat::expect_identical(env$health_score_css_value(140), 100)
+  testthat::expect_identical(env$health_score_css_value(NA), 0)
+  testthat::expect_identical(env$health_score_css_value(NULL), 0)
+  testthat::expect_identical(env$health_score_css_value("x"), 0)
+})

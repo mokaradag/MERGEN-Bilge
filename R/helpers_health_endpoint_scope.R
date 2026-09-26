@@ -17,6 +17,9 @@ health_url_host <- function(value) {
   # noktasız görünüp intranet sayılmasın diye sınıflandırmadan önce çözülür.
   host <- tolower(vapply(host, function(h) tryCatch(utils::URLdecode(h), error = function(e) h),
                          character(1), USE.NAMES = FALSE))
+  # IDNA nokta eşdeğerleri (U+3002, U+FF0E, U+FF61) libcurl'de "." olur;
+  # bu ayırıcılı genel ad noktasız görünüp intranet sayılmasın.
+  host <- gsub("[\u3002\uff0e\uff61]", ".", enc2utf8(host), perl = TRUE)
   host <- ifelse(
     grepl("^\\[", host),
     sub("^\\[([^]]*)\\].*$", "\\1", host),
@@ -84,20 +87,33 @@ health_resolve_host_ips <- function(host) {
 
 # Kurumsal DNS adı taşıyan yapılandırılmış uç nokta (ör. https://tts.kurum.com.tr)
 # literal RFC1918 adresi olmadığı için hiç denenmeden "genel internet" sayılıyordu.
-# Host yalnız TÜM adresleri özel/loopback olarak çözülürse on-prem sayılır; genel
-# adrese çözülen ya da çözülemeyen host denenmez. Sonuç 10 dk önbelleklenir.
+# Host yalnız TÜM adresleri özel/loopback olarak çözülürse on-prem sayılır ve
+# denetlenen adresler döner (istek bu adreslere sabitlenir; arada DNS yanıtı
+# değişse de genel adrese gidilmez). Özel karar önbelleklenmez; her denemede
+# yeniden çözülür. Yalnız GERÇEKTEN çözülüp genel çıkan sonuç 10 dk tutulur;
+# geçici DNS hatası önbelleğe girmez.
 .HEALTH_DNS_CACHE <- new.env(parent = emptyenv())
 
-health_host_resolves_private <- function(host, ttl = 600) {
+health_host_private_ips <- function(host, ttl = 600) {
   simdi <- as.numeric(Sys.time())
   kayit <- .HEALTH_DNS_CACHE[[host]]
-  if (is.list(kayit) && simdi - kayit$t < ttl) return(kayit$ok)
+  # `cozuldu` özniteliği genel sonucu çözülemeyen addan ayırır.
+  genel <- structure(character(0), cozuldu = TRUE)
+  if (is.list(kayit) && simdi - kayit$t < ttl) return(genel)
   ipler <- health_resolve_host_ips(host)
-  ok <- length(ipler) > 0L && all(vapply(ipler, function(ip) {
+  if (!length(ipler)) return(structure(character(0), cozuldu = FALSE))
+  ozel <- all(vapply(ipler, function(ip) {
     !isTRUE(health_host_unspecified(ip)) && isTRUE(health_ip_literal_internal(ip))
   }, logical(1)))
-  .HEALTH_DNS_CACHE[[host]] <- list(t = simdi, ok = ok)
-  ok
+  if (!ozel) {
+    .HEALTH_DNS_CACHE[[host]] <- list(t = simdi)
+    return(genel)
+  }
+  unique(ipler)
+}
+
+health_host_resolves_private <- function(host, ttl = 600) {
+  length(health_host_private_ips(host, ttl)) > 0L
 }
 
 # Sayısal IPv4 host'u libcurl'ün (httr) çözdüğü gibi kanonik noktalı dörtlüye
@@ -124,12 +140,32 @@ health_ipv4_canonical <- function(host) {
         collapse = ".")
 }
 
+# Geçerli IPv6 literalinin sekiz hextet'i (en fazla bir "::"); geçersizse NULL.
+.health_ipv6_hextets <- function(host) {
+  if (grepl(":::", host, fixed = TRUE) || grepl("(^:[^:])|([^:]:$)", host, perl = TRUE)) return(NULL)
+  konum <- gregexpr("::", host, fixed = TRUE)[[1]]
+  konum <- konum[konum > 0L]
+  if (length(konum) > 1L) return(NULL)
+  bol <- function(x) if (nzchar(x)) strsplit(x, ":", fixed = TRUE)[[1]] else character(0)
+  gruplar <- if (length(konum)) {
+    sol <- bol(substr(host, 1L, konum - 1L))
+    sag <- bol(substr(host, konum + 2L, nchar(host)))
+    if (length(sol) + length(sag) > 7L) return(NULL)
+    c(sol, rep("0", 8L - length(sol) - length(sag)), sag)
+  } else {
+    bol(host)
+  }
+  if (length(gruplar) != 8L || !all(grepl("^[0-9a-f]{1,4}$", gruplar))) return(NULL)
+  gruplar
+}
+
 # Joker bağlama adresi: 0.0.0.0 (ve kısa/sayısal yazımları) ile IPv6 `::`
-# (`0:0:0:0:0:0:0:0` gibi her yazımı).
+# (`0:0:0:0:0:0:0:0` gibi her GEÇERLİ yazımı; `0:::0` gibi bozuk literal değil).
 health_host_unspecified <- function(host) {
   host <- tolower(as.character(host %||% ""))
   if (grepl(":", host, fixed = TRUE)) {
-    return(grepl("^[0:]+$", host) && grepl("::|^(0+:){7}0+$", host))
+    gruplar <- .health_ipv6_hextets(host)
+    return(!is.null(gruplar) && all(grepl("^0+$", gruplar)))
   }
   identical(health_ipv4_canonical(host), "0.0.0.0")
 }
@@ -196,23 +232,46 @@ health_probe_url <- function(url) {
   paste0(m[2], if (startsWith(m[3], "[")) "[::1]" else "127.0.0.1", m[4])
 }
 
-health_is_public_url <- function(url) {
+# Uç nokta kapsam kararı. `public` TRUE ise istek gönderilmez; `neden`
+# ("sema", "genel_ip", "genel_dns", "cozulmedi") atlama açıklamasını belirler.
+# DNS adı yalnız operatör ilanıyla (MERGEN_HEALTH_INTERNAL_ENDPOINTS) ya da tüm
+# adresleri özel ağa çözülünce denenir: noktasız adlar ve `.local/.corp` gibi
+# son ekler adlandırma alışkanlığıdır, adres kapsamı kanıtı değildir. Genel
+# görünümlü adlar ayrıca yapılandırılmış olmalıdır. `pin` isteği denetlenen
+# adreslere sabitleyen curl `resolve` girdileridir.
+health_endpoint_scope <- function(url) {
   url <- tolower(as.character(url %||% ""))
-  if (!grepl("^https?://", url)) return(FALSE)
-  host <- health_url_host(url)
-  if (identical(host, "localhost")) return(FALSE)
-  ip_dahili <- health_ip_literal_internal(host)
-  if (!is.na(ip_dahili)) return(!isTRUE(ip_dahili) && !(host %in% health_internal_hosts()))
-  # IPv6 adresi tek etiket gibi görünür; "nokta yok => dahili" kuralı buna
-  # uygulanamaz (genel bir IPv6 adresi dahili sayılırdı).
-  if (grepl(":", host, fixed = TRUE)) {
-    return(!(host %in% health_internal_hosts()))
+  sonuc <- function(public, neden = "", ipler = character(0)) {
+    list(public = public, neden = if (public) neden else "", pin = health_pin_entries(url, host, ipler))
   }
-  # Tek etiketli intranet adı (nokta yok) ve bilinen dahili son ekler.
-  if (!grepl(".", host, fixed = TRUE)) return(FALSE)
-  if (grepl("\\.(local|internal|intranet|lan|corp)$", host, perl = TRUE)) return(FALSE)
-  # Operatörün açıkça on-prem ilan ettiği ya da yapılandırılmış olup yalnız
-  # özel adreslere çözülen kurumsal DNS adları gerçekten denenir.
-  if (host %in% health_internal_hosts()) return(FALSE)
-  !(host %in% health_configured_hosts() && isTRUE(health_host_resolves_private(host)))
+  host <- ""
+  # Yalnız HTTP(S) denenir; başka şema (ftp vb.) kapsam denetimini atlatamaz.
+  if (!grepl("^https?://", url)) return(sonuc(TRUE, "sema"))
+  host <- health_url_host(url)
+  if (identical(host, "localhost")) return(sonuc(FALSE))
+  ilan <- host %in% health_internal_hosts()
+  ip_dahili <- health_ip_literal_internal(host)
+  if (!is.na(ip_dahili)) return(sonuc(!isTRUE(ip_dahili) && !ilan, "genel_ip"))
+  # IPv6 adresi tek etiket gibi görünür; ad çözümlemesi uygulanamaz.
+  if (grepl(":", host, fixed = TRUE)) return(sonuc(!ilan, "genel_ip"))
+  if (ilan) return(sonuc(FALSE))
+  intranet_adi <- !grepl(".", host, fixed = TRUE) ||
+    grepl("\\.(local|internal|intranet|lan|corp)$", host, perl = TRUE)
+  if (!intranet_adi && !(host %in% health_configured_hosts())) return(sonuc(TRUE, "genel_dns"))
+  ipler <- health_host_private_ips(host)
+  if (length(ipler)) return(sonuc(FALSE, ipler = ipler))
+  sonuc(TRUE, if (isFALSE(attr(ipler, "cozuldu"))) "cozulmedi" else "genel_dns")
+}
+
+# curl `resolve` girdileri ("host:port:adres"); IPv6 adres köşeli parantezlidir.
+health_pin_entries <- function(url, host, ipler) {
+  if (!length(ipler) || !nzchar(host)) return(character(0))
+  port <- regmatches(url, regexec("^https?://(?:[^/?#@]*@)?(?:\\[[^]]*\\]|[^:/?#]*):([0-9]+)", url, perl = TRUE))[[1]]
+  port <- if (length(port) == 2L) port[2] else if (startsWith(url, "https")) "443" else "80"
+  adres <- ifelse(grepl(":", ipler, fixed = TRUE), paste0("[", ipler, "]"), ipler)
+  paste0(host, ":", port, ":", adres)
+}
+
+health_is_public_url <- function(url) {
+  isTRUE(health_endpoint_scope(url)$public)
 }

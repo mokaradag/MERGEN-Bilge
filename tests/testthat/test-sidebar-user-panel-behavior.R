@@ -76,11 +76,30 @@ test_that("avatar adresi MERGEN_USER_AVATAR_URL_TEMPLATE ile kod değiştirmeden
   expect_identical(.sb_env$mb_sidebar_user_avatar_url("A/B"), "https://foto.kurum.local/A%2FB.jpg")
 })
 
-test_that("geçersiz avatar şablonu yer tutucu varsayılana düşer", {
+test_that("tanımsız ya da geçersiz avatar şablonu dış istek üretmez (boş adres)", {
   for (deger in c("javascript:alert(1)", "//dis.example/x", "ftp://x/{user_id}", "")) {
     withr::local_envvar(c(MERGEN_USER_AVATAR_URL_TEMPLATE = deger))
-    url <- .sb_env$mb_sidebar_user_avatar_url(42)
-    expect_true(startsWith(url, "https://url"), info = deger)
-    expect_true(grepl("42\\.jpg$", url), info = deger)
+    expect_identical(.sb_env$mb_sidebar_user_avatar_url(42), "", info = deger)
   }
+})
+
+test_that("sohbet balonu avatar adresi yoksa boş src üretmez, simgeyi doğrudan çizer", {
+  testthat::skip_if_not_installed("shiny")
+  suppressMessages(library(shiny))
+  kok <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  for (f in c("R/helpers_markdown_safety.R", "R/helpers_language.R", "R/helpers_messaging.R",
+              "R/helpers_sidebar_user_display.R")) {
+    source(file.path(kok, f), encoding = "UTF-8", local = env)
+  }
+  mesaj <- list(id = "m1", type = "user", content = "merhaba", timestamp = "t")
+  ayar <- list(user_config = list(userId = 42, name = "A"))
+  withr::local_envvar(c(MERGEN_USER_AVATAR_URL_TEMPLATE = ""))
+  html <- as.character(env$render_message_bubble_ui(mesaj, settings = ayar))
+  expect_false(grepl("<img", html, fixed = TRUE))
+  expect_true(grepl("fa-user", html, fixed = TRUE))
+  withr::local_envvar(c(MERGEN_USER_AVATAR_URL_TEMPLATE = "https://foto.kurum.local/{user_id}.jpg"))
+  html <- as.character(env$render_message_bubble_ui(mesaj, settings = ayar))
+  expect_true(grepl("<img src=\"https://foto.kurum.local/42.jpg\"", html, fixed = TRUE))
 })

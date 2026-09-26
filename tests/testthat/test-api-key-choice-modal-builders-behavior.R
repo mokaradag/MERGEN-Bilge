@@ -46,7 +46,7 @@ testthat::test_that("kurum anahtarı seçimi bastırma bayrağını yalnız o ku
   testthat::expect_identical(
     mesajlar[[1]]$message,
     list(settingsKey = "api_key_onboarding_suppressed", userTag = env$api_key_pref_user_tag("ayilmaz"),
-       source = "default")
+       source = "default", nonce = "")
   )
   # Sonuç girdisi verilirse tarayıcı kaydın yazıldığını bu girdiye bildirir.
   testthat::expect_true(env$remember_api_key_choice_default(oturum, "ayilmaz", result_input = "ak-sonuc"))
@@ -65,6 +65,15 @@ testthat::test_that("kurum anahtarı seçimi bastırma bayrağını yalnız o ku
   testthat::expect_identical(mesajlar[[1]]$message$userTag, env$api_key_pref_user_tag("ayilmaz"))
   testthat::expect_false(env$forget_api_key_choice_default(oturum, NULL))
   testthat::expect_length(mesajlar, 1L)
+
+  # Onay girdisi ve yazım jetonu da gönderilir; işaretsiz seçim tercihi siler.
+  mesajlar <- list()
+  testthat::expect_true(env$forget_api_key_choice_default(oturum, "ayilmaz", result_input = "ak-sonuc", nonce = "y1"))
+  testthat::expect_identical(mesajlar[[1]]$message$resultInputId, "ak-sonuc")
+  testthat::expect_identical(mesajlar[[1]]$message$nonce, "y1")
+  testthat::expect_true(env$clear_api_key_choice_pref(oturum, "ayilmaz", nonce = "y2"))
+  testthat::expect_identical(mesajlar[[2]]$message$source, "clear")
+  testthat::expect_false(env$clear_api_key_choice_pref(oturum, NULL))
 })
 
 testthat::test_that("seçim modalı açılışı modal jetonunu ve kullanıcı etiketini gönderir", {

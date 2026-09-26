@@ -665,29 +665,43 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
   noktaları (`LOCAL_*_ENDPOINT`, `IMAGE_GEN_ENDPOINT`, `LANGFLOW_BASE_URL`,
   `SSO_KEYCLOAK_URL`) ve api_config LLM uç noktaları kurumsal DNS adı taşısa da
   adı yalnız özel/loopback adreslere çözülüyorsa on-prem sayılır ve gerçekten
-  denenir (sonuç 10 dk önbelleklenir). Yapılandırılmış olmak tek başına yetmez:
-  genel adrese çözülen host denenmez. Bu durumdaki ya da yapılandırılmamış ek
-  kurumsal hostlar için `MERGEN_HEALTH_INTERNAL_ENDPOINTS` kullanılır.
+  denenir; istek denetlenen adrese sabitlenir. Özel karar önbelleklenmez (her
+  denemede yeniden çözülür); yalnız genel çıkan çözüm 10 dk tutulur, geçici DNS
+  hatası önbelleğe girmez. Noktasız adlar ve `.local/.corp/.internal/.intranet/.lan`
+  son ekleri de aynı çözümleme kuralına tabidir. Yapılandırılmış olmak tek başına
+  yetmez: genel adrese çözülen host denenmez; HTTP(S) dışı şema hiç denenmez.
+  Bu durumdaki ya da yapılandırılmamış ek kurumsal hostlar için
+  `MERGEN_HEALTH_INTERNAL_ENDPOINTS` kullanılır.
 - **Sistem Durumu > Çevrimiçi:** şu anda çevrimiçi (bağlı oturumunda son 3
   dakikada nabız görülen), son 15 dakika ve son 24 saat kullanıcı sayıları ile
-  oturum takip tablosu. Veri uygulama sürecinin belleğindedir: yeniden
-  başlatmada sıfırlanır; `MERGEN_WORKERS` ile birden çok süreç çalışıyorsa her
-  süreç yalnız kendi oturumlarını gösterir. Sekme yalnız açıkken 30 saniyede bir
-  yenilenir ve sağlık probe'larını tetiklemez.
+  oturum takip tablosu. Veri uygulama sürecinin belleğindedir ve yeniden
+  başlatmada sıfırlanır. `tools/run_mergen_workers.R` ile birden çok uygulama
+  süreci çalışıyorsa her süreç oturum satırlarını paylaşılan dizine
+  (`MERGEN_PRESENCE_SHARED_DIR`, yoksa `MERGEN_LOG_DIR/presence`) en fazla 30 sn
+  aralıkla yayımlar ve sekme tüm süreçleri birleştirir; yayını 150 sn'den eski
+  süreç kapanmış sayılır. Tablo en fazla 200 kullanıcı satırı çizer (sayaçlar
+  tamdır). SSO süresi dolunca ya da oturum başka kullanıcıya geçince kayıt nabız
+  beklenmeden güncellenir. Sekme yalnız açıkken 30 saniyede bir yenilenir ve
+  sağlık probe'larını tetiklemez.
 - **Toplu yükleme ve özet eşzamanlılığı:** yüklenen dosyaların LLM özetleri
   `MERGEN_FILE_SUMMARY_MAX_CONCURRENT` (varsayılan 2; en fazla işçi sayısının bir
-  eksiği, en az bir işçi sohbet/LLM işine boş kalır) ile sınırlanır; kalanlar
+  eksiği, en az bir işçi sohbet/LLM işine boş kalır; ikiden az işçili havuzda
+  özet çalışmaz ve atlanır) ile sınırlanır. Çok-süreçli dağıtımda
+  (`tools/run_mergen_workers.R`) sınır ve kuyruk dağıtım genelidir: her uygulama
+  süreci kendi dilimini alır (her sürecin özet çalıştırabilmesi için değeri en az
+  süreç sayısı kadar verin); kalanlar
   sırayla başlar, böylece özetler paylaşılan işçi havuzunu doldurup sohbet
   isteklerini bekletmez. Bekleyen kuyruk `MERGEN_FILE_SUMMARY_MAX_QUEUE`
-  (varsayılan 64) ile, tek oturumun payı `MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION`
-  (varsayılan 16) ile sınırlıdır; dolunca dosya yine eklenir, özeti atlanır ve
-  kullanıcı uyarılır. Sıradaki özet en az özeti çalışan, eşitlikte en uzun
-  süredir sıra almamış oturumdan seçilir; boş işçi sayısı ölçülemezse özet
+  (varsayılan 64) ile, tek kullanıcının (tüm sekmeleriyle) payı
+  `MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION` (varsayılan 16) ile sınırlıdır;
+  dolunca dosya yine eklenir, özeti atlanır ve kullanıcı uyarılır (işçi kapasitesi
+  yoksa uyarı bunu ayrıca söyler). Sıradaki özet en az özeti çalışan, eşitlikte en
+  uzun süredir sıra almamış kullanıcıdan seçilir; boş işçi sayısı ölçülemezse özet
   başlamaz. Küme kurulamayıp `sequential` plana düşülmüşse özet hiç başlatılmaz
   (ana süreci dondurmasın diye atlanır ve kullanıcı uyarılır). Bekleyen özetler
   Sistem Durumu işçi kartında "Kuyruktaki İş" ve `file_summary_queued` olarak
-  görünür. Oturum kapanınca işçi henüz başlamamış LLM çağrısını atlar; yuva
-  iş gerçekten bittiğinde bırakılır.
+  görünür. Oturum kapanınca ya da oturumun kimliği değişince/düşünce işçi henüz
+  başlamamış LLM çağrısını atlar; yuva iş gerçekten bittiğinde bırakılır.
   Özet görevinin işçi bağımlılıkları uygulama açılışında
   (`app.R` onStart) bir kez taranır; açılış bu nedenle birkaç saniye uzayabilir,
   ilk yükleme ise olay döngüsünü dondurmaz.
@@ -738,11 +752,12 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
   - Sorguda ilgili sütunu `CAST(Sutun AS NVARCHAR(4000)) AS Sutun` (uygun uzunlukla)
     döndürün. Harfler bu durumda `ý/þ/ð/Ý/Þ/Ð` olarak gelir; Excel dışa aktarımı
     bunları `ı/ş/ğ/İ/Ş/Ğ` harflerine çevirir (`repair_turkish_latin1_letters()`).
-    Çeviri tam sütun düzeyinde kanıta bağlıdır: sütunda en az bir değerde
-    `ý/þ/ð` ile birlikte `ç/ü` gibi Türkçe kanıtı gerekir (`ý/Ý` tek başına
-    yetmez; başka satırdaki kanıt da yetmez); başka dil harfi (`á/í/ó/ø`) ya da
-    gerçek `ı/ş/ğ` içeren sütuna dokunulmaz. Kanıtsız kalan sütun için kalıcı
-    çözüm aşağıdaki sorgu/harmanlama düzeltmesidir.
+    Çeviri kanıta bağlıdır: başka dil harfi (`á/í/ó/ø`) ya da gerçek `ı/ş/ğ`
+    içeren sütuna dokunulmaz; uygun sütunda da yalnız AYNI değerde `ý/þ/ð` ile
+    birlikte `ç/ü/â/î/û` gibi Türkçe kanıtı taşıyan değer çevrilir (`ý/Ý` tek
+    başına yetmez; başka satırdaki kanıt da yetmez). Sütun adlarında karar her
+    ad için ayrıdır. Kanıtsız kalan değerler için kalıcı çözüm aşağıdaki
+    sorgu/harmanlama düzeltmesidir.
   - Sorgudaki Türkçe sabitleri `N'...'` önekiyle yazın.
   - Kalıcı çözüm sütunun `NVARCHAR` ya da Türkçe harmanlamaya taşınmasıdır (DBA
     işi; yedekli ve planlı).

@@ -31,13 +31,21 @@
   # düzey kaynak yüklemeleri etkisizleştirilerek yalnız tanımları okunur.
   env$safe_source <- function(...) invisible(TRUE)
   source(file.path(root, "R", "module_health.R"), encoding = "UTF-8", local = env)
+  source(file.path(root, "R", "helpers_user_session_identity.R"), encoding = "UTF-8", local = env)
   env
+}
+
+# Oturum kimlik sinyalini artırır (write_identity/set_auth_placeholder gibi).
+.admin_doc_kimlik_degisti <- function(session) {
+  sinyal <- session$userData$kimlik_sinyali
+  if (is.function(sinyal)) sinyal(shiny::isolate(sinyal()) + 1L)
+  invisible(session)
 }
 
 # testServer oturumunu yönetici yapar (yetki sunucuda oturum kimliğinden okunur).
 .admin_doc_as_admin <- function(session) {
   session$userData$user_config <- list(auth_level = "ADMIN")
-  invisible(session)
+  .admin_doc_kimlik_degisti(session)
 }
 
 # renderUI çıktısını metne çevirir (testServer hem liste hem karakter dönebilir).
@@ -256,7 +264,7 @@ testthat::test_that("çakışan başlıklar benzersiz çapa alır", {
   ids <- vapply(out$toc, function(t) t$id, character(1))
   testthat::expect_equal(length(unique(ids)), length(ids))
   testthat::expect_identical(ids[1], "mbdoc-notlar")
-  testthat::expect_identical(ids[2], "mbdoc-notlar-2")
+  testthat::expect_identical(ids[2], "mbdoc-notlar-1")
 })
 
 testthat::test_that("slugify Türkçe karakterleri ASCII'ye çevirir (locale-bağımsız)", {
@@ -529,13 +537,15 @@ testthat::test_that("yönetici olmayan ya da yetkisi düşen oturum belge görme
     session$setInputs(doc_select = "runbook")
     testthat::expect_true(grepl("RUNBOOK.md", .admin_doc_read_ui(output$tab_content_area), fixed = TRUE))
 
-    # Aynı oturum yönetici olmayan kullanıcıya geçer: içerik kilitlenir, seçim reddedilir.
+    # Aynı oturum yönetici olmayan kullanıcıya geçer: içerik zamanlayıcı
+    # beklenmeden aynı turda kilitlenir, seçim reddedilir.
     session$userData$user_config <- NULL
-    session$elapse(2500)
+    .admin_doc_kimlik_degisti(session)
+    session$flushReact()
     testthat::expect_true(grepl("yalnızca yöneticilere", .admin_doc_read_ui(output$tab_content_area), fixed = TRUE))
     session$setInputs(doc_select = "readme")
     .admin_doc_as_admin(session)
-    session$elapse(2500)
+    session$flushReact()
     testthat::expect_true(grepl("RUNBOOK.md", .admin_doc_read_ui(output$tab_content_area), fixed = TRUE))
   })
 })
@@ -598,5 +608,43 @@ testthat::test_that("adminDokumantasyonServer yenile butonu önbelleği temizler
     session$setInputs(refresh_analytics = 2)
     testthat::expect_equal(toast_recorder$count, 1L)
     testthat::expect_true(grepl("yenilendi", toast_recorder$last, fixed = TRUE))
+  })
+})
+
+testthat::test_that("ham bağlantı tırnak içindeki > ile bölünmez; yüzde kodlu yol kayıt defteriyle eşleşir", {
+  env <- .source_admin_doc_env()
+  html <- paste0(
+    "<p><a title=\"1 > 0\" href=\"../README.md\">kok</a> ",
+    "<a href=\"release%2Dnotes.md#notlar-1\">notlar</a> ",
+    "<a title='a > b' href='../RUNBOOK.md'>rb</a></p>"
+  )
+  sonuc <- env$admin_doc_rewrite_links(html, "docs/README.md")
+  testthat::expect_false(grepl("href=\"../", sonuc, fixed = TRUE))
+  testthat::expect_false(grepl("href='../", sonuc, fixed = TRUE))
+  testthat::expect_true(grepl("title=\"1 > 0\"", sonuc, fixed = TRUE))
+  testthat::expect_true(grepl("data-doc-id=\"release_notes\" data-doc-anchor=\"notlar-1\"", sonuc, fixed = TRUE))
+  # Tekrarlanan başlığa `-1` eki ile gidilir.
+  out <- env$admin_doc_render_markdown("## Notlar\n\na\n\n## Notlar\n\nb\n")
+  testthat::expect_true(grepl("id=\"mbdoc-notlar-1\"", out$html, fixed = TRUE))
+})
+
+testthat::test_that("yetki kaybında reaktif çizim önbelleği de geçersizleşir; geri dönüşte belge diskten okunur", {
+  env <- .source_admin_doc_env()
+  env$showToast <- function(...) invisible(NULL)
+  okuma <- 0L
+  asil <- env$admin_doc_render_document
+  env$admin_doc_render_document <- function(...) { okuma <<- okuma + 1L; asil(...) }
+  shiny::testServer(env$adminDokumantasyonServer, {
+    .admin_doc_as_admin(session)
+    session$setInputs(doc_select = "runbook")
+    invisible(.admin_doc_read_ui(output$tab_content_area))
+    once <- okuma
+    session$userData$user_config <- NULL
+    .admin_doc_kimlik_degisti(session)
+    session$flushReact()
+    .admin_doc_as_admin(session)
+    session$flushReact()
+    invisible(.admin_doc_read_ui(output$tab_content_area))
+    testthat::expect_gt(okuma, once)
   })
 })

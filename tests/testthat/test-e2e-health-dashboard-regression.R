@@ -181,7 +181,8 @@ test_that("runtime health dashboard files keep offline refresh and cleanup contr
   health_js_text <- e2e_health_read_repo_text("www/js/health_dashboard.js")
   shiny_handlers_text <- e2e_health_read_repo_text("www/js/shiny_message_handlers.js")
 
-  public_guard_pos <- regexpr("health_is_public_url(endpoint)", health_checks_text, fixed = TRUE)[[1]]
+  # Kapsam kararı (genel adres/şema/çözülemeyen ad) ağ isteğinden önce verilir.
+  public_guard_pos <- regexpr("health_endpoint_scope(endpoint)", health_checks_text, fixed = TRUE)[[1]]
   network_get_pos <- regexpr("httr::GET(", health_checks_text, fixed = TRUE)[[1]]
 
   expect_gt(public_guard_pos, 0L)

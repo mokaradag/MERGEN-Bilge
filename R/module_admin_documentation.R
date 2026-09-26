@@ -194,17 +194,24 @@ adminDokumantasyonServer <- function(id) {
     refresh_token <- reactiveVal(0L)
 
     # Modül bir kez başlatılır ve oturum boyunca yaşar; aynı oturum yönetici
-    # olmayan kullanıcıya geçerse (SSO) seçim/çizim reddedilir ve çizilmiş
-    # içerik 2 sn içinde kilit mesajına döner.
-    yonetici_durumu <- reactiveVal(admin_doc_session_is_admin(session))
+    # olmayan kullanıcıya geçerse (SSO) seçim/çizim reddedilir. Yetki yoklanmaz:
+    # çizim oturum kimlik sinyaline bağımlıdır ve yetki kaybında içerik aynı
+    # turda kilit mesajına döner; render önbelleği ve reaktif sonuç da boşaltılır.
+    kimlik_sinyali <- if (exists("mergen_session_identity_signal", mode = "function")) {
+      mergen_session_identity_signal(session)
+    }
+    yetki_izle <- function() {
+      if (is.function(kimlik_sinyali)) kimlik_sinyali() else invalidateLater(5000)
+      admin_doc_session_is_admin(session)
+    }
+    onbellegi_bosalt <- function() {
+      eski <- ls(render_cache)
+      if (length(eski)) rm(list = eski, envir = render_cache)
+      # Reaktif önbellekteki eski çizim de geçersizleşir.
+      refresh_token(isolate(refresh_token()) + 1L)
+    }
     observe({
-      invalidateLater(2000)
-      yonetici <- admin_doc_session_is_admin(session)
-      if (!yonetici) {
-        eski <- ls(render_cache)
-        if (length(eski)) rm(list = eski, envir = render_cache)
-      }
-      yonetici_durumu(yonetici)
+      if (!yetki_izle()) isolate(onbellegi_bosalt())
     })
 
     send_timestamp <- function() {
@@ -261,9 +268,7 @@ adminDokumantasyonServer <- function(id) {
       if (requireNamespace("shinyjs", quietly = TRUE)) {
         shinyjs::runjs("$('.tooltip').remove();")
       }
-      keys <- ls(render_cache)
-      if (length(keys)) rm(list = keys, envir = render_cache)
-      refresh_token(refresh_token() + 1L)
+      onbellegi_bosalt()
       send_timestamp()
       showToast(session, "Dokümantasyon yenilendi", "success")
     }, ignoreInit = TRUE)
@@ -282,15 +287,11 @@ adminDokumantasyonServer <- function(id) {
       res
     })
 
-    # İçerik alanı (yetki çizim anında da denetlenir; bağımlılık kayıttan
-    # SONRA alınır ki yoklama yalnız gerçek değişimde yeniden çizdirsin)
+    # İçerik alanı: yetki her çizimde denetlenir ve kimlik sinyaline bağımlıdır.
     output$tab_content_area <- renderUI({
       grp <- selected_group()
       did <- selected_doc()
-      yonetici <- admin_doc_session_is_admin(session)
-      if (!identical(isolate(yonetici_durumu()), yonetici)) yonetici_durumu(yonetici)
-      yonetici_durumu()
-      if (!yonetici) {
+      if (!yetki_izle()) {
         return(div(class = "mb-doc-empty", icon("lock"),
                    tags$p("Bu sayfa yalnızca yöneticilere açıktır.")))
       }

@@ -414,6 +414,7 @@
   .cinematic-modal-overlay,
   .cinematic-modal-header,
   .cinematic-mode-card,
+  .cinematic-mode-card.spotlight-card::before,
   .cinematic-modal-container,
   .explore-cinematic-btn,
   .explore-btn-arrow,

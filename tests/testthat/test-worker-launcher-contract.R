@@ -82,6 +82,9 @@ test_that("launch plani LAUNCH YAPMADAN dogru env/komut uretir", {
   expect_equal(plan[[3]]$port, 8011L)
   expect_identical(plan[[2]]$env[["MERGEN_PORT"]], "8010")
   expect_identical(plan[[2]]$env[["MERGEN_RUN_APP"]], "true")
+  # Cocuk surec paylasilan log/ozet kapasitesini worker sayisina gore bolusur.
+  expect_identical(plan[[2]]$env[["MERGEN_APP_WORKER_COUNT"]], "3")
+  expect_identical(plan[[2]]$env[["MERGEN_APP_WORKER_INDEX"]], "2")
   expect_true(any(grepl("app.R", plan[[1]]$args, fixed = TRUE)))
 })
 

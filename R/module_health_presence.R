@@ -27,10 +27,14 @@ health_presence_time_cell <- function(epoch, now) {
   )
 }
 
-health_presence_table <- function(users, now) {
+health_presence_table <- function(users, now, max_rows = 200L) {
   if (is.null(users) || !nrow(users)) {
     return(div(class = "health-empty", "Son 24 saatte uygulamayı kullanan kullanıcı görünmüyor."))
   }
+  # Tablo 30 sn'de bir yeniden çizildiği için satır sayısı sınırlıdır (liste
+  # önce çevrimiçi, sonra en son görülen sırasındadır); sayaçlar tamdır.
+  toplam <- nrow(users)
+  users <- users[seq_len(min(toplam, max_rows)), , drop = FALSE]
   bas_harf <- if (exists("mb_sidebar_user_initials", mode = "function")) {
     mb_sidebar_user_initials
   } else {
@@ -69,7 +73,11 @@ health_presence_table <- function(users, now) {
         tags$th("Açık Oturum"), tags$th("Süre"), tags$th("Son Görülme")
       )),
       tags$tbody(satirlar)
-    )
+    ),
+    if (toplam > nrow(users)) {
+      tags$p(class = "health-presence-note",
+             sprintf("İlk %d kullanıcı gösteriliyor (toplam %d).", nrow(users), toplam))
+    }
   )
 }
 
@@ -101,8 +109,8 @@ health_presence_ui <- function(snapshot) {
         class = "health-presence-note",
         icon("circle-info"),
         " Çevrimiçi: uygulamaya bağlı oturumundan son 3 dakikada nabız görülen kullanıcı.",
-        " Liste son 24 saati kapsar ve 30 saniyede bir yenilenir; veri bu uygulama",
-        " sürecinin belleğindedir (birden çok süreç varsa her süreç kendi oturumlarını gösterir)."
+        " Liste son 24 saati kapsar ve 30 saniyede bir yenilenir; çok-süreçli dağıtımda",
+        " diğer uygulama süreçlerinin oturumları paylaşılan dizinden en fazla 30 sn gecikmeyle eklenir."
       ),
       health_presence_table(snapshot$users, now),
       tooltip = "Anlık ve yakın zamanda çevrimiçi kullanıcılar; açık oturum, süre ve son görülme bilgisi."

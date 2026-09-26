@@ -124,6 +124,64 @@ merge_user_profile_into_identity <- function(user_identity, user_profile = NULL)
   user_identity
 }
 
+# Oturum sahibi geçişi (aynı Shiny oturumunda A -> B ya da kimlik kaybı).
+# A -> B değişiminde kullanıcıya bağlı oturum depoları (dosya kayıt defteri,
+# özetler, grafikler, MCP anlık görüntüsü) ve kişisel API anahtarı temizlenir;
+# A'nın yolu/anahtarı B'nin isteğine taşınmaz. Değişimde ve kimlik kaybında
+# kayıtlı kancalar (ör. süren özet işinin iptali) çalışır. Reaktif kimlik
+# sinyali kullanıcı kimliği ya da yetki düzeyi her değiştiğinde artar.
+mergen_session_owner_transition <- function(user_data, eski_uid, yeni_uid, yetki_degisti = FALSE) {
+  if (!is.environment(user_data)) return(invisible(FALSE))
+  eski <- .normalize_user_session_id(eski_uid)
+  yeni <- .normalize_user_session_id(yeni_uid)
+  sahip <- .normalize_user_session_id(user_data$kimlik_sahibi %||% 0L)
+  degisti <- yeni > 0L && sahip > 0L && !identical(yeni, sahip)
+  kayip <- yeni <= 0L && eski > 0L
+  if (yeni > 0L) user_data$kimlik_sahibi <- yeni
+  if (degisti) {
+    anahtarlar <- if (exists("SESSION_RUNTIME_STORE_KEYS", inherits = TRUE)) {
+      unname(SESSION_RUNTIME_STORE_KEYS)
+    } else {
+      c("current_session_files", "file_summaries", "chart_store", "mcp_registry_snapshot")
+    }
+    for (anahtar in anahtarlar) user_data[[anahtar]] <- list()
+    user_data$ai_api_key <- NULL
+  }
+  kancalar <- user_data$kimlik_kancalari
+  if ((degisti || kayip) && is.environment(kancalar)) {
+    neden <- if (degisti) "sahip_degisti" else "kimlik_kaybi"
+    for (ad in ls(kancalar, all.names = TRUE)) try(kancalar[[ad]](neden), silent = TRUE)
+  }
+  sinyal <- user_data$kimlik_sinyali
+  if ((!identical(eski, yeni) || isTRUE(yetki_degisti)) && is.function(sinyal)) {
+    try(sinyal(shiny::isolate(sinyal()) + 1L), silent = TRUE)
+  }
+  invisible(degisti)
+}
+
+# Sahip değişimi/kimlik kaybı kancası kaydeder; kaydı silen fonksiyon döner.
+mergen_session_on_owner_change <- function(session, fn) {
+  user_data <- tryCatch(session$userData, error = function(e) NULL)
+  if (!is.environment(user_data) || !is.function(fn)) return(function() invisible(NULL))
+  if (!is.environment(user_data$kimlik_kancalari)) user_data$kimlik_kancalari <- new.env(parent = emptyenv())
+  kancalar <- user_data$kimlik_kancalari
+  ad <- basename(tempfile("kanca_"))
+  kancalar[[ad]] <- fn
+  function() {
+    if (exists(ad, envir = kancalar, inherits = FALSE)) rm(list = ad, envir = kancalar)
+    invisible(NULL)
+  }
+}
+
+# Oturum kimliği değişince artan reaktif sinyal: gözlemciler kimliği
+# yoklamak yerine buna bağımlı olur.
+mergen_session_identity_signal <- function(session) {
+  user_data <- tryCatch(session$userData, error = function(e) NULL)
+  if (!is.environment(user_data)) return(function() 0L)
+  if (!is.function(user_data$kimlik_sinyali)) user_data$kimlik_sinyali <- shiny::reactiveVal(0L)
+  user_data$kimlik_sinyali
+}
+
 make_user_session_data_accessors <- function(session) {
   if (is.null(session) || is.null(session$userData)) {
     stop(
@@ -159,6 +217,8 @@ make_user_session_data_accessors <- function(session) {
                               auth_source,
                               auth_initialized = TRUE) {
       uid <- .normalize_user_session_id(user_id, allow_zero = TRUE)
+      eski_uid <- get_value("user_id", 0L)
+      eski_yetki <- get_value("user_config", list())$auth_level
 
       set_value("user_identity", user_identity)
       set_value("user_first_name", user_identity$first_name)
@@ -168,12 +228,16 @@ make_user_session_data_accessors <- function(session) {
       set_value("auth_source", auth_source)
       set_value("auth_initialized", isTRUE(auth_initialized))
       set_value("user_config", app_user_config)
+      # Aynı kullanıcının yetki düzeyi değişirse de sinyal artar (ör. ADMIN kaybı).
+      mergen_session_owner_transition(user_data, eski_uid, uid,
+                                      yetki_degisti = !identical(eski_yetki, app_user_config$auth_level))
 
       invisible(app_user_config)
     },
 
     set_auth_placeholder = function(sso_active = TRUE,
                                     auth_source = "keycloak") {
+      eski_uid <- get_value("user_id", 0L)
       set_value("user_id", 0L)
       set_value("sso_active", isTRUE(sso_active))
       set_value("auth_source", auth_source)
@@ -185,6 +249,7 @@ make_user_session_data_accessors <- function(session) {
       set_value("user_config", NULL)
       set_value("user_first_name", NULL)
       set_value("system_username", NULL)
+      mergen_session_owner_transition(user_data, eski_uid, 0L)
 
       invisible(NULL)
     },

@@ -93,9 +93,12 @@
   }
 
   # Latin-1 görüntülü ham sütun adı etiketten SONRA onarılır: metadata ham adla
-  # aranır, etiket almış başlık değişmez (turkish_latin1_repair_headers).
+  # aranır, etiket almış başlık değişmez (turkish_latin1_repair_headers). Çakışma
+  # yedeği de ham adın ONARILMIŞ biçimini kullanır.
+  kaynak_adlari <- names(df)
   if (exists("turkish_latin1_repair_headers", mode = "function", inherits = TRUE)) {
     headers <- turkish_latin1_repair_headers(headers, names(df), sutun_meta)
+    kaynak_adlari <- turkish_latin1_repair_headers(names(df), names(df))
   }
 
   # MÜKERRER BAŞLIK TÜM DIŞA AKTARIMI DÜŞÜRÜR: iki sütunun metadata etiketi
@@ -105,9 +108,16 @@
   # HİÇ dosya alamaz. Çakışan etiketler KAYNAK SÜTUN ADINA döner; hâlâ
   # çakışıyorsa sıra numarası eklenir.
   cakisan <- duplicated(headers) | duplicated(headers, fromLast = TRUE)
-  if (any(cakisan)) headers[cakisan] <- names(df)[cakisan]
-  hala <- duplicated(headers)
-  if (any(hala)) headers[hala] <- sprintf("%s_%d", headers[hala], which(hala))
+  if (any(cakisan)) headers[cakisan] <- kaynak_adlari[cakisan]
+  # Sıra eki tüm kullanılan adlara karşı seçilir: `A, A, A_2` için ikinci `A`
+  # mevcut `A_2` ile yeniden çakışmaz.
+  kullanilan <- unique(headers)
+  for (i in which(duplicated(headers))) {
+    ek <- i
+    while (sprintf("%s_%d", headers[i], ek) %in% kullanilan) ek <- ek + 1L
+    headers[i] <- sprintf("%s_%d", headers[i], ek)
+    kullanilan <- c(kullanilan, headers[i])
+  }
 
   headers
 }

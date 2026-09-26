@@ -83,3 +83,17 @@ testthat::test_that("render_worker_health_html htmltools HTML işaretli çıktı
   out <- env$render_worker_health_html(.sample_worker_info())
   testthat::expect_s3_class(out, "html")
 })
+
+testthat::test_that("eksik ya da NA işçi sayaçları satırı düşürmez ve NA yazmaz", {
+  env <- .source_worker_metrics_for_test()
+  bilgi <- .sample_worker_info()
+  bilgi$total_workers <- NULL
+  bilgi$queued_jobs <- NA
+  bilgi$usage_pct <- NA_real_
+  html <- as.character(env$render_worker_health_html(bilgi))
+  testthat::expect_true(grepl("Toplam İşçi:", html, fixed = TRUE))
+  testthat::expect_true(grepl("Kuyruktaki İş:", html, fixed = TRUE))
+  testthat::expect_false(grepl(">NA<|NA%", html))
+  testthat::expect_true(grepl("—", html, fixed = TRUE))
+  testthat::expect_true(grepl("33.3%", as.character(env$render_worker_health_html(.sample_worker_info())), fixed = TRUE))
+})

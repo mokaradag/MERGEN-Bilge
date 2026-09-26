@@ -111,12 +111,15 @@ pk_tr_fold_is_blank <- function(x) {
 #     benzer harf). á/í/ó/ø/æ gibi başka harf ya da gerçek ı/ş/ğ görülürse sütun
 #     doğru çözülmüştür ve DOKUNULMAZ.
 #   * Türkçe kanıtı AYNI DEĞERDE benzer harfle birlikte görülür: İzlandaca ve
-#     Faroecede bulunmayan ç/ü (ve büyükleri). U+00FD/U+00DD tek başına kanıt
-#     DEĞİLDİR (U+00DD ile başlayan "Ymir" ya da U+00DE ile başlayan "Thing"
-#     geçerli İzlandacadır); başka satırdaki "Müdür" de İzlandaca adı yeniden
-#     yazdıramaz. Kanıtsız sütun belirsiz sayılır ve olduğu gibi kalır.
-# Karar tam sütun üzerinde verilir (turkish_latin1_repair_eligible); CSV gibi
-# dilimli yazımlarda aynı karar her dilime `eligible` ile taşınır.
+#     Faroecede bulunmayan ç/ü/â/î/û (ve büyükleri). U+00FD/U+00DD tek başına
+#     kanıt DEĞİLDİR (U+00DD ile başlayan "Ymir" ya da U+00DE ile başlayan
+#     "Thing" geçerli İzlandacadır); başka satırdaki "Müdür" de İzlandaca adı
+#     yeniden yazdıramaz. Kanıtsız sütun belirsiz sayılır ve olduğu gibi kalır.
+# Sütun kapısı tam sütun üzerinde verilir (turkish_latin1_repair_eligible); CSV
+# gibi dilimli yazımlarda aynı karar her dilime `eligible` ile taşınır. Kapı
+# açık olsa da her DEĞER dönüştürülmeden önce kendi kanıtıyla yeniden denetlenir:
+# kanıtsız değer ("Thing" gibi) aynı sütundaki bozuk Türkçe değer yüzünden
+# yeniden yazılmaz.
 # Dönüşüm ICU (stringi) ile yerelden bağımsızdır. ODBC'nin kayıplı en-yakın
 # dönüşümü ("y"/"?") ONARILAMAZ.
 .pk_tr_latin1_letters <- function() {
@@ -124,7 +127,8 @@ pk_tr_fold_is_blank <- function(x) {
        hedef = intToUtf8(c(0x0131L, 0x015FL, 0x011FL, 0x0130L, 0x015EL, 0x011EL)),
        ortak = intToUtf8(c(0x00E7L, 0x00F6L, 0x00FCL, 0x00E2L, 0x00EEL, 0x00FBL,
                            0x00C7L, 0x00D6L, 0x00DCL, 0x00C2L, 0x00CEL, 0x00DBL)),
-       kanit = intToUtf8(c(0x00E7L, 0x00C7L, 0x00FCL, 0x00DCL)))
+       kanit = intToUtf8(c(0x00E7L, 0x00C7L, 0x00FCL, 0x00DCL, 0x00E2L, 0x00C2L,
+                           0x00EEL, 0x00CEL, 0x00FBL, 0x00DBL)))
 }
 
 # Kanıt dilim dilim biriktirilebilir (büyük CSV dışa aktarımı): yabancı harf ve
@@ -174,15 +178,31 @@ turkish_latin1_repair_columns <- function(data, stop_check = NULL, chunk = 20000
   !yabanci & kanit
 }
 
-# Başlık onarımı: karar tüm ham sütun adları üzerinde verilir; metadata etiketi
-# almış başlık (column_meta'da liste) değişmez. Onarım çakışma yaratırsa uygulanmaz.
+# Başlık onarımı her ham sütun adı için AYRI karar verir (bir başlığın kanıtı
+# başka başlığı yeniden yazdıramaz; doğru çözülmüş başka ad da onarımı
+# engellemez). Yalnız gerçekten metadata ETİKETİ uygulanmış başlık değişmez;
+# yalnız birim/rol taşıyan metadata etiket sayılmaz. Onarım yeni çakışma
+# yaratırsa yalnız çakışan konumlar geri alınır; önceden var olan mükerrer
+# başlıklar aşağı akıştaki çözümleyiciye bırakılır.
 turkish_latin1_repair_headers <- function(headers, source_names, column_meta = list()) {
-  if (!isTRUE(turkish_latin1_repair_eligible(source_names))) return(headers)
   column_meta <- if (is.list(column_meta)) column_meta else list()
-  etiketsiz <- !(source_names %in% names(column_meta)[vapply(column_meta, is.list, logical(1))])
+  etiketli <- vapply(as.character(source_names), function(ad) {
+    cm <- column_meta[[ad]]
+    is.list(cm) && is.character(cm$label) && length(cm$label) == 1L &&
+      !is.na(cm$label) && nzchar(cm$label)
+  }, logical(1), USE.NAMES = FALSE)
   onarilan <- headers
-  onarilan[etiketsiz] <- repair_turkish_latin1_letters(headers[etiketsiz], eligible = TRUE)
-  if (anyDuplicated(onarilan)) headers else onarilan
+  for (i in which(!etiketli)) {
+    if (isTRUE(turkish_latin1_repair_eligible(source_names[i]))) {
+      onarilan[i] <- repair_turkish_latin1_letters(headers[i], eligible = TRUE)
+    }
+  }
+  repeat {
+    cakisan <- onarilan != headers & (duplicated(onarilan) | duplicated(onarilan, fromLast = TRUE))
+    if (!any(cakisan)) break
+    onarilan[cakisan] <- headers[cakisan]
+  }
+  onarilan
 }
 
 repair_turkish_latin1_letters <- function(x, eligible = NULL) {
@@ -193,7 +213,9 @@ repair_turkish_latin1_letters <- function(x, eligible = NULL) {
   h <- .pk_tr_latin1_letters()
   utf8 <- enc2utf8(x)
   onarilacak <- !is.na(utf8) & validUTF8(utf8)
-  onarilacak[onarilacak] <- stringi::stri_detect_regex(utf8[onarilacak], paste0("[", h$kaynak, "]"))
+  # Değer düzeyinde yeniden denetim: benzer harf AYNI değerde Türkçe kanıtla görülmeli.
+  onarilacak[onarilacak] <- stringi::stri_detect_regex(utf8[onarilacak], paste0("[", h$kaynak, "]")) &
+    stringi::stri_detect_regex(utf8[onarilacak], paste0("[", h$kanit, "]"))
   x[onarilacak] <- stringi::stri_trans_char(utf8[onarilacak], h$kaynak, h$hedef)
   x
 }

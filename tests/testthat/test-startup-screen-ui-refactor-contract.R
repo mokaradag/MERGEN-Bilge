@@ -205,6 +205,12 @@ test_that("mod kartları klavyeyle seçilebilir ve hareket azaltma tercihine uyu
   etiket <- regmatches(html, regexpr('aria-label="[^"]*"', html))
   expect_true(grepl("Odak", etiket, fixed = TRUE))
   expect_true(grepl("Bu modu seç", etiket, fixed = TRUE))
+  # Açıklama ve özellik durumları ekran okuyucuya aria-describedby ile bağlanır.
+  expect_true(grepl('aria-describedby="mode-card-odak-short mode-card-odak-desc mode-card-odak-features"',
+                    html, fixed = TRUE))
+  for (kimlik in c("mode-card-odak-short", "mode-card-odak-desc", "mode-card-odak-features")) {
+    expect_true(grepl(sprintf('id="%s"', kimlik), html, fixed = TRUE), info = kimlik)
+  }
 
   js <- .startup_read_bytes(file.path(.startup_repo_root, "www", "js", "explore_cinematic.js"))
   expect_true(grepl("on('keydown', '.cinematic-mode-card'", js, fixed = TRUE))
@@ -229,6 +235,18 @@ test_that("mod kartları klavyeyle seçilebilir ve hareket azaltma tercihine uyu
   karakter_hareket <- hareket_blogu(karakter)
   expect_true(any(grepl(".cinematic-character-step {\n    animation: none;", karakter_hareket, fixed = TRUE)))
   expect_true(any(grepl(".cinematic-step-dot", karakter_hareket, fixed = TRUE)))
+  # Işık halkası, adım göstergesi ve portre geçişleri de kapatılır.
+  expect_true(any(grepl(".cinematic-mode-card.spotlight-card::before", hareket_blogu(sinema), fixed = TRUE)))
+  expect_true(any(grepl(".cinematic-step-indicator,", karakter_hareket, fixed = TRUE)))
+  expect_true(any(grepl("#cinematic-char-preview-img", karakter_hareket, fixed = TRUE)))
+  expect_true(grepl("prefers-reduced-motion: reduce)').matches", adim, fixed = TRUE))
+  # Genel kapatma karakter adımını temizler; iptal onay kilidini bırakır;
+  # kapanış sıfırlaması yeniden açılışta iptal edilir; metrikler textContent ile yazılır.
+  expect_true(grepl("window.CinematicCharacterStep.reset();", js, fixed = TRUE))
+  expect_true(grepl("clearTimeout(_closeResetTimer);", js, fixed = TRUE))
+  expect_true(grepl("_confirmInProgress = false;\n  }", gsub("\r", "", adim), fixed = TRUE))
+  expect_true(grepl("if (nesil !== _selectionGeneration) return;", adim, fixed = TRUE))
+  expect_false(grepl("metricEl.innerHTML", adim, fixed = TRUE))
   # Dar ekranda portre sütunu aşmaz (genişlik sınırlı, oran genişlikten).
   expect_true(grepl("width: min(100%, calc(min(440px, 50vh) * 5 / 7));", karakter, fixed = TRUE))
   # Başlık sarınca persona seçici daralabilir (sağdaki düğmeler kırpılmaz).

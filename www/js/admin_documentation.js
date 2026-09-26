@@ -76,6 +76,8 @@
       // 1) Belge karti secimi
       var card = ev.target.closest(".mb-doc-card[data-doc-id]");
       if (card) {
+        // Yeni gezinme bekleyen eski kaydirma hedefini iptal eder.
+        pendingAnchor = null;
         var list = card.closest(".mb-doc-card-list");
         setDocInput(list, card.getAttribute("data-doc-id"));
         return;
@@ -106,6 +108,7 @@
         var anchor = docLink.getAttribute("data-doc-anchor");
         var active = wrap.querySelector(".mb-doc-card-active[data-doc-id]");
         if (active && active.getAttribute("data-doc-id") === targetDoc) {
+          pendingAnchor = null;
           scrollToAnchor(wrap, anchor);
           return;
         }

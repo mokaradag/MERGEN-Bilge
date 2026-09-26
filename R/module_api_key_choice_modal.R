@@ -367,17 +367,17 @@ api_key_pref_user_tag <- function(username) {
   NULL
 }
 
-# Kurum anahtarı seçimini tarayıcıda o kullanıcı için hatırlatır: yalnızca
-# bastırma bayrağı ve kullanıcı etiketi gönderilir; anahtar değeri gönderilmez.
-# result_input verilirse tarayıcı kaydın gerçekten yazılıp yazılmadığını
-# ({ok}) bu girdiye bildirir; onay mesajı ancak o zaman gösterilir.
-remember_api_key_choice_default <- function(session, username = NULL, result_input = NULL) {
+# Tarayıcıya tercih yazım mesajı: yalnızca bastırma bayrağı, kullanıcı etiketi
+# ve kaynak gönderilir; anahtar değeri gönderilmez. result_input verilirse
+# tarayıcı kaydın gerçekten yazılıp yazılmadığını ({ok, tag, nonce}) bu girdiye
+# bildirir; sunucu onayı yalnız bu yazımın jetonu ve etiketiyle kabul eder.
+.api_key_choice_write_pref <- function(session, username, source, result_input = NULL, nonce = "") {
   etiket <- api_key_pref_user_tag(username)
   if (is.null(session) || is.null(etiket)) {
     return(invisible(FALSE))
   }
-
-  mesaj <- list(settingsKey = "api_key_onboarding_suppressed", userTag = etiket, source = "default")
+  mesaj <- list(settingsKey = "api_key_onboarding_suppressed", userTag = etiket, source = source,
+                nonce = as.character(nonce %||% "")[1])
   if (is.character(result_input) && length(result_input) == 1L && nzchar(result_input)) {
     mesaj$resultInputId <- result_input
   }
@@ -385,16 +385,21 @@ remember_api_key_choice_default <- function(session, username = NULL, result_inp
   invisible(TRUE)
 }
 
+# Kurum anahtarı seçimini tarayıcıda o kullanıcı için hatırlatır.
+remember_api_key_choice_default <- function(session, username = NULL, result_input = NULL, nonce = "") {
+  .api_key_choice_write_pref(session, username, "default", result_input, nonce)
+}
+
 # Kullanıcı kişisel anahtar kaydedince tarayıcıda hatırlanan kurum seçimi
 # kaldırılır (bastırma korunur); aksi halde sonraki girişte kurum anahtarı
 # kişisel anahtarın önüne geçerdi.
-forget_api_key_choice_default <- function(session, username = NULL) {
-  etiket <- api_key_pref_user_tag(username)
-  if (is.null(session) || is.null(etiket)) {
-    return(invisible(FALSE))
-  }
-  session$sendCustomMessage("mergenApiKeyChoiceRemember", list(
-    settingsKey = "api_key_onboarding_suppressed", userTag = etiket, source = "personal"
-  ))
-  invisible(TRUE)
+forget_api_key_choice_default <- function(session, username = NULL, result_input = NULL, nonce = "") {
+  .api_key_choice_write_pref(session, username, "personal", result_input, nonce)
+}
+
+# Kurum anahtarı "bir daha gösterme" işaretsiz seçildiğinde o kullanıcının
+# önceki tercihi (bastırma ya da kurum seçimi) silinir; seçim ekranı sonraki
+# girişte yeniden gösterilir.
+clear_api_key_choice_pref <- function(session, username = NULL, result_input = NULL, nonce = "") {
+  .api_key_choice_write_pref(session, username, "clear", result_input, nonce)
 }

@@ -23,10 +23,8 @@ mergen_file_pipeline_accepted <- function(result) {
 
 # Oturum ve çağıran kimliğinden ETKİN kullanıcı kimliğini seçer. Oturum kimliği
 # ancak KANONİK ve POZİTİF ise tercih edilir; `0L` gibi yer tutucu bir değer
-# çağıranın çözümlenmiş kimliğini gölgelemez. `strict = TRUE` asenkron yetki
-# denetimi içindir: oturum kimliği POZİTİF ve çağıranla AYNI olmalıdır; SSO
-# süresi dolunca (0) çağıran kimliğine düşülmez.
-.file_pipeline_effective_uid <- function(session_user_id, caller_user_id, strict = FALSE) {
+# çağıranın çözümlenmiş kimliğini gölgelemez.
+.file_pipeline_effective_uid <- function(session_user_id, caller_user_id) {
   kanonik <- function(x) {
     if (exists("mergen_canonical_user_id", mode = "function", inherits = TRUE)) {
       return(mergen_canonical_user_id(x %||% NA_integer_))
@@ -41,7 +39,6 @@ mergen_file_pipeline_accepted <- function(result) {
 
   oturum <- kanonik(session_user_id)
   cagiran <- kanonik(caller_user_id)
-  if (isTRUE(strict)) return(if (oturum > 0L && identical(oturum, cagiran)) oturum else 0L)
 
   # KİMLİK DEĞİŞİMİ KAPALI-BAŞARISIZDIR (IDOR). Parti kullanıcı A için başlayıp
   # aynı Shiny oturumu B'ye geçtikten SONRA tamamlanabilir (`sso_auth_error`
@@ -55,104 +52,18 @@ mergen_file_pipeline_accepted <- function(result) {
   cagiran
 }
 
-as_llm_settings_list <- function(settings) {
-  if (is.null(settings)) return(list())
-
-  # reaktif değerler (reactiveValues) is.list() kontrolünde TRUE döndürür; bu
-  # nedenle düz liste kontrolünden ÖNCE yakalanmalıdır. Aksi halde canlı reaktif
-  # nesne, anlık görüntüye çevrilmeden worker/arka plan bağlamına sızabilir ve
-  # "reactive value outside consumer" hatasına yol açabilir
-  # (CLAUDE.md: worker'a canlı reaktif nesne geçirme, önce düz değer yakala).
-  # isolate ile reaktif olmayan bağlamda da güvenli anlık görüntü alınır.
-  if (shiny::is.reactivevalues(settings)) {
-    return(tryCatch(
-      shiny::isolate(shiny::reactiveValuesToList(settings)),
-      error = function(e) list()
-    ))
-  }
-
-  if (is.list(settings)) return(settings)
-
-  tryCatch(
-    shiny::isolate(shiny::reactiveValuesToList(settings)),
-    error = function(e) list()
-  )
+.file_pipeline_session_uid <- function(session) {
+  .file_pipeline_effective_uid(tryCatch(session$userData$user_id, error = function(e) NULL), NULL)
 }
 
-summarize_file_with_llm <- function(file_text, filename, settings) {
-  snippet <- substr(file_text %||% "", 1, 60000)
-  settings_list <- as_llm_settings_list(settings)
-  chat <- list(
-    list(type = "system",
-         content = "Türkçe yanıtla. ÖNEMLİ: Bu bir 'özet' görevi DEĞİLDİR. Görevin, dosyanın içeriğini kapsamlı bir şekilde 'ÇIKARTMAK' ve raporlamaktır. \
-Asla yüzeysel geçme. Dosyadaki her ana başlığı, alt başlığı, istatistiksel veriyi, sayısal değerleri ve teknik detayları koruyarak uzun ve ayrıntılı bir içerik dökümü hazırla. \
-Kullanıcı 'özet' dese bile, sen 'Ayrıntılı İçerik Analizi' formatında yanıt ver. \
-Eksik bilgi bırakma. İçeriği maddeler halinde, hiyerarşik ve okunabilir şekilde sun."),
-    list(type = "user",
-         content = paste0("Dosya adı: ", filename,
-                          "\nİçerik (kısaltılmış olabilir):\n", snippet))
-  )
-  tryCatch({
-    warn_msgs <- character(0)
-	res <- withCallingHandlers(
-	  call_llm_with_retry(chat, settings_list, max_retries = 2),
-      warning = function(w) {
-        warn_msgs <<- c(warn_msgs, conditionMessage(w))
-        invokeRestart("muffleWarning")
-      }
-    )
-    if (is.list(res) && !is.null(res$content)) {
-      res <- res$content
-    }
-    if (!is.character(res) || length(res) == 0 || is.na(res[1])) {
-      res <- ""
-    } else {
-      res <- as.character(res)[1]
-    }
-    if (!nzchar(res)) {
-      paste("Özet çıkarılamadı. İçerikten bir parça:\n", substr(snippet, 1, 1000))
-    } else {
-      res
-    }
-  }, error = function(e) {
-    paste("Özet çıkarılamadı. İçerikten bir parça:\n", substr(snippet, 1, 1000))
-  })
-}
-
-# Özet görevi üst düzey fabrikadan üretilir: gövde her dosyada aynı olduğundan
-# bağımlılık taraması açılışta bir kez ısıtılabilir (file_summary_warm_dependencies).
-# `stop_file` oturum kapanınca ana süreçte oluşturulur; işçi okuma ve LLM
-# çağrısından önce bakar ve kapanmış oturumun işini sürdürmez.
-file_summary_task_fn <- function(file_name_safe, dest_safe, settings_snapshot, stop_file = "") {
-  force(file_name_safe)
-  force(dest_safe)
-  force(settings_snapshot)
-  force(stop_file)
-  function() {
-    if (nzchar(stop_file) && file.exists(stop_file)) stop("Oturum kapandı; dosya özeti iptal edildi.")
-    file_ext <- tolower(tools::file_ext(file_name_safe))
-
-    # Özet çıkarma - hata durumunda basit bilgi döndür
-    digest <- tryCatch({
-      switch(file_ext,
-        "xlsx" = , "xls" = build_excel_digest_json(dest_safe, top_levels = 12),
-        {
-          txt <- readFileContentToString(list(name = file_name_safe, datapath = dest_safe, size = file.info(dest_safe)$size))
-          substr(txt, 1, 50000)
-        }
-      )
-    }, error = function(e) {
-      sprintf("Dosya: %s\nBoyut: %s bayt\nTip: %s\n(Detaylı içerik okunamadı: %s)",
-              file_name_safe,
-              file.info(dest_safe)$size %||% "bilinmiyor",
-              file_ext,
-              conditionMessage(e))
-    })
-
-    if (nzchar(stop_file) && file.exists(stop_file)) stop("Oturum kapandı; dosya özeti iptal edildi.")
-    summary_text <- summarize_file_with_llm(digest, file_name_safe, settings_snapshot)
-    list(summary = summary_text, dest = dest_safe, ext = file_ext)
-  }
+# Arka plan özetinin sahiplik kararı: yüklemede oturum kimliği POZİTİFSE canlı
+# kimlik aynı kalmalıdır (SSO süresi dolunca çağıran kimliğine düşülmez).
+# Yüklemede oturum kimliği yoksa yalnız yine yokken ya da aynı kullanıcıyken
+# geçerlidir; farklı pozitif kimlik her durumda reddedilir.
+.file_pipeline_owner_ok <- function(yukleme_uid, canli_uid, etkin_uid) {
+  if (etkin_uid <= 0L) return(FALSE)
+  if (yukleme_uid > 0L) return(identical(canli_uid, etkin_uid))
+  canli_uid <= 0L || identical(canli_uid, etkin_uid)
 }
 
 processAndSummarizeFile <- function(file_info,
@@ -299,19 +210,44 @@ processAndSummarizeFile <- function(file_info,
 
   # Özet sırada/işçide beklerken aynı Shiny oturumu başka kullanıcıya geçebilir
   # (SSO yeniden kimlik) ya da kimlik süresi dolabilir (0). Başlatmadan ve sonuç
-  # işlenmeden önce CANLI oturum kimliği yükleyenle aynı olmalıdır; A'nın dosya
+  # işlenmeden önce CANLI oturum kimliği yükleyenle uyumlu olmalıdır; A'nın dosya
   # özeti B'nin ya da kimliği düşmüş oturumun durumuna yazılmaz.
+  yukleme_oturum_uid <- .file_pipeline_session_uid(session)
+  sahip_gecerli <- function() {
+    .file_pipeline_owner_ok(yukleme_oturum_uid, .file_pipeline_session_uid(session), effective_user_id)
+  }
+  # Her özet işi dosya adına bağlı bir iş jetonu taşır: aynı adla yeniden
+  # yükleme ya da dosyanın bağlamdan çıkarılması eski işin sonucunu geçersiz kılar.
+  is_jetonu <- basename(tempfile("ozet_"))
+  .file_summary_job_token(session, file_info$name, is_jetonu)
+  ozet_hata <- function(e) {
+    try(removeNotification(note_id), silent = TRUE)
+    # Dosya zaten indekse kaydedildi, sadece özetleme başarısız oldu
+    msg <- tryCatch(enc2utf8(conditionMessage(e)), error = function(err) conditionMessage(e))
+    cat("[FILE PIPELINE] Özetleme hatası:", msg, "\n")
+    if (sahip_gecerli() && .file_pipeline_session_uid(session) > 0L) {
+      showToast(session, paste(file_info$name, "yüklendi ancak özet çıkarılamadı."), "warning")
+    }
+  }
   ozet_baslat <- function() {
-    if (!identical(.file_pipeline_effective_uid(session$userData$user_id, effective_user_id, strict = TRUE), effective_user_id)) {
+    if (!sahip_gecerli()) {
       try(removeNotification(note_id), silent = TRUE)
       cat("[FILE PIPELINE] Oturum kimliği değişti, kuyruktaki özet başlatılmadı.\n")
+      # Kimlik düştüyse (başka kullanıcıya geçmediyse) iptal söylenir; dosya adı verilmez.
+      if (.file_pipeline_session_uid(session) <= 0L && isTRUE(show_toast)) {
+        showToast(session, "Oturum kimliği doğrulanamadığı için bir dosya özeti iptal edildi.", "warning")
+      }
       return(invisible(NULL))
     }
-    # Oturum kapanırsa işçi durdurma dosyasını görür ve LLM çağrısını atlar.
+    # Oturum kapanırsa ya da kimliği değişir/düşerse işçi durdurma dosyasını görür
+    # ve dosyayı okumadan/LLM çağrısı yapmadan durur.
     durdurma_dosyasi <- tempfile("mergen_ozet_dur_")
+    durdur <- function(...) try(file.create(durdurma_dosyasi), silent = TRUE)
     durdurma_kaydi <- if (is.function(session$onSessionEnded)) {
-      try(session$onSessionEnded(function() try(file.create(durdurma_dosyasi), silent = TRUE)),
-          silent = TRUE)
+      try(session$onSessionEnded(durdur), silent = TRUE)
+    }
+    kimlik_kaydi <- if (exists("mergen_session_on_owner_change", mode = "function")) {
+      mergen_session_on_owner_change(session, durdur)
     }
     ozet_gorevi <- file_summary_task_fn(file_name_safe, dest_safe, settings_snapshot, durdurma_dosyasi)
     # Bağımlılıklar süreç başına bir kez taranır (açılışta ısıtılır) ve görev İZOLE
@@ -342,14 +278,21 @@ processAndSummarizeFile <- function(file_info,
     if (promises::is.promising(gonderim)) {
       gonderim <- promises::finally(gonderim, function() {
         if (is.function(durdurma_kaydi)) try(durdurma_kaydi(), silent = TRUE)
+        if (is.function(kimlik_kaydi)) try(kimlik_kaydi(), silent = TRUE)
         unlink(durdurma_dosyasi)
       })
     }
     gonderim %...>%
     (function(res) {
-      if (!identical(.file_pipeline_effective_uid(session$userData$user_id, effective_user_id, strict = TRUE), effective_user_id)) {
-        removeNotification(note_id)
+      removeNotification(note_id)
+      if (!sahip_gecerli()) {
         cat("[FILE PIPELINE] Oturum kimliği değişti, özet sonucu uygulanmadı.\n")
+        return(invisible(NULL))
+      }
+      # Dosya bağlamdan çıkarıldı, silindi ya da aynı adla yeniden yüklendiyse
+      # eski işin sonucu yeni durumu ezmez.
+      if (!.file_summary_result_current(session, file_info$name, is_jetonu, res$dest)) {
+        cat("[FILE PIPELINE] Dosya değişti ya da çıkarıldı; eski özet sonucu uygulanmadı.\n")
         return(invisible(NULL))
       }
       if (isTRUE(auto_attach)) {
@@ -378,37 +321,33 @@ processAndSummarizeFile <- function(file_info,
         )
       }
 
-      # NOT: global_register_file artık promise'dan önce çağrılıyor (satır 63-72)
-
-      removeNotification(note_id)
       if (isTRUE(show_toast)) showToast(session, paste(file_info$name, "özetlendi."), "success")
-    }) %...!%
-    (function(e) {
-      removeNotification(note_id)
-      # Dosya zaten indekse kaydedildi, sadece özetleme başarısız oldu
-      msg <- tryCatch(enc2utf8(conditionMessage(e)), error = function(err) conditionMessage(e))
-      cat("[FILE PIPELINE] Özetleme hatası:", msg, "\n")
-      if (identical(.file_pipeline_effective_uid(session$userData$user_id, effective_user_id, strict = TRUE), effective_user_id)) {
-        showToast(session, paste(file_info$name, "yüklendi ancak özet çıkarılamadı."), "warning")
-      }
-    })
+    }) %...!% ozet_hata
   }
 
   ozet_kuyrukta <- if (exists("file_summary_schedule", mode = "function")) {
-    file_summary_schedule(ozet_baslat, session = session)
+    file_summary_schedule(ozet_baslat, session = session, sahip = effective_user_id, on_drop = ozet_hata)
   } else {
     ozet_baslat()
     TRUE
   }
-  # Özet kuyruğu doluysa (ya da arka plan işçisi yoksa) dosya yine kabul edilir;
-  # özet atlanır ve söylenir. Bildirim göstermeyen toplu çağıran ayrı nedeni görür.
-  if (identical(ozet_kuyrukta, FALSE)) {
+  # Özet kuyruğu doluysa ya da arka plan özet kapasitesi yoksa dosya yine kabul
+  # edilir; özet atlanır ve gerçek neden söylenir. Bildirim göstermeyen toplu
+  # çağıran nedeni sonuçtan okur.
+  if (identical(as.logical(ozet_kuyrukta), FALSE)) {
     try(removeNotification(note_id), silent = TRUE)
-    cat("[FILE PIPELINE] Özet kuyruğu dolu, özet atlandı:", file_name_safe, "\n")
+    isci_yok <- identical(attr(ozet_kuyrukta, "neden"), "isci_yok")
+    cat(if (isci_yok) "[FILE PIPELINE] Arka plan özet işçisi yok, özet atlandı:" else
+      "[FILE PIPELINE] Özet kuyruğu dolu, özet atlandı:", file_name_safe, "\n")
     if (isTRUE(show_toast)) {
-      showToast(session, paste(file_info$name, "yüklendi; özet kuyruğu dolu olduğundan özet çıkarılmadı."), "warning")
+      showToast(session, paste(file_info$name, if (isci_yok) {
+        "yüklendi; arka plan özet kapasitesi olmadığından özet çıkarılmadı."
+      } else {
+        "yüklendi; özet kuyruğu dolu olduğundan özet çıkarılmadı."
+      }), "warning")
     }
-    return(.file_pipeline_status(MERGEN_FILE_PIPELINE_ACCEPTED, "ozet_atlandi"))
+    return(.file_pipeline_status(MERGEN_FILE_PIPELINE_ACCEPTED,
+                                 if (isci_yok) "ozet_atlandi_isci" else "ozet_atlandi"))
   }
 
   # Dosya KABUL edildi: kalıcılaştırma ve indeks kaydı tamamlandı. Özetleme
@@ -424,7 +363,9 @@ chat_upload_commit_results <- function(results, ctx, batch_id = NULL) {
 
   # Parti A için başlayıp oturum B'ye geçtiyse (ya da kimlik düştüyse) dosyalar
   # B'nin sohbet bağlamına HİÇ eklenmez; kalıcı kopya A'nın kovasında kalır.
-  if (.file_pipeline_effective_uid(ctx$session$userData$user_id, ctx$user_id, strict = TRUE) <= 0L) {
+  if (!.file_pipeline_owner_ok(ctx$session_uid %||% .file_pipeline_session_uid(ctx$session),
+                               .file_pipeline_session_uid(ctx$session),
+                               .file_pipeline_effective_uid(NULL, ctx$user_id))) {
     cat("[UPLOAD BATCH] Oturum kimliği değişti; parti sohbet bağlamına eklenmedi.\n")
     return(invisible(NULL))
   }
@@ -548,6 +489,7 @@ handle_file_upload_batch <- function(uploads_df,
 
   commit_ctx <- list(
     session = session,
+    session_uid = .file_pipeline_session_uid(session),
     user_id = effective_user_id,
     settings_data = settings_data,
     file_manager_data = file_manager_data,

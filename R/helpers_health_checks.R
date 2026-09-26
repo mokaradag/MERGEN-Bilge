@@ -173,8 +173,14 @@ health_check_http_endpoint <- function(id, label, endpoint, configured_required 
     # `.com.tr` uç noktası HİÇ denenmeden "ok" raporlanıyordu (fail-open):
     # kapalı bir servis sağlıklı görünüyordu. Bunlar on-prem kurumsal adresler
     # olduğundan gerçekten denenir; yalnızca genel internet adresleri atlanır.
-    if (health_is_public_url(endpoint)) {
-      return(health_result(id, label, "warning", "Atlandı", "Genel internet adresi algılandı; offline sağlık sayfası public endpoint çağırmaz.", health_ms(start), remediation = "On-prem yerel uç nokta kullanın."))
+    kapsam <- health_endpoint_scope(endpoint)
+    if (isTRUE(kapsam$public)) {
+      detay <- switch(kapsam$neden,
+        sema = "Yalnız HTTP(S) uç noktaları denenir; desteklenmeyen şema çağrılmadı.",
+        cozulmedi = "Uç nokta adı çözülemedi; özel ağ adresi doğrulanamadığından çağrılmadı.",
+        "Genel internet adresi algılandı; offline sağlık sayfası public endpoint çağırmaz.")
+      return(health_result(id, label, "warning", "Atlandı", detay, health_ms(start),
+                           remediation = "On-prem yerel uç nokta kullanın ya da hostu MERGEN_HEALTH_INTERNAL_ENDPOINTS ile ilan edin."))
     }
     if (!requireNamespace("httr", quietly = TRUE)) {
       return(health_result(id, label, "unknown", endpoint, "httr paketi yok.", health_ms(start), remediation = "httr paket kurulumunu kontrol edin."))
@@ -182,8 +188,13 @@ health_check_http_endpoint <- function(id, label, endpoint, configured_required 
     # Yönlendirme izlenmez: onaylı on-prem uç nokta 30x ile genel bir hosta
     # yönlendirse bile istek kapsam dışına çıkmaz; 30x yanıtı servisin ayakta
     # olduğunu gösterir.
-    res <- try(httr::GET(health_probe_url(endpoint), httr::timeout(timeout_sec),
-                         httr::config(followlocation = 0L)), silent = TRUE)
+    # DNS adıyla onaylanan uç nokta denetlenen özel adreslere sabitlenir.
+    ayar <- if (length(kapsam$pin)) {
+      httr::config(followlocation = 0L, resolve = kapsam$pin)
+    } else {
+      httr::config(followlocation = 0L)
+    }
+    res <- try(httr::GET(health_probe_url(endpoint), httr::timeout(timeout_sec), ayar), silent = TRUE)
     if (inherits(res, "try-error")) {
       return(health_result(id, label, "warning", endpoint, "Uç noktaya erişilemedi veya timeout oluştu.", health_ms(start), remediation = "Servisin çalıştığını ve VM firewall ayarlarını kontrol edin."))
     }

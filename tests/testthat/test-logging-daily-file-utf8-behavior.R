@@ -157,3 +157,104 @@ test_that("UTF-8 doğrulaması sınırlı parçalarla yapılır ve parça sını
   writeBin(raw(0), yol)
   expect_true(env$mergen_log_file_is_utf8(yol))
 })
+
+test_that("NUL baytı taşıyan dosya UTF-8 sayılmaz; zorunlu kesim çok baytlı harfi bölmez", {
+  skip_if_not_installed("logger")
+  tmp <- withr::local_tempdir()
+  env <- .log_utf8_env(tmp)
+  yol <- file.path(tmp, "nul.log")
+  # UTF-16LE ASCII metni: 41 00 42 00
+  writeBin(as.raw(c(0x41, 0x00, 0x42, 0x00, 0x0A, 0x00)), yol)
+  expect_false(env$mergen_log_file_is_utf8(yol))
+
+  # Satır sonu olmayan uzun tek satır: parça sınırı 2 baytlı harfin ortasına denk gelir.
+  writeBin(c(charToRaw("a"), rep(charToRaw(enc2utf8(intToUtf8(0x015FL))), 60L)), yol)
+  expect_true(env$mergen_log_file_is_utf8(yol, chunk = 4))
+})
+
+test_that("başka yazıcı sonradan CP1254 eklerse yalnız yeni baytlar denetlenir ve dosya kenara alınır", {
+  skip_if_not_installed("logger")
+  tmp <- withr::local_tempdir()
+  env <- .log_utf8_env(tmp)
+  hedef <- file.path(tmp, "karma_20260101.log")
+  env$mergen_log_write_utf8("ilk satir", hedef)
+  expect_true(env$mergen_log_upgrade_legacy_file(hedef))
+
+  # Eski süreç CP1254 satırı ekler; önbellekteki eski karar kullanılmaz.
+  eski <- iconv("İş\n", from = "UTF-8", to = "WINDOWS-1254", toRaw = TRUE)[[1]]
+  con <- file(hedef, open = "ab"); writeBin(eski, con); close(con)
+  env$mergen_log_write_utf8("yeni satir", hedef)
+  expect_identical(.log_utf8_bytes(hedef), charToRaw("yeni satir\n"))
+  kenar <- list.files(tmp, pattern = "\\.legacy-.*\\.log$", full.names = TRUE)
+  expect_length(kenar, 1L)
+  expect_identical(.log_utf8_bytes(kenar), c(charToRaw("ilk satir\n"), eski))
+})
+
+test_that("aynı saniyedeki ikinci kenara alma önceki legacy dosyasının üzerine yazmaz", {
+  skip_if_not_installed("logger")
+  tmp <- withr::local_tempdir()
+  env <- .log_utf8_env(tmp)
+  hedef <- file.path(tmp, "cakisma_20260101.log")
+  eski <- iconv("İ\n", from = "UTF-8", to = "WINDOWS-1254", toRaw = TRUE)[[1]]
+  temiz <- function(nabiz = NULL) !file.exists(hedef) || env$mergen_log_file_is_utf8(hedef)
+  writeBin(eski, hedef)
+  expect_true(env$.mergen_log_move_legacy(hedef, temiz, 1, 60))
+  writeBin(c(eski, eski), hedef)
+  expect_true(env$.mergen_log_move_legacy(hedef, temiz, 1, 60))
+  kenar <- sort(list.files(tmp, pattern = "\\.legacy-.*\\.log$", full.names = TRUE))
+  expect_length(kenar, 2L)
+  expect_setequal(lapply(kenar, .log_utf8_bytes), list(eski, c(eski, eski)))
+})
+
+test_that("kilit sahipliği doğrulanır: kilidi kaybeden süreç dosyayı taşımaz ve başkasının kilidini silmez", {
+  skip_if_not_installed("logger")
+  tmp <- withr::local_tempdir()
+  env <- .log_utf8_env(tmp)
+  kilit <- file.path(tmp, "x.lock")
+  jeton <- env$.mergen_log_lock_acquire(kilit, 1, 60)
+  expect_true(env$.mergen_log_lock_owned(kilit, jeton))
+  # Taze kilit (sahibi canlı) başka süreçte kaldırılmaz.
+  expect_null(env$.mergen_log_lock_acquire(kilit, 0.1, 60))
+  # Başka süreç kilidi devraldıysa eski sahip onu silmez.
+  writeLines("baska", file.path(kilit, "sahip"))
+  env$.mergen_log_lock_release(kilit, jeton)
+  expect_true(dir.exists(kilit))
+  unlink(kilit, recursive = TRUE)
+
+  hedef <- file.path(tmp, "sahip_20260101.log")
+  eski <- iconv("İ\n", from = "UTF-8", to = "WINDOWS-1254", toRaw = TRUE)[[1]]
+  writeBin(eski, hedef)
+  # Tarama sırasında kilit başka sürece geçerse taşıma yapılmaz.
+  temiz <- function(nabiz = NULL) {
+    writeLines("baska", file.path(paste0(hedef, ".lock"), "sahip"))
+    FALSE
+  }
+  expect_false(env$.mergen_log_move_legacy(hedef, temiz, 1, 60))
+  expect_identical(.log_utf8_bytes(hedef), eski)
+})
+
+test_that("yedek dosyaya düşen satırlar günlük dosya temizlenince ana dosyaya taşınır", {
+  skip_if_not_installed("logger")
+  tmp <- withr::local_tempdir()
+  env <- .log_utf8_env(tmp)
+  hedef <- file.path(tmp, "yedek_20260101.log")
+  yedek <- sub("\\.log$", ".utf8.log", hedef)
+  writeBin(charToRaw("yedekteki satir\n"), yedek)
+  env$mergen_log_write_utf8("sonraki satir", hedef)
+  expect_identical(.log_utf8_bytes(hedef), charToRaw("yedekteki satir\nsonraki satir\n"))
+  expect_false(file.exists(yedek))
+})
+
+test_that("çok-süreçli dağıtımda eklemeler kilitle sıralanır ve kilit bırakılır", {
+  skip_if_not_installed("logger")
+  tmp <- withr::local_tempdir()
+  env <- .log_utf8_env(tmp)
+  hedef <- file.path(tmp, "paylasim_20260101.log")
+  withr::local_envvar(c(MERGEN_APP_WORKER_COUNT = "3"))
+  expect_true(env$.mergen_log_shared_writers())
+  env$mergen_log_write_utf8("satir", hedef)
+  expect_identical(.log_utf8_bytes(hedef), charToRaw("satir\n"))
+  expect_false(dir.exists(paste0(hedef, ".append.lock")))
+  withr::local_envvar(c(MERGEN_APP_WORKER_COUNT = "1"))
+  expect_false(env$.mergen_log_shared_writers())
+})

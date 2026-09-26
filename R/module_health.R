@@ -203,22 +203,17 @@ healthServer <- function(id, perf_tracker) {
 	  }, error = function(e) NULL)
 	})
 
-    # Yetki oturum kimliğinden 2 sn'de bir yeniden okunur: SSO süresi dolunca ya
-    # da oturum yönetici olmayan kullanıcıya geçince çizilmiş içerik hemen kilit
-    # mesajına döner (değer değişmedikçe yeniden çizim tetiklenmez).
-    yonetici_durumu <- reactiveVal(health_session_is_admin(session))
-    observe({
-      invalidateLater(2000)
-      yonetici_durumu(health_session_is_admin(session))
-    })
+    # Yetki yoklanmaz: çizim oturum kimlik sinyaline bağımlıdır. SSO süresi
+    # dolunca ya da oturum başka kullanıcıya/yetkiye geçince içerik aynı turda
+    # kilit mesajına döner; yönetici olmayan oturumlar zamanlayıcı çalıştırmaz.
+    kimlik_sinyali <- if (exists("mergen_session_identity_signal", mode = "function")) {
+      mergen_session_identity_signal(session)
+    }
 
     output$health_tab_content <- renderUI({
       tab <- input$health_tabs %||% "overview"
-      # Çizim anındaki yetki kaydedilir; bağımlılık kayıttan SONRA alınır ki
-      # yoklama yalnız gerçek değişimde yeniden çizdirsin.
+      if (is.function(kimlik_sinyali)) kimlik_sinyali() else invalidateLater(5000)
       yonetici <- health_session_is_admin(session)
-      if (!identical(isolate(yonetici_durumu()), yonetici)) yonetici_durumu(yonetici)
-      yonetici_durumu()
       if (!yonetici) {
         return(div(class = "health-empty", icon("lock"), " Bu sayfa yalnızca yöneticilere açıktır."))
       }

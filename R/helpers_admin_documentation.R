@@ -453,9 +453,11 @@ admin_doc_extract_toc <- function(html) {
     text <- admin_doc_strip_tags(inner)
     if (!nzchar(text)) text <- "Bölüm"
 
+    # Tekrarlanan başlık GitHub/CommonMark kuralıyla `-1`, `-2` eki alır; böylece
+    # `#notlar-1` bağlantısı ikinci "Notlar" başlığına gider.
     anchor <- paste0("mbdoc-", admin_doc_slugify(text))
     key <- anchor
-    n <- 1L
+    n <- 0L
     while (!is.null(used[[key]])) {
       n <- n + 1L
       key <- paste0(anchor, "-", n)
@@ -527,7 +529,8 @@ admin_doc_render_document <- function(doc_id, root = admin_doc_repo_root()) {
 # Ham HTML bağlantıları da (tek/çift tırnak, öznitelik sırası) aynı kurala tabidir.
 admin_doc_rewrite_links <- function(html, source_file) {
   if (!is.character(html) || length(html) != 1L || !nzchar(html)) return(html)
-  eslesme <- gregexpr("<a\\b[^>]*>", html, perl = TRUE, ignore.case = TRUE)
+  # Etiket tarayıcısı tırnak duyarlıdır: `title="1 > 0"` içindeki ">" etiketi bitirmez.
+  eslesme <- gregexpr("<a\\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", html, perl = TRUE, ignore.case = TRUE)
   etiketler <- regmatches(html, eslesme)[[1]]
   if (!length(etiketler)) return(html)
   kayitli <- list()
@@ -558,6 +561,13 @@ admin_doc_rewrite_links <- function(html, source_file) {
       capa <- sprintf(" data-doc-anchor=\"%s\"", admin_doc_slugify(cozulen))
     }
     if (!nzchar(ham)) return(paste0(yeni(paste0("href=\"#\"", capa)), ">"))
+    # commonmark boşluk ve ASCII dışı karakterleri yüzde kodlar; yol kayıt
+    # defteriyle karşılaştırılmadan önce çözülür.
+    ham_cozulen <- try(utils::URLdecode(ham), silent = TRUE)
+    if (!inherits(ham_cozulen, "try-error") && validUTF8(ham_cozulen)) {
+      Encoding(ham_cozulen) <- "UTF-8"
+      ham <- ham_cozulen
+    }
     kokten <- startsWith(ham, "/")
     parcalar <- strsplit(if (kokten || taban %in% c("", ".")) ham else paste(taban, ham, sep = "/"),
                          "/", fixed = TRUE)[[1]]

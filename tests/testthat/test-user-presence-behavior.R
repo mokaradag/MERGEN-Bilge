@@ -11,6 +11,7 @@
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(a, b) if (is.null(a)) b else a
   source(file.path(kok, "R", "helpers_user_presence.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "helpers_user_presence_shared.R"), encoding = "UTF-8", local = env)
   if (with_ui) {
     testthat::skip_if_not_installed("shiny")
     suppressMessages(library(shiny))
@@ -333,5 +334,83 @@ test_that("performans modülü geçersiz last_seen kaydını geçmişe yazmadan 
   expect_false(sonuc$gelecek_aktif)
   expect_false("gelecek-tok" %in% ls(gecmis))
   expect_identical(sonuc$kayit$user_id, 0L)
+  expect_true(paste0(sonuc$token, "#5") %in% ls(gecmis))
+})
+
+test_that("çok-süreçli dağıtımda diğer süreçlerin oturumları birleştirilir; kapanan süreç ayrıldı sayılır", {
+  env <- .presence_env()
+  dizin <- withr::local_tempdir()
+  withr::local_envvar(c(MERGEN_PRESENCE_SHARED_DIR = dizin))
+  now <- Sys.time()
+  # Tek süreçte (paylaşılan dizin yok) dosya yazılmaz.
+  withr::with_envvar(c(MERGEN_PRESENCE_SHARED_DIR = "", MERGEN_APP_WORKER_COUNT = "1"),
+                     expect_false(env$mb_presence_publish(new.env(), new.env(), now)))
+
+  uzak_aktif <- new.env()
+  uzak_aktif$u1 <- list(user_id = 21L, last_seen = now - 30, started_at = now - 600,
+                        profile = list(full_name = "Uzak Kisi"))
+  satirlar <- env$mb_presence_session_rows(uzak_aktif, new.env(), now)
+  saveRDS(list(generated_at = as.numeric(now) - 20, rows = satirlar),
+          file.path(dizin, "presence_baska-surec_1.rds"))
+  saveRDS(list(generated_at = as.numeric(now) - 600, rows = transform(satirlar, user_id = 22L)),
+          file.path(dizin, "presence_olu-surec_2.rds"))
+
+  yerel <- new.env()
+  yerel$t1 <- list(user_id = 5L, last_seen = now - 10, started_at = now - 100, profile = list())
+  anlik <- env$mb_presence_snapshot(yerel, new.env(), now)
+  expect_identical(anlik$metrics$online, 2L)
+  expect_identical(anlik$metrics$day, 3L)
+  expect_identical(anlik$users$status[anlik$users$user_id == 22L], "ayrildi")
+
+  # Bu sürecin yayını kendisi tarafından yeniden okunmaz; yayın aralığı sınırlıdır.
+  expect_true(env$mb_presence_publish(yerel, new.env(), now))
+  expect_false(env$mb_presence_publish(yerel, new.env(), now + 5))
+  expect_true(file.exists(file.path(dizin, paste0("presence_", env$mb_presence_process_id(), ".rds"))))
+  expect_identical(env$mb_presence_snapshot(yerel, new.env(), now)$metrics$day, 3L)
+})
+
+test_that("Çevrimiçi tablosu satır sayısı sınırlıdır, sayaçlar tam kalır", {
+  env <- .presence_env(with_ui = TRUE)
+  now <- Sys.time()
+  kullanicilar <- data.frame(user_id = 1:5, status = "cevrimici", sessions = 1L,
+                             started_at = as.numeric(now) - 60, last_seen = as.numeric(now),
+                             duration_secs = 60, full_name = paste("Kisi", 1:5), username = "",
+                             sicil = "", department = "", mudurluk = "", stringsAsFactors = FALSE)
+  html <- as.character(env$health_presence_table(kullanicilar, now, max_rows = 2L))
+  expect_identical(lengths(regmatches(html, gregexpr("health-presence-row", html, fixed = TRUE))), 2L)
+  expect_true(grepl("İlk 2 kullanıcı gösteriliyor (toplam 5).", html, fixed = TRUE))
+})
+
+test_that("kimlik sinyali nabız beklemeden varlık kaydını günceller", {
+  testthat::skip_if_not_installed("shiny")
+  suppressMessages(library(shiny))
+  env <- .presence_env()
+  kok <- resolve_repo_root_for_tests()
+  source(file.path(kok, "R", "helpers_user_session_identity.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "module_performance.R"), encoding = "UTF-8", local = env)
+  gecmis <- env$mb_presence_env(".mergen_presence_history")
+  sonuc <- new.env()
+  tmp <- withr::local_tempdir()
+  invisible(utils::capture.output(withr::with_dir(tmp, {
+    shiny::testServer(env$performanceStatsServer,
+                      args = list(current_user_id_provider = function() 5L), {
+      session$userData$user_id <- 5L
+      session$userData$auth_initialized <- TRUE
+      session$flushReact()
+      aktif <- get(".mergen_active_sessions", envir = globalenv())
+      sonuc$once <- aktif[[session$token]]$user_id
+      # SSO süresi doldu: kimlik geçişi sinyali artırır, kayıt hemen biter.
+      session$userData$user_id <- 0L
+      session$userData$auth_initialized <- FALSE
+      sinyal <- session$userData$kimlik_sinyali
+      sinyal(shiny::isolate(sinyal()) + 1L)
+      session$flushReact()
+      sonuc$sonra <- aktif[[session$token]]$user_id
+      sonuc$token <- session$token
+    })
+  })))
+  withr::defer(suppressWarnings(rm(list = c(sonuc$token, paste0(sonuc$token, "#5")), envir = gecmis)))
+  expect_identical(sonuc$once, 5L)
+  expect_identical(sonuc$sonra, 0L)
   expect_true(paste0(sonuc$token, "#5") %in% ls(gecmis))
 })

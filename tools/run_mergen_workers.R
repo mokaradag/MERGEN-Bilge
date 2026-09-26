@@ -111,7 +111,11 @@ mergen_worker_launch_plan <- function(base = mergen_worker_base_port(),
       env = c(
         MERGEN_RUN_APP = "true",
         MERGEN_PORT = as.character(ports[[i]]),
-        MERGEN_HOST = host
+        MERGEN_HOST = host,
+        # Cocuk surec paylasilan kaynaklari (log dosyasi, ozet kapasitesi)
+        # worker sayisina gore bolusur.
+        MERGEN_APP_WORKER_COUNT = as.character(length(ports)),
+        MERGEN_APP_WORKER_INDEX = as.character(i)
       )
     )
   })

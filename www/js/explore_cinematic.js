@@ -53,6 +53,13 @@
   // Üzerinde durulan kart
   var _hoveredModeId = null;
 
+  // Kapanış sıfırlama zamanlayıcısı: yeniden açılışta iptal edilir; eski
+  // kapanışın gecikmeli sıfırlaması yeni açılan modalın seçimini bozmaz.
+  var _closeResetTimer = null;
+
+  // Başarılı seçimden sonra giriş ekranı kaldırılınca odak ana uygulamaya taşınır.
+  var _focusMainAfterDismiss = false;
+
   // ============================================================
   // SPOTLIGHT KART İŞARETÇİ IŞIMASI
   // ============================================================
@@ -135,7 +142,7 @@
 
     // Kısa gecikme ile modalı kapat ve modu uygula
     setTimeout(function() {
-      closeCinematicModal();
+      closeCinematicModal(true);
 
       // localStorage'a kaydet
       try {
@@ -181,6 +188,11 @@
     var overlay = document.getElementById('mode-modal-overlay');
     if (!overlay) return;
 
+    if (_closeResetTimer) {
+      clearTimeout(_closeResetTimer);
+      _closeResetTimer = null;
+    }
+
     // Durumu sıfırla
     _selectedModeId = null;
     _hoveredModeId = null;
@@ -224,24 +236,36 @@
     }, { priority: 'event' });
   }
 
-  function closeCinematicModal() {
+  // `afterSelection` TRUE: mod seçildi, giriş ekranı kaldırılacak; odak kaldırılacak
+  // Keşfet düğmesine değil ana uygulamaya taşınır. Aksi halde (kullanıcı iptali)
+  // odak Keşfet düğmesine döner. Karakter adımı açıksa önce onun durumu
+  // (video, adım, onay kilidi) temizlenir.
+  function closeCinematicModal(afterSelection) {
     var overlay = document.getElementById('mode-modal-overlay');
     if (!overlay) return;
 
+    if (afterSelection !== true && window.CinematicCharacterStep &&
+        typeof window.CinematicCharacterStep.isActive === 'function' &&
+        window.CinematicCharacterStep.isActive()) {
+      window.CinematicCharacterStep.reset();
+    }
+
     overlay.classList.remove('active');
 
-    // Gizlenen kaplamada odak kalmaz; Keşfet düğmesine döner.
     if (document.activeElement && overlay.contains(document.activeElement)) {
-      var kesfet = document.querySelector('.explore-cinematic-btn');
+      var kesfet = afterSelection === true ? null : document.querySelector('.explore-cinematic-btn');
       if (kesfet && typeof kesfet.focus === 'function') {
         kesfet.focus();
       } else if (typeof document.activeElement.blur === 'function') {
         document.activeElement.blur();
       }
     }
+    _focusMainAfterDismiss = afterSelection === true;
 
     // Kart durumlarını sıfırla
-    setTimeout(function() {
+    if (_closeResetTimer) clearTimeout(_closeResetTimer);
+    _closeResetTimer = setTimeout(function() {
+      _closeResetTimer = null;
       overlay.classList.remove('mode-selected');
       var allCards = overlay.querySelectorAll('.cinematic-mode-card');
       allCards.forEach(function(card) {
@@ -283,6 +307,12 @@
       }
       document.body.classList.remove('deep-space-active');
       document.body.classList.add('app-ready');
+      // Kaldırılan giriş ekranındaki odak kaybolmaz; sohbet girişine taşınır.
+      if (_focusMainAfterDismiss) {
+        _focusMainAfterDismiss = false;
+        var hedef = document.getElementById('user_input');
+        if (hedef && typeof hedef.focus === 'function') hedef.focus();
+      }
     }, 1200);
   }
 

@@ -715,7 +715,8 @@ test_that("CSV dilimlerinde Latin-1 onarım kararı tam sütunda bir kez verilir
   testthat::skip_if_not_installed("stringi")
   env <- .pk_export_env()
   u <- function(...) intToUtf8(c(...))
-  # Sütun 1: ilk dilimde kanıtsız "Istanbul" (U+00DD ile), son dilimde ç kanıtı -> hepsi onarılır.
+  # Sütun 1: ilk dilimde kanıtsız "Istanbul" (U+00DD ile), son dilimde ç kanıtı -> sütun uygun;
+  # değer düzeyinde yalnız kendi kanıtı olan "Çarşı" onarılır, kanıtsız değer korunur.
   # Sütun 2: ilk dilimde "Sube Müdürü" (U+00DE ile), son dilimde İzlandaca "Reykjavík" -> hiçbiri onarılmaz.
   veri <- data.frame(
     Il = c(u(0xDD, 0x73, 0x74, 0x61, 0x6E, 0x62, 0x75, 0x6C), "Ankara", "Konya",
@@ -744,7 +745,7 @@ test_that("CSV dilimlerinde Latin-1 onarım kararı tam sütunda bir kez verilir
     Encoding(parca) <- "UTF-8"
     parca
   }, character(1)), collapse = "\n")
-  expect_true(grepl(u(0x130, 0x73, 0x74, 0x61, 0x6E, 0x62, 0x75, 0x6C), metin, fixed = TRUE))
+  expect_true(grepl(u(0xDD, 0x73, 0x74, 0x61, 0x6E, 0x62, 0x75, 0x6C), metin, fixed = TRUE))
   expect_true(grepl(u(0xC7, 0x61, 0x72, 0x15F, 0x131), metin, fixed = TRUE))
   expect_true(grepl(u(0xDE, 0x75, 0x62, 0x65, 0x20, 0x4D, 0xFC, 0x64, 0xFC, 0x72, 0xFC), metin, fixed = TRUE))
   expect_false(grepl(u(0x15E, 0x75, 0x62, 0x65), metin, fixed = TRUE))
@@ -798,4 +799,23 @@ test_that("CSV onarım kararı sınırlı dilimlerle tam sütunda biriktirilir",
   # İptal dilimler arasında yoklanır; tarama yarıda kalırsa onarım yapılmaz.
   expect_identical(env$turkish_latin1_repair_columns(veri, stop_check = function() TRUE, chunk = 2L),
                    c(FALSE, FALSE, FALSE))
+})
+
+test_that("mükerrer etiket yedeği onarılmış ham adı kullanır ve sıra eki benzersizdir", {
+  testthat::skip_if_not_installed("stringi")
+  env <- .pk_export_env()
+  u <- function(...) intToUtf8(c(...))
+  carsi <- u(0xC7, 0x61, 0x72, 0xFE, 0xFD)
+  veri <- data.frame(x = 1, y = 2, stringsAsFactors = FALSE)
+  names(veri) <- c(carsi, "Adet")
+  meta <- list(column_meta = stats::setNames(list(list(label = "Toplam"), list(label = "Toplam")),
+                                             c(carsi, "Adet")))
+  basliklar <- env$.pk_export_apply_labels(veri, names(veri), meta)
+  expect_identical(basliklar, c(u(0xC7, 0x61, 0x72, 0x15F, 0x131), "Adet"))
+
+  veri2 <- data.frame(a = 1, b = 2, c = 3)
+  names(veri2) <- c("A", "A", "A_2")
+  basliklar2 <- env$.pk_export_apply_labels(veri2, names(veri2), list())
+  expect_false(anyDuplicated(basliklar2) > 0L)
+  expect_identical(basliklar2[c(1L, 3L)], c("A", "A_2"))
 })
