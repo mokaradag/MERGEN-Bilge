@@ -315,6 +315,83 @@ test_that("bootstrap SÜREÇ BAŞINA BİR KEZ çalışır (memoize) ve tekrar ok
   expect_equal(get(".pk_boot_test_counter", envir = globalenv()), 1L)
 })
 
+test_that("bootstrap UTF-8 kaynaktaki Türkçe dize sabitlerini bozmadan yükler", {
+  # Temiz PSOCK işçisinde `encoding` seçeneği yerel kod sayfasıdır; CP1254
+  # VM'de UTF-8 kaynak bayt bayt CP1254 okunuyor ve sabitler bozuluyordu.
+  kok <- file.path(tempdir(), paste0("pk_boot_enc_", as.integer(runif(1, 1, 1e9))))
+  dir.create(file.path(kok, "R"), recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(kok, recursive = TRUE), add = TRUE)
+  beklenen <- intToUtf8(c(0x50, 0x72, 0x6F, 0x6A, 0x65, 0x20, 0x41, 0x64, 0x131,
+                          0x20, 0x15F, 0x11F, 0xFC, 0x130))
+  satir <- paste0('assign(".pk_boot_enc_value", "', beklenen, '", envir = globalenv())')
+  writeBin(charToRaw(enc2utf8(satir)), file.path(kok, "R", "turkce.R"))
+
+  eski_flag <- get0(.PK_ASYNC_BOOTSTRAP_FLAG, envir = globalenv(), ifnotfound = NULL)
+  on.exit({
+    if (is.null(eski_flag)) {
+      suppressWarnings(rm(list = .PK_ASYNC_BOOTSTRAP_FLAG, envir = globalenv()))
+    } else {
+      assign(.PK_ASYNC_BOOTSTRAP_FLAG, eski_flag, envir = globalenv())
+    }
+    suppressWarnings(rm(list = ".pk_boot_enc_value", envir = globalenv()))
+  }, add = TRUE)
+  suppressWarnings(rm(list = .PK_ASYNC_BOOTSTRAP_FLAG, envir = globalenv()))
+
+  # UTF-8 OLMAYAN giriş kodlaması: eski yükleyici (seçeneğe bağlı okuma) bu
+  # koşulda sabitleri bozardı; bayt tabanlı yükleyici etkilenmez.
+  withr::local_options(encoding = "latin1")
+  sonuc <- pk_async_worker_bootstrap(kok, "R/turkce.R", required_files = character(0))
+  expect_true(sonuc$ok)
+  expect_identical(enc2utf8(get(".pk_boot_enc_value", envir = globalenv())), beklenen)
+  expect_identical(getOption("encoding"), "latin1")
+
+  # Operatörün CP1254 kaydettiği yerel dosya da (ana süreçteki safe_source gibi) yüklenir.
+  cp1254 <- iconv(satir, from = "UTF-8", to = "WINDOWS-1254", toRaw = TRUE)[[1]]
+  writeBin(cp1254, file.path(kok, "R", "yerel_cp1254.R"))
+  suppressWarnings(rm(list = c(.PK_ASYNC_BOOTSTRAP_FLAG, ".pk_boot_enc_value"), envir = globalenv()))
+  sonuc2 <- pk_async_worker_bootstrap(kok, "R/yerel_cp1254.R", required_files = character(0))
+  expect_true(sonuc2$ok)
+  expect_identical(enc2utf8(get(".pk_boot_enc_value", envir = globalenv())), beklenen)
+})
+
+test_that("bootstrap CRLF/CR satır sonlu kaynağı yükler, boyutu okunamayan dosyayı reddeder", {
+  # Windows'ta `writeLines()` ve `core.autocrlf=true` CRLF üretir; bayt yükleyici
+  # `\r`yi parse'a bırakınca bootstrap `loaded = 0` ile düşüyordu.
+  kok <- file.path(tempdir(), paste0("pk_boot_crlf_", as.integer(runif(1, 1, 1e9))))
+  dir.create(file.path(kok, "R"), recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(kok, recursive = TRUE), add = TRUE)
+  artir <- "assign(\".pk_boot_crlf\", get(\".pk_boot_crlf\", envir = globalenv()) + 1L, envir = globalenv())"
+  metin <- paste0("if (TRUE) assign(\".pk_boot_crlf\", 1L, envir = globalenv())\r\n",
+                  artir, "\r", artir, "\r\n")
+  writeBin(charToRaw(metin), file.path(kok, "R", "crlf.R"))
+
+  eski_flag <- get0(.PK_ASYNC_BOOTSTRAP_FLAG, envir = globalenv(), ifnotfound = NULL)
+  on.exit({
+    if (is.null(eski_flag)) {
+      suppressWarnings(rm(list = .PK_ASYNC_BOOTSTRAP_FLAG, envir = globalenv()))
+    } else {
+      assign(.PK_ASYNC_BOOTSTRAP_FLAG, eski_flag, envir = globalenv())
+    }
+    suppressWarnings(rm(list = c(".pk_boot_crlf", "file.info"), envir = globalenv()))
+  }, add = TRUE)
+  suppressWarnings(rm(list = .PK_ASYNC_BOOTSTRAP_FLAG, envir = globalenv()))
+
+  sonuc <- pk_async_worker_bootstrap(kok, "R/crlf.R", required_files = character(0))
+  expect_true(sonuc$ok)
+  expect_equal(sonuc$loaded, 1L)
+  expect_equal(get(".pk_boot_crlf", envir = globalenv()), 3L)
+
+  # Geçici UNC/metadata hatası: boyut NA ise boş metin "yüklendi" sayılmaz.
+  suppressWarnings(rm(list = c(.PK_ASYNC_BOOTSTRAP_FLAG, ".pk_boot_crlf"), envir = globalenv()))
+  assign("file.info", function(...) data.frame(size = NA_real_), envir = globalenv())
+  bozuk <- pk_async_worker_bootstrap(kok, "R/crlf.R", required_files = character(0))
+  rm(list = "file.info", envir = globalenv())
+  expect_false(bozuk$ok)
+  expect_equal(bozuk$loaded, 0L)
+  expect_true("R/crlf.R" %in% bozuk$failed)
+  expect_false(exists(".pk_boot_crlf", envir = globalenv()))
+})
+
 test_that("bootstrap geçersiz kök ve boş liste için TİPLİ hata döner", {
   eski_flag <- get0(.PK_ASYNC_BOOTSTRAP_FLAG, envir = globalenv(), ifnotfound = NULL)
   on.exit({

@@ -302,6 +302,7 @@ testthat::test_that("health_release_ui koşu seçici tam artifact yolunu sızdı
   # globalenv'e kaynar; bu yüzden health_source_optional'ı no-op'a çeviririz.
   env$safe_source <- function(...) invisible(TRUE)
   env$health_source_optional <- function(...) invisible(TRUE)
+  source(file.path(kok, "R", "helpers_user_session_identity.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "module_health.R"), encoding = "UTF-8", local = env)
   env
 }
@@ -320,6 +321,7 @@ testthat::test_that("healthServer 'release' sekmesi health_release_ui çıktıs�
   env$release_evidence_overview <- function(...) .fullReleaseOverview()
 
   shiny::testServer(env$healthServer, args = list(perf_tracker = NULL), {
+    session$userData$user_config <- list(auth_level = "ADMIN")
     session$setInputs(health_tabs = "release")
     cikti <- paste(as.character(output$health_tab_content), collapse = "\n")
     testthat::expect_true(grepl("Doğrulama Kanıtı", cikti, fixed = TRUE))
@@ -331,4 +333,56 @@ testthat::test_that("healthServer 'release' sekmesi health_release_ui çıktıs�
     testthat::expect_true(grepl("10 Saniyelik Özet", overview_html, fixed = TRUE))
     testthat::expect_false(grepl("13 geçti / 0 başarısız", overview_html, fixed = TRUE))
   })
+})
+
+testthat::test_that("healthServer yönetici olmayan oturuma sekme içeriği ve varlık verisi vermez", {
+  env <- .healthModuleServerEnv()
+  sayac <- new.env(parent = emptyenv())
+  sayac$kontrol <- 0L
+  sayac$varlik <- 0L
+  env$health_collect_checks <- function(...) {
+    sayac$kontrol <- sayac$kontrol + 1L
+    data.frame(id = "app.version", label = "Sürüm", status = "ok", severity = 0L,
+               value = "v1.0", detail = "", duration_ms = 1, checked_at = "",
+               remediation = "", stringsAsFactors = FALSE)
+  }
+  env$mb_presence_snapshot <- function(...) {
+    sayac$varlik <- sayac$varlik + 1L
+    list(metrics = list(), users = NULL)
+  }
+  env$health_presence_ui <- function(snapshot) {
+    force(snapshot)
+    div("Kullanıcı Oturum Takibi")
+  }
+
+  shiny::testServer(env$healthServer, args = list(perf_tracker = NULL), {
+    # Menü gizli olsa da istemci sekme değerini kendisi gönderebilir.
+    session$userData$user_config <- list(auth_level = "USER")
+    session$setInputs(health_tabs = "presence")
+    cikti <- paste(as.character(output$health_tab_content), collapse = "\n")
+    testthat::expect_true(grepl("yalnızca yöneticilere", cikti, fixed = TRUE))
+    testthat::expect_false(grepl("Oturum Takibi", cikti, fixed = TRUE))
+    session$setInputs(health_tabs = "overview")
+    testthat::expect_false(grepl("10 Saniyelik", paste(as.character(output$health_tab_content), collapse = ""), fixed = TRUE))
+    testthat::expect_identical(c(sayac$varlik, sayac$kontrol), c(0L, 0L))
+
+    session$userData$user_config <- list(auth_level = " ADMIN ")
+    session$setInputs(health_tabs = "presence")
+    cikti <- paste(as.character(output$health_tab_content), collapse = "\n")
+    testthat::expect_true(grepl("Oturum Takibi", cikti, fixed = TRUE))
+    testthat::expect_identical(sayac$varlik, 1L)
+
+    # Yetki düşünce (SSO süresi doldu / kullanıcı değişti) çizilmiş içerik
+    # sekme değişimini beklemeden kilit mesajına döner.
+    # Kimlik sinyali (write_identity/set_auth_placeholder) çizimi hemen yeniler.
+    session$userData$user_config <- NULL
+    sinyal <- session$userData$kimlik_sinyali
+    sinyal(shiny::isolate(sinyal()) + 1L)
+    session$flushReact()
+    cikti <- paste(as.character(output$health_tab_content), collapse = "\n")
+    testthat::expect_true(grepl("yalnızca yöneticilere", cikti, fixed = TRUE))
+    testthat::expect_identical(sayac$varlik, 1L)
+  })
+
+  testthat::expect_false(env$health_session_is_admin(list(userData = new.env())))
 })

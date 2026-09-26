@@ -27,9 +27,25 @@
 #           bitince silinir.
 # ==============================================================================
 
-.pk_export_norm <- function(df) {
+# Dışa aktarım yalnızca GÖRÜNÜR çıktıdır (RLS/filtre bu noktadan önce biter);
+# Latin1 sütunda saklanmış Türkçe metnin Latin-1 harfleri burada sütun kanıtıyla
+# ı/ş/ğ'ye döner. `repair_cols` (sütun SIRASINA göre mantıksal) verilirse karar
+# tam sütunda önceden verilmiştir (CSV dilimleri); aynı adlı iki sütun
+# birbirinin kararını almaz. Sütun adları burada DEĞİŞMEZ: metadata ham adla
+# aranır, başlık onarımı etiketlerden sonra yapılır (turkish_latin1_repair_headers).
+.pk_export_norm <- function(df, repair_cols = NULL) {
   if (exists("normalize_pk_dataframe_utf8", mode = "function", inherits = TRUE)) {
-    return(normalize_pk_dataframe_utf8(df))
+    df <- normalize_pk_dataframe_utf8(df)
+  }
+  if (!is.data.frame(df) ||
+      !exists("repair_turkish_latin1_letters", mode = "function", inherits = TRUE)) {
+    return(df)
+  }
+  for (j in seq_along(df)) {
+    if (is.character(df[[j]])) {
+      uygun <- if (is.null(repair_cols)) NULL else isTRUE(repair_cols[j])
+      df[[j]] <- repair_turkish_latin1_letters(df[[j]], eligible = uygun)
+    }
   }
   df
 }
@@ -76,6 +92,15 @@
     headers[i] <- etiket
   }
 
+  # Latin-1 görüntülü ham sütun adı etiketten SONRA onarılır: metadata ham adla
+  # aranır, etiket almış başlık değişmez (turkish_latin1_repair_headers). Çakışma
+  # yedeği de ham adın ONARILMIŞ biçimini kullanır.
+  kaynak_adlari <- names(df)
+  if (exists("turkish_latin1_repair_headers", mode = "function", inherits = TRUE)) {
+    headers <- turkish_latin1_repair_headers(headers, names(df), sutun_meta)
+    kaynak_adlari <- turkish_latin1_repair_headers(names(df), names(df))
+  }
+
   # MÜKERRER BAŞLIK TÜM DIŞA AKTARIMI DÜŞÜRÜR: iki sütunun metadata etiketi
   # (ya da bir etiket ile başka bir sütunun ham adı) aynıysa hem
   # `pk_export_verify_multiset()` hem `pk_export_csv_verify()` `anyDuplicated()`
@@ -83,9 +108,16 @@
   # HİÇ dosya alamaz. Çakışan etiketler KAYNAK SÜTUN ADINA döner; hâlâ
   # çakışıyorsa sıra numarası eklenir.
   cakisan <- duplicated(headers) | duplicated(headers, fromLast = TRUE)
-  if (any(cakisan)) headers[cakisan] <- names(df)[cakisan]
-  hala <- duplicated(headers)
-  if (any(hala)) headers[hala] <- sprintf("%s_%d", headers[hala], which(hala))
+  if (any(cakisan)) headers[cakisan] <- kaynak_adlari[cakisan]
+  # Sıra eki tüm kullanılan adlara karşı seçilir: `A, A, A_2` için ikinci `A`
+  # mevcut `A_2` ile yeniden çakışmaz.
+  kullanilan <- unique(headers)
+  for (i in which(duplicated(headers))) {
+    ek <- i
+    while (sprintf("%s_%d", headers[i], ek) %in% kullanilan) ek <- ek + 1L
+    headers[i] <- sprintf("%s_%d", headers[i], ek)
+    kullanilan <- c(kullanilan, headers[i])
+  }
 
   headers
 }
@@ -162,8 +194,8 @@
 # CSV yedeği için gövdeyi YENİDEN hazırlar. `formatted = TRUE` yolunda yüzde
 # puanları Excel stiline güvenilerek kesre bölünür (61,3 -> 0,613); aynı yükü
 # stilsiz CSV'ye yazmak kullanıcıya %61,3 yerine 0,613 gösterirdi.
-.pk_export_csv_body <- function(data, meta) {
-  hazir <- pk_export_prepare_percent(.pk_export_norm(data), meta, formatted = FALSE)
+.pk_export_csv_body <- function(data, meta, repair_cols = NULL) {
+  hazir <- pk_export_prepare_percent(.pk_export_norm(data, repair_cols), meta, formatted = FALSE)
   govde <- hazir$data
   names(govde) <- .pk_export_apply_labels(hazir$data, hazir$headers, meta)
   list(body = govde, notes = hazir$notes)
@@ -423,8 +455,12 @@ pk_export_build <- function(data, packet = list(), context = list(),
   # katına çıkarıyordu. Yüzde/etiket hazırlığı YALNIZCA metadata'ya bağlı
   # olduğundan (veriye değil), dönüşümü parça başına uygulamak tüm çerçeveyi
   # dönüştürüp bölmekle AYNI sonucu verir.
+  # Latin-1 onarım kararı dilim başına değil TAM sütunda bir kez verilir
+  # (aşağıda sınırlı aşama içinde); aksi halde bir dilimde onarılan değer diğer
+  # dilimde olduğu gibi kalırdı. Sıfır satırlık sonda değer kararı gerektirmez.
+  onarim_sutunlari <- logical(ncol(data))
   csv_sonda <- tryCatch(
-    .pk_export_csv_body(data[0L, , drop = FALSE], meta),
+    .pk_export_csv_body(data[0L, , drop = FALSE], meta, onarim_sutunlari),
     error = function(e) NULL
   )
   csv_notlari <- if (is.list(csv_sonda)) csv_sonda$notes else character(0)
@@ -435,10 +471,13 @@ pk_export_build <- function(data, packet = list(), context = list(),
   # yoklanır: büyük ama izinli bir dışa aktarım Durdur'a ya da mutlak son
   # tarihe rağmen sonuna kadar çalışmaz.
   paket_sonucu <- sinirli_asama(function() {
+    if (exists("turkish_latin1_repair_columns", mode = "function", inherits = TRUE)) {
+      onarim_sutunlari <<- turkish_latin1_repair_columns(data, stop_check = durduruldu)
+    }
     pk_export_csv_bundle(
       dizin, base_name, plan, data,
       summary_sheet = ozet_sayfasi, info_sheet = bilgi_sayfasi,
-      transform = function(dilim) .pk_export_csv_body(dilim, meta)$body,
+      transform = function(dilim) .pk_export_csv_body(dilim, meta, onarim_sutunlari)$body,
       stop_check = durduruldu
     )
   })

@@ -151,38 +151,10 @@ createStartupScreenUI <- function() {
     class = "deep-space-explore-btn",
     tags$button(
       id = "explore-btn",
-      class = "explore-cinematic-btn hover-glass-trigger",
-      # Cam yansıması katmanı
-      tags$div(class = "explore-glass-wrap",
-        tags$div(class = "explore-glass-reflection")
-      ),
-      # SVG yılan izi animasyonu
-      tags$svg(
-        class = "explore-snake-svg",
-        overflow = "visible",
-        tags$defs(
-          tags$linearGradient(
-            id = "snake-gradient", x1 = "0%", y1 = "0%", x2 = "100%", y2 = "100%",
-            tags$stop(offset = "0%", `stop-color` = "#818cf8"),
-            tags$stop(offset = "100%", `stop-color` = "#34d399")
-          )
-        ),
-        tags$rect(
-          class = "explore-snake-trail",
-          x = "0", y = "0", width = "100%", height = "100%",
-          rx = "31", ry = "31",
-          fill = "none",
-          stroke = "url(#snake-gradient)",
-          `stroke-width` = "4",
-          `stroke-dasharray` = "30 70",
-          `stroke-linecap` = "round",
-          `pathLength` = "100"
-        )
-      ),
-      # Buton içeriği
+      class = "explore-cinematic-btn",
       tags$i(class = "fas fa-compass explore-btn-icon"),
       tags$span(class = "explore-btn-text", "KEŞFET"),
-      tags$i(class = "fas fa-chevron-right explore-btn-arrow")
+      tags$span(class = "explore-btn-arrow", tags$i(class = "fas fa-arrow-right"))
     )
   )
 }
@@ -215,25 +187,25 @@ createStartupScreenUI <- function() {
 }
 
 #' Üç deneyim modu kartının veri tanımları
-#' @description odak/denge/kesif kartlarının başlık, ikon, mikro-animasyon ve
+#' @description odak/denge/kesif kartlarının başlık, ikon ve
 #'   beş özelliğin açık/kapalı durumlarını tutar (özellik sırası feature_defs
 #'   ile aynıdır).
-#' @return Liste (her biri mode/title/short/icon/micro/states)
+#' @return Liste (her biri mode/title/short/icon/states)
 .startup_mode_card_defs <- function() {
   list(
     list(
       mode = "odak", title = "Odak", short = "Maksimum hız, mutlak sadelik.",
-      icon = "fa-bolt", micro = "micro-anim-odak",
+      icon = "fa-bolt",
       states = c(tts = FALSE, followup = FALSE, music = FALSE, sound = FALSE, character = FALSE)
     ),
     list(
       mode = "denge", title = "Dinamik", short = "Akıllı asistan desteği.",
-      icon = "fa-wand-magic-sparkles", micro = "micro-anim-denge",
+      icon = "fa-wand-magic-sparkles",
       states = c(tts = FALSE, followup = TRUE, music = TRUE, sound = TRUE, character = FALSE)
     ),
     list(
       mode = "kesif", title = "Bütünleşik", short = "Tüm sistemlerin kilidini açın.",
-      icon = "fa-microchip", micro = "micro-anim-kesif",
+      icon = "fa-microchip",
       states = c(tts = TRUE, followup = TRUE, music = TRUE, sound = TRUE, character = TRUE)
     )
   )
@@ -248,9 +220,12 @@ createStartupScreenUI <- function() {
   state_word <- if (isTRUE(on)) "Aktif" else "Kapalı"
   icon_class <- if (isTRUE(on)) feature$icon_on else feature$icon_off
 
+  # Etiketli satır: özelliğin adı ve durumu ikon ipucuna gizlenmeden okunur.
   tags$div(class = paste("cinematic-feature-icon", state_class), `data-feature` = feature$key,
     `data-tooltip` = paste0(feature$label, ": ", state_word),
-    tags$i(class = paste("fas", icon_class))
+    tags$i(class = paste("fas", icon_class), `aria-hidden` = "true"),
+    tags$span(class = "cinematic-feature-label", feature$label),
+    tags$span(class = "cinematic-feature-state", state_word)
   )
 }
 
@@ -263,29 +238,36 @@ createStartupScreenUI <- function() {
     .startup_mode_feature_icon(f, isTRUE(def$states[[f$key]]))
   })
 
+  # Klavyeyle de seçilebilir: odaklanır, Enter/Boşluk ile seçer (explore_cinematic.js).
   tags$div(
     class = "cinematic-mode-card spotlight-card",
     `data-mode` = def$mode,
+    role = "button",
+    tabindex = "0",
+    # Erişilebilir ad görünen eylem metnini ("Bu modu seç") içerir (sesli komut).
+    `aria-label` = paste(def$title, "\u2014 Bu modu seç"),
+    # Ekran okuyucu kısa/uzun açıklamayı ve özellik durumlarını da duyar.
+    `aria-describedby` = paste(sprintf("mode-card-%s-%s", def$mode, c("short", "desc", "features")),
+                               collapse = " "),
     tags$div(
       class = "cinematic-card-inner",
-      # Özellik göstergeleri (sağ üst köşe - ikonlu)
-      tags$div(
-        class = "cinematic-feature-indicators",
-        indicators
-      ),
-      # İkon kutusu
       tags$div(
         class = "cinematic-card-icon-box",
-        tags$div(class = paste("micro-anim", def$micro)),
         tags$i(class = paste("fas", def$icon, "cinematic-card-icon"))
       ),
       tags$h3(class = "cinematic-card-title", def$title),
-      tags$p(class = "cinematic-card-short", def$short),
+      tags$p(class = "cinematic-card-short", id = sprintf("mode-card-%s-short", def$mode), def$short),
       tags$div(class = "cinematic-card-desc-area",
-        tags$div(class = "cinematic-card-desc")
+        tags$div(class = "cinematic-card-desc", id = sprintf("mode-card-%s-desc", def$mode))
+      ),
+      tags$div(
+        class = "cinematic-feature-indicators",
+        id = sprintf("mode-card-%s-features", def$mode),
+        indicators
       ),
       tags$div(class = "cinematic-card-arrow",
-        tags$i(class = "fas fa-chevron-right")
+        tags$span("Bu modu seç"),
+        tags$i(class = "fas fa-arrow-right")
       )
     )
   )
@@ -302,7 +284,7 @@ createStartupScreenUI <- function() {
       class = "cinematic-char-step-header",
       tags$div(
         tags$h2(class = "cinematic-char-step-title", "Asistanınızı Seçin"),
-        tags$p(class = "cinematic-char-step-subtitle", "HER ASİSTANIN FARKLI BİR ÇALIŞMA TARZI VARDIR")
+        tags$p(class = "cinematic-char-step-subtitle", "Her asistanın kendine özgü bir çalışma tarzı var.")
       ),
       # Karakter butonları - başlık satırının sağ tarafında
       tags$div(
@@ -361,7 +343,7 @@ createStartupScreenUI <- function() {
       tags$button(
         class = "cinematic-char-select-btn",
         tags$span("Başlayalım"),
-        tags$i(class = "fas fa-rocket")
+        tags$i(class = "fas fa-arrow-right")
       )
     )
   )
@@ -387,7 +369,7 @@ createStartupScreenUI <- function() {
         class = "cinematic-modal-header",
         tags$div(
           tags$h2(class = "cinematic-modal-title", "Deneyim Seviyenizi Seçin"),
-          tags$p(class = "cinematic-modal-subtitle", "ÇALIŞMA TARZINIZA UYGUN MODU BELİRLEYİN")
+          tags$p(class = "cinematic-modal-subtitle", "Çalışma tarzınıza en uygun modu belirleyin; daha sonra Ayarlar'dan değiştirebilirsiniz.")
         ),
         tags$button(
           class = "cinematic-modal-close",

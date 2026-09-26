@@ -14,6 +14,115 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-09-25 Toplu yükleme donması, Windows kodlama ve Sistem Durumu düzeltmeleri
+
+- **Toplu yükleme artık uygulamayı dondurmuyor.** Her dosya özeti gönderiminde
+  işçi bağımlılıkları büyük `.GlobalEnv` üzerinde yeniden taranıyor (gönderim
+  başına saniyeler) ve bu süre boyunca TÜM kullanıcıların düğme, istem ve
+  bildirimleri bekliyordu. Tarama görev gövdesi başına bir kez yapılır
+  (`R/helpers_worker_dep_cache.R`); dosya özetleri oturum çerçevesini taşımadan
+  gönderilir ve eşzamanlı özet sayısı sınırlanır
+  (`MERGEN_FILE_SUMMARY_MAX_CONCURRENT`, varsayılan 2) ki sohbet istekleri işçi
+  beklemesin; sınır işçi havuzundan türetilir ve en az bir işçi etkileşimli
+  işe ayrılır (ikiden az işçili havuzda özet çalışmaz). Çok-süreçli dağıtımda
+  sınır ve kuyruk dağıtım genelidir ve süreçler arasında paylaştırılır.
+  Kuyruktaki ya da çalışan özet, oturum başka kullanıcıya geçtiyse ya da
+  kimliğin süresi dolduysa durdurulur ve sonucu yazılmaz; aynı Shiny oturumu
+  başka kullanıcıya geçince önceki kullanıcının dosya kayıt defteri, ekli
+  dosyaları ve kişisel API anahtarı oturumdan temizlenir. Bağlamdan çıkarılan
+  ya da aynı adla yeniden yüklenen dosyanın eski özet sonucu uygulanmaz. Bekleyen
+  özet kuyruğu da sınırlıdır (`MERGEN_FILE_SUMMARY_MAX_QUEUE`, varsayılan 64;
+  kullanıcı başına `MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION`, varsayılan 16);
+  dolunca dosya yine eklenir, özeti atlanır ve kullanıcı uyarılır. Bekleyen özetler işçi
+  metriklerinde görünür; oturum kapanınca işçi başlamamış LLM çağrısını atlar,
+  yuva ise iş bittiğinde bırakılır. Sıra oturumlar arasında döner ve
+  `sequential` planda özet ana süreçte çalıştırılmaz. Özet görevinin bağımlılık taraması
+  açılışta bir kez yapılır; süreç yeniden başladıktan sonraki ilk yükleme de
+  olay döngüsünü dondurmaz. Gönderim anında oluşan hata da bildirimi kapatır
+  ve "özet çıkarılamadı" uyarısı verir.
+- **Günlük log dosyaları UTF-8.** `mergen_yyyymmdd.log` ve AI hata ayıklama
+  dökümleri Windows kod sayfasına göre değil UTF-8 bayt olarak yazılır; Türkçe
+  karakterler bozulmaz. Yükseltme günü günün dosyası eski yazıcının CP1254
+  satırlarını taşıyorsa dosya dönüştürülmez: süreçler arası kilit altında bayt
+  bayt `mergen_yyyymmdd.legacy-SSDDss-PID.log` adına taşınır ve yeni satırlar
+  temiz UTF-8 dosyada başlar (taşınamazsa `*.utf8.log` yedeğine yazılır ve bu
+  satırlar dosya temizlenince günlük dosyaya eklenir). Başka bir yazıcı sonradan
+  eski kodlamayla ekleme yaparsa yalnız yeni baytlar yeniden denetlenir; kilit
+  sahipliği doğrulanır. Çok-süreçli dağıtımda eklemeler süreçler arası kilitle
+  sıralanır.
+- **Konsol logu sadeleşti.** `[CHAT PERF] SSE işçide ilk ham HTTP parçası
+  alındı` satırı her parçada değil istek başına bir kez yazılır.
+- **Proje ve Kaynak Analizi Excel eki:** Latin1 sütundan NVARCHAR olarak okunan
+  Türkçe metnin `ý/þ/ð` harfleri `ı/ş/ğ` olarak dışa aktarılır; sütun adları da
+  (gerçek metadata etiketi almamış; birim-yalnız metadata etiket sayılmaz; her ad
+  ayrı değerlendirilir) aynı kurala tabidir. Sütun kapısı tam sütunda verilir ve
+  CSV dilimlerinde aynı karar (sütun sırasıyla) her dilime uygulanır; başka dil
+  harfi (ör. İzlandaca `á/í/ó`) ya da gerçek `ı/ş/ğ` varsa sütuna dokunulmaz.
+  Uygun sütunda da yalnız AYNI değerde İzlandaca/Faroecede bulunmayan Türkçe
+  kanıtı (`ç/ü/â/î/û`) taşıyan değer çevrilir (`ý/Ý` tek başına kanıt değildir;
+  ör. "Ýmir", "Þing" değişmez). ODBC'nin kayıplı
+  `y`/`?` dönüşümü istemcide onarılamaz; sorgu tarafı çözümü RUNBOOK §13'tedir.
+  Yerel alias şablonu: `docs/templates/library_query_aliases_local.template.R`.
+- **Tanılama yanlış uyarıları giderildi.** Yapılandırılmış servis uç noktaları
+  (`LOCAL_*_ENDPOINT`, `IMAGE_GEN_ENDPOINT`, `LANGFLOW_BASE_URL`,
+  `SSO_KEYCLOAK_URL`, api_config LLM uç noktaları) kurumsal DNS adı taşısa da
+  adı yalnız özel adreslere çözülüyorsa on-prem sayılır ve gerçekten denenir;
+  genel adrese çözülen host yapılandırılmış olsa da denenmez
+  (`MERGEN_HEALTH_INTERNAL_ENDPOINTS` açık ilanı geçerlidir). Noktasız ad ve
+  `.local/.corp` gibi son ekler de çözümlenir; istek denetlenen özel adrese
+  sabitlenir, HTTP(S) dışı şema denenmez. `0.0.0.0` / `[::]`
+  bağlama adresli uç noktalar yerel döngü adresinden (`127.0.0.1` / `[::1]`)
+  denenir; yüzde kodlu genel host adları intranet sayılmaz.
+- **Kullanıcı fotoğraf adresi yapılandırılabilir:** `MERGEN_USER_AVATAR_URL_TEMPLATE`
+  (`{user_id}` yer tutucusu; yoksa `<id>.jpg` yola, varsa sorgu dizesinden önce
+  eklenir). Şablon tanımsızsa görsel isteği yapılmaz; fotoğraf yoksa ya da
+  yüklenemezse baş harfler/simge gösterilir.
+- **Sistem Durumu açık tema** tüm sekmelerde okunur: skor halkası, kutucuk ve
+  kahraman alanı renkleri, İşçi İzleyici değerleri ve CPU çekirdek görseli.
+- **Yeni "Çevrimiçi" sekmesi (Sistem Durumu):** şu anda / son 15 dakika / son 24
+  saat çevrimiçi kullanıcı, açık oturum ve aktif birim sayaçları ile kullanıcı
+  oturum takip tablosu. Veri süreç belleğindedir; yeniden başlatmada sıfırlanır.
+  Çok-süreçli dağıtımda süreçler paylaşılan dizin üzerinden birleştirilir.
+  Sistem Durumu içeriği yalnız ADMIN oturumuna üretilir; yetki menüde değil
+  sunucuda denetlenir. Aynı oturum başka kullanıcıya geçerse önceki kullanıcının
+  oturumu bitmiş sayılır; "Son 24 Saat" uygulamayı kullanan kullanıcıyı sayar.
+- **AI Uzman altyazı şeridi** açık temada açık yüzey ve koyu metinle çizilir.
+- **Dokümantasyon sayfası** kök, `docs/` ve varlık klasörlerindeki belgeleri yeni
+  sekmelerle (Doğrulama, Özellikler, Konuşma, Varlıklar) gösterir; kayıtsız yeni
+  belge test tarafından yakalanır. Belge içindeki bağlantılar artık uygulamadan
+  çıkarmaz: kayıtlı belgeye giden bağlantı aynı sayfada açılır, dış adres yeni
+  sekmede açılır.
+- **Windows testi:** CodeMirror tarayıcı testi `options(encoding = "UTF-8")`
+  altında CP1254 VM'de "invalid UTF-8" hatası vermez.
+- **Sistem Durumu ikonları:** metrik kartı ikonları gri zemin yerine durum
+  renginin açık tonlu çipinde çizilir; iki temada ve tüm sekmelerde ikon
+  kontrastı 3:1 üzerindedir (etkin sekme hapı ve ADMIN rozeti dahil).
+- **Kurum anahtarı seçimi hatırlanır:** "Bu ekranı bir daha gösterme"yi
+  işaretleyip "Kurum Anahtarı ile Devam Et" seçen kullanıcıya (ör. yöneticiler)
+  sonraki girişlerde API anahtarı ekranı tekrar gösterilmez; Ayarlar >
+  Yapılandırma'dan geri açılabilir. Kutu seçim yapılana dek bekler: "Daha
+  Sonra Karar Ver" hiçbir tercih yazmaz. "Bir daha gösterme" tercihi Zengin
+  Deneyim açılışında da güvenilir biçimde uygulanır. Tercih tarayıcıda
+  kullanıcıya özgü ayrı bir anahtarda saklanır: aynı tarayıcıyı kullanan
+  başka kullanıcı bu seçimi devralmaz, aynı oturum başka kullanıcıya geçerse
+  karar yeni kullanıcı için yeniden verilir. Önceki tarayıcı geneli bayrak
+  artık okunmaz; bu yüzden tercih kullanıcı başına bir kez yeniden sorulur.
+  Hatırlanan kurum seçimi kayıtlı kişisel anahtarın önüne geçer (kişisel
+  anahtar silinmez; yeni kişisel anahtar kaydı ya da ekranın yeniden açılması
+  kurum seçimini kaldırır). Kutu değeri yalnız o modal ve o kullanıcı için
+  geçerlidir; kimlik düşüp geri gelince kişisel anahtar yeniden yüklenir.
+  Kurum anahtarı varken kayıtlı kişisel anahtar, hatırlanan tercih bilinene dek
+  oturuma açılmaz; tolerans sonrasında gelen tercih de (açık seçim yapılmadıysa)
+  uygulanır. İşaret kaldırılarak yapılan kurum seçimi önceki tercihi siler.
+  Oturum başka kullanıcıya geçince açık modal ve yazılmış anahtar kaldırılır;
+  tarayıcı kayıt onayları yalnız ilgili kullanıcı ve yazım için gösterilir.
+  Onboarding ve Sistem Durumu/Dokümantasyon yetki denetimi artık saniyelik
+  yoklama yerine oturum kimlik sinyaline bağlıdır.
+- **Keşfet akışı yenilendi:** Keşfet düğmesi, mod seçimi ve asistan seçimi
+  ekranları sade ve okunaklı bir tasarıma geçti; mod açıklamaları ve özellik
+  durumları baştan görünür, yoğun sürekli animasyonlar kaldırıldı ve ekran
+  1366x768 dizüstünde kaydırmasız sığar.
+
 ### (Yayınlanmadı) 2026-09-23 Kod bloklarında gerçek sözdizimi vurgulaması geri geldi
 
 PR #692 kod görüntüleyicisini, belgeyi düz metin olarak çizen uygulama içi bir

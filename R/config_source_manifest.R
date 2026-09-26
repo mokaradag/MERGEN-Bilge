@@ -37,7 +37,7 @@ source_manifest_sections <- list(
     "R/helpers_index_page_cache.R",
     "R/helpers_app_http_routes.R",
     "R/utils_rate_limiter.R",
-    "R/helpers_worker_monitor.R"
+    "R/helpers_worker_monitor.R", "R/helpers_worker_dep_cache.R"  # bağımlılık önbelleği monitor'dan SONRA
   ),
 
   # post_future_utils: Future cluster SONRASI yardımcılar: yol/güvenli yol, yol
@@ -189,7 +189,7 @@ source_manifest_sections <- list(
   files_preview_pipeline = c(
     "R/helpers_image_gallery.R",
     "R/helpers_preview.R",
-    "R/helpers_file_pipeline.R",
+    "R/helpers_file_summary_capacity.R", "R/helpers_file_summary_queue.R", "R/helpers_file_summary_task.R", "R/helpers_file_pipeline.R",  # özet kapasite/kuyruk/görev pipeline'dan ÖNCE
     "R/helpers_files_path.R", "R/helpers_files_promote_probe.R", "R/helpers_files_promote_target.R", "R/helpers_files_staging_copy.R",  # sıra: yol -> yoklama -> terfi -> aşamalı kopya
     "R/helpers_files_copy_promote.R",
     "R/helpers_files.R",
@@ -387,7 +387,7 @@ source_manifest_sections <- list(
     # Release/doğrulama kanıt artifact'larının secret-safe okuyucusu; sağlık
     # kontrolleri ileride bu özetleri tüketebilsin diye health_checks'ten önce.
     "R/helpers_release_evidence.R",
-    "R/helpers_health_checks.R"
+    "R/helpers_health_endpoint_scope.R", "R/helpers_health_checks.R"  # host sınıflandırması checks'ten ÖNCE
   ),
 
   # ai_expert_helpers: AI Uzman konuşma ve TTS metin parçalama yardımcıları.
@@ -560,7 +560,7 @@ source_manifest_sections <- list(
   module_identity_startup = c(
     "R/module_sso.R",
     "R/module_session_timeout.R",
-    "R/module_performance.R",
+    "R/helpers_user_presence.R", "R/helpers_user_presence_shared.R", "R/module_performance.R",  # varlık defteri performans modülünden ÖNCE
     "R/module_user_identity.R",
     "R/helpers_startup_lane.R",
     "R/module_startup_lane.R",
@@ -695,7 +695,7 @@ source_manifest_sections <- list(
     "R/module_health_runtime.R",
     "R/module_health_security.R",
     "R/module_health_diagnostics.R",
-    "R/module_health_release.R",
+    "R/module_health_release.R", "R/module_health_presence.R",
     "R/module_health.R",
     "R/module_chartlab.R"
   ),

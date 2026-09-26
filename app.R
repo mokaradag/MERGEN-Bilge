@@ -202,6 +202,15 @@ create_mergen_app <- function() {
           try(close_db_pool_once(), silent = TRUE)
         })
       }
+      # İlk dosya özetinin bağımlılık taraması oturumlar gelmeden yapılır;
+      # başarısız tarama yeniden denenir ve günlüğe yazılır.
+      if (exists("file_summary_warm_dependencies", mode = "function", inherits = TRUE)) {
+        isindi <- try(file_summary_warm_dependencies(), silent = TRUE)
+        if (inherits(isindi, "try-error")) {
+          cat("[STARTUP] UYARI: Dosya özeti bağımlılık ısıtması hata verdi:",
+              conditionMessage(attr(isindi, "condition")), "\n")
+        }
+      }
     }
   )
 }

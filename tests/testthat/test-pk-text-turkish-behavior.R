@@ -206,3 +206,112 @@ test_that("yükleme sırası: Türkçe katlama yardımcısı metadata katmanlar�
     info = "Metadata katmanı R/config_sql_loader.R sonrasına kaymış."
   )
 })
+
+test_that("repair_turkish_latin1_letters CP1254-Latin1 harflerini Türkçeye döndürür", {
+  testthat::skip_if_not_installed("stringi")
+  bozuk <- intToUtf8(c(0xDD, 0x73, 0x74, 0x61, 0x6E, 0x62, 0x75, 0x6C, 0x20, 0xDE, 0x75, 0x62,
+                       0x61, 0x74, 0x20, 0xD0, 0x20, 0x6B, 0xFD, 0x72, 0x20, 0xFE, 0xF0))
+  dogru <- intToUtf8(c(0x130, 0x73, 0x74, 0x61, 0x6E, 0x62, 0x75, 0x6C, 0x20, 0x15E, 0x75, 0x62,
+                       0x61, 0x74, 0x20, 0x11E, 0x20, 0x6B, 0x131, 0x72, 0x20, 0x15F, 0x11F))
+
+  # Sütunda benzer harfle AYNI değerde Türkçe kanıtı (ç) bulunur: "Çalışan".
+  calisan <- intToUtf8(c(0xC7, 0x61, 0x6C, 0xFD, 0xFE, 0x61, 0x6E))
+  calisan_dogru <- intToUtf8(c(0xC7, 0x61, 0x6C, 0x131, 0x15F, 0x61, 0x6E))
+  # Sütun kapısı açık olsa da kendi kanıtı olmayan değer yeniden yazılmaz.
+  sonuc <- repair_turkish_latin1_letters(c(bozuk, NA_character_, "ASCII metin", calisan))
+  expect_identical(sonuc, c(bozuk, NA_character_, "ASCII metin", calisan_dogru))
+  expect_identical(Encoding(sonuc[4]), "UTF-8")
+  # Değer kendi kanıtını taşırsa onarılır (â/î/û da kanıttır): "İstanbul Şubat... çâ".
+  expect_identical(repair_turkish_latin1_letters(paste(bozuk, intToUtf8(c(0xE7, 0xE2)))),
+                   paste(dogru, intToUtf8(c(0xE7, 0xE2))))
+  expect_identical(repair_turkish_latin1_letters(dogru), dogru)
+  # ı yok ama ç/ü kanıtı olan sütun da onarılır: "Şube Müdürü".
+  expect_identical(
+    repair_turkish_latin1_letters(intToUtf8(c(0xDE, 0x75, 0x62, 0x65, 0x20, 0x4D, 0xFC, 0x64, 0xFC, 0x72, 0xFC))),
+    intToUtf8(c(0x15E, 0x75, 0x62, 0x65, 0x20, 0x4D, 0xFC, 0x64, 0xFC, 0x72, 0xFC))
+  )
+})
+
+test_that("repair_turkish_latin1_letters Latin-1 kökenli olmayan sütundaki gerçek harflere dokunmaz", {
+  testthat::skip_if_not_installed("stringi")
+  bozuk <- intToUtf8(c(0xDD, 0x73, 0x74, 0x61, 0x6E, 0x62, 0x75, 0x6C, 0x20, 0x6B, 0xFD, 0x72))
+  # İzlandaca "Thordur", "Reykjavík": á/í/ó gibi harfler Türkçe CP1254 görüntüsünde yoktur.
+  izlanda <- c(intToUtf8(c(0xDE, 0xF3, 0x72, 0xF0, 0x75, 0x72)),
+               intToUtf8(c(0x52, 0x65, 0x79, 0x6B, 0x6A, 0x61, 0x76, 0xED, 0x6B)))
+  expect_identical(repair_turkish_latin1_letters(izlanda), izlanda)
+  # Türkçe kanıtı (ı karşılığı ya da ç/ü) olmayan tek ad: "Sigurdur".
+  sigurdur <- intToUtf8(c(0x53, 0x69, 0x67, 0x75, 0x72, 0xF0, 0x75, 0x72))
+  expect_identical(repair_turkish_latin1_letters(sigurdur), sigurdur)
+  # Faroece ø aynı sütunda: hiçbir değer onarılmaz.
+  faroe <- c(bozuk, intToUtf8(c(0x46, 0xF8, 0x72, 0x6F, 0x79, 0x61, 0x72)))
+  expect_identical(repair_turkish_latin1_letters(faroe), faroe)
+  # Yalnız benzer harf + ASCII içeren geçerli İzlandaca adlar kanıt sayılmaz:
+  # U+00DD ile "Ymir" ve U+00DE ile "Thing" tek başına ya da birlikte değişmez.
+  ymir <- intToUtf8(c(0xDD, 0x6D, 0x69, 0x72))
+  thing <- intToUtf8(c(0xDE, 0x69, 0x6E, 0x67))
+  expect_identical(repair_turkish_latin1_letters(ymir), ymir)
+  expect_identical(repair_turkish_latin1_letters(c(ymir, thing)), c(ymir, thing))
+  expect_false(turkish_latin1_repair_eligible(c(ymir, thing)))
+  # Başka satırdaki Türkçe kanıtı ("Müdür") İzlandaca "Thing" değerini yeniden yazdırmaz.
+  mudur <- intToUtf8(c(0x4D, 0xFC, 0x64, 0xFC, 0x72))
+  expect_false(turkish_latin1_repair_eligible(c(thing, mudur)))
+  expect_identical(repair_turkish_latin1_letters(c(thing, mudur)), c(thing, mudur))
+  # Önceden verilmiş sütun kararı (CSV dilimleri) dilimin kendi kanıtını ezer.
+  expect_identical(repair_turkish_latin1_letters(ymir, eligible = FALSE), ymir)
+  # Açık sütun kararı da değerin kendi kanıtı olmadan onarım yaptırmaz.
+  expect_identical(repair_turkish_latin1_letters(bozuk, eligible = TRUE), bozuk)
+  # Karışık sütun: bozuk Türkçe "Müşteri" onarılır, İzlandaca "Thing" değişmez.
+  musteri <- intToUtf8(c(0x4D, 0xFC, 0xFE, 0x74, 0x65, 0x72, 0x69))
+  expect_identical(repair_turkish_latin1_letters(c(musteri, thing), eligible = TRUE),
+                   c(intToUtf8(c(0x4D, 0xFC, 0x15F, 0x74, 0x65, 0x72, 0x69)), thing))
+  # Gerçek ı/ş/ğ içeren sütun zaten doğru çözülmüştür.
+  karisik <- c(bozuk, intToUtf8(c(0x6B, 0x131, 0x72)))
+  expect_identical(repair_turkish_latin1_letters(karisik), karisik)
+  # Ayrışık aksan (a + U+0301) da yabancı harf sayılır.
+  ayrisik <- c(bozuk, intToUtf8(c(0x61, 0x301)))
+  expect_identical(repair_turkish_latin1_letters(ayrisik), ayrisik)
+})
+
+test_that("repair_turkish_latin1_letters gecersiz ve karakter disi girdiye dokunmaz", {
+  testthat::skip_if_not_installed("stringi")
+  gecersiz <- rawToChar(as.raw(c(0x61, 0xFD, 0x62)))
+  Encoding(gecersiz) <- "UTF-8"
+  expect_identical(repair_turkish_latin1_letters(gecersiz), gecersiz)
+  expect_identical(repair_turkish_latin1_letters(1:3), 1:3)
+  expect_null(repair_turkish_latin1_letters(NULL))
+  expect_identical(repair_turkish_latin1_letters(character(0)), character(0))
+  # Kayıplı ODBC en-yakın dönüşümü ("y"/"?") onarılmaz; yanlış tahmin üretilmez.
+  expect_identical(repair_turkish_latin1_letters("kyrylym de?er"), "kyrylym de?er")
+})
+
+test_that("başlık onarımı her ham ad için ayrı karar verir ve yalnız gerçek etiketi korur", {
+  testthat::skip_if_not_installed("stringi")
+  u <- function(...) intToUtf8(c(...))
+  carsi <- u(0xC7, 0x61, 0x72, 0xFE, 0xFD)
+  carsi_dogru <- u(0xC7, 0x61, 0x72, 0x15F, 0x131)
+  proje <- u(0x50, 0x72, 0x6F, 0x6A, 0x65, 0x20, 0x41, 0x64, 0x131)
+  thing <- u(0xDE, 0x69, 0x6E, 0x67)
+  # Doğru çözülmüş başka ad (ı) ya da kanıtsız başka ad onarımı etkilemez.
+  expect_identical(turkish_latin1_repair_headers(c(carsi, proje, thing), c(carsi, proje, thing)),
+                   c(carsi_dogru, proje, thing))
+  # Yalnız birim taşıyan metadata etiket sayılmaz; birimli başlık da onarılır.
+  birimli <- paste0(carsi, " (adet)")
+  meta <- stats::setNames(list(list(unit = "adet")), carsi)
+  expect_identical(turkish_latin1_repair_headers(birimli, carsi, meta), paste0(carsi_dogru, " (adet)"))
+  meta_etiket <- stats::setNames(list(list(label = "Toplam", unit = "adet")), carsi)
+  expect_identical(turkish_latin1_repair_headers("Toplam (adet)", carsi, meta_etiket), "Toplam (adet)")
+})
+
+test_that("başlık onarımı yalnız çakışan konumları geri alır; önceden mükerrer başlık onarımı engellemez", {
+  testthat::skip_if_not_installed("stringi")
+  u <- function(...) intToUtf8(c(...))
+  carsi <- u(0xC7, 0x61, 0x72, 0xFE, 0xFD)
+  carsi_dogru <- u(0xC7, 0x61, 0x72, 0x15F, 0x131)
+  calisan <- u(0xC7, 0x61, 0x6C, 0xFD, 0xFE, 0x61, 0x6E)
+  calisan_dogru <- u(0xC7, 0x61, 0x6C, 0x131, 0x15F, 0x61, 0x6E)
+  basliklar <- c("A", "A", carsi)
+  expect_identical(turkish_latin1_repair_headers(basliklar, basliklar), c("A", "A", carsi_dogru))
+  # "Çarşı" zaten var: yalnız çakışan onarım geri alınır, ilgisiz onarım korunur.
+  basliklar <- c(carsi, carsi_dogru, calisan)
+  expect_identical(turkish_latin1_repair_headers(basliklar, basliklar), c(carsi, carsi_dogru, calisan_dogru))
+})

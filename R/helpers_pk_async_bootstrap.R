@@ -299,26 +299,26 @@ pk_async_worker_bootstrap <- function(repo_root, files,
       next
     }
 
-    # `toplevel.env = globalenv()` ZORUNLUDUR.
-    #
-    # `sys.source()` varsayılan olarak `options(topLevelEnvironment = envir)`
-    # ayarlar. Sahneleme ortamı ADSIZ bir `new.env()` olduğu için `topenv()`
-    # onu döndürür ve `environmentName()` BOŞ dize verir. `logger` (ve
-    # `topenv()` ile arayanın ad alanını çözen diğer paketler) bu boş adı ad
-    # alanı anahtarı olarak kullanır ve `library(logger)` doğrudan
-    # `exists("", envir = namespaces, inherits = FALSE)` -> "invalid first
-    # argument" ile PATLAR. Sonuç: `R/config_logging.R` (ve ona bağlı her
-    # dosya) TEMİZ bir işçide YÜKLENEMEZ, bootstrap `bootstrap_failed` döner
-    # ve `MERGEN_PK_ASYNC=true` her istekte senkron yedeğe düşerdi.
-    #
-    # Ana süreçte dosyalar `globalenv()` içine yüklendiği için `topenv()`
-    # zaten `globalenv()`'tir; bu argüman işçiyi AYNI davranışa hizalar.
-    # Sembol izolasyonu KORUNUR: değerler hâlâ `sahne` içine yazılır.
+    # KAYNAK BAYT OLARAK OKUNUR (işçinin `encoding` seçeneği yerel kod sayfasıdır);
+    # UTF-8 değilse `safe_source()` gibi WINDOWS-1254/latin1 denenir. CRLF/CR metin
+    # bağlantısındaki gibi LF'e çevrilir; boyutu okunamayan dosya BAŞARISIZDIR.
+    # `topLevelEnvironment = globalenv()` ZORUNLUDUR: adsız sahnede `topenv()`
+    # boş ad verir ve `library(logger)` "invalid first argument" ile patlar.
     yukleme <- pk_async_bounded_fs(function() {
-      suppressWarnings(suppressMessages(
-        sys.source(tam, envir = sahne, keep.source = FALSE,
-                   toplevel.env = globalenv())
-      ))
+      boyut <- file.info(tam)$size; ham <- if (isTRUE(is.finite(boyut) && boyut >= 0)) readBin(tam, "raw", n = boyut)
+      if (is.null(ham) || length(ham) != boyut) stop("Kaynak dosya okunamadı: ", goreli, call. = FALSE)
+      if (length(ham) >= 3L && identical(as.integer(ham[1:3]), c(239L, 187L, 191L))) ham <- ham[-(1:3)]
+      ham <- ham[!(ham == as.raw(13L) & c(ham[-1L], as.raw(0L)) == as.raw(10L))]
+      ham[ham == as.raw(13L)] <- as.raw(10L)
+      metin <- NA_character_
+      for (kod in c("UTF-8", "WINDOWS-1254", "latin1")) {
+        metin <- iconv(list(ham), from = kod, to = "UTF-8", sub = NA)[[1]]
+        if (!is.na(metin)) break
+      }
+      if (is.na(metin)) stop("Kaynak dosya UTF-8'e çevrilemedi: ", goreli, call. = FALSE)
+      eski <- options(topLevelEnvironment = globalenv()); on.exit(options(eski))
+      ifadeler <- parse(text = metin, keep.source = FALSE, encoding = "UTF-8")
+      suppressWarnings(suppressMessages(for (ifade in ifadeler) eval(ifade, sahne)))
       TRUE
     }, deadline_at)
 

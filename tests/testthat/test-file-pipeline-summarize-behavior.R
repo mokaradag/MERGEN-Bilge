@@ -1,6 +1,6 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-file-pipeline-summarize-behavior.R
-# Açıklama: helpers_file_pipeline.R içindeki summarize_file_with_llm davranışını
+# Açıklama: helpers_file_summary_task.R içindeki summarize_file_with_llm davranışını
 #           doğrular. Bu fonksiyon yüklenen dosya metnini LLM ile ayrıntılı
 #           içerik dökümüne çevirir; LLM list($content)/karakter dönüşü,
 #           boş/NA dönüş ve hata durumunda kısaltılmış içerik fallback'i
@@ -8,13 +8,13 @@
 #           Çevrimdışı ve deterministik.
 # ==============================================================================
 
-# Türkçe yorum: helpers_file_pipeline.R'yi yalıtılmış ortama yükler. Bağımlılık
+# Türkçe yorum: özet görev dosyasını yalıtılmış ortama yükler. Bağımlılık
 # call_llm_with_retry env içine stub edilir; as_llm_settings_list aynı dosyada
 # tanımlıdır.
 .filePipelineSummEnv <- function() {
   env <- new.env(parent = globalenv())
   kok <- resolve_repo_root_for_tests()
-  source(file.path(kok, "R", "helpers_file_pipeline.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "helpers_file_summary_task.R"), encoding = "UTF-8", local = env)
   env
 }
 

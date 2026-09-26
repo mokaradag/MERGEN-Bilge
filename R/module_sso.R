@@ -363,6 +363,7 @@ ssoAuthServer <- function(id) {
         # bu alanları doğrudan okuyan tüketiciler yetkisizleştirmeden sonra
         # önceki kimliği kullanmaya devam ediyordu.
         try({
+          eski_uid <- session$userData$user_id
           session$userData$auth_initialized <- FALSE
           session$userData$user_id <- 0L
           session$userData$user_identity <- NULL
@@ -370,6 +371,11 @@ ssoAuthServer <- function(id) {
           session$userData$user_first_name <- NULL
           session$userData$system_username <- NULL
           session$userData$ai_api_key <- NULL
+          # Süren kullanıcıya bağlı işler (özet vb.) iptal edilir; reaktif
+          # kimlik sinyali kimlik kaybını hemen yayar.
+          if (exists("mergen_session_owner_transition", mode = "function")) {
+            mergen_session_owner_transition(session$userData, eski_uid, 0L)
+          }
         }, silent = TRUE)
 
         # İstemci tarafı `sso_auth_error` işleyicisi saklanan token'ı temizler ve

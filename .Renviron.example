@@ -171,10 +171,26 @@ MERGEN_MCP_BASE_DIR="//mainserver/MERGEN Bilge/mergen_uploads"
 #   MERGEN_FILE_INGESTION_MAX_QUEUE=32
 # Ayrıntılı alım metrikleri (dosya adı/yol içermez; varsayılan KAPALI):
 #   MERGEN_FILE_INGESTION_METRICS=false
+# Yüklenen dosyaların arka plan LLM özetleri aynı worker havuzunu kullanır.
+# Aynı anda en fazla bu kadar özet çalışır (işçi sayısının bir eksiğini aşmaz;
+# en az bir işçi sohbete ayrılır; ikiden az işçide özet çalışmaz), kalanlar
+# sırayla başlar; toplu yüklemede diğer kullanıcıların sohbet istekleri
+# beklemez. tools/run_mergen_workers.R ile çok süreçte bu değer ve kuyruk
+# sınırı DAĞITIM genelidir, süreçlere paylaştırılır (en az süreç sayısı verin):
+#   MERGEN_FILE_SUMMARY_MAX_CONCURRENT=2
+# Sırada bekleyebilecek en fazla özet işi; dolunca dosya yine eklenir ama
+# özeti atlanır ve kullanıcı uyarılır:
+#   MERGEN_FILE_SUMMARY_MAX_QUEUE=64
+# Tek kullanıcının (tüm sekmeleriyle) sırada tutabileceği en fazla özet (bir
+# kullanıcının toplu yüklemesi ortak kuyruğu doldurup diğerlerini engellemez):
+#   MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION=16
 
 # Günlük log dizini. `app.R`, `run_mergen_prod.R` ve çok-worker çocuk süreçleri
 # aynı erken bootstrap katmanını kullanır; `mergen_YYYYMMDD.log` ile
-# `ai_debug_YYYYMMDD.log` yapılandırılmış BU hedefe yazılır. Merkezî/UNC hedef
+# `ai_debug_YYYYMMDD.log` yapılandırılmış BU hedefe yazılır (çok süreçte eklemeler
+# kısa bir süreçler arası kilitle sıralanır; Çevrimiçi sekmesi süreç oturumlarını
+# bu dizindeki `presence` klasöründe paylaşır, farklı dizin için
+# MERGEN_PRESENCE_SHARED_DIR tanımlanabilir). Merkezî/UNC hedef
 # korunur ve repo içindeki yerel `logs` diziniyle sessizce değiştirilmez.
 #
 # Yolda güçlü UTF-8→Windows-1252/Latin-1 mojibake kanıtı varsa (ör.
@@ -355,9 +371,18 @@ CLAUDE_CODE_RUNTIME_LEASE_ORPHAN_SEC=86400
 
 # Sistem Durumu sayfasının GERÇEKTEN denemesi gereken ek on-prem uç noktalar
 # (";" veya "," ile ayrılır). LOCAL_*_ENDPOINT / IMAGE_GEN_ENDPOINT /
-# LANGFLOW_BASE_URL / SSO_KEYCLOAK_URL zaten otomatik olarak on-prem sayılır;
-# bu liste yalnızca ek kurumsal DNS adresleri içindir.
+# LANGFLOW_BASE_URL / SSO_KEYCLOAK_URL ve api_config LLM uç noktalarının kurumsal
+# DNS adları yalnız özel (RFC1918/loopback) adreslere çözülürse otomatik denenir;
+# genel adrese çözülen ya da DNS'te çözülemeyen on-prem host bu listeye eklenir.
 MERGEN_HEALTH_INTERNAL_ENDPOINTS=
+
+# Kullanıcı avatar fotoğrafı adres şablonu (tarayıcı yükler; sunucu çağırmaz).
+# {user_id} kullanıcı kimliğiyle değiştirilir; {user_id} yoksa değer taban adres
+# sayılır ve sonuna "<id>.jpg" eklenir. Yalnızca http(s) ya da "/" ile başlayan
+# yol kabul edilir. Boş ya da geçersizse hiçbir görsel isteği yapılmaz; avatar
+# yerine doğrudan baş harfler/simge gösterilir.
+# Örnek: https://foto.kurum.local/personel/{user_id}.jpg
+MERGEN_USER_AVATAR_URL_TEMPLATE=
 
 # ------------------------------------------------------------------------------
 # Araç Modelleri Yapılandırması

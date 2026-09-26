@@ -564,10 +564,10 @@ test_that("bootstrap kaynak döngüsü sahne ebeveynini HER DOSYADAN ÖNCE tazel
   metin <- iconv(rawToChar(ham), from = "UTF-8", to = "UTF-8", sub = "byte")
   kaynak <- strsplit(metin, "\n", fixed = TRUE)[[1]]
   expect_true(grepl("pk_async_worker_stage_refresh(sahne, hedef)", metin, fixed = TRUE))
-  # Tazeleme `sys.source()` ÖNCESİNDE olmalıdır.
+  # Tazeleme dosya ifadeleri sahnede değerlendirilmeden ÖNCE olmalıdır.
   expect_lt(
     which(grepl("pk_async_worker_stage_refresh(sahne, hedef)", kaynak, fixed = TRUE))[1],
-    which(grepl("sys.source(tam, envir = sahne", kaynak, fixed = TRUE))[1]
+    which(grepl("eval(ifade, sahne)", kaynak, fixed = TRUE))[1]
   )
 })
 

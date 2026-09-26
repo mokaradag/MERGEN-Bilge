@@ -427,6 +427,11 @@ alias'lar ve `grain`, `additive`, `unit`, `primary_entity`, `intents`,
 
 Gerçek üretim proje/program adları yalnız gitignore'lu
 `R/library_query_aliases_local.R` içinde tutulur ve üretici bu dosyayı yazmaz.
+Başlangıç için [`templates/library_query_aliases_local.template.R`](templates/library_query_aliases_local.template.R)
+şablonunu bu ada kopyalayın; şablon olduğu gibi boş bir alias listesi üretir,
+yorumdaki örnekler (proje, birim, program eşlemeleri) kurallar ve doğrulama
+adımlarıyla birlikte dosyanın içindedir. Değişiklikten sonra uygulama yeniden
+başlatılmalıdır.
 
 ---
 

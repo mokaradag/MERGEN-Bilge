@@ -54,6 +54,9 @@ kullanılır. Arşiv canlı Claude yönergelerine `@` ile import edilmez.
 | [`release-notes.md`](release-notes.md) | Uzun değişiklik notları ve güncel bakım özeti. |
 | [`technical-reference.md`](technical-reference.md) | Ayrıntılı teknik referans. |
 | [`refactor-log.md`](refactor-log.md) | Davranışı değiştirmeden karmaşıklık/onboarding yükünü azaltan yapısal iyileştirmelerin günlüğü. |
+| [`ortak-oturumlar.md`](ortak-oturumlar.md) | Ortak Oturumlar (işbirlikçi çalışma odaları) tasarımı, yetki modeli ve kullanım akışı. |
+| [`bilge-savunmasi.md`](bilge-savunmasi.md) | Bilge Savunması kule savunma oyununun tasarım ve operasyon rehberi. |
+| [`templates/library_query_aliases_local.template.R`](templates/library_query_aliases_local.template.R) | On-prem VM için yerel sorgu alias şablonu (proje/birim/program adlarının kullanıcı yazımları); kullanım [`pk-phase3b-operator-runbook.md`](pk-phase3b-operator-runbook.md) içinde. |
 
 ## Kısa Uyarılar
 
@@ -61,6 +64,7 @@ kullanılır. Arşiv canlı Claude yönergelerine `@` ile import edilmez.
 - Faz 3b SQL uyumluluğu **genel bir çok-ifade izni değildir**. Yalnızca tam `SET NOCOUNT ON;` öneki, güvenli scalar `DECLARE @degisken ...` önekleri + tek sonuç sorgusu ve [`pk-sql-readonly-gate.md`](pk-sql-readonly-gate.md) içinde kanıtlanan yerel `#temp` analitik batch biçimi kabul edilir. Scalar `DECLARE` istisnası `TABLE`, `CURSOR`, sequence mutasyonu, DML/DDL veya `EXEC`'e izin vermez; yerel-temp indeksleri yalnızca daha önce oluşturulmuş `#temp` tabloları hedefleyebilir. Metadata-generator DB-yazma ratchet'leri gevşetilmez.
 - `MERGEN_LOG_DIR` merkezî/UNC hedefini yerel `logs` dizinine sessizce yönlendirmeyin. Güçlü mojibake yol içinde yerinde onarılır; ayrıntılı ve kanonik sözleşme [`production-log-paths.md`](production-log-paths.md) içindedir.
 - Üretim-kritik sınır sahipliği (seam kayıt defteri, `R/config_seam_registry.R`) ve frontend bölge sahipliği (`R/config_ui_asset_zones.R`) [`architecture-map.md`](architecture-map.md) içindeki yönetişim katmanı bölümünde haritalanır; yeni runtime R dosyası veya frontend varlığı eklerken oradaki disiplin kuralları geçerlidir (`bash tools/seam_doctor.sh` ile doğrulanabilir).
+- Uygulama içi **Yönetici Paneli → Dokümantasyon** sayfası yalnızca `R/helpers_admin_documentation.R` izin listesindeki belgeleri gösterir. Köke veya `docs/` altına eklenen her yeni Markdown belgesi bu listeye (ya da testteki bilinçli dışlama listesine) eklenmelidir; `tests/testthat/test-admin-documentation-behavior.R` kayıtsız belgeyi yakalar.
 - Windows VM, SSO, DB encoding, dosya lifecycle ve `renv.lock` davranışları README'den değil runbook ve sözleşme belgelerinden yönetilir.
 - Türkçe karakter bütünlüğü korunmalıdır; UTF-8 bozulmamalı, mojibake üretilmemelidir.
 - Secrets, API key, token, parola, gerçek DSN ve private endpoint bilgileri dokümantasyona eklenmez.

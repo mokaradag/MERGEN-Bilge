@@ -360,16 +360,29 @@ render_message_bubble_ui <- function(msg, settings, is_last_user_message = FALSE
           class = "user-message",
           div(
             class = "message-header",
-            div(
-              class = "user-avatar",
-              style = "overflow: hidden; width: 40px; height: 40px;",
-              tags$img(
-                src = paste0("https://url......./", uc$userId, ".jpg"),
-                alt = uc$name,
-                style = "width: 100%; height: 100%; object-fit: cover;",
-                onerror = "this.style.display='none'; this.parentElement.classList.add('gradient-user'); this.parentElement.innerHTML='<i class=\"fas fa-user\"></i>';"
-              )
-            ),
+            # Avatar adresi yoksa boş src ile istek üretilmez; simge doğrudan çizilir.
+            local({
+              avatar_url <- if (exists("mb_sidebar_user_avatar_url", mode = "function")) {
+                mb_sidebar_user_avatar_url(uc$userId)
+              } else {
+                ""
+              }
+              if (!nzchar(avatar_url %||% "")) {
+                div(class = "user-avatar gradient-user", style = "overflow: hidden; width: 40px; height: 40px;",
+                    icon("user"))
+              } else {
+                div(
+                  class = "user-avatar",
+                  style = "overflow: hidden; width: 40px; height: 40px;",
+                  tags$img(
+                    src = avatar_url,
+                    alt = uc$name,
+                    style = "width: 100%; height: 100%; object-fit: cover;",
+                    onerror = "this.style.display='none'; this.parentElement.classList.add('gradient-user'); this.parentElement.innerHTML='<i class=\"fas fa-user\"></i>';"
+                  )
+                )
+              }
+            }),
             div(
               class = "message-info",
               div(class = "message-author", uc$name),

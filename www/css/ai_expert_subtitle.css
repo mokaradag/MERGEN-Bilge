@@ -276,3 +276,34 @@
     animation: none;
   }
 }
+
+/* --- Açık tema ---
+   Şerit koyu cam arka planla sabitlenmişti; açık temada sayfadan kopuk siyah
+   bir blok olarak görünüyordu. Açık yüzey, koyu metin ve yumuşak gölge. */
+html[data-theme="light"] .ai-expert-subtitle-strip {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12),
+              0 0 0 1px rgba(255, 255, 255, 0.6) inset;
+}
+
+html[data-theme="light"] .ai-expert-subtitle-strip.ai-expert-speaking {
+  border-color: rgba(124, 77, 255, 0.28);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12),
+              0 0 24px rgba(124, 77, 255, 0.12),
+              0 0 0 1px rgba(124, 77, 255, 0.10);
+}
+
+html[data-theme="light"] .ai-expert-subtitle-text {
+  color: #1f2937 !important;
+}
+
+html[data-theme="light"] .ai-expert-stop-btn {
+  background: rgba(15, 23, 42, 0.06);
+  color: #475569;
+}
+
+html[data-theme="light"] .ai-expert-stop-btn:hover {
+  background: rgba(225, 29, 72, 0.12);
+  color: #e11d48;
+}

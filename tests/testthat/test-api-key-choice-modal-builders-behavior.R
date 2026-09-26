@@ -34,6 +34,77 @@ testthat::test_that("api_key_choice_request_url güvenli çözümleme yapar", {
   )
 })
 
+testthat::test_that("kurum anahtarı seçimi bastırma bayrağını yalnız o kullanıcı için hatırlatır", {
+  env <- .akc_src()
+  mesajlar <- list()
+  oturum <- list(sendCustomMessage = function(type, message) {
+    mesajlar[[length(mesajlar) + 1L]] <<- list(type = type, message = message)
+  })
+  testthat::expect_true(env$remember_api_key_choice_default(oturum, "ayilmaz"))
+  testthat::expect_length(mesajlar, 1L)
+  testthat::expect_identical(mesajlar[[1]]$type, "mergenApiKeyChoiceRemember")
+  testthat::expect_identical(
+    mesajlar[[1]]$message,
+    list(settingsKey = "api_key_onboarding_suppressed", userTag = env$api_key_pref_user_tag("ayilmaz"),
+       source = "default", nonce = "")
+  )
+  # Sonuç girdisi verilirse tarayıcı kaydın yazıldığını bu girdiye bildirir.
+  testthat::expect_true(env$remember_api_key_choice_default(oturum, "ayilmaz", result_input = "ak-sonuc"))
+  testthat::expect_identical(mesajlar[[2]]$message$resultInputId, "ak-sonuc")
+  mesajlar <- mesajlar[1]
+  # Kimlik yoksa tercih hatırlanmaz (tarayıcı geneli bayrak yazılmaz).
+  testthat::expect_false(env$remember_api_key_choice_default(oturum, NULL))
+  testthat::expect_false(env$remember_api_key_choice_default(oturum))
+  testthat::expect_length(mesajlar, 1L)
+  testthat::expect_false(env$remember_api_key_choice_default(NULL, "ayilmaz"))
+
+  # Kişisel anahtar kaydı hatırlanan kurum seçimini aynı kullanıcı için kaldırır.
+  mesajlar <- list()
+  testthat::expect_true(env$forget_api_key_choice_default(oturum, "ayilmaz"))
+  testthat::expect_identical(mesajlar[[1]]$message$source, "personal")
+  testthat::expect_identical(mesajlar[[1]]$message$userTag, env$api_key_pref_user_tag("ayilmaz"))
+  testthat::expect_false(env$forget_api_key_choice_default(oturum, NULL))
+  testthat::expect_length(mesajlar, 1L)
+
+  # Onay girdisi ve yazım jetonu da gönderilir; işaretsiz seçim tercihi siler.
+  mesajlar <- list()
+  testthat::expect_true(env$forget_api_key_choice_default(oturum, "ayilmaz", result_input = "ak-sonuc", nonce = "y1"))
+  testthat::expect_identical(mesajlar[[1]]$message$resultInputId, "ak-sonuc")
+  testthat::expect_identical(mesajlar[[1]]$message$nonce, "y1")
+  testthat::expect_true(env$clear_api_key_choice_pref(oturum, "ayilmaz", nonce = "y2"))
+  testthat::expect_identical(mesajlar[[2]]$message$source, "clear")
+  testthat::expect_false(env$clear_api_key_choice_pref(oturum, NULL))
+})
+
+testthat::test_that("seçim modalı açılışı modal jetonunu ve kullanıcı etiketini gönderir", {
+  env <- .akc_src()
+  mesajlar <- list()
+  env$showModal <- function(...) invisible(NULL)
+  env$api_key_choice_modal_dialog <- function(...) NULL
+  oturum <- list(ns = function(x) paste0("ak-", x),
+                 sendCustomMessage = function(type, message) {
+                   mesajlar[[length(mesajlar) + 1L]] <<- list(type = type, message = message)
+                 })
+  testthat::expect_true(env$show_api_key_choice_modal(oturum, TRUE, nonce = "3-99", user_tag = "etk"))
+  testthat::expect_identical(mesajlar[[1]]$type, "mergenApiKeyChoiceInit")
+  testthat::expect_identical(mesajlar[[1]]$message$nonce, "3-99")
+  testthat::expect_identical(mesajlar[[1]]$message$userTag, "etk")
+  testthat::expect_identical(mesajlar[[1]]$message$dontShowInputId, "ak-api_key_dontshow")
+})
+
+testthat::test_that("api_key_pref_user_tag kullanıcıya özgü, kararlı ve kimliksiz durumda NULL'dır", {
+  env <- .akc_src()
+  etiket <- env$api_key_pref_user_tag("ayilmaz")
+  testthat::expect_match(etiket, "^[0-9a-f]{24}$")
+  testthat::expect_identical(etiket, env$api_key_pref_user_tag("ayilmaz"))
+  testthat::expect_false(identical(etiket, env$api_key_pref_user_tag("bdemir")))
+  # Etiket kullanıcı adını açık metin taşımaz.
+  testthat::expect_false(grepl("ayilmaz", etiket, fixed = TRUE))
+  testthat::expect_null(env$api_key_pref_user_tag(NULL))
+  testthat::expect_null(env$api_key_pref_user_tag("  "))
+  testthat::expect_null(env$api_key_pref_user_tag(NA_character_))
+})
+
 testthat::test_that(".api_key_choice_personal_card korumalı input kimliklerini üretir", {
   env <- .akc_src()
   txt <- .akc_text(env$.api_key_choice_personal_card(NS("a")))

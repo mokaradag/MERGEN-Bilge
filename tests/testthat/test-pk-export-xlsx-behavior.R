@@ -669,3 +669,153 @@ test_that("Olgu ozeti block kipi icin deterministik metin uretir", {
   expect_true(grepl("6,0 saat", ozet, fixed = TRUE))
   expect_false(grepl("KULLANILAMAZ", ozet, fixed = TRUE))
 })
+
+test_that("Latin1 sutunda saklanmis Turkce metnin y/s/g harfleri disa aktarimda onarilir", {
+  skip_if_not_installed("writexl")
+  skip_if_not_installed("readxl")
+
+  env <- .pk_export_env()
+  # "kırılımlarının açılmış değerlendirilmeli" -> CP1254 baytlarının Latin-1 okuması.
+  bozuk <- intToUtf8(c(0x6B, 0xFD, 0x72, 0xFD, 0x6C, 0xFD, 0x6D, 0x20, 0x61, 0xE7, 0xFD,
+                       0x6C, 0x6D, 0xFD, 0xFE, 0x20, 0x64, 0x65, 0xF0, 0x65, 0x72))
+  dogru <- intToUtf8(c(0x6B, 0x131, 0x72, 0x131, 0x6C, 0x131, 0x6D, 0x20, 0x61, 0xE7, 0x131,
+                       0x6C, 0x6D, 0x131, 0x15F, 0x20, 0x64, 0x65, 0x11F, 0x65, 0x72))
+  # İzlandaca sütun ("Thordur", "Reykjavík") Latin-1 kökenli sayılmaz, olduğu gibi kalır.
+  izlanda <- c(intToUtf8(c(0xDE, 0xF3, 0x72, 0xF0, 0x75, 0x72)),
+               intToUtf8(c(0x52, 0x65, 0x79, 0x6B, 0x6A, 0x61, 0x76, 0xED, 0x6B)))
+  veri <- data.frame(Aciklama = c(bozuk, "Toplam"), Ad = izlanda, Deger = c(1, 2),
+                     stringsAsFactors = FALSE)
+  # Başlık da Latin1 görüntüsüyle gelmiş olabilir: "Açıklama Türü".
+  bozuk_baslik <- intToUtf8(c(0x41, 0xE7, 0xFD, 0x6B, 0x6C, 0x61, 0x6D, 0x61, 0x20, 0x54, 0xFC, 0x72, 0xFC))
+  dogru_baslik <- intToUtf8(c(0x41, 0xE7, 0x131, 0x6B, 0x6C, 0x61, 0x6D, 0x61, 0x20, 0x54, 0xFC, 0x72, 0xFC))
+  veri[[bozuk_baslik]] <- c("a", "b")
+
+  # Eşikler sabitlenir: devralınan MERGEN_PK_EXPORT_* değerleri tek "Veri"
+  # sayfası yerine numaralı sayfalar üretirdi.
+  testthat::skip_if_not_installed("withr")
+  artefakt <- withr::with_envvar(
+    list(MERGEN_PK_EXPORT_MAX_ROWS = NA_character_,
+         MERGEN_PK_EXPORT_MAX_BYTES_MB = NA_character_,
+         MERGEN_PK_EXPORT_MAX_PARTS = NA_character_,
+         MERGEN_PK_EXPORT_MAX_CELLS = NA_character_),
+    env$pk_export_build(veri, list(facts = list()), list(),
+                        base_name = "sentetik", dir = .pk_export_dir())
+  )
+
+  expect_identical(artefakt$status, "ok")
+  okunan <- as.data.frame(readxl::read_excel(artefakt$files[[1]]$path, sheet = "Veri"))
+  expect_identical(okunan$Aciklama, c(dogru, "Toplam"))
+  expect_identical(okunan$Ad, izlanda)
+  expect_true(dogru_baslik %in% names(okunan))
+  expect_false(bozuk_baslik %in% names(okunan))
+})
+
+test_that("CSV dilimlerinde Latin-1 onarım kararı tam sütunda bir kez verilir", {
+  testthat::skip_if_not_installed("withr")
+  testthat::skip_if_not_installed("stringi")
+  env <- .pk_export_env()
+  u <- function(...) intToUtf8(c(...))
+  # Sütun 1: ilk dilimde kanıtsız "Istanbul" (U+00DD ile), son dilimde ç kanıtı -> sütun uygun;
+  # değer düzeyinde yalnız kendi kanıtı olan "Çarşı" onarılır, kanıtsız değer korunur.
+  # Sütun 2: ilk dilimde "Sube Müdürü" (U+00DE ile), son dilimde İzlandaca "Reykjavík" -> hiçbiri onarılmaz.
+  veri <- data.frame(
+    Il = c(u(0xDD, 0x73, 0x74, 0x61, 0x6E, 0x62, 0x75, 0x6C), "Ankara", "Konya",
+           u(0xC7, 0x61, 0x72, 0xFE, 0xFD)),
+    Birim = c(u(0xDE, 0x75, 0x62, 0x65, 0x20, 0x4D, 0xFC, 0x64, 0xFC, 0x72, 0xFC), "Merkez", "Saha",
+              u(0x52, 0x65, 0x79, 0x6B, 0x6A, 0x61, 0x76, 0xED, 0x6B)),
+    stringsAsFactors = FALSE
+  )
+  dizin <- .pk_export_dir()
+  artefakt <- withr::with_envvar(
+    list(MERGEN_PK_EXPORT_MAX_ROWS = "2", MERGEN_PK_EXPORT_MAX_PARTS = NA_character_,
+         MERGEN_PK_EXPORT_MAX_BYTES_MB = NA_character_),
+    env$pk_export_build(veri, list(facts = list()), list(), base_name = "sentetik",
+                        dir = dizin, format = "csv")
+  )
+  # Veri parçaları yan dosyalardan (Ozet/Bilgi) ayrı sayılır: 4 satır / 2 = 2 parça.
+  veri_dosyalari <- Filter(function(f) !grepl("_(Ozet|Bilgi)_", f$name), artefakt$files)
+  expect_length(veri_dosyalari, 2L)
+  for (f in veri_dosyalari) {
+    expect_identical(as.integer(f$rows), 2L)
+    satirlar <- readLines(f$path, encoding = "UTF-8", warn = FALSE)
+    expect_identical(length(satirlar[nzchar(satirlar)]), 3L)
+  }
+  metin <- paste(vapply(artefakt$files, function(f) {
+    parca <- rawToChar(readBin(f$path, "raw", file.info(f$path)$size))
+    Encoding(parca) <- "UTF-8"
+    parca
+  }, character(1)), collapse = "\n")
+  expect_true(grepl(u(0xDD, 0x73, 0x74, 0x61, 0x6E, 0x62, 0x75, 0x6C), metin, fixed = TRUE))
+  expect_true(grepl(u(0xC7, 0x61, 0x72, 0x15F, 0x131), metin, fixed = TRUE))
+  expect_true(grepl(u(0xDE, 0x75, 0x62, 0x65, 0x20, 0x4D, 0xFC, 0x64, 0xFC, 0x72, 0xFC), metin, fixed = TRUE))
+  expect_false(grepl(u(0x15E, 0x75, 0x62, 0x65), metin, fixed = TRUE))
+})
+
+test_that("CSV onarım kararı sütun SIRASINA bağlıdır ve metadata ham adla aranır", {
+  testthat::skip_if_not_installed("withr")
+  testthat::skip_if_not_installed("stringi")
+  env <- .pk_export_env()
+  u <- function(...) intToUtf8(c(...))
+  # Aynı adlı iki sütun: ilki Türkçe kanıtlı ("Çalışan"), ikincisi İzlandaca "Ymir".
+  veri <- data.frame(a = c(u(0xC7, 0x61, 0x6C, 0xFD, 0xFE, 0x61, 0x6E), "x", "y", "z"),
+                     b = c(u(0xDD, 0x6D, 0x69, 0x72), "q", "w", "e"),
+                     c = c(1, 2, 3, 4), stringsAsFactors = FALSE)
+  # Üçüncü sütunun adı Latin-1 görüntüsüyle gelmiş: "Çarşı"; metadata aynı ham adı kullanır.
+  ham_ad <- u(0xC7, 0x61, 0x72, 0xFE, 0xFD)
+  names(veri) <- c("Ad", "Ad", ham_ad)
+  meta <- list(column_meta = stats::setNames(list(list(label = "Toplam Adet", unit = "adet")), ham_ad))
+  artefakt <- withr::with_envvar(
+    list(MERGEN_PK_EXPORT_MAX_ROWS = "2", MERGEN_PK_EXPORT_MAX_PARTS = NA_character_,
+         MERGEN_PK_EXPORT_MAX_BYTES_MB = NA_character_),
+    env$pk_export_build(veri, list(facts = list()), list(), base_name = "sentetik",
+                        dir = .pk_export_dir(), format = "csv", query = list(meta = meta))
+  )
+  expect_true(length(artefakt$files) >= 2L)
+  metin <- paste(vapply(artefakt$files, function(f) {
+    parca <- rawToChar(readBin(f$path, "raw", file.info(f$path)$size))
+    Encoding(parca) <- "UTF-8"
+    parca
+  }, character(1)), collapse = "\n")
+  expect_true(grepl(u(0xC7, 0x61, 0x6C, 0x131, 0x15F, 0x61, 0x6E), metin, fixed = TRUE))
+  expect_true(grepl(u(0xDD, 0x6D, 0x69, 0x72), metin, fixed = TRUE))
+  expect_false(grepl(u(0x130, 0x6D, 0x69, 0x72), metin, fixed = TRUE))
+  expect_true(grepl("Toplam Adet (adet)", metin, fixed = TRUE))
+})
+
+test_that("CSV onarım kararı sınırlı dilimlerle tam sütunda biriktirilir", {
+  testthat::skip_if_not_installed("stringi")
+  env <- .pk_export_env()
+  u <- function(...) intToUtf8(c(...))
+  calisan <- u(0xC7, 0x61, 0x6C, 0xFD, 0xFE, 0x61, 0x6E)
+  veri <- data.frame(
+    # Kanıt yalnız son dilimde -> uygun.
+    a = c("x", "y", u(0xDD, 0x73, 0x74), calisan),
+    # Kanıt ilk dilimde, yabancı harf (í) son dilimde -> uygun değil.
+    b = c(calisan, "y", "z", u(0x52, 0x65, 0x79, 0x6B, 0x6A, 0x61, 0x76, 0xED, 0x6B)),
+    c = c(1, 2, 3, 4), stringsAsFactors = FALSE
+  )
+  expect_identical(env$turkish_latin1_repair_columns(veri, chunk = 2L), c(TRUE, FALSE, FALSE))
+  expect_identical(env$turkish_latin1_repair_columns(veri[0L, ], chunk = 2L), c(FALSE, FALSE, FALSE))
+  # İptal dilimler arasında yoklanır; tarama yarıda kalırsa onarım yapılmaz.
+  expect_identical(env$turkish_latin1_repair_columns(veri, stop_check = function() TRUE, chunk = 2L),
+                   c(FALSE, FALSE, FALSE))
+})
+
+test_that("mükerrer etiket yedeği onarılmış ham adı kullanır ve sıra eki benzersizdir", {
+  testthat::skip_if_not_installed("stringi")
+  env <- .pk_export_env()
+  u <- function(...) intToUtf8(c(...))
+  carsi <- u(0xC7, 0x61, 0x72, 0xFE, 0xFD)
+  veri <- data.frame(x = 1, y = 2, stringsAsFactors = FALSE)
+  names(veri) <- c(carsi, "Adet")
+  meta <- list(column_meta = stats::setNames(list(list(label = "Toplam"), list(label = "Toplam")),
+                                             c(carsi, "Adet")))
+  basliklar <- env$.pk_export_apply_labels(veri, names(veri), meta)
+  expect_identical(basliklar, c(u(0xC7, 0x61, 0x72, 0x15F, 0x131), "Adet"))
+
+  veri2 <- data.frame(a = 1, b = 2, c = 3)
+  names(veri2) <- c("A", "A", "A_2")
+  basliklar2 <- env$.pk_export_apply_labels(veri2, names(veri2), list())
+  expect_false(anyDuplicated(basliklar2) > 0L)
+  expect_identical(basliklar2[c(1L, 3L)], c("A", "A_2"))
+})

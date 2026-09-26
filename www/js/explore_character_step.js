@@ -25,9 +25,10 @@
   // Çift tıklama koruma kilidi
   var _confirmInProgress = false;
 
-  // Yazma animasyonu zamanlayıcıları
-  var _loreTypingTimer = null;
-  var _subtitleTypingTimer = null;
+  // Seçim nesli: iptal edilen (geri/kapat/Esc) seçim dizisinin geç gelen
+  // tamamlanma çağrısı seçimi uygulamaz.
+  var _selectionGeneration = 0;
+
   
   // (Kaldırıldı: Eski 8 saniyelik ek bekleme gereksiz gecikmeye neden oluyordu)
 
@@ -124,15 +125,12 @@
   // ============================================================
   function showModeStep() {
     _currentStep = 1;
+    cancelPendingSelection();
 
     // Video oynatmayı durdur
     if (window.ExploreCharVideo) {
       window.ExploreCharVideo.stopEverything();
     }
-
-    // Yazma animasyonlarını durdur
-    stopLoreTyping();
-    stopSubtitleTyping();
 
     // 2. adım içeriğini gizle
     var charStep = document.getElementById('cinematic-character-step');
@@ -163,15 +161,20 @@
   // ============================================================
   // MODALI KAPAT (2. ADIMDAN)
   // ============================================================
-  function closeFromCharStep() {
-    // Video oynatmayı durdur
+  // Süren seçim dizisini iptal eder: onay kilidi bırakılır, geç tamamlanma yok sayılır.
+  function cancelPendingSelection() {
+    _selectionGeneration += 1;
+    _confirmInProgress = false;
+  }
+
+  // 2. adım durumunu modalı kapatmadan temizler (video, DOM, adım göstergesi,
+  // onay kilidi). Genel kapatma yolları (Esc, arka plan) da bunu çağırır.
+  function resetCharStep() {
+    cancelPendingSelection();
     if (window.ExploreCharVideo) {
       window.ExploreCharVideo.stopEverything();
     }
-    stopLoreTyping();
-    stopSubtitleTyping();
 
-    // Önce 1. adıma dön (durumu sıfırla)
     _currentStep = 1;
     var charStep = document.getElementById('cinematic-character-step');
     if (charStep) charStep.classList.remove('active');
@@ -180,6 +183,11 @@
     var modalHeader = document.querySelector('.cinematic-modal-header');
     if (cardsGrid) cardsGrid.classList.remove('hidden-step');
     if (modalHeader) modalHeader.classList.remove('hidden-step');
+    updateStepIndicator(1);
+  }
+
+  function closeFromCharStep() {
+    resetCharStep();
 
     // Modalı kapat
     if (window.CinematicExplore) {
@@ -211,114 +219,6 @@
   }
 
   // ============================================================
-  // YAZMA EFEKTİ (Kişiselleştirme sayfasıyla aynı)
-  // ============================================================
-  function typeLoreText(element, text) {
-    stopLoreTyping();
-    if (!element || !text) return;
-
-    var index = 0;
-    element.innerHTML = '<span class="cinematic-lore-cursor"></span>';
-
-    function typeNext() {
-      if (index >= text.length) {
-        // Yazma tamamlandı, imleci kaldır
-        var cursor = element.querySelector('.cinematic-lore-cursor');
-        if (cursor) {
-          setTimeout(function() { if (cursor.parentNode) cursor.remove(); }, 1500);
-        }
-        _loreTypingTimer = null;
-        return;
-      }
-
-      var ch = text.charAt(index);
-      var cursor = element.querySelector('.cinematic-lore-cursor');
-      if (cursor) cursor.remove();
-
-      element.appendChild(document.createTextNode(ch));
-
-      var newCursor = document.createElement('span');
-      newCursor.className = 'cinematic-lore-cursor';
-      element.appendChild(newCursor);
-
-      index++;
-
-      // Doğal yazma hızı
-      var delay = 18 + (Math.random() * 15 - 7);
-      if (ch === '.' || ch === ',' || ch === '!' || ch === '?') {
-        delay += 250;
-      } else if (ch === ' ') {
-        delay += 30;
-      }
-
-      _loreTypingTimer = setTimeout(typeNext, delay);
-    }
-
-    _loreTypingTimer = setTimeout(typeNext, 50);
-  }
-
-  function stopLoreTyping() {
-    if (_loreTypingTimer) {
-      clearTimeout(_loreTypingTimer);
-      _loreTypingTimer = null;
-    }
-  }
-
-  // ============================================================
-  // ALT BAŞLIK YAZMA EFEKTİ
-  // ============================================================
-  function typeSubtitleText(element, text) {
-    stopSubtitleTyping();
-    if (!element || !text) return;
-
-    var index = 0;
-    element.innerHTML = '<span class="cinematic-subtitle-cursor"></span>';
-
-    function typeNext() {
-      if (index >= text.length) {
-        // Yazma tamamlandı, imleci kaldır
-        var cursor = element.querySelector('.cinematic-subtitle-cursor');
-        if (cursor) {
-          setTimeout(function() { if (cursor.parentNode) cursor.remove(); }, 1200);
-        }
-        _subtitleTypingTimer = null;
-        return;
-      }
-
-      var ch = text.charAt(index);
-      var cursor = element.querySelector('.cinematic-subtitle-cursor');
-      if (cursor) cursor.remove();
-
-      element.appendChild(document.createTextNode(ch));
-
-      var newCursor = document.createElement('span');
-      newCursor.className = 'cinematic-subtitle-cursor';
-      element.appendChild(newCursor);
-
-      index++;
-
-      // Alt başlık için biraz daha hızlı yazma
-      var delay = 14 + (Math.random() * 10 - 5);
-      if (ch === ',' || ch === '.' || ch === '!' || ch === '?') {
-        delay += 180;
-      } else if (ch === ' ') {
-        delay += 20;
-      }
-
-      _subtitleTypingTimer = setTimeout(typeNext, delay);
-    }
-
-    _subtitleTypingTimer = setTimeout(typeNext, 30);
-  }
-
-  function stopSubtitleTyping() {
-    if (_subtitleTypingTimer) {
-      clearTimeout(_subtitleTypingTimer);
-      _subtitleTypingTimer = null;
-    }
-  }
-
-  // ============================================================
   // MODALDA KARAKTER SEÇ
   // ============================================================
   function selectCharacterInModal(charId, animate) {
@@ -343,9 +243,11 @@
     });
 
     // Görseli güncelle (geçiş animasyonuyla)
+    // Hareket azaltma tercihinde portre gizlenip gecikmeyle gösterilmez.
+    var azHareket = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     var img = document.getElementById('cinematic-char-preview-img');
     if (img) {
-      if (animate !== false) {
+      if (animate !== false && !azHareket) {
         img.style.opacity = '0';
         setTimeout(function() {
           img.src = charData.image;
@@ -372,28 +274,27 @@
       }
     }
 
-    // İsim ve alt başlığı sağ panelde güncelle (isim rengi karakter temasına göre)
+    // Persona aksanı tek CSS değişkeniyle verilir (isim çizgisi, metrikler,
+    // seçili düğme); metinler daktilo efekti olmadan doğrudan yazılır.
+    // Aksanı olmayan personada önceki persona rengi kalmaz; varsayılan geçerli olur.
+    var charStepEl = document.getElementById('cinematic-character-step');
+    if (charStepEl && charData.accent) {
+      charStepEl.style.setProperty('--char-accent', charData.accent);
+    } else if (charStepEl) {
+      charStepEl.style.removeProperty('--char-accent');
+    }
     var displayName = document.querySelector('.cinematic-char-info .cinematic-char-display-name');
     var subtitleEl = document.querySelector('.cinematic-char-info .cinematic-char-subtitle-text');
     if (displayName) {
       displayName.textContent = charData.display_name;
-      if (charData.accent) {
-        displayName.style.color = charData.accent;
-      }
     }
     if (subtitleEl) {
-      var subtitleText = charData.style_tr || charData.subtitle;
-      if (animate !== false) {
-        typeSubtitleText(subtitleEl, subtitleText);
-      } else {
-        subtitleEl.textContent = subtitleText;
-      }
+      subtitleEl.textContent = charData.style_tr || charData.subtitle || '';
     }
 
-    // Hikaye metnini yazma efektiyle güncelle
     var loreEl = document.querySelector('.cinematic-char-lore');
     if (loreEl) {
-      typeLoreText(loreEl, charData.lore_tr);
+      loreEl.textContent = charData.lore_tr || '';
     }
 
     // Metrikleri güncelle (animasyonlu)
@@ -401,23 +302,30 @@
     if (metricsContainer && charData.profile_metrics) {
       metricsContainer.innerHTML = '';
       charData.profile_metrics.forEach(function(metric, idx) {
+        // Öğeler textContent ile kurulur; metrik metni HTML olarak yorumlanmaz.
         var metricEl = document.createElement('div');
         metricEl.className = 'cinematic-char-metric';
-        metricEl.innerHTML =
-          '<span class="cinematic-char-metric-label">' + metric.label + '</span>' +
-          '<div class="cinematic-char-metric-bar">' +
-            '<div class="cinematic-char-metric-fill" style="background: ' + charData.accent + ';"></div>' +
-          '</div>' +
-          '<span class="cinematic-char-metric-value">' + metric.value + '</span>';
+        var labelEl = document.createElement('span');
+        labelEl.className = 'cinematic-char-metric-label';
+        labelEl.textContent = metric.label;
+        var barEl = document.createElement('div');
+        barEl.className = 'cinematic-char-metric-bar';
+        var fill = document.createElement('div');
+        fill.className = 'cinematic-char-metric-fill';
+        barEl.appendChild(fill);
+        var valueEl = document.createElement('span');
+        valueEl.className = 'cinematic-char-metric-value';
+        valueEl.textContent = metric.value;
+        metricEl.appendChild(labelEl);
+        metricEl.appendChild(barEl);
+        metricEl.appendChild(valueEl);
         metricsContainer.appendChild(metricEl);
 
-        // Çubuk animasyonu
-        var fill = metricEl.querySelector('.cinematic-char-metric-fill');
-        if (fill) {
-          setTimeout(function() {
-            fill.style.width = metric.value + '%';
-          }, 100 + idx * 80);
-        }
+        // Çubuk animasyonu (yalnız sayısal yüzde uygulanır)
+        var yuzde = Math.max(0, Math.min(100, Number(metric.value) || 0));
+        setTimeout(function() {
+          fill.style.width = yuzde + '%';
+        }, 100 + idx * 80);
       });
     }
 
@@ -431,13 +339,6 @@
         tag.textContent = move;
         sigContainer.appendChild(tag);
       });
-    }
-
-    // Seç butonunun rengini güncelle
-    var selectBtn = document.querySelector('.cinematic-char-select-btn');
-    if (selectBtn && charData.accent) {
-      selectBtn.style.background = 'linear-gradient(135deg, ' + charData.accent + ' 0%, rgba(52, 211, 153, 0.4) 100%)';
-      selectBtn.style.boxShadow = '0 4px 24px ' + charData.accent + '33';
     }
   }
 
@@ -473,7 +374,10 @@
     // Seçim videosu bittiğinde geçiş yapacak fonksiyon
     // Not: Shiny bildirimi, giriş ekranı kapandıktan sonra gönderilir.
     // Bu sayede müzik ancak geçiş tamamlandığında başlar (yarış durumu önlenir).
+    var nesil = _selectionGeneration;
     function onVideoComplete() {
+      // Kullanıcı bu arada geri döndü ya da modalı kapattıysa seçim uygulanmaz.
+      if (nesil !== _selectionGeneration) return;
       // Adımı hemen sıfırla: geç gelen ön yükleme yanıtlarının
       // loadCharacter çağırmasını engeller (_currentStep === 2 koruması)
       _currentStep = 1;
@@ -482,8 +386,6 @@
       if (window.ExploreCharVideo) {
         window.ExploreCharVideo.stopEverything();
       }
-      stopLoreTyping();
-      stopSubtitleTyping();
 
       // Karakter adımı DOM durumunu temizle (2. adım → 1. adım sıfırlaması)
       var charStep = document.getElementById('cinematic-character-step');
@@ -493,9 +395,11 @@
       if (cardsGrid) cardsGrid.classList.remove('hidden-step');
       if (modalHeader) modalHeader.classList.remove('hidden-step');
 
-      // Modalı kapat
+      updateStepIndicator(1);
+
+      // Modalı kapat (başarılı seçim: odak ana uygulamaya taşınır)
       if (window.CinematicExplore) {
-        window.CinematicExplore.closeModal();
+        window.CinematicExplore.closeModal(true);
       }
 
 		// Giriş ekranını kapat; Shiny mod seçimini audio callback'ine bağımlı bırakma.
@@ -600,7 +504,9 @@
     loadCharactersData: loadCharactersData,
     loadCharacterVideoData: loadCharacterVideoData,
     confirmSelection: confirmCharacterSelection,
-    closeFromCharStep: closeFromCharStep
+    closeFromCharStep: closeFromCharStep,
+    reset: resetCharStep,
+    isActive: function() { return _currentStep === 2; }
   };
 
 })();

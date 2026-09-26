@@ -497,7 +497,7 @@ html[data-theme="light"] .admin-tabs .active a,
 html[data-theme="light"] .admin-tabs a.active,
 html[data-theme="light"] .nav-tabs.admin-tabs > li.active > a {
   font-weight: 600 !important;
-  background: linear-gradient(135deg, var(--mb-brand-accent, #FF5620) 0%, var(--mb-brand-accent-2, #FF8022) 100%) !important;
+  background: linear-gradient(135deg, #c9440c 0%, #c2410c 100%) !important;
   color: #ffffff !important;
   border-color: rgba(255, 86, 32, 0.60) !important;
   box-shadow: 0 0 0 1px rgba(255, 86, 32, 0.40), 0 4px 12px rgba(255, 86, 32, 0.30);
@@ -547,7 +547,7 @@ html[data-theme="light"] .admin-tabs-container .nav-pills > li.active > a,
 html[data-theme="light"] .admin-tabs-container .nav > li.active > a,
 html[data-theme="light"] .admin-tabs-container .nav-pills .nav-link.active,
 html[data-theme="light"] .admin-tabs-container ul.nav > li.active > a {
-  background: linear-gradient(135deg, var(--mb-brand-accent, #FF5620) 0%, var(--mb-brand-accent-2, #FF8022) 100%) !important;
+  background: linear-gradient(135deg, #c9440c 0%, #c2410c 100%) !important;
   color: #ffffff !important;
   border-color: rgba(255, 86, 32, 0.60) !important;
   box-shadow: 0 0 0 1px rgba(255, 86, 32, 0.40), 0 4px 12px rgba(255, 86, 32, 0.30);

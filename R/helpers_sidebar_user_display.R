@@ -80,7 +80,30 @@ mb_sidebar_user_avatar_url <- function(user_id) {
   if (is.na(user_id) || !nzchar(user_id) || user_id %in% c("0", "unknown")) {
     return("")
   }
-  paste0("https://url......./", user_id, ".jpg")
+  sablon <- mb_user_avatar_url_template()
+  if (!nzchar(sablon)) return("")
+  # repeated = TRUE: kimlikteki "%2F" gibi diziler de kodlanır, ayrı kimlik kalır.
+  gsub("{user_id}", utils::URLencode(user_id, reserved = TRUE, repeated = TRUE),
+       sablon, fixed = TRUE)
+}
+
+# Kurum içi fotoğraf adresi kodda tutulmaz; .Renviron'daki
+# MERGEN_USER_AVATAR_URL_TEMPLATE okunur (ör. https://foto.kurum/{user_id}.jpg).
+# {user_id} yoksa değer taban adres sayılır ve "<id>.jpg" eklenir. Yalnızca
+# http(s) ya da kök-göreli yol kabul edilir. Tanımsız/geçersiz şablonda boş dize
+# döner: istek üretilmez, baş harf/simge yedeği doğrudan gösterilir.
+mb_user_avatar_url_template <- function() {
+  sablon <- trimws(Sys.getenv("MERGEN_USER_AVATAR_URL_TEMPLATE", ""))
+  if (!nzchar(sablon) || !grepl("^(https?://[^[:space:]]+|/[^/[:space:]][^[:space:]]*)$", sablon, perl = TRUE)) {
+    return("")
+  }
+  if (!grepl("{user_id}", sablon, fixed = TRUE)) {
+    # Sorgu/parça (ör. "?size=64") korunur; "<id>.jpg" yola, ondan önce eklenir.
+    yol <- sub("[?#].*$", "", sablon)
+    sablon <- paste0(sub("/*$", "/", yol), "{user_id}.jpg",
+                     substr(sablon, nchar(yol) + 1L, nchar(sablon)))
+  }
+  sablon
 }
 
 #' Departman değerini güvenli şekilde çöz

@@ -256,8 +256,9 @@ api_key_choice_modal_dialog <- function(ns,
       class = "akc-foot",
       # "Bu ekranı bir daha gösterme" yalnızca varsayılan kurum anahtarı
       # varken sunulur; aksi halde modalı bastırmak kullanıcıyı anahtarsız
-      # bırakır. İşaretlenince tercih istemci tarafında mergen_settings
-      # içine yazılır (yalnızca bayrak; ANAHTAR DEĞİL).
+      # bırakır. İşaret beklemede kalır ve yalnız kurum anahtarı seçilince
+      # o kullanıcı için kalıcılaşır; "Daha Sonra Karar Ver" hiçbir şey
+      # yazmaz (yalnızca bayrak; ANAHTAR DEĞİL).
       if (default_available) {
         tags$label(
           class = "akc-dontshow",
@@ -312,7 +313,9 @@ api_key_choice_modal_dialog <- function(ns,
 # yollar. Mesaj yalnızca davranışsal bayrak taşır; anahtar içermez.
 show_api_key_choice_modal <- function(session,
                                       default_available = FALSE,
-                                      service_desk = NULL) {
+                                      service_desk = NULL,
+                                      nonce = "",
+                                      user_tag = "") {
   if (is.null(session)) {
     return(invisible(FALSE))
   }
@@ -332,11 +335,71 @@ show_api_key_choice_modal <- function(session,
     "mergenApiKeyChoiceInit",
     list(
       defaultAvailable = default_available,
-      # Tercih, mergen_settings localStorage nesnesi içindeki bu anahtara
-      # yazılır (yalnızca bayrak; ASLA API anahtarı değeri değil).
-      settingsKey = "api_key_onboarding_suppressed"
+      # Tercih yalnızca bayraktır (ASLA API anahtarı değeri değil). Onay
+      # kutusunun bekleyen durumu bu girdiye bildirilir.
+      settingsKey = "api_key_onboarding_suppressed",
+      dontShowInputId = ns("api_key_dontshow"),
+      # Bekleyen kutu değeri bu modal jetonu ve kullanıcı etiketiyle bildirilir.
+      nonce = as.character(nonce %||% "")[1],
+      userTag = as.character(user_tag %||% "")[1]
     )
   )
 
   invisible(TRUE)
+}
+
+# Tercih etiketi: kanonik kullanıcı adının kısaltılmış SHA-256 özeti. Bastırma
+# bayrağı tarayıcıda bu etiket altında tutulur; aynı tarayıcı profilini
+# kullanan başka kullanıcı önceki kullanıcının tercihini devralmaz. Özet
+# üretilemezse NULL döner ve tercih uygulanmaz (seçim ekranı gösterilir).
+api_key_pref_user_tag <- function(username) {
+  ad <- enc2utf8(as.character(username %||% "")[1])
+  if (is.na(ad) || !nzchar(trimws(ad))) {
+    return(NULL)
+  }
+  metin <- paste0("mergen-api-key-pref:", ad)
+  if (requireNamespace("openssl", quietly = TRUE)) {
+    return(substr(paste(as.character(openssl::sha256(charToRaw(metin))), collapse = ""), 1L, 24L))
+  }
+  if (requireNamespace("digest", quietly = TRUE)) {
+    return(substr(digest::digest(metin, algo = "sha256", serialize = FALSE), 1L, 24L))
+  }
+  NULL
+}
+
+# Tarayıcıya tercih yazım mesajı: yalnızca bastırma bayrağı, kullanıcı etiketi
+# ve kaynak gönderilir; anahtar değeri gönderilmez. result_input verilirse
+# tarayıcı kaydın gerçekten yazılıp yazılmadığını ({ok, tag, nonce}) bu girdiye
+# bildirir; sunucu onayı yalnız bu yazımın jetonu ve etiketiyle kabul eder.
+.api_key_choice_write_pref <- function(session, username, source, result_input = NULL, nonce = "") {
+  etiket <- api_key_pref_user_tag(username)
+  if (is.null(session) || is.null(etiket)) {
+    return(invisible(FALSE))
+  }
+  mesaj <- list(settingsKey = "api_key_onboarding_suppressed", userTag = etiket, source = source,
+                nonce = as.character(nonce %||% "")[1])
+  if (is.character(result_input) && length(result_input) == 1L && nzchar(result_input)) {
+    mesaj$resultInputId <- result_input
+  }
+  session$sendCustomMessage("mergenApiKeyChoiceRemember", mesaj)
+  invisible(TRUE)
+}
+
+# Kurum anahtarı seçimini tarayıcıda o kullanıcı için hatırlatır.
+remember_api_key_choice_default <- function(session, username = NULL, result_input = NULL, nonce = "") {
+  .api_key_choice_write_pref(session, username, "default", result_input, nonce)
+}
+
+# Kullanıcı kişisel anahtar kaydedince tarayıcıda hatırlanan kurum seçimi
+# kaldırılır (bastırma korunur); aksi halde sonraki girişte kurum anahtarı
+# kişisel anahtarın önüne geçerdi.
+forget_api_key_choice_default <- function(session, username = NULL, result_input = NULL, nonce = "") {
+  .api_key_choice_write_pref(session, username, "personal", result_input, nonce)
+}
+
+# Kurum anahtarı "bir daha gösterme" işaretsiz seçildiğinde o kullanıcının
+# önceki tercihi (bastırma ya da kurum seçimi) silinir; seçim ekranı sonraki
+# girişte yeniden gösterilir.
+clear_api_key_choice_pref <- function(session, username = NULL, result_input = NULL, nonce = "") {
+  .api_key_choice_write_pref(session, username, "clear", result_input, nonce)
 }
