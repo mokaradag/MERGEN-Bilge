@@ -358,3 +358,14 @@ test_that("seçim modalı kontrol yüzeyini handler'lardan önce hazırlar", {
     fixed = TRUE
   ))
 })
+test_that("seçim modalı bekleyen kutu değerini jeton/etiketle bildirir ve etiketsiz hatırlatmayı reddeder", {
+  js_text <- paste(.akc_read("www/js/api_key_choice_modal.js"), collapse = "\n")
+  # Bekleyen "bir daha gösterme" değeri çıplak mantıksal değil, jeton ve etiketle gider.
+  expect_true(grepl("nonce: choice._modalNonce", js_text, fixed = TRUE))
+  expect_false(grepl("setInputValue(choice._dontShowInputId, !!checked", js_text, fixed = TRUE))
+  # Etiketsiz hatırlatma önceki kullanıcının etiketine yazmaz; sonuç ok:false döner.
+  hatirlat <- regmatches(js_text, regexpr("mergenApiKeyChoiceRemember[\\s\\S]*?\\n    \\}\\);", js_text, perl = TRUE))
+  expect_length(hatirlat, 1L)
+  expect_true(grepl("sonucBildir(false);", hatirlat, fixed = TRUE))
+  expect_true(grepl("typeof message.userTag !== \"string\" || !message.userTag", hatirlat, fixed = TRUE))
+})

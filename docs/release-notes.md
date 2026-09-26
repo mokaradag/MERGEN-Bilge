@@ -31,29 +31,36 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   (`MERGEN_FILE_SUMMARY_MAX_QUEUE`, varsayılan 64; oturum başına
   `MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION`, varsayılan 16); dolunca dosya
   yine eklenir, özeti atlanır ve kullanıcı uyarılır. Bekleyen özetler işçi
-  metriklerinde görünür; oturum kapanınca çalışan özetin yuvası bırakılır. Özet görevinin bağımlılık taraması
+  metriklerinde görünür; oturum kapanınca işçi başlamamış LLM çağrısını atlar,
+  yuva ise iş bittiğinde bırakılır. Sıra oturumlar arasında döner ve
+  `sequential` planda özet ana süreçte çalıştırılmaz. Özet görevinin bağımlılık taraması
   açılışta bir kez yapılır; süreç yeniden başladıktan sonraki ilk yükleme de
   olay döngüsünü dondurmaz. Gönderim anında oluşan hata da bildirimi kapatır
   ve "özet çıkarılamadı" uyarısı verir.
 - **Günlük log dosyaları UTF-8.** `mergen_yyyymmdd.log` ve AI hata ayıklama
   dökümleri Windows kod sayfasına göre değil UTF-8 bayt olarak yazılır; Türkçe
-  karakterler bozulmaz.
+  karakterler bozulmaz. Yükseltme günü günün dosyası eski yazıcının CP1254
+  satırlarını taşıyorsa dosya dönüştürülmez: süreçler arası kilit altında bayt
+  bayt `mergen_yyyymmdd.legacy-SSDDss-PID.log` adına taşınır ve yeni satırlar
+  temiz UTF-8 dosyada başlar (taşınamazsa `*.utf8.log` yedeğine yazılır).
 - **Konsol logu sadeleşti.** `[CHAT PERF] SSE işçide ilk ham HTTP parçası
   alındı` satırı her parçada değil istek başına bir kez yazılır.
 - **Proje ve Kaynak Analizi Excel eki:** Latin1 sütundan NVARCHAR olarak okunan
   Türkçe metnin `ý/þ/ð` harfleri `ı/ş/ğ` olarak dışa aktarılır; sütun adları da
-  aynı kurala tabidir. Onarım tam sütun düzeyinde kanıta bağlıdır ve CSV
-  dilimlerinde aynı karar her dilime uygulanır: sütunda İzlandaca/Faroecede
-  bulunmayan Türkçe kanıtı (`ç/ü`) yoksa (`ý/Ý` tek başına kanıt değildir; ör.
-  "Ýmir") veya başka dil harfi (ör. İzlandaca `á/í/ó`) ya da gerçek `ı/ş/ğ`
+  (metadata etiketi almamış) aynı kurala tabidir. Onarım tam sütun düzeyinde
+  kanıta bağlıdır ve CSV dilimlerinde aynı karar (sütun sırasıyla) her dilime
+  uygulanır: sütunda İzlandaca/Faroecede bulunmayan Türkçe kanıtı (`ç/ü`) aynı
+  değerde benzer harfle birlikte görülmezse (`ý/Ý` tek başına kanıt değildir;
+  ör. "Ýmir") veya başka dil harfi (ör. İzlandaca `á/í/ó`) ya da gerçek `ı/ş/ğ`
   varsa sütuna dokunulmaz. ODBC'nin kayıplı
   `y`/`?` dönüşümü istemcide onarılamaz; sorgu tarafı çözümü RUNBOOK §13'tedir.
   Yerel alias şablonu: `docs/templates/library_query_aliases_local.template.R`.
 - **Tanılama yanlış uyarıları giderildi.** Yapılandırılmış servis uç noktaları
   (`LOCAL_*_ENDPOINT`, `IMAGE_GEN_ENDPOINT`, `LANGFLOW_BASE_URL`,
   `SSO_KEYCLOAK_URL`, api_config LLM uç noktaları) kurumsal DNS adı taşısa da
-  on-prem sayılır ve gerçekten denenir; "Genel internet adresi algılandı"
-  uyarısı yalnız yapılandırılmamış genel adresler için kalır. `0.0.0.0` / `[::]`
+  adı yalnız özel adreslere çözülüyorsa on-prem sayılır ve gerçekten denenir;
+  genel adrese çözülen host yapılandırılmış olsa da denenmez
+  (`MERGEN_HEALTH_INTERNAL_ENDPOINTS` açık ilanı geçerlidir). `0.0.0.0` / `[::]`
   bağlama adresli uç noktalar yerel döngü adresinden (`127.0.0.1` / `[::1]`)
   denenir; yüzde kodlu genel host adları intranet sayılmaz.
 - **Kullanıcı fotoğraf adresi yapılandırılabilir:** `MERGEN_USER_AVATAR_URL_TEMPLATE`
@@ -88,6 +95,10 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   başka kullanıcı bu seçimi devralmaz, aynı oturum başka kullanıcıya geçerse
   karar yeni kullanıcı için yeniden verilir. Önceki tarayıcı geneli bayrak
   artık okunmaz; bu yüzden tercih kullanıcı başına bir kez yeniden sorulur.
+  Hatırlanan kurum seçimi kayıtlı kişisel anahtarın önüne geçer (kişisel
+  anahtar silinmez; yeni kişisel anahtar kaydı ya da ekranın yeniden açılması
+  kurum seçimini kaldırır). Kutu değeri yalnız o modal ve o kullanıcı için
+  geçerlidir; kimlik düşüp geri gelince kişisel anahtar yeniden yüklenir.
 - **Keşfet akışı yenilendi:** Keşfet düğmesi, mod seçimi ve asistan seçimi
   ekranları sade ve okunaklı bir tasarıma geçti; mod açıklamaları ve özellik
   durumları baştan görünür, yoğun sürekli animasyonlar kaldırıldı ve ekran

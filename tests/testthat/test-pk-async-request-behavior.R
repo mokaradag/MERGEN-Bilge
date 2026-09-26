@@ -354,6 +354,44 @@ test_that("bootstrap UTF-8 kaynaktaki Türkçe dize sabitlerini bozmadan yükler
   expect_identical(enc2utf8(get(".pk_boot_enc_value", envir = globalenv())), beklenen)
 })
 
+test_that("bootstrap CRLF/CR satır sonlu kaynağı yükler, boyutu okunamayan dosyayı reddeder", {
+  # Windows'ta `writeLines()` ve `core.autocrlf=true` CRLF üretir; bayt yükleyici
+  # `\r`yi parse'a bırakınca bootstrap `loaded = 0` ile düşüyordu.
+  kok <- file.path(tempdir(), paste0("pk_boot_crlf_", as.integer(runif(1, 1, 1e9))))
+  dir.create(file.path(kok, "R"), recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(kok, recursive = TRUE), add = TRUE)
+  artir <- "assign(\".pk_boot_crlf\", get(\".pk_boot_crlf\", envir = globalenv()) + 1L, envir = globalenv())"
+  metin <- paste0("if (TRUE) assign(\".pk_boot_crlf\", 1L, envir = globalenv())\r\n",
+                  artir, "\r", artir, "\r\n")
+  writeBin(charToRaw(metin), file.path(kok, "R", "crlf.R"))
+
+  eski_flag <- get0(.PK_ASYNC_BOOTSTRAP_FLAG, envir = globalenv(), ifnotfound = NULL)
+  on.exit({
+    if (is.null(eski_flag)) {
+      suppressWarnings(rm(list = .PK_ASYNC_BOOTSTRAP_FLAG, envir = globalenv()))
+    } else {
+      assign(.PK_ASYNC_BOOTSTRAP_FLAG, eski_flag, envir = globalenv())
+    }
+    suppressWarnings(rm(list = c(".pk_boot_crlf", "file.info"), envir = globalenv()))
+  }, add = TRUE)
+  suppressWarnings(rm(list = .PK_ASYNC_BOOTSTRAP_FLAG, envir = globalenv()))
+
+  sonuc <- pk_async_worker_bootstrap(kok, "R/crlf.R", required_files = character(0))
+  expect_true(sonuc$ok)
+  expect_equal(sonuc$loaded, 1L)
+  expect_equal(get(".pk_boot_crlf", envir = globalenv()), 3L)
+
+  # Geçici UNC/metadata hatası: boyut NA ise boş metin "yüklendi" sayılmaz.
+  suppressWarnings(rm(list = c(.PK_ASYNC_BOOTSTRAP_FLAG, ".pk_boot_crlf"), envir = globalenv()))
+  assign("file.info", function(...) data.frame(size = NA_real_), envir = globalenv())
+  bozuk <- pk_async_worker_bootstrap(kok, "R/crlf.R", required_files = character(0))
+  rm(list = "file.info", envir = globalenv())
+  expect_false(bozuk$ok)
+  expect_equal(bozuk$loaded, 0L)
+  expect_true("R/crlf.R" %in% bozuk$failed)
+  expect_false(exists(".pk_boot_crlf", envir = globalenv()))
+})
+
 test_that("bootstrap geçersiz kök ve boş liste için TİPLİ hata döner", {
   eski_flag <- get0(.PK_ASYNC_BOOTSTRAP_FLAG, envir = globalenv(), ifnotfound = NULL)
   on.exit({

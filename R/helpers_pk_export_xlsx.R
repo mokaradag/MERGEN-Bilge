@@ -29,9 +29,10 @@
 
 # Dışa aktarım yalnızca GÖRÜNÜR çıktıdır (RLS/filtre bu noktadan önce biter);
 # Latin1 sütunda saklanmış Türkçe metnin Latin-1 harfleri burada sütun kanıtıyla
-# ı/ş/ğ'ye döner. Sütun adları da aynı kurala tabidir (başlık hazırlığından
-# önce). `repair_cols` verilirse karar tam sütunda önceden verilmiştir (CSV
-# dilimleri); aksi halde bu çerçevenin kendi sütunlarından çıkarılır.
+# ı/ş/ğ'ye döner. `repair_cols` (sütun SIRASINA göre mantıksal) verilirse karar
+# tam sütunda önceden verilmiştir (CSV dilimleri); aynı adlı iki sütun
+# birbirinin kararını almaz. Sütun adları burada DEĞİŞMEZ: metadata ham adla
+# aranır, başlık onarımı etiketlerden sonra yapılır (turkish_latin1_repair_headers).
 .pk_export_norm <- function(df, repair_cols = NULL) {
   if (exists("normalize_pk_dataframe_utf8", mode = "function", inherits = TRUE)) {
     df <- normalize_pk_dataframe_utf8(df)
@@ -42,12 +43,10 @@
   }
   for (j in seq_along(df)) {
     if (is.character(df[[j]])) {
-      uygun <- if (is.null(repair_cols)) NULL else names(df)[j] %in% repair_cols
+      uygun <- if (is.null(repair_cols)) NULL else isTRUE(repair_cols[j])
       df[[j]] <- repair_turkish_latin1_letters(df[[j]], eligible = uygun)
     }
   }
-  adlar <- repair_turkish_latin1_letters(names(df))
-  if (!anyDuplicated(adlar)) names(df) <- adlar
   df
 }
 
@@ -91,6 +90,12 @@
     }
 
     headers[i] <- etiket
+  }
+
+  # Latin-1 görüntülü ham sütun adı etiketten SONRA onarılır: metadata ham adla
+  # aranır, etiket almış başlık değişmez (turkish_latin1_repair_headers).
+  if (exists("turkish_latin1_repair_headers", mode = "function", inherits = TRUE)) {
+    headers <- turkish_latin1_repair_headers(headers, names(df), sutun_meta)
   }
 
   # MÜKERRER BAŞLIK TÜM DIŞA AKTARIMI DÜŞÜRÜR: iki sütunun metadata etiketi
@@ -440,25 +445,10 @@ pk_export_build <- function(data, packet = list(), context = list(),
   # katına çıkarıyordu. Yüzde/etiket hazırlığı YALNIZCA metadata'ya bağlı
   # olduğundan (veriye değil), dönüşümü parça başına uygulamak tüm çerçeveyi
   # dönüştürüp bölmekle AYNI sonucu verir.
-  # Latin-1 onarım kararı dilim başına değil TAM sütunda bir kez verilir;
-  # aksi halde bir dilimde onarılan değer diğer dilimde olduğu gibi kalırdı.
-  # Sütunlar tek tek normalize edilir (tam çerçeve kopyası oluşmaz).
-  onarim_sutunlari <- if (exists("turkish_latin1_repair_eligible", mode = "function", inherits = TRUE)) {
-    uygunluk <- vapply(seq_along(data), function(j) {
-      sutun <- data[, j, drop = FALSE]
-      if (exists("normalize_pk_dataframe_utf8", mode = "function", inherits = TRUE)) {
-        sutun <- normalize_pk_dataframe_utf8(sutun)
-      }
-      is.character(sutun[[1L]]) && isTRUE(turkish_latin1_repair_eligible(sutun[[1L]]))
-    }, logical(1))
-    adlar <- names(data)
-    if (exists("normalize_pk_text_utf8", mode = "function", inherits = TRUE)) {
-      adlar <- normalize_pk_text_utf8(adlar)
-    }
-    adlar[uygunluk]
-  } else {
-    character(0)
-  }
+  # Latin-1 onarım kararı dilim başına değil TAM sütunda bir kez verilir
+  # (aşağıda sınırlı aşama içinde); aksi halde bir dilimde onarılan değer diğer
+  # dilimde olduğu gibi kalırdı. Sıfır satırlık sonda değer kararı gerektirmez.
+  onarim_sutunlari <- logical(ncol(data))
   csv_sonda <- tryCatch(
     .pk_export_csv_body(data[0L, , drop = FALSE], meta, onarim_sutunlari),
     error = function(e) NULL
@@ -471,6 +461,9 @@ pk_export_build <- function(data, packet = list(), context = list(),
   # yoklanır: büyük ama izinli bir dışa aktarım Durdur'a ya da mutlak son
   # tarihe rağmen sonuna kadar çalışmaz.
   paket_sonucu <- sinirli_asama(function() {
+    if (exists("turkish_latin1_repair_columns", mode = "function", inherits = TRUE)) {
+      onarim_sutunlari <<- turkish_latin1_repair_columns(data, stop_check = durduruldu)
+    }
     pk_export_csv_bundle(
       dizin, base_name, plan, data,
       summary_sheet = ozet_sayfasi, info_sheet = bilgi_sayfasi,

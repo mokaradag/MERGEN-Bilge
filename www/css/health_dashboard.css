@@ -377,11 +377,19 @@ html[data-theme="light"] .health-metric-tile .health-metric-subtitle {
   opacity: 1;
 }
 html[data-theme="light"] .health-score-ring {
+  --health-ring-color: #15803d;
   --health-ring-track: #e3e8f2;
   --health-ring-core: #ffffff;
   box-shadow: 0 0 0 1px rgba(0, 48, 135, 0.08), 0 10px 22px rgba(15, 28, 51, 0.12);
 }
 html[data-theme="light"] .health-score-ring::before { box-shadow: inset 0 1px 4px rgba(15, 28, 51, 0.1); }
+/* Açık temada halka dolguları #e3e8f2 izine karşı 3:1 sağlar. */
+html[data-theme="light"] .health-status-warning .health-score-ring,
+html[data-theme="light"] .health-hero.health-status-warning .health-score-ring { --health-ring-color: #b45309; }
+html[data-theme="light"] .health-status-critical .health-score-ring,
+html[data-theme="light"] .health-hero.health-status-critical .health-score-ring { --health-ring-color: #dc2626; }
+html[data-theme="light"] .health-hero.health-status-unknown .health-score-ring,
+html[data-theme="light"] .health-hero.health-status-not_configured .health-score-ring { --health-ring-color: #64748b; }
 html[data-theme="light"] .health-path-summary strong { color: var(--mb-brand-primary, #003087) !important; }
 html[data-theme="light"] .health-path-copy-btn {
   color: #1e3a8a !important;

@@ -155,12 +155,13 @@ test_that("yapılandırılmamış genel internet adresi çağrılmadan atlanır 
 })
 
 # .Renviron.example sözleşmesi: LOCAL_*_ENDPOINT / IMAGE_GEN_ENDPOINT /
-# LANGFLOW_BASE_URL / SSO_KEYCLOAK_URL otomatik on-prem sayılır. Kurumsal DNS
-# adındaki (ör. *.com.tr) yapılandırılmış uç noktalar eskiden "Genel internet
-# adresi" diye atlanıyor ve Tanılama sekmesinde yanlış uyarı üretiyordu.
+# LANGFLOW_BASE_URL / SSO_KEYCLOAK_URL. Kurumsal DNS adındaki (ör. *.com.tr)
+# yapılandırılmış uç noktalar eskiden "Genel internet adresi" diye atlanıyordu;
+# yalnız özel adreslere çözülürse denenir (DNS testte sahtelenir).
 test_that("yapılandırılmış LOCAL_LLM_ENDPOINT kurumsal DNS adıyla gerçekten denenir", {
   skip_if_not_installed("httr")
   env <- .fresh_health_env()
+  env$health_resolve_host_ips <- function(host) "10.20.30.40"
   withr::local_envvar(c(LOCAL_LLM_ENDPOINT = "https://llm.kurum.com.tr/v1/chat/completions",
                         MERGEN_HEALTH_INTERNAL_ENDPOINTS = ""))
   cagrilan <- character(0)
@@ -176,10 +177,49 @@ test_that("yapılandırılmış LOCAL_LLM_ENDPOINT kurumsal DNS adıyla gerçekt
   r <- env$health_check_llm_endpoint()
   expect_identical(r$status[1], "ok")
   expect_identical(cagrilan, "https://llm.kurum.com.tr/v1/models")
+
+  # Yapılandırılmış ama GENEL adrese çözülen uç noktaya istek gönderilmez.
+  env2 <- .fresh_health_env()
+  env2$health_resolve_host_ips <- function(host) c("10.0.0.5", "8.8.8.8")
+  r2 <- env2$health_check_llm_endpoint()
+  expect_identical(cagrilan, "https://llm.kurum.com.tr/v1/models")
+  expect_true(grepl("Genel internet", r2$detail[1], fixed = TRUE))
 })
 
-test_that("TTS/STT/görsel/SSO uç noktalarının hostları otomatik on-prem sayılır", {
+test_that("yapılandırılmış olmak tek başına on-prem sayılmaz; DNS kanıtı önbelleklenir", {
   env <- .fresh_health_env()
+  sorgu <- 0L
+  env$health_resolve_host_ips <- function(host) {
+    sorgu <<- sorgu + 1L
+    switch(host, "ozel.kurum.com.tr" = "172.16.4.2", "genel.example.com" = "93.184.216.34",
+           "sinkhole.example.com" = "0.0.0.0", character(0))
+  }
+  withr::local_envvar(c(
+    LOCAL_TTS_ENDPOINT = "https://ozel.kurum.com.tr/v1",
+    LOCAL_STT_ENDPOINT = "https://genel.example.com/v1",
+    IMAGE_GEN_ENDPOINT = "https://yok.example.com/v1",
+    LANGFLOW_BASE_URL = "https://sinkhole.example.com",
+    SSO_KEYCLOAK_URL = "https://8.8.4.4/realms/x",
+    MERGEN_HEALTH_INTERNAL_ENDPOINTS = ""
+  ))
+  expect_false(env$health_is_public_url("https://ozel.kurum.com.tr/v1"))
+  expect_true(env$health_is_public_url("https://genel.example.com/v1"))
+  expect_true(env$health_is_public_url("https://yok.example.com/v1"))
+  expect_true(env$health_is_public_url("https://sinkhole.example.com/"))
+  expect_true(env$health_is_public_url("https://8.8.4.4/realms/x"))
+  # Yapılandırılmamış host için DNS sorgusu yapılmaz; sonuç önbellekten gelir.
+  expect_true(env$health_is_public_url("https://baska.example.com/v1"))
+  once <- sorgu
+  expect_false(env$health_is_public_url("https://ozel.kurum.com.tr/health"))
+  expect_identical(sorgu, once)
+  # Operatörün açık ilanı DNS'ten bağımsız geçerlidir.
+  withr::local_envvar(c(MERGEN_HEALTH_INTERNAL_ENDPOINTS = "genel.example.com"))
+  expect_false(env$health_is_public_url("https://genel.example.com/v1"))
+})
+
+test_that("TTS/STT/görsel/SSO uç noktalarının hostları özel adrese çözülünce on-prem sayılır", {
+  env <- .fresh_health_env()
+  env$health_resolve_host_ips <- function(host) c("10.1.1.1", "fd00::5")
   withr::local_envvar(c(
     LOCAL_TTS_ENDPOINT = "https://ses.kurum.com.tr/v1",
     LOCAL_STT_ENDPOINT = "https://yazi.kurum.gov.tr:8443/v1/audio/transcriptions",
@@ -196,6 +236,7 @@ test_that("TTS/STT/görsel/SSO uç noktalarının hostları otomatik on-prem say
 
 test_that("api_config LLM uç nokta listesi de on-prem host kümesine girer", {
   env <- .fresh_health_env()
+  env$health_resolve_host_ips <- function(host) "192.168.10.7"
   withr::local_envvar(c(MERGEN_HEALTH_INTERNAL_ENDPOINTS = ""))
   env$api_config <- list(local_llm_endpoints = list(buyuk = "https://model2.kurum.com.tr/v1/chat/completions"))
   expect_false(env$health_is_public_url("https://model2.kurum.com.tr/v1/models"))
@@ -271,10 +312,27 @@ test_that("IPv6 joker adresinin tüm yazımları yerel döngüden denenir", {
   expect_identical(env$health_probe_url("http://0:8000/"), "http://127.0.0.1:8000/")
   expect_identical(env$health_probe_url("http://[::1]:9000/x"), "http://[::1]:9000/x")
   expect_identical(env$health_probe_url("http://[fd00::]:9000/x"), "http://[fd00::]:9000/x")
+  # Yüzde kodlu joker adres de (libcurl çözer) yerel döngüden denenir.
+  expect_identical(env$health_probe_url("http://%30.0.0.0:9000/health"), "http://127.0.0.1:9000/health")
+  # Rakamsız onaltılık literal (`0x`) sayı değildir; 0.0.0.0'a eşlenmez.
+  expect_null(env$health_ipv4_canonical("0x"))
+  expect_false(env$health_host_unspecified("0x"))
+  expect_identical(env$health_probe_url("http://0x:8000/"), "http://0x:8000/")
+})
+
+test_that("onaltılık IPv4-eşlemeli IPv6 gömülü IPv4 kuralıyla sınıflandırılır", {
+  env <- .fresh_health_env()
+  withr::local_envvar(c(MERGEN_HEALTH_INTERNAL_ENDPOINTS = ""))
+  expect_true(env$health_ip_literal_internal("::ffff:7f00:1"))
+  expect_true(env$health_ip_literal_internal("0:0:0:0:0:ffff:a00:1"))
+  expect_false(env$health_ip_literal_internal("::ffff:808:808"))
+  expect_false(env$health_is_public_url("http://[::ffff:7f00:1]:9000/"))
+  expect_true(env$health_is_public_url("http://[::ffff:808:808]/"))
 })
 
 test_that("model eşlemesindeki doğrudan URL on-prem host kümesine girer", {
   env <- .fresh_health_env()
+  env$health_resolve_host_ips <- function(host) if (identical(host, "model2.kurum.com.tr")) "10.9.9.9" else "8.8.8.8"
   withr::local_envvar(c(MERGEN_HEALTH_INTERNAL_ENDPOINTS = ""))
   env$api_config <- list(local_model_endpoint_map = c(model2 = "https://model2.kurum.com.tr/v1",
                                                       model1 = "primary"))

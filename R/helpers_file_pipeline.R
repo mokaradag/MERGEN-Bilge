@@ -400,13 +400,15 @@ processAndSummarizeFile <- function(file_info,
     ozet_baslat()
     TRUE
   }
-  # Özet kuyruğu doluysa dosya yine kabul edilir; yalnız özet atlanır ve söylenir.
+  # Özet kuyruğu doluysa (ya da arka plan işçisi yoksa) dosya yine kabul edilir;
+  # özet atlanır ve söylenir. Bildirim göstermeyen toplu çağıran ayrı nedeni görür.
   if (identical(ozet_kuyrukta, FALSE)) {
     try(removeNotification(note_id), silent = TRUE)
     cat("[FILE PIPELINE] Özet kuyruğu dolu, özet atlandı:", file_name_safe, "\n")
     if (isTRUE(show_toast)) {
       showToast(session, paste(file_info$name, "yüklendi; özet kuyruğu dolu olduğundan özet çıkarılmadı."), "warning")
     }
+    return(.file_pipeline_status(MERGEN_FILE_PIPELINE_ACCEPTED, "ozet_atlandi"))
   }
 
   # Dosya KABUL edildi: kalıcılaştırma ve indeks kaydı tamamlandı. Özetleme

@@ -299,16 +299,17 @@ pk_async_worker_bootstrap <- function(repo_root, files,
       next
     }
 
-    # KAYNAK BAYT OLARAK OKUNUR: temiz PSOCK işçisinin `encoding` seçeneği yerel
-    # kod sayfasıdır (CP1254 VM'de UTF-8 Türkçe sabitler bozuluyordu). Geçerli
-    # UTF-8 değilse ana süreçteki `safe_source()` gibi WINDOWS-1254/latin1
-    # denenir (operatörün CP1254 kaydettiği yerel alias dosyası da yüklenir).
+    # KAYNAK BAYT OLARAK OKUNUR (işçinin `encoding` seçeneği yerel kod sayfasıdır);
+    # UTF-8 değilse `safe_source()` gibi WINDOWS-1254/latin1 denenir. CRLF/CR metin
+    # bağlantısındaki gibi LF'e çevrilir; boyutu okunamayan dosya BAŞARISIZDIR.
     # `topLevelEnvironment = globalenv()` ZORUNLUDUR: adsız sahnede `topenv()`
-    # boş ad verir ve `library(logger)` "invalid first argument" ile patlar;
-    # ana süreçle aynı davranış korunur, değerler yine `sahne`ye yazılır.
+    # boş ad verir ve `library(logger)` "invalid first argument" ile patlar.
     yukleme <- pk_async_bounded_fs(function() {
-      ham <- readBin(tam, what = "raw", n = max(0, file.info(tam)$size, na.rm = TRUE))
+      boyut <- file.info(tam)$size; ham <- if (isTRUE(is.finite(boyut) && boyut >= 0)) readBin(tam, "raw", n = boyut)
+      if (is.null(ham) || length(ham) != boyut) stop("Kaynak dosya okunamadı: ", goreli, call. = FALSE)
       if (length(ham) >= 3L && identical(as.integer(ham[1:3]), c(239L, 187L, 191L))) ham <- ham[-(1:3)]
+      ham <- ham[!(ham == as.raw(13L) & c(ham[-1L], as.raw(0L)) == as.raw(10L))]
+      ham[ham == as.raw(13L)] <- as.raw(10L)
       metin <- NA_character_
       for (kod in c("UTF-8", "WINDOWS-1254", "latin1")) {
         metin <- iconv(list(ham), from = kod, to = "UTF-8", sub = NA)[[1]]

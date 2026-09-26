@@ -63,6 +63,7 @@ fileObserversInit <- function(input, session, settings_data, session_files,
 
     processed_count <- 0
     reddedilen_count <- 0
+    ozet_atlanan_count <- 0
     for (file_info in files_to_add) {
       if (!(file_info$name %in% names(session_files()))) {
         sonuc <- processAndSummarizeFile(
@@ -81,6 +82,7 @@ fileObserversInit <- function(input, session, settings_data, session_files,
         # eklendi" sayılıyor ve kullanıcıya başarı bildirimi gösteriliyordu.
         if (isTRUE(mergen_file_pipeline_accepted(sonuc))) {
           processed_count <- processed_count + 1
+          if (identical(sonuc$reason, "ozet_atlandi")) ozet_atlanan_count <- ozet_atlanan_count + 1
         } else {
           reddedilen_count <- reddedilen_count + 1
         }
@@ -89,6 +91,14 @@ fileObserversInit <- function(input, session, settings_data, session_files,
   
     if (processed_count > 0) {
       showToast(session, paste(processed_count, "dosya AI bağlamına eklendi."), "success")
+    }
+    # Kuyruk dolu olduğu için özeti atlanan dosyalar da toplu bildirilir.
+    if (ozet_atlanan_count > 0) {
+      showToast(
+        session,
+        paste(ozet_atlanan_count, "dosyanın özeti, özet kuyruğu dolu olduğundan çıkarılmadı."),
+        "warning"
+      )
     }
 
     # Reddedilen dosyalar SESSİZ kalmaz: `show_toast = FALSE` ile çağrıldığı için

@@ -25,6 +25,10 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
       ))
     }
     tercih_istek_zamani <- NULL
+    # Her seçim modalı kendi jetonunu taşır; "bir daha gösterme" kutusunun
+    # bekleyen değeri yalnız bu modal ve bu kullanıcı etiketiyle geçerlidir.
+    modal_jetonu <- ""
+    modal_sayaci <- 0L
 
     # Onboarding kararı KİMLİĞE bağlıdır: aynı Shiny oturumu SSO ile başka
     # kullanıcıya geçerse önceki kullanıcının kararı devralınmaz.
@@ -41,10 +45,15 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
     # bu fonksiyonda okunmaz, saklanmaz veya gösterilmez.
     openModal <- function(title = NULL) {
       default_available <- nzchar(mb_api_key_get_default_key())
+      sahip <- mb_api_key_resolve_owner(session, require_auth = TRUE)
+      modal_sayaci <<- modal_sayaci + 1L
+      modal_jetonu <<- sprintf("%d-%.0f", modal_sayaci, as.numeric(Sys.time()) * 1000)
       show_api_key_choice_modal(
         session,
         default_available = default_available,
-        service_desk = serviceDesk
+        service_desk = serviceDesk,
+        nonce = modal_jetonu,
+        user_tag = if (is.null(sahip)) "" else api_key_pref_user_tag(sahip$username) %||% ""
       )
     }
 
@@ -98,6 +107,10 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
       tryCatch({
         save_user_api_key(owner$username, key_plain)
         mb_api_key_set_session_key(session, key_plain, owner = owner)
+        # Açık kişisel anahtar seçimi, tarayıcıda hatırlanan kurum seçimini kaldırır.
+        if (exists("forget_api_key_choice_default", mode = "function")) {
+          forget_api_key_choice_default(session, owner$username)
+        }
         # Bu oturumda onboarding kararı verildi; modal tekrar açılmasın.
         onboarding_tamam(owner$username)
         removeModal()
@@ -145,13 +158,23 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
         showToast(session, "Kimlik doğrulaması geçerli değil; seçim kaydedilmedi. Lütfen yeniden giriş yapın.", "warning")
         return()
       }
+      # Kurum anahtarı seçilince oturumdaki kişisel anahtar bırakılır (kayıtlı
+      # anahtar silinmez); aksi halde kişisel anahtar öncelikli kalırdı.
+      mb_api_key_clear_session_key(session)
       onboarding_tamam(sahip$username)
       removeModal()
       showToast(session, "Varsayılan kurum API anahtarıyla devam ediyorsunuz.", "info")
       # Seçim ekranı yalnız kullanıcı "Bu ekranı bir daha gösterme"yi
       # işaretlediyse o kullanıcı için hatırlanır (Ayarlar > Yapılandırma'dan
       # geri açılır). "Hatırlanacak" onayı tarayıcı kaydı doğruladıktan sonra verilir.
-      if (!isTRUE(input$api_key_dontshow)) {
+      # Kutunun değeri yalnız bu modal jetonu ve bu kullanıcının etiketiyle
+      # geçerlidir; önceki modalın/kullanıcının işareti devralınmaz.
+      bekleyen <- input$api_key_dontshow
+      isaretli <- is.list(bekleyen) && isTRUE(bekleyen$checked) && nzchar(modal_jetonu) &&
+        identical(as.character(bekleyen$nonce %||% "")[1], modal_jetonu) &&
+        identical(as.character(bekleyen$tag %||% "")[1],
+                  api_key_pref_user_tag(sahip$username) %||% NA_character_)
+      if (!isaretli) {
         return()
       }
       hatirlatildi <- exists("remember_api_key_choice_default", mode = "function") &&
@@ -182,52 +205,45 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
     #     "tolerans" süresi (poll) tanırız.
     #   - Bayrak geldiğinde (TRUE/FALSE) hemen karar veririz.
     #   - Tolerans dolarsa varsayılan davranışa (göster) düşeriz.
+    # Pencere, kimlik yokken ya da sahip değişince sıfırlanır.
     api_key_decision_start <- NULL
     karar_sahibi <- NULL
+    pencere_sahibi <- NULL
+    kisisel_var <- FALSE
+    kimlik_dustu <- FALSE
     shiny::observe({
       owner <- mb_api_key_resolve_owner(session, require_auth = TRUE)
-      # Karar verildikten sonra yalnız kimlik değişimi seyrek izlenir; yeni
-      # kullanıcı görülünce karar hızla yeniden verilir.
-      seyrek <- !is.null(karar_sahibi) &&
-        (is.null(owner) || identical(karar_sahibi, owner$username))
+      # Karar verildikten sonra (ve kimlik düştükten sonra) yalnız kimlik
+      # değişimi seyrek izlenir; yeni kullanıcı görülünce karar hızla verilir.
+      seyrek <- (is.null(owner) && kimlik_dustu) ||
+        (!is.null(owner) && identical(karar_sahibi, owner$username))
       shiny::invalidateLater(if (seyrek) 1000 else 150, session)
 
+      # Kimlik yokken karar ve tolerans penceresi bırakılır: aynı kullanıcı geri
+      # gelince (SSO süresi dolunca oturum anahtarı temizlenir) kişisel anahtar
+      # yeniden yüklenir, tercih yeniden beklenir.
       if (is.null(owner)) {
+        kimlik_dustu <<- kimlik_dustu || !is.null(pencere_sahibi)
+        karar_sahibi <<- NULL
+        pencere_sahibi <<- NULL
+        return(invisible(NULL))
+      }
+      if (identical(karar_sahibi, owner$username)) {
         return(invisible(NULL))
       }
 
-      # Aynı oturum başka kullanıcıya geçtiyse önceki kararın ve bayrağın
-      # yerine yeni kullanıcı için akış baştan işler (kişisel anahtar/tercih).
-      if (!is.null(karar_sahibi)) {
-        if (identical(karar_sahibi, owner$username)) {
-          return(invisible(NULL))
-        }
-        karar_sahibi <<- NULL
-        api_key_decision_start <<- NULL
-        tercih_istek_zamani <<- NULL
-      }
       etiket <- api_key_pref_user_tag(owner$username) %||% ""
 
-      # Kimlik hazır olduğu anı işaretle; tolerans penceresini buradan ölç.
-      if (is.null(api_key_decision_start)) {
+      # Yeni sahip için pencere baştan açılır; kişisel anahtar bir kez yüklenir
+      # ve hemen kullanılır. Etiket yine gönderilir; Yapılandırma tercihi yazabilsin.
+      if (!identical(pencere_sahibi, owner$username)) {
+        karar_sahibi <<- NULL
+        pencere_sahibi <<- owner$username
         api_key_decision_start <<- Sys.time()
-      }
-
-      loaded_key <- try(load_user_api_key(owner$username), silent = TRUE)
-      if (!inherits(loaded_key, "try-error") && nzchar(loaded_key %||% "")) {
-        # Kişisel anahtar mevcut: modal gösterilmez, normal akış devam eder.
-        # Etiket yine gönderilir; Yapılandırma anahtarı tercihi yazabilsin.
-        mb_api_key_set_session_key(session, loaded_key, owner = owner)
-        tercih_iste(etiket)
-        karar_sahibi <<- owner$username
-        return(invisible(NULL))
-      }
-
-      if (isTRUE(session$userData$api_key_onboarding_done) &&
-          identical(session$userData$api_key_onboarding_owner, owner$username)) {
-        # Bu oturumda bu kullanıcı için zaten bir seçim yapıldı; tekrar sorma.
-        karar_sahibi <<- owner$username
-        return(invisible(NULL))
+        tercih_istek_zamani <<- NULL
+        loaded_key <- try(load_user_api_key(owner$username), silent = TRUE)
+        kisisel_var <<- !inherits(loaded_key, "try-error") && nzchar(loaded_key %||% "")
+        if (kisisel_var) mb_api_key_set_session_key(session, loaded_key, owner = owner)
       }
 
       default_available <- nzchar(mb_api_key_get_default_key())
@@ -241,6 +257,7 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
         is.logical(raw_flag$suppressed) && length(raw_flag$suppressed) == 1L &&
         !is.na(raw_flag$suppressed)
       suppressed <- flag_arrived && isTRUE(raw_flag$suppressed)
+      kurum_hatirlandi <- suppressed && identical(as.character(raw_flag$source %||% "")[1], "default")
 
       elapsed <- as.numeric(difftime(Sys.time(), api_key_decision_start, units = "secs"))
 
@@ -253,6 +270,25 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
         tercih_istek_zamani <<- Sys.time()
       }
 
+      # Kişisel anahtar varken modal gösterilmez; karar tercih gelince (ya da
+      # tolerans dolunca) verilir. Kullanıcı kurum anahtarını hatırlattıysa
+      # oturum kişisel anahtara kilitlenmez, kurum anahtarına geçilir.
+      if (kisisel_var) {
+        if (!flag_arrived && elapsed < 6) {
+          return(invisible(NULL))
+        }
+        if (kurum_hatirlandi && default_available) mb_api_key_clear_session_key(session)
+        karar_sahibi <<- owner$username
+        return(invisible(NULL))
+      }
+
+      if (isTRUE(session$userData$api_key_onboarding_done) &&
+          identical(session$userData$api_key_onboarding_owner, owner$username)) {
+        # Bu oturumda bu kullanıcı için zaten bir seçim yapıldı; tekrar sorma.
+        karar_sahibi <<- owner$username
+        return(invisible(NULL))
+      }
+
       # Bastırma yalnızca varsayılan kurum anahtarı varken geçerlidir; aksi
       # halde kullanıcı anahtarsız kalır, bu yüzden yine de modalı gösteririz.
       if (suppressed && default_available) {
@@ -262,10 +298,18 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
       }
 
       # Bayrak geldiyse (ve bastırma yoksa) ya da tolerans dolduysa karar ver.
+      # Gecikmeli açılış yalnız hâlâ aynı sahip için yapılır.
       if (flag_arrived || elapsed >= 6) {
         onboarding_tamam(owner$username)
         karar_sahibi <<- owner$username
-        shinyjs::delay(300, openModal())
+        acilis_sahibi <- owner$username
+        shinyjs::delay(300, {
+          simdiki <- mb_api_key_resolve_owner(session, require_auth = TRUE)
+          if (!is.null(simdiki) && identical(simdiki$username, acilis_sahibi) &&
+              identical(karar_sahibi, acilis_sahibi)) {
+            openModal()
+          }
+        })
         return(invisible(NULL))
       }
 

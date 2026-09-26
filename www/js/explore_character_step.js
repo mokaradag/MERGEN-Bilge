@@ -257,9 +257,12 @@
 
     // Persona aksanı tek CSS değişkeniyle verilir (isim çizgisi, metrikler,
     // seçili düğme); metinler daktilo efekti olmadan doğrudan yazılır.
+    // Aksanı olmayan personada önceki persona rengi kalmaz; varsayılan geçerli olur.
     var charStepEl = document.getElementById('cinematic-character-step');
     if (charStepEl && charData.accent) {
       charStepEl.style.setProperty('--char-accent', charData.accent);
+    } else if (charStepEl) {
+      charStepEl.style.removeProperty('--char-accent');
     }
     var displayName = document.querySelector('.cinematic-char-info .cinematic-char-display-name');
     var subtitleEl = document.querySelector('.cinematic-char-info .cinematic-char-subtitle-text');

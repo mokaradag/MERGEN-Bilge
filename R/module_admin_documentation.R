@@ -145,6 +145,7 @@ admin_doc_build_content_ui <- function(ns, group_id, selected_doc_id, render) {
           div(
             id = ns("doc_body"),
             class = "mb-doc-body markdown-body",
+            `data-rendered-doc-id` = render$doc_id %||% "",
             HTML(render$html %||% "")
           )
         } else {

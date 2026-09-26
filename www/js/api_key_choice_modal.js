@@ -13,7 +13,9 @@
  *                göstermesin diye); modal kutusu seçim yapılana dek bekler.
  *
  *           Tercih yalnızca hassas OLMAYAN bir bayraktır
- *           (api_key_onboarding_suppressed). Hiçbir API anahtarı (kişisel veya
+ *           (api_key_onboarding_suppressed): "1" = seçim ekranı bastırıldı,
+ *           "default" = bastırıldı ve kurum anahtarı seçildi (kayıtlı kişisel
+ *           anahtarın önüne geçer). Hiçbir API anahtarı (kişisel veya
  *           varsayılan) bu dosyada okunmaz, saklanmaz veya loglanmaz.
  *           Zamanlamaya dayanmamak için olay delegasyonu kullanılır.
  *           CDN/uzak kaynak yoktur; tamamen yereldir.
@@ -39,6 +41,7 @@
   window.MergenApiKeyChoice._inputId = window.MergenApiKeyChoice._inputId || null;
   window.MergenApiKeyChoice._userTag = window.MergenApiKeyChoice._userTag || "";
   window.MergenApiKeyChoice._dontShowInputId = window.MergenApiKeyChoice._dontShowInputId || null;
+  window.MergenApiKeyChoice._modalNonce = window.MergenApiKeyChoice._modalNonce || "";
 
   function readSettings() {
     try {
@@ -54,16 +57,25 @@
   }
 
   // Kullanıcı etiketi bilinmeden bastırma yoktur (seçim ekranı gösterilir).
-  function isSuppressed() {
+  function readPref() {
     var tag = currentUserTag();
     if (!tag) {
-      return false;
+      return "";
     }
     try {
-      return window.localStorage.getItem(SUPPRESS_USER_PREFIX + tag) === "1";
+      return window.localStorage.getItem(SUPPRESS_USER_PREFIX + tag) || "";
     } catch (e) {
-      return false;
+      return "";
     }
+  }
+
+  function isSuppressed() {
+    var deger = readPref();
+    return deger === "1" || deger === "default";
+  }
+
+  function rememberedSource() {
+    return readPref() === "default" ? "default" : "";
   }
 
   // mergen_settings içindeki eski ortak kayıtlar yalnız varsa kaldırılır.
@@ -82,23 +94,40 @@
   }
 
   // Yalnız bu kullanıcının anahtarı yazılır. Yazımın gerçekten kalıcı olduğu
-  // geri okunarak doğrulanır (ör. dolu ya da kapalı depolama).
-  function writeSuppressed(value) {
+  // geri okunarak doğrulanır (ör. dolu ya da kapalı depolama). Ekranı yeniden
+  // açmak hatırlanan kurum seçimini de kaldırır.
+  function writePref(deger) {
     var tag = currentUserTag();
     if (!tag) {
       return false;
     }
     try {
-      if (value) {
-        window.localStorage.setItem(SUPPRESS_USER_PREFIX + tag, "1");
+      if (deger) {
+        window.localStorage.setItem(SUPPRESS_USER_PREFIX + tag, deger);
       } else {
         window.localStorage.removeItem(SUPPRESS_USER_PREFIX + tag);
       }
       dropLegacyFlags();
-      return isSuppressed() === !!value;
+      return readPref() === deger;
     } catch (e) {
       return false;
     }
+  }
+
+  function writeSuppressed(value) {
+    if (!value) {
+      return writePref("");
+    }
+    return isSuppressed() || writePref("1");
+  }
+
+  // "default": kurum seçimi hatırlanır; "personal": kişisel anahtar kaydedildi,
+  // hatırlanan kurum seçimi bastırma korunarak kaldırılır.
+  function writeSource(source) {
+    if (source === "personal") {
+      return rememberedSource() !== "default" || writePref("1");
+    }
+    return writePref("default");
   }
 
   // Sunucuya güncel bastırma bayrağını etiketiyle bildir; sunucu yalnız
@@ -112,6 +141,7 @@
     if (choice._inputId) {
       Shiny.setInputValue(choice._inputId, {
         suppressed: isSuppressed(),
+        source: rememberedSource(),
         tag: currentUserTag()
       }, {
         priority: "event"
@@ -120,12 +150,17 @@
   }
 
   // Modal kutusunun bekleyen durumu sunucuya bildirilir; tercih yalnız kurum
-  // anahtarı seçilince yazılır.
+  // anahtarı seçilince yazılır. Değer modal jetonu ve kullanıcı etiketiyle
+  // gider; sunucu başka modalın ya da kullanıcının işaretini kabul etmez.
   function reportDontShowPending(checked) {
     var choice = window.MergenApiKeyChoice || {};
     if (choice._dontShowInputId && window.Shiny &&
         typeof Shiny.setInputValue === "function") {
-      Shiny.setInputValue(choice._dontShowInputId, !!checked, {
+      Shiny.setInputValue(choice._dontShowInputId, {
+        checked: !!checked,
+        tag: currentUserTag(),
+        nonce: choice._modalNonce || ""
+      }, {
         priority: "event"
       });
     }
@@ -248,6 +283,11 @@
       if (message && typeof message.dontShowInputId === "string") {
         window.MergenApiKeyChoice._dontShowInputId = message.dontShowInputId;
       }
+      window.MergenApiKeyChoice._modalNonce =
+        message && typeof message.nonce === "string" ? message.nonce : "";
+      if (message && typeof message.userTag === "string" && message.userTag) {
+        window.MergenApiKeyChoice._userTag = message.userTag;
+      }
 
       var tries = 0;
       var timer = setInterval(function () {
@@ -268,18 +308,24 @@
   // için hatırlanır; seçim ekranı açılmaz (Yapılandırma'dan geri açılır).
   if (window.Shiny && typeof Shiny.addCustomMessageHandler === "function") {
     Shiny.addCustomMessageHandler("mergenApiKeyChoiceRemember", function (message) {
-      if (message && typeof message.userTag === "string" && message.userTag) {
-        window.MergenApiKeyChoice._userTag = message.userTag;
+      var sonucBildir = function (ok) {
+        if (message && message.resultInputId && window.Shiny &&
+            typeof Shiny.setInputValue === "function") {
+          Shiny.setInputValue(message.resultInputId, { ok: ok, t: Date.now() }, {
+            priority: "event"
+          });
+        }
+      };
+      // Etiketsiz mesaj önceki (başka) kullanıcının etiketine yazmaz.
+      if (!message || typeof message.userTag !== "string" || !message.userTag) {
+        sonucBildir(false);
+        return;
       }
-      var kaydedildi = writeSuppressed(true);
+      window.MergenApiKeyChoice._userTag = message.userTag;
+      var kaydedildi = writeSource(message.source === "personal" ? "personal" : "default");
       reportToServer();
       syncSettingsToggle();
-      if (message && message.resultInputId && window.Shiny &&
-          typeof Shiny.setInputValue === "function") {
-        Shiny.setInputValue(message.resultInputId, { ok: kaydedildi, t: Date.now() }, {
-          priority: "event"
-        });
-      }
+      sonucBildir(kaydedildi);
     });
   }
 

@@ -201,19 +201,36 @@ test_that("mod kartları klavyeyle seçilebilir ve hareket azaltma tercihine uyu
   html <- .startup_card_html("odak")
   expect_true(grepl('role="button"', html, fixed = TRUE))
   expect_true(grepl('tabindex="0"', html, fixed = TRUE))
+  # Erişilebilir ad görünen eylem metnini içerir (sesli komutla seçilebilir).
+  etiket <- regmatches(html, regexpr('aria-label="[^"]*"', html))
+  expect_true(grepl("Odak", etiket, fixed = TRUE))
+  expect_true(grepl("Bu modu seç", etiket, fixed = TRUE))
 
   js <- .startup_read_bytes(file.path(.startup_repo_root, "www", "js", "explore_cinematic.js"))
   expect_true(grepl("on('keydown', '.cinematic-mode-card'", js, fixed = TRUE))
   expect_true(grepl("e.key === 'Enter' || e.key === ' '", js, fixed = TRUE))
+  # Kapanmış kaplamadaki odaklı kart mod seçemez; kapanışta odak kaplamadan çıkar.
+  secim <- regmatches(js, regexpr("function selectMode\\(card\\) \\{[\\s\\S]*?classList\\.contains\\('active'\\)", js, perl = TRUE))
+  expect_length(secim, 1L)
+  expect_true(grepl("overlay.contains(document.activeElement)", js, fixed = TRUE))
+  # Aksanı olmayan persona önceki rengi devralmaz.
+  adim <- .startup_read_bytes(file.path(.startup_repo_root, "www", "js", "explore_character_step.js"))
+  expect_true(grepl("removeProperty('--char-accent')", adim, fixed = TRUE))
 
   hareket_blogu <- function(css) {
     regmatches(css, gregexpr("@media \\(prefers-reduced-motion: reduce\\) \\{[\\s\\S]*?\\n\\}", css, perl = TRUE))[[1]]
   }
   sinema <- gsub("\r\n?", "\n", .startup_read_bytes(file.path(.startup_repo_root, "www", "css", "explore_cinematic.css")))
   expect_true(any(grepl(".cinematic-modal-overlay", hareket_blogu(sinema), fixed = TRUE)))
+  expect_true(any(grepl(".cinematic-modal-header", hareket_blogu(sinema), fixed = TRUE)))
+  # Giriş animasyonu bitince son kare .selected/.other-selected'ı ezmez.
+  expect_true(grepl("cinematicCardEnter 0.5s ease-out backwards", sinema, fixed = TRUE))
   karakter <- gsub("\r\n?", "\n", .startup_read_bytes(file.path(.startup_repo_root, "www", "css", "explore_character_step.css")))
   karakter_hareket <- hareket_blogu(karakter)
   expect_true(any(grepl(".cinematic-character-step {\n    animation: none;", karakter_hareket, fixed = TRUE)))
+  expect_true(any(grepl(".cinematic-step-dot", karakter_hareket, fixed = TRUE)))
+  # Dar ekranda portre sütunu aşmaz (genişlik sınırlı, oran genişlikten).
+  expect_true(grepl("width: min(100%, calc(min(440px, 50vh) * 5 / 7));", karakter, fixed = TRUE))
   # Başlık sarınca persona seçici daralabilir (sağdaki düğmeler kırpılmaz).
   expect_true(grepl("min-width: 0;", karakter, fixed = TRUE))
   expect_true(grepl("flex-shrink: 1;", karakter, fixed = TRUE))

@@ -366,9 +366,9 @@ CLAUDE_CODE_RUNTIME_LEASE_ORPHAN_SEC=86400
 
 # Sistem Durumu sayfasının GERÇEKTEN denemesi gereken ek on-prem uç noktalar
 # (";" veya "," ile ayrılır). LOCAL_*_ENDPOINT / IMAGE_GEN_ENDPOINT /
-# LANGFLOW_BASE_URL / SSO_KEYCLOAK_URL ve api_config LLM uç noktaları zaten
-# otomatik olarak on-prem sayılır; bu liste yalnızca ek kurumsal DNS adresleri
-# içindir.
+# LANGFLOW_BASE_URL / SSO_KEYCLOAK_URL ve api_config LLM uç noktalarının kurumsal
+# DNS adları yalnız özel (RFC1918/loopback) adreslere çözülürse otomatik denenir;
+# genel adrese çözülen ya da DNS'te çözülemeyen on-prem host bu listeye eklenir.
 MERGEN_HEALTH_INTERNAL_ENDPOINTS=
 
 # Kullanıcı avatar fotoğrafı adres şablonu (tarayıcı yükler; sunucu çağırmaz).

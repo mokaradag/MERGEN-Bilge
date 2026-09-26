@@ -83,6 +83,9 @@
   // ============================================================
   function selectMode(card) {
     if (_selectedModeId) return;
+    // Kapanmış (gizli) kaplamadaki odaklı kart klavyeyle mod seçemez.
+    var kaplama = document.getElementById('mode-modal-overlay');
+    if (!kaplama || !kaplama.classList.contains('active')) return;
 
     var mode = card.getAttribute('data-mode');
 
@@ -226,6 +229,16 @@
     if (!overlay) return;
 
     overlay.classList.remove('active');
+
+    // Gizlenen kaplamada odak kalmaz; Keşfet düğmesine döner.
+    if (document.activeElement && overlay.contains(document.activeElement)) {
+      var kesfet = document.querySelector('.explore-cinematic-btn');
+      if (kesfet && typeof kesfet.focus === 'function') {
+        kesfet.focus();
+      } else if (typeof document.activeElement.blur === 'function') {
+        document.activeElement.blur();
+      }
+    }
 
     // Kart durumlarını sıfırla
     setTimeout(function() {

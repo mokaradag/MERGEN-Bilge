@@ -731,7 +731,14 @@ test_that("CSV dilimlerinde Latin-1 onarım kararı tam sütunda bir kez verilir
     env$pk_export_build(veri, list(facts = list()), list(), base_name = "sentetik",
                         dir = dizin, format = "csv")
   )
-  expect_true(length(artefakt$files) >= 2L)
+  # Veri parçaları yan dosyalardan (Ozet/Bilgi) ayrı sayılır: 4 satır / 2 = 2 parça.
+  veri_dosyalari <- Filter(function(f) !grepl("_(Ozet|Bilgi)_", f$name), artefakt$files)
+  expect_length(veri_dosyalari, 2L)
+  for (f in veri_dosyalari) {
+    expect_identical(as.integer(f$rows), 2L)
+    satirlar <- readLines(f$path, encoding = "UTF-8", warn = FALSE)
+    expect_identical(length(satirlar[nzchar(satirlar)]), 3L)
+  }
   metin <- paste(vapply(artefakt$files, function(f) {
     parca <- rawToChar(readBin(f$path, "raw", file.info(f$path)$size))
     Encoding(parca) <- "UTF-8"
@@ -741,4 +748,54 @@ test_that("CSV dilimlerinde Latin-1 onarım kararı tam sütunda bir kez verilir
   expect_true(grepl(u(0xC7, 0x61, 0x72, 0x15F, 0x131), metin, fixed = TRUE))
   expect_true(grepl(u(0xDE, 0x75, 0x62, 0x65, 0x20, 0x4D, 0xFC, 0x64, 0xFC, 0x72, 0xFC), metin, fixed = TRUE))
   expect_false(grepl(u(0x15E, 0x75, 0x62, 0x65), metin, fixed = TRUE))
+})
+
+test_that("CSV onarım kararı sütun SIRASINA bağlıdır ve metadata ham adla aranır", {
+  testthat::skip_if_not_installed("withr")
+  testthat::skip_if_not_installed("stringi")
+  env <- .pk_export_env()
+  u <- function(...) intToUtf8(c(...))
+  # Aynı adlı iki sütun: ilki Türkçe kanıtlı ("Çalışan"), ikincisi İzlandaca "Ymir".
+  veri <- data.frame(a = c(u(0xC7, 0x61, 0x6C, 0xFD, 0xFE, 0x61, 0x6E), "x", "y", "z"),
+                     b = c(u(0xDD, 0x6D, 0x69, 0x72), "q", "w", "e"),
+                     c = c(1, 2, 3, 4), stringsAsFactors = FALSE)
+  # Üçüncü sütunun adı Latin-1 görüntüsüyle gelmiş: "Çarşı"; metadata aynı ham adı kullanır.
+  ham_ad <- u(0xC7, 0x61, 0x72, 0xFE, 0xFD)
+  names(veri) <- c("Ad", "Ad", ham_ad)
+  meta <- list(column_meta = stats::setNames(list(list(label = "Toplam Adet", unit = "adet")), ham_ad))
+  artefakt <- withr::with_envvar(
+    list(MERGEN_PK_EXPORT_MAX_ROWS = "2", MERGEN_PK_EXPORT_MAX_PARTS = NA_character_,
+         MERGEN_PK_EXPORT_MAX_BYTES_MB = NA_character_),
+    env$pk_export_build(veri, list(facts = list()), list(), base_name = "sentetik",
+                        dir = .pk_export_dir(), format = "csv", query = list(meta = meta))
+  )
+  expect_true(length(artefakt$files) >= 2L)
+  metin <- paste(vapply(artefakt$files, function(f) {
+    parca <- rawToChar(readBin(f$path, "raw", file.info(f$path)$size))
+    Encoding(parca) <- "UTF-8"
+    parca
+  }, character(1)), collapse = "\n")
+  expect_true(grepl(u(0xC7, 0x61, 0x6C, 0x131, 0x15F, 0x61, 0x6E), metin, fixed = TRUE))
+  expect_true(grepl(u(0xDD, 0x6D, 0x69, 0x72), metin, fixed = TRUE))
+  expect_false(grepl(u(0x130, 0x6D, 0x69, 0x72), metin, fixed = TRUE))
+  expect_true(grepl("Toplam Adet (adet)", metin, fixed = TRUE))
+})
+
+test_that("CSV onarım kararı sınırlı dilimlerle tam sütunda biriktirilir", {
+  testthat::skip_if_not_installed("stringi")
+  env <- .pk_export_env()
+  u <- function(...) intToUtf8(c(...))
+  calisan <- u(0xC7, 0x61, 0x6C, 0xFD, 0xFE, 0x61, 0x6E)
+  veri <- data.frame(
+    # Kanıt yalnız son dilimde -> uygun.
+    a = c("x", "y", u(0xDD, 0x73, 0x74), calisan),
+    # Kanıt ilk dilimde, yabancı harf (í) son dilimde -> uygun değil.
+    b = c(calisan, "y", "z", u(0x52, 0x65, 0x79, 0x6B, 0x6A, 0x61, 0x76, 0xED, 0x6B)),
+    c = c(1, 2, 3, 4), stringsAsFactors = FALSE
+  )
+  expect_identical(env$turkish_latin1_repair_columns(veri, chunk = 2L), c(TRUE, FALSE, FALSE))
+  expect_identical(env$turkish_latin1_repair_columns(veri[0L, ], chunk = 2L), c(FALSE, FALSE, FALSE))
+  # İptal dilimler arasında yoklanır; tarama yarıda kalırsa onarım yapılmaz.
+  expect_identical(env$turkish_latin1_repair_columns(veri, stop_check = function() TRUE, chunk = 2L),
+                   c(FALSE, FALSE, FALSE))
 })

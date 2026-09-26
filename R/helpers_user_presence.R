@@ -54,19 +54,21 @@ mb_presence_uid <- function(x) {
 # Nabız kaydı: ilk bağlantı anı korunur, boş profil önceki dolu profili ezmez.
 # Kimlik geçici olarak 0'a düşerse son bilinen kullanıcı korunur; kimlik açıkça
 # düştüyse (`auth_lost`, SSO süresi doldu) ya da oturum başka kullanıcıya
-# geçtiyse önceki kullanıcının profili ve başlangıcı devralınmaz.
+# geçtiyse önceki kullanıcının profili ve başlangıcı devralınmaz. Açık kimlik
+# kaybından sonra giriş yapan kullanıcının süresi kimliksiz aralığı içermez.
 mb_presence_session_entry <- function(previous, user_id, profile, now = Sys.time(),
                                       auth_lost = FALSE) {
   onceki <- mb_presence_uid(previous$user_id)
   yeni <- mb_presence_uid(user_id)
   if (yeni == 0L && !isTRUE(auth_lost)) yeni <- onceki
-  if (onceki > 0L && yeni != onceki) previous <- NULL
+  kimliksiz <- yeni == 0L && (isTRUE(auth_lost) || isTRUE(previous$auth_lost))
+  if ((onceki > 0L && yeni != onceki) || (isTRUE(previous$auth_lost) && yeni > 0L)) previous <- NULL
   profil <- previous$profile %||% list()
   for (alan in names(profile)) {
     if (nzchar(profile[[alan]] %||% "")) profil[[alan]] <- profile[[alan]]
   }
   list(user_id = yeni, last_seen = now,
-       started_at = previous$started_at %||% now, profile = profil)
+       started_at = previous$started_at %||% now, profile = profil, auth_lost = kimliksiz)
 }
 
 # Oturumun nabzını yazar. Aynı Shiny oturumu başka kullanıcıya geçtiyse ya da
@@ -114,7 +116,8 @@ mb_presence_record_end <- function(token, entry, ended_at = Sys.time(),
   invisible(TRUE)
 }
 
-# 24 saatten eski ya da bitişi okunamayan kayıtlar atılır. Tavan aşılırsa
+# 24 saatten eski, saat kayması payından fazla gelecekte ya da bitişi okunamayan
+# kayıtlar atılır (sıkıştırmada geçersiz gelecek kaydı öne geçmez). Tavan aşılırsa
 # pencere içindeki kayıt SİLİNMEZ: kullanıcı başına en son kapanan oturuma
 # sıkıştırılır (anlık görüntü kullanıcı başına zaten onu kullanır; boş profil
 # alanları eski kayıtlardan tamamlanır). Kimliksiz (0) geçmiş kayıtları hiçbir
@@ -129,7 +132,7 @@ mb_presence_prune <- function(history_env, now = Sys.time()) {
     if (length(deger) == 1L) deger else NA_real_
   }, numeric(1))
   yas <- as.numeric(now) - bitis
-  eski <- anahtarlar[is.na(yas) | yas > pencere$history]
+  eski <- anahtarlar[is.na(yas) | yas > pencere$history | yas < -pencere$skew]
   kalan <- setdiff(anahtarlar, eski)
   if (length(kalan) > pencere$max_history) {
     kalan <- kalan[order(-bitis[kalan])]

@@ -65,9 +65,11 @@ performanceStatsServer <- function(id, current_user_id_provider) {
           suppressWarnings(as.numeric(difftime(current_time, entry$last_seen, units = "secs"))),
           error = function(e) NA_real_
         )
-        # Geçersiz zaman damgalı kayıt geçmişe yazılmadan atılır; aksi halde
-        # varlık defterinin budaması NA indeksle bozuluyordu.
-        if (length(age_secs) != 1L || is.na(age_secs)) {
+        # Geçersiz ya da saat kayması payından fazla gelecekteki zaman damgalı
+        # kayıt geçmişe yazılmadan atılır (Çevrimiçi sekmesiyle aynı kural);
+        # aksi halde budama NA indeksle bozuluyor, sayaç sekmeden ayrışıyordu.
+        kayma <- if (exists("mb_presence_windows", mode = "function")) mb_presence_windows()$skew else 120
+        if (length(age_secs) != 1L || is.na(age_secs) || age_secs < -kayma) {
           try(rm(list = tok, envir = active_sessions_env), silent = TRUE)
           next
         }

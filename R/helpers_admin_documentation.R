@@ -522,20 +522,31 @@ admin_doc_render_document <- function(doc_id, root = admin_doc_repo_root()) {
 # (data-doc-id, izin listesiyle doğrulanır), dış adres yeni sekmede açılır,
 # kayıtsız göreli yol (ör. .R şablonu) tıklanamaz metin olarak kalır.
 # `#bolum` parçası korunur (data-doc-anchor): başlık kimliğiyle aynı ASCII
-# anahtara indirgenir ve belge açıldıktan sonra o başlığa kaydırılır. `/` ile
-# başlayan bağlantı depo kökünden çözülür.
+# slug'a çevrilir ve belge açıldıktan sonra o başlığa kaydırılır. `/` ile
+# başlayan bağlantı depo kökünden çözülür; kökün üstüne çıkan yol açılmaz.
+# Ham HTML bağlantıları da (tek/çift tırnak, öznitelik sırası) aynı kurala tabidir.
 admin_doc_rewrite_links <- function(html, source_file) {
   if (!is.character(html) || length(html) != 1L || !nzchar(html)) return(html)
-  eslesme <- gregexpr("<a href=\"([^\"]*)\"", html, perl = TRUE)
+  eslesme <- gregexpr("<a\\b[^>]*>", html, perl = TRUE, ignore.case = TRUE)
   etiketler <- regmatches(html, eslesme)[[1]]
   if (!length(etiketler)) return(html)
   kayitli <- list()
   for (g in admin_doc_registry()) for (d in g$docs) kayitli[[d$file]] <- d$id
   taban <- dirname(as.character(source_file %||% "")[1])
-  regmatches(html, eslesme) <- list(vapply(etiketler, function(etiket) {
-    href <- sub("^<a href=\"([^\"]*)\"$", "\\1", etiket, perl = TRUE)
+  href_deseni <- "\\s(?:href|target|rel)\\s*=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\s\"'>]+)"
+  regmatches(html, eslesme) <- list(vapply(etiketler, function(tam) {
+    deger <- regmatches(tam, regexec("\\shref\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'>]+))",
+                                     tam, perl = TRUE, ignore.case = TRUE))[[1]]
+    if (!length(deger)) return(tam)
+    href <- paste0(deger[2], deger[3], deger[4])
+    # href/target/rel yeniden yazılır; diğer öznitelikler (ör. title) korunur.
+    kalan <- gsub(href_deseni, "", tam, perl = TRUE, ignore.case = TRUE)
+    etiket <- sub("^<a\\b", "<a", kalan, perl = TRUE, ignore.case = TRUE)
+    etiket <- sub(">$", "", etiket)
+    yeni <- function(nitelik) sub("^<a", paste0("<a ", nitelik), etiket)
     if (grepl("^(https?|mailto):", href, ignore.case = TRUE)) {
-      return(paste0(etiket, " target=\"_blank\" rel=\"noopener noreferrer\""))
+      return(paste0(yeni(sprintf("href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\"",
+                                 gsub("\"", "&quot;", href, fixed = TRUE))), ">"))
     }
     ham <- sub("[?#].*$", "", href)
     parca <- if (grepl("#", href, fixed = TRUE)) sub("^[^#]*#", "", href) else ""
@@ -544,22 +555,29 @@ admin_doc_rewrite_links <- function(html, source_file) {
       cozulen <- try(utils::URLdecode(parca), silent = TRUE)
       if (inherits(cozulen, "try-error")) cozulen <- parca
       Encoding(cozulen) <- "UTF-8"
-      capa <- sprintf(" data-doc-anchor=\"%s\"", gsub("-", "", admin_doc_slugify(cozulen), fixed = TRUE))
+      capa <- sprintf(" data-doc-anchor=\"%s\"", admin_doc_slugify(cozulen))
     }
-    if (!nzchar(ham)) return(paste0("<a href=\"#\"", capa))
+    if (!nzchar(ham)) return(paste0(yeni(paste0("href=\"#\"", capa)), ">"))
     kokten <- startsWith(ham, "/")
     parcalar <- strsplit(if (kokten || taban %in% c("", ".")) ham else paste(taban, ham, sep = "/"),
                          "/", fixed = TRUE)[[1]]
     yol <- character(0)
+    tasti <- FALSE
     for (p in parcalar) {
       if (p %in% c("", ".")) next
+      if (identical(p, "..") && !length(yol)) {
+        tasti <- TRUE
+        break
+      }
       yol <- if (identical(p, "..")) utils::head(yol, -1L) else c(yol, p)
     }
     hedef <- paste(yol, collapse = "/")
-    if (!is.null(kayitli[[hedef]])) {
-      return(sprintf("<a href=\"#\" data-doc-id=\"%s\"%s", kayitli[[hedef]], capa))
+    if (!tasti && !is.null(kayitli[[hedef]])) {
+      return(paste0(yeni(sprintf("href=\"#\" data-doc-id=\"%s\"%s", kayitli[[hedef]], capa)), ">"))
     }
-    sprintf("<a class=\"mb-doc-link-offline\" title=\"%s\"", paste("Uygulama içinde açılamaz:", hedef))
+    goster <- if (tasti) ham else hedef
+    paste0(yeni(sprintf("class=\"mb-doc-link-offline\" title=\"%s\"",
+                        htmltools::htmlEscape(paste("Uygulama içinde açılamaz:", goster), attribute = TRUE))), ">")
   }, character(1), USE.NAMES = FALSE))
   html
 }

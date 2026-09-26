@@ -107,6 +107,21 @@ test_that("aynı gövdeli görevde bağlı yardımcı değişirse önbellek yeni
   expect_identical(c(sayac$detect, sayac$expand), c(0L, 0L))
 })
 
+test_that("paketten çözülen ad sonradan global olarak tanımlanırsa önbellek yeniden tarar", {
+  worker_monitor_dep_cache_clear()
+  withr::defer(worker_monitor_dep_cache_clear())
+  withr::defer(suppressWarnings(rm(list = "nchar", envir = globalenv())))
+  gorev <- function() nchar("abc")
+  ilk <- worker_monitor_auto_globals("unit_dep_shadow", gorev)
+  expect_false("nchar" %in% names(ilk$globals))
+  expect_false(is.null(worker_monitor_dep_cache_get("unit_dep_shadow", gorev)))
+  # Global gölgeleme R'nin sözcüksel aramasını değiştirir: kayıt kullanılmaz.
+  assign("nchar", function(x) 99L, envir = globalenv())
+  expect_null(worker_monitor_dep_cache_get("unit_dep_shadow", gorev))
+  ikinci <- worker_monitor_auto_globals("unit_dep_shadow", gorev)
+  expect_true("nchar" %in% names(ikinci$globals))
+})
+
 test_that("önbellek ilk taramada tanımsız doğrudan serbest değişkeni sonradan taşır", {
   worker_monitor_dep_cache_clear()
   yap <- function(tanimla) {
@@ -249,6 +264,8 @@ test_that("dosya özeti oturum çerçevesini taşımadan explicit kipte gönderi
     yakalanan$globals <- names(globals)
     invisible(NULL)
   }
+  env$file_summary_pool_size <- function() 1L
+  env$file_summary_free_workers <- function() 1L
   worker_monitor_dep_cache_clear()
 
   oturum <- list(userData = list(user_id = 7L), token = "tok-7", isClosed = function() FALSE)
@@ -285,6 +302,8 @@ test_that("açılış ısıtmasından sonra ilk dosya özeti bağımlılık tara
     yakalanan$dosya <- globals$file_name_safe
     invisible(NULL)
   }
+  env$file_summary_pool_size <- function() 1L
+  env$file_summary_free_workers <- function() 1L
   worker_monitor_dep_cache_clear()
   withr::defer(worker_monitor_dep_cache_clear())
 
@@ -309,6 +328,8 @@ test_that("dosya özeti bekleyen kuyruğu sınırlıdır ve kapanan oturum kayd�
   kok <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   source(file.path(kok, "R", "helpers_file_summary_queue.R"), encoding = "UTF-8", local = env)
+  env$file_summary_pool_size <- function() 1L
+  env$file_summary_free_workers <- function() 1L
 
   bekleyen_is <- function() promises::promise(function(resolve, reject) NULL)
   kapali <- FALSE
@@ -467,6 +488,8 @@ test_that("özet kuyruğu doluysa dosya kabul edilir, bildirim kapanır ve kulla
   )
 
   expect_true(env$mergen_file_pipeline_accepted(sonuc))
+  # Bildirim göstermeyen toplu çağıran atlanan özeti ayrı nedenle görür.
+  expect_identical(sonuc$reason, "ozet_atlandi")
   expect_identical(olay$gonderim, 0L)
   expect_identical(olay$kapanan, "not-1")
   expect_identical(olay$uyari, "warning")
@@ -598,7 +621,7 @@ test_that("tek oturum ortak özet kuyruğunu tüketemez ve sıradaki iş en az y
   expect_identical(baslayan, c("a1", "b1"))
 })
 
-test_that("oturum kapanınca çalışan özetin kuyruk yuvası hemen bırakılır", {
+test_that("oturum kapansa da çalışan özetin yuvası iş bitene kadar tutulur", {
   skip_if_not_installed("promises")
   skip_if_not_installed("later")
   withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "1"))
@@ -608,17 +631,103 @@ test_that("oturum kapanınca çalışan özetin kuyruk yuvası hemen bırakılı
   env$file_summary_pool_size <- function() 4L
   env$file_summary_free_workers <- function() 4L
 
+  # Kuyruk oturum kancası kaydetmez (işçi LLM çağrısını sürdürebilir; erken
+  # bırakmak eşzamanlılık sınırını aşardı ve kapanış başına kanca birikirdi).
   kapanis <- list()
+  coz <- NULL
   oturum <- list(token = "tok-k", isClosed = function() FALSE,
-                 onSessionEnded = function(cb) { kapanis[[length(kapanis) + 1L]] <<- cb; invisible(NULL) })
-  env$file_summary_schedule(function() promises::promise(function(resolve, reject) NULL), session = oturum)
+                 onSessionEnded = function(cb) { kapanis[[length(kapanis) + 1L]] <<- cb; function() NULL })
+  env$file_summary_schedule(function() promises::promise(function(resolve, reject) coz <<- resolve),
+                            session = oturum)
+  env$file_summary_schedule(function() NULL, session = list(token = "tok-2", isClosed = function() FALSE))
   expect_identical(env$.FILE_SUMMARY_QUEUE$active, 1L)
-  expect_length(kapanis, 1L)
-  kapanis[[1]]()
-  expect_identical(env$.FILE_SUMMARY_QUEUE$active, 0L)
+  expect_length(kapanis, 0L)
+  expect_identical(env$file_summary_pending_count(), 1L)
+
+  coz(TRUE)
+  expect_true(.wd_bekle(function() identical(env$.FILE_SUMMARY_QUEUE$active, 0L) &&
+                          env$file_summary_pending_count() == 0L))
   expect_length(env$.FILE_SUMMARY_QUEUE$active_by, 0L)
-  kapanis[[1]]()
-  expect_identical(env$.FILE_SUMMARY_QUEUE$active, 0L)
+})
+
+test_that("aynı pompada başlayan özetler kendi oturum sayacını bırakır", {
+  skip_if_not_installed("promises")
+  skip_if_not_installed("later")
+  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "3"))
+  kok <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  source(file.path(kok, "R", "helpers_file_summary_queue.R"), encoding = "UTF-8", local = env)
+  env$file_summary_pool_size <- function() 8L
+  env$file_summary_free_workers <- function() 0L
+
+  cozuculer <- list()
+  is_uret <- function(ad) {
+    force(ad)
+    function() promises::promise(function(resolve, reject) cozuculer[[ad]] <<- resolve)
+  }
+  env$file_summary_schedule(is_uret("a"), session = list(token = "tok-a", isClosed = function() FALSE))
+  env$file_summary_schedule(is_uret("b"), session = list(token = "tok-b", isClosed = function() FALSE))
+  # İki iş TEK pompada başlar.
+  env$file_summary_free_workers <- function() 8L
+  env$file_summary_pump()
+  expect_identical(env$.FILE_SUMMARY_QUEUE$active_by[c("tok-a", "tok-b")], c(`tok-a` = 1L, `tok-b` = 1L))
+
+  cozuculer$a(TRUE)
+  expect_true(.wd_bekle(function() identical(env$.FILE_SUMMARY_QUEUE$active, 1L)))
+  expect_identical(env$.FILE_SUMMARY_QUEUE$active_by, c(`tok-b` = 1L))
+  cozuculer$b(TRUE)
+  expect_true(.wd_bekle(function() length(env$.FILE_SUMMARY_QUEUE$active_by) == 0L))
+})
+
+test_that("tek yuvalı havuzda sıra oturumlar arasında döner", {
+  skip_if_not_installed("promises")
+  skip_if_not_installed("later")
+  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "2"))
+  kok <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  source(file.path(kok, "R", "helpers_file_summary_queue.R"), encoding = "UTF-8", local = env)
+  # İki işçili havuz: özet sınırı 1.
+  env$file_summary_pool_size <- function() 2L
+  env$file_summary_free_workers <- function() 2L
+
+  cozuculer <- list()
+  baslayan <- character(0)
+  is_uret <- function(ad) {
+    force(ad)
+    function() {
+      baslayan <<- c(baslayan, ad)
+      promises::promise(function(resolve, reject) cozuculer[[ad]] <<- resolve)
+    }
+  }
+  a <- list(token = "tok-a", isClosed = function() FALSE)
+  b <- list(token = "tok-b", isClosed = function() FALSE)
+  for (ad in c("a1", "a2", "a3")) env$file_summary_schedule(is_uret(ad), session = a)
+  env$file_summary_schedule(is_uret("b1"), session = b)
+  expect_identical(baslayan, "a1")
+
+  cozuculer$a1(TRUE)
+  expect_true(.wd_bekle(function() length(baslayan) == 2L))
+  expect_identical(baslayan, c("a1", "b1"))
+  cozuculer$b1(TRUE)
+  expect_true(.wd_bekle(function() length(baslayan) == 3L))
+  expect_identical(baslayan, c("a1", "b1", "a2"))
+})
+
+test_that("eşzamansız olmayan planda özet başlatılmaz ve atlanır", {
+  skip_if_not_installed("future")
+  kok <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  source(file.path(kok, "R", "helpers_file_summary_queue.R"), encoding = "UTF-8", local = env)
+  eski_plan <- future::plan(future::sequential)
+  on.exit(future::plan(eski_plan), add = TRUE)
+
+  baslayan <- 0L
+  expect_identical(env$file_summary_pool_size(), 0L)
+  expect_identical(env$file_summary_effective_limit(), 0L)
+  expect_false(env$file_summary_has_capacity())
+  expect_false(env$file_summary_schedule(function() { baslayan <<- baslayan + 1L; NULL }))
+  expect_identical(baslayan, 0L)
+  expect_identical(env$file_summary_pending_count(), 0L)
 })
 
 test_that("özet görevi durdurma dosyası varsa okuma ve LLM çağrısı yapmadan durur", {

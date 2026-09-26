@@ -55,44 +55,75 @@ mergen_log_append_utf8 <- function(lines, target_file) {
   invisible(TRUE)
 }
 
-# Günlük dosya bu süreçte ilk kez yazılmadan önce bir kez denetlenir: eski
-# cat(file=) yazıcısının yerel kod sayfasıyla (CP1254) bıraktığı satırlar
-# UTF-8'e çevrilir; aksi halde aynı günün dosyası karışık kodlamalı kalır ve
-# UTF-8 görüntüleyicide eski satırlar bozuk görünürdü. Geçerli UTF-8 satıra ve
-# zaten UTF-8 olan dosyaya dokunulmaz; çok büyük dosya taranmaz.
-.MERGEN_LOG_UTF8_CHECKED <- new.env(parent = emptyenv())
-
-mergen_log_upgrade_legacy_file <- function(target_file, max_bytes = 32 * 1024^2) {
-  anahtar <- normalizePath(target_file, winslash = "/", mustWork = FALSE)
-  if (isTRUE(.MERGEN_LOG_UTF8_CHECKED[[anahtar]])) return(invisible(FALSE))
-  .MERGEN_LOG_UTF8_CHECKED[[anahtar]] <- TRUE
-  boyut <- suppressWarnings(file.info(target_file)$size)
-  if (length(boyut) != 1L || is.na(boyut) || boyut <= 0 || boyut > max_bytes) return(invisible(FALSE))
-  ham <- readBin(target_file, what = "raw", n = boyut)
-  if (any(ham == as.raw(0L)) || validUTF8(rawToChar(ham))) return(invisible(FALSE))
-  yerel <- tryCatch(utils::localeToCharset()[1], error = function(e) NA_character_)
-  kodlar <- unique(c(yerel[!is.na(yerel) & !grepl("UTF-?8", yerel, ignore.case = TRUE)],
-                     "WINDOWS-1254", "latin1"))
-  satirlar <- strsplit(rawToChar(ham), "\n", fixed = TRUE, useBytes = TRUE)[[1]]
-  gecerli <- validUTF8(satirlar)
-  Encoding(satirlar[gecerli]) <- "UTF-8"
-  for (i in which(!gecerli)) {
-    for (kod in kodlar) {
-      cevrilen <- iconv(satirlar[i], from = kod, to = "UTF-8", sub = NA)
-      if (!is.na(cevrilen)) {
-        satirlar[i] <- cevrilen
-        break
-      }
+# Dosya sınırlı parçalarla (satır sınırında bölünerek) UTF-8 doğrulanır; büyük
+# dosya belleğe tümüyle alınmaz.
+mergen_log_file_is_utf8 <- function(target_file, chunk = 4 * 1024^2) {
+  con <- file(target_file, open = "rb")
+  on.exit(close(con), add = TRUE)
+  gecerli <- function(b) validUTF8(rawToChar(b[b != as.raw(0L)]))
+  artik <- raw(0)
+  repeat {
+    parca <- readBin(con, what = "raw", n = chunk)
+    if (!length(parca)) break
+    artik <- c(artik, parca)
+    sonlar <- which(artik == as.raw(10L))
+    kesim <- if (length(sonlar)) sonlar[length(sonlar)] else if (length(artik) >= 4 * chunk) length(artik) else 0L
+    if (kesim > 0L) {
+      if (!gecerli(artik[seq_len(kesim)])) return(FALSE)
+      artik <- artik[-seq_len(kesim)]
     }
   }
-  yeni <- paste0(paste(satirlar, collapse = "\n"), if (ham[length(ham)] == as.raw(10L)) "\n" else "")
-  gecici <- paste0(target_file, ".utf8tmp")
-  writeBin(charToRaw(enc2utf8(yeni)), gecici)
-  if (!isTRUE(file.rename(gecici, target_file))) {
-    unlink(gecici)
-    return(invisible(FALSE))
+  gecerli(artik)
+}
+
+# Eski cat(file=) yazıcısının yerel kod sayfasıyla (CP1254) satır bıraktığı
+# günlük dosya yerinde DÖNÜŞTÜRÜLMEZ: kod sayfası tahmini, tam içerik geçici
+# kopyası ve süreçler arası değiştirme yarışı olmaz. Süreçler arası kilit altında
+# yeniden denetlenir ve olduğu gibi (bayt bayt, izinleriyle)
+# `<ad>.legacy-SSDDss-PID.log` adına taşınır; yeni satırlar temiz UTF-8 dosyada
+# başlar. Taşınamazsa FALSE döner (60 sn sonra yeniden denenir).
+.MERGEN_LOG_UTF8_CHECKED <- new.env(parent = emptyenv())
+
+mergen_log_upgrade_legacy_file <- function(target_file, lock_wait = 2, stale_after = 60) {
+  anahtar <- normalizePath(target_file, winslash = "/", mustWork = FALSE)
+  durum <- .MERGEN_LOG_UTF8_CHECKED[[anahtar]]
+  if (isTRUE(durum)) return(TRUE)
+  if (is.numeric(durum) && as.numeric(Sys.time()) < durum) return(FALSE)
+  temiz <- function() !file.exists(target_file) || isTRUE(mergen_log_file_is_utf8(target_file))
+  sonuc <- tryCatch(
+    temiz() || .mergen_log_move_legacy(target_file, temiz, lock_wait, stale_after),
+    error = function(e) FALSE
+  )
+  .MERGEN_LOG_UTF8_CHECKED[[anahtar]] <- if (isTRUE(sonuc)) TRUE else as.numeric(Sys.time()) + 60
+  isTRUE(sonuc)
+}
+
+.mergen_log_move_legacy <- function(target_file, temiz, lock_wait, stale_after) {
+  kilit <- paste0(target_file, ".lock")
+  bitis <- Sys.time() + lock_wait
+  while (!dir.create(kilit, showWarnings = FALSE)) {
+    # Çöken sürecin bıraktığı bayat kilit kaldırılır.
+    yas <- as.numeric(difftime(Sys.time(), file.info(kilit)$mtime, units = "secs"))
+    if (isTRUE(yas > stale_after)) unlink(kilit, recursive = TRUE)
+    if (Sys.time() > bitis) return(FALSE)
+    Sys.sleep(0.05)
   }
-  invisible(TRUE)
+  on.exit(unlink(kilit, recursive = TRUE), add = TRUE)
+  if (temiz()) return(TRUE)
+  kenar <- sub("(\\.log)?$", sprintf(".legacy-%s-%d.log", format(Sys.time(), "%H%M%S"), Sys.getpid()),
+               target_file)
+  isTRUE(file.rename(target_file, kenar)) && temiz()
+}
+
+# Karışık kodlama üretmeden UTF-8 ekler: eski satırlı dosya taşınamadıysa satırlar
+# `<ad>.utf8.log` yedeğine yazılır.
+mergen_log_write_utf8 <- function(lines, target_file) {
+  hedef <- if (isTRUE(mergen_log_upgrade_legacy_file(target_file))) {
+    target_file
+  } else {
+    sub("(\\.log)?$", ".utf8.log", target_file)
+  }
+  mergen_log_append_utf8(lines, hedef)
 }
 
 # Hem konsola hem dosyaya log yaz.
@@ -111,10 +142,7 @@ mergen_daily_file_appender <- function(lines) {
 
   target_file <- current_mergen_log_file_path()
   tryCatch(
-    {
-      mergen_log_upgrade_legacy_file(target_file)
-      mergen_log_append_utf8(lines, target_file)
-    },
+    mergen_log_write_utf8(lines, target_file),
     error = function(e) {
       message(sprintf(
         "[MERGEN LOGGING ERROR] Gunluk log dosyasina yazilamadi (%s): %s",
@@ -145,10 +173,7 @@ mergen_ensure_daily_log_file <- function() {
     target_file
   )
   tryCatch(
-    {
-      mergen_log_upgrade_legacy_file(target_file)
-      mergen_log_append_utf8(banner, target_file)
-    },
+    mergen_log_write_utf8(banner, target_file),
     error = function(e) {
       message(sprintf(
         "[MERGEN LOGGING ERROR] Acilis gunluk log dosyasi olusturulamadi (%s): %s",

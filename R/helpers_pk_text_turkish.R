@@ -110,10 +110,11 @@ pk_tr_fold_is_blank <- function(x) {
 #     görüntüsünde bulunabilen harflerdendir (ç ö ü â î û ve büyükleri ile altı
 #     benzer harf). á/í/ó/ø/æ gibi başka harf ya da gerçek ı/ş/ğ görülürse sütun
 #     doğru çözülmüştür ve DOKUNULMAZ.
-#   * Türkçe kanıtı vardır: İzlandaca ve Faroecede bulunmayan ç/ü (ve
-#     büyükleri). U+00FD/U+00DD tek başına kanıt DEĞİLDİR (U+00DD ile başlayan
-#     "Ymir" ya da U+00DE ile başlayan "Thing" geçerli İzlandacadır); kanıtsız
-#     sütun belirsiz sayılır ve olduğu gibi kalır.
+#   * Türkçe kanıtı AYNI DEĞERDE benzer harfle birlikte görülür: İzlandaca ve
+#     Faroecede bulunmayan ç/ü (ve büyükleri). U+00FD/U+00DD tek başına kanıt
+#     DEĞİLDİR (U+00DD ile başlayan "Ymir" ya da U+00DE ile başlayan "Thing"
+#     geçerli İzlandacadır); başka satırdaki "Müdür" de İzlandaca adı yeniden
+#     yazdıramaz. Kanıtsız sütun belirsiz sayılır ve olduğu gibi kalır.
 # Karar tam sütun üzerinde verilir (turkish_latin1_repair_eligible); CSV gibi
 # dilimli yazımlarda aynı karar her dilime `eligible` ile taşınır.
 # Dönüşüm ICU (stringi) ile yerelden bağımsızdır. ODBC'nin kayıplı en-yakın
@@ -126,17 +127,62 @@ pk_tr_fold_is_blank <- function(x) {
        kanit = intToUtf8(c(0x00E7L, 0x00C7L, 0x00FCL, 0x00DCL)))
 }
 
-turkish_latin1_repair_eligible <- function(x) {
-  if (is.null(x) || !is.character(x) || !length(x)) return(FALSE)
-  if (!requireNamespace("stringi", quietly = TRUE)) return(FALSE)
+# Kanıt dilim dilim biriktirilebilir (büyük CSV dışa aktarımı): yabancı harf ve
+# aynı değerde benzer harf + Türkçe kanıtı bayrakları ayrı döner.
+turkish_latin1_repair_scan <- function(x) {
+  sonuc <- c(foreign = FALSE, evidence = FALSE)
+  if (is.null(x) || !is.character(x) || !length(x)) return(sonuc)
+  if (!requireNamespace("stringi", quietly = TRUE)) return(sonuc)
   h <- .pk_tr_latin1_letters()
   utf8 <- enc2utf8(x)
   sutun <- utf8[!is.na(utf8) & validUTF8(utf8)]
-  if (!length(sutun)) return(FALSE)
-  if (!any(stringi::stri_detect_regex(sutun, paste0("[", h$kaynak, "]")))) return(FALSE)
+  if (!length(sutun)) return(sonuc)
   yabanci <- paste0("[[\\p{L}\\p{M}]--[\\x{00}-\\x{7F}", h$kaynak, h$ortak, "]]")
-  if (any(stringi::stri_detect_regex(sutun, yabanci))) return(FALSE)
-  any(stringi::stri_detect_regex(sutun, paste0("[", h$kanit, "]")))
+  sonuc[["foreign"]] <- any(stringi::stri_detect_regex(sutun, yabanci))
+  sonuc[["evidence"]] <- any(stringi::stri_detect_regex(sutun, paste0("[", h$kaynak, "]")) &
+                               stringi::stri_detect_regex(sutun, paste0("[", h$kanit, "]")))
+  sonuc
+}
+
+turkish_latin1_repair_eligible <- function(x) {
+  tarama <- turkish_latin1_repair_scan(x)
+  !tarama[["foreign"]] && tarama[["evidence"]]
+}
+
+# Veri çerçevesinin sütun (SIRA) kararları TAM sütunda ama sınırlı satır
+# dilimleriyle biriktirilir: tam uzunlukta dönüştürülmüş sütun oluşmaz ve iptal
+# dilimler arasında yoklanır (büyük CSV dışa aktarımı).
+turkish_latin1_repair_columns <- function(data, stop_check = NULL, chunk = 20000L) {
+  karar <- logical(ncol(data))
+  if (!nrow(data)) return(karar)
+  norm <- if (exists("normalize_pk_text_utf8", mode = "function", inherits = TRUE)) {
+    normalize_pk_text_utf8
+  } else {
+    as.character
+  }
+  metinsel <- which(vapply(data, is.character, logical(1)) | vapply(data, is.factor, logical(1)))
+  yabanci <- kanit <- logical(ncol(data))
+  for (bas in seq(1L, nrow(data), by = chunk)) {
+    if (is.function(stop_check) && isTRUE(stop_check())) break
+    satir <- bas:min(nrow(data), bas + chunk - 1L)
+    for (j in metinsel[!yabanci[metinsel]]) {
+      tarama <- turkish_latin1_repair_scan(norm(data[[j]][satir]))
+      yabanci[j] <- tarama[["foreign"]]
+      kanit[j] <- kanit[j] || tarama[["evidence"]]
+    }
+  }
+  !yabanci & kanit
+}
+
+# Başlık onarımı: karar tüm ham sütun adları üzerinde verilir; metadata etiketi
+# almış başlık (column_meta'da liste) değişmez. Onarım çakışma yaratırsa uygulanmaz.
+turkish_latin1_repair_headers <- function(headers, source_names, column_meta = list()) {
+  if (!isTRUE(turkish_latin1_repair_eligible(source_names))) return(headers)
+  column_meta <- if (is.list(column_meta)) column_meta else list()
+  etiketsiz <- !(source_names %in% names(column_meta)[vapply(column_meta, is.list, logical(1))])
+  onarilan <- headers
+  onarilan[etiketsiz] <- repair_turkish_latin1_letters(headers[etiketsiz], eligible = TRUE)
+  if (anyDuplicated(onarilan)) headers else onarilan
 }
 
 repair_turkish_latin1_letters <- function(x, eligible = NULL) {

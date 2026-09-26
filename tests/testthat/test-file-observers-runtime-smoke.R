@@ -142,3 +142,49 @@ testthat::test_that("fileObserversInit remove_file_from_prompt doğru dosyayı �
     testthat::expect_gte(toast_rec$count, 1L)
   })
 })
+
+testthat::test_that("fileObserversInit kuyruk dolu olduğu için özeti atlanan dosyaları toplu uyarır", {
+  testthat::skip_if_not_installed("shiny")
+  .file_observers_source_once()
+
+  toast_rec <- new.env(); toast_rec$count <- 0L
+  toast_rec$mesajlar <- character(0)
+  had_toast <- exists("showToast", envir = globalenv(), inherits = FALSE)
+  old_toast <- if (had_toast) get("showToast", envir = globalenv()) else NULL
+  assign("showToast", function(session, message, type = "info", ...) {
+    toast_rec$mesajlar <- c(toast_rec$mesajlar, paste(type, message))
+    invisible(TRUE)
+  }, envir = globalenv())
+  had_pas <- exists("processAndSummarizeFile", envir = globalenv(), inherits = FALSE)
+  old_pas <- if (had_pas) get("processAndSummarizeFile", envir = globalenv()) else NULL
+  assign("processAndSummarizeFile", function(file_info, ...) {
+    list(status = "kabul", reason = if (identical(file_info$name, "b.txt")) "ozet_atlandi" else "")
+  }, envir = globalenv())
+  had_acc <- exists("mergen_file_pipeline_accepted", envir = globalenv(), inherits = FALSE)
+  if (!had_acc) {
+    assign("mergen_file_pipeline_accepted", function(r) identical(r$status, "kabul"), envir = globalenv())
+  }
+  on.exit({
+    if (had_toast) assign("showToast", old_toast, envir = globalenv()) else rm("showToast", envir = globalenv())
+    if (had_pas) assign("processAndSummarizeFile", old_pas, envir = globalenv()) else rm("processAndSummarizeFile", envir = globalenv())
+    if (!had_acc) rm("mergen_file_pipeline_accepted", envir = globalenv())
+  }, add = TRUE)
+
+  shiny::testServer(function(input, output, session) {
+    eklenen <- shiny::reactiveVal(NULL)
+    fileObserversInit(
+      input = input, session = session,
+      settings_data = shiny::reactiveValues(enable_mcp_tools = FALSE),
+      session_files = shiny::reactiveVal(list()),
+      file_manager_data = list(files_added_to_context = eklenen),
+      current_user_id = function() 7L
+    )
+    session$userData$.eklenen <- eklenen
+  }, {
+    session$flushReact()
+    session$userData$.eklenen(list(list(name = "a.txt"), list(name = "b.txt")))
+    session$flushReact()
+    testthat::expect_true(any(grepl("^success 2 dosya AI bağlamına eklendi", toast_rec$mesajlar)))
+    testthat::expect_true(any(grepl("^warning 1 dosyanın özeti", toast_rec$mesajlar)))
+  })
+})

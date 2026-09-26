@@ -424,7 +424,8 @@
 
   .cinematic-char-select-btn,
   .cinematic-char-select-btn i,
-  .cinematic-char-metric-fill {
+  .cinematic-char-metric-fill,
+  .cinematic-step-dot {
     transition: none;
   }
 
@@ -456,8 +457,10 @@
     gap: 24px;
   }
 
+  /* Genişlik sütunu aşmaz; oran genişlikten türetilir (dar ekranda kırpılmaz). */
   .cinematic-char-image-wrapper {
-    height: min(440px, 50vh);
+    height: auto;
+    width: min(100%, calc(min(440px, 50vh) * 5 / 7));
   }
 
   .cinematic-char-step-header {

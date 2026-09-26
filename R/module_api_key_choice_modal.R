@@ -313,7 +313,9 @@ api_key_choice_modal_dialog <- function(ns,
 # yollar. Mesaj yalnızca davranışsal bayrak taşır; anahtar içermez.
 show_api_key_choice_modal <- function(session,
                                       default_available = FALSE,
-                                      service_desk = NULL) {
+                                      service_desk = NULL,
+                                      nonce = "",
+                                      user_tag = "") {
   if (is.null(session)) {
     return(invisible(FALSE))
   }
@@ -336,7 +338,10 @@ show_api_key_choice_modal <- function(session,
       # Tercih yalnızca bayraktır (ASLA API anahtarı değeri değil). Onay
       # kutusunun bekleyen durumu bu girdiye bildirilir.
       settingsKey = "api_key_onboarding_suppressed",
-      dontShowInputId = ns("api_key_dontshow")
+      dontShowInputId = ns("api_key_dontshow"),
+      # Bekleyen kutu değeri bu modal jetonu ve kullanıcı etiketiyle bildirilir.
+      nonce = as.character(nonce %||% "")[1],
+      userTag = as.character(user_tag %||% "")[1]
     )
   )
 
@@ -372,10 +377,24 @@ remember_api_key_choice_default <- function(session, username = NULL, result_inp
     return(invisible(FALSE))
   }
 
-  mesaj <- list(settingsKey = "api_key_onboarding_suppressed", userTag = etiket)
+  mesaj <- list(settingsKey = "api_key_onboarding_suppressed", userTag = etiket, source = "default")
   if (is.character(result_input) && length(result_input) == 1L && nzchar(result_input)) {
     mesaj$resultInputId <- result_input
   }
   session$sendCustomMessage("mergenApiKeyChoiceRemember", mesaj)
+  invisible(TRUE)
+}
+
+# Kullanıcı kişisel anahtar kaydedince tarayıcıda hatırlanan kurum seçimi
+# kaldırılır (bastırma korunur); aksi halde sonraki girişte kurum anahtarı
+# kişisel anahtarın önüne geçerdi.
+forget_api_key_choice_default <- function(session, username = NULL) {
+  etiket <- api_key_pref_user_tag(username)
+  if (is.null(session) || is.null(etiket)) {
+    return(invisible(FALSE))
+  }
+  session$sendCustomMessage("mergenApiKeyChoiceRemember", list(
+    settingsKey = "api_key_onboarding_suppressed", userTag = etiket, source = "personal"
+  ))
   invisible(TRUE)
 }

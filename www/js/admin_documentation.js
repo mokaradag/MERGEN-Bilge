@@ -29,24 +29,33 @@
     window.Shiny.setInputValue(inputId, docId, { priority: "event" });
   }
 
-  // Baglantidaki #bolum, sunucuda baslik kimligiyle ayni ASCII anahtara
-  // indirgenir (data-doc-anchor); belge yeniden cizilince bu basliga gidilir.
+  // Baglantidaki #bolum, sunucuda baslik kimligiyle ayni ASCII slug'a
+  // cevrilir (data-doc-anchor). Once birebir baslik kimligi aranir; noktalama
+  // duyarsiz esleme yalniz TEK basligi gosteriyorsa kullanilir. Bekleyen
+  // kaydirma hedef belge kimligiyle tutulur ve yalniz o belge cizilince uygulanir.
   var pendingAnchor = null;
 
   function scrollToAnchor(scope, key) {
     if (!key) {
       return false;
     }
-    var heads = (scope || document).querySelectorAll(".mb-doc-body [id^='mbdoc-']");
-    for (var i = 0; i < heads.length; i++) {
-      if (heads[i].id.slice(6).replace(/[^a-z0-9]/g, "") === key) {
-        if (typeof heads[i].scrollIntoView === "function") {
-          heads[i].scrollIntoView({ behavior: "smooth", block: "start" });
+    var root = scope || document;
+    var hedef = root.querySelector(".mb-doc-body #" + escapeId("mbdoc-" + key));
+    if (!hedef) {
+      var sade = key.replace(/[^a-z0-9]/g, "");
+      var heads = root.querySelectorAll(".mb-doc-body [id^='mbdoc-']");
+      var bulunan = [];
+      for (var i = 0; i < heads.length; i++) {
+        if (heads[i].id.slice(6).replace(/[^a-z0-9]/g, "") === sade) {
+          bulunan.push(heads[i]);
         }
-        return true;
       }
+      hedef = bulunan.length === 1 ? bulunan[0] : null;
     }
-    return false;
+    if (hedef && typeof hedef.scrollIntoView === "function") {
+      hedef.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    return !!hedef;
   }
 
   // Bir hedef id'yi guvenli bicimde CSS selector'a cevirir.
@@ -100,7 +109,7 @@
           scrollToAnchor(wrap, anchor);
           return;
         }
-        pendingAnchor = anchor || null;
+        pendingAnchor = anchor ? { doc: targetDoc, key: anchor } : null;
         setDocInput(wrap.querySelector(".mb-doc-card-list"), targetDoc);
         return;
       }
@@ -165,8 +174,10 @@
     }
     setTimeout(function () {
       syncDocHeadOffset();
-      if (pendingAnchor) {
-        scrollToAnchor(document, pendingAnchor);
+      var govde = document.querySelector(".mb-doc-body[data-rendered-doc-id]");
+      if (pendingAnchor && govde &&
+          govde.getAttribute("data-rendered-doc-id") === pendingAnchor.doc) {
+        scrollToAnchor(document, pendingAnchor.key);
         pendingAnchor = null;
       }
     }, 0);

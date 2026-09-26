@@ -85,10 +85,10 @@ test_that("açılış başlığı ve dbg_dump da UTF-8 ikili yazımı kullanır"
   expect_true(validUTF8(logging))
   dbg <- regmatches(logging, regexpr("dbg_dump <- function[\\s\\S]*?\n}\n", logging, perl = TRUE))
   expect_length(dbg, 1L)
-  expect_true(grepl("mergen_log_append_utf8(", dbg, fixed = TRUE))
+  expect_true(grepl("mergen_log_write_utf8(", dbg, fixed = TRUE))
 })
 
-test_that("eski yazıcının CP1254 satırları ilk UTF-8 eklemeden önce UTF-8'e çevrilir", {
+test_that("eski yazıcının CP1254 satırlı dosyası bayt bayt kenara alınır, yeni satırlar temiz UTF-8 dosyaya yazılır", {
   skip_if_not_installed("logger")
   tmp <- withr::local_tempdir()
   env <- .log_utf8_env(tmp)
@@ -96,24 +96,64 @@ test_that("eski yazıcının CP1254 satırları ilk UTF-8 eklemeden önce UTF-8'
   eski <- paste0("INFO [x] ", intToUtf8(c(0x0130L, 0x015FL, 0x0131L, 0x011FL)))
   utf8_satir <- paste0("INFO [y] ", intToUtf8(c(0x00E7L, 0x00FCL)))
   # Aynı gün dosyası: eski yazıcının CP1254 satırı + zaten UTF-8 olan bir satır.
-  writeBin(c(iconv(paste0(eski, "\n"), from = "UTF-8", to = "WINDOWS-1254", toRaw = TRUE)[[1]],
-             charToRaw(enc2utf8(paste0(utf8_satir, "\n")))), hedef)
-  expect_false(validUTF8(rawToChar(.log_utf8_bytes(hedef))))
+  eski_bayt <- c(iconv(paste0(eski, "\n"), from = "UTF-8", to = "WINDOWS-1254", toRaw = TRUE)[[1]],
+                 charToRaw(enc2utf8(paste0(utf8_satir, "\n"))))
+  writeBin(eski_bayt, hedef)
+  expect_false(env$mergen_log_file_is_utf8(hedef))
 
-  # Yerel kod sayfası UTF-8 kabul edilir (CI/bulut); eski satır WINDOWS-1254'ten çevrilir.
-  testthat::local_mocked_bindings(localeToCharset = function(...) "UTF-8", .package = "utils")
-  # Yeni süreç: dosya bu süreçte henüz denetlenmedi; ilk UTF-8 ekleme öncesi çevrilir.
+  # Yeni süreç: dosya bu süreçte henüz denetlenmedi.
   denetlenen <- env$.MERGEN_LOG_UTF8_CHECKED
   rm(list = ls(denetlenen, all.names = TRUE), envir = denetlenen)
   yeni <- paste0("INFO [z] ", intToUtf8(c(0x015EL, 0x0130L)))
   withr::local_options(encoding = "latin1")
   env$mergen_daily_file_appender(yeni)
 
-  icerik <- rawToChar(.log_utf8_bytes(hedef))
-  expect_true(validUTF8(icerik))
-  Encoding(icerik) <- "UTF-8"
-  expect_identical(icerik, paste0(eski, "\n", utf8_satir, "\n", yeni, "\n"))
+  # Günün dosyası yalnız yeni UTF-8 satırı taşır; eski dosya kod sayfası tahmini
+  # yapılmadan, bayt bayt kenara alınmıştır.
+  expect_identical(.log_utf8_bytes(hedef), charToRaw(enc2utf8(paste0(yeni, "\n"))))
+  kenar <- list.files(tmp, pattern = "\\.legacy-.*\\.log$", full.names = TRUE)
+  expect_length(kenar, 1L)
+  expect_identical(.log_utf8_bytes(kenar), eski_bayt)
+  expect_false(any(grepl("utf8tmp|\\.lock$", list.files(tmp, all.files = TRUE))))
 
-  # Zaten UTF-8 olan dosyaya ikinci kez dokunulmaz (süreç başına tek denetim).
+  # Süreç başına tek denetim: ikinci yazım dosyayı yeniden taramaz.
+  expect_true(env$mergen_log_upgrade_legacy_file(hedef))
+})
+
+test_that("kilit başka süreçteyken eski dosyaya UTF-8 eklenmez, yedek dosyaya yazılır", {
+  skip_if_not_installed("logger")
+  tmp <- withr::local_tempdir()
+  env <- .log_utf8_env(tmp)
+  hedef <- file.path(tmp, "ai_debug_20260101.log")
+  eski_bayt <- iconv("INFO \u0130\u015F\n", from = "UTF-8", to = "WINDOWS-1254", toRaw = TRUE)[[1]]
+  writeBin(eski_bayt, hedef)
+  # Başka süreç kilidi tutuyor (taze kilit).
+  dir.create(paste0(hedef, ".lock"))
+
+  env$mergen_log_write_utf8("yeni satir", hedef)
+  expect_identical(.log_utf8_bytes(hedef), eski_bayt)
+  expect_identical(.log_utf8_bytes(sub("\\.log$", ".utf8.log", hedef)), charToRaw("yeni satir\n"))
+  # Başarısızlık önbelleklenir; dosya her satırda yeniden taranmaz.
   expect_false(env$mergen_log_upgrade_legacy_file(hedef))
+
+  # Bayat kilit kaldırılır ve taşıma tamamlanır.
+  rm(list = ls(env$.MERGEN_LOG_UTF8_CHECKED, all.names = TRUE), envir = env$.MERGEN_LOG_UTF8_CHECKED)
+  expect_true(env$mergen_log_upgrade_legacy_file(hedef, stale_after = -1))
+  expect_false(file.exists(hedef))
+  expect_false(dir.exists(paste0(hedef, ".lock")))
+})
+
+test_that("UTF-8 doğrulaması sınırlı parçalarla yapılır ve parça sınırında çok baytlı harfi bölmez", {
+  skip_if_not_installed("logger")
+  tmp <- withr::local_tempdir()
+  env <- .log_utf8_env(tmp)
+  yol <- file.path(tmp, "parcali.log")
+  satir <- paste0(strrep(intToUtf8(0x015FL), 7L), "\n")
+  writeBin(rep(charToRaw(enc2utf8(satir)), 20L), yol)
+  expect_true(env$mergen_log_file_is_utf8(yol, chunk = 5))
+  # Satır sonu olmayan uzun kuyruk da doğrulanır.
+  writeBin(c(charToRaw(enc2utf8(strrep(intToUtf8(0x0131L), 40L))), as.raw(0xFD)), yol)
+  expect_false(env$mergen_log_file_is_utf8(yol, chunk = 5))
+  writeBin(raw(0), yol)
+  expect_true(env$mergen_log_file_is_utf8(yol))
 })

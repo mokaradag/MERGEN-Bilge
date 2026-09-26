@@ -33,7 +33,8 @@ health_url_host <- function(value) {
 
 # Operatörün yapılandırdığı servis uç noktaları (.Renviron.example sözleşmesi):
 # LOCAL_*_ENDPOINT, IMAGE_GEN_ENDPOINT, LANGFLOW_BASE_URL, SSO_KEYCLOAK_URL ve
-# api_config LLM uç noktaları otomatik olarak on-prem sayılır.
+# api_config LLM uç noktaları. Yapılandırılmış olmak tek başına on-prem kanıtı
+# DEĞİLDİR (bkz. health_host_resolves_private).
 health_configured_endpoint_values <- function() {
   env_adlari <- names(Sys.getenv())
   adlar <- unique(c(
@@ -57,21 +58,46 @@ health_configured_endpoint_values <- function() {
   degerler[!is.na(degerler) & nzchar(trimws(degerler))]
 }
 
-# On-prem sayılan host kümesi. Kurumsal DNS adı taşıyan bir uç nokta
-# (ör. https://tts.kurum.com.tr) literal RFC1918 adresi olmadığı için "genel
-# internet" sayılıyor ve HİÇ denenmeden warning raporlanıyordu. Yapılandırılmış
-# servis uç noktalarına ek olarak MERGEN_HEALTH_INTERNAL_ENDPOINTS okunur;
+# Operatörün açıkça on-prem ilan ettiği hostlar (MERGEN_HEALTH_INTERNAL_ENDPOINTS);
 # değer host ya da tam URL olabilir; ";", "," veya boşlukla ayrılır.
 health_internal_hosts <- function() {
   ham <- Sys.getenv("MERGEN_HEALTH_INTERNAL_ENDPOINTS", "")
-  parcalar <- c(
-    if (nzchar(ham)) unlist(strsplit(tolower(ham), "[;,[:space:]]+")) else character(0),
-    tolower(trimws(health_configured_endpoint_values()))
-  )
+  parcalar <- if (nzchar(ham)) unlist(strsplit(tolower(ham), "[;,[:space:]]+")) else character(0)
   parcalar <- parcalar[nzchar(parcalar)]
   if (!length(parcalar)) return(character(0))
   hostlar <- health_url_host(parcalar)
   unique(hostlar[nzchar(hostlar)])
+}
+
+health_configured_hosts <- function() {
+  degerler <- tolower(trimws(health_configured_endpoint_values()))
+  if (!length(degerler)) return(character(0))
+  hostlar <- health_url_host(degerler)
+  unique(hostlar[nzchar(hostlar)])
+}
+
+health_resolve_host_ips <- function(host) {
+  if (!requireNamespace("curl", quietly = TRUE)) return(character(0))
+  tryCatch(as.character(curl::nslookup(host, multiple = TRUE, error = FALSE) %||% character(0)),
+           error = function(e) character(0))
+}
+
+# Kurumsal DNS adı taşıyan yapılandırılmış uç nokta (ör. https://tts.kurum.com.tr)
+# literal RFC1918 adresi olmadığı için hiç denenmeden "genel internet" sayılıyordu.
+# Host yalnız TÜM adresleri özel/loopback olarak çözülürse on-prem sayılır; genel
+# adrese çözülen ya da çözülemeyen host denenmez. Sonuç 10 dk önbelleklenir.
+.HEALTH_DNS_CACHE <- new.env(parent = emptyenv())
+
+health_host_resolves_private <- function(host, ttl = 600) {
+  simdi <- as.numeric(Sys.time())
+  kayit <- .HEALTH_DNS_CACHE[[host]]
+  if (is.list(kayit) && simdi - kayit$t < ttl) return(kayit$ok)
+  ipler <- health_resolve_host_ips(host)
+  ok <- length(ipler) > 0L && all(vapply(ipler, function(ip) {
+    !isTRUE(health_host_unspecified(ip)) && isTRUE(health_ip_literal_internal(ip))
+  }, logical(1)))
+  .HEALTH_DNS_CACHE[[host]] <- list(t = simdi, ok = ok)
+  ok
 }
 
 # Sayısal IPv4 host'u libcurl'ün (httr) çözdüğü gibi kanonik noktalı dörtlüye
@@ -81,13 +107,12 @@ health_internal_hosts <- function() {
 health_ipv4_canonical <- function(host) {
   parcalar <- strsplit(tolower(as.character(host %||% "")), ".", fixed = TRUE)[[1]]
   if (!length(parcalar) || length(parcalar) > 4L ||
-      !all(grepl("^(0x[0-9a-f]*|[0-9]+)$", parcalar, perl = TRUE))) {
+      !all(grepl("^(0x[0-9a-f]+|[0-9]+)$", parcalar, perl = TRUE))) {
     return(NULL)
   }
   deger <- vapply(parcalar, function(p) {
     taban <- if (startsWith(p, "0x")) 16 else if (nchar(p) > 1L && startsWith(p, "0")) 8 else 10
     rakam <- if (taban == 16) substring(p, 3L) else p
-    if (!nzchar(rakam)) return(0)
     d <- match(strsplit(rakam, "", fixed = TRUE)[[1]], c(0:9, letters[1:6])) - 1
     if (anyNA(d) || any(d >= taban)) return(NA_real_)
     sum(d * taban^(rev(seq_along(d)) - 1))
@@ -118,8 +143,13 @@ health_ip_literal_internal <- function(host) {
   if (isTRUE(health_host_unspecified(host))) return(TRUE)
 
   if (grepl(":", host, fixed = TRUE)) {
-    # IPv4-EŞLEMELİ IPv6 (`::ffff:10.0.0.1`) gömülü IPv4 kuralıyla sınıflandırılır.
+    # IPv4-EŞLEMELİ IPv6 (`::ffff:10.0.0.1` ve onaltılık `::ffff:7f00:1`) gömülü
+    # IPv4 kuralıyla sınıflandırılır.
     esleme <- sub("^(0*:)*0*ffff:", "", tolower(host), perl = TRUE)
+    if (!identical(esleme, tolower(host)) && grepl("^[0-9a-f]{1,4}:[0-9a-f]{1,4}$", esleme)) {
+      h <- strtoi(strsplit(esleme, ":", fixed = TRUE)[[1]], 16L)
+      esleme <- paste(c(h[1] %/% 256L, h[1] %% 256L, h[2] %/% 256L, h[2] %% 256L), collapse = ".")
+    }
     if (!grepl(":", esleme, fixed = TRUE)) return(health_ip_literal_internal(esleme))
     # `0:0:0:0:0:0:0:1` gibi genişletilmiş loopback biçimleri de normalize edilir.
     parcalar <- strsplit(host, ":", fixed = TRUE)[[1]]
@@ -159,7 +189,9 @@ health_probe_url <- function(url) {
   m <- regmatches(url, regexec("^(https?://(?:[^/?#@]*@)?)(\\[[^]/?#]*\\]|[^:/?#]*)(.*)$",
                                url, perl = TRUE, ignore.case = TRUE))[[1]]
   if (length(m) != 4L) return(url)
+  # Sınıflandırmadaki gibi yüzde kodu çözülür (`%30.0.0.0` libcurl için 0.0.0.0'dır).
   host <- sub("^\\[(.*)\\]$", "\\1", m[3])
+  host <- tryCatch(utils::URLdecode(host), error = function(e) host)
   if (!health_host_unspecified(host)) return(url)
   paste0(m[2], if (startsWith(m[3], "[")) "[::1]" else "127.0.0.1", m[4])
 }
@@ -179,7 +211,8 @@ health_is_public_url <- function(url) {
   # Tek etiketli intranet adı (nokta yok) ve bilinen dahili son ekler.
   if (!grepl(".", host, fixed = TRUE)) return(FALSE)
   if (grepl("\\.(local|internal|intranet|lan|corp)$", host, perl = TRUE)) return(FALSE)
-  # Operatörün açıkça on-prem ilan ettiği kurumsal DNS adları gerçekten denenir.
+  # Operatörün açıkça on-prem ilan ettiği ya da yapılandırılmış olup yalnız
+  # özel adreslere çözülen kurumsal DNS adları gerçekten denenir.
   if (host %in% health_internal_hosts()) return(FALSE)
-  TRUE
+  !(host %in% health_configured_hosts() && isTRUE(health_host_resolves_private(host)))
 }

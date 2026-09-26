@@ -244,7 +244,8 @@ createStartupScreenUI <- function() {
     `data-mode` = def$mode,
     role = "button",
     tabindex = "0",
-    `aria-label` = paste(def$title, "modunu seç"),
+    # Erişilebilir ad görünen eylem metnini ("Bu modu seç") içerir (sesli komut).
+    `aria-label` = paste(def$title, "\u2014 Bu modu seç"),
     tags$div(
       class = "cinematic-card-inner",
       tags$div(

@@ -477,14 +477,42 @@ testthat::test_that("bölüm bağlantısı hedef başlığın anahtarını taş�
     "<a href=\"/docs/../RUNBOOK.md\">rb</a></p>"
   )
   sonuc <- env$admin_doc_rewrite_links(html, "docs/release-notes.md")
-  testthat::expect_true(grepl("data-doc-anchor=\"13a2026062627windowsvmproxy\">soak", sonuc, fixed = TRUE))
+  testthat::expect_true(grepl("data-doc-anchor=\"13a-2026-06-2627-windows-vm-proxy\">soak", sonuc, fixed = TRUE))
   testthat::expect_true(grepl("<a href=\"#\" data-doc-id=\"readme\">kok", sonuc, fixed = TRUE))
   testthat::expect_true(grepl("data-doc-anchor=\"sema\">tr", sonuc, fixed = TRUE))
   testthat::expect_true(grepl("data-doc-id=\"runbook\">rb", sonuc, fixed = TRUE))
   testthat::expect_false(grepl("mb-doc-link-offline", sonuc, fixed = TRUE))
-  # Başlık kimliğinden aynı anahtar türetilir (istemci eşleştirmesi).
+  # İstemci önce birebir kimliği arar; noktalama duyarsız eşleme yalnız tek
+  # başlık kalınca kullanılır (aynı anahtar başlık kimliğinden türetilir).
   toc <- env$admin_doc_extract_toc("<h2>13a. 2026-06-26/27 Windows VM proxy</h2>")$toc[[1]]$id
   testthat::expect_identical(gsub("[^a-z0-9]", "", sub("^mbdoc-", "", toc)), "13a2026062627windowsvmproxy")
+  js <- paste(readLines(file.path(resolve_repo_root_for_tests(), "www", "js", "admin_documentation.js"),
+                        encoding = "UTF-8", warn = FALSE), collapse = "\n")
+  testthat::expect_true(grepl("escapeId(\"mbdoc-\" + key)", js, fixed = TRUE))
+  testthat::expect_true(grepl("bulunan.length === 1", js, fixed = TRUE))
+  testthat::expect_true(grepl("pendingAnchor.doc", js, fixed = TRUE))
+})
+
+testthat::test_that("ham HTML bağlantıları da yeniden yazılır; kökün üstüne çıkan yol açılmaz", {
+  env <- .source_admin_doc_env()
+  html <- paste0(
+    "<p><a title=\"t\" href='../RENV_LOCK_STATUS.md#ozet'>tek</a> ",
+    "<a href=../README.md>tirnaksiz</a> <a href='../../README.md'>tasan</a> ",
+    "<A HREF='https://ornek.kurum.local/a?b=\"c\"'>dis</A> <a name=\"z\">isim</a> ",
+    "<a href=\"release-notes.md\" title=\"Notlar\">notlar</a></p>"
+  )
+  sonuc <- env$admin_doc_rewrite_links(html, "docs/README.md")
+  testthat::expect_true(grepl("<a href=\"#\" data-doc-id=\"renv_status\" data-doc-anchor=\"ozet\" title=\"t\">tek",
+                              sonuc, fixed = TRUE))
+  testthat::expect_true(grepl("<a href=\"#\" data-doc-id=\"readme\">tirnaksiz", sonuc, fixed = TRUE))
+  # docs/ altından iki kez yukarı çıkmak depo kökünü aşar: README'ye eşlenmez.
+  testthat::expect_true(grepl("<a class=\"mb-doc-link-offline\" title=\"Uygulama içinde açılamaz: ../../README.md\">tasan",
+                              sonuc, fixed = TRUE))
+  testthat::expect_true(grepl("href=\"https://ornek.kurum.local/a?b=&quot;c&quot;\" target=\"_blank\" rel=\"noopener noreferrer\">dis",
+                              sonuc, fixed = TRUE))
+  testthat::expect_true(grepl("<a name=\"z\">isim", sonuc, fixed = TRUE))
+  testthat::expect_true(grepl("data-doc-id=\"release_notes\" title=\"Notlar\">notlar", sonuc, fixed = TRUE))
+  testthat::expect_false(grepl("href='", sonuc, fixed = TRUE))
 })
 
 testthat::test_that("yönetici olmayan ya da yetkisi düşen oturum belge görmez ve seçim yapamaz", {

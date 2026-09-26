@@ -108,10 +108,29 @@ test_that("ADMIN rozeti degradesi beyaz 12px metinle 4.5:1 sağlar", {
   yol <- file.path(resolve_repo_root_for_tests(), "www", "css", "admin_analytics.css")
   css <- rawToChar(readBin(yol, what = "raw", n = file.info(yol)$size))
   rozet <- regmatches(css, gregexpr("admin-badge[^{]*\\{[^}]*\\}", css, perl = TRUE))[[1]]
-  duraklar <- unique(unlist(regmatches(rozet, gregexpr("linear-gradient\\(135deg, #[0-9a-fA-F]{6}", rozet))))
-  expect_true(length(duraklar) >= 1L)
+  # Degradenin TÜM durakları denetlenir (ikinci durak da beyaz metnin zeminidir).
+  degradeler <- unlist(regmatches(rozet, gregexpr("linear-gradient\\([^;]*\\)", rozet)))
+  expect_true(length(degradeler) >= 1L)
+  duraklar <- unique(unlist(regmatches(degradeler, gregexpr("#[0-9a-fA-F]{6}", degradeler))))
+  expect_true(length(duraklar) >= 2L)
+  for (g in degradeler) expect_gte(length(regmatches(g, gregexpr("#[0-9a-fA-F]{6}", g))[[1]]), 2L)
   for (d in sub(".*#", "", duraklar)) {
     rgb <- strtoi(substring(d, c(1, 3, 5), c(2, 4, 6)), 16L)
     expect_gte(.hic_contrast(rgb, c(255, 255, 255)), 4.5)
+  }
+})
+
+test_that("açık temada skor halkası dolguları iz rengine karşı 3:1 sağlar", {
+  css <- .hic_css()
+  iz <- .hic_hex(.hic_rule(css, 'html[data-theme="light"] .health-score-ring'), "--health-ring-track")
+  expect_false(is.null(iz))
+  kurallar <- regmatches(css, gregexpr('html\\[data-theme="light"\\][^{]*health-score-ring\\s*\\{[^}]*--health-ring-color:\\s*#[0-9a-fA-F]{6}',
+                                       css, perl = TRUE))[[1]]
+  renkler <- unique(sub(".*#", "", kurallar))
+  # Normal, uyarı, kritik ve bilinmiyor durumları.
+  expect_gte(length(renkler), 4L)
+  for (r in renkler) {
+    rgb <- strtoi(substring(r, c(1, 3, 5), c(2, 4, 6)), 16L)
+    expect_gte(.hic_contrast(rgb, iz), 3)
   }
 })

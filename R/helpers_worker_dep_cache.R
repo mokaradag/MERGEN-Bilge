@@ -49,6 +49,19 @@
   }, character(1), USE.NAMES = FALSE)
 }
 
+# Paket/base üzerinden çözüldüğü için taranmayan doğrudan ad, sonradan görev
+# ortamında ya da .GlobalEnv'de aynı adla tanımlanırsa (ör. global `filter`)
+# R'nin sözcüksel araması değişir; kayıt kullanılmaz ve yeniden taranır.
+.worker_monitor_dep_cache_shadowed <- function(nm, ortam) {
+  arama <- parent.env(globalenv())
+  e <- ortam
+  while (!identical(e, arama) && !identical(e, emptyenv())) {
+    if (exists(nm, envir = e, inherits = FALSE)) return(TRUE)
+    e <- parent.env(e)
+  }
+  FALSE
+}
+
 # Çağıranın verdiği globals da anahtara girer: adları genişletmeyi (seen kümesi),
 # işlevleri ise hangi yardımcıların taşınacağını belirler.
 .worker_monitor_dep_cache_given <- function(promise_globals) {
@@ -69,7 +82,8 @@ worker_monitor_dep_cache_get <- function(task_type, task_fn, promise_globals = l
         .worker_monitor_dep_cache_refs_same(kayit$fn_detected, fn_env, TRUE) &&
         .worker_monitor_dep_cache_refs_same(kayit$fn_expanded, .GlobalEnv, FALSE) &&
         identical(kayit$sig_detected, .worker_monitor_dep_cache_signature(kayit$detected, fn_env, TRUE)) &&
-        identical(kayit$sig_expanded, .worker_monitor_dep_cache_signature(kayit$expanded, .GlobalEnv, FALSE))) {
+        identical(kayit$sig_expanded, .worker_monitor_dep_cache_signature(kayit$expanded, .GlobalEnv, FALSE)) &&
+        !any(vapply(kayit$shadow, .worker_monitor_dep_cache_shadowed, logical(1), ortam = fn_env))) {
       return(kayit)
     }
   }
@@ -91,7 +105,10 @@ worker_monitor_dep_cache_put <- function(task_type, task_fn, detected_globals,
   dogrudan <- tryCatch(codetools::findGlobals(task_fn, merge = TRUE),
                        error = function(e) character(0))
   arama <- parent.env(globalenv())
-  dogrudan <- dogrudan[!vapply(dogrudan, exists, logical(1), envir = arama, inherits = TRUE)]
+  aramada <- vapply(dogrudan, exists, logical(1), envir = arama, inherits = TRUE)
+  golge <- setdiff(dogrudan[aramada], detected_names)
+  golge <- golge[!vapply(golge, .worker_monitor_dep_cache_shadowed, logical(1), ortam = fn_env)]
+  dogrudan <- dogrudan[!aramada]
   tespit <- unique(c(as.character(detected_names), dogrudan))
   kayit <- list(body = .worker_monitor_dep_cache_body(task_fn),
                 given = .worker_monitor_dep_cache_given(promise_globals),
@@ -102,7 +119,8 @@ worker_monitor_dep_cache_put <- function(task_type, task_fn, detected_globals,
                 fn_detected = .worker_monitor_dep_cache_fn_refs(detected_names, fn_env, TRUE),
                 fn_expanded = .worker_monitor_dep_cache_fn_refs(expanded_names, .GlobalEnv, FALSE),
                 sig_detected = .worker_monitor_dep_cache_signature(tespit, fn_env, TRUE),
-                sig_expanded = .worker_monitor_dep_cache_signature(expanded_names, .GlobalEnv, FALSE))
+                sig_expanded = .worker_monitor_dep_cache_signature(expanded_names, .GlobalEnv, FALSE),
+                shadow = as.character(golge))
   mevcut <- .WORKER_MONITOR_DEP_CACHE[[anahtar]] %||% list()
   .WORKER_MONITOR_DEP_CACHE[[anahtar]] <- utils::tail(c(mevcut, list(kayit)), 8L)
   invisible(kayit)

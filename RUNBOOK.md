@@ -664,8 +664,10 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
 - **Tanılama uç nokta kapsamı:** `.Renviron` içinde yapılandırılmış servis uç
   noktaları (`LOCAL_*_ENDPOINT`, `IMAGE_GEN_ENDPOINT`, `LANGFLOW_BASE_URL`,
   `SSO_KEYCLOAK_URL`) ve api_config LLM uç noktaları kurumsal DNS adı taşısa da
-  on-prem sayılır ve gerçekten denenir. Yapılandırılmamış ek kurumsal hostlar
-  için `MERGEN_HEALTH_INTERNAL_ENDPOINTS` kullanılır.
+  adı yalnız özel/loopback adreslere çözülüyorsa on-prem sayılır ve gerçekten
+  denenir (sonuç 10 dk önbelleklenir). Yapılandırılmış olmak tek başına yetmez:
+  genel adrese çözülen host denenmez. Bu durumdaki ya da yapılandırılmamış ek
+  kurumsal hostlar için `MERGEN_HEALTH_INTERNAL_ENDPOINTS` kullanılır.
 - **Sistem Durumu > Çevrimiçi:** şu anda çevrimiçi (bağlı oturumunda son 3
   dakikada nabız görülen), son 15 dakika ve son 24 saat kullanıcı sayıları ile
   oturum takip tablosu. Veri uygulama sürecinin belleğindedir: yeniden
@@ -679,10 +681,13 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
   isteklerini bekletmez. Bekleyen kuyruk `MERGEN_FILE_SUMMARY_MAX_QUEUE`
   (varsayılan 64) ile, tek oturumun payı `MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION`
   (varsayılan 16) ile sınırlıdır; dolunca dosya yine eklenir, özeti atlanır ve
-  kullanıcı uyarılır. Sıradaki özet en az özeti çalışan oturumdan seçilir; boş
-  işçi sayısı ölçülemezse özet başlamaz. Bekleyen özetler Sistem Durumu işçi
-  kartında "Kuyruktaki İş" ve `file_summary_queued` olarak görünür. Oturum
-  kapanınca özetin kuyruk yuvası bırakılır ve işçi LLM çağrısını atlar.
+  kullanıcı uyarılır. Sıradaki özet en az özeti çalışan, eşitlikte en uzun
+  süredir sıra almamış oturumdan seçilir; boş işçi sayısı ölçülemezse özet
+  başlamaz. Küme kurulamayıp `sequential` plana düşülmüşse özet hiç başlatılmaz
+  (ana süreci dondurmasın diye atlanır ve kullanıcı uyarılır). Bekleyen özetler
+  Sistem Durumu işçi kartında "Kuyruktaki İş" ve `file_summary_queued` olarak
+  görünür. Oturum kapanınca işçi henüz başlamamış LLM çağrısını atlar; yuva
+  iş gerçekten bittiğinde bırakılır.
   Özet görevinin işçi bağımlılıkları uygulama açılışında
   (`app.R` onStart) bir kez taranır; açılış bu nedenle birkaç saniye uzayabilir,
   ilk yükleme ise olay döngüsünü dondurmaz.
@@ -733,8 +738,9 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
   - Sorguda ilgili sütunu `CAST(Sutun AS NVARCHAR(4000)) AS Sutun` (uygun uzunlukla)
     döndürün. Harfler bu durumda `ý/þ/ð/Ý/Þ/Ð` olarak gelir; Excel dışa aktarımı
     bunları `ı/ş/ğ/İ/Ş/Ğ` harflerine çevirir (`repair_turkish_latin1_letters()`).
-    Çeviri tam sütun düzeyinde kanıta bağlıdır: sütunda `ç/ü` gibi Türkçe
-    kanıtı gerekir (`ý/Ý` tek başına yetmez); başka dil harfi (`á/í/ó/ø`) ya da
+    Çeviri tam sütun düzeyinde kanıta bağlıdır: sütunda en az bir değerde
+    `ý/þ/ð` ile birlikte `ç/ü` gibi Türkçe kanıtı gerekir (`ý/Ý` tek başına
+    yetmez; başka satırdaki kanıt da yetmez); başka dil harfi (`á/í/ó/ø`) ya da
     gerçek `ı/ş/ğ` içeren sütuna dokunulmaz. Kanıtsız kalan sütun için kalıcı
     çözüm aşağıdaki sorgu/harmanlama düzeltmesidir.
   - Sorgudaki Türkçe sabitleri `N'...'` önekiyle yazın.

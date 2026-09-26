@@ -155,6 +155,14 @@ test_that("oturum sonu kaydı 24 saat ile budanır, tavan pencere içindeki kull
                              ended_at = now - 15, history_env = gecmis, now = now)
   expect_identical(ls(gecmis), "a2")
   expect_identical(gecmis$a2$profile$sicil, "44")
+
+  # Uzak gelecekteki (geçersiz) kayıt sıkıştırmada geçerli kaydın yerini almaz.
+  rm(list = ls(gecmis), envir = gecmis)
+  gecmis$gelecek <- list(user_id = 4L, last_seen = now, ended_at = now + 7200)
+  gecmis$b1 <- list(user_id = 4L, last_seen = now - 40, ended_at = now - 40)
+  gecmis$b2 <- list(user_id = 5L, last_seen = now - 30, ended_at = now - 30)
+  env$mb_presence_prune(gecmis, now)
+  expect_identical(sort(ls(gecmis)), c("b1", "b2"))
 })
 
 test_that("A->B->A->B geçişinde önceki oturumlar geçmişte ezilmez", {
@@ -185,6 +193,14 @@ test_that("kimlik açıkça düşünce önceki kullanıcı nabızla çevrimiçi 
   env$mb_presence_touch(aktif, "tok", 0L, list(), now = t0 + 150, history_env = gecmis, auth_lost = TRUE)
   expect_identical(aktif$tok$user_id, 0L)
   expect_identical(ls(gecmis), "tok#5")
+  # Kimliksiz aralıktan sonra giriş yapan kullanıcının süresi o aralığı içermez.
+  env$mb_presence_touch(aktif, "tok", 0L, list(), now = t0 + 200, history_env = gecmis)
+  env$mb_presence_touch(aktif, "tok", 7L, list(full_name = "B"), now = t0 + 600, history_env = gecmis)
+  expect_identical(aktif$tok$started_at, t0 + 600)
+  expect_false(isTRUE(aktif$tok$auth_lost))
+  # İlk bağlantıdaki kimlik öncesi 0 ise bağlantı anı korunur.
+  on <- env$mb_presence_session_entry(NULL, 0L, list(), now = t0)
+  expect_identical(env$mb_presence_session_entry(on, 9L, list(), now = t0 + 5)$started_at, t0)
   s <- env$mb_presence_snapshot(aktif, gecmis, t0 + 160)
   expect_identical(s$metrics$online, 0L)
   expect_identical(s$users$status, "ayrildi")
@@ -295,10 +311,13 @@ test_that("performans modülü geçersiz last_seen kaydını geçmişe yazmadan 
                       args = list(current_user_id_provider = function() 5L), {
       aktif <- get(".mergen_active_sessions", envir = globalenv())
       aktif[["bozuk-tok"]] <- list(user_id = 3L, last_seen = as.POSIXct(NA))
+      # Saat kayması payından fazla gelecekteki nabız da sayaçta tutulmaz.
+      aktif[["gelecek-tok"]] <- list(user_id = 4L, last_seen = Sys.time() + 3600)
       session$userData$user_id <- 5L
       session$userData$auth_initialized <- TRUE
       session$returned$touch_session()
       sonuc$bozuk_aktif <- "bozuk-tok" %in% ls(aktif)
+      sonuc$gelecek_aktif <- "gelecek-tok" %in% ls(aktif)
       # SSO süresi doldu: sağlayıcı hâlâ 5 döndürse de nabız 0 yazar.
       session$userData$user_id <- 0L
       session$userData$auth_initialized <- FALSE
@@ -311,6 +330,8 @@ test_that("performans modülü geçersiz last_seen kaydını geçmişe yazmadan 
 
   expect_false(sonuc$bozuk_aktif)
   expect_false("bozuk-tok" %in% ls(gecmis))
+  expect_false(sonuc$gelecek_aktif)
+  expect_false("gelecek-tok" %in% ls(gecmis))
   expect_identical(sonuc$kayit$user_id, 0L)
   expect_true(paste0(sonuc$token, "#5") %in% ls(gecmis))
 })

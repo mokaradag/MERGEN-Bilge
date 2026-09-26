@@ -343,7 +343,8 @@ dbg_dump <- function(label, payload) {
     payload_json <- .sanitize_log_value(payload_json)
     label <- .sanitize_log_value(as.character(label))
 
-    mergen_log_append_utf8(
+    # Günün hata ayıklama dosyası da eski CP1254 satırlarıyla karışmaz.
+    mergen_log_write_utf8(
       c(
         sprintf("[%s] %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), label),
         as.character(payload_json),
