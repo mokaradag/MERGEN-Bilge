@@ -357,6 +357,10 @@ createStartupScreenUI <- function() {
     class = "cinematic-modal-overlay",
     tags$div(
       class = "cinematic-modal-container",
+      # Diyalog semantiği: odak açılışta içeri taşınır ve Tab içeride tutulur.
+      role = "dialog",
+      `aria-modal` = "true",
+      `aria-labelledby` = "mode-modal-title",
       # Adım gösterge çubuğu (mod seçimi + karakter seçimi)
       tags$div(
         class = "cinematic-step-indicator",
@@ -368,13 +372,15 @@ createStartupScreenUI <- function() {
       tags$div(
         class = "cinematic-modal-header",
         tags$div(
-          tags$h2(class = "cinematic-modal-title", "Deneyim Seviyenizi Seçin"),
+          tags$h2(id = "mode-modal-title", class = "cinematic-modal-title", "Deneyim Seviyenizi Seçin"),
           tags$p(class = "cinematic-modal-subtitle", "Çalışma tarzınıza en uygun modu belirleyin; daha sonra Ayarlar'dan değiştirebilirsiniz.")
         ),
         tags$button(
+          type = "button",
           class = "cinematic-modal-close",
           title = "Kapat (Esc)",
-          tags$i(class = "fas fa-times")
+          `aria-label` = "Kapat",
+          tags$i(class = "fas fa-times", `aria-hidden` = "true")
         )
       ),
       # Mod kartları (3 sütun) - 1. adım (veri-odaklı üretim)

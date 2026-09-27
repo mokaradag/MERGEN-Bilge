@@ -43,8 +43,11 @@ testthat::test_that("kurum anahtarı seçimi bastırma bayrağını yalnız o ku
   testthat::expect_true(env$remember_api_key_choice_default(oturum, "ayilmaz"))
   testthat::expect_length(mesajlar, 1L)
   testthat::expect_identical(mesajlar[[1]]$type, "mergenApiKeyChoiceRemember")
+  # `issuedAt` yazım sürümüdür (ms); sekmeler arası eski yazım yeniyi ezmez.
+  surum <- mesajlar[[1]]$message$issuedAt
+  testthat::expect_true(is.numeric(surum) && surum > 0 && surum == round(surum))
   testthat::expect_identical(
-    mesajlar[[1]]$message,
+    mesajlar[[1]]$message[setdiff(names(mesajlar[[1]]$message), "issuedAt")],
     list(settingsKey = "api_key_onboarding_suppressed", userTag = env$api_key_pref_user_tag("ayilmaz"),
        source = "default", nonce = "")
   )

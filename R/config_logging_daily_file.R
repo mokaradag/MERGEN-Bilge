@@ -48,16 +48,16 @@ mergen_log_append_utf8 <- function(lines, target_file) {
   } else {
     enc2utf8(lines)
   }
-  payload <- enc2utf8(paste0(paste(lines, collapse = "\n"), "\n"))
+  payload <- charToRaw(enc2utf8(paste0(paste(lines, collapse = "\n"), "\n")))
   con <- file(target_file, open = "ab")
   on.exit(close(con), add = TRUE)
-  writeBin(charToRaw(payload), con)
-  invisible(TRUE)
+  writeBin(payload, con)
+  invisible(length(payload))
 }
 
 # Dosya sınırlı parçalarla (satır sınırında bölünerek) UTF-8 doğrulanır; büyük
 # dosya belleğe tümüyle alınmaz. `from` bayt ofsetinden itibaren (yalnız yeni
-# eklenen kısım) doğrulanabilir; `nabiz` her parçada çağrılır (kilit tazeleme).
+# eklenen kısım) doğrulanabilir; `nabiz` her parçada çalışır (kilit tazeleme).
 # NUL baytı bu yazıcının biçimi değildir (ör. UTF-16); dosya UTF-8 sayılmaz.
 mergen_log_file_is_utf8 <- function(target_file, chunk = 4 * 1024^2, from = 0, nabiz = NULL) {
   con <- file(target_file, open = "rb")
@@ -69,7 +69,7 @@ mergen_log_file_is_utf8 <- function(target_file, chunk = 4 * 1024^2, from = 0, n
   gecerli <- function(b) !any(b == as.raw(0L)) && validUTF8(rawToChar(b))
   artik <- raw(0)
   repeat {
-    if (is.function(nabiz)) nabiz()
+    .mergen_log_heartbeat(nabiz)
     parca <- readBin(con, what = "raw", n = chunk)
     if (!length(parca)) break
     artik <- c(artik, parca)
@@ -92,14 +92,17 @@ mergen_log_file_is_utf8 <- function(target_file, chunk = 4 * 1024^2, from = 0, n
 
 # Süreçler arası dizin kilidi. Sahip jetonu kilit içinde tutulur; bayat kilit
 # yalnızca tazelenmediğinde (yaş > stale_after) kaldırılır ve kritik adımdan
-# önce sahiplik yeniden doğrulanır.
+# önce sahiplik yeniden doğrulanır. Uzun işler kilidi `nabiz` ile tazeler.
 .mergen_log_lock_acquire <- function(kilit, wait, stale_after) {
   jeton <- sprintf("%d-%s", Sys.getpid(), basename(tempfile("")))
   bitis <- Sys.time() + wait
   repeat {
     if (dir.create(kilit, showWarnings = FALSE)) {
-      writeLines(jeton, file.path(kilit, "sahip"))
-      return(jeton)
+      yazim <- suppressWarnings(try(writeLines(jeton, file.path(kilit, "sahip")), silent = TRUE))
+      if (!inherits(yazim, "try-error")) return(jeton)
+      # Sahip dosyası yazılamadıysa yetim kilit bırakılmaz.
+      unlink(kilit, recursive = TRUE)
+      return(NULL)
     }
     zaman <- file.info(c(kilit, file.path(kilit, "sahip")))$mtime
     yas <- if (all(is.na(zaman))) NA_real_ else
@@ -121,34 +124,64 @@ mergen_log_file_is_utf8 <- function(target_file, chunk = 4 * 1024^2, from = 0, n
   invisible(NULL)
 }
 
+# Nabız: fonksiyon(lar) ya da tazelenecek kilit dizinleri (sahip dosyasının mtime'ı).
+.mergen_log_heartbeat <- function(nabiz) {
+  if (is.function(nabiz)) nabiz <- list(nabiz)
+  for (oge in nabiz) {
+    if (is.function(oge)) {
+      oge()
+    } else if (is.character(oge)) {
+      for (kilit in oge) try(Sys.setFileTime(file.path(kilit, "sahip"), Sys.time()), silent = TRUE)
+    }
+  }
+  invisible(NULL)
+}
+
+# Dosya kimliği: boyut + mtime (+ istenirse ilk 256 bayt). Aynı boyutta
+# değiştirilen/geri yüklenen dosya önbellekteki kararı devralmaz.
+.mergen_log_file_kimlik <- function(target_file, bas = FALSE) {
+  bilgi <- suppressWarnings(file.info(target_file))
+  kimlik <- list(boyut = bilgi$size, zaman = as.numeric(bilgi$mtime))
+  if (isTRUE(bas)) {
+    bas <- if (is.na(bilgi$size)) raw(0) else try(readBin(target_file, what = "raw", n = 256L), silent = TRUE)
+    kimlik$bas <- if (inherits(bas, "try-error")) raw(0) else bas
+  }
+  kimlik
+}
+
 # Eski cat(file=) yazıcısının yerel kod sayfasıyla (CP1254) satır bıraktığı
 # günlük dosya yerinde DÖNÜŞTÜRÜLMEZ: kod sayfası tahmini, tam içerik geçici
 # kopyası ve süreçler arası değiştirme yarışı olmaz. Süreçler arası kilit altında
 # yeniden denetlenir ve olduğu gibi (bayt bayt, izinleriyle)
 # `<ad>.legacy-SSDDss-PID.log` adına taşınır; yeni satırlar temiz UTF-8 dosyada
 # başlar. Taşınamazsa FALSE döner (60 sn sonra yeniden denenir).
-# Doğrulanan boyut saklanır: başka bir yazıcı (ör. yükseltme sırasında hâlâ
-# çalışan eski süreç) dosyaya ekleme yaparsa yalnız yeni baytlar yeniden
-# denetlenir; dosya küçülür/değişirse tamamı yeniden taranır.
+# Doğrulanan dosya kimliği (boyut, mtime, baş baytlar) saklanır: başka bir
+# yazıcı (ör. yükseltme sırasında hâlâ çalışan eski süreç) ekleme yaparsa
+# yalnız yeni baytlar denetlenir; dosya küçülür/değişirse tamamı yeniden taranır.
 .MERGEN_LOG_UTF8_CHECKED <- new.env(parent = emptyenv())
 
-mergen_log_upgrade_legacy_file <- function(target_file, lock_wait = 2, stale_after = 60) {
+mergen_log_upgrade_legacy_file <- function(target_file, lock_wait = 2, stale_after = 60, nabiz = NULL) {
   anahtar <- normalizePath(target_file, winslash = "/", mustWork = FALSE)
   durum <- .MERGEN_LOG_UTF8_CHECKED[[anahtar]]
   if (is.numeric(durum) && as.numeric(Sys.time()) < durum) return(FALSE)
-  boyut <- file.info(target_file)$size
+  kimlik <- .mergen_log_file_kimlik(target_file)
+  boyut <- kimlik$boyut
   onceki <- if (is.list(durum)) durum$boyut else NA_real_
-  if (is.list(durum) && (is.na(boyut) || identical(boyut, onceki))) return(TRUE)
-  temiz <- function(nabiz = NULL) {
-    !file.exists(target_file) || isTRUE(mergen_log_file_is_utf8(target_file, nabiz = nabiz))
+  if (is.list(durum) && (is.na(boyut) ||
+                         (identical(boyut, onceki) && identical(kimlik$zaman, durum$zaman)))) {
+    return(TRUE)
+  }
+  temiz <- function(nabiz2 = NULL) {
+    !file.exists(target_file) || isTRUE(mergen_log_file_is_utf8(target_file, nabiz = c(nabiz, nabiz2)))
   }
   sonuc <- tryCatch({
     ek_temiz <- !is.na(onceki) && !is.na(boyut) && boyut > onceki &&
-      isTRUE(mergen_log_file_is_utf8(target_file, from = onceki))
+      identical(.mergen_log_file_kimlik(target_file, bas = TRUE)$bas, durum$bas) &&
+      isTRUE(mergen_log_file_is_utf8(target_file, from = onceki, nabiz = nabiz))
     ek_temiz || temiz() || .mergen_log_move_legacy(target_file, temiz, lock_wait, stale_after)
   }, error = function(e) FALSE)
   .MERGEN_LOG_UTF8_CHECKED[[anahtar]] <- if (isTRUE(sonuc)) {
-    list(boyut = file.info(target_file)$size)
+    .mergen_log_file_kimlik(target_file, bas = TRUE)
   } else {
     as.numeric(Sys.time()) + 60
   }
@@ -161,7 +194,7 @@ mergen_log_upgrade_legacy_file <- function(target_file, lock_wait = 2, stale_aft
   if (is.null(jeton)) return(FALSE)
   on.exit(.mergen_log_lock_release(kilit, jeton), add = TRUE)
   # Uzun tarama sırasında kilit tazelenir; başka süreç onu bayat saymaz.
-  if (temiz(function() try(Sys.setFileTime(file.path(kilit, "sahip"), Sys.time()), silent = TRUE))) {
+  if (temiz(kilit)) {
     return(TRUE)
   }
   if (!.mergen_log_lock_owned(kilit, jeton)) return(FALSE)
@@ -178,55 +211,99 @@ mergen_log_upgrade_legacy_file <- function(target_file, lock_wait = 2, stale_aft
 
 # Çok-süreçli dağıtımda (tools/run_mergen_workers.R) uygulama süreçleri aynı
 # günlük dosyaya yazar; eklemeler kısa bir süreçler arası kilitle sıralanır.
-# Kilit alınamazsa satır kaybedilmez, kilitsiz yazılır.
+# Kilit alınamazsa paylaşılan dosyaya kilitsiz YAZILMAZ: satır sürece özel
+# `<ad>.p<PID>.log` yedeğine düşer ve sonraki kilitli yazımda birleştirilir.
 .mergen_log_shared_writers <- function() {
   isTRUE(suppressWarnings(as.integer(Sys.getenv("MERGEN_APP_WORKER_COUNT", "1"))) > 1L)
 }
 
-# Yedek dosyaya (`<ad>.utf8.log`) düşen satırlar, günlük dosya temizlendiğinde
-# kilit altında ana dosyaya eklenir ve yedek silinir; günlük kayıt eksik kalmaz.
-.mergen_log_merge_fallback <- function(target_file, yedek) {
+.MERGEN_LOG_LOCK_BACKOFF <- new.env(parent = emptyenv())
+
+# Yedek dosyadaki satırlar kilit altında ana dosyaya eklenir ve yedek silinir.
+# Yarıda kalan kopya geri alınır (hedef eski boyutuna kesilir); yeniden
+# denemede aynı satırlar iki kez eklenmez.
+.mergen_log_merge_fallback <- function(target_file, yedek, nabiz = NULL) {
   kilit <- paste0(target_file, ".lock")
   jeton <- .mergen_log_lock_acquire(kilit, 0.5, 60)
   if (is.null(jeton)) return(invisible(FALSE))
   on.exit(.mergen_log_lock_release(kilit, jeton), add = TRUE)
-  if (!file.exists(yedek)) return(invisible(FALSE))
+  if (!file.exists(yedek)) return(invisible(TRUE))
+  baslangic <- file.info(target_file)$size
+  if (is.na(baslangic)) baslangic <- 0
   giris <- file(yedek, open = "rb")
   cikis <- file(target_file, open = "ab")
   tamam <- tryCatch({
     repeat {
+      .mergen_log_heartbeat(c(nabiz, kilit))
       parca <- readBin(giris, what = "raw", n = 1024^2)
       if (!length(parca)) break
       writeBin(parca, cikis)
     }
+    close(cikis)
+    cikis <- NULL
     TRUE
   }, error = function(e) FALSE, finally = {
     close(giris)
-    close(cikis)
+    if (!is.null(cikis)) try(close(cikis), silent = TRUE)
   })
-  if (isTRUE(tamam)) unlink(yedek)
+  if (isTRUE(tamam)) {
+    unlink(yedek)
+  } else {
+    try({
+      con <- file(target_file, open = "r+b")
+      seek(con, where = baslangic, rw = "write")
+      truncate(con)
+      close(con)
+    }, silent = TRUE)
+  }
   invisible(tamam)
 }
 
 # Karışık kodlama üretmeden UTF-8 ekler: eski satırlı dosya taşınamadıysa satırlar
-# `<ad>.utf8.log` yedeğine yazılır.
+# `<ad>.utf8.log` yedeğine yazılır. Birleştirilemeyen yedek varken yeni satırlar
+# da yedeğe eklenir; günlükteki kronolojik sıra bozulmaz.
 mergen_log_write_utf8 <- function(lines, target_file) {
-  ekle_kilit <- paste0(target_file, ".append.lock")
-  jeton <- if (.mergen_log_shared_writers()) .mergen_log_lock_acquire(ekle_kilit, 2, 60) else NULL
-  if (!is.null(jeton)) on.exit(.mergen_log_lock_release(ekle_kilit, jeton), add = TRUE)
-  yedek <- sub("(\\.log)?$", ".utf8.log", target_file)
-  if (!isTRUE(mergen_log_upgrade_legacy_file(target_file))) {
-    return(mergen_log_append_utf8(lines, yedek))
+  surec_yedek <- sub("(\\.log)?$", sprintf(".p%d.log", Sys.getpid()), target_file)
+  jeton <- NULL
+  if (.mergen_log_shared_writers()) {
+    ekle_kilit <- paste0(target_file, ".append.lock")
+    ertele <- .MERGEN_LOG_LOCK_BACKOFF[[ekle_kilit]]
+    if (is.numeric(ertele) && as.numeric(Sys.time()) < ertele) {
+      return(invisible(mergen_log_append_utf8(lines, surec_yedek) > 0))
+    }
+    # Kısa bekleme: yetim kilit her log satırını saniyelerce bloklamaz; zaman
+    # aşımı birkaç saniye önbelleklenir.
+    jeton <- .mergen_log_lock_acquire(ekle_kilit, 0.25, 20)
+    if (is.null(jeton)) {
+      .MERGEN_LOG_LOCK_BACKOFF[[ekle_kilit]] <- as.numeric(Sys.time()) + 5
+      return(invisible(mergen_log_append_utf8(lines, surec_yedek) > 0))
+    }
+    on.exit(.mergen_log_lock_release(ekle_kilit, jeton), add = TRUE)
+    nabiz <- ekle_kilit
+  } else {
+    nabiz <- NULL
   }
-  if (file.exists(yedek)) .mergen_log_merge_fallback(target_file, yedek)
+  yedek <- sub("(\\.log)?$", ".utf8.log", target_file)
+  if (!isTRUE(mergen_log_upgrade_legacy_file(target_file, nabiz = nabiz))) {
+    return(invisible(mergen_log_append_utf8(lines, yedek) > 0))
+  }
+  for (y in c(yedek, surec_yedek)) {
+    if (file.exists(y) && !isTRUE(.mergen_log_merge_fallback(target_file, y, nabiz))) {
+      return(invisible(mergen_log_append_utf8(lines, y) > 0))
+    }
+  }
   once <- file.info(target_file)$size
-  mergen_log_append_utf8(lines, target_file)
-  # Bu yazımdan başka bayt eklenmediyse doğrulanan boyut ilerletilir; aksi halde
-  # sonraki yazım araya giren baytları yeniden denetler.
+  eklenen <- mergen_log_append_utf8(lines, target_file)
+  # Son boyut tam olarak önceki + bu yazımın baytıysa doğrulanan kimlik
+  # ilerletilir; araya giren (denetlenmemiş) baytlar sonraki yazımda taranır.
   anahtar <- normalizePath(target_file, winslash = "/", mustWork = FALSE)
   durum <- .MERGEN_LOG_UTF8_CHECKED[[anahtar]]
   if (is.list(durum) && (identical(durum$boyut, once) || (is.na(durum$boyut) && is.na(once)))) {
-    .MERGEN_LOG_UTF8_CHECKED[[anahtar]] <- list(boyut = file.info(target_file)$size)
+    kimlik <- .mergen_log_file_kimlik(target_file, bas = length(durum$bas) < 256L)
+    if (isTRUE(kimlik$boyut == (if (is.na(once)) 0 else once) + eklenen)) {
+      if (is.null(kimlik$bas)) kimlik$bas <- durum$bas
+      .MERGEN_LOG_UTF8_CHECKED[[anahtar]] <- kimlik
+    }
   }
   invisible(TRUE)
 }

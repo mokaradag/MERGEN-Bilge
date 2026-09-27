@@ -96,3 +96,26 @@ test_that("dry_run plani dondurur, gercek surec baslatmaz", {
     expect_equal(vapply(plan, function(s) s$port, integer(1)), c(8009L, 8010L))
   })
 })
+
+test_that("cocuk ciktisi okunmayan boruya yazilmaz; olen worker yeniden baslatilir", {
+  code <- .strip_r_comments(paste(readLines(.worker_launcher_path(), warn = FALSE), collapse = "\n"))
+  expect_false(grepl('stdout = "|"', code, fixed = TRUE))
+  expect_false(grepl('stderr = "|"', code, fixed = TRUE))
+  expect_true(grepl('stdout = "", stderr = ""', code, fixed = TRUE))
+  expect_true(grepl("MERGEN_WORKERS_MAX_RESTARTS", code, fixed = TRUE))
+  expect_true(grepl("procs[[k]]$proc <- start_one(procs[[k]]$spec)", code, fixed = TRUE))
+})
+
+test_that("cevrimici paylasim dizini yerel ve plana aktarilir", {
+  env <- .load_worker_launcher()
+  withr::with_envvar(c(MERGEN_PRESENCE_SHARED_DIR = ""), {
+    dizin <- env$mergen_workers_presence_dir()
+    expect_true(startsWith(dizin, normalizePath(tempdir(), winslash = "/", mustWork = FALSE)))
+    plan <- env$mergen_worker_launch_plan(base = 8009L, count = 2L, host = "0.0.0.0",
+                                          repo_root = getwd())
+    expect_identical(plan[[1]]$env[["MERGEN_PRESENCE_SHARED_DIR"]], dizin)
+  })
+  withr::with_envvar(c(MERGEN_PRESENCE_SHARED_DIR = "D:/mergen_presence"), {
+    expect_identical(env$mergen_workers_presence_dir(), "D:/mergen_presence")
+  })
+})

@@ -21,12 +21,10 @@ fileObserversInit <- function(input, session, settings_data, session_files,
     uid
   }
   
-  # Oturum başka kullanıcıya geçerse önceki kullanıcının ekli dosyaları
-  # istem bağlamında kalmaz.
+  # Oturum başka kullanıcıya geçerse ya da kimlik düşerse önceki kullanıcının
+  # ekli dosyaları istem bağlamında kalmaz.
   if (exists("mergen_session_on_owner_change", mode = "function")) {
-    mergen_session_on_owner_change(session, function(neden) {
-      if (identical(neden, "sahip_degisti")) session_files(list())
-    })
+    mergen_session_on_owner_change(session, function(neden) session_files(list()))
   }
 
   observeEvent(settings_data$enable_mcp_tools, {

@@ -383,9 +383,11 @@ test_that("bootstrap CRLF/CR satır sonlu kaynağı yükler, boyutu okunamayan d
 
   # Geçici UNC/metadata hatası: boyut NA ise boş metin "yüklendi" sayılmaz.
   suppressWarnings(rm(list = c(.PK_ASYNC_BOOTSTRAP_FLAG, ".pk_boot_crlf"), envir = globalenv()))
+  # Sahte file.info yalnız bu çağrı boyunca görünür; önyükleme hata verse de kaldırılır.
   assign("file.info", function(...) data.frame(size = NA_real_), envir = globalenv())
-  bozuk <- pk_async_worker_bootstrap(kok, "R/crlf.R", required_files = character(0))
-  rm(list = "file.info", envir = globalenv())
+  bozuk <- tryCatch(pk_async_worker_bootstrap(kok, "R/crlf.R", required_files = character(0)),
+                    finally = suppressWarnings(rm(list = "file.info", envir = globalenv())))
+  expect_false(exists("file.info", envir = globalenv(), inherits = FALSE))
   expect_false(bozuk$ok)
   expect_equal(bozuk$loaded, 0L)
   expect_true("R/crlf.R" %in% bozuk$failed)

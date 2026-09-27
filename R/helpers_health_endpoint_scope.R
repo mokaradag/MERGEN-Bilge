@@ -89,27 +89,26 @@ health_resolve_host_ips <- function(host) {
 # literal RFC1918 adresi olmadığı için hiç denenmeden "genel internet" sayılıyordu.
 # Host yalnız TÜM adresleri özel/loopback olarak çözülürse on-prem sayılır ve
 # denetlenen adresler döner (istek bu adreslere sabitlenir; arada DNS yanıtı
-# değişse de genel adrese gidilmez). Özel karar önbelleklenmez; her denemede
-# yeniden çözülür. Yalnız GERÇEKTEN çözülüp genel çıkan sonuç 10 dk tutulur;
-# geçici DNS hatası önbelleğe girmez.
+# değişse de genel adrese gidilmez). `curl::nslookup()` zaman aşımı almaz ve
+# Shiny sürecini bloklar: genel sonuç 10 dk, özel ve çözülemeyen sonuç bir
+# yenileme aralığı (`kisa_ttl`, 2 dk) tutulur; DNS kesintisinde her yenileme
+# yeniden beklemez. Önbellekteki özel adresler de özeldir (sabitleme güvenli).
 .HEALTH_DNS_CACHE <- new.env(parent = emptyenv())
 
-health_host_private_ips <- function(host, ttl = 600) {
+health_host_private_ips <- function(host, ttl = 600, kisa_ttl = 120) {
   simdi <- as.numeric(Sys.time())
   kayit <- .HEALTH_DNS_CACHE[[host]]
-  # `cozuldu` özniteliği genel sonucu çözülemeyen addan ayırır.
-  genel <- structure(character(0), cozuldu = TRUE)
-  if (is.list(kayit) && simdi - kayit$t < ttl) return(genel)
+  if (is.list(kayit) && simdi - kayit$t < (if (isTRUE(kayit$genel)) ttl else kisa_ttl)) {
+    return(kayit$sonuc)
+  }
   ipler <- health_resolve_host_ips(host)
-  if (!length(ipler)) return(structure(character(0), cozuldu = FALSE))
-  ozel <- all(vapply(ipler, function(ip) {
+  ozel <- length(ipler) > 0L && all(vapply(ipler, function(ip) {
     !isTRUE(health_host_unspecified(ip)) && isTRUE(health_ip_literal_internal(ip))
   }, logical(1)))
-  if (!ozel) {
-    .HEALTH_DNS_CACHE[[host]] <- list(t = simdi)
-    return(genel)
-  }
-  unique(ipler)
+  # `cozuldu` özniteliği genel sonucu çözülemeyen addan ayırır.
+  sonuc <- if (ozel) unique(ipler) else structure(character(0), cozuldu = length(ipler) > 0L)
+  .HEALTH_DNS_CACHE[[host]] <- list(t = simdi, sonuc = sonuc, genel = length(ipler) > 0L && !ozel)
+  sonuc
 }
 
 health_host_resolves_private <- function(host, ttl = 600) {
@@ -187,17 +186,10 @@ health_ip_literal_internal <- function(host) {
       esleme <- paste(c(h[1] %/% 256L, h[1] %% 256L, h[2] %/% 256L, h[2] %% 256L), collapse = ".")
     }
     if (!grepl(":", esleme, fixed = TRUE)) return(health_ip_literal_internal(esleme))
-    # `0:0:0:0:0:0:0:1` gibi genişletilmiş loopback biçimleri de normalize edilir.
-    parcalar <- strsplit(host, ":", fixed = TRUE)[[1]]
-    parcalar <- parcalar[nzchar(parcalar)]
-    # Boş hextet'ler ayıklandığı için `1::` ve `0:1::` de "son hextet 1" gibi
-    # görünüyor ve GENEL adresler dahili sınıflanıyordu; kıyas ORİJİNAL host
-    # üzerinde yapılır.
-    if (length(parcalar) &&
-        grepl("(^|:)0*1$", host, perl = TRUE) &&
-        all(grepl("^0*1?$", parcalar)) &&
-        sum(parcalar != "" & sub("^0+", "", parcalar) == "1") == 1L &&
-        identical(sub("^0+", "", parcalar[length(parcalar)]), "1")) {
+    # Loopback yalnız GEÇERLİ IPv6 literali `::1`e (her yazımıyla) eşitse kabul
+    # edilir; yedi hextet'li `0:0:0:0:0:0:1` gibi bozuk literal dahili sayılmaz.
+    gruplar <- .health_ipv6_hextets(tolower(host))
+    if (!is.null(gruplar) && all(grepl("^0+$", gruplar[1:7])) && grepl("^0*1$", gruplar[8])) {
       return(TRUE)
     }
     # fc00::/7 benzersiz yerel adres aralığı ve bağlantı-yerel fe80::/10.
@@ -239,10 +231,20 @@ health_probe_url <- function(url) {
 # son ekler adlandırma alışkanlığıdır, adres kapsamı kanıtı değildir. Genel
 # görünümlü adlar ayrıca yapılandırılmış olmalıdır. `pin` isteği denetlenen
 # adreslere sabitleyen curl `resolve` girdileridir.
+# DNS adıyla sabitlenen istekte `hedef`, URL'deki host'un denetlenen kanonik
+# adla değiştirilmiş hâlidir (sondaki kök noktası, yüzde kodu, IDNA noktası
+# temizlenir); curl `resolve` anahtarı istek host'uyla birebir eşleşir, yeni
+# DNS sorgusu yapılıp sabitleme atlanmaz.
 health_endpoint_scope <- function(url) {
-  url <- tolower(as.character(url %||% ""))
+  ham <- as.character(url %||% "")[1]
+  url <- tolower(ham)
   sonuc <- function(public, neden = "", ipler = character(0)) {
-    list(public = public, neden = if (public) neden else "", pin = health_pin_entries(url, host, ipler))
+    pin <- health_pin_entries(url, host, ipler)
+    hedef <- if (length(pin)) {
+      sub("^(https?://(?:[^/?#@]*@)?)(\\[[^]/?#]*\\]|[^:/?#]*)", paste0("\\1", host), ham,
+          perl = TRUE, ignore.case = TRUE)
+    }
+    list(public = public, neden = if (public) neden else "", pin = pin, hedef = hedef)
   }
   host <- ""
   # Yalnız HTTP(S) denenir; başka şema (ftp vb.) kapsam denetimini atlatamaz.
@@ -263,13 +265,16 @@ health_endpoint_scope <- function(url) {
   sonuc(TRUE, if (isFALSE(attr(ipler, "cozuldu"))) "cozulmedi" else "genel_dns")
 }
 
-# curl `resolve` girdileri ("host:port:adres"); IPv6 adres köşeli parantezlidir.
+# curl `resolve` girdisi ("host:port:adres1,adres2"); IPv6 adres köşeli
+# parantezlidir. Aynı host:port için ikinci girdi öncekini ezdiğinden tüm
+# denetlenen adresler TEK girdide verilir (libcurl >= 7.59); curl bunlar
+# arasında yedekli bağlanır.
 health_pin_entries <- function(url, host, ipler) {
   if (!length(ipler) || !nzchar(host)) return(character(0))
   port <- regmatches(url, regexec("^https?://(?:[^/?#@]*@)?(?:\\[[^]]*\\]|[^:/?#]*):([0-9]+)", url, perl = TRUE))[[1]]
   port <- if (length(port) == 2L) port[2] else if (startsWith(url, "https")) "443" else "80"
   adres <- ifelse(grepl(":", ipler, fixed = TRUE), paste0("[", ipler, "]"), ipler)
-  paste0(host, ":", port, ":", adres)
+  paste0(host, ":", port, ":", paste(adres, collapse = ","))
 }
 
 health_is_public_url <- function(url) {

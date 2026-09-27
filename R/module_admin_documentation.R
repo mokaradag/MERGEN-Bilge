@@ -210,8 +210,13 @@ adminDokumantasyonServer <- function(id) {
       # Reaktif önbellekteki eski çizim de geçersizleşir.
       refresh_token(isolate(refresh_token()) + 1L)
     }
+    # Önbellek yalnız yetki KAYBEDİLDİĞİNDE boşaltılır; yönetici olmayan
+    # oturumda her kimlik sinyali çizim önbelleğini yeniden geçersizleştirmez.
+    onceki_yetki <- NA
     observe({
-      if (!yetki_izle()) isolate(onbellegi_bosalt())
+      yetkili <- isTRUE(yetki_izle())
+      if (!yetkili && !identical(onceki_yetki, FALSE)) isolate(onbellegi_bosalt())
+      onceki_yetki <<- yetkili
     })
 
     send_timestamp <- function() {

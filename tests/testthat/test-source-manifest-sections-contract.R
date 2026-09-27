@@ -360,7 +360,9 @@
   # dosyasına (R/module_admin_bilge_yolac.R) çıkarıldı; diğer admin sekme
   # modülleriyle aynı desen. module_admin_gelismis_analizler.R'den sonra,
   # koordinatör module_admin_analytics.R'den önce eklendi.
-  module_admin = list(first = "R/module_admin_genel_bakis.R", last = "R/module_admin_documentation.R", n = 23L),
+  # module_admin n = 23L -> 24L: Dokümantasyon HTML temizleyicisi
+  # (`helpers_admin_documentation_sanitize.R`, fonksiyon ratchet bölünmesi).
+  module_admin = list(first = "R/module_admin_genel_bakis.R", last = "R/module_admin_documentation.R", n = 24L),
   # n = 10L -> 11L bilinçli güncelleme: "Çevrimiçi" sekmesi UI'ı
   # (R/module_health_presence.R) module_health.R'den ÖNCE eklendi.
   module_health_chartlab = list(first = "R/module_health_worker_metrics.R", last = "R/module_chartlab.R", n = 11L),
@@ -758,7 +760,9 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 504 -> 507: üç ratchet/özellik bölünmesi — `helpers_file_summary_capacity.R`,
   # `helpers_file_summary_task.R` (özet kuyruğu/pipeline fonksiyon tavanı) ve
   # `helpers_user_presence_shared.R` (çok-süreçli Çevrimiçi birleştirmesi).
-  expect_equal(length(runtime), 507L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 507 -> 508: `helpers_admin_documentation_sanitize.R` (tırnak duyarlı HTML
+  # temizleyicisi; `helpers_admin_documentation.R` 24 fonksiyon tavanındaydı).
+  expect_equal(length(runtime), 508L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

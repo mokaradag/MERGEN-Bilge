@@ -141,6 +141,8 @@ turkish_latin1_repair_scan <- function(x) {
   utf8 <- enc2utf8(x)
   sutun <- utf8[!is.na(utf8) & validUTF8(utf8)]
   if (!length(sutun)) return(sonuc)
+  # Ayrışık (NFD) Türkçe (`c` + U+0327) birleşik işareti yabancı sayılmasın.
+  sutun <- stringi::stri_trans_nfc(sutun)
   yabanci <- paste0("[[\\p{L}\\p{M}]--[\\x{00}-\\x{7F}", h$kaynak, h$ortak, "]]")
   sonuc[["foreign"]] <- any(stringi::stri_detect_regex(sutun, yabanci))
   sonuc[["evidence"]] <- any(stringi::stri_detect_regex(sutun, paste0("[", h$kaynak, "]")) &
@@ -213,6 +215,7 @@ repair_turkish_latin1_letters <- function(x, eligible = NULL) {
   h <- .pk_tr_latin1_letters()
   utf8 <- enc2utf8(x)
   onarilacak <- !is.na(utf8) & validUTF8(utf8)
+  utf8[onarilacak] <- stringi::stri_trans_nfc(utf8[onarilacak])
   # Değer düzeyinde yeniden denetim: benzer harf AYNI değerde Türkçe kanıtla görülmeli.
   onarilacak[onarilacak] <- stringi::stri_detect_regex(utf8[onarilacak], paste0("[", h$kaynak, "]")) &
     stringi::stri_detect_regex(utf8[onarilacak], paste0("[", h$kanit, "]"))

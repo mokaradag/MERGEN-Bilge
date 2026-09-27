@@ -105,3 +105,18 @@ testthat::test_that(
     testthat::expect_identical(calls$n, 1L)
   }
 )
+
+testthat::test_that("iptal edilen karşılama ön hazırlığı sonucu geçersiz kılar; tekrar onay sentezi yığmaz", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("promises")
+  kok <- resolve_repo_root_for_tests()
+  kaynak <- paste(readLines(file.path(kok, "R", "server_speech_assets_runtime.R"), encoding = "UTF-8", warn = FALSE),
+                  collapse = "\n")
+  # Geçersiz persona (iptal) yalnız nesli artırıp slotu boşaltır.
+  onhazirlik <- regmatches(kaynak, regexpr("prewarm_welcome <- function\\(persona_id\\) \\{[\\s\\S]*?if \\(is.na\\(persona\\)\\) return", kaynak, perl = TRUE))
+  testthat::expect_true(grepl("prefix_slot$gen <- prefix_slot$gen + 1L", onhazirlik, fixed = TRUE))
+  testthat::expect_true(grepl("identical(suren$persona, persona) && identical(suren$text, prefix_text)", kaynak, fixed = TRUE))
+  isleyici <- paste(readLines(file.path(kok, "R", "server_ai_expert_handlers.R"), encoding = "UTF-8", warn = FALSE),
+                    collapse = "\n")
+  testthat::expect_true(grepl("return(speech_runtime$prewarm_welcome(NA_character_))", isleyici, fixed = TRUE))
+})

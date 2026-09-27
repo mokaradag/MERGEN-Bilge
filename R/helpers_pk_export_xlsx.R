@@ -351,21 +351,42 @@ pk_export_build <- function(data, packet = list(), context = list(),
 
   if (!bellek_reddi && !csv_istendi) {
     bicimli <- .pk_export_openxlsx_available()
-    hazir <- pk_export_prepare_percent(.pk_export_norm(data), meta, formatted = bicimli)
-    hazir_notlar <- hazir$notes
-    basliklar <- .pk_export_apply_labels(hazir$data, hazir$headers, meta)
-
-    govde <- hazir$data
-    kaynak_sutunlar <- names(govde)
-    names(govde) <- basliklar
-
-    sayfalar <- list()
-    for (parca in plan$parts) {
-      alt <- govde[parca$ordinals, , drop = FALSE]
-      rownames(alt) <- NULL
-      attr(alt, "pk_source_columns") <- kaynak_sutunlar
-      sayfalar[[parca$sheet]] <- alt
+    # Normalleştirme, tam sütun Türkçe onarım taraması (dilimli, iptali
+    # yoklar), yüzde hazırlığı ve sayfa dilimleme de SINIRLI aşamadır: büyük
+    # XLSX hazırlığı Durdur'a ya da son tarihe rağmen sürmez.
+    if (durduruldu()) return(iptal_sonucu(plan$total_rows, ncol(data)))
+    hazirlik <- sinirli_asama(function() {
+      onarim <- if (exists("turkish_latin1_repair_columns", mode = "function", inherits = TRUE)) {
+        turkish_latin1_repair_columns(data, stop_check = durduruldu)
+      }
+      if (durduruldu()) return(NULL)
+      hz <- pk_export_prepare_percent(.pk_export_norm(data, onarim), meta, formatted = bicimli)
+      gv <- hz$data
+      kaynak <- names(gv)
+      names(gv) <- .pk_export_apply_labels(hz$data, hz$headers, meta)
+      sy <- list()
+      for (parca in plan$parts) {
+        if (durduruldu()) return(NULL)
+        alt <- gv[parca$ordinals, , drop = FALSE]
+        rownames(alt) <- NULL
+        attr(alt, "pk_source_columns") <- kaynak
+        sy[[parca$sheet]] <- alt
+      }
+      list(hazir = hz, govde = gv, sayfalar = sy)
+    })
+    if (!isTRUE(hazirlik$ok) || is.null(hazirlik$value)) {
+      hata <- as.character(hazirlik$error %||% "")[1]
+      durdurma <- halt_durumu()
+      if (!is.null(durdurma) || isTRUE(hazirlik$ok) || identical(hata, "budget_exhausted") ||
+          grepl("elapsed time limit|reached elapsed", hata, ignore.case = TRUE)) {
+        return(iptal_sonucu(plan$total_rows, ncol(data), status = durdurma %||% "deadline"))
+      }
+      stop(hata, call. = FALSE)
     }
+    hazir <- hazirlik$value$hazir
+    hazir_notlar <- hazir$notes
+    govde <- hazirlik$value$govde
+    sayfalar <- hazirlik$value$sayfalar
     sayfalar[["Ozet"]] <- ozet_sayfasi
     sayfalar[["Bilgi"]] <- bilgi_sayfasi
 

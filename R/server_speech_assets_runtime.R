@@ -223,16 +223,18 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
   }
 
   # --- Kişisel öneki persona onaylandığı anda hazırlamaya başla ---
+  # Her çağrı önceki önek sonucunu geçersiz kılar; geçersiz persona (iptal
+  # edilen onay) yalnız geçersiz kılar. Aynı persona/metin için süren sentez
+  # yeniden başlatılmaz: onay/iptal tekrarı TTS işini yığmaz.
   prewarm_welcome <- function(persona_id) {
-    persona <- mergen_speech_canonical_persona(persona_id)
-    if (is.na(persona)) return(invisible(FALSE))
-
     prefix_slot$gen <- prefix_slot$gen + 1L
     my_gen <- prefix_slot$gen
-    prefix_slot$persona <- persona
     prefix_slot$status <- "none"
     prefix_slot$audio_src <- NULL
     prefix_slot$promise <- NULL
+    persona <- mergen_speech_canonical_persona(persona_id)
+    prefix_slot$persona <- persona
+    if (is.na(persona)) return(invisible(FALSE))
 
     if (!static_ready(persona)) {
       .speech_perf_log("prewarm_skipped", sprintf("persona=%s statik hazır değil", persona))
@@ -251,7 +253,17 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
     prefix_slot$text <- prefix_text
     .speech_perf_log("prefix_synth_start", sprintf("persona=%s", persona))
 
-    prefix_promise <- tts_processor$synthesize_speech(prefix_text, persona_id = persona)
+    suren <- prefix_slot$inflight
+    if (is.list(suren) && identical(suren$persona, persona) && identical(suren$text, prefix_text)) {
+      prefix_promise <- suren$promise
+    } else {
+      prefix_promise <- tts_processor$synthesize_speech(prefix_text, persona_id = persona)
+      kayit <- list(persona = persona, text = prefix_text, promise = prefix_promise)
+      prefix_slot$inflight <- kayit
+      promises::catch(promises::finally(prefix_promise, function() {
+        if (identical(prefix_slot$inflight, kayit)) prefix_slot$inflight <- NULL
+      }), function(e) NULL)
+    }
     prefix_slot$promise <- prefix_promise
 
     prefix_promise %...>% (function(res) {

@@ -386,3 +386,39 @@ testthat::test_that("healthServer yönetici olmayan oturuma sekme içeriği ve v
 
   testthat::expect_false(env$health_session_is_admin(list(userData = new.env())))
 })
+
+testthat::test_that("kimlik sinyali ve Çevrimiçi yenilemesi tooltip'leri yeniden bağlar", {
+  env <- .healthModuleServerEnv()
+  env$health_collect_checks <- function(...) {
+    data.frame(id = "app.version", label = "Sürüm", status = "ok", severity = 0L,
+               value = "v1.0", detail = "", duration_ms = 1, checked_at = "",
+               remediation = "", stringsAsFactors = FALSE)
+  }
+  env$mb_presence_snapshot <- function(...) list(metrics = list(), users = NULL)
+  env$health_presence_ui <- function(snapshot) div("Kullanıcı Oturum Takibi")
+
+  shiny::testServer(env$healthServer, args = list(perf_tracker = NULL), {
+    mesajlar <- character(0)
+    kok_oturum <- session$rootScope()
+    kok_oturum$sendCustomMessage <- function(type, message) mesajlar <<- c(mesajlar, type)
+    session$setInputs(health_tabs = "overview")
+    session$flushReact()
+    mesajlar <- character(0)
+    # Yetkisiz ilk çizimden sonra SSO kimliği gelir: yeni DOM için tooltip bağlanır.
+    session$userData$user_config <- list(auth_level = "ADMIN")
+    sinyal <- session$userData$kimlik_sinyali
+    sinyal(shiny::isolate(sinyal()) + 1L)
+    session$flushReact()
+    invisible(output$health_tab_content)
+    session$flushReact()
+    testthat::expect_true("initHealthTooltips" %in% mesajlar)
+
+    # Çevrimiçi sekmesinin zamanlı yenilemesi de tooltip'leri yeniden bağlar.
+    session$setInputs(health_tabs = "presence")
+    session$flushReact()
+    mesajlar <- character(0)
+    session$elapse(30001)
+    session$flushReact()
+    testthat::expect_true("initHealthTooltips" %in% mesajlar)
+  })
+})

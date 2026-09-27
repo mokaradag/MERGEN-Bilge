@@ -100,10 +100,12 @@ test_that("ilk bayt zamanı yarım UTF-8 harfle biten ilk parçada ölçülür",
     paste0("data: ", jsonlite::toJSON(list(choices = list(list(delta = delta))),
                                       auto_unbox = TRUE), "\n\n")
   }
-  # İlk parça yalnız çok baytlı "ş" harfinin ilk baytıdır; çözücü onu bekletir.
-  tam <- charToRaw(enc2utf8(paste0(olay(list(content = "\u015fey")), "data: [DONE]\n\n")))
-  bol <- which(tam == as.raw(0xC5))[1]
-  ham_parcalar <- list(tam[seq_len(bol)], tam[-seq_len(bol)])
+  # İlk parça YALNIZ çok baytlı "ş" harfinin ilk baytıdır: çözücü onu bekletir
+  # ve boş metin döndürür; ölçüm çözümden sonra yapılsaydı test yakalardı.
+  # Akış alan adı olmayan "ş" satırıyla başlar (SSE ayrıştırıcısı yok sayar).
+  tam <- charToRaw(enc2utf8(paste0("\u015f\n\n", olay(list(content = "\u015fey")), "data: [DONE]\n\n")))
+  testthat::expect_identical(tam[1], as.raw(0xC5))
+  ham_parcalar <- list(tam[1], tam[-1])
   ilk_sonrasi <- NA
 
   testthat::local_mocked_bindings(

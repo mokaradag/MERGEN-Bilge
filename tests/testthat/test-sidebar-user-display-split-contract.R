@@ -190,4 +190,7 @@ test_that("extracted helpers keep behavioral contracts (Turkish initials + depar
   withr::with_envvar(c(MERGEN_USER_AVATAR_URL_TEMPLATE = ""), expect_identical(avatar_fn("12345"), ""))
   withr::with_envvar(c(MERGEN_USER_AVATAR_URL_TEMPLATE = "https://foto.kurum.local/{user_id}.jpg"),
                      expect_true(nzchar(avatar_fn("12345"))))
+  # Yalnız "/" kök-göreli taban adrestir; "//host" protokol-göreli adres reddedilir.
+  withr::with_envvar(c(MERGEN_USER_AVATAR_URL_TEMPLATE = "/"), expect_identical(avatar_fn("12345"), "/12345.jpg"))
+  withr::with_envvar(c(MERGEN_USER_AVATAR_URL_TEMPLATE = "//dis.example"), expect_identical(avatar_fn("12345"), ""))
 })

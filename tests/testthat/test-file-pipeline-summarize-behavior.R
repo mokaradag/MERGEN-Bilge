@@ -2,9 +2,9 @@
 # Dosya Yolu: tests/testthat/test-file-pipeline-summarize-behavior.R
 # Açıklama: helpers_file_summary_task.R içindeki summarize_file_with_llm davranışını
 #           doğrular. Bu fonksiyon yüklenen dosya metnini LLM ile ayrıntılı
-#           içerik dökümüne çevirir; LLM list($content)/karakter dönüşü,
-#           boş/NA dönüş ve hata durumunda kısaltılmış içerik fallback'i
-#           üretir. call_llm_with_retry stub'lanır; gerçek LLM/ağ/DB yoktur.
+#           içerik dökümüne çevirir; LLM list($content)/karakter dönüşünü
+#           işler, boş/NA dönüşü ve LLM hatasını başarısızlık olarak iletir.
+#           call_llm_with_retry stub'lanır; gerçek LLM/ağ/DB yoktur.
 #           Çevrimdışı ve deterministik.
 # ==============================================================================
 
@@ -63,33 +63,21 @@ test_that("summarize_file_with_llm kullanıcı mesajına dosya adı ve içerik p
   expect_true(grepl("ELEKTRONİK İÇERİK", chat[[2]]$content, fixed = TRUE))
 })
 
-test_that("summarize_file_with_llm boş/NA dönüşte kısaltılmış içerik fallback'i üretir", {
+test_that("summarize_file_with_llm boş/NA dönüşü başarısızlık sayar; içerik parçası özet diye dönmez", {
   env <- .filePipelineSummEnv()
-  # Türkçe yorum: boş karakter dönüşü -> fallback
-  env$call_llm_with_retry <- function(chat, settings, max_retries = 2) ""
-  res <- env$summarize_file_with_llm("Bu bir test içeriğidir.", "x.txt", list())
-  expect_true(grepl("Özet çıkarılamadı", res, fixed = TRUE))
-  expect_true(grepl("Bu bir test içeriğidir.", res, fixed = TRUE))
-
-  # Türkçe yorum: NA dönüşü -> fallback
-  env$call_llm_with_retry <- function(chat, settings, max_retries = 2) NA_character_
-  res2 <- env$summarize_file_with_llm("içerik", "y.txt", list())
-  expect_true(grepl("Özet çıkarılamadı", res2, fixed = TRUE))
-
-  # Türkçe yorum: NULL içerikli list -> fallback
-  env$call_llm_with_retry <- function(chat, settings, max_retries = 2) list(content = NULL)
-  res3 <- env$summarize_file_with_llm("içerik", "z.txt", list())
-  expect_true(grepl("Özet çıkarılamadı", res3, fixed = TRUE))
+  for (donus in list("", NA_character_, list(content = NULL), "   ")) {
+    env$call_llm_with_retry <- function(chat, settings, max_retries = 2) donus
+    expect_error(env$summarize_file_with_llm("Bu bir test içeriğidir.", "x.txt", list()),
+                 "Özet çıkarılamadı")
+  }
 })
 
-test_that("summarize_file_with_llm LLM hata fırlatınca güvenli fallback döner", {
+test_that("summarize_file_with_llm LLM hatasını yutmaz; hat uyarı yoluna iletilir", {
   env <- .filePipelineSummEnv()
   env$call_llm_with_retry <- function(chat, settings, max_retries = 2) {
     stop("ağ hatası")
   }
-  res <- env$summarize_file_with_llm("Önemli içerik buradadır.", "h.txt", list())
-  expect_true(grepl("Özet çıkarılamadı", res, fixed = TRUE))
-  expect_true(grepl("Önemli içerik buradadır.", res, fixed = TRUE))
+  expect_error(env$summarize_file_with_llm("Önemli içerik buradadır.", "h.txt", list()), "ağ hatası")
 })
 
 test_that("summarize_file_with_llm uzun içeriği 60000 karaktere kısaltarak işler", {
@@ -97,17 +85,15 @@ test_that("summarize_file_with_llm uzun içeriği 60000 karaktere kısaltarak i�
   yakalanan <- new.env(parent = emptyenv())
   env$call_llm_with_retry <- function(chat, settings, max_retries = 2) {
     yakalanan$chat <- chat
-    ""  # fallback'i tetikle ki snippet kullanılsın
+    "özet"
   }
   uzun <- paste(rep("A", 70000), collapse = "")
   res <- env$summarize_file_with_llm(uzun, "buyuk.txt", list())
   # Türkçe yorum: kullanıcı mesajındaki içerik 60000 karaktere kısaltılmalı
   user_msg <- yakalanan$chat[[2]]$content
-  # "İçerik (kısaltılmış olabilir):\n" öneki + en fazla 60000 'A'
   a_count <- nchar(gsub("[^A]", "", user_msg))
   expect_equal(a_count, 60000)
-  # Türkçe yorum: fallback parçası ilk 1000 karakterle sınırlı
-  expect_true(grepl("Özet çıkarılamadı", res, fixed = TRUE))
+  expect_identical(res, "özet")
 })
 
 test_that("summarize_file_with_llm NULL dosya metni için güvenli çalışır", {
@@ -115,4 +101,30 @@ test_that("summarize_file_with_llm NULL dosya metni için güvenli çalışır",
   env$call_llm_with_retry <- function(chat, settings, max_retries = 2) "tamam"
   res <- env$summarize_file_with_llm(NULL, "bos.txt", NULL)
   expect_identical(res, "tamam")
+})
+
+test_that("özet görevi okuma hatasını özetlemez; durdurma dosyası LLM kapısına bağlanır", {
+  env <- .filePipelineSummEnv()
+  env$readFileContentToString <- function(...) stop("dosya yok")
+  llm <- 0L
+  env$summarize_file_with_llm <- function(...) { llm <<- llm + 1L; "özet" }
+  gorev <- env$file_summary_task_fn("a.txt", "/yok/a.txt", list())
+  expect_error(gorev(), "Dosya içeriği okunamadı")
+  expect_identical(llm, 0L)
+
+  dur <- tempfile("dur_")
+  env$readFileContentToString <- function(...) "metin"
+  kapi <- NULL
+  env$summarize_file_with_llm <- function(...) {
+    kapi <<- getOption("mergen.llm.stop_check")
+    file.create(dur)
+    "özet"
+  }
+  gorev <- env$file_summary_task_fn("a.txt", "/k/a.txt", list(), dur)
+  # LLM sürerken durdurma dosyası oluşursa sonuç döndürülmez.
+  expect_error(gorev(), "iptal edildi")
+  expect_true(is.function(kapi))
+  expect_true(kapi())
+  expect_null(getOption("mergen.llm.stop_check"))
+  unlink(dur)
 })

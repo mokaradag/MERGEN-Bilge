@@ -7,10 +7,14 @@
 #           testthat'in kendi yükleyicisi gibi UTF-8 bağlantıdan ayrıştırılır.
 # ==============================================================================
 
+# BOM bayt düzeyinde atılır (geçersiz UTF-8'de de); CRLF ve tek başına CR satır
+# sonları da ayrılır (R'nin metin kipi kaynak okuması gibi).
 parse_r_file_utf8 <- function(path) {
-  metin <- rawToChar(readBin(path, what = "raw", n = file.info(path)$size))
+  bayt <- readBin(path, what = "raw", n = file.info(path)$size)
+  if (length(bayt) >= 3L && identical(bayt[1:3], as.raw(c(0xEF, 0xBB, 0xBF)))) bayt <- bayt[-(1:3)]
+  metin <- rawToChar(bayt)
   Encoding(metin) <- "UTF-8"
-  con <- textConnection(strsplit(sub("^\ufeff", "", metin), "\r?\n")[[1]], encoding = "UTF-8")
+  con <- textConnection(strsplit(metin, "\r\n|\r|\n")[[1]], encoding = "UTF-8")
   on.exit(close(con), add = TRUE)
   parse(con, keep.source = FALSE, encoding = "UTF-8")
 }

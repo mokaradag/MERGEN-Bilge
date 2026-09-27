@@ -178,9 +178,12 @@
     setTimeout(function () {
       syncDocHeadOffset();
       var govde = document.querySelector(".mb-doc-body[data-rendered-doc-id]");
-      if (pendingAnchor && govde &&
-          govde.getAttribute("data-rendered-doc-id") === pendingAnchor.doc) {
-        scrollToAnchor(document, pendingAnchor.key);
+      if (pendingAnchor && govde) {
+        // Hedef belge çizildiyse kaydırılır; başka belge/grup çizildiyse
+        // gezinme geçersizleşmiştir, eski hedef sonraki ziyarette uygulanmaz.
+        if (govde.getAttribute("data-rendered-doc-id") === pendingAnchor.doc) {
+          scrollToAnchor(document, pendingAnchor.key);
+        }
         pendingAnchor = null;
       }
     }, 0);

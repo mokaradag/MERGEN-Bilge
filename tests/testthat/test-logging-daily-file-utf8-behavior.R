@@ -258,3 +258,108 @@ test_that("çok-süreçli dağıtımda eklemeler kilitle sıralanır ve kilit b�
   withr::local_envvar(c(MERGEN_APP_WORKER_COUNT = "1"))
   expect_false(env$.mergen_log_shared_writers())
 })
+
+test_that("paylaşılan ekleme kilidi alınamazsa satır süreç yedeğine yazılır ve sonra birleştirilir", {
+  skip_if_not_installed("logger")
+  tmp <- withr::local_tempdir()
+  env <- .log_utf8_env(tmp)
+  hedef <- file.path(tmp, "kilitli_20260101.log")
+  withr::local_envvar(c(MERGEN_APP_WORKER_COUNT = "3"))
+  writeBin(charToRaw("ilk\n"), hedef)
+  kilit <- paste0(hedef, ".append.lock")
+  dir.create(kilit)
+  writeLines("baska", file.path(kilit, "sahip"))
+  surec <- sub("\\.log$", sprintf(".p%d.log", Sys.getpid()), hedef)
+
+  basla <- Sys.time()
+  env$mergen_log_write_utf8("kilitsiz", hedef)
+  env$mergen_log_write_utf8("ertelenen", hedef)
+  expect_lt(as.numeric(difftime(Sys.time(), basla, units = "secs")), 1.5)
+  expect_identical(.log_utf8_bytes(hedef), charToRaw("ilk\n"))
+  expect_identical(.log_utf8_bytes(surec), charToRaw("kilitsiz\nertelenen\n"))
+
+  unlink(kilit, recursive = TRUE)
+  rm(list = ls(env$.MERGEN_LOG_LOCK_BACKOFF, all.names = TRUE), envir = env$.MERGEN_LOG_LOCK_BACKOFF)
+  env$mergen_log_write_utf8("sonra", hedef)
+  expect_identical(.log_utf8_bytes(hedef), charToRaw("ilk\nkilitsiz\nertelenen\nsonra\n"))
+  expect_false(file.exists(surec))
+})
+
+test_that("sahip dosyası yazılamazsa kilit dizini yetim bırakılmaz", {
+  skip_if_not_installed("logger")
+  tmp <- withr::local_tempdir()
+  env <- .log_utf8_env(tmp)
+  kilit <- file.path(tmp, "y.lock")
+  env$writeLines <- function(...) stop("disk dolu")
+  expect_null(env$.mergen_log_lock_acquire(kilit, 0.1, 60))
+  expect_false(dir.exists(kilit))
+})
+
+test_that("aynı boyutta değiştirilen dosya önbellek kararıyla kabul edilmez", {
+  skip_if_not_installed("logger")
+  tmp <- withr::local_tempdir()
+  env <- .log_utf8_env(tmp)
+  hedef <- file.path(tmp, "degisen_20260101.log")
+  env$mergen_log_write_utf8("ab", hedef)
+  expect_true(env$mergen_log_upgrade_legacy_file(hedef))
+  eski <- iconv("İş\n", from = "UTF-8", to = "WINDOWS-1254", toRaw = TRUE)[[1]]
+  expect_equal(length(eski), file.info(hedef)$size)
+  writeBin(eski, hedef)
+  Sys.setFileTime(hedef, Sys.time() + 5)
+  env$mergen_log_write_utf8("yeni", hedef)
+  expect_identical(.log_utf8_bytes(hedef), charToRaw("yeni\n"))
+  expect_length(list.files(tmp, pattern = "\\.legacy-.*\\.log$"), 1L)
+})
+
+test_that("araya giren yabancı baytlar varsa doğrulanan boyut ilerletilmez", {
+  skip_if_not_installed("logger")
+  tmp <- withr::local_tempdir()
+  env <- .log_utf8_env(tmp)
+  hedef <- file.path(tmp, "yaris_20260101.log")
+  env$mergen_log_write_utf8("ilk", hedef)
+  once <- file.info(hedef)$size
+  asil <- env$mergen_log_append_utf8
+  # Eski süreç bu yazımla son boyut ölçümü arasında CP1254 baytı ekler.
+  env$mergen_log_append_utf8 <- function(lines, target_file) {
+    n <- asil(lines, target_file)
+    con <- file(target_file, open = "ab"); writeBin(as.raw(0xFD), con); close(con)
+    n
+  }
+  env$mergen_log_write_utf8("benim", hedef)
+  anahtar <- normalizePath(hedef, winslash = "/", mustWork = FALSE)
+  expect_identical(env$.MERGEN_LOG_UTF8_CHECKED[[anahtar]]$boyut, once)
+  env$mergen_log_append_utf8 <- asil
+  env$mergen_log_write_utf8("sonra", hedef)
+  expect_identical(.log_utf8_bytes(hedef), charToRaw("sonra\n"))
+  expect_length(list.files(tmp, pattern = "\\.legacy-.*\\.log$"), 1L)
+})
+
+test_that("yedek birleştirilemezse yeni satırlar yedeğe eklenir; yarım kopya geri alınır", {
+  skip_if_not_installed("logger")
+  tmp <- withr::local_tempdir()
+  env <- .log_utf8_env(tmp)
+  hedef <- file.path(tmp, "sira_20260101.log")
+  yedek <- sub("\\.log$", ".utf8.log", hedef)
+  writeBin(charToRaw("ana\n"), hedef)
+  writeBin(charToRaw("eski yedek\n"), yedek)
+  dir.create(paste0(hedef, ".lock"))
+  env$mergen_log_write_utf8("yeni", hedef)
+  expect_identical(.log_utf8_bytes(hedef), charToRaw("ana\n"))
+  expect_identical(.log_utf8_bytes(yedek), charToRaw("eski yedek\nyeni\n"))
+  unlink(paste0(hedef, ".lock"), recursive = TRUE)
+
+  cagri <- 0L
+  env$writeBin <- function(object, con, ...) {
+    cagri <<- cagri + 1L
+    base::writeBin(object, con, ...)
+    stop("UNC hatası")
+  }
+  expect_false(env$.mergen_log_merge_fallback(hedef, yedek))
+  expect_identical(cagri, 1L)
+  expect_identical(.log_utf8_bytes(hedef), charToRaw("ana\n"))
+  expect_true(file.exists(yedek))
+  rm("writeBin", envir = env)
+  expect_true(env$.mergen_log_merge_fallback(hedef, yedek, nabiz = function() cagri <<- cagri + 10L))
+  expect_identical(.log_utf8_bytes(hedef), charToRaw("ana\neski yedek\nyeni\n"))
+  expect_gt(cagri, 1L)
+})

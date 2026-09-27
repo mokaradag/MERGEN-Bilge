@@ -49,7 +49,10 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   satırlar dosya temizlenince günlük dosyaya eklenir). Başka bir yazıcı sonradan
   eski kodlamayla ekleme yaparsa yalnız yeni baytlar yeniden denetlenir; kilit
   sahipliği doğrulanır. Çok-süreçli dağıtımda eklemeler süreçler arası kilitle
-  sıralanır.
+  sıralanır; kilit kısa sürede alınamazsa satır paylaşılan dosyaya kilitsiz
+  yazılmaz, sürece özel `*.p<PID>.log` yedeğine düşer ve sonra sırasıyla
+  birleştirilir. Yarıda kalan yedek birleştirmesi geri alınır (satır
+  yinelenmez); uzun tarama/birleştirme kilidi tazeler.
 - **Konsol logu sadeleşti.** `[CHAT PERF] SSE işçide ilk ham HTTP parçası
   alındı` satırı her parçada değil istek başına bir kez yazılır.
 - **Proje ve Kaynak Analizi Excel eki:** Latin1 sütundan NVARCHAR olarak okunan
@@ -69,13 +72,15 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   adı yalnız özel adreslere çözülüyorsa on-prem sayılır ve gerçekten denenir;
   genel adrese çözülen host yapılandırılmış olsa da denenmez
   (`MERGEN_HEALTH_INTERNAL_ENDPOINTS` açık ilanı geçerlidir). Noktasız ad ve
-  `.local/.corp` gibi son ekler de çözümlenir; istek denetlenen özel adrese
-  sabitlenir, HTTP(S) dışı şema denenmez. `0.0.0.0` / `[::]`
+  `.local/.corp` gibi son ekler de çözümlenir; istek denetlenen özel adreslere
+  (tek `resolve` girdisinde, istek host'u kanonik adla) sabitlenir, HTTP(S) dışı
+  şema denenmez. DNS sonucu kısa süre önbelleklenir; DNS kesintisinde her
+  yenileme Shiny sürecini yeniden bekletmez. `0.0.0.0` / `[::]`
   bağlama adresli uç noktalar yerel döngü adresinden (`127.0.0.1` / `[::1]`)
   denenir; yüzde kodlu genel host adları intranet sayılmaz.
 - **Kullanıcı fotoğraf adresi yapılandırılabilir:** `MERGEN_USER_AVATAR_URL_TEMPLATE`
   (`{user_id}` yer tutucusu; yoksa `<id>.jpg` yola, varsa sorgu dizesinden önce
-  eklenir). Şablon tanımsızsa görsel isteği yapılmaz; fotoğraf yoksa ya da
+  eklenir; yalnız `/` kök-göreli taban olarak kabul edilir). Şablon tanımsızsa görsel isteği yapılmaz; fotoğraf yoksa ya da
   yüklenemezse baş harfler/simge gösterilir.
 - **Sistem Durumu açık tema** tüm sekmelerde okunur: skor halkası, kutucuk ve
   kahraman alanı renkleri, İşçi İzleyici değerleri ve CPU çekirdek görseli.

@@ -212,8 +212,10 @@ test_that("yapılandırılmış olmak tek başına on-prem sayılmaz; DNS kanıt
   expect_true(env$health_is_public_url("https://baska.example.com/v1"))
   expect_true(env$health_is_public_url("https://genel.example.com/v1"))
   expect_identical(sorgu, once)
-  # Özel karar deneme yetkisi olarak önbelleklenmez; her denemede yeniden çözülür.
+  # Özel karar yalnız bir yenileme aralığı tutulur; süre dolunca yeniden çözülür.
   expect_false(env$health_is_public_url("https://ozel.kurum.com.tr/health"))
+  expect_identical(sorgu, once)
+  expect_identical(env$health_host_private_ips("ozel.kurum.com.tr", kisa_ttl = 0), "172.16.4.2")
   expect_identical(sorgu, once + 1L)
   # Operatörün açık ilanı DNS'ten bağımsız geçerlidir.
   withr::local_envvar(c(MERGEN_HEALTH_INTERNAL_ENDPOINTS = "genel.example.com"))
@@ -449,14 +451,21 @@ test_that("dahili görünümlü ad ve son ek genel adrese çözülürse denenmez
   expect_false(env$health_is_public_url("https://servis.corp/v1"))
 })
 
-test_that("başarısız DNS çözümü genel sonuç olarak önbelleklenmez", {
+test_that("başarısız DNS çözümü genel sonuç sayılmaz; kısa süre önbelleklenir ve olay döngüsünü tekrar bloklamaz", {
   env <- .fresh_health_env()
   cevap <- character(0)
-  env$health_resolve_host_ips <- function(host) cevap
+  sorgu <- 0L
+  env$health_resolve_host_ips <- function(host) { sorgu <<- sorgu + 1L; cevap }
   withr::local_envvar(c(LOCAL_TTS_ENDPOINT = "https://ses.kurum.com.tr/v1", MERGEN_HEALTH_INTERNAL_ENDPOINTS = ""))
-  expect_true(env$health_is_public_url("https://ses.kurum.com.tr/v1"))
+  expect_identical(env$health_endpoint_scope("https://ses.kurum.com.tr/v1")$neden, "cozulmedi")
+  expect_identical(env$health_endpoint_scope("https://ses.kurum.com.tr/v1")$neden, "cozulmedi")
+  expect_identical(sorgu, 1L)
+  # Kısa süre dolunca yeniden çözülür; genel hükme dönüşmemiştir.
   cevap <- "10.1.2.3"
+  expect_identical(env$health_host_private_ips("ses.kurum.com.tr", kisa_ttl = 0), "10.1.2.3")
+  # Özel hüküm de kısa süre tutulur (her yenilemede yeniden sorgu yok).
   expect_false(env$health_is_public_url("https://ses.kurum.com.tr/v1"))
+  expect_identical(sorgu, 2L)
 })
 
 test_that("DNS ile onaylanan uç nokta denetlenen özel adrese sabitlenir", {
@@ -465,7 +474,8 @@ test_that("DNS ile onaylanan uç nokta denetlenen özel adrese sabitlenir", {
   env$health_resolve_host_ips <- function(host) c("10.4.4.4", "fd00::7")
   kapsam <- env$health_endpoint_scope("https://yazi.kurum.com.tr:8443/v1/health")
   expect_false(kapsam$public)
-  expect_identical(kapsam$pin, c("yazi.kurum.com.tr:8443:10.4.4.4", "yazi.kurum.com.tr:8443:[fd00::7]"))
+  # Tüm denetlenen adresler tek girdide: ikinci girdi öncekini ezerdi.
+  expect_identical(kapsam$pin, "yazi.kurum.com.tr:8443:10.4.4.4,[fd00::7]")
   expect_identical(env$health_endpoint_scope("http://127.0.0.1:9000/")$pin, character(0))
   ayarlar <- NULL
   testthat::local_mocked_bindings(
@@ -504,4 +514,43 @@ test_that("bozuk IPv6 joker yazımı yerel döngüye çevrilmez", {
     expect_false(env$health_host_unspecified(bozuk), info = bozuk)
   }
   expect_identical(env$health_probe_url("http://[0:::0]:8000/x"), "http://[0:::0]:8000/x")
+})
+
+test_that("sabitlenen istek host'u resolve anahtarıyla birebir eşleşir (kök noktası, büyük harf, yol korunur)", {
+  env <- .fresh_health_env()
+  withr::local_envvar(c(LOCAL_STT_ENDPOINT = "https://Model.Corp.:8443/v1", MERGEN_HEALTH_INTERNAL_ENDPOINTS = ""))
+  env$health_resolve_host_ips <- function(host) "10.9.9.9"
+  kapsam <- env$health_endpoint_scope("https://Model.Corp.:8443/V1/Saglik?x=Y")
+  expect_identical(kapsam$pin, "model.corp:8443:10.9.9.9")
+  expect_identical(kapsam$hedef, "https://model.corp:8443/V1/Saglik?x=Y")
+  istenen <- NULL
+  testthat::local_mocked_bindings(
+    GET = function(url, ...) { istenen <<- url; structure(list(), class = "response") },
+    status_code = function(res) 200L,
+    .package = "httr"
+  )
+  env$health_check_http_endpoint("stt.endpoint", "STT", "https://Model.Corp.:8443/V1/Saglik?x=Y")
+  expect_identical(istenen, kapsam$hedef)
+  expect_null(env$health_endpoint_scope("http://127.0.0.1:9000/")$hedef)
+})
+
+test_that("bozuk IPv6 loopback literali dahili sayılmaz", {
+  env <- .fresh_health_env()
+  for (gecerli in c("::1", "0:0:0:0:0:0:0:1", "::0001", "0::1")) {
+    expect_true(isTRUE(env$health_ip_literal_internal(gecerli)), info = gecerli)
+  }
+  for (bozuk in c("0:0:0:0:0:0:1", "1::", "0:1::", ":::1", "0:0:0:0:0:0:0:0:1")) {
+    expect_false(isTRUE(env$health_ip_literal_internal(bozuk)), info = bozuk)
+  }
+  expect_true(env$health_is_public_url("http://[0:0:0:0:0:0:1]:8080/v1"))
+})
+
+test_that("sağlık denetimleri dosyası tek başına yüklendiğinde kapsam yardımcısını da yükler", {
+  kok <- resolve_repo_root_for_tests()
+  temiz <- new.env(parent = baseenv())
+  temiz[["%||%"]] <- function(x, y) if (is.null(x)) y else x
+  env <- new.env(parent = temiz)
+  withr::with_dir(tempdir(), source(file.path(kok, "R", "helpers_health_checks.R"), encoding = "UTF-8", local = env))
+  expect_true(exists("health_endpoint_scope", envir = env, inherits = FALSE))
+  expect_true(exists("health_probe_url", envir = env, inherits = FALSE))
 })

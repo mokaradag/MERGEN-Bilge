@@ -310,6 +310,9 @@ moduleServer(id, function(input, output, session) {
     )
 
 	# Dynamic downloads
+    fm_register_owner_reset(session, ns, get_module_values, upload_runtime$controller,
+                            persisted_scan_pending, refresh_from_user_folder, is_auth_ready)
+
     observe({
       lapply(names(module_values$file_contents), function(fid) {
         local({
@@ -317,6 +320,8 @@ moduleServer(id, function(input, output, session) {
           output[[paste0("download_", my_id)]] <- downloadHandler(
             filename = function() module_values$file_contents[[my_id]]$name,
             content  = function(file) {
+                # Kimlik düştüyse (SSO süresi doldu) önbellekteki yol indirilmez.
+                if (!is_auth_ready() && isTRUE(SSO_ENABLED)) stop("Oturum kimliği doğrulanmadı.")
                 src <- module_values$file_contents[[my_id]]$datapath
                 tryCatch(
                     fs::file_copy(src, file, overwrite = TRUE),

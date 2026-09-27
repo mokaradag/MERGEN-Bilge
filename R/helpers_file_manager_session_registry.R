@@ -133,3 +133,34 @@ fm_unregister_session_file <- function(session, filename) {
 
   invisible(TRUE)
 }
+
+# Oturum sahibi değişince (A -> B) ya da kimlik düşünce Dosya Yönetimi'nin
+# önbellekteki satırları/içerik yolları, bağlam seçimi, geçici dosyaları ve
+# uçuştaki yükleme partisi temizlenir; önceki kullanıcının dosyası indirilemez
+# ya da yeni sahibin durumuna yazılamaz. Sahip değişiminde yalnız yeni sahibin
+# envanteri yeniden yüklenir.
+fm_register_owner_reset <- function(session, ns, module_values_provider, controller,
+                                    scan_pending, refresh_fn, is_auth_ready) {
+  if (!exists("mergen_session_on_owner_change", mode = "function")) return(invisible(NULL))
+  sahip_nesli <- shiny::reactiveVal(0L)
+  mergen_session_on_owner_change(session, function(neden) {
+    mv <- module_values_provider()
+    try(file_ingestion_cancel_controller(controller), silent = TRUE)
+    for (p in session$userData$temp_files) try(unlink(p), silent = TRUE)
+    session$userData$temp_files <- list()
+    ids <- names(shiny::isolate(mv$files_in_context))
+    mv$files <- shiny::isolate(mv$files)[0, , drop = FALSE]
+    mv$file_contents <- list()
+    mv$files_in_context <- list()
+    mv$file_id_to_delete <- NULL
+    scan_pending(TRUE)
+    if (length(ids)) try(session$sendCustomMessage(ns("setAttachState"), list(ids = ids, checked = FALSE)), silent = TRUE)
+    if (identical(neden, "sahip_degisti")) sahip_nesli(shiny::isolate(sahip_nesli()) + 1L)
+  })
+  shiny::observeEvent(sahip_nesli(), {
+    if (!isTRUE(is_auth_ready())) return(invisible(NULL))
+    scan_pending(FALSE)
+    refresh_fn("owner_change")
+  }, ignoreInit = TRUE)
+  invisible(NULL)
+}

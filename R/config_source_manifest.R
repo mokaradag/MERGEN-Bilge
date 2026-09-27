@@ -681,7 +681,7 @@ source_manifest_sections <- list(
     "R/helpers_admin_yanit_analizi.R",
     "R/module_admin_yanit_analizi_outputs.R",
     "R/module_admin_yanit_analizi.R",
-    "R/helpers_admin_documentation.R",
+    "R/helpers_admin_documentation_sanitize.R", "R/helpers_admin_documentation.R",  # temizleyici ÖNCE
     "R/module_admin_documentation.R"
   ),
 

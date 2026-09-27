@@ -992,3 +992,192 @@ test_that("arama yolunda aynı adı sağlayan yeni paket öne eklenirse önbelle
   worker_monitor_auto_globals("unit_dep_search", gorev)
   expect_identical(sayac$detect, 1L)
 })
+
+test_that("çok-süreçli payda sıfır dilim korunur, varsayılan eşzamanlılık her sürece yuva verir", {
+  env <- .wd_ozet_kaynak(new.env(parent = globalenv()))
+  withr::local_envvar(c(MERGEN_APP_WORKER_COUNT = "4", MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "",
+                        MERGEN_FILE_SUMMARY_MAX_QUEUE = "2", MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION = "16"))
+  pay <- function(fn) vapply(1:4, function(i) {
+    withr::with_envvar(c(MERGEN_APP_WORKER_INDEX = as.character(i)), fn())
+  }, integer(1))
+  expect_identical(pay(env$file_summary_max_concurrent), rep(1L, 4L))
+  # Dağıtım geneli kuyruk tavanı (2) süreç sayısına şişirilmez.
+  expect_identical(pay(env$file_summary_max_queue), c(1L, 1L, 0L, 0L))
+  # Kullanıcı başı bütçe de süreçlere bölünür (4 sekme x 16 olmaz).
+  withr::with_envvar(c(MERGEN_FILE_SUMMARY_MAX_QUEUE = "64"),
+                     expect_identical(sum(pay(env$file_summary_max_queue_per_session)), 16L))
+  expect_match(env$file_summary_capacity_warnings(), "MERGEN_FILE_SUMMARY_MAX_QUEUE=2", all = FALSE)
+  withr::with_envvar(c(MERGEN_APP_WORKER_COUNT = "1"), expect_length(env$file_summary_capacity_warnings(), 0L))
+})
+
+test_that("pompa boş işçi bütçesini her başlatmada düşer; etkileşimli işçi korunur", {
+  skip_if_not_installed("later")
+  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "2", MERGEN_APP_WORKER_COUNT = "1"))
+  env <- .wd_ozet_kaynak(new.env(parent = globalenv()))
+  env$file_summary_pool_size <- function() 3L
+  # Bir sohbet işi sürüyor: iki boş işçi var ve ölçüm aynı pompada değişmiyor.
+  env$file_summary_free_workers <- function() 2L
+  baslayan <- 0L
+  env$.FILE_SUMMARY_QUEUE$pump_scheduled <- TRUE
+  for (i in 1:2) {
+    env$.FILE_SUMMARY_QUEUE$pending[[i]] <- list(start = function() { baslayan <<- baslayan + 1L; NULL },
+                                                 anahtar = paste0("k", i))
+  }
+  env$file_summary_pump()
+  expect_identical(baslayan, 1L)
+  env$.FILE_SUMMARY_QUEUE$pending <- list()
+  env$.FILE_SUMMARY_QUEUE$pump_scheduled <- FALSE
+})
+
+test_that("arka plan kapasitesi kaybolursa bekleyen özetler açıkça bırakılır", {
+  skip_if_not_installed("later")
+  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "2", MERGEN_APP_WORKER_COUNT = "1"))
+  env <- .wd_ozet_kaynak(new.env(parent = globalenv()))
+  havuz <- 3L
+  env$file_summary_pool_size <- function() havuz
+  env$file_summary_free_workers <- function() 0L
+  birakilan <- character(0)
+  expect_true(env$file_summary_schedule(function() NULL, on_drop = function(e) birakilan <<- conditionMessage(e)))
+  havuz <- 1L
+  env$file_summary_pump()
+  expect_length(env$.FILE_SUMMARY_QUEUE$pending, 0L)
+  expect_match(birakilan, "kapasitesi kalmadı")
+})
+
+test_that("kuyruk hattın sahiplik kuralını kullanır; geçersiz kayıt pompada da bildirilir", {
+  skip_if_not_installed("later")
+  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "2", MERGEN_APP_WORKER_COUNT = "1"))
+  env <- .wd_ozet_kaynak(new.env(parent = globalenv()))
+  env$file_summary_pool_size <- function() 3L
+  bos <- 0L
+  env$file_summary_free_workers <- function() bos
+  oturum <- list(token = "t", userData = new.env(), isClosed = function() FALSE)
+  oturum$userData$user_id <- 0L
+  gecerli <- TRUE
+  birakilan <- 0L
+  baslayan <- 0L
+  # Yüklemede oturum kimliği yok, çağıran kimliği 7: hat kabul ettiği için kuyruk düşürmez.
+  expect_true(env$file_summary_schedule(function() { baslayan <<- baslayan + 1L; NULL },
+                                        session = oturum, sahip = 7L,
+                                        on_drop = function(e) birakilan <<- birakilan + 1L,
+                                        gecerli = function() gecerli))
+  env$file_summary_prune_closed()
+  expect_length(env$.FILE_SUMMARY_QUEUE$pending, 1L)
+  expect_identical(birakilan, 0L)
+  # Kayıt pompa sırasında geçersizleşirse bildirim kapanır (on_drop), başlamaz.
+  env$file_summary_record_live <- function(kayit) FALSE
+  env$file_summary_prune_closed <- function() invisible(0L)
+  bos <- 3L
+  env$file_summary_pump()
+  expect_identical(baslayan, 0L)
+  expect_identical(birakilan, 1L)
+})
+
+test_that("kimliksiz başlayan özet arada kimlik kaybı olduysa uygulanmaz", {
+  env <- .wd_ozet_kaynak(new.env(parent = globalenv()), pipeline = TRUE)
+  expect_true(env$.file_pipeline_owner_ok(0L, 0L, 7L))
+  expect_true(env$.file_pipeline_owner_ok(0L, 0L, 7L, 0L, 0L))
+  expect_false(env$.file_pipeline_owner_ok(0L, 0L, 7L, 0L, 1L))
+  expect_false(env$.file_pipeline_owner_ok(0L, 8L, 7L, 0L, 0L))
+  expect_true(env$.file_pipeline_owner_ok(7L, 7L, 7L, 0L, 2L))
+})
+
+test_that("bağlamdan çıkarılan dosyanın süren özeti durdurma dosyasıyla kesilir; biten iş yeni jetonu silmez", {
+  env <- .wd_ozet_kaynak(new.env(parent = globalenv()), pipeline = TRUE)
+  oturum <- list(userData = new.env())
+  dur <- tempfile("dur_")
+  env$.file_summary_job_token(oturum, "a.txt", "is-1", dur)
+  env$.file_summary_job_token(oturum, "a.txt", NULL)
+  expect_true(file.exists(dur))
+  unlink(dur)
+  env$.file_summary_job_token(oturum, "a.txt", "is-2", dur)
+  env$.file_summary_job_token(oturum, "a.txt", NULL, yalniz = "is-1")
+  expect_identical(oturum$userData$file_summary_jobs$a.txt$jeton, "is-2")
+  expect_false(file.exists(dur))
+  env$.file_summary_job_token(oturum, "a.txt", NULL, yalniz = "is-2")
+  expect_null(oturum$userData$file_summary_jobs$a.txt)
+})
+
+test_that("özet bildirimleri yükleyen oturuma açıkça bağlanır", {
+  skip_if_not_installed("promises")
+  skip_if_not_installed("later")
+  env <- .wd_ozet_kaynak(new.env(parent = globalenv()), pipeline = TRUE)
+  olay <- new.env(parent = emptyenv())
+  olay$goster <- list()
+  olay$kaldir <- list()
+  env$showNotification <- function(..., session = NULL) { olay$goster <- c(olay$goster, list(session)); "not-1" }
+  env$removeNotification <- function(id, session = NULL) olay$kaldir <- c(olay$kaldir, list(session))
+  env$showToast <- function(...) invisible(NULL)
+  env$session_user_data_put_list_item <- function(...) invisible(NULL)
+  env$is_under_mcp_base <- function(p) TRUE
+  env$`%...>%` <- promises::`%...>%`
+  env$`%...!%` <- promises::`%...!%`
+  env$tracked_future_promise <- function(...) {
+    promises::promise_resolve(list(summary = "ozet", dest = "/k/r.txt", ext = "txt"))
+  }
+  # Tam pakette büyük .GlobalEnv taraması yapılmaz; bağımlılık hazırlığı sabitlenir.
+  env$worker_monitor_auto_globals <- function(...) list(ok = TRUE, globals = list(), packages = character(0))
+  bekleyen <- NULL
+  env$file_summary_schedule <- function(start_fn, session = NULL, ...) { bekleyen <<- start_fn; TRUE }
+  oturum <- list(userData = new.env(), token = "tok-7", isClosed = function() FALSE)
+  oturum$userData$user_id <- 7L
+  env$processAndSummarizeFile(list(name = "r.txt", datapath = "/k/r.txt", size = 1),
+                              current_user_id = 7L, session = oturum, settings = list(),
+                              file_manager_data = list(), session_files_reactive = function(...) list(),
+                              already_persisted = TRUE)
+  # later() ile reaktif alan dışında başlar.
+  later::later(bekleyen, 0)
+  cikti <- utils::capture.output(tamam <- .wd_bekle(function() length(olay$kaldir) >= 1L, sure = 10))
+  expect_true(tamam)
+  expect_identical(olay$goster[[1]], oturum)
+  expect_identical(olay$kaldir[[1]], oturum)
+})
+
+test_that("çağıranın verdiği işlev olmayan değerin sınıfı değişirse önbellek kullanılmaz", {
+  worker_monitor_dep_cache_clear()
+  withr::defer(worker_monitor_dep_cache_clear())
+  gorev <- function() format(veri)
+  worker_monitor_auto_globals("unit_dep_given_sig", gorev, list(veri = structure(1, class = "sinif_a")))
+  sayac <- .wd_say()
+  worker_monitor_auto_globals("unit_dep_given_sig", gorev, list(veri = structure(2, class = "sinif_a")))
+  expect_identical(sayac$detect, 0L)
+  worker_monitor_auto_globals("unit_dep_given_sig", gorev, list(veri = structure(3, class = "sinif_b")))
+  expect_identical(sayac$detect, 1L)
+})
+
+test_that("iç içe yardımcı kapanışından gelen bağımlılık her çağrıda taze okunur", {
+  worker_monitor_dep_cache_clear()
+  withr::defer(worker_monitor_dep_cache_clear())
+  fabrika <- function() {
+    durum <- 1L
+    list(oku = function() durum, yaz = function(v) durum <<- v)
+  }
+  sayac_fn <- fabrika()
+  assign(".wd_ic_yardimci", sayac_fn$oku, envir = globalenv())
+  withr::defer(rm(".wd_ic_yardimci", envir = globalenv()))
+  gorev <- function() .wd_ic_yardimci()
+  ilk <- worker_monitor_auto_globals("unit_dep_nested", gorev)
+  sayac_fn$yaz(7L)
+  sonraki <- worker_monitor_auto_globals("unit_dep_nested", gorev)
+  if ("durum" %in% names(sonraki$globals)) expect_identical(sonraki$globals$durum, 7L)
+  # Sağlayıcı ortamdaki değer eskimez: görevin yardımcısı güncel durumu görür.
+  expect_identical(environment(sonraki$globals$.wd_ic_yardimci)$durum, 7L)
+})
+
+test_that("iç içe yardımcının paketten çözülen adı gölgelenirse önbellek yeniden tarar", {
+  worker_monitor_dep_cache_clear()
+  withr::defer(worker_monitor_dep_cache_clear())
+  assign(".wd_uzunluk", function(x) nchar(x), envir = globalenv())
+  withr::defer(rm(".wd_uzunluk", envir = globalenv()))
+  gorev <- function() .wd_uzunluk("abc")
+  worker_monitor_auto_globals("unit_dep_nested_search", gorev)
+  sayac <- .wd_say()
+  worker_monitor_auto_globals("unit_dep_nested_search", gorev)
+  expect_identical(sayac$detect, 0L)
+  saglayici <- new.env()
+  assign("nchar", function(x, ...) 0L, envir = saglayici)
+  base::attach(saglayici, name = "wd_ic_golge_paket", warn.conflicts = FALSE)
+  withr::defer(if ("wd_ic_golge_paket" %in% search()) base::detach("wd_ic_golge_paket", character.only = TRUE))
+  worker_monitor_auto_globals("unit_dep_nested_search", gorev)
+  expect_identical(sayac$detect, 1L)
+})

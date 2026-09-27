@@ -141,8 +141,11 @@ call_local_llm <- function(chat_history, current_settings) {
   # aktarım anında kesilir; böylece Durdur, çağrı bitene kadar beklemek yerine
   # tek bir yoklama aralığında gözlenir. Aktif bir PK kapısı yoksa BOŞ
   # yapılandırma döner ve diğer LLM yolları etkilenmez.
+  # Arka plan işleri (ör. dosya özeti) `mergen.llm.stop_check` kapısıyla
+  # süren aktarımı keser; oturum kapanınca/sahip değişince işçi serbest kalır.
+  genel_kapi <- getOption("mergen.llm.stop_check", NULL)
   iptal_cfg <- if (exists("pk_http_cancel_config", mode = "function", inherits = TRUE)) {
-    tryCatch(pk_http_cancel_config(), error = function(e) NULL)
+    tryCatch(pk_http_cancel_config(if (is.function(genel_kapi)) genel_kapi), error = function(e) NULL)
   } else {
     NULL
   }
@@ -245,6 +248,8 @@ call_local_llm <- function(chat_history, current_settings) {
 # başlatıyordu.
 .pk_llm_retry_cancelled <- function(e) {
   ileti <- tryCatch(conditionMessage(e), error = function(err) "")
+  genel_kapi <- getOption("mergen.llm.stop_check", NULL)
+  if (is.function(genel_kapi) && isTRUE(try(genel_kapi(), silent = TRUE))) return(TRUE)
 
   if (exists("pk_http_cancelled_error", mode = "function", inherits = TRUE) &&
       isTRUE(tryCatch(pk_http_cancelled_error(ileti), error = function(err) FALSE))) {

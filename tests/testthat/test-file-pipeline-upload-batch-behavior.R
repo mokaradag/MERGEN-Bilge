@@ -45,7 +45,7 @@
     rec$notifications <- rec$notifications + 1L
     paste0("note-", rec$notifications)
   }
-  env$removeNotification <- function(id) {
+  env$removeNotification <- function(id, ...) {
     rec$removed <- rec$removed + 1L
     invisible(NULL)
   }

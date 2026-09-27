@@ -59,10 +59,15 @@ mergen_file_pipeline_accepted <- function(result) {
 # Arka plan özetinin sahiplik kararı: yüklemede oturum kimliği POZİTİFSE canlı
 # kimlik aynı kalmalıdır (SSO süresi dolunca çağıran kimliğine düşülmez).
 # Yüklemede oturum kimliği yoksa yalnız yine yokken ya da aynı kullanıcıyken
-# geçerlidir; farklı pozitif kimlik her durumda reddedilir.
-.file_pipeline_owner_ok <- function(yukleme_uid, canli_uid, etkin_uid) {
+# geçerlidir; farklı pozitif kimlik her durumda reddedilir. Kimlik nesli
+# (`kimlik_nesli`, sahip değişimi/kimlik kaybında artar) verilirse, yükleme
+# anında kimliği olmayan iş arada kimlik kaybı/değişimi olduysa da reddedilir
+# (0 -> A -> 0 geçişi "hâlâ kimliksiz" sayılmaz).
+.file_pipeline_owner_ok <- function(yukleme_uid, canli_uid, etkin_uid,
+                                    yukleme_nesli = NULL, canli_nesli = NULL) {
   if (etkin_uid <= 0L) return(FALSE)
   if (yukleme_uid > 0L) return(identical(canli_uid, etkin_uid))
+  if (!identical(as.integer(yukleme_nesli %||% 0L), as.integer(canli_nesli %||% 0L))) return(FALSE)
   canli_uid <= 0L || identical(canli_uid, etkin_uid)
 }
 
@@ -77,8 +82,10 @@ processAndSummarizeFile <- function(file_info,
                                     auto_attach = FALSE,
                                     already_persisted = FALSE,
                                     get_user_upload_dir_fn = NULL) {
+  # Bildirimler yükleyen oturuma açıkça bağlanır: kuyruktan başlayan özet
+  # later() ile reaktif alan dışında (ya da başka oturumun alanında) çalışır.
   note_id <- showNotification(sprintf("İşlem başlatıldı: %s", file_info$name),
-                              duration = NULL, type = "message")
+                              duration = NULL, type = "message", session = session)
 
   # SSO modunda başlangıçta gelen 0L yerine oturumdaki gerçek kullanıcıyı kullan.
   # `%||%` YALNIZCA NULL'u değiştirir: oturum kimliği hâlâ `0L` iken çağıranın
@@ -98,7 +105,7 @@ processAndSummarizeFile <- function(file_info,
                 as.character(session$userData$user_id %||% "NULL"),
                 as.character(current_user_id %||% "NULL"),
                 file_info$name))
-    try(removeNotification(note_id), silent = TRUE)
+    try(removeNotification(note_id, session = session), silent = TRUE)
     if (isTRUE(show_toast)) {
       showToast(
         session,
@@ -125,7 +132,7 @@ processAndSummarizeFile <- function(file_info,
       }
     )
     if (is.null(dest)) {
-      try(removeNotification(note_id), silent = TRUE)
+      try(removeNotification(note_id, session = session), silent = TRUE)
       if (isTRUE(show_toast)) {
         showToast(session, paste(file_info$name, "kalıcı klasöre kaydedilemedi."), "error")
       }
@@ -184,7 +191,7 @@ processAndSummarizeFile <- function(file_info,
       if (inherits(temiz, "try-error") || !isTRUE(temiz)) {
         cat("[FILE PIPELINE] UYARI: Yetim kopya kaldırılamadı:", as.character(dest), "\n")
       }
-      try(removeNotification(note_id), silent = TRUE)
+      try(removeNotification(note_id, session = session), silent = TRUE)
       if (isTRUE(show_toast)) {
         showToast(session, paste(file_info$name, "kalıcı indekse kaydedilemedi."), "error")
       }
@@ -213,25 +220,35 @@ processAndSummarizeFile <- function(file_info,
   # işlenmeden önce CANLI oturum kimliği yükleyenle uyumlu olmalıdır; A'nın dosya
   # özeti B'nin ya da kimliği düşmüş oturumun durumuna yazılmaz.
   yukleme_oturum_uid <- .file_pipeline_session_uid(session)
+  yukleme_nesli <- session$userData$kimlik_nesli %||% 0L
   sahip_gecerli <- function() {
-    .file_pipeline_owner_ok(yukleme_oturum_uid, .file_pipeline_session_uid(session), effective_user_id)
+    .file_pipeline_owner_ok(yukleme_oturum_uid, .file_pipeline_session_uid(session), effective_user_id,
+                            yukleme_nesli, session$userData$kimlik_nesli %||% 0L)
   }
-  # Her özet işi dosya adına bağlı bir iş jetonu taşır: aynı adla yeniden
-  # yükleme ya da dosyanın bağlamdan çıkarılması eski işin sonucunu geçersiz kılar.
+  # Her özet işi dosya adına bağlı bir iş jetonu ve durdurma dosyası taşır: aynı
+  # adla yeniden yükleme ya da dosyanın bağlamdan çıkarılması eski işin
+  # sonucunu geçersiz kılar, bekleyen işi kuyruktan düşürür, süreni durdurur.
   is_jetonu <- basename(tempfile("ozet_"))
-  .file_summary_job_token(session, file_info$name, is_jetonu)
+  durdurma_dosyasi <- tempfile("mergen_ozet_dur_")
+  .file_summary_job_token(session, file_info$name, is_jetonu, durdurma_dosyasi)
+  is_gecerli <- function() {
+    sahip_gecerli() && .file_summary_result_current(session, file_info$name, is_jetonu, dest)
+  }
   ozet_hata <- function(e) {
-    try(removeNotification(note_id), silent = TRUE)
+    try(removeNotification(note_id, session = session), silent = TRUE)
     # Dosya zaten indekse kaydedildi, sadece özetleme başarısız oldu
     msg <- tryCatch(enc2utf8(conditionMessage(e)), error = function(err) conditionMessage(e))
     cat("[FILE PIPELINE] Özetleme hatası:", msg, "\n")
-    if (sahip_gecerli() && .file_pipeline_session_uid(session) > 0L) {
+    # Kullanıcının çıkardığı dosya için uyarı gösterilmez.
+    if (is_gecerli() && .file_pipeline_session_uid(session) > 0L) {
       showToast(session, paste(file_info$name, "yüklendi ancak özet çıkarılamadı."), "warning")
     }
+    .file_summary_job_token(session, file_info$name, NULL, yalniz = is_jetonu)
+    unlink(durdurma_dosyasi)
   }
   ozet_baslat <- function() {
     if (!sahip_gecerli()) {
-      try(removeNotification(note_id), silent = TRUE)
+      try(removeNotification(note_id, session = session), silent = TRUE)
       cat("[FILE PIPELINE] Oturum kimliği değişti, kuyruktaki özet başlatılmadı.\n")
       # Kimlik düştüyse (başka kullanıcıya geçmediyse) iptal söylenir; dosya adı verilmez.
       if (.file_pipeline_session_uid(session) <= 0L && isTRUE(show_toast)) {
@@ -240,8 +257,7 @@ processAndSummarizeFile <- function(file_info,
       return(invisible(NULL))
     }
     # Oturum kapanırsa ya da kimliği değişir/düşerse işçi durdurma dosyasını görür
-    # ve dosyayı okumadan/LLM çağrısı yapmadan durur.
-    durdurma_dosyasi <- tempfile("mergen_ozet_dur_")
+    # ve dosyayı okumadan durur; süren LLM aktarımı da kesilir.
     durdur <- function(...) try(file.create(durdurma_dosyasi), silent = TRUE)
     durdurma_kaydi <- if (is.function(session$onSessionEnded)) {
       try(session$onSessionEnded(durdur), silent = TRUE)
@@ -284,7 +300,7 @@ processAndSummarizeFile <- function(file_info,
     }
     gonderim %...>%
     (function(res) {
-      removeNotification(note_id)
+      try(removeNotification(note_id, session = session), silent = TRUE)
       if (!sahip_gecerli()) {
         cat("[FILE PIPELINE] Oturum kimliği değişti, özet sonucu uygulanmadı.\n")
         return(invisible(NULL))
@@ -321,12 +337,14 @@ processAndSummarizeFile <- function(file_info,
         )
       }
 
+      .file_summary_job_token(session, file_info$name, NULL, yalniz = is_jetonu)
       if (isTRUE(show_toast)) showToast(session, paste(file_info$name, "özetlendi."), "success")
     }) %...!% ozet_hata
   }
 
   ozet_kuyrukta <- if (exists("file_summary_schedule", mode = "function")) {
-    file_summary_schedule(ozet_baslat, session = session, sahip = effective_user_id, on_drop = ozet_hata)
+    file_summary_schedule(ozet_baslat, session = session, sahip = effective_user_id, on_drop = ozet_hata,
+                          gecerli = is_gecerli)
   } else {
     ozet_baslat()
     TRUE
@@ -335,7 +353,8 @@ processAndSummarizeFile <- function(file_info,
   # edilir; özet atlanır ve gerçek neden söylenir. Bildirim göstermeyen toplu
   # çağıran nedeni sonuçtan okur.
   if (identical(as.logical(ozet_kuyrukta), FALSE)) {
-    try(removeNotification(note_id), silent = TRUE)
+    try(removeNotification(note_id, session = session), silent = TRUE)
+    .file_summary_job_token(session, file_info$name, NULL, yalniz = is_jetonu)
     isci_yok <- identical(attr(ozet_kuyrukta, "neden"), "isci_yok")
     cat(if (isci_yok) "[FILE PIPELINE] Arka plan özet işçisi yok, özet atlandı:" else
       "[FILE PIPELINE] Özet kuyruğu dolu, özet atlandı:", file_name_safe, "\n")
@@ -359,13 +378,14 @@ processAndSummarizeFile <- function(file_info,
 # sonra dosyayı sohbet bağlamına ekler ve özetlemeyi kuyruğa alır.
 # Promise geri çağrısı reaktif bağlam içinde olmadığı için isolate kullanılır.
 chat_upload_commit_results <- function(results, ctx, batch_id = NULL) {
-  if (!is.null(batch_id)) try(removeNotification(batch_id), silent = TRUE)
+  if (!is.null(batch_id)) try(removeNotification(batch_id, session = ctx$session), silent = TRUE)
 
   # Parti A için başlayıp oturum B'ye geçtiyse (ya da kimlik düştüyse) dosyalar
   # B'nin sohbet bağlamına HİÇ eklenmez; kalıcı kopya A'nın kovasında kalır.
   if (!.file_pipeline_owner_ok(ctx$session_uid %||% .file_pipeline_session_uid(ctx$session),
                                .file_pipeline_session_uid(ctx$session),
-                               .file_pipeline_effective_uid(NULL, ctx$user_id))) {
+                               .file_pipeline_effective_uid(NULL, ctx$user_id),
+                               ctx$kimlik_nesli, ctx$session$userData$kimlik_nesli %||% 0L)) {
     cat("[UPLOAD BATCH] Oturum kimliği değişti; parti sohbet bağlamına eklenmedi.\n")
     return(invisible(NULL))
   }
@@ -484,12 +504,14 @@ handle_file_upload_batch <- function(uploads_df,
     sprintf("%d dosya arka planda işleniyor\U2026", length(plan$tasks)),
     duration = NULL,
     type = "message",
-    id = batch_id
+    id = batch_id,
+    session = session
   )
 
   commit_ctx <- list(
     session = session,
     session_uid = .file_pipeline_session_uid(session),
+    kimlik_nesli = session$userData$kimlik_nesli %||% 0L,
     user_id = effective_user_id,
     settings_data = settings_data,
     file_manager_data = file_manager_data,
@@ -503,14 +525,14 @@ handle_file_upload_batch <- function(uploads_df,
     user_id = effective_user_id,
     on_complete = function(results, ctx) chat_upload_commit_results(results, commit_ctx, ctx$batch_id),
     on_failure = function(message, tasks) {
-      try(removeNotification(batch_id), silent = TRUE)
+      try(removeNotification(batch_id, session = session), silent = TRUE)
       showToast(session, "Dosyalar işlenemedi. Lütfen tekrar deneyin.", "error")
     },
     batch_id = batch_id
   )
 
   if (identical(outcome$status, "rejected")) {
-    try(removeNotification(batch_id), silent = TRUE)
+    try(removeNotification(batch_id, session = session), silent = TRUE)
     showToast(session, "Yükleme kuyruğu dolu. Lütfen biraz sonra tekrar deneyin.", "warning")
   }
 

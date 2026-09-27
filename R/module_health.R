@@ -210,6 +210,16 @@ healthServer <- function(id, perf_tracker) {
       mergen_session_identity_signal(session)
     }
 
+    # Çevrimiçi sekmesi yalnız açıkken ve yöneticideyken 30 sn'de bir yenilenir;
+    # sayaç hem çizimi hem tooltip yeniden bağlamayı tetikler.
+    presence_tick <- reactiveVal(0L)
+    observe({
+      if (is.function(kimlik_sinyali)) kimlik_sinyali()
+      if (!identical(input$health_tabs, "presence") || !health_session_is_admin(session)) return()
+      invalidateLater(30000)
+      isolate(presence_tick(presence_tick() + 1L))
+    })
+
     output$health_tab_content <- renderUI({
       tab <- input$health_tabs %||% "overview"
       if (is.function(kimlik_sinyali)) kimlik_sinyali() else invalidateLater(5000)
@@ -221,7 +231,7 @@ healthServer <- function(id, perf_tracker) {
       # tetiklemez ve yalnızca açıkken 30 saniyede bir yenilenir.
       if (identical(tab, "presence")) {
         health_refresh_trigger()
-        invalidateLater(30000)
+        presence_tick()
         return(health_presence_ui(tryCatch(mb_presence_snapshot(), error = function(e) NULL)))
       }
       checks <- checks_data()
@@ -239,9 +249,12 @@ healthServer <- function(id, perf_tracker) {
     })
 
     observe({
-      # Sekme değişimi veya manuel/otomatik yenileme sonrasında yeni DOM için tooltip'leri tekrar bağla.
+      # Sekme değişimi, manuel/otomatik yenileme, kimlik değişimi ya da Çevrimiçi
+      # yenilemesiyle değişen DOM için tooltip'leri tekrar bağla.
       input$health_tabs
       health_refresh_trigger()
+      presence_tick()
+      if (is.function(kimlik_sinyali)) kimlik_sinyali()
       session$onFlushed(function() {
         session$sendCustomMessage("removeHealthTooltips", list())
         session$sendCustomMessage("initHealthTooltips", list())

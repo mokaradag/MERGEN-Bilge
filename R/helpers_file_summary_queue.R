@@ -30,9 +30,11 @@ file_summary_session_key <- function(session, sahip = NULL) {
 # Kuyruk doluysa ya da arka plan işçisi yoksa iş sessizce düşürülmez: FALSE
 # döner (`neden` özniteliği: "isci_yok" ya da "kuyruk_dolu") ve çağıran
 # kullanıcıyı uyarır. `sahip` kaydı yükleyen kullanıcıya bağlar; oturum başka
-# kullanıcıya geçerse kayıt bırakılır. `on_drop` kayıt başlatılamadığında ya da
-# bırakıldığında çağrılır (bildirim kapanır, kullanıcı uyarılır).
-file_summary_schedule <- function(start_fn, session = NULL, sahip = NULL, on_drop = NULL) {
+# kullanıcıya geçerse kayıt bırakılır. `gecerli` verilirse kaydın geçerliliğine
+# çağıranın kendi kuralı (sahiplik, dosya hâlâ bağlamda) karar verir. `on_drop`
+# kayıt başlatılamadığında ya da bırakıldığında çağrılır (bildirim kapanır).
+file_summary_schedule <- function(start_fn, session = NULL, sahip = NULL, on_drop = NULL,
+                                  gecerli = NULL) {
   file_summary_prune_closed()
   anahtar <- file_summary_session_key(session, sahip)
   bekleyen <- .FILE_SUMMARY_QUEUE$pending
@@ -50,7 +52,8 @@ file_summary_schedule <- function(start_fn, session = NULL, sahip = NULL, on_dro
     return(structure(FALSE, neden = neden))
   }
   .FILE_SUMMARY_QUEUE$pending[[length(bekleyen) + 1L]] <-
-    list(start = start_fn, session = session, anahtar = anahtar, sahip = sahip, on_drop = on_drop)
+    list(start = start_fn, session = session, anahtar = anahtar, sahip = sahip, on_drop = on_drop,
+         gecerli = gecerli)
   file_summary_pump()
   TRUE
 }
@@ -68,8 +71,11 @@ file_summary_session_alive <- function(session) {
 
 # Kayıt yalnız oturumu açık ve (sahibi varsa) oturumun canlı kimliği hâlâ o
 # sahipse geçerlidir; A -> B geçişinde A'nın işleri B'nin bütçesini tüketmez.
+# Çağıran kural verdiyse (hat: `.file_pipeline_owner_ok` + iş jetonu) o kullanılır;
+# kuyruk hattın kabul ettiği işi düşürmez, reddettiğini başlatmaz.
 file_summary_record_live <- function(kayit) {
   if (!file_summary_session_alive(kayit$session)) return(FALSE)
+  if (is.function(kayit$gecerli)) return(isTRUE(try(kayit$gecerli(), silent = TRUE)))
   sahip <- suppressWarnings(as.integer(kayit$sahip %||% NA_integer_))[1]
   if (length(sahip) != 1L || is.na(sahip) || sahip <= 0L) return(TRUE)
   canli <- tryCatch(kayit$session$userData$user_id, error = function(e) NULL)
@@ -81,16 +87,25 @@ file_summary_record_live <- function(kayit) {
   identical(as.integer(canli), sahip)
 }
 
-# Geçersizleşen bekleyen kayıtlar sıranın başına gelmeden bırakılır; sahip
-# değişimiyle bırakılan kayıt çağıranına bildirilir.
+file_summary_drop_record <- function(kayit, ileti) {
+  if (is.function(kayit$on_drop) && file_summary_session_alive(kayit$session)) {
+    try(kayit$on_drop(simpleError(ileti)), silent = TRUE)
+  }
+  invisible(NULL)
+}
+
+# Geçersizleşen bekleyen kayıtlar sıranın başına gelmeden bırakılır ve
+# çağıranına bildirilir (bildirim kapanır). Arka plan kapasitesi tümüyle
+# kaybolduysa (plan sıralıya düştü) bekleyenler de açıkça bırakılır; asılı kalmaz.
 file_summary_prune_closed <- function() {
   bekleyen <- .FILE_SUMMARY_QUEUE$pending
   canli <- vapply(bekleyen, file_summary_record_live, logical(1))
   .FILE_SUMMARY_QUEUE$pending <- bekleyen[canli]
-  for (kayit in bekleyen[!canli]) {
-    if (is.function(kayit$on_drop) && file_summary_session_alive(kayit$session)) {
-      try(kayit$on_drop(simpleError("Oturum kimliği değişti; özet iptal edildi.")), silent = TRUE)
-    }
+  for (kayit in bekleyen[!canli]) file_summary_drop_record(kayit, "Oturum kimliği ya da dosya değişti; özet iptal edildi.")
+  if (length(.FILE_SUMMARY_QUEUE$pending) && file_summary_effective_limit() < 1L) {
+    kalan <- .FILE_SUMMARY_QUEUE$pending
+    .FILE_SUMMARY_QUEUE$pending <- list()
+    for (kayit in kalan) file_summary_drop_record(kayit, "Arka plan özet kapasitesi kalmadı; özet atlandı.")
   }
   # Bekleyen ya da çalışan işi kalmayan anahtarın sıra kaydı tutulmaz (kuyruk
   # boşken de temizlenir; süreç boyunca büyümez).
@@ -140,12 +155,18 @@ file_summary_release_fn <- function(anahtar) {
 
 file_summary_pump <- function() {
   file_summary_prune_closed()
-  while (length(.FILE_SUMMARY_QUEUE$pending) > 0L && file_summary_has_capacity()) {
+  bos <- if (length(.FILE_SUMMARY_QUEUE$pending)) file_summary_free_workers() else NA_integer_
+  while (length(.FILE_SUMMARY_QUEUE$pending) > 0L && file_summary_has_capacity(bos)) {
     sira <- file_summary_next_index()
     kayit <- .FILE_SUMMARY_QUEUE$pending[[sira]]
     .FILE_SUMMARY_QUEUE$pending[[sira]] <- NULL
-    # Kapanan ya da sahibi değişen oturumun kuyruktaki özeti başlatılmaz.
-    if (!file_summary_record_live(kayit)) next
+    # Kapanan ya da sahibi değişen oturumun kuyruktaki özeti başlatılmaz;
+    # çağıranı bilgilendirilir (bildirim açık kalmaz).
+    if (!file_summary_record_live(kayit)) {
+      file_summary_drop_record(kayit, "Oturum kimliği ya da dosya değişti; özet iptal edildi.")
+      next
+    }
+    bos <- bos - 1L
 
     anahtar <- kayit$anahtar %||% ""
     .FILE_SUMMARY_QUEUE$active <- .FILE_SUMMARY_QUEUE$active + 1L
@@ -189,6 +210,9 @@ file_summary_pump <- function() {
 # onStart). Başarısız tarama önbelleğe girmez; bir kez yeniden denenir ve
 # sonuç günlüğe yazılır. Yalnız adlar önbelleğe girer; değerler her gönderimde tazedir.
 file_summary_warm_dependencies <- function(attempts = 2L) {
+  if (exists("file_summary_capacity_warnings", mode = "function")) {
+    for (uyari in file_summary_capacity_warnings()) cat("[FILE SUMMARY] UYARI:", uyari, "\n")
+  }
   if (!exists("file_summary_task_fn", mode = "function") ||
       !exists("worker_monitor_auto_globals", mode = "function")) {
     return(invisible(FALSE))

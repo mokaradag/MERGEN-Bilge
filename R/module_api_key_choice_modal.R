@@ -376,8 +376,10 @@ api_key_pref_user_tag <- function(username) {
   if (is.null(session) || is.null(etiket)) {
     return(invisible(FALSE))
   }
+  # `issuedAt` (ms) yazım sürümüdür: tarayıcı, başka sekmenin daha yeni
+  # tercihini geç gelen eski mesajla ezmez.
   mesaj <- list(settingsKey = "api_key_onboarding_suppressed", userTag = etiket, source = source,
-                nonce = as.character(nonce %||% "")[1])
+                nonce = as.character(nonce %||% "")[1], issuedAt = round(as.numeric(Sys.time()) * 1000))
   if (is.character(result_input) && length(result_input) == 1L && nzchar(result_input)) {
     mesaj$resultInputId <- result_input
   }

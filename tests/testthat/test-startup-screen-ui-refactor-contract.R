@@ -244,7 +244,8 @@ test_that("mod kartları klavyeyle seçilebilir ve hareket azaltma tercihine uyu
   # kapanış sıfırlaması yeniden açılışta iptal edilir; metrikler textContent ile yazılır.
   expect_true(grepl("window.CinematicCharacterStep.reset();", js, fixed = TRUE))
   expect_true(grepl("clearTimeout(_closeResetTimer);", js, fixed = TRUE))
-  expect_true(grepl("_confirmInProgress = false;\n  }", gsub("\r", "", adim), fixed = TRUE))
+  iptal <- regmatches(gsub("\r", "", adim), regexpr("function cancelPendingSelection\\(\\) \\{[\\s\\S]*?\\n  \\}", gsub("\r", "", adim), perl = TRUE))
+  expect_true(grepl("_confirmInProgress = false;", iptal, fixed = TRUE))
   expect_true(grepl("if (nesil !== _selectionGeneration) return;", adim, fixed = TRUE))
   expect_false(grepl("metricEl.innerHTML", adim, fixed = TRUE))
   # Dar ekranda portre sütunu aşmaz (genişlik sınırlı, oran genişlikten).
@@ -252,4 +253,41 @@ test_that("mod kartları klavyeyle seçilebilir ve hareket azaltma tercihine uyu
   # Başlık sarınca persona seçici daralabilir (sağdaki düğmeler kırpılmaz).
   expect_true(grepl("min-width: 0;", karakter, fixed = TRUE))
   expect_true(grepl("flex-shrink: 1;", karakter, fixed = TRUE))
+})
+
+test_that("Keşfet modalı kapanışta bekleyen seçimi iptal eder, odak ve gönderim güvenlidir", {
+  js <- gsub("\r", "", .startup_read_bytes(file.path(.startup_repo_root, "www", "js", "explore_cinematic.js")))
+  adim <- gsub("\r", "", .startup_read_bytes(file.path(.startup_repo_root, "www", "js", "explore_character_step.js")))
+  # Gecikmeli kesif geçişi ve odak/denge uygulaması modal nesliyle korunur.
+  expect_true(grepl("if (!modalStillOpen(kesifNesli)) return;", js, fixed = TRUE))
+  expect_true(grepl("if (!modalStillOpen(secimNesli)) return;", js, fixed = TRUE))
+  # Gönderim bayrağı yalnız başarılı setInputValue sonrası kalkar.
+  expect_false(grepl("modeSelectionSent = true;\n\n\t\t  if (typeof Shiny", js, fixed = TRUE))
+  expect_true(grepl("}, { priority: 'event' });\n\t\t\tmodeSelectionSent = true;", js, fixed = TRUE))
+  expect_true(grepl("}, { priority: 'event' });\n\t\t\t  selectionSent = true;", adim, fixed = TRUE))
+  # Odak modal içine taşınır ve Tab içeride tutulur.
+  expect_true(grepl("focusIntoModal(overlay);", js, fixed = TRUE))
+  expect_true(grepl("trapModalFocus(e);", js, fixed = TRUE))
+  # Kalıcı ayar yalnız seçim iptal edilemez olduğunda (nesil denetiminden sonra) yazılır.
+  onay <- regmatches(adim, regexpr("function confirmCharacterSelection\\(\\) \\{[\\s\\S]*?function onVideoComplete", adim, perl = TRUE))
+  expect_length(onay, 1L)
+  expect_false(grepl("localStorage.setItem", onay, fixed = TRUE))
+  tamam <- regmatches(adim, regexpr("function onVideoComplete\\(\\) \\{[\\s\\S]*?localStorage.setItem", adim, perl = TRUE))
+  expect_true(grepl("if (nesil !== _selectionGeneration) return;", tamam, fixed = TRUE))
+  # İptal sunucu ön hazırlığını geçersiz kılar; ön yükleme/portre zamanlayıcıları temizlenir.
+  expect_true(grepl("cancel: true", adim, fixed = TRUE))
+  expect_true(grepl("_preloadTimers.forEach(clearTimeout);", adim, fixed = TRUE))
+  expect_true(grepl("if (_selectedCharId !== charId) return;", adim, fixed = TRUE))
+  # Onay sürerken persona değişmez; hareket azaltmada metrikler kademesiz yazılır.
+  expect_true(grepl("if (_confirmInProgress) return;", adim, fixed = TRUE))
+  expect_true(grepl("if (azHareket) {\n          fill.style.width = yuzde + '%';", adim, fixed = TRUE))
+})
+
+test_that("mod seçim modalı diyalog semantiği taşır", {
+  html <- as.character(.startup_ui_env$.startup_mode_modal())
+  expect_true(grepl('role="dialog"', html, fixed = TRUE))
+  expect_true(grepl('aria-modal="true"', html, fixed = TRUE))
+  expect_true(grepl('aria-labelledby="mode-modal-title"', html, fixed = TRUE))
+  expect_true(grepl('id="mode-modal-title"', html, fixed = TRUE))
+  expect_true(grepl('aria-label="Kapat"', html, fixed = TRUE))
 })

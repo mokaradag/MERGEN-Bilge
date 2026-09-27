@@ -315,3 +315,18 @@ test_that("başlık onarımı yalnız çakışan konumları geri alır; önceden
   basliklar <- c(carsi, carsi_dogru, calisan)
   expect_identical(turkish_latin1_repair_headers(basliklar, basliklar), c(carsi, carsi_dogru, calisan_dogru))
 })
+
+test_that("ayrışık (NFD) Türkçe değer sütunun Latin-1 onarımını engellemez", {
+  testthat::skip_if_not_installed("stringi")
+  u <- function(...) intToUtf8(c(...))
+  # "çiçek" NFD: c + U+0327 (gerçek ı/ş/ğ yok; sütunun kanıtını değiştirmemeli)
+  nfd <- u(0x63, 0x0327, 0x69, 0x63, 0x0327, 0x65, 0x6B)
+  bozuk <- u(0x4D, 0xFC, 0xFE, 0x74, 0x65, 0x72, 0x69)  # Latin-1 goruntulu bozuk Turkce deger
+  nfd_bozuk <- u(0x4D, 0x75, 0x0308, 0xFE, 0x74, 0x65, 0x72, 0x69)  # ayni deger, NFD
+  sutun <- c(nfd, bozuk, nfd_bozuk)
+  expect_false(turkish_latin1_repair_scan(c(nfd, bozuk))[["foreign"]])
+  expect_true(turkish_latin1_repair_eligible(sutun))
+  onarilan <- repair_turkish_latin1_letters(c(bozuk, nfd_bozuk), eligible = TRUE)
+  expect_identical(onarilan[1], u(0x4D, 0xFC, 0x15F, 0x74, 0x65, 0x72, 0x69))
+  expect_identical(onarilan[2], u(0x4D, 0xFC, 0x15F, 0x74, 0x65, 0x72, 0x69))
+})

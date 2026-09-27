@@ -6,6 +6,22 @@
 
 .health_app_start_time <- Sys.time()
 
+# Dosya tek başına source() edildiğinde (manifest dışı akış) uç nokta kapsam
+# yardımcıları kardeş dosyadan aynı ortama yüklenir; aksi hâlde yapılandırılmış
+# uç nokta denetimi tanımsız fonksiyona düşüp "unknown" dönüyordu.
+if (!exists("health_endpoint_scope", mode = "function", envir = environment())) {
+  .health_kapsam_adaylar <- file.path(c(
+    unlist(lapply(rev(seq_len(sys.nframe())), function(i) {
+      of <- get0("ofile", envir = sys.frame(i), inherits = FALSE)
+      if (is.character(of) && length(of) == 1L && nzchar(of)) dirname(of)
+    })),
+    file.path(getwd(), "R"), file.path(Sys.getenv("MERGEN_REPO_ROOT", "."), "R")
+  ), "helpers_health_endpoint_scope.R")
+  .health_kapsam_yol <- .health_kapsam_adaylar[file.exists(.health_kapsam_adaylar)][1]
+  if (!is.na(.health_kapsam_yol)) source(.health_kapsam_yol, encoding = "UTF-8", local = environment())
+  rm(list = c(".health_kapsam_adaylar", ".health_kapsam_yol"))
+}
+
 health_check_app_boot <- function() {
   health_result(
     id = "app.boot",
@@ -194,7 +210,8 @@ health_check_http_endpoint <- function(id, label, endpoint, configured_required 
     } else {
       httr::config(followlocation = 0L)
     }
-    res <- try(httr::GET(health_probe_url(endpoint), httr::timeout(timeout_sec), ayar), silent = TRUE)
+    res <- try(httr::GET(kapsam$hedef %||% health_probe_url(endpoint), httr::timeout(timeout_sec), ayar),
+               silent = TRUE)
     if (inherits(res, "try-error")) {
       return(health_result(id, label, "warning", endpoint, "Uç noktaya erişilemedi veya timeout oluştu.", health_ms(start), remediation = "Servisin çalıştığını ve VM firewall ayarlarını kontrol edin."))
     }

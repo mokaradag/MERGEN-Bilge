@@ -29,6 +29,21 @@
   // tamamlanma çağrısı seçimi uygulamaz.
   var _selectionGeneration = 0;
 
+  // Sıradaki video ön yükleme istekleri ve gecikmeli portre güncellemesi;
+  // adım sıfırlanınca/persona değişince iptal edilir.
+  var _preloadTimers = [];
+  var _portraitTimer = null;
+
+  // Onay sürerken persona düğmeleri kilitlenir: seçim videosunun tamamlanma
+  // çağrısı başka personanın yüklenmesiyle silinmez.
+  function setPersonaButtonsLocked(kilitli) {
+    var buttons = document.querySelectorAll('.cinematic-char-btn');
+    Array.prototype.forEach.call(buttons, function(btn) {
+      btn.disabled = !!kilitli;
+      btn.setAttribute('aria-disabled', kilitli ? 'true' : 'false');
+    });
+  }
+
   
   // (Kaldırıldı: Eski 8 saniyelik ek bekleme gereksiz gecikmeye neden oluyordu)
 
@@ -109,12 +124,13 @@
       // Halihazırda seçili karakter selectCharacterInModal tarafından zaten istendi
       if (ch.id === _selectedCharId) return;
       if (!_characterVideoData[ch.id]) {
-        setTimeout(function() {
+        _preloadTimers.push(setTimeout(function() {
+          if (_currentStep !== 2) return;
           Shiny.setInputValue('explore_request_char_video', {
             character: ch.id,
             timestamp: Date.now()
           }, { priority: 'event' });
-        }, delay);
+        }, delay));
         delay += 80; // Ardışık isteklerin çakışmasını önlemek için küçük aralık
       }
     });
@@ -161,10 +177,26 @@
   // ============================================================
   // MODALI KAPAT (2. ADIMDAN)
   // ============================================================
-  // Süren seçim dizisini iptal eder: onay kilidi bırakılır, geç tamamlanma yok sayılır.
+  // Süren seçim dizisini iptal eder: onay kilidi bırakılır, geç tamamlanma yok
+  // sayılır; sunucudaki karşılama ön hazırlığı da geçersiz kılınır. Sıradaki
+  // ön yükleme istekleri ve portre güncellemesi iptal edilir.
   function cancelPendingSelection() {
     _selectionGeneration += 1;
+    if (_confirmInProgress && typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+      Shiny.setInputValue('explore_preheat_initial_greeting', {
+        mode: 'kesif',
+        cancel: true,
+        timestamp: Date.now()
+      }, { priority: 'event' });
+    }
     _confirmInProgress = false;
+    setPersonaButtonsLocked(false);
+    _preloadTimers.forEach(clearTimeout);
+    _preloadTimers = [];
+    if (_portraitTimer) {
+      clearTimeout(_portraitTimer);
+      _portraitTimer = null;
+    }
   }
 
   // 2. adım durumunu modalı kapatmadan temizler (video, DOM, adım göstergesi,
@@ -246,15 +278,23 @@
     // Hareket azaltma tercihinde portre gizlenip gecikmeyle gösterilmez.
     var azHareket = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     var img = document.getElementById('cinematic-char-preview-img');
+    if (_portraitTimer) {
+      clearTimeout(_portraitTimer);
+      _portraitTimer = null;
+    }
     if (img) {
       if (animate !== false && !azHareket) {
         img.style.opacity = '0';
-        setTimeout(function() {
+        _portraitTimer = setTimeout(function() {
+          _portraitTimer = null;
+          // Bu arada başka persona seçildiyse eski portre geri yüklenmez.
+          if (_selectedCharId !== charId) return;
           img.src = charData.image;
           img.style.opacity = '1';
         }, 250);
       } else {
         img.src = charData.image;
+        img.style.opacity = '1';
       }
     }
 
@@ -321,11 +361,16 @@
         metricEl.appendChild(valueEl);
         metricsContainer.appendChild(metricEl);
 
-        // Çubuk animasyonu (yalnız sayısal yüzde uygulanır)
+        // Çubuk animasyonu (yalnız sayısal yüzde uygulanır); hareket azaltma
+        // tercihinde kademeli açılış yapılmaz, değer hemen yazılır.
         var yuzde = Math.max(0, Math.min(100, Number(metric.value) || 0));
-        setTimeout(function() {
+        if (azHareket) {
           fill.style.width = yuzde + '%';
-        }, 100 + idx * 80);
+        } else {
+          setTimeout(function() {
+            fill.style.width = yuzde + '%';
+          }, 100 + idx * 80);
+        }
       });
     }
 
@@ -349,17 +394,10 @@
     if (!_selectedCharId || _confirmInProgress) return;
     _confirmInProgress = true;
 
+    setPersonaButtonsLocked(true);
+
     // Seçili karakter ID'sini yakala (kapanış sırasında erişim için)
     var selectedChar = _selectedCharId;
-
-    // localStorage'a hemen kaydet
-    try {
-      var raw = localStorage.getItem('mergen_settings');
-      var settings = raw ? JSON.parse(raw) : {};
-      settings.experience_mode = 'kesif';
-      settings.selected_character = selectedChar;
-      localStorage.setItem('mergen_settings', JSON.stringify(settings));
-    } catch(e) {}
 
     // Karşılama konuşmasını seçim videosu oynarken ön hazırla
     if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
@@ -378,6 +416,18 @@
     function onVideoComplete() {
       // Kullanıcı bu arada geri döndü ya da modalı kapattıysa seçim uygulanmaz.
       if (nesil !== _selectionGeneration) return;
+      setPersonaButtonsLocked(false);
+
+      // Seçim ancak iptal edilemez olduğunda kalıcı yazılır; geri/kapat ile
+      // iptal edilen seçim sonraki ziyarette uygulanmaz.
+      try {
+        var raw = localStorage.getItem('mergen_settings');
+        var settings = raw ? JSON.parse(raw) : {};
+        settings.experience_mode = 'kesif';
+        settings.selected_character = selectedChar;
+        localStorage.setItem('mergen_settings', JSON.stringify(settings));
+      } catch(e) {}
+
       // Adımı hemen sıfırla: geç gelen ön yükleme yanıtlarının
       // loadCharacter çağırmasını engeller (_currentStep === 2 koruması)
       _currentStep = 1;
@@ -407,17 +457,21 @@
 		setTimeout(function() {
 		  var selectionSent = false;
 
+		  // Bayrak yalnız olay gerçekten gönderilince kalkar; Shiny o an hazır
+		  // değilse yedek çağrı (giriş ekranı kapanışı) yeniden dener.
 		  var sendSelectionToShiny = function() {
 			if (selectionSent) return;
-			selectionSent = true;
-
-			if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+			if (typeof Shiny === 'undefined' || !Shiny.setInputValue) return;
+			try {
 			  Shiny.setInputValue('selected_experience_mode', {
 				mode: 'kesif',
 				character: selectedChar,
 				source: 'welcome_character_step',
 				timestamp: Date.now()
 			  }, { priority: 'event' });
+			  selectionSent = true;
+			} catch (e) {
+			  return;
 			}
 
 			// Kilidi serbest bırak
@@ -453,6 +507,8 @@
     // Karakter butonlarına tıklama
     $(document).on('click', '.cinematic-char-btn', function() {
       var charId = $(this).attr('data-character');
+      // Seçim videosu sürerken persona değişmez (tamamlanma çağrısı korunur).
+      if (_confirmInProgress) return;
       if (charId) {
         selectCharacterInModal(charId, true);
       }

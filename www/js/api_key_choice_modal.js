@@ -33,6 +33,11 @@
   // Eski ortak kayıtlar (tarayıcı geneli bayrak ve kullanıcı haritası).
   var LEGACY_BY_USER_KEY = "api_key_onboarding_suppressed_by_user";
   var SETTINGS_LS = "mergen_settings";
+  // Her kullanıcı kaydının yanında yazım sürümü (sunucu saatine göre ms)
+  // tutulur: localStorage tüm sekmelerce paylaşılır; başka sekmenin geç gelen
+  // eski yazımı daha yeni tercihi ezmez.
+  var VERSION_SUFFIX = ".t";
+  var serverOffset = 0;
 
   // Shiny custom message handler'ları dosya yüklenirken kaydolur.
   // Handler kayıt hatası veya erken mesaj durumunda kontrol yüzeyi
@@ -94,12 +99,26 @@
     }
   }
 
+  function readVersion(tag) {
+    try {
+      var v = Number(window.localStorage.getItem(SUPPRESS_USER_PREFIX + tag + VERSION_SUFFIX));
+      return isFinite(v) ? v : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
   // Yalnız bu kullanıcının anahtarı yazılır. Yazımın gerçekten kalıcı olduğu
   // geri okunarak doğrulanır (ör. dolu ya da kapalı depolama). Ekranı yeniden
-  // açmak hatırlanan kurum seçimini de kaldırır.
-  function writePref(deger, etiket) {
+  // açmak hatırlanan kurum seçimini de kaldırır. `surum` kayıttakinden eskiyse
+  // yazım reddedilir; verilmezse bu sekmenin anlık (sunucu saatine göre) zamanı.
+  function writePref(deger, etiket, surum) {
     var tag = typeof etiket === "string" ? etiket : currentUserTag();
     if (!tag) {
+      return false;
+    }
+    var yeni = typeof surum === "number" && isFinite(surum) ? surum : Date.now() + serverOffset;
+    if (yeni < readVersion(tag)) {
       return false;
     }
     try {
@@ -108,6 +127,7 @@
       } else {
         window.localStorage.removeItem(SUPPRESS_USER_PREFIX + tag);
       }
+      window.localStorage.setItem(SUPPRESS_USER_PREFIX + tag + VERSION_SUFFIX, String(yeni));
       dropLegacyFlags();
       return readPref(tag) === deger;
     } catch (e) {
@@ -126,14 +146,17 @@
   // hatırlanan kurum seçimi bastırma korunarak kaldırılır; "clear": kullanıcı
   // "bir daha gösterme" işaretini kaldırdı, tercih silinir. Yazım yalnız
   // verilen etiketin kaydına yapılır.
-  function writeSource(source, etiket) {
+  function writeSource(source, etiket, surum) {
     if (source === "personal") {
-      return rememberedSource(etiket) !== "default" || writePref("1", etiket);
+      if (rememberedSource(etiket) !== "default") {
+        return writePref(readPref(etiket), etiket, surum);
+      }
+      return writePref("1", etiket, surum);
     }
     if (source === "clear") {
-      return writePref("", etiket);
+      return writePref("", etiket, surum);
     }
-    return writePref("default", etiket);
+    return writePref("default", etiket, surum);
   }
 
   // Sunucuya güncel bastırma bayrağını etiketiyle bildir; sunucu yalnız
@@ -291,9 +314,9 @@
       }
       window.MergenApiKeyChoice._modalNonce =
         message && typeof message.nonce === "string" ? message.nonce : "";
-      if (message && typeof message.userTag === "string" && message.userTag) {
-        window.MergenApiKeyChoice._userTag = message.userTag;
-      }
+      // Etiketsiz Init önceki kullanıcının etiketini korumaz.
+      window.MergenApiKeyChoice._userTag =
+        message && typeof message.userTag === "string" ? message.userTag : "";
 
       var tries = 0;
       var timer = setInterval(function () {
@@ -337,7 +360,11 @@
       // Geç gelen mesaj etkin tarayıcı kimliğini değiştirmez; yazım yalnız
       // mesajın etiketine yapılır, eşitleme etiket etkin kullanıcıya aitse yapılır.
       var kaynak = message.source === "personal" || message.source === "clear" ? message.source : "default";
-      var kaydedildi = writeSource(kaynak, message.userTag);
+      var surum = typeof message.issuedAt === "number" && isFinite(message.issuedAt) ? message.issuedAt : null;
+      if (surum !== null) {
+        serverOffset = surum - Date.now();
+      }
+      var kaydedildi = writeSource(kaynak, message.userTag, surum === null ? undefined : surum);
       if (message.userTag === currentUserTag()) {
         reportToServer();
         syncSettingsToggle();

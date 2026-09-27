@@ -146,7 +146,13 @@ mergen_session_owner_transition <- function(user_data, eski_uid, yeni_uid, yetki
     }
     for (anahtar in anahtarlar) user_data[[anahtar]] <- list()
     user_data$ai_api_key <- NULL
+    # Önceki sahibin dosya adı/iş jetonu kayıtları yeni sahibe geçmez; süren
+    # işler aşağıdaki kancalarla durdurulur.
+    user_data$file_summary_jobs <- list()
   }
+  # Kimlik nesli her sahip değişiminde ve kimlik kaybında artar: kimliksiz
+  # başlayan arka plan işi 0 -> A -> 0 sonrasında "hâlâ kimliksiz" sayılmaz.
+  if (degisti || kayip) user_data$kimlik_nesli <- as.integer(user_data$kimlik_nesli %||% 0L) + 1L
   kancalar <- user_data$kimlik_kancalari
   if ((degisti || kayip) && is.environment(kancalar)) {
     neden <- if (degisti) "sahip_degisti" else "kimlik_kaybi"

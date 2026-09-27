@@ -100,6 +100,7 @@ performanceStatsServer <- function(id, current_user_id_provider) {
 
       user_ids <- vapply(tokens, function(tok) {
         entry <- tryCatch(active_sessions_env[[tok]], error = function(e) NULL)
+        if (exists("mb_presence_uid", mode = "function")) return(mb_presence_uid(entry$user_id))
         uid <- suppressWarnings(as.integer(entry$user_id %||% 0L))
         if (is.na(uid)) uid <- 0L
         uid
@@ -108,8 +109,11 @@ performanceStatsServer <- function(id, current_user_id_provider) {
       as.integer(length(unique(user_ids[user_ids > 0])))
     }
 
-    touch_session <- function(user_id = NULL) {
-      uid <- suppressWarnings(as.integer(user_id %||% get_current_user_id()))
+    touch_session <- function(user_id = NULL, zorla = FALSE) {
+      # Kimlik kısaltılmadan kanonik doğrulayıcıdan geçer (7.9 -> 7 olmaz).
+      ham_uid <- user_id %||% get_current_user_id()
+      uid <- if (exists("mb_presence_uid", mode = "function")) mb_presence_uid(ham_uid) else
+        suppressWarnings(as.integer(ham_uid))
       if (is.na(uid)) uid <- 0L
       # SSO süresi dolunca oturum kimliği açıkça 0 olur ama kullanıcı kimliği
       # sağlayıcısı son bilinen kimliği döndürebilir; nabız o kullanıcıyı canlı
@@ -126,7 +130,9 @@ performanceStatsServer <- function(id, current_user_id_provider) {
       }
 
       stats$active_users <- count_active_users()
-      if (exists("mb_presence_publish", mode = "function")) try(mb_presence_publish(active_sessions_env), silent = TRUE)
+      if (exists("mb_presence_publish", mode = "function")) {
+        try(mb_presence_publish(active_sessions_env, zorla = zorla), silent = TRUE)
+      }
       invisible(NULL)
     }
 
@@ -192,7 +198,7 @@ performanceStatsServer <- function(id, current_user_id_provider) {
     }
     observe({
       if (is.function(kimlik_sinyali)) kimlik_sinyali()
-      isolate(touch_session(get_current_user_id()))
+      isolate(touch_session(get_current_user_id(), zorla = TRUE))
     })
 
     # Oturum yaşadığı sürece heartbeat gönder
@@ -207,7 +213,9 @@ performanceStatsServer <- function(id, current_user_id_provider) {
         try(mb_presence_record_end(session$token, active_sessions_env[[session$token]]), silent = TRUE)
       }
       try(rm(list = session$token, envir = active_sessions_env), silent = TRUE)
-      if (exists("mb_presence_publish", mode = "function")) try(mb_presence_publish(active_sessions_env), silent = TRUE)
+      if (exists("mb_presence_publish", mode = "function")) {
+        try(mb_presence_publish(active_sessions_env, zorla = TRUE), silent = TRUE)
+      }
     })
 
     # --- BAŞARILI İSTEK TAKİBİ ---

@@ -342,3 +342,25 @@ test_that("KULLANICI iptali hala 'cancelled' olarak raporlanir", {
                                stop_check = function() TRUE)
   expect_identical(sonuc$status, "cancelled")
 })
+
+test_that("XLSX hazırlığı (onarım taraması, yüzde, dilimleme) iptali ve son tarihi gözler", {
+  env <- .pk_exps_env()
+  veri <- .pk_exps_frame(n = 10L)
+  dizin <- file.path(tempdir(), paste0("pk_exps_k_", as.integer(runif(1, 1, 1e9))))
+  dir.create(dizin, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(dizin, recursive = TRUE, force = TRUE), add = TRUE)
+  hazirlik <- 0L
+  asil <- env$pk_export_prepare_percent
+  env$pk_export_prepare_percent <- function(...) { hazirlik <<- hazirlik + 1L; asil(...) }
+  cagri <- 0L
+  # İlk yoklama geçer, hazırlık sırasındaki yoklama durdurur.
+  sonuc <- env$pk_export_build(veri, base_name = "sentetik", dir = dizin,
+                               stop_check = function() { cagri <<- cagri + 1L; cagri > 1L })
+  expect_identical(sonuc$status, "cancelled")
+  expect_identical(hazirlik, 0L)
+  expect_length(list.files(dizin, pattern = "\\.xlsx$"), 0L)
+  # Hazırlık bütçe içinde kalırsa normal sonuç üretilir.
+  sonuc2 <- env$pk_export_build(veri, base_name = "sentetik", dir = dizin)
+  expect_true(sonuc2$status %in% c("ok", "fallback"))
+  expect_gte(hazirlik, 1L)
+})

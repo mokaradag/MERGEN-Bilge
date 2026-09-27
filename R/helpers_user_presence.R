@@ -47,9 +47,18 @@ mb_presence_profile <- function(session) {
        mudurluk = al("mudurluk", "Mudurluk"))
 }
 
+# Kimlik yalnız TAM pozitif tamsayıdır (kanonik kimlik sözleşmesi): `7.9`,
+# `"1e2"` ya da `TRUE` gerçek bir kullanıcıya yuvarlanmaz; 0 yer tutucudur.
 mb_presence_uid <- function(x) {
-  deger <- suppressWarnings(as.integer(x %||% 0L)[1])
-  if (length(deger) != 1L || is.na(deger) || deger < 0L) 0L else deger
+  if (is.null(x) || length(x) != 1L || is.na(x)) return(0L)
+  if (is.character(x)) {
+    x <- trimws(x)
+    x <- if (grepl("^[0-9]+$", x)) suppressWarnings(as.numeric(x)) else NA_real_
+  }
+  if (!is.numeric(x) || !is.finite(x) || x <= 0 || x != trunc(x) || x > .Machine$integer.max) {
+    return(0L)
+  }
+  as.integer(x)
 }
 
 # Nabız kaydı: ilk bağlantı anı korunur, boş profil önceki dolu profili ezmez.
@@ -176,7 +185,7 @@ mb_presence_session_rows <- function(active_env, history_env, now = Sys.time()) 
     }
     durum <- if (bitti) "ayrildi" else if (isTRUE(yas <= pencere$online)) "cevrimici" else "sessiz"
     p <- e$profile %||% list()
-    data.frame(user_id = suppressWarnings(as.integer(e$user_id %||% 0L)),
+    data.frame(user_id = mb_presence_uid(e$user_id),
                status = durum, started_at = as.numeric(e$started_at %||% son),
                last_seen = if (bitti) bitis else son,
                full_name = p$full_name %||% "", username = p$username %||% "",

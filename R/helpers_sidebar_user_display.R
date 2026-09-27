@@ -90,11 +90,11 @@ mb_sidebar_user_avatar_url <- function(user_id) {
 # Kurum içi fotoğraf adresi kodda tutulmaz; .Renviron'daki
 # MERGEN_USER_AVATAR_URL_TEMPLATE okunur (ör. https://foto.kurum/{user_id}.jpg).
 # {user_id} yoksa değer taban adres sayılır ve "<id>.jpg" eklenir. Yalnızca
-# http(s) ya da kök-göreli yol kabul edilir. Tanımsız/geçersiz şablonda boş dize
+# http(s) ya da kök-göreli yol (yalnız "/" dahil; "//host" değil) kabul edilir. Tanımsız/geçersiz şablonda boş dize
 # döner: istek üretilmez, baş harf/simge yedeği doğrudan gösterilir.
 mb_user_avatar_url_template <- function() {
   sablon <- trimws(Sys.getenv("MERGEN_USER_AVATAR_URL_TEMPLATE", ""))
-  if (!nzchar(sablon) || !grepl("^(https?://[^[:space:]]+|/[^/[:space:]][^[:space:]]*)$", sablon, perl = TRUE)) {
+  if (!nzchar(sablon) || !grepl("^(https?://[^[:space:]]+|/|/[^/[:space:]][^[:space:]]*)$", sablon, perl = TRUE)) {
     return("")
   }
   if (!grepl("{user_id}", sablon, fixed = TRUE)) {

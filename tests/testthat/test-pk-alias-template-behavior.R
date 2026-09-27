@@ -33,9 +33,12 @@
 
 .alias_sablon_satirlari <- function() {
   yol <- .alias_sablon_yolu()
-  metin <- rawToChar(readBin(yol, what = "raw", n = file.info(yol)$size))
+  bayt <- readBin(yol, what = "raw", n = file.info(yol)$size)
+  if (length(bayt) >= 3L && identical(bayt[1:3], as.raw(c(0xEF, 0xBB, 0xBF)))) bayt <- bayt[-(1:3)]
+  metin <- rawToChar(bayt)
   Encoding(metin) <- "UTF-8"
-  strsplit(metin, "\n", fixed = TRUE)[[1]]
+  # Windows VM'deki core.autocrlf kopyasında satırlar CRLF ile biter; CR parse'a kalmaz.
+  strsplit(metin, "\r\n|\r|\n")[[1]]
 }
 
 test_that("alias şablonu CP1254'te temsil edilebilir ve olduğu gibi boş kayıt üretir", {
@@ -96,4 +99,18 @@ test_that("şablon yardımcısı adsız alias grubunu açık hatayla reddeder", 
   satirlar <- .alias_sablon_satirlari()
   bozuk <- sub("^(\\s*)# \"Altyap[^\"]*\"\\s*= (c\\(.*)$", "\\1\\2", satirlar, perl = TRUE)
   expect_error(.alias_sablon_calistir(bozuk), "alias_haritasi")
+})
+
+test_that("şablon CRLF ya da tek CR satır sonlu kopyada da ayrıştırılır", {
+  satirlar <- .alias_sablon_satirlari()
+  for (ayirici in c("\r\n", "\r")) {
+    gecici <- tempfile(fileext = ".R")
+    writeBin(charToRaw(enc2utf8(paste(satirlar, collapse = ayirici))), gecici)
+    bayt <- readBin(gecici, what = "raw", n = file.info(gecici)$size)
+    metin <- rawToChar(bayt)
+    Encoding(metin) <- "UTF-8"
+    expect_identical(.alias_sablon_calistir(strsplit(metin, "\r\n|\r|\n")[[1]]), list())
+    expect_length(parse_r_file_utf8(gecici), length(parse_r_file_utf8(.alias_sablon_yolu())))
+    unlink(gecici)
+  }
 })

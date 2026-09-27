@@ -93,11 +93,20 @@ mergen_workers_rscript_path <- function() {
   "Rscript"
 }
 
+# Cevrimici (presence) paylasim dizini: operator degeri ya da bu baslaticinin
+# yerel gecici dizini (her calistirmada ayri; agir/UNC paylasim kullanilmaz).
+mergen_workers_presence_dir <- function() {
+  acik <- trimws(Sys.getenv("MERGEN_PRESENCE_SHARED_DIR", unset = ""))
+  if (nzchar(acik)) return(acik)
+  file.path(normalizePath(tempdir(), winslash = "/", mustWork = FALSE), "presence")
+}
+
 # Her worker icin baslatma plani (port + env + komut). LAUNCH YAPMAZ; saf veri.
 mergen_worker_launch_plan <- function(base = mergen_worker_base_port(),
                                       count = mergen_worker_count(),
                                       host = Sys.getenv("MERGEN_HOST", "0.0.0.0"),
-                                      repo_root = mergen_workers_repo_root()) {
+                                      repo_root = mergen_workers_repo_root(),
+                                      presence_dir = mergen_workers_presence_dir()) {
   ports <- mergen_worker_ports(base, count)
   rscript <- mergen_workers_rscript_path()
   lapply(seq_along(ports), function(i) {
@@ -115,7 +124,10 @@ mergen_worker_launch_plan <- function(base = mergen_worker_base_port(),
         # Cocuk surec paylasilan kaynaklari (log dosyasi, ozet kapasitesi)
         # worker sayisina gore bolusur.
         MERGEN_APP_WORKER_COUNT = as.character(length(ports)),
-        MERGEN_APP_WORKER_INDEX = as.character(i)
+        MERGEN_APP_WORKER_INDEX = as.character(i),
+        # Cevrimici paylasimi makineye YEREL dizinde (UNC paylasimi olay
+        # dongusunu bloklamaz).
+        MERGEN_PRESENCE_SHARED_DIR = presence_dir
       )
     )
   })
@@ -151,34 +163,49 @@ mergen_start_workers <- function(dry_run = FALSE) {
     stop("tools/run_mergen_workers.R icin 'processx' paketi gereklidir.", call. = FALSE)
   }
 
-  procs <- list()
-  for (spec in plan) {
+  # Cocuk ciktisi baslaticinin konsoluna aktarilir: okunmayan boru dolunca
+  # worker'in sonraki yazimi bloklanir ve istek islemeyi durdururdu.
+  start_one <- function(spec) {
     p <- processx::process$new(
       command = spec$command,
       args = spec$args,
       wd = spec$workdir,
       env = c("current", spec$env),
-      stdout = "|", stderr = "|",
+      stdout = "", stderr = "",
       supervise = TRUE
     )
-    procs[[length(procs) + 1L]] <- list(spec = spec, proc = p)
     cat(sprintf("[WORKER] baslatildi port=%d pid=%s\n", spec$port,
                 tryCatch(as.character(p$get_pid()), error = function(e) "?")))
+    p
   }
 
-  # Tum worker'lar canli kaldigi surece bekle; biri olurse hepsini kapat (yuk-
-  # dengeleyici saglik kontrolleri yine de olu worker'i havuzdan cikarir, ancak
-  # supervisor olarak temiz kapanis tercih edilir).
+  procs <- lapply(plan, function(spec) list(spec = spec, proc = start_one(spec), restarts = 0L))
+
   on.exit({
     for (pw in procs) try(pw$proc$kill(), silent = TRUE)
   }, add = TRUE)
 
+  # Olen worker yeniden baslatilir; boylece ozet kapasitesi/kuyruk paylari
+  # (MERGEN_APP_WORKER_COUNT) canli surec kumesiyle uyumlu kalir. Yeniden
+  # baslatma butcesi biterse tum kume kapatilir (yarim kume paylari yanlis
+  # boler).
+  max_restarts <- mergen_workers_env_int("MERGEN_WORKERS_MAX_RESTARTS", 5L)
   repeat {
-    alive <- vapply(procs, function(pw) tryCatch(pw$proc$is_alive(), error = function(e) FALSE), logical(1))
-    if (!any(alive)) break
+    for (k in seq_along(procs)) {
+      alive <- tryCatch(procs[[k]]$proc$is_alive(), error = function(e) FALSE)
+      if (alive) next
+      if (procs[[k]]$restarts >= max_restarts) {
+        cat(sprintf("[WORKER] port=%d yeniden baslatma butcesi bitti; tum worker'lar kapatiliyor.\n",
+                    procs[[k]]$spec$port))
+        return(invisible(procs))
+      }
+      procs[[k]]$restarts <- procs[[k]]$restarts + 1L
+      cat(sprintf("[WORKER] port=%d durdu; yeniden baslatiliyor (%d/%d).\n",
+                  procs[[k]]$spec$port, procs[[k]]$restarts, max_restarts))
+      procs[[k]]$proc <- start_one(procs[[k]]$spec)
+    }
     Sys.sleep(2)
   }
-  invisible(procs)
 }
 
 # --- Otomatik baslatma kapisi ---

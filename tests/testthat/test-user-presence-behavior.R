@@ -414,3 +414,99 @@ test_that("kimlik sinyali nabız beklemeden varlık kaydını günceller", {
   expect_identical(sonuc$sonra, 0L)
   expect_true(paste0(sonuc$token, "#5") %in% ls(gecmis))
 })
+
+test_that("varlık kimliği kayıplı değerleri gerçek kullanıcıya yuvarlamaz", {
+  env <- .presence_env()
+  expect_identical(env$mb_presence_uid(7L), 7L)
+  expect_identical(env$mb_presence_uid("7"), 7L)
+  expect_identical(env$mb_presence_uid(7), 7L)
+  for (x in list(7.9, "7.9", "1e2", TRUE, -3L, NA, NULL, c(1L, 2L), "abc")) {
+    expect_identical(env$mb_presence_uid(x), 0L)
+  }
+  satir <- env$mb_presence_session_rows(list2env(list(t = list(user_id = 7.9, last_seen = Sys.time()))),
+                                        new.env())
+  expect_identical(satir$user_id, 0L)
+})
+
+test_that("varsayılan paylaşılan varlık dizini makineye yereldir (log/UNC dizini değil)", {
+  env <- .presence_env()
+  withr::local_envvar(c(MERGEN_PRESENCE_SHARED_DIR = "", MERGEN_APP_WORKER_COUNT = "3"))
+  dizin <- env$mb_presence_shared_dir()
+  expect_identical(normalizePath(dirname(dizin), mustWork = FALSE),
+                   normalizePath(dirname(tempdir()), mustWork = FALSE))
+})
+
+test_that("varlık yayını: zorunlu yayın aralığı atlar, başarısız yayın aralığı tüketmez", {
+  env <- .presence_env()
+  dizin <- withr::local_tempdir()
+  withr::local_envvar(c(MERGEN_PRESENCE_SHARED_DIR = dizin))
+  durum <- env$mb_presence_env(".mergen_presence_publish")
+  rm(list = ls(durum, all.names = TRUE), envir = durum)
+  withr::defer(rm(list = ls(durum, all.names = TRUE), envir = durum))
+  now <- Sys.time()
+  expect_true(env$mb_presence_publish(new.env(), new.env(), now))
+  expect_false(env$mb_presence_publish(new.env(), new.env(), now + 1))
+  expect_true(env$mb_presence_publish(new.env(), new.env(), now + 1, zorla = TRUE))
+
+  # Kaydetme hatası: geçici dosya kalmaz, sonraki deneme 30 sn beklemez.
+  env$saveRDS <- function(object, file, ...) {
+    writeLines("yarim", file)
+    stop("paylaşım koptu")
+  }
+  expect_false(env$mb_presence_publish(new.env(), new.env(), now + 60))
+  expect_length(list.files(dizin, pattern = "\\.tmp$"), 0L)
+  rm("saveRDS", envir = env)
+  expect_false(env$mb_presence_publish(new.env(), new.env(), now + 62))
+  expect_true(env$mb_presence_publish(new.env(), new.env(), now + 66))
+})
+
+test_that("Windows yedek yolu: yeni anlık görüntü konamazsa son sağlam dosya korunur", {
+  env <- .presence_env()
+  dizin <- withr::local_tempdir()
+  withr::local_envvar(c(MERGEN_PRESENCE_SHARED_DIR = dizin))
+  hedef <- file.path(dizin, paste0("presence_", env$mb_presence_process_id(), ".rds"))
+  saveRDS("eski", hedef)
+  cagri <- 0L
+  env$file.rename <- function(from, to) {
+    cagri <<- cagri + 1L
+    if (cagri %in% c(1L, 3L)) return(FALSE)
+    base::file.rename(from, to)
+  }
+  expect_false(env$mb_presence_publish(new.env(), new.env(), Sys.time(), zorla = TRUE))
+  expect_identical(readRDS(hedef), "eski")
+  expect_identical(sort(list.files(dizin)), basename(hedef))
+})
+
+test_that("bozuk, şema dışı ya da gelecekteki uzak anlık görüntü yalnız kendisi atlanır", {
+  env <- .presence_env()
+  dizin <- withr::local_tempdir()
+  withr::local_envvar(c(MERGEN_PRESENCE_SHARED_DIR = dizin))
+  onbellek <- env$mb_presence_env(".mergen_presence_remote_cache")
+  rm(list = ls(onbellek, all.names = TRUE), envir = onbellek)
+  now <- Sys.time()
+  kaynak <- new.env()
+  kaynak$u <- list(user_id = 31L, last_seen = now - 10, started_at = now - 60, profile = list())
+  iyi <- env$mb_presence_session_rows(kaynak, new.env(), now)
+  saveRDS(list(generated_at = as.numeric(now) - 5, rows = iyi), file.path(dizin, "presence_iyi.rds"))
+  saveRDS(list(generated_at = as.numeric(now) - 5, rows = data.frame(x = 1)),
+          file.path(dizin, "presence_sema.rds"))
+  writeBin(as.raw(1:40), file.path(dizin, "presence_bozuk.rds"))
+  saveRDS(list(generated_at = as.numeric(now) + 7200, rows = transform(iyi, user_id = 32L)),
+          file.path(dizin, "presence_gelecek.rds"))
+  gelecek_satir <- transform(iyi, user_id = 33L, last_seen = as.numeric(now) + 7200)
+  saveRDS(list(generated_at = as.numeric(now) - 5, rows = gelecek_satir),
+          file.path(dizin, "presence_gelecek_satir.rds"))
+
+  uzak <- env$mb_presence_remote_rows(now)
+  expect_identical(uzak$user_id, 31L)
+  expect_identical(uzak$status, "cevrimici")
+  rm(list = ls(onbellek, all.names = TRUE), envir = onbellek)
+})
+
+test_that("performans modülü kimlik değişimini ve oturum sonunu aralık beklemeden yayımlar", {
+  env <- .presence_env()
+  kaynak <- paste(readLines(file.path(resolve_repo_root_for_tests(), "R", "module_performance.R"),
+                            encoding = "UTF-8", warn = FALSE), collapse = "\n")
+  expect_true(grepl("touch_session(get_current_user_id(), zorla = TRUE)", kaynak, fixed = TRUE))
+  expect_true(grepl("mb_presence_publish(active_sessions_env, zorla = TRUE)", kaynak, fixed = TRUE))
+})

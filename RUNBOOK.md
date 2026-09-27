@@ -676,20 +676,25 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
   dakikada nabız görülen), son 15 dakika ve son 24 saat kullanıcı sayıları ile
   oturum takip tablosu. Veri uygulama sürecinin belleğindedir ve yeniden
   başlatmada sıfırlanır. `tools/run_mergen_workers.R` ile birden çok uygulama
-  süreci çalışıyorsa her süreç oturum satırlarını paylaşılan dizine
-  (`MERGEN_PRESENCE_SHARED_DIR`, yoksa `MERGEN_LOG_DIR/presence`) en fazla 30 sn
-  aralıkla yayımlar ve sekme tüm süreçleri birleştirir; yayını 150 sn'den eski
-  süreç kapanmış sayılır. Tablo en fazla 200 kullanıcı satırı çizer (sayaçlar
+  süreci çalışıyorsa her süreç oturum satırlarını makineye yerel paylaşılan
+  dizine (`MERGEN_PRESENCE_SHARED_DIR`; başlatıcı her çalıştırmada kendi geçici
+  dizinini verir, UNC/ağ paylaşımı kullanılmamalıdır) en fazla 30 sn aralıkla,
+  kimlik değişimi ve oturum sonunda hemen yayımlar; sekme tüm süreçleri
+  birleştirir (okuma 10 sn önbelleklenir, bozuk dosya yalnız kendisi atlanır);
+  yayını 150 sn'den eski süreç kapanmış sayılır. Tablo en fazla 200 kullanıcı satırı çizer (sayaçlar
   tamdır). SSO süresi dolunca ya da oturum başka kullanıcıya geçince kayıt nabız
   beklenmeden güncellenir. Sekme yalnız açıkken 30 saniyede bir yenilenir ve
   sağlık probe'larını tetiklemez.
 - **Toplu yükleme ve özet eşzamanlılığı:** yüklenen dosyaların LLM özetleri
-  `MERGEN_FILE_SUMMARY_MAX_CONCURRENT` (varsayılan 2; en fazla işçi sayısının bir
-  eksiği, en az bir işçi sohbet/LLM işine boş kalır; ikiden az işçili havuzda
-  özet çalışmaz ve atlanır) ile sınırlanır. Çok-süreçli dağıtımda
-  (`tools/run_mergen_workers.R`) sınır ve kuyruk dağıtım genelidir: her uygulama
-  süreci kendi dilimini alır (her sürecin özet çalıştırabilmesi için değeri en az
-  süreç sayısı kadar verin); kalanlar
+  `MERGEN_FILE_SUMMARY_MAX_CONCURRENT` (varsayılan 2, çok süreçte en az süreç
+  sayısı; en fazla işçi sayısının bir eksiği, en az bir işçi sohbet/LLM işine boş
+  kalır; ikiden az işçili havuzda özet çalışmaz ve atlanır) ile sınırlanır.
+  Çok-süreçli dağıtımda (`tools/run_mergen_workers.R`) eşzamanlılık, kuyruk ve
+  kullanıcı başı kuyruk payı dağıtım genelidir: her uygulama süreci kendi
+  dilimini alır, dilimler toplamı aşmaz; süreç sayısından küçük açık değer bazı
+  süreçlere 0 dilim bırakır ve açılışta günlüğe uyarı yazılır. Başlatıcı ölen
+  süreci yeniden başlatır (`MERGEN_WORKERS_MAX_RESTARTS`, varsayılan 5; bütçe
+  biterse tüm küme kapanır), paylar canlı kümeyle uyumlu kalır; kalanlar
   sırayla başlar, böylece özetler paylaşılan işçi havuzunu doldurup sohbet
   isteklerini bekletmez. Bekleyen kuyruk `MERGEN_FILE_SUMMARY_MAX_QUEUE`
   (varsayılan 64) ile, tek kullanıcının (tüm sekmeleriyle) payı
@@ -700,8 +705,10 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
   başlamaz. Küme kurulamayıp `sequential` plana düşülmüşse özet hiç başlatılmaz
   (ana süreci dondurmasın diye atlanır ve kullanıcı uyarılır). Bekleyen özetler
   Sistem Durumu işçi kartında "Kuyruktaki İş" ve `file_summary_queued` olarak
-  görünür. Oturum kapanınca ya da oturumun kimliği değişince/düşünce işçi henüz
-  başlamamış LLM çağrısını atlar; yuva iş gerçekten bittiğinde bırakılır.
+  görünür. Oturum kapanınca, oturumun kimliği değişince/düşünce ya da dosya
+  sohbet bağlamından çıkarılınca bekleyen özet bırakılır, işçi dosyayı okumaz ve
+  süren LLM aktarımı kesilir; yuva iş gerçekten bittiğinde bırakılır. LLM hatası,
+  boş yanıt ya da okunamayan dosya "özetlendi" sayılmaz; kullanıcı uyarılır.
   Özet görevinin işçi bağımlılıkları uygulama açılışında
   (`app.R` onStart) bir kez taranır; açılış bu nedenle birkaç saniye uzayabilir,
   ilk yükleme ise olay döngüsünü dondurmaz.

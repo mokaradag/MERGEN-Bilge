@@ -294,139 +294,8 @@ admin_doc_strip_tags <- function(x) {
   trimws(out)
 }
 
-# ------------------------------------------------------------------------------
-# HTML GÜVENLİK TEMİZLİĞİ (ETİKET BEYAZ-LİSTESİ)
-# ------------------------------------------------------------------------------
-# commonmark çıktısı; kod blokları zaten escape edilmiştir. Yalnızca <...>
-# token'ları işlenir: izinli etiketler korunur (tehlikeli attribute'lar
-# temizlenir), izinsiz etiketler (script/iframe/style ...) escape edilerek
-# etkisizleştirilir. Gövde metni (token dışı) hiç değiştirilmez.
-admin_doc_allowed_tags <- function() {
-  c("h1", "h2", "h3", "h4", "h5", "h6", "p", "br", "hr", "a", "ul", "ol",
-    "li", "code", "pre", "blockquote", "strong", "em", "del", "ins", "sup",
-    "sub", "table", "thead", "tbody", "tr", "th", "td", "img", "span", "div")
-}
-
-# İzinli bir etiketin attribute dizesini güvenli hale getirir.
-admin_doc_clean_attributes <- function(attr_str) {
-  if (is.null(attr_str) || is.na(attr_str) || !nzchar(attr_str)) return("")
-  out <- attr_str
-
-  # Olay yakalayıcı (on*) attribute'larını kaldır
-  out <- gsub("\\s+on[a-zA-Z]+\\s*=\\s*\"[^\"]*\"", "", out, perl = TRUE)
-  out <- gsub("\\s+on[a-zA-Z]+\\s*=\\s*'[^']*'", "", out, perl = TRUE)
-  out <- gsub("\\s+on[a-zA-Z]+\\s*=\\s*[^\\s>]+", "", out, perl = TRUE)
-
-  # Inline style kaldır (gerekmez, expression() benzeri riskleri eler)
-  out <- gsub("\\s+style\\s*=\\s*\"[^\"]*\"", "", out, perl = TRUE)
-  out <- gsub("\\s+style\\s*=\\s*'[^']*'", "", out, perl = TRUE)
-
-  # Tehlikeli protokolleri (# ile) etkisizleştir
-  out <- gsub(
-    "(href|src|xlink:href)\\s*=\\s*\"\\s*(?:javascript|vbscript)\\s*:[^\"]*\"",
-    "\\1=\"#\"", out, perl = TRUE, ignore.case = TRUE)
-  out <- gsub(
-    "(href|src|xlink:href)\\s*=\\s*'\\s*(?:javascript|vbscript)\\s*:[^']*'",
-    "\\1='#'", out, perl = TRUE, ignore.case = TRUE)
-  out <- gsub(
-    "(href|src|xlink:href)\\s*=\\s*(?:javascript|vbscript)\\s*:[^\\s>]*",
-    "\\1=\"#\"", out, perl = TRUE, ignore.case = TRUE)
-  out <- gsub(
-    "(href|src)\\s*=\\s*\"\\s*data\\s*:\\s*text/html[^\"]*\"",
-    "\\1=\"#\"", out, perl = TRUE, ignore.case = TRUE)
-
-  out
-}
-
-# Tek bir <...> token'ını güvenli hale getirir (yalnızca ilgi gerektirenler için).
-admin_doc_clean_one_tag <- function(tok, allowed = admin_doc_allowed_tags()) {
-  inner <- substring(tok, 2L, nchar(tok) - 1L)
-
-  # HTML yorumlarını tamamen düşür
-  if (startsWith(inner, "!--")) return("")
-
-  is_close <- grepl("^\\s*/", inner, perl = TRUE)
-  body <- sub("^\\s*/?\\s*", "", inner, perl = TRUE)
-  name <- tolower(sub("(^[a-zA-Z][a-zA-Z0-9]*).*$", "\\1", body, perl = TRUE))
-
-  # İzinli değilse etkisizleştir (escape)
-  if (!grepl("^[a-z][a-z0-9]*$", name) || !(name %in% allowed)) {
-    return(paste0("&lt;", inner, "&gt;"))
-  }
-
-  if (is_close) return(paste0("</", name, ">"))
-
-  self_close <- grepl("/\\s*$", inner)
-  attr_str <- sub("^[a-zA-Z][a-zA-Z0-9]*", "", body)
-  attr_str <- sub("/\\s*$", "", attr_str)
-  attr_str <- trimws(admin_doc_clean_attributes(attr_str))
-  closing <- if (self_close) " />" else ">"
-
-  if (nzchar(attr_str)) {
-    paste0("<", name, " ", attr_str, closing)
-  } else {
-    paste0("<", name, closing)
-  }
-}
-
-# Ham HTML'de script çalıştırabilecek bir kalıp var mı? (hızlı tek-geçiş tarama)
-# Tehlikenin TEK yolu: (a) script-yetenekli etiket, (b) on* olay yakalayıcı,
-# (c) javascript:/vbscript:/data:text/html URL. Hiçbiri yoksa HTML zaten
-# zararsızdır ve pahalı token ayrıştırması atlanır (büyük belge performansı).
-admin_doc_html_has_risk <- function(html) {
-  pattern <- paste0(
-    "<\\s*/?\\s*(?:script|style|iframe|object|embed|form|input|link|meta",
-    "|base|svg|math|template|frame|frameset|applet|noscript|xml|image|button",
-    "|select|textarea|marquee|audio|video|source|track|canvas|portal|html|body|head)\\b",
-    "|\\son[a-zA-Z]+\\s*=",
-    "|(?:javascript|vbscript)\\s*:",
-    "|data\\s*:\\s*text/html"
-  )
-  grepl(pattern, html, perl = TRUE, ignore.case = TRUE)
-}
-
-admin_doc_sanitize_html <- function(html) {
-  if (is.null(html) || length(html) != 1L || is.na(html) || !nzchar(html)) {
-    return("")
-  }
-
-  # Hızlı yol: hiçbir riskli kalıp yoksa, çıktıyı olduğu gibi döndür.
-  if (!admin_doc_html_has_risk(html)) {
-    return(html)
-  }
-
-  allowed <- admin_doc_allowed_tags()
-  m <- gregexpr("<[^>]*>", html, perl = TRUE)
-  toks <- regmatches(html, m)[[1]]
-  if (!length(toks)) return(html)
-
-  # Performans: büyük belgelerde token sayısı binlerce olabilir. commonmark
-  # çıktısının ezici çoğunluğu güvenli yapısal etiketlerdir (<p>, <li>, <a ...>).
-  # Bu yüzden önce VEKTÖREL bir geçişle yalnızca "ilgi gerektiren" token'ları
-  # işaretler, ardından sadece onları tekil temizlik fonksiyonundan geçiririz.
-  inner <- substring(toks, 2L, nchar(toks) - 1L)
-  body0 <- sub("^\\s*/?\\s*", "", inner, perl = TRUE)
-  names_v <- tolower(sub("(^[a-zA-Z][a-zA-Z0-9]*).*$", "\\1", body0, perl = TRUE))
-  valid_name <- grepl("^[a-z][a-z0-9]*$", names_v, perl = TRUE)
-  is_comment <- startsWith(inner, "!--")
-  disallowed <- !valid_name | !(names_v %in% allowed)
-  dangerous_attr <- grepl(
-    "(\\son[a-zA-Z]+\\s*=)|(\\sstyle\\s*=)|((?:javascript|vbscript)\\s*:)|(data\\s*:\\s*text/html)",
-    toks, perl = TRUE, ignore.case = TRUE
-  )
-
-  needs <- is_comment | disallowed | dangerous_attr
-  if (any(needs)) {
-    idx <- which(needs)
-    toks[idx] <- vapply(
-      toks[idx], admin_doc_clean_one_tag, character(1),
-      allowed = allowed, USE.NAMES = FALSE
-    )
-    regmatches(html, m) <- list(toks)
-  }
-
-  html
-}
+# HTML güvenlik temizliği (etiket beyaz-listesi, tırnak duyarlı etiket ve
+# öznitelik ayrıştırıcısı) R/helpers_admin_documentation_sanitize.R içindedir.
 
 # ------------------------------------------------------------------------------
 # İÇİNDEKİLER (TOC) + BAŞLIK ÇAPALARI
@@ -536,20 +405,23 @@ admin_doc_rewrite_links <- function(html, source_file) {
   kayitli <- list()
   for (g in admin_doc_registry()) for (d in g$docs) kayitli[[d$file]] <- d$id
   taban <- dirname(as.character(source_file %||% "")[1])
-  href_deseni <- "\\s(?:href|target|rel)\\s*=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\s\"'>]+)"
   regmatches(html, eslesme) <- list(vapply(etiketler, function(tam) {
-    deger <- regmatches(tam, regexec("\\shref\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'>]+))",
-                                     tam, perl = TRUE, ignore.case = TRUE))[[1]]
-    if (!length(deger)) return(tam)
-    href <- paste0(deger[2], deger[3], deger[4])
+    # Öznitelikler tırnak duyarlı ayrıştırılır: başka özniteliğin değerindeki
+    # `href=` metni hedef sayılmaz ve silinmez.
+    attrs <- admin_doc_parse_attrs(sub(">$", "", sub("^<a\\b", "", tam, perl = TRUE, ignore.case = TRUE)))
+    adlar <- vapply(attrs, function(a) a$ad, character(1))
+    if (!"href" %in% adlar) return(tam)
+    href <- attrs[[match("href", adlar)]]$deger
+    if (is.na(href)) href <- ""
     # href/target/rel yeniden yazılır; diğer öznitelikler (ör. title) korunur.
-    kalan <- gsub(href_deseni, "", tam, perl = TRUE, ignore.case = TRUE)
-    etiket <- sub("^<a\\b", "<a", kalan, perl = TRUE, ignore.case = TRUE)
-    etiket <- sub(">$", "", etiket)
-    yeni <- function(nitelik) sub("^<a", paste0("<a ", nitelik), etiket)
+    kalan <- attrs[!adlar %in% c("href", "target", "rel")]
+    yeni <- function(nitelik, cikar = character(0)) {
+      diger <- admin_doc_attrs_html(Filter(function(a) !a$ad %in% cikar, kalan))
+      paste0("<a ", nitelik, if (nzchar(diger)) paste0(" ", diger), ">")
+    }
     if (grepl("^(https?|mailto):", href, ignore.case = TRUE)) {
-      return(paste0(yeni(sprintf("href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\"",
-                                 gsub("\"", "&quot;", href, fixed = TRUE))), ">"))
+      return(yeni(sprintf("href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\"",
+                          gsub("\"", "&quot;", href, fixed = TRUE))))
     }
     ham <- sub("[?#].*$", "", href)
     parca <- if (grepl("#", href, fixed = TRUE)) sub("^[^#]*#", "", href) else ""
@@ -560,7 +432,7 @@ admin_doc_rewrite_links <- function(html, source_file) {
       Encoding(cozulen) <- "UTF-8"
       capa <- sprintf(" data-doc-anchor=\"%s\"", admin_doc_slugify(cozulen))
     }
-    if (!nzchar(ham)) return(paste0(yeni(paste0("href=\"#\"", capa)), ">"))
+    if (!nzchar(ham)) return(yeni(paste0("href=\"#\"", capa)))
     # commonmark boşluk ve ASCII dışı karakterleri yüzde kodlar; yol kayıt
     # defteriyle karşılaştırılmadan önce çözülür.
     ham_cozulen <- try(utils::URLdecode(ham), silent = TRUE)
@@ -583,11 +455,16 @@ admin_doc_rewrite_links <- function(html, source_file) {
     }
     hedef <- paste(yol, collapse = "/")
     if (!tasti && !is.null(kayitli[[hedef]])) {
-      return(paste0(yeni(sprintf("href=\"#\" data-doc-id=\"%s\"%s", kayitli[[hedef]], capa)), ">"))
+      return(yeni(sprintf("href=\"#\" data-doc-id=\"%s\"%s", kayitli[[hedef]], capa),
+                  c("data-doc-id", "data-doc-anchor")))
     }
     goster <- if (tasti) ham else hedef
-    paste0(yeni(sprintf("class=\"mb-doc-link-offline\" title=\"%s\"",
-                        htmltools::htmlEscape(paste("Uygulama içinde açılamaz:", goster), attribute = TRUE))), ">")
+    # Yazarın sınıfı tek `class` özniteliğinde birleştirilir (yinelenen öznitelik yok).
+    sinif <- Filter(function(a) identical(a$ad, "class") && !is.na(a$deger), kalan)
+    sinif <- trimws(paste("mb-doc-link-offline", if (length(sinif)) sinif[[1]]$deger else ""))
+    yeni(sprintf("class=\"%s\" title=\"%s\"", gsub("\"", "&quot;", sinif, fixed = TRUE),
+                 htmltools::htmlEscape(paste("Uygulama içinde açılamaz:", goster), attribute = TRUE)),
+         c("class", "title"))
   }, character(1), USE.NAMES = FALSE))
   html
 }

@@ -25,6 +25,7 @@
     env$`%||%` <- function(a, b) if (is.null(a)) b else a
   }
   source(file.path(root, "R", "utils_text_encoding.R"), encoding = "UTF-8", local = env)
+  source(file.path(root, "R", "helpers_admin_documentation_sanitize.R"), encoding = "UTF-8", local = env)
   source(file.path(root, "R", "helpers_admin_documentation.R"), encoding = "UTF-8", local = env)
   source(file.path(root, "R", "module_admin_documentation.R"), encoding = "UTF-8", local = env)
   # Yönetici denetimi Sistem Durumu modülündeki gerçek denetimdir; modülün üst
@@ -647,4 +648,56 @@ testthat::test_that("yetki kaybında reaktif çizim önbelleği de geçersizleş
     invisible(.admin_doc_read_ui(output$tab_content_area))
     testthat::expect_gt(okuma, once)
   })
+})
+
+testthat::test_that("yönetici olmayan oturumda kimlik sinyali çizim önbelleğini tekrar tekrar boşaltmaz", {
+  env <- .source_admin_doc_env()
+  env$showToast <- function(...) invisible(NULL)
+  shiny::testServer(env$adminDokumantasyonServer, {
+    session$flushReact()
+    once <- shiny::isolate(refresh_token())
+    for (i in 1:3) {
+      .admin_doc_kimlik_degisti(session)
+      session$flushReact()
+    }
+    testthat::expect_identical(shiny::isolate(refresh_token()), once)
+    .admin_doc_as_admin(session)
+    session$flushReact()
+    session$userData$user_config <- NULL
+    .admin_doc_kimlik_degisti(session)
+    session$flushReact()
+    testthat::expect_identical(shiny::isolate(refresh_token()), once + 1L)
+  })
+})
+
+testthat::test_that("temizleyici tırnaklı değerdeki '>' ile gizlenen olay yakalayıcıyı ve varlıklı şemayı yakalar", {
+  env <- .source_admin_doc_env()
+  out <- env$admin_doc_sanitize_html("<p>x</p><img alt=\">\" onerror=\"alert(1)\">")
+  testthat::expect_false(grepl("onerror", out, fixed = TRUE))
+  testthat::expect_true(grepl("<img alt=\">\">", out, fixed = TRUE))
+  out2 <- env$admin_doc_sanitize_html("<a href=\"jav&#x61;script:alert(1)\">x</a><a href=\"java&#115;cript:y()\">z</a>")
+  testthat::expect_false(grepl("script:", out2, fixed = TRUE))
+  testthat::expect_identical(lengths(regmatches(out2, gregexpr("href=\"#\"", out2, fixed = TRUE))), 2L)
+  # Yorumdaki kesme işareti sonraki metni yutmaz.
+  out3 <- env$admin_doc_sanitize_html("<!-- it's --><p>metin</p><script>x</script>")
+  testthat::expect_true(grepl("<p>metin</p>", out3, fixed = TRUE))
+  testthat::expect_true(grepl("&lt;script&gt;", out3, fixed = TRUE))
+})
+
+testthat::test_that("bağlantı hedefi başka özniteliğin değerinden okunmaz; sınıf tek öznitelikte birleşir", {
+  env <- .source_admin_doc_env()
+  out <- env$admin_doc_rewrite_links("<a title=\"see href=notes.txt\" href=\"README.md\">x</a>", "docs/README.md")
+  testthat::expect_true(grepl("data-doc-id=\"docs_readme\"", out, fixed = TRUE))
+  testthat::expect_true(grepl("title=\"see href=notes.txt\"", out, fixed = TRUE))
+  cevrim <- env$admin_doc_rewrite_links("<a class=\"foo\" href=\"notes.txt\">n</a>", "README.md")
+  testthat::expect_identical(lengths(regmatches(cevrim, gregexpr("class=", cevrim, fixed = TRUE))), 1L)
+  testthat::expect_true(grepl("class=\"mb-doc-link-offline foo\"", cevrim, fixed = TRUE))
+})
+
+testthat::test_that("başka belge çizilince bekleyen bölüm hedefi iptal edilir", {
+  js <- paste(readLines(file.path(resolve_repo_root_for_tests(), "www", "js", "admin_documentation.js"),
+                       encoding = "UTF-8", warn = FALSE), collapse = "\n")
+  blok <- regmatches(js, regexpr("if \\(pendingAnchor && govde\\) \\{[\\s\\S]*?\\n      \\}", js, perl = TRUE))
+  testthat::expect_length(blok, 1L)
+  testthat::expect_true(grepl("}\n        pendingAnchor = null;", blok, fixed = TRUE))
 })

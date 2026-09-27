@@ -42,77 +42,68 @@ Eksik bilgi bırakma. İçeriği maddeler halinde, hiyerarşik ve okunabilir şe
          content = paste0("Dosya adı: ", filename,
                           "\nİçerik (kısaltılmış olabilir):\n", snippet))
   )
-  tryCatch({
-    warn_msgs <- character(0)
-	res <- withCallingHandlers(
-	  call_llm_with_retry(chat, settings_list, max_retries = 2),
-      warning = function(w) {
-        warn_msgs <<- c(warn_msgs, conditionMessage(w))
-        invokeRestart("muffleWarning")
-      }
-    )
-    if (is.list(res) && !is.null(res$content)) {
-      res <- res$content
-    }
-    if (!is.character(res) || length(res) == 0 || is.na(res[1])) {
-      res <- ""
-    } else {
-      res <- as.character(res)[1]
-    }
-    if (!nzchar(res)) {
-      paste("Özet çıkarılamadı. İçerikten bir parça:\n", substr(snippet, 1, 1000))
-    } else {
-      res
-    }
-  }, error = function(e) {
-    paste("Özet çıkarılamadı. İçerikten bir parça:\n", substr(snippet, 1, 1000))
-  })
+  # LLM hatası ya da boş yanıt BAŞARISIZLIKTIR: içerik parçası "özet" diye
+  # kaydedilmez; hata hattın uyarı yoluna (ozet_hata) ulaşır.
+  res <- withCallingHandlers(
+    call_llm_with_retry(chat, settings_list, max_retries = 2),
+    warning = function(w) invokeRestart("muffleWarning")
+  )
+  if (is.list(res) && !is.null(res$content)) res <- res$content
+  res <- if (is.character(res) && length(res) && !is.na(res[1])) as.character(res)[1] else ""
+  if (!nzchar(trimws(res))) stop("Özet çıkarılamadı: model boş yanıt döndürdü.")
+  res
 }
 
 # Özet görevi üst düzey fabrikadan üretilir: gövde her dosyada aynı olduğundan
 # bağımlılık taraması açılışta bir kez ısıtılabilir (file_summary_warm_dependencies).
-# `stop_file` oturum kapanınca ya da oturumun kimliği değişince/düşünce ana
-# süreçte oluşturulur; işçi okuma ve LLM çağrısından önce bakar ve artık yetkili
-# olmayan sahibin işini sürdürmez.
+# `stop_file` oturum kapanınca, oturumun kimliği değişince/düşünce ya da dosya
+# bağlamdan çıkarılınca ana süreçte oluşturulur; işçi okumadan önce bakar ve
+# süren LLM aktarımı da (curl ilerleme kapısı) kesilir. Okuma hatası hata
+# metninin özetlenmesiyle "başarılı" sayılmaz; görev reddedilir.
 file_summary_task_fn <- function(file_name_safe, dest_safe, settings_snapshot, stop_file = "") {
   force(file_name_safe)
   force(dest_safe)
   force(settings_snapshot)
   force(stop_file)
   function() {
-    if (nzchar(stop_file) && file.exists(stop_file)) stop("Oturum kapandı ya da kimlik değişti; dosya özeti iptal edildi.")
+    durdu <- function() nzchar(stop_file) && file.exists(stop_file)
+    iptal <- "Oturum kapandı, kimlik değişti ya da dosya çıkarıldı; dosya özeti iptal edildi."
+    if (durdu()) stop(iptal)
     file_ext <- tolower(tools::file_ext(file_name_safe))
 
-    # Özet çıkarma - hata durumunda basit bilgi döndür
-    digest <- tryCatch({
-      switch(file_ext,
-        "xlsx" = , "xls" = build_excel_digest_json(dest_safe, top_levels = 12),
-        {
-          txt <- readFileContentToString(list(name = file_name_safe, datapath = dest_safe, size = file.info(dest_safe)$size))
-          substr(txt, 1, 50000)
-        }
-      )
-    }, error = function(e) {
-      sprintf("Dosya: %s\nBoyut: %s bayt\nTip: %s\n(Detaylı içerik okunamadı: %s)",
-              file_name_safe,
-              file.info(dest_safe)$size %||% "bilinmiyor",
-              file_ext,
-              conditionMessage(e))
-    })
+    digest <- try(switch(file_ext,
+      "xlsx" = , "xls" = build_excel_digest_json(dest_safe, top_levels = 12),
+      substr(readFileContentToString(list(name = file_name_safe, datapath = dest_safe,
+                                          size = file.info(dest_safe)$size)), 1, 50000)
+    ), silent = TRUE)
+    if (inherits(digest, "try-error")) {
+      stop(sprintf("Dosya içeriği okunamadı: %s", conditionMessage(attr(digest, "condition"))))
+    }
 
-    if (nzchar(stop_file) && file.exists(stop_file)) stop("Oturum kapandı ya da kimlik değişti; dosya özeti iptal edildi.")
+    if (durdu()) stop(iptal)
+    eski <- options(mergen.llm.stop_check = if (nzchar(stop_file)) durdu)
+    on.exit(options(eski), add = TRUE)
     summary_text <- summarize_file_with_llm(digest, file_name_safe, settings_snapshot)
+    if (durdu()) stop(iptal)
     list(summary = summary_text, dest = dest_safe, ext = file_ext)
   }
 }
 
 # Dosya adına bağlı özet iş jetonu (oturum userData ortamında). `jeton` verilirse
-# yazar, `NULL` ile çağrılırsa siler; ortam yoksa (test çiftleri) sessizce geçer.
-.file_summary_job_token <- function(session, ad, jeton) {
+# yazar (`durdur` işin durdurma dosyasıdır), `NULL` ile çağrılırsa siler ve süren
+# ya da bekleyen işin durdurma dosyasını oluşturur. `yalniz` verilirse kayıt
+# yalnız hâlâ o işe aitse silinir (biten iş yeni yüklemenin jetonunu silmez).
+.file_summary_job_token <- function(session, ad, jeton, durdur = "", yalniz = NULL) {
   ud <- tryCatch(session$userData, error = function(e) NULL)
   if (!is.environment(ud) || is.null(ad) || !nzchar(as.character(ad)[1])) return(invisible(NULL))
+  ad <- as.character(ad)[1]
   isler <- if (is.list(ud$file_summary_jobs)) ud$file_summary_jobs else list()
-  isler[[as.character(ad)[1]]] <- jeton
+  onceki <- isler[[ad]]
+  if (!is.null(yalniz) && !identical(onceki$jeton, yalniz)) return(invisible(NULL))
+  if (is.null(jeton) && is.null(yalniz) && nzchar(onceki$durdur %||% "")) {
+    try(file.create(onceki$durdur), silent = TRUE)
+  }
+  isler[[ad]] <- if (is.null(jeton)) NULL else list(jeton = jeton, durdur = durdur)
   ud$file_summary_jobs <- isler
   invisible(NULL)
 }
@@ -122,7 +113,7 @@ file_summary_task_fn <- function(file_name_safe, dest_safe, settings_snapshot, s
 .file_summary_result_current <- function(session, ad, jeton, dest) {
   ud <- tryCatch(session$userData, error = function(e) NULL)
   if (!is.environment(ud)) return(TRUE)
-  if (!identical(ud$file_summary_jobs[[ad]], jeton)) return(FALSE)
+  if (!identical(ud$file_summary_jobs[[ad]]$jeton, jeton)) return(FALSE)
   kayit <- ud$current_session_files
   if (!is.list(kayit)) return(TRUE)
   yol <- kayit[[ad]]$path %||% kayit[[ad]]$datapath

@@ -77,12 +77,32 @@
 }
 
 # Çağıranın verdiği globals da anahtara girer: adları genişletmeyi (seen kümesi),
-# işlevleri ise hangi yardımcıların taşınacağını belirler.
+# işlevleri ise hangi yardımcıların taşınacağını belirler. İşlev olmayan
+# değerlerin sınıf/paket imzası da anahtardadır: aynı adla farklı sınıfta
+# (S3/S4) değer gelirse önbellekteki paket kümesi yeniden kullanılmaz.
 .worker_monitor_dep_cache_given <- function(promise_globals) {
   promise_globals <- promise_globals %||% list()
   adlar <- sort(as.character(names(promise_globals)))
   list(names = adlar,
-       fns = Filter(is.function, promise_globals[adlar]))
+       fns = Filter(is.function, promise_globals[adlar]),
+       sig = vapply(promise_globals[adlar], function(v) {
+         if (is.function(v)) "<fn>" else paste(c(class(v), attr(class(v), "package")), collapse = "/")
+       }, character(1), USE.NAMES = FALSE))
+}
+
+# Görev ortamından çözülemeyen (iç içe yardımcı kapanışından gelen) adın
+# sağlayıcı ortamı: tespit edilen yardımcı işlevlerin kapanış zinciri
+# (.GlobalEnv/ad alanı hariç). Önbellek isabetinde değer oradan TAZE okunur.
+.worker_monitor_dep_cache_provider_env <- function(nm, fonksiyonlar) {
+  for (f in fonksiyonlar) {
+    e <- environment(f)
+    while (is.environment(e) && !identical(e, globalenv()) && !identical(e, emptyenv()) &&
+           !isNamespace(e) && !identical(e, baseenv())) {
+      if (exists(nm, envir = e, inherits = FALSE)) return(e)
+      e <- parent.env(e)
+    }
+  }
+  NULL
 }
 
 worker_monitor_dep_cache_get <- function(task_type, task_fn, promise_globals = list()) {
@@ -97,6 +117,9 @@ worker_monitor_dep_cache_get <- function(task_type, task_fn, promise_globals = l
         .worker_monitor_dep_cache_refs_same(kayit$fn_expanded, .GlobalEnv, FALSE) &&
         identical(kayit$sig_detected, .worker_monitor_dep_cache_signature(kayit$detected, fn_env, TRUE)) &&
         identical(kayit$sig_expanded, .worker_monitor_dep_cache_signature(kayit$expanded, .GlobalEnv, FALSE)) &&
+        identical(kayit$sig_sabit, vapply(names(kayit$sabit_ortam), function(nm) {
+          .worker_monitor_dep_cache_signature(nm, kayit$sabit_ortam[[nm]], FALSE)
+        }, character(1), USE.NAMES = FALSE)) &&
         !any(vapply(kayit$shadow, .worker_monitor_dep_cache_shadowed, logical(1), ortam = fn_env)) &&
         (identical(kayit$search, search()) ||
          identical(kayit$providers, .worker_monitor_dep_cache_providers(kayit$shadow)))) {
@@ -113,16 +136,30 @@ worker_monitor_dep_cache_put <- function(task_type, task_fn, detected_globals,
   fn_env <- environment(task_fn)
   if (!is.environment(fn_env)) fn_env <- globalenv()
   # Yalnızca bir kapanışın iç ortamında bulunan adlar (ör. fabrika sabitleri)
-  # görev ortamından çözülemez; ilk taramadaki değerleri korunur.
+  # görev ortamından çözülemez; sağlayıcı kapanış ortamı kaydedilir ve değer
+  # her çağrıda oradan okunur. Sağlayıcısı bulunamayan varsa kayıt
+  # önbelleğe girmez (değişen kapanış değeri sessizce eskimez).
   sabit_adlar <- detected_names[!vapply(detected_names, exists, logical(1),
                                         envir = fn_env, inherits = TRUE)]
+  yardimcilar <- c(Filter(is.function, detected_globals),
+                   Filter(is.function, mget(as.character(expanded_names), envir = .GlobalEnv,
+                                            ifnotfound = list(NULL))))
+  sabit_ortam <- lapply(stats::setNames(nm = sabit_adlar), .worker_monitor_dep_cache_provider_env,
+                        fonksiyonlar = yardimcilar)
   # İlk taramada o an TANIMSIZ olan doğrudan serbest değişkenler de eklenir;
   # sonraki çağrıda tanımlıysa değeri yine taşınır (paket/base adları hariç).
   dogrudan <- tryCatch(codetools::findGlobals(task_fn, merge = TRUE),
                        error = function(e) character(0))
   arama <- parent.env(globalenv())
   aramada <- vapply(dogrudan, exists, logical(1), envir = arama, inherits = TRUE)
-  golge <- setdiff(dogrudan[aramada], detected_names)
+  # İç içe yardımcıların paket/base üzerinden çözülen adları da sağlayıcı
+  # imzasına girer: öne eklenen paket onları da gölgeleyebilir.
+  ic_adlar <- unique(unlist(lapply(yardimcilar, function(f) {
+    ad <- try(codetools::findGlobals(f, merge = TRUE), silent = TRUE)
+    if (inherits(ad, "try-error")) character(0) else ad
+  })))
+  ic_adlar <- ic_adlar[vapply(ic_adlar, exists, logical(1), envir = arama, inherits = TRUE)]
+  golge <- setdiff(unique(c(dogrudan[aramada], ic_adlar)), detected_names)
   golge <- golge[!vapply(golge, .worker_monitor_dep_cache_shadowed, logical(1), ortam = fn_env)]
   dogrudan <- dogrudan[!aramada]
   tespit <- unique(c(as.character(detected_names), dogrudan))
@@ -130,6 +167,7 @@ worker_monitor_dep_cache_put <- function(task_type, task_fn, detected_globals,
                 given = .worker_monitor_dep_cache_given(promise_globals),
                 detected = tespit,
                 sabit = detected_globals[sabit_adlar],
+                sabit_ortam = Filter(Negate(is.null), sabit_ortam),
                 expanded = as.character(expanded_names),
                 packages = as.character(packages),
                 fn_detected = .worker_monitor_dep_cache_fn_refs(detected_names, fn_env, TRUE),
@@ -139,6 +177,10 @@ worker_monitor_dep_cache_put <- function(task_type, task_fn, detected_globals,
                 shadow = as.character(golge),
                 search = search(),
                 providers = .worker_monitor_dep_cache_providers(golge))
+  kayit$sig_sabit <- vapply(names(kayit$sabit_ortam), function(nm) {
+    .worker_monitor_dep_cache_signature(nm, kayit$sabit_ortam[[nm]], FALSE)
+  }, character(1), USE.NAMES = FALSE)
+  if (any(vapply(sabit_ortam, is.null, logical(1)))) return(invisible(kayit))
   mevcut <- .WORKER_MONITOR_DEP_CACHE[[anahtar]] %||% list()
   .WORKER_MONITOR_DEP_CACHE[[anahtar]] <- utils::tail(c(mevcut, list(kayit)), 8L)
   invisible(kayit)
@@ -164,7 +206,14 @@ worker_monitor_dep_cache_values <- function(entry, task_fn) {
     sonuc
   }
   tespit <- topla(entry$detected, fn_env, TRUE)
-  for (nm in setdiff(names(entry$sabit), names(tespit))) tespit[nm] <- list(entry$sabit[[nm]])
+  for (nm in setdiff(names(entry$sabit), names(tespit))) {
+    ortam <- entry$sabit_ortam[[nm]]
+    tespit[nm] <- list(if (is.environment(ortam) && exists(nm, envir = ortam, inherits = FALSE)) {
+      get(nm, envir = ortam, inherits = FALSE)
+    } else {
+      entry$sabit[[nm]]
+    })
+  }
   list(detected = tespit,
        expanded = topla(entry$expanded, .GlobalEnv, FALSE))
 }

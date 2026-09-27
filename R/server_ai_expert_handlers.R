@@ -164,9 +164,13 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   # sentezlemeye başla ve seçilecek karşılama klibini tarayıcıya önden ısıt.
   # Önek deterministiktir (LLM ÇAĞRILMAZ) ve statik karşılamayı asla
   # geciktirmez; süre sınırını hibrit konuşma çalışma zamanı uygular.
+  # İptal edilen onay (Geri/Kapat/Esc) bekleyen önek sonucunu geçersiz kılar.
   observeEvent(input$explore_preheat_initial_greeting, {
     req(is.list(input$explore_preheat_initial_greeting))
     req(identical(input$explore_preheat_initial_greeting$mode %||% "", "kesif"))
+    if (isTRUE(input$explore_preheat_initial_greeting$cancel)) {
+      return(speech_runtime$prewarm_welcome(NA_character_))
+    }
     req(nzchar(input$explore_preheat_initial_greeting$character %||% ""))
 
     speech_runtime$prewarm_welcome(input$explore_preheat_initial_greeting$character)

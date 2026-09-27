@@ -60,6 +60,16 @@
   // Başarılı seçimden sonra giriş ekranı kaldırılınca odak ana uygulamaya taşınır.
   var _focusMainAfterDismiss = false;
 
+  // Modal nesli: her açılış ve kapanışta artar. Gecikmeli mod geçişi/uygulaması
+  // yalnız kendi açılışında ve kaplama hâlâ açıkken çalışır; kapatılan modalın
+  // seçimi sonradan uygulanmaz.
+  var _modalGen = 0;
+
+  function modalStillOpen(nesil) {
+    var kaplama = document.getElementById('mode-modal-overlay');
+    return nesil === _modalGen && !!kaplama && kaplama.classList.contains('active');
+  }
+
   // ============================================================
   // SPOTLIGHT KART İŞARETÇİ IŞIMASI
   // ============================================================
@@ -110,8 +120,10 @@
         }
       });
 
-      // Kısa gecikme ile 2. adıma geç
+      // Kısa gecikme ile 2. adıma geç (modal bu arada kapandıysa geçilmez)
+      var kesifNesli = _modalGen;
       setTimeout(function() {
+        if (!modalStillOpen(kesifNesli)) return;
         // Kart sınıflarını temizle
         allCards.forEach(function(c) {
           c.classList.remove('selected', 'other-selected');
@@ -140,8 +152,11 @@
       }
     });
 
-    // Kısa gecikme ile modalı kapat ve modu uygula
+    // Kısa gecikme ile modalı kapat ve modu uygula; modal bu arada kapatıldıysa
+    // (X/Esc/arka plan ya da dış kapatma) iptal edilen seçim uygulanmaz.
+    var secimNesli = _modalGen;
     setTimeout(function() {
+      if (!modalStillOpen(secimNesli)) return;
       closeCinematicModal(true);
 
       // localStorage'a kaydet
@@ -156,17 +171,19 @@
 		// Callback yalnızca yedek olarak aynı tek-seferlik bildirimi yeniden dener.
 		var modeSelectionSent = false;
 
+		// Bayrak yalnız olay gerçekten gönderilince kalkar; Shiny o an
+		// hazır değilse yedek çağrı yeniden dener.
 		function sendModeSelectionToShiny() {
 		  if (modeSelectionSent) return;
-		  modeSelectionSent = true;
-
-		  if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+		  if (typeof Shiny === 'undefined' || !Shiny.setInputValue) return;
+		  try {
 			Shiny.setInputValue('selected_experience_mode', {
 			  mode: mode,
 			  source: 'welcome',
 			  timestamp: Date.now()
 			}, { priority: 'event' });
-		  }
+			modeSelectionSent = true;
+		  } catch (e) {}
 		}
 
 		// Kritik: Ayarları hemen Shiny'ye gönder.
@@ -207,11 +224,55 @@
       if (desc) desc.textContent = tanim ? tanim.description : '';
     });
 
+    _modalGen += 1;
     overlay.classList.add('active');
+    focusIntoModal(overlay);
 
     // Bütünleşik mod karakter adımındaki gecikmeyi azaltmak için varsayılan
     // karakterin video verisini ve giriş dosyasını şimdiden ön yükle.
     preloadDefaultCharacterVideo();
+  }
+
+  // Kaplamadaki görünür, odaklanabilir öğeler (Tab tuzağı ve ilk odak için).
+  function modalFocusables(overlay) {
+    var secici = 'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    return Array.prototype.filter.call(overlay.querySelectorAll(secici), function(el) {
+      return el.offsetParent !== null && !el.closest('.hidden-step');
+    });
+  }
+
+  // Açılışta odak modal içine (ilk mod kartı, yoksa kapatma düğmesi) taşınır.
+  // Kaplama görünürlük geçişiyle açıldığından odak kısa aralıkla yeniden denenir.
+  function focusIntoModal(overlay) {
+    var ilk = overlay.querySelector('.cinematic-mode-card') ||
+      overlay.querySelector('.cinematic-modal-close');
+    if (!ilk || typeof ilk.focus !== 'function') return;
+    [30, 120, 400].forEach(function(ms) {
+      setTimeout(function() {
+        if (overlay.classList.contains('active') && !overlay.contains(document.activeElement)) ilk.focus();
+      }, ms);
+    });
+  }
+
+  // Açık modalda Tab/Shift+Tab odağı kaplama içinde döndürür.
+  function trapModalFocus(e) {
+    var overlay = document.getElementById('mode-modal-overlay');
+    if (e.key !== 'Tab' || !overlay || !overlay.classList.contains('active')) return;
+    var odaklar = modalFocusables(overlay);
+    if (!odaklar.length) {
+      e.preventDefault();
+      return;
+    }
+    var ilk = odaklar[0];
+    var son = odaklar[odaklar.length - 1];
+    var aktif = document.activeElement;
+    if (e.shiftKey && (aktif === ilk || !overlay.contains(aktif))) {
+      e.preventDefault();
+      son.focus();
+    } else if (!e.shiftKey && (aktif === son || !overlay.contains(aktif))) {
+      e.preventDefault();
+      ilk.focus();
+    }
   }
 
   // Varsayılan karakterin video verisini sunucudan iste (ön yükleme).
@@ -250,6 +311,8 @@
       window.CinematicCharacterStep.reset();
     }
 
+    // Nesil artışı süren (henüz başlamamış) mod geçişini/uygulamasını iptal eder.
+    _modalGen += 1;
     overlay.classList.remove('active');
 
     if (document.activeElement && overlay.contains(document.activeElement)) {
@@ -342,8 +405,9 @@
       }
     });
 
-    // ESC tuşu ile kapat
+    // ESC tuşu ile kapat; Tab odağı açık modalda tutulur.
     $(document).on('keydown', function(e) {
+      trapModalFocus(e);
       if (e.key === 'Escape' && !_selectedModeId) {
         var overlay = document.getElementById('mode-modal-overlay');
         if (overlay && overlay.classList.contains('active')) {

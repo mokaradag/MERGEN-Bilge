@@ -171,6 +171,8 @@ testthat::test_that("api_key_save_btn geçersiz anahtarı kaydetmez, geçerli an
                     args = list(id = "api_key_module", serviceDesk = list(),
                                 api_config = list()), {
     # 1) Doğrulama geçersiz anahtar der: kayıt yapılmaz, hata toast'ı görünür
+    # (işlem yalnız bu sahip için açık bir seçim modalından kabul edilir).
+    session$getReturned()$open()
     env$.durum$validate_result <- list(valid = FALSE, message = "anahtar reddedildi")
     session$setInputs(api_key_plain_input = "sahte-gecersiz-anahtar")
     session$setInputs(api_key_save_btn = 1)
@@ -225,6 +227,7 @@ testthat::test_that("api_key_save_btn kullanıcı anahtarına izin verilmeyen or
   shiny::testServer(env$apiKeyServer,
                     args = list(id = "api_key_module", serviceDesk = list(),
                                 api_config = list()), {
+    session$getReturned()$open()
     session$setInputs(api_key_plain_input = "sahte-anahtar")
     session$setInputs(api_key_save_btn = 1)
     session$setInputs(api_key_save_btn = 2)
@@ -277,6 +280,7 @@ testthat::test_that("api_key_use_default_btn kurum anahtarı varsa devam eder, y
 
     # 3) "Bu ekranı bir daha gösterme" işaretsiz: yalnız bu oturum için devam edilir.
     env$.durum$owner <- list(username = "yonetici")
+    session$getReturned()$open()
     session$setInputs(api_key_use_default_btn = 4)
     testthat::expect_true(isTRUE(session$userData$api_key_onboarding_done))
     testthat::expect_identical(session$userData$api_key_onboarding_owner, "yonetici")
@@ -292,13 +296,19 @@ testthat::test_that("api_key_use_default_btn kurum anahtarı varsa devam eder, y
     testthat::expect_true(nzchar(jeton))
     testthat::expect_identical(env$.modal_etiketi, "etiket-yonetici")
     # Çıplak TRUE, başka kullanıcının etiketi ya da önceki modalın jetonu kabul edilmez.
-    for (bayat in list(TRUE,
-                       list(checked = TRUE, tag = "etiket-baskasi", nonce = jeton),
-                       list(checked = TRUE, tag = "etiket-yonetici", nonce = "eski-jeton"))) {
+    for (tur in c("ciplak", "baska", "eski")) {
+      session$getReturned()$open()
+      jeton <- env$.modal_jetonu
+      bayat <- switch(tur,
+        ciplak = TRUE,
+        baska = list(checked = TRUE, tag = "etiket-baskasi", nonce = jeton),
+        eski = list(checked = TRUE, tag = "etiket-yonetici", nonce = "eski-jeton"))
       session$setInputs(api_key_dontshow = bayat)
       session$setInputs(api_key_use_default_btn = runif(1))
     }
     testthat::expect_identical(env$.hatirlatmalar, 0L)
+    session$getReturned()$open()
+    jeton <- env$.modal_jetonu
     onceki_kapanis <- removeModal_sayisi
     session$setInputs(api_key_dontshow = list(checked = TRUE, tag = "etiket-yonetici", nonce = jeton))
     session$setInputs(api_key_use_default_btn = 5)
@@ -326,6 +336,8 @@ testthat::test_that("api_key_use_default_btn kurum anahtarı varsa devam eder, y
     testthat::expect_true(any(vapply(.toastlarTip(env, "info"), function(t)
       grepl("hatırlanacak", t$message, fixed = TRUE), logical(1))))
 
+    session$getReturned()$open()
+    jeton <- env$.modal_jetonu
     session$setInputs(api_key_dontshow = list(checked = TRUE, tag = "etiket-yonetici", nonce = jeton))
     session$setInputs(api_key_use_default_btn = 5.5)
     session$setInputs(api_key_choice_remembered = list(ok = FALSE, tag = "etiket-yonetici",
@@ -335,6 +347,9 @@ testthat::test_that("api_key_use_default_btn kurum anahtarı varsa devam eder, y
 
     # Tercih tarayıcıya gönderilemezse kullanıcı uyarılır.
     env$.hatirlatma_sonucu <- FALSE
+    session$getReturned()$open()
+    jeton <- env$.modal_jetonu
+    session$setInputs(api_key_dontshow = list(checked = TRUE, tag = "etiket-yonetici", nonce = jeton))
     session$setInputs(api_key_use_default_btn = 6)
     testthat::expect_true(any(vapply(.toastlarTip(env, "warning"), function(t)
       grepl("hatırlanamadı", t$message, fixed = TRUE), logical(1))))
@@ -702,12 +717,19 @@ testthat::test_that("sahip değişince önceki sahibin modalı ve yazdığı ana
     testthat::expect_gt(env$.temizlemeler, temizleme_once)
     # Eski modaldan gelen kaydetme/seçim B adına işlenmez.
     session$setInputs(api_key_save_btn = 1)
-    session$setInputs(api_key_use_default_btn = 1)
     testthat::expect_length(env$.kaydedilen, 0L)
-    testthat::expect_false(identical(session$userData$api_key_onboarding_owner, "b_kisi") &&
-                             env$.hatirlatmalar > 0L)
     testthat::expect_true(any(vapply(.toastlarTip(env, "warning"), function(t)
       grepl("kimliği değişti", t$message, fixed = TRUE), logical(1))))
+    # Varsayılan yolun sonucu doğrudan doğrulanır: B adına karar yazılmaz,
+    # modal kapatılmaz, oturum anahtarı yeniden temizlenmez ve red uyarısı verilir.
+    kapanis_once <- kapanis
+    temizleme_once <- env$.temizlemeler
+    session$setInputs(api_key_use_default_btn = 1)
+    testthat::expect_false(identical(session$userData$api_key_onboarding_owner, "b_kisi"))
+    testthat::expect_identical(kapanis, kapanis_once)
+    testthat::expect_identical(env$.temizlemeler, temizleme_once)
+    testthat::expect_true(any(vapply(.toastlarTip(env, "warning"), function(t)
+      grepl("seçim kaydedilmedi", t$message, fixed = TRUE), logical(1))))
     # B kendi modalını açınca kaydetme normal çalışır.
     session$getReturned()$open()
     session$setInputs(api_key_plain_input = "b-kisinin-anahtari")
@@ -793,5 +815,61 @@ testthat::test_that("işaretsiz kurum seçimi önceki tercihi siler; kişisel ka
     session$setInputs(api_key_plain_input = "sahte-anahtar-2")
     session$setInputs(api_key_save_btn = 2)
     testthat::expect_gt(length(.toastlarTip(env, "warning")), uyari_once)
+  })
+})
+
+testthat::test_that("tamamlanan modaldan kuyrukta kalan ikinci işlem yeni durumu ezmez", {
+  env <- .apiKeyEnv()
+  env$.durum$default_key <- "sahte-kurum-anahtari"
+  env$.durum$owner <- list(username = "a_kisi")
+  testthat::local_mocked_bindings(runjs = function(...) invisible(NULL),
+                                  delay = function(ms, expr) invisible(NULL), .package = "shinyjs")
+  testthat::local_mocked_bindings(removeModal = function(...) invisible(NULL),
+                                  updateTextInput = function(...) invisible(NULL), .package = "shiny")
+  shiny::testServer(env$apiKeyServer,
+                    args = list(id = "api_key", serviceDesk = list(), api_config = list()), {
+    session$getReturned()$open()
+    session$setInputs(api_key_plain_input = "a-kisinin-anahtari")
+    session$setInputs(api_key_save_btn = 1)
+    testthat::expect_length(env$.kaydedilen, 1L)
+    temizleme_once <- env$.temizlemeler
+    # Doğrulama sürerken tıklanan "kurum anahtarı" olayı modal kapandıktan sonra gelir.
+    session$setInputs(api_key_use_default_btn = 1)
+    testthat::expect_identical(env$.temizlemeler, temizleme_once)
+    testthat::expect_true(any(vapply(.toastlarTip(env, "warning"), function(t)
+      grepl("seçim kaydedilmedi", t$message, fixed = TRUE), logical(1))))
+  })
+})
+
+testthat::test_that("tolerans sonrası geç gelen bastırma gecikmeli modal açılışını iptal eder; tercih yeniden istenir", {
+  env <- .apiKeyEnv()
+  env$.durum$default_key <- "sahte-kurum-anahtari"
+  env$.durum$owner <- list(username = "a_kisi")
+  env$.saat <- as.POSIXct("2026-01-01 09:00:00", tz = "UTC")
+  env$Sys.time <- function() env$.saat
+  bekleyen <- list()
+  istekler <- 0L
+  testthat::local_mocked_bindings(runjs = function(...) invisible(NULL),
+                                  delay = function(ms, expr) {
+                                    bekleyen[[length(bekleyen) + 1L]] <<- function() force(expr)
+                                    invisible(NULL)
+                                  }, .package = "shinyjs")
+  shiny::testServer(env$apiKeyServer,
+                    args = list(id = "api_key", serviceDesk = list(), api_config = list()), {
+    kok <- session$rootScope()
+    kok$sendCustomMessage <- function(type, message) {
+      if (identical(type, "mergenApiKeyChoiceReportPref")) istekler <<- istekler + 1L
+    }
+    session$elapse(200)
+    env$.saat <- env$.saat + 7; session$elapse(200)
+    testthat::expect_length(bekleyen, 1L)
+    # Tolerans dolduktan sonra da tercih aralıklı yeniden istenir.
+    once <- istekler
+    env$.saat <- env$.saat + 4; session$elapse(3100)
+    testthat::expect_gt(istekler, once)
+    # 300 ms içinde bastırma gelir: gecikmeli açılış modalı açmaz.
+    session$setInputs(api_key_onboarding_suppressed = list(suppressed = TRUE, tag = "etiket-a_kisi"))
+    bekleyen[[1]]()
+    testthat::expect_identical(env$.modal_acilislari, 0L)
   })
 })

@@ -87,9 +87,12 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
       invisible(NULL)
     }
 
-    # Modal başka (önceki) sahip için açıldıysa işlem kabul edilmez.
+    # İşlem yalnız ETKİN bir modal bu sahip için açıksa kabul edilir: modal
+    # tamamlandıktan (sahip NULL) ya da kaldırıldıktan sonra kuyrukta bekleyen
+    # kaydetme/seçim olayı yeni durumu ezmez.
     modal_sahibine_ait <- function(owner) {
-      is.null(modal_sahibi) || identical(modal_sahibi, as.character(owner$username %||% "")[1])
+      is.character(modal_sahibi) && length(modal_sahibi) == 1L && !is.na(modal_sahibi) &&
+        nzchar(modal_sahibi) && identical(modal_sahibi, as.character(owner$username %||% "")[1])
     }
 
     # --- Kaydetme işleyicisi ---
@@ -290,6 +293,8 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
     pencere_sahibi <- NULL
     kisisel_anahtar <- NULL
     zaman_asimi_karari <- FALSE
+    # Tolerans sonrası geç gelen bastırma, 300 ms'lik gecikmeli açılışı da iptal eder.
+    bastirilan_sahip <- NULL
     shiny::observe({
       if (is.function(kimlik_sinyali)) kimlik_sinyali() else shiny::invalidateLater(5000, session)
       raw_flag <- input$api_key_onboarding_suppressed
@@ -322,10 +327,24 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
         if (zaman_asimi_karari && flag_arrived && !acik_secim) {
           zaman_asimi_karari <<- FALSE
           if (kurum_hatirlandi && !is.null(kisisel_anahtar)) mb_api_key_clear_session_key(session)
-          if (suppressed && default_available && is.null(kisisel_anahtar) &&
-              identical(modal_sahibi, owner$username)) {
-            removeModal()
-            modal_sahibi <<- NULL
+          if (suppressed && default_available && is.null(kisisel_anahtar)) {
+            bastirilan_sahip <<- owner$username
+            if (identical(modal_sahibi, owner$username)) {
+              removeModal()
+              modal_sahibi <<- NULL
+            }
+          }
+        } else if (zaman_asimi_karari && !flag_arrived && !acik_secim) {
+          # İstemci işleyicisi pencereden sonra kaydolduysa önceki istekler
+          # kaybolmuştur: tercih 3 sn aralıkla (en fazla 2 dk) yeniden istenir.
+          gecen <- as.numeric(difftime(Sys.time(), api_key_decision_start, units = "secs"))
+          if (gecen < 120) {
+            if (is.null(tercih_istek_zamani) ||
+                as.numeric(difftime(Sys.time(), tercih_istek_zamani, units = "secs")) >= 3) {
+              tercih_iste(etiket)
+              tercih_istek_zamani <<- Sys.time()
+            }
+            shiny::invalidateLater(3000, session)
           }
         }
         return(invisible(NULL))
@@ -337,6 +356,7 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
       if (!identical(pencere_sahibi, owner$username)) {
         if (is.null(pencere_sahibi)) mb_api_key_clear_session_key(session) else sahip_birak()
         karar_sahibi <<- NULL
+        bastirilan_sahip <<- NULL
         pencere_sahibi <<- owner$username
         api_key_decision_start <<- Sys.time()
         tercih_istek_zamani <<- NULL
@@ -358,6 +378,8 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
       karar_ver <- function(zaman_asimi) {
         karar_sahibi <<- owner$username
         zaman_asimi_karari <<- zaman_asimi
+        # Zaman aşımı kararında geç tercih yanıtı için yeniden istek sürer.
+        if (isTRUE(zaman_asimi)) shiny::invalidateLater(3000, session)
       }
 
       # Kişisel anahtar varken modal gösterilmez. Kurum anahtarı yoksa belirsizlik
@@ -397,7 +419,7 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
         shinyjs::delay(300, {
           simdiki <- mb_api_key_resolve_owner(session, require_auth = TRUE)
           if (!is.null(simdiki) && identical(simdiki$username, acilis_sahibi) &&
-              identical(karar_sahibi, acilis_sahibi)) {
+              identical(karar_sahibi, acilis_sahibi) && !identical(bastirilan_sahip, acilis_sahibi)) {
             openModal()
           }
         })

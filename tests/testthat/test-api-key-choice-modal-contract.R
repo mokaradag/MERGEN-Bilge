@@ -370,6 +370,17 @@ test_that("seçim modalı bekleyen kutu değerini jeton/etiketle bildirir ve eti
   expect_true(grepl("typeof message.userTag !== \"string\" || !message.userTag", hatirlat, fixed = TRUE))
   # Geç gelen mesaj etkin tarayıcı kimliğini değiştirmez; onay etiket ve jeton taşır.
   expect_false(grepl("_userTag = message.userTag", hatirlat, fixed = TRUE))
-  expect_true(grepl("writeSource(kaynak, message.userTag)", hatirlat, fixed = TRUE))
+  expect_true(grepl("writeSource(kaynak, message.userTag, ", hatirlat, fixed = TRUE))
   expect_true(grepl("nonce: typeof message.nonce", hatirlat, fixed = TRUE))
+})
+
+test_that("Init mesajı etiketi her zaman atar; eski sekme yazımı yeni tercihi ezmez", {
+  js_text <- paste(readLines(file.path(resolve_repo_root_for_tests(), "www", "js", "api_key_choice_modal.js"),
+                             encoding = "UTF-8", warn = FALSE), collapse = "\n")
+  init <- regmatches(js_text, regexpr("mergenApiKeyChoiceInit[\\s\\S]*?var tries", js_text, perl = TRUE))
+  expect_true(grepl('_userTag =\n        message && typeof message.userTag === "string" ? message.userTag : "";',
+                    init, fixed = TRUE))
+  expect_false(grepl("message.userTag) {", init, fixed = TRUE))
+  expect_true(grepl("if (yeni < readVersion(tag)) {", js_text, fixed = TRUE))
+  expect_true(grepl("writeSource(kaynak, message.userTag, surum === null ? undefined : surum)", js_text, fixed = TRUE))
 })
