@@ -474,6 +474,27 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	} else {
 	  load_initial_saved_chats()
 	}
+
+	# Oturum başka kullanıcıya geçince kayıtlı söyleşiler yeni sahip için baştan
+	# yüklenir; A'nın geç gelen yükleme sonucu kimlik denetimiyle atlanır.
+	sahip_yenileme <- shiny::reactiveVal(0L)
+	if (exists("mergen_session_on_owner_change", mode = "function")) {
+	  mergen_session_on_owner_change(session, function(neden) {
+		if (identical(neden, "sahip_degisti")) sahip_yenileme(shiny::isolate(sahip_yenileme()) + 1L)
+	  })
+	}
+	observeEvent(sahip_yenileme(), {
+	  startup_state$initial_saved_chats_status <- "idle"
+	  startup_state$full_saved_chats_load_started <- FALSE
+	  startup_state$preview_hydration_started <- FALSE
+	  startup_state$preview_hydration_user_id <- NULL
+	  session$userData$saved_chats_full_pending <- FALSE
+	  if (isTRUE(values$show_welcome)) render_welcome_screen(list(), replace_existing = TRUE)
+	  load_initial_saved_chats()
+	  if (is.function(startup_state$run_preview_hydration) && isTRUE(startup_state$welcome_client_ready_seen)) {
+		startup_state$run_preview_hydration("owner_change")
+	  }
+	}, ignoreInit = TRUE)
   
   invisible(NULL)
 }

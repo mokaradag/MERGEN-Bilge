@@ -36,6 +36,22 @@
 
   // Onay sürerken persona düğmeleri kilitlenir: seçim videosunun tamamlanma
   // çağrısı başka personanın yüklenmesiyle silinmez.
+  // Diyaloğun erişilebilir adı görünen adımın başlığını izler.
+  function setDialogLabel(id) {
+    var dlg = document.querySelector('#mode-modal-overlay [role="dialog"]');
+    if (dlg) dlg.setAttribute('aria-labelledby', id);
+  }
+
+  function focusFirst(seciciler) {
+    for (var i = 0; i < seciciler.length; i++) {
+      var el = document.querySelector(seciciler[i]);
+      if (el && typeof el.focus === 'function') {
+        try { el.focus(); } catch (e) { /* odak zorunlu değil */ }
+        return;
+      }
+    }
+  }
+
   function setPersonaButtonsLocked(kilitli) {
     var buttons = document.querySelectorAll('.cinematic-char-btn');
     Array.prototype.forEach.call(buttons, function(btn) {
@@ -106,6 +122,10 @@
       selectCharacterInModal(_selectedCharId, false);
     }
 
+    // Gizlenen 1. adımdaki odak görünür 2. adım denetimine taşınır.
+    setDialogLabel('cinematic-char-step-title');
+    focusFirst(['.cinematic-char-btn.active', '.cinematic-char-btn', '.cinematic-char-close-btn']);
+
     // Tüm karakter video verilerini ön yükle (geçişlerdeki gecikmeyi azaltır)
     preloadAllCharacterVideos();
   }
@@ -157,6 +177,8 @@
     var modalHeader = document.querySelector('.cinematic-modal-header');
     if (cardsGrid) cardsGrid.classList.remove('hidden-step');
     if (modalHeader) modalHeader.classList.remove('hidden-step');
+    setDialogLabel('mode-modal-title');
+    focusFirst(['.cinematic-mode-card[data-mode="kesif"]', '.cinematic-mode-card']);
 
     // Adım göstergesini güncelle
     updateStepIndicator(1);
@@ -182,12 +204,15 @@
   // ön yükleme istekleri ve portre güncellemesi iptal edilir.
   function cancelPendingSelection() {
     _selectionGeneration += 1;
+    // Bağlantı kopukken gönderim hata verse de yerel iptal tamamlanır.
     if (_confirmInProgress && typeof Shiny !== 'undefined' && Shiny.setInputValue) {
-      Shiny.setInputValue('explore_preheat_initial_greeting', {
-        mode: 'kesif',
-        cancel: true,
-        timestamp: Date.now()
-      }, { priority: 'event' });
+      try {
+        Shiny.setInputValue('explore_preheat_initial_greeting', {
+          mode: 'kesif',
+          cancel: true,
+          timestamp: Date.now()
+        }, { priority: 'event' });
+      } catch (e) { /* sunucu iptali zorunlu değil */ }
     }
     _confirmInProgress = false;
     setPersonaButtonsLocked(false);
@@ -215,6 +240,7 @@
     var modalHeader = document.querySelector('.cinematic-modal-header');
     if (cardsGrid) cardsGrid.classList.remove('hidden-step');
     if (modalHeader) modalHeader.classList.remove('hidden-step');
+    setDialogLabel('mode-modal-title');
     updateStepIndicator(1);
   }
 
@@ -444,6 +470,7 @@
       var modalHeader = document.querySelector('.cinematic-modal-header');
       if (cardsGrid) cardsGrid.classList.remove('hidden-step');
       if (modalHeader) modalHeader.classList.remove('hidden-step');
+      setDialogLabel('mode-modal-title');
 
       updateStepIndicator(1);
 
@@ -565,4 +592,4 @@
     isActive: function() { return _currentStep === 2; }
   };
 
-})();
+})();

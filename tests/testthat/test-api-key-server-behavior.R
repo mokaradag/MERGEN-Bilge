@@ -57,7 +57,8 @@ suppressMessages(library(shiny))
   env$.modal_jetonu <- ""
   env$.modal_etiketi <- ""
   env$show_api_key_choice_modal <- function(session, default_available = FALSE,
-                                            service_desk = NULL, nonce = "", user_tag = "") {
+                                            service_desk = NULL, nonce = "", user_tag = "",
+                                            title = NULL) {
     env$.modal_acilislari <- env$.modal_acilislari + 1L
     env$.modal_jetonu <- nonce
     env$.modal_etiketi <- user_tag
@@ -66,13 +67,13 @@ suppressMessages(library(shiny))
   env$.unutulanlar <- character(0)
   env$.unutma_sonucu <- TRUE
   env$.yazim_jetonu <- ""
-  env$forget_api_key_choice_default <- function(session, username = NULL, result_input = NULL, nonce = "") {
+  env$forget_api_key_choice_default <- function(session, username = NULL, result_input = NULL, nonce = "", base = NULL) {
     env$.unutulanlar <- c(env$.unutulanlar, username %||% NA_character_)
     env$.yazim_jetonu <- nonce
     invisible(env$.unutma_sonucu)
   }
   env$.silinen_tercihler <- character(0)
-  env$clear_api_key_choice_pref <- function(session, username = NULL, result_input = NULL, nonce = "") {
+  env$clear_api_key_choice_pref <- function(session, username = NULL, result_input = NULL, nonce = "", base = NULL) {
     env$.silinen_tercihler <- c(env$.silinen_tercihler, username %||% NA_character_)
     env$.yazim_jetonu <- nonce
     invisible(TRUE)
@@ -80,11 +81,12 @@ suppressMessages(library(shiny))
   env$.hatirlanan_kullanicilar <- character(0)
   env$.hatirlatma_sonucu <- TRUE
   env$.hatirlatma_girdisi <- NULL
-  env$remember_api_key_choice_default <- function(session, username = NULL, result_input = NULL, nonce = "") {
+  env$remember_api_key_choice_default <- function(session, username = NULL, result_input = NULL, nonce = "", base = NULL) {
     env$.hatirlatmalar <- env$.hatirlatmalar + 1L
     env$.hatirlanan_kullanicilar <- c(env$.hatirlanan_kullanicilar, username %||% NA_character_)
     env$.hatirlatma_girdisi <- result_input
     env$.yazim_jetonu <- nonce
+    env$.son_taban <- base
     invisible(env$.hatirlatma_sonucu)
   }
   env$.etiket_istekleri <- character(0)
@@ -871,5 +873,60 @@ testthat::test_that("tolerans sonrası geç gelen bastırma gecikmeli modal aç�
     session$setInputs(api_key_onboarding_suppressed = list(suppressed = TRUE, tag = "etiket-a_kisi"))
     bekleyen[[1]]()
     testthat::expect_identical(env$.modal_acilislari, 0L)
+  })
+})
+
+testthat::test_that("yanıtsız seçim ekranı kimlik düşünce kapanırsa aynı kullanıcıya yeniden gösterilir", {
+  env <- .apiKeyEnv()
+  env$.durum$default_key <- "sahte-kurum-anahtari"
+  env$.durum$owner <- list(username = "ayilmaz")
+  testthat::local_mocked_bindings(
+    runjs = function(...) invisible(NULL),
+    delay = function(ms, expr) force(expr),
+    .package = "shinyjs"
+  )
+  testthat::local_mocked_bindings(removeModal = function(...) invisible(NULL),
+                                  updateTextInput = function(...) invisible(NULL), .package = "shiny")
+  shiny::testServer(env$apiKeyServer,
+                    args = list(id = "api_key", serviceDesk = list(), api_config = list()), {
+    session$elapse(200)
+    session$setInputs(api_key_onboarding_suppressed = list(suppressed = FALSE, tag = "etiket-ayilmaz"))
+    session$elapse(200)
+    testthat::expect_identical(env$.modal_acilislari, 1L)
+    .sahipDegistir(env, session, NULL)
+    session$elapse(200)
+    testthat::expect_false(isTRUE(session$userData$api_key_onboarding_done))
+    .sahipDegistir(env, session, list(username = "ayilmaz"))
+    session$elapse(200)
+    session$setInputs(api_key_onboarding_suppressed = list(suppressed = FALSE, tag = "etiket-ayilmaz", version = 2))
+    session$elapse(200)
+    testthat::expect_identical(env$.modal_acilislari, 2L)
+  })
+})
+
+testthat::test_that("kutu durumu kurum seçiminden sonra gelirse tercih o gelince sürümüyle yazılır", {
+  env <- .apiKeyEnv()
+  env$.durum$default_key <- "sahte-kurum-anahtari"
+  env$.durum$owner <- list(username = "yonetici")
+  testthat::local_mocked_bindings(runjs = function(...) invisible(NULL),
+                                  delay = function(ms, expr) invisible(NULL), .package = "shinyjs")
+  testthat::local_mocked_bindings(removeModal = function(...) invisible(NULL),
+                                  updateTextInput = function(...) invisible(NULL), .package = "shiny")
+  shiny::testServer(env$apiKeyServer,
+                    args = list(id = "api_key_module", serviceDesk = list(), api_config = list()), {
+    session$flushReact()
+    session$getReturned()$open("API Anahtarı Güncelleme")
+    jeton <- env$.modal_jetonu
+    session$setInputs(api_key_use_default_btn = 1)
+    testthat::expect_identical(env$.hatirlatmalar, 0L)
+    # Başka modalın kutusu bekleyen kararı tamamlamaz.
+    session$setInputs(api_key_dontshow = list(checked = TRUE, tag = "etiket-yonetici", nonce = "eski", version = 3))
+    testthat::expect_identical(env$.hatirlatmalar, 0L)
+    session$setInputs(api_key_dontshow = list(checked = TRUE, tag = "etiket-yonetici", nonce = jeton, version = 7))
+    testthat::expect_identical(env$.hatirlatmalar, 1L)
+    testthat::expect_identical(env$.son_taban, 7)
+    # Karar bir kez yazılır.
+    session$setInputs(api_key_dontshow = list(checked = TRUE, tag = "etiket-yonetici", nonce = jeton, version = 8))
+    testthat::expect_identical(env$.hatirlatmalar, 1L)
   })
 })

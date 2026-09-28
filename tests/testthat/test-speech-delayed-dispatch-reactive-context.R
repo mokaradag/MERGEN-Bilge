@@ -115,8 +115,90 @@ testthat::test_that("iptal edilen karşılama ön hazırlığı sonucu geçersiz
   # Geçersiz persona (iptal) yalnız nesli artırıp slotu boşaltır.
   onhazirlik <- regmatches(kaynak, regexpr("prewarm_welcome <- function\\(persona_id\\) \\{[\\s\\S]*?if \\(is.na\\(persona\\)\\) return", kaynak, perl = TRUE))
   testthat::expect_true(grepl("prefix_slot$gen <- prefix_slot$gen + 1L", onhazirlik, fixed = TRUE))
-  testthat::expect_true(grepl("identical(suren$persona, persona) && identical(suren$text, prefix_text)", kaynak, fixed = TRUE))
   isleyici <- paste(readLines(file.path(kok, "R", "server_ai_expert_handlers.R"), encoding = "UTF-8", warn = FALSE),
                     collapse = "\n")
   testthat::expect_true(grepl("return(speech_runtime$prewarm_welcome(NA_character_))", isleyici, fixed = TRUE))
+})
+
+testthat::test_that("A->B->A seçimi süren A sentezini yeniden kullanır; sahip değişimi kişisel öneki düşürür", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("promises")
+  speech_tests_source_chain()
+  speech_tests_reset_caches()
+  kok <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  source(file.path(kok, "R", "helpers_user_session_identity.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "server_speech_assets_runtime.R"), encoding = "UTF-8", local = env)
+  # Son konu işçisi taklit edilir (paketin diğer testlerinden kalan tanım kullanılmaz).
+  env$ai_expert_recent_prompt_promise <- function(session, user_id) promises::promise_resolve(NULL)
+  root <- withr::local_tempdir()
+  speech_tests_make_tree(root)
+  mergen_speech_manifest_write(mergen_speech_manifest_build(root)$manifest, mergen_speech_manifest_path(root))
+  withr::local_envvar(MERGEN_SPEECH_ROOT = root, VOXCPM2_PREFIX_DEADLINE_MS = "0",
+                      VOXCPM2_WARMUP_ENABLED = "false")
+  withr::defer(speech_tests_reset_caches())
+
+  session <- shiny::MockShinySession$new()
+  session$userData$user_first_name <- "Onur"
+  session$userData$kimlik_sahibi <- 5L
+  cagri <- 0L
+  cozuculer <- list()
+  tts <- list(synthesize_speech = function(text, persona_id = NULL) {
+    cagri <<- cagri + 1L
+    promises::promise(function(resolve, reject) cozuculer[[length(cozuculer) + 1L]] <<- resolve)
+  })
+  ogeler <- NULL
+  ai_expert <- list(start_speaking = function(..., static_plan = NULL) {
+    ogeler <<- static_plan$items
+    invisible(NULL)
+  }, COOLDOWN_GREETING = 10, COOLDOWN_PAGE = 8)
+  runtime <- env$speechAssetsRuntimeInit(
+    input = shiny::reactiveValues(tabs = "chat"), session = session,
+    settings_data = shiny::reactiveValues(selected_character = "emre"),
+    ai_expert = ai_expert, tts_processor = tts, current_user_id = function() 5L
+  )
+  personalar <- mergen_speech_personas()
+  for (p in personalar[c(1, 2, 1)]) {
+    runtime$prewarm_welcome(p)
+    later::run_now(timeoutSecs = 0.1)
+  }
+  testthat::expect_identical(cagri, 2L)
+
+  # A'nın sentezi B'ye geçişten sonra biter: önek B'nin karşılamasına eklenmez.
+  env$mergen_session_owner_transition(session$userData, 5L, 6L)
+  cozuculer[[1]](list(success = TRUE, audio_src = "data:audio/wav;base64,AA", duration = 1))
+  later::run_now(timeoutSecs = 0.1)
+  testthat::expect_true(runtime$play_welcome(personalar[1]))
+  later::run_now(timeoutSecs = 0.1)
+  testthat::expect_length(ogeler, 1L)
+})
+
+testthat::test_that("karşılama önekinin son konusu ana süreçte DB sorgusu yapmadan işçiden okunur", {
+  testthat::skip_if_not_installed("promises")
+  kok <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  source(file.path(kok, "R", "helpers_ai_expert_greeting_topic.R"), encoding = "UTF-8", local = env)
+  env$get_connection <- function(...) stop("ana süreçte DB bağlantısı açılmamalı")
+  gonderimler <- list()
+  env$tracked_future_promise <- function(task_fn, task_type = NULL, session_token = NULL,
+                                         dependency_mode = "auto", globals = NULL, packages = NULL, ...) {
+    gonderimler[[length(gonderimler) + 1L]] <<- list(tur = task_type, kip = dependency_mode, globals = globals)
+    promises::promise_resolve("Bütçe raporu")
+  }
+  oturum <- list(userData = new.env(), token = "tok")
+  sonuc <- NULL
+  env$ai_expert_recent_prompt_promise(oturum, 5L)$then(function(x) sonuc <<- x)
+  env$ai_expert_recent_prompt_promise(oturum, 5L)
+  for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+  testthat::expect_identical(sonuc, "Bütçe raporu")
+  testthat::expect_length(gonderimler, 1L)
+  testthat::expect_identical(gonderimler[[1]]$kip, "explicit")
+  testthat::expect_true(is.function(gonderimler[[1]]$globals$ai_expert_recent_prompt_fetch_raw))
+  env$ai_expert_recent_prompt_promise(oturum, 6L)
+  testthat::expect_length(gonderimler, 2L)
+  bos <- "x"
+  env$ai_expert_recent_prompt_promise(oturum, 0L)$then(function(x) bos <<- x)
+  later::run_now(timeoutSecs = 0.1)
+  testthat::expect_null(bos)
+  testthat::expect_length(gonderimler, 2L)
 })

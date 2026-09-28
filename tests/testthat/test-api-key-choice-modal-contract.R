@@ -92,10 +92,11 @@ test_that("seçim modalı varsayılan kurum anahtarı değerini gömmez / sızd�
   expect_false(any(grepl("MERGEN_DEFAULT_API_KEY", js_lines, fixed = TRUE)))
   expect_false(any(grepl("MERGEN_DEFAULT_API_KEY", css_lines, fixed = TRUE)))
 
-  # İstemci tarafı oturum anahtarını okumaz; yalnızca hassas olmayan bastırma
-  # bayrağını mergen_settings içinde tutar.
+  # İstemci tarafı oturum anahtarını okumaz; paylaşılan mergen_settings
+  # nesnesini yeniden yazmaz (başka sekmenin ayarını ezmez).
   expect_false(any(grepl("ai_api_key", js_lines, fixed = TRUE)))
-  expect_true(any(grepl("mergen_settings", js_lines, fixed = TRUE)))
+  expect_false(any(grepl("mergen_settings\"", js_lines, fixed = TRUE)))
+  expect_false(any(grepl("setItem(SETTINGS_LS", js_lines, fixed = TRUE)))
   expect_true(any(grepl("api_key_onboarding_suppressed", js_lines, fixed = TRUE)))
 })
 
@@ -381,6 +382,12 @@ test_that("Init mesajı etiketi her zaman atar; eski sekme yazımı yeni tercihi
   expect_true(grepl('_userTag =\n        message && typeof message.userTag === "string" ? message.userTag : "";',
                     init, fixed = TRUE))
   expect_false(grepl("message.userTag) {", init, fixed = TRUE))
-  expect_true(grepl("if (yeni < readVersion(tag)) {", js_text, fixed = TRUE))
-  expect_true(grepl("writeSource(kaynak, message.userTag, surum === null ? undefined : surum)", js_text, fixed = TRUE))
+  # Sürüm saat değil kullanıcı başına sayaçtır; değer ve sürüm tek kayıttadır.
+  expect_false(grepl("serverOffset", js_text, fixed = TRUE))
+  expect_false(grepl("issuedAt", js_text, fixed = TRUE))
+  expect_true(grepl("JSON.stringify({ v: deger, n: kayit.n + 1 })", js_text, fixed = TRUE))
+  expect_true(grepl("kayit.n > taban", js_text, fixed = TRUE))
+  expect_true(grepl("writeSource(kaynak, message.userTag, taban)", js_text, fixed = TRUE))
+  # Kutu durumu modal düğmesinden önce (yakalama evresi) bildirilir.
+  expect_true(grepl('closest(".api-key-choice-modal-root")', js_text, fixed = TRUE))
 })

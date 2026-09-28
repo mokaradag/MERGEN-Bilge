@@ -799,6 +799,12 @@ test_that("CSV onarım kararı sınırlı dilimlerle tam sütunda biriktirilir",
   # İptal dilimler arasında yoklanır; tarama yarıda kalırsa onarım yapılmaz.
   expect_identical(env$turkish_latin1_repair_columns(veri, stop_check = function() TRUE, chunk = 2L),
                    c(FALSE, FALSE, FALSE))
+  # İlk dilimden sonra gelen iptal de kısmi kararı döndürmez.
+  yoklama <- 0L
+  expect_identical(env$turkish_latin1_repair_columns(veri, stop_check = function() {
+    yoklama <<- yoklama + 1L
+    yoklama > 1L
+  }, chunk = 2L), c(FALSE, FALSE, FALSE))
 })
 
 test_that("mükerrer etiket yedeği onarılmış ham adı kullanır ve sıra eki benzersizdir", {

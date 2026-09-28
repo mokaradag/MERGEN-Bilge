@@ -399,7 +399,7 @@ admin_doc_render_document <- function(doc_id, root = admin_doc_repo_root()) {
 admin_doc_rewrite_links <- function(html, source_file) {
   if (!is.character(html) || length(html) != 1L || !nzchar(html)) return(html)
   # Etiket tarayıcısı tırnak duyarlıdır: `title="1 > 0"` içindeki ">" etiketi bitirmez.
-  eslesme <- gregexpr("<a\\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", html, perl = TRUE, ignore.case = TRUE)
+  eslesme <- gregexpr("<a\\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>|<a\\b[^>]*>", html, perl = TRUE, ignore.case = TRUE)
   etiketler <- regmatches(html, eslesme)[[1]]
   if (!length(etiketler)) return(html)
   kayitli <- list()
@@ -413,8 +413,8 @@ admin_doc_rewrite_links <- function(html, source_file) {
     if (!"href" %in% adlar) return(tam)
     href <- attrs[[match("href", adlar)]]$deger
     if (is.na(href)) href <- ""
-    # href/target/rel yeniden yazılır; diğer öznitelikler (ör. title) korunur.
-    kalan <- attrs[!adlar %in% c("href", "target", "rel")]
+    # href/target/rel yeniden yazılır, ping atılır; diğer öznitelikler (ör. title) korunur.
+    kalan <- attrs[!adlar %in% c("href", "target", "rel", "ping")]
     yeni <- function(nitelik, cikar = character(0)) {
       diger <- admin_doc_attrs_html(Filter(function(a) !a$ad %in% cikar, kalan))
       paste0("<a ", nitelik, if (nzchar(diger)) paste0(" ", diger), ">")

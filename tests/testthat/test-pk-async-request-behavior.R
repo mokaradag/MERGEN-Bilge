@@ -316,6 +316,7 @@ test_that("bootstrap SÜREÇ BAŞINA BİR KEZ çalışır (memoize) ve tekrar ok
 })
 
 test_that("bootstrap UTF-8 kaynaktaki Türkçe dize sabitlerini bozmadan yükler", {
+  skip_if_not_installed("withr")
   # Temiz PSOCK işçisinde `encoding` seçeneği yerel kod sayfasıdır; CP1254
   # VM'de UTF-8 kaynak bayt bayt CP1254 okunuyor ve sabitler bozuluyordu.
   kok <- file.path(tempdir(), paste0("pk_boot_enc_", as.integer(runif(1, 1, 1e9))))

@@ -283,7 +283,7 @@ createStartupScreenUI <- function() {
     tags$div(
       class = "cinematic-char-step-header",
       tags$div(
-        tags$h2(class = "cinematic-char-step-title", "Asistanınızı Seçin"),
+        tags$h2(id = "cinematic-char-step-title", class = "cinematic-char-step-title", "Asistanınızı Seçin"),
         tags$p(class = "cinematic-char-step-subtitle", "Her asistanın kendine özgü bir çalışma tarzı var.")
       ),
       # Karakter butonları - başlık satırının sağ tarafında
@@ -358,6 +358,7 @@ createStartupScreenUI <- function() {
     tags$div(
       class = "cinematic-modal-container",
       # Diyalog semantiği: odak açılışta içeri taşınır ve Tab içeride tutulur.
+      # Erişilebilir ad görünen adımın başlığıdır (JS 2. adımda değiştirir).
       role = "dialog",
       `aria-modal` = "true",
       `aria-labelledby` = "mode-modal-title",

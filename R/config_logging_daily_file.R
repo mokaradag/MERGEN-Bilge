@@ -168,7 +168,8 @@ mergen_log_upgrade_legacy_file <- function(target_file, lock_wait = 2, stale_aft
   boyut <- kimlik$boyut
   onceki <- if (is.list(durum)) durum$boyut else NA_real_
   if (is.list(durum) && (is.na(boyut) ||
-                         (identical(boyut, onceki) && identical(kimlik$zaman, durum$zaman)))) {
+                         (identical(boyut, onceki) && identical(kimlik$zaman, durum$zaman) &&
+                          identical(.mergen_log_file_kimlik(target_file, bas = TRUE)$bas, durum$bas)))) {
     return(TRUE)
   }
   temiz <- function(nabiz2 = NULL) {
@@ -209,12 +210,15 @@ mergen_log_upgrade_legacy_file <- function(target_file, lock_wait = 2, stale_aft
   isTRUE(file.rename(target_file, kenar)) && temiz()
 }
 
-# Çok-süreçli dağıtımda (tools/run_mergen_workers.R) uygulama süreçleri aynı
-# günlük dosyaya yazar; eklemeler kısa bir süreçler arası kilitle sıralanır.
-# Kilit alınamazsa paylaşılan dosyaya kilitsiz YAZILMAZ: satır sürece özel
-# `<ad>.p<PID>.log` yedeğine düşer ve sonraki kilitli yazımda birleştirilir.
-.mergen_log_shared_writers <- function() {
-  isTRUE(suppressWarnings(as.integer(Sys.getenv("MERGEN_APP_WORKER_COUNT", "1"))) > 1L)
+# Çok-süreçli dağıtımda (tools/run_mergen_workers.R) ya da log dizini UNC/ağ
+# paylaşımıyken (başka hostlar da yazabilir) eklemeler kısa bir süreçler arası
+# kilitle sıralanır; MERGEN_LOG_SHARED_WRITERS=true bunu zorlar (ör. eşlenmiş
+# ağ sürücüsü). Kilit alınamazsa paylaşılan dosyaya kilitsiz YAZILMAZ: satır
+# sürece özel `<ad>.p<HOST>-<PID>.log` yedeğine düşer ve sonra birleştirilir.
+.mergen_log_shared_writers <- function(target_file = "") {
+  isTRUE(as.logical(Sys.getenv("MERGEN_LOG_SHARED_WRITERS", ""))) ||
+    isTRUE(suppressWarnings(as.integer(Sys.getenv("MERGEN_APP_WORKER_COUNT", "1"))) > 1L) ||
+    grepl("^(\\\\\\\\|//)[^\\\\/]+[\\\\/]", as.character(target_file)[1])
 }
 
 .MERGEN_LOG_LOCK_BACKOFF <- new.env(parent = emptyenv())
@@ -249,23 +253,46 @@ mergen_log_upgrade_legacy_file <- function(target_file, lock_wait = 2, stale_aft
   if (isTRUE(tamam)) {
     unlink(yedek)
   } else {
-    try({
-      con <- file(target_file, open = "r+b")
-      seek(con, where = baslangic, rw = "write")
-      truncate(con)
+    con <- try(file(target_file, open = "r+b"), silent = TRUE)
+    if (!inherits(con, "try-error")) {
+      try({
+        seek(con, where = baslangic, rw = "write")
+        truncate(con)
+      }, silent = TRUE)
       close(con)
-    }, silent = TRUE)
+    }
+    # Geri alma doğrulanamazsa yedek yeniden denenmez (satırlar iki kez
+    # eklenmez); inceleme için ayrı adla saklanır.
+    if (!isTRUE(file.info(target_file)$size == baslangic)) {
+      file.rename(yedek, sub("(\\.log)?$", sprintf(".birlesmedi-%s.log", format(Sys.time(), "%Y%m%d%H%M%S")), yedek))
+    }
   }
   invisible(tamam)
+}
+
+# Başka süreçlerin (ör. kapanmış işçi) 60 sn'dir dokunulmamış yedekleri kilit
+# altında sahiplenilir (yeniden adlandırma) ve mtime sırasıyla birleştirilir.
+.mergen_log_orphan_fallbacks <- function(target_file, surec_yedek, kilitli) {
+  if (!isTRUE(kilitli)) return(character(0))
+  kok <- gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", sub("\\.log$", "", basename(target_file)))
+  adaylar <- list.files(dirname(target_file), pattern = paste0("^", kok, "\\.p[A-Za-z0-9_-]+\\.log$"),
+                        full.names = TRUE)
+  adaylar <- adaylar[basename(adaylar) != basename(surec_yedek)]
+  zaman <- file.info(adaylar)$mtime
+  eski <- !is.na(zaman) & as.numeric(difftime(Sys.time(), zaman, units = "secs")) > 60
+  adaylar <- adaylar[eski][order(zaman[eski], basename(adaylar[eski]))]
+  sahiplenilen <- sub("\\.log$", sprintf("-m%d.log", Sys.getpid()), adaylar)
+  sahiplenilen[file.rename(adaylar, sahiplenilen)]
 }
 
 # Karışık kodlama üretmeden UTF-8 ekler: eski satırlı dosya taşınamadıysa satırlar
 # `<ad>.utf8.log` yedeğine yazılır. Birleştirilemeyen yedek varken yeni satırlar
 # da yedeğe eklenir; günlükteki kronolojik sıra bozulmaz.
 mergen_log_write_utf8 <- function(lines, target_file) {
-  surec_yedek <- sub("(\\.log)?$", sprintf(".p%d.log", Sys.getpid()), target_file)
+  host <- gsub("[^A-Za-z0-9_-]", "_", c(Sys.info()["nodename"], "h")[1])
+  surec_yedek <- sub("(\\.log)?$", sprintf(".p%s-%d.log", host, Sys.getpid()), target_file)
   jeton <- NULL
-  if (.mergen_log_shared_writers()) {
+  if (.mergen_log_shared_writers(target_file)) {
     ekle_kilit <- paste0(target_file, ".append.lock")
     ertele <- .MERGEN_LOG_LOCK_BACKOFF[[ekle_kilit]]
     if (is.numeric(ertele) && as.numeric(Sys.time()) < ertele) {
@@ -273,7 +300,7 @@ mergen_log_write_utf8 <- function(lines, target_file) {
     }
     # Kısa bekleme: yetim kilit her log satırını saniyelerce bloklamaz; zaman
     # aşımı birkaç saniye önbelleklenir.
-    jeton <- .mergen_log_lock_acquire(ekle_kilit, 0.25, 20)
+    jeton <- .mergen_log_lock_acquire(ekle_kilit, 0.25, 120)
     if (is.null(jeton)) {
       .MERGEN_LOG_LOCK_BACKOFF[[ekle_kilit]] <- as.numeric(Sys.time()) + 5
       return(invisible(mergen_log_append_utf8(lines, surec_yedek) > 0))
@@ -287,9 +314,16 @@ mergen_log_write_utf8 <- function(lines, target_file) {
   if (!isTRUE(mergen_log_upgrade_legacy_file(target_file, nabiz = nabiz))) {
     return(invisible(mergen_log_append_utf8(lines, yedek) > 0))
   }
-  for (y in c(yedek, surec_yedek)) {
+  for (y in c(yedek, .mergen_log_orphan_fallbacks(target_file, surec_yedek, !is.null(jeton)), surec_yedek)) {
     if (file.exists(y) && !isTRUE(.mergen_log_merge_fallback(target_file, y, nabiz))) {
       return(invisible(mergen_log_append_utf8(lines, y) > 0))
+    }
+  }
+  # Son ekleme öncesi kilit tazelenir; sahipliği kaybeden yazıcı ana dosyaya dokunmaz.
+  if (!is.null(jeton)) {
+    .mergen_log_heartbeat(ekle_kilit)
+    if (!.mergen_log_lock_owned(ekle_kilit, jeton)) {
+      return(invisible(mergen_log_append_utf8(lines, surec_yedek) > 0))
     }
   }
   once <- file.info(target_file)$size

@@ -206,3 +206,27 @@ test_that("DOCX: BAYAT asenkron HATA sonucu daha yeni modal için Türkçe hata 
     expect_identical(toast_kaydi$count, 1L)
   })
 })
+
+test_that("oturum sahibi değişince açık önizlemenin indirmesi önceki dosyayı sunmaz", {
+  skip_if_not_installed("shiny")
+  env <- .fp_make_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
+         encoding = "UTF-8", local = env)
+  env$showToast <- function(...) invisible(NULL)
+  kaynak <- withr::local_tempfile(fileext = ".txt")
+  writeLines("A kullanicisinin gizli dosyasi", kaynak)
+  kapanis <- 0L
+  testthat::local_mocked_bindings(
+    showModal = function(...) invisible(NULL),
+    removeModal = function(...) kapanis <<- kapanis + 1L,
+    .package = "shiny"
+  )
+  shiny::testServer(env$filePreviewServer, {
+    session$userData$kimlik_sahibi <- 7L
+    session$returned$open(list(name = "gizli.txt", datapath = kaynak))
+    testthat::expect_identical(readLines(output$download_preview_file), "A kullanicisinin gizli dosyasi")
+    env$mergen_session_owner_transition(session$userData, 7L, 8L)
+    testthat::expect_gte(kapanis, 1L)
+    testthat::expect_false(any(grepl("gizli", readLines(output$download_preview_file), fixed = TRUE)))
+  })
+})

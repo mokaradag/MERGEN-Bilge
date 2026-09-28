@@ -217,6 +217,8 @@ file_summary_warm_dependencies <- function(attempts = 2L) {
       !exists("worker_monitor_auto_globals", mode = "function")) {
     return(invisible(FALSE))
   }
+  # Özet kapasitesi yoksa (futures kapalı, sequential, <2 işçi) tarama açılışı boşuna geciktirir.
+  if (file_summary_effective_limit() < 1L) return(invisible(FALSE))
   for (deneme in seq_len(max(1L, as.integer(attempts)))) {
     sonuc <- try(worker_monitor_auto_globals("file_summary", file_summary_task_fn("", "", list())),
                  silent = TRUE)

@@ -959,3 +959,47 @@ testthat::test_that("zengin şeritte açılış davranışı korunur (senkron ö
     testthat::expect_false(isTRUE(session$userData$saved_chats_full_pending))
   })
 })
+
+testthat::test_that("oturum başka kullanıcıya geçince kayıtlı söyleşiler yeni sahip için yeniden yüklenir", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises")
+  testthat::skip_if_not_installed("later")
+  .startup_observers_source_once()
+  if (!exists("mergen_session_owner_transition", envir = globalenv(), mode = "function")) {
+    source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
+           encoding = "UTF-8", local = globalenv())
+  }
+
+  rec <- new.env()
+  rec$full_result <- list("a-chat" = list(title = "A söyleşisi", message_count = 1L))
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+  kimlik <- new.env()
+  kimlik$uid <- 7L
+
+  shiny::testServer(function(input, output, session) {
+    session$userData$kimlik_sahibi <- 7L
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startupObserversInit(
+      input = input, session = session, values = values,
+      render_welcome_screen = function(...) invisible(NULL),
+      current_user_id = function() kimlik$uid,
+      sso_state = NULL, boot_ready = NULL
+    )
+    session$userData$.values <- values
+  }, {
+    session$flushReact()
+    session$setInputs(startup_lane_resolved = list(lane = "rich_lane", source = "stored", ts = 1))
+    for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+    testthat::expect_identical(names(shiny::isolate(session$userData$.values$saved_chats)), "a-chat")
+
+    rec$full_result <- list("b-chat" = list(title = "B söyleşisi", message_count = 1L))
+    kimlik$uid <- 8L
+    mergen_session_owner_transition(session$userData, 7L, 8L)
+    session$flushReact()
+    for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+    testthat::expect_identical(tail(rec$full_user_ids, 1L), 8L)
+    testthat::expect_identical(names(shiny::isolate(session$userData$.values$saved_chats)), "b-chat")
+  })
+})

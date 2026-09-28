@@ -277,7 +277,7 @@
   support_admin_health_helpers = list(first = "R/helpers_destek_database.R", last = "R/helpers_health_checks.R", n = 8L),
   # Bilinçli güncelleme: R/helpers_ai_expert_handlers_support.R (AI Uzman handler
   # saf karar yardımcıları) bölüm sonuna eklendi; 3 -> 4 dosya.
-  ai_expert_helpers = list(first = "R/helpers_ai_expert_user_data.R", last = "R/helpers_ai_expert_handlers_support.R", n = 5L),
+  ai_expert_helpers = list(first = "R/helpers_ai_expert_user_data.R", last = "R/helpers_ai_expert_handlers_support.R", n = 6L),
   # Bilinçli güncelleme: hibrit VoxCPM2 konuşma katmanı (speech_assets) yeni
   # bölüm olarak ai_expert_helpers'tan sonra eklendi (8 dosya; yapı tanımı +
   # yol kurucuları fonksiyon-yoğunluk bölmesiyle iki dosyadır).
@@ -762,7 +762,9 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # `helpers_user_presence_shared.R` (çok-süreçli Çevrimiçi birleştirmesi).
   # 507 -> 508: `helpers_admin_documentation_sanitize.R` (tırnak duyarlı HTML
   # temizleyicisi; `helpers_admin_documentation.R` 24 fonksiyon tavanındaydı).
-  expect_equal(length(runtime), 508L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 508 -> 509: `helpers_ai_expert_greeting_topic.R` (karşılama önekinin son
+  # konusu işçide okunur; `helpers_ai_expert_user_data.R` bütçesi korunur).
+  expect_equal(length(runtime), 509L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

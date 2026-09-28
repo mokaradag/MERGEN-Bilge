@@ -169,7 +169,8 @@ turkish_latin1_repair_columns <- function(data, stop_check = NULL, chunk = 20000
   metinsel <- which(vapply(data, is.character, logical(1)) | vapply(data, is.factor, logical(1)))
   yabanci <- kanit <- logical(ncol(data))
   for (bas in seq(1L, nrow(data), by = chunk)) {
-    if (is.function(stop_check) && isTRUE(stop_check())) break
+    # İptalde yarım tarama onarım kararı üretmez.
+    if (is.function(stop_check) && isTRUE(stop_check())) return(logical(ncol(data)))
     satir <- bas:min(nrow(data), bas + chunk - 1L)
     for (j in metinsel[!yabanci[metinsel]]) {
       tarama <- turkish_latin1_repair_scan(norm(data[[j]][satir]))

@@ -43,6 +43,42 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
     }
     # Kullanıcı modalda açık seçim yaptıysa geç gelen tercih kararı değiştirmez.
     acik_secim <- FALSE
+    # Kutu durumu kurum seçiminden sonra gelirse tercih o gelince yazılır.
+    bekleyen_varsayilan <- NULL
+
+    # Tarayıcının bildirdiği son kayıt sürümü (sayaç): önce bu modalın kutu
+    # bildirimi, yoksa tercih yanıtı. Etiket eşleşmezse NULL.
+    tercih_tabani <- function(etiket, bekleyen = NULL) {
+      for (k in list(bekleyen, shiny::isolate(input$api_key_onboarding_suppressed))) {
+        if (is.list(k) && identical(as.character(k$tag %||% "")[1], etiket %||% NA_character_)) {
+          v <- suppressWarnings(as.numeric(k$version %||% NA)[1])
+          if (isTRUE(is.finite(v))) return(v)
+        }
+      }
+      NULL
+    }
+
+    # Kurum seçiminde "bir daha gösterme" işaretliyse seçim hatırlanır; işaret
+    # kaldırılmışsa (önceden hatırlanan bastırma dahil) tercih silinir.
+    varsayilan_tercih_yaz <- function(kullanici, etiket, bekleyen) {
+      taban <- tercih_tabani(etiket, bekleyen)
+      if (!isTRUE(bekleyen$checked)) {
+        if (exists("clear_api_key_choice_pref", mode = "function")) {
+          clear_api_key_choice_pref(session, kullanici, result_input = ns("api_key_choice_remembered"),
+                                    nonce = yazim_jetonu("clear", etiket), base = taban)
+        }
+        return(invisible(NULL))
+      }
+      hatirlatildi <- exists("remember_api_key_choice_default", mode = "function") &&
+        isTRUE(remember_api_key_choice_default(
+          session, kullanici, result_input = ns("api_key_choice_remembered"),
+          nonce = yazim_jetonu("default", etiket), base = taban
+        ))
+      if (!hatirlatildi) {
+        showToast(session, "Seçiminiz bu tarayıcıda hatırlanamadı; seçim ekranı sonraki girişte yeniden gösterilebilir.", "warning")
+      }
+      invisible(NULL)
+    }
 
     # Onboarding kararı KİMLİĞE bağlıdır: aynı Shiny oturumu SSO ile başka
     # kullanıcıya geçerse önceki kullanıcının kararı devralınmaz.
@@ -63,19 +99,28 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
       modal_sayaci <<- modal_sayaci + 1L
       modal_jetonu <<- sprintf("%d-%.0f", modal_sayaci, as.numeric(Sys.time()) * 1000)
       modal_sahibi <<- if (is.null(sahip)) "" else as.character(sahip$username %||% "")[1]
+      bekleyen_varsayilan <<- NULL
       show_api_key_choice_modal(
         session,
         default_available = default_available,
         service_desk = serviceDesk,
         nonce = modal_jetonu,
-        user_tag = if (is.null(sahip)) "" else api_key_pref_user_tag(sahip$username) %||% ""
+        user_tag = if (is.null(sahip)) "" else api_key_pref_user_tag(sahip$username) %||% "",
+        title = title
       )
     }
 
     # Sahip değişince/kimlik düşünce önceki sahibin modalı ve yazdığı anahtar
-    # kaldırılır; oturumdaki kişisel anahtar bırakılır.
+    # kaldırılır; oturumdaki kişisel anahtar bırakılır. Açık seçim yapılmadıysa
+    # (modal yanıtsız kapandı) onboarding kararı da bırakılır: aynı kullanıcı
+    # yeniden girince seçim ekranı yeniden sorulur.
     sahip_birak <- function() {
       mb_api_key_clear_session_key(session)
+      if (!isTRUE(acik_secim)) {
+        session$userData$api_key_onboarding_done <- FALSE
+        session$userData$api_key_onboarding_owner <- NULL
+      }
+      bekleyen_varsayilan <<- NULL
       if (is.character(modal_sahibi) && !is.na(modal_sahibi)) {
         removeModal()
         try(updateTextInput(session, "api_key_plain_input", value = ""), silent = TRUE)
@@ -152,9 +197,14 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
         # Açık kişisel anahtar seçimi, tarayıcıda hatırlanan kurum seçimini
         # kaldırır; tarayıcı yazımı doğrulamazsa kullanıcı uyarılır.
         if (exists("forget_api_key_choice_default", mode = "function")) {
-          jeton <- yazim_jetonu("personal", api_key_pref_user_tag(owner$username))
+          etiket <- api_key_pref_user_tag(owner$username)
+          kutu <- input$api_key_dontshow
+          if (!(is.list(kutu) && nzchar(modal_jetonu) &&
+                identical(as.character(kutu$nonce %||% "")[1], modal_jetonu))) kutu <- NULL
+          jeton <- yazim_jetonu("personal", etiket)
           if (!isTRUE(forget_api_key_choice_default(
-            session, owner$username, result_input = ns("api_key_choice_remembered"), nonce = jeton
+            session, owner$username, result_input = ns("api_key_choice_remembered"), nonce = jeton,
+            base = tercih_tabani(etiket, kutu)
           ))) {
             showToast(session, "Kurum anahtarı tercihi bu tarayıcıdan kaldırılamadı; sonraki girişte kurum anahtarı kullanılabilir.", "warning")
           }
@@ -220,32 +270,33 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
       # işaretlediyse o kullanıcı için hatırlanır (Ayarlar > Yapılandırma'dan
       # geri açılır). "Hatırlanacak" onayı tarayıcı kaydı doğruladıktan sonra verilir.
       # Kutunun değeri yalnız bu modal jetonu ve bu kullanıcının etiketiyle
-      # geçerlidir; önceki modalın/kullanıcının işareti devralınmaz.
-      # İşaret kaldırılmışsa (önceden hatırlanan bastırma dahil) tercih silinir;
-      # sonraki girişte seçim ekranı yeniden gösterilir.
+      # geçerlidir; önceki modalın/kullanıcının işareti devralınmaz. Bu modalın
+      # kutu durumu henüz gelmediyse tercih gelince yazılır.
       etiket <- api_key_pref_user_tag(sahip$username)
       bekleyen <- input$api_key_dontshow
       bu_modal <- is.list(bekleyen) && nzchar(modal_jetonu) &&
         identical(as.character(bekleyen$nonce %||% "")[1], modal_jetonu) &&
         identical(as.character(bekleyen$tag %||% "")[1], etiket %||% NA_character_)
       if (!bu_modal) {
-        return()
-      }
-      if (!isTRUE(bekleyen$checked)) {
-        if (exists("clear_api_key_choice_pref", mode = "function")) {
-          clear_api_key_choice_pref(session, sahip$username, result_input = ns("api_key_choice_remembered"),
-                                    nonce = yazim_jetonu("clear", etiket))
+        if (nzchar(modal_jetonu) && !is.null(etiket)) {
+          bekleyen_varsayilan <<- list(jeton = modal_jetonu, etiket = etiket, kullanici = sahip$username)
         }
         return()
       }
-      hatirlatildi <- exists("remember_api_key_choice_default", mode = "function") &&
-        isTRUE(remember_api_key_choice_default(
-          session, sahip$username, result_input = ns("api_key_choice_remembered"),
-          nonce = yazim_jetonu("default", etiket)
-        ))
-      if (!hatirlatildi) {
-        showToast(session, "Seçiminiz bu tarayıcıda hatırlanamadı; seçim ekranı sonraki girişte yeniden gösterilebilir.", "warning")
+      varsayilan_tercih_yaz(sahip$username, etiket, bekleyen)
+    }, ignoreInit = TRUE)
+
+    observeEvent(input$api_key_dontshow, {
+      b <- bekleyen_varsayilan
+      kutu <- input$api_key_dontshow
+      if (is.null(b) || !is.list(kutu) || !identical(as.character(kutu$nonce %||% "")[1], b$jeton) ||
+          !identical(as.character(kutu$tag %||% "")[1], b$etiket)) {
+        return()
       }
+      bekleyen_varsayilan <<- NULL
+      sahip <- mb_api_key_resolve_owner(session, require_auth = TRUE)
+      if (is.null(sahip) || !identical(as.character(sahip$username %||% "")[1], b$kullanici)) return()
+      varsayilan_tercih_yaz(b$kullanici, b$etiket, kutu)
     }, ignoreInit = TRUE)
 
     # Tarayıcı yazım onayı yalnız bekleyen yazımın jetonu ve geçerli sahibin

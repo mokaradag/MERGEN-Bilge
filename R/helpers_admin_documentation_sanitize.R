@@ -18,8 +18,18 @@ admin_doc_allowed_tags <- function() {
 
 # Etiket tarayıcısı tırnak duyarlıdır: tırnaklı öznitelik değerindeki ">"
 # etiketi bitirmez (`<img alt=">" onerror=...>` tek token olarak denetlenir).
-# HTML yorumu ayrı yakalanır; yorumdaki kesme işareti metni yutmaz.
-.ADMIN_DOC_TAG_PATTERN <- "<!--[\\s\\S]*?-->|<(?:[^>\"']|\"[^\"]*\"|'[^']*')*>"
+# HTML yorumu ayrı yakalanır; yorumdaki kesme işareti metni yutmaz. Kapanmamış
+# tırnaklı etiket de ilk ">"e kadar token sayılır ve temizlenir.
+.ADMIN_DOC_TAG_PATTERN <- "<!--[\\s\\S]*?-->|<(?:[^>\"']|\"[^\"]*\"|'[^']*')*>|<[^>]*>"
+
+# Şema adındaki gömülü TAB/satır sonu/denetim karakterleri (tarayıcı URL
+# ayrıştırmasında atılır) risk taramasında da yok sayılır.
+.admin_doc_scheme_pattern <- function() {
+  ara <- "[\\s\\x00-\\x1f]*"
+  paste0("(?:", paste(strsplit("javascript", "")[[1]], collapse = ara), "|",
+         paste(strsplit("vbscript", "")[[1]], collapse = ara), ")", ara, ":")
+}
+.ADMIN_DOC_RISKY_ATTR <- paste0("[\\s/](?:on[a-zA-Z]+|style|ping)\\s*=|", .admin_doc_scheme_pattern())
 
 # Öznitelik dizesini tırnak duyarlı ayrıştırır: list(ad, deger) listesi
 # (değersiz öznitelikte deger NA). Tırnaklı değerin İÇİNDEKİ `href=` metni ayrı
@@ -63,11 +73,11 @@ admin_doc_attrs_html <- function(attrs) {
 }
 
 # İzinli bir etiketin attribute dizesini güvenli hale getirir: olay
-# yakalayıcı (on*) ve style kaldırılır; javascript:/vbscript:/data:text/html
+# yakalayıcı (on*), style ve ping (tıklamada ek istek) kaldırılır; javascript:/vbscript:/data:text/html
 # adresleri "#" olur. Öznitelikler tırnak duyarlı ayrıştırılıp yeniden yazılır.
 admin_doc_clean_attributes <- function(attr_str) {
   attrs <- Filter(function(a) {
-    grepl("^[a-z][a-z0-9:_.-]*$", a$ad) && !grepl("^on", a$ad) && !identical(a$ad, "style")
+    grepl("^[a-z][a-z0-9:_.-]*$", a$ad) && !grepl("^on", a$ad) && !a$ad %in% c("style", "ping")
   }, admin_doc_parse_attrs(attr_str))
   adres <- c("href", "src", "xlink:href", "action", "formaction", "poster")
   for (k in seq_along(attrs)) {
@@ -89,7 +99,7 @@ admin_doc_clean_one_tag <- function(tok, allowed = admin_doc_allowed_tags()) {
 
   is_close <- grepl("^\\s*/", inner, perl = TRUE)
   body <- sub("^\\s*/?\\s*", "", inner, perl = TRUE)
-  name <- tolower(sub("(^[a-zA-Z][a-zA-Z0-9]*).*$", "\\1", body, perl = TRUE))
+  name <- tolower(sub("(?s)(^[a-zA-Z][a-zA-Z0-9]*).*$", "\\1", body, perl = TRUE))
 
   # İzinli değilse etkisizleştir (escape)
   if (!grepl("^[a-z][a-z0-9]*$", name) || !(name %in% allowed)) {
@@ -112,17 +122,16 @@ admin_doc_clean_one_tag <- function(tok, allowed = admin_doc_allowed_tags()) {
 }
 
 # Ham HTML'de script çalıştırabilecek bir kalıp var mı? (hızlı tek-geçiş tarama)
-# Tehlikenin TEK yolu: (a) script-yetenekli etiket, (b) on* olay yakalayıcı,
-# (c) javascript:/vbscript:/data:text/html URL (sayısal varlıkla gizlenmiş
-# adres dahil). Hiçbiri yoksa HTML zaten zararsızdır ve pahalı token
+# Tehlikenin TEK yolu: (a) script-yetenekli etiket, (b) on*/style/ping
+# özniteliği (`/` sınırıyla da), (c) javascript:/vbscript:/data:text/html URL
+# (sayısal varlıkla ya da gömülü TAB/satır sonuyla gizlenmiş adres dahil). Hiçbiri yoksa HTML zaten zararsızdır ve pahalı token
 # ayrıştırması atlanır (büyük belge performansı).
 admin_doc_html_has_risk <- function(html) {
   pattern <- paste0(
     "<\\s*/?\\s*(?:script|style|iframe|object|embed|form|input|link|meta",
     "|base|svg|math|template|frame|frameset|applet|noscript|xml|image|button",
     "|select|textarea|marquee|audio|video|source|track|canvas|portal|html|body|head)\\b",
-    "|\\son[a-zA-Z]+\\s*=",
-    "|(?:javascript|vbscript)\\s*:",
+    "|", .ADMIN_DOC_RISKY_ATTR,
     "|data\\s*:\\s*text/html",
     "|(?:href|src|action)\\s*=\\s*[\"']?[^\"'>]*&(?:#|colon;|tab;|newline;)"
   )
@@ -150,12 +159,12 @@ admin_doc_sanitize_html <- function(html) {
   # işaretler, ardından sadece onları tekil temizlik fonksiyonundan geçiririz.
   inner <- substring(toks, 2L, nchar(toks) - 1L)
   body0 <- sub("^\\s*/?\\s*", "", inner, perl = TRUE)
-  names_v <- tolower(sub("(^[a-zA-Z][a-zA-Z0-9]*).*$", "\\1", body0, perl = TRUE))
+  names_v <- tolower(sub("(?s)(^[a-zA-Z][a-zA-Z0-9]*).*$", "\\1", body0, perl = TRUE))
   valid_name <- grepl("^[a-z][a-z0-9]*$", names_v, perl = TRUE)
   is_comment <- startsWith(inner, "!--")
   disallowed <- !valid_name | !(names_v %in% allowed)
   dangerous_attr <- grepl(
-    paste0("(\\son[a-zA-Z]+\\s*=)|(\\sstyle\\s*=)|((?:javascript|vbscript)\\s*:)|(data\\s*:\\s*text/html)",
+    paste0(.ADMIN_DOC_RISKY_ATTR, "|(data\\s*:\\s*text/html)",
            "|((?:href|src|action)\\s*=\\s*[\"']?[^\"'>]*&(?:#|colon;|tab;|newline;))"),
     toks, perl = TRUE, ignore.case = TRUE
   )

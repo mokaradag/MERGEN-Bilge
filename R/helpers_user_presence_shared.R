@@ -8,16 +8,24 @@
 
 # Paylaşılan dizin: MERGEN_PRESENCE_SHARED_DIR ya da çok-süreçli dağıtımda
 # makineye YEREL geçici dizin. Varlık dosyaları Shiny olay döngüsünde okunup
-# yazıldığından varsayılan hedef UNC/ağ paylaşımı (log dizini) değildir; yavaş
-# paylaşım tüm oturumları dondurmaz. Açık değer de yerel bir dizin olmalıdır.
+# yazıldığından hedef UNC/ağ paylaşımı olamaz (yavaş paylaşım tüm oturumları
+# dondurur); UNC değeri reddedilir ve yerel varsayılan kullanılır. Varsayılan,
+# uygulama kökünün tam yolunun özetiyle adlandırılır: bu makinede aynı kökten
+# çalışan tüm başlatıcılar paylaşır, aynı klasör adlı başka dağıtım karışmaz.
+# Çevrimiçi görünümü makine başınadır.
 mb_presence_shared_dir <- function() {
   acik <- trimws(Sys.getenv("MERGEN_PRESENCE_SHARED_DIR", ""))
-  if (nzchar(acik)) return(acik)
+  if (nzchar(acik) && !grepl("^(\\\\\\\\|//)", acik)) return(acik)
   n <- suppressWarnings(as.integer(Sys.getenv("MERGEN_APP_WORKER_COUNT", "1")))
   if (!isTRUE(n > 1L)) return("")
-  uygulama <- gsub("[^A-Za-z0-9_.-]", "_",
-                   basename(normalizePath(getwd(), winslash = "/", mustWork = FALSE)))
-  file.path(dirname(tempdir()), paste0("mergen_presence_", uygulama))
+  kok <- normalizePath(getwd(), winslash = "/", mustWork = FALSE)
+  ozet <- if (requireNamespace("digest", quietly = TRUE)) {
+    substr(digest::digest(tolower(kok), algo = "xxhash64", serialize = FALSE), 1L, 12L)
+  } else {
+    gsub("[^A-Za-z0-9]", "_", kok)
+  }
+  file.path(dirname(tempdir()),
+            paste0("mergen_presence_", gsub("[^A-Za-z0-9_.-]", "_", basename(kok)), "_", ozet))
 }
 
 mb_presence_process_id <- function() {
@@ -49,18 +57,23 @@ mb_presence_publish <- function(active_env = mb_presence_env(".mergen_active_ses
     saveRDS(list(generated_at = simdi,
                  rows = mb_presence_session_rows(active_env, history_env, now)), gecici)
     if (file.rename(gecici, hedef)) {
+      unlink(eski)
       TRUE
-    } else {
+    } else if (file.exists(hedef)) {
       # Windows'ta hedef varken yeniden adlandırma başarısızdır: eski sürüm
       # kenara alınır, yeni dosya konamazsa geri yüklenir.
       unlink(eski)
-      if (file.exists(hedef) && file.rename(hedef, eski)) {
+      if (file.rename(hedef, eski)) {
         tamam <- file.rename(gecici, hedef)
         if (tamam) unlink(eski) else file.rename(eski, hedef)
         tamam
       } else {
         FALSE
       }
+    } else {
+      # Hedef yokken kalan yedek son sağlam kopyadır: silinmez, geri yüklenir.
+      if (file.exists(eski)) file.rename(eski, hedef)
+      FALSE
     }
   }), error = function(e) FALSE)
   if (isTRUE(sonuc)) durum$son <- simdi else durum$hata <- simdi
@@ -95,6 +108,9 @@ mb_presence_publish <- function(active_env = mb_presence_env(".mergen_active_ses
     r[[alan]] <- deger
   }
   r <- r[is.finite(r$last_seen) & r$last_seen - simdi <= pencere$skew, , drop = FALSE]
+  # Geçersiz başlangıç son nabza çekilir; kullanıcının süresi NA olmaz.
+  bas_gecersiz <- !is.finite(r$started_at) | r$started_at > r$last_seen
+  r$started_at[bas_gecersiz] <- r$last_seen[bas_gecersiz]
   acik <- r$status != "ayrildi"
   nabiz <- simdi - r$last_seen
   r$status[acik] <- ifelse(yas > pencere$publish_stale | nabiz[acik] > pencere$stale, "ayrildi",

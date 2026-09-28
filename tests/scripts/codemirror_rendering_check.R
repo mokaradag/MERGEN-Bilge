@@ -27,9 +27,12 @@
 # yerel koda çevirip UTF-8 diye işaretler (geçersiz UTF-8); bu yüzden ham
 # baytlar okunur ve testthat gibi UTF-8 bağlantıdan ayrıştırılır.
 cm_render_check_read_utf8_lines <- function(path) {
-  metin <- rawToChar(readBin(path, what = "raw", n = file.info(path)$size))
+  bayt <- readBin(path, what = "raw", n = file.info(path)$size)
+  # BOM bayt düzeyinde atılır; CRLF, yalın CR ve LF satır sonu sayılır.
+  if (length(bayt) >= 3L && identical(bayt[1:3], as.raw(c(0xEF, 0xBB, 0xBF)))) bayt <- bayt[-(1:3)]
+  metin <- rawToChar(bayt)
   Encoding(metin) <- "UTF-8"
-  strsplit(sub("^\ufeff", "", metin), "\r?\n")[[1]]
+  strsplit(metin, "\r\n|\r|\n")[[1]]
 }
 
 cm_render_check_parse_utf8 <- function(path) {

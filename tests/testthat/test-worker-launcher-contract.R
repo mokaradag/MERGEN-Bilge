@@ -103,17 +103,27 @@ test_that("cocuk ciktisi okunmayan boruya yazilmaz; olen worker yeniden baslatil
   expect_false(grepl('stderr = "|"', code, fixed = TRUE))
   expect_true(grepl('stdout = "", stderr = ""', code, fixed = TRUE))
   expect_true(grepl("MERGEN_WORKERS_MAX_RESTARTS", code, fixed = TRUE))
-  expect_true(grepl("procs[[k]]$proc <- start_one(procs[[k]]$spec)", code, fixed = TRUE))
+  expect_true(grepl("yeni <- tryCatch(start_one(procs[[k]]$spec)", code, fixed = TRUE))
+  expect_true(grepl("procs[[k]]$proc <- yeni", code, fixed = TRUE))
 })
 
-test_that("cevrimici paylasim dizini yerel ve plana aktarilir", {
+test_that("temizlik toplu baslatmadan once kaydedilir; butce kararli calismada sifirlanir", {
+  code <- .strip_r_comments(paste(readLines(.worker_launcher_path(), warn = FALSE), collapse = "\n"))
+  temizlik <- regexpr("on.exit({", code, fixed = TRUE)
+  ilk_baslatma <- regexpr("proc = start_one(spec)", code, fixed = TRUE)
+  expect_true(temizlik > 0 && ilk_baslatma > temizlik)
+  expect_false(grepl("lapply(plan, function(spec) list(spec = spec, proc = start_one(spec)", code, fixed = TRUE))
+  expect_true(grepl("MERGEN_WORKERS_STABLE_SECONDS", code, fixed = TRUE))
+  expect_true(grepl("procs[[k]]$restarts <- 0L", code, fixed = TRUE))
+})
+
+test_that("cevrimici dizini baslaticiya ozel degildir; yalniz operator degeri aktarilir", {
   env <- .load_worker_launcher()
   withr::with_envvar(c(MERGEN_PRESENCE_SHARED_DIR = ""), {
-    dizin <- env$mergen_workers_presence_dir()
-    expect_true(startsWith(dizin, normalizePath(tempdir(), winslash = "/", mustWork = FALSE)))
+    expect_identical(env$mergen_workers_presence_dir(), "")
     plan <- env$mergen_worker_launch_plan(base = 8009L, count = 2L, host = "0.0.0.0",
                                           repo_root = getwd())
-    expect_identical(plan[[1]]$env[["MERGEN_PRESENCE_SHARED_DIR"]], dizin)
+    expect_identical(plan[[1]]$env[["MERGEN_PRESENCE_SHARED_DIR"]], "")
   })
   withr::with_envvar(c(MERGEN_PRESENCE_SHARED_DIR = "D:/mergen_presence"), {
     expect_identical(env$mergen_workers_presence_dir(), "D:/mergen_presence")

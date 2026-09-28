@@ -311,7 +311,7 @@ moduleServer(id, function(input, output, session) {
 
 	# Dynamic downloads
     fm_register_owner_reset(session, ns, get_module_values, upload_runtime$controller,
-                            persisted_scan_pending, refresh_from_user_folder, is_auth_ready)
+                            persisted_scan_pending, refresh_from_user_folder, is_auth_ready, detach_in_parent)
 
     observe({
       lapply(names(module_values$file_contents), function(fid) {
@@ -463,6 +463,7 @@ moduleServer(id, function(input, output, session) {
 
     observeEvent(input$clear_files, {
       if (nrow(module_values$files) == 0) return(showToast(session, "Temizlenecek dosya yok.", "info"))
+      module_values$temizlik_nesli <- fm_owner_generation(session)  # onay açıldığı kimliğe bağlıdır
       showModal(modalDialog(
         title = "Tüm Dosyaları Temizle",
         "Tüm yüklenmiş dosyaları silmek istediğinizden emin misiniz?",
@@ -476,6 +477,7 @@ moduleServer(id, function(input, output, session) {
 
     observeEvent(input$confirm_clear_files, {
       removeModal()
+      if (!identical(module_values$temizlik_nesli, fm_owner_generation(session))) return(showToast(session, "Oturum kimliği değişti; temizlik yapılmadı.", "warning"))
 
       # 0) KİMLİK DOĞRULANMADAN TEMİZLİK YOK. `fm_clear_user_bucket_safely()`
       #    `NULL` kimlikte hiçbir şey silmeden `TRUE` döner ve

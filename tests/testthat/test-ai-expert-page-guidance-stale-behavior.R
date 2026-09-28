@@ -625,3 +625,46 @@ testthat::test_that(
     )
   }
 )
+
+testthat::test_that("oturum başka kullanıcıya geçince yeni sahip de karşılanır", {
+  speech_tests_reset_caches()
+  root <- withr::local_tempdir()
+  speech_tests_make_tree(root)
+  m <- mergen_speech_manifest_build(root)$manifest
+  mergen_speech_manifest_write(m, mergen_speech_manifest_path(root))
+  withr::local_envvar(MERGEN_SPEECH_ROOT = root, VOXCPM2_WARMUP_ENABLED = "false")
+  withr::defer(speech_tests_reset_caches())
+
+  env <- .ai_expert_pg_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
+         encoding = "UTF-8", local = env)
+  spoke <- .pg_spoke()
+  karsilama <- 0L
+  ai_expert <- .ai_expert_stub(spoke)
+  ilk_baslat <- ai_expert$start_speaking
+  ai_expert$start_speaking <- function(text, cooldown_secs = NULL, kind = "idle", static_plan = NULL) {
+    if (identical(kind, "welcome")) karsilama <<- karsilama + 1L
+    ilk_baslat(text, cooldown_secs, kind, static_plan)
+  }
+
+  testthat::with_mocked_bindings(
+    {
+      shiny::testServer(.ai_expert_wrapper(env = env, ai_expert = ai_expert), {
+        session$userData$kimlik_sahibi <- 5L
+        session$flushReact()
+        testthat::expect_identical(karsilama, 1L)
+        # Aynı kullanıcıda kimlik sinyali karşılamayı yinelemez.
+        env$mergen_session_owner_transition(session$userData, 5L, 0L)
+        env$mergen_session_owner_transition(session$userData, 0L, 5L)
+        session$flushReact()
+        testthat::expect_identical(karsilama, 1L)
+        env$mergen_session_owner_transition(session$userData, 5L, 6L)
+        session$flushReact()
+        testthat::expect_identical(karsilama, 2L)
+      })
+    },
+    delay = function(ms, expr) force(expr),
+    runjs = function(...) invisible(NULL),
+    .package = "shinyjs"
+  )
+})

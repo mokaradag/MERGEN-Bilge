@@ -17,9 +17,11 @@ performanceStatsServer <- function(id, current_user_id_provider) {
         current_user_id_provider
       }
 
-      uid <- suppressWarnings(as.integer(raw_id %||% 0L))
-      if (is.na(uid)) uid <- 0L
-      uid
+      # Kayıplı dönüşüm yok: 7.9 gibi kimlik 7'ye kısaltılmaz, 0 sayılır.
+      if (exists("mb_presence_uid", mode = "function")) return(mb_presence_uid(raw_id))
+      uid <- suppressWarnings(as.numeric(raw_id %||% 0L)[1])
+      if (!isTRUE(is.finite(uid) && uid > 0 && uid == trunc(uid) && uid <= .Machine$integer.max)) return(0L)
+      as.integer(uid)
     }
 
     # --- PERFORMANS İSTATİSTİKLERİ ---

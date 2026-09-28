@@ -146,6 +146,24 @@ serverInitSessionState <- function(session, identity, sso_state = NULL) {
     sync_feedback_from_db()
   }
 
+  # Oturum başka kullanıcıya geçince (A -> B) A'nın açık söyleşisi, kayıtlı
+  # listesi ve süren yanıtı B'ye kalmaz; süren istek Durdur gibi kesilir.
+  if (exists("mergen_session_on_owner_change", mode = "function")) {
+    mergen_session_on_owner_change(session, function(neden) {
+      if (!identical(neden, "sahip_degisti")) return(invisible(NULL))
+      if (isTRUE(shiny::isolate(values$is_sending))) {
+        stop_generation(TRUE)
+        active_request_id(paste0("cancelled_", as.numeric(Sys.time())))
+      }
+      values$messages <- list()
+      values$saved_chats <- list()
+      values$current_chat_id <- NULL
+      values$show_welcome <- TRUE
+      session_files(list())
+      invisible(NULL)
+    })
+  }
+
   list(
     values = values,
     stop_generation = stop_generation,

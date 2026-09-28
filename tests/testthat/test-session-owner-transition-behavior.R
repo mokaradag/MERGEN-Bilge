@@ -99,6 +99,9 @@ test_that("Dosya Yönetimi sahip değişiminde ve kimlik kaybında önbelleğini
          encoding = "UTF-8", local = env)
   iptal <- 0L
   env$file_ingestion_cancel_controller <- function(controller) iptal <<- iptal + 1L
+  kapanan_modal <- 0L
+  testthat::local_mocked_bindings(removeModal = function(...) kapanan_modal <<- kapanan_modal + 1L,
+                                  .package = "shiny")
   shiny::testServer(function(input, output, session) NULL, {
     mv <- shiny::reactiveValues(files = data.frame(Ad = "a.txt"), file_contents = list(f1 = list(datapath = "/k/user_7/a.txt")),
                                 files_in_context = list(f1 = TRUE), file_id_to_delete = "f1")
@@ -109,8 +112,12 @@ test_that("Dosya Yönetimi sahip değişiminde ve kimlik kaybında önbelleğini
     session$userData$temp_files <- list(f1 = gecici)
     veri <- env$make_user_session_data_accessors(session)
     veri$write_identity(list(username = "a"), 7L, list(), TRUE, "keycloak")
+    cikarilan <- character(0)
+    session$userData$current_session_files <- list(a.txt = list(path = "/k/user_7/a.txt"))
     env$fm_register_owner_reset(session, session$ns, function() mv, list(), bekleyen,
-                                function(tetik) yenilenen <<- c(yenilenen, tetik), function() TRUE)
+                                function(tetik) yenilenen <<- c(yenilenen, tetik),
+                                function() isTRUE(session$userData$auth_initialized),
+                                function(ad) cikarilan <<- c(cikarilan, ad))
     session$flushReact()
 
     # Kimlik kaybı: önbellek boşalır, indirme yolu kalmaz; yeniden tarama yapılmaz.
@@ -123,6 +130,10 @@ test_that("Dosya Yönetimi sahip değişiminde ve kimlik kaybında önbelleğini
     expect_false(file.exists(gecici))
     expect_identical(iptal, 1L)
     expect_length(yenilenen, 0L)
+    expect_identical(cikarilan, "a.txt")
+    # Önceki sahibin açık onay pencereleri kapatılır.
+    expect_identical(kapanan_modal, 1L)
+    expect_length(session$userData$current_session_files, 0L)
 
     # A -> B: yalnız yeni sahibin envanteri yüklenir.
     mv$file_contents <- list(f2 = list(datapath = "/k/user_7/b.txt"))
@@ -134,6 +145,38 @@ test_that("Dosya Yönetimi sahip değişiminde ve kimlik kaybında önbelleğini
   })
 })
 
+test_that("Dosya Yönetimi aynı kullanıcının yeniden girişinde envanteri yeniden yükler", {
+  testthat::skip_if_not_installed("shiny")
+  env <- .owner_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_file_manager_session_registry.R"),
+         encoding = "UTF-8", local = env)
+  env$file_ingestion_cancel_controller <- function(controller) invisible(NULL)
+  shiny::testServer(function(input, output, session) NULL, {
+    mv <- shiny::reactiveValues(files = data.frame(Ad = "a.txt"), file_contents = list(),
+                                files_in_context = list(), file_id_to_delete = NULL)
+    bekleyen <- shiny::reactiveVal(FALSE)
+    yenilenen <- character(0)
+    veri <- env$make_user_session_data_accessors(session)
+    veri$write_identity(list(username = "a"), 7L, list(), TRUE, "keycloak")
+    env$fm_register_owner_reset(session, session$ns, function() mv, list(), bekleyen,
+                                function(tetik) yenilenen <<- c(yenilenen, tetik),
+                                function() isTRUE(session$userData$auth_initialized))
+    session$flushReact()
+    veri$set_auth_placeholder()
+    session$flushReact()
+    expect_length(yenilenen, 0L)
+    expect_true(shiny::isolate(bekleyen()))
+    veri$write_identity(list(username = "a"), 7L, list(), TRUE, "keycloak")
+    session$flushReact()
+    expect_identical(yenilenen, "owner_change")
+    expect_false(shiny::isolate(bekleyen()))
+    # Olağan profil tazelemesi yeniden yükleme yapmaz.
+    veri$write_identity(list(username = "a"), 7L, list(), TRUE, "keycloak")
+    session$flushReact()
+    expect_identical(yenilenen, "owner_change")
+  })
+})
+
 test_that("Dosya Yönetimi indirmesi kimlik doğrulanmadan önbellek yolunu kopyalamaz", {
   kaynak <- paste(readLines(file.path(resolve_repo_root_for_tests(), "R", "module_file_manager.R"),
                             encoding = "UTF-8", warn = FALSE), collapse = "\n")
@@ -141,4 +184,48 @@ test_that("Dosya Yönetimi indirmesi kimlik doğrulanmadan önbellek yolunu kopy
                     kaynak, fixed = TRUE))
   expect_true(grepl("fm_register_owner_reset(session, ns, get_module_values, upload_runtime$controller",
                     kaynak, fixed = TRUE))
+  # "Tümünü Sil" onayı açıldığı kimlik nesline bağlıdır; nesil değiştiyse silinmez.
+  onay <- regmatches(kaynak, regexpr("observeEvent\\(input\\$confirm_clear_files, \\{[\\s\\S]*?fm_clear_user_bucket_safely", kaynak, perl = TRUE))
+  expect_length(onay, 1L)
+  expect_true(grepl("if (!identical(module_values$temizlik_nesli, fm_owner_generation(session))) return(", onay, fixed = TRUE))
+  expect_true(grepl("module_values$temizlik_nesli <- fm_owner_generation(session)", kaynak, fixed = TRUE))
+  env2 <- .owner_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_file_manager_session_registry.R"),
+         encoding = "UTF-8", local = env2)
+  oturum <- .owner_session()
+  nesil <- env2$fm_owner_generation(oturum)
+  env2$mergen_session_owner_transition(oturum$userData, 7L, 0L)
+  expect_false(identical(nesil, env2$fm_owner_generation(oturum)))
+})
+
+test_that("oturum başka kullanıcıya geçince açık söyleşi, kayıtlı liste ve süren yanıt bırakılır", {
+  testthat::skip_if_not_installed("shiny")
+  env <- .owner_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "server_init_session_state.R"),
+         encoding = "UTF-8", local = env)
+  kimlik <- list(resolve_current_user_id = function() 0L, is_sso_active = function() FALSE,
+                 is_auth_ready = function() TRUE)
+  env$load_feedback_from_db <- function(...) NULL
+  shiny::testServer(function(input, output, session) NULL, {
+    durum <- env$serverInitSessionState(session, kimlik)
+    session$userData$kimlik_sahibi <- 7L
+    durum$values$messages <- list(list(role = "user", content = "A mesajı"))
+    durum$values$saved_chats <- list(a = list(title = "A"))
+    durum$values$current_chat_id <- "a"
+    durum$values$show_welcome <- FALSE
+    durum$values$is_sending <- TRUE
+    durum$active_request_id("istek-a")
+    durum$session_files(list(a.txt = list(name = "a.txt")))
+    # Kimlik kaybı söyleşiyi silmez (aynı kullanıcı geri dönebilir).
+    env$mergen_session_owner_transition(session$userData, 7L, 0L)
+    expect_length(shiny::isolate(durum$values$messages), 1L)
+    env$mergen_session_owner_transition(session$userData, 0L, 8L)
+    expect_length(shiny::isolate(durum$values$messages), 0L)
+    expect_length(shiny::isolate(durum$values$saved_chats), 0L)
+    expect_null(shiny::isolate(durum$values$current_chat_id))
+    expect_true(shiny::isolate(durum$values$show_welcome))
+    expect_true(shiny::isolate(durum$stop_generation()))
+    expect_true(startsWith(shiny::isolate(durum$active_request_id()), "cancelled_"))
+    expect_length(shiny::isolate(durum$session_files()), 0L)
+  })
 })

@@ -395,7 +395,7 @@ source_manifest_sections <- list(
   # helpers_ai_expert.R::build_ai_expert_user_context() bunları çağırır.
   # helpers_ai_expert_handlers_support.R saf karar yardımcılarını taşır.
   ai_expert_helpers = c(
-    "R/helpers_ai_expert_user_data.R",
+    "R/helpers_ai_expert_user_data.R", "R/helpers_ai_expert_greeting_topic.R",
     "R/helpers_ai_expert.R",
     "R/helpers_ai_expert_chunking.R",
     "R/helpers_ai_expert_chunk_pipeline.R",

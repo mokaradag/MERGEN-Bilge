@@ -43,14 +43,15 @@ testthat::test_that("kurum anahtarı seçimi bastırma bayrağını yalnız o ku
   testthat::expect_true(env$remember_api_key_choice_default(oturum, "ayilmaz"))
   testthat::expect_length(mesajlar, 1L)
   testthat::expect_identical(mesajlar[[1]]$type, "mergenApiKeyChoiceRemember")
-  # `issuedAt` yazım sürümüdür (ms); sekmeler arası eski yazım yeniyi ezmez.
-  surum <- mesajlar[[1]]$message$issuedAt
-  testthat::expect_true(is.numeric(surum) && surum > 0 && surum == round(surum))
+  # Saat damgası gönderilmez; taban sürüm yalnız verilirse eklenir.
   testthat::expect_identical(
-    mesajlar[[1]]$message[setdiff(names(mesajlar[[1]]$message), "issuedAt")],
+    mesajlar[[1]]$message,
     list(settingsKey = "api_key_onboarding_suppressed", userTag = env$api_key_pref_user_tag("ayilmaz"),
        source = "default", nonce = "")
   )
+  testthat::expect_true(env$remember_api_key_choice_default(oturum, "ayilmaz", base = 4))
+  testthat::expect_identical(mesajlar[[2]]$message$base, 4)
+  mesajlar <- mesajlar[1]
   # Sonuç girdisi verilirse tarayıcı kaydın yazıldığını bu girdiye bildirir.
   testthat::expect_true(env$remember_api_key_choice_default(oturum, "ayilmaz", result_input = "ak-sonuc"))
   testthat::expect_identical(mesajlar[[2]]$message$resultInputId, "ak-sonuc")
@@ -142,6 +143,16 @@ testthat::test_that("api_key_choice_modal_dialog varsayılan anahtar YOKKEN tekl
   testthat::expect_true(grepl("Kapat", txt, fixed = TRUE))
   # Varsayılan anahtar yokken kurumsal "use_default" düğmesi gösterilmez.
   testthat::expect_false(grepl("a-api_key_use_default_btn", txt, fixed = TRUE))
+})
+
+testthat::test_that("api_key_choice_modal_dialog çağıranın başlığını korur", {
+  env <- .akc_src()
+  txt <- .akc_text(env$api_key_choice_modal_dialog(NS("a"), default_available = TRUE,
+                                                   title = "API Anahtarı Güncelleme"))
+  testthat::expect_true(grepl("API Anahtarı Güncelleme", txt, fixed = TRUE))
+  testthat::expect_false(grepl("API Anahtarı Seçimi", txt, fixed = TRUE))
+  varsayilan <- .akc_text(env$api_key_choice_modal_dialog(NS("a"), default_available = TRUE))
+  testthat::expect_true(grepl("MERGEN Bilge için API Anahtarı Seçimi", varsayilan, fixed = TRUE))
 })
 
 # --- llm_worker_extract_preview_df (Türkçe alan adı toleranslı önizleme) -------

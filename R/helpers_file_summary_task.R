@@ -90,8 +90,9 @@ file_summary_task_fn <- function(file_name_safe, dest_safe, settings_snapshot, s
 }
 
 # Dosya adına bağlı özet iş jetonu (oturum userData ortamında). `jeton` verilirse
-# yazar (`durdur` işin durdurma dosyasıdır), `NULL` ile çağrılırsa siler ve süren
-# ya da bekleyen işin durdurma dosyasını oluşturur. `yalniz` verilirse kayıt
+# yazar (`durdur` işin durdurma dosyasıdır), `NULL` ile çağrılırsa siler. Silme ya
+# da aynı adla başka işe devir, süren ya da bekleyen eski işin durdurma dosyasını
+# oluşturur. `yalniz` verilirse kayıt
 # yalnız hâlâ o işe aitse silinir (biten iş yeni yüklemenin jetonunu silmez).
 .file_summary_job_token <- function(session, ad, jeton, durdur = "", yalniz = NULL) {
   ud <- tryCatch(session$userData, error = function(e) NULL)
@@ -100,7 +101,7 @@ file_summary_task_fn <- function(file_name_safe, dest_safe, settings_snapshot, s
   isler <- if (is.list(ud$file_summary_jobs)) ud$file_summary_jobs else list()
   onceki <- isler[[ad]]
   if (!is.null(yalniz) && !identical(onceki$jeton, yalniz)) return(invisible(NULL))
-  if (is.null(jeton) && is.null(yalniz) && nzchar(onceki$durdur %||% "")) {
+  if (is.null(yalniz) && !identical(onceki$jeton, jeton) && nzchar(onceki$durdur %||% "")) {
     try(file.create(onceki$durdur), silent = TRUE)
   }
   isler[[ad]] <- if (is.null(jeton)) NULL else list(jeton = jeton, durdur = durdur)
@@ -117,5 +118,9 @@ file_summary_task_fn <- function(file_name_safe, dest_safe, settings_snapshot, s
   kayit <- ud$current_session_files
   if (!is.list(kayit)) return(TRUE)
   yol <- kayit[[ad]]$path %||% kayit[[ad]]$datapath
-  !is.null(yol) && identical(as.character(yol)[1], as.character(dest)[1])
+  if (is.null(yol) || is.null(dest)) return(FALSE)
+  # Aynı dosyanın farklı yazımları (ayraç, göreli/mutlak) eşit sayılır.
+  yollar <- normalizePath(c(as.character(yol)[1], as.character(dest)[1]), winslash = "/", mustWork = FALSE)
+  if (.Platform$OS.type == "windows") yollar <- tolower(yollar)
+  identical(yollar[1], yollar[2])
 }

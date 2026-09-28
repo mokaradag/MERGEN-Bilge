@@ -361,6 +361,6 @@ test_that("XLSX hazırlığı (onarım taraması, yüzde, dilimleme) iptali ve s
   expect_length(list.files(dizin, pattern = "\\.xlsx$"), 0L)
   # Hazırlık bütçe içinde kalırsa normal sonuç üretilir.
   sonuc2 <- env$pk_export_build(veri, base_name = "sentetik", dir = dizin)
-  expect_true(sonuc2$status %in% c("ok", "fallback"))
+  expect_true(sonuc2$status %in% c("ok", "csv_fallback"))
   expect_gte(hazirlik, 1L)
 })

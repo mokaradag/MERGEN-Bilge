@@ -93,12 +93,12 @@ mergen_workers_rscript_path <- function() {
   "Rscript"
 }
 
-# Cevrimici (presence) paylasim dizini: operator degeri ya da bu baslaticinin
-# yerel gecici dizini (her calistirmada ayri; agir/UNC paylasim kullanilmaz).
+# Cevrimici (presence) paylasim dizini: yalniz operator degeri aktarilir. Bos
+# ise cocuk surec varsayilani kullanir: bu makinede ayni uygulama kokunden
+# calisan TUM baslaticilarin paylastigi yerel dizin (R/helpers_user_presence_shared.R).
+# Cevrimici gorunumu makine basinadir; UNC paylasim olay dongusunu bloklar.
 mergen_workers_presence_dir <- function() {
-  acik <- trimws(Sys.getenv("MERGEN_PRESENCE_SHARED_DIR", unset = ""))
-  if (nzchar(acik)) return(acik)
-  file.path(normalizePath(tempdir(), winslash = "/", mustWork = FALSE), "presence")
+  trimws(Sys.getenv("MERGEN_PRESENCE_SHARED_DIR", unset = ""))
 }
 
 # Her worker icin baslatma plani (port + env + komut). LAUNCH YAPMAZ; saf veri.
@@ -125,8 +125,7 @@ mergen_worker_launch_plan <- function(base = mergen_worker_base_port(),
         # worker sayisina gore bolusur.
         MERGEN_APP_WORKER_COUNT = as.character(length(ports)),
         MERGEN_APP_WORKER_INDEX = as.character(i),
-        # Cevrimici paylasimi makineye YEREL dizinde (UNC paylasimi olay
-        # dongusunu bloklamaz).
+        # Cevrimici paylasimi makineye YEREL dizinde (bos: uygulama varsayilani).
         MERGEN_PRESENCE_SHARED_DIR = presence_dir
       )
     )
@@ -179,21 +178,33 @@ mergen_start_workers <- function(dry_run = FALSE) {
     p
   }
 
-  procs <- lapply(plan, function(spec) list(spec = spec, proc = start_one(spec), restarts = 0L))
-
+  # Temizlik ilk worker'dan ONCE kaydedilir: toplu baslatma yarida hata
+  # verirse o ana kadar baslayan cocuklar yetim kalmaz.
+  procs <- list()
   on.exit({
     for (pw in procs) try(pw$proc$kill(), silent = TRUE)
   }, add = TRUE)
+  for (spec in plan) {
+    procs[[length(procs) + 1L]] <- list(spec = spec, proc = start_one(spec), restarts = 0L,
+                                        started = Sys.time())
+  }
 
   # Olen worker yeniden baslatilir; boylece ozet kapasitesi/kuyruk paylari
-  # (MERGEN_APP_WORKER_COUNT) canli surec kumesiyle uyumlu kalir. Yeniden
-  # baslatma butcesi biterse tum kume kapatilir (yarim kume paylari yanlis
-  # boler).
+  # (MERGEN_APP_WORKER_COUNT) canli surec kumesiyle uyumlu kalir. Butce ardisik
+  # cokmeleri sayar: worker MERGEN_WORKERS_STABLE_SECONDS boyunca calisinca
+  # sifirlanir. Butce biterse tum kume kapatilir (yarim kume paylari yanlis boler).
   max_restarts <- mergen_workers_env_int("MERGEN_WORKERS_MAX_RESTARTS", 5L)
+  stable_secs <- mergen_workers_env_int("MERGEN_WORKERS_STABLE_SECONDS", 600L)
   repeat {
     for (k in seq_along(procs)) {
       alive <- tryCatch(procs[[k]]$proc$is_alive(), error = function(e) FALSE)
-      if (alive) next
+      if (alive) {
+        if (procs[[k]]$restarts > 0L &&
+            as.numeric(difftime(Sys.time(), procs[[k]]$started, units = "secs")) >= stable_secs) {
+          procs[[k]]$restarts <- 0L
+        }
+        next
+      }
       if (procs[[k]]$restarts >= max_restarts) {
         cat(sprintf("[WORKER] port=%d yeniden baslatma butcesi bitti; tum worker'lar kapatiliyor.\n",
                     procs[[k]]$spec$port))
@@ -202,7 +213,16 @@ mergen_start_workers <- function(dry_run = FALSE) {
       procs[[k]]$restarts <- procs[[k]]$restarts + 1L
       cat(sprintf("[WORKER] port=%d durdu; yeniden baslatiliyor (%d/%d).\n",
                   procs[[k]]$spec$port, procs[[k]]$restarts, max_restarts))
-      procs[[k]]$proc <- start_one(procs[[k]]$spec)
+      # Baslatma hatasi dongude kalir: yuva olu kalir, sonraki turda butce
+      # icinde yeniden denenir; saglikli worker'lar kapatilmaz.
+      yeni <- tryCatch(start_one(procs[[k]]$spec), error = function(e) {
+        cat(sprintf("[WORKER] port=%d baslatilamadi: %s\n", procs[[k]]$spec$port, conditionMessage(e)))
+        NULL
+      })
+      if (!is.null(yeni)) {
+        procs[[k]]$proc <- yeni
+        procs[[k]]$started <- Sys.time()
+      }
     }
     Sys.sleep(2)
   }

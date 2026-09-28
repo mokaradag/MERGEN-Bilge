@@ -25,7 +25,8 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   (`MERGEN_FILE_SUMMARY_MAX_CONCURRENT`, varsayılan 2) ki sohbet istekleri işçi
   beklemesin; sınır işçi havuzundan türetilir ve en az bir işçi etkileşimli
   işe ayrılır (ikiden az işçili havuzda özet çalışmaz). Çok-süreçli dağıtımda
-  sınır ve kuyruk dağıtım genelidir ve süreçler arasında paylaştırılır.
+  sınır ve kuyruk başlatıcı (host) genelidir ve o başlatıcının süreçleri
+  arasında paylaştırılır.
   Kuyruktaki ya da çalışan özet, oturum başka kullanıcıya geçtiyse ya da
   kimliğin süresi dolduysa durdurulur ve sonucu yazılmaz; aynı Shiny oturumu
   başka kullanıcıya geçince önceki kullanıcının dosya kayıt defteri, ekli
@@ -50,9 +51,13 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   eski kodlamayla ekleme yaparsa yalnız yeni baytlar yeniden denetlenir; kilit
   sahipliği doğrulanır. Çok-süreçli dağıtımda eklemeler süreçler arası kilitle
   sıralanır; kilit kısa sürede alınamazsa satır paylaşılan dosyaya kilitsiz
-  yazılmaz, sürece özel `*.p<PID>.log` yedeğine düşer ve sonra sırasıyla
-  birleştirilir. Yarıda kalan yedek birleştirmesi geri alınır (satır
-  yinelenmez); uzun tarama/birleştirme kilidi tazeler.
+  yazılmaz, sürece özel `*.p<HOST>-<PID>.log` yedeğine düşer ve sonra sırasıyla
+  birleştirilir; kapanmış işçinin 60 sn'dir değişmeyen yedeğini de kilidi alan
+  süreç birleştirir. UNC log dizininde tek süreçte de kilit kullanılır
+  (`MERGEN_LOG_SHARED_WRITERS=true` eşlenmiş ağ sürücüsü için zorlar). Yarıda
+  kalan yedek birleştirmesi geri alınır; geri alma doğrulanamazsa yedek
+  `*.birlesmedi-*.log` adıyla saklanır ve yeniden denenmez (satır yinelenmez);
+  uzun tarama/birleştirme kilidi tazeler.
 - **Konsol logu sadeleşti.** `[CHAT PERF] SSE işçide ilk ham HTTP parçası
   alındı` satırı her parçada değil istek başına bir kez yazılır.
 - **Proje ve Kaynak Analizi Excel eki:** Latin1 sütundan NVARCHAR olarak okunan
@@ -87,7 +92,8 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 - **Yeni "Çevrimiçi" sekmesi (Sistem Durumu):** şu anda / son 15 dakika / son 24
   saat çevrimiçi kullanıcı, açık oturum ve aktif birim sayaçları ile kullanıcı
   oturum takip tablosu. Veri süreç belleğindedir; yeniden başlatmada sıfırlanır.
-  Çok-süreçli dağıtımda süreçler paylaşılan dizin üzerinden birleştirilir.
+  Çok-süreçli dağıtımda aynı makinedeki süreçler yerel paylaşılan dizin
+  üzerinden birleştirilir (görünüm host başınadır).
   Sistem Durumu içeriği yalnız ADMIN oturumuna üretilir; yetki menüde değil
   sunucuda denetlenir. Aynı oturum başka kullanıcıya geçerse önceki kullanıcının
   oturumu bitmiş sayılır; "Son 24 Saat" uygulamayı kullanan kullanıcıyı sayar.

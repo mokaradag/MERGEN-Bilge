@@ -510,3 +510,73 @@ test_that("performans modülü kimlik değişimini ve oturum sonunu aralık bekl
   expect_true(grepl("touch_session(get_current_user_id(), zorla = TRUE)", kaynak, fixed = TRUE))
   expect_true(grepl("mb_presence_publish(active_sessions_env, zorla = TRUE)", kaynak, fixed = TRUE))
 })
+
+test_that("varsayılan varlık dizini tam uygulama köküne göre ad alır; UNC değeri reddedilir", {
+  env <- .presence_env()
+  withr::local_envvar(c(MERGEN_PRESENCE_SHARED_DIR = "", MERGEN_APP_WORKER_COUNT = "3"))
+  a <- file.path(withr::local_tempdir(), "MERGEN-Bilge")
+  b <- file.path(withr::local_tempdir(), "MERGEN-Bilge")
+  dir.create(a)
+  dir.create(b)
+  dizin_a <- withr::with_dir(a, env$mb_presence_shared_dir())
+  dizin_b <- withr::with_dir(b, env$mb_presence_shared_dir())
+  expect_false(identical(dizin_a, dizin_b))
+  expect_identical(withr::with_dir(a, env$mb_presence_shared_dir()), dizin_a)
+  withr::local_envvar(c(MERGEN_PRESENCE_SHARED_DIR = "//sunucu/paylasim/presence"))
+  expect_identical(withr::with_dir(a, env$mb_presence_shared_dir()), dizin_a)
+  withr::local_envvar(c(MERGEN_PRESENCE_SHARED_DIR = "\\\\sunucu\\paylasim"))
+  expect_identical(withr::with_dir(a, env$mb_presence_shared_dir()), dizin_a)
+})
+
+test_that("hedef yokken kalan yedek silinmez; geri yüklenir", {
+  env <- .presence_env()
+  dizin <- withr::local_tempdir()
+  withr::local_envvar(c(MERGEN_PRESENCE_SHARED_DIR = dizin))
+  hedef <- file.path(dizin, paste0("presence_", env$mb_presence_process_id(), ".rds"))
+  saveRDS("sağlam", paste0(hedef, ".bak"))
+  env$file.rename <- function(from, to) {
+    if (grepl("\\.tmp$", from)) return(FALSE)
+    base::file.rename(from, to)
+  }
+  expect_false(env$mb_presence_publish(new.env(), new.env(), Sys.time(), zorla = TRUE))
+  expect_identical(readRDS(hedef), "sağlam")
+})
+
+test_that("uzak anlık görüntüde geçersiz started_at son nabza çekilir", {
+  env <- .presence_env()
+  dizin <- withr::local_tempdir()
+  withr::local_envvar(c(MERGEN_PRESENCE_SHARED_DIR = dizin))
+  onbellek <- env$mb_presence_env(".mergen_presence_remote_cache")
+  rm(list = ls(onbellek, all.names = TRUE), envir = onbellek)
+  withr::defer(rm(list = ls(onbellek, all.names = TRUE), envir = onbellek))
+  now <- Sys.time()
+  kaynak <- new.env()
+  kaynak$u <- list(user_id = 41L, last_seen = now - 10, started_at = now - 60, profile = list())
+  satir <- env$mb_presence_session_rows(kaynak, new.env(), now)
+  satir$started_at <- NA_real_
+  saveRDS(list(generated_at = as.numeric(now) - 5, rows = satir), file.path(dizin, "presence_na.rds"))
+  uzak <- env$mb_presence_remote_rows(now)
+  expect_identical(uzak$started_at, uzak$last_seen)
+})
+
+test_that("performans modülü kesirli sağlayıcı kimliğini kısaltmadan reddeder", {
+  testthat::skip_if_not_installed("shiny")
+  suppressMessages(library(shiny))
+  env <- .presence_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "module_performance.R"),
+         encoding = "UTF-8", local = env)
+  gecmis <- env$mb_presence_env(".mergen_presence_history")
+  sonuc <- new.env()
+  tmp <- withr::local_tempdir()
+  invisible(utils::capture.output(withr::with_dir(tmp, {
+    shiny::testServer(env$performanceStatsServer,
+                      args = list(current_user_id_provider = function() 7.9), {
+      session$returned$touch_session()
+      aktif <- get(".mergen_active_sessions", envir = globalenv())
+      sonuc$token <- session$token
+      sonuc$kayit <- aktif[[session$token]]
+    })
+  })))
+  withr::defer(suppressWarnings(rm(list = sonuc$token, envir = gecmis)))
+  expect_identical(sonuc$kayit$user_id, 0L)
+})

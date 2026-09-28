@@ -7,7 +7,8 @@
  *           çalışır ve bu dosyaya BAĞIMLI DEĞİLDİR. Bu dosya yalnızca
  *           "Bu ekranı bir daha gösterme" kolaylık tercihini yönetir:
  *             1) Tercihi kullanıcı etiketine özgü ayrı localStorage anahtarında
- *                saklar (eski mergen_settings kayıtları temizlenir),
+ *                sürümüyle birlikte tek kayıt olarak saklar (eski mergen_settings
+ *                kayıtları okunmaz ve yeniden yazılmaz),
  *             2) Modal içindeki onay kutusu ve Yapılandırma anahtarını eşitler,
  *             3) Tercihi etiketiyle sunucuya bildirir (R modalı tekrar
  *                göstermesin diye); modal kutusu seçim yapılana dek bekler.
@@ -30,14 +31,11 @@
   // kullanıcı tercihi devralmaz; farklı kullanıcıların sekmeleri ortak nesneyi
   // okuyup yazarak birbirinin kaydını ezmez.
   var SUPPRESS_USER_PREFIX = SUPPRESS_KEY + ".";
-  // Eski ortak kayıtlar (tarayıcı geneli bayrak ve kullanıcı haritası).
-  var LEGACY_BY_USER_KEY = "api_key_onboarding_suppressed_by_user";
-  var SETTINGS_LS = "mergen_settings";
-  // Her kullanıcı kaydının yanında yazım sürümü (sunucu saatine göre ms)
-  // tutulur: localStorage tüm sekmelerce paylaşılır; başka sekmenin geç gelen
-  // eski yazımı daha yeni tercihi ezmez.
+  // Kayıt {v: değer, n: sürüm} biçiminde TEK anahtardadır (değer ve sürüm
+  // ayrı yazılıp ayrışmaz). Sürüm saat değil kullanıcı başına artan sayaçtır:
+  // sekmeler ya da sunucular arası saat farkı sıralamayı bozmaz. Eski sürüm
+  // anahtarı (".t") yalnız eski düz kayıtlar için okunur.
   var VERSION_SUFFIX = ".t";
-  var serverOffset = 0;
 
   // Shiny custom message handler'ları dosya yüklenirken kaydolur.
   // Handler kayıt hatası veya erken mesaj durumunda kontrol yüzeyi
@@ -48,31 +46,45 @@
   window.MergenApiKeyChoice._dontShowInputId = window.MergenApiKeyChoice._dontShowInputId || null;
   window.MergenApiKeyChoice._modalNonce = window.MergenApiKeyChoice._modalNonce || "";
 
-  function readSettings() {
-    try {
-      return JSON.parse(window.localStorage.getItem(SETTINGS_LS) || "{}") || {};
-    } catch (e) {
-      return {};
-    }
-  }
-
   function currentUserTag() {
     var tag = (window.MergenApiKeyChoice || {})._userTag;
     return typeof tag === "string" ? tag : "";
+  }
+
+  function legacyVersion(tag) {
+    try {
+      var v = Number(window.localStorage.getItem(SUPPRESS_USER_PREFIX + tag + VERSION_SUFFIX));
+      return isFinite(v) && v > 0 ? v : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // Kullanıcının kaydı: {v, n}. Eski düz değer ("1"/"default") da okunur.
+  function readRecord(tag) {
+    try {
+      var ham = window.localStorage.getItem(SUPPRESS_USER_PREFIX + tag);
+      if (ham !== null && ham.charAt(0) === "{") {
+        var o = JSON.parse(ham) || {};
+        var n = Number(o.n);
+        return { v: typeof o.v === "string" ? o.v : "", n: isFinite(n) && n > 0 ? n : 0 };
+      }
+      return { v: ham || "", n: legacyVersion(tag) };
+    } catch (e) {
+      return { v: "", n: 0 };
+    }
   }
 
   // Kullanıcı etiketi bilinmeden bastırma yoktur (seçim ekranı gösterilir).
   // Etiket verilirse o kullanıcının kaydı okunur (etkin etiket değişmez).
   function readPref(etiket) {
     var tag = typeof etiket === "string" ? etiket : currentUserTag();
-    if (!tag) {
-      return "";
-    }
-    try {
-      return window.localStorage.getItem(SUPPRESS_USER_PREFIX + tag) || "";
-    } catch (e) {
-      return "";
-    }
+    return tag ? readRecord(tag).v : "";
+  }
+
+  function readVersion(etiket) {
+    var tag = typeof etiket === "string" ? etiket : currentUserTag();
+    return tag ? readRecord(tag).n : 0;
   }
 
   function isSuppressed() {
@@ -84,55 +96,32 @@
     return readPref(etiket) === "default" ? "default" : "";
   }
 
-  // mergen_settings içindeki eski ortak kayıtlar yalnız varsa kaldırılır.
-  function dropLegacyFlags() {
-    try {
-      var s = readSettings();
-      var has = Object.prototype.hasOwnProperty;
-      if (has.call(s, SUPPRESS_KEY) || has.call(s, LEGACY_BY_USER_KEY)) {
-        delete s[SUPPRESS_KEY];
-        delete s[LEGACY_BY_USER_KEY];
-        window.localStorage.setItem(SETTINGS_LS, JSON.stringify(s));
-      }
-    } catch (e) {
-      // Eski kayıt kalsa da okunmaz; kullanıcı tercihini etkilemez.
-    }
-  }
-
-  function readVersion(tag) {
-    try {
-      var v = Number(window.localStorage.getItem(SUPPRESS_USER_PREFIX + tag + VERSION_SUFFIX));
-      return isFinite(v) ? v : 0;
-    } catch (e) {
-      return 0;
-    }
-  }
-
-  // Yalnız bu kullanıcının anahtarı yazılır. Yazımın gerçekten kalıcı olduğu
-  // geri okunarak doğrulanır (ör. dolu ya da kapalı depolama). Ekranı yeniden
-  // açmak hatırlanan kurum seçimini de kaldırır. `surum` kayıttakinden eskiyse
-  // yazım reddedilir; verilmezse bu sekmenin anlık (sunucu saatine göre) zamanı.
-  function writePref(deger, etiket, surum) {
+  // Yalnız bu kullanıcının anahtarı yazılır; yeni sürüm kayıttakinin bir
+  // fazlasıdır. Yazımın gerçekten kalıcı olduğu geri okunarak doğrulanır (ör.
+  // dolu ya da kapalı depolama). `taban` (sunucu yazımı) sunucunun son gördüğü
+  // sürümdür: kayıt o zamandan beri değiştiyse geç gelen yazım reddedilir;
+  // aynı değerin yinelenen yazımı başarılı sayılır.
+  function writePref(deger, etiket, taban) {
     var tag = typeof etiket === "string" ? etiket : currentUserTag();
     if (!tag) {
       return false;
     }
-    var yeni = typeof surum === "number" && isFinite(surum) ? surum : Date.now() + serverOffset;
-    if (yeni < readVersion(tag)) {
-      return false;
+    deger = deger || "";
+    var kayit = readRecord(tag);
+    if (typeof taban === "number" && isFinite(taban) && kayit.n > taban) {
+      return kayit.v === deger;
     }
     try {
-      if (deger) {
-        window.localStorage.setItem(SUPPRESS_USER_PREFIX + tag, deger);
-      } else {
-        window.localStorage.removeItem(SUPPRESS_USER_PREFIX + tag);
-      }
-      window.localStorage.setItem(SUPPRESS_USER_PREFIX + tag + VERSION_SUFFIX, String(yeni));
-      dropLegacyFlags();
-      return readPref(tag) === deger;
+      window.localStorage.setItem(SUPPRESS_USER_PREFIX + tag, JSON.stringify({ v: deger, n: kayit.n + 1 }));
     } catch (e) {
       return false;
     }
+    try {
+      window.localStorage.removeItem(SUPPRESS_USER_PREFIX + tag + VERSION_SUFFIX);
+    } catch (e) {
+      // Eski sürüm anahtarı kalsa da JSON kayıt varken okunmaz.
+    }
+    return readPref(tag) === deger;
   }
 
   function writeSuppressed(value) {
@@ -146,17 +135,17 @@
   // hatırlanan kurum seçimi bastırma korunarak kaldırılır; "clear": kullanıcı
   // "bir daha gösterme" işaretini kaldırdı, tercih silinir. Yazım yalnız
   // verilen etiketin kaydına yapılır.
-  function writeSource(source, etiket, surum) {
+  function writeSource(source, etiket, taban) {
     if (source === "personal") {
       if (rememberedSource(etiket) !== "default") {
-        return writePref(readPref(etiket), etiket, surum);
+        return writePref(readPref(etiket), etiket, taban);
       }
-      return writePref("1", etiket, surum);
+      return writePref("1", etiket, taban);
     }
     if (source === "clear") {
-      return writePref("", etiket, surum);
+      return writePref("", etiket, taban);
     }
-    return writePref("default", etiket, surum);
+    return writePref("default", etiket, taban);
   }
 
   // Sunucuya güncel bastırma bayrağını etiketiyle bildir; sunucu yalnız
@@ -171,7 +160,8 @@
       Shiny.setInputValue(choice._inputId, {
         suppressed: isSuppressed(),
         source: rememberedSource(),
-        tag: currentUserTag()
+        tag: currentUserTag(),
+        version: readVersion()
       }, {
         priority: "event"
       });
@@ -188,7 +178,8 @@
       Shiny.setInputValue(choice._dontShowInputId, {
         checked: !!checked,
         tag: currentUserTag(),
-        nonce: choice._modalNonce || ""
+        nonce: choice._modalNonce || "",
+        version: readVersion()
       }, {
         priority: "event"
       });
@@ -245,6 +236,24 @@
   }
 
   // ---- Olay delegasyonu: zamanlamadan bağımsız, güvenilir ----
+
+  // Modal düğmesine basılınca kutunun güncel durumu düğme olayından ÖNCE
+  // bildirilir (yakalama evresi): ikisi aynı Shiny partisinde sunucuya ulaşır,
+  // Init sonrası gecikmeli bildirim kararı kaçırmaz.
+  document.addEventListener(
+    "click",
+    function (e) {
+      var el = e.target && e.target.closest ? e.target.closest("button, a") : null;
+      if (!el || !el.closest(".api-key-choice-modal-root")) {
+        return;
+      }
+      var box = document.querySelector(".api-key-choice-modal-root .akc-dontshow-input");
+      if (box) {
+        reportDontShowPending(box.checked);
+      }
+    },
+    true
+  );
 
   // Tüm checkbox değişikliklerini tek noktadan yakala.
   document.addEventListener(
@@ -360,11 +369,8 @@
       // Geç gelen mesaj etkin tarayıcı kimliğini değiştirmez; yazım yalnız
       // mesajın etiketine yapılır, eşitleme etiket etkin kullanıcıya aitse yapılır.
       var kaynak = message.source === "personal" || message.source === "clear" ? message.source : "default";
-      var surum = typeof message.issuedAt === "number" && isFinite(message.issuedAt) ? message.issuedAt : null;
-      if (surum !== null) {
-        serverOffset = surum - Date.now();
-      }
-      var kaydedildi = writeSource(kaynak, message.userTag, surum === null ? undefined : surum);
+      var taban = typeof message.base === "number" && isFinite(message.base) ? message.base : undefined;
+      var kaydedildi = writeSource(kaynak, message.userTag, taban);
       if (message.userTag === currentUserTag()) {
         reportToServer();
         syncSettingsToggle();

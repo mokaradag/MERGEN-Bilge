@@ -586,6 +586,8 @@ testthat::test_that("başka gruptaki belge seçilince grup sekmesi de o gruba ge
     # İstemci sekmeyi gerçekten "urun"a geçirir; geri dönüş yeniden istenir.
     session$setInputs(admin_tabs = "urun")
     testthat::expect_identical(secilen, "admin_tabs urun")
+    # Grup geçişi seçili belgeyi ilk belgeyle değiştirmez.
+    testthat::expect_true(grepl("docs/release-notes.md", .admin_doc_read_ui(output$tab_content_area), fixed = TRUE))
     session$setInputs(doc_select = "readme")
     testthat::expect_identical(secilen, c("admin_tabs urun", "admin_tabs baslangic"))
   })
@@ -700,4 +702,46 @@ testthat::test_that("başka belge çizilince bekleyen bölüm hedefi iptal edili
   blok <- regmatches(js, regexpr("if \\(pendingAnchor && govde\\) \\{[\\s\\S]*?\\n      \\}", js, perl = TRUE))
   testthat::expect_length(blok, 1L)
   testthat::expect_true(grepl("}\n        pendingAnchor = null;", blok, fixed = TRUE))
+})
+
+test_that("Sistem Durumu otomatik yenileme döngüsü yalnız yönetici oturumunda kurulur", {
+  kaynak <- paste(readLines(file.path(resolve_repo_root_for_tests(), "R", "module_health.R"),
+                            encoding = "UTF-8", warn = FALSE), collapse = "\n")
+  dongu <- regmatches(kaynak, regexpr("observe\\(\\{\\s*# Sağlık kontrolleri DB[^}]*invalidateLater\\(120000\\)", kaynak))
+  expect_length(dongu, 1L)
+  expect_true(grepl("if (!health_session_is_admin(session)) return()", dongu, fixed = TRUE))
+  expect_true(grepl("kimlik_sinyali()", dongu, fixed = TRUE))
+})
+
+testthat::test_that("sanitizer `/` sınırlı olay özniteliğini, inline style'ı ve ping'i temizler", {
+  env <- .source_admin_doc_env()
+  out <- env$admin_doc_sanitize_html("<div><img/onerror=alert(1) src=\"a.png\"></div>")
+  testthat::expect_false(grepl("onerror", out, ignore.case = TRUE))
+  testthat::expect_true(grepl("<img", out, fixed = TRUE))
+  out <- env$admin_doc_sanitize_html("<div style=\"position:fixed;inset:0\">x</div>")
+  testthat::expect_false(grepl("style", out, fixed = TRUE))
+  out <- env$admin_doc_sanitize_html("<a href=\"https://intranet\" ping=\"https://example.invalid/c\">x</a>")
+  testthat::expect_false(grepl("ping", out, fixed = TRUE))
+  testthat::expect_true(grepl("https://intranet", out, fixed = TRUE))
+})
+
+testthat::test_that("sanitizer şemadaki gömülü TAB/satır sonunu ve kapanmamış tırnağı yakalar", {
+  env <- .source_admin_doc_env()
+  out <- env$admin_doc_sanitize_html("<p><a href=\"java\tscript:alert(1)\">x</a></p>")
+  testthat::expect_true(grepl("href=\"#\"", out, fixed = TRUE))
+  out <- env$admin_doc_sanitize_html("<p><a href=\"jav\nascript:alert(1)\">x</a></p>")
+  testthat::expect_true(grepl("href=\"#\"", out, fixed = TRUE))
+  out <- env$admin_doc_sanitize_html("<p>metin</p><img src=\"x onerror=alert(1)>")
+  testthat::expect_false(grepl("onerror", out, ignore.case = TRUE))
+})
+
+testthat::test_that("bağlantı yeniden yazımı ping'i atar ve kapanmamış tırnaklı çapayı işler", {
+  env <- .source_admin_doc_env()
+  out <- env$admin_doc_rewrite_links("<a href=\"https://intranet\" ping=\"https://x.invalid\" title=\"t\">x</a>",
+                                     "docs/README.md")
+  testthat::expect_false(grepl("ping", out, fixed = TRUE))
+  testthat::expect_true(grepl("title=\"t\"", out, fixed = TRUE))
+  testthat::expect_true(grepl("target=\"_blank\"", out, fixed = TRUE))
+  out <- env$admin_doc_rewrite_links("<a href=\"https://intranet\" title=\"x>y</a>", "docs/README.md")
+  testthat::expect_true(grepl("target=\"_blank\"", out, fixed = TRUE))
 })

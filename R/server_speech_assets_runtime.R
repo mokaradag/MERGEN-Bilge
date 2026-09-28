@@ -156,6 +156,20 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
   prefix_slot$audio_src <- NULL
   prefix_slot$duration <- 0
   prefix_slot$promise <- NULL
+  prefix_slot$inflight <- list()
+
+  # Oturum başka kullanıcıya geçince kişisel önek (ad, son konu) geçersizdir:
+  # süren sentezin sonucu yeni sahibe uygulanmaz.
+  if (exists("mergen_session_on_owner_change", mode = "function")) {
+    mergen_session_on_owner_change(session, function(neden) {
+      prefix_slot$gen <- prefix_slot$gen + 1L
+      prefix_slot$status <- "none"
+      prefix_slot$persona <- NA_character_
+      prefix_slot$text <- ""
+      prefix_slot$audio_src <- NULL
+      prefix_slot$promise <- NULL
+    })
+  }
 
   static_ready <- function(persona) {
     persona <- mergen_speech_canonical_persona(persona)
@@ -174,22 +188,6 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
     uid <- suppressWarnings(as.integer(uid))
     if (is.na(uid) || uid < 0L) uid <- 0L
     uid
-  }
-
-  build_prefix_text <- function() {
-    first_name <- tryCatch(
-      session$userData$user_first_name %||% "",
-      error = function(e) ""
-    )
-
-    topics <- NULL
-    uid <- resolve_user_id()
-    fetch_fn <- get0("fetch_recent_user_prompts", mode = "function")
-    if (uid > 0L && !is.null(fetch_fn)) {
-      topics <- tryCatch(fetch_fn(uid, 1), error = function(e) NULL)
-    }
-
-    mergen_speech_build_welcome_prefix(first_name, topics)
   }
 
   send_prefetch <- function(urls) {
@@ -225,7 +223,8 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
   # --- Kişisel öneki persona onaylandığı anda hazırlamaya başla ---
   # Her çağrı önceki önek sonucunu geçersiz kılar; geçersiz persona (iptal
   # edilen onay) yalnız geçersiz kılar. Aynı persona/metin için süren sentez
-  # yeniden başlatılmaz: onay/iptal tekrarı TTS işini yığmaz.
+  # (arada başka persona seçilmiş olsa da) yeniden başlatılmaz: onay/iptal
+  # tekrarı TTS işini yığmaz.
   prewarm_welcome <- function(persona_id) {
     prefix_slot$gen <- prefix_slot$gen + 1L
     my_gen <- prefix_slot$gen
@@ -246,24 +245,34 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
     peek_variant <- mergen_speech_shuffle_bag_peek(state$bags, "welcome")
     send_prefetch(mergen_speech_audio_url(persona, "welcome", NULL, peek_variant))
 
-    prefix_text <- build_prefix_text()
-    if (!nzchar(prefix_text)) return(invisible(FALSE))
+    # Önek ada bağlıdır (ad yoksa önek yok). Son konu DB'den İŞÇİDE okunur;
+    # ana olay döngüsü sorguyu beklemez, sentez konu gelince başlar.
+    first_name <- tryCatch(session$userData$user_first_name %||% "", error = function(e) "")
+    if (!nzchar(mergen_speech_build_welcome_prefix(first_name, NULL))) return(invisible(FALSE))
+    konu_promise <- if (exists("ai_expert_recent_prompt_promise", mode = "function")) {
+      ai_expert_recent_prompt_promise(session, resolve_user_id())
+    } else {
+      promises::promise_resolve(NULL)
+    }
 
     prefix_slot$status <- "pending"
-    prefix_slot$text <- prefix_text
     .speech_perf_log("prefix_synth_start", sprintf("persona=%s", persona))
 
-    suren <- prefix_slot$inflight
-    if (is.list(suren) && identical(suren$persona, persona) && identical(suren$text, prefix_text)) {
-      prefix_promise <- suren$promise
-    } else {
-      prefix_promise <- tts_processor$synthesize_speech(prefix_text, persona_id = persona)
-      kayit <- list(persona = persona, text = prefix_text, promise = prefix_promise)
-      prefix_slot$inflight <- kayit
-      promises::catch(promises::finally(prefix_promise, function() {
-        if (identical(prefix_slot$inflight, kayit)) prefix_slot$inflight <- NULL
+    prefix_promise <- promises::then(konu_promise, function(konu) {
+      if (!identical(prefix_slot$gen, my_gen)) stop("önek bayatladı")
+      prefix_text <- mergen_speech_build_welcome_prefix(first_name, konu)
+      prefix_slot$text <- prefix_text
+      anahtar <- paste(persona, prefix_text, sep = "\r")
+      suren <- prefix_slot$inflight[[anahtar]]
+      if (is.list(suren)) return(suren$promise)
+      sentez <- tts_processor$synthesize_speech(prefix_text, persona_id = persona)
+      kayit <- list(persona = persona, text = prefix_text, promise = sentez)
+      prefix_slot$inflight[[anahtar]] <- kayit
+      promises::catch(promises::finally(sentez, function() {
+        if (identical(prefix_slot$inflight[[anahtar]], kayit)) prefix_slot$inflight[[anahtar]] <- NULL
       }), function(e) NULL)
-    }
+      sentez
+    })
     prefix_slot$promise <- prefix_promise
 
     prefix_promise %...>% (function(res) {

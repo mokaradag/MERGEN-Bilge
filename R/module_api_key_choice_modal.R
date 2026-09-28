@@ -183,7 +183,8 @@ api_key_choice_request_url <- function(service_desk = NULL) {
 # yolu gösterilir ve kurumsal seçenek sunulmaz.
 api_key_choice_modal_dialog <- function(ns,
                                         service_desk = NULL,
-                                        default_available = FALSE) {
+                                        default_available = FALSE,
+                                        title = NULL) {
   default_available <- isTRUE(default_available)
   request_url <- api_key_choice_request_url(service_desk)
 
@@ -203,6 +204,9 @@ api_key_choice_modal_dialog <- function(ns,
     )
     close_label <- "Kapat"
   }
+  # Çağıranın başlığı (ör. Ayarlar'dan "API Anahtarı Güncelleme") korunur.
+  baslik <- trimws(as.character(title %||% "")[1])
+  if (!is.na(baslik) && nzchar(baslik)) title_text <- baslik
 
   cards <- div(
     class = if (default_available) "akc-cards akc-cards--dual" else "akc-cards akc-cards--single",
@@ -315,7 +319,8 @@ show_api_key_choice_modal <- function(session,
                                       default_available = FALSE,
                                       service_desk = NULL,
                                       nonce = "",
-                                      user_tag = "") {
+                                      user_tag = "",
+                                      title = NULL) {
   if (is.null(session)) {
     return(invisible(FALSE))
   }
@@ -327,7 +332,8 @@ show_api_key_choice_modal <- function(session,
     api_key_choice_modal_dialog(
       ns = ns,
       service_desk = service_desk,
-      default_available = default_available
+      default_available = default_available,
+      title = title
     )
   )
 
@@ -371,15 +377,18 @@ api_key_pref_user_tag <- function(username) {
 # ve kaynak gönderilir; anahtar değeri gönderilmez. result_input verilirse
 # tarayıcı kaydın gerçekten yazılıp yazılmadığını ({ok, tag, nonce}) bu girdiye
 # bildirir; sunucu onayı yalnız bu yazımın jetonu ve etiketiyle kabul eder.
-.api_key_choice_write_pref <- function(session, username, source, result_input = NULL, nonce = "") {
+# `base`, tarayıcının bildirdiği son kayıt sürümüdür (saat değil sayaç): kayıt
+# o zamandan beri başka sekmede değiştiyse geç gelen yazım uygulanmaz.
+.api_key_choice_write_pref <- function(session, username, source, result_input = NULL, nonce = "",
+                                       base = NULL) {
   etiket <- api_key_pref_user_tag(username)
   if (is.null(session) || is.null(etiket)) {
     return(invisible(FALSE))
   }
-  # `issuedAt` (ms) yazım sürümüdür: tarayıcı, başka sekmenin daha yeni
-  # tercihini geç gelen eski mesajla ezmez.
   mesaj <- list(settingsKey = "api_key_onboarding_suppressed", userTag = etiket, source = source,
-                nonce = as.character(nonce %||% "")[1], issuedAt = round(as.numeric(Sys.time()) * 1000))
+                nonce = as.character(nonce %||% "")[1])
+  taban <- suppressWarnings(as.numeric(base %||% NA)[1])
+  if (isTRUE(is.finite(taban))) mesaj$base <- taban
   if (is.character(result_input) && length(result_input) == 1L && nzchar(result_input)) {
     mesaj$resultInputId <- result_input
   }
@@ -388,20 +397,23 @@ api_key_pref_user_tag <- function(username) {
 }
 
 # Kurum anahtarı seçimini tarayıcıda o kullanıcı için hatırlatır.
-remember_api_key_choice_default <- function(session, username = NULL, result_input = NULL, nonce = "") {
-  .api_key_choice_write_pref(session, username, "default", result_input, nonce)
+remember_api_key_choice_default <- function(session, username = NULL, result_input = NULL, nonce = "",
+                                            base = NULL) {
+  .api_key_choice_write_pref(session, username, "default", result_input, nonce, base)
 }
 
 # Kullanıcı kişisel anahtar kaydedince tarayıcıda hatırlanan kurum seçimi
 # kaldırılır (bastırma korunur); aksi halde sonraki girişte kurum anahtarı
 # kişisel anahtarın önüne geçerdi.
-forget_api_key_choice_default <- function(session, username = NULL, result_input = NULL, nonce = "") {
-  .api_key_choice_write_pref(session, username, "personal", result_input, nonce)
+forget_api_key_choice_default <- function(session, username = NULL, result_input = NULL, nonce = "",
+                                          base = NULL) {
+  .api_key_choice_write_pref(session, username, "personal", result_input, nonce, base)
 }
 
 # Kurum anahtarı "bir daha gösterme" işaretsiz seçildiğinde o kullanıcının
 # önceki tercihi (bastırma ya da kurum seçimi) silinir; seçim ekranı sonraki
 # girişte yeniden gösterilir.
-clear_api_key_choice_pref <- function(session, username = NULL, result_input = NULL, nonce = "") {
-  .api_key_choice_write_pref(session, username, "clear", result_input, nonce)
+clear_api_key_choice_pref <- function(session, username = NULL, result_input = NULL, nonce = "",
+                                      base = NULL) {
+  .api_key_choice_write_pref(session, username, "clear", result_input, nonce, base)
 }

@@ -40,6 +40,13 @@ test_that("denetim yükleyicisi Türkçe dize sabitlerini geçerli UTF-8 olarak 
   }
 })
 
+test_that("denetim yükleyicisi BOM'u bayt düzeyinde atar ve yalın CR satır sonunu ayırır", {
+  runner <- .cm_loader_runner()
+  yol <- withr::local_tempfile(fileext = ".R")
+  writeBin(c(as.raw(c(0xEF, 0xBB, 0xBF)), charToRaw("a <- 1\rb <- 2\r\nc <- 3\n")), yol)
+  expect_identical(runner$cm_render_check_read_utf8_lines(yol), c("a <- 1", "b <- 2", "c <- 3"))
+})
+
 test_that("fikstür sayfası geçerli UTF-8 üretir ve betik kapanışı kaçırılır", {
   skip_if_not_installed("jsonlite")
   skip_if_not_installed("htmltools")

@@ -16,6 +16,18 @@ filePreviewServer <- function(id) {
     # Önizlenen dosyanın bilgilerini saklayan reaktif liste
     file_storage <- reactiveValues(preview_file = NULL)
 
+    # Önizleme açıldığı kimlik nesline bağlıdır: oturum başka kullanıcıya
+    # geçince ya da kimlik düşünce indirme/veri adresi önceki dosyayı sunmaz.
+    onizleme_gecerli <- function(nesli) {
+      identical(as.integer(nesli %||% -1L)[1], as.integer(session$userData$kimlik_nesli %||% 0L)[1])
+    }
+    if (exists("mergen_session_on_owner_change", mode = "function")) {
+      mergen_session_on_owner_change(session, function(neden) {
+        file_storage$preview_file <- NULL
+        try(removeModal(session = session), silent = TRUE)
+      })
+    }
+
     # Aynı dosya tekrar önizlendiğinde base64 üretimini tekrar yapmamak için önbellek
     preview_b64_cache <- reactiveVal(list())
 
@@ -116,8 +128,9 @@ filePreviewServer <- function(id) {
         return("file.txt")
       },
       content = function(file) {
-        # Dosya mevcutsa kopyalama işlemini gerçekleştir
+        # Dosya mevcutsa ve önizleme hâlâ bu kimliğe aitse kopyala
         if (!is.null(file_storage$preview_file) &&
+            onizleme_gecerli(file_storage$preview_file$nesli) &&
             !is.null(file_storage$preview_file$datapath) &&
             path_exists_relaxed(file_storage$preview_file$datapath)) {
           tryCatch(
@@ -156,7 +169,8 @@ filePreviewServer <- function(id) {
         file_storage$preview_file <- list(
           name     = file_info$name %||% basename(datapath),
           datapath = datapath,
-          size     = file_info$size %||% suppressWarnings(file.info(datapath)$size)
+          size     = file_info$size %||% suppressWarnings(file.info(datapath)$size),
+          nesli    = as.integer(session$userData$kimlik_nesli %||% 0L)[1]
         )
 
         # Dosya uzantısını al
@@ -186,8 +200,13 @@ filePreviewServer <- function(id) {
             pdf_obj_name <- paste0("pdf_", gsub("[^a-zA-Z0-9]", "_", basename(datapath)))
             pdf_url <- session$registerDataObj(
               name  = pdf_obj_name,
-              data  = list(path = datapath, fname = file_storage$preview_file$name),
+              data  = list(path = datapath, fname = file_storage$preview_file$name,
+                           nesli = file_storage$preview_file$nesli),
               filterFunc = function(data, req) {
+                if (!onizleme_gecerli(data$nesli)) {
+                  return(shiny::httpResponse(status = 403L, content_type = "text/plain; charset=UTF-8",
+                                             content = "Erisim reddedildi"))
+                }
                 fpath <- data$path
                 if (!file.exists(fpath)) {
                   return(shiny::httpResponse(
@@ -521,8 +540,13 @@ filePreviewServer <- function(id) {
           img_obj_name <- paste0("img_", gsub("[^a-zA-Z0-9]", "_", basename(datapath)))
           img_url <- session$registerDataObj(
             name = img_obj_name,
-            data = list(path = datapath, ctype = img_content_type),
+            data = list(path = datapath, ctype = img_content_type,
+                        nesli = file_storage$preview_file$nesli),
             filterFunc = function(data, req) {
+              if (!onizleme_gecerli(data$nesli)) {
+                return(shiny::httpResponse(status = 403L, content_type = "text/plain; charset=UTF-8",
+                                           content = "Erisim reddedildi"))
+              }
               fpath <- data$path
               if (!file.exists(fpath)) {
                 return(shiny::httpResponse(

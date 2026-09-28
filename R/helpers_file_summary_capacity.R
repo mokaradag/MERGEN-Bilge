@@ -15,11 +15,12 @@ file_summary_worker_count <- function() {
   if (length(n) != 1L || is.na(n) || n < 1L) 1L else n
 }
 
-# Çok-süreçli dağıtımda (tools/run_mergen_workers.R) sınırlar DAĞITIM
-# geneli içindir: her uygulama süreci kendi dilimini alır, dilimlerin toplamı
-# yapılandırılan değeri aşmaz (N süreç x sınır kadar eşzamanlı LLM çağrısı ya da
-# bekleyen iş olmaz). Dilim 0 olabilir; o süreç o bütçeyi kullanmaz (başlatıcı
-# ölen süreci yeniden başlatır, süreç kümesi sabit kalır).
+# Çok-süreçli dağıtımda (tools/run_mergen_workers.R) sınırlar BAŞLATICI
+# (host) geneli içindir: o başlatıcının her uygulama süreci kendi dilimini alır,
+# dilimlerin toplamı yapılandırılan değeri aşmaz (N süreç x sınır kadar eşzamanlı
+# LLM çağrısı ya da bekleyen iş olmaz). Birden çok host/başlatıcı varsa her biri
+# ayrı bütçe kullanır; ortak tavan için değer host sayısına bölünerek verilir.
+# Dilim 0 olabilir; o süreç o bütçeyi kullanmaz.
 file_summary_process_share <- function(toplam) {
   n <- file_summary_worker_count()
   i <- suppressWarnings(as.integer(Sys.getenv("MERGEN_APP_WORKER_INDEX", "1")))
@@ -71,7 +72,7 @@ file_summary_has_capacity <- function(bos = file_summary_free_workers()) {
 
 # Bekleyen kuyruk da sınırlıdır (MERGEN_FILE_SUMMARY_MAX_QUEUE, varsayılan 64):
 # her kayıt oturum ve dosya durumunu tuttuğundan sınırsız büyüyemez. Süreç
-# dilimi 0 ise bu süreç iş kabul etmez (dağıtım geneli tavan şişirilmez).
+# dilimi 0 ise bu süreç iş kabul etmez (başlatıcı geneli tavan şişirilmez).
 file_summary_max_queue <- function() {
   file_summary_process_share(file_summary_int_setting("MERGEN_FILE_SUMMARY_MAX_QUEUE", 64L))
 }
@@ -84,7 +85,7 @@ file_summary_max_queue_per_session <- function() {
       file_summary_max_queue())
 }
 
-# Süreç sayısından küçük dağıtım geneli değer bazı süreçlere 0 dilim bırakır;
+# Süreç sayısından küçük başlatıcı geneli değer bazı süreçlere 0 dilim bırakır;
 # açılışta günlüğe yazılacak uyarılar.
 file_summary_capacity_warnings <- function() {
   n <- file_summary_worker_count()

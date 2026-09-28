@@ -14,6 +14,10 @@
 
 # Özet kuyruğu kapasite + kuyruk + görev dosyalarıyla aynı ortama yüklenir.
 .wd_ozet_kaynak <- function(env, pipeline = FALSE) {
+  # Test taklitleri test çerçevesini (ve testthat raporlayıcı durumunu) kapanış
+  # olarak taşır; future'ın genel boyut tahmini tüm paket koşusunda büyür.
+  # Üretimde kapanışlar .GlobalEnv'dedir; sınır yalnız bu testte kaldırılır.
+  withr::local_options(future.globals.maxSize = +Inf, .local_envir = parent.frame())
   kok <- resolve_repo_root_for_tests()
   dosyalar <- c("helpers_file_summary_capacity.R", "helpers_file_summary_queue.R",
                 "helpers_file_summary_task.R", if (pipeline) "helpers_file_pipeline.R")
@@ -770,6 +774,7 @@ test_that("başarısız açılış ısıtması başarı raporlamaz", {
   env <- new.env(parent = globalenv())
   .wd_ozet_kaynak(env)
   env$file_summary_task_fn <- function(...) function() NULL
+  env$file_summary_pool_size <- function() 3L
   deneme <- 0L
   env$worker_monitor_auto_globals <- function(...) {
     deneme <<- deneme + 1L
@@ -781,6 +786,22 @@ test_that("başarısız açılış ısıtması başarı raporlamaz", {
   expect_true(any(grepl("[FILE SUMMARY]", cikti, fixed = TRUE)))
   env$worker_monitor_auto_globals <- function(...) list(globals = list(), packages = character(0), ok = TRUE)
   expect_true(env$file_summary_warm_dependencies())
+})
+
+test_that("özet kapasitesi yoksa açılış bağımlılık taraması yapılmaz", {
+  env <- new.env(parent = globalenv())
+  .wd_ozet_kaynak(env)
+  env$file_summary_task_fn <- function(...) function() NULL
+  deneme <- 0L
+  env$worker_monitor_auto_globals <- function(...) {
+    deneme <<- deneme + 1L
+    list(globals = list(), packages = character(0), ok = TRUE)
+  }
+  for (havuz in c(0L, 1L)) {
+    env$file_summary_pool_size <- function() havuz
+    expect_false(env$file_summary_warm_dependencies())
+  }
+  expect_identical(deneme, 0L)
 })
 
 test_that("otomatik kipte başarısız bağımlılık taraması işi göndermez ve defterde bırakmaz", {
@@ -1096,6 +1117,31 @@ test_that("bağlamdan çıkarılan dosyanın süren özeti durdurma dosyasıyla 
   expect_false(file.exists(dur))
   env$.file_summary_job_token(oturum, "a.txt", NULL, yalniz = "is-2")
   expect_null(oturum$userData$file_summary_jobs$a.txt)
+})
+
+test_that("aynı adla yeniden yükleme süren eski özetin durdurma dosyasını oluşturur", {
+  env <- .wd_ozet_kaynak(new.env(parent = globalenv()), pipeline = TRUE)
+  oturum <- list(userData = new.env())
+  dur1 <- tempfile("dur_")
+  dur2 <- tempfile("dur_")
+  withr::defer(unlink(c(dur1, dur2)))
+  env$.file_summary_job_token(oturum, "a.txt", "is-1", dur1)
+  env$.file_summary_job_token(oturum, "a.txt", "is-2", dur2)
+  expect_true(file.exists(dur1))
+  expect_false(file.exists(dur2))
+  expect_identical(oturum$userData$file_summary_jobs$a.txt$jeton, "is-2")
+})
+
+test_that("özet sonucu yol yazımı farklı olsa da aynı dosyaya uygulanır", {
+  env <- .wd_ozet_kaynak(new.env(parent = globalenv()), pipeline = TRUE)
+  kok <- withr::local_tempdir()
+  dir.create(file.path(kok, "alt"))
+  writeLines("x", file.path(kok, "a.txt"))
+  oturum <- list(userData = new.env())
+  oturum$userData$current_session_files <- list(a.txt = list(path = file.path(kok, "alt", "..", "a.txt")))
+  env$.file_summary_job_token(oturum, "a.txt", "is-1")
+  expect_true(env$.file_summary_result_current(oturum, "a.txt", "is-1", file.path(kok, "a.txt")))
+  expect_false(env$.file_summary_result_current(oturum, "a.txt", "is-1", file.path(kok, "b.txt")))
 })
 
 test_that("özet bildirimleri yükleyen oturuma açıkça bağlanır", {

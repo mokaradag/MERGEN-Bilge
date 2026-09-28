@@ -157,8 +157,17 @@ healthServer <- function(id, perf_tracker) {
       session$sendCustomMessage("initHealthTooltips", list())
     }, once = TRUE)
 
+    # Yetki yoklanmaz: çizim oturum kimlik sinyaline bağımlıdır. SSO süresi
+    # dolunca ya da oturum başka kullanıcıya/yetkiye geçince içerik aynı turda
+    # kilit mesajına döner; yönetici olmayan oturumlar zamanlayıcı çalıştırmaz.
+    kimlik_sinyali <- if (exists("mergen_session_identity_signal", mode = "function")) {
+      mergen_session_identity_signal(session)
+    }
+
     observe({
       # Sağlık kontrolleri DB/endpoint probe içerebildiği için otomatik yenileme seyrek tutulur.
+      if (is.function(kimlik_sinyali)) kimlik_sinyali() else invalidateLater(5000)
+      if (!health_session_is_admin(session)) return()
       invalidateLater(120000)
       isolate({
         health_refresh_trigger(health_refresh_trigger() + 1)
@@ -202,13 +211,6 @@ healthServer <- function(id, perf_tracker) {
 		}
 	  }, error = function(e) NULL)
 	})
-
-    # Yetki yoklanmaz: çizim oturum kimlik sinyaline bağımlıdır. SSO süresi
-    # dolunca ya da oturum başka kullanıcıya/yetkiye geçince içerik aynı turda
-    # kilit mesajına döner; yönetici olmayan oturumlar zamanlayıcı çalıştırmaz.
-    kimlik_sinyali <- if (exists("mergen_session_identity_signal", mode = "function")) {
-      mergen_session_identity_signal(session)
-    }
 
     # Çevrimiçi sekmesi yalnız açıkken ve yöneticideyken 30 sn'de bir yenilenir;
     # sayaç hem çizimi hem tooltip yeniden bağlamayı tetikler.

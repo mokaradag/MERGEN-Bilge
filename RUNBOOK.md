@@ -677,8 +677,9 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
   oturum takip tablosu. Veri uygulama sürecinin belleğindedir ve yeniden
   başlatmada sıfırlanır. `tools/run_mergen_workers.R` ile birden çok uygulama
   süreci çalışıyorsa her süreç oturum satırlarını makineye yerel paylaşılan
-  dizine (`MERGEN_PRESENCE_SHARED_DIR`; başlatıcı her çalıştırmada kendi geçici
-  dizinini verir, UNC/ağ paylaşımı kullanılmamalıdır) en fazla 30 sn aralıkla,
+  dizine (`MERGEN_PRESENCE_SHARED_DIR`; varsayılan, bu makinede aynı uygulama
+  kökünden çalışan tüm başlatıcıların ortak yerel geçici dizinidir; UNC değeri
+  reddedilir, görünüm host başınadır) en fazla 30 sn aralıkla,
   kimlik değişimi ve oturum sonunda hemen yayımlar; sekme tüm süreçleri
   birleştirir (okuma 10 sn önbelleklenir, bozuk dosya yalnız kendisi atlanır);
   yayını 150 sn'den eski süreç kapanmış sayılır. Tablo en fazla 200 kullanıcı satırı çizer (sayaçlar
@@ -690,11 +691,14 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
   sayısı; en fazla işçi sayısının bir eksiği, en az bir işçi sohbet/LLM işine boş
   kalır; ikiden az işçili havuzda özet çalışmaz ve atlanır) ile sınırlanır.
   Çok-süreçli dağıtımda (`tools/run_mergen_workers.R`) eşzamanlılık, kuyruk ve
-  kullanıcı başı kuyruk payı dağıtım genelidir: her uygulama süreci kendi
-  dilimini alır, dilimler toplamı aşmaz; süreç sayısından küçük açık değer bazı
+  kullanıcı başı kuyruk payı başlatıcı (host) genelidir: o başlatıcının her
+  uygulama süreci kendi dilimini alır, dilimler toplamı aşmaz (birden çok
+  host/başlatıcı varsa her biri ayrı bütçe kullanır; ortak tavan için değer host
+  sayısına bölünerek verilir); süreç sayısından küçük açık değer bazı
   süreçlere 0 dilim bırakır ve açılışta günlüğe uyarı yazılır. Başlatıcı ölen
-  süreci yeniden başlatır (`MERGEN_WORKERS_MAX_RESTARTS`, varsayılan 5; bütçe
-  biterse tüm küme kapanır), paylar canlı kümeyle uyumlu kalır; kalanlar
+  süreci yeniden başlatır (`MERGEN_WORKERS_MAX_RESTARTS`, varsayılan 5, ardışık
+  çökmeleri sayar ve `MERGEN_WORKERS_STABLE_SECONDS`, varsayılan 600 sn kararlı
+  çalışmadan sonra sıfırlanır; bütçe biterse tüm küme kapanır), paylar canlı kümeyle uyumlu kalır; kalanlar
   sırayla başlar, böylece özetler paylaşılan işçi havuzunu doldurup sohbet
   isteklerini bekletmez. Bekleyen kuyruk `MERGEN_FILE_SUMMARY_MAX_QUEUE`
   (varsayılan 64) ile, tek kullanıcının (tüm sekmeleriyle) payı

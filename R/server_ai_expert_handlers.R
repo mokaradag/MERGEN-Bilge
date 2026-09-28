@@ -183,8 +183,23 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     })
   }, once = TRUE)
 
-  # --- Ayarlar değiştiğinde karşılama tetikleyicisi ---
+  # Oturum başka kullanıcıya geçince (A -> B) karşılama ve rehberlik durumu
+  # yeni sahip için sıfırlanır; kimlik sinyali aşağıdaki tetikleyiciyi çalıştırır.
+  kimlik_sinyali <- if (exists("mergen_session_identity_signal", mode = "function")) {
+    mergen_session_identity_signal(session)
+  }
+  if (exists("mergen_session_on_owner_change", mode = "function")) {
+    mergen_session_on_owner_change(session, function(neden) {
+      if (!identical(neden, "sahip_degisti")) return(invisible(NULL))
+      greeting_done(FALSE)
+      page_guidance_times(list())
+      idle_talk_counter(0L)
+    })
+  }
+
+  # --- Ayarlar ya da oturum sahibi değiştiğinde karşılama tetikleyicisi ---
   observe({
+    if (is.function(kimlik_sinyali)) kimlik_sinyali()
     ai_on <- isTRUE(settings_data$enable_ai_expert)
     mode <- settings_data$experience_mode
     if (ai_on && identical(mode, "kesif") && !isTRUE(isolate(greeting_done()))) {
