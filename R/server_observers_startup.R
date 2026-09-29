@@ -185,7 +185,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		detail = list(deferred = TRUE)
 	  )
 
-	  hydrate_preview_chats <- function(chats) {
+	  hydrate_preview_chats <- function(chats, dispatched_hydration_user_id) {
 		# Kapanan oturumun geç kalan callback'i durum değiştiremez.
 		if (session_closed()) {
 		  return(invisible(NULL))
@@ -194,13 +194,15 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		# yeniden bağlama veya testte simüle edilen kullanıcı değişimi), eski
 		# kullanıcının ön izlemesi artık bu oturum durumuna uygulanamaz.
 		current_hydration_user_id <- resolve_current_user_id()
-		dispatched_hydration_user_id <- startup_state$preview_hydration_user_id
 		if (!identical(
 		  suppressWarnings(as.integer(current_hydration_user_id[1])),
 		  suppressWarnings(as.integer(dispatched_hydration_user_id[1]))
 		)) {
-		  startup_state$preview_hydration_started <- FALSE
-		  startup_state$preview_hydration_user_id <- NULL
+		  # Yeni sahibin süren ısıtması bayat sonuçla sıfırlanmaz.
+		  if (identical(startup_state$preview_hydration_user_id, dispatched_hydration_user_id)) {
+			startup_state$preview_hydration_started <- FALSE
+			startup_state$preview_hydration_user_id <- NULL
+		  }
 		  cat("[STARTUP] Ön izleme kimliği değişti, geç kalan sonuç atlandı\n")
 		  return(invisible(NULL))
 		}
@@ -294,12 +296,14 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		session$userData$initial_saved_chats_preview_promise <- promises::then(
 		  preview_promise,
 		  onFulfilled = function(chats) {
-			hydrate_preview_chats(chats)
+			hydrate_preview_chats(chats, hydration_user_id)
 			NULL
 		  },
 		  onRejected = function(err) {
-			startup_state$preview_hydration_started <- FALSE
-			startup_state$preview_hydration_user_id <- NULL
+			if (identical(startup_state$preview_hydration_user_id, hydration_user_id)) {
+			  startup_state$preview_hydration_started <- FALSE
+			  startup_state$preview_hydration_user_id <- NULL
+			}
 			warning(sprintf("[SERVER] Preview chat load failed: %s", conditionMessage(err)))
 			NULL
 		  }
@@ -314,10 +318,16 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  } else {
 		# Güvenli geri dönüş: istemci hazır sinyali hiç gelmezse ön izleme yine
 		# de yüklenir; açılış sözleşmesi bu zamanlayıcıya bağlı değildir.
-		fallback_secs <- getOption("mergen.startup_preview_fallback_secs", 10)
-		later::later(function() {
-		  tryCatch(run_preview_hydration("fallback_timer"), error = function(e) NULL)
-		}, delay = fallback_secs)
+		# Sahip değişimlerinde tek zamanlayıcı bekler ve en güncel ısıtıcıyı çağırır.
+		if (!isTRUE(startup_state$preview_fallback_pending)) {
+		  startup_state$preview_fallback_pending <- TRUE
+		  fallback_secs <- getOption("mergen.startup_preview_fallback_secs", 10)
+		  later::later(function() {
+			startup_state$preview_fallback_pending <- FALSE
+			calistir <- startup_state$run_preview_hydration
+			if (is.function(calistir)) tryCatch(calistir("fallback_timer"), error = function(e) NULL)
+		  }, delay = fallback_secs)
+		}
 	  }
 	} else {
 	  # Zengin şerit: ilk ekranın hızlı gelmesi için hafif özet liste senkron yüklenir.
@@ -456,10 +466,15 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	}
 
 	# Hızlı şeritte kullanıcı Kayıtlı Söyleşiler / Söyleşi Geçmişi'ni ilk
-	# açtığında tam liste bir kez arka planda yüklenir.
-	observeEvent(input$tabs, {
-	  trigger_lazy_full_saved_chats_load(input$tabs)
-	}, ignoreInit = TRUE)
+	# açtığında tam liste bir kez arka planda yüklenir. Gözlemci oturumda bir
+	# kez kaydolur; sahip değişiminde yalnız güncel tetikleyici değişir.
+	startup_state$trigger_lazy_full_saved_chats_load <- trigger_lazy_full_saved_chats_load
+	if (!isTRUE(startup_state$lazy_tabs_observer_registered)) {
+	  startup_state$lazy_tabs_observer_registered <- TRUE
+	  observeEvent(input$tabs, {
+		startup_state$trigger_lazy_full_saved_chats_load(input$tabs)
+	  }, ignoreInit = TRUE)
+	}
 
 	# Sekme şerit çözülmeden önce restore edilmiş olabilir. Deferral kurulduktan
 	# sonra mevcut değeri aynı korumalı yol üzerinden hemen değerlendir.
@@ -475,20 +490,35 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  load_initial_saved_chats()
 	}
 
-	# Oturum başka kullanıcıya geçince kayıtlı söyleşiler yeni sahip için baştan
-	# yüklenir; A'nın geç gelen yükleme sonucu kimlik denetimiyle atlanır.
+	# Oturum başka kullanıcıya geçince ya da kimlik düşünce kayıtlı söyleşiler
+	# temizlenir; kimlik (yeni sahip ya da aynı kullanıcı) hazır olunca baştan
+	# yüklenir. A'nın geç gelen yükleme sonucu kimlik denetimiyle atlanır.
 	sahip_yenileme <- shiny::reactiveVal(0L)
 	if (exists("mergen_session_on_owner_change", mode = "function")) {
 	  mergen_session_on_owner_change(session, function(neden) {
-		if (identical(neden, "sahip_degisti")) sahip_yenileme(shiny::isolate(sahip_yenileme()) + 1L)
+		sahip_yenileme(shiny::isolate(sahip_yenileme()) + 1L)
 	  })
 	}
+	if (exists("mergen_session_identity_signal", mode = "function")) {
+	  kimlik_sinyali <- mergen_session_identity_signal(session)
+	  observeEvent(kimlik_sinyali(), {
+		uid <- resolve_current_user_id()
+		if (isTRUE(startup_state$kimlik_bekleniyor) && !is.na(uid) && uid > 0) {
+		  startup_state$kimlik_bekleniyor <- FALSE
+		  sahip_yenileme(shiny::isolate(sahip_yenileme()) + 1L)
+		}
+	  }, ignoreInit = TRUE)
+	}
 	observeEvent(sahip_yenileme(), {
+	  uid <- resolve_current_user_id()
+	  startup_state$kimlik_bekleniyor <- is.na(uid) || uid <= 0
 	  startup_state$initial_saved_chats_status <- "idle"
 	  startup_state$full_saved_chats_load_started <- FALSE
 	  startup_state$preview_hydration_started <- FALSE
 	  startup_state$preview_hydration_user_id <- NULL
 	  session$userData$saved_chats_full_pending <- FALSE
+	  # Yeni sahibin listesi boşsa önceki sahibin söyleşileri görünmez.
+	  values$saved_chats <- list()
 	  if (isTRUE(values$show_welcome)) render_welcome_screen(list(), replace_existing = TRUE)
 	  load_initial_saved_chats()
 	  if (is.function(startup_state$run_preview_hydration) && isTRUE(startup_state$welcome_client_ready_seen)) {

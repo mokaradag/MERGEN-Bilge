@@ -216,16 +216,47 @@ test_that("oturum başka kullanıcıya geçince açık söyleşi, kayıtlı list
     durum$values$is_sending <- TRUE
     durum$active_request_id("istek-a")
     durum$session_files(list(a.txt = list(name = "a.txt")))
-    # Kimlik kaybı söyleşiyi silmez (aynı kullanıcı geri dönebilir).
-    env$mergen_session_owner_transition(session$userData, 7L, 0L)
-    expect_length(shiny::isolate(durum$values$messages), 1L)
-    env$mergen_session_owner_transition(session$userData, 0L, 8L)
+    env$mergen_session_owner_transition(session$userData, 7L, 8L)
     expect_length(shiny::isolate(durum$values$messages), 0L)
     expect_length(shiny::isolate(durum$values$saved_chats), 0L)
     expect_null(shiny::isolate(durum$values$current_chat_id))
     expect_true(shiny::isolate(durum$values$show_welcome))
     expect_true(shiny::isolate(durum$stop_generation()))
     expect_true(startsWith(shiny::isolate(durum$active_request_id()), "cancelled_"))
+    expect_length(shiny::isolate(durum$session_files()), 0L)
+  })
+})
+
+test_that("kimlik kaybı süren yanıtı keser, PK iptal jetonunu önce işaretler ve söyleşiyi bırakır", {
+  testthat::skip_if_not_installed("shiny")
+  env <- .owner_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "server_init_session_state.R"),
+         encoding = "UTF-8", local = env)
+  kimlik <- list(resolve_current_user_id = function() 0L, is_sso_active = function() FALSE,
+                 is_auth_ready = function() TRUE)
+  env$load_feedback_from_db <- function(...) NULL
+  isaretler <- character(0)
+  env$mergen_pk_request_has_cancel_token <- function(session, id) identical(id, "istek-pk")
+  shiny::testServer(function(input, output, session) NULL, {
+    durum <- env$serverInitSessionState(session, kimlik)
+    env$mergen_pk_signal_cancel <- function(id, session = NULL) {
+      # İptal jetonu istek kimliği değişmeden önce işaretlenir.
+      isaretler <<- c(isaretler, shiny::isolate(durum$active_request_id()))
+      invisible(TRUE)
+    }
+    session$userData$kimlik_sahibi <- 7L
+    durum$values$messages <- list(list(role = "user", content = "A mesajı"))
+    durum$values$saved_chats <- list(a = list(title = "A"))
+    durum$values$current_chat_id <- "a"
+    durum$values$is_sending <- TRUE
+    durum$active_request_id("istek-pk")
+    durum$session_files(list(a.txt = list(name = "a.txt")))
+    env$mergen_session_owner_transition(session$userData, 7L, 0L)
+    expect_identical(isaretler, "istek-pk")
+    expect_true(startsWith(shiny::isolate(durum$active_request_id()), "cancelled_"))
+    expect_length(shiny::isolate(durum$values$messages), 0L)
+    expect_length(shiny::isolate(durum$values$saved_chats), 0L)
+    expect_null(shiny::isolate(durum$values$current_chat_id))
     expect_length(shiny::isolate(durum$session_files()), 0L)
   })
 })

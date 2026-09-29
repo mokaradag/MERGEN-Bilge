@@ -146,12 +146,19 @@ serverInitSessionState <- function(session, identity, sso_state = NULL) {
     sync_feedback_from_db()
   }
 
-  # Oturum başka kullanıcıya geçince (A -> B) A'nın açık söyleşisi, kayıtlı
-  # listesi ve süren yanıtı B'ye kalmaz; süren istek Durdur gibi kesilir.
+  # Oturum başka kullanıcıya geçince (A -> B) ya da kimlik düşünce A'nın açık
+  # söyleşisi, kayıtlı listesi ve süren yanıtı oturumda kalmaz; süren istek
+  # Durdur gibi kesilir (PK işçisinin iptal jetonu dahil).
   if (exists("mergen_session_on_owner_change", mode = "function")) {
     mergen_session_on_owner_change(session, function(neden) {
-      if (!identical(neden, "sahip_degisti")) return(invisible(NULL))
       if (isTRUE(shiny::isolate(values$is_sending))) {
+        aktif_kimlik <- shiny::isolate(active_request_id())
+        if (exists("mergen_pk_signal_cancel", mode = "function", inherits = TRUE) &&
+            exists("mergen_pk_request_has_cancel_token", mode = "function", inherits = TRUE) &&
+            isTRUE(tryCatch(mergen_pk_request_has_cancel_token(session, aktif_kimlik),
+                            error = function(e) FALSE))) {
+          try(mergen_pk_signal_cancel(aktif_kimlik, session = session), silent = TRUE)
+        }
         stop_generation(TRUE)
         active_request_id(paste0("cancelled_", as.numeric(Sys.time())))
       }

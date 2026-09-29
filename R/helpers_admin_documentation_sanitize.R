@@ -135,7 +135,10 @@ admin_doc_html_has_risk <- function(html) {
     "|data\\s*:\\s*text/html",
     "|(?:href|src|action)\\s*=\\s*[\"']?[^\"'>]*&(?:#|colon;|tab;|newline;)"
   )
-  grepl(pattern, html, perl = TRUE, ignore.case = TRUE)
+  if (grepl(pattern, html, perl = TRUE, ignore.case = TRUE)) return(TRUE)
+  # Beyaz liste dışındaki her etiket (ör. <details>, <dialog>) de tam geçişe girer.
+  etiketler <- regmatches(html, gregexpr("<\\s*/?\\s*[a-zA-Z][a-zA-Z0-9]*", html, perl = TRUE))[[1]]
+  any(!tolower(sub("^<\\s*/?\\s*", "", etiketler, perl = TRUE)) %in% admin_doc_allowed_tags())
 }
 
 admin_doc_sanitize_html <- function(html) {

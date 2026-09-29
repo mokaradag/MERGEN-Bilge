@@ -42,9 +42,9 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   )
   speechPcmStreamObserversInit(input, session)
 
-  # Kullanıcı adı (DB'den alınacak)
-  user_first_name <- session$userData$user_first_name %||% ""
-  
+  # Kimlik nesli: sahip değişimi/kimlik kaybında artar; bayat boşta işi düşer.
+  kimlik_nesli <- function() as.integer(session$userData$kimlik_nesli %||% 0L)[1]
+
   # SSO akışında başlangıçtaki current_user_id değeri 0 olabilir.
   # Bu yüzden AI Uzman tarafında kullanıcı kimliğini her kullanım anında
   # oturumdan yeniden çözmek gerekir.
@@ -108,7 +108,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 		model_name = model_name,
 		endpoint = endpoint,
 		api_key = final_api_key,
-		user_name = safe_trimws(user_first_name)
+		user_name = safe_trimws(session$userData$user_first_name %||% "")
 	  )
 	}
 
@@ -190,6 +190,9 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   }
   if (exists("mergen_session_on_owner_change", mode = "function")) {
     mergen_session_on_owner_change(session, function(neden) {
+      # Her kimlik sınırında önceki sahibin konuşması ve kuyruğu bırakılır.
+      pending_guidance_clear()
+      try(if (isTRUE(isolate(ai_expert$is_speaking()))) ai_expert$stop_speaking(0), silent = TRUE)
       if (!identical(neden, "sahip_degisti")) return(invisible(NULL))
       greeting_done(FALSE)
       page_guidance_times(list())
@@ -419,6 +422,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     cat(sprintf("[AI_EXPERT] Etkin kullanıcı ID: %s\n", resolve_ai_expert_user_id()))
 
 	params <- prepare_llm_params()
+	gonderim_nesli <- kimlik_nesli()
 	current_page_val <- isolate(input$tabs) %||% "chat"
 
 	page_name_tr <- ai_expert_page_name_tr(current_page_val) %||% "Ana Söyleşi"
@@ -505,6 +509,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
       # bağlamsal olarak geçersizdir ve oynatılmaz. Kuyrukta rehberlik
       # bekliyorsa boşta konuşma onun önüne geçemez. tryCatch: bu geri çağrı
       # reaktif bağlam dışında koşar; kaçan hata uygulamayı çökertmemeli.
+      if (!identical(kimlik_nesli(), gonderim_nesli)) return(schedule_idle_chat())
       tryCatch({
         tab_degisti <- !identical(isolate(input$tabs) %||% "chat", current_page_val)
         if (!is.null(idle_text) && nzchar(idle_text) && !is_stt_modal_active() &&

@@ -24,8 +24,18 @@ filePreviewServer <- function(id) {
     if (exists("mergen_session_on_owner_change", mode = "function")) {
       mergen_session_on_owner_change(session, function(neden) {
         file_storage$preview_file <- NULL
+        # Süren DOCX kodlaması ve önbellek yeni sahibe taşınmaz.
+        docx_preview_seq(isolate(docx_preview_seq()) + 1L)
+        preview_b64_cache(list())
         try(removeModal(session = session), silent = TRUE)
       })
+    }
+    # Veri nesnesi adı nesil + açılış sayacı taşır; eski adres yeni dosyaya bağlanmaz.
+    veri_sayaci <- 0L
+    veri_nesnesi_adi <- function(onek, yol) {
+      veri_sayaci <<- veri_sayaci + 1L
+      paste0(onek, "_", as.integer(file_storage$preview_file$nesli %||% 0L)[1], "_", veri_sayaci, "_",
+             gsub("[^a-zA-Z0-9]", "_", basename(yol)))
     }
 
     # Aynı dosya tekrar önizlendiğinde base64 üretimini tekrar yapmamak için önbellek
@@ -197,7 +207,7 @@ filePreviewServer <- function(id) {
           if (!is.na(fsize) && fsize > PDF_NEWTAB_THRESHOLD) {
             # --- BÜYÜK PDF (> 1.5 MB): tarayıcının yerel PDF görüntüleyicisinde yeni sekmede aç ---
             # base64 kodlama yerine dosyayı doğrudan Shiny oturumu üzerinden sun
-            pdf_obj_name <- paste0("pdf_", gsub("[^a-zA-Z0-9]", "_", basename(datapath)))
+            pdf_obj_name <- veri_nesnesi_adi("pdf", datapath)
             pdf_url <- session$registerDataObj(
               name  = pdf_obj_name,
               data  = list(path = datapath, fname = file_storage$preview_file$name,
@@ -377,6 +387,7 @@ filePreviewServer <- function(id) {
           # karşılaştırarak eski sonucun yeni modalı ezmesini engeller.
           docx_preview_seq(docx_preview_seq() + 1L)
           docx_open_token <- docx_preview_seq()
+          docx_nesli <- file_storage$preview_file$nesli
 
           # Önbellekten kontrol et; varsa doğrudan göster
           cached_docx <- get_cached_base64(datapath)
@@ -416,7 +427,9 @@ filePreviewServer <- function(id) {
                 # ezmemeli. Belirteç değiştiyse bu sonucu sessizce yok say
                 # (yalnızca önbelleğe yazılır, UI'a basılmaz).
                 if (!identical(isolate(docx_preview_seq()), docx_open_token)) {
-                  if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
+                  # Kimlik değiştiyse önceki sahibin içeriği önbelleğe de yazılmaz.
+                  if (onizleme_gecerli(docx_nesli) &&
+                      is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
                     store_cached_base64(datapath, b64[1])
                   }
                   return(invisible(NULL))
@@ -537,7 +550,7 @@ filePreviewServer <- function(id) {
             "svg"  = "image/svg+xml",
             "application/octet-stream"
           )
-          img_obj_name <- paste0("img_", gsub("[^a-zA-Z0-9]", "_", basename(datapath)))
+          img_obj_name <- veri_nesnesi_adi("img", datapath)
           img_url <- session$registerDataObj(
             name = img_obj_name,
             data = list(path = datapath, ctype = img_content_type,

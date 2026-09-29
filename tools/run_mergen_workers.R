@@ -152,6 +152,13 @@ mergen_worker_print_plan <- function(plan) {
 # (test/inceleme; gercek surec baslatmaz).
 mergen_start_workers <- function(dry_run = FALSE) {
   plan <- mergen_worker_launch_plan()
+  # Tum port araligi baslatmadan once dogrulanir: 65535'i asan port cocugu
+  # hemen oldurur ve yeniden baslatma butcesi tum kumeyi kapatirdi.
+  ports <- vapply(plan, function(spec) as.integer(spec$port), integer(1))
+  if (any(is.na(ports) | ports < 1L | ports > 65535L)) {
+    stop(sprintf("Gecersiz worker port araligi: %d-%d (1-65535 olmali). MERGEN_BASE_PORT/MERGEN_WORKERS degerlerini kontrol edin.",
+                 min(ports, na.rm = TRUE), max(ports, na.rm = TRUE)), call. = FALSE)
+  }
   mergen_worker_print_plan(plan)
 
   if (isTRUE(dry_run)) {

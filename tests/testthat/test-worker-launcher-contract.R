@@ -97,6 +97,13 @@ test_that("dry_run plani dondurur, gercek surec baslatmaz", {
   })
 })
 
+test_that("65535'i asan port araligi baslatmadan once reddedilir", {
+  env <- .load_worker_launcher()
+  withr::with_envvar(c(MERGEN_WORKERS = "16", MERGEN_BASE_PORT = "65530"), {
+    expect_error(suppressWarnings(env$mergen_start_workers(dry_run = TRUE)), "65535")
+  })
+})
+
 test_that("cocuk ciktisi okunmayan boruya yazilmaz; olen worker yeniden baslatilir", {
   code <- .strip_r_comments(paste(readLines(.worker_launcher_path(), warn = FALSE), collapse = "\n"))
   expect_false(grepl('stdout = "|"', code, fixed = TRUE))

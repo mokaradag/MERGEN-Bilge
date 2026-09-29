@@ -230,3 +230,70 @@ test_that("oturum sahibi değişince açık önizlemenin indirmesi önceki dosya
     testthat::expect_false(any(grepl("gizli", readLines(output$download_preview_file), fixed = TRUE)))
   })
 })
+
+test_that("sahip değişince süren DOCX kodlaması yeni sahibe basılmaz ve önbelleğe yazılmaz", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("promises")
+  skip_if_not_installed("future")
+  env <- .fp_make_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
+         encoding = "UTF-8", local = env)
+  resolvers <- new.env()
+  resolvers$queue <- list()
+  kayit <- new.env()
+  kayit$msgs <- list()
+  path_a <- file.path(tempdir(), "sahipA_buyuk.docx")
+  testthat::local_mocked_bindings(future = .fp_make_future_stub(resolvers), .package = "future")
+  testthat::local_mocked_bindings(
+    showModal = function(...) invisible(NULL),
+    removeModal = function(...) invisible(NULL),
+    .package = "shiny"
+  )
+  shiny::testServer(env$filePreviewServer, args = list(id = "fp"), {
+    root <- .subset2(session, "parent")
+    root$sendCustomMessage <- function(type, message) {
+      kayit$msgs[[length(kayit$msgs) + 1L]] <- list(type = type, message = message)
+      invisible(NULL)
+    }
+    session$userData$kimlik_sahibi <- 7L
+    isolate(session$returned$open(list(name = "sahipA_buyuk.docx", datapath = path_a, size = 1)))
+    expect_length(resolvers$queue, 1L)
+    env$mergen_session_owner_transition(session$userData, 7L, 8L)
+    resolvers$queue[[1]]$resolve("BASE64_A")
+    .fp_drain_later_queue()
+    expect_length(kayit$msgs, 0L)
+    # Aynı yol yeniden açılınca önbellekten A'nın içeriği gelmez.
+    isolate(session$returned$open(list(name = "sahipA_buyuk.docx", datapath = path_a, size = 1)))
+    expect_length(kayit$msgs, 0L)
+    expect_length(resolvers$queue, 2L)
+  })
+})
+
+test_that("önizleme veri nesnesi adı sahip nesli ve açılış başına benzersizdir", {
+  skip_if_not_installed("shiny")
+  env <- .fp_make_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
+         encoding = "UTF-8", local = env)
+  env$showToast <- function(...) invisible(NULL)
+  gorsel <- file.path(withr::local_tempdir(), "rapor.png")
+  writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), gorsel)
+  adlar <- character(0)
+  testthat::local_mocked_bindings(
+    showModal = function(...) invisible(NULL),
+    removeModal = function(...) invisible(NULL),
+    .package = "shiny"
+  )
+  shiny::testServer(env$filePreviewServer, {
+    root <- .subset2(session, "parent")
+    root$registerDataObj <- function(name, data, filterFunc) {
+      adlar <<- c(adlar, name)
+      paste0("veri/", name)
+    }
+    session$userData$kimlik_sahibi <- 7L
+    session$returned$open(list(name = "rapor.png", datapath = gorsel))
+    env$mergen_session_owner_transition(session$userData, 7L, 8L)
+    session$returned$open(list(name = "rapor.png", datapath = gorsel))
+    expect_length(adlar, 2L)
+    expect_false(identical(adlar[1], adlar[2]))
+  })
+})

@@ -175,8 +175,8 @@ MERGEN_MCP_BASE_DIR="//mainserver/MERGEN Bilge/mergen_uploads"
 # Aynı anda en fazla bu kadar özet çalışır (işçi sayısının bir eksiğini aşmaz;
 # en az bir işçi sohbete ayrılır; ikiden az işçide özet çalışmaz), kalanlar
 # sırayla başlar; toplu yüklemede diğer kullanıcıların sohbet istekleri
-# beklemez. tools/run_mergen_workers.R ile çok süreçte bu değer, kuyruk ve
-# kullanıcı başı kuyruk sınırı BAŞLATICI (host) genelidir, o başlatıcının
+# beklemez. tools/run_mergen_workers.R ile çok süreçte bu değer ve kuyruk
+# sınırı BAŞLATICI (host) genelidir, o başlatıcının
 # süreçlerine paylaştırılır (varsayılan en az süreç sayısıdır; daha küçük değer
 # bazı süreçlere 0 dilim bırakır ve açılışta uyarılır). Birden çok host ya da
 # başlatıcı varsa her biri bu bütçeyi ayrı kullanır; ortak tavan için değeri
@@ -186,7 +186,9 @@ MERGEN_MCP_BASE_DIR="//mainserver/MERGEN Bilge/mergen_uploads"
 # özeti atlanır ve kullanıcı uyarılır:
 #   MERGEN_FILE_SUMMARY_MAX_QUEUE=64
 # Tek kullanıcının (tüm sekmeleriyle) sırada tutabileceği en fazla özet (bir
-# kullanıcının toplu yüklemesi ortak kuyruğu doldurup diğerlerini engellemez):
+# kullanıcının toplu yüklemesi ortak kuyruğu doldurup diğerlerini engellemez).
+# Çok süreçte bölünmez; her süreçte tam değer geçerlidir, sürecin kuyruk
+# dilimiyle sınırlanır:
 #   MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION=16
 
 # Günlük log dizini. `app.R`, `run_mergen_prod.R` ve çok-worker çocuk süreçleri
@@ -199,7 +201,9 @@ MERGEN_MCP_BASE_DIR="//mainserver/MERGEN Bilge/mergen_uploads"
 # oturumlarını makineye YEREL geçici dizinde paylaşır (bu makinede aynı uygulama
 # kökünden çalışan tüm başlatıcılar ortak kullanır; görünüm host başınadır);
 # MERGEN_PRESENCE_SHARED_DIR ile değiştirilirse de YEREL disk olmalıdır, UNC
-# değeri reddedilir (ağ paylaşımı olay döngüsünü bloklar). Merkezî/UNC hedef
+# değeri ve Windows'ta eşlenmiş ağ sürücüsü (ör. Z:) reddedilir (ağ paylaşımı
+# olay döngüsünü bloklar). Dizin ve dosyalar yalnız süreç sahibince okunur
+# (Unix 0700/0600); tek işçili başlatıcılar da yayına katılır. Merkezî/UNC hedef
 # korunur ve repo içindeki yerel `logs` diziniyle sessizce değiştirilmez.
 #
 # Yolda güçlü UTF-8→Windows-1252/Latin-1 mojibake kanıtı varsa (ör.

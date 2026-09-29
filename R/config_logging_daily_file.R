@@ -216,12 +216,41 @@ mergen_log_upgrade_legacy_file <- function(target_file, lock_wait = 2, stale_aft
 # ağ sürücüsü). Kilit alınamazsa paylaşılan dosyaya kilitsiz YAZILMAZ: satır
 # sürece özel `<ad>.p<HOST>-<PID>.log` yedeğine düşer ve sonra birleştirilir.
 .mergen_log_shared_writers <- function(target_file = "") {
-  isTRUE(as.logical(Sys.getenv("MERGEN_LOG_SHARED_WRITERS", ""))) ||
+  tolower(trimws(Sys.getenv("MERGEN_LOG_SHARED_WRITERS", ""))) %in% c("1", "true", "t", "yes", "y", "on") ||
     isTRUE(suppressWarnings(as.integer(Sys.getenv("MERGEN_APP_WORKER_COUNT", "1"))) > 1L) ||
     grepl("^(\\\\\\\\|//)[^\\\\/]+[\\\\/]", as.character(target_file)[1])
 }
 
 .MERGEN_LOG_LOCK_BACKOFF <- new.env(parent = emptyenv())
+
+# Yedeğin ana dosyaya zaten eklenmiş bayt sayısı: silinemeyen ya da geri
+# alınamayan yedek kaldığı yerden sürer, satırlar iki kez eklenmez. Değer
+# süreç belleğinde ve `<yedek>.birlesen` yan dosyasında tutulur.
+.MERGEN_LOG_MERGE_OFFSET <- new.env(parent = emptyenv())
+
+# `ofs` verilmezse okunur (yedekten büyükse 0); verilirse yazılır, 0 kaydı siler.
+# Yazımda yan dosya kaydedilebildiyse TRUE döner.
+.mergen_log_merged_offset <- function(yedek, ofs = NULL) {
+  anahtar <- normalizePath(yedek, winslash = "/", mustWork = FALSE)
+  yan <- paste0(yedek, ".birlesen")
+  if (is.null(ofs)) {
+    kayit <- suppressWarnings(try(as.numeric(readLines(yan, n = 1L, warn = FALSE)), silent = TRUE))
+    if (inherits(kayit, "try-error")) kayit <- NA_real_
+    ofs <- max(c(0, kayit, .MERGEN_LOG_MERGE_OFFSET[[anahtar]]), na.rm = TRUE)
+    boyut <- suppressWarnings(file.info(yedek)$size)
+    return(if (is.na(boyut) || ofs > boyut) 0 else ofs)
+  }
+  if (ofs <= 0) {
+    if (exists(anahtar, envir = .MERGEN_LOG_MERGE_OFFSET, inherits = FALSE)) {
+      rm(list = anahtar, envir = .MERGEN_LOG_MERGE_OFFSET)
+    }
+    unlink(yan)
+    return(invisible(TRUE))
+  }
+  .MERGEN_LOG_MERGE_OFFSET[[anahtar]] <- ofs
+  yazim <- suppressWarnings(try(writeLines(format(ofs, scientific = FALSE), yan), silent = TRUE))
+  invisible(!inherits(yazim, "try-error") && file.exists(yan))
+}
 
 # Yedek dosyadaki satırlar kilit altında ana dosyaya eklenir ve yedek silinir.
 # Yarıda kalan kopya geri alınır (hedef eski boyutuna kesilir); yeniden
@@ -231,27 +260,41 @@ mergen_log_upgrade_legacy_file <- function(target_file, lock_wait = 2, stale_aft
   jeton <- .mergen_log_lock_acquire(kilit, 0.5, 60)
   if (is.null(jeton)) return(invisible(FALSE))
   on.exit(.mergen_log_lock_release(kilit, jeton), add = TRUE)
-  if (!file.exists(yedek)) return(invisible(TRUE))
+  if (!file.exists(yedek)) {
+    .mergen_log_merged_offset(yedek, 0)
+    return(invisible(TRUE))
+  }
   baslangic <- file.info(target_file)$size
   if (is.na(baslangic)) baslangic <- 0
+  ofs <- .mergen_log_merged_offset(yedek)
+  kopyalanan <- 0
   giris <- file(yedek, open = "rb")
   cikis <- file(target_file, open = "ab")
-  tamam <- tryCatch({
+  kopya <- try({
+    if (ofs > 0) seek(giris, where = ofs, origin = "start")
     repeat {
       .mergen_log_heartbeat(c(nabiz, kilit))
       parca <- readBin(giris, what = "raw", n = 1024^2)
       if (!length(parca)) break
       writeBin(parca, cikis)
+      kopyalanan <- kopyalanan + length(parca)
     }
     close(cikis)
     cikis <- NULL
-    TRUE
-  }, error = function(e) FALSE, finally = {
-    close(giris)
-    if (!is.null(cikis)) try(close(cikis), silent = TRUE)
-  })
+  }, silent = TRUE)
+  tamam <- !inherits(kopya, "try-error")
+  close(giris)
+  if (!is.null(cikis)) try(close(cikis), silent = TRUE)
   if (isTRUE(tamam)) {
     unlink(yedek)
+    if (!file.exists(yedek)) {
+      .mergen_log_merged_offset(yedek, 0)
+      return(invisible(TRUE))
+    }
+    # Silinemeyen yedek: eklenen bayt sayısı kaydedilir; kaydedilemezse
+    # yedek aşağıda karantinaya alınır.
+    if (isTRUE(.mergen_log_merged_offset(yedek, ofs + kopyalanan))) return(invisible(TRUE))
+    simdi <- NA_real_
   } else {
     con <- try(file(target_file, open = "r+b"), silent = TRUE)
     if (!inherits(con, "try-error")) {
@@ -261,13 +304,28 @@ mergen_log_upgrade_legacy_file <- function(target_file, lock_wait = 2, stale_aft
       }, silent = TRUE)
       close(con)
     }
-    # Geri alma doğrulanamazsa yedek yeniden denenmez (satırlar iki kez
-    # eklenmez); inceleme için ayrı adla saklanır.
-    if (!isTRUE(file.info(target_file)$size == baslangic)) {
-      file.rename(yedek, sub("(\\.log)?$", sprintf(".birlesmedi-%s.log", format(Sys.time(), "%Y%m%d%H%M%S")), yedek))
-    }
+    simdi <- suppressWarnings(file.info(target_file)$size)
+    if (isTRUE(simdi == baslangic)) return(invisible(FALSE))
   }
-  invisible(tamam)
+  # Geri alma doğrulanamazsa yedek yeniden denenmez (satırlar iki kez
+  # eklenmez); inceleme için çakışmasız ayrı adla saklanır ve taşıma
+  # doğrulanır. Taşınamazsa ana dosyadaki kısmi bayt sayısı kaydedilir ve
+  # sonraki birleştirme oradan sürer.
+  taban <- sub("(\\.log)?$", sprintf(".birlesmedi-%s-%d", format(Sys.time(), "%Y%m%d%H%M%S"), Sys.getpid()), yedek)
+  karantina <- paste0(taban, ".log")
+  sira <- 1L
+  while (file.exists(karantina)) {
+    sira <- sira + 1L
+    karantina <- sprintf("%s-%d.log", taban, sira)
+  }
+  if (isTRUE(suppressWarnings(file.rename(yedek, karantina))) && !file.exists(yedek)) {
+    .mergen_log_merged_offset(yedek, 0)
+    return(invisible(isTRUE(tamam)))
+  }
+  if (!isTRUE(tamam) && !is.na(simdi) && simdi > baslangic) {
+    .mergen_log_merged_offset(yedek, ofs + (simdi - baslangic))
+  }
+  invisible(FALSE)
 }
 
 # Başka süreçlerin (ör. kapanmış işçi) 60 sn'dir dokunulmamış yedekleri kilit
@@ -278,11 +336,21 @@ mergen_log_upgrade_legacy_file <- function(target_file, lock_wait = 2, stale_aft
   adaylar <- list.files(dirname(target_file), pattern = paste0("^", kok, "\\.p[A-Za-z0-9_-]+\\.log$"),
                         full.names = TRUE)
   adaylar <- adaylar[basename(adaylar) != basename(surec_yedek)]
+  # Bu sürecin önceden sahiplenip birleştiremediği yedekler yaşa bakılmadan
+  # yeniden denenir; yeniden adlandırılmaz.
+  bizim <- grepl(sprintf("-m%d\\.log$", Sys.getpid()), basename(adaylar))
   zaman <- file.info(adaylar)$mtime
-  eski <- !is.na(zaman) & as.numeric(difftime(Sys.time(), zaman, units = "secs")) > 60
-  adaylar <- adaylar[eski][order(zaman[eski], basename(adaylar[eski]))]
-  sahiplenilen <- sub("\\.log$", sprintf("-m%d.log", Sys.getpid()), adaylar)
-  sahiplenilen[file.rename(adaylar, sahiplenilen)]
+  eski <- !bizim & !is.na(zaman) & as.numeric(difftime(Sys.time(), zaman, units = "secs")) > 60
+  sahiplenilen <- sub("\\.log$", sprintf("-m%d.log", Sys.getpid()), adaylar[eski])
+  tasinan <- file.rename(adaylar[eski], sahiplenilen)
+  # Yan dosyadaki birleşen bayt kaydı da yedekle birlikte taşınır.
+  for (i in which(tasinan)) {
+    if (file.exists(paste0(adaylar[eski][i], ".birlesen"))) {
+      file.rename(paste0(adaylar[eski][i], ".birlesen"), paste0(sahiplenilen[i], ".birlesen"))
+    }
+  }
+  secilen <- c(adaylar[bizim], sahiplenilen[tasinan])
+  secilen[order(file.info(secilen)$mtime, basename(secilen))]
 }
 
 # Karışık kodlama üretmeden UTF-8 ekler: eski satırlı dosya taşınamadıysa satırlar

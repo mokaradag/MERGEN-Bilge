@@ -364,3 +364,26 @@ test_that("XLSX hazırlığı (onarım taraması, yüzde, dilimleme) iptali ve s
   expect_true(sonuc2$status %in% c("ok", "csv_fallback"))
   expect_gte(hazirlik, 1L)
 })
+
+test_that("hazırlıkta görülen geçici iptal sonradan sıfırlansa da son tarih sayılmaz", {
+  env <- .pk_exps_env()
+  veri <- .pk_exps_frame(n = 10L)
+  dizin <- file.path(tempdir(), paste0("pk_exps_l_", as.integer(runif(1, 1, 1e9))))
+  dir.create(dizin, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(dizin, recursive = TRUE, force = TRUE), add = TRUE)
+  durum <- new.env()
+  durum$aktif <- FALSE
+  # Onarım taramasından sonraki ilk yoklama TRUE döner, jeton sonra sıfırlanır.
+  env$turkish_latin1_repair_columns <- function(data, stop_check = NULL, ...) {
+    durum$aktif <- TRUE
+    logical(ncol(data))
+  }
+  sonuc <- env$pk_export_build(veri, base_name = "sentetik", dir = dizin,
+                               stop_check = function() {
+                                 if (!isTRUE(durum$aktif)) return(FALSE)
+                                 durum$aktif <- FALSE
+                                 TRUE
+                               })
+  expect_identical(sonuc$status, "cancelled")
+  expect_length(list.files(dizin, pattern = "\\.xlsx$"), 0L)
+})

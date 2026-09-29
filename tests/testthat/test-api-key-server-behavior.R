@@ -930,3 +930,45 @@ testthat::test_that("kutu durumu kurum seçiminden sonra gelirse tercih o gelinc
     testthat::expect_identical(env$.hatirlatmalar, 1L)
   })
 })
+
+testthat::test_that("oturumdaki açık kurum seçimi yeniden kimlik doğrulamada kişisel anahtarla ezilmez", {
+  env <- .apiKeyEnv()
+  env$.durum$default_key <- "sahte-kurum-anahtari"
+  env$.durum$owner <- list(username = "ayilmaz")
+  env$load_user_api_key <- function(username) "sahte-kisisel-anahtar"
+  env$.basliklar <- list()
+  env$show_api_key_choice_modal <- function(session, default_available = FALSE, service_desk = NULL,
+                                            nonce = "", user_tag = "", title = NULL) {
+    env$.modal_acilislari <- env$.modal_acilislari + 1L
+    env$.modal_jetonu <- nonce
+    env$.basliklar <- c(env$.basliklar, list(list(title = title)))
+    invisible(NULL)
+  }
+  testthat::local_mocked_bindings(
+    runjs = function(...) invisible(NULL),
+    delay = function(ms, expr) force(expr),
+    .package = "shinyjs"
+  )
+  testthat::local_mocked_bindings(
+    removeModal = function(...) invisible(NULL),
+    updateTextInput = function(...) invisible(NULL),
+    .package = "shiny"
+  )
+  shiny::testServer(env$apiKeyServer,
+                    args = list(id = "api_key", serviceDesk = list(), api_config = list()), {
+    session$elapse(200)
+    session$setInputs(api_key_onboarding_suppressed = list(suppressed = FALSE, tag = "etiket-ayilmaz"))
+    session$elapse(200)
+    testthat::expect_length(env$.oturum_anahtarlari, 1L)
+    # Başlıksız open() onboarding başlığını ezmez.
+    session$getReturned()$open()
+    testthat::expect_null(env$.basliklar[[1]]$title)
+    session$setInputs(api_key_use_default_btn = 1)
+    # SSO düşer, aynı kullanıcı yeniden girer; tarayıcı bastırma bildirmez.
+    .sahipDegistir(env, session, NULL)
+    session$elapse(1200)
+    .sahipDegistir(env, session, list(username = "ayilmaz"))
+    session$elapse(7000)
+    testthat::expect_length(env$.oturum_anahtarlari, 1L)
+  })
+})

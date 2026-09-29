@@ -137,6 +137,39 @@ testthat::test_that("yetkisiz kullanıcı fail-closed: authenticated FALSE + yet
   })
 })
 
+testthat::test_that("doğrulanmış oturumda reddedilen yeni token canlı kimliği düşürür", {
+  durum <- new.env()
+  durum$gecerli <- TRUE
+  env <- .ssoAuthServerEnv(
+    validate_fn = function(token) {
+      if (isTRUE(durum$gecerli)) list(valid = TRUE, error = "", payload = list())
+      else list(valid = FALSE, error = "Bozuk imza", payload = NULL)
+    }
+  )
+  gecisler <- list()
+  env$mergen_session_owner_transition <- function(user_data, eski_uid, yeni_uid, ...) {
+    gecisler[[length(gecisler) + 1L]] <<- c(eski_uid, yeni_uid)
+    invisible(FALSE)
+  }
+  shiny::testServer(env$ssoAuthServer, args = list(), {
+    .ssoCaptureMessages(session)
+    session$setInputs(sso_jwt_token = "__prime__")
+    session$setInputs(sso_jwt_token = "gecerli.jwt.token")
+    testthat::expect_true(session$returned$authenticated)
+    session$userData$user_id <- 7L
+    session$userData$auth_initialized <- TRUE
+    session$userData$ai_api_key <- "sahte"
+    durum$gecerli <- FALSE
+    session$setInputs(sso_jwt_token = "reddedilen.jwt.token")
+    testthat::expect_false(session$returned$authenticated)
+    testthat::expect_null(session$returned$user_claims)
+    testthat::expect_identical(session$userData$user_id, 0L)
+    testthat::expect_false(isTRUE(session$userData$auth_initialized))
+    testthat::expect_null(session$userData$ai_api_key)
+    testthat::expect_identical(gecisler[[length(gecisler)]], c(7L, 0L))
+  })
+})
+
 testthat::test_that("geçerli + yetkili token: claim'ler DB ile zenginleşir, sso_auth_success gönderilir", {
   env <- .ssoAuthServerEnv()  # varsayılan stub'lar: geçerli + yetkili + kaynak_adi
 

@@ -62,11 +62,17 @@ mergen_file_pipeline_accepted <- function(result) {
 # geçerlidir; farklı pozitif kimlik her durumda reddedilir. Kimlik nesli
 # (`kimlik_nesli`, sahip değişimi/kimlik kaybında artar) verilirse, yükleme
 # anında kimliği olmayan iş arada kimlik kaybı/değişimi olduysa da reddedilir
-# (0 -> A -> 0 geçişi "hâlâ kimliksiz" sayılmaz).
+# (0 -> A -> 0 geçişi "hâlâ kimliksiz" sayılmaz). Nesil verilmişse pozitif
+# kimlikte de karşılaştırılır: A -> kimlik kaybı -> A sonrası eski iş yeni
+# kimlik dönemine taşınmaz.
 .file_pipeline_owner_ok <- function(yukleme_uid, canli_uid, etkin_uid,
                                     yukleme_nesli = NULL, canli_nesli = NULL) {
   if (etkin_uid <= 0L) return(FALSE)
-  if (yukleme_uid > 0L) return(identical(canli_uid, etkin_uid))
+  if (yukleme_uid > 0L) {
+    if (!is.null(yukleme_nesli) && !is.null(canli_nesli) &&
+        !identical(as.integer(yukleme_nesli), as.integer(canli_nesli))) return(FALSE)
+    return(identical(canli_uid, etkin_uid))
+  }
   if (!identical(as.integer(yukleme_nesli %||% 0L), as.integer(canli_nesli %||% 0L))) return(FALSE)
   canli_uid <= 0L || identical(canli_uid, etkin_uid)
 }

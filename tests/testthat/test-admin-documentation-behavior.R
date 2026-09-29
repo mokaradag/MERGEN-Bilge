@@ -366,6 +366,13 @@ testthat::test_that("admin_doc_html_has_risk riskli/temiz HTML'i ayırt eder", {
   testthat::expect_true(env$admin_doc_html_has_risk("<a onclick=\"x()\">y</a>"))
   testthat::expect_true(env$admin_doc_html_has_risk("<a href=\"javascript:x()\">y</a>"))
   testthat::expect_true(env$admin_doc_html_has_risk("<iframe src=\"http://x\"></iframe>"))
+  # Beyaz liste dışındaki zararsız görünen etiket de hızlı yolu atlatamaz.
+  testthat::expect_true(env$admin_doc_html_has_risk("<details open><summary>a</summary></details>"))
+  for (ham in c("<details open>gizli</details>", "<dialog open>x</dialog>")) {
+    out <- env$admin_doc_sanitize_html(ham)
+    testthat::expect_false(grepl("<(details|dialog)", out), info = ham)
+    testthat::expect_true(grepl("&lt;", out, fixed = TRUE), info = ham)
+  }
 })
 
 testthat::test_that("admin_doc_sanitize_html hızlı yolda temiz HTML'i değiştirmez", {

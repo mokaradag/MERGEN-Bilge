@@ -580,3 +580,69 @@ test_that("performans modülü kesirli sağlayıcı kimliğini kısaltmadan redd
   withr::defer(suppressWarnings(rm(list = sonuc$token, envir = gecmis)))
   expect_identical(sonuc$kayit$user_id, 0L)
 })
+
+test_that("Windows'ta eşlenmiş ağ sürücüsü reddedilir; tür sorulamazsa da reddedilir", {
+  env <- .presence_env()
+  env$.Platform <- list(OS.type = "windows")
+  turler <- env$mb_presence_env(".mergen_presence_drive_type")
+  rm(list = ls(turler, all.names = TRUE), envir = turler)
+  withr::defer(rm(list = ls(turler, all.names = TRUE), envir = turler))
+  env$system2 <- function(command, args, ...) {
+    if (grepl("'Z:'", args[length(args)], fixed = TRUE)) "Network" else if (grepl("'C:'", args[length(args)], fixed = TRUE)) "Fixed" else stop("yok")
+  }
+  expect_false(env$.mb_presence_local_dir("Z:\\presence"))
+  expect_true(env$.mb_presence_local_dir("C:\\mergen\\presence"))
+  expect_false(env$.mb_presence_local_dir("Q:\\presence"))
+  expect_false(env$.mb_presence_local_dir("\\\\sunucu\\paylasim"))
+})
+
+test_that("POSIX'te farklı harf büyüklüğündeki kökler ayrı varlık dizini alır; tek işçili başlatıcı yayına katılır", {
+  skip_on_os("windows")
+  env <- .presence_env()
+  withr::local_envvar(c(MERGEN_PRESENCE_SHARED_DIR = "", MERGEN_APP_WORKER_COUNT = "3"))
+  kok <- withr::local_tempdir()
+  a <- file.path(kok, "Prod", "MERGEN-Bilge")
+  b <- file.path(kok, "prod", "MERGEN-Bilge")
+  dir.create(a, recursive = TRUE)
+  dir.create(b, recursive = TRUE)
+  expect_false(identical(withr::with_dir(a, env$mb_presence_shared_dir()),
+                         withr::with_dir(b, env$mb_presence_shared_dir())))
+  withr::local_envvar(c(MERGEN_APP_WORKER_COUNT = "1", MERGEN_APP_WORKER_INDEX = "1"))
+  expect_true(nzchar(withr::with_dir(a, env$mb_presence_shared_dir())))
+  withr::local_envvar(c(MERGEN_APP_WORKER_INDEX = ""))
+  expect_identical(withr::with_dir(a, env$mb_presence_shared_dir()), "")
+})
+
+test_that("varlık dizini ve anlık görüntüler yalnız süreç sahibince okunur", {
+  skip_on_os("windows")
+  env <- .presence_env()
+  dizin <- file.path(withr::local_tempdir(), "varlik")
+  withr::local_envvar(c(MERGEN_PRESENCE_SHARED_DIR = dizin))
+  durum <- env$mb_presence_env(".mergen_presence_publish")
+  rm(list = ls(durum, all.names = TRUE), envir = durum)
+  withr::defer(rm(list = ls(durum, all.names = TRUE), envir = durum))
+  expect_true(env$mb_presence_publish(new.env(), new.env(), Sys.time(), zorla = TRUE))
+  expect_identical(format(file.info(dizin)$mode), "700")
+  dosya <- file.path(dizin, paste0("presence_", env$mb_presence_process_id(), ".rds"))
+  expect_identical(format(file.info(dosya)$mode), "600")
+})
+
+test_that("asıl dosya yokken uzak sürecin son sağlam .bak anlık görüntüsü okunur", {
+  env <- .presence_env()
+  dizin <- withr::local_tempdir()
+  withr::local_envvar(c(MERGEN_PRESENCE_SHARED_DIR = dizin))
+  onbellek <- env$mb_presence_env(".mergen_presence_remote_cache")
+  rm(list = ls(onbellek, all.names = TRUE), envir = onbellek)
+  withr::defer(rm(list = ls(onbellek, all.names = TRUE), envir = onbellek))
+  now <- Sys.time()
+  kaynak <- new.env()
+  kaynak$u <- list(user_id = 51L, last_seen = now - 10, started_at = now - 60, profile = list())
+  satir <- env$mb_presence_session_rows(kaynak, new.env(), now)
+  saveRDS(list(generated_at = as.numeric(now) - 5, rows = satir), file.path(dizin, "presence_diger.rds.bak"))
+  saveRDS(list(generated_at = as.numeric(now) - 5, rows = transform(satir, user_id = 52L)),
+          file.path(dizin, "presence_iki.rds"))
+  saveRDS(list(generated_at = as.numeric(now) - 5, rows = transform(satir, user_id = 53L)),
+          file.path(dizin, "presence_iki.rds.bak"))
+  uzak <- env$mb_presence_remote_rows(now)
+  expect_identical(sort(uzak$user_id), c(51L, 52L))
+})

@@ -12,20 +12,53 @@
 # dondurur); UNC değeri reddedilir ve yerel varsayılan kullanılır. Varsayılan,
 # uygulama kökünün tam yolunun özetiyle adlandırılır: bu makinede aynı kökten
 # çalışan tüm başlatıcılar paylaşır, aynı klasör adlı başka dağıtım karışmaz.
-# Çevrimiçi görünümü makine başınadır.
+# Çevrimiçi görünümü makine başınadır. Başlatıcıyla açılan her süreç (tek
+# işçili başlatıcı dahil; MERGEN_APP_WORKER_INDEX) yayına katılır.
 mb_presence_shared_dir <- function() {
   acik <- trimws(Sys.getenv("MERGEN_PRESENCE_SHARED_DIR", ""))
-  if (nzchar(acik) && !grepl("^(\\\\\\\\|//)", acik)) return(acik)
+  if (nzchar(acik) && .mb_presence_local_dir(acik)) return(acik)
   n <- suppressWarnings(as.integer(Sys.getenv("MERGEN_APP_WORKER_COUNT", "1")))
-  if (!isTRUE(n > 1L)) return("")
+  if (!isTRUE(n > 1L) && !nzchar(trimws(Sys.getenv("MERGEN_APP_WORKER_INDEX", "")))) return("")
   kok <- normalizePath(getwd(), winslash = "/", mustWork = FALSE)
+  # Büyük/küçük harf yalnız Windows'ta eşdeğerdir; POSIX'te farklı kökler ayrı kalır.
+  if (.Platform$OS.type == "windows") kok <- tolower(kok)
   ozet <- if (requireNamespace("digest", quietly = TRUE)) {
-    substr(digest::digest(tolower(kok), algo = "xxhash64", serialize = FALSE), 1L, 12L)
+    substr(digest::digest(kok, algo = "xxhash64", serialize = FALSE), 1L, 12L)
   } else {
     gsub("[^A-Za-z0-9]", "_", kok)
   }
   file.path(dirname(tempdir()),
             paste0("mergen_presence_", gsub("[^A-Za-z0-9_.-]", "_", basename(kok)), "_", ozet))
+}
+
+# Açık dizin yalnız yerel sürücüdeyse kabul edilir: UNC yazımı ve Windows'ta
+# eşlenmiş ağ sürücüsü (ör. Z:) reddedilir. Sürücü türü süreç başına bir kez
+# (yerelleştirilmemiş .NET DriveType ile) sorulur; sorulamazsa reddedilir.
+.mb_presence_local_dir <- function(yol) {
+  if (grepl("^(\\\\\\\\|//)", yol)) return(FALSE)
+  if (.Platform$OS.type != "windows") return(TRUE)
+  tam <- normalizePath(yol, winslash = "\\", mustWork = FALSE)
+  surucu <- toupper(substr(tam, 1L, 2L))
+  if (!grepl("^[A-Z]:$", surucu)) return(FALSE)
+  turler <- mb_presence_env(".mergen_presence_drive_type")
+  if (is.null(turler[[surucu]])) {
+    cikti <- tryCatch(suppressWarnings(system2(
+      "powershell", c("-NoProfile", "-NonInteractive", "-Command",
+                      sprintf("[System.IO.DriveInfo]::new('%s').DriveType", surucu)),
+      stdout = TRUE, stderr = FALSE, timeout = 10
+    )), error = function(e) character(0))
+    turler[[surucu]] <- identical(trimws(cikti[nzchar(trimws(cikti))])[1], "Fixed")
+  }
+  isTRUE(turler[[surucu]])
+}
+
+# Paylaşılan dizin yalnız süreç sahibince okunur (Unix 0700/0600); anlık
+# görüntüler ad, sicil ve oturum bilgisi taşır. İzin kurulamazsa yayın yapılmaz.
+.mb_presence_secure_dir <- function(dizin) {
+  dir.create(dizin, recursive = TRUE, showWarnings = FALSE, mode = "0700")
+  if (.Platform$OS.type == "windows") return(dir.exists(dizin))
+  Sys.chmod(dizin, mode = "0700", use_umask = FALSE)
+  isTRUE(format(file.info(dizin)$mode) == "700")
 }
 
 mb_presence_process_id <- function() {
@@ -52,8 +85,10 @@ mb_presence_publish <- function(active_env = mb_presence_env(".mergen_active_ses
   gecici <- paste0(hedef, ".", basename(tempfile("")), ".tmp")
   eski <- paste0(hedef, ".bak")
   on.exit(unlink(gecici), add = TRUE)
+  eski_umask <- Sys.umask("077")
+  on.exit(Sys.umask(eski_umask), add = TRUE)
   sonuc <- tryCatch(suppressWarnings({
-    dir.create(dizin, recursive = TRUE, showWarnings = FALSE)
+    if (!.mb_presence_secure_dir(dizin)) stop("varlık dizini sahip-yalnız değil")
     saveRDS(list(generated_at = simdi,
                  rows = mb_presence_session_rows(active_env, history_env, now)), gecici)
     if (file.rename(gecici, hedef)) {
@@ -133,8 +168,12 @@ mb_presence_remote_rows <- function(now = Sys.time()) {
   }
   pencere <- mb_presence_windows()
   kendi <- paste0("presence_", mb_presence_process_id(), ".rds")
-  dosyalar <- list.files(dizin, pattern = "^presence_.*\\.rds$", full.names = TRUE)
-  satirlar <- lapply(dosyalar[basename(dosyalar) != kendi], function(yol) {
+  dosyalar <- list.files(dizin, pattern = "^presence_.*\\.rds(\\.bak)?$", full.names = TRUE)
+  # Windows değiştirme penceresinde ya da yayıncı bu arada çöktüyse asıl dosya
+  # yoktur: son sağlam `.bak` okunur.
+  yedek <- grepl("\\.bak$", dosyalar)
+  dosyalar <- dosyalar[!yedek | !(sub("\\.bak$", "", dosyalar) %in% dosyalar[!yedek])]
+  satirlar <- lapply(dosyalar[!sub("\\.bak$", "", basename(dosyalar)) %in% kendi], function(yol) {
     tryCatch(.mb_presence_read_snapshot(yol, simdi, pencere), error = function(e) NULL)
   })
   satirlar <- Filter(function(r) is.data.frame(r) && nrow(r), satirlar)

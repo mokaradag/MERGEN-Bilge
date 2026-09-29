@@ -157,11 +157,14 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
   prefix_slot$duration <- 0
   prefix_slot$promise <- NULL
   prefix_slot$inflight <- list()
+  # Sahip nesli: yalnız kimlik sınırında artar; bekleyen karşılama düşer.
+  prefix_slot$sahip_nesli <- 0L
 
   # Oturum başka kullanıcıya geçince kişisel önek (ad, son konu) geçersizdir:
   # süren sentezin sonucu yeni sahibe uygulanmaz.
   if (exists("mergen_session_on_owner_change", mode = "function")) {
     mergen_session_on_owner_change(session, function(neden) {
+      prefix_slot$sahip_nesli <- prefix_slot$sahip_nesli + 1L
       prefix_slot$gen <- prefix_slot$gen + 1L
       prefix_slot$status <- "none"
       prefix_slot$persona <- NA_character_
@@ -185,6 +188,8 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
         current_user_id
       }
     }, error = function(e) 0L)
+    # Kayıplı kimlik (ör. 7.9) başka kullanıcıya kısaltılmaz.
+    if (exists("mergen_canonical_user_id", mode = "function")) return(mergen_canonical_user_id(uid))
     uid <- suppressWarnings(as.integer(uid))
     if (is.na(uid) || uid < 0L) uid <- 0L
     uid
@@ -308,11 +313,16 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
 
     dispatch_guard <- new.env(parent = emptyenv())
     dispatch_guard$done <- FALSE
+    baslangic_nesli <- prefix_slot$sahip_nesli
 
     dispatch <- function(include_prefix) {
       if (isTRUE(dispatch_guard$done)) return(invisible(NULL))
       dispatch_guard$done <- TRUE
       if (session_is_closed()) return(invisible(NULL))
+      if (!identical(prefix_slot$sahip_nesli, baslangic_nesli)) {
+        .speech_perf_log("welcome_suppressed", "sahip değişti")
+        return(invisible(NULL))
+      }
 
       # Karşılama yalnızca sohbet/başlangıç yüzeyinde geçerlidir: gönderim
       # anında kontrol. Gecikmeli (deadline) gönderim penceresinde kullanıcı

@@ -393,11 +393,19 @@ tracked_future_promise <- function(task_fn,
 
     # Kapanış zinciri (observer/oturum ortamları) worker'a serileştirilmesin:
     # görev fonksiyonu yalnızca verilen globals'ı gören izole ortama bağlanır.
-    fn_env <- new.env(parent = globalenv())
-    for (nm in names(promise_globals)) {
-      if (nzchar(nm)) assign(nm, promise_globals[[nm]], envir = fn_env)
+    # Hazırlık hatası (ör. ilkel fonksiyon) izleme kaydını açık bırakmaz.
+    hazirlik <- try({
+      fn_env <- new.env(parent = globalenv())
+      for (nm in names(promise_globals)) {
+        if (nzchar(nm)) assign(nm, promise_globals[[nm]], envir = fn_env)
+      }
+      environment(task_fn) <- fn_env
+    }, silent = TRUE)
+    if (inherits(hazirlik, "try-error")) {
+      finish_worker_task(task_id)
+      stop(sprintf("Açık bağımlılık hazırlığı başarısız; '%s' işi gönderilmedi.",
+                   as.character(task_type %||% "generic")[1]), call. = FALSE)
     }
-    environment(task_fn) <- fn_env
   } else {
     # Hazırlık istisnası da (önbellek/değer okuma, genişletme) kaydı bırakır.
     otomatik <- try(worker_monitor_auto_globals(task_type, task_fn, promise_globals), silent = TRUE)

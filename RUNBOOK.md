@@ -678,8 +678,9 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
   başlatmada sıfırlanır. `tools/run_mergen_workers.R` ile birden çok uygulama
   süreci çalışıyorsa her süreç oturum satırlarını makineye yerel paylaşılan
   dizine (`MERGEN_PRESENCE_SHARED_DIR`; varsayılan, bu makinede aynı uygulama
-  kökünden çalışan tüm başlatıcıların ortak yerel geçici dizinidir; UNC değeri
-  reddedilir, görünüm host başınadır) en fazla 30 sn aralıkla,
+  kökünden çalışan tüm başlatıcıların, tek işçili olanlar dahil, ortak yerel
+  geçici dizinidir; UNC değeri ve Windows'ta eşlenmiş ağ sürücüsü reddedilir,
+  dizin/dosyalar yalnız süreç sahibince okunur, görünüm host başınadır) en fazla 30 sn aralıkla,
   kimlik değişimi ve oturum sonunda hemen yayımlar; sekme tüm süreçleri
   birleştirir (okuma 10 sn önbelleklenir, bozuk dosya yalnız kendisi atlanır);
   yayını 150 sn'den eski süreç kapanmış sayılır. Tablo en fazla 200 kullanıcı satırı çizer (sayaçlar
@@ -690,8 +691,8 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
   `MERGEN_FILE_SUMMARY_MAX_CONCURRENT` (varsayılan 2, çok süreçte en az süreç
   sayısı; en fazla işçi sayısının bir eksiği, en az bir işçi sohbet/LLM işine boş
   kalır; ikiden az işçili havuzda özet çalışmaz ve atlanır) ile sınırlanır.
-  Çok-süreçli dağıtımda (`tools/run_mergen_workers.R`) eşzamanlılık, kuyruk ve
-  kullanıcı başı kuyruk payı başlatıcı (host) genelidir: o başlatıcının her
+  Çok-süreçli dağıtımda (`tools/run_mergen_workers.R`) eşzamanlılık ve kuyruk
+  başlatıcı (host) genelidir: o başlatıcının her
   uygulama süreci kendi dilimini alır, dilimler toplamı aşmaz (birden çok
   host/başlatıcı varsa her biri ayrı bütçe kullanır; ortak tavan için değer host
   sayısına bölünerek verilir); süreç sayısından küçük açık değer bazı
@@ -702,7 +703,8 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
   sırayla başlar, böylece özetler paylaşılan işçi havuzunu doldurup sohbet
   isteklerini bekletmez. Bekleyen kuyruk `MERGEN_FILE_SUMMARY_MAX_QUEUE`
   (varsayılan 64) ile, tek kullanıcının (tüm sekmeleriyle) payı
-  `MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION` (varsayılan 16) ile sınırlıdır;
+  `MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION` (varsayılan 16; süreçlere
+  bölünmez, sürecin kuyruk dilimiyle sınırlanır) ile sınırlıdır;
   dolunca dosya yine eklenir, özeti atlanır ve kullanıcı uyarılır (işçi kapasitesi
   yoksa uyarı bunu ayrıca söyler). Sıradaki özet en az özeti çalışan, eşitlikte en
   uzun süredir sıra almamış kullanıcıdan seçilir; boş işçi sayısı ölçülemezse özet

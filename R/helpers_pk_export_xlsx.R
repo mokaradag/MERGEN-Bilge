@@ -244,9 +244,16 @@ pk_export_build <- function(data, packet = list(), context = list(),
     if (!is.list(kapi) || !isTRUE(kapi$halt)) return(NULL)
     as.character(kapi$status %||% "cancelled")[1]
   }, error = function(e) NULL)
-  durduruldu <- function() !is.null(halt_durumu())
+  # Aşama içinde görülen durdurma nedeni saklanır: geçici (sıfırlanan) iptal
+  # jetonu sonradan NULL dönse de kullanıcı iptali son tarih sayılmaz.
+  son_durdurma <- NULL
+  durduruldu <- function() {
+    d <- halt_durumu()
+    if (!is.null(d)) son_durdurma <<- d
+    !is.null(d)
+  }
   iptal_sonucu <- function(rows = 0L, cols = 0L, status = NULL) {
-    durum <- as.character(status %||% halt_durumu() %||% "cancelled")[1]
+    durum <- as.character(status %||% halt_durumu() %||% son_durdurma %||% "cancelled")[1]
     if (is.na(durum) || !nzchar(durum)) durum <- "cancelled"
     mesaj <- if (exists("pk_async_halt_message", mode = "function", inherits = TRUE)) {
       pk_async_halt_message(durum)
@@ -376,7 +383,7 @@ pk_export_build <- function(data, packet = list(), context = list(),
     })
     if (!isTRUE(hazirlik$ok) || is.null(hazirlik$value)) {
       hata <- as.character(hazirlik$error %||% "")[1]
-      durdurma <- halt_durumu()
+      durdurma <- halt_durumu() %||% son_durdurma
       if (!is.null(durdurma) || isTRUE(hazirlik$ok) || identical(hata, "budget_exhausted") ||
           grepl("elapsed time limit|reached elapsed", hata, ignore.case = TRUE)) {
         return(iptal_sonucu(plan$total_rows, ncol(data), status = durdurma %||% "deadline"))
@@ -414,7 +421,7 @@ pk_export_build <- function(data, packet = list(), context = list(),
     if (!isTRUE(yazim$ok)) {
       if (!is.na(yol)) try(safe_unlink_if_exists(yol), silent = TRUE)
       return(iptal_sonucu(plan$total_rows, ncol(govde),
-                          status = halt_durumu() %||% "deadline"))
+                          status = halt_durumu() %||% son_durdurma %||% "deadline"))
     }
     yazildi <- isTRUE(yazim$value)
 
@@ -440,7 +447,7 @@ pk_export_build <- function(data, packet = list(), context = list(),
       if (!isTRUE(dogrulama_sonucu$ok)) {
         if (!is.na(yol)) try(safe_unlink_if_exists(yol), silent = TRUE)
         return(iptal_sonucu(plan$total_rows, ncol(govde),
-                            status = halt_durumu() %||% "deadline"))
+                            status = halt_durumu() %||% son_durdurma %||% "deadline"))
       }
       dogrulama_sonucu$value
     } else {
@@ -514,7 +521,7 @@ pk_export_build <- function(data, packet = list(), context = list(),
     if (is.na(hata_metni)) hata_metni <- ""
     butce_bitti <- identical(hata_metni, "budget_exhausted") ||
       grepl("elapsed time limit|reached elapsed", hata_metni, ignore.case = TRUE)
-    durdurma <- halt_durumu()
+    durdurma <- halt_durumu() %||% son_durdurma
 
     if (!is.null(durdurma) || isTRUE(butce_bitti)) {
       return(iptal_sonucu(plan$total_rows, csv_sutun,

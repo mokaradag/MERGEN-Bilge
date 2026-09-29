@@ -97,6 +97,8 @@ test_that("başarısız bağımlılık taraması önbelleğe alınmaz", {
 })
 
 test_that("aynı gövdeli görevde bağlı yardımcı değişirse önbellek yeniden tarar", {
+  # Kapanış test çerçevesini taşır; tam koşuda future boyut tahmini büyür.
+  withr::local_options(future.globals.maxSize = +Inf)
   worker_monitor_dep_cache_clear()
   withr::defer(worker_monitor_dep_cache_clear())
   assign(".wd_derin_a", function() 1L, envir = globalenv())
@@ -991,6 +993,17 @@ test_that("bağımlılık hazırlığı istisna fırlatırsa iş kaydı bırakı
   expect_identical(length(ls(envir = init_worker_monitor()$tasks)), once)
 })
 
+test_that("açık bağımlılık hazırlığı hata verirse iş kaydı bırakılır", {
+  once <- length(ls(envir = init_worker_monitor()$tasks))
+  # Değeri okunamayan global, izole ortam kurulumunu düşürür.
+  bozuk <- structure(list(a = 1), class = "wd_bozuk_globals")
+  registerS3method("[[", "wd_bozuk_globals", function(x, i, ...) stop("okunamadı"))
+  expect_error(tracked_future_promise(function() 1L, task_type = "unit_explicit_setup",
+                                      dependency_mode = "explicit", globals = bozuk),
+               "Açık bağımlılık hazırlığı başarısız")
+  expect_identical(length(ls(envir = init_worker_monitor()$tasks)), once)
+})
+
 test_that("arama yolunda aynı adı sağlayan yeni paket öne eklenirse önbellek yeniden tarar", {
   worker_monitor_dep_cache_clear()
   withr::defer(worker_monitor_dep_cache_clear())
@@ -1024,9 +1037,11 @@ test_that("çok-süreçli payda sıfır dilim korunur, varsayılan eşzamanlıl�
   expect_identical(pay(env$file_summary_max_concurrent), rep(1L, 4L))
   # Dağıtım geneli kuyruk tavanı (2) süreç sayısına şişirilmez.
   expect_identical(pay(env$file_summary_max_queue), c(1L, 1L, 0L, 0L))
-  # Kullanıcı başı bütçe de süreçlere bölünür (4 sekme x 16 olmaz).
+  # Kullanıcı başı bütçe bölünmez (tek sekmeli toplu yükleme özetsiz kalmaz);
+  # süreç kuyruk dilimiyle sınırlanır.
   withr::with_envvar(c(MERGEN_FILE_SUMMARY_MAX_QUEUE = "64"),
-                     expect_identical(sum(pay(env$file_summary_max_queue_per_session)), 16L))
+                     expect_identical(pay(env$file_summary_max_queue_per_session), rep(16L, 4L)))
+  expect_identical(pay(env$file_summary_max_queue_per_session), c(1L, 1L, 0L, 0L))
   expect_match(env$file_summary_capacity_warnings(), "MERGEN_FILE_SUMMARY_MAX_QUEUE=2", all = FALSE)
   withr::with_envvar(c(MERGEN_APP_WORKER_COUNT = "1"), expect_length(env$file_summary_capacity_warnings(), 0L))
 })
@@ -1100,7 +1115,9 @@ test_that("kimliksiz başlayan özet arada kimlik kaybı olduysa uygulanmaz", {
   expect_true(env$.file_pipeline_owner_ok(0L, 0L, 7L, 0L, 0L))
   expect_false(env$.file_pipeline_owner_ok(0L, 0L, 7L, 0L, 1L))
   expect_false(env$.file_pipeline_owner_ok(0L, 8L, 7L, 0L, 0L))
-  expect_true(env$.file_pipeline_owner_ok(7L, 7L, 7L, 0L, 2L))
+  # A -> kimlik kaybı -> A: eski dönemin işi yeni kimlik dönemine taşınmaz.
+  expect_false(env$.file_pipeline_owner_ok(7L, 7L, 7L, 0L, 2L))
+  expect_true(env$.file_pipeline_owner_ok(7L, 7L, 7L, 2L, 2L))
 })
 
 test_that("bağlamdan çıkarılan dosyanın süren özeti durdurma dosyasıyla kesilir; biten iş yeni jetonu silmez", {

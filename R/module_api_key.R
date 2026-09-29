@@ -211,6 +211,7 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
         }
         # Bu oturumda onboarding kararı verildi; modal tekrar açılmasın.
         acik_secim <<- TRUE
+        session$userData$api_key_onboarding_source <- NULL
         onboarding_tamam(owner$username)
         removeModal()
         modal_sahibi <<- NULL
@@ -262,6 +263,9 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
       # anahtar silinmez); aksi halde kişisel anahtar öncelikli kalırdı.
       mb_api_key_clear_session_key(session)
       acik_secim <<- TRUE
+      # Açık kurum seçimi sahibe bağlı saklanır; yeniden kimlik doğrulamada
+      # kişisel anahtar bu seçimi ezmez.
+      session$userData$api_key_onboarding_source <- list(owner = sahip$username, source = "default")
       onboarding_tamam(sahip$username)
       removeModal()
       modal_sahibi <<- NULL
@@ -346,6 +350,10 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
     zaman_asimi_karari <- FALSE
     # Tolerans sonrası geç gelen bastırma, 300 ms'lik gecikmeli açılışı da iptal eder.
     bastirilan_sahip <- NULL
+    kurum_secimi <- function(kullanici) {
+      s <- session$userData$api_key_onboarding_source
+      if (is.list(s) && identical(s$owner, kullanici) && identical(s$source, "default")) s
+    }
     shiny::observe({
       if (is.function(kimlik_sinyali)) kimlik_sinyali() else shiny::invalidateLater(5000, session)
       raw_flag <- input$api_key_onboarding_suppressed
@@ -412,7 +420,7 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
         api_key_decision_start <<- Sys.time()
         tercih_istek_zamani <<- NULL
         zaman_asimi_karari <<- FALSE
-        acik_secim <<- FALSE
+        acik_secim <<- !is.null(kurum_secimi(owner$username))
         loaded_key <- try(load_user_api_key(owner$username), silent = TRUE)
         kisisel_anahtar <<- if (!inherits(loaded_key, "try-error") && nzchar(loaded_key %||% "")) loaded_key
       }
@@ -441,7 +449,7 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
           shiny::invalidateLater(150, session)
           return(invisible(NULL))
         }
-        if (!kurum_hatirlandi) mb_api_key_set_session_key(session, kisisel_anahtar, owner = owner)
+        if (!kurum_hatirlandi && is.null(kurum_secimi(owner$username))) mb_api_key_set_session_key(session, kisisel_anahtar, owner = owner)
         karar_ver(!flag_arrived)
         return(invisible(NULL))
       }
@@ -484,7 +492,7 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
 
     # Küçük bir modül API'si döndür.
     list(
-      open = function(title = "API Anahtarı") openModal(title)
+      open = function(title = NULL) openModal(title)
     )
   })
 }

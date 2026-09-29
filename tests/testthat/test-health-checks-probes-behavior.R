@@ -149,6 +149,9 @@ test_that("yapılandırılmamış genel internet adresi çağrılmadan atlanır 
     GET = function(url, ...) stop("genel adres çağrılmamalıydı"),
     .package = "httr"
   )
+  # DNS'e hiç gidilmez: genel ad doğrudan "genel_dns" nedeniyle atlanır.
+  env$health_resolve_host_ips <- function(host) stop("DNS çağrılmamalıydı")
+  expect_identical(env$health_endpoint_scope("http://dis-servis.example.com/v1")$neden, "genel_dns")
   r <- env$health_check_http_endpoint("dis.test", "Dış Servis", "http://dis-servis.example.com/v1")
   expect_identical(r$status[1], "warning")
   expect_identical(r$value[1], "Atlandı")
@@ -436,6 +439,13 @@ test_that("IPv4-eşlemeli IPv6 gömülü IPv4 kuralıyla sınıflandırılır", 
   # Gerçek (eşlemeli olmayan) IPv6 davranışı DEĞİŞMEZ.
   expect_true(isTRUE(env$health_ip_literal_internal("fd00::1")))
   expect_true(is.na(env$health_ip_literal_internal("2001:db8::1")))
+  # Bozuk ULA/bağlantı-yerel literal dahili sayılmaz (kapalı-başarısız).
+  for (bozuk in c("fd00:zzzz::1", "fe80:garbage", "fc00::1::2", "fd00:1:2:3:4:5:6:7:8")) {
+    expect_false(isTRUE(env$health_ip_literal_internal(bozuk)), info = bozuk)
+  }
+  expect_true(isTRUE(env$health_ip_literal_internal("fe80::1%eth0")))
+  expect_true(isTRUE(env$health_ip_literal_internal("FEBF::1")))
+  expect_false(isTRUE(env$health_ip_literal_internal("fec0::1")))
 })
 
 test_that("dahili görünümlü ad ve son ek genel adrese çözülürse denenmez; çözülmezse neden söylenir", {

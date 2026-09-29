@@ -232,6 +232,35 @@ ssoAuthServer <- function(id) {
       raw_token     = NULL
     )
 
+    # Ortak yetkisizleştirme: süre dolumu ve her reddedilen token yolu (geçersiz
+    # imza, eksik claim, DB yetkisi yok) canlı kimliği aynı biçimde düşürür.
+    # Kimlik hazır bayrağı, ETKİN KULLANICI KİMLİĞİ ve kişisel API anahtarı
+    # temizlenir. Alan kümesi `set_auth_placeholder()`
+    # (R/helpers_user_session_identity.R) ile AYNI olmalıdır; bırakılan alanı
+    # doğrudan okuyan tüketici önceki kimlikle çalışmaya devam ederdi.
+    yetkisizlestir <- function() {
+      sso_state$authenticated <- FALSE
+      sso_state$auth_level    <- NULL
+      sso_state$user_claims   <- NULL
+      sso_state$raw_token     <- NULL
+      try({
+        eski_uid <- session$userData$user_id
+        session$userData$auth_initialized <- FALSE
+        session$userData$user_id <- 0L
+        session$userData$user_identity <- NULL
+        session$userData$user_config <- NULL
+        session$userData$user_first_name <- NULL
+        session$userData$system_username <- NULL
+        session$userData$ai_api_key <- NULL
+        # Süren kullanıcıya bağlı işler (özet vb.) iptal edilir; reaktif
+        # kimlik sinyali kimlik kaybını hemen yayar.
+        if (exists("mergen_session_owner_transition", mode = "function")) {
+          mergen_session_owner_transition(session$userData, eski_uid %||% 0L, 0L)
+        }
+      }, silent = TRUE)
+      invisible(NULL)
+    }
+
     # --- JWT Token Gözlemcisi ---
     # JavaScript tarafından Shiny.setInputValue ile gönderilen token'ı dinle
     observeEvent(input$sso_jwt_token, {
@@ -249,7 +278,7 @@ ssoAuthServer <- function(id) {
 
       if (!isTRUE(validation$valid)) {
         log_warn("SSO: Token doğrulama başarısız - {validation$error}")
-        sso_state$authenticated <- FALSE
+        yetkisizlestir()
 
         # Hata mesajını UI'a gönder
         session$sendCustomMessage("sso_auth_error", list(
@@ -263,7 +292,7 @@ ssoAuthServer <- function(id) {
 
       if (is.null(claims) || !nzchar(claims$username)) {
         log_warn("SSO: Kullanıcı bilgileri çıkarılamadı")
-        sso_state$authenticated <- FALSE
+        yetkisizlestir()
         session$sendCustomMessage("sso_auth_error", list(
           message = "Kullanıcı bilgileri alınamadı."
         ))
@@ -276,7 +305,7 @@ ssoAuthServer <- function(id) {
 
       if (!isTRUE(auth_info$authorized)) {
         log_warn("SSO: Kullanıcı yetkisiz - {claims$username}")
-        sso_state$authenticated <- FALSE
+        yetkisizlestir()
         session$sendCustomMessage("sso_auth_error", list(
           message = paste0(
             "Bu uygulamaya erişim yetkiniz bulunmuyor. ",
@@ -348,35 +377,7 @@ ssoAuthServer <- function(id) {
 
       if (remaining_secs <= 0) {
         log_warn("SSO: Token süresi doldu; oturum yetkisizleştiriliyor (exp={token_exp}).")
-
-        sso_state$authenticated <- FALSE
-        sso_state$auth_level    <- NULL
-        sso_state$user_claims   <- NULL
-        sso_state$raw_token     <- NULL
-
-        # Kimlik hazır bayrağı, ETKİN KULLANICI KİMLİĞİ ve kişisel API anahtarı
-        # temizlenir. `user_id` bırakılırsa canlı kimlik sağlayıcısını doğrudan
-        # okuyan gözlemciler (ör. Ortak Oturum oda yazma yetkisi) süresi dolmuş
-        # oturumla çalışmaya devam ediyordu.
-        # Alan kümesi `set_auth_placeholder()` (R/helpers_user_session_identity.R)
-        # ile AYNI olmalıdır: `user_identity` ve `system_username` bırakıldığında
-        # bu alanları doğrudan okuyan tüketiciler yetkisizleştirmeden sonra
-        # önceki kimliği kullanmaya devam ediyordu.
-        try({
-          eski_uid <- session$userData$user_id
-          session$userData$auth_initialized <- FALSE
-          session$userData$user_id <- 0L
-          session$userData$user_identity <- NULL
-          session$userData$user_config <- NULL
-          session$userData$user_first_name <- NULL
-          session$userData$system_username <- NULL
-          session$userData$ai_api_key <- NULL
-          # Süren kullanıcıya bağlı işler (özet vb.) iptal edilir; reaktif
-          # kimlik sinyali kimlik kaybını hemen yayar.
-          if (exists("mergen_session_owner_transition", mode = "function")) {
-            mergen_session_owner_transition(session$userData, eski_uid, 0L)
-          }
-        }, silent = TRUE)
+        yetkisizlestir()
 
         # İstemci tarafı `sso_auth_error` işleyicisi saklanan token'ı temizler ve
         # yeniden kimlik doğrulama ekranını gösterir.

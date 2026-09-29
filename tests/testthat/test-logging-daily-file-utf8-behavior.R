@@ -441,3 +441,84 @@ test_that("ekleme kilidinin sahipliği kaybedilirse satır ana dosyaya yazılmaz
   expect_identical(.log_utf8_bytes(hedef), charToRaw("ana\n"))
   expect_length(list.files(tmp, pattern = "\\.p.*\\.log$"), 1L)
 })
+
+test_that("MERGEN_LOG_SHARED_WRITERS 1/yes/on değerleri de paylaşılan yazıcı sayılır", {
+  skip_if_not_installed("logger")
+  tmp <- withr::local_tempdir()
+  env <- .log_utf8_env(tmp)
+  withr::local_envvar(c(MERGEN_APP_WORKER_COUNT = "1"))
+  for (deger in c("1", "yes", "ON")) {
+    withr::local_envvar(c(MERGEN_LOG_SHARED_WRITERS = deger))
+    expect_true(env$.mergen_log_shared_writers(file.path(tmp, "mergen_20260101.log")))
+  }
+  withr::local_envvar(c(MERGEN_LOG_SHARED_WRITERS = "0"))
+  expect_false(env$.mergen_log_shared_writers(file.path(tmp, "mergen_20260101.log")))
+})
+
+test_that("silinemeyen yedek birleşen bayt kaydıyla sürer; satırlar iki kez eklenmez", {
+  skip_if_not_installed("logger")
+  tmp <- withr::local_tempdir()
+  env <- .log_utf8_env(tmp)
+  hedef <- file.path(tmp, "sil_20260101.log")
+  yedek <- sub("\\.log$", ".utf8.log", hedef)
+  writeBin(charToRaw("ana\n"), hedef)
+  writeBin(charToRaw("yedek\n"), yedek)
+  env$unlink <- function(x, ...) if (identical(x, yedek)) invisible(1L) else base::unlink(x, ...)
+  expect_true(env$.mergen_log_merge_fallback(hedef, yedek))
+  expect_true(file.exists(yedek))
+  env$mergen_log_write_utf8("yeni", hedef)
+  expect_identical(.log_utf8_bytes(hedef), charToRaw("ana\nyedek\nyeni\n"))
+  rm("unlink", envir = env)
+  env$mergen_log_write_utf8("son", hedef)
+  expect_identical(.log_utf8_bytes(hedef), charToRaw("ana\nyedek\nyeni\nson\n"))
+  expect_false(file.exists(yedek))
+  expect_false(file.exists(paste0(yedek, ".birlesen")))
+})
+
+test_that("geri alma ve karantina başarısızsa kısmi kopya kaydedilir; yeniden deneme çoğaltmaz", {
+  skip_if_not_installed("logger")
+  tmp <- withr::local_tempdir()
+  env <- .log_utf8_env(tmp)
+  hedef <- file.path(tmp, "kar_20260101.log")
+  yedek <- sub("\\.log$", ".utf8.log", hedef)
+  writeBin(charToRaw("ana\n"), hedef)
+  writeBin(charToRaw("bir\niki\n"), yedek)
+  env$readBin <- function(con, what, n, ...) base::readBin(con, what, n = min(n, 4L), ...)
+  sayac <- 0L
+  env$writeBin <- function(object, con, ...) {
+    sayac <<- sayac + 1L
+    if (sayac > 1L) stop("UNC hatası")
+    base::writeBin(object, con, ...)
+  }
+  env$truncate <- function(con, ...) stop("kesilemedi")
+  env$file.rename <- function(from, to) FALSE
+  expect_false(env$.mergen_log_merge_fallback(hedef, yedek))
+  expect_identical(.log_utf8_bytes(hedef), charToRaw("ana\nbir\n"))
+  expect_true(file.exists(yedek))
+  rm(list = c("readBin", "writeBin", "truncate", "file.rename"), envir = env)
+  expect_true(env$.mergen_log_merge_fallback(hedef, yedek))
+  expect_identical(.log_utf8_bytes(hedef), charToRaw("ana\nbir\niki\n"))
+})
+
+test_that("sahiplenilip birleştirilemeyen yetim yedek sonraki yazımda yeniden denenir", {
+  skip_if_not_installed("logger")
+  tmp <- withr::local_tempdir()
+  env <- .log_utf8_env(tmp)
+  withr::local_envvar(c(MERGEN_APP_WORKER_COUNT = "3"))
+  hedef <- file.path(tmp, "yetim_20260101.log")
+  writeBin(charToRaw("ana\n"), hedef)
+  eski <- sub("\\.log$", ".pbaska-11.log", hedef)
+  writeBin(charToRaw("yetim\n"), eski)
+  Sys.setFileTime(eski, Sys.time() - 600)
+  asil <- env$.mergen_log_merge_fallback
+  env$.mergen_log_merge_fallback <- function(target_file, yedek, nabiz = NULL) {
+    if (grepl("-m[0-9]+\\.log$", yedek)) return(invisible(FALSE))
+    asil(target_file, yedek, nabiz)
+  }
+  env$mergen_log_write_utf8("bir", hedef)
+  expect_identical(.log_utf8_bytes(hedef), charToRaw("ana\n"))
+  env$.mergen_log_merge_fallback <- asil
+  env$mergen_log_write_utf8("iki", hedef)
+  expect_identical(.log_utf8_bytes(hedef), charToRaw("ana\nyetim\nbir\niki\n"))
+  expect_length(list.files(tmp, pattern = "\\.pbaska"), 0L)
+})

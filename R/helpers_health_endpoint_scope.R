@@ -192,8 +192,16 @@ health_ip_literal_internal <- function(host) {
     if (!is.null(gruplar) && all(grepl("^0+$", gruplar[1:7])) && grepl("^0*1$", gruplar[8])) {
       return(TRUE)
     }
-    # fc00::/7 benzersiz yerel adres aralığı ve bağlantı-yerel fe80::/10.
-    if (grepl("^(f[cd][0-9a-f]{2}:|fe[89ab][0-9a-f]:)", host, perl = TRUE)) return(TRUE)
+    # fc00::/7 benzersiz yerel adres aralığı ve bağlantı-yerel fe80::/10;
+    # yalnız GEÇERLİ literalin ilk hextet'i sınanır (`fd00:zzzz::1` dahili değil).
+    # Bölge kimliği (`%eth0`) yalnız bağlantı-yerel adreste kabul edilir.
+    bolge <- grepl("%", host, fixed = TRUE)
+    yalin <- .health_ipv6_hextets(sub("%[^%]+$", "", tolower(host)))
+    if (!is.null(yalin)) {
+      ilk <- strtoi(yalin[1], 16L)
+      if (bitwAnd(ilk, 0xFFC0L) == 0xFE80L) return(TRUE)
+      if (!bolge && bitwAnd(ilk, 0xFE00L) == 0xFC00L) return(TRUE)
+    }
     return(NA)
   }
   # Sayısal host libcurl gibi çözülür; `010.010.010.010` 10.10.10.10 değil
