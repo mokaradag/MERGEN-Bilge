@@ -21,15 +21,6 @@ filePreviewServer <- function(id) {
     onizleme_gecerli <- function(nesli) {
       identical(as.integer(nesli %||% -1L)[1], as.integer(session$userData$kimlik_nesli %||% 0L)[1])
     }
-    if (exists("mergen_session_on_owner_change", mode = "function")) {
-      mergen_session_on_owner_change(session, function(neden) {
-        file_storage$preview_file <- NULL
-        # Süren DOCX kodlaması ve önbellek yeni sahibe taşınmaz.
-        docx_preview_seq(isolate(docx_preview_seq()) + 1L)
-        preview_b64_cache(list())
-        try(removeModal(session = session), silent = TRUE)
-      })
-    }
     # Veri nesnesi adı nesil + açılış sayacı taşır; eski adres yeni dosyaya bağlanmaz.
     veri_sayaci <- 0L
     veri_nesnesi_adi <- function(onek, yol) {
@@ -48,6 +39,15 @@ filePreviewServer <- function(id) {
     # Bu belirteç her DOCX modal açılışında artırılır; asenkron geri çağrı
     # yalnızca belirteç hâlâ kendi açılışıyla aynıysa UI mesajını gönderir.
     docx_preview_seq <- reactiveVal(0L)
+    if (exists("mergen_session_on_owner_change", mode = "function")) {
+      mergen_session_on_owner_change(session, function(neden) {
+        file_storage$preview_file <- NULL
+        # Süren DOCX kodlaması ve önbellek yeni sahibe taşınmaz.
+        docx_preview_seq(isolate(docx_preview_seq()) + 1L)
+        preview_b64_cache(list())
+        try(removeModal(session = session), silent = TRUE)
+      })
+    }
 
     # Dosya yolu + boyut + değişiklik zamanına göre önbellek anahtarı üretir
     build_preview_cache_key <- function(path) {

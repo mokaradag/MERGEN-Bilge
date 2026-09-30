@@ -112,7 +112,9 @@
           scrollToAnchor(wrap, anchor);
           return;
         }
-        pendingAnchor = anchor ? { doc: targetDoc, key: anchor } : null;
+        var currentBody = wrap.querySelector(".mb-doc-body[data-rendered-doc-id]");
+        pendingAnchor = anchor ? { doc: targetDoc, key: anchor,
+          from: currentBody ? currentBody.getAttribute("data-rendered-doc-id") : null } : null;
         setDocInput(wrap.querySelector(".mb-doc-card-list"), targetDoc);
         return;
       }
@@ -181,10 +183,13 @@
       if (pendingAnchor && govde) {
         // Hedef belge çizildiyse kaydırılır; başka belge/grup çizildiyse
         // gezinme geçersizleşmiştir, eski hedef sonraki ziyarette uygulanmaz.
-        if (govde.getAttribute("data-rendered-doc-id") === pendingAnchor.doc) {
-          scrollToAnchor(document, pendingAnchor.key);
+        var renderedDoc = govde.getAttribute("data-rendered-doc-id");
+        if (renderedDoc !== pendingAnchor.from) {
+          if (renderedDoc === pendingAnchor.doc) {
+            scrollToAnchor(document, pendingAnchor.key);
+          }
+          pendingAnchor = null;
         }
-        pendingAnchor = null;
       }
     }, 0);
   });

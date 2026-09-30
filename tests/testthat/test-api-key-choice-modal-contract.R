@@ -376,8 +376,10 @@ test_that("seçim modalı bekleyen kutu değerini jeton/etiketle bildirir ve eti
 })
 
 test_that("Init mesajı etiketi her zaman atar; eski sekme yazımı yeni tercihi ezmez", {
-  js_text <- paste(readLines(file.path(resolve_repo_root_for_tests(), "www", "js", "api_key_choice_modal.js"),
-                             encoding = "UTF-8", warn = FALSE), collapse = "\n")
+  yol <- file.path(resolve_repo_root_for_tests(), "www", "js", "api_key_choice_modal.js")
+  js_text <- rawToChar(readBin(yol, "raw", file.info(yol)$size))
+  Encoding(js_text) <- "UTF-8"
+  js_text <- gsub("\r\n?", "\n", js_text)
   init <- regmatches(js_text, regexpr("mergenApiKeyChoiceInit[\\s\\S]*?var tries", js_text, perl = TRUE))
   expect_true(grepl('_userTag =\n        message && typeof message.userTag === "string" ? message.userTag : "";',
                     init, fixed = TRUE))

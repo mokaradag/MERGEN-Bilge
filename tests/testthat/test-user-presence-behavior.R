@@ -12,6 +12,10 @@
   env$`%||%` <- function(a, b) if (is.null(a)) b else a
   source(file.path(kok, "R", "helpers_user_presence.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "helpers_user_presence_shared.R"), encoding = "UTF-8", local = env)
+  env$.MB_PRESENCE_DIRECTORY$initializing <- TRUE
+  env$system2 <- function(command, args, ...) {
+    if (any(grepl("DriveInfo", args, fixed = TRUE))) "Fixed" else "secure"
+  }
   if (with_ui) {
     testthat::skip_if_not_installed("shiny")
     suppressMessages(library(shiny))
@@ -584,6 +588,7 @@ test_that("performans modülü kesirli sağlayıcı kimliğini kısaltmadan redd
 test_that("Windows'ta eşlenmiş ağ sürücüsü reddedilir; tür sorulamazsa da reddedilir", {
   env <- .presence_env()
   env$.Platform <- list(OS.type = "windows")
+  env$.MB_PRESENCE_DIRECTORY$initializing <- TRUE
   turler <- env$mb_presence_env(".mergen_presence_drive_type")
   rm(list = ls(turler, all.names = TRUE), envir = turler)
   withr::defer(rm(list = ls(turler, all.names = TRUE), envir = turler))
@@ -645,4 +650,44 @@ test_that("asıl dosya yokken uzak sürecin son sağlam .bak anlık görüntüs�
           file.path(dizin, "presence_iki.rds.bak"))
   uzak <- env$mb_presence_remote_rows(now)
   expect_identical(sort(uzak$user_id), c(51L, 52L))
+})
+
+
+test_that("POSIX ağ bağlama noktası ve bilinmeyen dosya sistemi reddedilir", {
+  skip_on_os("windows")
+  env <- .presence_env()
+  mounts <- tempfile()
+  on.exit(unlink(mounts))
+  for (tur in c("nfs", "cifs", "fuse.sshfs", "unknown")) {
+    writeLines(c("1 0 0:1 / / rw - ext4 /dev/root rw",
+                 paste0("2 1 0:2 / /mnt/remote rw - ", tur, " remote rw")), mounts)
+    expect_false(env$.mb_presence_posix_local("/mnt/remote/presence", mounts))
+    expect_true(env$.mb_presence_posix_local(tempdir(), mounts))
+  }
+})
+
+test_that("varlık dizini açılışta hazırlanır; sonraki olaylar sürücü sorgulamaz", {
+  env <- .presence_env()
+  tmp <- withr::local_tempdir()
+  withr::local_envvar(c(MERGEN_PRESENCE_SHARED_DIR = tmp))
+  calls <- 0L
+  env$.mb_presence_local_dir <- function(yol) { calls <<- calls + 1L; TRUE }
+  expect_true(env$mb_presence_initialize())
+  env$.mb_presence_local_dir <- function(...) stop("olay döngüsünde sürücü sorgusu")
+  expect_identical(env$mb_presence_shared_dir(), tmp)
+  expect_identical(calls, 1L)
+})
+
+test_that("Windows varlık yayını doğrulanmış ACL olmadan kapalı kalır", {
+  env <- .presence_env()
+  tmp <- withr::local_tempdir()
+  env$.Platform <- list(OS.type = "windows")
+  env$.MB_PRESENCE_DIRECTORY$initializing <- TRUE
+  env$system2 <- function(...) character(0)
+  expect_false(env$.mb_presence_secure_dir(tmp))
+  env$system2 <- function(...) "secure"
+  expect_true(env$.mb_presence_secure_dir(tmp))
+  env$.MB_PRESENCE_DIRECTORY$initializing <- FALSE
+  env$system2 <- function(...) stop("olay döngüsünde sürücü sorgusu")
+  expect_false(env$.mb_presence_local_dir("C:\\presence"))
 })

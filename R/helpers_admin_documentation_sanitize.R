@@ -29,7 +29,7 @@ admin_doc_allowed_tags <- function() {
   paste0("(?:", paste(strsplit("javascript", "")[[1]], collapse = ara), "|",
          paste(strsplit("vbscript", "")[[1]], collapse = ara), ")", ara, ":")
 }
-.ADMIN_DOC_RISKY_ATTR <- paste0("[\\s/](?:on[a-zA-Z]+|style|ping)\\s*=|", .admin_doc_scheme_pattern())
+.ADMIN_DOC_RISKY_ATTR <- paste0("[\\s/\"'](?:on[a-zA-Z]+|style|ping)\\s*=|", .admin_doc_scheme_pattern())
 
 # Öznitelik dizesini tırnak duyarlı ayrıştırır: list(ad, deger) listesi
 # (değersiz öznitelikte deger NA). Tırnaklı değerin İÇİNDEKİ `href=` metni ayrı
@@ -66,7 +66,7 @@ admin_doc_attrs_html <- function(attrs) {
   for (v in unique(sayilar)) {
     sayi <- sub("^&#[xX]?([0-9a-fA-F]+);?$", "\\1", v)
     n <- suppressWarnings(if (grepl("^&#[xX]", v)) strtoi(sayi, 16L) else as.integer(sayi))
-    deger <- gsub(v, if (is.na(n) || n <= 0L || n > 0x10FFFFL) "" else intToUtf8(n), deger, fixed = TRUE)
+    deger <- gsub(v, if (is.na(n) || n <= 0L || n > 0x10FFFFL || (n >= 0xD800L && n <= 0xDFFFL)) "" else intToUtf8(n), deger, fixed = TRUE)
   }
   deger <- gsub("&colon;", ":", deger, ignore.case = TRUE)
   tolower(gsub("[[:space:][:cntrl:]]|&tab;|&newline;", "", deger, perl = TRUE, ignore.case = TRUE))

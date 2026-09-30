@@ -79,20 +79,35 @@ health_configured_hosts <- function() {
   unique(hostlar[nzchar(hostlar)])
 }
 
+# DNS işlemi ana olay döngüsünden ayrı ve süre sınırlı çalışır.
+.HEALTH_DNS_JOBS <- new.env(parent = emptyenv())
 health_resolve_host_ips <- function(host) {
-  if (!requireNamespace("curl", quietly = TRUE)) return(character(0))
-  tryCatch(as.character(curl::nslookup(host, multiple = TRUE, error = FALSE) %||% character(0)),
-           error = function(e) character(0))
+  if (!requireNamespace("callr", quietly = TRUE) || !requireNamespace("later", quietly = TRUE)) {
+    return(character(0))
+  }
+  is <- .HEALTH_DNS_JOBS[[host]]
+  if (is.null(is)) {
+    is <- tryCatch(callr::r_bg(function(host) {
+      as.character(curl::nslookup(host, multiple = TRUE, error = FALSE))
+    }, args = list(host = host), supervise = TRUE,
+       user_profile = FALSE, system_profile = FALSE), error = function(e) NULL)
+    if (is.null(is)) return(character(0))
+    .HEALTH_DNS_JOBS[[host]] <- is
+    later::later(function() {
+      if (isTRUE(is$is_alive())) try(is$kill(), silent = TRUE)
+    }, delay = 3)
+  }
+  if (isTRUE(is$is_alive())) return(structure(character(0), pending = TRUE))
+  .HEALTH_DNS_JOBS[[host]] <- NULL
+  tryCatch(is$get_result(), error = function(e) character(0))
 }
 
 # Kurumsal DNS adı taşıyan yapılandırılmış uç nokta (ör. https://tts.kurum.com.tr)
 # literal RFC1918 adresi olmadığı için hiç denenmeden "genel internet" sayılıyordu.
 # Host yalnız TÜM adresleri özel/loopback olarak çözülürse on-prem sayılır ve
 # denetlenen adresler döner (istek bu adreslere sabitlenir; arada DNS yanıtı
-# değişse de genel adrese gidilmez). `curl::nslookup()` zaman aşımı almaz ve
-# Shiny sürecini bloklar: genel sonuç 10 dk, özel ve çözülemeyen sonuç bir
-# yenileme aralığı (`kisa_ttl`, 2 dk) tutulur; DNS kesintisinde her yenileme
-# yeniden beklemez. Önbellekteki özel adresler de özeldir (sabitleme güvenli).
+# değişse de genel adrese gidilmez). Genel sonuç 10 dk, diğer sonuçlar
+# bir yenileme aralığı tutulur. Süren çözümleme önbelleğe alınmaz.
 .HEALTH_DNS_CACHE <- new.env(parent = emptyenv())
 
 health_host_private_ips <- function(host, ttl = 600, kisa_ttl = 120) {
@@ -102,6 +117,7 @@ health_host_private_ips <- function(host, ttl = 600, kisa_ttl = 120) {
     return(kayit$sonuc)
   }
   ipler <- health_resolve_host_ips(host)
+  if (isTRUE(attr(ipler, "pending"))) return(structure(character(0), cozuldu = FALSE))
   ozel <- length(ipler) > 0L && all(vapply(ipler, function(ip) {
     !isTRUE(health_host_unspecified(ip)) && isTRUE(health_ip_literal_internal(ip))
   }, logical(1)))

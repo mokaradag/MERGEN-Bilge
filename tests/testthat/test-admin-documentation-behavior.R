@@ -485,6 +485,21 @@ testthat::test_that("belge içi bağlantılar uygulamadan ayrılmaz; kayıtlı b
   testthat::expect_true(grepl("data-doc-id=\"pk_operator\"", render$html, fixed = TRUE))
 })
 
+testthat::test_that("geçersiz UTF-8 bölüm bağlantısı belgeyi bozmaz", {
+  env <- .source_admin_doc_env()
+  for (parca in c("%FF", "%C3%28", "%ED%A0%80")) {
+    html <- paste0('<a href="#', parca, '">yerel</a> ',
+                   '<a href="release-notes.md#', parca, '">belge</a>')
+    testthat::expect_no_error(sonuc <- env$admin_doc_rewrite_links(html, "docs/README.md"))
+    testthat::expect_true(validUTF8(sonuc))
+    testthat::expect_true(grepl('data-doc-id="release_notes"', sonuc, fixed = TRUE))
+    testthat::expect_identical(lengths(regmatches(sonuc, gregexpr("data-doc-anchor=", sonuc, fixed = TRUE))), 2L)
+  }
+  testthat::skip_if_not_installed("commonmark")
+  html <- commonmark::markdown_html("[yerel](#%FF) [belge](release-notes.md#%FF)")
+  testthat::expect_no_error(env$admin_doc_rewrite_links(html, "docs/README.md"))
+})
+
 testthat::test_that("bölüm bağlantısı hedef başlığın anahtarını taşır; kök-göreli yol depo kökünden çözülür", {
   env <- .source_admin_doc_env()
   html <- paste0(
@@ -708,7 +723,7 @@ testthat::test_that("başka belge çizilince bekleyen bölüm hedefi iptal edili
                        encoding = "UTF-8", warn = FALSE), collapse = "\n")
   blok <- regmatches(js, regexpr("if \\(pendingAnchor && govde\\) \\{[\\s\\S]*?\\n      \\}", js, perl = TRUE))
   testthat::expect_length(blok, 1L)
-  testthat::expect_true(grepl("}\n        pendingAnchor = null;", blok, fixed = TRUE))
+  testthat::expect_true(grepl("if (renderedDoc !== pendingAnchor.from)", blok, fixed = TRUE))
 })
 
 test_that("Sistem Durumu otomatik yenileme döngüsü yalnız yönetici oturumunda kurulur", {
@@ -751,4 +766,17 @@ testthat::test_that("bağlantı yeniden yazımı ping'i atar ve kapanmamış tı
   testthat::expect_true(grepl("target=\"_blank\"", out, fixed = TRUE))
   out <- env$admin_doc_rewrite_links("<a href=\"https://intranet\" title=\"x>y</a>", "docs/README.md")
   testthat::expect_true(grepl("target=\"_blank\"", out, fixed = TRUE))
+})
+
+
+test_that("tırnaktan sonraki olay öznitelikleri ve geçersiz varlıklar güvenle temizlenir", {
+  env <- .source_admin_doc_env()
+  for (html in c('<img src="x"onerror=alert(1)>', "<img src='x'onerror=alert(1)>")) {
+    sonuc <- env$admin_doc_sanitize_html(html)
+    expect_false(grepl("onerror", sonuc, fixed = TRUE))
+  }
+  for (kod in c("&#xD800;", "&#xDFFF;", "&#55296;")) {
+    expect_no_error(sonuc <- env$admin_doc_sanitize_html(paste0('<a href="', kod, '">x</a>')))
+    expect_false(is.na(sonuc))
+  }
 })

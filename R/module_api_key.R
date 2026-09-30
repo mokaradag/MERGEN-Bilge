@@ -450,7 +450,7 @@ apiKeyServer <- function(id, serviceDesk, api_config) {
           return(invisible(NULL))
         }
         if (!kurum_hatirlandi && is.null(kurum_secimi(owner$username))) mb_api_key_set_session_key(session, kisisel_anahtar, owner = owner)
-        karar_ver(!flag_arrived)
+        karar_ver(default_available && !flag_arrived)
         return(invisible(NULL))
       }
 

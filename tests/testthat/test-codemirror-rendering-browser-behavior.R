@@ -36,7 +36,8 @@ test_that("kod blokları gerçek CodeMirror ile vurgulanır, katlanır ve tam ko
             !identical(res$browser_status, 0L) && !identical(res$browser_status, 124L),
           paste("Tarayıcı başlatılamadı:", substr(res$stderr, 1L, 300L)))
 
-  report <- runner$cm_render_check_plain(paste(res$status, res$log, sep = "\n"))
+  report <- runner$cm_render_check_plain(paste(res$status, res$log, res$browser_status,
+                                             res$stderr, sep = "\n"))
   expect_true(isTRUE(res$page_rendered), info = report)
   expect_true(isTRUE(res$passed), info = report)
 })

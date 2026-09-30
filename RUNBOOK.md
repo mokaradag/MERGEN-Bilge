@@ -665,9 +665,10 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
   noktaları (`LOCAL_*_ENDPOINT`, `IMAGE_GEN_ENDPOINT`, `LANGFLOW_BASE_URL`,
   `SSO_KEYCLOAK_URL`) ve api_config LLM uç noktaları kurumsal DNS adı taşısa da
   adı yalnız özel/loopback adreslere çözülüyorsa on-prem sayılır ve gerçekten
-  denenir; istek denetlenen adrese sabitlenir. Özel karar önbelleklenmez (her
-  denemede yeniden çözülür); yalnız genel çıkan çözüm 10 dk tutulur, geçici DNS
-  hatası önbelleğe girmez. Noktasız adlar ve `.local/.corp/.internal/.intranet/.lan`
+  denenir; istek denetlenen adrese sabitlenir. DNS çözümlemesi ayrı R sürecinde
+  çalışır; üç saniyede bitmeyen süreç durdurulur. İlk kontrol çözümleme sürerken
+  uç noktayı atlayabilir; sonraki yenileme sonucu kullanır. Genel çözüm 10 dk,
+  özel ve başarısız çözüm 2 dk önbelleklenir. Noktasız adlar ve `.local/.corp/.internal/.intranet/.lan`
   son ekleri de aynı çözümleme kuralına tabidir. Yapılandırılmış olmak tek başına
   yetmez: genel adrese çözülen host denenmez; HTTP(S) dışı şema hiç denenmez.
   Bu durumdaki ya da yapılandırılmamış ek kurumsal hostlar için
@@ -679,8 +680,10 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
   süreci çalışıyorsa her süreç oturum satırlarını makineye yerel paylaşılan
   dizine (`MERGEN_PRESENCE_SHARED_DIR`; varsayılan, bu makinede aynı uygulama
   kökünden çalışan tüm başlatıcıların, tek işçili olanlar dahil, ortak yerel
-  geçici dizinidir; UNC değeri ve Windows'ta eşlenmiş ağ sürücüsü reddedilir,
-  dizin/dosyalar yalnız süreç sahibince okunur, görünüm host başınadır) en fazla 30 sn aralıkla,
+  geçici dizinidir; UNC, eşlenmiş ağ sürücüleri ve POSIX ağ bağlamaları reddedilir.
+  Yerellik ve izin kontrolleri oturum kabulünden önce yapılır. Windows'ta yalnız
+  servis hesabına izin veren DACL kurulup doğrulanamazsa paylaşım kapalı kalır;
+  Unix'te dizin 0700, dosyalar 0600 olur; görünüm host başınadır) en fazla 30 sn aralıkla,
   kimlik değişimi ve oturum sonunda hemen yayımlar; sekme tüm süreçleri
   birleştirir (okuma 10 sn önbelleklenir, bozuk dosya yalnız kendisi atlanır);
   yayını 150 sn'den eski süreç kapanmış sayılır. Tablo en fazla 200 kullanıcı satırı çizer (sayaçlar
@@ -699,12 +702,12 @@ DB/ağ çağrısı yoktur, bulunamayan kanıt dürüstçe "Bulunamadı" gösteri
   süreçlere 0 dilim bırakır ve açılışta günlüğe uyarı yazılır. Başlatıcı ölen
   süreci yeniden başlatır (`MERGEN_WORKERS_MAX_RESTARTS`, varsayılan 5, ardışık
   çökmeleri sayar ve `MERGEN_WORKERS_STABLE_SECONDS`, varsayılan 600 sn kararlı
-  çalışmadan sonra sıfırlanır; bütçe biterse tüm küme kapanır), paylar canlı kümeyle uyumlu kalır; kalanlar
+  çalışmadan sonra sıfırlanır; negatif ayarlar reddedilir, sıfır yeniden başlatmayı kapatır; bütçe biterse tüm küme hata koduyla kapanır), paylar canlı kümeyle uyumlu kalır; kalanlar
   sırayla başlar, böylece özetler paylaşılan işçi havuzunu doldurup sohbet
   isteklerini bekletmez. Bekleyen kuyruk `MERGEN_FILE_SUMMARY_MAX_QUEUE`
   (varsayılan 64) ile, tek kullanıcının (tüm sekmeleriyle) payı
   `MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION` (varsayılan 16; süreçlere
-  bölünmez, sürecin kuyruk dilimiyle sınırlanır) ile sınırlıdır;
+  bölünür; kuyruk dilimi birden büyükse bir yer diğer kullanıcılara ayrılır) ile sınırlıdır;
   dolunca dosya yine eklenir, özeti atlanır ve kullanıcı uyarılır (işçi kapasitesi
   yoksa uyarı bunu ayrıca söyler). Sıradaki özet en az özeti çalışan, eşitlikte en
   uzun süredir sıra almamış kullanıcıdan seçilir; boş işçi sayısı ölçülemezse özet

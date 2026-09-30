@@ -428,7 +428,7 @@ admin_doc_rewrite_links <- function(html, source_file) {
     capa <- ""
     if (nzchar(parca)) {
       cozulen <- try(utils::URLdecode(parca), silent = TRUE)
-      if (inherits(cozulen, "try-error")) cozulen <- parca
+      if (inherits(cozulen, "try-error") || !validUTF8(cozulen)) cozulen <- parca
       Encoding(cozulen) <- "UTF-8"
       capa <- sprintf(" data-doc-anchor=\"%s\"", admin_doc_slugify(cozulen))
     }

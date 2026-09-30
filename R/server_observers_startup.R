@@ -64,6 +64,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	}, ignoreInit = TRUE)
 
   startup_state <- new.env(parent = emptyenv())
+  startup_state$full_load_generation <- 0L
   startup_state$initial_saved_chats_status <- "idle"
   startup_state$lane_wait_registered <- FALSE
   startup_state$full_saved_chats_load_started <- FALSE
@@ -361,6 +362,8 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  # artık values$saved_chats üzerine yazamaz.
 	  startup_state$full_saved_chats_load_started <- TRUE
 	  full_load_user_id <- run_user_id
+	  startup_state$full_load_generation <- startup_state$full_load_generation + 1L
+	  full_load_generation <- startup_state$full_load_generation
 
 	  session$userData$initial_saved_chats_promise <- promises::then(
 		tracked_future_promise(
@@ -371,7 +374,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		  session_token = session$token
 		),
 		  onFulfilled = function(chats) {
-			if (session_closed()) {
+			if (session_closed() || !identical(startup_state$full_load_generation, full_load_generation)) {
 			  return(NULL)
 			}
 			current_full_user_id <- resolve_current_user_id()
@@ -409,7 +412,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			NULL
 		  },
 		onRejected = function(err) {
-		  if (session_closed()) {
+		  if (session_closed() || !identical(startup_state$full_load_generation, full_load_generation)) {
 			return(NULL)
 		  }
 		  current_full_user_id <- resolve_current_user_id()
@@ -496,6 +499,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	sahip_yenileme <- shiny::reactiveVal(0L)
 	if (exists("mergen_session_on_owner_change", mode = "function")) {
 	  mergen_session_on_owner_change(session, function(neden) {
+		startup_state$full_load_generation <- startup_state$full_load_generation + 1L
 		sahip_yenileme(shiny::isolate(sahip_yenileme()) + 1L)
 	  })
 	}

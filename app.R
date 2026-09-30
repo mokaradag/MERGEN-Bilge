@@ -175,6 +175,7 @@ create_mergen_app <- function() {
     },
     onStart = function() {
       validate_boot_state()
+      if (exists("mb_presence_initialize", mode = "function")) mb_presence_initialize()
       # İşlem-güvenli DB bağlantı havuzunu süreç ömrü boyunca BİR KEZ başlat.
       # Havuzlama varsayılan KAPALI; MERGEN_DB_POOL_ENABLED=TRUE değilse no-op'tur
       # (bulut/test/boot-smoke davranışı değişmez). Başlatma başarısızlığı boot'u

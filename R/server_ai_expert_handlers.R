@@ -43,6 +43,8 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   speechPcmStreamObserversInit(input, session)
 
   # Kimlik nesli: sahip değişimi/kimlik kaybında artar; bayat boşta işi düşer.
+  idle_generation <- 0L
+  session$onSessionEnded(function() idle_generation <<- idle_generation + 1L)
   kimlik_nesli <- function() as.integer(session$userData$kimlik_nesli %||% 0L)[1]
 
   # SSO akışında başlangıçtaki current_user_id değeri 0 olabilir.
@@ -194,6 +196,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
       pending_guidance_clear()
       try(if (isTRUE(isolate(ai_expert$is_speaking()))) ai_expert$stop_speaking(0), silent = TRUE)
       if (!identical(neden, "sahip_degisti")) return(invisible(NULL))
+      idle_generation <<- idle_generation + 1L
       greeting_done(FALSE)
       page_guidance_times(list())
       idle_talk_counter(0L)
@@ -241,8 +244,10 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   # --- Boşta konuşma zamanlayıcısı yardımcısı ---
   schedule_idle_chat <- function(delay_ms = NULL) {
     if (is.null(delay_ms)) delay_ms <- ai_expert_idle_interval_ms(current_talk_frequency())
+    idle_generation <<- idle_generation + 1L
+    generation <- idle_generation
     shinyjs::delay(delay_ms, {
-      trigger_idle_chat()
+      if (identical(generation, idle_generation)) trigger_idle_chat()
     })
   }
 
@@ -379,6 +384,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
   # --- Boşta konuşma ---
   trigger_idle_chat <- function() {
+    generation <- idle_generation
     if (!isTRUE(isolate(settings_data$enable_ai_expert)) ||
         !identical(isolate(settings_data$experience_mode), "kesif")) {
       schedule_idle_chat()
@@ -509,6 +515,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
       # bağlamsal olarak geçersizdir ve oynatılmaz. Kuyrukta rehberlik
       # bekliyorsa boşta konuşma onun önüne geçemez. tryCatch: bu geri çağrı
       # reaktif bağlam dışında koşar; kaçan hata uygulamayı çökertmemeli.
+      if (!identical(generation, idle_generation)) return(invisible(NULL))
       if (!identical(kimlik_nesli(), gonderim_nesli)) return(schedule_idle_chat())
       tryCatch({
         tab_degisti <- !identical(isolate(input$tabs) %||% "chat", current_page_val)
@@ -525,6 +532,8 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
       })
       schedule_idle_chat()
     }) %...!% (function(e) {
+      if (!identical(generation, idle_generation)) return(invisible(NULL))
+      if (!identical(kimlik_nesli(), gonderim_nesli)) return(schedule_idle_chat())
       cat(sprintf("[AI_EXPERT] Boşta konuşma hatası: %s\n", conditionMessage(e)))
       schedule_idle_chat()
     })

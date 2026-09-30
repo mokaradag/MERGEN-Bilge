@@ -119,6 +119,7 @@ file_summary_task_fn <- function(file_name_safe, dest_safe, settings_snapshot, s
   if (!is.list(kayit)) return(TRUE)
   yol <- kayit[[ad]]$path %||% kayit[[ad]]$datapath
   if (is.null(yol) || is.null(dest)) return(FALSE)
+  if (identical(as.character(yol)[1], as.character(dest)[1])) return(TRUE)
   # Aynı dosyanın farklı yazımları (ayraç, göreli/mutlak) eşit sayılır.
   yollar <- normalizePath(c(as.character(yol)[1], as.character(dest)[1]), winslash = "/", mustWork = FALSE)
   if (.Platform$OS.type == "windows") yollar <- tolower(yollar)

@@ -221,6 +221,8 @@ test_that("oturum başka kullanıcıya geçince açık söyleşi, kayıtlı list
     expect_length(shiny::isolate(durum$values$saved_chats), 0L)
     expect_null(shiny::isolate(durum$values$current_chat_id))
     expect_true(shiny::isolate(durum$values$show_welcome))
+    expect_false(shiny::isolate(durum$values$is_sending))
+    expect_false(shiny::isolate(durum$values$typing))
     expect_true(shiny::isolate(durum$stop_generation()))
     expect_true(startsWith(shiny::isolate(durum$active_request_id()), "cancelled_"))
     expect_length(shiny::isolate(durum$session_files()), 0L)
@@ -259,4 +261,19 @@ test_that("kimlik kaybı süren yanıtı keser, PK iptal jetonunu önce işaretl
     expect_null(shiny::isolate(durum$values$current_chat_id))
     expect_length(shiny::isolate(durum$session_files()), 0L)
   })
+})
+
+
+test_that("sahip kancaları temizlenmeden önce dosya kayıtlarını görür", {
+  env <- .owner_env()
+  oturum <- .owner_session()
+  oturum$userData$kimlik_sahibi <- 7L
+  oturum$userData$current_session_files <- list(a = list(path = "/a"))
+  gorulen <- NULL
+  env$mergen_session_on_owner_change(oturum, function(neden) {
+    gorulen <<- oturum$userData$current_session_files
+  })
+  env$mergen_session_owner_transition(oturum$userData, 7L, 8L)
+  expect_identical(gorulen, list(a = list(path = "/a")))
+  expect_length(oturum$userData$current_session_files, 0L)
 })

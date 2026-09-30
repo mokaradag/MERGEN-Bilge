@@ -71,6 +71,23 @@ test_that("fikstür sayfası geçerli UTF-8 üretir ve betik kapanışı kaçır
   expect_false(grepl("</", fikstur_json, fixed = TRUE))
 })
 
+test_that("tarayıcı süreci beklenirken httpuv çağrıları yanıtlanır ve süre sınırı korunur", {
+  skip_if_not_installed("processx")
+  skip_if_not_installed("httpuv")
+  runner <- .cm_loader_runner()
+  port <- httpuv::randomPort()
+  server <- httpuv::startServer("127.0.0.1", port, list(call = function(req) {
+    list(status = 200L, headers = list("Content-Type" = "text/plain"), body = "deneme")
+  }))
+  on.exit(httpuv::stopServer(server))
+  args <- c("-e", sprintf("cat(readLines('http://127.0.0.1:%d/', warn=FALSE))", port))
+  sonuc <- runner$cm_render_check_browser_run(Sys.which("Rscript"), args, 10)
+  expect_identical(sonuc$status, 0L)
+  expect_identical(sonuc$stdout, "deneme")
+  sonuc <- runner$cm_render_check_browser_run(Sys.which("Rscript"), c("-e", "Sys.sleep(5)"), 0.2)
+  expect_identical(sonuc$status, 124L)
+})
+
 test_that("denetim betiği ve tarayıcı testi kaynakları readLines/parse(text=) ile yüklemez", {
   root <- resolve_repo_root_for_tests()
   for (rel in c("tests/scripts/codemirror_rendering_check.R",

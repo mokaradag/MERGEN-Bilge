@@ -159,6 +159,11 @@ mergen_start_workers <- function(dry_run = FALSE) {
     stop(sprintf("Gecersiz worker port araligi: %d-%d (1-65535 olmali). MERGEN_BASE_PORT/MERGEN_WORKERS degerlerini kontrol edin.",
                  min(ports, na.rm = TRUE), max(ports, na.rm = TRUE)), call. = FALSE)
   }
+  max_restarts <- mergen_workers_env_int("MERGEN_WORKERS_MAX_RESTARTS", 5L)
+  stable_secs <- mergen_workers_env_int("MERGEN_WORKERS_STABLE_SECONDS", 600L)
+  if (max_restarts < 0L || stable_secs < 0L) {
+    stop("Worker yeniden baslatma ayarlari negatif olamaz.", call. = FALSE)
+  }
   mergen_worker_print_plan(plan)
 
   if (isTRUE(dry_run)) {
@@ -200,8 +205,6 @@ mergen_start_workers <- function(dry_run = FALSE) {
   # (MERGEN_APP_WORKER_COUNT) canli surec kumesiyle uyumlu kalir. Butce ardisik
   # cokmeleri sayar: worker MERGEN_WORKERS_STABLE_SECONDS boyunca calisinca
   # sifirlanir. Butce biterse tum kume kapatilir (yarim kume paylari yanlis boler).
-  max_restarts <- mergen_workers_env_int("MERGEN_WORKERS_MAX_RESTARTS", 5L)
-  stable_secs <- mergen_workers_env_int("MERGEN_WORKERS_STABLE_SECONDS", 600L)
   repeat {
     for (k in seq_along(procs)) {
       alive <- tryCatch(procs[[k]]$proc$is_alive(), error = function(e) FALSE)
@@ -215,7 +218,7 @@ mergen_start_workers <- function(dry_run = FALSE) {
       if (procs[[k]]$restarts >= max_restarts) {
         cat(sprintf("[WORKER] port=%d yeniden baslatma butcesi bitti; tum worker'lar kapatiliyor.\n",
                     procs[[k]]$spec$port))
-        return(invisible(procs))
+        stop("Worker yeniden baslatma butcesi bitti.", call. = FALSE)
       }
       procs[[k]]$restarts <- procs[[k]]$restarts + 1L
       cat(sprintf("[WORKER] port=%d durdu; yeniden baslatiliyor (%d/%d).\n",

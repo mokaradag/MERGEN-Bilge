@@ -14,6 +14,22 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-09-29 Oturum geçişleri ve işlem güvenilirliği
+
+- Kullanıcı değişiminde gönderim/yazma kilidi bırakılır; dosya ayırma kancaları
+  kayıtlar temizlenmeden çalışır. Geç kalan söyleşi yüklemeleri ve ses işleri
+  yeni sahibin durumunu değiştirmez; boşta konuşma zamanlayıcıları çoğalmaz.
+- Kullanıcı özet bütçesi süreçlere bölünür ve diğer kullanıcılara kuyrukta yer
+  bırakılır. Eşit dosya yolları için kuyruk yoklaması ağ dosya sistemine gitmez.
+- DNS çözümleme ayrı, süre sınırlı süreçtedir. Çevrimiçi kayıt dizininin yerellik
+  ve Windows DACL kontrolleri oturum kabulünden önce yapılır; doğrulanamayan
+  dizinde paylaşım kapalı kalır.
+- Worker yeniden başlatma bütçesi bittiğinde başlatıcı hata koduyla çıkar;
+  negatif ayarlar reddedilir. Yetim günlük devrinde birleşmiş bayt kaydı korunur.
+- Dokümantasyonda bitişik olay öznitelikleri temizlenir; geçersiz Unicode
+  varlıkları ve yüzde kodlu UTF-8 bölüm adları sayfayı düşürmez. İlgisiz modül güncellemesi bekleyen bölüm
+  bağlantısını tüketmez. XLSX hazırlama hatası CSV yedeğine yönlendirilir.
+
 ### (Yayınlanmadı) 2026-09-25 Toplu yükleme donması, Windows kodlama ve Sistem Durumu düzeltmeleri
 
 - **Toplu yükleme artık uygulamayı dondurmuyor.** Her dosya özeti gönderiminde

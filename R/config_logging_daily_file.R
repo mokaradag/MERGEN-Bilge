@@ -342,12 +342,25 @@ mergen_log_upgrade_legacy_file <- function(target_file, lock_wait = 2, stale_aft
   zaman <- file.info(adaylar)$mtime
   eski <- !bizim & !is.na(zaman) & as.numeric(difftime(Sys.time(), zaman, units = "secs")) > 60
   sahiplenilen <- sub("\\.log$", sprintf("-m%d.log", Sys.getpid()), adaylar[eski])
-  tasinan <- file.rename(adaylar[eski], sahiplenilen)
-  # Yan dosyadaki birleşen bayt kaydı da yedekle birlikte taşınır.
-  for (i in which(tasinan)) {
-    if (file.exists(paste0(adaylar[eski][i], ".birlesen"))) {
-      file.rename(paste0(adaylar[eski][i], ".birlesen"), paste0(sahiplenilen[i], ".birlesen"))
+  tasinan <- logical(length(sahiplenilen))
+  for (i in seq_along(sahiplenilen)) {
+    kaynak <- adaylar[eski][i]
+    hedef <- sahiplenilen[i]
+    if (file.exists(hedef)) next
+    yan <- paste0(kaynak, ".birlesen")
+    hedef_yan <- paste0(hedef, ".birlesen")
+    if (!file.exists(yan) && file.exists(hedef_yan)) {
+      unlink(hedef_yan)
+      if (file.exists(hedef_yan)) next
     }
+    # Bayt kaydı doğrulanmadan günlük sahiplenilmez.
+    if (file.exists(yan) && !isTRUE(suppressWarnings(try({
+      file.copy(yan, hedef_yan, overwrite = TRUE) &&
+        identical(readBin(yan, "raw", file.info(yan)$size),
+                  readBin(hedef_yan, "raw", file.info(hedef_yan)$size))
+    }, silent = TRUE)))) next
+    tasinan[i] <- isTRUE(file.rename(kaynak, hedef))
+    if (tasinan[i]) unlink(yan) else unlink(hedef_yan)
   }
   secilen <- c(adaylar[bizim], sahiplenilen[tasinan])
   secilen[order(file.info(secilen)$mtime, basename(secilen))]

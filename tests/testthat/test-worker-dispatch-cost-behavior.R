@@ -1037,10 +1037,9 @@ test_that("çok-süreçli payda sıfır dilim korunur, varsayılan eşzamanlıl�
   expect_identical(pay(env$file_summary_max_concurrent), rep(1L, 4L))
   # Dağıtım geneli kuyruk tavanı (2) süreç sayısına şişirilmez.
   expect_identical(pay(env$file_summary_max_queue), c(1L, 1L, 0L, 0L))
-  # Kullanıcı başı bütçe bölünmez (tek sekmeli toplu yükleme özetsiz kalmaz);
-  # süreç kuyruk dilimiyle sınırlanır.
+  # Kullanıcı bütçesinin süreç payları toplam tavanı aşmaz.
   withr::with_envvar(c(MERGEN_FILE_SUMMARY_MAX_QUEUE = "64"),
-                     expect_identical(pay(env$file_summary_max_queue_per_session), rep(16L, 4L)))
+                     expect_identical(pay(env$file_summary_max_queue_per_session), rep(4L, 4L)))
   expect_identical(pay(env$file_summary_max_queue_per_session), c(1L, 1L, 0L, 0L))
   expect_match(env$file_summary_capacity_warnings(), "MERGEN_FILE_SUMMARY_MAX_QUEUE=2", all = FALSE)
   withr::with_envvar(c(MERGEN_APP_WORKER_COUNT = "1"), expect_length(env$file_summary_capacity_warnings(), 0L))
@@ -1243,4 +1242,33 @@ test_that("iç içe yardımcının paketten çözülen adı gölgelenirse önbel
   withr::defer(if ("wd_ic_golge_paket" %in% search()) base::detach("wd_ic_golge_paket", character.only = TRUE))
   worker_monitor_auto_globals("unit_dep_nested_search", gorev)
   expect_identical(sayac$detect, 1L)
+})
+
+
+test_that("eşit kayıt yolları kuyruk yoklamasında dosya sistemine dokunmaz", {
+  env <- .wd_ozet_kaynak(new.env(parent = globalenv()))
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_file_summary_task.R"), local = env)
+  env$normalizePath <- function(...) stop("ağ dosya sistemi çağrısı")
+  ud <- new.env()
+  ud$file_summary_jobs <- list(a = list(jeton = "jeton"))
+  ud$current_session_files <- list(a = list(path = "//sunucu/paylasim/a"))
+  expect_true(env$.file_summary_result_current(list(userData = ud), "a", "jeton", "//sunucu/paylasim/a"))
+})
+
+test_that("kullanıcı bütçesi süreçlerde çoğalmaz ve diğer kullanıcıya yer kalır", {
+  env <- .wd_ozet_kaynak(new.env(parent = globalenv()))
+  for (n in c(1L, 4L, 5L, 20L)) {
+    withr::with_envvar(c(MERGEN_APP_WORKER_COUNT = as.character(n),
+                        MERGEN_FILE_SUMMARY_MAX_QUEUE = "64", MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION = "16"), {
+      paylar <- vapply(seq_len(n), function(i) {
+        withr::with_envvar(c(MERGEN_APP_WORKER_INDEX = as.character(i)), {
+          q <- env$file_summary_max_queue()
+          u <- env$file_summary_max_queue_per_session()
+          if (q > 1L) expect_lt(u, q)
+          u
+        })
+      }, integer(1))
+      expect_lte(sum(paylar), 16L)
+    })
+  }
 })

@@ -715,10 +715,12 @@ testthat::test_that("kimlik sınırı boşta konuşmayı, kuyruğu ve bayat LLM 
         session$userData$user_first_name <- "Mehmet"
         env$mergen_session_owner_transition(session$userData, 0L, 6L)
         onceki <- spoke$n
+        onceki_is <- length(isler)
         isler[[1]]$resolve("A için boşta metni")
         for (i in 1:5) later::run_now(0.05)
         testthat::expect_false(identical(spoke$last_text, "A için boşta metni"))
         testthat::expect_identical(spoke$n, onceki)
+        testthat::expect_identical(length(isler), onceki_is)
 
         # Sonraki gönderim yeni sahibin adını kullanır.
         session$flushReact()

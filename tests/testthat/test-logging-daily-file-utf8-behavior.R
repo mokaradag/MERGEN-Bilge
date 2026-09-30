@@ -522,3 +522,25 @@ test_that("sahiplenilip birleştirilemeyen yetim yedek sonraki yazımda yeniden 
   expect_identical(.log_utf8_bytes(hedef), charToRaw("ana\nyetim\nbir\niki\n"))
   expect_length(list.files(tmp, pattern = "\\.pbaska"), 0L)
 })
+
+
+test_that("yetim günlük sahiplenilirken bayt kaydı kopyalanamazsa yeniden eklenmez", {
+  skip_if_not_installed("logger")
+  tmp <- withr::local_tempdir()
+  env <- .log_utf8_env(tmp)
+  hedef <- file.path(tmp, "deneme.log")
+  yedek <- file.path(tmp, "deneme.peski-1.log")
+  writeBin(charToRaw("bir\niki\n"), yedek)
+  writeBin(charToRaw("bir\n"), hedef)
+  writeLines("4", paste0(yedek, ".birlesen"))
+  Sys.setFileTime(yedek, Sys.time() - 120)
+  env$file.copy <- function(...) FALSE
+  expect_length(env$.mergen_log_orphan_fallbacks(hedef, "kendi.log", TRUE), 0L)
+  expect_true(file.exists(yedek))
+  rm("file.copy", envir = env)
+  sahip <- env$.mergen_log_orphan_fallbacks(hedef, "kendi.log", TRUE)
+  expect_length(sahip, 1L)
+  expect_equal(env$.mergen_log_merged_offset(sahip), 4)
+  expect_true(env$.mergen_log_merge_fallback(hedef, sahip))
+  expect_identical(rawToChar(.log_utf8_bytes(hedef)), "bir\niki\n")
+})

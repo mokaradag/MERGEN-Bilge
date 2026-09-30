@@ -388,83 +388,84 @@ pk_export_build <- function(data, packet = list(), context = list(),
           grepl("elapsed time limit|reached elapsed", hata, ignore.case = TRUE)) {
         return(iptal_sonucu(plan$total_rows, ncol(data), status = durdurma %||% "deadline"))
       }
-      stop(hata, call. = FALSE)
-    }
-    hazir <- hazirlik$value$hazir
-    hazir_notlar <- hazir$notes
-    govde <- hazirlik$value$govde
-    sayfalar <- hazirlik$value$sayfalar
-    sayfalar[["Ozet"]] <- ozet_sayfasi
-    sayfalar[["Bilgi"]] <- bilgi_sayfasi
+      dogrulama <- list(ok = FALSE, reason = hata)
+    } else {
+      hazir <- hazirlik$value$hazir
+      hazir_notlar <- hazir$notes
+      govde <- hazirlik$value$govde
+      sayfalar <- hazirlik$value$sayfalar
+      sayfalar[["Ozet"]] <- ozet_sayfasi
+      sayfalar[["Bilgi"]] <- bilgi_sayfasi
 
-    yol <- file.path(dizin, .pk_export_filename(base_name, "xlsx"))
-    if (durduruldu()) return(iptal_sonucu(plan$total_rows, ncol(govde)))
+      yol <- file.path(dizin, .pk_export_filename(base_name, "xlsx"))
+      if (durduruldu()) return(iptal_sonucu(plan$total_rows, ncol(govde)))
 
-    yazim <- sinirli_asama(function() {
-      tryCatch({
-        if (bicimli) {
-          .pk_export_write_openxlsx(yol, sayfalar, meta, hazir$percent_columns)
-        } else {
-          writexl::write_xlsx(lapply(sayfalar, function(s) {
-            attr(s, "pk_source_columns") <- NULL
-            s
-          }), path = yol)
-        }
-        TRUE
-      }, error = function(e) {
-        cat(sprintf("[PK_ANALIZ] XLSX yazimi basarisiz: %s\n", conditionMessage(e)))
-        FALSE
+      yazim <- sinirli_asama(function() {
+        tryCatch({
+          if (bicimli) {
+            .pk_export_write_openxlsx(yol, sayfalar, meta, hazir$percent_columns)
+          } else {
+            writexl::write_xlsx(lapply(sayfalar, function(s) {
+              attr(s, "pk_source_columns") <- NULL
+              s
+            }), path = yol)
+          }
+          TRUE
+        }, error = function(e) {
+          cat(sprintf("[PK_ANALIZ] XLSX yazimi basarisiz: %s\n", conditionMessage(e)))
+          FALSE
+        })
       })
-    })
-    # Bütçe içinde bitmediyse YARIM dosya diskte kalmamalıdır. Sınırlı aşamanın
-    # bütçesi dolduysa neden SON TARİHtir, kullanıcı iptali değil.
-    if (!isTRUE(yazim$ok)) {
-      if (!is.na(yol)) try(safe_unlink_if_exists(yol), silent = TRUE)
-      return(iptal_sonucu(plan$total_rows, ncol(govde),
-                          status = halt_durumu() %||% son_durdurma %||% "deadline"))
-    }
-    yazildi <- isTRUE(yazim$value)
-
-    # Yazım BİTTİ: dosya artık diskte. Bundan sonraki her başarısız/iptal
-    # yolunda temizlenebilmesi için ANINDA kaydedilir.
-    if (isTRUE(yazildi)) {
-      .pk_export_track_artifact(yol)
-    } else if (!is.na(yol)) {
-      # BAŞARISIZ YAZIM KISMİ DOSYA BIRAKMAZ: `write_xlsx()`/`saveWorkbook()`
-      # hedefi OLUŞTURDUKTAN sonra da düşebilir. Dosya izlenmediği için hiçbir
-      # temizlik yolu ona ulaşmaz ve RLS filtreli veri çalışma dizininde KALIR.
-      try(safe_unlink_if_exists(yol), silent = TRUE)
-    }
-
-    if (durduruldu()) {
-      if (!is.na(yol)) try(safe_unlink_if_exists(yol), silent = TRUE)
-      return(iptal_sonucu(plan$total_rows, ncol(govde)))
-    }
-
-    dogrulama <- if (yazildi) {
-      # Geri okuma/doğrulama da SINIRLIDIR: aynı gerekçe (bkz. `sinirli_asama`).
-      dogrulama_sonucu <- sinirli_asama(function() pk_export_verify_file(yol, plan, sayfalar))
-      if (!isTRUE(dogrulama_sonucu$ok)) {
+      # Bütçe içinde bitmediyse YARIM dosya diskte kalmamalıdır. Sınırlı aşamanın
+      # bütçesi dolduysa neden SON TARİHtir, kullanıcı iptali değil.
+      if (!isTRUE(yazim$ok)) {
         if (!is.na(yol)) try(safe_unlink_if_exists(yol), silent = TRUE)
         return(iptal_sonucu(plan$total_rows, ncol(govde),
                             status = halt_durumu() %||% son_durdurma %||% "deadline"))
       }
-      dogrulama_sonucu$value
-    } else {
-      list(ok = FALSE, reason = "XLSX dosyasi yazilamadi.")
-    }
+      yazildi <- isTRUE(yazim$value)
 
-    if (isTRUE(dogrulama$ok)) {
-      return(list(
-        status = "ok",
-        files = list(list(path = yol, name = basename(yol), rows = plan$total_rows,
-                          cols = ncol(govde), format = "xlsx")),
-        message = NULL, total_rows = plan$total_rows, cols = ncol(govde),
-        format = if (bicimli) "xlsx_formatted" else "xlsx_baseline",
-        parts = length(plan$parts), notes = hazir$notes
-      ))
-    }
+      # Yazım BİTTİ: dosya artık diskte. Bundan sonraki her başarısız/iptal
+      # yolunda temizlenebilmesi için ANINDA kaydedilir.
+      if (isTRUE(yazildi)) {
+        .pk_export_track_artifact(yol)
+      } else if (!is.na(yol)) {
+        # BAŞARISIZ YAZIM KISMİ DOSYA BIRAKMAZ: `write_xlsx()`/`saveWorkbook()`
+        # hedefi OLUŞTURDUKTAN sonra da düşebilir. Dosya izlenmediği için hiçbir
+        # temizlik yolu ona ulaşmaz ve RLS filtreli veri çalışma dizininde KALIR.
+        try(safe_unlink_if_exists(yol), silent = TRUE)
+      }
 
+      if (durduruldu()) {
+        if (!is.na(yol)) try(safe_unlink_if_exists(yol), silent = TRUE)
+        return(iptal_sonucu(plan$total_rows, ncol(govde)))
+      }
+
+      dogrulama <- if (yazildi) {
+        # Geri okuma/doğrulama da SINIRLIDIR: aynı gerekçe (bkz. `sinirli_asama`).
+        dogrulama_sonucu <- sinirli_asama(function() pk_export_verify_file(yol, plan, sayfalar))
+        if (!isTRUE(dogrulama_sonucu$ok)) {
+          if (!is.na(yol)) try(safe_unlink_if_exists(yol), silent = TRUE)
+          return(iptal_sonucu(plan$total_rows, ncol(govde),
+                              status = halt_durumu() %||% son_durdurma %||% "deadline"))
+        }
+        dogrulama_sonucu$value
+      } else {
+        list(ok = FALSE, reason = "XLSX dosyasi yazilamadi.")
+      }
+
+      if (isTRUE(dogrulama$ok)) {
+        return(list(
+          status = "ok",
+          files = list(list(path = yol, name = basename(yol), rows = plan$total_rows,
+                            cols = ncol(govde), format = "xlsx")),
+          message = NULL, total_rows = plan$total_rows, cols = ncol(govde),
+          format = if (bicimli) "xlsx_formatted" else "xlsx_baseline",
+          parts = length(plan$parts), notes = hazir$notes
+        ))
+      }
+
+    }
     cat(sprintf("[PK_ANALIZ] XLSX dogrulamasi basarisiz (%s); CSV yedegine dusuluyor.\n",
                 as.character(dogrulama$reason %||% "?")[1]))
     if (!is.na(yol)) try(safe_unlink_if_exists(yol), silent = TRUE)

@@ -78,12 +78,13 @@ file_summary_max_queue <- function() {
 }
 
 # Tek kullanıcı (tüm sekmeleri birlikte) ortak bekleme bütçesini tüketemez
-# (MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION, varsayılan 16). Kullanıcının tek
-# sekmesi tek sürece düştüğünden bu bütçe süreçlere bölünmez; süreç kuyruk
-# dilimiyle sınırlanır (süreç belleği yine sınırlı kalır).
+# (MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION, varsayılan 16). Kullanıcı bütçesi
+# süreçlere bölünür; her süreçte diğer kullanıcılar için de yer bırakılır.
 file_summary_max_queue_per_session <- function() {
-  min(file_summary_int_setting("MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION", 16L),
-      file_summary_max_queue())
+  kuyruk <- file_summary_max_queue()
+  tavan <- if (kuyruk > 1L) kuyruk - 1L else kuyruk
+  min(file_summary_process_share(file_summary_int_setting("MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION", 16L)),
+      tavan)
 }
 
 # Süreç sayısından küçük başlatıcı geneli değer bazı süreçlere 0 dilim bırakır;
@@ -91,7 +92,8 @@ file_summary_max_queue_per_session <- function() {
 file_summary_capacity_warnings <- function() {
   n <- file_summary_worker_count()
   if (n <= 1L) return(character(0))
-  ayarlar <- c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = max(2L, n), MERGEN_FILE_SUMMARY_MAX_QUEUE = 64L)
+  ayarlar <- c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = max(2L, n), MERGEN_FILE_SUMMARY_MAX_QUEUE = 64L,
+               MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION = 16L)
   degerler <- vapply(names(ayarlar), function(ad) file_summary_int_setting(ad, ayarlar[[ad]]), integer(1))
   kucuk <- names(degerler)[degerler < n]
   sprintf("%s=%d uygulama süreci sayısından (%d) küçük; bazı süreçler bu bütçeyi kullanamaz.",

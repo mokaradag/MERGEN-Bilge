@@ -166,6 +166,9 @@ testthat::test_that("A->B->A seçimi süren A sentezini yeniden kullanır; sahip
 
   # A'nın sentezi B'ye geçişten sonra biter: önek B'nin karşılamasına eklenmez.
   env$mergen_session_owner_transition(session$userData, 5L, 6L)
+  runtime$prewarm_welcome(personalar[1])
+  later::run_now(timeoutSecs = 0.1)
+  testthat::expect_identical(cagri, 3L)
   cozuculer[[1]](list(success = TRUE, audio_src = "data:audio/wav;base64,AA", duration = 1))
   later::run_now(timeoutSecs = 0.1)
   testthat::expect_true(runtime$play_welcome(personalar[1]))

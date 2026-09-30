@@ -171,6 +171,7 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
       prefix_slot$text <- ""
       prefix_slot$audio_src <- NULL
       prefix_slot$promise <- NULL
+      prefix_slot$inflight <- list()
     })
   }
 

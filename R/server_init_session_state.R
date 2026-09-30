@@ -161,6 +161,14 @@ serverInitSessionState <- function(session, identity, sso_state = NULL) {
         }
         stop_generation(TRUE)
         active_request_id(paste0("cancelled_", as.numeric(Sys.time())))
+        values$is_sending <- FALSE
+        values$typing <- FALSE
+        if (exists("mergen_send_message_release_values_token", mode = "function")) {
+          try(mergen_send_message_release_values_token(values), silent = TRUE)
+        }
+        if (exists("chat_reset_state", mode = "function")) {
+          try(shiny::withReactiveDomain(session, chat_reset_state(session, values)), silent = TRUE)
+        }
       }
       values$messages <- list()
       values$saved_chats <- list()

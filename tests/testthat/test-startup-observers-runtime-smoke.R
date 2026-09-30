@@ -418,9 +418,15 @@ testthat::test_that("hızlı şeritte reddedilen ön izleme sözü açılışı 
   stubs <- .with_startup_db_stubs(rec)
   on.exit(stubs$restore(), add = TRUE)
 
+  rec$warned <- FALSE
+  startup_init <- startupObserversInit
+  environment(startup_init) <- list2env(list(warning = function(...) {
+    metin <- paste(..., collapse = " ")
+    if (grepl("Preview chat load failed", metin)) rec$warned <- TRUE else base::warning(...)
+  }), parent = environment(startup_init))
   shiny::testServer(function(input, output, session) {
     values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
-    startupObserversInit(
+    startup_init(
       input = input,
       session = session,
       values = values,
@@ -434,27 +440,10 @@ testthat::test_that("hızlı şeritte reddedilen ön izleme sözü açılışı 
     session$flushReact()
     session$setInputs(startup_lane_resolved = list(lane = "fast_lane", source = "stored", ts = 1))
 
-    # Async reddedilme onRejected içinde uyarıya çevrilir; promise alanı bu
-    # uyarıyı reaktif flush sırasında (setInputs ya da run_now içinde) yeniden
-    # fırlattığı için expect_warning ile güvenilir yakalanamaz.
-    # withCallingHandlers tüm tetikleme+boşaltma dizisini sarar: uyarıyı hem
-    # doğrular hem susturur; böylece strict (stop_on_warning) tam suite'te de
-    # sızıntı olmaz.
-    warned <- FALSE
-    withCallingHandlers(
-      {
-        session$setInputs(welcome_client_ready = list(fast_lane = TRUE, timestamp = 1))
-        later::run_now(timeoutSecs = 0.1)
-      },
-      warning = function(w) {
-        if (grepl("Preview chat load failed", conditionMessage(w))) {
-          warned <<- TRUE
-          invokeRestart("muffleWarning")
-        }
-      }
-    )
+    session$setInputs(welcome_client_ready = list(fast_lane = TRUE, timestamp = 1))
+    for (i in 1:5) later::run_now(timeoutSecs = 0.05)
     testthat::expect_identical(rec$preview, 1L)
-    testthat::expect_true(warned)
+    testthat::expect_true(rec$warned)
     session$flushReact()
     testthat::expect_identical(length(session$userData$.values$saved_chats), 0L)
   })
@@ -475,9 +464,15 @@ testthat::test_that("hızlı şeritte reddedilen ön izleme daha sonra yeniden d
   stubs <- .with_startup_db_stubs(rec)
   on.exit(stubs$restore(), add = TRUE)
 
+  rec$warned <- FALSE
+  startup_init <- startupObserversInit
+  environment(startup_init) <- list2env(list(warning = function(...) {
+    metin <- paste(..., collapse = " ")
+    if (grepl("Preview chat load failed", metin)) rec$warned <- TRUE else base::warning(...)
+  }), parent = environment(startup_init))
   shiny::testServer(function(input, output, session) {
     values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
-    startupObserversInit(
+    startup_init(
       input = input,
       session = session,
       values = values,
@@ -491,20 +486,9 @@ testthat::test_that("hızlı şeritte reddedilen ön izleme daha sonra yeniden d
     session$flushReact()
     session$setInputs(startup_lane_resolved = list(lane = "fast_lane", source = "stored", ts = 1))
 
-    warned <- FALSE
-    withCallingHandlers(
-      {
-        session$setInputs(welcome_client_ready = list(fast_lane = TRUE, timestamp = 1))
-        later::run_now(timeoutSecs = 0.1)
-      },
-      warning = function(w) {
-        if (grepl("Preview chat load failed", conditionMessage(w))) {
-          warned <<- TRUE
-          invokeRestart("muffleWarning")
-        }
-      }
-    )
-    testthat::expect_true(warned)
+    session$setInputs(welcome_client_ready = list(fast_lane = TRUE, timestamp = 1))
+    for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+    testthat::expect_true(rec$warned)
     testthat::expect_identical(rec$preview, 1L)
     testthat::expect_identical(length(session$userData$.values$saved_chats), 0L)
 
@@ -1008,6 +992,7 @@ testthat::test_that("sahip değişiminde A'nın geç ön izlemesi B'ye yazılmaz
   testthat::skip_if_not_installed("shiny")
   testthat::skip_if_not_installed("promises")
   testthat::skip_if_not_installed("later")
+  testthat::skip_if_not_installed("shinyjs")
   .startup_observers_source_once()
   if (!exists("mergen_session_owner_transition", envir = globalenv(), mode = "function")) {
     source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
@@ -1089,6 +1074,8 @@ testthat::test_that("sahip değişiminde A'nın geç ön izlemesi B'ye yazılmaz
 testthat::test_that("kimlik kaybında kayıtlı söyleşiler bırakılır, aynı kullanıcı dönünce yeniden yüklenir", {
   testthat::skip_if_not_installed("shiny")
   testthat::skip_if_not_installed("later")
+  testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises")
   .startup_observers_source_once()
   if (!exists("mergen_session_owner_transition", envir = globalenv(), mode = "function")) {
     source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
@@ -1124,5 +1111,44 @@ testthat::test_that("kimlik kaybında kayıtlı söyleşiler bırakılır, aynı
     session$flushReact()
     for (i in 1:5) later::run_now(timeoutSecs = 0.05)
     testthat::expect_identical(names(shiny::isolate(session$userData$.values$saved_chats)), "a-chat")
+  })
+})
+
+
+testthat::test_that("eski tam liste sonucu yeni sahibin tamamlanmış yüklemesini sıfırlamaz", {
+  for (pkg in c("shiny", "shinyjs", "promises", "later")) testthat::skip_if_not_installed(pkg)
+  .startup_observers_source_once()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
+         encoding = "UTF-8", local = globalenv())
+  rec <- new.env()
+  rec$defer_full_fulfillment <- TRUE
+  rec$full_result <- list(a = list(title = "A"))
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+  kimlik <- new.env()
+  kimlik$uid <- 7L
+  shiny::testServer(function(input, output, session) {
+    session$userData$kimlik_sahibi <- 7L
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startupObserversInit(input, session, values, render_welcome_screen = function(...) NULL,
+                         current_user_id = function() kimlik$uid, sso_state = NULL, boot_ready = NULL)
+    session$userData$.values <- values
+  }, {
+    session$flushReact()
+    session$setInputs(startup_lane_resolved = list(lane = "rich_lane", source = "stored", ts = 1))
+    eski <- rec$resolve_full
+    kimlik$uid <- 8L
+    rec$full_result <- list(b = list(title = "B"))
+    mergen_session_owner_transition(session$userData, 7L, 8L)
+    session$flushReact()
+    rec$resolve_full()
+    for (i in 1:5) later::run_now(0.05)
+    expect_identical(names(shiny::isolate(session$userData$.values$saved_chats)), "b")
+    eski()
+    for (i in 1:5) later::run_now(0.05)
+    expect_false(isTRUE(session$userData$saved_chats_full_pending))
+    expect_identical(names(shiny::isolate(session$userData$.values$saved_chats)), "b")
+    session$setInputs(tabs = "saved_chats")
+    expect_identical(rec$full, 2L)
   })
 })

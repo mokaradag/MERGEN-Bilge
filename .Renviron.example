@@ -187,8 +187,8 @@ MERGEN_MCP_BASE_DIR="//mainserver/MERGEN Bilge/mergen_uploads"
 #   MERGEN_FILE_SUMMARY_MAX_QUEUE=64
 # Tek kullanıcının (tüm sekmeleriyle) sırada tutabileceği en fazla özet (bir
 # kullanıcının toplu yüklemesi ortak kuyruğu doldurup diğerlerini engellemez).
-# Çok süreçte bölünmez; her süreçte tam değer geçerlidir, sürecin kuyruk
-# dilimiyle sınırlanır:
+# Çok süreçte bütçe süreçlere bölünür; tek sekme yalnız kendi süreç payını
+# kullanır. Kuyruk payı birden büyükse diğer kullanıcılar için en az bir yer kalır:
 #   MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION=16
 
 # Günlük log dizini. `app.R`, `run_mergen_prod.R` ve çok-worker çocuk süreçleri
@@ -201,9 +201,9 @@ MERGEN_MCP_BASE_DIR="//mainserver/MERGEN Bilge/mergen_uploads"
 # oturumlarını makineye YEREL geçici dizinde paylaşır (bu makinede aynı uygulama
 # kökünden çalışan tüm başlatıcılar ortak kullanır; görünüm host başınadır);
 # MERGEN_PRESENCE_SHARED_DIR ile değiştirilirse de YEREL disk olmalıdır, UNC
-# değeri ve Windows'ta eşlenmiş ağ sürücüsü (ör. Z:) reddedilir (ağ paylaşımı
-# olay döngüsünü bloklar). Dizin ve dosyalar yalnız süreç sahibince okunur
-# (Unix 0700/0600); tek işçili başlatıcılar da yayına katılır. Merkezî/UNC hedef
+# değeri, Windows eşlenmiş ağ sürücüleri ve POSIX ağ bağlamaları reddedilir.
+# Yerellik ve Windows DACL kontrolleri açılışta yapılır; doğrulanamazsa paylaşım
+# kapalı kalır. Dizin ve dosyalar yalnız süreç sahibince okunur (Unix 0700/0600); tek işçili başlatıcılar da yayına katılır. Merkezî/UNC hedef
 # korunur ve repo içindeki yerel `logs` diziniyle sessizce değiştirilmez.
 #
 # Yolda güçlü UTF-8→Windows-1252/Latin-1 mojibake kanıtı varsa (ör.

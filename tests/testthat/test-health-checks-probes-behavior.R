@@ -564,3 +564,28 @@ test_that("sağlık denetimleri dosyası tek başına yüklendiğinde kapsam yar
   expect_true(exists("health_endpoint_scope", envir = env, inherits = FALSE))
   expect_true(exists("health_probe_url", envir = env, inherits = FALSE))
 })
+
+
+test_that("DNS çözümlemesi beklemez, süre aşımında ayrı süreç durdurulur", {
+  skip_if_not_installed("callr")
+  skip_if_not_installed("later")
+  env <- .fresh_health_env()
+  alive <- TRUE
+  starts <- 0L
+  timeout <- NULL
+  worker <- list(is_alive = function() alive, kill = function() alive <<- FALSE,
+                 get_result = function() stop("timeout"))
+  testthat::local_mocked_bindings(r_bg = function(...) { starts <<- starts + 1L; worker }, .package = "callr")
+  testthat::local_mocked_bindings(later = function(func, delay, ...) {
+    expect_lte(delay, 3)
+    timeout <<- func
+  }, .package = "later")
+  expect_true(attr(env$health_resolve_host_ips("servis.corp"), "pending"))
+  expect_length(env$health_host_private_ips("servis.corp"), 0L)
+  expect_identical(starts, 1L)
+  expect_null(env$.HEALTH_DNS_CACHE[["servis.corp"]])
+  timeout()
+  expect_false(alive)
+  expect_length(env$health_host_private_ips("servis.corp"), 0L)
+  expect_false(is.null(env$.HEALTH_DNS_CACHE[["servis.corp"]]))
+})

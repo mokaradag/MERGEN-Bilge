@@ -770,7 +770,8 @@ test_that("CSV onarım kararı sütun SIRASINA bağlıdır ve metadata ham adla 
     env$pk_export_build(veri, list(facts = list()), list(), base_name = "sentetik",
                         dir = .pk_export_dir(), format = "csv", query = list(meta = meta))
   )
-  expect_true(length(artefakt$files) >= 2L)
+  veri_dosyalari <- Filter(function(f) !grepl("_(Ozet|Bilgi)_", f$name), artefakt$files)
+  expect_length(veri_dosyalari, 2L)
   metin <- paste(vapply(artefakt$files, function(f) {
     parca <- rawToChar(readBin(f$path, "raw", file.info(f$path)$size))
     Encoding(parca) <- "UTF-8"
@@ -824,4 +825,20 @@ test_that("mükerrer etiket yedeği onarılmış ham adı kullanır ve sıra eki
   basliklar2 <- env$.pk_export_apply_labels(veri2, names(veri2), list())
   expect_false(anyDuplicated(basliklar2) > 0L)
   expect_identical(basliklar2[c(1L, 3L)], c("A", "A_2"))
+})
+
+
+test_that("XLSX hazırlama hatası CSV yedeğine düşer ve ham hata fırlatmaz", {
+  env <- .pk_export_env()
+  eski <- env$pk_export_prepare_percent
+  env$pk_export_prepare_percent <- function(data, meta, formatted = FALSE) {
+    if (isTRUE(formatted)) stop("hazırlama hatası")
+    eski(data, meta, formatted = formatted)
+  }
+  env$.pk_export_openxlsx_available <- function() TRUE
+  sonuc <- env$pk_export_build(data.frame(adet = 1:4), list(facts = list()), list(),
+                               base_name = "sentetik", dir = .pk_export_dir())
+  expect_true(sonuc$status %in% c("ok", "csv_fallback"))
+  expect_true(length(sonuc$files) > 0L)
+  expect_true(all(vapply(sonuc$files, function(f) identical(f$format, "csv"), logical(1))))
 })

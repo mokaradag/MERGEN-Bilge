@@ -14,7 +14,10 @@
 # çalışan tüm başlatıcılar paylaşır, aynı klasör adlı başka dağıtım karışmaz.
 # Çevrimiçi görünümü makine başınadır. Başlatıcıyla açılan her süreç (tek
 # işçili başlatıcı dahil; MERGEN_APP_WORKER_INDEX) yayına katılır.
+.MB_PRESENCE_DIRECTORY <- new.env(parent = emptyenv())
 mb_presence_shared_dir <- function() {
+  if (isTRUE(.MB_PRESENCE_DIRECTORY$ready)) return(.MB_PRESENCE_DIRECTORY$path)
+
   acik <- trimws(Sys.getenv("MERGEN_PRESENCE_SHARED_DIR", ""))
   if (nzchar(acik) && .mb_presence_local_dir(acik)) return(acik)
   n <- suppressWarnings(as.integer(Sys.getenv("MERGEN_APP_WORKER_COUNT", "1")))
@@ -27,8 +30,9 @@ mb_presence_shared_dir <- function() {
   } else {
     gsub("[^A-Za-z0-9]", "_", kok)
   }
-  file.path(dirname(tempdir()),
+  yol <- file.path(dirname(tempdir()),
             paste0("mergen_presence_", gsub("[^A-Za-z0-9_.-]", "_", basename(kok)), "_", ozet))
+  if (.mb_presence_local_dir(yol)) yol else ""
 }
 
 # Açık dizin yalnız yerel sürücüdeyse kabul edilir: UNC yazımı ve Windows'ta
@@ -36,7 +40,8 @@ mb_presence_shared_dir <- function() {
 # (yerelleştirilmemiş .NET DriveType ile) sorulur; sorulamazsa reddedilir.
 .mb_presence_local_dir <- function(yol) {
   if (grepl("^(\\\\\\\\|//)", yol)) return(FALSE)
-  if (.Platform$OS.type != "windows") return(TRUE)
+  if (.Platform$OS.type != "windows") return(.mb_presence_posix_local(yol))
+  if (!isTRUE(.MB_PRESENCE_DIRECTORY$initializing)) return(FALSE)
   tam <- normalizePath(yol, winslash = "\\", mustWork = FALSE)
   surucu <- toupper(substr(tam, 1L, 2L))
   if (!grepl("^[A-Z]:$", surucu)) return(FALSE)
@@ -55,10 +60,79 @@ mb_presence_shared_dir <- function() {
 # Paylaşılan dizin yalnız süreç sahibince okunur (Unix 0700/0600); anlık
 # görüntüler ad, sicil ve oturum bilgisi taşır. İzin kurulamazsa yayın yapılmaz.
 .mb_presence_secure_dir <- function(dizin) {
+  if (.Platform$OS.type == "windows") {
+    if (isTRUE(.MB_PRESENCE_DIRECTORY$ready)) {
+      return(identical(dizin, .MB_PRESENCE_DIRECTORY$path) && nzchar(dizin) && dir.exists(dizin))
+    }
+    if (!isTRUE(.MB_PRESENCE_DIRECTORY$initializing)) return(FALSE)
+    dir.create(dizin, recursive = TRUE, showWarnings = FALSE)
+    return(.mb_presence_windows_acl(dizin))
+  }
   dir.create(dizin, recursive = TRUE, showWarnings = FALSE, mode = "0700")
-  if (.Platform$OS.type == "windows") return(dir.exists(dizin))
   Sys.chmod(dizin, mode = "0700", use_umask = FALSE)
   isTRUE(format(file.info(dizin)$mode) == "700")
+}
+
+# Ağ bağlama noktası en uzun yol eşleşmesiyle belirlenir; bilinmeyen tür reddedilir.
+.mb_presence_posix_local <- function(yol, mounts = "/proc/self/mountinfo") {
+  if (!file.exists(mounts)) return(FALSE)
+  satirlar <- tryCatch(readLines(mounts, warn = FALSE), error = function(e) character(0))
+  yerel <- function(tam) {
+    bol <- strsplit(satirlar, " - ", fixed = TRUE)
+    dizinler <- vapply(bol, function(x) {
+      alan <- strsplit(x[1], " ", fixed = TRUE)[[1]]
+      if (length(alan) < 5L) return("")
+      y <- alan[5]
+      for (kod in c("040", "011", "012", "134")) {
+        y <- gsub(paste0(intToUtf8(92L), kod), intToUtf8(strtoi(kod, 8L)), y, fixed = TRUE)
+      }
+      y
+    }, character(1))
+    aday <- which(nzchar(dizinler) & (tam == dizinler | startsWith(tam, paste0(sub("/$", "", dizinler), "/"))))
+    if (!length(aday)) return(FALSE)
+    k <- aday[which.max(nchar(dizinler[aday]))]
+    if (length(bol[[k]]) != 2L) return(FALSE)
+    tur <- strsplit(bol[[k]][2], " ", fixed = TRUE)[[1]][1]
+    tur %in% c("ext2", "ext3", "ext4", "xfs", "btrfs", "tmpfs", "ramfs", "overlay", "zfs")
+  }
+  tam <- if (startsWith(yol, "/")) yol else file.path(getwd(), yol)
+  if (!yerel(tam)) return(FALSE)
+  # Sembolik bağlantı ve .. hedefi de yerel olmalıdır; yalnız açılışta çalışır.
+  ata <- tam
+  while (!file.exists(ata) && !identical(dirname(ata), ata)) ata <- dirname(ata)
+  yerel(normalizePath(ata, winslash = "/", mustWork = FALSE))
+}
+
+.mb_presence_windows_acl <- function(dizin) {
+  yol <- gsub("'", "''", dizin, fixed = TRUE)
+  komut <- paste0(
+    "$ErrorActionPreference='Stop'; $p='", yol, "'; ",
+    "$sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User; ",
+    "$acl=Get-Acl -LiteralPath $p; $acl.SetOwner($sid); ",
+    "$acl.SetAccessRuleProtection($true,$false); ",
+    "@($acl.Access) | ForEach-Object { [void]$acl.RemoveAccessRuleSpecific($_) }; ",
+    "$rule=New-Object System.Security.AccessControl.FileSystemAccessRule($sid,'FullControl','ContainerInherit,ObjectInherit','None','Allow'); ",
+    "$acl.AddAccessRule($rule); Set-Acl -LiteralPath $p -AclObject $acl; ",
+    "$check=Get-Acl -LiteralPath $p; ",
+    "if (!$check.AreAccessRulesProtected -or $check.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -ne $sid.Value) { exit 1 }; ",
+    "if (@($check.Access | Where-Object { $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -ne $sid.Value }).Count -ne 0) { exit 1 }; ",
+    "Write-Output 'secure'")
+  sonuc <- tryCatch(suppressWarnings(system2("powershell",
+    c("-NoProfile", "-NonInteractive", "-Command", shQuote(komut)),
+    stdout = TRUE, stderr = FALSE, timeout = 10)), error = function(e) character(0))
+  is.null(attr(sonuc, "status")) && identical(trimws(sonuc), "secure")
+}
+
+# Sürücü ve izin kontrolleri oturum kabulünden önce yapılır.
+mb_presence_initialize <- function() {
+  .MB_PRESENCE_DIRECTORY$ready <- FALSE
+  .MB_PRESENCE_DIRECTORY$initializing <- TRUE
+  on.exit({ .MB_PRESENCE_DIRECTORY$initializing <- FALSE }, add = TRUE)
+  dizin <- tryCatch(mb_presence_shared_dir(), error = function(e) "")
+  guvenli <- nzchar(dizin) && isTRUE(tryCatch(.mb_presence_secure_dir(dizin), error = function(e) FALSE))
+  .MB_PRESENCE_DIRECTORY$path <- if (guvenli) dizin else ""
+  .MB_PRESENCE_DIRECTORY$ready <- TRUE
+  invisible(guvenli)
 }
 
 mb_presence_process_id <- function() {

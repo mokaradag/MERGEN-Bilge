@@ -136,3 +136,25 @@ test_that("cevrimici dizini baslaticiya ozel degildir; yalniz operator degeri ak
     expect_identical(env$mergen_workers_presence_dir(), "D:/mergen_presence")
   })
 })
+
+
+test_that("negatif yeniden başlatma ayarları worker başlamadan reddedilir", {
+  env <- .load_worker_launcher()
+  for (ad in c("MERGEN_WORKERS_MAX_RESTARTS", "MERGEN_WORKERS_STABLE_SECONDS")) {
+    withr::with_envvar(setNames("-1", ad), {
+      expect_error(env$mergen_start_workers(dry_run = TRUE), "negatif")
+    })
+  }
+})
+
+test_that("yeniden başlatma bütçesi bitince hata ve çocuk temizliği oluşur", {
+  skip_if_not_installed("processx")
+  env <- .load_worker_launcher()
+  withr::local_envvar(c(MERGEN_WORKERS = "1", MERGEN_WORKERS_MAX_RESTARTS = "0"))
+  killed <- FALSE
+  process <- list(get_pid = function() 1L, is_alive = function() FALSE,
+                  kill = function() killed <<- TRUE)
+  testthat::local_mocked_bindings(process = list(new = function(...) process), .package = "processx")
+  expect_error(env$mergen_start_workers(), "butcesi bitti")
+  expect_true(killed)
+})

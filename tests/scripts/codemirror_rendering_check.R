@@ -184,6 +184,26 @@ cm_render_check_page <- function(repo_root, fixtures) {
   )
 }
 
+cm_render_check_browser_run <- function(browser_bin, args, timeout_seconds) {
+  child <- processx::process$new(browser_bin, args, stdout = "|", stderr = "|", cleanup_tree = TRUE)
+  on.exit(if (child$is_alive()) child$kill_tree(), add = TRUE)
+  deadline <- proc.time()[["elapsed"]] + timeout_seconds
+  out <- err <- ""
+  while (child$is_alive() && proc.time()[["elapsed"]] < deadline) {
+    httpuv::service(timeoutMs = 20L)
+    child$poll_io(20L)
+    out <- paste0(out, child$read_output())
+    err <- paste0(err, child$read_error())
+  }
+  timed_out <- child$is_alive()
+  out <- paste0(out, child$read_output())
+  err <- paste0(err, child$read_error())
+  if (timed_out) child$kill_tree()
+  child$wait(1000L)
+  list(status = if (timed_out) 124L else child$get_exit_status(),
+       stdout = out, stderr = err)
+}
+
 cm_render_check_run <- function(repo_root, browser_bin, timeout_seconds = 120L,
                                 virtual_time_ms = 20000L) {
   www_dir <- normalizePath(file.path(repo_root, "www"), winslash = "/", mustWork = TRUE)
@@ -198,8 +218,7 @@ cm_render_check_run <- function(repo_root, browser_bin, timeout_seconds = 120L,
   writeBin(charToRaw(page), con)
   close(con)
 
-  # Statik yollar httpuv arka plan iş parçacığında sunulur; tarayıcı
-  # çalışırken R'nin servis döngüsüne gerek yoktur.
+  # Statik olmayan istekler de tarayıcı çalışırken yanıtlanır.
   port <- httpuv::randomPort()
   server <- httpuv::startServer("127.0.0.1", port, list(
     call = function(req) list(status = 404L, headers = list("Content-Type" = "text/plain"), body = ""),
@@ -221,7 +240,7 @@ cm_render_check_run <- function(repo_root, browser_bin, timeout_seconds = 120L,
     args <- c(args, "--dump-dom", sprintf("http://127.0.0.1:%d/__cm_check/index.html", port))
     # 127: tarayıcı başlatılamadı; 124 yalnızca GERÇEK zaman aşımıdır.
     res <- tryCatch(
-      processx::run(browser_bin, args, error_on_status = FALSE, timeout = timeout_seconds),
+      cm_render_check_browser_run(browser_bin, args, timeout_seconds),
       error = function(e) list(status = 127L, stdout = "", stderr = conditionMessage(e))
     )
     if (isTRUE(res$timeout)) res$status <- 124L
