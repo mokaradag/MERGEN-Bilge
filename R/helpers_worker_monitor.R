@@ -185,7 +185,7 @@ get_worker_monitor_info <- function() {
     usage_pct = usage_pct,
     task_type_breakdown = breakdown,
     note = paste(
-      "Bu metrikler, uygulamanın future_promise ile başlattığı asenkron işleri izler.",
+      "Bu metrikler yalnız bu uygulama sürecinin future_promise işlerini ve özet kuyruğunu izler.",
       "Doğrudan cluster içi düşük seviye worker telemetrisi değil, uygulama düzeyi iş yükü görünümüdür."
     )
   )

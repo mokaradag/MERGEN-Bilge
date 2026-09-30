@@ -21,12 +21,13 @@ filePreviewServer <- function(id) {
     onizleme_gecerli <- function(nesli) {
       identical(as.integer(nesli %||% -1L)[1], as.integer(session$userData$kimlik_nesli %||% 0L)[1])
     }
-    # Veri nesnesi adı nesil + açılış sayacı taşır; eski adres yeni dosyaya bağlanmaz.
+    # İki sabit uç nokta tutulur; URL jetonu eski adresin yeni dosyaya bağlanmasını önler.
     veri_sayaci <- 0L
-    veri_nesnesi_adi <- function(onek, yol) {
-      veri_sayaci <<- veri_sayaci + 1L
-      paste0(onek, "_", as.integer(file_storage$preview_file$nesli %||% 0L)[1], "_", veri_sayaci, "_",
-             gsub("[^a-zA-Z0-9]", "_", basename(yol)))
+    veri_istegi_gecerli <- function(data, req) {
+      sorgu <- as.character(req$QUERY_STRING %||% "")[1]
+      eslesme <- regmatches(sorgu, regexec("(?:^|&)preview_token=([0-9]+)(?:&|$)", sorgu, perl = TRUE))[[1]]
+      length(eslesme) == 2L && identical(eslesme[2], as.character(data$jeton)) &&
+        identical(data$jeton, veri_sayaci) && onizleme_gecerli(data$nesli)
     }
 
     # Aynı dosya tekrar önizlendiğinde base64 üretimini tekrar yapmamak için önbellek
@@ -207,13 +208,14 @@ filePreviewServer <- function(id) {
           if (!is.na(fsize) && fsize > PDF_NEWTAB_THRESHOLD) {
             # --- BÜYÜK PDF (> 1.5 MB): tarayıcının yerel PDF görüntüleyicisinde yeni sekmede aç ---
             # base64 kodlama yerine dosyayı doğrudan Shiny oturumu üzerinden sun
-            pdf_obj_name <- veri_nesnesi_adi("pdf", datapath)
+            veri_sayaci <<- veri_sayaci + 1L
+            pdf_obj_name <- "pdf_preview"
             pdf_url <- session$registerDataObj(
               name  = pdf_obj_name,
               data  = list(path = datapath, fname = file_storage$preview_file$name,
-                           nesli = file_storage$preview_file$nesli),
+                           nesli = file_storage$preview_file$nesli, jeton = veri_sayaci),
               filterFunc = function(data, req) {
-                if (!onizleme_gecerli(data$nesli)) {
+                if (!veri_istegi_gecerli(data, req)) {
                   return(shiny::httpResponse(status = 403L, content_type = "text/plain; charset=UTF-8",
                                              content = "Erisim reddedildi"))
                 }
@@ -237,6 +239,7 @@ filePreviewServer <- function(id) {
               }
             )
 
+            pdf_url <- paste0(pdf_url, "&preview_token=", veri_sayaci)
             # Bilgi modalı göster (İndir butonu devre dışı — dosya zaten yeni sekmede)
             showModal(modalDialog(
               title = modalTitle,
@@ -550,13 +553,14 @@ filePreviewServer <- function(id) {
             "svg"  = "image/svg+xml",
             "application/octet-stream"
           )
-          img_obj_name <- veri_nesnesi_adi("img", datapath)
+          veri_sayaci <<- veri_sayaci + 1L
+          img_obj_name <- "img_preview"
           img_url <- session$registerDataObj(
             name = img_obj_name,
             data = list(path = datapath, ctype = img_content_type,
-                        nesli = file_storage$preview_file$nesli),
+                        nesli = file_storage$preview_file$nesli, jeton = veri_sayaci),
             filterFunc = function(data, req) {
-              if (!onizleme_gecerli(data$nesli)) {
+              if (!veri_istegi_gecerli(data, req)) {
                 return(shiny::httpResponse(status = 403L, content_type = "text/plain; charset=UTF-8",
                                            content = "Erisim reddedildi"))
               }
@@ -576,6 +580,7 @@ filePreviewServer <- function(id) {
               )
             }
           )
+          img_url <- paste0(img_url, "&preview_token=", veri_sayaci)
 
           showModal(modalDialog(
             title = modalTitle,

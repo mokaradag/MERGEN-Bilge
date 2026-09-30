@@ -94,12 +94,11 @@ requested <- sort(unique(c(repo_packages, extra_packages)))
 cat(sprintf("Kilit kapsamina alinacak paket sayisi (recursive bagimliliklar haric): %d\n",
             length(requested)))
 
-# Hangi istenen paketler aktif kutuphanede kurulu degil? (uyari amacli)
+# Eksik paket varken eksik bir kilit uretilmez.
 not_installed <- requested[!vapply(requested, function(p) requireNamespace(p, quietly = TRUE), logical(1))]
 if (length(not_installed) > 0L) {
-  cat("UYARI: Asagidaki istenen paketler aktif kutuphanede KURULU DEGIL ve\n")
-  cat("kilit dosyasina eklenemeyecek. Once bunlari kurun:\n")
-  cat(paste(not_installed, collapse = ", "), "\n\n")
+  stop(paste("Kilit icin gereken paketler kurulu degil. Once kurun:",
+             paste(not_installed, collapse = ", ")), call. = FALSE)
 }
 
 snapshot_packages <- setdiff(requested, not_installed)

@@ -387,3 +387,29 @@ test_that("hazırlıkta görülen geçici iptal sonradan sıfırlansa da son tar
   expect_identical(sonuc$status, "cancelled")
   expect_length(list.files(dizin, pattern = "\\.xlsx$"), 0L)
 })
+
+
+test_that("gerçek sütun taramasındaki geçici iptal XLSX ve CSV üretimini durdurur", {
+  for (bicim in c("xlsx", "csv")) {
+    env <- .pk_exps_env()
+    dizin <- withr::local_tempdir()
+    veri <- data.frame(Metin = rep("SENTETIK", 12001L))
+    yoklama <- 0L
+    sonuc <- env$pk_export_build(veri, base_name = "sentetik", dir = dizin, format = bicim,
+      stop_check = function() {
+        yoklama <<- yoklama + 1L
+        isTRUE(yoklama == 4L)
+      })
+    expect_identical(sonuc$status, "cancelled")
+    expect_length(list.files(dizin, pattern = "\\.(xlsx|csv)$", recursive = TRUE), 0L)
+  }
+})
+
+test_that("faktör sütun kanıtı taranır ve dışa aktarımda Türkçe onarılır", {
+  env <- .pk_exps_env()
+  veri <- data.frame(Metin = factor(c(paste0("ÇALI", "\u00de", "MA"), paste0("ÇA", "\u00d0", "RI"), NA_character_)))
+  onarim <- env$turkish_latin1_repair_columns(veri)
+  expect_identical(unname(onarim), TRUE)
+  sonuc <- env$.pk_export_norm(veri, onarim)
+  expect_identical(sonuc$Metin, c("ÇALIŞMA", "ÇAĞRI", NA_character_))
+})

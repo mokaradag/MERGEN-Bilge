@@ -68,6 +68,7 @@ adminHataAnaliziServer <- function(id) {
     # VERİ ÇEKİMİ
     # ============================================================
     ha_data <- reactive({
+      admin_require_session(session)
       refresh$trigger()
       admin_ha_fetch_data()
     })
@@ -86,6 +87,7 @@ adminHataAnaliziServer <- function(id) {
     # SEKME İÇERİĞİ YÖNLENDİRİCİ
     # ============================================================
     output$tab_content_area <- renderUI({
+      admin_require_session(session)
       tab <- input$admin_tabs
       if (is.null(tab)) tab <- "ha_overview"
 

@@ -86,6 +86,10 @@
   assign("tracked_future_promise", function(task_fn, task_type = NULL, ...) {
     rec$future <- rec$future + 1L
     rec$future_types <- c(rec$future_types, as.character(task_type %||% ""))
+    if (identical(task_type, "startup_saved_chats") && isTRUE(rec$dispatch_full_once)) {
+      rec$dispatch_full_once <- FALSE
+      stop("işçi gönderimi başarısız")
+    }
     rec$in_future <- TRUE
     on.exit(rec$in_future <- FALSE, add = TRUE)
     result <- task_fn()
@@ -1150,5 +1154,37 @@ testthat::test_that("eski tam liste sonucu yeni sahibin tamamlanmış yüklemesi
     expect_identical(names(shiny::isolate(session$userData$.values$saved_chats)), "b")
     session$setInputs(tabs = "saved_chats")
     expect_identical(rec$full, 2L)
+  })
+})
+
+
+test_that("tam liste gönderimi eşzamanlı hata atarsa yükleme yeniden denenebilir", {
+  .startup_observers_source_once()
+  rec <- new.env()
+  rec$dispatch_full_once <- TRUE
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+  rec$warned <- FALSE
+  startup_init <- startupObserversInit
+  environment(startup_init) <- list2env(list(warning = function(...) {
+    metin <- paste(..., collapse = " ")
+    if (grepl("Initial saved chat load failed", metin)) rec$warned <- TRUE else base::warning(...)
+  }), parent = environment(startupObserversInit))
+  shiny::testServer(function(input, output, session) {
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startup_init(input, session, values, function(...) invisible(NULL), current_user_id = 42L,
+                         sso_state = NULL, boot_ready = NULL)
+  }, {
+    session$flushReact()
+    session$setInputs(startup_lane_resolved = list(lane = "fast_lane", source = "stored", ts = 1))
+    session$setInputs(tabs = "saved_chats")
+    for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+    session$flushReact()
+    expect_true(rec$warned)
+    expect_true(session$userData$saved_chats_full_pending)
+    session$setInputs(tabs = "history")
+    for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+    session$flushReact()
+    expect_identical(rec$full, 1L)
   })
 })

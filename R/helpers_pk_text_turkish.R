@@ -173,7 +173,7 @@ turkish_latin1_repair_columns <- function(data, stop_check = NULL, chunk = 20000
     if (is.function(stop_check) && isTRUE(stop_check())) return(logical(ncol(data)))
     satir <- bas:min(nrow(data), bas + chunk - 1L)
     for (j in metinsel[!yabanci[metinsel]]) {
-      tarama <- turkish_latin1_repair_scan(norm(data[[j]][satir]))
+      tarama <- turkish_latin1_repair_scan(norm(as.character(data[[j]][satir])))
       yabanci[j] <- tarama[["foreign"]]
       kanit[j] <- kanit[j] || tarama[["evidence"]]
     }

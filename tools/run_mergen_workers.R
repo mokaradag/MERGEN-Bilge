@@ -174,15 +174,16 @@ mergen_start_workers <- function(dry_run = FALSE) {
     stop("tools/run_mergen_workers.R icin 'processx' paketi gereklidir.", call. = FALSE)
   }
 
-  # Cocuk ciktisi baslaticinin konsoluna aktarilir: okunmayan boru dolunca
-  # worker'in sonraki yazimi bloklanir ve istek islemeyi durdururdu.
+  # Cocuk ciktisi dosyaya gider; konsolsuz Windows hostu da baslatabilir.
   start_one <- function(spec) {
+    dir.create(file.path(spec$workdir, "logs"), showWarnings = FALSE)
     p <- processx::process$new(
       command = spec$command,
       args = spec$args,
       wd = spec$workdir,
       env = c("current", spec$env),
-      stdout = "", stderr = "",
+      stdout = file.path(spec$workdir, "logs", sprintf("worker-%d-stdout.log", spec$port)),
+      stderr = file.path(spec$workdir, "logs", sprintf("worker-%d-stderr.log", spec$port)),
       supervise = TRUE
     )
     cat(sprintf("[WORKER] baslatildi port=%d pid=%s\n", spec$port,

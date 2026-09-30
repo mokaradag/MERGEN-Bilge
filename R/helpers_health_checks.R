@@ -191,6 +191,10 @@ health_check_http_endpoint <- function(id, label, endpoint, configured_required 
     # olduğundan gerçekten denenir; yalnızca genel internet adresleri atlanır.
     kapsam <- health_endpoint_scope(endpoint)
     if (isTRUE(kapsam$public)) {
+      if (identical(kapsam$neden, "bekliyor")) {
+        return(health_result(id, label, "unknown", "DNS bekleniyor",
+          "Adres çözümlemesi sürüyor; sonraki yenilemede yeniden değerlendirilir.", health_ms(start)))
+      }
       detay <- switch(kapsam$neden,
         sema = "Yalnız HTTP(S) uç noktaları denenir; desteklenmeyen şema çağrılmadı.",
         cozulmedi = "Uç nokta adı çözülemedi; özel ağ adresi doğrulanamadığından çağrılmadı.",

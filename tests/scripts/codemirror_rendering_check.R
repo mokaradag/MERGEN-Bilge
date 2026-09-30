@@ -196,9 +196,14 @@ cm_render_check_browser_run <- function(browser_bin, args, timeout_seconds) {
     err <- paste0(err, child$read_error())
   }
   timed_out <- child$is_alive()
-  out <- paste0(out, child$read_output())
-  err <- paste0(err, child$read_error())
-  if (timed_out) child$kill_tree()
+  if (timed_out) {
+    out <- paste0(out, child$read_output())
+    err <- paste0(err, child$read_error())
+    child$kill_tree()
+  } else {
+    out <- paste0(out, child$read_all_output())
+    err <- paste0(err, child$read_all_error())
+  }
   child$wait(1000L)
   list(status = if (timed_out) 124L else child$get_exit_status(),
        stdout = out, stderr = err)

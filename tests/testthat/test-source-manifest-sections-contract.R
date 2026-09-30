@@ -85,7 +85,7 @@
   # 13 -> 14 bilinçli güncelleme: otomatik kip bağımlılık önbelleği
   # (R/helpers_worker_dep_cache.R) worker monitor fonksiyon tavanı nedeniyle
   # ayrı dosyaya alındı; worker monitor'dan SONRA yüklenir.
-  foundation = list(first = "R/config_packages.R", last = "R/helpers_worker_dep_cache.R", n = 14L),
+  foundation = list(first = "R/config_packages.R", last = "R/helpers_worker_dep_cache.R", n = 15L),
   # post_future_utils n = 9L -> 10L bilinçli güncelleme: hedef yolu sahiplik
   # jetonuyla rezerve eden ortak primitifler (R/utils_path_reservation.R)
   # atomik yazma ile aynı katmana eklendi; üç ayrı terfi yolu bu tek kaynağı
@@ -764,7 +764,7 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # temizleyicisi; `helpers_admin_documentation.R` 24 fonksiyon tavanındaydı).
   # 508 -> 509: `helpers_ai_expert_greeting_topic.R` (karşılama önekinin son
   # konusu işçide okunur; `helpers_ai_expert_user_data.R` bütçesi korunur).
-  expect_equal(length(runtime), 509L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  expect_equal(length(runtime), 510L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

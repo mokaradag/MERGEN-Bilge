@@ -42,6 +42,12 @@
     return(df)
   }
   for (j in seq_along(df)) {
+    if (is.factor(df[[j]])) {
+      df[[j]] <- as.character(df[[j]])
+      if (exists("normalize_pk_text_utf8", mode = "function", inherits = TRUE)) {
+        df[[j]] <- normalize_pk_text_utf8(df[[j]])
+      }
+    }
     if (is.character(df[[j]])) {
       uygun <- if (is.null(repair_cols)) NULL else isTRUE(repair_cols[j])
       df[[j]] <- repair_turkish_latin1_letters(df[[j]], eligible = uygun)
@@ -248,6 +254,7 @@ pk_export_build <- function(data, packet = list(), context = list(),
   # jetonu sonradan NULL dönse de kullanıcı iptali son tarih sayılmaz.
   son_durdurma <- NULL
   durduruldu <- function() {
+    if (!is.null(son_durdurma)) return(TRUE)
     d <- halt_durumu()
     if (!is.null(d)) son_durdurma <<- d
     !is.null(d)

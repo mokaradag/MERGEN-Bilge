@@ -385,6 +385,11 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   # --- Boşta konuşma ---
   trigger_idle_chat <- function() {
     generation <- idle_generation
+    if (resolve_ai_expert_user_id() <= 0L ||
+        (isTRUE(session$userData$sso_active) && !isTRUE(session$userData$auth_initialized))) {
+      schedule_idle_chat()
+      return()
+    }
     if (!isTRUE(isolate(settings_data$enable_ai_expert)) ||
         !identical(isolate(settings_data$experience_mode), "kesif")) {
       schedule_idle_chat()

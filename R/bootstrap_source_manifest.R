@@ -183,7 +183,7 @@ source_manifest_expected_absent_groups <- function(envir = environment()) {
 # "eksik" görünür, sahipsiz bir dosya olarak da rapor edilir ve sorunun
 # gerçek nedeni gizli kalır.
 source_manifest_similar_files <- function(path, repo_root = getwd()) {
-  hedef <- basename(as.character(path %||% "")[1])
+  hedef <- basename(as.character(if (is.null(path)) "" else path)[1])
   if (!nzchar(hedef)) return(character(0))
 
   dizin <- dirname(file.path(repo_root, path))
@@ -206,7 +206,7 @@ source_manifest_similar_files <- function(path, repo_root = getwd()) {
 # Manifest yollarını "yüklenecek" ve "eksik/eksik gruba ait opsiyonel" olarak
 # ayırır.
 source_manifest_present_paths <- function(paths, repo_root = getwd()) {
-  paths <- enc2utf8(as.character(paths %||% character(0)))
+  paths <- enc2utf8(as.character(if (is.null(paths)) character(0) else paths))
   if (!length(paths)) return(paths)
 
   opsiyonel <- source_manifest_optional_paths()
@@ -215,10 +215,10 @@ source_manifest_present_paths <- function(paths, repo_root = getwd()) {
   eksik_grup_uyeleri <- character(0)
   gruplar <- source_manifest_optional_groups()
   beklenen_eksik <- source_manifest_expected_absent_groups()
-  grup_adlari <- names(gruplar) %||% rep("", length(gruplar))
+  grup_adlari <- if (is.null(names(gruplar))) rep("", length(gruplar)) else names(gruplar)
 
   for (grup_index in seq_along(gruplar)) {
-    grup <- enc2utf8(as.character(gruplar[[grup_index]] %||% character(0)))
+    grup <- enc2utf8(as.character(if (is.null(gruplar[[grup_index]])) character(0) else gruplar[[grup_index]]))
     if (!length(grup)) next
     eksikler <- grup[!file.exists(file.path(repo_root, grup))]
     if (!length(eksikler)) next

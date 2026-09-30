@@ -26,8 +26,10 @@ admin_doc_allowed_tags <- function() {
 # ayrıştırmasında atılır) risk taramasında da yok sayılır.
 .admin_doc_scheme_pattern <- function() {
   ara <- "[\\s\\x00-\\x1f]*"
-  paste0("(?:", paste(strsplit("javascript", "")[[1]], collapse = ara), "|",
-         paste(strsplit("vbscript", "")[[1]], collapse = ara), ")", ara, ":")
+  semalar <- c("javascript:", "vbscript:", "data:text/html")
+  paste0("(?:", paste(vapply(semalar, function(s) {
+    paste(strsplit(s, "")[[1]], collapse = ara)
+  }, character(1)), collapse = "|"), ")")
 }
 .ADMIN_DOC_RISKY_ATTR <- paste0("[\\s/\"'](?:on[a-zA-Z]+|style|ping)\\s*=|", .admin_doc_scheme_pattern())
 

@@ -164,10 +164,14 @@ healthServer <- function(id, perf_tracker) {
       mergen_session_identity_signal(session)
     }
 
+    yetki_durumu <- reactiveVal(FALSE)
+    observe({
+      if (is.function(kimlik_sinyali)) kimlik_sinyali() else invalidateLater(5000)
+      yetki_durumu(health_session_is_admin(session))
+    })
     observe({
       # Sağlık kontrolleri DB/endpoint probe içerebildiği için otomatik yenileme seyrek tutulur.
-      if (is.function(kimlik_sinyali)) kimlik_sinyali() else invalidateLater(5000)
-      if (!health_session_is_admin(session)) return()
+      if (!isTRUE(yetki_durumu())) return()
       invalidateLater(120000)
       isolate({
         health_refresh_trigger(health_refresh_trigger() + 1)
@@ -216,15 +220,15 @@ healthServer <- function(id, perf_tracker) {
     # sayaç hem çizimi hem tooltip yeniden bağlamayı tetikler.
     presence_tick <- reactiveVal(0L)
     observe({
-      if (is.function(kimlik_sinyali)) kimlik_sinyali()
-      if (!identical(input$health_tabs, "presence") || !health_session_is_admin(session)) return()
+      if (!identical(input$health_tabs, "presence") || !isTRUE(yetki_durumu())) return()
       invalidateLater(30000)
       isolate(presence_tick(presence_tick() + 1L))
     })
 
     output$health_tab_content <- renderUI({
       tab <- input$health_tabs %||% "overview"
-      if (is.function(kimlik_sinyali)) kimlik_sinyali() else invalidateLater(5000)
+      if (is.function(kimlik_sinyali)) kimlik_sinyali()
+      yetki_durumu()
       yonetici <- health_session_is_admin(session)
       if (!yonetici) {
         return(div(class = "health-empty", icon("lock"), " Bu sayfa yalnızca yöneticilere açıktır."))

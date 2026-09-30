@@ -306,6 +306,7 @@ processAndSummarizeFile <- function(file_info,
     }
     gonderim %...>%
     (function(res) {
+      shiny::withReactiveDomain(session, shiny::isolate({
       try(removeNotification(note_id, session = session), silent = TRUE)
       if (!sahip_gecerli()) {
         cat("[FILE PIPELINE] Oturum kimliği değişti, özet sonucu uygulanmadı.\n")
@@ -345,6 +346,7 @@ processAndSummarizeFile <- function(file_info,
 
       .file_summary_job_token(session, file_info$name, NULL, yalniz = is_jetonu)
       if (isTRUE(show_toast)) showToast(session, paste(file_info$name, "özetlendi."), "success")
+      }))
     }) %...!% ozet_hata
   }
 

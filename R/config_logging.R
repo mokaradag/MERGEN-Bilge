@@ -142,6 +142,8 @@ if (!exists("mergen_daily_file_appender", mode = "function",
   )
   for (.mergen_log_daily_path in .mergen_log_daily_candidates) {
     if (file.exists(.mergen_log_daily_path)) {
+      source(sub("daily_file\\.R$", "locks.R", .mergen_log_daily_path),
+             encoding = "UTF-8", local = environment())
       source(.mergen_log_daily_path, encoding = "UTF-8", local = environment())
       break
     }
@@ -205,7 +207,7 @@ use_console_colors <- tolower(trimws(Sys.getenv("MERGEN_LOG_CONSOLE_COLORS", "fa
 # çeviremeyip "unable to translate ... to a wide string" uyarısı üretir.
 # Dosya logu UTF-8 kalır; yalnızca konsol çıktısı native-safe hale getirilir.
 mergen_console_appender <- function(lines) {
-  lines <- as.character(lines %||% "")
+  lines <- as.character(if (is.null(lines)) "" else lines)
   if (exists("normalize_text_for_log", mode = "function", inherits = TRUE)) {
     lines <- normalize_text_for_log(lines)
   } else {

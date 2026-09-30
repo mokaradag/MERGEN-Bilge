@@ -83,7 +83,7 @@ health_runtime_ui <- function(checks, worker_html = NULL) {
       column(
         12,
         health_section_card(
-          "İşçi İzleyici",
+          "İşçi İzleyici (bu süreç)",
           "cogs",
           div(
             class = "health-worker-grid",

@@ -315,12 +315,14 @@ speechAssetsRuntimeInit <- function(input, session, settings_data,
     dispatch_guard <- new.env(parent = emptyenv())
     dispatch_guard$done <- FALSE
     baslangic_nesli <- prefix_slot$sahip_nesli
+    persona_nesli <- prefix_slot$gen
 
     dispatch <- function(include_prefix) {
       if (isTRUE(dispatch_guard$done)) return(invisible(NULL))
       dispatch_guard$done <- TRUE
       if (session_is_closed()) return(invisible(NULL))
-      if (!identical(prefix_slot$sahip_nesli, baslangic_nesli)) {
+      if (!identical(prefix_slot$sahip_nesli, baslangic_nesli) ||
+          !identical(prefix_slot$gen, persona_nesli)) {
         .speech_perf_log("welcome_suppressed", "sahip değişti")
         return(invisible(NULL))
       }

@@ -997,3 +997,16 @@ test_that("ORTAM tabanli havuz girdileri sicak isciye tasinir", {
   Sys.setenv(MERGEN_DB_POOL_MAX_SIZE = "4")
   expect_false(identical(ilk, env$pk_async_worker_pool_fingerprint(2L)))
 })
+
+
+test_that("HTTP özel durdurma kapısı PK iptalini gizlemez", {
+  env <- new.env(parent = globalenv())
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_pk_cancel_http.R"),
+         encoding = "UTF-8", local = env)
+  env$pk_active_stage_halt <- function() TRUE
+  expect_false(env$pk_http_cancel_config(function() FALSE)$options$progressfunction(c(0, 1), c(0, 1)))
+  expect_false(env$pk_http_cancel_config(function() stop("geçici hata"))$options$progressfunction(c(0, 1), c(0, 1)))
+  env$pk_active_stage_halt <- function() FALSE
+  expect_true(env$pk_http_cancel_config(function() FALSE)$options$progressfunction(c(0, 1), c(0, 1)))
+  expect_false(env$pk_http_cancel_config(function() TRUE)$options$progressfunction(c(0, 1), c(0, 1)))
+})

@@ -108,6 +108,7 @@
     }
     deger = deger || "";
     var kayit = readRecord(tag);
+    if (kayit.v === deger) return true;
     if (typeof taban === "number" && isFinite(taban) && kayit.n > taban) {
       return kayit.v === deger;
     }

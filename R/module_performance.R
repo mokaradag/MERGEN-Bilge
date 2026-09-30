@@ -6,6 +6,8 @@
 # ortalama yanıt süresi ve hata sayılarını takip eder.
 # ==============================================================================
 
+.MERGEN_PERFORMANCE_STATE <- new.env(parent = emptyenv())
+
 performanceStatsServer <- function(id, current_user_id_provider) {
   moduleServer(id, function(input, output, session) {
 
@@ -25,7 +27,8 @@ performanceStatsServer <- function(id, current_user_id_provider) {
     }
 
     # --- PERFORMANS İSTATİSTİKLERİ ---
-    stats <- reactiveValues(
+    ilk_oturum <- is.null(.MERGEN_PERFORMANCE_STATE$stats)
+    if (ilk_oturum) .MERGEN_PERFORMANCE_STATE$stats <- shiny::withReactiveDomain(NULL, reactiveValues(
       active_users = 0,
       total_requests = 0,
       successful_requests = 0,
@@ -33,10 +36,16 @@ performanceStatsServer <- function(id, current_user_id_provider) {
       error_count = 0,
       last_request_time = NULL,
       uptime_start = Sys.time()
-    )
+    ))
 
-    # İstatistiklerin kaydedileceği dosya yolu
+    stats <- .MERGEN_PERFORMANCE_STATE$stats
+    # Her uygulama işçisi kendi toplamlarını yazar; oturumlar aynı sayaçları paylaşır.
     stats_file <- "logs/performance_stats.txt"
+    if (nzchar(Sys.getenv("MERGEN_APP_WORKER_INDEX", ""))) {
+      kimlik <- gsub("[^A-Za-z0-9_-]", "_", paste(Sys.info()[["nodename"]],
+        Sys.getenv("MERGEN_PORT", Sys.getenv("MERGEN_APP_WORKER_INDEX")), sep = "-"))
+      stats_file <- file.path("logs", paste0("performance_stats-", kimlik, ".txt"))
+    }
 
     # --- AKTİF OTURUM DEFTERİ ---
     if (!exists(".mergen_active_sessions", envir = .GlobalEnv, inherits = FALSE)) {
@@ -164,7 +173,7 @@ performanceStatsServer <- function(id, current_user_id_provider) {
 
     # --- MEVCUT İSTATİSTİKLERİ YÜKLEME ---
     isolate({
-      if (file.exists(stats_file)) {
+      if (ilk_oturum && file.exists(stats_file)) {
         saved <- tryCatch({
           read.table(stats_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
         }, error = function(e) NULL)

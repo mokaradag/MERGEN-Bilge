@@ -155,6 +155,9 @@ serverBindCoreObserverRuntime <- function(input,
   ))
 
   values <- state$values
+  if (exists("mergen_session_on_owner_change", mode = "function")) {
+    mergen_session_on_owner_change(session, function(neden) settings_data$user_config <- NULL)
+  }
   boot_ready <- boot_readiness_init_fn(session)
   runtime_ctx$modules$boot_ready <- boot_ready
 

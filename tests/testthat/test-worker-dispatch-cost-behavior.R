@@ -432,7 +432,8 @@ test_that("oturum kimliği değişirse kuyruktaki özet başlamaz ve sonuç yeni
     TRUE
   }
   dosya <- list(name = "rapor.txt", datapath = "/kalici/user_7/rapor.txt", size = 10)
-  oturum <- list(userData = new.env(), token = "tok-7", isClosed = function() FALSE)
+  oturum <- shiny::MockShinySession$new()
+  on.exit(oturum$close(), add = TRUE)
   oturum$userData$user_id <- 7L
 
   # 1) Özet sıradayken oturum B'ye geçer: iş hiç başlamaz.
@@ -559,7 +560,8 @@ test_that("kimlik süresi dolunca (0) kuyruktaki özet başlamaz, çağıran kim
   env$tracked_future_promise <- function(...) { olay$gonderim <- olay$gonderim + 1L; invisible(NULL) }
   bekleyen <- NULL
   env$file_summary_schedule <- function(start_fn, session = NULL, ...) { bekleyen <<- start_fn; TRUE }
-  oturum <- list(userData = new.env(), token = "tok-7", isClosed = function() FALSE)
+  oturum <- shiny::MockShinySession$new()
+  on.exit(oturum$close(), add = TRUE)
   oturum$userData$user_id <- 7L
   env$processAndSummarizeFile(list(name = "rapor.txt", datapath = "/kalici/user_7/rapor.txt", size = 10),
                               current_user_id = 7L, session = oturum, settings = list(),
@@ -1181,7 +1183,8 @@ test_that("özet bildirimleri yükleyen oturuma açıkça bağlanır", {
   env$worker_monitor_auto_globals <- function(...) list(ok = TRUE, globals = list(), packages = character(0))
   bekleyen <- NULL
   env$file_summary_schedule <- function(start_fn, session = NULL, ...) { bekleyen <<- start_fn; TRUE }
-  oturum <- list(userData = new.env(), token = "tok-7", isClosed = function() FALSE)
+  oturum <- shiny::MockShinySession$new()
+  on.exit(oturum$close(), add = TRUE)
   oturum$userData$user_id <- 7L
   env$processAndSummarizeFile(list(name = "r.txt", datapath = "/k/r.txt", size = 1),
                               current_user_id = 7L, session = oturum, settings = list(),
@@ -1268,7 +1271,19 @@ test_that("kullanıcı bütçesi süreçlerde çoğalmaz ve diğer kullanıcıya
           u
         })
       }, integer(1))
-      expect_lte(sum(paylar), 16L)
+      expect_true(all(paylar >= 1L))
+      expect_lte(sum(paylar), max(16L, n))
     })
+  }
+})
+
+
+test_that("kullanıcı kuyruk payı süreç sayısından küçük olsa da her süreç iş kabul eder", {
+  env <- new.env(parent = globalenv())
+  .wd_ozet_kaynak(env)
+  withr::local_envvar(c(MERGEN_APP_WORKER_COUNT = "4", MERGEN_APP_WORKER_INDEX = "1", MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION = "2"))
+  for (i in 1:4) {
+    Sys.setenv(MERGEN_APP_WORKER_INDEX = i)
+    expect_identical(env$file_summary_max_queue_per_session(), 1L)
   }
 })

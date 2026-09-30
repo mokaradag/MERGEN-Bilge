@@ -276,6 +276,9 @@ test_that("performans modülü profili kaydeder ve kapanan oturumu geçmişe ta�
   testthat::skip_if_not_installed("shiny")
   suppressMessages(library(shiny))
   env <- .presence_env()
+  durum <- env$mb_presence_env(".mergen_presence_publish")
+  rm(list = ls(durum, all.names = TRUE), envir = durum)
+  withr::defer(rm(list = ls(durum, all.names = TRUE), envir = durum))
   source(file.path(resolve_repo_root_for_tests(), "R", "module_performance.R"),
          encoding = "UTF-8", local = env)
   gecmis <- env$mb_presence_env(".mergen_presence_history")
@@ -343,6 +346,9 @@ test_that("performans modülü geçersiz last_seen kaydını geçmişe yazmadan 
 
 test_that("çok-süreçli dağıtımda diğer süreçlerin oturumları birleştirilir; kapanan süreç ayrıldı sayılır", {
   env <- .presence_env()
+  durum <- env$mb_presence_env(".mergen_presence_publish")
+  rm(list = ls(durum, all.names = TRUE), envir = durum)
+  withr::defer(rm(list = ls(durum, all.names = TRUE), envir = durum))
   dizin <- withr::local_tempdir()
   withr::local_envvar(c(MERGEN_PRESENCE_SHARED_DIR = dizin))
   now <- Sys.time()
@@ -509,8 +515,7 @@ test_that("bozuk, şema dışı ya da gelecekteki uzak anlık görüntü yalnız
 
 test_that("performans modülü kimlik değişimini ve oturum sonunu aralık beklemeden yayımlar", {
   env <- .presence_env()
-  kaynak <- paste(readLines(file.path(resolve_repo_root_for_tests(), "R", "module_performance.R"),
-                            encoding = "UTF-8", warn = FALSE), collapse = "\n")
+  kaynak <- read_source_text_utf8(file.path(resolve_repo_root_for_tests(), "R", "module_performance.R"))
   expect_true(grepl("touch_session(get_current_user_id(), zorla = TRUE)", kaynak, fixed = TRUE))
   expect_true(grepl("mb_presence_publish(active_sessions_env, zorla = TRUE)", kaynak, fixed = TRUE))
 })

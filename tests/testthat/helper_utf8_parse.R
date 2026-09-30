@@ -7,6 +7,12 @@
 #           testthat'in kendi yükleyicisi gibi UTF-8 bağlantıdan ayrıştırılır.
 # ==============================================================================
 
+read_source_text_utf8 <- function(path) {
+  metin <- rawToChar(readBin(path, what = "raw", n = file.info(path)$size))
+  Encoding(metin) <- "UTF-8"
+  gsub("\r\n?", "\n", sub("^\ufeff", "", metin))
+}
+
 # BOM bayt düzeyinde atılır (geçersiz UTF-8'de de); CRLF ve tek başına CR satır
 # sonları da ayrılır (R'nin metin kipi kaynak okuması gibi).
 parse_r_file_utf8 <- function(path) {

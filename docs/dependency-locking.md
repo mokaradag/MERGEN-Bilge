@@ -44,7 +44,7 @@ Repo kökünde (örn. `...\MERGEN Bilge`), çalışan R 4.6.0 oturumunda:
 
 ```r
 # 1) renv'i kur (yalnızca bir kez yeterli)
-install.packages("renv")
+install.packages(c("renv", "callr", "filelock"))
 
 # 2) Kilidi MEVCUT (global) çalışan kütüphaneden üret.
 #    Bu betik required_packages + test/CI ekstralarını kapsar, .Rprofile'a DOKUNMAZ.
@@ -57,6 +57,10 @@ source("tools/renv_snapshot.R")
 > **`renv::init()` ÇAĞIRMAYIN.** `init()`, kök `.Rprofile`'ı koşulsuz sürümle
 > EZER ve repo'nun offline/bulut güvenli davranışını bozar. Kilidi yalnızca
 > `tools/renv_snapshot.R` (veya doğrudan `renv::snapshot(...)`) ile üretin.
+
+Betik, istenen paketlerden biri eksikse kilidi yazmadan durur. Özellikle
+`callr` ve `filelock` çalışan VM kütüphanesinde bulunmalıdır; eksik paketleri
+kurduktan sonra betiği yeniden çalıştırın.
 
 `tools/renv_snapshot.R` özetle şunu yapar:
 

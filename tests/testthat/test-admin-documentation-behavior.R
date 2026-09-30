@@ -517,8 +517,7 @@ testthat::test_that("bölüm bağlantısı hedef başlığın anahtarını taş�
   # başlık kalınca kullanılır (aynı anahtar başlık kimliğinden türetilir).
   toc <- env$admin_doc_extract_toc("<h2>13a. 2026-06-26/27 Windows VM proxy</h2>")$toc[[1]]$id
   testthat::expect_identical(gsub("[^a-z0-9]", "", sub("^mbdoc-", "", toc)), "13a2026062627windowsvmproxy")
-  js <- paste(readLines(file.path(resolve_repo_root_for_tests(), "www", "js", "admin_documentation.js"),
-                        encoding = "UTF-8", warn = FALSE), collapse = "\n")
+  js <- read_source_text_utf8(file.path(resolve_repo_root_for_tests(), "www", "js", "admin_documentation.js"))
   testthat::expect_true(grepl("escapeId(\"mbdoc-\" + key)", js, fixed = TRUE))
   testthat::expect_true(grepl("bulunan.length === 1", js, fixed = TRUE))
   testthat::expect_true(grepl("pendingAnchor.doc", js, fixed = TRUE))
@@ -719,20 +718,18 @@ testthat::test_that("bağlantı hedefi başka özniteliğin değerinden okunmaz;
 })
 
 testthat::test_that("başka belge çizilince bekleyen bölüm hedefi iptal edilir", {
-  js <- paste(readLines(file.path(resolve_repo_root_for_tests(), "www", "js", "admin_documentation.js"),
-                       encoding = "UTF-8", warn = FALSE), collapse = "\n")
+  js <- read_source_text_utf8(file.path(resolve_repo_root_for_tests(), "www", "js", "admin_documentation.js"))
   blok <- regmatches(js, regexpr("if \\(pendingAnchor && govde\\) \\{[\\s\\S]*?\\n      \\}", js, perl = TRUE))
   testthat::expect_length(blok, 1L)
   testthat::expect_true(grepl("if (renderedDoc !== pendingAnchor.from)", blok, fixed = TRUE))
 })
 
 test_that("Sistem Durumu otomatik yenileme döngüsü yalnız yönetici oturumunda kurulur", {
-  kaynak <- paste(readLines(file.path(resolve_repo_root_for_tests(), "R", "module_health.R"),
-                            encoding = "UTF-8", warn = FALSE), collapse = "\n")
+  kaynak <- read_source_text_utf8(file.path(resolve_repo_root_for_tests(), "R", "module_health.R"))
   dongu <- regmatches(kaynak, regexpr("observe\\(\\{\\s*# Sağlık kontrolleri DB[^}]*invalidateLater\\(120000\\)", kaynak))
   expect_length(dongu, 1L)
-  expect_true(grepl("if (!health_session_is_admin(session)) return()", dongu, fixed = TRUE))
-  expect_true(grepl("kimlik_sinyali()", dongu, fixed = TRUE))
+  expect_true(grepl("if (!isTRUE(yetki_durumu())) return()", dongu, fixed = TRUE))
+  expect_false(grepl("invalidateLater(5000)", dongu, fixed = TRUE))
 })
 
 testthat::test_that("sanitizer `/` sınırlı olay özniteliğini, inline style'ı ve ping'i temizler", {
@@ -778,5 +775,16 @@ test_that("tırnaktan sonraki olay öznitelikleri ve geçersiz varlıklar güven
   for (kod in c("&#xD800;", "&#xDFFF;", "&#55296;")) {
     expect_no_error(sonuc <- env$admin_doc_sanitize_html(paste0('<a href="', kod, '">x</a>')))
     expect_false(is.na(sonuc))
+  }
+})
+
+
+test_that("denetim karakterli HTML veri adresleri hızlı yoldan geçmez", {
+  env <- .source_admin_doc_env()
+  for (adres in c("da\tta:text/html,<script>x</script>", "data:te\nxt/html,x", "d\ra\tta:text/html,x")) {
+    html <- paste0('<a href="', adres, '">metin</a>')
+    sonuc <- env$admin_doc_sanitize_html(html)
+    expect_match(sonuc, 'href="#"', fixed = TRUE)
+    expect_match(sonuc, "metin")
   }
 })

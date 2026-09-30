@@ -178,8 +178,7 @@ test_that("Dosya Yönetimi aynı kullanıcının yeniden girişinde envanteri ye
 })
 
 test_that("Dosya Yönetimi indirmesi kimlik doğrulanmadan önbellek yolunu kopyalamaz", {
-  kaynak <- paste(readLines(file.path(resolve_repo_root_for_tests(), "R", "module_file_manager.R"),
-                            encoding = "UTF-8", warn = FALSE), collapse = "\n")
+  kaynak <- read_source_text_utf8(file.path(resolve_repo_root_for_tests(), "R", "module_file_manager.R"))
   expect_true(grepl('if (!is_auth_ready() && isTRUE(SSO_ENABLED)) stop("Oturum kimliği doğrulanmadı.")',
                     kaynak, fixed = TRUE))
   expect_true(grepl("fm_register_owner_reset(session, ns, get_module_values, upload_runtime$controller",
@@ -276,4 +275,25 @@ test_that("sahip kancaları temizlenmeden önce dosya kayıtlarını görür", {
   env$mergen_session_owner_transition(oturum$userData, 7L, 8L)
   expect_identical(gorulen, list(a = list(path = "/a")))
   expect_length(oturum$userData$current_session_files, 0L)
+})
+
+
+test_that("açılmamış Dosya Yönetimi sahip değişiminde tarama başlatmaz", {
+  env <- .owner_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_file_manager_session_registry.R"),
+         encoding = "UTF-8", local = env)
+  env$file_ingestion_cancel_controller <- function(...) invisible(NULL)
+  shiny::testServer(function(input, output, session) NULL, {
+    mv <- shiny::reactiveValues(files = data.frame(), file_contents = list(), files_in_context = list())
+    bekleyen <- shiny::reactiveVal(TRUE)
+    tarama <- 0L
+    veri <- env$make_user_session_data_accessors(session)
+    veri$write_identity(list(username = "a"), 7L, list(), TRUE, "keycloak")
+    env$fm_register_owner_reset(session, session$ns, function() mv, list(), bekleyen,
+      function(...) tarama <<- tarama + 1L, function() TRUE)
+    veri$write_identity(list(username = "b"), 8L, list(), TRUE, "keycloak")
+    session$flushReact()
+    expect_identical(tarama, 0L)
+    expect_true(shiny::isolate(bekleyen()))
+  })
 })

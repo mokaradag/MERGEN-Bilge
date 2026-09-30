@@ -90,53 +90,6 @@ mergen_log_file_is_utf8 <- function(target_file, chunk = 4 * 1024^2, from = 0, n
   gecerli(artik)
 }
 
-# Süreçler arası dizin kilidi. Sahip jetonu kilit içinde tutulur; bayat kilit
-# yalnızca tazelenmediğinde (yaş > stale_after) kaldırılır ve kritik adımdan
-# önce sahiplik yeniden doğrulanır. Uzun işler kilidi `nabiz` ile tazeler.
-.mergen_log_lock_acquire <- function(kilit, wait, stale_after) {
-  jeton <- sprintf("%d-%s", Sys.getpid(), basename(tempfile("")))
-  bitis <- Sys.time() + wait
-  repeat {
-    if (dir.create(kilit, showWarnings = FALSE)) {
-      yazim <- suppressWarnings(try(writeLines(jeton, file.path(kilit, "sahip")), silent = TRUE))
-      if (!inherits(yazim, "try-error")) return(jeton)
-      # Sahip dosyası yazılamadıysa yetim kilit bırakılmaz.
-      unlink(kilit, recursive = TRUE)
-      return(NULL)
-    }
-    zaman <- file.info(c(kilit, file.path(kilit, "sahip")))$mtime
-    yas <- if (all(is.na(zaman))) NA_real_ else
-      as.numeric(difftime(Sys.time(), max(zaman, na.rm = TRUE), units = "secs"))
-    if (isTRUE(yas > stale_after)) unlink(kilit, recursive = TRUE)
-    if (Sys.time() > bitis) return(NULL)
-    Sys.sleep(0.02)
-  }
-}
-
-.mergen_log_lock_owned <- function(kilit, jeton) {
-  sahip <- suppressWarnings(tryCatch(readLines(file.path(kilit, "sahip"), n = 1L, warn = FALSE),
-                                     error = function(e) character(0)))
-  identical(sahip, jeton)
-}
-
-.mergen_log_lock_release <- function(kilit, jeton) {
-  if (.mergen_log_lock_owned(kilit, jeton)) unlink(kilit, recursive = TRUE)
-  invisible(NULL)
-}
-
-# Nabız: fonksiyon(lar) ya da tazelenecek kilit dizinleri (sahip dosyasının mtime'ı).
-.mergen_log_heartbeat <- function(nabiz) {
-  if (is.function(nabiz)) nabiz <- list(nabiz)
-  for (oge in nabiz) {
-    if (is.function(oge)) {
-      oge()
-    } else if (is.character(oge)) {
-      for (kilit in oge) try(Sys.setFileTime(file.path(kilit, "sahip"), Sys.time()), silent = TRUE)
-    }
-  }
-  invisible(NULL)
-}
-
 # Dosya kimliği: boyut + mtime (+ istenirse ilk 256 bayt). Aynı boyutta
 # değiştirilen/geri yüklenen dosya önbellekteki kararı devralmaz.
 .mergen_log_file_kimlik <- function(target_file, bas = FALSE) {
@@ -252,6 +205,17 @@ mergen_log_upgrade_legacy_file <- function(target_file, lock_wait = 2, stale_aft
   invisible(!inherits(yazim, "try-error") && file.exists(yan))
 }
 
+.mergen_log_append_fallback <- function(lines, target_file) {
+  kilit <- filelock::lock(paste0(target_file, ".writer"), timeout = 250)
+  if (is.null(kilit)) {
+    target_file <- sub("\\.log$", paste0("-", basename(tempfile("")), ".log"), target_file)
+    kilit <- filelock::lock(paste0(target_file, ".writer"), timeout = 0)
+    if (is.null(kilit)) stop("Yedek günlük kilidi alınamadı.")
+  }
+  on.exit(filelock::unlock(kilit), add = TRUE)
+  mergen_log_append_utf8(lines, target_file)
+}
+
 # Yedek dosyadaki satırlar kilit altında ana dosyaya eklenir ve yedek silinir.
 # Yarıda kalan kopya geri alınır (hedef eski boyutuna kesilir); yeniden
 # denemede aynı satırlar iki kez eklenmez.
@@ -260,6 +224,9 @@ mergen_log_upgrade_legacy_file <- function(target_file, lock_wait = 2, stale_aft
   jeton <- .mergen_log_lock_acquire(kilit, 0.5, 60)
   if (is.null(jeton)) return(invisible(FALSE))
   on.exit(.mergen_log_lock_release(kilit, jeton), add = TRUE)
+  yazici_kilidi <- filelock::lock(paste0(yedek, ".writer"), timeout = 0)
+  if (is.null(yazici_kilidi)) return(invisible(FALSE))
+  on.exit(filelock::unlock(yazici_kilidi), add = TRUE)
   if (!file.exists(yedek)) {
     .mergen_log_merged_offset(yedek, 0)
     return(invisible(TRUE))
@@ -346,21 +313,25 @@ mergen_log_upgrade_legacy_file <- function(target_file, lock_wait = 2, stale_aft
   for (i in seq_along(sahiplenilen)) {
     kaynak <- adaylar[eski][i]
     hedef <- sahiplenilen[i]
-    if (file.exists(hedef)) next
-    yan <- paste0(kaynak, ".birlesen")
-    hedef_yan <- paste0(hedef, ".birlesen")
-    if (!file.exists(yan) && file.exists(hedef_yan)) {
-      unlink(hedef_yan)
-      if (file.exists(hedef_yan)) next
-    }
-    # Bayt kaydı doğrulanmadan günlük sahiplenilmez.
-    if (file.exists(yan) && !isTRUE(suppressWarnings(try({
-      file.copy(yan, hedef_yan, overwrite = TRUE) &&
-        identical(readBin(yan, "raw", file.info(yan)$size),
-                  readBin(hedef_yan, "raw", file.info(hedef_yan)$size))
-    }, silent = TRUE)))) next
-    tasinan[i] <- isTRUE(file.rename(kaynak, hedef))
-    if (tasinan[i]) unlink(yan) else unlink(hedef_yan)
+    yazici_kilidi <- filelock::lock(paste0(kaynak, ".writer"), timeout = 0)
+    if (is.null(yazici_kilidi)) next
+    (function() tryCatch({
+      if (file.exists(hedef)) return(NULL)
+      yan <- paste0(kaynak, ".birlesen")
+      hedef_yan <- paste0(hedef, ".birlesen")
+      if (!file.exists(yan) && file.exists(hedef_yan)) {
+        unlink(hedef_yan)
+        if (file.exists(hedef_yan)) return(NULL)
+      }
+      # Bayt kaydı doğrulanmadan günlük sahiplenilmez.
+      if (file.exists(yan) && !isTRUE(suppressWarnings(try({
+        file.copy(yan, hedef_yan, overwrite = TRUE) &&
+          identical(readBin(yan, "raw", file.info(yan)$size),
+                    readBin(hedef_yan, "raw", file.info(hedef_yan)$size))
+      }, silent = TRUE)))) return(NULL)
+      tasinan[i] <<- isTRUE(file.rename(kaynak, hedef))
+      if (tasinan[i]) unlink(yan) else unlink(hedef_yan)
+    }, finally = filelock::unlock(yazici_kilidi)))()
   }
   secilen <- c(adaylar[bizim], sahiplenilen[tasinan])
   secilen[order(file.info(secilen)$mtime, basename(secilen))]
@@ -377,14 +348,14 @@ mergen_log_write_utf8 <- function(lines, target_file) {
     ekle_kilit <- paste0(target_file, ".append.lock")
     ertele <- .MERGEN_LOG_LOCK_BACKOFF[[ekle_kilit]]
     if (is.numeric(ertele) && as.numeric(Sys.time()) < ertele) {
-      return(invisible(mergen_log_append_utf8(lines, surec_yedek) > 0))
+      return(invisible(.mergen_log_append_fallback(lines, surec_yedek) > 0))
     }
     # Kısa bekleme: yetim kilit her log satırını saniyelerce bloklamaz; zaman
     # aşımı birkaç saniye önbelleklenir.
     jeton <- .mergen_log_lock_acquire(ekle_kilit, 0.25, 120)
     if (is.null(jeton)) {
       .MERGEN_LOG_LOCK_BACKOFF[[ekle_kilit]] <- as.numeric(Sys.time()) + 5
-      return(invisible(mergen_log_append_utf8(lines, surec_yedek) > 0))
+      return(invisible(.mergen_log_append_fallback(lines, surec_yedek) > 0))
     }
     on.exit(.mergen_log_lock_release(ekle_kilit, jeton), add = TRUE)
     nabiz <- ekle_kilit
@@ -393,18 +364,18 @@ mergen_log_write_utf8 <- function(lines, target_file) {
   }
   yedek <- sub("(\\.log)?$", ".utf8.log", target_file)
   if (!isTRUE(mergen_log_upgrade_legacy_file(target_file, nabiz = nabiz))) {
-    return(invisible(mergen_log_append_utf8(lines, yedek) > 0))
+    return(invisible(.mergen_log_append_fallback(lines, yedek) > 0))
   }
   for (y in c(yedek, .mergen_log_orphan_fallbacks(target_file, surec_yedek, !is.null(jeton)), surec_yedek)) {
     if (file.exists(y) && !isTRUE(.mergen_log_merge_fallback(target_file, y, nabiz))) {
-      return(invisible(mergen_log_append_utf8(lines, y) > 0))
+      return(invisible(.mergen_log_append_fallback(lines, y) > 0))
     }
   }
   # Son ekleme öncesi kilit tazelenir; sahipliği kaybeden yazıcı ana dosyaya dokunmaz.
   if (!is.null(jeton)) {
     .mergen_log_heartbeat(ekle_kilit)
     if (!.mergen_log_lock_owned(ekle_kilit, jeton)) {
-      return(invisible(mergen_log_append_utf8(lines, surec_yedek) > 0))
+      return(invisible(.mergen_log_append_fallback(lines, surec_yedek) > 0))
     }
   }
   once <- file.info(target_file)$size

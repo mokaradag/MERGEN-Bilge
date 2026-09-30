@@ -589,3 +589,18 @@ test_that("DNS çözümlemesi beklemez, süre aşımında ayrı süreç durdurul
   expect_length(env$health_host_private_ips("servis.corp"), 0L)
   expect_false(is.null(env$.HEALTH_DNS_CACHE[["servis.corp"]]))
 })
+
+
+test_that("DNS yenilenirken son özel adres kararı korunur", {
+  env <- .fresh_health_env()
+  env$health_resolve_host_ips <- function(host) "10.1.2.3"
+  expect_identical(env$health_host_private_ips("servis.corp"), "10.1.2.3")
+  env$.HEALTH_DNS_CACHE[["servis.corp"]]$t <- as.numeric(Sys.time()) - 301
+  env$health_resolve_host_ips <- function(host) structure(character(0), pending = TRUE)
+  expect_identical(env$health_host_private_ips("servis.corp"), "10.1.2.3")
+  expect_true(attr(env$health_host_private_ips("yeni.corp"), "pending"))
+  expect_null(env$.HEALTH_DNS_CACHE[["yeni.corp"]])
+  env$health_resolve_host_ips <- function(host) "8.8.8.8"
+  expect_length(env$health_host_private_ips("servis.corp"), 0L)
+  expect_true(env$.HEALTH_DNS_CACHE[["servis.corp"]]$genel)
+})

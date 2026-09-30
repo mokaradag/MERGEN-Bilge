@@ -170,12 +170,19 @@
 		// Giriş ekranını kapat; Shiny mod seçimini intro audio callback'ine bağımlı bırakma.
 		// Callback yalnızca yedek olarak aynı tek-seferlik bildirimi yeniden dener.
 		var modeSelectionSent = false;
+		if (window.mergenCancelModeRetry) window.mergenCancelModeRetry();
+		window.mergenCancelModeRetry = function() {
+		  modeSelectionSent = true;
+		  if (window.jQuery) window.jQuery(document).off('shiny:connected.mergenModeRetry');
+		};
+		if (window.jQuery) window.jQuery(document).on('shiny:connected.mergenModeRetry', sendModeSelectionToShiny);
 
 		// Bayrak yalnız olay gerçekten gönderilince kalkar; Shiny o an
 		// hazır değilse yedek çağrı yeniden dener.
 		function sendModeSelectionToShiny() {
 		  if (modeSelectionSent) return;
-		  if (typeof Shiny === 'undefined' || !Shiny.setInputValue) return;
+		  if (typeof Shiny === 'undefined' || !Shiny.setInputValue ||
+		      (Shiny.shinyapp && Shiny.shinyapp.isConnected && !Shiny.shinyapp.isConnected())) return;
 		  try {
 			Shiny.setInputValue('selected_experience_mode', {
 			  mode: mode,
@@ -183,6 +190,7 @@
 			  timestamp: Date.now()
 			}, { priority: 'event' });
 			modeSelectionSent = true;
+			if (window.jQuery) window.jQuery(document).off('shiny:connected.mergenModeRetry');
 		  } catch (e) {}
 		}
 
@@ -202,6 +210,7 @@
   // MODAL İŞLEMLERİ
   // ============================================================
   function openCinematicModal() {
+    if (window.mergenCancelModeRetry) window.mergenCancelModeRetry();
     var overlay = document.getElementById('mode-modal-overlay');
     if (!overlay) return;
 

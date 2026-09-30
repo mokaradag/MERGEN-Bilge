@@ -109,6 +109,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
     # VERİ ÇEKİMİ (tüm sekmeler için merkezi reaktif veri kaynağı)
     # ==================================================================
     analytics_data <- reactive({
+      admin_require_session(session)
       refresh$trigger()
 
       list(
@@ -411,6 +412,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
     # boş data.frame döner; sekme güvenli biçimde sıfır/boş durum gösterir.
     # ==================================================================
     bilge_yolac_data <- reactive({
+      admin_require_session(session)
       refresh$trigger()
       admin_bilge_yolac_queries(safe_query)
     })
@@ -419,6 +421,7 @@ adminAnalyticsServer <- function(id, pool = NULL) {
     # SEKME İÇERİĞİ YÖNLENDİRİCİ
     # ==================================================================
     output$tab_content_area <- renderUI({
+      admin_require_session(session)
       tab <- input$admin_tabs
       if (is.null(tab)) tab <- "overview"
 

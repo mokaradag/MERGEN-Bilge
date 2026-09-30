@@ -307,6 +307,7 @@ admin_ha_register_detail_runtime <- function(input,
   })
 
   observeEvent(input$dosya_goster, {
+    admin_require_session(session)
     bildirim_id <- input$dosya_goster
     data <- ha_data()$tumu
     bildirim <- data[data$HataBildirimID == bildirim_id, ]
@@ -319,6 +320,7 @@ admin_ha_register_detail_runtime <- function(input,
     dosyalar <- trimws(strsplit(dosya_yollari, ",")[[1]])
 
     output$ek_dosya_content <- renderUI({
+      admin_require_session(session)
       admin_ha_attachment_content(dosyalar)
     })
 
@@ -326,6 +328,7 @@ admin_ha_register_detail_runtime <- function(input,
   })
 
   observeEvent(input$durum_guncelle, {
+    admin_require_session(session)
     bildirim_id <- input$durum_guncelle
     data <- ha_data()$tumu
     bildirim <- data[data$HataBildirimID == bildirim_id, ]
@@ -345,6 +348,7 @@ admin_ha_register_detail_runtime <- function(input,
   })
 
   observeEvent(input$durum_kaydet, {
+    admin_require_session(session)
     shinyjs::runjs(sprintf(
       "Shiny.setInputValue('%s', parseInt($('#%s').val()), {priority: 'event'});",
       ns("durum_bildirim_id_val"),
@@ -353,6 +357,7 @@ admin_ha_register_detail_runtime <- function(input,
   })
 
   observeEvent(input$durum_bildirim_id_val, {
+    admin_require_session(session)
     req(input$durum_bildirim_id_val)
 
     bildirim_id <- as.integer(input$durum_bildirim_id_val)

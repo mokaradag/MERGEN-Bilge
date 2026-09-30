@@ -103,6 +103,7 @@ jobs:
             any::duckdb
             any::fastmatch
             any::fs
+            any::filelock
             any::future
             any::glue
             any::highcharter

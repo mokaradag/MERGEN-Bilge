@@ -33,6 +33,7 @@ render_worker_health_html <- function(worker_info) {
 
   HTML(paste0(
     '<div class="health-worker-stats">',
+    satir("Kapsam:", "Bu uygulama süreci"),
     satir("Toplam İşçi:", sayi(worker_info$total_workers)),
     satir("Boş İşçi:", sayi(worker_info$free_workers)),
     satir("Aktif İşçi:", sayi(worker_info$active_workers)),

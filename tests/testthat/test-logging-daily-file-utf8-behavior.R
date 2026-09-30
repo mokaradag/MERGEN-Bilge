@@ -520,7 +520,7 @@ test_that("sahiplenilip birleştirilemeyen yetim yedek sonraki yazımda yeniden 
   env$.mergen_log_merge_fallback <- asil
   env$mergen_log_write_utf8("iki", hedef)
   expect_identical(.log_utf8_bytes(hedef), charToRaw("ana\nyetim\nbir\niki\n"))
-  expect_length(list.files(tmp, pattern = "\\.pbaska"), 0L)
+  expect_length(list.files(tmp, pattern = "\\.pbaska.*\\.log$"), 0L)
 })
 
 

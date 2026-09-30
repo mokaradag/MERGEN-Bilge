@@ -47,7 +47,10 @@ ai_expert_recent_prompt_promise <- function(session, user_id) {
     return(promises::promise_resolve(NULL))
   }
   onbellek <- if (is.environment(ud)) ud$ai_expert_recent_prompt else NULL
-  if (is.list(onbellek) && identical(onbellek$uid, uid)) return(onbellek$promise)
+  if (is.list(onbellek) && identical(onbellek$uid, uid) &&
+      (isTRUE(onbellek$pending) || isTRUE(as.numeric(Sys.time()) - onbellek$t < 30))) {
+    return(onbellek$promise)
+  }
   dsn <- Sys.getenv("DB_DSN", get0(".DEFAULT_DSN", ifnotfound = ""))
   kodlama <- get0(".DEFAULT_DB_CLIENT_ENCODING", ifnotfound = "UTF-8")
   ad_kodlama <- get0(".DEFAULT_DB_NAME_ENCODING", ifnotfound = kodlama)
@@ -63,6 +66,11 @@ ai_expert_recent_prompt_promise <- function(session, user_id) {
   ), error = function(e) NULL)
   if (is.null(gorev)) return(promises::promise_resolve(NULL))
   sonuc <- promises::catch(promises::then(gorev, function(ham) {
+    if (is.environment(ud) && is.list(ud$ai_expert_recent_prompt) &&
+        identical(ud$ai_expert_recent_prompt$promise, sonuc)) {
+      ud$ai_expert_recent_prompt$pending <- FALSE
+      ud$ai_expert_recent_prompt$t <- as.numeric(Sys.time())
+    }
     if (is.null(ham)) return(NULL)
     if (exists("normalize_utf8_text", mode = "function")) normalize_utf8_text(ham) else enc2utf8(ham)
   }), function(e) {
@@ -73,6 +81,6 @@ ai_expert_recent_prompt_promise <- function(session, user_id) {
     }
     NULL
   })
-  if (is.environment(ud)) ud$ai_expert_recent_prompt <- list(uid = uid, promise = sonuc)
+  if (is.environment(ud)) ud$ai_expert_recent_prompt <- list(uid = uid, promise = sonuc, pending = TRUE, t = as.numeric(Sys.time()))
   sonuc
 }

@@ -269,31 +269,36 @@ test_that("sahip değişince süren DOCX kodlaması yeni sahibe basılmaz ve ön
   })
 })
 
-test_that("önizleme veri nesnesi adı sahip nesli ve açılış başına benzersizdir", {
-  skip_if_not_installed("shiny")
+test_that("önizleme kayıtları sınırlıdır; eski URL ve eski sahip reddedilir", {
   env <- .fp_make_env()
   source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
          encoding = "UTF-8", local = env)
   env$showToast <- function(...) invisible(NULL)
   gorsel <- file.path(withr::local_tempdir(), "rapor.png")
   writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), gorsel)
-  adlar <- character(0)
-  testthat::local_mocked_bindings(
-    showModal = function(...) invisible(NULL),
-    removeModal = function(...) invisible(NULL),
-    .package = "shiny"
-  )
+  kayitlar <- list()
+  testthat::local_mocked_bindings(showModal = function(...) invisible(NULL),
+                                  removeModal = function(...) invisible(NULL), .package = "shiny")
   shiny::testServer(env$filePreviewServer, {
     root <- .subset2(session, "parent")
     root$registerDataObj <- function(name, data, filterFunc) {
-      adlar <<- c(adlar, name)
-      paste0("veri/", name)
+      kayitlar[[name]] <<- list(data = data, filter = filterFunc)
+      paste0("veri/", name, "?w=1")
     }
     session$userData$kimlik_sahibi <- 7L
     session$returned$open(list(name = "rapor.png", datapath = gorsel))
+    ilk <- kayitlar[[1]]
+    istek <- list(QUERY_STRING = paste0("w=1&preview_token=", ilk$data$jeton))
+    expect_identical(ilk$filter(ilk$data, istek)$status, 200L)
+    for (i in 1:40) session$returned$open(list(name = "rapor.png", datapath = gorsel))
+    expect_length(kayitlar, 1L)
+    simdiki <- kayitlar[[1]]
+    expect_identical(simdiki$filter(simdiki$data, istek)$status, 403L)
+    istek$QUERY_STRING <- paste0("preview_token=", simdiki$data$jeton)
+    expect_identical(simdiki$filter(simdiki$data, istek)$status, 200L)
     env$mergen_session_owner_transition(session$userData, 7L, 8L)
+    expect_identical(simdiki$filter(simdiki$data, istek)$status, 403L)
     session$returned$open(list(name = "rapor.png", datapath = gorsel))
-    expect_length(adlar, 2L)
-    expect_false(identical(adlar[1], adlar[2]))
+    expect_length(kayitlar, 1L)
   })
 })

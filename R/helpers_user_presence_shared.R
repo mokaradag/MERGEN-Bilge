@@ -135,8 +135,9 @@ mb_presence_initialize <- function() {
   invisible(guvenli)
 }
 
+.MB_PRESENCE_BOOT_ID <- basename(tempfile("boot-"))
 mb_presence_process_id <- function() {
-  gsub("[^A-Za-z0-9_.-]", "_", paste0(Sys.info()[["nodename"]], "_", Sys.getpid()))
+  gsub("[^A-Za-z0-9_.-]", "_", paste0(Sys.info()[["nodename"]], "_", Sys.getpid(), "_", .MB_PRESENCE_BOOT_ID))
 }
 
 # Bu sürecin oturum satırlarını yayımlar. Olağan nabız en fazla `aralik`

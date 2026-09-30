@@ -110,14 +110,17 @@ health_resolve_host_ips <- function(host) {
 # bir yenileme aralığı tutulur. Süren çözümleme önbelleğe alınmaz.
 .HEALTH_DNS_CACHE <- new.env(parent = emptyenv())
 
-health_host_private_ips <- function(host, ttl = 600, kisa_ttl = 120) {
+health_host_private_ips <- function(host, ttl = 600, kisa_ttl = 300) {
   simdi <- as.numeric(Sys.time())
   kayit <- .HEALTH_DNS_CACHE[[host]]
   if (is.list(kayit) && simdi - kayit$t < (if (isTRUE(kayit$genel)) ttl else kisa_ttl)) {
     return(kayit$sonuc)
   }
   ipler <- health_resolve_host_ips(host)
-  if (isTRUE(attr(ipler, "pending"))) return(structure(character(0), cozuldu = FALSE))
+  if (isTRUE(attr(ipler, "pending"))) {
+    if (is.list(kayit)) return(kayit$sonuc)
+    return(structure(character(0), cozuldu = FALSE, pending = TRUE))
+  }
   ozel <- length(ipler) > 0L && all(vapply(ipler, function(ip) {
     !isTRUE(health_host_unspecified(ip)) && isTRUE(health_ip_literal_internal(ip))
   }, logical(1)))
@@ -286,7 +289,8 @@ health_endpoint_scope <- function(url) {
   if (!intranet_adi && !(host %in% health_configured_hosts())) return(sonuc(TRUE, "genel_dns"))
   ipler <- health_host_private_ips(host)
   if (length(ipler)) return(sonuc(FALSE, ipler = ipler))
-  sonuc(TRUE, if (isFALSE(attr(ipler, "cozuldu"))) "cozulmedi" else "genel_dns")
+  sonuc(TRUE, if (isTRUE(attr(ipler, "pending"))) "bekliyor" else
+    if (isFALSE(attr(ipler, "cozuldu"))) "cozulmedi" else "genel_dns")
 }
 
 # curl `resolve` girdisi ("host:port:adres1,adres2"); IPv6 adres köşeli

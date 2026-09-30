@@ -365,14 +365,15 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  startup_state$full_load_generation <- startup_state$full_load_generation + 1L
 	  full_load_generation <- startup_state$full_load_generation
 
-	  session$userData$initial_saved_chats_promise <- promises::then(
-		tracked_future_promise(
+	  gonderim <- tryCatch(tracked_future_promise(
 		  task_fn = function() {
 			load_chats_from_db(run_user_id, include_messages = FALSE)
 		  },
 		  task_type = "startup_saved_chats",
 		  session_token = session$token
-		),
+		), error = function(e) promises::promise_reject(e))
+	  session$userData$initial_saved_chats_promise <- promises::then(
+		  gonderim,
 		  onFulfilled = function(chats) {
 			if (session_closed() || !identical(startup_state$full_load_generation, full_load_generation)) {
 			  return(NULL)

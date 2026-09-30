@@ -140,3 +140,13 @@ testthat::test_that("renv.lock VARSA required_packages ile tutarli; YOKSA atlani
                  paste(missing_in_lock, collapse = ", "))
   )
 })
+
+test_that("eksik runtime paketi kısmi kilit üretmeden durur", {
+  exprs <- parse(file.path(.renv_repo_root(), "tools", "renv_snapshot.R"), encoding = "UTF-8")
+  eksik_kapisi <- Filter(function(x) is.call(x) && identical(x[[1]], as.name("if")) &&
+    grepl("length(not_installed)", paste(deparse(x[[2]]), collapse = ""), fixed = TRUE), as.list(exprs))
+  expect_length(eksik_kapisi, 1L)
+  env <- new.env(parent = baseenv())
+  env$not_installed <- "callr"
+  expect_error(eval(eksik_kapisi[[1]], env), "callr")
+})

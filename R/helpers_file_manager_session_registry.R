@@ -175,9 +175,10 @@ fm_register_owner_reset <- function(session, ns, module_values_provider, control
     mv$file_id_to_delete <- NULL
     # Önceki sahibin açık onay pencereleri (tek dosya/tümünü sil) kapatılır.
     try(shiny::removeModal(session = session), silent = TRUE)
+    onceden_yuklu <- !isTRUE(shiny::isolate(scan_pending()))
     scan_pending(TRUE)
     if (length(ids)) try(session$sendCustomMessage(ns("setAttachState"), list(ids = ids, checked = FALSE)), silent = TRUE)
-    yeniden_yukle <<- TRUE
+    yeniden_yukle <<- isTRUE(yeniden_yukle) || onceden_yuklu
     if (identical(neden, "sahip_degisti")) sahip_nesli(shiny::isolate(sahip_nesli()) + 1L)
   })
   shiny::observe({
