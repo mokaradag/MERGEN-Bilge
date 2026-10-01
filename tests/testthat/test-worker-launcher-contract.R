@@ -82,6 +82,9 @@ test_that("launch plani LAUNCH YAPMADAN dogru env/komut uretir", {
   expect_equal(plan[[3]]$port, 8011L)
   expect_identical(plan[[2]]$env[["MERGEN_PORT"]], "8010")
   expect_identical(plan[[2]]$env[["MERGEN_RUN_APP"]], "true")
+  # Cocuk surec paylasilan log/ozet kapasitesini worker sayisina gore bolusur.
+  expect_identical(plan[[2]]$env[["MERGEN_APP_WORKER_COUNT"]], "3")
+  expect_identical(plan[[2]]$env[["MERGEN_APP_WORKER_INDEX"]], "2")
   expect_true(any(grepl("app.R", plan[[1]]$args, fixed = TRUE)))
 })
 
@@ -92,4 +95,67 @@ test_that("dry_run plani dondurur, gercek surec baslatmaz", {
     expect_length(plan, 2L)
     expect_equal(vapply(plan, function(s) s$port, integer(1)), c(8009L, 8010L))
   })
+})
+
+test_that("65535'i asan port araligi baslatmadan once reddedilir", {
+  env <- .load_worker_launcher()
+  withr::with_envvar(c(MERGEN_WORKERS = "16", MERGEN_BASE_PORT = "65530"), {
+    expect_error(suppressWarnings(env$mergen_start_workers(dry_run = TRUE)), "65535")
+  })
+})
+
+test_that("cocuk ciktisi okunmayan boruya yazilmaz; olen worker yeniden baslatilir", {
+  code <- .strip_r_comments(paste(readLines(.worker_launcher_path(), warn = FALSE), collapse = "\n"))
+  expect_false(grepl('stdout = "|"', code, fixed = TRUE))
+  expect_false(grepl('stderr = "|"', code, fixed = TRUE))
+  expect_true(grepl('sprintf("worker-%d-%s-stdout.log", spec$port, jeton)', code, fixed = TRUE))
+  expect_true(grepl('sprintf("worker-%d-%s-stderr.log", spec$port, jeton)', code, fixed = TRUE))
+  expect_true(grepl("MERGEN_WORKERS_MAX_RESTARTS", code, fixed = TRUE))
+  expect_true(grepl("yeni <- tryCatch(start_one(procs[[k]]$spec)", code, fixed = TRUE))
+  expect_true(grepl("procs[[k]]$proc <- yeni", code, fixed = TRUE))
+})
+
+test_that("temizlik toplu baslatmadan once kaydedilir; butce kararli calismada sifirlanir", {
+  code <- .strip_r_comments(paste(readLines(.worker_launcher_path(), warn = FALSE), collapse = "\n"))
+  temizlik <- regexpr("on.exit({", code, fixed = TRUE)
+  ilk_baslatma <- regexpr("proc = start_one(spec)", code, fixed = TRUE)
+  expect_true(temizlik > 0 && ilk_baslatma > temizlik)
+  expect_false(grepl("lapply(plan, function(spec) list(spec = spec, proc = start_one(spec)", code, fixed = TRUE))
+  expect_true(grepl("MERGEN_WORKERS_STABLE_SECONDS", code, fixed = TRUE))
+  expect_true(grepl("procs[[k]]$restarts <- 0L", code, fixed = TRUE))
+})
+
+test_that("cevrimici dizini baslaticiya ozel degildir; yalniz operator degeri aktarilir", {
+  env <- .load_worker_launcher()
+  withr::with_envvar(c(MERGEN_PRESENCE_SHARED_DIR = ""), {
+    expect_identical(env$mergen_workers_presence_dir(), "")
+    plan <- env$mergen_worker_launch_plan(base = 8009L, count = 2L, host = "0.0.0.0",
+                                          repo_root = getwd())
+    expect_identical(plan[[1]]$env[["MERGEN_PRESENCE_SHARED_DIR"]], "")
+  })
+  withr::with_envvar(c(MERGEN_PRESENCE_SHARED_DIR = "D:/mergen_presence"), {
+    expect_identical(env$mergen_workers_presence_dir(), "D:/mergen_presence")
+  })
+})
+
+
+test_that("negatif yeniden başlatma ayarları worker başlamadan reddedilir", {
+  env <- .load_worker_launcher()
+  for (ad in c("MERGEN_WORKERS_MAX_RESTARTS", "MERGEN_WORKERS_STABLE_SECONDS")) {
+    withr::with_envvar(setNames("-1", ad), {
+      expect_error(env$mergen_start_workers(dry_run = TRUE), "negatif")
+    })
+  }
+})
+
+test_that("yeniden başlatma bütçesi bitince hata ve çocuk temizliği oluşur", {
+  skip_if_not_installed("processx")
+  env <- .load_worker_launcher()
+  withr::local_envvar(c(MERGEN_WORKERS = "1", MERGEN_WORKERS_MAX_RESTARTS = "0"))
+  killed <- FALSE
+  process <- list(get_pid = function() 1L, is_alive = function() FALSE,
+                  kill = function() killed <<- TRUE)
+  testthat::local_mocked_bindings(process = list(new = function(...) process), .package = "processx")
+  expect_error(env$mergen_start_workers(), "butcesi bitti")
+  expect_true(killed)
 })

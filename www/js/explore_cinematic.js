@@ -1,11 +1,19 @@
 // www/js/explore_cinematic.js
 // Dosya Yolu: www/js/explore_cinematic.js
 // Açıklama: Sinematik Keşfet butonu ve mod seçim modalı etkileşim mantığı.
-// Spotlight kart ışıması, yazma animasyonu, kart seçim geçişleri ve
+// Spotlight kart ışıması, kart seçim geçişleri ve
 // modal açma/kapama işlemlerini yönetir.
 
 (function() {
   'use strict';
+
+  window.mergenModeSessionReady = !!(window.Shiny && Shiny.shinyapp && Shiny.shinyapp.config);
+  $(document).on('shiny:connected.mergenModeReady', function() {
+    window.mergenModeSessionReady = false;
+  });
+  $(document).on('shiny:sessioninitialized.mergenModeReady', function() {
+    window.mergenModeSessionReady = true;
+  });
 
   // Mod tanımları (açıklama metinleri)
   var CINEMATIC_MODES = {
@@ -47,81 +55,27 @@
     }
   };
 
-  // Yazma animasyonu zamanlayıcıları
-  var _typingTimers = {};
-
   // Seçili mod (seçim kilidi)
   var _selectedModeId = null;
 
   // Üzerinde durulan kart
   var _hoveredModeId = null;
 
-  // ============================================================
-  // YAZMA ANİMASYONU (Doğal ritimli daktilo efekti)
-  // ============================================================
-  function typeText(element, text, cardId) {
-    // Önceki animasyonu temizle
-    if (_typingTimers[cardId]) {
-      clearTimeout(_typingTimers[cardId]);
-      _typingTimers[cardId] = null;
-    }
+  // Kapanış sıfırlama zamanlayıcısı: yeniden açılışta iptal edilir; eski
+  // kapanışın gecikmeli sıfırlaması yeni açılan modalın seçimini bozmaz.
+  var _closeResetTimer = null;
 
-    var index = 0;
-    element.innerHTML = '<span class="typing-cursor"></span>';
+  // Başarılı seçimden sonra giriş ekranı kaldırılınca odak ana uygulamaya taşınır.
+  var _focusMainAfterDismiss = false;
 
-    function typeNextChar() {
-      if (index >= text.length) {
-        // Yazma tamamlandı, imleci kısa süre sonra kaldır
-        var cursor = element.querySelector('.typing-cursor');
-        if (cursor) {
-          setTimeout(function() { if (cursor.parentNode) cursor.remove(); }, 1500);
-        }
-        _typingTimers[cardId] = null;
-        return;
-      }
+  // Modal nesli: her açılış ve kapanışta artar. Gecikmeli mod geçişi/uygulaması
+  // yalnız kendi açılışında ve kaplama hâlâ açıkken çalışır; kapatılan modalın
+  // seçimi sonradan uygulanmaz.
+  var _modalGen = 0;
 
-      var currentChar = text.charAt(index);
-
-      // İmleci kaldır, metin ekle, imleci tekrar ekle
-      var cursor = element.querySelector('.typing-cursor');
-      if (cursor) cursor.remove();
-
-      var textNode = document.createTextNode(currentChar);
-      element.appendChild(textNode);
-
-      var newCursor = document.createElement('span');
-      newCursor.className = 'typing-cursor';
-      element.appendChild(newCursor);
-
-      index++;
-
-      // Dinamik hız (doğal daktilo/klavye efekti)
-      var delay = 20 + (Math.random() * 20 - 10);
-
-      if (currentChar === '.' || currentChar === ',' ||
-          currentChar === '!' || currentChar === '?') {
-        delay += 300; // Noktalama işaretlerinde belirgin duraksama
-      } else if (currentChar === ' ') {
-        delay += 40; // Boşluklarda hafif duraksama
-      } else if (Math.random() > 0.9) {
-        delay += 80; // Arada doğal takılmalar
-      }
-
-      _typingTimers[cardId] = setTimeout(typeNextChar, delay);
-    }
-
-    _typingTimers[cardId] = setTimeout(typeNextChar, 20);
-  }
-
-  // Yazma animasyonunu sıfırla
-  function resetTypeText(element, cardId) {
-    if (_typingTimers[cardId]) {
-      clearTimeout(_typingTimers[cardId]);
-      _typingTimers[cardId] = null;
-    }
-    if (element) {
-      element.innerHTML = '';
-    }
+  function modalStillOpen(nesil) {
+    var kaplama = document.getElementById('mode-modal-overlay');
+    return nesil === _modalGen && !!kaplama && kaplama.classList.contains('active');
   }
 
   // ============================================================
@@ -141,24 +95,12 @@
 
   function handleCardMouseEnter(card) {
     if (_selectedModeId) return;
-    var mode = card.getAttribute('data-mode');
-    _hoveredModeId = mode;
-
-    // Yazma animasyonunu başlat
-    var desc = card.querySelector('.cinematic-card-desc');
-    if (desc && CINEMATIC_MODES[mode]) {
-      typeText(desc, CINEMATIC_MODES[mode].description, 'cine_' + mode);
-    }
+    _hoveredModeId = card.getAttribute('data-mode');
   }
 
   function handleCardMouseLeave(card) {
     if (_selectedModeId) return;
-    var mode = card.getAttribute('data-mode');
     _hoveredModeId = null;
-
-    // Yazma animasyonunu durdur ve temizle
-    var desc = card.querySelector('.cinematic-card-desc');
-    resetTypeText(desc, 'cine_' + mode);
   }
 
   // ============================================================
@@ -166,6 +108,9 @@
   // ============================================================
   function selectMode(card) {
     if (_selectedModeId) return;
+    // Kapanmış (gizli) kaplamadaki odaklı kart klavyeyle mod seçemez.
+    var kaplama = document.getElementById('mode-modal-overlay');
+    if (!kaplama || !kaplama.classList.contains('active')) return;
 
     var mode = card.getAttribute('data-mode');
 
@@ -183,8 +128,10 @@
         }
       });
 
-      // Kısa gecikme ile 2. adıma geç
+      // Kısa gecikme ile 2. adıma geç (modal bu arada kapandıysa geçilmez)
+      var kesifNesli = _modalGen;
       setTimeout(function() {
+        if (!modalStillOpen(kesifNesli)) return;
         // Kart sınıflarını temizle
         allCards.forEach(function(c) {
           c.classList.remove('selected', 'other-selected');
@@ -213,9 +160,12 @@
       }
     });
 
-    // Kısa gecikme ile modalı kapat ve modu uygula
+    // Kısa gecikme ile modalı kapat ve modu uygula; modal bu arada kapatıldıysa
+    // (X/Esc/arka plan ya da dış kapatma) iptal edilen seçim uygulanmaz.
+    var secimNesli = _modalGen;
     setTimeout(function() {
-      closeCinematicModal();
+      if (!modalStillOpen(secimNesli)) return;
+      closeCinematicModal(true);
 
       // localStorage'a kaydet
       try {
@@ -228,18 +178,28 @@
 		// Giriş ekranını kapat; Shiny mod seçimini intro audio callback'ine bağımlı bırakma.
 		// Callback yalnızca yedek olarak aynı tek-seferlik bildirimi yeniden dener.
 		var modeSelectionSent = false;
+		if (window.mergenCancelModeRetry) window.mergenCancelModeRetry();
+		window.mergenCancelModeRetry = function() {
+		  modeSelectionSent = true;
+		  if (window.jQuery) window.jQuery(document).off('shiny:sessioninitialized.mergenModeRetry');
+		};
+		if (window.jQuery) window.jQuery(document).on('shiny:sessioninitialized.mergenModeRetry', sendModeSelectionToShiny);
 
+		// Bayrak yalnız olay gerçekten gönderilince kalkar; Shiny o an
+		// hazır değilse yedek çağrı yeniden dener.
 		function sendModeSelectionToShiny() {
 		  if (modeSelectionSent) return;
-		  modeSelectionSent = true;
-
-		  if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+		  if (!window.mergenModeSessionReady || typeof Shiny === 'undefined' || !Shiny.setInputValue ||
+		      (Shiny.shinyapp && Shiny.shinyapp.isConnected && !Shiny.shinyapp.isConnected())) return;
+		  try {
 			Shiny.setInputValue('selected_experience_mode', {
 			  mode: mode,
 			  source: 'welcome',
 			  timestamp: Date.now()
 			}, { priority: 'event' });
-		  }
+			modeSelectionSent = true;
+			if (window.jQuery) window.jQuery(document).off('shiny:sessioninitialized.mergenModeRetry');
+		  } catch (e) {}
 		}
 
 		// Kritik: Ayarları hemen Shiny'ye gönder.
@@ -258,8 +218,14 @@
   // MODAL İŞLEMLERİ
   // ============================================================
   function openCinematicModal() {
+    if (window.mergenCancelModeRetry) window.mergenCancelModeRetry();
     var overlay = document.getElementById('mode-modal-overlay');
     if (!overlay) return;
+
+    if (_closeResetTimer) {
+      clearTimeout(_closeResetTimer);
+      _closeResetTimer = null;
+    }
 
     // Durumu sıfırla
     _selectedModeId = null;
@@ -269,15 +235,61 @@
     var allCards = overlay.querySelectorAll('.cinematic-mode-card');
     allCards.forEach(function(card) {
       card.classList.remove('selected', 'other-selected');
+      // Açıklama baştan tam görünür (daktilo efekti yok).
       var desc = card.querySelector('.cinematic-card-desc');
-      if (desc) desc.innerHTML = '';
+      var tanim = CINEMATIC_MODES[card.getAttribute('data-mode')];
+      if (desc) desc.textContent = tanim ? tanim.description : '';
     });
 
+    _modalGen += 1;
     overlay.classList.add('active');
+    focusIntoModal(overlay);
 
     // Bütünleşik mod karakter adımındaki gecikmeyi azaltmak için varsayılan
     // karakterin video verisini ve giriş dosyasını şimdiden ön yükle.
     preloadDefaultCharacterVideo();
+  }
+
+  // Kaplamadaki görünür, odaklanabilir öğeler (Tab tuzağı ve ilk odak için).
+  function modalFocusables(overlay) {
+    var secici = 'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    return Array.prototype.filter.call(overlay.querySelectorAll(secici), function(el) {
+      return el.offsetParent !== null && !el.closest('.hidden-step');
+    });
+  }
+
+  // Açılışta odak modal içine (ilk mod kartı, yoksa kapatma düğmesi) taşınır.
+  // Kaplama görünürlük geçişiyle açıldığından odak kısa aralıkla yeniden denenir.
+  function focusIntoModal(overlay) {
+    var ilk = overlay.querySelector('.cinematic-mode-card') ||
+      overlay.querySelector('.cinematic-modal-close');
+    if (!ilk || typeof ilk.focus !== 'function') return;
+    [30, 120, 400].forEach(function(ms) {
+      setTimeout(function() {
+        if (overlay.classList.contains('active') && !overlay.contains(document.activeElement)) ilk.focus();
+      }, ms);
+    });
+  }
+
+  // Açık modalda Tab/Shift+Tab odağı kaplama içinde döndürür.
+  function trapModalFocus(e) {
+    var overlay = document.getElementById('mode-modal-overlay');
+    if (e.key !== 'Tab' || !overlay || !overlay.classList.contains('active')) return;
+    var odaklar = modalFocusables(overlay);
+    if (!odaklar.length) {
+      e.preventDefault();
+      return;
+    }
+    var ilk = odaklar[0];
+    var son = odaklar[odaklar.length - 1];
+    var aktif = document.activeElement;
+    if (e.shiftKey && (aktif === ilk || !overlay.contains(aktif))) {
+      e.preventDefault();
+      son.focus();
+    } else if (!e.shiftKey && (aktif === son || !overlay.contains(aktif))) {
+      e.preventDefault();
+      ilk.focus();
+    }
   }
 
   // Varsayılan karakterin video verisini sunucudan iste (ön yükleme).
@@ -302,22 +314,38 @@
     }, { priority: 'event' });
   }
 
-  function closeCinematicModal() {
+  // `afterSelection` TRUE: mod seçildi, giriş ekranı kaldırılacak; odak kaldırılacak
+  // Keşfet düğmesine değil ana uygulamaya taşınır. Aksi halde (kullanıcı iptali)
+  // odak Keşfet düğmesine döner. Karakter adımı açıksa önce onun durumu
+  // (video, adım, onay kilidi) temizlenir.
+  function closeCinematicModal(afterSelection) {
     var overlay = document.getElementById('mode-modal-overlay');
     if (!overlay) return;
 
+    if (afterSelection !== true && window.CinematicCharacterStep &&
+        typeof window.CinematicCharacterStep.isActive === 'function' &&
+        window.CinematicCharacterStep.isActive()) {
+      window.CinematicCharacterStep.reset();
+    }
+
+    // Nesil artışı süren (henüz başlamamış) mod geçişini/uygulamasını iptal eder.
+    _modalGen += 1;
     overlay.classList.remove('active');
 
-    // Yazma animasyonlarını durdur
-    Object.keys(_typingTimers).forEach(function(key) {
-      if (key.indexOf('cine_') === 0 && _typingTimers[key]) {
-        clearTimeout(_typingTimers[key]);
-        _typingTimers[key] = null;
+    if (document.activeElement && overlay.contains(document.activeElement)) {
+      var kesfet = afterSelection === true ? null : document.querySelector('.explore-cinematic-btn');
+      if (kesfet && typeof kesfet.focus === 'function') {
+        kesfet.focus();
+      } else if (typeof document.activeElement.blur === 'function') {
+        document.activeElement.blur();
       }
-    });
+    }
+    _focusMainAfterDismiss = afterSelection === true;
 
     // Kart durumlarını sıfırla
-    setTimeout(function() {
+    if (_closeResetTimer) clearTimeout(_closeResetTimer);
+    _closeResetTimer = setTimeout(function() {
+      _closeResetTimer = null;
       overlay.classList.remove('mode-selected');
       var allCards = overlay.querySelectorAll('.cinematic-mode-card');
       allCards.forEach(function(card) {
@@ -359,6 +387,12 @@
       }
       document.body.classList.remove('deep-space-active');
       document.body.classList.add('app-ready');
+      // Kaldırılan giriş ekranındaki odak kaybolmaz; sohbet girişine taşınır.
+      if (_focusMainAfterDismiss) {
+        _focusMainAfterDismiss = false;
+        var hedef = document.getElementById('user_input');
+        if (hedef && typeof hedef.focus === 'function') hedef.focus();
+      }
     }, 1200);
   }
 
@@ -388,8 +422,9 @@
       }
     });
 
-    // ESC tuşu ile kapat
+    // ESC tuşu ile kapat; Tab odağı açık modalda tutulur.
     $(document).on('keydown', function(e) {
+      trapModalFocus(e);
       if (e.key === 'Escape' && !_selectedModeId) {
         var overlay = document.getElementById('mode-modal-overlay');
         if (overlay && overlay.classList.contains('active')) {
@@ -403,12 +438,12 @@
       handleCardMouseMove(e);
     });
 
-    // Kart fare girişi (yazma animasyonu başlat)
+    // Kart fare girişi
     $(document).on('mouseenter', '.cinematic-mode-card', function() {
       handleCardMouseEnter(this);
     });
 
-    // Kart fare çıkışı (yazma animasyonunu durdur)
+    // Kart fare çıkışı
     $(document).on('mouseleave', '.cinematic-mode-card', function() {
       handleCardMouseLeave(this);
     });
@@ -416,6 +451,14 @@
     // Kart tıklaması (mod seçimi)
     $(document).on('click', '.cinematic-mode-card', function() {
       selectMode(this);
+    });
+
+    // Klavye ile mod seçimi (Enter / Boşluk); kart role="button" taşır.
+    $(document).on('keydown', '.cinematic-mode-card', function(e) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();
+        selectMode(this);
+      }
     });
 
     // Giriş ekranını atla onay kutusu

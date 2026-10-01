@@ -6,6 +6,8 @@
 # ortalama yanıt süresi ve hata sayılarını takip eder.
 # ==============================================================================
 
+.MERGEN_PERFORMANCE_STATE <- new.env(parent = emptyenv())
+
 performanceStatsServer <- function(id, current_user_id_provider) {
   moduleServer(id, function(input, output, session) {
 
@@ -17,13 +19,16 @@ performanceStatsServer <- function(id, current_user_id_provider) {
         current_user_id_provider
       }
 
-      uid <- suppressWarnings(as.integer(raw_id %||% 0L))
-      if (is.na(uid)) uid <- 0L
-      uid
+      # Kayıplı dönüşüm yok: 7.9 gibi kimlik 7'ye kısaltılmaz, 0 sayılır.
+      if (exists("mb_presence_uid", mode = "function")) return(mb_presence_uid(raw_id))
+      uid <- suppressWarnings(as.numeric(raw_id %||% 0L)[1])
+      if (!isTRUE(is.finite(uid) && uid > 0 && uid == trunc(uid) && uid <= .Machine$integer.max)) return(0L)
+      as.integer(uid)
     }
 
     # --- PERFORMANS İSTATİSTİKLERİ ---
-    stats <- reactiveValues(
+    ilk_oturum <- is.null(.MERGEN_PERFORMANCE_STATE$stats)
+    if (ilk_oturum) .MERGEN_PERFORMANCE_STATE$stats <- shiny::withReactiveDomain(NULL, reactiveValues(
       active_users = 0,
       total_requests = 0,
       successful_requests = 0,
@@ -31,10 +36,16 @@ performanceStatsServer <- function(id, current_user_id_provider) {
       error_count = 0,
       last_request_time = NULL,
       uptime_start = Sys.time()
-    )
+    ))
 
-    # İstatistiklerin kaydedileceği dosya yolu
+    stats <- .MERGEN_PERFORMANCE_STATE$stats
+    # Her uygulama işçisi kendi toplamlarını yazar; oturumlar aynı sayaçları paylaşır.
     stats_file <- "logs/performance_stats.txt"
+    if (nzchar(Sys.getenv("MERGEN_APP_WORKER_INDEX", ""))) {
+      kimlik <- gsub("[^A-Za-z0-9_-]", "_", paste(Sys.info()[["nodename"]],
+        Sys.getenv("MERGEN_PORT", Sys.getenv("MERGEN_APP_WORKER_INDEX")), sep = "-"))
+      stats_file <- file.path("logs", paste0("performance_stats-", kimlik, ".txt"))
+    }
 
     # --- AKTİF OTURUM DEFTERİ ---
     if (!exists(".mergen_active_sessions", envir = .GlobalEnv, inherits = FALSE)) {
@@ -61,8 +72,23 @@ performanceStatsServer <- function(id, current_user_id_provider) {
           next
         }
 
-        age_secs <- as.numeric(difftime(current_time, entry$last_seen, units = "secs"))
-        if (is.na(age_secs) || age_secs > session_timeout_secs) {
+        age_secs <- tryCatch(
+          suppressWarnings(as.numeric(difftime(current_time, entry$last_seen, units = "secs"))),
+          error = function(e) NA_real_
+        )
+        # Geçersiz ya da saat kayması payından fazla gelecekteki zaman damgalı
+        # kayıt geçmişe yazılmadan atılır (Çevrimiçi sekmesiyle aynı kural);
+        # aksi halde budama NA indeksle bozuluyor, sayaç sekmeden ayrışıyordu.
+        kayma <- if (exists("mb_presence_windows", mode = "function")) mb_presence_windows()$skew else 120
+        if (length(age_secs) != 1L || is.na(age_secs) || age_secs < -kayma) {
+          try(rm(list = tok, envir = active_sessions_env), silent = TRUE)
+          next
+        }
+        if (age_secs > session_timeout_secs) {
+          # Kopan oturum Çevrimiçi sekmesinde son nabız anında "ayrıldı" görünür.
+          if (exists("mb_presence_record_end", mode = "function")) {
+            try(mb_presence_record_end(tok, entry, ended_at = entry$last_seen), silent = TRUE)
+          }
           try(rm(list = tok, envir = active_sessions_env), silent = TRUE)
         }
       }
@@ -85,6 +111,7 @@ performanceStatsServer <- function(id, current_user_id_provider) {
 
       user_ids <- vapply(tokens, function(tok) {
         entry <- tryCatch(active_sessions_env[[tok]], error = function(e) NULL)
+        if (exists("mb_presence_uid", mode = "function")) return(mb_presence_uid(entry$user_id))
         uid <- suppressWarnings(as.integer(entry$user_id %||% 0L))
         if (is.na(uid)) uid <- 0L
         uid
@@ -93,16 +120,30 @@ performanceStatsServer <- function(id, current_user_id_provider) {
       as.integer(length(unique(user_ids[user_ids > 0])))
     }
 
-    touch_session <- function(user_id = NULL) {
-      uid <- suppressWarnings(as.integer(user_id %||% get_current_user_id()))
+    touch_session <- function(user_id = NULL, zorla = FALSE) {
+      # Kimlik kısaltılmadan kanonik doğrulayıcıdan geçer (7.9 -> 7 olmaz).
+      ham_uid <- user_id %||% get_current_user_id()
+      uid <- if (exists("mb_presence_uid", mode = "function")) mb_presence_uid(ham_uid) else
+        suppressWarnings(as.integer(ham_uid))
       if (is.na(uid)) uid <- 0L
+      # SSO süresi dolunca oturum kimliği açıkça 0 olur ama kullanıcı kimliği
+      # sağlayıcısı son bilinen kimliği döndürebilir; nabız o kullanıcıyı canlı
+      # tutmaz, önceki oturum bitmiş sayılır.
+      oturum_uid <- suppressWarnings(as.integer(session$userData$user_id %||% NA_integer_)[1])
+      kimlik_dustu <- isTRUE(oturum_uid == 0L) && !isTRUE(session$userData$auth_initialized)
+      if (kimlik_dustu) uid <- 0L
 
-      active_sessions_env[[session$token]] <- list(
-        user_id = uid,
-        last_seen = Sys.time()
-      )
+      if (exists("mb_presence_touch", mode = "function")) {
+        mb_presence_touch(active_sessions_env, session$token, uid, mb_presence_profile(session),
+                          auth_lost = kimlik_dustu)
+      } else {
+        active_sessions_env[[session$token]] <- list(user_id = uid, last_seen = Sys.time())
+      }
 
       stats$active_users <- count_active_users()
+      if (exists("mb_presence_publish", mode = "function")) {
+        try(mb_presence_publish(active_sessions_env, zorla = zorla), silent = TRUE)
+      }
       invisible(NULL)
     }
 
@@ -132,7 +173,7 @@ performanceStatsServer <- function(id, current_user_id_provider) {
 
     # --- MEVCUT İSTATİSTİKLERİ YÜKLEME ---
     isolate({
-      if (file.exists(stats_file)) {
+      if (ilk_oturum && file.exists(stats_file)) {
         saved <- tryCatch({
           read.table(stats_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
         }, error = function(e) NULL)
@@ -160,8 +201,16 @@ performanceStatsServer <- function(id, current_user_id_provider) {
       }
     })
 
-    # Bu oturumu kaydet
+    # Bu oturumu kaydet. Kimlik değişince/düşünce (SSO süresi doldu, başka
+    # kullanıcı) nabız beklenmeden hemen yazılır; eski kullanıcı çevrimiçi kalmaz.
     touch_session(get_current_user_id())
+    kimlik_sinyali <- if (exists("mergen_session_identity_signal", mode = "function")) {
+      mergen_session_identity_signal(session)
+    }
+    observe({
+      if (is.function(kimlik_sinyali)) kimlik_sinyali()
+      isolate(touch_session(get_current_user_id(), zorla = TRUE))
+    })
 
     # Oturum yaşadığı sürece heartbeat gönder
     observe({
@@ -171,7 +220,14 @@ performanceStatsServer <- function(id, current_user_id_provider) {
 
     # Oturum kapanınca defterden çıkar
     session$onSessionEnded(function() {
+      if (exists("mb_presence_record_end", mode = "function")) {
+        try(mb_presence_record_end(session$token, active_sessions_env[[session$token]]), silent = TRUE)
+      }
       try(rm(list = session$token, envir = active_sessions_env), silent = TRUE)
+      shiny::isolate(stats$active_users <- count_active_users())
+      if (exists("mb_presence_publish", mode = "function")) {
+        try(mb_presence_publish(active_sessions_env, zorla = TRUE), silent = TRUE)
+      }
     })
 
     # --- BAŞARILI İSTEK TAKİBİ ---

@@ -286,6 +286,7 @@ testthat::test_that("health_release_ui koşu seçici tam artifact yolunu sızdı
   for (dosya in c(
     "R/helpers_health_formatters.R",
     "R/helpers_health_table.R",
+    "R/helpers_health_dns_refresh.R",
     "R/module_health_overview.R",
     "R/module_health_connectivity.R",
     "R/module_health_storage.R",
@@ -302,6 +303,7 @@ testthat::test_that("health_release_ui koşu seçici tam artifact yolunu sızdı
   # globalenv'e kaynar; bu yüzden health_source_optional'ı no-op'a çeviririz.
   env$safe_source <- function(...) invisible(TRUE)
   env$health_source_optional <- function(...) invisible(TRUE)
+  source(file.path(kok, "R", "helpers_user_session_identity.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "module_health.R"), encoding = "UTF-8", local = env)
   env
 }
@@ -320,6 +322,7 @@ testthat::test_that("healthServer 'release' sekmesi health_release_ui çıktıs�
   env$release_evidence_overview <- function(...) .fullReleaseOverview()
 
   shiny::testServer(env$healthServer, args = list(perf_tracker = NULL), {
+    session$userData$user_config <- list(auth_level = "ADMIN")
     session$setInputs(health_tabs = "release")
     cikti <- paste(as.character(output$health_tab_content), collapse = "\n")
     testthat::expect_true(grepl("Doğrulama Kanıtı", cikti, fixed = TRUE))
@@ -330,5 +333,120 @@ testthat::test_that("healthServer 'release' sekmesi health_release_ui çıktıs�
     overview_html <- paste(as.character(output$health_tab_content), collapse = "\n")
     testthat::expect_true(grepl("10 Saniyelik Özet", overview_html, fixed = TRUE))
     testthat::expect_false(grepl("13 geçti / 0 başarısız", overview_html, fixed = TRUE))
+  })
+})
+
+testthat::test_that("bekleyen DNS tamamlanınca yalnız uç nokta satırı yenilenir", {
+  env <- .healthModuleServerEnv()
+  toplam <- 0L
+  probe <- 0L
+  satir <- function(deger) data.frame(id = "llm.endpoint", label = "LLM",
+    status = "ok", severity = 0L, value = deger, detail = "", duration_ms = 1,
+    checked_at = "", remediation = "", stringsAsFactors = FALSE)
+  env$health_collect_checks <- function(...) {
+    toplam <<- toplam + 1L
+    rbind(satir("DNS bekleniyor"), transform(satir("Hazır"), id = "db.primary"))
+  }
+  env$health_check_llm_endpoint <- function(...) {
+    probe <<- probe + 1L
+    satir(if (probe < 2L) "DNS bekleniyor" else "HTTP 200")
+  }
+  shiny::testServer(env$healthServer, args = list(perf_tracker = NULL), {
+    session$userData$user_config <- list(auth_level = "ADMIN")
+    session$setInputs(health_tabs = "overview")
+    session$elapse(300)
+    session$flushReact()
+    testthat::expect_identical(checks_data()$value, c("HTTP 200", "Hazır"))
+    session$elapse(1000)
+    testthat::expect_identical(toplam, 1L)
+    testthat::expect_identical(probe, 2L)
+  })
+})
+
+testthat::test_that("healthServer yönetici olmayan oturuma sekme içeriği ve varlık verisi vermez", {
+  env <- .healthModuleServerEnv()
+  sayac <- new.env(parent = emptyenv())
+  sayac$kontrol <- 0L
+  sayac$varlik <- 0L
+  env$health_collect_checks <- function(...) {
+    sayac$kontrol <- sayac$kontrol + 1L
+    data.frame(id = "app.version", label = "Sürüm", status = "ok", severity = 0L,
+               value = "v1.0", detail = "", duration_ms = 1, checked_at = "",
+               remediation = "", stringsAsFactors = FALSE)
+  }
+  env$mb_presence_snapshot <- function(...) {
+    sayac$varlik <- sayac$varlik + 1L
+    list(metrics = list(), users = NULL)
+  }
+  env$health_presence_ui <- function(snapshot) {
+    force(snapshot)
+    div("Kullanıcı Oturum Takibi")
+  }
+
+  shiny::testServer(env$healthServer, args = list(perf_tracker = NULL), {
+    # Menü gizli olsa da istemci sekme değerini kendisi gönderebilir.
+    session$userData$user_config <- list(auth_level = "USER")
+    session$setInputs(health_tabs = "presence")
+    cikti <- paste(as.character(output$health_tab_content), collapse = "\n")
+    testthat::expect_true(grepl("yalnızca yöneticilere", cikti, fixed = TRUE))
+    testthat::expect_false(grepl("Oturum Takibi", cikti, fixed = TRUE))
+    session$setInputs(health_tabs = "overview")
+    testthat::expect_false(grepl("10 Saniyelik", paste(as.character(output$health_tab_content), collapse = ""), fixed = TRUE))
+    testthat::expect_identical(c(sayac$varlik, sayac$kontrol), c(0L, 0L))
+
+    session$userData$user_config <- list(auth_level = " ADMIN ")
+    session$setInputs(health_tabs = "presence")
+    cikti <- paste(as.character(output$health_tab_content), collapse = "\n")
+    testthat::expect_true(grepl("Oturum Takibi", cikti, fixed = TRUE))
+    testthat::expect_identical(sayac$varlik, 1L)
+
+    # Yetki düşünce (SSO süresi doldu / kullanıcı değişti) çizilmiş içerik
+    # sekme değişimini beklemeden kilit mesajına döner.
+    # Kimlik sinyali (write_identity/set_auth_placeholder) çizimi hemen yeniler.
+    session$userData$user_config <- NULL
+    sinyal <- session$userData$kimlik_sinyali
+    sinyal(shiny::isolate(sinyal()) + 1L)
+    session$flushReact()
+    cikti <- paste(as.character(output$health_tab_content), collapse = "\n")
+    testthat::expect_true(grepl("yalnızca yöneticilere", cikti, fixed = TRUE))
+    testthat::expect_identical(sayac$varlik, 1L)
+  })
+
+  testthat::expect_false(env$health_session_is_admin(list(userData = new.env())))
+})
+
+testthat::test_that("kimlik sinyali ve Çevrimiçi yenilemesi tooltip'leri yeniden bağlar", {
+  env <- .healthModuleServerEnv()
+  env$health_collect_checks <- function(...) {
+    data.frame(id = "app.version", label = "Sürüm", status = "ok", severity = 0L,
+               value = "v1.0", detail = "", duration_ms = 1, checked_at = "",
+               remediation = "", stringsAsFactors = FALSE)
+  }
+  env$mb_presence_snapshot <- function(...) list(metrics = list(), users = NULL)
+  env$health_presence_ui <- function(snapshot) div("Kullanıcı Oturum Takibi")
+
+  shiny::testServer(env$healthServer, args = list(perf_tracker = NULL), {
+    mesajlar <- character(0)
+    kok_oturum <- session$rootScope()
+    kok_oturum$sendCustomMessage <- function(type, message) mesajlar <<- c(mesajlar, type)
+    session$setInputs(health_tabs = "overview")
+    session$flushReact()
+    mesajlar <- character(0)
+    # Yetkisiz ilk çizimden sonra SSO kimliği gelir: yeni DOM için tooltip bağlanır.
+    session$userData$user_config <- list(auth_level = "ADMIN")
+    sinyal <- session$userData$kimlik_sinyali
+    sinyal(shiny::isolate(sinyal()) + 1L)
+    session$flushReact()
+    invisible(output$health_tab_content)
+    session$flushReact()
+    testthat::expect_true("initHealthTooltips" %in% mesajlar)
+
+    # Çevrimiçi sekmesinin zamanlı yenilemesi de tooltip'leri yeniden bağlar.
+    session$setInputs(health_tabs = "presence")
+    session$flushReact()
+    mesajlar <- character(0)
+    session$elapse(30001)
+    session$flushReact()
+    testthat::expect_true("initHealthTooltips" %in% mesajlar)
   })
 })

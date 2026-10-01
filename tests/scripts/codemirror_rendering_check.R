@@ -23,10 +23,26 @@
 
 # Yerel ayardan bağımsız yükleme: dosya UTF-8 metin olarak ayrıştırılır
 # (POSIX/Windows kod sayfasında source(encoding=) Türkçe yorumda düşebilir).
+# readLines() options(encoding = "UTF-8") altında CP1254 oturumda baytları
+# yerel koda çevirip UTF-8 diye işaretler (geçersiz UTF-8); bu yüzden ham
+# baytlar okunur ve testthat gibi UTF-8 bağlantıdan ayrıştırılır.
+cm_render_check_read_utf8_lines <- function(path) {
+  bayt <- readBin(path, what = "raw", n = file.info(path)$size)
+  # BOM bayt düzeyinde atılır; CRLF, yalın CR ve LF satır sonu sayılır.
+  if (length(bayt) >= 3L && identical(bayt[1:3], as.raw(c(0xEF, 0xBB, 0xBF)))) bayt <- bayt[-(1:3)]
+  metin <- rawToChar(bayt)
+  Encoding(metin) <- "UTF-8"
+  strsplit(metin, "\r\n|\r|\n")[[1]]
+}
+
+cm_render_check_parse_utf8 <- function(path) {
+  con <- textConnection(cm_render_check_read_utf8_lines(path), encoding = "UTF-8")
+  on.exit(close(con), add = TRUE)
+  parse(con, keep.source = FALSE, encoding = "UTF-8")
+}
+
 cm_render_check_source <- function(path, envir) {
-  exprs <- parse(text = readLines(path, warn = FALSE, encoding = "UTF-8"),
-                 keep.source = FALSE, encoding = "UTF-8")
-  for (expr in exprs) eval(expr, envir)
+  for (expr in cm_render_check_parse_utf8(path)) eval(expr, envir)
   invisible(envir)
 }
 
@@ -151,8 +167,8 @@ cm_render_check_page <- function(repo_root, fixtures) {
 
   fixtures_json <- jsonlite::toJSON(fixtures, auto_unbox = TRUE)
   fixtures_json <- gsub("</", "<\\/", fixtures_json, fixed = TRUE)
-  probe <- paste(readLines(file.path(repo_root, "tests", "scripts", "codemirror_rendering_probe.js"),
-                           warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  probe <- paste(cm_render_check_read_utf8_lines(
+    file.path(repo_root, "tests", "scripts", "codemirror_rendering_probe.js")), collapse = "\n")
 
   paste0(
     "<!doctype html>\n<html lang=\"tr\" data-theme=\"dark\"><head><meta charset=\"UTF-8\">",
@@ -166,6 +182,31 @@ cm_render_check_page <- function(repo_root, fixtures) {
     "\n<script>window.__CM_FIXTURES = ", fixtures_json, ";</script>\n",
     "<script>\n", probe, "\n</script>\n</body></html>\n"
   )
+}
+
+cm_render_check_browser_run <- function(browser_bin, args, timeout_seconds) {
+  child <- processx::process$new(browser_bin, args, stdout = "|", stderr = "|", cleanup_tree = TRUE)
+  on.exit(if (child$is_alive()) child$kill_tree(), add = TRUE)
+  deadline <- proc.time()[["elapsed"]] + timeout_seconds
+  out <- err <- ""
+  while (child$is_alive() && proc.time()[["elapsed"]] < deadline) {
+    httpuv::service(timeoutMs = 20L)
+    child$poll_io(20L)
+    out <- paste0(out, child$read_output())
+    err <- paste0(err, child$read_error())
+  }
+  timed_out <- child$is_alive()
+  if (timed_out) {
+    out <- paste0(out, child$read_output())
+    err <- paste0(err, child$read_error())
+    child$kill_tree()
+  } else {
+    out <- paste0(out, child$read_all_output())
+    err <- paste0(err, child$read_all_error())
+  }
+  child$wait(1000L)
+  list(status = if (timed_out) 124L else child$get_exit_status(),
+       stdout = out, stderr = err)
 }
 
 cm_render_check_run <- function(repo_root, browser_bin, timeout_seconds = 120L,
@@ -182,8 +223,7 @@ cm_render_check_run <- function(repo_root, browser_bin, timeout_seconds = 120L,
   writeBin(charToRaw(page), con)
   close(con)
 
-  # Statik yollar httpuv arka plan iş parçacığında sunulur; tarayıcı
-  # çalışırken R'nin servis döngüsüne gerek yoktur.
+  # Statik olmayan istekler de tarayıcı çalışırken yanıtlanır.
   port <- httpuv::randomPort()
   server <- httpuv::startServer("127.0.0.1", port, list(
     call = function(req) list(status = 404L, headers = list("Content-Type" = "text/plain"), body = ""),
@@ -205,7 +245,7 @@ cm_render_check_run <- function(repo_root, browser_bin, timeout_seconds = 120L,
     args <- c(args, "--dump-dom", sprintf("http://127.0.0.1:%d/__cm_check/index.html", port))
     # 127: tarayıcı başlatılamadı; 124 yalnızca GERÇEK zaman aşımıdır.
     res <- tryCatch(
-      processx::run(browser_bin, args, error_on_status = FALSE, timeout = timeout_seconds),
+      cm_render_check_browser_run(browser_bin, args, timeout_seconds),
       error = function(e) list(status = 127L, stdout = "", stderr = conditionMessage(e))
     )
     if (isTRUE(res$timeout)) res$status <- 124L

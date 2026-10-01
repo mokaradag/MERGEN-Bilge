@@ -226,7 +226,7 @@ health_release_ui <- function(overview, ns = NULL) {
     kosu_secici,
     # Operatöre kanıt sınırını ve son okuma zamanını açıklayan kısa hero kartı.
     div(
-      class = "health-hero health-status-unknown",
+      class = "health-hero health-hero-noscore health-status-unknown",
       `data-health-tooltip` = "Bu sekme yalnızca üretilmiş doğrulama artifact'larını okur; canlı bir kapı çalıştırmaz.",
       div(class = "health-hero-copy",
           h2("Doğrulama Kanıtı"),

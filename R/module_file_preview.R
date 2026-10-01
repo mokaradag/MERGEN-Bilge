@@ -16,6 +16,20 @@ filePreviewServer <- function(id) {
     # Önizlenen dosyanın bilgilerini saklayan reaktif liste
     file_storage <- reactiveValues(preview_file = NULL)
 
+    # Önizleme açıldığı kimlik nesline bağlıdır: oturum başka kullanıcıya
+    # geçince ya da kimlik düşünce indirme/veri adresi önceki dosyayı sunmaz.
+    onizleme_gecerli <- function(nesli) {
+      identical(as.integer(nesli %||% -1L)[1], as.integer(session$userData$kimlik_nesli %||% 0L)[1])
+    }
+    # İki uç noktanın bağımsız, tahmin edilemeyen erişim jetonları vardır.
+    veri_jetonlari <- list()
+    veri_istegi_gecerli <- function(data, req) {
+      sorgu <- as.character(req$QUERY_STRING %||% "")[1]
+      eslesme <- regmatches(sorgu, regexec("(?:^|&)preview_token=([0-9a-f]{64})(?:&|$)", sorgu, perl = TRUE))[[1]]
+      length(eslesme) == 2L && identical(eslesme[2], as.character(data$jeton)) &&
+        identical(data$jeton, veri_jetonlari[[data$uc]]) && onizleme_gecerli(data$nesli)
+    }
+
     # Aynı dosya tekrar önizlendiğinde base64 üretimini tekrar yapmamak için önbellek
     preview_b64_cache <- reactiveVal(list())
 
@@ -26,6 +40,16 @@ filePreviewServer <- function(id) {
     # Bu belirteç her DOCX modal açılışında artırılır; asenkron geri çağrı
     # yalnızca belirteç hâlâ kendi açılışıyla aynıysa UI mesajını gönderir.
     docx_preview_seq <- reactiveVal(0L)
+    if (exists("mergen_session_on_owner_change", mode = "function")) {
+      mergen_session_on_owner_change(session, function(neden) {
+        file_storage$preview_file <- NULL
+        veri_jetonlari <<- list()
+        # Süren DOCX kodlaması ve önbellek yeni sahibe taşınmaz.
+        docx_preview_seq(isolate(docx_preview_seq()) + 1L)
+        preview_b64_cache(list())
+        try(removeModal(session = session), silent = TRUE)
+      })
+    }
 
     # Dosya yolu + boyut + değişiklik zamanına göre önbellek anahtarı üretir
     build_preview_cache_key <- function(path) {
@@ -116,8 +140,9 @@ filePreviewServer <- function(id) {
         return("file.txt")
       },
       content = function(file) {
-        # Dosya mevcutsa kopyalama işlemini gerçekleştir
+        # Dosya mevcutsa ve önizleme hâlâ bu kimliğe aitse kopyala
         if (!is.null(file_storage$preview_file) &&
+            onizleme_gecerli(file_storage$preview_file$nesli) &&
             !is.null(file_storage$preview_file$datapath) &&
             path_exists_relaxed(file_storage$preview_file$datapath)) {
           tryCatch(
@@ -156,7 +181,8 @@ filePreviewServer <- function(id) {
         file_storage$preview_file <- list(
           name     = file_info$name %||% basename(datapath),
           datapath = datapath,
-          size     = file_info$size %||% suppressWarnings(file.info(datapath)$size)
+          size     = file_info$size %||% suppressWarnings(file.info(datapath)$size),
+          nesli    = as.integer(session$userData$kimlik_nesli %||% 0L)[1]
         )
 
         # Dosya uzantısını al
@@ -183,11 +209,18 @@ filePreviewServer <- function(id) {
           if (!is.na(fsize) && fsize > PDF_NEWTAB_THRESHOLD) {
             # --- BÜYÜK PDF (> 1.5 MB): tarayıcının yerel PDF görüntüleyicisinde yeni sekmede aç ---
             # base64 kodlama yerine dosyayı doğrudan Shiny oturumu üzerinden sun
-            pdf_obj_name <- paste0("pdf_", gsub("[^a-zA-Z0-9]", "_", basename(datapath)))
+            pdf_obj_name <- "pdf_preview"
+            veri_jetonlari[[pdf_obj_name]] <<- paste(format(openssl::rand_bytes(32)), collapse = "")
             pdf_url <- session$registerDataObj(
               name  = pdf_obj_name,
-              data  = list(path = datapath, fname = file_storage$preview_file$name),
+              data  = list(path = datapath, fname = file_storage$preview_file$name,
+                           nesli = file_storage$preview_file$nesli, uc = pdf_obj_name,
+                           jeton = veri_jetonlari[[pdf_obj_name]]),
               filterFunc = function(data, req) {
+                if (!veri_istegi_gecerli(data, req)) {
+                  return(shiny::httpResponse(status = 403L, content_type = "text/plain; charset=UTF-8",
+                                             content = "Erisim reddedildi"))
+                }
                 fpath <- data$path
                 if (!file.exists(fpath)) {
                   return(shiny::httpResponse(
@@ -208,6 +241,7 @@ filePreviewServer <- function(id) {
               }
             )
 
+            pdf_url <- paste0(pdf_url, "&preview_token=", veri_jetonlari[[pdf_obj_name]])
             # Bilgi modalı göster (İndir butonu devre dışı — dosya zaten yeni sekmede)
             showModal(modalDialog(
               title = modalTitle,
@@ -358,6 +392,7 @@ filePreviewServer <- function(id) {
           # karşılaştırarak eski sonucun yeni modalı ezmesini engeller.
           docx_preview_seq(docx_preview_seq() + 1L)
           docx_open_token <- docx_preview_seq()
+          docx_nesli <- file_storage$preview_file$nesli
 
           # Önbellekten kontrol et; varsa doğrudan göster
           cached_docx <- get_cached_base64(datapath)
@@ -397,7 +432,9 @@ filePreviewServer <- function(id) {
                 # ezmemeli. Belirteç değiştiyse bu sonucu sessizce yok say
                 # (yalnızca önbelleğe yazılır, UI'a basılmaz).
                 if (!identical(isolate(docx_preview_seq()), docx_open_token)) {
-                  if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
+                  # Kimlik değiştiyse önceki sahibin içeriği önbelleğe de yazılmaz.
+                  if (onizleme_gecerli(docx_nesli) &&
+                      is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
                     store_cached_base64(datapath, b64[1])
                   }
                   return(invisible(NULL))
@@ -518,11 +555,18 @@ filePreviewServer <- function(id) {
             "svg"  = "image/svg+xml",
             "application/octet-stream"
           )
-          img_obj_name <- paste0("img_", gsub("[^a-zA-Z0-9]", "_", basename(datapath)))
+          img_obj_name <- "img_preview"
+          veri_jetonlari[[img_obj_name]] <<- paste(format(openssl::rand_bytes(32)), collapse = "")
           img_url <- session$registerDataObj(
             name = img_obj_name,
-            data = list(path = datapath, ctype = img_content_type),
+            data = list(path = datapath, ctype = img_content_type,
+                        nesli = file_storage$preview_file$nesli, uc = img_obj_name,
+                        jeton = veri_jetonlari[[img_obj_name]]),
             filterFunc = function(data, req) {
+              if (!veri_istegi_gecerli(data, req)) {
+                return(shiny::httpResponse(status = 403L, content_type = "text/plain; charset=UTF-8",
+                                           content = "Erisim reddedildi"))
+              }
               fpath <- data$path
               if (!file.exists(fpath)) {
                 return(shiny::httpResponse(
@@ -539,6 +583,7 @@ filePreviewServer <- function(id) {
               )
             }
           )
+          img_url <- paste0(img_url, "&preview_token=", veri_jetonlari[[img_obj_name]])
 
           showModal(modalDialog(
             title = modalTitle,

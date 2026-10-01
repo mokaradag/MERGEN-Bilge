@@ -46,7 +46,7 @@ section.content,
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: linear-gradient(135deg, #f87171 0%, #dc2626 100%);
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
   color: white;
   padding: 4px 12px;
   border-radius: 20px;
@@ -102,12 +102,8 @@ section.content,
 .admin-tabs-container .nav-pills > li.active > a,
 .admin-tabs-container .nav-pills > li.active > a:hover,
 .admin-tabs-container .nav-pills > li.active > a:focus {
-  background: linear-gradient(
-    150deg,
-    rgba(255, 107, 53, 0.25) 0%,
-    #ff6b35 50%,
-    #f7931e 100%
-  ) !important;
+  /* Beyaz yazı/ikon 3:1 üzerinde kalsın diye marka turuncusunun koyu tonu. */
+  background: linear-gradient(135deg, #c9440c 0%, #c2410c 100%) !important;
   color: white !important;
   box-shadow: 
     0 6px 20px rgba(255, 107, 53, 0.4),
@@ -631,7 +627,7 @@ html[data-theme="light"] .admin-header-fixed .chat-header .admin-badge {
   justify-content: center !important;
   gap: 6px !important;
 
-  background: linear-gradient(135deg, #f87171 0%, #dc2626 100%) !important;
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
   color: #ffffff !important;
 
   padding: 4px 12px !important;

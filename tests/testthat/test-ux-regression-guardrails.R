@@ -602,3 +602,21 @@ testthat::test_that("reasoning panel ve chat scroll davranışı korunur", {
     "Input/stop/scroll sözleşmesi eksik:"
   )
 })
+
+testthat::test_that("Keşfet karakter adımı erişilebilir adı ve odağı günceller; iptal gönderim hatasında da tamamlanır", {
+  js <- .ux_guard_read_text("www/js/explore_character_step.js")
+  ui <- .ux_guard_read_text("R/module_startup_screen_ui.R")
+  testthat::expect_true(grepl('id = "cinematic-char-step-title"', ui, fixed = TRUE))
+  goster <- regmatches(js, regexpr("function showCharacterStep\\(\\) \\{[\\s\\S]*?\\n  \\}", js, perl = TRUE))
+  testthat::expect_length(goster, 1L)
+  testthat::expect_true(grepl("setDialogLabel('cinematic-char-step-title')", goster, fixed = TRUE))
+  testthat::expect_true(grepl("focusFirst(['.cinematic-char-btn.active'", goster, fixed = TRUE))
+  for (fn in c("showModeStep", "resetCharStep")) {
+    govde <- regmatches(js, regexpr(paste0("function ", fn, "\\(\\) \\{[\\s\\S]*?\\n  \\}"), js, perl = TRUE))
+    testthat::expect_length(govde, 1L)
+    testthat::expect_true(grepl("setDialogLabel('mode-modal-title')", govde, fixed = TRUE), info = fn)
+  }
+  iptal <- regmatches(js, regexpr("function cancelPendingSelection\\(\\) \\{[\\s\\S]*?\\n  \\}", js, perl = TRUE))
+  testthat::expect_length(iptal, 1L)
+  testthat::expect_true(grepl("try {\n        Shiny.setInputValue('explore_preheat_initial_greeting'", iptal, fixed = TRUE))
+})

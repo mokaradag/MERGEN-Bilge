@@ -155,6 +155,7 @@ serverBindCoreObserverRuntime <- function(input,
   ))
 
   values <- state$values
+  mergen_session_sync_settings_profile(session, settings_data)
   boot_ready <- boot_readiness_init_fn(session)
   runtime_ctx$modules$boot_ready <- boot_ready
 

@@ -25,6 +25,7 @@
   kok <- resolve_repo_root_for_tests()
   source(file.path(kok, "R", "utils_common.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "helpers_file_ingestion_task.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "helpers_file_summary_task.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "helpers_file_pipeline.R"), encoding = "UTF-8", local = env)
 
   rec <- new.env(parent = emptyenv())
@@ -44,7 +45,7 @@
     rec$notifications <- rec$notifications + 1L
     paste0("note-", rec$notifications)
   }
-  env$removeNotification <- function(id) {
+  env$removeNotification <- function(id, ...) {
     rec$removed <- rec$removed + 1L
     invisible(NULL)
   }

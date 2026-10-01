@@ -133,3 +133,61 @@ fm_unregister_session_file <- function(session, filename) {
 
   invisible(TRUE)
 }
+
+# Oturum kimlik nesli: sahip değişiminde ve kimlik kaybında artar. Onay
+# pencereleri açıldıkları nesle bağlanır (eski onay yeni sahibe işlem yapmaz).
+fm_owner_generation <- function(session) {
+  as.integer(tryCatch(session$userData$kimlik_nesli, error = function(e) NULL) %||% 0L)[1]
+}
+
+# Oturum sahibi değişince (A -> B) ya da kimlik düşünce Dosya Yönetimi'nin
+# önbellekteki satırları/içerik yolları, bağlam seçimi, geçici dosyaları ve
+# uçuştaki yükleme partisi temizlenir; önceki kullanıcının dosyası indirilemez
+# ya da yeni sahibin durumuna yazılamaz. Kayıtlı dosyalar üst oturumun istem
+# bağlamından da çıkarılır. Kimlik yeniden hazır olunca (yeni sahip ya da aynı
+# kullanıcının yeniden girişi) yalnız o kullanıcının envanteri yüklenir.
+fm_register_owner_reset <- function(session, ns, module_values_provider, controller,
+                                    scan_pending, refresh_fn, is_auth_ready, detach_in_parent = NULL) {
+  if (!exists("mergen_session_on_owner_change", mode = "function")) return(invisible(NULL))
+  sahip_nesli <- shiny::reactiveVal(0L)
+  kimlik_sinyali <- if (exists("mergen_session_identity_signal", mode = "function")) {
+    mergen_session_identity_signal(session)
+  } else {
+    sahip_nesli
+  }
+  yeniden_yukle <- FALSE
+  mergen_session_on_owner_change(session, function(neden) {
+    mv <- module_values_provider()
+    try(file_ingestion_cancel_controller(controller), silent = TRUE)
+    for (p in session$userData$temp_files) try(unlink(p), silent = TRUE)
+    session$userData$temp_files <- list()
+    ids <- names(shiny::isolate(mv$files_in_context))
+    if (is.function(detach_in_parent)) {
+      icerik <- shiny::isolate(mv$file_contents)
+      adlar <- unique(c(names(session$userData$current_session_files),
+                        unlist(lapply(icerik[intersect(ids, names(icerik))], `[[`, "name"))))
+      for (ad in adlar) try(detach_in_parent(ad), silent = TRUE)
+    }
+    session$userData$current_session_files <- list()
+    mv$files <- shiny::isolate(mv$files)[0, , drop = FALSE]
+    mv$file_contents <- list()
+    mv$files_in_context <- list()
+    mv$file_id_to_delete <- NULL
+    # Önceki sahibin açık onay pencereleri (tek dosya/tümünü sil) kapatılır.
+    try(shiny::removeModal(session = session), silent = TRUE)
+    onceden_yuklu <- !isTRUE(shiny::isolate(scan_pending()))
+    scan_pending(TRUE)
+    if (length(ids)) try(session$sendCustomMessage(ns("setAttachState"), list(ids = ids, checked = FALSE)), silent = TRUE)
+    yeniden_yukle <<- isTRUE(yeniden_yukle) || onceden_yuklu
+    if (identical(neden, "sahip_degisti")) sahip_nesli(shiny::isolate(sahip_nesli()) + 1L)
+  })
+  shiny::observe({
+    sahip_nesli()
+    kimlik_sinyali()
+    if (!isTRUE(yeniden_yukle) || !isTRUE(is_auth_ready())) return(invisible(NULL))
+    yeniden_yukle <<- FALSE
+    scan_pending(FALSE)
+    shiny::isolate(refresh_fn("owner_change"))
+  })
+  invisible(NULL)
+}

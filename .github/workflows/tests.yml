@@ -92,6 +92,7 @@ jobs:
             any::withr
             any::arrow
             any::base64enc
+            any::callr
             any::cellranger
             any::cli
             any::commonmark
@@ -103,6 +104,7 @@ jobs:
             any::duckdb
             any::fastmatch
             any::fs
+            any::filelock
             any::future
             any::glue
             any::highcharter

@@ -175,6 +175,7 @@ create_mergen_app <- function() {
     },
     onStart = function() {
       validate_boot_state()
+      if (exists("mb_presence_initialize", mode = "function")) mb_presence_initialize()
       # İşlem-güvenli DB bağlantı havuzunu süreç ömrü boyunca BİR KEZ başlat.
       # Havuzlama varsayılan KAPALI; MERGEN_DB_POOL_ENABLED=TRUE değilse no-op'tur
       # (bulut/test/boot-smoke davranışı değişmez). Başlatma başarısızlığı boot'u
@@ -201,6 +202,15 @@ create_mergen_app <- function() {
         shiny::onStop(function() {
           try(close_db_pool_once(), silent = TRUE)
         })
+      }
+      # İlk dosya özetinin bağımlılık taraması oturumlar gelmeden yapılır;
+      # başarısız tarama yeniden denenir ve günlüğe yazılır.
+      if (exists("file_summary_warm_dependencies", mode = "function", inherits = TRUE)) {
+        isindi <- try(file_summary_warm_dependencies(), silent = TRUE)
+        if (inherits(isindi, "try-error")) {
+          cat("[STARTUP] UYARI: Dosya özeti bağımlılık ısıtması hata verdi:",
+              conditionMessage(attr(isindi, "condition")), "\n")
+        }
       }
     }
   )

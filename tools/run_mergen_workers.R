@@ -93,11 +93,20 @@ mergen_workers_rscript_path <- function() {
   "Rscript"
 }
 
+# Cevrimici (presence) paylasim dizini: yalniz operator degeri aktarilir. Bos
+# ise cocuk surec varsayilani kullanir: bu makinede ayni uygulama kokunden
+# calisan TUM baslaticilarin paylastigi yerel dizin (R/helpers_user_presence_shared.R).
+# Cevrimici gorunumu makine basinadir; UNC paylasim olay dongusunu bloklar.
+mergen_workers_presence_dir <- function() {
+  trimws(Sys.getenv("MERGEN_PRESENCE_SHARED_DIR", unset = ""))
+}
+
 # Her worker icin baslatma plani (port + env + komut). LAUNCH YAPMAZ; saf veri.
 mergen_worker_launch_plan <- function(base = mergen_worker_base_port(),
                                       count = mergen_worker_count(),
                                       host = Sys.getenv("MERGEN_HOST", "0.0.0.0"),
-                                      repo_root = mergen_workers_repo_root()) {
+                                      repo_root = mergen_workers_repo_root(),
+                                      presence_dir = mergen_workers_presence_dir()) {
   ports <- mergen_worker_ports(base, count)
   rscript <- mergen_workers_rscript_path()
   lapply(seq_along(ports), function(i) {
@@ -111,7 +120,13 @@ mergen_worker_launch_plan <- function(base = mergen_worker_base_port(),
       env = c(
         MERGEN_RUN_APP = "true",
         MERGEN_PORT = as.character(ports[[i]]),
-        MERGEN_HOST = host
+        MERGEN_HOST = host,
+        # Cocuk surec paylasilan kaynaklari (log dosyasi, ozet kapasitesi)
+        # worker sayisina gore bolusur.
+        MERGEN_APP_WORKER_COUNT = as.character(length(ports)),
+        MERGEN_APP_WORKER_INDEX = as.character(i),
+        # Cevrimici paylasimi makineye YEREL dizinde (bos: uygulama varsayilani).
+        MERGEN_PRESENCE_SHARED_DIR = presence_dir
       )
     )
   })
@@ -135,8 +150,26 @@ mergen_worker_print_plan <- function(plan) {
 
 # Worker'lari baslatir ve canli tutar. dry_run = TRUE ise yalnizca plani dondurur
 # (test/inceleme; gercek surec baslatmaz).
+mergen_worker_launch_logs <- function(spec) {
+  jeton <- basename(tempfile("launch-"))
+  list(stdout = file.path(spec$workdir, "logs", sprintf("worker-%d-%s-stdout.log", spec$port, jeton)),
+       stderr = file.path(spec$workdir, "logs", sprintf("worker-%d-%s-stderr.log", spec$port, jeton)))
+}
+
 mergen_start_workers <- function(dry_run = FALSE) {
   plan <- mergen_worker_launch_plan()
+  # Tum port araligi baslatmadan once dogrulanir: 65535'i asan port cocugu
+  # hemen oldurur ve yeniden baslatma butcesi tum kumeyi kapatirdi.
+  ports <- vapply(plan, function(spec) as.integer(spec$port), integer(1))
+  if (any(is.na(ports) | ports < 1L | ports > 65535L)) {
+    stop(sprintf("Gecersiz worker port araligi: %d-%d (1-65535 olmali). MERGEN_BASE_PORT/MERGEN_WORKERS degerlerini kontrol edin.",
+                 min(ports, na.rm = TRUE), max(ports, na.rm = TRUE)), call. = FALSE)
+  }
+  max_restarts <- mergen_workers_env_int("MERGEN_WORKERS_MAX_RESTARTS", 5L)
+  stable_secs <- mergen_workers_env_int("MERGEN_WORKERS_STABLE_SECONDS", 600L)
+  if (max_restarts < 0L || stable_secs < 0L) {
+    stop("Worker yeniden baslatma ayarlari negatif olamaz.", call. = FALSE)
+  }
   mergen_worker_print_plan(plan)
 
   if (isTRUE(dry_run)) {
@@ -147,34 +180,70 @@ mergen_start_workers <- function(dry_run = FALSE) {
     stop("tools/run_mergen_workers.R icin 'processx' paketi gereklidir.", call. = FALSE)
   }
 
-  procs <- list()
-  for (spec in plan) {
+  # Cocuk ciktisi dosyaya gider; konsolsuz Windows hostu da baslatabilir.
+  start_one <- function(spec) {
+    log_paths <- mergen_worker_launch_logs(spec)
+    dir.create(file.path(spec$workdir, "logs"), showWarnings = FALSE)
     p <- processx::process$new(
       command = spec$command,
       args = spec$args,
       wd = spec$workdir,
       env = c("current", spec$env),
-      stdout = "|", stderr = "|",
+      stdout = log_paths$stdout,
+      stderr = log_paths$stderr,
       supervise = TRUE
     )
-    procs[[length(procs) + 1L]] <- list(spec = spec, proc = p)
     cat(sprintf("[WORKER] baslatildi port=%d pid=%s\n", spec$port,
                 tryCatch(as.character(p$get_pid()), error = function(e) "?")))
+    p
   }
 
-  # Tum worker'lar canli kaldigi surece bekle; biri olurse hepsini kapat (yuk-
-  # dengeleyici saglik kontrolleri yine de olu worker'i havuzdan cikarir, ancak
-  # supervisor olarak temiz kapanis tercih edilir).
+  # Temizlik ilk worker'dan ONCE kaydedilir: toplu baslatma yarida hata
+  # verirse o ana kadar baslayan cocuklar yetim kalmaz.
+  procs <- list()
   on.exit({
     for (pw in procs) try(pw$proc$kill(), silent = TRUE)
   }, add = TRUE)
+  for (spec in plan) {
+    procs[[length(procs) + 1L]] <- list(spec = spec, proc = start_one(spec), restarts = 0L,
+                                        started = Sys.time())
+  }
 
+  # Olen worker yeniden baslatilir; boylece ozet kapasitesi/kuyruk paylari
+  # (MERGEN_APP_WORKER_COUNT) canli surec kumesiyle uyumlu kalir. Butce ardisik
+  # cokmeleri sayar: worker MERGEN_WORKERS_STABLE_SECONDS boyunca calisinca
+  # sifirlanir. Butce biterse tum kume kapatilir (yarim kume paylari yanlis boler).
   repeat {
-    alive <- vapply(procs, function(pw) tryCatch(pw$proc$is_alive(), error = function(e) FALSE), logical(1))
-    if (!any(alive)) break
+    for (k in seq_along(procs)) {
+      alive <- tryCatch(procs[[k]]$proc$is_alive(), error = function(e) FALSE)
+      if (alive) {
+        if (procs[[k]]$restarts > 0L &&
+            as.numeric(difftime(Sys.time(), procs[[k]]$started, units = "secs")) >= stable_secs) {
+          procs[[k]]$restarts <- 0L
+        }
+        next
+      }
+      if (procs[[k]]$restarts >= max_restarts) {
+        cat(sprintf("[WORKER] port=%d yeniden baslatma butcesi bitti; tum worker'lar kapatiliyor.\n",
+                    procs[[k]]$spec$port))
+        stop("Worker yeniden baslatma butcesi bitti.", call. = FALSE)
+      }
+      procs[[k]]$restarts <- procs[[k]]$restarts + 1L
+      cat(sprintf("[WORKER] port=%d durdu; yeniden baslatiliyor (%d/%d).\n",
+                  procs[[k]]$spec$port, procs[[k]]$restarts, max_restarts))
+      # Baslatma hatasi dongude kalir: yuva olu kalir, sonraki turda butce
+      # icinde yeniden denenir; saglikli worker'lar kapatilmaz.
+      yeni <- tryCatch(start_one(procs[[k]]$spec), error = function(e) {
+        cat(sprintf("[WORKER] port=%d baslatilamadi: %s\n", procs[[k]]$spec$port, conditionMessage(e)))
+        NULL
+      })
+      if (!is.null(yeni)) {
+        procs[[k]]$proc <- yeni
+        procs[[k]]$started <- Sys.time()
+      }
+    }
     Sys.sleep(2)
   }
-  invisible(procs)
 }
 
 # --- Otomatik baslatma kapisi ---

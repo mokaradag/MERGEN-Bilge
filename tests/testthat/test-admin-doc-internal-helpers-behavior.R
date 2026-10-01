@@ -8,6 +8,7 @@
 
 .adminDocEnv <- function() {
   env <- new.env(parent = globalenv())
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_admin_documentation_sanitize.R"), encoding = "UTF-8", local = env)
   source(file.path(resolve_repo_root_for_tests(), "R", "helpers_admin_documentation.R"),
          encoding = "UTF-8", local = env)
   env

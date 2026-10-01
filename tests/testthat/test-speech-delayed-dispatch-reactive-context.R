@@ -105,3 +105,214 @@ testthat::test_that(
     testthat::expect_identical(calls$n, 1L)
   }
 )
+
+testthat::test_that("iptal edilen karşılama ön hazırlığı sonucu geçersiz kılar; tekrar onay sentezi yığmaz", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("promises")
+  kok <- resolve_repo_root_for_tests()
+  kaynak <- read_source_text_utf8(file.path(kok, "R", "server_speech_assets_runtime.R"))
+  # Geçersiz persona (iptal) yalnız nesli artırıp slotu boşaltır.
+  onhazirlik <- regmatches(kaynak, regexpr("prewarm_welcome <- function\\(persona_id\\) \\{[\\s\\S]*?if \\(is.na\\(persona\\)\\) return", kaynak, perl = TRUE))
+  testthat::expect_true(grepl("prefix_slot$gen <- prefix_slot$gen + 1L", onhazirlik, fixed = TRUE))
+  isleyici <- read_source_text_utf8(file.path(kok, "R", "server_ai_expert_handlers.R"))
+  testthat::expect_true(grepl("return(speech_runtime$prewarm_welcome(NA_character_))", isleyici, fixed = TRUE))
+})
+
+testthat::test_that("A->B->A seçimi süren A sentezini yeniden kullanır; sahip değişimi kişisel öneki düşürür", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("promises")
+  speech_tests_source_chain()
+  speech_tests_reset_caches()
+  kok <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  source(file.path(kok, "R", "helpers_user_session_identity.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "server_speech_assets_runtime.R"), encoding = "UTF-8", local = env)
+  # Son konu işçisi taklit edilir (paketin diğer testlerinden kalan tanım kullanılmaz).
+  env$ai_expert_recent_prompt_promise <- function(session, user_id) promises::promise_resolve(NULL)
+  root <- withr::local_tempdir()
+  speech_tests_make_tree(root)
+  mergen_speech_manifest_write(mergen_speech_manifest_build(root)$manifest, mergen_speech_manifest_path(root))
+  withr::local_envvar(MERGEN_SPEECH_ROOT = root, VOXCPM2_PREFIX_DEADLINE_MS = "0",
+                      VOXCPM2_WARMUP_ENABLED = "false")
+  withr::defer(speech_tests_reset_caches())
+
+  session <- shiny::MockShinySession$new()
+  session$userData$user_first_name <- "Onur"
+  session$userData$kimlik_sahibi <- 5L
+  cagri <- 0L
+  cozuculer <- list()
+  tts <- list(synthesize_speech = function(text, persona_id = NULL) {
+    cagri <<- cagri + 1L
+    promises::promise(function(resolve, reject) cozuculer[[length(cozuculer) + 1L]] <<- resolve)
+  })
+  ogeler <- NULL
+  ai_expert <- list(start_speaking = function(..., static_plan = NULL) {
+    ogeler <<- static_plan$items
+    invisible(NULL)
+  }, COOLDOWN_GREETING = 10, COOLDOWN_PAGE = 8)
+  runtime <- env$speechAssetsRuntimeInit(
+    input = shiny::reactiveValues(tabs = "chat"), session = session,
+    settings_data = shiny::reactiveValues(selected_character = "emre"),
+    ai_expert = ai_expert, tts_processor = tts, current_user_id = function() 5L
+  )
+  personalar <- mergen_speech_personas()
+  for (p in personalar[c(1, 2, 1)]) {
+    runtime$prewarm_welcome(p)
+    later::run_now(timeoutSecs = 0.1)
+  }
+  testthat::expect_identical(cagri, 2L)
+
+  # A'nın sentezi B'ye geçişten sonra biter: önek B'nin karşılamasına eklenmez.
+  env$mergen_session_owner_transition(session$userData, 5L, 6L)
+  runtime$prewarm_welcome(personalar[1])
+  later::run_now(timeoutSecs = 0.1)
+  testthat::expect_identical(cagri, 3L)
+  cozuculer[[1]](list(success = TRUE, audio_src = "data:audio/wav;base64,AA", duration = 1))
+  later::run_now(timeoutSecs = 0.1)
+  testthat::expect_true(runtime$play_welcome(personalar[1]))
+  later::run_now(timeoutSecs = 0.1)
+  testthat::expect_length(ogeler, 1L)
+})
+
+testthat::test_that("karşılama önekinin son konusu ana süreçte DB sorgusu yapmadan işçiden okunur", {
+  testthat::skip_if_not_installed("promises")
+  kok <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  source(file.path(kok, "R", "helpers_ai_expert_greeting_topic.R"), encoding = "UTF-8", local = env)
+  env$get_connection <- function(...) stop("ana süreçte DB bağlantısı açılmamalı")
+  gonderimler <- list()
+  env$tracked_future_promise <- function(task_fn, task_type = NULL, session_token = NULL,
+                                         dependency_mode = "auto", globals = NULL, packages = NULL, ...) {
+    gonderimler[[length(gonderimler) + 1L]] <<- list(tur = task_type, kip = dependency_mode, globals = globals)
+    promises::promise_resolve("Bütçe raporu")
+  }
+  oturum <- list(userData = new.env(), token = "tok")
+  sonuc <- NULL
+  env$ai_expert_recent_prompt_promise(oturum, 5L)$then(function(x) sonuc <<- x)
+  env$ai_expert_recent_prompt_promise(oturum, 5L)
+  for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+  testthat::expect_identical(sonuc, "Bütçe raporu")
+  testthat::expect_length(gonderimler, 1L)
+  testthat::expect_identical(gonderimler[[1]]$kip, "explicit")
+  testthat::expect_true(is.function(gonderimler[[1]]$globals$ai_expert_recent_prompt_fetch_raw))
+  oturum$userData$ai_expert_recent_prompt$t <- as.numeric(Sys.time()) - 31
+  env$ai_expert_recent_prompt_promise(oturum, 5L)
+  testthat::expect_length(gonderimler, 2L)
+  env$ai_expert_recent_prompt_promise(oturum, 6L)
+  testthat::expect_length(gonderimler, 3L)
+  bos <- "x"
+  env$ai_expert_recent_prompt_promise(oturum, 0L)$then(function(x) bos <<- x)
+  later::run_now(timeoutSecs = 0.1)
+  testthat::expect_null(bos)
+  testthat::expect_length(gonderimler, 3L)
+})
+
+testthat::test_that("son konu hatası önbelleklenmez; kayıplı kimlik sorgulanmaz", {
+  testthat::skip_if_not_installed("promises")
+  kok <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  source(file.path(kok, "R", "utils_common.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "helpers_ai_expert_greeting_topic.R"), encoding = "UTF-8", local = env)
+  gonderim <- 0L
+  env$tracked_future_promise <- function(task_fn, ...) {
+    gonderim <<- gonderim + 1L
+    if (gonderim == 1L) return(promises::promise_reject(simpleError("DB geçici hata")))
+    promises::promise_resolve("Rapor")
+  }
+  oturum <- list(userData = new.env(), token = "tok")
+  ilk <- "x"
+  env$ai_expert_recent_prompt_promise(oturum, 5L)$then(function(x) ilk <<- x)
+  for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+  testthat::expect_null(ilk)
+  sonra <- NULL
+  env$ai_expert_recent_prompt_promise(oturum, 5L)$then(function(x) sonra <<- x)
+  for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+  testthat::expect_identical(sonra, "Rapor")
+  testthat::expect_identical(gonderim, 2L)
+  for (kayipli in list(7.9, "7.9", TRUE)) env$ai_expert_recent_prompt_promise(oturum, kayipli)
+  testthat::expect_identical(gonderim, 2L)
+  # İşçi gövdesi de tamsayı olmayan kimliği sorgulamaz.
+  testthat::expect_null(env$ai_expert_recent_prompt_fetch_raw(7.9, "dsn", "UTF-8", "UTF-8"))
+})
+
+testthat::test_that("sahip değişince bekleyen karşılama gönderimi düşer", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("promises")
+  speech_tests_source_chain()
+  speech_tests_reset_caches()
+  kok <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  source(file.path(kok, "R", "helpers_user_session_identity.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "server_speech_assets_runtime.R"), encoding = "UTF-8", local = env)
+  env$ai_expert_recent_prompt_promise <- function(session, user_id) promises::promise_resolve(NULL)
+  root <- withr::local_tempdir()
+  speech_tests_make_tree(root)
+  mergen_speech_manifest_write(mergen_speech_manifest_build(root)$manifest, mergen_speech_manifest_path(root))
+  withr::local_envvar(MERGEN_SPEECH_ROOT = root, VOXCPM2_PREFIX_DEADLINE_MS = "0",
+                      VOXCPM2_WARMUP_ENABLED = "false")
+  withr::defer(speech_tests_reset_caches())
+  session <- shiny::MockShinySession$new()
+  session$userData$user_first_name <- "Onur"
+  session$userData$kimlik_sahibi <- 5L
+  tts <- list(synthesize_speech = function(text, persona_id = NULL) {
+    promises::promise(function(resolve, reject) NULL)
+  })
+  baslayan <- 0L
+  ai_expert <- list(start_speaking = function(...) {
+    baslayan <<- baslayan + 1L
+    invisible(NULL)
+  }, COOLDOWN_GREETING = 10, COOLDOWN_PAGE = 8)
+  runtime <- env$speechAssetsRuntimeInit(
+    input = shiny::reactiveValues(tabs = "chat"), session = session,
+    settings_data = shiny::reactiveValues(selected_character = "emre"),
+    ai_expert = ai_expert, tts_processor = tts, current_user_id = function() 5L
+  )
+  persona <- mergen_speech_personas()[1]
+  runtime$prewarm_welcome(persona)
+  later::run_now(timeoutSecs = 0.05)
+  testthat::expect_true(runtime$play_welcome(persona))
+  env$mergen_session_owner_transition(session$userData, 5L, 6L)
+  for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+  testthat::expect_identical(baslayan, 0L)
+})
+
+testthat::test_that("persona değişince bekleyen karşılama gönderimi düşer", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("promises")
+  speech_tests_source_chain()
+  speech_tests_reset_caches()
+  kok <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  source(file.path(kok, "R", "helpers_user_session_identity.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "server_speech_assets_runtime.R"), encoding = "UTF-8", local = env)
+  env$ai_expert_recent_prompt_promise <- function(session, user_id) promises::promise_resolve(NULL)
+  root <- withr::local_tempdir()
+  speech_tests_make_tree(root)
+  mergen_speech_manifest_write(mergen_speech_manifest_build(root)$manifest, mergen_speech_manifest_path(root))
+  withr::local_envvar(MERGEN_SPEECH_ROOT = root, VOXCPM2_PREFIX_DEADLINE_MS = "0",
+                      VOXCPM2_WARMUP_ENABLED = "false")
+  withr::defer(speech_tests_reset_caches())
+  session <- shiny::MockShinySession$new()
+  session$userData$user_first_name <- "Onur"
+  session$userData$kimlik_sahibi <- 5L
+  tts <- list(synthesize_speech = function(text, persona_id = NULL) {
+    promises::promise(function(resolve, reject) NULL)
+  })
+  baslayan <- 0L
+  ai_expert <- list(start_speaking = function(...) {
+    baslayan <<- baslayan + 1L
+    invisible(NULL)
+  }, COOLDOWN_GREETING = 10, COOLDOWN_PAGE = 8)
+  runtime <- env$speechAssetsRuntimeInit(
+    input = shiny::reactiveValues(tabs = "chat"), session = session,
+    settings_data = shiny::reactiveValues(selected_character = "emre"),
+    ai_expert = ai_expert, tts_processor = tts, current_user_id = function() 5L
+  )
+  persona <- mergen_speech_personas()[1]
+  runtime$prewarm_welcome(persona)
+  later::run_now(timeoutSecs = 0.05)
+  testthat::expect_true(runtime$play_welcome(persona))
+  runtime$prewarm_welcome(mergen_speech_personas()[2])
+  for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+  testthat::expect_identical(baslayan, 0L)
+})

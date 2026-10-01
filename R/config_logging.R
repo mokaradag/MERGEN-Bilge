@@ -142,12 +142,16 @@ if (!exists("mergen_daily_file_appender", mode = "function",
   )
   for (.mergen_log_daily_path in .mergen_log_daily_candidates) {
     if (file.exists(.mergen_log_daily_path)) {
+      .mergen_log_locks_path <- sub("daily_file\\.R$", "locks.R", .mergen_log_daily_path)
+      if (!file.exists(.mergen_log_locks_path)) next
+      source(.mergen_log_locks_path,
+             encoding = "UTF-8", local = environment())
       source(.mergen_log_daily_path, encoding = "UTF-8", local = environment())
       break
     }
   }
   rm(list = intersect(
-    c(".mergen_log_daily_candidates", ".mergen_log_daily_path",
+    c(".mergen_log_daily_candidates", ".mergen_log_daily_path", ".mergen_log_locks_path",
       ".mergen_log_self_dir", ".mergen_log_fi", ".mergen_log_frame",
       ".mergen_log_ofile"),
     ls(all.names = TRUE)
@@ -205,7 +209,7 @@ use_console_colors <- tolower(trimws(Sys.getenv("MERGEN_LOG_CONSOLE_COLORS", "fa
 # çeviremeyip "unable to translate ... to a wide string" uyarısı üretir.
 # Dosya logu UTF-8 kalır; yalnızca konsol çıktısı native-safe hale getirilir.
 mergen_console_appender <- function(lines) {
-  lines <- as.character(lines %||% "")
+  lines <- as.character(if (is.null(lines)) "" else lines)
   if (exists("normalize_text_for_log", mode = "function", inherits = TRUE)) {
     lines <- normalize_text_for_log(lines)
   } else {
@@ -343,15 +347,17 @@ dbg_dump <- function(label, payload) {
     payload_json <- .sanitize_log_value(payload_json)
     label <- .sanitize_log_value(as.character(label))
 
-    cat(
-      sprintf("[%s] %s\n", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), label),
-      payload_json,
-      "\n---\n",
-      file = file.path(
+    # Günün hata ayıklama dosyası da eski CP1254 satırlarıyla karışmaz.
+    mergen_log_write_utf8(
+      c(
+        sprintf("[%s] %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), label),
+        as.character(payload_json),
+        "---"
+      ),
+      file.path(
         mergen_log_dir,
         sprintf("ai_debug_%s.log", format(current_mergen_log_date(), "%Y%m%d"))
-      ),
-      append = TRUE
+      )
     )
   }, silent = TRUE)
 }

@@ -44,9 +44,11 @@ health_source_optional <- function(path) {
 # global.R kaynak sırası güncel değilse bile modül kendi bağımlılıklarını güvenli yükler.
 if (!exists("health_collect_checks", mode = "function") ||
     !exists("health_status_pill", mode = "function") ||
-    !exists("health_check_runtime_info", mode = "function")) {
+    !exists("health_check_runtime_info", mode = "function") ||
+    !exists("health_is_public_url", mode = "function")) {
   health_source_optional("R/helpers_health_formatters.R")
   health_source_optional("R/helpers_health_runtime_checks.R")
+  health_source_optional("R/helpers_health_endpoint_scope.R")
   health_source_optional("R/helpers_health_checks.R")
 }
 
@@ -63,6 +65,24 @@ health_source_optional("R/module_health_runtime.R")
 health_source_optional("R/module_health_security.R")
 health_source_optional("R/module_health_diagnostics.R")
 health_source_optional("R/module_health_release.R")
+health_source_optional("R/module_health_presence.R")
+health_source_optional("R/helpers_health_dns_refresh.R")
+
+# Sistem Durumu yalnız yöneticiye açıktır. Menüyü gizlemek yetkilendirme
+# değildir: tüm oturumlarda çalışan modül, istemcinin gönderdiği sekme
+# değerine bakmadan önce yetkiyi sunucuda oturum kimliğinden okur (karar
+# yönetici menüsüyle aynıdır: server_observers_misc.R mevcut_yetki).
+health_session_is_admin <- function(session) {
+  cfg <- tryCatch({
+    if (exists("make_user_session_data_accessors", mode = "function")) {
+      make_user_session_data_accessors(session)$get_user_config(NULL)
+    } else {
+      get0("user_config", envir = session$userData, inherits = FALSE)
+    }
+  }, error = function(e) NULL)
+  seviye <- if (is.list(cfg)) cfg$auth_level else NULL
+  identical(toupper(trimws(as.character(seviye %||% "")[1])), "ADMIN")
+}
 
 healthUI <- function(id) {
   ns <- NS(id)
@@ -94,6 +114,10 @@ healthUI <- function(id) {
           tabPanel(
             title = tags$span(title = "Worker, bellek ve süreç bilgileri", tagList(icon("server"), " Çalışma Zamanı")),
             value = "runtime"
+          ),
+          tabPanel(
+            title = tags$span(title = "Çevrimiçi kullanıcılar ve oturum takibi", tagList(icon("users"), " Çevrimiçi")),
+            value = "presence"
           ),
           tabPanel(
             title = tags$span(title = "SSO, ortam değişkenleri ve şema", tagList(icon("shield-alt"), " Güvenlik & Yapılandırma")),
@@ -134,8 +158,21 @@ healthServer <- function(id, perf_tracker) {
       session$sendCustomMessage("initHealthTooltips", list())
     }, once = TRUE)
 
+    # Yetki yoklanmaz: çizim oturum kimlik sinyaline bağımlıdır. SSO süresi
+    # dolunca ya da oturum başka kullanıcıya/yetkiye geçince içerik aynı turda
+    # kilit mesajına döner; yönetici olmayan oturumlar zamanlayıcı çalıştırmaz.
+    kimlik_sinyali <- if (exists("mergen_session_identity_signal", mode = "function")) {
+      mergen_session_identity_signal(session)
+    }
+
+    yetki_durumu <- reactiveVal(FALSE)
+    observe({
+      if (is.function(kimlik_sinyali)) kimlik_sinyali() else invalidateLater(5000)
+      yetki_durumu(health_session_is_admin(session))
+    })
     observe({
       # Sağlık kontrolleri DB/endpoint probe içerebildiği için otomatik yenileme seyrek tutulur.
+      if (!isTRUE(yetki_durumu())) return()
       invalidateLater(120000)
       isolate({
         health_refresh_trigger(health_refresh_trigger() + 1)
@@ -144,9 +181,27 @@ healthServer <- function(id, perf_tracker) {
       })
     })
 
-    checks_data <- reactive({
+    dns_checks <- reactiveVal(NULL)
+    dns_started <- 0
+    initial_checks <- reactive({
       health_refresh_trigger()
+      dns_started <<- as.numeric(Sys.time())
+      dns_checks(NULL)
       health_collect_checks(perf_tracker = perf_tracker, include_slow = TRUE)
+    })
+    checks_data <- reactive({
+      ilk <- initial_checks()
+      dns_checks() %||% ilk
+    })
+    observe({
+      if (!isTRUE(yetki_durumu())) return()
+      ilk <- initial_checks()
+      son <- isolate(dns_checks()) %||% ilk
+      if (any(son$value == "DNS bekleniyor", na.rm = TRUE) &&
+          as.numeric(Sys.time()) - dns_started < 4) {
+        invalidateLater(250, session)
+        dns_checks(health_refresh_pending_endpoints(son))
+      }
     })
 
     worker_health_html <- reactive({
@@ -180,9 +235,31 @@ healthServer <- function(id, perf_tracker) {
 	  }, error = function(e) NULL)
 	})
 
+    # Çevrimiçi sekmesi yalnız açıkken ve yöneticideyken 30 sn'de bir yenilenir;
+    # sayaç hem çizimi hem tooltip yeniden bağlamayı tetikler.
+    presence_tick <- reactiveVal(0L)
+    observe({
+      if (!identical(input$health_tabs, "presence") || !isTRUE(yetki_durumu())) return()
+      invalidateLater(30000)
+      isolate(presence_tick(presence_tick() + 1L))
+    })
+
     output$health_tab_content <- renderUI({
-      checks <- checks_data()
       tab <- input$health_tabs %||% "overview"
+      if (is.function(kimlik_sinyali)) kimlik_sinyali()
+      yetki_durumu()
+      yonetici <- health_session_is_admin(session)
+      if (!yonetici) {
+        return(div(class = "health-empty", icon("lock"), " Bu sayfa yalnızca yöneticilere açıktır."))
+      }
+      # Çevrimiçi sekmesi yalnız bellek-içi defteri okur; sağlık probe'larını
+      # tetiklemez ve yalnızca açıkken 30 saniyede bir yenilenir.
+      if (identical(tab, "presence")) {
+        health_refresh_trigger()
+        presence_tick()
+        return(health_presence_ui(tryCatch(mb_presence_snapshot(), error = function(e) NULL)))
+      }
+      checks <- checks_data()
 
       switch(tab,
         overview = health_overview_ui(checks, health_last_update()),
@@ -197,9 +274,12 @@ healthServer <- function(id, perf_tracker) {
     })
 
     observe({
-      # Sekme değişimi veya manuel/otomatik yenileme sonrasında yeni DOM için tooltip'leri tekrar bağla.
+      # Sekme değişimi, manuel/otomatik yenileme, kimlik değişimi ya da Çevrimiçi
+      # yenilemesiyle değişen DOM için tooltip'leri tekrar bağla.
       input$health_tabs
       health_refresh_trigger()
+      presence_tick()
+      if (is.function(kimlik_sinyali)) kimlik_sinyali()
       session$onFlushed(function() {
         session$sendCustomMessage("removeHealthTooltips", list())
         session$sendCustomMessage("initHealthTooltips", list())
@@ -208,6 +288,7 @@ healthServer <- function(id, perf_tracker) {
     })
 
     observeEvent(input$refresh_health, {
+      if (!health_session_is_admin(session)) return(invisible(NULL))
       session$sendCustomMessage("removeHealthTooltips", list())
       shinyjs::runjs("$('.tooltip').remove();")
       health_refresh_trigger(health_refresh_trigger() + 1)

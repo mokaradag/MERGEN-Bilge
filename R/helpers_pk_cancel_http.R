@@ -33,21 +33,13 @@ pk_http_cancel_active <- function() {
 
 #' İptal edilebilir HTTP isteği için `httr` yapılandırması
 #'
-#' @param stop_check Opsiyonel özel kapı; verilmezse yayınlanmış PK kapısı.
+#' @param stop_check Özel iptal kapısı; aktif PK kapısıyla birlikte yoklanır.
 #' @return `httr::config()` nesnesi. Kapı yoksa BOŞ yapılandırma döner (no-op).
 pk_http_cancel_config <- function(stop_check = NULL) {
   if (!requireNamespace("httr", quietly = TRUE)) return(NULL)
 
   ozel <- is.function(stop_check)
   if (!ozel && !isTRUE(tryCatch(pk_http_cancel_active(), error = function(e) FALSE))) {
-    return(httr::config())
-  }
-
-  kapi <- if (ozel) {
-    stop_check
-  } else if (exists("pk_active_stage_halt", mode = "function", inherits = TRUE)) {
-    pk_active_stage_halt
-  } else {
     return(httr::config())
   }
 
@@ -58,7 +50,8 @@ pk_http_cancel_config <- function(stop_check = NULL) {
   httr::config(
     noprogress = 0L,
     progressfunction = function(down, up) {
-      !isTRUE(tryCatch(kapi(), error = function(e) FALSE))
+      genel <- ozel && isTRUE(try(stop_check(), silent = TRUE))
+      !pk_stage_halted() && !genel
     }
   )
 }

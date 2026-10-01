@@ -146,6 +146,44 @@ serverInitSessionState <- function(session, identity, sso_state = NULL) {
     sync_feedback_from_db()
   }
 
+  # Oturum başka kullanıcıya geçince (A -> B) ya da kimlik düşünce A'nın açık
+  # söyleşisi, kayıtlı listesi ve süren yanıtı oturumda kalmaz; süren istek
+  # Durdur gibi kesilir (PK işçisinin iptal jetonu dahil).
+  if (exists("mergen_session_on_owner_change", mode = "function")) {
+    mergen_session_on_owner_change(session, function(neden) {
+      if (isTRUE(shiny::isolate(values$is_sending))) {
+        aktif_kimlik <- shiny::isolate(active_request_id())
+        if (exists("mergen_pk_signal_cancel", mode = "function", inherits = TRUE) &&
+            exists("mergen_pk_request_has_cancel_token", mode = "function", inherits = TRUE) &&
+            isTRUE(tryCatch(mergen_pk_request_has_cancel_token(session, aktif_kimlik),
+                            error = function(e) FALSE))) {
+          try(mergen_pk_signal_cancel(aktif_kimlik, session = session), silent = TRUE)
+        }
+        stop_generation(TRUE)
+        active_request_id(paste0("cancelled_", as.numeric(Sys.time())))
+        values$is_sending <- FALSE
+        values$typing <- FALSE
+        if (exists("mergen_send_message_release_values_token", mode = "function")) {
+          try(mergen_send_message_release_values_token(values), silent = TRUE)
+        }
+        if (exists("chat_reset_state", mode = "function")) {
+          try(shiny::withReactiveDomain(session, chat_reset_state(session, values)), silent = TRUE)
+        }
+      }
+      for (fn in c("pk_entity_context_clear", "mergen_pk_bump_chat_epoch")) {
+        if (exists(fn, mode = "function", inherits = TRUE)) {
+          try(get(fn, mode = "function")(session), silent = TRUE)
+        }
+      }
+      values$messages <- list()
+      values$saved_chats <- list()
+      values$current_chat_id <- NULL
+      values$show_welcome <- TRUE
+      session_files(list())
+      invisible(NULL)
+    })
+  }
+
   list(
     values = values,
     stop_generation = stop_generation,
@@ -478,4 +516,3 @@ pk_hook_single_exit_fix_install <- function() {
   assign(".pk_hook_single_exit_installed", TRUE, envir = target_env)
   invisible(TRUE)
 }
-

@@ -13,11 +13,17 @@ if (requireNamespace("shiny", quietly = TRUE)) {
 }
 
 .admin_env <- new.env(parent = globalenv())
+.admin_env$JS <- htmlwidgets::JS
 source(
   file.path(resolve_repo_root_for_tests(), "R", "module_admin_hata_analizi.R"),
   encoding = "UTF-8",
   local = .admin_env
 )
+
+source(file.path(resolve_repo_root_for_tests(), "R", "helpers_admin_analytics.R"),
+       encoding = "UTF-8", local = .admin_env)
+source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
+       encoding = "UTF-8", local = .admin_env)
 
 # Modülün bare kullandığı %>% ve JS yardımcılarını ortama getir.
 .admin_env[["%>%"]] <- magrittr::`%>%`
@@ -140,6 +146,7 @@ test_that("durum pasta grafiği durum kodlarını Türkçe etikete ve renge çev
   .admin_env$admin_ha_fetch_data <- .ha_full
 
   shiny::testServer(.admin_env$adminHataAnaliziServer, args = list(id = "ha"), {
+    session$userData$user_config <- list(auth_level = "ADMIN")
     noktalar <- .seri_noktalari(output$ha_durum_pie_chart)
     isimler <- vapply(noktalar, function(p) p$name, character(1))
     renkler <- vapply(noktalar, function(p) p$color, character(1))
@@ -164,6 +171,7 @@ test_that("öncelik pasta grafiği öncelik kodlarını Türkçe etikete ve reng
   .admin_env$admin_ha_fetch_data <- .ha_full
 
   shiny::testServer(.admin_env$adminHataAnaliziServer, args = list(id = "ha"), {
+    session$userData$user_config <- list(auth_level = "ADMIN")
     noktalar <- .seri_noktalari(output$ha_oncelik_chart)
     isimler <- vapply(noktalar, function(p) p$name, character(1))
     renkler <- vapply(noktalar, function(p) p$color, character(1))
@@ -189,6 +197,7 @@ test_that("dolu veri ile tüm Hata Analizi grafikleri ve kullanıcı tablosu hat
   .admin_env$admin_ha_fetch_data <- .ha_full
 
   shiny::testServer(.admin_env$adminHataAnaliziServer, args = list(id = "ha"), {
+    session$userData$user_config <- list(auth_level = "ADMIN")
     expect_error(force(output$ha_gunluk_trend_chart), NA)
     expect_error(force(output$ha_kategori_treemap_chart), NA)
     expect_error(force(output$ha_heatmap_chart), NA)
@@ -215,6 +224,7 @@ test_that("boş veri tüm grafiklerde nrow==0 korumasını tetikler ve hata verm
   .admin_env$admin_ha_count_categories <- function(ham, kategori_cevirisi) data.frame()
 
   shiny::testServer(.admin_env$adminHataAnaliziServer, args = list(id = "ha"), {
+    session$userData$user_config <- list(auth_level = "ADMIN")
     expect_error(force(output$ha_durum_pie_chart), NA)
     expect_error(force(output$ha_oncelik_chart), NA)
     expect_error(force(output$ha_gunluk_trend_chart), NA)
@@ -236,6 +246,7 @@ test_that("tab_content_area seçili sekme için admin_ha_tab_ui çıktısını �
   .admin_env$admin_ha_fetch_data <- .ha_full
 
   shiny::testServer(.admin_env$adminHataAnaliziServer, args = list(id = "ha"), {
+    session$userData$user_config <- list(auth_level = "ADMIN")
     # input$admin_tabs NULL -> varsayılan ha_overview kullanılmalı.
     html0 <- paste(as.character(output$tab_content_area), collapse = "")
     expect_true(grepl("tab:ha_overview", html0, fixed = TRUE))

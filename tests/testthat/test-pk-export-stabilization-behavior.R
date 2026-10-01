@@ -342,3 +342,74 @@ test_that("KULLANICI iptali hala 'cancelled' olarak raporlanir", {
                                stop_check = function() TRUE)
   expect_identical(sonuc$status, "cancelled")
 })
+
+test_that("XLSX hazırlığı (onarım taraması, yüzde, dilimleme) iptali ve son tarihi gözler", {
+  env <- .pk_exps_env()
+  veri <- .pk_exps_frame(n = 10L)
+  dizin <- file.path(tempdir(), paste0("pk_exps_k_", as.integer(runif(1, 1, 1e9))))
+  dir.create(dizin, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(dizin, recursive = TRUE, force = TRUE), add = TRUE)
+  hazirlik <- 0L
+  asil <- env$pk_export_prepare_percent
+  env$pk_export_prepare_percent <- function(...) { hazirlik <<- hazirlik + 1L; asil(...) }
+  cagri <- 0L
+  # İlk yoklama geçer, hazırlık sırasındaki yoklama durdurur.
+  sonuc <- env$pk_export_build(veri, base_name = "sentetik", dir = dizin,
+                               stop_check = function() { cagri <<- cagri + 1L; cagri > 1L })
+  expect_identical(sonuc$status, "cancelled")
+  expect_identical(hazirlik, 0L)
+  expect_length(list.files(dizin, pattern = "\\.xlsx$"), 0L)
+  # Hazırlık bütçe içinde kalırsa normal sonuç üretilir.
+  sonuc2 <- env$pk_export_build(veri, base_name = "sentetik", dir = dizin)
+  expect_true(sonuc2$status %in% c("ok", "csv_fallback"))
+  expect_gte(hazirlik, 1L)
+})
+
+test_that("hazırlıkta görülen geçici iptal sonradan sıfırlansa da son tarih sayılmaz", {
+  env <- .pk_exps_env()
+  veri <- .pk_exps_frame(n = 10L)
+  dizin <- file.path(tempdir(), paste0("pk_exps_l_", as.integer(runif(1, 1, 1e9))))
+  dir.create(dizin, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(dizin, recursive = TRUE, force = TRUE), add = TRUE)
+  durum <- new.env()
+  durum$aktif <- FALSE
+  # Onarım taramasından sonraki ilk yoklama TRUE döner, jeton sonra sıfırlanır.
+  env$turkish_latin1_repair_columns <- function(data, stop_check = NULL, ...) {
+    durum$aktif <- TRUE
+    logical(ncol(data))
+  }
+  sonuc <- env$pk_export_build(veri, base_name = "sentetik", dir = dizin,
+                               stop_check = function() {
+                                 if (!isTRUE(durum$aktif)) return(FALSE)
+                                 durum$aktif <- FALSE
+                                 TRUE
+                               })
+  expect_identical(sonuc$status, "cancelled")
+  expect_length(list.files(dizin, pattern = "\\.xlsx$"), 0L)
+})
+
+
+test_that("gerçek sütun taramasındaki geçici iptal XLSX ve CSV üretimini durdurur", {
+  for (bicim in c("xlsx", "csv")) {
+    env <- .pk_exps_env()
+    dizin <- withr::local_tempdir()
+    veri <- data.frame(Metin = rep("SENTETIK", 12001L))
+    yoklama <- 0L
+    sonuc <- env$pk_export_build(veri, base_name = "sentetik", dir = dizin, format = bicim,
+      stop_check = function() {
+        yoklama <<- yoklama + 1L
+        isTRUE(yoklama == 4L)
+      })
+    expect_identical(sonuc$status, "cancelled")
+    expect_length(list.files(dizin, pattern = "\\.(xlsx|csv)$", recursive = TRUE), 0L)
+  }
+})
+
+test_that("faktör sütun kanıtı taranır ve dışa aktarımda Türkçe onarılır", {
+  env <- .pk_exps_env()
+  veri <- data.frame(Metin = factor(c(paste0("ÇALI", "\u00de", "MA"), paste0("ÇA", "\u00d0", "RI"), NA_character_)))
+  onarim <- env$turkish_latin1_repair_columns(veri)
+  expect_identical(unname(onarim), TRUE)
+  sonuc <- env$.pk_export_norm(veri, onarim)
+  expect_identical(sonuc$Metin, c("ÇALIŞMA", "ÇAĞRI", NA_character_))
+})

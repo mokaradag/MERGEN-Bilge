@@ -2,7 +2,7 @@
 /* Dosya Yolu: www/css/explore_character_step.css */
 /* Açıklama: Bütünleşik mod karakter seçim adımı stilleri. */
 /* Giriş ekranındaki mod seçim modalında 2. adım olarak gösterilir. */
-/* Kişiselleştirme sayfasındaki deneyimle tutarlı tasarım. */
+/* Persona aksanı --char-accent değişkeniyle gelir (explore_character_step.js). */
 
 /* ============================================================= */
 /* ADIM GÖSTERGE ÇUBUĞU                                          */
@@ -12,11 +12,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  margin-bottom: 24px;
-  padding-top: 16px;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding-top: 12px;
   opacity: 0;
-  transition: opacity 0.5s ease;
+  transition: opacity 0.4s ease;
 }
 
 .cinematic-step-indicator.visible {
@@ -24,33 +24,31 @@
 }
 
 .cinematic-step-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.15);
-  transition: all 0.4s ease;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.2);
+  transition: width 0.3s ease, background 0.3s ease;
 }
 
 .cinematic-step-dot.active {
-  background: rgba(129, 140, 248, 0.8);
-  box-shadow: 0 0 12px rgba(129, 140, 248, 0.5);
-  transform: scale(1.3);
+  width: 22px;
+  background: #f8fafc;
 }
 
 .cinematic-step-dot.completed {
-  background: rgba(52, 211, 153, 0.7);
-  box-shadow: 0 0 8px rgba(52, 211, 153, 0.4);
+  background: rgba(248, 250, 252, 0.45);
 }
 
 .cinematic-step-line {
-  width: 40px;
-  height: 2px;
-  background: rgba(255, 255, 255, 0.1);
-  transition: background 0.4s ease;
+  width: 28px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.14);
+  transition: background 0.3s ease;
 }
 
 .cinematic-step-line.completed {
-  background: linear-gradient(90deg, rgba(52, 211, 153, 0.6), rgba(129, 140, 248, 0.6));
+  background: rgba(255, 255, 255, 0.35);
 }
 
 /* ============================================================= */
@@ -58,92 +56,94 @@
 /* ============================================================= */
 
 .cinematic-character-step {
+  --char-accent: #818cf8;
   display: none;
   width: 100%;
-  max-width: 1400px;
-  animation: cinematicCardEnter 0.6s ease-out both;
+  max-width: 1240px;
+  animation: cinematicCardEnter 0.5s ease-out both;
 }
 
 .cinematic-character-step.active {
   display: block;
 }
 
-/* Başlık satırı - karakter butonları sağ tarafa taşındı */
 .cinematic-char-step-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
-  gap: 16px;
+  margin-bottom: 24px;
+  gap: 20px;
 }
 
 .cinematic-char-step-title {
-  font-family: 'Orbitron', 'Segoe UI', sans-serif !important;
+  font-family: inherit !important;
   font-size: 30px !important;
-  font-weight: 300;
-  color: #ffffff;
-  letter-spacing: 0.08em;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: #f8fafc;
   margin: 0 0 6px 0;
 }
 
 .cinematic-char-step-subtitle {
-  font-family: 'Jura', 'Segoe UI', sans-serif !important;
-  font-size: 14px !important;
-  color: rgba(148, 163, 184, 0.6);
-  letter-spacing: 0.2em;
-  font-weight: 600;
-  text-transform: uppercase;
+  font-family: inherit !important;
+  font-size: 15px !important;
+  font-weight: 400;
+  color: #94a3b8;
   margin: 0;
 }
 
-/* Kapatma butonu (2. adım) */
 .cinematic-char-close-btn {
-  padding: 14px;
-  background: transparent;
-  border: none;
-  color: rgba(148, 163, 184, 0.5);
-  font-size: 24px !important;
-  cursor: pointer;
-  border-radius: 9999px;
-  transition: all 0.3s ease;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+  color: #cbd5e1;
+  font-size: 16px !important;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 .cinematic-char-close-btn:hover {
   color: #ffffff;
-  background: rgba(255, 255, 255, 0.05);
-  transform: rotate(90deg);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.22);
 }
 
-/* İki sütunlu düzen - Kişiselleştirme sayfasıyla aynı boyutlar */
 .cinematic-character-layout {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 36px;
+  gap: 44px;
   align-items: start;
 }
 
-/* Sol panel: Video ve görsel */
+/* Sol panel: portre / video */
 .cinematic-char-visual {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 580px;
 }
 
-/* Görsel/Video sarmalayıcı - Kişiselleştirme sayfasıyla aynı boyutlar */
+/* Yükseklik görünüm alanına göre ölçeklenir; 1366x768 dizüstünde eylem
+   düğmeleri kaydırmadan görünür kalır. */
 .cinematic-char-image-wrapper {
   position: relative;
-  width: 420px;
-  height: 620px;
-  border-radius: 18px;
+  height: min(560px, 60vh);
+  aspect-ratio: 5 / 7;
+  border-radius: 20px;
   overflow: hidden;
-  background: rgba(0, 0, 0, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  background: linear-gradient(180deg, #131b2e 0%, #0b1120 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
 }
 
 .cinematic-char-image-wrapper video,
@@ -154,12 +154,11 @@
 }
 
 .cinematic-char-image-wrapper img {
-  transition: opacity 0.5s ease;
+  transition: opacity 0.4s ease;
   position: relative;
   z-index: 1;
 }
 
-/* Video oynatıcı stili - GPU hızlandırma */
 .explore-char-video-player {
   position: absolute;
   inset: 0;
@@ -171,64 +170,44 @@
   transform: translateZ(0);
 }
 
-/* Sağ panel: Karakter bilgileri */
+/* Sağ panel: karakter bilgileri */
 .cinematic-char-info {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  max-height: 620px;
+  gap: 18px;
+  max-height: 560px;
+  padding-top: 8px;
 }
 
-/* Karakter adı - sağ panelde */
 .cinematic-char-info .cinematic-char-display-name {
-  font-family: 'Orbitron', 'Segoe UI', sans-serif !important;
-  font-size: 28px !important;
-  font-weight: 400;
-  color: #ffffff;
-  letter-spacing: 0.12em;
+  font-family: inherit !important;
+  font-size: 30px !important;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  color: #f8fafc;
   margin: 0;
 }
 
-/* Karakter alt başlık - sağ panelde (sabit yükseklik, animasyon boyutu değiştirmesin) */
+/* Persona sloganı: aksan çizgisiyle ayrılır */
 .cinematic-char-subtitle-text {
-  font-family: 'Jura', 'Segoe UI', sans-serif !important;
-  font-size: 14px !important;
-  color: rgba(148, 163, 184, 0.7);
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  margin: 0 0 8px 0;
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  min-height: 32px;
-  height: 32px;
-  overflow: hidden;
+  font-family: inherit !important;
+  font-size: 15px !important;
+  font-weight: 500;
+  line-height: 1.5;
+  color: #e2e8f0;
+  margin: 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--char-accent);
 }
 
-/* Yazma efekti imleci (alt başlık için) */
-.cinematic-subtitle-cursor {
-  display: inline-block;
-  width: 2px;
-  height: 0.9em;
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  background-color: rgba(148, 163, 184, 0.6);
-  animation: cinematicTypingBlink 0.8s step-end infinite;
-}
-
-/* Hikaye metni alanı - sabit yükseklik (yazma animasyonu sırasında boyut değişmesin) */
 .cinematic-char-lore {
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.7;
-  color: rgba(226, 232, 240, 0.85);
-  padding: 16px 20px;
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  height: 200px;
+  color: #cbd5e1;
+  max-height: 180px;
   overflow-y: auto;
 }
 
-/* Hikaye metni kaydırma çubuğu */
 .cinematic-char-lore::-webkit-scrollbar {
   width: 4px;
 }
@@ -238,64 +217,55 @@
 }
 
 .cinematic-char-lore::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 2px;
-}
-
-/* Yazma efekti imleci */
-.cinematic-lore-cursor {
-  display: inline-block;
-  width: 2px;
-  height: 0.95em;
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  background-color: rgba(129, 140, 248, 0.8);
-  animation: cinematicTypingBlink 0.8s step-end infinite;
 }
 
 /* Profil metrikleri */
 .cinematic-char-metrics {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .cinematic-char-metric {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
 }
 
 .cinematic-char-metric-label {
-  font-size: 12px;
-  color: rgba(148, 163, 184, 0.8);
-  min-width: 130px;
-  letter-spacing: 0.05em;
+  font-size: 13px;
+  color: #94a3b8;
+  min-width: 150px;
 }
 
 .cinematic-char-metric-bar {
   flex: 1;
-  height: 6px;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 3px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
   overflow: hidden;
 }
 
 .cinematic-char-metric-fill {
   height: 100%;
-  border-radius: 3px;
-  transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
   width: 0;
+  border-radius: 9999px;
+  background: var(--char-accent);
+  transition: width 0.7s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .cinematic-char-metric-value {
-  font-size: 12px;
-  color: rgba(148, 163, 184, 0.6);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: #e2e8f0;
   min-width: 28px;
   text-align: right;
 }
 
-/* İmza hareketleri */
 .cinematic-char-signatures {
   display: flex;
   flex-wrap: wrap;
@@ -303,91 +273,72 @@
 }
 
 .cinematic-char-signature-tag {
-  font-size: 11px;
-  padding: 5px 12px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: rgba(226, 232, 240, 0.7);
-  letter-spacing: 0.03em;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
 }
 
 /* ============================================================= */
-/* KARAKTER BUTONLARI - başlık satırında sağ tarafa taşındı       */
+/* KARAKTER BUTONLARI (segmentli seçici)                         */
 /* ============================================================= */
 
 .cinematic-char-buttons {
   display: flex;
-  justify-content: flex-end;
-  gap: 10px;
+  gap: 2px;
+  padding: 4px;
   flex-shrink: 0;
   flex-wrap: nowrap;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
 }
 
 .cinematic-char-btn {
-  position: relative;
-  padding: 8px 18px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.03);
-  color: rgba(226, 232, 240, 0.7);
-  font-family: 'Jura', 'Segoe UI', sans-serif !important;
-  font-size: 13px !important;
+  --persona: #94a3b8;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: #94a3b8;
+  font-family: inherit !important;
+  font-size: 14px !important;
   font-weight: 500;
-  letter-spacing: 0.06em;
   cursor: pointer;
-  transition: all 0.4s cubic-bezier(0.19, 1, 0.22, 1);
-  overflow: hidden;
   white-space: nowrap;
+  transition: background 0.2s ease, color 0.2s ease;
 }
 
+/* Persona rengi küçük nokta olarak */
 .cinematic-char-btn::before {
   content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  opacity: 0;
-  transition: opacity 0.3s ease;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--persona);
 }
 
 .cinematic-char-btn:hover {
-  transform: translateY(-2px);
-  border-color: rgba(255, 255, 255, 0.2);
-  color: #ffffff;
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .cinematic-char-btn.active {
-  color: #ffffff;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  color: #0b1220;
+  background: #f8fafc;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
-/* Persona bazlı aksan renkleri */
-.cinematic-char-btn.active[data-character="emre"] {
-  background: rgba(124, 77, 255, 0.25);
-  border-color: rgba(124, 77, 255, 0.5);
-  box-shadow: 0 4px 20px rgba(124, 77, 255, 0.2);
-}
-.cinematic-char-btn.active[data-character="selin"] {
-  background: rgba(47, 109, 246, 0.25);
-  border-color: rgba(47, 109, 246, 0.5);
-  box-shadow: 0 4px 20px rgba(47, 109, 246, 0.2);
-}
-.cinematic-char-btn.active[data-character="deniz"] {
-  background: rgba(18, 169, 123, 0.25);
-  border-color: rgba(18, 169, 123, 0.5);
-  box-shadow: 0 4px 20px rgba(18, 169, 123, 0.2);
-}
-.cinematic-char-btn.active[data-character="can"] {
-  background: rgba(182, 106, 44, 0.25);
-  border-color: rgba(182, 106, 44, 0.5);
-  box-shadow: 0 4px 20px rgba(182, 106, 44, 0.2);
-}
-.cinematic-char-btn.active[data-character="ipek"] {
-  background: rgba(233, 134, 134, 0.25);
-  border-color: rgba(233, 134, 134, 0.5);
-  box-shadow: 0 4px 20px rgba(233, 134, 134, 0.2);
-}
+.cinematic-char-btn[data-character="emre"] { --persona: #8b6cff; }
+.cinematic-char-btn[data-character="selin"] { --persona: #4f86f7; }
+.cinematic-char-btn[data-character="deniz"] { --persona: #1fbf8f; }
+.cinematic-char-btn[data-character="can"] { --persona: #d08a4a; }
+.cinematic-char-btn[data-character="ipek"] { --persona: #ec9a9a; }
 
 /* ============================================================= */
 /* SEÇ VE GERİ BUTONLARI                                         */
@@ -395,65 +346,95 @@
 
 .cinematic-char-actions {
   display: flex;
-  justify-content: center;
-  gap: 16px;
-  margin-top: 20px;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 28px;
 }
 
 .cinematic-char-back-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 28px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.03);
-  color: rgba(226, 232, 240, 0.7);
-  font-family: 'Jura', 'Segoe UI', sans-serif !important;
-  font-size: 14px !important;
+  padding: 12px 22px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: transparent;
+  color: #cbd5e1;
+  font-family: inherit !important;
+  font-size: 15px !important;
   font-weight: 500;
-  letter-spacing: 0.08em;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 .cinematic-char-back-btn:hover {
   background: rgba(255, 255, 255, 0.06);
   color: #ffffff;
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.24);
 }
 
 .cinematic-char-select-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 36px;
+  padding: 12px 26px;
   border: none;
-  border-radius: 9999px;
-  background: linear-gradient(135deg, rgba(124, 77, 255, 0.6) 0%, rgba(52, 211, 153, 0.4) 100%);
-  color: #ffffff;
-  font-family: 'Jura', 'Segoe UI', sans-serif !important;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #0b1220;
+  font-family: inherit !important;
   font-size: 15px !important;
   font-weight: 600;
-  letter-spacing: 0.1em;
   cursor: pointer;
-  transition: transform 0.4s cubic-bezier(0.19, 1, 0.22, 1),
-              box-shadow 0.4s cubic-bezier(0.19, 1, 0.22, 1),
-              filter 0.4s cubic-bezier(0.19, 1, 0.22, 1);
-  text-transform: uppercase;
-  box-shadow: 0 4px 24px rgba(124, 77, 255, 0.2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
-/* Hover sırasında modal içinde dikey taşma oluşmaması için
-   büyütme yerine hafif yukarı kaydırma kullanılır. */
+.cinematic-char-select-btn i {
+  font-size: 13px;
+  transition: transform 0.2s ease;
+}
+
+/* Modal içinde dikey taşma oluşmasın diye büyütme yerine hafif kaydırma */
 .cinematic-char-select-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 24px rgba(124, 77, 255, 0.30);
-  filter: brightness(1.05);
+  background: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+
+.cinematic-char-select-btn:hover i {
+  transform: translateX(3px);
 }
 
 .cinematic-char-select-btn:active {
   transform: translateY(0);
+}
+
+.cinematic-char-back-btn:focus-visible,
+.cinematic-char-select-btn:focus-visible,
+.cinematic-char-btn:focus-visible {
+  outline: 2px solid rgba(248, 250, 252, 0.75);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cinematic-character-step {
+    animation: none;
+  }
+
+  .cinematic-char-select-btn,
+  .cinematic-char-select-btn i,
+  .cinematic-char-metric-fill,
+  .cinematic-step-dot,
+  .cinematic-step-indicator,
+  #cinematic-char-preview-img {
+    transition: none;
+  }
+
+  .cinematic-char-select-btn:hover,
+  .cinematic-char-select-btn:hover i {
+    transform: none;
+  }
 }
 
 /* ============================================================= */
@@ -478,22 +459,24 @@
     gap: 24px;
   }
 
-  .cinematic-char-visual {
-    min-height: 400px;
-  }
-
+  /* Genişlik sütunu aşmaz; oran genişlikten türetilir (dar ekranda kırpılmaz). */
   .cinematic-char-image-wrapper {
-    width: 340px;
-    height: 500px;
+    height: auto;
+    width: min(100%, calc(min(440px, 50vh) * 5 / 7));
   }
 
-  .cinematic-char-buttons {
+  .cinematic-char-step-header {
     flex-wrap: wrap;
-    justify-content: center;
   }
 
-  .cinematic-char-btn {
-    padding: 8px 16px;
-    font-size: 12px !important;
+  /* Başlık sarınca seçici daralabilsin; yoksa sağdaki personalar kırpılır. */
+  .cinematic-char-buttons {
+    flex-shrink: 1;
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+
+  .cinematic-char-actions {
+    justify-content: center;
   }
 }

@@ -20,6 +20,7 @@
     "R/server_module_wiring.R",
     "R/server_chat_engine_dependencies.R",
     "R/server_core_interaction_runtime.R",
+    "R/helpers_session_profile.R",
     "R/server_core_observer_runtime.R"
   )) {
     source(file.path(kok, f), encoding = "UTF-8", local = env)

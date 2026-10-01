@@ -75,7 +75,7 @@ health_runtime_ui <- function(checks, worker_html = NULL) {
     div(
       class = "health-metrics-grid",
       health_metric_tile("Bellek", subset$value[match("runtime.memory", subset$id)] %||% "N/A", "memory", subset$status[match("runtime.memory", subset$id)] %||% "unknown", "R sürecinin yaklaşık bellek kullanımı"),
-      health_metric_tile("Aktif Oturum", subset$value[match("runtime.sessions", subset$id)] %||% "N/A", "users", subset$status[match("runtime.sessions", subset$id)] %||% "unknown", "Performans izleyiciden gelen aktif oturum sayısı"),
+      health_metric_tile("Aktif Oturum (bu süreç)", subset$value[match("runtime.sessions", subset$id)] %||% "N/A", "users", subset$status[match("runtime.sessions", subset$id)] %||% "unknown", "Yalnız mevcut R sürecindeki aktif oturum sayısı"),
       health_metric_tile("R Sürümü", subset$value[match("runtime.r_version", subset$id)] %||% "N/A", "r-project", "ok", "Çalışan R runtime sürümü"),
       health_metric_tile("Paketler", subset$value[match("runtime.packages", subset$id)] %||% "N/A", "box", subset$status[match("runtime.packages", subset$id)] %||% "unknown", "Kritik R paketlerinin yüklenebilirlik durumu")
     ),
@@ -83,7 +83,7 @@ health_runtime_ui <- function(checks, worker_html = NULL) {
       column(
         12,
         health_section_card(
-          "İşçi İzleyici",
+          "İşçi İzleyici (bu süreç)",
           "cogs",
           div(
             class = "health-worker-grid",

@@ -625,3 +625,116 @@ testthat::test_that(
     )
   }
 )
+
+testthat::test_that("oturum başka kullanıcıya geçince yeni sahip de karşılanır", {
+  speech_tests_reset_caches()
+  root <- withr::local_tempdir()
+  speech_tests_make_tree(root)
+  m <- mergen_speech_manifest_build(root)$manifest
+  mergen_speech_manifest_write(m, mergen_speech_manifest_path(root))
+  withr::local_envvar(MERGEN_SPEECH_ROOT = root, VOXCPM2_WARMUP_ENABLED = "false")
+  withr::defer(speech_tests_reset_caches())
+
+  env <- .ai_expert_pg_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
+         encoding = "UTF-8", local = env)
+  spoke <- .pg_spoke()
+  karsilama <- 0L
+  ai_expert <- .ai_expert_stub(spoke)
+  ilk_baslat <- ai_expert$start_speaking
+  ai_expert$start_speaking <- function(text, cooldown_secs = NULL, kind = "idle", static_plan = NULL) {
+    if (identical(kind, "welcome")) karsilama <<- karsilama + 1L
+    ilk_baslat(text, cooldown_secs, kind, static_plan)
+  }
+
+  testthat::with_mocked_bindings(
+    {
+      shiny::testServer(.ai_expert_wrapper(env = env, ai_expert = ai_expert), {
+        session$userData$kimlik_sahibi <- 5L
+        session$flushReact()
+        testthat::expect_identical(karsilama, 1L)
+        # Aynı kullanıcıda kimlik sinyali karşılamayı yinelemez.
+        env$mergen_session_owner_transition(session$userData, 5L, 0L)
+        env$mergen_session_owner_transition(session$userData, 0L, 5L)
+        session$flushReact()
+        testthat::expect_identical(karsilama, 1L)
+        env$mergen_session_owner_transition(session$userData, 5L, 6L)
+        session$flushReact()
+        testthat::expect_identical(karsilama, 2L)
+      })
+    },
+    delay = function(ms, expr) force(expr),
+    runjs = function(...) invisible(NULL),
+    .package = "shinyjs"
+  )
+})
+
+testthat::test_that("kimlik sınırı boşta konuşmayı, kuyruğu ve bayat LLM sonucunu düşürür", {
+  speech_tests_reset_caches()
+  root <- withr::local_tempdir()
+  speech_tests_make_tree(root)
+  m <- mergen_speech_manifest_build(root)$manifest
+  mergen_speech_manifest_write(m, mergen_speech_manifest_path(root))
+  withr::local_envvar(MERGEN_SPEECH_ROOT = root, VOXCPM2_WARMUP_ENABLED = "false")
+  withr::defer(speech_tests_reset_caches())
+
+  env <- .ai_expert_pg_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
+         encoding = "UTF-8", local = env)
+  isler <- list()
+  env$tracked_future_promise <- function(task_fn, task_type = NULL, globals = list(), ...) {
+    kayit <- new.env(parent = emptyenv())
+    kayit$globals <- globals
+    p <- promises::promise(function(resolve, reject) kayit$resolve <- resolve)
+    isler[[length(isler) + 1L]] <<- kayit
+    p
+  }
+  env$build_ai_expert_system_prompt <- function(char_info, ..., user_name = NULL) {
+    paste0("isim:", user_name %||% "")
+  }
+  spoke <- .pg_spoke()
+  ai_expert <- .ai_expert_stub(spoke)
+  derinlik <- 0L
+
+  testthat::with_mocked_bindings(
+    {
+      shiny::testServer(.ai_expert_wrapper(env = env, ai_expert = ai_expert), {
+        session$userData$kimlik_sahibi <- 5L
+        session$userData$user_first_name <- "Ayşe"
+        session$flushReact()
+        testthat::expect_gte(length(isler), 1L)
+        testthat::expect_identical(isler[[1]]$globals$system_prompt, "isim:Ayşe")
+
+        # Kimlik düşer: aktif konuşma durur, kuyruk temizlenir.
+        spoke$speaking <- TRUE
+        durma <- spoke$stops
+        env$mergen_session_owner_transition(session$userData, 5L, 0L)
+        testthat::expect_gt(spoke$stops, durma)
+
+        # Yeni sahip: A için başlayan boşta metni artık oynatılmaz.
+        session$userData$user_first_name <- "Mehmet"
+        env$mergen_session_owner_transition(session$userData, 0L, 6L)
+        onceki <- spoke$n
+        onceki_is <- length(isler)
+        isler[[1]]$resolve("A için boşta metni")
+        for (i in 1:5) later::run_now(0.05)
+        testthat::expect_false(identical(spoke$last_text, "A için boşta metni"))
+        testthat::expect_identical(spoke$n, onceki)
+        testthat::expect_identical(length(isler), onceki_is)
+
+        # Sonraki gönderim yeni sahibin adını kullanır.
+        session$flushReact()
+        son <- isler[[length(isler)]]
+        testthat::expect_identical(son$globals$system_prompt, "isim:Mehmet")
+      })
+    },
+    delay = function(ms, expr) {
+      if (derinlik >= 3L) return(invisible(NULL))
+      derinlik <<- derinlik + 1L
+      on.exit(derinlik <<- derinlik - 1L)
+      force(expr)
+    },
+    runjs = function(...) invisible(NULL),
+    .package = "shinyjs"
+  )
+})

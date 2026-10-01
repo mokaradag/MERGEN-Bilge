@@ -25,9 +25,41 @@
   // Çift tıklama koruma kilidi
   var _confirmInProgress = false;
 
-  // Yazma animasyonu zamanlayıcıları
-  var _loreTypingTimer = null;
-  var _subtitleTypingTimer = null;
+  // Seçim nesli: iptal edilen (geri/kapat/Esc) seçim dizisinin geç gelen
+  // tamamlanma çağrısı seçimi uygulamaz.
+  var _selectionGeneration = 0;
+
+  // Sıradaki video ön yükleme istekleri ve gecikmeli portre güncellemesi;
+  // adım sıfırlanınca/persona değişince iptal edilir.
+  var _preloadTimers = [];
+  var _portraitTimer = null;
+
+  // Onay sürerken persona düğmeleri kilitlenir: seçim videosunun tamamlanma
+  // çağrısı başka personanın yüklenmesiyle silinmez.
+  // Diyaloğun erişilebilir adı görünen adımın başlığını izler.
+  function setDialogLabel(id) {
+    var dlg = document.querySelector('#mode-modal-overlay [role="dialog"]');
+    if (dlg) dlg.setAttribute('aria-labelledby', id);
+  }
+
+  function focusFirst(seciciler) {
+    for (var i = 0; i < seciciler.length; i++) {
+      var el = document.querySelector(seciciler[i]);
+      if (el && typeof el.focus === 'function') {
+        try { el.focus(); } catch (e) { /* odak zorunlu değil */ }
+        return;
+      }
+    }
+  }
+
+  function setPersonaButtonsLocked(kilitli) {
+    var buttons = document.querySelectorAll('.cinematic-char-btn');
+    Array.prototype.forEach.call(buttons, function(btn) {
+      btn.disabled = !!kilitli;
+      btn.setAttribute('aria-disabled', kilitli ? 'true' : 'false');
+    });
+  }
+
   
   // (Kaldırıldı: Eski 8 saniyelik ek bekleme gereksiz gecikmeye neden oluyordu)
 
@@ -90,6 +122,10 @@
       selectCharacterInModal(_selectedCharId, false);
     }
 
+    // Gizlenen 1. adımdaki odak görünür 2. adım denetimine taşınır.
+    setDialogLabel('cinematic-char-step-title');
+    focusFirst(['.cinematic-char-btn.active', '.cinematic-char-btn', '.cinematic-char-close-btn']);
+
     // Tüm karakter video verilerini ön yükle (geçişlerdeki gecikmeyi azaltır)
     preloadAllCharacterVideos();
   }
@@ -108,12 +144,13 @@
       // Halihazırda seçili karakter selectCharacterInModal tarafından zaten istendi
       if (ch.id === _selectedCharId) return;
       if (!_characterVideoData[ch.id]) {
-        setTimeout(function() {
+        _preloadTimers.push(setTimeout(function() {
+          if (_currentStep !== 2) return;
           Shiny.setInputValue('explore_request_char_video', {
             character: ch.id,
             timestamp: Date.now()
           }, { priority: 'event' });
-        }, delay);
+        }, delay));
         delay += 80; // Ardışık isteklerin çakışmasını önlemek için küçük aralık
       }
     });
@@ -124,15 +161,12 @@
   // ============================================================
   function showModeStep() {
     _currentStep = 1;
+    cancelPendingSelection();
 
     // Video oynatmayı durdur
     if (window.ExploreCharVideo) {
       window.ExploreCharVideo.stopEverything();
     }
-
-    // Yazma animasyonlarını durdur
-    stopLoreTyping();
-    stopSubtitleTyping();
 
     // 2. adım içeriğini gizle
     var charStep = document.getElementById('cinematic-character-step');
@@ -143,6 +177,8 @@
     var modalHeader = document.querySelector('.cinematic-modal-header');
     if (cardsGrid) cardsGrid.classList.remove('hidden-step');
     if (modalHeader) modalHeader.classList.remove('hidden-step');
+    setDialogLabel('mode-modal-title');
+    focusFirst(['.cinematic-mode-card[data-mode="kesif"]', '.cinematic-mode-card']);
 
     // Adım göstergesini güncelle
     updateStepIndicator(1);
@@ -163,15 +199,39 @@
   // ============================================================
   // MODALI KAPAT (2. ADIMDAN)
   // ============================================================
-  function closeFromCharStep() {
-    // Video oynatmayı durdur
+  // Süren seçim dizisini iptal eder: onay kilidi bırakılır, geç tamamlanma yok
+  // sayılır; sunucudaki karşılama ön hazırlığı da geçersiz kılınır. Sıradaki
+  // ön yükleme istekleri ve portre güncellemesi iptal edilir.
+  function cancelPendingSelection() {
+    _selectionGeneration += 1;
+    // Bağlantı kopukken gönderim hata verse de yerel iptal tamamlanır.
+    if (_confirmInProgress && typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+      try {
+        Shiny.setInputValue('explore_preheat_initial_greeting', {
+          mode: 'kesif',
+          cancel: true,
+          timestamp: Date.now()
+        }, { priority: 'event' });
+      } catch (e) { /* sunucu iptali zorunlu değil */ }
+    }
+    _confirmInProgress = false;
+    setPersonaButtonsLocked(false);
+    _preloadTimers.forEach(clearTimeout);
+    _preloadTimers = [];
+    if (_portraitTimer) {
+      clearTimeout(_portraitTimer);
+      _portraitTimer = null;
+    }
+  }
+
+  // 2. adım durumunu modalı kapatmadan temizler (video, DOM, adım göstergesi,
+  // onay kilidi). Genel kapatma yolları (Esc, arka plan) da bunu çağırır.
+  function resetCharStep() {
+    cancelPendingSelection();
     if (window.ExploreCharVideo) {
       window.ExploreCharVideo.stopEverything();
     }
-    stopLoreTyping();
-    stopSubtitleTyping();
 
-    // Önce 1. adıma dön (durumu sıfırla)
     _currentStep = 1;
     var charStep = document.getElementById('cinematic-character-step');
     if (charStep) charStep.classList.remove('active');
@@ -180,6 +240,12 @@
     var modalHeader = document.querySelector('.cinematic-modal-header');
     if (cardsGrid) cardsGrid.classList.remove('hidden-step');
     if (modalHeader) modalHeader.classList.remove('hidden-step');
+    setDialogLabel('mode-modal-title');
+    updateStepIndicator(1);
+  }
+
+  function closeFromCharStep() {
+    resetCharStep();
 
     // Modalı kapat
     if (window.CinematicExplore) {
@@ -211,114 +277,6 @@
   }
 
   // ============================================================
-  // YAZMA EFEKTİ (Kişiselleştirme sayfasıyla aynı)
-  // ============================================================
-  function typeLoreText(element, text) {
-    stopLoreTyping();
-    if (!element || !text) return;
-
-    var index = 0;
-    element.innerHTML = '<span class="cinematic-lore-cursor"></span>';
-
-    function typeNext() {
-      if (index >= text.length) {
-        // Yazma tamamlandı, imleci kaldır
-        var cursor = element.querySelector('.cinematic-lore-cursor');
-        if (cursor) {
-          setTimeout(function() { if (cursor.parentNode) cursor.remove(); }, 1500);
-        }
-        _loreTypingTimer = null;
-        return;
-      }
-
-      var ch = text.charAt(index);
-      var cursor = element.querySelector('.cinematic-lore-cursor');
-      if (cursor) cursor.remove();
-
-      element.appendChild(document.createTextNode(ch));
-
-      var newCursor = document.createElement('span');
-      newCursor.className = 'cinematic-lore-cursor';
-      element.appendChild(newCursor);
-
-      index++;
-
-      // Doğal yazma hızı
-      var delay = 18 + (Math.random() * 15 - 7);
-      if (ch === '.' || ch === ',' || ch === '!' || ch === '?') {
-        delay += 250;
-      } else if (ch === ' ') {
-        delay += 30;
-      }
-
-      _loreTypingTimer = setTimeout(typeNext, delay);
-    }
-
-    _loreTypingTimer = setTimeout(typeNext, 50);
-  }
-
-  function stopLoreTyping() {
-    if (_loreTypingTimer) {
-      clearTimeout(_loreTypingTimer);
-      _loreTypingTimer = null;
-    }
-  }
-
-  // ============================================================
-  // ALT BAŞLIK YAZMA EFEKTİ
-  // ============================================================
-  function typeSubtitleText(element, text) {
-    stopSubtitleTyping();
-    if (!element || !text) return;
-
-    var index = 0;
-    element.innerHTML = '<span class="cinematic-subtitle-cursor"></span>';
-
-    function typeNext() {
-      if (index >= text.length) {
-        // Yazma tamamlandı, imleci kaldır
-        var cursor = element.querySelector('.cinematic-subtitle-cursor');
-        if (cursor) {
-          setTimeout(function() { if (cursor.parentNode) cursor.remove(); }, 1200);
-        }
-        _subtitleTypingTimer = null;
-        return;
-      }
-
-      var ch = text.charAt(index);
-      var cursor = element.querySelector('.cinematic-subtitle-cursor');
-      if (cursor) cursor.remove();
-
-      element.appendChild(document.createTextNode(ch));
-
-      var newCursor = document.createElement('span');
-      newCursor.className = 'cinematic-subtitle-cursor';
-      element.appendChild(newCursor);
-
-      index++;
-
-      // Alt başlık için biraz daha hızlı yazma
-      var delay = 14 + (Math.random() * 10 - 5);
-      if (ch === ',' || ch === '.' || ch === '!' || ch === '?') {
-        delay += 180;
-      } else if (ch === ' ') {
-        delay += 20;
-      }
-
-      _subtitleTypingTimer = setTimeout(typeNext, delay);
-    }
-
-    _subtitleTypingTimer = setTimeout(typeNext, 30);
-  }
-
-  function stopSubtitleTyping() {
-    if (_subtitleTypingTimer) {
-      clearTimeout(_subtitleTypingTimer);
-      _subtitleTypingTimer = null;
-    }
-  }
-
-  // ============================================================
   // MODALDA KARAKTER SEÇ
   // ============================================================
   function selectCharacterInModal(charId, animate) {
@@ -343,16 +301,26 @@
     });
 
     // Görseli güncelle (geçiş animasyonuyla)
+    // Hareket azaltma tercihinde portre gizlenip gecikmeyle gösterilmez.
+    var azHareket = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     var img = document.getElementById('cinematic-char-preview-img');
+    if (_portraitTimer) {
+      clearTimeout(_portraitTimer);
+      _portraitTimer = null;
+    }
     if (img) {
-      if (animate !== false) {
+      if (animate !== false && !azHareket) {
         img.style.opacity = '0';
-        setTimeout(function() {
+        _portraitTimer = setTimeout(function() {
+          _portraitTimer = null;
+          // Bu arada başka persona seçildiyse eski portre geri yüklenmez.
+          if (_selectedCharId !== charId) return;
           img.src = charData.image;
           img.style.opacity = '1';
         }, 250);
       } else {
         img.src = charData.image;
+        img.style.opacity = '1';
       }
     }
 
@@ -372,28 +340,27 @@
       }
     }
 
-    // İsim ve alt başlığı sağ panelde güncelle (isim rengi karakter temasına göre)
+    // Persona aksanı tek CSS değişkeniyle verilir (isim çizgisi, metrikler,
+    // seçili düğme); metinler daktilo efekti olmadan doğrudan yazılır.
+    // Aksanı olmayan personada önceki persona rengi kalmaz; varsayılan geçerli olur.
+    var charStepEl = document.getElementById('cinematic-character-step');
+    if (charStepEl && charData.accent) {
+      charStepEl.style.setProperty('--char-accent', charData.accent);
+    } else if (charStepEl) {
+      charStepEl.style.removeProperty('--char-accent');
+    }
     var displayName = document.querySelector('.cinematic-char-info .cinematic-char-display-name');
     var subtitleEl = document.querySelector('.cinematic-char-info .cinematic-char-subtitle-text');
     if (displayName) {
       displayName.textContent = charData.display_name;
-      if (charData.accent) {
-        displayName.style.color = charData.accent;
-      }
     }
     if (subtitleEl) {
-      var subtitleText = charData.style_tr || charData.subtitle;
-      if (animate !== false) {
-        typeSubtitleText(subtitleEl, subtitleText);
-      } else {
-        subtitleEl.textContent = subtitleText;
-      }
+      subtitleEl.textContent = charData.style_tr || charData.subtitle || '';
     }
 
-    // Hikaye metnini yazma efektiyle güncelle
     var loreEl = document.querySelector('.cinematic-char-lore');
     if (loreEl) {
-      typeLoreText(loreEl, charData.lore_tr);
+      loreEl.textContent = charData.lore_tr || '';
     }
 
     // Metrikleri güncelle (animasyonlu)
@@ -401,21 +368,33 @@
     if (metricsContainer && charData.profile_metrics) {
       metricsContainer.innerHTML = '';
       charData.profile_metrics.forEach(function(metric, idx) {
+        // Öğeler textContent ile kurulur; metrik metni HTML olarak yorumlanmaz.
         var metricEl = document.createElement('div');
         metricEl.className = 'cinematic-char-metric';
-        metricEl.innerHTML =
-          '<span class="cinematic-char-metric-label">' + metric.label + '</span>' +
-          '<div class="cinematic-char-metric-bar">' +
-            '<div class="cinematic-char-metric-fill" style="background: ' + charData.accent + ';"></div>' +
-          '</div>' +
-          '<span class="cinematic-char-metric-value">' + metric.value + '</span>';
+        var labelEl = document.createElement('span');
+        labelEl.className = 'cinematic-char-metric-label';
+        labelEl.textContent = metric.label;
+        var barEl = document.createElement('div');
+        barEl.className = 'cinematic-char-metric-bar';
+        var fill = document.createElement('div');
+        fill.className = 'cinematic-char-metric-fill';
+        barEl.appendChild(fill);
+        var valueEl = document.createElement('span');
+        valueEl.className = 'cinematic-char-metric-value';
+        valueEl.textContent = metric.value;
+        metricEl.appendChild(labelEl);
+        metricEl.appendChild(barEl);
+        metricEl.appendChild(valueEl);
         metricsContainer.appendChild(metricEl);
 
-        // Çubuk animasyonu
-        var fill = metricEl.querySelector('.cinematic-char-metric-fill');
-        if (fill) {
+        // Çubuk animasyonu (yalnız sayısal yüzde uygulanır); hareket azaltma
+        // tercihinde kademeli açılış yapılmaz, değer hemen yazılır.
+        var yuzde = Math.max(0, Math.min(100, Number(metric.value) || 0));
+        if (azHareket) {
+          fill.style.width = yuzde + '%';
+        } else {
           setTimeout(function() {
-            fill.style.width = metric.value + '%';
+            fill.style.width = yuzde + '%';
           }, 100 + idx * 80);
         }
       });
@@ -432,13 +411,6 @@
         sigContainer.appendChild(tag);
       });
     }
-
-    // Seç butonunun rengini güncelle
-    var selectBtn = document.querySelector('.cinematic-char-select-btn');
-    if (selectBtn && charData.accent) {
-      selectBtn.style.background = 'linear-gradient(135deg, ' + charData.accent + ' 0%, rgba(52, 211, 153, 0.4) 100%)';
-      selectBtn.style.boxShadow = '0 4px 24px ' + charData.accent + '33';
-    }
   }
 
   // ============================================================
@@ -448,17 +420,10 @@
     if (!_selectedCharId || _confirmInProgress) return;
     _confirmInProgress = true;
 
+    setPersonaButtonsLocked(true);
+
     // Seçili karakter ID'sini yakala (kapanış sırasında erişim için)
     var selectedChar = _selectedCharId;
-
-    // localStorage'a hemen kaydet
-    try {
-      var raw = localStorage.getItem('mergen_settings');
-      var settings = raw ? JSON.parse(raw) : {};
-      settings.experience_mode = 'kesif';
-      settings.selected_character = selectedChar;
-      localStorage.setItem('mergen_settings', JSON.stringify(settings));
-    } catch(e) {}
 
     // Karşılama konuşmasını seçim videosu oynarken ön hazırla
     if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
@@ -473,7 +438,22 @@
     // Seçim videosu bittiğinde geçiş yapacak fonksiyon
     // Not: Shiny bildirimi, giriş ekranı kapandıktan sonra gönderilir.
     // Bu sayede müzik ancak geçiş tamamlandığında başlar (yarış durumu önlenir).
+    var nesil = _selectionGeneration;
     function onVideoComplete() {
+      // Kullanıcı bu arada geri döndü ya da modalı kapattıysa seçim uygulanmaz.
+      if (nesil !== _selectionGeneration) return;
+      setPersonaButtonsLocked(false);
+
+      // Seçim ancak iptal edilemez olduğunda kalıcı yazılır; geri/kapat ile
+      // iptal edilen seçim sonraki ziyarette uygulanmaz.
+      try {
+        var raw = localStorage.getItem('mergen_settings');
+        var settings = raw ? JSON.parse(raw) : {};
+        settings.experience_mode = 'kesif';
+        settings.selected_character = selectedChar;
+        localStorage.setItem('mergen_settings', JSON.stringify(settings));
+      } catch(e) {}
+
       // Adımı hemen sıfırla: geç gelen ön yükleme yanıtlarının
       // loadCharacter çağırmasını engeller (_currentStep === 2 koruması)
       _currentStep = 1;
@@ -482,8 +462,6 @@
       if (window.ExploreCharVideo) {
         window.ExploreCharVideo.stopEverything();
       }
-      stopLoreTyping();
-      stopSubtitleTyping();
 
       // Karakter adımı DOM durumunu temizle (2. adım → 1. adım sıfırlaması)
       var charStep = document.getElementById('cinematic-character-step');
@@ -492,28 +470,42 @@
       var modalHeader = document.querySelector('.cinematic-modal-header');
       if (cardsGrid) cardsGrid.classList.remove('hidden-step');
       if (modalHeader) modalHeader.classList.remove('hidden-step');
+      setDialogLabel('mode-modal-title');
 
-      // Modalı kapat
+      updateStepIndicator(1);
+
+      // Modalı kapat (başarılı seçim: odak ana uygulamaya taşınır)
       if (window.CinematicExplore) {
-        window.CinematicExplore.closeModal();
+        window.CinematicExplore.closeModal(true);
       }
 
 		// Giriş ekranını kapat; Shiny mod seçimini audio callback'ine bağımlı bırakma.
 		// Callback yalnızca yedek olarak aynı tek-seferlik bildirimi yeniden dener.
 		setTimeout(function() {
 		  var selectionSent = false;
+		  if (window.mergenCancelModeRetry) window.mergenCancelModeRetry();
+		  window.mergenCancelModeRetry = function() {
+			selectionSent = true;
+			if (window.jQuery) window.jQuery(document).off('shiny:sessioninitialized.mergenModeRetry');
+		  };
 
+		  // Bayrak yalnız olay gerçekten gönderilince kalkar; Shiny o an hazır
+		  // değilse yedek çağrı (giriş ekranı kapanışı) yeniden dener.
 		  var sendSelectionToShiny = function() {
 			if (selectionSent) return;
-			selectionSent = true;
-
-			if (typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+			if (!window.mergenModeSessionReady || typeof Shiny === 'undefined' || !Shiny.setInputValue ||
+			    (Shiny.shinyapp && Shiny.shinyapp.isConnected && !Shiny.shinyapp.isConnected())) return;
+			try {
 			  Shiny.setInputValue('selected_experience_mode', {
 				mode: 'kesif',
 				character: selectedChar,
 				source: 'welcome_character_step',
 				timestamp: Date.now()
 			  }, { priority: 'event' });
+			  selectionSent = true;
+			  if (window.jQuery) window.jQuery(document).off('shiny:sessioninitialized.mergenModeRetry');
+			} catch (e) {
+			  return;
 			}
 
 			// Kilidi serbest bırak
@@ -522,7 +514,9 @@
 
 		  // Kritik: Ayarları hemen Shiny'ye gönder.
 		  // Aksi halde intro audio callback yarışı, Kişiselleştirme sayfasını Odak'ta bırakabilir.
+		  if (window.jQuery) window.jQuery(document).on('shiny:sessioninitialized.mergenModeRetry', sendSelectionToShiny);
 		  sendSelectionToShiny();
+		  _confirmInProgress = false;
 
 		  if (window.CinematicExplore) {
 			window.CinematicExplore.dismissDeepSpace(sendSelectionToShiny);
@@ -549,6 +543,8 @@
     // Karakter butonlarına tıklama
     $(document).on('click', '.cinematic-char-btn', function() {
       var charId = $(this).attr('data-character');
+      // Seçim videosu sürerken persona değişmez (tamamlanma çağrısı korunur).
+      if (_confirmInProgress) return;
       if (charId) {
         selectCharacterInModal(charId, true);
       }
@@ -600,7 +596,9 @@
     loadCharactersData: loadCharactersData,
     loadCharacterVideoData: loadCharacterVideoData,
     confirmSelection: confirmCharacterSelection,
-    closeFromCharStep: closeFromCharStep
+    closeFromCharStep: closeFromCharStep,
+    reset: resetCharStep,
+    isActive: function() { return _currentStep === 2; }
   };
 
 })();

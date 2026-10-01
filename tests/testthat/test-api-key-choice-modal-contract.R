@@ -92,11 +92,31 @@ test_that("seçim modalı varsayılan kurum anahtarı değerini gömmez / sızd�
   expect_false(any(grepl("MERGEN_DEFAULT_API_KEY", js_lines, fixed = TRUE)))
   expect_false(any(grepl("MERGEN_DEFAULT_API_KEY", css_lines, fixed = TRUE)))
 
-  # İstemci tarafı oturum anahtarını okumaz; yalnızca hassas olmayan bastırma
-  # bayrağını mergen_settings içinde tutar.
+  # İstemci tarafı oturum anahtarını okumaz; paylaşılan mergen_settings
+  # nesnesini yeniden yazmaz (başka sekmenin ayarını ezmez).
   expect_false(any(grepl("ai_api_key", js_lines, fixed = TRUE)))
-  expect_true(any(grepl("mergen_settings", js_lines, fixed = TRUE)))
+  expect_false(any(grepl("mergen_settings\"", js_lines, fixed = TRUE)))
+  expect_false(any(grepl("setItem(SETTINGS_LS", js_lines, fixed = TRUE)))
   expect_true(any(grepl("api_key_onboarding_suppressed", js_lines, fixed = TRUE)))
+})
+
+test_that("bastırma tercihi tarayıcı geneli değil kullanıcı etiketiyle saklanır", {
+  js_text <- .akc_text("www/js/api_key_choice_modal.js")
+  module_text <- .akc_text("R/module_api_key.R")
+
+  expect_true(grepl("message.userTag", js_text, fixed = TRUE))
+  # Her kullanıcının bayrağı ayrı anahtardadır; ortak nesne okunup yazılmaz.
+  expect_true(grepl("SUPPRESS_USER_PREFIX + tag", js_text, fixed = TRUE))
+  expect_false(grepl("suppressMap(", js_text, fixed = TRUE))
+  # Etiket yoksa bastırma yoktur ve bayrak yazılmaz.
+  expect_false(grepl("readSettings()[SUPPRESS_KEY] === true", js_text, fixed = TRUE))
+  expect_false(grepl("s[SUPPRESS_KEY] =", js_text, fixed = TRUE))
+  # Sunucuya giden bayrak etiketini taşır; modal kutusu seçim yapılana dek bekler.
+  expect_true(grepl("tag: currentUserTag()", js_text, fixed = TRUE))
+  expect_true(grepl("reportDontShowPending(el.checked)", js_text, fixed = TRUE))
+  # Sunucu tercihi kullanıcı etiketiyle ister.
+  expect_true(grepl("userTag     = etiket", module_text, fixed = TRUE))
+  expect_true(grepl("etiket <- api_key_pref_user_tag(owner$username)", module_text, fixed = TRUE))
 })
 
 test_that("seçim modalı iki yollu/tek yollu mantığı, input id'leri ve dontshow kutusunu korur", {
@@ -306,7 +326,8 @@ test_that("seçim modalı Shiny custom message handler imzalarını korur", {
     js_text,
     perl = TRUE
   ))
-  expect_true(grepl("void message;", js_text, fixed = TRUE))
+  # Açılış mesajı bekleyen onay kutusu girdisinin kimliğini taşır.
+  expect_true(grepl("message.dontShowInputId", js_text, fixed = TRUE))
 })
 
 test_that("seçim modalı kontrol yüzeyini handler'lardan önce hazırlar", {
@@ -337,4 +358,38 @@ test_that("seçim modalı kontrol yüzeyini handler'lardan önce hazırlar", {
     js_text,
     fixed = TRUE
   ))
+})
+test_that("seçim modalı bekleyen kutu değerini jeton/etiketle bildirir ve etiketsiz hatırlatmayı reddeder", {
+  js_text <- paste(.akc_read("www/js/api_key_choice_modal.js"), collapse = "\n")
+  # Bekleyen "bir daha gösterme" değeri çıplak mantıksal değil, jeton ve etiketle gider.
+  expect_true(grepl("nonce: choice._modalNonce", js_text, fixed = TRUE))
+  expect_false(grepl("setInputValue(choice._dontShowInputId, !!checked", js_text, fixed = TRUE))
+  # Etiketsiz hatırlatma önceki kullanıcının etiketine yazmaz; sonuç ok:false döner.
+  hatirlat <- regmatches(js_text, regexpr("mergenApiKeyChoiceRemember[\\s\\S]*?\\n    \\}\\);", js_text, perl = TRUE))
+  expect_length(hatirlat, 1L)
+  expect_true(grepl("sonucBildir(false);", hatirlat, fixed = TRUE))
+  expect_true(grepl("typeof message.userTag !== \"string\" || !message.userTag", hatirlat, fixed = TRUE))
+  # Geç gelen mesaj etkin tarayıcı kimliğini değiştirmez; onay etiket ve jeton taşır.
+  expect_false(grepl("_userTag = message.userTag", hatirlat, fixed = TRUE))
+  expect_true(grepl("writeSource(kaynak, message.userTag, ", hatirlat, fixed = TRUE))
+  expect_true(grepl("nonce: typeof message.nonce", hatirlat, fixed = TRUE))
+})
+
+test_that("Init mesajı etiketi her zaman atar; eski sekme yazımı yeni tercihi ezmez", {
+  yol <- file.path(resolve_repo_root_for_tests(), "www", "js", "api_key_choice_modal.js")
+  js_text <- rawToChar(readBin(yol, "raw", file.info(yol)$size))
+  Encoding(js_text) <- "UTF-8"
+  js_text <- gsub("\r\n?", "\n", js_text)
+  init <- regmatches(js_text, regexpr("mergenApiKeyChoiceInit[\\s\\S]*?var tries", js_text, perl = TRUE))
+  expect_true(grepl('_userTag =\n        message && typeof message.userTag === "string" ? message.userTag : "";',
+                    init, fixed = TRUE))
+  expect_false(grepl("message.userTag) {", init, fixed = TRUE))
+  # Sürüm saat değil kullanıcı başına sayaçtır; değer ve sürüm tek kayıttadır.
+  expect_false(grepl("serverOffset", js_text, fixed = TRUE))
+  expect_false(grepl("issuedAt", js_text, fixed = TRUE))
+  expect_true(grepl("JSON.stringify({ v: deger, n: kayit.n + 1 })", js_text, fixed = TRUE))
+  expect_true(grepl("kayit.n > taban", js_text, fixed = TRUE))
+  expect_true(grepl("writeSource(kaynak, message.userTag, taban)", js_text, fixed = TRUE))
+  # Kutu durumu modal düğmesinden önce (yakalama evresi) bildirilir.
+  expect_true(grepl('closest(".api-key-choice-modal-root")', js_text, fixed = TRUE))
 })

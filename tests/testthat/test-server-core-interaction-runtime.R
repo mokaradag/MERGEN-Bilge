@@ -26,6 +26,8 @@ source(
 
 # serverBindCoreInteractionRuntime varsayılan core_observer_runtime_fn olarak
 # serverBindCoreObserverRuntime'ı çağırır; izole koşumda sahibini yükleriz.
+source(file.path(repo_root, "R", "helpers_session_profile.R"), encoding = "UTF-8", local = globalenv())
+
 source(
   file.path(repo_root, "R", "server_core_observer_runtime.R"),
   encoding = "UTF-8",

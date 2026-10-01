@@ -64,6 +64,7 @@ adminYanitAnaliziServer <- function(id) {
     # VERİ ÇEKİMİ
     # ============================================================
     ya_data <- reactive({
+      admin_require_session(session)
       refresh$trigger()
       admin_yanit_collect_data(admin_safe_query)
     })
@@ -79,6 +80,7 @@ adminYanitAnaliziServer <- function(id) {
     # SEKME İÇERİĞİ YÖNLENDİRİCİ
     # ============================================================
     output$tab_content_area <- renderUI({
+      admin_require_session(session)
       tab <- input$admin_tabs
       if (is.null(tab)) tab <- "ya_overview"
 

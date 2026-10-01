@@ -531,3 +531,12 @@ test_that("file manager policy ve UI yardımcıları dosya yöneticisi sunucu mo
   expect_lt(pos("R/helpers_file_manager_state_runtime.R"), pos("R/module_file_manager_ui.R"))
   expect_lt(pos("R/module_file_manager_ui.R"), pos("R/module_file_manager.R"))
 })
+test_that("önyükleme manifesti ortak yardımcılar yüklenmeden doğrulanır", {
+  env <- new.env(parent = baseenv())
+  env$`%||%` <- function(...) stop("Ortak yardımcı kullanılmamalı.")
+  source(file.path(resolve_repo_root_for_tests(), "R", "bootstrap_source_manifest.R"),
+         encoding = "UTF-8", local = env)
+  expect_type(env$source_manifest_optional_paths(), "character")
+  expect_type(env$source_manifest_optional_groups(), "list")
+  expect_identical(env$source_manifest_similar_files(NULL), character(0))
+})

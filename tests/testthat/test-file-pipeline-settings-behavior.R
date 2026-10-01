@@ -22,11 +22,10 @@
     assign("%||%", function(a, b) if (is.null(a)) b else a, envir = globalenv())
   }
 
-  source(
-    file.path(repo_root, "R", "helpers_file_pipeline.R"),
-    encoding = "UTF-8",
-    local = env
-  )
+  # as_llm_settings_list özet görev dosyasındadır; pipeline onu kullanır.
+  for (dosya in c("helpers_file_summary_task.R", "helpers_file_pipeline.R")) {
+    source(file.path(repo_root, "R", dosya), encoding = "UTF-8", local = env)
+  }
 
   env
 }

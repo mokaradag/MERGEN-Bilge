@@ -19,6 +19,7 @@ adminGeriBildirimServer <- function(id) {
     # VERİ ÇEKİMİ
     # ============================================================
     gb_data <- reactive({
+      admin_require_session(session)
       refresh$trigger()
       admin_gb_fetch_data()
     })
@@ -35,6 +36,7 @@ adminGeriBildirimServer <- function(id) {
     # SEKME İÇERİĞİ YÖNLENDİRİCİ
     # ============================================================
     output$tab_content_area <- renderUI({
+      admin_require_session(session)
       tab <- input$admin_tabs
       if (is.null(tab)) tab <- "gb_overview"
 

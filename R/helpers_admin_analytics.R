@@ -294,6 +294,18 @@ admin_page_layout <- function(ns, page_title, page_icon = "chart-bar",
   )
 }
 
+admin_require_session <- function(session) {
+  if (exists("mergen_session_identity_signal", mode = "function")) {
+    mergen_session_identity_signal(session)()
+  }
+  cfg <- tryCatch(make_user_session_data_accessors(session)$get_user_config(NULL),
+                  error = function(e) NULL)
+  seviye <- if (is.list(cfg)) cfg$auth_level else NULL
+  shiny::req(is.character(seviye), length(seviye) == 1L, !is.na(seviye),
+             identical(toupper(trimws(seviye)), "ADMIN"))
+  invisible(TRUE)
+}
+
 #' Standart admin modül sunucu altyapısı (otomatik yenileme + manuel yenileme)
 #' @param input Shiny input
 #' @param session Shiny session
@@ -310,6 +322,7 @@ admin_refresh_setup <- function(input, session, refresh_btn_id = "refresh_analyt
 
   # Otomatik yenileme (varsayılan: 10 dakika)
   observe({
+    admin_require_session(session)
     invalidateLater(refresh_interval_ms)
     isolate({
       refresh_trigger(refresh_trigger() + 1)
@@ -323,6 +336,7 @@ admin_refresh_setup <- function(input, session, refresh_btn_id = "refresh_analyt
 
   # Manuel yenileme butonu
   observeEvent(input[[refresh_btn_id]], {
+    admin_require_session(session)
     shinyjs::runjs("$('.tooltip').remove();")
     refresh_trigger(refresh_trigger() + 1)
     last_update(format(Sys.time(), "%d.%m.%Y %H:%M:%S"))

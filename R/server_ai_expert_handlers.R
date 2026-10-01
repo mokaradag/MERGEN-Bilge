@@ -42,9 +42,11 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   )
   speechPcmStreamObserversInit(input, session)
 
-  # Kullanıcı adı (DB'den alınacak)
-  user_first_name <- session$userData$user_first_name %||% ""
-  
+  # Kimlik nesli: sahip değişimi/kimlik kaybında artar; bayat boşta işi düşer.
+  idle_generation <- 0L
+  session$onSessionEnded(function() idle_generation <<- idle_generation + 1L)
+  kimlik_nesli <- function() as.integer(session$userData$kimlik_nesli %||% 0L)[1]
+
   # SSO akışında başlangıçtaki current_user_id değeri 0 olabilir.
   # Bu yüzden AI Uzman tarafında kullanıcı kimliğini her kullanım anında
   # oturumdan yeniden çözmek gerekir.
@@ -108,7 +110,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 		model_name = model_name,
 		endpoint = endpoint,
 		api_key = final_api_key,
-		user_name = safe_trimws(user_first_name)
+		user_name = safe_trimws(session$userData$user_first_name %||% "")
 	  )
 	}
 
@@ -164,9 +166,13 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   # sentezlemeye başla ve seçilecek karşılama klibini tarayıcıya önden ısıt.
   # Önek deterministiktir (LLM ÇAĞRILMAZ) ve statik karşılamayı asla
   # geciktirmez; süre sınırını hibrit konuşma çalışma zamanı uygular.
+  # İptal edilen onay (Geri/Kapat/Esc) bekleyen önek sonucunu geçersiz kılar.
   observeEvent(input$explore_preheat_initial_greeting, {
     req(is.list(input$explore_preheat_initial_greeting))
     req(identical(input$explore_preheat_initial_greeting$mode %||% "", "kesif"))
+    if (isTRUE(input$explore_preheat_initial_greeting$cancel)) {
+      return(speech_runtime$prewarm_welcome(NA_character_))
+    }
     req(nzchar(input$explore_preheat_initial_greeting$character %||% ""))
 
     speech_runtime$prewarm_welcome(input$explore_preheat_initial_greeting$character)
@@ -179,8 +185,27 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     })
   }, once = TRUE)
 
-  # --- Ayarlar değiştiğinde karşılama tetikleyicisi ---
+  # Oturum başka kullanıcıya geçince (A -> B) karşılama ve rehberlik durumu
+  # yeni sahip için sıfırlanır; kimlik sinyali aşağıdaki tetikleyiciyi çalıştırır.
+  kimlik_sinyali <- if (exists("mergen_session_identity_signal", mode = "function")) {
+    mergen_session_identity_signal(session)
+  }
+  if (exists("mergen_session_on_owner_change", mode = "function")) {
+    mergen_session_on_owner_change(session, function(neden) {
+      # Her kimlik sınırında önceki sahibin konuşması ve kuyruğu bırakılır.
+      pending_guidance_clear()
+      try(if (isTRUE(isolate(ai_expert$is_speaking()))) ai_expert$stop_speaking(0), silent = TRUE)
+      if (!identical(neden, "sahip_degisti")) return(invisible(NULL))
+      idle_generation <<- idle_generation + 1L
+      greeting_done(FALSE)
+      page_guidance_times(list())
+      idle_talk_counter(0L)
+    })
+  }
+
+  # --- Ayarlar ya da oturum sahibi değiştiğinde karşılama tetikleyicisi ---
   observe({
+    if (is.function(kimlik_sinyali)) kimlik_sinyali()
     ai_on <- isTRUE(settings_data$enable_ai_expert)
     mode <- settings_data$experience_mode
     if (ai_on && identical(mode, "kesif") && !isTRUE(isolate(greeting_done()))) {
@@ -219,8 +244,10 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
   # --- Boşta konuşma zamanlayıcısı yardımcısı ---
   schedule_idle_chat <- function(delay_ms = NULL) {
     if (is.null(delay_ms)) delay_ms <- ai_expert_idle_interval_ms(current_talk_frequency())
+    idle_generation <<- idle_generation + 1L
+    generation <- idle_generation
     shinyjs::delay(delay_ms, {
-      trigger_idle_chat()
+      if (identical(generation, idle_generation)) trigger_idle_chat()
     })
   }
 
@@ -357,6 +384,12 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
 
   # --- Boşta konuşma ---
   trigger_idle_chat <- function() {
+    generation <- idle_generation
+    if (resolve_ai_expert_user_id() <= 0L ||
+        (isTRUE(session$userData$sso_active) && !isTRUE(session$userData$auth_initialized))) {
+      schedule_idle_chat()
+      return()
+    }
     if (!isTRUE(isolate(settings_data$enable_ai_expert)) ||
         !identical(isolate(settings_data$experience_mode), "kesif")) {
       schedule_idle_chat()
@@ -400,6 +433,7 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
     cat(sprintf("[AI_EXPERT] Etkin kullanıcı ID: %s\n", resolve_ai_expert_user_id()))
 
 	params <- prepare_llm_params()
+	gonderim_nesli <- kimlik_nesli()
 	current_page_val <- isolate(input$tabs) %||% "chat"
 
 	page_name_tr <- ai_expert_page_name_tr(current_page_val) %||% "Ana Söyleşi"
@@ -486,6 +520,8 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
       # bağlamsal olarak geçersizdir ve oynatılmaz. Kuyrukta rehberlik
       # bekliyorsa boşta konuşma onun önüne geçemez. tryCatch: bu geri çağrı
       # reaktif bağlam dışında koşar; kaçan hata uygulamayı çökertmemeli.
+      if (!identical(generation, idle_generation)) return(invisible(NULL))
+      if (!identical(kimlik_nesli(), gonderim_nesli)) return(schedule_idle_chat())
       tryCatch({
         tab_degisti <- !identical(isolate(input$tabs) %||% "chat", current_page_val)
         if (!is.null(idle_text) && nzchar(idle_text) && !is_stt_modal_active() &&
@@ -501,6 +537,8 @@ aiExpertHandlersInit <- function(input, session, values, settings_data,
       })
       schedule_idle_chat()
     }) %...!% (function(e) {
+      if (!identical(generation, idle_generation)) return(invisible(NULL))
+      if (!identical(kimlik_nesli(), gonderim_nesli)) return(schedule_idle_chat())
       cat(sprintf("[AI_EXPERT] Boşta konuşma hatası: %s\n", conditionMessage(e)))
       schedule_idle_chat()
     })

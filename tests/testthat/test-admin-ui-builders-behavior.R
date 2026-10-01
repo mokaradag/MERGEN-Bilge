@@ -20,6 +20,7 @@ suppressMessages({
   kok <- resolve_repo_root_for_tests()
   source(file.path(kok, "R", "utils_text_encoding.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "helpers_admin_analytics.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "helpers_admin_documentation_sanitize.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "helpers_admin_documentation.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "module_admin_yanit_analizi.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "module_admin_documentation.R"), encoding = "UTF-8", local = env)

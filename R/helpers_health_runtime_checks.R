@@ -281,21 +281,21 @@ health_check_runtime_info <- function(perf_tracker = NULL) {
     health_result("runtime.uptime", "Uygulama Uptime", "ok", paste(round(as.numeric(uptime) / 60, 1), "dk"), "Süreç başlangıcından beri geçen süre.", health_ms(start)),
     health_result("runtime.r_version", "R Sürümü", "ok", paste(R.version$major, R.version$minor, sep = "."), R.version$platform, health_ms(start)),
     health_result("runtime.memory", "R Bellek Kullanımı", if (identical(mem, "N/A")) "unknown" else "ok", mem, "Yaklaşık R bellek kullanımı.", health_ms(start)),
-    health_result("runtime.sessions", "Aktif Oturum", if (is.na(session_count)) "unknown" else "ok", ifelse(is.na(session_count), "N/A", session_count), "Performans izleyiciden alınır.", health_ms(start))
+    health_result("runtime.sessions", "Aktif Oturum (bu süreç)", if (is.na(session_count)) "unknown" else "ok", ifelse(is.na(session_count), "N/A", session_count), "Bu uygulama sürecinin oturumları; tüm süreçler için Çevrimiçi sekmesini kullanın.", health_ms(start))
   ))
 }
 
 health_check_worker_info <- function() {
-  health_safe_check("runtime.workers", "İşçi Havuzu", {
+  health_safe_check("runtime.workers", "İşçi Havuzu (bu süreç)", {
     start <- Sys.time()
     if (!exists("get_worker_monitor_info", mode = "function")) {
-      return(health_result("runtime.workers", "İşçi Havuzu", "unknown", "N/A", "get_worker_monitor_info bulunamadı.", health_ms(start), remediation = "helpers_worker_monitor.R yükleme sırasını kontrol edin."))
+      return(health_result("runtime.workers", "İşçi Havuzu (bu süreç)", "unknown", "N/A", "get_worker_monitor_info bulunamadı.", health_ms(start), remediation = "helpers_worker_monitor.R yükleme sırasını kontrol edin."))
     }
     info <- get_worker_monitor_info()
     total <- info$total_workers %||% info$total %||% NA
     active <- info$active_workers %||% info$active %||% NA
     queued <- info$queued_jobs %||% info$queued %||% NA
-    health_result("runtime.workers", "İşçi Havuzu", "ok", paste0("Toplam: ", total, " / Aktif: ", active, " / Kuyruk: ", queued), "Worker monitor bilgisi alındı.", health_ms(start))
+    health_result("runtime.workers", "İşçi Havuzu (bu süreç)", "ok", paste0("Toplam: ", total, " / Aktif: ", active, " / Kuyruk: ", queued), "Yalnız bu uygulama sürecinin işçi ve kuyruk ölçümleri.", health_ms(start))
   })
 }
 

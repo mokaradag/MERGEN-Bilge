@@ -29,7 +29,7 @@ source_manifest_sections <- list(
     "R/utils_common.R",
     "R/utils_text_encoding.R",
     "R/helpers_mailto_encoding.R",
-    "R/config_logging_daily_file.R",
+    "R/config_logging_locks.R", "R/config_logging_daily_file.R",
     "R/config_logging.R",
     "R/helpers_performance_instrumentation.R",
     "R/helpers_runtime_metrics.R",
@@ -37,7 +37,7 @@ source_manifest_sections <- list(
     "R/helpers_index_page_cache.R",
     "R/helpers_app_http_routes.R",
     "R/utils_rate_limiter.R",
-    "R/helpers_worker_monitor.R"
+    "R/helpers_worker_monitor.R", "R/helpers_worker_dep_cache.R"  # bağımlılık önbelleği monitor'dan SONRA
   ),
 
   # post_future_utils: Future cluster SONRASI yardımcılar: yol/güvenli yol, yol
@@ -189,7 +189,7 @@ source_manifest_sections <- list(
   files_preview_pipeline = c(
     "R/helpers_image_gallery.R",
     "R/helpers_preview.R",
-    "R/helpers_file_pipeline.R",
+    "R/helpers_file_summary_capacity.R", "R/helpers_file_summary_queue.R", "R/helpers_file_summary_task.R", "R/helpers_file_pipeline.R",  # özet kapasite/kuyruk/görev pipeline'dan ÖNCE
     "R/helpers_files_path.R", "R/helpers_files_promote_probe.R", "R/helpers_files_promote_target.R", "R/helpers_files_staging_copy.R",  # sıra: yol -> yoklama -> terfi -> aşamalı kopya
     "R/helpers_files_copy_promote.R",
     "R/helpers_files.R",
@@ -387,7 +387,7 @@ source_manifest_sections <- list(
     # Release/doğrulama kanıt artifact'larının secret-safe okuyucusu; sağlık
     # kontrolleri ileride bu özetleri tüketebilsin diye health_checks'ten önce.
     "R/helpers_release_evidence.R",
-    "R/helpers_health_checks.R"
+    "R/helpers_health_endpoint_scope.R", "R/helpers_health_checks.R", "R/helpers_health_dns_refresh.R"  # host sınıflandırması checks'ten ÖNCE
   ),
 
   # ai_expert_helpers: AI Uzman konuşma ve TTS metin parçalama yardımcıları.
@@ -395,7 +395,7 @@ source_manifest_sections <- list(
   # helpers_ai_expert.R::build_ai_expert_user_context() bunları çağırır.
   # helpers_ai_expert_handlers_support.R saf karar yardımcılarını taşır.
   ai_expert_helpers = c(
-    "R/helpers_ai_expert_user_data.R",
+    "R/helpers_ai_expert_user_data.R", "R/helpers_ai_expert_greeting_topic.R",
     "R/helpers_ai_expert.R",
     "R/helpers_ai_expert_chunking.R",
     "R/helpers_ai_expert_chunk_pipeline.R",
@@ -560,7 +560,7 @@ source_manifest_sections <- list(
   module_identity_startup = c(
     "R/module_sso.R",
     "R/module_session_timeout.R",
-    "R/module_performance.R",
+    "R/helpers_user_presence.R", "R/helpers_user_presence_shared.R", "R/module_performance.R",  # varlık defteri performans modülünden ÖNCE
     "R/module_user_identity.R",
     "R/helpers_startup_lane.R",
     "R/module_startup_lane.R",
@@ -676,12 +676,12 @@ source_manifest_sections <- list(
     "R/module_admin_geri_bildirim.R",
     "R/helpers_admin_hata_analizi.R",
     "R/helpers_admin_hata_heatmap_data.R",
-    "R/helpers_admin_hata_detail_runtime.R",
+    "R/helpers_admin_attachments.R", "R/helpers_admin_hata_detail_runtime.R",
     "R/module_admin_hata_analizi.R",
     "R/helpers_admin_yanit_analizi.R",
     "R/module_admin_yanit_analizi_outputs.R",
     "R/module_admin_yanit_analizi.R",
-    "R/helpers_admin_documentation.R",
+    "R/helpers_admin_documentation_sanitize.R", "R/helpers_admin_documentation.R",  # temizleyici ÖNCE
     "R/module_admin_documentation.R"
   ),
 
@@ -695,7 +695,7 @@ source_manifest_sections <- list(
     "R/module_health_runtime.R",
     "R/module_health_security.R",
     "R/module_health_diagnostics.R",
-    "R/module_health_release.R",
+    "R/module_health_release.R", "R/module_health_presence.R",
     "R/module_health.R",
     "R/module_chartlab.R"
   ),
@@ -706,7 +706,7 @@ source_manifest_sections <- list(
   server_init_runtime = c(
     "R/server_session_cache.R",
     "R/server_init_forward_refs.R",
-    "R/helpers_user_session_identity.R",
+    "R/helpers_user_session_identity.R", "R/helpers_session_profile.R",
     "R/server_init_user_session.R",
     "R/helpers_server_runtime_contracts.R",
     "R/helpers_server_runtime_named_contracts.R",

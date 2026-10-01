@@ -206,3 +206,130 @@ test_that("DOCX: BAYAT asenkron HATA sonucu daha yeni modal için Türkçe hata 
     expect_identical(toast_kaydi$count, 1L)
   })
 })
+
+test_that("oturum sahibi değişince açık önizlemenin indirmesi önceki dosyayı sunmaz", {
+  skip_if_not_installed("shiny")
+  env <- .fp_make_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
+         encoding = "UTF-8", local = env)
+  env$showToast <- function(...) invisible(NULL)
+  kaynak <- withr::local_tempfile(fileext = ".txt")
+  writeLines("A kullanicisinin gizli dosyasi", kaynak)
+  kapanis <- 0L
+  testthat::local_mocked_bindings(
+    showModal = function(...) invisible(NULL),
+    removeModal = function(...) kapanis <<- kapanis + 1L,
+    .package = "shiny"
+  )
+  shiny::testServer(env$filePreviewServer, {
+    session$userData$kimlik_sahibi <- 7L
+    session$returned$open(list(name = "gizli.txt", datapath = kaynak))
+    testthat::expect_identical(readLines(output$download_preview_file), "A kullanicisinin gizli dosyasi")
+    env$mergen_session_owner_transition(session$userData, 7L, 8L)
+    testthat::expect_gte(kapanis, 1L)
+    testthat::expect_false(any(grepl("gizli", readLines(output$download_preview_file), fixed = TRUE)))
+  })
+})
+
+test_that("sahip değişince süren DOCX kodlaması yeni sahibe basılmaz ve önbelleğe yazılmaz", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("promises")
+  skip_if_not_installed("future")
+  env <- .fp_make_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
+         encoding = "UTF-8", local = env)
+  resolvers <- new.env()
+  resolvers$queue <- list()
+  kayit <- new.env()
+  kayit$msgs <- list()
+  path_a <- file.path(tempdir(), "sahipA_buyuk.docx")
+  testthat::local_mocked_bindings(future = .fp_make_future_stub(resolvers), .package = "future")
+  testthat::local_mocked_bindings(
+    showModal = function(...) invisible(NULL),
+    removeModal = function(...) invisible(NULL),
+    .package = "shiny"
+  )
+  shiny::testServer(env$filePreviewServer, args = list(id = "fp"), {
+    root <- .subset2(session, "parent")
+    root$sendCustomMessage <- function(type, message) {
+      kayit$msgs[[length(kayit$msgs) + 1L]] <- list(type = type, message = message)
+      invisible(NULL)
+    }
+    session$userData$kimlik_sahibi <- 7L
+    isolate(session$returned$open(list(name = "sahipA_buyuk.docx", datapath = path_a, size = 1)))
+    expect_length(resolvers$queue, 1L)
+    env$mergen_session_owner_transition(session$userData, 7L, 8L)
+    resolvers$queue[[1]]$resolve("BASE64_A")
+    .fp_drain_later_queue()
+    expect_length(kayit$msgs, 0L)
+    # Aynı yol yeniden açılınca önbellekten A'nın içeriği gelmez.
+    isolate(session$returned$open(list(name = "sahipA_buyuk.docx", datapath = path_a, size = 1)))
+    expect_length(kayit$msgs, 0L)
+    expect_length(resolvers$queue, 2L)
+  })
+})
+
+test_that("önizleme kayıtları sınırlıdır; eski URL ve eski sahip reddedilir", {
+  env <- .fp_make_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
+         encoding = "UTF-8", local = env)
+  env$showToast <- function(...) invisible(NULL)
+  gorsel <- file.path(withr::local_tempdir(), "rapor.png")
+  writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47)), gorsel)
+  kayitlar <- list()
+  testthat::local_mocked_bindings(showModal = function(...) invisible(NULL),
+                                  removeModal = function(...) invisible(NULL), .package = "shiny")
+  shiny::testServer(env$filePreviewServer, {
+    root <- .subset2(session, "parent")
+    root$registerDataObj <- function(name, data, filterFunc) {
+      kayitlar[[name]] <<- list(data = data, filter = filterFunc)
+      paste0("veri/", name, "?w=1")
+    }
+    session$userData$kimlik_sahibi <- 7L
+    session$returned$open(list(name = "rapor.png", datapath = gorsel))
+    ilk <- kayitlar[[1]]
+    expect_match(ilk$data$jeton, "^[0-9a-f]{64}$")
+    istek <- list(QUERY_STRING = paste0("w=1&preview_token=", ilk$data$jeton))
+    expect_identical(ilk$filter(ilk$data, istek)$status, 200L)
+    for (i in 1:40) session$returned$open(list(name = "rapor.png", datapath = gorsel))
+    expect_length(kayitlar, 1L)
+    simdiki <- kayitlar[[1]]
+    expect_identical(simdiki$filter(simdiki$data, istek)$status, 403L)
+    istek$QUERY_STRING <- paste0("preview_token=", simdiki$data$jeton)
+    expect_identical(simdiki$filter(simdiki$data, istek)$status, 200L)
+    env$mergen_session_owner_transition(session$userData, 7L, 8L)
+    expect_identical(simdiki$filter(simdiki$data, istek)$status, 403L)
+    session$returned$open(list(name = "rapor.png", datapath = gorsel))
+    expect_length(kayitlar, 1L)
+    expect_false(identical(kayitlar[[1]]$data$jeton, simdiki$data$jeton))
+    expect_identical(kayitlar[[1]]$filter(kayitlar[[1]]$data, istek)$status, 403L)
+  })
+})
+
+test_that("görsel kaydı daha önce açılmış PDF uç noktasını geçersiz kılmaz", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("openssl")
+  env <- .fp_make_env()
+  env$showToast <- function(...) invisible(NULL)
+  dizin <- withr::local_tempdir()
+  pdf <- file.path(dizin, "rapor.pdf")
+  png <- file.path(dizin, "rapor.png")
+  writeBin(raw(2 * 1024^2), pdf)
+  writeBin(as.raw(1:4), png)
+  kayitlar <- list()
+  testthat::local_mocked_bindings(showModal = function(...) NULL, .package = "shiny")
+  testthat::local_mocked_bindings(runjs = function(...) NULL, .package = "shinyjs")
+  shiny::testServer(env$filePreviewServer, {
+    root <- .subset2(session, "parent")
+    root$registerDataObj <- function(name, data, filterFunc) {
+      kayitlar[[name]] <<- list(data = data, filter = filterFunc)
+      paste0("data/", name, "?w=1")
+    }
+    session$returned$open(list(name = "rapor.pdf", datapath = pdf))
+    ilk <- kayitlar$pdf_preview
+    istek <- list(QUERY_STRING = paste0("preview_token=", ilk$data$jeton))
+    session$returned$open(list(name = "rapor.png", datapath = png))
+    expect_length(kayitlar, 2L)
+    expect_identical(ilk$filter(ilk$data, istek)$status, 200L)
+  })
+})

@@ -52,6 +52,7 @@ if (!exists("e2e_health_config", envir = globalenv(), inherits = FALSE)) {
 
 source(file.path(repo_root_e2e_health, "R", "utils_common.R"), encoding = "UTF-8", local = globalenv())
 source(file.path(repo_root_e2e_health, "R", "helpers_health_formatters.R"), encoding = "UTF-8", local = globalenv())
+source(file.path(repo_root_e2e_health, "R", "helpers_health_endpoint_scope.R"), encoding = "UTF-8", local = globalenv())
 source(file.path(repo_root_e2e_health, "R", "helpers_health_checks.R"), encoding = "UTF-8", local = globalenv())
 
 test_that("health snapshot redacts secrets and skips public endpoint probes", {
@@ -180,8 +181,9 @@ test_that("runtime health dashboard files keep offline refresh and cleanup contr
   health_js_text <- e2e_health_read_repo_text("www/js/health_dashboard.js")
   shiny_handlers_text <- e2e_health_read_repo_text("www/js/shiny_message_handlers.js")
 
-  public_guard_pos <- regexpr("health_is_public_url(endpoint)", health_checks_text, fixed = TRUE)[[1]]
-  network_get_pos <- regexpr("httr::GET(endpoint", health_checks_text, fixed = TRUE)[[1]]
+  # Kapsam kararı (genel adres/şema/çözülemeyen ad) ağ isteğinden önce verilir.
+  public_guard_pos <- regexpr("health_endpoint_scope(endpoint)", health_checks_text, fixed = TRUE)[[1]]
+  network_get_pos <- regexpr("httr::GET(", health_checks_text, fixed = TRUE)[[1]]
 
   expect_gt(public_guard_pos, 0L)
   expect_gt(network_get_pos, 0L)

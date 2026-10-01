@@ -17,58 +17,130 @@
 # ------------------------------------------------------------------------------
 # BELGE KAYIT DEFTERİ (TEK DOĞRULUK KAYNAĞI / ALLOWLIST)
 # ------------------------------------------------------------------------------
-# Yalnızca buradaki belgeler uygulama içinde gösterilir. CLAUDE.md ve AGENTS.md
-# (AI ajan sözleşmeleri) bilinçli olarak DIŞARIDA bırakılmıştır.
+# Yalnızca buradaki belgeler uygulama içinde gösterilir. CLAUDE.md, AGENTS.md,
+# docs/maintainers/ ve eklenti becerileri (AI ajan sözleşmeleri/istemleri)
+# bilinçli olarak DIŞARIDA bırakılmıştır. Kök ve docs/ altına eklenen her yeni
+# belge buraya ya da test dışlama listesine eklenmelidir (sözleşme testi).
 admin_doc_registry <- function() {
+  belge <- function(id, title, file, desc) {
+    list(id = id, title = title, file = file, desc = desc)
+  }
   list(
     list(
       id = "baslangic", title = "Başlangıç", icon = "rocket",
       docs = list(
-        list(id = "readme", title = "Genel Bakış (README)",
-             file = "README.md",
-             desc = "Ürünün genel tanıtımı ve ilk giriş belgesi."),
-        list(id = "docs_readme", title = "Dokümantasyon Haritası",
-             file = "docs/README.md",
-             desc = "Tüm belgelerin haritası ve önerilen okuma sırası.")
+        belge("readme", "Genel Bakış (README)", "README.md",
+              "Ürünün genel tanıtımı ve ilk giriş belgesi."),
+        belge("docs_readme", "Dokümantasyon Haritası", "docs/README.md",
+              "Tüm belgelerin haritası ve önerilen okuma sırası.")
       )
     ),
     list(
       id = "mimari", title = "Mimari ve Teknik", icon = "sitemap",
       docs = list(
-        list(id = "architecture", title = "Mimari Haritası",
-             file = "docs/architecture-map.md",
-             desc = "Uygulama mimarisi, katmanlar ve korunan sınırlar."),
-        list(id = "database", title = "Veritabanı Şeması",
-             file = "docs/database-schema.md",
-             desc = "MB_* tabloları ve veri modeli."),
-        list(id = "technical", title = "Teknik Referans",
-             file = "docs/technical-reference.md",
-             desc = "Derin teknik referans ve modül ayrıntıları.")
+        belge("architecture", "Mimari Haritası", "docs/architecture-map.md",
+              "Uygulama mimarisi, katmanlar ve korunan sınırlar."),
+        belge("feature_ownership", "Özellik Sahiplik Haritası",
+              "docs/feature-ownership-map.md",
+              "Özelliklerin sahip dosyaları, modülleri ve testleri."),
+        belge("technical", "Teknik Referans", "docs/technical-reference.md",
+              "Derin teknik referans ve modül ayrıntıları."),
+        belge("database", "Veritabanı Şeması", "docs/database-schema.md",
+              "MB_* tabloları ve veri modeli."),
+        belge("database_pooling", "Veritabanı Bağlantı Havuzu",
+              "docs/database-pooling.md",
+              "İşlem-güvenli bağlantı havuzu ve kullanım kuralları."),
+        belge("refactor_log", "Refactor Günlüğü", "docs/refactor-log.md",
+              "Yapısal değişikliklerin gerekçeleri ve kayıtları.")
       )
     ),
     list(
       id = "operasyon", title = "Operasyon", icon = "server",
       docs = list(
-        list(id = "runbook", title = "Operasyon Kılavuzu (RUNBOOK)",
-             file = "RUNBOOK.md",
-             desc = "Windows VM, SSO ve üretim çalıştırma kılavuzu."),
-        list(id = "dependency", title = "Bağımlılık Kilitleme",
-             file = "docs/dependency-locking.md",
-             desc = "renv ile sürüm kilitleme akışı ve kurallar."),
-        list(id = "renv_status", title = "renv Kilit Durumu",
-             file = "RENV_LOCK_STATUS.md",
-             desc = "Üretim renv.lock kaynağı ve sağlama notu.")
+        belge("runbook", "Operasyon Kılavuzu (RUNBOOK)", "RUNBOOK.md",
+              "Windows VM, SSO ve üretim çalıştırma kılavuzu."),
+        belge("log_paths", "Üretim Log Yolları", "docs/production-log-paths.md",
+              "Log klasörü seçimi ve mojibake onarımı."),
+        belge("dependency", "Bağımlılık Kilitleme", "docs/dependency-locking.md",
+              "renv ile sürüm kilitleme akışı ve kurallar."),
+        belge("renv_status", "renv Kilit Durumu", "RENV_LOCK_STATUS.md",
+              "Üretim renv.lock kaynağı ve sağlama notu.")
+      )
+    ),
+    list(
+      id = "kalite", title = "Doğrulama", icon = "clipboard-check",
+      docs = list(
+        belge("vm_evidence", "VM Kanıt Kapısı Durumu", "docs/vm-evidence-status.md",
+              "Windows VM doğrulama kapısının son durumu."),
+        belge("soak_gate", "Soak / Yük Test Kapısı", "docs/operational-soak-gate.md",
+              "Operasyonel yük ve dayanıklılık testi kapısı."),
+        belge("performance_plan", "Performans İyileştirme Planı",
+              "docs/performance-improvement-plan.md",
+              "Performans ölçümleri ve iyileştirme yol haritası (İngilizce).")
+      )
+    ),
+    list(
+      id = "ozellikler", title = "Özellikler", icon = "puzzle-piece",
+      docs = list(
+        belge("pk_master_plan", "Proje ve Kaynak Analizi Planı",
+              "docs/proje-kaynak-analizi-master-plan.md",
+              "Proje ve Kaynak Analizi yeniden yapılanma planı (İngilizce)."),
+        belge("pk_operator", "PK Sorgu Metadata Kılavuzu",
+              "docs/pk-phase3b-operator-runbook.md",
+              "Sorgu metadata üreticisi ve yerel alias operatör kılavuzu."),
+        belge("pk_sql_gate", "PK SQL Salt-Okunur Kapısı", "docs/pk-sql-readonly-gate.md",
+              "Analiz sorgularının salt-okunur güvenlik kapısı."),
+        belge("ortak_oturumlar", "Ortak Oturumlar", "docs/ortak-oturumlar.md",
+              "İşbirlikçi çalışma odaları tasarımı ve kullanımı."),
+        belge("bilge_savunmasi", "Bilge Savunması", "docs/bilge-savunmasi.md",
+              "Kule savunma oyunu tasarım ve operasyon rehberi.")
+      )
+    ),
+    list(
+      id = "konusma", title = "Konuşma", icon = "microphone",
+      docs = list(
+        belge("speech_runbook", "Konuşma Varlıkları Operatör Rehberi",
+              "docs/speech-operator-runbook.md",
+              "VoxCPM2 konuşma varlıklarının Windows VM üretim akışı."),
+        belge("speech_readme", "Önceden Üretilmiş Konuşmalar", "www/speech/README.md",
+              "Statik konuşma varlıklarının klasör düzeni."),
+        belge("speech_voices", "Persona Referans Sesleri", "www/speech/voices/README.md",
+              "Referans ses, metin ve voice-lock kilitleri."),
+        belge("speech_scripts", "Ortak Konuşma Metinleri", "www/speech/scripts/README.md",
+              "Persona ortak konuşma/altyazı metinleri."),
+        belge("speech_audio", "Persona WAV Kayıtları", "www/speech/audio/README.md",
+              "Persona WAV kayıtlarının yerleşimi."),
+        belge("speech_generated", "Üretilen Konuşma Üst Verileri",
+              "www/speech/generated/README.md",
+              "Otomatik üretilen manifest ve durum dosyaları.")
+      )
+    ),
+    list(
+      id = "varliklar", title = "Varlıklar", icon = "cubes",
+      docs = list(
+        belge("offline_assets", "Çevrimdışı Varlık Kontrol Listesi",
+              "offline_asset_checklist.md",
+              "Çevrimdışı kurulumda yerelden yüklenecek görsel varlıklar."),
+        belge("threejs_assets", "Three.js Yerel Dosyaları",
+              "www/lib/threejs/INDIRME_TALIMATLARI.md",
+              "Three.js yerel dosyalarının indirme talimatları."),
+        belge("api_key_assets", "API Anahtarı Modalı Varlıkları",
+              "www/assets/api-key-choice/README.md",
+              "API anahtarı seçim modalının yerel görsel/medya varlıkları."),
+        belge("savunma_assets", "Bilge Savunması Varlıkları",
+              "www/assets/bilge_savunmasi/README.md",
+              "Bilge Savunması oyununun yerel varlıkları.")
       )
     ),
     list(
       id = "urun", title = "Ürün ve Davranış", icon = "compass",
       docs = list(
-        list(id = "ai_rehber", title = "Asistan Davranış Rehberi",
-             file = "ai_rehber.md",
-             desc = "Destek sohbet botu ve AI Uzman için bilgi tabanı."),
-        list(id = "release_notes", title = "Sürüm Notları",
-             file = "docs/release-notes.md",
-             desc = "Sürüm geçmişi ve değişiklik notları.")
+        belge("ai_rehber", "Asistan Davranış Rehberi", "ai_rehber.md",
+              "Destek sohbet botu ve AI Uzman için bilgi tabanı."),
+        belge("release_notes", "Sürüm Notları", "docs/release-notes.md",
+              "Sürüm geçmişi ve değişiklik notları."),
+        belge("version_history", "Sürüm Geçmişi", "version_history.md",
+              "Uygulama içi sürüm bilgilendirmesinin kaynağı.")
       )
     )
   )
@@ -222,139 +294,8 @@ admin_doc_strip_tags <- function(x) {
   trimws(out)
 }
 
-# ------------------------------------------------------------------------------
-# HTML GÜVENLİK TEMİZLİĞİ (ETİKET BEYAZ-LİSTESİ)
-# ------------------------------------------------------------------------------
-# commonmark çıktısı; kod blokları zaten escape edilmiştir. Yalnızca <...>
-# token'ları işlenir: izinli etiketler korunur (tehlikeli attribute'lar
-# temizlenir), izinsiz etiketler (script/iframe/style ...) escape edilerek
-# etkisizleştirilir. Gövde metni (token dışı) hiç değiştirilmez.
-admin_doc_allowed_tags <- function() {
-  c("h1", "h2", "h3", "h4", "h5", "h6", "p", "br", "hr", "a", "ul", "ol",
-    "li", "code", "pre", "blockquote", "strong", "em", "del", "ins", "sup",
-    "sub", "table", "thead", "tbody", "tr", "th", "td", "img", "span", "div")
-}
-
-# İzinli bir etiketin attribute dizesini güvenli hale getirir.
-admin_doc_clean_attributes <- function(attr_str) {
-  if (is.null(attr_str) || is.na(attr_str) || !nzchar(attr_str)) return("")
-  out <- attr_str
-
-  # Olay yakalayıcı (on*) attribute'larını kaldır
-  out <- gsub("\\s+on[a-zA-Z]+\\s*=\\s*\"[^\"]*\"", "", out, perl = TRUE)
-  out <- gsub("\\s+on[a-zA-Z]+\\s*=\\s*'[^']*'", "", out, perl = TRUE)
-  out <- gsub("\\s+on[a-zA-Z]+\\s*=\\s*[^\\s>]+", "", out, perl = TRUE)
-
-  # Inline style kaldır (gerekmez, expression() benzeri riskleri eler)
-  out <- gsub("\\s+style\\s*=\\s*\"[^\"]*\"", "", out, perl = TRUE)
-  out <- gsub("\\s+style\\s*=\\s*'[^']*'", "", out, perl = TRUE)
-
-  # Tehlikeli protokolleri (# ile) etkisizleştir
-  out <- gsub(
-    "(href|src|xlink:href)\\s*=\\s*\"\\s*(?:javascript|vbscript)\\s*:[^\"]*\"",
-    "\\1=\"#\"", out, perl = TRUE, ignore.case = TRUE)
-  out <- gsub(
-    "(href|src|xlink:href)\\s*=\\s*'\\s*(?:javascript|vbscript)\\s*:[^']*'",
-    "\\1='#'", out, perl = TRUE, ignore.case = TRUE)
-  out <- gsub(
-    "(href|src|xlink:href)\\s*=\\s*(?:javascript|vbscript)\\s*:[^\\s>]*",
-    "\\1=\"#\"", out, perl = TRUE, ignore.case = TRUE)
-  out <- gsub(
-    "(href|src)\\s*=\\s*\"\\s*data\\s*:\\s*text/html[^\"]*\"",
-    "\\1=\"#\"", out, perl = TRUE, ignore.case = TRUE)
-
-  out
-}
-
-# Tek bir <...> token'ını güvenli hale getirir (yalnızca ilgi gerektirenler için).
-admin_doc_clean_one_tag <- function(tok, allowed = admin_doc_allowed_tags()) {
-  inner <- substring(tok, 2L, nchar(tok) - 1L)
-
-  # HTML yorumlarını tamamen düşür
-  if (startsWith(inner, "!--")) return("")
-
-  is_close <- grepl("^\\s*/", inner, perl = TRUE)
-  body <- sub("^\\s*/?\\s*", "", inner, perl = TRUE)
-  name <- tolower(sub("(^[a-zA-Z][a-zA-Z0-9]*).*$", "\\1", body, perl = TRUE))
-
-  # İzinli değilse etkisizleştir (escape)
-  if (!grepl("^[a-z][a-z0-9]*$", name) || !(name %in% allowed)) {
-    return(paste0("&lt;", inner, "&gt;"))
-  }
-
-  if (is_close) return(paste0("</", name, ">"))
-
-  self_close <- grepl("/\\s*$", inner)
-  attr_str <- sub("^[a-zA-Z][a-zA-Z0-9]*", "", body)
-  attr_str <- sub("/\\s*$", "", attr_str)
-  attr_str <- trimws(admin_doc_clean_attributes(attr_str))
-  closing <- if (self_close) " />" else ">"
-
-  if (nzchar(attr_str)) {
-    paste0("<", name, " ", attr_str, closing)
-  } else {
-    paste0("<", name, closing)
-  }
-}
-
-# Ham HTML'de script çalıştırabilecek bir kalıp var mı? (hızlı tek-geçiş tarama)
-# Tehlikenin TEK yolu: (a) script-yetenekli etiket, (b) on* olay yakalayıcı,
-# (c) javascript:/vbscript:/data:text/html URL. Hiçbiri yoksa HTML zaten
-# zararsızdır ve pahalı token ayrıştırması atlanır (büyük belge performansı).
-admin_doc_html_has_risk <- function(html) {
-  pattern <- paste0(
-    "<\\s*/?\\s*(?:script|style|iframe|object|embed|form|input|link|meta",
-    "|base|svg|math|template|frame|frameset|applet|noscript|xml|image|button",
-    "|select|textarea|marquee|audio|video|source|track|canvas|portal|html|body|head)\\b",
-    "|\\son[a-zA-Z]+\\s*=",
-    "|(?:javascript|vbscript)\\s*:",
-    "|data\\s*:\\s*text/html"
-  )
-  grepl(pattern, html, perl = TRUE, ignore.case = TRUE)
-}
-
-admin_doc_sanitize_html <- function(html) {
-  if (is.null(html) || length(html) != 1L || is.na(html) || !nzchar(html)) {
-    return("")
-  }
-
-  # Hızlı yol: hiçbir riskli kalıp yoksa, çıktıyı olduğu gibi döndür.
-  if (!admin_doc_html_has_risk(html)) {
-    return(html)
-  }
-
-  allowed <- admin_doc_allowed_tags()
-  m <- gregexpr("<[^>]*>", html, perl = TRUE)
-  toks <- regmatches(html, m)[[1]]
-  if (!length(toks)) return(html)
-
-  # Performans: büyük belgelerde token sayısı binlerce olabilir. commonmark
-  # çıktısının ezici çoğunluğu güvenli yapısal etiketlerdir (<p>, <li>, <a ...>).
-  # Bu yüzden önce VEKTÖREL bir geçişle yalnızca "ilgi gerektiren" token'ları
-  # işaretler, ardından sadece onları tekil temizlik fonksiyonundan geçiririz.
-  inner <- substring(toks, 2L, nchar(toks) - 1L)
-  body0 <- sub("^\\s*/?\\s*", "", inner, perl = TRUE)
-  names_v <- tolower(sub("(^[a-zA-Z][a-zA-Z0-9]*).*$", "\\1", body0, perl = TRUE))
-  valid_name <- grepl("^[a-z][a-z0-9]*$", names_v, perl = TRUE)
-  is_comment <- startsWith(inner, "!--")
-  disallowed <- !valid_name | !(names_v %in% allowed)
-  dangerous_attr <- grepl(
-    "(\\son[a-zA-Z]+\\s*=)|(\\sstyle\\s*=)|((?:javascript|vbscript)\\s*:)|(data\\s*:\\s*text/html)",
-    toks, perl = TRUE, ignore.case = TRUE
-  )
-
-  needs <- is_comment | disallowed | dangerous_attr
-  if (any(needs)) {
-    idx <- which(needs)
-    toks[idx] <- vapply(
-      toks[idx], admin_doc_clean_one_tag, character(1),
-      allowed = allowed, USE.NAMES = FALSE
-    )
-    regmatches(html, m) <- list(toks)
-  }
-
-  html
-}
+# HTML güvenlik temizliği (etiket beyaz-listesi, tırnak duyarlı etiket ve
+# öznitelik ayrıştırıcısı) R/helpers_admin_documentation_sanitize.R içindedir.
 
 # ------------------------------------------------------------------------------
 # İÇİNDEKİLER (TOC) + BAŞLIK ÇAPALARI
@@ -381,9 +322,11 @@ admin_doc_extract_toc <- function(html) {
     text <- admin_doc_strip_tags(inner)
     if (!nzchar(text)) text <- "Bölüm"
 
+    # Tekrarlanan başlık GitHub/CommonMark kuralıyla `-1`, `-2` eki alır; böylece
+    # `#notlar-1` bağlantısı ikinci "Notlar" başlığına gider.
     anchor <- paste0("mbdoc-", admin_doc_slugify(text))
     key <- anchor
-    n <- 1L
+    n <- 0L
     while (!is.null(used[[key]])) {
       n <- n + 1L
       key <- paste0(anchor, "-", n)
@@ -441,5 +384,87 @@ admin_doc_render_document <- function(doc_id, root = admin_doc_repo_root()) {
   rendered <- admin_doc_render_markdown(content)
 
   list(ok = TRUE, doc_id = doc_id, title = entry$title, source = entry$file,
-       html = rendered$html, toc = rendered$toc, message = "")
+       html = admin_doc_rewrite_links(rendered$html, entry$file),
+       toc = rendered$toc, message = "")
+}
+
+# Belge gövdesindeki bağlantılar uygulamadan ayrılmaz (Shiny oturumu kopardı):
+# kayıtlı belgeye giden göreli bağlantı sayfa içinde o belgeyi açar
+# (data-doc-id, izin listesiyle doğrulanır), dış adres yeni sekmede açılır,
+# kayıtsız göreli yol (ör. .R şablonu) tıklanamaz metin olarak kalır.
+# `#bolum` parçası korunur (data-doc-anchor): başlık kimliğiyle aynı ASCII
+# slug'a çevrilir ve belge açıldıktan sonra o başlığa kaydırılır. `/` ile
+# başlayan bağlantı depo kökünden çözülür; kökün üstüne çıkan yol açılmaz.
+# Ham HTML bağlantıları da (tek/çift tırnak, öznitelik sırası) aynı kurala tabidir.
+admin_doc_rewrite_links <- function(html, source_file) {
+  if (!is.character(html) || length(html) != 1L || !nzchar(html)) return(html)
+  # Etiket tarayıcısı tırnak duyarlıdır: `title="1 > 0"` içindeki ">" etiketi bitirmez.
+  eslesme <- gregexpr("<a\\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>|<a\\b[^>]*>", html, perl = TRUE, ignore.case = TRUE)
+  etiketler <- regmatches(html, eslesme)[[1]]
+  if (!length(etiketler)) return(html)
+  kayitli <- list()
+  for (g in admin_doc_registry()) for (d in g$docs) kayitli[[d$file]] <- d$id
+  taban <- dirname(as.character(source_file %||% "")[1])
+  regmatches(html, eslesme) <- list(vapply(etiketler, function(tam) {
+    # Öznitelikler tırnak duyarlı ayrıştırılır: başka özniteliğin değerindeki
+    # `href=` metni hedef sayılmaz ve silinmez.
+    attrs <- admin_doc_parse_attrs(sub(">$", "", sub("^<a\\b", "", tam, perl = TRUE, ignore.case = TRUE)))
+    adlar <- vapply(attrs, function(a) a$ad, character(1))
+    if (!"href" %in% adlar) return(tam)
+    href <- attrs[[match("href", adlar)]]$deger
+    if (is.na(href)) href <- ""
+    # href/target/rel yeniden yazılır, ping atılır; diğer öznitelikler (ör. title) korunur.
+    kalan <- attrs[!adlar %in% c("href", "target", "rel", "ping")]
+    yeni <- function(nitelik, cikar = character(0)) {
+      diger <- admin_doc_attrs_html(Filter(function(a) !a$ad %in% cikar, kalan))
+      paste0("<a ", nitelik, if (nzchar(diger)) paste0(" ", diger), ">")
+    }
+    if (grepl("^(https?|mailto):", href, ignore.case = TRUE)) {
+      return(yeni(sprintf("href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\"",
+                          gsub("\"", "&quot;", href, fixed = TRUE))))
+    }
+    ham <- sub("[?#].*$", "", href)
+    parca <- if (grepl("#", href, fixed = TRUE)) sub("^[^#]*#", "", href) else ""
+    capa <- ""
+    if (nzchar(parca)) {
+      cozulen <- try(utils::URLdecode(parca), silent = TRUE)
+      if (inherits(cozulen, "try-error") || !validUTF8(cozulen)) cozulen <- parca
+      Encoding(cozulen) <- "UTF-8"
+      capa <- sprintf(" data-doc-anchor=\"%s\"", admin_doc_slugify(cozulen))
+    }
+    if (!nzchar(ham)) return(yeni(paste0("href=\"#\"", capa)))
+    # commonmark boşluk ve ASCII dışı karakterleri yüzde kodlar; yol kayıt
+    # defteriyle karşılaştırılmadan önce çözülür.
+    ham_cozulen <- try(utils::URLdecode(ham), silent = TRUE)
+    if (!inherits(ham_cozulen, "try-error") && validUTF8(ham_cozulen)) {
+      Encoding(ham_cozulen) <- "UTF-8"
+      ham <- ham_cozulen
+    }
+    kokten <- startsWith(ham, "/")
+    parcalar <- strsplit(if (kokten || taban %in% c("", ".")) ham else paste(taban, ham, sep = "/"),
+                         "/", fixed = TRUE)[[1]]
+    yol <- character(0)
+    tasti <- FALSE
+    for (p in parcalar) {
+      if (p %in% c("", ".")) next
+      if (identical(p, "..") && !length(yol)) {
+        tasti <- TRUE
+        break
+      }
+      yol <- if (identical(p, "..")) utils::head(yol, -1L) else c(yol, p)
+    }
+    hedef <- paste(yol, collapse = "/")
+    if (!tasti && !is.null(kayitli[[hedef]])) {
+      return(yeni(sprintf("href=\"#\" data-doc-id=\"%s\"%s", kayitli[[hedef]], capa),
+                  c("data-doc-id", "data-doc-anchor")))
+    }
+    goster <- if (tasti) ham else hedef
+    # Yazarın sınıfı tek `class` özniteliğinde birleştirilir (yinelenen öznitelik yok).
+    sinif <- Filter(function(a) identical(a$ad, "class") && !is.na(a$deger), kalan)
+    sinif <- trimws(paste("mb-doc-link-offline", if (length(sinif)) sinif[[1]]$deger else ""))
+    yeni(sprintf("class=\"%s\" title=\"%s\"", gsub("\"", "&quot;", sinif, fixed = TRUE),
+                 htmltools::htmlEscape(paste("Uygulama içinde açılamaz:", goster), attribute = TRUE)),
+         c("class", "title"))
+  }, character(1), USE.NAMES = FALSE))
+  html
 }
