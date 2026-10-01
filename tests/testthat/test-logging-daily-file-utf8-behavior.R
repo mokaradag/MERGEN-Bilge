@@ -11,15 +11,11 @@
 # appender/layout, shiny.error) çağıran test bitince geri yükler; geri yükleme
 # local_tempdir() dizini silinmeden önce çalışır (defer LIFO).
 .log_utf8_env <- function(log_dir) {
-  eski_threshold <- logger::log_threshold()
-  eski_app1 <- tryCatch(logger::log_appender(index = 1), error = function(e) NULL)
-  eski_lay1 <- tryCatch(logger::log_layout(index = 1), error = function(e) NULL)
+  kayit_ortami <- get("namespaces", envir = asNamespace("logger"))
+  eski_kayitlar <- get("global", envir = kayit_ortami)
   eski_shiny_error <- getOption("shiny.error")
   withr::defer({
-    tryCatch(logger::delete_logger_index(index = 2), error = function(e) NULL)
-    if (!is.null(eski_app1)) tryCatch(logger::log_appender(eski_app1, index = 1), error = function(e) NULL)
-    if (!is.null(eski_lay1)) tryCatch(logger::log_layout(eski_lay1, index = 1), error = function(e) NULL)
-    tryCatch(logger::log_threshold(eski_threshold), error = function(e) NULL)
+    assign("global", eski_kayitlar, envir = kayit_ortami)
     options(shiny.error = eski_shiny_error)
   }, envir = parent.frame())
 
@@ -543,4 +539,17 @@ test_that("yetim günlük sahiplenilirken bayt kaydı kopyalanamazsa yeniden ekl
   expect_equal(env$.mergen_log_merged_offset(sahip), 4)
   expect_true(env$.mergen_log_merge_fallback(hedef, sahip))
   expect_identical(rawToChar(.log_utf8_bytes(hedef)), "bir\niki\n")
+})
+
+test_that("günlük test fikstürü mevcut ikinci appender ve layout'u aynen korur", {
+  skip_if_not_installed("logger")
+  kayit_ortami <- get("namespaces", envir = asNamespace("logger"))
+  eski <- get("global", envir = kayit_ortami)
+  withr::defer(assign("global", eski, envir = kayit_ortami))
+  logger::log_appender(function(lines) invisible(NULL), index = 2)
+  logger::log_layout(logger::layout_glue, index = 2)
+  once <- get("global", envir = kayit_ortami)
+  dizin <- withr::local_tempdir()
+  local({ .log_utf8_env(dizin) })
+  expect_identical(get("global", envir = kayit_ortami), once)
 })

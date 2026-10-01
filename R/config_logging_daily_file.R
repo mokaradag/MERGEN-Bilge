@@ -198,7 +198,10 @@ mergen_log_upgrade_legacy_file <- function(target_file, lock_wait = 2, stale_aft
       rm(list = anahtar, envir = .MERGEN_LOG_MERGE_OFFSET)
     }
     unlink(yan)
-    return(invisible(TRUE))
+    if (!file.exists(yan)) return(invisible(TRUE))
+    yazim <- suppressWarnings(try(writeLines("0", yan), silent = TRUE))
+    dogrulama <- suppressWarnings(try(readLines(yan, n = 1L, warn = FALSE), silent = TRUE))
+    return(invisible(!inherits(yazim, "try-error") && identical(dogrulama, "0")))
   }
   .MERGEN_LOG_MERGE_OFFSET[[anahtar]] <- ofs
   yazim <- suppressWarnings(try(writeLines(format(ofs, scientific = FALSE), yan), silent = TRUE))
@@ -206,13 +209,17 @@ mergen_log_upgrade_legacy_file <- function(target_file, lock_wait = 2, stale_aft
 }
 
 .mergen_log_append_fallback <- function(lines, target_file) {
-  kilit <- filelock::lock(paste0(target_file, ".writer"), timeout = 250)
+  kilit <- tryCatch(filelock::lock(paste0(target_file, ".writer"), timeout = 250),
+                    error = function(e) NULL)
   if (is.null(kilit)) {
     target_file <- sub("\\.log$", paste0("-", basename(tempfile("")), ".log"), target_file)
     kilit <- filelock::lock(paste0(target_file, ".writer"), timeout = 0)
     if (is.null(kilit)) stop("Yedek günlük kilidi alınamadı.")
   }
   on.exit(filelock::unlock(kilit), add = TRUE)
+  if (!file.exists(target_file) && !isTRUE(.mergen_log_merged_offset(target_file, 0))) {
+    stop("Yedek günlük bayt kaydı sıfırlanamadı.")
+  }
   mergen_log_append_utf8(lines, target_file)
 }
 
@@ -236,7 +243,10 @@ mergen_log_upgrade_legacy_file <- function(target_file, lock_wait = 2, stale_aft
   ofs <- .mergen_log_merged_offset(yedek)
   kopyalanan <- 0
   giris <- file(yedek, open = "rb")
-  cikis <- file(target_file, open = "ab")
+  on.exit(try(close(giris), silent = TRUE), add = TRUE)
+  cikis <- suppressWarnings(try(file(target_file, open = "ab"), silent = TRUE))
+  if (inherits(cikis, "try-error")) return(invisible(FALSE))
+  on.exit(if (!is.null(cikis)) try(close(cikis), silent = TRUE), add = TRUE)
   kopya <- try({
     if (ofs > 0) seek(giris, where = ofs, origin = "start")
     repeat {
@@ -251,6 +261,7 @@ mergen_log_upgrade_legacy_file <- function(target_file, lock_wait = 2, stale_aft
   }, silent = TRUE)
   tamam <- !inherits(kopya, "try-error")
   close(giris)
+  giris <- NULL
   if (!is.null(cikis)) try(close(cikis), silent = TRUE)
   if (isTRUE(tamam)) {
     unlink(yedek)
@@ -300,7 +311,7 @@ mergen_log_upgrade_legacy_file <- function(target_file, lock_wait = 2, stale_aft
 .mergen_log_orphan_fallbacks <- function(target_file, surec_yedek, kilitli) {
   if (!isTRUE(kilitli)) return(character(0))
   kok <- gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", sub("\\.log$", "", basename(target_file)))
-  adaylar <- list.files(dirname(target_file), pattern = paste0("^", kok, "\\.p[A-Za-z0-9_-]+\\.log$"),
+  adaylar <- list.files(dirname(target_file), pattern = paste0("^", kok, "(\\.p[A-Za-z0-9_-]+|\\.utf8-[A-Za-z0-9_-]+)\\.log$"),
                         full.names = TRUE)
   adaylar <- adaylar[basename(adaylar) != basename(surec_yedek)]
   # Bu sürecin önceden sahiplenip birleştiremediği yedekler yaşa bakılmadan
@@ -366,7 +377,7 @@ mergen_log_write_utf8 <- function(lines, target_file) {
   if (!isTRUE(mergen_log_upgrade_legacy_file(target_file, nabiz = nabiz))) {
     return(invisible(.mergen_log_append_fallback(lines, yedek) > 0))
   }
-  for (y in c(yedek, .mergen_log_orphan_fallbacks(target_file, surec_yedek, !is.null(jeton)), surec_yedek)) {
+  for (y in c(yedek, .mergen_log_orphan_fallbacks(target_file, surec_yedek, TRUE), surec_yedek)) {
     if (file.exists(y) && !isTRUE(.mergen_log_merge_fallback(target_file, y, nabiz))) {
       return(invisible(.mergen_log_append_fallback(lines, y) > 0))
     }

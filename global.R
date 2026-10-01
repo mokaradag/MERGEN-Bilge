@@ -108,9 +108,9 @@ register_global_resource_path <- function(prefix, directory, create = FALSE) {
   invisible(TRUE)
 }
 
-# Destek ek dosyalarını sunmak için kaynak yolu tanımla
+# Destek ekleri oturuma bağlı yönetici uç noktasından sunulur.
 destek_uploads_dir <- file.path(getwd(), "destek_uploads")
-register_global_resource_path("destek_uploads", destek_uploads_dir)
+if ("destek_uploads" %in% names(shiny::resourcePaths())) shiny::removeResourcePath("destek_uploads")
 
 # Bilge Yolaç tarafından üretilen dosyaları yerel indirme bağlantısı olarak sun
 bilge_yolac_downloads_dir <- file.path(getwd(), "bilge_yolac_downloads")

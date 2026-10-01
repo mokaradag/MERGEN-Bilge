@@ -205,18 +205,15 @@ admin_ha_attachment_download_button <- function(gorsel_yol, dosya_adi) {
   )
 }
 
-admin_ha_attachment_public_path <- function(dosya_yolu) {
-  if (grepl("^destek_uploads/", dosya_yolu)) {
-    paste0("/", dosya_yolu)
-  } else {
-    paste0("/destek_uploads/", dosya_yolu)
-  }
+admin_ha_attachment_public_path <- function(dosya_yolu, urls = character(0)) {
+  unname(urls[dosya_yolu])
 }
 
-admin_ha_attachment_item <- function(dosya_yolu) {
+admin_ha_attachment_item <- function(dosya_yolu, urls = character(0)) {
   uzanti <- tolower(tools::file_ext(dosya_yolu))
   dosya_adi <- basename(dosya_yolu)
-  gorsel_yol <- admin_ha_attachment_public_path(dosya_yolu)
+  gorsel_yol <- admin_ha_attachment_public_path(dosya_yolu, urls)
+  if (is.na(gorsel_yol) || !nzchar(gorsel_yol)) return(shiny::div("Ek dosya erişilemiyor."))
   indir_btn <- admin_ha_attachment_download_button(gorsel_yol, dosya_adi)
 
   header <- shiny::div(
@@ -267,8 +264,8 @@ admin_ha_attachment_item <- function(dosya_yolu) {
   )
 }
 
-admin_ha_attachment_content <- function(dosyalar) {
-  dosya_elements <- lapply(dosyalar, admin_ha_attachment_item)
+admin_ha_attachment_content <- function(dosyalar, urls = character(0)) {
+  dosya_elements <- lapply(dosyalar, admin_ha_attachment_item, urls = urls)
   do.call(shiny::tagList, dosya_elements)
 }
 
@@ -318,10 +315,11 @@ admin_ha_register_detail_runtime <- function(input,
     if (is.na(dosya_yollari) || !nzchar(dosya_yollari)) return()
 
     dosyalar <- trimws(strsplit(dosya_yollari, ",")[[1]])
+    urls <- admin_ha_attachment_urls(session, dosyalar)
 
     output$ek_dosya_content <- renderUI({
       admin_require_session(session)
-      admin_ha_attachment_content(dosyalar)
+      admin_ha_attachment_content(dosyalar, urls)
     })
 
     admin_ha_show_modal(ns, "ek_dosya_modal")

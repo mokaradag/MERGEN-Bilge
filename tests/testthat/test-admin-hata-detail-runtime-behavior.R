@@ -26,8 +26,10 @@ source(
 # -----------------------------------------------------------------------------
 
 test_that("admin_ha_attachment_public_path destek_uploads önekini akıllı uygular", {
-  expect_identical(.dhr_env$admin_ha_attachment_public_path("destek_uploads/x.png"), "/destek_uploads/x.png")
-  expect_identical(.dhr_env$admin_ha_attachment_public_path("abc.png"), "/destek_uploads/abc.png")
+  expect_true(is.na(.dhr_env$admin_ha_attachment_public_path("destek_uploads/x.png")))
+  urls <- c("destek_uploads/x.png" = "/session/attachment?token=test")
+  expect_identical(.dhr_env$admin_ha_attachment_public_path("destek_uploads/x.png", urls),
+                   "/session/attachment?token=test")
 })
 
 # -----------------------------------------------------------------------------
@@ -49,21 +51,21 @@ test_that("admin_ha_attachment_download_button href, download ve dosya adı içe
 
 test_that("admin_ha_attachment_item görsel uzantıda img + zoom kapsayıcı üretir", {
   skip_if_not_installed("shiny")
-  html <- .dhr_html(.dhr_env$admin_ha_attachment_item("destek_uploads/foto.png"))
+  html <- .dhr_html(.dhr_env$admin_ha_attachment_item("destek_uploads/foto.png", c("destek_uploads/foto.png" = "/session/photo")))
   expect_true(grepl("<img", html, fixed = TRUE))
   expect_true(grepl("admin-attachment-zoom-container", html, fixed = TRUE))
 })
 
 test_that("admin_ha_attachment_item mp4 uzantıda video etiketi üretir", {
   skip_if_not_installed("shiny")
-  html <- .dhr_html(.dhr_env$admin_ha_attachment_item("destek_uploads/film.mp4"))
+  html <- .dhr_html(.dhr_env$admin_ha_attachment_item("destek_uploads/film.mp4", c("destek_uploads/film.mp4" = "/session/video")))
   expect_true(grepl("<video", html, fixed = TRUE))
   expect_false(grepl("<img", html, fixed = TRUE))
 })
 
 test_that("admin_ha_attachment_item önizlenemeyen türde uyarı metni gösterir", {
   skip_if_not_installed("shiny")
-  html <- .dhr_html(.dhr_env$admin_ha_attachment_item("destek_uploads/belge.pdf"))
+  html <- .dhr_html(.dhr_env$admin_ha_attachment_item("destek_uploads/belge.pdf", c("destek_uploads/belge.pdf" = "/session/file")))
   expect_true(grepl("önizlenemez", html, fixed = TRUE))
   expect_false(grepl("<img", html, fixed = TRUE))
 })
@@ -75,7 +77,8 @@ test_that("admin_ha_attachment_item önizlenemeyen türde uyarı metni gösterir
 test_that("admin_ha_attachment_content birden çok dosya için tüm önizlemeleri birleştirir", {
   skip_if_not_installed("shiny")
   html <- .dhr_html(.dhr_env$admin_ha_attachment_content(
-    c("destek_uploads/a.png", "destek_uploads/b.mp4")
+    c("destek_uploads/a.png", "destek_uploads/b.mp4"),
+    c("destek_uploads/a.png" = "/session/photo", "destek_uploads/b.mp4" = "/session/video")
   ))
   expect_true(grepl("<img", html, fixed = TRUE))
   expect_true(grepl("<video", html, fixed = TRUE))

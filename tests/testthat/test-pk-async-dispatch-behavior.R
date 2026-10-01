@@ -242,6 +242,17 @@ test_that("SSO kimliği hazır değilse işçi HİÇ başlatılmaz (D16 kapısı
   kayit <- new.env(parent = emptyenv())
   kayit$dispatch_args <- NULL
   kayit$callbacks <- NULL
+  if (requireNamespace("later", quietly = TRUE)) {
+    gercek_later <- later::later
+    iptaller <- list()
+    testthat::local_mocked_bindings(later = function(func, delay = 0, ...) {
+      iptal <- gercek_later(func, delay, ...)
+      iptaller[[length(iptaller) + 1L]] <<- iptal
+      iptal
+    }, .package = "later", .env = parent.frame())
+    # Sahte işçinin bekçileri sonraki testlere taşınmaz.
+    withr::defer(for (iptal in iptaller) if (is.function(iptal)) iptal(), envir = parent.frame())
+  }
 
   env$pk_async_available <- function(...) list(available = TRUE, reason = "ok")
   env$mergen_pk_async_repo_root <- function() tempdir()

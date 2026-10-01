@@ -6,7 +6,8 @@
 # yalnızca tazelenmediğinde (yaş > stale_after) kaldırılır ve kritik adımdan
 # önce sahiplik yeniden doğrulanır. Uzun işler kilidi `nabiz` ile tazeler.
 .mergen_log_lock_acquire <- function(kilit, wait, stale_after) {
-  yerel_kilit <- filelock::lock(paste0(kilit, ".mutex"), timeout = max(0, wait * 1000))
+  yerel_kilit <- tryCatch(filelock::lock(paste0(kilit, ".mutex"),
+                                        timeout = max(0, wait * 1000)), error = function(e) NULL)
   if (is.null(yerel_kilit)) return(NULL)
   alindi <- FALSE
   on.exit(if (!alindi) filelock::unlock(yerel_kilit), add = TRUE)
@@ -57,7 +58,9 @@
   if (.mergen_log_lock_owned(kilit, jeton)) unlink(kilit, recursive = TRUE)
   yerel_kilit <- .MERGEN_LOG_NATIVE_LOCKS[[jeton]]
   if (!is.null(yerel_kilit)) filelock::unlock(yerel_kilit)
-  .MERGEN_LOG_NATIVE_LOCKS[[jeton]] <- NULL
+  if (exists(jeton, envir = .MERGEN_LOG_NATIVE_LOCKS, inherits = FALSE)) {
+    rm(list = jeton, envir = .MERGEN_LOG_NATIVE_LOCKS)
+  }
   invisible(NULL)
 }
 

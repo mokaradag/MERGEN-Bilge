@@ -197,6 +197,7 @@ health_check_http_endpoint <- function(id, label, endpoint, configured_required 
       }
       detay <- switch(kapsam$neden,
         sema = "Yalnız HTTP(S) uç noktaları denenir; desteklenmeyen şema çağrılmadı.",
+        kimlik_bilgisi = "Şifresiz HTTP adresindeki kimlik bilgileri gönderilmedi; HTTPS kullanın.",
         cozulmedi = "Uç nokta adı çözülemedi; özel ağ adresi doğrulanamadığından çağrılmadı.",
         "Genel internet adresi algılandı; offline sağlık sayfası public endpoint çağırmaz.")
       return(health_result(id, label, "warning", "Atlandı", detay, health_ms(start),
@@ -210,9 +211,9 @@ health_check_http_endpoint <- function(id, label, endpoint, configured_required 
     # olduğunu gösterir.
     # DNS adıyla onaylanan uç nokta denetlenen özel adreslere sabitlenir.
     ayar <- if (length(kapsam$pin)) {
-      httr::config(followlocation = 0L, resolve = kapsam$pin)
+      httr::config(followlocation = 0L, resolve = kapsam$pin, proxy = "")
     } else {
-      httr::config(followlocation = 0L)
+      httr::config(followlocation = 0L, proxy = "")
     }
     res <- try(httr::GET(kapsam$hedef %||% health_probe_url(endpoint), httr::timeout(timeout_sec), ayar),
                silent = TRUE)

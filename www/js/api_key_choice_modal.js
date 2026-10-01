@@ -67,11 +67,11 @@
       if (ham !== null && ham.charAt(0) === "{") {
         var o = JSON.parse(ham) || {};
         var n = Number(o.n);
-        return { v: typeof o.v === "string" ? o.v : "", n: isFinite(n) && n > 0 ? n : 0 };
+        return { v: typeof o.v === "string" ? o.v : "", n: isFinite(n) && n > 0 ? n : 0, present: true };
       }
-      return { v: ham || "", n: legacyVersion(tag) };
+      return { v: ham || "", n: legacyVersion(tag), present: ham !== null };
     } catch (e) {
-      return { v: "", n: 0 };
+      return { v: "", n: 0, present: false };
     }
   }
 
@@ -108,7 +108,7 @@
     }
     deger = deger || "";
     var kayit = readRecord(tag);
-    if (kayit.v === deger) return true;
+    if (kayit.present && kayit.v === deger) return true;
     if (typeof taban === "number" && isFinite(taban) && kayit.n > taban) {
       return kayit.v === deger;
     }
@@ -138,10 +138,14 @@
   // verilen etiketin kaydına yapılır.
   function writeSource(source, etiket, taban) {
     if (source === "personal") {
-      if (rememberedSource(etiket) !== "default") {
-        return writePref(readPref(etiket), etiket, taban);
+      var tag = typeof etiket === "string" ? etiket : currentUserTag();
+      for (var deneme = 0; deneme < 3; deneme++) {
+        var kayit = readRecord(tag);
+        if (typeof taban === "number" && kayit.n > taban) return kayit.v !== "default";
+        var deger = kayit.v === "default" ? "1" : kayit.v;
+        if (writePref(deger, tag, kayit.n) && readRecord(tag).v !== "default") return true;
       }
-      return writePref("1", etiket, taban);
+      return false;
     }
     if (source === "clear") {
       return writePref("", etiket, taban);

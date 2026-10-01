@@ -276,6 +276,7 @@ health_endpoint_scope <- function(url) {
   host <- ""
   # Yalnız HTTP(S) denenir; başka şema (ftp vb.) kapsam denetimini atlatamaz.
   if (!grepl("^https?://", url)) return(sonuc(TRUE, "sema"))
+  if (grepl("^http:[/]{2}[^/?#]*@", url)) return(sonuc(TRUE, "kimlik_bilgisi"))
   host <- health_url_host(url)
   if (identical(host, "localhost")) return(sonuc(FALSE))
   ilan <- host %in% health_internal_hosts()

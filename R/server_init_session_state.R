@@ -170,6 +170,11 @@ serverInitSessionState <- function(session, identity, sso_state = NULL) {
           try(shiny::withReactiveDomain(session, chat_reset_state(session, values)), silent = TRUE)
         }
       }
+      for (fn in c("pk_entity_context_clear", "mergen_pk_bump_chat_epoch")) {
+        if (exists(fn, mode = "function", inherits = TRUE)) {
+          try(get(fn, mode = "function")(session), silent = TRUE)
+        }
+      }
       values$messages <- list()
       values$saved_chats <- list()
       values$current_chat_id <- NULL
@@ -511,4 +516,3 @@ pk_hook_single_exit_fix_install <- function() {
   assign(".pk_hook_single_exit_installed", TRUE, envir = target_env)
   invisible(TRUE)
 }
-

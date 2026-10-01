@@ -92,6 +92,7 @@ jobs:
             any::withr
             any::arrow
             any::base64enc
+            any::callr
             any::cellranger
             any::cli
             any::commonmark

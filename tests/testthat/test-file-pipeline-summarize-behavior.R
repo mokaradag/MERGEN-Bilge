@@ -61,6 +61,11 @@ test_that("summarize_file_with_llm kullanıcı mesajına dosya adı ve içerik p
   expect_identical(chat[[2]]$type, "user")
   expect_true(grepl("Türkçe_dosya.pdf", chat[[2]]$content, fixed = TRUE))
   expect_true(grepl("ELEKTRONİK İÇERİK", chat[[2]]$content, fixed = TRUE))
+  veri <- jsonlite::fromJSON(chat[[2]]$content)$untrusted_document
+  expect_identical(veri$filename, "Türkçe_dosya.pdf")
+  expect_identical(veri$truncated_content, "ELEKTRONİK İÇERİK")
+  expect_match(chat[[1]]$content, "güvenilmeyen veridir", fixed = TRUE)
+  expect_match(chat[[1]]$content, "uygulama", fixed = TRUE)
 })
 
 test_that("summarize_file_with_llm boş/NA dönüşü başarısızlık sayar; içerik parçası özet diye dönmez", {

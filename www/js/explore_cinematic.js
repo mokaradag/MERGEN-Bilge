@@ -7,6 +7,14 @@
 (function() {
   'use strict';
 
+  window.mergenModeSessionReady = !!(window.Shiny && Shiny.shinyapp && Shiny.shinyapp.config);
+  $(document).on('shiny:connected.mergenModeReady', function() {
+    window.mergenModeSessionReady = false;
+  });
+  $(document).on('shiny:sessioninitialized.mergenModeReady', function() {
+    window.mergenModeSessionReady = true;
+  });
+
   // Mod tanımları (açıklama metinleri)
   var CINEMATIC_MODES = {
     odak: {
@@ -173,15 +181,15 @@
 		if (window.mergenCancelModeRetry) window.mergenCancelModeRetry();
 		window.mergenCancelModeRetry = function() {
 		  modeSelectionSent = true;
-		  if (window.jQuery) window.jQuery(document).off('shiny:connected.mergenModeRetry');
+		  if (window.jQuery) window.jQuery(document).off('shiny:sessioninitialized.mergenModeRetry');
 		};
-		if (window.jQuery) window.jQuery(document).on('shiny:connected.mergenModeRetry', sendModeSelectionToShiny);
+		if (window.jQuery) window.jQuery(document).on('shiny:sessioninitialized.mergenModeRetry', sendModeSelectionToShiny);
 
 		// Bayrak yalnız olay gerçekten gönderilince kalkar; Shiny o an
 		// hazır değilse yedek çağrı yeniden dener.
 		function sendModeSelectionToShiny() {
 		  if (modeSelectionSent) return;
-		  if (typeof Shiny === 'undefined' || !Shiny.setInputValue ||
+		  if (!window.mergenModeSessionReady || typeof Shiny === 'undefined' || !Shiny.setInputValue ||
 		      (Shiny.shinyapp && Shiny.shinyapp.isConnected && !Shiny.shinyapp.isConnected())) return;
 		  try {
 			Shiny.setInputValue('selected_experience_mode', {
@@ -190,7 +198,7 @@
 			  timestamp: Date.now()
 			}, { priority: 'event' });
 			modeSelectionSent = true;
-			if (window.jQuery) window.jQuery(document).off('shiny:connected.mergenModeRetry');
+			if (window.jQuery) window.jQuery(document).off('shiny:sessioninitialized.mergenModeRetry');
 		  } catch (e) {}
 		}
 

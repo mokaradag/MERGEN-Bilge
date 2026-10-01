@@ -1159,6 +1159,7 @@ testthat::test_that("eski tam liste sonucu yeni sahibin tamamlanmış yüklemesi
 
 
 test_that("tam liste gönderimi eşzamanlı hata atarsa yükleme yeniden denenebilir", {
+  for (paket in c("shiny", "shinyjs", "promises", "later")) skip_if_not_installed(paket)
   .startup_observers_source_once()
   rec <- new.env()
   rec$dispatch_full_once <- TRUE
@@ -1172,7 +1173,7 @@ test_that("tam liste gönderimi eşzamanlı hata atarsa yükleme yeniden deneneb
   }), parent = environment(startupObserversInit))
   shiny::testServer(function(input, output, session) {
     values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
-    startup_init(input, session, values, function(...) invisible(NULL), current_user_id = 42L,
+    startup_init(input, session, values, function(...) invisible(NULL), current_user_id = function() 42L,
                          sso_state = NULL, boot_ready = NULL)
   }, {
     session$flushReact()

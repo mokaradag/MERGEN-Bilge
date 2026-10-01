@@ -395,11 +395,18 @@ tracked_future_promise <- function(task_fn,
     # görev fonksiyonu yalnızca verilen globals'ı gören izole ortama bağlanır.
     # Hazırlık hatası (ör. ilkel fonksiyon) izleme kaydını açık bırakmaz.
     hazirlik <- try({
-      fn_env <- new.env(parent = globalenv())
+      fn_env <- new.env(parent = baseenv())
+      for (pkg in rev(future_packages)) {
+        disari <- getNamespaceExports(pkg)
+        paket_env <- list2env(setNames(lapply(disari, function(nm) getExportedValue(pkg, nm)), disari),
+                             parent = parent.env(fn_env))
+        parent.env(fn_env) <- paket_env
+      }
       for (nm in names(promise_globals)) {
         if (nzchar(nm)) assign(nm, promise_globals[[nm]], envir = fn_env)
       }
       environment(task_fn) <- fn_env
+      task_fn <- serialize(task_fn, NULL)
     }, silent = TRUE)
     if (inherits(hazirlik, "try-error")) {
       finish_worker_task(task_id)
@@ -427,6 +434,7 @@ tracked_future_promise <- function(task_fn,
   p <- tryCatch({
     promises::future_promise(
       {
+        if (is.raw(task_fn)) task_fn <- unserialize(task_fn)
         task_fn()
       },
       globals = promise_globals,

@@ -18,6 +18,46 @@
   list(userData = new.env(parent = emptyenv()))
 }
 
+test_that("boşta sahip değişimi PK bağlamını temizler ve sohbet neslini artırır", {
+  env <- .owner_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "server_init_session_state.R"),
+         encoding = "UTF-8", local = env)
+  env$load_feedback_from_db <- function(...) NULL
+  temiz <- 0L
+  nesil <- 0L
+  env$pk_entity_context_clear <- function(...) temiz <<- temiz + 1L
+  env$mergen_pk_bump_chat_epoch <- function(...) nesil <<- nesil + 1L
+  kimlik <- list(resolve_current_user_id = function() 0L, is_sso_active = function() FALSE,
+                 is_auth_ready = function() TRUE)
+  shiny::testServer(function(input, output, session) NULL, {
+    durum <- env$serverInitSessionState(session, kimlik)
+    session$userData$kimlik_sahibi <- 7L
+    durum$values$is_sending <- FALSE
+    env$mergen_session_owner_transition(session$userData, 7L, 8L)
+    expect_identical(c(temiz, nesil), c(1L, 1L))
+  })
+})
+
+test_that("aynı kullanıcı yeniden giriş yapınca ayarlar canlı profili yeniden alır", {
+  env <- .owner_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_session_profile.R"),
+         encoding = "UTF-8", local = env)
+  shiny::testServer(function(input, output, session) NULL, {
+    ayarlar <- shiny::reactiveValues(user_config = NULL)
+    veri <- env$make_user_session_data_accessors(session)
+    env$mergen_session_sync_settings_profile(session, ayarlar)
+    veri$write_identity(list(username = "a"), 7L, list(selected_character = "emre"), TRUE, "keycloak")
+    session$flushReact()
+    expect_identical(shiny::isolate(ayarlar$user_config$selected_character), "emre")
+    veri$set_auth_placeholder()
+    session$flushReact()
+    expect_null(shiny::isolate(ayarlar$user_config))
+    veri$write_identity(list(username = "a"), 7L, list(selected_character = "selin"), TRUE, "keycloak")
+    session$flushReact()
+    expect_identical(shiny::isolate(ayarlar$user_config$selected_character), "selin")
+  })
+})
+
 test_that("A -> B geçişi kullanıcıya bağlı depoları ve kişisel anahtarı temizler", {
   env <- .owner_env()
   oturum <- .owner_session()

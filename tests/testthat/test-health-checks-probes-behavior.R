@@ -33,6 +33,28 @@ testthat::local_edition(3)
   all(beklenen %in% names(res)) && nrow(res) == 1L
 }
 
+test_that("HTTP kimlik bilgileri gönderilmez; özel DNS isteği proxy kullanmaz", {
+  skip_if_not_installed("httr")
+  env <- .fresh_health_env()
+  withr::local_envvar(c(LOCAL_LLM_ENDPOINT = "https://ozel.kurum.test/v1",
+                        MERGEN_HEALTH_INTERNAL_ENDPOINTS = "localhost"))
+  env$health_resolve_host_ips <- function(...) "10.20.30.40"
+  istekler <- list()
+  testthat::local_mocked_bindings(GET = function(url, ...) {
+    istekler[[length(istekler) + 1L]] <<- list(url = url, args = list(...))
+    structure(list(), class = "response")
+  }, status_code = function(...) 200L, .package = "httr")
+  sonuc <- env$health_check_http_endpoint("llm.endpoint", "LLM", "http://user:secret@localhost/v1")
+  expect_length(istekler, 0L)
+  expect_identical(sonuc$value, "Atlandı")
+  expect_false(grepl("secret", paste(unlist(sonuc), collapse = " "), fixed = TRUE))
+  env$health_check_llm_endpoint()
+  expect_length(istekler, 1L)
+  cfg <- Filter(function(x) inherits(x, "request"), istekler[[1L]]$args)
+  expect_true(any(vapply(cfg, function(x) identical(x$options$proxy, ""), logical(1))))
+  expect_true(any(vapply(cfg, function(x) length(x$options$resolve) > 0L, logical(1))))
+})
+
 # -----------------------------------------------------------------------------
 # app boot
 # -----------------------------------------------------------------------------

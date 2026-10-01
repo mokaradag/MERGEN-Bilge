@@ -486,14 +486,14 @@
 		  if (window.mergenCancelModeRetry) window.mergenCancelModeRetry();
 		  window.mergenCancelModeRetry = function() {
 			selectionSent = true;
-			if (window.jQuery) window.jQuery(document).off('shiny:connected.mergenModeRetry');
+			if (window.jQuery) window.jQuery(document).off('shiny:sessioninitialized.mergenModeRetry');
 		  };
 
 		  // Bayrak yalnız olay gerçekten gönderilince kalkar; Shiny o an hazır
 		  // değilse yedek çağrı (giriş ekranı kapanışı) yeniden dener.
 		  var sendSelectionToShiny = function() {
 			if (selectionSent) return;
-			if (typeof Shiny === 'undefined' || !Shiny.setInputValue ||
+			if (!window.mergenModeSessionReady || typeof Shiny === 'undefined' || !Shiny.setInputValue ||
 			    (Shiny.shinyapp && Shiny.shinyapp.isConnected && !Shiny.shinyapp.isConnected())) return;
 			try {
 			  Shiny.setInputValue('selected_experience_mode', {
@@ -503,7 +503,7 @@
 				timestamp: Date.now()
 			  }, { priority: 'event' });
 			  selectionSent = true;
-			  if (window.jQuery) window.jQuery(document).off('shiny:connected.mergenModeRetry');
+			  if (window.jQuery) window.jQuery(document).off('shiny:sessioninitialized.mergenModeRetry');
 			} catch (e) {
 			  return;
 			}
@@ -514,7 +514,7 @@
 
 		  // Kritik: Ayarları hemen Shiny'ye gönder.
 		  // Aksi halde intro audio callback yarışı, Kişiselleştirme sayfasını Odak'ta bırakabilir.
-		  if (window.jQuery) window.jQuery(document).on('shiny:connected.mergenModeRetry', sendSelectionToShiny);
+		  if (window.jQuery) window.jQuery(document).on('shiny:sessioninitialized.mergenModeRetry', sendSelectionToShiny);
 		  sendSelectionToShiny();
 		  _confirmInProgress = false;
 
@@ -601,4 +601,4 @@
     isActive: function() { return _currentStep === 2; }
   };
 
-})();
+})();

@@ -286,6 +286,7 @@ testthat::test_that("health_release_ui koşu seçici tam artifact yolunu sızdı
   for (dosya in c(
     "R/helpers_health_formatters.R",
     "R/helpers_health_table.R",
+    "R/helpers_health_dns_refresh.R",
     "R/module_health_overview.R",
     "R/module_health_connectivity.R",
     "R/module_health_storage.R",
@@ -332,6 +333,33 @@ testthat::test_that("healthServer 'release' sekmesi health_release_ui çıktıs�
     overview_html <- paste(as.character(output$health_tab_content), collapse = "\n")
     testthat::expect_true(grepl("10 Saniyelik Özet", overview_html, fixed = TRUE))
     testthat::expect_false(grepl("13 geçti / 0 başarısız", overview_html, fixed = TRUE))
+  })
+})
+
+testthat::test_that("bekleyen DNS tamamlanınca yalnız uç nokta satırı yenilenir", {
+  env <- .healthModuleServerEnv()
+  toplam <- 0L
+  probe <- 0L
+  satir <- function(deger) data.frame(id = "llm.endpoint", label = "LLM",
+    status = "ok", severity = 0L, value = deger, detail = "", duration_ms = 1,
+    checked_at = "", remediation = "", stringsAsFactors = FALSE)
+  env$health_collect_checks <- function(...) {
+    toplam <<- toplam + 1L
+    rbind(satir("DNS bekleniyor"), transform(satir("Hazır"), id = "db.primary"))
+  }
+  env$health_check_llm_endpoint <- function(...) {
+    probe <<- probe + 1L
+    satir(if (probe < 2L) "DNS bekleniyor" else "HTTP 200")
+  }
+  shiny::testServer(env$healthServer, args = list(perf_tracker = NULL), {
+    session$userData$user_config <- list(auth_level = "ADMIN")
+    session$setInputs(health_tabs = "overview")
+    session$elapse(300)
+    session$flushReact()
+    testthat::expect_identical(checks_data()$value, c("HTTP 200", "Hazır"))
+    session$elapse(1000)
+    testthat::expect_identical(toplam, 1L)
+    testthat::expect_identical(probe, 2L)
   })
 })
 

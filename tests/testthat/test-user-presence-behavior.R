@@ -46,6 +46,26 @@
   list(aktif = aktif, gecmis = gecmis, ad = ad)
 }
 
+test_that("POSIX varlık dizini bağlantıyı ve başka sahibin dizinini reddeder", {
+  skip_on_os("windows")
+  env <- .presence_env()
+  kok <- withr::local_tempdir()
+  hedef <- file.path(kok, "hedef")
+  dir.create(hedef)
+  bag <- file.path(kok, "bag")
+  expect_true(file.symlink(hedef, bag))
+  expect_false(env$.mb_presence_secure_dir(bag))
+  expect_true(env$.mb_presence_secure_dir(hedef))
+  mod <- file.info(hedef)$mode
+  env$file.info <- function(yol, ...) {
+    bilgi <- base::file.info(yol, ...)
+    if (identical(yol, hedef)) bilgi$uid <- bilgi$uid + 1L
+    bilgi
+  }
+  expect_false(env$.mb_presence_secure_dir(hedef))
+  expect_identical(base::file.info(hedef)$mode, mod)
+})
+
 test_that("anlık görüntü çevrimiçi, sessiz ve ayrılan kullanıcıları doğru sınıflar", {
   env <- .presence_env()
   now <- as.POSIXct("2026-09-25 10:00:00", tz = "UTC")
@@ -292,6 +312,8 @@ test_that("performans modülü profili kaydeder ve kapanan oturumu geçmişe ta�
       aktif <- get(".mergen_active_sessions", envir = globalenv())
       sonuc$token <- session$token
       sonuc$kayit <- aktif[[session$token]]
+      sonuc$stats <- session$returned$stats
+      sonuc$onceki <- shiny::isolate(sonuc$stats$active_users)
     })
   })))
   withr::defer(suppressWarnings(rm(list = sonuc$token, envir = gecmis)))
@@ -301,6 +323,7 @@ test_that("performans modülü profili kaydeder ve kapanan oturumu geçmişe ta�
   expect_s3_class(sonuc$kayit$started_at, "POSIXct")
   aktif <- get(".mergen_active_sessions", envir = globalenv())
   expect_false(sonuc$token %in% ls(aktif))
+  expect_identical(shiny::isolate(sonuc$stats$active_users), sonuc$onceki - 1L)
   expect_true(sonuc$token %in% ls(gecmis))
   expect_identical(gecmis[[sonuc$token]]$profile$username, "tkisi")
 })

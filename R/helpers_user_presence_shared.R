@@ -68,7 +68,11 @@ mb_presence_shared_dir <- function() {
     dir.create(dizin, recursive = TRUE, showWarnings = FALSE)
     return(.mb_presence_windows_acl(dizin))
   }
-  dir.create(dizin, recursive = TRUE, showWarnings = FALSE, mode = "0700")
+  if (!dir.exists(dizin)) dir.create(dizin, recursive = TRUE, showWarnings = FALSE, mode = "0700")
+  ata <- normalizePath(dirname(dizin), winslash = "/", mustWork = TRUE)
+  dogrudan <- file.path(ata, basename(dizin))
+  if (!identical(normalizePath(dizin, winslash = "/", mustWork = TRUE), dogrudan) ||
+      nzchar(Sys.readlink(dizin)) || !isTRUE(file.info(dizin)$uid == file.info(tempdir())$uid)) return(FALSE)
   Sys.chmod(dizin, mode = "0700", use_umask = FALSE)
   isTRUE(format(file.info(dizin)$mode) == "700")
 }

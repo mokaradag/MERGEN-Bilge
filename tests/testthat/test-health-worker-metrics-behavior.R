@@ -85,6 +85,7 @@ testthat::test_that("render_worker_health_html htmltools HTML işaretli çıktı
 })
 
 testthat::test_that("eksik ya da NA işçi sayaçları satırı düşürmez ve NA yazmaz", {
+  testthat::skip_if_not_installed("htmltools")
   env <- .source_worker_metrics_for_test()
   bilgi <- .sample_worker_info()
   bilgi$total_workers <- NULL

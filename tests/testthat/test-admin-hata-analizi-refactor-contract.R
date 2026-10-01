@@ -184,11 +184,12 @@ test_that("admin hata ek dosya helperı destek_uploads yolunu ve indirme kartın
 
   env <- .source_admin_hata_helper_for_test()
 
-  item <- env$admin_ha_attachment_item("destek_uploads/ekran.png")
+  item <- env$admin_ha_attachment_item("destek_uploads/ekran.png",
+                                        c("destek_uploads/ekran.png" = "/session/attachment"))
   html <- paste(as.character(item), collapse = "")
 
   expect_true(grepl("admin-attachment-item", html, fixed = TRUE))
-  expect_true(grepl("src=\"/destek_uploads/ekran.png\"", html, fixed = TRUE))
+  expect_true(grepl("src=\"/session/attachment\"", html, fixed = TRUE))
   expect_true(grepl("download=\"ekran.png\"", html, fixed = TRUE))
 })
 

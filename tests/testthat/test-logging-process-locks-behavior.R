@@ -15,6 +15,8 @@
 }
 
 test_that("canlı yedek yazıcının kilidi sahiplenmeyi ve veri kaybını önler", {
+  skip_if_not_installed("callr")
+  skip_if_not_installed("filelock")
   env <- .log_lock_env()
   dizin <- withr::local_tempdir()
   ana <- file.path(dizin, "mergen_20260101.log")
@@ -49,6 +51,8 @@ test_that("canlı yedek yazıcının kilidi sahiplenmeyi ve veri kaybını önle
 })
 
 test_that("canlı süreçte eski mtime işletim sistemi kilidini devraldırmaz", {
+  skip_if_not_installed("callr")
+  skip_if_not_installed("filelock")
   env <- .log_lock_env()
   dizin <- withr::local_tempdir()
   kilit <- file.path(dizin, "yazim.lock")

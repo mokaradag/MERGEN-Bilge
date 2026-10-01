@@ -7,7 +7,7 @@
   for (ad in c("helpers_user_session_identity.R", "helpers_admin_analytics.R",
                 "module_admin_analytics.R", "module_admin_geri_bildirim.R",
                 "module_admin_hata_analizi.R", "module_admin_yanit_analizi.R",
-                "helpers_admin_hata_detail_runtime.R")) {
+                "helpers_admin_attachments.R", "helpers_admin_hata_detail_runtime.R")) {
     source(file.path(resolve_repo_root_for_tests(), "R", ad), encoding = "UTF-8", local = env)
   }
   env
@@ -62,6 +62,7 @@ test_that("önceden açılmış hata ekleri ve doğrudan durum girdileri yetki k
   env$destek_hata_durum_guncelle <- function(...) yazim <<- yazim + 1L
   env$showToast <- env$admin_ha_show_modal <- function(...) invisible(NULL)
   env$admin_ha_attachment_content <- function(...) shiny::div("GIZLI_EK")
+  env$admin_ha_attachment_urls <- function(...) character(0)
   shiny::testServer(function(input, output, session) {
     veri <- env$make_user_session_data_accessors(session)
     veri$write_identity(list(username = "a"), 7L, list(auth_level = "ADMIN"), TRUE, "keycloak")
@@ -71,10 +72,13 @@ test_that("önceden açılmış hata ekleri ve doğrudan durum girdileri yetki k
   }, {
     session$setInputs(dosya_goster = 1L)
     expect_match(output$ek_dosya_content$html, "GIZLI_EK")
+    session$setInputs(yeni_durum = "cozuldu")
+    session$setInputs(durum_bildirim_id_val = 1L)
+    expect_identical(yazim, 1L)
     veri$write_identity(list(username = "b"), 8L, list(auth_level = "USER"), TRUE, "keycloak")
     session$setInputs(dosya_goster = 2L, durum_guncelle = 1L, durum_kaydet = 1L,
-                      durum_bildirim_id_val = 1L, yeni_durum = "cozuldu")
+                      durum_bildirim_id_val = 2L, yeni_durum = "cozuldu")
     expect_error(output$ek_dosya_content, class = "shiny.silent.error")
-    expect_identical(yazim, 0L)
+    expect_identical(yazim, 1L)
   })
 })

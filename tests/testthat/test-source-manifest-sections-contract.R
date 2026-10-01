@@ -274,7 +274,7 @@
   # n = 7L -> 8L bilinçli güncelleme: uç nokta host sınıflandırması
   # (R/helpers_health_endpoint_scope.R) satır bütçesi nedeniyle ayrı dosyaya
   # alındı; helpers_health_checks.R'den ÖNCE yüklenir.
-  support_admin_health_helpers = list(first = "R/helpers_destek_database.R", last = "R/helpers_health_checks.R", n = 8L),
+  support_admin_health_helpers = list(first = "R/helpers_destek_database.R", last = "R/helpers_health_dns_refresh.R", n = 9L),
   # Bilinçli güncelleme: R/helpers_ai_expert_handlers_support.R (AI Uzman handler
   # saf karar yardımcıları) bölüm sonuna eklendi; 3 -> 4 dosya.
   ai_expert_helpers = list(first = "R/helpers_ai_expert_user_data.R", last = "R/helpers_ai_expert_handlers_support.R", n = 6L),
@@ -362,14 +362,14 @@
   # koordinatör module_admin_analytics.R'den önce eklendi.
   # module_admin n = 23L -> 24L: Dokümantasyon HTML temizleyicisi
   # (`helpers_admin_documentation_sanitize.R`, fonksiyon ratchet bölünmesi).
-  module_admin = list(first = "R/module_admin_genel_bakis.R", last = "R/module_admin_documentation.R", n = 24L),
+  module_admin = list(first = "R/module_admin_genel_bakis.R", last = "R/module_admin_documentation.R", n = 25L),
   # n = 10L -> 11L bilinçli güncelleme: "Çevrimiçi" sekmesi UI'ı
   # (R/module_health_presence.R) module_health.R'den ÖNCE eklendi.
   module_health_chartlab = list(first = "R/module_health_worker_metrics.R", last = "R/module_chartlab.R", n = 11L),
   # Bilinçli güncelleme: SSO auth-ready / yenilenebilir modül wiring katmanı
   # R/server_runtime_auth_ready.R dosyasına ayrıldı (server_runtime_context.R'den
   # sonra). 13 -> 14.
-  server_init_runtime = list(first = "R/server_session_cache.R", last = "R/server_init_chat_runtime.R", n = 14L),
+  server_init_runtime = list(first = "R/server_session_cache.R", last = "R/server_init_chat_runtime.R", n = 15L),
   server_core_outputs_welcome = list(first = "R/server_core_observer_runtime.R", last = "R/server_welcome_handlers.R", n = 7L),
   server_observers = list(first = "R/server_observers_startup.R", last = "R/server_observers_misc.R", n = 11L),
   # Bilinçli güncelleme: R/server_handler_langflow.R (Süreç/Uygulama Uzmanı
@@ -764,7 +764,7 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # temizleyicisi; `helpers_admin_documentation.R` 24 fonksiyon tavanındaydı).
   # 508 -> 509: `helpers_ai_expert_greeting_topic.R` (karşılama önekinin son
   # konusu işçide okunur; `helpers_ai_expert_user_data.R` bütçesi korunur).
-  expect_equal(length(runtime), 510L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  expect_equal(length(runtime), 513L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]
@@ -787,4 +787,18 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
     character(0),
     info = paste("Bölümlenmiş manifestte olmayan dosyalar:", paste(missing_paths, collapse = ", "))
   )
+})
+
+test_that("yeni yardımcılar bağımlılıklarından sonra ve çağıranlarından önce yüklenir", {
+  env <- .load_source_manifest_env_for_sections()
+  runtime <- env$source_manifest_runtime_paths
+  for (sira in list(
+    c("R/helpers_health_checks.R", "R/helpers_health_dns_refresh.R", "R/module_health.R"),
+    c("R/helpers_user_session_identity.R", "R/helpers_session_profile.R", "R/server_core_observer_runtime.R"),
+    c("R/helpers_admin_attachments.R", "R/helpers_admin_hata_detail_runtime.R")
+  )) {
+    konum <- match(sira, runtime)
+    expect_false(anyNA(konum))
+    expect_true(all(diff(konum) > 0L))
+  }
 })

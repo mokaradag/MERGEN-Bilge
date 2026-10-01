@@ -21,13 +21,13 @@ filePreviewServer <- function(id) {
     onizleme_gecerli <- function(nesli) {
       identical(as.integer(nesli %||% -1L)[1], as.integer(session$userData$kimlik_nesli %||% 0L)[1])
     }
-    # İki sabit uç nokta tutulur; URL jetonu eski adresin yeni dosyaya bağlanmasını önler.
-    veri_sayaci <- 0L
+    # İki uç noktanın bağımsız, tahmin edilemeyen erişim jetonları vardır.
+    veri_jetonlari <- list()
     veri_istegi_gecerli <- function(data, req) {
       sorgu <- as.character(req$QUERY_STRING %||% "")[1]
-      eslesme <- regmatches(sorgu, regexec("(?:^|&)preview_token=([0-9]+)(?:&|$)", sorgu, perl = TRUE))[[1]]
+      eslesme <- regmatches(sorgu, regexec("(?:^|&)preview_token=([0-9a-f]{64})(?:&|$)", sorgu, perl = TRUE))[[1]]
       length(eslesme) == 2L && identical(eslesme[2], as.character(data$jeton)) &&
-        identical(data$jeton, veri_sayaci) && onizleme_gecerli(data$nesli)
+        identical(data$jeton, veri_jetonlari[[data$uc]]) && onizleme_gecerli(data$nesli)
     }
 
     # Aynı dosya tekrar önizlendiğinde base64 üretimini tekrar yapmamak için önbellek
@@ -43,6 +43,7 @@ filePreviewServer <- function(id) {
     if (exists("mergen_session_on_owner_change", mode = "function")) {
       mergen_session_on_owner_change(session, function(neden) {
         file_storage$preview_file <- NULL
+        veri_jetonlari <<- list()
         # Süren DOCX kodlaması ve önbellek yeni sahibe taşınmaz.
         docx_preview_seq(isolate(docx_preview_seq()) + 1L)
         preview_b64_cache(list())
@@ -208,12 +209,13 @@ filePreviewServer <- function(id) {
           if (!is.na(fsize) && fsize > PDF_NEWTAB_THRESHOLD) {
             # --- BÜYÜK PDF (> 1.5 MB): tarayıcının yerel PDF görüntüleyicisinde yeni sekmede aç ---
             # base64 kodlama yerine dosyayı doğrudan Shiny oturumu üzerinden sun
-            veri_sayaci <<- veri_sayaci + 1L
             pdf_obj_name <- "pdf_preview"
+            veri_jetonlari[[pdf_obj_name]] <<- paste(format(openssl::rand_bytes(32)), collapse = "")
             pdf_url <- session$registerDataObj(
               name  = pdf_obj_name,
               data  = list(path = datapath, fname = file_storage$preview_file$name,
-                           nesli = file_storage$preview_file$nesli, jeton = veri_sayaci),
+                           nesli = file_storage$preview_file$nesli, uc = pdf_obj_name,
+                           jeton = veri_jetonlari[[pdf_obj_name]]),
               filterFunc = function(data, req) {
                 if (!veri_istegi_gecerli(data, req)) {
                   return(shiny::httpResponse(status = 403L, content_type = "text/plain; charset=UTF-8",
@@ -239,7 +241,7 @@ filePreviewServer <- function(id) {
               }
             )
 
-            pdf_url <- paste0(pdf_url, "&preview_token=", veri_sayaci)
+            pdf_url <- paste0(pdf_url, "&preview_token=", veri_jetonlari[[pdf_obj_name]])
             # Bilgi modalı göster (İndir butonu devre dışı — dosya zaten yeni sekmede)
             showModal(modalDialog(
               title = modalTitle,
@@ -553,12 +555,13 @@ filePreviewServer <- function(id) {
             "svg"  = "image/svg+xml",
             "application/octet-stream"
           )
-          veri_sayaci <<- veri_sayaci + 1L
           img_obj_name <- "img_preview"
+          veri_jetonlari[[img_obj_name]] <<- paste(format(openssl::rand_bytes(32)), collapse = "")
           img_url <- session$registerDataObj(
             name = img_obj_name,
             data = list(path = datapath, ctype = img_content_type,
-                        nesli = file_storage$preview_file$nesli, jeton = veri_sayaci),
+                        nesli = file_storage$preview_file$nesli, uc = img_obj_name,
+                        jeton = veri_jetonlari[[img_obj_name]]),
             filterFunc = function(data, req) {
               if (!veri_istegi_gecerli(data, req)) {
                 return(shiny::httpResponse(status = 403L, content_type = "text/plain; charset=UTF-8",
@@ -580,7 +583,7 @@ filePreviewServer <- function(id) {
               )
             }
           )
-          img_url <- paste0(img_url, "&preview_token=", veri_sayaci)
+          img_url <- paste0(img_url, "&preview_token=", veri_jetonlari[[img_obj_name]])
 
           showModal(modalDialog(
             title = modalTitle,

@@ -150,6 +150,12 @@ mergen_worker_print_plan <- function(plan) {
 
 # Worker'lari baslatir ve canli tutar. dry_run = TRUE ise yalnizca plani dondurur
 # (test/inceleme; gercek surec baslatmaz).
+mergen_worker_launch_logs <- function(spec) {
+  jeton <- basename(tempfile("launch-"))
+  list(stdout = file.path(spec$workdir, "logs", sprintf("worker-%d-%s-stdout.log", spec$port, jeton)),
+       stderr = file.path(spec$workdir, "logs", sprintf("worker-%d-%s-stderr.log", spec$port, jeton)))
+}
+
 mergen_start_workers <- function(dry_run = FALSE) {
   plan <- mergen_worker_launch_plan()
   # Tum port araligi baslatmadan once dogrulanir: 65535'i asan port cocugu
@@ -176,14 +182,15 @@ mergen_start_workers <- function(dry_run = FALSE) {
 
   # Cocuk ciktisi dosyaya gider; konsolsuz Windows hostu da baslatabilir.
   start_one <- function(spec) {
+    log_paths <- mergen_worker_launch_logs(spec)
     dir.create(file.path(spec$workdir, "logs"), showWarnings = FALSE)
     p <- processx::process$new(
       command = spec$command,
       args = spec$args,
       wd = spec$workdir,
       env = c("current", spec$env),
-      stdout = file.path(spec$workdir, "logs", sprintf("worker-%d-stdout.log", spec$port)),
-      stderr = file.path(spec$workdir, "logs", sprintf("worker-%d-stderr.log", spec$port)),
+      stdout = log_paths$stdout,
+      stderr = log_paths$stderr,
       supervise = TRUE
     )
     cat(sprintf("[WORKER] baslatildi port=%d pid=%s\n", spec$port,

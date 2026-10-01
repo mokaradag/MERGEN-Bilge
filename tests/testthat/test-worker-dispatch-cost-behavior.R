@@ -31,6 +31,30 @@
   isTRUE(kosul())
 }
 
+test_that("explicit görev eski global değeri okuyamaz; ilan edilen paket görünür", {
+  skip_if_not_installed("promises")
+  skip_if_not_installed("future")
+  skip_if_not_installed("later")
+  withr::local_options(future.globals.maxSize = Inf)
+  assign(".worker_undeclared_value", 99L, envir = globalenv())
+  withr::defer(rm(".worker_undeclared_value", envir = globalenv()))
+  calistir <- function(fn, packages = NULL) {
+    sonuc <- new.env(parent = emptyenv())
+    p <- tracked_future_promise(fn, task_type = "unit_explicit_boundary",
+                                dependency_mode = "explicit", packages = packages)
+    promises::then(p, onFulfilled = function(v) sonuc$v <- v,
+                   onRejected = function(e) sonuc$e <- conditionMessage(e))
+    expect_true(.wd_bekle(function() !is.null(sonuc$v) || !is.null(sonuc$e)))
+    as.list(sonuc)
+  }
+  hata <- calistir(function() .worker_undeclared_value)
+  expect_match(hata$e, "worker_undeclared_value")
+  expect_null(hata$v)
+  paket <- calistir(function() head(1:5, 2L), "utils")
+  expect_null(paket$e)
+  expect_identical(paket$v, 1:2)
+})
+
 .wd_say <- function() {
   wm_env <- environment(tracked_future_promise)
   eski_detect <- get("worker_monitor_detect_task_deps", envir = wm_env)
@@ -152,7 +176,7 @@ test_that("önbellek ilk taramada tanımsız doğrudan serbest değişkeni sonra
 test_that("dosya özeti kuyruğu eşzamanlı iş sayısını sınırlar ve sırayla başlatır", {
   skip_if_not_installed("promises")
   skip_if_not_installed("later")
-  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "2"))
+  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "2", MERGEN_APP_WORKER_COUNT = "1", MERGEN_APP_WORKER_INDEX = "1"))
   kok <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   .wd_ozet_kaynak(env)
@@ -185,7 +209,7 @@ test_that("dosya özeti kuyruğu eşzamanlı iş sayısını sınırlar ve sıra
 test_that("kapanan oturumun kuyruktaki özeti başlatılmaz", {
   skip_if_not_installed("promises")
   skip_if_not_installed("later")
-  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "1"))
+  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "1", MERGEN_APP_WORKER_COUNT = "1", MERGEN_APP_WORKER_INDEX = "1"))
   kok <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   .wd_ozet_kaynak(env)
@@ -215,7 +239,7 @@ test_that("özet sınırı işçi havuzundan türetilir ve bir işçi etkileşim
   kok <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   .wd_ozet_kaynak(env)
-  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "2"))
+  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "2", MERGEN_APP_WORKER_COUNT = "1", MERGEN_APP_WORKER_INDEX = "1"))
   havuz <- 1L
   env$file_summary_pool_size <- function() havuz
   sinir <- function(n) { havuz <<- n; env$file_summary_effective_limit() }
@@ -242,7 +266,7 @@ test_that("özet sınırı işçi havuzundan türetilir ve bir işçi etkileşim
 test_that("işçiler doluyken bekleyen özet kapasite açılınca kendiliğinden başlar", {
   skip_if_not_installed("promises")
   skip_if_not_installed("later")
-  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "2"))
+  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "2", MERGEN_APP_WORKER_COUNT = "1", MERGEN_APP_WORKER_INDEX = "1"))
   kok <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   .wd_ozet_kaynak(env)
@@ -415,8 +439,8 @@ test_that("oturum kimliği değişirse kuyruktaki özet başlamaz ve sonuç yeni
   env$showNotification <- function(...) "not-1"
   env$removeNotification <- function(...) olay$kapanan <- olay$kapanan + 1L
   env$showToast <- function(...) olay$toast <- olay$toast + 1L
-  env$session_user_data_put_list_item <- function(session, alan, ...) {
-    olay$yazilan <- c(olay$yazilan, alan)
+  env$session_user_data_put_list_item <- function(session, alan, ad, value) {
+    if (!is.null(value)) olay$yazilan <- c(olay$yazilan, alan)
     invisible(NULL)
   }
   env$is_under_mcp_base <- function(p) TRUE
@@ -509,7 +533,7 @@ test_that("özet kuyruğu doluysa dosya kabul edilir, bildirim kapanır ve kulla
 test_that("eşzamanlı özet gönderim hatası bildirimi kapatır, uyarır ve kuyruk yerini bırakır", {
   skip_if_not_installed("promises")
   skip_if_not_installed("later")
-  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "1"))
+  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "1", MERGEN_APP_WORKER_COUNT = "1", MERGEN_APP_WORKER_INDEX = "1"))
   kok <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   .wd_ozet_kaynak(env, pipeline = TRUE)
@@ -519,15 +543,27 @@ test_that("eşzamanlı özet gönderim hatası bildirimi kapatır, uyarır ve ku
   env$showNotification <- function(...) "not-1"
   env$removeNotification <- function(id, ...) olay$kapanan <- c(olay$kapanan, id)
   env$showToast <- function(session, message, type = "info", ...) olay$uyari <- c(olay$uyari, type)
-  env$session_user_data_put_list_item <- function(...) invisible(NULL)
+  env$session_user_data_put_list_item <- function(session, alan, ad, value) {
+    kayit <- session$userData[[alan]] %||% list()
+    kayit[[ad]] <- value
+    session$userData[[alan]] <- kayit
+  }
   env$is_under_mcp_base <- function(p) TRUE
   env$`%...>%` <- promises::`%...>%`
   env$`%...!%` <- promises::`%...!%`
-  env$tracked_future_promise <- function(...) stop("havuz hazır değil")
+  env$file_summary_pool_size <- function() 3L
+  env$file_summary_free_workers <- function() 3L
+  olay$gonderim <- 0L
+  env$tracked_future_promise <- function(...) {
+    olay$gonderim <- olay$gonderim + 1L
+    stop("havuz hazır değil")
+  }
   worker_monitor_dep_cache_clear()
   withr::defer(worker_monitor_dep_cache_clear())
 
-  oturum <- list(userData = list(user_id = 7L), token = "tok-7", isClosed = function() FALSE)
+  oturum <- list(userData = new.env(), token = "tok-7", isClosed = function() FALSE)
+  oturum$userData$user_id <- 7L
+  oturum$userData$file_summaries <- list(rapor.txt = "eski içerik")
   cikti <- utils::capture.output({
     sonuc <- env$processAndSummarizeFile(
       list(name = "rapor.txt", datapath = "/kalici/user_7/rapor.txt", size = 10),
@@ -540,10 +576,22 @@ test_that("eşzamanlı özet gönderim hatası bildirimi kapatır, uyarır ve ku
   })
 
   expect_true(tamam)
+  expect_null(oturum$userData$file_summaries$rapor.txt)
+  expect_identical(olay$gonderim, 1L)
   expect_true(env$mergen_file_pipeline_accepted(sonuc))
   expect_identical(olay$kapanan, "not-1")
   expect_identical(olay$uyari, "warning")
   expect_true(any(grepl("[FILE PIPELINE]", cikti, fixed = TRUE)))
+  utils::capture.output({
+    env$processAndSummarizeFile(
+      list(name = "rapor.txt", datapath = "/kalici/user_7/rapor.txt", size = 10),
+      current_user_id = 7L, session = oturum, settings = list(),
+      file_manager_data = list(), session_files_reactive = function(...) list(),
+      already_persisted = TRUE, show_toast = FALSE)
+    expect_true(.wd_bekle(function() identical(env$.FILE_SUMMARY_QUEUE$active, 0L)))
+  })
+  expect_identical(olay$gonderim, 2L)
+  expect_identical(olay$uyari, "warning")
 })
 
 test_that("kimlik süresi dolunca (0) kuyruktaki özet başlamaz, çağıran kimliğine düşülmez", {
@@ -643,7 +691,7 @@ test_that("tek oturum ortak özet kuyruğunu tüketemez ve sıradaki iş en az y
   expect_identical(env$file_summary_pending_count(), 3L)
 
   # a1 çalışırken sıradaki iş a2 değil, hiç özeti çalışmayan b1 olur.
-  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "2"))
+  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "2", MERGEN_APP_WORKER_COUNT = "1", MERGEN_APP_WORKER_INDEX = "1"))
   env$file_summary_pump()
   expect_identical(baslayan, c("a1", "b1"))
 })
@@ -651,7 +699,7 @@ test_that("tek oturum ortak özet kuyruğunu tüketemez ve sıradaki iş en az y
 test_that("oturum kapansa da çalışan özetin yuvası iş bitene kadar tutulur", {
   skip_if_not_installed("promises")
   skip_if_not_installed("later")
-  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "1"))
+  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "1", MERGEN_APP_WORKER_COUNT = "1", MERGEN_APP_WORKER_INDEX = "1"))
   kok <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   .wd_ozet_kaynak(env)
@@ -709,7 +757,7 @@ test_that("aynı pompada başlayan özetler kendi oturum sayacını bırakır", 
 test_that("tek yuvalı havuzda sıra oturumlar arasında döner", {
   skip_if_not_installed("promises")
   skip_if_not_installed("later")
-  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "2"))
+  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "2", MERGEN_APP_WORKER_COUNT = "1", MERGEN_APP_WORKER_INDEX = "1"))
   kok <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   .wd_ozet_kaynak(env)
@@ -938,7 +986,7 @@ test_that("kuyruk bütçesi kullanıcı başınadır; sahip değişince önceki 
 test_that("başlatma sırasında eşzamanlı hata çağıranın hata yoluna iletilir", {
   skip_if_not_installed("promises")
   skip_if_not_installed("later")
-  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "1"))
+  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "1", MERGEN_APP_WORKER_COUNT = "1", MERGEN_APP_WORKER_INDEX = "1"))
   env <- .wd_ozet_kaynak(new.env(parent = globalenv()))
   env$file_summary_pool_size <- function() 3L
   env$file_summary_free_workers <- function() 3L
@@ -953,7 +1001,7 @@ test_that("başlatma sırasında eşzamanlı hata çağıranın hata yoluna ilet
 test_that("son hizmet kaydı kuyruk boşken de temizlenir", {
   skip_if_not_installed("promises")
   skip_if_not_installed("later")
-  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "1"))
+  withr::local_envvar(c(MERGEN_FILE_SUMMARY_MAX_CONCURRENT = "1", MERGEN_APP_WORKER_COUNT = "1", MERGEN_APP_WORKER_INDEX = "1"))
   env <- .wd_ozet_kaynak(new.env(parent = globalenv()))
   env$file_summary_pool_size <- function() 3L
   env$file_summary_free_workers <- function() 3L
@@ -1271,19 +1319,19 @@ test_that("kullanıcı bütçesi süreçlerde çoğalmaz ve diğer kullanıcıya
           u
         })
       }, integer(1))
-      expect_true(all(paylar >= 1L))
-      expect_lte(sum(paylar), max(16L, n))
+      expect_true(all(paylar >= 0L))
+      expect_lte(sum(paylar), 16L)
     })
   }
 })
 
 
-test_that("kullanıcı kuyruk payı süreç sayısından küçük olsa da her süreç iş kabul eder", {
+test_that("kullanıcı bütçesi süreç sayısından küçükse sıfır paylar korunur", {
   env <- new.env(parent = globalenv())
   .wd_ozet_kaynak(env)
   withr::local_envvar(c(MERGEN_APP_WORKER_COUNT = "4", MERGEN_APP_WORKER_INDEX = "1", MERGEN_FILE_SUMMARY_MAX_QUEUE_PER_SESSION = "2"))
   for (i in 1:4) {
     Sys.setenv(MERGEN_APP_WORKER_INDEX = i)
-    expect_identical(env$file_summary_max_queue_per_session(), 1L)
+    expect_identical(env$file_summary_max_queue_per_session(), as.integer(i <= 2L))
   }
 })

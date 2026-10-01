@@ -237,6 +237,7 @@ processAndSummarizeFile <- function(file_info,
   is_jetonu <- basename(tempfile("ozet_"))
   durdurma_dosyasi <- tempfile("mergen_ozet_dur_")
   .file_summary_job_token(session, file_info$name, is_jetonu, durdurma_dosyasi)
+  session_user_data_put_list_item(session, "file_summaries", file_info$name, NULL)
   is_gecerli <- function() {
     sahip_gecerli() && .file_summary_result_current(session, file_info$name, is_jetonu, dest)
   }
@@ -246,7 +247,7 @@ processAndSummarizeFile <- function(file_info,
     msg <- tryCatch(enc2utf8(conditionMessage(e)), error = function(err) conditionMessage(e))
     cat("[FILE PIPELINE] Özetleme hatası:", msg, "\n")
     # Kullanıcının çıkardığı dosya için uyarı gösterilmez.
-    if (is_gecerli() && .file_pipeline_session_uid(session) > 0L) {
+    if (isTRUE(show_toast) && is_gecerli() && .file_pipeline_session_uid(session) > 0L) {
       showToast(session, paste(file_info$name, "yüklendi ancak özet çıkarılamadı."), "warning")
     }
     .file_summary_job_token(session, file_info$name, NULL, yalniz = is_jetonu)

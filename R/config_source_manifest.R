@@ -387,7 +387,7 @@ source_manifest_sections <- list(
     # Release/doğrulama kanıt artifact'larının secret-safe okuyucusu; sağlık
     # kontrolleri ileride bu özetleri tüketebilsin diye health_checks'ten önce.
     "R/helpers_release_evidence.R",
-    "R/helpers_health_endpoint_scope.R", "R/helpers_health_checks.R"  # host sınıflandırması checks'ten ÖNCE
+    "R/helpers_health_endpoint_scope.R", "R/helpers_health_checks.R", "R/helpers_health_dns_refresh.R"  # host sınıflandırması checks'ten ÖNCE
   ),
 
   # ai_expert_helpers: AI Uzman konuşma ve TTS metin parçalama yardımcıları.
@@ -676,7 +676,7 @@ source_manifest_sections <- list(
     "R/module_admin_geri_bildirim.R",
     "R/helpers_admin_hata_analizi.R",
     "R/helpers_admin_hata_heatmap_data.R",
-    "R/helpers_admin_hata_detail_runtime.R",
+    "R/helpers_admin_attachments.R", "R/helpers_admin_hata_detail_runtime.R",
     "R/module_admin_hata_analizi.R",
     "R/helpers_admin_yanit_analizi.R",
     "R/module_admin_yanit_analizi_outputs.R",
@@ -706,7 +706,7 @@ source_manifest_sections <- list(
   server_init_runtime = c(
     "R/server_session_cache.R",
     "R/server_init_forward_refs.R",
-    "R/helpers_user_session_identity.R",
+    "R/helpers_user_session_identity.R", "R/helpers_session_profile.R",
     "R/server_init_user_session.R",
     "R/helpers_server_runtime_contracts.R",
     "R/helpers_server_runtime_named_contracts.R",

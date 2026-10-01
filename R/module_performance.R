@@ -224,6 +224,7 @@ performanceStatsServer <- function(id, current_user_id_provider) {
         try(mb_presence_record_end(session$token, active_sessions_env[[session$token]]), silent = TRUE)
       }
       try(rm(list = session$token, envir = active_sessions_env), silent = TRUE)
+      shiny::isolate(stats$active_users <- count_active_users())
       if (exists("mb_presence_publish", mode = "function")) {
         try(mb_presence_publish(active_sessions_env, zorla = TRUE), silent = TRUE)
       }

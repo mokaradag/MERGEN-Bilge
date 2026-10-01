@@ -26,7 +26,7 @@ ai_expert_recent_prompt_fetch_raw <- function(user_id, dsn, encoding, name_encod
   sonuc <- DBI::dbGetQuery(conn, paste(
     "SELECT TOP 1 m.MessageContent FROM MB_Messages m JOIN MB_Chats c ON m.ChatID = c.ChatID",
     "WHERE c.UserID = ? AND m.MessageType = 'user' AND c.IsDeleted = 0",
-    "ORDER BY m.MessageTimestamp DESC"
+    "ORDER BY m.MessageTimestamp DESC, m.MessageOrder DESC, m.MessageID DESC"
   ), params = list(uid))
   if (nrow(sonuc)) as.character(sonuc$MessageContent) else NULL
 }

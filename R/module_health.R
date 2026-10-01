@@ -66,6 +66,7 @@ health_source_optional("R/module_health_security.R")
 health_source_optional("R/module_health_diagnostics.R")
 health_source_optional("R/module_health_release.R")
 health_source_optional("R/module_health_presence.R")
+health_source_optional("R/helpers_health_dns_refresh.R")
 
 # Sistem Durumu yalnız yöneticiye açıktır. Menüyü gizlemek yetkilendirme
 # değildir: tüm oturumlarda çalışan modül, istemcinin gönderdiği sekme
@@ -180,9 +181,27 @@ healthServer <- function(id, perf_tracker) {
       })
     })
 
-    checks_data <- reactive({
+    dns_checks <- reactiveVal(NULL)
+    dns_started <- 0
+    initial_checks <- reactive({
       health_refresh_trigger()
+      dns_started <<- as.numeric(Sys.time())
+      dns_checks(NULL)
       health_collect_checks(perf_tracker = perf_tracker, include_slow = TRUE)
+    })
+    checks_data <- reactive({
+      ilk <- initial_checks()
+      dns_checks() %||% ilk
+    })
+    observe({
+      if (!isTRUE(yetki_durumu())) return()
+      ilk <- initial_checks()
+      son <- isolate(dns_checks()) %||% ilk
+      if (any(son$value == "DNS bekleniyor", na.rm = TRUE) &&
+          as.numeric(Sys.time()) - dns_started < 4) {
+        invalidateLater(250, session)
+        dns_checks(health_refresh_pending_endpoints(son))
+      }
     })
 
     worker_health_html <- reactive({

@@ -142,14 +142,16 @@ if (!exists("mergen_daily_file_appender", mode = "function",
   )
   for (.mergen_log_daily_path in .mergen_log_daily_candidates) {
     if (file.exists(.mergen_log_daily_path)) {
-      source(sub("daily_file\\.R$", "locks.R", .mergen_log_daily_path),
+      .mergen_log_locks_path <- sub("daily_file\\.R$", "locks.R", .mergen_log_daily_path)
+      if (!file.exists(.mergen_log_locks_path)) next
+      source(.mergen_log_locks_path,
              encoding = "UTF-8", local = environment())
       source(.mergen_log_daily_path, encoding = "UTF-8", local = environment())
       break
     }
   }
   rm(list = intersect(
-    c(".mergen_log_daily_candidates", ".mergen_log_daily_path",
+    c(".mergen_log_daily_candidates", ".mergen_log_daily_path", ".mergen_log_locks_path",
       ".mergen_log_self_dir", ".mergen_log_fi", ".mergen_log_frame",
       ".mergen_log_ofile"),
     ls(all.names = TRUE)
