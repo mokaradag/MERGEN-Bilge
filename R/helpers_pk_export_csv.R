@@ -201,6 +201,16 @@ pk_export_csv_verify <- function(path, expected) {
   # DOĞRULAMA, GERÇEKTEN YAZILAN GÖSTERİMLE karşılaştırılır: formül öncüsü
   # taşıyan hücreler yazımda etkisizleştirilir (bkz. `pk_export_csv_neutralize`).
   expected <- pk_export_csv_neutralize(expected)
+  # write.csv matris sütununu alanlara açar; beklenen çerçeve de aynı biçimde açılır.
+  if (any(vapply(expected, function(s) !is.null(dim(s)), logical(1)))) {
+    adlar <- unlist(lapply(seq_along(expected), function(j) {
+      s <- expected[[j]]
+      if (NCOL(s) == 1L) return(names(expected)[j])
+      paste(names(expected)[j], if (is.null(colnames(s))) seq_len(NCOL(s)) else colnames(s), sep = ".")
+    }))
+    expected <- do.call(data.frame, c(unname(as.list(expected)), check.names = FALSE, stringsAsFactors = FALSE))
+    names(expected) <- adlar
+  }
 
   # DOĞRULAMA BELLEK SINIRLIDIR (PARÇA PARÇA GERİ OKUMA).
   #

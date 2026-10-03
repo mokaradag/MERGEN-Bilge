@@ -742,6 +742,15 @@ test_that("CSV satırları write.csv biçimini korur ve kod sayfası dışı har
     expect_identical(paste(satirlar, collapse = "\n"),
                      paste(env$.pk_csv_lines_utf8(veri, utf8_yerel = TRUE), collapse = "\n"))
   }
+
+  # Yazılan dosya üretim doğrulayıcısından geçer; değişen matris hücresi yakalanır.
+  veri$n <- matrix(c(1.5, 2, 3, 4), 4, dimnames = list(NULL, "z"))
+  yol <- file.path(.pk_export_dir(), "matris.csv")
+  env$.pk_export_write_csv_bom(yol, veri)
+  expect_true(isTRUE(env$pk_export_csv_verify(yol, veri)$ok))
+  bozuk <- veri
+  bozuk$m[1, 2] <- "X"
+  expect_false(isTRUE(env$pk_export_csv_verify(yol, bozuk)$ok))
 })
 
 test_that("CSV dilimlerinde Latin-1 onarım kararı tam sütunda bir kez verilir", {
