@@ -101,6 +101,27 @@ pk_export_csv_neutralize <- function(df) {
   df
 }
 
+# write.csv yerel kod sayfasından geçer (CP1254'te Ý -> <U+00DD>); metin
+# alanları UTF-8 olarak elle tırnaklanır, diğer sütunlar write.csv biçimindedir.
+.pk_csv_lines_utf8 <- function(df) {
+  tirnakla <- function(x) paste0('"', gsub('"', '""', enc2utf8(x), fixed = TRUE), '"')
+  if (!ncol(df)) {
+    return(enc2utf8(utils::capture.output(utils::write.csv(df, row.names = FALSE, na = ""))))
+  }
+  alanlar <- lapply(seq_along(df), function(j) {
+    s <- df[[j]]
+    if (is.character(s) || is.factor(s)) {
+      s <- as.character(s)
+      return(ifelse(is.na(s), "", tirnakla(s)))
+    }
+    enc2utf8(utils::capture.output(
+      utils::write.csv(df[, j, drop = FALSE], row.names = FALSE, na = "")
+    )[-1L])
+  })
+  c(paste(tirnakla(names(df)), collapse = ","),
+    if (nrow(df)) do.call(paste, c(alanlar, sep = ",")))
+}
+
 #' UTF-8 BOM'lu CSV'yi PARÇA PARÇA yaz (tam kopya materyalize edilmez)
 .pk_export_write_csv_bom <- function(path, df, chunk_rows = .PK_CSV_CHUNK_ROWS) {
   chunk_rows <- max(1L, suppressWarnings(as.integer(chunk_rows)))
@@ -111,12 +132,10 @@ pk_export_csv_neutralize <- function(df) {
   writeBin(as.raw(c(0xEF, 0xBB, 0xBF)), con)
 
   yaz <- function(parca, basligi_yaz) {
-    metin <- utils::capture.output(
-      utils::write.csv(parca, row.names = FALSE, na = "")
-    )
+    metin <- .pk_csv_lines_utf8(parca)
     if (!basligi_yaz && length(metin)) metin <- metin[-1L]
     if (!length(metin)) return(invisible(NULL))
-    writeBin(charToRaw(enc2utf8(paste0(paste(metin, collapse = "\n"), "\n"))), con)
+    writeBin(charToRaw(paste0(paste(metin, collapse = "\n"), "\n")), con)
     invisible(NULL)
   }
 
@@ -245,8 +264,13 @@ pk_export_csv_verify <- function(path, expected) {
   }
 
   tryCatch({
-    baglanti <- file(path, open = "r", encoding = "UTF-8-BOM")
+    # Yerel koda çevrilmeden okunur, UTF-8 işaretlenir (CP1254'te harf kaybı olmaz).
+    baglanti <- file(path, open = "r", encoding = "native.enc")
     on.exit(try(close(baglanti), silent = TRUE), add = TRUE)
+    bas_satir <- readLines(baglanti, n = 1L, warn = FALSE)
+    if (length(bas_satir)) {
+      pushBack(sub("^\ufeff", "", bas_satir, useBytes = TRUE), baglanti, encoding = "bytes")
+    }
 
     parca_satir <- .PK_CSV_CHUNK_ROWS
     # BOŞ SATIR ATLANMAZ: `write.csv(..., na = "")` TEK sütunlu bir sonuçta
@@ -259,7 +283,7 @@ pk_export_csv_verify <- function(path, expected) {
       baglanti, nrows = parca_satir, header = TRUE,
       colClasses = "character", check.names = FALSE,
       na.strings = character(0), stringsAsFactors = FALSE,
-      blank.lines.skip = FALSE
+      blank.lines.skip = FALSE, encoding = "UTF-8"
     )
     okunan <- ilk
     sutun_adlari <- names(ilk)
@@ -324,7 +348,7 @@ pk_export_csv_verify <- function(path, expected) {
         baglanti, nrows = parca_satir, header = FALSE,
         col.names = sutun_adlari, colClasses = "character", check.names = FALSE,
         na.strings = character(0), stringsAsFactors = FALSE,
-        blank.lines.skip = FALSE
+        blank.lines.skip = FALSE, encoding = "UTF-8"
       )
       if (!nrow(okunan)) break
     }

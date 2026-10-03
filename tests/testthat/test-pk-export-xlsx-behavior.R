@@ -710,6 +710,23 @@ test_that("Latin1 sutunda saklanmis Turkce metnin y/s/g harfleri disa aktarimda 
   expect_false(bozuk_baslik %in% names(okunan))
 })
 
+test_that("CSV satırları write.csv biçimini korur ve kod sayfası dışı harfi UTF-8 yazar", {
+  env <- .pk_export_env()
+  ascii <- data.frame(a = c("x", NA, "q\"z,\nyeni"), b = c(1.5, NA, 1 / 3),
+                      d = as.Date(c("2026-01-01", NA, "2026-02-02")),
+                      f = factor(c("k", NA, "m")), l = c(TRUE, NA, FALSE), stringsAsFactors = FALSE)
+  names(ascii)[2] <- "Tutar \"TL\""
+  beklenen <- utils::capture.output(utils::write.csv(ascii, row.names = FALSE, na = ""))
+  expect_identical(paste(env$.pk_csv_lines_utf8(ascii), collapse = "\n"),
+                   paste(beklenen, collapse = "\n"))
+  expect_identical(env$.pk_csv_lines_utf8(ascii[0, ]), beklenen[1])
+
+  # U+00DD CP1254'te yoktur; write.csv yolu onu `<U+00DD>` yapıyordu.
+  ad <- intToUtf8(c(0xDD, 0x6D, 0x69, 0x72))
+  satirlar <- env$.pk_csv_lines_utf8(data.frame(x = ad, stringsAsFactors = FALSE))
+  expect_identical(charToRaw(satirlar[2]), charToRaw(paste0('"', enc2utf8(ad), '"')))
+})
+
 test_that("CSV dilimlerinde Latin-1 onarım kararı tam sütunda bir kez verilir", {
   testthat::skip_if_not_installed("withr")
   testthat::skip_if_not_installed("stringi")
