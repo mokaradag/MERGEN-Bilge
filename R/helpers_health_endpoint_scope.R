@@ -7,7 +7,7 @@
 # Host çıkarımı köşeli parantezli IPv6 adresini korur: ":" üzerinden kesmek
 # `http://[fd00::1]:8080` adresini `[fd00` yapıp yanlış sınıflandırıyordu.
 health_url_host <- function(value) {
-  # tolower ve URLdecode CP1254 oturumunda UTF-8 işaretini düşürür; yeniden işaretlenir.
+  # URLdecode CP1254 oturumunda UTF-8 işaretini düşürür; yeniden işaretlenir.
   utf8 <- function(x) {
     Encoding(x)[!is.na(x) & validUTF8(x)] <- "UTF-8"
     x
