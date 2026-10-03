@@ -713,34 +713,37 @@ test_that("Latin1 sutunda saklanmis Turkce metnin y/s/g harfleri disa aktarimda 
 test_that("CSV satırları write.csv biçimini korur ve kod sayfası dışı harfi UTF-8 yazar", {
   env <- .pk_export_env()
   u <- function(...) intToUtf8(c(...))
+  satir <- function(df, yerel) env$.pk_csv_lines_utf8(env$.pk_csv_prepare(df), utf8_yerel = yerel)
   ascii <- data.frame(a = c("x", NA, "q\"z,\nyeni"), b = c(1.5, NA, 1 / 3),
                       d = as.Date(c("2026-01-01", NA, "2026-02-02")),
                       f = factor(c("k", NA, "m")), l = c(TRUE, NA, FALSE), stringsAsFactors = FALSE)
   names(ascii)[2] <- "Tutar \"TL\""
+  # Matris sütunu düz sütunlara açılır; write.table'ın as.matrix biçimlemesi (1/3 -> 0.3333333) uygulanmaz.
+  duz <- ascii
+  duz$m.p <- 1:3
+  duz$m.r <- 4:6
   ascii$m <- matrix(1:6, 3, dimnames = list(NULL, c("p", "r")))
-  beklenen <- utils::capture.output(utils::write.csv(ascii, row.names = FALSE, na = ""))
+  beklenen <- utils::capture.output(utils::write.csv(duz, row.names = FALSE, na = ""))
   for (yerel in c(TRUE, FALSE)) {
-    expect_identical(paste(env$.pk_csv_lines_utf8(ascii, utf8_yerel = yerel), collapse = "\n"),
-                     paste(beklenen, collapse = "\n"))
+    expect_identical(paste(satir(ascii, yerel), collapse = "\n"), paste(beklenen, collapse = "\n"))
   }
 
   # U+00DD ve U+00FE CP1254'te yoktur; write.csv yolu onları `<U+00DD>` yapıyordu.
-  # Matris sütunu write.csv gibi açılır; UTF-8 dışı yol UTF-8 yoluyla bayt bayt aynıdır.
+  # UTF-8 dışı yol UTF-8 yoluyla bayt bayt aynıdır; karakter matrisi alanları tırnaklanır.
   veri <- data.frame(x = c(u(0xDD, 0x6D, 0x69, 0x72), u(0xC7, 0x61, 0x72, 0x15F, 0x131), NA,
                            paste0("a", u(0x1), "1", u(0x2), "b")), stringsAsFactors = FALSE)
   names(veri) <- u(0x15E, 0x75, 0x62, 0x65)
   veri$m <- matrix(c(u(0xFE), "a", "b", "c", "d", "e", "f", "g"), 4,
                    dimnames = list(NULL, c(u(0xFC), "y")))
-  satirlar <- env$.pk_csv_lines_utf8(veri, utf8_yerel = FALSE)
+  satirlar <- satir(veri, FALSE)
   expect_identical(charToRaw(satirlar[1]),
                    charToRaw(enc2utf8(paste0('"', u(0x15E, 0x75, 0x62, 0x65), '","m.', u(0xFC), '","m.y"'))))
   expect_identical(charToRaw(satirlar[2]),
-                   charToRaw(enc2utf8(paste0('"', u(0xDD, 0x6D, 0x69, 0x72), '",', u(0xFE), ',d'))))
+                   charToRaw(enc2utf8(paste0('"', u(0xDD, 0x6D, 0x69, 0x72), '","', u(0xFE), '","d"'))))
   expect_identical(charToRaw(satirlar[5]),
-                   charToRaw(enc2utf8(paste0('"a', u(0x1), "1", u(0x2), 'b",c,g'))))
+                   charToRaw(enc2utf8(paste0('"a', u(0x1), "1", u(0x2), 'b","c","g"'))))
   if (isTRUE(l10n_info()[["UTF-8"]])) {
-    expect_identical(paste(satirlar, collapse = "\n"),
-                     paste(env$.pk_csv_lines_utf8(veri, utf8_yerel = TRUE), collapse = "\n"))
+    expect_identical(paste(satirlar, collapse = "\n"), paste(satir(veri, TRUE), collapse = "\n"))
   }
 
   # Yazılan dosya üretim doğrulayıcısından geçer; değişen matris hücresi yakalanır.
@@ -752,11 +755,64 @@ test_that("CSV satırları write.csv biçimini korur ve kod sayfası dışı har
   bozuk$m[1, 2] <- "X"
   expect_false(isTRUE(env$pk_export_csv_verify(yol, bozuk)$ok))
 
-  # write.table'ın sonradan metne çevirdiği sınıflı sütun da işaretlenir.
+  # Sınıflı sütunun ASCII dışı metni de işaretlenip UTF-8 yazılır.
   sinifli <- data.frame(a = 1:2)
   sinifli$l <- I(list(u(0xDD, 0x6D, 0x69, 0x72), "x"))
-  expect_true(grepl(u(0xDD, 0x6D, 0x69, 0x72), env$.pk_csv_lines_utf8(sinifli, utf8_yerel = FALSE)[2],
-                    fixed = TRUE))
+  expect_true(grepl(u(0xDD, 0x6D, 0x69, 0x72), satir(sinifli, FALSE)[2], fixed = TRUE))
+})
+
+test_that("CSV matris, AsIs ve sınıflı sütunları yazıp doğrular; formül öncüsü etkisizleşir", {
+  env <- .pk_export_env()
+  u <- function(...) intToUtf8(c(...))
+  yuvarlak <- function(df, ad, chunk_rows = env$.PK_CSV_CHUNK_ROWS) {
+    yol <- file.path(.pk_export_dir(), ad)
+    env$.pk_export_write_csv_bom(yol, df, chunk_rows = chunk_rows)
+    list(yol = yol, ok = isTRUE(env$pk_export_csv_verify(yol, df)$ok),
+         okunan = utils::read.csv(yol, colClasses = "character", check.names = FALSE,
+                                  na.strings = character(0), encoding = "UTF-8", fileEncoding = "UTF-8-BOM"))
+  }
+
+  # Çok sütunlu matris yanındaki sayı tam duyarlılıkla yazılır (as.matrix biçimlemesi yok).
+  pi_df <- data.frame(a = c("u", "v"), p = c(pi, 1))
+  pi_df$m <- matrix(1:4, 2)
+  r <- yuvarlak(pi_df, "pi.csv")
+  expect_true(r$ok)
+  expect_identical(names(r$okunan), c("a", "p", "m.1", "m.2"))
+  expect_equal(as.numeric(r$okunan$p[1]), pi, tolerance = 1e-14)
+
+  # AsIs matris başlık atamasında hata vermez.
+  asis <- data.frame(a = 1:2)
+  asis$m <- I(matrix(1:4, 2))
+  expect_true(yuvarlak(asis, "asis.csv")$ok)
+
+  # Karakter matrisi ve sınıflı listedeki ayırıcı, tırnak, satır sonu ve işaret baytları korunur.
+  ozel <- c("a,b", "q\"z", "s\nt", paste0(u(0x1), "DD", u(0x2)))
+  ayirici <- data.frame(a = 1:4)
+  ayirici$m <- matrix(c(ozel, "x", "y", "z", "w"), 4)
+  ayirici$l <- I(as.list(ozel))
+  r <- yuvarlak(ayirici, "ayirici.csv")
+  expect_true(r$ok)
+  expect_identical(r$okunan$m.1, ozel)
+  expect_identical(r$okunan$l, ozel)
+
+  # Metne çevrilen sınıflı sütunda formül etkisizleşir; sayı olarak okunan değer korunur.
+  formul <- data.frame(a = 1:3)
+  formul$l <- I(list("=HYPERLINK(\"x\")", "-5", "@SUM(A1)"))
+  formul$m <- matrix(c("=1+1", "b", "c", "+d", "e", "f"), 3)
+  r <- yuvarlak(formul, "formul.csv")
+  expect_true(r$ok)
+  expect_identical(r$okunan$l, c("'=HYPERLINK(\"x\")", "-5", "'@SUM(A1)"))
+  expect_identical(r$okunan$m.1, c("'=1+1", "b", "c"))
+  expect_identical(r$okunan$m.2, c("'+d", "e", "f"))
+  bozuk <- formul
+  bozuk$l[[2]] <- "-6"
+  expect_false(isTRUE(env$pk_export_csv_verify(r$yol, bozuk)$ok))
+
+  # Parça sınırını aşan matrisli sonuç dilim dilim doğrulanır.
+  buyuk <- data.frame(a = seq_len(7), s = sprintf("v%d,x", 1:7))
+  buyuk$m <- matrix(as.numeric(1:14) / 3, 7)
+  buyuk$l <- I(as.list(c(letters[1:6], "=a")))
+  expect_true(yuvarlak(buyuk, "parca.csv", chunk_rows = 3L)$ok)
 })
 
 test_that("CSV dilimlerinde Latin-1 onarım kararı tam sütunda bir kez verilir", {

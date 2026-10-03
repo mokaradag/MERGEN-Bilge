@@ -86,22 +86,73 @@ pk_export_run_dir <- function(base_dir = NULL) {
 pk_export_csv_neutralize <- function(df) {
   if (!is.data.frame(df) || !ncol(df)) return(df)
 
-  for (ad in names(df)) {
-    sutun <- df[[ad]]
+  for (j in seq_along(df)) {
+    sutun <- df[[j]]
     if (is.factor(sutun)) sutun <- as.character(sutun)
     if (!is.character(sutun)) next
 
-    bas <- sub("^[\t\r\n ]+", "", sutun)
-    riskli <- !is.na(sutun) & nzchar(sutun) &
-      substr(bas, 1L, 1L) %in% .PK_CSV_FORMULA_LEADS
+    riskli <- .pk_csv_formula_risk(sutun)
     if (any(riskli)) sutun[riskli] <- paste0("'", sutun[riskli])
-    df[[ad]] <- sutun
+    df[[j]] <- sutun
   }
 
   df
 }
 
-# write.csv yerel kod sayfasından geçer (CP1254'te Ý -> <U+00DD>). UTF-8 dışı
+.pk_csv_formula_risk <- function(x) {
+  bas <- sub("^[\t\r\n ]+", "", x)
+  !is.na(x) & nzchar(x) & substr(bas, 1L, 1L) %in% .PK_CSV_FORMULA_LEADS
+}
+
+# Matris/veri çerçevesi sütunu as.matrix() adlandırmasıyla düz sütunlara açılır.
+.pk_csv_flat_columns <- function(df) {
+  sutunlar <- list()
+  for (j in seq_along(df)) {
+    s <- df[[j]]
+    alt <- if (is.data.frame(s)) {
+      .pk_csv_flat_columns(s)
+    } else if (length(dim(s)) == 2L) {
+      m <- unclass(s)
+      k <- seq_len(ncol(m))
+      stats::setNames(lapply(k, function(i) unname(m[, i])), colnames(m) %||% k)
+    } else {
+      stats::setNames(list(s), names(df)[j])
+    }
+    if (length(dim(s)) == 2L && length(alt)) {
+      names(alt) <- if (length(alt) > 1L) paste(names(df)[j], names(alt), sep = ".") else names(df)[j]
+    }
+    sutunlar <- c(sutunlar, alt)
+  }
+  sutunlar
+}
+
+# write.table'ın kendi yaptığı dönüşümler (matrisi tüm çerçeveyle as.matrix'e
+# çevirme, sınıflı sütunu tırnaksız as.character ile yazma) önceden ve parça
+# başına yapılır; yazım ve doğrulama AYNI düz gösterimi görür.
+.pk_csv_prepare <- function(df) {
+  n <- nrow(df)
+  if (any(vapply(df, function(s) length(dim(s)) == 2L, logical(1)))) {
+    df <- .pk_csv_flat_columns(df)
+    class(df) <- "data.frame"
+    attr(df, "row.names") <- .set_row_names(n)
+  }
+  df <- pk_export_csv_neutralize(df)
+
+  for (j in seq_along(df)) {
+    s <- df[[j]]
+    if (!is.list(s) && !is.object(s)) next
+    v <- as.character(s)
+    # Sayı olarak okunan değer formül değildir (ör. integer64 -5).
+    riskli <- .pk_csv_formula_risk(v) & is.na(suppressWarnings(as.numeric(v)))
+    if (is.list(s) || any(riskli | grepl("[^\\x20-\\x7E]|[,\"]", v, perl = TRUE, useBytes = TRUE))) {
+      v[riskli] <- paste0("'", v[riskli])
+      df[[j]] <- v
+    }
+  }
+  df
+}
+
+# write.csv yerel kod sayfasından geçer (CP1254'te U+00DD harfi <U+00DD> olur). UTF-8 dışı
 # oturumda metin hücreleri ve başlıklardaki ASCII dışı harfler \001HEX\002
 # işaretine çevrilip tek geçişte yazılır, çıktıda UTF-8'e geri açılır.
 .pk_csv_lines_utf8 <- function(df, utf8_yerel = isTRUE(l10n_info()[["UTF-8"]])) {
@@ -118,17 +169,11 @@ pk_export_csv_neutralize <- function(df) {
     }, character(1), USE.NAMES = FALSE)
     x
   }
+  # Sınıflı/matris sütunlar `.pk_csv_prepare()` ile önceden metne açılmıştır.
   for (j in seq_along(df)) {
     s <- df[[j]]
     if (is.factor(s)) s <- as.character(s)
-    # write.table sınıflı sütunu sonra as.character ile yazar; ASCII dışı metin önceden işaretlenir.
-    if (is.object(s) && is.null(dim(s))) {
-      v <- as.character(s)
-      if (any(grepl("[^\\x01-\\x7F]", enc2utf8(v), perl = TRUE), na.rm = TRUE)) s <- v
-    }
-    if (is.character(s)) s[] <- kodla(s)
-    if (!is.null(colnames(s))) colnames(s) <- kodla(colnames(s))
-    df[[j]] <- s
+    if (is.character(s)) df[[j]] <- kodla(s)
   }
   names(df) <- kodla(names(df))
 
@@ -153,14 +198,12 @@ pk_export_csv_neutralize <- function(df) {
   writeBin(as.raw(c(0xEF, 0xBB, 0xBF)), con)
 
   yaz <- function(parca, basligi_yaz) {
-    metin <- .pk_csv_lines_utf8(parca)
+    metin <- .pk_csv_lines_utf8(.pk_csv_prepare(parca))
     if (!basligi_yaz && length(metin)) metin <- metin[-1L]
     if (!length(metin)) return(invisible(NULL))
     writeBin(charToRaw(paste0(paste(metin, collapse = "\n"), "\n")), con)
     invisible(NULL)
   }
-
-  df <- pk_export_csv_neutralize(df)
 
   toplam <- nrow(df)
   if (toplam == 0L) {
@@ -204,18 +247,8 @@ pk_export_csv_verify <- function(path, expected) {
   }
 
   # DOĞRULAMA, GERÇEKTEN YAZILAN GÖSTERİMLE karşılaştırılır: formül öncüsü
-  # taşıyan hücreler yazımda etkisizleştirilir (bkz. `pk_export_csv_neutralize`).
-  expected <- pk_export_csv_neutralize(expected)
-  # write.csv matris sütununu alanlara açar; beklenen çerçeve de aynı biçimde açılır.
-  if (any(vapply(expected, function(s) !is.null(dim(s)), logical(1)))) {
-    adlar <- unlist(lapply(seq_along(expected), function(j) {
-      s <- expected[[j]]
-      if (NCOL(s) == 1L) return(names(expected)[j])
-      paste(names(expected)[j], if (is.null(colnames(s))) seq_len(NCOL(s)) else colnames(s), sep = ".")
-    }))
-    expected <- do.call(data.frame, c(unname(as.list(expected)), check.names = FALSE, stringsAsFactors = FALSE))
-    names(expected) <- adlar
-  }
+  # etkisizleştirme ve matris açma yazımdaki gibi DİLİM BAŞINA yapılır
+  # (bkz. `.pk_csv_prepare`); tam boyutlu ikinci bir kopya oluşturulmaz.
 
   # DOĞRULAMA BELLEK SINIRLIDIR (PARÇA PARÇA GERİ OKUMA).
   #
@@ -295,6 +328,7 @@ pk_export_csv_verify <- function(path, expected) {
   }
 
   tryCatch({
+    beklenen_adlar <- names(.pk_csv_prepare(expected[0L, , drop = FALSE]))
     # Yerel koda çevrilmeden okunur, UTF-8 işaretlenir (CP1254'te harf kaybı olmaz).
     baglanti <- file(path, open = "r", encoding = "native.enc")
     on.exit(try(close(baglanti), silent = TRUE), add = TRUE)
@@ -319,15 +353,15 @@ pk_export_csv_verify <- function(path, expected) {
     okunan <- ilk
     sutun_adlari <- names(ilk)
 
-    if (ncol(okunan) != ncol(expected)) {
+    if (ncol(okunan) != length(beklenen_adlar)) {
       return(list(ok = FALSE, reason = sprintf(
-        "Sutun sayisi uyusmuyor: beklenen %d, okunan %d.", ncol(expected), ncol(okunan)
+        "Sutun sayisi uyusmuyor: beklenen %d, okunan %d.", length(beklenen_adlar), ncol(okunan)
       )))
     }
-    if (!identical(sutun_adlari, names(expected))) {
+    if (!identical(sutun_adlari, beklenen_adlar)) {
       return(list(ok = FALSE, reason = "Sutun basliklari kaynakla ayni degil."))
     }
-    if (anyDuplicated(names(expected)) > 0L) {
+    if (anyDuplicated(beklenen_adlar) > 0L) {
       return(list(ok = FALSE, reason = "Mukerrer sutun basligi: etiketler belirsiz."))
     }
 
@@ -344,8 +378,8 @@ pk_export_csv_verify <- function(path, expected) {
           )))
         }
 
-        dilim <- expected[(okunan_toplam + 1L):(okunan_toplam + okunan_satir), ,
-                          drop = FALSE]
+        dilim <- .pk_csv_prepare(expected[(okunan_toplam + 1L):(okunan_toplam + okunan_satir), ,
+                                          drop = FALSE])
         hata <- karsilastir_dilim(okunan, dilim, sutun_adlari)
         if (!is.na(hata)) return(list(ok = FALSE, reason = hata))
 
