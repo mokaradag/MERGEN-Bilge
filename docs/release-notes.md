@@ -14,6 +14,15 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-10-03 Worker paket serileştirmesi
+
+- Açık bağımlılık modunda paket dışa aktarımları görev çalışırken gecikmeli
+  çözülür. Kullanılmayan kapanışların taşıdığı `package:stats` arama yolu
+  serileştirilmediği için paket kurulu olsa da görülebilen yükleme uyarısı önlenir.
+- Bağlı paket bulunmayan ayrı R sürecinde uyarıların hata sayıldığı regresyon
+  testi eklendi; gizli global erişiminin reddi, açık değer önceliği ve paket
+  hazırlama hatasında görev kaydının temizlenmesi korundu.
+
 ### (Yayınlanmadı) 2026-09-29 Oturum geçişleri ve işlem güvenilirliği
 
 - Kullanıcı değişiminde gönderim/yazma kilidi bırakılır; dosya ayırma kancaları
