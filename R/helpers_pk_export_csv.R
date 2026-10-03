@@ -101,25 +101,41 @@ pk_export_csv_neutralize <- function(df) {
   df
 }
 
-# write.csv yerel kod sayfasından geçer (CP1254'te Ý -> <U+00DD>); metin
-# alanları UTF-8 olarak elle tırnaklanır, diğer sütunlar write.csv biçimindedir.
-.pk_csv_lines_utf8 <- function(df) {
-  tirnakla <- function(x) paste0('"', gsub('"', '""', enc2utf8(x), fixed = TRUE), '"')
-  if (!ncol(df)) {
-    return(enc2utf8(utils::capture.output(utils::write.csv(df, row.names = FALSE, na = ""))))
+# write.csv yerel kod sayfasından geçer (CP1254'te Ý -> <U+00DD>). UTF-8 dışı
+# oturumda metin hücreleri ve başlıklardaki ASCII dışı harfler \001HEX\002
+# işaretine çevrilip tek geçişte yazılır, çıktıda UTF-8'e geri açılır.
+.pk_csv_lines_utf8 <- function(df, utf8_yerel = isTRUE(l10n_info()[["UTF-8"]])) {
+  yaz <- function(d) utils::capture.output(utils::write.csv(d, row.names = FALSE, na = ""))
+  if (utf8_yerel) return(enc2utf8(yaz(df)))
+
+  kodla <- function(x) {
+    x <- enc2utf8(as.character(x))
+    i <- which(!is.na(x) & grepl("[^\\x02-\\x7F]", x, perl = TRUE))
+    x[i] <- vapply(x[i], function(h) {
+      k <- utf8ToInt(h)
+      paste(ifelse(k > 127L | k == 1L, sprintf("\001%X\002", k), intToUtf8(k, multiple = TRUE)),
+            collapse = "")
+    }, character(1), USE.NAMES = FALSE)
+    x
   }
-  alanlar <- lapply(seq_along(df), function(j) {
+  for (j in seq_along(df)) {
     s <- df[[j]]
-    if (is.character(s) || is.factor(s)) {
-      s <- as.character(s)
-      return(ifelse(is.na(s), "", tirnakla(s)))
-    }
-    enc2utf8(utils::capture.output(
-      utils::write.csv(df[, j, drop = FALSE], row.names = FALSE, na = "")
-    )[-1L])
-  })
-  c(paste(tirnakla(names(df)), collapse = ","),
-    if (nrow(df)) do.call(paste, c(alanlar, sep = ",")))
+    if (is.factor(s)) s <- as.character(s)
+    if (is.character(s)) s[] <- kodla(s)
+    if (!is.null(colnames(s))) colnames(s) <- kodla(colnames(s))
+    df[[j]] <- s
+  }
+  names(df) <- kodla(names(df))
+
+  satirlar <- enc2utf8(yaz(df))
+  i <- grep("\001", satirlar, fixed = TRUE)
+  if (length(i)) {
+    m <- gregexpr("\001[0-9A-F]+\002", satirlar[i], perl = TRUE)
+    regmatches(satirlar[i], m) <- lapply(regmatches(satirlar[i], m), function(t) {
+      intToUtf8(strtoi(substr(t, 2L, nchar(t) - 1L), 16L), multiple = TRUE)
+    })
+  }
+  enc2utf8(satirlar)
 }
 
 #' UTF-8 BOM'lu CSV'yi PARÇA PARÇA yaz (tam kopya materyalize edilmez)

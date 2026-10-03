@@ -712,19 +712,36 @@ test_that("Latin1 sutunda saklanmis Turkce metnin y/s/g harfleri disa aktarimda 
 
 test_that("CSV satırları write.csv biçimini korur ve kod sayfası dışı harfi UTF-8 yazar", {
   env <- .pk_export_env()
+  u <- function(...) intToUtf8(c(...))
   ascii <- data.frame(a = c("x", NA, "q\"z,\nyeni"), b = c(1.5, NA, 1 / 3),
                       d = as.Date(c("2026-01-01", NA, "2026-02-02")),
                       f = factor(c("k", NA, "m")), l = c(TRUE, NA, FALSE), stringsAsFactors = FALSE)
   names(ascii)[2] <- "Tutar \"TL\""
+  ascii$m <- matrix(1:6, 3, dimnames = list(NULL, c("p", "r")))
   beklenen <- utils::capture.output(utils::write.csv(ascii, row.names = FALSE, na = ""))
-  expect_identical(paste(env$.pk_csv_lines_utf8(ascii), collapse = "\n"),
-                   paste(beklenen, collapse = "\n"))
-  expect_identical(env$.pk_csv_lines_utf8(ascii[0, ]), beklenen[1])
+  for (yerel in c(TRUE, FALSE)) {
+    expect_identical(paste(env$.pk_csv_lines_utf8(ascii, utf8_yerel = yerel), collapse = "\n"),
+                     paste(beklenen, collapse = "\n"))
+  }
 
-  # U+00DD CP1254'te yoktur; write.csv yolu onu `<U+00DD>` yapıyordu.
-  ad <- intToUtf8(c(0xDD, 0x6D, 0x69, 0x72))
-  satirlar <- env$.pk_csv_lines_utf8(data.frame(x = ad, stringsAsFactors = FALSE))
-  expect_identical(charToRaw(satirlar[2]), charToRaw(paste0('"', enc2utf8(ad), '"')))
+  # U+00DD ve U+00FE CP1254'te yoktur; write.csv yolu onları `<U+00DD>` yapıyordu.
+  # Matris sütunu write.csv gibi açılır; UTF-8 dışı yol UTF-8 yoluyla bayt bayt aynıdır.
+  veri <- data.frame(x = c(u(0xDD, 0x6D, 0x69, 0x72), u(0xC7, 0x61, 0x72, 0x15F, 0x131), NA,
+                           paste0("a", u(0x1), "1", u(0x2), "b")), stringsAsFactors = FALSE)
+  names(veri) <- u(0x15E, 0x75, 0x62, 0x65)
+  veri$m <- matrix(c(u(0xFE), "a", "b", "c", "d", "e", "f", "g"), 4,
+                   dimnames = list(NULL, c(u(0xFC), "y")))
+  satirlar <- env$.pk_csv_lines_utf8(veri, utf8_yerel = FALSE)
+  expect_identical(charToRaw(satirlar[1]),
+                   charToRaw(enc2utf8(paste0('"', u(0x15E, 0x75, 0x62, 0x65), '","m.', u(0xFC), '","m.y"'))))
+  expect_identical(charToRaw(satirlar[2]),
+                   charToRaw(enc2utf8(paste0('"', u(0xDD, 0x6D, 0x69, 0x72), '",', u(0xFE), ',d'))))
+  expect_identical(charToRaw(satirlar[5]),
+                   charToRaw(enc2utf8(paste0('"a', u(0x1), "1", u(0x2), 'b",c,g'))))
+  if (isTRUE(l10n_info()[["UTF-8"]])) {
+    expect_identical(paste(satirlar, collapse = "\n"),
+                     paste(env$.pk_csv_lines_utf8(veri, utf8_yerel = TRUE), collapse = "\n"))
+  }
 })
 
 test_that("CSV dilimlerinde Latin-1 onarım kararı tam sütunda bir kez verilir", {
