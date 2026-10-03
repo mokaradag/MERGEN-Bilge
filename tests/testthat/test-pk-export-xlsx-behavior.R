@@ -751,6 +751,12 @@ test_that("CSV satırları write.csv biçimini korur ve kod sayfası dışı har
   bozuk <- veri
   bozuk$m[1, 2] <- "X"
   expect_false(isTRUE(env$pk_export_csv_verify(yol, bozuk)$ok))
+
+  # write.table'ın sonradan metne çevirdiği sınıflı sütun da işaretlenir.
+  sinifli <- data.frame(a = 1:2)
+  sinifli$l <- I(list(u(0xDD, 0x6D, 0x69, 0x72), "x"))
+  expect_true(grepl(u(0xDD, 0x6D, 0x69, 0x72), env$.pk_csv_lines_utf8(sinifli, utf8_yerel = FALSE)[2],
+                    fixed = TRUE))
 })
 
 test_that("CSV dilimlerinde Latin-1 onarım kararı tam sütunda bir kez verilir", {

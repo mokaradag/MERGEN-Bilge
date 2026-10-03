@@ -121,6 +121,11 @@ pk_export_csv_neutralize <- function(df) {
   for (j in seq_along(df)) {
     s <- df[[j]]
     if (is.factor(s)) s <- as.character(s)
+    # write.table sınıflı sütunu sonra as.character ile yazar; ASCII dışı metin önceden işaretlenir.
+    if (is.object(s) && is.null(dim(s))) {
+      v <- as.character(s)
+      if (any(grepl("[^\\x01-\\x7F]", enc2utf8(v), perl = TRUE), na.rm = TRUE)) s <- v
+    }
     if (is.character(s)) s[] <- kodla(s)
     if (!is.null(colnames(s))) colnames(s) <- kodla(colnames(s))
     df[[j]] <- s

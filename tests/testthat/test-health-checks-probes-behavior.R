@@ -537,6 +537,18 @@ test_that("IDNA nokta eşdeğerleri noktaya çevrilir; genel ad intranet sayılm
   expect_true(env$health_is_public_url("http://public\uff61example\u3002com/v1"))
 })
 
+test_that("host ASCII harfleri Türkçe yerelde de noktalı i ile küçültülür", {
+  env <- .fresh_health_env()
+  withr::local_envvar(c(MERGEN_HEALTH_INTERNAL_ENDPOINTS = "INTERNAL.corp"))
+  eski <- Sys.getlocale("LC_CTYPE")
+  on.exit(suppressWarnings(Sys.setlocale("LC_CTYPE", eski)), add = TRUE)
+  for (yerel in c("tr_TR.UTF-8", "Turkish_Turkey.1254", "C")) {
+    if (!nzchar(suppressWarnings(Sys.setlocale("LC_CTYPE", yerel)))) next
+    expect_identical(env$health_url_host("http://INTERNAL.Corp:8080/x"), "internal.corp", info = yerel)
+    expect_identical(env$health_internal_hosts(), "internal.corp", info = yerel)
+  }
+})
+
 test_that("bozuk IPv6 joker yazımı yerel döngüye çevrilmez", {
   env <- .fresh_health_env()
   expect_true(env$health_host_unspecified("::"))
