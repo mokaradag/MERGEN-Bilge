@@ -350,6 +350,25 @@ worker_monitor_expand_function_globals <- function(promise_globals) {
            c("true", "1", "yes", "on"))
 }
 
+worker_monitor_serialize_explicit_task <- function(task_fn, promise_globals, packages) {
+  fn_env <- new.env(parent = baseenv())
+  for (pkg in rev(packages)) {
+    paket_env <- new.env(parent = parent.env(fn_env))
+    for (nm in getNamespaceExports(pkg)) {
+      # Kullanılmayan paket kapanışları ve arama yolu serileştirilmez.
+      lookup_env <- list2env(list(pkg = pkg, nm = nm), parent = baseenv())
+      delayedAssign(nm, getExportedValue(pkg, nm),
+                    eval.env = lookup_env, assign.env = paket_env)
+    }
+    parent.env(fn_env) <- paket_env
+  }
+  for (nm in names(promise_globals)) {
+    if (nzchar(nm)) assign(nm, promise_globals[[nm]], envir = fn_env)
+  }
+  environment(task_fn) <- fn_env
+  serialize(task_fn, NULL)
+}
+
 # Future promise çağrısını izlemeli şekilde sarmala.
 # dependency_mode:
 #   - "auto" (varsayılan): mevcut davranış; görev gövdesinin bağımlılıkları
@@ -394,25 +413,15 @@ tracked_future_promise <- function(task_fn,
     # Kapanış zinciri (observer/oturum ortamları) worker'a serileştirilmesin:
     # görev fonksiyonu yalnızca verilen globals'ı gören izole ortama bağlanır.
     # Hazırlık hatası (ör. ilkel fonksiyon) izleme kaydını açık bırakmaz.
-    hazirlik <- try({
-      fn_env <- new.env(parent = baseenv())
-      for (pkg in rev(future_packages)) {
-        disari <- getNamespaceExports(pkg)
-        paket_env <- list2env(setNames(lapply(disari, function(nm) getExportedValue(pkg, nm)), disari),
-                             parent = parent.env(fn_env))
-        parent.env(fn_env) <- paket_env
-      }
-      for (nm in names(promise_globals)) {
-        if (nzchar(nm)) assign(nm, promise_globals[[nm]], envir = fn_env)
-      }
-      environment(task_fn) <- fn_env
-      task_fn <- serialize(task_fn, NULL)
-    }, silent = TRUE)
+    hazirlik <- try(worker_monitor_serialize_explicit_task(
+      task_fn, promise_globals, future_packages
+    ), silent = TRUE)
     if (inherits(hazirlik, "try-error")) {
       finish_worker_task(task_id)
       stop(sprintf("Açık bağımlılık hazırlığı başarısız; '%s' işi gönderilmedi.",
                    as.character(task_type %||% "generic")[1]), call. = FALSE)
     }
+    task_fn <- hazirlik
   } else {
     # Hazırlık istisnası da (önbellek/değer okuma, genişletme) kaydı bırakır.
     otomatik <- try(worker_monitor_auto_globals(task_type, task_fn, promise_globals), silent = TRUE)

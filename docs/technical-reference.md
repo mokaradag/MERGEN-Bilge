@@ -2023,6 +2023,11 @@ Kural:
   `globals` + `packages` worker'a taşınır ve görev fonksiyonunun ortamı,
   observer/oturum çerçeve zincirinin worker'a serileştirilmesini önlemek için
   yalnızca verilen globals'ı gören izole bir ortama yeniden bağlanır.
+  Paket dışa aktarımları gecikmeli bağlanır; yalnızca görev gerçekten kullandığı
+  adı `getExportedValue()` ile çözer. Kullanılmayan paket kapanışları ve bağlı
+  paket arama yolu serileştirilmez. Böylece paket kurulu olduğu hâlde başka
+  bir oturumda bağlı olmayan `package:stats` için yükleme uyarısı oluşmaz.
+  Açık globals paket adlarından önceliklidir; paketlerin bildirim sırası korunur.
 
 **Neden explicit modu var:** `.GlobalEnv` büyüdükçe otomatik tarama ANA OLAY
 DÖNGÜSÜNÜ senkron bloklar (düzeltme öncesi Windows VM'de açılışta
