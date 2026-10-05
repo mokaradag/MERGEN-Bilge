@@ -363,14 +363,17 @@ test_that("tarama gerekmiyorsa önbellekteki dosya adı eşleşmesi taramasız k
 })
 
 test_that("yedek listeleyici okunamayan ya da kaybolan klasörü BAŞARISIZ sayar", {
-  env <- .scr_env()
-  skip_if(exists("cc_scan_list_dir_bounded", envir = env, inherits = TRUE))
+  # Paket koşusunda genel ortamdaki paylaşılan listeleyici yedeği gölgelemesin.
+  izole <- new.env(parent = baseenv())
+  listele <- .scr_env()$.file_index_list_dir
+  environment(listele) <- izole
+  expect_false(exists("cc_scan_list_dir_bounded", envir = izole, inherits = TRUE))
   bos <- withr::local_tempdir(pattern = "scr-bos-")
 
-  expect_true(isTRUE(env$.file_index_list_dir(bos, 1000, 100L)$ok))
-  expect_false(isTRUE(env$.file_index_list_dir(file.path(bos, "yok"), 1000, 100L)$ok))
-  env$file.access <- function(names, mode = 0L) stats::setNames(rep(-1L, length(names)), names)
-  expect_false(isTRUE(env$.file_index_list_dir(bos, 1000, 100L)$ok))
+  expect_true(isTRUE(listele(bos, 1000, 100L)$ok))
+  expect_false(isTRUE(listele(file.path(bos, "yok"), 1000, 100L)$ok))
+  izole$file.access <- function(names, mode = 0L) stats::setNames(rep(-1L, length(names)), names)
+  expect_false(isTRUE(listele(bos, 1000, 100L)$ok))
 })
 
 # ------------------------------------------------------------------------------

@@ -4,10 +4,20 @@
 #           internet sınıflandırması (R/helpers_health_checks.R kullanır).
 # ==============================================================================
 
+# ASCII harfler yerelden bağımsız küçültülür: Türkçe yerelde tolower("I") "ı" olurdu.
+.health_lower <- function(x) {
+  tolower(chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", as.character(x)))
+}
+
 # Host çıkarımı köşeli parantezli IPv6 adresini korur: ":" üzerinden kesmek
 # `http://[fd00::1]:8080` adresini `[fd00` yapıp yanlış sınıflandırıyordu.
 health_url_host <- function(value) {
-  host <- sub("^https?://", "", tolower(as.character(value %||% "")))
+  # URLdecode CP1254 oturumunda UTF-8 işaretini düşürür; yeniden işaretlenir.
+  utf8 <- function(x) {
+    Encoding(x)[!is.na(x) & validUTF8(x)] <- "UTF-8"
+    x
+  }
+  host <- sub("^https?://", "", utf8(.health_lower(enc2utf8(as.character(value %||% "")))))
   # Yol/sorgu/fragment ATILIR; aksi hâlde yoldaki "@" userinfo sanılır.
   host <- sub("[/?#].*$", "", host)
   # `https://user:pass@public.example.com` için host "user" dönüyor ve
@@ -15,8 +25,8 @@ health_url_host <- function(value) {
   host <- sub("^.*@", "", host)
   # Yüzde kodlu host (`public%2eexample%2ecom`) HTTP istemcisince çözülür;
   # noktasız görünüp intranet sayılmasın diye sınıflandırmadan önce çözülür.
-  host <- tolower(vapply(host, function(h) tryCatch(utils::URLdecode(h), error = function(e) h),
-                         character(1), USE.NAMES = FALSE))
+  host <- utf8(.health_lower(utf8(vapply(host, function(h) tryCatch(utils::URLdecode(h), error = function(e) h),
+                                   character(1), USE.NAMES = FALSE))))
   # IDNA nokta eşdeğerleri (U+3002, U+FF0E, U+FF61) libcurl'de "." olur;
   # bu ayırıcılı genel ad noktasız görünüp intranet sayılmasın.
   host <- gsub("[\u3002\uff0e\uff61]", ".", enc2utf8(host), perl = TRUE)
@@ -65,7 +75,7 @@ health_configured_endpoint_values <- function() {
 # değer host ya da tam URL olabilir; ";", "," veya boşlukla ayrılır.
 health_internal_hosts <- function() {
   ham <- Sys.getenv("MERGEN_HEALTH_INTERNAL_ENDPOINTS", "")
-  parcalar <- if (nzchar(ham)) unlist(strsplit(tolower(ham), "[;,[:space:]]+")) else character(0)
+  parcalar <- if (nzchar(ham)) unlist(strsplit(.health_lower(ham), "[;,[:space:]]+")) else character(0)
   parcalar <- parcalar[nzchar(parcalar)]
   if (!length(parcalar)) return(character(0))
   hostlar <- health_url_host(parcalar)
@@ -73,7 +83,7 @@ health_internal_hosts <- function() {
 }
 
 health_configured_hosts <- function() {
-  degerler <- tolower(trimws(health_configured_endpoint_values()))
+  degerler <- .health_lower(trimws(health_configured_endpoint_values()))
   if (!length(degerler)) return(character(0))
   hostlar <- health_url_host(degerler)
   unique(hostlar[nzchar(hostlar)])
@@ -264,7 +274,7 @@ health_probe_url <- function(url) {
 # DNS sorgusu yapılıp sabitleme atlanmaz.
 health_endpoint_scope <- function(url) {
   ham <- as.character(url %||% "")[1]
-  url <- tolower(ham)
+  url <- .health_lower(ham)
   sonuc <- function(public, neden = "", ipler = character(0)) {
     pin <- health_pin_entries(url, host, ipler)
     hedef <- if (length(pin)) {

@@ -158,7 +158,7 @@ test_that("NUL baytı taşıyan dosya UTF-8 sayılmaz; zorunlu kesim çok baytl�
   skip_if_not_installed("logger")
   tmp <- withr::local_tempdir()
   env <- .log_utf8_env(tmp)
-  yol <- file.path(tmp, "nul.log")
+  yol <- file.path(tmp, "nul_bayt.log")  # "nul.*" Windows aygıt adıdır
   # UTF-16LE ASCII metni: 41 00 42 00
   writeBin(as.raw(c(0x41, 0x00, 0x42, 0x00, 0x0A, 0x00)), yol)
   expect_false(env$mergen_log_file_is_utf8(yol))
