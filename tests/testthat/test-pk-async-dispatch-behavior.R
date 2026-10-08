@@ -539,6 +539,8 @@ test_that("işçi-güvensiz anlık görüntü senkron yürütülmeden reddedilir
   env <- .pk_dispatch_env()
   env$pk_async_available <- function(...) list(available = TRUE, reason = "ok")
   env$mergen_pk_async_repo_root <- function() tempdir()
+  sync_calls <- 0L
+  env$mergen_pk_run_sync <- function(...) { sync_calls <<- sync_calls + 1L; stop("Analiz hatası") }
   gonderildi <- FALSE
   env$tracked_future_promise <- function(...) {
     gonderildi <<- TRUE
@@ -551,7 +553,8 @@ test_that("işçi-güvensiz anlık görüntü senkron yürütülmeden reddedilir
 
   expect_false(gonderildi)
   expect_equal(sonuc$action, "answer")
-  expect_match(sonuc$answer, "Analiz", ignore.case = TRUE)
+  expect_match(sonuc$answer, "Analiz Altyapısı Hazır Değil", fixed = TRUE)
+  expect_identical(sync_calls, 0L)
 })
 
 test_that("oturum kapanışı yalnız AKTİF session-scoped jetonu işaretler", {

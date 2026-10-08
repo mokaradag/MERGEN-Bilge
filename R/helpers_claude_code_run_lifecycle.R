@@ -366,6 +366,7 @@ cc_handle_document_summary_run <- function(session,
   # tracked_future_promise() gönderim anında SENKRON hata verebilir (worker
   # planı yok, serileştirme hatası). Yakalanmazsa ne then() ne catch() kurulur
   # ve doküman çalıştırması kalıcı olarak asılı kalırdı.
+  summary_session_token <- session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
   gonderim <- tryCatch(
   tracked_future_promise(
     task_fn = function() {
@@ -376,10 +377,12 @@ cc_handle_document_summary_run <- function(session,
         request_timeout_sec = zaman_asimi,
         output_dir = worker_cikti_dizini,
         user_id = effective_user_id,
-        session_token = session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
+        session_token = summary_session_token
       )
     },
     task_type = "claude_code_document_summary",
+    cancel_check = function() !isTRUE(session$isClosed()) &&
+      cc_is_active_run(rv, run_request_id) && isTRUE(shiny::isolate(rv$is_running)),
     session_token = session$token
   ) |>
     promises::then(function(sonuc) {

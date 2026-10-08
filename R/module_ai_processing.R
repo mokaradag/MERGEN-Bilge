@@ -100,6 +100,7 @@ aiProcessingServer <- function(id) {
       p <- tracked_future_promise(
         task_fn = worker_task,
 		  task_type = "llm_non_streaming",
+          cancel_check = session$userData$llm_worker_guard %||% mergen_request_owner_guard(session),
 		  session_token = session$token,
 		  meta = list(
 			model = model_selected
@@ -306,6 +307,7 @@ aiProcessingServer <- function(id) {
 			})
 		  },
 		  task_type = "llm_streaming",
+          cancel_check = session$userData$llm_worker_guard %||% mergen_request_owner_guard(session),
 		  session_token = session$token,
 		  meta = list(
 			model = model_selected

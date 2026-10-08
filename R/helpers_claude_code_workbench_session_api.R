@@ -206,10 +206,11 @@ cc_reset_workbench_owner <- function(rv, dir_refresh_guard) {
   if (is.environment(env)) {
     env$durduruldu <- TRUE
     if (nzchar(env$output_sync_guard %||% "")) unlink(env$output_sync_guard, force = TRUE)
-    try(cc_release_runtime_lease(env$runtime_lease %||% ""), silent = TRUE)
   }
   proc <- rv$active_process
-  if (!is.null(proc)) try(proc$kill(), silent = TRUE)
+  lease <- if (is.environment(env)) env$runtime_lease %||% "" else ""
+  release <- function() try(cc_release_runtime_lease(lease), silent = TRUE)
+  if (is.null(proc)) release() else mergen_retire_process(proc, release)
   rv$active_process <- NULL
   rv$is_running <- FALSE
   rv$poll_state <- NULL

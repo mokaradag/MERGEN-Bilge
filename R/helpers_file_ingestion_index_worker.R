@@ -6,42 +6,44 @@ file_ingestion_commit_index <- function(results, user_id) {
   succeeded <- Filter(function(r) isTRUE(r$ok), results %||% list())
   if (!length(succeeded)) return(list(indexed = character(), ms = 0))
 
-  entries <- lapply(succeeded, function(r) list(path = r$dest, display = r$name))
-
+  entries <- lapply(succeeded, function(r) list(path = r$dest, display = r$name,
+                                               artifact_id = r$artifact_id))
   started <- Sys.time()
   indexed <- mergen_index_persisted_files(entries, user_id = user_id)
+  committed <- attr(indexed, "artifact_ids")
 
   list(
     indexed = indexed,
+    committed = committed,
     ms = as.numeric(difftime(Sys.time(), started, units = "secs")) * 1000
   )
 }
 
 # İptal edilen partinin kopyaladığı hedefleri temizler.
-file_ingestion_discard_results <- function(results, user_id = NULL) {
-  on.exit({
+file_ingestion_discard_results <- function(results, user_id = NULL, lock_timeout_sec = 5) {
+  discard <- function(idx) {
+    uid <- if (is.null(user_id)) NULL else as.character(user_id)
     for (r in results %||% list()) {
-      if (isTRUE(r$ok)) try(file_ingestion_discard_dest(r$dest, r$source_path), silent = TRUE)
-    }
-  }, add = TRUE)
-  if (!is.null(user_id)) {
-    .file_store_mutate_index(function(idx) {
-      uid <- as.character(user_id)
-      for (r in results %||% list()) {
-        if (!isTRUE(r$ok)) next
-        entry <- .file_store_index_entry(r$dest, r$name)
-        key <- entry$key
-        if (identical(idx[[uid]][[key]]$path, entry$path)) idx[[uid]][[key]] <- NULL
+      if (!isTRUE(r$ok) || !file_ingestion_artifact_owned(r)) next
+      entry <- .file_store_index_entry(r$dest, r$name)
+      if (!is.null(uid) && identical(idx[[uid]][[entry$key]]$path, entry$path) &&
+          (is.null(idx[[uid]][[entry$key]]$artifact_id) ||
+           identical(idx[[uid]][[entry$key]]$artifact_id, r$artifact_id))) {
+        idx[[uid]][[entry$key]] <- NULL
       }
-      idx
-    })
+      file_ingestion_discard_dest(r$dest, r$source_path)
+      if (!file.exists(r$dest)) unlink(file_ingestion_owner_path(r$dest), force = TRUE)
+    }
+    idx
   }
+  .file_store_mutate_index(discard, timeout_sec = lock_timeout_sec)
   invisible(TRUE)
 }
 
 
 file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard = FALSE) {
-  discard <- isTRUE(discard) || !identical(job$controller$epoch, job$epoch)
+  discard <- isTRUE(discard) || !isTRUE(job$controller$active) ||
+    !identical(job$controller$epoch, job$epoch)
   tryCatch({
     globals <- file_ingestion_worker_globals()
     globals$results <- results
@@ -68,21 +70,25 @@ file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard =
       globals = globals,
       packages = c("fs", "digest", "jsonlite")
     ) |>
-      promises::then(function(index_result) {
-        if (!discard && !identical(job$controller$epoch, job$epoch)) {
-          file_ingestion_finish_job(job, results, queue_wait_ms, discard = TRUE)
-        } else if (discard) {
-          file_ingestion_release_slot()
-          file_ingestion_pump()
-        } else {
-          file_ingestion_apply_commit(job, results, index_result, queue_wait_ms)
-        }
-        NULL
-      }) |>
-      promises::catch(function(error) {
-        file_ingestion_rollback_job(job, results, error)
-        NULL
-      })
+      promises::then(
+        onFulfilled = function(index_result) {
+          tryCatch({
+            if (!discard && (!isTRUE(job$controller$active) ||
+                             !identical(job$controller$epoch, job$epoch))) {
+              file_ingestion_finish_job(job, results, queue_wait_ms, discard = TRUE)
+            } else if (discard) {
+              file_ingestion_release_slot()
+              file_ingestion_pump()
+            } else {
+              file_ingestion_apply_commit(job, results, index_result, queue_wait_ms)
+            }
+          }, error = function(e) log_warn(paste("[FILE INGEST] Commit sonrası hata:", conditionMessage(e))))
+          NULL
+        },
+        onRejected = function(error) {
+          file_ingestion_rollback_job(job, results, error)
+          NULL
+        })
   }, error = function(error) file_ingestion_rollback_job(job, results, error))
   invisible(NULL)
 }
@@ -118,14 +124,14 @@ file_ingestion_rollback_job <- function(job, results, error) {
       cleanup_error <- tryCatch({ process$get_result(); NULL }, error = function(e) e)
       if (!is.null(cleanup_error)) {
         log_warn(paste("[FILE INGEST] Geri alma işçisi başarısız:", conditionMessage(cleanup_error)))
-        try(file_ingestion_discard_results(results), silent = TRUE)
+        try(file_ingestion_discard_results(results, job$user_id, lock_timeout_sec = 0), silent = TRUE)
       }
       finish_worker_task(task_id)
       file_ingestion_fail_job(job, error)
     }
     later::later(poll, delay = 0.1)
   }, error = function(cleanup_error) {
-    try(file_ingestion_discard_results(results), silent = TRUE)
+    try(file_ingestion_discard_results(results, job$user_id, lock_timeout_sec = 0), silent = TRUE)
     if (!is.null(task_id)) finish_worker_task(task_id)
     file_ingestion_fail_job(job, cleanup_error)
   })

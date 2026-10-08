@@ -58,10 +58,11 @@ llmResponseHandlersInit <- function(
     }
 
     active_request_id(req_id)
+    session_guard <- mergen_session_owner_guard(session)
     owner_guard <- mergen_chat_owner_guard(session, values)
     session$userData$llm_request_owner <- req_id
     remove_owner_cleanup <- mergen_bind_request_owner_cleanup(
-      session, active_request_id, req_id, reset_chat_state_fn
+      session, active_request_id, req_id, reset_chat_state_fn, values, stop_generation
     )
 	
     mcp_reasoning_stream_file <- NULL
@@ -172,7 +173,10 @@ llmResponseHandlersInit <- function(
     mergen_log_llm_request_debug("LLM_REQUEST_NONSTREAM", model_selected, chat_history, current_settings)
  
     # AI işlemcisini çağır
-    p <- ai_processor$call_llm_non_streaming(chat_history, current_settings, model_selected)
+    p <- tryCatch(
+      ai_processor$call_llm_non_streaming(chat_history, current_settings, model_selected),
+      error = function(e) promises::promise_reject(e)
+    )
  
     # Promise zincirini oluştur ve sonucu işle
     p2 <- promises::then(
@@ -591,8 +595,9 @@ llmResponseHandlersInit <- function(
       newer_request_active <- nzchar(current_active_id) &&
         !identical(current_active_id, as.character(req_id)[1]) &&
         !startsWith(current_active_id, "cancelled_")
-      if (isTRUE(owner_guard()) && identical(session$userData$llm_request_owner, req_id) &&
+      if (isTRUE(session_guard()) && identical(session$userData$llm_request_owner, req_id) &&
           !isTRUE(newer_request_active)) {
+        active_request_id(NULL)
         reset_chat_state_fn()
       }
     })

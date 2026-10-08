@@ -384,7 +384,8 @@ tracked_future_promise <- function(task_fn,
                                    meta = list(),
                                    globals = NULL,
                                    dependency_mode = c("auto", "explicit"),
-                                   packages = NULL) {
+                                   packages = NULL,
+                                   cancel_check = NULL) {
   if (!is.function(task_fn)) {
     stop("tracked_future_promise() için 'task_fn' bir fonksiyon olmalıdır.")
   }
@@ -441,7 +442,16 @@ tracked_future_promise <- function(task_fn,
 
   dispatch_started <- Sys.time()
   p <- tryCatch({
-    promises::future_promise(
+    if (is.function(cancel_check)) {
+      payload <- if (is.raw(task_fn)) task_fn else
+        worker_monitor_serialize_explicit_task(task_fn,
+          promise_globals[setdiff(names(promise_globals), "task_fn")], future_packages)
+      attr(payload, "mergen_packages") <- future_packages
+      auxiliary <- task_type %in% c("file_preview_docx", "claude_code_dir_listing")
+      mergen_cancellable_worker_promise(payload, cancel_check,
+        timeout = if (auxiliary) 30 else 1800,
+        priority = if (auxiliary) 2L else 0L)
+    } else promises::future_promise(
       {
         if (is.raw(task_fn)) task_fn <- unserialize(task_fn)
         task_fn()

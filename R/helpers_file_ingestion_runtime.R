@@ -15,10 +15,14 @@ file_ingestion_create_controller <- function(session = NULL, debug_fn = NULL) {
   controller$debug <- debug_fn
   controller$session_token <- tryCatch(as.character(session$token %||% "")[1], error = function(e) "")
 
+  if (!is.null(session) && exists("mergen_session_on_owner_change", mode = "function")) {
+    mergen_session_on_owner_change(session, function(...) file_ingestion_cancel_controller(controller))
+  }
+
   if (!is.null(session) && is.function(session$onSessionEnded)) {
     try(session$onSessionEnded(function() {
       controller$active <- FALSE
-      file_ingestion_cancel_session_jobs(controller$session_token)
+      file_ingestion_cancel_controller(controller)
     }), silent = TRUE)
   }
 
@@ -87,12 +91,24 @@ file_ingestion_run_job <- function(job) {
 # Yalnızca korunan tamamlanma üstverisi ana süreçte uygulanır.
 file_ingestion_apply_commit <- function(job, results, index_result, queue_wait_ms = 0) {
   file_ingestion_release_slot()
+  on.exit(try(file_ingestion_pump(), silent = TRUE), add = TRUE)
+  if (!is.null(index_result$committed)) {
+    results <- lapply(results, function(r) {
+      if (isTRUE(r$ok) && !r$artifact_id %in% index_result$committed) {
+        r$ok <- FALSE
+        r$code <- "dest_missing"
+        r$error <- "Kopyalanan dosya artık mevcut değil."
+      }
+      r
+    })
+  }
   controller <- job$controller
   commit_started <- Sys.time()
 
   ozet <- file_ingestion_summarize_results(results)
 
-  if (isTRUE(controller$active) && is.function(job$on_complete)) {
+  if (isTRUE(controller$active) && identical(controller$epoch, job$epoch) &&
+      is.function(job$on_complete)) {
     try(job$on_complete(results, list(
       batch_id = job$id,
       indexed = index_result$indexed,
@@ -116,7 +132,6 @@ file_ingestion_apply_commit <- function(job, results, index_result, queue_wait_m
     total_ms = ozet$total_ms + queue_wait_ms
   )
 
-  file_ingestion_pump()
   invisible(NULL)
 }
 

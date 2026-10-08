@@ -54,7 +54,7 @@ test_that("geç SSE sonucu yeni isteği, sohbeti veya sahibi değiştirmez", {
       expect_identical(shiny::isolate(values$messages[[1]]$content), "Yeni sohbet")
       expect_true(shiny::isolate(values$is_sending))
       expect_true(shiny::isolate(values$typing))
-      expect_identical(rec$resets, 0L)
+      expect_identical(rec$resets, if (change == "chat") 1L else 0L)
       expect_identical(rec$writes, 0L)
       expect_false(file.exists(rec$stream$stream_file))
       expect_false(file.exists(rec$stream$stop_file))
@@ -69,7 +69,7 @@ test_that("Yolaç sahip geçişi süreci durdurur ve eski devam bağlarını sil
   env$cc_release_runtime_lease <- function(...) NULL
   rv <- new.env()
   killed <- FALSE
-  rv$active_process <- list(kill = function() killed <<- TRUE)
+  rv$active_process <- list(kill = function(...) killed <<- TRUE, is_alive = function() !killed)
   rv$is_running <- TRUE
   rv$cli_session_id <- "A-cli"
   rv$conversation_context <- list("A-gizli")
@@ -211,6 +211,7 @@ test_that("indeks kilidini bekleyen işçi UI ve alım yuvasını erken bırakma
   env$file_ingestion_apply_commit <- function(...) { applied <<- TRUE; released <<- TRUE }
   controller <- new.env()
   controller$epoch <- 1L
+  controller$active <- TRUE
   job <- list(controller = controller, epoch = 1L, user_id = "7", session_token = "index-test")
   env$file_ingestion_finish_job(job, list(list(marker = marker)))
   heartbeat <- FALSE

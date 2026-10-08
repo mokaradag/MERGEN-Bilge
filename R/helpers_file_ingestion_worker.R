@@ -14,7 +14,7 @@
 
 # Tekil görev sonucu iskeleti; başarısız dallarda da aynı şekil döndürülür.
 file_ingestion_task_result <- function(task, ok, dest = "", code = NULL, error = NULL,
-                                       size = NA_real_, timings = list()) {
+                                       size = NA_real_, timings = list(), artifact_id = NULL) {
   list(
     ok = isTRUE(ok),
     batch_id = task$batch_id %||% "",
@@ -25,6 +25,7 @@ file_ingestion_task_result <- function(task, ok, dest = "", code = NULL, error =
     size = suppressWarnings(as.numeric(size)),
     code = code,
     error = error,
+    artifact_id = artifact_id,
     validate_ms = as.numeric(timings$validate_ms %||% 0),
     copy_ms = as.numeric(timings$copy_ms %||% 0),
     verify_ms = as.numeric(timings$verify_ms %||% 0),
@@ -131,6 +132,7 @@ file_ingestion_execute_task <- function(task) {
   file_ingestion_task_result(
     task, TRUE,
     dest = dest,
+    artifact_id = file_ingestion_claim_artifact(dest, verification$identity),
     size = verification$size,
     timings = list(
       validate_ms = validate_ms, copy_ms = copy_ms,
@@ -168,7 +170,8 @@ file_ingestion_verify_copy <- function(src_path, dest_path) {
     return(list(ok = FALSE, code = "empty_copy", error = "Kopyalanan dosya boş."))
   }
 
-  list(ok = TRUE, size = if (is.finite(dest_size)) dest_size else src_size)
+  list(ok = TRUE, size = if (is.finite(dest_size)) dest_size else src_size,
+       identity = file.info(dest_path)[c("size", "mtime", "ctime")])
 }
 
 # Doğrulaması başarısız hedefi temizler. Kaynak dosya (Shiny geçici yükleme)

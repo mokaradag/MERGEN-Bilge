@@ -53,6 +53,12 @@ filePreviewServer <- function(id) {
       })
     }
 
+    observeEvent(input$preview_closed, {
+      if (!identical(as.integer(input$preview_closed), isolate(docx_preview_seq()))) return(NULL)
+      docx_preview_seq(isolate(docx_preview_seq()) + 1L)
+      file_storage$preview_file <- NULL
+    }, ignoreInit = TRUE)
+
     # Dosya yolu + boyut + değişiklik zamanına göre önbellek anahtarı üretir
     build_preview_cache_key <- function(path) {
       dp <- if (exists("resolve_readable_path", mode = "function")) {
@@ -149,14 +155,20 @@ filePreviewServer <- function(id) {
             error = function(e) file.copy(file_storage$preview_file$datapath, file, overwrite = TRUE)
           )
         } else {
-          # Dosya bulunamazsa uyarı yazdır
-          writeLines("File not found", file)
+          stop("Dosya henüz hazır değil veya artık erişilemiyor.")
         }
       }
     )
 
+    output$docx_download_ui <- renderUI({
+      path <- file_storage$preview_file$datapath
+      if (is.null(path)) return(tags$span(class = "btn disabled", "İndir"))
+      downloadButton(ns("download_preview_file"), "İndir", class = "btn-modern btn-primary")
+    })
+
     # Dosya önizleme penceresini açan ana fonksiyon
     open <- function(file_info) {
+      docx_preview_seq(isolate(docx_preview_seq()) + 1L)
       tryCatch({
         datapath <- file_info$datapath %||% file_info$path
         filename <- file_info$name %||% if (!is.null(datapath)) basename(datapath) else ""
@@ -171,7 +183,7 @@ filePreviewServer <- function(id) {
         }
         if (!is.null(datapath)) datapath <- gsub("\\\\", "/", datapath)
         file_storage$preview_file <- list(
-          name = filename, datapath = datapath,
+          name = filename, datapath = if (is_docx) NULL else datapath,
           size = file_info$size %||% if (!is_docx) suppressWarnings(file.info(datapath)$size) else NULL,
           nesli = as.integer(session$userData$kimlik_nesli %||% 0L)[1]
         )
@@ -186,7 +198,8 @@ filePreviewServer <- function(id) {
 
         # Modal alt bilgi (footer) tasarımı
         footer <- tagList(
-          downloadButton(ns("download_preview_file"), "İndir", class = "btn-modern btn-primary"),
+          if (is_docx) uiOutput(ns("docx_download_ui")) else
+            downloadButton(ns("download_preview_file"), "İndir", class = "btn-modern btn-primary"),
           modalButton("Kapat")
         )
 
@@ -372,13 +385,16 @@ filePreviewServer <- function(id) {
               style = "overflow: visible; background: white; padding: 20px; border-radius: 8px;",
               HTML("<div style='padding:8px;font-size:12px;opacity:.7'>Yükleniyor…</div>")
             ),
-            size = "l", easyClose = TRUE, footer = footer
+            size = "l", easyClose = TRUE, footer = footer,
+            tags$script(HTML(sprintf(
+              "$('#shiny-modal').one('hidden.bs.modal',function(){Shiny.setInputValue('%s',%d,{priority:'event'});});",
+              ns("preview_closed"), isolate(docx_preview_seq())
+            )))
           ))
 
           # Bu DOCX açılışına ait belirteci üret ve yakala. Asenkron yol bu
           # yakalanan değeri, geri çağrı çalıştığında güncel belirteçle
           # karşılaştırarak eski sonucun yeni modalı ezmesini engeller.
-          docx_preview_seq(docx_preview_seq() + 1L)
           docx_open_token <- docx_preview_seq()
           docx_nesli <- file_storage$preview_file$nesli
 
@@ -392,7 +408,9 @@ filePreviewServer <- function(id) {
           tryCatch({
             mergen_dispatch_docx_preview(datapath, session$token,
               cached = preview_docx_cache()[[cache_id]], name = filename,
-              user_id = session$userData$user_id) %...>% (function(b64) {
+              user_id = session$userData$user_id,
+              cancel_check = function() onizleme_gecerli(docx_nesli) && !isTRUE(session$isClosed()) &&
+                identical(isolate(docx_preview_seq()), docx_open_token)) %...>% (function(b64) {
               if (!onizleme_gecerli(docx_nesli) || isTRUE(session$isClosed())) return(NULL)
               if (!is.character(b64) || !length(b64) || !nzchar(b64[1])) {
                 return(preview_error(simpleError("DOCX içeriği hazırlanamadı.")))

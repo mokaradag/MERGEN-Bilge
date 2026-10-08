@@ -40,14 +40,12 @@ handle_streaming_tts_mode <- function(ctx) {
 
   log_debug("[MONITORING] AI isteği başlatılıyor (STREAMING modu)")
 
-  settings_for_llm <- current_settings
-  settings_for_llm$model_selection <- model_selected
-
   active_request_id(req_id)
+  session_guard <- mergen_session_owner_guard(session)
   owner_guard <- mergen_chat_owner_guard(session, values)
   session$userData$llm_request_owner <- req_id
   remove_owner_cleanup <- mergen_bind_request_owner_cleanup(
-    session, active_request_id, req_id, cleanup_send_message
+    session, active_request_id, req_id, cleanup_send_message, values, stop_generation
   )
   simulated <- FALSE
   stop_generation(FALSE)
@@ -57,7 +55,10 @@ handle_streaming_tts_mode <- function(ctx) {
   # dökümü yalnızca açık tanılama bayrağıyla (MERGEN_LLM_REQUEST_DEBUG/MERGEN_DEBUG).
   mergen_log_llm_request_debug("LLM_REQUEST_STREAMING", model_selected, messages_to_process, current_settings)
 
-  p <- ai_processor$call_llm_streaming(messages_to_process, current_settings, model_selected)
+  p <- tryCatch(
+    ai_processor$call_llm_streaming(messages_to_process, current_settings, model_selected),
+    error = function(e) promises::promise_reject(e)
+  )
 
   p <- promises::then(p, onFulfilled = function(result) {
     result$req_id <- req_id
@@ -191,7 +192,8 @@ handle_streaming_tts_mode <- function(ctx) {
   })
 
   promises::finally(p, onFinally = function() {
-    if (!simulated) remove_owner_cleanup()
+    if (!simulated) mergen_finish_request_owner_cleanup(session, active_request_id, req_id,
+      remove_owner_cleanup, cleanup_send_message, session_guard)
   })
 
   invisible(NULL)

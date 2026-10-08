@@ -37,7 +37,7 @@ source_manifest_sections <- list(
     "R/helpers_index_page_cache.R",
     "R/helpers_app_http_routes.R",
     "R/utils_rate_limiter.R",
-    "R/helpers_worker_monitor.R", "R/helpers_worker_dep_cache.R"  # bağımlılık önbelleği monitor'dan SONRA
+    "R/helpers_worker_monitor.R", "R/helpers_worker_dep_cache.R", "R/helpers_worker_cancellation.R"  # bağımlılık önbelleği monitor'dan SONRA
   ),
 
   # post_future_utils: Future cluster SONRASI yardımcılar: yol/güvenli yol, yol
@@ -194,7 +194,7 @@ source_manifest_sections <- list(
     "R/helpers_files_copy_promote.R",
     "R/helpers_files.R",
     "R/helpers_file_ingestion_task.R",
-    "R/helpers_file_ingestion_worker.R",
+    "R/helpers_file_ingestion_identity.R", "R/helpers_file_ingestion_worker.R",
     "R/helpers_file_ingestion_queue.R",
     "R/helpers_file_ingestion_runtime.R", "R/helpers_file_ingestion_index_worker.R"
   ),

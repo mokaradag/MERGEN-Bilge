@@ -438,6 +438,8 @@ cc_bind_server_setup <- function(input,
             list_directory_contents(hedef_yol, user_id = hedef_kullanici)
           },
           task_type = "claude_code_dir_listing",
+          cancel_check = function() isTRUE(owner_guard()) &&
+            dir_refresh_guard$is_latest(refresh_id),
           session_token = session$token,
           dependency_mode = "explicit",
           globals = c(

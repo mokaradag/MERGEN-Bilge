@@ -230,6 +230,8 @@ cc_dispatch_run_preparation <- function(ctx) {
         cc_prepare_run_workspace(istek)
       },
       task_type = "claude_code_run_prepare",
+      cancel_check = function() !isTRUE(ctx$session$isClosed()) &&
+        cc_is_active_run(ctx$rv, ctx$run_request_id) && isTRUE(shiny::isolate(ctx$rv$is_running)),
       session_token = ctx$session$token,
       dependency_mode = "explicit",
       globals = c(

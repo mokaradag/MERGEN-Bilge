@@ -218,7 +218,7 @@ test_that("oturum sahibi değişince açık önizlemenin indirmesi önceki dosya
     testthat::expect_identical(readLines(output$download_preview_file), "A kullanicisinin gizli dosyasi")
     env$mergen_session_owner_transition(session$userData, 7L, 8L)
     testthat::expect_gte(kapanis, 1L)
-    testthat::expect_false(any(grepl("gizli", readLines(output$download_preview_file), fixed = TRUE)))
+    testthat::expect_error(output$download_preview_file, "Dosya henüz hazır değil", fixed = TRUE)
   })
 })
 
@@ -364,6 +364,51 @@ test_that("DOCX senkron gönderim hatası yalnız güncel açık önizlemeye bil
       expect_identical(closed, if (change == "current") 1L else 0L)
     })
   }
+})
+
+test_that("DOCX sonucu başka türdeki önizlemenin yolunu veya modalını değiştirmez", {
+  env <- .fp_make_env()
+  resolvers <- new.env()
+  resolvers$queue <- list()
+  env$mergen_dispatch_docx_preview <- .fp_make_future_stub(resolvers)
+  removed <- 0L
+  testthat::local_mocked_bindings(
+    showModal = function(...) NULL,
+    removeModal = function(...) removed <<- removed + 1L,
+    .package = "shiny"
+  )
+  text_path <- withr::local_tempfile(fileext = ".txt")
+  writeLines("yeni dosya", text_path)
+  shiny::testServer(env$filePreviewServer, {
+    session$returned$open(list(name = "eski.docx", datapath = "eski.docx"))
+    session$returned$open(list(name = "yeni.txt", datapath = text_path))
+    resolvers$queue[[1]]$resolve(structure("BASE64", resolved_path = "eski.docx"))
+    .fp_drain_later_queue()
+    expect_identical(normalizePath(isolate(file_storage$preview_file$datapath), winslash = "/"),
+                     normalizePath(text_path, winslash = "/"))
+    expect_identical(removed, 0L)
+  })
+})
+
+test_that("adıyla açılan DOCX indirmesi işçinin yolunu bekler", {
+  env <- .fp_make_env()
+  resolvers <- new.env()
+  resolvers$queue <- list()
+  env$mergen_dispatch_docx_preview <- .fp_make_future_stub(resolvers)
+  testthat::local_mocked_bindings(showModal = function(...) NULL, .package = "shiny")
+  shiny::testServer(env$filePreviewServer, {
+    session$returned$open(list(name = "rapor.docx"))
+    expect_null(isolate(file_storage$preview_file$datapath))
+    expect_match(output$docx_download_ui$html, '<span class="btn disabled">', fixed = TRUE)
+    expect_false(grepl("shiny-download-link", output$docx_download_ui$html, fixed = TRUE))
+    resolvers$queue[[1]]$resolve(structure("BASE64", resolved_path = "kalici.docx"))
+    .fp_drain_later_queue()
+    session$flushReact()
+    expect_identical(isolate(file_storage$preview_file$datapath), "kalici.docx")
+    expect_match(output$docx_download_ui$html, "download_preview_file", fixed = TRUE)
+    expect_match(output$docx_download_ui$html, "shiny-download-link", fixed = TRUE)
+    expect_false(grepl("<span[^>]*disabled", output$docx_download_ui$html))
+  })
 })
 
 test_that("DOCX işçisi yolu çözer, önbelleği doğrular ve değişen dosyayı yeniden kodlar", {

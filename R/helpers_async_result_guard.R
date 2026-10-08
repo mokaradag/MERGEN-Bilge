@@ -60,6 +60,7 @@ mergen_stream_bind_cleanup <- function(ctx, stream_env) {
     if (isTRUE(stream_env$owner_guard()) &&
         identical(.mergen_request_state_read(ctx$active_request_id), stream_env$req_id)) {
       ctx$active_request_id(NULL)
+      shiny::withReactiveDomain(ctx$session, shiny::isolate(ctx$reset_chat_state_fn()))
     }
     invisible(NULL)
   }
@@ -79,22 +80,46 @@ mergen_stream_bind_cleanup <- function(ctx, stream_env) {
   cleanup
 }
 
-mergen_bind_request_owner_cleanup <- function(session, active_request_id, req_id, reset_fn) {
-  remove_hook <- function() NULL
+mergen_bind_request_owner_cleanup <- function(session, active_request_id, req_id, reset_fn,
+                                              values = NULL, stop_generation = NULL) {
+  owner_guard <- if (is.null(values)) mergen_session_owner_guard(session) else
+    mergen_chat_owner_guard(session, values)
+  current <- function() isTRUE(owner_guard()) &&
+    identical(.mergen_request_state_read(active_request_id), req_id) &&
+    !isTRUE(if (is.function(stop_generation)) .mergen_request_state_read(stop_generation) else FALSE)
+  session$userData$llm_worker_guard <- current
+  remove_owner <- remove_end <- function() NULL
+  remove <- function() {
+    remove_owner()
+    remove_end()
+    if (identical(session$userData$llm_worker_guard, current)) session$userData$llm_worker_guard <- NULL
+  }
   cleanup <- function(...) {
-    remove_hook()
+    remove()
     if (identical(.mergen_request_state_read(active_request_id), req_id)) {
-      active_request_id(NULL)
       shiny::withReactiveDomain(session, shiny::isolate(reset_fn()))
+      active_request_id(NULL)
     }
   }
-  remove_hook <- mergen_session_on_owner_change(session, cleanup)
-  remove_hook
+  remove_owner <- mergen_session_on_owner_change(session, cleanup)
+  if (is.function(session$onSessionEnded)) remove_end <- session$onSessionEnded(cleanup)
+  remove
+}
+
+mergen_finish_request_owner_cleanup <- function(session, active_request_id, req_id,
+                                                remove, reset_fn, owner_guard) {
+  remove()
+  if (isTRUE(owner_guard()) && identical(.mergen_request_state_read(active_request_id), req_id) &&
+      identical(session$userData$llm_request_owner, req_id)) {
+    reset_fn()
+    active_request_id(NULL)
+  }
+  invisible(NULL)
 }
 
 
 mergen_dispatch_docx_preview <- function(path, session_token, cached = NULL,
-                                         name = NULL, user_id = NULL) {
+                                         name = NULL, user_id = NULL, cancel_check = NULL) {
   globals <- list(docx_path = path, docx_name = name, docx_user_id = user_id,
                   docx_cached = cached, resolve_readable_path = resolve_readable_path)
   if (is.null(path)) {
@@ -118,6 +143,7 @@ mergen_dispatch_docx_preview <- function(path, session_token, cached = NULL,
       structure(b64, cache_key = key, resolved_path = path)
     },
     task_type = "file_preview_docx",
+    cancel_check = cancel_check,
     session_token = session_token,
     dependency_mode = "explicit",
     globals = globals,
