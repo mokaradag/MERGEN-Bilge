@@ -21,7 +21,7 @@ file_ingestion_commit_index <- function(results, user_id) {
 file_ingestion_discard_results <- function(results, user_id = NULL) {
   on.exit({
     for (r in results %||% list()) {
-      if (isTRUE(r$ok)) file_ingestion_discard_dest(r$dest, r$source_path)
+      if (isTRUE(r$ok)) try(file_ingestion_discard_dest(r$dest, r$source_path), silent = TRUE)
     }
   }, add = TRUE)
   if (!is.null(user_id)) {
@@ -118,12 +118,14 @@ file_ingestion_rollback_job <- function(job, results, error) {
       cleanup_error <- tryCatch({ process$get_result(); NULL }, error = function(e) e)
       if (!is.null(cleanup_error)) {
         log_warn(paste("[FILE INGEST] Geri alma işçisi başarısız:", conditionMessage(cleanup_error)))
+        try(file_ingestion_discard_results(results), silent = TRUE)
       }
       finish_worker_task(task_id)
       file_ingestion_fail_job(job, error)
     }
     later::later(poll, delay = 0.1)
   }, error = function(cleanup_error) {
+    try(file_ingestion_discard_results(results), silent = TRUE)
     if (!is.null(task_id)) finish_worker_task(task_id)
     file_ingestion_fail_job(job, cleanup_error)
   })

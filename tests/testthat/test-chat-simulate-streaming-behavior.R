@@ -395,6 +395,8 @@ test_that("süren benzetimli akış bayatlayınca yeni mesajları ve gönderimi 
     frame <- parent.frame()
     callback <<- function() eval(expression, frame)
     list(destroy = function() destroyed <<- TRUE)
+  }, removeUI = function(selector, ...) {
+    env$.rec$removeUI[[length(env$.rec$removeUI) + 1L]] <- selector
   }, .package = "shiny")
   rec <- new.env(); rec$msgs <- list()
   session <- .css_session(rec)
@@ -406,12 +408,15 @@ test_that("süren benzetimli akış bayatlayınca yeni mesajları ve gönderimi 
   completed <- 0L
   env$chat_simulate_streaming("eski yanıt", session, values, list(selected_character = "emre"),
     list(), function() FALSE, on_complete = function(msg) completed <<- completed + 1L)
+  old_id <- values$messages[[1]]$id
   rec$msgs <- list()
-  values$messages <- list(list(id = "B", content = "Yeni yanıt"))
+  values$messages <- append(values$messages, list(list(id = "B", content = "Yeni yanıt")))
   session$userData$llm_request_owner <- "B"
   callback()
   expect_true(destroyed)
+  expect_length(values$messages, 1L)
   expect_length(rec$msgs, 0L)
+  expect_true(paste0("#message_wrapper_", old_id) %in% unlist(env$.rec$removeUI))
   expect_identical(values$messages[[1]]$content, "Yeni yanıt")
   expect_identical(env$.rec$reset, 0L)
   expect_identical(completed, 1L)

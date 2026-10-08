@@ -262,8 +262,8 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
   )
   if (inherits(vaat, "try-error")) {
     bitir_istek()
-    log_warn("[PK_ASYNC] Gonderim basarisiz; senkron yol.")
-    return(devam_et(altyapi_hatasi("dispatch_failed")))
+    log_warn("[PK_ASYNC] Gonderim basarisiz; altyapi yaniti.")
+    return(altyapi_hatasi("dispatch_failed"))
   }
 
   # ------------------------------------------------------------------------

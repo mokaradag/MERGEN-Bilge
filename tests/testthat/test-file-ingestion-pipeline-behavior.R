@@ -651,3 +651,38 @@ test_that("geri alma işçisi gerçek indeks paketiyle kaynak dosyayı korur", {
   expect_true(file.exists(upload$datapath))
   expect_null(.load_index()[["42"]][[tolower(result$name)]])
 })
+
+test_that("geri alma gönderimi ve süreç hatası kaynakları koruyarak hedefleri temizler", {
+  for (failure in c("serialize", "launch", "process")) {
+    env <- .ingestionEnv()
+    source_path <- withr::local_tempfile()
+    copied <- withr::local_tempfile()
+    failed <- withr::local_tempfile()
+    file.create(source_path, copied, failed)
+    finished <- 0L
+    reported <- 0L
+    env$create_worker_task_id <- function(...) "rollback"
+    env$register_worker_task <- function(...) NULL
+    env$finish_worker_task <- function(...) finished <<- finished + 1L
+    env$file_ingestion_fail_job <- function(...) reported <<- reported + 1L
+    env$.file_store_mutate_index <- function(...) stop("UI indeks kilidini beklememeli")
+    env$worker_monitor_serialize_explicit_task <- function(...) {
+      if (failure == "serialize") stop("serileştirme hatası")
+      raw(0)
+    }
+    testthat::local_mocked_bindings(r_bg = function(...) {
+      if (failure == "launch") stop("süreç başlatma hatası")
+      list(is_alive = function() FALSE, get_result = function() stop("geri alma süreç hatası"))
+    }, .package = "callr")
+    testthat::local_mocked_bindings(later = function(func, ...) { func(); NULL }, .package = "later")
+    results <- list(list(ok = TRUE, dest = copied, source_path = source_path),
+                    list(ok = TRUE, dest = source_path, source_path = source_path),
+                    list(ok = FALSE, dest = failed, source_path = source_path))
+    env$file_ingestion_rollback_job(list(session_token = "test"), results, simpleError("indeks hatası"))
+    expect_false(file.exists(copied))
+    expect_true(file.exists(source_path))
+    expect_true(file.exists(failed))
+    expect_identical(finished, 1L)
+    expect_identical(reported, 1L)
+  }
+})

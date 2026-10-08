@@ -529,8 +529,10 @@ test_that("gönderim hatası senkron yeniden denemeden altyapı yanıtı verir",
   sonuc <- env$mergen_pk_analysis_execute(h$ctx)
 
   expect_length(h$kayit$devam, 0L)
-  expect_length(h$kayit$mesajlar, 1L)
-  expect_match(h$kayit$mesajlar[[1]]$content, "Analiz Altyapısı Hazır Değil", fixed = TRUE)
+  expect_length(h$kayit$mesajlar, 0L)
+  expect_identical(h$kayit$cleanup, 0L)
+  expect_identical(sonuc$action, "answer")
+  expect_match(sonuc$answer, "Analiz Altyapısı Hazır Değil", fixed = TRUE)
 })
 
 test_that("işçi-güvensiz anlık görüntü senkron yürütülmeden reddedilir", {

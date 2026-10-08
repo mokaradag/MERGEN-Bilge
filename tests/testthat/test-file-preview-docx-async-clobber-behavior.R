@@ -324,9 +324,11 @@ test_that("görsel kaydı daha önce açılmış PDF uç noktasını geçersiz k
   })
 })
 
-test_that("büyük DOCX işçisine okunabilir yol varyantı gönderilir", {
+test_that("DOCX yolu ana süreçte yoklanmadan işçiye gönderilir", {
   env <- .fp_make_env()
-  env$resolve_readable_path <- function(path) "//sunucu/paylasim/rapor.docx"
+  env$resolve_readable_path <- env$path_exists_relaxed <- env$file.info <- function(...) {
+    stop("Ana süreç dosya yolunu yoklamamalı")
+  }
   sent <- NULL
   env$mergen_dispatch_docx_preview <- function(path, ...) {
     sent <<- path
@@ -336,6 +338,59 @@ test_that("büyük DOCX işçisine okunabilir yol varyantı gönderilir", {
   shiny::testServer(env$filePreviewServer, {
     session$returned$open(list(name = "rapor.docx", datapath = "/sunucu/paylasim/rapor.docx", size = 1))
     .fp_drain_later_queue()
-    expect_identical(sent, "//sunucu/paylasim/rapor.docx")
+    expect_identical(sent, "/sunucu/paylasim/rapor.docx")
   })
+})
+
+test_that("DOCX senkron gönderim hatası yalnız güncel açık önizlemeye bildirilir", {
+  for (change in c("current", "owner", "closed")) {
+    env <- .fp_make_env()
+    notifications <- 0L
+    closed <- 0L
+    env$showToast <- function(...) notifications <<- notifications + 1L
+    testthat::local_mocked_bindings(
+      showModal = function(...) NULL,
+      removeModal = function(...) closed <<- closed + 1L,
+      .package = "shiny")
+    shiny::testServer(env$filePreviewServer, {
+      env$mergen_dispatch_docx_preview <- function(...) {
+        if (change == "owner") session$userData$kimlik_nesli <- 1L
+        if (change == "closed") session$close()
+        stop("işçi serileştirme hatası")
+      }
+      session$returned$open(list(name = "rapor.docx", datapath = "/sunucu/rapor.docx"))
+      .fp_drain_later_queue()
+      expect_identical(notifications, if (change == "current") 1L else 0L)
+      expect_identical(closed, if (change == "current") 1L else 0L)
+    })
+  }
+})
+
+test_that("DOCX işçisi yolu çözer, önbelleği doğrular ve değişen dosyayı yeniden kodlar", {
+  env <- new.env(parent = globalenv())
+  for (file in c("helpers_async_result_guard.R", "helpers_files_path.R")) {
+    source(file.path(resolve_repo_root_for_tests(), "R", file), encoding = "UTF-8", local = env)
+  }
+  path <- withr::local_tempfile(fileext = ".docx")
+  writeBin(charToRaw("ilk içerik"), path)
+  resolutions <- 0L
+  env$resolve_readable_path <- function(raw_path) { resolutions <<- resolutions + 1L; path }
+  env$tracked_future_promise <- function(task_fn, globals, ...) {
+    expect_identical(resolutions, 0L)
+    expect_identical(globals$docx_path, "/sunucu/rapor.docx")
+    environment(task_fn) <- list2env(globals, parent = baseenv())
+    task_fn()
+  }
+  first <- env$mergen_dispatch_docx_preview("/sunucu/rapor.docx", "test")
+  expect_identical(resolutions, 1L)
+  expect_identical(attr(first, "resolved_path"), path)
+  cache <- list(key = attr(first, "cache_key"), base64 = "ÖNBELLEK")
+  resolutions <- 0L
+  second <- env$mergen_dispatch_docx_preview("/sunucu/rapor.docx", "test", cached = cache)
+  expect_identical(as.character(second), "ÖNBELLEK")
+  writeBin(charToRaw("dosya değişti ve büyüdü"), path)
+  resolutions <- 0L
+  third <- env$mergen_dispatch_docx_preview("/sunucu/rapor.docx", "test", cached = cache)
+  expect_identical(as.character(third), base64enc::base64encode(path))
+  expect_false(identical(attr(third, "cache_key"), cache$key))
 })

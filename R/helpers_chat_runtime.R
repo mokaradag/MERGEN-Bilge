@@ -342,6 +342,7 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
     stream_observer <- shiny::observe({
       isolate({
         if (!.cr_result_current() || !.cr_ayni_sohbet()) {
+          chat_discard_stream_placeholder(session, values, msg_id)
           if (is.function(on_complete)) try(on_complete(NULL), silent = TRUE)
           stream_observer$destroy()
           return(invisible(NULL))

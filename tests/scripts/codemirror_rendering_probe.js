@@ -96,7 +96,7 @@
         check(!!span, theme + '/' + name + ': ' + cls + ' belirteci üretildi');
         if (span) {
           var c = rgb(getComputedStyle(span).color);
-          check(!sameColor(c, text) && contrast(c, bg) >= 3, theme + '/' + name + ': ' + cls + ' ayırt edilir renkte');
+          check(!sameColor(c, text) && contrast(c, bg) >= 3, theme + '/' + name + ': ' + cls + ' ayırt edilir renkte (' + getComputedStyle(span).color + ', metin=' + getComputedStyle(b.el.querySelector('.CodeMirror-line')).color + ', dil=' + b.el.getAttribute('data-lang') + ')');
         }
       });
     });
@@ -131,7 +131,12 @@
 
       var blocks = {};
       Object.keys(window.__CM_FIXTURES).forEach(function (name) { blocks[name] = mount(name); });
-      await wait(200);
+      if (document.fonts && document.fonts.ready) await document.fonts.ready;
+      Object.keys(blocks).forEach(function (name) { blocks[name].cm.refresh(); });
+      await new Promise(function (resolve) {
+        requestAnimationFrame(function () { requestAnimationFrame(resolve); });
+      });
+      await wait(600);
 
       Object.keys(blocks).forEach(function (name) {
         var b = blocks[name];

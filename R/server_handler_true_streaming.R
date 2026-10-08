@@ -218,19 +218,7 @@ handle_true_streaming_mode <- function(ctx) {
   cleanup_streaming_state <- mergen_stream_bind_cleanup(ctx, stream_env)
 
   remove_placeholder_message <- function() {
-    idx <- find_message_index()
-    if (length(idx) > 0) {
-      values$messages <- values$messages[-idx]
-    }
-
-    try(
-      removeUI(
-        selector = paste0("#message_wrapper_", stream_env$msg_id),
-        multiple = FALSE,
-        immediate = TRUE
-      ),
-      silent = TRUE
-    )
+    chat_discard_stream_placeholder(session, values, stream_env$msg_id)
   }
 
   finalize_stream_message <- function(final_text,

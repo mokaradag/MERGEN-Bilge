@@ -44,10 +44,13 @@ test_that("geç SSE sonucu yeni isteği, sohbeti veya sahibi değiştirmez", {
       if (change == "request") { active("B"); session$userData$llm_request_owner <- "B" }
       if (change == "chat") values$current_chat_id <- "chat_B"
       if (change == "owner") { session$userData$user_id <- 8L; session$userData$kimlik_nesli <- 1L }
-      values$messages <- list(list(id = "B", content = "Yeni sohbet"))
+      values$messages <- list(
+        list(id = rec$stream$msg_id, content = "Yarım eski yanıt", is_streaming = TRUE),
+        list(id = "B", content = "Yeni sohbet", is_streaming = TRUE))
       rec$resolve(list(success = TRUE, content = "A kullanıcısının özel yanıtı"))
       .lifecycle_drain()
       session$flushReact()
+      expect_length(shiny::isolate(values$messages), 1L)
       expect_identical(shiny::isolate(values$messages[[1]]$content), "Yeni sohbet")
       expect_true(shiny::isolate(values$is_sending))
       expect_true(shiny::isolate(values$typing))

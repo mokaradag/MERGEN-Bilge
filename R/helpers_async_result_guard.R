@@ -44,6 +44,7 @@ mergen_stream_request_current <- function(ctx, stream_env, completed = FALSE) {
 mergen_stream_bind_cleanup <- function(ctx, stream_env) {
   cleanup <- function(...) {
     stream_env$finalized <- TRUE
+    if (!is.null(ctx$values)) chat_discard_stream_placeholder(ctx$session, ctx$values, stream_env$msg_id)
     if (!is.null(stream_env$poll_observer)) {
       try(stream_env$poll_observer$destroy(), silent = TRUE)
       stream_env$poll_observer <- NULL
@@ -92,13 +93,34 @@ mergen_bind_request_owner_cleanup <- function(session, active_request_id, req_id
 }
 
 
-mergen_dispatch_docx_preview <- function(path, session_token) {
+mergen_dispatch_docx_preview <- function(path, session_token, cached = NULL,
+                                         name = NULL, user_id = NULL) {
+  globals <- list(docx_path = path, docx_name = name, docx_user_id = user_id,
+                  docx_cached = cached, resolve_readable_path = resolve_readable_path)
+  if (is.null(path)) {
+    globals$resolve_uploaded_file <- resolve_uploaded_file
+    globals <- c(globals, worker_monitor_expand_function_globals(globals))
+  }
+  globals$index_options <- options()[intersect(names(options()),
+    c("mergen.mcp_base_dir", "mergen.index_path", "mergen.files_root"))]
   tracked_future_promise(
-    task_fn = function() base64enc::base64encode(docx_path),
+    task_fn = function() {
+      old_options <- options(index_options)
+      on.exit(options(old_options), add = TRUE)
+      path <- docx_path
+      if (is.null(path)) path <- resolve_uploaded_file(docx_name, user_id = docx_user_id)
+      if (is.null(path) || !nzchar(path)) stop("Dosya bulunamadı veya erişilemiyor.")
+      path <- resolve_readable_path(path)
+      info <- file.info(path)
+      if (is.na(info$size[1])) stop("Dosya bulunamadı veya erişilemiyor.")
+      key <- paste(path, info$size[1], as.numeric(info$mtime[1]), sep = "||")
+      b64 <- if (identical(key, docx_cached$key)) docx_cached$base64 else base64enc::base64encode(path)
+      structure(b64, cache_key = key, resolved_path = path)
+    },
     task_type = "file_preview_docx",
     session_token = session_token,
     dependency_mode = "explicit",
-    globals = list(docx_path = path),
+    globals = globals,
     packages = "base64enc"
   )
 }

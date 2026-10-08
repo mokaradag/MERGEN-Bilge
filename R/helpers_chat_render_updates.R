@@ -1,5 +1,21 @@
 # Sohbetin takip önerisi ve grafik yayın yardımcıları.
 
+chat_discard_stream_placeholder <- function(session, values, message_id) {
+  if (is.null(message_id)) return(invisible(NULL))
+  removed <- shiny::isolate({
+    idx <- which(vapply(values$messages, function(m) {
+      identical(m$id, message_id) && isTRUE(m$is_streaming)
+    }, logical(1)))
+    if (length(idx)) values$messages <- values$messages[-idx]
+    length(idx) > 0L
+  })
+  if (removed) try(shiny::withReactiveDomain(session, shiny::removeUI(
+    selector = paste0("#message_wrapper_", message_id),
+    multiple = FALSE, immediate = TRUE
+  )), silent = TRUE)
+  invisible(NULL)
+}
+
 push_followup_update <- function(session, message_id, followups, pending = FALSE) {
   if (is.null(session) || is.null(message_id)) {
     return(invisible(NULL))
