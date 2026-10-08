@@ -24,6 +24,13 @@ mergen_chat_owner_guard <- function(session, values) {
     identical(session$userData$pk_unsaved_chat_epoch %||% 0L, epoch)
 }
 
+mergen_request_owner_guard <- function(session) {
+  owner_guard <- mergen_session_owner_guard(session)
+  request_owner <- session$userData$llm_request_owner
+  function() isTRUE(owner_guard()) &&
+    identical(session$userData$llm_request_owner, request_owner)
+}
+
 mergen_stream_request_current <- function(ctx, stream_env, completed = FALSE) {
   if (!isTRUE(stream_env$owner_guard())) return(FALSE)
   if (!identical(ctx$session$userData$llm_request_owner, stream_env$req_id)) return(FALSE)
@@ -43,24 +50,45 @@ mergen_stream_bind_cleanup <- function(ctx, stream_env) {
     }
     if (isTRUE(stream_env$settled)) {
       unlink(c(stream_env$stream_file, stream_env$stop_file), force = TRUE)
-      if (is.function(stream_env$remove_owner_hook)) stream_env$remove_owner_hook()
-      if (is.function(stream_env$remove_end_hook)) stream_env$remove_end_hook()
     } else if (!file.exists(stream_env$stop_file)) {
       file.create(stream_env$stop_file)
     }
+    if (is.function(stream_env$remove_owner_hook)) stream_env$remove_owner_hook()
+    if (is.function(stream_env$remove_end_hook)) stream_env$remove_end_hook()
+    stream_env$remove_owner_hook <- stream_env$remove_end_hook <- NULL
     if (isTRUE(stream_env$owner_guard()) &&
         identical(.mergen_request_state_read(ctx$active_request_id), stream_env$req_id)) {
       ctx$active_request_id(NULL)
     }
     invisible(NULL)
   }
+  owner_cleanup <- function(...) {
+    if (identical(.mergen_request_state_read(ctx$active_request_id), stream_env$req_id)) {
+      ctx$active_request_id(NULL)
+      shiny::withReactiveDomain(ctx$session, shiny::isolate(ctx$reset_chat_state_fn()))
+    }
+    cleanup()
+  }
   if (exists("mergen_session_on_owner_change", mode = "function")) {
-    stream_env$remove_owner_hook <- mergen_session_on_owner_change(ctx$session, cleanup)
+    stream_env$remove_owner_hook <- mergen_session_on_owner_change(ctx$session, owner_cleanup)
   }
   if (is.function(ctx$session$onSessionEnded)) {
     stream_env$remove_end_hook <- ctx$session$onSessionEnded(cleanup)
   }
   cleanup
+}
+
+mergen_bind_request_owner_cleanup <- function(session, active_request_id, req_id, reset_fn) {
+  remove_hook <- function() NULL
+  cleanup <- function(...) {
+    remove_hook()
+    if (identical(.mergen_request_state_read(active_request_id), req_id)) {
+      active_request_id(NULL)
+      shiny::withReactiveDomain(session, shiny::isolate(reset_fn()))
+    }
+  }
+  remove_hook <- mergen_session_on_owner_change(session, cleanup)
+  remove_hook
 }
 
 

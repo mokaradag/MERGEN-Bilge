@@ -356,3 +356,63 @@ testthat::test_that("sohbet AYNIYSA TTS geri cagrisi akisi baslatir", {
   tipler <- vapply(rec$msgs, function(m) as.character(m$type)[1], character(1))
   testthat::expect_true("initStreamingMessage" %in% tipler)
 })
+
+test_that("geç TTS sesi önceki sahibin veya isteğin akışını başlatamaz", {
+  for (change in c("owner", "request")) {
+    env <- .css_env()
+    rec <- new.env(); rec$msgs <- list()
+    session <- .css_session(rec)
+    session$userData <- new.env()
+    session$userData$user_id <- session$userData$kimlik_sahibi <- 7L
+    session$userData$llm_request_owner <- "A"
+    values <- new.env()
+    values$messages <- list()
+    values$typing <- TRUE
+    resolve <- NULL
+    completed <- 0L
+    env$chat_simulate_streaming("eski yanıt", session, values, list(selected_character = "emre"),
+      list(), function() FALSE, on_complete = function(msg) completed <<- completed + 1L,
+      tts_engine = function(...) promises::promise(function(ok, reject) resolve <<- ok))
+    if (change == "owner") {
+      session$userData$user_id <- 8L
+      mergen_session_owner_transition(session$userData, 7L, 8L)
+    } else session$userData$llm_request_owner <- "B"
+    resolve(list(success = TRUE, duration = 0))
+    .css_drain()
+    expect_length(rec$msgs, 0L)
+    expect_length(values$messages, 0L)
+    expect_identical(env$.rec$reset, 0L)
+    expect_identical(completed, 1L)
+  }
+})
+
+test_that("süren benzetimli akış bayatlayınca yeni mesajları ve gönderimi değiştirmez", {
+  env <- .css_env()
+  callback <- NULL
+  destroyed <- FALSE
+  testthat::local_mocked_bindings(observe = function(expr, ...) {
+    expression <- substitute(expr)
+    frame <- parent.frame()
+    callback <<- function() eval(expression, frame)
+    list(destroy = function() destroyed <<- TRUE)
+  }, .package = "shiny")
+  rec <- new.env(); rec$msgs <- list()
+  session <- .css_session(rec)
+  session$userData <- new.env()
+  session$userData$user_id <- 7L
+  session$userData$llm_request_owner <- "A"
+  values <- new.env()
+  values$messages <- list()
+  completed <- 0L
+  env$chat_simulate_streaming("eski yanıt", session, values, list(selected_character = "emre"),
+    list(), function() FALSE, on_complete = function(msg) completed <<- completed + 1L)
+  rec$msgs <- list()
+  values$messages <- list(list(id = "B", content = "Yeni yanıt"))
+  session$userData$llm_request_owner <- "B"
+  callback()
+  expect_true(destroyed)
+  expect_length(rec$msgs, 0L)
+  expect_identical(values$messages[[1]]$content, "Yeni yanıt")
+  expect_identical(env$.rec$reset, 0L)
+  expect_identical(completed, 1L)
+})

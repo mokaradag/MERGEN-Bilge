@@ -30,7 +30,6 @@ test_that("geç SSE sonucu yeni isteği, sohbeti veya sahibi değiştirmez", {
     }
     shiny::testServer(function(input, output, session) {
       session$userData$user_id <- 7L
-    session$userData$kimlik_sahibi <- 7L
       session$userData$kimlik_sahibi <- 7L
       values <- shiny::reactiveValues(current_chat_id = "chat_A", messages = list(),
                                      typing = TRUE, is_sending = TRUE)
@@ -233,7 +232,7 @@ test_that("takip üretimi ayrı süreçte çalışır ve bayat öneriler uygulan
   env$mergen_send_message_release_slot <- function(...) NULL
   updates <- list()
   env$push_followup_update <- function(session, msg_id, suggestions, ...) updates[[length(updates) + 1L]] <<- suggestions
-  builder <- function(...) { Sys.sleep(1); c(as.character(Sys.getpid()), "öneri") }
+  builder <- function(...) { Sys.sleep(3); c(as.character(Sys.getpid()), "öneri") }
   environment(builder) <- baseenv()
   cl <- parallel::makePSOCKcluster(1L)
   withr::defer(parallel::stopCluster(cl))
@@ -251,7 +250,7 @@ test_that("takip üretimi ayrı süreçte çalışır ve bayat öneriler uygulan
   dispatch()
   started <- Sys.time()
   later::run_now(0)
-  expect_lt(as.numeric(difftime(Sys.time(), started, units = "secs")), 0.8)
+  expect_lt(as.numeric(difftime(Sys.time(), started, units = "secs")), 2)
   deadline <- Sys.time() + 15
   while (!length(updates) && Sys.time() < deadline) later::run_now(0.05)
   expect_length(updates, 1L)
@@ -259,7 +258,7 @@ test_that("takip üretimi ayrı süreçte çalışır ve bayat öneriler uygulan
   dispatch()
   later::run_now(0)
   ud$llm_request_owner <- "B"
-  deadline <- Sys.time() + 1.5
+  deadline <- Sys.time() + 4.5
   while (Sys.time() < deadline) later::run_now(0.05)
   expect_length(updates, 1L)
 })

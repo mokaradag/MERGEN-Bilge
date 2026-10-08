@@ -5,8 +5,8 @@
 #           (gerçek geçici dosya sistemiyle), sınırlı eşzamanlılık/kuyruk
 #           katmanı ve ana süreç commit/iptal katmanı doğrulanır.
 #
-#           Çevrimdışı ve deterministiktir: gerçek future/PSOCK worker, LLM,
-#           veritabanı, tarayıcı, SSO veya ağ erişimi yoktur. Dosya deposu
+#           Çevrimdışı çalışır: geri alma testleri bağımsız R işçisi kullanır;
+#           LLM, veritabanı, tarayıcı, SSO veya ağ erişimi yoktur. Dosya deposu
 #           yolları helper_load_file_store.R tarafından tempdir altına alınır.
 # ==============================================================================
 
@@ -314,13 +314,12 @@ test_that("parti indeks commit'i her dosyayı TEK kez kaydeder", {
   expect_true(commit$ms >= 0)
 })
 
-test_that("indeks yazımı çökerse commit hata fırlatmaz", {
+test_that("indeks yazımı çökerse commit başarısız olur", {
   env <- .ingestionEnv()
   sonuclar <- env$file_ingestion_execute_batch(list(.ingestionTask(env, .ingestionUpload("hata.txt"))))
   env$mergen_index_persisted_files <- function(entries, user_id = NULL) stop("indeks kilidi kirik")
 
-  commit <- expect_silent(env$file_ingestion_commit_index(sonuclar, "42"))
-  expect_equal(length(commit$indexed), 0L)
+  expect_error(env$file_ingestion_commit_index(sonuclar, "42"), "indeks kilidi kirik")
 })
 
 test_that("aynı görünen adlı dosyalar kullanıcı bazında ayrı indekslenir", {
@@ -575,5 +574,80 @@ test_that("indekslenirken iptal edilen parti yalnız kendi kayıt ve dosyasını
   expect_true(.ingestionSamePath(env, resolve_uploaded_file(result$name, "42"), result$dest))
   env$file_ingestion_discard_results(list(result), "42")
   expect_false(file.exists(result$dest))
+  expect_null(.load_index()[["42"]][[tolower(result$name)]])
+})
+
+test_that("iptal indeks kilidi hata verse de yalnız başarılı kopyaları temizler", {
+  env <- .ingestionEnv()
+  source_path <- withr::local_tempfile()
+  copied <- withr::local_tempfile()
+  failed <- withr::local_tempfile()
+  file.create(source_path, copied, failed)
+  env$.file_store_mutate_index <- function(...) stop("kilit zaman aşımı")
+  results <- list(list(ok = TRUE, dest = copied, source_path = source_path),
+                  list(ok = FALSE, dest = failed, source_path = source_path))
+  expect_error(env$file_ingestion_discard_results(results, "42"), "kilit zaman aşımı")
+  expect_false(file.exists(copied))
+  expect_true(file.exists(source_path))
+  expect_true(file.exists(failed))
+})
+
+test_that("indeks gönderim veya işçi hatası kopyaları bağımsız işçide geri alır", {
+  for (failure in c("dispatch", "worker", "write")) {
+    env <- .ingestionEnv()
+    source(file.path(resolve_repo_root_for_tests(), "R", "helpers_worker_monitor.R"),
+           encoding = "UTF-8", local = env)
+    source_path <- withr::local_tempfile()
+    copied <- withr::local_tempfile()
+    marker <- withr::local_tempfile()
+    file.create(source_path, copied)
+    controller <- env$file_ingestion_create_controller()
+    complete <- FALSE
+    error_message <- NULL
+    job <- .ingestionJob(env, controller, on_complete = function(...) complete <<- TRUE)
+    job$on_failure <- function(message, tasks) error_message <<- message
+    cleanup_env <- new.env(parent = baseenv())
+    cleanup_env$marker <- marker
+    cleanup_env$file_ingestion_discard_results <- function(results, user_id) {
+      writeLines(as.character(Sys.getpid()), marker)
+      for (r in results) if (isTRUE(r$ok) && r$dest != r$source_path) unlink(r$dest)
+      invisible(TRUE)
+    }
+    cleanup_env$file_ingestion_commit_index <- function(...) stop("indeks yazımı hatası")
+    env$file_ingestion_worker_globals <- function() as.list(cleanup_env)
+    env$tracked_future_promise <- function(task_fn, globals, ...) {
+      if (failure == "dispatch") stop("gönderim hatası")
+      if (failure == "worker") return(promises::promise_reject(simpleError("işçi hatası")))
+      environment(task_fn) <- list2env(globals, parent = baseenv())
+      promises::promise(function(resolve, reject) resolve(task_fn()))
+    }
+    env$file_ingestion_finish_job(job, list(list(ok = TRUE, dest = copied, source_path = source_path)))
+    deadline <- Sys.time() + 15
+    while (is.null(error_message) && Sys.time() < deadline) later::run_now(0.05)
+    expect_false(complete)
+    expect_match(error_message, "hatası", fixed = TRUE)
+    expect_false(file.exists(copied))
+    expect_true(file.exists(source_path))
+    expect_false(identical(readLines(marker), as.character(Sys.getpid())))
+    expect_identical(env$file_ingestion_queue_status()$active_batches, 0L)
+  }
+})
+
+test_that("geri alma işçisi gerçek indeks paketiyle kaynak dosyayı korur", {
+  env <- .ingestionEnv()
+  upload <- .ingestionUpload("geri_al.txt")
+  result <- env$file_ingestion_execute_task(.ingestionTask(env, upload))
+  expect_true(result$ok)
+  mergen_index_persisted_files(list(list(path = result$dest, display = result$name)), "42")
+  error_message <- NULL
+  job <- .ingestionJob(env, env$file_ingestion_create_controller())
+  job$on_failure <- function(message, tasks) error_message <<- message
+  env$tracked_future_promise <- function(...) stop("işçi gönderim hatası")
+  env$file_ingestion_finish_job(job, list(result))
+  deadline <- Sys.time() + 15
+  while (is.null(error_message) && Sys.time() < deadline) later::run_now(0.05)
+  expect_match(error_message, "işçi gönderim hatası", fixed = TRUE)
+  expect_false(file.exists(result$dest))
+  expect_true(file.exists(upload$datapath))
   expect_null(.load_index()[["42"]][[tolower(result$name)]])
 })

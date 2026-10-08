@@ -63,7 +63,6 @@ suppressMessages({
 test_that("DOCX: BAYAT asenkron sonuç daha YENİ modalı EZMEZ; yalnızca güncel sonuç basılır", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("promises")
-  skip_if_not_installed("future")
 
   env <- .fp_make_env()
   resolvers <- new.env()
@@ -118,7 +117,6 @@ test_that("DOCX: BAYAT asenkron sonuç daha YENİ modalı EZMEZ; yalnızca günc
 test_that("DOCX: TEK açılışta asenkron başarı sonucu doğru base64 ile openDocxPreview gönderir", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("promises")
-  skip_if_not_installed("future")
 
   env <- .fp_make_env()
   resolvers <- new.env()
@@ -159,7 +157,6 @@ test_that("DOCX: TEK açılışta asenkron başarı sonucu doğru base64 ile ope
 test_that("DOCX: BAYAT asenkron HATA sonucu daha yeni modal için Türkçe hata toast'ı göstermez", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("promises")
-  skip_if_not_installed("future")
 
   env <- .fp_make_env()
   resolvers <- new.env()
@@ -228,7 +225,6 @@ test_that("oturum sahibi değişince açık önizlemenin indirmesi önceki dosya
 test_that("sahip değişince süren DOCX kodlaması yeni sahibe basılmaz ve önbelleğe yazılmaz", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("promises")
-  skip_if_not_installed("future")
   env <- .fp_make_env()
   source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
          encoding = "UTF-8", local = env)
@@ -325,5 +321,21 @@ test_that("görsel kaydı daha önce açılmış PDF uç noktasını geçersiz k
     session$returned$open(list(name = "rapor.png", datapath = png))
     expect_length(kayitlar, 2L)
     expect_identical(ilk$filter(ilk$data, istek)$status, 200L)
+  })
+})
+
+test_that("büyük DOCX işçisine okunabilir yol varyantı gönderilir", {
+  env <- .fp_make_env()
+  env$resolve_readable_path <- function(path) "//sunucu/paylasim/rapor.docx"
+  sent <- NULL
+  env$mergen_dispatch_docx_preview <- function(path, ...) {
+    sent <<- path
+    promises::promise_resolve("kodlanmış")
+  }
+  testthat::local_mocked_bindings(showModal = function(...) NULL, .package = "shiny")
+  shiny::testServer(env$filePreviewServer, {
+    session$returned$open(list(name = "rapor.docx", datapath = "/sunucu/paylasim/rapor.docx", size = 1))
+    .fp_drain_later_queue()
+    expect_identical(sent, "//sunucu/paylasim/rapor.docx")
   })
 })

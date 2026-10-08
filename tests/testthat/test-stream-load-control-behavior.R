@@ -134,7 +134,7 @@ test_that("dispatch_followups etkin planda planlar; geri cagri ureticiyi calisti
               else assign("mb_api_key_get_effective_key_value", old_key, envir = target))
   out <- mergen_stream_dispatch_followups(
     session = .fake_session(), msg_id = "m2", user_message_text = "q",
-    final_text = "ans", settings_data = list(), api_config = list(),
+    final_text = "ans", settings_data = list(enable_followups = TRUE), api_config = list(),
     followup_tools = NULL, fallback_followup_tool = NULL,
     plan = list(enabled = TRUE, delay_seconds = 0),
     later_fn = fake_later, build_fn = function(...) c("S1", "S2"),

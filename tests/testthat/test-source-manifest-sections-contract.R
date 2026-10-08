@@ -167,7 +167,7 @@
   # 13 -> 14 bilinçli güncelleme: Langflow düzyazı "Kaynak:" bölümü + satır içi
   # <sup>(n)</sup> atıf yükseltme yardımcıları (R/helpers_langflow_inline_sources.R)
   # helpers_langflow_sources.R'den SONRA eklendi (marker bloğu bağımlılığı).
-  chat_send_message_runtime = list(first = "R/helpers_chat_runtime.R", last = "R/helpers_quick_action_intro_messages.R", n = 15L),
+  chat_send_message_runtime = list(first = "R/helpers_chat_runtime.R", last = "R/helpers_quick_action_intro_messages.R", n = 17L),
   summarization_followup = list(first = "R/helpers_summarization_modes.R", last = "R/helpers_followup_questions.R", n = 3L),
   # Faz 0 (Proje ve Kaynak Analizi yeniden inşası): yapılandırma çözümleyicisi,
   # köken/bozulma ve telemetri yardımcıları bölümün BAŞINA eklendi
@@ -764,7 +764,7 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # temizleyicisi; `helpers_admin_documentation.R` 24 fonksiyon tavanındaydı).
   # 508 -> 509: `helpers_ai_expert_greeting_topic.R` (karşılama önekinin son
   # konusu işçide okunur; `helpers_ai_expert_user_data.R` bütçesi korunur).
-  expect_equal(length(runtime), 515L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  expect_equal(length(runtime), 517L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

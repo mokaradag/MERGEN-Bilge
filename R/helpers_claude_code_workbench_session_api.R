@@ -240,8 +240,10 @@ cc_bind_workbench_owner_lifecycle <- function(session, ns, rv, dir_refresh_guard
         target = ns("output_area"), welcomeId = ns("welcome_screen"),
         statusId = ns("status_text"), durationId = ns("duration_text")
       )), silent = TRUE)
-      try(shinyjs::enable("run_command"), silent = TRUE)
-      try(shinyjs::hide("stop_command"), silent = TRUE)
+      try(shiny::withReactiveDomain(session, {
+        shinyjs::enable("run_command")
+        shinyjs::hide("stop_command")
+      }), silent = TRUE)
       try(shiny::updateTextInput(session, "workdir", value = ""), silent = TRUE)
     }
   }

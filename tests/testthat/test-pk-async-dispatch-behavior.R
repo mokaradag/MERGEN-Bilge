@@ -656,3 +656,16 @@ test_that("meşgul veya doğrulanmamış PK havuzu senkron analiz başlatmaz", {
     expect_match(result$answer, "henüz hazır değil veya meşgul", fixed = TRUE)
   }
 })
+
+test_that("kalıcı işçi altyapısı eksikliği geçici meşgul yanıtına dönüşmez", {
+  env <- .pk_dispatch_env()
+  for (reason in c("promises_missing", "tracked_future_promise_missing", "pool_busy", "worker_probe_inconclusive")) {
+    env$pk_async_available <- function(...) list(available = FALSE, reason = reason)
+    outcome <- env$mergen_pk_analysis_execute(.pk_ctx(env)$ctx)
+    if (reason %in% c("promises_missing", "tracked_future_promise_missing")) {
+      expect_identical(outcome$answer, env$mergen_pk_worker_outcome_text("infrastructure"))
+    } else {
+      expect_match(outcome$answer, "biraz sonra", fixed = TRUE)
+    }
+  }
+})

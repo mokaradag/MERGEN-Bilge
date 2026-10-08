@@ -116,6 +116,7 @@ mergen_stream_dispatch_followups <- function(session,
     model_selection = settings_data$model_selection,
     enable_followups = resolve_followup_enabled(settings_data, session)
   ))
+  if (!isTRUE(settings_snapshot$enable_followups)) return(invisible(FALSE))
   key <- mb_api_key_get_effective_key_value(
     session, require_auth = TRUE, allow_default = NULL, clear_on_mismatch = TRUE
   )
@@ -132,13 +133,23 @@ mergen_stream_dispatch_followups <- function(session,
       if (!released) mergen_send_message_release_slot(fu_admit$token)
       released <<- TRUE
     }
+    cancellation <- mergen_followup_cancellation(session, function() {
+      isTRUE(owner_guard()) &&
+        identical(session$userData$llm_request_owner, request_owner) &&
+        (!is.function(apply_guard) || isTRUE(apply_guard()))
+    })
     # İşçi kapanışı yalnızca düz anlık görüntüleri taşır.
-    task_fn <- function() build_fn(
-      user_message_text, final_text, settings_snapshot, worker_session,
-      api_config, followup_tools, fallback_followup_tool
-    )
+    task_fn <- function() {
+      stopped <- function() file.exists(stop_file)
+      if (stopped()) return(NULL)
+      old <- options(mergen.llm.stop_check = stopped)
+      on.exit(options(old), add = TRUE)
+      result <- build_fn(user_message_text, final_text, settings_snapshot, worker_session,
+                         api_config, followup_tools, fallback_followup_tool)
+      if (stopped()) NULL else result
+    }
     environment(task_fn) <- list2env(list(
-      build_fn = build_fn, user_message_text = user_message_text,
+      stop_file = cancellation$path, build_fn = build_fn, user_message_text = user_message_text,
       final_text = final_text, settings_snapshot = settings_snapshot,
       worker_session = worker_session, api_config = api_config,
       followup_tools = followup_tools, fallback_followup_tool = fallback_followup_tool
@@ -148,6 +159,7 @@ mergen_stream_dispatch_followups <- function(session,
       dispatch_fn(task_fn = task_fn, task_type = "llm_followups",
                   session_token = session$token) |>
         promises::then(function(followup_questions) {
+          cancellation$finish()
           on.exit(release(), add = TRUE)
           if (!isTRUE(owner_guard()) ||
               !identical(session$userData$llm_request_owner, request_owner) ||
@@ -160,11 +172,13 @@ mergen_stream_dispatch_followups <- function(session,
           NULL
         }) |>
         promises::catch(function(e) {
+          cancellation$finish()
           release()
           mergen_runtime_metric_inc("followups_failed")
           NULL
         })
     }, error = function(e) {
+      cancellation$finish()
       release()
       mergen_runtime_metric_inc("followups_failed")
     })

@@ -44,6 +44,12 @@ handle_streaming_tts_mode <- function(ctx) {
   settings_for_llm$model_selection <- model_selected
 
   active_request_id(req_id)
+  owner_guard <- mergen_chat_owner_guard(session, values)
+  session$userData$llm_request_owner <- req_id
+  remove_owner_cleanup <- mergen_bind_request_owner_cleanup(
+    session, active_request_id, req_id, cleanup_send_message
+  )
+  simulated <- FALSE
   stop_generation(FALSE)
   values$is_sending <- TRUE
 
@@ -61,6 +67,7 @@ handle_streaming_tts_mode <- function(ctx) {
   p <- promises::then(
     p,
     onFulfilled = function(res) {
+      if (!isTRUE(owner_guard())) return(invisible(NULL))
       request_state <- mergen_send_message_request_state(active_request_id, res$req_id, stop_generation)
       if (!identical(request_state, "current")) {
         try(log_ai_usage(chat_id_val, user_prompt_msg$db_id, effective_user_id,
@@ -98,12 +105,6 @@ handle_streaming_tts_mode <- function(ctx) {
         session$userData$chart_store <- utils::modifyList(session$userData$chart_store, res$chart_store)
       }
 
-      # Takip soruları oluştur
-      followup_questions <- build_followup_suggestions(
-        user_message_text, res$content, settings_data, session,
-        api_config, followup_tools, fallback_followup_tool
-      )
-
       local_char_id <- normalize_character_id(current_settings$selected_character)
 
       # Kilitli referans modunda ses kimliği persona kimliğidir; sentez katmanı
@@ -126,16 +127,29 @@ handle_streaming_tts_mode <- function(ctx) {
 
       simulate_streaming_stoppable_fn(
         res$content,
-        followups = followup_questions,
+        followups = NULL,
+        request_id = req_id,
         tts_engine = tts_engine_param,
         tts_voice = tts_voice_param,
         on_start = NULL,
         on_complete = function(msg) {
+          remove_owner_cleanup()
+          if (!isTRUE(owner_guard()) ||
+              !identical(session$userData$llm_request_owner, req_id) ||
+              isTRUE(.mergen_request_state_read(stop_generation)) || is.null(msg$id)) return(NULL)
+          mergen_stream_dispatch_followups(
+            session, msg$id, user_message_text, msg$content, settings_data,
+            api_config, followup_tools, fallback_followup_tool,
+            apply_guard = function() isTRUE(owner_guard()) &&
+              identical(session$userData$llm_request_owner, req_id)
+          )
         }
       )
+      simulated <<- TRUE
       invisible(NULL)
     },
     onRejected = function(err) {
+      if (!isTRUE(owner_guard())) return(invisible(NULL))
       log_warn("[MONITORING] Streaming isteği BAŞARISIZ")
       perf_tracker$track_error()
 
@@ -160,6 +174,7 @@ handle_streaming_tts_mode <- function(ctx) {
   )
 
   p <- p %...!% (function(e) {
+    if (!isTRUE(owner_guard())) return(invisible(NULL))
     log_warn("[STREAM_CHAIN] Hata yakalandı: {conditionMessage(e)}")
     perf_tracker$track_error()
 
@@ -176,6 +191,7 @@ handle_streaming_tts_mode <- function(ctx) {
   })
 
   promises::finally(p, onFinally = function() {
+    if (!simulated) remove_owner_cleanup()
   })
 
   invisible(NULL)

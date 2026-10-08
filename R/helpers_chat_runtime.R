@@ -36,35 +36,6 @@ chat_generate_title_from_prompt <- function(prompt, max_len = 60) {
   paste0(title, "...")
 }
 
-push_followup_update <- function(session, message_id, followups, pending = FALSE) {
-  if (is.null(session) || is.null(message_id)) {
-    return(invisible(NULL))
-  }
-
-  cleaned <- followups %||% character(0)
-  cleaned <- trimws(as.character(cleaned))
-  cleaned <- cleaned[nzchar(cleaned)]
-  if (!length(cleaned)) {
-    return(invisible(NULL))
-  }
-
-	payload <- list(
-	  id = message_id,
-	  followups = unname(cleaned),
-	  pending = isTRUE(pending)
-	)
-
-	cat(sprintf(
-	  "[FOLLOWUPS][PUSH] message_id=%s count=%d pending=%s\n",
-	  as.character(message_id),
-	  length(cleaned),
-	  isTRUE(pending)
-	))
-
-	try(session$sendCustomMessage("updateFollowupSuggestions", payload), silent = TRUE)
-	invisible(NULL)
-}
-
 chat_add_message <- function(session, values, settings_data, output,
                              content, type = "user", html = NULL,
                              current_user_id,
@@ -254,6 +225,7 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
   .cr_kimlik_oku <- function() { if (!exists("mergen_pk_chat_identity", mode = "function", inherits = TRUE)) return(NULL); v <- try(mergen_pk_chat_identity(session, values), silent = TRUE); if (inherits(v, "try-error")) NULL else v }
   pk_chat_kimlik <- .cr_kimlik_oku()
   .cr_ayni_sohbet <- function() { if (is.null(pk_chat_kimlik)) return(TRUE); s <- .cr_kimlik_oku(); is.null(s) || identical(s, pk_chat_kimlik) }
+  .cr_result_current <- mergen_request_owner_guard(session)
   msg_id <- paste0("msg_", floor(as.numeric(Sys.time()) * 1000), "_", sample(1000:9999, 1))
   timestamp <- format_timestamp()
   
@@ -266,12 +238,22 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
   # `block` bayrağı 4b'de ÇÖZÜLÜR; izole çağrı için ÖNCEDEN tanımlanır.
   .cr_blok_aktif <- FALSE
   start_streaming_execution <- function(audio_result = NULL) {
+    if (!.cr_result_current()) {
+      if (is.function(on_complete)) try(on_complete(NULL), silent = TRUE)
+      return(invisible(NULL))
+    }
     # Sohbet DEĞİŞTİYSE bu akış artık kimsenin beklemediği bir yanıttır.
     # GÖNDERME DURUMU DA SERBEST BIRAKILIR: eski çıkış yalnızca animasyonu
     # kaldırıyor, `is_sending` TRUE kalıp gönder düğmesini KİLİTLİYORDU.
     # BAYAT AKIŞ PAYLAŞILAN DURUMU SIFIRLAMAZ: söyleşi değiştiyse `values` ARTIK YENİ söyleşinindir; koşulsuz sıfırlama sürmekte olan YENİ isteğin yazma animasyonunu kaldırıp `is_sending` bayrağını temizliyordu. Karar saf yardımcıdadır (`pk_stale_callback_may_reset()`): daha yeni bir istek durumun sahibiyse DOKUNULMAZ.
-    if (!.cr_ayni_sohbet()) { if (!exists("pk_stale_callback_may_reset", mode = "function", inherits = TRUE) || isTRUE(pk_stale_callback_may_reset(session, pk_request_id))) chat_reset_state(session, values); return() }
+    if (!.cr_ayni_sohbet()) {
+      if (!exists("pk_stale_callback_may_reset", mode = "function", inherits = TRUE) ||
+          isTRUE(pk_stale_callback_may_reset(session, pk_request_id))) chat_reset_state(session, values)
+      if (is.function(on_complete)) try(on_complete(NULL), silent = TRUE)
+      return(invisible(NULL))
+    }
     if (stop_generation()) {
+        if (is.function(on_complete)) try(on_complete(NULL), silent = TRUE)
         removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
         values$typing <- FALSE
         chat_reset_state(session, values)
@@ -359,7 +341,13 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
 
     stream_observer <- shiny::observe({
       isolate({
+        if (!.cr_result_current() || !.cr_ayni_sohbet()) {
+          if (is.function(on_complete)) try(on_complete(NULL), silent = TRUE)
+          stream_observer$destroy()
+          return(invisible(NULL))
+        }
         if (stop_generation() || streaming_state$current_index > total_words) {
+          completed_msg <- NULL
           # ... Finalization Logic ...
 		  # vapply kullanarak tip güvenliği sağla ve performansı artır
 		  msg_index <- which(vapply(values$messages, function(m) identical(m$id, streaming_state$msg_id), logical(1)))
@@ -414,11 +402,11 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
                 values$messages[[msg_index]]$db_id <- new_db_id
               }
               chat_store_message_in_saved_chats(values, values$messages[[msg_index]])
-              if (is.function(on_complete)) {
-                try(on_complete(values$messages[[msg_index]]), silent = TRUE)
-              }
+              completed_msg <- values$messages[[msg_index]]
             }, error = function(e) print(paste("Error saving message:", e$message)))
           }
+
+          if (is.function(on_complete)) try(on_complete(completed_msg), silent = TRUE)
 
           chat_reset_state(session, values)
           stream_observer$destroy()
@@ -573,31 +561,4 @@ chat_start_new_chat <- function(session, values, saved_chats_data, session_files
   # için bu boşa giden bir HTML yüküydü (çift render). Sorumluluk tek yerde:
   # render_welcome_screen().
   showToast(session, "Yeni söyleşi başlatıldı.", "success")
-}
-
-chat_rebind_all_charts <- function(session, output, messages) {
-  if (length(messages) == 0) return(invisible(NULL))
-
-  for (msg in messages) {
-    if (!is.character(msg$content) ||
-        length(msg$content) == 0 ||
-        !grepl("```chartlab", msg$content[1], fixed = TRUE)) {
-      next
-    }
-
-    chart_info <- build_chartlab_message(msg$content[1], msg$id, session)
-
-    if (isTRUE(chart_info$found) && length(chart_info$renderers) > 0) {
-      for (r in chart_info$renderers) {
-        local({
-          local_r <- r
-          session$onFlushed(function() {
-            try(wire_chart_output(output, local_r$output_id, local_r$spec), silent = TRUE)
-          }, once = TRUE)
-        })
-      }
-    }
-  }
-
-  invisible(NULL)
 }

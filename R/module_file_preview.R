@@ -425,7 +425,10 @@ filePreviewServer <- function(id) {
               })
             } else {
               # Büyük dosya (>10 MB): asenkron kodlama
-              mergen_dispatch_docx_preview(datapath, session$token) %...>% (function(b64){
+              readable_path <- if (exists("resolve_readable_path", mode = "function")) {
+                resolve_readable_path(datapath)
+              } else datapath
+              mergen_dispatch_docx_preview(readable_path, session$token) %...>% (function(b64){
                 if (!onizleme_gecerli(docx_nesli) || isTRUE(session$isClosed())) return(NULL)
                 # Eski açılışın geç gelen sonucu, daha yeni bir DOCX modalını
                 # ezmemeli. Belirteç değiştiyse bu sonucu sessizce yok say

@@ -60,6 +60,9 @@ llmResponseHandlersInit <- function(
     active_request_id(req_id)
     owner_guard <- mergen_chat_owner_guard(session, values)
     session$userData$llm_request_owner <- req_id
+    remove_owner_cleanup <- mergen_bind_request_owner_cleanup(
+      session, active_request_id, req_id, reset_chat_state_fn
+    )
 	
     mcp_reasoning_stream_file <- NULL
     mcp_reasoning_stream_observer <- NULL
@@ -552,6 +555,7 @@ llmResponseHandlersInit <- function(
  
     # Promise tamamlandığında her zaman temizlik yap
     promises::finally(p2, onFinally = function() {
+      remove_owner_cleanup()
       try(drain_mcp_reasoning_stream(), silent = TRUE)
 
       # BU İSTEĞİN BEKLEYEN PK KÖKEN KAYDI HER TERMİNAL YOLDA TÜKETİLİR.

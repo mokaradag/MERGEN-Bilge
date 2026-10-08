@@ -224,13 +224,13 @@ source_manifest_sections <- list(
   # çıkarımı/Kaynakça işaretleyici yardımcıları runtime yardımcılarından SONRA
   # yüklenir (.langflow_pluck bağımlılığı).
   chat_send_message_runtime = c(
-    "R/helpers_chat_runtime.R",
+    "R/helpers_chat_runtime.R", "R/helpers_chat_render_updates.R",
     "R/helpers_send_message_request_lifecycle.R",
     "R/helpers_send_message_thinking_panel.R",
     "R/helpers_send_message_model_runtime.R",
     "R/helpers_streaming_abort_lifecycle.R",
     "R/helpers_streaming_poll_lifecycle.R",
-    "R/helpers_streaming_io.R",
+    "R/helpers_streaming_io.R", "R/helpers_followup_cancellation.R",
     "R/helpers_stream_load_control.R",
     "R/helpers_send_message_core.R",
     "R/helpers_langflow_runtime.R",

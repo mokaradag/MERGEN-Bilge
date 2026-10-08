@@ -32,8 +32,12 @@ mergen_pk_analysis_execute <- function(ctx) {
   uygun <- pk_async_available(aktif_meta)
   if (!isTRUE(uygun$available)) {
     if (!uygun$reason %in% c("flag_off", "query_opt_out")) {
-      return(list(action = "answer", chips = list(), answer =
-        "Analiz işçisi henüz hazır değil veya meşgul. Lütfen biraz sonra tekrar deneyin."))
+      cevap <- if (uygun$reason %in% c("promises_missing", "tracked_future_promise_missing")) {
+        mergen_pk_worker_outcome_text("infrastructure")
+      } else {
+        "Analiz işçisi henüz hazır değil veya meşgul. Lütfen biraz sonra tekrar deneyin."
+      }
+      return(list(action = "answer", chips = list(), answer = cevap))
     }
     if (identical(uygun$reason, "query_opt_out")) {
       geri_al <- mergen_pk_force_bounded_sync(stop_check = ctx$stop_generation,
