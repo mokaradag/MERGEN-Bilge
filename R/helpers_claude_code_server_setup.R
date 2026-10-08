@@ -13,6 +13,8 @@ cc_bind_server_setup <- function(input,
                                  settings_data = NULL,
                                  user_first_name = NULL,
                                  dir_refresh_guard) {
+  cc_bind_workbench_owner_lifecycle(session, ns, rv, dir_refresh_guard)
+
   resolve_current_user_id <- function() {
     cc_resolve_effective_user_id(
       session = session,
@@ -369,6 +371,7 @@ cc_bind_server_setup <- function(input,
   # --- Dizin İçeriğini Göster ---
   observe_dir_contents <- function(dizin = NULL) {
     refresh_id <- dir_refresh_guard$next_id()
+    owner_guard <- mergen_session_owner_guard(session)
     yol <- dizin %||% isolate(input$workdir)
 
     if (is.null(yol) || !nzchar(yol)) {
@@ -391,7 +394,7 @@ cc_bind_server_setup <- function(input,
     # Sonucu UI'ya uygula. Stale koruması hem senkron hem eşzamansız yolda
     # aynıdır: yalnızca en güncel yenileme isteği ekranı değiştirebilir.
     uygula_icerik <- function(icerik) {
-      if (!dir_refresh_guard$is_latest(refresh_id)) {
+      if (!isTRUE(owner_guard()) || !dir_refresh_guard$is_latest(refresh_id)) {
         return(invisible(FALSE))
       }
 
@@ -451,18 +454,12 @@ cc_bind_server_setup <- function(input,
             NULL
           }) |>
           promises::catch(function(e) {
-            # Worker yolu başarısızsa kullanıcı boş ekranla kalmaz: gezinme
-            # senkron yola düşer. Bu istisnai bir yedek yoldur, normal akış
-            # değildir.
-            cc_log_warn(paste(
-              CLAUDE_CODE_LOG_PREFIX,
-              "[DIR_LISTING] Arka plan listeleme başarısız, senkron yola düşülüyor:",
-              gsub("[{}]", "", conditionMessage(e))
-            ))
-            tryCatch(
-              uygula_icerik(list_directory_contents(hedef_yol, user_id = hedef_kullanici)),
-              error = function(e2) NULL
-            )
+            cc_log_warn(paste(CLAUDE_CODE_LOG_PREFIX,
+              "[DIR_LISTING] Arka plan listeleme başarısız:",
+              gsub("[{}]", "", conditionMessage(e))))
+            tryCatch(uygula_icerik(list(
+              error = "Dizin içeriği yüklenemedi. Lütfen yenileyin."
+            )), error = function(e2) NULL)
             NULL
           })
 
@@ -478,6 +475,7 @@ cc_bind_server_setup <- function(input,
         "[DIR_LISTING] Arka plan listeleme gönderilemedi:",
         gsub("[{}]", "", conditionMessage(gonderim_hatasi))
       ))
+      return(uygula_icerik(list(error = "Dizin içeriği yüklenemedi. Lütfen yenileyin.")))
     }
 
     uygula_icerik(list_directory_contents(yol, user_id = user_check$user_id))

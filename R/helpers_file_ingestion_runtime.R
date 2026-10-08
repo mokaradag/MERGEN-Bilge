@@ -55,37 +55,6 @@ file_ingestion_controller_debug <- function(controller, tag, message) {
   invisible(TRUE)
 }
 
-# Başarıyla kopyalanan dosyaları TEK indeks mutasyonunda kaydeder. Dosya başına
-# ayrı kilit/indeks yazımı yapılmaz; kilit tutma süresi parti başına sabittir.
-file_ingestion_commit_index <- function(results, user_id) {
-  succeeded <- Filter(function(r) isTRUE(r$ok), results %||% list())
-  if (!length(succeeded)) return(list(indexed = character(), ms = 0))
-
-  entries <- lapply(succeeded, function(r) list(path = r$dest, display = r$name))
-
-  started <- Sys.time()
-  indexed <- tryCatch(
-    mergen_index_persisted_files(entries, user_id = user_id),
-    error = function(e) {
-      log_warn("[FILE INGEST] Indeks yazimi basarisiz: {conditionMessage(e)}")
-      character()
-    }
-  )
-
-  list(
-    indexed = indexed,
-    ms = as.numeric(difftime(Sys.time(), started, units = "secs")) * 1000
-  )
-}
-
-# İptal edilen partinin kopyaladığı hedefleri temizler.
-file_ingestion_discard_results <- function(results) {
-  for (r in results %||% list()) {
-    if (isTRUE(r$ok)) file_ingestion_discard_dest(r$dest, r$source_path)
-  }
-  invisible(TRUE)
-}
-
 # Kuyruktan çıkan işi gerçek worker görevine dönüştürür. Bu fonksiyon yalnızca
 # ana süreçte çalışır; worker'a düz görev listesi ve önbelleğe alınmış global
 # paketi taşınır.
@@ -115,24 +84,12 @@ file_ingestion_run_job <- function(job) {
   invisible(TRUE)
 }
 
-# Worker tamamlandığında ana süreçte çalışır: indeks yazımı + UI geri çağrısı.
-file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0) {
+# Yalnızca korunan tamamlanma üstverisi ana süreçte uygulanır.
+file_ingestion_apply_commit <- function(job, results, index_result, queue_wait_ms = 0) {
   file_ingestion_release_slot()
   controller <- job$controller
   commit_started <- Sys.time()
 
-  iptal_edildi <- !identical(controller$epoch, job$epoch)
-
-  if (iptal_edildi) {
-    file_ingestion_discard_results(results)
-    file_ingestion_controller_debug(controller, "ingest_cancelled", sprintf(
-      "batch=%s iptal edildigi icin kopyalar temizlendi", job$id
-    ))
-    file_ingestion_pump()
-    return(invisible(NULL))
-  }
-
-  index_result <- file_ingestion_commit_index(results, job$user_id)
   ozet <- file_ingestion_summarize_results(results)
 
   if (isTRUE(controller$active) && is.function(job$on_complete)) {

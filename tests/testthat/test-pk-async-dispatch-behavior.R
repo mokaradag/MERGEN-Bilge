@@ -519,7 +519,7 @@ test_that("BAYAT red geri çağrısı da hiçbir şeyi mutasyona uğratmaz", {
   expect_equal(h$kayit$cleanup, 0L)
 })
 
-test_that("gönderim hatası SENKRON yola döner (kullanıcı yanıtsız kalmaz)", {
+test_that("gönderim hatası senkron yeniden denemeden altyapı yanıtı verir", {
   env <- .pk_dispatch_env()
   env$pk_async_available <- function(...) list(available = TRUE, reason = "ok")
   env$mergen_pk_async_repo_root <- function() tempdir()
@@ -528,11 +528,12 @@ test_that("gönderim hatası SENKRON yola döner (kullanıcı yanıtsız kalmaz)
   h <- .pk_ctx(env)
   sonuc <- env$mergen_pk_analysis_execute(h$ctx)
 
-  expect_equal(sonuc$action, "continue")
-  expect_equal(sonuc$messages_to_process[[1]]$content, "SENKRON SISTEM")
+  expect_length(h$kayit$devam, 0L)
+  expect_length(h$kayit$mesajlar, 1L)
+  expect_match(h$kayit$mesajlar[[1]]$content, "Analiz Altyapısı Hazır Değil", fixed = TRUE)
 })
 
-test_that("işçi-güvensiz anlık görüntü SENKRON yola döner (sessiz serileştirme yok)", {
+test_that("işçi-güvensiz anlık görüntü senkron yürütülmeden reddedilir", {
   env <- .pk_dispatch_env()
   env$pk_async_available <- function(...) list(available = TRUE, reason = "ok")
   env$mergen_pk_async_repo_root <- function() tempdir()
@@ -547,8 +548,8 @@ test_that("işçi-güvensiz anlık görüntü SENKRON yola döner (sessiz serile
   sonuc <- env$mergen_pk_analysis_execute(h$ctx)
 
   expect_false(gonderildi)
-  expect_equal(sonuc$action, "continue")
-  expect_equal(sonuc$messages_to_process[[1]]$content, "SENKRON SISTEM")
+  expect_equal(sonuc$action, "answer")
+  expect_match(sonuc$answer, "Analiz", ignore.case = TRUE)
 })
 
 test_that("oturum kapanışı yalnız AKTİF session-scoped jetonu işaretler", {
@@ -640,5 +641,18 @@ test_that("işçi durum metni bilinmeyen durumda genel hata verir", {
     expect_length(metin, 1L)
     expect_false(is.na(metin))
     expect_true(nzchar(trimws(metin)))
+  }
+})
+
+
+test_that("meşgul veya doğrulanmamış PK havuzu senkron analiz başlatmaz", {
+  for (reason in c("worker_probe_inconclusive", "plan_sequential", "pool_busy")) {
+    env <- .pk_dispatch_env()
+    env$pk_async_available <- function(...) list(available = FALSE, reason = reason)
+    env$mergen_pk_run_sync <- function(...) stop("Ana süreçte analiz çalışmamalı")
+    h <- .pk_ctx(env)
+    result <- env$mergen_pk_analysis_execute(h$ctx)
+    expect_identical(result$action, "answer")
+    expect_match(result$answer, "henüz hazır değil veya meşgul", fixed = TRUE)
   }
 })

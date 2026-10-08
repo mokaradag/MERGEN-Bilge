@@ -12,6 +12,8 @@ source("../../R/helpers_runtime_metrics.R")
 source("../../R/helpers_request_backpressure.R")
 source("../../R/helpers_streaming_io.R")
 source("../../R/helpers_stream_load_control.R")
+source("../../R/helpers_followup_questions.R")
+
 
 .fake_session <- function() list(userData = new.env(parent = emptyenv()))
 
@@ -125,12 +127,18 @@ test_that("dispatch_followups etkin planda planlar; geri cagri ureticiyi calisti
   captured_delay <- NULL
   fake_later <- function(f, delay) { captured <<- f; captured_delay <<- delay; invisible(NULL) }
 
+  target <- environment(mergen_stream_dispatch_followups)
+  old_key <- get0("mb_api_key_get_effective_key_value", envir = target, inherits = FALSE)
+  assign("mb_api_key_get_effective_key_value", function(...) NULL, envir = target)
+  withr::defer(if (is.null(old_key)) rm("mb_api_key_get_effective_key_value", envir = target)
+              else assign("mb_api_key_get_effective_key_value", old_key, envir = target))
   out <- mergen_stream_dispatch_followups(
     session = .fake_session(), msg_id = "m2", user_message_text = "q",
     final_text = "ans", settings_data = list(), api_config = list(),
     followup_tools = NULL, fallback_followup_tool = NULL,
     plan = list(enabled = TRUE, delay_seconds = 0),
-    later_fn = fake_later, build_fn = function(...) c("S1", "S2")
+    later_fn = fake_later, build_fn = function(...) c("S1", "S2"),
+    dispatch_fn = function(task_fn, ...) promises::promise_resolve(task_fn())
   )
 
   expect_true(out)
@@ -169,7 +177,8 @@ test_that("dispatch_followups etkin planda planlar; geri cagri ureticiyi calisti
   assign("mergen_send_message_release_slot", function(token) invisible(NULL), envir = globalenv())
 
   mergen_backpressure_reset()
-  captured()  # planlanan geri çağrıyı çalıştır
+  captured()
+  for (i in 1:30) later::run_now(0)
 
   expect_identical(pushed$msg_id, "m2")
   expect_identical(pushed$suggestions, c("S1", "S2"))

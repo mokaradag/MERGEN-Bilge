@@ -55,6 +55,7 @@ cc_create_workbench_session_api <- function(session,
     # Runtime durumunu geri yükle: geçmiş her zaman görünür; CLI resume
     # yalnızca çalışma dizini hala erişilebilirse denenir.
     rv$claude_session_record_id <- suppressWarnings(as.integer(record_id)[1])
+    rv$claude_session_owner_id <- user_check$user_id
     rv$claude_session_title <- plan$title
     rv$claude_session_loaded <- TRUE
     rv$conversation_context <- plan$conversation_context
@@ -196,4 +197,55 @@ cc_create_workbench_session_api <- function(session,
     start_new_session = start_new_session,
     detach_archived_session = detach_archived_session
   )
+}
+
+# Sahip değişince çalışan süreç ve devam bağlamı birlikte geçersizleşir.
+cc_reset_workbench_owner <- function(rv, dir_refresh_guard) {
+  rv$active_request_id <- NULL
+  env <- rv$stream_env
+  if (is.environment(env)) {
+    env$durduruldu <- TRUE
+    if (nzchar(env$output_sync_guard %||% "")) unlink(env$output_sync_guard, force = TRUE)
+    try(cc_release_runtime_lease(env$runtime_lease %||% ""), silent = TRUE)
+  }
+  proc <- rv$active_process
+  if (!is.null(proc)) try(proc$kill(), silent = TRUE)
+  rv$active_process <- NULL
+  rv$is_running <- FALSE
+  rv$poll_state <- NULL
+  rv$stream_env <- NULL
+  rv$run_owner_guard <- NULL
+  rv$output_history <- list()
+  rv$last_result <- NULL
+  rv$has_messages <- FALSE
+  rv$conversation_context <- list()
+  rv$cli_session_id <- NULL
+  rv$current_runtime_model <- NULL
+  rv$current_model <- NULL
+  rv$suppress_workdir_reset_once <- FALSE
+  rv$active_runtime_workdir <- NULL
+  rv$active_runtime_source <- NULL
+  rv$active_persist_record_id <- NULL
+  rv$claude_session_owner_id <- NULL
+  cc_persist_detach_session(rv)
+  dir_refresh_guard$next_id()
+  invisible(TRUE)
+}
+
+cc_bind_workbench_owner_lifecycle <- function(session, ns, rv, dir_refresh_guard) {
+  reset <- function(...) {
+    shiny::isolate(cc_reset_workbench_owner(rv, dir_refresh_guard))
+    if (!isTRUE(session$isClosed())) {
+      try(session$sendCustomMessage("cc-clear-output", list(
+        target = ns("output_area"), welcomeId = ns("welcome_screen"),
+        statusId = ns("status_text"), durationId = ns("duration_text")
+      )), silent = TRUE)
+      try(shinyjs::enable("run_command"), silent = TRUE)
+      try(shinyjs::hide("stop_command"), silent = TRUE)
+      try(shiny::updateTextInput(session, "workdir", value = ""), silent = TRUE)
+    }
+  }
+  remove_hook <- mergen_session_on_owner_change(session, reset)
+  session$onSessionEnded(function() { reset(); remove_hook() })
+  invisible(TRUE)
 }

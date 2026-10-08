@@ -17,8 +17,6 @@ handle_true_streaming_mode <- function(ctx) {
   baslangic_zamani <- Sys.time()
   istek_baslangici <- ctx$request_start_time %||% baslangic_zamani
   stream_profile <- ctx$stream_profile %||% list()
-  # Delta taşımacılığı tercihi + uyarlanır yoklama yapılandırması (ortam bayrakları;
-  # geri çekilme varsayılan KAPALI = sabit aralık, mevcut davranış).
   use_delta_transport <- mergen_stream_use_delta_transport(stream_profile)
   poll_interval_ms <- mergen_stream_poll_interval_ms(stream_profile)
   poll_backoff <- mergen_stream_poll_backoff_config()
@@ -46,6 +44,11 @@ handle_true_streaming_mode <- function(ctx) {
 
   stream_env <- new.env(parent = emptyenv())
   stream_env$req_id <- req_id
+  stream_env$owner_guard <- mergen_session_owner_guard(session)
+  stream_env$chat_id <- shiny::isolate(values$current_chat_id)
+  stream_env$chat_epoch <- session$userData$pk_unsaved_chat_epoch %||% 0L
+  stream_env$settled <- FALSE
+  session$userData$llm_request_owner <- req_id
   stream_env$msg_id <- paste0("msg_", floor(as.numeric(Sys.time()) * 1000), "_", sample(1000:9999, 1))
   stream_env$timestamp <- format_timestamp()
   stream_env$stream_file <- tempfile(pattern = paste0("llm_sse_", req_id, "_"), fileext = ".jsonl")
@@ -87,6 +90,7 @@ handle_true_streaming_mode <- function(ctx) {
   }
 
   ensure_chat_ready <- function() {
+    if (!mergen_stream_request_current(ctx, stream_env)) return(invisible(FALSE))
     if (is.null(values$current_chat_id) && nzchar(ctx$pending_chat_title %||% "")) {
       new_chat_id <- tryCatch({
         create_new_chat_in_db(ctx$current_user_id, initial_title = ctx$pending_chat_title)
@@ -97,6 +101,7 @@ handle_true_streaming_mode <- function(ctx) {
 
       if (!is.null(new_chat_id)) {
         values$current_chat_id <- new_chat_id
+        stream_env$chat_id <- new_chat_id
 
         log_info(sprintf(
           "[CHAT PERF] Ertelenen sohbet kaydı oluşturuldu - %.3f sn",
@@ -114,8 +119,6 @@ handle_true_streaming_mode <- function(ctx) {
         new_db_id <- tryCatch({
           save_message_safely(values$current_chat_id, values$messages[[user_idx]], ctx$current_user_id)
         }, error = function(e) {
-          # Kullanıcı mesajının kalıcılaştırılması sessizce başarısız olmamalı;
-          # yapılandırılmış [RUNTIME_ERROR] kaydı tanılama için bırakılır.
           if (exists("log_error_with_context", mode = "function")) {
             log_error_with_context(e, "TRUE_STREAM_SAVE_USER_MSG")
           }
@@ -150,7 +153,8 @@ handle_true_streaming_mode <- function(ctx) {
     later::later(function() {
       stream_env$chat_persist_scheduled <- FALSE
 
-      if (!mergen_should_run_deferred_stream_persist(active_request_id, stream_env$req_id, stream_env)) {
+      if (!mergen_stream_request_current(ctx, stream_env) ||
+          !mergen_should_run_deferred_stream_persist(active_request_id, stream_env$req_id, stream_env)) {
         return(invisible(NULL))
       }
 
@@ -159,6 +163,7 @@ handle_true_streaming_mode <- function(ctx) {
   }
 
   ensure_stream_ui_started <- function() {
+    if (!mergen_stream_request_current(ctx, stream_env)) return(invisible(NULL))
     if (isTRUE(stream_env$ui_started)) {
       return(invisible(NULL))
     }
@@ -210,18 +215,7 @@ handle_true_streaming_mode <- function(ctx) {
     invisible(NULL)
   }
 
-  cleanup_streaming_state <- function() {
-    if (!is.null(stream_env$poll_observer)) {
-      try(stream_env$poll_observer$destroy(), silent = TRUE)
-      stream_env$poll_observer <- NULL
-    }
-
-    unlink(c(stream_env$stream_file, stream_env$stop_file), force = TRUE)
-
-    if (identical(active_request_id(), stream_env$req_id)) {
-      active_request_id(NULL)
-    }
-  }
+  cleanup_streaming_state <- mergen_stream_bind_cleanup(ctx, stream_env)
 
   remove_placeholder_message <- function() {
     idx <- find_message_index()
@@ -243,6 +237,10 @@ handle_true_streaming_mode <- function(ctx) {
                                       followups = NULL,
                                       request_success = TRUE,
                                       duration_value = NULL) {
+    if (!mergen_stream_request_current(ctx, stream_env)) {
+      cleanup_streaming_state()
+      return(invisible(NULL))
+    }
     if (isTRUE(stream_env$finalized)) {
       return(invisible(NULL))
     }
@@ -271,13 +269,7 @@ handle_true_streaming_mode <- function(ctx) {
 
     # PK köken alt bilgisi (sahibi R, model değil); üst sınırdan SONRA eklenir.
     #
-    # HATA AKIŞI ASKIDA BIRAKAMAZ. `stream_env$finalized` yukarıda ZATEN TRUE yapıldı; buradan kaçan bir istisna `finalize_stream_message()` ve `observe()` gövdesini terk eder, yoklama gözlemcisi durur ve yeniden deneme hemen döner. Sonuç: `finalizeStreamingMessage` gönderilmez, `cleanup_streaming_state()` ve `ctx$reset_chat_state_fn()` HİÇ çalışmaz; yazma animasyonu ve durdurma kipi kalıcı olarak takılı kalırdı.
-    # KÖKEN DOĞRULAMASI TEK SINIRDAN GEÇER (`mergen_pk_validated_texts()`):
-    # ekrana giden `display`, TAKİBE giden alt-bilgisiz `tts` gövdesi ve
-    # `validated` bayrağı birlikte üretilir. `block` kararı akış BAŞINDA
-    # yakalanan `defer_visible_text` değeridir; kipi burada YENİDEN sormak açık
-    # başarısızdı, çünkü başarısız dekorasyon bekleyen kaydı ZATEN tüketmiş
-    # olabilir ve ikinci sorgu ham düzyazıyı teslim ederdi.
+    # Köken doğrulaması hata verse de akış güvenli biçimde sonlandırılır.
     pk_akis <- tryCatch(
       mergen_pk_stream_validated_text(
         final_text, session, stream_env$req_id,
@@ -412,6 +404,10 @@ handle_true_streaming_mode <- function(ctx) {
   }
 
   finalize_error_or_abort <- function(result) {
+    if (!mergen_stream_request_current(ctx, stream_env)) {
+      cleanup_streaming_state()
+      return(invisible(NULL))
+    }
     if (isTRUE(stream_env$finalized)) {
       return(invisible(NULL))
     }
@@ -501,11 +497,21 @@ handle_true_streaming_mode <- function(ctx) {
   sse_promise <- promises::then(
     sse_promise,
     onFulfilled = function(res) {
+      stream_env$settled <- TRUE
+      if (isTRUE(stream_env$finalized) || !mergen_stream_request_current(ctx, stream_env)) {
+        cleanup_streaming_state()
+        return(NULL)
+      }
       stream_env$result <- res
       stream_env$resolved <- TRUE
       NULL
     },
     onRejected = function(err) {
+      stream_env$settled <- TRUE
+      if (isTRUE(stream_env$finalized) || !mergen_stream_request_current(ctx, stream_env)) {
+        cleanup_streaming_state()
+        return(NULL)
+      }
       stream_env$result <- list(
         success = FALSE,
         aborted = FALSE,
@@ -520,6 +526,10 @@ handle_true_streaming_mode <- function(ctx) {
   )
 
   stream_env$poll_observer <- observe({
+    if (!mergen_stream_request_current(ctx, stream_env)) {
+      cleanup_streaming_state()
+      return(invisible(NULL))
+    }
     req(!isTRUE(stream_env$finalized))
     invalidateLater(stream_env$current_poll_interval_ms %||% poll_interval_ms, session)
 
@@ -676,15 +686,7 @@ handle_true_streaming_mode <- function(ctx) {
       final_text <- paste0(final_text, ctx$final_text_suffix)
     }
 
-    # Yanıtı HEMEN sonlandır: markdown render, aksiyon butonları ve DB kalıcılığı
-    # takip (followup) önerisi üretimini BEKLEMEZ. build_followup_suggestions()
-    # AI takip üreticisinde senkron bir LLM çağrısı (call_local_llm) yapabilir;
-    # önceki sıralamada bu çağrı, akış görünür biçimde bittikten SONRA yanıt
-    # baloncuğunu saniyelerce "akıyor" durumunda (aksiyon butonları gizli, kod
-    # blokları ham) tutuyordu. Öneriler artık finalize flush'ından SONRA,
-    # bloklamayan bir later() döngüsünde üretilip push edilir. Sözleşme: tarayıcı
-    # followup_container'ı talep üzerine oluşturur (updateFollowupSuggestions),
-    # bu yüzden baloncuk önerilerden önce sonlandırılabilir.
+    # Takip üretimi yanıtın sonlandırılmasını bekletmez.
     finalize_stream_message(
       final_text = final_text,
       followups = NULL,
@@ -703,7 +705,8 @@ handle_true_streaming_mode <- function(ctx) {
         settings_data = settings_data,
         api_config = ctx$api_config,
         followup_tools = ctx$followup_tools,
-        fallback_followup_tool = ctx$fallback_followup_tool
+        fallback_followup_tool = ctx$fallback_followup_tool,
+        apply_guard = function() mergen_stream_request_current(ctx, stream_env, completed = TRUE)
       )
     }
 

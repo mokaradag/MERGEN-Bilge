@@ -49,7 +49,7 @@ source_manifest_sections <- list(
     "R/utils_atomic_write.R",
     "R/utils_upload_validator.R",
     "R/utils_log_redact.R",
-    "R/utils_session_cleanup.R",
+    "R/utils_session_cleanup.R", "R/helpers_async_result_guard.R",
     "R/utils_safe_worker_run.R",
     "R/utils_file_index.R",
     "R/utils_excel_reader.R"
@@ -196,7 +196,7 @@ source_manifest_sections <- list(
     "R/helpers_file_ingestion_task.R",
     "R/helpers_file_ingestion_worker.R",
     "R/helpers_file_ingestion_queue.R",
-    "R/helpers_file_ingestion_runtime.R"
+    "R/helpers_file_ingestion_runtime.R", "R/helpers_file_ingestion_index_worker.R"
   ),
 
   # file_manager_helpers: Dosya Yönetimi yardımcı zinciri: politika, bağlam

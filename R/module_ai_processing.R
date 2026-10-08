@@ -78,10 +78,9 @@ aiProcessingServer <- function(id) {
       }
 	  
 	  settings_copy$model_selection <- model_selected
+      settings_copy <- mergen_sanitize_llm_settings_for_worker(settings_copy)
       
-      # Create future promise for async processing
-		p <- tracked_future_promise(
-		  task_fn = function() {
+      worker_task <- function() {
 			start_time_worker <- Sys.time()
 
 			library(httr)
@@ -92,7 +91,14 @@ aiProcessingServer <- function(id) {
 			duration <- as.numeric(difftime(Sys.time(), start_time_worker, units = "secs"))
 
 			list(ai_text = ai_text, duration = duration)
-		  },
+		  }
+      environment(worker_task) <- list2env(list(
+        history_copy = history_copy, settings_copy = settings_copy,
+        api_endpoint = api_endpoint, api_key_val = api_key_val,
+        call_llm_worker = call_llm_worker
+      ), parent = globalenv())
+      p <- tracked_future_promise(
+        task_fn = worker_task,
 		  task_type = "llm_non_streaming",
 		  session_token = session$token,
 		  meta = list(
@@ -159,15 +165,8 @@ aiProcessingServer <- function(id) {
             ai_content <- as.character(ai_content)[1]
           }
 
-			# NEW: take chart_store from worker and stash into main session
+			# Grafikler yalnızca üst katmandaki istek korumasından sonra uygulanır.
 			charts_from_worker <- if (is.list(result$ai_text)) result$ai_text$chart_store else NULL
-			if (!is.null(charts_from_worker) && is.list(charts_from_worker) && length(charts_from_worker) > 0) {
-			  store <- session$userData$chart_store %||% list()
-			  for (nm in names(charts_from_worker)) {
-				store[[nm]] <- charts_from_worker[[nm]]
-			  }
-			  session$userData$chart_store <- store
-			}
 
 			response_duration <- if (is.list(result$ai_text)) {
 			  result$ai_text$duration

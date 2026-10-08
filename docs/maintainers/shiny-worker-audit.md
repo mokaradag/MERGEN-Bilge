@@ -1,7 +1,7 @@
 # Shiny ve worker yaşam döngüsü denetimi
 
 İncelenen main: `09b26d8aa28d8dfeae6d85a5ff605b5014950ea4` (8 Ekim 2026).
-Bu belge yalnızca denetim PR’ının işaretidir; çalışma kodu değişmez. Bulgular ayrı satır yorumlarında tutulur.
+Denetimdeki on bulgu giderildi: sonuçlar istek/sohbet/sahip sınırlarında korunur; Yolaç devam bağları sahip değişiminde temizlenir. Takip üretimi, büyük DOCX kodlaması ve indeks kilidi işçilere taşınır; işçi hataları ana süreçte yeniden yürütülmez. Çalışan Yolaç kayıt kimliği görünümden bağımsız saklanır; LLM işçi ayarları canlı Shiny oturumu taşımaz.
 
 - [`R/server_handler_true_streaming.R:379`](https://github.com/mokaradag/MERGEN-Bilge/blob/09b26d8aa28d8dfeae6d85a5ff605b5014950ea4/R/server_handler_true_streaming.R#L379)
 - [`R/module_claude_code.R:207`](https://github.com/mokaradag/MERGEN-Bilge/blob/09b26d8aa28d8dfeae6d85a5ff605b5014950ea4/R/module_claude_code.R#L207)

@@ -30,3 +30,5 @@ source(
   encoding = "UTF-8",
   local = globalenv()
 )
+source(file.path(project_root, "R", "helpers_async_result_guard.R"),
+       encoding = "UTF-8", local = globalenv())

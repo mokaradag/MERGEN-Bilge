@@ -58,12 +58,16 @@ llmResponseHandlersInit <- function(
     }
 
     active_request_id(req_id)
+    owner_guard <- mergen_chat_owner_guard(session, values)
+    session$userData$llm_request_owner <- req_id
 	
     mcp_reasoning_stream_file <- NULL
     mcp_reasoning_stream_observer <- NULL
     mcp_reasoning_lines_read <- 0L
 
     drain_mcp_reasoning_stream <- function() {
+      if (!isTRUE(owner_guard()) ||
+          !mergen_is_current_request(active_request_id, req_id, stop_generation)) return(NULL)
       if (is.null(mcp_reasoning_stream_file) ||
           !nzchar(mcp_reasoning_stream_file) ||
           !file.exists(mcp_reasoning_stream_file)) {
@@ -175,7 +179,8 @@ llmResponseHandlersInit <- function(
         # daha yeni bir istek başladı) paylaşılan UI/typing durumunu EZME.
         # Daha yeni isteğin yazma sarmalayıcısını ve gönderme durumunu bayat
         # geri çağrı bozmamalıdır; nihai temizlik finally bloğunda yapılır.
-        if (!mergen_is_current_request(active_request_id, req_id, stop_generation)) {
+        if (!isTRUE(owner_guard()) ||
+            !mergen_is_current_request(active_request_id, req_id, stop_generation)) {
           perf_tracker$track_error()
           return(invisible(NULL))
         }
@@ -478,26 +483,12 @@ llmResponseHandlersInit <- function(
           # Köken doğrulaması REDDEDİLMİŞ bir yanıtta takip önerisi üretilmez:
           # öneriler reddedilen düzyazıyı bağlam sanardı.
           if (!is.null(ai_msg) && !is.null(ai_msg$id) && isTRUE(pk_kok_dogrulandi)) {
-            followup_target_id <- ai_msg$id
-            followup_ai_text <- seslendirilecek_metin
-            later::later(function() {
-              followup_perf_start <- mergen_perf_now()
-              followup_questions <- tryCatch(
-                build_followup_suggestions(
-                  last_user_text, followup_ai_text, settings_data, session,
-                  api_config, followup_tools, fallback_followup_tool
-                ),
-                error = function(e) NULL
-              )
-              mergen_perf_log("nonstream.followups", start = followup_perf_start,
-                              fields = list(count = length(followup_questions %||% character(0))))
-              if (!is.null(followup_questions) && length(followup_questions) > 0) {
-                try(
-                  push_followup_update(session, followup_target_id, followup_questions, pending = FALSE),
-                  silent = TRUE
-                )
-              }
-            }, delay = 0)
+            mergen_stream_dispatch_followups(
+              session, ai_msg$id, last_user_text, seslendirilecek_metin,
+              settings_data, api_config, followup_tools, fallback_followup_tool,
+              apply_guard = function() isTRUE(owner_guard()) &&
+                identical(session$userData$llm_request_owner, req_id)
+            )
           }
 
           # NOT: reset_chat_state_fn() burada kaldırıldı, finally bloğunda çağrılacak
@@ -540,7 +531,8 @@ llmResponseHandlersInit <- function(
         # bu bayat hata, yeni isteğin UI/typing durumunu EZMEMELİ ve kullanıcıya
         # bayat hata toast'ı gösterilmemeli. Temizlik finally'de istek-kapsamlı
         # olarak yapılır.
-        if (!mergen_is_current_request(active_request_id, req_id, stop_generation)) {
+        if (!isTRUE(owner_guard()) ||
+            !mergen_is_current_request(active_request_id, req_id, stop_generation)) {
           return(invisible(NULL))
         }
 
@@ -590,12 +582,13 @@ llmResponseHandlersInit <- function(
       # Aksi halde bayat finally, yeni isteğin gönderme/typing durumunu ve
       # yazma sarmalayıcısını bozar (stale-request yarışı koruması). İptal
       # (cancelled_) ve normal tamamlanma durumlarında sıfırlamaya izin verilir.
-      current_active_id <- tryCatch(active_request_id(), error = function(e) NULL)
+      current_active_id <- tryCatch(.mergen_request_state_read(active_request_id), error = function(e) NULL)
       current_active_id <- if (is.null(current_active_id)) "" else as.character(current_active_id)[1]
       newer_request_active <- nzchar(current_active_id) &&
         !identical(current_active_id, as.character(req_id)[1]) &&
         !startsWith(current_active_id, "cancelled_")
-      if (!isTRUE(newer_request_active)) {
+      if (isTRUE(owner_guard()) && identical(session$userData$llm_request_owner, req_id) &&
+          !isTRUE(newer_request_active)) {
         reset_chat_state_fn()
       }
     })

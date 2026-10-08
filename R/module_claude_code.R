@@ -89,7 +89,7 @@ claudeCodeServer <- function(id, current_user_id, settings_data = NULL,
       # Çift tıklama koruması
       if (isTRUE(rv$is_running)) return()
       run_request_id <- cc_next_run_request_id()
-      cc_mark_active_run(rv, run_request_id)
+      cc_mark_active_run(rv, run_request_id, session = session)
       rv$is_running <- TRUE
 
       # Ayarları al

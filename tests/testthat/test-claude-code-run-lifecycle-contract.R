@@ -314,7 +314,7 @@ test_that("module_claude_code.R doküman özetleme akışını lifecycle helper'
   )
 
   expect_true(
-    grepl("cc_mark_active_run\\(rv, run_request_id\\)", txt, perl = TRUE),
+    grepl("cc_mark_active_run\\(rv, run_request_id, session = session\\)", txt, perl = TRUE),
     info = "Bilge Yolaç aktif request kimliğini rv içinde işaretlemelidir."
   )
 

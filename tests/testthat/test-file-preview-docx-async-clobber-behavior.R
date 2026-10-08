@@ -11,7 +11,7 @@
 #           asenkron geri çağrı yalnızca belirteç hâlâ kendi açılışıyla aynıysa
 #           openDocxPreview mesajını gönderir.
 #
-#           Gerçek dosya, base64enc veya tarayıcı gerektirmez: future::future
+#           Gerçek dosya, base64enc veya tarayıcı gerektirmez: işçi gönderimi
 #           taklit edilir ve task_fn hiç zorlanmaz; sonuç elle çözülür.
 # ==============================================================================
 
@@ -74,9 +74,7 @@ test_that("DOCX: BAYAT asenkron sonuç daha YENİ modalı EZMEZ; yalnızca günc
   path_a <- file.path(tempdir(), "docA_buyuk.docx")  # kasıtlı olarak oluşturulmaz
   path_b <- file.path(tempdir(), "docB_buyuk.docx")
 
-  testthat::local_mocked_bindings(
-    future = .fp_make_future_stub(resolvers), .package = "future"
-  )
+  env$mergen_dispatch_docx_preview <- .fp_make_future_stub(resolvers)
   testthat::local_mocked_bindings(
     showModal = function(...) invisible(NULL),
     removeModal = function(...) invisible(NULL),
@@ -130,9 +128,7 @@ test_that("DOCX: TEK açılışta asenkron başarı sonucu doğru base64 ile ope
 
   path_a <- file.path(tempdir(), "tek_docA.docx")
 
-  testthat::local_mocked_bindings(
-    future = .fp_make_future_stub(resolvers), .package = "future"
-  )
+  env$mergen_dispatch_docx_preview <- .fp_make_future_stub(resolvers)
   testthat::local_mocked_bindings(
     showModal = function(...) invisible(NULL),
     removeModal = function(...) invisible(NULL),
@@ -179,9 +175,7 @@ test_that("DOCX: BAYAT asenkron HATA sonucu daha yeni modal için Türkçe hata 
   path_a <- file.path(tempdir(), "hataA.docx")
   path_b <- file.path(tempdir(), "hataB.docx")
 
-  testthat::local_mocked_bindings(
-    future = .fp_make_future_stub(resolvers), .package = "future"
-  )
+  env$mergen_dispatch_docx_preview <- .fp_make_future_stub(resolvers)
   testthat::local_mocked_bindings(
     showModal = function(...) invisible(NULL),
     removeModal = function(...) invisible(NULL),
@@ -243,7 +237,7 @@ test_that("sahip değişince süren DOCX kodlaması yeni sahibe basılmaz ve ön
   kayit <- new.env()
   kayit$msgs <- list()
   path_a <- file.path(tempdir(), "sahipA_buyuk.docx")
-  testthat::local_mocked_bindings(future = .fp_make_future_stub(resolvers), .package = "future")
+  env$mergen_dispatch_docx_preview <- .fp_make_future_stub(resolvers)
   testthat::local_mocked_bindings(
     showModal = function(...) invisible(NULL),
     removeModal = function(...) invisible(NULL),

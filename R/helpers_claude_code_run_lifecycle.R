@@ -21,7 +21,7 @@ cc_next_run_request_id <- function(prefix = "ccrun") {
   )
 }
 
-cc_mark_active_run <- function(rv, request_id) {
+cc_mark_active_run <- function(rv, request_id, session = NULL) {
   request_id <- as.character(request_id %||% "")[1]
 
   if (is.na(request_id) || !nzchar(request_id)) {
@@ -29,10 +29,14 @@ cc_mark_active_run <- function(rv, request_id) {
   }
 
   rv$active_request_id <- request_id
+  rv$run_owner_guard <- if (is.null(session)) NULL else mergen_session_owner_guard(session)
+  rv$active_persist_record_id <- rv$claude_session_record_id
   invisible(request_id)
 }
 
 cc_is_active_run <- function(rv, request_id = NULL) {
+  guard <- tryCatch(shiny::isolate(rv$run_owner_guard), error = function(e) NULL)
+  if (is.function(guard) && !isTRUE(guard())) return(FALSE)
   # Geriye dönük uyumluluk: eski çağrılar request_id göndermediğinde
   # finalize davranışı aynen devam eder.
   if (is.null(request_id) || length(request_id) == 0L) {
@@ -45,7 +49,7 @@ cc_is_active_run <- function(rv, request_id = NULL) {
   }
 
   active <- tryCatch(
-    as.character(rv$active_request_id %||% "")[1],
+    shiny::isolate(as.character(rv$active_request_id %||% "")[1]),
     error = function(e) ""
   )
 
@@ -348,6 +352,7 @@ cc_handle_document_summary_run <- function(session,
     "| Destek dizini:", dokuman_baglami$effective_workdir %||% ""
   ))
 
+  persist_record_id <- rv$active_persist_record_id %||% rv$claude_session_record_id
   dokuman_api_key <- tryCatch(
     mb_api_key_get_effective_key_value(
       session = session,
@@ -527,6 +532,7 @@ cc_handle_document_summary_run <- function(session,
         cc_persist_run_result(
           rv = rv,
           env = list(
+            persist_record_id = persist_record_id,
             prompt = kullanici_prompt,
             tum_satirlar = character(0),
             calisma_dizini = calisma_dizini,
@@ -584,6 +590,7 @@ cc_handle_document_summary_run <- function(session,
         cc_persist_run_result(
           rv = rv,
           env = list(
+            persist_record_id = persist_record_id,
             prompt = kullanici_prompt,
             tum_satirlar = character(0),
             calisma_dizini = calisma_dizini,
@@ -657,6 +664,7 @@ cc_handle_document_summary_run <- function(session,
         try(cc_persist_run_result(
           rv = rv,
           env = list(
+            persist_record_id = persist_record_id,
             prompt = kullanici_prompt,
             tum_satirlar = character(0),
             calisma_dizini = calisma_dizini,

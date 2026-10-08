@@ -535,6 +535,7 @@ cc_start_streaming_run <- function(ctx, prep) {
   stream_env$runtime_layout <- prep$layout
   stream_env$runtime_lease <- prep$runtime_lease %||% ""
   stream_env$user_id <- ctx$user_id
+  stream_env$persist_record_id <- rv$active_persist_record_id
   stream_env$session_token <- session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
   stream_env$request_id <- ctx$run_request_id
   stream_env$tum_satirlar <- character(0)

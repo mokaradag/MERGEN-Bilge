@@ -425,9 +425,8 @@ filePreviewServer <- function(id) {
               })
             } else {
               # Büyük dosya (>10 MB): asenkron kodlama
-              future::future({
-                encode_file_base64_sync(datapath)
-              }) %...>% (function(b64){
+              mergen_dispatch_docx_preview(datapath, session$token) %...>% (function(b64){
+                if (!onizleme_gecerli(docx_nesli) || isTRUE(session$isClosed())) return(NULL)
                 # Eski açılışın geç gelen sonucu, daha yeni bir DOCX modalını
                 # ezmemeli. Belirteç değiştiyse bu sonucu sessizce yok say
                 # (yalnızca önbelleğe yazılır, UI'a basılmaz).
@@ -449,6 +448,7 @@ filePreviewServer <- function(id) {
                   showToast(session, "DOCX içeriği hazırlanamadı.", "error")
                 }
               }) %...!% (function(e){
+                if (!onizleme_gecerli(docx_nesli) || isTRUE(session$isClosed())) return(NULL)
                 # Hata mesajını da yalnızca bu açılış hâlâ güncelse göster.
                 if (!identical(isolate(docx_preview_seq()), docx_open_token)) {
                   return(invisible(NULL))

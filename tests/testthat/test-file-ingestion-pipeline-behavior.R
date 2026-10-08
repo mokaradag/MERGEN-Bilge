@@ -29,7 +29,8 @@
     "R/helpers_file_ingestion_task.R",
     "R/helpers_file_ingestion_worker.R",
     "R/helpers_file_ingestion_queue.R",
-    "R/helpers_file_ingestion_runtime.R"
+    "R/helpers_file_ingestion_runtime.R",
+    "R/helpers_file_ingestion_index_worker.R"
   )) {
     source(file.path(kok, dosya), encoding = "UTF-8", local = env)
   }
@@ -37,6 +38,10 @@
   env$cat <- function(...) invisible(NULL)
   env$log_warn <- function(...) invisible(NULL)
   env$file_ingestion_reset_state()
+  env$tracked_future_promise <- function(task_fn, globals, ...) {
+    environment(task_fn) <- list2env(globals, parent = env)
+    promises::promise_resolve(task_fn())
+  }
   env
 }
 
@@ -474,6 +479,7 @@ test_that("başarılı parti indekslenir ve UI geri çağrısı çalışır", {
   })
 
   env$file_ingestion_finish_job(job, sonuclar)
+  for (i in 1:30) later::run_now(0)
 
   expect_false(is.null(yazilan))
   expect_identical(yazilan$user_id, "42")
@@ -498,6 +504,7 @@ test_that("oturum kapandıysa UI geri çağrısı çalışmaz ama dosya yine ind
 
   controller$active <- FALSE
   env$file_ingestion_finish_job(job, sonuclar)
+  for (i in 1:30) later::run_now(0)
 
   expect_true(indekslendi)
   expect_false(cagrildi)
@@ -522,6 +529,7 @@ test_that("iptal edilen parti indekslenmez ve kopyaladığı dosyalar temizlenir
 
   env$file_ingestion_cancel_controller(controller)
   env$file_ingestion_finish_job(job, sonuclar)
+  for (i in 1:30) later::run_now(0)
 
   expect_false(indekslendi)
   expect_false(cagrildi)
@@ -558,4 +566,14 @@ test_that("metrik satırı dosya adı veya yol sızdırmaz", {
   expect_true(grepl("files=2", satir, fixed = TRUE))
   expect_false(grepl("\\.txt", satir))
   expect_false(grepl("user_", satir, fixed = TRUE))
+})
+test_that("indekslenirken iptal edilen parti yalnız kendi kayıt ve dosyasını temizler", {
+  env <- .ingestionEnv()
+  result <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("iptal_indeks.txt")))
+  expect_true(result$ok)
+  mergen_index_persisted_files(list(list(path = result$dest, display = result$name)), "42")
+  expect_true(.ingestionSamePath(env, resolve_uploaded_file(result$name, "42"), result$dest))
+  env$file_ingestion_discard_results(list(result), "42")
+  expect_false(file.exists(result$dest))
+  expect_null(.load_index()[["42"]][[tolower(result$name)]])
 })

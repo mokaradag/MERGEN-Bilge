@@ -79,7 +79,7 @@ cc_bind_claude_code_stream_polling <- function(input,
     shiny::invalidateLater(200, session)
 
     env <- rv$stream_env
-    if (is.null(env)) return()
+    if (is.null(env) || !cc_is_active_run(rv, env$request_id)) return()
 
     if (isTRUE(env$durduruldu)) {
       tryCatch(proc$kill(), error = function(e) NULL)

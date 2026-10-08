@@ -46,7 +46,7 @@ suppressMessages(library(promises))
   env$log_info <- function(...) invisible(NULL)
   env$showToast <- function(...) invisible(NULL)
   env$log_ai_usage <- function(...) invisible(NULL)
-  env$build_followup_suggestions <- function(...) list()
+  env$mergen_stream_dispatch_followups <- function(...) invisible(FALSE)
   env$normalize_character_id <- function(x) "emre"
   env$get_characters_data <- function() NULL
   env$update_message_reasoning_content <- function(...) invisible(NULL)

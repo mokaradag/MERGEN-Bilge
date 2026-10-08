@@ -27,6 +27,8 @@ if (requireNamespace("shiny", quietly = TRUE)) {
 .csp_env <- function() {
   env <- new.env(parent = globalenv())
   env$CLAUDE_CODE_LOG_PREFIX <- "[BILGE-YOLAC-TEST]"
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_run_lifecycle.R"),
+         encoding = "UTF-8", local = env)
   env$ensure_utf8 <- function(x) x
   env$cc_release_runtime_lease <- function(...) invisible(TRUE)
   # Yalnızca süreç bitişi (!proc$is_alive()) dalına ulaşan testler için
@@ -89,6 +91,9 @@ if (requireNamespace("shiny", quietly = TRUE)) {
 .csp_make_server <- function(env, rv_init, finalize_rec) {
   function(id) {
     shiny::moduleServer(id, function(input, output, session) {
+      if (is.environment(rv_init$stream_env)) {
+        rv_init$active_request_id <- rv_init$stream_env$request_id
+      }
       rv <- do.call(shiny::reactiveValues, rv_init)
       env$cc_bind_claude_code_stream_polling(
         input = input,

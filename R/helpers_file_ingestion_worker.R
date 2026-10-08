@@ -5,7 +5,7 @@
 #           yapılır ve future worker'ında çalışacak şekilde tasarlanmıştır.
 #           Shiny oturumu, reaktif değer veya DB bağlantısı KULLANILMAZ; yalnızca
 #           düz görev listeleri alınır ve düz sonuç listeleri döndürülür.
-#           Kalıcı indeks yazımı bilinçli olarak ana süreçte kalır (bkz.
+#           Kalıcı indeks yazımı ayrı işçi görevinde yürütülür (bkz.
 #           R/helpers_file_ingestion_runtime.R).
 #           R/helpers_file_ingestion_task.R dosyasından sonra source edilmelidir.
 # ==============================================================================
@@ -215,6 +215,8 @@ file_ingestion_worker_globals <- function(refresh = FALSE,
 
   wanted <- c(
     "file_ingestion_execute_batch",
+    "file_ingestion_commit_index",
+    "file_ingestion_discard_results",
     "file_ingestion_execute_task",
     "file_ingestion_task_result",
     "file_ingestion_verify_copy",
