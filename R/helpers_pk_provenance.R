@@ -471,7 +471,7 @@ PK_PROVENANCE_WARN_DEGRADED_TR <- paste0(
 )
 
 #' Hiçbir koşulda hata fırlatmaz; başarısızlıkta metin değişmeden döner.
-pk_provenance_decorate <- function(text, session, request_id = NULL) {
+pk_provenance_decorate <- function(text, session, request_id = NULL, validation_callback = NULL) {
   # KAYIT TÜKETİLDİKTEN SONRAKİ HER HATA İÇİN GÜVENLİ GERİ DÜŞME.
   #
   # Dıştaki hata yakalayıcı, kaydı TÜKETTİKTEN SONRA
@@ -565,6 +565,7 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
         base_txt, pending$facts, mode = pending$mode,
         fallback_text = pending$fallback_text
       )
+      if (is.function(validation_callback)) validation_callback(!isTRUE(sonuc$blocked))
       base_txt <- sonuc$text
       if (exists("pk_numeric_provenance_report", mode = "function", inherits = TRUE)) {
         try(pk_numeric_provenance_report(sonuc, pending$query_id), silent = TRUE)
@@ -579,6 +580,7 @@ pk_provenance_decorate <- function(text, session, request_id = NULL) {
 
     paste0(base_txt, footer)
   }, error = function(e) {
+    if (is.function(validation_callback)) validation_callback(FALSE)
     if (!is.null(guvenli_yedek)) return(guvenli_yedek)
     # BLOCK KİPİ AÇIK BAŞARISIZ OLAMAZ.
     #

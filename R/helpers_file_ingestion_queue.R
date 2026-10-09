@@ -58,12 +58,9 @@ file_ingestion_metrics_enabled <- function() {
   tolower(raw) %in% c("true", "1", "yes", "on", "evet", "acik")
 }
 
-# Worker havuzunda boş kapasite kalmadıysa alım görevi gönderilmez; böylece
-# yükleme trafiği sohbet/akış görevlerini aç bırakmaz.
+# Alım kapasitesi kendi callr havuzuna aittir.
 file_ingestion_pool_has_capacity <- function() {
-  free <- tryCatch(as.integer(future::nbrOfFreeWorkers()), error = function(e) NA_integer_)
-  if (is.na(free)) return(TRUE)
-  free > 0L
+  isTRUE(tryCatch(mergen_cancellable_worker_available(), error = function(e) FALSE))
 }
 
 file_ingestion_try_acquire_slot <- function() {
@@ -135,12 +132,21 @@ file_ingestion_queue_status <- function() {
   )
 }
 
-# Kuyruğu boşaltmayı dener. Slot ya da worker kapasitesi yoksa kısa gecikmeli
-# tek bir yeniden deneme planlanır; bekleyen iş kalıcı olarak asılı kalmaz.
+# Kuyruk son tarihi kapasite ediniminden önce denetlenir.
 file_ingestion_pump <- function() {
   state <- .file_ingestion_state()
 
   while (length(state$pending) > 0L) {
+    candidate <- state$pending[[1L]]
+    max_age <- file_ingestion_int_setting("MERGEN_FILE_INGESTION_QUEUE_TIMEOUT",
+      "mergen.file_ingestion.queue_timeout", 300L)
+    age <- as.numeric(difftime(Sys.time(), candidate$queued_at %||% Sys.time(), units = "secs"))
+    if (is.finite(age) && age > max_age) {
+      job <- file_ingestion_take_next_job()
+      if (is.environment(job$lease)) job$lease$released <- TRUE
+      file_ingestion_fail_job(job, simpleError("Dosya alımı kuyrukta zaman aşımına uğradı."))
+      next
+    }
     if (!file_ingestion_try_acquire_slot()) break
 
     job <- file_ingestion_take_next_job()
@@ -153,8 +159,6 @@ file_ingestion_pump <- function() {
       job$run(job)
       TRUE
     }, error = function(e) {
-      # Başlatılamayan iş sessizce yitmez: sayılır, loglanır ve varsa işin
-      # hata geri çağrısına bildirilir.
       state$failed_start_total <- (state$failed_start_total %||% 0L) + 1L
       msg <- sprintf(
         "[FILE_INGESTION] İş başlatılamadı (batch=%s): %s",
@@ -166,9 +170,6 @@ file_ingestion_pump <- function() {
         message(msg)
       }
       if (is.function(job$on_start_error)) try(job$on_start_error(e), silent = TRUE)
-      # Parti kullanıcıya bildirim yapılmadan kaybolmaz: submit_batch()
-      # tarafından verilen hata geri çağrısı da çalıştırılır (tek başına
-      # on_start_error kuyruk-içi başlatma hatasını UI'ya taşımıyordu).
       if (is.function(job$on_failure)) {
         try(job$on_failure(conditionMessage(e), job$tasks), silent = TRUE)
       }

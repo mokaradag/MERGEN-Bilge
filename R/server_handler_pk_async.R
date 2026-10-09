@@ -31,15 +31,15 @@ mergen_pk_analysis_execute <- function(ctx) {
   aktif_meta <- mergen_pk_routing_query_meta(ctx)
   uygun <- pk_async_available(aktif_meta)
   if (!isTRUE(uygun$available)) {
-    if (!identical(uygun$reason, "flag_off")) {
-      log_info(sprintf("[PK_ASYNC] Async yok (%s); senkron yol.", uygun$reason))
+    if (!uygun$reason %in% c("flag_off", "query_opt_out")) {
+      cevap <- if (uygun$reason %in% c("promises_missing", "tracked_future_promise_missing", "plan_sequential")) {
+        mergen_pk_worker_outcome_text("infrastructure")
+      } else {
+        "Analiz işçisi henüz hazır değil veya meşgul. Lütfen biraz sonra tekrar deneyin."
+      }
+      return(list(action = "answer", chips = list(), answer = cevap))
     }
-    # SINIRLI SQL GÜVENLİĞİ DEGRADE YOLDA DA KORUNUR: `flag_off` bilinçli geri
-    # almadır (eski davranış), ama yetenek sondası başarısız olduğunda (plan
-    # yok, bağımlılık eksik) standart senkron boru hattı bu PR'ın getirdiği
-    # bellek/son tarih sınırlarını ATLAR. Bu yüzden o yolda sınırlı yürütücü
-    # AÇIKÇA etkinleştirilir.
-    if (!identical(uygun$reason, "flag_off")) {
+    if (identical(uygun$reason, "query_opt_out")) {
       geri_al <- mergen_pk_force_bounded_sync(stop_check = ctx$stop_generation,
                                               started_at = istek_baslangici)
       on.exit(try(geri_al(), silent = TRUE), add = TRUE)
@@ -54,13 +54,8 @@ mergen_pk_analysis_execute <- function(ctx) {
   hazirlik <- mergen_pk_prepare_async_request(ctx, started_at = istek_baslangici)
   if (!isTRUE(hazirlik$ok)) {
     if (isTRUE(hazirlik$fallback_sync)) {
-      # ASENKRON NİYETİ AÇIKTI: senkron yola düşülse bile Faz 6 sınırları
-      # (parçalı getirim, sonuç tavanı, mutlak son tarih, Durdur kapısı)
-      # KORUNUR ve bütçe orijinal başlangıçtan sayılır.
-      geri_al <- mergen_pk_force_bounded_sync(stop_check = ctx$stop_generation,
-                                              started_at = istek_baslangici)
-      on.exit(try(geri_al(), silent = TRUE), add = TRUE)
-      return(mergen_pk_apply_analysis_result(mergen_pk_run_sync(ctx), ctx$messages_to_process))
+      return(list(action = "answer", answer = mergen_pk_worker_outcome_text("infrastructure"),
+                  chips = list()))
     }
     return(list(action = "answer", answer = hazirlik$answer, chips = list()))
   }
@@ -118,32 +113,6 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
     try(mergen_pk_unregister_cancel_token(oturum, req_id), silent = TRUE)
   }
 
-  # SENKRON YEDEK: SADECE GÖNDERİM ÖNCESİ yollarda kullanılır (kayıt defteri
-  # hatası, dispatch hatası). Orada henüz bir promise geri çağrısında değiliz ve
-  # çağıran zaten senkron akıştadır.
-  #
-  # İKİ SÖZLEŞME BİRDEN korunur:
-  #   1) ORİJİNAL BÜTÇE: gönderim hatası zaten süre harcadı; taze bir son tarih
-  #      vermek toplam duvar saatini ikiye katlar.
-  #   2) SINIRLI SQL: asenkron niyeti AÇIKTI, bu yüzden parçalı getirim/sonuç
-  #      tavanı/Durdur kapısı senkron yolda da uygulanır (aksi hâlde bir gönderim
-  #      hatası tam `dbGetQuery()` materyalizasyonuna geri dönerdi).
-  sinirli_senkron <- function(etiket) shiny::isolate({
-    kalan <- mergen_pk_residual_budget_sec(request)
-    if (is.finite(kalan) && kalan <= 0) {
-      log_warn(sprintf("[PK_ASYNC] %s: kalan butce yok; senkron yeniden deneme YAPILMADI.", etiket))
-      return(list(action = "answer", answer = pk_async_halt_message("deadline"),
-                  messages_to_process = mesajlar, chips = list()))
-    }
-    geri_al <- mergen_pk_force_bounded_sync(
-      stop_check = ctx$stop_generation,
-      started_at = mergen_pk_request_started_at(request) %||% Sys.time(),
-      deadline_at = mergen_pk_request_deadline_at(request)
-    )
-    on.exit(try(geri_al(), silent = TRUE), add = TRUE)
-    mergen_pk_apply_analysis_result(mergen_pk_run_sync(ctx), mesajlar)
-  })
-
   # Oturum-sonu kancası OTURUM BAŞINA TEKTİR (bkz. helpers_pk_async_lifecycle.R):
   # istek başına bir kapanış kaydetmek, tamamlanan HER isteğin gönderim
   # çerçevesini oturum ömrü boyunca canlı tutuyordu. Kanca, kayıt defterindeki
@@ -157,14 +126,11 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
     silent = TRUE
   )
   if (!identical(kayit, TRUE)) {
-    log_warn("[PK_ASYNC] Aktif istek kaydi yapilamadi; senkron yola donuluyor.")
-    # Yaşam döngüsü koruması KURULAMADIYSA asenkron gönderim yapılmaz: iptal
-    # edilemeyen ve backpressure'ı bırakılamayan bir işçi bırakmak, senkron
-    # yolun bloklamasından daha kötüdür.
-    # JETON TEMİZLİĞİ FAIL-SOFT'TUR: dosya (ör. Windows'ta kilitliyken) kaldırılamazsa yardımcı hata sinyaller; terminal temizlik (`is_sending`, yazıyor sarmalayıcısı, backpressure) YİNE tamamlanmalıdır. Aksi hâlde `bitir_istek()` fırlatıyor, `promises::catch()` içindeki ikinci çağrı da fırlatıyor ve sohbet oturum sonuna kadar KİLİTLİ kalıyordu.
+    log_warn("[PK_ASYNC] Aktif istek kaydi yapilamadi; analiz baslatilmadi.")
     try(pk_cancel_token_clear(cancel_token), silent = TRUE)
     try(mergen_pk_unregister_cancel_token(oturum, req_id), silent = TRUE)
-    return(sinirli_senkron("active_registry_failed"))
+    return(list(action = "answer", answer = mergen_pk_worker_outcome_text("infrastructure"),
+                chips = list()))
   }
 
   # continuation ve message insertion alt çağrıları da reactive okuyabildiği için
@@ -296,8 +262,10 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
   )
   if (inherits(vaat, "try-error")) {
     bitir_istek()
-    log_warn("[PK_ASYNC] Gonderim basarisiz; senkron yol.")
-    return(sinirli_senkron("dispatch_failed"))
+    butce_birak()
+    try(pk_provenance_take(oturum, request_id = req_id), silent = TRUE)
+    log_warn("[PK_ASYNC] Gonderim basarisiz; altyapi yaniti.")
+    return(altyapi_hatasi("dispatch_failed"))
   }
 
   # ------------------------------------------------------------------------

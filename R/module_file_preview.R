@@ -32,6 +32,7 @@ filePreviewServer <- function(id) {
 
     # Aynı dosya tekrar önizlendiğinde base64 üretimini tekrar yapmamak için önbellek
     preview_b64_cache <- reactiveVal(list())
+    preview_docx_cache <- reactiveVal(list())
 
     # DOCX önizleme modalı için sıra (oturum) belirteci. Büyük DOCX dosyaları
     # asenkron kodlandığı için, kullanıcı A dosyasını açıp kodlama bitmeden
@@ -41,40 +42,27 @@ filePreviewServer <- function(id) {
     # yalnızca belirteç hâlâ kendi açılışıyla aynıysa UI mesajını gönderir.
     docx_preview_seq <- reactiveVal(0L)
     if (exists("mergen_session_on_owner_change", mode = "function")) {
-      mergen_session_on_owner_change(session, function(neden) {
+      clear_preview <- function(neden = NULL) {
         file_storage$preview_file <- NULL
         veri_jetonlari <<- list()
         # Süren DOCX kodlaması ve önbellek yeni sahibe taşınmaz.
         docx_preview_seq(isolate(docx_preview_seq()) + 1L)
         preview_b64_cache(list())
-        try(removeModal(session = session), silent = TRUE)
-      })
+        preview_docx_cache(list())
+        if (!identical(neden, "session_end") && !isTRUE(session$isClosed()))
+          try(removeModal(session = session), silent = TRUE)
+      }
+      mergen_session_on_owner_change(session, clear_preview)
+      session$onSessionEnded(function() clear_preview("session_end"))
     }
 
-    # Dosya yolu + boyut + değişiklik zamanına göre önbellek anahtarı üretir
-    build_preview_cache_key <- function(path) {
-      dp <- if (exists("resolve_readable_path", mode = "function")) {
-        resolve_readable_path(path)
-      } else {
-        path
-      }
+    observeEvent(input$preview_closed, {
+      if (!identical(as.integer(input$preview_closed), isolate(docx_preview_seq()))) return(NULL)
+      docx_preview_seq(isolate(docx_preview_seq()) + 1L)
+      file_storage$preview_file <- NULL
+    }, ignoreInit = TRUE)
 
-      finfo <- tryCatch(file.info(dp), error = function(e) NULL)
-
-      size_txt <- if (!is.null(finfo) && !is.na(finfo$size[1])) {
-        as.character(finfo$size[1])
-      } else {
-        "nosize"
-      }
-
-      mtime_txt <- if (!is.null(finfo) && !is.na(finfo$mtime[1])) {
-        format(finfo$mtime[1], "%Y%m%d%H%M%S")
-      } else {
-        "nomtime"
-      }
-
-      paste(dp, size_txt, mtime_txt, sep = "||")
-    }
+    build_preview_cache_key <- mergen_preview_cache_key
 
     # Önbellekten base64 değeri getirir
     get_cached_base64 <- function(path) {
@@ -96,15 +84,11 @@ filePreviewServer <- function(id) {
       }
 
       cache_key <- build_preview_cache_key(path)
-      cache <- preview_b64_cache()
-      cache[[cache_key]] <- b64_value[1]
+      cache <- mergen_preview_cache_put(preview_b64_cache(), cache_key, b64_value[1])
       preview_b64_cache(cache)
 
       invisible(TRUE)
     }
-
-    # Senkron/asenkron base64 kodlama eşiği (10 MB altı dosyalar senkron işlenir)
-    SYNC_B64_THRESHOLD <- 10 * 1024 * 1024
 
     # 1.5 MB üzeri PDF dosyaları yeni sekmede açılır (base64 data URI yerine doğrudan sunulur)
     PDF_NEWTAB_THRESHOLD <- 1.5 * 1024 * 1024
@@ -150,43 +134,38 @@ filePreviewServer <- function(id) {
             error = function(e) file.copy(file_storage$preview_file$datapath, file, overwrite = TRUE)
           )
         } else {
-          # Dosya bulunamazsa uyarı yazdır
-          writeLines("File not found", file)
+          stop("Dosya henüz hazır değil veya artık erişilemiyor.")
         }
       }
     )
 
+    output$docx_download_ui <- renderUI({
+      path <- file_storage$preview_file$datapath
+      if (is.null(path)) return(tags$span(class = "btn disabled", "İndir"))
+      downloadButton(ns("download_preview_file"), "İndir", class = "btn-modern btn-primary")
+    })
+
     # Dosya önizleme penceresini açan ana fonksiyon
     open <- function(file_info) {
+      docx_preview_seq(isolate(docx_preview_seq()) + 1L)
       tryCatch({
-        # Dosya yolunu belirle veya doğrula
-		datapath <- file_info$datapath %||% file_info$path %||%
-		  resolve_uploaded_file(
-			file_info$name,
-			user_id = session$userData$user_id
-		  )
-
-        # Dosya yolunun geçerliliğini kontrol et
-        if (is.null(datapath) || !nzchar(datapath) || !path_exists_relaxed(datapath)) {
-          showToast(session,
-                    sprintf("Dosya bulunamadı veya erişilemiyor: %s", file_info$name %||% ""),
-                    "error")
-          return(invisible(NULL))
+        datapath <- file_info$datapath %||% file_info$path
+        filename <- file_info$name %||% if (!is.null(datapath)) basename(datapath) else ""
+        file_ext <- tolower(tools::file_ext(filename))
+        is_docx <- identical(file_ext, "docx")
+        if (!is_docx) {
+          datapath <- datapath %||% resolve_uploaded_file(filename, user_id = session$userData$user_id)
+          if (is.null(datapath) || !nzchar(datapath) || !path_exists_relaxed(datapath)) {
+            showToast(session, sprintf("Dosya bulunamadı veya erişilemiyor: %s", filename), "error")
+            return(invisible(NULL))
+          }
         }
-
-        # Dosya yolundaki ters eğik çizgileri düzelt
-        datapath <- gsub("\\\\", "/", datapath)
-
-        # İndirme işlemi için dosya bilgilerini normalize edilmiş halde sakla
+        if (!is.null(datapath)) datapath <- gsub("\\\\", "/", datapath)
         file_storage$preview_file <- list(
-          name     = file_info$name %||% basename(datapath),
-          datapath = datapath,
-          size     = file_info$size %||% suppressWarnings(file.info(datapath)$size),
-          nesli    = as.integer(session$userData$kimlik_nesli %||% 0L)[1]
+          name = filename, datapath = if (is_docx) NULL else datapath,
+          size = file_info$size %||% if (!is_docx) suppressWarnings(file.info(datapath)$size) else NULL,
+          nesli = as.integer(session$userData$kimlik_nesli %||% 0L)[1]
         )
-
-        # Dosya uzantısını al
-        file_ext   <- tolower(tools::file_ext(file_storage$preview_file$name))
 
         # Dosya adındaki && ayırıcısını " - " ile değiştir ve başlık stili uygula
         display_name <- gsub("\\s*&&\\s*", " - ", file_storage$preview_file$name)
@@ -198,7 +177,8 @@ filePreviewServer <- function(id) {
 
         # Modal alt bilgi (footer) tasarımı
         footer <- tagList(
-          downloadButton(ns("download_preview_file"), "İndir", class = "btn-modern btn-primary"),
+          if (is_docx) uiOutput(ns("docx_download_ui")) else
+            downloadButton(ns("download_preview_file"), "İndir", class = "btn-modern btn-primary"),
           modalButton("Kapat")
         )
 
@@ -384,79 +364,46 @@ filePreviewServer <- function(id) {
               style = "overflow: visible; background: white; padding: 20px; border-radius: 8px;",
               HTML("<div style='padding:8px;font-size:12px;opacity:.7'>Yükleniyor…</div>")
             ),
-            size = "l", easyClose = TRUE, footer = footer
+            size = "l", easyClose = TRUE, footer = footer,
+            tags$script(HTML(sprintf(
+              "$('#shiny-modal').one('hidden.bs.modal',function(){Shiny.setInputValue('%s',%d,{priority:'event'});});",
+              ns("preview_closed"), isolate(docx_preview_seq())
+            )))
           ))
 
           # Bu DOCX açılışına ait belirteci üret ve yakala. Asenkron yol bu
           # yakalanan değeri, geri çağrı çalıştığında güncel belirteçle
           # karşılaştırarak eski sonucun yeni modalı ezmesini engeller.
-          docx_preview_seq(docx_preview_seq() + 1L)
           docx_open_token <- docx_preview_seq()
           docx_nesli <- file_storage$preview_file$nesli
 
-          # Önbellekten kontrol et; varsa doğrudan göster
-          cached_docx <- get_cached_base64(datapath)
-
-          if (!is.null(cached_docx)) {
-            # Önbellekte var; hemen mammoth'a gönder
-            session$sendCustomMessage(
-              "openDocxPreview",
-              list(base64 = cached_docx, targetId = ns("docx_preview_container"))
-            )
-          } else {
-            # Dosya boyutuna göre senkron veya asenkron kodla
-            fsize <- tryCatch(file.info(datapath)$size, error = function(e) NA_real_)
-
-            if (!is.na(fsize) && fsize <= SYNC_B64_THRESHOLD) {
-              # Küçük dosya: senkron kodlama (future işçi başlatma yükünden kaçınır)
-              tryCatch({
-                b64 <- encode_file_base64_sync(datapath)
-                if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
-                  store_cached_base64(datapath, b64[1])
-                  session$sendCustomMessage(
-                    "openDocxPreview",
-                    list(base64 = b64, targetId = ns("docx_preview_container"))
-                  )
-                } else {
-                  showToast(session, "DOCX içeriği hazırlanamadı.", "error")
-                }
-              }, error = function(e) {
-                showToast(session, paste("DOCX okunamadı:", conditionMessage(e)), "error")
-              })
-            } else {
-              # Büyük dosya (>10 MB): asenkron kodlama
-              future::future({
-                encode_file_base64_sync(datapath)
-              }) %...>% (function(b64){
-                # Eski açılışın geç gelen sonucu, daha yeni bir DOCX modalını
-                # ezmemeli. Belirteç değiştiyse bu sonucu sessizce yok say
-                # (yalnızca önbelleğe yazılır, UI'a basılmaz).
-                if (!identical(isolate(docx_preview_seq()), docx_open_token)) {
-                  # Kimlik değiştiyse önceki sahibin içeriği önbelleğe de yazılmaz.
-                  if (onizleme_gecerli(docx_nesli) &&
-                      is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
-                    store_cached_base64(datapath, b64[1])
-                  }
-                  return(invisible(NULL))
-                }
-                if (is.character(b64) && length(b64) > 0 && nzchar(b64[1])) {
-                  store_cached_base64(datapath, b64[1])
-                  session$sendCustomMessage(
-                    "openDocxPreview",
-                    list(base64 = b64, targetId = ns("docx_preview_container"))
-                  )
-                } else {
-                  showToast(session, "DOCX içeriği hazırlanamadı.", "error")
-                }
-              }) %...!% (function(e){
-                # Hata mesajını da yalnızca bu açılış hâlâ güncelse göster.
-                if (!identical(isolate(docx_preview_seq()), docx_open_token)) {
-                  return(invisible(NULL))
-                }
-                showToast(session, paste("DOCX okunamadı:", conditionMessage(e)), "error")
-              })
-            }
+          cache_id <- datapath %||% filename
+          preview_error <- function(e) {
+            if (!onizleme_gecerli(docx_nesli) || isTRUE(session$isClosed()) ||
+                !identical(isolate(docx_preview_seq()), docx_open_token)) return(NULL)
+            removeModal(session = session)
+            showToast(session, paste("DOCX okunamadı:", conditionMessage(e)), "error")
           }
+          tryCatch({
+            mergen_dispatch_docx_preview(datapath, session$token,
+              cached = preview_docx_cache()[[cache_id]], name = filename,
+              user_id = session$userData$user_id,
+              cancel_check = function() onizleme_gecerli(docx_nesli) && !isTRUE(session$isClosed()) &&
+                identical(isolate(docx_preview_seq()), docx_open_token)) %...>% (function(b64) {
+              if (!onizleme_gecerli(docx_nesli) || isTRUE(session$isClosed())) return(NULL)
+              if (!is.character(b64) || !length(b64) || !nzchar(b64[1])) {
+                return(preview_error(simpleError("DOCX içeriği hazırlanamadı.")))
+              }
+              if (!identical(isolate(docx_preview_seq()), docx_open_token)) return(NULL)
+              cache <- mergen_preview_cache_put(isolate(preview_docx_cache()), cache_id,
+                list(key = attr(b64, "cache_key"), base64 = as.character(b64[1])))
+              preview_docx_cache(cache)
+              resolved <- attr(b64, "resolved_path")
+              if (!is.null(resolved)) file_storage$preview_file$datapath <- resolved
+              session$sendCustomMessage("openDocxPreview", list(
+                base64 = as.character(b64), targetId = ns("docx_preview_container")))
+            }) %...!% preview_error
+          }, error = preview_error)
 
         } else if (file_ext %in% c("txt", "csv", "json", "log", "md", "r", "py", "js", "html", "css")) {
           # Metin ve Kod Dosyaları İçin Önizleme.

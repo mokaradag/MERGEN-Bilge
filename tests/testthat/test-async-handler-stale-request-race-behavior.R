@@ -88,7 +88,10 @@ suppressMessages(library(promises))
       },
       current_user_id = 5L,
       user_message_text = "bir kedi çiz",
-      active_request_id = function() req_state$current_id,
+      active_request_id = function(value) {
+        if (missing(value)) return(req_state$current_id)
+        req_state$current_id <- value
+      },
       stop_generation = function() isTRUE(req_state$stopped)
     ),
     rec = rec,
@@ -247,7 +250,10 @@ testthat::test_that("görsel: güncel istekte hata sonucu Türkçe hata mesajı 
         call_llm_non_streaming = function(...) env$llm_promise_factory()
       ),
       stop_generation = function() isTRUE(req_state$stopped),
-      active_request_id = function() req_state$current_id,
+      active_request_id = function(value) {
+        if (missing(value)) return(req_state$current_id)
+        req_state$current_id <- value
+      },
       perf_tracker = NULL,
       api_config = list(),
       current_user_id = 5L,
@@ -288,6 +294,7 @@ testthat::test_that("özet: güncel istekte non-streaming başarı sonucu mesaj 
   testthat::expect_length(fix$rec$messages, 1L)
   testthat::expect_true(grepl("özet metni", fix$rec$messages[[1]]$content, fixed = TRUE))
   testthat::expect_identical(fix$rec$reset_calls, 1L)
+  testthat::expect_null(req_state$current_id)
 })
 
 testthat::test_that("özet: BAYAT istekte non-streaming başarı sonucu yeni isteği EZMEZ", {

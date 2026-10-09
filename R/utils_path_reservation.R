@@ -91,7 +91,7 @@ mergen_reservation_acquire <- function(rezerv, jeton) {
   if (!alindi) return(FALSE)
 
   yazildi <- try(
-    writeLines(jeton, .mergen_reservation_marker(rezerv), useBytes = TRUE),
+    writeLines(c(jeton, paste0("host=", Sys.info()[["nodename"]])), .mergen_reservation_marker(rezerv), useBytes = TRUE),
     silent = TRUE
   )
   if (inherits(yazildi, "try-error") ||
@@ -125,7 +125,7 @@ mergen_reservation_touch <- function(rezerv, jeton) {
   # sahiplik yeniden okunur ve yalnızca hâlâ bizse yazılır (başka sahibin
   # jetonunu ezmemek için), yazımdan SONRA da yeniden doğrulanır.
   if (!identical(mergen_reservation_owner(rezerv), jeton)) return(invisible(FALSE))
-  yazildi <- try(writeLines(jeton, yol, useBytes = TRUE), silent = TRUE)
+  yazildi <- try(writeLines(c(jeton, paste0("host=", Sys.info()[["nodename"]])), yol, useBytes = TRUE), silent = TRUE)
   if (inherits(yazildi, "try-error")) return(invisible(FALSE))
   invisible(identical(mergen_reservation_owner(rezerv), jeton))
 }
@@ -174,13 +174,12 @@ mergen_reservation_takeover <- function(rezerv, jeton,
   # okuma hatası, CANLI bir rezervasyonun devralınmasına izin veriyordu.
   if (length(gozlenen) != 1L || is.na(gozlenen) || !nzchar(gozlenen)) return(FALSE)
 
-  yas <- mergen_reservation_age_sec(rezerv)
-  if (!is.finite(yas) || yas <= stale_sec) return(FALSE)
-
-  # GÖZLENEN jeton hâlâ yerinde olmalı ve yaş YENİDEN doğrulanmalıdır.
-  if (!identical(mergen_reservation_owner(rezerv), gozlenen)) return(FALSE)
-  yas <- mergen_reservation_age_sec(rezerv)
-  if (!is.finite(yas) || yas <= stale_sec) return(FALSE)
+  guard <- tryCatch(filelock::lock(paste0(rezerv, ".reclaim"), timeout = 0), error = function(e) NULL)
+  if (is.null(guard)) return(FALSE)
+  on.exit(filelock::unlock(guard), add = TRUE)
+  if (!identical(mergen_reservation_owner(rezerv), gozlenen) ||
+      !exists("mergen_lock_owner_dead", mode = "function") ||
+      !mergen_lock_owner_dead(.mergen_reservation_marker(rezerv), gozlenen)) return(FALSE)
 
   # Silme, GÖZLENEN örneğe bağlıdır: karantina taşımasından sonra jeton hâlâ
   # `gozlenen` değilse rezervasyon bu aralıkta değişmiştir ve devralınmaz.

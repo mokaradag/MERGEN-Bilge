@@ -519,7 +519,7 @@ test_that("BAYAT red geri çağrısı da hiçbir şeyi mutasyona uğratmaz", {
   expect_equal(h$kayit$cleanup, 0L)
 })
 
-test_that("gönderim hatası SENKRON yola döner (kullanıcı yanıtsız kalmaz)", {
+test_that("gönderim hatası senkron yeniden denemeden altyapı yanıtı verir", {
   env <- .pk_dispatch_env()
   env$pk_async_available <- function(...) list(available = TRUE, reason = "ok")
   env$mergen_pk_async_repo_root <- function() tempdir()
@@ -528,14 +528,19 @@ test_that("gönderim hatası SENKRON yola döner (kullanıcı yanıtsız kalmaz)
   h <- .pk_ctx(env)
   sonuc <- env$mergen_pk_analysis_execute(h$ctx)
 
-  expect_equal(sonuc$action, "continue")
-  expect_equal(sonuc$messages_to_process[[1]]$content, "SENKRON SISTEM")
+  expect_length(h$kayit$devam, 0L)
+  expect_length(h$kayit$mesajlar, 0L)
+  expect_identical(h$kayit$cleanup, 0L)
+  expect_identical(sonuc$action, "answer")
+  expect_match(sonuc$answer, "Analiz Altyapısı Hazır Değil", fixed = TRUE)
 })
 
-test_that("işçi-güvensiz anlık görüntü SENKRON yola döner (sessiz serileştirme yok)", {
+test_that("işçi-güvensiz anlık görüntü senkron yürütülmeden reddedilir", {
   env <- .pk_dispatch_env()
   env$pk_async_available <- function(...) list(available = TRUE, reason = "ok")
   env$mergen_pk_async_repo_root <- function() tempdir()
+  sync_calls <- 0L
+  env$mergen_pk_run_sync <- function(...) { sync_calls <<- sync_calls + 1L; stop("Analiz hatası") }
   gonderildi <- FALSE
   env$tracked_future_promise <- function(...) {
     gonderildi <<- TRUE
@@ -547,8 +552,9 @@ test_that("işçi-güvensiz anlık görüntü SENKRON yola döner (sessiz serile
   sonuc <- env$mergen_pk_analysis_execute(h$ctx)
 
   expect_false(gonderildi)
-  expect_equal(sonuc$action, "continue")
-  expect_equal(sonuc$messages_to_process[[1]]$content, "SENKRON SISTEM")
+  expect_equal(sonuc$action, "answer")
+  expect_match(sonuc$answer, "Analiz Altyapısı Hazır Değil", fixed = TRUE)
+  expect_identical(sync_calls, 0L)
 })
 
 test_that("oturum kapanışı yalnız AKTİF session-scoped jetonu işaretler", {
@@ -641,4 +647,46 @@ test_that("işçi durum metni bilinmeyen durumda genel hata verir", {
     expect_false(is.na(metin))
     expect_true(nzchar(trimws(metin)))
   }
+})
+
+
+test_that("meşgul veya doğrulanmamış PK havuzu senkron analiz başlatmaz", {
+  for (reason in c("worker_probe_inconclusive", "plan_sequential", "pool_busy")) {
+    env <- .pk_dispatch_env()
+    env$pk_async_available <- function(...) list(available = FALSE, reason = reason)
+    env$mergen_pk_run_sync <- function(...) stop("Ana süreçte analiz çalışmamalı")
+    h <- .pk_ctx(env)
+    result <- env$mergen_pk_analysis_execute(h$ctx)
+    expect_identical(result$action, "answer")
+    if (reason == "plan_sequential") expect_match(result$answer, "Analiz Altyapısı Hazır Değil", fixed = TRUE) else
+      expect_match(result$answer, "henüz hazır değil veya meşgul", fixed = TRUE)
+  }
+})
+
+test_that("kalıcı işçi altyapısı eksikliği geçici meşgul yanıtına dönüşmez", {
+  env <- .pk_dispatch_env()
+  for (reason in c("promises_missing", "tracked_future_promise_missing", "pool_busy", "worker_probe_inconclusive")) {
+    env$pk_async_available <- function(...) list(available = FALSE, reason = reason)
+    outcome <- env$mergen_pk_analysis_execute(.pk_ctx(env)$ctx)
+    if (reason %in% c("promises_missing", "tracked_future_promise_missing")) {
+      expect_identical(outcome$answer, env$mergen_pk_worker_outcome_text("infrastructure"))
+    } else {
+      expect_match(outcome$answer, "biraz sonra", fixed = TRUE)
+    }
+  }
+})
+
+test_that("senkron gönderim hatası kabul jetonunu ve köken kaydını tam bir kez bırakır", {
+  env <- .pk_dispatch_env()
+  .pk_arm_async(env)
+  env$tracked_future_promise <- function(...) stop("gönderilemedi")
+  releases <- taken <- 0L
+  env$mergen_send_message_release_values_token <- function(...) releases <<- releases + 1L
+  env$pk_provenance_take <- function(...) taken <<- taken + 1L
+  h <- .pk_ctx(env)
+  result <- env$mergen_pk_analysis_execute(h$ctx)
+  expect_identical(result$action, "answer")
+  expect_identical(releases, 1L)
+  expect_identical(taken, 1L)
+  expect_length(h$kayit$devam, 0L)
 })

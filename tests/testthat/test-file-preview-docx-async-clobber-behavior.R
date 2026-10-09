@@ -11,7 +11,7 @@
 #           asenkron geri çağrı yalnızca belirteç hâlâ kendi açılışıyla aynıysa
 #           openDocxPreview mesajını gönderir.
 #
-#           Gerçek dosya, base64enc veya tarayıcı gerektirmez: future::future
+#           Gerçek dosya, base64enc veya tarayıcı gerektirmez: işçi gönderimi
 #           taklit edilir ve task_fn hiç zorlanmaz; sonuç elle çözülür.
 # ==============================================================================
 
@@ -35,6 +35,7 @@ suppressMessages({
 .fp_make_env <- function() {
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  source(file.path(resolve_repo_root_for_tests(), "R/helpers_preview_cache.R"), local = env)
   # Var olmayan fixture dosyalarını "erişilebilir" say (asenkron yola düşmek için
   # gerçek dosya gerekmez; file.info NA boyut döndürünce zaten async seçilir).
   env$path_exists_relaxed <- function(p) TRUE
@@ -63,7 +64,6 @@ suppressMessages({
 test_that("DOCX: BAYAT asenkron sonuç daha YENİ modalı EZMEZ; yalnızca güncel sonuç basılır", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("promises")
-  skip_if_not_installed("future")
 
   env <- .fp_make_env()
   resolvers <- new.env()
@@ -74,9 +74,7 @@ test_that("DOCX: BAYAT asenkron sonuç daha YENİ modalı EZMEZ; yalnızca günc
   path_a <- file.path(tempdir(), "docA_buyuk.docx")  # kasıtlı olarak oluşturulmaz
   path_b <- file.path(tempdir(), "docB_buyuk.docx")
 
-  testthat::local_mocked_bindings(
-    future = .fp_make_future_stub(resolvers), .package = "future"
-  )
+  env$mergen_dispatch_docx_preview <- .fp_make_future_stub(resolvers)
   testthat::local_mocked_bindings(
     showModal = function(...) invisible(NULL),
     removeModal = function(...) invisible(NULL),
@@ -120,7 +118,6 @@ test_that("DOCX: BAYAT asenkron sonuç daha YENİ modalı EZMEZ; yalnızca günc
 test_that("DOCX: TEK açılışta asenkron başarı sonucu doğru base64 ile openDocxPreview gönderir", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("promises")
-  skip_if_not_installed("future")
 
   env <- .fp_make_env()
   resolvers <- new.env()
@@ -130,9 +127,7 @@ test_that("DOCX: TEK açılışta asenkron başarı sonucu doğru base64 ile ope
 
   path_a <- file.path(tempdir(), "tek_docA.docx")
 
-  testthat::local_mocked_bindings(
-    future = .fp_make_future_stub(resolvers), .package = "future"
-  )
+  env$mergen_dispatch_docx_preview <- .fp_make_future_stub(resolvers)
   testthat::local_mocked_bindings(
     showModal = function(...) invisible(NULL),
     removeModal = function(...) invisible(NULL),
@@ -163,7 +158,6 @@ test_that("DOCX: TEK açılışta asenkron başarı sonucu doğru base64 ile ope
 test_that("DOCX: BAYAT asenkron HATA sonucu daha yeni modal için Türkçe hata toast'ı göstermez", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("promises")
-  skip_if_not_installed("future")
 
   env <- .fp_make_env()
   resolvers <- new.env()
@@ -179,9 +173,7 @@ test_that("DOCX: BAYAT asenkron HATA sonucu daha yeni modal için Türkçe hata 
   path_a <- file.path(tempdir(), "hataA.docx")
   path_b <- file.path(tempdir(), "hataB.docx")
 
-  testthat::local_mocked_bindings(
-    future = .fp_make_future_stub(resolvers), .package = "future"
-  )
+  env$mergen_dispatch_docx_preview <- .fp_make_future_stub(resolvers)
   testthat::local_mocked_bindings(
     showModal = function(...) invisible(NULL),
     removeModal = function(...) invisible(NULL),
@@ -227,14 +219,13 @@ test_that("oturum sahibi değişince açık önizlemenin indirmesi önceki dosya
     testthat::expect_identical(readLines(output$download_preview_file), "A kullanicisinin gizli dosyasi")
     env$mergen_session_owner_transition(session$userData, 7L, 8L)
     testthat::expect_gte(kapanis, 1L)
-    testthat::expect_false(any(grepl("gizli", readLines(output$download_preview_file), fixed = TRUE)))
+    testthat::expect_error(output$download_preview_file, "Dosya henüz hazır değil", fixed = TRUE)
   })
 })
 
 test_that("sahip değişince süren DOCX kodlaması yeni sahibe basılmaz ve önbelleğe yazılmaz", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("promises")
-  skip_if_not_installed("future")
   env <- .fp_make_env()
   source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
          encoding = "UTF-8", local = env)
@@ -243,7 +234,7 @@ test_that("sahip değişince süren DOCX kodlaması yeni sahibe basılmaz ve ön
   kayit <- new.env()
   kayit$msgs <- list()
   path_a <- file.path(tempdir(), "sahipA_buyuk.docx")
-  testthat::local_mocked_bindings(future = .fp_make_future_stub(resolvers), .package = "future")
+  env$mergen_dispatch_docx_preview <- .fp_make_future_stub(resolvers)
   testthat::local_mocked_bindings(
     showModal = function(...) invisible(NULL),
     removeModal = function(...) invisible(NULL),
@@ -332,4 +323,177 @@ test_that("görsel kaydı daha önce açılmış PDF uç noktasını geçersiz k
     expect_length(kayitlar, 2L)
     expect_identical(ilk$filter(ilk$data, istek)$status, 200L)
   })
+})
+
+test_that("DOCX yolu ana süreçte yoklanmadan işçiye gönderilir", {
+  env <- .fp_make_env()
+  env$resolve_readable_path <- env$path_exists_relaxed <- env$file.info <- function(...) {
+    stop("Ana süreç dosya yolunu yoklamamalı")
+  }
+  sent <- NULL
+  env$mergen_dispatch_docx_preview <- function(path, ...) {
+    sent <<- path
+    promises::promise_resolve("kodlanmış")
+  }
+  testthat::local_mocked_bindings(showModal = function(...) NULL, .package = "shiny")
+  shiny::testServer(env$filePreviewServer, {
+    session$returned$open(list(name = "rapor.docx", datapath = "/sunucu/paylasim/rapor.docx", size = 1))
+    .fp_drain_later_queue()
+    expect_identical(sent, "/sunucu/paylasim/rapor.docx")
+  })
+})
+
+test_that("DOCX senkron gönderim hatası yalnız güncel açık önizlemeye bildirilir", {
+  for (change in c("current", "owner", "closed")) {
+    env <- .fp_make_env()
+    notifications <- 0L
+    closed <- 0L
+    env$showToast <- function(...) notifications <<- notifications + 1L
+    testthat::local_mocked_bindings(
+      showModal = function(...) NULL,
+      removeModal = function(...) closed <<- closed + 1L,
+      .package = "shiny")
+    shiny::testServer(env$filePreviewServer, {
+      env$mergen_dispatch_docx_preview <- function(...) {
+        if (change == "owner") session$userData$kimlik_nesli <- 1L
+        if (change == "closed") session$close()
+        stop("işçi serileştirme hatası")
+      }
+      session$returned$open(list(name = "rapor.docx", datapath = "/sunucu/rapor.docx"))
+      .fp_drain_later_queue()
+      expect_identical(notifications, if (change == "current") 1L else 0L)
+      expect_identical(closed, if (change == "current") 1L else 0L)
+    })
+  }
+})
+
+test_that("DOCX sonucu başka türdeki önizlemenin yolunu veya modalını değiştirmez", {
+  env <- .fp_make_env()
+  resolvers <- new.env()
+  resolvers$queue <- list()
+  env$mergen_dispatch_docx_preview <- .fp_make_future_stub(resolvers)
+  removed <- 0L
+  testthat::local_mocked_bindings(
+    showModal = function(...) NULL,
+    removeModal = function(...) removed <<- removed + 1L,
+    .package = "shiny"
+  )
+  text_path <- withr::local_tempfile(fileext = ".txt")
+  writeLines("yeni dosya", text_path)
+  shiny::testServer(env$filePreviewServer, {
+    session$returned$open(list(name = "eski.docx", datapath = "eski.docx"))
+    session$returned$open(list(name = "yeni.txt", datapath = text_path))
+    resolvers$queue[[1]]$resolve(structure("BASE64", resolved_path = "eski.docx"))
+    .fp_drain_later_queue()
+    expect_identical(normalizePath(isolate(file_storage$preview_file$datapath), winslash = "/"),
+                     normalizePath(text_path, winslash = "/"))
+    expect_identical(removed, 0L)
+  })
+})
+
+test_that("adıyla açılan DOCX indirmesi işçinin yolunu bekler", {
+  env <- .fp_make_env()
+  resolvers <- new.env()
+  resolvers$queue <- list()
+  env$mergen_dispatch_docx_preview <- .fp_make_future_stub(resolvers)
+  testthat::local_mocked_bindings(showModal = function(...) NULL, .package = "shiny")
+  shiny::testServer(env$filePreviewServer, {
+    session$returned$open(list(name = "rapor.docx"))
+    expect_null(isolate(file_storage$preview_file$datapath))
+    expect_match(output$docx_download_ui$html, '<span class="btn disabled">', fixed = TRUE)
+    expect_false(grepl("shiny-download-link", output$docx_download_ui$html, fixed = TRUE))
+    resolvers$queue[[1]]$resolve(structure("BASE64", resolved_path = "kalici.docx"))
+    .fp_drain_later_queue()
+    session$flushReact()
+    expect_identical(isolate(file_storage$preview_file$datapath), "kalici.docx")
+    expect_match(output$docx_download_ui$html, "download_preview_file", fixed = TRUE)
+    expect_match(output$docx_download_ui$html, "shiny-download-link", fixed = TRUE)
+    expect_false(grepl("<span[^>]*disabled", output$docx_download_ui$html))
+  })
+})
+
+test_that("DOCX işçisi yolu çözer, önbelleği doğrular ve değişen dosyayı yeniden kodlar", {
+  env <- new.env(parent = globalenv())
+  for (file in c("helpers_async_result_guard.R", "helpers_files_path.R")) {
+    source(file.path(resolve_repo_root_for_tests(), "R", file), encoding = "UTF-8", local = env)
+  }
+  path <- withr::local_tempfile(fileext = ".docx")
+  writeBin(charToRaw("ilk içerik"), path)
+  resolutions <- 0L
+  env$resolve_readable_path <- function(raw_path) { resolutions <<- resolutions + 1L; path }
+  env$tracked_future_promise <- function(task_fn, globals, ...) {
+    expect_identical(resolutions, 0L)
+    expect_identical(globals$docx_path, "/sunucu/rapor.docx")
+    environment(task_fn) <- list2env(globals, parent = baseenv())
+    task_fn()
+  }
+  first <- env$mergen_dispatch_docx_preview("/sunucu/rapor.docx", "test")
+  expect_identical(resolutions, 1L)
+  expect_identical(attr(first, "resolved_path"), path)
+  cache <- list(key = attr(first, "cache_key"), base64 = "ÖNBELLEK")
+  resolutions <- 0L
+  second <- env$mergen_dispatch_docx_preview("/sunucu/rapor.docx", "test", cached = cache)
+  expect_identical(as.character(second), "ÖNBELLEK")
+  writeBin(charToRaw("dosya değişti ve büyüdü"), path)
+  resolutions <- 0L
+  third <- env$mergen_dispatch_docx_preview("/sunucu/rapor.docx", "test", cached = cache)
+  expect_identical(as.character(third), base64enc::base64encode(path))
+  expect_false(identical(attr(third, "cache_key"), cache$key))
+})
+
+
+test_that("büyük DOCX önbelleği worker yüküne taşınmaz", {
+  env <- new.env(parent = globalenv())
+  for (file in c("helpers_worker_monitor.R", "helpers_async_result_guard.R"))
+    source(file.path(resolve_repo_root_for_tests(), "R", file), encoding = "UTF-8", local = env)
+  path <- withr::local_tempfile(fileext = ".docx")
+  writeBin(charToRaw("docx"), path)
+  info <- file.info(path)
+  cache <- list(key = paste(path, info$size[1], as.numeric(info$mtime[1]), sep = "||"),
+                base64 = strrep("A", 12L * 1024L * 1024L))
+  env$resolve_readable_path <- function(path) path
+  environment(env$resolve_readable_path) <- baseenv()
+  payloads <- list()
+  env$tracked_future_promise <- function(task_fn, globals, packages, ...) {
+    payload <- env$worker_monitor_serialize_explicit_task(task_fn, globals, packages)
+    payloads[[length(payloads) + 1L]] <<- payload
+    expect_lt(length(payload), 1024L * 1024L)
+    promises::promise_resolve(unserialize(payload)())
+  }
+  env$mergen_dispatch_docx_preview(path, "cache-test", cached = list(key = cache$key, base64 = "küçük"))
+  value <- NULL
+  promises::then(env$mergen_dispatch_docx_preview(path, "cache-test", cached = cache),
+                 function(result) value <<- result)
+  .fp_drain_later_queue()
+  expect_identical(as.character(value), cache$base64)
+  expect_identical(attr(value, "resolved_path"), path)
+  expect_identical(payloads[[1L]], payloads[[2L]])
+})
+
+test_that("DOCX önbelleği adet ve bayt sınırında belirli sırayla boşaltılır", {
+  env <- .fp_make_env()
+  cache <- list()
+  for (id in c("A", "B", "C", "D")) cache <- env$mergen_preview_cache_put(cache, id,
+    list(base64 = strrep("x", 4)), max_entries = 3L, max_bytes = 10)
+  expect_identical(names(cache), c("C", "D"))
+  cache <- env$mergen_preview_cache_put(cache, "C", list(base64 = "xx"), max_entries = 3L, max_bytes = 10)
+  expect_identical(names(cache), c("D", "C"))
+  cache <- env$mergen_preview_cache_put(cache, "dev", list(base64 = strrep("x", 11)), max_bytes = 10)
+  expect_null(cache$dev)
+  expect_identical(names(cache), c("D", "C"))
+})
+
+
+testthat::test_that("genel ve DOCX önizleme değerleri aynı bayt ve adet bütçesini korur", {
+  env <- .fp_make_env()
+  cache <- env$mergen_preview_cache_put(list(), "PDF", "1234", max_bytes = 6)
+  cache <- env$mergen_preview_cache_put(cache, "DOCX", list(base64 = "5678"), max_bytes = 6)
+  testthat::expect_identical(names(cache), "DOCX")
+  cache <- env$mergen_preview_cache_put(cache, "image", "ab", max_bytes = 6)
+  testthat::expect_identical(cache$image, "ab")
+  testthat::expect_identical(cache$DOCX$base64, "5678")
+  cache <- env$mergen_preview_cache_put(cache, "huge", strrep("x", 7), max_bytes = 6)
+  testthat::expect_identical(names(cache), c("DOCX", "image"))
+  cache <- env$mergen_preview_cache_put(cache, "other", "x", max_entries = 1L)
+  testthat::expect_identical(cache, list(other = "x"))
 })

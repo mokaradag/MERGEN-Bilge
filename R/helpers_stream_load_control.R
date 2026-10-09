@@ -102,52 +102,108 @@ mergen_stream_dispatch_followups <- function(session,
                                              fallback_followup_tool,
                                              plan = NULL,
                                              later_fn = NULL,
-                                             build_fn = NULL) {
+                                             build_fn = NULL,
+                                             dispatch_fn = NULL,
+                                             apply_guard = NULL) {
+  tryCatch({
   if (is.null(plan)) plan <- mergen_followup_dispatch_plan()
   if (!isTRUE(plan$enabled)) return(invisible(FALSE))
-
   if (is.null(later_fn)) later_fn <- later::later
   if (is.null(build_fn)) build_fn <- build_followup_suggestions
+  if (is.null(dispatch_fn)) dispatch_fn <- tracked_future_promise
+  owner_guard <- mergen_session_owner_guard(session)
+  request_owner <- session$userData$llm_request_owner
+  settings_snapshot <- shiny::isolate(list(
+    model_selection = settings_data$model_selection,
+    enable_followups = resolve_followup_enabled(settings_data, session)
+  ))
+  if (!isTRUE(settings_snapshot$enable_followups)) return(invisible(FALSE))
+  key_failed <- FALSE
+  key <- tryCatch(mb_api_key_get_effective_key_value(
+    session, require_auth = TRUE, allow_default = NULL, clear_on_mismatch = TRUE
+  ), error = function(e) { key_failed <<- TRUE; NULL })
+  if (key_failed) {
+    .mergen_stream_metric_inc("followups_failed")
+    return(invisible(FALSE))
+  }
+  worker_session <- list(userData = list(ai_api_key = key), input = list())
 
   later_fn(function() {
-    # Oturum kapandıysa bekleyen takip-soru işi çalıştırılmaz; aksi halde kapalı
-    # oturuma mesaj göndermeye çalışıp slot ve bağlamı boşuna tutuyordu.
-    oturum_kapali <- tryCatch(
-      !is.null(session) && is.function(session$isClosed) && isTRUE(session$isClosed()),
-      error = function(e) FALSE
-    )
-    if (isTRUE(oturum_kapali)) return(invisible(NULL))
-
+    release <- function() NULL
+    cancellation <- NULL
+    tryCatch({
+    if (!isTRUE(owner_guard()) ||
+        !identical(session$userData$llm_request_owner, request_owner) ||
+        (is.function(apply_guard) && !isTRUE(apply_guard()))) return(NULL)
     fu_admit <- mergen_followup_try_admit(plan)
-    if (!isTRUE(fu_admit$run)) return(invisible(NULL))
-    on.exit(mergen_send_message_release_slot(fu_admit$token), add = TRUE)
-
-    followup_perf_start <- mergen_perf_now()
-    followup_questions <- tryCatch(
-      build_fn(
-        user_message_text, final_text, settings_data, session,
-        api_config, followup_tools, fallback_followup_tool
-      ),
-      error = function(e) {
-        mergen_runtime_metric_inc("followups_failed")
-        NULL
-      }
-    )
-
-    # Varsayılan KAPALI perf işareti: artık kritik yolun DIŞINDA olan takip
-    # üretim süresini (saniyeler olabilir) ölçer.
-    mergen_perf_log("stream.followups", start = followup_perf_start,
-                    fields = list(count = length(followup_questions %||% character(0))))
-
-    if (!is.null(followup_questions) && length(followup_questions) > 0) {
-      try(
-        push_followup_update(session, msg_id, followup_questions, pending = FALSE),
-        silent = TRUE
-      )
+    if (!isTRUE(fu_admit$run)) return(NULL)
+    released <- FALSE
+    release <- function() {
+      if (!released) mergen_send_message_release_slot(fu_admit$token)
+      released <<- TRUE
     }
+    cancellation <- mergen_followup_cancellation(session, function() {
+      isTRUE(owner_guard()) &&
+        identical(session$userData$llm_request_owner, request_owner) &&
+        (!is.function(apply_guard) || isTRUE(apply_guard()))
+    })
+    # İşçi kapanışı yalnızca düz anlık görüntüleri taşır.
+    task_fn <- function() {
+      stopped <- function() file.exists(stop_file)
+      if (stopped()) return(NULL)
+      old <- options(mergen.llm.stop_check = stopped)
+      on.exit(options(old), add = TRUE)
+      result <- build_fn(user_message_text, final_text, settings_snapshot, worker_session,
+                         api_config, followup_tools, fallback_followup_tool)
+      if (stopped()) NULL else result
+    }
+    environment(task_fn) <- list2env(list(
+      stop_file = cancellation$path, build_fn = build_fn, user_message_text = user_message_text,
+      final_text = final_text, settings_snapshot = settings_snapshot,
+      worker_session = worker_session, api_config = api_config,
+      followup_tools = followup_tools, fallback_followup_tool = fallback_followup_tool
+    ), parent = globalenv())
+    followup_perf_start <- mergen_perf_now()
+    tryCatch({
+      dispatch_fn(task_fn = task_fn, task_type = "llm_followups",
+                  session_token = session$token) |>
+        promises::then(function(followup_questions) {
+          cancellation$finish()
+          on.exit(release(), add = TRUE)
+          if (!isTRUE(owner_guard()) ||
+              !identical(session$userData$llm_request_owner, request_owner) ||
+              (is.function(apply_guard) && !isTRUE(apply_guard()))) return(NULL)
+          mergen_perf_log("stream.followups", start = followup_perf_start,
+                          fields = list(count = length(followup_questions %||% character(0))))
+          if (length(followup_questions)) {
+            push_followup_update(session, msg_id, followup_questions, pending = FALSE)
+          }
+          NULL
+        }) |>
+        promises::catch(function(e) {
+          cancellation$finish()
+          release()
+          mergen_runtime_metric_inc("followups_failed")
+          NULL
+        })
+    }, error = function(e) {
+      cancellation$finish()
+      release()
+      mergen_runtime_metric_inc("followups_failed")
+    })
+    invisible(NULL)
+    }, error = function(e) {
+      if (!is.null(cancellation)) try(cancellation$finish(), silent = TRUE)
+      try(release(), silent = TRUE)
+      .mergen_stream_metric_inc("followups_failed")
+      NULL
+    })
   }, delay = plan$delay_seconds)
-
   invisible(TRUE)
+  }, error = function(e) {
+    .mergen_stream_metric_inc("followups_failed")
+    invisible(FALSE)
+  })
 }
 
 # ------------------------------------------------------------------------------

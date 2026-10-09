@@ -15,10 +15,14 @@ file_ingestion_create_controller <- function(session = NULL, debug_fn = NULL) {
   controller$debug <- debug_fn
   controller$session_token <- tryCatch(as.character(session$token %||% "")[1], error = function(e) "")
 
+  if (!is.null(session) && exists("mergen_session_on_owner_change", mode = "function")) {
+    mergen_session_on_owner_change(session, function(...) file_ingestion_cancel_controller(controller))
+  }
+
   if (!is.null(session) && is.function(session$onSessionEnded)) {
     try(session$onSessionEnded(function() {
       controller$active <- FALSE
-      file_ingestion_cancel_session_jobs(controller$session_token)
+      file_ingestion_cancel_controller(controller)
     }), silent = TRUE)
   }
 
@@ -55,50 +59,27 @@ file_ingestion_controller_debug <- function(controller, tag, message) {
   invisible(TRUE)
 }
 
-# Başarıyla kopyalanan dosyaları TEK indeks mutasyonunda kaydeder. Dosya başına
-# ayrı kilit/indeks yazımı yapılmaz; kilit tutma süresi parti başına sabittir.
-file_ingestion_commit_index <- function(results, user_id) {
-  succeeded <- Filter(function(r) isTRUE(r$ok), results %||% list())
-  if (!length(succeeded)) return(list(indexed = character(), ms = 0))
-
-  entries <- lapply(succeeded, function(r) list(path = r$dest, display = r$name))
-
-  started <- Sys.time()
-  indexed <- tryCatch(
-    mergen_index_persisted_files(entries, user_id = user_id),
-    error = function(e) {
-      log_warn("[FILE INGEST] Indeks yazimi basarisiz: {conditionMessage(e)}")
-      character()
-    }
-  )
-
-  list(
-    indexed = indexed,
-    ms = as.numeric(difftime(Sys.time(), started, units = "secs")) * 1000
-  )
-}
-
-# İptal edilen partinin kopyaladığı hedefleri temizler.
-file_ingestion_discard_results <- function(results) {
-  for (r in results %||% list()) {
-    if (isTRUE(r$ok)) file_ingestion_discard_dest(r$dest, r$source_path)
-  }
-  invisible(TRUE)
-}
-
 # Kuyruktan çıkan işi gerçek worker görevine dönüştürür. Bu fonksiyon yalnızca
 # ana süreçte çalışır; worker'a düz görev listesi ve önbelleğe alınmış global
 # paketi taşınır.
 file_ingestion_run_job <- function(job) {
+  if (is.environment(job$lease)) job$lease$released <- FALSE
   gorevler <- job$tasks
   bekleme_ms <- as.numeric(difftime(Sys.time(), job$queued_at, units = "secs")) * 1000
 
+  journals <- vapply(gorevler, function(task) tempfile("ingest_result_", fileext = ".rds"), character(1))
+  gorevler <- Map(function(task, journal) {
+    task$result_journal <- journal
+    task$transaction <- list(id = basename(journal), journal = journal)
+    task
+  }, gorevler, journals)
   worker_globals <- file_ingestion_worker_globals()
   worker_globals$tasks <- gorevler
 
   promise <- tracked_future_promise(
     task_fn = function() file_ingestion_execute_batch(tasks),
     task_type = "file_ingestion",
+    cancel_check = function() isTRUE(job$controller$active) && identical(job$controller$epoch, job$epoch),
     session_token = job$session_token,
     meta = list(batch_id = job$id, files = length(gorevler)),
     dependency_mode = "explicit",
@@ -108,34 +89,41 @@ file_ingestion_run_job <- function(job) {
 
   promises::then(
     promise,
-    onFulfilled = function(results) file_ingestion_finish_job(job, results, bekleme_ms),
-    onRejected = function(error) file_ingestion_fail_job(job, error)
+    onFulfilled = function(results) {
+      unlink(journals, force = TRUE)
+      file_ingestion_finish_job(job, results, bekleme_ms)
+    },
+    onRejected = function(error) {
+      results <- lapply(journals, function(path) suppressWarnings(tryCatch(readRDS(path), error = function(e) NULL)))
+      unlink(journals, force = TRUE)
+      file_ingestion_rollback_job(job, Filter(Negate(is.null), results), error)
+    }
   )
 
   invisible(TRUE)
 }
 
-# Worker tamamlandığında ana süreçte çalışır: indeks yazımı + UI geri çağrısı.
-file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0) {
-  file_ingestion_release_slot()
+# Yalnızca korunan tamamlanma üstverisi ana süreçte uygulanır.
+file_ingestion_apply_commit <- function(job, results, index_result, queue_wait_ms = 0) {
+  file_ingestion_release_job(job)
+  on.exit(try(file_ingestion_pump(), silent = TRUE), add = TRUE)
+  if (!is.null(index_result$committed)) {
+    results <- lapply(results, function(r) {
+      if (isTRUE(r$ok) && !is.null(r$artifact_id) && !isTRUE(r$artifact_id %in% index_result$committed)) {
+        r$ok <- FALSE
+        r$code <- "dest_missing"
+        r$error <- "Kopyalanan dosya artık mevcut değil."
+      }
+      r
+    })
+  }
   controller <- job$controller
   commit_started <- Sys.time()
 
-  iptal_edildi <- !identical(controller$epoch, job$epoch)
-
-  if (iptal_edildi) {
-    file_ingestion_discard_results(results)
-    file_ingestion_controller_debug(controller, "ingest_cancelled", sprintf(
-      "batch=%s iptal edildigi icin kopyalar temizlendi", job$id
-    ))
-    file_ingestion_pump()
-    return(invisible(NULL))
-  }
-
-  index_result <- file_ingestion_commit_index(results, job$user_id)
   ozet <- file_ingestion_summarize_results(results)
 
-  if (isTRUE(controller$active) && is.function(job$on_complete)) {
+  if (isTRUE(controller$active) && identical(controller$epoch, job$epoch) &&
+      is.function(job$on_complete)) {
     try(job$on_complete(results, list(
       batch_id = job$id,
       indexed = index_result$indexed,
@@ -159,13 +147,13 @@ file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0) {
     total_ms = ozet$total_ms + queue_wait_ms
   )
 
-  file_ingestion_pump()
   invisible(NULL)
 }
 
 # Worker görevinin tamamen başarısız olduğu dal (dispatch/serialization hatası).
 file_ingestion_fail_job <- function(job, error) {
-  file_ingestion_release_slot()
+  file_ingestion_release_job(job)
+  on.exit(try(file_ingestion_pump(), silent = TRUE), add = TRUE)
   controller <- job$controller
   mesaj <- tryCatch(conditionMessage(error), error = function(e) "bilinmeyen hata")
 
@@ -175,10 +163,9 @@ file_ingestion_fail_job <- function(job, error) {
 
   if (isTRUE(controller$active) && identical(controller$epoch, job$epoch) &&
       is.function(job$on_failure)) {
-    try(job$on_failure(mesaj, job$tasks), silent = FALSE)
+    try(job$on_failure(mesaj, job$tasks), silent = TRUE)
   }
 
-  file_ingestion_pump()
   invisible(NULL)
 }
 
@@ -198,7 +185,10 @@ file_ingestion_submit_batch <- function(controller,
     return(list(status = "empty", batch_id = batch_id, queued = 0L))
   }
 
+  lease <- new.env(parent = emptyenv())
+  lease$released <- FALSE
   job <- list(
+    lease = lease,
     id = batch_id,
     tasks = tasks,
     user_id = as.character(user_id %||% "")[1],
@@ -216,7 +206,7 @@ file_ingestion_submit_batch <- function(controller,
       file_ingestion_run_job(job)
       TRUE
     }, error = function(e) {
-      file_ingestion_release_slot()
+      file_ingestion_release_job(job)
       file_ingestion_controller_debug(controller, "ingest_dispatch_error", conditionMessage(e))
       FALSE
     })

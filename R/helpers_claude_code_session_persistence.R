@@ -247,8 +247,16 @@ cc_persist_session_begin <- function(rv,
     return(NULL)
   }
 
-  mevcut_id <- .cc_persist_try(rv$claude_session_record_id)
+  mevcut_id <- .cc_persist_try(if (!is.null(rv$active_request_id))
+    rv$active_persist_record_id %||% rv$claude_session_record_id else rv$claude_session_record_id)
+  owner_id <- .cc_persist_try(rv$claude_session_owner_id)
+  if (!is.null(owner_id) && !identical(owner_id, user_id)) {
+    cc_persist_detach_session(rv)
+    mevcut_id <- NULL
+    rv$active_persist_record_id <- NULL
+  }
   if (!is.null(mevcut_id)) {
+    rv$active_persist_record_id <- mevcut_id
     return(mevcut_id)
   }
 
@@ -274,6 +282,8 @@ cc_persist_session_begin <- function(rv,
 
   if (!is.null(kayit_id)) {
     rv$claude_session_record_id <- kayit_id
+    rv$claude_session_owner_id <- user_id
+    rv$active_persist_record_id <- kayit_id
     rv$claude_session_title <- baslik
     rv$claude_session_loaded <- FALSE
   }
@@ -367,7 +377,12 @@ cc_persist_run_result <- function(rv,
                                   tool_uses = list(),
                                   downloads = list(),
                                   cli_session_id = NULL) {
-  kayit_id <- .cc_persist_try(rv$claude_session_record_id)
+  kayit_id <- if ((is.environment(env) && exists("persist_record_id", envir = env, inherits = FALSE)) ||
+                    (!is.environment(env) && "persist_record_id" %in% names(env))) {
+    .cc_persist_try(env$persist_record_id)
+  } else {
+    .cc_persist_try(rv$active_persist_record_id %||% rv$claude_session_record_id)
+  }
   if (is.null(kayit_id) || !cc_persist_enabled(rv)) {
     return(invisible(FALSE))
   }

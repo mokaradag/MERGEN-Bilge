@@ -63,20 +63,17 @@ test_that("boş/NA jeton edinme ve bırakma için reddedilir", {
   expect_true(dir.exists(rezerv))
 })
 
-test_that("devralma YALNIZCA yaş eşiği aşıldığında yapılır", {
+test_that("devralma yalnızca doğrulanmış ölü sahibi geri kazanır", {
   rezerv <- .rezerv_yolu()
   eski <- mergen_reservation_token("eski")
   expect_true(mergen_reservation_acquire(rezerv, eski))
-
   yeni <- mergen_reservation_token("yeni")
-  # TAZE rezervasyon devralınmaz: yalnızca yaşa bakan devralma CANLI sahibin
-  # rezervasyonunu kırıp iki çağrının aynı hedefi terfi ettirmesine izin
-  # veriyordu.
-  expect_false(mergen_reservation_takeover(rezerv, yeni, stale_sec = 3600))
+  Sys.setFileTime(.mergen_reservation_marker(rezerv), Sys.time() - 7200)
+  expect_false(mergen_reservation_takeover(rezerv, yeni, stale_sec = -1))
   expect_identical(mergen_reservation_owner(rezerv), eski)
-
-  # Eşik 0 iken (her rezervasyon bayat) devralma yapılır ve JETON değişir.
-  expect_true(mergen_reservation_takeover(rezerv, yeni, stale_sec = -1))
+  writeLines(c("2147483647-dead", paste0("host=", Sys.info()[["nodename"]])),
+    .mergen_reservation_marker(rezerv))
+  expect_true(mergen_reservation_takeover(rezerv, yeni, stale_sec = 3600))
   expect_identical(mergen_reservation_owner(rezerv), yeni)
 })
 

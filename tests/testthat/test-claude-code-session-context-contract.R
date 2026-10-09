@@ -175,7 +175,7 @@ test_that("Bilge Yolaç streaming finalizasyonu tekrar çağrıldığında no-op
   expect_length(sent_messages, 0L)
 
   rv$is_running <- TRUE
-  rv$active_process <- list(pid = 123L)
+  rv$active_process <- list(pid = 123L, is_alive = function() FALSE)
   rv$stream_env <- new.env(parent = emptyenv())
 
   expect_true(isTRUE(akis$finalize_streaming("Tamamlandı", "check", "#10b981")))

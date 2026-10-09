@@ -24,7 +24,7 @@
 # ==============================================================================
 
 mergen_stage_upload_copy <- function(datapath, hedef, staging, var_mi, gorunur_mu,
-                                     temizle) {
+                                     temizle, rebind = NULL) {
   ad <- basename(as.character(staging)[1])
 
   kopya_ok <- tryCatch({
@@ -52,9 +52,16 @@ mergen_stage_upload_copy <- function(datapath, hedef, staging, var_mi, gorunur_m
     if (!identical(staging_native, staging)) {
       cat(sprintf("[copy_to_mcp_base] Native encoding ile yeniden deneniyor: %s\n",
                   basename(staging_native)))
+      if (is.function(rebind)) {
+        temizle(staging)
+        if (var_mi(staging)) stop("Önceki staging temizlenemedi; native kopya başlatılmadı.")
+        rebind(tryCatch(enc2native(hedef), error = function(e) hedef), staging_native)
+        staging <- staging_native
+        hedef <- tryCatch(enc2native(hedef), error = function(e) hedef)
+      }
       native_ok <- tryCatch(file.copy(datapath, staging_native, overwrite = TRUE),
                             error = function(e) FALSE)
-      if (isTRUE(native_ok) && gorunur_mu(staging_native) && !var_mi(staging)) {
+      if (isTRUE(native_ok) && gorunur_mu(staging_native) && (identical(staging_native, staging) || !var_mi(staging))) {
         staging <- staging_native
         hedef <- tryCatch(enc2native(hedef), error = function(e) hedef)
         kopya_ok <- TRUE

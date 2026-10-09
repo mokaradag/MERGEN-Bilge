@@ -7,7 +7,7 @@
 # ayrı kilit dosyasında yaşar (fonksiyon-yoğunluk bölme sözleşmesi).
 # ==============================================================================
 
-.file_store_mutate_index <- function(mutator) {
+.file_store_mutate_index <- function(mutator, timeout_sec = 5) {
   if (!is.function(mutator)) {
     stop("mutator fonksiyon olmalıdır.", call. = FALSE)
   }
@@ -24,7 +24,7 @@
 
     .save_index(next_idx)
     next_idx
-  }, require_lock = TRUE)
+  }, timeout_sec = timeout_sec, require_lock = TRUE)
 }
 
 recover_display_name_from_storage_name <- function(file_path) {
@@ -345,15 +345,28 @@ mergen_index_persisted_files <- function(entries, user_id = NULL) {
   if (!length(entries)) return(character())
 
   hazirlanan <- lapply(entries, function(e) {
-    .file_store_index_entry(e$path, e$display %||% basename(e$path %||% ""))
+    entry <- .file_store_index_entry(e$path, e$display %||% basename(e$path %||% ""))
+    entry$artifact_id <- e$artifact_id
+    entry
   })
   hazirlanan <- Filter(function(e) nzchar(e$key) && nzchar(e$path), hazirlanan)
 
   if (!length(hazirlanan)) return(character())
 
+  indexed <- artifact_ids <- character()
   .file_store_mutate_index(function(idx) {
     for (kayit in hazirlanan) {
+      if (!is.null(kayit$artifact_id) &&
+          !file_ingestion_artifact_owned(list(dest = kayit$path, artifact_id = kayit$artifact_id), allow_deleting = FALSE)) next
+      node <- if (is.null(user_id)) idx[[kayit$key]] else idx[[as.character(user_id)]][[kayit$key]]
+      if (!is.null(kayit$artifact_id) && !is.null(node) &&
+          !(is.list(node) && identical(node$path, kayit$path) &&
+            (identical(node$artifact_id, kayit$artifact_id) ||
+             !file_ingestion_artifact_owned(list(dest = node$path, artifact_id = node$artifact_id))))) next
       girdi <- list(path = kayit$path, display = kayit$display)
+      if (!is.null(kayit$artifact_id)) girdi$artifact_id <- kayit$artifact_id
+      indexed <<- c(indexed, kayit$display)
+      artifact_ids <<- c(artifact_ids, kayit$artifact_id)
 
       if (!is.null(user_id)) {
         uid <- as.character(user_id)
@@ -367,7 +380,10 @@ mergen_index_persisted_files <- function(entries, user_id = NULL) {
     idx
   })
 
-  vapply(hazirlanan, function(e) e$display, character(1))
+  if (any(vapply(hazirlanan, function(e) !is.null(e$artifact_id), logical(1)))) {
+    attr(indexed, "artifact_ids") <- artifact_ids
+  }
+  indexed
 }
 
 # Esnek seçenekli takma ad; server tarafından MCP dosyalarını kaydetmek için kullanılır

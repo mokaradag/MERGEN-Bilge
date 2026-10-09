@@ -85,12 +85,12 @@
   # 13 -> 14 bilinçli güncelleme: otomatik kip bağımlılık önbelleği
   # (R/helpers_worker_dep_cache.R) worker monitor fonksiyon tavanı nedeniyle
   # ayrı dosyaya alındı; worker monitor'dan SONRA yüklenir.
-  foundation = list(first = "R/config_packages.R", last = "R/helpers_worker_dep_cache.R", n = 15L),
+  foundation = list(first = "R/config_packages.R", last = "R/helpers_worker_cancellation.R", n = 17L),
   # post_future_utils n = 9L -> 10L bilinçli güncelleme: hedef yolu sahiplik
   # jetonuyla rezerve eden ortak primitifler (R/utils_path_reservation.R)
   # atomik yazma ile aynı katmana eklendi; üç ayrı terfi yolu bu tek kaynağı
   # kullanır (ayrık uygulamalar birbirinden sapıyordu).
-  post_future_utils = list(first = "R/utils_path_helpers.R", last = "R/utils_excel_reader.R", n = 10L),
+  post_future_utils = list(first = "R/utils_path_helpers.R", last = "R/utils_excel_reader.R", n = 11L),
   # config_app_core n = 7L -> 8L bilinçli güncelleme: indeks kilidi
   # (R/config_file_store_index_lock.R) fonksiyon-yoğunluk bölmesiyle ayrı dosyaya alındı.
   # n = 8L -> 9L bilinçli güncelleme: kova temizliği
@@ -157,7 +157,7 @@
   # n = 14L -> 16L: kuyruk ve pipeline fonksiyon tavanındaydı; özet kapasite
   # kararları (R/helpers_file_summary_capacity.R) ve işçi görevi
   # (R/helpers_file_summary_task.R) ayrı dosyalara alındı (ratchet bölünmesi).
-  files_preview_pipeline = list(first = "R/helpers_image_gallery.R", last = "R/helpers_file_ingestion_runtime.R", n = 16L),
+  files_preview_pipeline = list(first = "R/helpers_image_gallery.R", last = "R/helpers_file_ingestion_index_worker.R", n = 18L),
   file_manager_helpers = list(first = "R/helpers_file_manager_policy.R", last = "R/helpers_file_manager_table_runtime.R", n = 13L),
   # Bilinçli güncelleme: R/helpers_langflow_runtime.R (kurumsal Langflow akış
   # çağrısı saf yardımcıları) send_message core'dan sonra bölüme eklendi; 11 -> 12.
@@ -167,7 +167,7 @@
   # 13 -> 14 bilinçli güncelleme: Langflow düzyazı "Kaynak:" bölümü + satır içi
   # <sup>(n)</sup> atıf yükseltme yardımcıları (R/helpers_langflow_inline_sources.R)
   # helpers_langflow_sources.R'den SONRA eklendi (marker bloğu bağımlılığı).
-  chat_send_message_runtime = list(first = "R/helpers_chat_runtime.R", last = "R/helpers_quick_action_intro_messages.R", n = 15L),
+  chat_send_message_runtime = list(first = "R/helpers_chat_runtime.R", last = "R/helpers_quick_action_intro_messages.R", n = 17L),
   summarization_followup = list(first = "R/helpers_summarization_modes.R", last = "R/helpers_followup_questions.R", n = 3L),
   # Faz 0 (Proje ve Kaynak Analizi yeniden inşası): yapılandırma çözümleyicisi,
   # köken/bozulma ve telemetri yardımcıları bölümün BAŞINA eklendi
@@ -306,10 +306,10 @@
   # heartbeat) R/helpers_claude_code_runtime_lease.R dosyasına ayrıldı;
   # R/helpers_claude_code_run_lifecycle.R küresel 24 fonksiyon tavanındaydı.
   # 41 -> 42.
-  claude_code_helpers = list(first = "R/helpers_claude_code_user_guard.R", last = "R/helpers_claude_code_codex_output_fixes.R", n = 44L),
+  claude_code_helpers = list(first = "R/helpers_claude_code_user_guard.R", last = "R/helpers_claude_code_codex_output_fixes.R", n = 45L),
   llm_pipeline = list(first = "R/helpers_llm_tool_formatters.R", last = "R/helpers_llm_worker.R", n = 11L),
   module_chat = list(first = "R/module_chat_history_background.R", last = "R/module_feedback.R", n = 9L),
-  module_files_media = list(first = "R/module_file_manager_ui.R", last = "R/module_summarization.R", n = 7L),
+  module_files_media = list(first = "R/module_file_manager_ui.R", last = "R/module_summarization.R", n = 8L),
   module_settings_api_key = list(first = "R/module_settings_kisisel.R", last = "R/module_api_key.R", n = 7L),
   # 6L -> 7L bilinçli güncelleme: STT ses parçası çevirisi SAF worker-güvenli
   # yardımcısı (R/helpers_stt_transcription.R) module_stt.R'den ÖNCE eklendi;
@@ -764,7 +764,7 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # temizleyicisi; `helpers_admin_documentation.R` 24 fonksiyon tavanındaydı).
   # 508 -> 509: `helpers_ai_expert_greeting_topic.R` (karşılama önekinin son
   # konusu işçide okunur; `helpers_ai_expert_user_data.R` bütçesi korunur).
-  expect_equal(length(runtime), 513L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  expect_equal(length(runtime), 522L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]
@@ -795,7 +795,10 @@ test_that("yeni yardımcılar bağımlılıklarından sonra ve çağıranlarınd
   for (sira in list(
     c("R/helpers_health_checks.R", "R/helpers_health_dns_refresh.R", "R/module_health.R"),
     c("R/helpers_user_session_identity.R", "R/helpers_session_profile.R", "R/server_core_observer_runtime.R"),
-    c("R/helpers_admin_attachments.R", "R/helpers_admin_hata_detail_runtime.R")
+    c("R/helpers_admin_attachments.R", "R/helpers_admin_hata_detail_runtime.R"),
+    c("R/helpers_worker_dep_cache.R", "R/helpers_process_ownership.R", "R/helpers_worker_cancellation.R"),
+    c("R/helpers_claude_code_runtime_lease.R", "R/helpers_document_output_publication.R", "R/helpers_claude_code_run_lifecycle.R"),
+    c("R/utils_path_helpers.R", "R/helpers_preview_cache.R", "R/module_file_preview.R")
   )) {
     konum <- match(sira, runtime)
     expect_false(anyNA(konum))

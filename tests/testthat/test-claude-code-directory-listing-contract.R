@@ -226,9 +226,9 @@ test_that("Claude Code dizin listeleme SSO ve stale refresh guard sözleşmesi k
     info = "UI güncellenmeden ÖNCE stale refresh guard kontrolü yapılmalıdır."
   )
 
-  expect_true(
+  expect_false(
     grepl("uygula_icerik(list_directory_contents(", setup_text, fixed = TRUE),
-    info = "Senkron yedek yol da sonucu stale korumalı uygulama fonksiyonuna vermelidir."
+    info = "Shiny olay döngüsünde senkron dizin listeleme yedeği çalışmamalıdır."
   )
 })
 

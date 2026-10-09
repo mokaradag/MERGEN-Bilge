@@ -83,6 +83,7 @@ file_store_index_lock_heartbeat <- function() {
   .write_lock_marker <- function() {
     marker_text <- c(
       sprintf("pid=%s", Sys.getpid()),
+      sprintf("host=%s", Sys.info()[["nodename"]]),
       sprintf("token=%s", lock_token),
       sprintf("time=%s", format(Sys.time(), "%Y-%m-%dT%H:%M:%OS3%z"))
     )
@@ -143,6 +144,9 @@ file_store_index_lock_heartbeat <- function() {
   # Windows/UNC dosya sistemlerinde dizin mtime güvenilir olmayabildiği için
   # varsa lock marker dosyasının mtime değeri esas alınır.
   .break_stale_lock_if_needed <- function() {
+    reclaim <- filelock::lock(paste0(lock_dir, ".reclaim"), timeout = 0)
+    if (is.null(reclaim)) return(invisible(FALSE))
+    on.exit(filelock::unlock(reclaim), add = TRUE)
     lock_time <- .lock_mtime()
 
     if (is.na(lock_time)) {
@@ -151,7 +155,9 @@ file_store_index_lock_heartbeat <- function() {
 
     lock_age <- as.numeric(difftime(Sys.time(), lock_time, units = "secs"))
 
-    if (is.finite(lock_age) && lock_age > stale_lock_sec) {
+    token <- .lock_owner_token()
+    if (exists("mergen_lock_owner_dead", mode = "function") &&
+        mergen_lock_owner_dead(lock_marker) && identical(.lock_owner_token(), token)) {
       try(
         log_warn("[INDEX] Eski indeks kilidi kırılıyor (yaş: {round(lock_age)} sn): {lock_dir}"),
         silent = TRUE

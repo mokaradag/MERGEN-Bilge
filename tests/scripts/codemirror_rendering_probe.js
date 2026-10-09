@@ -23,6 +23,30 @@
   function log(msg) { logLines.push(msg); }
   function check(cond, msg) { if (cond) { log('PASS ' + msg); } else { failures.push(msg); log('FAIL ' + msg); } }
   function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function nextPaint() {
+    return new Promise(function (resolve) {
+      var finished = false;
+      function finish() {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        var box = document.documentElement.getBoundingClientRect();
+        check(box.width > 0 && box.height > 0, 'çizim için gerçek yerleşim oluştu');
+        resolve();
+      }
+      var timer = setTimeout(finish, 1000);
+      requestAnimationFrame(function () { requestAnimationFrame(finish); });
+    });
+  }
+
+  async function setThemeAndSettle(theme, blocks) {
+    document.documentElement.setAttribute('data-theme', theme);
+    Object.keys(blocks).forEach(function (name) {
+      if (blocks[name].cm) blocks[name].cm.refresh();
+    });
+    await nextPaint();
+    await wait(600);
+  }
 
   function rgb(str) {
     var m = String(str || '').match(/rgba?\(([^)]+)\)/);
@@ -71,7 +95,8 @@
   };
 
   function checkTheme(theme, blocks) {
-    document.documentElement.setAttribute('data-theme', theme);
+    check(document.documentElement.getAttribute('data-theme') === theme,
+          theme + ': tema özniteliği yerleşti');
     Object.keys(REQUIRED_TOKENS).forEach(function (name) {
       var b = blocks[name];
       var bg = rgb(getComputedStyle(b.el).backgroundColor);
@@ -96,7 +121,7 @@
         check(!!span, theme + '/' + name + ': ' + cls + ' belirteci üretildi');
         if (span) {
           var c = rgb(getComputedStyle(span).color);
-          check(!sameColor(c, text) && contrast(c, bg) >= 3, theme + '/' + name + ': ' + cls + ' ayırt edilir renkte');
+          check(!sameColor(c, text) && contrast(c, bg) >= 3, theme + '/' + name + ': ' + cls + ' ayırt edilir renkte (' + getComputedStyle(span).color + ', metin=' + getComputedStyle(b.el.querySelector('.CodeMirror-line')).color + ', dil=' + b.el.getAttribute('data-lang') + ')');
         }
       });
     });
@@ -131,7 +156,10 @@
 
       var blocks = {};
       Object.keys(window.__CM_FIXTURES).forEach(function (name) { blocks[name] = mount(name); });
-      await wait(200);
+      if (document.fonts && document.fonts.ready) await document.fonts.ready;
+      Object.keys(blocks).forEach(function (name) { blocks[name].cm.refresh(); });
+      await nextPaint();
+      await wait(600);
 
       Object.keys(blocks).forEach(function (name) {
         var b = blocks[name];
@@ -139,12 +167,11 @@
         check(b.cm.getValue() === b.fx.code, name + ': editör değeri kaynak kodla aynı');
       });
 
+      await setThemeAndSettle('dark', blocks);
       checkTheme('dark', blocks);
-      // Başlık düğmeleri renk geçişi (transition) kullanır; ölçüm geçiş bitince yapılır.
-      document.documentElement.setAttribute('data-theme', 'light');
-      await wait(600);
+      await setThemeAndSettle('light', blocks);
       checkTheme('light', blocks);
-      document.documentElement.setAttribute('data-theme', 'dark');
+      await setThemeAndSettle('dark', blocks);
 
       // Uzun kod: tüm satırlar DOM'da (viewportMargin: Infinity), son satır kaydırılarak görünür.
       var long = blocks.long;

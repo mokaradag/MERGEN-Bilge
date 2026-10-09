@@ -5,8 +5,8 @@
 #           (gerçek geçici dosya sistemiyle), sınırlı eşzamanlılık/kuyruk
 #           katmanı ve ana süreç commit/iptal katmanı doğrulanır.
 #
-#           Çevrimdışı ve deterministiktir: gerçek future/PSOCK worker, LLM,
-#           veritabanı, tarayıcı, SSO veya ağ erişimi yoktur. Dosya deposu
+#           Çevrimdışı çalışır: geri alma testleri bağımsız R işçisi kullanır;
+#           LLM, veritabanı, tarayıcı, SSO veya ağ erişimi yoktur. Dosya deposu
 #           yolları helper_load_file_store.R tarafından tempdir altına alınır.
 # ==============================================================================
 
@@ -27,9 +27,11 @@
     "R/helpers_files_copy_promote.R",
     "R/helpers_files.R",
     "R/helpers_file_ingestion_task.R",
+    "R/helpers_file_ingestion_identity.R",
     "R/helpers_file_ingestion_worker.R",
     "R/helpers_file_ingestion_queue.R",
-    "R/helpers_file_ingestion_runtime.R"
+    "R/helpers_file_ingestion_runtime.R",
+    "R/helpers_file_ingestion_index_worker.R"
   )) {
     source(file.path(kok, dosya), encoding = "UTF-8", local = env)
   }
@@ -37,6 +39,10 @@
   env$cat <- function(...) invisible(NULL)
   env$log_warn <- function(...) invisible(NULL)
   env$file_ingestion_reset_state()
+  env$tracked_future_promise <- function(task_fn, globals, ...) {
+    environment(task_fn) <- list2env(globals, parent = env)
+    promises::promise_resolve(task_fn())
+  }
   env
 }
 
@@ -309,13 +315,12 @@ test_that("parti indeks commit'i her dosyayı TEK kez kaydeder", {
   expect_true(commit$ms >= 0)
 })
 
-test_that("indeks yazımı çökerse commit hata fırlatmaz", {
+test_that("indeks yazımı çökerse commit başarısız olur", {
   env <- .ingestionEnv()
   sonuclar <- env$file_ingestion_execute_batch(list(.ingestionTask(env, .ingestionUpload("hata.txt"))))
   env$mergen_index_persisted_files <- function(entries, user_id = NULL) stop("indeks kilidi kirik")
 
-  commit <- expect_silent(env$file_ingestion_commit_index(sonuclar, "42"))
-  expect_equal(length(commit$indexed), 0L)
+  expect_error(env$file_ingestion_commit_index(sonuclar, "42"), "indeks kilidi kirik")
 })
 
 test_that("aynı görünen adlı dosyalar kullanıcı bazında ayrı indekslenir", {
@@ -474,6 +479,7 @@ test_that("başarılı parti indekslenir ve UI geri çağrısı çalışır", {
   })
 
   env$file_ingestion_finish_job(job, sonuclar)
+  for (i in 1:30) later::run_now(0)
 
   expect_false(is.null(yazilan))
   expect_identical(yazilan$user_id, "42")
@@ -482,7 +488,7 @@ test_that("başarılı parti indekslenir ve UI geri çağrısı çalışır", {
   expect_equal(cagrildi$summary$succeeded, 1L)
 })
 
-test_that("oturum kapandıysa UI geri çağrısı çalışmaz ama dosya yine indekslenir", {
+test_that("oturum kapandıysa UI geri çağrısı çalışmaz ve kopya geri alınır", {
   env <- .ingestionEnv()
   sonuclar <- env$file_ingestion_execute_batch(list(.ingestionTask(env, .ingestionUpload("kapali.txt"))))
 
@@ -498,10 +504,11 @@ test_that("oturum kapandıysa UI geri çağrısı çalışmaz ama dosya yine ind
 
   controller$active <- FALSE
   env$file_ingestion_finish_job(job, sonuclar)
+  for (i in 1:30) later::run_now(0)
 
-  expect_true(indekslendi)
+  expect_false(indekslendi)
   expect_false(cagrildi)
-  expect_true(file.exists(sonuclar[[1]]$dest))
+  expect_false(file.exists(sonuclar[[1]]$dest))
 })
 
 test_that("iptal edilen parti indekslenmez ve kopyaladığı dosyalar temizlenir", {
@@ -522,6 +529,7 @@ test_that("iptal edilen parti indekslenmez ve kopyaladığı dosyalar temizlenir
 
   env$file_ingestion_cancel_controller(controller)
   env$file_ingestion_finish_job(job, sonuclar)
+  for (i in 1:30) later::run_now(0)
 
   expect_false(indekslendi)
   expect_false(cagrildi)
@@ -558,4 +566,592 @@ test_that("metrik satırı dosya adı veya yol sızdırmaz", {
   expect_true(grepl("files=2", satir, fixed = TRUE))
   expect_false(grepl("\\.txt", satir))
   expect_false(grepl("user_", satir, fixed = TRUE))
+})
+test_that("indekslenirken iptal edilen parti yalnız kendi kayıt ve dosyasını temizler", {
+  env <- .ingestionEnv()
+  result <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("iptal_indeks.txt")))
+  expect_true(result$ok)
+  mergen_index_persisted_files(list(list(path = result$dest, display = result$name)), "42")
+  expect_true(.ingestionSamePath(env, resolve_uploaded_file(result$name, "42"), result$dest))
+  env$file_ingestion_discard_results(list(result), "42")
+  expect_false(file.exists(result$dest))
+  expect_null(.load_index()[["42"]][[tolower(result$name)]])
+})
+
+test_that("geç indeks commit'i silinmiş kopyayı yeniden kaydetmez", {
+  env <- .ingestionEnv()
+  result <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("silinen.txt")))
+  unlink(result$dest)
+  commit <- env$file_ingestion_commit_index(list(result), "42")
+  expect_length(commit$indexed, 0L)
+  expect_null(.load_index()[["42"]][[tolower(result$name)]])
+})
+
+test_that("eski geri alma aynı yoldaki yeni kopyayı ve indeksini korur", {
+  env <- .ingestionEnv()
+  old <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("yenilenen.txt")))
+  env$file_ingestion_commit_index(list(old), "42")
+  unlink(c(old$dest, env$file_ingestion_owner_path(old$dest)))
+  writeLines("yeni kullanıcının yüklemesi", old$dest)
+  newer <- old
+  newer$artifact_id <- env$file_ingestion_claim_artifact(newer$dest)
+  env$file_ingestion_commit_index(list(newer), "42")
+  env$file_ingestion_discard_results(list(old), "42")
+  expect_true(file.exists(newer$dest))
+  expect_identical(readLines(newer$dest), "yeni kullanıcının yüklemesi")
+  expect_identical(.load_index()[["42"]][[tolower(newer$name)]]$artifact_id, newer$artifact_id)
+})
+
+test_that("sahip değişimi kopya veya indeks işçisi tamamlanmadan partiyi geçersiz kılar", {
+  env <- .ingestionEnv()
+  shiny::testServer(function(input, output, session) NULL, {
+    session$userData$user_id <- session$userData$kimlik_sahibi <- 42L
+    controller <- env$file_ingestion_create_controller(session)
+    result <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("ozel.txt")))
+    completed <- 0L
+    job <- .ingestionJob(env, controller, on_complete = function(...) completed <<- completed + 1L)
+    session$userData$user_id <- 77L
+    mergen_session_owner_transition(session$userData, 42L, 77L)
+    env$file_ingestion_finish_job(job, list(result))
+    for (i in 1:30) later::run_now(0)
+    expect_identical(completed, 0L)
+    expect_false(file.exists(result$dest))
+    expect_null(.load_index()[["42"]][[tolower(result$name)]])
+  })
+})
+
+test_that("commit sonrası metrik hatası partiye ikinci hata veya geri alma üretmez", {
+  env <- .ingestionEnv()
+  result <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("metrik.txt")))
+  controller <- env$file_ingestion_create_controller()
+  completed <- failed <- 0L
+  job <- .ingestionJob(env, controller, on_complete = function(...) completed <<- completed + 1L)
+  job$on_failure <- function(...) failed <<- failed + 1L
+  env$file_ingestion_try_acquire_slot()
+  env$file_ingestion_log_metrics <- function(...) stop("metrik hatası")
+  env$file_ingestion_finish_job(job, list(result))
+  for (i in 1:30) later::run_now(0)
+  expect_identical(completed, 1L)
+  expect_identical(failed, 0L)
+  expect_true(file.exists(result$dest))
+  expect_identical(env$file_ingestion_queue_status()$active_batches, 0L)
+  expect_identical(env$file_ingestion_queue_status()$completed_total, 1L)
+})
+
+test_that("son geri alma yolu kullanıcı kovasını da temizler", {
+  env <- .ingestionEnv()
+  result <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("son_geri_al.txt")))
+  env$file_ingestion_commit_index(list(result), "42")
+  env$worker_monitor_serialize_explicit_task <- function(...) stop("serileştirme hatası")
+  finished <- FALSE
+  env$file_ingestion_fail_job <- function(...) finished <<- TRUE
+  env$file_ingestion_rollback_job(list(user_id = "42", session_token = "test"),
+                                   list(result), simpleError("işçi hatası"))
+  expect_true(file.exists(result$dest))
+  heartbeat <- FALSE
+  later::later(function() heartbeat <<- TRUE, delay = 0)
+  later::run_now(0)
+  expect_true(heartbeat)
+  deadline <- Sys.time() + 15
+  while (!finished && Sys.time() < deadline) later::run_now(0.05)
+  expect_true(finished)
+  expect_false(file.exists(result$dest))
+  expect_null(.load_index()[["42"]][[tolower(result$name)]])
+})
+
+test_that("iptal indeks kilidi hata verince sahiplik doğrulanmadan dosya silmez", {
+  env <- .ingestionEnv()
+  source_path <- withr::local_tempfile()
+  copied <- withr::local_tempfile()
+  failed <- withr::local_tempfile()
+  file.create(source_path, copied, failed)
+  env$.file_store_with_index_lock <- function(...) stop("kilit zaman aşımı")
+  results <- list(list(ok = TRUE, dest = copied, source_path = source_path),
+                  list(ok = FALSE, dest = failed, source_path = source_path))
+  expect_error(env$file_ingestion_discard_results(results, "42"), "kilit zaman aşımı")
+  expect_true(file.exists(copied))
+  expect_true(file.exists(source_path))
+  expect_true(file.exists(failed))
+})
+
+test_that("indeks gönderim veya işçi hatası kopyaları bağımsız işçide geri alır", {
+  for (failure in c("dispatch", "worker", "write")) {
+    env <- .ingestionEnv()
+    source(file.path(resolve_repo_root_for_tests(), "R", "helpers_worker_monitor.R"),
+           encoding = "UTF-8", local = env)
+    source_path <- withr::local_tempfile()
+    copied <- withr::local_tempfile()
+    marker <- withr::local_tempfile()
+    file.create(source_path, copied)
+    controller <- env$file_ingestion_create_controller()
+    complete <- FALSE
+    error_message <- NULL
+    job <- .ingestionJob(env, controller, on_complete = function(...) complete <<- TRUE)
+    job$on_failure <- function(message, tasks) error_message <<- message
+    cleanup_env <- new.env(parent = baseenv())
+    cleanup_env$marker <- marker
+    cleanup_env$file_ingestion_discard_results <- function(results, user_id) {
+      writeLines(as.character(Sys.getpid()), marker)
+      for (r in results) if (isTRUE(r$ok) && r$dest != r$source_path) unlink(r$dest)
+      invisible(TRUE)
+    }
+    cleanup_env$file_ingestion_commit_index <- function(...) stop("indeks yazımı hatası")
+    env$file_ingestion_worker_globals <- function() as.list(cleanup_env)
+    env$tracked_future_promise <- function(task_fn, globals, ...) {
+      if (failure == "dispatch") stop("gönderim hatası")
+      if (failure == "worker") return(promises::promise_reject(simpleError("işçi hatası")))
+      environment(task_fn) <- list2env(globals, parent = baseenv())
+      promises::promise(function(resolve, reject) resolve(task_fn()))
+    }
+    env$file_ingestion_finish_job(job, list(list(ok = TRUE, dest = copied, source_path = source_path)))
+    deadline <- Sys.time() + 15
+    while (is.null(error_message) && Sys.time() < deadline) later::run_now(0.05)
+    expect_false(complete)
+    expect_match(error_message, "hatası", fixed = TRUE)
+    expect_false(file.exists(copied))
+    expect_true(file.exists(source_path))
+    expect_false(identical(readLines(marker), as.character(Sys.getpid())))
+    expect_identical(env$file_ingestion_queue_status()$active_batches, 0L)
+  }
+})
+
+test_that("geri alma işçisi gerçek indeks paketiyle kaynak dosyayı korur", {
+  env <- .ingestionEnv()
+  upload <- .ingestionUpload("geri_al.txt")
+  result <- env$file_ingestion_execute_task(.ingestionTask(env, upload))
+  expect_true(result$ok)
+  mergen_index_persisted_files(list(list(path = result$dest, display = result$name)), "42")
+  error_message <- NULL
+  job <- .ingestionJob(env, env$file_ingestion_create_controller())
+  job$on_failure <- function(message, tasks) error_message <<- message
+  env$tracked_future_promise <- function(...) stop("işçi gönderim hatası")
+  env$file_ingestion_finish_job(job, list(result))
+  deadline <- Sys.time() + 15
+  while (is.null(error_message) && Sys.time() < deadline) later::run_now(0.05)
+  expect_match(error_message, "işçi gönderim hatası", fixed = TRUE)
+  expect_false(file.exists(result$dest))
+  expect_true(file.exists(upload$datapath))
+  expect_null(.load_index()[["42"]][[tolower(result$name)]])
+})
+
+test_that("geri alma ve kilit hatasında sahiplik kanıtlanamayan hedef korunur", {
+  for (failure in c("serialize", "launch", "process")) {
+    env <- .ingestionEnv()
+    source_path <- withr::local_tempfile()
+    copied <- withr::local_tempfile()
+    failed <- withr::local_tempfile()
+    file.create(source_path, copied, failed)
+    finished <- 0L
+    reported <- 0L
+    env$create_worker_task_id <- function(...) "rollback"
+    env$register_worker_task <- function(...) NULL
+    env$finish_worker_task <- function(...) finished <<- finished + 1L
+    env$file_ingestion_fail_job <- function(...) reported <<- reported + 1L
+    env$.file_store_mutate_index <- function(...) stop("UI indeks kilidini beklememeli")
+    env$worker_monitor_serialize_explicit_task <- function(...) {
+      if (failure == "serialize") stop("serileştirme hatası")
+      raw(0)
+    }
+    testthat::local_mocked_bindings(r_bg = function(...) {
+      if (failure == "launch") stop("süreç başlatma hatası")
+      list(is_alive = function() FALSE, get_result = function() stop("geri alma süreç hatası"))
+    }, .package = "callr")
+    testthat::local_mocked_bindings(later = function(func, ...) { func(); NULL }, .package = "later")
+    results <- list(list(ok = TRUE, dest = copied, source_path = source_path),
+                    list(ok = TRUE, dest = source_path, source_path = source_path),
+                    list(ok = FALSE, dest = failed, source_path = source_path))
+    env$file_ingestion_rollback_job(list(session_token = "test"), results, simpleError("indeks hatası"))
+    expect_true(file.exists(copied))
+    expect_true(file.exists(source_path))
+    expect_true(file.exists(failed))
+    expect_identical(finished, 1L)
+    expect_identical(reported, 1L)
+  }
+})
+
+test_that("indeks kaydı başarısızsa geri alma dosyayı ve sahiplik markerını korur", {
+  env <- .ingestionEnv()
+  result <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("kayit_hatasi.txt")))
+  env$file_ingestion_commit_index(list(result), "42")
+  env$.save_index <- function(...) stop("kalıcı indeks yazılamadı")
+  expect_error(env$file_ingestion_discard_results(list(result), "42"), "kalıcı indeks yazılamadı")
+  expect_true(file.exists(result$dest))
+  expect_true(file.exists(env$file_ingestion_owner_path(result$dest)))
+  expect_true(env$file_ingestion_artifact_owned(result))
+})
+
+test_that("kimlik yol gösteriminden bağımsızdır ve bayat marker yeniden yüklemeyi engellemez", {
+  env <- .ingestionEnv()
+  path <- withr::local_tempfile()
+  writeLines("eski", path)
+  old_id <- env$file_ingestion_claim_artifact(path)
+  owner <- readRDS(env$file_ingestion_owner_path(path))
+  rownames(owner$identity) <- "farkli/yol"
+  saveRDS(owner, env$file_ingestion_owner_path(path))
+  expect_true(env$file_ingestion_artifact_owned(list(dest = path, artifact_id = old_id)))
+  writeLines("tamamen farklı yeni içerik", path)
+  new_id <- env$file_ingestion_claim_artifact(path)
+  expect_false(identical(old_id, new_id))
+  expect_false(env$file_ingestion_artifact_owned(list(dest = path, artifact_id = old_id)))
+  expect_true(env$file_ingestion_artifact_owned(list(dest = path, artifact_id = new_id)))
+})
+
+test_that("karışık kimlikli parti NULL kimlik yüzünden tamamlanmayı kaybetmez", {
+  env <- .ingestionEnv()
+  completed <- NULL
+  job <- .ingestionJob(env, env$file_ingestion_create_controller(),
+    on_complete = function(results, ctx) completed <<- results)
+  results <- list(list(ok = TRUE, name = "eski", artifact_id = NULL),
+                  list(ok = TRUE, name = "yeni", artifact_id = "new"))
+  env$file_ingestion_apply_commit(job, results, list(indexed = c("eski", "yeni"), committed = "new", ms = 0))
+  expect_length(completed, 2L)
+  expect_true(completed[[1]]$ok)
+  expect_true(completed[[2]]$ok)
+})
+
+test_that("kesilen kopyanın günlüğü staging ve hedef sahipliğini birlikte korur", {
+  env <- .ingestionEnv()
+  source <- withr::local_tempfile()
+  target <- withr::local_tempfile()
+  staging <- paste0(target, ".mergen-part")
+  journal <- withr::local_tempfile()
+  file.create(source)
+  env$file_ingestion_begin_copy(target, staging, source, list(id = "A", journal = journal))
+  writeLines("yarım kopya", staging)
+  result <- readRDS(journal)
+  expect_false(env$file_ingestion_artifact_owned(result))
+  env$file_ingestion_discard_results(list(result), "42")
+  expect_false(file.exists(staging))
+  expect_false(file.exists(env$file_ingestion_owner_path(target)))
+  expect_true(file.exists(source))
+
+  env$file_ingestion_begin_copy(target, staging, source, list(id = "B", journal = journal))
+  writeLines("tam kopya", staging)
+  env$file_ingestion_prepare_promotion(staging, target, list(id = "B", journal = journal))
+  expect_true(file.rename(staging, target))
+  env$file_ingestion_claim_artifact(target, id = "B")
+  env$file_ingestion_discard_results(list(result), "42")
+  expect_identical(readLines(target), "tam kopya")
+  expect_false(env$file_ingestion_artifact_owned(result))
+  env$file_ingestion_discard_results(list(readRDS(journal)), "42")
+  expect_false(file.exists(target))
+})
+
+test_that("kopya sonrası sahiplik hatası hedefi geri alma sonucunda tutar", {
+  env <- .ingestionEnv()
+  task <- .ingestionTask(env, .ingestionUpload("sahiplik_hatasi.txt"))
+  task$result_journal <- withr::local_tempfile()
+  task$transaction <- list(id = "claim-error", journal = task$result_journal)
+  claim <- env$file_ingestion_claim_artifact
+  calls <- 0L
+  env$file_ingestion_claim_artifact <- function(...) {
+    calls <<- calls + 1L
+    if (calls == 1L) claim(...) else stop("sahiplik hatası")
+  }
+  result <- env$file_ingestion_execute_batch(list(task))[[1]]
+  expect_false(result$ok)
+  expect_identical(result$code, "claim_failed")
+  expect_true(nzchar(result$dest))
+  expect_identical(result$artifact_id, "claim-error")
+  expect_true(env$file_ingestion_artifact_owned(result))
+  env$file_ingestion_discard_results(list(result), "42")
+  expect_false(file.exists(result$dest))
+  expect_false(file.exists(env$file_ingestion_owner_path(result$dest)))
+})
+
+
+test_that("tamamlanmış işlem rezervasyonu aynı yola yeni yüklemeyi engellemez", {
+  env <- .ingestionEnv()
+  task <- .ingestionTask(env, .ingestionUpload("yeniden.txt"))
+  task$result_journal <- withr::local_tempfile()
+  task$transaction <- list(id = "old-copy", journal = task$result_journal)
+  old <- env$file_ingestion_execute_batch(list(task))[[1]]
+  expect_true(old$ok)
+  expect_true(env$file_ingestion_artifact_owned(old))
+  unlink(old$dest)
+  writeLines("yeni ve farklı içerik", old$dest)
+  newer <- old
+  newer$artifact_id <- env$file_ingestion_claim_artifact(old$dest)
+  expect_true(env$file_ingestion_artifact_owned(newer))
+  env$file_ingestion_discard_results(list(old), "42")
+  expect_identical(readLines(newer$dest), "yeni ve farklı içerik")
+  env$file_ingestion_discard_results(list(newer), "42")
+  expect_false(file.exists(newer$dest))
+})
+
+
+test_that("kalıcı kaynak yeniden kullanılınca iptal kaynak sahipliğini devralmaz", {
+  env <- .ingestionEnv()
+  base <- withr::local_tempdir()
+  upload <- .ingestionUpload("mevcut.txt")
+  source <- file.path(base, "mevcut.txt")
+  expect_true(file.copy(upload$datapath, source))
+  upload$datapath <- source
+  task <- .ingestionTask(env, upload)
+  task$storage_base <- base
+  journal <- withr::local_tempfile()
+  task$transaction <- list(id = "ödünç", journal = journal)
+  result <- env$file_ingestion_execute_task(task)
+  expect_true(result$ok)
+  expect_true(.ingestionSamePath(env, result$dest, source))
+  expect_null(result$artifact_id)
+  expect_false(env$file_ingestion_artifact_owned(result))
+  expect_true(file.exists(source))
+  expect_false(file.exists(env$file_ingestion_owner_path(source)))
+  expect_false(file.exists(journal))
+})
+
+
+test_that("alım hata günlüğü çökse bile kapasite ve kuyruk ilerler", {
+  env <- .ingestionEnv()
+  released <- pumped <- 0L
+  env$file_ingestion_release_slot <- function() released <<- released + 1L
+  env$file_ingestion_pump <- function() pumped <<- pumped + 1L
+  env$file_ingestion_controller_debug <- function(...) stop("günlük hatası")
+  job <- list(lease = new.env(parent = emptyenv()), controller = list(active = FALSE))
+  expect_error(env$file_ingestion_fail_job(job, simpleError("işçi hatası")), "günlük hatası")
+  env$file_ingestion_release_job(job)
+  expect_identical(released, 1L)
+  expect_identical(pumped, 1L)
+})
+
+test_that("rezervasyon yabancı hedefi silmez ve canlı rezervasyon ezilmez", {
+  env <- .ingestionEnv()
+  source <- withr::local_tempfile()
+  target <- withr::local_tempfile()
+  staging <- paste0(target, ".mergen-part")
+  journal <- withr::local_tempfile()
+  writeLines("kaynak", source)
+  env$file_ingestion_begin_copy(target, staging, source, list(id = "A", journal = journal))
+  expect_error(env$file_ingestion_begin_copy(target, staging, source,
+    list(id = "B", journal = withr::local_tempfile())), "başka bir işlem")
+  expect_identical(env$file_ingestion_read_owner(target)$id, "A")
+  writeLines("yabancı dosya", target)
+  writeLines("yarım kopya", staging)
+  env$file_ingestion_discard_results(list(readRDS(journal)), "42")
+  expect_identical(readLines(target), "yabancı dosya")
+  expect_false(file.exists(staging))
+})
+
+test_that("aynı kullanıcı ve isimde eşzamanlı planlar iki başarılı commit üretmez", {
+  env <- .ingestionEnv()
+  name <- paste0("aynı_", basename(tempfile()), ".txt")
+  first <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload(name, "birinci")))
+  second <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload(name, "ikinci")))
+  expect_true(first$ok)
+  expect_true(second$ok)
+  a <- env$file_ingestion_commit_index(list(first), "42")
+  b <- env$file_ingestion_commit_index(list(second), "42")
+  expect_identical(a$committed, first$artifact_id)
+  expect_length(b$committed, 0L)
+  env$file_ingestion_discard_results(list(second), "42")
+  expect_true(file.exists(first$dest))
+  expect_false(file.exists(second$dest))
+  expect_identical(.load_index()[["42"]][[tolower(name)]]$artifact_id, first$artifact_id)
+})
+
+test_that("yavaş silme global indeks kilidinin dışında çalışır", {
+  env <- .ingestionEnv()
+  result <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("kilit_dışı.txt")))
+  env$file_ingestion_commit_index(list(result), "42")
+  original <- env$file_ingestion_discard_dest
+  observed <- FALSE
+  env$file_ingestion_discard_dest <- function(...) {
+    observed <<- TRUE
+    expect_false(dir.exists(paste0(MERGEN_INDEX_PATH, ".lock")))
+    original(...)
+  }
+  env$file_ingestion_discard_results(list(result), "42")
+  expect_true(observed)
+  expect_false(file.exists(result$dest))
+})
+
+test_that("native aday kopyadan önce günlüğe ve rezervasyona bağlanır", {
+  env <- .ingestionEnv()
+  old <- withr::local_tempfile()
+  native <- withr::local_tempfile()
+  journal <- withr::local_tempfile()
+  tx <- list(id = "native", journal = journal)
+  env$file_ingestion_begin_copy(old, paste0(old, ".mergen-part"), "kaynak", tx)
+  env$file_ingestion_begin_copy(native, paste0(native, ".mergen-part"), "kaynak", tx)
+  expect_identical(readRDS(journal)$dest, native)
+  expect_identical(env$file_ingestion_read_owner(native)$id, "native")
+  expect_false(file.exists(env$file_ingestion_owner_path(old)))
+  writeLines("yarım", paste0(native, ".mergen-part"))
+  env$file_ingestion_discard_results(list(readRDS(journal)), "42")
+  expect_false(file.exists(paste0(native, ".mergen-part")))
+})
+
+
+test_that("bilinmeyen rollback durumu yeni yıkıcı işçi başlatmaz", {
+  env <- .ingestionEnv()
+  source(file.path(resolve_repo_root_for_tests(), "R/helpers_worker_cancellation.R"), local = env)
+  callbacks <- list()
+  schedule <- function(func, ...) { callbacks[[length(callbacks) + 1L]] <<- func; function() NULL }
+  env$mergen_cancellable_worker_schedule <- schedule
+  testthat::local_mocked_bindings(later = schedule, .package = "later")
+  alive <- NA
+  launches <- 0L
+  finished <- 0L
+  env$create_worker_task_id <- function(...) "rollback"
+  env$register_worker_task <- env$finish_worker_task <- function(...) NULL
+  env$file_ingestion_fail_job <- function(...) finished <<- finished + 1L
+  env$file_ingestion_worker_globals <- function(...) list()
+  env$worker_monitor_serialize_explicit_task <- function(...) raw()
+  testthat::local_mocked_bindings(r_bg = function(...) {
+    launches <<- launches + 1L
+    list(is_alive = function() alive, kill_tree = function(...) NULL,
+      kill = function(...) NULL, get_result = function() NULL)
+  }, .package = "callr")
+  next_callback <- function() { f <- callbacks[[1L]]; callbacks <<- callbacks[-1L]; f() }
+  env$file_ingestion_rollback_job(list(session_token = "test"), list(), simpleError("hata"))
+  for (i in 1:4) next_callback()
+  expect_identical(launches, 1L)
+  expect_identical(finished, 0L)
+  alive <- FALSE
+  next_callback()
+  expect_identical(launches, 1L)
+  next_callback()
+  expect_identical(launches, 2L)
+  next_callback()
+  expect_identical(finished, 1L)
+})
+
+test_that("native kopya başladığında günlük yeni staging sahibini taşır", {
+  env <- .ingestionEnv()
+  old <- withr::local_tempfile()
+  native <- withr::local_tempfile()
+  journal <- withr::local_tempfile()
+  source <- withr::local_tempfile()
+  tx <- list(id = "native-copy", journal = journal)
+  env$file_ingestion_begin_copy(old, paste0(old, ".mergen-part"), source, tx)
+  env$enc2native <- function(path) sub(old, native, path, fixed = TRUE)
+  testthat::local_mocked_bindings(file_copy = function(...) stop("native gerekli"), .package = "fs")
+  copied <- FALSE
+  env$file.copy <- function(from, to, ...) {
+    if (!identical(to, paste0(native, ".mergen-part"))) return(FALSE)
+    expect_identical(readRDS(journal)$dest, native)
+    expect_identical(readRDS(journal)$staging, to)
+    expect_identical(env$file_ingestion_read_owner(native)$id, tx$id)
+    expect_false(file.exists(env$file_ingestion_owner_path(old)))
+    copied <<- TRUE
+    writeLines("yarım", to)
+    stop("iptal")
+  }
+  env$mergen_stage_upload_copy(source, old, paste0(old, ".mergen-part"),
+    file.exists, file.exists, function(path) unlink(path),
+    rebind = function(dest, stage) env$file_ingestion_begin_copy(dest, stage, source, tx))
+  expect_true(copied)
+  env$file_ingestion_discard_results(list(readRDS(journal)), "42")
+  expect_false(file.exists(paste0(native, ".mergen-part")))
+})
+
+test_that("sahiplik gevşek UNC varlık sözleşmesini korur", {
+  env <- .ingestionEnv()
+  result <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("unc-sahiplik.txt")))
+  expect_true(result$ok)
+  env$file.exists <- function(path) if (identical(path, result$dest)) FALSE else base::file.exists(path)
+  expect_false(env$file.exists(result$dest))
+  expect_true(env$path_exists_relaxed(result$dest))
+  expect_true(env$file_ingestion_artifact_owned(result))
+  env$file_ingestion_discard_results(list(result), "42")
+  expect_false(base::file.exists(result$dest))
+})
+
+
+test_that("alım kuyruğu çalışan partinin kapasitesini bozmadan zaman aşımına uğrar", {
+  env <- .ingestionEnv()
+  controller <- env$file_ingestion_create_controller()
+  failed <- 0L
+  job <- .ingestionJob(env, controller)
+  job$queued_at <- Sys.time() - 301
+  job$on_failure <- function(message, ...) { expect_match(message, "kuyrukta zaman aşımı"); failed <<- failed + 1L }
+  job$lease <- new.env(); job$lease$released <- FALSE
+  queue_state <- env$.file_ingestion_state()
+  queue_state$active <- 2L
+  env$file_ingestion_enqueue(job)
+  env$file_ingestion_pump()
+  expect_identical(failed, 1L)
+  expect_identical(env$file_ingestion_queue_status()$active_batches, 2L)
+  expect_identical(env$file_ingestion_queue_status()$queued_batches, 0L)
+})
+
+test_that("işlemli terfi kimliği kaybettiren kopya yedeğine dönmez", {
+  env <- .ingestionEnv()
+  root <- withr::local_tempdir()
+  src <- file.path(root, "src.txt"); dest <- file.path(root, "dest.txt")
+  writeLines("kopya", src)
+  tx <- list(id = "promotion", journal = withr::local_tempfile())
+  env$file.link <- env$file.rename <- function(...) FALSE
+  env$file.copy <- function(...) stop("Atomik terfi yerine kopya yapılmamalı")
+  expect_error(env$mergen_copy_upload_staged(src, dest, root, transaction = tx), "kalıcı ada taşınamadı")
+  expect_false(file.exists(dest))
+  expect_false(file.exists(paste0(dest, ".mergen-part")))
+  env$file_ingestion_discard_results(list(readRDS(tx$journal)), "42")
+  expect_false(file.exists(env$file_ingestion_owner_path(dest)))
+})
+
+test_that("aynı boyut ve zaman damgası farklı fiziksel dosyaya sahiplik vermez", {
+  env <- .ingestionEnv()
+  result <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("fiziksel-kimlik.txt")))
+  old_identity <- env$file_ingestion_file_identity(result$dest)
+  replacement <- tempfile(tmpdir = dirname(result$dest))
+  writeLines("yabancı dosya", replacement)
+  unlink(result$dest)
+  expect_true(file.rename(replacement, result$dest))
+  original <- env$file_ingestion_file_identity
+  env$file_ingestion_file_identity <- function(path) {
+    info <- original(path)
+    if (is.character(path) && identical(path, result$dest)) {
+      info$size <- old_identity$size; info$mtime <- old_identity$mtime; info$ctime <- old_identity$ctime
+    }
+    info
+  }
+  expect_false(env$file_ingestion_artifact_owned(result))
+  env$file_ingestion_discard_results(list(result), "42")
+  expect_identical(readLines(result$dest), "yabancı dosya")
+})
+
+
+test_that("terfi ile claim arasındaki yabancı hedef rezervasyonla sahiplenilemez", {
+  env <- .ingestionEnv()
+  task <- .ingestionTask(env, .ingestionUpload("terfi_yarisi.txt"))
+  task$result_journal <- withr::local_tempfile()
+  task$transaction <- list(id = "promotion-race", journal = task$result_journal)
+  promote <- env$mergen_promote_staged_file
+  replaced <- FALSE
+  env$mergen_promote_staged_file <- function(...) {
+    args <- list(...)
+    result <- promote(...)
+    if (isTRUE(result$promoted)) {
+      expect_true(file.rename(args$hedef, paste0(args$hedef, ".held")))
+      writeLines("yabancı dosya", args$hedef)
+      replaced <<- TRUE
+    }
+    result
+  }
+  result <- env$file_ingestion_execute_batch(list(task))[[1]]
+  pending <- readRDS(task$result_journal)
+  expect_true(replaced)
+  expect_false(result$ok)
+  expect_identical(result$code, "copy_failed")
+  expect_false(env$file_ingestion_artifact_owned(pending))
+  env$file_ingestion_discard_results(list(pending), "42")
+  expect_identical(readLines(pending$dest), "yabancı dosya")
+  expect_false(file.exists(env$file_ingestion_owner_path(pending$dest)))
+})
+
+test_that("eksik dosya kimliği sahiplik veya silme kanıtı sayılmaz", {
+  env <- .ingestionEnv()
+  path <- withr::local_tempfile()
+  writeLines("korunacak dosya", path)
+  info <- file.info(path)[c("size", "mtime", "ctime")]
+  info$size <- NA_real_
+  expect_false(env$file_ingestion_identity_matches(info, info))
+  identity <- env$file_ingestion_file_identity(path)
+  attr(identity, "file_key") <- NULL
+  env$file_ingestion_file_identity <- function(...) identity
+  expect_error(env$file_ingestion_claim_artifact(path), "sahipliği doğrulanamadı")
+  expect_false(file.exists(env$file_ingestion_owner_path(path)))
+  expect_identical(readLines(path), "korunacak dosya")
 })

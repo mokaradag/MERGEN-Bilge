@@ -314,7 +314,7 @@ test_that("module_claude_code.R doküman özetleme akışını lifecycle helper'
   )
 
   expect_true(
-    grepl("cc_mark_active_run\\(rv, run_request_id\\)", txt, perl = TRUE),
+    grepl("cc_mark_active_run\\(rv, run_request_id, session = session\\)", txt, perl = TRUE),
     info = "Bilge Yolaç aktif request kimliğini rv içinde işaretlemelidir."
   )
 
@@ -555,8 +555,9 @@ test_that("terminal çalışma yolları runtime lease temizliğini taşır", {
   expect_match(dispatch, "cc_release_runtime_lease\\(prep\\$runtime_lease", perl = TRUE)
   expect_match(dispatch, "runtime_lease = prep\\$runtime_lease", perl = TRUE)
   expect_match(lifecycle, "on.exit\\(cc_release_runtime_lease\\(runtime_lease\\)", perl = TRUE)
-  expect_match(akis, "cc_release_runtime_lease\\(rv\\$stream_env\\$runtime_lease", perl = TRUE)
-  expect_match(poll, "cc_release_runtime_lease\\(env\\$runtime_lease", perl = TRUE)
+  expect_match(akis, "lease <- rv\\$stream_env\\$runtime_lease", perl = TRUE)
+  expect_false(grepl("cc_release_runtime_lease(env$runtime_lease", poll, fixed = TRUE))
+  expect_match(akis, "mergen_retire_process", fixed = TRUE)
   # Uzun çalıştırmalarda lease heartbeat'i poll döngüsünde tazelenir.
   expect_match(poll, "cc_touch_runtime_lease\\(env\\$runtime_lease", perl = TRUE)
 })
@@ -605,17 +606,20 @@ test_that("doküman özeti worker'ı kaynak klasöre yazmaz", {
   # karşılaştırma boş yere geçebiliyordu.
   govde <- paste(deparse(body(env$cc_handle_document_summary_run)), collapse = "\n")
   guard_pos <- regexpr("if \\(!cc_is_active_run\\(rv, run_request_id\\)\\)", govde, perl = TRUE)[[1]]
-  write_pos <- regexpr("hedef_yol <- file\\.path\\(target_dir", govde, perl = TRUE)[[1]]
+  write_pos <- regexpr("cc_publish_document_summary_async", govde, fixed = TRUE)[[1]]
 
   expect_true(guard_pos > 0)
   expect_true(write_pos > guard_pos)
+  expect_false(grepl("writeLines(", govde, fixed = TRUE))
+  expect_false(grepl("write_claude_code_utf8_bom_text_file(", govde, fixed = TRUE))
 })
 
-test_that("izole çıktı dizini yoksa mevcut davranışa güvenle düşülür", {
+test_that("izole çıktı dizini yoksa kaynak klasöre düşülmeden reddedilir", {
   env <- .source_cc_run_lifecycle_for_test()
 
   govde <- paste(deparse(body(env$cc_handle_document_summary_run)), collapse = "\n")
 
-  expect_true(grepl("worker_cikti_dizini <- target_dir", govde, fixed = TRUE))
+  expect_false(grepl("worker_cikti_dizini <- target_dir", govde, fixed = TRUE))
+  expect_true(grepl("İzole çıktı alanı bulunamadı", govde, fixed = TRUE))
   expect_true(grepl("dir.exists(worker_cikti_dizini)", govde, fixed = TRUE))
 })

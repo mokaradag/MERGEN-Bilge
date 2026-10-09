@@ -28,6 +28,30 @@ cc_release_runtime_lease <- function(runtime_lease = NULL) {
   invisible(!isTRUE(file.exists(lease)))
 }
 
+cc_bind_runtime_lease <- function(lease, process = NULL) {
+  if (!nzchar(lease %||% "")) return(invisible(FALSE))
+  previous <- if (file.exists(lease)) suppressWarnings(tryCatch(readLines(lease, warn = FALSE), error = function(e) character())) else character()
+  pids <- c(Sys.getpid(), if (!is.null(process)) tryCatch(process$get_pid(), error = function(e) NA_integer_))
+  writeLines(unique(c(previous, paste0("host=", Sys.info()[["nodename"]]), paste0("pid=", pids))), lease, useBytes = TRUE)
+  invisible(TRUE)
+}
+
+cc_runtime_lease_owner_dead <- function(lease) {
+  lines <- suppressWarnings(tryCatch(readLines(lease, warn = FALSE), error = function(e) character()))
+  host <- sub("^host=", "", lines[startsWith(lines, "host=")])
+  pids <- suppressWarnings(as.integer(sub("^pid=", "", lines[startsWith(lines, "pid=")])))
+  length(host) == 1L && length(pids) > 0L && !anyNA(pids) &&
+    all(vapply(pids, function(pid) identical(mergen_pid_status(pid, host), FALSE), logical(1)))
+}
+
+cc_runtime_has_foreign_lease <- function(runtime_dir, request_id) {
+  leases <- list.files(file.path(runtime_dir, "metadata"),
+                       pattern = "^active-run-.*\\.lease$", full.names = TRUE)
+  own <- paste0("active-run-", gsub("[^A-Za-z0-9_.-]", "_", request_id), ".lease")
+  leases <- leases[basename(leases) != own]
+  any(!vapply(leases, cc_runtime_lease_owner_dead, logical(1)))
+}
+
 #' Aktif çalışma lease dosyasının mtime değerini tazele (heartbeat)
 #'
 #' Uzun süren bir CLI çalıştırmasında lease hiç tazelenmezse temizlik yolu onu
@@ -48,7 +72,7 @@ cc_touch_runtime_lease <- function(runtime_lease = NULL) {
   if (!inherits(sonuc, "try-error") && isTRUE(sonuc)) return(invisible(TRUE))
 
   yazildi <- try(
-    writeLines(format(Sys.time(), "%Y-%m-%dT%H:%M:%OS3"), lease, useBytes = TRUE),
+    writeLines(readLines(lease, warn = FALSE), lease, useBytes = TRUE),
     silent = TRUE
   )
   if (inherits(yazildi, "try-error")) {
@@ -240,7 +264,8 @@ cc_reclaim_orphaned_runtime_dirs <- function(user_id = NULL,
             "Yetim runtime geri kazanımı atlandı (metaveri okunamadı):", basename(aday)
           )), silent = TRUE)
           FALSE
-        } else if (any(lease_yas < esik) || dizin_yas < esik) {
+        } else if (any(lease_yas < esik) || dizin_yas < esik ||
+                   !all(vapply(leases, cc_runtime_lease_owner_dead, logical(1)))) {
           FALSE
         } else {
           try(log_warn(paste(

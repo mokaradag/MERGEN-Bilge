@@ -34,6 +34,7 @@ cc_run_prepare_worker_globals <- function(refresh = FALSE,
     "cc_claim_runtime_ownership",
     "cc_runtime_ownership_is",
     "cc_acquire_reused_runtime_lease",
+    "cc_runtime_has_foreign_lease",
     ".cc_runtime_workdir_reusable",
     "prepare_claude_runtime_workdir",
     "prepare_claude_code_document_context",
@@ -169,10 +170,13 @@ cc_claim_runtime_ownership <- function(runtime_workdir, request_id) {
 
   dir.create(dirname(yol), recursive = TRUE, showWarnings = FALSE)
 
-  ok <- tryCatch({
-    writeLines(as.character(request_id %||% "")[1], yol, useBytes = TRUE)
-    TRUE
-  }, error = function(e) FALSE)
+  ok <- cc_with_runtime_cleanup_lock(runtime_workdir, fallback = FALSE, attempts = 1L, {
+    if (cc_runtime_has_foreign_lease(runtime_workdir, request_id)) FALSE else
+      tryCatch({
+        writeLines(as.character(request_id %||% "")[1], yol, useBytes = TRUE)
+        TRUE
+      }, error = function(e) FALSE)
+  })
 
   if (!isTRUE(ok)) "" else yol
 }
@@ -211,7 +215,7 @@ CC_LEASE_LOCK_ATTEMPTS <- 200L
 
 cc_acquire_reused_runtime_lease <- function(existing_runtime_workdir,
                                             user_id,
-                                            request_id) {
+                                            request_id, lease_journal = NULL) {
   if (!isTRUE(.cc_runtime_workdir_reusable(existing_runtime_workdir, user_id))) {
     return("")
   }
@@ -228,8 +232,12 @@ cc_acquire_reused_runtime_lease <- function(existing_runtime_workdir,
   # `fallback = NA`: kilit TÜKENMESİ ile lease OLUŞTURMA hatası ayrışır.
   olustu <- cc_with_runtime_cleanup_lock(existing_runtime_workdir, fallback = NA,
                                          attempts = CC_LEASE_LOCK_ATTEMPTS, {
+    if (cc_runtime_has_foreign_lease(existing_runtime_workdir, request_id) ||
+        !cc_runtime_ownership_is(existing_runtime_workdir, request_id))
+      stop("Runtime hâlâ başka bir çalıştırmaya ait; lease devralınamaz.", call. = FALSE)
     dir.create(metadata_dir, recursive = TRUE, showWarnings = FALSE)
-    isTRUE(file.create(lease))
+    if (!is.null(lease_journal)) saveRDS(lease, lease_journal)
+    isTRUE(cc_bind_runtime_lease(lease))
   })
 
   if (length(olustu) != 1L || is.na(olustu)) {
@@ -253,7 +261,8 @@ cc_prepare_run_workspace <- function(request) {
   runtime_lease <- cc_acquire_reused_runtime_lease(
     existing_runtime_workdir = request$existing_runtime_workdir %||% "",
     user_id = request$user_id,
-    request_id = request$request_id
+    request_id = request$request_id,
+    lease_journal = request$lease_journal
   )
   lease_handed_off <- FALSE
   on.exit({
@@ -401,8 +410,11 @@ cc_prepare_run_workspace <- function(request) {
     lease_olustu <- cc_with_runtime_cleanup_lock(layout$root %||% runtime_workdir,
                                                  fallback = NA,
                                                  attempts = CC_LEASE_LOCK_ATTEMPTS, {
+      if (cc_runtime_has_foreign_lease(layout$root %||% runtime_workdir, request$request_id))
+        stop("Runtime hâlâ başka bir çalıştırmaya ait; lease devralınamaz.", call. = FALSE)
       dir.create(layout$metadata, recursive = TRUE, showWarnings = FALSE)
-      isTRUE(file.create(aday_lease))
+      if (!is.null(request$lease_journal)) saveRDS(aday_lease, request$lease_journal)
+      isTRUE(cc_bind_runtime_lease(aday_lease))
     })
     # Lease OLUŞMAZSA hazırlık DURUR. Eskiden `runtime_lease` boş bırakılıp
     # `ok = TRUE` dönülüyordu; `cc_dispatch_run_preparation()` yalnızca

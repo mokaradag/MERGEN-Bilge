@@ -306,7 +306,7 @@ test_that("nihai yanıt sonlandırma noktaları alt bilgiyi iliştirir", {
   seams <- list(
     "R/server_handler_true_streaming.R" = "mergen_pk_stream_validated_text(",
     "R/server_llm_response_handlers.R"  = "mergen_pk_validated_texts(",
-    "R/helpers_chat_runtime.R"          = "pk_stream_display_text("
+    "R/helpers_chat_runtime.R"          = "mergen_pk_stream_validated_text("
   )
 
   for (rel in names(seams)) {

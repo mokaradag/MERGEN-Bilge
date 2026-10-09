@@ -21,7 +21,7 @@ cc_next_run_request_id <- function(prefix = "ccrun") {
   )
 }
 
-cc_mark_active_run <- function(rv, request_id) {
+cc_mark_active_run <- function(rv, request_id, session = NULL) {
   request_id <- as.character(request_id %||% "")[1]
 
   if (is.na(request_id) || !nzchar(request_id)) {
@@ -29,10 +29,14 @@ cc_mark_active_run <- function(rv, request_id) {
   }
 
   rv$active_request_id <- request_id
+  rv$run_owner_guard <- if (is.null(session)) NULL else mergen_session_owner_guard(session)
+  rv$active_persist_record_id <- rv$claude_session_record_id
   invisible(request_id)
 }
 
 cc_is_active_run <- function(rv, request_id = NULL) {
+  guard <- tryCatch(shiny::isolate(rv$run_owner_guard), error = function(e) NULL)
+  if (is.function(guard) && !isTRUE(guard())) return(FALSE)
   # Geriye dönük uyumluluk: eski çağrılar request_id göndermediğinde
   # finalize davranışı aynen devam eder.
   if (is.null(request_id) || length(request_id) == 0L) {
@@ -45,7 +49,7 @@ cc_is_active_run <- function(rv, request_id = NULL) {
   }
 
   active <- tryCatch(
-    as.character(rv$active_request_id %||% "")[1],
+    shiny::isolate(as.character(rv$active_request_id %||% "")[1]),
     error = function(e) ""
   )
 
@@ -285,7 +289,8 @@ cc_handle_document_summary_run <- function(session,
   # çalıştırmanın çıktısını kaynak klasördeki dosyanın üzerine yazabilirdi.
   worker_cikti_dizini <- as.character(cikti_dizini %||% "")[1]
   if (!nzchar(worker_cikti_dizini) || !dir.exists(worker_cikti_dizini)) {
-    worker_cikti_dizini <- target_dir
+    cc_release_runtime_lease(runtime_lease)
+    stop("İzole çıktı alanı bulunamadı; doküman özeti başlatılmadı.", call. = FALSE)
   }
 
   if (!isTRUE(dokuman_baglami$text_sidecars_ready)) {
@@ -348,6 +353,7 @@ cc_handle_document_summary_run <- function(session,
     "| Destek dizini:", dokuman_baglami$effective_workdir %||% ""
   ))
 
+  persist_record_id <- rv$active_persist_record_id %||% rv$claude_session_record_id
   dokuman_api_key <- tryCatch(
     mb_api_key_get_effective_key_value(
       session = session,
@@ -361,6 +367,7 @@ cc_handle_document_summary_run <- function(session,
   # tracked_future_promise() gönderim anında SENKRON hata verebilir (worker
   # planı yok, serileştirme hatası). Yakalanmazsa ne then() ne catch() kurulur
   # ve doküman çalıştırması kalıcı olarak asılı kalırdı.
+  summary_session_token <- session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
   gonderim <- tryCatch(
   tracked_future_promise(
     task_fn = function() {
@@ -371,12 +378,20 @@ cc_handle_document_summary_run <- function(session,
         request_timeout_sec = zaman_asimi,
         output_dir = worker_cikti_dizini,
         user_id = effective_user_id,
-        session_token = session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
+        session_token = summary_session_token
       )
     },
     task_type = "claude_code_document_summary",
+    execution_timeout = zaman_asimi,
+    cancel_check = function() !isTRUE(session$isClosed()) &&
+      cc_is_active_run(rv, run_request_id) && isTRUE(shiny::isolate(rv$is_running)),
     session_token = session$token
   ) |>
+    promises::then(function(sonuc) {
+      if (!cc_is_active_run(rv, run_request_id)) return(sonuc)
+      cc_publish_document_summary_async(sonuc, target_dir, worker_cikti_dizini,
+        session, rv, run_request_id)
+    }) |>
     promises::then(function(sonuc) {
       on.exit(cc_release_runtime_lease(runtime_lease), add = TRUE)
       if (!cc_is_active_run(rv, run_request_id)) {
@@ -398,29 +413,7 @@ cc_handle_document_summary_run <- function(session,
         if (nzchar(sonuc$output %||% "") &&
             exists("format_claude_code_existing_file_link_html", mode = "function")) {
 
-          ozet_yolu <- tryCatch({
-            hedef_yol <- file.path(target_dir, "dosya_aciklamalari.txt")
-
-            # Ana Shiny oturumunda senkron yaz.
-			if (exists("write_claude_code_utf8_bom_text_file", mode = "function")) {
-			  write_claude_code_utf8_bom_text_file(sonuc$output %||% "", hedef_yol)
-			} else {
-			  writeLines(enc2utf8(sonuc$output %||% ""), hedef_yol, useBytes = TRUE)
-			}
-
-            if (!isTRUE(file.exists(hedef_yol)) || isTRUE(dir.exists(hedef_yol))) {
-              stop("Özet dosyası fiziksel olarak oluşturulamadı: ", hedef_yol)
-            }
-
-            normalizePath(hedef_yol, winslash = "/", mustWork = TRUE)
-          }, error = function(e) {
-            log_warn(paste(
-              CLAUDE_CODE_LOG_PREFIX,
-              "Doküman özeti ana oturumda yazılamadı:",
-              conditionMessage(e)
-            ))
-            ""
-          })
+          ozet_yolu <- sonuc$generated_summary_path %||% ""
 
           if (nzchar(ozet_yolu)) {
             sonuc$generated_summary_path <- ozet_yolu
@@ -527,6 +520,7 @@ cc_handle_document_summary_run <- function(session,
         cc_persist_run_result(
           rv = rv,
           env = list(
+            persist_record_id = persist_record_id,
             prompt = kullanici_prompt,
             tum_satirlar = character(0),
             calisma_dizini = calisma_dizini,
@@ -584,6 +578,7 @@ cc_handle_document_summary_run <- function(session,
         cc_persist_run_result(
           rv = rv,
           env = list(
+            persist_record_id = persist_record_id,
             prompt = kullanici_prompt,
             tum_satirlar = character(0),
             calisma_dizini = calisma_dizini,
@@ -657,6 +652,7 @@ cc_handle_document_summary_run <- function(session,
         try(cc_persist_run_result(
           rv = rv,
           env = list(
+            persist_record_id = persist_record_id,
             prompt = kullanici_prompt,
             tum_satirlar = character(0),
             calisma_dizini = calisma_dizini,

@@ -71,18 +71,29 @@ cc_bind_claude_code_stream_polling <- function(input,
                                                send_parca,
                                                finalize_streaming,
                                                observe_dir_contents) {
-  shiny::observe({
+  run_ref <- cc_run_state_reference(rv)
+  rv$process_poll_observer <- shiny::observe({
+    rv <- run_ref$rv
+    ui_active <- !is.function(session$isClosed) || !isTRUE(session$isClosed())
     shiny::req(isTRUE(rv$is_running))
     proc <- rv$active_process
     shiny::req(!is.null(proc))
 
-    shiny::invalidateLater(200, session)
+    shiny::invalidateLater(200)
 
     env <- rv$stream_env
-    if (is.null(env)) return()
+    if (is.null(env) || !cc_is_active_run(rv, env$request_id)) return()
 
+    gecen_sure <- as.numeric(difftime(Sys.time(), env$baslangic, units = "secs"))
+    if (isTRUE(env$durduruldu) || gecen_sure > env$zaman_asimi) {
+      if (!is.null(env$termination_probe_after) && Sys.time() < env$termination_probe_after) return()
+      if (!mergen_process_stop(proc)) {
+        env$termination_attempts <- (env$termination_attempts %||% 0L) + 1L
+        env$termination_probe_after <- Sys.time() + if (env$termination_attempts >= 3L) 5 else 0.5
+        return()
+      }
+    }
     if (isTRUE(env$durduruldu)) {
-      tryCatch(proc$kill(), error = function(e) NULL)
       finalize_streaming(
         "Durduruldu",
         "stop-circle",
@@ -91,8 +102,6 @@ cc_bind_claude_code_stream_polling <- function(input,
       )
       return()
     }
-
-    gecen_sure <- as.numeric(difftime(Sys.time(), env$baslangic, units = "secs"))
 
     # Lease heartbeat: uzun çalıştırmalarda temizlik yolu aktif çalışma alanını
     # yetim sayıp silmesin. 30 saniyede bir yeterlidir (poll 200 ms).
@@ -130,7 +139,6 @@ cc_bind_claude_code_stream_polling <- function(input,
     }
 
     if (gecen_sure > env$zaman_asimi) {
-      tryCatch(proc$kill(), error = function(e) NULL)
 
       log_error(paste(
         CLAUDE_CODE_LOG_PREFIX,
@@ -153,7 +161,7 @@ cc_bind_claude_code_stream_polling <- function(input,
         )
       }
 
-      session$sendCustomMessage(
+      if (ui_active) session$sendCustomMessage(
         type = "cc-add-message",
         message = list(
           target = ns("output_area"),
@@ -200,7 +208,7 @@ cc_bind_claude_code_stream_polling <- function(input,
           cc_stream_append_line(env, satir)
 
           parca <- parse_streaming_chunk(satir)
-          send_parca(parca, env)
+          if (ui_active) send_parca(parca, env)
         }
       }
     }, error = function(e) {
@@ -211,7 +219,7 @@ cc_bind_claude_code_stream_polling <- function(input,
       ))
     })
 
-    if (!proc$is_alive()) {
+    if (identical(mergen_process_status(proc), FALSE)) {
       # Çıktı işleme çalıştırma başına YALNIZCA BİR KEZ yapılır; poll
       # gözlemcisi yeniden tetiklenirse aynı pahalı tarama tekrarlanmaz.
       if (isTRUE(env$cikti_islendi)) return()
@@ -230,7 +238,7 @@ cc_bind_claude_code_stream_polling <- function(input,
             cc_stream_append_line(env, satir)
 
             parca <- parse_streaming_chunk(satir)
-            send_parca(parca, env)
+            if (ui_active) send_parca(parca, env)
           }
         }
       }, error = function(e) NULL)
@@ -298,6 +306,14 @@ cc_bind_claude_code_stream_polling <- function(input,
         )
       })
     }
+  }, domain = NULL, autoDestroy = FALSE)
+  session$onSessionEnded(function() {
+    shiny::isolate({
+      state <- run_ref$rv
+      if (isTRUE(state$is_running) && (!is.null(state$active_process) || isTRUE(state$stream_env$output_worker_pending)))
+        cc_detach_run_state(run_ref, session) else if (!is.null(state$process_poll_observer))
+          state$process_poll_observer$destroy()
+    })
   })
 
   shiny::observeEvent(input$stop_command, {
@@ -318,7 +334,7 @@ cc_bind_claude_code_stream_polling <- function(input,
       # tek terminal-durum hakemi, korunan çalıştırma yaşam döngüsü
       # sözleşmesinin yeniden tasarımını gerektirir.
       surec_bitti <- isTRUE(tryCatch(
-        !is.null(rv$active_process) && !isTRUE(rv$active_process$is_alive()),
+        !is.null(rv$active_process) && identical(mergen_process_status(rv$active_process), FALSE),
         error = function(e) FALSE
       ))
       if (!is.null(env) && (isTRUE(env$cikti_islendi) || isTRUE(surec_bitti))) {
@@ -347,9 +363,9 @@ cc_bind_claude_code_stream_polling <- function(input,
         rv$active_request_id
       }
 
+      if (nzchar(rv$summary_sync_guard %||% "")) unlink(rv$summary_sync_guard, force = TRUE)
       if (!is.null(env)) {
         env$durduruldu <- TRUE
-        cc_release_runtime_lease(env$runtime_lease %||% "")
         # Çıktı worker'ı ana süreçteki reaktif isteği göremez. Bu dosyanın
         # kaldırılması, worker'ın her kaynak yazısından hemen önce yaptığı
         # kontrolü düşürür ve durdurulmuş çalıştırmanın stale yazmasını keser.

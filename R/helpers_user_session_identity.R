@@ -140,13 +140,15 @@ mergen_session_owner_transition <- function(user_data, eski_uid, yeni_uid, yetki
   if (yeni > 0L) user_data$kimlik_sahibi <- yeni
   # Kimlik nesli her sahip değişiminde ve kimlik kaybında artar: kimliksiz
   # başlayan arka plan işi 0 -> A -> 0 sonrasında "hâlâ kimliksiz" sayılmaz.
-  if (degisti || kayip) user_data$kimlik_nesli <- as.integer(user_data$kimlik_nesli %||% 0L) + 1L
+  gecersiz <- degisti || kayip || isTRUE(yetki_degisti)
+  if (gecersiz) user_data$kimlik_nesli <- as.integer(user_data$kimlik_nesli %||% 0L) + 1L
   kancalar <- user_data$kimlik_kancalari
-  if ((degisti || kayip) && is.environment(kancalar)) {
-    neden <- if (degisti) "sahip_degisti" else "kimlik_kaybi"
-    for (ad in ls(kancalar, all.names = TRUE)) try(kancalar[[ad]](neden), silent = TRUE)
+  if (gecersiz && is.environment(kancalar)) {
+    neden <- if (degisti) "sahip_degisti" else if (kayip) "kimlik_kaybi" else "yetki_degisti"
+    callbacks <- as.list(kancalar, all.names = TRUE)
+    for (fn in callbacks) try(fn(neden), silent = TRUE)
   }
-  if (degisti) {
+  if (gecersiz) {
     anahtarlar <- if (exists("SESSION_RUNTIME_STORE_KEYS", inherits = TRUE)) {
       unname(SESSION_RUNTIME_STORE_KEYS)
     } else {
@@ -234,7 +236,9 @@ make_user_session_data_accessors <- function(session) {
       set_value("user_config", app_user_config)
       # Aynı kullanıcının yetki düzeyi değişirse de sinyal artar (ör. ADMIN kaybı).
       mergen_session_owner_transition(user_data, eski_uid, uid,
-                                      yetki_degisti = !identical(eski_yetki, app_user_config$auth_level))
+        yetki_degisti = .normalize_user_session_id(eski_uid) > 0L &&
+          identical(.normalize_user_session_id(eski_uid), uid) && !is.null(eski_yetki) &&
+          !identical(eski_yetki, app_user_config$auth_level))
 
       invisible(app_user_config)
     },

@@ -82,7 +82,11 @@ test_that("manifest handler'ı send_message'tan önce yükler (bağımlılık-ö
   env$mergen_log_llm_request_debug <- function(...) invisible(NULL)
   env$mb_api_key_invalidate_send_cache_on_auth_error <- function(...) invisible(FALSE)
   env$log_ai_usage <- function(...) invisible(NULL)
-  env$build_followup_suggestions <- function(...) list("Takip sorusu 1")
+  env$build_followup_suggestions <- function(...) stop("Ana süreçte takip üretimi")
+  env$mergen_stream_dispatch_followups <- function(session, msg_id, ...) {
+    session$userData$followup_message <- msg_id
+    invisible(TRUE)
+  }
   env$normalize_character_id <- function(x) "emre"
   env$get_characters_data <- function() NULL
   # Kilitli referans modunda çözümlenen ses persona kimliğinin kendisidir;
@@ -116,7 +120,7 @@ test_that("manifest handler'ı send_message'tan önce yükler (bağımlılık-ö
   )
 
   list(
-    session = new.env(),
+    session = list(userData = new.env()),
     values = local({ v <- new.env(); v$is_sending <- FALSE; v }),
     settings_data = list(enable_tts_audio = enable_tts),
     stop_generation = function(...) FALSE,
@@ -130,10 +134,11 @@ test_that("manifest handler'ı send_message'tan önce yükler (bağımlılık-ö
     tts_processor = list(synthesize_speech = function(...) NULL),
     followup_tools = NULL,
     fallback_followup_tool = NULL,
-    simulate_streaming_stoppable_fn = function(content, followups = NULL, ...) {
+    simulate_streaming_stoppable_fn = function(content, followups = NULL, on_complete = NULL, ...) {
       recorder$simulate_called <- TRUE
       recorder$simulate_content <- content
       recorder$simulate_followups <- followups
+      recorder$on_complete <- on_complete
     },
     cleanup_send_message = function(...) recorder$cleanup_called <- TRUE,
     abort_send_message = function(message = NULL, type = "warning", ...) {
@@ -151,7 +156,7 @@ test_that("manifest handler'ı send_message'tan önce yükler (bağımlılık-ö
   )
 }
 
-test_that("başarılı yanıt simulate_streaming_stoppable_fn'i içerik+takip ile çağırır", {
+test_that("başarılı yanıt takip üretimini akış tamamlanana kadar erteler", {
   skip_if_not_installed("promises")
   skip_if_not_installed("later")
 
@@ -169,7 +174,10 @@ test_that("başarılı yanıt simulate_streaming_stoppable_fn'i içerik+takip il
 
   expect_true(isTRUE(recorder$simulate_called))
   expect_identical(recorder$simulate_content, "AI cevabı")
-  expect_identical(recorder$simulate_followups, list("Takip sorusu 1"))
+  expect_null(recorder$simulate_followups)
+  expect_null(ctx$session$userData$followup_message)
+  recorder$on_complete(list(id = "yanit", content = "AI cevabı"))
+  expect_identical(ctx$session$userData$followup_message, "yanit")
   expect_true(isTRUE(recorder$track_request))
   expect_null(recorder$abort_called)
 })

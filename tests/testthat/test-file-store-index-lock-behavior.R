@@ -40,7 +40,8 @@
   dir.create(lock_dir, recursive = TRUE, showWarnings = FALSE)
 
   marker <- .lock_test_lock_marker(lock_dir)
-  writeLines("test-lock", marker, useBytes = TRUE)
+  pid <- if (is.null(age_sec)) Sys.getpid() else 2147483647L
+  writeLines(c(paste0("pid=", pid), paste0("host=", Sys.info()[["nodename"]]), "token=test-lock"), marker, useBytes = TRUE)
 
   if (!is.null(age_sec)) {
     eski_zaman <- Sys.time() - age_sec
@@ -236,4 +237,39 @@ test_that("mutasyon yardimcisi stale kilit sonrasi indeks kaydini kaybetmez", {
     idx[[marker_key]] <- NULL
     idx
   })
+})
+test_that("ölü kilit hemen devralınır ama yaşlanmış canlı kilit çalınmaz", {
+  .lock_test_prepare_runtime()
+  withr::defer(.lock_test_cleanup())
+  .lock_test_make_lock(age_sec = 0)
+  expect_identical(.file_store_with_index_lock(TRUE, timeout_sec = 0, require_lock = TRUE), TRUE)
+  lock_dir <- .lock_test_lock_dir()
+  .lock_test_make_lock()
+  Sys.setFileTime(.lock_test_lock_marker(), Sys.time() - 3600)
+  expect_error(.file_store_with_index_lock(stop("kritik bölüm çalıştı"), timeout_sec = 0,
+    stale_lock_sec = 1, require_lock = TRUE), "kilidi alınamadı")
+  expect_true(dir.exists(lock_dir))
+})
+
+test_that("kilit içinde sert öldürülen işçinin kilidi ölüm doğrulandıktan sonra devralınır", {
+  .lock_test_prepare_runtime()
+  withr::defer(.lock_test_cleanup())
+  ready <- withr::local_tempfile()
+  root <- resolve_repo_root_for_tests()
+  process <- callr::r_bg(function(root, index, ready) {
+    source(file.path(root, "R/utils_common.R"))
+    source(file.path(root, "R/helpers_process_ownership.R"))
+    source(file.path(root, "R/config_file_store_index_lock.R"))
+    assign("MERGEN_INDEX_PATH", index, envir = globalenv())
+    .file_store_with_index_lock({ file.create(ready); Sys.sleep(60) }, require_lock = TRUE)
+  }, args = list(root = root, index = MERGEN_INDEX_PATH, ready = ready), stdout = NULL, stderr = NULL)
+  withr::defer(try(process$kill(), silent = TRUE))
+  deadline <- Sys.time() + 10
+  while (!file.exists(ready) && process$is_alive() && Sys.time() < deadline) Sys.sleep(0.01)
+  expect_true(file.exists(ready))
+  expect_error(.file_store_with_index_lock(TRUE, timeout_sec = 0, require_lock = TRUE), "kilidi alınamadı")
+  process$kill()
+  process$wait(timeout = 5000)
+  expect_false(process$is_alive())
+  expect_identical(.file_store_with_index_lock(TRUE, timeout_sec = 0, require_lock = TRUE), TRUE)
 })
