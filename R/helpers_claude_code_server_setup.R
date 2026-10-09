@@ -480,7 +480,7 @@ cc_bind_server_setup <- function(input,
       return(uygula_icerik(list(error = "Dizin içeriği yüklenemedi. Lütfen yenileyin.")))
     }
 
-    uygula_icerik(list_directory_contents(yol, user_id = user_check$user_id))
+    uygula_icerik(list(error = "Arka plan listeleme havuzu kullanılamıyor."))
   }
 
   observeEvent(input$dir_navigate, {

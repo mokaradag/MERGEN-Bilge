@@ -32,7 +32,7 @@ mergen_pk_analysis_execute <- function(ctx) {
   uygun <- pk_async_available(aktif_meta)
   if (!isTRUE(uygun$available)) {
     if (!uygun$reason %in% c("flag_off", "query_opt_out")) {
-      cevap <- if (uygun$reason %in% c("promises_missing", "tracked_future_promise_missing")) {
+      cevap <- if (uygun$reason %in% c("promises_missing", "tracked_future_promise_missing", "plan_sequential")) {
         mergen_pk_worker_outcome_text("infrastructure")
       } else {
         "Analiz işçisi henüz hazır değil veya meşgul. Lütfen biraz sonra tekrar deneyin."
@@ -262,6 +262,8 @@ mergen_pk_dispatch_async <- function(ctx, request, cancel_token) {
   )
   if (inherits(vaat, "try-error")) {
     bitir_istek()
+    butce_birak()
+    try(pk_provenance_take(oturum, request_id = req_id), silent = TRUE)
     log_warn("[PK_ASYNC] Gonderim basarisiz; altyapi yaniti.")
     return(altyapi_hatasi("dispatch_failed"))
   }

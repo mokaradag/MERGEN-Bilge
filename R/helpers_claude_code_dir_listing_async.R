@@ -60,16 +60,13 @@ cc_dir_listing_worker_globals <- function(refresh = FALSE, envir = globalenv()) 
 
 #' Dizin listeleme arka planda çalıştırılabilir mi
 #'
-#' Gerçekten eşzamansız bir future planı yoksa gönderim gövdeyi ana olay
-#' döngüsünde çalıştırır; bu durumda doğrudan senkron çağrı tercih edilir.
+#' Callr kullanılabilirliği Future planından bağımsızdır.
 #'
 #' @return Eşzamansız gönderim mümkünse TRUE
 cc_dir_listing_async_available <- function() {
   if (!exists("tracked_future_promise", mode = "function", inherits = TRUE)) return(FALSE)
   if (!requireNamespace("promises", quietly = TRUE)) return(FALSE)
-  if (!exists("cc_future_plan_is_async", mode = "function", inherits = TRUE)) return(FALSE)
-
-  isTRUE(tryCatch(cc_future_plan_is_async(), error = function(e) FALSE))
+  isTRUE(tryCatch(mergen_cancellable_worker_available(), error = function(e) FALSE))
 }
 
 #' Bloklayan `fs::dir_ls()` yedeği bu bağlamda serbest mi
@@ -80,12 +77,7 @@ cc_dir_listing_async_available <- function() {
 #' `fs::dir_ls()`) KESEMEZ. Ana Shiny olay döngüsünde çalışırsa çağrı dönene
 #' kadar TÜM oturumlar birlikte donar.
 #'
-#' Kural: etkin bir reaktif alan VARSA (yani ana süreçteki bir gözlemcideyiz)
-#' VE güvenli eşzamansız yol MEVCUTSA yedek kapatılır; `observe_dir_contents()`
-#' zaten işçiye gönderir ve işçide reaktif alan YOKTUR, dolayısıyla yedek orada
-#' normal çalışmaya devam eder. Eşzamansız yol yoksa (sıralı future planı,
-#' izole test) davranış AYNEN korunur: UNC sahte-boş listesine karşı tek
-#' koruma odur.
+#' Reaktif alanda bloklayan yedek çalışmaz; işçide reaktif alan yoktur.
 #'
 #' @return Bloklayan dosya sistemi yedeği çalıştırılabilirse TRUE
 cc_dir_listing_fs_fallback_allowed <- function() {
@@ -95,6 +87,6 @@ cc_dir_listing_fs_fallback_allowed <- function() {
   ))
   if (!reaktif_alanda) return(TRUE)
 
-  !isTRUE(tryCatch(cc_dir_listing_async_available(), error = function(e) FALSE))
+  FALSE
 }
 

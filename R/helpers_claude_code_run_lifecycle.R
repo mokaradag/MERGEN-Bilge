@@ -289,7 +289,8 @@ cc_handle_document_summary_run <- function(session,
   # çalıştırmanın çıktısını kaynak klasördeki dosyanın üzerine yazabilirdi.
   worker_cikti_dizini <- as.character(cikti_dizini %||% "")[1]
   if (!nzchar(worker_cikti_dizini) || !dir.exists(worker_cikti_dizini)) {
-    worker_cikti_dizini <- target_dir
+    cc_release_runtime_lease(runtime_lease)
+    stop("İzole çıktı alanı bulunamadı; doküman özeti başlatılmadı.", call. = FALSE)
   }
 
   if (!isTRUE(dokuman_baglami$text_sidecars_ready)) {
@@ -381,10 +382,16 @@ cc_handle_document_summary_run <- function(session,
       )
     },
     task_type = "claude_code_document_summary",
+    execution_timeout = zaman_asimi,
     cancel_check = function() !isTRUE(session$isClosed()) &&
       cc_is_active_run(rv, run_request_id) && isTRUE(shiny::isolate(rv$is_running)),
     session_token = session$token
   ) |>
+    promises::then(function(sonuc) {
+      if (!cc_is_active_run(rv, run_request_id)) return(sonuc)
+      cc_publish_document_summary_async(sonuc, target_dir, worker_cikti_dizini,
+        session, rv, run_request_id)
+    }) |>
     promises::then(function(sonuc) {
       on.exit(cc_release_runtime_lease(runtime_lease), add = TRUE)
       if (!cc_is_active_run(rv, run_request_id)) {
@@ -406,29 +413,7 @@ cc_handle_document_summary_run <- function(session,
         if (nzchar(sonuc$output %||% "") &&
             exists("format_claude_code_existing_file_link_html", mode = "function")) {
 
-          ozet_yolu <- tryCatch({
-            hedef_yol <- file.path(target_dir, "dosya_aciklamalari.txt")
-
-            # Ana Shiny oturumunda senkron yaz.
-			if (exists("write_claude_code_utf8_bom_text_file", mode = "function")) {
-			  write_claude_code_utf8_bom_text_file(sonuc$output %||% "", hedef_yol)
-			} else {
-			  writeLines(enc2utf8(sonuc$output %||% ""), hedef_yol, useBytes = TRUE)
-			}
-
-            if (!isTRUE(file.exists(hedef_yol)) || isTRUE(dir.exists(hedef_yol))) {
-              stop("Özet dosyası fiziksel olarak oluşturulamadı: ", hedef_yol)
-            }
-
-            normalizePath(hedef_yol, winslash = "/", mustWork = TRUE)
-          }, error = function(e) {
-            log_warn(paste(
-              CLAUDE_CODE_LOG_PREFIX,
-              "Doküman özeti ana oturumda yazılamadı:",
-              conditionMessage(e)
-            ))
-            ""
-          })
+          ozet_yolu <- sonuc$generated_summary_path %||% ""
 
           if (nzchar(ozet_yolu)) {
             sonuc$generated_summary_path <- ozet_yolu

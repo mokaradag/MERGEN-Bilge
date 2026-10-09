@@ -21,11 +21,18 @@ file_ingestion_commit_index <- function(results, user_id) {
 
 # İptal edilen partinin kopyaladığı hedefleri temizler.
 file_ingestion_discard_results <- function(results, user_id = NULL, lock_timeout_sec = 5) {
+  owned <- Filter(function(r) file_ingestion_artifact_owned(r, allow_deleting = TRUE), results %||% list())
+  pending <- Filter(function(r) {
+    owner <- file_ingestion_read_owner(r$dest)
+    isTRUE(r$transaction_pending) && identical(owner$id, r$artifact_id) &&
+      identical(owner$staging, r$staging) && identical(owner$state, "copying")
+  }, results %||% list())
   .file_store_with_index_lock({
     idx <- .load_index()
-    owned <- Filter(file_ingestion_artifact_owned, results %||% list())
     uid <- if (is.null(user_id)) NULL else as.character(user_id)
     for (r in owned) {
+      owner <- file_ingestion_read_owner(r$dest)
+      if (!identical(owner$id, r$artifact_id)) next
       entry <- .file_store_index_entry(r$dest, r$name)
       node <- if (is.null(uid)) idx[[entry$key]] else idx[[uid]][[entry$key]]
       node_path <- if (is.list(node)) node$path else node
@@ -33,18 +40,25 @@ file_ingestion_discard_results <- function(results, user_id = NULL, lock_timeout
       if (identical(node_path, entry$path) && (is.null(node_id) || identical(node_id, r$artifact_id))) {
         if (is.null(uid)) idx[[entry$key]] <- NULL else idx[[uid]][[entry$key]] <- NULL
       }
+      owner$state <- "deleting"
+      owner$pid <- Sys.getpid()
+      owner$host <- unname(Sys.info()[["nodename"]])
+      saveRDS(owner, file_ingestion_owner_path(r$dest))
     }
     .save_index(idx)
-    for (r in owned) {
-      if (!file_ingestion_artifact_owned(r)) next
-      file_ingestion_discard_dest(r$dest, r$source_path)
-      if (isTRUE(r$transaction_pending)) file_ingestion_discard_dest(r$staging, r$source_path)
-      if (file.exists(r$dest) || (!is.null(r$staging) && file.exists(r$staging)))
-        stop("Sahip olunan kopya silinemedi.")
-      if (!file.exists(r$dest) && (is.null(r$staging) || !file.exists(r$staging)))
-        unlink(c(file_ingestion_owner_path(r$dest), paste0(file_ingestion_owner_path(r$dest), ".identity")), force = TRUE)
-    }
   }, timeout_sec = lock_timeout_sec, require_lock = TRUE)
+  for (r in c(owned, pending)) {
+    owner <- file_ingestion_read_owner(r$dest)
+    if (!identical(owner$id, r$artifact_id)) next
+    if (file_ingestion_artifact_owned(r, allow_deleting = TRUE))
+      file_ingestion_discard_dest(r$dest, r$source_path)
+    if (isTRUE(r$transaction_pending) && identical(owner$staging, r$staging))
+      file_ingestion_discard_dest(r$staging, r$source_path)
+    if ((owner$state != "copying" && path_exists_relaxed(r$dest)) ||
+        (!is.null(r$staging) && path_exists_relaxed(r$staging))) stop("Sahip olunan kopya silinemedi.")
+    if (identical(file_ingestion_read_owner(r$dest)$id, r$artifact_id))
+      unlink(c(file_ingestion_owner_path(r$dest), paste0(file_ingestion_owner_path(r$dest), ".identity")), force = TRUE)
+  }
   for (r in results %||% list()) {
     if (identical(r$code, "claim_failed") && !is.null(r$identity))
       file_ingestion_discard_unclaimed(r$dest, r$source_path, r$identity)
@@ -75,13 +89,18 @@ file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard =
         tryCatch({
           failed <- Filter(function(r) !isTRUE(r$ok), results)
           if (length(failed)) file_ingestion_discard_results(failed, user_id)
-          file_ingestion_commit_index(results, user_id)
+          committed <- file_ingestion_commit_index(results, user_id)
+          declined <- Filter(function(r) isTRUE(r$ok) && !is.null(r$artifact_id) &&
+            !r$artifact_id %in% committed$committed, results)
+          if (length(declined)) file_ingestion_discard_results(declined, user_id)
+          committed
         }, error = function(e) {
           try(file_ingestion_discard_results(results, user_id), silent = TRUE)
           stop(e)
         })
       },
       task_type = "file_ingestion_index",
+      cancel_check = function() TRUE,
       session_token = job$session_token,
       dependency_mode = "explicit",
       globals = globals,
@@ -164,13 +183,13 @@ file_ingestion_rollback_job <- function(job, results, error) {
     started <- Sys.time()
     status_errors <- 0L
     poll <- function() {
-      alive <- tryCatch(isTRUE(process$is_alive()), error = function(e) NA)
+      alive <- mergen_process_status(process)
       if (is.na(alive)) status_errors <<- status_errors + 1L else status_errors <<- 0L
       expired <- as.numeric(difftime(Sys.time(), started, units = "secs")) > 30
       if (status_errors >= 3L || expired) {
-        try(process$kill_tree(), silent = TRUE)
-        try(process$kill(grace = 0), silent = TRUE)
-        return(retry(simpleError("Geri alma işçisi sonlandırıldı.")))
+        mergen_retire_process(process, function()
+          retry(simpleError("Geri alma işçisi sonlandırıldı.")))
+        return(invisible(NULL))
       }
       if (is.na(alive) || alive) {
         later::later(poll, delay = 0.1)

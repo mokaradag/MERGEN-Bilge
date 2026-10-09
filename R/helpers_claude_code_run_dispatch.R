@@ -118,9 +118,8 @@ cc_future_plan_is_async <- function() {
 #' @param ctx Çalıştırma bağlamı (session, ns, rv ve düz veriler)
 #' @return invisible(TRUE)
 cc_dispatch_run_preparation <- function(ctx) {
-  # Eşzamansız olmayan planda hazırlık ana olay döngüsünde çalışır; bu
-  # durumda çalışmayı başlatmak yerine açıkça reddederiz.
-  if (!isTRUE(cc_future_plan_is_async())) {
+  # Hazırlık kapasitesi Future planına değil, callr havuzuna aittir.
+  if (!isTRUE(mergen_cancellable_worker_available())) {
     cc_log_warn(paste(
       CLAUDE_CODE_LOG_PREFIX,
       "[RUNTIME_PREPARE] Eşzamansız worker planı yok; çalıştırma reddedildi."
@@ -366,6 +365,7 @@ cc_start_streaming_run <- function(ctx, prep) {
   session <- ctx$session
   ns <- ctx$ns
   rv <- ctx$rv
+  cc_bind_runtime_lease(prep$runtime_lease %||% "")
   lease_handed_off <- FALSE
   on.exit({
     if (!isTRUE(lease_handed_off)) {
@@ -616,6 +616,7 @@ cc_start_streaming_run <- function(ctx, prep) {
     # `tryCatch` gövdesi çağıran çerçevede değerlendirilir; `<<-` yerel bağı
     # atlayıp genel ortama yazar ve hata dalı süreci NULL görürdü.
     baslatilan_surec <- proc
+    cc_bind_runtime_lease(prep$runtime_lease %||% "", proc)
     rv$active_process <- proc
     lease_handed_off <- TRUE
     # Dönüş değeri DENETLENİR ama çalıştırmayı kesmez: sinyal gözlemlenebilir
@@ -634,13 +635,12 @@ cc_start_streaming_run <- function(ctx, prep) {
     hata_metni <- conditionMessage(e)
 
     if (!is.null(baslatilan_surec)) {
-      tryCatch({
-        if (isTRUE(baslatilan_surec$is_alive())) baslatilan_surec$kill()
-      }, error = function(e2) NULL)
+      lease_handed_off <<- TRUE
+      lease <- stream_env$runtime_lease %||% ""
+      mergen_retire_process(baslatilan_surec, function() cc_release_runtime_lease(lease))
       rv$active_process <- NULL
       # Süreç öldürüldü: lease devri geçersizdir. Aksi hâlde lease'i tazeleyen
       # yoklama gözlemcisi hiç kurulmuyor ve kilit orphan TTL'ine kadar tutuluyordu.
-      lease_handed_off <<- FALSE
     }
     log_error(paste(
       CLAUDE_CODE_LOG_PREFIX,

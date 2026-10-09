@@ -236,7 +236,9 @@ make_user_session_data_accessors <- function(session) {
       set_value("user_config", app_user_config)
       # Aynı kullanıcının yetki düzeyi değişirse de sinyal artar (ör. ADMIN kaybı).
       mergen_session_owner_transition(user_data, eski_uid, uid,
-                                      yetki_degisti = !identical(eski_yetki, app_user_config$auth_level))
+        yetki_degisti = .normalize_user_session_id(eski_uid) > 0L &&
+          identical(.normalize_user_session_id(eski_uid), uid) && !is.null(eski_yetki) &&
+          !identical(eski_yetki, app_user_config$auth_level))
 
       invisible(app_user_config)
     },

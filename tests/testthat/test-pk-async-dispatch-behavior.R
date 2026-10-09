@@ -658,7 +658,8 @@ test_that("meşgul veya doğrulanmamış PK havuzu senkron analiz başlatmaz", {
     h <- .pk_ctx(env)
     result <- env$mergen_pk_analysis_execute(h$ctx)
     expect_identical(result$action, "answer")
-    expect_match(result$answer, "henüz hazır değil veya meşgul", fixed = TRUE)
+    if (reason == "plan_sequential") expect_match(result$answer, "Analiz Altyapısı Hazır Değil", fixed = TRUE) else
+      expect_match(result$answer, "henüz hazır değil veya meşgul", fixed = TRUE)
   }
 })
 
@@ -673,4 +674,19 @@ test_that("kalıcı işçi altyapısı eksikliği geçici meşgul yanıtına dö
       expect_match(outcome$answer, "biraz sonra", fixed = TRUE)
     }
   }
+})
+
+test_that("senkron gönderim hatası kabul jetonunu ve köken kaydını tam bir kez bırakır", {
+  env <- .pk_dispatch_env()
+  .pk_arm_async(env)
+  env$tracked_future_promise <- function(...) stop("gönderilemedi")
+  releases <- taken <- 0L
+  env$mergen_send_message_release_values_token <- function(...) releases <<- releases + 1L
+  env$pk_provenance_take <- function(...) taken <<- taken + 1L
+  h <- .pk_ctx(env)
+  result <- env$mergen_pk_analysis_execute(h$ctx)
+  expect_identical(result$action, "answer")
+  expect_identical(releases, 1L)
+  expect_identical(taken, 1L)
+  expect_length(h$kayit$devam, 0L)
 })

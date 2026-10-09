@@ -42,15 +42,18 @@ filePreviewServer <- function(id) {
     # yalnızca belirteç hâlâ kendi açılışıyla aynıysa UI mesajını gönderir.
     docx_preview_seq <- reactiveVal(0L)
     if (exists("mergen_session_on_owner_change", mode = "function")) {
-      mergen_session_on_owner_change(session, function(neden) {
+      clear_preview <- function(neden = NULL) {
         file_storage$preview_file <- NULL
         veri_jetonlari <<- list()
         # Süren DOCX kodlaması ve önbellek yeni sahibe taşınmaz.
         docx_preview_seq(isolate(docx_preview_seq()) + 1L)
         preview_b64_cache(list())
         preview_docx_cache(list())
-        try(removeModal(session = session), silent = TRUE)
-      })
+        if (!identical(neden, "session_end") && !isTRUE(session$isClosed()))
+          try(removeModal(session = session), silent = TRUE)
+      }
+      mergen_session_on_owner_change(session, clear_preview)
+      session$onSessionEnded(function() clear_preview("session_end"))
     }
 
     observeEvent(input$preview_closed, {
@@ -59,30 +62,7 @@ filePreviewServer <- function(id) {
       file_storage$preview_file <- NULL
     }, ignoreInit = TRUE)
 
-    # Dosya yolu + boyut + değişiklik zamanına göre önbellek anahtarı üretir
-    build_preview_cache_key <- function(path) {
-      dp <- if (exists("resolve_readable_path", mode = "function")) {
-        resolve_readable_path(path)
-      } else {
-        path
-      }
-
-      finfo <- tryCatch(file.info(dp), error = function(e) NULL)
-
-      size_txt <- if (!is.null(finfo) && !is.na(finfo$size[1])) {
-        as.character(finfo$size[1])
-      } else {
-        "nosize"
-      }
-
-      mtime_txt <- if (!is.null(finfo) && !is.na(finfo$mtime[1])) {
-        format(finfo$mtime[1], "%Y%m%d%H%M%S")
-      } else {
-        "nomtime"
-      }
-
-      paste(dp, size_txt, mtime_txt, sep = "||")
-    }
+    build_preview_cache_key <- mergen_preview_cache_key
 
     # Önbellekten base64 değeri getirir
     get_cached_base64 <- function(path) {
@@ -104,8 +84,7 @@ filePreviewServer <- function(id) {
       }
 
       cache_key <- build_preview_cache_key(path)
-      cache <- preview_b64_cache()
-      cache[[cache_key]] <- b64_value[1]
+      cache <- mergen_preview_cache_put(preview_b64_cache(), cache_key, b64_value[1])
       preview_b64_cache(cache)
 
       invisible(TRUE)
@@ -415,10 +394,10 @@ filePreviewServer <- function(id) {
               if (!is.character(b64) || !length(b64) || !nzchar(b64[1])) {
                 return(preview_error(simpleError("DOCX içeriği hazırlanamadı.")))
               }
-              cache <- isolate(preview_docx_cache())
-              cache[[cache_id]] <- list(key = attr(b64, "cache_key"), base64 = as.character(b64[1]))
-              preview_docx_cache(cache)
               if (!identical(isolate(docx_preview_seq()), docx_open_token)) return(NULL)
+              cache <- mergen_preview_cache_put(isolate(preview_docx_cache()), cache_id,
+                list(key = attr(b64, "cache_key"), base64 = as.character(b64[1])))
+              preview_docx_cache(cache)
               resolved <- attr(b64, "resolved_path")
               if (!is.null(resolved)) file_storage$preview_file$datapath <- resolved
               session$sendCustomMessage("openDocxPreview", list(

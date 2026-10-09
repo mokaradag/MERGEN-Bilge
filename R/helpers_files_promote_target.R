@@ -59,7 +59,7 @@ MERGEN_PROMOTE_RESERVATION_SUFFIX <- ".mergen-rsv"
 # Dönen liste: ok (görünürlük dâhil başarı), yabanci (hedef başka bir yüklemeye
 # ait mi), promoted (hedefi BU çağrı oluşturdu mu).
 mergen_promote_staged_file <- function(staging, hedef, var_mi,
-                                       gorunurluk_denemesi = 10L) {
+                                       gorunurluk_denemesi = 10L, allow_copy = TRUE) {
   var_mi_guvenli <- function(p) mergen_promote_probe(var_mi, p)
 
   # 1) ATOMİK, ÜZERİNE-YAZMAYAN TERFİ. `file.link()` hedef VARSA başarısız olur,
@@ -95,6 +95,8 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
   alindi <- nzchar(jeton) &&
     exists("mergen_reservation_acquire", mode = "function", inherits = TRUE) &&
     isTRUE(mergen_reservation_acquire(rezerv, jeton))
+  if (!alindi && exists("mergen_reservation_takeover", mode = "function"))
+    alindi <- isTRUE(mergen_reservation_takeover(rezerv, jeton))
   if (!alindi) {
     # FAIL-CLOSED: rezervasyon alınamadıysa terfi DENENMEZ. Sessizce jetonsuz
     # `file.rename()` yapmak, düzeltilen yarışı geri getirirdi.
@@ -109,7 +111,7 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
       list(ok = FALSE, yabanci = TRUE, promoted = FALSE)
     } else {
       tasindi <- isTRUE(tryCatch(file.rename(staging, hedef), error = function(e) FALSE))
-      if (!tasindi && var_mi_guvenli(staging)) {
+      if (!tasindi && isTRUE(allow_copy) && var_mi_guvenli(staging)) {
         # `overwrite = FALSE`: eşzamanlı beliren hedef EZİLMEZ.
         tasindi <- isTRUE(tryCatch(file.copy(staging, hedef, overwrite = FALSE),
                                    error = function(e) FALSE))

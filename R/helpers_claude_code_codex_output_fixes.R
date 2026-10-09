@@ -319,6 +319,7 @@ cc_report_output_sync_failure <- function(ctx, outputs) {
 # Independent output deadline with explicit cancellation, plus synchronous
 # dispatch cleanup of both the guard and runtime lease.
 cc_dispatch_run_output_processing <- function(ctx) {
+  run_ref <- cc_run_state_reference(ctx$rv)
   guard <- file.path(
     ctx$env$runtime_layout$metadata %||% tempdir(),
     paste0("output-sync-", gsub("[^A-Za-z0-9_.-]", "_", ctx$env$request_id %||% "run"), ".active")
@@ -341,6 +342,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
     cc_report_output_processing_failure(ctx, simpleError("Çıktı aktarım koruma dosyası oluşturulamadı."))
     return(invisible(TRUE))
   }
+  ctx$env$output_worker_pending <- TRUE
   ctx$env$output_sync_guard <- guard
   request <- cc_build_run_output_request(ctx$env, ctx$ayristirma$tool_uses %||% list())
 
@@ -375,11 +377,11 @@ cc_dispatch_run_output_processing <- function(ctx) {
   # önce `failed` kalıcılaştırılmış çalıştırmayı `completed` yazabiliyordu.
   deadline$expired <- FALSE
   deadline$cancel <- later::later(function() {
+    ctx$rv <- run_ref$rv
     if (!isTRUE(deadline$pending)) return(invisible(NULL))
     deadline$pending <- FALSE
     deadline$expired <- TRUE
     unlink(request$active_guard, force = TRUE)
-    if (is.null(lease_birak)) unlink(dispatched_lease, force = TRUE) else try(lease_birak(dispatched_lease), silent = TRUE)
     if (cc_is_active_run(ctx$rv, dispatched_request_id)) {
       cc_report_output_processing_failure(ctx, simpleError(sprintf(
         "Çıktı işleme zaman aşımına uğradı (%.0f saniye).", timeout_sec
@@ -395,6 +397,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
     invisible(NULL)
   }
   cleanup <- function() {
+    ctx$env$output_worker_pending <- FALSE
     unlink(request$active_guard, force = TRUE)
     if (is.null(lease_birak)) unlink(dispatched_lease, force = TRUE) else try(lease_birak(dispatched_lease), silent = TRUE)
     invisible(NULL)
@@ -404,12 +407,16 @@ cc_dispatch_run_output_processing <- function(ctx) {
     tracked_future_promise(
       task_fn = function() cc_process_run_outputs(request),
       task_type = "claude_code_run_outputs",
+      execution_timeout = timeout_sec,
+      cancel_check = cc_output_worker_current(ctx$rv, dispatched_request_id, deadline),
       session_token = ctx$session$token,
       dependency_mode = "explicit",
       globals = c(list(request = request), cc_run_output_worker_globals()),
       packages = c("tools", "utils")
     ) |>
       promises::then(function(outputs) {
+        ctx$rv <- run_ref$rv
+        ctx$env$output_worker_pending <- FALSE
         cancel_deadline()
         if (isTRUE(deadline$expired) ||
             !cc_is_active_run(ctx$rv, dispatched_request_id)) {
@@ -438,6 +445,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
         NULL
       }) |>
       promises::catch(function(e) {
+        ctx$rv <- run_ref$rv
         cancel_deadline()
         cleanup()
         if (!isTRUE(deadline$expired) &&
@@ -496,7 +504,8 @@ cc_dispatch_run_output_processing <- function(ctx) {
   # hazırlık, çalışma alanını geri kazanmak yerine başarısız oluyordu.
   ".CC_RUNTIME_LOCK_STATE", "cc_runtime_cleanup_lock_heartbeat",
   "cc_runtime_unlink_stepwise",
-  "cc_reclaim_orphaned_runtime_dirs"
+  "cc_reclaim_orphaned_runtime_dirs", "mergen_lock_owner_dead", "mergen_pid_status",
+  "cc_bind_runtime_lease", "cc_runtime_lease_owner_dead", "cc_runtime_has_foreign_lease"
 )
 
 .cc_codex_output_worker_names <- c(

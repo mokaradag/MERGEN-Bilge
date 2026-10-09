@@ -869,3 +869,61 @@ test_that("depolama öneki olmayan gerçekten eksik doküman hâlâ reddedilir",
     fixed = FALSE
   )
 })
+
+test_that("özet terfisi gerçek callr ve üretim aktarım denetimleriyle tamamlanır", {
+  env <- .cc_codex_review_env()
+  for (file in c("helpers_worker_monitor.R", "helpers_worker_cancellation.R",
+    "helpers_claude_code_run_lifecycle.R", "helpers_document_output_publication.R"))
+    source(file.path(resolve_repo_root_for_tests(), "R", file), local = env)
+  env$cc_run_output_worker_globals <- function() {
+    bundle <- list(cc_apply_output_sync_plan = env$cc_apply_output_sync_plan)
+    c(bundle, env$worker_monitor_expand_function_globals(bundle))
+  }
+  output_dir <- withr::local_tempdir(); target_dir <- withr::local_tempdir()
+  source_path <- file.path(output_dir, "dosya_aciklamalari.txt")
+  dest <- file.path(target_dir, "dosya_aciklamalari.txt")
+  writeLines("gerçek özet", source_path); writeLines("önceki özet", dest)
+  shiny::testServer(function(input, output, session) NULL, {
+    session$userData$user_id <- 7L
+    rv <- shiny::reactiveValues(is_running = TRUE, active_request_id = "A",
+      run_owner_guard = mergen_session_owner_guard(session))
+    result <- NULL; failure <- NULL
+    promise <- env$cc_publish_document_summary_async(list(success = TRUE,
+      generated_summary_path = source_path), target_dir, output_dir, session, rv, "A")
+    promises::then(promise, function(value) result <<- value, function(e) failure <<- e)
+    expect_identical(readLines(dest), "önceki özet")
+    deadline <- Sys.time() + 15
+    while (is.null(result) && is.null(failure) && Sys.time() < deadline) later::run_now(0.01)
+    expect_null(failure)
+    expect_true(is.list(result))
+    expect_identical(readLines(dest), "gerçek özet")
+    expect_length(env$.MERGEN_CANCELLABLE_WORKERS$jobs, 0L)
+  })
+})
+
+
+test_that("canlı veya belirsiz runtime lease sahipliği devredilemez", {
+  env <- .cc_codex_review_env()
+  runtime <- withr::local_tempdir()
+  prepare <- new.env(parent = env)
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_run_prepare_task.R"),
+         encoding = "UTF-8", local = prepare)
+  env$cc_runtime_owner_file <- prepare$cc_runtime_owner_file
+  prepare$.cc_runtime_workdir_reusable <- function(...) TRUE
+  expect_true(nzchar(env$cc_claim_runtime_ownership(runtime, "old")))
+  lease <- file.path(runtime, "metadata", "active-run-old.lease")
+  env$cc_bind_runtime_lease(lease)
+  Sys.setFileTime(lease, Sys.time() - 100000)
+  expect_identical(env$cc_claim_runtime_ownership(runtime, "new"), "")
+  expect_true(env$cc_runtime_ownership_is(runtime, "old"))
+  expect_error(prepare$cc_acquire_reused_runtime_lease(runtime, 7L, "new"), "lease devralınamaz")
+  expect_false(file.exists(file.path(runtime, "metadata", "active-run-new.lease")))
+  writeLines(c("host=unknown-host", "pid=2147483647"), lease)
+  expect_identical(env$cc_claim_runtime_ownership(runtime, "new"), "")
+  writeLines(c(paste0("host=", Sys.info()[["nodename"]]), "pid=2147483647"), lease)
+  expect_true(env$cc_runtime_lease_owner_dead(lease))
+  expect_true(nzchar(env$cc_claim_runtime_ownership(runtime, "new")))
+  expect_true(env$cc_runtime_ownership_is(runtime, "new"))
+  acquired <- prepare$cc_acquire_reused_runtime_lease(runtime, 7L, "new")
+  expect_true(file.exists(acquired))
+})

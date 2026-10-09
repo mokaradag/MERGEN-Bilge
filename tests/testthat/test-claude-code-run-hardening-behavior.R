@@ -477,6 +477,8 @@ test_that("cc_report_output_scan_truncation kesilmemiş taramayı başarısız s
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(x, y) if (is.null(x)) y else x
+  source(file.path(repo_root, "R", "helpers_claude_code_runtime_lease.R"),
+         encoding = "UTF-8", local = env)
 
   # Dosya, tepe seviyede yalnızca yardımcı tanımları içerir.
   source(
@@ -587,7 +589,7 @@ test_that("cc_future_plan_is_async sequential planı eşzamansız saymaz", {
   expect_false(env$cc_future_plan_is_async())
 })
 
-test_that("cc_dispatch_run_preparation eşzamansız plan yoksa çalıştırmayı reddeder", {
+test_that("cc_dispatch_run_preparation callr desteği yoksa çalıştırmayı reddeder", {
   skip_if_not_installed("future")
 
   repo_root <- resolve_repo_root_for_tests()
@@ -614,8 +616,9 @@ test_that("cc_dispatch_run_preparation eşzamansız plan yoksa çalıştırmayı
     invisible(TRUE)
   }
   env$cc_finalize_if_active <- function(...) invisible(TRUE)
+  env$mergen_cancellable_worker_available <- function() FALSE
   env$tracked_future_promise <- function(...) {
-    stop("Eşzamansız plan yokken worker gönderilmemelidir.")
+    stop("Callr desteği yokken worker gönderilmemelidir.")
   }
 
   onceki <- future::plan()

@@ -450,3 +450,65 @@ testthat::test_that("answer self-check catches validation overclaims from proof 
     "Answer-check overclaim hatalarını yakalamadı:"
   )
 })
+
+testthat::test_that("quick doğrulaması gerçek test hatası ve uyarısında başarısız çıkar", {
+  repo_root <- .ai_validation_proof_repo_root()
+  expressions <- as.list(parse(file.path(repo_root, "tests", "scripts", "ai_repo_check.R")))
+  branch <- Filter(function(x) is.call(x) && identical(x[[1L]], as.name("if")) &&
+    identical(x[[2L]], quote(profile == "quick")), expressions)[[1L]]
+  build <- Filter(function(x) is.call(x) && identical(x[[1L]], as.name("<-")) &&
+    identical(x[[2L]], as.name("test_expr")), as.list(branch[[3L]]))[[1L]]
+  for (case in c("failure", "warning")) {
+    test_path <- withr::local_tempfile(fileext = ".R")
+    script_path <- withr::local_tempfile(fileext = ".R")
+    marker <- paste0("intentional-", case)
+    body <- if (case == "failure")
+      sprintf('testthat::test_that("gate", { testthat::expect_true(FALSE, info = "%s") })', marker) else
+      sprintf('testthat::test_that("gate", { warning("%s"); testthat::expect_true(TRUE) })', marker)
+    writeLines(body, test_path)
+    variables <- new.env(parent = baseenv())
+    variables$quick_tests_literal <- paste0("c(", encodeString(normalizePath(test_path,
+      winslash = "/", mustWork = TRUE), quote = '"'), ")")
+    writeLines(eval(build[[3L]], variables), script_path)
+    result <- suppressWarnings(system2(Sys.which("Rscript"), shQuote(script_path),
+      stdout = TRUE, stderr = TRUE))
+    testthat::expect_identical(as.integer(attr(result, "status")), 1L)
+    testthat::expect_match(paste(result, collapse = "\n"), marker, fixed = TRUE)
+  }
+})
+
+testthat::test_that("yanıt denetimi güncel başarı ve hata kanıtı yazıldıktan sonra çalışır", {
+  repo_root <- .ai_validation_proof_repo_root()
+  expressions <- as.list(parse(file.path(repo_root, "tests", "scripts", "ai_repo_check.R")))
+  writer <- Filter(function(x) is.call(x) && identical(x[[1L]], as.name("<-")) &&
+    identical(x[[2L]], as.name("write_validation_summary")), expressions)[[1L]]
+  branch <- Filter(function(x) is.call(x) && identical(x[[1L]], as.name("if")) &&
+    grepl("answer self-check", paste(deparse(x), collapse = " "), fixed = TRUE), expressions)[[1L]]
+  variables <- new.env(parent = globalenv())
+  source(file.path(repo_root, "tests", "scripts", "helpers_validation_proof_status.R"),
+    local = variables, encoding = "UTF-8")
+  variables$profile <- "quick"
+  variables$repo_root <- repo_root
+  variables$artifact_root <- withr::local_tempdir()
+  variables$boot_smoke <- FALSE
+  variables$skip_app_source_smoke <- FALSE
+  variables$answer_path <- file.path(variables$artifact_root, "answer.md")
+  variables$rscript <- Sys.which("Rscript")
+  writeLines("Quick validation passed.", variables$answer_path)
+  eval(writer, variables)
+  for (status in c(0L, 1L)) {
+    variables$steps <- list(.ai_validation_proof_step("environment"),
+      .ai_validation_proof_step("parse sanity"), .ai_validation_proof_step("app source smoke"),
+      .ai_validation_proof_step("focused contract tests", status = status))
+    variables$run_step <- function(label, command, args) {
+      testthat::expect_identical(label, "answer self-check")
+      testthat::expect_true(file.exists(file.path(variables$artifact_root, "summary.json")))
+      result <- suppressWarnings(system2(command, shQuote(args), stdout = TRUE, stderr = TRUE))
+      actual <- attr(result, "status") %||% 0L
+      testthat::expect_identical(as.integer(actual), status)
+      testthat::expect_match(paste(result, collapse = "\n"),
+        if (status == 0L) "OK: answer self-check passed." else "failed_steps=1", fixed = TRUE)
+    }
+    withr::with_dir(repo_root, eval(branch, variables))
+  }
+})

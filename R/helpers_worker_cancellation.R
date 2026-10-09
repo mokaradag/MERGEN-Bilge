@@ -2,7 +2,10 @@
 .MERGEN_CANCELLABLE_WORKERS <- new.env(parent = emptyenv())
 
 mergen_process_status <- function(process) {
-  tryCatch(isTRUE(process$is_alive()), error = function(e) NA)
+  tryCatch({
+    status <- process$is_alive()
+    if (identical(status, TRUE) || identical(status, FALSE)) status else NA
+  }, error = function(e) NA)
 }
 
 mergen_process_alive <- function(process) isTRUE(mergen_process_status(process))
@@ -11,18 +14,20 @@ mergen_process_stop <- function(process) {
   if (identical(mergen_process_status(process), FALSE)) return(TRUE)
   try(process$kill_tree(), silent = TRUE)
   try(process$kill(grace = 0), silent = TRUE)
-  !isTRUE(mergen_process_status(process))
+  identical(mergen_process_status(process), FALSE)
 }
 
 mergen_retire_process <- function(process, release) {
   released <- FALSE
+  attempts <- 0L
   poll <- function() {
     if (released) return(invisible(NULL))
     if (mergen_process_stop(process)) {
       released <<- TRUE
       try(release(), silent = TRUE)
     } else {
-      mergen_cancellable_worker_schedule(poll, delay = 0.5)
+      attempts <<- attempts + 1L
+      mergen_cancellable_worker_schedule(poll, delay = min(5, 0.5 * attempts))
     }
     invisible(NULL)
   }
@@ -31,7 +36,7 @@ mergen_retire_process <- function(process, release) {
 
 mergen_cancellable_worker_capacity <- function() {
   configured <- getOption("mergen.cancellable_workers", NULL)
-  if (is.null(configured)) configured <- tryCatch(future::nbrOfWorkers(), error = function(e) 1L)
+  if (is.null(configured)) configured <- if (exists("resolve_mergen_worker_count", mode = "function")) resolve_mergen_worker_count() else 2L
   value <- suppressWarnings(as.integer(configured)[1])
   if (length(value) != 1L || is.na(value) || value < 1L) 1L else value
 }
@@ -39,8 +44,15 @@ mergen_cancellable_worker_capacity <- function() {
 mergen_cancellable_worker_settle <- function(job, error = NULL) {
   if (isTRUE(job$finished)) return(invisible(NULL))
   job$finished <- TRUE
-  if (!is.null(error)) try(job$reject(error), silent = TRUE) else
-    tryCatch(job$resolve(job$process$get_result()), error = function(e) try(job$reject(e), silent = TRUE))
+  unwrap <- function(e) {
+    for (i in seq_len(16L)) {
+      if (!inherits(e, "callr_error") || !inherits(e$parent, "condition")) break
+      e <- e$parent
+    }
+    e
+  }
+  if (!is.null(error)) try(job$reject(unwrap(error)), silent = TRUE) else
+    tryCatch(job$resolve(job$process$get_result()), error = function(e) try(job$reject(unwrap(e)), silent = TRUE))
   invisible(NULL)
 }
 
@@ -50,19 +62,33 @@ mergen_cancellable_worker_tick <- function() {
   keep <- list()
   for (job in state$jobs) {
     if (isTRUE(job$finished)) next
+    if (!is.null(job$next_probe) && Sys.time() < job$next_probe) {
+      keep[[length(keep) + 1L]] <- job
+      next
+    }
     expired <- !is.null(job$started) &&
       as.numeric(difftime(Sys.time(), job$started, units = "secs")) > job$timeout
-    job$cancelled <- isTRUE(job$cancelled) || expired ||
+    queue_expired <- is.null(job$started) &&
+      as.numeric(difftime(Sys.time(), job$created, units = "secs")) > (job$queue_timeout %||% job$timeout)
+    job$cancelled <- isTRUE(job$cancelled) || expired || queue_expired ||
       !isTRUE(tryCatch(job$current(), error = function(e) FALSE))
     status <- if (is.null(job$process)) FALSE else mergen_process_status(job$process)
     if (is.na(status)) {
       job$status_errors <- (job$status_errors %||% 0L) + 1L
       if (job$status_errors < 3L) { keep[[length(keep) + 1L]] <- job; next }
       job$cancelled <- TRUE
+      job$quarantined <- TRUE
     } else job$status_errors <- 0L
     alive <- if (!is.null(job$process) && job$cancelled)
       !mergen_process_stop(job$process) else isTRUE(status)
     if (!is.null(job$process) && alive) {
+      if (job$cancelled) {
+        job$termination_attempts <- (job$termination_attempts %||% 0L) + 1L
+        if (job$termination_attempts >= 3L) {
+          job$quarantined <- TRUE
+          job$next_probe <- Sys.time() + 5
+        }
+      }
       keep[[length(keep) + 1L]] <- job
       next
     }
@@ -82,6 +108,7 @@ mergen_cancellable_worker_tick <- function() {
     started <- tryCatch({
       job$process <- mergen_cancellable_worker_launch(job$payload)
       job$started <- Sys.time()
+      job$payload <- NULL
       TRUE
     }, error = function(e) { mergen_cancellable_worker_settle(job, e); FALSE })
     if (started) running <- running + 1L
@@ -104,7 +131,10 @@ mergen_cancellable_worker_launch <- function(payload) {
   stdout = NULL, stderr = NULL, user_profile = FALSE, system_profile = FALSE)
 }
 
-mergen_cancellable_worker_promise <- function(payload, current, timeout = 1800, priority = 0L) {
+mergen_cancellable_worker_promise <- function(payload, current, timeout = 1800, priority = 0L,
+                                              queue_timeout = min(timeout, 300)) {
+  if (!is.finite(timeout) || timeout <= 0 || !is.finite(queue_timeout) || queue_timeout <= 0)
+    stop("İşçi son tarihleri sonlu ve pozitif olmalıdır.")
   state <- .MERGEN_CANCELLABLE_WORKERS
   if (is.null(state$jobs)) state$jobs <- list()
   if (length(state$jobs) >= if (priority > 1L) 32L else 34L) {
@@ -119,6 +149,7 @@ mergen_cancellable_worker_promise <- function(payload, current, timeout = 1800, 
     job$created <- Sys.time()
     job$started <- NULL
     job$timeout <- timeout
+    job$queue_timeout <- queue_timeout
     job$priority <- as.integer(priority)
     job$resolve <- resolve
     job$reject <- reject

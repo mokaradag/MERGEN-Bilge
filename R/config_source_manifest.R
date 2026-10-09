@@ -37,7 +37,7 @@ source_manifest_sections <- list(
     "R/helpers_index_page_cache.R",
     "R/helpers_app_http_routes.R",
     "R/utils_rate_limiter.R",
-    "R/helpers_worker_monitor.R", "R/helpers_worker_dep_cache.R", "R/helpers_worker_cancellation.R"  # bağımlılık önbelleği monitor'dan SONRA
+    "R/helpers_worker_monitor.R", "R/helpers_worker_dep_cache.R", "R/helpers_process_ownership.R", "R/helpers_worker_cancellation.R"  # bağımlılık önbelleği monitor'dan SONRA
   ),
 
   # post_future_utils: Future cluster SONRASI yardımcılar: yol/güvenli yol, yol
@@ -469,7 +469,7 @@ source_manifest_sections <- list(
     # (hidrasyon + yeni oturum) module_claude_code.R tarafından çağrılır.
     "R/helpers_claude_code_session_persistence.R",
     "R/helpers_claude_code_workbench_session_api.R",
-    "R/helpers_claude_code_run_lifecycle.R",
+    "R/helpers_document_output_publication.R", "R/helpers_claude_code_run_lifecycle.R",
     # Ana süreç tarafı: hazırlık gönderimi/aşama durumu ve süreç başlatma, sonra
     # çıktı işleme (worker gövdesi) + deadline'lı gönderim (output_dispatch).
     "R/helpers_claude_code_run_dispatch.R",
@@ -520,7 +520,7 @@ source_manifest_sections <- list(
   module_files_media = c(
     "R/module_file_manager_ui.R",
     "R/module_file_manager.R",
-    "R/module_file_preview.R",
+    "R/helpers_preview_cache.R", "R/module_file_preview.R",
     "R/module_image_generation.R",
     "R/module_image_generation_ui.R",
     "R/module_image_gallery.R",

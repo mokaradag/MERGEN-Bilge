@@ -52,7 +52,9 @@ mergen_copy_upload_staged <- function(datapath, final_dest, base_root,
     staging = staging,
     var_mi = var_mi,
     gorunur_mu = gorunur_mu,
-    temizle = temizle
+    temizle = temizle,
+    rebind = if (is.null(transaction)) NULL else function(dest, stage)
+      file_ingestion_begin_copy(dest, stage, datapath, transaction)
   )
   staging <- kopya$staging
   hedef <- kopya$hedef
@@ -88,14 +90,16 @@ mergen_copy_upload_staged <- function(datapath, final_dest, base_root,
     stop(sprintf("Kalıcı hedef zaten var; üzerine yazılmadı: %s", basename(hedef)))
   }
 
+  if (!is.null(transaction)) file_ingestion_prepare_promotion(staging, hedef, transaction)
   terfi_sonuc <- mergen_promote_staged_file(
     staging = staging,
     hedef = hedef,
     var_mi = var_mi,
-    gorunurluk_denemesi = gorunurluk_denemesi
+    gorunurluk_denemesi = gorunurluk_denemesi, allow_copy = is.null(transaction)
   )
 
   if (isTRUE(terfi_sonuc$promoted)) {
+    if (!is.null(transaction)) file_ingestion_claim_artifact(hedef, id = transaction$id)
     # TERFİ TAMAMLANDI. `ok` yalnızca görünürlük yoklamasının sonucudur ve
     # yavaş bir UNC paylaşımında `FALSE` dönebilir; bu durumda hedefi silmek
     # BAŞARIYLA yüklenmiş dosyayı yok ediyordu (staging adı da düşürülmüştü,
@@ -112,7 +116,8 @@ mergen_copy_upload_staged <- function(datapath, final_dest, base_root,
   if (!isTRUE(terfi_sonuc$ok)) {
     # Yarıda kalan hedefi YALNIZCA bu çağrı oluşturmuş olabilir; EŞZAMANLI
     # beliren hedef `yabanci` olarak işaretlenir ve DOKUNULMAZ.
-    if (!isTRUE(terfi_sonuc$yabanci)) temizle(hedef)
+    if (!isTRUE(terfi_sonuc$yabanci) && (is.null(transaction) ||
+        file_ingestion_artifact_owned(list(dest = hedef, artifact_id = transaction$id)))) temizle(hedef)
     temizle(staging)
     stop(sprintf("Kopyalanan dosya kalıcı ada taşınamadı: %s", basename(hedef)))
   }

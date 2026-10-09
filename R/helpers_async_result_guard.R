@@ -102,15 +102,22 @@ mergen_bind_request_owner_cleanup <- function(session, active_request_id, req_id
     !isTRUE(if (is.function(stop_generation)) .mergen_request_state_read(stop_generation) else FALSE)
   session$userData$llm_worker_guard <- current
   remove_owner <- remove_end <- function() NULL
+  lifecycle_observer <- NULL
   remove <- function() {
     try(remove_owner(), silent = TRUE)
     try(remove_end(), silent = TRUE)
+    if (!is.null(lifecycle_observer)) lifecycle_observer$destroy()
+    lifecycle_observer <<- NULL
     if (identical(session$userData$llm_worker_guard, current)) session$userData$llm_worker_guard <- NULL
   }
   cleanup <- function(...) {
     remove()
     mergen_clear_request_state(session, active_request_id, req_id, reset_fn, values)
   }
+  if (is.function(session$onSessionEnded) && is.function(session$isClosed)) lifecycle_observer <- shiny::observe({
+    shiny::invalidateLater(50, session)
+    if (!isTRUE(current())) cleanup()
+  }, domain = session)
   remove_owner <- mergen_session_on_owner_change(session, cleanup)
   if (is.function(session$onSessionEnded)) remove_end <- session$onSessionEnded(cleanup)
   remove
@@ -183,4 +190,8 @@ mergen_dispatch_docx_preview <- function(path, session_token, cached = NULL,
     value
   }
   if (promises::is.promise(promise)) promises::then(promise, apply_cache) else apply_cache(promise)
+}
+
+mergen_cancellable_tts_engine <- function(engine, current) {
+  function(text, voice) engine(text, voice, cancel_check = current)
 }

@@ -25,7 +25,17 @@
   function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   function nextPaint() {
     return new Promise(function (resolve) {
-      requestAnimationFrame(function () { requestAnimationFrame(resolve); });
+      var finished = false;
+      function finish() {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        var box = document.documentElement.getBoundingClientRect();
+        check(box.width > 0 && box.height > 0, 'çizim için gerçek yerleşim oluştu');
+        resolve();
+      }
+      var timer = setTimeout(finish, 1000);
+      requestAnimationFrame(function () { requestAnimationFrame(finish); });
     });
   }
 

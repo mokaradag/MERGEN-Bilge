@@ -357,7 +357,12 @@ mergen_index_persisted_files <- function(entries, user_id = NULL) {
   .file_store_mutate_index(function(idx) {
     for (kayit in hazirlanan) {
       if (!is.null(kayit$artifact_id) &&
-          !file_ingestion_artifact_owned(list(dest = kayit$path, artifact_id = kayit$artifact_id))) next
+          !file_ingestion_artifact_owned(list(dest = kayit$path, artifact_id = kayit$artifact_id), allow_deleting = FALSE)) next
+      node <- if (is.null(user_id)) idx[[kayit$key]] else idx[[as.character(user_id)]][[kayit$key]]
+      if (!is.null(kayit$artifact_id) && !is.null(node) &&
+          !(is.list(node) && identical(node$path, kayit$path) &&
+            (identical(node$artifact_id, kayit$artifact_id) ||
+             !file_ingestion_artifact_owned(list(dest = node$path, artifact_id = node$artifact_id))))) next
       girdi <- list(path = kayit$path, display = kayit$display)
       if (!is.null(kayit$artifact_id)) girdi$artifact_id <- kayit$artifact_id
       indexed <<- c(indexed, kayit$display)

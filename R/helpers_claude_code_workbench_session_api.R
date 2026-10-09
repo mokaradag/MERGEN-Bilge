@@ -202,6 +202,7 @@ cc_create_workbench_session_api <- function(session,
 # Sahip değişince çalışan süreç ve devam bağlamı birlikte geçersizleşir.
 cc_reset_workbench_owner <- function(rv, dir_refresh_guard) {
   rv$active_request_id <- NULL
+  if (nzchar(rv$summary_sync_guard %||% "")) unlink(rv$summary_sync_guard, force = TRUE)
   env <- rv$stream_env
   if (is.environment(env)) {
     env$durduruldu <- TRUE
@@ -210,7 +211,9 @@ cc_reset_workbench_owner <- function(rv, dir_refresh_guard) {
   proc <- rv$active_process
   lease <- if (is.environment(env)) env$runtime_lease %||% "" else ""
   release <- function() try(cc_release_runtime_lease(lease), silent = TRUE)
-  if (is.null(proc)) release() else mergen_retire_process(proc, release)
+  if (!isTRUE(env$output_worker_pending)) {
+    if (is.null(proc)) release() else mergen_retire_process(proc, release)
+  }
   rv$active_process <- NULL
   rv$is_running <- FALSE
   rv$poll_state <- NULL
@@ -248,7 +251,19 @@ cc_bind_workbench_owner_lifecycle <- function(session, ns, rv, dir_refresh_guard
       try(shiny::updateTextInput(session, "workdir", value = ""), silent = TRUE)
     }
   }
+  run_ref <- cc_run_state_reference(rv)
   remove_hook <- mergen_session_on_owner_change(session, reset)
-  session$onSessionEnded(function() { reset(); remove_hook() })
+  session$onSessionEnded(function() {
+    remove_hook()
+    shiny::isolate({
+      if (is.null(rv$active_process) && !isTRUE(rv$stream_env$output_worker_pending)) {
+        reset()
+        if (!is.null(rv$process_poll_observer)) rv$process_poll_observer$destroy()
+        rv$process_poll_observer <- NULL
+      } else {
+        cc_detach_run_state(run_ref, session)
+      }
+    })
+  })
   invisible(TRUE)
 }

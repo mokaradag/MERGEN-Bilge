@@ -486,3 +486,124 @@ test_that("özet işçisi kendi isteğine bağlıdır ve grafikleri yalnız gün
     })
   }
 })
+
+test_that("Yolaç tarayıcı kapanınca başlayan süreci ve run metadata bilgisini korur", {
+  env <- .lifecycle_env(c("helpers_user_session_identity.R", "helpers_async_result_guard.R",
+    "helpers_claude_code_run_lifecycle.R", "helpers_claude_code_workbench_session_api.R"))
+  ended <- NULL
+  ud <- new.env()
+  ud$user_id <- 7L
+  ud$kimlik_nesli <- 1L
+  closed <- FALSE
+  session <- list(userData = ud, isClosed = function() closed,
+    onSessionEnded = function(fn) { ended <<- fn; function() NULL })
+  rv <- new.env()
+  kills <- 0L
+  rv$active_process <- list(is_alive = function() TRUE, kill = function(...) kills <<- kills + 1L)
+  rv$active_request_id <- "A"
+  rv$is_running <- TRUE
+  rv$stream_env <- new.env()
+  rv$stream_env$runtime_lease <- "lease_A"
+  rv$active_persist_record_id <- 42L
+  rv$run_owner_guard <- env$mergen_session_owner_guard(session)
+  env$cc_bind_workbench_owner_lifecycle(session, identity, rv, list(next_id = function() NULL))
+  closed <- TRUE
+  ended()
+  expect_identical(kills, 0L)
+  expect_true(rv$is_running)
+  expect_identical(rv$active_persist_record_id, 42L)
+  expect_identical(rv$stream_env$runtime_lease, "lease_A")
+  expect_true(env$cc_is_active_run(rv, "A"))
+  ud$kimlik_nesli <- 2L
+  expect_false(env$cc_is_active_run(rv, "A"))
+})
+
+test_that("benzetimli Stop yalnızca gerçekten birikmiş parçayı kaydeder", {
+  for (mode in c("empty", "partial")) {
+  env <- .lifecycle_env("helpers_chat_runtime.R")
+  env$format_timestamp <- function() "zaman"
+  env$normalize_character_id <- identity
+  env$get_character_record <- function(...) list()
+  env$mergen_pk_chat_identity <- function(...) "chat_A"
+  env$render_message_bubble_ui <- function(...) shiny::div()
+  env$push_followup_update <- env$chat_reset_state <- function(...) NULL
+  env$mergen_pk_block_mode_texts <- function(text, ...) list(display = text, tts = text, validated = TRUE)
+  env$mergen_pk_stream_validated_text <- env$mergen_pk_block_mode_texts
+  env$pk_provenance_blocks_streaming <- function(...) FALSE
+  env$process_message_content <- function(text, ...) list(html = text, has_code = FALSE)
+  env$build_chartlab_message <- function(...) list(found = FALSE)
+  saved <- 0L
+  env$save_message_to_db <- function(...) saved <<- saved + 1L
+  env$chat_store_message_in_saved_chats <- function(...) saved <<- saved + 1L
+  shiny::testServer(function(input, output, session) NULL, {
+    session$userData$user_id <- 7L
+    session$userData$llm_request_owner <- "A"
+    values <- shiny::reactiveValues(messages = list(), current_chat_id = "chat_A",
+      liked_messages = character(), disliked_messages = character())
+    stopped <- shiny::reactiveVal(FALSE)
+    completed <- FALSE
+    shiny::isolate(env$chat_simulate_streaming("tam yanıt", session, values,
+      list(selected_character = "bilge"), output, stopped, request_id = "A",
+      on_complete = function(msg) {
+        if (mode == "empty") expect_null(msg) else expect_identical(msg$content, "tam ")
+        completed <<- TRUE }))
+    if (mode == "partial") session$flushReact()
+    stopped(TRUE)
+    if (mode == "partial") session$elapse(26)
+    session$flushReact()
+    expect_true(completed)
+    expect_length(shiny::isolate(values$messages), if (mode == "empty") 0L else 1L)
+    expect_identical(saved, if (mode == "empty") 0L else 2L)
+  })
+  }
+})
+
+test_that("özet kaynağa yalnızca geçerli terfi işçisiyle yazılır", {
+  for (change in c("current", "owner", "stop")) {
+    env <- .lifecycle_env(c("helpers_claude_code_run_lifecycle.R", "helpers_document_output_publication.R"))
+    work <- NULL; current <- NULL; resolve_work <- NULL; reject_work <- NULL
+    env$cc_run_output_worker_globals <- function() list(cc_apply_output_sync_plan = function(plan, active_guard) {
+      if (!file.exists(active_guard)) stop("iptal")
+      item <- plan$items[[1L]]
+      list(list(success = file.copy(item$source_path, item$dest_path, overwrite = TRUE)))
+    })
+    env$tracked_future_promise <- function(task_fn, globals, cancel_check, ...) {
+      expect_false(any(c("session", "rv", "result") %in% names(globals)))
+      environment(task_fn) <- list2env(globals, parent = baseenv())
+      work <<- task_fn; current <<- cancel_check
+      promises::promise(function(resolve, reject) { resolve_work <<- resolve; reject_work <<- reject })
+    }
+    output_dir <- withr::local_tempdir()
+    target_dir <- withr::local_tempdir()
+    src <- file.path(output_dir, "dosya_aciklamalari.txt")
+    dest <- file.path(target_dir, "dosya_aciklamalari.txt")
+    writeLines("yeni özet", src); writeLines("önceki özet", dest)
+    shiny::testServer(function(input, output, session) NULL, {
+      session$userData$user_id <- 7L
+      rv <- shiny::reactiveValues(is_running = TRUE, active_request_id = "A",
+        run_owner_guard = mergen_session_owner_guard(session))
+      resolved <- NULL; failure <- NULL
+      promise <- env$cc_publish_document_summary_async(list(success = TRUE,
+        generated_summary_path = src), target_dir, output_dir, session, rv, "A")
+      promises::then(promise, function(value) resolved <<- value, function(e) failure <<- e)
+      expect_identical(readLines(dest), "önceki özet")
+      if (change == "owner") session$userData$kimlik_nesli <- 1L
+      if (change == "stop") rv$is_running <- FALSE
+      if (change == "current") resolve_work(work()) else {
+        expect_false(current())
+        expect_error(work(), "iptal")
+        reject_work(simpleError("iptal"))
+      }
+      .lifecycle_drain()
+      expect_null(shiny::isolate(rv$summary_sync_guard))
+      expect_length(ls(session$userData$kimlik_kancalari), 0L)
+      if (change == "current") {
+        expect_identical(readLines(dest), "yeni özet")
+        expect_identical(resolved$generated_summary_path, normalizePath(dest, winslash = "/"))
+      } else {
+        expect_identical(readLines(dest), "önceki özet")
+        expect_s3_class(failure, "error")
+      }
+    })
+  }
+})

@@ -398,7 +398,9 @@ tracked_future_promise <- function(task_fn,
                                    globals = NULL,
                                    dependency_mode = c("auto", "explicit"),
                                    packages = NULL,
-                                   cancel_check = NULL) {
+                                   cancel_check = NULL,
+                                   execution_timeout = NULL,
+                                   queue_timeout = NULL) {
   if (!is.function(task_fn)) {
     stop("tracked_future_promise() için 'task_fn' bir fonksiyon olmalıdır.")
   }
@@ -463,8 +465,9 @@ tracked_future_promise <- function(task_fn,
       attr(payload, "mergen_packages") <- future_packages
       auxiliary <- task_type %in% c("file_preview_docx", "claude_code_dir_listing")
       mergen_cancellable_worker_promise(payload, cancel_check,
-        timeout = if (auxiliary) 30 else 1800,
-        priority = if (auxiliary) 2L else 0L)
+        timeout = execution_timeout %||% if (auxiliary) 30 else 1800,
+        priority = if (auxiliary) 2L else 0L,
+        queue_timeout = queue_timeout %||% if (auxiliary) 30 else 300)
     } else promises::future_promise(
       {
         if (is.raw(task_fn)) task_fn <- unserialize(task_fn)

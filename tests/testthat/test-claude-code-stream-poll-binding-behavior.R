@@ -52,7 +52,7 @@ if (requireNamespace("shiny", quietly = TRUE)) {
 .csp_fake_proc <- function(alive = TRUE) {
   p <- new.env(parent = emptyenv())
   p$killed <- FALSE
-  p$kill <- function() { p$killed <- TRUE; invisible(NULL) }
+  p$kill <- function(...) { p$killed <- TRUE; alive <<- FALSE; invisible(NULL) }
   p$poll_io <- function(...) invisible(NULL)
   p$read_output_lines <- function() character(0)
   p$read_all_output <- function() ""
@@ -111,6 +111,13 @@ if (requireNamespace("shiny", quietly = TRUE)) {
         },
         observe_dir_contents = function(...) invisible(NULL)
       )
+      ref <- cc_run_state_reference(rv)
+      session$onSessionEnded(function() {
+        shiny::isolate({
+          observer <- ref$rv$process_poll_observer
+          if (!is.null(observer)) observer$destroy()
+        })
+      })
       rv
     })
   }
@@ -306,4 +313,71 @@ testthat::test_that("poll gözlemcisi zaman aşımı: 'Zaman Aşımı' finalize 
     testthat::expect_identical(err_msgs[[1]]$message$type, "error")
     testthat::expect_true(grepl("zaman aşımına", err_msgs[[1]]$message$content, fixed = TRUE))
   })
+})
+
+testthat::test_that("poll bilinmeyen süreç ölümünü terminal saymaz", {
+  env <- .csp_env(); fin <- .csp_finalize_rec()
+  proc <- .csp_fake_proc(alive = NA)
+  proc$kill <- function(...) { proc$killed <- TRUE; invisible(NULL) }
+  sp <- .csp_stream_env(durduruldu = TRUE, request_id = "unknown")
+  srv <- .csp_make_server(env, list(is_running = FALSE, active_process = proc,
+    stream_env = sp, poll_state = NULL), fin)
+  shiny::testServer(srv, {
+    session$returned$is_running <- TRUE
+    session$flushReact()
+    expect_true(proc$killed)
+    expect_length(fin$calls, 0L)
+    expect_true(session$returned$is_running)
+    expect_identical(session$returned$active_process, proc)
+    session$returned$process_poll_observer$destroy()
+  })
+})
+
+
+testthat::test_that("kapanan modülün CLI çıktıları reaktif duruma veya UI'a erişmeden tamamlanır", {
+  env <- .csp_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "module_claude_code_akis.R"),
+         encoding = "UTF-8", local = env)
+  proc <- .csp_fake_proc(alive = TRUE)
+  sp <- .csp_stream_env(request_id = "closed")
+  rec <- new.env(parent = emptyenv())
+  rec$ctx <- NULL; rec$ui <- 0L; rec$released <- 0L
+  env$cc_release_runtime_lease <- function(...) { rec$released <- rec$released + 1L; TRUE }
+  env$parse_streaming_chunk <- function(line) list(tip = "text_delta", icerik = line)
+  env$cc_dispatch_run_output_processing <- function(ctx) {
+    rec$ctx <- ctx
+    ctx$finalize_streaming("Tamamlandı", "check", "green", request_id = sp$request_id)
+  }
+  srv <- function(id) shiny::moduleServer(id, function(input, output, session) {
+    session$userData$user_id <- 7L
+    rv <- shiny::reactiveValues(is_running = TRUE, active_request_id = sp$request_id,
+      active_process = proc, stream_env = sp,
+      run_owner_guard = mergen_session_owner_guard(session))
+    rec$ref <- cc_run_state_reference(rv)
+    api <- env$create_akis_yardimcilari(session, session$ns, rv)
+    env$cc_bind_claude_code_stream_polling(input, session, session$ns, rv,
+      function(...) { rec$ui <- rec$ui + 1L }, api$finalize_streaming, function(...) NULL)
+    invisible(NULL)
+  })
+  shiny::testServer(srv, { session$flushReact() })
+  expect_true(is.environment(rec$ref$rv))
+  expect_false(shiny::is.reactivevalues(rec$ref$rv))
+  expect_true(rec$ref$rv$run_owner_guard())
+  observer <- rec$ref$rv$process_poll_observer
+  withr::defer(observer$destroy())
+  proc$is_alive <- function() FALSE
+  proc$read_output_lines <- function() "first line"
+  proc$read_all_output <- function() "last line"
+  deadline <- Sys.time() + 2
+  while (is.null(rec$ctx) && Sys.time() < deadline) {
+    later::run_now(0.05)
+    shiny:::flushReact()
+  }
+  expect_false(is.null(rec$ctx))
+  expect_identical(sp$tum_satirlar, c("first line", "last line"))
+  expect_identical(rec$ui, 0L)
+  expect_identical(rec$released, 1L)
+  expect_false(rec$ref$rv$is_running)
+  expect_null(rec$ref$rv$active_process)
+  expect_null(rec$ref$rv$process_poll_observer)
 })

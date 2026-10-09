@@ -301,12 +301,7 @@ run_step <- function(label, command, cmd_args = character(0), env = base_env) {
   invisible(status)
 }
 
-write_summary_and_exit <- function(status = NULL) {
-  failed <- vapply(steps, function(s) !identical(s$status, 0L), logical(1))
-  skipped <- vapply(steps, function(s) isTRUE(s$skipped), logical(1))
-  failed_count <- sum(failed)
-  skipped_count <- sum(skipped)
-
+write_validation_summary <- function() {
   summary_path <- file.path(artifact_root, "summary.json")
 
   json <- validation_proof_render_ai_summary(
@@ -320,6 +315,13 @@ write_summary_and_exit <- function(status = NULL) {
   )
 
   writeLines(json, summary_path, useBytes = TRUE)
+  summary_path
+}
+
+write_summary_and_exit <- function(status = NULL) {
+  failed_count <- sum(vapply(steps, function(s) !identical(s$status, 0L), logical(1)))
+  skipped_count <- sum(vapply(steps, function(s) isTRUE(s$skipped), logical(1)))
+  summary_path <- write_validation_summary()
 
   cat(sprintf("\nSummary written: %s\n", summary_path))
   cat(sprintf("Failed steps: %d\n", failed_count))
@@ -439,7 +441,7 @@ if (profile == "quick") {
     "cat('Focused tests:', length(tests), '\\n'); ",
     "for (f in tests) { ",
     "cat('\\n===== RUN ', f, ' =====\\n', sep=''); ",
-    "testthat::test_file(f, reporter='summary'); ",
+    "testthat::test_file(f, reporter='summary', stop_on_failure=TRUE, stop_on_warning=TRUE); ",
     "}"
   )
 
@@ -468,7 +470,7 @@ if (isTRUE(boot_smoke)) {
 
 if (!is.null(answer_path)) {
   normalized_answer <- normalizePath(answer_path, winslash = "/", mustWork = FALSE)
-  latest_summary <- file.path(artifact_root, "summary.json")
+  latest_summary <- write_validation_summary()
 
   run_step(
     "answer self-check",

@@ -55,7 +55,7 @@
   # yeniden okunur (yeni sahibin jetonunu EZMEMEK için) ve yazımdan SONRA
   # yeniden doğrulanır.
   if (!identical(.cc_codex_lock_owner_token(dizin), jeton)) return(invisible(FALSE))
-  yazildi <- try(writeLines(jeton, yol, useBytes = TRUE), silent = TRUE)
+  yazildi <- try(writeLines(c(jeton, paste0("host=", Sys.info()[["nodename"]])), yol, useBytes = TRUE), silent = TRUE)
   if (inherits(yazildi, "try-error")) return(invisible(FALSE))
   invisible(identical(.cc_codex_lock_owner_token(dizin), jeton))
 }
@@ -78,6 +78,9 @@
 # koyma protokolü, canlı bir kilidi geçici olarak kaldırıp üçüncü bir worker'ın
 # aynı kritik bölüme girmesine izin veriyordu.
 .cc_codex_reap_dir_lock <- function(lock_dir, beklenen_jeton, stale_sec = NULL) {
+  reclaim <- filelock::lock(paste0(lock_dir, ".reclaim"), timeout = 0)
+  if (is.null(reclaim)) return(FALSE)
+  on.exit(filelock::unlock(reclaim), add = TRUE)
   reaper <- paste0(lock_dir, ".reaper")
 
   reaper_jetonu <- paste0(Sys.getpid(), "-", basename(tempfile("ccrp")))
@@ -89,7 +92,7 @@
     # devralınmaz (yavaş UNC'de silme 60 sn'yi aşabilir).
     gozlenen_jeton <- .cc_codex_lock_owner_token(reaper)
     yas <- .cc_codex_dir_lock_age(reaper)
-    if (!is.finite(yas) || yas <= .CC_CODEX_REAPER_STALE_SEC) return(FALSE)
+    if (!mergen_lock_owner_dead(file.path(reaper, "owner"), gozlenen_jeton)) return(FALSE)
 
     # DEVRALMA SAHİPLİK DOĞRULAMASI: yalnızca yaş denetimi yeterli değildi.
     # Yavaş bir UNC paylaşımında A süreci reaper'ı tutarken B onu bayat sayıp
@@ -98,7 +101,7 @@
     # olmalı ve yaş yeniden doğrulanmalıdır.
     if (!identical(.cc_codex_lock_owner_token(reaper), gozlenen_jeton)) return(FALSE)
     yas <- .cc_codex_dir_lock_age(reaper)
-    if (!is.finite(yas) || yas <= .CC_CODEX_REAPER_STALE_SEC) return(FALSE)
+    if (!mergen_lock_owner_dead(file.path(reaper, "owner"), gozlenen_jeton)) return(FALSE)
 
     # SİLME DOĞRULANIR: `unlink()` Windows/UNC'de açık tanıtıcı ya da izin
     # hatasında sessizce başarısız olabilir; doğrulanmadan yeniden oluşturmaya
@@ -108,7 +111,7 @@
     alindi <- isTRUE(try(dir.create(reaper, showWarnings = FALSE), silent = TRUE))
     if (!alindi) return(FALSE)
   }
-  try(writeLines(reaper_jetonu, file.path(reaper, "owner"), useBytes = TRUE), silent = TRUE)
+  try(writeLines(c(reaper_jetonu, paste0("host=", Sys.info()[["nodename"]])), file.path(reaper, "owner"), useBytes = TRUE), silent = TRUE)
   # Dayanıklı marker reaper'ı TUTMANIN ön koşuludur: doğrulanamazsa yıkıcı işlem
   # hiç yapılmaz ve dizin hemen bırakılır.
   if (!identical(.cc_codex_lock_owner_token(reaper), reaper_jetonu)) {
@@ -132,7 +135,7 @@
     # yeni oluşturulmuş ya da kirasını TAZELEYEN bir kilit korunur.
     .cc_codex_touch_dir_lock(reaper, reaper_jetonu)
     yas <- .cc_codex_dir_lock_age(lock_dir)
-    if (!is.finite(yas) || yas <= stale_sec) return(FALSE)
+    if (!mergen_lock_owner_dead(file.path(lock_dir, "owner"), beklenen_jeton)) return(FALSE)
   } else if (is.na(beklenen_jeton)) {
     return(FALSE)
   }
@@ -164,7 +167,7 @@
     olustu <- try(dir.create(lock_dir, showWarnings = FALSE), silent = TRUE)
     if (!inherits(olustu, "try-error") && isTRUE(olustu)) {
       try(
-        writeLines(jeton, file.path(lock_dir, "owner"), useBytes = TRUE),
+        writeLines(c(jeton, paste0("host=", Sys.info()[["nodename"]])), file.path(lock_dir, "owner"), useBytes = TRUE),
         silent = TRUE
       )
       # Dayanıklı marker kilidi tutmanın ÖN KOŞULUDUR: yazma sessizce
@@ -183,7 +186,7 @@
     # TAZELEDİĞİ marker üzerinden ölçülür: canlı bir sahip devralınmaz.
     yas <- .cc_codex_dir_lock_age(lock_dir)
 
-    if (is.finite(yas) && yas > stale_sec) {
+    if (mergen_lock_owner_dead(file.path(lock_dir, "owner"), .cc_codex_lock_owner_token(lock_dir))) {
       # BAYAT KİLİDİ DEVRALMA reaper üzerinden serileştirilir ve kilit dizini
       # YERİNDEN OYNATILMAZ. Silme yalnızca bayat olarak gözlenen jeton hâlâ
       # yerindeyse ve yaş yeniden doğrulanırsa yapılır; bu sırada kilidi almış

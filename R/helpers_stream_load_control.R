@@ -105,6 +105,7 @@ mergen_stream_dispatch_followups <- function(session,
                                              build_fn = NULL,
                                              dispatch_fn = NULL,
                                              apply_guard = NULL) {
+  tryCatch({
   if (is.null(plan)) plan <- mergen_followup_dispatch_plan()
   if (!isTRUE(plan$enabled)) return(invisible(FALSE))
   if (is.null(later_fn)) later_fn <- later::later
@@ -117,12 +118,20 @@ mergen_stream_dispatch_followups <- function(session,
     enable_followups = resolve_followup_enabled(settings_data, session)
   ))
   if (!isTRUE(settings_snapshot$enable_followups)) return(invisible(FALSE))
-  key <- mb_api_key_get_effective_key_value(
+  key_failed <- FALSE
+  key <- tryCatch(mb_api_key_get_effective_key_value(
     session, require_auth = TRUE, allow_default = NULL, clear_on_mismatch = TRUE
-  )
+  ), error = function(e) { key_failed <<- TRUE; NULL })
+  if (key_failed) {
+    .mergen_stream_metric_inc("followups_failed")
+    return(invisible(FALSE))
+  }
   worker_session <- list(userData = list(ai_api_key = key), input = list())
 
   later_fn(function() {
+    release <- function() NULL
+    cancellation <- NULL
+    tryCatch({
     if (!isTRUE(owner_guard()) ||
         !identical(session$userData$llm_request_owner, request_owner) ||
         (is.function(apply_guard) && !isTRUE(apply_guard()))) return(NULL)
@@ -183,8 +192,18 @@ mergen_stream_dispatch_followups <- function(session,
       mergen_runtime_metric_inc("followups_failed")
     })
     invisible(NULL)
+    }, error = function(e) {
+      if (!is.null(cancellation)) try(cancellation$finish(), silent = TRUE)
+      try(release(), silent = TRUE)
+      .mergen_stream_metric_inc("followups_failed")
+      NULL
+    })
   }, delay = plan$delay_seconds)
   invisible(TRUE)
+  }, error = function(e) {
+    .mergen_stream_metric_inc("followups_failed")
+    invisible(FALSE)
+  })
 }
 
 # ------------------------------------------------------------------------------

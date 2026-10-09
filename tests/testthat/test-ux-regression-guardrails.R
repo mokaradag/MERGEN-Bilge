@@ -440,14 +440,6 @@ testthat::test_that("TTS, STT ve müzik state guardrail sözleşmeleri korunur",
     "TTS metni dekorasyondan ÖNCE yakalanmalıdır:"
   )
 
-  # BENZETİMLİ AKIŞ (SIMULATED STREAMING) DA AYNI SÖZLEŞMEYİ TAŞIR.
-  #
-  # Yukarıdaki iddialar yalnızca `R/server_llm_response_handlers.R` dosyasını
-  # denetliyordu; oysa `R/helpers_chat_runtime.R` de TTS'i tetikler. Orada
-  # dekorasyon SONLANDIRMADA yapılır ve YALNIZCA ekrana/DB'ye giden
-  # `final_text`i değiştirir; TTS motoru DAHA ÖNCE `tts_metni` ile çağrılmıştır.
-  # Bu dosya denetlenmezse, benzetimli akış köken alt bilgisini SESLİ OKUMAYA
-  # başlasa bile süit yeşil kalırdı.
   ct_runtime_r <- .ux_guard_read_text("R/helpers_chat_runtime.R")
 
   .ux_guard_expect_all(
@@ -455,16 +447,22 @@ testthat::test_that("TTS, STT ve müzik state guardrail sözleşmeleri korunur",
     c(
       "tts_metni <- .cr_metin(blok$tts, yedek_blok$tts)",
       "tts_engine(tts_metni, tts_voice)",
-      "final_text <- pk_stream_display_text(final_text, session, pk_request_id, .cr_blok_aktif)"
+      "mergen_pk_stream_validated_text(full_response, session, pk_request_id, .cr_blok_aktif)",
+      "full_response <- .cr_metin(blok$display, yedek_blok$display)",
+      "values$messages[[msg_index]]$followup_content <- semantic$tts",
+      "values$messages[[msg_index]]$followup_validated <- semantic$validated"
     ),
     "Benzetimli akış TTS/dekorasyon sözleşmesi eksik:"
   )
 
-  # BU DOSYADA METİNSEL SIRA SÖZLEŞME DEĞİLDİR: dekorasyon,
-  # `start_streaming_execution()` gövdesinde (dosyada DAHA YUKARIDA) yer alır
-  # ama ÇALIŞMA sırasında TTS promise'i çözüldükten SONRA çalışır. Sözleşme,
-  # dekorasyonun YALNIZCA gösterilecek metne uygulanmasıdır; bu yüzden OLUMSUZ
-  # iddialarla kilitlenir.
+  .ux_guard_expect_order(
+    ct_runtime_r,
+    c("mergen_pk_stream_validated_text(full_response, session, pk_request_id, .cr_blok_aktif)",
+      "full_response <- .cr_metin(blok$display, yedek_blok$display)",
+      "tts_metni <- .cr_metin(blok$tts, yedek_blok$tts)",
+      "tts_engine(tts_metni, tts_voice)"),
+    "PK doğrulaması seslendirmeden önce tamamlanmalıdır:"
+  )
   testthat::expect_false(
     .ux_guard_has_text(ct_runtime_r, "pk_stream_display_text(tts_metni"),
     info = "Köken dekorasyonu TTS metnine UYGULANMAMALIDIR."

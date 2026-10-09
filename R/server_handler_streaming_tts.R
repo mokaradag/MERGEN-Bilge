@@ -110,7 +110,8 @@ handle_streaming_tts_mode <- function(ctx) {
       tts_engine_param <- NULL
       tts_voice_param <- NULL
       if (isTRUE(settings_data$enable_tts_audio)) {
-        tts_engine_param <- tts_processor$synthesize_speech
+        tts_engine_param <- mergen_cancellable_tts_engine(
+          tts_processor$synthesize_speech, session$userData$llm_worker_guard)
         tts_voice_param <- resolved_voice
       }
       simulate_streaming_stoppable_fn(
@@ -125,9 +126,10 @@ handle_streaming_tts_mode <- function(ctx) {
             remove_owner_cleanup, cleanup_send_message, session_guard, values)
           if (!isTRUE(owner_guard()) ||
               !identical(session$userData$llm_request_owner, req_id) ||
-              isTRUE(.mergen_request_state_read(stop_generation)) || is.null(msg$id)) return(NULL)
+              isTRUE(.mergen_request_state_read(stop_generation)) || is.null(msg$id) ||
+              identical(msg$followup_validated, FALSE)) return(NULL)
           mergen_stream_dispatch_followups(
-            session, msg$id, user_message_text, msg$content, settings_data,
+            session, msg$id, user_message_text, msg$followup_content %||% res$content, settings_data,
             api_config, followup_tools, fallback_followup_tool,
             apply_guard = function() isTRUE(owner_guard()) &&
               identical(session$userData$llm_request_owner, req_id)

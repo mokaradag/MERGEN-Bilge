@@ -179,7 +179,7 @@ test_that("bekleme süresi yürütme süresini tüketmez ve kapasite yapılandı
     launched <<- launched + 1L
     list(is_alive = function() TRUE)
   }
-  for (i in 1:4) env$mergen_cancellable_worker_promise(as.raw(i), function() TRUE, timeout = 1)
+  for (i in 1:4) env$mergen_cancellable_worker_promise(as.raw(i), function() TRUE, timeout = 1, queue_timeout = 300)
   env$.MERGEN_CANCELLABLE_WORKERS$jobs[[4]]$created <- Sys.time() - 100
   env$mergen_cancellable_worker_tick()
   expect_identical(launched, 3L)
@@ -192,7 +192,7 @@ test_that("bekleme süresi yürütme süresini tüketmez ve kapasite yapılandı
   expect_true(!is.null(env$.MERGEN_CANCELLABLE_WORKERS$jobs[[3]]$started))
 })
 
-test_that("bozuk süreç tanıtıcısı sınırlı denemeden sonra kapasiteyi bırakır", {
+test_that("bozuk süreç tanıtıcısı ölüm doğrulanana kadar kapasiteyi korur", {
   env <- .cancellation_env()
   env$mergen_cancellable_worker_schedule <- function(...) NULL
   kills <- 0L
@@ -206,11 +206,15 @@ test_that("bozuk süreç tanıtıcısı sınırlı denemeden sonra kapasiteyi b�
   env$mergen_cancellable_worker_tick()
   for (i in 1:3) env$mergen_cancellable_worker_tick()
   for (i in 1:20) later::run_now(0)
-  expect_identical(errors, 1L)
+  expect_identical(errors, 0L)
   expect_identical(kills, 2L)
-  expect_length(env$.MERGEN_CANCELLABLE_WORKERS$jobs, 0L)
+  expect_length(env$.MERGEN_CANCELLABLE_WORKERS$jobs, 1L)
+  expect_true(env$.MERGEN_CANCELLABLE_WORKERS$jobs[[1]]$quarantined)
+  env$.MERGEN_CANCELLABLE_WORKERS$jobs[[1]]$process$is_alive <- function() FALSE
   env$mergen_cancellable_worker_tick()
+  for (i in 1:20) later::run_now(0)
   expect_identical(errors, 1L)
+  expect_length(env$.MERGEN_CANCELLABLE_WORKERS$jobs, 0L)
 })
 
 test_that("yüksek stdout ve stderr çıktısı bağımsız işçiyi kilitlemez", {
@@ -231,4 +235,89 @@ test_that("yüksek stdout ve stderr çıktısı bağımsız işçiyi kilitlemez"
   expect_null(error)
   expect_identical(result, 42L)
   expect_length(env$.MERGEN_CANCELLABLE_WORKERS$jobs, 0L)
+})
+
+test_that("kuyruk yaşı yürütme son tarihinden bağımsız ve sınırlıdır", {
+  withr::local_options(mergen.cancellable_workers = 1L)
+  env <- .cancellation_env()
+  env$mergen_cancellable_worker_schedule <- function(...) NULL
+  launched <- 0L
+  env$mergen_cancellable_worker_launch <- function(payload) {
+    launched <<- launched + 1L
+    list(is_alive = function() TRUE)
+  }
+  errors <- 0L
+  promises::catch(env$mergen_cancellable_worker_promise(raw(), function() TRUE, timeout = 14400), function(e) NULL)
+  promises::catch(env$mergen_cancellable_worker_promise(raw(), function() TRUE, timeout = 30, priority = 2L,
+    queue_timeout = 10), function(e) errors <<- errors + 1L)
+  env$mergen_cancellable_worker_tick()
+  env$.MERGEN_CANCELLABLE_WORKERS$jobs[[2]]$created <- Sys.time() - 11
+  env$mergen_cancellable_worker_tick()
+  for (i in 1:20) later::run_now(0)
+  expect_identical(launched, 1L)
+  expect_identical(errors, 1L)
+  expect_length(env$.MERGEN_CANCELLABLE_WORKERS$jobs, 1L)
+})
+
+test_that("callr çocuğunun anlamsal hatası çağırana ulaşır", {
+  env <- .cancellation_env()
+  source(file.path(resolve_repo_root_for_tests(), "R/helpers_worker_monitor.R"), local = env)
+  error <- NULL
+  p <- env$tracked_future_promise(function() stop("RATE_LIMIT: x"), dependency_mode = "explicit",
+    globals = list(), cancel_check = function() TRUE)
+  promises::catch(p, function(e) error <<- e)
+  deadline <- Sys.time() + 15
+  while (is.null(error) && Sys.time() < deadline) later::run_now(0.05)
+  expect_s3_class(error, "condition")
+  expect_match(conditionMessage(error), "RATE_LIMIT: x", fixed = TRUE)
+  expect_length(env$.MERGEN_CANCELLABLE_WORKERS$jobs, 0L)
+})
+
+test_that("callr gönderimi kendi havuzunu ve yapılandırılmış son tarihi kullanır", {
+  env <- .cancellation_env()
+  source(file.path(resolve_repo_root_for_tests(), "R/helpers_worker_monitor.R"), local = env)
+  received <- NULL
+  env$mergen_cancellable_worker_promise <- function(payload, current, timeout, priority, queue_timeout) {
+    received <<- list(timeout = timeout, queue = queue_timeout)
+    promises::promise_resolve(TRUE)
+  }
+  old <- future::plan()
+  on.exit(future::plan(old), add = TRUE)
+  future::plan(future::sequential)
+  env$tracked_future_promise(function() TRUE, task_type = "claude_code_document_summary",
+    globals = list(), dependency_mode = "explicit", cancel_check = function() TRUE, execution_timeout = 14400)
+  expect_equal(received$timeout, 14400)
+  expect_equal(received$queue, 300)
+  source(file.path(resolve_repo_root_for_tests(), "R/helpers_claude_code_dir_listing_async.R"), local = env)
+  expect_true(env$cc_dir_listing_async_available())
+})
+
+
+test_that("Yolaç temizlik kilidi canlıyken alınmaz, sert ölümden sonra kurtarılır", {
+  env <- .cancellation_env()
+  source(file.path(resolve_repo_root_for_tests(), "R/helpers_claude_code_codex_runtime_lock.R"), local = env)
+  env$.cc_codex_guard_check <- function(guard) invisible(TRUE)
+  lock <- file.path(withr::local_tempdir(), "cleanup.lock")
+  ready <- withr::local_tempfile()
+  process <- callr::r_bg(function(root, lock, ready) {
+    source(file.path(root, "R/utils_common.R"))
+    source(file.path(root, "R/helpers_process_ownership.R"))
+    source(file.path(root, "R/helpers_claude_code_codex_runtime_lock.R"))
+    assign(".cc_codex_guard_check", function(guard) invisible(TRUE), envir = globalenv())
+    token <- .cc_codex_acquire_dir_lock(lock)
+    stopifnot(nzchar(token))
+    file.create(ready)
+    Sys.sleep(60)
+  }, args = list(root = resolve_repo_root_for_tests(), lock = lock, ready = ready))
+  withr::defer(try(process$kill(), silent = TRUE))
+  deadline <- Sys.time() + 10
+  while (!file.exists(ready) && process$is_alive() && Sys.time() < deadline) Sys.sleep(0.01)
+  expect_true(file.exists(ready))
+  Sys.setFileTime(file.path(lock, "owner"), Sys.time() - 7200)
+  expect_identical(env$.cc_codex_acquire_dir_lock(lock, attempts = 0L), "")
+  process$kill(); process$wait(timeout = 5000)
+  expect_false(process$is_alive())
+  token <- env$.cc_codex_acquire_dir_lock(lock, attempts = 1L)
+  expect_true(nzchar(token))
+  expect_true(env$.cc_codex_reap_dir_lock(lock, token))
 })

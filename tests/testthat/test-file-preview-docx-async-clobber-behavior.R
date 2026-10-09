@@ -35,6 +35,7 @@ suppressMessages({
 .fp_make_env <- function() {
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  source(file.path(resolve_repo_root_for_tests(), "R/helpers_preview_cache.R"), local = env)
   # Var olmayan fixture dosyalarını "erişilebilir" say (asenkron yola düşmek için
   # gerçek dosya gerekmez; file.info NA boyut döndürünce zaten async seçilir).
   env$path_exists_relaxed <- function(p) TRUE
@@ -467,4 +468,32 @@ test_that("büyük DOCX önbelleği worker yüküne taşınmaz", {
   expect_identical(as.character(value), cache$base64)
   expect_identical(attr(value, "resolved_path"), path)
   expect_identical(payloads[[1L]], payloads[[2L]])
+})
+
+test_that("DOCX önbelleği adet ve bayt sınırında belirli sırayla boşaltılır", {
+  env <- .fp_make_env()
+  cache <- list()
+  for (id in c("A", "B", "C", "D")) cache <- env$mergen_preview_cache_put(cache, id,
+    list(base64 = strrep("x", 4)), max_entries = 3L, max_bytes = 10)
+  expect_identical(names(cache), c("C", "D"))
+  cache <- env$mergen_preview_cache_put(cache, "C", list(base64 = "xx"), max_entries = 3L, max_bytes = 10)
+  expect_identical(names(cache), c("D", "C"))
+  cache <- env$mergen_preview_cache_put(cache, "dev", list(base64 = strrep("x", 11)), max_bytes = 10)
+  expect_null(cache$dev)
+  expect_identical(names(cache), c("D", "C"))
+})
+
+
+testthat::test_that("genel ve DOCX önizleme değerleri aynı bayt ve adet bütçesini korur", {
+  env <- .fp_make_env()
+  cache <- env$mergen_preview_cache_put(list(), "PDF", "1234", max_bytes = 6)
+  cache <- env$mergen_preview_cache_put(cache, "DOCX", list(base64 = "5678"), max_bytes = 6)
+  testthat::expect_identical(names(cache), "DOCX")
+  cache <- env$mergen_preview_cache_put(cache, "image", "ab", max_bytes = 6)
+  testthat::expect_identical(cache$image, "ab")
+  testthat::expect_identical(cache$DOCX$base64, "5678")
+  cache <- env$mergen_preview_cache_put(cache, "huge", strrep("x", 7), max_bytes = 6)
+  testthat::expect_identical(names(cache), c("DOCX", "image"))
+  cache <- env$mergen_preview_cache_put(cache, "other", "x", max_entries = 1L)
+  testthat::expect_identical(cache, list(other = "x"))
 })

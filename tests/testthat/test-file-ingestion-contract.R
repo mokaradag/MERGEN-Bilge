@@ -124,7 +124,8 @@ test_that("eşzamanlılık ve kuyruk sınırları yapılandırılabilir ve varsa
   expect_true(grepl("MERGEN_FILE_INGESTION_MAX_CONCURRENT", metin, fixed = TRUE))
   expect_true(grepl("MERGEN_FILE_INGESTION_MAX_QUEUE", metin, fixed = TRUE))
   expect_true(grepl("MERGEN_FILE_INGESTION_METRICS", metin, fixed = TRUE))
-  expect_true(grepl("future::nbrOfFreeWorkers", metin, fixed = TRUE))
+  expect_false(grepl("future::nbrOfFreeWorkers", metin, fixed = TRUE))
+  expect_true(grepl("mergen_cancellable_worker_available", metin, fixed = TRUE))
 
   ayar_env <- new.env(parent = globalenv())
   source(
