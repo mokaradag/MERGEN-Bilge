@@ -439,3 +439,32 @@ test_that("DOCX işçisi yolu çözer, önbelleği doğrular ve değişen dosyay
   expect_identical(as.character(third), base64enc::base64encode(path))
   expect_false(identical(attr(third, "cache_key"), cache$key))
 })
+
+
+test_that("büyük DOCX önbelleği worker yüküne taşınmaz", {
+  env <- new.env(parent = globalenv())
+  for (file in c("helpers_worker_monitor.R", "helpers_async_result_guard.R"))
+    source(file.path(resolve_repo_root_for_tests(), "R", file), encoding = "UTF-8", local = env)
+  path <- withr::local_tempfile(fileext = ".docx")
+  writeBin(charToRaw("docx"), path)
+  info <- file.info(path)
+  cache <- list(key = paste(path, info$size[1], as.numeric(info$mtime[1]), sep = "||"),
+                base64 = strrep("A", 12L * 1024L * 1024L))
+  env$resolve_readable_path <- function(path) path
+  environment(env$resolve_readable_path) <- baseenv()
+  payloads <- list()
+  env$tracked_future_promise <- function(task_fn, globals, packages, ...) {
+    payload <- env$worker_monitor_serialize_explicit_task(task_fn, globals, packages)
+    payloads[[length(payloads) + 1L]] <<- payload
+    expect_lt(length(payload), 1024L * 1024L)
+    promises::promise_resolve(unserialize(payload)())
+  }
+  env$mergen_dispatch_docx_preview(path, "cache-test", cached = list(key = cache$key, base64 = "küçük"))
+  value <- NULL
+  promises::then(env$mergen_dispatch_docx_preview(path, "cache-test", cached = cache),
+                 function(result) value <<- result)
+  .fp_drain_later_queue()
+  expect_identical(as.character(value), cache$base64)
+  expect_identical(attr(value, "resolved_path"), path)
+  expect_identical(payloads[[1L]], payloads[[2L]])
+})

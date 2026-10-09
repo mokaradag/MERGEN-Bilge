@@ -148,7 +148,7 @@ mergen_session_owner_transition <- function(user_data, eski_uid, yeni_uid, yetki
     callbacks <- as.list(kancalar, all.names = TRUE)
     for (fn in callbacks) try(fn(neden), silent = TRUE)
   }
-  if (degisti) {
+  if (gecersiz) {
     anahtarlar <- if (exists("SESSION_RUNTIME_STORE_KEYS", inherits = TRUE)) {
       unname(SESSION_RUNTIME_STORE_KEYS)
     } else {

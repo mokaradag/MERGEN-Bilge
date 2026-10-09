@@ -27,21 +27,6 @@ handle_true_streaming_mode <- function(ctx) {
   stop_generation(FALSE)
   values$is_sending <- TRUE
 
-  selected_char_id <- normalize_character_id(settings_data$selected_character)
-  chars_data <- get_characters_data()
-  character_data <- if (!is.null(chars_data)) {
-    Find(function(x) x$id == selected_char_id, chars_data$styles)
-  } else {
-    NULL
-  }
-
-  if (is.null(settings_data$user_config) && !is.null(session$userData$user_config)) {
-    settings_data$user_config <- session$userData$user_config
-  }
-
-  log_info(sprintf("[CHAT PERF] True streaming başladı - profil=%s, yoklama=%dms",
-    stream_profile$label %||% "standard", poll_interval_ms))
-
   stream_env <- new.env(parent = emptyenv())
   stream_env$req_id <- req_id
   stream_env$owner_guard <- mergen_session_owner_guard(session)
@@ -50,7 +35,6 @@ handle_true_streaming_mode <- function(ctx) {
   stream_env$settled <- FALSE
   session$userData$llm_request_owner <- req_id
   stream_env$msg_id <- paste0("msg_", floor(as.numeric(Sys.time()) * 1000), "_", sample(1000:9999, 1))
-  stream_env$timestamp <- format_timestamp()
   stream_env$stream_file <- tempfile(pattern = paste0("llm_sse_", req_id, "_"), fileext = ".jsonl")
   stream_env$stop_file <- tempfile(pattern = paste0("llm_sse_stop_", req_id, "_"), fileext = ".flag")
   stream_env$file_read_state <- mergen_stream_read_state_new()
@@ -71,6 +55,30 @@ handle_true_streaming_mode <- function(ctx) {
   # Köken doğrulaması sonucu: `FALSE` olduğunda takip önerileri ÜRETİLMEZ.
   stream_env$pk_validated <- TRUE
   stream_env$validated_final_text <- NULL
+
+  cleanup_streaming_state <- mergen_stream_bind_cleanup(ctx, stream_env)
+  handed_off <- FALSE
+  on.exit(if (!handed_off) {
+    stream_env$settled <- TRUE
+    cleanup_streaming_state()
+  }, add = TRUE)
+
+  stream_env$timestamp <- format_timestamp()
+  selected_char_id <- normalize_character_id(settings_data$selected_character)
+  chars_data <- get_characters_data()
+  character_data <- if (!is.null(chars_data)) {
+    Find(function(x) x$id == selected_char_id, chars_data$styles)
+  } else {
+    NULL
+  }
+
+  if (is.null(settings_data$user_config) && !is.null(session$userData$user_config)) {
+    settings_data$user_config <- session$userData$user_config
+  }
+
+  log_info(sprintf("[CHAT PERF] True streaming başladı - profil=%s, yoklama=%dms",
+    stream_profile$label %||% "standard", poll_interval_ms))
+
 
   # `block` kipinde köken doğrulaması TAMAMLANMA anında çalışır ve desteklenmeyen
   # sayısal iddiada model düzyazısını deterministik yedekle DEĞİŞTİRİR; karar bu
@@ -215,7 +223,6 @@ handle_true_streaming_mode <- function(ctx) {
     invisible(NULL)
   }
 
-  cleanup_streaming_state <- mergen_stream_bind_cleanup(ctx, stream_env)
 
   remove_placeholder_message <- function() {
     chat_discard_stream_placeholder(session, values, stream_env$msg_id)
@@ -234,6 +241,7 @@ handle_true_streaming_mode <- function(ctx) {
     }
 
     stream_env$finalized <- TRUE
+    on.exit(cleanup_streaming_state(), add = TRUE)
 
     ensure_stream_ui_started()
 
@@ -242,7 +250,6 @@ handle_true_streaming_mode <- function(ctx) {
       # KAPALI BASARISIZ: koken dogrulamasi HIC calismadi (asagida, bu erken donusten SONRA yapilir). `pk_validated` baslangicta TRUE oldugu icin takip onerileri HAM model duzyazisindan uretilebiliyordu.
       stream_env$pk_validated <- FALSE; stream_env$validated_final_text <- NULL
       cleanup_streaming_state()
-      ctx$reset_chat_state_fn()
       return(invisible(NULL))
     }
 
@@ -387,7 +394,6 @@ handle_true_streaming_mode <- function(ctx) {
       as.numeric(difftime(Sys.time(), istek_baslangici, units = "secs")) * 1000)
 
     cleanup_streaming_state()
-    ctx$reset_chat_state_fn()
     invisible(NULL)
   }
 
@@ -400,6 +406,7 @@ handle_true_streaming_mode <- function(ctx) {
       return(invisible(NULL))
     }
 
+    on.exit(cleanup_streaming_state(), add = TRUE)
     # 401/403/AUTH hatasında gönderim anahtarı önbelleği geçersiz kılınır.
     mb_api_key_invalidate_send_cache_on_auth_error(session, result$error %||% "")
 
@@ -435,7 +442,6 @@ handle_true_streaming_mode <- function(ctx) {
     }
 
     cleanup_streaming_state()
-    ctx$reset_chat_state_fn()
     invisible(NULL)
   }
 
@@ -457,7 +463,7 @@ handle_true_streaming_mode <- function(ctx) {
     as.numeric(difftime(future_submit_time, istek_baslangici, units = "secs"))
   ))
 
-  sse_promise <- tracked_future_promise(
+  sse_promise <- tryCatch(tracked_future_promise(
     task_fn = function() {
       call_local_llm_sse_worker(
         chat_history = chat_history_for_sse,
@@ -467,6 +473,7 @@ handle_true_streaming_mode <- function(ctx) {
       )
     },
     task_type = "llm_true_streaming",
+    cancel_check = mergen_stream_worker_guard(ctx, stream_env),
     session_token = session$token,
     meta = list(
       model = ctx$model_selected
@@ -480,7 +487,7 @@ handle_true_streaming_mode <- function(ctx) {
       stream_file_for_sse = stream_file_for_sse,
       stop_file_for_sse = stop_file_for_sse
     )
-  )
+  ), error = mergen_stream_dispatch_error(ctx, stream_env, cleanup_streaming_state))
 
   sse_promise <- promises::then(
     sse_promise,
@@ -502,11 +509,11 @@ handle_true_streaming_mode <- function(ctx) {
       }
       stream_env$result <- list(
         success = FALSE,
-        aborted = FALSE,
+        aborted = isTRUE(.mergen_request_state_read(stop_generation)),
         content = "",
         sources = NULL,
         duration = as.numeric(difftime(Sys.time(), baslangic_zamani, units = "secs")),
-        error = conditionMessage(err)
+        error = if (isTRUE(.mergen_request_state_read(stop_generation))) NULL else conditionMessage(err)
       )
       stream_env$resolved <- TRUE
       NULL
@@ -701,5 +708,6 @@ handle_true_streaming_mode <- function(ctx) {
     invisible(NULL)
   })
 
+  handed_off <- TRUE
   invisible(NULL)
 }

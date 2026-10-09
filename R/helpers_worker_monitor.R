@@ -63,7 +63,7 @@ create_worker_task_id <- function(task_type = "generic") {
 register_worker_task <- function(task_id,
                                  task_type = "generic",
                                  session_token = NULL,
-                                 meta = list()) {
+                                 meta = list(), execution_pool = "future") {
   monitor_env <- init_worker_monitor()
 
   if (exists(task_id, envir = monitor_env$tasks, inherits = FALSE)) {
@@ -78,6 +78,7 @@ register_worker_task <- function(task_id,
     task_type = task_type,
     session_token = session_token %||% NA_character_,
     status = "running",
+    execution_pool = execution_pool,
     started_at = Sys.time(),
     meta = meta
   )
@@ -159,7 +160,12 @@ get_worker_monitor_info <- function() {
 
   monitor_env <- init_worker_monitor()
   task_ids <- ls(envir = monitor_env$tasks)
-  active_jobs <- length(task_ids)
+  active_jobs <- sum(vapply(task_ids, function(id) {
+    identical(monitor_env$tasks[[id]]$execution_pool %||% "future", "future")
+  }, logical(1)))
+  callr_jobs <- if (exists(".MERGEN_CANCELLABLE_WORKERS", inherits = TRUE))
+    .MERGEN_CANCELLABLE_WORKERS$jobs %||% list() else list()
+  callr_running <- sum(vapply(callr_jobs, function(job) !is.null(job$process), logical(1)))
 
   # Özet kuyruğunda bekleyen işler henüz izleme defterinde değildir (gönderimde
   # kaydolur); kuyruk ve tür dağılımına ayrıca eklenir, çift sayılmaz.
@@ -177,6 +183,13 @@ get_worker_monitor_info <- function() {
   usage_pct <- if (total_workers > 0) round((active_workers / total_workers) * 100, 1) else 0
 
   list(
+    cleanup_pool = list(active_jobs = sum(vapply(task_ids, function(id)
+      identical(monitor_env$tasks[[id]]$execution_pool, "callr_cleanup"), logical(1)))),
+    cancellable_pool = list(
+      total_workers = if (exists("mergen_cancellable_worker_capacity", mode = "function")) mergen_cancellable_worker_capacity() else 0L,
+      active_workers = callr_running,
+      queued_jobs = length(callr_jobs) - callr_running
+    ),
     total_workers = total_workers,
     active_jobs = as.integer(active_jobs),
     active_workers = as.integer(active_workers),
@@ -398,7 +411,8 @@ tracked_future_promise <- function(task_fn,
     task_id = task_id,
     task_type = task_type,
     session_token = session_token,
-    meta = meta
+    meta = meta,
+    execution_pool = if (is.function(cancel_check)) "callr" else "future"
   )
 
   promise_globals <- globals %||% list()

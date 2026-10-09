@@ -13,7 +13,7 @@ test_that("TTS sohbet değişimi ve senkron gönderim hatasında yalnız kendi d
       resolve_worker <- NULL
       resets <- 0L
       cleanup <- function(...) {
-        expect_identical(shiny::isolate(active()), "A")
+        expect_null(shiny::isolate(active()))
         resets <<- resets + 1L
         values$is_sending <- FALSE
       }

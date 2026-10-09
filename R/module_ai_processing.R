@@ -295,6 +295,8 @@ aiProcessingServer <- function(id) {
 	  )))
 	}
       
+      settings_for_llm <- mergen_sanitize_llm_settings_for_worker(settings_for_llm)
+
       # Create future promise
 		p <- tracked_future_promise(
 		  task_fn = function() {

@@ -89,8 +89,7 @@ test_that("kimlik kaybı kancaları çalıştırır; A -> 0 -> B de sahip deği�
   oturum$userData$current_session_files <- list(a.txt = list(path = "/k/a.txt"))
   veri$set_auth_placeholder()
   expect_identical(nedenler, "kimlik_kaybi")
-  # Kimlik kaybında aynı kullanıcı dönebilir; dosyalar korunur.
-  expect_length(oturum$userData$current_session_files, 1L)
+  expect_length(oturum$userData$current_session_files, 0L)
 
   veri$write_identity(list(username = "b"), 8L, list(), TRUE, "keycloak")
   expect_identical(nedenler, c("kimlik_kaybi", "sahip_degisti"))

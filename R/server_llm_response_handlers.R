@@ -69,6 +69,29 @@ llmResponseHandlersInit <- function(
     mcp_reasoning_stream_observer <- NULL
     mcp_reasoning_lines_read <- 0L
 
+    handed_off <- FALSE
+    finish_request <- function() {
+      on.exit(mergen_finish_request_owner_cleanup(session, active_request_id, req_id,
+        remove_owner_cleanup, reset_chat_state_fn, session_guard, values), add = TRUE)
+      try(remove_owner_cleanup(), silent = TRUE)
+      try(drain_mcp_reasoning_stream(), silent = TRUE)
+
+      # Hata ve iptalde bekleyen köken kaydı sonraki isteğe taşınmaz.
+      if (exists("pk_provenance_take", mode = "function", inherits = TRUE)) {
+        try(pk_provenance_take(session, request_id = req_id), silent = TRUE)
+      }
+
+      if (!is.null(mcp_reasoning_stream_observer)) {
+        try(mcp_reasoning_stream_observer$destroy(), silent = TRUE)
+        mcp_reasoning_stream_observer <- NULL
+      }
+
+      if (!is.null(mcp_reasoning_stream_file) && nzchar(mcp_reasoning_stream_file)) {
+        try(unlink(mcp_reasoning_stream_file, force = TRUE), silent = TRUE)
+      }
+    }
+    on.exit(if (!handed_off) finish_request(), add = TRUE)
+
     drain_mcp_reasoning_stream <- function() {
       if (!isTRUE(owner_guard()) ||
           !mergen_is_current_request(active_request_id, req_id, stop_generation)) return(NULL)
@@ -558,50 +581,9 @@ llmResponseHandlersInit <- function(
     )
  
     # Promise tamamlandığında her zaman temizlik yap
-    promises::finally(p2, onFinally = function() {
-      remove_owner_cleanup()
-      try(drain_mcp_reasoning_stream(), silent = TRUE)
+    p2 <- promises::finally(p2, onFinally = finish_request)
+    handed_off <- TRUE
 
-      # BU İSTEĞİN BEKLEYEN PK KÖKEN KAYDI HER TERMİNAL YOLDA TÜKETİLİR.
-      #
-      # Kayıt yalnızca `if (result$success)` içinde `pk_provenance_decorate()`
-      # ile tüketiliyordu. Nihai LLM çağrısı `success = FALSE` dönerse ya da
-      # promise REDDEDİLİRSE hata dalları arayüzü sıfırlıyor ama kaydı
-      # BIRAKIYORDU; `chat_reset_state()` de o oturum durumunu temizlemez.
-      # Sonraki ALAKASIZ yapay zekâ mesajı `add_message_fn()` içinde bayat
-      # istek kimliğini/bekleyen kaydı görüp ÖNCEKİ analizin alt bilgisini,
-      # olgularını ve dışa aktarım ekini alabiliyordu.
-      #
-      # Başarı yolunda kayıt ZATEN tüketilmiştir; bu çağrı orada no-op'tur.
-      if (exists("pk_provenance_take", mode = "function", inherits = TRUE)) {
-        try(pk_provenance_take(session, request_id = req_id), silent = TRUE)
-      }
-
-      if (!is.null(mcp_reasoning_stream_observer)) {
-        try(mcp_reasoning_stream_observer$destroy(), silent = TRUE)
-        mcp_reasoning_stream_observer <- NULL
-      }
-
-      if (!is.null(mcp_reasoning_stream_file) && nzchar(mcp_reasoning_stream_file)) {
-        try(unlink(mcp_reasoning_stream_file, force = TRUE), silent = TRUE)
-      }
-
-      # Sohbet durumunu yalnızca daha YENİ bir istek aktif DEĞİLSE sıfırla.
-      # Aksi halde bayat finally, yeni isteğin gönderme/typing durumunu ve
-      # yazma sarmalayıcısını bozar (stale-request yarışı koruması). İptal
-      # (cancelled_) ve normal tamamlanma durumlarında sıfırlamaya izin verilir.
-      current_active_id <- tryCatch(.mergen_request_state_read(active_request_id), error = function(e) NULL)
-      current_active_id <- if (is.null(current_active_id)) "" else as.character(current_active_id)[1]
-      newer_request_active <- nzchar(current_active_id) &&
-        !identical(current_active_id, as.character(req_id)[1]) &&
-        !startsWith(current_active_id, "cancelled_")
-      if (isTRUE(session_guard()) && identical(session$userData$llm_request_owner, req_id) &&
-          !isTRUE(newer_request_active)) {
-        active_request_id(NULL)
-        reset_chat_state_fn()
-      }
-    })
- 
     return(p2)
   }
  

@@ -21,24 +21,37 @@ file_ingestion_commit_index <- function(results, user_id) {
 
 # İptal edilen partinin kopyaladığı hedefleri temizler.
 file_ingestion_discard_results <- function(results, user_id = NULL, lock_timeout_sec = 5) {
-  discard <- function(idx) {
+  .file_store_with_index_lock({
+    idx <- .load_index()
+    owned <- Filter(file_ingestion_artifact_owned, results %||% list())
     uid <- if (is.null(user_id)) NULL else as.character(user_id)
-    for (r in results %||% list()) {
-      if (!isTRUE(r$ok) || !file_ingestion_artifact_owned(r)) next
+    for (r in owned) {
       entry <- .file_store_index_entry(r$dest, r$name)
-      if (!is.null(uid) && identical(idx[[uid]][[entry$key]]$path, entry$path) &&
-          (is.null(idx[[uid]][[entry$key]]$artifact_id) ||
-           identical(idx[[uid]][[entry$key]]$artifact_id, r$artifact_id))) {
-        idx[[uid]][[entry$key]] <- NULL
+      node <- if (is.null(uid)) idx[[entry$key]] else idx[[uid]][[entry$key]]
+      node_path <- if (is.list(node)) node$path else node
+      node_id <- if (is.list(node)) node$artifact_id else NULL
+      if (identical(node_path, entry$path) && (is.null(node_id) || identical(node_id, r$artifact_id))) {
+        if (is.null(uid)) idx[[entry$key]] <- NULL else idx[[uid]][[entry$key]] <- NULL
       }
-      file_ingestion_discard_dest(r$dest, r$source_path)
-      if (!file.exists(r$dest)) unlink(file_ingestion_owner_path(r$dest), force = TRUE)
     }
-    idx
+    .save_index(idx)
+    for (r in owned) {
+      if (!file_ingestion_artifact_owned(r)) next
+      file_ingestion_discard_dest(r$dest, r$source_path)
+      if (isTRUE(r$transaction_pending)) file_ingestion_discard_dest(r$staging, r$source_path)
+      if (file.exists(r$dest) || (!is.null(r$staging) && file.exists(r$staging)))
+        stop("Sahip olunan kopya silinemedi.")
+      if (!file.exists(r$dest) && (is.null(r$staging) || !file.exists(r$staging)))
+        unlink(c(file_ingestion_owner_path(r$dest), paste0(file_ingestion_owner_path(r$dest), ".identity")), force = TRUE)
+    }
+  }, timeout_sec = lock_timeout_sec, require_lock = TRUE)
+  for (r in results %||% list()) {
+    if (identical(r$code, "claim_failed") && !is.null(r$identity))
+      file_ingestion_discard_unclaimed(r$dest, r$source_path, r$identity)
   }
-  .file_store_mutate_index(discard, timeout_sec = lock_timeout_sec)
   invisible(TRUE)
 }
+
 
 
 file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard = FALSE) {
@@ -59,7 +72,11 @@ file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard =
           file_ingestion_discard_results(results, user_id)
           return(NULL)
         }
-        tryCatch(file_ingestion_commit_index(results, user_id), error = function(e) {
+        tryCatch({
+          failed <- Filter(function(r) !isTRUE(r$ok), results)
+          if (length(failed)) file_ingestion_discard_results(failed, user_id)
+          file_ingestion_commit_index(results, user_id)
+        }, error = function(e) {
           try(file_ingestion_discard_results(results, user_id), silent = TRUE)
           stop(e)
         })
@@ -77,7 +94,7 @@ file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard =
                              !identical(job$controller$epoch, job$epoch))) {
               file_ingestion_finish_job(job, results, queue_wait_ms, discard = TRUE)
             } else if (discard) {
-              file_ingestion_release_slot()
+              file_ingestion_release_job(job)
               file_ingestion_pump()
             } else {
               file_ingestion_apply_commit(job, results, index_result, queue_wait_ms)
@@ -95,45 +112,85 @@ file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard =
 
 # Havuz arızasında geri alma bağımsız işçide yürür; indeks kilidi UI'ı tutmaz.
 file_ingestion_rollback_job <- function(job, results, error) {
-  task_id <- NULL
-  tryCatch({
-    globals <- file_ingestion_worker_globals()
-    globals$results <- results
-    globals$user_id <- job$user_id
-    globals$index_options <- options()[intersect(names(options()),
-      c("mergen.mcp_base_dir", "mergen.index_path", "mergen.files_root"))]
-    task <- function() {
-      options(index_options)
-      file_ingestion_discard_results(results, user_id)
+  if (is.environment(job$lease) && isTRUE(job$lease$released)) return(invisible(NULL))
+  attempt <- 0L
+  terminal <- FALSE
+  task_id <- create_worker_task_id("file_ingestion_rollback")
+  registered <- FALSE
+  finish <- function(failure) {
+    if (terminal) return(invisible(NULL))
+    terminal <<- TRUE
+    try(finish_worker_task(task_id), silent = TRUE)
+    file_ingestion_fail_job(job, failure)
+    invisible(NULL)
+  }
+  launch <- function() {
+    attempt <<- attempt + 1L
+    process <- NULL
+    failure <- tryCatch({
+      globals <- file_ingestion_worker_globals()
+      globals$results <- results
+      globals$user_id <- job$user_id
+      globals$index_options <- options()[intersect(names(options()),
+        c("mergen.mcp_base_dir", "mergen.index_path", "mergen.files_root"))]
+      task <- function() {
+        options(index_options)
+        file_ingestion_discard_results(results, user_id)
+      }
+      if (!registered) {
+        register_worker_task(task_id, "file_ingestion_rollback", job$session_token,
+                             execution_pool = "callr_cleanup")
+        registered <<- TRUE
+      }
+      payload <- tryCatch(worker_monitor_serialize_explicit_task(task, globals, c("fs", "digest", "jsonlite")),
+        error = function(e) {
+          environment(task) <- list2env(globals, parent = baseenv())
+          serialize(task, NULL)
+        })
+      process <- callr::r_bg(function(payload) {
+        fn <- unserialize(payload)
+        list2env(as.list(environment(fn), all.names = TRUE), envir = globalenv())
+        assign(".FILE_STORE_LOCK_STATE", new.env(parent = emptyenv()), envir = globalenv())
+        fn()
+      }, args = list(payload = payload), stdout = NULL, stderr = NULL,
+      supervise = FALSE, user_profile = FALSE, system_profile = FALSE)
+      NULL
+    }, error = identity)
+    retry <- function(failure) {
+      if (attempt < 3L) later::later(launch, delay = 0.25 * attempt) else finish(failure)
+      invisible(NULL)
     }
-    task_id <- create_worker_task_id("file_ingestion_rollback")
-    register_worker_task(task_id, "file_ingestion_rollback", job$session_token)
-    payload <- worker_monitor_serialize_explicit_task(task, globals, c("fs", "digest", "jsonlite"))
-    process <- callr::r_bg(function(payload) {
-      fn <- unserialize(payload)
-      list2env(as.list(environment(fn), all.names = TRUE), envir = globalenv())
-      assign(".FILE_STORE_LOCK_STATE", new.env(parent = emptyenv()), envir = globalenv())
-      fn()
-    },
-      args = list(payload = payload), supervise = FALSE, user_profile = FALSE, system_profile = FALSE)
+    if (!is.null(failure)) return(retry(failure))
+    started <- Sys.time()
+    status_errors <- 0L
     poll <- function() {
-      if (isTRUE(process$is_alive())) {
+      alive <- tryCatch(isTRUE(process$is_alive()), error = function(e) NA)
+      if (is.na(alive)) status_errors <<- status_errors + 1L else status_errors <<- 0L
+      expired <- as.numeric(difftime(Sys.time(), started, units = "secs")) > 30
+      if (status_errors >= 3L || expired) {
+        try(process$kill_tree(), silent = TRUE)
+        try(process$kill(grace = 0), silent = TRUE)
+        return(retry(simpleError("Geri alma işçisi sonlandırıldı.")))
+      }
+      if (is.na(alive) || alive) {
         later::later(poll, delay = 0.1)
         return(invisible(NULL))
       }
-      cleanup_error <- tryCatch({ process$get_result(); NULL }, error = function(e) e)
-      if (!is.null(cleanup_error)) {
-        log_warn(paste("[FILE INGEST] Geri alma işçisi başarısız:", conditionMessage(cleanup_error)))
-        try(file_ingestion_discard_results(results, job$user_id, lock_timeout_sec = 0), silent = TRUE)
-      }
-      finish_worker_task(task_id)
-      file_ingestion_fail_job(job, error)
+      failure <- tryCatch({ process$get_result(); NULL }, error = identity)
+      if (!is.null(failure)) return(retry(failure))
+      finish(error)
     }
     later::later(poll, delay = 0.1)
-  }, error = function(cleanup_error) {
-    try(file_ingestion_discard_results(results, job$user_id, lock_timeout_sec = 0), silent = TRUE)
-    if (!is.null(task_id)) finish_worker_task(task_id)
-    file_ingestion_fail_job(job, cleanup_error)
-  })
+  }
+  launch()
   invisible(NULL)
+}
+
+file_ingestion_release_job <- function(job) {
+  if (is.environment(job$lease)) {
+    if (isTRUE(job$lease$released)) return(invisible(FALSE))
+    job$lease$released <- TRUE
+  }
+  file_ingestion_release_slot()
+  invisible(TRUE)
 }

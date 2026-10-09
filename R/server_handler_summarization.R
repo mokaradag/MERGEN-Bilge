@@ -7,6 +7,22 @@
 
 handle_summarization_mode <- function(ctx) {
 
+  summary_active_request_id <- ctx$active_request_id
+  summary_stop_generation <- ctx$stop_generation
+  summary_req_id <- tryCatch(
+    if (is.function(summary_active_request_id)) summary_active_request_id() else NULL,
+    error = function(e) NULL
+  )
+  summary_owner <- mergen_chat_owner_guard(ctx$session, ctx$values)
+  summary_session <- mergen_session_owner_guard(ctx$session)
+  ctx$session$userData$llm_request_owner <- summary_req_id
+  remove_summary <- mergen_bind_request_owner_cleanup(ctx$session, summary_active_request_id,
+    summary_req_id, ctx$reset_chat_state_fn, ctx$values, summary_stop_generation)
+  handed_off <- FALSE
+  on.exit(if (!handed_off) mergen_finish_request_owner_cleanup(ctx$session,
+    summary_active_request_id, summary_req_id, remove_summary, ctx$reset_chat_state_fn,
+    summary_session, ctx$values), add = TRUE)
+
   if (ctx$uploaded_count == 0) {
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
     ctx$values$typing <- FALSE
@@ -22,7 +38,7 @@ handle_summarization_mode <- function(ctx) {
   }
 
   ctx$values$typing <- TRUE
-  
+
   if (nchar(ctx$user_message_text) > 0) {
     ctx$current_session_files$user_query <- ctx$user_message_text
     log_debug("[SUMMARIZATION] Kullanıcı sorgusu özetlemeye eklendi: {ctx$user_message_text}")
@@ -65,7 +81,6 @@ handle_summarization_mode <- function(ctx) {
       "API anahtarı eksik. Ayarlar > Model Ayarları > API Anahtarı Güncelleme üzerinden girin.",
       "error"
     )
-    ctx$reset_chat_state_fn()
     return(TRUE)
   }
 
@@ -94,7 +109,6 @@ handle_summarization_mode <- function(ctx) {
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
     ctx$values$typing <- FALSE
     showToast(ctx$session, prep_result$message, "error")
-    ctx$reset_chat_state_fn()
     return(TRUE)
   }
 
@@ -112,6 +126,7 @@ handle_summarization_mode <- function(ctx) {
 
     true_stream_ctx <- list(
       session = ctx$session,
+      request_id = .mergen_request_state_read(ctx$active_request_id),
       input = ctx$input,
       output = ctx$output,
       values = ctx$values,
@@ -142,7 +157,9 @@ handle_summarization_mode <- function(ctx) {
       final_text_suffix = prep_result$metadata_block
     )
 
+    remove_summary()
     handle_true_streaming_mode(true_stream_ctx)
+    handed_off <- TRUE
     return(TRUE)
   }
 
@@ -151,26 +168,21 @@ handle_summarization_mode <- function(ctx) {
   # Yarış koruması: özetleme uzun sürebildiğinden, kullanıcı durdurup yeni bir
   # istek başlatırsa bu bayat geri çağrının yeni isteğin durumunu ezmemesi için
   # aktif istek kimliğini yakala.
-  summary_active_request_id <- ctx$active_request_id
-  summary_stop_generation <- ctx$stop_generation
-  summary_req_id <- tryCatch(
-    if (is.function(summary_active_request_id)) summary_active_request_id() else NULL,
-    error = function(e) NULL
-  )
   is_stale_summary_request <- function() {
+    if (!isTRUE(summary_owner())) return(TRUE)
     if (!is.function(summary_active_request_id) || is.null(summary_req_id)) {
       return(FALSE)
     }
     !mergen_is_current_request(summary_active_request_id, summary_req_id, summary_stop_generation)
   }
 
-  p <- ctx$ai_processor$call_llm_non_streaming(
+  p <- tryCatch(ctx$ai_processor$call_llm_non_streaming(
     prep_result$messages,
     prep_result$current_settings,
     prep_result$selected_model
-  )
+  ), error = function(e) promises::promise_reject(e))
 
-  promises::then(
+  p <- promises::then(
     p,
     onFulfilled = function(result) {
       if (isTRUE(is_stale_summary_request())) {
@@ -182,15 +194,17 @@ handle_summarization_mode <- function(ctx) {
 
       if (!result$success) {
         showToast(ctx$session, paste("Özetleme başarısız:", result$error), "error")
-        ctx$reset_chat_state_fn()
         return(invisible(NULL))
       }
 
+      if (is.list(result$chart_store) && length(result$chart_store)) {
+        if (!is.list(ctx$session$userData$chart_store)) ctx$session$userData$chart_store <- list()
+        ctx$session$userData$chart_store <- utils::modifyList(ctx$session$userData$chart_store, result$chart_store)
+      }
       final_summary <- paste0(result$content, prep_result$metadata_block %||% "")
       ctx$add_message_fn(final_summary, "ai")
 
       showToast(ctx$session, paste(prep_result$file_count, "dosya başarıyla özetlendi."), "success")
-      ctx$reset_chat_state_fn()
     },
     onRejected = function(err) {
       if (isTRUE(is_stale_summary_request())) {
@@ -200,9 +214,12 @@ handle_summarization_mode <- function(ctx) {
       removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
       ctx$values$typing <- FALSE
       showToast(ctx$session, paste("Özetleme hatası:", conditionMessage(err)), "error")
-      ctx$reset_chat_state_fn()
     }
   )
 
+  handed_off <- TRUE
+  promises::finally(p, function() mergen_finish_request_owner_cleanup(ctx$session,
+    summary_active_request_id, summary_req_id, remove_summary, ctx$reset_chat_state_fn,
+    summary_session, ctx$values))
   TRUE
 }

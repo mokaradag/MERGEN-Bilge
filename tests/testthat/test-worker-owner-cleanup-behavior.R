@@ -134,3 +134,61 @@ test_that("Yolaç sahip temizliği SSO alanından çağrılsa da kendi kontrolle
     expect_identical(domains, c("workbench-run_command", "workbench-stop_command"))
   })
 })
+
+test_that("aynı sahip yetki kaybında hassas önbellekler temizlenir", {
+  env <- .worker_owner_env()
+  for (change in c("logout", "auth")) {
+    ud <- new.env()
+    ud$user_id <- ud$kimlik_sahibi <- 7L
+    for (key in c("current_session_files", "file_summaries", "chart_store", "mcp_registry_snapshot"))
+      ud[[key]] <- list(secret = "eski yetki")
+    ud$ai_api_key <- "eski anahtar"
+    env$mergen_session_owner_transition(ud, 7L, if (change == "logout") 0L else 7L,
+      yetki_degisti = change == "auth")
+    for (key in c("current_session_files", "file_summaries", "chart_store", "mcp_registry_snapshot"))
+      expect_length(ud[[key]], 0L)
+    expect_null(ud$ai_api_key)
+    expect_identical(ud$kimlik_nesli, 1L)
+  }
+})
+
+
+test_that("kapanmış SSE oturumu kabul jetonunu ve istek sahipliğini bir kez bırakır", {
+  env <- .worker_owner_env()
+  ud <- new.env(parent = emptyenv())
+  ud$user_id <- 7L
+  ud$llm_request_owner <- "A"
+  closed <- FALSE
+  end <- NULL
+  removed <- releases <- 0L
+  session <- list(userData = ud, isClosed = function() closed,
+    onSessionEnded = function(callback) {
+      end <<- callback
+      function() removed <<- removed + 1L
+    })
+  active_value <- "A"
+  active <- function(value) {
+    if (missing(value)) return(active_value)
+    active_value <<- value
+  }
+  values <- new.env(parent = emptyenv())
+  values$is_sending <- values$typing <- TRUE
+  env$mergen_send_message_release_values_token <- function(...) releases <<- releases + 1L
+  stream <- new.env(parent = emptyenv())
+  stream$req_id <- "A"
+  stream$owner_guard <- env$mergen_session_owner_guard(session)
+  stream$stream_file <- withr::local_tempfile()
+  stream$stop_file <- withr::local_tempfile()
+  env$mergen_stream_bind_cleanup(list(session = session, values = values,
+    active_request_id = active, reset_chat_state_fn = function() stop("kapalı UI")), stream)
+  closed <- TRUE
+  for (i in 1:2) end()
+  expect_null(active_value)
+  expect_false(values$is_sending)
+  expect_false(values$typing)
+  expect_true(stream$finalized)
+  expect_identical(releases, 1L)
+  expect_identical(removed, 1L)
+  expect_length(ls(ud$kimlik_kancalari), 0L)
+  expect_true(file.exists(stream$stop_file))
+})

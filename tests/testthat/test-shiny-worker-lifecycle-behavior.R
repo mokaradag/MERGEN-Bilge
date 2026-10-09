@@ -139,7 +139,7 @@ test_that("non-streaming işçi canlı oturum taşımaz ve grafikleri erken uygu
     "append_stream_reasoning_line", "streaming_should_stop")
   for (name in globals_names) env[[name]] <- function(...) NULL
   rec <- new.env()
-  env$tracked_future_promise <- function(task_fn, globals, ...) {
+  env$tracked_future_promise <- function(task_fn, globals = NULL, ...) {
     rec$globals <- globals
     rec$task_env <- environment(task_fn)
     promises::promise(function(resolve, reject) rec$resolve <- resolve)
@@ -152,6 +152,10 @@ test_that("non-streaming işçi canlı oturum taşımaz ve grafikleri erken uygu
     rec$resolve(list(ai_text = list(content = "A", chart_store = list(private = "A-chart")), duration = 1))
     .lifecycle_drain()
     expect_identical(session$userData$chart_store, list(existing = "B-chart"))
+    session$returned$call_llm_streaming(list(), list(model_selection = "m", shiny_session = session))
+    expect_null(rec$task_env$settings_for_llm$shiny_session)
+    rec$resolve(list(ai_text = "TTS yanıtı", duration = 1, error = FALSE))
+    .lifecycle_drain()
   })
 })
 
@@ -213,7 +217,7 @@ test_that("indeks kilidini bekleyen işçi UI ve alım yuvasını erken bırakma
   controller$epoch <- 1L
   controller$active <- TRUE
   job <- list(controller = controller, epoch = 1L, user_id = "7", session_token = "index-test")
-  env$file_ingestion_finish_job(job, list(list(marker = marker)))
+  env$file_ingestion_finish_job(job, list(list(ok = TRUE, marker = marker)))
   heartbeat <- FALSE
   later::later(function() heartbeat <<- TRUE, 0)
   later::run_now(0)
@@ -322,4 +326,163 @@ test_that("Yolaç promise koruması reaktif bağlam dışında güncel isteği o
   rv <- shiny::reactiveValues(active_request_id = "A")
   expect_true(env$cc_is_active_run(rv, "A"))
   expect_false(env$cc_is_active_run(rv, "B"))
+})
+
+test_that("hata veren sıfırlama sahipliği ve kabul jetonunu açık bırakmaz", {
+  env <- .lifecycle_env("helpers_async_result_guard.R")
+  for (terminal in c("owner", "finish")) shiny::testServer(function(input, output, session) {
+    session$userData$user_id <- 7L
+    session$userData$llm_request_owner <- "A"
+    active <- shiny::reactiveVal("A")
+    values <- shiny::reactiveValues(backpressure_request_id = "A", backpressure_token = "jeton",
+                                   typing = TRUE, is_sending = TRUE)
+    releases <- 0L
+    env$mergen_send_message_release_values_token <- function(values, req_id) {
+      expect_identical(req_id, "A")
+      expect_null(shiny::isolate(active()))
+      releases <<- releases + 1L
+    }
+    reset <- function() stop("UI alanı kapalı")
+    guard <- env$mergen_session_owner_guard(session)
+    remove <- env$mergen_bind_request_owner_cleanup(session, active, "A", reset, values)
+    if (terminal == "owner") {
+      callbacks <- as.list(session$userData$kimlik_kancalari)
+      for (callback in callbacks) callback()
+      for (callback in callbacks) callback()
+    } else {
+      for (i in 1:2) env$mergen_finish_request_owner_cleanup(session, active, "A", remove, reset, guard, values)
+    }
+    expect_null(shiny::isolate(active()))
+    expect_identical(releases, 1L)
+    expect_false(shiny::isolate(values$is_sending))
+    expect_false(shiny::isolate(values$typing))
+  }, {})
+})
+
+test_that("durdurulan SSE kısmi yanıtı geçerlidir fakat yeni istek bayat sonucu reddeder", {
+  env <- .lifecycle_env("helpers_async_result_guard.R")
+  shiny::testServer(function(input, output, session) {
+    session$userData$user_id <- 7L
+    session$userData$llm_request_owner <- "A"
+    values <- shiny::reactiveValues(current_chat_id = "chat_A")
+    active <- shiny::reactiveVal("A")
+    stopped <- shiny::reactiveVal(FALSE)
+    stream <- list(req_id = "A", chat_id = "chat_A", chat_epoch = 0L,
+                   owner_guard = env$mergen_session_owner_guard(session))
+    ctx <- list(session = session, values = values, active_request_id = active, stop_generation = stopped)
+    stopped(TRUE)
+    active("cancelled_1")
+    expect_true(env$mergen_stream_request_current(ctx, stream))
+    active("B")
+    expect_false(env$mergen_stream_request_current(ctx, stream))
+    active("cancelled_1")
+    session$userData$kimlik_nesli <- 1L
+    expect_false(env$mergen_stream_request_current(ctx, stream))
+  }, {})
+})
+
+test_that("SSE açık Stop kısmi yanıtı saklar ve gönderim kaynaklarını bırakır", {
+  env <- .lifecycle_env(c("helpers_async_result_guard.R", "helpers_streaming_io.R",
+    "helpers_streaming_poll_lifecycle.R", "helpers_streaming_abort_lifecycle.R",
+    "server_handler_true_streaming.R"))
+  env$normalize_character_id <- env$normalize_llm_scalar_content <- identity
+  env$get_characters_data <- function() NULL
+  env$format_timestamp <- function() "zaman"
+  env$mergen_true_streaming_worker_globals <- function(...) list()
+  env$log_info <- env$log_warn <- env$log_ai_usage <- env$mergen_log_chat_perf_summary <- function(...) NULL
+  env$mb_api_key_invalidate_send_cache_on_auth_error <- function(...) NULL
+  env$build_chartlab_message <- function(...) list(found = FALSE)
+  env$process_message_content <- function(text, ...) list(html = text, has_code = FALSE)
+  env$mergen_pk_stream_validated_text <- function(text, ...) list(display = text, tts = text, validated = TRUE)
+  env$mergen_pk_neutral_text <- identity
+  env$chat_store_message_in_saved_chats <- env$mergen_schedule_saved_chats_refresh <- function(...) NULL
+  rec <- new.env()
+  rec$saved <- list()
+  env$save_message_to_db <- function(chat, message) {rec$saved <- c(rec$saved, list(message)); 1L}
+  env$tracked_future_promise <- function(task_fn, cancel_check, ...) {
+    rec$stream <- environment(task_fn)$stream_env
+    rec$current <- cancel_check
+    promises::promise(function(resolve, reject) rec$reject <- reject)
+  }
+  shiny::testServer(function(input, output, session) NULL, {
+    session$userData$user_id <- 7L
+    active <- shiny::reactiveVal("A")
+    stopped <- shiny::reactiveVal(FALSE)
+    values <- shiny::reactiveValues(current_chat_id = "chat_A", messages = list(), is_sending = TRUE, typing = TRUE)
+    resets <- 0L
+    ctx <- list(session = session, output = output, values = values,
+      settings_data = list(), current_settings = list(), active_request_id = active,
+      stop_generation = stopped, request_id = "A", model_selected = "m",
+      user_prompt_msg = list(), chat_id_val = "chat_A", current_user_id = 7L,
+      reset_chat_state_fn = function() {resets <<- resets + 1L; values$is_sending <- FALSE; values$typing <- FALSE})
+    env$handle_true_streaming_mode(ctx)
+    rec$stream$ui_started <- TRUE
+    rec$stream$accumulated_text <- "kısmi yanıt"
+    values$messages <- list(list(id = rec$stream$msg_id, content = "kısmi yanıt", is_streaming = TRUE))
+    stopped(TRUE)
+    active("cancelled_A")
+    expect_false(rec$current())
+    rec$reject(simpleError("iptal"))
+    .lifecycle_drain()
+    session$flushReact()
+    expect_length(rec$saved, 1L)
+    expect_identical(rec$saved[[1]]$content, "kısmi yanıt")
+    expect_false(rec$saved[[1]]$is_streaming)
+    expect_null(shiny::isolate(active()))
+    expect_false(shiny::isolate(values$is_sending))
+    expect_identical(resets, 1L)
+    expect_length(ls(session$userData$kimlik_kancalari), 0L)
+    expect_null(rec$stream$poll_observer)
+    expect_false(file.exists(rec$stream$stream_file))
+    expect_false(file.exists(rec$stream$stop_file))
+  })
+})
+
+test_that("özet işçisi kendi isteğine bağlıdır ve grafikleri yalnız güncel sonuca yazar", {
+  for (change in c("success", "stop", "newer", "chat", "auth", "dispatch")) {
+    env <- .lifecycle_env(c("helpers_async_result_guard.R", "server_handler_summarization.R"))
+    env$log_debug <- env$showToast <- function(...) NULL
+    env$mb_api_key_get_effective_key_value <- function(...) "test-key"
+    env$prepare_summarization_request <- function(...) list(success = TRUE, messages = list(),
+      current_settings = list(), selected_model = "m", metadata_block = "", file_count = 1L)
+    shiny::testServer(function(input, output, session) NULL, {
+      session$userData$user_id <- 7L
+      session$userData$chart_store <- list(existing = "old")
+      values <- shiny::reactiveValues(current_chat_id = "chat_A", is_sending = TRUE)
+      active <- shiny::reactiveVal("A")
+      stopped <- shiny::reactiveVal(FALSE)
+      resolve_worker <- current <- NULL
+      added <- 0L
+      ctx <- list(session = session, values = values, active_request_id = active,
+        stop_generation = stopped, uploaded_count = 1L, user_message_text = "",
+        current_session_files = list(), input = list(), settings_data = list(),
+        reset_chat_state_fn = function() values$is_sending <- FALSE,
+        add_message_fn = function(...) added <<- added + 1L,
+        ai_processor = list(call_llm_non_streaming = function(...) {
+          current <<- session$userData$llm_worker_guard
+          if (change == "dispatch") stop("gönderim hatası")
+          promises::promise(function(resolve, reject) resolve_worker <<- resolve)
+        }))
+      env$handle_summarization_mode(ctx)
+      expect_true(current())
+      if (change == "stop") { stopped(TRUE); active("cancelled_A") }
+      if (change == "newer") { active("B"); session$userData$llm_request_owner <- "B" }
+      if (change == "chat") values$current_chat_id <- "chat_B"
+      if (change == "auth") session$userData$kimlik_nesli <- 1L
+      if (change %in% c("stop", "newer", "chat", "auth")) expect_false(current())
+      if (change != "dispatch") resolve_worker(list(success = TRUE, content = "özet", chart_store = list(summary = "chart")))
+      .lifecycle_drain()
+      expect_identical(added, if (change == "success") 1L else 0L)
+      expect_identical(session$userData$chart_store,
+        if (change == "success") list(existing = "old", summary = "chart") else list(existing = "old"))
+      if (change == "newer") {
+        expect_identical(shiny::isolate(active()), "B")
+        expect_true(shiny::isolate(values$is_sending))
+      } else if (change != "auth") {
+        expect_null(shiny::isolate(active()))
+        expect_false(shiny::isolate(values$is_sending))
+      }
+      expect_length(ls(session$userData$kimlik_kancalari), 0L)
+    })
+  }
 })

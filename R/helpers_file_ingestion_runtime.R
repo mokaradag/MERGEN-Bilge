@@ -63,15 +63,23 @@ file_ingestion_controller_debug <- function(controller, tag, message) {
 # ana süreçte çalışır; worker'a düz görev listesi ve önbelleğe alınmış global
 # paketi taşınır.
 file_ingestion_run_job <- function(job) {
+  if (is.environment(job$lease)) job$lease$released <- FALSE
   gorevler <- job$tasks
   bekleme_ms <- as.numeric(difftime(Sys.time(), job$queued_at, units = "secs")) * 1000
 
+  journals <- vapply(gorevler, function(task) tempfile("ingest_result_", fileext = ".rds"), character(1))
+  gorevler <- Map(function(task, journal) {
+    task$result_journal <- journal
+    task$transaction <- list(id = basename(journal), journal = journal)
+    task
+  }, gorevler, journals)
   worker_globals <- file_ingestion_worker_globals()
   worker_globals$tasks <- gorevler
 
   promise <- tracked_future_promise(
     task_fn = function() file_ingestion_execute_batch(tasks),
     task_type = "file_ingestion",
+    cancel_check = function() isTRUE(job$controller$active) && identical(job$controller$epoch, job$epoch),
     session_token = job$session_token,
     meta = list(batch_id = job$id, files = length(gorevler)),
     dependency_mode = "explicit",
@@ -81,8 +89,15 @@ file_ingestion_run_job <- function(job) {
 
   promises::then(
     promise,
-    onFulfilled = function(results) file_ingestion_finish_job(job, results, bekleme_ms),
-    onRejected = function(error) file_ingestion_fail_job(job, error)
+    onFulfilled = function(results) {
+      unlink(journals, force = TRUE)
+      file_ingestion_finish_job(job, results, bekleme_ms)
+    },
+    onRejected = function(error) {
+      results <- lapply(journals, function(path) suppressWarnings(tryCatch(readRDS(path), error = function(e) NULL)))
+      unlink(journals, force = TRUE)
+      file_ingestion_rollback_job(job, Filter(Negate(is.null), results), error)
+    }
   )
 
   invisible(TRUE)
@@ -90,11 +105,11 @@ file_ingestion_run_job <- function(job) {
 
 # Yalnızca korunan tamamlanma üstverisi ana süreçte uygulanır.
 file_ingestion_apply_commit <- function(job, results, index_result, queue_wait_ms = 0) {
-  file_ingestion_release_slot()
+  file_ingestion_release_job(job)
   on.exit(try(file_ingestion_pump(), silent = TRUE), add = TRUE)
   if (!is.null(index_result$committed)) {
     results <- lapply(results, function(r) {
-      if (isTRUE(r$ok) && !r$artifact_id %in% index_result$committed) {
+      if (isTRUE(r$ok) && !is.null(r$artifact_id) && !isTRUE(r$artifact_id %in% index_result$committed)) {
         r$ok <- FALSE
         r$code <- "dest_missing"
         r$error <- "Kopyalanan dosya artık mevcut değil."
@@ -137,7 +152,8 @@ file_ingestion_apply_commit <- function(job, results, index_result, queue_wait_m
 
 # Worker görevinin tamamen başarısız olduğu dal (dispatch/serialization hatası).
 file_ingestion_fail_job <- function(job, error) {
-  file_ingestion_release_slot()
+  file_ingestion_release_job(job)
+  on.exit(try(file_ingestion_pump(), silent = TRUE), add = TRUE)
   controller <- job$controller
   mesaj <- tryCatch(conditionMessage(error), error = function(e) "bilinmeyen hata")
 
@@ -147,10 +163,9 @@ file_ingestion_fail_job <- function(job, error) {
 
   if (isTRUE(controller$active) && identical(controller$epoch, job$epoch) &&
       is.function(job$on_failure)) {
-    try(job$on_failure(mesaj, job$tasks), silent = FALSE)
+    try(job$on_failure(mesaj, job$tasks), silent = TRUE)
   }
 
-  file_ingestion_pump()
   invisible(NULL)
 }
 
@@ -170,7 +185,10 @@ file_ingestion_submit_batch <- function(controller,
     return(list(status = "empty", batch_id = batch_id, queued = 0L))
   }
 
+  lease <- new.env(parent = emptyenv())
+  lease$released <- FALSE
   job <- list(
+    lease = lease,
     id = batch_id,
     tasks = tasks,
     user_id = as.character(user_id %||% "")[1],
@@ -188,7 +206,7 @@ file_ingestion_submit_batch <- function(controller,
       file_ingestion_run_job(job)
       TRUE
     }, error = function(e) {
-      file_ingestion_release_slot()
+      file_ingestion_release_job(job)
       file_ingestion_controller_debug(controller, "ingest_dispatch_error", conditionMessage(e))
       FALSE
     })

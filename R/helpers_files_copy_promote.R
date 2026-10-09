@@ -22,9 +22,10 @@ mergen_upload_staging_path <- function(final_dest) {
 mergen_copy_upload_staged <- function(datapath, final_dest, base_root,
                                       upload_name = "",
                                       exists_fn = path_exists_relaxed,
-                                      gorunurluk_denemesi = 10L) {
+                                      gorunurluk_denemesi = 10L, transaction = NULL) {
   hedef <- as.character(final_dest)[1]
   staging <- mergen_upload_staging_path(hedef)
+  if (!is.null(transaction)) file_ingestion_begin_copy(hedef, staging, datapath, transaction)
   var_mi <- function(p) isTRUE(tryCatch(exists_fn(p), error = function(e) FALSE))
   # Başarılı kopya Windows/UNC paylaşımında bir süre GÖRÜNMEYEBİLİR. Anında
   # yapılan `var_mi(staging)` denetimi bu durumda yeni bir kopya denemesi

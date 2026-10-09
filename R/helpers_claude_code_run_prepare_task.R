@@ -211,7 +211,7 @@ CC_LEASE_LOCK_ATTEMPTS <- 200L
 
 cc_acquire_reused_runtime_lease <- function(existing_runtime_workdir,
                                             user_id,
-                                            request_id) {
+                                            request_id, lease_journal = NULL) {
   if (!isTRUE(.cc_runtime_workdir_reusable(existing_runtime_workdir, user_id))) {
     return("")
   }
@@ -229,6 +229,7 @@ cc_acquire_reused_runtime_lease <- function(existing_runtime_workdir,
   olustu <- cc_with_runtime_cleanup_lock(existing_runtime_workdir, fallback = NA,
                                          attempts = CC_LEASE_LOCK_ATTEMPTS, {
     dir.create(metadata_dir, recursive = TRUE, showWarnings = FALSE)
+    if (!is.null(lease_journal)) saveRDS(lease, lease_journal)
     isTRUE(file.create(lease))
   })
 
@@ -253,7 +254,8 @@ cc_prepare_run_workspace <- function(request) {
   runtime_lease <- cc_acquire_reused_runtime_lease(
     existing_runtime_workdir = request$existing_runtime_workdir %||% "",
     user_id = request$user_id,
-    request_id = request$request_id
+    request_id = request$request_id,
+    lease_journal = request$lease_journal
   )
   lease_handed_off <- FALSE
   on.exit({
@@ -402,6 +404,7 @@ cc_prepare_run_workspace <- function(request) {
                                                  fallback = NA,
                                                  attempts = CC_LEASE_LOCK_ATTEMPTS, {
       dir.create(layout$metadata, recursive = TRUE, showWarnings = FALSE)
+      if (!is.null(request$lease_journal)) saveRDS(aday_lease, request$lease_journal)
       isTRUE(file.create(aday_lease))
     })
     # Lease OLUŞMAZSA hazırlık DURUR. Eskiden `runtime_lease` boş bırakılıp

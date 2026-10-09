@@ -265,3 +265,19 @@ testthat::test_that("non-streaming: DURDURULMUŞ (cancelled) istekte başarı so
   testthat::expect_length(fix$rec$messages, 0L)
   testthat::expect_identical(fix$rec$toast_calls, 0L)
 })
+
+
+test_that("non-streaming hazırlık günlüğü hatası sahipliği ve düşünce kaynaklarını bırakır", {
+  env <- .source_nonstream_handler()
+  env$mergen_log_llm_request_debug <- function(...) stop("günlük hatası")
+  state <- .nonstream_req_state()
+  shiny::testServer(function(input, output, session) NULL, {
+    fixture <- .make_nonstream_fixture(env, state, function() stop("işçi çağrılmamalı"), session)
+    expect_error(fixture$gen(list(), list(enable_mcp_reasoning_stream = TRUE), list(db_id = 1L),
+      "chat_A", "model", request_id = "req_A"), "günlük hatası")
+    expect_null(state$current_id)
+    expect_identical(fixture$rec$reset_calls, 1L)
+    expect_length(list.files(tempdir(), pattern = "^mcp_reasoning_req_A_"), 0L)
+    expect_length(ls(session$userData$kimlik_kancalari), 0L)
+  })
+})

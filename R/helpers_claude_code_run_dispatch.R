@@ -169,6 +169,14 @@ cc_dispatch_run_preparation <- function(ctx) {
     explicit_files = ctx$explicit_files %||% character(0)
   )
 
+  istek$lease_journal <- tempfile("runtime_lease_", fileext = ".rds")
+  cleanup_lease_journal <- function(release = FALSE) {
+    if (release && file.exists(istek$lease_journal)) {
+      lease <- tryCatch(readRDS(istek$lease_journal), error = function(e) "")
+      cc_release_runtime_lease(lease)
+    }
+    unlink(istek$lease_journal, force = TRUE)
+  }
   hazirlik_baslangic <- Sys.time()
   zaman_asimi_sn <- cc_runtime_limit("prepare_timeout_sec", 180)
   zaman_asimi_durumu <- new.env(parent = emptyenv())
@@ -241,6 +249,8 @@ cc_dispatch_run_preparation <- function(ctx) {
       packages = c("tools", "utils")
     ) |>
       promises::then(function(prep) {
+        handed_off <- FALSE
+        on.exit(cleanup_lease_journal(!handed_off), add = TRUE)
         cc_cancel_prepare_deadline()
         if (isTRUE(ctx$session$isClosed()) ||
             !cc_is_active_run(ctx$rv, ctx$run_request_id)) {
@@ -276,9 +286,11 @@ cc_dispatch_run_preparation <- function(ctx) {
         }
 
         cc_start_streaming_run(ctx, prep)
+        handed_off <- TRUE
         NULL
       }) |>
       promises::catch(function(e) {
+        cleanup_lease_journal(TRUE)
         cc_cancel_prepare_deadline()
         # Kapanmış bir Shiny oturumunda hata UI'si/persist callback'i çalıştırma.
         # Özellikle hazırlık promise'i oturum kapandıktan sonra reddedilirse
@@ -325,6 +337,7 @@ cc_dispatch_run_preparation <- function(ctx) {
   }, error = function(e) e)
 
   if (!is.null(gonderim_hatasi)) {
+    cleanup_lease_journal(TRUE)
     cc_cancel_prepare_deadline()
 
     hata_metni <- conditionMessage(gonderim_hatasi)
