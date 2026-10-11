@@ -58,6 +58,9 @@ test_that("yeniden kullanılan runtime hazırlık başlamadan önce lease alır"
   env$cc_snapshot_run_output_area <- function(...) list()
   env$cc_cleanup_stale_runtime_dirs <- function(...) invisible(0L)
   env$cc_cleanup_stale_document_support_dirs <- function(...) invisible(0L)
+  # Üretimde ana süreç hazırlıktan önce sahipliği devralır; işaretsiz runtime
+  # sahiplik kanıtı değildir (fail closed).
+  expect_true(nzchar(env$cc_claim_runtime_ownership(layout$root, "req-reuse")))
 
   sonuc <- env$cc_prepare_run_workspace(list(
     workdir = source_dir, user_id = 7L, request_id = "req-reuse",
@@ -115,6 +118,7 @@ test_that("yeniden kullanılan runtime snapshot hatasında çalıştırmayı dur
   env$cc_snapshot_run_output_area <- function(...) {
     stop("snapshot okunamadı", call. = FALSE)
   }
+  expect_true(nzchar(env$cc_claim_runtime_ownership(layout$root, "req-snapshot-hata")))
 
   expect_error(
     env$cc_prepare_run_workspace(list(

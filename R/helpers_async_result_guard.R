@@ -114,8 +114,9 @@ mergen_bind_request_owner_cleanup <- function(session, active_request_id, req_id
     remove()
     mergen_clear_request_state(session, active_request_id, req_id, reset_fn, values)
   }
+  # Sahip/oturum değişimi kancalarla yakalanır; yoklama yalnız sohbet/Stop içindir.
   if (is.function(session$onSessionEnded) && is.function(session$isClosed)) lifecycle_observer <- shiny::observe({
-    shiny::invalidateLater(50, session)
+    shiny::invalidateLater(250, session)
     if (!isTRUE(current())) cleanup()
   }, domain = session)
   remove_owner <- mergen_session_on_owner_change(session, cleanup)

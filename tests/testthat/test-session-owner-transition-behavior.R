@@ -356,3 +356,22 @@ test_that("ilk giriş ve yeniden giriş yetki değişimi sayılmaz ama gerçek r
   data$write_identity(list(username = "B"), 8L, list(auth_level = "USER"), TRUE, "sso")
   expect_identical(tail(reasons, 1), "sahip_degisti")
 })
+
+test_that("aynı kullanıcı ve rolde satır düzeyi kapsam değişimi eski işi geçersizleştirir", {
+  env <- .owner_env()
+  session <- .owner_session()
+  data <- env$make_user_session_data_accessors(session)
+  reasons <- character()
+  env$mergen_session_on_owner_change(session, function(reason) reasons <<- c(reasons, reason))
+  cfg <- function(masraf) list(auth_level = "PY", masraf_yeri_kodu = masraf, department = "Bilgi")
+  data$write_identity(list(username = "A"), 7L, cfg("100"), TRUE, "sso")
+  expect_length(reasons, 0L)
+  nesil <- session$userData$kimlik_nesli %||% 0L
+  data$write_identity(list(username = "A"), 7L, cfg("100"), TRUE, "sso")
+  expect_length(reasons, 0L)
+  session$userData$chart_store <- list(eski = "kapsam")
+  data$write_identity(list(username = "A"), 7L, cfg("200"), TRUE, "sso")
+  expect_identical(reasons, "yetki_degisti")
+  expect_identical(session$userData$kimlik_nesli, as.integer(nesil) + 1L)
+  expect_length(session$userData$chart_store, 0L)
+})

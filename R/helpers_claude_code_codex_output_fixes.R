@@ -136,6 +136,7 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
   approved_root <- cc_output_sync_canonical_root(as.character(plan$source_workdir %||% "")[1])
   approved_key <- .cc_scan_key(approved_root)
   results <- skipped
+  recovered_parents <- character()
   max_file_bytes <- cc_runtime_limit("max_output_file_bytes", 100 * 1024^2, plan$limits)
   max_total_bytes <- cc_runtime_limit("max_output_total_bytes", 400 * 1024^2, plan$limits)
   fresh_total <- 0
@@ -207,6 +208,23 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
       next
     }
 
+    if (!parent %in% recovered_parents) {
+      .cc_output_recover_parent(parent)
+      recovered_parents <- c(recovered_parents, parent)
+    }
+    txn <- .cc_output_txn_paths(dest)
+    staging <- txn$staging
+    backup <- txn$backup
+    dest_jeton <- .cc_output_dest_lock(dest)
+    if (!nzchar(dest_jeton)) {
+      fail("Hedef başka bir aktarım tarafından kullanılıyor")
+      next
+    }
+    if (!isTRUE(.cc_output_recover_dest(dest))) {
+      mergen_reservation_release(txn$lock, dest_jeton)
+      fail("Önceki yarım aktarım kurtarılamadı")
+      next
+    }
     had_dest <- isTRUE(file.exists(dest)) || isTRUE(dir.exists(dest))
     if (had_dest) {
       # Sys.readlink() Windows'ta HER ZAMAN NA döner ve nzchar(NA) TRUE'dur;
@@ -223,15 +241,12 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
         identical(resolved_key, approved_key) || startsWith(resolved_key, paste0(approved_key, "/"))
       )
       if (isTRUE(linked) || !isTRUE(dest_safe) || isTRUE(dir.exists(dest))) {
+        mergen_reservation_release(txn$lock, dest_jeton)
         fail("Hedef dosya bağlantı/reparse-point, dizin veya onaylı kökün dışında")
         next
       }
     }
 
-    token <- paste0(Sys.getpid(), "-", sprintf("%08d", sample.int(1e8, 1L)))
-    staging <- file.path(parent, paste0(".cc-output-stage-", token))
-    backup <- file.path(parent, paste0(".cc-output-backup-", token))
-    unlink(c(staging, backup), recursive = TRUE, force = TRUE)
 
     staged <- isTRUE(tryCatch(
       file.copy(src, staging, overwrite = FALSE, copy.mode = TRUE, copy.date = TRUE),
@@ -239,6 +254,7 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
     )) && isTRUE(file.exists(staging))
     if (!staged) {
       unlink(staging, force = TRUE)
+      mergen_reservation_release(txn$lock, dest_jeton)
       fail("Çıktı staging dosyasına kopyalanamadı")
       next
     }
@@ -246,17 +262,20 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
     if (!is.finite(staged_size) || !identical(staged_size, source_size) ||
         staged_size > max_file_bytes || fresh_total + staged_size > max_total_bytes) {
       unlink(staging, force = TRUE)
+      mergen_reservation_release(txn$lock, dest_jeton)
       fail("Çıktı staging doğrulaması başarısız")
       next
     }
     if (!guard_ok()) {
       unlink(staging, force = TRUE)
+      mergen_reservation_release(txn$lock, dest_jeton)
       fail("Çalıştırma durduruldu; çıktı terfi ettirilmedi")
       next
     }
 
     if (had_dest && !isTRUE(file.rename(dest, backup))) {
       unlink(staging, force = TRUE)
+      mergen_reservation_release(txn$lock, dest_jeton)
       fail("Hedef dosya atomik terfi için yedeklenemedi")
       next
     }
@@ -267,6 +286,7 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
       unlink(staging, force = TRUE)
       unlink(dest, force = TRUE)
       restored <- !had_dest || (file.exists(backup) && isTRUE(file.rename(backup, dest)))
+      mergen_reservation_release(txn$lock, dest_jeton)
       fail(if (!post_guard) {
         if (restored) "Çalıştırma durduruldu; çıktı terfisi geri alındı" else
           "Çalıştırma durduruldu ve önceki hedef geri yüklenemedi"
@@ -279,6 +299,7 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
     }
 
     unlink(backup, force = TRUE)
+    mergen_reservation_release(txn$lock, dest_jeton)
     results[[length(results) + 1L]] <- list(
       source_path = src, dest_path = dest, success = TRUE,
       size = source_size, error = ""
@@ -296,8 +317,9 @@ cc_process_run_outputs <- function(request) {
   .cc_codex_original_cc_process_run_outputs(request)
 }
 
-# Report partial synchronization failures without discarding successful model
-# text, downloads or successfully synchronized sibling files.
+# Kısmi aktarım hatası başarı sayılmaz: çalıştırma başarısız olarak
+# kalıcılaşır, ancak model metni ve başarıyla aktarılan kardeş dosyaların
+# indirme bağlantıları atılmaz.
 cc_report_output_sync_failure <- function(ctx, outputs) {
   failures <- cc_output_sync_failures(outputs)
   if (!length(failures)) return(FALSE)
@@ -306,14 +328,13 @@ cc_report_output_sync_failure <- function(ctx, outputs) {
     "Çalıştırma tamamlandı; ancak ", length(failures),
     " çıktı kaynak klasöre aktarılamadı: ", paste(names, collapse = ", ")
   )
-  # Kapanmış oturumda gönderim HATA VERİR ve `promises::catch()` bu yolu genel
-  # `cc_report_output_processing_failure()` dalına düşürüyordu; kısmi aktarım
-  # uyarısı raporlaması gönderimden BAĞIMSIZ olmalıdır.
-  try(ctx$session$sendCustomMessage("cc-add-message", list(
-    target = ctx$ns("output_area"), type = "warning",
-    content = htmltools::htmlEscape(message), timestamp = format(Sys.time(), "%H:%M:%S")
-  )), silent = TRUE)
-  FALSE
+  metin <- as.character(ctx$ayristirma$text_output %||% "")[1]
+  ctx$cikis_kodu <- NA_integer_
+  ctx$hata_mesaji <- if (!is.na(metin) && nzchar(metin)) paste0(message, "\n\n", metin) else message
+  sonuc <- tryCatch({ cc_finish_streaming_run(ctx, outputs); NULL }, error = identity)
+  if (!is.null(sonuc) && cc_is_active_run(ctx$rv, ctx$env$request_id))
+    cc_report_output_processing_failure(ctx, sonuc)
+  TRUE
 }
 
 # Independent output deadline with explicit cancellation, plus synchronous
@@ -363,6 +384,9 @@ cc_dispatch_run_output_processing <- function(ctx) {
   }
 
   timeout_sec <- cc_runtime_limit("output_process_timeout_sec", 180, request$limits)
+  # Yürütme süresi işçi başladığında işler; ana süreç son tarihi kalıcı şeritte
+  # aynı bütçeyle sınırlı kabul beklemesini de kapsar (son tarihler ayrıdır).
+  queue_sec <- timeout_sec
   # GÖNDERİM ANINDAKİ değerler yakalanır: yeni bir çalıştırma `ctx$env` alanlarını
   # değiştirebiliyor; eski geri çağrı YENİ isteğin kimliğini test edip aktif-run
   # denetimini geçiyor ve YENİ isteğin lease'ini siliyordu.
@@ -388,7 +412,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
       )))
     }
     invisible(NULL)
-  }, delay = timeout_sec)
+  }, delay = timeout_sec + queue_sec)
   cancel_deadline <- function() {
     deadline$pending <- FALSE
     cancel <- deadline$cancel
@@ -408,6 +432,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
       task_fn = function() cc_process_run_outputs(request),
       task_type = "claude_code_run_outputs",
       execution_timeout = timeout_sec,
+      queue_timeout = queue_sec,
       cancel_check = cc_output_worker_current(ctx$rv, dispatched_request_id, deadline),
       session_token = ctx$session$token,
       dependency_mode = "explicit",
@@ -440,8 +465,12 @@ cc_dispatch_run_output_processing <- function(ctx) {
           cleanup()
           return(NULL)
         }
-        try(cc_finish_streaming_run(ctx, outputs), silent = TRUE)
+        # Sonlandırma hatası yutulmaz: çalıştırma terminale ulaşmadıysa başarısız
+        # olarak kapatılır, böylece "çalışıyor" durumunda kalmaz.
+        bitis <- tryCatch({ cc_finish_streaming_run(ctx, outputs); NULL }, error = identity)
         cleanup()
+        if (!is.null(bitis) && cc_is_active_run(ctx$rv, dispatched_request_id))
+          cc_report_output_processing_failure(ctx, bitis)
         NULL
       }) |>
       promises::catch(function(e) {
@@ -504,8 +533,10 @@ cc_dispatch_run_output_processing <- function(ctx) {
   # hazırlık, çalışma alanını geri kazanmak yerine başarısız oluyordu.
   ".CC_RUNTIME_LOCK_STATE", "cc_runtime_cleanup_lock_heartbeat",
   "cc_runtime_unlink_stepwise",
-  "cc_reclaim_orphaned_runtime_dirs", "mergen_lock_owner_dead", "mergen_pid_status",
-  "cc_bind_runtime_lease", "cc_runtime_lease_owner_dead", "cc_runtime_has_foreign_lease"
+  "cc_reclaim_orphaned_runtime_dirs", "mergen_pid_status", "mergen_owner_reclaimable",
+  "mergen_lock_owner_reclaimable", "mergen_reclaim_mutex",
+  "cc_bind_runtime_lease", "cc_runtime_lease_reclaimable", "cc_runtime_has_foreign_lease",
+  ".cc_write_runtime_lease", ".cc_read_runtime_lease"
 )
 
 .cc_codex_output_worker_names <- c(
@@ -516,7 +547,12 @@ cc_dispatch_run_output_processing <- function(ctx) {
   "cc_scan_directory_bounded", "cc_scan_runtime_excluded_dirs",
   "deduplicate_claude_code_file_paths", "snapshot_claude_code_workdir_files",
   "cc_snapshot_run_output_area", "cc_filter_download_candidates",
-  "cc_plan_output_sync", "cc_apply_output_sync_plan", "cc_process_run_outputs"
+  "cc_plan_output_sync", "cc_apply_output_sync_plan", "cc_process_run_outputs",
+  ".cc_output_txn_paths", ".cc_output_dest_lock", ".cc_output_recover_dest", ".cc_output_recover_parent",
+  "mergen_reservation_token", "mergen_reservation_acquire", "mergen_reservation_takeover",
+  "mergen_reservation_release", "mergen_reservation_owner", ".mergen_reservation_marker",
+  ".mergen_reservation_remove_owned",
+  "mergen_lock_owner_reclaimable", "mergen_owner_reclaimable", "mergen_pid_status", "mergen_reclaim_mutex"
 )
 
 # Süreç başına ÖNBELLEK sözleşmesi korunur. Sertleştirme katmanı yalnızca

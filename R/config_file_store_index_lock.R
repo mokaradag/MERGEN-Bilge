@@ -138,13 +138,15 @@ file_store_index_lock_heartbeat <- function() {
     if (length(jeton) && nzchar(jeton[1])) jeton[1] else NULL
   }
 
-  # Çökmüş bir süreç kilit dizinini sonsuza dek bırakabilir; bu durumda her
-  # mutasyon timeout kadar bekleyip kilitsiz devam ederdi (kalıcı gecikme +
-  # kalıcı kilitsiz mod). Eski (stale) kilitler yaşına bakılarak kırılır.
-  # Windows/UNC dosya sistemlerinde dizin mtime güvenilir olmayabildiği için
-  # varsa lock marker dosyasının mtime değeri esas alınır.
+  # Çökmüş bir süreç kilit dizinini sonsuza dek bırakabilir. Geri kazanım ortak
+  # sahip kuralını izler: canlı yerel sahip korunur, kanıtlı ölü sahip hemen;
+  # markersız/eski biçim/uzak host/aynı süreç kilidi yalnız bayatlık eşiğinden
+  # sonra kırılır. Windows/UNC'de dizin mtime güvenilir olmayabildiği için
+  # varsa marker mtime değeri esas alınır; jeton muteks altında yeniden okunur.
   .break_stale_lock_if_needed <- function() {
-    reclaim <- filelock::lock(paste0(lock_dir, ".reclaim"), timeout = 0)
+    reclaim <- if (exists("mergen_reclaim_mutex", mode = "function")) {
+      mergen_reclaim_mutex(paste0(lock_dir, ".reclaim"))
+    } else NULL
     if (is.null(reclaim)) return(invisible(FALSE))
     on.exit(filelock::unlock(reclaim), add = TRUE)
     lock_time <- .lock_mtime()
@@ -156,8 +158,9 @@ file_store_index_lock_heartbeat <- function() {
     lock_age <- as.numeric(difftime(Sys.time(), lock_time, units = "secs"))
 
     token <- .lock_owner_token()
-    if (exists("mergen_lock_owner_dead", mode = "function") &&
-        mergen_lock_owner_dead(lock_marker) && identical(.lock_owner_token(), token)) {
+    if (mergen_lock_owner_reclaimable(lock_marker, stale_sec = stale_lock_sec,
+                                      age_paths = c(lock_marker, lock_dir), self_reclaim = TRUE) &&
+        identical(.lock_owner_token(), token)) {
       try(
         log_warn("[INDEX] Eski indeks kilidi kırılıyor (yaş: {round(lock_age)} sn): {lock_dir}"),
         silent = TRUE

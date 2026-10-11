@@ -297,7 +297,9 @@ cc_persist_session_begin <- function(rv,
 #' bir sonraki çalıştırma yeni bir kalıcı oturum kaydı açar, eski kayıt
 #' Oturumlar sayfasında erişilebilir kalır.
 cc_persist_detach_session <- function(rv) {
+  # Kayıt ve sahibi tek bağdır; kayıt koparılınca eski sahip kimliği kalmaz.
   rv$claude_session_record_id <- NULL
+  rv$claude_session_owner_id <- NULL
   rv$claude_session_title <- NULL
   rv$claude_session_loaded <- FALSE
   invisible(TRUE)

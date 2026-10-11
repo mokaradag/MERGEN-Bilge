@@ -10,10 +10,9 @@
 #   * Rezervasyon YALNIZCA `dir.create()` ile alınır (atomik, üzerine-yazmaz).
 #   * DAYANIKLI sahiplik jetonu rezervasyonu TUTMANIN ön koşuludur; geri
 #     okunamazsa rezervasyon hemen bırakılır ve çağıran FALSE görür.
-#   * Devralma YAŞA DEĞİL sahiplik kanıtına dayanır: bayat olarak GÖZLENEN
-#     jeton hâlâ yerinde olmalıdır. Yalnızca yaşa bakan devralma, yavaş bir UNC
-#     paylaşımında CANLI sahibin rezervasyonunu kırıp iki çağrının aynı hedefi
-#     terfi ettirmesine izin veriyordu.
+#   * Devralma önce sahiplik kanıtına dayanır: canlı yerel sahip asla
+#     devralınmaz; yaş yalnız doğrulanamayan (eski biçim/uzak host) sahip için
+#     sınırlı kurtarmadır. Bayat olarak GÖZLENEN jeton hâlâ yerinde olmalıdır.
 #   * Bırakma da sahiplik kanıtı ister: jeton artık bizim değilse rezervasyon
 #     KALDIRILMAZ (aksi hâlde yeni sahibin rezervasyonu silinir).
 #   * Kaldırma YOL ADINA GÖRE yapılmaz. Rezervasyon önce ATOMİK
@@ -164,8 +163,10 @@ mergen_reservation_touch <- function(rezerv, jeton) {
 }
 
 # Bayat rezervasyonu devralır. Çökmüş bir çalıştırmadan kalan rezervasyon kalıcı
-# kilitlenme üretmemelidir; ancak CANLI sahip kirasını tazelediyse veya jeton
-# devralma penceresinde değiştiyse devralma YAPILMAZ.
+# kilitlenme üretmemelidir; ancak CANLI sahip korunur ve jeton devralma
+# penceresinde değiştiyse devralma YAPILMAZ. Karar ortak sahip kuralıdır:
+# kanıtlı ölü sahip hemen, eski biçim (host satırsız) ya da uzak host yalnız
+# `stale_sec` aşılınca. Koruma dosyası kullanıcı klasöründe kalıcı iz bırakmaz.
 mergen_reservation_takeover <- function(rezerv, jeton,
                                         stale_sec = .MERGEN_RESERVATION_STALE_SEC) {
   gozlenen <- mergen_reservation_owner(rezerv)
@@ -173,13 +174,19 @@ mergen_reservation_takeover <- function(rezerv, jeton,
   # `NA_character_` döner ve `identical(NA, NA)` TRUE olur. Geçici bir UNC
   # okuma hatası, CANLI bir rezervasyonun devralınmasına izin veriyordu.
   if (length(gozlenen) != 1L || is.na(gozlenen) || !nzchar(gozlenen)) return(FALSE)
+  if (!exists("mergen_reclaim_mutex", mode = "function")) return(FALSE)
 
-  guard <- tryCatch(filelock::lock(paste0(rezerv, ".reclaim"), timeout = 0), error = function(e) NULL)
+  guard_yolu <- paste0(rezerv, ".reclaim")
+  guard <- mergen_reclaim_mutex(guard_yolu)
   if (is.null(guard)) return(FALSE)
-  on.exit(filelock::unlock(guard), add = TRUE)
+  on.exit({
+    filelock::unlock(guard)
+    try(unlink(guard_yolu, force = TRUE), silent = TRUE)
+  }, add = TRUE)
   if (!identical(mergen_reservation_owner(rezerv), gozlenen) ||
-      !exists("mergen_lock_owner_dead", mode = "function") ||
-      !mergen_lock_owner_dead(.mergen_reservation_marker(rezerv), gozlenen)) return(FALSE)
+      !mergen_lock_owner_reclaimable(.mergen_reservation_marker(rezerv), gozlenen,
+                                     stale_sec = stale_sec,
+                                     age_paths = c(.mergen_reservation_marker(rezerv), rezerv))) return(FALSE)
 
   # Silme, GÖZLENEN örneğe bağlıdır: karantina taşımasından sonra jeton hâlâ
   # `gozlenen` değilse rezervasyon bu aralıkta değişmiştir ve devralınmaz.

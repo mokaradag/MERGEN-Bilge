@@ -1,24 +1,35 @@
 # İptal edilebilir işler ortak future havuzundan bağımsız ve sınırlıdır.
 .MERGEN_CANCELLABLE_WORKERS <- new.env(parent = emptyenv())
 
+# Tanıtıcı sorgulanamazsa PID düzeyine düşülür; o da bilinmiyorsa NA kalır.
 mergen_process_status <- function(process) {
-  tryCatch({
-    status <- process$is_alive()
-    if (identical(status, TRUE) || identical(status, FALSE)) status else NA
-  }, error = function(e) NA)
+  status <- tryCatch(process$is_alive(), error = function(e) NA)
+  if (identical(status, TRUE) || identical(status, FALSE)) return(status)
+  if (!exists("mergen_pid_status", mode = "function", inherits = TRUE)) return(NA)
+  pid <- tryCatch(process$get_pid(), error = function(e) NA_integer_)
+  baslangic <- tryCatch(as.numeric(process$get_start_time()), error = function(e) NULL)
+  pid_durum <- tryCatch(mergen_pid_status(pid, unname(Sys.info()[["nodename"]]),
+    since = baslangic, slack = 2), error = function(e) NA)
+  if (identical(pid_durum, TRUE) || identical(pid_durum, FALSE)) pid_durum else NA
 }
 
 mergen_process_alive <- function(process) isTRUE(mergen_process_status(process))
 
+# Kök ölse de torunlar yaşayabilir: ağaç her durdurmada temizlenir. Başarı
+# yalnızca kök için açık FALSE gözlenince bildirilir.
 mergen_process_stop <- function(process) {
-  if (identical(mergen_process_status(process), FALSE)) return(TRUE)
   try(process$kill_tree(), silent = TRUE)
+  if (identical(mergen_process_status(process), FALSE)) return(TRUE)
   try(process$kill(grace = 0), silent = TRUE)
   identical(mergen_process_status(process), FALSE)
 }
 
-mergen_retire_process <- function(process, release) {
+# Kaynak yalnız ölüm doğrulanınca bırakılır. Doğrulanamayan süreç karantinaya
+# alınır: `on_uncertain` bir kez çağrılır (UI/işlem terminale geçebilir) ama
+# kaynak sahibi süreç ölmeden serbest kalmaz; yoklama seyrekleşerek sürer.
+mergen_retire_process <- function(process, release, on_uncertain = NULL) {
   released <- FALSE
+  uncertain <- FALSE
   attempts <- 0L
   poll <- function() {
     if (released) return(invisible(NULL))
@@ -27,18 +38,38 @@ mergen_retire_process <- function(process, release) {
       try(release(), silent = TRUE)
     } else {
       attempts <<- attempts + 1L
-      mergen_cancellable_worker_schedule(poll, delay = min(5, 0.5 * attempts))
+      if (attempts >= 3L && !uncertain) {
+        uncertain <<- TRUE
+        if (is.function(on_uncertain)) try(on_uncertain(), silent = TRUE)
+      }
+      mergen_cancellable_worker_schedule(poll, delay = min(30, 0.5 * attempts))
     }
     invisible(NULL)
   }
   poll()
 }
 
-mergen_cancellable_worker_capacity <- function() {
+# Şeritler aynı altyapıyı paylaşır, kapasiteyi paylaşmaz: kalıcı işler
+# (alım, Yolaç hazırlık/çıktı) etkileşimli sohbet/TTS kapasitesini tüketmez.
+mergen_cancellable_worker_capacity <- function(lane = "interactive") {
   configured <- getOption("mergen.cancellable_workers", NULL)
   if (is.null(configured)) configured <- if (exists("resolve_mergen_worker_count", mode = "function")) resolve_mergen_worker_count() else 2L
   value <- suppressWarnings(as.integer(configured)[1])
   if (length(value) != 1L || is.na(value) || value < 1L) 1L else value
+}
+
+# Karantinadaki (ölümü doğrulanamayan) iş kapasite ve kuyruk yeri tüketmez.
+.mergen_cancellable_live_jobs <- function(lane = NULL) {
+  Filter(function(job) !isTRUE(job$quarantined) &&
+           (is.null(lane) || identical(job$lane %||% "interactive", lane)),
+         .MERGEN_CANCELLABLE_WORKERS$jobs %||% list())
+}
+
+.mergen_cancellable_queue_limit <- function(priority) if (priority > 1L) 32L else 34L
+
+mergen_cancellable_worker_admissible <- function(lane = "interactive", priority = 0L) {
+  length(.mergen_cancellable_live_jobs()) < .mergen_cancellable_queue_limit(priority) &&
+    length(.mergen_cancellable_live_jobs(lane)) < mergen_cancellable_worker_capacity(lane)
 }
 
 mergen_cancellable_worker_settle <- function(job, error = NULL) {
@@ -102,16 +133,21 @@ mergen_cancellable_worker_tick <- function() {
   }
   keep <- keep[order(vapply(keep, function(job) job$priority, integer(1)))]
   state$jobs <- keep
-  running <- sum(vapply(keep, function(job) !is.null(job$process), logical(1)))
+  running <- list()
   for (job in keep) {
-    if (!is.null(job$process) || running >= mergen_cancellable_worker_capacity()) next
+    lane <- job$lane %||% "interactive"
+    if (!is.null(job$process) && !isTRUE(job$quarantined)) running[[lane]] <- (running[[lane]] %||% 0L) + 1L
+  }
+  for (job in keep) {
+    lane <- job$lane %||% "interactive"
+    if (!is.null(job$process) || (running[[lane]] %||% 0L) >= mergen_cancellable_worker_capacity(lane)) next
     started <- tryCatch({
       job$process <- mergen_cancellable_worker_launch(job$payload)
       job$started <- Sys.time()
       job$payload <- NULL
       TRUE
     }, error = function(e) { mergen_cancellable_worker_settle(job, e); FALSE })
-    if (started) running <- running + 1L
+    if (started) running[[lane]] <- (running[[lane]] %||% 0L) + 1L
   }
   state$jobs <- Filter(function(job) !isTRUE(job$finished), state$jobs)
   if (length(state$jobs) && !isTRUE(state$scheduled)) {
@@ -132,12 +168,12 @@ mergen_cancellable_worker_launch <- function(payload) {
 }
 
 mergen_cancellable_worker_promise <- function(payload, current, timeout = 1800, priority = 0L,
-                                              queue_timeout = min(timeout, 300)) {
+                                              queue_timeout = min(timeout, 300), lane = "interactive") {
   if (!is.finite(timeout) || timeout <= 0 || !is.finite(queue_timeout) || queue_timeout <= 0)
     stop("İşçi son tarihleri sonlu ve pozitif olmalıdır.")
   state <- .MERGEN_CANCELLABLE_WORKERS
   if (is.null(state$jobs)) state$jobs <- list()
-  if (length(state$jobs) >= if (priority > 1L) 32L else 34L) {
+  if (length(.mergen_cancellable_live_jobs()) >= .mergen_cancellable_queue_limit(priority)) {
     return(promises::promise_reject(simpleError("Arka plan iş kuyruğu dolu.")))
   }
   promises::promise(function(resolve, reject) {
@@ -151,6 +187,7 @@ mergen_cancellable_worker_promise <- function(payload, current, timeout = 1800, 
     job$timeout <- timeout
     job$queue_timeout <- queue_timeout
     job$priority <- as.integer(priority)
+    job$lane <- lane
     job$resolve <- resolve
     job$reject <- reject
     state$jobs[[length(state$jobs) + 1L]] <- job

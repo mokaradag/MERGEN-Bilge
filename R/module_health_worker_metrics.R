@@ -39,6 +39,10 @@ render_worker_health_html <- function(worker_info) {
     satir("Aktif İşçi:", sayi(worker_info$active_workers)),
     satir("Aktif İş:", sayi(worker_info$active_jobs)),
     satir("Kuyruktaki İş:", sayi(worker_info$queued_jobs)),
+    # İptal edilebilir callr havuzu Future sayaçlarına katılmaz; ayrıca gösterilir.
+    satir("Bağımsız İşçi (aktif/kuyruk/karantina):", paste(
+      sayi(worker_info$cancellable_pool$active_workers), sayi(worker_info$cancellable_pool$queued_jobs),
+      sayi(worker_info$cancellable_pool$quarantined_jobs), sep = " / ")),
     satir("Kullanım Oranı:", sayi(worker_info$usage_pct, "%.1f%%", as.numeric)),
     '<br><span class="health-worker-types-title">İş Türleri:</span><br>',
     '<span class="health-worker-types">', breakdown_text, '</span><br><br>',

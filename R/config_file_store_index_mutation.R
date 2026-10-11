@@ -336,6 +336,21 @@ mergen_register_uploaded_file <- function(src_path,
   dest_norm
 }
 
+# Aynı görünen ad için yeni kayıt eskiyi değiştirir (ardışık yeniden yükleme);
+# yalnız bu işlem başladıktan SONRA commit edilmiş canlı başka bir yapıt eşzamanlı
+# çakışmadır ve korunur. Kimliksiz (yeniden kayıt) yazım canlı yapıtı ezmez.
+.file_store_entry_replaceable <- function(node, kayit) {
+  if (is.null(node) || !is.list(node)) return(TRUE)
+  if (identical(node$path, kayit$path) &&
+      (is.null(node$artifact_id) || identical(node$artifact_id, kayit$artifact_id))) return(TRUE)
+  canli <- !is.null(node$artifact_id) && exists("file_ingestion_artifact_owned", mode = "function") &&
+    isTRUE(file_ingestion_artifact_owned(list(dest = node$path, artifact_id = node$artifact_id),
+                                         allow_deleting = FALSE))
+  if (!canli) return(TRUE)
+  if (is.null(kayit$artifact_id)) return(FALSE)
+  !isTRUE(file_ingestion_claimed_since(node$path, kayit$path))
+}
+
 # Kalıcı klasöre ZATEN kopyalanmış dosyaları TEK indeks mutasyonunda kaydeder.
 # Dosya alım hattı (R/helpers_file_ingestion_runtime.R) kopyalamayı worker'da
 # yaptığı için burada yeniden kopyalama yapılmaz; parti başına tek kilit/tek
@@ -359,10 +374,7 @@ mergen_index_persisted_files <- function(entries, user_id = NULL) {
       if (!is.null(kayit$artifact_id) &&
           !file_ingestion_artifact_owned(list(dest = kayit$path, artifact_id = kayit$artifact_id), allow_deleting = FALSE)) next
       node <- if (is.null(user_id)) idx[[kayit$key]] else idx[[as.character(user_id)]][[kayit$key]]
-      if (!is.null(kayit$artifact_id) && !is.null(node) &&
-          !(is.list(node) && identical(node$path, kayit$path) &&
-            (identical(node$artifact_id, kayit$artifact_id) ||
-             !file_ingestion_artifact_owned(list(dest = node$path, artifact_id = node$artifact_id))))) next
+      if (!.file_store_entry_replaceable(node, kayit)) next
       girdi <- list(path = kayit$path, display = kayit$display)
       if (!is.null(kayit$artifact_id)) girdi$artifact_id <- kayit$artifact_id
       indexed <<- c(indexed, kayit$display)

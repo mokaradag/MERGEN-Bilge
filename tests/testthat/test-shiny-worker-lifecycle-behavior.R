@@ -518,6 +518,57 @@ test_that("Yolaç tarayıcı kapanınca başlayan süreci ve run metadata bilgis
   expect_false(env$cc_is_active_run(rv, "A"))
 })
 
+test_that("Yolaç hazırlık ya da özet aşamasında tarayıcı kapanışı çalıştırmayı sıfırlamaz", {
+  env <- .lifecycle_env(c("helpers_user_session_identity.R", "helpers_async_result_guard.R",
+    "helpers_claude_code_run_lifecycle.R", "helpers_claude_code_workbench_session_api.R"))
+  ended <- NULL
+  ud <- new.env()
+  ud$user_id <- 7L
+  ud$kimlik_nesli <- 1L
+  session <- list(userData = ud, isClosed = function() TRUE,
+    onSessionEnded = function(fn) { ended <<- fn; function() NULL })
+  rv <- new.env()
+  rv$active_process <- NULL
+  rv$active_request_id <- "A"
+  rv$is_running <- TRUE
+  rv$stream_env <- NULL
+  rv$active_persist_record_id <- 42L
+  env$cc_bind_workbench_owner_lifecycle(session, identity, rv, list(next_id = function() NULL))
+  ended()
+  ref <- cc_run_state_reference(rv)
+  expect_true(ref$rv$is_running)
+  expect_identical(ref$rv$active_request_id, "A")
+  expect_true(env$cc_is_active_run(ref$rv, "A"))
+  ud$kimlik_nesli <- 2L
+  expect_false(env$cc_is_active_run(ref$rv, "A"))
+})
+
+test_that("benzetimli akışta okunamayan sohbet kimliği aynı sohbet sayılmaz", {
+  env <- .lifecycle_env("helpers_chat_runtime.R")
+  env$format_timestamp <- function() "zaman"
+  env$normalize_character_id <- identity
+  env$get_character_record <- function(...) list()
+  okuma <- 0L
+  env$mergen_pk_chat_identity <- function(...) {
+    okuma <<- okuma + 1L
+    if (okuma == 1L) "chat_A" else stop("kimlik okunamadı")
+  }
+  env$render_message_bubble_ui <- function(...) stop("bayat yanıt eklenmemeli")
+  env$chat_reset_state <- function(...) NULL
+  env$pk_provenance_blocks_streaming <- function(...) FALSE
+  shiny::testServer(function(input, output, session) NULL, {
+    session$userData$user_id <- 7L
+    session$userData$llm_request_owner <- "A"
+    values <- shiny::reactiveValues(messages = list(), current_chat_id = "chat_A")
+    completed <- "bekleniyor"
+    shiny::isolate(env$chat_simulate_streaming("eski yanıt", session, values,
+      list(selected_character = "bilge"), output, shiny::reactiveVal(FALSE), request_id = "A",
+      on_complete = function(msg) completed <<- msg))
+    expect_null(completed)
+    expect_length(shiny::isolate(values$messages), 0L)
+  })
+})
+
 test_that("benzetimli Stop yalnızca gerçekten birikmiş parçayı kaydeder", {
   for (mode in c("empty", "partial")) {
   env <- .lifecycle_env("helpers_chat_runtime.R")
@@ -553,6 +604,8 @@ test_that("benzetimli Stop yalnızca gerçekten birikmiş parçayı kaydeder", {
     session$flushReact()
     expect_true(completed)
     expect_length(shiny::isolate(values$messages), if (mode == "empty") 0L else 1L)
+    # Durdurulan kısmi metin tam yanıtın doğrulamasını devralmaz.
+    if (mode == "partial") expect_false(shiny::isolate(values$messages)[[1]]$followup_validated)
     expect_identical(saved, if (mode == "empty") 0L else 2L)
   })
   }

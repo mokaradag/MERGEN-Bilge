@@ -210,7 +210,8 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
   pk_request_id <- tryCatch({ rid <- as.character(request_id %||% "")[1]; if (is.na(rid) || !nzchar(rid)) rid <- as.character(pk_provenance_current_request_id(session) %||% "")[1]; if (is.na(rid) || !nzchar(rid)) NULL else rid }, error = function(e) NULL)  # -- 1. SETUP PREPARATION --
   .cr_kimlik_oku <- function() { if (!exists("mergen_pk_chat_identity", mode = "function", inherits = TRUE)) return(NULL); v <- try(mergen_pk_chat_identity(session, values), silent = TRUE); if (inherits(v, "try-error")) NULL else v }
   pk_chat_kimlik <- .cr_kimlik_oku()
-  .cr_ayni_sohbet <- function() { if (is.null(pk_chat_kimlik)) return(TRUE); s <- .cr_kimlik_oku(); is.null(s) || identical(s, pk_chat_kimlik) }
+  # Yeniden okunamayan sohbet kimliği "aynı sohbet" sayılmaz (fail closed).
+  .cr_ayni_sohbet <- function() { if (is.null(pk_chat_kimlik)) return(TRUE); s <- .cr_kimlik_oku(); !is.null(s) && identical(s, pk_chat_kimlik) }
   .cr_result_current <- mergen_request_owner_guard(session)
   msg_id <- paste0("msg_", floor(as.numeric(Sys.time()) * 1000), "_", sample(1000:9999, 1))
   timestamp <- format_timestamp()
@@ -325,9 +326,17 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
             msg_index <- integer()
           }
           if (length(msg_index) > 0) {
-            final_text <- if (isTRUE(stop_generation()) || nzchar(streaming_state$accumulated)) streaming_state$accumulated else full_response
-            semantic <- list(display = final_text, tts = if (stop_generation()) final_text else tts_metni,
-              validated = !identical(blok$validated, FALSE))
+            durduruldu <- isTRUE(stop_generation())
+            final_text <- if (durduruldu || nzchar(streaming_state$accumulated)) streaming_state$accumulated else full_response
+            # Durdurulan kısmi metin tam yanıtın doğrulamasını devralmaz; köken
+            # bildirimi (görüntü ile gövde farkı) kısmi metne de eklenir.
+            if (durduruldu && !identical(final_text, full_response)) {
+              alt_bilgi <- if (startsWith(full_response, tts_metni)) substring(full_response, nchar(tts_metni) + 1L) else ""
+              govde <- substr(final_text, 1L, min(nchar(final_text), nchar(tts_metni)))
+              final_text <- paste0(govde, alt_bilgi)
+            }
+            semantic <- list(display = final_text, tts = if (durduruldu) final_text else tts_metni,
+              validated = !durduruldu && isTRUE(blok$validated))
 
 
             chart_info <- build_chartlab_message(final_text, streaming_state$msg_id, session)
@@ -422,7 +431,8 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
       error = function(e) {
         cat(sprintf("[PK] block kipi metinleri hazırlanamadı: %s\n",
                     conditionMessage(e)))
-        yedek_blok
+        # Doğrulama çalışmadı: yedek metin doğrulanmış sayılmaz.
+        utils::modifyList(yedek_blok, list(validated = FALSE))
       }
     )
   } else yedek_blok

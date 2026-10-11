@@ -362,7 +362,8 @@ test_that("DOCX senkron gönderim hatası yalnız güncel açık önizlemeye bil
       session$returned$open(list(name = "rapor.docx", datapath = "/sunucu/rapor.docx"))
       .fp_drain_later_queue()
       expect_identical(notifications, if (change == "current") 1L else 0L)
-      expect_identical(closed, if (change == "current") 1L else 0L)
+      # Önizleme hatası modalı ve indirme yolunu kapatmaz.
+      expect_identical(closed, 0L)
     })
   }
 })
@@ -381,6 +382,12 @@ test_that("DOCX sonucu başka türdeki önizlemenin yolunu veya modalını deği
   text_path <- withr::local_tempfile(fileext = ".txt")
   writeLines("yeni dosya", text_path)
   shiny::testServer(env$filePreviewServer, {
+    sent <- character()
+    target <- .subset2(session, "parent") %||% session
+    target$sendCustomMessage <- function(type, message) {
+      sent <<- c(sent, type)
+      invisible(NULL)
+    }
     session$returned$open(list(name = "eski.docx", datapath = "eski.docx"))
     session$returned$open(list(name = "yeni.txt", datapath = text_path))
     resolvers$queue[[1]]$resolve(structure("BASE64", resolved_path = "eski.docx"))
@@ -388,6 +395,8 @@ test_that("DOCX sonucu başka türdeki önizlemenin yolunu veya modalını deği
     expect_identical(normalizePath(isolate(file_storage$preview_file$datapath), winslash = "/"),
                      normalizePath(text_path, winslash = "/"))
     expect_identical(removed, 0L)
+    # Eski DOCX sonucu yeni önizlemeye belge basmaz.
+    expect_false("openDocxPreview" %in% sent)
   })
 })
 
@@ -496,4 +505,18 @@ testthat::test_that("genel ve DOCX önizleme değerleri aynı bayt ve adet büt�
   testthat::expect_identical(names(cache), c("DOCX", "image"))
   cache <- env$mergen_preview_cache_put(cache, "other", "x", max_entries = 1L)
   testthat::expect_identical(cache, list(other = "x"))
+})
+
+test_that("önizleme önbellek anahtarı saniye altı yeniden yazımı ve okunamayan üstveriyi ayırt eder", {
+  path <- withr::local_tempfile(fileext = ".pdf")
+  writeLines("a", path)
+  Sys.setFileTime(path, as.POSIXct("2026-01-01 10:00:00.100", tz = "UTC"))
+  ilk <- mergen_preview_cache_key(path)
+  writeLines("b", path)
+  Sys.setFileTime(path, as.POSIXct("2026-01-01 10:00:00.700", tz = "UTC"))
+  ikinci <- mergen_preview_cache_key(path)
+  expect_false(identical(ilk, ikinci))
+  expect_identical(ikinci, mergen_preview_cache_key(path))
+  eksik <- file.path(tempdir(), "olmayan-onizleme.pdf")
+  expect_false(identical(mergen_preview_cache_key(eksik), mergen_preview_cache_key(eksik)))
 })

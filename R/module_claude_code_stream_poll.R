@@ -75,6 +75,15 @@ cc_bind_claude_code_stream_polling <- function(input,
   rv$process_poll_observer <- shiny::observe({
     rv <- run_ref$rv
     ui_active <- !is.function(session$isClosed) || !isTRUE(session$isClosed())
+    # Ayrılmış çalıştırma reaktif bağımlılık üretmez; terminale dek zamanlayıcıyla
+    # yoklanır (hazırlıkta ayrılan çalıştırmanın sonradan başlayan CLI'ı dahil).
+    if (!shiny::is.reactivevalues(rv)) {
+      if (!isTRUE(rv$is_running)) {
+        try(rv$process_poll_observer$destroy(), silent = TRUE)
+        return(invisible(NULL))
+      }
+      shiny::invalidateLater(200)
+    }
     shiny::req(isTRUE(rv$is_running))
     proc <- rv$active_process
     shiny::req(!is.null(proc))
@@ -89,8 +98,12 @@ cc_bind_claude_code_stream_polling <- function(input,
       if (!is.null(env$termination_probe_after) && Sys.time() < env$termination_probe_after) return()
       if (!mergen_process_stop(proc)) {
         env$termination_attempts <- (env$termination_attempts %||% 0L) + 1L
-        env$termination_probe_after <- Sys.time() + if (env$termination_attempts >= 3L) 5 else 0.5
-        return()
+        # Belirsiz sonlanma sınırlıdır: çalıştırma terminale geçer; kira ise
+        # sonlandırıcının emekliye ayırma yolunda ölüm doğrulanana dek tutulur.
+        if (env$termination_attempts < 3L) {
+          env$termination_probe_after <- Sys.time() + 0.5
+          return()
+        }
       }
     }
     if (isTRUE(env$durduruldu)) {
@@ -307,14 +320,6 @@ cc_bind_claude_code_stream_polling <- function(input,
       })
     }
   }, domain = NULL, autoDestroy = FALSE)
-  session$onSessionEnded(function() {
-    shiny::isolate({
-      state <- run_ref$rv
-      if (isTRUE(state$is_running) && (!is.null(state$active_process) || isTRUE(state$stream_env$output_worker_pending)))
-        cc_detach_run_state(run_ref, session) else if (!is.null(state$process_poll_observer))
-          state$process_poll_observer$destroy()
-    })
-  })
 
   shiny::observeEvent(input$stop_command, {
     if (isTRUE(rv$is_running)) {

@@ -10,6 +10,9 @@ mergen_preview_cache_put <- function(cache, id, value, max_entries = 3L, max_byt
   cache
 }
 
+# Anahtar dosya sürümünü tam hassasiyetle taşır: aynı saniyede aynı boyutla
+# yeniden yazılan dosya eski baytları getirmez. Üstveri okunamazsa sürüm
+# kanıtlanamaz; anahtar tekildir ve önbellek kullanılmaz.
 mergen_preview_cache_key <- function(path) {
   dp <- if (exists("resolve_readable_path", mode = "function")) {
     resolve_readable_path(path)
@@ -18,18 +21,10 @@ mergen_preview_cache_key <- function(path) {
   }
 
   finfo <- tryCatch(file.info(dp), error = function(e) NULL)
-
-  size_txt <- if (!is.null(finfo) && !is.na(finfo$size[1])) {
-    as.character(finfo$size[1])
-  } else {
-    "nosize"
+  if (is.null(finfo) || is.na(finfo$size[1]) || is.na(finfo$mtime[1])) {
+    return(paste(dp, "nometa", basename(tempfile("k")), sep = "||"))
   }
 
-  mtime_txt <- if (!is.null(finfo) && !is.na(finfo$mtime[1])) {
-    format(finfo$mtime[1], "%Y%m%d%H%M%S")
-  } else {
-    "nomtime"
-  }
-
-  paste(dp, size_txt, mtime_txt, sep = "||")
+  paste(dp, as.character(finfo$size[1]), format(as.numeric(finfo$mtime[1]), digits = 17),
+        sep = "||")
 }

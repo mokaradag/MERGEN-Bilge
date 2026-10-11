@@ -4,14 +4,18 @@ cc_publish_document_summary_async <- function(result, target_dir, output_dir, se
   guard <- tempfile("summary-sync-", tmpdir = output_dir)
   if (!isTRUE(file.create(guard))) stop("Özet aktarım koruması oluşturulamadı.")
   rv$summary_sync_guard <- guard
+  # Tarayıcı kapanışı yayını iptal etmez; yalnız çalıştırmanın geçersizleşmesi
+  # (Stop, yeni istek, sahip/yetki değişimi) koruma dosyasını siler.
+  run_ref <- cc_run_state_reference(rv)
   current <- function() {
-    valid <- !isTRUE(session$isClosed()) && cc_is_active_run(rv, request_id) &&
-      isTRUE(shiny::isolate(rv$is_running))
+    valid <- cc_is_active_run(run_ref$rv, request_id) && isTRUE(shiny::isolate(run_ref$rv$is_running))
     if (!valid) unlink(guard, force = TRUE)
     valid
   }
   remove_owner <- mergen_session_on_owner_change(session, function(...) unlink(guard, force = TRUE))
-  globals <- c(list(summary_source = result$generated_summary_path,
+  # Kaynak yalnız güvenilen çıktı dizininden gelebilir; işçi sonucu kendi
+  # kökünü onaylayamaz.
+  globals <- c(list(summary_source = result$generated_summary_path, summary_root = output_dir,
     summary_dest = file.path(target_dir, "dosya_aciklamalari.txt"), summary_guard = guard),
     cc_run_output_worker_globals())
   promise <- tryCatch(tracked_future_promise(
@@ -19,7 +23,7 @@ cc_publish_document_summary_async <- function(result, target_dir, output_dir, se
       if (!file.exists(summary_guard)) stop("Özet aktarımı iptal edildi.")
       plan <- list(items = list(list(source_path = summary_source, dest_path = summary_dest,
         size = file.info(summary_source)$size)), source_workdir = dirname(summary_dest),
-        output_root = dirname(summary_source))
+        output_root = summary_root)
       applied <- cc_apply_output_sync_plan(plan, active_guard = summary_guard)
       if (length(applied) != 1L || !isTRUE(applied[[1L]]$success)) stop("Özet dosyası güvenli biçimde aktarılamadı.")
       normalizePath(summary_dest, winslash = "/", mustWork = TRUE)
@@ -33,7 +37,7 @@ cc_publish_document_summary_async <- function(result, target_dir, output_dir, se
   }), function() {
     remove_owner()
     unlink(guard, force = TRUE)
-    if (!isTRUE(session$isClosed()) && identical(shiny::isolate(rv$summary_sync_guard), guard))
-      rv$summary_sync_guard <- NULL
+    if (identical(shiny::isolate(run_ref$rv$summary_sync_guard), guard))
+      run_ref$rv$summary_sync_guard <- NULL
   })
 }

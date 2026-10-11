@@ -58,9 +58,9 @@ file_ingestion_metrics_enabled <- function() {
   tolower(raw) %in% c("true", "1", "yes", "on", "evet", "acik")
 }
 
-# Alım kapasitesi kendi callr havuzuna aittir.
+# Alım kapasitesi kalıcı callr şeridine aittir; dolu şerit işi kuyrukta tutar.
 file_ingestion_pool_has_capacity <- function() {
-  isTRUE(tryCatch(mergen_cancellable_worker_available(), error = function(e) FALSE))
+  isTRUE(tryCatch(mergen_cancellable_worker_available(lane = "durable"), error = function(e) FALSE))
 }
 
 file_ingestion_try_acquire_slot <- function() {

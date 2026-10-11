@@ -315,7 +315,7 @@ testthat::test_that("poll gözlemcisi zaman aşımı: 'Zaman Aşımı' finalize 
   })
 })
 
-testthat::test_that("poll bilinmeyen süreç ölümünü terminal saymaz", {
+testthat::test_that("poll bilinmeyen süreç ölümünü kanıt saymaz ama Stop'u sınırlı sürede terminale taşır", {
   env <- .csp_env(); fin <- .csp_finalize_rec()
   proc <- .csp_fake_proc(alive = NA)
   proc$kill <- function(...) { proc$killed <- TRUE; invisible(NULL) }
@@ -329,6 +329,19 @@ testthat::test_that("poll bilinmeyen süreç ölümünü terminal saymaz", {
     expect_length(fin$calls, 0L)
     expect_true(session$returned$is_running)
     expect_identical(session$returned$active_process, proc)
+    # Sınırlı deneme sonrası çalıştırma terminale geçer; kira bırakma kararı
+    # sonlandırıcının emekliye ayırma yoluna (ölüm kanıtı) kalır.
+    # Her yoklama turu reaktif bağımlılık üzerinden tetiklenir (zaman ilerletilmez).
+    for (i in 1:2) {
+      sp$termination_probe_after <- NULL
+      session$returned$is_running <- FALSE
+      session$flushReact()
+      session$returned$is_running <- TRUE
+      session$flushReact()
+    }
+    expect_identical(sp$termination_attempts, 3L)
+    expect_length(fin$calls, 1L)
+    expect_identical(fin$calls[[1]]$durum, "Durduruldu")
     session$returned$process_poll_observer$destroy()
   })
 })
@@ -337,6 +350,9 @@ testthat::test_that("poll bilinmeyen süreç ölümünü terminal saymaz", {
 testthat::test_that("kapanan modülün CLI çıktıları reaktif duruma veya UI'a erişmeden tamamlanır", {
   env <- .csp_env()
   source(file.path(resolve_repo_root_for_tests(), "R", "module_claude_code_akis.R"),
+         encoding = "UTF-8", local = env)
+  # Oturum sonu ayrımı tek sahipte (çalışma tezgâhı yaşam döngüsü) yapılır.
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_workbench_session_api.R"),
          encoding = "UTF-8", local = env)
   proc <- .csp_fake_proc(alive = TRUE)
   sp <- .csp_stream_env(request_id = "closed")
@@ -357,6 +373,7 @@ testthat::test_that("kapanan modülün CLI çıktıları reaktif duruma veya UI'
     api <- env$create_akis_yardimcilari(session, session$ns, rv)
     env$cc_bind_claude_code_stream_polling(input, session, session$ns, rv,
       function(...) { rec$ui <- rec$ui + 1L }, api$finalize_streaming, function(...) NULL)
+    env$cc_bind_workbench_owner_lifecycle(session, session$ns, rv, list(next_id = function() NULL))
     invisible(NULL)
   })
   shiny::testServer(srv, { session$flushReact() })

@@ -493,6 +493,14 @@ pk_provenance_decorate <- function(text, session, request_id = NULL, validation_
     text
   }
 
+  # Doğrulama sonucu üç durumludur ve tek kez bildirilir: TRUE yalnız başarılı,
+  # bozulmasız doğrulama ya da doğrulanacak iddia olmadığında. Geri çağrı
+  # hatası sonucu değiştirmez; bildirilmeden dönen yol sarmalayıcıda
+  # doğrulanmamış sayılır. İlk belirlenen sonuç çıkışta bir kez iletilir.
+  dogrulama <- NA
+  on.exit(if (!is.na(dogrulama) && is.function(validation_callback))
+    try(validation_callback(isTRUE(dogrulama)), silent = TRUE), add = TRUE)
+
   tryCatch({
     pending <- pk_provenance_take(session, request_id = request_id, full = TRUE)
     if (is.null(pending) || !is.list(pending)) return(notr_metin)
@@ -512,7 +520,10 @@ pk_provenance_decorate <- function(text, session, request_id = NULL, validation_
     if (is.na(footer)) footer <- ""
     # ALT BİLGİSİZ AMA OLGULU KAYIT DA DOĞRULANIR: erken dönüş yalnızca
     # gerçekten yapılacak iş kalmadığında (ne alt bilgi ne olgu) geçerlidir.
-    if (!nzchar(footer) && is.null(pending$facts)) return(notr_metin)
+    if (!nzchar(footer) && is.null(pending$facts)) {
+      dogrulama <- TRUE
+      return(notr_metin)
+    }
 
     base_txt <- if (is.null(text) || length(text) == 0L) "" else as.character(text)[1]
     if (is.na(base_txt)) base_txt <- ""
@@ -529,6 +540,7 @@ pk_provenance_decorate <- function(text, session, request_id = NULL, validation_
     if (is.environment(store) && nzchar(kimlik)) {
       bitenler <- as.character(store[[.pk_provenance_done_slot]] %||% character(0))
       if (kimlik %in% bitenler) {
+        dogrulama <- FALSE
         # AYNI İSTEK İÇİN İKİNCİ KAYIT TÜKETİLDİĞİNDE HAM METİN DÖNDÜRÜLMEZ.
         #
         # Kayıt yukarıda zaten TÜKETİLDİ (geri konulamaz). Eskiden bu dal ham
@@ -565,7 +577,7 @@ pk_provenance_decorate <- function(text, session, request_id = NULL, validation_
         base_txt, pending$facts, mode = pending$mode,
         fallback_text = pending$fallback_text
       )
-      if (is.function(validation_callback)) validation_callback(!isTRUE(sonuc$blocked))
+      dogrulama <- !isTRUE(sonuc$blocked) && !isTRUE(sonuc$degraded)
       base_txt <- sonuc$text
       if (exists("pk_numeric_provenance_report", mode = "function", inherits = TRUE)) {
         try(pk_numeric_provenance_report(sonuc, pending$query_id), silent = TRUE)
@@ -578,9 +590,12 @@ pk_provenance_decorate <- function(text, session, request_id = NULL, validation_
       base_txt <- pk_compose_close_markdown(base_txt)
     }
 
+    # Olgusuz kayıt (v1) doğrulanacak sayısal iddia taşımaz; olgu var ama
+    # doğrulayıcı yoksa doğrulama yapılmamıştır.
+    if (is.na(dogrulama)) dogrulama <- is.null(pending$facts)
     paste0(base_txt, footer)
   }, error = function(e) {
-    if (is.function(validation_callback)) validation_callback(FALSE)
+    dogrulama <<- FALSE
     if (!is.null(guvenli_yedek)) return(guvenli_yedek)
     # BLOCK KİPİ AÇIK BAŞARISIZ OLAMAZ.
     #

@@ -277,8 +277,8 @@ test_that("callr gönderimi kendi havuzunu ve yapılandırılmış son tarihi ku
   env <- .cancellation_env()
   source(file.path(resolve_repo_root_for_tests(), "R/helpers_worker_monitor.R"), local = env)
   received <- NULL
-  env$mergen_cancellable_worker_promise <- function(payload, current, timeout, priority, queue_timeout) {
-    received <<- list(timeout = timeout, queue = queue_timeout)
+  env$mergen_cancellable_worker_promise <- function(payload, current, timeout, priority, queue_timeout, lane) {
+    received <<- list(timeout = timeout, queue = queue_timeout, lane = lane)
     promises::promise_resolve(TRUE)
   }
   old <- future::plan()
@@ -288,6 +288,10 @@ test_that("callr gönderimi kendi havuzunu ve yapılandırılmış son tarihi ku
     globals = list(), dependency_mode = "explicit", cancel_check = function() TRUE, execution_timeout = 14400)
   expect_equal(received$timeout, 14400)
   expect_equal(received$queue, 300)
+  expect_identical(received$lane, "interactive")
+  env$tracked_future_promise(function() TRUE, task_type = "claude_code_run_outputs",
+    globals = list(), dependency_mode = "explicit", cancel_check = function() TRUE)
+  expect_identical(received$lane, "durable")
   source(file.path(resolve_repo_root_for_tests(), "R/helpers_claude_code_dir_listing_async.R"), local = env)
   expect_true(env$cc_dir_listing_async_available())
 })
@@ -313,11 +317,101 @@ test_that("Yolaç temizlik kilidi canlıyken alınmaz, sert ölümden sonra kurt
   deadline <- Sys.time() + 10
   while (!file.exists(ready) && process$is_alive() && Sys.time() < deadline) Sys.sleep(0.01)
   expect_true(file.exists(ready))
-  Sys.setFileTime(file.path(lock, "owner"), Sys.time() - 7200)
-  expect_identical(env$.cc_codex_acquire_dir_lock(lock, attempts = 0L), "")
+  # Yaşlanmış ama canlı sahip çalınmaz (eşik 1 sn, marker 1.5 sn yaşlı).
+  Sys.sleep(1.5)
+  expect_identical(env$.cc_codex_acquire_dir_lock(lock, attempts = 0L, stale_sec = 1), "")
   process$kill(); process$wait(timeout = 5000)
   expect_false(process$is_alive())
   token <- env$.cc_codex_acquire_dir_lock(lock, attempts = 1L)
   expect_true(nzchar(token))
   expect_true(env$.cc_codex_reap_dir_lock(lock, token))
+})
+
+test_that("kök ölü raporlansa da süreç ağacı temizlenir ve ölüm açık FALSE ile kanıtlanır", {
+  env <- .cancellation_env()
+  tree <- 0L
+  root_dead <- list(is_alive = function() FALSE, kill_tree = function() tree <<- tree + 1L,
+                    kill = function(...) stop("kök zaten ölü"))
+  expect_true(env$mergen_process_stop(root_dead))
+  expect_identical(tree, 1L)
+  unknown <- list(is_alive = function() stop("tanıtıcı kapalı"), kill_tree = function() NULL,
+                  kill = function(...) NULL)
+  expect_false(env$mergen_process_stop(unknown))
+})
+
+test_that("sorgulanamayan tanıtıcı PID düzeyinde kanıtlanır; PID de bilinmiyorsa NA kalır", {
+  env <- .cancellation_env()
+  env$mergen_pid_status <- function(pid, host, since = NULL, slack = 300) if (identical(pid, 41L)) FALSE else NA
+  gone <- list(is_alive = function() stop("kapalı"), get_pid = function() 41L, get_start_time = function() Sys.time())
+  expect_false(env$mergen_process_status(gone))
+  unknown <- list(is_alive = function() stop("kapalı"), get_pid = function() 42L)
+  expect_true(is.na(env$mergen_process_status(unknown)))
+})
+
+test_that("ölümü doğrulanamayan süreç kaynağını tutar ama terminal bildirimi bir kez alır", {
+  env <- .cancellation_env()
+  callbacks <- list()
+  env$mergen_cancellable_worker_schedule <- function(func, delay) {
+    callbacks[[length(callbacks) + 1L]] <<- list(func = func, delay = delay)
+    function() NULL
+  }
+  alive <- NA
+  process <- list(is_alive = function() if (is.na(alive)) stop("bilinmiyor") else alive,
+                  kill_tree = function() NULL, kill = function(...) NULL)
+  released <- uncertain <- 0L
+  env$mergen_retire_process(process, function() released <<- released + 1L,
+                            on_uncertain = function() uncertain <<- uncertain + 1L)
+  for (i in 1:4) callbacks[[length(callbacks)]]$func()
+  expect_identical(released, 0L)
+  expect_identical(uncertain, 1L)
+  expect_lte(callbacks[[length(callbacks)]]$delay, 30)
+  alive <- FALSE
+  callbacks[[length(callbacks)]]$func()
+  expect_identical(released, 1L)
+  expect_identical(uncertain, 1L)
+})
+
+test_that("karantinadaki süreç etkileşimli kapasiteyi kalıcı tüketmez, sözü açık kalır", {
+  withr::local_options(mergen.cancellable_workers = 1L)
+  env <- .cancellation_env()
+  env$mergen_cancellable_worker_schedule <- function(...) NULL
+  launched <- 0L
+  env$mergen_cancellable_worker_launch <- function(payload) {
+    launched <<- launched + 1L
+    if (launched == 1L) list(is_alive = function() stop("bozuk"), kill_tree = function() NULL, kill = function(...) NULL)
+    else list(is_alive = function() TRUE)
+  }
+  settled <- 0L
+  current <- TRUE
+  promises::then(env$mergen_cancellable_worker_promise(raw(), function() current),
+                 function(v) settled <<- settled + 1L, function(e) settled <<- settled + 1L)
+  env$mergen_cancellable_worker_promise(raw(), function() TRUE)
+  env$mergen_cancellable_worker_tick()
+  expect_identical(launched, 1L)
+  current <- FALSE
+  for (i in 1:6) env$mergen_cancellable_worker_tick()
+  for (i in 1:20) later::run_now(0)
+  # Ölümü kanıtlanamayan iş karantinada: sözü açık, ama kapasite ikinci işe geçti.
+  expect_true(isTRUE(env$.MERGEN_CANCELLABLE_WORKERS$jobs[[1]]$quarantined))
+  expect_identical(launched, 2L)
+  expect_identical(settled, 0L)
+  expect_length(env$.mergen_cancellable_live_jobs(), 1L)
+})
+
+test_that("kalıcı işler etkileşimli şeridin kapasitesini tüketmez", {
+  withr::local_options(mergen.cancellable_workers = 1L)
+  env <- .cancellation_env()
+  env$mergen_cancellable_worker_schedule <- function(...) NULL
+  launched <- character()
+  env$mergen_cancellable_worker_launch <- function(payload) {
+    launched <<- c(launched, rawToChar(payload))
+    list(is_alive = function() TRUE)
+  }
+  env$mergen_cancellable_worker_promise(charToRaw("alim"), function() TRUE, lane = "durable")
+  env$mergen_cancellable_worker_promise(charToRaw("alim2"), function() TRUE, lane = "durable")
+  env$mergen_cancellable_worker_promise(charToRaw("sohbet"), function() TRUE)
+  env$mergen_cancellable_worker_tick()
+  expect_setequal(launched, c("alim", "sohbet"))
+  expect_false(env$mergen_cancellable_worker_admissible("durable"))
+  expect_false(env$mergen_cancellable_worker_admissible("interactive"))
 })

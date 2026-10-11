@@ -165,6 +165,19 @@ mergen_session_owner_transition <- function(user_data, eski_uid, yeni_uid, yetki
   invisible(degisti)
 }
 
+# Yetkiyle ilgili mevcut iddiaların karşılaştırma anahtarı (bellekte kalır,
+# saklanmaz). Rol ve satır düzeyi kapsam (masraf yeri, birim) birlikte izlenir.
+.mergen_auth_scope <- function(config) {
+  if (!is.list(config) || is.null(config$auth_level)) return(NULL)
+  alanlar <- list(config$auth_level, config$masraf_yeri_kodu %||% config$MasrafYeriKodu,
+                  config$department %||% config$Departman, config$mudurluk %||% config$Mudurluk,
+                  config$sektor %||% config$Sektor)
+  vapply(alanlar, function(x) {
+    v <- suppressWarnings(as.character(x %||% "")[1])
+    if (is.na(v)) "" else trimws(v)
+  }, character(1))
+}
+
 # Sahip değişimi/kimlik kaybı kancası kaydeder; kaydı silen fonksiyon döner.
 mergen_session_on_owner_change <- function(session, fn) {
   user_data <- tryCatch(session$userData, error = function(e) NULL)
@@ -224,7 +237,7 @@ make_user_session_data_accessors <- function(session) {
                               auth_initialized = TRUE) {
       uid <- .normalize_user_session_id(user_id, allow_zero = TRUE)
       eski_uid <- get_value("user_id", 0L)
-      eski_yetki <- get_value("user_config", list())$auth_level
+      eski_kapsam <- .mergen_auth_scope(get_value("user_config", NULL))
 
       set_value("user_identity", user_identity)
       set_value("user_first_name", user_identity$first_name)
@@ -234,11 +247,13 @@ make_user_session_data_accessors <- function(session) {
       set_value("auth_source", auth_source)
       set_value("auth_initialized", isTRUE(auth_initialized))
       set_value("user_config", app_user_config)
-      # Aynı kullanıcının yetki düzeyi değişirse de sinyal artar (ör. ADMIN kaybı).
+      # Aynı kullanıcının etkin yetki kapsamı (rol ya da satır düzeyi kapsam)
+      # değişirse de eski kapsamla üretilen iş geçersizleşir. İlk giriş değişim
+      # sayılmaz.
       mergen_session_owner_transition(user_data, eski_uid, uid,
         yetki_degisti = .normalize_user_session_id(eski_uid) > 0L &&
-          identical(.normalize_user_session_id(eski_uid), uid) && !is.null(eski_yetki) &&
-          !identical(eski_yetki, app_user_config$auth_level))
+          identical(.normalize_user_session_id(eski_uid), uid) && !is.null(eski_kapsam) &&
+          !identical(eski_kapsam, .mergen_auth_scope(app_user_config)))
 
       invisible(app_user_config)
     },

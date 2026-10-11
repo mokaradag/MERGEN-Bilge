@@ -452,6 +452,8 @@ testthat::test_that("answer self-check catches validation overclaims from proof 
 })
 
 testthat::test_that("quick doğrulaması gerçek test hatası ve uyarısında başarısız çıkar", {
+  rscript <- Sys.which("Rscript")
+  testthat::skip_if_not(nzchar(rscript))
   repo_root <- .ai_validation_proof_repo_root()
   expressions <- as.list(parse(file.path(repo_root, "tests", "scripts", "ai_repo_check.R")))
   branch <- Filter(function(x) is.call(x) && identical(x[[1L]], as.name("if")) &&
@@ -470,7 +472,7 @@ testthat::test_that("quick doğrulaması gerçek test hatası ve uyarısında ba
     variables$quick_tests_literal <- paste0("c(", encodeString(normalizePath(test_path,
       winslash = "/", mustWork = TRUE), quote = '"'), ")")
     writeLines(eval(build[[3L]], variables), script_path)
-    result <- suppressWarnings(system2(Sys.which("Rscript"), shQuote(script_path),
+    result <- suppressWarnings(system2(rscript, shQuote(script_path),
       stdout = TRUE, stderr = TRUE))
     testthat::expect_identical(as.integer(attr(result, "status")), 1L)
     testthat::expect_match(paste(result, collapse = "\n"), marker, fixed = TRUE)
@@ -478,6 +480,9 @@ testthat::test_that("quick doğrulaması gerçek test hatası ve uyarısında ba
 })
 
 testthat::test_that("yanıt denetimi güncel başarı ve hata kanıtı yazıldıktan sonra çalışır", {
+  testthat::skip_if_not(nzchar(Sys.which("Rscript")))
+  # Üst doğrulayıcının (ör. `full`) profil ortamı bu quick senaryosuna sızmaz.
+  withr::local_envvar(MERGEN_AI_REQUESTED_PROFILE = "quick", MERGEN_AI_EFFECTIVE_PROFILE = "quick")
   repo_root <- .ai_validation_proof_repo_root()
   expressions <- as.list(parse(file.path(repo_root, "tests", "scripts", "ai_repo_check.R")))
   writer <- Filter(function(x) is.call(x) && identical(x[[1L]], as.name("<-")) &&
@@ -500,10 +505,10 @@ testthat::test_that("yanıt denetimi güncel başarı ve hata kanıtı yazıldı
     variables$steps <- list(.ai_validation_proof_step("environment"),
       .ai_validation_proof_step("parse sanity"), .ai_validation_proof_step("app source smoke"),
       .ai_validation_proof_step("focused contract tests", status = status))
-    variables$run_step <- function(label, command, args) {
+    variables$run_step <- function(label, command, cmd_args) {
       testthat::expect_identical(label, "answer self-check")
       testthat::expect_true(file.exists(file.path(variables$artifact_root, "summary.json")))
-      result <- suppressWarnings(system2(command, shQuote(args), stdout = TRUE, stderr = TRUE))
+      result <- suppressWarnings(system2(command, shQuote(cmd_args), stdout = TRUE, stderr = TRUE))
       actual <- attr(result, "status") %||% 0L
       testthat::expect_identical(as.integer(actual), status)
       testthat::expect_match(paste(result, collapse = "\n"),

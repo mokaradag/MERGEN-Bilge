@@ -49,13 +49,19 @@ test_that("RAF askıya alınsa da gerçek yerleşim PASS veya FAIL sonucunu beli
   source <- rawToChar(readBin(path, what = "raw", n = file.info(path)$size))
   Encoding(source) <- "UTF-8"
   source <- gsub("\r\n", "\n", source, fixed = TRUE)
-  for (probe_source in list(source, gsub("\n", "\r\n", source, fixed = TRUE))) {
-    probe_source <- gsub("\r\n", "\n", probe_source, fixed = TRUE)
+  # Windows CRLF checkout'unda da aynı JS çıkarılmalıdır: CRLF girdi gerçekten
+  # CRLF taşır ve normalizasyon sonrası LF ile birebir aynı fonksiyonu üretir.
+  variants <- list(lf = source, crlf = gsub("\n", "\r\n", source, fixed = TRUE))
+  expect_true(grepl("\r\n", variants$crlf, fixed = TRUE))
+  extracted <- list()
+  for (variant in names(variants)) {
+    probe_source <- gsub("\r\n", "\n", variants[[variant]], fixed = TRUE)
     start <- regexpr("  function nextPaint()", probe_source, fixed = TRUE)[1]
     end <- regexpr("  async function setThemeAndSettle", probe_source, fixed = TRUE)[1]
     expect_gt(start, 0L)
     expect_gt(end, start)
     fn <- substr(probe_source, start, end - 1L)
+    extracted[[variant]] <- fn
     helpers <- substr(probe_source, regexpr("  function log(msg)", probe_source, fixed = TRUE)[1],
       regexpr("  function wait(ms)", probe_source, fixed = TRUE)[1] - 1L)
     report_start <- regexpr("    logEl.textContent =", probe_source, fixed = TRUE)[1]
@@ -80,4 +86,5 @@ test_that("RAF askıya alınsa da gerçek yerleşim PASS veya FAIL sonucunu beli
     expect_null(attr(result, "status"))
     expect_identical(result, "PASS")
   }
+  expect_identical(extracted$crlf, extracted$lf)
 })

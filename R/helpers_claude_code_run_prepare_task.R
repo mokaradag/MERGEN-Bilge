@@ -185,19 +185,18 @@ cc_claim_runtime_ownership <- function(runtime_workdir, request_id) {
 #'
 #' @param runtime_workdir Runtime kökü
 #' @param request_id Aktif çalıştırma kimliği
-#' @return Sahiplik işareti yoksa veya eşleşiyorsa TRUE
+#' @return Yalnızca okunabilir işaret bu isteği gösteriyorsa TRUE; eksik ya da
+#'   okunamayan işaret sahiplik kanıtı değildir (fail closed).
 cc_runtime_ownership_is <- function(runtime_workdir, request_id) {
   yol <- cc_runtime_owner_file(runtime_workdir)
-  if (!nzchar(yol) || !isTRUE(file.exists(yol))) return(TRUE)
+  if (!nzchar(yol) || !isTRUE(file.exists(yol))) return(FALSE)
 
   sahip <- tryCatch(
     as.character(readLines(yol, warn = FALSE))[1],
     error = function(e) NA_character_
   )
 
-  if (is.na(sahip) || !nzchar(sahip)) return(TRUE)
-
-  identical(sahip, as.character(request_id %||% "")[1])
+  !is.na(sahip) && nzchar(sahip) && identical(sahip, as.character(request_id %||% "")[1])
 }
 
 # Yeniden kullanılan runtime, tarama/kopyalama başlamadan önce başka bir

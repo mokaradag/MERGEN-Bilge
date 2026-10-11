@@ -71,11 +71,12 @@ cc_fail_run_preparation <- function(ctx, message, stage = "hata") {
     return(invisible(FALSE))
   }
 
-  cc_send_run_blocked_message(
+  # Kapanmış oturumda UI gönderimi başarısız olabilir; terminal durum yine yazılır.
+  try(cc_send_run_blocked_message(
     session = ctx$session,
     ns = ctx$ns,
     message = message
-  )
+  ), silent = TRUE)
 
   bilgi <- claude_code_run_stages[[stage]] %||% claude_code_run_stages$hata
 
@@ -184,19 +185,11 @@ cc_dispatch_run_preparation <- function(ctx) {
   # Başarı callback'inde geçen süreyi ölçmek zaman aşımı değildir: bloke bir
   # worker o callback'e hiç ulaşmaz. Ana later döngüsündeki bağımsız deadline
   # aktif isteği zamanında sonlandırır; geç dönen future stale guard'a takılır.
+  # Durum her geri çağrıda ortak referanstan okunur: tarayıcı kapanınca ayrılan
+  # çalıştırma hazırlıktan sonra da aynı durum kaydında sürer ve deadline'ı korur.
+  run_ref <- cc_run_state_reference(ctx$rv)
   zaman_asimi_durumu$cancel <- later::later(function() {
-    # Oturum kapandıysa UI mesajı gönderilemez; deadline sessizce düşürülür.
-    # Durum belirlenemiyorsa (test ikizi / eski Shiny) AÇIK varsayılır ki
-    # mevcut zaman aşımı davranışı korunsun.
-    oturum_kapali <- tryCatch(
-      is.function(ctx$session$isClosed) && isTRUE(ctx$session$isClosed()),
-      error = function(e) FALSE
-    )
-    if (isTRUE(oturum_kapali)) {
-      zaman_asimi_durumu$pending <- FALSE
-      return(invisible(NULL))
-    }
-
+    ctx$rv <- run_ref$rv
     if (isTRUE(zaman_asimi_durumu$pending) &&
         cc_is_active_run(ctx$rv, ctx$run_request_id)) {
       zaman_asimi_durumu$pending <- FALSE
@@ -237,8 +230,8 @@ cc_dispatch_run_preparation <- function(ctx) {
         cc_prepare_run_workspace(istek)
       },
       task_type = "claude_code_run_prepare",
-      cancel_check = function() !isTRUE(ctx$session$isClosed()) &&
-        cc_is_active_run(ctx$rv, ctx$run_request_id) && isTRUE(shiny::isolate(ctx$rv$is_running)),
+      cancel_check = function() cc_is_active_run(run_ref$rv, ctx$run_request_id) &&
+        isTRUE(shiny::isolate(run_ref$rv$is_running)),
       session_token = ctx$session$token,
       dependency_mode = "explicit",
       globals = c(
@@ -251,8 +244,8 @@ cc_dispatch_run_preparation <- function(ctx) {
         handed_off <- FALSE
         on.exit(cleanup_lease_journal(!handed_off), add = TRUE)
         cc_cancel_prepare_deadline()
-        if (isTRUE(ctx$session$isClosed()) ||
-            !cc_is_active_run(ctx$rv, ctx$run_request_id)) {
+        ctx$rv <- run_ref$rv
+        if (!cc_is_active_run(ctx$rv, ctx$run_request_id)) {
           cc_release_runtime_lease(prep$runtime_lease %||% "")
           return(NULL)
         }
@@ -291,11 +284,10 @@ cc_dispatch_run_preparation <- function(ctx) {
       promises::catch(function(e) {
         cleanup_lease_journal(TRUE)
         cc_cancel_prepare_deadline()
-        # Kapanmış bir Shiny oturumunda hata UI'si/persist callback'i çalıştırma.
-        # Özellikle hazırlık promise'i oturum kapandıktan sonra reddedilirse
-        # ikinci bir websocket gönderimi de başarısız olabilir.
-        if (isTRUE(ctx$session$isClosed()) ||
-            !cc_is_active_run(ctx$rv, ctx$run_request_id)) {
+        # Ayrılmış (oturumu kapanmış) çalıştırma da terminale ulaşmalıdır; UI
+        # gönderimleri yardımcılar içinde korunur.
+        ctx$rv <- run_ref$rv
+        if (!cc_is_active_run(ctx$rv, ctx$run_request_id)) {
           return(NULL)
         }
 
@@ -637,6 +629,9 @@ cc_start_streaming_run <- function(ctx, prep) {
     if (!is.null(baslatilan_surec)) {
       lease_handed_off <<- TRUE
       lease <- stream_env$runtime_lease %||% ""
+      # Kira artık emekli edilen sürecin; sonlandırıcı onu ölüm doğrulanmadan
+      # bırakmasın diye çalıştırma durumundan çıkarılır.
+      stream_env$runtime_lease <- ""
       mergen_retire_process(baslatilan_surec, function() cc_release_runtime_lease(lease))
       rv$active_process <- NULL
       # Süreç öldürüldü: lease devri geçersizdir. Aksi hâlde lease'i tazeleyen

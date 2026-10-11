@@ -202,6 +202,8 @@ cc_dispatch_run_output_processing <- function(ctx) {
   # Hazırlık aşamasındaki bağımsız deadline deseninin aynısı: takılan bir
   # worker çalıştırmayı "Çıktılar işleniyor" durumunda sonsuza bırakmamalı.
   cikti_zaman_asimi_sn <- cc_runtime_limit("output_process_timeout_sec", 180, istek$limits)
+  # Kalıcı şeritte kabul beklemesi yürütme süresinden ayrı, aynı bütçeyle sınırlıdır.
+  cikti_kuyruk_sn <- cikti_zaman_asimi_sn
   cikti_zaman_asimi_durumu <- new.env(parent = emptyenv())
   cikti_zaman_asimi_durumu$pending <- TRUE
   # `expired`: deadline dolduktan SONRA geç çözülen bir promise, `changed_files`
@@ -226,7 +228,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
     cc_report_output_processing_failure(ctx, simpleError(sprintf(
       "Çıktı işleme zaman aşımına uğradı (%.0f saniye).", cikti_zaman_asimi_sn
     )))
-  }, delay = cikti_zaman_asimi_sn)
+  }, delay = cikti_zaman_asimi_sn + cikti_kuyruk_sn)
 
   # `later` görevi yalnızca pending bayrağıyla etkisizleştirilirse closure
   # (ctx/istek/oturum) tüm süre boyunca canlı kalır; gerçek iptal edici çağrılır.
@@ -248,6 +250,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
     },
     task_type = "claude_code_run_outputs",
     execution_timeout = cikti_zaman_asimi_sn,
+    queue_timeout = cikti_kuyruk_sn,
     cancel_check = cc_output_worker_current(ctx$rv, gonderilen_request_id, cikti_zaman_asimi_durumu),
     session_token = ctx$session$token,
     dependency_mode = "explicit",
@@ -307,11 +310,13 @@ cc_dispatch_run_output_processing <- function(ctx) {
         return(NULL)
       }
 
-      # Kapanmış oturumda `sendCustomMessage()` hata verir; koruma olmadan
-      # tamamlanmış çalıştırma `catch()` dalına düşüp `failed` kalıcılaşıyordu.
-      try(cc_finish_streaming_run(ctx, outputs), silent = TRUE)
+      # Gönderim hataları sonlandırıcı içinde korunur; kalan bir istisna yutulmaz,
+      # çalıştırma terminale ulaşmadıysa başarısız olarak kapatılır.
+      bitis <- tryCatch({ cc_finish_streaming_run(ctx, outputs); NULL }, error = identity)
       unlink(istek$active_guard, force = TRUE)
       unlink(gonderilen_lease, force = TRUE)
+      if (!is.null(bitis) && cc_is_active_run(ctx$rv, gonderilen_request_id))
+        cc_report_output_processing_failure(ctx, bitis)
       NULL
     }) |>
     promises::catch(function(e) {

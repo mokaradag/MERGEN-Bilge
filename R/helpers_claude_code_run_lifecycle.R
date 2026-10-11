@@ -288,14 +288,11 @@ cc_handle_document_summary_run <- function(session,
   # Durdur'a bastıktan sonra tamamlanan bir worker, iptal edilmiş bir
   # çalıştırmanın çıktısını kaynak klasördeki dosyanın üzerine yazabilirdi.
   worker_cikti_dizini <- as.character(cikti_dizini %||% "")[1]
-  if (!nzchar(worker_cikti_dizini) || !dir.exists(worker_cikti_dizini)) {
-    cc_release_runtime_lease(runtime_lease)
-    stop("İzole çıktı alanı bulunamadı; doküman özeti başlatılmadı.", call. = FALSE)
-  }
+  cikti_eksik <- !nzchar(worker_cikti_dizini) || !dir.exists(worker_cikti_dizini)
 
-  if (!isTRUE(dokuman_baglami$text_sidecars_ready)) {
+  if (cikti_eksik || !isTRUE(dokuman_baglami$text_sidecars_ready)) {
     cc_release_runtime_lease(runtime_lease)
-    cikarma_detayi <- paste(
+    cikarma_detayi <- if (cikti_eksik) "İzole çıktı alanı bulunamadı; doküman özeti başlatılmadı." else paste(
       c(
         "Doküman görevi algılandı ancak yerel metin çıkarımı hazırlanamadı.",
         if (length(dokuman_baglami$extraction_errors %||% character(0))) {
@@ -314,7 +311,7 @@ cc_handle_document_summary_run <- function(session,
       gsub("[{}]", "", cikarma_detayi)
     ))
 
-    session$sendCustomMessage(
+    try(session$sendCustomMessage(
       type = "cc-add-message",
       message = list(
         target = ns("output_area"),
@@ -323,7 +320,7 @@ cc_handle_document_summary_run <- function(session,
         timestamp = format(Sys.time(), "%H:%M:%S"),
         welcomeId = ns("welcome_screen")
       )
-    )
+    ), silent = TRUE)
 
     cc_finalize_if_active(
       rv = rv,
@@ -368,6 +365,7 @@ cc_handle_document_summary_run <- function(session,
   # planı yok, serileştirme hatası). Yakalanmazsa ne then() ne catch() kurulur
   # ve doküman çalıştırması kalıcı olarak asılı kalırdı.
   summary_session_token <- session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
+  run_ref <- cc_run_state_reference(rv)
   gonderim <- tryCatch(
   tracked_future_promise(
     task_fn = function() {
@@ -383,8 +381,10 @@ cc_handle_document_summary_run <- function(session,
     },
     task_type = "claude_code_document_summary",
     execution_timeout = zaman_asimi,
-    cancel_check = function() !isTRUE(session$isClosed()) &&
-      cc_is_active_run(rv, run_request_id) && isTRUE(shiny::isolate(rv$is_running)),
+    # Tarayıcı kapanışı özet işini iptal etmez (çalıştırma ayrılır); Stop, yeni
+    # istek ve sahip/yetki değişimi çalıştırmayı geçersizleştirir.
+    cancel_check = function() cc_is_active_run(run_ref$rv, run_request_id) &&
+      isTRUE(shiny::isolate(run_ref$rv$is_running)),
     session_token = session$token
   ) |>
     promises::then(function(sonuc) {

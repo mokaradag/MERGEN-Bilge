@@ -1,3 +1,6 @@
+# İşleyici promises işleçlerini (%...!%) kullanır; dosya tek başına da koşabilsin.
+suppressPackageStartupMessages(library(promises))
+
 test_that("TTS sohbet değişimi ve senkron gönderim hatasında yalnız kendi durumunu bırakır", {
   for (change in c("chat", "dispatch", "newer")) {
     env <- new.env(parent = globalenv())

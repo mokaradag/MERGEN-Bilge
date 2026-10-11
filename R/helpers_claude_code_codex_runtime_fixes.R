@@ -459,7 +459,7 @@ cc_runtime_ownership_is <- function(runtime_workdir, request_id) {
 }
 
 # Claim reuse ownership before the original dispatcher schedules any worker.
-cc_dispatch_run_preparation <- function(ctx) {
+cc_dispatch_run_preparation <- function(ctx, attempt = 1L) {
   existing <- NULL
   if (!is.null(ctx$rv$active_runtime_source) &&
       !is.null(ctx$rv$active_runtime_workdir) &&
@@ -468,6 +468,14 @@ cc_dispatch_run_preparation <- function(ctx) {
   }
   if (!is.null(existing) && nzchar(existing)) {
     claim <- cc_claim_runtime_ownership(existing, ctx$run_request_id)
+    if (!nzchar(claim) && attempt < 8L && exists("cc_is_active_run", mode = "function") &&
+        cc_is_active_run(ctx$rv, ctx$run_request_id)) {
+      # Kısa temizlik kilidi çekişmesi olay döngüsünü bekletmeden yeniden denenir.
+      later::later(function() {
+        if (cc_is_active_run(ctx$rv, ctx$run_request_id)) cc_dispatch_run_preparation(ctx, attempt + 1L)
+      }, delay = 0.25)
+      return(invisible(TRUE))
+    }
     if (!nzchar(claim)) {
       cc_fail_run_preparation(
         ctx,

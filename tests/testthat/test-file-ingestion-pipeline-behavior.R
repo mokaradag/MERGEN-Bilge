@@ -488,7 +488,7 @@ test_that("başarılı parti indekslenir ve UI geri çağrısı çalışır", {
   expect_equal(cagrildi$summary$succeeded, 1L)
 })
 
-test_that("oturum kapandıysa UI geri çağrısı çalışmaz ve kopya geri alınır", {
+test_that("tarayıcı kapanışı kabul edilmiş yüklemeyi iptal etmez; yalnız UI geri çağrısı susar", {
   env <- .ingestionEnv()
   sonuclar <- env$file_ingestion_execute_batch(list(.ingestionTask(env, .ingestionUpload("kapali.txt"))))
 
@@ -506,9 +506,9 @@ test_that("oturum kapandıysa UI geri çağrısı çalışmaz ve kopya geri alı
   env$file_ingestion_finish_job(job, sonuclar)
   for (i in 1:30) later::run_now(0)
 
-  expect_false(indekslendi)
+  expect_true(indekslendi)
   expect_false(cagrildi)
-  expect_false(file.exists(sonuclar[[1]]$dest))
+  expect_true(file.exists(sonuclar[[1]]$dest))
 })
 
 test_that("iptal edilen parti indekslenmez ve kopyaladığı dosyalar temizlenir", {
@@ -567,15 +567,19 @@ test_that("metrik satırı dosya adı veya yol sızdırmaz", {
   expect_false(grepl("\\.txt", satir))
   expect_false(grepl("user_", satir, fixed = TRUE))
 })
-test_that("indekslenirken iptal edilen parti yalnız kendi kayıt ve dosyasını temizler", {
+test_that("commit edilmiş yapıt geç iptal ya da geri almayla silinmez", {
   env <- .ingestionEnv()
   result <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("iptal_indeks.txt")))
   expect_true(result$ok)
   mergen_index_persisted_files(list(list(path = result$dest, display = result$name)), "42")
   expect_true(.ingestionSamePath(env, resolve_uploaded_file(result$name, "42"), result$dest))
   env$file_ingestion_discard_results(list(result), "42")
-  expect_false(file.exists(result$dest))
-  expect_null(.load_index()[["42"]][[tolower(result$name)]])
+  expect_true(file.exists(result$dest))
+  expect_true(env$file_ingestion_artifact_owned(result))
+  expect_true(.ingestionSamePath(env, resolve_uploaded_file(result$name, "42"), result$dest))
+  uncommitted <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("iptal_kayitsiz.txt")))
+  env$file_ingestion_discard_results(list(uncommitted), "42")
+  expect_false(file.exists(uncommitted$dest))
 })
 
 test_that("geç indeks commit'i silinmiş kopyayı yeniden kaydetmez", {
@@ -641,7 +645,6 @@ test_that("commit sonrası metrik hatası partiye ikinci hata veya geri alma ür
 test_that("son geri alma yolu kullanıcı kovasını da temizler", {
   env <- .ingestionEnv()
   result <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("son_geri_al.txt")))
-  env$file_ingestion_commit_index(list(result), "42")
   env$worker_monitor_serialize_explicit_task <- function(...) stop("serileştirme hatası")
   finished <- FALSE
   env$file_ingestion_fail_job <- function(...) finished <<- TRUE
@@ -720,7 +723,6 @@ test_that("geri alma işçisi gerçek indeks paketiyle kaynak dosyayı korur", {
   upload <- .ingestionUpload("geri_al.txt")
   result <- env$file_ingestion_execute_task(.ingestionTask(env, upload))
   expect_true(result$ok)
-  mergen_index_persisted_files(list(list(path = result$dest, display = result$name)), "42")
   error_message <- NULL
   job <- .ingestionJob(env, env$file_ingestion_create_controller())
   job$on_failure <- function(message, tasks) error_message <<- message
@@ -769,12 +771,12 @@ test_that("geri alma ve kilit hatasında sahiplik kanıtlanamayan hedef korunur"
   }
 })
 
-test_that("indeks kaydı başarısızsa geri alma dosyayı ve sahiplik markerını korur", {
+test_that("geri alma indeksi yeniden yazmaz; commit edilmiş dosya ve marker korunur", {
   env <- .ingestionEnv()
   result <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("kayit_hatasi.txt")))
   env$file_ingestion_commit_index(list(result), "42")
   env$.save_index <- function(...) stop("kalıcı indeks yazılamadı")
-  expect_error(env$file_ingestion_discard_results(list(result), "42"), "kalıcı indeks yazılamadı")
+  expect_no_error(env$file_ingestion_discard_results(list(result), "42"))
   expect_true(file.exists(result$dest))
   expect_true(file.exists(env$file_ingestion_owner_path(result$dest)))
   expect_true(env$file_ingestion_artifact_owned(result))
@@ -848,6 +850,16 @@ test_that("kopya sonrası sahiplik hatası hedefi geri alma sonucunda tutar", {
     calls <<- calls + 1L
     if (calls == 1L) claim(...) else stop("sahiplik hatası")
   }
+  # Kopya yardımcısının tamamladığı talep ikinci kez kilitle istenmez.
+  ok <- env$file_ingestion_execute_batch(list(task))[[1]]
+  expect_true(ok$ok)
+  expect_identical(calls, 1L)
+  env$file_ingestion_discard_results(list(ok), "42")
+  task <- .ingestionTask(env, .ingestionUpload("sahiplik_hatasi.txt"))
+  task$result_journal <- withr::local_tempfile()
+  task$transaction <- list(id = "claim-error", journal = task$result_journal)
+  env$file_ingestion_claimed_by <- function(...) FALSE
+  calls <- 1L
   result <- env$file_ingestion_execute_batch(list(task))[[1]]
   expect_false(result$ok)
   expect_identical(result$code, "claim_failed")
@@ -940,6 +952,8 @@ test_that("aynı kullanıcı ve isimde eşzamanlı planlar iki başarılı commi
   second <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload(name, "ikinci")))
   expect_true(first$ok)
   expect_true(second$ok)
+  # Eşzamanlılık: ikinci işlem, birincinin talebinden ÖNCE rezervasyon yapmıştır.
+  Sys.setFileTime(env$file_ingestion_owner_path(second$dest), Sys.time() - 60)
   a <- env$file_ingestion_commit_index(list(first), "42")
   b <- env$file_ingestion_commit_index(list(second), "42")
   expect_identical(a$committed, first$artifact_id)
@@ -953,7 +967,6 @@ test_that("aynı kullanıcı ve isimde eşzamanlı planlar iki başarılı commi
 test_that("yavaş silme global indeks kilidinin dışında çalışır", {
   env <- .ingestionEnv()
   result <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("kilit_dışı.txt")))
-  env$file_ingestion_commit_index(list(result), "42")
   original <- env$file_ingestion_discard_dest
   observed <- FALSE
   env$file_ingestion_discard_dest <- function(...) {
@@ -1061,6 +1074,8 @@ test_that("sahiplik gevşek UNC varlık sözleşmesini korur", {
 
 test_that("alım kuyruğu çalışan partinin kapasitesini bozmadan zaman aşımına uğrar", {
   env <- .ingestionEnv()
+  withr::local_envvar(c(MERGEN_FILE_INGESTION_QUEUE_TIMEOUT = ""))
+  withr::local_options(list(mergen.file_ingestion.queue_timeout = 300L))
   controller <- env$file_ingestion_create_controller()
   failed <- 0L
   job <- .ingestionJob(env, controller)
@@ -1082,9 +1097,11 @@ test_that("işlemli terfi kimliği kaybettiren kopya yedeğine dönmez", {
   src <- file.path(root, "src.txt"); dest <- file.path(root, "dest.txt")
   writeLines("kopya", src)
   tx <- list(id = "promotion", journal = withr::local_tempfile())
+  copy_called <- FALSE
   env$file.link <- env$file.rename <- function(...) FALSE
-  env$file.copy <- function(...) stop("Atomik terfi yerine kopya yapılmamalı")
+  env$file.copy <- function(...) { copy_called <<- TRUE; FALSE }
   expect_error(env$mergen_copy_upload_staged(src, dest, root, transaction = tx), "kalıcı ada taşınamadı")
+  expect_false(copy_called)
   expect_false(file.exists(dest))
   expect_false(file.exists(paste0(dest, ".mergen-part")))
   env$file_ingestion_discard_results(list(readRDS(tx$journal)), "42")
@@ -1134,7 +1151,9 @@ test_that("terfi ile claim arasındaki yabancı hedef rezervasyonla sahiplenilem
   pending <- readRDS(task$result_journal)
   expect_true(replaced)
   expect_false(result$ok)
-  expect_identical(result$code, "copy_failed")
+  # Terfi sonrası talep kopya yardımcısında hata üretmez (UNC gecikmesi); yabancı
+  # içerik doğrulamada yakalanır ve sahiplik kanıtlanmaz.
+  expect_identical(result$code, "size_mismatch")
   expect_false(env$file_ingestion_artifact_owned(pending))
   env$file_ingestion_discard_results(list(pending), "42")
   expect_identical(readLines(pending$dest), "yabancı dosya")
@@ -1154,4 +1173,122 @@ test_that("eksik dosya kimliği sahiplik veya silme kanıtı sayılmaz", {
   expect_error(env$file_ingestion_claim_artifact(path), "sahipliği doğrulanamadı")
   expect_false(file.exists(env$file_ingestion_owner_path(path)))
   expect_identical(readLines(path), "korunacak dosya")
+})
+
+test_that("commit edilen yapıt, reddedilen kardeşin temizlik hatasında geri alınmaz", {
+  env <- .ingestionEnv()
+  kept <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("kabul.txt")))
+  declined <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("ret.txt")))
+  real_index <- get("mergen_index_persisted_files", envir = env)
+  env$mergen_index_persisted_files <- function(entries, user_id = NULL) {
+    real_index(entries[1], user_id = user_id)
+  }
+  real_discard <- env$file_ingestion_discard_results
+  env$file_ingestion_discard_results <- function(results, ...) {
+    if (any(vapply(results, function(r) identical(r$artifact_id, declined$artifact_id), logical(1))))
+      stop("Sahip olunan kopya silinemedi.")
+    real_discard(results, ...)
+  }
+  completed <- failed <- 0L
+  job <- .ingestionJob(env, env$file_ingestion_create_controller(),
+                       on_complete = function(...) completed <<- completed + 1L)
+  job$on_failure <- function(...) failed <<- failed + 1L
+  env$file_ingestion_finish_job(job, list(kept, declined))
+  for (i in 1:30) later::run_now(0)
+  expect_identical(completed, 1L)
+  expect_identical(failed, 0L)
+  expect_true(file.exists(kept$dest))
+  expect_identical(.load_index()[["42"]][[tolower(kept$name)]]$artifact_id, kept$artifact_id)
+})
+
+test_that("terfi edilip henüz görünmeyen hedefin sahipliği geri almada bırakılmaz", {
+  env <- .ingestionEnv()
+  root <- withr::local_tempdir()
+  dest <- file.path(root, "unc.txt")
+  tx <- list(id = "unc-gecikme", journal = withr::local_tempfile())
+  staging <- paste0(dest, ".mergen-part")
+  env$file_ingestion_begin_copy(dest, staging, "kaynak", tx)
+  writeLines("terfi", staging)
+  env$file_ingestion_prepare_promotion(staging, dest, tx)
+  file.rename(staging, dest)
+  pending <- readRDS(tx$journal)
+  gorunur <- FALSE
+  # UNC görünürlük gecikmesi: hedef ne varlık ne de fiziksel kimlik yoklamasında görünür.
+  env$path_exists_relaxed <- function(path) if (identical(path, dest)) gorunur && file.exists(path) else file.exists(path)
+  real_key <- env$file_ingestion_physical_identity
+  env$file_ingestion_physical_identity <- function(path) if (identical(path, dest) && !gorunur) NULL else real_key(path)
+  expect_error(env$file_ingestion_discard_results(list(pending), "42"), "sahiplik korunuyor")
+  expect_true(file.exists(env$file_ingestion_owner_path(dest)))
+  gorunur <- TRUE
+  env$file_ingestion_discard_results(list(pending), "42")
+  expect_false(file.exists(dest))
+  expect_false(file.exists(env$file_ingestion_owner_path(dest)))
+})
+
+test_that("okunamayan ya da ölü sahipli rezervasyon yalnız ortak kuralla geri kazanılır", {
+  env <- .ingestionEnv()
+  root <- withr::local_tempdir()
+  dest <- file.path(root, "rezerv.txt")
+  staging <- paste0(dest, ".mergen-part")
+  marker <- env$file_ingestion_owner_path(dest)
+  writeBin(as.raw(c(0x58, 0x0a, 0x00)), marker)
+  tx <- list(id = "yeni", journal = withr::local_tempfile())
+  expect_error(env$file_ingestion_begin_copy(dest, staging, "kaynak", tx), "ayrılmış")
+  Sys.setFileTime(marker, Sys.time() - 7200)
+  expect_no_error(env$file_ingestion_begin_copy(dest, staging, "kaynak", tx))
+  expect_identical(env$file_ingestion_read_owner(dest)$id, "yeni")
+  saveRDS(list(id = "olu", state = "copying", staging = staging, pid = 2147483647L,
+               host = unname(Sys.info()[["nodename"]])), marker)
+  writeLines("yarım kopya", staging)
+  tx2 <- list(id = "sonraki", journal = withr::local_tempfile())
+  expect_no_error(env$file_ingestion_begin_copy(dest, staging, "kaynak", tx2))
+  expect_false(file.exists(staging))
+  writeLines("var olan", dest)
+  saveRDS(list(id = "olu", state = "copying", staging = staging, pid = 2147483647L,
+               host = unname(Sys.info()[["nodename"]])), marker)
+  expect_error(env$file_ingestion_begin_copy(dest, staging, "kaynak", list(id = "x", journal = tempfile())),
+               "zaten var")
+  expect_identical(readLines(dest), "var olan")
+})
+
+test_that("ardışık yeniden yükleme eski kaydı değiştirir; kimliksiz yazım canlı yapıtı ezmez", {
+  env <- .ingestionEnv()
+  name <- paste0("tekrar_", basename(tempfile()), ".txt")
+  first <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload(name, "ilk")))
+  env$file_ingestion_commit_index(list(first), "42")
+  Sys.sleep(1.1)
+  second <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload(name, "ikinci sürüm")))
+  b <- env$file_ingestion_commit_index(list(second), "42")
+  expect_identical(b$committed, second$artifact_id)
+  expect_identical(.load_index()[["42"]][[tolower(name)]]$artifact_id, second$artifact_id)
+  expect_true(file.exists(first$dest))
+  other <- withr::local_tempfile(fileext = ".txt")
+  writeLines("kimliksiz", other)
+  mergen_index_persisted_files(list(list(path = other, display = name)), "42")
+  expect_identical(.load_index()[["42"]][[tolower(name)]]$artifact_id, second$artifact_id)
+  idx <- .load_index(); idx[["42"]][[tolower(name)]] <- other; .save_index(idx)
+  third <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload(name, "üçüncü")))
+  env$file_ingestion_commit_index(list(third), "42")
+  expect_identical(.load_index()[["42"]][[tolower(name)]]$artifact_id, third$artifact_id)
+})
+
+test_that("tarayıcı kapanışı kuyruktaki işi terminal temizlikle bırakır, çalışanı iptal etmez", {
+  env <- .ingestionEnv()
+  shiny::testServer(function(input, output, session) NULL, {
+    controller <- env$file_ingestion_create_controller(session)
+    cleaned <- 0L
+    job <- .ingestionJob(env, controller)
+    job$lease <- new.env(); job$lease$released <- FALSE
+    job$on_failure <- function(message, tasks) {
+      expect_length(tasks, 0L)
+      cleaned <<- cleaned + 1L
+    }
+    env$file_ingestion_enqueue(job)
+    epoch <- controller$epoch
+    session$close()
+    expect_identical(cleaned, 1L)
+    expect_identical(controller$epoch, epoch)
+    expect_false(isTRUE(controller$active))
+    expect_identical(env$file_ingestion_queue_status()$queued_batches, 0L)
+  })
 })

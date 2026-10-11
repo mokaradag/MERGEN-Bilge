@@ -19,10 +19,13 @@ file_ingestion_create_controller <- function(session = NULL, debug_fn = NULL) {
     mergen_session_on_owner_change(session, function(...) file_ingestion_cancel_controller(controller))
   }
 
+  # Tarayıcı kapanışı iptal değildir: çalışan kabul edilmiş alım kalıcı sonucuna
+  # ulaşır, yalnız UI geri çağrıları susturulur. Geçici yüklemesi oturumla silinen
+  # kuyruktaki işler bırakılır.
   if (!is.null(session) && is.function(session$onSessionEnded)) {
     try(session$onSessionEnded(function() {
       controller$active <- FALSE
-      file_ingestion_cancel_controller(controller)
+      file_ingestion_drop_controller_jobs(controller)
     }), silent = TRUE)
   }
 
@@ -49,8 +52,23 @@ file_ingestion_session_controller <- function(session) {
 file_ingestion_cancel_controller <- function(controller) {
   if (is.null(controller)) return(invisible(FALSE))
   controller$epoch <- controller$epoch + 1L
-  file_ingestion_cancel_session_jobs(controller$session_token)
+  file_ingestion_drop_controller_jobs(controller)
   invisible(TRUE)
+}
+
+# Yalnız bu denetleyicinin bekleyen işleri kuyruktan düşürülür ve her biri
+# terminal temizlik alır (ilerleme bildirimi kapanır). Görev ayrıntısı taşınmaz.
+file_ingestion_drop_controller_jobs <- function(controller) {
+  state <- .file_ingestion_state()
+  if (!length(state$pending)) return(invisible(0L))
+  dropped <- vapply(state$pending, function(job) identical(job$controller, controller), logical(1))
+  removed <- state$pending[dropped]
+  state$pending <- state$pending[!dropped]
+  for (job in removed) {
+    if (is.environment(job$lease)) job$lease$released <- TRUE
+    if (is.function(job$on_failure)) try(job$on_failure("Dosya alımı iptal edildi.", list()), silent = TRUE)
+  }
+  invisible(as.integer(length(removed)))
 }
 
 file_ingestion_controller_debug <- function(controller, tag, message) {
@@ -79,7 +97,7 @@ file_ingestion_run_job <- function(job) {
   promise <- tracked_future_promise(
     task_fn = function() file_ingestion_execute_batch(tasks),
     task_type = "file_ingestion",
-    cancel_check = function() isTRUE(job$controller$active) && identical(job$controller$epoch, job$epoch),
+    cancel_check = function() identical(job$controller$epoch, job$epoch),
     session_token = job$session_token,
     meta = list(batch_id = job$id, files = length(gorevler)),
     dependency_mode = "explicit",
@@ -89,14 +107,13 @@ file_ingestion_run_job <- function(job) {
 
   promises::then(
     promise,
+    # Günlük, terfi edilmiş kopyanın commit ya da geri alımı kalıcılaşana dek yaşar.
     onFulfilled = function(results) {
-      unlink(journals, force = TRUE)
-      file_ingestion_finish_job(job, results, bekleme_ms)
+      file_ingestion_finish_job(job, results, bekleme_ms, journals = journals)
     },
     onRejected = function(error) {
       results <- lapply(journals, function(path) suppressWarnings(tryCatch(readRDS(path), error = function(e) NULL)))
-      unlink(journals, force = TRUE)
-      file_ingestion_rollback_job(job, Filter(Negate(is.null), results), error)
+      file_ingestion_rollback_job(job, Filter(Negate(is.null), results), error, journals)
     }
   )
 

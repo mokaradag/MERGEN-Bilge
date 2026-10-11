@@ -19,7 +19,9 @@ file_ingestion_commit_index <- function(results, user_id) {
   )
 }
 
-# İptal edilen partinin kopyaladığı hedefleri temizler.
+# İptal edilen partinin kopyaladığı hedefleri temizler. COMMIT TEK YÖNLÜDÜR:
+# indekste bu yapıtla eşleşen kayıt kalıcı başarıdır ve hiçbir geç temizlik
+# (geri alma, reddedilen kardeş, oturum kapanışı) onu silmez.
 file_ingestion_discard_results <- function(results, user_id = NULL, lock_timeout_sec = 5) {
   owned <- Filter(function(r) file_ingestion_artifact_owned(r, allow_deleting = TRUE), results %||% list())
   pending <- Filter(function(r) {
@@ -27,6 +29,7 @@ file_ingestion_discard_results <- function(results, user_id = NULL, lock_timeout
     isTRUE(r$transaction_pending) && identical(owner$id, r$artifact_id) &&
       identical(owner$staging, r$staging) && identical(owner$state, "copying")
   }, results %||% list())
+  committed <- character()
   .file_store_with_index_lock({
     idx <- .load_index()
     uid <- if (is.null(user_id)) NULL else as.character(user_id)
@@ -38,16 +41,17 @@ file_ingestion_discard_results <- function(results, user_id = NULL, lock_timeout
       node_path <- if (is.list(node)) node$path else node
       node_id <- if (is.list(node)) node$artifact_id else NULL
       if (identical(node_path, entry$path) && (is.null(node_id) || identical(node_id, r$artifact_id))) {
-        if (is.null(uid)) idx[[entry$key]] <- NULL else idx[[uid]][[entry$key]] <- NULL
+        committed <- c(committed, r$artifact_id)
+        next
       }
       owner$state <- "deleting"
       owner$pid <- Sys.getpid()
       owner$host <- unname(Sys.info()[["nodename"]])
-      saveRDS(owner, file_ingestion_owner_path(r$dest))
+      file_ingestion_write_owner(owner, file_ingestion_owner_path(r$dest))
     }
-    .save_index(idx)
   }, timeout_sec = lock_timeout_sec, require_lock = TRUE)
   for (r in c(owned, pending)) {
+    if (isTRUE(r$artifact_id %in% committed)) next
     owner <- file_ingestion_read_owner(r$dest)
     if (!identical(owner$id, r$artifact_id)) next
     if (file_ingestion_artifact_owned(r, allow_deleting = TRUE))
@@ -56,6 +60,11 @@ file_ingestion_discard_results <- function(results, user_id = NULL, lock_timeout
       file_ingestion_discard_dest(r$staging, r$source_path)
     if ((owner$state != "copying" && path_exists_relaxed(r$dest)) ||
         (!is.null(r$staging) && path_exists_relaxed(r$staging))) stop("Sahip olunan kopya silinemedi.")
+    # Terfi edilmiş ama henüz görünmeyen hedefin sahipliği bırakılmaz; görünen
+    # ama kimliği eşleşmeyen hedef yabancıdır ve dokunulmaz.
+    if (identical(owner$state, "copying") && !path_exists_relaxed(r$dest) &&
+        file_ingestion_promotion_pending(r$dest, r$artifact_id))
+      stop("Terfi edilen kopya henüz doğrulanamadı; sahiplik korunuyor.")
     if (identical(file_ingestion_read_owner(r$dest)$id, r$artifact_id))
       unlink(c(file_ingestion_owner_path(r$dest), paste0(file_ingestion_owner_path(r$dest), ".identity")), force = TRUE)
   }
@@ -66,11 +75,12 @@ file_ingestion_discard_results <- function(results, user_id = NULL, lock_timeout
   invisible(TRUE)
 }
 
-
-
-file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard = FALSE) {
-  discard <- isTRUE(discard) || !isTRUE(job$controller$active) ||
-    !identical(job$controller$epoch, job$epoch)
+# Parti yalnız kendi neslinde (epoch) indekslenir. Tarayıcı kapanışı iptal
+# değildir; UI geri çağrıları ayrıca susturulur. Commit sonrası hiçbir hata
+# partiyi geri almaz; işlem günlükleri kalıcı sonuç bilinene dek tutulur.
+file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard = FALSE,
+                                      journals = character()) {
+  discard <- isTRUE(discard) || !identical(job$controller$epoch, job$epoch)
   tryCatch({
     globals <- file_ingestion_worker_globals()
     globals$results <- results
@@ -86,18 +96,21 @@ file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard =
           file_ingestion_discard_results(results, user_id)
           return(NULL)
         }
-        tryCatch({
+        committed <- tryCatch({
           failed <- Filter(function(r) !isTRUE(r$ok), results)
           if (length(failed)) file_ingestion_discard_results(failed, user_id)
-          committed <- file_ingestion_commit_index(results, user_id)
-          declined <- Filter(function(r) isTRUE(r$ok) && !is.null(r$artifact_id) &&
-            !r$artifact_id %in% committed$committed, results)
-          if (length(declined)) file_ingestion_discard_results(declined, user_id)
-          committed
+          file_ingestion_commit_index(results, user_id)
         }, error = function(e) {
           try(file_ingestion_discard_results(results, user_id), silent = TRUE)
           stop(e)
         })
+        # Reddedilen kardeşin temizlik hatası commit edilmiş yapıtı geri almaz.
+        # Kimlik listesi yoksa (kimliksiz indeks) red yoktur; ana süreç de böyle sayar.
+        declined <- if (is.null(committed$committed)) list() else
+          Filter(function(r) isTRUE(r$ok) && !is.null(r$artifact_id) &&
+            !r$artifact_id %in% committed$committed, results)
+        if (length(declined)) try(file_ingestion_discard_results(declined, user_id), silent = TRUE)
+        committed
       },
       task_type = "file_ingestion_index",
       cancel_check = function() TRUE,
@@ -108,11 +121,9 @@ file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard =
     ) |>
       promises::then(
         onFulfilled = function(index_result) {
+          unlink(journals, force = TRUE)
           tryCatch({
-            if (!discard && (!isTRUE(job$controller$active) ||
-                             !identical(job$controller$epoch, job$epoch))) {
-              file_ingestion_finish_job(job, results, queue_wait_ms, discard = TRUE)
-            } else if (discard) {
+            if (discard) {
               file_ingestion_release_job(job)
               file_ingestion_pump()
             } else {
@@ -122,15 +133,15 @@ file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard =
           NULL
         },
         onRejected = function(error) {
-          file_ingestion_rollback_job(job, results, error)
+          file_ingestion_rollback_job(job, results, error, journals)
           NULL
         })
-  }, error = function(error) file_ingestion_rollback_job(job, results, error))
+  }, error = function(error) file_ingestion_rollback_job(job, results, error, journals))
   invisible(NULL)
 }
 
 # Havuz arızasında geri alma bağımsız işçide yürür; indeks kilidi UI'ı tutmaz.
-file_ingestion_rollback_job <- function(job, results, error) {
+file_ingestion_rollback_job <- function(job, results, error, journals = character()) {
   if (is.environment(job$lease) && isTRUE(job$lease$released)) return(invisible(NULL))
   attempt <- 0L
   terminal <- FALSE
@@ -197,6 +208,8 @@ file_ingestion_rollback_job <- function(job, results, error) {
       }
       failure <- tryCatch({ process$get_result(); NULL }, error = identity)
       if (!is.null(failure)) return(retry(failure))
+      # Geri alma kalıcı olarak tamamlandı; günlük artık gereksiz.
+      unlink(journals, force = TRUE)
       finish(error)
     }
     later::later(poll, delay = 0.1)

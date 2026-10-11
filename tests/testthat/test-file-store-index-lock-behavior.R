@@ -238,17 +238,40 @@ test_that("mutasyon yardimcisi stale kilit sonrasi indeks kaydini kaybetmez", {
     idx
   })
 })
-test_that("ölü kilit hemen devralınır ama yaşlanmış canlı kilit çalınmaz", {
+test_that("ölü kilit hemen devralınır; aynı sürecin bırakamadığı kilit yalnız yaşla", {
   .lock_test_prepare_runtime()
   withr::defer(.lock_test_cleanup())
   .lock_test_make_lock(age_sec = 0)
   expect_identical(.file_store_with_index_lock(TRUE, timeout_sec = 0, require_lock = TRUE), TRUE)
   lock_dir <- .lock_test_lock_dir()
+  # Bu süreç senkron kritik bölümde değilken kendi PID'li marker terk edilmiştir:
+  # taze iken korunur, bayatlık eşiğinden sonra geri kazanılır.
   .lock_test_make_lock()
-  Sys.setFileTime(.lock_test_lock_marker(), Sys.time() - 3600)
   expect_error(.file_store_with_index_lock(stop("kritik bölüm çalıştı"), timeout_sec = 0,
-    stale_lock_sec = 1, require_lock = TRUE), "kilidi alınamadı")
+    stale_lock_sec = 60, require_lock = TRUE), "kilidi alınamadı")
   expect_true(dir.exists(lock_dir))
+  Sys.sleep(1.2)
+  expect_identical(.file_store_with_index_lock(TRUE, timeout_sec = 0, stale_lock_sec = 1,
+    require_lock = TRUE), TRUE)
+})
+
+test_that("markersız, eski biçimli ya da uzak host kilidi yalnız bayatlıktan sonra kırılır", {
+  .lock_test_prepare_runtime()
+  withr::defer(.lock_test_cleanup())
+  lock_dir <- .lock_test_lock_dir()
+  marker <- .lock_test_lock_marker(lock_dir)
+  for (durum in c("markersiz", "eski", "uzak", "bozuk")) {
+    dir.create(lock_dir, recursive = TRUE, showWarnings = FALSE)
+    if (durum == "eski") writeLines(c("pid=2147483647", "token=eski"), marker)
+    if (durum == "uzak") writeLines(c("pid=1", "host=baska-dugum", "token=uzak"), marker)
+    if (durum == "bozuk") writeBin(as.raw(c(0xff, 0x00, 0x13)), marker)
+    expect_error(.file_store_with_index_lock(TRUE, timeout_sec = 0, stale_lock_sec = 3600,
+      require_lock = TRUE), "kilidi alınamadı", info = durum)
+    if (file.exists(marker)) Sys.setFileTime(marker, Sys.time() - 7200)
+    Sys.setFileTime(lock_dir, Sys.time() - 7200)
+    expect_identical(.file_store_with_index_lock(TRUE, timeout_sec = 0, stale_lock_sec = 3600,
+      require_lock = TRUE), TRUE, info = durum)
+  }
 })
 
 test_that("kilit içinde sert öldürülen işçinin kilidi ölüm doğrulandıktan sonra devralınır", {
@@ -268,6 +291,10 @@ test_that("kilit içinde sert öldürülen işçinin kilidi ölüm doğrulandık
   while (!file.exists(ready) && process$is_alive() && Sys.time() < deadline) Sys.sleep(0.01)
   expect_true(file.exists(ready))
   expect_error(.file_store_with_index_lock(TRUE, timeout_sec = 0, require_lock = TRUE), "kilidi alınamadı")
+  # Yaşlanmış ama canlı yabancı sahip çalınmaz.
+  Sys.sleep(1.5)
+  expect_error(.file_store_with_index_lock(TRUE, timeout_sec = 0, stale_lock_sec = 1,
+    require_lock = TRUE), "kilidi alınamadı")
   process$kill()
   process$wait(timeout = 5000)
   expect_false(process$is_alive())

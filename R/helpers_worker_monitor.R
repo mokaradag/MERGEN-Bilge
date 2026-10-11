@@ -165,7 +165,8 @@ get_worker_monitor_info <- function() {
   }, logical(1)))
   callr_jobs <- if (exists(".MERGEN_CANCELLABLE_WORKERS", inherits = TRUE))
     .MERGEN_CANCELLABLE_WORKERS$jobs %||% list() else list()
-  callr_running <- sum(vapply(callr_jobs, function(job) !is.null(job$process), logical(1)))
+  callr_live <- Filter(function(job) !isTRUE(job$quarantined), callr_jobs)
+  callr_running <- sum(vapply(callr_live, function(job) !is.null(job$process), logical(1)))
 
   # Özet kuyruğunda bekleyen işler henüz izleme defterinde değildir (gönderimde
   # kaydolur); kuyruk ve tür dağılımına ayrıca eklenir, çift sayılmaz.
@@ -188,7 +189,10 @@ get_worker_monitor_info <- function() {
     cancellable_pool = list(
       total_workers = if (exists("mergen_cancellable_worker_capacity", mode = "function")) mergen_cancellable_worker_capacity() else 0L,
       active_workers = callr_running,
-      queued_jobs = length(callr_jobs) - callr_running
+      queued_jobs = length(callr_live) - callr_running,
+      quarantined_jobs = length(callr_jobs) - length(callr_live),
+      durable_jobs = sum(vapply(callr_live, function(job)
+        identical(job$lane %||% "interactive", "durable"), logical(1)))
     ),
     total_workers = total_workers,
     active_jobs = as.integer(active_jobs),
@@ -464,10 +468,15 @@ tracked_future_promise <- function(task_fn,
           promise_globals[setdiff(names(promise_globals), "task_fn")], future_packages)
       attr(payload, "mergen_packages") <- future_packages
       auxiliary <- task_type %in% c("file_preview_docx", "claude_code_dir_listing")
+      # Kalıcı işler kendi şeridinde: tamamlanmış çalıştırmanın çıktısı ve kabul
+      # edilmiş yükleme uzun sohbet işlerinin arkasında beklemez.
+      durable <- task_type %in% c("file_ingestion", "file_ingestion_index", "claude_code_run_prepare",
+                                  "claude_code_run_outputs", "claude_code_summary_publish")
       mergen_cancellable_worker_promise(payload, cancel_check,
         timeout = execution_timeout %||% if (auxiliary) 30 else 1800,
-        priority = if (auxiliary) 2L else 0L,
-        queue_timeout = queue_timeout %||% if (auxiliary) 30 else 300)
+        priority = if (auxiliary) 2L else if (identical(task_type, "llm_followups")) 1L else 0L,
+        queue_timeout = queue_timeout %||% if (auxiliary) 30 else 300,
+        lane = if (durable) "durable" else "interactive")
     } else promises::future_promise(
       {
         if (is.raw(task_fn)) task_fn <- unserialize(task_fn)

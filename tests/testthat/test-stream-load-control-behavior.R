@@ -273,10 +273,12 @@ test_that("isteğe bağlı takip anahtar hatası gözlemci dışına kaçmaz", {
   withr::defer(if (is.null(old_key)) rm("mb_api_key_get_effective_key_value", envir = target)
               else assign("mb_api_key_get_effective_key_value", old_key, envir = target))
   dispatched <- FALSE
+  # Anahtar hatası gözlemciye kaçmaz ve deterministik önerileri düşürmez:
+  # iş yine planlanır, yalnız isteğe bağlı AI zenginleştirmesi kapanır.
   result <- mergen_stream_dispatch_followups(.fake_session(), "m", "soru", "yanıt",
     list(enable_followups = TRUE), list(), NULL, NULL,
     plan = list(enabled = TRUE, delay_seconds = 0),
     later_fn = function(...) dispatched <<- TRUE, build_fn = function(...) NULL)
-  expect_false(result)
-  expect_false(dispatched)
+  expect_true(result)
+  expect_true(dispatched)
 })

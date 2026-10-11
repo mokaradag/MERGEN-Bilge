@@ -1095,19 +1095,18 @@ test_that("hazırlık ve çıktı işleri açık bağımlılık modu ile gönder
   expect_true(grepl("cc_dispatch_run_preparation\\(", modul, perl = TRUE))
 })
 
-test_that("hazırlık callback'leri kapanmış oturumda işlem başlatmaz", {
+test_that("hazırlık geri çağrıları tarayıcı kapanışını iptal saymaz, çalıştırma durumuna bağlıdır", {
   dispatch <- .cc_read_prepare_text("R/helpers_claude_code_run_dispatch.R")
 
-  # Hem başarı hem hata settlement callback'i websocket/UI işinden önce
-  # kapanmış oturumu bırakmalıdır. Başarı yolu ayrıca worker'ın lease'ini
-  # süreç başlatmadan serbest bırakır.
-  expect_gte(
-    lengths(regmatches(dispatch, gregexpr("ctx\\$session\\$isClosed\\(\\)", dispatch, perl = TRUE))),
-    2L
-  )
+  # Tarayıcı kapanışı kabul edilmiş çalıştırmayı iptal etmez: hazırlık iptali,
+  # başarı ve hata yolları oturum kapanışına değil, ayrılabilen ortak çalıştırma
+  # durumuna (run_ref) bakar; geçersiz çalıştırmada lease süreç başlatılmadan bırakılır.
+  expect_false(grepl("ctx\\$session\\$isClosed\\(\\)", dispatch, perl = TRUE))
+  expect_gte(lengths(regmatches(dispatch, gregexpr("ctx\\$rv <- run_ref\\$rv", dispatch, perl = TRUE))), 3L)
+  expect_true(grepl("cancel_check = function\\(\\) cc_is_active_run\\(run_ref\\$rv", dispatch, perl = TRUE))
   expect_true(grepl(
     paste0(
-      "(?s)isTRUE\\(ctx\\$session\\$isClosed\\(\\)\\).*?",
+      "(?s)ctx\\$rv <- run_ref\\$rv\\s*if \\(!cc_is_active_run\\(ctx\\$rv, ctx\\$run_request_id\\)\\) \\{\\s*",
       "cc_release_runtime_lease\\(prep\\$runtime_lease.*?",
       "cc_start_streaming_run\\(ctx, prep\\)"
     ),

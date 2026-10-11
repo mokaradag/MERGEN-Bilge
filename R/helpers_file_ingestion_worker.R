@@ -121,7 +121,8 @@ file_ingestion_execute_task <- function(task) {
   }
   same_source <- identical(normalizePath(dest, winslash = "/", mustWork = FALSE),
     normalizePath(task$datapath, winslash = "/", mustWork = FALSE))
-  artifact_id <- if (same_source) NULL else tryCatch(file_ingestion_claim_artifact(dest,
+  artifact_id <- if (same_source) NULL else if (file_ingestion_claimed_by(dest, task$transaction$id,
+    verification$identity)) task$transaction$id else tryCatch(file_ingestion_claim_artifact(dest,
     verification$identity, id = task$transaction$id), error = function(e) e)
   if (inherits(artifact_id, "error")) {
     try(file_ingestion_discard_unclaimed(dest, task$datapath, verification$identity), silent = TRUE)

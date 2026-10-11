@@ -253,17 +253,24 @@ cc_bind_workbench_owner_lifecycle <- function(session, ns, rv, dir_refresh_guard
   }
   run_ref <- cc_run_state_reference(rv)
   remove_hook <- mergen_session_on_owner_change(session, reset)
+  # Tarayıcı kapanışı iptal değildir: kabul edilmiş her aşama (hazırlık, CLI,
+  # doküman özeti, çıktı aktarımı) oturumdan ayrılıp kalıcı sonucuna ulaşır.
+  # Yalnız sahip/yetki değişimi yıkıcıdır. Oturum sonu tek bu kancadadır.
   session$onSessionEnded(function() {
     remove_hook()
     shiny::isolate({
-      if (is.null(rv$active_process) && !isTRUE(rv$stream_env$output_worker_pending)) {
+      if (cc_run_accepted(rv)) {
+        cc_detach_run_state(run_ref, session)
+      } else {
         reset()
         if (!is.null(rv$process_poll_observer)) rv$process_poll_observer$destroy()
         rv$process_poll_observer <- NULL
-      } else {
-        cc_detach_run_state(run_ref, session)
       }
     })
   })
   invisible(TRUE)
+}
+
+cc_run_accepted <- function(rv) {
+  isTRUE(rv$is_running) || !is.null(rv$active_process) || isTRUE(rv$stream_env$output_worker_pending)
 }

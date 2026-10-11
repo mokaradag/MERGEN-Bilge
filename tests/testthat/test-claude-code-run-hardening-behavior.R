@@ -489,10 +489,15 @@ test_that("cc_report_output_scan_truncation kesilmemiş taramayı başarısız s
   env
 }
 
-test_that("sahiplik işareti yokken yeniden kullanım engellenmez", {
+test_that("eksik ya da okunamayan sahiplik işareti sahiplik kanıtı sayılmaz", {
   env <- .cc_ownership_env()
   runtime <- withr::local_tempdir()
 
+  expect_false(env$cc_runtime_ownership_is(runtime, "istek-1"))
+  dir.create(file.path(runtime, "metadata"))
+  writeLines("", file.path(runtime, "metadata", "runtime-owner"))
+  expect_false(env$cc_runtime_ownership_is(runtime, "istek-1"))
+  writeLines("istek-1", file.path(runtime, "metadata", "runtime-owner"))
   expect_true(env$cc_runtime_ownership_is(runtime, "istek-1"))
 })
 

@@ -122,3 +122,31 @@ test_that("tek işçide iptal edilen takip aktarımı kapasiteyi yeni göreve b�
   expect_null(failed)
   expect_identical(done, "yeni görev")
 })
+
+test_that("takip üretimi iptal edilebilir bağımsız işçiye istek kapsamlı denetimle gider", {
+  for (key_fails in c(FALSE, TRUE)) {
+    env <- .followup_worker_env()
+    if (key_fails) env$mb_api_key_get_effective_key_value <- function(...) stop("anahtar okunamadı")
+    callbacks <- list()
+    captured <- NULL
+    allow <- NULL
+    session <- list(userData = new.env())
+    session$userData$user_id <- session$userData$kimlik_sahibi <- 7L
+    session$userData$llm_request_owner <- "A"
+    env$mergen_stream_dispatch_followups(session, "m", "s", "y", list(enable_followups = TRUE),
+      list(), NULL, NULL, later_fn = function(fn, delay) callbacks[[1]] <<- fn,
+      build_fn = function(..., allow_ai = TRUE) { allow <<- allow_ai; "öneri" },
+      dispatch_fn = function(task_fn, cancel_check = NULL, ...) {
+        captured <<- cancel_check
+        task_fn()
+        promises::promise(function(ok, reject) NULL)
+      })
+    callbacks[[1]]()
+    expect_true(is.function(captured))
+    expect_true(captured())
+    session$userData$llm_request_owner <- "B"
+    expect_false(captured())
+    # Anahtar hatası yalnız isteğe bağlı AI zenginleştirmesini kapatır.
+    expect_identical(allow, !key_fails)
+  }
+})

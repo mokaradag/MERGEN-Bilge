@@ -378,10 +378,13 @@ filePreviewServer <- function(id) {
           docx_nesli <- file_storage$preview_file$nesli
 
           cache_id <- datapath %||% filename
+          # Önizleme hatası geçerli dosyanın indirilmesini engellemez: modal açık
+          # kalır ve bilinen yol indirme için korunur.
           preview_error <- function(e) {
             if (!onizleme_gecerli(docx_nesli) || isTRUE(session$isClosed()) ||
                 !identical(isolate(docx_preview_seq()), docx_open_token)) return(NULL)
-            removeModal(session = session)
+            if (!is.null(datapath) && is.null(isolate(file_storage$preview_file$datapath)))
+              file_storage$preview_file$datapath <- datapath
             showToast(session, paste("DOCX okunamadı:", conditionMessage(e)), "error")
           }
           tryCatch({
