@@ -214,7 +214,9 @@ get_image_thumbnail_base64 <- function(file_path) {
 
   tryCatch({
     img_data <- base64enc::base64encode(file_path)
-    paste0("data:image/png;base64,", img_data)
+    ext <- tolower(tools::file_ext(file_path))
+    mime <- switch(ext, jpg = "jpeg", jpeg = "jpeg", gif = "gif", webp = "webp", "png")
+    paste0("data:image/", mime, ";base64,", img_data)
   }, error = function(e) {
     NULL
   })

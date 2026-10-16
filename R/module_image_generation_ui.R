@@ -19,7 +19,7 @@ imageSettingsUI <- function(ns) {
    class = "settings-card image-settings-card",
    id = ns("image_settings_card"),
    h3("Görsel Oluşturma Ayarları", class = "settings-title"),
-   p("DALL-E-3 ile görsel oluşturma ayarlarını yapılandırın.", 
+   p("Görsel oluşturma ayarlarını yapılandırın.",
      class = "setting-description"),
    
    fluidRow(
@@ -125,10 +125,22 @@ render_generated_image_html <- function(image_result, message_id) {
  }
  
  # Görsel URL'sini belirle (yerel veya uzak)
- img_src <- if (!is.null(image_result$local_path) && file.exists(image_result$local_path)) {
-   get_image_web_url(image_result$local_path)
- } else {
-   image_result$image_url
+ img_src <- image_result$image_url
+ if (!is.null(image_result$local_path)) {
+   # Terfi sonrası kısa UNC görünürlük gecikmesi için en fazla 100 ms bekle.
+   for (attempt in seq_len(6L)) {
+     local_src <- get_image_web_url(image_result$local_path)
+     if (is.character(local_src) && length(local_src) == 1L &&
+         !is.na(local_src) && nzchar(trimws(local_src))) { img_src <- local_src; break }
+     if (attempt < 6L) Sys.sleep(0.02)
+   }
+ }
+
+ if (!is.character(img_src) || length(img_src) != 1L || is.na(img_src) || !nzchar(trimws(img_src))) {
+   return('<div class="image-error-container">
+             <i class="fas fa-exclamation-triangle"></i>
+             <p>Görsel oluşturuldu ancak görüntülenemedi.</p>
+           </div>')
  }
 
  # Kart işaretlemesi kanonik güvenli yardımcıdan üretilir (XSS sınırı tek yerde).
