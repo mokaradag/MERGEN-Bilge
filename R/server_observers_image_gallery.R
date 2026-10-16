@@ -154,7 +154,7 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     updateCheckboxInput(session, "settings_yapilandirma_module-enable_image_tools", value = TRUE)
 
     # Görsel modu için model ayarla ve UI kontrollerini güncelle
-    image_model <- Sys.getenv("IMAGE_GEN_MODEL", "dall-e-3")
+    image_model <- Sys.getenv("IMAGE_GEN_MODEL", "FLUX.2-dev")
     settings_data$model_selection <- image_model
     session$sendCustomMessage("toggleImageMode", list(active = TRUE))
     session$sendCustomMessage("toggleSummaryMode", list(active = FALSE))

@@ -26,9 +26,9 @@ chatOutputsInit <- function(output, settings_data) {
       }
     }
 
-    # Görsel modu aktifse dall-e-3 göster
+    # Görsel modu aktifse yapılandırılan modeli göster
     if (isTRUE(settings_data$enable_image_tools)) {
-      display_name <- "dall-e-3"
+      display_name <- Sys.getenv("IMAGE_GEN_MODEL", "FLUX.2-dev")
     } else {
       selected_model_id <- settings_data$model_selection %||% api_config$local_models[1]
       display_name <- names(api_config$local_models)[api_config$local_models == selected_model_id]

@@ -19,8 +19,8 @@
 #   * `promoted` alanı hedefi BU çağrının oluşturduğunu bildirir. Görünürlük
 #     yoklaması TERFİ BAŞARISI DEĞİLDİR: bağlantı/taşıma tamamlandıktan sonra
 #     yavaş bir UNC paylaşımında yoklama `FALSE` dönebiliyor, çağıran da
-#     TAMAMLANMIŞ yüklemeyi siliyordu (veri kaybı). Çağıran yalnızca
-#     `promoted` FALSE iken hedefi temizler.
+#     TAMAMLANMIŞ yüklemeyi siliyordu (veri kaybı). Kısmi hedef temizliği ayrıca
+#     `partial_owned` TRUE sahiplik kanıtını gerektirir.
 #   * Görünürlük yoklaması SINIRLIDIR ve deneme sayısı geçersizse güvenli
 #     varsayılana düşer; `seq_len(NA)` hatası terfi SONRASINDA oluşup dosyayı
 #     kayıtsız bırakıyordu.
@@ -57,7 +57,7 @@ MERGEN_PROMOTE_RESERVATION_SUFFIX <- ".mergen-rsv"
 
 # Staging dosyasını kalıcı ada terfi ettirir.
 # Dönen liste: ok (görünürlük dâhil başarı), yabanci (hedef başka bir yüklemeye
-# ait mi), promoted (hedefi BU çağrı oluşturdu mu).
+# ait mi), promoted (tamamlandı mı), partial_owned (kısmi hedef BU çağrıya mı ait).
 mergen_promote_staged_file <- function(staging, hedef, var_mi,
                                        gorunurluk_denemesi = 10L) {
   var_mi_guvenli <- function(p) mergen_promote_probe(var_mi, p)
@@ -124,10 +124,10 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
       } else {
         # REZERVASYON BİZDEYKEN hedefte oluşan içerik BU çağrının yarım
         # çıktısıdır: rezervasyon alınırken hedefin YOK olduğu doğrulandı ve tüm
-        # terfi yolları aynı rezervasyondan geçer. Bu yüzden `yabanci` FALSE
-        # döner ve çağıran kısmi hedefi temizler; aksi hâlde yarım dosya kalıcı
+        # terfi yolları aynı rezervasyondan geçer. `partial_owned` yalnızca
+        # bu durumda görünen kısmi hedefi işaretler; aksi hâlde yarım dosya kalıcı
         # adla diskte kalıp geçerli bir yükleme gibi listelenirdi.
-        list(ok = FALSE, yabanci = FALSE, promoted = FALSE)
+        list(ok = FALSE, yabanci = FALSE, promoted = FALSE, partial_owned = var_mi_guvenli(hedef))
       }
     }
   }, finally = {

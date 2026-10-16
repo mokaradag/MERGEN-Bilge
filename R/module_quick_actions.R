@@ -190,12 +190,12 @@ quickActionsInit <- function(input, session, values, settings_data,
       template_model <- NULL
 
       # Langflow araçları yerel model taşımaz; ancak Görsel Uzmanı'ndan geçişte
-      # settings_data$model_selection hâlâ görsel modeli (dall-e-3 / IMAGE_GEN_MODEL)
+      # settings_data$model_selection hâlâ görsel modeli (IMAGE_GEN_MODEL)
       # olabilir. Langflow aracı sonradan (ör. Yeni Söyleşi ile) temizlendiğinde
       # normal yerel-LLM gönderimi bu geçersiz görsel modelini sohbet uç noktasına
       # göndermesin diye, görsel modeli seçiliyse geçerli varsayılan sohbet modeline
       # sessizce geri dönülür (araç kilitli olduğundan kullanıcıya bildirilmez).
-      image_model <- Sys.getenv("IMAGE_GEN_MODEL", "dall-e-3")
+      image_model <- Sys.getenv("IMAGE_GEN_MODEL", "FLUX.2-dev")
       current_model <- as.character(isolate(settings_data$model_selection) %||% "")[1]
       if (identical(current_model, image_model)) {
         fallback_chat_model <- api_config$local_models[1]
@@ -229,8 +229,8 @@ quickActionsInit <- function(input, session, values, settings_data,
     }
 
     if (tool_name == "enable_image_tools") {
-      # Görsel modu için dall-e-3 modeli zorunlu
-      image_model <- Sys.getenv("IMAGE_GEN_MODEL", "dall-e-3")
+      # Görsel modu için yapılandırılan modeli kullan
+      image_model <- Sys.getenv("IMAGE_GEN_MODEL", "FLUX.2-dev")
       isolate({ settings_data$model_selection <- image_model })
       session$sendCustomMessage("saveSettings", list(model_selection = image_model))
       close_all_tool_panels()

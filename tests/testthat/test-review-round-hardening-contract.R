@@ -318,6 +318,36 @@ test_that("terfi boş hedefe atomik olarak yerleşir", {
   expect_false(file.exists(staging))
 })
 
+test_that("terfi kısmi hedef sahipliğini yalnızca rezervasyon altında bildirir", {
+  env <- .reviewContractEnv(c("R/helpers_files_promote_probe.R", "R/helpers_files_promote_target.R"))
+  tmp <- withr::local_tempdir()
+  staging <- file.path(tmp, "staging.tmp")
+  target <- file.path(tmp, "image.png")
+  writeBin(charToRaw("complete"), staging)
+  env$file.link <- function(...) FALSE
+  env$mergen_reservation_token <- function(...) "fixture-token"
+  env$mergen_reservation_acquire <- function(...) TRUE
+  released <- FALSE
+  env$mergen_reservation_release <- function(...) { released <<- TRUE }
+  env$file.rename <- function(...) FALSE
+  env$file.copy <- function(from, to, ...) {
+    writeBin(charToRaw("partial"), to)
+    FALSE
+  }
+
+  result <- env$mergen_promote_staged_file(staging, target, file.exists)
+  expect_false(result$promoted)
+  expect_true(result$partial_owned)
+  expect_false(result$yabanci)
+  expect_true(released)
+  expect_identical(readBin(target, "raw", n = 100L), charToRaw("partial"))
+  unlink(target)
+  env$mergen_reservation_acquire <- function(...) FALSE
+  result <- env$mergen_promote_staged_file(staging, target, file.exists)
+  expect_false(isTRUE(result$partial_owned))
+  expect_false(file.exists(target))
+})
+
 test_that("görünürlük deneme sayısı geçersiz girdide güvenli varsayılana düşer", {
   env <- .reviewContractEnv(
     c(
