@@ -460,6 +460,9 @@ cc_runtime_ownership_is <- function(runtime_workdir, request_id) {
 
 # Claim reuse ownership before the original dispatcher schedules any worker.
 cc_dispatch_run_preparation <- function(ctx, attempt = 1L) {
+  # Tarayıcı kapanınca ayrılan çalıştırmanın yetkili durumu ortak referanstadır.
+  run_ref <- cc_run_state_reference(ctx$rv)
+  ctx$rv <- run_ref$rv
   existing <- NULL
   if (!is.null(ctx$rv$active_runtime_source) &&
       !is.null(ctx$rv$active_runtime_workdir) &&
@@ -472,6 +475,7 @@ cc_dispatch_run_preparation <- function(ctx, attempt = 1L) {
         cc_is_active_run(ctx$rv, ctx$run_request_id)) {
       # Kısa temizlik kilidi çekişmesi olay döngüsünü bekletmeden yeniden denenir.
       later::later(function() {
+        ctx$rv <- run_ref$rv
         if (cc_is_active_run(ctx$rv, ctx$run_request_id)) cc_dispatch_run_preparation(ctx, attempt + 1L)
       }, delay = 0.25)
       return(invisible(TRUE))

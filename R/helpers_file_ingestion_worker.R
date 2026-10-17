@@ -234,6 +234,9 @@ file_ingestion_worker_globals <- function(refresh = FALSE,
       if (!nm %in% names(bundle)) bundle[[nm]] <- nested[[nm]]
     }
   }
+  # Taze callr işçisi indeks kilidinin durum ortamını taşımaz (taramaya girmez);
+  # ana sürecin ortamı değil, boş bir kopya gönderilir (geri alma işçisiyle aynı).
+  bundle$.FILE_STORE_LOCK_STATE <- new.env(parent = emptyenv())
   .file_ingestion_worker_cache$globals <- bundle
   bundle
 }

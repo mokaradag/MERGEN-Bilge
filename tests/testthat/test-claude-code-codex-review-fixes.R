@@ -969,19 +969,37 @@ test_that("çıktı yayını hedef başına tek yazarlıdır ve yarım kalan yed
   }
   dest <- file.path(source_root, "rapor.txt")
   txn <- env$.cc_output_txn_paths(dest)
-  # Sert ölüm: özgün hedef yedekte kaldı, hedef yok. Sonraki yayın önce geri koyar.
-  writeLines("özgün", txn$backup, useBytes = TRUE)
-  writeLines("yarım", txn$staging, useBytes = TRUE)
+  # Sert ölüm: ölü sürecin bayat rezervasyonu ve onun jetonuyla adlandırılmış
+  # yapıtlar kalır. Önek taşıyan sıradan kullanıcı dosyaları işlem yapıtı değildir.
+  bayat_islem <- function(hedef, ozgun) {
+    jeton <- paste0("2147483646-ccout", substr(basename(tempfile()), 5, 12))
+    kilit <- env$.cc_output_txn_paths(hedef)$lock
+    dir.create(kilit)
+    writeLines(c(jeton, paste0("host=", Sys.info()[["nodename"]])), file.path(kilit, "owner"))
+    yollar <- env$.cc_output_txn_paths(hedef, jeton)
+    writeLines(ozgun, yollar$backup, useBytes = TRUE)
+    writeLines("yarım", yollar$staging, useBytes = TRUE)
+    yollar
+  }
+  kullanici <- file.path(source_root, c(".cc-output-backup-rapor.txt", ".cc-output-stage-rapor.txt",
+                                        ".cc-output-backup-diger2.txt"))
+  for (yol in kullanici) writeLines("kullanıcı verisi", yol, useBytes = TRUE)
+  yarim <- bayat_islem(dest, "özgün")
   ok <- env$cc_apply_output_sync_plan(plan_for("rapor.txt", "yeni"))
   expect_true(isTRUE(ok[[1]]$success))
   expect_identical(readLines(dest, warn = FALSE), "yeni")
-  expect_false(file.exists(txn$backup))
-  expect_false(file.exists(txn$staging))
-  # Plan dışı hedefin yetim yedeği de geri konur.
+  expect_false(file.exists(yarim$backup))
+  expect_false(file.exists(yarim$staging))
+  # Plan dışı hedefin bayat işlemi de kanıtlı jetonla geri konur.
   diger <- file.path(source_root, "diger.txt")
-  writeLines("diğer özgün", env$.cc_output_txn_paths(diger)$backup, useBytes = TRUE)
+  bayat_islem(diger, "diğer özgün")
   env$cc_apply_output_sync_plan(plan_for("rapor.txt", "yeniden"))
   expect_identical(readLines(diger, warn = FALSE), "diğer özgün")
+  # Sıradan dosyalar ad önekinden ötürü taşınmaz, silinmez ya da geri yüklenmez.
+  for (yol in kullanici) expect_identical(readLines(yol, warn = FALSE), "kullanıcı verisi")
+  expect_false(file.exists(file.path(source_root, "diger2.txt")))
+  expect_length(list.files(source_root, pattern = "^\\.cc-output-(stage|backup|recovered)-[0-9]+-ccout",
+                           all.files = TRUE), 0L)
   # Canlı başka bir yazar hedefi tutarken bu işlem hedefi silemez ya da ezemez.
   jeton <- env$mergen_reservation_token("baska")
   expect_true(env$mergen_reservation_acquire(txn$lock, jeton))
@@ -1000,4 +1018,69 @@ test_that("okunamayan kira dizini yabancı kira yok sayılmaz", {
   expect_false(env$cc_runtime_has_foreign_lease(runtime, "yeni"))
   env$list.files <- function(...) character()
   expect_true(env$cc_runtime_has_foreign_lease(runtime, "yeni"))
+})
+
+test_that("tarayıcı kapanışında bekleyen hazırlık yeniden denemesi ayrılmış durumla sürer", {
+  env <- .cc_codex_review_env()
+  callbacks <- list()
+  attempts <- 0L
+  failed <- NULL
+  env$.cc_codex_original_cc_dispatch_run_preparation <- function(ctx) stop("beklenmeyen gönderim")
+  env$cc_claim_runtime_ownership <- function(...) { attempts <<- attempts + 1L; "" }
+  env$cc_fail_run_preparation <- function(ctx, message, ...) failed <<- ctx$rv
+  ud <- new.env()
+  ud$user_id <- 7L
+  closed <- FALSE
+  session <- list(userData = ud, isClosed = function() closed)
+  rv <- shiny::reactiveValues(active_request_id = "A", is_running = TRUE,
+    active_runtime_source = "source", active_runtime_workdir = "runtime",
+    run_owner_guard = mergen_session_owner_guard(session))
+  testthat::local_mocked_bindings(later = function(func, delay = 0) {
+    callbacks[[length(callbacks) + 1L]] <<- func
+    function() NULL
+  }, .package = "later")
+  shiny::isolate(env$cc_dispatch_run_preparation(list(rv = rv, workdir = "source", run_request_id = "A")))
+  expect_length(callbacks, 1L)
+  closed <- TRUE
+  shiny::isolate(cc_detach_run_state(cc_run_state_reference(rv), session))
+  while (length(callbacks)) {
+    fn <- callbacks[[1]]
+    callbacks <- callbacks[-1]
+    fn()
+  }
+  # Oturuma bağlı durum kapalıdır; denemeler ayrılmış durumla sürer ve terminal hataya ulaşır.
+  expect_identical(attempts, 8L)
+  expect_true(is.environment(failed))
+  expect_true(env$cc_is_active_run(failed, "A"))
+})
+
+test_that("kira değiştirmesi geçici hatada yeniden denenir, okunamayan kira yeniden yazılmaz", {
+  env <- .cc_codex_review_env()
+  env$Sys.sleep <- function(...) invisible(NULL)
+  lease <- file.path(withr::local_tempdir(), "active-run-a.lease")
+  sahip <- c(paste0("host=", Sys.info()[["nodename"]]), paste0("pid=", Sys.getpid()))
+  writeLines(sahip, lease)
+  # Windows paylaşım ihlali: ilk iki değiştirme denemesi başarısız olur.
+  denemeler <- 0L
+  env$file.rename <- function(from, to) {
+    denemeler <<- denemeler + 1L
+    if (denemeler < 3L) FALSE else base::file.rename(from, to)
+  }
+  expect_true(env$cc_bind_runtime_lease(lease, list(get_pid = function() 4242L)))
+  expect_identical(denemeler, 3L)
+  expect_true("pid=4242" %in% readLines(lease))
+  # Kalıcı değiştirme hatası eski kirayı olduğu gibi bırakır.
+  onceki <- readLines(lease)
+  env$file.rename <- function(from, to) FALSE
+  expect_false(env$cc_bind_runtime_lease(lease, list(get_pid = function() 5151L)))
+  expect_identical(readLines(lease), onceki)
+  expect_length(list.files(dirname(lease), pattern = "\\.tmp$"), 0L)
+  # Okuma hatası boş kira sayılmaz: sahiplik satırları silinerek yeniden yazılmaz.
+  env$file.rename <- base::file.rename
+  env$readLines <- function(...) stop("geçici okuma hatası")
+  env$Sys.setFileTime <- function(...) FALSE
+  expect_false(env$cc_touch_runtime_lease(lease))
+  expect_false(env$cc_bind_runtime_lease(lease))
+  env$readLines <- base::readLines
+  expect_identical(readLines(lease), onceki)
 })

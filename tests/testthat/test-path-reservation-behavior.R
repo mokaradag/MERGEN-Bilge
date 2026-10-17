@@ -106,7 +106,9 @@ test_that("eski biçimli ya da uzak host rezervasyonu yalnız bayatlıktan sonra
     Sys.setFileTime(marker, Sys.time() - 7200)
     expect_true(mergen_reservation_takeover(rezerv, yeni, stale_sec = 3600), info = bicim)
     expect_identical(mergen_reservation_owner(rezerv), yeni)
-    # Devralma koruması kullanıcı klasöründe dosya bırakmaz.
-    expect_false(file.exists(paste0(rezerv, ".reclaim")))
+    # Devralma muteksinin yolu kalıcıdır; silinmesi karşılıklı dışlamayı bozardı.
+    expect_true(file.exists(paste0(rezerv, ".reclaim")))
+    expect_true(mergen_reservation_release(rezerv, yeni))
+    expect_true(file.exists(paste0(rezerv, ".reclaim")))
   }
 })

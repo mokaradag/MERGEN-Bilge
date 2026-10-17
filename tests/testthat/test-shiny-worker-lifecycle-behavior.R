@@ -438,6 +438,63 @@ test_that("SSE açık Stop kısmi yanıtı saklar ve gönderim kaynaklarını b�
   })
 })
 
+test_that("Stop'tan önce biten SSE işçisi sonradan yoklansa da tam yanıtı yayımlamaz", {
+  for (change in c("stop", "none")) {
+    env <- .lifecycle_env(c("helpers_async_result_guard.R", "helpers_streaming_io.R",
+      "helpers_streaming_poll_lifecycle.R", "helpers_streaming_abort_lifecycle.R",
+      "server_handler_true_streaming.R"))
+    env$normalize_character_id <- env$normalize_llm_scalar_content <- env$strip_planner_text <- identity
+    env$append_clickable_sources <- function(text, ...) text
+    env$get_characters_data <- function() NULL
+    env$format_timestamp <- function() "zaman"
+    env$mergen_true_streaming_worker_globals <- function(...) list()
+    env$log_info <- env$log_warn <- env$log_ai_usage <- env$mergen_log_chat_perf_summary <- function(...) NULL
+    env$mb_api_key_invalidate_send_cache_on_auth_error <- function(...) NULL
+    env$build_chartlab_message <- function(...) list(found = FALSE)
+    env$process_message_content <- function(text, ...) list(html = text, has_code = FALSE)
+    env$mergen_pk_stream_validated_text <- function(text, ...) list(display = text, tts = text, validated = TRUE)
+    env$mergen_pk_neutral_text <- identity
+    env$mergen_pk_stream_reasoning_step <- function(...) ""
+    env$chat_store_message_in_saved_chats <- env$mergen_schedule_saved_chats_refresh <- function(...) NULL
+    rec <- new.env()
+    rec$saved <- list()
+    rec$followups <- 0L
+    env$mergen_stream_dispatch_followups <- function(...) rec$followups <- rec$followups + 1L
+    env$save_message_to_db <- function(chat, message) {rec$saved <- c(rec$saved, list(message)); 1L}
+    env$tracked_future_promise <- function(task_fn, cancel_check, ...) {
+      rec$stream <- environment(task_fn)$stream_env
+      promises::promise(function(resolve, reject) rec$resolve <- resolve)
+    }
+    shiny::testServer(function(input, output, session) NULL, {
+      session$userData$user_id <- 7L
+      active <- shiny::reactiveVal("A")
+      stopped <- shiny::reactiveVal(FALSE)
+      values <- shiny::reactiveValues(current_chat_id = "chat_A", messages = list(), is_sending = TRUE, typing = TRUE)
+      ctx <- list(session = session, output = output, values = values,
+        settings_data = list(), current_settings = list(), active_request_id = active,
+        stop_generation = stopped, request_id = "A", model_selected = "m",
+        perf_tracker = list(track_request = function(...) NULL, track_error = function(...) NULL),
+        user_prompt_msg = list(), chat_id_val = "chat_A", current_user_id = 7L,
+        reset_chat_state_fn = function() {values$is_sending <- FALSE; values$typing <- FALSE})
+      env$handle_true_streaming_mode(ctx)
+      rec$stream$ui_started <- TRUE
+      rec$stream$accumulated_text <- "kısmi yanıt"
+      values$messages <- list(list(id = rec$stream$msg_id, content = "kısmi yanıt", is_streaming = TRUE))
+      # İşçi başarıyla biter; yoklayıcı sonucu henüz tüketmemiştir.
+      rec$resolve(list(success = TRUE, content = "tam yanıt"))
+      .lifecycle_drain()
+      if (change == "stop") { stopped(TRUE); active("cancelled_A") }
+      session$flushReact()
+      .lifecycle_drain()
+      expect_length(rec$saved, 1L)
+      expect_identical(rec$saved[[1]]$content, if (change == "stop") "kısmi yanıt" else "tam yanıt", info = change)
+      expect_identical(rec$followups, if (change == "stop") 0L else 1L, info = change)
+      expect_null(shiny::isolate(active()))
+      expect_false(shiny::isolate(values$is_sending))
+    })
+  }
+})
+
 test_that("özet işçisi kendi isteğine bağlıdır ve grafikleri yalnız güncel sonuca yazar", {
   for (change in c("success", "stop", "newer", "chat", "auth", "dispatch")) {
     env <- .lifecycle_env(c("helpers_async_result_guard.R", "server_handler_summarization.R"))
@@ -658,5 +715,61 @@ test_that("özet kaynağa yalnızca geçerli terfi işçisiyle yazılır", {
         expect_s3_class(failure, "error")
       }
     })
+  }
+})
+
+test_that("ayrılmış doküman özeti tarayıcı kapalıyken yayımlanır, kalıcılaşır ve sonlanır", {
+  for (outcome in c("success", "failed", "rejected")) {
+    env <- .lifecycle_env(c("helpers_user_session_identity.R", "helpers_async_result_guard.R",
+      "helpers_process_ownership.R", "helpers_claude_code_runtime_lease.R",
+      "helpers_claude_code_run_lifecycle.R"))
+    rec <- new.env()
+    rec$published <- 0L
+    rec$persisted <- character()
+    rec$finalized <- character()
+    env$log_info <- env$log_error <- env$log_warn <- function(...) NULL
+    env$mb_api_key_get_effective_key_value <- function(...) ""
+    env$format_claude_code_output <- identity
+    env$tracked_future_promise <- function(task_fn, cancel_check, ...) {
+      rec$cancel_check <- cancel_check
+      promises::promise(function(resolve, reject) { rec$resolve <- resolve; rec$reject <- reject })
+    }
+    env$cc_publish_document_summary_async <- function(sonuc, ...) {
+      rec$published <- rec$published + 1L
+      sonuc
+    }
+    env$cc_persist_run_result <- function(rv, env, status, ...) rec$persisted <- c(rec$persisted, status)
+    ud <- new.env()
+    ud$user_id <- 7L
+    closed <- FALSE
+    session <- list(token = "tok", userData = ud, isClosed = function() closed,
+      sendCustomMessage = function(...) if (closed) stop("oturum kapalı"))
+    rv <- shiny::reactiveValues(active_request_id = "A", is_running = TRUE,
+                                run_owner_guard = env$mergen_session_owner_guard(session))
+    run_ref <- env$cc_run_state_reference(rv)
+    finalize <- function(durum, ...) {
+      rec$finalized <- c(rec$finalized, durum)
+      run_ref$rv$is_running <- FALSE
+      run_ref$rv$active_request_id <- NULL
+    }
+    out <- withr::local_tempdir()
+    shiny::isolate(env$cc_handle_document_summary_run(session, identity, rv, "A",
+      dokuman_baglami = list(text_sidecars_ready = TRUE), model = "m", zaman_asimi = 60,
+      kaynak_calisma_dizini = out, calisma_dizini = out, effective_user_id = 7L,
+      kullanici_prompt = "özetle", karakter = list(display_name = "K"), karakter_id = "k",
+      karakter_renk = "#fff", cikti_dizini = out, finalize_streaming = finalize,
+      observe_dir_contents = function(...) NULL))
+    # Tarayıcı kapanır: kabul edilmiş çalıştırma ortak duruma ayrılır.
+    closed <- TRUE
+    shiny::isolate(env$cc_detach_run_state(run_ref, session))
+    expect_false(isTRUE(shiny::isolate(rv$run_owner_guard)()))
+    expect_true(rec$cancel_check())
+    if (outcome == "rejected") rec$reject(simpleError("işçi hatası")) else
+      rec$resolve(list(success = outcome == "success", output = "özet", error = "özet hatası", duration = 1))
+    .lifecycle_drain()
+    expect_identical(rec$published, 1L - (outcome == "rejected"), info = outcome)
+    expect_identical(rec$persisted, if (outcome == "success") "completed" else "failed", info = outcome)
+    expect_length(rec$finalized, 1L)
+    expect_false(isTRUE(run_ref$rv$is_running))
   }
 })

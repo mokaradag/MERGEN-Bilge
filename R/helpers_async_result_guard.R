@@ -44,9 +44,16 @@ mergen_stream_request_current <- function(ctx, stream_env, completed = FALSE) {
       is.character(active) && length(active) == 1L && startsWith(active, "cancelled_"))
 }
 
-mergen_stream_worker_guard <- function(ctx, stream_env) {
-  function() !isTRUE(stream_env$finalized) && mergen_stream_request_current(ctx, stream_env) &&
+# Temizlik sahipliği yayın yetkisi değildir: durdurulan istek kendi kaynaklarını
+# temizleyebilir, ama yalnız etkin ve durdurulmamış istek başarılı yanıt yayımlar.
+mergen_stream_may_publish <- function(ctx, stream_env) {
+  mergen_stream_request_current(ctx, stream_env) &&
+    identical(.mergen_request_state_read(ctx$active_request_id), stream_env$req_id) &&
     !isTRUE(.mergen_request_state_read(ctx$stop_generation))
+}
+
+mergen_stream_worker_guard <- function(ctx, stream_env) {
+  function() !isTRUE(stream_env$finalized) && mergen_stream_may_publish(ctx, stream_env)
 }
 
 mergen_stream_dispatch_error <- function(ctx, stream_env, cleanup) {

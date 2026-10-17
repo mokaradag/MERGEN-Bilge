@@ -387,13 +387,17 @@ cc_handle_document_summary_run <- function(session,
       isTRUE(shiny::isolate(run_ref$rv$is_running)),
     session_token = session$token
   ) |>
+    # Ayrılmış çalıştırmada yetkili durum ortak referanstır; oturum yalnız
+    # isteğe bağlı gözlemcidir (UI gönderimleri kapalı oturumda yutulur).
     promises::then(function(sonuc) {
+      rv <- run_ref$rv
       if (!cc_is_active_run(rv, run_request_id)) return(sonuc)
       cc_publish_document_summary_async(sonuc, target_dir, worker_cikti_dizini,
         session, rv, run_request_id)
     }) |>
     promises::then(function(sonuc) {
       on.exit(cc_release_runtime_lease(runtime_lease), add = TRUE)
+      rv <- run_ref$rv
       if (!cc_is_active_run(rv, run_request_id)) {
         return(NULL)
       }
@@ -455,7 +459,7 @@ cc_handle_document_summary_run <- function(session,
           son_indirme_html
         )
 
-        session$sendCustomMessage(
+        try(session$sendCustomMessage(
           type = "cc-add-message",
           message = list(
             target = ns("output_area"),
@@ -466,7 +470,7 @@ cc_handle_document_summary_run <- function(session,
             characterName = karakter$display_name,
             welcomeId = ns("welcome_screen")
           )
-        )
+        ), silent = TRUE)
 
         rv$last_result <- sonuc
 
@@ -482,7 +486,7 @@ cc_handle_document_summary_run <- function(session,
       } else {
         rv$last_result <- sonuc
 
-        session$sendCustomMessage(
+        try(session$sendCustomMessage(
           type = "cc-add-message",
           message = list(
             target = ns("output_area"),
@@ -491,7 +495,7 @@ cc_handle_document_summary_run <- function(session,
             timestamp = format(Sys.time(), "%H:%M:%S"),
             welcomeId = ns("welcome_screen")
           )
-        )
+        ), silent = TRUE)
 
         cc_finalize_if_active(
           rv = rv,
@@ -539,25 +543,26 @@ cc_handle_document_summary_run <- function(session,
         )
       }
 
-      cc_observe_dir_if_active(
+      try(cc_observe_dir_if_active(
         rv = rv,
         request_id = run_request_id,
         observe_dir_contents = observe_dir_contents,
         dizin = target_dir
-      )
+      ), silent = TRUE)
 
       # Doküman özetleme yolu kullanıcının yükleme klasörüne dosya yazdığında
       # Dosya Yönetimi tablosunun yeni dosyayı oturum yenilemeden görmesi için
       # File Manager'a yumuşak bir yenileme sinyali gönder.
-      cc_refresh_user_file_manager_after_run(
+      try(cc_refresh_user_file_manager_after_run(
         session = session,
         user_id = effective_user_id
-      )
+      ), silent = TRUE)
 
       NULL
     }) |>
     promises::catch(function(e) {
       on.exit(cc_release_runtime_lease(runtime_lease), add = TRUE)
+      rv <- run_ref$rv
       if (!cc_is_active_run(rv, run_request_id)) {
         return(NULL)
       }
@@ -592,7 +597,7 @@ cc_handle_document_summary_run <- function(session,
         )
       }
 
-      session$sendCustomMessage(
+      try(session$sendCustomMessage(
         type = "cc-add-message",
         message = list(
           target = ns("output_area"),
@@ -601,7 +606,7 @@ cc_handle_document_summary_run <- function(session,
           timestamp = format(Sys.time(), "%H:%M:%S"),
           welcomeId = ns("welcome_screen")
         )
-      )
+      ), silent = TRUE)
 
       cc_finalize_if_active(
         rv = rv,

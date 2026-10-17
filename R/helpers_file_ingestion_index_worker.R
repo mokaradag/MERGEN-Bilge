@@ -50,6 +50,11 @@ file_ingestion_discard_results <- function(results, user_id = NULL, lock_timeout
       file_ingestion_write_owner(owner, file_ingestion_owner_path(r$dest))
     }
   }, timeout_sec = lock_timeout_sec, require_lock = TRUE)
+  # Sahiplik kanıtı yalnız işlemin kendi kopyası kalmadığında bırakılır. Görünen
+  # hedefin kimliği okunamıyorsa yabancı olduğu da kanıtlanamaz: silinmez ve
+  # işaretleriyle sonraki temizliğe kalır. Kimliği okunup eşleşmeyen hedef
+  # yabancıdır, ona dokunulmaz. Bir yapıtın hatası diğerlerini durdurmaz.
+  hatalar <- character()
   for (r in c(owned, pending)) {
     if (isTRUE(r$artifact_id %in% committed)) next
     owner <- file_ingestion_read_owner(r$dest)
@@ -58,13 +63,17 @@ file_ingestion_discard_results <- function(results, user_id = NULL, lock_timeout
       file_ingestion_discard_dest(r$dest, r$source_path)
     if (isTRUE(r$transaction_pending) && identical(owner$staging, r$staging))
       file_ingestion_discard_dest(r$staging, r$source_path)
-    if ((owner$state != "copying" && path_exists_relaxed(r$dest)) ||
-        (!is.null(r$staging) && path_exists_relaxed(r$staging))) stop("Sahip olunan kopya silinemedi.")
-    # Terfi edilmiş ama henüz görünmeyen hedefin sahipliği bırakılmaz; görünen
-    # ama kimliği eşleşmeyen hedef yabancıdır ve dokunulmaz.
-    if (identical(owner$state, "copying") && !path_exists_relaxed(r$dest) &&
-        file_ingestion_promotion_pending(r$dest, r$artifact_id))
-      stop("Terfi edilen kopya henüz doğrulanamadı; sahiplik korunuyor.")
+    hedef_var <- path_exists_relaxed(r$dest)
+    if ((hedef_var && (!identical(owner$state, "copying") || is.null(file_ingestion_physical_identity(r$dest)))) ||
+        (!is.null(r$staging) && path_exists_relaxed(r$staging))) {
+      hatalar <- c(hatalar, "Sahip olunan kopya silinemedi ya da doğrulanamadı; sahiplik korunuyor.")
+      next
+    }
+    if (identical(owner$state, "copying") && !hedef_var &&
+        file_ingestion_promotion_pending(r$dest, r$artifact_id)) {
+      hatalar <- c(hatalar, "Terfi edilen kopya henüz doğrulanamadı; sahiplik korunuyor.")
+      next
+    }
     if (identical(file_ingestion_read_owner(r$dest)$id, r$artifact_id))
       unlink(c(file_ingestion_owner_path(r$dest), paste0(file_ingestion_owner_path(r$dest), ".identity")), force = TRUE)
   }
@@ -72,6 +81,7 @@ file_ingestion_discard_results <- function(results, user_id = NULL, lock_timeout
     if (identical(r$code, "claim_failed") && !is.null(r$identity))
       file_ingestion_discard_unclaimed(r$dest, r$source_path, r$identity)
   }
+  if (length(hatalar)) stop(hatalar[[1]])
   invisible(TRUE)
 }
 
@@ -113,7 +123,10 @@ file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard =
         committed
       },
       task_type = "file_ingestion_index",
-      cancel_check = function() TRUE,
+      # Commit'ten önceki iptal (nesil değişimi) işçiyi durdurur ve geri alma
+      # yoluna düşer; commit edilmiş yapıt geri alınmaz. Temizlik koşusu iptal edilmez.
+      cancel_check = if (discard) function() TRUE else
+        function() identical(job$controller$epoch, job$epoch),
       session_token = job$session_token,
       dependency_mode = "explicit",
       globals = globals,
@@ -222,6 +235,7 @@ file_ingestion_release_job <- function(job) {
   if (is.environment(job$lease)) {
     if (isTRUE(job$lease$released)) return(invisible(FALSE))
     job$lease$released <- TRUE
+    if (!is.null(job$lease$sources)) unlink(job$lease$sources, recursive = TRUE, force = TRUE)
   }
   file_ingestion_release_slot()
   invisible(TRUE)

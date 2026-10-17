@@ -67,6 +67,7 @@ cc_send_run_stage <- function(session, ns, stage, duration = "") {
 #' Yalnızca hata veren geri çağrı hâlâ aktif çalışmaya aitse durum temizlenir;
 #' böylece geç gelen stale callback yeni bir çalışmayı bozamaz.
 cc_fail_run_preparation <- function(ctx, message, stage = "hata") {
+  ctx$rv <- cc_run_state_reference(ctx$rv)$rv
   if (!cc_is_active_run(ctx$rv, ctx$run_request_id)) {
     return(invisible(FALSE))
   }

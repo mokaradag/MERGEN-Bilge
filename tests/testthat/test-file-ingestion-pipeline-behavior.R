@@ -283,6 +283,11 @@ test_that("worker global paketi canlı oturum/reaktif nesne taşımaz", {
   paket <- env$file_ingestion_worker_globals(refresh = TRUE)
 
   expect_true(length(paket) > 0L)
+  # İndeks kilidi durum ortamı işçiye yalnız boş, yeni bir ortam olarak gider.
+  kilit <- paket$.FILE_STORE_LOCK_STATE
+  expect_true(is.environment(kilit) && !length(ls(kilit, all.names = TRUE)))
+  expect_false(identical(kilit, get0(".FILE_STORE_LOCK_STATE", envir = env)))
+  paket$.FILE_STORE_LOCK_STATE <- NULL
   expect_true(all(vapply(paket, function(x) is.function(x) || is.atomic(x), logical(1))))
   expect_true("copy_to_mcp_base" %in% names(paket))
   expect_true("file_ingestion_execute_batch" %in% names(paket))
@@ -1291,4 +1296,95 @@ test_that("tarayıcı kapanışı kuyruktaki işi terminal temizlikle bırakır,
     expect_false(isTRUE(controller$active))
     expect_identical(env$file_ingestion_queue_status()$queued_batches, 0L)
   })
+})
+
+test_that("kimliği okunamayan terfi edilmiş hedef sahipliğini korur, kardeş temizliği sürer", {
+  env <- .ingestionEnv()
+  source <- withr::local_tempfile()
+  writeLines("kaynak", source)
+  hazirla <- function(id) {
+    target <- withr::local_tempfile(.local_envir = parent.frame(2))
+    staging <- paste0(target, ".mergen-part")
+    journal <- withr::local_tempfile(.local_envir = parent.frame(2))
+    txn <- list(id = id, journal = journal)
+    env$file_ingestion_begin_copy(target, staging, source, txn)
+    writeLines("kopya", staging)
+    list(target = target, staging = staging, txn = txn)
+  }
+  terfi <- hazirla("terfi")
+  env$file_ingestion_prepare_promotion(terfi$staging, terfi$target, terfi$txn)
+  expect_true(file.rename(terfi$staging, terfi$target))
+  kardes <- hazirla("kardes")
+  # Terfi sonrası hedef kimliği (UNC/izin) okunamaz: yapıt bizim de yabancı da olabilir.
+  env$file_ingestion_physical_identity <- function(path) NULL
+  expect_error(env$file_ingestion_discard_results(
+    list(readRDS(terfi$txn$journal), readRDS(kardes$txn$journal)), "42"), "sahiplik korunuyor")
+  expect_identical(readLines(terfi$target), "kopya")
+  expect_true(file.exists(env$file_ingestion_owner_path(terfi$target)))
+  expect_true(file.exists(paste0(env$file_ingestion_owner_path(terfi$target), ".identity")))
+  # İlk yapıtın hatası kardeşin ara kopyasının ve işaretlerinin temizliğini durdurmaz.
+  expect_false(file.exists(kardes$staging))
+  expect_false(file.exists(env$file_ingestion_owner_path(kardes$target)))
+})
+
+test_that("indeks işçisi commit öncesi nesil iptalini izler, temizlik koşusu iptal edilmez", {
+  env <- .ingestionEnv()
+  controller <- env$file_ingestion_create_controller()
+  checks <- list()
+  env$tracked_future_promise <- function(task_fn, cancel_check, ...) {
+    checks[[length(checks) + 1L]] <<- cancel_check
+    promises::promise(function(resolve, reject) NULL)
+  }
+  job <- .ingestionJob(env, controller)
+  env$file_ingestion_finish_job(job, list())
+  expect_true(checks[[1]]())
+  env$file_ingestion_cancel_controller(controller)
+  expect_false(checks[[1]]())
+  env$file_ingestion_finish_job(job, list())
+  expect_true(checks[[2]]())
+})
+
+test_that("alım partisi taze callr işçisinde indeks kilidiyle uçtan uca tamamlanır", {
+  skip_if_not_installed("callr")
+  env <- .ingestionEnv()
+  gercek <- new.env(parent = env)
+  for (dosya in c("helpers_worker_cancellation.R", "helpers_worker_monitor.R"))
+    source(file.path(resolve_repo_root_for_tests(), "R", dosya), encoding = "UTF-8", local = gercek)
+  task <- .ingestionTask(env, .ingestionUpload("callr_alim.txt", "taze işçi içeriği"))
+  task$result_journal <- withr::local_tempfile()
+  task$transaction <- list(id = basename(task$result_journal), journal = task$result_journal)
+  globals <- env$file_ingestion_worker_globals(refresh = TRUE)
+  globals$tasks <- list(task)
+  sonuc <- hata <- NULL
+  p <- gercek$tracked_future_promise(task_fn = function() file_ingestion_execute_batch(tasks),
+    task_type = "file_ingestion", cancel_check = function() TRUE, dependency_mode = "explicit",
+    globals = globals, packages = c("fs", "digest"))
+  promises::then(p, function(value) sonuc <<- value, function(e) hata <<- e)
+  deadline <- Sys.time() + 60
+  while (is.null(sonuc) && is.null(hata) && Sys.time() < deadline) later::run_now(0.05)
+  expect_null(hata)
+  expect_true(isTRUE(sonuc[[1]]$ok))
+  expect_identical(readLines(sonuc[[1]]$dest), "taze işçi içeriği")
+  expect_true(env$file_ingestion_artifact_owned(sonuc[[1]]))
+})
+
+test_that("kabul edilen alım, oturum geçici yüklemeyi silse de kaynağına ulaşır", {
+  env <- .ingestionEnv()
+  upload <- .ingestionUpload("oturum_kapandi.txt", "kapanıştan sonra da korunur")
+  controller <- env$file_ingestion_create_controller()
+  sonuclar <- NULL
+  icsel <- env$tracked_future_promise
+  env$tracked_future_promise <- function(task_fn, globals, ..., task_type = "generic") {
+    # Tarayıcı kapanışı: Shiny oturumun geçici yükleme dosyasını siler.
+    if (identical(task_type, "file_ingestion")) unlink(upload$datapath)
+    icsel(task_fn, globals, ..., task_type = task_type)
+  }
+  durum <- env$file_ingestion_submit_batch(controller, list(.ingestionTask(env, upload)), "42",
+    on_complete = function(results, ...) sonuclar <<- results, batch_id = "kapanis-b1")
+  for (i in 1:30) later::run_now(0)
+  expect_identical(durum$status, "started")
+  expect_false(file.exists(upload$datapath))
+  expect_true(isTRUE(sonuclar[[1]]$ok))
+  expect_identical(readLines(sonuclar[[1]]$dest), "kapanıştan sonra da korunur")
+  expect_false(dir.exists(file.path(tempdir(), "mergen_ingest_sources", "kapanis-b1")))
 })

@@ -281,7 +281,8 @@ ttsProcessingServer <- function(id) {
       },
       task_type = "tts",
       cancel_check = cancel_check %||% mergen_session_owner_guard(session),
-      execution_timeout = timeout_val,
+      # Havuz son tarihi süreç açılışını da sayar; HTTP zaman aşımı önce düşer.
+      execution_timeout = timeout_val + 30,
       session_token = session$token,
       meta = list(
         voice = voice_to_use,

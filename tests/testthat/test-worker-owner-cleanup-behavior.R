@@ -192,3 +192,52 @@ test_that("kapanmış SSE oturumu kabul jetonunu ve istek sahipliğini bir kez b
   expect_length(ls(ud$kimlik_kancalari), 0L)
   expect_true(file.exists(stream$stop_file))
 })
+
+test_that("aynı kullanıcının kapsamsızdan role geçişi de eski işi geçersiz kılar", {
+  env <- .worker_owner_env()
+  session <- list(userData = new.env())
+  identity <- env$make_user_session_data_accessors(session)
+  identity$write_identity(list(username = "a"), 7L, list(), TRUE, "keycloak")
+  guard <- env$mergen_session_owner_guard(session)
+  expect_true(guard())
+  identity$write_identity(list(username = "a"), 7L, list(auth_level = "ADMIN"), TRUE, "keycloak")
+  expect_false(guard())
+  current <- env$mergen_session_owner_guard(session)
+  identity$write_identity(list(username = "a"), 7L, list(auth_level = "ADMIN"), TRUE, "keycloak")
+  expect_true(current())
+})
+
+test_that("geçersizleşen istek PCM akışını keser ve bayat sesi oturuma göndermez", {
+  for (valid_after_start in c(TRUE, FALSE)) {
+    env <- new.env(parent = globalenv())
+    source(file.path(resolve_repo_root_for_tests(), "R", "server_speech_pcm_stream.R"),
+           encoding = "UTF-8", local = env)
+    state <- new.env()
+    env$mergen_speech_state <- function(session) state
+    env$mergen_voxcpm2_streaming_mode <- function() "chunked_pcm"
+    env$mergen_speech_reference_payload <- function(id) list(ok = TRUE, persona_id = id,
+      profile = list(expected_sample_rate = 16000L, expected_channels = 1L, expected_bits_per_sample = 16L))
+    env$mergen_voxcpm2_request_body <- function(...) list()
+    env$mergen_voxcpm2_endpoint_url <- function(...) "http://test.local"
+    env$.speech_resolve_tts_api_key <- function(...) ""
+    env$.speech_perf_log <- function(...) NULL
+    env$`%...>%` <- promises::`%...>%`
+    env$`%...!%` <- promises::`%...!%`
+    env$tracked_future_promise <- function(...) promises::promise(function(resolve, reject) NULL)
+    sent <- character()
+    session <- list(token = "oturum-jetonu", userData = new.env(),
+                    sendCustomMessage = function(type, message) sent <<- c(sent, type))
+    valid <- TRUE
+    expect_true(env$mergen_speech_pcm_stream_start(session, "persona", "merhaba",
+      cancel_check = function() valid))
+    out_path <- file.path(tempdir(), sprintf("mergen_speech_%s.pcm", "pcm_oturum-j_1"))
+    writeBin(as.raw(1:64), out_path)
+    valid <- valid_after_start
+    deadline <- Sys.time() + 2
+    while (!"speechPcmStreamChunk" %in% sent && !"speechPcmStreamEnd" %in% sent &&
+           Sys.time() < deadline) later::run_now(0.05)
+    expect_identical("speechPcmStreamChunk" %in% sent, valid_after_start)
+    expect_identical("speechPcmStreamEnd" %in% sent, !valid_after_start)
+    unlink(out_path)
+  }
+})

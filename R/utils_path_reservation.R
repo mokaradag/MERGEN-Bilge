@@ -166,7 +166,9 @@ mergen_reservation_touch <- function(rezerv, jeton) {
 # kilitlenme üretmemelidir; ancak CANLI sahip korunur ve jeton devralma
 # penceresinde değiştiyse devralma YAPILMAZ. Karar ortak sahip kuralıdır:
 # kanıtlı ölü sahip hemen, eski biçim (host satırsız) ya da uzak host yalnız
-# `stale_sec` aşılınca. Koruma dosyası kullanıcı klasöründe kalıcı iz bırakmaz.
+# `stale_sec` aşılınca. Muteks dosyası kalıcıdır (indeks/Yolaç kilitleriyle aynı):
+# kilit bırakılıp yol silinirse bekleyen ve yeni gelen süreç farklı dosyaları
+# kilitleyip kritik bölüme birlikte girebilirdi.
 mergen_reservation_takeover <- function(rezerv, jeton,
                                         stale_sec = .MERGEN_RESERVATION_STALE_SEC) {
   gozlenen <- mergen_reservation_owner(rezerv)
@@ -179,10 +181,7 @@ mergen_reservation_takeover <- function(rezerv, jeton,
   guard_yolu <- paste0(rezerv, ".reclaim")
   guard <- mergen_reclaim_mutex(guard_yolu)
   if (is.null(guard)) return(FALSE)
-  on.exit({
-    filelock::unlock(guard)
-    try(unlink(guard_yolu, force = TRUE), silent = TRUE)
-  }, add = TRUE)
+  on.exit(filelock::unlock(guard), add = TRUE)
   if (!identical(mergen_reservation_owner(rezerv), gozlenen) ||
       !mergen_lock_owner_reclaimable(.mergen_reservation_marker(rezerv), gozlenen,
                                      stale_sec = stale_sec,

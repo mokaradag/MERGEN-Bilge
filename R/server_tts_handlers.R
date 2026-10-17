@@ -256,7 +256,8 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
       streamed <- tryCatch(
         mergen_speech_pcm_stream_start(session, persona_id, full_text,
                                        message_id = msg_id,
-                                       on_stream_failed = run_buffered_chunks),
+                                       on_stream_failed = run_buffered_chunks,
+                                       cancel_check = istek_gecerli),
         error = function(e) FALSE
       )
       if (isTRUE(streamed)) return(invisible(NULL))

@@ -248,11 +248,11 @@ make_user_session_data_accessors <- function(session) {
       set_value("auth_initialized", isTRUE(auth_initialized))
       set_value("user_config", app_user_config)
       # Aynı kullanıcının etkin yetki kapsamı (rol ya da satır düzeyi kapsam)
-      # değişirse de eski kapsamla üretilen iş geçersizleşir. İlk giriş değişim
-      # sayılmaz.
+      # değişirse, kapsamsızdan kapsamlıya geçiş dahil, eski kapsamla üretilen iş
+      # geçersizleşir. İlk giriş değişim sayılmaz.
       mergen_session_owner_transition(user_data, eski_uid, uid,
         yetki_degisti = .normalize_user_session_id(eski_uid) > 0L &&
-          identical(.normalize_user_session_id(eski_uid), uid) && !is.null(eski_kapsam) &&
+          identical(.normalize_user_session_id(eski_uid), uid) &&
           !identical(eski_kapsam, .mergen_auth_scope(app_user_config)))
 
       invisible(app_user_config)

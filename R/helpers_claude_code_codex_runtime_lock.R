@@ -206,54 +206,61 @@
   ""
 }
 
-# YAYIN İŞLEMİ: hedef başına tek yazar (rezervasyon) ve hedef adından türeyen
-# yedek/staging adları. Sert ölümde hedefin yedekte kalması kalıcı değildir:
-# sonraki yazar kilit altında yedeği geri koyar (hedef yoksa) ya da önceki
-# sürümü benzersiz adla saklar. Eşzamanlı iki yayın birbirinin hedefini silemez.
-.cc_output_txn_paths <- function(dest) {
+# YAYIN İŞLEMİ: hedef başına tek yazar (rezervasyon). Yedek ve staging adları
+# yazarın rezervasyon jetonunu taşır; önek tek başına sahiplik kanıtı değildir.
+# Sert ölümden kalan işlem yalnız bayat rezervasyonu devralan yazar tarafından,
+# o rezervasyonun jetonuyla adlandırılmış yapıtlar üzerinden kurtarılır.
+.cc_output_txn_paths <- function(dest, jeton = "") {
   parent <- dirname(dest)
   base <- basename(dest)
   list(lock = file.path(parent, paste0(".cc-output-lock-", base)),
-       backup = file.path(parent, paste0(".cc-output-backup-", base)),
-       staging = file.path(parent, paste0(".cc-output-stage-", base)))
+       backup = file.path(parent, paste0(".cc-output-backup-", jeton, "-", base)),
+       staging = file.path(parent, paste0(".cc-output-stage-", jeton, "-", base)))
 }
 
 .cc_output_dest_lock <- function(dest, wait_sec = 10) {
-  yollar <- .cc_output_txn_paths(dest)
+  kilit <- .cc_output_txn_paths(dest)$lock
   jeton <- mergen_reservation_token("ccout")
   bitis <- Sys.time() + wait_sec
   repeat {
-    if (isTRUE(mergen_reservation_acquire(yollar$lock, jeton)) ||
-        isTRUE(mergen_reservation_takeover(yollar$lock, jeton, stale_sec = 60))) return(jeton)
+    if (isTRUE(mergen_reservation_acquire(kilit, jeton))) return(jeton)
+    onceki <- mergen_reservation_owner(kilit)
+    if (isTRUE(mergen_reservation_takeover(kilit, jeton, stale_sec = 60))) {
+      if (isTRUE(.cc_output_recover_dest(dest, onceki))) return(jeton)
+      # Kurtarılamayan yapıtlar silinmez; hedef bu yayında kullanılmaz.
+      mergen_reservation_release(kilit, jeton)
+      return(structure("", recovery_failed = TRUE))
+    }
     if (Sys.time() >= bitis) return("")
     Sys.sleep(0.1)
   }
 }
 
-# Kilit altında çağrılır: yarım kalmış önceki işlemin izini çözer. Hedef yoksa
-# yedek geri konur; hedef varsa önceki sürüm silinmez, benzersiz adla saklanır.
-.cc_output_recover_dest <- function(dest) {
-  yollar <- .cc_output_txn_paths(dest)
+# Devralınan bayat rezervasyonun yarım işlemini çözer: hedef yoksa yedek geri
+# konur; hedef varsa önceki sürüm silinmez, jetonlu benzersiz adla saklanır.
+.cc_output_recover_dest <- function(dest, jeton) {
+  jeton <- as.character(jeton %||% "")[1]
+  if (is.na(jeton) || !grepl("^[0-9]+-ccout[0-9a-f]+$", jeton)) return(TRUE)
+  yollar <- .cc_output_txn_paths(dest, jeton)
   if (isTRUE(file.exists(yollar$backup))) {
-    if (isTRUE(file.exists(dest))) {
-      file.rename(yollar$backup, file.path(dirname(dest), paste0(
-        ".cc-output-recovered-", format(Sys.time(), "%Y%m%d%H%M%S"), "-", basename(dest))))
-    } else file.rename(yollar$backup, dest)
+    hedef <- if (isTRUE(file.exists(dest))) file.path(dirname(dest), paste0(
+      ".cc-output-recovered-", jeton, "-", basename(dest))) else dest
+    if (!isTRUE(file.exists(hedef))) file.rename(yollar$backup, hedef)
   }
   unlink(yollar$staging, force = TRUE)
   !isTRUE(file.exists(yollar$backup)) && !isTRUE(file.exists(yollar$staging))
 }
 
-# Plan dışında kalmış hedeflerin yetim yedekleri de aynı kuralla kurtarılır.
+# Plan dışında kalmış hedeflerin bayat rezervasyonları da aynı kuralla kurtarılır;
+# canlı ya da sahipliği kanıtlanamayan rezervasyona dokunulmaz.
 .cc_output_recover_parent <- function(parent) {
-  yedekler <- suppressWarnings(list.files(parent, pattern = "^\\.cc-output-backup-",
+  kilitler <- suppressWarnings(list.files(parent, pattern = "^\\.cc-output-lock-",
                                           all.files = TRUE, full.names = TRUE))
-  for (yedek in yedekler) {
-    dest <- file.path(parent, sub("^\\.cc-output-backup-", "", basename(yedek)))
+  kilitler <- kilitler[dir.exists(kilitler) & !grepl("\\.q-q[0-9a-f]+$", kilitler)]
+  for (kilit in kilitler) {
+    dest <- file.path(parent, sub("^\\.cc-output-lock-", "", basename(kilit)))
     jeton <- .cc_output_dest_lock(dest, wait_sec = 0)
-    if (!nzchar(jeton)) next
-    try(.cc_output_recover_dest(dest), silent = TRUE)
-    mergen_reservation_release(.cc_output_txn_paths(dest)$lock, jeton)
+    if (nzchar(jeton)) mergen_reservation_release(kilit, jeton)
   }
   invisible(NULL)
 }

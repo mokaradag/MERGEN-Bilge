@@ -118,6 +118,15 @@ file_store_index_lock_heartbeat <- function() {
     # kullanıcı dosyalarını hiç temizleyemiyordu. Kayıp yalnızca BAŞKA bir
     # jeton okunduğunda ya da kilit dizini kaybolduğunda bildirilir.
     if (!is.null(sahip) && !identical(sahip, lock_token)) return(invisible(FALSE))
+    # Okunamayan marker geri kazanımla aynı muteks altında yeniden okunur: kilidi
+    # yeni devralan yazarın marker'ı eski sahibin jetonuyla ezilmez.
+    if (is.null(sahip) && exists("mergen_reclaim_mutex", mode = "function")) {
+      reclaim <- mergen_reclaim_mutex(paste0(lock_dir, ".reclaim"))
+      if (is.null(reclaim)) return(invisible(FALSE))
+      on.exit(filelock::unlock(reclaim), add = TRUE)
+      sahip <- .lock_owner_token()
+      if (!is.null(sahip) && !identical(sahip, lock_token)) return(invisible(FALSE))
+    }
     if (is.null(sahip) && !isTRUE(dir.exists(lock_dir))) return(invisible(FALSE))
     # Tazelik KANITLANAMAZSA sahiplik de sürdürülemez: bayat mtime taşıyan
     # marker başka bir yazar tarafından kırılabilir.

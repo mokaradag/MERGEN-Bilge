@@ -300,3 +300,36 @@ test_that("kilit içinde sert öldürülen işçinin kilidi ölüm doğrulandık
   expect_false(process$is_alive())
   expect_identical(.file_store_with_index_lock(TRUE, timeout_sec = 0, require_lock = TRUE), TRUE)
 })
+
+test_that("okunamayan marker süren geri kazanım sırasında eski sahibin jetonuyla yeniden yazılmaz", {
+  skip_if_not_installed("callr")
+  .lock_test_prepare_runtime()
+  withr::defer(.lock_test_cleanup())
+  lock_dir <- .lock_test_lock_dir()
+  marker <- .lock_test_lock_marker(lock_dir)
+  ready <- withr::local_tempfile()
+  release <- withr::local_tempfile()
+  .file_store_with_index_lock({
+    # Marker geçici olarak okunamaz; muteks serbestken sahip marker'ı tazeler.
+    unlink(marker)
+    expect_true(file_store_index_lock_heartbeat())
+    expect_true(file.exists(marker))
+    # Başka bir süreç geri kazanım muteksini tutarken marker yeniden yazılmaz.
+    process <- callr::r_bg(function(path, ready, release) {
+      lock <- filelock::lock(path)
+      file.create(ready)
+      while (!file.exists(release)) Sys.sleep(0.02)
+      filelock::unlock(lock)
+    }, args = list(path = paste0(lock_dir, ".reclaim"), ready = ready, release = release))
+    withr::defer(try(process$kill(), silent = TRUE))
+    deadline <- Sys.time() + 10
+    while (!file.exists(ready) && process$is_alive() && Sys.time() < deadline) Sys.sleep(0.01)
+    expect_true(file.exists(ready))
+    unlink(marker)
+    expect_false(file_store_index_lock_heartbeat())
+    expect_false(file.exists(marker))
+    file.create(release)
+    process$wait(timeout = 5000)
+    invisible(NULL)
+  })
+})

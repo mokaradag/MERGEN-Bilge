@@ -49,28 +49,52 @@ mergen_retire_process <- function(process, release, on_uncertain = NULL) {
   poll()
 }
 
-# Şeritler aynı altyapıyı paylaşır, kapasiteyi paylaşmaz: kalıcı işler
-# (alım, Yolaç hazırlık/çıktı) etkileşimli sohbet/TTS kapasitesini tüketmez.
-mergen_cancellable_worker_capacity <- function(lane = "interactive") {
+# Yapılandırılan değer havuzun FİZİKSEL toplam süreç sınırıdır; şeritler onu
+# bölüşür, çoğaltmaz. Kalıcı işler (alım, Yolaç hazırlık/çıktı/özet) en fazla
+# yarısını kullanır, sohbet tüm boş yuvaları kullanabilir. `lane = NULL` toplamdır.
+mergen_cancellable_worker_capacity <- function(lane = NULL) {
   configured <- getOption("mergen.cancellable_workers", NULL)
   if (is.null(configured)) configured <- if (exists("resolve_mergen_worker_count", mode = "function")) resolve_mergen_worker_count() else 2L
   value <- suppressWarnings(as.integer(configured)[1])
-  if (length(value) != 1L || is.na(value) || value < 1L) 1L else value
+  total <- if (length(value) != 1L || is.na(value) || value < 1L) 1L else value
+  if (identical(lane, "durable")) max(1L, total %/% 2L) else total
 }
 
-# Karantinadaki (ölümü doğrulanamayan) iş kapasite ve kuyruk yeri tüketmez.
+# Sözü sonuçlanmamış işler (bekleyen + çalışan) şeridin kuyruk yerini tüketir.
 .mergen_cancellable_live_jobs <- function(lane = NULL) {
-  Filter(function(job) !isTRUE(job$quarantined) &&
-           (is.null(lane) || identical(job$lane %||% "interactive", lane)),
+  Filter(function(job) !isTRUE(job$finished) && (is.null(lane) || identical(job$lane %||% "interactive", lane)),
          .MERGEN_CANCELLABLE_WORKERS$jobs %||% list())
+}
+
+# Ölümü kanıtlanmamış her süreç (karantinadaki dahil) fiziksel yuva tutar.
+.mergen_cancellable_running <- function(jobs, lane = NULL) {
+  sum(vapply(jobs, function(job) !is.null(job$process) &&
+    (is.null(lane) || identical(job$lane %||% "interactive", lane)), logical(1)))
+}
+
+.mergen_cancellable_has_room <- function(jobs, lane) {
+  .mergen_cancellable_running(jobs, lane) < mergen_cancellable_worker_capacity(lane) &&
+    .mergen_cancellable_running(jobs) < mergen_cancellable_worker_capacity()
 }
 
 .mergen_cancellable_queue_limit <- function(priority) if (priority > 1L) 32L else 34L
 
+# Kuyruk sınırı şerit başınadır: bir şeridin birikmesi diğerini reddetmez.
 mergen_cancellable_worker_admissible <- function(lane = "interactive", priority = 0L) {
-  length(.mergen_cancellable_live_jobs()) < .mergen_cancellable_queue_limit(priority) &&
-    length(.mergen_cancellable_live_jobs(lane)) < mergen_cancellable_worker_capacity(lane)
+  jobs <- .MERGEN_CANCELLABLE_WORKERS$jobs %||% list()
+  canli <- .mergen_cancellable_live_jobs(lane)
+  bekleyen <- Filter(function(job) is.null(job$process), canli)
+  length(canli) < .mergen_cancellable_queue_limit(priority) && !length(bekleyen) &&
+    .mergen_cancellable_has_room(jobs, lane)
 }
+
+# Kullanıcı iptali, yürütme/kuyruk zaman aşımı ve belirsiz süreç ayrı bildirilir.
+.MERGEN_CANCELLABLE_END_MESSAGES <- c(
+  cancelled = "Arka plan işi iptal edildi.",
+  timeout = "TIMEOUT: Arka plan işi zaman aşımına uğradı.",
+  queue_timeout = "Arka plan iş kuyruğu yoğun; iş zamanında başlatılamadı.",
+  unknown = "Arka plan işinin durumu doğrulanamadı; iş durduruldu.",
+  uncertain = "Arka plan işi sonlandırılamadı; süreç karantinada.")
 
 mergen_cancellable_worker_settle <- function(job, error = NULL) {
   if (isTRUE(job$finished)) return(invisible(NULL))
@@ -92,39 +116,49 @@ mergen_cancellable_worker_tick <- function() {
   state$scheduled <- FALSE
   keep <- list()
   for (job in state$jobs) {
-    if (isTRUE(job$finished)) next
+    # Sonuçlanmış iş yalnız süreci ölümü kanıtlanmadıysa (karantina) izlenir.
+    if (isTRUE(job$finished) && !isTRUE(job$quarantined)) next
     if (!is.null(job$next_probe) && Sys.time() < job$next_probe) {
       keep[[length(keep) + 1L]] <- job
       next
     }
-    expired <- !is.null(job$started) &&
-      as.numeric(difftime(Sys.time(), job$started, units = "secs")) > job$timeout
-    queue_expired <- is.null(job$started) &&
-      as.numeric(difftime(Sys.time(), job$created, units = "secs")) > (job$queue_timeout %||% job$timeout)
-    job$cancelled <- isTRUE(job$cancelled) || expired || queue_expired ||
-      !isTRUE(tryCatch(job$current(), error = function(e) FALSE))
+    if (!isTRUE(job$cancelled)) {
+      reason <- if (!is.null(job$started) &&
+                    as.numeric(difftime(Sys.time(), job$started, units = "secs")) > job$timeout) "timeout"
+        else if (is.null(job$started) &&
+                 as.numeric(difftime(Sys.time(), job$created, units = "secs")) > (job$queue_timeout %||% job$timeout)) "queue_timeout"
+        else if (!isTRUE(tryCatch(job$current(), error = function(e) FALSE))) "cancelled"
+      if (!is.null(reason)) {
+        job$cancelled <- TRUE
+        job$end_reason <- reason
+      }
+    }
     status <- if (is.null(job$process)) FALSE else mergen_process_status(job$process)
     if (is.na(status)) {
       job$status_errors <- (job$status_errors %||% 0L) + 1L
       if (job$status_errors < 3L) { keep[[length(keep) + 1L]] <- job; next }
-      job$cancelled <- TRUE
-      job$quarantined <- TRUE
+      if (!isTRUE(job$cancelled)) {
+        job$cancelled <- TRUE
+        job$end_reason <- "unknown"
+      }
     } else job$status_errors <- 0L
     alive <- if (!is.null(job$process) && job$cancelled)
       !mergen_process_stop(job$process) else isTRUE(status)
     if (!is.null(job$process) && alive) {
-      if (job$cancelled) {
-        job$termination_attempts <- (job$termination_attempts %||% 0L) + 1L
-        if (job$termination_attempts >= 3L) {
+      if (job$cancelled) job$termination_attempts <- (job$termination_attempts %||% 0L) + 1L
+      if (job$status_errors >= 3L || (job$termination_attempts %||% 0L) >= 3L) {
+        # Ölümü kanıtlanamayan süreç yuvasını tutar; çağıran bir kez bilgilendirilir.
+        if (!isTRUE(job$quarantined)) {
           job$quarantined <- TRUE
-          job$next_probe <- Sys.time() + 5
+          mergen_cancellable_worker_settle(job, simpleError(.MERGEN_CANCELLABLE_END_MESSAGES[["uncertain"]]))
         }
+        job$next_probe <- Sys.time() + 5
       }
       keep[[length(keep) + 1L]] <- job
       next
     }
     if (job$cancelled) {
-      mergen_cancellable_worker_settle(job, simpleError("Arka plan işi iptal edildi."))
+      mergen_cancellable_worker_settle(job, simpleError(.MERGEN_CANCELLABLE_END_MESSAGES[[job$end_reason %||% "cancelled"]]))
     } else if (!is.null(job$process)) {
       mergen_cancellable_worker_settle(job)
     } else {
@@ -133,23 +167,16 @@ mergen_cancellable_worker_tick <- function() {
   }
   keep <- keep[order(vapply(keep, function(job) job$priority, integer(1)))]
   state$jobs <- keep
-  running <- list()
   for (job in keep) {
-    lane <- job$lane %||% "interactive"
-    if (!is.null(job$process) && !isTRUE(job$quarantined)) running[[lane]] <- (running[[lane]] %||% 0L) + 1L
-  }
-  for (job in keep) {
-    lane <- job$lane %||% "interactive"
-    if (!is.null(job$process) || (running[[lane]] %||% 0L) >= mergen_cancellable_worker_capacity(lane)) next
-    started <- tryCatch({
+    if (!is.null(job$process) || isTRUE(job$finished) ||
+        !.mergen_cancellable_has_room(keep, job$lane %||% "interactive")) next
+    tryCatch({
       job$process <- mergen_cancellable_worker_launch(job$payload)
       job$started <- Sys.time()
       job$payload <- NULL
-      TRUE
-    }, error = function(e) { mergen_cancellable_worker_settle(job, e); FALSE })
-    if (started) running[[lane]] <- (running[[lane]] %||% 0L) + 1L
+    }, error = function(e) mergen_cancellable_worker_settle(job, e))
   }
-  state$jobs <- Filter(function(job) !isTRUE(job$finished), state$jobs)
+  state$jobs <- Filter(function(job) !isTRUE(job$finished) || isTRUE(job$quarantined), state$jobs)
   if (length(state$jobs) && !isTRUE(state$scheduled)) {
     state$scheduled <- TRUE
     mergen_cancellable_worker_schedule(mergen_cancellable_worker_tick, delay = 0.1)
@@ -173,7 +200,7 @@ mergen_cancellable_worker_promise <- function(payload, current, timeout = 1800, 
     stop("İşçi son tarihleri sonlu ve pozitif olmalıdır.")
   state <- .MERGEN_CANCELLABLE_WORKERS
   if (is.null(state$jobs)) state$jobs <- list()
-  if (length(.mergen_cancellable_live_jobs()) >= .mergen_cancellable_queue_limit(priority)) {
+  if (length(.mergen_cancellable_live_jobs(lane)) >= .mergen_cancellable_queue_limit(priority)) {
     return(promises::promise_reject(simpleError("Arka plan iş kuyruğu dolu.")))
   }
   promises::promise(function(resolve, reject) {

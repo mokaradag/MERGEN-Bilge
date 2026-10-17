@@ -469,13 +469,16 @@ tracked_future_promise <- function(task_fn,
       attr(payload, "mergen_packages") <- future_packages
       auxiliary <- task_type %in% c("file_preview_docx", "claude_code_dir_listing")
       # Kalıcı işler kendi şeridinde: tamamlanmış çalıştırmanın çıktısı ve kabul
-      # edilmiş yükleme uzun sohbet işlerinin arkasında beklemez.
+      # edilmiş yükleme uzun sohbet işlerinin arkasında beklemez; kabul edilmiş
+      # iş kuyrukta yürütme bütçesi kadar bekleyebilir.
       durable <- task_type %in% c("file_ingestion", "file_ingestion_index", "claude_code_run_prepare",
-                                  "claude_code_run_outputs", "claude_code_summary_publish")
+                                  "claude_code_run_outputs", "claude_code_summary_publish",
+                                  "claude_code_document_summary")
+      timeout <- execution_timeout %||% if (auxiliary) 30 else 1800
       mergen_cancellable_worker_promise(payload, cancel_check,
-        timeout = execution_timeout %||% if (auxiliary) 30 else 1800,
+        timeout = timeout,
         priority = if (auxiliary) 2L else if (identical(task_type, "llm_followups")) 1L else 0L,
-        queue_timeout = queue_timeout %||% if (auxiliary) 30 else 300,
+        queue_timeout = queue_timeout %||% if (auxiliary) 30 else if (durable) timeout else 300,
         lane = if (durable) "durable" else "interactive")
     } else promises::future_promise(
       {

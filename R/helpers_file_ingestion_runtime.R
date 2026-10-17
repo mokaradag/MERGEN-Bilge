@@ -82,7 +82,21 @@ file_ingestion_controller_debug <- function(controller, tag, message) {
 # paketi taşınır.
 file_ingestion_run_job <- function(job) {
   if (is.environment(job$lease)) job$lease$released <- FALSE
-  gorevler <- job$tasks
+  # Tarayıcı kapanışı kabul edilmiş işi düşürmez: Shiny geçici yüklemeyi oturum
+  # sonunda siler; kaynak aynı birimde sabit bağlantıyla (kopyasız) işe bağlanır,
+  # bağlantı kurulamazsa özgün yol kullanılır. İş bırakılınca bağlantılar silinir.
+  kaynaklar <- file.path(tempdir(), "mergen_ingest_sources", gsub("[^A-Za-z0-9_.-]", "_", job$id))
+  if (is.environment(job$lease) && dir.create(kaynaklar, recursive = TRUE, showWarnings = FALSE))
+    job$lease$sources <- kaynaklar
+  gecici_kok <- normalizePath(tempdir(), winslash = "/", mustWork = FALSE)
+  gorevler <- Map(function(task, i) {
+    kaynak <- normalizePath(task$datapath %||% "", winslash = "/", mustWork = FALSE)
+    bag <- file.path(kaynaklar, as.character(i))
+    if (identical(job$lease$sources, kaynaklar) && startsWith(kaynak, paste0(gecici_kok, "/")) &&
+        isTRUE(suppressWarnings(file.link(task$datapath, bag))))
+      task$datapath <- bag
+    task
+  }, job$tasks, seq_along(job$tasks))
   bekleme_ms <- as.numeric(difftime(Sys.time(), job$queued_at, units = "secs")) * 1000
 
   journals <- vapply(gorevler, function(task) tempfile("ingest_result_", fileext = ".rds"), character(1))

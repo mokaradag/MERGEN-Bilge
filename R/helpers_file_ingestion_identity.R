@@ -35,14 +35,18 @@ file_ingestion_artifact_owned <- function(result, allow_deleting = TRUE) {
 }
 
 # Marker yerinde yazılmaz: sert ölüm yarım RDS bırakıp tüm geri alımı kilitlerdi.
+# Değiştirme eski marker silinmeden yapılır (rename hedefi değiştirir); Windows'ta
+# açık okuma tanıtıcısı geçici paylaşım ihlali verebildiği için sınırlı yeniden
+# denenir. Başarısızlıkta eski marker (sahiplik kanıtı) olduğu gibi kalır.
 file_ingestion_write_owner <- function(value, target) {
   tmp <- paste0(target, ".", Sys.getpid(), ".tmp")
   saveRDS(value, tmp)
-  if (!isTRUE(base::file.rename(tmp, target))) {
-    unlink(tmp, force = TRUE)
-    stop("Sahiplik işareti yazılamadı.")
+  for (deneme in 1:5) {
+    if (isTRUE(base::file.rename(tmp, target))) return(invisible(target))
+    Sys.sleep(0.05 * deneme)
   }
-  invisible(target)
+  unlink(tmp, force = TRUE)
+  stop("Sahiplik işareti yazılamadı.")
 }
 
 # Okunamayan marker sahiplik kanıtı değildir: boş liste + `unreadable` döner,

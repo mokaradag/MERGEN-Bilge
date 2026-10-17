@@ -212,19 +212,15 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
       .cc_output_recover_parent(parent)
       recovered_parents <- c(recovered_parents, parent)
     }
-    txn <- .cc_output_txn_paths(dest)
-    staging <- txn$staging
-    backup <- txn$backup
     dest_jeton <- .cc_output_dest_lock(dest)
     if (!nzchar(dest_jeton)) {
-      fail("Hedef başka bir aktarım tarafından kullanılıyor")
+      fail(if (isTRUE(attr(dest_jeton, "recovery_failed"))) "Önceki yarım aktarım kurtarılamadı" else
+        "Hedef başka bir aktarım tarafından kullanılıyor")
       next
     }
-    if (!isTRUE(.cc_output_recover_dest(dest))) {
-      mergen_reservation_release(txn$lock, dest_jeton)
-      fail("Önceki yarım aktarım kurtarılamadı")
-      next
-    }
+    txn <- .cc_output_txn_paths(dest, dest_jeton)
+    staging <- txn$staging
+    backup <- txn$backup
     had_dest <- isTRUE(file.exists(dest)) || isTRUE(dir.exists(dest))
     if (had_dest) {
       # Sys.readlink() Windows'ta HER ZAMAN NA döner ve nzchar(NA) TRUE'dur;
@@ -270,6 +266,13 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
       unlink(staging, force = TRUE)
       mergen_reservation_release(txn$lock, dest_jeton)
       fail("Çalıştırma durduruldu; çıktı terfi ettirilmedi")
+      next
+    }
+    # Uzun kopyadan sonra sahiplik yeniden kanıtlanır; kilit devralındıysa
+    # hedefe ve başkasının yapıtlarına dokunulmaz.
+    if (!isTRUE(mergen_reservation_touch(txn$lock, dest_jeton))) {
+      unlink(staging, force = TRUE)
+      fail("Hedef kilidi kopya sırasında kaybedildi; çıktı terfi ettirilmedi")
       next
     }
 
@@ -551,6 +554,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
   ".cc_output_txn_paths", ".cc_output_dest_lock", ".cc_output_recover_dest", ".cc_output_recover_parent",
   "mergen_reservation_token", "mergen_reservation_acquire", "mergen_reservation_takeover",
   "mergen_reservation_release", "mergen_reservation_owner", ".mergen_reservation_marker",
+  "mergen_reservation_touch",
   ".mergen_reservation_remove_owned",
   "mergen_lock_owner_reclaimable", "mergen_owner_reclaimable", "mergen_pid_status", "mergen_reclaim_mutex"
 )

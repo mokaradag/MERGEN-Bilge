@@ -28,26 +28,35 @@ cc_release_runtime_lease <- function(runtime_lease = NULL) {
   invisible(!isTRUE(file.exists(lease)))
 }
 
-# Kira içeriği yerinde kesilmez: geçici dosyaya yazılıp atomik olarak taşınır.
+# Kira içeriği yerinde kesilmez: geçici dosyaya yazılıp mevcut kiranın yerine
+# taşınır. Windows'ta açık tanıtıcı geçici paylaşım ihlali verebildiği için
+# sınırlı yeniden denenir; başarısızlıkta eski kira olduğu gibi kalır.
 .cc_write_runtime_lease <- function(lease, lines) {
   tmp <- paste0(lease, ".", Sys.getpid(), ".tmp")
-  ok <- isTRUE(try({
-    writeLines(lines, tmp, useBytes = TRUE)
-    file.rename(tmp, lease)
-  }, silent = TRUE))
-  if (!ok) unlink(tmp, force = TRUE)
-  ok
+  if (inherits(try(writeLines(lines, tmp, useBytes = TRUE), silent = TRUE), "try-error")) {
+    unlink(tmp, force = TRUE)
+    return(FALSE)
+  }
+  for (deneme in 1:5) {
+    if (isTRUE(try(file.rename(tmp, lease), silent = TRUE))) return(TRUE)
+    Sys.sleep(0.05 * deneme)
+  }
+  unlink(tmp, force = TRUE)
+  FALSE
 }
 
+# Okuma hatası NULL döner: boş kira ile okunamayan kira ayrılır, sahiplik
+# satırları okunamadıysa kira yeniden yazılmaz.
 .cc_read_runtime_lease <- function(lease) {
   lines <- suppressWarnings(try(readLines(lease, warn = FALSE), silent = TRUE))
-  if (inherits(lines, "try-error")) character() else lines
+  if (inherits(lines, "try-error")) NULL else lines
 }
 
 # Bilinmeyen PID yazılmaz: `pid=NA` kirayı hiçbir zaman ölü kanıtlanamaz yapardı.
 cc_bind_runtime_lease <- function(lease, process = NULL) {
   if (!nzchar(lease %||% "")) return(invisible(FALSE))
   previous <- if (file.exists(lease)) .cc_read_runtime_lease(lease) else character()
+  if (is.null(previous)) return(invisible(FALSE))
   pids <- c(Sys.getpid(), if (!is.null(process)) tryCatch(process$get_pid(), error = function(e) NA_integer_))
   pids <- suppressWarnings(as.integer(pids))
   pids <- pids[!is.na(pids) & pids > 0L]
@@ -118,7 +127,8 @@ cc_touch_runtime_lease <- function(runtime_lease = NULL) {
   sonuc <- try(Sys.setFileTime(lease, Sys.time()), silent = TRUE)
   if (!inherits(sonuc, "try-error") && isTRUE(sonuc)) return(invisible(TRUE))
 
-  yazildi <- .cc_write_runtime_lease(lease, .cc_read_runtime_lease(lease))
+  satirlar <- .cc_read_runtime_lease(lease)
+  yazildi <- length(satirlar) > 0L && .cc_write_runtime_lease(lease, satirlar)
   if (!isTRUE(yazildi)) {
     if (exists("cc_log_warn", mode = "function", inherits = TRUE)) {
       try(cc_log_warn(paste("[RUNTIME_LEASE] heartbeat yazılamadı:", basename(lease))),

@@ -645,6 +645,10 @@ handle_true_streaming_mode <- function(ctx) {
       error = "Beklenmeyen bir hata oluştu."
     )
 
+    # Durdurulan istek (işçi Stop'tan önce bitse de) tam yanıtı yayımlamaz; kısmi metin abort yolunda kalır.
+    if (isTRUE(result$success) && !mergen_stream_may_publish(ctx, stream_env))
+      result <- list(success = FALSE, aborted = TRUE, content = "", duration = result$duration)
+
     if (!isTRUE(result$success)) {
       finalize_error_or_abort(result)
       return(invisible(NULL))
