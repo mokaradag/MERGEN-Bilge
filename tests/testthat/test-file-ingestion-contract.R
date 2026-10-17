@@ -2,7 +2,7 @@
 # Dosya Yolu: tests/testthat/test-file-ingestion-contract.R
 # Açıklama: Bloklamayan dosya alım hattının YAPISAL sözleşmesi. Kaynak sırası,
 #           katman ayrımı, worker'a canlı Shiny/reaktif nesne taşınmaması,
-#           kalıcı indeks yazımının ANA SÜREÇTE kalması, her iki yükleme
+#           kalıcı indeks yazımının İŞÇİDE kalması, her iki yükleme
 #           girişinin ORTAK hattı kullanması ve tam-bir-kez kayıt korunur.
 #           Çevrimdışı ve deterministiktir; uygulama boot edilmez.
 # ==============================================================================
@@ -40,7 +40,8 @@ test_that("alım hattı katmanları manifestte bağımlılık sırasında yükle
     "R/helpers_file_ingestion_task.R",
     "R/helpers_file_ingestion_worker.R",
     "R/helpers_file_ingestion_queue.R",
-    "R/helpers_file_ingestion_runtime.R"
+    "R/helpers_file_ingestion_runtime.R",
+    "R/helpers_file_ingestion_index_worker.R"
   )
 
   indeksler <- match(sirali, yollar)
@@ -69,15 +70,13 @@ test_that("worker görevi izole global paketiyle gönderilir (oturum kapanışı
   expect_true(grepl("file_ingestion_worker_globals()", metin, fixed = TRUE))
 })
 
-test_that("kalıcı indeks yazımı ana süreçte kalır, worker'a taşınmaz", {
-  worker_txt <- .read_ingestion_source("R/helpers_file_ingestion_worker.R")
+test_that("indeks kilidi ve yazımı ayrı izole işçiye gönderilir", {
   runtime_txt <- .read_ingestion_source("R/helpers_file_ingestion_runtime.R")
-
-  expect_false(grepl("mergen_index_persisted_files", worker_txt, fixed = TRUE))
-  expect_false(grepl("global_register_file", worker_txt, fixed = TRUE))
-  expect_false(grepl("mergen_register_uploaded_file", worker_txt, fixed = TRUE))
-
-  expect_true(grepl("mergen_index_persisted_files\\(", runtime_txt, perl = TRUE))
+  index_txt <- .read_ingestion_source("R/helpers_file_ingestion_index_worker.R")
+  expect_false(grepl("mergen_index_persisted_files(", runtime_txt, fixed = TRUE))
+  expect_true(grepl('task_type = "file_ingestion_index"', index_txt, fixed = TRUE))
+  expect_true(grepl('dependency_mode = "explicit"', index_txt, fixed = TRUE))
+  expect_true(grepl("file_ingestion_commit_index(results, user_id)", index_txt, fixed = TRUE))
 })
 
 test_that("toplu indeks yazımı tek mutasyonda yapılır", {
@@ -125,7 +124,8 @@ test_that("eşzamanlılık ve kuyruk sınırları yapılandırılabilir ve varsa
   expect_true(grepl("MERGEN_FILE_INGESTION_MAX_CONCURRENT", metin, fixed = TRUE))
   expect_true(grepl("MERGEN_FILE_INGESTION_MAX_QUEUE", metin, fixed = TRUE))
   expect_true(grepl("MERGEN_FILE_INGESTION_METRICS", metin, fixed = TRUE))
-  expect_true(grepl("future::nbrOfFreeWorkers", metin, fixed = TRUE))
+  expect_false(grepl("future::nbrOfFreeWorkers", metin, fixed = TRUE))
+  expect_true(grepl("mergen_cancellable_worker_available", metin, fixed = TRUE))
 
   ayar_env <- new.env(parent = globalenv())
   source(
@@ -156,7 +156,8 @@ test_that("gönderim çağrısı pahalı işi olay döngüsünde yapmaz", {
     "R/helpers_file_ingestion_task.R",
     "R/helpers_file_ingestion_worker.R",
     "R/helpers_file_ingestion_queue.R",
-    "R/helpers_file_ingestion_runtime.R"
+    "R/helpers_file_ingestion_runtime.R",
+    "R/helpers_file_ingestion_index_worker.R"
   )) {
     source(file.path(kok, dosya), encoding = "UTF-8", local = env)
   }

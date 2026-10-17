@@ -67,7 +67,7 @@ ttsProcessingServer <- function(id) {
     #' @param voice Eski ses etiketi (yalnızca legacy_alias modunda kullanılır)
     #' @param persona_id Kanonik/eski persona kimliği (kilitli mod için)
     #' @return promise nesnesi: list(success, audio_src, voice, duration, error)
-    synthesize_speech <- function(text, voice = NULL, persona_id = NULL) {
+    synthesize_speech <- function(text, voice = NULL, persona_id = NULL, cancel_check = NULL) {
       if (!tts_available()) {
         cat("[TTS] Seslendirme kullanılamıyor: uç nokta yapılandırılmamış\n")
         return(promises::promise_resolve(list(
@@ -280,6 +280,8 @@ ttsProcessingServer <- function(id) {
         }
       },
       task_type = "tts",
+      cancel_check = cancel_check %||% mergen_session_owner_guard(session),
+      execution_timeout = timeout_val,
       session_token = session$token,
       meta = list(
         voice = voice_to_use,

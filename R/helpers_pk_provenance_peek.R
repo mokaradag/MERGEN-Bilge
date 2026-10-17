@@ -207,8 +207,14 @@ mergen_pk_validated_texts <- function(text, session, request_id = NULL,
     isTRUE(block_mode)
   }
 
+  # Üç durum: NA = doğrulama bildirilmedi. Bekleyen kayıt varken bildirimsiz
+  # dönüş (erken dönüş, reddetme yedeği) doğrulanmış SAYILMAZ.
+  validated <- NA
+  decorate_args <- list(metin, session, request_id = request_id)
+  if ("validation_callback" %in% names(formals(pk_provenance_decorate)))
+    decorate_args$validation_callback <- function(ok) validated <<- isTRUE(ok)
   dekore <- tryCatch(
-    pk_provenance_decorate(metin, session, request_id = request_id),
+    do.call(pk_provenance_decorate, decorate_args),
     error = function(e) {
       cat(sprintf("[PK] Köken dekorasyonu başarısız: %s\n", conditionMessage(e)[1]))
       NULL
@@ -239,7 +245,7 @@ mergen_pk_validated_texts <- function(text, session, request_id = NULL,
   } else {
     dekore_skaler
   }
-  list(display = dekore_skaler, tts = govde, validated = TRUE)
+  list(display = dekore_skaler, tts = govde, validated = if (is.na(validated)) !kayit_var else validated)
 }
 
 # AKIŞ SONU SARMALAYICISI.

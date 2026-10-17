@@ -71,11 +71,12 @@ cc_fail_run_preparation <- function(ctx, message, stage = "hata") {
     return(invisible(FALSE))
   }
 
-  cc_send_run_blocked_message(
+  # Kapanmış oturumda UI gönderimi başarısız olabilir; terminal durum yine yazılır.
+  try(cc_send_run_blocked_message(
     session = ctx$session,
     ns = ctx$ns,
     message = message
-  )
+  ), silent = TRUE)
 
   bilgi <- claude_code_run_stages[[stage]] %||% claude_code_run_stages$hata
 
@@ -118,9 +119,8 @@ cc_future_plan_is_async <- function() {
 #' @param ctx Çalıştırma bağlamı (session, ns, rv ve düz veriler)
 #' @return invisible(TRUE)
 cc_dispatch_run_preparation <- function(ctx) {
-  # Eşzamansız olmayan planda hazırlık ana olay döngüsünde çalışır; bu
-  # durumda çalışmayı başlatmak yerine açıkça reddederiz.
-  if (!isTRUE(cc_future_plan_is_async())) {
+  # Hazırlık kapasitesi Future planına değil, callr havuzuna aittir.
+  if (!isTRUE(mergen_cancellable_worker_available())) {
     cc_log_warn(paste(
       CLAUDE_CODE_LOG_PREFIX,
       "[RUNTIME_PREPARE] Eşzamansız worker planı yok; çalıştırma reddedildi."
@@ -169,6 +169,14 @@ cc_dispatch_run_preparation <- function(ctx) {
     explicit_files = ctx$explicit_files %||% character(0)
   )
 
+  istek$lease_journal <- tempfile("runtime_lease_", fileext = ".rds")
+  cleanup_lease_journal <- function(release = FALSE) {
+    if (release && file.exists(istek$lease_journal)) {
+      lease <- tryCatch(readRDS(istek$lease_journal), error = function(e) "")
+      cc_release_runtime_lease(lease)
+    }
+    unlink(istek$lease_journal, force = TRUE)
+  }
   hazirlik_baslangic <- Sys.time()
   zaman_asimi_sn <- cc_runtime_limit("prepare_timeout_sec", 180)
   zaman_asimi_durumu <- new.env(parent = emptyenv())
@@ -177,19 +185,11 @@ cc_dispatch_run_preparation <- function(ctx) {
   # Başarı callback'inde geçen süreyi ölçmek zaman aşımı değildir: bloke bir
   # worker o callback'e hiç ulaşmaz. Ana later döngüsündeki bağımsız deadline
   # aktif isteği zamanında sonlandırır; geç dönen future stale guard'a takılır.
+  # Durum her geri çağrıda ortak referanstan okunur: tarayıcı kapanınca ayrılan
+  # çalıştırma hazırlıktan sonra da aynı durum kaydında sürer ve deadline'ı korur.
+  run_ref <- cc_run_state_reference(ctx$rv)
   zaman_asimi_durumu$cancel <- later::later(function() {
-    # Oturum kapandıysa UI mesajı gönderilemez; deadline sessizce düşürülür.
-    # Durum belirlenemiyorsa (test ikizi / eski Shiny) AÇIK varsayılır ki
-    # mevcut zaman aşımı davranışı korunsun.
-    oturum_kapali <- tryCatch(
-      is.function(ctx$session$isClosed) && isTRUE(ctx$session$isClosed()),
-      error = function(e) FALSE
-    )
-    if (isTRUE(oturum_kapali)) {
-      zaman_asimi_durumu$pending <- FALSE
-      return(invisible(NULL))
-    }
-
+    ctx$rv <- run_ref$rv
     if (isTRUE(zaman_asimi_durumu$pending) &&
         cc_is_active_run(ctx$rv, ctx$run_request_id)) {
       zaman_asimi_durumu$pending <- FALSE
@@ -230,6 +230,8 @@ cc_dispatch_run_preparation <- function(ctx) {
         cc_prepare_run_workspace(istek)
       },
       task_type = "claude_code_run_prepare",
+      cancel_check = function() cc_is_active_run(run_ref$rv, ctx$run_request_id) &&
+        isTRUE(shiny::isolate(run_ref$rv$is_running)),
       session_token = ctx$session$token,
       dependency_mode = "explicit",
       globals = c(
@@ -239,9 +241,11 @@ cc_dispatch_run_preparation <- function(ctx) {
       packages = c("tools", "utils")
     ) |>
       promises::then(function(prep) {
+        handed_off <- FALSE
+        on.exit(cleanup_lease_journal(!handed_off), add = TRUE)
         cc_cancel_prepare_deadline()
-        if (isTRUE(ctx$session$isClosed()) ||
-            !cc_is_active_run(ctx$rv, ctx$run_request_id)) {
+        ctx$rv <- run_ref$rv
+        if (!cc_is_active_run(ctx$rv, ctx$run_request_id)) {
           cc_release_runtime_lease(prep$runtime_lease %||% "")
           return(NULL)
         }
@@ -274,15 +278,16 @@ cc_dispatch_run_preparation <- function(ctx) {
         }
 
         cc_start_streaming_run(ctx, prep)
+        handed_off <- TRUE
         NULL
       }) |>
       promises::catch(function(e) {
+        cleanup_lease_journal(TRUE)
         cc_cancel_prepare_deadline()
-        # Kapanmış bir Shiny oturumunda hata UI'si/persist callback'i çalıştırma.
-        # Özellikle hazırlık promise'i oturum kapandıktan sonra reddedilirse
-        # ikinci bir websocket gönderimi de başarısız olabilir.
-        if (isTRUE(ctx$session$isClosed()) ||
-            !cc_is_active_run(ctx$rv, ctx$run_request_id)) {
+        # Ayrılmış (oturumu kapanmış) çalıştırma da terminale ulaşmalıdır; UI
+        # gönderimleri yardımcılar içinde korunur.
+        ctx$rv <- run_ref$rv
+        if (!cc_is_active_run(ctx$rv, ctx$run_request_id)) {
           return(NULL)
         }
 
@@ -323,6 +328,7 @@ cc_dispatch_run_preparation <- function(ctx) {
   }, error = function(e) e)
 
   if (!is.null(gonderim_hatasi)) {
+    cleanup_lease_journal(TRUE)
     cc_cancel_prepare_deadline()
 
     hata_metni <- conditionMessage(gonderim_hatasi)
@@ -351,6 +357,7 @@ cc_start_streaming_run <- function(ctx, prep) {
   session <- ctx$session
   ns <- ctx$ns
   rv <- ctx$rv
+  cc_bind_runtime_lease(prep$runtime_lease %||% "")
   lease_handed_off <- FALSE
   on.exit({
     if (!isTRUE(lease_handed_off)) {
@@ -535,6 +542,7 @@ cc_start_streaming_run <- function(ctx, prep) {
   stream_env$runtime_layout <- prep$layout
   stream_env$runtime_lease <- prep$runtime_lease %||% ""
   stream_env$user_id <- ctx$user_id
+  stream_env$persist_record_id <- rv$active_persist_record_id
   stream_env$session_token <- session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
   stream_env$request_id <- ctx$run_request_id
   stream_env$tum_satirlar <- character(0)
@@ -600,6 +608,7 @@ cc_start_streaming_run <- function(ctx, prep) {
     # `tryCatch` gövdesi çağıran çerçevede değerlendirilir; `<<-` yerel bağı
     # atlayıp genel ortama yazar ve hata dalı süreci NULL görürdü.
     baslatilan_surec <- proc
+    cc_bind_runtime_lease(prep$runtime_lease %||% "", proc)
     rv$active_process <- proc
     lease_handed_off <- TRUE
     # Dönüş değeri DENETLENİR ama çalıştırmayı kesmez: sinyal gözlemlenebilir
@@ -618,13 +627,15 @@ cc_start_streaming_run <- function(ctx, prep) {
     hata_metni <- conditionMessage(e)
 
     if (!is.null(baslatilan_surec)) {
-      tryCatch({
-        if (isTRUE(baslatilan_surec$is_alive())) baslatilan_surec$kill()
-      }, error = function(e2) NULL)
+      lease_handed_off <<- TRUE
+      lease <- stream_env$runtime_lease %||% ""
+      # Kira artık emekli edilen sürecin; sonlandırıcı onu ölüm doğrulanmadan
+      # bırakmasın diye çalıştırma durumundan çıkarılır.
+      stream_env$runtime_lease <- ""
+      mergen_retire_process(baslatilan_surec, function() cc_release_runtime_lease(lease))
       rv$active_process <- NULL
       # Süreç öldürüldü: lease devri geçersizdir. Aksi hâlde lease'i tazeleyen
       # yoklama gözlemcisi hiç kurulmuyor ve kilit orphan TTL'ine kadar tutuluyordu.
-      lease_handed_off <<- FALSE
     }
     log_error(paste(
       CLAUDE_CODE_LOG_PREFIX,

@@ -977,7 +977,7 @@ test_that("hazırlık gönderimi ana süreçte ağır işi çalıştırmaz", {
   rv$active_runtime_workdir <- NULL
 
   ctx <- list(
-    session = list(token = "tok", sendCustomMessage = function(...) invisible(TRUE)),
+    session = list(token = "tok", isClosed = function() FALSE, sendCustomMessage = function(...) invisible(TRUE)),
     ns = function(x) x,
     rv = rv,
     run_request_id = "req-1",
@@ -1029,7 +1029,7 @@ test_that("bir oturumun büyük klasör hazırlığı ikinci oturumu bloke etmez
   # Gerçek finalize_streaming çalıştırma durumunu temizler; deadline'ın bunu
   # gerçekten çağırdığını doğrulayabilmek için stub aynı sözleşmeyi taklit eder.
   ctx <- list(
-    session = list(token = "tok1", sendCustomMessage = function(...) invisible(TRUE)),
+    session = list(token = "tok1", isClosed = function() FALSE, sendCustomMessage = function(...) invisible(TRUE)),
     ns = function(x) x,
     rv = rv,
     run_request_id = "req-1",
@@ -1095,19 +1095,18 @@ test_that("hazırlık ve çıktı işleri açık bağımlılık modu ile gönder
   expect_true(grepl("cc_dispatch_run_preparation\\(", modul, perl = TRUE))
 })
 
-test_that("hazırlık callback'leri kapanmış oturumda işlem başlatmaz", {
+test_that("hazırlık geri çağrıları tarayıcı kapanışını iptal saymaz, çalıştırma durumuna bağlıdır", {
   dispatch <- .cc_read_prepare_text("R/helpers_claude_code_run_dispatch.R")
 
-  # Hem başarı hem hata settlement callback'i websocket/UI işinden önce
-  # kapanmış oturumu bırakmalıdır. Başarı yolu ayrıca worker'ın lease'ini
-  # süreç başlatmadan serbest bırakır.
-  expect_gte(
-    lengths(regmatches(dispatch, gregexpr("ctx\\$session\\$isClosed\\(\\)", dispatch, perl = TRUE))),
-    2L
-  )
+  # Tarayıcı kapanışı kabul edilmiş çalıştırmayı iptal etmez: hazırlık iptali,
+  # başarı ve hata yolları oturum kapanışına değil, ayrılabilen ortak çalıştırma
+  # durumuna (run_ref) bakar; geçersiz çalıştırmada lease süreç başlatılmadan bırakılır.
+  expect_false(grepl("ctx\\$session\\$isClosed\\(\\)", dispatch, perl = TRUE))
+  expect_gte(lengths(regmatches(dispatch, gregexpr("ctx\\$rv <- run_ref\\$rv", dispatch, perl = TRUE))), 3L)
+  expect_true(grepl("cancel_check = function\\(\\) cc_is_active_run\\(run_ref\\$rv", dispatch, perl = TRUE))
   expect_true(grepl(
     paste0(
-      "(?s)isTRUE\\(ctx\\$session\\$isClosed\\(\\)\\).*?",
+      "(?s)ctx\\$rv <- run_ref\\$rv\\s*if \\(!cc_is_active_run\\(ctx\\$rv, ctx\\$run_request_id\\)\\) \\{\\s*",
       "cc_release_runtime_lease\\(prep\\$runtime_lease.*?",
       "cc_start_streaming_run\\(ctx, prep\\)"
     ),
@@ -1131,4 +1130,35 @@ test_that("bloklayan bekleme döngüleri ana süreç dosyalarında kalmaz", {
       info = sprintf("%s ana Shiny sürecinde bloklayan bekleme içermemelidir.", yol)
     )
   }
+})
+
+test_that("sert hazırlık iptali worker günlüğündeki çalışma kirasını bırakır", {
+  env <- .cc_dispatch_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_runtime_lease.R"),
+         encoding = "UTF-8", local = env)
+  env$cc_build_run_prepare_request <- function(...) list(request_id = "A")
+  env$cc_run_prepare_worker_globals <- function() list()
+  env$cc_persist_run_result <- function(...) NULL
+  lease <- withr::local_tempfile()
+  file.create(lease)
+  reject_worker <- NULL
+  request <- NULL
+  env$tracked_future_promise <- function(globals, ...) {
+    request <<- globals$istek
+    saveRDS(lease, request$lease_journal)
+    promises::promise(function(resolve, reject) reject_worker <<- reject)
+  }
+  rv <- new.env()
+  rv$is_running <- TRUE
+  rv$active_request_id <- "A"
+  session <- list(userData = new.env(), isClosed = function() FALSE, token = "test", sendCustomMessage = function(...) NULL)
+  ctx <- list(session = session, rv = rv, run_request_id = "A", ns = identity,
+    workdir = tempdir(), user_id = 7L, prompt = "test", finalize_streaming = function(...) NULL)
+  env$cc_dispatch_run_preparation(ctx)
+  rv$active_request_id <- "B"
+  reject_worker(simpleError("iptal"))
+  for (i in 1:50) later::run_now(0)
+  expect_false(file.exists(lease))
+  expect_false(file.exists(request$lease_journal))
+  expect_identical(rv$active_request_id, "B")
 })

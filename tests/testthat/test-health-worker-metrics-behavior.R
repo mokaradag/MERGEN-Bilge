@@ -98,3 +98,13 @@ testthat::test_that("eksik ya da NA işçi sayaçları satırı düşürmez ve N
   testthat::expect_true(grepl("—", html, fixed = TRUE))
   testthat::expect_true(grepl("33.3%", as.character(env$render_worker_health_html(.sample_worker_info())), fixed = TRUE))
 })
+
+testthat::test_that("bağımsız iptal edilebilir havuz sağlık ekranında ayrıca görünür", {
+  testthat::skip_if_not_installed("htmltools")
+  env <- .source_worker_metrics_for_test()
+  info <- .sample_worker_info()
+  info$cancellable_pool <- list(active_workers = 3L, queued_jobs = 5L, quarantined_jobs = 1L)
+  html <- as.character(env$render_worker_health_html(info))
+  testthat::expect_true(grepl("Bağımsız İşçi (aktif/kuyruk/karantina):", html, fixed = TRUE))
+  testthat::expect_true(grepl("3 / 5 / 1", html, fixed = TRUE))
+})

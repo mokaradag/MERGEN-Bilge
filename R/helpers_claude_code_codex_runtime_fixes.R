@@ -437,12 +437,15 @@ cc_claim_runtime_ownership <- function(runtime_workdir, request_id) {
   on.exit(.cc_codex_reap_dir_lock(lock_dir, kilit_jetonu), add = TRUE)
 
   tmp <- paste0(owner, ".", Sys.getpid(), ".tmp")
-  ok <- tryCatch({
-    writeLines(request_id, tmp, useBytes = TRUE)
-    if (file.exists(owner) && !isTRUE(unlink(owner, force = TRUE) == 0L)) stop("owner unlink")
-    if (!isTRUE(file.rename(tmp, owner))) stop("owner promote")
-    identical(readLines(owner, warn = FALSE, n = 1L), request_id)
-  }, error = function(e) FALSE)
+  ok <- cc_with_runtime_cleanup_lock(runtime_workdir, fallback = FALSE, attempts = 1L, {
+    if (cc_runtime_has_foreign_lease(runtime_workdir, request_id)) FALSE else
+      tryCatch({
+        writeLines(request_id, tmp, useBytes = TRUE)
+        if (file.exists(owner) && !isTRUE(unlink(owner, force = TRUE) == 0L)) stop("owner unlink")
+        if (!isTRUE(file.rename(tmp, owner))) stop("owner promote")
+        identical(readLines(owner, warn = FALSE, n = 1L), request_id)
+      }, error = function(e) FALSE)
+  })
   unlink(tmp, force = TRUE)
   if (isTRUE(ok)) owner else ""
 }
@@ -456,7 +459,7 @@ cc_runtime_ownership_is <- function(runtime_workdir, request_id) {
 }
 
 # Claim reuse ownership before the original dispatcher schedules any worker.
-cc_dispatch_run_preparation <- function(ctx) {
+cc_dispatch_run_preparation <- function(ctx, attempt = 1L) {
   existing <- NULL
   if (!is.null(ctx$rv$active_runtime_source) &&
       !is.null(ctx$rv$active_runtime_workdir) &&
@@ -465,6 +468,14 @@ cc_dispatch_run_preparation <- function(ctx) {
   }
   if (!is.null(existing) && nzchar(existing)) {
     claim <- cc_claim_runtime_ownership(existing, ctx$run_request_id)
+    if (!nzchar(claim) && attempt < 8L && exists("cc_is_active_run", mode = "function") &&
+        cc_is_active_run(ctx$rv, ctx$run_request_id)) {
+      # Kısa temizlik kilidi çekişmesi olay döngüsünü bekletmeden yeniden denenir.
+      later::later(function() {
+        if (cc_is_active_run(ctx$rv, ctx$run_request_id)) cc_dispatch_run_preparation(ctx, attempt + 1L)
+      }, delay = 0.25)
+      return(invisible(TRUE))
+    }
     if (!nzchar(claim)) {
       cc_fail_run_preparation(
         ctx,

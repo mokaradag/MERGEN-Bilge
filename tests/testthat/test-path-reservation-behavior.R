@@ -63,20 +63,17 @@ test_that("boş/NA jeton edinme ve bırakma için reddedilir", {
   expect_true(dir.exists(rezerv))
 })
 
-test_that("devralma YALNIZCA yaş eşiği aşıldığında yapılır", {
+test_that("devralma yalnızca doğrulanmış ölü sahibi geri kazanır", {
   rezerv <- .rezerv_yolu()
   eski <- mergen_reservation_token("eski")
   expect_true(mergen_reservation_acquire(rezerv, eski))
-
   yeni <- mergen_reservation_token("yeni")
-  # TAZE rezervasyon devralınmaz: yalnızca yaşa bakan devralma CANLI sahibin
-  # rezervasyonunu kırıp iki çağrının aynı hedefi terfi ettirmesine izin
-  # veriyordu.
-  expect_false(mergen_reservation_takeover(rezerv, yeni, stale_sec = 3600))
+  # Canlı yerel sahip yaştan bağımsız korunur (eşik -1: her yaş bayat sayılırdı).
+  expect_false(mergen_reservation_takeover(rezerv, yeni, stale_sec = -1))
   expect_identical(mergen_reservation_owner(rezerv), eski)
-
-  # Eşik 0 iken (her rezervasyon bayat) devralma yapılır ve JETON değişir.
-  expect_true(mergen_reservation_takeover(rezerv, yeni, stale_sec = -1))
+  writeLines(c("2147483647-dead", paste0("host=", Sys.info()[["nodename"]])),
+    .mergen_reservation_marker(rezerv))
+  expect_true(mergen_reservation_takeover(rezerv, yeni, stale_sec = 3600))
   expect_identical(mergen_reservation_owner(rezerv), yeni)
 })
 
@@ -96,4 +93,20 @@ test_that("var olmayan rezervasyon için sahip NA ve yaş NA döner", {
   expect_true(is.na(mergen_reservation_age_sec(rezerv)))
   # Sahip okunamıyorsa bırakma da YAPILMAZ (kanıt yok).
   expect_false(mergen_reservation_release(rezerv, mergen_reservation_token()))
+})
+
+test_that("eski biçimli ya da uzak host rezervasyonu yalnız bayatlıktan sonra devralınır", {
+  for (bicim in c("eski", "uzak")) {
+    rezerv <- .rezerv_yolu()
+    dir.create(rezerv)
+    marker <- .mergen_reservation_marker(rezerv)
+    if (bicim == "eski") writeLines("1-eski", marker) else writeLines(c("1-uzak", "host=baska-dugum"), marker)
+    yeni <- mergen_reservation_token("yeni")
+    expect_false(mergen_reservation_takeover(rezerv, yeni, stale_sec = 3600), info = bicim)
+    Sys.setFileTime(marker, Sys.time() - 7200)
+    expect_true(mergen_reservation_takeover(rezerv, yeni, stale_sec = 3600), info = bicim)
+    expect_identical(mergen_reservation_owner(rezerv), yeni)
+    # Devralma koruması kullanıcı klasöründe dosya bırakmaz.
+    expect_false(file.exists(paste0(rezerv, ".reclaim")))
+  }
 })

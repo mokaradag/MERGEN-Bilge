@@ -295,7 +295,9 @@ health_check_worker_info <- function() {
     total <- info$total_workers %||% info$total %||% NA
     active <- info$active_workers %||% info$active %||% NA
     queued <- info$queued_jobs %||% info$queued %||% NA
-    health_result("runtime.workers", "İşçi Havuzu (bu süreç)", "ok", paste0("Toplam: ", total, " / Aktif: ", active, " / Kuyruk: ", queued), "Yalnız bu uygulama sürecinin işçi ve kuyruk ölçümleri.", health_ms(start))
+    havuz <- info$cancellable_pool %||% list()
+    health_result("runtime.workers", "İşçi Havuzu (bu süreç)", "ok", paste0("Toplam: ", total, " / Aktif: ", active, " / Kuyruk: ", queued,
+      " | Bağımsız aktif: ", havuz$active_workers %||% NA, " / Kuyruk: ", havuz$queued_jobs %||% NA), "Yalnız bu uygulama sürecinin işçi ve kuyruk ölçümleri.", health_ms(start))
   })
 }
 

@@ -140,13 +140,15 @@ mergen_session_owner_transition <- function(user_data, eski_uid, yeni_uid, yetki
   if (yeni > 0L) user_data$kimlik_sahibi <- yeni
   # Kimlik nesli her sahip değişiminde ve kimlik kaybında artar: kimliksiz
   # başlayan arka plan işi 0 -> A -> 0 sonrasında "hâlâ kimliksiz" sayılmaz.
-  if (degisti || kayip) user_data$kimlik_nesli <- as.integer(user_data$kimlik_nesli %||% 0L) + 1L
+  gecersiz <- degisti || kayip || isTRUE(yetki_degisti)
+  if (gecersiz) user_data$kimlik_nesli <- as.integer(user_data$kimlik_nesli %||% 0L) + 1L
   kancalar <- user_data$kimlik_kancalari
-  if ((degisti || kayip) && is.environment(kancalar)) {
-    neden <- if (degisti) "sahip_degisti" else "kimlik_kaybi"
-    for (ad in ls(kancalar, all.names = TRUE)) try(kancalar[[ad]](neden), silent = TRUE)
+  if (gecersiz && is.environment(kancalar)) {
+    neden <- if (degisti) "sahip_degisti" else if (kayip) "kimlik_kaybi" else "yetki_degisti"
+    callbacks <- as.list(kancalar, all.names = TRUE)
+    for (fn in callbacks) try(fn(neden), silent = TRUE)
   }
-  if (degisti) {
+  if (gecersiz) {
     anahtarlar <- if (exists("SESSION_RUNTIME_STORE_KEYS", inherits = TRUE)) {
       unname(SESSION_RUNTIME_STORE_KEYS)
     } else {
@@ -161,6 +163,19 @@ mergen_session_owner_transition <- function(user_data, eski_uid, yeni_uid, yetki
     try(sinyal(shiny::isolate(sinyal()) + 1L), silent = TRUE)
   }
   invisible(degisti)
+}
+
+# Yetkiyle ilgili mevcut iddiaların karşılaştırma anahtarı (bellekte kalır,
+# saklanmaz). Rol ve satır düzeyi kapsam (masraf yeri, birim) birlikte izlenir.
+.mergen_auth_scope <- function(config) {
+  if (!is.list(config) || is.null(config$auth_level)) return(NULL)
+  alanlar <- list(config$auth_level, config$masraf_yeri_kodu %||% config$MasrafYeriKodu,
+                  config$department %||% config$Departman, config$mudurluk %||% config$Mudurluk,
+                  config$sektor %||% config$Sektor)
+  vapply(alanlar, function(x) {
+    v <- suppressWarnings(as.character(x %||% "")[1])
+    if (is.na(v)) "" else trimws(v)
+  }, character(1))
 }
 
 # Sahip değişimi/kimlik kaybı kancası kaydeder; kaydı silen fonksiyon döner.
@@ -222,7 +237,7 @@ make_user_session_data_accessors <- function(session) {
                               auth_initialized = TRUE) {
       uid <- .normalize_user_session_id(user_id, allow_zero = TRUE)
       eski_uid <- get_value("user_id", 0L)
-      eski_yetki <- get_value("user_config", list())$auth_level
+      eski_kapsam <- .mergen_auth_scope(get_value("user_config", NULL))
 
       set_value("user_identity", user_identity)
       set_value("user_first_name", user_identity$first_name)
@@ -232,9 +247,13 @@ make_user_session_data_accessors <- function(session) {
       set_value("auth_source", auth_source)
       set_value("auth_initialized", isTRUE(auth_initialized))
       set_value("user_config", app_user_config)
-      # Aynı kullanıcının yetki düzeyi değişirse de sinyal artar (ör. ADMIN kaybı).
+      # Aynı kullanıcının etkin yetki kapsamı (rol ya da satır düzeyi kapsam)
+      # değişirse de eski kapsamla üretilen iş geçersizleşir. İlk giriş değişim
+      # sayılmaz.
       mergen_session_owner_transition(user_data, eski_uid, uid,
-                                      yetki_degisti = !identical(eski_yetki, app_user_config$auth_level))
+        yetki_degisti = .normalize_user_session_id(eski_uid) > 0L &&
+          identical(.normalize_user_session_id(eski_uid), uid) && !is.null(eski_kapsam) &&
+          !identical(eski_kapsam, .mergen_auth_scope(app_user_config)))
 
       invisible(app_user_config)
     },

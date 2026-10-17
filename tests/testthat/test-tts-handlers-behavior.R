@@ -106,3 +106,40 @@ testthat::test_that("tts_available hata fırlatsa bile gerekçe güvenli şekild
   rec <- .build_tts_handlers(env, TRUE, list(tts_available = function() stop("uç nokta hatası")))
   testthat::expect_identical(rec$reason, "Seslendirme uç noktası yapılandırılmadı.")
 })
+
+testthat::test_that("tamponlu TTS parçaları sınırlı pencereyle ve istek kapsamlı iptalle gönderilir", {
+  testthat::skip_if_not_installed("shiny")
+  suppressPackageStartupMessages(library(promises))
+  env <- .source_tts_handlers_for_test()
+  env$mergen_speech_canonical_persona <- function(...) "emre"
+  env$mergen_speech_voice_mode <- function() "locked_reference"
+  env$mergen_voxcpm2_streaming_mode <- function() "buffered"
+  pending <- list()
+  checks <- list()
+  processor <- list(tts_available = function() TRUE,
+    synthesize_speech = function(text, voice = NULL, persona_id = NULL, cancel_check = NULL) {
+      checks[[length(checks) + 1L]] <<- cancel_check
+      promises::promise(function(resolve, reject) pending[[length(pending) + 1L]] <<- resolve)
+    })
+  shiny::testServer(function(input, output, session) {
+    session$userData$user_id <- 7L
+    session$userData$llm_request_owner <- "A"
+    values <- shiny::reactiveValues(messages = list(), current_chat_id = "chat_A")
+    settings_data <- shiny::reactiveValues(enable_tts_audio = TRUE, selected_character = "emre")
+    stop_generation <- shiny::reactiveVal(FALSE)
+    handlers <- env$ttsHandlersInit(session, values, settings_data, processor,
+      list(trigger = function(...) NULL), stop_generation)
+    uzun <- paste(rep("Bu uzun bir yanıt cümlesidir ve seslendirilecektir.", 120), collapse = " ")
+    shiny::isolate(handlers$trigger_tts_for_message("m1", uzun))
+    expect_length(pending, 2L)
+    expect_true(all(vapply(checks, function(f) isTRUE(f()), logical(1))))
+    pending[[1]](list(success = FALSE))
+    for (i in 1:10) later::run_now(0)
+    expect_length(pending, 3L)
+    session$userData$llm_request_owner <- "B"
+    expect_false(isTRUE(checks[[3]]()))
+    pending[[2]](list(success = FALSE))
+    for (i in 1:10) later::run_now(0)
+    expect_length(pending, 3L)
+  }, {})
+})

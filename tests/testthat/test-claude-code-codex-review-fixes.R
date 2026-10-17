@@ -117,6 +117,8 @@
   # onlarin paylasilan fonksiyonlarini (ornegin cc_output_sync_canonical_root)
   # cagirir. Izole test ortami da ayni yukleme sirasini yansitmalidir.
   for (temel in c(
+    "utils_path_reservation.R",
+    "helpers_claude_code_run_lifecycle.R",
     "helpers_claude_code_bounded_scan.R",
     "helpers_claude_code_input_matching.R",
     "helpers_claude_code_runtime_prepare.R",
@@ -480,13 +482,18 @@ test_that("partial sync failures remain warnings and output deadline has cleanup
   session$sendCustomMessage <- function(type, message) {
     messages[[length(messages) + 1L]] <<- list(type = type, message = message)
   }
-  ctx <- list(session = session, ns = identity)
+  finished <- NULL
+  env$cc_finish_streaming_run <- function(ctx, outputs) finished <<- ctx
+  ctx <- list(session = session, ns = identity, env = list(request_id = "A"), cikis_kodu = 0L,
+              ayristirma = list(text_output = "model yanıtı"))
   result <- env$cc_report_output_sync_failure(ctx, list(sync_results = list(list(
     success = FALSE, dest_path = "missing.txt"
   ))))
-  expect_false(isTRUE(result))
-  expect_length(messages, 1L)
-  expect_identical(messages[[1]]$message$type, "warning")
+  # Kısmi aktarım başarı değildir: çalıştırma hata dalında sonlanır, metin korunur.
+  expect_true(isTRUE(result))
+  expect_false(identical(finished$cikis_kodu, 0L))
+  expect_match(finished$hata_mesaji, "missing.txt", fixed = TRUE)
+  expect_match(finished$hata_mesaji, "model yanıtı", fixed = TRUE)
 
   dispatch_body <- paste(deparse(body(env$cc_dispatch_run_output_processing)), collapse = "\n")
   expect_match(dispatch_body, "cancel_deadline")
@@ -868,4 +875,129 @@ test_that("depolama öneki olmayan gerçekten eksik doküman hâlâ reddedilir",
     "bulunamadi|bulunamad",
     fixed = FALSE
   )
+})
+
+test_that("özet terfisi gerçek callr ve üretim aktarım denetimleriyle tamamlanır", {
+  skip_if_not_installed("callr")
+  env <- .cc_codex_review_env()
+  for (file in c("helpers_worker_monitor.R", "helpers_worker_cancellation.R",
+    "helpers_claude_code_run_lifecycle.R", "helpers_document_output_publication.R"))
+    source(file.path(resolve_repo_root_for_tests(), "R", file), local = env)
+  env$cc_run_output_worker_globals <- function() {
+    bundle <- list(cc_apply_output_sync_plan = env$cc_apply_output_sync_plan)
+    c(bundle, env$worker_monitor_expand_function_globals(bundle))
+  }
+  output_dir <- withr::local_tempdir(); target_dir <- withr::local_tempdir()
+  source_path <- file.path(output_dir, "dosya_aciklamalari.txt")
+  dest <- file.path(target_dir, "dosya_aciklamalari.txt")
+  writeLines("gerçek özet", source_path); writeLines("önceki özet", dest)
+  shiny::testServer(function(input, output, session) NULL, {
+    session$userData$user_id <- 7L
+    rv <- shiny::reactiveValues(is_running = TRUE, active_request_id = "A",
+      run_owner_guard = mergen_session_owner_guard(session))
+    result <- NULL; failure <- NULL
+    promise <- env$cc_publish_document_summary_async(list(success = TRUE,
+      generated_summary_path = source_path), target_dir, output_dir, session, rv, "A")
+    promises::then(promise, function(value) result <<- value, function(e) failure <<- e)
+    expect_identical(readLines(dest), "önceki özet")
+    deadline <- Sys.time() + 15
+    while (is.null(result) && is.null(failure) && Sys.time() < deadline) later::run_now(0.01)
+    expect_false(is.null(result) && is.null(failure), info = "Özet işçisi 15 sn içinde yerleşmedi.")
+    expect_null(failure)
+    expect_true(is.list(result))
+    expect_identical(readLines(dest), "gerçek özet")
+    expect_length(env$.MERGEN_CANCELLABLE_WORKERS$jobs, 0L)
+  })
+})
+
+
+test_that("canlı veya belirsiz runtime lease sahipliği devredilemez", {
+  env <- .cc_codex_review_env()
+  runtime <- withr::local_tempdir()
+  prepare <- new.env(parent = env)
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_run_prepare_task.R"),
+         encoding = "UTF-8", local = prepare)
+  env$cc_runtime_owner_file <- prepare$cc_runtime_owner_file
+  prepare$.cc_runtime_workdir_reusable <- function(...) TRUE
+  expect_true(nzchar(env$cc_claim_runtime_ownership(runtime, "old")))
+  lease <- file.path(runtime, "metadata", "active-run-old.lease")
+  child <- callr::r_bg(function() Sys.sleep(60))
+  withr::defer(try(child$kill(), silent = TRUE))
+  env$cc_bind_runtime_lease(lease, child)
+  expect_false(any(grepl("^pid=NA$", readLines(lease))))
+  # Canlı çalıştırma çocuğu yeniden kullanımı engeller (yaşı kendi başlangıcından
+  # eski gösterilemez; o durum PID yeniden kullanımıdır).
+  expect_false(env$cc_runtime_lease_reclaimable(lease, stale_sec = -1, orphan_sec = 1))
+  expect_identical(env$cc_claim_runtime_ownership(runtime, "new"), "")
+  expect_true(env$cc_runtime_ownership_is(runtime, "old"))
+  expect_error(prepare$cc_acquire_reused_runtime_lease(runtime, 7L, "new"), "lease devralınamaz")
+  expect_false(file.exists(file.path(runtime, "metadata", "active-run-new.lease")))
+  writeLines(c("host=unknown-host", "pid=2147483647"), lease)
+  expect_identical(env$cc_claim_runtime_ownership(runtime, "new"), "")
+  writeLines(c(paste0("host=", Sys.info()[["nodename"]]), "pid=2147483647"), lease)
+  # Ölü sahip kısa devir penceresinden sonra geri kazanılır.
+  expect_false(env$cc_runtime_lease_reclaimable(lease))
+  Sys.setFileTime(lease, Sys.time() - 120)
+  expect_true(env$cc_runtime_lease_reclaimable(lease))
+  # Yalnız uzun ömürlü sunucu süreci kayıtlıysa terk edilmiş kira yetim
+  # eşiğinden sonra geri kazanılır; taze iken korunur.
+  writeLines(c(paste0("host=", Sys.info()[["nodename"]]), paste0("pid=", Sys.getpid())), lease)
+  expect_false(env$cc_runtime_lease_reclaimable(lease))
+  Sys.setFileTime(lease, Sys.time() - 100000)
+  expect_true(env$cc_runtime_lease_reclaimable(lease))
+  writeLines(c(paste0("host=", Sys.info()[["nodename"]]), "pid=2147483647"), lease)
+  Sys.setFileTime(lease, Sys.time() - 120)
+  expect_true(nzchar(env$cc_claim_runtime_ownership(runtime, "new")))
+  expect_true(env$cc_runtime_ownership_is(runtime, "new"))
+  acquired <- prepare$cc_acquire_reused_runtime_lease(runtime, 7L, "new")
+  expect_true(file.exists(acquired))
+})
+
+test_that("çıktı yayını hedef başına tek yazarlıdır ve yarım kalan yedek kurtarılır", {
+  env <- .cc_codex_review_env()
+  source_root <- withr::local_tempdir()
+  runtime <- withr::local_tempdir()
+  env$cc_output_sync_skipped_results <- function(plan) list()
+  env$.cc_scan_norm <- function(path) normalizePath(path, winslash = "/", mustWork = FALSE)
+  env$.cc_scan_key <- function(path) if (.Platform$OS.type == "windows") tolower(path) else path
+  plan_for <- function(name, content) {
+    src <- file.path(runtime, name)
+    writeLines(content, src, useBytes = TRUE)
+    list(source_workdir = source_root, output_root = runtime, skipped_approved = list(),
+         items = list(list(source_path = src, dest_path = file.path(source_root, name),
+                           size = file.info(src)$size)))
+  }
+  dest <- file.path(source_root, "rapor.txt")
+  txn <- env$.cc_output_txn_paths(dest)
+  # Sert ölüm: özgün hedef yedekte kaldı, hedef yok. Sonraki yayın önce geri koyar.
+  writeLines("özgün", txn$backup, useBytes = TRUE)
+  writeLines("yarım", txn$staging, useBytes = TRUE)
+  ok <- env$cc_apply_output_sync_plan(plan_for("rapor.txt", "yeni"))
+  expect_true(isTRUE(ok[[1]]$success))
+  expect_identical(readLines(dest, warn = FALSE), "yeni")
+  expect_false(file.exists(txn$backup))
+  expect_false(file.exists(txn$staging))
+  # Plan dışı hedefin yetim yedeği de geri konur.
+  diger <- file.path(source_root, "diger.txt")
+  writeLines("diğer özgün", env$.cc_output_txn_paths(diger)$backup, useBytes = TRUE)
+  env$cc_apply_output_sync_plan(plan_for("rapor.txt", "yeniden"))
+  expect_identical(readLines(diger, warn = FALSE), "diğer özgün")
+  # Canlı başka bir yazar hedefi tutarken bu işlem hedefi silemez ya da ezemez.
+  jeton <- env$mergen_reservation_token("baska")
+  expect_true(env$mergen_reservation_acquire(txn$lock, jeton))
+  env$Sys.sleep <- function(...) invisible(NULL)
+  blocked <- env$cc_apply_output_sync_plan(plan_for("rapor.txt", "çakışan"))
+  expect_false(isTRUE(blocked[[1]]$success))
+  expect_match(blocked[[1]]$error, "kullanılıyor")
+  expect_identical(readLines(dest, warn = FALSE), "yeniden")
+  env$mergen_reservation_release(txn$lock, jeton)
+})
+
+test_that("okunamayan kira dizini yabancı kira yok sayılmaz", {
+  env <- .cc_codex_review_env()
+  runtime <- withr::local_tempdir()
+  dir.create(file.path(runtime, "metadata"))
+  expect_false(env$cc_runtime_has_foreign_lease(runtime, "yeni"))
+  env$list.files <- function(...) character()
+  expect_true(env$cc_runtime_has_foreign_lease(runtime, "yeni"))
 })

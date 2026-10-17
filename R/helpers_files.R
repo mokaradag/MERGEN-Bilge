@@ -120,7 +120,8 @@ copy_to_mcp_base <- function(upload, user_id) {
     datapath = upload$datapath,
     final_dest = dest,
     base_root = base,
-    upload_name = upload$name %||% ""
+    upload_name = upload$name %||% "",
+    transaction = upload$transaction
   )
 
   # Dosya gerçekten oluştuysa yolu olduğu gibi koru.

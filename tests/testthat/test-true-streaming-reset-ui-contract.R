@@ -80,7 +80,7 @@ testthat::test_that("true streaming server cleanup keeps UI reset contract", {
       "stream_env$stop_file",
       "file.create(stream_env$stop_file)",
       "cleanup_streaming_state()",
-      "ctx$reset_chat_state_fn()",
+      "on.exit(cleanup_streaming_state(), add = TRUE)",
       "finalize_stream_message <- function",
       "finalize_error_or_abort <- function",
       "mergen_stream_abort_cleanup_plan",
@@ -100,7 +100,7 @@ testthat::test_that("true streaming server cleanup keeps UI reset contract", {
   )[[1]]
 
   reset_pos <- regexpr(
-    "ctx$reset_chat_state_fn()",
+    "on.exit(cleanup_streaming_state(), add = TRUE)",
     server_text,
     fixed = TRUE,
     useBytes = TRUE
@@ -108,6 +108,11 @@ testthat::test_that("true streaming server cleanup keeps UI reset contract", {
 
   testthat::expect_true(finalize_pos > 0L)
   testthat::expect_true(reset_pos > finalize_pos)
+  guard_text <- .true_stream_read_text("R", "helpers_async_result_guard.R")
+  .true_stream_expect_all(guard_text, c("active_request_id(NULL)", "shiny::isolate(reset_fn())"),
+    "Ortak terminal temizliği eksik:")
+  testthat::expect_lt(regexpr("active_request_id(NULL)", guard_text, fixed = TRUE)[[1]],
+    regexpr("shiny::isolate(reset_fn())", guard_text, fixed = TRUE)[[1]])
 })
 
 testthat::test_that("streaming JS finalizer restores sending UI affordances", {
