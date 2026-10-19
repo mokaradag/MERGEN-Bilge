@@ -97,17 +97,15 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
     isTRUE(mergen_reservation_acquire(rezerv, jeton))
   if (!alindi && exists("mergen_reservation_takeover", mode = "function"))
     alindi <- isTRUE(mergen_reservation_takeover(rezerv, jeton))
-  if (!alindi) {
-    # FAIL-CLOSED: rezervasyon alınamadıysa terfi DENENMEZ. Sessizce jetonsuz
-    # `file.rename()` yapmak, düzeltilen yarışı geri getirirdi.
-    return(list(ok = FALSE, yabanci = var_mi_guvenli(hedef), promoted = FALSE))
-  }
+  # FAIL-CLOSED: rezervasyon alınamadıysa terfi DENENMEZ. Sessizce jetonsuz
+  # `file.rename()` yapmak, düzeltilen yarışı geri getirirdi.
+  if (!alindi) return(list(ok = FALSE, yabanci = var_mi_guvenli(hedef), promoted = FALSE))
 
   sonuc <- tryCatch({
     guard <- mergen_reclaim_mutex(paste0(rezerv, ".reclaim"))
     if (is.null(guard)) return(list(ok = FALSE, yabanci = var_mi_guvenli(hedef), promoted = FALSE))
     on.exit(filelock::unlock(guard), add = TRUE)
-    if (!identical(mergen_reservation_owner(rezerv), jeton))
+    if (!identical(mergen_reservation_owner(rezerv), jeton) && !isTRUE(mergen_reservation_acquire(rezerv, jeton)))
       return(list(ok = FALSE, yabanci = var_mi_guvenli(hedef), promoted = FALSE))
     # İKİ BAĞIMSIZ okuma: yavaş bir UNC paylaşımında tek okuma yanlış negatif
     # verebiliyor ve yedek yoldaki `file.rename()` EŞZAMANLI oluşan hedefi
