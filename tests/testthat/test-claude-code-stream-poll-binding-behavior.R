@@ -123,6 +123,20 @@ if (requireNamespace("shiny", quietly = TRUE)) {
   }
 }
 
+testthat::test_that("hazırlıktaki çalıştırma süreç başlamadan sonraki yoklamayı planlar", {
+  env <- .csp_env()
+  scheduled <- 0L
+  testthat::local_mocked_bindings(invalidateLater = function(...) {
+    scheduled <<- scheduled + 1L
+  }, .package = "shiny")
+  srv <- .csp_make_server(env, list(is_running = TRUE, active_process = NULL,
+    active_request_id = "hazirlik"), .csp_finalize_rec())
+  shiny::testServer(srv, {
+    session$flushReact()
+    expect_gte(scheduled, 1L)
+  })
+})
+
 testthat::test_that("stop_command çalışırken: durduruldu işaretlenir, süreç öldürülür, request-id kapsamlı finalize", {
   testthat::skip_if_not_installed("shiny")
   env <- .csp_env()

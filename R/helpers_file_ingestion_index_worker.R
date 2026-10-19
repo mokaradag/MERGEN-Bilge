@@ -108,7 +108,7 @@ file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard =
         }
         committed <- tryCatch({
           failed <- Filter(function(r) !isTRUE(r$ok), results)
-          if (length(failed)) file_ingestion_discard_results(failed, user_id)
+          if (length(failed)) try(file_ingestion_discard_results(failed, user_id), silent = TRUE)
           file_ingestion_commit_index(results, user_id)
         }, error = function(e) {
           try(file_ingestion_discard_results(results, user_id), silent = TRUE)
@@ -137,8 +137,7 @@ file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard =
           unlink(journals, force = TRUE)
           tryCatch({
             if (discard) {
-              file_ingestion_release_job(job)
-              file_ingestion_pump()
+              file_ingestion_fail_job(job, simpleError("Dosya alımı iptal edildi."))
             } else {
               file_ingestion_apply_commit(job, results, index_result, queue_wait_ms)
             }

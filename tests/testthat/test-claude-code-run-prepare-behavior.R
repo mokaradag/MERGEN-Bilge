@@ -946,6 +946,12 @@ test_that("çalıştırma aşamaları hazırlık ile model çalıştırmayı ay�
 
 test_that("hazırlık gönderimi ana süreçte ağır işi çalıştırmaz", {
   env <- .cc_dispatch_env()
+  env$mergen_cancellable_worker_available <- function(...) TRUE
+  delays <- numeric()
+  testthat::local_mocked_bindings(later = function(func, delay = 0, ...) {
+    delays <<- c(delays, delay)
+    function() NULL
+  }, .package = "later")
 
   yakalanan <- new.env(parent = emptyenv())
   yakalanan$task_fn <- NULL
@@ -967,6 +973,7 @@ test_that("hazırlık gönderimi ana süreçte ağır işi çalıştırmaz", {
                                          globals = NULL, packages = NULL, ...) {
     yakalanan$task_fn <- task_fn
     yakalanan$mode <- dependency_mode
+    yakalanan$deadlines <- list(...)
     promises::promise(function(resolve, reject) resolve(NULL))
   }
 
@@ -999,6 +1006,9 @@ test_that("hazırlık gönderimi ana süreçte ağır işi çalıştırmaz", {
   # Bağımlılık taraması gönderim anında değil, süreç başına bir kez yapılır.
   expect_equal(yakalanan$mode, "explicit")
   expect_true(is.function(yakalanan$task_fn))
+  expect_equal(yakalanan$deadlines$execution_timeout, 180)
+  expect_equal(yakalanan$deadlines$queue_timeout, 180)
+  expect_true(360 %in% delays)
 })
 
 test_that("bir oturumun büyük klasör hazırlığı ikinci oturumu bloke etmez", {

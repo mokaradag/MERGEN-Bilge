@@ -104,6 +104,11 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
   }
 
   sonuc <- tryCatch({
+    guard <- mergen_reclaim_mutex(paste0(rezerv, ".reclaim"))
+    if (is.null(guard)) return(list(ok = FALSE, yabanci = var_mi_guvenli(hedef), promoted = FALSE))
+    on.exit(filelock::unlock(guard), add = TRUE)
+    if (!identical(mergen_reservation_owner(rezerv), jeton))
+      return(list(ok = FALSE, yabanci = var_mi_guvenli(hedef), promoted = FALSE))
     # İKİ BAĞIMSIZ okuma: yavaş bir UNC paylaşımında tek okuma yanlış negatif
     # verebiliyor ve yedek yoldaki `file.rename()` EŞZAMANLI oluşan hedefi
     # sessizce değiştirebiliyordu.

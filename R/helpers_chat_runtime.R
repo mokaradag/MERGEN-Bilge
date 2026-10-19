@@ -330,7 +330,7 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
             final_text <- if (durduruldu || nzchar(streaming_state$accumulated)) streaming_state$accumulated else full_response
             # Durdurulan kısmi metin tam yanıtın doğrulamasını devralmaz; köken
             # bildirimi (görüntü ile gövde farkı) kısmi metne de eklenir.
-            if (durduruldu && !identical(final_text, full_response)) {
+            if (durduruldu && nzchar(tts_metni) && !identical(final_text, full_response)) {
               alt_bilgi <- if (startsWith(full_response, tts_metni)) substring(full_response, nchar(tts_metni) + 1L) else ""
               govde <- substr(final_text, 1L, min(nchar(final_text), nchar(tts_metni)))
               final_text <- paste0(govde, alt_bilgi)

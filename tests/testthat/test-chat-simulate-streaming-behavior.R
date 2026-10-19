@@ -386,6 +386,32 @@ test_that("geç TTS sesi önceki sahibin veya isteğin akışını başlatamaz",
   }
 })
 
+test_that("boş TTS gövdesinde Stop yalnız teslim edilen kısmi metni korur", {
+  env <- .css_env()
+  callback <- NULL
+  testthat::local_mocked_bindings(observe = function(expr, ...) {
+    expression <- substitute(expr)
+    frame <- parent.frame()
+    callback <<- function() eval(expression, frame)
+    list(destroy = function() NULL)
+  }, invalidateLater = function(...) NULL, .package = "shiny")
+  env$mergen_pk_block_mode_texts <- function(...) list(display = "Kaynak alt bilgisi", tts = "", validated = TRUE)
+  env$mergen_pk_stream_validated_text <- env$mergen_pk_block_mode_texts
+  rec <- new.env(); rec$msgs <- list()
+  session <- .css_session(rec)
+  session$userData <- new.env()
+  values <- new.env(); values$messages <- list()
+  stopped <- FALSE
+  env$chat_simulate_streaming("ham", session, values, list(selected_character = "emre"),
+    list(), function() stopped)
+  shiny::isolate(callback())
+  partial <- values$messages[[1]]$content
+  expect_true(nzchar(partial))
+  stopped <- TRUE
+  shiny::isolate(callback())
+  expect_identical(values$messages[[1]]$content, partial)
+})
+
 test_that("süren benzetimli akış bayatlayınca yeni mesajları ve gönderimi değiştirmez", {
   env <- .css_env()
   callback <- NULL

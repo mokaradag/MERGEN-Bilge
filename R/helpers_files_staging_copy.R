@@ -55,6 +55,7 @@ mergen_stage_upload_copy <- function(datapath, hedef, staging, var_mi, gorunur_m
       if (is.function(rebind)) {
         temizle(staging)
         if (var_mi(staging)) stop("Önceki staging temizlenemedi; native kopya başlatılmadı.")
+        kopya_ok <- FALSE
         rebind(tryCatch(enc2native(hedef), error = function(e) hedef), staging_native)
         staging <- staging_native
         hedef <- tryCatch(enc2native(hedef), error = function(e) hedef)

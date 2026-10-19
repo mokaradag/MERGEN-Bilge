@@ -5,6 +5,31 @@
   env
 }
 
+test_that("kalıcı işin geri alımı karantinadaki süreç ölmeden başlamaz", {
+  env <- .cancellation_env()
+  alive <- TRUE
+  rejected <- 0L
+  env$mergen_cancellable_worker_schedule <- function(...) NULL
+  env$mergen_cancellable_worker_launch <- function(...) list(
+    is_alive = function() alive, kill_tree = function(...) FALSE,
+    kill = function(...) FALSE)
+  current <- TRUE
+  promises::catch(env$mergen_cancellable_worker_promise(raw(), function() current,
+    lane = "durable"), function(e) rejected <<- rejected + 1L)
+  env$mergen_cancellable_worker_tick()
+  current <- FALSE
+  for (i in 1:3) env$mergen_cancellable_worker_tick()
+  for (i in 1:10) later::run_now(0)
+  expect_true(env$.MERGEN_CANCELLABLE_WORKERS$jobs[[1]]$quarantined)
+  expect_identical(rejected, 0L)
+  alive <- FALSE
+  env$.MERGEN_CANCELLABLE_WORKERS$jobs[[1]]$next_probe <- Sys.time() - 1
+  env$mergen_cancellable_worker_tick()
+  for (i in 1:10) later::run_now(0)
+  expect_identical(rejected, 1L)
+  expect_length(env$.MERGEN_CANCELLABLE_WORKERS$jobs, 0L)
+})
+
 test_that("iptal kuyruğu iki süreci aşmaz ve bayat bekleyen işi başlatmaz", {
   withr::local_options(mergen.cancellable_workers = 2L)
   env <- .cancellation_env()

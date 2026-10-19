@@ -301,6 +301,20 @@ test_that("kilit içinde sert öldürülen işçinin kilidi ölüm doğrulandık
   expect_identical(.file_store_with_index_lock(TRUE, timeout_sec = 0, require_lock = TRUE), TRUE)
 })
 
+test_that("eski sahibin heartbeat çağrısı yeni boş kilit dizinine marker yazmaz", {
+  .lock_test_prepare_runtime()
+  withr::defer(.lock_test_cleanup())
+  marker <- .lock_test_lock_marker()
+  .file_store_with_index_lock({
+    unlink(.lock_test_lock_dir(), recursive = TRUE)
+    dir.create(.lock_test_lock_dir())
+    expect_false(file_store_index_lock_heartbeat())
+    expect_false(file.exists(marker))
+    writeLines("token=yeni-sahip", marker)
+  }, require_lock = TRUE)
+  expect_identical(readLines(marker), "token=yeni-sahip")
+})
+
 test_that("okunamayan marker süren geri kazanım sırasında eski sahibin jetonuyla yeniden yazılmaz", {
   skip_if_not_installed("callr")
   .lock_test_prepare_runtime()
@@ -311,7 +325,7 @@ test_that("okunamayan marker süren geri kazanım sırasında eski sahibin jeton
   release <- withr::local_tempfile()
   .file_store_with_index_lock({
     # Marker geçici olarak okunamaz; muteks serbestken sahip marker'ı tazeler.
-    unlink(marker)
+    writeLines(character(), marker)
     expect_true(file_store_index_lock_heartbeat())
     expect_true(file.exists(marker))
     # Başka bir süreç geri kazanım muteksini tutarken marker yeniden yazılmaz.

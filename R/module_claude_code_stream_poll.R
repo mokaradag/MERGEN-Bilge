@@ -82,13 +82,11 @@ cc_bind_claude_code_stream_polling <- function(input,
         try(rv$process_poll_observer$destroy(), silent = TRUE)
         return(invisible(NULL))
       }
-      shiny::invalidateLater(200)
     }
     shiny::req(isTRUE(rv$is_running))
+    shiny::invalidateLater(200)
     proc <- rv$active_process
     shiny::req(!is.null(proc))
-
-    shiny::invalidateLater(200)
 
     env <- rv$stream_env
     if (is.null(env) || !cc_is_active_run(rv, env$request_id)) return()

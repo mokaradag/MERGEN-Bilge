@@ -61,7 +61,7 @@ cc_bind_runtime_lease <- function(lease, process = NULL) {
   pids <- suppressWarnings(as.integer(pids))
   pids <- pids[!is.na(pids) & pids > 0L]
   invisible(.cc_write_runtime_lease(lease, unique(c(previous[!grepl("^pid=NA$", previous)],
-    paste0("host=", Sys.info()[["nodename"]]), paste0("pid=", pids)))))
+    paste0("host=", Sys.info()[["nodename"]]), paste0("server=", Sys.getpid()), paste0("pid=", pids)))))
 }
 
 # Kira geri kazanılabilir mi? Ortak sahip kuralı:
@@ -76,7 +76,7 @@ cc_runtime_lease_reclaimable <- function(lease, stale_sec = 60,
   mtime <- tryCatch(file.info(lease)$mtime[1], error = function(e) NA)
   if (length(mtime) != 1L || is.na(mtime)) return(FALSE)
   age <- as.numeric(difftime(Sys.time(), mtime, units = "secs"))
-  lines <- .cc_read_runtime_lease(lease)
+  lines <- .cc_read_runtime_lease(lease) %||% character()
   host <- sub("^host=", "", lines[startsWith(lines, "host=")])
   pids <- suppressWarnings(as.integer(sub("^pid=", "", lines[startsWith(lines, "pid=")])))
   pids <- pids[!is.na(pids)]
@@ -88,7 +88,9 @@ cc_runtime_lease_reclaimable <- function(lease, stale_sec = 60,
     v <- mergen_pid_status(pid, host, since = mtime)
     if (isTRUE(v)) 1L else if (identical(v, FALSE)) 0L else NA_integer_
   }, integer(1))
-  sunucu <- c(Sys.getpid(), tryCatch(ps::ps_ppid(ps::ps_handle()), error = function(e) NA_integer_))
+  sunucu <- suppressWarnings(as.integer(sub("^server=", "", lines[startsWith(lines, "server=")])))
+  if (!length(sunucu))
+    sunucu <- c(Sys.getpid(), tryCatch(ps::ps_ppid(ps::ps_handle()), error = function(e) NA_integer_))
   if (any(durum %in% 1L & !pids %in% sunucu)) return(FALSE)
   if (any(durum %in% 1L) || anyNA(durum)) return(yetim)
   is.finite(age) && age > stale_sec

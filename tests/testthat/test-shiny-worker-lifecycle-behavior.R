@@ -672,12 +672,15 @@ test_that("özet kaynağa yalnızca geçerli terfi işçisiyle yazılır", {
   for (change in c("current", "owner", "stop")) {
     env <- .lifecycle_env(c("helpers_claude_code_run_lifecycle.R", "helpers_document_output_publication.R"))
     work <- NULL; current <- NULL; resolve_work <- NULL; reject_work <- NULL
+    budgets <- NULL
     env$cc_run_output_worker_globals <- function() list(cc_apply_output_sync_plan = function(plan, active_guard) {
       if (!file.exists(active_guard)) stop("iptal")
       item <- plan$items[[1L]]
       list(list(success = file.copy(item$source_path, item$dest_path, overwrite = TRUE)))
     })
-    env$tracked_future_promise <- function(task_fn, globals, cancel_check, ...) {
+    env$tracked_future_promise <- function(task_fn, globals, cancel_check,
+                                          execution_timeout, queue_timeout, ...) {
+      budgets <<- c(queue_timeout, execution_timeout)
       expect_false(any(c("session", "rv", "result") %in% names(globals)))
       environment(task_fn) <- list2env(globals, parent = baseenv())
       work <<- task_fn; current <<- cancel_check
@@ -695,6 +698,7 @@ test_that("özet kaynağa yalnızca geçerli terfi işçisiyle yazılır", {
       resolved <- NULL; failure <- NULL
       promise <- env$cc_publish_document_summary_async(list(success = TRUE,
         generated_summary_path = src), target_dir, output_dir, session, rv, "A")
+      expect_gte(budgets[[1]], budgets[[2]])
       promises::then(promise, function(value) resolved <<- value, function(e) failure <<- e)
       expect_identical(readLines(dest), "önceki özet")
       if (change == "owner") session$userData$kimlik_nesli <- 1L

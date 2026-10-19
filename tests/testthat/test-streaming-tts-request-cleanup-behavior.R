@@ -1,6 +1,38 @@
 # İşleyici promises işleçlerini (%...!%) kullanır; dosya tek başına da koşabilsin.
 suppressPackageStartupMessages(library(promises))
 
+test_that("PCM sentez işçisi eski istek ve açık iptal yüklemini alır", {
+  env <- new.env(parent = globalenv())
+  source(file.path(resolve_repo_root_for_tests(), "R/server_speech_pcm_stream.R"), local = env)
+  state <- new.env()
+  env$mergen_speech_state <- function(...) state
+  env$mergen_voxcpm2_streaming_mode <- function() "chunked_pcm"
+  env$mergen_speech_reference_payload <- function(...) list(ok = TRUE, profile = list())
+  env$mergen_voxcpm2_request_body <- function(...) list()
+  env$mergen_voxcpm2_endpoint_url <- function(...) "test"
+  env$.speech_resolve_tts_api_key <- function(...) ""
+  env$.speech_perf_log <- function(...) NULL
+  predicate <- NULL
+  env$tracked_future_promise <- function(cancel_check = NULL, ...) {
+    predicate <<- cancel_check
+    promises::promise(function(resolve, reject) NULL)
+  }
+  testthat::local_mocked_bindings(later = function(...) function() NULL, .package = "later")
+  current <- TRUE
+  session <- list(token = "pcm-test", sendCustomMessage = function(...) NULL)
+  expect_true(env$mergen_speech_pcm_stream_start(session, "emre", "metin", cancel_check = function() current))
+  expect_true(is.function(predicate))
+  if (is.function(predicate)) {
+    expect_true(predicate())
+    current <- FALSE
+    expect_false(predicate())
+    current <- TRUE
+    stream_id <- ls(env$.speech_pcm_registry(session))[[1]]
+    env$mergen_speech_pcm_stream_cancel(session, stream_id)
+    expect_false(predicate())
+  }
+})
+
 test_that("TTS sohbet değişimi ve senkron gönderim hatasında yalnız kendi durumunu bırakır", {
   for (change in c("chat", "dispatch", "newer")) {
     env <- new.env(parent = globalenv())

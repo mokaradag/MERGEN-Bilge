@@ -150,7 +150,8 @@ mergen_cancellable_worker_tick <- function() {
         # Ölümü kanıtlanamayan süreç yuvasını tutar; çağıran bir kez bilgilendirilir.
         if (!isTRUE(job$quarantined)) {
           job$quarantined <- TRUE
-          mergen_cancellable_worker_settle(job, simpleError(.MERGEN_CANCELLABLE_END_MESSAGES[["uncertain"]]))
+          if (!identical(job$lane, "durable"))
+            mergen_cancellable_worker_settle(job, simpleError(.MERGEN_CANCELLABLE_END_MESSAGES[["uncertain"]]))
         }
         job$next_probe <- Sys.time() + 5
       }

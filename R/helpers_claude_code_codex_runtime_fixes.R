@@ -474,10 +474,10 @@ cc_dispatch_run_preparation <- function(ctx, attempt = 1L) {
     if (!nzchar(claim) && attempt < 8L && exists("cc_is_active_run", mode = "function") &&
         cc_is_active_run(ctx$rv, ctx$run_request_id)) {
       # Kısa temizlik kilidi çekişmesi olay döngüsünü bekletmeden yeniden denenir.
-      later::later(function() {
+      later::later(function() shiny::isolate({
         ctx$rv <- run_ref$rv
         if (cc_is_active_run(ctx$rv, ctx$run_request_id)) cc_dispatch_run_preparation(ctx, attempt + 1L)
-      }, delay = 0.25)
+      }), delay = 0.25)
       return(invisible(TRUE))
     }
     if (!nzchar(claim)) {

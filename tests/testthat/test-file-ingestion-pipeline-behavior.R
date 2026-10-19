@@ -1035,6 +1035,54 @@ test_that("bilinmeyen rollback durumu yeni yıkıcı işçi başlatmaz", {
   expect_identical(finished, 1L)
 })
 
+test_that("yedek terfi sırasında yaşa dayalı devralma yeni hedefi ezdiremez", {
+  env <- .ingestionEnv()
+  root <- withr::local_tempdir()
+  staging <- file.path(root, "staging")
+  dest <- file.path(root, "hedef")
+  writeLines("ilk yazar", staging)
+  held <- FALSE
+  entered <- FALSE
+  env$file.link <- function(...) FALSE
+  env$mergen_lock_owner_reclaimable <- function(...) TRUE
+  env$mergen_reclaim_mutex <- function(...) {
+    if (held) return(NULL)
+    held <<- TRUE
+    "mutex"
+  }
+  testthat::local_mocked_bindings(unlock = function(...) held <<- FALSE, .package = "filelock")
+  env$file.rename <- function(from, to) {
+    if (identical(from, staging)) {
+      entered <<- env$mergen_reservation_takeover(paste0(dest, env$MERGEN_PROMOTE_RESERVATION_SUFFIX),
+        "2147483646-yeni", stale_sec = -1)
+      if (entered) writeLines("yeni yazar", dest)
+    }
+    base::file.rename(from, to)
+  }
+  result <- env$mergen_promote_staged_file(staging, dest, file.exists)
+  expect_true(result$ok)
+  expect_false(entered)
+  expect_identical(readLines(dest), "ilk yazar")
+  expect_false(held)
+})
+
+test_that("silinen ilk staging başarısı başarısız native kopyaya taşınmaz", {
+  env <- .ingestionEnv()
+  staging <- withr::local_tempfile()
+  native <- paste0(staging, "-native")
+  env$enc2native <- function(path) if (identical(path, staging)) native else path
+  testthat::local_mocked_bindings(file_copy = function(...) stop("yedek"), .package = "fs")
+  env$file.copy <- function(from, to, ...) {
+    if (!identical(to, staging)) return(FALSE)
+    writeLines("ilk kopya", to)
+    TRUE
+  }
+  result <- env$mergen_stage_upload_copy("kaynak", "hedef", staging,
+    file.exists, function(...) FALSE, function(path) unlink(path), rebind = function(...) NULL)
+  expect_false(result$ok)
+  expect_false(file.exists(result$staging))
+})
+
 test_that("native kopya başladığında günlük yeni staging sahibini taşır", {
   env <- .ingestionEnv()
   old <- withr::local_tempfile()
@@ -1178,6 +1226,38 @@ test_that("eksik dosya kimliği sahiplik veya silme kanıtı sayılmaz", {
   expect_error(env$file_ingestion_claim_artifact(path), "sahipliği doğrulanamadı")
   expect_false(file.exists(env$file_ingestion_owner_path(path)))
   expect_identical(readLines(path), "korunacak dosya")
+})
+
+test_that("iptal edilen çalışan parti ayrıntısız terminal UI temizliği alır", {
+  for (path in c("discard", "failure", "commit")) {
+    env <- .ingestionEnv()
+    controller <- env$file_ingestion_create_controller()
+    calls <- list()
+    job <- .ingestionJob(env, controller)
+    job$tasks <- list(list(name = "önceki sahibin dosyası"))
+    job$on_failure <- function(message, tasks) calls[[length(calls) + 1L]] <<- list(message, tasks)
+    controller$epoch <- controller$epoch + 1L
+    if (path == "discard") env$file_ingestion_finish_job(job, list())
+    if (path == "failure") env$file_ingestion_fail_job(job, simpleError("özel hata"))
+    if (path == "commit") env$file_ingestion_apply_commit(job, list(), list(indexed = character(), ms = 0))
+    for (i in 1:30) later::run_now(0)
+    expect_identical(calls, list(list("Dosya alımı iptal edildi.", list())), info = path)
+  }
+})
+
+test_that("başarısız kardeşin temizlik hatası sağlam dosyanın commit edilmesini engellemez", {
+  env <- .ingestionEnv()
+  kept <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("saglam.txt")))
+  failed <- list(ok = FALSE, dest = "bekleyen", artifact_id = "failed")
+  env$file_ingestion_discard_results <- function(...) stop("UNC kopyası henüz görünmüyor")
+  rolled_back <- FALSE
+  env$file_ingestion_rollback_job <- function(...) rolled_back <<- TRUE
+  job <- .ingestionJob(env, env$file_ingestion_create_controller())
+  env$file_ingestion_finish_job(job, list(kept, failed))
+  for (i in 1:30) later::run_now(0)
+  expect_false(rolled_back)
+  expect_true(file.exists(kept$dest))
+  expect_identical(.load_index()[["42"]][[tolower(kept$name)]]$artifact_id, kept$artifact_id)
 })
 
 test_that("commit edilen yapıt, reddedilen kardeşin temizlik hatasında geri alınmaz", {

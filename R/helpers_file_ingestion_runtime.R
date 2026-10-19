@@ -160,6 +160,9 @@ file_ingestion_apply_commit <- function(job, results, index_result, queue_wait_m
       indexed = index_result$indexed,
       summary = ozet
     )), silent = FALSE)
+  } else if (isTRUE(controller$active) && !identical(controller$epoch, job$epoch) &&
+             is.function(job$on_failure)) {
+    try(job$on_failure("Dosya alımı iptal edildi.", list()), silent = TRUE)
   }
 
   durum <- file_ingestion_queue_status()
@@ -192,9 +195,10 @@ file_ingestion_fail_job <- function(job, error) {
     "batch=%s worker hatasi: %s", job$id, mesaj
   ))
 
-  if (isTRUE(controller$active) && identical(controller$epoch, job$epoch) &&
-      is.function(job$on_failure)) {
-    try(job$on_failure(mesaj, job$tasks), silent = TRUE)
+  if (isTRUE(controller$active) && is.function(job$on_failure)) {
+    if (identical(controller$epoch, job$epoch))
+      try(job$on_failure(mesaj, job$tasks), silent = TRUE) else
+      try(job$on_failure("Dosya alımı iptal edildi.", list()), silent = TRUE)
   }
 
   invisible(NULL)

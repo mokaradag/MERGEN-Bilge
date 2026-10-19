@@ -953,6 +953,102 @@ test_that("canlı veya belirsiz runtime lease sahipliği devredilemez", {
   expect_true(file.exists(acquired))
 })
 
+test_that("çıktı geri yüklemesi başarısızsa yedeğin rezervasyon kimliği korunur", {
+  env <- .cc_codex_review_env()
+  root <- withr::local_tempdir()
+  output <- withr::local_tempdir()
+  src <- file.path(output, "rapor.txt")
+  dest <- file.path(root, "rapor.txt")
+  writeLines("yeni", src); writeLines("özgün", dest)
+  env$.cc_scan_norm <- function(path) normalizePath(path, winslash = "/", mustWork = FALSE)
+  env$.cc_scan_key <- identity
+  env$cc_output_sync_skipped_results <- function(...) list()
+  env$file.rename <- function(from, to) {
+    if (identical(to, dest)) FALSE else base::file.rename(from, to)
+  }
+  result <- env$cc_apply_output_sync_plan(list(source_workdir = root, output_root = output,
+    items = list(list(source_path = src, dest_path = dest, size = file.info(src)$size))))
+  expect_false(result[[1]]$success)
+  token <- env$mergen_reservation_owner(env$.cc_output_txn_paths(dest)$lock)
+  expect_false(is.na(token))
+  env$file.rename <- base::file.rename
+  expect_true(env$.cc_output_recover_dest(dest, token))
+  expect_identical(readLines(dest), "özgün")
+})
+
+test_that("uzun çıktı adı işlem yapıtlarının dosya adı sınırını aşmaz ve kurtarılır", {
+  env <- .cc_codex_review_env()
+  dest <- file.path(withr::local_tempdir(), paste0(strrep("x", 246), ".txt"))
+  token <- "2147483646-ccoutabcdef"
+  txn <- env$.cc_output_txn_paths(dest, token)
+  expect_true(all(nchar(basename(unlist(txn)), type = "bytes") <= 255))
+  owner <- env$.cc_output_dest_lock(dest, wait_sec = 0)
+  expect_true(nzchar(owner))
+  txn <- env$.cc_output_txn_paths(dest, owner)
+  writeLines("özgün", txn$backup)
+  writeLines(c(token, paste0("host=", Sys.info()[["nodename"]])), file.path(txn$lock, "owner"))
+  expect_true(file.rename(txn$backup, env$.cc_output_txn_paths(dest, token)$backup))
+  env$.cc_output_recover_parent(dirname(dest))
+  expect_identical(readLines(dest), "özgün")
+})
+
+test_that("çıktı kopyası kilidi tazeleyemezse kendi rezervasyonunu bırakır", {
+  env <- .cc_codex_review_env()
+  root <- withr::local_tempdir()
+  output <- withr::local_tempdir()
+  src <- file.path(output, "rapor.txt")
+  dest <- file.path(root, "rapor.txt")
+  writeLines("içerik", src)
+  env$.cc_scan_norm <- function(path) normalizePath(path, winslash = "/", mustWork = FALSE)
+  env$.cc_scan_key <- identity
+  env$cc_output_sync_skipped_results <- function(...) list()
+  env$mergen_reservation_touch <- function(...) FALSE
+  result <- env$cc_apply_output_sync_plan(list(source_workdir = root, output_root = output,
+    items = list(list(source_path = src, dest_path = dest, size = file.info(src)$size))))
+  expect_false(result[[1]]$success)
+  expect_false(dir.exists(env$.cc_output_txn_paths(dest)$lock))
+  expect_false(file.exists(dest))
+})
+
+test_that("yarım oluşturulmuş çıktı rezervasyonu yalnız bayatladıktan sonra kurtarılır", {
+  env <- .cc_codex_review_env()
+  dest <- file.path(withr::local_tempdir(), "rapor.txt")
+  lock <- env$.cc_output_txn_paths(dest)$lock
+  dir.create(lock)
+  expect_identical(env$.cc_output_dest_lock(dest, wait_sec = 0), "")
+  Sys.setFileTime(lock, Sys.time() - 120)
+  token <- env$.cc_output_dest_lock(dest, wait_sec = 0)
+  expect_true(nzchar(token))
+  expect_identical(env$mergen_reservation_owner(lock), token)
+  env$mergen_reservation_release(lock, token)
+})
+
+test_that("çıktı kurtarma eski rezervasyon kaldırılmadan yapılır ve başarısızlıkta yeniden denenir", {
+  env <- .cc_codex_review_env()
+  dest <- file.path(withr::local_tempdir(), "rapor.txt")
+  old <- "2147483646-ccoutabcdef"
+  txn <- env$.cc_output_txn_paths(dest, old)
+  dir.create(txn$lock)
+  writeLines(c(old, paste0("host=", Sys.info()[["nodename"]])), file.path(txn$lock, "owner"))
+  writeLines("özgün", txn$backup)
+  recover <- env$.cc_output_recover_dest
+  env$.cc_output_recover_dest <- function(path, token) {
+    expect_identical(token, old)
+    expect_identical(env$mergen_reservation_owner(txn$lock), old)
+    FALSE
+  }
+  blocked <- env$.cc_output_dest_lock(dest, wait_sec = 0)
+  expect_true(isTRUE(attr(blocked, "recovery_failed")))
+  expect_identical(env$mergen_reservation_owner(txn$lock), old)
+  expect_true(file.exists(txn$backup))
+  env$.cc_output_recover_dest <- recover
+  token <- env$.cc_output_dest_lock(dest, wait_sec = 0)
+  expect_true(nzchar(token))
+  expect_identical(readLines(dest), "özgün")
+  expect_false(file.exists(txn$backup))
+  env$mergen_reservation_release(txn$lock, token)
+})
+
 test_that("çıktı yayını hedef başına tek yazarlıdır ve yarım kalan yedek kurtarılır", {
   env <- .cc_codex_review_env()
   source_root <- withr::local_tempdir()
@@ -971,12 +1067,12 @@ test_that("çıktı yayını hedef başına tek yazarlıdır ve yarım kalan yed
   txn <- env$.cc_output_txn_paths(dest)
   # Sert ölüm: ölü sürecin bayat rezervasyonu ve onun jetonuyla adlandırılmış
   # yapıtlar kalır. Önek taşıyan sıradan kullanıcı dosyaları işlem yapıtı değildir.
-  bayat_islem <- function(hedef, ozgun) {
+  bayat_islem <- function(hedef, ozgun, legacy = FALSE) {
     jeton <- paste0("2147483646-ccout", substr(basename(tempfile()), 5, 12))
     kilit <- env$.cc_output_txn_paths(hedef)$lock
     dir.create(kilit)
     writeLines(c(jeton, paste0("host=", Sys.info()[["nodename"]])), file.path(kilit, "owner"))
-    yollar <- env$.cc_output_txn_paths(hedef, jeton)
+    yollar <- env$.cc_output_txn_paths(hedef, jeton, legacy = legacy)
     writeLines(ozgun, yollar$backup, useBytes = TRUE)
     writeLines("yarım", yollar$staging, useBytes = TRUE)
     yollar
@@ -984,7 +1080,7 @@ test_that("çıktı yayını hedef başına tek yazarlıdır ve yarım kalan yed
   kullanici <- file.path(source_root, c(".cc-output-backup-rapor.txt", ".cc-output-stage-rapor.txt",
                                         ".cc-output-backup-diger2.txt"))
   for (yol in kullanici) writeLines("kullanıcı verisi", yol, useBytes = TRUE)
-  yarim <- bayat_islem(dest, "özgün")
+  yarim <- bayat_islem(dest, "özgün", legacy = TRUE)
   ok <- env$cc_apply_output_sync_plan(plan_for("rapor.txt", "yeni"))
   expect_true(isTRUE(ok[[1]]$success))
   expect_identical(readLines(dest, warn = FALSE), "yeni")
@@ -1009,6 +1105,29 @@ test_that("çıktı yayını hedef başına tek yazarlıdır ve yarım kalan yed
   expect_match(blocked[[1]]$error, "kullanılıyor")
   expect_identical(readLines(dest, warn = FALSE), "yeniden")
   env$mergen_reservation_release(txn$lock, jeton)
+})
+
+test_that("başka sunucunun terk edilmiş kirası kayıtlı sunucu rolüyle geri kazanılır", {
+  env <- .cc_codex_review_env()
+  lease <- withr::local_tempfile()
+  writeLines(c(paste0("host=", Sys.info()[["nodename"]]), "server=111", "pid=111", "pid=222"), lease)
+  Sys.setFileTime(lease, Sys.time() - 7200)
+  env$mergen_pid_status <- function(pid, ...) identical(pid, 111L)
+  expect_true(env$cc_runtime_lease_reclaimable(lease, orphan_sec = 3600))
+  env$mergen_pid_status <- function(...) TRUE
+  expect_false(env$cc_runtime_lease_reclaimable(lease, orphan_sec = 3600))
+  expect_true(env$cc_bind_runtime_lease(lease))
+  expect_true(paste0("server=", Sys.getpid()) %in% readLines(lease))
+})
+
+test_that("okunamayan kira yalnız yetim eşiğinden sonra geri kazanılır", {
+  env <- .cc_codex_review_env()
+  lease <- withr::local_tempfile()
+  writeLines("kira", lease)
+  env$.cc_read_runtime_lease <- function(...) NULL
+  expect_false(env$cc_runtime_lease_reclaimable(lease, orphan_sec = 3600))
+  Sys.setFileTime(lease, Sys.time() - 7200)
+  expect_true(env$cc_runtime_lease_reclaimable(lease, orphan_sec = 3600))
 })
 
 test_that("okunamayan kira dizini yabancı kira yok sayılmaz", {
@@ -1052,6 +1171,30 @@ test_that("tarayıcı kapanışında bekleyen hazırlık yeniden denemesi ayrıl
   expect_identical(attempts, 8L)
   expect_true(is.environment(failed))
   expect_true(env$cc_is_active_run(failed, "A"))
+})
+
+test_that("açık oturumda hazırlık yeniden denemesi reaktif bağlam dışında tamamlanır", {
+  env <- .cc_codex_review_env()
+  callbacks <- list()
+  dispatched <- 0L
+  attempts <- 0L
+  env$cc_claim_runtime_ownership <- function(...) {
+    attempts <<- attempts + 1L
+    if (attempts == 1L) "" else "owner"
+  }
+  env$.cc_codex_original_cc_dispatch_run_preparation <- function(ctx) {
+    expect_identical(ctx$rv$active_runtime_workdir, "runtime")
+    dispatched <<- dispatched + 1L
+  }
+  rv <- shiny::reactiveValues(active_request_id = "A", is_running = TRUE,
+    active_runtime_source = "source", active_runtime_workdir = "runtime")
+  testthat::local_mocked_bindings(later = function(func, delay = 0) {
+    callbacks[[length(callbacks) + 1L]] <<- func
+    function() NULL
+  }, .package = "later")
+  shiny::isolate(env$cc_dispatch_run_preparation(list(rv = rv, workdir = "source", run_request_id = "A")))
+  expect_no_error(callbacks[[1L]]())
+  expect_identical(dispatched, 1L)
 })
 
 test_that("kira değiştirmesi geçici hatada yeniden denenir, okunamayan kira yeniden yazılmaz", {

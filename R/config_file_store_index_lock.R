@@ -127,7 +127,8 @@ file_store_index_lock_heartbeat <- function() {
       sahip <- .lock_owner_token()
       if (!is.null(sahip) && !identical(sahip, lock_token)) return(invisible(FALSE))
     }
-    if (is.null(sahip) && !isTRUE(dir.exists(lock_dir))) return(invisible(FALSE))
+    if (is.null(sahip) && (!isTRUE(dir.exists(lock_dir)) || !isTRUE(file.exists(lock_marker))))
+      return(invisible(FALSE))
     # Tazelik KANITLANAMAZSA sahiplik de sürdürülemez: bayat mtime taşıyan
     # marker başka bir yazar tarafından kırılabilir.
     if (!isTRUE(.write_lock_marker())) return(invisible(FALSE))

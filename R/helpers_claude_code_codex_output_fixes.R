@@ -272,6 +272,7 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
     # hedefe ve başkasının yapıtlarına dokunulmaz.
     if (!isTRUE(mergen_reservation_touch(txn$lock, dest_jeton))) {
       unlink(staging, force = TRUE)
+      mergen_reservation_release(txn$lock, dest_jeton)
       fail("Hedef kilidi kopya sırasında kaybedildi; çıktı terfi ettirilmedi")
       next
     }
@@ -289,7 +290,7 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
       unlink(staging, force = TRUE)
       unlink(dest, force = TRUE)
       restored <- !had_dest || (file.exists(backup) && isTRUE(file.rename(backup, dest)))
-      mergen_reservation_release(txn$lock, dest_jeton)
+      if (restored) mergen_reservation_release(txn$lock, dest_jeton)
       fail(if (!post_guard) {
         if (restored) "Çalıştırma durduruldu; çıktı terfisi geri alındı" else
           "Çalıştırma durduruldu ve önceki hedef geri yüklenemedi"

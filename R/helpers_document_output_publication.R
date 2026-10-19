@@ -28,7 +28,7 @@ cc_publish_document_summary_async <- function(result, target_dir, output_dir, se
       if (length(applied) != 1L || !isTRUE(applied[[1L]]$success)) stop("Özet dosyası güvenli biçimde aktarılamadı.")
       normalizePath(summary_dest, winslash = "/", mustWork = TRUE)
     }, task_type = "claude_code_summary_publish", session_token = session$token,
-    execution_timeout = 180, queue_timeout = 30, cancel_check = current,
+    execution_timeout = 180, queue_timeout = 180, cancel_check = current,
     dependency_mode = "explicit", globals = globals, packages = c("tools", "utils")),
     error = function(e) promises::promise_reject(e))
   promises::finally(promises::then(promise, function(path) {

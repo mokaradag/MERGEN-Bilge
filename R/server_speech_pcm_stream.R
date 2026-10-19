@@ -108,6 +108,8 @@ mergen_speech_pcm_stream_start <- function(session, persona_id, text,
       )
     },
     task_type = "tts",
+    cancel_check = function() !isTRUE(rec$cancelled) &&
+      (!is.function(cancel_check) || isTRUE(tryCatch(cancel_check(), error = function(e) FALSE))),
     session_token = session$token,
     meta = list(purpose = "voxcpm2_pcm_stream")
   ) %...>% (function(res) {

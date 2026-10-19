@@ -203,7 +203,7 @@ cc_dispatch_run_preparation <- function(ctx) {
         stage = "zaman_asimi"
       )
     }
-  }, delay = zaman_asimi_sn)
+  }, delay = 2 * zaman_asimi_sn)
 
   # Hazırlık bittiği anda bekleyen deadline iptal edilir; aksi halde her
   # çalıştırma tam süre boyunca session/prompt/API anahtarı bağlamını
@@ -231,6 +231,8 @@ cc_dispatch_run_preparation <- function(ctx) {
         cc_prepare_run_workspace(istek)
       },
       task_type = "claude_code_run_prepare",
+      execution_timeout = zaman_asimi_sn,
+      queue_timeout = zaman_asimi_sn,
       cancel_check = function() cc_is_active_run(run_ref$rv, ctx$run_request_id) &&
         isTRUE(shiny::isolate(run_ref$rv$is_running)),
       session_token = ctx$session$token,

@@ -170,12 +170,17 @@ mergen_reservation_touch <- function(rezerv, jeton) {
 # kilit bırakılıp yol silinirse bekleyen ve yeni gelen süreç farklı dosyaları
 # kilitleyip kritik bölüme birlikte girebilirdi.
 mergen_reservation_takeover <- function(rezerv, jeton,
-                                        stale_sec = .MERGEN_RESERVATION_STALE_SEC) {
+                                        stale_sec = .MERGEN_RESERVATION_STALE_SEC,
+                                        before_remove = NULL) {
+  jeton <- as.character(jeton %||% "")[1]
+  if (is.na(jeton) || !nzchar(jeton)) return(FALSE)
   gozlenen <- mergen_reservation_owner(rezerv)
   # OKUNAMAYAN marker sahiplik KANITI DEĞİLDİR: iki başarısız okuma da
   # `NA_character_` döner ve `identical(NA, NA)` TRUE olur. Geçici bir UNC
   # okuma hatası, CANLI bir rezervasyonun devralınmasına izin veriyordu.
-  if (length(gozlenen) != 1L || is.na(gozlenen) || !nzchar(gozlenen)) return(FALSE)
+  if (length(gozlenen) != 1L ||
+      (is.na(gozlenen) && isTRUE(file.exists(.mergen_reservation_marker(rezerv)))) ||
+      (!is.na(gozlenen) && !nzchar(gozlenen))) return(FALSE)
   if (!exists("mergen_reclaim_mutex", mode = "function")) return(FALSE)
 
   guard_yolu <- paste0(rezerv, ".reclaim")
@@ -186,6 +191,7 @@ mergen_reservation_takeover <- function(rezerv, jeton,
       !mergen_lock_owner_reclaimable(.mergen_reservation_marker(rezerv), gozlenen,
                                      stale_sec = stale_sec,
                                      age_paths = c(.mergen_reservation_marker(rezerv), rezerv))) return(FALSE)
+  if (is.function(before_remove) && !isTRUE(before_remove(gozlenen))) return(FALSE)
 
   # Silme, GÖZLENEN örneğe bağlıdır: karantina taşımasından sonra jeton hâlâ
   # `gozlenen` değilse rezervasyon bu aralıkta değişmiştir ve devralınmaz.
