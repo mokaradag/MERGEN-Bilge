@@ -6,7 +6,7 @@
 #
 #           Kapsananlar (shiny::testServer ile output okunarak):
 #           - mcp_mode_indicator: aktif araç ailesine göre öncelikli gösterge.
-#           - current_model_display: görsel modunda dall-e-3, aksi halde model
+#           - current_model_display: görsel modunda yapılandırılan model, aksi halde model
 #             adı; Derin Düşünme aktifse runtime ipucu.
 #           - chat_model_selector_ui: model kataloğu dropdown'u.
 #
@@ -87,10 +87,15 @@ testthat::test_that("mcp_mode_indicator kodlama, Excel'e göre önceliklidir", {
 # ------------------------------------------------------------------------------
 # current_model_display
 # ------------------------------------------------------------------------------
-testthat::test_that("current_model_display görsel modunda dall-e-3 gösterir", {
+testthat::test_that("current_model_display görsel modunda yapılandırılan modeli gösterir", {
   env <- .source_chat_outputs_for_test()
-  out <- .render_chat_output(env, list(enable_image_tools = TRUE), "current_model_display")
-  testthat::expect_true(grepl("dall-e-3", out, fixed = TRUE))
+  for (model in c("FLUX.2-dev", "custom-image-model", NA_character_)) {
+    withr::with_envvar(c(IMAGE_GEN_MODEL = model), {
+      out <- .render_chat_output(env, list(enable_image_tools = TRUE), "current_model_display")
+      expected <- if (is.na(model)) "FLUX.2-dev" else model
+      testthat::expect_true(grepl(paste0("Model: ", expected), out, fixed = TRUE))
+    })
+  }
 })
 
 testthat::test_that("current_model_display seçili model kimliğini görünür ada çevirir", {

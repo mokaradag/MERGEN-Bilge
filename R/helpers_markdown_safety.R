@@ -190,9 +190,21 @@ mergen_serve_image_data_url <- function(local_path,
     }
   }
 
-  # base64 yedeği (oturumsuz/hata durumu) — eski davranışı korur.
+  ext <- tolower(tools::file_ext(local_path))
+  content_type <- switch(
+    ext,
+    "jpg" = , "jpeg" = "image/jpeg",
+    "png"  = "image/png",
+    "gif"  = "image/gif",
+    "webp" = "image/webp",
+    "bmp"  = "image/bmp",
+    "svg"  = "image/svg+xml",
+    "image/png"
+  )
+
+  # base64 yedeği (oturumsuz/hata durumu) doğru dosya MIME türünü korur.
   tryCatch(
-    paste0("data:image/png;base64,", base64enc::base64encode(local_path)),
+    paste0("data:", content_type, ";base64,", base64enc::base64encode(local_path)),
     error = function(e) NULL
   )
 }

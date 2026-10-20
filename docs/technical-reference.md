@@ -2471,7 +2471,7 @@ LOCAL_STT_MODEL=whisper-large-v3
 
 # Görsel üretimi
 IMAGE_GEN_ENDPOINT=https://your-image-endpoint.example.com/v1/images/generations
-IMAGE_GEN_MODEL=dall-e-3
+IMAGE_GEN_MODEL=FLUX.2-dev
 IMAGE_GEN_TIMEOUT=180
 TRANSLATION_MODEL=your-translation-model
 
@@ -2496,6 +2496,10 @@ CLAUDE_CODE_PERSIST_SESSIONS=TRUE
 # MCP dosya deposu
 MCP_FILES_BASE=
 ```
+
+Görsel modeli `IMAGE_GEN_MODEL` ile seçilir; varsayılan ve güncel kurum içi model `FLUX.2-dev`'dir. Uç nokta `IMAGE_GEN_ENDPOINT` ile yapılandırılır. Mevcut `model`, `prompt`, `n`, `size`, `quality` istek alanları korunur. Başarılı yanıtta `data[].url` veya `data[].b64_json` desteklenir; `revised_prompt` isteğe bağlıdır. Base64 yanıtının biçimi (PNG, JPEG, GIF veya WebP) veri önekinden belirlenir ve uygun veri URL'si oluşturulur. Mevcut `save_image_locally()` yolunda kodlanmış boyut sınırı (`ceiling(32 MiB × 4 / 3) + 4` bayt), 32 MiB çözülmüş boyut sınırı ve çözülmüş görselin biçim/imza doğrulaması uygulanır; dosya uygun `.png`, `.jpg`, `.gif` veya `.webp` uzantısıyla normal görsel dizinine aşamalı olarak yayımlanır. Yerel kayıt başarılıysa sonuçta yalnızca dosya yolu tutulur; sohbet metni/veritabanı mevcut `[GÖRSEL:<yol>]` işaretini kullanır. Görsel kartı, yeniden yükleme ve galeri bu dosyayı kullanır; Base64 yükü loglarda veya kalıcı sohbet durumunda tutulmaz. Base64 görselin yerel kaydı başarısızsa kontrollü hata döndürülür.
+
+Desteklenen görsel data URL'lerinde son `;base64` öncesindeki medya türü parametreleri (ör. `charset=utf-8`) kabul edilir; boyut ve bayt doğrulamaları değişmez. Base64 yayını mevcut `mergen_promote_staged_file()` yardımcısını gerektirir; yardımcı yoksa kayıt kontrollü biçimde durur. Başarısız yayında yalnızca bu çağrıya ait olduğu açıkça bildirilen kısmi hedef temizlenir; rezervasyon alınamaması başka isteğin dosyasını silme yetkisi vermez. Yeni dosya sınırlı görünürlük denemelerinden sonra hâlâ sunulamıyorsa üretim başarısı korunur, ancak boş kaynaklı normal kart yerine “Görsel oluşturuldu ancak görüntülenemedi.” kutusu gösterilir. İndirilen dosyanın uzantısı data URL'nin veya alınan Blob'un MIME türüne göre `.png`, `.jpg`, `.gif` ya da `.webp` olur; bilinmeyen türlerde `.png` kullanılır.
 
 Varsayılan kurum API anahtarı istenirse `.Renviron` üzerinden yönetilir. Kişisel API anahtarı varsa her zaman önceliklidir; kişisel anahtar yoksa ve varsayılan anahtar izinliyse sunucu-yönetimli kurum anahtarı kullanılır. Bu değer GitHub'a yazılmamalı ve loglarda gösterilmemelidir. Kişisel anahtar zorunlu mod için `MERGEN_ALLOW_DEFAULT_API_KEY=FALSE` ve `MERGEN_REQUIRE_PERSONAL_API_KEY=TRUE` kullanılır. `.Renviron` değişikliklerinin etkili olması için tarayıcı yenilemesi değil, tam R process restart gerekir.
 

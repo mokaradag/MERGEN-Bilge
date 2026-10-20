@@ -314,7 +314,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       # Görsel modu için ek UI güncellemeleri (galeri yaklaşımıyla aynı)
       if (identical(detected_tool, "enable_image_tools")) {
         session$sendCustomMessage("toggleImageMode", list(active = TRUE))
-        image_model <- Sys.getenv("IMAGE_GEN_MODEL", "dall-e-3")
+        image_model <- Sys.getenv("IMAGE_GEN_MODEL", "FLUX.2-dev")
         isolate({ settings_data$model_selection <- image_model })
       }
 

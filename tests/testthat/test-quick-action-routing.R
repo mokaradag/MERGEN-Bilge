@@ -135,7 +135,7 @@ source(
       "technical name 6",
       "technical name 3",
       "technical name 4",
-      "dall-e-3",
+      Sys.getenv("IMAGE_GEN_MODEL", "FLUX.2-dev"),
       "technical name 5",
       "technical name 2"
     ),
@@ -334,7 +334,7 @@ test_that("hızlı işlem config içinde yinelenen id, aile veya araç bayrağı
 
   for (model_id in model_ids) {
     expect_true(
-      model_id %in% unname(config$local_models) || identical(model_id, "dall-e-3"),
+      model_id %in% unname(config$local_models) || identical(model_id, config$tool_mode_config$image$model_id),
       info = sprintf("Beklenmeyen hızlı işlem modeli: %s", model_id)
     )
   }

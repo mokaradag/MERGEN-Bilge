@@ -223,7 +223,7 @@ api_config <- list(
       description = "Metin tabanlı açıklamalarla AI görüntü oluşturma modellerini kullanarak özel görseller tasarlayın.",
       icon_name = "image",
       themeColor = "#ec4899",
-      model_id = Sys.getenv("IMAGE_GEN_MODEL", "dall-e-3"),
+      model_id = Sys.getenv("IMAGE_GEN_MODEL", "FLUX.2-dev"),
       real_tool = TRUE
     ),	
     coding = list(

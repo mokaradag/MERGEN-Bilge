@@ -27,13 +27,19 @@ window.downloadGeneratedImage = function(button) {
   
   // Dosya adı oluştur
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const filename = `mergen_bilge_${timestamp}.png`;
+  const extensions = new Map([
+    ['image/png', 'png'], ['image/jpeg', 'jpg'], ['image/gif', 'gif'], ['image/webp', 'webp']
+  ]);
+  const filenameForMime = mime => `mergen_bilge_${timestamp}.${
+    extensions.get(String(mime || '').split(';')[0].trim().toLowerCase()) || 'png'
+  }`;
   
   // Base64 ise doğrudan indir
   if (img.src.startsWith('data:')) {
     const link = document.createElement('a');
     link.href = img.src;
-    link.download = filename;
+    const mime = img.src.match(/^data:([^;,]+)/i);
+    link.download = filenameForMime(mime ? mime[1] : '');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -48,7 +54,7 @@ window.downloadGeneratedImage = function(button) {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = filename;
+      link.download = filenameForMime(blob.type);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

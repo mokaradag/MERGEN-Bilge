@@ -157,7 +157,7 @@
     id = ns("image_settings_card"),
     h3("Görsel Oluşturma Ayarları", class = "settings-title"),
     p(
-      "DALL-E-3 ile görsel oluşturma ayarlarını yapılandırın. Bu ayarlar yalnızca 'Görsel Uzmanı' modu aktifken geçerlidir.",
+      "Görsel oluşturma ayarlarını yapılandırın. Bu ayarlar yalnızca 'Görsel Uzmanı' modu aktifken geçerlidir.",
       class = "setting-description"
     ),
     fluidRow(

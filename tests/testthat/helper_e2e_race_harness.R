@@ -80,7 +80,7 @@ e2e_regression_config <- function() {
         description = "Metinden görsel oluşturma.",
         icon_name = "image",
         themeColor = "#ec4899",
-        model_id = "dall-e-3",
+        model_id = Sys.getenv("IMAGE_GEN_MODEL", "FLUX.2-dev"),
         real_tool = TRUE
       ),
       coding = list(

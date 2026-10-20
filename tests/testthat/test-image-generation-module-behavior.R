@@ -3,7 +3,7 @@
 # Açıklama: R/module_image_generation.R görsel oluşturma modülünün davranışsal
 #           testleri. Çeviri kapısı, yapılandırma/anahtar koruma yolları, yerel
 #           dizin, web URL üretimi, UI bileşenleri ve HTML üretimi (XSS kaçışı).
-#           Gerçek DALL-E/LLM endpoint'i çağrılmaz; httr mock ile yalıtılır.
+#           Gerçek görsel/LLM endpoint'i çağrılmaz; httr mock ile yalıtılır.
 # ==============================================================================
 
 testthat::local_edition(3)
@@ -15,6 +15,9 @@ if (requireNamespace("shiny", quietly = TRUE)) {
 }
 
 .imggen_env <- new.env(parent = globalenv())
+for (name in c("utils_path_reservation.R", "helpers_files_promote_probe.R", "helpers_files_promote_target.R")) {
+  source(file.path(resolve_repo_root_for_tests(), "R", name), encoding = "UTF-8", local = .imggen_env)
+}
 
 # render_* fonksiyonları artık kanonik mergen_generated_image_card_html
 # (helpers_markdown_safety.R) yardımcısına delege eder. helper_bootstrap bunu
@@ -62,6 +65,17 @@ test_that("IMAGE_SIZE_OPTIONS ve IMAGE_QUALITY_OPTIONS doğru Türkçe etiket/de
   expect_equal(unname(.imggen_env$IMAGE_SIZE_OPTIONS[["Dikey (1024x1792)"]]), "1024x1792")
   expect_true("standard" %in% names(.imggen_env$IMAGE_QUALITY_OPTIONS))
   expect_true("hd" %in% names(.imggen_env$IMAGE_QUALITY_OPTIONS))
+})
+
+test_that("görsel modeli FLUX.2-dev varsayılanını ve yapılandırılan modeli kullanır", {
+  for (model in c(NA_character_, "custom-image-model")) {
+    withr::with_envvar(c(IMAGE_GEN_MODEL = model), {
+      env <- new.env(parent = globalenv())
+      source(file.path(resolve_repo_root_for_tests(), "R", "module_image_generation.R"),
+             encoding = "UTF-8", local = env)
+      expect_identical(env$image_gen_config$model, if (is.na(model)) "FLUX.2-dev" else model)
+    })
+  }
 })
 
 # -----------------------------------------------------------------------------
@@ -256,6 +270,178 @@ test_that("generate_image: API 200 dışı yanıtta hata mesajı döndürür", {
   expect_true(grepl("sunucu hatası", sonuc$error, fixed = TRUE))
 })
 
+# Küçük, geçerli 1x1 PNG; üretim verisi veya büyük görsel fixture'ı içermez.
+.image_png_b64 <- "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYPgPAAEDAQAIicLsAAAAAElFTkSuQmCC"
+
+.mock_image_api <- function(image_data, .local_envir = parent.frame()) {
+  testthat::local_mocked_bindings(
+    POST = function(...) structure(list(), class = "response"),
+    status_code = function(...) 200L,
+    content = function(...) list(data = list(image_data)),
+    .package = "httr", .env = .local_envir
+  )
+  rlang::local_bindings(
+    image_gen_config = list(endpoint = "http://img.local/gen", model = "FLUX.2-dev",
+                            translation_model = "", timeout = 180),
+    .env = .imggen_env, .frame = .local_envir
+  )
+}
+
+test_that("generate_image: Base64 yanıtı url ve revised_prompt olmadan veri URL'sine dönüşür", {
+  .mock_image_api(list(b64_json = .image_png_b64))
+  log <- utils::capture.output(sonuc <- .imggen_env$generate_image("a cat", "anahtar"))
+
+  expect_true(sonuc$success)
+  expect_identical(sonuc$image_url, paste0("data:image/png;base64,", .image_png_b64))
+  expect_null(sonuc$revised_prompt)
+  expect_null(sonuc$local_path)
+  expect_false(any(grepl(substr(.image_png_b64, 1, 30), log, fixed = TRUE)))
+})
+
+test_that("generate_image: Base64 terfi sonrası gecikmeli görünürlükte çizilir ve yeniden yüklenir", {
+  repo_root <- resolve_repo_root_for_tests()
+  .mock_image_api(list(b64_json = .image_png_b64))
+  rlang::local_bindings(mergen_promote_staged_file = function(staging, hedef, ...) {
+    moved <- file.rename(staging, hedef)
+    list(promoted = moved, ok = FALSE, yabanci = FALSE)
+  }, .env = .imggen_env)
+  withr::local_dir(withr::local_tempdir())
+  log <- utils::capture.output(sonuc <- .imggen_env$generate_image(
+    "a cat", "anahtar", user_id = 7, chat_id = 9
+  ))
+
+  expect_true(sonuc$success)
+  expect_true(file.exists(sonuc$local_path))
+  expect_gt(file.info(sonuc$local_path)$size, 0)
+  expect_identical(readBin(sonuc$local_path, "raw", n = file.info(sonuc$local_path)$size),
+                   base64enc::base64decode(.image_png_b64))
+  expect_null(sonuc$image_url)
+  expect_null(sonuc$revised_prompt)
+  expect_false(any(grepl(substr(.image_png_b64, 1, 30), log, fixed = TRUE)))
+  expect_false(grepl(.image_png_b64, jsonlite::toJSON(sonuc, auto_unbox = TRUE), fixed = TRUE))
+
+  # Oturum servisi dosya yolunu alır; kart ve yeniden yükleme API yükünü istemez.
+  rlang::local_bindings(mergen_serve_image_data_url = function(path) {
+    expect_identical(path, sonuc$local_path)
+    "session/image.png"
+  }, .env = .imggen_env)
+  visibility_checks <- 0L
+  rlang::local_bindings(file.exists = function(path) {
+    visibility_checks <<- visibility_checks + 1L
+    if (visibility_checks == 1L) FALSE else base::file.exists(path)
+  }, .env = .imggen_env)
+  expect_true(any(grepl("hedef henüz görünmüyor", log, fixed = TRUE)))
+  html <- .imggen_env$render_generated_image_html(sonuc, "flux-image")
+  expect_identical(visibility_checks, 2L)
+  restored <- .imggen_env$render_image_from_saved_path(sonuc$local_path, NULL, "flux-reload")
+  expect_match(html, 'src="session/image.png"', fixed = TRUE)
+  expect_match(restored, 'src="session/image.png"', fixed = TRUE)
+  expect_false(grepl("base64,", html, fixed = TRUE))
+  saved_chat <- new.env(parent = .imggen_env)
+  source(file.path(repo_root, "R", "helpers_chat_message_formatting.R"),
+         encoding = "UTF-8", local = saved_chat)
+  reloaded <- saved_chat$db_message_render_image_html(sonuc$local_path, NULL, "flux-saved", user_id = 7)
+  expect_match(reloaded, 'src="session/image.png"', fixed = TRUE)
+
+  # Üretim işleyicisi sohbet metnine yalnızca yerel yol işaretini yazar.
+  handler <- new.env(parent = .imggen_env)
+  source(file.path(repo_root, "R", "server_handler_image_generation.R"),
+         encoding = "UTF-8", local = handler)
+  handler$mb_api_key_get_feature_key_value <- function(...) "anahtar"
+  handler$removeUI <- handler$insertUI <- handler$showToast <- handler$log_debug <- function(...) NULL
+  handler$tracked_future_promise <- function(...) promises::promise_resolve(sonuc)
+  handler$`%...>%` <- promises::`%...>%`
+  handler$`%...!%` <- promises::`%...!%`
+  testthat::local_mocked_bindings(runjs = function(...) NULL, .package = "shinyjs")
+  messages <- list()
+  values <- new.env()
+  values$current_chat_id <- 9
+  handler$handle_image_generation_mode(list(
+    input = list(), settings_data = list(), values = values,
+    session = list(token = "image-test"), current_user_id = 7, user_message_text = "a cat",
+    add_message_fn = function(content, type, html) {
+      messages[[length(messages) + 1L]] <<- list(content = content, type = type, html = html)
+    },
+    reset_chat_state_fn = function() NULL
+  ))
+  for (i in seq_len(100L)) {
+    if (later::loop_empty()) break
+    later::run_now(timeout = 0)
+  }
+  expect_length(messages, 1L)
+  expect_identical(messages[[1]]$content, paste0("[GÖRSEL:", sonuc$local_path, "] [Görsel oluşturuldu]"))
+  expect_match(messages[[1]]$html, 'src="session/image.png"', fixed = TRUE)
+  expect_false(grepl(.image_png_b64, messages[[1]]$content, fixed = TRUE))
+})
+
+test_that("generate_image: Base64 yerel kayıt başarısızsa veri içermeyen kontrollü hata döner", {
+  .mock_image_api(list(b64_json = .image_png_b64))
+  rlang::local_bindings(save_image_locally = function(...) NULL, .env = .imggen_env)
+  sonuc <- .sessiz(.imggen_env$generate_image("a cat", "anahtar", user_id = 7))
+  expect_false(sonuc$success)
+  expect_identical(sonuc$error, "Görsel verisi yerel olarak kaydedilemedi")
+  expect_null(sonuc$image_url)
+})
+
+test_that("generate_image: Base64 çözme hatası HTTP indirmesine düşmez ve yükü loglamaz", {
+  .mock_image_api(list(b64_json = .image_png_b64))
+  withr::local_dir(withr::local_tempdir())
+  testthat::local_mocked_bindings(base64decode = function(...) stop("decode failed"),
+                                 .package = "base64enc")
+  get_calls <- 0L
+  testthat::local_mocked_bindings(GET = function(...) {
+    get_calls <<- get_calls + 1L
+    stop("HTTP çağrılmamalı")
+  }, .package = "httr")
+  log <- utils::capture.output(sonuc <- .imggen_env$generate_image("a cat", "anahtar", user_id = 7))
+  expect_false(sonuc$success)
+  expect_identical(sonuc$error, "Görsel verisi yerel olarak kaydedilemedi")
+  expect_identical(get_calls, 0L)
+  expect_false(any(grepl(substr(.image_png_b64, 1, 30), log, fixed = TRUE)))
+})
+
+test_that("generate_image: URL varsa Base64 yerine URL korunur ve istek sözleşmesi değişmez", {
+  .mock_image_api(list(url = "http://img.local/out.png", b64_json = .image_png_b64))
+  rlang::local_bindings(
+    save_image_locally = function(image_url, user_id, chat_id = NULL) {
+      expect_identical(image_url, "http://img.local/out.png")
+      "local/path.png"
+    },
+    .env = .imggen_env
+  )
+  testthat::local_mocked_bindings(
+    base64decode = function(...) stop("Base64 çözülmemeli"),
+    .package = "base64enc"
+  )
+  request <- NULL
+  testthat::local_mocked_bindings(POST = function(url, ..., body) {
+    expect_identical(url, "http://img.local/gen")
+    request <<- jsonlite::fromJSON(body)
+    structure(list(), class = "response")
+  }, .package = "httr")
+  sonuc <- .sessiz(.imggen_env$generate_image(
+    "a cat", "anahtar", size = "1792x1024", quality = "hd", user_id = 7
+  ))
+  expect_true(sonuc$success)
+  expect_identical(sonuc$image_url, "http://img.local/out.png")
+  expect_identical(sonuc$local_path, "local/path.png")
+  expect_null(sonuc$revised_prompt)
+  expect_equal(request, list(model = "FLUX.2-dev", prompt = "a cat", n = 1,
+                             size = "1792x1024", quality = "hd"))
+})
+
+test_that("generate_image: boş veya desteklenmeyen başarılı yanıt kontrollü veri hatası döndürür", {
+  for (image_data in list(list(foo = "bar"), list(url = ""), list(b64_json = ""),
+                          list(url = NA_character_), "invalid", NULL)) {
+    local({
+      .mock_image_api(image_data)
+      sonuc <- .sessiz(.imggen_env$generate_image("a cat", "anahtar"))
+      expect_false(sonuc$success)
+      expect_identical(sonuc$error, "API yanıtında görsel verisi bulunamadı")
+    })
+  }
+})
+
 # -----------------------------------------------------------------------------
 # get_image_web_url
 # -----------------------------------------------------------------------------
@@ -376,4 +562,39 @@ test_that("render_image_from_saved_path: var olan dosya için açıklamalı HTML
   expect_true(grepl("data:image/png;base64,", html, fixed = TRUE))
   expect_true(grepl("Kaydedilmiş görsel açıklaması", html, fixed = TRUE))
   expect_true(grepl("MERGEN Bilge", html, fixed = TRUE))
+})
+
+test_that("görsel render görünürlük denemesi sınırlıdır ve mevcut URL yedeğini korur", {
+  attempts <- 0L
+  waits <- numeric()
+  rlang::local_bindings(
+    get_image_web_url = function(path) { attempts <<- attempts + 1L; NULL },
+    Sys.sleep = function(seconds) { waits <<- c(waits, seconds) },
+    .env = .imggen_env
+  )
+  html <- .imggen_env$render_generated_image_html(
+    list(success = TRUE, local_path = "pending.png", image_url = "http://img.local/image.png"), "pending"
+  )
+  expect_identical(attempts, 6L)
+  expect_identical(waits, rep(0.02, 5L))
+  expect_match(html, 'src="http://img.local/image.png"', fixed = TRUE)
+})
+
+test_that("görsel render çözülemeyen kaynakta başarı kartı yerine görüntüleme hatası üretir", {
+  attempts <- 0L
+  rlang::local_bindings(
+    get_image_web_url = function(path) { attempts <<- attempts + 1L; NULL },
+    Sys.sleep = function(...) NULL,
+    mergen_generated_image_card_html = function(...) stop("Kaynaksız kart üretilmemeli"),
+    .env = .imggen_env
+  )
+  for (src in list(NULL, character(), "", NA_character_, c("a", "b"), FALSE, "  ")) {
+    result <- list(success = TRUE, local_path = "pending.png", image_url = src)
+    html <- .imggen_env$render_generated_image_html(result, "pending")
+    expect_match(html, "image-error-container", fixed = TRUE)
+    expect_match(html, "Görsel oluşturuldu ancak görüntülenemedi.", fixed = TRUE)
+    expect_false(grepl("generated-image-container", html, fixed = TRUE))
+    expect_true(result$success)
+  }
+  expect_identical(attempts, 42L)
 })
