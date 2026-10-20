@@ -1105,9 +1105,10 @@ test_that("native kopya başladığında günlük yeni staging sahibini taşır"
     stop("iptal")
   }
   env$mergen_stage_upload_copy(source, old, paste0(old, ".mergen-part"),
-    file.exists, file.exists, function(path) unlink(path),
+    file.exists, file.exists, function(path) NULL,
     rebind = function(dest, stage) env$file_ingestion_begin_copy(dest, stage, source, tx))
   expect_true(copied)
+  expect_true(file.exists(paste0(native, ".mergen-part")))
   env$file_ingestion_discard_results(list(readRDS(journal)), "42")
   expect_false(file.exists(paste0(native, ".mergen-part")))
 })
@@ -1236,12 +1237,16 @@ test_that("iptal edilen çalışan parti ayrıntısız terminal UI temizliği al
     job <- .ingestionJob(env, controller)
     job$tasks <- list(list(name = "önceki sahibin dosyası"))
     job$on_failure <- function(message, tasks) calls[[length(calls) + 1L]] <<- list(message, tasks)
+    cleared <- character()
+    controller$clear_notification <- function(id) cleared <<- c(cleared, id)
     controller$epoch <- controller$epoch + 1L
     if (path == "discard") env$file_ingestion_finish_job(job, list())
     if (path == "failure") env$file_ingestion_fail_job(job, simpleError("özel hata"))
     if (path == "commit") env$file_ingestion_apply_commit(job, list(), list(indexed = character(), ms = 0))
     for (i in 1:30) later::run_now(0)
-    expect_identical(calls, list(list("Dosya alımı iptal edildi.", list())), info = path)
+    expected <- if (path == "commit") list() else list(list("Dosya alımı iptal edildi.", list()))
+    expect_identical(calls, expected, info = path)
+    expect_identical(cleared, if (path == "commit") job$id else character(), info = path)
   }
 })
 
@@ -1266,7 +1271,9 @@ test_that("commit edilen yapıt, reddedilen kardeşin temizlik hatasında geri a
   declined <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("ret.txt")))
   real_index <- get("mergen_index_persisted_files", envir = env)
   env$mergen_index_persisted_files <- function(entries, user_id = NULL) {
-    real_index(entries[1], user_id = user_id)
+    result <- real_index(entries[1], user_id = user_id)
+    attr(result, "accepted") <- seq_along(entries) == 1L
+    result
   }
   real_discard <- env$file_ingestion_discard_results
   env$file_ingestion_discard_results <- function(results, ...) {
@@ -1467,4 +1474,97 @@ test_that("kabul edilen alım, oturum geçici yüklemeyi silse de kaynağına ul
   expect_true(isTRUE(sonuclar[[1]]$ok))
   expect_identical(readLines(sonuclar[[1]]$dest), "kapanıştan sonra da korunur")
   expect_false(dir.exists(file.path(tempdir(), "mergen_ingest_sources", "kapanis-b1")))
+})
+
+
+test_that("kuyruktaki senkron başlangıç hatası işe ait kaynakları tam bir kez bırakır", {
+  env <- .ingestionEnv()
+  env$file_ingestion_pool_has_capacity <- function() TRUE
+  sources <- withr::local_tempdir()
+  writeLines("yükleme", file.path(sources, "1"))
+  lease <- new.env(); lease$released <- FALSE
+  job <- .ingestionJob(env, env$file_ingestion_create_controller())
+  job$lease <- lease
+  job$run <- function(job) { job$lease$sources <- sources; stop("serileştirme") }
+  failures <- 0L
+  job$on_failure <- function(...) failures <<- failures + 1L
+  env$file_ingestion_enqueue(job)
+  env$file_ingestion_pump()
+  expect_false(dir.exists(sources))
+  expect_identical(failures, 1L)
+  expect_identical(env$file_ingestion_queue_status()$active_batches, 0L)
+  expect_identical(env$file_ingestion_queue_status()$completed_total, 1L)
+})
+
+test_that("kimliksiz aynı kaynak kaydının reddi başarı olarak sunulmaz", {
+  env <- .ingestionEnv()
+  winner <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("kimliksiz_cakisma.txt")))
+  env$file_ingestion_commit_index(list(winner), "42")
+  other <- .ingestionUpload("kimliksiz_cakisma.txt")$datapath
+  result <- list(ok = TRUE, dest = other, name = winner$name, artifact_id = NULL)
+  index_result <- env$file_ingestion_commit_index(list(result), "42")
+  received <- NULL
+  job <- .ingestionJob(env, env$file_ingestion_create_controller(), on_complete = function(results, ...) received <<- results)
+  env$file_ingestion_apply_commit(job, list(result), index_result)
+  expect_false(received[[1]]$ok)
+  expect_identical(received[[1]]$code, "index_declined")
+  expect_identical(.load_index()[["42"]][[tolower(winner$name)]]$artifact_id, winner$artifact_id)
+  expect_true(file.exists(winner$dest))
+})
+
+
+test_that("terfi sahipliği geçici okuma hatasından sonra doğrulanır, belirsizlikte silme yetkisi vermez", {
+  for (mode in c("transient", "unreadable", "foreign")) {
+    env <- .ingestionEnv()
+    root <- withr::local_tempdir()
+    stage <- file.path(root, "stage")
+    dest <- file.path(root, "target")
+    writeLines("yükleme", stage)
+    env$file.link <- function(...) FALSE
+    original <- env$mergen_reservation_owner
+    reads <- 0L
+    env$mergen_reservation_owner <- function(path) {
+      reads <<- reads + 1L
+      if (reads > 1L && mode == "unreadable") return(NA_character_)
+      if (reads == 2L && mode == "transient") return(NA_character_)
+      if (reads > 1L && mode == "foreign") return("baska-sahip")
+      original(path)
+    }
+    result <- env$mergen_promote_staged_file(stage, dest, file.exists)
+    expect_identical(result$promoted, mode == "transient", info = mode)
+    if (mode != "transient") expect_true(result$yabanci, info = mode)
+  }
+})
+
+test_that("tek işçide çalışamayacak alım dış kuyruğa da kabul edilmez", {
+  withr::local_options(mergen.cancellable_workers = 1L)
+  env <- .ingestionEnv()
+  result <- env$file_ingestion_submit_batch(env$file_ingestion_create_controller(),
+    list(.ingestionTask(env, .ingestionUpload("tek_isci.txt"))), "42")
+  expect_identical(result$status, "rejected")
+  expect_identical(env$file_ingestion_queue_status()$queued_batches, 0L)
+  expect_identical(env$file_ingestion_queue_status()$active_batches, 0L)
+})
+
+test_that("terfi sahipliği kaybolduktan sonra beliren yabancı hedef silinmez", {
+  env <- .ingestionEnv()
+  root <- withr::local_tempdir()
+  source <- file.path(root, "source.txt")
+  target <- file.path(root, "target.txt")
+  writeLines("yükleme", source)
+  env$file.link <- function(...) FALSE
+  owner <- env$mergen_reservation_owner
+  reads <- 0L
+  env$mergen_reservation_owner <- function(path) {
+    reads <<- reads + 1L
+    if (reads > 1L) "baska-sahip" else owner(path)
+  }
+  promote <- env$mergen_promote_staged_file
+  env$mergen_promote_staged_file <- function(...) {
+    result <- promote(...)
+    writeLines("başka yüklemenin dosyası", target)
+    result
+  }
+  expect_error(env$mergen_copy_upload_staged(source, target, root), "kalıcı ada taşınamadı")
+  expect_identical(readLines(target, encoding = "UTF-8"), "başka yüklemenin dosyası")
 })

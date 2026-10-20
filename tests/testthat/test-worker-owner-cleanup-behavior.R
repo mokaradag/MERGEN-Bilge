@@ -238,6 +238,23 @@ test_that("geçersizleşen istek PCM akışını keser ve bayat sesi oturuma gö
            Sys.time() < deadline) later::run_now(0.05)
     expect_identical("speechPcmStreamChunk" %in% sent, valid_after_start)
     expect_identical("speechPcmStreamEnd" %in% sent, !valid_after_start)
+    valid <- FALSE
+    deadline <- Sys.time() + 2
+    while (!"speechPcmStreamEnd" %in% sent && Sys.time() < deadline) later::run_now(0.05)
+    expect_true("speechPcmStreamEnd" %in% sent)
     unlink(out_path)
   }
+})
+
+
+test_that("rolün yalnız harf büyüklüğü değişince aynı kullanıcının işi korunur", {
+  env <- .worker_owner_env()
+  session <- list(userData = new.env())
+  identity <- env$make_user_session_data_accessors(session)
+  identity$write_identity(list(username = "a"), 7L, list(auth_level = "ADMIN", department = "A"), TRUE, "keycloak")
+  guard <- env$mergen_session_owner_guard(session)
+  identity$write_identity(list(username = "a"), 7L, list(auth_level = " admin ", department = "A"), TRUE, "keycloak")
+  expect_true(guard())
+  identity$write_identity(list(username = "a"), 7L, list(auth_level = "admin", department = "B"), TRUE, "keycloak")
+  expect_false(guard())
 })

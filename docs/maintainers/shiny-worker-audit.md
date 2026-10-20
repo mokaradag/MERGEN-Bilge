@@ -7,6 +7,14 @@ Denetimdeki on bulgu giderildi: sonuçlar istek/sohbet/sahip sınırlarında kor
 
 İndeks yazımı başarısızsa yükleme başarılı sayılmaz. Kopyalar, indeks kilidi hatasında da temizlenir; ikinci işçinin gönderim veya çalışma hatasında bağımsız geri alma işçisi dosyaları temizlemeden alım kotası bırakılmaz. DOCX yol çözümleme, varlık/üstveri yoklaması ve kodlama işçide yürür; önbellek anahtarı da orada doğrulanır. Senkron gönderim hataları ile promise hataları aynı sahip/önizleme kapısından bildirilir. Kalıcı PK altyapı eksikleri geçici yoğunluktan ayrı bildirilir. Windows zamanlama testi üç saniyelik işçiyle iki saniyelik bloklamama sınırını ve tamamlanma bekleyişini korur. Bayat SSE ve benzetimli akışlar yalnız kendi yarım mesajını kaldırır; daha yeni isteğin mesajı ve gönderimi korunur. PK gönderim hatası çağırana terminal eylem döndürür. Geri alma işçisi kurulamaz veya çökerse indeks kilidine girmeyen son hedef temizliği denenir; kaynak ve başarısız kopyalar korunur. CodeMirror çizim denetimi ilk renk ölçümünden önce yazı tipi ve çizim karelerinin tamamlanmasını bekler; renk/kontrast sınırları korunur.
 
+Kalıcı işçi şeridi iki veya daha fazla fiziksel yuvada en az bir yuva bulur; tek yuvada kalıcı işler kuyruğa kabul edilmez. Fiziksel süreç, kuyruk ve yürütme sınırları artırılmaz. Alımın senkron başlangıç hatası da ortak iş bırakma yolunu kullanır.
+
+İndeks kararı kimliksiz yeniden kayıt dahil her girdiye aittir. Reddedilen kayıt başarılı yükleme ya da kayıp dosya sayılmaz. Commit sonrasında değişen UI nesli yalnız ilerleme bildirimini kapatır; kalıcı dosya geri alınmaz ve yeni nesle dosya ayrıntısı taşınmaz.
+
+Belirsiz sahiplik sınırlı yeniden okumayla doğrulanır; yabancı veya hâlâ okunamayan jeton hedef temizleme yetkisi vermez. İndeks kilidi bırakılırken de jeton aynı geri kazanım muteksi altında doğrulanır.
+
+Yolaç bildirimleri yakalanan oturuma gönderilir ve bildirim hatası hazırlanmış işi düşürmez. Oturumsuz yoklama hatası yalnız ilgili çalıştırmayı başarısız kılar; reaktif sessiz koşullar korunur. Çıktı işçisinin sahipliği istek ve süre kurulumu tamamlanmadan devralınmaz.
+
 - [`R/server_handler_true_streaming.R:379`](https://github.com/mokaradag/MERGEN-Bilge/blob/09b26d8aa28d8dfeae6d85a5ff605b5014950ea4/R/server_handler_true_streaming.R#L379)
 - [`R/module_claude_code.R:207`](https://github.com/mokaradag/MERGEN-Bilge/blob/09b26d8aa28d8dfeae6d85a5ff605b5014950ea4/R/module_claude_code.R#L207)
 - [`R/helpers_stream_load_control.R:127`](https://github.com/mokaradag/MERGEN-Bilge/blob/09b26d8aa28d8dfeae6d85a5ff605b5014950ea4/R/helpers_stream_load_control.R#L127)

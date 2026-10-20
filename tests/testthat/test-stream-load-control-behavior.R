@@ -12,7 +12,7 @@ source("../../R/helpers_runtime_metrics.R")
 source("../../R/helpers_request_backpressure.R")
 source("../../R/helpers_streaming_io.R")
 source("../../R/helpers_stream_load_control.R")
-source("../../R/helpers_followup_questions.R")
+source("../../R/helpers_followup_questions.R", encoding = "UTF-8")
 
 
 .fake_session <- function() list(userData = new.env(parent = emptyenv()))
@@ -267,18 +267,23 @@ test_that("refresh fonksiyonu yoksa guvenli no-op", {
   expect_false(mergen_schedule_saved_chats_refresh(.fake_session(), list(), debounce_ms = 0))
 })
 test_that("isteğe bağlı takip anahtar hatası gözlemci dışına kaçmaz", {
-  target <- environment(mergen_stream_dispatch_followups)
-  old_key <- get0("mb_api_key_get_effective_key_value", envir = target, inherits = FALSE)
-  assign("mb_api_key_get_effective_key_value", function(...) stop("anahtar okunamadı"), envir = target)
-  withr::defer(if (is.null(old_key)) rm("mb_api_key_get_effective_key_value", envir = target)
-              else assign("mb_api_key_get_effective_key_value", old_key, envir = target))
-  dispatched <- FALSE
-  # Anahtar hatası gözlemciye kaçmaz ve deterministik önerileri düşürmez:
-  # iş yine planlanır, yalnız isteğe bağlı AI zenginleştirmesi kapanır.
-  result <- mergen_stream_dispatch_followups(.fake_session(), "m", "soru", "yanıt",
+  env <- new.env(parent = globalenv())
+  source("../../R/helpers_stream_load_control.R", encoding = "UTF-8", local = env)
+  env$mb_api_key_get_effective_key_value <- function(...) stop("anahtar okunamadı")
+  env$mergen_perf_now <- function() 0
+  env$mergen_perf_log <- env$mergen_send_message_release_slot <- function(...) NULL
+  captured <- pushed <- NULL
+  env$push_followup_update <- function(session, msg_id, suggestions, ...) pushed <<- suggestions
+  mergen_backpressure_reset()
+  result <- env$mergen_stream_dispatch_followups(.fake_session(), "m", "soru", "yanıt",
     list(enable_followups = TRUE), list(), NULL, NULL,
     plan = list(enabled = TRUE, delay_seconds = 0),
-    later_fn = function(...) dispatched <<- TRUE, build_fn = function(...) NULL)
+    later_fn = function(callback, ...) captured <<- callback,
+    build_fn = function(..., allow_ai) { expect_false(allow_ai); c("S1", "S2") },
+    dispatch_fn = function(task_fn, ...) promises::promise_resolve(task_fn()))
   expect_true(result)
-  expect_true(dispatched)
+  expect_true(is.function(captured))
+  captured()
+  for (i in 1:30) later::run_now(0)
+  expect_identical(pushed, c("S1", "S2"))
 })

@@ -15,6 +15,7 @@ file_ingestion_commit_index <- function(results, user_id) {
   list(
     indexed = indexed,
     committed = committed,
+    accepted = attr(indexed, "accepted"),
     ms = as.numeric(difftime(Sys.time(), started, units = "secs")) * 1000
   )
 }
@@ -115,10 +116,10 @@ file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard =
           stop(e)
         })
         # Reddedilen kardeşin temizlik hatası commit edilmiş yapıtı geri almaz.
-        # Kimlik listesi yoksa (kimliksiz indeks) red yoktur; ana süreç de böyle sayar.
-        declined <- if (is.null(committed$committed)) list() else
-          Filter(function(r) isTRUE(r$ok) && !is.null(r$artifact_id) &&
-            !r$artifact_id %in% committed$committed, results)
+        # Karar her başarılı kopyaya aittir; kimliksiz yeniden kayıt da reddedilebilir.
+        succeeded <- Filter(function(r) isTRUE(r$ok), results)
+        declined <- if (is.null(committed$accepted)) list() else
+          succeeded[!committed$accepted]
         if (length(declined)) try(file_ingestion_discard_results(declined, user_id), silent = TRUE)
         committed
       },

@@ -367,7 +367,14 @@ cc_dispatch_run_output_processing <- function(ctx) {
     cc_report_output_processing_failure(ctx, simpleError("Çıktı aktarım koruma dosyası oluşturulamadı."))
     return(invisible(TRUE))
   }
-  ctx$env$output_worker_pending <- TRUE
+  hazir <- FALSE
+  on.exit({
+    if (!hazir) {
+      ctx$env$output_worker_pending <- FALSE
+      unlink(guard, force = TRUE)
+      cc_release_runtime_lease(ctx$env$runtime_lease %||% "")
+    }
+  }, add = TRUE)
   ctx$env$output_sync_guard <- guard
   request <- cc_build_run_output_request(ctx$env, ctx$ayristirma$tool_uses %||% list())
 
@@ -431,6 +438,8 @@ cc_dispatch_run_output_processing <- function(ctx) {
     invisible(NULL)
   }
 
+  hazir <- TRUE
+  ctx$env$output_worker_pending <- TRUE
   dispatch_error <- tryCatch({
     tracked_future_promise(
       task_fn = function() cc_process_run_outputs(request),

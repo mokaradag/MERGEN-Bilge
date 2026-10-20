@@ -51,13 +51,14 @@ mergen_retire_process <- function(process, release, on_uncertain = NULL) {
 
 # Yapılandırılan değer havuzun FİZİKSEL toplam süreç sınırıdır; şeritler onu
 # bölüşür, çoğaltmaz. Kalıcı işler (alım, Yolaç hazırlık/çıktı/özet) en fazla
-# yarısını kullanır, sohbet tüm boş yuvaları kullanabilir. `lane = NULL` toplamdır.
+# yarısını kullanır; iki şerit birbirine yuva ayırır. `lane = NULL` toplamdır.
 mergen_cancellable_worker_capacity <- function(lane = NULL) {
   configured <- getOption("mergen.cancellable_workers", NULL)
   if (is.null(configured)) configured <- if (exists("resolve_mergen_worker_count", mode = "function")) resolve_mergen_worker_count() else 2L
   value <- suppressWarnings(as.integer(configured)[1])
   total <- if (length(value) != 1L || is.na(value) || value < 1L) 1L else value
-  if (identical(lane, "durable")) max(1L, total %/% 2L) else total
+  if (identical(lane, "durable")) return(total %/% 2L)
+  if (identical(lane, "interactive") && total >= 2L) total - 1L else total
 }
 
 # Sözü sonuçlanmamış işler (bekleyen + çalışan) şeridin kuyruk yerini tüketir.
@@ -201,6 +202,8 @@ mergen_cancellable_worker_promise <- function(payload, current, timeout = 1800, 
     stop("İşçi son tarihleri sonlu ve pozitif olmalıdır.")
   state <- .MERGEN_CANCELLABLE_WORKERS
   if (is.null(state$jobs)) state$jobs <- list()
+  if (mergen_cancellable_worker_capacity(lane) == 0L)
+    return(promises::promise_reject(simpleError("Kalıcı işler için ayrılmış işçi kapasitesi yok.")))
   if (length(.mergen_cancellable_live_jobs(lane)) >= .mergen_cancellable_queue_limit(priority)) {
     return(promises::promise_reject(simpleError("Arka plan iş kuyruğu dolu.")))
   }

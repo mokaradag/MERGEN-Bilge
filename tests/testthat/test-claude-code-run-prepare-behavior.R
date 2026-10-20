@@ -797,6 +797,7 @@ test_that("aktif runtime klasörü yaş temizliğinden korunur", {
   # burada eşzamansız kabul edilir. Eşzamansız olmayan planın reddedilmesi
   # test-claude-code-run-hardening-behavior.R içinde ayrıca doğrulanır.
   env$cc_future_plan_is_async <- function() TRUE
+  env$mergen_cancellable_worker_available <- function(...) TRUE
 
   env
 }
@@ -1171,4 +1172,57 @@ test_that("sert hazırlık iptali worker günlüğündeki çalışma kirasını 
   expect_false(file.exists(lease))
   expect_false(file.exists(request$lease_journal))
   expect_identical(rv$active_request_id, "B")
+})
+
+
+test_that("hazır doküman çalıştırması varsayılan domain olmadan bildirim hatasında da başlar", {
+  env <- .cc_dispatch_env()
+  started <- 0L
+  env$showNotification <- function(..., session = shiny::getDefaultReactiveDomain()) {
+    if (is.null(session)) stop("domain yok")
+    session$sendNotification(...)
+  }
+  env$cc_send_run_stage <- function(...) TRUE
+  env$cc_bind_runtime_lease <- env$cc_release_runtime_lease <- function(...) NULL
+  env$cc_persist_session_begin <- function(...) NULL
+  env$cc_handle_document_summary_run <- function(...) started <<- started + 1L
+  rv <- new.env()
+  session <- list(token = "test", isClosed = function() FALSE,
+    sendNotification = function(...) stop("websocket kapandı"))
+  ctx <- list(session = session, ns = identity, rv = rv, run_request_id = "A", model = "model", workdir = tempdir())
+  prep <- list(limit_notice = "sınır", document_context = list(has_binary_docs = TRUE,
+    text_sidecars_ready = TRUE, prepared_files = list("dosya")))
+  expect_true(shiny::withReactiveDomain(NULL, env$cc_start_streaming_run(ctx, prep)))
+  expect_identical(started, 1L)
+})
+
+test_that("çıktı isteği kurulurken hata pending sahiplik veya kira bırakmaz", {
+  for (file in c("helpers_claude_code_run_output_dispatch.R", "helpers_claude_code_codex_output_fixes.R")) {
+    for (failure in c("request", "timeout")) {
+      env <- .cc_dispatch_env()
+      env$.cc_codex_original_cc_process_run_outputs <- function(...) NULL
+      env$.cc_prepare_worker_cache <- new.env()
+      env$.cc_completion_worker_cache <- new.env()
+      source(file.path(resolve_repo_root_for_tests(), "R", file), encoding = "UTF-8", local = env)
+      lease <- withr::local_tempfile()
+      file.create(lease)
+      metadata <- withr::local_tempdir()
+      rv <- new.env(); rv$is_running <- TRUE; rv$active_request_id <- "A"
+      stream <- new.env(); stream$request_id <- "A"; stream$runtime_lease <- lease
+      stream$runtime_layout <- list(metadata = metadata)
+      env$cc_build_run_output_request <- function(...) {
+        if (failure == "request") stop("istek kurulamadı")
+        list(active_guard = stream$output_sync_guard)
+      }
+      env$cc_runtime_limit <- function(...) stop("süre kurulamadı")
+      env$cc_release_runtime_lease <- function(path) unlink(path)
+      env$cc_send_run_stage <- function(...) TRUE
+      env$cc_report_output_processing_failure <- function(...) NULL
+      ctx <- list(rv = rv, env = stream, session = list(token = "test"), ns = identity, ayristirma = list())
+      expect_error(env$cc_dispatch_run_output_processing(ctx), "kurulamadı")
+      expect_false(isTRUE(stream$output_worker_pending), info = file)
+      expect_false(file.exists(lease), info = file)
+      expect_length(list.files(metadata), 0L)
+    }
+  }
 })

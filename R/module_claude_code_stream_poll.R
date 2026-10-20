@@ -73,6 +73,7 @@ cc_bind_claude_code_stream_polling <- function(input,
                                                observe_dir_contents) {
   run_ref <- cc_run_state_reference(rv)
   rv$process_poll_observer <- shiny::observe({
+    tryCatch({
     rv <- run_ref$rv
     ui_active <- !is.function(session$isClosed) || !isTRUE(session$isClosed())
     # Ayrılmış çalıştırma reaktif bağımlılık üretmez; terminale dek zamanlayıcıyla
@@ -172,7 +173,7 @@ cc_bind_claude_code_stream_polling <- function(input,
         )
       }
 
-      if (ui_active) session$sendCustomMessage(
+      if (ui_active) try(session$sendCustomMessage(
         type = "cc-add-message",
         message = list(
           target = ns("output_area"),
@@ -185,7 +186,7 @@ cc_bind_claude_code_stream_polling <- function(input,
           timestamp = format(Sys.time(), "%H:%M:%S"),
           welcomeId = ns("welcome_screen")
         )
-      )
+      ), silent = TRUE)
 
       finalize_streaming(
         "Zaman Aşımı",
@@ -317,6 +318,22 @@ cc_bind_claude_code_stream_polling <- function(input,
         )
       })
     }
+    }, error = function(e) {
+      if (inherits(e, "shiny.silent.error")) stop(e)
+      # Oturumsuz gözlemci hatası yalnız kendi çalıştırmasını sonlandırır.
+      try(log_error(paste(CLAUDE_CODE_LOG_PREFIX, "Akış durumu işlenemedi; çalıştırma başarısız.")), silent = TRUE)
+      rv <- run_ref$rv
+      env <- shiny::isolate(rv$stream_env)
+      if (!is.null(env) && cc_is_active_run(rv, env$request_id)) {
+        result <- try(cc_report_output_processing_failure(list(
+          session = session, ns = ns, rv = rv, env = env,
+          finalize_streaming = finalize_streaming),
+          simpleError("Çalıştırma durumu güvenli biçimde işlenemedi.")), silent = TRUE)
+        if (inherits(result, "try-error"))
+          try(finalize_streaming("Hata", "exclamation-triangle", "#E57373",
+            request_id = env$request_id), silent = TRUE)
+      }
+    })
   }, domain = NULL, autoDestroy = FALSE)
 
   shiny::observeEvent(input$stop_command, {

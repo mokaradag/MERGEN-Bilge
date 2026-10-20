@@ -13,6 +13,9 @@ file_ingestion_create_controller <- function(session = NULL, debug_fn = NULL) {
   controller$epoch <- 0L
   controller$active <- TRUE
   controller$debug <- debug_fn
+  controller$clear_notification <- function(id) {
+    if (!is.null(session)) try(shiny::removeNotification(id, session = session), silent = TRUE)
+  }
   controller$session_token <- tryCatch(as.character(session$token %||% "")[1], error = function(e) "")
 
   if (!is.null(session) && exists("mergen_session_on_owner_change", mode = "function")) {
@@ -138,12 +141,17 @@ file_ingestion_run_job <- function(job) {
 file_ingestion_apply_commit <- function(job, results, index_result, queue_wait_ms = 0) {
   file_ingestion_release_job(job)
   on.exit(try(file_ingestion_pump(), silent = TRUE), add = TRUE)
-  if (!is.null(index_result$committed)) {
+  if (!is.null(index_result$accepted) || !is.null(index_result$committed)) {
+    position <- 0L
     results <- lapply(results, function(r) {
-      if (isTRUE(r$ok) && !is.null(r$artifact_id) && !isTRUE(r$artifact_id %in% index_result$committed)) {
+      if (!isTRUE(r$ok)) return(r)
+      position <<- position + 1L
+      accepted <- if (!is.null(index_result$accepted)) isTRUE(index_result$accepted[[position]]) else
+        is.null(r$artifact_id) || isTRUE(r$artifact_id %in% index_result$committed)
+      if (!accepted) {
         r$ok <- FALSE
-        r$code <- "dest_missing"
-        r$error <- "Kopyalanan dosya artık mevcut değil."
+        r$code <- "index_declined"
+        r$error <- "Dosya indekse kaydedilmedi; aynı adlı yükleme veya sahiplik çakışması oluştu."
       }
       r
     })
@@ -160,9 +168,9 @@ file_ingestion_apply_commit <- function(job, results, index_result, queue_wait_m
       indexed = index_result$indexed,
       summary = ozet
     )), silent = FALSE)
-  } else if (isTRUE(controller$active) && !identical(controller$epoch, job$epoch) &&
-             is.function(job$on_failure)) {
-    try(job$on_failure("Dosya alımı iptal edildi.", list()), silent = TRUE)
+  } else if (isTRUE(controller$active) && !identical(controller$epoch, job$epoch)) {
+    # Commit kalıcıdır; eski UI yalnız ilerleme bildirimini kapatır.
+    controller$clear_notification(job$id)
   }
 
   durum <- file_ingestion_queue_status()
@@ -219,6 +227,9 @@ file_ingestion_submit_batch <- function(controller,
   if (!length(tasks)) {
     return(list(status = "empty", batch_id = batch_id, queued = 0L))
   }
+
+  if (mergen_cancellable_worker_capacity("durable") == 0L)
+    return(list(status = "rejected", batch_id = batch_id, queued = 0L))
 
   lease <- new.env(parent = emptyenv())
   lease$released <- FALSE

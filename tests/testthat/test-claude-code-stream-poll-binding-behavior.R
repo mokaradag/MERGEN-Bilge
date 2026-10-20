@@ -412,3 +412,22 @@ testthat::test_that("kapanan modülün CLI çıktıları reaktif duruma veya UI'
   expect_null(rec$ref$rv$active_process)
   expect_null(rec$ref$rv$process_poll_observer)
 })
+
+
+test_that("oturumsuz yoklamada ayrıştırma hatası yalnız ilgili çalıştırmayı başarısız kılar", {
+  env <- .csp_env()
+  failures <- 0L
+  env$parse_claude_code_json_output <- function(...) stop("ayrıştırma başarısız")
+  env$cc_report_output_processing_failure <- function(ctx, error) {
+    failures <<- failures + 1L
+    ctx$rv$is_running <- FALSE
+  }
+  stream <- .csp_stream_env()
+  srv <- .csp_make_server(env, list(is_running = TRUE,
+    active_process = .csp_fake_proc(alive = FALSE), stream_env = stream), .csp_finalize_rec())
+  shiny::testServer(srv, {
+    expect_error(session$flushReact(), NA)
+    expect_identical(failures, 1L)
+    expect_false(shiny::isolate(session$returned$is_running))
+  })
+})

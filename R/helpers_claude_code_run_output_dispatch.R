@@ -164,7 +164,14 @@ cc_dispatch_run_output_processing <- function(ctx) {
     return(invisible(TRUE))
   }
 
-  ctx$env$output_worker_pending <- TRUE
+  hazir <- FALSE
+  on.exit({
+    if (!hazir) {
+      ctx$env$output_worker_pending <- FALSE
+      unlink(guard, force = TRUE)
+      cc_release_runtime_lease(ctx$env$runtime_lease %||% "")
+    }
+  }, add = TRUE)
   ctx$env$output_sync_guard <- guard
   istek <- cc_build_run_output_request(ctx$env, ctx$ayristirma$tool_uses %||% list())
 
@@ -243,6 +250,8 @@ cc_dispatch_run_output_processing <- function(ctx) {
   # tracked_future_promise() gönderim anında SENKRON hata verebilir (worker
   # planı yok, serileştirme hatası). Yakalanmazsa çalıştırma 180 saniye boyunca
   # "Çıktılar işleniyor" durumunda asılı kalırdı.
+  hazir <- TRUE
+  ctx$env$output_worker_pending <- TRUE
   gonderim <- tryCatch(
   tracked_future_promise(
     task_fn = function() {

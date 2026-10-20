@@ -169,7 +169,7 @@ mergen_session_owner_transition <- function(user_data, eski_uid, yeni_uid, yetki
 # saklanmaz). Rol ve satır düzeyi kapsam (masraf yeri, birim) birlikte izlenir.
 .mergen_auth_scope <- function(config) {
   if (!is.list(config) || is.null(config$auth_level)) return(NULL)
-  alanlar <- list(config$auth_level, config$masraf_yeri_kodu %||% config$MasrafYeriKodu,
+  alanlar <- list(toupper(trimws(config$auth_level)), config$masraf_yeri_kodu %||% config$MasrafYeriKodu,
                   config$department %||% config$Departman, config$mudurluk %||% config$Mudurluk,
                   config$sektor %||% config$Sektor)
   vapply(alanlar, function(x) {

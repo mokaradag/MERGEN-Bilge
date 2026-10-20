@@ -82,7 +82,9 @@ test_that("RAF askıya alınsa da gerçek yerleşim PASS veya FAIL sonucunu beli
       "throw new Error('RAF/layout/result contract');}",
       "(async () => {for (const raf of [false, true]) for (const valid of [false, true])",
       "await probe(raf, valid); console.log('PASS');})().catch(e => {console.error(e); process.exit(1);});")
-    result <- system2(node, c("-e", shQuote(js)), stdout = TRUE, stderr = TRUE)
+    script <- withr::local_tempfile(fileext = ".js")
+    writeLines(enc2utf8(js), script, useBytes = TRUE)
+    result <- system2(node, shQuote(script), stdout = TRUE, stderr = TRUE)
     expect_null(attr(result, "status"))
     expect_identical(result, "PASS")
   }

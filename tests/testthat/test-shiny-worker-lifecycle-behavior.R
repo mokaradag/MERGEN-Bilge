@@ -251,9 +251,16 @@ test_that("takip üretimi ayrı süreçte çalışır ve bayat öneriler uygulan
   ud$user_id <- 7L
   ud$llm_request_owner <- "A"
   session <- list(userData = ud, token = "followup-test", input = list())
+  settled <- 0L
+  dispatch_worker <- function(...) {
+    promises::then(env$tracked_future_promise(...),
+      function(value) { settled <<- settled + 1L; value },
+      function(error) { settled <<- settled + 1L; stop(error) })
+  }
   dispatch <- function() env$mergen_stream_dispatch_followups(
     session, "msg", "soru", "yanıt", list(enable_followups = TRUE), list(), NULL, NULL,
-    plan = list(enabled = TRUE, delay_seconds = 0, disable_under_backpressure = TRUE), build_fn = builder
+    plan = list(enabled = TRUE, delay_seconds = 0, disable_under_backpressure = TRUE),
+    build_fn = builder, dispatch_fn = dispatch_worker
   )
   dispatch()
   started <- Sys.time()
@@ -266,8 +273,10 @@ test_that("takip üretimi ayrı süreçte çalışır ve bayat öneriler uygulan
   dispatch()
   later::run_now(0)
   ud$llm_request_owner <- "B"
-  deadline <- Sys.time() + 4.5
-  while (Sys.time() < deadline) later::run_now(0.05)
+  deadline <- Sys.time() + 15
+  while (settled < 2L && Sys.time() < deadline) later::run_now(0.05)
+  expect_identical(settled, 2L)
+  .lifecycle_drain()
   expect_length(updates, 1L)
 })
 
@@ -577,7 +586,7 @@ test_that("Yolaç tarayıcı kapanınca başlayan süreci ve run metadata bilgis
 
 test_that("Yolaç hazırlık ya da özet aşamasında tarayıcı kapanışı çalıştırmayı sıfırlamaz", {
   env <- .lifecycle_env(c("helpers_user_session_identity.R", "helpers_async_result_guard.R",
-    "helpers_claude_code_run_lifecycle.R", "helpers_claude_code_workbench_session_api.R"))
+    "helpers_process_ownership.R", "helpers_claude_code_run_lifecycle.R", "helpers_claude_code_workbench_session_api.R"))
   ended <- NULL
   ud <- new.env()
   ud$user_id <- 7L
@@ -592,7 +601,7 @@ test_that("Yolaç hazırlık ya da özet aşamasında tarayıcı kapanışı ça
   rv$active_persist_record_id <- 42L
   env$cc_bind_workbench_owner_lifecycle(session, identity, rv, list(next_id = function() NULL))
   ended()
-  ref <- cc_run_state_reference(rv)
+  ref <- env$cc_run_state_reference(rv)
   expect_true(ref$rv$is_running)
   expect_identical(ref$rv$active_request_id, "A")
   expect_true(env$cc_is_active_run(ref$rv, "A"))
@@ -670,7 +679,8 @@ test_that("benzetimli Stop yalnızca gerçekten birikmiş parçayı kaydeder", {
 
 test_that("özet kaynağa yalnızca geçerli terfi işçisiyle yazılır", {
   for (change in c("current", "owner", "stop")) {
-    env <- .lifecycle_env(c("helpers_claude_code_run_lifecycle.R", "helpers_document_output_publication.R"))
+    env <- .lifecycle_env(c("helpers_user_session_identity.R", "helpers_async_result_guard.R",
+      "helpers_claude_code_run_lifecycle.R", "helpers_document_output_publication.R"))
     work <- NULL; current <- NULL; resolve_work <- NULL; reject_work <- NULL
     budgets <- NULL
     env$cc_run_output_worker_globals <- function() list(cc_apply_output_sync_plan = function(plan, active_guard) {
@@ -694,7 +704,7 @@ test_that("özet kaynağa yalnızca geçerli terfi işçisiyle yazılır", {
     shiny::testServer(function(input, output, session) NULL, {
       session$userData$user_id <- 7L
       rv <- shiny::reactiveValues(is_running = TRUE, active_request_id = "A",
-        run_owner_guard = mergen_session_owner_guard(session))
+        run_owner_guard = env$mergen_session_owner_guard(session))
       resolved <- NULL; failure <- NULL
       promise <- env$cc_publish_document_summary_async(list(success = TRUE,
         generated_summary_path = src), target_dir, output_dir, session, rv, "A")

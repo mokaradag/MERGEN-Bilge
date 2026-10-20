@@ -155,7 +155,7 @@ file_ingestion_pump <- function() {
       break
     }
 
-    started <- tryCatch({
+    tryCatch({
       job$run(job)
       TRUE
     }, error = function(e) {
@@ -169,16 +169,13 @@ file_ingestion_pump <- function() {
       } else {
         message(msg)
       }
+      file_ingestion_release_job(job)
       if (is.function(job$on_start_error)) try(job$on_start_error(e), silent = TRUE)
       if (is.function(job$on_failure)) {
         try(job$on_failure(conditionMessage(e), job$tasks), silent = TRUE)
       }
       FALSE
     })
-
-    if (!isTRUE(started)) {
-      state$active <- max(state$active - 1L, 0L)
-    }
   }
 
   if (length(state$pending) > 0L && !isTRUE(state$pump_scheduled)) {

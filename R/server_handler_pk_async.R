@@ -31,8 +31,12 @@ mergen_pk_analysis_execute <- function(ctx) {
   aktif_meta <- mergen_pk_routing_query_meta(ctx)
   uygun <- pk_async_available(aktif_meta)
   if (!isTRUE(uygun$available)) {
-    if (!uygun$reason %in% c("flag_off", "query_opt_out")) {
-      cevap <- if (uygun$reason %in% c("promises_missing", "tracked_future_promise_missing", "plan_sequential")) {
+    neden <- as.character(uygun$reason %||% "future_plan_not_async")[1]
+    if (!neden %in% c("flag_off", "query_opt_out")) {
+      altyapi <- c("future_missing", "promises_missing", "tracked_future_promise_missing",
+        "future_plan_not_async", "worker_count_unknown", "no_worker_plan",
+        "single_worker_falls_back", "worker_shares_main_process", "remote_cluster_plan")
+      cevap <- if (startsWith(neden, "plan_") || neden %in% altyapi) {
         mergen_pk_worker_outcome_text("infrastructure")
       } else {
         "Analiz işçisi henüz hazır değil veya meşgul. Lütfen biraz sonra tekrar deneyin."

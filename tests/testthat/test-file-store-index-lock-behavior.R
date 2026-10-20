@@ -275,6 +275,7 @@ test_that("markersız, eski biçimli ya da uzak host kilidi yalnız bayatlıktan
 })
 
 test_that("kilit içinde sert öldürülen işçinin kilidi ölüm doğrulandıktan sonra devralınır", {
+  skip_if_not_installed("callr")
   .lock_test_prepare_runtime()
   withr::defer(.lock_test_cleanup())
   ready <- withr::local_tempfile()
@@ -346,4 +347,29 @@ test_that("okunamayan marker süren geri kazanım sırasında eski sahibin jeton
     process$wait(timeout = 5000)
     invisible(NULL)
   })
+})
+
+
+test_that("kilit bırakma geçici okunamazlığı muteks altında doğrular ve yabancı sahibi korur", {
+  for (mode in c("transient", "unreadable", "foreign", "known")) {
+    .lock_test_prepare_runtime()
+    withr::defer(.lock_test_cleanup())
+    releasing <- FALSE
+    reads <- 0L
+    env <- new.env(parent = environment(.file_store_with_index_lock))
+    source(file.path(resolve_repo_root_for_tests(), "R/config_file_store_index_lock.R"), encoding = "UTF-8", local = env)
+    if (mode == "known") env$mergen_reclaim_mutex <- function(...) NULL
+    env$readLines <- function(con, ...) {
+      if (releasing) {
+        reads <<- reads + 1L
+        if (mode == "unreadable" || (mode != "known" && reads == 1L)) stop("UNC okuma")
+        if (mode == "foreign") return("token=baska-sahip")
+      }
+      base::readLines(con, ...)
+    }
+    env$.file_store_with_index_lock({ releasing <- TRUE; TRUE }, require_lock = TRUE)
+    expect_identical(dir.exists(.lock_test_lock_dir()), mode %in% c("unreadable", "foreign"), info = mode)
+    releasing <- FALSE
+    unlink(.lock_test_lock_dir(), recursive = TRUE)
+  }
 })

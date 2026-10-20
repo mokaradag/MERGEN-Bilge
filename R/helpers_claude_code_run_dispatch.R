@@ -390,7 +390,7 @@ cc_start_streaming_run <- function(ctx, prep) {
   }
 
   if (nzchar(prep$limit_notice %||% "")) {
-    showNotification(prep$limit_notice, type = "warning", duration = 8)
+    try(showNotification(prep$limit_notice, type = "warning", duration = 8, session = session), silent = TRUE)
   }
 
   # Aşama bildirimi gerçekleşen işi yansıtır: girdi aktarımı yalnızca gerçekten
@@ -416,14 +416,14 @@ cc_start_streaming_run <- function(ctx, prep) {
     # klasöre geri aktarım yapılmaz.
     mirror_kullanildi <- FALSE
 
-    showNotification(
+    try(showNotification(
       paste0(
         length(dokuman_baglami$prepared_files %||% list()),
         " doküman için yerel metin çıkarımı hazırlandı."
       ),
       type = "message",
-      duration = 5
-    )
+      duration = 5, session = session
+    ), silent = TRUE)
 
     cc_log_info(sprintf(
       "%s [DOCUMENT_PREPARE] hazir=%d | sure_ms=%.0f | destek=%s",
@@ -476,14 +476,14 @@ cc_start_streaming_run <- function(ctx, prep) {
   rv$current_runtime_model <- efektif_model
 
   if (isTRUE(model_cozumu$fallback_used)) {
-    showNotification(
+    try(showNotification(
       paste0(
         "Doküman uyumluluğu için geçici olarak düşünmeyen modele geçildi: ",
         efektif_model
       ),
       type = "warning",
-      duration = 6
-    )
+      duration = 6, session = session
+    ), silent = TRUE)
   }
 
   if (exists("cc_persist_session_begin", mode = "function", inherits = TRUE)) {

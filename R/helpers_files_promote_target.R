@@ -99,14 +99,20 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
     alindi <- isTRUE(mergen_reservation_takeover(rezerv, jeton))
   # FAIL-CLOSED: rezervasyon alınamadıysa terfi DENENMEZ. Sessizce jetonsuz
   # `file.rename()` yapmak, düzeltilen yarışı geri getirirdi.
-  if (!alindi) return(list(ok = FALSE, yabanci = var_mi_guvenli(hedef), promoted = FALSE))
+  if (!alindi) return(list(ok = FALSE, yabanci = TRUE, promoted = FALSE))
 
   sonuc <- tryCatch({
     guard <- mergen_reclaim_mutex(paste0(rezerv, ".reclaim"))
-    if (is.null(guard)) return(list(ok = FALSE, yabanci = var_mi_guvenli(hedef), promoted = FALSE))
+    if (is.null(guard)) return(list(ok = FALSE, yabanci = TRUE, promoted = FALSE))
     on.exit(filelock::unlock(guard), add = TRUE)
-    if (!identical(mergen_reservation_owner(rezerv), jeton) && !isTRUE(mergen_reservation_acquire(rezerv, jeton)))
-      return(list(ok = FALSE, yabanci = var_mi_guvenli(hedef), promoted = FALSE))
+    # Belirsiz okuma yeniden edinme değildir; yalnız doğrulanan jeton terfi eder.
+    for (deneme in 1:3) {
+      sahip <- mergen_reservation_owner(rezerv)
+      if (!is.na(sahip)) break
+      if (deneme < 3L) Sys.sleep(0.01)
+    }
+    if (!identical(sahip, jeton))
+      return(list(ok = FALSE, yabanci = TRUE, promoted = FALSE))
     # İKİ BAĞIMSIZ okuma: yavaş bir UNC paylaşımında tek okuma yanlış negatif
     # verebiliyor ve yedek yoldaki `file.rename()` EŞZAMANLI oluşan hedefi
     # sessizce değiştirebiliyordu.

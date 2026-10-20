@@ -359,14 +359,17 @@ mergen_index_persisted_files <- function(entries, user_id = NULL) {
   entries <- entries %||% list()
   if (!length(entries)) return(character())
 
-  hazirlanan <- lapply(entries, function(e) {
+  accepted <- rep(FALSE, length(entries))
+  hazirlanan <- lapply(seq_along(entries), function(i) {
+    e <- entries[[i]]
     entry <- .file_store_index_entry(e$path, e$display %||% basename(e$path %||% ""))
+    entry$position <- i
     entry$artifact_id <- e$artifact_id
     entry
   })
   hazirlanan <- Filter(function(e) nzchar(e$key) && nzchar(e$path), hazirlanan)
 
-  if (!length(hazirlanan)) return(character())
+  if (!length(hazirlanan)) return(structure(character(), accepted = accepted))
 
   indexed <- artifact_ids <- character()
   .file_store_mutate_index(function(idx) {
@@ -377,6 +380,7 @@ mergen_index_persisted_files <- function(entries, user_id = NULL) {
       if (!.file_store_entry_replaceable(node, kayit)) next
       girdi <- list(path = kayit$path, display = kayit$display)
       if (!is.null(kayit$artifact_id)) girdi$artifact_id <- kayit$artifact_id
+      accepted[kayit$position] <<- TRUE
       indexed <<- c(indexed, kayit$display)
       artifact_ids <<- c(artifact_ids, kayit$artifact_id)
 
@@ -395,6 +399,7 @@ mergen_index_persisted_files <- function(entries, user_id = NULL) {
   if (any(vapply(hazirlanan, function(e) !is.null(e$artifact_id), logical(1)))) {
     attr(indexed, "artifact_ids") <- artifact_ids
   }
+  attr(indexed, "accepted") <- accepted
   indexed
 }
 

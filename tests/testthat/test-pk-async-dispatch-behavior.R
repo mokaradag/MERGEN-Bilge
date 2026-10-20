@@ -690,3 +690,18 @@ test_that("senkron gönderim hatası kabul jetonunu ve köken kaydını tam bir 
   expect_identical(taken, 1L)
   expect_length(h$kayit$devam, 0L)
 })
+
+
+test_that("kalıcı plan hataları altyapı, geçici kapasite hataları yeniden deneme olarak sınıflanır", {
+  persistent <- c("future_missing", "worker_count_unknown", "no_worker_plan",
+    "single_worker_falls_back", "worker_shares_main_process", "remote_cluster_plan",
+    "plan_probe_failed", "future_plan_not_async")
+  for (reason in c(persistent, "worker_probe_inconclusive", "db_pool_cap_exceeded")) {
+    env <- .pk_dispatch_env()
+    env$pk_async_available <- function(...) list(available = FALSE, reason = reason)
+    outcome <- env$mergen_pk_analysis_execute(.pk_ctx(env)$ctx)
+    if (reason %in% persistent)
+      expect_identical(outcome$answer, env$mergen_pk_worker_outcome_text("infrastructure")) else
+      expect_match(outcome$answer, "biraz sonra", fixed = TRUE)
+  }
+})

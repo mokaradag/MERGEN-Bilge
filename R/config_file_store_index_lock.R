@@ -259,9 +259,18 @@ file_store_index_lock_heartbeat <- function() {
   # Kilit YALNIZCA marker hâlâ bizim jetonumuzu taşıyorsa bırakılır; başka
   # kanıt kabul edilmez (bayat kilit yeni sahibe geçtiyse lost update olurdu).
   on.exit({
-    if (identical(.lock_owner_token(), lock_token)) {
-      unlink(lock_dir, recursive = TRUE, force = TRUE)
-    }
+    sahip <- .lock_owner_token()
+    if (is.null(sahip)) {
+      reclaim <- mergen_reclaim_mutex(paste0(lock_dir, ".reclaim"))
+      if (!is.null(reclaim)) tryCatch({
+        for (deneme in 1:3) {
+          sahip <- .lock_owner_token()
+          if (!is.null(sahip)) break
+          if (deneme < 3L) Sys.sleep(0.01)
+        }
+        if (identical(sahip, lock_token)) unlink(lock_dir, recursive = TRUE, force = TRUE)
+      }, finally = filelock::unlock(reclaim))
+    } else if (identical(sahip, lock_token)) unlink(lock_dir, recursive = TRUE, force = TRUE)
   }, add = TRUE)
 
   force(expr)
