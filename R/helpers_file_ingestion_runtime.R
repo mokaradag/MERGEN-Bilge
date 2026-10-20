@@ -1,10 +1,7 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_file_ingestion_runtime.R
-# Açıklama: Dosya alım hattının ANA SÜREÇ orkestrasyonu. Parti gönderimi,
-#           oturum/iptal koruması, kalıcı indeks yazımı (tek toplu mutasyon) ve
-#           tamamlanma geri çağrısı burada yaşar. Worker'a canlı Shiny oturumu
-#           veya reaktif değer taşınmaz; yalnızca düz görev listeleri gider.
-#           R/helpers_file_ingestion_queue.R dosyasından sonra source edilir.
+# Açıklama: Dosya alımının ana süreç orkestrasyonu; worker'a yalnız düz görev gider.
+# R/helpers_file_ingestion_queue.R dosyasından sonra source edilir.
 # ==============================================================================
 
 # Parti gönderimi ve iptal durumunu taşıyan hafif denetleyici.
@@ -22,9 +19,7 @@ file_ingestion_create_controller <- function(session = NULL, debug_fn = NULL) {
     mergen_session_on_owner_change(session, function(...) file_ingestion_cancel_controller(controller))
   }
 
-  # Tarayıcı kapanışı iptal değildir: çalışan kabul edilmiş alım kalıcı sonucuna
-  # ulaşır, yalnız UI geri çağrıları susturulur. Geçici yüklemesi oturumla silinen
-  # kuyruktaki işler bırakılır.
+  # Tarayıcı kapanışı kabul edilmiş işi iptal etmez; yalnız UI geri çağrıları susar.
   if (!is.null(session) && is.function(session$onSessionEnded)) {
     try(session$onSessionEnded(function() {
       controller$active <- FALSE
@@ -35,8 +30,7 @@ file_ingestion_create_controller <- function(session = NULL, debug_fn = NULL) {
   controller
 }
 
-# Oturum başına tek denetleyici; Ana Söyleşi ve diğer yükleme girişleri aynı
-# oturum/iptal korumasını paylaşır.
+# Oturum başına tek denetleyici.
 file_ingestion_session_controller <- function(session) {
   if (is.null(session) || !is.environment(session$userData)) {
     return(file_ingestion_create_controller(session))
@@ -50,8 +44,7 @@ file_ingestion_session_controller <- function(session) {
   controller
 }
 
-# Devam eden partilerin ana süreç tarafını geçersiz kılar (örn. "Tümünü Temizle").
-# Uçuştaki partinin kopyaladığı dosyalar temizlenir, indekse yazılmaz.
+# Devam eden partilerin ana süreç tarafını geçersiz kılar.
 file_ingestion_cancel_controller <- function(controller) {
   if (is.null(controller)) return(invisible(FALSE))
   controller$epoch <- controller$epoch + 1L
@@ -59,8 +52,7 @@ file_ingestion_cancel_controller <- function(controller) {
   invisible(TRUE)
 }
 
-# Yalnız bu denetleyicinin bekleyen işleri kuyruktan düşürülür ve her biri
-# terminal temizlik alır (ilerleme bildirimi kapanır). Görev ayrıntısı taşınmaz.
+# Yalnız bu denetleyicinin bekleyen işleri kuyruktan düşürür.
 file_ingestion_drop_controller_jobs <- function(controller) {
   state <- .file_ingestion_state()
   if (!length(state$pending)) return(invisible(0L))
@@ -80,14 +72,10 @@ file_ingestion_controller_debug <- function(controller, tag, message) {
   invisible(TRUE)
 }
 
-# Kuyruktan çıkan işi gerçek worker görevine dönüştürür. Bu fonksiyon yalnızca
-# ana süreçte çalışır; worker'a düz görev listesi ve önbelleğe alınmış global
-# paketi taşınır.
+# Kuyruktan çıkan işi gerçek worker görevine dönüştürür.
 file_ingestion_run_job <- function(job) {
   if (is.environment(job$lease)) job$lease$released <- FALSE
-  # Tarayıcı kapanışı kabul edilmiş işi düşürmez: Shiny geçici yüklemeyi oturum
-  # sonunda siler; kaynak aynı birimde sabit bağlantıyla (kopyasız) işe bağlanır,
-  # bağlantı kurulamazsa özgün yol kullanılır. İş bırakılınca bağlantılar silinir.
+  # Geçici kaynağı mümkünse aynı birimde sabit bağlantıyla işe bağla.
   kaynaklar <- file.path(tempdir(), "mergen_ingest_sources", gsub("[^A-Za-z0-9_.-]", "_", job$id))
   if (is.environment(job$lease) && dir.create(kaynaklar, recursive = TRUE, showWarnings = FALSE))
     job$lease$sources <- kaynaklar
@@ -124,7 +112,7 @@ file_ingestion_run_job <- function(job) {
 
   promises::then(
     promise,
-    # Günlük, terfi edilmiş kopyanın commit ya da geri alımı kalıcılaşana dek yaşar.
+    # Günlük commit ya da geri alım kalıcılaşana dek yaşar.
     onFulfilled = function(results) {
       file_ingestion_finish_job(job, results, bekleme_ms, journals = journals)
     },
@@ -137,7 +125,7 @@ file_ingestion_run_job <- function(job) {
   invisible(TRUE)
 }
 
-# Yalnızca korunan tamamlanma üstverisi ana süreçte uygulanır.
+# Yalnız korunan tamamlanma üstverisini ana süreçte uygular.
 file_ingestion_apply_commit <- function(job, results, index_result, queue_wait_ms = 0) {
   file_ingestion_release_job(job)
   on.exit(try(file_ingestion_pump(), silent = TRUE), add = TRUE)
@@ -192,7 +180,7 @@ file_ingestion_apply_commit <- function(job, results, index_result, queue_wait_m
   invisible(NULL)
 }
 
-# Worker görevinin tamamen başarısız olduğu dal (dispatch/serialization hatası).
+# Worker görevinin tamamen başarısız olduğu dal.
 file_ingestion_fail_job <- function(job, error) {
   file_ingestion_release_job(job)
   on.exit(try(file_ingestion_pump(), silent = TRUE), add = TRUE)
@@ -212,9 +200,7 @@ file_ingestion_fail_job <- function(job, error) {
   invisible(NULL)
 }
 
-# Partiyi kuyruğa alır ve kapasite varsa hemen başlatır. Ana süreçte yalnızca
-# düz liste hazırlığı yapıldığı için olay döngüsü bloklanmaz.
-# Dönüş: list(status = "started"|"queued"|"rejected"|"empty", batch_id = ...)
+# Partiyi kuyruğa alır ve kapasite varsa hemen başlatır.
 file_ingestion_submit_batch <- function(controller,
                                         tasks,
                                         user_id,

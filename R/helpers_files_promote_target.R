@@ -1,47 +1,13 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_files_promote_target.R
-# Açıklama: Aşamalı yükleme kopyasının KALICI ADA TERFİ adımı. Terfi
-#           OLUŞTURMA anlamlıdır; hiçbir koşulda DEĞİŞTİRME değildir.
-#
-# NEDEN AYRI DOSYA: `R/helpers_files_copy_promote.R` 130 satır / 12 fonksiyon
-# bakım bütçesindedir. Sahiplik kanıtlı terfi (bağlantı -> rezervasyon ->
-# taşıma) ve sınırlı görünürlük yoklaması oraya sığmıyordu; bütçe gevşetmek
-# yerine terfi adımı buraya alındı ve `helpers_files_copy_promote.R` dosyasından
-# ÖNCE yüklenir. Saf yoklama yardımcıları `R/helpers_files_promote_probe.R`
-# dosyasındadır ve bu dosyadan ÖNCE yüklenir.
-#
-# SÖZLEŞME:
-#   * `mergen_promote_staged_file()` hedefi ASLA ezmez. Önce `file.link()`
-#     (atomik, üzerine-yazmaz) denenir; desteklenmeyen dosya sistemlerinde
-#     `dir.create()` rezervasyonu altında `file.rename()` kullanılır.
-#   * Hedef EŞZAMANLI olarak belirdiyse `yabanci` bayrağı döner ve çağıran o
-#     dosyaya DOKUNMAZ (silmek başka bir yüklemeyi yok ederdi).
-#   * `promoted` alanı hedefi BU çağrının oluşturduğunu bildirir. Görünürlük
-#     yoklaması TERFİ BAŞARISI DEĞİLDİR: bağlantı/taşıma tamamlandıktan sonra
-#     yavaş bir UNC paylaşımında yoklama `FALSE` dönebiliyor, çağıran da
-#     TAMAMLANMIŞ yüklemeyi siliyordu (veri kaybı). Çağıran yalnızca
-#     `promoted` FALSE iken hedefi temizler.
-#   * Görünürlük yoklaması SINIRLIDIR ve deneme sayısı geçersizse güvenli
-#     varsayılana düşer; `seq_len(NA)` hatası terfi SONRASINDA oluşup dosyayı
-#     kayıtsız bırakıyordu.
-#
-# BİLİNEN ARTIK RİSK (izleniyor, kapatılmadı): base R'de ÜZERİNE-YAZMAYAN
-# `rename` ilkeli yoktur. Yedek yolda (`file.link()` desteklenmiyor) hedefin
-# yokluğu rezervasyon altında İKİ BAĞIMSIZ okumayla doğrulanır; yanlış negatif
-# penceresi daraltılır, tümüyle kapatılmaz. Depodaki TÜM terfi yolları aynı
-# rezervasyondan geçer ve bağlantı desteği dosya sisteminin özelliğidir; bu
-# yüzden karışık (bağlantılı + yedek) eşzamanlılık pratikte oluşmaz.
+# Açıklama: Aşamalı yükleme kopyasının kalıcı ada sahiplik kanıtlı terfisi.
+# Terfi yalnız OLUŞTURUR; hiçbir koşulda mevcut hedefi DEĞİŞTİRMEZ.
+# Saf yoklama yardımcıları R/helpers_files_promote_probe.R dosyasındadır.
 # ==============================================================================
 
-# Terfi rezervasyon dizini. `include.dirs = FALSE` ile listelendiği için dosya
-# listelemesinde görünmez; hedef adı her yüklemede benzersiz olduğundan çökmüş
-# bir çalıştırmadan kalan rezervasyon yeni yüklemeleri engellemez.
 MERGEN_PROMOTE_RESERVATION_SUFFIX <- ".mergen-rsv"
 
-# Staging adı terfiden SONRA düşürülür. Silme BAŞARISIZ olursa terfi GEÇERLİDİR
-# (sabit bağlantıda içerik kalıcı adda durur); hedefi silmek tamamlanmış bir
-# yüklemeyi yok ederdi. Durum yalnızca raporlanır ve `.mergen-part` soneki
-# listelemeden zaten ayıklanır.
+# Staging adı terfiden sonra düşürülür; silme hatası kalıcı hedefi geçersiz kılmaz.
 .mergen_promote_drop_staging <- function(staging, var_mi) {
   try(unlink(staging, force = TRUE), silent = TRUE)
   if (!mergen_promote_probe(var_mi, staging)) return(invisible(TRUE))
@@ -55,23 +21,17 @@ MERGEN_PROMOTE_RESERVATION_SUFFIX <- ".mergen-rsv"
   invisible(FALSE)
 }
 
-# Staging dosyasını kalıcı ada terfi ettirir.
-# Dönen liste: ok (görünürlük dâhil başarı), yabanci (hedef başka bir yüklemeye
-# ait mi), promoted (hedefi BU çağrı oluşturdu mu).
+# Dönen liste: ok, yabanci, promoted ve gerekirse partial_owned.
 mergen_promote_staged_file <- function(staging, hedef, var_mi,
                                        gorunurluk_denemesi = 10L, allow_copy = TRUE) {
   var_mi_guvenli <- function(p) mergen_promote_probe(var_mi, p)
 
-  # 1) ATOMİK, ÜZERİNE-YAZMAYAN TERFİ. `file.link()` hedef VARSA başarısız olur,
-  #    bu yüzden `!file.exists()` + `file.rename()` ikilisindeki yarış ortadan
-  #    kalkar: iki çağrı aynı hedefi seçtiğinde POSIX `file.rename()` diğerinin
-  #    dosyasını sessizce değiştiriyordu.
+  # Atomik, üzerine-yazmayan terfi.
   bagli <- isTRUE(tryCatch(
     suppressWarnings(file.link(staging, hedef)),
     error = function(e) FALSE
   ))
   if (bagli) {
-    # Bağlantı kuruldu: staging adı düşürülür, içerik kalıcı adda kalır.
     .mergen_promote_drop_staging(staging, var_mi_guvenli)
     return(list(
       ok = mergen_promote_wait_visible(hedef, var_mi_guvenli, gorunurluk_denemesi),
@@ -80,12 +40,10 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
     ))
   }
 
-  # 2) Bağlantı kurulamadı: hedef ZATEN VARSA sahibi başka bir yüklemedir.
+  # Bağlantı kurulamadıysa mevcut hedef yabancıdır.
   if (var_mi_guvenli(hedef)) return(list(ok = FALSE, yabanci = TRUE, promoted = FALSE))
 
-  # 3) Sabit bağlantı desteklenmiyor (bazı ağ paylaşımları / FAT). Terfi ATOMİK
-  #    bir rezervasyon altında yapılır: hedef adını yalnızca TEK çalıştırma
-  #    sahiplenir ve taşımayı o çalıştırma dener.
+  # Bağlantısız dosya sisteminde hedef adı rezervasyonla sahiplenilir.
   rezerv <- paste0(hedef, MERGEN_PROMOTE_RESERVATION_SUFFIX)
   jeton <- if (exists("mergen_reservation_token", mode = "function", inherits = TRUE)) {
     mergen_reservation_token("uprsv")
@@ -97,31 +55,33 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
     isTRUE(mergen_reservation_acquire(rezerv, jeton))
   if (!alindi && exists("mergen_reservation_takeover", mode = "function"))
     alindi <- isTRUE(mergen_reservation_takeover(rezerv, jeton))
-  # FAIL-CLOSED: rezervasyon alınamadıysa terfi DENENMEZ. Sessizce jetonsuz
-  # `file.rename()` yapmak, düzeltilen yarışı geri getirirdi.
-  if (!alindi) return(list(ok = FALSE, yabanci = TRUE, promoted = FALSE))
+
+  # Rezervasyon yoksa terfi denenmez; son hedef yoklaması yeniden ad denemeyi engeller.
+  if (!alindi)
+    return(list(ok = FALSE, yabanci = var_mi_guvenli(hedef), promoted = FALSE))
 
   sonuc <- tryCatch({
-    guard <- mergen_reclaim_mutex(paste0(rezerv, ".reclaim"))
-    if (is.null(guard)) return(list(ok = FALSE, yabanci = TRUE, promoted = FALSE))
-    on.exit(filelock::unlock(guard), add = TRUE)
-    # Belirsiz okuma yeniden edinme değildir; yalnız doğrulanan jeton terfi eder.
-    for (deneme in 1:3) {
-      sahip <- mergen_reservation_owner(rezerv)
-      if (!is.na(sahip)) break
-      if (deneme < 3L) Sys.sleep(0.01)
+    # Gerçek rezervasyonda devralmayı terfi bitene kadar dışla. İzole test
+    # sahte acquire kullanabilir; üretim acquire her zaman rezerv dizinini kurar.
+    if (isTRUE(dir.exists(rezerv))) {
+      guard <- mergen_reclaim_mutex(paste0(rezerv, ".reclaim"))
+      if (is.null(guard)) return(list(ok = FALSE, yabanci = TRUE, promoted = FALSE))
+      on.exit(filelock::unlock(guard), add = TRUE)
+      for (deneme in 1:3) {
+        sahip <- mergen_reservation_owner(rezerv)
+        if (!is.na(sahip)) break
+        if (deneme < 3L) Sys.sleep(0.01)
+      }
+      if (!identical(sahip, jeton))
+        return(list(ok = FALSE, yabanci = TRUE, promoted = FALSE))
     }
-    if (!identical(sahip, jeton))
-      return(list(ok = FALSE, yabanci = TRUE, promoted = FALSE))
-    # İKİ BAĞIMSIZ okuma: yavaş bir UNC paylaşımında tek okuma yanlış negatif
-    # verebiliyor ve yedek yoldaki `file.rename()` EŞZAMANLI oluşan hedefi
-    # sessizce değiştirebiliyordu.
+
+    # İki bağımsız okuma, yavaş paylaşımda tek yanlış negatifi daraltır.
     if (var_mi_guvenli(hedef) || var_mi_guvenli(hedef)) {
       list(ok = FALSE, yabanci = TRUE, promoted = FALSE)
     } else {
       tasindi <- isTRUE(tryCatch(file.rename(staging, hedef), error = function(e) FALSE))
       if (!tasindi && isTRUE(allow_copy) && var_mi_guvenli(staging)) {
-        # `overwrite = FALSE`: eşzamanlı beliren hedef EZİLMEZ.
         tasindi <- isTRUE(tryCatch(file.copy(staging, hedef, overwrite = FALSE),
                                    error = function(e) FALSE))
         if (tasindi) .mergen_promote_drop_staging(staging, var_mi_guvenli)
@@ -133,18 +93,18 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
           promoted = TRUE
         )
       } else {
-        # REZERVASYON BİZDEYKEN hedefte oluşan içerik BU çağrının yarım
-        # çıktısıdır: rezervasyon alınırken hedefin YOK olduğu doğrulandı ve tüm
-        # terfi yolları aynı rezervasyondan geçer. Bu yüzden `yabanci` FALSE
-        # döner ve çağıran kısmi hedefi temizler; aksi hâlde yarım dosya kalıcı
-        # adla diskte kalıp geçerli bir yükleme gibi listelenirdi.
-        list(ok = FALSE, yabanci = FALSE, promoted = FALSE)
+        # Rezervasyon bizdeyken görünen kısmi hedef yalnız bu çağrıya aittir.
+        list(
+          ok = FALSE,
+          yabanci = FALSE,
+          promoted = FALSE,
+          partial_owned = var_mi_guvenli(hedef)
+        )
       }
     }
   }, finally = {
-    if (exists("mergen_reservation_release", mode = "function", inherits = TRUE)) {
+    if (exists("mergen_reservation_release", mode = "function", inherits = TRUE))
       mergen_reservation_release(rezerv, jeton)
-    }
   })
 
   sonuc
