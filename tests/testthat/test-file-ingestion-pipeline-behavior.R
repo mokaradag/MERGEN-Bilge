@@ -1760,3 +1760,37 @@ test_that("aynı partinin kimliksiz farklı yolu canlı yapıtı silemez", {
   expect_identical(.load_index()[["42"]][[tolower(owned$name)]]$artifact_id, owned$artifact_id)
   expect_true(file.exists(owned$dest))
 })
+
+test_that("native yeniden bağlama ilk başlangıcı korur ve aradaki commit'i ezmez", {
+  env <- .ingestionEnv()
+  a <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("native_yaris.txt", "A")))
+  root <- withr::local_tempdir()
+  old <- file.path(root, "old.txt"); native <- file.path(root, "native.txt")
+  source <- withr::local_tempfile(); writeLines("B", source)
+  tx <- list(id = "native-ilk", journal = withr::local_tempfile())
+  stage <- paste0(old, ".mergen-part"); native_stage <- paste0(native, ".mergen-part")
+  env$file_ingestion_begin_copy(old, stage, source, tx)
+  started <- env$file_ingestion_read_owner(old)$started_at
+  env$enc2native <- function(path) sub(old, native, path, fixed = TRUE)
+  testthat::local_mocked_bindings(file_copy = function(...) stop("native gerekli"), .package = "fs")
+  env$file.copy <- function(from, to, ...) {
+    if (identical(to, stage)) {
+      expect_true(env$file_ingestion_commit_index(list(a), "42")$accepted[[1]])
+      return(FALSE)
+    }
+    base::file.copy(from, to, ...)
+  }
+  copied <- env$mergen_stage_upload_copy(source, old, stage, file.exists, file.exists,
+    function(path) unlink(path), rebind = function(dest, stage)
+      env$file_ingestion_begin_copy(dest, stage, source, tx))
+  expect_true(copied$ok)
+  expect_identical(env$file_ingestion_read_owner(native)$started_at, started)
+  expect_identical(readRDS(tx$journal)$started_at, started)
+  env$file_ingestion_prepare_promotion(native_stage, native, tx)
+  expect_true(file.rename(native_stage, native))
+  env$file_ingestion_claim_artifact(native, id = tx$id)
+  b <- list(ok = TRUE, dest = native, name = a$name, artifact_id = tx$id)
+  expect_false(env$file_ingestion_commit_index(list(b), "42")$accepted[[1]])
+  expect_identical(.load_index()[["42"]][[tolower(a$name)]]$artifact_id, a$artifact_id)
+  expect_true(file.exists(a$dest))
+})

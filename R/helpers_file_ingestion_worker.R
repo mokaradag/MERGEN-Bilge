@@ -85,6 +85,7 @@ file_ingestion_execute_task <- function(task) {
   }
   validate_ms <- elapsed_ms(validate_started)
   copy_started <- Sys.time()
+  if (!is.null(task$transaction)) task$transaction$started_at <- task$transaction$started_at %||% as.numeric(copy_started)
   dest <- tryCatch(
     copy_to_mcp_base(
       list(name = task$name, datapath = task$datapath, size = task$size, type = task$type,

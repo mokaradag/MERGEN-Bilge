@@ -105,12 +105,19 @@ file_ingestion_begin_copy <- function(path, staging, source, transaction) {
       unlink(staging, force = TRUE)
     if (path_exists_relaxed(path) || path_exists_relaxed(staging)) stop("Kopya hedefi zaten var.")
     previous <- suppressWarnings(tryCatch(readRDS(transaction$journal), error = function(e) NULL))
-    result <- list(ok = FALSE, dest = path, source_path = source,
+    started_at <- if (is.list(previous) && identical(previous$artifact_id, transaction$id))
+      previous$started_at else transaction$started_at
+    yeni_nesil <- is.list(previous) && is.character(previous$artifact_id) && length(previous$artifact_id) == 1L &&
+      !is.na(previous$artifact_id) && nzchar(previous$artifact_id) && !identical(previous$artifact_id, transaction$id)
+    if (is.null(started_at) && (yeni_nesil || !path_exists_relaxed(transaction$journal))) started_at <- as.numeric(Sys.time())
+    if (!is.numeric(started_at) || length(started_at) != 1L || !is.finite(started_at))
+      stop("İşlemin ilk başlangıcı doğrulanamadı.")
+    result <- list(ok = FALSE, dest = path, source_path = source, started_at = started_at,
       artifact_id = transaction$id, staging = staging, transaction_pending = TRUE)
     file_ingestion_write_owner(result, transaction$journal)
     unlink(paste0(marker, ".identity"), force = TRUE)
     file_ingestion_write_owner(list(id = transaction$id, state = "copying", staging = staging,
-      pid = Sys.getpid(), host = unname(Sys.info()[["nodename"]]), started_at = as.numeric(Sys.time())), marker)
+      pid = Sys.getpid(), host = unname(Sys.info()[["nodename"]]), started_at = started_at), marker)
     if (is.list(previous) && !identical(previous$dest, path)) {
       old_owner <- file_ingestion_read_owner(previous$dest)
       # Yerel kodlama aynı fiziksel marker'a çözülürse yeni rezervasyon silinmez.
