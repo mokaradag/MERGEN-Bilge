@@ -137,8 +137,7 @@
     if (length(deger) != 1L || is.na(deger) || !nzchar(deger)) varsayilan else deger
   }
 
-  c(sonek_ya_da_varsayilan("MERGEN_UPLOAD_STAGING_SUFFIX", ".mergen-part"),
-    ".mergen-rsv.reclaim")
+  sonek_ya_da_varsayilan("MERGEN_UPLOAD_STAGING_SUFFIX", ".mergen-part")
 }
 
 # Dizinler listelemeden ayıklanır (`list.files(recursive = FALSE)` dizinleri de
@@ -156,7 +155,7 @@
 
 .file_store_drop_upload_artifacts <- function(paths) {
   if (!length(paths)) return(paths)
-  sonekler <- .file_store_artifact_suffixes()
+  sonekler <- c(.file_store_artifact_suffixes(), ".mergen-rsv.reclaim")
   sonekler <- unique(sonekler[!is.na(sonekler) & nzchar(sonekler)])
   if (!length(sonekler)) return(paths)
   adlar <- basename(as.character(paths))
