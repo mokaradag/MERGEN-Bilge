@@ -17,8 +17,8 @@
 # yokluğunda uygulamayı gereksiz yere durdururdu. CI iş akışı onu ayrıca kurar.
 required_packages <- c(
   "arrow", "base64enc", "callr", "cellranger", "cli", "commonmark", "curl",
-  "data.table", "DBI", "dplyr", "DT", "duckdb", "fastmatch", "filelock",
-  "future", "glue", "highcharter", "htmltools", "httr", "jsonlite", "later",
+  "data.table", "DBI", "digest", "dplyr", "DT", "duckdb", "fastmatch", "filelock",
+  "fs", "future", "glue", "highcharter", "htmltools", "httr", "jsonlite", "later",
   "logger", "lubridate", "markdown", "odbc", "openssl", "pdftools", "pool",
   "promises", "purrr", "readr", "readxl", "shiny", "shinyBS",
   "shinycssloaders", "shinydashboard", "shinyjs", "shinyWidgets",

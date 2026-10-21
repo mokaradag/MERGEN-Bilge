@@ -136,6 +136,7 @@ mergen_reservation_touch <- function(rezerv, jeton) {
 # doğrulanır ve yalnızca doğrulanan örnek silinir. Yakalanan örnek bizim
 # değilse yerine GERİ KONUR.
 .mergen_reservation_remove_owned <- function(rezerv, jeton) {
+  if (!is.character(jeton) || length(jeton) != 1L || is.na(jeton) || !nzchar(jeton)) return(FALSE)
   karantina <- paste0(rezerv, ".q-", basename(tempfile("q")))
   tasindi <- isTRUE(tryCatch(file.rename(rezerv, karantina), error = function(e) FALSE))
   if (!tasindi) return(FALSE)
@@ -178,9 +179,10 @@ mergen_reservation_takeover <- function(rezerv, jeton,
   # OKUNAMAYAN marker sahiplik KANITI DEĞİLDİR: iki başarısız okuma da
   # `NA_character_` döner ve `identical(NA, NA)` TRUE olur. Geçici bir UNC
   # okuma hatası, CANLI bir rezervasyonun devralınmasına izin veriyordu.
-  if (length(gozlenen) != 1L ||
-      (is.na(gozlenen) && isTRUE(file.exists(.mergen_reservation_marker(rezerv)))) ||
-      (!is.na(gozlenen) && !nzchar(gozlenen))) return(FALSE)
+  if (length(gozlenen) != 1L || is.na(gozlenen) || !nzchar(gozlenen)) return(FALSE)
+  # Canlı sahip için dizin muteksi beklenmez; karar kilit altında yinelenir.
+  if (!mergen_lock_owner_reclaimable(.mergen_reservation_marker(rezerv), gozlenen,
+      stale_sec = stale_sec, age_paths = c(.mergen_reservation_marker(rezerv), rezerv))) return(FALSE)
   if (!exists("mergen_reclaim_mutex", mode = "function")) return(FALSE)
 
   guard_yolu <- file.path(dirname(rezerv), ".mergen-rsv.reclaim")

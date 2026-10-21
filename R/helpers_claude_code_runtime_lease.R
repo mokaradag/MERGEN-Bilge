@@ -29,16 +29,17 @@ cc_release_runtime_lease <- function(runtime_lease = NULL) {
 }
 
 # Kira içeriği yerinde kesilmez: geçici dosyaya yazılıp mevcut kiranın yerine
-# taşınır. Windows'ta açık tanıtıcı geçici paylaşım ihlali verebildiği için
+# fs/libuv ile atomik değiştirilir. Geçici paylaşım ihlali verebildiği için
 # sınırlı yeniden denenir; başarısızlıkta eski kira olduğu gibi kalır.
 .cc_write_runtime_lease <- function(lease, lines) {
   tmp <- paste0(lease, ".", Sys.getpid(), ".tmp")
+  on.exit(unlink(tmp, force = TRUE), add = TRUE)
   if (inherits(try(writeLines(lines, tmp, useBytes = TRUE), silent = TRUE), "try-error")) {
     unlink(tmp, force = TRUE)
     return(FALSE)
   }
   for (deneme in 1:5) {
-    if (isTRUE(try(file.rename(tmp, lease), silent = TRUE))) return(TRUE)
+    if (!inherits(try(fs::file_move(tmp, lease), silent = TRUE), "try-error")) return(TRUE)
     Sys.sleep(0.05 * deneme)
   }
   unlink(tmp, force = TRUE)

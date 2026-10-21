@@ -40,14 +40,14 @@ file_ingestion_artifact_owned <- function(result, allow_deleting = TRUE) {
 }
 
 # Marker yerinde yazılmaz: sert ölüm yarım RDS bırakıp tüm geri alımı kilitlerdi.
-# Değiştirme eski marker silinmeden yapılır (rename hedefi değiştirir); Windows'ta
-# açık okuma tanıtıcısı geçici paylaşım ihlali verebildiği için sınırlı yeniden
-# denenir. Başarısızlıkta eski marker (sahiplik kanıtı) olduğu gibi kalır.
+# fs/libuv aynı birimde Windows hedefini de atomik değiştirir; hata eski kanıtı korur.
 file_ingestion_write_owner <- function(value, target) {
   tmp <- paste0(target, ".", Sys.getpid(), ".tmp")
+  on.exit(unlink(tmp, force = TRUE), add = TRUE)
   saveRDS(value, tmp)
   for (deneme in 1:5) {
-    if (isTRUE(base::file.rename(tmp, target))) return(invisible(target))
+    if (!inherits(try(fs::file_move(tmp, target), silent = TRUE), "try-error"))
+      return(invisible(target))
     Sys.sleep(0.05 * deneme)
   }
   unlink(tmp, force = TRUE)

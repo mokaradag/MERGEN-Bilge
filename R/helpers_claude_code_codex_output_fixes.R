@@ -553,6 +553,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
 )
 
 .cc_codex_output_worker_names <- c(
+  "%||%",
   ".cc_codex_original_cc_scan_directory_bounded",
   ".cc_codex_original_cc_plan_output_sync",
   ".cc_codex_original_cc_process_run_outputs",

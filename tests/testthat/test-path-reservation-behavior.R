@@ -112,3 +112,39 @@ test_that("eski biçimli ya da uzak host rezervasyonu yalnız bayatlıktan sonra
     expect_true(file.exists(file.path(dirname(rezerv), ".mergen-rsv.reclaim")))
   }
 })
+
+test_that("okunamayan sahiplik hiçbir yokluk yoklamasıyla silme yetkisi vermez", {
+  env <- new.env(parent = globalenv())
+  source(file.path(resolve_repo_root_for_tests(), "R/utils_path_reservation.R"),
+         encoding = "UTF-8", local = env)
+  rezerv <- .rezerv_yolu()
+  expect_true(env$mergen_reservation_acquire(rezerv, "2147483647-eski"))
+  env$file.exists <- function(...) FALSE
+  env$mergen_reclaim_mutex <- function(...) stop("okunamayan sahip mutekse ulaşmamalı")
+  expect_false(env$mergen_reservation_takeover(rezerv, "yeni", stale_sec = -1))
+  expect_false(env$.mergen_reservation_remove_owned(rezerv, NA_character_))
+  expect_true(dir.exists(rezerv))
+  expect_identical(readLines(file.path(rezerv, "owner"))[1], "2147483647-eski")
+  env$mergen_reservation_owner <- function(path) NA_character_
+  expect_false(env$.mergen_reservation_remove_owned(rezerv, "2147483647-eski"))
+  expect_true(dir.exists(rezerv))
+  expect_length(list.files(dirname(rezerv), pattern = "\\.q-"), 0L)
+})
+
+test_that("canlı rezervasyon muteks beklemez ve devralma kilit altında yeniden doğrulanır", {
+  env <- new.env(parent = globalenv())
+  source(file.path(resolve_repo_root_for_tests(), "R/utils_path_reservation.R"),
+         encoding = "UTF-8", local = env)
+  rezerv <- .rezerv_yolu()
+  expect_true(env$mergen_reservation_acquire(rezerv, "sahip"))
+  env$mergen_lock_owner_reclaimable <- function(...) FALSE
+  env$mergen_reclaim_mutex <- function(...) stop("canlı sahip muteks beklememeli")
+  expect_false(env$mergen_reservation_takeover(rezerv, "yeni"))
+  env$mergen_lock_owner_reclaimable <- function(...) TRUE
+  env$mergen_reclaim_mutex <- function(path, timeout) {
+    writeLines("yenilenen-sahip", file.path(rezerv, "owner"))
+    filelock::lock(path, timeout = timeout)
+  }
+  expect_false(env$mergen_reservation_takeover(rezerv, "yeni"))
+  expect_identical(env$mergen_reservation_owner(rezerv), "yenilenen-sahip")
+})

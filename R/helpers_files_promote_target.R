@@ -67,7 +67,13 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
       # Muteks kalıcı ve dizin başına tektir; başka hedefin kısa kilidi beklenir.
       guard <- mergen_reclaim_mutex(file.path(dirname(rezerv), ".mergen-rsv.reclaim"), timeout = 5000)
       if (is.null(guard)) return(list(ok = FALSE, yabanci = TRUE, promoted = FALSE))
-      on.exit(filelock::unlock(guard), add = TRUE)
+      guard_birak <- function() {
+        if (!is.null(guard)) {
+          filelock::unlock(guard)
+          guard <<- NULL
+        }
+      }
+      on.exit(guard_birak(), add = TRUE)
       for (deneme in 1:3) {
         sahip <- mergen_reservation_owner(rezerv)
         if (!is.na(sahip)) break
@@ -87,6 +93,7 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
                                    error = function(e) FALSE))
         if (tasindi) .mergen_promote_drop_staging(staging, var_mi_guvenli)
       }
+      if (exists("guard_birak", inherits = FALSE)) guard_birak()
       if (tasindi) {
         list(
           ok = mergen_promote_wait_visible(hedef, var_mi_guvenli, gorunurluk_denemesi),

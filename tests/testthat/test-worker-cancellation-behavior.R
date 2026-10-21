@@ -291,7 +291,7 @@ test_that("kuyruk yaşı yürütme son tarihinden bağımsız ve sınırlıdır"
 
 test_that("callr çocuğunun anlamsal hatası çağırana ulaşır", {
   env <- .cancellation_env()
-  source(file.path(resolve_repo_root_for_tests(), "R/helpers_worker_monitor.R"), local = env)
+  source(file.path(resolve_repo_root_for_tests(), "R/helpers_worker_monitor.R"), encoding = "UTF-8", local = env)
   error <- NULL
   p <- env$tracked_future_promise(function() stop("RATE_LIMIT: x"), dependency_mode = "explicit",
     globals = list(), cancel_check = function() TRUE)
@@ -305,7 +305,7 @@ test_that("callr çocuğunun anlamsal hatası çağırana ulaşır", {
 
 test_that("callr gönderimi kendi havuzunu ve yapılandırılmış son tarihi kullanır", {
   env <- .cancellation_env()
-  source(file.path(resolve_repo_root_for_tests(), "R/helpers_worker_monitor.R"), local = env)
+  source(file.path(resolve_repo_root_for_tests(), "R/helpers_worker_monitor.R"), encoding = "UTF-8", local = env)
   received <- NULL
   env$mergen_cancellable_worker_promise <- function(payload, current, timeout, priority, queue_timeout, lane) {
     received <<- list(timeout = timeout, queue = queue_timeout, lane = lane)
@@ -327,14 +327,14 @@ test_that("callr gönderimi kendi havuzunu ve yapılandırılmış son tarihi ku
   env$tracked_future_promise(function() TRUE, task_type = "claude_code_run_outputs",
     globals = list(), dependency_mode = "explicit", cancel_check = function() TRUE)
   expect_identical(received$lane, "durable")
-  source(file.path(resolve_repo_root_for_tests(), "R/helpers_claude_code_dir_listing_async.R"), local = env)
+  source(file.path(resolve_repo_root_for_tests(), "R/helpers_claude_code_dir_listing_async.R"), encoding = "UTF-8", local = env)
   expect_true(env$cc_dir_listing_async_available())
 })
 
 
 test_that("Yolaç temizlik kilidi canlıyken alınmaz, sert ölümden sonra kurtarılır", {
   env <- .cancellation_env()
-  source(file.path(resolve_repo_root_for_tests(), "R/helpers_claude_code_codex_runtime_lock.R"), local = env)
+  source(file.path(resolve_repo_root_for_tests(), "R/helpers_claude_code_codex_runtime_lock.R"), encoding = "UTF-8", local = env)
   env$.cc_codex_guard_check <- function(guard) invisible(TRUE)
   lock <- file.path(withr::local_tempdir(), "cleanup.lock")
   ready <- withr::local_tempfile()

@@ -882,7 +882,7 @@ test_that("özet terfisi gerçek callr ve üretim aktarım denetimleriyle tamaml
   env <- .cc_codex_review_env()
   for (file in c("helpers_worker_monitor.R", "helpers_worker_cancellation.R",
     "helpers_claude_code_run_lifecycle.R", "helpers_document_output_publication.R"))
-    source(file.path(resolve_repo_root_for_tests(), "R", file), local = env)
+    source(file.path(resolve_repo_root_for_tests(), "R", file), encoding = "UTF-8", local = env)
   env$cc_run_output_worker_globals <- function() {
     bundle <- list(cc_apply_output_sync_plan = env$cc_apply_output_sync_plan)
     c(bundle, env$worker_monitor_expand_function_globals(bundle))
@@ -1010,7 +1010,7 @@ test_that("çıktı kopyası kilidi tazeleyemezse kendi rezervasyonunu bırakır
   expect_false(file.exists(dest))
 })
 
-test_that("yarım oluşturulmuş çıktı rezervasyonu yalnız bayatladıktan sonra kurtarılır", {
+test_that("yarım oluşturulmuş çıktı rezervasyonu sahiplik kanıtı olmadan devralınmaz", {
   env <- .cc_codex_review_env()
   dest <- file.path(withr::local_tempdir(), "rapor.txt")
   lock <- env$.cc_output_txn_paths(dest)$lock
@@ -1018,9 +1018,9 @@ test_that("yarım oluşturulmuş çıktı rezervasyonu yalnız bayatladıktan so
   expect_identical(env$.cc_output_dest_lock(dest, wait_sec = 0), "")
   Sys.setFileTime(lock, Sys.time() - 120)
   token <- env$.cc_output_dest_lock(dest, wait_sec = 0)
-  expect_true(nzchar(token))
-  expect_identical(env$mergen_reservation_owner(lock), token)
-  env$mergen_reservation_release(lock, token)
+  expect_identical(token, "")
+  expect_true(dir.exists(lock))
+  expect_true(is.na(env$mergen_reservation_owner(lock)))
 })
 
 test_that("çıktı kurtarma eski rezervasyon kaldırılmadan yapılır ve başarısızlıkta yeniden denenir", {
@@ -1206,21 +1206,24 @@ test_that("kira değiştirmesi geçici hatada yeniden denenir, okunamayan kira y
   writeLines(sahip, lease)
   # Windows paylaşım ihlali: ilk iki değiştirme denemesi başarısız olur.
   denemeler <- 0L
-  env$file.rename <- function(from, to) {
+  original_move <- fs::file_move
+  fail_move <- FALSE
+  testthat::local_mocked_bindings(file_move = function(from, to) {
     denemeler <<- denemeler + 1L
-    if (denemeler < 3L) FALSE else base::file.rename(from, to)
-  }
+    if (fail_move || denemeler < 3L) stop("paylaşım ihlali")
+    original_move(from, to)
+  }, .package = "fs")
   expect_true(env$cc_bind_runtime_lease(lease, list(get_pid = function() 4242L)))
   expect_identical(denemeler, 3L)
   expect_true("pid=4242" %in% readLines(lease))
   # Kalıcı değiştirme hatası eski kirayı olduğu gibi bırakır.
   onceki <- readLines(lease)
-  env$file.rename <- function(from, to) FALSE
+  fail_move <- TRUE
   expect_false(env$cc_bind_runtime_lease(lease, list(get_pid = function() 5151L)))
   expect_identical(readLines(lease), onceki)
   expect_length(list.files(dirname(lease), pattern = "\\.tmp$"), 0L)
   # Okuma hatası boş kira sayılmaz: sahiplik satırları silinerek yeniden yazılmaz.
-  env$file.rename <- base::file.rename
+  fail_move <- FALSE
   env$readLines <- function(...) stop("geçici okuma hatası")
   env$Sys.setFileTime <- function(...) FALSE
   expect_false(env$cc_touch_runtime_lease(lease))
@@ -1240,4 +1243,33 @@ test_that("Windows uzun hedefin harf varyantları aynı yayın işlemini kilitle
   expect_identical(a, b)
   env$.Platform <- list(OS.type = "unix")
   expect_false(identical(env$.cc_output_txn_paths(lower)$lock, env$.cc_output_txn_paths(upper)$lock))
+})
+
+test_that("runtime lease yeniden bağlanır, heartbeat değiştirir, yazım hatası eskiyi korur", {
+  env <- .cc_codex_review_env()
+  lease <- withr::local_tempfile()
+  expect_true(env$.cc_write_runtime_lease(lease, "pid=2147483647"))
+  expect_true(env$cc_bind_runtime_lease(lease, list(get_pid = function() 12345L)))
+  expect_true(all(c(paste0("server=", Sys.getpid()), "pid=12345") %in% readLines(lease)))
+  env$Sys.setFileTime <- function(...) FALSE
+  before <- readLines(lease)
+  expect_true(env$cc_touch_runtime_lease(lease))
+  expect_identical(readLines(lease), before)
+  testthat::local_mocked_bindings(file_move = function(...) stop("paylaşım ihlali"), .package = "fs")
+  expect_false(env$.cc_write_runtime_lease(lease, "pid=54321"))
+  expect_identical(readLines(lease), before)
+  expect_false(file.exists(paste0(lease, ".", Sys.getpid(), ".tmp")))
+})
+
+test_that("açık çıktı paketi rezervasyon işlemini temiz ortamda çalıştırır", {
+  env <- .cc_codex_review_env()
+  env$.cc_codex_original_cc_run_output_worker_globals <- function(...) list()
+  bundle <- env$cc_run_output_worker_globals(refresh = TRUE, envir = env)
+  expect_true("%||%" %in% names(bundle))
+  worker <- list2env(bundle, parent = baseenv())
+  for (nm in names(bundle)) if (is.function(worker[[nm]])) environment(worker[[nm]]) <- worker
+  dest <- file.path(withr::local_tempdir(), "rapor.txt")
+  token <- worker$.cc_output_dest_lock(dest)
+  expect_true(is.character(token) && nzchar(token))
+  expect_true(worker$mergen_reservation_release(worker$.cc_output_txn_paths(dest)$lock, token))
 })

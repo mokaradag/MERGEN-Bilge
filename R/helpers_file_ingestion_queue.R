@@ -113,9 +113,10 @@ file_ingestion_cancel_session_jobs <- function(session_token) {
     !identical(as.character(job$session_token %||% "")[1], token)
   }, logical(1))
 
-  removed <- sum(!keep)
+  removed <- state$pending[!keep]
   state$pending <- state$pending[keep]
-  invisible(as.integer(removed))
+  for (job in removed) file_ingestion_release_job(job)
+  invisible(as.integer(length(removed)))
 }
 
 file_ingestion_queue_status <- function() {
@@ -139,11 +140,11 @@ file_ingestion_pump <- function() {
   while (length(state$pending) > 0L) {
     candidate <- state$pending[[1L]]
     max_age <- file_ingestion_int_setting("MERGEN_FILE_INGESTION_QUEUE_TIMEOUT",
-      "mergen.file_ingestion.queue_timeout", 300L)
+      "mergen.file_ingestion.queue_timeout", 1800L)
     age <- as.numeric(difftime(Sys.time(), candidate$queued_at %||% Sys.time(), units = "secs"))
     if (is.finite(age) && age > max_age) {
       job <- file_ingestion_take_next_job()
-      if (is.environment(job$lease)) job$lease$released <- TRUE
+      if (is.environment(job$lease)) job$lease$slot_acquired <- FALSE
       file_ingestion_fail_job(job, simpleError("Dosya alımı kuyrukta zaman aşımına uğradı."))
       next
     }

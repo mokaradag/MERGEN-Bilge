@@ -23,7 +23,6 @@ file_ingestion_create_controller <- function(session = NULL, debug_fn = NULL) {
   if (!is.null(session) && is.function(session$onSessionEnded)) {
     try(session$onSessionEnded(function() {
       controller$active <- FALSE
-      file_ingestion_drop_controller_jobs(controller)
     }), silent = TRUE)
   }
 
@@ -60,7 +59,8 @@ file_ingestion_drop_controller_jobs <- function(controller) {
   removed <- state$pending[dropped]
   state$pending <- state$pending[!dropped]
   for (job in removed) {
-    if (is.environment(job$lease)) job$lease$released <- TRUE
+    if (is.environment(job$lease)) job$lease$slot_acquired <- FALSE
+    file_ingestion_release_job(job)
     if (is.function(job$on_failure)) try(job$on_failure("Dosya alımı iptal edildi.", list()), silent = TRUE)
   }
   invisible(as.integer(length(removed)))
@@ -75,19 +75,8 @@ file_ingestion_controller_debug <- function(controller, tag, message) {
 # Kuyruktan çıkan işi gerçek worker görevine dönüştürür.
 file_ingestion_run_job <- function(job) {
   if (is.environment(job$lease)) job$lease$released <- FALSE
-  # Geçici kaynağı mümkünse aynı birimde sabit bağlantıyla işe bağla.
-  kaynaklar <- file.path(tempdir(), "mergen_ingest_sources", gsub("[^A-Za-z0-9_.-]", "_", job$id))
-  if (is.environment(job$lease) && dir.create(kaynaklar, recursive = TRUE, showWarnings = FALSE))
-    job$lease$sources <- kaynaklar
-  gecici_kok <- normalizePath(tempdir(), winslash = "/", mustWork = FALSE)
-  gorevler <- Map(function(task, i) {
-    kaynak <- normalizePath(task$datapath %||% "", winslash = "/", mustWork = FALSE)
-    bag <- file.path(kaynaklar, as.character(i))
-    if (identical(job$lease$sources, kaynaklar) && startsWith(kaynak, paste0(gecici_kok, "/")) &&
-        isTRUE(suppressWarnings(file.link(task$datapath, bag))))
-      task$datapath <- bag
-    task
-  }, job$tasks, seq_along(job$tasks))
+  if (is.environment(job$lease)) job$lease$slot_acquired <- TRUE
+  gorevler <- job$tasks
   bekleme_ms <- as.numeric(difftime(Sys.time(), job$queued_at, units = "secs")) * 1000
 
   journals <- vapply(gorevler, function(task) tempfile("ingest_result_", fileext = ".rds"), character(1))
@@ -219,6 +208,7 @@ file_ingestion_submit_batch <- function(controller,
 
   lease <- new.env(parent = emptyenv())
   lease$released <- FALSE
+  lease$slot_acquired <- FALSE
   job <- list(
     lease = lease,
     id = batch_id,
@@ -233,12 +223,38 @@ file_ingestion_submit_batch <- function(controller,
     run = file_ingestion_run_job
   )
 
+  kaynak_hatasi <- tryCatch({
+    # Kabulden önce geçici baytları aynı birimde işe bağla.
+    kaynaklar <- file.path(tempdir(), "mergen_ingest_sources", gsub("[^A-Za-z0-9_.-]", "_", job$id))
+    if (is.environment(job$lease) && dir.create(kaynaklar, recursive = TRUE, showWarnings = FALSE))
+      job$lease$sources <- kaynaklar
+    gecici_kok <- normalizePath(tempdir(), winslash = "/", mustWork = FALSE)
+    job$tasks <- Map(function(task, i) {
+      kaynak <- normalizePath(task$datapath %||% "", winslash = "/", mustWork = FALSE)
+      bag <- file.path(kaynaklar, as.character(i))
+      if (startsWith(kaynak, paste0(gecici_kok, "/"))) {
+        if (!identical(job$lease$sources, kaynaklar) ||
+            !isTRUE(suppressWarnings(file.link(task$datapath, bag))))
+          stop("Geçici yükleme kaynağı işe bağlanamadı.")
+        task$datapath <- bag
+      }
+      task
+    }, job$tasks, seq_along(job$tasks))
+    NULL
+  }, error = identity)
+  if (!is.null(kaynak_hatasi)) {
+    file_ingestion_release_job(job)
+    return(list(status = "rejected", batch_id = batch_id, queued = 0L))
+  }
+
   if (file_ingestion_try_acquire_slot()) {
     basladi <- tryCatch({
+      lease$slot_acquired <- TRUE
       file_ingestion_run_job(job)
       TRUE
     }, error = function(e) {
-      file_ingestion_release_job(job)
+      file_ingestion_release_slot()
+      lease$slot_acquired <- FALSE
       file_ingestion_controller_debug(controller, "ingest_dispatch_error", conditionMessage(e))
       FALSE
     })
@@ -249,6 +265,7 @@ file_ingestion_submit_batch <- function(controller,
   }
 
   if (!file_ingestion_enqueue(job)) {
+    file_ingestion_release_job(job)
     return(list(status = "rejected", batch_id = batch_id, queued = 0L))
   }
 

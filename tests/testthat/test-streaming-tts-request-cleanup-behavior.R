@@ -3,7 +3,7 @@ suppressPackageStartupMessages(library(promises))
 
 test_that("PCM sentez işçisi eski istek ve açık iptal yüklemini alır", {
   env <- new.env(parent = globalenv())
-  source(file.path(resolve_repo_root_for_tests(), "R/server_speech_pcm_stream.R"), local = env)
+  source(file.path(resolve_repo_root_for_tests(), "R/server_speech_pcm_stream.R"), encoding = "UTF-8", local = env)
   state <- new.env()
   env$mergen_speech_state <- function(...) state
   env$mergen_voxcpm2_streaming_mode <- function() "chunked_pcm"
@@ -86,7 +86,7 @@ test_that("TTS sohbet değişimi ve senkron gönderim hatasında yalnız kendi d
 test_that("bekleyen TTS sırasında Stop ve sohbet değişimi istek sahipliğini bırakır", {
   for (change in c("stop", "chat", "newer")) {
     env <- new.env(parent = globalenv())
-    source(file.path(resolve_repo_root_for_tests(), "R/helpers_async_result_guard.R"), local = env)
+    source(file.path(resolve_repo_root_for_tests(), "R/helpers_async_result_guard.R"), encoding = "UTF-8", local = env)
     shiny::testServer(function(input, output, session) NULL, {
       session$userData$user_id <- 7L
       session$userData$llm_request_owner <- "A"
@@ -122,7 +122,7 @@ test_that("bekleyen TTS sırasında Stop ve sohbet değişimi istek sahipliğini
 test_that("TTS takip sorusu doğrulanmış gövdeyi kullanır ve PK reddini atlar", {
   for (validated in c(TRUE, FALSE)) {
     env <- new.env(parent = globalenv())
-    source(file.path(resolve_repo_root_for_tests(), "R/server_handler_streaming_tts.R"), local = env)
+    source(file.path(resolve_repo_root_for_tests(), "R/server_handler_streaming_tts.R"), encoding = "UTF-8", local = env)
     env$log_debug <- env$log_warn <- env$log_ai_usage <- env$dbg_dump <- function(...) NULL
     env$mergen_log_llm_request_debug <- function(...) NULL
     env$normalize_character_id <- identity

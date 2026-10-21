@@ -1377,24 +1377,37 @@ test_that("ardışık yeniden yükleme eski kaydı değiştirir; kimliksiz yazı
   expect_identical(.load_index()[["42"]][[tolower(name)]]$artifact_id, third$artifact_id)
 })
 
-test_that("tarayıcı kapanışı kuyruktaki işi terminal temizlikle bırakır, çalışanı iptal etmez", {
+test_that("tarayıcı kapanışı kabul edilen kuyruk kaynağını ve commit yolunu korur", {
   env <- .ingestionEnv()
+  available <- new.env(); available$ready <- FALSE
+  env$file_ingestion_pool_has_capacity <- function() available$ready
+  upload <- .ingestionUpload("kuyruk_kapandi.txt", "kalıcı kuyruk içeriği")
+  notified <- FALSE
   shiny::testServer(function(input, output, session) NULL, {
     controller <- env$file_ingestion_create_controller(session)
-    cleaned <- 0L
-    job <- .ingestionJob(env, controller)
-    job$lease <- new.env(); job$lease$released <- FALSE
-    job$on_failure <- function(message, tasks) {
-      expect_length(tasks, 0L)
-      cleaned <<- cleaned + 1L
-    }
-    env$file_ingestion_enqueue(job)
+    state <- env$.file_ingestion_state()
+    status <- env$file_ingestion_submit_batch(controller, list(.ingestionTask(env, upload)), "42",
+      on_complete = function(...) notified <<- TRUE)
+    expect_identical(status$status, "queued")
+    job <- state$pending[[1]]
+    owned_source <- job$tasks[[1]]$datapath
+    expect_false(identical(owned_source, upload$datapath))
+    unlink(upload$datapath)
     epoch <- controller$epoch
     session$close()
-    expect_identical(cleaned, 1L)
     expect_identical(controller$epoch, epoch)
     expect_false(isTRUE(controller$active))
-    expect_identical(env$file_ingestion_queue_status()$queued_batches, 0L)
+    expect_identical(state$pending[[1]]$id, job$id)
+    expect_identical(readLines(owned_source), "kalıcı kuyruk içeriği")
+    available$ready <- TRUE
+    env$file_ingestion_pump()
+    for (i in 1:30) later::run_now(0)
+    expect_false(notified)
+    expect_identical(state$active, 0L)
+    expect_length(state$pending, 0L)
+    expect_false(file.exists(owned_source))
+    node <- .load_index()[["42"]][[tolower(upload$name)]]
+    expect_identical(readLines(node$path), "kalıcı kuyruk içeriği")
   })
 })
 
@@ -1690,6 +1703,8 @@ test_that("farklı yüklemeler tek kalıcı dizin muteksini kullanır ve listeye
 })
 
 test_that("dizin muteksi çekişmesi başka hedefin terfi ve devralmasını hemen reddetmez", {
+  skip_if_not_installed("callr")
+  skip_if_not_installed("filelock")
   for (stale in c(FALSE, TRUE)) local({
   root <- withr::local_tempdir()
   guard <- filelock::lock(file.path(root, ".mergen-rsv.reclaim"), timeout = 0)
@@ -1705,7 +1720,7 @@ test_that("dizin muteksi çekişmesi başka hedefin terfi ve devralmasını heme
     env <- new.env(parent = globalenv())
     for (file in c("helpers_process_ownership.R", "utils_path_reservation.R",
                    "helpers_files_promote_probe.R", "helpers_files_promote_target.R"))
-      source(file.path(repo, "R", file), local = env)
+      source(file.path(repo, "R", file), encoding = "UTF-8", local = env)
     env$file.link <- function(...) FALSE
     env$mergen_reclaim_mutex <- function(path, timeout = 0) {
       writeLines("bekliyor", file.path(root, "waiting"))
@@ -1801,4 +1816,129 @@ test_that("native yeniden bağlama ilk başlangıcı korur ve aradaki commit'i e
   expect_false(env$file_ingestion_commit_index(list(b), "42")$accepted[[1]])
   expect_identical(.load_index()[["42"]][[tolower(a$name)]]$artifact_id, a$artifact_id)
   expect_true(file.exists(a$dest))
+})
+
+test_that("sahiplik ve günlük mevcut hedefi değiştirir, hata eski kanıtı korur", {
+  env <- .ingestionEnv()
+  target <- withr::local_tempfile()
+  env$file_ingestion_write_owner(list(id = "A", state = "claimed"), target)
+  env$file_ingestion_write_owner(list(id = "A", state = "deleting"), target)
+  expect_identical(readRDS(target)$state, "deleting")
+  env$file_ingestion_write_owner(list(artifact_id = "A", dest = "native"), target)
+  expect_identical(readRDS(target)$dest, "native")
+  before <- readBin(target, "raw", n = file.info(target)$size)
+  testthat::local_mocked_bindings(file_move = function(...) stop("paylaşım ihlali"), .package = "fs")
+  expect_error(env$file_ingestion_write_owner(list(id = "B"), target), "Sahiplik işareti")
+  expect_identical(readBin(target, "raw", n = file.info(target)$size), before)
+  expect_false(file.exists(paste0(target, ".", Sys.getpid(), ".tmp")))
+})
+
+test_that("kuyruk varsayılanı kalıcı bütçeyi korur; iptal, red ve süre kaynakları bırakır", {
+  env <- .ingestionEnv()
+  withr::local_envvar(c(MERGEN_FILE_INGESTION_QUEUE_TIMEOUT = "", MERGEN_FILE_INGESTION_MAX_QUEUE = ""))
+  withr::local_options(list(mergen.file_ingestion.queue_timeout = NULL, mergen.file_ingestion.max_queue = 1L))
+  env$file_ingestion_pool_has_capacity <- function() FALSE
+  controller <- env$file_ingestion_create_controller()
+  submit <- function() env$file_ingestion_submit_batch(controller,
+    list(.ingestionTask(env, .ingestionUpload("bekleyen.txt"))), "42")
+  expect_identical(submit()$status, "queued")
+  state <- env$.file_ingestion_state()
+  sources <- state$pending[[1]]$lease$sources
+  state$pending[[1]]$queued_at <- Sys.time() - 600
+  env$file_ingestion_pump()
+  expect_length(state$pending, 1L)
+  expect_true(dir.exists(sources))
+  before <- list.dirs(file.path(tempdir(), "mergen_ingest_sources"), recursive = FALSE)
+  expect_identical(submit()$status, "rejected")
+  expect_setequal(list.dirs(file.path(tempdir(), "mergen_ingest_sources"), recursive = FALSE), before)
+  env$file_ingestion_cancel_controller(controller)
+  expect_false(dir.exists(sources))
+  expect_identical(state$active, 0L)
+  expect_identical(submit()$status, "queued")
+  sources <- state$pending[[1]]$lease$sources
+  state$pending[[1]]$queued_at <- Sys.time() - 1801
+  state$active <- 2L
+  env$file_ingestion_pump()
+  expect_length(state$pending, 0L)
+  expect_false(dir.exists(sources))
+  expect_identical(state$active, 2L)
+  # Sabit bağlantı kurulamazsa Shiny kaynağına bağlı kabul verilmez.
+  env$file.link <- function(...) FALSE
+  expect_identical(submit()$status, "rejected")
+  expect_length(state$pending, 0L)
+  expect_identical(state$active, 2L)
+})
+
+test_that("görünürlük bekleyişi dizin muteksini başka terfilerden saklamaz", {
+  skip_if_not_installed("callr")
+  skip_if_not_installed("filelock")
+  env <- .ingestionEnv()
+  root <- withr::local_tempdir()
+  stage <- file.path(root, "stage"); writeLines("çıktı", stage)
+  env$file.link <- function(...) FALSE
+  env$mergen_promote_wait_visible <- function(...) {
+    child <- callr::r_bg(function(path) {
+      guard <- filelock::lock(path, timeout = 0)
+      if (is.null(guard)) return(FALSE)
+      filelock::unlock(guard)
+      TRUE
+    }, args = list(path = file.path(root, ".mergen-rsv.reclaim")))
+    on.exit(try(child$kill(), silent = TRUE), add = TRUE)
+    child$wait(timeout = 10000)
+    expect_true(child$get_result())
+    TRUE
+  }
+  expect_true(env$mergen_promote_staged_file(stage, file.path(root, "dest"), file.exists)$ok)
+  expect_false(dir.exists(file.path(root, "dest.mergen-rsv")))
+})
+
+test_that("iki gerçek indeks işçisi eşzamanlı eş adlı yüklemeye tek kabul verir", {
+  skip_if_not_installed("callr")
+  env <- .ingestionEnv()
+  name <- paste0("yarış_", basename(tempfile()), ".txt")
+  results <- lapply(c("A", "B"), function(content)
+    env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload(name, content))))
+  expect_true(all(vapply(results, function(r) isTRUE(r$ok), logical(1))))
+  root <- withr::local_tempdir()
+  index_options <- options()[intersect(names(options()),
+    c("mergen.mcp_base_dir", "mergen.index_path", "mergen.files_root"))]
+  children <- lapply(seq_along(results), function(i) {
+    globals <- env$file_ingestion_worker_globals(refresh = TRUE)
+    globals$results <- list(results[[i]])
+    globals$user_id <- "42"
+    task <- function() {
+      result <- file_ingestion_commit_index(results, user_id)
+      if (!isTRUE(result$accepted[[1]])) file_ingestion_discard_results(results, user_id)
+      result
+    }
+    payload <- worker_monitor_serialize_explicit_task(task, globals, c("fs", "digest", "jsonlite"))
+    callr::r_bg(function(payload, settings, root, i) {
+      options(settings)
+      task <- unserialize(payload)
+      list2env(as.list(environment(task), all.names = TRUE), envir = globalenv())
+      writeLines("hazır", file.path(root, paste0("ready-", i)))
+      deadline <- Sys.time() + 20
+      while (!file.exists(file.path(root, "go")) && Sys.time() < deadline) Sys.sleep(0.01)
+      if (!file.exists(file.path(root, "go"))) stop("test bariyeri açılmadı")
+      task()
+    }, args = list(payload = payload, settings = index_options, root = root, i = i))
+  })
+  withr::defer(lapply(children, function(child) try(child$kill(), silent = TRUE)))
+  deadline <- Sys.time() + 20
+  while (length(list.files(root, pattern = "^ready-")) < 2L && Sys.time() < deadline)
+    children[[1]]$poll_io(50)
+  expect_length(list.files(root, pattern = "^ready-"), 2L)
+  writeLines("başla", file.path(root, "go"))
+  commits <- lapply(children, function(child) { child$wait(timeout = 15000); child$get_result() })
+  accepted <- vapply(commits, function(r) isTRUE(r$accepted[[1]]), logical(1))
+  expect_identical(sum(accepted), 1L)
+  winner <- results[[which(accepted)]]
+  loser <- results[[which(!accepted)]]
+  expect_identical(.load_index()[["42"]][[tolower(name)]]$artifact_id, winner$artifact_id)
+  expect_true(file.exists(winner$dest))
+  expect_false(file.exists(loser$dest))
+  env$file_ingestion_discard_results(list(winner), "42")
+  expect_true(file.exists(winner$dest))
+  next_result <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload(name, "sonraki")))
+  expect_true(env$file_ingestion_commit_index(list(next_result), "42")$accepted[[1]])
 })
