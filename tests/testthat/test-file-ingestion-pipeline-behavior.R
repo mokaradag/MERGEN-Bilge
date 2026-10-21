@@ -1590,16 +1590,14 @@ test_that("geç commit, kendisinden önce başlayan eşzamanlı yüklemeyi korur
   env <- .ingestionEnv()
   a <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("commit_yarisi.txt", "A")))
   b <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("commit_yarisi.txt", "B")))
-  Sys.setFileTime(env$file_ingestion_owner_path(a$dest), Sys.time() - 30)
-  Sys.setFileTime(env$file_ingestion_owner_path(b$dest), Sys.time() - 20)
   expect_true(env$file_ingestion_commit_index(list(a), "42")$accepted[[1]])
   expect_false(env$file_ingestion_commit_index(list(b), "42")$accepted[[1]])
   node <- .load_index()[["42"]][[tolower(a$name)]]
   expect_identical(node$artifact_id, a$artifact_id)
   expect_true(is.finite(node$committed_at))
   # Ardışık yükleme hâlâ önceki kalıcı kaydı değiştirebilir.
-  Sys.setFileTime(env$file_ingestion_owner_path(b$dest), as.POSIXct(node$committed_at + 1, origin = "1970-01-01"))
-  expect_true(env$file_ingestion_commit_index(list(b), "42")$accepted[[1]])
+  c <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("commit_yarisi.txt", "C")))
+  expect_true(env$file_ingestion_commit_index(list(c), "42")$accepted[[1]])
 })
 
 test_that("aynı yolun kimliksiz yeniden kaydı canlı yapıt kimliğini korur", {
@@ -1684,9 +1682,11 @@ test_that("farklı yüklemeler tek kalıcı dizin muteksini kullanır ve listeye
     result <- env$mergen_promote_staged_file(stage, file.path(root, name), file.exists)
     expect_true(result$ok)
   }
+  document <- "rapor.mergen-rsv.reclaim"
+  writeLines("kullanıcı belgesi", file.path(root, document))
   files <- list.files(root, all.files = TRUE, no.. = TRUE, full.names = TRUE)
-  expect_setequal(basename(files), c("bir.txt", "iki.txt", ".mergen-rsv.reclaim"))
-  expect_setequal(basename(.file_store_drop_upload_artifacts(files)), c("bir.txt", "iki.txt"))
+  expect_setequal(basename(files), c("bir.txt", "iki.txt", document, ".mergen-rsv.reclaim"))
+  expect_setequal(basename(.file_store_drop_upload_artifacts(files)), c("bir.txt", "iki.txt", document))
 })
 
 test_that("dizin muteksi çekişmesi başka hedefin terfisini hemen reddetmez", {
@@ -1718,4 +1718,45 @@ test_that("dizin muteksi çekişmesi başka hedefin terfisini hemen reddetmez", 
   child$wait(timeout = 10000)
   expect_true(child$get_result()$ok)
   expect_identical(readLines(file.path(root, "dest")), "çıktı")
+})
+
+test_that("paylaşım marker saati uygulama saatinden sapınca commit sırası değişmez", {
+  env <- .ingestionEnv()
+  for (skew in c(-7200, 7200)) {
+    name <- paste0("saat_", skew, ".txt")
+    a <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload(name, "A")))
+    b <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload(name, "B")))
+    for (r in list(a, b)) Sys.setFileTime(env$file_ingestion_owner_path(r$dest), Sys.time() + skew)
+    expect_true(env$file_ingestion_commit_index(list(a), "42")$accepted[[1]])
+    expect_false(env$file_ingestion_commit_index(list(b), "42")$accepted[[1]])
+    c <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload(name, "C")))
+    Sys.setFileTime(env$file_ingestion_owner_path(c$dest), Sys.time() + skew)
+    expect_true(env$file_ingestion_commit_index(list(c), "42")$accepted[[1]])
+  }
+})
+
+test_that("aynı partide son geçerli eş adlı kopya kazanır ve önceki kopya temizlenir", {
+  env <- .ingestionEnv()
+  a <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("parti_tekrar.txt", "A")))
+  b <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("parti_tekrar.txt", "B")))
+  received <- NULL
+  job <- .ingestionJob(env, env$file_ingestion_create_controller(),
+    on_complete = function(results, ...) received <<- results)
+  env$file_ingestion_finish_job(job, list(a, b))
+  for (i in 1:30) later::run_now(0)
+  expect_false(received[[1]]$ok)
+  expect_true(received[[2]]$ok)
+  expect_false(file.exists(a$dest))
+  expect_true(file.exists(b$dest))
+  expect_identical(.load_index()[["42"]][[tolower(b$name)]]$artifact_id, b$artifact_id)
+})
+
+test_that("aynı partinin kimliksiz farklı yolu canlı yapıtı silemez", {
+  env <- .ingestionEnv()
+  owned <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("parti_kimliksiz.txt")))
+  idless <- list(ok = TRUE, dest = owned$source_path, name = owned$name, artifact_id = NULL)
+  result <- env$file_ingestion_commit_index(list(owned, idless), "42")
+  expect_identical(result$accepted, c(TRUE, FALSE))
+  expect_identical(.load_index()[["42"]][[tolower(owned$name)]]$artifact_id, owned$artifact_id)
+  expect_true(file.exists(owned$dest))
 })

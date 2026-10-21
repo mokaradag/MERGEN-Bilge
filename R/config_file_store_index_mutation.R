@@ -350,9 +350,9 @@ mergen_register_uploaded_file <- function(src_path,
   if (!canli) return(TRUE)
   if (is.null(kayit$artifact_id)) return(FALSE)
   # Talep değil, kilit altında kaydedilen commit yeni işlemin başlangıcıyla karşılaştırılır.
-  baslangic <- suppressWarnings(file.info(file_ingestion_owner_path(kayit$path))$mtime[1])
+  baslangic <- file_ingestion_read_owner(kayit$path)$started_at
   commit <- suppressWarnings(as.numeric(node$committed_at %||% NA_real_)[1])
-  isTRUE(is.finite(commit) && !is.na(baslangic) && commit < as.numeric(baslangic))
+  isTRUE(length(baslangic) == 1L && is.finite(baslangic) && is.finite(commit) && commit < baslangic)
 }
 
 # Kalıcı klasöre ZATEN kopyalanmış dosyaları TEK indeks mutasyonunda kaydeder.
@@ -375,20 +375,25 @@ mergen_index_persisted_files <- function(entries, user_id = NULL) {
 
   if (!length(hazirlanan)) return(structure(character(), accepted = accepted))
 
-  indexed <- artifact_ids <- character()
   .file_store_mutate_index(function(idx) {
+    onceki_idx <- idx
+    secilen <- list()
+    accepted[] <<- FALSE
     for (kayit in hazirlanan) {
       if (!is.null(kayit$artifact_id) &&
           !file_ingestion_artifact_owned(list(dest = kayit$path, artifact_id = kayit$artifact_id), allow_deleting = FALSE)) next
       node <- if (is.null(user_id)) idx[[kayit$key]] else idx[[as.character(user_id)]][[kayit$key]]
-      if (!.file_store_entry_replaceable(node, kayit)) next
+      onceki <- if (is.null(user_id)) onceki_idx[[kayit$key]] else onceki_idx[[as.character(user_id)]][[kayit$key]]
+      referans <- if (is.null(kayit$artifact_id)) node else onceki
+      if (!.file_store_entry_replaceable(referans, kayit)) next
       girdi <- list(path = kayit$path, display = kayit$display)
       ayni_yol <- is.list(node) && identical(node$path, kayit$path)
       girdi$artifact_id <- kayit$artifact_id %||% if (ayni_yol) node$artifact_id else NULL
       girdi$committed_at <- if (ayni_yol) node$committed_at %||% as.numeric(Sys.time()) else as.numeric(Sys.time())
+      # Aynı mutasyonda son geçerli girdi kazanır; önceki kopya temizliğe gider.
+      if (!is.null(secilen[[kayit$key]])) accepted[secilen[[kayit$key]]] <<- FALSE
+      secilen[[kayit$key]] <- kayit$position
       accepted[kayit$position] <<- TRUE
-      indexed <<- c(indexed, kayit$display)
-      artifact_ids <<- c(artifact_ids, kayit$artifact_id)
 
       if (!is.null(user_id)) {
         uid <- as.character(user_id)
@@ -402,8 +407,10 @@ mergen_index_persisted_files <- function(entries, user_id = NULL) {
     idx
   })
 
+  kazananlar <- Filter(function(e) isTRUE(accepted[e$position]), hazirlanan)
+  indexed <- vapply(kazananlar, function(e) e$display, character(1))
   if (any(vapply(hazirlanan, function(e) !is.null(e$artifact_id), logical(1)))) {
-    attr(indexed, "artifact_ids") <- artifact_ids
+    attr(indexed, "artifact_ids") <- unlist(lapply(kazananlar, function(e) e$artifact_id), use.names = FALSE) %||% character()
   }
   attr(indexed, "accepted") <- accepted
   indexed

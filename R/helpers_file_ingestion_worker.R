@@ -123,7 +123,7 @@ file_ingestion_execute_task <- function(task) {
     normalizePath(task$datapath, winslash = "/", mustWork = FALSE))
   artifact_id <- if (same_source) NULL else if (file_ingestion_claimed_by(dest, task$transaction$id,
     verification$identity)) task$transaction$id else tryCatch(file_ingestion_claim_artifact(dest,
-    verification$identity, id = task$transaction$id), error = function(e) e)
+    verification$identity, id = task$transaction$id, started_at = copy_started), error = function(e) e)
   if (inherits(artifact_id, "error")) {
     try(file_ingestion_discard_unclaimed(dest, task$datapath, verification$identity), silent = TRUE)
     result <- file_ingestion_task_result(task, FALSE, dest = dest,

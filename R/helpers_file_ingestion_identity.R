@@ -110,7 +110,7 @@ file_ingestion_begin_copy <- function(path, staging, source, transaction) {
     file_ingestion_write_owner(result, transaction$journal)
     unlink(paste0(marker, ".identity"), force = TRUE)
     file_ingestion_write_owner(list(id = transaction$id, state = "copying", staging = staging,
-      pid = Sys.getpid(), host = unname(Sys.info()[["nodename"]])), marker)
+      pid = Sys.getpid(), host = unname(Sys.info()[["nodename"]]), started_at = as.numeric(Sys.time())), marker)
     if (is.list(previous) && !identical(previous$dest, path)) {
       old_owner <- file_ingestion_read_owner(previous$dest)
       # Yerel kodlama aynı fiziksel marker'a çözülürse yeni rezervasyon silinmez.
@@ -122,7 +122,8 @@ file_ingestion_begin_copy <- function(path, staging, source, transaction) {
   invisible(NULL)
 }
 
-file_ingestion_claim_artifact <- function(path, expected = file_ingestion_file_identity(path), id = NULL) {
+file_ingestion_claim_artifact <- function(path, expected = file_ingestion_file_identity(path), id = NULL,
+                                          started_at = Sys.time()) {
   supplied_id <- id
   id <- id %||% paste0(Sys.getpid(), "-", basename(tempfile("ingest_")))
   .file_store_with_index_lock({
@@ -139,7 +140,7 @@ file_ingestion_claim_artifact <- function(path, expected = file_ingestion_file_i
       stop("Kopyalanan dosyanın sahipliği doğrulanamadı.")
     }
     if (is.null(supplied_id)) file_ingestion_write_owner(list(id = id, identity = actual, pid = Sys.getpid(),
-      host = unname(Sys.info()[["nodename"]])), marker) else
+      host = unname(Sys.info()[["nodename"]]), started_at = as.numeric(started_at)), marker) else
       file_ingestion_write_owner(list(id = id, identity = actual), paste0(marker, ".identity"))
   }, require_lock = TRUE)
   id
