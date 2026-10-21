@@ -148,3 +148,14 @@ test_that("canlı rezervasyon muteks beklemez ve devralma kilit altında yeniden
   expect_false(env$mergen_reservation_takeover(rezerv, "yeni"))
   expect_identical(env$mergen_reservation_owner(rezerv), "yenilenen-sahip")
 })
+
+
+test_that("izole rezervasyon devralması eksik muteks altyapısında kapalı kalır", {
+  env <- new.env(parent = baseenv())
+  source(file.path(resolve_repo_root_for_tests(), "R/utils_path_reservation.R"),
+         encoding = "UTF-8", local = env)
+  rezerv <- .rezerv_yolu()
+  expect_true(env$mergen_reservation_acquire(rezerv, "sahip"))
+  expect_false(env$mergen_reservation_takeover(rezerv, "yeni"))
+  expect_identical(env$mergen_reservation_owner(rezerv), "sahip")
+})
