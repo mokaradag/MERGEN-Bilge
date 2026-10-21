@@ -1689,11 +1689,18 @@ test_that("farklı yüklemeler tek kalıcı dizin muteksini kullanır ve listeye
   expect_setequal(basename(.file_store_drop_upload_artifacts(files)), c("bir.txt", "iki.txt", document))
 })
 
-test_that("dizin muteksi çekişmesi başka hedefin terfisini hemen reddetmez", {
+test_that("dizin muteksi çekişmesi başka hedefin terfi ve devralmasını hemen reddetmez", {
+  for (stale in c(FALSE, TRUE)) local({
   root <- withr::local_tempdir()
   guard <- filelock::lock(file.path(root, ".mergen-rsv.reclaim"), timeout = 0)
   withr::defer(if (!is.null(guard)) filelock::unlock(guard))
   stage <- file.path(root, "stage"); writeLines("çıktı", stage)
+  if (stale) {
+    reservation <- file.path(root, "dest.mergen-rsv")
+    dir.create(reservation)
+    writeLines(c("2147483647-dead", paste0("host=", Sys.info()[["nodename"]])),
+      file.path(reservation, "owner"))
+  }
   child <- callr::r_bg(function(repo, root) {
     env <- new.env(parent = globalenv())
     for (file in c("helpers_process_ownership.R", "utils_path_reservation.R",
@@ -1718,6 +1725,7 @@ test_that("dizin muteksi çekişmesi başka hedefin terfisini hemen reddetmez", 
   child$wait(timeout = 10000)
   expect_true(child$get_result()$ok)
   expect_identical(readLines(file.path(root, "dest")), "çıktı")
+  })
 })
 
 test_that("paylaşım marker saati uygulama saatinden sapınca commit sırası değişmez", {
