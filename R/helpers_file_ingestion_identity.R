@@ -1,6 +1,11 @@
 # Kopya kimliği yolun gösteriminden bağımsızdır.
 file_ingestion_owner_path <- function(path) {
-  file.path(dirname(path), paste0(".", basename(path), ".ingest-owner"))
+  ad <- basename(path)
+  if (nchar(ad, type = "bytes") > 180L) {
+    anahtar <- if (.Platform$OS.type == "windows") tolower(ad) else ad
+    ad <- paste0("hash-", digest::digest(anahtar, algo = "xxhash64", serialize = FALSE))
+  }
+  file.path(dirname(path), paste0(".", ad, ".ingest-owner"))
 }
 
 file_ingestion_file_identity <- function(path) {

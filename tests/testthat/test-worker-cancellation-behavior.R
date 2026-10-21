@@ -530,17 +530,37 @@ test_that("kalıcı işler etkileşimli şeridin kapasitesini tüketmez", {
 })
 
 
-test_that("tek fiziksel işçide kalıcı iş kuyruğa alınmadan reddedilir", {
+test_that("tek fiziksel işçi iki şeridi öncelikle ve sırayla çalıştırır", {
   withr::local_options(mergen.cancellable_workers = 1L)
   env <- .cancellation_env()
   env$mergen_cancellable_worker_schedule <- function(...) NULL
+  processes <- list()
+  launched <- character()
+  env$mergen_cancellable_worker_launch <- function(payload) {
+    launched <<- c(launched, rawToChar(payload))
+    p <- new.env(); p$alive <- TRUE
+    p$is_alive <- function() p$alive
+    p$get_result <- function() TRUE
+    processes[[length(processes) + 1L]] <<- p
+    p
+  }
   failure <- NULL
-  promises::catch(env$mergen_cancellable_worker_promise(raw(), function() TRUE,
-    lane = "durable"), function(e) failure <<- e)
+  promises::catch(env$mergen_cancellable_worker_promise(charToRaw("kalici"), function() TRUE,
+    lane = "durable", priority = 2L), function(e) failure <<- e)
+  env$mergen_cancellable_worker_promise(charToRaw("sohbet"), function() TRUE)
+  env$mergen_cancellable_worker_tick()
+  expect_identical(launched, "sohbet")
+  expect_identical(env$.mergen_cancellable_running(env$.MERGEN_CANCELLABLE_WORKERS$jobs), 1L)
+  processes[[1]]$alive <- FALSE
+  env$mergen_cancellable_worker_tick()
+  expect_identical(launched, c("sohbet", "kalici"))
+  expect_identical(env$.mergen_cancellable_running(env$.MERGEN_CANCELLABLE_WORKERS$jobs), 1L)
+  processes[[2]]$alive <- FALSE
+  env$mergen_cancellable_worker_tick()
   for (i in 1:20) later::run_now(0)
-  expect_s3_class(failure, "error")
+  expect_null(failure)
   expect_length(env$.MERGEN_CANCELLABLE_WORKERS$jobs, 0L)
-  expect_true(env$mergen_cancellable_worker_admissible("interactive"))
+  expect_true(env$mergen_cancellable_worker_admissible("durable"))
 })
 
 test_that("sohbet doluluğu kalıcı işin ayrılmış fiziksel yuvasını tüketmez", {

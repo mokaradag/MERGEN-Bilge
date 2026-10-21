@@ -51,13 +51,14 @@ mergen_retire_process <- function(process, release, on_uncertain = NULL) {
 
 # Yapılandırılan değer havuzun FİZİKSEL toplam süreç sınırıdır; şeritler onu
 # bölüşür, çoğaltmaz. Kalıcı işler (alım, Yolaç hazırlık/çıktı/özet) en fazla
-# yarısını kullanır; iki şerit birbirine yuva ayırır. `lane = NULL` toplamdır.
+# yarısını kullanır; tek fiziksel yuvada şeritler sırayla çalışır.
+# İki ve üzeri yuvada şeritler birbirine yer ayırır. `lane = NULL` toplamdır.
 mergen_cancellable_worker_capacity <- function(lane = NULL) {
   configured <- getOption("mergen.cancellable_workers", NULL)
   if (is.null(configured)) configured <- if (exists("resolve_mergen_worker_count", mode = "function")) resolve_mergen_worker_count() else 2L
   value <- suppressWarnings(as.integer(configured)[1])
   total <- if (length(value) != 1L || is.na(value) || value < 1L) 1L else value
-  if (identical(lane, "durable")) return(total %/% 2L)
+  if (identical(lane, "durable")) return(max(1L, total %/% 2L))
   if (identical(lane, "interactive") && total >= 2L) total - 1L else total
 }
 
@@ -173,6 +174,7 @@ mergen_cancellable_worker_tick <- function() {
     if (!is.null(job$process) || isTRUE(job$finished) ||
         !.mergen_cancellable_has_room(keep, job$lane %||% "interactive")) next
     tryCatch({
+      attr(job$payload, "mergen_deadline") <- Sys.time() + job$timeout
       job$process <- mergen_cancellable_worker_launch(job$payload)
       job$started <- Sys.time()
       job$payload <- NULL
@@ -191,6 +193,7 @@ mergen_cancellable_worker_launch <- function(payload) {
     for (pkg in attr(payload, "mergen_packages")) library(pkg, character.only = TRUE)
     fn <- unserialize(payload)
     list2env(as.list(environment(fn), all.names = TRUE), envir = globalenv())
+    assign(".MERGEN_WORKER_DEADLINE", attr(payload, "mergen_deadline"), envir = globalenv())
     fn()
   }, args = list(payload = payload), supervise = TRUE,
   stdout = NULL, stderr = NULL, user_profile = FALSE, system_profile = FALSE)

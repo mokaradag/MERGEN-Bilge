@@ -1256,11 +1256,18 @@ test_that("başarısız kardeşin temizlik hatası sağlam dosyanın commit edil
   failed <- list(ok = FALSE, dest = "bekleyen", artifact_id = "failed")
   env$file_ingestion_discard_results <- function(...) stop("UNC kopyası henüz görünmüyor")
   rolled_back <- FALSE
-  env$file_ingestion_rollback_job <- function(...) rolled_back <<- TRUE
+  cleanup <- NULL
+  env$file_ingestion_rollback_job <- function(job, results, error, journals, on_complete = NULL) {
+    if (is.null(on_complete)) rolled_back <<- TRUE else {
+      cleanup <<- results
+      on_complete(FALSE, error)
+    }
+  }
   job <- .ingestionJob(env, env$file_ingestion_create_controller())
   env$file_ingestion_finish_job(job, list(kept, failed))
   for (i in 1:30) later::run_now(0)
   expect_false(rolled_back)
+  expect_identical(cleanup[[1]]$artifact_id, failed$artifact_id)
   expect_true(file.exists(kept$dest))
   expect_identical(.load_index()[["42"]][[tolower(kept$name)]]$artifact_id, kept$artifact_id)
 })
@@ -1281,6 +1288,11 @@ test_that("commit edilen yapıt, reddedilen kardeşin temizlik hatasında geri a
       stop("Sahip olunan kopya silinemedi.")
     real_discard(results, ...)
   }
+  cleanup <- NULL
+  env$file_ingestion_rollback_job <- function(job, results, error, journals, on_complete) {
+    cleanup <<- results
+    on_complete(FALSE, error)
+  }
   completed <- failed <- 0L
   job <- .ingestionJob(env, env$file_ingestion_create_controller(),
                        on_complete = function(...) completed <<- completed + 1L)
@@ -1289,6 +1301,7 @@ test_that("commit edilen yapıt, reddedilen kardeşin temizlik hatasında geri a
   for (i in 1:30) later::run_now(0)
   expect_identical(completed, 1L)
   expect_identical(failed, 0L)
+  expect_identical(cleanup[[1]]$artifact_id, declined$artifact_id)
   expect_true(file.exists(kept$dest))
   expect_identical(.load_index()[["42"]][[tolower(kept$name)]]$artifact_id, kept$artifact_id)
 })
@@ -1536,12 +1549,16 @@ test_that("terfi sahipliği geçici okuma hatasından sonra doğrulanır, belirs
   }
 })
 
-test_that("tek işçide çalışamayacak alım dış kuyruğa da kabul edilmez", {
+test_that("tek fiziksel işçide alım kabul edilir ve commit sonrası yuvasını bırakır", {
   withr::local_options(mergen.cancellable_workers = 1L)
   env <- .ingestionEnv()
+  completed <- NULL
   result <- env$file_ingestion_submit_batch(env$file_ingestion_create_controller(),
-    list(.ingestionTask(env, .ingestionUpload("tek_isci.txt"))), "42")
-  expect_identical(result$status, "rejected")
+    list(.ingestionTask(env, .ingestionUpload("tek_isci.txt"))), "42",
+    on_complete = function(results, ...) completed <<- results)
+  expect_identical(result$status, "started")
+  for (i in 1:30) later::run_now(0)
+  expect_true(completed[[1]]$ok)
   expect_identical(env$file_ingestion_queue_status()$queued_batches, 0L)
   expect_identical(env$file_ingestion_queue_status()$active_batches, 0L)
 })
@@ -1567,4 +1584,138 @@ test_that("terfi sahipliği kaybolduktan sonra beliren yabancı hedef silinmez",
   }
   expect_error(env$mergen_copy_upload_staged(source, target, root), "kalıcı ada taşınamadı")
   expect_identical(readLines(target, encoding = "UTF-8"), "başka yüklemenin dosyası")
+})
+
+test_that("geç commit, kendisinden önce başlayan eşzamanlı yüklemeyi korur", {
+  env <- .ingestionEnv()
+  a <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("commit_yarisi.txt", "A")))
+  b <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("commit_yarisi.txt", "B")))
+  Sys.setFileTime(env$file_ingestion_owner_path(a$dest), Sys.time() - 30)
+  Sys.setFileTime(env$file_ingestion_owner_path(b$dest), Sys.time() - 20)
+  expect_true(env$file_ingestion_commit_index(list(a), "42")$accepted[[1]])
+  expect_false(env$file_ingestion_commit_index(list(b), "42")$accepted[[1]])
+  node <- .load_index()[["42"]][[tolower(a$name)]]
+  expect_identical(node$artifact_id, a$artifact_id)
+  expect_true(is.finite(node$committed_at))
+  # Ardışık yükleme hâlâ önceki kalıcı kaydı değiştirebilir.
+  Sys.setFileTime(env$file_ingestion_owner_path(b$dest), as.POSIXct(node$committed_at + 1, origin = "1970-01-01"))
+  expect_true(env$file_ingestion_commit_index(list(b), "42")$accepted[[1]])
+})
+
+test_that("aynı yolun kimliksiz yeniden kaydı canlı yapıt kimliğini korur", {
+  env <- .ingestionEnv()
+  result <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("yeniden_kayit.txt")))
+  env$file_ingestion_commit_index(list(result), "42")
+  before <- .load_index()[["42"]][[tolower(result$name)]]
+  repeated <- result; repeated$artifact_id <- NULL
+  expect_true(env$file_ingestion_commit_index(list(repeated), "42")$accepted[[1]])
+  after <- .load_index()[["42"]][[tolower(result$name)]]
+  expect_identical(after$artifact_id, before$artifact_id)
+  expect_identical(after$committed_at, before$committed_at)
+})
+
+test_that("uzun hedef adı sahiplik ve geçici marker sınırını aşmaz", {
+  env <- .ingestionEnv()
+  root <- withr::local_tempdir()
+  source <- withr::local_tempfile()
+  writeLines("uzun ad", source)
+  target <- file.path(root, paste0(strrep("a", 220), ".txt"))
+  stage <- paste0(target, ".mergen-part")
+  tx <- list(id = "uzun-ad", journal = withr::local_tempfile())
+  env$file_ingestion_begin_copy(target, stage, source, tx)
+  expect_true(file.copy(source, stage))
+  env$file_ingestion_prepare_promotion(stage, target, tx)
+  expect_true(file.rename(stage, target))
+  env$file_ingestion_claim_artifact(target, id = tx$id)
+  result <- list(ok = TRUE, dest = target, source_path = source, artifact_id = tx$id, name = basename(target))
+  expect_true(env$file_ingestion_artifact_owned(result))
+  marker <- env$file_ingestion_owner_path(target)
+  expect_lt(nchar(basename(paste0(marker, ".identity.", Sys.getpid(), ".tmp")), type = "bytes"), 255)
+  env$file_ingestion_discard_results(list(result), "42")
+  expect_false(file.exists(target))
+  expect_false(file.exists(marker))
+  expect_false(file.exists(paste0(marker, ".identity")))
+})
+
+test_that("reddedilen kardeşin temizliği tamamlanana dek günlükler ve başarılı commit korunur", {
+  env <- .ingestionEnv()
+  kept <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("kalici_kardes.txt")))
+  declined <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload("gecici_ret.txt")))
+  real_index <- get("mergen_index_persisted_files", envir = env)
+  env$mergen_index_persisted_files <- function(entries, user_id) {
+    indexed <- real_index(entries[1], user_id)
+    attr(indexed, "accepted") <- c(TRUE, FALSE)
+    indexed
+  }
+  real_discard <- env$file_ingestion_discard_results
+  env$file_ingestion_discard_results <- function(...) stop("geçici silme hatası")
+  journals <- c(withr::local_tempfile(), withr::local_tempfile())
+  saveRDS(kept, journals[1]); saveRDS(declined, journals[2])
+  pending <- done <- NULL
+  env$file_ingestion_rollback_job <- function(job, results, error, journals, on_complete) {
+    pending <<- results; done <<- on_complete
+    expect_true(all(file.exists(journals)))
+  }
+  completed <- 0L
+  job <- .ingestionJob(env, env$file_ingestion_create_controller(),
+    on_complete = function(...) completed <<- completed + 1L)
+  env$file_ingestion_finish_job(job, list(kept, declined), journals = journals)
+  for (i in 1:30) later::run_now(0)
+  expect_identical(completed, 0L)
+  expect_identical(pending[[1]]$artifact_id, declined$artifact_id)
+  expect_identical(.load_index()[["42"]][[tolower(kept$name)]]$artifact_id, kept$artifact_id)
+  expect_true(all(file.exists(journals)))
+  real_discard(pending, "42")
+  unlink(journals)
+  done(TRUE, NULL)
+  expect_identical(completed, 1L)
+  expect_false(file.exists(declined$dest))
+  expect_false(any(file.exists(journals)))
+  expect_true(file.exists(kept$dest))
+})
+
+test_that("farklı yüklemeler tek kalıcı dizin muteksini kullanır ve listeye sızmaz", {
+  env <- .ingestionEnv()
+  root <- withr::local_tempdir()
+  env$file.link <- function(...) FALSE
+  for (name in c("bir.txt", "iki.txt")) {
+    stage <- file.path(root, paste0(name, ".mergen-part"))
+    writeLines(name, stage)
+    result <- env$mergen_promote_staged_file(stage, file.path(root, name), file.exists)
+    expect_true(result$ok)
+  }
+  files <- list.files(root, all.files = TRUE, no.. = TRUE, full.names = TRUE)
+  expect_setequal(basename(files), c("bir.txt", "iki.txt", ".mergen-rsv.reclaim"))
+  expect_setequal(basename(.file_store_drop_upload_artifacts(files)), c("bir.txt", "iki.txt"))
+})
+
+test_that("dizin muteksi çekişmesi başka hedefin terfisini hemen reddetmez", {
+  root <- withr::local_tempdir()
+  guard <- filelock::lock(file.path(root, ".mergen-rsv.reclaim"), timeout = 0)
+  withr::defer(if (!is.null(guard)) filelock::unlock(guard))
+  stage <- file.path(root, "stage"); writeLines("çıktı", stage)
+  child <- callr::r_bg(function(repo, root) {
+    env <- new.env(parent = globalenv())
+    for (file in c("helpers_process_ownership.R", "utils_path_reservation.R",
+                   "helpers_files_promote_probe.R", "helpers_files_promote_target.R"))
+      source(file.path(repo, "R", file), local = env)
+    env$file.link <- function(...) FALSE
+    env$mergen_reclaim_mutex <- function(path, timeout = 0) {
+      writeLines("bekliyor", file.path(root, "waiting"))
+      filelock::lock(path, timeout = timeout)
+    }
+    env$mergen_promote_staged_file(file.path(root, "stage"), file.path(root, "dest"), file.exists)
+  }, args = list(repo = resolve_repo_root_for_tests(), root = root))
+  withr::defer(try(child$kill(), silent = TRUE))
+  deadline <- Sys.time() + 20
+  while (!file.exists(file.path(root, "waiting")) && child$is_alive() && Sys.time() < deadline)
+    child$poll_io(50)
+  expect_true(file.exists(file.path(root, "waiting")))
+  child$poll_io(100)
+  expect_true(child$is_alive())
+  expect_false(file.exists(file.path(root, "dest")))
+  filelock::unlock(guard); guard <- NULL
+  child$wait(timeout = 10000)
+  expect_true(child$get_result()$ok)
+  expect_identical(readLines(file.path(root, "dest")), "çıktı")
 })

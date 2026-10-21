@@ -27,6 +27,8 @@ if (requireNamespace("shiny", quietly = TRUE)) {
 .csp_env <- function() {
   env <- new.env(parent = globalenv())
   env$CLAUDE_CODE_LOG_PREFIX <- "[BILGE-YOLAC-TEST]"
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_session_persistence.R"),
+         encoding = "UTF-8", local = env)
   source(file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_run_lifecycle.R"),
          encoding = "UTF-8", local = env)
   env$ensure_utf8 <- function(x) x
@@ -417,9 +419,12 @@ testthat::test_that("kapanan modülün CLI çıktıları reaktif duruma veya UI'
 test_that("oturumsuz yoklamada ayrıştırma hatası yalnız ilgili çalıştırmayı başarısız kılar", {
   env <- .csp_env()
   failures <- 0L
-  env$parse_claude_code_json_output <- function(...) stop("ayrıştırma başarısız")
+  diagnostics <- character()
+  env$log_error <- function(message) diagnostics <<- c(diagnostics, message)
+  env$parse_claude_code_json_output <- function(...) stop("ayrıştırma başarısız; Authorization: Bearer secret-test")
   env$cc_report_output_processing_failure <- function(ctx, error) {
     failures <<- failures + 1L
+    diagnostics <<- c(diagnostics, conditionMessage(error))
     ctx$rv$is_running <- FALSE
   }
   stream <- .csp_stream_env()
@@ -429,5 +434,8 @@ test_that("oturumsuz yoklamada ayrıştırma hatası yalnız ilgili çalıştır
     expect_error(session$flushReact(), NA)
     expect_identical(failures, 1L)
     expect_false(shiny::isolate(session$returned$is_running))
+    expect_length(diagnostics, 2L)
+    expect_true(all(grepl("ayrıştırma başarısız", diagnostics, fixed = TRUE)))
+    expect_false(any(grepl("secret-test", diagnostics, fixed = TRUE)))
   })
 })

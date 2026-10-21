@@ -64,7 +64,8 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
     # Gerçek rezervasyonda devralmayı terfi bitene kadar dışla. İzole test
     # sahte acquire kullanabilir; üretim acquire her zaman rezerv dizinini kurar.
     if (isTRUE(dir.exists(rezerv))) {
-      guard <- mergen_reclaim_mutex(paste0(rezerv, ".reclaim"))
+      # Muteks kalıcı ve dizin başına tektir; başka hedefin kısa kilidi beklenir.
+      guard <- mergen_reclaim_mutex(file.path(dirname(rezerv), ".mergen-rsv.reclaim"), timeout = 5000)
       if (is.null(guard)) return(list(ok = FALSE, yabanci = TRUE, promoted = FALSE))
       on.exit(filelock::unlock(guard), add = TRUE)
       for (deneme in 1:3) {

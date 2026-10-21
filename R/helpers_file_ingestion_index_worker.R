@@ -108,8 +108,6 @@ file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard =
           return(NULL)
         }
         committed <- tryCatch({
-          failed <- Filter(function(r) !isTRUE(r$ok), results)
-          if (length(failed)) try(file_ingestion_discard_results(failed, user_id), silent = TRUE)
           file_ingestion_commit_index(results, user_id)
         }, error = function(e) {
           try(file_ingestion_discard_results(results, user_id), silent = TRUE)
@@ -120,7 +118,11 @@ file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard =
         succeeded <- Filter(function(r) isTRUE(r$ok), results)
         declined <- if (is.null(committed$accepted)) list() else
           succeeded[!committed$accepted]
-        if (length(declined)) try(file_ingestion_discard_results(declined, user_id), silent = TRUE)
+        cleanup <- c(Filter(function(r) !isTRUE(r$ok), results), declined)
+        committed$cleanup_pending <- if (length(cleanup)) tryCatch({
+          file_ingestion_discard_results(cleanup, user_id)
+          list()
+        }, error = function(e) cleanup) else list()
         committed
       },
       task_type = "file_ingestion_index",
@@ -135,14 +137,26 @@ file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard =
     ) |>
       promises::then(
         onFulfilled = function(index_result) {
-          unlink(journals, force = TRUE)
-          tryCatch({
+          complete <- function() tryCatch({
             if (discard) {
               file_ingestion_fail_job(job, simpleError("Dosya alımı iptal edildi."))
             } else {
               file_ingestion_apply_commit(job, results, index_result, queue_wait_ms)
             }
           }, error = function(e) log_warn(paste("[FILE INGEST] Commit sonrası hata:", conditionMessage(e))))
+          if (length(index_result$cleanup_pending)) {
+            # Commit kalır; günlükler yalnız temizliğin kalıcı başarısında silinir.
+            file_ingestion_rollback_job(job, index_result$cleanup_pending,
+              simpleError("Reddedilen dosyaların temizliği tamamlanamadı."), journals,
+              on_complete = function(cleaned, error) {
+                if (!cleaned) file_ingestion_controller_debug(job$controller,
+                  "ingest_cleanup_pending", conditionMessage(error))
+                complete()
+              })
+          } else {
+            unlink(journals, force = TRUE)
+            complete()
+          }
           NULL
         },
         onRejected = function(error) {
@@ -154,17 +168,17 @@ file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard =
 }
 
 # Havuz arızasında geri alma bağımsız işçide yürür; indeks kilidi UI'ı tutmaz.
-file_ingestion_rollback_job <- function(job, results, error, journals = character()) {
+file_ingestion_rollback_job <- function(job, results, error, journals = character(), on_complete = NULL) {
   if (is.environment(job$lease) && isTRUE(job$lease$released)) return(invisible(NULL))
   attempt <- 0L
   terminal <- FALSE
   task_id <- create_worker_task_id("file_ingestion_rollback")
   registered <- FALSE
-  finish <- function(failure) {
+  finish <- function(failure, cleaned = FALSE) {
     if (terminal) return(invisible(NULL))
     terminal <<- TRUE
     try(finish_worker_task(task_id), silent = TRUE)
-    file_ingestion_fail_job(job, failure)
+    if (is.function(on_complete)) on_complete(cleaned, failure) else file_ingestion_fail_job(job, failure)
     invisible(NULL)
   }
   launch <- function() {
@@ -223,7 +237,7 @@ file_ingestion_rollback_job <- function(job, results, error, journals = characte
       if (!is.null(failure)) return(retry(failure))
       # Geri alma kalıcı olarak tamamlandı; günlük artık gereksiz.
       unlink(journals, force = TRUE)
-      finish(error)
+      finish(error, cleaned = TRUE)
     }
     later::later(poll, delay = 0.1)
   }

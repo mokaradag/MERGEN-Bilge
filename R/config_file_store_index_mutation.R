@@ -342,13 +342,17 @@ mergen_register_uploaded_file <- function(src_path,
 .file_store_entry_replaceable <- function(node, kayit) {
   if (is.null(node) || !is.list(node)) return(TRUE)
   if (identical(node$path, kayit$path) &&
-      (is.null(node$artifact_id) || identical(node$artifact_id, kayit$artifact_id))) return(TRUE)
+      (is.null(node$artifact_id) || is.null(kayit$artifact_id) ||
+       identical(node$artifact_id, kayit$artifact_id))) return(TRUE)
   canli <- !is.null(node$artifact_id) && exists("file_ingestion_artifact_owned", mode = "function") &&
     isTRUE(file_ingestion_artifact_owned(list(dest = node$path, artifact_id = node$artifact_id),
                                          allow_deleting = FALSE))
   if (!canli) return(TRUE)
   if (is.null(kayit$artifact_id)) return(FALSE)
-  !isTRUE(file_ingestion_claimed_since(node$path, kayit$path))
+  # Talep değil, kilit altında kaydedilen commit yeni işlemin başlangıcıyla karşılaştırılır.
+  baslangic <- suppressWarnings(file.info(file_ingestion_owner_path(kayit$path))$mtime[1])
+  commit <- suppressWarnings(as.numeric(node$committed_at %||% NA_real_)[1])
+  isTRUE(is.finite(commit) && !is.na(baslangic) && commit < as.numeric(baslangic))
 }
 
 # Kalıcı klasöre ZATEN kopyalanmış dosyaları TEK indeks mutasyonunda kaydeder.
@@ -379,7 +383,9 @@ mergen_index_persisted_files <- function(entries, user_id = NULL) {
       node <- if (is.null(user_id)) idx[[kayit$key]] else idx[[as.character(user_id)]][[kayit$key]]
       if (!.file_store_entry_replaceable(node, kayit)) next
       girdi <- list(path = kayit$path, display = kayit$display)
-      if (!is.null(kayit$artifact_id)) girdi$artifact_id <- kayit$artifact_id
+      ayni_yol <- is.list(node) && identical(node$path, kayit$path)
+      girdi$artifact_id <- kayit$artifact_id %||% if (ayni_yol) node$artifact_id else NULL
+      girdi$committed_at <- if (ayni_yol) node$committed_at %||% as.numeric(Sys.time()) else as.numeric(Sys.time())
       accepted[kayit$position] <<- TRUE
       indexed <<- c(indexed, kayit$display)
       artifact_ids <<- c(artifact_ids, kayit$artifact_id)

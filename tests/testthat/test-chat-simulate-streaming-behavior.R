@@ -447,3 +447,27 @@ test_that("süren benzetimli akış bayatlayınca yeni mesajları ve gönderimi 
   expect_identical(env$.rec$reset, 0L)
   expect_identical(completed, 1L)
 })
+
+test_that("Stop sonrası yeni SQL isteği LLM sahipliğini değiştirmeden geç TTS'yi reddeder", {
+  env <- .css_env()
+  for (file in c("helpers_pk_provenance.R", "helpers_pk_provenance_peek.R"))
+    source(file.path(resolve_repo_root_for_tests(), "R", file), encoding = "UTF-8", local = env)
+  rec <- new.env(); rec$msgs <- list()
+  session <- .css_session(rec); session$userData <- new.env()
+  session$userData$llm_request_owner <- "A"
+  env$pk_provenance_clear(session, "A")
+  values <- new.env(); values$messages <- list(); values$typing <- TRUE
+  finish_tts <- NULL
+  env$chat_simulate_streaming("eski yanıt", session, values, list(selected_character = "emre"),
+    list(), function() FALSE, request_id = "A",
+    tts_engine = function(...) promises::promise(function(resolve, reject) finish_tts <<- resolve))
+  # Her gönderimin başındaki request callback'i yeni nesli LLM aşamasından önce kurar.
+  env$pk_provenance_clear(session, "B")
+  finish_tts(list(success = TRUE, audio_src = "old.wav"))
+  .css_drain()
+  expect_identical(session$userData$llm_request_owner, "A")
+  expect_length(rec$msgs, 0L)
+  expect_length(values$messages, 0L)
+  expect_true(values$typing)
+  expect_identical(env$.rec$reset, 0L)
+})

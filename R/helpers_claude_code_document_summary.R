@@ -200,6 +200,13 @@ summarize_claude_code_documents_with_local_llm <- function(document_context,
   )
 
   tryCatch({
+    # Başlatma ve metin hazırlama toplam işçi bütçesinden düşülür.
+    deadline <- get0(".MERGEN_WORKER_DEADLINE", envir = globalenv(), inherits = FALSE)
+    if (!is.null(deadline)) {
+      kalan <- as.numeric(difftime(deadline, Sys.time(), units = "secs"))
+      if (!is.finite(kalan) || kalan <= 0) stop("TIMEOUT: Doküman özeti bütçesi tükendi.")
+      ayarlar$request_timeout_sec <- min(ayarlar$request_timeout_sec, kalan)
+    }
     sonuc <- call_local_llm(
       chat_history = mesajlar,
       current_settings = ayarlar

@@ -35,7 +35,8 @@ mergen_pk_analysis_execute <- function(ctx) {
     if (!neden %in% c("flag_off", "query_opt_out")) {
       altyapi <- c("future_missing", "promises_missing", "tracked_future_promise_missing",
         "future_plan_not_async", "worker_count_unknown", "no_worker_plan",
-        "single_worker_falls_back", "worker_shares_main_process", "remote_cluster_plan")
+        "single_worker_falls_back", "worker_shares_main_process", "remote_cluster_plan",
+        "db_pool_cap_exceeded")
       cevap <- if (startsWith(neden, "plan_") || neden %in% altyapi) {
         mergen_pk_worker_outcome_text("infrastructure")
       } else {

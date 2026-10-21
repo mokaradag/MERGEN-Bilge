@@ -212,7 +212,10 @@ chat_simulate_streaming <- function(full_response, session, values, settings_dat
   pk_chat_kimlik <- .cr_kimlik_oku()
   # Yeniden okunamayan sohbet kimliği "aynı sohbet" sayılmaz (fail closed).
   .cr_ayni_sohbet <- function() { if (is.null(pk_chat_kimlik)) return(TRUE); s <- .cr_kimlik_oku(); !is.null(s) && identical(s, pk_chat_kimlik) }
-  .cr_result_current <- mergen_request_owner_guard(session)
+  .cr_owner_current <- mergen_request_owner_guard(session)
+  .cr_result_current <- function() isTRUE(.cr_owner_current()) &&
+    (!exists("pk_stale_callback_may_reset", mode = "function", inherits = TRUE) ||
+       isTRUE(pk_stale_callback_may_reset(session, pk_request_id)))
   msg_id <- paste0("msg_", floor(as.numeric(Sys.time()) * 1000), "_", sample(1000:9999, 1))
   timestamp <- format_timestamp()
   

@@ -1099,7 +1099,8 @@ test_that("çıktı yayını hedef başına tek yazarlıdır ve yarım kalan yed
   # Canlı başka bir yazar hedefi tutarken bu işlem hedefi silemez ya da ezemez.
   jeton <- env$mergen_reservation_token("baska")
   expect_true(env$mergen_reservation_acquire(txn$lock, jeton))
-  env$Sys.sleep <- function(...) invisible(NULL)
+  gercek_kilit <- env$.cc_output_dest_lock
+  env$.cc_output_dest_lock <- function(dest, wait_sec = 0) gercek_kilit(dest, wait_sec = 0)
   blocked <- env$cc_apply_output_sync_plan(plan_for("rapor.txt", "çakışan"))
   expect_false(isTRUE(blocked[[1]]$success))
   expect_match(blocked[[1]]$error, "kullanılıyor")
@@ -1226,4 +1227,17 @@ test_that("kira değiştirmesi geçici hatada yeniden denenir, okunamayan kira y
   expect_false(env$cc_bind_runtime_lease(lease))
   env$readLines <- base::readLines
   expect_identical(readLines(lease), onceki)
+})
+
+test_that("Windows uzun hedefin harf varyantları aynı yayın işlemini kilitler", {
+  env <- .cc_codex_review_env()
+  env$.Platform <- list(OS.type = "windows")
+  root <- withr::local_tempdir()
+  lower <- file.path(root, paste0(strrep("a", 205), ".txt"))
+  upper <- file.path(root, paste0(strrep("A", 205), ".TXT"))
+  a <- env$.cc_output_txn_paths(lower, "run")
+  b <- env$.cc_output_txn_paths(upper, "run")
+  expect_identical(a, b)
+  env$.Platform <- list(OS.type = "unix")
+  expect_false(identical(env$.cc_output_txn_paths(lower)$lock, env$.cc_output_txn_paths(upper)$lock))
 })

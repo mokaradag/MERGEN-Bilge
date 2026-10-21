@@ -183,7 +183,7 @@ mergen_reservation_takeover <- function(rezerv, jeton,
       (!is.na(gozlenen) && !nzchar(gozlenen))) return(FALSE)
   if (!exists("mergen_reclaim_mutex", mode = "function")) return(FALSE)
 
-  guard_yolu <- paste0(rezerv, ".reclaim")
+  guard_yolu <- file.path(dirname(rezerv), ".mergen-rsv.reclaim")
   guard <- mergen_reclaim_mutex(guard_yolu)
   if (is.null(guard)) return(FALSE)
   on.exit(filelock::unlock(guard), add = TRUE)

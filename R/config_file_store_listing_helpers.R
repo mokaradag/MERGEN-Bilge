@@ -137,7 +137,8 @@
     if (length(deger) != 1L || is.na(deger) || !nzchar(deger)) varsayilan else deger
   }
 
-  sonek_ya_da_varsayilan("MERGEN_UPLOAD_STAGING_SUFFIX", ".mergen-part")
+  c(sonek_ya_da_varsayilan("MERGEN_UPLOAD_STAGING_SUFFIX", ".mergen-part"),
+    ".mergen-rsv.reclaim")
 }
 
 # Dizinler listelemeden ayıklanır (`list.files(recursive = FALSE)` dizinleri de

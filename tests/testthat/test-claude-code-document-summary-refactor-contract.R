@@ -176,3 +176,30 @@ test_that("özet ve doküman dosyaları sıkı bakım bütçesinde kalır", {
     info = sprintf("documents.R fonksiyon bütçesini aştı: %d", .count_fn_ccdoc_summary(documents_txt))
   )
 })
+
+test_that("doküman HTTP çağrısı başlatmadan sonra yalnız kalan işçi bütçesini alır", {
+  env <- .source_ccdoc_summary_env()
+  launched <- Sys.time()
+  existed <- exists(".MERGEN_WORKER_DEADLINE", envir = globalenv(), inherits = FALSE)
+  previous <- get0(".MERGEN_WORKER_DEADLINE", envir = globalenv(), inherits = FALSE)
+  withr::defer(if (existed) assign(".MERGEN_WORKER_DEADLINE", previous, globalenv()) else
+    rm(list = ".MERGEN_WORKER_DEADLINE", envir = globalenv()))
+  assign(".MERGEN_WORKER_DEADLINE", launched + 10, globalenv())
+  env$Sys.time <- function() launched + 7
+  timeout <- NULL
+  env$call_local_llm <- function(chat_history, current_settings) {
+    timeout <<- current_settings$request_timeout_sec
+    list(content = "özet", duration = 0)
+  }
+  result <- env$summarize_claude_code_documents_with_local_llm(
+    list(text_sidecars_ready = TRUE), "model", request_timeout_sec = 10)
+  expect_true(result$success)
+  expect_equal(timeout, 3)
+  env$Sys.time <- function() launched + 11
+  timeout <- NULL
+  result <- env$summarize_claude_code_documents_with_local_llm(
+    list(text_sidecars_ready = TRUE), "model", request_timeout_sec = 10)
+  expect_false(result$success)
+  expect_match(result$error, "TIMEOUT", fixed = TRUE)
+  expect_null(timeout)
+})

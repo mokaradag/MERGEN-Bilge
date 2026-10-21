@@ -213,7 +213,8 @@
 .cc_output_txn_paths <- function(dest, jeton = "", legacy = FALSE) {
   parent <- dirname(dest)
   base <- basename(dest)
-  key <- digest::digest(base, algo = "xxhash64", serialize = FALSE)
+  key_base <- if (.Platform$OS.type == "windows") tolower(base) else base
+  key <- digest::digest(key_base, algo = "xxhash64", serialize = FALSE)
   lock <- file.path(parent, paste0(".cc-output-lock-", base))
   if (nchar(base, type = "bytes") > 200 && !dir.exists(lock))
     lock <- file.path(parent, paste0(".cc-output-lockhash-", key))

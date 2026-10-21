@@ -107,8 +107,8 @@ test_that("eski biçimli ya da uzak host rezervasyonu yalnız bayatlıktan sonra
     expect_true(mergen_reservation_takeover(rezerv, yeni, stale_sec = 3600), info = bicim)
     expect_identical(mergen_reservation_owner(rezerv), yeni)
     # Devralma muteksinin yolu kalıcıdır; silinmesi karşılıklı dışlamayı bozardı.
-    expect_true(file.exists(paste0(rezerv, ".reclaim")))
+    expect_true(file.exists(file.path(dirname(rezerv), ".mergen-rsv.reclaim")))
     expect_true(mergen_reservation_release(rezerv, yeni))
-    expect_true(file.exists(paste0(rezerv, ".reclaim")))
+    expect_true(file.exists(file.path(dirname(rezerv), ".mergen-rsv.reclaim")))
   }
 })
