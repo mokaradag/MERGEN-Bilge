@@ -1004,7 +1004,8 @@ test_that("native aday kopyadan önce günlüğe ve rezervasyona bağlanır", {
 
 test_that("bilinmeyen rollback durumu yeni yıkıcı işçi başlatmaz", {
   env <- .ingestionEnv()
-  source(file.path(resolve_repo_root_for_tests(), "R/helpers_worker_cancellation.R"), local = env)
+  source(file.path(resolve_repo_root_for_tests(), "R/helpers_worker_cancellation.R"),
+         encoding = "UTF-8", local = env)
   callbacks <- list()
   schedule <- function(func, ...) { callbacks[[length(callbacks) + 1L]] <<- func; function() NULL }
   env$mergen_cancellable_worker_schedule <- schedule
