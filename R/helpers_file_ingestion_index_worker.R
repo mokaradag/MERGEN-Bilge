@@ -250,7 +250,11 @@ file_ingestion_release_job <- function(job) {
     if (isTRUE(job$lease$released)) return(invisible(FALSE))
     job$lease$released <- TRUE
     if (length(job$lease$source_moves)) file_ingestion_restore_sources(job)
-    if (!is.null(job$lease$sources)) unlink(job$lease$sources, recursive = TRUE, force = TRUE)
+    if (!is.null(job$lease$sources)) {
+      retained <- job$lease$retained_sources
+      if (length(retained)) unlink(setdiff(list.files(job$lease$sources, full.names = TRUE), retained), force = TRUE) else
+        unlink(job$lease$sources, recursive = TRUE, force = TRUE)
+    }
   }
   if (!is.environment(job$lease) || !identical(job$lease$slot_acquired, FALSE))
     file_ingestion_release_slot()

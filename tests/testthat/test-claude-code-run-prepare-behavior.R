@@ -1231,6 +1231,9 @@ test_that("hazırlık deadline'ı reaktif bağlam dışında sonlandırır ve ye
   for (successor in c(FALSE, TRUE)) {
     env <- .cc_dispatch_env()
     deadline <- NULL
+    deadline_delay <- NA_real_
+    reported <- character()
+    env$cc_send_run_blocked_message <- function(session, ns, message) reported <<- c(reported, message)
     env$cc_build_run_prepare_request <- function(...) list(request_id = "A")
     env$cc_run_prepare_worker_globals <- function() list()
     env$tracked_future_promise <- function(...) promises::promise(function(resolve, reject) NULL)
@@ -1245,7 +1248,7 @@ test_that("hazırlık deadline'ı reaktif bağlam dışında sonlandırır ve ye
         finalized <<- finalized + 1L
       })
     testthat::local_mocked_bindings(later = function(func, delay = 0) {
-      if (delay > 0) deadline <<- func
+      if (delay > 0) { deadline <<- func; deadline_delay <<- delay }
       function() NULL
     }, .package = "later")
     shiny::isolate(env$cc_dispatch_run_preparation(ctx))
@@ -1254,6 +1257,9 @@ test_that("hazırlık deadline'ı reaktif bağlam dışında sonlandırır ve ye
     expect_no_error(shiny::maskReactiveContext(deadline()))
     expect_identical(finalized, if (successor) 0L else 1L)
     expect_identical(shiny::isolate(rv$is_running), successor)
+    expect_length(reported, if (successor) 0L else 1L)
+    if (!successor) expect_match(reported,
+      paste0("(", round(deadline_delay), " saniye)"), fixed = TRUE)
     expect_no_error(shiny::maskReactiveContext(deadline()))
     expect_identical(finalized, if (successor) 0L else 1L)
   }

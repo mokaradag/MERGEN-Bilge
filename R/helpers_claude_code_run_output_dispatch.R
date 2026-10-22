@@ -233,7 +233,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
     # oturumda da başarısız olarak kalıcılaşmalıdır. Raporlayıcı websocket
     # gönderimlerini kendi içinde güvenli hâle getirir.
     cc_report_output_processing_failure(ctx, simpleError(sprintf(
-      "Çıktı işleme zaman aşımına uğradı (%.0f saniye).", cikti_zaman_asimi_sn
+      "Çıktı işleme zaman aşımına uğradı (%.0f saniye).", cikti_zaman_asimi_sn + cikti_kuyruk_sn
     )))
   }), delay = cikti_zaman_asimi_sn + cikti_kuyruk_sn)
 

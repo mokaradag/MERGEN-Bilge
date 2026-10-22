@@ -41,7 +41,7 @@ file_ingestion_restore_sources <- function(job) {
     restored <- !file.exists(move$from) && isTRUE(suppressWarnings(tryCatch(
       file.rename(move$to, move$from), error = function(e) FALSE)))
     if (!restored) {
-      job$lease$sources <- NULL
+      job$lease$retained_sources <- c(job$lease$retained_sources, move$to)
       file_ingestion_controller_debug(job$controller, "ingest_source_restore_error",
         "Kabul edilmeyen yüklemenin geçici kaynağı iade edilemedi; kopya korundu.")
     }

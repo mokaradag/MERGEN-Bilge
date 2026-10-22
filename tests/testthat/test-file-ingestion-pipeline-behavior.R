@@ -2168,6 +2168,40 @@ test_that("taşınan kaynak kısmi commit'te yalnız reddedilen dosyayı iade ed
   expect_identical(env$.file_ingestion_state()$active, 0L)
 })
 
+test_that("başarısız kaynak iadesi yalnız kurtarılamayan kopyayı saklar", {
+  for (mode in c("busy", "collision")) local({
+    env <- .ingestionEnv()
+    env$file.link <- function(...) FALSE
+    controller <- env$file_ingestion_create_controller()
+    uploads <- list(.ingestionUpload("kabul.txt", "kabul"),
+      .ingestionUpload("iade.txt", "iade"), .ingestionUpload("koru.txt", "koru"))
+    job <- .ingestionJob(env, controller)
+    job$id <- basename(tempfile("mixed-retained-source-"))
+    job$lease <- new.env(parent = emptyenv())
+    job$lease$slot_acquired <- FALSE
+    job$tasks <- lapply(uploads, function(upload) .ingestionTask(env, upload))
+    job <- env$file_ingestion_bind_sources(job)
+    sources <- job$lease$sources
+    withr::defer(unlink(sources, recursive = TRUE))
+    if (mode == "busy") env$file.rename <- function(from, to) {
+      if (identical(from, job$tasks[[3]]$datapath)) FALSE else base::file.rename(from, to)
+    } else writeLines("yabancı", uploads[[3]]$datapath)
+    results <- lapply(job$tasks, function(task) env$file_ingestion_task_result(task, TRUE))
+    env$file_ingestion_apply_commit(job, results,
+      list(indexed = "kabul.txt", accepted = c(TRUE, FALSE, FALSE), ms = 0))
+    expect_false(file.exists(uploads[[1]]$datapath))
+    expect_false(file.exists(job$tasks[[1]]$datapath))
+    expect_identical(readLines(uploads[[2]]$datapath), "iade")
+    expect_false(file.exists(job$tasks[[2]]$datapath))
+    expect_identical(readLines(job$tasks[[3]]$datapath), "koru")
+    expect_identical(list.files(sources), basename(job$tasks[[3]]$datapath))
+    if (mode == "collision") expect_identical(readLines(uploads[[3]]$datapath), "yabancı") else
+      expect_false(file.exists(uploads[[3]]$datapath))
+    expect_false(env$file_ingestion_release_job(job))
+    expect_identical(env$.file_ingestion_state()$active, 0L)
+  })
+})
+
 test_that("taşınan kaynak iade edilemezse baytlar korunur ve yabancı hedef ezilmez", {
   for (mode in c("busy", "collision")) local({
     env <- .ingestionEnv()

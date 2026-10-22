@@ -198,7 +198,7 @@ cc_dispatch_run_preparation <- function(ctx) {
         ctx,
         paste0(
           "Çalışma alanı hazırlığı zaman aşımına uğradı (",
-          round(zaman_asimi_sn), " saniye). Lütfen daha küçük bir klasör seçin."
+          round(2 * zaman_asimi_sn), " saniye). Lütfen daha küçük bir klasör seçin."
         ),
         stage = "zaman_asimi"
       )

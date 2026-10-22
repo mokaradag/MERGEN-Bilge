@@ -411,7 +411,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
   # boşken hata bulamıyor ve `cc_is_active_run()` hâlâ TRUE döndüğü için daha
   # önce `failed` kalıcılaştırılmış çalıştırmayı `completed` yazabiliyordu.
   deadline$expired <- FALSE
-  deadline$cancel <- later::later(function() {
+  deadline$cancel <- later::later(function() shiny::isolate({
     ctx$rv <- run_ref$rv
     if (!isTRUE(deadline$pending)) return(invisible(NULL))
     deadline$pending <- FALSE
@@ -419,11 +419,11 @@ cc_dispatch_run_output_processing <- function(ctx) {
     unlink(request$active_guard, force = TRUE)
     if (cc_is_active_run(ctx$rv, dispatched_request_id)) {
       cc_report_output_processing_failure(ctx, simpleError(sprintf(
-        "Çıktı işleme zaman aşımına uğradı (%.0f saniye).", timeout_sec
+        "Çıktı işleme zaman aşımına uğradı (%.0f saniye).", timeout_sec + queue_sec
       )))
     }
     invisible(NULL)
-  }, delay = timeout_sec + queue_sec)
+  }), delay = timeout_sec + queue_sec)
   cancel_deadline <- function() {
     deadline$pending <- FALSE
     cancel <- deadline$cancel
