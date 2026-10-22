@@ -116,8 +116,11 @@ file_ingestion_run_job <- function(job) {
 
 # Yalnız korunan tamamlanma üstverisini ana süreçte uygular.
 file_ingestion_apply_commit <- function(job, results, index_result, queue_wait_ms = 0) {
-  file_ingestion_release_job(job)
-  on.exit(try(file_ingestion_pump(), silent = TRUE), add = TRUE)
+  released <- FALSE
+  on.exit({
+    if (!released) file_ingestion_release_job(job)
+    try(file_ingestion_pump(), silent = TRUE)
+  }, add = TRUE)
   if (!is.null(index_result$accepted) || !is.null(index_result$committed)) {
     position <- 0L
     results <- lapply(results, function(r) {
@@ -133,6 +136,10 @@ file_ingestion_apply_commit <- function(job, results, index_result, queue_wait_m
       r
     })
   }
+  if (is.environment(job$lease)) job$lease$committed_sources <- vapply(results,
+    function(r) if (isTRUE(r$ok)) r$source_path %||% "" else "", character(1))
+  file_ingestion_release_job(job)
+  released <- TRUE
   controller <- job$controller
   commit_started <- Sys.time()
 
@@ -243,7 +250,6 @@ file_ingestion_submit_batch <- function(controller,
   }
 
   if (!file_ingestion_enqueue(job)) {
-    file_ingestion_restore_sources(job)
     file_ingestion_release_job(job)
     return(list(status = "rejected", batch_id = batch_id, queued = 0L))
   }

@@ -2096,3 +2096,101 @@ test_that("eksik Windows kısa yolunda var olan üst dizin kaynak kapsamını be
     }
   })
 })
+
+test_that("taşınan kaynak hata ve süre aşımından sonra aynı girdiden yeniden gönderilir", {
+  for (mode in c("timeout", "worker")) local({
+    env <- .ingestionEnv()
+    withr::local_envvar(c(MERGEN_FILE_INGESTION_QUEUE_TIMEOUT = ""))
+    withr::local_options(list(mergen.file_ingestion.queue_timeout = 1800L))
+    env$mergen_cancellable_worker_capacity <- function(...) 1L
+    available <- FALSE
+    env$file_ingestion_pool_has_capacity <- function() available
+    env$file.link <- function(...) FALSE
+    controller <- env$file_ingestion_create_controller()
+    withr::defer(env$file_ingestion_cancel_controller(controller))
+    upload <- .ingestionUpload(paste0("kaynak_tekrar_", mode, ".txt"), "yeniden denenecek baytlar")
+    failures <- 0L
+    task <- .ingestionTask(env, upload)
+    env$file_ingestion_submit_batch(controller, list(task), "42",
+      on_failure = function(...) failures <<- failures + 1L)
+    state <- env$.file_ingestion_state()
+    job <- state$pending[[1]]
+    sources <- job$lease$sources
+    expect_false(file.exists(upload$datapath))
+    if (mode == "timeout") {
+      state$pending[[1]]$queued_at <- Sys.time() - 1801
+      env$file_ingestion_pump()
+    } else {
+      env$file_ingestion_take_next_job()
+      job$lease$slot_acquired <- TRUE
+      state$active <- 1L
+      env$file_ingestion_fail_job(job, simpleError("işçi hatası"))
+    }
+    expect_identical(failures, 1L)
+    expect_identical(state$active, 0L)
+    expect_identical(readLines(upload$datapath), "yeniden denenecek baytlar")
+    expect_false(dir.exists(sources))
+    expect_false(env$file_ingestion_release_job(job))
+    available <- TRUE
+    received <- NULL
+    status <- env$file_ingestion_submit_batch(controller, list(task), "42",
+      on_complete = function(results, ...) received <<- results)
+    expect_identical(status$status, "started")
+    for (i in 1:30) later::run_now(0)
+    expect_true(received[[1]]$ok)
+    expect_identical(readLines(received[[1]]$dest), "yeniden denenecek baytlar")
+    expect_false(file.exists(upload$datapath))
+    expect_false(dir.exists(dirname(received[[1]]$source_path)))
+    expect_identical(state$active, 0L)
+  })
+})
+
+test_that("taşınan kaynak kısmi commit'te yalnız reddedilen dosyayı iade eder", {
+  env <- .ingestionEnv()
+  env$file.link <- function(...) FALSE
+  controller <- env$file_ingestion_create_controller()
+  uploads <- list(.ingestionUpload("kaynak_kabul.txt", "kabul"), .ingestionUpload("kaynak_red.txt", "red"))
+  job <- .ingestionJob(env, controller)
+  job$id <- basename(tempfile("partial-source-"))
+  job$lease <- new.env(parent = emptyenv())
+  job$lease$slot_acquired <- FALSE
+  job$tasks <- lapply(uploads, function(upload) .ingestionTask(env, upload))
+  withr::defer(env$file_ingestion_release_job(job))
+  job <- env$file_ingestion_bind_sources(job)
+  sources <- job$lease$sources
+  results <- lapply(job$tasks, function(task) env$file_ingestion_task_result(task, TRUE))
+  env$file_ingestion_apply_commit(job, results,
+    list(indexed = "kaynak_kabul.txt", accepted = c(TRUE, FALSE), ms = 0))
+  expect_false(file.exists(uploads[[1]]$datapath))
+  expect_identical(readLines(uploads[[2]]$datapath), "red")
+  expect_false(dir.exists(sources))
+  expect_identical(env$.file_ingestion_state()$active, 0L)
+})
+
+test_that("taşınan kaynak iade edilemezse baytlar korunur ve yabancı hedef ezilmez", {
+  for (mode in c("busy", "collision")) local({
+    env <- .ingestionEnv()
+    env$file.link <- function(...) FALSE
+    logs <- character()
+    controller <- env$file_ingestion_create_controller(debug_fn = function(tag, message)
+      logs <<- c(logs, tag))
+    upload <- .ingestionUpload(paste0("kaynak_iade_", mode, ".txt"), "korunacak")
+    job <- .ingestionJob(env, controller)
+    job$id <- basename(tempfile("retained-source-"))
+    job$lease <- new.env(parent = emptyenv())
+    job$lease$slot_acquired <- FALSE
+    job$tasks <- list(.ingestionTask(env, upload))
+    job <- env$file_ingestion_bind_sources(job)
+    sources <- job$lease$sources
+    withr::defer(unlink(sources, recursive = TRUE))
+    if (mode == "busy") env$file.rename <- function(...) FALSE else writeLines("yabancı", upload$datapath)
+    expect_true(env$file_ingestion_release_job(job))
+    expect_identical(readLines(job$tasks[[1]]$datapath), "korunacak")
+    expect_true(dir.exists(sources))
+    expect_identical(logs, "ingest_source_restore_error")
+    if (mode == "collision") expect_identical(readLines(upload$datapath), "yabancı") else
+      expect_false(file.exists(upload$datapath))
+    expect_false(env$file_ingestion_release_job(job))
+    expect_identical(env$.file_ingestion_state()$active, 0L)
+  })
+})

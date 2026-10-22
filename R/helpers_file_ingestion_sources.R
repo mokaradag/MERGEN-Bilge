@@ -34,9 +34,10 @@ file_ingestion_bind_sources <- function(job) {
   job
 }
 
-# Kabul reddedilirse taşınan kaynak çağırana iade edilir; hata baytları silmez.
+# Commit edilmeyen taşınmış kaynak iade edilir; hata baytları silmez.
 file_ingestion_restore_sources <- function(job) {
   for (move in job$lease$source_moves) {
+    if (move$to %in% job$lease$committed_sources) next
     restored <- !file.exists(move$from) && isTRUE(suppressWarnings(tryCatch(
       file.rename(move$to, move$from), error = function(e) FALSE)))
     if (!restored) {

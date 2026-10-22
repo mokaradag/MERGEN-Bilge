@@ -249,6 +249,7 @@ file_ingestion_release_job <- function(job) {
   if (is.environment(job$lease)) {
     if (isTRUE(job$lease$released)) return(invisible(FALSE))
     job$lease$released <- TRUE
+    if (length(job$lease$source_moves)) file_ingestion_restore_sources(job)
     if (!is.null(job$lease$sources)) unlink(job$lease$sources, recursive = TRUE, force = TRUE)
   }
   if (!is.environment(job$lease) || !identical(job$lease$slot_acquired, FALSE))
