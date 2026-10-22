@@ -527,6 +527,7 @@ test_that("production true streaming abort path remains wired to cleanup and res
   .e2e_quick_expect_tokens(
     true_streaming_r,
     c(
+      "cleanup_streaming_state <- mergen_stream_bind_cleanup(ctx, stream_env)",
       "finalize_error_or_abort <- function(result)",
       "abort_plan <- mergen_stream_abort_cleanup_plan(",
       "identical(abort_plan$action, \"finalize_partial\")",

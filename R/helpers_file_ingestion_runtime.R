@@ -91,6 +91,7 @@ file_ingestion_run_job <- function(job) {
   promise <- tracked_future_promise(
     task_fn = function() file_ingestion_execute_batch(tasks),
     task_type = "file_ingestion",
+    on_uncertain = function(error) file_ingestion_fail_job(job, error, uncertain = TRUE),
     cancel_check = function() identical(job$controller$epoch, job$epoch),
     session_token = job$session_token,
     meta = list(batch_id = job$id, files = length(gorevler)),
@@ -177,9 +178,10 @@ file_ingestion_apply_commit <- function(job, results, index_result, queue_wait_m
 }
 
 # Worker görevinin tamamen başarısız olduğu dal.
-file_ingestion_fail_job <- function(job, error) {
-  file_ingestion_release_job(job)
-  on.exit(try(file_ingestion_pump(), silent = TRUE), add = TRUE)
+file_ingestion_fail_job <- function(job, error, uncertain = FALSE) {
+  notify <- !isTRUE(job$lease$uncertain_notified)
+  if (uncertain) job$lease$uncertain_notified <- TRUE else file_ingestion_release_job(job)
+  on.exit(if (!uncertain) try(file_ingestion_pump(), silent = TRUE), add = TRUE)
   controller <- job$controller
   mesaj <- tryCatch(conditionMessage(error), error = function(e) "bilinmeyen hata")
 
@@ -187,7 +189,7 @@ file_ingestion_fail_job <- function(job, error) {
     "batch=%s worker hatasi: %s", job$id, mesaj
   ))
 
-  if (isTRUE(controller$active) && is.function(job$on_failure)) {
+  if (notify && isTRUE(controller$active) && is.function(job$on_failure)) {
     if (identical(controller$epoch, job$epoch))
       try(job$on_failure(mesaj, job$tasks), silent = TRUE) else
       try(job$on_failure("Dosya alımı iptal edildi.", list()), silent = TRUE)

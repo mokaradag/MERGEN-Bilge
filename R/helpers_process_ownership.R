@@ -68,6 +68,17 @@ mergen_cancellable_worker_available <- function(lane = NULL, priority = 0L) {
   isTRUE(mergen_cancellable_worker_admissible(lane, priority))
 }
 
+# Bildirim sahiplik sonucundan ayrıdır; karantinada lease/geri alma bekler.
+.mergen_worker_uncertain_notifier <- function(current) {
+  domain <- shiny::getDefaultReactiveDomain()
+  function(error) {
+    log_warn("[WORKER] Arka plan işi karantinada; süreç ölümü bekleniyor.")
+    if (!is.null(domain) && !isTRUE(domain$isClosed()) &&
+        isTRUE(tryCatch(current(), error = function(e) FALSE)))
+      shiny::showNotification(conditionMessage(error), type = "error", session = domain)
+  }
+}
+
 cc_run_state_reference <- function(rv) {
   ref <- shiny::isolate(rv$run_state_ref)
   if (!is.environment(ref)) {

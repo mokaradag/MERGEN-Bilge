@@ -910,6 +910,53 @@ test_that("özet terfisi gerçek callr ve üretim aktarım denetimleriyle tamaml
   })
 })
 
+test_that("belirsiz özet işçisi bir kez bildirir; guard ve sahip kancası ölüm kanıtını bekler", {
+  env <- .cc_codex_review_env()
+  for (file in c("helpers_worker_monitor.R", "helpers_worker_cancellation.R",
+    "helpers_claude_code_run_lifecycle.R", "helpers_document_output_publication.R"))
+    source(file.path(resolve_repo_root_for_tests(), "R", file), encoding = "UTF-8", local = env)
+  env$cc_run_output_worker_globals <- function() list()
+  env$mergen_cancellable_worker_schedule <- function(...) NULL
+  process_state <- new.env()
+  process_state$alive <- NA
+  env$mergen_cancellable_worker_launch <- function(...) list(
+    is_alive = function() if (is.na(process_state$alive)) stop("bilinmiyor") else process_state$alive,
+    kill_tree = function() FALSE, kill = function(...) FALSE)
+  notifications <- failures <- 0L
+  testthat::local_mocked_bindings(showNotification = function(...) {
+    notifications <<- notifications + 1L
+  }, .package = "shiny")
+  output_dir <- withr::local_tempdir()
+  shiny::testServer(function(input, output, session) NULL, {
+    session$userData$user_id <- 7L
+    rv <- shiny::reactiveValues(is_running = TRUE, active_request_id = "A",
+      run_owner_guard = mergen_session_owner_guard(session))
+    promise <- env$cc_publish_document_summary_async(list(success = TRUE,
+      generated_summary_path = file.path(output_dir, "summary.txt")), output_dir,
+      output_dir, session, rv, "A")
+    promises::catch(promise, function(e) failures <<- failures + 1L)
+    guard <- rv$summary_sync_guard
+    for (i in 1:4) env$mergen_cancellable_worker_tick()
+    expect_identical(notifications, 1L)
+    expect_identical(failures, 0L)
+    expect_true(file.exists(guard))
+    expect_length(ls(session$userData$kimlik_kancalari), 1L)
+    job <- env$.MERGEN_CANCELLABLE_WORKERS$jobs[[1]]
+    job$next_probe <- Sys.time() - 1
+    env$mergen_cancellable_worker_tick()
+    expect_identical(notifications, 1L)
+    process_state$alive <- FALSE
+    job$next_probe <- Sys.time() - 1
+    env$mergen_cancellable_worker_tick()
+    for (i in 1:30) later::run_now(0)
+    expect_identical(failures, 1L)
+    expect_false(file.exists(guard))
+    expect_null(rv$summary_sync_guard)
+    expect_length(ls(session$userData$kimlik_kancalari), 0L)
+    expect_length(env$.MERGEN_CANCELLABLE_WORKERS$jobs, 0L)
+  })
+})
+
 
 test_that("canlı veya belirsiz runtime lease sahipliği devredilemez", {
   env <- .cc_codex_review_env()

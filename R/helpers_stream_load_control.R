@@ -184,13 +184,13 @@ mergen_stream_dispatch_followups <- function(session,
         promises::catch(function(e) {
           cancellation$finish()
           release()
-          mergen_runtime_metric_inc("followups_failed")
+          .mergen_stream_metric_inc("followups_failed")
           NULL
         })
     }, error = function(e) {
       cancellation$finish()
       release()
-      mergen_runtime_metric_inc("followups_failed")
+      .mergen_stream_metric_inc("followups_failed")
     })
     invisible(NULL)
     }, error = function(e) {

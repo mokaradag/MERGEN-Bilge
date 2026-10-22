@@ -129,6 +129,11 @@ test_that("eşzamanlılık ve kuyruk sınırları yapılandırılabilir ve varsa
   expect_true(grepl("mergen_cancellable_worker_available", metin, fixed = TRUE))
 
   ayar_env <- new.env(parent = globalenv())
+  for (helper in c("helpers_process_ownership.R", "helpers_worker_cancellation.R")) {
+    source(file.path(resolve_repo_root_for_tests(), "R", helper), encoding = "UTF-8", local = ayar_env)
+  }
+  expect_true(is.function(ayar_env$mergen_cancellable_worker_available))
+  expect_true("lane" %in% names(formals(ayar_env$mergen_cancellable_worker_available)))
   source(
     file.path(resolve_repo_root_for_tests(), "R", "helpers_file_ingestion_queue.R"),
     encoding = "UTF-8",
@@ -145,6 +150,13 @@ test_that("eşzamanlılık ve kuyruk sınırları yapılandırılabilir ve varsa
 
   expect_identical(ayar_env$file_ingestion_max_concurrent(), 2L)
   expect_identical(ayar_env$file_ingestion_max_queue(), 32L)
+  expect_true(ayar_env$file_ingestion_pool_has_capacity())
+  occupied <- new.env()
+  occupied$lane <- "durable"
+  occupied$process <- list()
+  ayar_env$.MERGEN_CANCELLABLE_WORKERS$jobs <- list(occupied)
+  withr::local_options(mergen.cancellable_workers = 1L)
+  expect_false(ayar_env$file_ingestion_pool_has_capacity())
 })
 
 test_that("gönderim çağrısı pahalı işi olay döngüsünde yapmaz", {

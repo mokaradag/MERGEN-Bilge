@@ -248,7 +248,7 @@ test_that("ölü kilit hemen devralınır; aynı sürecin bırakamadığı kilit
   # taze iken korunur, bayatlık eşiğinden sonra geri kazanılır.
   .lock_test_make_lock()
   expect_error(.file_store_with_index_lock(stop("kritik bölüm çalıştı"), timeout_sec = 0,
-    stale_lock_sec = 60, require_lock = TRUE), "kilidi alınamadı")
+    stale_lock_sec = 60, require_lock = TRUE), "kilidi al")
   expect_true(dir.exists(lock_dir))
   Sys.sleep(1.2)
   expect_identical(.file_store_with_index_lock(TRUE, timeout_sec = 0, stale_lock_sec = 1,
@@ -266,7 +266,7 @@ test_that("markersız, eski biçimli ya da uzak host kilidi yalnız bayatlıktan
     if (durum == "uzak") writeLines(c("pid=1", "host=baska-dugum", "token=uzak"), marker)
     if (durum == "bozuk") writeBin(as.raw(c(0xff, 0x00, 0x13)), marker)
     expect_error(.file_store_with_index_lock(TRUE, timeout_sec = 0, stale_lock_sec = 3600,
-      require_lock = TRUE), "kilidi alınamadı", info = durum)
+      require_lock = TRUE), "kilidi al", info = durum)
     if (file.exists(marker)) Sys.setFileTime(marker, Sys.time() - 7200)
     Sys.setFileTime(lock_dir, Sys.time() - 7200)
     expect_identical(.file_store_with_index_lock(TRUE, timeout_sec = 0, stale_lock_sec = 3600,
@@ -281,9 +281,9 @@ test_that("kilit içinde sert öldürülen işçinin kilidi ölüm doğrulandık
   ready <- withr::local_tempfile()
   root <- resolve_repo_root_for_tests()
   process <- callr::r_bg(function(root, index, ready) {
-    source(file.path(root, "R/utils_common.R"))
-    source(file.path(root, "R/helpers_process_ownership.R"))
-    source(file.path(root, "R/config_file_store_index_lock.R"))
+    source(file.path(root, "R/utils_common.R"), encoding = "UTF-8")
+    source(file.path(root, "R/helpers_process_ownership.R"), encoding = "UTF-8")
+    source(file.path(root, "R/config_file_store_index_lock.R"), encoding = "UTF-8")
     assign("MERGEN_INDEX_PATH", index, envir = globalenv())
     .file_store_with_index_lock({ file.create(ready); Sys.sleep(60) }, require_lock = TRUE)
   }, args = list(root = root, index = MERGEN_INDEX_PATH, ready = ready), stdout = NULL, stderr = NULL)
@@ -291,11 +291,11 @@ test_that("kilit içinde sert öldürülen işçinin kilidi ölüm doğrulandık
   deadline <- Sys.time() + 10
   while (!file.exists(ready) && process$is_alive() && Sys.time() < deadline) Sys.sleep(0.01)
   expect_true(file.exists(ready))
-  expect_error(.file_store_with_index_lock(TRUE, timeout_sec = 0, require_lock = TRUE), "kilidi alınamadı")
+  expect_error(.file_store_with_index_lock(TRUE, timeout_sec = 0, require_lock = TRUE), "kilidi al")
   # Yaşlanmış ama canlı yabancı sahip çalınmaz.
   Sys.sleep(1.5)
   expect_error(.file_store_with_index_lock(TRUE, timeout_sec = 0, stale_lock_sec = 1,
-    require_lock = TRUE), "kilidi alınamadı")
+    require_lock = TRUE), "kilidi al")
   process$kill()
   process$wait(timeout = 5000)
   expect_false(process$is_alive())
@@ -351,14 +351,13 @@ test_that("okunamayan marker süren geri kazanım sırasında eski sahibin jeton
 
 
 test_that("kilit bırakma geçici okunamazlığı muteks altında doğrular ve yabancı sahibi korur", {
-  for (mode in c("transient", "unreadable", "foreign", "known")) {
+  for (mode in c("transient", "unreadable", "foreign", "known", "mutex_unavailable")) {
     .lock_test_prepare_runtime()
     withr::defer(.lock_test_cleanup())
     releasing <- FALSE
     reads <- 0L
     env <- new.env(parent = environment(.file_store_with_index_lock))
     source(file.path(resolve_repo_root_for_tests(), "R/config_file_store_index_lock.R"), encoding = "UTF-8", local = env)
-    if (mode == "known") env$mergen_reclaim_mutex <- function(...) NULL
     env$readLines <- function(con, ...) {
       if (releasing) {
         reads <<- reads + 1L
@@ -367,9 +366,50 @@ test_that("kilit bırakma geçici okunamazlığı muteks altında doğrular ve y
       }
       base::readLines(con, ...)
     }
-    env$.file_store_with_index_lock({ releasing <- TRUE; TRUE }, require_lock = TRUE)
-    expect_identical(dir.exists(.lock_test_lock_dir()), mode %in% c("unreadable", "foreign"), info = mode)
+    env$.file_store_with_index_lock({
+      releasing <- TRUE
+      if (mode == "mutex_unavailable") env$mergen_reclaim_mutex <- function(...) NULL
+      TRUE
+    }, require_lock = TRUE)
+    expect_identical(dir.exists(.lock_test_lock_dir()), mode %in% c("unreadable", "foreign", "mutex_unavailable"), info = mode)
     releasing <- FALSE
     unlink(.lock_test_lock_dir(), recursive = TRUE)
   }
+})
+
+test_that("geri kazanım muteksi tutulurken yeni indeks sahibi yayımlanmaz", {
+  .lock_test_prepare_runtime()
+  withr::defer(.lock_test_cleanup())
+  ready <- withr::local_tempfile()
+  release <- withr::local_tempfile()
+  process <- callr::r_bg(function(path, ready, release) {
+    lock <- filelock::lock(path)
+    on.exit(filelock::unlock(lock))
+    file.create(ready)
+    while (!file.exists(release)) Sys.sleep(0.01)
+  }, args = list(path = paste0(.lock_test_lock_dir(), ".reclaim"), ready = ready, release = release))
+  withr::defer(try(process$kill(), silent = TRUE))
+  deadline <- Sys.time() + 10
+  while (!file.exists(ready) && process$is_alive() && Sys.time() < deadline) Sys.sleep(0.01)
+  expect_true(file.exists(ready))
+  expect_error(.file_store_with_index_lock(stop("mutasyon"), timeout_sec = 0,
+    require_lock = TRUE), "kilidi al")
+  expect_false(dir.exists(.lock_test_lock_dir()))
+  file.create(release)
+  process$wait(timeout = 5000)
+  expect_identical(.file_store_with_index_lock("geçerli", require_lock = TRUE), "geçerli")
+  expect_false(dir.exists(.lock_test_lock_dir()))
+})
+
+test_that("geri kazanım son silme öncesi değişen jetonu korur", {
+  .lock_test_prepare_runtime()
+  withr::defer(.lock_test_cleanup())
+  .lock_test_make_lock(age_sec = 3600)
+  env <- new.env(parent = environment(.file_store_with_index_lock))
+  source(file.path(resolve_repo_root_for_tests(), "R/config_file_store_index_lock.R"),
+    encoding = "UTF-8", local = env)
+  env$log_warn <- function(...) writeLines("token=yeni-sahip", .lock_test_lock_marker())
+  expect_error(env$.file_store_with_index_lock(stop("mutasyon"), timeout_sec = 0,
+    require_lock = TRUE), "kilidi al")
+  expect_identical(readLines(.lock_test_lock_marker()), "token=yeni-sahip")
 })

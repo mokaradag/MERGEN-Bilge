@@ -35,7 +35,7 @@ suppressMessages({
 .fp_make_env <- function() {
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(a, b) if (is.null(a)) b else a
-  source(file.path(resolve_repo_root_for_tests(), "R/helpers_preview_cache.R"), local = env)
+  source(file.path(resolve_repo_root_for_tests(), "R/helpers_preview_cache.R"), encoding = "UTF-8", local = env)
   # Var olmayan fixture dosyalarını "erişilebilir" say (asenkron yola düşmek için
   # gerçek dosya gerekmez; file.info NA boyut döndürünce zaten async seçilir).
   env$path_exists_relaxed <- function(p) TRUE

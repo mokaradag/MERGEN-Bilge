@@ -1,6 +1,6 @@
 # Shiny ve worker yaşam döngüsü denetimi
 
-İncelenen main: `09b26d8aa28d8dfeae6d85a5ff605b5014950ea4` (8 Ekim 2026).
+8 Ekim denetiminin tarihsel main anlık görüntüsü: `09b26d8aa28d8dfeae6d85a5ff605b5014950ea4` (8 Ekim 2026).
 Denetimdeki on bulgu giderildi: sonuçlar istek/sohbet/sahip sınırlarında korunur; Yolaç devam bağları sahip değişiminde temizlenir. Takip üretimi, büyük DOCX kodlaması ve indeks kilidi işçilere taşınır; işçi hataları ana süreçte yeniden yürütülmez. Çalışan Yolaç kayıt kimliği görünümden bağımsız saklanır; LLM işçi ayarları canlı Shiny oturumu taşımaz.
 
 İnceleme düzeltmeleri aynı kullanıcının yetki değişimini de kimlik nesline bağlar. SSE, normal yanıt ve TTS sahip kancaları eski isteğin gönderme durumunu temizler; erken SSE kapanışı kancaları kaldırıp işçi bitene kadar durdurma dosyasını korur. TTS takipleri ortak asenkron dağıtıcıyı kullanır. Devre dışı takipler işçi veya API anahtarı istemez; sahip, sohbet, istek ve oturum değişiminde çalışan takip HTTP aktarımı durdurma jetonuyla kesilir.
@@ -15,6 +15,10 @@ Belirsiz sahiplik sınırlı yeniden okumayla doğrulanır; yabancı veya hâlâ
 
 Yolaç bildirimleri yakalanan oturuma gönderilir ve bildirim hatası hazırlanmış işi düşürmez. Oturumsuz yoklama hatası yalnız ilgili çalıştırmayı başarısız kılar; reaktif sessiz koşullar korunur. Çıktı işçisinin sahipliği istek ve süre kurulumu tamamlanmadan devralınmaz.
 
+
+## Sonraki düzeltme kaydı — 21 Ekim 2026
+
+Bu bölüm 8 Ekim anlık görüntüsüne ait değildir. Alım kararları [`c4321dd73`](https://github.com/mokaradag/MERGEN-Bilge/commit/c4321dd73), terfi ve işçi bütçesi değişiklikleri [`a8ec76510`](https://github.com/mokaradag/MERGEN-Bilge/commit/a8ec76510), o turun sınırları [`608d9ecd1`](https://github.com/mokaradag/MERGEN-Bilge/commit/608d9ecd1) kaynak durumunu anlatır; güncel çalışma zamanı veya Windows VM doğrulaması iddiası taşımaz.
 
 21 Ekim yakınsama turunda alım çakışması talep zamanıyla değil, indeks kilidi altında saklanan commit zamanı ile yeni kopyanın aynı uygulama saatinden alınan başlangıcı karşılaştırılarak belirlenir; paylaşımın marker saati kullanılmaz. İlk başlangıç işlem günlüğünde korunur ve native yol yeniden bağlamasında yenilenmez. Aynı parti içinde son geçerli eş adlı girdi kazanır; kabul bayrakları ve temizlik yalnız bu sonuca göre belirlenir. Aynı yolun kimliksiz yeniden kaydı yapıt kimliğini ve commit zamanını korur. Reddedilen kardeşin temizliği başarısızsa işlem günlükleri tutulur ve mevcut bağımsız geri alma işçisiyle sınırlı yeniden deneme yapılır; başarılı kardeşin commit'i korunur.
 

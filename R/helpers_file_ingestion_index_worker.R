@@ -126,6 +126,7 @@ file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard =
         committed
       },
       task_type = "file_ingestion_index",
+      on_uncertain = function(error) file_ingestion_fail_job(job, error, uncertain = TRUE),
       # Commit'ten önceki iptal (nesil değişimi) işçiyi durdurur ve geri alma
       # yoluna düşer; commit edilmiş yapıt geri alınmaz. Temizlik koşusu iptal edilmez.
       cancel_check = if (discard) function() TRUE else

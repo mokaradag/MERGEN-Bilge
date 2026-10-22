@@ -52,14 +52,14 @@ mergen_retire_process <- function(process, release, on_uncertain = NULL) {
 # Yapılandırılan değer havuzun FİZİKSEL toplam süreç sınırıdır; şeritler onu
 # bölüşür, çoğaltmaz. Kalıcı işler (alım, Yolaç hazırlık/çıktı/özet) en fazla
 # yarısını kullanır; tek fiziksel yuvada şeritler sırayla çalışır.
-# İki ve üzeri yuvada şeritler birbirine yer ayırır. `lane = NULL` toplamdır.
+# Kalıcı talep yokken etkileşimli işler boş yuvayı ödünç alır. `lane = NULL` toplamdır.
 mergen_cancellable_worker_capacity <- function(lane = NULL) {
   configured <- getOption("mergen.cancellable_workers", NULL)
   if (is.null(configured)) configured <- if (exists("resolve_mergen_worker_count", mode = "function")) resolve_mergen_worker_count() else 2L
   value <- suppressWarnings(as.integer(configured)[1])
   total <- if (length(value) != 1L || is.na(value) || value < 1L) 1L else value
   if (identical(lane, "durable")) return(max(1L, total %/% 2L))
-  if (identical(lane, "interactive") && total >= 2L) total - 1L else total
+  total
 }
 
 # Sözü sonuçlanmamış işler (bekleyen + çalışan) şeridin kuyruk yerini tüketir.
@@ -75,8 +75,12 @@ mergen_cancellable_worker_capacity <- function(lane = NULL) {
 }
 
 .mergen_cancellable_has_room <- function(jobs, lane) {
-  .mergen_cancellable_running(jobs, lane) < mergen_cancellable_worker_capacity(lane) &&
-    .mergen_cancellable_running(jobs) < mergen_cancellable_worker_capacity()
+  total <- mergen_cancellable_worker_capacity()
+  limit <- mergen_cancellable_worker_capacity(lane)
+  durable_demand <- any(vapply(jobs, function(job)
+    identical(job$lane, "durable") && !isTRUE(job$finished), logical(1)))
+  if (identical(lane, "interactive") && total >= 2L && durable_demand) limit <- total - 1L
+  .mergen_cancellable_running(jobs, lane) < limit && .mergen_cancellable_running(jobs) < total
 }
 
 .mergen_cancellable_queue_limit <- function(priority) if (priority > 1L) 32L else 34L
@@ -152,6 +156,8 @@ mergen_cancellable_worker_tick <- function() {
         # Ölümü kanıtlanamayan süreç yuvasını tutar; çağıran bir kez bilgilendirilir.
         if (!isTRUE(job$quarantined)) {
           job$quarantined <- TRUE
+          if (identical(job$lane, "durable") && is.function(job$on_uncertain)) try(job$on_uncertain(
+            simpleError(.MERGEN_CANCELLABLE_END_MESSAGES[["uncertain"]])), silent = TRUE)
           if (!identical(job$lane, "durable"))
             mergen_cancellable_worker_settle(job, simpleError(.MERGEN_CANCELLABLE_END_MESSAGES[["uncertain"]]))
         }
@@ -200,7 +206,8 @@ mergen_cancellable_worker_launch <- function(payload) {
 }
 
 mergen_cancellable_worker_promise <- function(payload, current, timeout = 1800, priority = 0L,
-                                              queue_timeout = min(timeout, 300), lane = "interactive") {
+                                              queue_timeout = min(timeout, 300), lane = "interactive",
+                                              on_uncertain = NULL) {
   if (!is.finite(timeout) || timeout <= 0 || !is.finite(queue_timeout) || queue_timeout <= 0)
     stop("İşçi son tarihleri sonlu ve pozitif olmalıdır.")
   state <- .MERGEN_CANCELLABLE_WORKERS
@@ -210,6 +217,8 @@ mergen_cancellable_worker_promise <- function(payload, current, timeout = 1800, 
   if (length(.mergen_cancellable_live_jobs(lane)) >= .mergen_cancellable_queue_limit(priority)) {
     return(promises::promise_reject(simpleError("Arka plan iş kuyruğu dolu.")))
   }
+  if (identical(lane, "durable") && is.null(on_uncertain))
+    on_uncertain <- .mergen_worker_uncertain_notifier(current)
   promises::promise(function(resolve, reject) {
     job <- new.env(parent = emptyenv())
     job$payload <- payload
@@ -222,6 +231,7 @@ mergen_cancellable_worker_promise <- function(payload, current, timeout = 1800, 
     job$queue_timeout <- queue_timeout
     job$priority <- as.integer(priority)
     job$lane <- lane
+    job$on_uncertain <- on_uncertain
     job$resolve <- resolve
     job$reject <- reject
     state$jobs[[length(state$jobs) + 1L]] <- job

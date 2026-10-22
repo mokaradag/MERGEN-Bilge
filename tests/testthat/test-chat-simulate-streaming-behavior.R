@@ -448,6 +448,32 @@ test_that("süren benzetimli akış bayatlayınca yeni mesajları ve gönderimi 
   expect_identical(completed, 1L)
 })
 
+test_that("süren akışta sohbet değişince yalnız güncel isteğin gönderimi sıfırlanır", {
+  env <- .css_env()
+  callback <- NULL
+  destroyed <- FALSE
+  testthat::local_mocked_bindings(observe = function(expr, ...) {
+    expression <- substitute(expr)
+    frame <- parent.frame()
+    callback <<- function() eval(expression, frame)
+    list(destroy = function() destroyed <<- TRUE)
+  }, .package = "shiny")
+  env$mergen_pk_chat_identity <- function(session, values) values$current_chat_id
+  rec <- new.env(); rec$msgs <- list()
+  session <- .css_session(rec); session$userData <- new.env()
+  session$userData$llm_request_owner <- "A"
+  values <- new.env(); values$messages <- list(); values$current_chat_id <- "chat-A"
+  completed <- list()
+  env$chat_simulate_streaming("yanıt", session, values, list(selected_character = "emre"),
+    list(), function() FALSE, on_complete = function(msg) completed <<- c(completed, list(msg)))
+  values$current_chat_id <- "chat-B"
+  callback()
+  expect_true(destroyed)
+  expect_length(values$messages, 0L)
+  expect_identical(env$.rec$reset, 1L)
+  expect_identical(completed, list(NULL))
+})
+
 test_that("Stop sonrası yeni SQL isteği LLM sahipliğini değiştirmeden geç TTS'yi reddeder", {
   env <- .css_env()
   for (file in c("helpers_pk_provenance.R", "helpers_pk_provenance_peek.R"))

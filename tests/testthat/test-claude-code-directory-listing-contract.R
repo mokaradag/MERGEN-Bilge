@@ -29,6 +29,32 @@
   enc2utf8(txt)
 }
 
+.cc_dir_has_main_listing <- function(text) {
+  visit <- function(node, worker = FALSE) {
+    if (!is.call(node) && !is.expression(node)) return(FALSE)
+    if (is.call(node) && identical(node[[1]], as.name("list_directory_contents"))) return(!worker)
+    args <- as.list(node)
+    labels <- names(args)
+    if (is.null(labels)) labels <- rep("", length(args))
+    any(vapply(seq_along(args), function(i) {
+      task <- is.call(node) && identical(node[[1]], as.name("tracked_future_promise")) &&
+        identical(labels[i], "task_fn")
+      visit(args[[i]], worker || task)
+    }, logical(1)))
+  }
+  visit(parse(text = text, keep.source = FALSE))
+}
+
+test_that("dizin listeleme koruması boşluk ve ara değişkenle aşılmaz", {
+  for (text in c("uygula_icerik( list_directory_contents(x))",
+    "uygula_icerik(\n list_directory_contents (x))",
+    "icerik <- list_directory_contents(x); uygula_icerik(icerik)")) {
+    expect_true(.cc_dir_has_main_listing(text))
+  }
+  expect_false(.cc_dir_has_main_listing(
+    "tracked_future_promise(task_fn = function() list_directory_contents(x))"))
+})
+
 .extract_safe_source_paths_cc_dir_listing <- function(text) {
   m <- gregexpr(
     'safe_source\\("([^"]+)"\\s*,\\s*encoding\\s*=\\s*"UTF-8"',
@@ -227,7 +253,7 @@ test_that("Claude Code dizin listeleme SSO ve stale refresh guard sözleşmesi k
   )
 
   expect_false(
-    grepl("uygula_icerik(list_directory_contents(", setup_text, fixed = TRUE),
+    .cc_dir_has_main_listing(setup_text),
     info = "Shiny olay döngüsünde senkron dizin listeleme yedeği çalışmamalıdır."
   )
 })

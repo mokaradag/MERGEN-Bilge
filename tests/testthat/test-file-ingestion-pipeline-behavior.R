@@ -2146,6 +2146,90 @@ test_that("taşınan kaynak hata ve süre aşımından sonra aynı girdiden yeni
   })
 })
 
+test_that("oturum yükleme dizini silindiyse taşınan özel kaynak tutulmaz", {
+  env <- .ingestionEnv()
+  env$file.link <- function(...) FALSE
+  upload_dir <- withr::local_tempdir()
+  upload <- .ingestionUpload("kapanan_kaynak.txt", "özel baytlar")
+  file.rename(upload$datapath, file.path(upload_dir, "upload"))
+  upload$datapath <- file.path(upload_dir, "upload")
+  job <- .ingestionJob(env, env$file_ingestion_create_controller())
+  job$id <- basename(tempfile("closed-source-"))
+  job$lease <- new.env(parent = emptyenv())
+  job$lease$slot_acquired <- FALSE
+  job$tasks <- list(.ingestionTask(env, upload))
+  job <- env$file_ingestion_bind_sources(job)
+  withr::defer(unlink(job$lease$sources, recursive = TRUE))
+  expect_true(file.exists(job$tasks[[1]]$datapath))
+  unlink(upload_dir, recursive = TRUE)
+  expect_true(env$file_ingestion_release_job(job))
+  expect_false(file.exists(job$tasks[[1]]$datapath))
+  expect_false(dir.exists(job$lease$sources))
+  expect_length(job$lease$retained_sources, 0L)
+  expect_false(env$file_ingestion_release_job(job))
+})
+
+test_that("alım karantina bildirimi kopya ve indeks işçisinin sahipliğini bırakmaz", {
+  for (stage in c("copy", "index")) {
+    env <- .ingestionEnv()
+    job <- .ingestionJob(env, env$file_ingestion_create_controller())
+    job$lease <- new.env()
+    job$lease$slot_acquired <- TRUE
+    job$lease$sources <- withr::local_tempdir()
+    source_path <- file.path(job$lease$sources, "bytes")
+    writeLines("korunacak", source_path)
+    state <- env$.file_ingestion_state()
+    state$active <- 1L
+    notified <- rolled_back <- 0L
+    job$on_failure <- function(...) notified <<- notified + 1L
+    uncertain <- reject_worker <- NULL
+    env$tracked_future_promise <- function(..., on_uncertain) {
+      uncertain <<- on_uncertain
+      promises::promise(function(resolve, reject) reject_worker <<- reject)
+    }
+    env$file_ingestion_rollback_job <- function(job, results, error, journals) {
+      rolled_back <<- rolled_back + 1L
+      env$file_ingestion_fail_job(job, error)
+    }
+    if (stage == "copy") env$file_ingestion_run_job(job) else env$file_ingestion_finish_job(job, list())
+    expect_true(is.function(uncertain))
+    uncertain(simpleError("karantinada"))
+    uncertain(simpleError("karantinada"))
+    expect_identical(notified, 1L)
+    expect_identical(rolled_back, 0L)
+    expect_true(file.exists(source_path))
+    expect_identical(env$.file_ingestion_state()$active, 1L)
+    reject_worker(simpleError("ölüm doğrulandı"))
+    for (i in 1:30) later::run_now(0)
+    expect_identical(rolled_back, 1L)
+    expect_identical(notified, 1L)
+    expect_false(file.exists(source_path))
+    expect_identical(env$.file_ingestion_state()$active, 0L)
+  }
+})
+
+test_that("başarısız terfi görünür yabancı hedefe silme yetkisi vermez", {
+  env <- .ingestionEnv()
+  root <- withr::local_tempdir()
+  stage <- file.path(root, "stage")
+  dest <- file.path(root, "target")
+  writeLines("yükleme", stage)
+  env$file.link <- function(...) FALSE
+  env$file.rename <- function(from, to) {
+    writeLines("yabancı", to)
+    FALSE
+  }
+  env$file.copy <- function(...) FALSE
+  result <- env$mergen_promote_staged_file(stage, dest, file.exists)
+  expect_false(result$promoted)
+  expect_true(result$yabanci)
+  expect_false(isTRUE(result$partial_owned))
+  # Görsel çağırıcısının temizlik sözleşmesi yabancı hedefi korumalıdır.
+  if (isTRUE(result$partial_owned)) unlink(dest)
+  expect_identical(readLines(dest), "yabancı")
+  expect_identical(readLines(stage), "yükleme")
+})
+
 test_that("taşınan kaynak kısmi commit'te yalnız reddedilen dosyayı iade eder", {
   env <- .ingestionEnv()
   env$file.link <- function(...) FALSE

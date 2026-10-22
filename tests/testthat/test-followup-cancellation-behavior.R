@@ -150,3 +150,51 @@ test_that("takip üretimi iptal edilebilir bağımsız işçiye istek kapsamlı 
     expect_identical(allow, !key_fails)
   }
 })
+
+test_that("takiplerin dört hata yolu aynı sayacı tam bir kez artırır", {
+  for (stage in c("schedule", "admission", "dispatch", "promise")) {
+    env <- .followup_worker_env()
+    source(file.path(resolve_repo_root_for_tests(), "R/helpers_runtime_metrics.R"),
+      encoding = "UTF-8", local = env)
+    callback <- NULL
+    released <- 0L
+    env$mergen_send_message_release_slot <- function(...) released <<- released + 1L
+    if (stage == "admission") env$mergen_followup_try_admit <- function(...) stop("admission")
+    result <- env$mergen_stream_dispatch_followups(list(userData = new.env()), "m", "s", "y",
+      list(enable_followups = TRUE), list(), NULL, NULL,
+      plan = list(enabled = TRUE, delay_seconds = 0),
+      later_fn = function(fn, ...) {
+        if (stage == "schedule") stop("schedule")
+        callback <<- fn
+      }, dispatch_fn = function(...) {
+        if (stage == "dispatch") stop("dispatch")
+        promises::promise_reject(simpleError("promise"))
+      })
+    expect_identical(result, stage != "schedule")
+    if (is.function(callback)) callback()
+    for (i in 1:30) later::run_now(0)
+    expect_equal(env$mergen_runtime_metric_get("followups_failed"), 1, info = stage)
+    expect_identical(released, if (stage %in% c("dispatch", "promise")) 1L else 0L)
+  }
+})
+
+test_that("isteğe bağlı takip sayacı hatası yeni bir hata veya tekrar üretmez", {
+  for (stage in c("dispatch", "promise")) {
+    env <- .followup_worker_env()
+    probes <- 0L
+    env$mergen_runtime_metric_inc <- function(...) { probes <<- probes + 1L; stop("sayaç") }
+    callback <- NULL
+    env$mergen_stream_dispatch_followups(list(userData = new.env()), "m", "s", "y",
+      list(enable_followups = TRUE), list(), NULL, NULL,
+      plan = list(enabled = TRUE, delay_seconds = 0),
+      later_fn = function(fn, ...) callback <<- fn,
+      dispatch_fn = function(...) {
+        if (stage == "dispatch") stop("dispatch")
+        promises::promise_reject(simpleError("promise"))
+      })
+    callback()
+    for (i in 1:30) later::run_now(0)
+    # Kabul metriği aynı wrapper'ı kullanır; hata metriği de yalnız bir kez denenir.
+    expect_identical(probes, 2L)
+  }
+})

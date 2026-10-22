@@ -318,7 +318,7 @@ test_that("terfi boş hedefe atomik olarak yerleşir", {
   expect_false(file.exists(staging))
 })
 
-test_that("terfi kısmi hedef sahipliğini yalnızca rezervasyon altında bildirir", {
+test_that("başarısız kopya rezervasyon altında da hedef sahipliğini kanıtlamaz", {
   env <- .reviewContractEnv(c("R/helpers_files_promote_probe.R", "R/helpers_files_promote_target.R"))
   tmp <- withr::local_tempdir()
   staging <- file.path(tmp, "staging.tmp")
@@ -337,8 +337,8 @@ test_that("terfi kısmi hedef sahipliğini yalnızca rezervasyon altında bildir
 
   result <- env$mergen_promote_staged_file(staging, target, file.exists)
   expect_false(result$promoted)
-  expect_true(result$partial_owned)
-  expect_false(result$yabanci)
+  expect_false(result$partial_owned)
+  expect_true(result$yabanci)
   expect_true(released)
   expect_identical(readBin(target, "raw", n = 100L), charToRaw("partial"))
   unlink(target)

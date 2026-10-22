@@ -404,7 +404,8 @@ tracked_future_promise <- function(task_fn,
                                    packages = NULL,
                                    cancel_check = NULL,
                                    execution_timeout = NULL,
-                                   queue_timeout = NULL) {
+                                   queue_timeout = NULL,
+                                   on_uncertain = NULL) {
   if (!is.function(task_fn)) {
     stop("tracked_future_promise() için 'task_fn' bir fonksiyon olmalıdır.")
   }
@@ -479,7 +480,7 @@ tracked_future_promise <- function(task_fn,
         timeout = timeout,
         priority = if (auxiliary) 2L else if (identical(task_type, "llm_followups")) 1L else 0L,
         queue_timeout = queue_timeout %||% if (auxiliary) 30 else if (durable) timeout else 300,
-        lane = if (durable) "durable" else "interactive")
+        lane = if (durable) "durable" else "interactive", on_uncertain = on_uncertain)
     } else promises::future_promise(
       {
         if (is.raw(task_fn)) task_fn <- unserialize(task_fn)

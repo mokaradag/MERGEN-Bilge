@@ -100,12 +100,12 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
           promoted = TRUE
         )
       } else {
-        # Rezervasyon bizdeyken görünen kısmi hedef yalnız bu çağrıya aittir.
+        # Görünürlük oluşturma kanıtı değildir; yarışan yabancı hedef silinemez.
         list(
           ok = FALSE,
-          yabanci = FALSE,
+          yabanci = TRUE,
           promoted = FALSE,
-          partial_owned = var_mi_guvenli(hedef)
+          partial_owned = FALSE
         )
       }
     }

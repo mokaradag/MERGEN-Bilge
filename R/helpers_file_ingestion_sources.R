@@ -34,13 +34,13 @@ file_ingestion_bind_sources <- function(job) {
   job
 }
 
-# Commit edilmeyen taşınmış kaynak iade edilir; hata baytları silmez.
+# Commit edilmeyen kaynak iade edilir; kapanmış yükleme dizini artık hedef değildir.
 file_ingestion_restore_sources <- function(job) {
   for (move in job$lease$source_moves) {
     if (move$to %in% job$lease$committed_sources) next
     restored <- !file.exists(move$from) && isTRUE(suppressWarnings(tryCatch(
       file.rename(move$to, move$from), error = function(e) FALSE)))
-    if (!restored) {
+    if (!restored && dir.exists(dirname(move$from))) {
       job$lease$retained_sources <- c(job$lease$retained_sources, move$to)
       file_ingestion_controller_debug(job$controller, "ingest_source_restore_error",
         "Kabul edilmeyen yüklemenin geçici kaynağı iade edilemedi; kopya korundu.")
