@@ -1959,6 +1959,7 @@ test_that("bağsız dosya sistemi kaynağı devralır; eksik kardeş yalnız ken
   logs <- character()
   controller <- env$file_ingestion_create_controller(debug_fn = function(tag, message)
     logs <<- c(logs, tag))
+  withr::defer(env$file_ingestion_cancel_controller(controller))
   received <- NULL
   status <- env$file_ingestion_submit_batch(controller,
     list(.ingestionTask(env, good), .ingestionTask(env, missing)), "42",
@@ -1990,6 +1991,7 @@ test_that("kuyruk reddi bağlantısız kaynağı iade eder; taşıma hatası dos
   withr::local_options(list(mergen.file_ingestion.max_queue = 1L))
   withr::local_envvar(c(MERGEN_FILE_INGESTION_MAX_QUEUE = ""))
   controller <- env$file_ingestion_create_controller()
+  withr::defer(env$file_ingestion_cancel_controller(controller))
   first <- .ingestionUpload("dolu_ilk.txt")
   second <- .ingestionUpload("dolu_ikinci.txt", "iade")
   expect_identical(env$file_ingestion_submit_batch(controller,
