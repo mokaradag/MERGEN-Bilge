@@ -30,7 +30,8 @@ cc_release_runtime_lease <- function(runtime_lease = NULL) {
 
 # Kira içeriği yerinde kesilmez: geçici dosyaya yazılıp mevcut kiranın yerine
 # fs/libuv ile atomik değiştirilir. Geçici paylaşım ihlali verebildiği için
-# sınırlı yeniden denenir; başarısızlıkta eski kira olduğu gibi kalır.
+# beklemeden sınırlı yeniden denenir; başarısızlıkta eski kira olduğu gibi kalır.
+# Heartbeat başarısızlığı sonraki poll turunda yeniden denenir.
 .cc_write_runtime_lease <- function(lease, lines) {
   tmp <- paste0(lease, ".", Sys.getpid(), ".tmp")
   on.exit(unlink(tmp, force = TRUE), add = TRUE)
@@ -40,7 +41,6 @@ cc_release_runtime_lease <- function(runtime_lease = NULL) {
   }
   for (deneme in 1:5) {
     if (!inherits(try(fs::file_move(tmp, lease), silent = TRUE), "try-error")) return(TRUE)
-    Sys.sleep(0.05 * deneme)
   }
   unlink(tmp, force = TRUE)
   FALSE

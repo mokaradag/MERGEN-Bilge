@@ -1232,6 +1232,37 @@ test_that("kira değiştirmesi geçici hatada yeniden denenir, okunamayan kira y
   expect_identical(readLines(lease), onceki)
 })
 
+test_that("başarısız kira heartbeat ana döngüde beklemez ve sonraki turda toparlanır", {
+  env <- .cc_codex_review_env()
+  beklemeler <- numeric()
+  env$Sys.sleep <- function(seconds) beklemeler <<- c(beklemeler, seconds)
+  env$Sys.setFileTime <- function(...) FALSE
+  env$cc_log_warn <- function(...) invisible(NULL)
+  lease <- file.path(withr::local_tempdir(), "active-run-a.lease")
+  sahip <- c(paste0("host=", Sys.info()[["nodename"]]), paste0("pid=", Sys.getpid()))
+  writeLines(sahip, lease)
+  denemeler <- 0L
+  hata <- TRUE
+  original_move <- fs::file_move
+  testthat::local_mocked_bindings(file_move = function(from, to) {
+    denemeler <<- denemeler + 1L
+    if (hata) stop("paylaşım ihlali")
+    original_move(from, to)
+  }, .package = "fs")
+  for (tur in 1:3) {
+    expect_false(env$cc_touch_runtime_lease(lease))
+    expect_identical(denemeler, 5L * tur)
+    expect_identical(readLines(lease), sahip)
+    expect_length(list.files(dirname(lease), pattern = "\\.tmp$"), 0L)
+  }
+  expect_length(beklemeler, 0L)
+  hata <- FALSE
+  expect_true(env$cc_touch_runtime_lease(lease))
+  expect_identical(denemeler, 16L)
+  expect_identical(readLines(lease), sahip)
+  expect_length(list.files(dirname(lease), pattern = "\\.tmp$"), 0L)
+})
+
 test_that("Windows uzun hedefin harf varyantları aynı yayın işlemini kilitler", {
   env <- .cc_codex_review_env()
   env$.Platform <- list(OS.type = "windows")
