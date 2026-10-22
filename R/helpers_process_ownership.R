@@ -55,8 +55,8 @@ mergen_lock_owner_reclaimable <- function(marker, token = NULL, stale_sec = Inf,
 }
 
 # Geri kazanım muteksi: edinme hatası "muteks yok" demektir, istisna değildir.
-mergen_reclaim_mutex <- function(path, timeout = 0) {
-  tryCatch(filelock::lock(path, timeout = timeout), error = function(e) NULL)
+mergen_reclaim_mutex <- function(path, timeout = 0, exclusive = TRUE) {
+  tryCatch(filelock::lock(path, timeout = timeout, exclusive = exclusive), error = function(e) NULL)
 }
 
 mergen_cancellable_worker_available <- function(lane = NULL, priority = 0L) {

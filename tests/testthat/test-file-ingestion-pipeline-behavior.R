@@ -30,6 +30,7 @@
     "R/helpers_file_ingestion_identity.R",
     "R/helpers_file_ingestion_worker.R",
     "R/helpers_file_ingestion_queue.R",
+    "R/helpers_file_ingestion_sources.R",
     "R/helpers_file_ingestion_runtime.R",
     "R/helpers_file_ingestion_index_worker.R"
   )) {
@@ -404,7 +405,7 @@ test_that("kuyruk dolduğunda iş sessizce düşürülmez, açık red döner", {
   expect_equal(env$file_ingestion_queue_status()$rejected_total, 1L)
 })
 
-test_that("kapanan oturumun bekleyen işleri kuyruktan düşer", {
+test_that("açık oturum iptal çağrısı bekleyen işleri kuyruktan düşürür", {
   env <- .ingestionEnv()
 
   env$file_ingestion_enqueue(list(id = "1", session_token = "kapanan"))
@@ -1722,9 +1723,9 @@ test_that("dizin muteksi çekişmesi başka hedefin terfi ve devralmasını heme
                    "helpers_files_promote_probe.R", "helpers_files_promote_target.R"))
       source(file.path(repo, "R", file), encoding = "UTF-8", local = env)
     env$file.link <- function(...) FALSE
-    env$mergen_reclaim_mutex <- function(path, timeout = 0) {
+    env$mergen_reclaim_mutex <- function(path, timeout = 0, exclusive = TRUE) {
       writeLines("bekliyor", file.path(root, "waiting"))
-      filelock::lock(path, timeout = timeout)
+      filelock::lock(path, timeout = timeout, exclusive = exclusive)
     }
     env$mergen_promote_staged_file(file.path(root, "stage"), file.path(root, "dest"), file.exists)
   }, args = list(repo = resolve_repo_root_for_tests(), root = root))
@@ -1862,11 +1863,14 @@ test_that("kuyruk varsayılanı kalıcı bütçeyi korur; iptal, red ve süre ka
   expect_length(state$pending, 0L)
   expect_false(dir.exists(sources))
   expect_identical(state$active, 2L)
-  # Sabit bağlantı kurulamazsa Shiny kaynağına bağlı kabul verilmez.
+  # Bağ desteklenmezse kaynak atomik taşınarak yine işe ait kalır.
   env$file.link <- function(...) FALSE
-  expect_identical(submit()$status, "rejected")
-  expect_length(state$pending, 0L)
+  expect_identical(submit()$status, "queued")
+  expect_length(state$pending, 1L)
+  expect_true(file.exists(state$pending[[1]]$tasks[[1]]$datapath))
   expect_identical(state$active, 2L)
+  env$file_ingestion_cancel_controller(controller)
+  expect_length(state$pending, 0L)
 })
 
 test_that("görünürlük bekleyişi dizin muteksini başka terfilerden saklamaz", {
@@ -1941,4 +1945,113 @@ test_that("iki gerçek indeks işçisi eşzamanlı eş adlı yüklemeye tek kabu
   expect_true(file.exists(winner$dest))
   next_result <- env$file_ingestion_execute_task(.ingestionTask(env, .ingestionUpload(name, "sonraki")))
   expect_true(env$file_ingestion_commit_index(list(next_result), "42")$accepted[[1]])
+})
+
+test_that("bağsız dosya sistemi kaynağı devralır; eksik kardeş yalnız kendi hatasını döner", {
+  env <- .ingestionEnv()
+  env$mergen_cancellable_worker_capacity <- function(...) 1L
+  available <- FALSE
+  env$file_ingestion_pool_has_capacity <- function() available
+  env$file.link <- function(...) FALSE
+  good <- .ingestionUpload("bag_desteksiz.txt", "korunan baytlar")
+  missing <- .ingestionUpload("kayip_kardes.txt")
+  unlink(missing$datapath)
+  logs <- character()
+  controller <- env$file_ingestion_create_controller(debug_fn = function(tag, message)
+    logs <<- c(logs, tag))
+  received <- NULL
+  status <- env$file_ingestion_submit_batch(controller,
+    list(.ingestionTask(env, good), .ingestionTask(env, missing)), "42",
+    on_complete = function(results, ...) received <<- results)
+  expect_identical(status$status, "queued")
+  job <- env$.file_ingestion_state()$pending[[1]]
+  expect_false(file.exists(good$datapath))
+  expect_identical(readLines(job$tasks[[1]]$datapath), "korunan baytlar")
+  expect_identical(logs, "ingest_source_link_error")
+  expect_null(job$tasks[[1]]$source_error)
+  expect_match(job$tasks[[2]]$source_error, "geçici kaynağı hazırlanamadı", fixed = TRUE)
+  available <- TRUE
+  env$file_ingestion_pump()
+  for (i in 1:30) later::run_now(0)
+  expect_length(received, 2L)
+  expect_true(received[[1]]$ok)
+  expect_false(received[[2]]$ok)
+  expect_identical(received[[2]]$code, "source_unavailable")
+  expect_identical(readLines(received[[1]]$dest), "korunan baytlar")
+  expect_false(dir.exists(job$lease$sources))
+  expect_identical(env$.file_ingestion_state()$active, 0L)
+})
+
+test_that("kuyruk reddi bağlantısız kaynağı iade eder; taşıma hatası dosya düzeyinde kalır", {
+  env <- .ingestionEnv()
+  env$mergen_cancellable_worker_capacity <- function(...) 1L
+  env$file_ingestion_pool_has_capacity <- function() FALSE
+  env$file.link <- function(...) FALSE
+  withr::local_options(list(mergen.file_ingestion.max_queue = 1L))
+  withr::local_envvar(c(MERGEN_FILE_INGESTION_MAX_QUEUE = ""))
+  controller <- env$file_ingestion_create_controller()
+  first <- .ingestionUpload("dolu_ilk.txt")
+  second <- .ingestionUpload("dolu_ikinci.txt", "iade")
+  expect_identical(env$file_ingestion_submit_batch(controller,
+    list(.ingestionTask(env, first)), "42")$status, "queued")
+  expect_identical(env$file_ingestion_submit_batch(controller,
+    list(.ingestionTask(env, second)), "42")$status, "rejected")
+  expect_identical(readLines(second$datapath), "iade")
+  env$file_ingestion_cancel_controller(controller)
+  env$file.rename <- function(...) FALSE
+  expect_identical(env$file_ingestion_submit_batch(controller,
+    list(.ingestionTask(env, second)), "42")$status, "queued")
+  task <- env$.file_ingestion_state()$pending[[1]]$tasks[[1]]
+  expect_identical(env$file_ingestion_execute_task(task)$code, "source_unavailable")
+  expect_identical(readLines(second$datapath), "iade")
+  env$file_ingestion_cancel_controller(controller)
+})
+
+test_that("yavaş kopya kardeş hedefi engellemez ve devralma sahipliği çalamaz", {
+  skip_if_not_installed("callr")
+  skip_if_not_installed("filelock")
+  root <- withr::local_tempdir()
+  env <- .ingestionEnv()
+  repo <- resolve_repo_root_for_tests()
+  worker <- function(repo, root, name, slow) {
+    env <- new.env(parent = globalenv())
+    for (file in c("helpers_process_ownership.R", "utils_path_reservation.R",
+                   "helpers_files_promote_probe.R", "helpers_files_promote_target.R"))
+      source(file.path(repo, "R", file), encoding = "UTF-8", local = env)
+    stage <- file.path(root, paste0(name, ".stage"))
+    writeLines(name, stage)
+    env$file.link <- env$file.rename <- function(...) FALSE
+    env$file.copy <- function(from, to, ...) {
+      if (slow) {
+        marker <- file.path(paste0(to, ".mergen-rsv"), "owner")
+        writeLines(c(readLines(marker, n = 1L), "host=uzak"), marker)
+        Sys.setFileTime(marker, Sys.time() - 120)
+        writeLines("kopya", file.path(root, "copying"))
+        deadline <- Sys.time() + 30
+        while (!file.exists(file.path(root, "release")) && Sys.time() < deadline) Sys.sleep(0.02)
+        if (!file.exists(file.path(root, "release"))) stop("kopya kapısı açılmadı")
+      }
+      base::file.copy(from, to, ...)
+    }
+    env$mergen_promote_staged_file(stage, file.path(root, name), file.exists)
+  }
+  a <- callr::r_bg(worker, args = list(repo = repo, root = root, name = "a.txt", slow = TRUE))
+  withr::defer(try(a$kill(), silent = TRUE))
+  deadline <- Sys.time() + 15
+  while (!file.exists(file.path(root, "copying")) && a$is_alive() && Sys.time() < deadline) a$poll_io(50)
+  expect_true(file.exists(file.path(root, "copying")))
+  b <- callr::r_bg(worker, args = list(repo = repo, root = root, name = "b.txt", slow = FALSE))
+  withr::defer(try(b$kill(), silent = TRUE))
+  b$wait(timeout = 10000)
+  expect_true(b$get_result()$ok)
+  expect_true(a$is_alive())
+  reservation <- file.path(root, "a.txt.mergen-rsv")
+  owner <- env$mergen_reservation_owner(reservation)
+  expect_false(env$mergen_reservation_takeover(reservation, env$mergen_reservation_token(), stale_sec = 1))
+  expect_identical(env$mergen_reservation_owner(reservation), owner)
+  writeLines("devam", file.path(root, "release"))
+  a$wait(timeout = 10000)
+  expect_true(a$get_result()$ok)
+  expect_identical(readLines(file.path(root, "a.txt")), "a.txt")
+  expect_identical(readLines(file.path(root, "b.txt")), "b.txt")
 })

@@ -1273,3 +1273,36 @@ test_that("açık çıktı paketi rezervasyon işlemini temiz ortamda çalışt�
   expect_true(is.character(token) && nzchar(token))
   expect_true(worker$mergen_reservation_release(worker$.cc_output_txn_paths(dest)$lock, token))
 })
+
+test_that("hazırlık yeniden denemesi senkron hatayı sonlandırır ve yeni isteği korur", {
+  for (successor in c(FALSE, TRUE)) {
+    env <- .cc_codex_review_env()
+    callbacks <- list()
+    claims <- 0L
+    failed <- character()
+    rv <- shiny::reactiveValues(active_request_id = "A", is_running = TRUE,
+      active_runtime_source = "source", active_runtime_workdir = "runtime")
+    env$cc_claim_runtime_ownership <- function(...) {
+      claims <<- claims + 1L
+      if (claims == 1L) "" else "owner"
+    }
+    env$.cc_codex_original_cc_dispatch_run_preparation <- function(ctx) {
+      if (successor) rv$active_request_id <- "B"
+      stop("istek oluşturulamadı")
+    }
+    env$cc_fail_run_preparation <- function(ctx, message, ...) {
+      expect_identical(ctx$rv$active_request_id, "A")
+      failed <<- c(failed, message)
+      ctx$rv$is_running <- FALSE
+    }
+    testthat::local_mocked_bindings(later = function(func, delay = 0) {
+      callbacks[[length(callbacks) + 1L]] <<- func
+      function() NULL
+    }, .package = "later")
+    shiny::isolate(env$cc_dispatch_run_preparation(list(rv = rv, workdir = "source", run_request_id = "A")))
+    expect_no_error(callbacks[[1L]]())
+    expect_identical(failed, if (successor) character() else "istek oluşturulamadı")
+    expect_identical(shiny::isolate(rv$is_running), successor)
+    expect_identical(shiny::isolate(rv$active_request_id), if (successor) "B" else "A")
+  }
+})

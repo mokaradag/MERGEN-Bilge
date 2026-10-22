@@ -196,7 +196,7 @@ source_manifest_sections <- list(
     "R/helpers_file_ingestion_task.R",
     "R/helpers_file_ingestion_identity.R", "R/helpers_file_ingestion_worker.R",
     "R/helpers_file_ingestion_queue.R",
-    "R/helpers_file_ingestion_runtime.R", "R/helpers_file_ingestion_index_worker.R"
+    "R/helpers_file_ingestion_sources.R", "R/helpers_file_ingestion_runtime.R", "R/helpers_file_ingestion_index_worker.R"
   ),
 
   # file_manager_helpers: Dosya Yönetimi yardımcı zinciri: politika, bağlam

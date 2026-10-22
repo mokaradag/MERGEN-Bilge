@@ -52,6 +52,9 @@ file_ingestion_execute_task <- function(task) {
       timings = list(total_ms = elapsed_ms(started))
     ))
   }
+  if (!is.null(task$source_error)) return(file_ingestion_task_result(
+    task, FALSE, code = "source_unavailable", error = task$source_error,
+    timings = list(total_ms = elapsed_ms(started))))
   validate_started <- Sys.time()
   if (exists("validate_uploaded_file", mode = "function", inherits = TRUE)) {
     decision <- tryCatch(

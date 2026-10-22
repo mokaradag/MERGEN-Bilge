@@ -476,7 +476,11 @@ cc_dispatch_run_preparation <- function(ctx, attempt = 1L) {
       # Kısa temizlik kilidi çekişmesi olay döngüsünü bekletmeden yeniden denenir.
       later::later(function() shiny::isolate({
         ctx$rv <- run_ref$rv
-        if (cc_is_active_run(ctx$rv, ctx$run_request_id)) cc_dispatch_run_preparation(ctx, attempt + 1L)
+        if (cc_is_active_run(ctx$rv, ctx$run_request_id)) {
+          sonuc <- try(cc_dispatch_run_preparation(ctx, attempt + 1L), silent = TRUE)
+          if (inherits(sonuc, "try-error") && cc_is_active_run(ctx$rv, ctx$run_request_id))
+            cc_fail_run_preparation(ctx, conditionMessage(attr(sonuc, "condition")))
+        }
       }), delay = 0.25)
       return(invisible(TRUE))
     }

@@ -101,7 +101,7 @@ file_ingestion_take_next_job <- function() {
   job
 }
 
-# Kapanan oturumun bekleyen işlerini kuyruktan düşürür.
+# Açık iptal çağrıları için korunur; tarayıcı kapanışı kabul edilmiş işleri iptal ETMEZ.
 file_ingestion_cancel_session_jobs <- function(session_token) {
   token <- as.character(session_token %||% "")[1]
   if (!nzchar(token)) return(invisible(0L))

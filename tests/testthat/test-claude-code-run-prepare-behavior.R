@@ -1226,3 +1226,35 @@ test_that("çıktı isteği kurulurken hata pending sahiplik veya kira bırakmaz
     }
   }
 })
+
+test_that("hazırlık deadline'ı reaktif bağlam dışında sonlandırır ve yeni isteği korur", {
+  for (successor in c(FALSE, TRUE)) {
+    env <- .cc_dispatch_env()
+    deadline <- NULL
+    env$cc_build_run_prepare_request <- function(...) list(request_id = "A")
+    env$cc_run_prepare_worker_globals <- function() list()
+    env$tracked_future_promise <- function(...) promises::promise(function(resolve, reject) NULL)
+    rv <- shiny::reactiveValues(active_request_id = "A", is_running = TRUE)
+    finalized <- 0L
+    ctx <- list(rv = rv, run_request_id = "A", prompt = "test", workdir = tempdir(), user_id = 1L,
+      session = list(token = "tok", sendCustomMessage = function(...) NULL), ns = identity,
+      finalize_streaming = function(...) {
+        expect_identical(rv$active_request_id, "A")
+        expect_true(rv$is_running)
+        rv$is_running <- FALSE
+        finalized <<- finalized + 1L
+      })
+    testthat::local_mocked_bindings(later = function(func, delay = 0) {
+      if (delay > 0) deadline <<- func
+      function() NULL
+    }, .package = "later")
+    shiny::isolate(env$cc_dispatch_run_preparation(ctx))
+    expect_true(is.function(deadline))
+    if (successor) rv$active_request_id <- "B"
+    expect_no_error(shiny::maskReactiveContext(deadline()))
+    expect_identical(finalized, if (successor) 0L else 1L)
+    expect_identical(shiny::isolate(rv$is_running), successor)
+    expect_no_error(shiny::maskReactiveContext(deadline()))
+    expect_identical(finalized, if (successor) 0L else 1L)
+  }
+})

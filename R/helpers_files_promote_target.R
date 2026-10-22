@@ -60,20 +60,16 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
   if (!alindi)
     return(list(ok = FALSE, yabanci = var_mi_guvenli(hedef), promoted = FALSE))
 
+  guard <- NULL
+  on.exit(if (!is.null(guard)) filelock::unlock(guard), add = TRUE)
   sonuc <- tryCatch({
     # Gerçek rezervasyonda devralmayı terfi bitene kadar dışla. İzole test
     # sahte acquire kullanabilir; üretim acquire her zaman rezerv dizinini kurar.
     if (isTRUE(dir.exists(rezerv))) {
-      # Muteks kalıcı ve dizin başına tektir; başka hedefin kısa kilidi beklenir.
-      guard <- mergen_reclaim_mutex(file.path(dirname(rezerv), ".mergen-rsv.reclaim"), timeout = 5000)
+      # Paylaşımlı terfiler birlikte ilerler; devralmanın özel kilidi dışlanır.
+      guard <- mergen_reclaim_mutex(file.path(dirname(rezerv), ".mergen-rsv.reclaim"),
+        timeout = 5000, exclusive = FALSE)
       if (is.null(guard)) return(list(ok = FALSE, yabanci = TRUE, promoted = FALSE))
-      guard_birak <- function() {
-        if (!is.null(guard)) {
-          filelock::unlock(guard)
-          guard <<- NULL
-        }
-      }
-      on.exit(guard_birak(), add = TRUE)
       for (deneme in 1:3) {
         sahip <- mergen_reservation_owner(rezerv)
         if (!is.na(sahip)) break
@@ -93,7 +89,10 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
                                    error = function(e) FALSE))
         if (tasindi) .mergen_promote_drop_staging(staging, var_mi_guvenli)
       }
-      if (exists("guard_birak", inherits = FALSE)) guard_birak()
+      if (!is.null(guard)) {
+        filelock::unlock(guard)
+        guard <- NULL
+      }
       if (tasindi) {
         list(
           ok = mergen_promote_wait_visible(hedef, var_mi_guvenli, gorunurluk_denemesi),

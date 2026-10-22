@@ -223,29 +223,7 @@ file_ingestion_submit_batch <- function(controller,
     run = file_ingestion_run_job
   )
 
-  kaynak_hatasi <- tryCatch({
-    # Kabulden önce geçici baytları aynı birimde işe bağla.
-    kaynaklar <- file.path(tempdir(), "mergen_ingest_sources", gsub("[^A-Za-z0-9_.-]", "_", job$id))
-    if (is.environment(job$lease) && dir.create(kaynaklar, recursive = TRUE, showWarnings = FALSE))
-      job$lease$sources <- kaynaklar
-    gecici_kok <- normalizePath(tempdir(), winslash = "/", mustWork = FALSE)
-    job$tasks <- Map(function(task, i) {
-      kaynak <- normalizePath(task$datapath %||% "", winslash = "/", mustWork = FALSE)
-      bag <- file.path(kaynaklar, as.character(i))
-      if (startsWith(kaynak, paste0(gecici_kok, "/"))) {
-        if (!identical(job$lease$sources, kaynaklar) ||
-            !isTRUE(suppressWarnings(file.link(task$datapath, bag))))
-          stop("Geçici yükleme kaynağı işe bağlanamadı.")
-        task$datapath <- bag
-      }
-      task
-    }, job$tasks, seq_along(job$tasks))
-    NULL
-  }, error = identity)
-  if (!is.null(kaynak_hatasi)) {
-    file_ingestion_release_job(job)
-    return(list(status = "rejected", batch_id = batch_id, queued = 0L))
-  }
+  job <- file_ingestion_bind_sources(job)
 
   if (file_ingestion_try_acquire_slot()) {
     basladi <- tryCatch({
@@ -265,6 +243,7 @@ file_ingestion_submit_batch <- function(controller,
   }
 
   if (!file_ingestion_enqueue(job)) {
+    file_ingestion_restore_sources(job)
     file_ingestion_release_job(job)
     return(list(status = "rejected", batch_id = batch_id, queued = 0L))
   }

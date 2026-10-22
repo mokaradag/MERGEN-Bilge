@@ -1392,3 +1392,44 @@ test_that("cc_limit_num sonsuz degeri reddeder ve varsayilana doner", {
   expect_true(is.finite(sinirlar$scan_max_files))
   expect_identical(sinirlar$scan_max_files, 2000)
 })
+
+test_that("çıktı deadline'ı reaktif bağlam dışında kalıcı hata yazar ve yeni isteği korur", {
+  for (successor in c(FALSE, TRUE)) {
+    env <- .cc_hardening_env(extra_files = c("helpers_claude_code_run_lifecycle.R",
+      "helpers_claude_code_run_dispatch.R", .CC_CIKTI_DOSYALARI))
+    deadline <- NULL
+    env$tracked_future_promise <- function(...) promises::promise(function(resolve, reject) NULL)
+    rv <- shiny::reactiveValues(active_request_id = "A", is_running = TRUE)
+    persisted <- character()
+    env$cc_persist_run_result <- function(rv, run, status, ...) {
+      expect_identical(rv$active_request_id, "A")
+      expect_true(rv$is_running)
+      persisted <<- c(persisted, status)
+    }
+    finalized <- 0L
+    run <- list2env(list(runtime_layout = list(metadata = withr::local_tempdir()), request_id = "A"))
+    ctx <- list(rv = rv, env = run, ayristirma = list(tool_uses = list()),
+      session = list(token = "tok", sendCustomMessage = function(...) NULL), ns = identity,
+      finalize_streaming = function(...) {
+        expect_identical(rv$active_request_id, "A")
+        rv$is_running <- FALSE
+        finalized <<- finalized + 1L
+      })
+    testthat::local_mocked_bindings(later = function(func, delay = 0) {
+      if (delay > 0) deadline <<- func
+      function() NULL
+    }, .package = "later")
+    shiny::isolate(env$cc_dispatch_run_output_processing(ctx))
+    expect_true(file.exists(run$output_sync_guard))
+    expect_true(is.function(deadline))
+    if (successor) rv$active_request_id <- "B"
+    expect_no_error(shiny::maskReactiveContext(deadline()))
+    expect_false(file.exists(run$output_sync_guard))
+    expect_identical(persisted, if (successor) character() else "failed")
+    expect_identical(finalized, if (successor) 0L else 1L)
+    expect_identical(shiny::isolate(rv$is_running), successor)
+    if (!successor) expect_false(shiny::isolate(rv$last_result$success))
+    expect_no_error(shiny::maskReactiveContext(deadline()))
+    expect_identical(finalized, if (successor) 0L else 1L)
+  }
+})

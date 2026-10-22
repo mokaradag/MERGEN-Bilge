@@ -384,7 +384,7 @@ filePreviewServer <- function(id) {
             if (!onizleme_gecerli(docx_nesli) || isTRUE(session$isClosed()) ||
                 !identical(isolate(docx_preview_seq()), docx_open_token)) return(NULL)
             if (!is.null(datapath) && is.null(isolate(file_storage$preview_file$datapath)))
-              file_storage$preview_file$datapath <- datapath
+              isolate(file_storage$preview_file$datapath <- datapath)
             showToast(session, paste("DOCX okunamadı:", conditionMessage(e)), "error")
           }
           tryCatch({
@@ -402,7 +402,7 @@ filePreviewServer <- function(id) {
                 list(key = attr(b64, "cache_key"), base64 = as.character(b64[1])))
               preview_docx_cache(cache)
               resolved <- attr(b64, "resolved_path")
-              if (!is.null(resolved)) file_storage$preview_file$datapath <- resolved
+              if (!is.null(resolved)) isolate(file_storage$preview_file$datapath <- resolved)
               session$sendCustomMessage("openDocxPreview", list(
                 base64 = as.character(b64), targetId = ns("docx_preview_container")))
             }) %...!% preview_error

@@ -40,6 +40,7 @@ test_that("alım hattı katmanları manifestte bağımlılık sırasında yükle
     "R/helpers_file_ingestion_task.R",
     "R/helpers_file_ingestion_worker.R",
     "R/helpers_file_ingestion_queue.R",
+    "R/helpers_file_ingestion_sources.R",
     "R/helpers_file_ingestion_runtime.R",
     "R/helpers_file_ingestion_index_worker.R"
   )
@@ -156,6 +157,7 @@ test_that("gönderim çağrısı pahalı işi olay döngüsünde yapmaz", {
     "R/helpers_file_ingestion_task.R",
     "R/helpers_file_ingestion_worker.R",
     "R/helpers_file_ingestion_queue.R",
+    "R/helpers_file_ingestion_sources.R",
     "R/helpers_file_ingestion_runtime.R",
     "R/helpers_file_ingestion_index_worker.R"
   )) {

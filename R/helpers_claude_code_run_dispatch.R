@@ -189,7 +189,7 @@ cc_dispatch_run_preparation <- function(ctx) {
   # Durum her geri çağrıda ortak referanstan okunur: tarayıcı kapanınca ayrılan
   # çalıştırma hazırlıktan sonra da aynı durum kaydında sürer ve deadline'ı korur.
   run_ref <- cc_run_state_reference(ctx$rv)
-  zaman_asimi_durumu$cancel <- later::later(function() {
+  zaman_asimi_durumu$cancel <- later::later(function() shiny::isolate({
     ctx$rv <- run_ref$rv
     if (isTRUE(zaman_asimi_durumu$pending) &&
         cc_is_active_run(ctx$rv, ctx$run_request_id)) {
@@ -203,7 +203,7 @@ cc_dispatch_run_preparation <- function(ctx) {
         stage = "zaman_asimi"
       )
     }
-  }, delay = 2 * zaman_asimi_sn)
+  }), delay = 2 * zaman_asimi_sn)
 
   # Hazırlık bittiği anda bekleyen deadline iptal edilir; aksi halde her
   # çalıştırma tam süre boyunca session/prompt/API anahtarı bağlamını

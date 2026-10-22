@@ -217,7 +217,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
   # boşken hata bulamıyor ve `cc_is_active_run()` hâlâ TRUE döndüğü için daha
   # önce `failed` olarak kalıcılaştırılmış çalıştırmayı `completed` yazabiliyordu.
   cikti_zaman_asimi_durumu$expired <- FALSE
-  cikti_zaman_asimi_durumu$cancel <- later::later(function() {
+  cikti_zaman_asimi_durumu$cancel <- later::later(function() shiny::isolate({
     ctx$rv <- run_ref$rv
     if (!isTRUE(cikti_zaman_asimi_durumu$pending)) return(invisible(NULL))
     cikti_zaman_asimi_durumu$pending <- FALSE
@@ -235,7 +235,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
     cc_report_output_processing_failure(ctx, simpleError(sprintf(
       "Çıktı işleme zaman aşımına uğradı (%.0f saniye).", cikti_zaman_asimi_sn
     )))
-  }, delay = cikti_zaman_asimi_sn + cikti_kuyruk_sn)
+  }), delay = cikti_zaman_asimi_sn + cikti_kuyruk_sn)
 
   # `later` görevi yalnızca pending bayrağıyla etkisizleştirilirse closure
   # (ctx/istek/oturum) tüm süre boyunca canlı kalır; gerçek iptal edici çağrılır.

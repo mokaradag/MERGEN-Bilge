@@ -520,3 +520,31 @@ test_that("önizleme önbellek anahtarı saniye altı yeniden yazımı ve okunam
   eksik <- file.path(tempdir(), "olmayan-onizleme.pdf")
   expect_false(identical(mergen_preview_cache_key(eksik), mergen_preview_cache_key(eksik)))
 })
+
+test_that("DOCX başarı ve hata geri çağrıları reaktif bağlam dışında indirme yolunu korur", {
+  for (success in c(TRUE, FALSE)) {
+    env <- .fp_make_env()
+    resolvers <- new.env()
+    resolvers$queue <- list()
+    env$mergen_dispatch_docx_preview <- .fp_make_future_stub(resolvers)
+    notifications <- 0L
+    sent <- 0L
+    env$showToast <- function(...) notifications <<- notifications + 1L
+    testthat::local_mocked_bindings(showModal = function(...) NULL, .package = "shiny")
+    shiny::testServer(env$filePreviewServer, {
+      root <- .subset2(session, "parent")
+      root$sendCustomMessage <- function(type, message) sent <<- sent + 1L
+      session$returned$open(list(name = "rapor.docx", datapath = "gecici.docx"))
+      isolate(file_storage$preview_file$datapath <- NULL)
+      shiny::maskReactiveContext({
+        if (success) resolvers$queue[[1]]$resolve(structure("BASE64", resolved_path = "kalici.docx")) else
+          resolvers$queue[[1]]$reject(simpleError("kodlama hatası"))
+        .fp_drain_later_queue()
+      })
+      expect_identical(isolate(file_storage$preview_file$datapath),
+        if (success) "kalici.docx" else "gecici.docx")
+      expect_identical(notifications, if (success) 0L else 1L)
+      expect_identical(sent, if (success) 1L else 0L)
+    })
+  }
+})

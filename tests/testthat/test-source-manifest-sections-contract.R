@@ -157,7 +157,7 @@
   # n = 14L -> 16L: kuyruk ve pipeline fonksiyon tavanındaydı; özet kapasite
   # kararları (R/helpers_file_summary_capacity.R) ve işçi görevi
   # (R/helpers_file_summary_task.R) ayrı dosyalara alındı (ratchet bölünmesi).
-  files_preview_pipeline = list(first = "R/helpers_image_gallery.R", last = "R/helpers_file_ingestion_index_worker.R", n = 18L),
+  files_preview_pipeline = list(first = "R/helpers_image_gallery.R", last = "R/helpers_file_ingestion_index_worker.R", n = 19L),
   file_manager_helpers = list(first = "R/helpers_file_manager_policy.R", last = "R/helpers_file_manager_table_runtime.R", n = 13L),
   # Bilinçli güncelleme: R/helpers_langflow_runtime.R (kurumsal Langflow akış
   # çağrısı saf yardımcıları) send_message core'dan sonra bölüme eklendi; 11 -> 12.
@@ -764,7 +764,8 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # temizleyicisi; `helpers_admin_documentation.R` 24 fonksiyon tavanındaydı).
   # 508 -> 509: `helpers_ai_expert_greeting_topic.R` (karşılama önekinin son
   # konusu işçide okunur; `helpers_ai_expert_user_data.R` bütçesi korunur).
-  expect_equal(length(runtime), 522L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 522 -> 523: alım kaynağı bağlama, mevcut runtime ratchet bütçesinden ayrıldı.
+  expect_equal(length(runtime), 523L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]
