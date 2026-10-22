@@ -5,7 +5,12 @@ file_ingestion_bind_sources <- function(job) {
   gecici_kok <- normalizePath(tempdir(), winslash = "/", mustWork = FALSE)
   job$tasks <- Map(function(task, i) {
     kaynak <- normalizePath(task$datapath %||% "", winslash = "/", mustWork = FALSE)
-    if (!startsWith(kaynak, paste0(gecici_kok, "/"))) return(task)
+    if (!startsWith(kaynak, paste0(gecici_kok, "/"))) {
+      # Windows eksik dosyanın kısa yolunu çözemez; mevcut üst dizini sınırla.
+      ust <- normalizePath(dirname(task$datapath), winslash = "/", mustWork = FALSE)
+      if ((!identical(ust, gecici_kok) && !startsWith(ust, paste0(gecici_kok, "/"))) ||
+          file.exists(task$datapath)) return(task)
+    }
     bag <- file.path(kaynaklar, as.character(i))
     hazir <- identical(job$lease$sources, kaynaklar)
     bagli <- hazir && isTRUE(suppressWarnings(tryCatch(file.link(task$datapath, bag),

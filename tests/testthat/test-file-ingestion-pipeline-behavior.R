@@ -2055,3 +2055,42 @@ test_that("yavaş kopya kardeş hedefi engellemez ve devralma sahipliği çalama
   expect_identical(readLines(file.path(root, "a.txt")), "a.txt")
   expect_identical(readLines(file.path(root, "b.txt")), "b.txt")
 })
+
+test_that("eksik Windows kısa yolunda var olan üst dizin kaynak kapsamını belirler", {
+  for (mode in c("missing", "resolved_elsewhere", "outside")) local({
+    env <- .ingestionEnv()
+    root <- withr::local_tempdir()
+    upload <- list(name = "kisa_yol.txt", datapath = file.path(root, "upload"), size = 4,
+      type = "text/plain")
+    writeLines("veri", upload$datapath)
+    if (mode != "resolved_elsewhere") unlink(upload$datapath)
+    env$normalizePath <- function(path, ...) {
+      if (identical(path, upload$datapath)) return("Z:/SHORT~1/Temp/upload")
+      if (mode == "outside" && identical(path, dirname(upload$datapath))) return("Z:/stable")
+      base::normalizePath(path, ...)
+    }
+    links <- 0L
+    env$file.link <- function(...) { links <<- links + 1L; FALSE }
+    env$file.rename <- function(...) FALSE
+    logs <- character()
+    controller <- env$file_ingestion_create_controller(debug_fn = function(tag, message)
+      logs <<- c(logs, tag))
+    lease <- new.env(parent = emptyenv())
+    lease$slot_acquired <- FALSE
+    job <- list(id = basename(tempfile("short-source-")), lease = lease, controller = controller,
+      tasks = list(.ingestionTask(env, upload)))
+    withr::defer(env$file_ingestion_release_job(job))
+    job <- env$file_ingestion_bind_sources(job)
+    if (mode == "missing") {
+      expect_match(job$tasks[[1]]$source_error, "geçici kaynağı hazırlanamadı", fixed = TRUE)
+      expect_identical(env$file_ingestion_execute_task(job$tasks[[1]])$code, "source_unavailable")
+      expect_identical(logs, "ingest_source_link_error")
+      expect_identical(links, 1L)
+    } else {
+      expect_null(job$tasks[[1]]$source_error)
+      expect_identical(job$tasks[[1]]$datapath, upload$datapath)
+      expect_identical(logs, character())
+      expect_identical(links, 0L)
+    }
+  })
+})
