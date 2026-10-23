@@ -366,6 +366,9 @@ cc_handle_document_summary_run <- function(session,
   # ve doküman çalıştırması kalıcı olarak asılı kalırdı.
   summary_session_token <- session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
   run_ref <- cc_run_state_reference(rv)
+  ozet_butcesi <- suppressWarnings(as.numeric(zaman_asimi %||% 600)[1])
+  if (!is.finite(ozet_butcesi) || ozet_butcesi <= 0) ozet_butcesi <- 600
+  ozet_butcesi <- min(ozet_butcesi, 600)
   gonderim <- tryCatch(
   tracked_future_promise(
     task_fn = function() {
@@ -373,14 +376,14 @@ cc_handle_document_summary_run <- function(session,
         document_context = dokuman_baglami,
         model_id = model,
         api_key = dokuman_api_key,
-        request_timeout_sec = zaman_asimi,
+        request_timeout_sec = ozet_butcesi,
         output_dir = worker_cikti_dizini,
         user_id = effective_user_id,
         session_token = summary_session_token
       )
     },
     task_type = "claude_code_document_summary",
-    execution_timeout = zaman_asimi,
+    execution_timeout = ozet_butcesi,
     # Tarayıcı kapanışı özet işini iptal etmez (çalıştırma ayrılır); Stop, yeni
     # istek ve sahip/yetki değişimi çalıştırmayı geçersizleştirir.
     cancel_check = function() cc_is_active_run(run_ref$rv, run_request_id) &&
