@@ -2024,7 +2024,8 @@ test_that("yavaş kopya kardeş hedefi engellemez ve devralma sahipliği çalama
     stage <- file.path(root, paste0(name, ".stage"))
     writeLines(name, stage)
     env$file.link <- env$file.rename <- function(...) FALSE
-    env$file.copy <- function(from, to, ...) {
+    copy_exclusive <- env$.mergen_promote_copy_exclusive
+    env$.mergen_promote_copy_exclusive <- function(from, to) {
       if (slow) {
         marker <- file.path(paste0(to, ".mergen-rsv"), "owner")
         writeLines(c(readLines(marker, n = 1L), "host=uzak"), marker)
@@ -2034,7 +2035,7 @@ test_that("yavaş kopya kardeş hedefi engellemez ve devralma sahipliği çalama
         while (!file.exists(file.path(root, "release")) && Sys.time() < deadline) Sys.sleep(0.02)
         if (!file.exists(file.path(root, "release"))) stop("kopya kapısı açılmadı")
       }
-      base::file.copy(from, to, ...)
+      copy_exclusive(from, to)
     }
     env$mergen_promote_staged_file(stage, file.path(root, name), file.exists)
   }
@@ -2180,8 +2181,11 @@ test_that("alım karantina bildirimi kopya ve indeks işçisinin sahipliğini b�
     writeLines("korunacak", source_path)
     state <- env$.file_ingestion_state()
     state$active <- 1L
-    notified <- rolled_back <- 0L
+    notified <- rolled_back <- uncertain_count <- 0L
     job$on_failure <- function(...) notified <<- notified + 1L
+    job$controller$clear_notification <- function(id, uncertain = FALSE) {
+      if (uncertain) uncertain_count <<- uncertain_count + 1L
+    }
     uncertain <- reject_worker <- NULL
     env$tracked_future_promise <- function(..., on_uncertain) {
       uncertain <<- on_uncertain
@@ -2195,7 +2199,8 @@ test_that("alım karantina bildirimi kopya ve indeks işçisinin sahipliğini b�
     expect_true(is.function(uncertain))
     uncertain(simpleError("karantinada"))
     uncertain(simpleError("karantinada"))
-    expect_identical(notified, 1L)
+    expect_identical(notified, 0L)
+    expect_identical(uncertain_count, 1L)
     expect_identical(rolled_back, 0L)
     expect_true(file.exists(source_path))
     expect_identical(env$.file_ingestion_state()$active, 1L)

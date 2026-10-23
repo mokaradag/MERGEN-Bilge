@@ -318,6 +318,7 @@ test_that("eski sahibin heartbeat çağrısı yeni boş kilit dizinine marker ya
 
 test_that("okunamayan marker süren geri kazanım sırasında eski sahibin jetonuyla yeniden yazılmaz", {
   skip_if_not_installed("callr")
+  skip_if_not_installed("filelock")
   .lock_test_prepare_runtime()
   withr::defer(.lock_test_cleanup())
   lock_dir <- .lock_test_lock_dir()
@@ -378,6 +379,8 @@ test_that("kilit bırakma geçici okunamazlığı muteks altında doğrular ve y
 })
 
 test_that("geri kazanım muteksi tutulurken yeni indeks sahibi yayımlanmaz", {
+  skip_if_not_installed("callr")
+  skip_if_not_installed("filelock")
   .lock_test_prepare_runtime()
   withr::defer(.lock_test_cleanup())
   ready <- withr::local_tempfile()
@@ -412,4 +415,32 @@ test_that("geri kazanım son silme öncesi değişen jetonu korur", {
   expect_error(env$.file_store_with_index_lock(stop("mutasyon"), timeout_sec = 0,
     require_lock = TRUE), "kilidi al")
   expect_identical(readLines(.lock_test_lock_marker()), "token=yeni-sahip")
+})
+
+test_that("kısa muteks çekişmesi heartbeat veya kilit bırakmayı düşürmez", {
+  skip_if_not_installed("callr")
+  skip_if_not_installed("filelock")
+  for (operation in c("heartbeat", "release")) {
+    .lock_test_prepare_runtime()
+    withr::defer(.lock_test_cleanup())
+    ready <- withr::local_tempfile()
+    process <- NULL
+    .file_store_with_index_lock({
+      process <- callr::r_bg(function(path, ready) {
+        lock <- filelock::lock(path)
+        on.exit(filelock::unlock(lock))
+        file.create(ready)
+        Sys.sleep(0.2)
+      }, args = list(path = paste0(.lock_test_lock_dir(), ".reclaim"), ready = ready))
+      withr::defer(try(process$kill(), silent = TRUE))
+      deadline <- Sys.time() + 10
+      while (!file.exists(ready) && process$is_alive() && Sys.time() < deadline) Sys.sleep(0.01)
+      expect_true(file.exists(ready))
+      if (operation == "heartbeat") expect_true(file_store_index_lock_heartbeat())
+      TRUE
+    }, require_lock = TRUE)
+    process$wait(timeout = 5000)
+    expect_false(dir.exists(.lock_test_lock_dir()), info = operation)
+    expect_identical(.file_store_with_index_lock("yeniden", require_lock = TRUE), "yeniden")
+  }
 })

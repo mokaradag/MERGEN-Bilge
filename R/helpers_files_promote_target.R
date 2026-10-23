@@ -7,6 +7,30 @@
 
 MERGEN_PROMOTE_RESERVATION_SUFFIX <- ".mergen-rsv"
 
+# Özel oluşturma, başarısız kopyada silme yetkisini kanıtlar; yabancıya dokunulmaz.
+.mergen_promote_copy_exclusive <- function(staging, hedef) {
+  input <- output <- NULL
+  owned <- complete <- FALSE
+  on.exit({
+    if (!is.null(input)) try(close(input), silent = TRUE)
+    if (!is.null(output)) try(close(output), silent = TRUE)
+    if (owned && !complete) try(unlink(hedef, force = TRUE), silent = TRUE)
+  }, add = TRUE)
+  isTRUE(tryCatch({
+    input <- file(staging, "rb")
+    output <- file(hedef, "wxb")
+    owned <- TRUE
+    if (!isTRUE(Sys.chmod(hedef, mode = file.info(staging)$mode[1], use_umask = TRUE)))
+      stop("Kopya izinleri korunamadı.")
+    while (length(bytes <- readBin(input, "raw", n = 65536L)))
+      writeBin(bytes, output)
+    close(output)
+    output <- NULL
+    complete <- TRUE
+    TRUE
+  }, error = base::identity, warning = base::identity))
+}
+
 # Staging adı terfiden sonra düşürülür; silme hatası kalıcı hedefi geçersiz kılmaz.
 .mergen_promote_drop_staging <- function(staging, var_mi) {
   try(unlink(staging, force = TRUE), silent = TRUE)
@@ -85,8 +109,7 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
     } else {
       tasindi <- isTRUE(tryCatch(file.rename(staging, hedef), error = function(e) FALSE))
       if (!tasindi && isTRUE(allow_copy) && var_mi_guvenli(staging)) {
-        tasindi <- isTRUE(tryCatch(file.copy(staging, hedef, overwrite = FALSE),
-                                   error = function(e) FALSE))
+        tasindi <- .mergen_promote_copy_exclusive(staging, hedef)
         if (tasindi) .mergen_promote_drop_staging(staging, var_mi_guvenli)
       }
       if (!is.null(guard)) {

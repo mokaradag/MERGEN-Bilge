@@ -106,7 +106,7 @@ file_store_index_lock_heartbeat <- function() {
   # kilidini bize silinebilir yapıyordu (lost update).
   # Geri kazanım ve yeni marker yayını aynı muteks altında dışlanır.
   .refresh_lock_marker <- function() {
-    reclaim <- mergen_reclaim_mutex(paste0(lock_dir, ".reclaim"))
+    reclaim <- mergen_reclaim_mutex(paste0(lock_dir, ".reclaim"), timeout = 1000)
     if (is.null(reclaim)) return(invisible(FALSE))
     on.exit(filelock::unlock(reclaim), add = TRUE)
     sahip <- .lock_owner_token()
@@ -259,7 +259,8 @@ file_store_index_lock_heartbeat <- function() {
   # Kilit YALNIZCA marker hâlâ bizim jetonumuzu taşıyorsa bırakılır; başka
   # kanıt kabul edilmez (bayat kilit yeni sahibe geçtiyse lost update olurdu).
   on.exit({
-    reclaim <- mergen_reclaim_mutex(paste0(lock_dir, ".reclaim"))
+    reclaim <- mergen_reclaim_mutex(paste0(lock_dir, ".reclaim"), timeout = 5000)
+    if (is.null(reclaim)) try(log_warn("[INDEX] Kilit bırakma muteksi alınamadı; sahiplik korundu."), silent = TRUE)
     if (!is.null(reclaim)) tryCatch({
         for (deneme in 1:3) {
           sahip <- .lock_owner_token()

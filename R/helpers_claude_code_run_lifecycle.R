@@ -364,6 +364,8 @@ cc_handle_document_summary_run <- function(session,
   # tracked_future_promise() gönderim anında SENKRON hata verebilir (worker
   # planı yok, serileştirme hatası). Yakalanmazsa ne then() ne catch() kurulur
   # ve doküman çalıştırması kalıcı olarak asılı kalırdı.
+  # Özet, CLI bütçesi yerine mevcut 600 saniyelik özet sınırını kullanır.
+  zaman_asimi <- min(zaman_asimi, 600L)
   summary_session_token <- session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
   run_ref <- cc_run_state_reference(rv)
   gonderim <- tryCatch(

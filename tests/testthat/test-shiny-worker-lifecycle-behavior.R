@@ -733,7 +733,7 @@ test_that("özet kaynağa yalnızca geçerli terfi işçisiyle yazılır", {
 })
 
 test_that("ayrılmış doküman özeti tarayıcı kapalıyken yayımlanır, kalıcılaşır ve sonlanır", {
-  for (outcome in c("success", "failed", "rejected")) {
+  for (requested in c(60, 14400)) for (outcome in c("success", "failed", "rejected")) {
     env <- .lifecycle_env(c("helpers_user_session_identity.R", "helpers_async_result_guard.R",
       "helpers_process_ownership.R", "helpers_claude_code_runtime_lease.R",
       "helpers_claude_code_run_lifecycle.R"))
@@ -744,9 +744,14 @@ test_that("ayrılmış doküman özeti tarayıcı kapalıyken yayımlanır, kal�
     env$log_info <- env$log_error <- env$log_warn <- function(...) NULL
     env$mb_api_key_get_effective_key_value <- function(...) ""
     env$format_claude_code_output <- identity
-    env$tracked_future_promise <- function(task_fn, cancel_check, ...) {
+    env$tracked_future_promise <- function(task_fn, cancel_check, execution_timeout, ...) {
       rec$cancel_check <- cancel_check
+      rec$work <- task_fn
+      rec$timeout <- execution_timeout
       promises::promise(function(resolve, reject) { rec$resolve <- resolve; rec$reject <- reject })
+    }
+    env$summarize_claude_code_documents_with_local_llm <- function(..., request_timeout_sec) {
+      rec$request_timeout <- request_timeout_sec
     }
     env$cc_publish_document_summary_async <- function(sonuc, ...) {
       rec$published <- rec$published + 1L
@@ -768,11 +773,14 @@ test_that("ayrılmış doküman özeti tarayıcı kapalıyken yayımlanır, kal�
     }
     out <- withr::local_tempdir()
     shiny::isolate(env$cc_handle_document_summary_run(session, identity, rv, "A",
-      dokuman_baglami = list(text_sidecars_ready = TRUE), model = "m", zaman_asimi = 60,
+      dokuman_baglami = list(text_sidecars_ready = TRUE), model = "m", zaman_asimi = requested,
       kaynak_calisma_dizini = out, calisma_dizini = out, effective_user_id = 7L,
       kullanici_prompt = "özetle", karakter = list(display_name = "K"), karakter_id = "k",
       karakter_renk = "#fff", cikti_dizini = out, finalize_streaming = finalize,
       observe_dir_contents = function(...) NULL))
+    expect_identical(rec$timeout, min(requested, 600L))
+    rec$work()
+    expect_identical(rec$request_timeout, min(requested, 600L))
     # Tarayıcı kapanır: kabul edilmiş çalıştırma ortak duruma ayrılır.
     closed <- TRUE
     shiny::isolate(env$cc_detach_run_state(run_ref, session))

@@ -474,6 +474,36 @@ test_that("süren akışta sohbet değişince yalnız güncel isteğin gönderim
   expect_identical(completed, list(NULL))
 })
 
+test_that("bayat akışın UI sıfırlama hatası tamamlanmayı veya observer temizliğini atlamaz", {
+  env <- .css_env()
+  callback <- NULL
+  events <- character()
+  testthat::local_mocked_bindings(observe = function(expr, ...) {
+    expression <- substitute(expr)
+    frame <- parent.frame()
+    callback <<- function() eval(expression, frame)
+    list(destroy = function() events <<- c(events, "destroy"))
+  }, .package = "shiny")
+  env$mergen_pk_chat_identity <- function(session, values) values$current_chat_id
+  rec <- new.env(); rec$msgs <- list()
+  session <- .css_session(rec); session$userData <- new.env()
+  session$userData$llm_request_owner <- "A"
+  values <- new.env(); values$messages <- list(); values$current_chat_id <- "chat-A"
+  env$chat_simulate_streaming("yanıt", session, values, list(selected_character = "emre"),
+    list(), function() FALSE, on_complete = function(msg) {
+      expect_null(msg)
+      events <<- c(events, "complete")
+    })
+  env$chat_reset_state <- function(...) {
+    events <<- c(events, "reset")
+    stop("UI sıfırlanamadı")
+  }
+  values$current_chat_id <- "chat-B"
+  expect_error(callback(), NA)
+  expect_identical(events, c("destroy", "complete", "reset"))
+  expect_length(values$messages, 0L)
+})
+
 test_that("Stop sonrası yeni SQL isteği LLM sahipliğini değiştirmeden geç TTS'yi reddeder", {
   env <- .css_env()
   for (file in c("helpers_pk_provenance.R", "helpers_pk_provenance_peek.R"))

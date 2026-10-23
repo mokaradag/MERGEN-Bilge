@@ -318,7 +318,7 @@ test_that("terfi boş hedefe atomik olarak yerleşir", {
   expect_false(file.exists(staging))
 })
 
-test_that("başarısız kopya rezervasyon altında da hedef sahipliğini kanıtlamaz", {
+test_that("özel oluşturulan kısmi kopya rezervasyon bırakılmadan temizlenir", {
   env <- .reviewContractEnv(c("R/helpers_files_promote_probe.R", "R/helpers_files_promote_target.R"))
   tmp <- withr::local_tempdir()
   staging <- file.path(tmp, "staging.tmp")
@@ -328,10 +328,17 @@ test_that("başarısız kopya rezervasyon altında da hedef sahipliğini kanıtl
   env$mergen_reservation_token <- function(...) "fixture-token"
   env$mergen_reservation_acquire <- function(...) TRUE
   released <- FALSE
-  env$mergen_reservation_release <- function(...) { released <<- TRUE }
+  env$mergen_reservation_release <- function(...) {
+    expect_false(file.exists(target))
+    released <<- TRUE
+  }
   env$file.rename <- function(...) FALSE
+  env$writeBin <- function(object, con, ...) {
+    base::writeBin(charToRaw("partial"), con)
+    stop("kısmi yazma")
+  }
   env$file.copy <- function(from, to, ...) {
-    writeBin(charToRaw("partial"), to)
+    base::writeBin(charToRaw("partial"), to)
     FALSE
   }
 
@@ -340,12 +347,35 @@ test_that("başarısız kopya rezervasyon altında da hedef sahipliğini kanıtl
   expect_false(result$partial_owned)
   expect_true(result$yabanci)
   expect_true(released)
-  expect_identical(readBin(target, "raw", n = 100L), charToRaw("partial"))
-  unlink(target)
+  expect_false(file.exists(target))
+  expect_identical(readBin(staging, "raw", n = 100L), charToRaw("complete"))
+  env$writeBin <- function(object, con, ...) {
+    base::writeBin(charToRaw("partial"), con)
+    warning("kısmi yazma", call. = FALSE)
+  }
+  result <- env$mergen_promote_staged_file(staging, target, file.exists)
+  expect_false(result$promoted)
+  expect_false(file.exists(target))
   env$mergen_reservation_acquire <- function(...) FALSE
   result <- env$mergen_promote_staged_file(staging, target, file.exists)
   expect_false(isTRUE(result$partial_owned))
   expect_false(file.exists(target))
+})
+
+test_that("özel kopya tampon sınırını aşan baytları korur ve yabancı hedefi açmaz", {
+  env <- .reviewContractEnv(c("R/helpers_files_promote_probe.R", "R/helpers_files_promote_target.R"))
+  tmp <- withr::local_tempdir()
+  stage <- file.path(tmp, "stage")
+  target <- file.path(tmp, "target")
+  bytes <- rep(as.raw(0:255), 513L)
+  writeBin(bytes, stage)
+  Sys.chmod(stage, "0600")
+  expect_true(env$.mergen_promote_copy_exclusive(stage, target))
+  expect_identical(readBin(target, "raw", n = length(bytes) + 1L), bytes)
+  expect_identical(file.info(target)$mode, file.info(stage)$mode)
+  writeBin(charToRaw("foreign"), target)
+  expect_false(env$.mergen_promote_copy_exclusive(stage, target))
+  expect_identical(readBin(target, "raw", n = 100L), charToRaw("foreign"))
 })
 
 test_that("görünürlük deneme sayısı geçersiz girdide güvenli varsayılana düşer", {

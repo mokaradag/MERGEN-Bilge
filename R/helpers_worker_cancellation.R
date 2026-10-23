@@ -121,6 +121,7 @@ mergen_cancellable_worker_tick <- function() {
   state <- .MERGEN_CANCELLABLE_WORKERS
   state$scheduled <- FALSE
   keep <- list()
+  uncertain_jobs <- list()
   for (job in state$jobs) {
     # Sonuçlanmış iş yalnız süreci ölümü kanıtlanmadıysa (karantina) izlenir.
     if (isTRUE(job$finished) && !isTRUE(job$quarantined)) next
@@ -156,8 +157,8 @@ mergen_cancellable_worker_tick <- function() {
         # Ölümü kanıtlanamayan süreç yuvasını tutar; çağıran bir kez bilgilendirilir.
         if (!isTRUE(job$quarantined)) {
           job$quarantined <- TRUE
-          if (identical(job$lane, "durable") && is.function(job$on_uncertain)) try(job$on_uncertain(
-            simpleError(.MERGEN_CANCELLABLE_END_MESSAGES[["uncertain"]])), silent = TRUE)
+          if (identical(job$lane, "durable") && is.function(job$on_uncertain))
+            uncertain_jobs[[length(uncertain_jobs) + 1L]] <- job
           if (!identical(job$lane, "durable"))
             mergen_cancellable_worker_settle(job, simpleError(.MERGEN_CANCELLABLE_END_MESSAGES[["uncertain"]]))
         }
@@ -187,6 +188,9 @@ mergen_cancellable_worker_tick <- function() {
     }, error = function(e) mergen_cancellable_worker_settle(job, e))
   }
   state$jobs <- Filter(function(job) !isTRUE(job$finished) || isTRUE(job$quarantined), state$jobs)
+  # Geri çağrı yeni iş gönderebilir; havuz önce yayımlanır, sonra bildirilir.
+  for (job in uncertain_jobs) try(job$on_uncertain(
+    simpleError(.MERGEN_CANCELLABLE_END_MESSAGES[["uncertain"]])), silent = TRUE)
   if (length(state$jobs) && !isTRUE(state$scheduled)) {
     state$scheduled <- TRUE
     mergen_cancellable_worker_schedule(mergen_cancellable_worker_tick, delay = 0.1)

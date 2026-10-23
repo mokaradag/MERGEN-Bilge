@@ -1210,16 +1210,23 @@ test_that("çıktı isteği kurulurken hata pending sahiplik veya kira bırakmaz
       rv <- new.env(); rv$is_running <- TRUE; rv$active_request_id <- "A"
       stream <- new.env(); stream$request_id <- "A"; stream$runtime_lease <- lease
       stream$runtime_layout <- list(metadata = metadata)
+      calls <- character()
       env$cc_build_run_output_request <- function(...) {
+        calls <<- c(calls, "request")
         if (failure == "request") stop("istek kurulamadı")
         list(active_guard = stream$output_sync_guard)
       }
-      env$cc_runtime_limit <- function(...) stop("süre kurulamadı")
+      env$cc_runtime_limit <- function(name, default_value = Inf, ...) {
+        calls <<- c(calls, "timeout")
+        if (failure == "timeout") stop("süre kurulamadı") else default_value
+      }
       env$cc_release_runtime_lease <- function(path) unlink(path)
       env$cc_send_run_stage <- function(...) TRUE
       env$cc_report_output_processing_failure <- function(...) NULL
       ctx <- list(rv = rv, env = stream, session = list(token = "test"), ns = identity, ayristirma = list())
-      expect_error(env$cc_dispatch_run_output_processing(ctx), "kurulamadı")
+      expect_error(env$cc_dispatch_run_output_processing(ctx),
+        if (failure == "request") "istek kurulamadı" else "süre kurulamadı")
+      expect_identical(calls, if (failure == "request") "request" else c("request", "timeout"))
       expect_false(isTRUE(stream$output_worker_pending), info = file)
       expect_false(file.exists(lease), info = file)
       expect_length(list.files(metadata), 0L)

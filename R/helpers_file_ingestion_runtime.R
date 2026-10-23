@@ -10,8 +10,10 @@ file_ingestion_create_controller <- function(session = NULL, debug_fn = NULL) {
   controller$epoch <- 0L
   controller$active <- TRUE
   controller$debug <- debug_fn
-  controller$clear_notification <- function(id) {
-    if (!is.null(session)) try(shiny::removeNotification(id, session = session), silent = TRUE)
+  controller$clear_notification <- function(id, uncertain = FALSE) {
+    if (!is.null(session)) try(
+      if (uncertain) shiny::showNotification("Dosya alımının sonucu henüz doğrulanamadı. İşlem tamamlanana kadar yeniden yüklemeyin.",
+        id = id, duration = NULL, type = "warning", session = session) else shiny::removeNotification(id, session = session), silent = TRUE)
   }
   controller$session_token <- tryCatch(as.character(session$token %||% "")[1], error = function(e) "")
 
@@ -184,15 +186,13 @@ file_ingestion_fail_job <- function(job, error, uncertain = FALSE) {
   on.exit(if (!uncertain) try(file_ingestion_pump(), silent = TRUE), add = TRUE)
   controller <- job$controller
   mesaj <- tryCatch(conditionMessage(error), error = function(e) "bilinmeyen hata")
+  file_ingestion_controller_debug(controller, "ingest_error", sprintf("batch=%s worker hatasi: %s", job$id, mesaj))
 
-  file_ingestion_controller_debug(controller, "ingest_error", sprintf(
-    "batch=%s worker hatasi: %s", job$id, mesaj
-  ))
-
-  if (notify && isTRUE(controller$active) && is.function(job$on_failure)) {
-    if (identical(controller$epoch, job$epoch))
-      try(job$on_failure(mesaj, job$tasks), silent = TRUE) else
-      try(job$on_failure("Dosya alımı iptal edildi.", list()), silent = TRUE)
+  if (uncertain && notify && isTRUE(controller$active) && identical(controller$epoch, job$epoch))
+    controller$clear_notification(job$id, uncertain = TRUE)
+  if (!uncertain && isTRUE(controller$active) && is.function(job$on_failure)) {
+    current <- identical(controller$epoch, job$epoch)
+    try(job$on_failure(if (current) mesaj else "Dosya alımı iptal edildi.", if (current) job$tasks else list()), silent = TRUE)
   }
 
   invisible(NULL)

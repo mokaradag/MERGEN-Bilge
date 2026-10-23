@@ -38,6 +38,42 @@ test_that("kalıcı işin geri alımı karantinadaki süreç ölmeden başlamaz"
   expect_length(env$.MERGEN_CANCELLABLE_WORKERS$jobs, 0L)
 })
 
+test_that("karantina geri çağrısının gönderdiği iş havuz yayını sırasında kaybolmaz", {
+  withr::local_options(mergen.cancellable_workers = 2L)
+  env <- .cancellation_env()
+  env$mergen_cancellable_worker_schedule <- function(...) NULL
+  launched <- character()
+  retry_alive <- TRUE
+  env$mergen_cancellable_worker_launch <- function(payload) {
+    name <- rawToChar(payload)
+    launched <<- c(launched, name)
+    list(is_alive = function() if (name == "retry") retry_alive else TRUE,
+      kill_tree = function(...) FALSE, kill = function(...) FALSE,
+      get_result = function() "completed")
+  }
+  current <- TRUE
+  completed <- NULL
+  notified <- 0L
+  env$mergen_cancellable_worker_promise(charToRaw("durable"), function() current,
+    lane = "durable", on_uncertain = function(error) {
+      notified <<- notified + 1L
+      promises::then(env$mergen_cancellable_worker_promise(charToRaw("retry"), function() TRUE),
+        function(result) completed <<- result)
+    })
+  env$mergen_cancellable_worker_tick()
+  current <- FALSE
+  for (i in 1:3) env$mergen_cancellable_worker_tick()
+  expect_identical(notified, 1L)
+  expect_length(env$.MERGEN_CANCELLABLE_WORKERS$jobs, 2L)
+  env$mergen_cancellable_worker_tick()
+  expect_identical(launched, c("durable", "retry"))
+  retry_alive <- FALSE
+  env$mergen_cancellable_worker_tick()
+  for (i in 1:20) later::run_now(0)
+  expect_identical(completed, "completed")
+  expect_length(env$.MERGEN_CANCELLABLE_WORKERS$jobs, 1L)
+})
+
 test_that("iptal kuyruğu iki süreci aşmaz ve bayat bekleyen işi başlatmaz", {
   withr::local_options(mergen.cancellable_workers = 2L)
   env <- .cancellation_env()
@@ -256,6 +292,7 @@ test_that("bozuk süreç tanıtıcısı ölüm doğrulanana kadar kapasiteyi kor
 })
 
 test_that("yüksek stdout ve stderr çıktısı bağımsız işçiyi kilitlemez", {
+  skip_if_not_installed("callr")
   env <- .cancellation_env()
   source(file.path(resolve_repo_root_for_tests(), "R", "helpers_worker_monitor.R"),
          encoding = "UTF-8", local = env)
@@ -298,6 +335,7 @@ test_that("kuyruk yaşı yürütme son tarihinden bağımsız ve sınırlıdır"
 })
 
 test_that("callr çocuğunun anlamsal hatası çağırana ulaşır", {
+  skip_if_not_installed("callr")
   env <- .cancellation_env()
   source(file.path(resolve_repo_root_for_tests(), "R/helpers_worker_monitor.R"), encoding = "UTF-8", local = env)
   error <- NULL
