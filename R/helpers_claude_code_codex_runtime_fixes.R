@@ -471,7 +471,7 @@ cc_dispatch_run_preparation <- function(ctx, attempt = 1L) {
   }
   if (!is.null(existing) && nzchar(existing)) {
     claim <- cc_claim_runtime_ownership(existing, ctx$run_request_id)
-    if (!nzchar(claim) && attempt < 8L && exists("cc_is_active_run", mode = "function") &&
+    if (!nzchar(claim) && attempt < 40L && exists("cc_is_active_run", mode = "function") &&
         cc_is_active_run(ctx$rv, ctx$run_request_id)) {
       # Kısa temizlik kilidi çekişmesi olay döngüsünü bekletmeden yeniden denenir.
       later::later(function() shiny::isolate({

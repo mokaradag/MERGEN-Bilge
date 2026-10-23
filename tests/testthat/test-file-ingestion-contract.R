@@ -150,6 +150,14 @@ test_that("eşzamanlılık ve kuyruk sınırları yapılandırılabilir ve varsa
 
   expect_identical(ayar_env$file_ingestion_max_concurrent(), 2L)
   expect_identical(ayar_env$file_ingestion_max_queue(), 32L)
+  # Kuyruk sözleşmesi kurulu paketlere bağlı değildir; iki sınır da sınanır.
+  missing <- ""
+  ayar_env$requireNamespace <- function(package, quietly = TRUE) !identical(package, missing)
+  for (package in c("callr", "promises", "later")) {
+    missing <- package
+    expect_false(ayar_env$file_ingestion_pool_has_capacity())
+  }
+  missing <- ""
   expect_true(ayar_env$file_ingestion_pool_has_capacity())
   occupied <- new.env()
   occupied$lane <- "durable"

@@ -778,9 +778,9 @@ test_that("ayrılmış doküman özeti tarayıcı kapalıyken yayımlanır, kal�
       kullanici_prompt = "özetle", karakter = list(display_name = "K"), karakter_id = "k",
       karakter_renk = "#fff", cikti_dizini = out, finalize_streaming = finalize,
       observe_dir_contents = function(...) NULL))
-    expect_identical(rec$timeout, min(requested, 600L))
+    expect_identical(rec$timeout, requested)
     rec$work()
-    expect_identical(rec$request_timeout, min(requested, 600L))
+    expect_identical(rec$request_timeout, requested)
     # Tarayıcı kapanır: kabul edilmiş çalıştırma ortak duruma ayrılır.
     closed <- TRUE
     shiny::isolate(env$cc_detach_run_state(run_ref, session))

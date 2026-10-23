@@ -20,8 +20,8 @@ MERGEN_PROMOTE_RESERVATION_SUFFIX <- ".mergen-rsv"
     input <- file(staging, "rb")
     output <- file(hedef, "wxb")
     owned <- TRUE
-    if (!isTRUE(Sys.chmod(hedef, mode = file.info(staging)$mode[1], use_umask = TRUE)))
-      stop("Kopya izinleri korunamadı.")
+    # file.copy gibi: kip desteklenmeyen paylaşımda kopya yine tamamlanabilir.
+    Sys.chmod(hedef, mode = file.info(staging)$mode[1], use_umask = FALSE)
     while (length(bytes <- readBin(input, "raw", n = 65536L)))
       writeBin(bytes, output)
     close(output)

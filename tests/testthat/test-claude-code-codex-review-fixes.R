@@ -237,6 +237,8 @@ test_that("ordinary local workdirs are always isolated and unresolved paths fail
 
   result <- env$prepare_claude_runtime_workdir(source_dir, user_id = 7L)
   expect_true(isTRUE(result$mirrored))
+  expect_true(dir.exists(result$layout$output))
+  expect_false(identical(result$layout$output, source_dir))
   expect_false(identical(
     normalizePath(result$runtime_workdir, winslash = "/", mustWork = FALSE),
     normalizePath(source_dir, winslash = "/", mustWork = FALSE)
@@ -1216,7 +1218,7 @@ test_that("tarayıcı kapanışında bekleyen hazırlık yeniden denemesi ayrıl
     fn()
   }
   # Oturuma bağlı durum kapalıdır; denemeler ayrılmış durumla sürer ve terminal hataya ulaşır.
-  expect_identical(attempts, 8L)
+  expect_identical(attempts, 40L)
   expect_true(is.environment(failed))
   expect_true(env$cc_is_active_run(failed, "A"))
 })
@@ -1228,7 +1230,7 @@ test_that("açık oturumda hazırlık yeniden denemesi reaktif bağlam dışınd
   attempts <- 0L
   env$cc_claim_runtime_ownership <- function(...) {
     attempts <<- attempts + 1L
-    if (attempts == 1L) "" else "owner"
+    if (attempts <= 12L) "" else "owner"
   }
   env$.cc_codex_original_cc_dispatch_run_preparation <- function(ctx) {
     expect_identical(ctx$rv$active_runtime_workdir, "runtime")
@@ -1241,8 +1243,33 @@ test_that("açık oturumda hazırlık yeniden denemesi reaktif bağlam dışınd
     function() NULL
   }, .package = "later")
   shiny::isolate(env$cc_dispatch_run_preparation(list(rv = rv, workdir = "source", run_request_id = "A")))
-  expect_no_error(callbacks[[1L]]())
+  while (length(callbacks)) {
+    fn <- callbacks[[1L]]
+    callbacks <- callbacks[-1L]
+    expect_no_error(fn())
+  }
+  expect_identical(attempts, 13L)
   expect_identical(dispatched, 1L)
+})
+
+test_that("hazırlık kilidi bekleyen eski istek yeniden denenmez", {
+  env <- .cc_codex_review_env()
+  callback <- NULL
+  claims <- 0L
+  env$cc_claim_runtime_ownership <- function(...) { claims <<- claims + 1L; "" }
+  env$.cc_codex_original_cc_dispatch_run_preparation <- function(...) stop("eski gönderim")
+  env$cc_fail_run_preparation <- function(...) stop("yeni isteğe hata")
+  rv <- shiny::reactiveValues(active_request_id = "A", is_running = TRUE,
+    active_runtime_source = "source", active_runtime_workdir = "runtime")
+  testthat::local_mocked_bindings(later = function(func, delay = 0) {
+    expect_identical(delay, 0.25)
+    callback <<- func
+  }, .package = "later")
+  shiny::isolate(env$cc_dispatch_run_preparation(list(rv = rv, workdir = "source", run_request_id = "A")))
+  rv$active_request_id <- "B"
+  expect_no_error(callback())
+  expect_identical(claims, 1L)
+  expect_identical(shiny::isolate(rv$active_request_id), "B")
 })
 
 test_that("kira değiştirmesi geçici hatada yeniden denenir, okunamayan kira yeniden yazılmaz", {

@@ -404,6 +404,20 @@ test_that("geri kazanım muteksi tutulurken yeni indeks sahibi yayımlanmaz", {
   expect_false(dir.exists(.lock_test_lock_dir()))
 })
 
+test_that("kullanılamayan geri kazanım muteksi indeks mutasyonuna izin vermez", {
+  .lock_test_prepare_runtime()
+  withr::defer(.lock_test_cleanup())
+  env <- new.env(parent = environment(.file_store_with_index_lock))
+  source(file.path(resolve_repo_root_for_tests(), "R/config_file_store_index_lock.R"),
+    encoding = "UTF-8", local = env)
+  env$mergen_reclaim_mutex <- function(...) NULL
+  mutated <- FALSE
+  expect_error(env$.file_store_with_index_lock({ mutated <- TRUE },
+    timeout_sec = 0, require_lock = TRUE), "kilidi alınamadı")
+  expect_false(mutated)
+  expect_false(dir.exists(.lock_test_lock_dir()))
+})
+
 test_that("geri kazanım son silme öncesi değişen jetonu korur", {
   .lock_test_prepare_runtime()
   withr::defer(.lock_test_cleanup())

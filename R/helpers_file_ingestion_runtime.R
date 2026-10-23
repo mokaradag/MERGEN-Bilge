@@ -188,8 +188,8 @@ file_ingestion_fail_job <- function(job, error, uncertain = FALSE) {
   mesaj <- tryCatch(conditionMessage(error), error = function(e) "bilinmeyen hata")
   file_ingestion_controller_debug(controller, "ingest_error", sprintf("batch=%s worker hatasi: %s", job$id, mesaj))
 
-  if (uncertain && notify && isTRUE(controller$active) && identical(controller$epoch, job$epoch))
-    controller$clear_notification(job$id, uncertain = TRUE)
+  if (uncertain && notify && isTRUE(controller$active))
+    controller$clear_notification(job$id, uncertain = identical(controller$epoch, job$epoch))
   if (!uncertain && isTRUE(controller$active) && is.function(job$on_failure)) {
     current <- identical(controller$epoch, job$epoch)
     try(job$on_failure(if (current) mesaj else "Dosya alımı iptal edildi.", if (current) job$tasks else list()), silent = TRUE)

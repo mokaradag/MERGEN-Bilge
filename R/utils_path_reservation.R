@@ -180,7 +180,8 @@ mergen_reservation_takeover <- function(rezerv, jeton,
   # `NA_character_` döner ve `identical(NA, NA)` TRUE olur. Geçici bir UNC
   # okuma hatası, CANLI bir rezervasyonun devralınmasına izin veriyordu.
   if (length(gozlenen) != 1L || is.na(gozlenen) || !nzchar(gozlenen)) return(FALSE)
-  if (!exists("mergen_reclaim_mutex", mode = "function")) return(FALSE)
+  if (!exists("mergen_reclaim_mutex", mode = "function") ||
+      !exists("mergen_lock_owner_reclaimable", mode = "function")) return(FALSE)
   # Canlı sahip için dizin muteksi beklenmez; karar kilit altında yinelenir.
   if (!mergen_lock_owner_reclaimable(.mergen_reservation_marker(rezerv), gozlenen,
       stale_sec = stale_sec, age_paths = c(.mergen_reservation_marker(rezerv), rezerv))) return(FALSE)
