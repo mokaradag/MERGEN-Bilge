@@ -364,6 +364,9 @@ cc_handle_document_summary_run <- function(session,
   # tracked_future_promise() gönderim anında SENKRON hata verebilir (worker
   # planı yok, serileştirme hatası). Yakalanmazsa ne then() ne catch() kurulur
   # ve doküman çalıştırması kalıcı olarak asılı kalırdı.
+  zaman_asimi <- tryCatch(suppressWarnings(as.numeric(zaman_asimi)[1]),
+                         error = function(e) NA_real_)
+  if (!is.finite(zaman_asimi) || zaman_asimi <= 0) zaman_asimi <- 600
   summary_session_token <- session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
   run_ref <- cc_run_state_reference(rv)
   gonderim <- tryCatch(

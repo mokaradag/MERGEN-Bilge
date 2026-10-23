@@ -26,6 +26,11 @@ Yükleme terfisi ve rezervasyon devralması dizin başına tek kalıcı geri kaz
 
 Kalan sınırlar: sabit bağlantı kurulamayan geçici yüklemenin güvenli, bloklamayan sahiplik devri ve okunamayan rezervasyonun bağımsız sahiplik kanıtıyla kurtarılması bu turda uygulanmadı. Yaş tek başına okunamayan canlı sahibi devralma yetkisi vermez. Windows soğuk süreç gecikmesi VM ölçümü gerektirir; ölçüm olmadan havuz yeniden tasarlanmadı. Profil okuma belirsizliğinde eski yetki kapsamı korunmadı; iki ve üzeri işçide kalıcı şeridin ayrılmış yuvası kaldırılmadı. Ratchet eşikleri değiştirilmedi.
 
+
+## Sonraki düzeltme kaydı — 23 Ekim 2026
+
+Doküman özeti zaman aşımı işçi kabulünden önce sayısal ve sonlu pozitif tek değere dönüştürülür; geçersiz ayarda 600 saniye kullanılır, geçerli uzun süreler korunur. HTTP isteği yine kalan toplam işçi bütçesine uyar. Hazırlık işçisi `fs` ve `ps` bağımlılıklarını açıkça bildirir; `ps` uygulama paket manifestinde de doğrulanır. İzole akış testleri sahip korumasını kendi ortamından çağırır; bayat görsel/özet başarı ve hata testleri yeni istek kimliğinin korunduğunu doğrular. Ratchet eşikleri değiştirilmedi.
+
 - [`R/server_handler_true_streaming.R:379`](https://github.com/mokaradag/MERGEN-Bilge/blob/09b26d8aa28d8dfeae6d85a5ff605b5014950ea4/R/server_handler_true_streaming.R#L379)
 - [`R/module_claude_code.R:207`](https://github.com/mokaradag/MERGEN-Bilge/blob/09b26d8aa28d8dfeae6d85a5ff605b5014950ea4/R/module_claude_code.R#L207)
 - [`R/helpers_stream_load_control.R:127`](https://github.com/mokaradag/MERGEN-Bilge/blob/09b26d8aa28d8dfeae6d85a5ff605b5014950ea4/R/helpers_stream_load_control.R#L127)

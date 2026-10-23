@@ -31,6 +31,8 @@ if (requireNamespace("shiny", quietly = TRUE)) {
          encoding = "UTF-8", local = env)
   source(file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_run_lifecycle.R"),
          encoding = "UTF-8", local = env)
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_async_result_guard.R"),
+         encoding = "UTF-8", local = env)
   env$ensure_utf8 <- function(x) x
   env$cc_release_runtime_lease <- function(...) invisible(TRUE)
   # Yalnızca süreç bitişi (!proc$is_alive()) dalına ulaşan testler için
@@ -384,7 +386,7 @@ testthat::test_that("kapanan modülün CLI çıktıları reaktif duruma veya UI'
     session$userData$user_id <- 7L
     rv <- shiny::reactiveValues(is_running = TRUE, active_request_id = sp$request_id,
       active_process = proc, stream_env = sp,
-      run_owner_guard = mergen_session_owner_guard(session))
+      run_owner_guard = env$mergen_session_owner_guard(session))
     rec$ref <- cc_run_state_reference(rv)
     api <- env$create_akis_yardimcilari(session, session$ns, rv)
     env$cc_bind_claude_code_stream_polling(input, session, session$ns, rv,

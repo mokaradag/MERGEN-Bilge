@@ -974,6 +974,7 @@ test_that("hazırlık gönderimi ana süreçte ağır işi çalıştırmaz", {
                                          globals = NULL, packages = NULL, ...) {
     yakalanan$task_fn <- task_fn
     yakalanan$mode <- dependency_mode
+    yakalanan$packages <- packages
     yakalanan$deadlines <- list(...)
     promises::promise(function(resolve, reject) resolve(NULL))
   }
@@ -1006,6 +1007,7 @@ test_that("hazırlık gönderimi ana süreçte ağır işi çalıştırmaz", {
 
   # Bağımlılık taraması gönderim anında değil, süreç başına bir kez yapılır.
   expect_equal(yakalanan$mode, "explicit")
+  expect_true(all(c("tools", "utils", "fs", "ps") %in% yakalanan$packages))
   expect_true(is.function(yakalanan$task_fn))
   expect_equal(yakalanan$deadlines$execution_timeout, 180)
   expect_equal(yakalanan$deadlines$queue_timeout, 180)

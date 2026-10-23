@@ -131,6 +131,7 @@ testthat::test_that("görsel: BAYAT istekte başarı sonucu yeni isteğin durumu
   # Kullanıcı durdurup yeni istek başlattı: aktif kimlik değişti.
   req_state$current_id <- "req_B"
   .drain_later_queue()
+  testthat::expect_identical(req_state$current_id, "req_B")
 
   # Bayat sonuç hiçbir UI/sohbet mutasyonu yapmamalı.
   testthat::expect_length(fix$rec$messages, 0L)
@@ -167,6 +168,7 @@ testthat::test_that("görsel: BAYAT istekte hata sonucu yeni isteğe hata mesaj�
   env$handle_image_generation_mode(fix$ctx)
   req_state$current_id <- "req_B"
   .drain_later_queue()
+  testthat::expect_identical(req_state$current_id, "req_B")
 
   testthat::expect_length(fix$rec$messages, 0L)
   testthat::expect_identical(fix$rec$reset_calls, 0L)
@@ -307,6 +309,7 @@ testthat::test_that("özet: BAYAT istekte non-streaming başarı sonucu yeni ist
   env$handle_summarization_mode(fix$ctx)
   req_state$current_id <- "req_B"
   .drain_later_queue()
+  testthat::expect_identical(req_state$current_id, "req_B")
 
   testthat::expect_length(fix$rec$messages, 0L)
   testthat::expect_identical(fix$rec$reset_calls, 0L)
@@ -323,6 +326,7 @@ testthat::test_that("özet: BAYAT istekte non-streaming hata sonucu yeni isteğe
   env$handle_summarization_mode(fix$ctx)
   req_state$current_id <- "req_B"
   .drain_later_queue()
+  testthat::expect_identical(req_state$current_id, "req_B")
 
   testthat::expect_length(fix$rec$messages, 0L)
   testthat::expect_identical(fix$rec$reset_calls, 0L)

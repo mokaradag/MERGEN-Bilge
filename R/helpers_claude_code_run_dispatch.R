@@ -241,7 +241,7 @@ cc_dispatch_run_preparation <- function(ctx) {
         list(istek = istek),
         cc_run_prepare_worker_globals()
       ),
-      packages = c("tools", "utils")
+      packages = c("tools", "utils", "fs", "ps")
     ) |>
       promises::then(function(prep) {
         handed_off <- FALSE

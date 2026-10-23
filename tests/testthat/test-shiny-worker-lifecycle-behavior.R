@@ -733,7 +733,11 @@ test_that("özet kaynağa yalnızca geçerli terfi işçisiyle yazılır", {
 })
 
 test_that("ayrılmış doküman özeti tarayıcı kapalıyken yayımlanır, kalıcılaşır ve sonlanır", {
-  for (requested in c(60, 14400)) for (outcome in c("success", "failed", "rejected")) {
+  timeouts <- list(60, 14400, "120", c(45, 90), NULL, numeric(), NA_real_,
+                   NaN, Inf, -Inf, 0, -1, "invalid", list(list()))
+  expected <- c(60, 14400, 120, 45, rep(600, 10))
+  for (i in seq_along(timeouts)) for (outcome in c("success", "failed", "rejected")) {
+    requested <- timeouts[[i]]
     env <- .lifecycle_env(c("helpers_user_session_identity.R", "helpers_async_result_guard.R",
       "helpers_process_ownership.R", "helpers_claude_code_runtime_lease.R",
       "helpers_claude_code_run_lifecycle.R"))
@@ -778,9 +782,9 @@ test_that("ayrılmış doküman özeti tarayıcı kapalıyken yayımlanır, kal�
       kullanici_prompt = "özetle", karakter = list(display_name = "K"), karakter_id = "k",
       karakter_renk = "#fff", cikti_dizini = out, finalize_streaming = finalize,
       observe_dir_contents = function(...) NULL))
-    expect_identical(rec$timeout, requested)
+    expect_identical(rec$timeout, expected[[i]])
     rec$work()
-    expect_identical(rec$request_timeout, requested)
+    expect_identical(rec$request_timeout, expected[[i]])
     # Tarayıcı kapanır: kabul edilmiş çalıştırma ortak duruma ayrılır.
     closed <- TRUE
     shiny::isolate(env$cc_detach_run_state(run_ref, session))
