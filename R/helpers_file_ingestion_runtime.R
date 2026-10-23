@@ -240,8 +240,7 @@ file_ingestion_submit_batch <- function(controller,
       file_ingestion_run_job(job)
       TRUE
     }, error = function(e) {
-      file_ingestion_release_slot()
-      lease$slot_acquired <- FALSE
+      file_ingestion_release_job(job)
       file_ingestion_controller_debug(controller, "ingest_dispatch_error", conditionMessage(e))
       FALSE
     })
@@ -249,6 +248,7 @@ file_ingestion_submit_batch <- function(controller,
     if (isTRUE(basladi)) {
       return(list(status = "started", batch_id = batch_id, queued = 0L))
     }
+    return(list(status = "rejected", batch_id = batch_id, queued = 0L))
   }
 
   if (!file_ingestion_enqueue(job)) {

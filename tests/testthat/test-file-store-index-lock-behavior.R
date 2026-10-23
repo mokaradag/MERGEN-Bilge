@@ -413,7 +413,7 @@ test_that("kullanılamayan geri kazanım muteksi indeks mutasyonuna izin vermez"
   env$mergen_reclaim_mutex <- function(...) NULL
   mutated <- FALSE
   expect_error(env$.file_store_with_index_lock({ mutated <- TRUE },
-    timeout_sec = 0, require_lock = TRUE), "kilidi alınamadı")
+    timeout_sec = 0, require_lock = TRUE), "kilidi al\u0131namad\u0131")
   expect_false(mutated)
   expect_false(dir.exists(.lock_test_lock_dir()))
 })

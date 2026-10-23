@@ -348,6 +348,9 @@ test_that("DOCX senkron gönderim hatası yalnız güncel açık önizlemeye bil
     env <- .fp_make_env()
     notifications <- 0L
     closed <- 0L
+    scripts <- character()
+    testthat::local_mocked_bindings(runjs = function(code) scripts <<- c(scripts, code),
+      .package = "shinyjs")
     env$showToast <- function(...) notifications <<- notifications + 1L
     testthat::local_mocked_bindings(
       showModal = function(...) NULL,
@@ -362,6 +365,8 @@ test_that("DOCX senkron gönderim hatası yalnız güncel açık önizlemeye bil
       session$returned$open(list(name = "rapor.docx", datapath = "/sunucu/rapor.docx"))
       .fp_drain_later_queue()
       expect_identical(notifications, if (change == "current") 1L else 0L)
+      expect_length(scripts, if (change == "current") 1L else 0L)
+      if (change == "current") expect_match(scripts[[1]], "textContent", fixed = TRUE)
       # Önizleme hatası modalı ve indirme yolunu kapatmaz.
       expect_identical(closed, 0L)
     })
@@ -529,6 +534,9 @@ test_that("DOCX başarı ve hata geri çağrıları reaktif bağlam dışında i
     env$mergen_dispatch_docx_preview <- .fp_make_future_stub(resolvers)
     notifications <- 0L
     sent <- 0L
+    scripts <- character()
+    testthat::local_mocked_bindings(runjs = function(code) scripts <<- c(scripts, code),
+      .package = "shinyjs")
     env$showToast <- function(...) notifications <<- notifications + 1L
     testthat::local_mocked_bindings(showModal = function(...) NULL, .package = "shiny")
     shiny::testServer(env$filePreviewServer, {
@@ -544,6 +552,12 @@ test_that("DOCX başarı ve hata geri çağrıları reaktif bağlam dışında i
       expect_identical(isolate(file_storage$preview_file$datapath),
         if (success) "kalici.docx" else "gecici.docx")
       expect_identical(notifications, if (success) 0L else 1L)
+      expect_length(scripts, if (success) 0L else 1L)
+      if (!success) {
+        expect_match(scripts[[1]], "docx_preview_container", fixed = TRUE)
+        expect_match(scripts[[1]], "textContent", fixed = TRUE)
+        expect_match(scripts[[1]], jsonlite::toJSON("Önizleme yüklenemedi.", auto_unbox = TRUE), fixed = TRUE)
+      }
       expect_identical(sent, if (success) 1L else 0L)
     })
   }

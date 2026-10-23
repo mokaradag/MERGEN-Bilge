@@ -386,6 +386,11 @@ filePreviewServer <- function(id) {
             if (!is.null(datapath) && is.null(isolate(file_storage$preview_file$datapath)))
               isolate(file_storage$preview_file$datapath <- datapath)
             showToast(session, paste("DOCX okunamadı:", conditionMessage(e)), "error")
+            shiny::withReactiveDomain(session, shinyjs::runjs(sprintf(
+              "var el=document.getElementById(%s); if (el) { el.textContent = %s; }",
+              jsonlite::toJSON(ns("docx_preview_container"), auto_unbox = TRUE),
+              jsonlite::toJSON("Önizleme yüklenemedi.", auto_unbox = TRUE)
+            )))
           }
           tryCatch({
             mergen_dispatch_docx_preview(datapath, session$token,

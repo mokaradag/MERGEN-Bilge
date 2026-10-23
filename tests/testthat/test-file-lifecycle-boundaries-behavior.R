@@ -1,5 +1,7 @@
 .file_lifecycle_boundary_env <- function(files, parent = globalenv()) {
   env <- new.env(parent = parent)
+  if ("helpers_files_promote_target.R" %in% files)
+    files <- c("helpers_files_promote_probe.R", files)
   for (path in files) source(file.path(resolve_repo_root_for_tests(), "R", path),
                             local = env, encoding = "UTF-8")
   env
@@ -90,6 +92,21 @@ test_that("başarısız özel kopya yalnız kendi fiziksel dosyasını kaldırı
     expect_identical(file.exists(dest), replacement)
     if (replacement) expect_identical(readLines(dest), "başkasının dosyası")
     expect_true(file.exists(src))
+  }
+})
+
+test_that("fiziksel kimliksiz paylaşımda özel kopya kalıcı ad oluşturmadan reddedilir", {
+  env <- .file_lifecycle_boundary_env("helpers_files_promote_target.R")
+  root <- withr::local_tempdir()
+  src <- file.path(root, "source")
+  dest <- file.path(root, "target")
+  writeLines("kaynak", src)
+  for (inode in c(0, NA_real_)) {
+    testthat::local_mocked_bindings(file_info = function(...)
+      data.frame(device_id = 1, inode = inode), .package = "fs")
+    expect_false(env$.mergen_promote_copy_exclusive(src, dest))
+    expect_false(file.exists(dest))
+    expect_identical(readLines(src), "kaynak")
   }
 })
 

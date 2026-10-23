@@ -442,6 +442,34 @@ test_that("kapasite yokken parti kuyruğa alınır, varken hemen başlar", {
   expect_equal(calistirilan, "ilk")
 })
 
+test_that("senkron gönderim hatası bağlı kaynakları ve yuvayı bir kez bırakır", {
+  for (move in c(FALSE, TRUE)) {
+    env <- .ingestionEnv()
+    if (move) env$file.link <- function(...) FALSE
+    env$file_ingestion_pool_has_capacity <- function() TRUE
+    env$mergen_cancellable_worker_capacity <- function(...) 1L
+    upload <- .ingestionUpload("dispatch.txt", "korunan kaynak")
+    withr::defer(unlink(upload$datapath))
+    captured <- NULL
+    env$file_ingestion_run_job <- function(job) {
+      captured <<- job
+      expect_true(file.exists(job$tasks[[1]]$datapath))
+      stop("serileştirme hatası")
+    }
+    result <- env$file_ingestion_submit_batch(env$file_ingestion_create_controller(),
+      list(.ingestionTask(env, upload)), "42", batch_id = basename(tempfile("dispatch-")))
+    expect_identical(result$status, "rejected")
+    expect_identical(readLines(upload$datapath), "korunan kaynak")
+    expect_false(dir.exists(captured$lease$sources))
+    expect_true(captured$lease$released)
+    expect_identical(env$file_ingestion_queue_status()$queued_batches, 0L)
+    expect_identical(env$.file_ingestion_state()$active, 0L)
+    expect_identical(env$.file_ingestion_state()$completed_total, 1L)
+    expect_false(env$file_ingestion_release_job(captured))
+    expect_identical(env$.file_ingestion_state()$completed_total, 1L)
+  }
+})
+
 test_that("boş görev listesi hatta gönderilmez", {
   env <- .ingestionEnv()
   controller <- env$file_ingestion_create_controller(session = NULL)
