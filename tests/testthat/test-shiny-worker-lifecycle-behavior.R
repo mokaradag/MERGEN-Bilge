@@ -732,11 +732,11 @@ test_that("özet kaynağa yalnızca geçerli terfi işçisiyle yazılır", {
   }
 })
 
-test_that("ayrılmış doküman özeti tarayıcı kapalıyken yayımlanır, kalıcılaşır ve sonlanır", {
+test_that("ayrılmış doküman özeti tarayıcı kapanışında kalıcılaşır ve sonlanır", {
   timeouts <- list(60, 14400, "120", c(45, 90), NULL, numeric(), NA_real_,
                    NaN, Inf, -Inf, 0, -1, "invalid", list(list()))
   expected <- c(60, 14400, 120, 45, rep(600, 10))
-  for (i in seq_along(timeouts)) for (outcome in c("success", "failed", "rejected")) {
+  for (i in seq_along(timeouts)) for (outcome in c("success", "failed", "rejected")) for (race in c(FALSE, TRUE)) {
     requested <- timeouts[[i]]
     env <- .lifecycle_env(c("helpers_user_session_identity.R", "helpers_async_result_guard.R",
       "helpers_process_ownership.R", "helpers_claude_code_runtime_lease.R",
@@ -745,6 +745,12 @@ test_that("ayrılmış doküman özeti tarayıcı kapalıyken yayımlanır, kal�
     rec$published <- 0L
     rec$persisted <- character()
     rec$finalized <- character()
+    rec$observed <- 0L
+    observe_if_active <- env$cc_observe_dir_if_active
+    env$cc_observe_dir_if_active <- function(...) {
+      rec$observed <- rec$observed + 1L
+      observe_if_active(...)
+    }
     env$log_info <- env$log_error <- env$log_warn <- function(...) NULL
     env$mb_api_key_get_effective_key_value <- function(...) ""
     env$format_claude_code_output <- identity
@@ -774,6 +780,8 @@ test_that("ayrılmış doküman özeti tarayıcı kapalıyken yayımlanır, kal�
       rec$finalized <- c(rec$finalized, durum)
       run_ref$rv$is_running <- FALSE
       run_ref$rv$active_request_id <- NULL
+      # Durum temizliğinden sonraki UI gönderimi oturum kapanınca hata verebilir.
+      if (race) session$sendCustomMessage(type = "cc-finalize-ui", message = list())
     }
     out <- withr::local_tempdir()
     shiny::isolate(env$cc_handle_document_summary_run(session, identity, rv, "A",
@@ -796,6 +804,8 @@ test_that("ayrılmış doküman özeti tarayıcı kapalıyken yayımlanır, kal�
     expect_identical(rec$published, 1L - (outcome == "rejected"), info = outcome)
     expect_identical(rec$persisted, if (outcome == "success") "completed" else "failed", info = outcome)
     expect_length(rec$finalized, 1L)
+    expect_identical(rec$observed, 1L)
+    expect_length(run_ref$rv$output_history, if (outcome == "rejected") 0L else 1L)
     expect_false(isTRUE(run_ref$rv$is_running))
   }
 })

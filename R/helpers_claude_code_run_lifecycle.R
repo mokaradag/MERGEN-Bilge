@@ -477,7 +477,7 @@ cc_handle_document_summary_run <- function(session,
 
         rv$last_result <- sonuc
 
-        cc_finalize_if_active(
+        try(cc_finalize_if_active(
           rv = rv,
           request_id = run_request_id,
           finalize_streaming = finalize_streaming,
@@ -485,7 +485,7 @@ cc_handle_document_summary_run <- function(session,
           durum_ikon = "check-circle",
           durum_renk = "#81C784",
           sure = sure
-        )
+        ), silent = TRUE)
       } else {
         rv$last_result <- sonuc
 
@@ -500,7 +500,7 @@ cc_handle_document_summary_run <- function(session,
           )
         ), silent = TRUE)
 
-        cc_finalize_if_active(
+        try(cc_finalize_if_active(
           rv = rv,
           request_id = run_request_id,
           finalize_streaming = finalize_streaming,
@@ -508,7 +508,7 @@ cc_handle_document_summary_run <- function(session,
           durum_ikon = "exclamation-triangle",
           durum_renk = "#E57373",
           sure = sure
-        )
+        ), silent = TRUE)
       }
 
       rv$output_history <- c(
@@ -611,7 +611,7 @@ cc_handle_document_summary_run <- function(session,
         )
       ), silent = TRUE)
 
-      cc_finalize_if_active(
+      try(cc_finalize_if_active(
         rv = rv,
         request_id = run_request_id,
         finalize_streaming = finalize_streaming,
@@ -619,7 +619,7 @@ cc_handle_document_summary_run <- function(session,
         durum_ikon = "exclamation-triangle",
         durum_renk = "#E57373",
         sure = NULL
-      )
+      ), silent = TRUE)
 
       cc_observe_dir_if_active(
         rv = rv,

@@ -31,6 +31,10 @@ Kalan sınırlar: sabit bağlantı kurulamayan geçici yüklemenin güvenli, blo
 
 Doküman özeti zaman aşımı işçi kabulünden önce sayısal ve sonlu pozitif tek değere dönüştürülür; geçersiz ayarda 600 saniye kullanılır, geçerli uzun süreler korunur. HTTP isteği yine kalan toplam işçi bütçesine uyar. Hazırlık işçisi `fs` ve `ps` bağımlılıklarını açıkça bildirir; `ps` uygulama paket manifestinde de doğrulanır. İzole akış testleri sahip korumasını kendi ortamından çağırır; bayat görsel/özet başarı ve hata testleri yeni istek kimliğinin korunduğunu doğrular. Ratchet eşikleri değiştirilmedi.
 
+## Sonraki düzeltme kaydı — 24 Ekim 2026
+
+Doküman özeti promise geri çağrılarında UI sonlandırma hatası kalıcı sonuç ve geçmiş kaydını kesmez; başarı, hata ve reddedilme yolları aynı sınırı korur. Kapanış yarışı mevcut davranış testinde zorlanır. Dizin listeleme kullanılabilirlik testi kendi işçi desteği stub'ını kullanır. Ratchet eşikleri değiştirilmedi.
+
 - [`R/server_handler_true_streaming.R:379`](https://github.com/mokaradag/MERGEN-Bilge/blob/09b26d8aa28d8dfeae6d85a5ff605b5014950ea4/R/server_handler_true_streaming.R#L379)
 - [`R/module_claude_code.R:207`](https://github.com/mokaradag/MERGEN-Bilge/blob/09b26d8aa28d8dfeae6d85a5ff605b5014950ea4/R/module_claude_code.R#L207)
 - [`R/helpers_stream_load_control.R:127`](https://github.com/mokaradag/MERGEN-Bilge/blob/09b26d8aa28d8dfeae6d85a5ff605b5014950ea4/R/helpers_stream_load_control.R#L127)

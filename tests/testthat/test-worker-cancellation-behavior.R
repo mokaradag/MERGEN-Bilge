@@ -373,6 +373,7 @@ test_that("callr gönderimi kendi havuzunu ve yapılandırılmış son tarihi ku
   env$tracked_future_promise(function() TRUE, task_type = "claude_code_run_outputs",
     globals = list(), dependency_mode = "explicit", cancel_check = function() TRUE)
   expect_identical(received$lane, "durable")
+  env$mergen_cancellable_worker_available <- function(...) TRUE
   source(file.path(resolve_repo_root_for_tests(), "R/helpers_claude_code_dir_listing_async.R"), encoding = "UTF-8", local = env)
   expect_true(env$cc_dir_listing_async_available())
 })
