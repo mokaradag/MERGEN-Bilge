@@ -218,6 +218,11 @@ test_that("bağımsız işçi iç içe yardımcıların bildirdiği paketleri y�
 })
 
 test_that("istek işçisi sohbet değişimi, durdurma ve oturum kapanışında geçersizleşir", {
+  env <- new.env(parent = globalenv())
+  for (file in c("helpers_user_session_identity.R", "helpers_send_message_request_lifecycle.R",
+                 "helpers_async_result_guard.R")) {
+    source(file.path(resolve_repo_root_for_tests(), "R", file), encoding = "UTF-8", local = env)
+  }
   for (change in c("chat", "stop", "owner", "end")) {
     shiny::testServer(function(input, output, session) NULL, {
       session$userData$user_id <- 7L
@@ -225,8 +230,8 @@ test_that("istek işçisi sohbet değişimi, durdurma ve oturum kapanışında g
       active <- shiny::reactiveVal("A")
       stopped <- shiny::reactiveVal(FALSE)
       values <- shiny::reactiveValues(current_chat_id = "chat_A")
-      remove <- mergen_bind_request_owner_cleanup(session, active, "A", function() NULL,
-                                                  values, stopped)
+      remove <- env$mergen_bind_request_owner_cleanup(session, active, "A", function() NULL,
+                                                      values, stopped)
       current <- session$userData$llm_worker_guard
       expect_true(current())
       if (change == "chat") values$current_chat_id <- "chat_B"

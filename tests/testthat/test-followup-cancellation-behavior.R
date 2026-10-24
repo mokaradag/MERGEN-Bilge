@@ -2,7 +2,9 @@ testthat::local_edition(3)
 
 .followup_worker_env <- function() {
   env <- new.env(parent = globalenv())
-  for (file in c("helpers_streaming_io.R", "helpers_stream_load_control.R", "helpers_followup_questions.R")) {
+  for (file in c("helpers_user_session_identity.R", "helpers_async_result_guard.R",
+                 "helpers_followup_cancellation.R", "helpers_streaming_io.R",
+                 "helpers_stream_load_control.R", "helpers_followup_questions.R")) {
     source(file.path(resolve_repo_root_for_tests(), "R", file), encoding = "UTF-8", local = env)
   }
   env$mb_api_key_get_effective_key_value <- function(...) "test-key"
@@ -22,6 +24,7 @@ test_that("kullanıcı takipleri kapattığında anahtar veya işçi çözülmez
 })
 
 test_that("takip jetonu sahip, istek, sohbet veya oturum kapanışında iptal edilir", {
+  env <- .followup_worker_env()
   for (change in c("owner", "request", "chat", "closed")) {
     ud <- new.env()
     ud$user_id <- ud$kimlik_sahibi <- 7L
@@ -32,14 +35,14 @@ test_that("takip jetonu sahip, istek, sohbet veya oturum kapanışında iptal ed
       onSessionEnded = function(fn) { end_fn <<- fn; function() end_fn <<- NULL })
     values <- new.env()
     values$current_chat_id <- "chat-A"
-    owner <- mergen_chat_owner_guard(session, values)
+    owner <- env$mergen_chat_owner_guard(session, values)
     current <- function() owner() && identical(ud$llm_request_owner, "A")
     callbacks <- list()
     fake_later <- function(fn, delay) callbacks[[length(callbacks) + 1L]] <<- fn
-    token <- mergen_followup_cancellation(session, current, later_fn = fake_later)
+    token <- env$mergen_followup_cancellation(session, current, later_fn = fake_later)
     withr::defer(token$finish())
     expect_false(file.exists(token$path))
-    if (change == "owner") mergen_session_owner_transition(ud, 7L, 8L)
+    if (change == "owner") env$mergen_session_owner_transition(ud, 7L, 8L)
     if (change == "request") ud$llm_request_owner <- "B"
     if (change == "chat") values$current_chat_id <- "chat-B"
     if (change == "closed") { closed <- TRUE; end_fn() }
@@ -69,7 +72,7 @@ test_that("takip işçisi genel HTTP iptal kapısını taşır ve bayat sonucu b
       gate <- getOption("mergen.llm.stop_check")
       expect_true(is.function(gate))
       expect_false(gate())
-      mergen_session_owner_transition(session$userData, 7L, 8L)
+      env$mergen_session_owner_transition(session$userData, 7L, 8L)
       expect_true(gate())
       "bayat öneri"
     }, dispatch_fn = function(task_fn, ...) {
