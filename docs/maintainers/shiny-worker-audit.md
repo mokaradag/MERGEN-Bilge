@@ -35,6 +35,8 @@ Doküman özeti zaman aşımı işçi kabulünden önce sayısal ve sonlu poziti
 
 Doküman özeti promise geri çağrılarında UI sonlandırma hatası kalıcı sonuç ve geçmiş kaydını kesmez; başarı, hata ve reddedilme yolları aynı sınırı korur. Kapanış yarışı mevcut davranış testinde zorlanır. Dizin listeleme kullanılabilirlik testi kendi işçi desteği stub'ını kullanır. Ratchet eşikleri değiştirilmedi.
 
+Alım kuyruğunda bekleyen yüklemeler de işçi şeritlerinin kapasite kararına katılır. İki ve üzeri fiziksel işçide sohbetler havuzu doldurduğunda sonraki boş yuva alım pompası için korunur. Alım talebi bitince sohbet boş kapasiteyi yeniden kullanır. Davranış testi 2–4 fiziksel işçide gerçek alım kuyruğu ve işçi yoklamasıyla bu devri doğrular; tek işçideki mevcut öncelik sözleşmesi, kapasite ve ratchet sınırları değişmez.
+
 - [`R/server_handler_true_streaming.R:379`](https://github.com/mokaradag/MERGEN-Bilge/blob/09b26d8aa28d8dfeae6d85a5ff605b5014950ea4/R/server_handler_true_streaming.R#L379)
 - [`R/module_claude_code.R:207`](https://github.com/mokaradag/MERGEN-Bilge/blob/09b26d8aa28d8dfeae6d85a5ff605b5014950ea4/R/module_claude_code.R#L207)
 - [`R/helpers_stream_load_control.R:127`](https://github.com/mokaradag/MERGEN-Bilge/blob/09b26d8aa28d8dfeae6d85a5ff605b5014950ea4/R/helpers_stream_load_control.R#L127)

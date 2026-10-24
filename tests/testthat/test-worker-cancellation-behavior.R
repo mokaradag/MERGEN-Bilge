@@ -639,3 +639,46 @@ test_that("sohbet boş kalıcı yuvayı ödünç alır; bekleyen kalıcı iş so
   expect_identical(launched, c("sohbet1", "sohbet2", "alim"))
   expect_identical(env$.mergen_cancellable_running(env$.MERGEN_CANCELLABLE_WORKERS$jobs), 2L)
 })
+
+test_that("alım kuyruğundaki yükleme sonraki boş yuvayı sohbetten önce alır", {
+  for (total in c(2L, 3L, 4L)) {
+    withr::local_options(mergen.cancellable_workers = total)
+    env <- .cancellation_env()
+    for (file in c("helpers_process_ownership.R", "helpers_file_ingestion_queue.R"))
+      source(file.path(resolve_repo_root_for_tests(), "R", file), encoding = "UTF-8", local = env)
+    env$mergen_cancellable_worker_schedule <- function(...) NULL
+    launched <- character()
+    processes <- list()
+    env$mergen_cancellable_worker_launch <- function(payload) {
+      launched <<- c(launched, rawToChar(payload))
+      process <- new.env()
+      process$alive <- TRUE
+      process$is_alive <- function() process$alive
+      process$get_result <- function() TRUE
+      processes[[length(processes) + 1L]] <<- process
+      process
+    }
+    for (i in seq_len(total + 2L))
+      env$mergen_cancellable_worker_promise(charToRaw(paste0("sohbet", i)), function() TRUE)
+    env$mergen_cancellable_worker_tick()
+    expect_length(launched, total)
+    expect_true(env$file_ingestion_enqueue(list(queued_at = Sys.time(), run = function(job) {
+      env$mergen_cancellable_worker_promise(charToRaw("alim"), function() TRUE, lane = "durable")
+    })))
+    processes[[1L]]$alive <- FALSE
+    # İşçi yoklaması alım pompasından önce gelse de boş yuva korunur.
+    for (i in 1:3) env$mergen_cancellable_worker_tick()
+    expect_length(launched, total)
+    expect_true(env$mergen_cancellable_worker_admissible("durable"))
+    env$file_ingestion_pump()
+    expect_length(env$.file_ingestion_state()$pending, 0L)
+    env$mergen_cancellable_worker_tick()
+    expect_identical(tail(launched, 1L), "alim")
+    expect_identical(env$.mergen_cancellable_running(env$.MERGEN_CANCELLABLE_WORKERS$jobs), total)
+    processes[[length(processes)]]$alive <- FALSE
+    env$mergen_cancellable_worker_tick()
+    expect_identical(tail(launched, 1L), paste0("sohbet", total + 1L))
+    expect_identical(env$.mergen_cancellable_running(env$.MERGEN_CANCELLABLE_WORKERS$jobs), total)
+    for (i in 1:10) later::run_now(0)
+  }
+})

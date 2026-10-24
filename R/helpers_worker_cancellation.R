@@ -77,9 +77,12 @@ mergen_cancellable_worker_capacity <- function(lane = NULL) {
 .mergen_cancellable_has_room <- function(jobs, lane) {
   total <- mergen_cancellable_worker_capacity()
   limit <- mergen_cancellable_worker_capacity(lane)
+  # Alım pompasına henüz geçemeyen yüklemeler de sonraki boş yuvayı ister.
+  ingestion_pending <- exists(".file_ingestion_queue_env", inherits = TRUE) &&
+    length(.file_ingestion_queue_env$pending) > 0L
   durable_demand <- any(vapply(jobs, function(job)
     identical(job$lane, "durable") && !isTRUE(job$finished), logical(1)))
-  if (identical(lane, "interactive") && total >= 2L && durable_demand) limit <- total - 1L
+  if (identical(lane, "interactive") && total >= 2L && (ingestion_pending || durable_demand)) limit <- total - 1L
   .mergen_cancellable_running(jobs, lane) < limit && .mergen_cancellable_running(jobs) < total
 }
 
