@@ -797,6 +797,7 @@ test_that("aktif runtime klasörü yaş temizliğinden korunur", {
   # burada eşzamansız kabul edilir. Eşzamansız olmayan planın reddedilmesi
   # test-claude-code-run-hardening-behavior.R içinde ayrıca doğrulanır.
   env$cc_future_plan_is_async <- function() TRUE
+  env$mergen_cancellable_worker_available <- function(...) TRUE
 
   env
 }
@@ -946,6 +947,12 @@ test_that("çalıştırma aşamaları hazırlık ile model çalıştırmayı ay�
 
 test_that("hazırlık gönderimi ana süreçte ağır işi çalıştırmaz", {
   env <- .cc_dispatch_env()
+  env$mergen_cancellable_worker_available <- function(...) TRUE
+  delays <- numeric()
+  testthat::local_mocked_bindings(later = function(func, delay = 0, ...) {
+    delays <<- c(delays, delay)
+    function() NULL
+  }, .package = "later")
 
   yakalanan <- new.env(parent = emptyenv())
   yakalanan$task_fn <- NULL
@@ -967,6 +974,8 @@ test_that("hazırlık gönderimi ana süreçte ağır işi çalıştırmaz", {
                                          globals = NULL, packages = NULL, ...) {
     yakalanan$task_fn <- task_fn
     yakalanan$mode <- dependency_mode
+    yakalanan$packages <- packages
+    yakalanan$deadlines <- list(...)
     promises::promise(function(resolve, reject) resolve(NULL))
   }
 
@@ -977,7 +986,7 @@ test_that("hazırlık gönderimi ana süreçte ağır işi çalıştırmaz", {
   rv$active_runtime_workdir <- NULL
 
   ctx <- list(
-    session = list(token = "tok", sendCustomMessage = function(...) invisible(TRUE)),
+    session = list(token = "tok", isClosed = function() FALSE, sendCustomMessage = function(...) invisible(TRUE)),
     ns = function(x) x,
     rv = rv,
     run_request_id = "req-1",
@@ -998,7 +1007,11 @@ test_that("hazırlık gönderimi ana süreçte ağır işi çalıştırmaz", {
 
   # Bağımlılık taraması gönderim anında değil, süreç başına bir kez yapılır.
   expect_equal(yakalanan$mode, "explicit")
+  expect_true(all(c("tools", "utils", "fs", "ps") %in% yakalanan$packages))
   expect_true(is.function(yakalanan$task_fn))
+  expect_equal(yakalanan$deadlines$execution_timeout, 180)
+  expect_equal(yakalanan$deadlines$queue_timeout, 180)
+  expect_true(360 %in% delays)
 })
 
 test_that("bir oturumun büyük klasör hazırlığı ikinci oturumu bloke etmez", {
@@ -1029,7 +1042,7 @@ test_that("bir oturumun büyük klasör hazırlığı ikinci oturumu bloke etmez
   # Gerçek finalize_streaming çalıştırma durumunu temizler; deadline'ın bunu
   # gerçekten çağırdığını doğrulayabilmek için stub aynı sözleşmeyi taklit eder.
   ctx <- list(
-    session = list(token = "tok1", sendCustomMessage = function(...) invisible(TRUE)),
+    session = list(token = "tok1", isClosed = function() FALSE, sendCustomMessage = function(...) invisible(TRUE)),
     ns = function(x) x,
     rv = rv,
     run_request_id = "req-1",
@@ -1095,19 +1108,18 @@ test_that("hazırlık ve çıktı işleri açık bağımlılık modu ile gönder
   expect_true(grepl("cc_dispatch_run_preparation\\(", modul, perl = TRUE))
 })
 
-test_that("hazırlık callback'leri kapanmış oturumda işlem başlatmaz", {
+test_that("hazırlık geri çağrıları tarayıcı kapanışını iptal saymaz, çalıştırma durumuna bağlıdır", {
   dispatch <- .cc_read_prepare_text("R/helpers_claude_code_run_dispatch.R")
 
-  # Hem başarı hem hata settlement callback'i websocket/UI işinden önce
-  # kapanmış oturumu bırakmalıdır. Başarı yolu ayrıca worker'ın lease'ini
-  # süreç başlatmadan serbest bırakır.
-  expect_gte(
-    lengths(regmatches(dispatch, gregexpr("ctx\\$session\\$isClosed\\(\\)", dispatch, perl = TRUE))),
-    2L
-  )
+  # Tarayıcı kapanışı kabul edilmiş çalıştırmayı iptal etmez: hazırlık iptali,
+  # başarı ve hata yolları oturum kapanışına değil, ayrılabilen ortak çalıştırma
+  # durumuna (run_ref) bakar; geçersiz çalıştırmada lease süreç başlatılmadan bırakılır.
+  expect_false(grepl("ctx\\$session\\$isClosed\\(\\)", dispatch, perl = TRUE))
+  expect_gte(lengths(regmatches(dispatch, gregexpr("ctx\\$rv <- run_ref\\$rv", dispatch, perl = TRUE))), 3L)
+  expect_true(grepl("cancel_check = function\\(\\) cc_is_active_run\\(run_ref\\$rv", dispatch, perl = TRUE))
   expect_true(grepl(
     paste0(
-      "(?s)isTRUE\\(ctx\\$session\\$isClosed\\(\\)\\).*?",
+      "(?s)ctx\\$rv <- run_ref\\$rv\\s*if \\(!cc_is_active_run\\(ctx\\$rv, ctx\\$run_request_id\\)\\) \\{\\s*",
       "cc_release_runtime_lease\\(prep\\$runtime_lease.*?",
       "cc_start_streaming_run\\(ctx, prep\\)"
     ),
@@ -1130,5 +1142,134 @@ test_that("bloklayan bekleme döngüleri ana süreç dosyalarında kalmaz", {
       grepl("Sys.sleep\\(", metin, perl = TRUE),
       info = sprintf("%s ana Shiny sürecinde bloklayan bekleme içermemelidir.", yol)
     )
+  }
+})
+
+test_that("sert hazırlık iptali worker günlüğündeki çalışma kirasını bırakır", {
+  env <- .cc_dispatch_env()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_runtime_lease.R"),
+         encoding = "UTF-8", local = env)
+  env$cc_build_run_prepare_request <- function(...) list(request_id = "A")
+  env$cc_run_prepare_worker_globals <- function() list()
+  env$cc_persist_run_result <- function(...) NULL
+  lease <- withr::local_tempfile()
+  file.create(lease)
+  reject_worker <- NULL
+  request <- NULL
+  env$tracked_future_promise <- function(globals, ...) {
+    request <<- globals$istek
+    saveRDS(lease, request$lease_journal)
+    promises::promise(function(resolve, reject) reject_worker <<- reject)
+  }
+  rv <- new.env()
+  rv$is_running <- TRUE
+  rv$active_request_id <- "A"
+  session <- list(userData = new.env(), isClosed = function() FALSE, token = "test", sendCustomMessage = function(...) NULL)
+  ctx <- list(session = session, rv = rv, run_request_id = "A", ns = identity,
+    workdir = tempdir(), user_id = 7L, prompt = "test", finalize_streaming = function(...) NULL)
+  env$cc_dispatch_run_preparation(ctx)
+  rv$active_request_id <- "B"
+  reject_worker(simpleError("iptal"))
+  for (i in 1:50) later::run_now(0)
+  expect_false(file.exists(lease))
+  expect_false(file.exists(request$lease_journal))
+  expect_identical(rv$active_request_id, "B")
+})
+
+
+test_that("hazır doküman çalıştırması varsayılan domain olmadan bildirim hatasında da başlar", {
+  env <- .cc_dispatch_env()
+  started <- 0L
+  env$showNotification <- function(..., session = shiny::getDefaultReactiveDomain()) {
+    if (is.null(session)) stop("domain yok")
+    session$sendNotification(...)
+  }
+  env$cc_send_run_stage <- function(...) TRUE
+  env$cc_bind_runtime_lease <- env$cc_release_runtime_lease <- function(...) NULL
+  env$cc_persist_session_begin <- function(...) NULL
+  env$cc_handle_document_summary_run <- function(...) started <<- started + 1L
+  rv <- new.env()
+  session <- list(token = "test", isClosed = function() FALSE,
+    sendNotification = function(...) stop("websocket kapandı"))
+  ctx <- list(session = session, ns = identity, rv = rv, run_request_id = "A", model = "model", workdir = tempdir())
+  prep <- list(limit_notice = "sınır", document_context = list(has_binary_docs = TRUE,
+    text_sidecars_ready = TRUE, prepared_files = list("dosya")))
+  expect_true(shiny::withReactiveDomain(NULL, env$cc_start_streaming_run(ctx, prep)))
+  expect_identical(started, 1L)
+})
+
+test_that("çıktı isteği kurulurken hata pending sahiplik veya kira bırakmaz", {
+  for (file in c("helpers_claude_code_run_output_dispatch.R", "helpers_claude_code_codex_output_fixes.R")) {
+    for (failure in c("request", "timeout")) {
+      env <- .cc_dispatch_env()
+      env$.cc_codex_original_cc_process_run_outputs <- function(...) NULL
+      env$.cc_prepare_worker_cache <- new.env()
+      env$.cc_completion_worker_cache <- new.env()
+      source(file.path(resolve_repo_root_for_tests(), "R", file), encoding = "UTF-8", local = env)
+      lease <- withr::local_tempfile()
+      file.create(lease)
+      metadata <- withr::local_tempdir()
+      rv <- new.env(); rv$is_running <- TRUE; rv$active_request_id <- "A"
+      stream <- new.env(); stream$request_id <- "A"; stream$runtime_lease <- lease
+      stream$runtime_layout <- list(metadata = metadata)
+      calls <- character()
+      env$cc_build_run_output_request <- function(...) {
+        calls <<- c(calls, "request")
+        if (failure == "request") stop("istek kurulamadı")
+        list(active_guard = stream$output_sync_guard)
+      }
+      env$cc_runtime_limit <- function(name, default_value = Inf, ...) {
+        calls <<- c(calls, "timeout")
+        if (failure == "timeout") stop("süre kurulamadı") else default_value
+      }
+      env$cc_release_runtime_lease <- function(path) unlink(path)
+      env$cc_send_run_stage <- function(...) TRUE
+      env$cc_report_output_processing_failure <- function(...) NULL
+      ctx <- list(rv = rv, env = stream, session = list(token = "test"), ns = identity, ayristirma = list())
+      expect_error(env$cc_dispatch_run_output_processing(ctx),
+        if (failure == "request") "istek kurulamadı" else "süre kurulamadı")
+      expect_identical(calls, if (failure == "request") "request" else c("request", "timeout"))
+      expect_false(isTRUE(stream$output_worker_pending), info = file)
+      expect_false(file.exists(lease), info = file)
+      expect_length(list.files(metadata), 0L)
+    }
+  }
+})
+
+test_that("hazırlık deadline'ı reaktif bağlam dışında sonlandırır ve yeni isteği korur", {
+  for (successor in c(FALSE, TRUE)) {
+    env <- .cc_dispatch_env()
+    deadline <- NULL
+    deadline_delay <- NA_real_
+    reported <- character()
+    env$cc_send_run_blocked_message <- function(session, ns, message) reported <<- c(reported, message)
+    env$cc_build_run_prepare_request <- function(...) list(request_id = "A")
+    env$cc_run_prepare_worker_globals <- function() list()
+    env$tracked_future_promise <- function(...) promises::promise(function(resolve, reject) NULL)
+    rv <- shiny::reactiveValues(active_request_id = "A", is_running = TRUE)
+    finalized <- 0L
+    ctx <- list(rv = rv, run_request_id = "A", prompt = "test", workdir = tempdir(), user_id = 1L,
+      session = list(token = "tok", sendCustomMessage = function(...) NULL), ns = identity,
+      finalize_streaming = function(...) {
+        expect_identical(rv$active_request_id, "A")
+        expect_true(rv$is_running)
+        rv$is_running <- FALSE
+        finalized <<- finalized + 1L
+      })
+    testthat::local_mocked_bindings(later = function(func, delay = 0) {
+      if (delay > 0) { deadline <<- func; deadline_delay <<- delay }
+      function() NULL
+    }, .package = "later")
+    shiny::isolate(env$cc_dispatch_run_preparation(ctx))
+    expect_true(is.function(deadline))
+    if (successor) rv$active_request_id <- "B"
+    expect_no_error(shiny::maskReactiveContext(deadline()))
+    expect_identical(finalized, if (successor) 0L else 1L)
+    expect_identical(shiny::isolate(rv$is_running), successor)
+    expect_length(reported, if (successor) 0L else 1L)
+    if (!successor) expect_match(reported,
+      paste0("(", round(deadline_delay), " saniye)"), fixed = TRUE)
+    expect_no_error(shiny::maskReactiveContext(deadline()))
+    expect_identical(finalized, if (successor) 0L else 1L)
   }
 })

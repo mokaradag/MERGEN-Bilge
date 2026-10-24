@@ -42,32 +42,45 @@ testthat::test_that("galeri açılışta taranmaz; ilk sayfa açılışında bir
   scan_recorder <- new.env(parent = emptyenv())
   scan_recorder$count <- 0L
   env <- .lazy_gallery_env(scan_recorder)
+  loop <- later::create_loop(parent = NULL)
+  on.exit(later::destroy_loop(loop), add = TRUE)
 
-  shiny::testServer(
+  later::with_loop(loop, shiny::testServer(
     env$imageGalleryServer,
     args = list(id = "ig", current_user_id = function() 7L),
     {
+      complete_scan <- function(expected) {
+        for (i in seq_len(10L)) {
+          later::run_now(timeoutSecs = 0.1, loop = loop)
+          session$flushReact()
+          if (scan_recorder$count >= expected) break
+        }
+      }
+
       # Oturum başlangıcı: init observer çalışır ama galeri etkin değil -> tarama YOK.
       session$flushReact()
+      later::run_now(timeoutSecs = 0.1, loop = loop)
       testthat::expect_identical(scan_recorder$count, 0L)
 
       # Auth-sonrası refreshable-module tetiği (refresh() eşdeğeri): hâlâ tarama YOK.
       session$getReturned()$refresh()
       session$flushReact()
+      later::run_now(timeoutSecs = 0.1, loop = loop)
       testthat::expect_identical(scan_recorder$count, 0L)
 
       # Kullanıcı galeri sayfasını açar (navigasyon zaman damgası gönderir).
       session$setInputs(refresh_gallery = as.numeric(Sys.time()))
       session$flushReact()
-      testthat::expect_gte(scan_recorder$count, 1L)
-      ilk_tarama_sayisi <- scan_recorder$count
+      complete_scan(1L)
+      testthat::expect_identical(scan_recorder$count, 1L)
 
       # Sonraki sekme geçişi yeniden tarar (mevcut davranış) ama etkinleşme
       # bayrağı sayesinde önbellek karşılaştırması korunur; sayaç artışı
       # kontrollü kalır.
       session$setInputs(refresh_gallery = as.numeric(Sys.time()) + 5)
       session$flushReact()
-      testthat::expect_gte(scan_recorder$count, ilk_tarama_sayisi)
+      complete_scan(2L)
+      testthat::expect_identical(scan_recorder$count, 2L)
     }
-  )
+  ))
 })

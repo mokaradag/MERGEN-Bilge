@@ -21,7 +21,7 @@ cc_next_run_request_id <- function(prefix = "ccrun") {
   )
 }
 
-cc_mark_active_run <- function(rv, request_id) {
+cc_mark_active_run <- function(rv, request_id, session = NULL) {
   request_id <- as.character(request_id %||% "")[1]
 
   if (is.na(request_id) || !nzchar(request_id)) {
@@ -29,10 +29,14 @@ cc_mark_active_run <- function(rv, request_id) {
   }
 
   rv$active_request_id <- request_id
+  rv$run_owner_guard <- if (is.null(session)) NULL else mergen_session_owner_guard(session)
+  rv$active_persist_record_id <- rv$claude_session_record_id
   invisible(request_id)
 }
 
 cc_is_active_run <- function(rv, request_id = NULL) {
+  guard <- tryCatch(shiny::isolate(rv$run_owner_guard), error = function(e) NULL)
+  if (is.function(guard) && !isTRUE(guard())) return(FALSE)
   # Geriye dönük uyumluluk: eski çağrılar request_id göndermediğinde
   # finalize davranışı aynen devam eder.
   if (is.null(request_id) || length(request_id) == 0L) {
@@ -45,7 +49,7 @@ cc_is_active_run <- function(rv, request_id = NULL) {
   }
 
   active <- tryCatch(
-    as.character(rv$active_request_id %||% "")[1],
+    shiny::isolate(as.character(rv$active_request_id %||% "")[1]),
     error = function(e) ""
   )
 
@@ -284,13 +288,11 @@ cc_handle_document_summary_run <- function(session,
   # Durdur'a bastıktan sonra tamamlanan bir worker, iptal edilmiş bir
   # çalıştırmanın çıktısını kaynak klasördeki dosyanın üzerine yazabilirdi.
   worker_cikti_dizini <- as.character(cikti_dizini %||% "")[1]
-  if (!nzchar(worker_cikti_dizini) || !dir.exists(worker_cikti_dizini)) {
-    worker_cikti_dizini <- target_dir
-  }
+  cikti_eksik <- !nzchar(worker_cikti_dizini) || !dir.exists(worker_cikti_dizini)
 
-  if (!isTRUE(dokuman_baglami$text_sidecars_ready)) {
+  if (cikti_eksik || !isTRUE(dokuman_baglami$text_sidecars_ready)) {
     cc_release_runtime_lease(runtime_lease)
-    cikarma_detayi <- paste(
+    cikarma_detayi <- if (cikti_eksik) "İzole çıktı alanı bulunamadı; doküman özeti başlatılmadı." else paste(
       c(
         "Doküman görevi algılandı ancak yerel metin çıkarımı hazırlanamadı.",
         if (length(dokuman_baglami$extraction_errors %||% character(0))) {
@@ -309,7 +311,7 @@ cc_handle_document_summary_run <- function(session,
       gsub("[{}]", "", cikarma_detayi)
     ))
 
-    session$sendCustomMessage(
+    try(session$sendCustomMessage(
       type = "cc-add-message",
       message = list(
         target = ns("output_area"),
@@ -318,7 +320,7 @@ cc_handle_document_summary_run <- function(session,
         timestamp = format(Sys.time(), "%H:%M:%S"),
         welcomeId = ns("welcome_screen")
       )
-    )
+    ), silent = TRUE)
 
     cc_finalize_if_active(
       rv = rv,
@@ -348,6 +350,7 @@ cc_handle_document_summary_run <- function(session,
     "| Destek dizini:", dokuman_baglami$effective_workdir %||% ""
   ))
 
+  persist_record_id <- rv$active_persist_record_id %||% rv$claude_session_record_id
   dokuman_api_key <- tryCatch(
     mb_api_key_get_effective_key_value(
       session = session,
@@ -361,6 +364,11 @@ cc_handle_document_summary_run <- function(session,
   # tracked_future_promise() gönderim anında SENKRON hata verebilir (worker
   # planı yok, serileştirme hatası). Yakalanmazsa ne then() ne catch() kurulur
   # ve doküman çalıştırması kalıcı olarak asılı kalırdı.
+  zaman_asimi <- tryCatch(suppressWarnings(as.numeric(zaman_asimi)[1]),
+                         error = function(e) NA_real_)
+  if (!is.finite(zaman_asimi) || zaman_asimi <= 0) zaman_asimi <- 600
+  summary_session_token <- session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
+  run_ref <- cc_run_state_reference(rv)
   gonderim <- tryCatch(
   tracked_future_promise(
     task_fn = function() {
@@ -371,14 +379,28 @@ cc_handle_document_summary_run <- function(session,
         request_timeout_sec = zaman_asimi,
         output_dir = worker_cikti_dizini,
         user_id = effective_user_id,
-        session_token = session$token %||% format(Sys.time(), "%Y%m%d%H%M%S")
+        session_token = summary_session_token
       )
     },
     task_type = "claude_code_document_summary",
+    execution_timeout = zaman_asimi,
+    # Tarayıcı kapanışı özet işini iptal etmez (çalıştırma ayrılır); Stop, yeni
+    # istek ve sahip/yetki değişimi çalıştırmayı geçersizleştirir.
+    cancel_check = function() cc_is_active_run(run_ref$rv, run_request_id) &&
+      isTRUE(shiny::isolate(run_ref$rv$is_running)),
     session_token = session$token
   ) |>
+    # Ayrılmış çalıştırmada yetkili durum ortak referanstır; oturum yalnız
+    # isteğe bağlı gözlemcidir (UI gönderimleri kapalı oturumda yutulur).
+    promises::then(function(sonuc) {
+      rv <- run_ref$rv
+      if (!cc_is_active_run(rv, run_request_id)) return(sonuc)
+      cc_publish_document_summary_async(sonuc, target_dir, worker_cikti_dizini,
+        session, rv, run_request_id)
+    }) |>
     promises::then(function(sonuc) {
       on.exit(cc_release_runtime_lease(runtime_lease), add = TRUE)
+      rv <- run_ref$rv
       if (!cc_is_active_run(rv, run_request_id)) {
         return(NULL)
       }
@@ -398,29 +420,7 @@ cc_handle_document_summary_run <- function(session,
         if (nzchar(sonuc$output %||% "") &&
             exists("format_claude_code_existing_file_link_html", mode = "function")) {
 
-          ozet_yolu <- tryCatch({
-            hedef_yol <- file.path(target_dir, "dosya_aciklamalari.txt")
-
-            # Ana Shiny oturumunda senkron yaz.
-			if (exists("write_claude_code_utf8_bom_text_file", mode = "function")) {
-			  write_claude_code_utf8_bom_text_file(sonuc$output %||% "", hedef_yol)
-			} else {
-			  writeLines(enc2utf8(sonuc$output %||% ""), hedef_yol, useBytes = TRUE)
-			}
-
-            if (!isTRUE(file.exists(hedef_yol)) || isTRUE(dir.exists(hedef_yol))) {
-              stop("Özet dosyası fiziksel olarak oluşturulamadı: ", hedef_yol)
-            }
-
-            normalizePath(hedef_yol, winslash = "/", mustWork = TRUE)
-          }, error = function(e) {
-            log_warn(paste(
-              CLAUDE_CODE_LOG_PREFIX,
-              "Doküman özeti ana oturumda yazılamadı:",
-              conditionMessage(e)
-            ))
-            ""
-          })
+          ozet_yolu <- sonuc$generated_summary_path %||% ""
 
           if (nzchar(ozet_yolu)) {
             sonuc$generated_summary_path <- ozet_yolu
@@ -462,7 +462,7 @@ cc_handle_document_summary_run <- function(session,
           son_indirme_html
         )
 
-        session$sendCustomMessage(
+        try(session$sendCustomMessage(
           type = "cc-add-message",
           message = list(
             target = ns("output_area"),
@@ -473,11 +473,11 @@ cc_handle_document_summary_run <- function(session,
             characterName = karakter$display_name,
             welcomeId = ns("welcome_screen")
           )
-        )
+        ), silent = TRUE)
 
         rv$last_result <- sonuc
 
-        cc_finalize_if_active(
+        try(cc_finalize_if_active(
           rv = rv,
           request_id = run_request_id,
           finalize_streaming = finalize_streaming,
@@ -485,11 +485,11 @@ cc_handle_document_summary_run <- function(session,
           durum_ikon = "check-circle",
           durum_renk = "#81C784",
           sure = sure
-        )
+        ), silent = TRUE)
       } else {
         rv$last_result <- sonuc
 
-        session$sendCustomMessage(
+        try(session$sendCustomMessage(
           type = "cc-add-message",
           message = list(
             target = ns("output_area"),
@@ -498,9 +498,9 @@ cc_handle_document_summary_run <- function(session,
             timestamp = format(Sys.time(), "%H:%M:%S"),
             welcomeId = ns("welcome_screen")
           )
-        )
+        ), silent = TRUE)
 
-        cc_finalize_if_active(
+        try(cc_finalize_if_active(
           rv = rv,
           request_id = run_request_id,
           finalize_streaming = finalize_streaming,
@@ -508,7 +508,7 @@ cc_handle_document_summary_run <- function(session,
           durum_ikon = "exclamation-triangle",
           durum_renk = "#E57373",
           sure = sure
-        )
+        ), silent = TRUE)
       }
 
       rv$output_history <- c(
@@ -527,6 +527,7 @@ cc_handle_document_summary_run <- function(session,
         cc_persist_run_result(
           rv = rv,
           env = list(
+            persist_record_id = persist_record_id,
             prompt = kullanici_prompt,
             tum_satirlar = character(0),
             calisma_dizini = calisma_dizini,
@@ -545,25 +546,26 @@ cc_handle_document_summary_run <- function(session,
         )
       }
 
-      cc_observe_dir_if_active(
+      try(cc_observe_dir_if_active(
         rv = rv,
         request_id = run_request_id,
         observe_dir_contents = observe_dir_contents,
         dizin = target_dir
-      )
+      ), silent = TRUE)
 
       # Doküman özetleme yolu kullanıcının yükleme klasörüne dosya yazdığında
       # Dosya Yönetimi tablosunun yeni dosyayı oturum yenilemeden görmesi için
       # File Manager'a yumuşak bir yenileme sinyali gönder.
-      cc_refresh_user_file_manager_after_run(
+      try(cc_refresh_user_file_manager_after_run(
         session = session,
         user_id = effective_user_id
-      )
+      ), silent = TRUE)
 
       NULL
     }) |>
     promises::catch(function(e) {
       on.exit(cc_release_runtime_lease(runtime_lease), add = TRUE)
+      rv <- run_ref$rv
       if (!cc_is_active_run(rv, run_request_id)) {
         return(NULL)
       }
@@ -584,6 +586,7 @@ cc_handle_document_summary_run <- function(session,
         cc_persist_run_result(
           rv = rv,
           env = list(
+            persist_record_id = persist_record_id,
             prompt = kullanici_prompt,
             tum_satirlar = character(0),
             calisma_dizini = calisma_dizini,
@@ -597,7 +600,7 @@ cc_handle_document_summary_run <- function(session,
         )
       }
 
-      session$sendCustomMessage(
+      try(session$sendCustomMessage(
         type = "cc-add-message",
         message = list(
           target = ns("output_area"),
@@ -606,9 +609,9 @@ cc_handle_document_summary_run <- function(session,
           timestamp = format(Sys.time(), "%H:%M:%S"),
           welcomeId = ns("welcome_screen")
         )
-      )
+      ), silent = TRUE)
 
-      cc_finalize_if_active(
+      try(cc_finalize_if_active(
         rv = rv,
         request_id = run_request_id,
         finalize_streaming = finalize_streaming,
@@ -616,7 +619,7 @@ cc_handle_document_summary_run <- function(session,
         durum_ikon = "exclamation-triangle",
         durum_renk = "#E57373",
         sure = NULL
-      )
+      ), silent = TRUE)
 
       cc_observe_dir_if_active(
         rv = rv,
@@ -657,6 +660,7 @@ cc_handle_document_summary_run <- function(session,
         try(cc_persist_run_result(
           rv = rv,
           env = list(
+            persist_record_id = persist_record_id,
             prompt = kullanici_prompt,
             tum_satirlar = character(0),
             calisma_dizini = calisma_dizini,

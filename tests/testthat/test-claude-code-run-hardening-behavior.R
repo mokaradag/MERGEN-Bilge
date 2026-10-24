@@ -477,6 +477,8 @@ test_that("cc_report_output_scan_truncation kesilmemiş taramayı başarısız s
   repo_root <- resolve_repo_root_for_tests()
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(x, y) if (is.null(x)) y else x
+  source(file.path(repo_root, "R", "helpers_claude_code_runtime_lease.R"),
+         encoding = "UTF-8", local = env)
 
   # Dosya, tepe seviyede yalnızca yardımcı tanımları içerir.
   source(
@@ -487,10 +489,15 @@ test_that("cc_report_output_scan_truncation kesilmemiş taramayı başarısız s
   env
 }
 
-test_that("sahiplik işareti yokken yeniden kullanım engellenmez", {
+test_that("eksik ya da okunamayan sahiplik işareti sahiplik kanıtı sayılmaz", {
   env <- .cc_ownership_env()
   runtime <- withr::local_tempdir()
 
+  expect_false(env$cc_runtime_ownership_is(runtime, "istek-1"))
+  dir.create(file.path(runtime, "metadata"))
+  writeLines("", file.path(runtime, "metadata", "runtime-owner"))
+  expect_false(env$cc_runtime_ownership_is(runtime, "istek-1"))
+  writeLines("istek-1", file.path(runtime, "metadata", "runtime-owner"))
   expect_true(env$cc_runtime_ownership_is(runtime, "istek-1"))
 })
 
@@ -587,7 +594,7 @@ test_that("cc_future_plan_is_async sequential planı eşzamansız saymaz", {
   expect_false(env$cc_future_plan_is_async())
 })
 
-test_that("cc_dispatch_run_preparation eşzamansız plan yoksa çalıştırmayı reddeder", {
+test_that("cc_dispatch_run_preparation callr desteği yoksa çalıştırmayı reddeder", {
   skip_if_not_installed("future")
 
   repo_root <- resolve_repo_root_for_tests()
@@ -614,8 +621,9 @@ test_that("cc_dispatch_run_preparation eşzamansız plan yoksa çalıştırmayı
     invisible(TRUE)
   }
   env$cc_finalize_if_active <- function(...) invisible(TRUE)
+  env$mergen_cancellable_worker_available <- function() FALSE
   env$tracked_future_promise <- function(...) {
-    stop("Eşzamansız plan yokken worker gönderilmemelidir.")
+    stop("Callr desteği yokken worker gönderilmemelidir.")
   }
 
   onceki <- future::plan()
@@ -1383,4 +1391,56 @@ test_that("cc_limit_num sonsuz degeri reddeder ve varsayilana doner", {
   expect_identical(sinirlar$file_settle_dest_ms, 250)
   expect_true(is.finite(sinirlar$scan_max_files))
   expect_identical(sinirlar$scan_max_files, 2000)
+})
+
+test_that("çıktı deadline'ı reaktif bağlam dışında kalıcı hata yazar ve yeni isteği korur", {
+  for (codex in c(FALSE, TRUE)) for (successor in c(FALSE, TRUE)) {
+    env <- .cc_hardening_env(extra_files = c("helpers_claude_code_run_lifecycle.R",
+      "helpers_claude_code_run_dispatch.R", .CC_CIKTI_DOSYALARI))
+    if (codex) {
+      env$.cc_codex_original_cc_process_run_outputs <- env$cc_process_run_outputs
+      env$.cc_prepare_worker_cache <- new.env(parent = emptyenv())
+      source(file.path(resolve_repo_root_for_tests(), "R", "helpers_claude_code_codex_output_fixes.R"),
+        encoding = "UTF-8", local = env)
+    }
+    deadline <- NULL
+    deadline_delay <- NA_real_
+    env$tracked_future_promise <- function(...) promises::promise(function(resolve, reject) NULL)
+    rv <- shiny::reactiveValues(active_request_id = "A", is_running = TRUE)
+    persisted <- character()
+    env$cc_persist_run_result <- function(rv, run, status, ...) {
+      expect_identical(rv$active_request_id, "A")
+      expect_true(rv$is_running)
+      persisted <<- c(persisted, status)
+    }
+    finalized <- 0L
+    run <- list2env(list(runtime_layout = list(metadata = withr::local_tempdir()), request_id = "A"))
+    ctx <- list(rv = rv, env = run, ayristirma = list(tool_uses = list()),
+      session = list(token = "tok", sendCustomMessage = function(...) NULL), ns = identity,
+      finalize_streaming = function(...) {
+        expect_identical(rv$active_request_id, "A")
+        rv$is_running <- FALSE
+        finalized <<- finalized + 1L
+      })
+    testthat::local_mocked_bindings(later = function(func, delay = 0) {
+      if (delay > 0) { deadline <<- func; deadline_delay <<- delay }
+      function() NULL
+    }, .package = "later")
+    shiny::isolate(env$cc_dispatch_run_output_processing(ctx))
+    expect_true(file.exists(run$output_sync_guard))
+    expect_true(is.function(deadline))
+    if (successor) rv$active_request_id <- "B"
+    expect_no_error(shiny::maskReactiveContext(deadline()))
+    expect_false(file.exists(run$output_sync_guard))
+    expect_identical(persisted, if (successor) character() else "failed")
+    expect_identical(finalized, if (successor) 0L else 1L)
+    expect_identical(shiny::isolate(rv$is_running), successor)
+    if (!successor) {
+      expect_false(shiny::isolate(rv$last_result$success))
+      expect_match(shiny::isolate(rv$last_result$error),
+        sprintf("(%.0f saniye)", deadline_delay), fixed = TRUE)
+    }
+    expect_no_error(shiny::maskReactiveContext(deadline()))
+    expect_identical(finalized, if (successor) 0L else 1L)
+  }
 })

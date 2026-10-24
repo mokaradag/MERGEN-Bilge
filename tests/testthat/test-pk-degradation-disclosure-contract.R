@@ -306,7 +306,7 @@ test_that("nihai yanıt sonlandırma noktaları alt bilgiyi iliştirir", {
   seams <- list(
     "R/server_handler_true_streaming.R" = "mergen_pk_stream_validated_text(",
     "R/server_llm_response_handlers.R"  = "mergen_pk_validated_texts(",
-    "R/helpers_chat_runtime.R"          = "pk_stream_display_text("
+    "R/helpers_chat_runtime.R"          = "mergen_pk_stream_validated_text("
   )
 
   for (rel in names(seams)) {
@@ -405,4 +405,43 @@ test_that("nihai yanıt sonlandırma noktaları alt bilgiyi iliştirir", {
   metinler <- ortam$mergen_pk_block_mode_texts("HAM GOVDE", NULL, request_id = "req-1")
   expect_identical(metinler$display, "DOGRULANMIS GOVDE\n\nKAYNAKCA")
   expect_identical(metinler$tts, "DOGRULANMIS GOVDE")
+})
+
+test_that("köken doğrulaması üç durumludur: bozulma ya da bildirimsiz dönüş doğrulanmış sayılmaz", {
+  env <- new.env(parent = globalenv())
+  for (f in c("helpers_pk_provenance.R", "helpers_pk_provenance_peek.R"))
+    source(file.path(resolve_repo_root_for_tests(), "R", f), encoding = "UTF-8", local = env)
+  session <- list(userData = new.env(parent = emptyenv()))
+  stash <- function(id, facts = list(list(id = "f1"))) {
+    env$pk_provenance_clear(session, request_id = id)
+    env$pk_provenance_stash(session, "\n\n---\n**Analiz Kaynağı:** test", request_id = id,
+                            facts = facts, mode = "warn")
+  }
+  apply_result <- list(text = "doğrulanan gövde", blocked = FALSE, degraded = FALSE)
+  env$pk_numeric_provenance_apply <- function(...) apply_result
+  env$pk_numeric_provenance_report <- function(...) NULL
+
+  stash("ok")
+  expect_true(env$mergen_pk_validated_texts("ham", session, request_id = "ok")$validated)
+
+  apply_result$degraded <- TRUE
+  stash("bozuk")
+  expect_false(env$mergen_pk_validated_texts("ham", session, request_id = "bozuk")$validated)
+
+  # Geri çağrı hatası başarılı doğrulamayı başarısıza çevirmez ve metni bozmaz.
+  apply_result$degraded <- FALSE
+  stash("geri-cagri")
+  calls <- logical()
+  text <- env$pk_provenance_decorate("ham", session, request_id = "geri-cagri",
+    validation_callback = function(ok) { calls <<- c(calls, ok); stop("geri çağrı hatası") })
+  expect_identical(calls, TRUE)
+  expect_true(grepl("doğrulanan gövde", text, fixed = TRUE))
+
+  # Aynı isteğin ikinci kaydı doğrulanamaz: bildirimsiz dönüş doğrulanmış sayılmaz.
+  stash("geri-cagri")
+  expect_false(env$mergen_pk_validated_texts("ham", session, request_id = "geri-cagri")$validated)
+
+  # Bekleyen kayıt yoksa doğrulanacak iddia da yoktur.
+  env$pk_provenance_clear(session, request_id = "yok")
+  expect_true(env$mergen_pk_validated_texts("düz", session, request_id = "yok")$validated)
 })

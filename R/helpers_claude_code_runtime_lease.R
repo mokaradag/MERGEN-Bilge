@@ -28,6 +28,89 @@ cc_release_runtime_lease <- function(runtime_lease = NULL) {
   invisible(!isTRUE(file.exists(lease)))
 }
 
+# Kira içeriği yerinde kesilmez: geçici dosyaya yazılıp mevcut kiranın yerine
+# fs/libuv ile atomik değiştirilir. Geçici paylaşım ihlali verebildiği için
+# beklemeden sınırlı yeniden denenir; başarısızlıkta eski kira olduğu gibi kalır.
+# Heartbeat başarısızlığı sonraki poll turunda yeniden denenir.
+.cc_write_runtime_lease <- function(lease, lines) {
+  tmp <- paste0(lease, ".", Sys.getpid(), ".tmp")
+  on.exit(unlink(tmp, force = TRUE), add = TRUE)
+  if (inherits(try(writeLines(lines, tmp, useBytes = TRUE), silent = TRUE), "try-error")) {
+    unlink(tmp, force = TRUE)
+    return(FALSE)
+  }
+  for (deneme in 1:5) {
+    if (!inherits(try(fs::file_move(tmp, lease), silent = TRUE), "try-error")) return(TRUE)
+  }
+  unlink(tmp, force = TRUE)
+  FALSE
+}
+
+# Okuma hatası NULL döner: boş kira ile okunamayan kira ayrılır, sahiplik
+# satırları okunamadıysa kira yeniden yazılmaz.
+.cc_read_runtime_lease <- function(lease) {
+  lines <- suppressWarnings(try(readLines(lease, warn = FALSE), silent = TRUE))
+  if (inherits(lines, "try-error")) NULL else lines
+}
+
+# Bilinmeyen PID yazılmaz: `pid=NA` kirayı hiçbir zaman ölü kanıtlanamaz yapardı.
+cc_bind_runtime_lease <- function(lease, process = NULL) {
+  if (!nzchar(lease %||% "")) return(invisible(FALSE))
+  previous <- if (file.exists(lease)) .cc_read_runtime_lease(lease) else character()
+  if (is.null(previous)) return(invisible(FALSE))
+  pids <- c(Sys.getpid(), if (!is.null(process)) tryCatch(process$get_pid(), error = function(e) NA_integer_))
+  pids <- suppressWarnings(as.integer(pids))
+  pids <- pids[!is.na(pids) & pids > 0L]
+  invisible(.cc_write_runtime_lease(lease, unique(c(previous[!grepl("^pid=NA$", previous)],
+    paste0("host=", Sys.info()[["nodename"]]), paste0("server=", Sys.getpid()), paste0("pid=", pids)))))
+}
+
+# Kira geri kazanılabilir mi? Ortak sahip kuralı:
+#  - canlı çalıştırma süreci (CLI/hazırlık çocuğu): asla; belirsiz çocuk yeniden
+#    kullanılan çalışma alanına erişmemelidir
+#  - yalnız uzun ömürlü sunucu süreci canlı (bu süreç ya da işçinin ebeveyni):
+#    tazeleme yetim eşiği boyunca kesildiyse terk edilmiş sayılır
+#  - tüm süreçler kanıtlı ölü: kısa devir penceresi yeter
+#  - eski/uzak/okunamayan kira: yalnız yetim eşiğinden sonra
+cc_runtime_lease_reclaimable <- function(lease, stale_sec = 60,
+                                          orphan_sec = cc_runtime_limit("runtime_lease_orphan_sec", 86400)) {
+  mtime <- tryCatch(file.info(lease)$mtime[1], error = function(e) NA)
+  if (length(mtime) != 1L || is.na(mtime)) return(FALSE)
+  age <- as.numeric(difftime(Sys.time(), mtime, units = "secs"))
+  lines <- .cc_read_runtime_lease(lease) %||% character()
+  host <- sub("^host=", "", lines[startsWith(lines, "host=")])
+  pids <- suppressWarnings(as.integer(sub("^pid=", "", lines[startsWith(lines, "pid=")])))
+  pids <- pids[!is.na(pids)]
+  orphan_sec <- suppressWarnings(as.numeric(orphan_sec)[1])
+  if (!length(orphan_sec) || !is.finite(orphan_sec) || orphan_sec <= 0) orphan_sec <- Inf
+  yetim <- is.finite(age) && age > orphan_sec
+  if (length(host) != 1L || !length(pids)) return(yetim)
+  durum <- vapply(pids, function(pid) {
+    v <- mergen_pid_status(pid, host, since = mtime)
+    if (isTRUE(v)) 1L else if (identical(v, FALSE)) 0L else NA_integer_
+  }, integer(1))
+  sunucu <- suppressWarnings(as.integer(sub("^server=", "", lines[startsWith(lines, "server=")])))
+  if (!length(sunucu))
+    sunucu <- c(Sys.getpid(), tryCatch(ps::ps_ppid(ps::ps_handle()), error = function(e) NA_integer_))
+  if (any(durum %in% 1L & !pids %in% sunucu)) return(FALSE)
+  if (any(durum %in% 1L) || anyNA(durum)) return(yetim)
+  is.finite(age) && age > stale_sec
+}
+
+# Kira dizini okunamıyorsa "kira yok" sayılmaz: okunabilir dizin her zaman
+# "." girdisini listeler; listelenemeyen mevcut dizin yabancı kira kabul edilir.
+cc_runtime_has_foreign_lease <- function(runtime_dir, request_id) {
+  metadata <- file.path(runtime_dir, "metadata")
+  if (!isTRUE(dir.exists(metadata))) return(FALSE)
+  girdiler <- tryCatch(list.files(metadata, all.files = TRUE, no.. = FALSE),
+                       error = function(e) character())
+  if (!"." %in% girdiler) return(TRUE)
+  leases <- file.path(metadata, grep("^active-run-.*\\.lease$", girdiler, value = TRUE))
+  own <- paste0("active-run-", gsub("[^A-Za-z0-9_.-]", "_", request_id), ".lease")
+  leases <- leases[basename(leases) != own]
+  any(!vapply(leases, cc_runtime_lease_reclaimable, logical(1)))
+}
+
 #' Aktif çalışma lease dosyasının mtime değerini tazele (heartbeat)
 #'
 #' Uzun süren bir CLI çalıştırmasında lease hiç tazelenmezse temizlik yolu onu
@@ -47,11 +130,9 @@ cc_touch_runtime_lease <- function(runtime_lease = NULL) {
   sonuc <- try(Sys.setFileTime(lease, Sys.time()), silent = TRUE)
   if (!inherits(sonuc, "try-error") && isTRUE(sonuc)) return(invisible(TRUE))
 
-  yazildi <- try(
-    writeLines(format(Sys.time(), "%Y-%m-%dT%H:%M:%OS3"), lease, useBytes = TRUE),
-    silent = TRUE
-  )
-  if (inherits(yazildi, "try-error")) {
+  satirlar <- .cc_read_runtime_lease(lease)
+  yazildi <- length(satirlar) > 0L && .cc_write_runtime_lease(lease, satirlar)
+  if (!isTRUE(yazildi)) {
     if (exists("cc_log_warn", mode = "function", inherits = TRUE)) {
       try(cc_log_warn(paste("[RUNTIME_LEASE] heartbeat yazılamadı:", basename(lease))),
           silent = TRUE)
@@ -240,7 +321,9 @@ cc_reclaim_orphaned_runtime_dirs <- function(user_id = NULL,
             "Yetim runtime geri kazanımı atlandı (metaveri okunamadı):", basename(aday)
           )), silent = TRUE)
           FALSE
-        } else if (any(lease_yas < esik) || dizin_yas < esik) {
+        } else if (any(lease_yas < esik) || dizin_yas < esik ||
+                   !all(vapply(leases, cc_runtime_lease_reclaimable, logical(1),
+                               stale_sec = esik, orphan_sec = esik))) {
           FALSE
         } else {
           try(log_warn(paste(

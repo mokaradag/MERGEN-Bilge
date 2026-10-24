@@ -356,3 +356,174 @@ testthat::test_that("sohbet AYNIYSA TTS geri cagrisi akisi baslatir", {
   tipler <- vapply(rec$msgs, function(m) as.character(m$type)[1], character(1))
   testthat::expect_true("initStreamingMessage" %in% tipler)
 })
+
+test_that("geç TTS sesi önceki sahibin veya isteğin akışını başlatamaz", {
+  for (change in c("owner", "request")) {
+    env <- .css_env()
+    rec <- new.env(); rec$msgs <- list()
+    session <- .css_session(rec)
+    session$userData <- new.env()
+    session$userData$user_id <- session$userData$kimlik_sahibi <- 7L
+    session$userData$llm_request_owner <- "A"
+    values <- new.env()
+    values$messages <- list()
+    values$typing <- TRUE
+    resolve <- NULL
+    completed <- 0L
+    env$chat_simulate_streaming("eski yanıt", session, values, list(selected_character = "emre"),
+      list(), function() FALSE, on_complete = function(msg) completed <<- completed + 1L,
+      tts_engine = function(...) promises::promise(function(ok, reject) resolve <<- ok))
+    if (change == "owner") {
+      session$userData$user_id <- 8L
+      mergen_session_owner_transition(session$userData, 7L, 8L)
+    } else session$userData$llm_request_owner <- "B"
+    resolve(list(success = TRUE, duration = 0))
+    .css_drain()
+    expect_length(rec$msgs, 0L)
+    expect_length(values$messages, 0L)
+    expect_identical(env$.rec$reset, 0L)
+    expect_identical(completed, 1L)
+  }
+})
+
+test_that("boş TTS gövdesinde Stop yalnız teslim edilen kısmi metni korur", {
+  env <- .css_env()
+  callback <- NULL
+  testthat::local_mocked_bindings(observe = function(expr, ...) {
+    expression <- substitute(expr)
+    frame <- parent.frame()
+    callback <<- function() eval(expression, frame)
+    list(destroy = function() NULL)
+  }, invalidateLater = function(...) NULL, .package = "shiny")
+  env$mergen_pk_block_mode_texts <- function(...) list(display = "Kaynak alt bilgisi", tts = "", validated = TRUE)
+  env$mergen_pk_stream_validated_text <- env$mergen_pk_block_mode_texts
+  rec <- new.env(); rec$msgs <- list()
+  session <- .css_session(rec)
+  session$userData <- new.env()
+  values <- new.env(); values$messages <- list()
+  stopped <- FALSE
+  env$chat_simulate_streaming("ham", session, values, list(selected_character = "emre"),
+    list(), function() stopped)
+  shiny::isolate(callback())
+  partial <- values$messages[[1]]$content
+  expect_true(nzchar(partial))
+  stopped <- TRUE
+  shiny::isolate(callback())
+  expect_identical(values$messages[[1]]$content, partial)
+})
+
+test_that("süren benzetimli akış bayatlayınca yeni mesajları ve gönderimi değiştirmez", {
+  env <- .css_env()
+  callback <- NULL
+  destroyed <- FALSE
+  testthat::local_mocked_bindings(observe = function(expr, ...) {
+    expression <- substitute(expr)
+    frame <- parent.frame()
+    callback <<- function() eval(expression, frame)
+    list(destroy = function() destroyed <<- TRUE)
+  }, removeUI = function(selector, ...) {
+    env$.rec$removeUI[[length(env$.rec$removeUI) + 1L]] <- selector
+  }, .package = "shiny")
+  rec <- new.env(); rec$msgs <- list()
+  session <- .css_session(rec)
+  session$userData <- new.env()
+  session$userData$user_id <- 7L
+  session$userData$llm_request_owner <- "A"
+  values <- new.env()
+  values$messages <- list()
+  completed <- 0L
+  env$chat_simulate_streaming("eski yanıt", session, values, list(selected_character = "emre"),
+    list(), function() FALSE, on_complete = function(msg) completed <<- completed + 1L)
+  old_id <- values$messages[[1]]$id
+  rec$msgs <- list()
+  values$messages <- append(values$messages, list(list(id = "B", content = "Yeni yanıt")))
+  session$userData$llm_request_owner <- "B"
+  callback()
+  expect_true(destroyed)
+  expect_length(values$messages, 1L)
+  expect_length(rec$msgs, 0L)
+  expect_true(paste0("#message_wrapper_", old_id) %in% unlist(env$.rec$removeUI))
+  expect_identical(values$messages[[1]]$content, "Yeni yanıt")
+  expect_identical(env$.rec$reset, 0L)
+  expect_identical(completed, 1L)
+})
+
+test_that("süren akışta sohbet değişince yalnız güncel isteğin gönderimi sıfırlanır", {
+  env <- .css_env()
+  callback <- NULL
+  destroyed <- FALSE
+  testthat::local_mocked_bindings(observe = function(expr, ...) {
+    expression <- substitute(expr)
+    frame <- parent.frame()
+    callback <<- function() eval(expression, frame)
+    list(destroy = function() destroyed <<- TRUE)
+  }, .package = "shiny")
+  env$mergen_pk_chat_identity <- function(session, values) values$current_chat_id
+  rec <- new.env(); rec$msgs <- list()
+  session <- .css_session(rec); session$userData <- new.env()
+  session$userData$llm_request_owner <- "A"
+  values <- new.env(); values$messages <- list(); values$current_chat_id <- "chat-A"
+  completed <- list()
+  env$chat_simulate_streaming("yanıt", session, values, list(selected_character = "emre"),
+    list(), function() FALSE, on_complete = function(msg) completed <<- c(completed, list(msg)))
+  values$current_chat_id <- "chat-B"
+  callback()
+  expect_true(destroyed)
+  expect_length(values$messages, 0L)
+  expect_identical(env$.rec$reset, 1L)
+  expect_identical(completed, list(NULL))
+})
+
+test_that("bayat akışın UI sıfırlama hatası tamamlanmayı veya observer temizliğini atlamaz", {
+  env <- .css_env()
+  callback <- NULL
+  events <- character()
+  testthat::local_mocked_bindings(observe = function(expr, ...) {
+    expression <- substitute(expr)
+    frame <- parent.frame()
+    callback <<- function() eval(expression, frame)
+    list(destroy = function() events <<- c(events, "destroy"))
+  }, .package = "shiny")
+  env$mergen_pk_chat_identity <- function(session, values) values$current_chat_id
+  rec <- new.env(); rec$msgs <- list()
+  session <- .css_session(rec); session$userData <- new.env()
+  session$userData$llm_request_owner <- "A"
+  values <- new.env(); values$messages <- list(); values$current_chat_id <- "chat-A"
+  env$chat_simulate_streaming("yanıt", session, values, list(selected_character = "emre"),
+    list(), function() FALSE, on_complete = function(msg) {
+      expect_null(msg)
+      events <<- c(events, "complete")
+    })
+  env$chat_reset_state <- function(...) {
+    events <<- c(events, "reset")
+    stop("UI sıfırlanamadı")
+  }
+  values$current_chat_id <- "chat-B"
+  expect_error(callback(), NA)
+  expect_identical(events, c("destroy", "complete", "reset"))
+  expect_length(values$messages, 0L)
+})
+
+test_that("Stop sonrası yeni SQL isteği LLM sahipliğini değiştirmeden geç TTS'yi reddeder", {
+  env <- .css_env()
+  for (file in c("helpers_pk_provenance.R", "helpers_pk_provenance_peek.R"))
+    source(file.path(resolve_repo_root_for_tests(), "R", file), encoding = "UTF-8", local = env)
+  rec <- new.env(); rec$msgs <- list()
+  session <- .css_session(rec); session$userData <- new.env()
+  session$userData$llm_request_owner <- "A"
+  env$pk_provenance_clear(session, "A")
+  values <- new.env(); values$messages <- list(); values$typing <- TRUE
+  finish_tts <- NULL
+  env$chat_simulate_streaming("eski yanıt", session, values, list(selected_character = "emre"),
+    list(), function() FALSE, request_id = "A",
+    tts_engine = function(...) promises::promise(function(resolve, reject) finish_tts <<- resolve))
+  # Her gönderimin başındaki request callback'i yeni nesli LLM aşamasından önce kurar.
+  env$pk_provenance_clear(session, "B")
+  finish_tts(list(success = TRUE, audio_src = "old.wav"))
+  .css_drain()
+  expect_identical(session$userData$llm_request_owner, "A")
+  expect_length(rec$msgs, 0L)
+  expect_length(values$messages, 0L)
+  expect_true(values$typing)
+  expect_identical(env$.rec$reset, 0L)
+})

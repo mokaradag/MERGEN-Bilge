@@ -83,6 +83,7 @@ file_store_index_lock_heartbeat <- function() {
   .write_lock_marker <- function() {
     marker_text <- c(
       sprintf("pid=%s", Sys.getpid()),
+      sprintf("host=%s", Sys.info()[["nodename"]]),
       sprintf("token=%s", lock_token),
       sprintf("time=%s", format(Sys.time(), "%Y-%m-%dT%H:%M:%OS3%z"))
     )
@@ -103,12 +104,11 @@ file_store_index_lock_heartbeat <- function() {
   # Heartbeat marker'ı YALNIZCA hâlâ sahipsek tazeler. Koşulsuz yazım, bayat
   # kilidi kıran YENİ sahibin marker'ını kendi jetonumuzla eziyor ve onun
   # kilidini bize silinebilir yapıyordu (lost update).
-  # KALAN RİSK (kapatılamıyor): sahiplik denetimi ile marker yazımı AYRI
-  # işlemlerdir; base R'de dosya sistemi için atomik karşılaştır-ve-değiştir
-  # ilkeli yoktur (fsync sınırıyla aynı sınıf). Pencere, yazımdan SONRA jetonun
-  # YENİDEN OKUNMASIYLA daraltılır: sahiplik kaybedildiyse çağıran `FALSE`
-  # alır ve kilidi tuttuğunu varsaymaz.
+  # Geri kazanım ve yeni marker yayını aynı muteks altında dışlanır.
   .refresh_lock_marker <- function() {
+    reclaim <- mergen_reclaim_mutex(paste0(lock_dir, ".reclaim"), timeout = 1000)
+    if (is.null(reclaim)) return(invisible(FALSE))
+    on.exit(filelock::unlock(reclaim), add = TRUE)
     sahip <- .lock_owner_token()
     # OKUNAMAYAN marker sahiplik kaybının KANITI DEĞİLDİR. `.lock_owner_token()`
     # geçici bir UNC/izin okuma hatasında da `NULL` döner; bu "başka sahip"
@@ -117,7 +117,8 @@ file_store_index_lock_heartbeat <- function() {
     # kullanıcı dosyalarını hiç temizleyemiyordu. Kayıp yalnızca BAŞKA bir
     # jeton okunduğunda ya da kilit dizini kaybolduğunda bildirilir.
     if (!is.null(sahip) && !identical(sahip, lock_token)) return(invisible(FALSE))
-    if (is.null(sahip) && !isTRUE(dir.exists(lock_dir))) return(invisible(FALSE))
+    if (is.null(sahip) && (!isTRUE(dir.exists(lock_dir)) || !isTRUE(file.exists(lock_marker))))
+      return(invisible(FALSE))
     # Tazelik KANITLANAMAZSA sahiplik de sürdürülemez: bayat mtime taşıyan
     # marker başka bir yazar tarafından kırılabilir.
     if (!isTRUE(.write_lock_marker())) return(invisible(FALSE))
@@ -137,12 +138,17 @@ file_store_index_lock_heartbeat <- function() {
     if (length(jeton) && nzchar(jeton[1])) jeton[1] else NULL
   }
 
-  # Çökmüş bir süreç kilit dizinini sonsuza dek bırakabilir; bu durumda her
-  # mutasyon timeout kadar bekleyip kilitsiz devam ederdi (kalıcı gecikme +
-  # kalıcı kilitsiz mod). Eski (stale) kilitler yaşına bakılarak kırılır.
-  # Windows/UNC dosya sistemlerinde dizin mtime güvenilir olmayabildiği için
-  # varsa lock marker dosyasının mtime değeri esas alınır.
+  # Çökmüş bir süreç kilit dizinini sonsuza dek bırakabilir. Geri kazanım ortak
+  # sahip kuralını izler: canlı yerel sahip korunur, kanıtlı ölü sahip hemen;
+  # markersız/eski biçim/uzak host/aynı süreç kilidi yalnız bayatlık eşiğinden
+  # sonra kırılır. Windows/UNC'de dizin mtime güvenilir olmayabildiği için
+  # varsa marker mtime değeri esas alınır; jeton muteks altında yeniden okunur.
   .break_stale_lock_if_needed <- function() {
+    reclaim <- if (exists("mergen_reclaim_mutex", mode = "function")) {
+      mergen_reclaim_mutex(paste0(lock_dir, ".reclaim"))
+    } else NULL
+    if (is.null(reclaim)) return(invisible(FALSE))
+    on.exit(filelock::unlock(reclaim), add = TRUE)
     lock_time <- .lock_mtime()
 
     if (is.na(lock_time)) {
@@ -151,11 +157,14 @@ file_store_index_lock_heartbeat <- function() {
 
     lock_age <- as.numeric(difftime(Sys.time(), lock_time, units = "secs"))
 
-    if (is.finite(lock_age) && lock_age > stale_lock_sec) {
+    token <- .lock_owner_token()
+    if (mergen_lock_owner_reclaimable(lock_marker, stale_sec = stale_lock_sec,
+                                      age_paths = c(lock_marker, lock_dir), self_reclaim = TRUE)) {
       try(
         log_warn("[INDEX] Eski indeks kilidi kırılıyor (yaş: {round(lock_age)} sn): {lock_dir}"),
         silent = TRUE
       )
+      if (!identical(.lock_owner_token(), token)) return(invisible(FALSE))
       unlink(lock_dir, recursive = TRUE, force = TRUE)
       # Silme doğrulanmadan TRUE dönmek `next` ile sonsuz döngü üretirdi;
       # kırılamayan kilitte zaman aşımı/bekleme yoluna düşülür.
@@ -171,21 +180,25 @@ file_store_index_lock_heartbeat <- function() {
     invisible(FALSE)
   }
 
-  repeat {
-    acquired <- tryCatch(
+  # Oluşturma, marker yayını, heartbeat ve silme aynı muteksle dışlanır.
+  .acquire_lock <- function() {
+    reclaim <- mergen_reclaim_mutex(paste0(lock_dir, ".reclaim"))
+    if (is.null(reclaim)) return(FALSE)
+    on.exit(filelock::unlock(reclaim), add = TRUE)
+    created <- tryCatch(
       dir.create(lock_dir, showWarnings = FALSE, recursive = FALSE),
       warning = function(w) FALSE,
       error = function(e) FALSE
     )
 
-    if (isTRUE(acquired)) {
+    if (isTRUE(created)) {
       marker_yazildi <- isTRUE(.write_lock_marker())
       # Dayanıklı marker kilidi tutmanın ÖN KOŞULUDUR: dizin mtime'ı sahiplik
       # kanıtı değildir (Windows/UNC'de yeniden oluşturulan dizin aynı değeri
       # taşıyabilir). Marker geri okunamıyorsa kilitsiz yola düşülür. Yazımın
       # ya da zaman damgasının başarısı da ÖN KOŞULDUR: bayat mtime ile alınan
       # kilit ilk bayatlık denetiminde başka bir yazara geçebilir.
-      if (marker_yazildi && identical(.lock_owner_token(), lock_token)) break
+      if (marker_yazildi && identical(.lock_owner_token(), lock_token)) return(TRUE)
 
       # Kilit dizinini BİZ oluşturduk; sahipliği bırakıyorsak onu da
       # kaldırmalıyız, aksi hâlde hiçbir sürecin sahiplenmediği bir kilit
@@ -195,13 +208,19 @@ file_store_index_lock_heartbeat <- function() {
       if (is.null(birakilan) || identical(birakilan, lock_token)) {
         unlink(lock_dir, recursive = TRUE, force = TRUE)
       }
-      acquired <- FALSE
       try(
         log_warn("[INDEX] Kilit sahiplik marker'ı doğrulanamadı; kilitsiz devam ediliyor: {lock_dir}"),
         silent = TRUE
       )
-      break
+      return(NA)
     }
+    FALSE
+  }
+
+  repeat {
+    acquired <- .acquire_lock()
+    if (is.na(acquired)) { acquired <- FALSE; break }
+    if (isTRUE(acquired)) break
 
     if (isTRUE(.break_stale_lock_if_needed())) {
       next
@@ -240,9 +259,16 @@ file_store_index_lock_heartbeat <- function() {
   # Kilit YALNIZCA marker hâlâ bizim jetonumuzu taşıyorsa bırakılır; başka
   # kanıt kabul edilmez (bayat kilit yeni sahibe geçtiyse lost update olurdu).
   on.exit({
-    if (identical(.lock_owner_token(), lock_token)) {
-      unlink(lock_dir, recursive = TRUE, force = TRUE)
-    }
+    reclaim <- mergen_reclaim_mutex(paste0(lock_dir, ".reclaim"), timeout = 5000)
+    if (is.null(reclaim)) try(log_warn("[INDEX] Kilit bırakma muteksi alınamadı; sahiplik korundu."), silent = TRUE)
+    if (!is.null(reclaim)) tryCatch({
+        for (deneme in 1:3) {
+          sahip <- .lock_owner_token()
+          if (!is.null(sahip)) break
+          if (deneme < 3L) Sys.sleep(0.01)
+        }
+        if (identical(sahip, lock_token)) unlink(lock_dir, recursive = TRUE, force = TRUE)
+    }, finally = filelock::unlock(reclaim))
   }, add = TRUE)
 
   force(expr)

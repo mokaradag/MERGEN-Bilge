@@ -1,6 +1,6 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-chat-runtime-followup-push-behavior.R
-# Açıklama: push_followup_update (helpers_chat_runtime.R) takip sorusu yayınlama
+# Açıklama: push_followup_update (helpers_chat_render_updates.R) takip sorusu yayınlama
 #           davranışı ve update_messages_after_bulk_deletion (helpers_image_gallery.R)
 #           girdi doğrulama korumaları test edilir. Sahte oturum/DB ile çalışır;
 #           gerçek DB/LLM/ağ/tarayıcı GEREKMEZ.
@@ -9,6 +9,8 @@
 .chat_runtime_env <- function() {
   env <- new.env(parent = globalenv())
   source(file.path(resolve_repo_root_for_tests(), "R", "helpers_chat_runtime.R"),
+         encoding = "UTF-8", local = env)
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_chat_render_updates.R"),
          encoding = "UTF-8", local = env)
   env
 }

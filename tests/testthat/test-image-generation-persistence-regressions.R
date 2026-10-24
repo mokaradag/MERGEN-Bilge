@@ -148,6 +148,29 @@ test_that("başarısız Base64 yayını yalnızca kendisine ait kısmi hedefi te
   }
 })
 
+test_that("kısmi terfi yazımı hiçbir görsel denemesinin hedefini geride bırakmaz", {
+  tmp <- withr::local_tempdir()
+  env <- .new_imgpersist_env()
+  env$file.link <- env$file.rename <- function(...) FALSE
+  attempts <- 0L
+  env$file.copy <- function(from, to, ...) {
+    attempts <<- attempts + 1L
+    base::writeBin(charToRaw("partial"), to)
+    FALSE
+  }
+  env$writeBin <- function(object, con, ...) {
+    if (endsWith(summary(con)$description, ".png")) {
+      attempts <<- attempts + 1L
+      base::writeBin(object[1:8], con)
+      stop("kısmi hedef")
+    }
+    base::writeBin(object, con, ...)
+  }
+  expect_null(.save_b64_for_test(env, tmp))
+  expect_identical(attempts, 3L)
+  expect_length(list.files(tmp, pattern = "\\.(png|tmp)$", recursive = TRUE, all.files = TRUE), 0L)
+})
+
 test_that("rezervasyon alınamayan Base64 kaydı sonradan yayımlanan hedefi silmez", {
   tmp <- withr::local_tempdir()
   env <- .new_imgpersist_env()

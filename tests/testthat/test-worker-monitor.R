@@ -182,3 +182,18 @@ test_that("tracked_future_promise explicit modda reddedilme sonrası görev deft
   expect_true(grepl("kasıtlı test hatası", got$error %||% ""))
   expect_equal(get_worker_monitor_info()$active_jobs, before_count)
 })
+
+test_that("bağımsız iptal ve geri alma işleri Future kapasitesini tüketmiş görünmez", {
+  env <- new.env(parent = globalenv())
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_worker_monitor.R"),
+         encoding = "UTF-8", local = env)
+  before <- env$get_worker_monitor_info()
+  a <- env$create_worker_task_id("callr")
+  b <- env$create_worker_task_id("cleanup")
+  on.exit({env$finish_worker_task(a); env$finish_worker_task(b)}, add = TRUE)
+  env$register_worker_task(a, execution_pool = "callr")
+  env$register_worker_task(b, execution_pool = "callr_cleanup")
+  info <- env$get_worker_monitor_info()
+  expect_identical(info$active_jobs, before$active_jobs)
+  expect_identical(info$cleanup_pool$active_jobs, before$cleanup_pool$active_jobs + 1L)
+})

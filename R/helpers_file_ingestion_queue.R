@@ -58,12 +58,9 @@ file_ingestion_metrics_enabled <- function() {
   tolower(raw) %in% c("true", "1", "yes", "on", "evet", "acik")
 }
 
-# Worker havuzunda boş kapasite kalmadıysa alım görevi gönderilmez; böylece
-# yükleme trafiği sohbet/akış görevlerini aç bırakmaz.
+# Alım kapasitesi kalıcı callr şeridine aittir; dolu şerit işi kuyrukta tutar.
 file_ingestion_pool_has_capacity <- function() {
-  free <- tryCatch(as.integer(future::nbrOfFreeWorkers()), error = function(e) NA_integer_)
-  if (is.na(free)) return(TRUE)
-  free > 0L
+  isTRUE(tryCatch(mergen_cancellable_worker_available(lane = "durable"), error = function(e) FALSE))
 }
 
 file_ingestion_try_acquire_slot <- function() {
@@ -104,7 +101,7 @@ file_ingestion_take_next_job <- function() {
   job
 }
 
-# Kapanan oturumun bekleyen işlerini kuyruktan düşürür.
+# Açık iptal çağrıları için korunur; tarayıcı kapanışı kabul edilmiş işleri iptal ETMEZ.
 file_ingestion_cancel_session_jobs <- function(session_token) {
   token <- as.character(session_token %||% "")[1]
   if (!nzchar(token)) return(invisible(0L))
@@ -116,9 +113,10 @@ file_ingestion_cancel_session_jobs <- function(session_token) {
     !identical(as.character(job$session_token %||% "")[1], token)
   }, logical(1))
 
-  removed <- sum(!keep)
+  removed <- state$pending[!keep]
   state$pending <- state$pending[keep]
-  invisible(as.integer(removed))
+  for (job in removed) file_ingestion_release_job(job)
+  invisible(as.integer(length(removed)))
 }
 
 file_ingestion_queue_status <- function() {
@@ -135,12 +133,21 @@ file_ingestion_queue_status <- function() {
   )
 }
 
-# Kuyruğu boşaltmayı dener. Slot ya da worker kapasitesi yoksa kısa gecikmeli
-# tek bir yeniden deneme planlanır; bekleyen iş kalıcı olarak asılı kalmaz.
+# Kuyruk son tarihi kapasite ediniminden önce denetlenir.
 file_ingestion_pump <- function() {
   state <- .file_ingestion_state()
 
   while (length(state$pending) > 0L) {
+    candidate <- state$pending[[1L]]
+    max_age <- file_ingestion_int_setting("MERGEN_FILE_INGESTION_QUEUE_TIMEOUT",
+      "mergen.file_ingestion.queue_timeout", 1800L)
+    age <- as.numeric(difftime(Sys.time(), candidate$queued_at %||% Sys.time(), units = "secs"))
+    if (is.finite(age) && age > max_age) {
+      job <- file_ingestion_take_next_job()
+      if (is.environment(job$lease)) job$lease$slot_acquired <- FALSE
+      file_ingestion_fail_job(job, simpleError("Dosya alımı kuyrukta zaman aşımına uğradı."))
+      next
+    }
     if (!file_ingestion_try_acquire_slot()) break
 
     job <- file_ingestion_take_next_job()
@@ -149,12 +156,10 @@ file_ingestion_pump <- function() {
       break
     }
 
-    started <- tryCatch({
+    tryCatch({
       job$run(job)
       TRUE
     }, error = function(e) {
-      # Başlatılamayan iş sessizce yitmez: sayılır, loglanır ve varsa işin
-      # hata geri çağrısına bildirilir.
       state$failed_start_total <- (state$failed_start_total %||% 0L) + 1L
       msg <- sprintf(
         "[FILE_INGESTION] İş başlatılamadı (batch=%s): %s",
@@ -165,19 +170,13 @@ file_ingestion_pump <- function() {
       } else {
         message(msg)
       }
+      file_ingestion_release_job(job)
       if (is.function(job$on_start_error)) try(job$on_start_error(e), silent = TRUE)
-      # Parti kullanıcıya bildirim yapılmadan kaybolmaz: submit_batch()
-      # tarafından verilen hata geri çağrısı da çalıştırılır (tek başına
-      # on_start_error kuyruk-içi başlatma hatasını UI'ya taşımıyordu).
       if (is.function(job$on_failure)) {
         try(job$on_failure(conditionMessage(e), job$tasks), silent = TRUE)
       }
       FALSE
     })
-
-    if (!isTRUE(started)) {
-      state$active <- max(state$active - 1L, 0L)
-    }
   }
 
   if (length(state$pending) > 0L && !isTRUE(state$pump_scheduled)) {

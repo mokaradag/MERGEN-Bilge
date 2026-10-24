@@ -46,7 +46,7 @@ suppressMessages(library(promises))
   env$log_info <- function(...) invisible(NULL)
   env$showToast <- function(...) invisible(NULL)
   env$log_ai_usage <- function(...) invisible(NULL)
-  env$build_followup_suggestions <- function(...) list()
+  env$mergen_stream_dispatch_followups <- function(...) invisible(FALSE)
   env$normalize_character_id <- function(x) "emre"
   env$get_characters_data <- function() NULL
   env$update_message_reasoning_content <- function(...) invisible(NULL)
@@ -65,7 +65,7 @@ suppressMessages(library(promises))
 }
 
 # generate_non_streaming_stoppable closure'unu hazır kayıt-defteriyle döndürür.
-.make_nonstream_fixture <- function(env, req_state, llm_promise_factory) {
+.make_nonstream_fixture <- function(env, req_state, llm_promise_factory, shiny_session = NULL) {
   rec <- new.env()
   rec$messages <- list()
   rec$reset_calls <- 0L
@@ -82,7 +82,7 @@ suppressMessages(library(promises))
     invisible(NULL)
   }
 
-  session <- list(userData = list(), token = "tok-1")
+  session <- shiny_session %||% list(userData = list(), token = "tok-1")
 
   handlers <- env$llmResponseHandlersInit(
     session = session,
@@ -124,6 +124,40 @@ suppressMessages(library(promises))
 
   list(rec = rec, values = values, gen = handlers$generate_non_streaming_stoppable)
 }
+
+test_that("sohbet değişiminde non-streaming sonuç uygulanmaz ama eski gönderim bırakılır", {
+  env <- .source_nonstream_handler()
+  state <- .nonstream_req_state()
+  resolve_worker <- NULL
+  fixture <- .make_nonstream_fixture(env, state, function() {
+    promises::promise(function(resolve, reject) resolve_worker <<- resolve)
+  })
+  fixture$values$current_chat_id <- "chat_A"
+  fixture$gen(list(), list(), list(db_id = 1L), "chat_A", "model", request_id = "req_A")
+  fixture$values$current_chat_id <- "chat_B"
+  resolve_worker(list(success = TRUE, content = "eski yanıt", duration = 1))
+  .nonstream_drain_later()
+  expect_length(fixture$rec$messages, 0L)
+  expect_identical(fixture$rec$reset_calls, 1L)
+  expect_null(state$current_id)
+})
+
+test_that("senkron non-streaming gönderim hatası düşünce işçisi ve dosyasını temizler", {
+  testthat::local_mocked_bindings(removeUI = function(...) NULL, .package = "shiny")
+  env <- .source_nonstream_handler()
+  state <- .nonstream_req_state()
+  shiny::testServer(function(input, output, session) NULL, {
+    fixture <- .make_nonstream_fixture(env, state, function() stop("gönderim hatası"), session)
+    fixture$gen(list(), list(enable_mcp_reasoning_stream = TRUE), list(db_id = 1L),
+                "chat_A", "model", request_id = "req_A")
+    .nonstream_drain_later()
+    expect_identical(fixture$rec$reset_calls, 1L)
+    expect_identical(fixture$rec$toast_calls, 1L)
+    expect_null(state$current_id)
+    expect_length(list.files(tempdir(), pattern = "^mcp_reasoning_req_A_"), 0L)
+    expect_length(ls(session$userData$kimlik_kancalari), 0L)
+  })
+})
 
 .invoke_nonstream <- function(fix, current_settings = list(enable_mcp_reasoning_stream = FALSE, tool_family = "normal")) {
   fix$gen(
@@ -230,4 +264,20 @@ testthat::test_that("non-streaming: DURDURULMUŞ (cancelled) istekte başarı so
   # Bayat (durdurulmuş) sonuç sohbete mesaj eklememeli, toast göstermemeli.
   testthat::expect_length(fix$rec$messages, 0L)
   testthat::expect_identical(fix$rec$toast_calls, 0L)
+})
+
+
+test_that("non-streaming hazırlık günlüğü hatası sahipliği ve düşünce kaynaklarını bırakır", {
+  env <- .source_nonstream_handler()
+  env$mergen_log_llm_request_debug <- function(...) stop("günlük hatası")
+  state <- .nonstream_req_state()
+  shiny::testServer(function(input, output, session) NULL, {
+    fixture <- .make_nonstream_fixture(env, state, function() stop("işçi çağrılmamalı"), session)
+    expect_error(fixture$gen(list(), list(enable_mcp_reasoning_stream = TRUE), list(db_id = 1L),
+      "chat_A", "model", request_id = "req_A"), "günlük hatası")
+    expect_null(state$current_id)
+    expect_identical(fixture$rec$reset_calls, 1L)
+    expect_length(list.files(tempdir(), pattern = "^mcp_reasoning_req_A_"), 0L)
+    expect_length(ls(session$userData$kimlik_kancalari), 0L)
+  })
 })

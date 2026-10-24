@@ -14,6 +14,14 @@
 #     istisna üretip dosyayı kayıtsız bırakıyordu.
 # ==============================================================================
 
+# Değişebilir boyut/mtime yerine fiziksel dosya anahtarı; belirsizlikte yetki yok.
+.mergen_promote_file_key <- function(path) {
+  info <- tryCatch(fs::file_info(path), error = function(e) NULL)
+  if (is.null(info) || NROW(info) != 1L || !isTRUE(is.finite(info$device_id)) ||
+      !isTRUE(is.finite(info$inode) && info$inode > 0)) return(NULL)
+  as.list(info[c("device_id", "inode")])
+}
+
 # Görünürlük deneme sayısını güvenli bir tam sayıya indirger (NA/Inf/metin ->
 # varsayılan). `as.integer(NA)` sonrası `seq_len()` hata fırlatıyordu.
 mergen_promote_attempt_count <- function(deger, varsayilan = 10L) {

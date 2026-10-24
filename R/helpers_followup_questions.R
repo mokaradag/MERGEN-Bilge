@@ -208,7 +208,8 @@ default_followup_suggestions <- function(user_text = NULL, ai_text = NULL) {
 # Ana takip sorusu oluşturucu fonksiyon
 # Önce deterministik fallback üretir; AI başarısız olsa bile boş dönmez.
 build_followup_suggestions <- function(user_text, ai_text, settings_data, session,
-                                       api_config, followup_tools, fallback_followup_tool) {
+                                       api_config, followup_tools, fallback_followup_tool,
+                                       allow_ai = TRUE) {
 
   enabled_flag <- resolve_followup_enabled(settings_data, session)
 
@@ -260,7 +261,8 @@ build_followup_suggestions <- function(user_text, ai_text, settings_data, sessio
   }
 
   # 3) İstersen AI önerisini dene; başarılıysa deterministik önerinin yerine kullan
-  ai_suggestions <- tryCatch({
+  # Anahtar çözülemediyse yalnız isteğe bağlı AI zenginleştirmesi atlanır.
+  ai_suggestions <- if (!isTRUE(allow_ai)) NULL else tryCatch({
     generate_ai_followups(user_text, ai_text, settings_data, session, api_config)
   }, error = function(e) {
     cat("[FOLLOWUPS][AI] skipped/failed: ", conditionMessage(e), "\n", sep = "")

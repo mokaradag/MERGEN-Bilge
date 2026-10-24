@@ -193,8 +193,16 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
       NULL
     }
 
+    # Parçalar bu isteğe bağlıdır: Stop, sohbet değişimi, yeni istek ya da sahip
+    # değişimi bekleyen ve süren parçaları iptal eder; geç parça çalınmaz.
+    istek_gecerli <- local({
+      sohbet <- mergen_chat_owner_guard(session, values)
+      istek <- mergen_request_owner_guard(session)
+      function() isTRUE(sohbet()) && isTRUE(istek()) && !isTRUE(shiny::isolate(stop_generation()))
+    })
+
     send_chunk <- function(res, idx) {
-      if (isTRUE(stop_generation())) return()
+      if (!isTRUE(istek_gecerli())) return()
 
       if (isTRUE(res$success) && nzchar(res$audio_src)) {
         cat(sprintf("[TTS] Parça %d gönderiliyor (Süre: %.2fs)\n", idx, res$duration))
@@ -214,24 +222,27 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
     # chunked_pcm akışının hiç ses baytı göndermeden başarısız olması durumunda
     # düşme (fallback) geri çağrısı olarak da kullanılır. Bu nedenle idempotent
     # olması gerekmez (yalnızca bir kez, ya normal ya da düşme yolunda çağrılır).
+    # Uzun yanıt ortak kuyruğa tek seferde boşaltılmaz: en fazla iki parça
+    # aynı anda işçidedir, biri bitince sıradaki gönderilir.
     run_buffered_chunks <- function() {
       chunks <- split_text_into_chunks(full_text, max_chunk_chars = 800)
       cat(sprintf("[TTS] Metin %d parçaya bölündü (toplam: %d karakter)\n", length(chunks), nchar(full_text)))
-
-      for (i in seq_along(chunks)) {
-        chunk_text <- chunks[[i]]
-        chunk_idx <- i - 1L
-        local({
-          idx <- chunk_idx
-          current_text <- chunk_text
-
-          tts_processor$synthesize_speech(current_text, voice = legacy_voice,
-                                          persona_id = persona_id) %...>%
-            (function(res) send_chunk(res, idx)) %...!%
-            (function(e) cat(sprintf("[TTS] Parça %d hatası: %s\n", idx, conditionMessage(e))))
-        })
+      sonraki <- 0L
+      gonder <- function() {
+        if (sonraki >= length(chunks) || !isTRUE(istek_gecerli())) return(invisible(NULL))
+        sonraki <<- sonraki + 1L
+        idx <- sonraki - 1L
+        current_text <- chunks[[sonraki]]
+        p <- tryCatch(tts_processor$synthesize_speech(current_text, voice = legacy_voice,
+                        persona_id = persona_id, cancel_check = istek_gecerli),
+                      error = function(e) promises::promise_reject(e))
+        promises::finally(
+          p %...>% (function(res) send_chunk(res, idx)) %...!%
+            (function(e) cat(sprintf("[TTS] Parça %d hatası: %s\n", idx, conditionMessage(e)))),
+          gonder)
+        invisible(NULL)
       }
-
+      for (i in seq_len(min(2L, length(chunks)))) gonder()
       invisible(NULL)
     }
 
@@ -245,7 +256,8 @@ ttsHandlersInit <- function(session, values, settings_data, tts_processor, tts_v
       streamed <- tryCatch(
         mergen_speech_pcm_stream_start(session, persona_id, full_text,
                                        message_id = msg_id,
-                                       on_stream_failed = run_buffered_chunks),
+                                       on_stream_failed = run_buffered_chunks,
+                                       cancel_check = istek_gecerli),
         error = function(e) FALSE
       )
       if (isTRUE(streamed)) return(invisible(NULL))

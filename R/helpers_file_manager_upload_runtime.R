@@ -52,7 +52,7 @@ fm_report_upload_plan_issues <- function(session, plan) {
 # Promise geri çağrısı reaktif BAĞLAM içinde değildir; modül state'i okuyan tüm
 # iş shiny::isolate() içine alınır (yazmalar yine dinleyicileri tetikler).
 fm_commit_bulk_upload_results <- function(results, ctx, batch_id = NULL) {
-  if (!is.null(batch_id)) try(removeNotification(batch_id), silent = TRUE)
+  if (!is.null(batch_id)) try(removeNotification(batch_id, session = ctx$session), silent = TRUE)
 
   shiny::isolate({
     saved_infos <- list()
@@ -154,7 +154,7 @@ fm_dispatch_bulk_upload_batch <- function(files_df,
     user_id = uid,
     on_complete = function(results, ctx) fm_commit_bulk_upload_results(results, commit_ctx, ctx$batch_id),
     on_failure = function(message, tasks) {
-      try(removeNotification(batch_id), silent = TRUE)
+      try(removeNotification(batch_id, session = session), silent = TRUE)
       fm_debug("upload_error", message)
       showToast(session, "Dosyalar işlenemedi. Lütfen tekrar deneyin.", "error")
     },
@@ -162,7 +162,7 @@ fm_dispatch_bulk_upload_batch <- function(files_df,
   )
 
   if (identical(outcome$status, "rejected")) {
-    try(removeNotification(batch_id), silent = TRUE)
+    try(removeNotification(batch_id, session = session), silent = TRUE)
     showToast(session, "Yükleme kuyruğu dolu. Lütfen biraz sonra tekrar deneyin.", "warning")
   }
 

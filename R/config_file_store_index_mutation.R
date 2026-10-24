@@ -7,7 +7,7 @@
 # ayrı kilit dosyasında yaşar (fonksiyon-yoğunluk bölme sözleşmesi).
 # ==============================================================================
 
-.file_store_mutate_index <- function(mutator) {
+.file_store_mutate_index <- function(mutator, timeout_sec = 5) {
   if (!is.function(mutator)) {
     stop("mutator fonksiyon olmalıdır.", call. = FALSE)
   }
@@ -24,7 +24,7 @@
 
     .save_index(next_idx)
     next_idx
-  }, require_lock = TRUE)
+  }, timeout_sec = timeout_sec, require_lock = TRUE)
 }
 
 recover_display_name_from_storage_name <- function(file_path) {
@@ -336,6 +336,25 @@ mergen_register_uploaded_file <- function(src_path,
   dest_norm
 }
 
+# Aynı görünen ad için yeni kayıt eskiyi değiştirir (ardışık yeniden yükleme);
+# yalnız bu işlem başladıktan SONRA commit edilmiş canlı başka bir yapıt eşzamanlı
+# çakışmadır ve korunur. Kimliksiz (yeniden kayıt) yazım canlı yapıtı ezmez.
+.file_store_entry_replaceable <- function(node, kayit) {
+  if (is.null(node) || !is.list(node)) return(TRUE)
+  if (identical(node$path, kayit$path) &&
+      (is.null(node$artifact_id) || is.null(kayit$artifact_id) ||
+       identical(node$artifact_id, kayit$artifact_id))) return(TRUE)
+  canli <- !is.null(node$artifact_id) && exists("file_ingestion_artifact_owned", mode = "function") &&
+    isTRUE(file_ingestion_artifact_owned(list(dest = node$path, artifact_id = node$artifact_id),
+                                         allow_deleting = FALSE))
+  if (!canli) return(TRUE)
+  if (is.null(kayit$artifact_id)) return(FALSE)
+  # Talep değil, kilit altında kaydedilen commit yeni işlemin başlangıcıyla karşılaştırılır.
+  baslangic <- file_ingestion_read_owner(kayit$path)$started_at
+  commit <- suppressWarnings(as.numeric(node$committed_at %||% NA_real_)[1])
+  isTRUE(length(baslangic) == 1L && is.finite(baslangic) && is.finite(commit) && commit < baslangic)
+}
+
 # Kalıcı klasöre ZATEN kopyalanmış dosyaları TEK indeks mutasyonunda kaydeder.
 # Dosya alım hattı (R/helpers_file_ingestion_runtime.R) kopyalamayı worker'da
 # yaptığı için burada yeniden kopyalama yapılmaz; parti başına tek kilit/tek
@@ -344,16 +363,37 @@ mergen_index_persisted_files <- function(entries, user_id = NULL) {
   entries <- entries %||% list()
   if (!length(entries)) return(character())
 
-  hazirlanan <- lapply(entries, function(e) {
-    .file_store_index_entry(e$path, e$display %||% basename(e$path %||% ""))
+  accepted <- rep(FALSE, length(entries))
+  hazirlanan <- lapply(seq_along(entries), function(i) {
+    e <- entries[[i]]
+    entry <- .file_store_index_entry(e$path, e$display %||% basename(e$path %||% ""))
+    entry$position <- i
+    entry$artifact_id <- e$artifact_id
+    entry
   })
   hazirlanan <- Filter(function(e) nzchar(e$key) && nzchar(e$path), hazirlanan)
 
-  if (!length(hazirlanan)) return(character())
+  if (!length(hazirlanan)) return(structure(character(), accepted = accepted))
 
   .file_store_mutate_index(function(idx) {
+    onceki_idx <- idx
+    secilen <- list()
+    accepted[] <<- FALSE
     for (kayit in hazirlanan) {
+      if (!is.null(kayit$artifact_id) &&
+          !file_ingestion_artifact_owned(list(dest = kayit$path, artifact_id = kayit$artifact_id), allow_deleting = FALSE)) next
+      node <- if (is.null(user_id)) idx[[kayit$key]] else idx[[as.character(user_id)]][[kayit$key]]
+      onceki <- if (is.null(user_id)) onceki_idx[[kayit$key]] else onceki_idx[[as.character(user_id)]][[kayit$key]]
+      referans <- if (is.null(kayit$artifact_id)) node else onceki
+      if (!.file_store_entry_replaceable(referans, kayit)) next
       girdi <- list(path = kayit$path, display = kayit$display)
+      ayni_yol <- is.list(node) && identical(node$path, kayit$path)
+      girdi$artifact_id <- kayit$artifact_id %||% if (ayni_yol) node$artifact_id else NULL
+      girdi$committed_at <- if (ayni_yol) node$committed_at %||% as.numeric(Sys.time()) else as.numeric(Sys.time())
+      # Aynı mutasyonda son geçerli girdi kazanır; önceki kopya temizliğe gider.
+      if (!is.null(secilen[[kayit$key]])) accepted[secilen[[kayit$key]]] <<- FALSE
+      secilen[[kayit$key]] <- kayit$position
+      accepted[kayit$position] <<- TRUE
 
       if (!is.null(user_id)) {
         uid <- as.character(user_id)
@@ -367,7 +407,13 @@ mergen_index_persisted_files <- function(entries, user_id = NULL) {
     idx
   })
 
-  vapply(hazirlanan, function(e) e$display, character(1))
+  kazananlar <- Filter(function(e) isTRUE(accepted[e$position]), hazirlanan)
+  indexed <- vapply(kazananlar, function(e) e$display, character(1))
+  if (any(vapply(hazirlanan, function(e) !is.null(e$artifact_id), logical(1)))) {
+    attr(indexed, "artifact_ids") <- unlist(lapply(kazananlar, function(e) e$artifact_id), use.names = FALSE) %||% character()
+  }
+  attr(indexed, "accepted") <- accepted
+  indexed
 }
 
 # Esnek seçenekli takma ad; server tarafından MCP dosyalarını kaydetmek için kullanılır

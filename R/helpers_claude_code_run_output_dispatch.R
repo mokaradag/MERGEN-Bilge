@@ -117,11 +117,18 @@ cc_report_output_processing_failure <- function(ctx, error) {
   invisible(TRUE)
 }
 
+cc_output_worker_current <- function(rv, request_id, deadline) {
+  ref <- cc_run_state_reference(rv)
+  force(request_id); force(deadline)
+  function() !isTRUE(deadline$expired) && cc_is_active_run(ref$rv, request_id)
+}
+
 #' Çıktı işlemesini arka plana gönder ve sonucunda çalıştırmayı sonlandır
 #'
 #' @param ctx Sonlandırma bağlamı (session, ns, rv, env, ayristirma, ...)
 #' @return invisible(TRUE)
 cc_dispatch_run_output_processing <- function(ctx) {
+  run_ref <- cc_run_state_reference(ctx$rv)
   guard <- file.path(
     ctx$env$runtime_layout$metadata %||% tempdir(),
     paste0("output-sync-", gsub("[^A-Za-z0-9_.-]", "_", ctx$env$request_id %||% "run"), ".active")
@@ -157,6 +164,14 @@ cc_dispatch_run_output_processing <- function(ctx) {
     return(invisible(TRUE))
   }
 
+  hazir <- FALSE
+  on.exit({
+    if (!hazir) {
+      ctx$env$output_worker_pending <- FALSE
+      unlink(guard, force = TRUE)
+      cc_release_runtime_lease(ctx$env$runtime_lease %||% "")
+    }
+  }, add = TRUE)
   ctx$env$output_sync_guard <- guard
   istek <- cc_build_run_output_request(ctx$env, ctx$ayristirma$tool_uses %||% list())
 
@@ -194,20 +209,22 @@ cc_dispatch_run_output_processing <- function(ctx) {
   # Hazırlık aşamasındaki bağımsız deadline deseninin aynısı: takılan bir
   # worker çalıştırmayı "Çıktılar işleniyor" durumunda sonsuza bırakmamalı.
   cikti_zaman_asimi_sn <- cc_runtime_limit("output_process_timeout_sec", 180, istek$limits)
+  # Kalıcı şeritte kabul beklemesi yürütme süresinden ayrı, aynı bütçeyle sınırlıdır.
+  cikti_kuyruk_sn <- cikti_zaman_asimi_sn
   cikti_zaman_asimi_durumu <- new.env(parent = emptyenv())
   cikti_zaman_asimi_durumu$pending <- TRUE
   # `expired`: deadline dolduktan SONRA geç çözülen bir promise, `changed_files`
   # boşken hata bulamıyor ve `cc_is_active_run()` hâlâ TRUE döndüğü için daha
   # önce `failed` olarak kalıcılaştırılmış çalıştırmayı `completed` yazabiliyordu.
   cikti_zaman_asimi_durumu$expired <- FALSE
-  cikti_zaman_asimi_durumu$cancel <- later::later(function() {
+  cikti_zaman_asimi_durumu$cancel <- later::later(function() shiny::isolate({
+    ctx$rv <- run_ref$rv
     if (!isTRUE(cikti_zaman_asimi_durumu$pending)) return(invisible(NULL))
     cikti_zaman_asimi_durumu$pending <- FALSE
     cikti_zaman_asimi_durumu$expired <- TRUE
 
     # Bu çalıştırmanın KENDİ koruma dosyaları her durumda bırakılır.
     unlink(istek$active_guard, force = TRUE)
-    unlink(gonderilen_lease, force = TRUE)
 
     # Daha yeni bir çalıştırma devraldıysa raporlama yapılmaz.
     if (!cc_is_active_run(ctx$rv, gonderilen_request_id)) return(invisible(NULL))
@@ -216,9 +233,9 @@ cc_dispatch_run_output_processing <- function(ctx) {
     # oturumda da başarısız olarak kalıcılaşmalıdır. Raporlayıcı websocket
     # gönderimlerini kendi içinde güvenli hâle getirir.
     cc_report_output_processing_failure(ctx, simpleError(sprintf(
-      "Çıktı işleme zaman aşımına uğradı (%.0f saniye).", cikti_zaman_asimi_sn
+      "Çıktı işleme zaman aşımına uğradı (%.0f saniye).", cikti_zaman_asimi_sn + cikti_kuyruk_sn
     )))
-  }, delay = cikti_zaman_asimi_sn)
+  }), delay = cikti_zaman_asimi_sn + cikti_kuyruk_sn)
 
   # `later` görevi yalnızca pending bayrağıyla etkisizleştirilirse closure
   # (ctx/istek/oturum) tüm süre boyunca canlı kalır; gerçek iptal edici çağrılır.
@@ -233,12 +250,17 @@ cc_dispatch_run_output_processing <- function(ctx) {
   # tracked_future_promise() gönderim anında SENKRON hata verebilir (worker
   # planı yok, serileştirme hatası). Yakalanmazsa çalıştırma 180 saniye boyunca
   # "Çıktılar işleniyor" durumunda asılı kalırdı.
+  hazir <- TRUE
+  ctx$env$output_worker_pending <- TRUE
   gonderim <- tryCatch(
   tracked_future_promise(
     task_fn = function() {
       cc_process_run_outputs(istek)
     },
     task_type = "claude_code_run_outputs",
+    execution_timeout = cikti_zaman_asimi_sn,
+    queue_timeout = cikti_kuyruk_sn,
+    cancel_check = cc_output_worker_current(ctx$rv, gonderilen_request_id, cikti_zaman_asimi_durumu),
     session_token = ctx$session$token,
     dependency_mode = "explicit",
     globals = c(
@@ -248,6 +270,8 @@ cc_dispatch_run_output_processing <- function(ctx) {
     packages = c("tools", "utils")
   ) |>
     promises::then(function(outputs) {
+      ctx$rv <- run_ref$rv
+      ctx$env$output_worker_pending <- FALSE
       cikti_deadline_iptal()
       if (isTRUE(cikti_zaman_asimi_durumu$expired) ||
           !cc_is_active_run(ctx$rv, gonderilen_request_id)) {
@@ -295,14 +319,18 @@ cc_dispatch_run_output_processing <- function(ctx) {
         return(NULL)
       }
 
-      # Kapanmış oturumda `sendCustomMessage()` hata verir; koruma olmadan
-      # tamamlanmış çalıştırma `catch()` dalına düşüp `failed` kalıcılaşıyordu.
-      try(cc_finish_streaming_run(ctx, outputs), silent = TRUE)
+      # Gönderim hataları sonlandırıcı içinde korunur; kalan bir istisna yutulmaz,
+      # çalıştırma terminale ulaşmadıysa başarısız olarak kapatılır.
+      bitis <- tryCatch({ cc_finish_streaming_run(ctx, outputs); NULL }, error = identity)
       unlink(istek$active_guard, force = TRUE)
       unlink(gonderilen_lease, force = TRUE)
+      if (!is.null(bitis) && cc_is_active_run(ctx$rv, gonderilen_request_id))
+        cc_report_output_processing_failure(ctx, bitis)
       NULL
     }) |>
     promises::catch(function(e) {
+      ctx$rv <- run_ref$rv
+      ctx$env$output_worker_pending <- FALSE
       cikti_deadline_iptal()
       unlink(istek$active_guard, force = TRUE)
       unlink(gonderilen_lease, force = TRUE)
@@ -324,6 +352,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
   )
 
   if (inherits(gonderim, "condition")) {
+    ctx$env$output_worker_pending <- FALSE
     cikti_deadline_iptal()
     unlink(istek$active_guard, force = TRUE)
     unlink(gonderilen_lease, force = TRUE)

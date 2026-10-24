@@ -1,6 +1,7 @@
 # ==============================================================================
 # Dosya Yolu: R/helpers_claude_code_codex_runtime_lock.R
-# Açıklama: Bilge Yolaç runtime terfi kilidinin sahiplik primitifleri.
+# Açıklama: Bilge Yolaç runtime terfi kilidinin ve çıktı yayını hedef
+#           kilidinin sahiplik primitifleri.
 #           R/helpers_claude_code_codex_runtime_fixes.R dosyasından ÖNCE
 #           yüklenmelidir; o dosya bu yardımcıları kullanır ve kendi bakım
 #           bütçesini aşmamak için primitifleri burada tutar.
@@ -55,7 +56,7 @@
   # yeniden okunur (yeni sahibin jetonunu EZMEMEK için) ve yazımdan SONRA
   # yeniden doğrulanır.
   if (!identical(.cc_codex_lock_owner_token(dizin), jeton)) return(invisible(FALSE))
-  yazildi <- try(writeLines(jeton, yol, useBytes = TRUE), silent = TRUE)
+  yazildi <- try(writeLines(c(jeton, paste0("host=", Sys.info()[["nodename"]])), yol, useBytes = TRUE), silent = TRUE)
   if (inherits(yazildi, "try-error")) return(invisible(FALSE))
   invisible(identical(.cc_codex_lock_owner_token(dizin), jeton))
 }
@@ -78,6 +79,12 @@
 # koyma protokolü, canlı bir kilidi geçici olarak kaldırıp üçüncü bir worker'ın
 # aynı kritik bölüme girmesine izin veriyordu.
 .cc_codex_reap_dir_lock <- function(lock_dir, beklenen_jeton, stale_sec = NULL) {
+  # Kendi kilidini bırakan çağrı kısa çekişmede beklemeli; aksi hâlde canlı
+  # sürecin kilidi kalıcı kalırdı. Muteks hatası "alınamadı" sayılır.
+  reclaim <- mergen_reclaim_mutex(paste0(lock_dir, ".reclaim"),
+                                  timeout = if (is.null(stale_sec)) 100 else 0)
+  if (is.null(reclaim)) return(FALSE)
+  on.exit(filelock::unlock(reclaim), add = TRUE)
   reaper <- paste0(lock_dir, ".reaper")
 
   reaper_jetonu <- paste0(Sys.getpid(), "-", basename(tempfile("ccrp")))
@@ -88,8 +95,8 @@
     # CANLI bir reaper ise kirasını tazeler ve yalnızca mtime'a bakarak
     # devralınmaz (yavaş UNC'de silme 60 sn'yi aşabilir).
     gozlenen_jeton <- .cc_codex_lock_owner_token(reaper)
-    yas <- .cc_codex_dir_lock_age(reaper)
-    if (!is.finite(yas) || yas <= .CC_CODEX_REAPER_STALE_SEC) return(FALSE)
+    if (!mergen_lock_owner_reclaimable(file.path(reaper, "owner"), gozlenen_jeton,
+                                       .CC_CODEX_REAPER_STALE_SEC, self_reclaim = TRUE)) return(FALSE)
 
     # DEVRALMA SAHİPLİK DOĞRULAMASI: yalnızca yaş denetimi yeterli değildi.
     # Yavaş bir UNC paylaşımında A süreci reaper'ı tutarken B onu bayat sayıp
@@ -97,8 +104,6 @@
     # kritik bölüme girebiliyordu. Bayat olarak GÖZLENEN jeton hâlâ yerinde
     # olmalı ve yaş yeniden doğrulanmalıdır.
     if (!identical(.cc_codex_lock_owner_token(reaper), gozlenen_jeton)) return(FALSE)
-    yas <- .cc_codex_dir_lock_age(reaper)
-    if (!is.finite(yas) || yas <= .CC_CODEX_REAPER_STALE_SEC) return(FALSE)
 
     # SİLME DOĞRULANIR: `unlink()` Windows/UNC'de açık tanıtıcı ya da izin
     # hatasında sessizce başarısız olabilir; doğrulanmadan yeniden oluşturmaya
@@ -108,7 +113,7 @@
     alindi <- isTRUE(try(dir.create(reaper, showWarnings = FALSE), silent = TRUE))
     if (!alindi) return(FALSE)
   }
-  try(writeLines(reaper_jetonu, file.path(reaper, "owner"), useBytes = TRUE), silent = TRUE)
+  try(writeLines(c(reaper_jetonu, paste0("host=", Sys.info()[["nodename"]])), file.path(reaper, "owner"), useBytes = TRUE), silent = TRUE)
   # Dayanıklı marker reaper'ı TUTMANIN ön koşuludur: doğrulanamazsa yıkıcı işlem
   # hiç yapılmaz ve dizin hemen bırakılır.
   if (!identical(.cc_codex_lock_owner_token(reaper), reaper_jetonu)) {
@@ -131,8 +136,8 @@
     # İşaretsiz (NA jetonlu) kilit yalnızca YAŞ yeniden doğrulanırsa kaldırılır;
     # yeni oluşturulmuş ya da kirasını TAZELEYEN bir kilit korunur.
     .cc_codex_touch_dir_lock(reaper, reaper_jetonu)
-    yas <- .cc_codex_dir_lock_age(lock_dir)
-    if (!is.finite(yas) || yas <= stale_sec) return(FALSE)
+    if (!mergen_lock_owner_reclaimable(file.path(lock_dir, "owner"), beklenen_jeton, stale_sec,
+                                       self_reclaim = TRUE)) return(FALSE)
   } else if (is.na(beklenen_jeton)) {
     return(FALSE)
   }
@@ -164,7 +169,7 @@
     olustu <- try(dir.create(lock_dir, showWarnings = FALSE), silent = TRUE)
     if (!inherits(olustu, "try-error") && isTRUE(olustu)) {
       try(
-        writeLines(jeton, file.path(lock_dir, "owner"), useBytes = TRUE),
+        writeLines(c(jeton, paste0("host=", Sys.info()[["nodename"]])), file.path(lock_dir, "owner"), useBytes = TRUE),
         silent = TRUE
       )
       # Dayanıklı marker kilidi tutmanın ÖN KOŞULUDUR: yazma sessizce
@@ -181,9 +186,8 @@
     # Çöken bir süreçten kalan kilit dizini yaşına göre kırılır; aksi hâlde her
     # sonraki çalıştırma kalıcı olarak fail-closed duruma düşerdi. Yaş, sahibin
     # TAZELEDİĞİ marker üzerinden ölçülür: canlı bir sahip devralınmaz.
-    yas <- .cc_codex_dir_lock_age(lock_dir)
-
-    if (is.finite(yas) && yas > stale_sec) {
+    if (mergen_lock_owner_reclaimable(file.path(lock_dir, "owner"),
+                                      .cc_codex_lock_owner_token(lock_dir), stale_sec, self_reclaim = TRUE)) {
       # BAYAT KİLİDİ DEVRALMA reaper üzerinden serileştirilir ve kilit dizini
       # YERİNDEN OYNATILMAZ. Silme yalnızca bayat olarak gözlenen jeton hâlâ
       # yerindeyse ve yaş yeniden doğrulanırsa yapılır; bu sırada kilidi almış
@@ -200,4 +204,89 @@
   }
 
   ""
+}
+
+# YAYIN İŞLEMİ: hedef başına tek yazar (rezervasyon). Yedek ve staging adları
+# yazarın rezervasyon jetonunu taşır; önek tek başına sahiplik kanıtı değildir.
+# Sert ölümden kalan işlem yalnız bayat rezervasyonu devralan yazar tarafından,
+# o rezervasyonun jetonuyla adlandırılmış yapıtlar üzerinden kurtarılır.
+.cc_output_txn_paths <- function(dest, jeton = "", legacy = FALSE) {
+  parent <- dirname(dest)
+  base <- basename(dest)
+  key_base <- if (.Platform$OS.type == "windows") tolower(base) else base
+  key <- digest::digest(key_base, algo = "xxhash64", serialize = FALSE)
+  lock <- file.path(parent, paste0(".cc-output-lock-", base))
+  if (nchar(base, type = "bytes") > 200 && !dir.exists(lock))
+    lock <- file.path(parent, paste0(".cc-output-lockhash-", key))
+  suffix <- if (legacy) base else key
+  list(lock = lock,
+       backup = file.path(parent, paste0(".cc-output-backup-", jeton, "-", suffix)),
+       staging = file.path(parent, paste0(".cc-output-stage-", jeton, "-", suffix)))
+}
+
+.cc_output_dest_lock <- function(dest, wait_sec = 10) {
+  kilit <- .cc_output_txn_paths(dest)$lock
+  jeton <- mergen_reservation_token("ccout")
+  acquired <- function() {
+    if (startsWith(basename(kilit), ".cc-output-lockhash-") &&
+        inherits(try(writeLines(basename(dest), file.path(kilit, "destination"), useBytes = TRUE),
+                     silent = TRUE), "try-error")) {
+      mergen_reservation_release(kilit, jeton)
+      return(structure("", recovery_failed = TRUE))
+    }
+    jeton
+  }
+  bitis <- Sys.time() + wait_sec
+  repeat {
+    if (isTRUE(mergen_reservation_acquire(kilit, jeton))) return(acquired())
+    kurtarma_hatasi <- FALSE
+    if (isTRUE(mergen_reservation_takeover(kilit, jeton, stale_sec = 60,
+      before_remove = function(onceki) {
+        ok <- isTRUE(.cc_output_recover_dest(dest, onceki))
+        kurtarma_hatasi <<- !ok
+        ok
+      }))) return(acquired())
+    if (kurtarma_hatasi) return(structure("", recovery_failed = TRUE))
+    if (Sys.time() >= bitis) return("")
+    Sys.sleep(0.1)
+  }
+}
+
+# Devralınan bayat rezervasyonun yarım işlemini çözer: hedef yoksa yedek geri
+# konur; hedef varsa önceki sürüm silinmez, jetonlu benzersiz adla saklanır.
+.cc_output_recover_dest <- function(dest, jeton) {
+  jeton <- as.character(jeton %||% "")[1]
+  if (is.na(jeton) || !grepl("^[0-9]+-ccout[0-9a-f]+$", jeton)) return(TRUE)
+  for (legacy in c(FALSE, TRUE)) {
+    yollar <- .cc_output_txn_paths(dest, jeton, legacy = legacy)
+    if (isTRUE(file.exists(yollar$backup))) {
+      hedef <- if (isTRUE(file.exists(dest))) file.path(dirname(dest), paste0(
+        ".cc-output-recovered-", jeton, "-", digest::digest(basename(dest), algo = "xxhash64", serialize = FALSE))) else dest
+      if (!isTRUE(file.exists(hedef))) file.rename(yollar$backup, hedef)
+    }
+    unlink(yollar$staging, force = TRUE)
+    if (isTRUE(file.exists(yollar$backup)) || isTRUE(file.exists(yollar$staging))) return(FALSE)
+  }
+  TRUE
+}
+
+# Plan dışında kalmış hedeflerin bayat rezervasyonları da aynı kuralla kurtarılır;
+# canlı ya da sahipliği kanıtlanamayan rezervasyona dokunulmaz.
+.cc_output_recover_parent <- function(parent) {
+  kilitler <- suppressWarnings(list.files(parent, pattern = "^\\.cc-output-lock(hash)?-",
+                                          all.files = TRUE, full.names = TRUE))
+  kilitler <- kilitler[dir.exists(kilitler) & !grepl("\\.q-q[0-9a-f]+$", kilitler)]
+  for (kilit in kilitler) {
+    base <- if (startsWith(basename(kilit), ".cc-output-lockhash-")) {
+      suppressWarnings(tryCatch(readLines(file.path(kilit, "destination"), n = 1L, warn = FALSE),
+                                error = function(e) character()))
+    } else sub("^\\.cc-output-lock-", "", basename(kilit))
+    if (length(base) != 1L || is.na(base) || !nzchar(base) ||
+        !identical(basename(base), base) || base %in% c(".", "..")) next
+    dest <- file.path(parent, base)
+    if (!identical(.cc_output_txn_paths(dest)$lock, kilit)) next
+    jeton <- .cc_output_dest_lock(dest, wait_sec = 0)
+    if (nzchar(jeton)) mergen_reservation_release(kilit, jeton)
+  }
+  invisible(NULL)
 }

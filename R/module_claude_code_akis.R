@@ -119,7 +119,9 @@ create_akis_yardimcilari <- function(session, ns, rv) {
   # --- Akış sonlandırma ---
   # Akış tamamlandığında, hata oluştuğunda veya durdurulduğunda çağrılır.
   # UI öğelerini (düğmeler, düşünme animasyonu, durum çubuğu) günceller.
+  run_ref <- cc_run_state_reference(rv)
   finalize_streaming <- function(durum_metin, durum_ikon, durum_renk, sure = NULL, request_id = NULL) {
+    rv <- run_ref$rv
     if (!cc_is_active_run(rv, request_id)) {
       return(invisible(FALSE))
     }
@@ -132,13 +134,22 @@ create_akis_yardimcilari <- function(session, ns, rv) {
 
     # Durdurma, zaman aşımı ve süreç başlatma hatası dahil bütün terminal
     # yollar, stream ortamı reaktif durumdan çıkarılmadan lease'i bırakır.
-    cc_release_runtime_lease(rv$stream_env$runtime_lease %||% "")
+    lease <- rv$stream_env$runtime_lease %||% ""
+    if (!isTRUE(rv$stream_env$output_worker_pending)) {
+      if (is.null(rv$active_process)) cc_release_runtime_lease(lease) else
+        mergen_retire_process(rv$active_process, function() cc_release_runtime_lease(lease))
+    }
+    if (is.function(session$isClosed) && isTRUE(session$isClosed()) && !is.null(rv$process_poll_observer)) {
+      rv$process_poll_observer$destroy()
+      rv$process_poll_observer <- NULL
+    }
 
     rv$is_running <- FALSE
     rv$active_process <- NULL
     rv$poll_state <- NULL
     rv$stream_env <- NULL
     rv$active_request_id <- NULL
+    if (is.function(session$isClosed) && isTRUE(session$isClosed())) return(invisible(TRUE))
 
     # Düğmeleri güncelle
     session$sendCustomMessage(

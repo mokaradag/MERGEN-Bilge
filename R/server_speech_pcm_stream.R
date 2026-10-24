@@ -43,10 +43,13 @@ mergen_speech_pcm_stream_cancel <- function(session, stream_id) {
 #'   bittiğinde çağrılan isteğe bağlı sıfır argümanlı geri çağrı (tamponlu
 #'   hatta düşme). En az bir bayt gönderildiyse ÇAĞRILMAZ; kısmen oynatılmış
 #'   sesin üzerine tamponlu hat ikinci kez başlayıp çakışmasın diye.
+#' @param cancel_check İsteğe bağlı geçerlilik yüklemi; FALSE olunca akış
+#'   iptal edilir ve bayat istek sesi oturuma gönderilmez.
 #' @return TRUE akış başlatıldıysa; FALSE (çağıran tamponlu hatta düşebilir).
 mergen_speech_pcm_stream_start <- function(session, persona_id, text,
                                            message_id = NULL,
-                                           on_stream_failed = NULL) {
+                                           on_stream_failed = NULL,
+                                           cancel_check = NULL) {
   if (!identical(mergen_voxcpm2_streaming_mode(), "chunked_pcm")) return(FALSE)
 
   text <- tryCatch(as.character(text)[1], error = function(e) "")
@@ -105,6 +108,8 @@ mergen_speech_pcm_stream_start <- function(session, persona_id, text,
       )
     },
     task_type = "tts",
+    cancel_check = function() !isTRUE(rec$cancelled) &&
+      (!is.function(cancel_check) || isTRUE(tryCatch(cancel_check(), error = function(e) FALSE))),
     session_token = session$token,
     meta = list(purpose = "voxcpm2_pcm_stream")
   ) %...>% (function(res) {
@@ -148,6 +153,8 @@ mergen_speech_pcm_stream_start <- function(session, persona_id, text,
   }
 
   pump <- function() {
+    if (is.function(cancel_check) && !isTRUE(tryCatch(cancel_check(), error = function(e) FALSE)))
+      rec$cancelled <- TRUE
     if (isTRUE(rec$cancelled)) { finish("cancelled"); return(invisible(NULL)) }
 
     size <- suppressWarnings(file.info(out_path)$size)

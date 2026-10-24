@@ -516,6 +516,9 @@ test_that("production true streaming abort path remains wired to cleanup and res
     "R",
     "server_handler_true_streaming.R"
   )
+  guard_r <- .e2e_quick_read_ascii("R", "helpers_async_result_guard.R")
+  .e2e_quick_expect_tokens(guard_r, c("active_request_id(NULL)", "shiny::isolate(reset_fn())"),
+    "ortak istek temizliği eksik:")
   chat_runtime_r <- .e2e_quick_read_ascii(
     "R",
     "helpers_chat_runtime.R"
@@ -524,13 +527,14 @@ test_that("production true streaming abort path remains wired to cleanup and res
   .e2e_quick_expect_tokens(
     true_streaming_r,
     c(
+      "cleanup_streaming_state <- mergen_stream_bind_cleanup(ctx, stream_env)",
       "finalize_error_or_abort <- function(result)",
       "abort_plan <- mergen_stream_abort_cleanup_plan(",
       "identical(abort_plan$action, \"finalize_partial\")",
       "isTRUE(abort_plan$track_error)",
       "remove_placeholder_message()",
       "cleanup_streaming_state()",
-      "ctx$reset_chat_state_fn()"
+      "on.exit(cleanup_streaming_state(), add = TRUE)"
     ),
     "server_handler_true_streaming.R abort cleanup/reset sözleşmesi eksik:"
   )
