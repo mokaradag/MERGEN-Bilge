@@ -55,10 +55,7 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
   var_mi_guvenli <- function(p) mergen_promote_probe(var_mi, p)
 
   # Atomik, üzerine-yazmayan terfi.
-  bagli <- isTRUE(tryCatch(
-    suppressWarnings(file.link(staging, hedef)),
-    error = function(e) FALSE
-  ))
+  bagli <- isTRUE(try(suppressWarnings(file.link(staging, hedef)), silent = TRUE))
   if (bagli) {
     .mergen_promote_drop_staging(staging, var_mi_guvenli)
     return(list(
@@ -71,8 +68,8 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
   # Bağlantı kurulamadıysa mevcut hedef yabancıdır.
   if (var_mi_guvenli(hedef)) return(list(ok = FALSE, yabanci = TRUE, promoted = FALSE))
 
-  # Bağlantısız dosya sisteminde hedef adı rezervasyonla sahiplenilir.
-  rezerv <- paste0(hedef, MERGEN_PROMOTE_RESERVATION_SUFFIX)
+  # Geçerli eski rezervasyon adları korunur; taşan bileşen ortak yardımcıyla kısalır.
+  rezerv <- mergen_upload_artifact_path(hedef, MERGEN_PROMOTE_RESERVATION_SUFFIX, component_only = TRUE)
   jeton <- if (exists("mergen_reservation_token", mode = "function", inherits = TRUE)) {
     mergen_reservation_token("uprsv")
   } else {

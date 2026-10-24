@@ -1622,7 +1622,7 @@ test_that("terfi sahipliği kaybolduktan sonra beliren yabancı hedef silinmez",
   promote <- env$mergen_promote_staged_file
   env$mergen_promote_staged_file <- function(...) {
     result <- promote(...)
-    writeLines("başka yüklemenin dosyası", target)
+    writeLines(enc2utf8("başka yüklemenin dosyası"), target, useBytes = TRUE)
     result
   }
   expect_error(env$mergen_copy_upload_staged(source, target, root), "kalıcı ada taşınamadı")
@@ -1660,8 +1660,15 @@ test_that("uzun hedef adı sahiplik ve geçici marker sınırını aşmaz", {
   root <- withr::local_tempdir()
   source <- withr::local_tempfile()
   writeLines("uzun ad", source)
+  long_target <- file.path(root, paste0(strrep("a", 250), ".txt"))
+  stage <- env$mergen_upload_staging_path(long_target)
+  expect_lt(nchar(basename(stage), type = "bytes"), 80L)
+  expect_identical(dirname(stage), dirname(long_target))
+  expect_false(identical(stage, env$mergen_upload_staging_path(sub("a.txt$", "b.txt", long_target))))
+  marker <- env$file_ingestion_owner_path(long_target)
+  expect_lt(nchar(basename(paste0(marker, ".identity.", Sys.getpid(), ".tmp")), type = "bytes"), 255L)
   target <- file.path(root, paste0(strrep("a", 220), ".txt"))
-  stage <- paste0(target, ".mergen-part")
+  stage <- env$mergen_upload_staging_path(target)
   tx <- list(id = "uzun-ad", journal = withr::local_tempfile())
   env$file_ingestion_begin_copy(target, stage, source, tx)
   expect_true(file.copy(source, stage))
@@ -1676,6 +1683,142 @@ test_that("uzun hedef adı sahiplik ve geçici marker sınırını aşmaz", {
   expect_false(file.exists(target))
   expect_false(file.exists(marker))
   expect_false(file.exists(paste0(marker, ".identity")))
+})
+
+test_that("kısa staging uzun ad ve ebeveynde baytları korur; olanaksız ad erken reddedilir", {
+  env <- .ingestionEnv()
+  root <- withr::local_tempdir()
+  source <- withr::local_tempfile()
+  bytes <- as.raw(c(0, 255, 195, 40, 10))
+  writeBin(bytes, source)
+  for (name in c("kisa.bin", paste0(strrep("a", 250), ".bin"))) {
+    target <- file.path(root, name)
+    expect_lt(nchar(basename(env$mergen_upload_staging_path(target)), type = "bytes"), 255L)
+  }
+  width <- min(110L, 190L - nchar(normalizePath(root, winslash = "/")) - 5L)
+  for (name in c("kisa.bin", paste0(strrep("ö", width), ".bin"))) {
+    target <- file.path(root, name)
+    expect_identical(env$mergen_copy_upload_staged(source, target, root), target)
+    expect_identical(readBin(target, "raw", 100L), bytes)
+    expect_false(file.exists(env$mergen_upload_staging_path(target)))
+  }
+  before <- list.files(root, all.files = TRUE)
+  tx <- list(id = "unsupported", journal = withr::local_tempfile())
+  expect_error(env$mergen_copy_upload_staged(source, file.path(root, strrep("x", 256)), root,
+    transaction = tx), "dosya sistemi sınırını")
+  expect_identical(list.files(root, all.files = TRUE), before)
+  expect_false(file.exists(tx$journal))
+  env$.Platform <- list(OS.type = "windows")
+  expect_error(env$mergen_upload_staging_path(file.path(root, paste0(strrep("a", 254), "ö"))), NA)
+  expect_error(env$mergen_upload_staging_path(file.path(root, strrep(intToUtf8(0x1f600), 128))),
+    "dosya sistemi sınırını")
+  long <- file.path(root, paste0(strrep("a", 220), ".txt"))
+  expect_identical(basename(env$mergen_upload_staging_path(long)),
+    basename(env$mergen_upload_staging_path(toupper(long))))
+  native <- iconv(paste0(strrep("Ö", 100), ".txt"), from = "UTF-8", to = "latin1")
+  expected <- basename(env$mergen_upload_staging_path(enc2utf8(native)))
+  env$tolower <- function(value) {
+    expect_identical(Encoding(value), "UTF-8")
+    base::tolower(value)
+  }
+  expect_identical(basename(env$mergen_upload_staging_path(native)), expected)
+  rm("tolower", envir = env)
+  encoded_parent <- iconv(paste0("//server/share/", strrep("Ö", 90)), "UTF-8", "latin1")
+  alias <- file.path(encoded_parent, paste0(strrep("n", 40), ".txt"))
+  expect_identical(basename(env$mergen_upload_staging_path(alias)),
+    basename(env$mergen_upload_staging_path(enc2utf8(alias))))
+  parent <- paste0("//server/share/", strrep("p", 185))
+  stage <- env$mergen_upload_staging_path(file.path(parent, paste0(strrep("n", 40), ".txt")))
+  expect_identical(env$normalize_for_path_compare(dirname(stage)), env$normalize_for_path_compare(parent))
+  expect_true(startsWith(chartr("\\", "/", stage), "//server/share/"))
+  expect_lte(nchar(stage, type = "bytes"), 240L)
+  deep <- paste0("//server/share/", strrep("p", 210))
+  for (name in c("a.txt", paste0(strrep("Ö", 17), ".txt"))) {
+    target <- file.path(deep, name)
+    original <- paste0(target, env$MERGEN_UPLOAD_STAGING_SUFFIX)
+    stage <- env$mergen_upload_staging_path(target)
+    expect_lte(env$mergen_artifact_path_units(original), 260L)
+    expect_identical(stage, original)
+    expect_lte(env$mergen_artifact_path_units(stage), env$mergen_artifact_path_units(original))
+  }
+})
+
+test_that("eski staging kanıtsız silinmez; güncel staging devri fail-closed kalır", {
+  env <- .ingestionEnv()
+  root <- withr::local_tempdir()
+  source <- withr::local_tempfile()
+  writeLines("kaynak", source)
+  width <- min(110L, 190L - nchar(normalizePath(root, winslash = "/")) - 5L)
+  target <- file.path(root, paste0(strrep("ö", width), ".txt"))
+  old_stage <- paste0(target, ".mergen-part")
+  stage <- env$mergen_upload_staging_path(target)
+  expect_false(identical(old_stage, stage))
+  tx <- list(id = "new-stage", journal = withr::local_tempfile())
+  marker <- env$file_ingestion_owner_path(target)
+  env$file_ingestion_write_owner(list(id = "old-stage", staging = old_stage), marker)
+  writeLines("eski", old_stage)
+  env$file_ingestion_owner_reclaimable <- function(...) FALSE
+  expect_error(env$file_ingestion_begin_copy(target, stage, source, tx), "başka bir işlem")
+  expect_true(file.exists(old_stage))
+  env$file_ingestion_owner_reclaimable <- function(...) TRUE
+  expect_error(env$file_ingestion_begin_copy(target, stage, source, tx), "kimliği doğrulanamadı")
+  expect_true(file.exists(old_stage))
+  expect_identical(env$file_ingestion_read_owner(target)$id, "old-stage")
+  expect_false(file.exists(tx$journal))
+  # Eski ad artık başka yüklemenin sahipliği kanıtlı kalıcı dosyasıdır.
+  writeLines(enc2utf8("başka yüklemenin dosyası"), old_stage, useBytes = TRUE)
+  other_id <- env$file_ingestion_claim_artifact(old_stage)
+  expect_error(env$file_ingestion_begin_copy(target, stage, source, tx), "kimliği doğrulanamadı")
+  expect_true(env$file_ingestion_artifact_owned(list(dest = old_stage, artifact_id = other_id)))
+  expect_identical(readLines(old_stage, encoding = "UTF-8"), "başka yüklemenin dosyası")
+  # Güncel iç staging adı için önceki, sahiplikli temizleme yolu korunur.
+  env$file_ingestion_write_owner(list(id = "old-stage", staging = stage), marker)
+  writeLines("yarım", stage)
+  env$unlink <- function(...) 1L
+  expect_error(env$file_ingestion_begin_copy(target, stage, source, tx), "staging temizlenemedi")
+  expect_identical(env$file_ingestion_read_owner(target)$id, "old-stage")
+  expect_false(file.exists(tx$journal))
+  env$unlink <- base::unlink
+  env$file_ingestion_begin_copy(target, stage, source, tx)
+  expect_false(file.exists(stage))
+  expect_true(env$file_ingestion_artifact_owned(list(dest = old_stage, artifact_id = other_id)))
+  expect_identical(env$file_ingestion_read_owner(target)$staging, stage)
+  # Marker içindeki keyfi bir yol hiçbir zaman silme yetkisi değildir.
+  foreign <- file.path(root, "kullanici.txt")
+  writeLines("koru", foreign)
+  env$file_ingestion_write_owner(list(id = "foreign", staging = foreign), marker)
+  env$file_ingestion_begin_copy(target, stage, source, tx)
+  expect_true(file.exists(foreign))
+})
+
+test_that("uzun kalıcı ad bağlantısız terfide kısa rezervasyonla aynen korunur", {
+  env <- .ingestionEnv()
+  root <- withr::local_tempdir()
+  source <- withr::local_tempfile()
+  bytes <- as.raw(c(0, 255, 195, 40))
+  writeBin(bytes, source)
+  env$file.link <- function(...) FALSE
+  for (width in c(245L, 255L)) {
+    target <- file.path(root, strrep("a", width))
+    reservation <- env$mergen_upload_artifact_path(target, env$MERGEN_PROMOTE_RESERVATION_SUFFIX,
+      component_only = TRUE)
+    expect_lte(env$mergen_artifact_path_units(basename(reservation)), 255L)
+    tx <- list(id = paste0("long-", width), journal = withr::local_tempfile())
+    expect_identical(env$mergen_copy_upload_staged(source, target, root, transaction = tx), target)
+    expect_identical(readBin(target, "raw", 100L), bytes)
+    expect_true(env$file_ingestion_artifact_owned(list(dest = target, artifact_id = tx$id)))
+    expect_false(dir.exists(reservation))
+    result <- list(ok = TRUE, dest = target, source_path = source, artifact_id = tx$id, name = basename(target))
+    env$file_ingestion_discard_results(list(result), "42")
+    expect_false(file.exists(target))
+    expect_false(file.exists(env$mergen_upload_staging_path(target)))
+    expect_false(file.exists(env$file_ingestion_owner_path(target)))
+  }
+  for (name in c("short.txt", strrep("a", 244))) {
+    short <- file.path(root, name)
+    expect_identical(env$mergen_upload_artifact_path(short, env$MERGEN_PROMOTE_RESERVATION_SUFFIX,
+      component_only = TRUE), paste0(short, env$MERGEN_PROMOTE_RESERVATION_SUFFIX))
+  }
 })
 
 test_that("reddedilen kardeşin temizliği tamamlanana dek günlükler ve başarılı commit korunur", {

@@ -563,6 +563,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
   "cc_snapshot_run_output_area", "cc_filter_download_candidates",
   "cc_plan_output_sync", "cc_apply_output_sync_plan", "cc_process_run_outputs",
   ".cc_output_txn_paths", ".cc_output_dest_lock", ".cc_output_recover_dest", ".cc_output_recover_parent",
+  ".cc_output_name_variants", ".cc_output_recovery_dest",
   "mergen_reservation_token", "mergen_reservation_acquire", "mergen_reservation_takeover",
   "mergen_reservation_release", "mergen_reservation_owner", ".mergen_reservation_marker",
   "mergen_reservation_touch",

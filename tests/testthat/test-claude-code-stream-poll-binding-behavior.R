@@ -367,6 +367,10 @@ testthat::test_that("poll bilinmeyen süreç ölümünü kanıt saymaz ama Stop'
 
 testthat::test_that("kapanan modülün CLI çıktıları reaktif duruma veya UI'a erişmeden tamamlanır", {
   env <- .csp_env()
+  # Shiny 1.8 zamanlayıcısı later kuyruğundan ayrıdır; duvar saati beklenmez.
+  clock <- shiny::MockShinySession$new()
+  withr::defer(clock$close())
+  testthat::local_mocked_bindings(scheduleTask = clock$.scheduleTask, .package = "shiny")
   source(file.path(resolve_repo_root_for_tests(), "R", "module_claude_code_akis.R"),
          encoding = "UTF-8", local = env)
   # Oturum sonu ayrımı tek sahipte (çalışma tezgâhı yaşam döngüsü) yapılır.
@@ -375,10 +379,25 @@ testthat::test_that("kapanan modülün CLI çıktıları reaktif duruma veya UI'
   proc <- .csp_fake_proc(alive = TRUE)
   sp <- .csp_stream_env(request_id = "closed")
   rec <- new.env(parent = emptyenv())
-  rec$ctx <- NULL; rec$ui <- 0L; rec$released <- 0L
+  rec$ctx <- NULL; rec$ui <- 0L; rec$released <- 0L; rec$dispatched <- 0L
+  rec$detached <- FALSE; rec$reactive_access <- 0L
+  rv_get <- get("$.reactivevalues", asNamespace("shiny"))
+  rv_set <- get("$<-.reactivevalues", asNamespace("shiny"))
+  record_access <- function(x) {
+    if (isTRUE(rec$detached) && identical(x, rec$reactive))
+      rec$reactive_access <- rec$reactive_access + 1L
+  }
+  testthat::local_mocked_bindings(
+    `$.reactivevalues` = function(x, name) { record_access(x); rv_get(x, name) },
+    `$<-.reactivevalues` = function(x, name, value) { record_access(x); rv_set(x, name, value) },
+    .package = "shiny")
+  ui_call <- function(...) { rec$ui <- rec$ui + 1L }
+  testthat::local_mocked_bindings(enable = ui_call, disable = ui_call,
+    show = ui_call, hide = ui_call, .package = "shinyjs")
   env$cc_release_runtime_lease <- function(...) { rec$released <- rec$released + 1L; TRUE }
   env$parse_streaming_chunk <- function(line) list(tip = "text_delta", icerik = line)
   env$cc_dispatch_run_output_processing <- function(ctx) {
+    rec$dispatched <- rec$dispatched + 1L
     rec$ctx <- ctx
     ctx$finalize_streaming("Tamamlandı", "check", "green", request_id = sp$request_id)
   }
@@ -387,6 +406,9 @@ testthat::test_that("kapanan modülün CLI çıktıları reaktif duruma veya UI'
     rv <- shiny::reactiveValues(is_running = TRUE, active_request_id = sp$request_id,
       active_process = proc, stream_env = sp,
       run_owner_guard = env$mergen_session_owner_guard(session))
+    rec$reactive <- rv
+    root_session <- .subset2(session, "parent")
+    root_session$sendCustomMessage <- ui_call
     rec$ref <- cc_run_state_reference(rv)
     api <- env$create_akis_yardimcilari(session, session$ns, rv)
     env$cc_bind_claude_code_stream_polling(input, session, session$ns, rv,
@@ -394,27 +416,43 @@ testthat::test_that("kapanan modülün CLI çıktıları reaktif duruma veya UI'
     env$cc_bind_workbench_owner_lifecycle(session, session$ns, rv, list(next_id = function() NULL))
     invisible(NULL)
   })
-  shiny::testServer(srv, { session$flushReact() })
+  shiny::testServer(srv, {
+    session$flushReact()
+    rec$observer <- rec$ref$rv$process_poll_observer
+    session$close()
+    rec$detached <- TRUE
+    expect_true(is.environment(rec$ref$rv))
+    expect_false(shiny::is.reactivevalues(rec$ref$rv))
+    expect_true(rec$ref$rv$run_owner_guard())
+    proc$is_alive <- function() FALSE
+    proc$read_output_lines <- function() "first line"
+    proc$read_all_output <- function() "last line"
+    clock$elapse(200)
+  })
   expect_true(is.environment(rec$ref$rv))
   expect_false(shiny::is.reactivevalues(rec$ref$rv))
   expect_true(rec$ref$rv$run_owner_guard())
-  observer <- rec$ref$rv$process_poll_observer
+  observer <- rec$observer
   withr::defer(observer$destroy())
-  proc$is_alive <- function() FALSE
-  proc$read_output_lines <- function() "first line"
-  proc$read_all_output <- function() "last line"
-  deadline <- Sys.time() + 2
-  while (is.null(rec$ctx) && Sys.time() < deadline) {
-    later::run_now(0.05)
-    shiny:::flushReact()
-  }
+  clock$elapse(400)
   expect_false(is.null(rec$ctx))
   expect_identical(sp$tum_satirlar, c("first line", "last line"))
   expect_identical(rec$ui, 0L)
   expect_identical(rec$released, 1L)
+  expect_identical(rec$dispatched, 1L)
   expect_false(rec$ref$rv$is_running)
   expect_null(rec$ref$rv$active_process)
   expect_null(rec$ref$rv$process_poll_observer)
+  expect_identical(rec$reactive_access, 0L)
+  # Eski sonlandırıcı daha yeni çalıştırmanın durumuna ve kirasına dokunamaz.
+  rec$ref$rv$active_request_id <- "newer"
+  rec$ref$rv$is_running <- TRUE
+  rec$ref$rv$active_process <- proc
+  expect_false(rec$ctx$finalize_streaming("Tamamlandı", "check", "green", request_id = sp$request_id))
+  expect_true(rec$ref$rv$is_running)
+  expect_identical(rec$ref$rv$active_process, proc)
+  expect_identical(rec$released, 1L)
+  expect_identical(rec$ui, 0L)
 })
 
 
