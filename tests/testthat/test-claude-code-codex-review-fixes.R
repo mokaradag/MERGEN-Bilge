@@ -1027,10 +1027,13 @@ test_that("çıktı geri yüklemesi başarısızsa yedeğin rezervasyon kimliği
 
 test_that("uzun çıktı adı işlem yapıtlarının dosya adı sınırını aşmaz ve kurtarılır", {
   env <- .cc_codex_review_env()
-  dest <- file.path(withr::local_tempdir(), paste0(strrep("x", 246), ".txt"))
+  root <- withr::local_tempdir()
+  long_dest <- file.path(root, paste0(strrep("x", 246), ".txt"))
   token <- "2147483646-ccoutabcdef"
-  txn <- env$.cc_output_txn_paths(dest, token)
+  txn <- env$.cc_output_txn_paths(long_dest, token)
   expect_true(all(nchar(basename(unlist(txn)), type = "bytes") <= 255))
+  expect_false(identical(txn, env$.cc_output_txn_paths(sub("x.txt$", "y.txt", long_dest), token)))
+  dest <- long_dest
   owner <- env$.cc_output_dest_lock(dest, wait_sec = 0)
   expect_true(nzchar(owner))
   txn <- env$.cc_output_txn_paths(dest, owner)
@@ -1039,6 +1042,101 @@ test_that("uzun çıktı adı işlem yapıtlarının dosya adı sınırını aş
   expect_true(file.rename(txn$backup, env$.cc_output_txn_paths(dest, token)$backup))
   env$.cc_output_recover_parent(dirname(dest))
   expect_identical(readLines(dest), "özgün")
+  expect_false(dir.exists(txn$lock))
+  expect_false(file.exists(txn$backup))
+  expect_false(file.exists(txn$staging))
+})
+
+test_that("hash kilidinin Türkçe hedef adı UTF-8 olarak simetrik saklanır", {
+  withr::local_options(encoding = "UTF-8")
+  env <- .cc_codex_review_env()
+  dest <- file.path(withr::local_tempdir(), paste0(strrep("ö", 110), ".txt"))
+  token <- env$.cc_output_dest_lock(dest, wait_sec = 0)
+  lock <- env$.cc_output_txn_paths(dest)$lock
+  withr::defer(env$mergen_reservation_release(lock, token))
+  expect_true(nzchar(token))
+  con <- file(file.path(lock, "destination"), "rb")
+  withr::defer(close(con))
+  expect_identical(readLines(con, encoding = "UTF-8"), basename(dest))
+  env$.Platform <- list(OS.type = "windows")
+  expect_identical(env$.cc_output_txn_paths(toupper(dest))$lock,
+    file.path(dirname(toupper(dest)), basename(env$.cc_output_txn_paths(dest)$lock)))
+})
+
+test_that("çıktı kurtarma UTF-8 ve eski yerel adı yalnız kilit hash'i eşleşirse kabul eder", {
+  withr::local_options(encoding = "UTF-8")
+  for (legacy_metadata in c(FALSE, TRUE)) {
+    env <- .cc_codex_review_env()
+    env$.Platform <- list(OS.type = "windows")
+    # Üretim taramaya dirname(dest) verir; Windows tempdir'inin ters eğik çizgileri taşınmaz.
+    root <- normalizePath(withr::local_tempdir(), winslash = "/", mustWork = TRUE)
+    name <- paste0("Ö", strrep("x", 210), ".txt")
+    native <- iconv(name, "UTF-8", "latin1")
+    # Eski Windows yol işlemlerinin tek baytlı gösterimi yalnız bu ortamda korunur.
+    native_text <- function(x) iconv(enc2utf8(x), "UTF-8", "latin1")
+    env$enc2native <- native_text
+    env$basename <- function(x) {
+      result <- base::basename(x)
+      if (any(Encoding(x) == "latin1")) native_text(result) else result
+    }
+    env$tolower <- function(x) {
+      result <- base::tolower(x)
+      if (any(Encoding(x) == "latin1")) native_text(result) else result
+    }
+    env$file.path <- function(...) {
+      result <- base::file.path(...)
+      marked <- vapply(list(...), function(x) any(Encoding(x) == "latin1"), logical(1))
+      if (any(marked)) native_text(result) else result
+    }
+    dest <- env$file.path(root, native)
+    token <- "2147483646-ccoutabcdef"
+    txn <- env$.cc_output_txn_paths(dest, token)
+    expect_false(identical(txn$backup, env$.cc_output_txn_paths(enc2utf8(dest), token)$backup))
+    dir.create(txn$lock)
+    writeLines(c(token, paste0("host=", Sys.info()[["nodename"]])), file.path(txn$lock, "owner"))
+    metadata <- if (legacy_metadata) native else enc2utf8(name)
+    writeBin(charToRaw(paste0(metadata, "\n")), file.path(txn$lock, "destination"))
+    writeBin(charToRaw(enc2utf8("özgün\n")), txn$backup)
+    writeBin(charToRaw("partial"), txn$staging)
+    # Eski Windows yerel gösterimi, oturumun yerel ayarı değiştirilmeden kurulur.
+    env$readLines <- function(con, ..., encoding = "unknown") {
+      base::readLines(con, ..., encoding = if (encoding == "unknown") "latin1" else encoding)
+    }
+    restored <- file.path(root, "restored.txt")
+    env$file.rename <- function(from, to) {
+      if (identical(from, txn$backup)) {
+        expect_identical(enc2utf8(to), enc2utf8(dest))
+        base::file.rename(from, restored)
+      } else base::file.rename(from, to)
+    }
+    expect_false(is.null(env$.cc_output_recovery_dest(root, txn$lock)))
+    expect_warning(env$.cc_output_recover_parent(root), NA)
+    expect_identical(readBin(restored, "raw", 100L), charToRaw(enc2utf8("özgün\n")))
+    expect_false(dir.exists(txn$lock))
+    expect_false(file.exists(txn$backup))
+    expect_false(file.exists(txn$staging))
+  }
+})
+
+test_that("uyuşmayan veya bozuk hedef metadata'sı yabancı kilidi ve yedeği değiştirmez", {
+  env <- .cc_codex_review_env()
+  root <- withr::local_tempdir()
+  dest <- file.path(root, paste0(strrep("x", 246), ".txt"))
+  token <- "2147483646-ccoutabcdef"
+  txn <- env$.cc_output_txn_paths(dest, token)
+  dir.create(txn$lock)
+  writeLines(c(token, paste0("host=", Sys.info()[["nodename"]])), file.path(txn$lock, "owner"))
+  writeLines("koru", txn$backup)
+  writeLines("yarım", txn$staging)
+  env$file.rename <- function(...) stop("Yabancı yedeğe erişilmemeliydi.")
+  for (metadata in list(charToRaw("different.txt\n"), as.raw(c(255, 10)))) {
+    writeBin(metadata, file.path(txn$lock, "destination"))
+    expect_warning(env$.cc_output_recover_parent(root), NA)
+    expect_true(dir.exists(txn$lock))
+    expect_identical(readLines(txn$backup), "koru")
+    expect_true(file.exists(txn$staging))
+    expect_identical(env$mergen_reservation_owner(txn$lock), token)
+  }
 })
 
 test_that("çıktı kopyası kilidi tazeleyemezse kendi rezervasyonunu bırakır", {
@@ -1107,7 +1205,7 @@ test_that("çıktı yayını hedef başına tek yazarlıdır ve yarım kalan yed
   env$.cc_scan_key <- function(path) if (.Platform$OS.type == "windows") tolower(path) else path
   plan_for <- function(name, content) {
     src <- file.path(runtime, name)
-    writeLines(content, src, useBytes = TRUE)
+    writeLines(enc2utf8(content), src, useBytes = TRUE)
     list(source_workdir = source_root, output_root = runtime, skipped_approved = list(),
          items = list(list(source_path = src, dest_path = file.path(source_root, name),
                            size = file.info(src)$size)))
@@ -1122,26 +1220,26 @@ test_that("çıktı yayını hedef başına tek yazarlıdır ve yarım kalan yed
     dir.create(kilit)
     writeLines(c(jeton, paste0("host=", Sys.info()[["nodename"]])), file.path(kilit, "owner"))
     yollar <- env$.cc_output_txn_paths(hedef, jeton, legacy = legacy)
-    writeLines(ozgun, yollar$backup, useBytes = TRUE)
-    writeLines("yarım", yollar$staging, useBytes = TRUE)
+    writeLines(enc2utf8(ozgun), yollar$backup, useBytes = TRUE)
+    writeLines(enc2utf8("yarım"), yollar$staging, useBytes = TRUE)
     yollar
   }
   kullanici <- file.path(source_root, c(".cc-output-backup-rapor.txt", ".cc-output-stage-rapor.txt",
                                         ".cc-output-backup-diger2.txt"))
-  for (yol in kullanici) writeLines("kullanıcı verisi", yol, useBytes = TRUE)
+  for (yol in kullanici) writeLines(enc2utf8("kullanıcı verisi"), yol, useBytes = TRUE)
   yarim <- bayat_islem(dest, "özgün", legacy = TRUE)
   ok <- env$cc_apply_output_sync_plan(plan_for("rapor.txt", "yeni"))
   expect_true(isTRUE(ok[[1]]$success))
-  expect_identical(readLines(dest, warn = FALSE), "yeni")
+  expect_identical(readLines(dest, warn = FALSE, encoding = "UTF-8"), "yeni")
   expect_false(file.exists(yarim$backup))
   expect_false(file.exists(yarim$staging))
   # Plan dışı hedefin bayat işlemi de kanıtlı jetonla geri konur.
   diger <- file.path(source_root, "diger.txt")
   bayat_islem(diger, "diğer özgün")
   env$cc_apply_output_sync_plan(plan_for("rapor.txt", "yeniden"))
-  expect_identical(readLines(diger, warn = FALSE), "diğer özgün")
+  expect_identical(readLines(diger, warn = FALSE, encoding = "UTF-8"), "diğer özgün")
   # Sıradan dosyalar ad önekinden ötürü taşınmaz, silinmez ya da geri yüklenmez.
-  for (yol in kullanici) expect_identical(readLines(yol, warn = FALSE), "kullanıcı verisi")
+  for (yol in kullanici) expect_identical(readLines(yol, warn = FALSE, encoding = "UTF-8"), "kullanıcı verisi")
   expect_false(file.exists(file.path(source_root, "diger2.txt")))
   expect_length(list.files(source_root, pattern = "^\\.cc-output-(stage|backup|recovered)-[0-9]+-ccout",
                            all.files = TRUE), 0L)
@@ -1153,7 +1251,7 @@ test_that("çıktı yayını hedef başına tek yazarlıdır ve yarım kalan yed
   blocked <- env$cc_apply_output_sync_plan(plan_for("rapor.txt", "çakışan"))
   expect_false(isTRUE(blocked[[1]]$success))
   expect_match(blocked[[1]]$error, "kullanılıyor")
-  expect_identical(readLines(dest, warn = FALSE), "yeniden")
+  expect_identical(readLines(dest, warn = FALSE, encoding = "UTF-8"), "yeniden")
   env$mergen_reservation_release(txn$lock, jeton)
 })
 
@@ -1376,6 +1474,9 @@ test_that("açık çıktı paketi rezervasyon işlemini temiz ortamda çalışt�
   dest <- file.path(withr::local_tempdir(), "rapor.txt")
   token <- worker$.cc_output_dest_lock(dest)
   expect_true(is.character(token) && nzchar(token))
+  expect_identical(worker$.cc_output_recovery_dest(dirname(dest), worker$.cc_output_txn_paths(dest)$lock),
+    file.path(dirname(dest), basename(dest)))
+  expect_true(worker$.cc_output_recover_dest(dest, token))
   expect_true(worker$mergen_reservation_release(worker$.cc_output_txn_paths(dest)$lock, token))
 })
 

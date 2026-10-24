@@ -14,7 +14,7 @@
 MERGEN_UPLOAD_STAGING_SUFFIX <- ".mergen-part"
 
 mergen_upload_staging_path <- function(final_dest) {
-  paste0(as.character(final_dest)[1], MERGEN_UPLOAD_STAGING_SUFFIX)
+  mergen_upload_artifact_path(final_dest, MERGEN_UPLOAD_STAGING_SUFFIX)
 }
 
 # Kaynağı staging adına kopyalar, boyutu doğrular, kalıcı ada terfi ettirir.

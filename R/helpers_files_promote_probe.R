@@ -14,6 +14,30 @@
 #     istisna üretip dosyayı kayıtsız bırakıyordu.
 # ==============================================================================
 
+# Windows yol sınırları UTF-16 birimleriyle, POSIX sınırları baytla ölçülür.
+mergen_artifact_path_units <- function(path) {
+  path <- enc2utf8(as.character(path)[1])
+  if (.Platform$OS.type == "windows")
+    length(iconv(path, "UTF-8", "UTF-16LE", toRaw = TRUE)[[1]]) / 2 else nchar(path, type = "bytes")
+}
+
+# Staging ve terfi rezervasyonu aynı adlandırmayı paylaşır; kalıcı ad değişmez.
+mergen_upload_artifact_path <- function(final_dest, suffix, component_only = FALSE) {
+  hedef <- as.character(final_dest)[1]
+  ad <- enc2utf8(basename(hedef))
+  uzunluk <- mergen_artifact_path_units(ad)
+  if (uzunluk > 255L) stop("Hedef dosya adı dosya sistemi sınırını aşıyor.")
+  original <- paste0(hedef, suffix)
+  compact <- if (component_only) uzunluk + nchar(suffix) > 255L else
+    nchar(ad, type = "bytes") > 180L ||
+      (.Platform$OS.type == "windows" && mergen_artifact_path_units(original) > 240L)
+  if (!compact) return(original)
+  key <- if (.Platform$OS.type == "windows") tolower(ad) else ad
+  candidate <- file.path(dirname(hedef), paste0(".mergen-",
+    digest::digest(key, algo = "xxhash64", serialize = FALSE), suffix))
+  if (mergen_artifact_path_units(candidate) < mergen_artifact_path_units(original)) candidate else original
+}
+
 # Değişebilir boyut/mtime yerine fiziksel dosya anahtarı; belirsizlikte yetki yok.
 .mergen_promote_file_key <- function(path) {
   info <- tryCatch(fs::file_info(path), error = function(e) NULL)

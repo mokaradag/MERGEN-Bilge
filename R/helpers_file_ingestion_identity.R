@@ -100,9 +100,14 @@ file_ingestion_begin_copy <- function(path, staging, source, transaction) {
     yabanci <- is.list(owner) && !identical(owner$id, transaction$id)
     if (yabanci && !file_ingestion_owner_reclaimable(owner, marker))
       stop("Kopya hedefi başka bir işlem tarafından ayrılmış.")
-    # Ölü işlemin yalnız KENDİ staging artığı silinir; kalıcı hedefe dokunulmaz.
-    if (yabanci && identical(owner$staging, staging) && path_exists_relaxed(staging))
-      unlink(staging, force = TRUE)
+    # Eski ad artık başka bir tamamlanmış hedef olabilir; ad silme kanıtı değildir.
+    eski_stage <- owner$staging
+    if (yabanci && length(eski_stage) == 1L && !is.na(eski_stage) &&
+        eski_stage %in% c(staging, paste0(path, MERGEN_UPLOAD_STAGING_SUFFIX)) && path_exists_relaxed(eski_stage)) {
+      if (!identical(eski_stage, staging)) stop("Önceki staging dosyasının kimliği doğrulanamadı.")
+      unlink(eski_stage, force = TRUE)
+      if (path_exists_relaxed(eski_stage)) stop("Önceki staging temizlenemedi.")
+    }
     if (path_exists_relaxed(path) || path_exists_relaxed(staging)) stop("Kopya hedefi zaten var.")
     previous <- suppressWarnings(tryCatch(readRDS(transaction$journal), error = function(e) NULL))
     started_at <- if (is.list(previous) && identical(previous$artifact_id, transaction$id))
