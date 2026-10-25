@@ -208,7 +208,9 @@ test_that("şerit kilit dizini ana süreçte çözülür; işçi ana süreçle a
   ebeveyn <- withr::with_options(list(mergen.upload_lock_dir = kilitler),
     env$mergen_upload_mutex_path(sonuc$dest))
   expect_true(ebeveyn %in% alinan)
-  expect_identical(unique(dirname(alinan)), kilitler)
+  # Windows'ta dirname() ayıracı '/' yapar; aynı dizin kanonik yolla karşılaştırılır.
+  expect_identical(unique(normalizePath(dirname(alinan), winslash = "/")),
+    normalizePath(kilitler, winslash = "/"))
   expect_null(getOption("mergen.upload_lock_dir"))
 })
 
