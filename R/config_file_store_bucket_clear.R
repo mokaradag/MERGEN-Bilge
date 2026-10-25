@@ -117,15 +117,19 @@ mergen_clear_user_bucket <- function(user_id) {
     ayrik <- file.path(dirname(yol), basename(tempfile(".mergen-sarkan-")))
     if (!isTRUE(suppressWarnings(file.rename(yol, ayrik)))) return(FALSE)
     if (!identical(.kova_sarkan_kimligi(ayrik), kimlik)) {
-      # Araya giren girdi korunur; ad yeniden dolduysa üzerine yazılmaz.
-      if (!isTRUE(try(fs::is_link(yol), silent = TRUE)) && !file.exists(yol)) {
-        suppressWarnings(file.rename(ayrik, yol))
-      }
+      # Araya giren girdi korunur. Geri koyma yalnız atomik ve EZMEYEN sabit
+      # bağlantıyla yapılır (ad dolduysa başarısız olur); bağlantı ya da dizin
+      # olan girdi veya başarısız geri koyma ayrık adda korunur ve loglanır.
+      geri <- isFALSE(try(fs::is_link(ayrik), silent = TRUE)) &&
+        isTRUE(suppressWarnings(file.link(ayrik, yol)))
+      if (geri) suppressWarnings(file.remove(ayrik)) else try(log_warn(
+        "[INDEX] Kova temizliğinde yarışan girdi ayrık adda korundu: {ayrik}"), silent = TRUE)
       return(FALSE)
     }
     try(fs::link_delete(ayrik), silent = TRUE)
+    # fs ENOENT'i NA satırı olarak döndürür; sınıflı ENOENT hatası da yokluk kanıtıdır.
     kalan <- try(fs::file_info(ayrik, fail = TRUE, follow = FALSE), silent = TRUE)
-    !inherits(kalan, "try-error") && is.na(kalan$type[1])
+    if (inherits(kalan, "try-error")) inherits(attr(kalan, "condition"), "ENOENT") else is.na(kalan$type[1])
   }
 
   # Başarıyla silinen yolları indeksten ayıklar; diğer kayıtlar KORUNUR.

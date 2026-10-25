@@ -207,7 +207,7 @@ test_that("kova temizliği sarkan bağlantıyı hedefini izlemeden siler; şerit
   sarkan <- file.path(kova, "olu")
   baglandi <- isTRUE(suppressWarnings(file.symlink(file.path(disari, "yok"), sarkan)))
   indeks <- new.env(parent = emptyenv())
-  indeks$veri <- list(`9101` = list())
+  indeks$veri <- list(`9101` = list(list(path = sarkan)))
   env <- .reviewContractEnv(
     c("R/utils_path_helpers.R", "R/helpers_files_path.R", "R/helpers_process_ownership.R",
       "R/helpers_files_promote_probe.R", "R/config_file_store_bucket_clear.R"),
@@ -231,6 +231,8 @@ test_that("kova temizliği sarkan bağlantıyı hedefini izlemeden siler; şerit
   expect_true(isTRUE(env$mergen_clear_user_bucket(9101)))
   expect_length(list.files(kova, all.files = TRUE, no.. = TRUE), 0L)
   if (baglandi) expect_false(fs::is_link(sarkan))
+  # Silinen sarkan bağlantının indeks kaydı da düşer.
+  expect_null(indeks$veri[["9101"]])
   expect_false(file.exists(file.path(disari, "yok")))
   expect_true(file.exists(lock))
   # Genel kapsama denetimi sarkan bağlantıyı yine kanıtlanmış saymaz.
@@ -307,6 +309,40 @@ test_that("kova temizliği doğrulamadan sonra yerine konan girdiyi silmez", {
   expect_identical(readLines(sarkan), "yeni belge")
   expect_length(indeks$veri[["9103"]], 1L)
   expect_identical(list.files(kova, all.files = TRUE, no.. = TRUE), "olu")
+})
+
+test_that("kova temizliği yarışan girdiyi geri koyarken yeni yazarın dosyasını ezmez", {
+  kova_kok <- withr::local_tempdir()
+  kova <- file.path(kova_kok, "user_9105")
+  disari <- withr::local_tempdir()
+  dir.create(kova, recursive = TRUE)
+  sarkan <- file.path(kova, "olu")
+  if (!isTRUE(suppressWarnings(file.symlink(file.path(disari, "yok"), sarkan)))) {
+    skip("Bu platformda sarkan bağlantı oluşturulamıyor.")
+  }
+  indeks <- new.env(parent = emptyenv())
+  indeks$veri <- list(`9105` = list(list(path = sarkan)))
+  # Yarış: bağlantı ayrılmadan önce bir yazar aynı ada dosya koyar; üçüncü
+  # yazar ise geri koyma işleminin hemen öncesinde (denetimden sonra) gelir.
+  ucuncu <- function(to) if (identical(to, sarkan)) writeLines("üçüncü yazar", sarkan)
+  env <- .kovaSarkanOrtami(kova_kok, kova, indeks, function(e) {
+    e$file.rename <- function(from, to) {
+      if (identical(from, sarkan) && isTRUE(fs::is_link(sarkan))) {
+        fs::link_delete(sarkan)
+        writeLines("ikinci yazar", sarkan)
+      }
+      ucuncu(to)
+      base::file.rename(from, to)
+    }
+    e$file.link <- function(from, to) { ucuncu(to); base::file.link(from, to) }
+  })
+  expect_warning(sonuc <- env$mergen_clear_user_bucket(9105), "silinemedi")
+  expect_false(isTRUE(sonuc))
+  expect_identical(readLines(sarkan), "üçüncü yazar")
+  ayrik <- list.files(kova, pattern = "^\\.mergen-sarkan-", all.files = TRUE, full.names = TRUE)
+  expect_length(ayrik, 1L)
+  expect_identical(readLines(ayrik), "ikinci yazar")
+  expect_length(indeks$veri[["9105"]], 1L)
 })
 
 test_that("kova temizliği sarkan bağlantı silindikten sonra da kilit sahipliğini denetler", {
