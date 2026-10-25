@@ -2764,6 +2764,7 @@ test_that("indeks talebi POSIX'te harf duyarlı, Windows'ta harf duyarsız karş
       }
     }
   }
+  env$.Platform <- list(OS.type = "unix")
   expect_false(identical(env$.mergen_index_path_key("/srv/A.txt"), env$.mergen_index_path_key("/srv/a.txt")))
   env$.Platform <- list(OS.type = "windows")
   expect_identical(env$.mergen_index_path_key("C:\\Srv\\A.txt"), env$.mergen_index_path_key("c:/srv/a.txt"))
@@ -2983,6 +2984,10 @@ test_that("eksik yaprak mevcut üst dizinden bağlanır; kök ve bağlantı kaç
     drop_link()
   }
   if (isTRUE(suppressWarnings(file.symlink(file.path(outside, "absent"), link)))) {
+    expect_false(env$mergen_path_inside_root(link, root))
+    # Windows normalizePath() sarkan bağlantıyı sözcüksel döndürebilir; kapsama yine reddedilir.
+    env$normalizePath <- function(path, winslash = "/", mustWork = NA)
+      if (identical(path, link)) gsub("\\", "/", path, fixed = TRUE) else real_normalize(path, winslash, mustWork)
     expect_false(env$mergen_path_inside_root(link, root))
     drop_link()
   }

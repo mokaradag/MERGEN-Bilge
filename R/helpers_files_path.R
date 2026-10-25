@@ -188,6 +188,13 @@ is_under_mcp_base <- function(p) {
 # işlem sunmadığı için pencere tamamen kapatılamaz; bu yardımcı yol tabanlı
 # kaçışı reddeder, kaçış tespit edilirse işlem HİÇ denenmez.
 # ------------------------------------------------------------------------------
+# Sarkan bağlantı: bağlantı nesnesi var, hedefi çözülemiyor. Windows
+# normalizePath() bunu sözcüksel yol olarak döndürebildiği için ayrıca sınanır.
+mergen_path_is_dangling_link <- function(path) {
+  isTRUE(tryCatch(fs::is_link(path), error = function(e) FALSE)) &&
+    inherits(try(fs::path_real(path), silent = TRUE), "try-error")
+}
+
 mergen_path_inside_root <- function(candidate, root) {
   # Kök bilinmiyorsa kapsama KANITLANAMAZ: doğrulanmamış kökle silme/kopyalama
   # yapılmaması için kapalı-başarısız davranılır.
@@ -197,6 +204,8 @@ mergen_path_inside_root <- function(candidate, root) {
 
   kok <- try(normalizePath(root, winslash = "/", mustWork = TRUE), silent = TRUE)
   candidate <- as.character(candidate)[1]
+  # Hedefi çözülemeyen bağlantı kapsamı kanıtlayamaz (yazım kök dışına düşebilir).
+  if (mergen_path_is_dangling_link(candidate)) return(FALSE)
   coz <- try(normalizePath(candidate, winslash = "/", mustWork = TRUE), silent = TRUE)
   # Eksik yaprak yalnız mevcut, çözülebilen üst dizinden bağlanır (8.3 dahil).
   if (inherits(coz, "try-error") && !is.na(candidate) && nzchar(candidate) &&
