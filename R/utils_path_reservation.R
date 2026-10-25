@@ -46,6 +46,20 @@ if (!exists("%||%", mode = "function", inherits = TRUE)) {
 # sahip `mergen_reservation_touch()` ile kirasını tazeleyebilir.
 .MERGEN_RESERVATION_STALE_SEC <- 60
 
+# Bütçe ve gerçek karantina aynı sabit genişlikli biçimi kullanır.
+mergen_reservation_quarantine_path <- function(rezerv, unique = TRUE) {
+  key <- if (unique) digest::digest(tempfile("q"), algo = "xxhash64", serialize = FALSE) else strrep("0", 16L)
+  units <- function(x) {
+    if (.Platform$OS.type == "windows") length(iconv(enc2utf8(x), "UTF-8", "UTF-16LE", toRaw = TRUE)[[1]]) / 2 else
+      nchar(x, type = "bytes")
+  }
+  original <- paste0(rezerv, ".q-q", key)
+  compact <- file.path(dirname(rezerv), paste0(".mergen-rsv.q-q", key))
+  overflow <- units(basename(original)) > 255L ||
+    (.Platform$OS.type == "windows" && units(file.path(original, "owner")) > 259L)
+  if (overflow && units(compact) < units(original)) compact else original
+}
+
 # Süreç kimliği + benzersiz geçici ad: aynı makinede iki çağrı aynı jetonu
 # üretemez.
 mergen_reservation_token <- function(onek = "mrsv") {
@@ -137,15 +151,15 @@ mergen_reservation_touch <- function(rezerv, jeton) {
 # değilse yerine GERİ KONUR.
 .mergen_reservation_remove_owned <- function(rezerv, jeton) {
   if (!is.character(jeton) || length(jeton) != 1L || is.na(jeton) || !nzchar(jeton)) return(FALSE)
-  karantina <- paste0(rezerv, ".q-", basename(tempfile("q")))
+  karantina <- mergen_reservation_quarantine_path(rezerv)
   tasindi <- isTRUE(tryCatch(file.rename(rezerv, karantina), error = function(e) FALSE))
   if (!tasindi) return(FALSE)
 
   if (!identical(mergen_reservation_owner(karantina), jeton)) {
     # Yakalanan örnek BAŞKASINA ait: silinmez, yerine geri konur. Geri koyma
     # başarısız olursa karantina DİSKTE BIRAKILIR (silmek yeni sahibin canlı
-    # rezervasyonunu yok ederdi); özgün yol serbesttir ve bayat temizlik
-    # karantinayı sonradan toplar.
+    # rezervasyonunu yok ederdi); özgün yol serbesttir, belirsiz örnek
+    # otomatik silinmez.
     geri <- isTRUE(tryCatch(file.rename(karantina, rezerv), error = function(e) FALSE))
     if (!geri) {
       try(

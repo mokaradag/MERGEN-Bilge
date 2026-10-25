@@ -22,20 +22,36 @@ mergen_artifact_path_units <- function(path) {
 }
 
 # Staging ve terfi rezervasyonu aynı adlandırmayı paylaşır; kalıcı ad değişmez.
+mergen_upload_artifact_key <- function(name) {
+  name <- enc2utf8(name)
+  if (.Platform$OS.type == "windows") tolower(name) else name
+}
+
 mergen_upload_artifact_path <- function(final_dest, suffix, component_only = FALSE) {
   hedef <- as.character(final_dest)[1]
   ad <- enc2utf8(basename(hedef))
   uzunluk <- mergen_artifact_path_units(ad)
   if (uzunluk > 255L) stop("Hedef dosya adı dosya sistemi sınırını aşıyor.")
   original <- paste0(hedef, suffix)
-  compact <- if (component_only) uzunluk + nchar(suffix) > 255L else
+  # Var olan rezervasyon yeni bir hash adıyla atlanamaz; canlı sahip korunur.
+  if (component_only && dir.exists(original)) return(original)
+  fits <- function(path) {
+    quarantine <- if (exists("mergen_reservation_quarantine_path", mode = "function", inherits = TRUE))
+      mergen_reservation_quarantine_path(path, unique = FALSE) else paste0(path, ".q-q", strrep("0", 16L))
+    max(mergen_artifact_path_units(basename(path)), mergen_artifact_path_units(basename(quarantine))) <= 255L &&
+      (.Platform$OS.type != "windows" || max(mergen_artifact_path_units(file.path(path, "owner")),
+        mergen_artifact_path_units(file.path(quarantine, "owner"))) <= 259L)
+  }
+  compact <- if (component_only) !fits(original) else
     nchar(ad, type = "bytes") > 180L ||
       (.Platform$OS.type == "windows" && mergen_artifact_path_units(original) > 240L)
   if (!compact) return(original)
-  key <- if (.Platform$OS.type == "windows") tolower(ad) else ad
+  key <- mergen_upload_artifact_key(ad)
   candidate <- file.path(dirname(hedef), paste0(".mergen-",
     digest::digest(key, algo = "xxhash64", serialize = FALSE), suffix))
-  if (mergen_artifact_path_units(candidate) < mergen_artifact_path_units(original)) candidate else original
+  selected <- if (mergen_artifact_path_units(candidate) < mergen_artifact_path_units(original)) candidate else original
+  if (component_only && !fits(selected)) stop("Rezervasyon yolu dosya sistemi sınırını aşıyor.")
+  selected
 }
 
 # Değişebilir boyut/mtime yerine fiziksel dosya anahtarı; belirsizlikte yetki yok.
@@ -70,4 +86,49 @@ mergen_promote_wait_visible <- function(path, var_mi, denemeler = 10L) {
     Sys.sleep(0.02)
   }
   mergen_promote_probe(var_mi, path)
+}
+
+# Eski hash ad alanı korunur; yalnız kayıpsız yerel/UTF-8 eşleri aranır.
+file_ingestion_owner_paths <- function(path) {
+  base <- basename(path)
+  canonical <- file.path(dirname(path), mergen_upload_artifact_key(base))
+  paths <- file_ingestion_owner_path(canonical, legacy = TRUE)
+  for (name in list(base, enc2utf8(base), enc2native(base))) {
+    if (!isTRUE(identical(enc2utf8(name), enc2utf8(base)))) next
+    paths <- c(paths, file_ingestion_owner_path(file.path(dirname(path), name), legacy = TRUE))
+  }
+  if (.Platform$OS.type == "windows") paths <- paths[!duplicated(tolower(enc2utf8(paths)))]
+  unique(paths)
+}
+
+# Eski staging yalnız terfi öncesi kaydedilmiş fiziksel kanıtla temizlenir.
+file_ingestion_reclaim_stage <- function(path, staging, owner, marker) {
+  old <- owner$staging
+  if (length(old) != 1L || is.na(old)) return(invisible(NULL))
+  old_key <- file_ingestion_physical_identity(old)
+  candidates <- c(staging, paste0(path, MERGEN_UPLOAD_STAGING_SUFFIX))
+  matched <- NULL
+  for (candidate in candidates) {
+    if (!path_exists_relaxed(candidate)) next
+    if ((!is.null(old_key) && identical(old_key, file_ingestion_physical_identity(candidate))) ||
+        identical(old, candidate)) {
+      matched <- candidate
+      break
+    }
+  }
+  if (is.null(matched)) return(invisible(NULL))
+  # Silme metadata yolunda değil, yalnız önceden türetilmiş staging adayında yapılır.
+  old <- matched
+  proof <- suppressWarnings(tryCatch(readRDS(paste0(marker, ".identity")), error = function(e) NULL))
+  proven <- identical(owner$state, "copying") && is.list(proof) && identical(proof$id, owner$id) &&
+    identical(proof$state, "promoting") && !is.null(proof$file_key) &&
+    identical(file_ingestion_physical_identity(old), proof$file_key)
+  # Başka kalıcı yapıtın marker'ı varsa eski terfi kanıtı silme yetkisi vermez.
+  indexed <- normalize_for_path_compare(old) %in%
+    vapply(as.list(unlist(.load_index(), use.names = FALSE)), normalize_for_path_compare, character(1))
+  if (proven && !indexed && is.null(file_ingestion_read_owner(old))) {
+    unlink(old, force = TRUE)
+    if (path_exists_relaxed(old)) stop("Önceki staging temizlenemedi.")
+  } else if (identical(old, staging)) stop("Önceki staging dosyasının kimliği doğrulanamadı.")
+  invisible(NULL)
 }

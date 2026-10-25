@@ -1,5 +1,11 @@
 # Kopya kimliği yolun gösteriminden bağımsızdır.
-file_ingestion_owner_path <- function(path) {
+file_ingestion_owner_path <- function(path, legacy = FALSE) {
+  if (!legacy) {
+    paths <- file_ingestion_owner_paths(path)
+    existing <- paths[vapply(paths, path_exists_relaxed, logical(1))]
+    if (length(existing) > 1L) stop("Çakışan sahiplik işaretleri doğrulanamadı.")
+    return(if (length(existing)) existing[[1L]] else paths[[1L]])
+  }
   ad <- basename(path)
   if (nchar(ad, type = "bytes") > 180L) {
     anahtar <- if (.Platform$OS.type == "windows") tolower(ad) else ad
@@ -100,14 +106,7 @@ file_ingestion_begin_copy <- function(path, staging, source, transaction) {
     yabanci <- is.list(owner) && !identical(owner$id, transaction$id)
     if (yabanci && !file_ingestion_owner_reclaimable(owner, marker))
       stop("Kopya hedefi başka bir işlem tarafından ayrılmış.")
-    # Eski ad artık başka bir tamamlanmış hedef olabilir; ad silme kanıtı değildir.
-    eski_stage <- owner$staging
-    if (yabanci && length(eski_stage) == 1L && !is.na(eski_stage) &&
-        eski_stage %in% c(staging, paste0(path, MERGEN_UPLOAD_STAGING_SUFFIX)) && path_exists_relaxed(eski_stage)) {
-      if (!identical(eski_stage, staging)) stop("Önceki staging dosyasının kimliği doğrulanamadı.")
-      unlink(eski_stage, force = TRUE)
-      if (path_exists_relaxed(eski_stage)) stop("Önceki staging temizlenemedi.")
-    }
+    if (yabanci) file_ingestion_reclaim_stage(path, staging, owner, marker)
     if (path_exists_relaxed(path) || path_exists_relaxed(staging)) stop("Kopya hedefi zaten var.")
     previous <- suppressWarnings(tryCatch(readRDS(transaction$journal), error = function(e) NULL))
     started_at <- if (is.list(previous) && identical(previous$artifact_id, transaction$id))
@@ -128,6 +127,8 @@ file_ingestion_begin_copy <- function(path, staging, source, transaction) {
       # Yerel kodlama aynı fiziksel marker'a çözülürse yeni rezervasyon silinmez.
       if (identical(old_owner$id, transaction$id) && identical(old_owner$state, "copying") &&
           identical(old_owner$staging, previous$staging) &&
+          !identical(file_ingestion_physical_identity(file_ingestion_owner_path(previous$dest)),
+            file_ingestion_physical_identity(marker)) &&
           !path_exists_relaxed(previous$staging)) unlink(file_ingestion_owner_path(previous$dest), force = TRUE)
     }
   }, require_lock = TRUE)

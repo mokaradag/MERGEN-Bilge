@@ -69,7 +69,10 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
   if (var_mi_guvenli(hedef)) return(list(ok = FALSE, yabanci = TRUE, promoted = FALSE))
 
   # Geçerli eski rezervasyon adları korunur; taşan bileşen ortak yardımcıyla kısalır.
-  rezerv <- mergen_upload_artifact_path(hedef, MERGEN_PROMOTE_RESERVATION_SUFFIX, component_only = TRUE)
+  rezerv <- tryCatch(mergen_upload_artifact_path(hedef, MERGEN_PROMOTE_RESERVATION_SUFFIX, component_only = TRUE),
+    error = function(e) NULL)
+  if (is.null(rezerv))
+    return(list(ok = FALSE, yabanci = var_mi_guvenli(hedef), promoted = FALSE))
   jeton <- if (exists("mergen_reservation_token", mode = "function", inherits = TRUE)) {
     mergen_reservation_token("uprsv")
   } else {

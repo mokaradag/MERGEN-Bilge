@@ -23,6 +23,40 @@
 #     loglarda okunabilir kalması CLAUDE.md gereğidir ve korunur.
 # ==============================================================================
 
+# Doğrudan kopyalar da aynı sahip rezervasyonunu alır; farklı yazar staging'i ezemez.
+mergen_copy_upload_direct <- function(datapath, hedef, base_root, upload_name,
+                                      exists_fn, gorunurluk_denemesi) {
+  journal <- tempfile("ingest_direct_")
+  tx <- list(id = basename(journal), journal = journal, direct = TRUE)
+  completed <- FALSE
+  on.exit({
+    cleanup <- try({
+      result <- suppressWarnings(tryCatch(readRDS(journal), error = function(e) NULL))
+      cleaned <- completed
+      if (!completed && is.list(result) && identical(result$artifact_id, tx$id)) {
+        cleaned <- isTRUE(tryCatch({
+          if (!isTRUE(mergen_path_inside_root(result$dest, base_root)) ||
+              !isTRUE(mergen_path_inside_root(result$staging, base_root))) stop("Kopya temizliği kök dışında.")
+          file_ingestion_discard_results(list(result))
+          TRUE
+        }, error = function(e) FALSE))
+      }
+      if (cleaned && is.list(result) && identical(result$artifact_id, tx$id) && !path_exists_relaxed(result$staging)) {
+        marker <- file_ingestion_owner_path(result$dest)
+        if (identical(file_ingestion_read_owner(result$dest)$id, tx$id))
+          unlink(c(marker, paste0(marker, ".identity")), force = TRUE)
+        if (!identical(file_ingestion_read_owner(result$dest)$id, tx$id)) unlink(journal, force = TRUE)
+      }
+    }, silent = TRUE)
+    if ((inherits(cleanup, "try-error") || path_exists_relaxed(journal)) && exists("log_warn", mode = "function"))
+      try(log_warn("Doğrudan kopya temizliği tamamlanamadı; işlem günlüğü korunuyor."), silent = TRUE)
+  }, add = TRUE)
+  result <- mergen_copy_upload_staged(datapath, hedef, base_root, upload_name, exists_fn,
+    gorunurluk_denemesi, transaction = tx)
+  completed <- TRUE
+  result
+}
+
 mergen_stage_upload_copy <- function(datapath, hedef, staging, var_mi, gorunur_mu,
                                      temizle, rebind = NULL) {
   ad <- basename(as.character(staging)[1])

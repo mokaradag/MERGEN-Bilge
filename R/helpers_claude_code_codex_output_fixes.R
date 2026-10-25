@@ -567,7 +567,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
   "mergen_reservation_token", "mergen_reservation_acquire", "mergen_reservation_takeover",
   "mergen_reservation_release", "mergen_reservation_owner", ".mergen_reservation_marker",
   "mergen_reservation_touch",
-  ".mergen_reservation_remove_owned",
+  ".mergen_reservation_remove_owned", "mergen_reservation_quarantine_path",
   "mergen_lock_owner_reclaimable", "mergen_owner_reclaimable", "mergen_pid_status", "mergen_reclaim_mutex"
 )
 

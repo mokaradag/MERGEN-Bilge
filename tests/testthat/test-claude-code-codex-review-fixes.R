@@ -1095,12 +1095,14 @@ test_that("çıktı kurtarma UTF-8 ve eski yerel adı yalnız kilit hash'i eşle
     dir.create(txn$lock)
     writeLines(c(token, paste0("host=", Sys.info()[["nodename"]])), file.path(txn$lock, "owner"))
     metadata <- if (legacy_metadata) native else enc2utf8(name)
-    writeBin(charToRaw(paste0(metadata, "\n")), file.path(txn$lock, "destination"))
+    writeBin(charToRaw(paste0(metadata, if (legacy_metadata) "\r\n" else "\n")), file.path(txn$lock, "destination"))
     writeBin(charToRaw(enc2utf8("özgün\n")), txn$backup)
     writeBin(charToRaw("partial"), txn$staging)
     # Eski Windows yerel gösterimi, oturumun yerel ayarı değiştirilmeden kurulur.
-    env$readLines <- function(con, ..., encoding = "unknown") {
-      base::readLines(con, ..., encoding = if (encoding == "unknown") "latin1" else encoding)
+    env$rawToChar <- function(bytes) {
+      result <- base::rawToChar(bytes)
+      if (legacy_metadata) Encoding(result) <- "latin1"
+      result
     }
     restored <- file.path(root, "restored.txt")
     env$file.rename <- function(from, to) {
@@ -1510,5 +1512,26 @@ test_that("hazırlık yeniden denemesi senkron hatayı sonlandırır ve yeni ist
     expect_identical(failed, if (successor) character() else "istek oluşturulamadı")
     expect_identical(shiny::isolate(rv$is_running), successor)
     expect_identical(shiny::isolate(rv$active_request_id), if (successor) "B" else "A")
+  }
+})
+
+test_that("satır sonlu uzun POSIX hedefi bayt sınırından eksiksiz kurtarılır", {
+  skip_on_os("windows")
+  env <- .cc_codex_review_env()
+  root <- withr::local_tempdir()
+  for (ending in c(".txt", "\r")) {
+    dest <- file.path(root, paste0(strrep("n", 205), "\n", ending))
+    token <- "2147483646-ccoutabcdef"
+    txn <- env$.cc_output_txn_paths(dest, token)
+    acquired <- env$.cc_output_dest_lock(dest, wait_sec = 0)
+    expect_true(nzchar(acquired))
+    writeLines(c(token, paste0("host=", Sys.info()[["nodename"]])), file.path(txn$lock, "owner"))
+    writeBin(charToRaw("original"), txn$backup)
+    writeBin(charToRaw("partial"), txn$staging)
+    expect_identical(env$.cc_output_recovery_dest(root, txn$lock), dest)
+    env$.cc_output_recover_parent(root)
+    expect_identical(readBin(dest, "raw", 100L), charToRaw("original"))
+    expect_false(dir.exists(txn$lock))
+    expect_false(file.exists(txn$staging))
   }
 })

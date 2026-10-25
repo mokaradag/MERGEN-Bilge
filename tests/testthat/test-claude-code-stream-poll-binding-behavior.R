@@ -384,13 +384,13 @@ testthat::test_that("kapanan modülün CLI çıktıları reaktif duruma veya UI'
   rv_get <- get("$.reactivevalues", asNamespace("shiny"))
   rv_set <- get("$<-.reactivevalues", asNamespace("shiny"))
   record_access <- function(x) {
-    if (isTRUE(rec$detached) && identical(x, rec$reactive))
+    if ((isTRUE(rec$detached) || isTRUE(rec$probe)) && identical(x, rec$reactive))
       rec$reactive_access <- rec$reactive_access + 1L
   }
-  testthat::local_mocked_bindings(
-    `$.reactivevalues` = function(x, name) { record_access(x); rv_get(x, name) },
-    `$<-.reactivevalues` = function(x, name, value) { record_access(x); rv_set(x, name, value) },
-    .package = "shiny")
+  testthat::local_mocked_s3_method("$", "reactivevalues",
+    function(x, name) { record_access(x); rv_get(x, name) })
+  testthat::local_mocked_s3_method("$<-", "reactivevalues",
+    function(x, name, value) { record_access(x); rv_set(x, name, value) })
   ui_call <- function(...) { rec$ui <- rec$ui + 1L }
   testthat::local_mocked_bindings(enable = ui_call, disable = ui_call,
     show = ui_call, hide = ui_call, .package = "shinyjs")
@@ -407,6 +407,13 @@ testthat::test_that("kapanan modülün CLI çıktıları reaktif duruma veya UI'
       active_process = proc, stream_env = sp,
       run_owner_guard = env$mergen_session_owner_guard(session))
     rec$reactive <- rv
+    # Kayıtlı S3 dağıtımı kaynaklanan modül ortamından da iki yöntemi çağırmalı.
+    rec$probe <- TRUE
+    evalq(shiny::isolate({ x$is_running; x$is_running <- TRUE }),
+      list2env(list(x = rv), parent = env))
+    expect_identical(rec$reactive_access, 2L)
+    rec$reactive_access <- 0L
+    rec$probe <- FALSE
     root_session <- .subset2(session, "parent")
     root_session$sendCustomMessage <- ui_call
     rec$ref <- cc_run_state_reference(rv)

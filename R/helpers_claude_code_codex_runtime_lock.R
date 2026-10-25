@@ -290,11 +290,20 @@
     con <- suppressWarnings(tryCatch(file(file.path(lock, "destination"), "rb"), error = function(e) NULL))
     if (is.null(con)) return(NULL)
     on.exit(close(con), add = TRUE)
-    native <- suppressWarnings(tryCatch(readLines(con, n = 1L, warn = FALSE, encoding = "unknown"),
-                                       error = function(e) character()))
+    bytes <- suppressWarnings(tryCatch(readBin(con, "raw", n = 4097L), error = function(e) raw()))
+    if (!length(bytes) || length(bytes) > 4096L || tail(bytes, 1L) != as.raw(10)) return(NULL)
+    # Yalnız son ayraç çıkarılır; dosya adındaki satır sonları korunur.
+    native <- tryCatch(rawToChar(head(bytes, -1L)), error = function(e) "")
     utf8 <- native
     Encoding(utf8) <- "UTF-8"
     bases <- list(utf8, native)
+    # Eski Windows metin bağlantısı CRLF yazmış olabilir; kimlik yine doğrulanır.
+    if (length(bytes) > 1L && bytes[length(bytes) - 1L] == as.raw(13)) {
+      native_crlf <- tryCatch(rawToChar(head(bytes, -2L)), error = function(e) "")
+      utf8_crlf <- native_crlf
+      Encoding(utf8_crlf) <- "UTF-8"
+      bases <- c(bases, list(utf8_crlf, native_crlf))
+    }
   } else bases <- list(sub("^\\.cc-output-lock-", "", basename(lock)))
   for (base in bases) {
     if (length(base) != 1L || is.na(base) || !nzchar(base)) next
