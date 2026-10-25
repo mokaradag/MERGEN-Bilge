@@ -196,6 +196,50 @@ test_that("kova temizliği bağlantıyla kova DIŞINA çıkan yolu silmez", {
   expect_false(file.exists(ic_dosya))
 })
 
+test_that("kova temizliği sarkan bağlantıyı hedefini izlemeden siler; şerit kilidine dokunmaz", {
+  skip_if_not_installed("filelock")
+  kova_kok <- withr::local_tempdir()
+  kova <- file.path(kova_kok, "user_9101")
+  disari <- withr::local_tempdir()
+  dir.create(kova, recursive = TRUE)
+  writeLines("kova ici", file.path(kova, "ic.txt"))
+  writeLines("kullanıcı belgesi", file.path(kova, ".up-abc"))
+  sarkan <- file.path(kova, "olu")
+  baglandi <- isTRUE(suppressWarnings(file.symlink(file.path(disari, "yok"), sarkan)))
+  indeks <- new.env(parent = emptyenv())
+  indeks$veri <- list(`9101` = list())
+  env <- .reviewContractEnv(
+    c("R/utils_path_helpers.R", "R/helpers_files_path.R", "R/helpers_process_ownership.R",
+      "R/helpers_files_promote_probe.R", "R/config_file_store_bucket_clear.R"),
+    stub_fn = function(e) {
+      e$MERGEN_UPLOADS_DIR <- kova_kok
+      e$MERGEN_MCP_BASE_DIR <- kova_kok
+      e$log_warn <- function(...) invisible(NULL)
+      e$mergen_user_upload_dir <- function(uid) kova
+      e$.load_index <- function() indeks$veri
+      e$.save_index <- function(idx) { indeks$veri <- idx; invisible(TRUE) }
+      e$file_store_index_lock_heartbeat <- function() TRUE
+      e$.file_store_with_index_lock <- function(expr, ...) expr
+    }
+  )
+  # Yükleme şeridi kova temizliğiyle yarışırken kilidi tutar.
+  withr::local_options(mergen.upload_lock_dir = file.path(withr::local_tempdir(), "locks"))
+  guard <- env$mergen_upload_lane_lock(file.path(kova, "yukleniyor.txt"))
+  expect_false(is.null(guard))
+  withr::defer(filelock::unlock(guard))
+  lock <- env$mergen_upload_mutex_path(file.path(kova, "yukleniyor.txt"))
+  expect_true(isTRUE(env$mergen_clear_user_bucket(9101)))
+  expect_length(list.files(kova, all.files = TRUE, no.. = TRUE), 0L)
+  if (baglandi) expect_false(fs::is_link(sarkan))
+  expect_false(file.exists(file.path(disari, "yok")))
+  expect_true(file.exists(lock))
+  # Genel kapsama denetimi sarkan bağlantıyı yine kanıtlanmış saymaz.
+  if (isTRUE(suppressWarnings(file.symlink(file.path(disari, "yok"), sarkan)))) {
+    expect_false(env$mergen_path_inside_root(sarkan, kova))
+    fs::link_delete(sarkan)
+  }
+})
+
 test_that("kova dizin durumu okunamayan üst dizinde BELİRSİZ döner", {
   # POSIX izin bitleri gerekir; root izin denetimini atlar.
   skip_on_os("windows")

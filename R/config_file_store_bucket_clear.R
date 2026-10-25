@@ -93,6 +93,16 @@ mergen_clear_user_bucket <- function(user_id) {
     isTRUE(tryCatch(mergen_path_inside_root(yol, kok), error = function(e) FALSE))
   }
 
+  # Sarkan bağlantı yalnız bağlantı nesnesi olarak silinir: üst dizini kovada
+  # kanıtlanır, hedef izlenmez. Genel kapsama denetimi gevşetilmez.
+  .kova_sarkan_baglantiyi_sil <- function(yol, kok) {
+    bag <- isTRUE(tryCatch(fs::is_link(yol), error = function(e) FALSE))
+    if (!bag || !isFALSE(tryCatch(file.exists(yol), error = function(e) NA))) return(NA)
+    if (!.kova_icinde_mi(dirname(yol), kok)) return(NA)
+    try(fs::link_delete(yol), silent = TRUE)
+    isFALSE(tryCatch(fs::is_link(yol), error = function(e) NA))
+  }
+
   # Başarıyla silinen yolları indeksten ayıklar; diğer kayıtlar KORUNUR.
   # Numaralandırma hatasıyla erken dönüldüğünde de çağrılır, aksi hâlde daha
   # önceki dizinlerde SİLİNMİŞ dosyalar indekste kalıyordu.
@@ -204,6 +214,11 @@ mergen_clear_user_bucket <- function(user_id) {
           # bağlantısı koyup kova DIŞINDAKİ dosyaları sildirebiliyordu. Yol
           # ÇÖZÜLDÜKTEN sonra kovanın içinde kalmıyorsa DOKUNULMAZ.
           if (!.kova_icinde_mi(f, dir)) {
+            sarkan <- .kova_sarkan_baglantiyi_sil(f, dir)
+            if (isTRUE(sarkan)) {
+              silinen <- c(silinen, .kova_yol_anahtari(f))
+              next
+            }
             silinemeyen <- c(silinemeyen, .kova_yol_anahtari(f))
             try(
               log_warn(

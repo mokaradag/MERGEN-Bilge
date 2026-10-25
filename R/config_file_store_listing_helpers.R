@@ -155,8 +155,7 @@
 
 .file_store_drop_upload_artifacts <- function(paths) {
   if (!length(paths)) return(paths)
-  paths <- paths[basename(as.character(paths)) != ".mergen-rsv.reclaim" &
-    !grepl("^\\.up-[0-9a-f]{3}([0-9a-f]{13})?$", basename(as.character(paths)))]
+  paths <- paths[basename(as.character(paths)) != ".mergen-rsv.reclaim"]
   sonekler <- .file_store_artifact_suffixes()
   sonekler <- unique(sonekler[!is.na(sonekler) & nzchar(sonekler)])
   if (!length(sonekler)) return(paths)

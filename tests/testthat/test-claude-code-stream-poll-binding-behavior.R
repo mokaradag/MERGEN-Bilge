@@ -434,6 +434,8 @@ testthat::test_that("kapanan modülün CLI çıktıları reaktif duruma veya UI'
     proc$is_alive <- function() FALSE
     proc$read_output_lines <- function() "first line"
     proc$read_all_output <- function() "last line"
+    # Gözlemci `domain = NULL`; zamanlayıcısı kapanan oturuma değil global saate bağlıdır.
+    expect_identical(rec$dispatched, 0L)
     clock$elapse(200)
   })
   expect_true(is.environment(rec$ref$rv))

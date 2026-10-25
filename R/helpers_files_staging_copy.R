@@ -24,32 +24,36 @@
 # ==============================================================================
 
 # Doğrudan kopyalar da aynı sahip rezervasyonunu alır; farklı yazar staging'i ezemez.
+# Kalıcı kanıt klasördeki sahip marker'ıdır (yeniden denemede geri kazanılır);
+# oturum geçici günlüğü yalnız bu çağrının çalışma notudur ve her çıkışta silinir.
 mergen_copy_upload_direct <- function(datapath, hedef, base_root, upload_name,
                                       exists_fn, gorunurluk_denemesi) {
   journal <- tempfile("ingest_direct_")
   tx <- list(id = basename(journal), journal = journal, direct = TRUE)
   completed <- FALSE
   on.exit({
-    cleanup <- try({
-      result <- suppressWarnings(tryCatch(readRDS(journal), error = function(e) NULL))
-      cleaned <- completed
-      if (!completed && is.list(result) && identical(result$artifact_id, tx$id)) {
-        cleaned <- isTRUE(tryCatch({
-          if (!isTRUE(mergen_path_inside_root(result$dest, base_root)) ||
-              !isTRUE(mergen_path_inside_root(result$staging, base_root))) stop("Kopya temizliği kök dışında.")
-          file_ingestion_discard_results(list(result))
-          TRUE
-        }, error = function(e) FALSE))
+    result <- suppressWarnings(tryCatch(readRDS(journal), error = function(e) NULL))
+    ours <- is.list(result) && identical(result$artifact_id, tx$id)
+    cleanup <- try(if (ours) {
+      # Yayınlanan dosya sentetik işleme bağlı kalmaz; artık staging adı yayın kopyasıdır.
+      if (!completed) {
+        if (!isTRUE(mergen_path_inside_root(result$dest, base_root)) ||
+            !isTRUE(mergen_path_inside_root(result$staging, base_root))) stop("Kopya temizliği kök dışında.")
+        file_ingestion_discard_results(list(result))
       }
-      if (cleaned && is.list(result) && identical(result$artifact_id, tx$id) && !path_exists_relaxed(result$staging)) {
+      if (identical(file_ingestion_read_owner(result$dest)$id, tx$id) &&
+          (completed || !path_exists_relaxed(result$staging))) {
         marker <- file_ingestion_owner_path(result$dest)
-        if (identical(file_ingestion_read_owner(result$dest)$id, tx$id))
-          unlink(c(marker, paste0(marker, ".identity")), force = TRUE)
-        if (!identical(file_ingestion_read_owner(result$dest)$id, tx$id)) unlink(journal, force = TRUE)
+        unlink(c(marker, paste0(marker, ".identity")), force = TRUE)
       }
     }, silent = TRUE)
-    if ((inherits(cleanup, "try-error") || path_exists_relaxed(journal)) && exists("log_warn", mode = "function"))
-      try(log_warn("Doğrudan kopya temizliği tamamlanamadı; işlem günlüğü korunuyor."), silent = TRUE)
+    unlink(journal, force = TRUE)
+    kalan <- ours && isTRUE(tryCatch(identical(file_ingestion_read_owner(result$dest)$id, tx$id),
+      error = function(e) TRUE))
+    kopya_adi <- basename(if (ours) result$dest else hedef)
+    if ((inherits(cleanup, "try-error") || kalan) && exists("log_warn", mode = "function"))
+      try(log_warn("Doğrudan kopya temizliği tamamlanamadı; sahiplik kanıtı korunuyor: {kopya_adi}"),
+        silent = TRUE)
   }, add = TRUE)
   result <- mergen_copy_upload_staged(datapath, hedef, base_root, upload_name, exists_fn,
     gorunurluk_denemesi, transaction = tx)

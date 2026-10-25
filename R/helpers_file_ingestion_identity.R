@@ -101,7 +101,7 @@ file_ingestion_owner_reclaimable <- function(owner, marker, stale_sec = 3600) {
 
 file_ingestion_begin_copy <- function(path, staging, source, transaction) {
   # Sahip edinimi yalnız adın harf eşlerini kilitler; indeks yazımı yapmaz.
-  guard <- mergen_reclaim_mutex(mergen_upload_mutex_path(path), timeout = 5000)
+  guard <- mergen_upload_lane_lock(path)
   if (is.null(guard)) stop("Kopya sahiplik muteksi alınamadı.")
   on.exit(filelock::unlock(guard), add = TRUE)
   {
@@ -126,15 +126,16 @@ file_ingestion_begin_copy <- function(path, staging, source, transaction) {
       artifact_id = transaction$id, staging = staging, transaction_pending = TRUE)
     file_ingestion_write_owner(result, transaction$journal)
     unlink(paste0(marker, ".identity"), force = TRUE)
+    # Benzersiz nesil, inode olmayan paylaşımda da marker takma adını kanıtlar.
+    generation <- paste0(Sys.getpid(), "-", basename(tempfile("og")))
     file_ingestion_write_owner(list(id = transaction$id, state = "copying", staging = staging,
-      pid = Sys.getpid(), host = unname(Sys.info()[["nodename"]]), started_at = started_at), marker)
+      pid = Sys.getpid(), host = unname(Sys.info()[["nodename"]]), started_at = started_at,
+      generation = generation), marker)
     if (is.list(previous) && !identical(previous$dest, path)) {
       old_owner <- file_ingestion_read_owner(previous$dest)
       # Yerel kodlama aynı fiziksel marker'a çözülürse yeni rezervasyon silinmez.
       if (identical(old_owner$id, transaction$id) && identical(old_owner$state, "copying") &&
-          identical(old_owner$staging, previous$staging) &&
-          !identical(file_ingestion_physical_identity(file_ingestion_owner_path(previous$dest)),
-            file_ingestion_physical_identity(marker)) &&
+          identical(old_owner$staging, previous$staging) && !identical(old_owner$generation, generation) &&
           !path_exists_relaxed(previous$staging)) unlink(file_ingestion_owner_path(previous$dest), force = TRUE)
     }
   }

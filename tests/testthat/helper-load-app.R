@@ -32,6 +32,9 @@ source(
 )
 source(file.path(project_root, "R", "helpers_user_session_identity.R"),
        encoding = "UTF-8", local = globalenv())
+# Sahiplik yolu yardımcıları manifest sırasıyla kimlik dosyasından önce gelir.
+source(file.path(project_root, "R", "helpers_files_promote_probe.R"),
+       encoding = "UTF-8", local = globalenv())
 source(file.path(project_root, "R", "helpers_file_ingestion_identity.R"),
        encoding = "UTF-8", local = globalenv())
 source(file.path(project_root, "R", "helpers_worker_cancellation.R"),

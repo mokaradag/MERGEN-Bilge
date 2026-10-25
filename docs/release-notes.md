@@ -17,10 +17,22 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 ### (Yayınlanmadı) 2026-10-25 Yükleme sahipliği ve Windows hata temizliği
 
 - Yükleme terfisi, bağlantı veya hedef rezervasyonu almadan önce ada özgü
-  muteksle dışlanır. Aynı fiziksel üst dizindeki harf eşleri birlikte kilitlenir;
-  farklı kilit şeritlerindeki uzun kopyalar birlikte ilerler. Dizin başına
-  en çok 4096 kalıcı kilit vardır; bekleyen süreçlerin kilidi silinmez. Harf takma adları mevcut dosyayı değiştiremez; POSIX
+  muteksle dışlanır. Kanonik üst dizindeki harf eşleri aynı kilit şeridine
+  girer; farklı şeritlerdeki uzun kopyalar birlikte ilerler. En çok 4096 kalıcı
+  şerit kilidi kullanıcı klasöründe değil, indeksin yanındaki iç dizinde
+  tutulur: listeleme ve kova temizliği onları görmez, kilide benzeyen kullanıcı
+  dosyaları görünür kalır ve tutulan kilit silinip dışlama bölünmez. İlgisiz
+  bir yüklemeyle şerit çakışması tek zaman aşımında hata değildir; kilit sınırlı
+  bütçe boyunca beklenir. Harf takma adları mevcut dosyayı değiştiremez; POSIX
   adlarının harf büyüklüğü ve eski rezervasyon adları korunur.
+- Silme ve sahiplik atlama kararları yalnız inode/dosya kimliği içeren güçlü
+  eşlikle verilir; boyut+mtime eşliği (inode vermeyen paylaşım) kanıt sayılmaz,
+  aday korunur. Marker takma adı benzersiz nesil değeriyle ayırt edilir.
+- Doğrudan kopyanın yayınından sonra staging adı silinemese de sentetik sahip
+  kanıtı kaldırılır; işçinin olağan talebi reddedilmez. Başarısız temizlikte
+  kalıcı kanıt klasördeki sahip marker'ıdır; oturum geçici günlüğü tutulmaz.
+- Kova temizliği sarkan bağlantıyı, üst dizini kovada kanıtlanmışsa hedefini
+  izlemeden bağlantı nesnesi olarak siler; genel kapsama denetimi gevşetilmez.
 - Normal kopya sahipliği ve yalnız staging temizliği global indeks kilidine
   bağlı değildir. Eski staging kurtarması ve kalıcı yapıtın indeksle ilişkili
   temizliği indeks kilidini kullanmaya devam eder.
@@ -28,8 +40,8 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   kısa, aynı dizindeki geçici ada yapılır. Eski marker adayları korunur.
 - Eksik Windows hedefi mevcut üst dizinden çözülür; 8.3 yollar temizliği
   engellemez. Çözülemeyen kökler ve kök dışına çıkan bağlantılar reddedilir.
-- Kanıt temizleme sırası, kaynak baytları ve başarısız temizlikte günlüklerin
-  korunması regresyonlarla denetlenir. Üretim Windows VM doğrulaması ayrıca gerekir.
+- Kanıt temizleme sırası, kaynak baytları ve başarısız temizlikte sahiplik
+  kanıtının korunması regresyonlarla denetlenir. Üretim Windows VM doğrulaması ayrıca gerekir.
 
 ### (Yayınlanmadı) 2026-10-03 Worker paket serileştirmesi
 

@@ -54,13 +54,45 @@ mergen_upload_artifact_path <- function(final_dest, suffix, component_only = FAL
   selected
 }
 
+# Şerit kilitleri kullanıcı klasöründe değil, indeksin yanındaki iç dizindedir:
+# listeleme/kova temizliği onları görmez, canlı kilit inode'u silinip bölünmez.
+mergen_upload_lock_dir <- function() {
+  dir <- as.character(getOption("mergen.upload_lock_dir", ""))[1]
+  index <- if (exists("MERGEN_INDEX_PATH", inherits = TRUE)) as.character(MERGEN_INDEX_PATH)[1] else ""
+  if (!nzchar(dir) && !is.na(index) && nzchar(index)) dir <- paste0(index, ".upload-locks")
+  if (!nzchar(dir)) dir <- file.path(dirname(tempdir()),
+    paste0("mergen-upload-locks-", gsub("[^A-Za-z0-9_-]", "_", Sys.info()[["user"]])))
+  dir
+}
+
 # Bu yalnız geçici dışlama anahtarıdır; POSIX hedef/marker kimliği değişmez.
-# Harf eşleri aynı şeride girer; dizin başına en çok 4096 kalıcı kilit oluşur.
+# Kanonik dizin + harf eşleri aynı şeride girer; en çok 4096 kalıcı kilit oluşur.
 mergen_upload_mutex_path <- function(path) {
-  # LC_CTYPE kilit kimliğini değiştiremez; yalnız dışlama anahtarı katlanır.
-  key <- stringi::stri_trans_nfkc_casefold(enc2utf8(basename(path)))
+  dir <- tryCatch(normalizePath(dirname(path), winslash = "/", mustWork = TRUE),
+    error = function(e) gsub("\\", "/", dirname(path), fixed = TRUE))
+  # LC_CTYPE kilit kimliğini değiştiremez; katlama yalnız fazla dışlama üretir.
+  key <- stringi::stri_trans_nfkc_casefold(enc2utf8(c(dir, basename(path))))
   key <- stringi::stri_trans_nfkc_casefold(stringi::stri_trans_toupper(key, locale = "en"))
-  file.path(dirname(path), paste0(".up-", substr(digest::digest(key, algo = "xxhash64", serialize = FALSE), 1L, 3L)))
+  hash <- digest::digest(paste(key, collapse = "\n"), algo = "xxhash64", serialize = FALSE)
+  file.path(mergen_upload_lock_dir(), paste0("lane-", substr(hash, 1L, 3L), ".lock"))
+}
+
+# Şerit çakışması hata değildir: canlı tutucu bütçe boyunca beklenir. Kilit
+# dosyası açılamıyorsa ya da şerit boşken edinilemiyorsa beklenmeden reddedilir.
+mergen_upload_lane_lock <- function(path, wait_sec = getOption("mergen.upload_lane_wait_sec", 120)) {
+  lock <- mergen_upload_mutex_path(path)
+  if (!dir.exists(dirname(lock))) dir.create(dirname(lock), recursive = TRUE, showWarnings = FALSE)
+  deadline <- Sys.time() + wait_sec
+  free <- 0L
+  repeat {
+    guard <- mergen_reclaim_mutex(lock, timeout = 5000)
+    if (!is.null(guard) || Sys.time() >= deadline) return(guard)
+    probe <- tryCatch(filelock::lock(lock, exclusive = FALSE, timeout = 0), error = function(e) e)
+    if (inherits(probe, "error")) return(NULL)
+    free <- if (is.null(probe)) 0L else free + 1L
+    if (!is.null(probe)) filelock::unlock(probe)
+    if (free >= 2L) return(NULL)
+  }
 }
 
 .mergen_upload_unlock <- function(guard) {
@@ -139,6 +171,18 @@ file_ingestion_owner_paths <- function(path) {
   unique(c(paths, compact))
 }
 
+# Silme ya da sahiplik atlama yalnız inode/dosya kimliği içeren güçlü eşlikle yetkilenir.
+file_ingestion_same_physical_file <- function(a, b) {
+  is.list(a) && is.list(b) && !is.null(a$inode) && identical(a, b)
+}
+
+# İndeks talebi: Windows yolları harf duyarsız, POSIX yolları harf duyarlıdır.
+.mergen_index_path_key <- function(path) {
+  if (.Platform$OS.type == "windows") return(normalize_for_path_compare(path))
+  key <- enc2utf8(as.character(path)[1])
+  if (is.na(key)) "" else gsub("/+", "/", key)
+}
+
 # Eski staging yalnız terfi öncesi kaydedilmiş fiziksel kanıtla temizlenir.
 file_ingestion_reclaim_stage <- function(path, staging, owner, marker) {
   old <- owner$staging
@@ -148,7 +192,8 @@ file_ingestion_reclaim_stage <- function(path, staging, owner, marker) {
   matched <- NULL
   for (candidate in candidates) {
     if (!path_exists_relaxed(candidate)) next
-    if ((!is.null(old_key) && identical(old_key, file_ingestion_physical_identity(candidate))) ||
+    # Boyut+mtime eşliği aynı dosya kanıtı değildir; yalnız inode/dosya kimliği eşler.
+    if (file_ingestion_same_physical_file(old_key, file_ingestion_physical_identity(candidate)) ||
         identical(old, candidate)) {
       matched <- candidate
       break
@@ -159,11 +204,11 @@ file_ingestion_reclaim_stage <- function(path, staging, owner, marker) {
   old <- matched
   proof <- suppressWarnings(tryCatch(readRDS(paste0(marker, ".identity")), error = function(e) NULL))
   proven <- identical(owner$state, "copying") && is.list(proof) && identical(proof$id, owner$id) &&
-    identical(proof$state, "promoting") && !is.null(proof$file_key) &&
-    identical(file_ingestion_physical_identity(old), proof$file_key)
+    identical(proof$state, "promoting") &&
+    file_ingestion_same_physical_file(file_ingestion_physical_identity(old), proof$file_key)
   # Başka kalıcı yapıtın marker'ı varsa eski terfi kanıtı silme yetkisi vermez.
-  indexed <- normalize_for_path_compare(old) %in%
-    vapply(as.list(unlist(.load_index(), use.names = FALSE)), normalize_for_path_compare, character(1))
+  indexed <- .mergen_index_path_key(old) %in%
+    vapply(as.list(unlist(.load_index(), use.names = FALSE)), .mergen_index_path_key, character(1))
   if (proven && !indexed && is.null(file_ingestion_read_owner(old))) {
     unlink(old, force = TRUE)
     if (path_exists_relaxed(old)) stop("Önceki staging temizlenemedi.")

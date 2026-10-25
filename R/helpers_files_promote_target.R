@@ -56,8 +56,8 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
   # Yayın kilidi yalnız aynı adın harf eşlerini dışlar; kalıcı ad değişmez.
   publish <- guard <- NULL
   on.exit({ .mergen_upload_unlock(guard); .mergen_upload_unlock(publish) }, add = TRUE)
-  if (exists("mergen_reclaim_mutex", mode = "function")) {
-    publish <- mergen_reclaim_mutex(mergen_upload_mutex_path(hedef), timeout = 5000)
+  if (exists("mergen_reclaim_mutex", mode = "function") && exists("mergen_upload_lane_lock", mode = "function")) {
+    publish <- mergen_upload_lane_lock(hedef)
     if (is.null(publish)) return(list(ok = FALSE, yabanci = TRUE, promoted = FALSE))
   }
   bagli <- isTRUE(try(suppressWarnings(file.link(staging, hedef)), silent = TRUE))
