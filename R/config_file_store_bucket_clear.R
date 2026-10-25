@@ -93,14 +93,39 @@ mergen_clear_user_bucket <- function(user_id) {
     isTRUE(tryCatch(mergen_path_inside_root(yol, kok), error = function(e) FALSE))
   }
 
-  # Sarkan bağlantı yalnız bağlantı nesnesi olarak silinir: üst dizini kovada
-  # kanıtlanır, hedef izlenmez. Genel kapsama denetimi gevşetilmez.
+  # Sarkan bağlantı kimliği (lstat inode/aygıt + hedef metni). Hedefin YOKLUĞU
+  # yalnız ENOENT ile kanıtlanır; izin, döngü, reparse ya da geçici çözüm hatası
+  # BELİRSİZDİR ve NULL döner: bağlantı ile indeks kaydı korunur. Güçlü kimlik
+  # (sıfırdan farklı inode) yoksa da silme kararı verilmez.
+  .kova_sarkan_kimligi <- function(yol) {
+    bilgi <- try(fs::file_info(yol, fail = TRUE, follow = FALSE), silent = TRUE)
+    if (inherits(bilgi, "try-error") || !identical(as.character(bilgi$type)[1], "symlink") ||
+        !isTRUE(is.finite(bilgi$inode[1]) && bilgi$inode[1] != 0)) return(NULL)
+    if (!inherits(attr(try(fs::path_real(yol), silent = TRUE), "condition"), "ENOENT")) return(NULL)
+    hedef <- try(as.character(fs::link_path(yol))[1], silent = TRUE)
+    if (inherits(hedef, "try-error")) return(NULL)
+    list(inode = bilgi$inode[1], aygit = bilgi$device_id[1], hedef = hedef)
+  }
+
+  # Sarkan bağlantı yalnız bağlantı nesnesi olarak ve KİMLİK DOĞRULAMALI silinir.
+  # Ad yolunu yeniden sınamak yarışı kapatmaz: bağlantı aynı dizinde benzersiz
+  # bir ada atomik taşınır, taşınan girdi ilk incelenen bağlantı değilse geri
+  # konur ve hiçbir şey silinmez. Başarı yalnız girdi lstat ile YOKSA bildirilir.
   .kova_sarkan_baglantiyi_sil <- function(yol, kok) {
-    if (!exists("mergen_path_is_dangling_link", mode = "function", inherits = TRUE) ||
-        !isTRUE(tryCatch(mergen_path_is_dangling_link(yol), error = function(e) FALSE))) return(NA)
-    if (!.kova_icinde_mi(dirname(yol), kok)) return(NA)
-    try(fs::link_delete(yol), silent = TRUE)
-    isFALSE(tryCatch(fs::is_link(yol), error = function(e) NA))
+    kimlik <- .kova_sarkan_kimligi(yol)
+    if (is.null(kimlik) || !.kova_icinde_mi(dirname(yol), kok)) return(FALSE)
+    ayrik <- file.path(dirname(yol), basename(tempfile(".mergen-sarkan-")))
+    if (!isTRUE(suppressWarnings(file.rename(yol, ayrik)))) return(FALSE)
+    if (!identical(.kova_sarkan_kimligi(ayrik), kimlik)) {
+      # Araya giren girdi korunur; ad yeniden dolduysa üzerine yazılmaz.
+      if (!isTRUE(try(fs::is_link(yol), silent = TRUE)) && !file.exists(yol)) {
+        suppressWarnings(file.rename(ayrik, yol))
+      }
+      return(FALSE)
+    }
+    try(fs::link_delete(ayrik), silent = TRUE)
+    kalan <- try(fs::file_info(ayrik, fail = TRUE, follow = FALSE), silent = TRUE)
+    !inherits(kalan, "try-error") && is.na(kalan$type[1])
   }
 
   # Başarıyla silinen yolları indeksten ayıklar; diğer kayıtlar KORUNUR.
@@ -214,39 +239,40 @@ mergen_clear_user_bucket <- function(user_id) {
           # bağlantısı koyup kova DIŞINDAKİ dosyaları sildirebiliyordu. Yol
           # ÇÖZÜLDÜKTEN sonra kovanın içinde kalmıyorsa DOKUNULMAZ.
           if (!.kova_icinde_mi(f, dir)) {
-            sarkan <- .kova_sarkan_baglantiyi_sil(f, dir)
-            if (isTRUE(sarkan)) {
+            # Kanıtlanmış sarkan bağlantı hedef izlenmeden silinir; diğerleri korunur.
+            if (isTRUE(.kova_sarkan_baglantiyi_sil(f, dir))) {
               silinen <- c(silinen, .kova_yol_anahtari(f))
-              next
+            } else {
+              silinemeyen <- c(silinemeyen, .kova_yol_anahtari(f))
+              try(
+                log_warn(
+                  "[INDEX] Kova dışına çözülen yol silinmedi (bağlantı kaçışı): {f}"
+                ),
+                silent = TRUE
+              )
             }
-            silinemeyen <- c(silinemeyen, .kova_yol_anahtari(f))
-            try(
-              log_warn(
-                "[INDEX] Kova dışına çözülen yol silinmedi (bağlantı kaçışı): {f}"
-              ),
-              silent = TRUE
-            )
-            next
-          }
-          # `unlink()` hata FIRLATMAZ; Windows kilidi/izin hatasında sıfırdan
-          # farklı döner. Dönüş yok sayıldığında indeks kovası tamamen
-          # siliniyor, dosya diskte kalıyor ve dosya sistemi fallback'i onu
-          # yeniden sunabiliyordu.
-          # Yerel ad `durum` DEĞİLDİR: dış döngüde `durum` üç durumlu dizin
-          # kararını taşır ve burada ezilmesi ileride sessiz hata üretir.
-          silme_durumu <- tryCatch(unlink(f, force = TRUE), error = function(e) 1L)
-          hala_var <- tryCatch(file.exists(f), error = function(e) TRUE)
-          if (!identical(as.integer(silme_durumu)[1], 0L) || isTRUE(hala_var)) {
-            silinemeyen <- c(silinemeyen, .kova_yol_anahtari(f))
           } else {
-            silinen <- c(silinen, .kova_yol_anahtari(f))
+            # `unlink()` hata FIRLATMAZ; Windows kilidi/izin hatasında sıfırdan
+            # farklı döner. Dönüş yok sayıldığında indeks kovası tamamen
+            # siliniyor, dosya diskte kalıyor ve dosya sistemi fallback'i onu
+            # yeniden sunabiliyordu.
+            # Yerel ad `durum` DEĞİLDİR: dış döngüde `durum` üç durumlu dizin
+            # kararını taşır ve burada ezilmesi ileride sessiz hata üretir.
+            silme_durumu <- tryCatch(unlink(f, force = TRUE), error = function(e) 1L)
+            hala_var <- tryCatch(file.exists(f), error = function(e) TRUE)
+            if (!identical(as.integer(silme_durumu)[1], 0L) || isTRUE(hala_var)) {
+              silinemeyen <- c(silinemeyen, .kova_yol_anahtari(f))
+            } else {
+              silinen <- c(silinen, .kova_yol_anahtari(f))
+            }
           }
           # Uzun/yavaş UNC kovasında silme 60 sn'yi aşabilir; marker tazelenmezse
           # CANLI kilit bayat sayılıp başka bir yazar kritik bölüme girebiliyordu.
           # SONUÇ DENETLENİR: sahiplik kaybedildiyse silmeye devam edip sonunda
           # `.save_index()` çağırmak, kilidi devralan yazarın güncellemesini
           # eziyordu (lost update). Silme DURDURULUR; o ana kadar silinen yollar
-          # yeniden alınan kilit altında indeksle uzlaştırılır.
+          # yeniden alınan kilit altında indeksle uzlaştırılır. Denetim HER
+          # girdiden sonra (bağlantı dalları dahil) çalışır; erken `next` atlatmaz.
           if (exists("file_store_index_lock_heartbeat", mode = "function", inherits = TRUE)) {
             if (!isTRUE(file_store_index_lock_heartbeat())) {
               # Döngü `temizle()` gövdesindedir; `<<-` yerel çerçeveyi ATLAR ve

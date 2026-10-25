@@ -35,14 +35,16 @@ file_ingestion_task_result <- function(task, ok, dest = "", code = NULL, error =
 file_ingestion_execute_task <- function(task) {
   started <- Sys.time()
   elapsed_ms <- function(from) as.numeric(difftime(Sys.time(), from, units = "secs")) * 1000
-  # R seçenekleri worker'a taşınmaz; kalıcı depolama kökü ana süreçte çözülüp
-  # görevle birlikte geldiği için burada geçici olarak zorlanır. Aksi halde
-  # worker, ana süreçten FARKLI bir dizine kopyalayabilir.
-  depo_koku <- as.character(task$storage_base %||% "")[1]
-  if (!is.na(depo_koku) && nzchar(depo_koku)) {
-    onceki_kok <- getOption("mergen.mcp_base_dir", NULL)
-    options(mergen.mcp_base_dir = depo_koku)
-    on.exit(options(mergen.mcp_base_dir = onceki_kok), add = TRUE)
+  # R seçenekleri worker'a taşınmaz; kalıcı depolama kökü ve şerit kilit dizini
+  # ana süreçte çözülüp görevle geldiği için burada geçici olarak zorlanır. Aksi
+  # halde worker FARKLI dizine kopyalayabilir ya da ana süreçten farklı şerit
+  # muteksi seçip aynı staging dosyasına eşzamanlı yazabilir.
+  zorla <- c(mergen.mcp_base_dir = as.character(task$storage_base %||% "")[1],
+             mergen.upload_lock_dir = as.character(task$upload_lock_dir %||% "")[1])
+  zorla <- as.list(zorla[!is.na(zorla) & nzchar(zorla)])
+  if (length(zorla)) {
+    onceki <- options(zorla)
+    on.exit(options(onceki), add = TRUE)
   }
   if (!file_ingestion_valid_user_id(task$user_id)) {
     return(file_ingestion_task_result(

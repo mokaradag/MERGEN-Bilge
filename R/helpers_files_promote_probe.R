@@ -183,7 +183,8 @@ file_ingestion_same_physical_file <- function(a, b) {
   if (is.na(key)) "" else gsub("/+", "/", key)
 }
 
-# Eski staging yalnız terfi öncesi kaydedilmiş fiziksel kanıtla temizlenir.
+# Eski staging yalnız terfi öncesi kaydedilmiş fiziksel kanıtla ya da terfisi hiç
+# başlamamış sahibin birebir kaydettiği güncel staging olarak temizlenir.
 file_ingestion_reclaim_stage <- function(path, staging, owner, marker) {
   old <- owner$staging
   if (length(old) != 1L || is.na(old)) return(invisible(NULL))
@@ -202,10 +203,15 @@ file_ingestion_reclaim_stage <- function(path, staging, owner, marker) {
   if (is.null(matched)) return(invisible(NULL))
   # Silme metadata yolunda değil, yalnız önceden türetilmiş staging adayında yapılır.
   old <- matched
-  proof <- suppressWarnings(tryCatch(readRDS(paste0(marker, ".identity")), error = function(e) NULL))
-  proven <- identical(owner$state, "copying") && is.list(proof) && identical(proof$id, owner$id) &&
-    identical(proof$state, "promoting") &&
-    file_ingestion_same_physical_file(file_ingestion_physical_identity(old), proof$file_key)
+  proof_path <- paste0(marker, ".identity")
+  proof <- suppressWarnings(tryCatch(readRDS(proof_path), error = function(e) NULL))
+  # Terfi kanıtı terfiden ÖNCE yazılır; hiç yoksa sahibin kaydettiği bu staging
+  # yalnız yarım kopyadır (kanıt okunamıyorsa ya da başka aday eşleştiyse kapalı).
+  abandoned <- identical(old, staging) && identical(owner$staging, staging) &&
+    !file.exists(proof_path) && !isTRUE(path_exists_relaxed(proof_path))
+  proven <- identical(owner$state, "copying") && (abandoned || (is.list(proof) &&
+    identical(proof$id, owner$id) && identical(proof$state, "promoting") &&
+    file_ingestion_same_physical_file(file_ingestion_physical_identity(old), proof$file_key)))
   # Başka kalıcı yapıtın marker'ı varsa eski terfi kanıtı silme yetkisi vermez.
   indexed <- .mergen_index_path_key(old) %in%
     vapply(as.list(unlist(.load_index(), use.names = FALSE)), .mergen_index_path_key, character(1))

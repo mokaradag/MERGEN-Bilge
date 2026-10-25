@@ -99,7 +99,7 @@ file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard =
     globals$user_id <- job$user_id
     globals$discard <- discard
     globals$index_options <- options()[intersect(names(options()),
-      c("mergen.mcp_base_dir", "mergen.index_path", "mergen.files_root"))]
+      c("mergen.mcp_base_dir", "mergen.index_path", "mergen.files_root", "mergen.upload_lock_dir"))]
     tracked_future_promise(
       task_fn = function() {
         old_options <- options(index_options)
@@ -191,7 +191,7 @@ file_ingestion_rollback_job <- function(job, results, error, journals = characte
       globals$results <- results
       globals$user_id <- job$user_id
       globals$index_options <- options()[intersect(names(options()),
-        c("mergen.mcp_base_dir", "mergen.index_path", "mergen.files_root"))]
+        c("mergen.mcp_base_dir", "mergen.index_path", "mergen.files_root", "mergen.upload_lock_dir"))]
       task <- function() {
         options(index_options)
         file_ingestion_discard_results(results, user_id)

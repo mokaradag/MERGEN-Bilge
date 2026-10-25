@@ -183,6 +183,35 @@ test_that("worker, ana süreçten gelen depolama kökünü zorlar (seçenekler w
   expect_identical(getOption("mergen.mcp_base_dir"), file.path(tempdir(), "yanlis_kok"))
 })
 
+test_that("şerit kilit dizini ana süreçte çözülür; işçi ana süreçle aynı muteksi alır", {
+  env <- .ingestionEnv()
+  kilitler <- file.path(withr::local_tempdir(), "serit-kilitleri")
+  hedef_kok <- withr::local_tempdir()
+  withr::local_options(list(mergen.upload_lock_dir = kilitler))
+  gorev <- env$file_ingestion_task_snapshot(
+    upload = .ingestionUpload("serit.txt"), user_id = "42", max_size_mb = 25L,
+    allowed_ext = "txt", batch_id = "b1", storage_base = hedef_kok
+  )
+  expect_identical(gorev$upload_lock_dir, kilitler)
+  # İşçiyi taklit: seçenek taşınmaz, ortamdaki indeks yolu farklıdır.
+  withr::local_options(list(mergen.upload_lock_dir = NULL))
+  env$MERGEN_INDEX_PATH <- file.path(withr::local_tempdir(), "isci-index.json")
+  alinan <- character()
+  asil <- env$mergen_upload_lane_lock
+  env$mergen_upload_lane_lock <- function(path, ...) {
+    alinan <<- c(alinan, env$mergen_upload_mutex_path(path))
+    asil(path, ...)
+  }
+  sonuc <- env$file_ingestion_execute_task(gorev)
+  expect_true(sonuc$ok)
+  expect_gt(length(alinan), 0L)
+  ebeveyn <- withr::with_options(list(mergen.upload_lock_dir = kilitler),
+    env$mergen_upload_mutex_path(sonuc$dest))
+  expect_true(ebeveyn %in% alinan)
+  expect_identical(unique(dirname(alinan)), kilitler)
+  expect_null(getOption("mergen.upload_lock_dir"))
+})
+
 test_that("geçersiz kullanıcı kimlikleri kalıcı yazma için reddedilir", {
   env <- .ingestionEnv()
 
@@ -1387,6 +1416,45 @@ test_that("okunamayan ya da ölü sahipli rezervasyon yalnız ortak kuralla geri
   expect_identical(readLines(dest), "var olan")
 })
 
+test_that("terfisi hiç başlamamış ölü sahibin güncel staging'i kanıtsız geri kazanılır; çelişkide korunur", {
+  env <- .ingestionEnv()
+  root <- withr::local_tempdir()
+  dest <- file.path(root, "yarim.txt")
+  staging <- env$mergen_upload_staging_path(dest)
+  marker <- env$file_ingestion_owner_path(dest)
+  olu <- function(staging_kaydi = staging, pid = 2147483647L) {
+    writeLines("yarım kopya", staging)
+    saveRDS(list(id = "olu", state = "copying", staging = staging_kaydi, pid = pid,
+                 host = unname(Sys.info()[["nodename"]])), marker)
+  }
+  deneme <- function(id) list(id = id, journal = withr::local_tempfile())
+  # Canlı sahip: staging ve rezervasyon korunur.
+  olu(pid = Sys.getpid())
+  expect_error(env$file_ingestion_begin_copy(dest, staging, "kaynak", deneme("canli")), "ayrılmış")
+  expect_identical(readLines(staging), "yarım kopya")
+  # Okunamayan terfi kanıtı belirsizdir; staging korunur.
+  olu()
+  writeBin(as.raw(c(0x00, 0x01)), paste0(marker, ".identity"))
+  expect_error(env$file_ingestion_begin_copy(dest, staging, "kaynak", deneme("bozuk")), "doğrulanamadı")
+  expect_identical(readLines(staging), "yarım kopya")
+  unlink(paste0(marker, ".identity"))
+  # İndeks talebi olan staging silinmez.
+  env$.load_index <- function() list("42" = list(x = list(path = staging)))
+  expect_error(env$file_ingestion_begin_copy(dest, staging, "kaynak", deneme("indeksli")), "doğrulanamadı")
+  expect_identical(readLines(staging), "yarım kopya")
+  env$.load_index <- function() list()
+  # Staging'in kendi sahip marker'ı varsa silinmez.
+  env$file_ingestion_write_owner(list(id = "baska", state = "claimed"), env$file_ingestion_owner_path(staging))
+  expect_error(env$file_ingestion_begin_copy(dest, staging, "kaynak", deneme("sahipli")), "doğrulanamadı")
+  expect_identical(readLines(staging), "yarım kopya")
+  unlink(env$file_ingestion_owner_path(staging))
+  # Birebir terk edilmiş güncel staging: yeniden deneme kalıcı olarak engellenmez.
+  olu()
+  expect_no_error(env$file_ingestion_begin_copy(dest, staging, "kaynak", deneme("sonraki")))
+  expect_false(file.exists(staging))
+  expect_identical(env$file_ingestion_read_owner(dest)$id, "sonraki")
+})
+
 test_that("ardışık yeniden yükleme eski kaydı değiştirir; kimliksiz yazım canlı yapıtı ezmez", {
   env <- .ingestionEnv()
   name <- paste0("tekrar_", basename(tempfile()), ".txt")
@@ -1918,8 +1986,11 @@ test_that("dizin muteksi çekişmesi başka hedefin terfi ve devralmasını heme
                    "helpers_files_promote_probe.R", "helpers_files_promote_target.R"))
       source(file.path(repo, "R", file), encoding = "UTF-8", local = env)
     env$file.link <- function(...) FALSE
+    # İşaret yalnız devralma korumasında yazılır; önce alınan şerit kilidi
+    # işareti erken yazıp beklemeyi kanıtlanmış gösteremez.
     env$mergen_reclaim_mutex <- function(path, timeout = 0, exclusive = TRUE) {
-      writeLines("bekliyor", file.path(root, "waiting"))
+      if (identical(basename(path), ".mergen-rsv.reclaim"))
+        writeLines("bekliyor", file.path(root, "waiting"))
       filelock::lock(path, timeout = timeout, exclusive = exclusive)
     }
     env$mergen_promote_staged_file(file.path(root, "stage"), file.path(root, "dest"), file.exists)
@@ -2777,6 +2848,8 @@ test_that("şerit çekişmesi tek zaman aşımında yüklemeyi düşürmez; kili
   root <- withr::local_tempdir()
   target <- file.path(root, "hedef.txt")
   lock <- env$mergen_upload_mutex_path(target)
+  # Tutucu süreç kilit dizinini oluşturmaz; test önceki testlere bağlı kalmaz.
+  dir.create(dirname(lock), recursive = TRUE, showWarnings = FALSE)
   real <- get("mergen_reclaim_mutex", envir = env, inherits = TRUE)
   calls <- 0L
   env$mergen_reclaim_mutex <- function(path, timeout = 0, exclusive = TRUE) {
