@@ -48,7 +48,7 @@ file_ingestion_artifact_owned <- function(result, allow_deleting = TRUE) {
 # Marker yerinde yazılmaz: sert ölüm yarım RDS bırakıp tüm geri alımı kilitlerdi.
 # fs/libuv aynı birimde Windows hedefini de atomik değiştirir; hata eski kanıtı korur.
 file_ingestion_write_owner <- function(value, target) {
-  tmp <- paste0(target, ".", Sys.getpid(), ".tmp")
+  tmp <- tempfile(".io-", tmpdir = dirname(target))
   on.exit(unlink(tmp, force = TRUE), add = TRUE)
   saveRDS(value, tmp)
   for (deneme in 1:5) {
@@ -100,13 +100,19 @@ file_ingestion_owner_reclaimable <- function(owner, marker, stale_sec = 3600) {
 }
 
 file_ingestion_begin_copy <- function(path, staging, source, transaction) {
-  .file_store_with_index_lock({
+  # Sahip edinimi yalnız adın harf eşlerini kilitler; indeks yazımı yapmaz.
+  guard <- mergen_reclaim_mutex(mergen_upload_mutex_path(path), timeout = 5000)
+  if (is.null(guard)) stop("Kopya sahiplik muteksi alınamadı.")
+  on.exit(filelock::unlock(guard), add = TRUE)
+  {
     marker <- file_ingestion_owner_path(path)
     owner <- file_ingestion_read_owner(path)
     yabanci <- is.list(owner) && !identical(owner$id, transaction$id)
     if (yabanci && !file_ingestion_owner_reclaimable(owner, marker))
       stop("Kopya hedefi başka bir işlem tarafından ayrılmış.")
-    if (yabanci) file_ingestion_reclaim_stage(path, staging, owner, marker)
+    # Eski staging'in indeks talebi ancak indeks kilidiyle dışlanabilir.
+    if (yabanci) .file_store_with_index_lock(
+      file_ingestion_reclaim_stage(path, staging, owner, marker), require_lock = TRUE)
     if (path_exists_relaxed(path) || path_exists_relaxed(staging)) stop("Kopya hedefi zaten var.")
     previous <- suppressWarnings(tryCatch(readRDS(transaction$journal), error = function(e) NULL))
     started_at <- if (is.list(previous) && identical(previous$artifact_id, transaction$id))
@@ -131,7 +137,7 @@ file_ingestion_begin_copy <- function(path, staging, source, transaction) {
             file_ingestion_physical_identity(marker)) &&
           !path_exists_relaxed(previous$staging)) unlink(file_ingestion_owner_path(previous$dest), force = TRUE)
     }
-  }, require_lock = TRUE)
+  }
   invisible(NULL)
 }
 

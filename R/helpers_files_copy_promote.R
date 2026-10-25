@@ -100,7 +100,7 @@ mergen_copy_upload_staged <- function(datapath, final_dest, base_root,
 
   if (isTRUE(terfi_sonuc$promoted)) {
     # Görünmeyen (UNC) hedefte talep işçide tamamlanır; sahiplik korunur.
-    if (!is.null(transaction) && isTRUE(terfi_sonuc$ok))
+    if (!isTRUE(transaction$direct) && isTRUE(terfi_sonuc$ok))
       try(file_ingestion_claim_artifact(hedef, id = transaction$id), silent = TRUE)
     # TERFİ TAMAMLANDI. `ok` yalnızca görünürlük yoklamasının sonucudur ve
     # yavaş bir UNC paylaşımında `FALSE` dönebilir; bu durumda hedefi silmek

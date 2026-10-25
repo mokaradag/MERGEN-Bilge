@@ -14,6 +14,23 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-10-25 Yükleme sahipliği ve Windows hata temizliği
+
+- Yükleme terfisi, bağlantı veya hedef rezervasyonu almadan önce ada özgü
+  muteksle dışlanır. Aynı fiziksel üst dizindeki harf eşleri birlikte kilitlenir;
+  farklı kilit şeritlerindeki uzun kopyalar birlikte ilerler. Dizin başına
+  en çok 4096 kalıcı kilit vardır; bekleyen süreçlerin kilidi silinmez. Harf takma adları mevcut dosyayı değiştiremez; POSIX
+  adlarının harf büyüklüğü ve eski rezervasyon adları korunur.
+- Normal kopya sahipliği ve yalnız staging temizliği global indeks kilidine
+  bağlı değildir. Eski staging kurtarması ve kalıcı yapıtın indeksle ilişkili
+  temizliği indeks kilidini kullanmaya devam eder.
+- Windows sahiplik marker'ı ve kimlik eki birlikte bütçelenir; atomik yazım
+  kısa, aynı dizindeki geçici ada yapılır. Eski marker adayları korunur.
+- Eksik Windows hedefi mevcut üst dizinden çözülür; 8.3 yollar temizliği
+  engellemez. Çözülemeyen kökler ve kök dışına çıkan bağlantılar reddedilir.
+- Kanıt temizleme sırası, kaynak baytları ve başarısız temizlikte günlüklerin
+  korunması regresyonlarla denetlenir. Üretim Windows VM doğrulaması ayrıca gerekir.
+
 ### (Yayınlanmadı) 2026-10-03 Worker paket serileştirmesi
 
 - Açık bağımlılık modunda paket dışa aktarımları görev çalışırken gecikmeli

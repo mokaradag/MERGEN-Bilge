@@ -54,6 +54,36 @@ mergen_upload_artifact_path <- function(final_dest, suffix, component_only = FAL
   selected
 }
 
+# Bu yalnız geçici dışlama anahtarıdır; POSIX hedef/marker kimliği değişmez.
+# Harf eşleri aynı şeride girer; dizin başına en çok 4096 kalıcı kilit oluşur.
+mergen_upload_mutex_path <- function(path) {
+  # LC_CTYPE kilit kimliğini değiştiremez; yalnız dışlama anahtarı katlanır.
+  key <- stringi::stri_trans_nfkc_casefold(enc2utf8(basename(path)))
+  key <- stringi::stri_trans_nfkc_casefold(stringi::stri_trans_toupper(key, locale = "en"))
+  file.path(dirname(path), paste0(".up-", substr(digest::digest(key, algo = "xxhash64", serialize = FALSE), 1L, 3L)))
+}
+
+.mergen_upload_unlock <- function(guard) {
+  if (!is.null(guard)) filelock::unlock(guard)
+  NULL
+}
+
+# Devralma, rezervasyon edinildikten sonra paylaşımlı korumayla dışlanır.
+.mergen_promote_guard <- function(reservation, token) {
+  guard <- mergen_reclaim_mutex(file.path(dirname(reservation), ".mergen-rsv.reclaim"),
+    timeout = 5000, exclusive = FALSE)
+  if (is.null(guard)) return(NULL)
+  retained <- FALSE
+  on.exit(if (!retained) .mergen_upload_unlock(guard), add = TRUE)
+  for (attempt in 1:3) {
+    owner <- mergen_reservation_owner(reservation)
+    if (!is.na(owner)) break
+    if (attempt < 3L) Sys.sleep(0.01)
+  }
+  retained <- identical(owner, token)
+  if (retained) guard else NULL
+}
+
 # Değişebilir boyut/mtime yerine fiziksel dosya anahtarı; belirsizlikte yetki yok.
 .mergen_promote_file_key <- function(path) {
   info <- tryCatch(fs::file_info(path), error = function(e) NULL)
@@ -93,12 +123,20 @@ file_ingestion_owner_paths <- function(path) {
   base <- basename(path)
   canonical <- file.path(dirname(path), mergen_upload_artifact_key(base))
   paths <- file_ingestion_owner_path(canonical, legacy = TRUE)
+  compact <- file.path(dirname(path), paste0(".io-", digest::digest(mergen_upload_artifact_key(base),
+    algo = "xxhash64", serialize = FALSE)))
+  fits <- function(p) mergen_artifact_path_units(basename(paste0(p, ".identity"))) <= 255L &&
+    (.Platform$OS.type != "windows" || mergen_artifact_path_units(paste0(p, ".identity")) <= 259L)
+  if (!fits(paths)) {
+    if (!fits(compact)) stop("Sahiplik yolu dosya sistemi sınırını aşıyor.")
+    paths <- c(compact, paths)
+  }
   for (name in list(base, enc2utf8(base), enc2native(base))) {
     if (!isTRUE(identical(enc2utf8(name), enc2utf8(base)))) next
     paths <- c(paths, file_ingestion_owner_path(file.path(dirname(path), name), legacy = TRUE))
   }
   if (.Platform$OS.type == "windows") paths <- paths[!duplicated(tolower(enc2utf8(paths)))]
-  unique(paths)
+  unique(c(paths, compact))
 }
 
 # Eski staging yalnız terfi öncesi kaydedilmiş fiziksel kanıtla temizlenir.

@@ -189,17 +189,20 @@ is_under_mcp_base <- function(p) {
 # kaçışı reddeder, kaçış tespit edilirse işlem HİÇ denenmez.
 # ------------------------------------------------------------------------------
 mergen_path_inside_root <- function(candidate, root) {
-  # `%||%` bu dosyada başka yerde kullanılmıyor; izole test/worker bağlamında
-  # tanımlı olmayabilir, bu yüzden açık NULL denetimi yapılır.
   # Kök bilinmiyorsa kapsama KANITLANAMAZ: doğrulanmamış kökle silme/kopyalama
   # yapılmaması için kapalı-başarısız davranılır.
   if (is.null(root)) return(FALSE)
   root <- as.character(root)[1]
   if (is.na(root) || !nzchar(root)) return(FALSE)
 
-  kok <- try(normalizePath(root, winslash = "/", mustWork = FALSE), silent = TRUE)
-  coz <- try(normalizePath(as.character(candidate)[1], winslash = "/", mustWork = FALSE),
-             silent = TRUE)
+  kok <- try(normalizePath(root, winslash = "/", mustWork = TRUE), silent = TRUE)
+  candidate <- as.character(candidate)[1]
+  coz <- try(normalizePath(candidate, winslash = "/", mustWork = TRUE), silent = TRUE)
+  # Eksik yaprak yalnız mevcut, çözülebilen üst dizinden bağlanır (8.3 dahil).
+  if (inherits(coz, "try-error") && !is.na(candidate) && nzchar(candidate) &&
+      !isTRUE(file.exists(candidate)) && isFALSE(try(fs::is_link(candidate), silent = TRUE)))
+    coz <- try(file.path(normalizePath(dirname(candidate), winslash = "/", mustWork = TRUE),
+                         basename(candidate)), silent = TRUE)
   if (inherits(kok, "try-error") || inherits(coz, "try-error")) return(FALSE)
   if (is.na(kok[1]) || is.na(coz[1]) || !nzchar(kok[1]) || !nzchar(coz[1])) return(FALSE)
   kok <- kok[1]

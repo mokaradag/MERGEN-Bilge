@@ -31,7 +31,8 @@ file_ingestion_discard_results <- function(results, user_id = NULL, lock_timeout
       identical(owner$staging, r$staging) && identical(owner$state, "copying")
   }, results %||% list())
   committed <- character()
-  .file_store_with_index_lock({
+  # Yalnız staging'i kalan işlem kalıcı hedefi/indeksi değiştiremez.
+  if (!length(pending) || length(owned) || length(pending) != length(results)) .file_store_with_index_lock({
     idx <- .load_index()
     uid <- if (is.null(user_id)) NULL else as.character(user_id)
     for (r in owned) {
