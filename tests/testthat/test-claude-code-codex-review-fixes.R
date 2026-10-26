@@ -1068,55 +1068,59 @@ test_that("çıktı kurtarma UTF-8 ve eski yerel adı yalnız kilit hash'i eşle
   for (legacy_metadata in c(FALSE, TRUE)) {
     env <- .cc_codex_review_env()
     env$.Platform <- list(OS.type = "windows")
-    # Üretim taramaya dirname(dest) verir; Windows tempdir'inin ters eğik çizgileri taşınmaz.
-    root <- normalizePath(withr::local_tempdir(), winslash = "/", mustWork = TRUE)
-    name <- paste0("Ö", strrep("x", 210), ".txt")
-    native <- iconv(name, "UTF-8", "latin1")
-    # Eski Windows yol işlemlerinin tek baytlı gösterimi yalnız bu ortamda korunur.
-    native_text <- function(x) iconv(enc2utf8(x), "UTF-8", "latin1")
-    env$enc2native <- native_text
-    env$basename <- function(x) {
-      result <- base::basename(x)
-      if (any(Encoding(x) == "latin1")) native_text(result) else result
-    }
-    env$tolower <- function(x) {
-      result <- base::tolower(x)
-      if (any(Encoding(x) == "latin1")) native_text(result) else result
-    }
-    env$file.path <- function(...) {
-      result <- base::file.path(...)
-      marked <- vapply(list(...), function(x) any(Encoding(x) == "latin1"), logical(1))
-      if (any(marked)) native_text(result) else result
-    }
-    dest <- env$file.path(root, native)
-    token <- "2147483646-ccoutabcdef"
-    txn <- env$.cc_output_txn_paths(dest, token)
-    expect_false(identical(txn$backup, env$.cc_output_txn_paths(enc2utf8(dest), token)$backup))
-    dir.create(txn$lock)
-    writeLines(c(token, paste0("host=", Sys.info()[["nodename"]])), file.path(txn$lock, "owner"))
-    metadata <- if (legacy_metadata) native else enc2utf8(name)
-    writeBin(charToRaw(paste0(metadata, if (legacy_metadata) "\r\n" else "\n")), file.path(txn$lock, "destination"))
-    writeBin(charToRaw(enc2utf8("özgün\n")), txn$backup)
-    writeBin(charToRaw("partial"), txn$staging)
-    # Eski Windows yerel gösterimi, oturumun yerel ayarı değiştirilmeden kurulur.
-    env$rawToChar <- function(bytes) {
-      result <- base::rawToChar(bytes)
-      if (legacy_metadata) Encoding(result) <- "latin1"
-      result
-    }
-    restored <- file.path(root, "restored.txt")
-    env$file.rename <- function(from, to) {
-      if (identical(from, txn$backup)) {
-        expect_identical(enc2utf8(to), enc2utf8(dest))
-        base::file.rename(from, restored)
-      } else base::file.rename(from, to)
-    }
-    expect_false(is.null(env$.cc_output_recovery_dest(root, txn$lock)))
-    expect_warning(env$.cc_output_recover_parent(root), NA)
-    expect_identical(readBin(restored, "raw", 100L), charToRaw(enc2utf8("özgün\n")))
-    expect_false(dir.exists(txn$lock))
-    expect_false(file.exists(txn$backup))
-    expect_false(file.exists(txn$staging))
+    # Gerçek Unicode ebeveyn, göreli yollarla kodlama benzetiminin dışında kalır.
+    withr::with_dir(withr::local_tempdir(pattern = paste0(intToUtf8(c(0x11f, 0x131)), "-")), {
+      root <- "."
+      name <- paste0("Ö", strrep("x", 210), ".txt")
+      native <- iconv(name, "UTF-8", "latin1")
+      # Eski Windows yol işlemlerinin tek baytlı gösterimi yalnız bu ortamda korunur.
+      native_text <- function(x) iconv(enc2utf8(x), "UTF-8", "latin1")
+      env$enc2native <- native_text
+      env$basename <- function(x) {
+        result <- base::basename(x)
+        if (any(Encoding(x) == "latin1")) native_text(result) else result
+      }
+      env$tolower <- function(x) {
+        result <- base::tolower(x)
+        if (any(Encoding(x) == "latin1")) native_text(result) else result
+      }
+      env$file.path <- function(...) {
+        result <- base::file.path(...)
+        marked <- vapply(list(...), function(x) any(Encoding(x) == "latin1"), logical(1))
+        if (any(marked)) native_text(result) else result
+      }
+      dest <- env$file.path(root, native)
+      expect_false(anyNA(dest))
+      expect_identical(charToRaw(env$basename(dest)), charToRaw(native))
+      token <- "2147483646-ccoutabcdef"
+      txn <- env$.cc_output_txn_paths(dest, token)
+      expect_false(identical(txn$backup, env$.cc_output_txn_paths(enc2utf8(dest), token)$backup))
+      dir.create(txn$lock)
+      writeLines(c(token, paste0("host=", Sys.info()[["nodename"]])), file.path(txn$lock, "owner"))
+      metadata <- if (legacy_metadata) native else enc2utf8(name)
+      writeBin(charToRaw(paste0(metadata, if (legacy_metadata) "\r\n" else "\n")), file.path(txn$lock, "destination"))
+      writeBin(charToRaw(enc2utf8("özgün\n")), txn$backup)
+      writeBin(charToRaw("partial"), txn$staging)
+      # Eski Windows yerel gösterimi, oturumun yerel ayarı değiştirilmeden kurulur.
+      env$rawToChar <- function(bytes) {
+        result <- base::rawToChar(bytes)
+        if (legacy_metadata) Encoding(result) <- "latin1"
+        result
+      }
+      restored <- file.path(root, "restored.txt")
+      env$file.rename <- function(from, to) {
+        if (identical(from, txn$backup)) {
+          expect_identical(enc2utf8(to), enc2utf8(dest))
+          base::file.rename(from, restored)
+        } else base::file.rename(from, to)
+      }
+      expect_false(is.null(env$.cc_output_recovery_dest(root, txn$lock)))
+      expect_warning(env$.cc_output_recover_parent(root), NA)
+      expect_identical(readBin(restored, "raw", 100L), charToRaw(enc2utf8("özgün\n")))
+      expect_false(dir.exists(txn$lock))
+      expect_false(file.exists(txn$backup))
+      expect_false(file.exists(txn$staging))
+    })
   }
 })
 

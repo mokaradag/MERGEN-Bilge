@@ -14,6 +14,12 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-10-26 Kodlama testi ebeveyn yolları
+
+- Eski Windows kodlamasını benzeten çıktı kurtarma ve yükleme sahipliği
+  testleri, Latin-1 dışı karakter içeren gerçek geçici dizinde göreli yollar
+  kullanır; ebeveyn yolu dönüştürülmeden dosya adı baytları denetlenir.
+
 ### (Yayınlanmadı) 2026-10-26 Yükleme şeridi bekleme bütçesi
 
 - Geçersiz şerit bekleme bütçeleri (`NA`, `NaN`, sonsuz, negatif veya tekil

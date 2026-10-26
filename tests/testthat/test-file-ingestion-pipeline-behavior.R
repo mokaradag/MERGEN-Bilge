@@ -2589,7 +2589,9 @@ test_that("taşınan kaynak iade edilemezse baytlar korunur ve yabancı hedef ez
 test_that("kodlama eşleri tek staging ve sahip rezervasyonunda buluşur; eski marker tanınır", {
   env <- .ingestionEnv()
   env$.Platform <- list(OS.type = "windows")
-  root <- withr::local_tempdir()
+  # Gerçek Unicode ebeveyn, göreli yollarla kodlama benzetiminin dışında kalır.
+  withr::local_dir(withr::local_tempdir(pattern = paste0(intToUtf8(c(0x11f, 0x131)), "-")))
+  root <- "."
   name <- paste0(strrep("Ö", 100), ".txt")
   native <- iconv(name, "UTF-8", "latin1")
   native_text <- function(x) iconv(enc2utf8(x), "UTF-8", "latin1")
@@ -2608,6 +2610,8 @@ test_that("kodlama eşleri tek staging ve sahip rezervasyonunda buluşur; eski m
   }
   utf8 <- file.path(root, name)
   alias <- env$file.path(root, native)
+  expect_false(anyNA(alias))
+  expect_identical(charToRaw(env$basename(alias)), charToRaw(native))
   marker <- env$file_ingestion_owner_path(utf8)
   stage <- env$mergen_upload_staging_path(utf8)
   expect_identical(env$file_ingestion_owner_path(alias), marker)
