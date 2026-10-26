@@ -110,23 +110,45 @@ test_that("fiziksel kimliksiz paylaşımda özel kopya kalıcı ad oluşturmadan
   }
 })
 
-test_that("özel kopya kendi oluşturduğu hedefi kimlik okunamasa da kaldırır; önceki hedefi korur", {
-  for (preexisting in c(FALSE, TRUE)) for (identity in c(TRUE, FALSE)) {
+test_that("uzun yolda başarısız özel kopya kendi hedefini I/O kimliğiyle kaldırır; önceki hedefi korur", {
+  for (outcome in c("success", "failure", "preexisting")) {
     env <- .file_lifecycle_boundary_env("helpers_files_promote_target.R")
     root <- withr::local_tempdir()
-    src <- file.path(root, "source")
-    dest <- file.path(root, "target")
-    writeLines("kaynak", src)
-    if (preexisting) writeLines("önceki hedef", dest)
-    real_key <- env$.mergen_promote_file_key
-    # Uzun yolda stat başarısız olabilir: dizin kimliği var, yeni dosyanınki yok.
-    env$.mergen_promote_file_key <- function(path) if (identical(path, dest) && !identity) NULL else real_key(path)
-    if (identity) env$writeBin <- function(...) stop("yazım başarısız")
-    expect_false(env$.mergen_promote_copy_exclusive(src, dest))
-    expect_identical(file.exists(dest), preexisting)
-    if (preexisting) expect_identical(readLines(dest), "önceki hedef")
-    expect_identical(readLines(src), "kaynak")
+    dir.create(file.path(root, "k"))
+    # Uzun-yol desteksiz Windows benzetimi: mantıksal dizin yoktur, yalnız I/O yolu açılır.
+    virtual <- strrep("u", 120L)
+    env$mergen_io_path <- function(path) sub(virtual, "k", path, fixed = TRUE)
+    src <- file.path(root, virtual, "source")
+    dest <- file.path(root, virtual, "target")
+    writeLines("kaynak", env$mergen_io_path(src))
+    if (outcome == "preexisting") writeLines("önceki hedef", env$mergen_io_path(dest))
+    exclusive_open <- FALSE
+    env$file <- function(description, open, ...) {
+      if (identical(open, "wxb")) exclusive_open <<- TRUE
+      base::file(description, open, ...)
+    }
+    if (outcome != "success") env$writeBin <- function(...) stop("yazım başarısız")
+    expect_identical(env$.mergen_promote_copy_exclusive(src, dest), outcome == "success")
+    # Kimlik ön denetimleri I/O yolundan geçmeseydi kalıcı ad hiç denenmezdi.
+    expect_true(exclusive_open)
+    expect_identical(file.exists(env$mergen_io_path(dest)), outcome != "failure")
+    if (outcome != "failure") expect_identical(readLines(env$mergen_io_path(dest)),
+      if (outcome == "success") "kaynak" else "önceki hedef")
+    expect_identical(readLines(env$mergen_io_path(src)), "kaynak")
   }
+})
+
+test_that("staging kimliği okunamazsa özel kopya kalıcı adı hiç oluşturmaz", {
+  env <- .file_lifecycle_boundary_env("helpers_files_promote_target.R")
+  root <- withr::local_tempdir()
+  src <- file.path(root, "source")
+  dest <- file.path(root, "target")
+  writeLines("kaynak", src)
+  real_key <- env$.mergen_promote_file_key
+  env$.mergen_promote_file_key <- function(path) if (identical(path, src)) NULL else real_key(path)
+  expect_false(env$.mergen_promote_copy_exclusive(src, dest))
+  expect_false(file.exists(dest))
+  expect_identical(readLines(src), "kaynak")
 })
 
 test_that("eksik sahip doğrulayıcısı rezervasyon devralmayı kapalı reddeder", {

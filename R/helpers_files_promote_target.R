@@ -9,22 +9,20 @@ MERGEN_PROMOTE_RESERVATION_SUFFIX <- ".mergen-rsv"
 
 # Özel oluşturma, başarısız kopyada silme yetkisini kanıtlar; yabancıya dokunulmaz.
 .mergen_promote_copy_exclusive <- function(staging, hedef) {
-  # Kimliksiz dosya sisteminde temizlenemeyecek kalıcı ad oluşturulmaz.
-  if (is.null(.mergen_promote_file_key(dirname(hedef)))) return(FALSE)
+  # Kimliksiz dosya sisteminde temizlenemeyecek kalıcı ad oluşturulmaz; aynı
+  # dizindeki staging de kimliklenemiyorsa kalıcı ad hiç açılmaz.
+  if (is.null(.mergen_promote_file_key(dirname(hedef))) || is.null(.mergen_promote_file_key(staging))) return(FALSE)
   input <- output <- owned <- NULL
-  created <- complete <- FALSE
+  complete <- FALSE
   on.exit({
     if (!is.null(input)) try(close(input), silent = TRUE)
     if (!is.null(output)) try(close(output), silent = TRUE)
-    # "x" kipi oluşturmayı bu denemeye bağlar; önceden var olan hedef açılamaz.
-    # Kimlik okunabildiyse silmeden önce yine eşleşmelidir (yabancı değişim).
-    if (created && !complete && (is.null(owned) || identical(.mergen_promote_file_key(hedef), owned)))
+    if (!is.null(owned) && !complete && identical(.mergen_promote_file_key(hedef), owned))
       try(unlink(mergen_io_path(hedef), force = TRUE, expand = FALSE), silent = TRUE)
   }, add = TRUE)
   isTRUE(tryCatch({
     input <- file(mergen_io_path(staging), "rb")
     output <- file(mergen_io_path(hedef), "wxb")
-    created <- TRUE
     owned <- .mergen_promote_file_key(hedef)
     if (is.null(owned)) stop("Kopya dosyasının fiziksel kimliği doğrulanamadı.")
     # file.copy gibi: kip desteklenmeyen paylaşımda kopya yine tamamlanabilir.
