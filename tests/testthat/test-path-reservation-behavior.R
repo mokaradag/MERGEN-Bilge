@@ -52,6 +52,66 @@ test_that("I/O yolu mutlak Windows bütçesini UTF-16 ile ölçer; ad ve kimlik 
   expect_identical(env$mergen_io_path(c("", NA_character_)), c("", NA_character_))
 })
 
+test_that("I/O yolu 260 birimi aşan yolu sözcüksel kurar; nokta/boşluk bileşenine önek eklemez", {
+  env <- new.env(parent = baseenv())
+  source(file.path(resolve_repo_root_for_tests(), "R/utils_path_reservation.R"),
+         encoding = "UTF-8", local = env)
+  env$.Platform <- list(OS.type = "windows")
+  # fs yol birleştirme (path_abs/path_norm) Windows'ta PATH_MAX=260'da hata verir.
+  expect_false(any(grepl("fs::", deparse(env$mergen_io_path), fixed = TRUE)))
+  deep <- paste0("C:/", strrep("a", 150), "/", strrep("b", 150), "/", strrep("c", 150), "/f.txt")
+  expect_identical(env$mergen_io_path(deep), chartr("/", "\\", paste0("//?/", deep)))
+  dotted <- paste0("C:/", strrep("a", 150), "/./x/../", strrep("b", 150), "//f.txt")
+  expect_identical(env$mergen_io_path(dotted),
+                   chartr("/", "\\", paste0("//?/C:/", strrep("a", 150), "/", strrep("b", 150), "/f.txt")))
+  unc <- paste0("\\\\srv\\share\\", strrep("u", 300), "\\f.txt")
+  expect_identical(env$mergen_io_path(unc), paste0("\\\\?\\UNC\\srv\\share\\", strrep("u", 300), "\\f.txt"))
+  env$getwd <- function() paste0("C:\\", strrep("w", 300))
+  expect_identical(env$mergen_io_path("rel/f.txt"),
+                   paste0("\\\\?\\C:\\", strrep("w", 300), "\\rel\\f.txt"))
+  expect_identical(env$mergen_io_path("/kok/f.txt"), "/kok/f.txt")
+  for (ad in c("rapor.", "rapor ", "klasor./f.txt", "klasor /f.txt")) {
+    yol <- paste0("C:/", strrep("a", 300), "/", ad)
+    expect_identical(env$mergen_io_path(yol), yol)
+  }
+  expect_identical(env$mergen_io_path("C:rel"), "C:rel")
+})
+
+test_that("mantıksal yol ve `\\\\?\\` eşi aynı dosya sayılır; harf anlamı değişmez", {
+  env <- new.env(parent = baseenv())
+  source(file.path(resolve_repo_root_for_tests(), "R/utils_path_reservation.R"),
+         encoding = "UTF-8", local = env)
+  env$.Platform <- list(OS.type = "windows")
+  env$normalizePath <- function(path, winslash = "\\", mustWork = NA) chartr("\\", winslash, path)
+  long <- paste0("C:/", strrep("a", 300), "/f.txt")
+  expect_true(env$mergen_same_path(long, env$mergen_io_path(long)))
+  expect_true(env$mergen_same_path("C:/k/f.txt", "\\\\?\\C:\\k\\f.txt"))
+  unc <- paste0("//srv/share/", strrep("b", 300), "/f.txt")
+  expect_true(env$mergen_same_path(env$mergen_io_path(unc), unc))
+  expect_false(env$mergen_same_path(long, sub("f.txt$", "g.txt", long)))
+  expect_false(env$mergen_same_path("C:/k/f.txt", "C:/k/F.txt"))
+  expect_false(env$mergen_same_path("", ""))
+  expect_false(env$mergen_same_path(NA_character_, NA_character_))
+})
+
+test_that("uzun yol varlığı yalnız I/O yazımıyla görünürse son aday olarak bulunur", {
+  env <- new.env(parent = globalenv())
+  for (file in c("utils_path_reservation.R", "helpers_files_path.R"))
+    source(file.path(resolve_repo_root_for_tests(), "R", file), encoding = "UTF-8", local = env)
+  root <- withr::local_tempdir()
+  dir.create(file.path(root, "k"))
+  physical <- file.path(root, "k", "f.txt")
+  writeLines("x", physical)
+  logical <- file.path(root, strrep("u", 120), "f.txt")
+  # Mantıksal bileşen diskte yoktur; yalnız I/O dönüşümü gerçek dizine bağlar.
+  env$mergen_io_path <- function(path) sub(strrep("u", 120), "k", path, fixed = TRUE)
+  expect_false(file.exists(logical))
+  expect_identical(env$path_existing_variant(logical), physical)
+  expect_true(env$path_exists_relaxed(logical))
+  expect_identical(env$path_existing_variant(physical), physical)
+  expect_true(is.na(env$path_existing_variant(file.path(root, strrep("u", 120), "yok.txt"))))
+})
+
 test_that("rezervasyon atomiktir: ikinci çağrı alamaz", {
   rezerv <- .rezerv_yolu()
 

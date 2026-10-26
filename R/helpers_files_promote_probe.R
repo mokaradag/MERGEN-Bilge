@@ -128,7 +128,7 @@ mergen_upload_lane_lock <- function(path, wait_sec = getOption("mergen.upload_la
 
 # Değişebilir boyut/mtime yerine fiziksel dosya anahtarı; belirsizlikte yetki yok.
 .mergen_promote_file_key <- function(path) {
-  info <- tryCatch(fs::file_info(path), error = function(e) NULL)
+  info <- tryCatch(fs::file_info(mergen_io_path(path)), error = function(e) NULL)
   if (is.null(info) || NROW(info) != 1L || !isTRUE(is.finite(info$device_id)) ||
       !isTRUE(is.finite(info$inode) && info$inode > 0)) return(NULL)
   as.list(info[c("device_id", "inode")])

@@ -110,6 +110,25 @@ test_that("fiziksel kimliksiz paylaşımda özel kopya kalıcı ad oluşturmadan
   }
 })
 
+test_that("özel kopya kendi oluşturduğu hedefi kimlik okunamasa da kaldırır; önceki hedefi korur", {
+  for (preexisting in c(FALSE, TRUE)) for (identity in c(TRUE, FALSE)) {
+    env <- .file_lifecycle_boundary_env("helpers_files_promote_target.R")
+    root <- withr::local_tempdir()
+    src <- file.path(root, "source")
+    dest <- file.path(root, "target")
+    writeLines("kaynak", src)
+    if (preexisting) writeLines("önceki hedef", dest)
+    real_key <- env$.mergen_promote_file_key
+    # Uzun yolda stat başarısız olabilir: dizin kimliği var, yeni dosyanınki yok.
+    env$.mergen_promote_file_key <- function(path) if (identical(path, dest) && !identity) NULL else real_key(path)
+    if (identity) env$writeBin <- function(...) stop("yazım başarısız")
+    expect_false(env$.mergen_promote_copy_exclusive(src, dest))
+    expect_identical(file.exists(dest), preexisting)
+    if (preexisting) expect_identical(readLines(dest), "önceki hedef")
+    expect_identical(readLines(src), "kaynak")
+  }
+})
+
 test_that("eksik sahip doğrulayıcısı rezervasyon devralmayı kapalı reddeder", {
   env <- .file_lifecycle_boundary_env("utils_path_reservation.R", parent = baseenv())
   reservation <- file.path(withr::local_tempdir(), "reservation")

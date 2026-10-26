@@ -24,6 +24,15 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   hash kimlikleri ve kullanıcı verisi değişmez. Kayıt defteri, yönetici hakkı
   veya `LongPathsEnabled` gerekmez. Dizin oluşturmanın daha dar olağan yol
   sınırı da aynı I/O dönüşümüyle kapsanır.
+- Mutlak yol `fs` ile değil sözcüksel kurulur: `fs` yol birleştirmesi
+  Windows'ta 260 birimde `PATH_MAX` hatası verip tam da dönüştürülecek yolu
+  kırıyordu. Nokta ya da boşlukla biten bileşenlere önek eklenmez; açık önek
+  Win32 kırpmasını kapattığından aynı ad kısa ve uzun yolda iki ayrı dosyaya
+  düşerdi.
+- Çıktı planlaması, kaynak ön denetimi, hedef ebeveyninin bileşen bileşen
+  oluşturulması, varlık sondası, aynı dosya karşılaştırması, DOCX önizleme
+  işçisi ve başarısız özel kopyanın kendi hedefini temizlemesi aynı sınıra
+  bağlanır; plan, sonuç ve oturum yolları mantıksal kalır.
 - Terfi, çıktı kurtarma, rezervasyon marker'ı ve sahiplikli temizlik aynı
   dönüşümü kullanır. İç yapıtların mevcut yol bütçeleri, atomik işlemler ve
   sahiplik/indeks kilitleri korunur. Linux I/O yolları aynen döner.

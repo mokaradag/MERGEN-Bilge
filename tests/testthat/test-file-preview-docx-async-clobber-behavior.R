@@ -456,6 +456,31 @@ test_that("DOCX işçisi yolu çözer, önbelleği doğrular ve değişen dosyay
 })
 
 
+test_that("DOCX işçisi gerçek yol çözücüyle temiz süreçte bilinen yolu kodlar", {
+  skip_if_not_installed("callr")
+  env <- new.env(parent = globalenv())
+  for (file in c("helpers_worker_monitor.R", "helpers_worker_cancellation.R", "helpers_async_result_guard.R",
+                 "helpers_files_path.R", "utils_path_reservation.R"))
+    source(file.path(resolve_repo_root_for_tests(), "R", file), encoding = "UTF-8", local = env)
+  # Üretimdeki gibi yardımcılar küresel ortama bağlıdır; serileştirme onları
+  # taşımaz, yalnız açık globals işçiye ulaşır.
+  for (nm in c("resolve_readable_path", "mergen_io_path", "mergen_logical_path"))
+    environment(env[[nm]]) <- globalenv()
+  path <- withr::local_tempfile(fileext = ".docx")
+  writeBin(charToRaw("docx içerik"), path)
+  env$tracked_future_promise <- function(task_fn, globals, packages, ...) {
+    payload <- env$worker_monitor_serialize_explicit_task(task_fn, globals, packages)
+    attr(payload, "mergen_packages") <- packages
+    # Gerçek işçi başlatıcısı: temiz Rscript süreci, yalnız yük ortamı.
+    process <- env$mergen_cancellable_worker_launch(payload)
+    process$wait(60000)
+    process$get_result()
+  }
+  value <- env$mergen_dispatch_docx_preview(path, "isolated")
+  expect_identical(as.character(value), base64enc::base64encode(path))
+  expect_identical(attr(value, "resolved_path"), path)
+})
+
 test_that("büyük DOCX önbelleği worker yüküne taşınmaz", {
   env <- new.env(parent = globalenv())
   for (file in c("helpers_worker_monitor.R", "helpers_async_result_guard.R"))

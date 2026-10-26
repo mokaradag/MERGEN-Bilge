@@ -125,8 +125,7 @@ file_ingestion_execute_task <- function(task) {
       )
     ))
   }
-  same_source <- identical(normalizePath(dest, winslash = "/", mustWork = FALSE),
-    normalizePath(task$datapath, winslash = "/", mustWork = FALSE))
+  same_source <- mergen_same_path(dest, task$datapath)
   artifact_id <- if (same_source) NULL else if (file_ingestion_claimed_by(dest, task$transaction$id,
     verification$identity)) task$transaction$id else tryCatch(file_ingestion_claim_artifact(dest,
     verification$identity, id = task$transaction$id, started_at = copy_started), error = function(e) e)
@@ -180,8 +179,7 @@ file_ingestion_verify_copy <- function(src_path, dest_path) {
 file_ingestion_discard_dest <- function(dest_path, src_path = "") {
   dest_path <- as.character(dest_path %||% "")[1]
   if (!nzchar(dest_path)) return(invisible(FALSE))
-  if (identical(normalizePath(mergen_io_path(dest_path), winslash = "/", mustWork = FALSE),
-                normalizePath(mergen_io_path(as.character(src_path %||% "")[1]), winslash = "/", mustWork = FALSE))) {
+  if (mergen_same_path(dest_path, src_path)) {
     return(invisible(FALSE))
   }
   try(unlink(mergen_io_path(dest_path), force = TRUE, expand = FALSE), silent = TRUE)

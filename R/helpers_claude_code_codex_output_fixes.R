@@ -100,8 +100,8 @@ cc_plan_output_sync <- function(changed_files, layout, source_workdir, limits = 
   paths <- unique(as.character(changed_files %||% character(0)))
   unknown <- paths[vapply(paths, function(path) {
     identical(cc_runtime_zone_of_path(path, layout), "output") &&
-      isTRUE(file.exists(path)) &&
-      !is.finite(suppressWarnings(as.numeric(file.info(path)$size[1])))
+      isTRUE(file.exists(mergen_io_path(path))) &&
+      !is.finite(suppressWarnings(as.numeric(file.info(mergen_io_path(path))$size[1])))
   }, logical(1))]
   plan <- .cc_codex_original_cc_plan_output_sync(
     changed_files = setdiff(paths, unknown),
@@ -157,7 +157,9 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
       fail("Çalıştırma durduruldu; çıktı aktarılmadı")
       next
     }
-    if (!nzchar(src) || !file.exists(mergen_io_path(src)) || dir.exists(mergen_io_path(src))) {
+    # Kaynak mantıksal kalır; her dosya sistemi sondası aynı I/O yolunu kullanır.
+    src_io <- mergen_io_path(src)
+    if (!nzchar(src) || !file.exists(src_io) || dir.exists(src_io)) {
       fail("Çıktı kaynağı artık erişilemiyor")
       next
     }
@@ -165,7 +167,7 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
     physical_root <- try(fs::path_real(mergen_io_path(output_root)), silent = TRUE)
     output_root <- if (nzchar(output_root) && !inherits(physical_root, "try-error")) .cc_scan_norm(as.character(physical_root)) else ""
     resolved_src <- tryCatch(
-      .cc_scan_norm(as.character(fs::path_real(mergen_io_path(src)))),
+      .cc_scan_norm(as.character(fs::path_real(src_io))),
       error = function(e) ""
     )
     # Bağlantı tespiti taban ad karşılaştırmasıyla DEĞİL, ortak dizin düzeyli
@@ -179,7 +181,7 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
       fail("Çıktı kaynağı bağlantı/reparse-point veya onaylı output kökünün dışında")
       next
     }
-    source_size <- suppressWarnings(as.numeric(file.info(mergen_io_path(src))$size[1]))
+    source_size <- suppressWarnings(as.numeric(file.info(src_io)$size[1]))
     if (!is.finite(source_size)) {
       fail("Çıktı dosyası boyutu belirlenemedi")
       next
@@ -191,11 +193,14 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
 
     parent <- dirname(dest)
     ancestor <- parent
-    while (!dir.exists(ancestor) && !identical(dirname(ancestor), ancestor)) {
+    # Ebeveyn mantıksal kalır (kapsama/kurtarma); sondalar I/O yolunu kullanır.
+    missing_dirs <- character()
+    while (!dir.exists(mergen_io_path(ancestor)) && !identical(dirname(ancestor), ancestor)) {
+      missing_dirs <- c(ancestor, missing_dirs)
       ancestor <- dirname(ancestor)
     }
     resolved_ancestor <- tryCatch(
-      .cc_scan_norm(normalizePath(ancestor, winslash = "/", mustWork = TRUE)),
+      .cc_scan_norm(normalizePath(mergen_io_path(ancestor), winslash = "/", mustWork = TRUE)),
       error = function(e) ""
     )
     ancestor_key <- .cc_scan_key(resolved_ancestor)
@@ -205,7 +210,10 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
       fail("Hedef üst dizini onaylı kaynak kökün dışında")
       next
     }
-    if (!dir.exists(parent) && !dir.create(parent, recursive = TRUE, showWarnings = FALSE)) {
+    # Eksik dizinler tek tek kurulur: R'ın özyinelemeli dir.create() önekli
+    # `\\?\UNC\` yolunu sunucu/paylaşım olarak ayrıştırıp ilk adımda düşer.
+    for (missing_dir in missing_dirs) dir.create(mergen_io_path(missing_dir), showWarnings = FALSE)
+    if (!dir.exists(mergen_io_path(parent))) {
       fail("Hedef dizin oluşturulamadı")
       next
     }

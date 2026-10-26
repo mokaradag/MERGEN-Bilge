@@ -324,8 +324,9 @@
 # Plan dışında kalmış hedeflerin bayat rezervasyonları da aynı kuralla kurtarılır;
 # canlı ya da sahipliği kanıtlanamayan rezervasyona dokunulmaz.
 .cc_output_recover_parent <- function(parent) {
-  kilitler <- suppressWarnings(list.files(mergen_io_path(parent), pattern = "^\\.cc-output-lock(hash)?-",
-                                          all.files = TRUE, full.names = TRUE))
+  # Adlar I/O yolundan okunur, kilit kimliği mantıksal üst dizinle kurulur.
+  kilitler <- file.path(parent, suppressWarnings(list.files(mergen_io_path(parent),
+    pattern = "^\\.cc-output-lock(hash)?-", all.files = TRUE)))
   kilitler <- kilitler[dir.exists(mergen_io_path(kilitler)) & !grepl("\\.q-q[0-9a-f]+$", kilitler)]
   for (kilit in kilitler) {
     dest <- .cc_output_recovery_dest(parent, kilit)

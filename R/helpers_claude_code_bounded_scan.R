@@ -108,12 +108,15 @@ cc_path_is_reparse_link <- function(path) {
   if (isTRUE(.cc_scan_is_link(yol))) return(TRUE)
   if (.Platform$OS.type != "windows") return(FALSE)
 
-  if (!isTRUE(file.exists(yol)) && !isTRUE(dir.exists(yol))) return(FALSE)
+  # Uzun mantıksal yol olağan sondada "yok" görünür ve bağlantı kaçardı; sondalar
+  # I/O yolunu kullanır. Üst dizin önekten ÖNCE alınır (`\\?\` ters eğik ister).
+  io <- if (exists("mergen_io_path", mode = "function", inherits = TRUE)) mergen_io_path else identity
+  if (!isTRUE(file.exists(io(yol))) && !isTRUE(dir.exists(io(yol)))) return(FALSE)
 
   # Anonim işleyici sayısı bilinçli düşük tutulur (bkz. .cc_scan_list_entries);
   # bu yüzden tryCatch yerine try(silent = TRUE) kullanılır.
-  cozulmus <- try(normalizePath(yol, winslash = "/", mustWork = TRUE), silent = TRUE)
-  ust <- try(normalizePath(dirname(yol), winslash = "/", mustWork = TRUE), silent = TRUE)
+  cozulmus <- try(normalizePath(io(yol), winslash = "/", mustWork = TRUE), silent = TRUE)
+  ust <- try(normalizePath(io(dirname(yol)), winslash = "/", mustWork = TRUE), silent = TRUE)
   if (inherits(cozulmus, "try-error") || inherits(ust, "try-error")) return(FALSE)
 
   # Yalnızca ÜST DİZİNLER karşılaştırılır. Taban ad karşılaştırması Windows'ta

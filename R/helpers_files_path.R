@@ -43,7 +43,7 @@ path_existing_variant <- function(path) {
   candidate <- as.character(path[1])
   if (is.na(candidate) || !nzchar(candidate)) return(NA_character_)
 
-  # Generate variants: Slashes, Backslashes, UNC
+  # Varyantlar: eğik/ters eğik çizgi, UNC; uzun yol için en son açık Win32 I/O yazımı.
   cand_slash <- gsub("\\\\", "/", candidate, fixed = TRUE)
 
   variants <- unique(trimws(Filter(nzchar, c(
@@ -54,8 +54,8 @@ path_existing_variant <- function(path) {
     sub("^//\\?/", "//", cand_slash, perl = TRUE),
     # Fix missing leading slash for UNC (common R issue on Windows)
     if (grepl("^/[^/]", cand_slash)) paste0("/", cand_slash) else NULL,
-    gsub("/", "\\\\", cand_slash, fixed = TRUE)
-  ))))
+    gsub("/", "\\\\", cand_slash, fixed = TRUE),
+    if (exists("mergen_io_path", mode = "function")) mergen_io_path(candidate)))))
 
   # Tek varyant sondası: base + fs denetimi tek hata kapsamında birleştirilir.
   var_mi <- function(p) isTRUE(tryCatch(

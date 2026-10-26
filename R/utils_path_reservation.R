@@ -52,6 +52,33 @@ mergen_logical_path <- function(path) {
 
 mergen_io_path <- function(path) {
   if (.Platform$OS.type != "windows" || !length(path)) return(path)
+  # Mutlak biçim sözcüksel kurulur: fs::path_abs() Windows'ta 260 birimde
+  # PATH_MAX hatası verir, yani tam dönüştürülmesi gereken yolu kırar.
+  # `\\?\` Win32 kırpmasını kapatır; nokta/boşlukla biten bileşenler (ör.
+  # `rapor.`) aksi hâlde kısa ve uzun yolda iki ayrı ada düşerdi. Bu yollara
+  # önek eklenmez (NA), olağan Win32 anlamı korunur.
+  # İzole worker'a adıyla gönderildiğinde ek bağımlılık taşımaması için yereldir.
+  absolute_of <- function(slash) {
+    if (grepl("^~(/|$)", slash)) slash <- paste0(chartr("\\", "/", path.expand("~")), substring(slash, 2L))
+    if (!grepl("^[A-Za-z]:/|^//", slash)) {
+      if (grepl("^[A-Za-z]:|^~", slash)) return(NA_character_)
+      wd <- chartr("\\", "/", getwd())
+      slash <- if (startsWith(slash, "/")) paste0(sub("^([A-Za-z]:|//[^/]+/[^/]+).*$", "\\1", wd), slash) else
+        paste0(wd, "/", slash)
+    }
+    unc <- startsWith(slash, "//")
+    parts <- strsplit(sub("^/+", "", slash), "/+")[[1]]
+    n_root <- if (unc) 2L else 1L
+    if (length(parts) < n_root) return(NA_character_)
+    out <- character()
+    for (part in parts[-seq_len(n_root)]) {
+      if (part %in% c("", ".")) next
+      if (identical(part, "..")) out <- out[seq_len(max(0L, length(out) - 1L))] else out <- c(out, part)
+    }
+    if (any(grepl("[. ]$", out))) return(NA_character_)
+    absolute <- paste(c(parts[seq_len(n_root)], out), collapse = "/")
+    if (unc) paste0("//", absolute) else absolute
+  }
   result <- as.character(path)
   for (i in seq_along(result)) {
     p <- result[i]
@@ -62,8 +89,8 @@ mergen_io_path <- function(path) {
       next
     }
     if (startsWith(slash, "//./")) next
-    absolute <- as.character(fs::path_abs(fs::path_expand(p)))
-    if (!grepl("^[A-Za-z]:/|^//[^/]+/[^/]+", absolute)) next
+    absolute <- absolute_of(slash)
+    if (is.na(absolute) || !grepl("^[A-Za-z]:/|^//[^/]+/[^/]+", absolute)) next
     units <- length(iconv(enc2utf8(absolute), "UTF-8", "UTF-16LE", toRaw = TRUE)[[1]]) / 2
     # Dizin oluşturma, dosya açmadan daha dar bir olağan yol bütçesine sahiptir.
     if (units <= 247L) next
@@ -72,6 +99,18 @@ mergen_io_path <- function(path) {
     result[i] <- chartr("/", "\\", extended)
   }
   result
+}
+
+# Aynı dosyanın mantıksal ve `\\?\` yazımları tek kimlikte buluşur. Çözüm I/O
+# yolundan yapılır, yalnız Win32 ad alanı öneki atılır; harf anlamı değişmez.
+mergen_same_path <- function(a, b) {
+  key <- function(p) {
+    p <- as.character(p %||% "")[1]
+    if (is.na(p) || !nzchar(p)) return(NA_character_)
+    enc2utf8(mergen_logical_path(normalizePath(mergen_io_path(p), winslash = "/", mustWork = FALSE)))
+  }
+  ka <- key(a)
+  !is.na(ka) && identical(ka, key(b))
 }
 
 # Bayat rezervasyon eşiği (saniye). Uzun süren terfi adımları (UNC üzerinde

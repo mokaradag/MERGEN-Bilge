@@ -1039,12 +1039,15 @@ test_that("uzun çıktı adı işlem yapıtlarının dosya adı sınırını aş
   owner <- env$.cc_output_dest_lock(dest, wait_sec = 0)
   expect_true(nzchar(owner))
   txn <- env$.cc_output_txn_paths(dest, owner)
-  writeLines("özgün", txn$backup)
-  writeLines(c(token, paste0("host=", Sys.info()[["nodename"]])), file.path(txn$lock, "owner"))
-  expect_true(file.rename(txn$backup, env$.cc_output_txn_paths(dest, token)$backup))
+  # Kurulum da üretimle aynı I/O sınırını kullanır; uzun yedek mantıksal yolda açılamaz.
+  expect_gt(nchar(txn$backup), 259L)
+  writeLines("özgün", env$mergen_io_path(txn$backup))
+  writeLines(c(token, paste0("host=", Sys.info()[["nodename"]])), env$.mergen_reservation_marker(txn$lock))
+  expect_true(file.rename(env$mergen_io_path(txn$backup),
+                          env$mergen_io_path(env$.cc_output_txn_paths(dest, token)$backup)))
   env$.cc_output_recover_parent(dirname(dest))
   expect_identical(readLines(env$mergen_io_path(dest)), "özgün")
-  expect_false(dir.exists(txn$lock))
+  expect_false(dir.exists(env$mergen_io_path(txn$lock)))
   expect_false(path_exists_relaxed(txn$backup))
   expect_false(path_exists_relaxed(txn$staging))
 })
@@ -1162,6 +1165,46 @@ test_that("uzun çıktı ebeveyni taranır; kilit kimliği I/O önekiyle değiş
   expect_false(path_exists_relaxed(paths$backup))
   expect_false(path_exists_relaxed(paths$staging))
   expect_false(path_exists_relaxed(paths$lock))
+})
+
+test_that("uzun çıktı planlanır ve yayımlanır; her dosya sistemi sondası I/O yolunu kullanır", {
+  env <- .cc_codex_review_env()
+  # Uzun-yol desteksiz Windows benzetimi: mantıksal bileşen diskte yoktur ve
+  # yalnız I/O dönüşümü onu gerçek kısa dizine bağlar. Dönüştürülmemiş her
+  # sonda (varlık, boyut, ebeveyn, kilit metadata'sı, terfi) böylece düşer.
+  virtual <- strrep("u", 120L)
+  real_io <- env$mergen_io_path
+  env$mergen_io_path <- function(path) {
+    if (!length(path)) return(path)
+    out <- as.character(path)
+    hit <- !is.na(out)
+    out[hit] <- gsub(paste0("/", virtual, "(?=/|$)"), "/k", out[hit], perl = TRUE)
+    real_io(out)
+  }
+  runtime <- normalizePath(withr::local_tempdir(), winslash = "/")
+  source_root <- normalizePath(withr::local_tempdir(), winslash = "/")
+  layout <- list(root = runtime, input = file.path(runtime, "input"), output = file.path(runtime, "output"),
+                 metadata = file.path(runtime, "metadata"), document_support = file.path(runtime, "document_support"))
+  name <- paste0(strrep("ç", 105L), ".txt")
+  src <- file.path(layout$output, virtual, "alt", name)
+  expect_true(dir.create(env$mergen_io_path(dirname(src)), recursive = TRUE))
+  expect_false(file.exists(src))
+  for (content in c("ilk yayın", "ikinci yayın")) {
+    writeLines(content, env$mergen_io_path(src))
+    plan <- env$cc_plan_output_sync(src, layout, source_root)
+    expect_length(plan$skipped_approved, 0L)
+    expect_length(plan$items, 1L)
+    dest <- plan$items[[1]]$dest_path
+    # Plan ve sonuç mantıksal yolları taşır.
+    expect_identical(plan$items[[1]]$source_path, src)
+    expect_identical(dest, file.path(source_root, virtual, "alt", name))
+    expect_true(startsWith(basename(env$.cc_output_txn_paths(dest)$lock), ".cc-output-lockhash-"))
+    result <- env$cc_apply_output_sync_plan(plan)
+    expect_true(result[[1]]$success, info = result[[1]]$error)
+    expect_identical(result[[1]]$dest_path, dest)
+    expect_identical(readLines(env$mergen_io_path(dest)), content)
+    expect_length(list.files(env$mergen_io_path(dirname(dest)), pattern = "^\\.cc-output-", all.files = TRUE), 0L)
+  }
 })
 
 test_that("hash kilidinin Türkçe hedef adı UTF-8 olarak simetrik saklanır", {

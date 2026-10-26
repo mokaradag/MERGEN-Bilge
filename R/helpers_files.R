@@ -98,8 +98,9 @@ copy_to_mcp_base <- function(upload, user_id) {
       tmpdir = as.character(user_dir)
     ))
 
-    candidate_dest <- fs::path(
-      user_dir,
+    # fs::path() Windows'ta 260 birimde PATH_MAX hatası verir; birleştirme sözcükseldir.
+    candidate_dest <- file.path(
+      as.character(user_dir),
       paste0(unique_stub, "_", safe_display_name)
     )
 

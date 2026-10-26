@@ -162,8 +162,10 @@ mergen_clear_request_state <- function(session, active_request_id, req_id, reset
 
 mergen_dispatch_docx_preview <- function(path, session_token, cached = NULL,
                                          name = NULL, user_id = NULL, cancel_check = NULL) {
+  # Açık bağımlılık kümesi tamdır: çözücü I/O yolunu, sonuç mantıksal yolu kullanır.
   globals <- list(docx_path = path, docx_name = name, docx_user_id = user_id,
-                  docx_cache_key = cached$key, resolve_readable_path = resolve_readable_path)
+                  docx_cache_key = cached$key, resolve_readable_path = resolve_readable_path,
+                  mergen_io_path = mergen_io_path, mergen_logical_path = mergen_logical_path)
   if (is.null(path)) {
     globals$resolve_uploaded_file <- resolve_uploaded_file
     globals <- c(globals, worker_monitor_expand_function_globals(globals))
@@ -177,12 +179,13 @@ mergen_dispatch_docx_preview <- function(path, session_token, cached = NULL,
       path <- docx_path
       if (is.null(path)) path <- resolve_uploaded_file(docx_name, user_id = docx_user_id)
       if (is.null(path) || !nzchar(path)) stop("Dosya bulunamadı veya erişilemiyor.")
-      path <- resolve_readable_path(path)
-      info <- file.info(path)
+      io_path <- resolve_readable_path(path)
+      path <- mergen_logical_path(io_path)
+      info <- file.info(io_path)
       if (is.na(info$size[1])) stop("Dosya bulunamadı veya erişilemiyor.")
       key <- paste(path, info$size[1], as.numeric(info$mtime[1]), sep = "||")
       if (identical(key, docx_cache_key)) return(structure("", cache_key = key, resolved_path = path, cache_hit = TRUE))
-      structure(base64enc::base64encode(path), cache_key = key, resolved_path = path)
+      structure(base64enc::base64encode(io_path), cache_key = key, resolved_path = path)
     },
     task_type = "file_preview_docx",
     cancel_check = cancel_check,

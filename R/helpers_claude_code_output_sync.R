@@ -105,7 +105,9 @@ cc_plan_output_sync <- function(changed_files,
     # olduğu bilinir. Bu yüzden varlık kontrolünden ÖNCE hesaplanır.
     bolge <- cc_runtime_zone_of_path(kaynak, layout)
 
-    if (!isTRUE(file.exists(kaynak)) || isTRUE(dir.exists(kaynak))) {
+    # Plan mantıksal yolu taşır; yalnız varlık/boyut sondası Windows I/O yolunu kullanır.
+    kaynak_io <- mergen_io_path(kaynak)
+    if (!isTRUE(file.exists(kaynak_io)) || isTRUE(dir.exists(kaynak_io))) {
       atlananlar <- c(atlananlar, kaynak)
 
       # Snapshot diff'i bu dosyanın ÜRETİLDİĞİNİ kanıtladı. Aktarımdan önce
@@ -118,7 +120,7 @@ cc_plan_output_sync <- function(changed_files,
         atlanan_onayli[[length(atlanan_onayli) + 1L]] <- list(
           source_path = kaynak,
           size = NA_real_,
-          reason = if (isTRUE(dir.exists(kaynak))) "output_is_directory" else "missing_output"
+          reason = if (isTRUE(dir.exists(kaynak_io))) "output_is_directory" else "missing_output"
         )
       }
       next
@@ -132,7 +134,7 @@ cc_plan_output_sync <- function(changed_files,
       next
     }
 
-    boyut <- suppressWarnings(as.numeric(file.info(kaynak)$size[1]))
+    boyut <- suppressWarnings(as.numeric(file.info(kaynak_io)$size[1]))
     if (!is.finite(boyut)) boyut <- 0
 
     if (boyut > max_file_bytes || toplam + boyut > max_total_bytes) {
