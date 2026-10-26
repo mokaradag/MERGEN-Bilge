@@ -1537,3 +1537,5 @@ Son kabul notu: bu güncelleme sonrasında gerçek tarayıcı smoke koşumu `UX_
 - README'deki eski PR tarzı doğrulama günlükleri, kullanıcıyı ilk girişte yormamak için buraya taşındı.
 - Yalnızca gerçekten çalıştırılan komutların sonucu “geçti” olarak ifade edilir.
 - Codex/Claude cloud kanıtı ile Windows VM/on-prem kanıtı aynı şey değildir; özellikle DB, SSO, encoding, UNC path, paket kilidi ve tarayıcı smoke alanlarında sınırlar açıkça belirtilmelidir.
+
+- Shiny oturumunda yükleme şeridi çekişmesi beklemeden reddedilir; arka plan işçilerinin sınırlı bekleme bütçesi korunur.

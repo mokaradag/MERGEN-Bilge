@@ -2869,6 +2869,20 @@ test_that("şerit çekişmesi tek zaman aşımında yüklemeyi düşürmez; kili
   deadline <- Sys.time() + 20
   while (!file.exists(file.path(root, "ready")) && holder$is_alive() && Sys.time() < deadline) holder$poll_io(50)
   expect_true(file.exists(file.path(root, "ready")))
+  # Oturum içindeki çekişme sıfır zaman aşımıyla kapalı başarısız olur.
+  session_timeout <- NULL
+  env$mergen_reclaim_mutex <- function(path, timeout = 0, exclusive = TRUE) {
+    session_timeout <<- timeout
+    NULL
+  }
+  shiny::withReactiveDomain(shiny::MockShinySession$new(), {
+    expect_null(env$mergen_upload_lane_lock(target))
+  })
+  expect_identical(session_timeout, 0)
+  env$mergen_reclaim_mutex <- function(path, timeout = 0, exclusive = TRUE) {
+    calls <<- calls + 1L
+    real(path, min(timeout, 200), exclusive)
+  }
   guard <- env$mergen_upload_lane_lock(target)
   expect_false(is.null(guard))
   expect_gt(calls, 1L)

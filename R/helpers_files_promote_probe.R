@@ -80,12 +80,16 @@ mergen_upload_mutex_path <- function(path) {
 # Şerit çakışması hata değildir: canlı tutucu bütçe boyunca beklenir. Kilit
 # dosyası açılamıyorsa ya da şerit boşken edinilemiyorsa beklenmeden reddedilir.
 mergen_upload_lane_lock <- function(path, wait_sec = getOption("mergen.upload_lane_wait_sec", 120)) {
+  # Etkin Shiny oturumunda çekişme olay döngüsünü bekletemez.
+  if (requireNamespace("shiny", quietly = TRUE) &&
+      !is.null(shiny::getDefaultReactiveDomain())) wait_sec <- 0
   lock <- mergen_upload_mutex_path(path)
   if (!dir.exists(dirname(lock))) dir.create(dirname(lock), recursive = TRUE, showWarnings = FALSE)
   deadline <- Sys.time() + wait_sec
   free <- 0L
   repeat {
-    guard <- mergen_reclaim_mutex(lock, timeout = 5000)
+    guard <- mergen_reclaim_mutex(lock, timeout = max(0, min(5000,
+      as.numeric(difftime(deadline, Sys.time(), units = "secs")) * 1000)))
     if (!is.null(guard) || Sys.time() >= deadline) return(guard)
     probe <- tryCatch(filelock::lock(lock, exclusive = FALSE, timeout = 0), error = function(e) e)
     if (inherits(probe, "error")) return(NULL)
