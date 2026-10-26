@@ -14,6 +14,13 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-10-26 Yükleme listesi ara ürünleri
+
+- Kısa `.io-` sahiplik marker'ları, kimlik ekleri ve geçici yazım dosyaları
+  ortak listeleme filtresinde gizlenir; dosyalar ve sahiplik kanıtları korunur.
+- Yayın kilidi dizini testinde iki yol da kanonik karşılaştırma yardımcısından
+  geçer; Windows yol ayırıcıları eşitlik denetimini bozmaz.
+
 ### (Yayınlanmadı) 2026-10-25 Yükleme sahipliği ve Windows hata temizliği
 
 - Yükleme terfisi, bağlantı veya hedef rezervasyonu almadan önce ada özgü

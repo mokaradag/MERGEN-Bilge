@@ -103,6 +103,28 @@ test_that(".file_store_list_user_files_relaxed klasördeki dosyaları tam yolla 
   expect_setequal(basename(out), c("f1.txt", "f2.txt"))
 })
 
+test_that("sahiplik ara ürünleri iki listeleme yolunda da gizlenir", {
+  d <- withr::local_tempdir(pattern = ".io-parent-")
+  documents <- c("rapor.txt", "rapor.io-data.txt", "belge.mergen-rsv", ".up-abc")
+  artifacts <- c(".io-0123456789abcdef", ".io-0123456789abcdef.identity",
+                 ".io-gecici", ".mergen-rsv.reclaim", "rapor.txt.mergen-part")
+  paths <- file.path(d, c(documents, artifacts))
+  for (path in paths) writeLines("içerik", path)
+  expect_identical(.fsl_env$.file_store_drop_upload_artifacts(paths), file.path(d, documents))
+  expect_identical(.fsl_env$.file_store_drop_upload_artifacts(file.path(d, artifacts)), character(0))
+  expect_identical(.fsl_env$.file_store_drop_upload_artifacts(character(0)), character(0))
+  withr::defer(rm("list.files", envir = .fsl_env))
+  .fsl_env$list.files <- function(...) paths
+  expect_setequal(.fsl_env$.file_store_list_user_files_relaxed(d), file.path(d, documents))
+  .fsl_env$list.files <- function(...) character(0)
+  testthat::local_mocked_bindings(dir_ls = function(...) paths, .package = "fs")
+  expect_setequal(.fsl_env$.file_store_list_user_files_relaxed(d), file.path(d, documents))
+  .fsl_env$list.files <- function(...) file.path(d, artifacts)
+  testthat::local_mocked_bindings(dir_ls = function(...) file.path(d, artifacts), .package = "fs")
+  expect_identical(.fsl_env$.file_store_list_user_files_relaxed(d), character(0))
+  expect_true(all(file.exists(paths)))
+})
+
 test_that(".file_store_list_user_files_relaxed boş/olmayan dizin için boş karakter döner", {
   expect_equal(length(.fsl_env$.file_store_list_user_files_relaxed("")), 0L)
   expect_equal(length(.fsl_env$.file_store_list_user_files_relaxed(NULL)), 0L)

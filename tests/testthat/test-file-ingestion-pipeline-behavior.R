@@ -3272,7 +3272,8 @@ test_that("benzersiz yüklemelerin kalıcı yayın kilitleri sınırlı kalır",
   locks <- vapply(targets, env$mergen_upload_mutex_path, character(1))
   expect_lte(length(unique(locks)), 4096L)
   expect_gt(length(unique(locks)), 1L)
-  expect_identical(unique(dirname(locks)), env$mergen_upload_lock_dir())
+  expect_identical(env$normalize_for_path_compare(unique(dirname(locks))),
+    env$normalize_for_path_compare(env$mergen_upload_lock_dir()))
   expect_identical(env$mergen_upload_mutex_path(file.path(root, "NAME.TXT")),
     env$mergen_upload_mutex_path(file.path(root, "name.txt")))
   # Aynı fiziksel dizinin farklı yazımı aynı şeride girer.
