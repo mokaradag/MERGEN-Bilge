@@ -75,7 +75,7 @@ mergen_stage_upload_copy <- function(datapath, hedef, staging, var_mi, gorunur_m
 
   if (!isTRUE(kopya_ok) || !gorunur_mu(staging)) {
     cat(sprintf("[copy_to_mcp_base] Yedek yol: base::file.copy deneniyor: %s\n", ad))
-    yedek_ok <- tryCatch(file.copy(datapath, staging, overwrite = TRUE),
+    yedek_ok <- tryCatch(file.copy(mergen_io_path(datapath), mergen_io_path(staging), overwrite = TRUE),
                          error = function(e) {
                            cat(sprintf("[copy_to_mcp_base] base::file.copy de başarısız: %s\n", ad))
                            FALSE
@@ -98,7 +98,7 @@ mergen_stage_upload_copy <- function(datapath, hedef, staging, var_mi, gorunur_m
         staging <- staging_native
         hedef <- tryCatch(enc2native(hedef), error = function(e) hedef)
       }
-      native_ok <- tryCatch(file.copy(datapath, staging_native, overwrite = TRUE),
+      native_ok <- tryCatch(file.copy(mergen_io_path(datapath), mergen_io_path(staging_native), overwrite = TRUE),
                             error = function(e) FALSE)
       if (isTRUE(native_ok) && gorunur_mu(staging_native) && (identical(staging_native, staging) || !var_mi(staging))) {
         staging <- staging_native

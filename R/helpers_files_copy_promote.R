@@ -41,7 +41,7 @@ mergen_copy_upload_staged <- function(datapath, final_dest, base_root,
     # Kök DIŞINA silme yapılmaz: yol tabanlı `unlink()` ata bileşenlerini izler.
     if (!var_mi(p)) return(invisible(FALSE))
     if (!isTRUE(mergen_path_inside_root(p, base_root))) return(invisible(FALSE))
-    try(unlink(p, force = TRUE), silent = TRUE)
+    try(unlink(mergen_io_path(p), force = TRUE, expand = FALSE), silent = TRUE)
     invisible(!var_mi(p))
   }
 
@@ -68,8 +68,8 @@ mergen_copy_upload_staged <- function(datapath, final_dest, base_root,
 
   # Boyut DOĞRULANAMAZSA terfi edilmez: `file.info()$size` NA döndüğünde eski kod
   # denetimi atlayıp doğrulanmamış bir kopyayı kalıcı ada taşıyordu.
-  kaynak_boyut <- suppressWarnings(file.info(datapath)$size)
-  staging_boyut <- suppressWarnings(file.info(staging)$size)
+  kaynak_boyut <- suppressWarnings(file.info(mergen_io_path(datapath))$size)
+  staging_boyut <- suppressWarnings(file.info(mergen_io_path(staging))$size)
   boyut_ok <- length(kaynak_boyut) == 1L && length(staging_boyut) == 1L &&
     is.finite(kaynak_boyut) && is.finite(staging_boyut) &&
     isTRUE(staging_boyut == kaynak_boyut)

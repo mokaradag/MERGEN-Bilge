@@ -14,6 +14,25 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-10-26 Windows uzun mutlak yol I/O sınırı
+
+- Geçerli bir dosya adı, geçici kökle birleşince 259 UTF-16 birimini
+  aşabiliyordu. Kısa staging/yedek oluşuyor; base R ile kalıcı ada taşıma ve
+  sonraki okuma başarısız olup rename/bağlantı uyarıları ve sahiplik hatası
+  üretiyordu. Ortak `mergen_io_path()` yalnız Windows I/O çağrısında mutlak
+  yerel/UNC yolunu açık uzun yol biçimine çevirir; dosya adı, mantıksal yol,
+  hash kimlikleri ve kullanıcı verisi değişmez. Kayıt defteri, yönetici hakkı
+  veya `LongPathsEnabled` gerekmez. Dizin oluşturmanın daha dar olağan yol
+  sınırı da aynı I/O dönüşümüyle kapsanır.
+- Terfi, çıktı kurtarma, rezervasyon marker'ı ve sahiplikli temizlik aynı
+  dönüşümü kullanır. İç yapıtların mevcut yol bütçeleri, atomik işlemler ve
+  sahiplik/indeks kilitleri korunur. Linux I/O yolları aynen döner.
+- Uzun ad fikstürleri kısaltılmadan aynı I/O sınırını kullanır; yol uzunluğu
+  için eklenmiş koşullu atlamalar ve uyarı bastırmalı oluşturma sondaları
+  kaldırılır. UTF-16 sınırı, UNC, yinelenebilir dönüşüm ve uzun ebeveynde
+  gerçek terfi/sahiplik/geri alma odaklı olarak sınanır. Gerçek üretim VM
+  doğrulaması ayrıca yapılmalıdır; CI onun yerine kanıt sayılmaz.
+
 ### (Yayınlanmadı) 2026-10-26 Kodlama testi ebeveyn yolları
 
 - Eski Windows kodlamasını benzeten çıktı kurtarma ve yükleme sahipliği

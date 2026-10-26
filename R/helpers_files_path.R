@@ -11,7 +11,7 @@
 resolve_readable_path <- function(path) {
   if (is.null(path) || !nzchar(path)) return(path)
 
-  p <- as.character(path[1])
+  p <- mergen_io_path(as.character(path[1]))
 
   # Zaten base R ile çalışıyorsa dokunma
   if (tryCatch(isTRUE(file.exists(p)), error = function(e) FALSE)) return(p)

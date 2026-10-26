@@ -17,15 +17,15 @@ MERGEN_PROMOTE_RESERVATION_SUFFIX <- ".mergen-rsv"
     if (!is.null(input)) try(close(input), silent = TRUE)
     if (!is.null(output)) try(close(output), silent = TRUE)
     if (!is.null(owned) && !complete && identical(.mergen_promote_file_key(hedef), owned))
-      try(unlink(hedef, force = TRUE), silent = TRUE)
+      try(unlink(mergen_io_path(hedef), force = TRUE, expand = FALSE), silent = TRUE)
   }, add = TRUE)
   isTRUE(tryCatch({
-    input <- file(staging, "rb")
-    output <- file(hedef, "wxb")
+    input <- file(mergen_io_path(staging), "rb")
+    output <- file(mergen_io_path(hedef), "wxb")
     owned <- .mergen_promote_file_key(hedef)
     if (is.null(owned)) stop("Kopya dosyasının fiziksel kimliği doğrulanamadı.")
     # file.copy gibi: kip desteklenmeyen paylaşımda kopya yine tamamlanabilir.
-    Sys.chmod(hedef, mode = file.info(staging)$mode[1], use_umask = FALSE)
+    Sys.chmod(mergen_io_path(hedef), mode = file.info(mergen_io_path(staging))$mode[1], use_umask = FALSE)
     while (length(bytes <- readBin(input, "raw", n = 65536L)))
       writeBin(bytes, output)
     close(output)
@@ -37,7 +37,7 @@ MERGEN_PROMOTE_RESERVATION_SUFFIX <- ".mergen-rsv"
 
 # Staging adı terfiden sonra düşürülür; silme hatası kalıcı hedefi geçersiz kılmaz.
 .mergen_promote_drop_staging <- function(staging, var_mi) {
-  try(unlink(staging, force = TRUE), silent = TRUE)
+  try(unlink(mergen_io_path(staging), force = TRUE, expand = FALSE), silent = TRUE)
   if (!mergen_promote_probe(var_mi, staging)) return(invisible(TRUE))
   try(
     warning(sprintf(
@@ -60,7 +60,7 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
     publish <- mergen_upload_lane_lock(hedef)
     if (is.null(publish)) return(list(ok = FALSE, yabanci = TRUE, promoted = FALSE))
   }
-  bagli <- isTRUE(try(suppressWarnings(file.link(staging, hedef)), silent = TRUE))
+  bagli <- isTRUE(try(suppressWarnings(file.link(mergen_io_path(staging), mergen_io_path(hedef))), silent = TRUE))
   if (bagli) {
     .mergen_promote_drop_staging(staging, var_mi_guvenli)
     publish <- .mergen_upload_unlock(publish)
@@ -93,7 +93,7 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
     return(list(ok = FALSE, yabanci = var_mi_guvenli(hedef), promoted = FALSE))
 
   sonuc <- tryCatch({
-    if (isTRUE(dir.exists(rezerv))) {
+    if (isTRUE(dir.exists(mergen_io_path(rezerv)))) {
       guard <- .mergen_promote_guard(rezerv, jeton)
       if (is.null(guard)) return(list(ok = FALSE, yabanci = TRUE, promoted = FALSE))
     }
@@ -102,7 +102,7 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
     if (var_mi_guvenli(hedef) || var_mi_guvenli(hedef)) {
       list(ok = FALSE, yabanci = TRUE, promoted = FALSE)
     } else {
-      tasindi <- isTRUE(tryCatch(file.rename(staging, hedef), error = function(e) FALSE))
+      tasindi <- isTRUE(tryCatch(file.rename(mergen_io_path(staging), mergen_io_path(hedef)), error = function(e) FALSE))
       if (!tasindi && isTRUE(allow_copy) && var_mi_guvenli(staging)) {
         tasindi <- .mergen_promote_copy_exclusive(staging, hedef)
         if (tasindi) .mergen_promote_drop_staging(staging, var_mi_guvenli)

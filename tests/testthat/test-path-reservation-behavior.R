@@ -24,6 +24,34 @@ local({
   file.path(withr::local_tempdir(.local_envir = parent.frame()), "hedef.rsv")
 }
 
+test_that("I/O yolu mutlak Windows bütçesini UTF-16 ile ölçer; ad ve kimlik korunur", {
+  env <- new.env(parent = baseenv())
+  source(file.path(resolve_repo_root_for_tests(), "R/utils_path_reservation.R"),
+         encoding = "UTF-8", local = env)
+  paths <- c(paste0("C:/", strrep("p", 180), "/", strrep("n", 63)),
+             paste0("//server/share/", strrep("p", 170), "/", strrep("n", 61)))
+  env$.Platform <- list(OS.type = "unix")
+  expect_identical(env$mergen_io_path(paste0(paths, "n")), paste0(paths, "n"))
+  env$.Platform <- list(OS.type = "windows")
+  expect_identical(env$mergen_io_path(paths), paths)
+  for (path in paths) {
+    long <- paste0(path, "n")
+    expected <- chartr("/", "\\", if (startsWith(long, "//"))
+      paste0("//?/UNC/", substring(long, 3L)) else paste0("//?/", long))
+    expect_identical(env$mergen_io_path(long), expected)
+    expect_identical(env$mergen_io_path(expected), expected)
+    expect_identical(env$mergen_logical_path(expected), long)
+  }
+  # 248 birimden itibaren dizin I/O da kayıt defteri ayarı olmadan çalışır.
+  expect_true(startsWith(env$mergen_io_path(paste0(paths[1], strrep("n", 12L))), "\\\\?\\"))
+  # BMP dışı karakter iki UTF-16 birimidir; UTF-8 bayt sayısı bütçe değildir.
+  supplementary <- paste0(substr(paths[1], 1L, 246L), intToUtf8(0x1f600))
+  expect_true(startsWith(env$mergen_io_path(supplementary), "\\\\?\\"))
+  posix <- paste0("/tmp/", strrep("p", 260L))
+  expect_identical(env$mergen_io_path(posix), posix)
+  expect_identical(env$mergen_io_path(c("", NA_character_)), c("", NA_character_))
+})
+
 test_that("rezervasyon atomiktir: ikinci çağrı alamaz", {
   rezerv <- .rezerv_yolu()
 
@@ -158,4 +186,21 @@ test_that("izole rezervasyon devralması eksik muteks altyapısında kapalı kal
   expect_true(env$mergen_reservation_acquire(rezerv, "sahip"))
   expect_false(env$mergen_reservation_takeover(rezerv, "yeni"))
   expect_identical(env$mergen_reservation_owner(rezerv), "sahip")
+})
+
+test_that("uzun ebeveynde bayat rezervasyon aynı geri kazanım muteksiyle devralınır", {
+  env <- new.env(parent = globalenv())
+  for (name in c("helpers_process_ownership.R", "utils_path_reservation.R"))
+    source(file.path(resolve_repo_root_for_tests(), "R", name), local = env, encoding = "UTF-8")
+  root <- withr::local_tempdir()
+  parent <- file.path(root, strrep("p", 95), strrep("q", 95), strrep("r", 95))
+  expect_true(dir.create(env$mergen_io_path(parent), recursive = TRUE))
+  reservation <- file.path(parent, "dest.rsv")
+  expect_gt(nchar(reservation), 259L)
+  expect_true(env$mergen_reservation_acquire(reservation, "old"))
+  env$mergen_lock_owner_reclaimable <- function(...) TRUE
+  expect_true(env$mergen_reservation_takeover(reservation, "new"))
+  expect_identical(env$mergen_reservation_owner(reservation), "new")
+  expect_true(env$mergen_reservation_release(reservation, "new"))
+  expect_false(dir.exists(env$mergen_io_path(reservation)))
 })

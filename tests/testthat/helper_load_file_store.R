@@ -133,6 +133,8 @@ source(
   local = globalenv()
 )
 
+source(file.path(repo_root_for_tests, "R", "utils_path_reservation.R"), encoding = "UTF-8", local = globalenv())
+
 source(
   file.path(repo_root_for_tests, "R", "helpers_files_path.R"),
   encoding = "UTF-8",

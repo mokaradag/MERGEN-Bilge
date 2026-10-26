@@ -160,8 +160,8 @@ file_ingestion_verify_copy <- function(src_path, dest_path) {
   if (!var_mi) {
     return(list(ok = FALSE, code = "dest_missing", error = "Kopyalanan dosya hedefte bulunamadı."))
   }
-  dest_size <- suppressWarnings(as.numeric(file.info(dest_path)$size[1]))
-  src_size <- suppressWarnings(as.numeric(file.info(src_path)$size[1]))
+  dest_size <- suppressWarnings(as.numeric(file.info(mergen_io_path(dest_path))$size[1]))
+  src_size <- suppressWarnings(as.numeric(file.info(mergen_io_path(src_path))$size[1]))
   if (is.finite(dest_size) && is.finite(src_size) && dest_size != src_size) {
     return(list(
       ok = FALSE,
@@ -180,11 +180,11 @@ file_ingestion_verify_copy <- function(src_path, dest_path) {
 file_ingestion_discard_dest <- function(dest_path, src_path = "") {
   dest_path <- as.character(dest_path %||% "")[1]
   if (!nzchar(dest_path)) return(invisible(FALSE))
-  if (identical(normalizePath(dest_path, winslash = "/", mustWork = FALSE),
-                normalizePath(as.character(src_path %||% "")[1], winslash = "/", mustWork = FALSE))) {
+  if (identical(normalizePath(mergen_io_path(dest_path), winslash = "/", mustWork = FALSE),
+                normalizePath(mergen_io_path(as.character(src_path %||% "")[1]), winslash = "/", mustWork = FALSE))) {
     return(invisible(FALSE))
   }
-  try(unlink(dest_path, force = TRUE), silent = TRUE)
+  try(unlink(mergen_io_path(dest_path), force = TRUE, expand = FALSE), silent = TRUE)
   invisible(TRUE)
 }
 # Bir partideki dosyaları SIRAYLA işler. Tek worker görevi kullanıldığı için

@@ -14,6 +14,9 @@
 #     istisna üretip dosyayı kayıtsız bırakıyordu.
 # ==============================================================================
 
+# İzole kaynakta ortak I/O katmanı yoksa önceki base R davranışı korunur.
+if (!exists("mergen_io_path", mode = "function", inherits = TRUE)) mergen_io_path <- base::identity
+
 # Windows yol sınırları UTF-16 birimleriyle, POSIX sınırları baytla ölçülür.
 mergen_artifact_path_units <- function(path) {
   path <- enc2utf8(as.character(path)[1])
@@ -34,7 +37,7 @@ mergen_upload_artifact_path <- function(final_dest, suffix, component_only = FAL
   if (uzunluk > 255L) stop("Hedef dosya adı dosya sistemi sınırını aşıyor.")
   original <- paste0(hedef, suffix)
   # Var olan rezervasyon yeni bir hash adıyla atlanamaz; canlı sahip korunur.
-  if (component_only && dir.exists(original)) return(original)
+  if (component_only && dir.exists(mergen_io_path(original))) return(original)
   fits <- function(path) {
     quarantine <- if (exists("mergen_reservation_quarantine_path", mode = "function", inherits = TRUE))
       mergen_reservation_quarantine_path(path, unique = FALSE) else paste0(path, ".q-q", strrep("0", 16L))
@@ -223,7 +226,7 @@ file_ingestion_reclaim_stage <- function(path, staging, owner, marker) {
   indexed <- .mergen_index_path_key(old) %in%
     vapply(as.list(unlist(.load_index(), use.names = FALSE)), .mergen_index_path_key, character(1))
   if (proven && !indexed && is.null(file_ingestion_read_owner(old))) {
-    unlink(old, force = TRUE)
+    unlink(mergen_io_path(old), force = TRUE, expand = FALSE)
     if (path_exists_relaxed(old)) stop("Önceki staging temizlenemedi.")
   } else if (identical(old, staging)) stop("Önceki staging dosyasının kimliği doğrulanamadı.")
   invisible(NULL)

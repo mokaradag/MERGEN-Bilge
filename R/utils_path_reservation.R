@@ -41,6 +41,39 @@ if (!exists("%||%", mode = "function", inherits = TRUE)) {
   `%||%` <- function(a, b) if (is.null(a)) b else a
 }
 
+# Mantıksal yol/kimlik değişmez; yalnız Windows I/O çağrısı uzun yol biçimini alır.
+# Açık Win32 öneki kayıt defteri ayarı istemez; ayraçları ters eğik olmalıdır.
+mergen_logical_path <- function(path) {
+  if (.Platform$OS.type != "windows" || !length(path)) return(path)
+  path <- chartr("\\", "/", as.character(path))
+  path <- sub("^//[?]/UNC/", "//", path, ignore.case = TRUE)
+  sub("^//[?]/(?=[A-Za-z]:/)", "", path, perl = TRUE)
+}
+
+mergen_io_path <- function(path) {
+  if (.Platform$OS.type != "windows" || !length(path)) return(path)
+  result <- as.character(path)
+  for (i in seq_along(result)) {
+    p <- result[i]
+    if (is.na(p) || !nzchar(p)) next
+    slash <- chartr("\\", "/", p)
+    if (startsWith(slash, "//?/")) {
+      result[i] <- chartr("/", "\\", slash)
+      next
+    }
+    if (startsWith(slash, "//./")) next
+    absolute <- as.character(fs::path_abs(fs::path_expand(p)))
+    if (!grepl("^[A-Za-z]:/|^//[^/]+/[^/]+", absolute)) next
+    units <- length(iconv(enc2utf8(absolute), "UTF-8", "UTF-16LE", toRaw = TRUE)[[1]]) / 2
+    # Dizin oluşturma, dosya açmadan daha dar bir olağan yol bütçesine sahiptir.
+    if (units <= 247L) next
+    extended <- if (startsWith(absolute, "//")) paste0("//?/UNC/", substring(absolute, 3L)) else
+      paste0("//?/", absolute)
+    result[i] <- chartr("/", "\\", extended)
+  }
+  result
+}
+
 # Bayat rezervasyon eşiği (saniye). Uzun süren terfi adımları (UNC üzerinde
 # `file.rename`/`file.copy`) bu süreyi meşru olarak aşabilir; bu yüzden canlı
 # sahip `mergen_reservation_touch()` ile kirasını tazeleyebilir.
@@ -67,7 +100,7 @@ mergen_reservation_token <- function(onek = "mrsv") {
 }
 
 .mergen_reservation_marker <- function(rezerv) {
-  file.path(rezerv, "owner")
+  mergen_io_path(file.path(rezerv, "owner"))
 }
 
 # Rezervasyon dizinindeki sahiplik jetonu (okunamazsa NA_character_). Bırakma ve
@@ -86,7 +119,7 @@ mergen_reservation_owner <- function(rezerv) {
 # marker okunamazsa dizin mtime'ına düşülür.
 mergen_reservation_age_sec <- function(rezerv) {
   for (yol in c(.mergen_reservation_marker(rezerv), rezerv)) {
-    bilgi <- try(file.info(yol), silent = TRUE)
+    bilgi <- try(file.info(mergen_io_path(yol)), silent = TRUE)
     if (!inherits(bilgi, "try-error") && NROW(bilgi) && !is.na(bilgi$mtime[1])) {
       return(as.numeric(difftime(Sys.time(), bilgi$mtime[1], units = "secs")))
     }
@@ -100,7 +133,7 @@ mergen_reservation_acquire <- function(rezerv, jeton) {
   jeton <- as.character(jeton %||% "")[1]
   if (is.na(jeton) || !nzchar(jeton)) return(FALSE)
 
-  alindi <- isTRUE(try(dir.create(rezerv, showWarnings = FALSE), silent = TRUE))
+  alindi <- isTRUE(try(dir.create(mergen_io_path(rezerv), showWarnings = FALSE), silent = TRUE))
   if (!alindi) return(FALSE)
 
   yazildi <- try(
@@ -109,7 +142,7 @@ mergen_reservation_acquire <- function(rezerv, jeton) {
   )
   if (inherits(yazildi, "try-error") ||
       !identical(mergen_reservation_owner(rezerv), jeton)) {
-    unlink(rezerv, recursive = TRUE, force = TRUE)
+    unlink(mergen_io_path(rezerv), recursive = TRUE, force = TRUE, expand = FALSE)
     return(FALSE)
   }
   TRUE
@@ -152,7 +185,7 @@ mergen_reservation_touch <- function(rezerv, jeton) {
 .mergen_reservation_remove_owned <- function(rezerv, jeton) {
   if (!is.character(jeton) || length(jeton) != 1L || is.na(jeton) || !nzchar(jeton)) return(FALSE)
   karantina <- mergen_reservation_quarantine_path(rezerv)
-  tasindi <- isTRUE(tryCatch(file.rename(rezerv, karantina), error = function(e) FALSE))
+  tasindi <- isTRUE(tryCatch(file.rename(mergen_io_path(rezerv), mergen_io_path(karantina)), error = function(e) FALSE))
   if (!tasindi) return(FALSE)
 
   if (!identical(mergen_reservation_owner(karantina), jeton)) {
@@ -160,7 +193,7 @@ mergen_reservation_touch <- function(rezerv, jeton) {
     # başarısız olursa karantina DİSKTE BIRAKILIR (silmek yeni sahibin canlı
     # rezervasyonunu yok ederdi); özgün yol serbesttir, belirsiz örnek
     # otomatik silinmez.
-    geri <- isTRUE(tryCatch(file.rename(karantina, rezerv), error = function(e) FALSE))
+    geri <- isTRUE(tryCatch(file.rename(mergen_io_path(karantina), mergen_io_path(rezerv)), error = function(e) FALSE))
     if (!geri) {
       try(
         warning(sprintf(
@@ -172,9 +205,9 @@ mergen_reservation_touch <- function(rezerv, jeton) {
     return(FALSE)
   }
 
-  sonuc <- tryCatch(unlink(karantina, recursive = TRUE, force = TRUE),
+  sonuc <- tryCatch(unlink(mergen_io_path(karantina), recursive = TRUE, force = TRUE, expand = FALSE),
                     error = function(e) 1L)
-  identical(as.integer(sonuc)[1], 0L) && !isTRUE(dir.exists(karantina))
+  identical(as.integer(sonuc)[1], 0L) && !isTRUE(dir.exists(mergen_io_path(karantina)))
 }
 
 # Bayat rezervasyonu devralır. Çökmüş bir çalıştırmadan kalan rezervasyon kalıcı

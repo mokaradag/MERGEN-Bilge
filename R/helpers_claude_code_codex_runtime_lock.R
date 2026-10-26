@@ -216,7 +216,7 @@
   key_base <- if (.Platform$OS.type == "windows") tolower(base) else base
   key <- digest::digest(key_base, algo = "xxhash64", serialize = FALSE)
   lock <- file.path(parent, paste0(".cc-output-lock-", base))
-  if (nchar(base, type = "bytes") > 200 && !dir.exists(lock))
+  if (nchar(base, type = "bytes") > 200 && !dir.exists(mergen_io_path(lock)))
     lock <- file.path(parent, paste0(".cc-output-lockhash-", key))
   suffix <- if (legacy) base else key
   list(lock = lock,
@@ -229,7 +229,7 @@
   jeton <- mergen_reservation_token("ccout")
   acquired <- function() {
     if (startsWith(basename(kilit), ".cc-output-lockhash-") &&
-        inherits(try(writeBin(charToRaw(paste0(enc2utf8(basename(dest)), "\n")), file.path(kilit, "destination")),
+        inherits(try(writeBin(charToRaw(paste0(enc2utf8(basename(dest)), "\n")), mergen_io_path(file.path(kilit, "destination"))),
                      silent = TRUE), "try-error")) {
       mergen_reservation_release(kilit, jeton)
       return(structure("", recovery_failed = TRUE))
@@ -272,12 +272,13 @@
     yollar <- suppressWarnings(tryCatch(.cc_output_txn_paths(file.path(dirname(dest), base), jeton,
       legacy = legacy), error = function(e) NULL))
     if (is.null(yollar)) return(FALSE)
+    yollar <- lapply(yollar, mergen_io_path)
     if (isTRUE(file.exists(yollar$backup))) {
-      hedef <- if (isTRUE(file.exists(dest))) file.path(dirname(dest), paste0(
+      hedef <- if (isTRUE(file.exists(mergen_io_path(dest)))) file.path(dirname(dest), paste0(
         ".cc-output-recovered-", jeton, "-", digest::digest(basename(dest), algo = "xxhash64", serialize = FALSE))) else dest
-      if (!isTRUE(file.exists(hedef))) file.rename(yollar$backup, hedef)
+      if (!isTRUE(file.exists(mergen_io_path(hedef)))) file.rename(mergen_io_path(yollar$backup), mergen_io_path(hedef))
     }
-    unlink(yollar$staging, force = TRUE)
+    unlink(yollar$staging, force = TRUE, expand = FALSE)
     if (isTRUE(file.exists(yollar$backup)) || isTRUE(file.exists(yollar$staging))) return(FALSE)
   }
   TRUE
@@ -287,7 +288,7 @@
 .cc_output_recovery_dest <- function(parent, lock) {
   hashed <- startsWith(basename(lock), ".cc-output-lockhash-")
   if (hashed) {
-    con <- suppressWarnings(tryCatch(file(file.path(lock, "destination"), "rb"), error = function(e) NULL))
+    con <- suppressWarnings(tryCatch(file(mergen_io_path(file.path(lock, "destination")), "rb"), error = function(e) NULL))
     if (is.null(con)) return(NULL)
     on.exit(close(con), add = TRUE)
     bytes <- suppressWarnings(tryCatch(readBin(con, "raw", n = 4097L), error = function(e) raw()))
@@ -311,7 +312,7 @@
       dest <- suppressWarnings(tryCatch({
         if (!identical(basename(candidate), candidate) || candidate %in% c(".", "..")) NULL else {
           path <- file.path(parent, candidate)
-          if (identical(.cc_output_txn_paths(path)$lock, lock)) path else NULL
+          if (identical(.cc_scan_key(mergen_io_path(.cc_output_txn_paths(path)$lock)), .cc_scan_key(mergen_io_path(lock)))) path else NULL
         }
       }, error = function(e) NULL))
       if (!is.null(dest)) return(dest)
@@ -323,9 +324,9 @@
 # Plan dışında kalmış hedeflerin bayat rezervasyonları da aynı kuralla kurtarılır;
 # canlı ya da sahipliği kanıtlanamayan rezervasyona dokunulmaz.
 .cc_output_recover_parent <- function(parent) {
-  kilitler <- suppressWarnings(list.files(parent, pattern = "^\\.cc-output-lock(hash)?-",
+  kilitler <- suppressWarnings(list.files(mergen_io_path(parent), pattern = "^\\.cc-output-lock(hash)?-",
                                           all.files = TRUE, full.names = TRUE))
-  kilitler <- kilitler[dir.exists(kilitler) & !grepl("\\.q-q[0-9a-f]+$", kilitler)]
+  kilitler <- kilitler[dir.exists(mergen_io_path(kilitler)) & !grepl("\\.q-q[0-9a-f]+$", kilitler)]
   for (kilit in kilitler) {
     dest <- .cc_output_recovery_dest(parent, kilit)
     if (is.null(dest)) next

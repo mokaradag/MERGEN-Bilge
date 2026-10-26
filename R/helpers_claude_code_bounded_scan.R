@@ -65,7 +65,11 @@ cc_scan_runtime_excluded_dirs <- function() {
 # kodlama daima UTF-8'e sabitlenir.
 .cc_scan_key <- function(path) {
   yol <- enc2utf8(as.character(path))
-  if (.Platform$OS.type == "windows") tolower(yol) else yol
+  if (.Platform$OS.type != "windows") return(yol)
+  yol <- chartr("\\", "/", yol)
+  yol <- sub("^//[?]/UNC/", "//", yol, ignore.case = TRUE)
+  yol <- sub("^//[?]/(?=[A-Za-z]:/)", "", yol, perl = TRUE)
+  tolower(yol)
 }
 
 # Dizin bağlantısı (symlink/junction) mı? Takip edilmeyen bağlantılar hem

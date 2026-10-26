@@ -157,13 +157,15 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
       fail("Çalıştırma durduruldu; çıktı aktarılmadı")
       next
     }
-    if (!nzchar(src) || !file.exists(src) || dir.exists(src)) {
+    if (!nzchar(src) || !file.exists(mergen_io_path(src)) || dir.exists(mergen_io_path(src))) {
       fail("Çıktı kaynağı artık erişilemiyor")
       next
     }
     output_root <- cc_output_sync_canonical_root(plan$output_root %||% "")
+    physical_root <- try(fs::path_real(mergen_io_path(output_root)), silent = TRUE)
+    output_root <- if (nzchar(output_root) && !inherits(physical_root, "try-error")) .cc_scan_norm(as.character(physical_root)) else ""
     resolved_src <- tryCatch(
-      .cc_scan_norm(normalizePath(src, winslash = "/", mustWork = TRUE)),
+      .cc_scan_norm(as.character(fs::path_real(mergen_io_path(src)))),
       error = function(e) ""
     )
     # Bağlantı tespiti taban ad karşılaştırmasıyla DEĞİL, ortak dizin düzeyli
@@ -172,12 +174,12 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
     source_safe <- nzchar(output_root) && nzchar(resolved_src) &&
       (identical(.cc_scan_key(resolved_src), .cc_scan_key(output_root)) ||
          startsWith(.cc_scan_key(resolved_src), paste0(.cc_scan_key(output_root), "/"))) &&
-      !isTRUE(cc_path_is_reparse_link(src))
+      !isTRUE(fs::is_link(src)) && !isTRUE(cc_path_is_reparse_link(src))
     if (!isTRUE(source_safe)) {
       fail("Çıktı kaynağı bağlantı/reparse-point veya onaylı output kökünün dışında")
       next
     }
-    source_size <- suppressWarnings(as.numeric(file.info(src)$size[1]))
+    source_size <- suppressWarnings(as.numeric(file.info(mergen_io_path(src))$size[1]))
     if (!is.finite(source_size)) {
       fail("Çıktı dosyası boyutu belirlenemedi")
       next
@@ -221,22 +223,22 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
     txn <- .cc_output_txn_paths(dest, dest_jeton)
     staging <- txn$staging
     backup <- txn$backup
-    had_dest <- isTRUE(file.exists(dest)) || isTRUE(dir.exists(dest))
+    had_dest <- isTRUE(file.exists(mergen_io_path(dest))) || isTRUE(dir.exists(mergen_io_path(dest))) || isTRUE(fs::is_link(dest))
     if (had_dest) {
       # Sys.readlink() Windows'ta HER ZAMAN NA döner ve nzchar(NA) TRUE'dur;
       # tek başına kullanıldığında var olan her hedefi bağlantı sanıp aynı
       # dosyanın yeniden üretildiği her çalıştırmayı bloke ederdi. Tespit
       # ortak yardımcıda, dizin düzeyinde yapılır.
       resolved_dest <- tryCatch(
-        .cc_scan_norm(normalizePath(dest, winslash = "/", mustWork = TRUE)),
+        .cc_scan_norm(normalizePath(mergen_io_path(dest), winslash = "/", mustWork = TRUE)),
         error = function(e) ""
       )
       resolved_key <- .cc_scan_key(resolved_dest)
-      linked <- !nzchar(resolved_dest) || isTRUE(cc_path_is_reparse_link(dest))
+      linked <- !nzchar(resolved_dest) || isTRUE(fs::is_link(dest)) || isTRUE(cc_path_is_reparse_link(dest))
       dest_safe <- nzchar(resolved_dest) && (
         identical(resolved_key, approved_key) || startsWith(resolved_key, paste0(approved_key, "/"))
       )
-      if (isTRUE(linked) || !isTRUE(dest_safe) || isTRUE(dir.exists(dest))) {
+      if (isTRUE(linked) || !isTRUE(dest_safe) || isTRUE(dir.exists(mergen_io_path(dest)))) {
         mergen_reservation_release(txn$lock, dest_jeton)
         fail("Hedef dosya bağlantı/reparse-point, dizin veya onaylı kökün dışında")
         next
@@ -245,25 +247,25 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
 
 
     staged <- isTRUE(tryCatch(
-      file.copy(src, staging, overwrite = FALSE, copy.mode = TRUE, copy.date = TRUE),
+      file.copy(mergen_io_path(src), mergen_io_path(staging), overwrite = FALSE, copy.mode = TRUE, copy.date = TRUE),
       error = function(e) FALSE
-    )) && isTRUE(file.exists(staging))
+    )) && isTRUE(file.exists(mergen_io_path(staging)))
     if (!staged) {
-      unlink(staging, force = TRUE)
+      unlink(mergen_io_path(staging), force = TRUE, expand = FALSE)
       mergen_reservation_release(txn$lock, dest_jeton)
       fail("Çıktı staging dosyasına kopyalanamadı")
       next
     }
-    staged_size <- suppressWarnings(as.numeric(file.info(staging)$size[1]))
+    staged_size <- suppressWarnings(as.numeric(file.info(mergen_io_path(staging))$size[1]))
     if (!is.finite(staged_size) || !identical(staged_size, source_size) ||
         staged_size > max_file_bytes || fresh_total + staged_size > max_total_bytes) {
-      unlink(staging, force = TRUE)
+      unlink(mergen_io_path(staging), force = TRUE, expand = FALSE)
       mergen_reservation_release(txn$lock, dest_jeton)
       fail("Çıktı staging doğrulaması başarısız")
       next
     }
     if (!guard_ok()) {
-      unlink(staging, force = TRUE)
+      unlink(mergen_io_path(staging), force = TRUE, expand = FALSE)
       mergen_reservation_release(txn$lock, dest_jeton)
       fail("Çalıştırma durduruldu; çıktı terfi ettirilmedi")
       next
@@ -271,25 +273,25 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
     # Uzun kopyadan sonra sahiplik yeniden kanıtlanır; kilit devralındıysa
     # hedefe ve başkasının yapıtlarına dokunulmaz.
     if (!isTRUE(mergen_reservation_touch(txn$lock, dest_jeton))) {
-      unlink(staging, force = TRUE)
+      unlink(mergen_io_path(staging), force = TRUE, expand = FALSE)
       mergen_reservation_release(txn$lock, dest_jeton)
       fail("Hedef kilidi kopya sırasında kaybedildi; çıktı terfi ettirilmedi")
       next
     }
 
-    if (had_dest && !isTRUE(file.rename(dest, backup))) {
-      unlink(staging, force = TRUE)
+    if (had_dest && !isTRUE(file.rename(mergen_io_path(dest), mergen_io_path(backup)))) {
+      unlink(mergen_io_path(staging), force = TRUE, expand = FALSE)
       mergen_reservation_release(txn$lock, dest_jeton)
       fail("Hedef dosya atomik terfi için yedeklenemedi")
       next
     }
 
-    promoted <- isTRUE(tryCatch(file.rename(staging, dest), error = function(e) FALSE))
+    promoted <- isTRUE(tryCatch(file.rename(mergen_io_path(staging), mergen_io_path(dest)), error = function(e) FALSE))
     post_guard <- guard_ok()
     if (!promoted || !post_guard) {
-      unlink(staging, force = TRUE)
-      unlink(dest, force = TRUE)
-      restored <- !had_dest || (file.exists(backup) && isTRUE(file.rename(backup, dest)))
+      unlink(mergen_io_path(staging), force = TRUE, expand = FALSE)
+      unlink(mergen_io_path(dest), force = TRUE, expand = FALSE)
+      restored <- !had_dest || (file.exists(mergen_io_path(backup)) && isTRUE(file.rename(mergen_io_path(backup), mergen_io_path(dest))))
       if (restored) mergen_reservation_release(txn$lock, dest_jeton)
       fail(if (!post_guard) {
         if (restored) "Çalıştırma durduruldu; çıktı terfisi geri alındı" else
@@ -302,7 +304,7 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
       next
     }
 
-    unlink(backup, force = TRUE)
+    unlink(mergen_io_path(backup), force = TRUE, expand = FALSE)
     mergen_reservation_release(txn$lock, dest_jeton)
     results[[length(results) + 1L]] <- list(
       source_path = src, dest_path = dest, success = TRUE,
@@ -563,10 +565,10 @@ cc_dispatch_run_output_processing <- function(ctx) {
   "cc_snapshot_run_output_area", "cc_filter_download_candidates",
   "cc_plan_output_sync", "cc_apply_output_sync_plan", "cc_process_run_outputs",
   ".cc_output_txn_paths", ".cc_output_dest_lock", ".cc_output_recover_dest", ".cc_output_recover_parent",
-  ".cc_output_name_variants", ".cc_output_recovery_dest",
+  ".cc_output_name_variants", ".cc_output_recovery_dest", ".cc_scan_key",
   "mergen_reservation_token", "mergen_reservation_acquire", "mergen_reservation_takeover",
   "mergen_reservation_release", "mergen_reservation_owner", ".mergen_reservation_marker",
-  "mergen_reservation_touch",
+  "mergen_reservation_touch", "mergen_io_path",
   ".mergen_reservation_remove_owned", "mergen_reservation_quarantine_path",
   "mergen_lock_owner_reclaimable", "mergen_owner_reclaimable", "mergen_pid_status", "mergen_reclaim_mutex"
 )

@@ -10,6 +10,7 @@ copy_to_mcp_base <- function(upload, user_id) {
   # Genel yol normalizasyonunda oluşabilecek çiftleme sorunlarını önlemek için yerel güvenli normalleştirici.
   safe_norm <- function(p) {
      if (is.null(p) || !nzchar(p)) return("")
+     p <- mergen_logical_path(p)
      p <- gsub("\\\\", "/", p)
      if (.Platform$OS.type == "windows" && grepl("^/[^/]", p)) p <- paste0("/", p)
      p
@@ -142,7 +143,7 @@ copy_to_mcp_base <- function(upload, user_id) {
   )
 
   if (path_exists_relaxed(dest_readable)) {
-    return(gsub("\\\\", "/", as.character(dest_readable), fixed = TRUE))
+    return(dest_chr)
   }
 
   # Varlık zaten doğrulandı; safe_windows_short_path() depolama kökünü değiştirebileceğinden burada ÇAĞRILMAZ.

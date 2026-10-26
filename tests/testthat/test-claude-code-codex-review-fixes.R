@@ -1027,7 +1027,9 @@ test_that("çıktı geri yüklemesi başarısızsa yedeğin rezervasyon kimliği
 
 test_that("uzun çıktı adı işlem yapıtlarının dosya adı sınırını aşmaz ve kurtarılır", {
   env <- .cc_codex_review_env()
-  root <- withr::local_tempdir()
+  base_root <- withr::local_tempdir()
+  root <- file.path(base_root, strrep("p", max(1L, 215L - nchar(base_root) - 1L)))
+  expect_true(dir.create(root))
   long_dest <- file.path(root, paste0(strrep("x", 246), ".txt"))
   token <- "2147483646-ccoutabcdef"
   txn <- env$.cc_output_txn_paths(long_dest, token)
@@ -1041,10 +1043,125 @@ test_that("uzun çıktı adı işlem yapıtlarının dosya adı sınırını aş
   writeLines(c(token, paste0("host=", Sys.info()[["nodename"]])), file.path(txn$lock, "owner"))
   expect_true(file.rename(txn$backup, env$.cc_output_txn_paths(dest, token)$backup))
   env$.cc_output_recover_parent(dirname(dest))
-  expect_identical(readLines(dest), "özgün")
+  expect_identical(readLines(env$mergen_io_path(dest)), "özgün")
   expect_false(dir.exists(txn$lock))
-  expect_false(file.exists(txn$backup))
-  expect_false(file.exists(txn$staging))
+  expect_false(path_exists_relaxed(txn$backup))
+  expect_false(path_exists_relaxed(txn$staging))
+})
+
+test_that("çıktı karşılaştırması Windows I/O önekini mantıksal köke geri bağlar", {
+  env <- .cc_codex_review_env()
+  env$normalizePath <- function(path, ...) path
+  env$.Platform <- list(OS.type = "windows")
+  expect_identical(env$.cc_scan_key(env$.cc_scan_norm("\\\\?\\C:\\root\\result.txt")), "c:/root/result.txt")
+  expect_identical(env$.cc_scan_key(env$.cc_scan_norm("\\\\?\\UNC\\server\\share\\result.txt")), "//server/share/result.txt")
+  expect_identical(env$.cc_scan_norm("//?/C:/root/result.txt"), "//?/C:/root/result.txt")
+  env$.Platform <- list(OS.type = "unix")
+  expect_identical(env$.cc_scan_key("//?/C:/root/result.txt"), "//?/C:/root/result.txt")
+})
+
+test_that("uzun eski çıktı yedeği atlanmaz; staging temizlenir ve yeni hedef korunur", {
+  env <- .cc_codex_review_env()
+  root <- withr::local_tempdir()
+  parent <- file.path(root, strrep("p", max(1L, 180L - nchar(root) - 1L)))
+  expect_true(dir.create(parent))
+  dest <- file.path(parent, paste0(strrep("n", 185L), ".txt"))
+  token <- "2147483646-ccoutabcdef"
+  paths <- env$.cc_output_txn_paths(dest, token, legacy = TRUE)
+  expect_lte(nchar(basename(paths$backup), type = "bytes"), 255L)
+  expect_gt(nchar(paths$backup), 259L)
+  bytes <- as.raw(c(0, 255, 10, 42))
+  for (occupied in c(FALSE, TRUE)) {
+    writeBin(bytes, env$mergen_io_path(paths$backup))
+    writeLines("partial", env$mergen_io_path(paths$staging))
+    if (occupied) writeLines("newer", env$mergen_io_path(dest))
+    expect_true(env$.cc_output_recover_dest(dest, token))
+    recovered <- if (occupied) file.path(parent, paste0(".cc-output-recovered-", token, "-",
+      digest::digest(basename(dest), algo = "xxhash64", serialize = FALSE))) else dest
+    expect_identical(readBin(env$mergen_io_path(recovered), "raw", 100L), bytes)
+    if (occupied) expect_identical(readLines(env$mergen_io_path(dest)), "newer")
+    expect_false(path_exists_relaxed(paths$backup))
+    expect_false(path_exists_relaxed(paths$staging))
+  }
+})
+
+test_that("uzun çıktı hedefinin bağlantı kanıtı görünürlük belirsizliğinde de korunur", {
+  env <- .cc_codex_review_env()
+  root <- withr::local_tempdir()
+  output <- withr::local_tempdir()
+  src <- file.path(output, "new.txt")
+  dest <- file.path(root, paste0(strrep("n", 220L), ".txt"))
+  writeLines("new", src)
+  writeLines("preserve", env$mergen_io_path(dest))
+  # Bağlantı meta verisi var; base R uzun/sarkan hedefi yok sanıyor.
+  real_exists <- base::file.exists
+  env$file.exists <- function(path) if (path %in% c(dest, env$mergen_io_path(dest))) FALSE else real_exists(path)
+  env$cc_path_is_reparse_link <- function(...) FALSE
+  real_link <- fs::is_link
+  testthat::local_mocked_bindings(is_link = function(path) {
+    if (identical(path, dest)) TRUE else real_link(path)
+  }, .package = "fs")
+  result <- env$cc_apply_output_sync_plan(list(source_workdir = root, output_root = output,
+    items = list(list(source_path = src, dest_path = dest, size = file.info(src)$size))))
+  expect_false(result[[1]]$success)
+  expect_match(result[[1]]$error, "bağlantı/reparse-point", fixed = TRUE)
+  expect_identical(readLines(env$mergen_io_path(dest)), "preserve")
+  expect_identical(readLines(src), "new")
+})
+
+test_that("uzun çıktı kaynağı fiziksel kökten doğrulanır; bağlantı kaçışı reddedilir", {
+  env <- .cc_codex_review_env()
+  root <- withr::local_tempdir()
+  output <- withr::local_tempdir()
+  outside <- withr::local_tempdir()
+  name <- paste0(strrep("s", 240L), ".txt")
+  src <- file.path(output, name)
+  writeLines("published", env$mergen_io_path(src))
+  # Uzun-yol kayıt defteri açık olsa da olağan I/O sınırı benzetilir.
+  env$file.exists <- function(path) {
+    if (.Platform$OS.type == "windows" && nchar(path) > 247L &&
+        !startsWith(chartr("\\", "/", path), "//?/")) return(FALSE)
+    base::file.exists(path)
+  }
+  dest <- file.path(root, "published.txt")
+  result <- env$cc_apply_output_sync_plan(list(source_workdir = root, output_root = output,
+    items = list(list(source_path = src, dest_path = dest, size = file.info(env$mergen_io_path(src))$size))))
+  expect_true(result[[1]]$success)
+  expect_identical(readLines(dest), "published")
+  expect_identical(readLines(env$mergen_io_path(src)), "published")
+  unlink(env$mergen_io_path(src), expand = FALSE)
+  expect_false(path_exists_relaxed(src))
+  writeLines("outside", env$mergen_io_path(file.path(outside, name)))
+  escape <- .cc_codex_disari_kaynak(output, outside, name)
+  link <- if (.Platform$OS.type == "windows") dirname(escape) else escape
+  withr::defer(fs::link_delete(link))
+  rejected <- file.path(root, "rejected.txt")
+  result <- env$cc_apply_output_sync_plan(list(source_workdir = root, output_root = output,
+    items = list(list(source_path = escape, dest_path = rejected, size = 8))))
+  expect_false(result[[1]]$success)
+  expect_false(path_exists_relaxed(rejected))
+  expect_identical(readLines(env$mergen_io_path(file.path(outside, name))), "outside")
+})
+
+test_that("uzun çıktı ebeveyni taranır; kilit kimliği I/O önekiyle değişmez", {
+  env <- .cc_codex_review_env()
+  root <- withr::local_tempdir()
+  parent <- file.path(root, strrep("p", 95L), strrep("q", 95L), strrep("r", 95L))
+  expect_true(dir.create(env$mergen_io_path(parent), recursive = TRUE))
+  dest <- file.path(parent, paste0(strrep("n", 220L), ".txt"))
+  owner <- env$.cc_output_dest_lock(dest, wait_sec = 0)
+  expect_true(nzchar(owner))
+  old <- "2147483646-ccoutabcdef"
+  paths <- env$.cc_output_txn_paths(dest, old)
+  writeLines("recover", env$mergen_io_path(paths$backup))
+  writeLines("partial", env$mergen_io_path(paths$staging))
+  writeLines(c(old, paste0("host=", Sys.info()[["nodename"]])), env$.mergen_reservation_marker(paths$lock))
+  env$mergen_lock_owner_reclaimable <- function(...) TRUE
+  env$.cc_output_recover_parent(parent)
+  expect_identical(readLines(env$mergen_io_path(dest)), "recover")
+  expect_false(path_exists_relaxed(paths$backup))
+  expect_false(path_exists_relaxed(paths$staging))
+  expect_false(path_exists_relaxed(paths$lock))
 })
 
 test_that("hash kilidinin Türkçe hedef adı UTF-8 olarak simetrik saklanır", {
