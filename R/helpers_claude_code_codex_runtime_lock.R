@@ -325,7 +325,7 @@
 # canlı ya da sahipliği kanıtlanamayan rezervasyona dokunulmaz.
 .cc_output_recover_parent <- function(parent) {
   # Adlar I/O yolundan okunur, kilit kimliği mantıksal üst dizinle kurulur.
-  kilitler <- file.path(parent, suppressWarnings(list.files(mergen_io_path(parent),
+  kilitler <- file.path(parent, suppressWarnings(list.files(mergen_io_path(paste0(parent, "/")),
     pattern = "^\\.cc-output-lock(hash)?-", all.files = TRUE)))
   kilitler <- kilitler[dir.exists(mergen_io_path(kilitler)) & !grepl("\\.q-q[0-9a-f]+$", kilitler)]
   for (kilit in kilitler) {

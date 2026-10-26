@@ -36,6 +36,11 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 - Terfi, çıktı kurtarma, rezervasyon marker'ı ve sahiplikli temizlik aynı
   dönüşümü kullanır. İç yapıtların mevcut yol bütçeleri, atomik işlemler ve
   sahiplik/indeks kilitleri korunur. Linux I/O yolları aynen döner.
+- Windows karantina temizliği, sahipliği doğrulanan düz kayıtları ayrı I/O
+  çağrılarıyla kaldırır; base R özyinelemesinin açık Win32 yoluna geçersiz
+  ayraç eklemesi devralmayı ve çıktı kurtarmayı engellemez. Alt dizinlerde
+  temizlik kapalı kalır. Hazırlık işçisine de I/O yardımcısı açıkça aktarılır;
+  uzun ham yazımı normalleştirilince kısalan yol kullanılabilir biçimde döner.
 - Uzun ad fikstürleri kısaltılmadan aynı I/O sınırını kullanır; yol uzunluğu
   için eklenmiş koşullu atlamalar ve uyarı bastırmalı oluşturma sondaları
   kaldırılır. UTF-16 sınırı, UNC, yinelenebilir dönüşüm ve uzun ebeveynde

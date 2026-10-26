@@ -1152,10 +1152,13 @@ test_that("uzun çıktı ebeveyni taranır; kilit kimliği I/O önekiyle değiş
   parent <- file.path(root, strrep("p", 95L), strrep("q", 95L), strrep("r", 95L))
   expect_true(dir.create(env$mergen_io_path(parent), recursive = TRUE))
   dest <- file.path(parent, paste0(strrep("n", 220L), ".txt"))
+  expect_gt(nchar(parent), 259L)
+  expect_gt(nchar(dest), 259L)
   owner <- env$.cc_output_dest_lock(dest, wait_sec = 0)
   expect_true(nzchar(owner))
   old <- "2147483646-ccoutabcdef"
   paths <- env$.cc_output_txn_paths(dest, old)
+  expect_true(basename(paths$lock) %in% list.files(env$mergen_io_path(paste0(parent, "/")), all.files = TRUE))
   writeLines("recover", env$mergen_io_path(paths$backup))
   writeLines("partial", env$mergen_io_path(paths$staging))
   writeLines(c(old, paste0("host=", Sys.info()[["nodename"]])), env$.mergen_reservation_marker(paths$lock))
@@ -1165,6 +1168,60 @@ test_that("uzun çıktı ebeveyni taranır; kilit kimliği I/O önekiyle değiş
   expect_false(path_exists_relaxed(paths$backup))
   expect_false(path_exists_relaxed(paths$staging))
   expect_false(path_exists_relaxed(paths$lock))
+})
+
+test_that("gerçek izole hazırlık işçisi uzun bağlantıyı I/O yardımcısıyla tanır", {
+  env <- .cc_codex_review_env()
+  original <- new.env(parent = env)
+  source(file.path(resolve_repo_root_for_tests(), "R/helpers_claude_code_run_prepare_task.R"),
+         encoding = "UTF-8", local = original)
+  env$.cc_codex_original_cc_run_prepare_worker_globals <- original$cc_run_prepare_worker_globals
+  bundle <- env$cc_run_prepare_worker_globals(refresh = TRUE, envir = env)
+  expect_true("mergen_io_path" %in% env$.cc_codex_prepare_worker_names)
+  expect_true("mergen_io_path" %in% names(bundle))
+  # Yerel kaynak ortamının statik tarayıcı bağımlılıkları; I/O yardımcısı
+  # yalnız üretimin açık hazırlık paketinden gelmelidir.
+  bundle <- env$.cc_codex_add_named_worker_globals(bundle,
+    c("%||%", "cc_path_is_reparse_link", ".cc_scan_is_link", ".cc_scan_key", ".cc_scan_norm",
+      ".cc_scan_list_entries"), env)
+  root <- withr::local_tempdir()
+  outside <- withr::local_tempdir()
+  parent <- file.path(root, strrep("p", 95L), strrep("q", 95L), strrep("r", 95L))
+  expect_gt(nchar(parent), 259L)
+  expect_true(dir.create(env$mergen_io_path(parent), recursive = TRUE))
+  writeLines("inside", env$mergen_io_path(file.path(parent, "exact.txt")))
+  link <- file.path(parent, "escape")
+  if (.Platform$OS.type == "windows") {
+    expect_true(Sys.junction(outside, env$mergen_io_path(link)))
+  } else {
+    expect_true(file.symlink(outside, link))
+  }
+  withr::defer(unlink(env$mergen_io_path(link), recursive = TRUE, expand = FALSE))
+  request <- file.path(root, "worker-input.rds")
+  response <- file.path(root, "worker-result.rds")
+  script <- file.path(root, "worker.R")
+  saveRDS(list(bundle = bundle, link = link, parent = parent), request)
+  writeLines(c(
+    "args <- commandArgs(TRUE); request <- readRDS(args[1])",
+    "worker <- list2env(request$bundle, parent = baseenv())",
+    "for (nm in names(request$bundle)) if (is.function(worker[[nm]])) environment(worker[[nm]]) <- worker",
+    "result <- list(pid = Sys.getpid(), helper = exists('mergen_io_path', worker, inherits = FALSE),",
+    "  link = worker$cc_path_is_reparse_link(request$link), plain = worker$cc_path_is_reparse_link(request$parent),",
+    "  entries = worker$.cc_scan_list_entries(request$parent, 10, list(started=Sys.time(), limit=10000), FALSE)$entries)",
+    "saveRDS(result, args[2])"
+  ), script)
+  rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
+  status <- system2(rscript, shQuote(c("--vanilla", script, request, response)))
+  expect_identical(status, 0L)
+  if (!identical(status, 0L)) stop("İzole hazırlık işçisi başarısız oldu.")
+  result <- readRDS(response)
+  expect_false(identical(result$pid, Sys.getpid()))
+  expect_true(result$helper)
+  expect_true(result$link)
+  expect_false(result$plain)
+  expected <- c(link, file.path(parent, "exact.txt"))
+  expect_identical(sort(env$.cc_scan_key(result$entries)),
+                   sort(env$.cc_scan_key(env$mergen_io_path(expected))))
 })
 
 test_that("uzun çıktı planlanır ve yayımlanır; her dosya sistemi sondası I/O yolunu kullanır", {

@@ -95,9 +95,15 @@ mergen_io_path <- function(path) {
     if (startsWith(slash, "//./")) next
     absolute <- absolute_of(slash)
     if (is.na(absolute) || !grepl("^[A-Za-z]:/|^//[^/]+/[^/]+", absolute)) next
+    # Son ayraç korunur; base R dizin aramasına geçersiz "/" ekleyemez.
+    if (endsWith(slash, "/") && !endsWith(absolute, "/")) absolute <- paste0(absolute, "/")
     units <- length(iconv(enc2utf8(absolute), "UTF-8", "UTF-16LE", toRaw = TRUE)[[1]]) / 2
     # Dizin oluşturma, dosya açmadan daha dar bir olağan yol bütçesine sahiptir.
-    if (units <= 247L) next
+    if (units <= 247L) {
+      raw_units <- length(iconv(enc2utf8(slash), "UTF-8", "UTF-16LE", toRaw = TRUE)[[1]]) / 2
+      if (raw_units > 247L) result[i] <- chartr("/", "\\", absolute)
+      next
+    }
     extended <- if (startsWith(absolute, "//")) paste0("//?/UNC/", substring(absolute, 3L)) else
       paste0("//?/", absolute)
     result[i] <- chartr("/", "\\", extended)
@@ -248,7 +254,17 @@ mergen_reservation_touch <- function(rezerv, jeton) {
     return(FALSE)
   }
 
-  sonuc <- tryCatch(unlink(mergen_io_path(karantina), recursive = TRUE, force = TRUE, expand = FALSE),
+  # Windows unlink özyinelemesi alt adlara "/" ekler; açık Win32 yolunda bu
+  # ayraç geçersizdir. Sahipliği doğrulanan düz kayıtlar ayrı I/O ile silinir.
+  if (.Platform$OS.type == "windows") {
+    girdiler <- list.files(mergen_io_path(paste0(karantina, "/")), all.files = TRUE, no.. = FALSE)
+    if (!"." %in% girdiler) return(FALSE)
+    cocuklar <- mergen_io_path(file.path(karantina, setdiff(girdiler, c(".", ".."))))
+    # Rezervasyon alt ağaç taşımaz; belirsiz/yabancı dizine girilmez.
+    if (any(dir.exists(cocuklar))) return(FALSE)
+    if (unlink(cocuklar, force = TRUE, expand = FALSE) != 0L) return(FALSE)
+  }
+  sonuc <- tryCatch(unlink(mergen_io_path(paste0(karantina, "/")), recursive = TRUE, force = TRUE, expand = FALSE),
                     error = function(e) 1L)
   identical(as.integer(sonuc)[1], 0L) && !isTRUE(dir.exists(mergen_io_path(karantina)))
 }

@@ -36,9 +36,12 @@ test_that("I/O yolu mutlak Windows bütçesini UTF-16 ile ölçer; ad ve kimlik 
   expect_identical(env$mergen_io_path(paths), paths)
   for (path in paths) {
     long <- paste0(path, "n")
+    expect_identical(length(iconv(path, "UTF-8", "UTF-16LE", toRaw = TRUE)[[1]]) / 2, 247)
+    expect_gt(length(iconv(long, "UTF-8", "UTF-16LE", toRaw = TRUE)[[1]]) / 2, 247L)
     expected <- chartr("/", "\\", if (startsWith(long, "//"))
       paste0("//?/UNC/", substring(long, 3L)) else paste0("//?/", long))
     expect_identical(env$mergen_io_path(long), expected)
+    expect_identical(env$mergen_io_path(paste0(long, "/")), paste0(expected, "\\"))
     expect_identical(env$mergen_io_path(expected), expected)
     expect_identical(env$mergen_logical_path(expected), long)
   }
@@ -51,8 +54,38 @@ test_that("I/O yolu mutlak Windows bütçesini UTF-16 ile ölçer; ad ve kimlik 
   supplementary <- paste0(substr(paths[1], 1L, 246L), intToUtf8(0x1f600))
   expect_true(startsWith(env$mergen_io_path(supplementary), "\\\\?\\"))
   posix <- paste0("/tmp/", strrep("p", 260L))
-  expect_identical(env$mergen_io_path(posix), posix)
+  if (.Platform$OS.type == "windows") {
+    drive <- substr(normalizePath(getwd(), winslash = "/"), 1L, 2L)
+    expect_identical(env$mergen_io_path(posix), chartr("/", "\\", paste0("//?/", drive, posix)))
+  } else {
+    env$.Platform <- list(OS.type = "unix")
+    expect_identical(env$mergen_io_path(posix), posix)
+    env$.Platform <- list(OS.type = "windows")
+  }
   expect_identical(env$mergen_io_path(c("", NA_character_)), c("", NA_character_))
+})
+
+test_that("uzun ham yazımı kısalan I/O yolu kullanılabilir; mantıksal ad korunur", {
+  env <- new.env(parent = baseenv())
+  source(file.path(resolve_repo_root_for_tests(), "R/utils_path_reservation.R"),
+         encoding = "UTF-8", local = env)
+  raw <- paste0("C:/", strrep("./", 140L), "k/f.txt")
+  env$.Platform <- list(OS.type = "windows")
+  expect_gt(nchar(raw), 259L)
+  expect_identical(env$mergen_io_path(raw), "C:\\k\\f.txt")
+  expect_identical(env$mergen_logical_path(raw), raw)
+  unc <- paste0("//srv/share/", strrep("./", 140L), "f.txt")
+  expect_identical(env$mergen_io_path(unc), "\\\\srv\\share\\f.txt")
+  env$.Platform <- list(OS.type = "unix")
+  expect_identical(env$mergen_io_path(c(raw, unc)), c(raw, unc))
+  # Gerçek dosya işlemi, hostun kendi yol kurallarıyla yürür.
+  root <- normalizePath(withr::local_tempdir(), winslash = "/")
+  actual <- file.path(root, paste0(strrep("./", 140L), "exact.txt"))
+  expect_gt(nchar(actual), 259L)
+  env$.Platform <- .Platform
+  writeBin(as.raw(c(0, 255, 42)), env$mergen_io_path(actual))
+  expect_identical(readBin(file.path(root, "exact.txt"), "raw", 10L), as.raw(c(0, 255, 42)))
+  expect_true(env$mergen_same_path(actual, file.path(root, "exact.txt")))
 })
 
 test_that("I/O yolu 260 birimi aşan yolu sözcüksel kurar; nokta/boşluk bileşenine önek eklemez", {
@@ -63,11 +96,13 @@ test_that("I/O yolu 260 birimi aşan yolu sözcüksel kurar; nokta/boşluk bile�
   # fs yol birleştirme (path_abs/path_norm) Windows'ta PATH_MAX=260'da hata verir.
   expect_false(any(grepl("fs::", deparse(env$mergen_io_path), fixed = TRUE)))
   deep <- paste0("C:/", strrep("a", 150), "/", strrep("b", 150), "/", strrep("c", 150), "/f.txt")
+  expect_gt(nchar(deep), 259L)
   expect_identical(env$mergen_io_path(deep), chartr("/", "\\", paste0("//?/", deep)))
   dotted <- paste0("C:/", strrep("a", 150), "/./x/../", strrep("b", 150), "//f.txt")
   expect_identical(env$mergen_io_path(dotted),
                    chartr("/", "\\", paste0("//?/C:/", strrep("a", 150), "/", strrep("b", 150), "/f.txt")))
   unc <- paste0("\\\\srv\\share\\", strrep("u", 300), "\\f.txt")
+  expect_gt(nchar(unc), 259L)
   expect_identical(env$mergen_io_path(unc), paste0("\\\\?\\UNC\\srv\\share\\", strrep("u", 300), "\\f.txt"))
   env$getwd <- function() paste0("C:\\", strrep("w", 300))
   expect_identical(env$mergen_io_path("rel/f.txt"),
@@ -289,10 +324,13 @@ test_that("uzun ebeveynde bayat rezervasyon aynı geri kazanım muteksiyle devra
   expect_true(dir.create(env$mergen_io_path(parent), recursive = TRUE))
   reservation <- file.path(parent, "dest.rsv")
   expect_gt(nchar(reservation), 259L)
+  # Dolu karantina: owner ve destination ayrı I/O ile kaldırılır.
   expect_true(env$mergen_reservation_acquire(reservation, "old"))
+  writeLines("exact.txt", env$mergen_io_path(file.path(reservation, "destination")))
   env$mergen_lock_owner_reclaimable <- function(...) TRUE
   expect_true(env$mergen_reservation_takeover(reservation, "new"))
   expect_identical(env$mergen_reservation_owner(reservation), "new")
   expect_true(env$mergen_reservation_release(reservation, "new"))
   expect_false(dir.exists(env$mergen_io_path(reservation)))
+  expect_length(list.files(env$mergen_io_path(paste0(parent, "/")), pattern = "[.]q-q", all.files = TRUE), 0L)
 })

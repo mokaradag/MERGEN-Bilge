@@ -163,7 +163,9 @@ cc_path_is_reparse_link <- function(path) {
   # `all.files = FALSE` gizli/nokta ile başlayan girdileri dışarıda bırakır;
   # bu, gezginin eski (regresyon öncesi) davranışıyla aynıdır.
   ham <- try(
-    list.files(path, all.files = FALSE, full.names = TRUE, recursive = FALSE, no.. = TRUE),
+    list.files(if (exists("mergen_io_path", mode = "function", inherits = TRUE))
+      mergen_io_path(if (.Platform$OS.type == "windows") paste0(path, "/") else path) else path,
+      all.files = FALSE, full.names = TRUE, recursive = FALSE, no.. = TRUE),
     silent = TRUE
   )
   if (inherits(ham, "try-error")) {

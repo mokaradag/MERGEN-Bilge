@@ -536,6 +536,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
   ".cc_codex_original_prepare_claude_code_document_context",
   ".cc_codex_original_cc_prepare_run_workspace",
   ".cc_codex_path_key", ".cc_codex_guard_check", ".cc_codex_acquire_dir_lock",
+  "mergen_io_path",
   "cc_scan_directory_bounded", "cc_select_input_files",
   "mirror_directory_to_local_workspace", "prepare_claude_runtime_workdir",
   "cc_claim_runtime_ownership", "cc_runtime_ownership_is",
