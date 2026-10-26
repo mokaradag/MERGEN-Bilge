@@ -42,6 +42,9 @@ test_that("I/O yolu mutlak Windows bütçesini UTF-16 ile ölçer; ad ve kimlik 
     expect_identical(env$mergen_io_path(expected), expected)
     expect_identical(env$mergen_logical_path(expected), long)
   }
+  # Öneksiz yol bayt bayt korunur (ters eğik çizgi dahil).
+  expect_identical(env$mergen_logical_path(c("C:\\Temp\\a.docx", "//srv/share/x", NA)),
+                   c("C:\\Temp\\a.docx", "//srv/share/x", NA))
   # 248 birimden itibaren dizin I/O da kayıt defteri ayarı olmadan çalışır.
   expect_true(startsWith(env$mergen_io_path(paste0(paths[1], strrep("n", 12L))), "\\\\?\\"))
   # BMP dışı karakter iki UTF-16 birimidir; UTF-8 bayt sayısı bütçe değildir.
@@ -246,6 +249,29 @@ test_that("izole rezervasyon devralması eksik muteks altyapısında kapalı kal
   expect_true(env$mergen_reservation_acquire(rezerv, "sahip"))
   expect_false(env$mergen_reservation_takeover(rezerv, "yeni"))
   expect_identical(env$mergen_reservation_owner(rezerv), "sahip")
+})
+
+test_that("önekli geri kazanım muteksi yolu filelock sarmalayıcısının yeniden birleştirmesine girmez", {
+  env <- new.env(parent = globalenv())
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_process_ownership.R"), local = env, encoding = "UTF-8")
+  withr::local_dir(withr::local_tempdir())
+  logical <- file.path(getwd(), strrep("p", 40), ".mergen-rsv.reclaim")
+  # POSIX'te `\\?\` yazımı göreli bir ad olarak gerçek bir dosyaya karşılık gelir.
+  prefixed <- "\\\\?\\kilit.reclaim"
+  env$mergen_io_path <- function(path) if (identical(path, logical)) prefixed else "."
+  wrapper_paths <- character()
+  testthat::local_mocked_bindings(lock = function(path, ...) {
+    wrapper_paths <<- c(wrapper_paths, path)
+    stop("sarmalayıcı önekli yolu bozar")
+  }, .package = "filelock")
+  guard <- env$mergen_reclaim_mutex(logical, timeout = 0)
+  expect_false(is.null(guard))
+  expect_length(wrapper_paths, 0L)
+  expect_true(file.exists(prefixed))
+  filelock::unlock(guard)
+  # Önekli kilit dizini yoksa muteks yok sayılır; istisna sızmaz.
+  env$mergen_io_path <- function(path) if (identical(path, logical)) prefixed else "yok"
+  expect_null(env$mergen_reclaim_mutex(logical, timeout = 0))
 })
 
 test_that("uzun ebeveynde bayat rezervasyon aynı geri kazanım muteksiyle devralınır", {

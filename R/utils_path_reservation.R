@@ -43,11 +43,15 @@ if (!exists("%||%", mode = "function", inherits = TRUE)) {
 
 # Mantıksal yol/kimlik değişmez; yalnız Windows I/O çağrısı uzun yol biçimini alır.
 # Açık Win32 öneki kayıt defteri ayarı istemez; ayraçları ters eğik olmalıdır.
+# Yalnız `\\?\` önekli yazım geri çevrilir; diğer yollar bayt bayt aynen döner.
 mergen_logical_path <- function(path) {
   if (.Platform$OS.type != "windows" || !length(path)) return(path)
-  path <- chartr("\\", "/", as.character(path))
-  path <- sub("^//[?]/UNC/", "//", path, ignore.case = TRUE)
-  sub("^//[?]/(?=[A-Za-z]:/)", "", path, perl = TRUE)
+  path <- as.character(path)
+  io <- !is.na(path) & grepl("^[\\\\/]{2}[?][\\\\/]", path)
+  logical <- chartr("\\", "/", path[io])
+  logical <- sub("^//[?]/UNC/", "//", logical, ignore.case = TRUE)
+  path[io] <- sub("^//[?]/(?=[A-Za-z]:/)", "", logical, perl = TRUE)
+  path
 }
 
 mergen_io_path <- function(path) {

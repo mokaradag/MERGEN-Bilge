@@ -1270,7 +1270,8 @@ test_that("çıktı kurtarma UTF-8 ve eski yerel adı yalnız kilit hash'i eşle
       restored <- file.path(root, "restored.txt")
       env$file.rename <- function(from, to) {
         if (identical(from, txn$backup)) {
-          expect_identical(enc2utf8(to), enc2utf8(dest))
+          # Uzun mutlak hedefte terfi I/O yazımını alır; mantıksal kimlik aynıdır.
+          expect_identical(enc2utf8(to), enc2utf8(env$mergen_io_path(dest)))
           base::file.rename(from, restored)
         } else base::file.rename(from, to)
       }

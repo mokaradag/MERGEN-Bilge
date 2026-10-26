@@ -504,7 +504,9 @@ test_that("büyük DOCX önbelleği worker yüküne taşınmaz", {
   promises::then(env$mergen_dispatch_docx_preview(path, "cache-test", cached = cache),
                  function(result) value <<- result)
   .fp_drain_later_queue()
-  expect_identical(as.character(value), cache$base64)
+  # 12 MB metin farkı yazdırılmaz: başarısızlık CI'yi kilitlemeden hızlı raporlanır.
+  expect_true(identical(as.character(value), cache$base64),
+              info = sprintf("önbellek isabeti beklenirdi; dönen %d karakter", nchar(as.character(value))))
   expect_identical(attr(value, "resolved_path"), path)
   expect_identical(payloads[[1L]], payloads[[2L]])
 })

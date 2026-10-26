@@ -58,7 +58,14 @@ mergen_lock_owner_reclaimable <- function(marker, token = NULL, stale_sec = Inf,
 mergen_reclaim_mutex <- function(path, timeout = 0, exclusive = TRUE) {
   tryCatch({
     io <- if (exists("mergen_io_path", mode = "function", inherits = TRUE)) mergen_io_path(path) else path
-    filelock::lock(io, timeout = timeout, exclusive = exclusive)
+    # filelock::lock() yolu file.path(normalizePath(dirname()), ...) ile "/" ayıracıyla
+    # yeniden kurar; `\\?\` yolunda "/" ayraç değildir. Önekli yol C girişine aynen verilir.
+    if (startsWith(io, "\\\\?\\")) {
+      if (!isTRUE(dir.exists(mergen_io_path(dirname(path))))) stop("Kilit dizini yok.")
+      kilit <- .Call(filelock:::c_filelock_lock, enc2utf8(io), isTRUE(exclusive),
+                     if (is.infinite(timeout)) -1L else as.integer(timeout))
+      if (is.null(kilit)) NULL else structure(kilit, class = "filelock_lock")
+    } else filelock::lock(io, timeout = timeout, exclusive = exclusive)
   }, error = function(e) NULL)
 }
 
