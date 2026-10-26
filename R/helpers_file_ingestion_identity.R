@@ -1,5 +1,11 @@
 # Kopya kimliği yolun gösteriminden bağımsızdır.
-file_ingestion_owner_path <- function(path) {
+file_ingestion_owner_path <- function(path, legacy = FALSE) {
+  if (!legacy) {
+    paths <- file_ingestion_owner_paths(path)
+    existing <- paths[vapply(paths, path_exists_relaxed, logical(1))]
+    if (length(existing) > 1L) stop("Çakışan sahiplik işaretleri doğrulanamadı.")
+    return(if (length(existing)) existing[[1L]] else paths[[1L]])
+  }
   ad <- basename(path)
   if (nchar(ad, type = "bytes") > 180L) {
     anahtar <- if (.Platform$OS.type == "windows") tolower(ad) else ad
@@ -42,7 +48,7 @@ file_ingestion_artifact_owned <- function(result, allow_deleting = TRUE) {
 # Marker yerinde yazılmaz: sert ölüm yarım RDS bırakıp tüm geri alımı kilitlerdi.
 # fs/libuv aynı birimde Windows hedefini de atomik değiştirir; hata eski kanıtı korur.
 file_ingestion_write_owner <- function(value, target) {
-  tmp <- paste0(target, ".", Sys.getpid(), ".tmp")
+  tmp <- tempfile(".io-", tmpdir = dirname(target))
   on.exit(unlink(tmp, force = TRUE), add = TRUE)
   saveRDS(value, tmp)
   for (deneme in 1:5) {
@@ -94,15 +100,19 @@ file_ingestion_owner_reclaimable <- function(owner, marker, stale_sec = 3600) {
 }
 
 file_ingestion_begin_copy <- function(path, staging, source, transaction) {
-  .file_store_with_index_lock({
+  # Sahip edinimi yalnız adın harf eşlerini kilitler; indeks yazımı yapmaz.
+  guard <- mergen_upload_lane_lock(path)
+  if (is.null(guard)) stop("Kopya sahiplik muteksi alınamadı.")
+  on.exit(filelock::unlock(guard), add = TRUE)
+  {
     marker <- file_ingestion_owner_path(path)
     owner <- file_ingestion_read_owner(path)
     yabanci <- is.list(owner) && !identical(owner$id, transaction$id)
     if (yabanci && !file_ingestion_owner_reclaimable(owner, marker))
       stop("Kopya hedefi başka bir işlem tarafından ayrılmış.")
-    # Ölü işlemin yalnız KENDİ staging artığı silinir; kalıcı hedefe dokunulmaz.
-    if (yabanci && identical(owner$staging, staging) && path_exists_relaxed(staging))
-      unlink(staging, force = TRUE)
+    # Eski staging'in indeks talebi ancak indeks kilidiyle dışlanabilir.
+    if (yabanci) .file_store_with_index_lock(
+      file_ingestion_reclaim_stage(path, staging, owner, marker), require_lock = TRUE)
     if (path_exists_relaxed(path) || path_exists_relaxed(staging)) stop("Kopya hedefi zaten var.")
     previous <- suppressWarnings(tryCatch(readRDS(transaction$journal), error = function(e) NULL))
     started_at <- if (is.list(previous) && identical(previous$artifact_id, transaction$id))
@@ -116,16 +126,19 @@ file_ingestion_begin_copy <- function(path, staging, source, transaction) {
       artifact_id = transaction$id, staging = staging, transaction_pending = TRUE)
     file_ingestion_write_owner(result, transaction$journal)
     unlink(paste0(marker, ".identity"), force = TRUE)
+    # Benzersiz nesil, inode olmayan paylaşımda da marker takma adını kanıtlar.
+    generation <- paste0(Sys.getpid(), "-", basename(tempfile("og")))
     file_ingestion_write_owner(list(id = transaction$id, state = "copying", staging = staging,
-      pid = Sys.getpid(), host = unname(Sys.info()[["nodename"]]), started_at = started_at), marker)
+      pid = Sys.getpid(), host = unname(Sys.info()[["nodename"]]), started_at = started_at,
+      generation = generation), marker)
     if (is.list(previous) && !identical(previous$dest, path)) {
       old_owner <- file_ingestion_read_owner(previous$dest)
       # Yerel kodlama aynı fiziksel marker'a çözülürse yeni rezervasyon silinmez.
       if (identical(old_owner$id, transaction$id) && identical(old_owner$state, "copying") &&
-          identical(old_owner$staging, previous$staging) &&
+          identical(old_owner$staging, previous$staging) && !identical(old_owner$generation, generation) &&
           !path_exists_relaxed(previous$staging)) unlink(file_ingestion_owner_path(previous$dest), force = TRUE)
     }
-  }, require_lock = TRUE)
+  }
   invisible(NULL)
 }
 

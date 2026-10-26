@@ -196,6 +196,181 @@ test_that("kova temizliği bağlantıyla kova DIŞINA çıkan yolu silmez", {
   expect_false(file.exists(ic_dosya))
 })
 
+test_that("kova temizliği sarkan bağlantıyı hedefini izlemeden siler; şerit kilidine dokunmaz", {
+  skip_if_not_installed("filelock")
+  kova_kok <- withr::local_tempdir()
+  kova <- file.path(kova_kok, "user_9101")
+  disari <- withr::local_tempdir()
+  dir.create(kova, recursive = TRUE)
+  writeLines("kova ici", file.path(kova, "ic.txt"))
+  writeLines("kullanıcı belgesi", file.path(kova, ".up-abc"))
+  sarkan <- file.path(kova, "olu")
+  baglandi <- isTRUE(suppressWarnings(file.symlink(file.path(disari, "yok"), sarkan)))
+  indeks <- new.env(parent = emptyenv())
+  indeks$veri <- list(`9101` = list(list(path = sarkan)))
+  env <- .reviewContractEnv(
+    c("R/utils_path_helpers.R", "R/helpers_files_path.R", "R/helpers_process_ownership.R",
+      "R/helpers_files_promote_probe.R", "R/config_file_store_bucket_clear.R"),
+    stub_fn = function(e) {
+      e$MERGEN_UPLOADS_DIR <- kova_kok
+      e$MERGEN_MCP_BASE_DIR <- kova_kok
+      e$log_warn <- function(...) invisible(NULL)
+      e$mergen_user_upload_dir <- function(uid) kova
+      e$.load_index <- function() indeks$veri
+      e$.save_index <- function(idx) { indeks$veri <- idx; invisible(TRUE) }
+      e$file_store_index_lock_heartbeat <- function() TRUE
+      e$.file_store_with_index_lock <- function(expr, ...) expr
+    }
+  )
+  # Yükleme şeridi kova temizliğiyle yarışırken kilidi tutar.
+  withr::local_options(mergen.upload_lock_dir = file.path(withr::local_tempdir(), "locks"))
+  guard <- env$mergen_upload_lane_lock(file.path(kova, "yukleniyor.txt"))
+  expect_false(is.null(guard))
+  withr::defer(filelock::unlock(guard))
+  lock <- env$mergen_upload_mutex_path(file.path(kova, "yukleniyor.txt"))
+  expect_true(isTRUE(env$mergen_clear_user_bucket(9101)))
+  expect_length(list.files(kova, all.files = TRUE, no.. = TRUE), 0L)
+  if (baglandi) expect_false(fs::is_link(sarkan))
+  # Silinen sarkan bağlantının indeks kaydı da düşer.
+  expect_null(indeks$veri[["9101"]])
+  expect_false(file.exists(file.path(disari, "yok")))
+  expect_true(file.exists(lock))
+  # Genel kapsama denetimi sarkan bağlantıyı yine kanıtlanmış saymaz.
+  if (isTRUE(suppressWarnings(file.symlink(file.path(disari, "yok"), sarkan)))) {
+    expect_false(env$mergen_path_inside_root(sarkan, kova))
+    fs::link_delete(sarkan)
+  }
+})
+
+# Sarkan bağlantı fikstürü: kova + indeks + isteğe bağlı saplamalar.
+.kovaSarkanOrtami <- function(kova_kok, kova, indeks, ek_stub = NULL) {
+  .reviewContractEnv(
+    c("R/utils_path_helpers.R", "R/helpers_files_path.R", "R/config_file_store_bucket_clear.R"),
+    stub_fn = function(e) {
+      e$MERGEN_UPLOADS_DIR <- kova_kok
+      e$MERGEN_MCP_BASE_DIR <- kova_kok
+      e$log_warn <- function(...) invisible(NULL)
+      e$mergen_user_upload_dir <- function(uid) kova
+      e$.load_index <- function() indeks$veri
+      e$.save_index <- function(idx) { indeks$veri <- idx; invisible(TRUE) }
+      e$file_store_index_lock_heartbeat <- function() TRUE
+      e$.file_store_with_index_lock <- function(expr, ...) expr
+      if (is.function(ek_stub)) ek_stub(e)
+    }
+  )
+}
+
+test_that("kova temizliği hedefi BELİRSİZ bağlantıyı ve indeks kaydını korur", {
+  kova_kok <- withr::local_tempdir()
+  kova <- file.path(kova_kok, "user_9102")
+  dir.create(kova, recursive = TRUE)
+  # Döngüsel bağlantı çözülemez ama hedef YOK değildir (ENOENT değil, ELOOP).
+  a <- file.path(kova, "dongu_a")
+  b <- file.path(kova, "dongu_b")
+  if (!isTRUE(suppressWarnings(file.symlink(b, a))) ||
+      !isTRUE(suppressWarnings(file.symlink(a, b)))) {
+    skip("Bu platformda sembolik bağlantı oluşturulamıyor.")
+  }
+  indeks <- new.env(parent = emptyenv())
+  indeks$veri <- list(`9102` = list(list(path = a), list(path = b)))
+  env <- .kovaSarkanOrtami(kova_kok, kova, indeks)
+  expect_warning(sonuc <- env$mergen_clear_user_bucket(9102), "silinemedi")
+  expect_false(isTRUE(sonuc))
+  expect_true(fs::is_link(a))
+  expect_true(fs::is_link(b))
+  expect_length(indeks$veri[["9102"]], 2L)
+})
+
+test_that("kova temizliği doğrulamadan sonra yerine konan girdiyi silmez", {
+  kova_kok <- withr::local_tempdir()
+  kova <- file.path(kova_kok, "user_9103")
+  disari <- withr::local_tempdir()
+  dir.create(kova, recursive = TRUE)
+  sarkan <- file.path(kova, "olu")
+  if (!isTRUE(suppressWarnings(file.symlink(file.path(disari, "yok"), sarkan)))) {
+    skip("Bu platformda sarkan bağlantı oluşturulamıyor.")
+  }
+  indeks <- new.env(parent = emptyenv())
+  indeks$veri <- list(`9103` = list(list(path = sarkan)))
+  # Yarış: bağlantı incelendikten sonra, ayırma taşımasından hemen önce aynı
+  # ada kullanıcı dosyası yerleşir.
+  env <- .kovaSarkanOrtami(kova_kok, kova, indeks, function(e) {
+    e$file.rename <- function(from, to) {
+      if (identical(from, sarkan) && isTRUE(fs::is_link(sarkan))) {
+        fs::link_delete(sarkan)
+        writeLines("yeni belge", sarkan)
+      }
+      base::file.rename(from, to)
+    }
+  })
+  expect_warning(sonuc <- env$mergen_clear_user_bucket(9103), "silinemedi")
+  expect_false(isTRUE(sonuc))
+  expect_false(fs::is_link(sarkan))
+  expect_identical(readLines(sarkan), "yeni belge")
+  expect_length(indeks$veri[["9103"]], 1L)
+  expect_identical(list.files(kova, all.files = TRUE, no.. = TRUE), "olu")
+})
+
+test_that("kova temizliği yarışan girdiyi geri koyarken yeni yazarın dosyasını ezmez", {
+  kova_kok <- withr::local_tempdir()
+  kova <- file.path(kova_kok, "user_9105")
+  disari <- withr::local_tempdir()
+  dir.create(kova, recursive = TRUE)
+  sarkan <- file.path(kova, "olu")
+  if (!isTRUE(suppressWarnings(file.symlink(file.path(disari, "yok"), sarkan)))) {
+    skip("Bu platformda sarkan bağlantı oluşturulamıyor.")
+  }
+  indeks <- new.env(parent = emptyenv())
+  indeks$veri <- list(`9105` = list(list(path = sarkan)))
+  # Yarış: bağlantı ayrılmadan önce bir yazar aynı ada dosya koyar; üçüncü
+  # yazar ise geri koyma işleminin hemen öncesinde (denetimden sonra) gelir.
+  ucuncu <- function(to) if (identical(to, sarkan)) writeLines("üçüncü yazar", sarkan)
+  env <- .kovaSarkanOrtami(kova_kok, kova, indeks, function(e) {
+    e$file.rename <- function(from, to) {
+      if (identical(from, sarkan) && isTRUE(fs::is_link(sarkan))) {
+        fs::link_delete(sarkan)
+        writeLines("ikinci yazar", sarkan)
+      }
+      ucuncu(to)
+      base::file.rename(from, to)
+    }
+    e$file.link <- function(from, to) { ucuncu(to); base::file.link(from, to) }
+  })
+  expect_warning(sonuc <- env$mergen_clear_user_bucket(9105), "silinemedi")
+  expect_false(isTRUE(sonuc))
+  expect_identical(readLines(sarkan), "üçüncü yazar")
+  ayrik <- list.files(kova, pattern = "^\\.mergen-sarkan-", all.files = TRUE, full.names = TRUE)
+  expect_length(ayrik, 1L)
+  expect_identical(readLines(ayrik), "ikinci yazar")
+  expect_length(indeks$veri[["9105"]], 1L)
+})
+
+test_that("kova temizliği sarkan bağlantı silindikten sonra da kilit sahipliğini denetler", {
+  kova_kok <- withr::local_tempdir()
+  kova <- file.path(kova_kok, "user_9104")
+  disari <- withr::local_tempdir()
+  dir.create(kova, recursive = TRUE)
+  sarkan <- file.path(kova, "a_olu")
+  if (!isTRUE(suppressWarnings(file.symlink(file.path(disari, "yok"), sarkan)))) {
+    skip("Bu platformda sarkan bağlantı oluşturulamıyor.")
+  }
+  sonraki <- file.path(kova, "b.txt")
+  writeLines("korunmalı", sonraki)
+  indeks <- new.env(parent = emptyenv())
+  indeks$veri <- list(`9104` = list(list(path = sarkan), list(path = sonraki)))
+  atis <- new.env(parent = emptyenv())
+  atis$n <- 0L
+  env <- .kovaSarkanOrtami(kova_kok, kova, indeks, function(e) {
+    e$file_store_index_lock_heartbeat <- function() { atis$n <- atis$n + 1L; FALSE }
+  })
+  expect_warning(sonuc <- env$mergen_clear_user_bucket(9104), "sahipliği kaybedildi")
+  expect_false(isTRUE(sonuc))
+  expect_identical(atis$n, 1L)
+  expect_false(fs::is_link(sarkan))
+  # Kilit kaybından sonra sonraki girdi işlenmez.
+  expect_true(file.exists(sonraki))
+})
+
 test_that("kova dizin durumu okunamayan üst dizinde BELİRSİZ döner", {
   # POSIX izin bitleri gerekir; root izin denetimini atlar.
   skip_on_os("windows")

@@ -31,7 +31,8 @@ file_ingestion_discard_results <- function(results, user_id = NULL, lock_timeout
       identical(owner$staging, r$staging) && identical(owner$state, "copying")
   }, results %||% list())
   committed <- character()
-  .file_store_with_index_lock({
+  # Yalnız staging'i kalan işlem kalıcı hedefi/indeksi değiştiremez.
+  if (!length(pending) || length(owned) || length(pending) != length(results)) .file_store_with_index_lock({
     idx <- .load_index()
     uid <- if (is.null(user_id)) NULL else as.character(user_id)
     for (r in owned) {
@@ -98,7 +99,7 @@ file_ingestion_finish_job <- function(job, results, queue_wait_ms = 0, discard =
     globals$user_id <- job$user_id
     globals$discard <- discard
     globals$index_options <- options()[intersect(names(options()),
-      c("mergen.mcp_base_dir", "mergen.index_path", "mergen.files_root"))]
+      c("mergen.mcp_base_dir", "mergen.index_path", "mergen.files_root", "mergen.upload_lock_dir"))]
     tracked_future_promise(
       task_fn = function() {
         old_options <- options(index_options)
@@ -190,7 +191,7 @@ file_ingestion_rollback_job <- function(job, results, error, journals = characte
       globals$results <- results
       globals$user_id <- job$user_id
       globals$index_options <- options()[intersect(names(options()),
-        c("mergen.mcp_base_dir", "mergen.index_path", "mergen.files_root"))]
+        c("mergen.mcp_base_dir", "mergen.index_path", "mergen.files_root", "mergen.upload_lock_dir"))]
       task <- function() {
         options(index_options)
         file_ingestion_discard_results(results, user_id)

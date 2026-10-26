@@ -14,6 +14,55 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-10-26 Kodlama testi ebeveyn yolları
+
+- Eski Windows kodlamasını benzeten çıktı kurtarma ve yükleme sahipliği
+  testleri, Latin-1 dışı karakter içeren gerçek geçici dizinde göreli yollar
+  kullanır; ebeveyn yolu dönüştürülmeden dosya adı baytları denetlenir.
+
+### (Yayınlanmadı) 2026-10-26 Yükleme şeridi bekleme bütçesi
+
+- Geçersiz şerit bekleme bütçeleri (`NA`, `NaN`, sonsuz, negatif veya tekil
+  sayısal olmayan değerler) 120 saniyelik varsayılana döner; muteks zaman aşımı
+  sonlu ve negatif olmayan değerde kalır. Shiny oturumunun sıfır bekleme
+  davranışı ve geçerli bütçeler korunur.
+
+### (Yayınlanmadı) 2026-10-26 Yükleme listesi ara ürünleri
+
+- Kısa `.io-` sahiplik marker'ları, kimlik ekleri ve geçici yazım dosyaları
+  ortak listeleme filtresinde gizlenir; dosyalar ve sahiplik kanıtları korunur.
+- Yayın kilidi dizini testinde iki yol da kanonik karşılaştırma yardımcısından
+  geçer; Windows yol ayırıcıları eşitlik denetimini bozmaz.
+
+### (Yayınlanmadı) 2026-10-25 Yükleme sahipliği ve Windows hata temizliği
+
+- Yükleme terfisi, bağlantı veya hedef rezervasyonu almadan önce ada özgü
+  muteksle dışlanır. Kanonik üst dizindeki harf eşleri aynı kilit şeridine
+  girer; farklı şeritlerdeki uzun kopyalar birlikte ilerler. En çok 4096 kalıcı
+  şerit kilidi kullanıcı klasöründe değil, indeksin yanındaki iç dizinde
+  tutulur: listeleme ve kova temizliği onları görmez, kilide benzeyen kullanıcı
+  dosyaları görünür kalır ve tutulan kilit silinip dışlama bölünmez. İlgisiz
+  bir yüklemeyle şerit çakışması tek zaman aşımında hata değildir; kilit sınırlı
+  bütçe boyunca beklenir. Harf takma adları mevcut dosyayı değiştiremez; POSIX
+  adlarının harf büyüklüğü ve eski rezervasyon adları korunur.
+- Silme ve sahiplik atlama kararları yalnız inode/dosya kimliği içeren güçlü
+  eşlikle verilir; boyut+mtime eşliği (inode vermeyen paylaşım) kanıt sayılmaz,
+  aday korunur. Marker takma adı benzersiz nesil değeriyle ayırt edilir.
+- Doğrudan kopyanın yayınından sonra staging adı silinemese de sentetik sahip
+  kanıtı kaldırılır; işçinin olağan talebi reddedilmez. Başarısız temizlikte
+  kalıcı kanıt klasördeki sahip marker'ıdır; oturum geçici günlüğü tutulmaz.
+- Kova temizliği sarkan bağlantıyı, üst dizini kovada kanıtlanmışsa hedefini
+  izlemeden bağlantı nesnesi olarak siler; genel kapsama denetimi gevşetilmez.
+- Normal kopya sahipliği ve yalnız staging temizliği global indeks kilidine
+  bağlı değildir. Eski staging kurtarması ve kalıcı yapıtın indeksle ilişkili
+  temizliği indeks kilidini kullanmaya devam eder.
+- Windows sahiplik marker'ı ve kimlik eki birlikte bütçelenir; atomik yazım
+  kısa, aynı dizindeki geçici ada yapılır. Eski marker adayları korunur.
+- Eksik Windows hedefi mevcut üst dizinden çözülür; 8.3 yollar temizliği
+  engellemez. Çözülemeyen kökler ve kök dışına çıkan bağlantılar reddedilir.
+- Kanıt temizleme sırası, kaynak baytları ve başarısız temizlikte sahiplik
+  kanıtının korunması regresyonlarla denetlenir. Üretim Windows VM doğrulaması ayrıca gerekir.
+
 ### (Yayınlanmadı) 2026-10-03 Worker paket serileştirmesi
 
 - Açık bağımlılık modunda paket dışa aktarımları görev çalışırken gecikmeli
@@ -1501,3 +1550,5 @@ Son kabul notu: bu güncelleme sonrasında gerçek tarayıcı smoke koşumu `UX_
 - README'deki eski PR tarzı doğrulama günlükleri, kullanıcıyı ilk girişte yormamak için buraya taşındı.
 - Yalnızca gerçekten çalıştırılan komutların sonucu “geçti” olarak ifade edilir.
 - Codex/Claude cloud kanıtı ile Windows VM/on-prem kanıtı aynı şey değildir; özellikle DB, SSO, encoding, UNC path, paket kilidi ve tarayıcı smoke alanlarında sınırlar açıkça belirtilmelidir.
+
+- Shiny oturumunda yükleme şeridi çekişmesi beklemeden reddedilir; arka plan işçilerinin sınırlı bekleme bütçesi korunur.

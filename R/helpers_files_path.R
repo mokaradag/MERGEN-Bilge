@@ -189,21 +189,26 @@ is_under_mcp_base <- function(p) {
 # kaçışı reddeder, kaçış tespit edilirse işlem HİÇ denenmez.
 # ------------------------------------------------------------------------------
 mergen_path_inside_root <- function(candidate, root) {
-  # `%||%` bu dosyada başka yerde kullanılmıyor; izole test/worker bağlamında
-  # tanımlı olmayabilir, bu yüzden açık NULL denetimi yapılır.
   # Kök bilinmiyorsa kapsama KANITLANAMAZ: doğrulanmamış kökle silme/kopyalama
   # yapılmaması için kapalı-başarısız davranılır.
   if (is.null(root)) return(FALSE)
   root <- as.character(root)[1]
   if (is.na(root) || !nzchar(root)) return(FALSE)
 
-  kok <- try(normalizePath(root, winslash = "/", mustWork = FALSE), silent = TRUE)
-  coz <- try(normalizePath(as.character(candidate)[1], winslash = "/", mustWork = FALSE),
-             silent = TRUE)
+  kok <- try(normalizePath(root, winslash = "/", mustWork = TRUE), silent = TRUE)
+  candidate <- as.character(candidate)[1]
+  # Hedefi çözülemeyen bağlantı kapsamı kanıtlayamaz; Windows normalizePath() onu sözcüksel döndürebilir.
+  baglanti <- try(fs::is_link(candidate), silent = TRUE)
+  if (isTRUE(baglanti) && inherits(try(fs::path_real(candidate), silent = TRUE), "try-error")) return(FALSE)
+  coz <- try(normalizePath(candidate, winslash = "/", mustWork = TRUE), silent = TRUE)
+  # Eksik yaprak yalnız mevcut, çözülebilen üst dizinden bağlanır (8.3 dahil).
+  if (inherits(coz, "try-error") && !is.na(candidate) && nzchar(candidate) &&
+      !isTRUE(file.exists(candidate)) && isFALSE(baglanti))
+    coz <- try(file.path(normalizePath(dirname(candidate), winslash = "/", mustWork = TRUE),
+                         basename(candidate)), silent = TRUE)
   if (inherits(kok, "try-error") || inherits(coz, "try-error")) return(FALSE)
+  # `root` ve `candidate` skalerleştirildi; çözüm sonuçları tek elemanlıdır.
   if (is.na(kok[1]) || is.na(coz[1]) || !nzchar(kok[1]) || !nzchar(coz[1])) return(FALSE)
-  kok <- kok[1]
-  coz <- coz[1]
 
   if (.Platform$OS.type == "windows") {
     kok <- tolower(kok)
@@ -211,10 +216,8 @@ mergen_path_inside_root <- function(candidate, root) {
   }
   kok <- sub("/+$", "", kok)
 
-  # `normalizePath(..., mustWork = FALSE)` çözülemeyen yolu OLDUĞU GİBİ döndürür
-  # (ör. ata dizin geçiş izni vermiyorsa ya da yol diskte yoksa). Kalan '..'
-  # parçası önek kıyasını atlatıp kök DIŞINDAKİ bir yolu onaylatabiliyordu
-  # (bkz. is_under_mcp_base aynı denetim).
+  # Eksik yaprak üst dizinden bağlandığında kalan '..' parçası önek kıyasını
+  # atlatıp kök DIŞINDAKİ yolu onaylatabilir (bkz. is_under_mcp_base).
   if (grepl("(^|/)\\.\\.(/|$)", coz, perl = TRUE)) return(FALSE)
 
   identical(coz, kok) || startsWith(coz, paste0(kok, "/"))

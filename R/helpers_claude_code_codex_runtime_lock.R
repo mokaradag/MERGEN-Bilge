@@ -229,7 +229,7 @@
   jeton <- mergen_reservation_token("ccout")
   acquired <- function() {
     if (startsWith(basename(kilit), ".cc-output-lockhash-") &&
-        inherits(try(writeLines(basename(dest), file.path(kilit, "destination"), useBytes = TRUE),
+        inherits(try(writeBin(charToRaw(paste0(enc2utf8(basename(dest)), "\n")), file.path(kilit, "destination")),
                      silent = TRUE), "try-error")) {
       mergen_reservation_release(kilit, jeton)
       return(structure("", recovery_failed = TRUE))
@@ -254,11 +254,24 @@
 
 # Devralınan bayat rezervasyonun yarım işlemini çözer: hedef yoksa yedek geri
 # konur; hedef varsa önceki sürüm silinmez, jetonlu benzersiz adla saklanır.
+.cc_output_name_variants <- function(base) {
+  names <- list(base)
+  for (convert in list(enc2utf8, enc2native)) {
+    candidate <- suppressWarnings(tryCatch(convert(base), error = function(e) NULL))
+    same <- suppressWarnings(tryCatch(identical(enc2utf8(candidate), enc2utf8(base)),
+                                      error = function(e) FALSE))
+    if (isTRUE(same)) names[[length(names) + 1L]] <- candidate
+  }
+  names
+}
+
 .cc_output_recover_dest <- function(dest, jeton) {
   jeton <- as.character(jeton %||% "")[1]
   if (is.na(jeton) || !grepl("^[0-9]+-ccout[0-9a-f]+$", jeton)) return(TRUE)
-  for (legacy in c(FALSE, TRUE)) {
-    yollar <- .cc_output_txn_paths(dest, jeton, legacy = legacy)
+  for (base in .cc_output_name_variants(basename(dest))) for (legacy in c(FALSE, TRUE)) {
+    yollar <- suppressWarnings(tryCatch(.cc_output_txn_paths(file.path(dirname(dest), base), jeton,
+      legacy = legacy), error = function(e) NULL))
+    if (is.null(yollar)) return(FALSE)
     if (isTRUE(file.exists(yollar$backup))) {
       hedef <- if (isTRUE(file.exists(dest))) file.path(dirname(dest), paste0(
         ".cc-output-recovered-", jeton, "-", digest::digest(basename(dest), algo = "xxhash64", serialize = FALSE))) else dest
@@ -270,6 +283,43 @@
   TRUE
 }
 
+# Yalnız taranan kilidin kimliğini yeniden üreten yorum kabul edilir.
+.cc_output_recovery_dest <- function(parent, lock) {
+  hashed <- startsWith(basename(lock), ".cc-output-lockhash-")
+  if (hashed) {
+    con <- suppressWarnings(tryCatch(file(file.path(lock, "destination"), "rb"), error = function(e) NULL))
+    if (is.null(con)) return(NULL)
+    on.exit(close(con), add = TRUE)
+    bytes <- suppressWarnings(tryCatch(readBin(con, "raw", n = 4097L), error = function(e) raw()))
+    if (!length(bytes) || length(bytes) > 4096L || tail(bytes, 1L) != as.raw(10)) return(NULL)
+    # Yalnız son ayraç çıkarılır; dosya adındaki satır sonları korunur.
+    native <- tryCatch(rawToChar(head(bytes, -1L)), error = function(e) "")
+    utf8 <- native
+    Encoding(utf8) <- "UTF-8"
+    bases <- list(utf8, native)
+    # Eski Windows metin bağlantısı CRLF yazmış olabilir; kimlik yine doğrulanır.
+    if (length(bytes) > 1L && bytes[length(bytes) - 1L] == as.raw(13)) {
+      native_crlf <- tryCatch(rawToChar(head(bytes, -2L)), error = function(e) "")
+      utf8_crlf <- native_crlf
+      Encoding(utf8_crlf) <- "UTF-8"
+      bases <- c(bases, list(utf8_crlf, native_crlf))
+    }
+  } else bases <- list(sub("^\\.cc-output-lock-", "", basename(lock)))
+  for (base in bases) {
+    if (length(base) != 1L || is.na(base) || !nzchar(base)) next
+    for (candidate in .cc_output_name_variants(base)) {
+      dest <- suppressWarnings(tryCatch({
+        if (!identical(basename(candidate), candidate) || candidate %in% c(".", "..")) NULL else {
+          path <- file.path(parent, candidate)
+          if (identical(.cc_output_txn_paths(path)$lock, lock)) path else NULL
+        }
+      }, error = function(e) NULL))
+      if (!is.null(dest)) return(dest)
+    }
+  }
+  NULL
+}
+
 # Plan dışında kalmış hedeflerin bayat rezervasyonları da aynı kuralla kurtarılır;
 # canlı ya da sahipliği kanıtlanamayan rezervasyona dokunulmaz.
 .cc_output_recover_parent <- function(parent) {
@@ -277,14 +327,8 @@
                                           all.files = TRUE, full.names = TRUE))
   kilitler <- kilitler[dir.exists(kilitler) & !grepl("\\.q-q[0-9a-f]+$", kilitler)]
   for (kilit in kilitler) {
-    base <- if (startsWith(basename(kilit), ".cc-output-lockhash-")) {
-      suppressWarnings(tryCatch(readLines(file.path(kilit, "destination"), n = 1L, warn = FALSE),
-                                error = function(e) character()))
-    } else sub("^\\.cc-output-lock-", "", basename(kilit))
-    if (length(base) != 1L || is.na(base) || !nzchar(base) ||
-        !identical(basename(base), base) || base %in% c(".", "..")) next
-    dest <- file.path(parent, base)
-    if (!identical(.cc_output_txn_paths(dest)$lock, kilit)) next
+    dest <- .cc_output_recovery_dest(parent, kilit)
+    if (is.null(dest)) next
     jeton <- .cc_output_dest_lock(dest, wait_sec = 0)
     if (nzchar(jeton)) mergen_reservation_release(kilit, jeton)
   }

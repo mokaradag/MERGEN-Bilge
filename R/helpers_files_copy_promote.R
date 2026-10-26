@@ -14,7 +14,7 @@
 MERGEN_UPLOAD_STAGING_SUFFIX <- ".mergen-part"
 
 mergen_upload_staging_path <- function(final_dest) {
-  paste0(as.character(final_dest)[1], MERGEN_UPLOAD_STAGING_SUFFIX)
+  mergen_upload_artifact_path(final_dest, MERGEN_UPLOAD_STAGING_SUFFIX)
 }
 
 # Kaynağı staging adına kopyalar, boyutu doğrular, kalıcı ada terfi ettirir.
@@ -25,6 +25,8 @@ mergen_copy_upload_staged <- function(datapath, final_dest, base_root,
                                       gorunurluk_denemesi = 10L, transaction = NULL) {
   hedef <- as.character(final_dest)[1]
   staging <- mergen_upload_staging_path(hedef)
+  if (is.null(transaction)) return(mergen_copy_upload_direct(datapath, hedef, base_root,
+    upload_name, exists_fn, gorunurluk_denemesi))
   if (!is.null(transaction)) file_ingestion_begin_copy(hedef, staging, datapath, transaction)
   var_mi <- function(p) isTRUE(tryCatch(exists_fn(p), error = function(e) FALSE))
   # Başarılı kopya Windows/UNC paylaşımında bir süre GÖRÜNMEYEBİLİR. Anında
@@ -43,9 +45,7 @@ mergen_copy_upload_staged <- function(datapath, final_dest, base_root,
     invisible(!var_mi(p))
   }
 
-  # Üç kademeli kopya (fs -> base -> native kodlama) ayrı yardımcıdadır:
-  # görünürlük yarışında İLK başarının korunması ve BENİMSENMEYEN native adayın
-  # temizliği bu dosyanın bakım bütçesine sığmıyordu.
+  # Kopya ve native yedeğin sahipliği ayrı yardımcıda korunur.
   kopya <- mergen_stage_upload_copy(
     datapath = datapath,
     hedef = hedef,
@@ -95,12 +95,12 @@ mergen_copy_upload_staged <- function(datapath, final_dest, base_root,
     staging = staging,
     hedef = hedef,
     var_mi = var_mi,
-    gorunurluk_denemesi = gorunurluk_denemesi, allow_copy = is.null(transaction)
+    gorunurluk_denemesi = gorunurluk_denemesi, allow_copy = isTRUE(transaction$direct)
   )
 
   if (isTRUE(terfi_sonuc$promoted)) {
     # Görünmeyen (UNC) hedefte talep işçide tamamlanır; sahiplik korunur.
-    if (!is.null(transaction) && isTRUE(terfi_sonuc$ok))
+    if (!isTRUE(transaction$direct) && isTRUE(terfi_sonuc$ok))
       try(file_ingestion_claim_artifact(hedef, id = transaction$id), silent = TRUE)
     # TERFİ TAMAMLANDI. `ok` yalnızca görünürlük yoklamasının sonucudur ve
     # yavaş bir UNC paylaşımında `FALSE` dönebilir; bu durumda hedefi silmek

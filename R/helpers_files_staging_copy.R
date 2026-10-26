@@ -23,6 +23,44 @@
 #     loglarda okunabilir kalması CLAUDE.md gereğidir ve korunur.
 # ==============================================================================
 
+# Doğrudan kopyalar da aynı sahip rezervasyonunu alır; farklı yazar staging'i ezemez.
+# Kalıcı kanıt klasördeki sahip marker'ıdır (yeniden denemede geri kazanılır);
+# oturum geçici günlüğü yalnız bu çağrının çalışma notudur ve her çıkışta silinir.
+mergen_copy_upload_direct <- function(datapath, hedef, base_root, upload_name,
+                                      exists_fn, gorunurluk_denemesi) {
+  journal <- tempfile("ingest_direct_")
+  tx <- list(id = basename(journal), journal = journal, direct = TRUE)
+  completed <- FALSE
+  on.exit({
+    result <- suppressWarnings(tryCatch(readRDS(journal), error = function(e) NULL))
+    ours <- is.list(result) && identical(result$artifact_id, tx$id)
+    cleanup <- try(if (ours) {
+      # Yayınlanan dosya sentetik işleme bağlı kalmaz; artık staging adı yayın kopyasıdır.
+      if (!completed) {
+        if (!isTRUE(mergen_path_inside_root(result$dest, base_root)) ||
+            !isTRUE(mergen_path_inside_root(result$staging, base_root))) stop("Kopya temizliği kök dışında.")
+        file_ingestion_discard_results(list(result))
+      }
+      if (identical(file_ingestion_read_owner(result$dest)$id, tx$id) &&
+          (completed || !path_exists_relaxed(result$staging))) {
+        marker <- file_ingestion_owner_path(result$dest)
+        unlink(c(marker, paste0(marker, ".identity")), force = TRUE)
+      }
+    }, silent = TRUE)
+    unlink(journal, force = TRUE)
+    kalan <- ours && isTRUE(tryCatch(identical(file_ingestion_read_owner(result$dest)$id, tx$id),
+      error = function(e) TRUE))
+    kopya_adi <- basename(if (ours) result$dest else hedef)
+    if ((inherits(cleanup, "try-error") || kalan) && exists("log_warn", mode = "function"))
+      try(log_warn("Doğrudan kopya temizliği tamamlanamadı; sahiplik kanıtı korunuyor: {kopya_adi}"),
+        silent = TRUE)
+  }, add = TRUE)
+  result <- mergen_copy_upload_staged(datapath, hedef, base_root, upload_name, exists_fn,
+    gorunurluk_denemesi, transaction = tx)
+  completed <- TRUE
+  result
+}
+
 mergen_stage_upload_copy <- function(datapath, hedef, staging, var_mi, gorunur_mu,
                                      temizle, rebind = NULL) {
   ad <- basename(as.character(staging)[1])

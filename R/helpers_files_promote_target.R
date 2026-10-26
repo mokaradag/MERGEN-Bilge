@@ -53,26 +53,30 @@ MERGEN_PROMOTE_RESERVATION_SUFFIX <- ".mergen-rsv"
 mergen_promote_staged_file <- function(staging, hedef, var_mi,
                                        gorunurluk_denemesi = 10L, allow_copy = TRUE) {
   var_mi_guvenli <- function(p) mergen_promote_probe(var_mi, p)
-
-  # Atomik, üzerine-yazmayan terfi.
-  bagli <- isTRUE(tryCatch(
-    suppressWarnings(file.link(staging, hedef)),
-    error = function(e) FALSE
-  ))
+  # Yayın kilidi yalnız aynı adın harf eşlerini dışlar; kalıcı ad değişmez.
+  publish <- guard <- NULL
+  on.exit({ .mergen_upload_unlock(guard); .mergen_upload_unlock(publish) }, add = TRUE)
+  if (exists("mergen_reclaim_mutex", mode = "function") && exists("mergen_upload_lane_lock", mode = "function")) {
+    publish <- mergen_upload_lane_lock(hedef)
+    if (is.null(publish)) return(list(ok = FALSE, yabanci = TRUE, promoted = FALSE))
+  }
+  bagli <- isTRUE(try(suppressWarnings(file.link(staging, hedef)), silent = TRUE))
   if (bagli) {
     .mergen_promote_drop_staging(staging, var_mi_guvenli)
+    publish <- .mergen_upload_unlock(publish)
     return(list(
       ok = mergen_promote_wait_visible(hedef, var_mi_guvenli, gorunurluk_denemesi),
       yabanci = FALSE,
       promoted = TRUE
     ))
   }
-
   # Bağlantı kurulamadıysa mevcut hedef yabancıdır.
   if (var_mi_guvenli(hedef)) return(list(ok = FALSE, yabanci = TRUE, promoted = FALSE))
-
-  # Bağlantısız dosya sisteminde hedef adı rezervasyonla sahiplenilir.
-  rezerv <- paste0(hedef, MERGEN_PROMOTE_RESERVATION_SUFFIX)
+  # Eski rezervasyon adları korunur; POSIX hedef adları küçük harfe çevrilmez.
+  rezerv <- tryCatch(mergen_upload_artifact_path(hedef, MERGEN_PROMOTE_RESERVATION_SUFFIX, component_only = TRUE),
+    error = function(e) NULL)
+  if (is.null(rezerv))
+    return(list(ok = FALSE, yabanci = var_mi_guvenli(hedef), promoted = FALSE))
   jeton <- if (exists("mergen_reservation_token", mode = "function", inherits = TRUE)) {
     mergen_reservation_token("uprsv")
   } else {
@@ -88,23 +92,10 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
   if (!alindi)
     return(list(ok = FALSE, yabanci = var_mi_guvenli(hedef), promoted = FALSE))
 
-  guard <- NULL
-  on.exit(if (!is.null(guard)) filelock::unlock(guard), add = TRUE)
   sonuc <- tryCatch({
-    # Gerçek rezervasyonda devralmayı terfi bitene kadar dışla. İzole test
-    # sahte acquire kullanabilir; üretim acquire her zaman rezerv dizinini kurar.
     if (isTRUE(dir.exists(rezerv))) {
-      # Paylaşımlı terfiler birlikte ilerler; devralmanın özel kilidi dışlanır.
-      guard <- mergen_reclaim_mutex(file.path(dirname(rezerv), ".mergen-rsv.reclaim"),
-        timeout = 5000, exclusive = FALSE)
+      guard <- .mergen_promote_guard(rezerv, jeton)
       if (is.null(guard)) return(list(ok = FALSE, yabanci = TRUE, promoted = FALSE))
-      for (deneme in 1:3) {
-        sahip <- mergen_reservation_owner(rezerv)
-        if (!is.na(sahip)) break
-        if (deneme < 3L) Sys.sleep(0.01)
-      }
-      if (!identical(sahip, jeton))
-        return(list(ok = FALSE, yabanci = TRUE, promoted = FALSE))
     }
 
     # İki bağımsız okuma, yavaş paylaşımda tek yanlış negatifi daraltır.
@@ -116,10 +107,8 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
         tasindi <- .mergen_promote_copy_exclusive(staging, hedef)
         if (tasindi) .mergen_promote_drop_staging(staging, var_mi_guvenli)
       }
-      if (!is.null(guard)) {
-        filelock::unlock(guard)
-        guard <- NULL
-      }
+      guard <- .mergen_upload_unlock(guard)
+      publish <- .mergen_upload_unlock(publish)
       if (tasindi) {
         list(
           ok = mergen_promote_wait_visible(hedef, var_mi_guvenli, gorunurluk_denemesi),
@@ -140,6 +129,5 @@ mergen_promote_staged_file <- function(staging, hedef, var_mi,
     if (exists("mergen_reservation_release", mode = "function", inherits = TRUE))
       mergen_reservation_release(rezerv, jeton)
   })
-
   sonuc
 }

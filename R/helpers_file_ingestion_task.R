@@ -74,6 +74,9 @@ file_ingestion_task_snapshot <- function(upload,
     user_id = as.character(user_id %||% "")[1],
     max_size_mb = suppressWarnings(as.numeric(max_size_mb %||% NA_real_)[1]),
     storage_base = as.character(storage_base %||% "")[1],
+    # Şerit kilit dizini de ana süreçte çözülür; işçi aynı muteksi seçer.
+    upload_lock_dir = if (exists("mergen_upload_lock_dir", mode = "function", inherits = TRUE))
+      as.character(mergen_upload_lock_dir())[1] else "",
     allowed_ext = if (is.null(allowed_ext)) NULL else as.character(allowed_ext)
   )
 }
