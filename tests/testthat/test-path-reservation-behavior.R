@@ -256,9 +256,15 @@ test_that("önekli geri kazanım muteksi yolu filelock sarmalayıcısının yeni
   source(file.path(resolve_repo_root_for_tests(), "R", "helpers_process_ownership.R"), local = env, encoding = "UTF-8")
   withr::local_dir(withr::local_tempdir())
   logical <- file.path(getwd(), strrep("p", 40), ".mergen-rsv.reclaim")
-  # POSIX'te `\\?\` yazımı göreli bir ad olarak gerçek bir dosyaya karşılık gelir.
-  prefixed <- "\\\\?\\kilit.reclaim"
-  env$mergen_io_path <- function(path) if (identical(path, logical)) prefixed else "."
+  # Windows'ta gerçek sürücü kökenli `\\?\` yolu; POSIX'te aynı yazım göreli bir addır.
+  if (.Platform$OS.type == "windows") {
+    dir_io <- paste0("\\\\?\\", normalizePath(getwd(), winslash = "\\"))
+    prefixed <- paste0(dir_io, "\\kilit.reclaim")
+  } else {
+    dir_io <- "."
+    prefixed <- "\\\\?\\kilit.reclaim"
+  }
+  env$mergen_io_path <- function(path) if (identical(path, logical)) prefixed else dir_io
   wrapper_paths <- character()
   testthat::local_mocked_bindings(lock = function(path, ...) {
     wrapper_paths <<- c(wrapper_paths, path)
