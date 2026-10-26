@@ -80,6 +80,9 @@ mergen_upload_mutex_path <- function(path) {
 # Şerit çakışması hata değildir: canlı tutucu bütçe boyunca beklenir. Kilit
 # dosyası açılamıyorsa ya da şerit boşken edinilemiyorsa beklenmeden reddedilir.
 mergen_upload_lane_lock <- function(path, wait_sec = getOption("mergen.upload_lane_wait_sec", 120)) {
+  # Geçersiz bütçe muteks zaman aşımına veya son tarih hesabına taşınmaz.
+  if (!is.numeric(wait_sec) || is.complex(wait_sec) || length(wait_sec) != 1L ||
+      !is.finite(wait_sec) || wait_sec < 0) wait_sec <- 120
   # Etkin Shiny oturumunda çekişme olay döngüsünü bekletemez.
   if (requireNamespace("shiny", quietly = TRUE) &&
       !is.null(shiny::getDefaultReactiveDomain())) wait_sec <- 0

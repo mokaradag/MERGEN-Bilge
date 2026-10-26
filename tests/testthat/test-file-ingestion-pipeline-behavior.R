@@ -2843,6 +2843,59 @@ test_that("indeks talebi POSIX'te harf duyarlı, Windows'ta harf duyarsız karş
   expect_identical(env$.mergen_index_path_key("C:\\Srv\\A.txt"), env$.mergen_index_path_key("c:/srv/a.txt"))
 })
 
+test_that("şerit bekleme bütçesi geçersiz seçenekte güvenli varsayılana döner", {
+  env <- new.env(parent = baseenv())
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_files_promote_probe.R"),
+    local = env, encoding = "UTF-8")
+  root <- withr::local_tempdir()
+  env$mergen_upload_mutex_path <- function(path) file.path(root, "lane.lock")
+  clock <- as.POSIXct("2026-01-01", tz = "UTC")
+  env$Sys.time <- function() clock
+  guard <- list(held = TRUE)
+  timeout_seen <- NULL
+  acquire <- TRUE
+  env$mergen_reclaim_mutex <- function(path, timeout = 0) {
+    expect_length(timeout, 1L)
+    expect_true(is.finite(timeout))
+    expect_gte(timeout, 0)
+    timeout_seen <<- timeout
+    if (acquire) return(guard)
+    clock <<- clock + 120
+    NULL
+  }
+  invalid <- list(NA_real_, NaN, Inf, -Inf, -1, NULL, numeric(), c(1, 2),
+    "invalid", list(1), 1 + 1i, TRUE)
+  shiny::withReactiveDomain(NULL, {
+    for (budget in invalid) {
+      withr::with_options(list(mergen.upload_lane_wait_sec = budget), {
+        acquire <- TRUE
+        expect_identical(env$mergen_upload_lane_lock("target"), guard)
+        expect_equal(timeout_seen, 5000)
+        acquire <- FALSE
+        expect_null(env$mergen_upload_lane_lock("target"))
+        expect_equal(timeout_seen, 5000)
+      })
+      # Açık NULL da seçenek yokluğundan ayrı doğrulanır.
+      acquire <- TRUE
+      expect_identical(env$mergen_upload_lane_lock("target", wait_sec = budget), guard)
+      expect_equal(timeout_seen, 5000)
+    }
+    for (budget in list(0, 0.125, 2L, 120)) {
+      expect_identical(env$mergen_upload_lane_lock("target", wait_sec = budget), guard)
+      expect_equal(timeout_seen, min(5000, budget * 1000))
+    }
+  })
+  session <- shiny::MockShinySession$new()
+  withr::defer(session$close())
+  shiny::withReactiveDomain(session, {
+    for (budget in c(invalid, list(120))) {
+      acquire <- FALSE
+      expect_null(env$mergen_upload_lane_lock("target", wait_sec = budget))
+      expect_identical(timeout_seen, 0)
+    }
+  })
+})
+
 test_that("şerit çekişmesi tek zaman aşımında yüklemeyi düşürmez; kilit hatası beklemeden döner", {
   skip_if_not_installed("filelock")
   skip_if_not_installed("callr")

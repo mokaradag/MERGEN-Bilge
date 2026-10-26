@@ -14,6 +14,13 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 
 ## Son Değişiklikler
 
+### (Yayınlanmadı) 2026-10-26 Yükleme şeridi bekleme bütçesi
+
+- Geçersiz şerit bekleme bütçeleri (`NA`, `NaN`, sonsuz, negatif veya tekil
+  sayısal olmayan değerler) 120 saniyelik varsayılana döner; muteks zaman aşımı
+  sonlu ve negatif olmayan değerde kalır. Shiny oturumunun sıfır bekleme
+  davranışı ve geçerli bütçeler korunur.
+
 ### (Yayınlanmadı) 2026-10-26 Yükleme listesi ara ürünleri
 
 - Kısa `.io-` sahiplik marker'ları, kimlik ekleri ve geçici yazım dosyaları
