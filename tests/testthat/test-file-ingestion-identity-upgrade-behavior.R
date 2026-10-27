@@ -123,14 +123,12 @@ test_that("inode'suz paylaşım SHA-256 ile sahiplik ve rollback kanıtlar", {
   env$path_exists_relaxed <- function(path) file.exists(path)
   env$.file_store_with_index_lock <- function(expr, ...) force(expr)
 
-  real_info <- base::file.info
-  testthat::local_mocked_bindings(file_info = function(path, ...) {
-    info <- real_info(path)
-    data.frame(
-      size = info$size[1], modification_time = info$mtime[1],
-      device_id = 1, inode = 0
-    )
-  }, .package = "fs")
+  fixed <- base::file.info(dest)[c("size", "mtime", "ctime")]
+  env$file.info <- function(...) fixed
+  testthat::local_mocked_bindings(file_info = function(...) data.frame(
+    size = fixed$size[1], modification_time = fixed$mtime[1],
+    device_id = 1, inode = 0
+  ), .package = "fs")
 
   weak <- env$file_ingestion_physical_identity(dest)
   expect_false("content_sha256" %in% names(weak))
@@ -150,4 +148,9 @@ test_that("inode'suz paylaşım SHA-256 ile sahiplik ve rollback kanıtlar", {
   owner$state <- "deleting"
   env$file_ingestion_write_owner(owner, marker)
   expect_true(env$file_ingestion_artifact_owned(list(dest = dest, artifact_id = id)))
+
+  # Boyut/mtime/ctime aynı kalsa bile farklı içerikli bir replacement silme
+  # yetkisi kazanamaz; karar SHA-256 kanıtında kapanır.
+  writeBin(as.raw(c(16, 15, 14, 13)), dest)
+  expect_false(env$file_ingestion_artifact_owned(list(dest = dest, artifact_id = id)))
 })
