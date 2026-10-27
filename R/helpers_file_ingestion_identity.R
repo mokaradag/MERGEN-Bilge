@@ -216,10 +216,10 @@ file_ingestion_discard_unclaimed <- function(path, source, expected) {
 # Fiziksel anahtar yol YAZIMINDAN bağımsızdır. Windows'ta base R ile fs/libuv
 # aynı uzun yol biçimini desteklemeyebilir: üretim VM'sinde mantıksal uzun yol
 # stat edilebilirken açık `\\?\` yazımı libuv tarafından reddedilebiliyor;
-# GitHub Windows imajında ise tersi görülebiliyor. Bu yüzden güçlü anahtar için
-# aynı fiziksel yolun mantıksal ve I/O yazımları sırayla denenir. İkisi de fs
-# tarafından kimliklenemiyorsa mevcut inode-suz paylaşım sözleşmesi korunur ve
-# base R boyut+mtime anahtarı kullanılır; bu zayıf anahtar silme yetkisi vermez.
+# GitHub Windows imajında ise tersi görülebiliyor. Bu yüzden aynı fiziksel yolun
+# mantıksal ve I/O yazımları sırayla denenir. fs iki yazımı da kimlikleyemiyorsa
+# sahiplik kanıtı YOKTUR: base R boyut/mtime verisi dosyayı okumaya yarayabilir,
+# ancak rollback/silme yetkisi üretemez.
 file_ingestion_physical_identity <- function(path) {
   p <- as.character(path %||% "")[1]
   if (is.na(p) || !nzchar(p)) return(NULL)
@@ -232,9 +232,7 @@ file_ingestion_physical_identity <- function(path) {
       c("size", "modification_time")
     return(lapply(info[alanlar], as.character))
   }
-  info <- tryCatch(file.info(io), error = function(e) NULL)
-  if (is.null(info) || NROW(info) != 1L || is.na(info$size[1]) || is.na(info$mtime[1])) return(NULL)
-  list(size = as.character(info$size[1]), modification_time = as.character(info$mtime[1]))
+  NULL
 }
 
 file_ingestion_prepare_promotion <- function(staging, path, transaction) {
