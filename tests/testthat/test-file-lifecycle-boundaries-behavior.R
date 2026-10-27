@@ -63,11 +63,18 @@ test_that("başarısız özel kopya yalnız kendi fiziksel dosyasını kaldırı
     src <- file.path(root, "source")
     dest <- file.path(root, "target")
     writeLines("kaynak", src)
+    replaced <- FALSE
     replace <- function() {
       if (replacement) {
         # Windows'ta açık hedefi değiştirmek yerine kapanış sonrasını uygula.
-        file.rename(dest, file.path(root, "old"))
-        writeLines("başkasının dosyası", dest)
+        # Yeni yazılan dosyayı tarayan süreç adı geçici kilitleyebilir; uyarı
+        # sınanan kodun tryCatch'ini erken bitirmesin diye yeniden denenir.
+        for (i in seq_len(50L)) {
+          replaced <<- isTRUE(suppressWarnings(file.rename(dest, file.path(root, "old"))))
+          if (replaced) break
+          Sys.sleep(0.1)
+        }
+        if (replaced) writeLines("başkasının dosyası", dest)
       }
     }
     output <- NULL
@@ -89,6 +96,7 @@ test_that("başarısız özel kopya yalnız kendi fiziksel dosyasını kaldırı
       stop("kapanış başarısız")
     }
     expect_false(env$.mergen_promote_copy_exclusive(src, dest))
+    expect_identical(replaced, replacement)
     expect_identical(file.exists(dest), replacement)
     if (replacement) expect_identical(readLines(dest), "başkasının dosyası")
     expect_true(file.exists(src))

@@ -1738,7 +1738,13 @@ test_that("uzun hedef adı sahiplik ve geçici marker sınırını aşmaz", {
   expect_false(identical(stage, env$mergen_upload_staging_path(sub("a.txt$", "b.txt", long_target))))
   marker <- env$file_ingestion_owner_path(long_target)
   expect_lt(nchar(basename(paste0(marker, ".identity.", Sys.getpid(), ".tmp")), type = "bytes"), 255L)
-  target <- file.path(root, paste0(strrep("a", 220), ".txt"))
+  # 181 bayt sıkıştırma eşiğini (180) aşar; derin Windows geçici kökünde de temsil edilir.
+  target <- file.path(root, paste0(strrep("a", 177), ".txt"))
+  usable <- isTRUE(suppressWarnings(file.create(target)))
+  skip_if(!usable && .Platform$OS.type == "windows" && env$mergen_artifact_path_units(target) > 259L,
+    "Host cannot represent this final-path fixture without Windows long-path support")
+  expect_true(usable)
+  unlink(target)
   stage <- env$mergen_upload_staging_path(target)
   tx <- list(id = "uzun-ad", journal = withr::local_tempfile())
   env$file_ingestion_begin_copy(target, stage, source, tx)
@@ -2710,9 +2716,15 @@ test_that("işlemsiz kopya yabancı staging'i korur ve aynı rezervasyonu payla�
   root <- withr::local_tempdir()
   source <- withr::local_tempfile()
   writeLines("first", source)
-  target <- file.path(root, paste0(strrep("a", 190L), ".txt"))
+  # 181 bayt sıkıştırma eşiğini (180) aşar; derin Windows geçici kökünde de temsil edilir.
+  target <- file.path(root, paste0(strrep("a", 177L), ".txt"))
   stage <- env$mergen_upload_staging_path(target)
   expect_false(identical(stage, paste0(target, env$MERGEN_UPLOAD_STAGING_SUFFIX)))
+  usable <- isTRUE(suppressWarnings(file.create(target)))
+  skip_if(!usable && .Platform$OS.type == "windows" && env$mergen_artifact_path_units(target) > 259L,
+    "Host cannot represent this final-path fixture without Windows long-path support")
+  expect_true(usable)
+  unlink(target)
   writeLines("foreign", stage)
   expect_error(env$mergen_copy_upload_staged(source, target, root), "zaten var")
   expect_identical(readLines(stage), "foreign")
