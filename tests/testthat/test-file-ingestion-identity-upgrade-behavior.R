@@ -1,7 +1,7 @@
-# Zayıf Windows metadata kanıtı terfi sırasında güçlü kimliğe yükseltilebilir;
+# Zayıf Windows metadata kanıtı terfi sırasında sahipliğe yükseltilmez;
 # kalıcı sahiplik ve rollback device/inode ya da SHA-256 kanıtıyla açılır.
 
-test_that("zayıf terfi kanıtı güçlü hedef kimliğine yükselir", {
+test_that("zayıf terfi kanıtı replacement sahipliğine yükselmez", {
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(a, b) if (is.null(a)) b else a
   source(file.path(resolve_repo_root_for_tests(), "R/helpers_file_ingestion_identity.R"),
@@ -26,6 +26,9 @@ test_that("zayıf terfi kanıtı güçlü hedef kimliğine yükselir", {
   saveRDS(list(id = "tx", state = "promoting", file_key = weak), paste0(marker, ".identity"))
   env$file_ingestion_physical_identity <- function(...) strong
 
+  expect_identical(env$file_ingestion_read_owner(dest)$state, "copying")
+
+  saveRDS(list(id = "tx", state = "promoting", file_key = strong), paste0(marker, ".identity"))
   owner <- env$file_ingestion_read_owner(dest)
   expect_identical(owner$state, "claimed")
   expect_identical(attr(owner$identity, "file_key"), strong)
@@ -69,12 +72,11 @@ test_that("zayıf son kimlik kalıcı sahiplik açmaz", {
   env$file_ingestion_write_owner <- function(...) stop("weak-claim-escaped")
   expect_error(
     env$file_ingestion_claim_artifact(dest, expected = expected),
-    "Kopyalanan dosyanın sahipliği doğrulanamadı",
-    fixed = TRUE
+    "Kopyalanan dosyanın sahipliği doğrulanamadı"
   )
 })
 
-test_that("zayıf doğrulama güçlü güncel kanıtla güvenle temizlenir", {
+test_that("zayıf doğrulama sonradan görülen güçlü dosyayı silemez", {
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(a, b) if (is.null(a)) b else a
   source(file.path(resolve_repo_root_for_tests(), "R/helpers_file_ingestion_identity.R"),
@@ -104,7 +106,7 @@ test_that("zayıf doğrulama güçlü güncel kanıtla güvenle temizlenir", {
   env$file_ingestion_physical_identity <- function(...) strong
 
   env$file_ingestion_discard_unclaimed(dest, "", expected)
-  expect_false(file.exists(dest))
+  expect_true(file.exists(dest))
   expect_false(file.exists(marker))
 })
 
@@ -136,7 +138,7 @@ test_that("inode'suz paylaşım SHA-256 ile sahiplik ve rollback kanıtlar", {
   expect_true(is.character(strong$content_sha256))
   expect_true(nzchar(strong$content_sha256))
 
-  expected <- env$file_ingestion_file_identity(dest)
+  expected <- env$file_ingestion_file_identity(dest, strong = TRUE)
   id <- env$file_ingestion_claim_artifact(dest, expected = expected)
   owner <- env$file_ingestion_read_owner(dest)
   expect_identical(owner$id, id)
