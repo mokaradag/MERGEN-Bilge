@@ -213,14 +213,45 @@ file_ingestion_discard_unclaimed <- function(path, source, expected) {
   invisible(NULL)
 }
 
-# Fiziksel anahtar: inode sağlamayan paylaşımda (inode 0) yükleme reddedilmez;
-# aynı dosya sistemi her iki tarafta aynı zayıf anahtarı (boyut + mtime) üretir.
+# Fiziksel anahtar yol YAZIMINDAN bağımsızdır. Windows'ta base R ile fs/libuv
+# aynı uzun yol biçimini desteklemeyebilir: üretim VM'sinde mantıksal uzun yol
+# stat edilebilirken açık `\\?\` yazımı libuv tarafından reddedilebiliyor;
+# GitHub Windows imajında ise tersi görülebiliyor. Bu yüzden güçlü anahtar için
+# aynı fiziksel yolun mantıksal ve I/O yazımları sırayla denenir. İkisi de fs
+# tarafından kimliklenemiyorsa mevcut inode-suz paylaşım sözleşmesi korunur ve
+# base R boyut+mtime anahtarı kullanılır; bu zayıf anahtar silme yetkisi vermez.
 file_ingestion_physical_identity <- function(path) {
-  info <- tryCatch(fs::file_info(mergen_io_path(path)), error = function(e) NULL)
-  if (is.null(info) || NROW(info) != 1L || is.na(info$size) || is.na(info$modification_time)) return(NULL)
-  alanlar <- if (is.finite(info$inode) && info$inode > 0) c("device_id", "inode", "size", "modification_time") else
-    c("size", "modification_time")
-  lapply(info[alanlar], as.character)
+  p <- as.character(path %||% "")[1]
+  if (is.na(p) || !nzchar(p)) return(NULL)
+  logical <- if (.Platform$OS.type == "windows") mergen_logical_path(p) else p
+  io <- mergen_io_path(logical)
+  for (candidate in unique(c(logical, io))) {
+    info <- tryCatch(fs::file_info(candidate), error = function(e) NULL)
+    if (is.null(info) || NROW(info) != 1L || is.na(info$size) || is.na(info$modification_time)) next
+    alanlar <- if (is.finite(info$inode) && info$inode > 0) c("device_id", "inode", "size", "modification_time") else
+      c("size", "modification_time")
+    return(lapply(info[alanlar], as.character))
+  }
+  info <- tryCatch(file.info(io), error = function(e) NULL)
+  if (is.null(info) || NROW(info) != 1L || is.na(info$size[1]) || is.na(info$mtime[1])) return(NULL)
+  list(size = as.character(info$size[1]), modification_time = as.character(info$mtime[1]))
+}
+
+# Özel terfi temizliği yalnız GÜÇLÜ fiziksel anahtarla yetkilenir. Yukarıdaki
+# zayıf boyut+mtime yedeği burada kullanılmaz: başarısız kopyada yabancı bir
+# dosyayı silme yetkisi üretmemelidir. Yalnız yol diyalekti farkı giderilir.
+.mergen_promote_file_key <- function(path) {
+  p <- as.character(path %||% "")[1]
+  if (is.na(p) || !nzchar(p)) return(NULL)
+  logical <- if (.Platform$OS.type == "windows") mergen_logical_path(p) else p
+  io <- mergen_io_path(logical)
+  for (candidate in unique(c(logical, io))) {
+    info <- tryCatch(fs::file_info(candidate), error = function(e) NULL)
+    if (is.null(info) || NROW(info) != 1L || !isTRUE(is.finite(info$device_id)) ||
+        !isTRUE(is.finite(info$inode) && info$inode > 0)) next
+    return(as.list(info[c("device_id", "inode")]))
+  }
+  NULL
 }
 
 file_ingestion_prepare_promotion <- function(staging, path, transaction) {
