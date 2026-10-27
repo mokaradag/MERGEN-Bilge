@@ -50,10 +50,12 @@ file_ingestion_identity_matches <- function(actual, expected) {
     identical(actual_key[zayif], expected_key[zayif])
 }
 
-file_ingestion_artifact_owned <- function(result, allow_deleting = TRUE, require_strong = FALSE) {
+file_ingestion_artifact_owned <- function(result, allow_deleting = TRUE, require_strong = FALSE,
+                                          actual_identity = NULL) {
   id <- result$artifact_id
   if (!is.character(id) || length(id) != 1L || is.na(id) || !nzchar(id)) return(FALSE)
-  owner <- suppressWarnings(tryCatch(file_ingestion_read_owner(result$dest), error = function(e) NULL))
+  owner <- suppressWarnings(tryCatch(file_ingestion_read_owner(result$dest, identity = actual_identity),
+                                     error = function(e) NULL))
   if (!is.list(owner) || !identical(owner$id, id)) return(FALSE)
   if (identical(owner$state, "copying") ||
       (identical(owner$state, "deleting") && !allow_deleting)) return(FALSE)
@@ -61,8 +63,9 @@ file_ingestion_artifact_owned <- function(result, allow_deleting = TRUE, require
   expected_key <- attr(expected, "file_key")
   hash_owned <- is.list(expected_key) && is.character(expected_key$content_sha256) &&
     length(expected_key$content_sha256) == 1L && !is.na(expected_key$content_sha256) && nzchar(expected_key$content_sha256)
-  needs_strong <- isTRUE(require_strong) || identical(owner$state, "deleting") || hash_owned
-  actual <- file_ingestion_file_identity(result$dest, strong = needs_strong)
+  needs_strong <- isTRUE(require_strong) || identical(owner$state, "deleting")
+  actual <- if (is.data.frame(actual_identity)) file_ingestion_file_identity(actual_identity) else
+    file_ingestion_file_identity(result$dest, strong = needs_strong)
   if (needs_strong) {
     actual_key <- attr(actual, "file_key")
     guclu <- c("device_id", "inode")
@@ -71,6 +74,11 @@ file_ingestion_artifact_owned <- function(result, allow_deleting = TRUE, require
     hashed <- is.list(actual_key) && is.character(actual_key$content_sha256) &&
       length(actual_key$content_sha256) == 1L && !is.na(actual_key$content_sha256) && nzchar(actual_key$content_sha256)
     if (!device && !hashed) return(FALSE)
+  }
+  if (hash_owned && !needs_strong) {
+    weak_expected <- expected
+    attr(weak_expected, "file_key") <- expected_key[c("size", "modification_time")]
+    return(isTRUE(path_exists_relaxed(result$dest)) && file_ingestion_identity_matches(actual, weak_expected))
   }
   isTRUE(path_exists_relaxed(result$dest)) && file_ingestion_identity_matches(actual, expected)
 }
@@ -92,8 +100,9 @@ file_ingestion_write_owner <- function(value, target) {
 
 # Okunamayan marker sahiplik kanıtı değildir: boş liste + `unreadable` döner,
 # böylece silme yolları kimlik eşleşmesi bulamaz, rezervasyon ise yalnız yaşla
-# geri kazanılır.
-file_ingestion_read_owner <- function(path) {
+# geri kazanılır. Önceden hesaplanmış güçlü kimlik verilirse paylaşılan indeks
+# kilidi altında dosya yeniden hash'lenmez.
+file_ingestion_read_owner <- function(path, identity = NULL) {
   marker <- file_ingestion_owner_path(path)
   owner <- if (path_exists_relaxed(marker)) {
     suppressWarnings(tryCatch(readRDS(marker), error = function(e) structure(list(), unreadable = TRUE)))
@@ -103,7 +112,8 @@ file_ingestion_read_owner <- function(path) {
   verified <- suppressWarnings(tryCatch(readRDS(paste0(marker, ".identity")), error = function(e) NULL))
   if (is.list(verified) && identical(verified$id, owner$id)) {
     if (identical(verified$state, "promoting")) {
-      identity <- file_ingestion_file_identity(path, strong = TRUE)
+      identity <- if (is.data.frame(identity)) file_ingestion_file_identity(identity) else
+        file_ingestion_file_identity(path, strong = TRUE)
       key <- attr(identity, "file_key")
       proof <- verified$file_key
       guclu <- c("device_id", "inode")
@@ -114,14 +124,16 @@ file_ingestion_read_owner <- function(path) {
         !is.na(key$content_sha256) && nzchar(key$content_sha256)
       proof_device <- is.list(proof) && all(guclu %in% names(proof)) &&
         !anyNA(unlist(proof[guclu], use.names = FALSE))
+      proof_hash <- is.list(proof) && is.character(proof$content_sha256) &&
+        length(proof$content_sha256) == 1L && !is.na(proof$content_sha256) && nzchar(proof$content_sha256)
       same <- if (proof_device) {
         key_device && identical(key, proof)
-      } else {
-        is.list(proof) && is.list(key) && all(zayif %in% names(proof)) &&
-          all(zayif %in% names(key)) && identical(key[zayif], proof[zayif])
-      }
-      # Terfi sürekliliği zayıf metadata ile doğrulanabilir; kalıcı sahiplik
-      # device/inode ya da SHA-256 içerik kanıtı elde edilmeden açılmaz.
+      } else if (proof_hash) {
+        key_hash && identical(key$content_sha256, proof$content_sha256) &&
+          all(zayif %in% names(key)) && all(zayif %in% names(proof)) && identical(key[zayif], proof[zayif])
+      } else FALSE
+      # Zayıf eski terfi kanıtı kalıcı sahipliğe yükseltilmez. Yeni terfiler
+      # device/inode ya da SHA-256 kanıtını yayınlamadan ÖNCE kaydeder.
       if (!is.data.frame(identity) || anyNA(identity) || (!key_device && !key_hash) || !same) return(owner)
       owner$identity <- identity
     } else owner$identity <- verified$identity
@@ -190,25 +202,32 @@ file_ingestion_begin_copy <- function(path, staging, source, transaction) {
   invisible(NULL)
 }
 
-file_ingestion_claim_artifact <- function(path, expected = file_ingestion_file_identity(path), id = NULL,
+file_ingestion_claim_artifact <- function(path, expected = file_ingestion_file_identity(path, strong = TRUE), id = NULL,
                                           started_at = Sys.time()) {
   supplied_id <- id
   id <- id %||% paste0(Sys.getpid(), "-", basename(tempfile("ingest_")))
+  # Ağ dosyasının tamamını okumak paylaşılan indeks kilidinin DIŞINDADIR.
+  actual <- file_ingestion_file_identity(path, strong = TRUE)
+  expected_identity <- if (missing(expected)) actual else file_ingestion_file_identity(expected)
+  actual_key <- attr(actual, "file_key")
+  expected_key <- attr(expected_identity, "file_key")
+  guclu <- c("device_id", "inode")
+  strong_key <- function(key) {
+    device <- is.list(key) && all(guclu %in% names(key)) && !anyNA(unlist(key[guclu], use.names = FALSE))
+    hashed <- is.list(key) && is.character(key$content_sha256) && length(key$content_sha256) == 1L &&
+      !is.na(key$content_sha256) && nzchar(key$content_sha256)
+    device || hashed
+  }
+  if (!strong_key(actual_key) || !strong_key(expected_key) ||
+      !file_ingestion_identity_matches(actual, expected_identity))
+    stop("Kopyalanan dosyanın sahipliği doğrulanamadı.")
   .file_store_with_index_lock({
-    actual <- file_ingestion_file_identity(path, strong = TRUE)
-    actual_key <- attr(actual, "file_key")
-    guclu <- c("device_id", "inode")
-    device <- is.list(actual_key) && all(guclu %in% names(actual_key)) &&
-      !anyNA(unlist(actual_key[guclu], use.names = FALSE))
-    hashed <- is.list(actual_key) && is.character(actual_key$content_sha256) &&
-      length(actual_key$content_sha256) == 1L && !is.na(actual_key$content_sha256) && nzchar(actual_key$content_sha256)
     marker <- file_ingestion_owner_path(path)
-    owner <- file_ingestion_read_owner(path)
-    if ((!device && !hashed) ||
-        (!is.null(supplied_id) && (!is.list(owner) || !identical(owner$id, supplied_id) ||
+    owner <- file_ingestion_read_owner(path, identity = actual)
+    if ((!is.null(supplied_id) && (!is.list(owner) || !identical(owner$id, supplied_id) ||
           !identical(owner$state, "claimed") ||
           !file_ingestion_identity_matches(actual, file_ingestion_file_identity(owner$identity)))) ||
-        !isTRUE(path_exists_relaxed(path)) || !file_ingestion_identity_matches(actual, file_ingestion_file_identity(expected)) ||
+        !isTRUE(path_exists_relaxed(path)) ||
         (is.list(owner) && !identical(owner$id, supplied_id) &&
           (identical(owner$state, "copying") || file_ingestion_identity_matches(actual, file_ingestion_file_identity(owner$identity))))) {
       stop("Kopyalanan dosyanın sahipliği doğrulanamadı.")
@@ -220,15 +239,19 @@ file_ingestion_claim_artifact <- function(path, expected = file_ingestion_file_i
   id
 }
 
-# Kopya yardımcısının tamamladığı talep kilitsiz doğrulanır; ikinci kilit
-# beklemesi başarılı yüklemeyi `claim_failed` yapıp geri aldırmasın.
+# Kopya yardımcısının tamamladığı talep kilitsiz doğrulanır; güçlü kanıt sidecar'a
+# kalıcılaştırılır, böylece indeks kilidi altında dosya yeniden hash'lenmez.
 file_ingestion_claimed_by <- function(path, id, expected) {
   if (!is.character(id) || length(id) != 1L || is.na(id) || !nzchar(id)) return(FALSE)
-  owner <- file_ingestion_read_owner(path)
   actual <- file_ingestion_file_identity(path, strong = TRUE)
-  is.list(owner) && identical(owner$id, id) && identical(owner$state, "claimed") &&
+  expected_identity <- file_ingestion_file_identity(expected)
+  owner <- file_ingestion_read_owner(path, identity = actual)
+  valid <- is.list(owner) && identical(owner$id, id) && identical(owner$state, "claimed") &&
     file_ingestion_identity_matches(actual, file_ingestion_file_identity(owner$identity)) &&
-    file_ingestion_identity_matches(actual, file_ingestion_file_identity(expected))
+    file_ingestion_identity_matches(actual, expected_identity)
+  if (!isTRUE(valid)) return(FALSE)
+  !inherits(try(file_ingestion_write_owner(list(id = id, identity = actual),
+    paste0(file_ingestion_owner_path(path), ".identity")), silent = TRUE), "try-error")
 }
 
 # Diğer yapıt bu işlemin rezervasyonundan sonra mı talep edildi? Zaman kalıcı
@@ -248,21 +271,22 @@ file_ingestion_claimed_since <- function(other_path, own_path) {
 file_ingestion_discard_unclaimed <- function(path, source, expected) {
   id <- paste0(Sys.getpid(), "-", basename(tempfile("discard_")))
   marker <- file_ingestion_owner_path(path)
+  expected_identity <- file_ingestion_file_identity(expected)
+  expected_key <- attr(expected_identity, "file_key")
+  guclu <- c("device_id", "inode")
+  expected_device <- is.list(expected_key) && all(guclu %in% names(expected_key)) &&
+    !anyNA(unlist(expected_key[guclu], use.names = FALSE))
+  expected_hash <- is.list(expected_key) && is.character(expected_key$content_sha256) &&
+    length(expected_key$content_sha256) == 1L && !is.na(expected_key$content_sha256) && nzchar(expected_key$content_sha256)
+  # Zayıf doğrulama sonradan görülen başka bir dosyanın güçlü kimliğine
+  # yükseltilemez; silme yetkisi yalnız önceden yakalanmış güçlü kanıttan gelir.
+  if (!expected_device && !expected_hash) return(invisible(NULL))
+  actual <- file_ingestion_file_identity(path, strong = TRUE)
+  if (!file_ingestion_identity_matches(actual, expected_identity)) return(invisible(NULL))
   reserved <- .file_store_with_index_lock({
-    owner <- file_ingestion_read_owner(path)
-    actual <- file_ingestion_file_identity(path, strong = TRUE)
-    expected_identity <- file_ingestion_file_identity(expected)
-    actual_key <- attr(actual, "file_key")
-    guclu <- c("device_id", "inode")
-    device <- is.list(actual_key) && all(guclu %in% names(actual_key)) &&
-      !anyNA(unlist(actual_key[guclu], use.names = FALSE))
-    hashed <- is.list(actual_key) && is.character(actual_key$content_sha256) &&
-      length(actual_key$content_sha256) == 1L && !is.na(actual_key$content_sha256) && nzchar(actual_key$content_sha256)
-    if (!identical(owner$state, "copying") && !isTRUE(attr(owner, "unreadable")) && (device || hashed) &&
-        file_ingestion_identity_matches(actual, expected_identity) &&
+    owner <- file_ingestion_read_owner(path, identity = actual)
+    if (!identical(owner$state, "copying") && !isTRUE(attr(owner, "unreadable")) &&
         (is.null(owner) || !file_ingestion_identity_matches(file_ingestion_file_identity(owner$identity), expected_identity))) {
-      # Zayıf önceki doğrulama temizliği tetikleyebilir; silme yetkisi olarak
-      # daima yeniden okunan güçlü GÜNCEL kimlik saklanır.
       file_ingestion_write_owner(list(id = id, identity = actual, state = "deleting",
         pid = Sys.getpid(), host = unname(Sys.info()[["nodename"]])), marker)
       TRUE
@@ -316,8 +340,14 @@ file_ingestion_physical_identity <- function(path, strong = FALSE) {
 }
 
 file_ingestion_prepare_promotion <- function(staging, path, transaction) {
-  key <- file_ingestion_physical_identity(staging)
-  if (is.null(key)) stop("Staging dosya kimliği doğrulanamadı.")
+  # Staging kanıtı yayınlamadan ÖNCE güçlüdür; inode yoksa hash işçi üzerinde
+  # hesaplanır. Böylece recovery zayıf metadata'yı replacement sahipliğine yükseltemez.
+  key <- file_ingestion_physical_identity(staging, strong = TRUE)
+  guclu <- c("device_id", "inode")
+  device <- is.list(key) && all(guclu %in% names(key)) && !anyNA(unlist(key[guclu], use.names = FALSE))
+  hashed <- is.list(key) && is.character(key$content_sha256) && length(key$content_sha256) == 1L &&
+    !is.na(key$content_sha256) && nzchar(key$content_sha256)
+  if (!device && !hashed) stop("Staging dosya kimliği güçlü biçimde doğrulanamadı.")
   file_ingestion_write_owner(list(id = transaction$id, state = "promoting", file_key = key),
     paste0(file_ingestion_owner_path(path), ".identity"))
 }
