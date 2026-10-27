@@ -34,15 +34,27 @@ file_ingestion_identity_matches <- function(actual, expected) {
   identical(actual, expected) && (is.null(key) || identical(actual_key, key))
 }
 
-file_ingestion_artifact_owned <- function(result, allow_deleting = TRUE) {
+file_ingestion_artifact_owned <- function(result, allow_deleting = TRUE, require_strong = FALSE) {
   id <- result$artifact_id
   if (!is.character(id) || length(id) != 1L || is.na(id) || !nzchar(id)) return(FALSE)
   owner <- suppressWarnings(tryCatch(file_ingestion_read_owner(result$dest), error = function(e) NULL))
   if (!is.list(owner) || !identical(owner$id, id)) return(FALSE)
   if (identical(owner$state, "copying") ||
       (identical(owner$state, "deleting") && !allow_deleting)) return(FALSE)
-  isTRUE(path_exists_relaxed(result$dest)) &&
-    file_ingestion_identity_matches(file_ingestion_file_identity(result$dest), file_ingestion_file_identity(owner$identity))
+  actual <- file_ingestion_file_identity(result$dest)
+  expected <- file_ingestion_file_identity(owner$identity)
+  # Boyut+mtime uzun-yol erişimini doğrulamaya yeter, fakat bir pathname'in hâlâ
+  # bizim dosyamızı gösterdiğini kanıtlamaz. Silme/rollback yalnız fs'nin verdiği
+  # device+inode kanıtıyla yetkilendirilir; deleting durumu bunu zorunlu kılar.
+  if (isTRUE(require_strong) || identical(owner$state, "deleting")) {
+    alanlar <- c("device_id", "inode")
+    actual_key <- attr(actual, "file_key")
+    expected_key <- attr(expected, "file_key")
+    if (!all(alanlar %in% names(actual_key)) || !all(alanlar %in% names(expected_key)) ||
+        anyNA(unlist(actual_key[alanlar], use.names = FALSE)) ||
+        anyNA(unlist(expected_key[alanlar], use.names = FALSE))) return(FALSE)
+  }
+  isTRUE(path_exists_relaxed(result$dest)) && file_ingestion_identity_matches(actual, expected)
 }
 
 # Marker yerinde yazılmaz: sert ölüm yarım RDS bırakıp tüm geri alımı kilitlerdi.
@@ -218,8 +230,8 @@ file_ingestion_discard_unclaimed <- function(path, source, expected) {
 # stat edilebilirken açık `\\?\` yazımı libuv tarafından reddedilebiliyor;
 # GitHub Windows imajında ise tersi görülebiliyor. Bu yüzden aynı fiziksel yolun
 # mantıksal ve I/O yazımları sırayla denenir. fs iki yazımı da kimlikleyemiyorsa
-# sahiplik kanıtı YOKTUR: base R boyut/mtime verisi dosyayı okumaya yarayabilir,
-# ancak rollback/silme yetkisi üretemez.
+# base R boyut+mtime anahtarı karşılaştırma/claim için korunur; bu zayıf anahtar
+# `file_ingestion_artifact_owned()` içindeki güçlü silme kapısını geçemez.
 file_ingestion_physical_identity <- function(path) {
   p <- as.character(path %||% "")[1]
   if (is.na(p) || !nzchar(p)) return(NULL)
@@ -232,7 +244,9 @@ file_ingestion_physical_identity <- function(path) {
       c("size", "modification_time")
     return(lapply(info[alanlar], as.character))
   }
-  NULL
+  info <- try(file.info(io), silent = TRUE)
+  if (inherits(info, "try-error") || NROW(info) != 1L || is.na(info$size[1]) || is.na(info$mtime[1])) return(NULL)
+  list(size = as.character(info$size[1]), modification_time = as.character(info$mtime[1]))
 }
 
 file_ingestion_prepare_promotion <- function(staging, path, transaction) {
