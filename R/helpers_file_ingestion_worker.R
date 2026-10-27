@@ -114,7 +114,7 @@ file_ingestion_execute_task <- function(task) {
   verify_ms <- elapsed_ms(verify_started)
   if (!isTRUE(verification$ok)) {
     if (is.null(task$transaction)) file_ingestion_discard_unclaimed(dest, task$datapath,
-      file_ingestion_file_identity(dest))
+      file_ingestion_file_identity(dest, strong = TRUE))
     return(file_ingestion_task_result(
       task, FALSE,
       code = verification$code %||% "verify_failed",
@@ -172,7 +172,7 @@ file_ingestion_verify_copy <- function(src_path, dest_path) {
     return(list(ok = FALSE, code = "empty_copy", error = "Kopyalanan dosya boş."))
   }
   list(ok = TRUE, size = if (is.finite(dest_size)) dest_size else src_size,
-       identity = file_ingestion_file_identity(dest_path))
+       identity = file_ingestion_file_identity(dest_path, strong = TRUE))
 }
 # Doğrulaması başarısız hedefi temizler. Kaynak dosya (Shiny geçici yükleme)
 # asla silinmez.
