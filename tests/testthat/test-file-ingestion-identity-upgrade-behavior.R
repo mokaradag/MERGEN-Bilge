@@ -73,3 +73,37 @@ test_that("zayıf son kimlik kalıcı sahiplik açmaz", {
     fixed = TRUE
   )
 })
+
+test_that("zayıf doğrulama güçlü güncel kanıtla güvenle temizlenir", {
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  source(file.path(resolve_repo_root_for_tests(), "R/helpers_file_ingestion_identity.R"),
+    local = env, encoding = "UTF-8")
+  env$resolve_readable_path <- base::identity
+
+  dest <- withr::local_tempfile(fileext = ".bin")
+  writeBin(as.raw(c(9, 10, 11, 12)), dest)
+  marker <- withr::local_tempfile()
+  unlink(marker)
+  env$file_ingestion_owner_path <- function(...) marker
+  env$path_exists_relaxed <- function(path) file.exists(path)
+  env$.file_store_with_index_lock <- function(expr, ...) force(expr)
+  env$file_ingestion_discard_dest <- function(dest_path, ...) {
+    unlink(dest_path, force = TRUE)
+    invisible(TRUE)
+  }
+
+  info <- file.info(dest)
+  weak <- list(
+    size = as.character(info$size[1]),
+    modification_time = as.character(info$mtime[1])
+  )
+  strong <- c(list(device_id = "11", inode = "99"), weak)
+  env$file_ingestion_physical_identity <- function(...) weak
+  expected <- env$file_ingestion_file_identity(dest)
+  env$file_ingestion_physical_identity <- function(...) strong
+
+  env$file_ingestion_discard_unclaimed(dest, "", expected)
+  expect_false(file.exists(dest))
+  expect_false(file.exists(marker))
+})
