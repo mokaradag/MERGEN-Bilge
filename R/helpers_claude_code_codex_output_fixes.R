@@ -536,7 +536,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
   ".cc_codex_original_prepare_claude_code_document_context",
   ".cc_codex_original_cc_prepare_run_workspace",
   ".cc_codex_path_key", ".cc_codex_guard_check", ".cc_codex_acquire_dir_lock",
-  "mergen_io_path",
+  "mergen_io_path", "mergen_logical_path",
   "cc_scan_directory_bounded", "cc_select_input_files",
   "mirror_directory_to_local_workspace", "prepare_claude_runtime_workdir",
   "cc_claim_runtime_ownership", "cc_runtime_ownership_is",
@@ -577,7 +577,7 @@ cc_dispatch_run_output_processing <- function(ctx) {
   ".cc_output_name_variants", ".cc_output_recovery_dest", ".cc_scan_key",
   "mergen_reservation_token", "mergen_reservation_acquire", "mergen_reservation_takeover",
   "mergen_reservation_release", "mergen_reservation_owner", ".mergen_reservation_marker",
-  "mergen_reservation_touch", "mergen_io_path",
+  "mergen_reservation_touch", "mergen_io_path", "mergen_logical_path",
   ".mergen_reservation_remove_owned", "mergen_reservation_quarantine_path",
   "mergen_lock_owner_reclaimable", "mergen_owner_reclaimable", "mergen_pid_status", "mergen_reclaim_mutex"
 )

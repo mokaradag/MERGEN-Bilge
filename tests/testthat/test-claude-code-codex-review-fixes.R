@@ -1179,11 +1179,13 @@ test_that("gerçek izole hazırlık işçisi uzun bağlantıyı I/O yardımcıs�
   bundle <- env$cc_run_prepare_worker_globals(refresh = TRUE, envir = env)
   expect_true("mergen_io_path" %in% env$.cc_codex_prepare_worker_names)
   expect_true("mergen_io_path" %in% names(bundle))
+  expect_true("mergen_logical_path" %in% env$.cc_codex_prepare_worker_names)
+  expect_true("mergen_logical_path" %in% names(bundle))
   # Yerel kaynak ortamının statik tarayıcı bağımlılıkları; I/O yardımcısı
   # yalnız üretimin açık hazırlık paketinden gelmelidir.
   bundle <- env$.cc_codex_add_named_worker_globals(bundle,
     c("%||%", "cc_path_is_reparse_link", ".cc_scan_is_link", ".cc_scan_key", ".cc_scan_norm",
-      ".cc_scan_list_entries"), env)
+      ".cc_scan_list_entries", "cc_scan_relative_paths"), env)
   root <- withr::local_tempdir()
   outside <- withr::local_tempdir()
   parent <- file.path(root, strrep("p", 95L), strrep("q", 95L), strrep("r", 95L))
@@ -1200,14 +1202,15 @@ test_that("gerçek izole hazırlık işçisi uzun bağlantıyı I/O yardımcıs�
   request <- file.path(root, "worker-input.rds")
   response <- file.path(root, "worker-result.rds")
   script <- file.path(root, "worker.R")
-  saveRDS(list(bundle = bundle, link = link, parent = parent), request)
+  saveRDS(list(bundle = bundle, link = link, parent = parent, root = root), request)
   writeLines(c(
     "args <- commandArgs(TRUE); request <- readRDS(args[1])",
     "worker <- list2env(request$bundle, parent = baseenv())",
     "for (nm in names(request$bundle)) if (is.function(worker[[nm]])) environment(worker[[nm]]) <- worker",
+    "entries <- worker$.cc_scan_list_entries(request$parent, 10, list(started=Sys.time(), limit=10000), FALSE)$entries",
     "result <- list(pid = Sys.getpid(), helper = exists('mergen_io_path', worker, inherits = FALSE),",
     "  link = worker$cc_path_is_reparse_link(request$link), plain = worker$cc_path_is_reparse_link(request$parent),",
-    "  entries = worker$.cc_scan_list_entries(request$parent, 10, list(started=Sys.time(), limit=10000), FALSE)$entries)",
+    "  entries = entries, relatives = worker$cc_scan_relative_paths(entries, request$root))",
     "saveRDS(result, args[2])"
   ), script)
   rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
@@ -1222,6 +1225,10 @@ test_that("gerçek izole hazırlık işçisi uzun bağlantıyı I/O yardımcıs�
   expected <- c(link, file.path(parent, "exact.txt"))
   expect_identical(sort(env$.cc_scan_key(result$entries)),
                    sort(env$.cc_scan_key(env$mergen_io_path(expected))))
+  # Bağlantı dış köke çözülür ve sözleşmedeki basename yedeğini alır;
+  # normal dosyanın tam göreli adı ise hiçbir I/O öneki taşımamalıdır.
+  expect_identical(sort(result$relatives), sort(c(basename(normalizePath(outside, winslash = "/")),
+    file.path(strrep("p", 95L), strrep("q", 95L), strrep("r", 95L), "exact.txt"))))
 })
 
 test_that("uzun çıktı planlanır ve yayımlanır; her dosya sistemi sondası I/O yolunu kullanır", {
@@ -1287,7 +1294,8 @@ test_that("çıktı kurtarma UTF-8 ve eski yerel adı yalnız kilit hash'i eşle
     env$.Platform <- list(OS.type = "windows")
     # Gerçek Unicode ebeveyn, göreli yollarla kodlama benzetiminin dışında kalır.
     withr::with_dir(withr::local_tempdir(pattern = paste0(intToUtf8(c(0x11f, 0x131)), "-")), {
-      root <- "."
+      root <- file.path(strrep("p", 95L), strrep("q", 95L), strrep("r", 95L))
+      expect_gt(nchar(root), 259L)
       name <- paste0("Ö", strrep("x", 210), ".txt")
       native <- iconv(name, "UTF-8", "latin1")
       # Eski Windows yol işlemlerinin tek baytlı gösterimi yalnız bu ortamda korunur.
@@ -1312,12 +1320,13 @@ test_that("çıktı kurtarma UTF-8 ve eski yerel adı yalnız kilit hash'i eşle
       token <- "2147483646-ccoutabcdef"
       txn <- env$.cc_output_txn_paths(dest, token)
       expect_false(identical(txn$backup, env$.cc_output_txn_paths(enc2utf8(dest), token)$backup))
-      dir.create(txn$lock)
-      writeLines(c(token, paste0("host=", Sys.info()[["nodename"]])), file.path(txn$lock, "owner"))
+      expect_gt(nchar(txn$backup), 259L)
+      expect_true(dir.create(env$mergen_io_path(txn$lock), recursive = TRUE))
+      writeLines(c(token, paste0("host=", Sys.info()[["nodename"]])), env$mergen_io_path(file.path(txn$lock, "owner")))
       metadata <- if (legacy_metadata) native else enc2utf8(name)
-      writeBin(charToRaw(paste0(metadata, if (legacy_metadata) "\r\n" else "\n")), file.path(txn$lock, "destination"))
-      writeBin(charToRaw(enc2utf8("özgün\n")), txn$backup)
-      writeBin(charToRaw("partial"), txn$staging)
+      writeBin(charToRaw(paste0(metadata, if (legacy_metadata) "\r\n" else "\n")), env$mergen_io_path(file.path(txn$lock, "destination")))
+      writeBin(charToRaw(enc2utf8("özgün\n")), env$mergen_io_path(txn$backup))
+      writeBin(charToRaw("partial"), env$mergen_io_path(txn$staging))
       # Eski Windows yerel gösterimi, oturumun yerel ayarı değiştirilmeden kurulur.
       env$rawToChar <- function(bytes) {
         result <- base::rawToChar(bytes)
@@ -1326,18 +1335,18 @@ test_that("çıktı kurtarma UTF-8 ve eski yerel adı yalnız kilit hash'i eşle
       }
       restored <- file.path(root, "restored.txt")
       env$file.rename <- function(from, to) {
-        if (identical(from, txn$backup)) {
+        if (identical(from, env$mergen_io_path(txn$backup))) {
           # Uzun mutlak hedefte terfi I/O yazımını alır; mantıksal kimlik aynıdır.
           expect_identical(enc2utf8(to), enc2utf8(env$mergen_io_path(dest)))
-          base::file.rename(from, restored)
+          base::file.rename(from, env$mergen_io_path(restored))
         } else base::file.rename(from, to)
       }
       expect_false(is.null(env$.cc_output_recovery_dest(root, txn$lock)))
       expect_warning(env$.cc_output_recover_parent(root), NA)
-      expect_identical(readBin(restored, "raw", 100L), charToRaw(enc2utf8("özgün\n")))
-      expect_false(dir.exists(txn$lock))
-      expect_false(file.exists(txn$backup))
-      expect_false(file.exists(txn$staging))
+      expect_identical(readBin(env$mergen_io_path(restored), "raw", 100L), charToRaw(enc2utf8("özgün\n")))
+      expect_false(dir.exists(env$mergen_io_path(txn$lock)))
+      expect_false(file.exists(env$mergen_io_path(txn$backup)))
+      expect_false(file.exists(env$mergen_io_path(txn$staging)))
     })
   }
 })
@@ -1693,6 +1702,8 @@ test_that("açık çıktı paketi rezervasyon işlemini temiz ortamda çalışt�
   env$.cc_codex_original_cc_run_output_worker_globals <- function(...) list()
   bundle <- env$cc_run_output_worker_globals(refresh = TRUE, envir = env)
   expect_true("%||%" %in% names(bundle))
+  expect_true("mergen_logical_path" %in% env$.cc_codex_output_worker_names)
+  expect_true("mergen_logical_path" %in% names(bundle))
   worker <- list2env(bundle, parent = baseenv())
   for (nm in names(bundle)) if (is.function(worker[[nm]])) environment(worker[[nm]]) <- worker
   dest <- file.path(withr::local_tempdir(), "rapor.txt")

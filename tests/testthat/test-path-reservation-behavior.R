@@ -353,7 +353,7 @@ test_that("marker hatası yalnız kanıtlı sahibin düz kayıtlarını temizler
   deep <- file.path(root, strrep("p", 95L), strrep("q", 95L), strrep("r", 95L))
   expect_gt(nchar(deep), 259L)
   expect_true(dir.create(mergen_io_path(deep), recursive = TRUE))
-  for (parent in c(root, deep)) for (mode in c("write_error", "read_once", "foreign", "unreadable")) {
+  for (parent in c(root, deep)) for (mode in c("missing", "write_error", "read_once", "foreign", "unreadable")) {
     env <- new.env(parent = globalenv())
     source(file.path(resolve_repo_root_for_tests(), "R/utils_path_reservation.R"),
            encoding = "UTF-8", local = env)
@@ -362,6 +362,7 @@ test_that("marker hatası yalnız kanıtlı sahibin düz kayıtlarını temizler
     real_owner <- env$mergen_reservation_owner
     reads <- 0L
     env$writeLines <- function(text, con, ...) {
+      if (mode == "missing") stop("Marker oluşmadan hata.")
       base::writeLines(if (mode == "foreign") "foreign-owner" else text, con, ...)
       if (mode %in% c("write_error", "foreign")) stop("Yazım sonrası hata.")
     }
@@ -370,12 +371,19 @@ test_that("marker hatası yalnız kanıtlı sahibin düz kayıtlarını temizler
       if (mode == "unreadable" || (mode == "read_once" && reads == 1L)) NA_character_ else real_owner(path)
     }
     expect_false(env$mergen_reservation_acquire(reservation, token))
-    retained <- mode %in% c("foreign", "unreadable")
+    retained <- mode %in% c("missing", "foreign", "unreadable")
     expect_identical(dir.exists(env$mergen_io_path(reservation)), retained)
     if (retained) {
       expected <- if (mode == "foreign") "foreign-owner" else token
-      expect_identical(readLines(env$.mergen_reservation_marker(reservation))[1], expected)
       env$mergen_reservation_owner <- real_owner
+      if (mode == "missing") {
+        expect_false(file.exists(env$.mergen_reservation_marker(reservation)))
+        expect_true(is.na(real_owner(reservation)))
+        expect_false(env$mergen_reservation_release(reservation, token))
+        expect_true(dir.exists(env$mergen_io_path(reservation)))
+        # Fikstür temizliği ancak açık sahiplik kaydı oluşturulduktan sonra yapılır.
+        base::writeLines(token, env$.mergen_reservation_marker(reservation))
+      } else expect_identical(readLines(env$.mergen_reservation_marker(reservation))[1], expected)
       expect_true(env$mergen_reservation_release(reservation, expected))
     }
     expect_length(list.files(env$mergen_io_path(paste0(parent, "/")),

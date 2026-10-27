@@ -466,6 +466,28 @@ test_that("göreli yol dönüşümü kök altındaki yapıyı korur", {
   expect_false(any(startsWith(rel, "/")))
 })
 
+test_that("göreli Windows yolları I/O önekini adın parçası saymaz", {
+  env <- .cc_bounded_scan_env()
+  source(file.path(resolve_repo_root_for_tests(), "R/utils_path_reservation.R"),
+         encoding = "UTF-8", local = env)
+  env$.Platform <- list(OS.type = "windows")
+  # Sözcüksel sözleşme hem Windows hem POSIX üzerinde aynı girdilerle sınanır.
+  env$normalizePath <- function(path, ...) chartr("\\", "/", path)
+  logical_roots <- c("C:/Root", "//srv/share/Root")
+  io_roots <- c("\\\\?\\C:\\Root", "\\\\?\\UNC\\srv\\share\\Root")
+  relative <- "Alt/Özgün.TXT"
+  for (i in seq_along(logical_roots)) {
+    paths <- c(paste0(logical_roots[i], "/", relative),
+               paste0(io_roots[i], "\\", chartr("/", "\\", relative)))
+    for (root in c(logical_roots[i], io_roots[i]))
+      expect_identical(env$cc_scan_relative_paths(paths, root), rep(relative, 2L))
+    # Tarama I/O yazımını korur; yalnız göreli kimlik sınırında önek atılır.
+    expect_true(startsWith(env$.cc_scan_norm(paths[2]), "//?/"))
+  }
+  env$.Platform <- list(OS.type = "unix")
+  expect_identical(env$cc_scan_relative_paths("/tmp/Root/Alt/Özgün.TXT", "/tmp/Root"), relative)
+})
+
 test_that("list.files boş dönerse fs yedeği ile listeleme sürer", {
   # Windows VM / UNC paylaşımlarında base R list.files bazen boş döner; bu
   # yedek olmadan tarama sessizce boş sonuç üretir.

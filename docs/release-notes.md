@@ -46,6 +46,11 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
 - Sürücü köküne sadeleşen uzun yazımın kök ayracı korunur. Rezervasyonun
   marker hatası yalnız yeniden doğrulanan sahibin kayıtlarını temizler;
   yabancı veya okunamayan sahiplik silme yetkisi sayılmaz.
+- Tarama girdileri göreli ada çevrilirken mevcut mantıksal yol yardımcısı
+  kullanılır; açık I/O öneki ad kesimini kaydırmaz. Aynı yardımcı hazırlık
+  ve çıktı işçilerine açıkça aktarılır. Uzun kodlama kurtarma fikstürü gerçek
+  I/O yazımıyla sınanır; marker oluşmadan hata veren rezervasyon sahiplik
+  kanıtı olmadan silinmez.
 - Uzun ad fikstürleri kısaltılmadan aynı I/O sınırını kullanır; yol uzunluğu
   için eklenmiş koşullu atlamalar ve uyarı bastırmalı oluşturma sondaları
   kaldırılır. UTF-16 sınırı, UNC, yinelenebilir dönüşüm ve uzun ebeveynde

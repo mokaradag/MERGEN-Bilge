@@ -630,6 +630,7 @@ cc_scan_relative_paths <- function(paths, root) {
   if (!length(paths)) return(character(0))
 
   kok <- .cc_scan_norm(root %||% "")
+  if (.Platform$OS.type == "windows") kok <- mergen_logical_path(kok)
   if (!nzchar(kok)) return(basename(paths))
 
   kok_key <- .cc_scan_key(kok)
@@ -637,6 +638,7 @@ cc_scan_relative_paths <- function(paths, root) {
 
   vapply(paths, function(p) {
     p_norm <- .cc_scan_norm(p)
+    if (.Platform$OS.type == "windows") p_norm <- mergen_logical_path(p_norm)
     p_key <- .cc_scan_key(p_norm)
 
     if (startsWith(p_key, onek)) {
