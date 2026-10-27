@@ -34,6 +34,8 @@ cc_dir_listing_worker_globals <- function(refresh = FALSE, envir = globalenv()) 
     "mergen_resolve_display_name",
     "normalize_mcp_path",
     "path_exists_relaxed",
+    "mergen_io_path",
+    "mergen_logical_path",
     ".load_index"
   )
 
@@ -89,4 +91,3 @@ cc_dir_listing_fs_fallback_allowed <- function() {
 
   FALSE
 }
-
