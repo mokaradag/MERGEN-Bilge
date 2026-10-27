@@ -8,8 +8,8 @@
 #
 # SÖZLEŞME (R/helpers_claude_code_codex_runtime_lock.R ile aynı model):
 #   * Rezervasyon YALNIZCA `dir.create()` ile alınır (atomik, üzerine-yazmaz).
-#   * DAYANIKLI sahiplik jetonu rezervasyonu TUTMANIN ön koşuludur; geri
-#     okunamazsa rezervasyon hemen bırakılır ve çağıran FALSE görür.
+#   * DAYANIKLI sahiplik jetonu kritik bölüme girişin ön koşuludur; geri
+#     okunamazsa FALSE döner. Temizlik ayrıca doğrulanan sahiplik ister.
 #   * Devralma önce sahiplik kanıtına dayanır: canlı yerel sahip asla
 #     devralınmaz; yaş yalnız doğrulanamayan (eski biçim/uzak host) sahip için
 #     sınırlı kurtarmadır. Bayat olarak GÖZLENEN jeton hâlâ yerinde olmalıdır.
@@ -81,7 +81,7 @@ mergen_io_path <- function(path) {
     }
     if (any(grepl("[. ]$", out))) return(NA_character_)
     absolute <- paste(c(parts[seq_len(n_root)], out), collapse = "/")
-    if (unc) paste0("//", absolute) else absolute
+    if (unc) paste0("//", absolute) else if (!length(out)) paste0(absolute, "/") else absolute
   }
   result <- as.character(path)
   for (i in seq_along(result)) {
@@ -176,8 +176,8 @@ mergen_reservation_age_sec <- function(rezerv) {
   NA_real_
 }
 
-# Rezervasyonu alır. Dayanıklı marker yazılıp GERİ OKUNAMAZSA rezervasyon
-# bırakılır: sahiplik kanıtlanamadan kritik bölüme girilmemelidir.
+# Dayanıklı marker doğrulanmadan kritik bölüme girilmez; hata temizliği de
+# sahiplik kanıtı ister. Okunamayan/yabancı rezervasyon yerinde bırakılır.
 mergen_reservation_acquire <- function(rezerv, jeton) {
   jeton <- as.character(jeton %||% "")[1]
   if (is.na(jeton) || !nzchar(jeton)) return(FALSE)
@@ -191,7 +191,8 @@ mergen_reservation_acquire <- function(rezerv, jeton) {
   )
   if (inherits(yazildi, "try-error") ||
       !identical(mergen_reservation_owner(rezerv), jeton)) {
-    unlink(mergen_io_path(rezerv), recursive = TRUE, force = TRUE, expand = FALSE)
+    if (identical(mergen_reservation_owner(rezerv), jeton))
+      .mergen_reservation_remove_owned(rezerv, jeton)
     return(FALSE)
   }
   TRUE

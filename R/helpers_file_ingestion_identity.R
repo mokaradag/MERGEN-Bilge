@@ -216,7 +216,7 @@ file_ingestion_discard_unclaimed <- function(path, source, expected) {
 # Fiziksel anahtar: inode sağlamayan paylaşımda (inode 0) yükleme reddedilmez;
 # aynı dosya sistemi her iki tarafta aynı zayıf anahtarı (boyut + mtime) üretir.
 file_ingestion_physical_identity <- function(path) {
-  info <- tryCatch(fs::file_info(path), error = function(e) NULL)
+  info <- tryCatch(fs::file_info(mergen_io_path(path)), error = function(e) NULL)
   if (is.null(info) || NROW(info) != 1L || is.na(info$size) || is.na(info$modification_time)) return(NULL)
   alanlar <- if (is.finite(info$inode) && info$inode > 0) c("device_id", "inode", "size", "modification_time") else
     c("size", "modification_time")

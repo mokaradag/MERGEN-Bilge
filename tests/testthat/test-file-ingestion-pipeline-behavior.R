@@ -3394,6 +3394,38 @@ test_that("uzun mutlak hedef aynı I/O yolu ile terfi, sahiplik ve temizliği ta
   expect_identical(readBin(env$mergen_io_path(stage), "raw", 100L), bytes)
 })
 
+test_that("fiziksel kimlik uzun staging ve hedefi I/O sınırında doğrular", {
+  env <- .ingestionEnv()
+  root <- withr::local_tempdir()
+  deep <- file.path(root, strrep("p", 95L), strrep("q", 95L), strrep("r", 95L))
+  expect_true(dir.create(env$mergen_io_path(deep), recursive = TRUE))
+  stage <- file.path(deep, "exact-stage.bin")
+  dest <- file.path(root, paste0(strrep("n", 240L), ".bin"))
+  expect_gt(env$mergen_artifact_path_units(stage), 259L)
+  expect_gt(env$mergen_artifact_path_units(dest), 259L)
+  bytes <- as.raw(c(0, 255, 42, 10))
+  writeBin(bytes, env$mergen_io_path(stage))
+  seen <- character()
+  real_info <- fs::file_info
+  testthat::local_mocked_bindings(file_info = function(path, ...) {
+    if (any(path %in% c(stage, dest, env$mergen_io_path(c(stage, dest)))))
+      seen <<- c(seen, as.character(path))
+    real_info(path, ...)
+  }, .package = "fs")
+  key <- env$file_ingestion_physical_identity(stage)
+  expect_false(is.null(key))
+  # Sahiplik kanıtı kısa ayrı hedefte tutulur; staging gerçekten derindedir.
+  proof_dest <- file.path(root, "proof.txt")
+  env$file_ingestion_prepare_promotion(stage, proof_dest, list(id = "deep-proof"))
+  proof <- readRDS(paste0(env$file_ingestion_owner_path(proof_dest), ".identity"))
+  expect_identical(proof$file_key, key)
+  expect_true(file.rename(env$mergen_io_path(stage), env$mergen_io_path(dest)))
+  expect_identical(env$file_ingestion_physical_identity(dest), key)
+  expect_identical(readBin(env$mergen_io_path(dest), "raw", 100L), bytes)
+  # Gerçek fs çağrısı korunur; CI kayıt defteri ayarı yanlış sınırı gizleyemez.
+  expect_identical(seen, env$mergen_io_path(c(stage, stage, dest)))
+})
+
 test_that("uzun kopya yolu mantıksal kalır; geri alma ve indeks aynı yolu kullanır", {
   env <- .ingestionEnv()
   base_root <- withr::local_tempdir()

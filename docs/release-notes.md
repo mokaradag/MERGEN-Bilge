@@ -41,6 +41,11 @@ MERGEN Bilge değişiklik notları; yapay zekâ söyleşi deneyimi, dosya yönet
   ayraç eklemesi devralmayı ve çıktı kurtarmayı engellemez. Alt dizinlerde
   temizlik kapalı kalır. Hazırlık işçisine de I/O yardımcısı açıkça aktarılır;
   uzun ham yazımı normalleştirilince kısalan yol kullanılabilir biçimde döner.
+- Alımın staging/hedef fiziksel kimlik sondası da I/O yazımını kullanır;
+  sahiplik anahtarları değişmeden eski Windows ilkesine bağımlılık önlenir.
+- Sürücü köküne sadeleşen uzun yazımın kök ayracı korunur. Rezervasyonun
+  marker hatası yalnız yeniden doğrulanan sahibin kayıtlarını temizler;
+  yabancı veya okunamayan sahiplik silme yetkisi sayılmaz.
 - Uzun ad fikstürleri kısaltılmadan aynı I/O sınırını kullanır; yol uzunluğu
   için eklenmiş koşullu atlamalar ve uyarı bastırmalı oluşturma sondaları
   kaldırılır. UTF-16 sınırı, UNC, yinelenebilir dönüşüm ve uzun ebeveynde

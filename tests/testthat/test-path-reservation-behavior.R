@@ -74,6 +74,12 @@ test_that("uzun ham yazımı kısalan I/O yolu kullanılabilir; mantıksal ad ko
   expect_gt(nchar(raw), 259L)
   expect_identical(env$mergen_io_path(raw), "C:\\k\\f.txt")
   expect_identical(env$mergen_logical_path(raw), raw)
+  for (root_raw in c(paste0("C:/", strrep("./", 140L), ".."),
+                     paste0("C:/", strrep("./", 140L)))) {
+    expect_gt(nchar(root_raw), 259L)
+    expect_identical(env$mergen_io_path(root_raw), "C:\\")
+    expect_identical(env$mergen_logical_path(root_raw), root_raw)
+  }
   unc <- paste0("//srv/share/", strrep("./", 140L), "f.txt")
   expect_identical(env$mergen_io_path(unc), "\\\\srv\\share\\f.txt")
   env$.Platform <- list(OS.type = "unix")
@@ -86,6 +92,13 @@ test_that("uzun ham yazımı kısalan I/O yolu kullanılabilir; mantıksal ad ko
   writeBin(as.raw(c(0, 255, 42)), env$mergen_io_path(actual))
   expect_identical(readBin(file.path(root, "exact.txt"), "raw", 10L), as.raw(c(0, 255, 42)))
   expect_true(env$mergen_same_path(actual, file.path(root, "exact.txt")))
+  if (.Platform$OS.type == "windows") {
+    drive <- substr(root, 1L, 2L)
+    rooted <- paste0(drive, "/", strrep("./", 140L), "..")
+    expect_gt(nchar(rooted), 259L)
+    expect_identical(env$mergen_io_path(rooted), paste0(drive, "\\"))
+    expect_true(dir.exists(env$mergen_io_path(rooted)))
+  }
 })
 
 test_that("I/O yolu 260 birimi aşan yolu sözcüksel kurar; nokta/boşluk bileşenine önek eklemez", {
@@ -333,4 +346,39 @@ test_that("uzun ebeveynde bayat rezervasyon aynı geri kazanım muteksiyle devra
   expect_true(env$mergen_reservation_release(reservation, "new"))
   expect_false(dir.exists(env$mergen_io_path(reservation)))
   expect_length(list.files(env$mergen_io_path(paste0(parent, "/")), pattern = "[.]q-q", all.files = TRUE), 0L)
+})
+
+test_that("marker hatası yalnız kanıtlı sahibin düz kayıtlarını temizler", {
+  root <- withr::local_tempdir()
+  deep <- file.path(root, strrep("p", 95L), strrep("q", 95L), strrep("r", 95L))
+  expect_gt(nchar(deep), 259L)
+  expect_true(dir.create(mergen_io_path(deep), recursive = TRUE))
+  for (parent in c(root, deep)) for (mode in c("write_error", "read_once", "foreign", "unreadable")) {
+    env <- new.env(parent = globalenv())
+    source(file.path(resolve_repo_root_for_tests(), "R/utils_path_reservation.R"),
+           encoding = "UTF-8", local = env)
+    reservation <- file.path(parent, paste0(mode, ".rsv"))
+    token <- "created-owner"
+    real_owner <- env$mergen_reservation_owner
+    reads <- 0L
+    env$writeLines <- function(text, con, ...) {
+      base::writeLines(if (mode == "foreign") "foreign-owner" else text, con, ...)
+      if (mode %in% c("write_error", "foreign")) stop("Yazım sonrası hata.")
+    }
+    env$mergen_reservation_owner <- function(path) {
+      reads <<- reads + 1L
+      if (mode == "unreadable" || (mode == "read_once" && reads == 1L)) NA_character_ else real_owner(path)
+    }
+    expect_false(env$mergen_reservation_acquire(reservation, token))
+    retained <- mode %in% c("foreign", "unreadable")
+    expect_identical(dir.exists(env$mergen_io_path(reservation)), retained)
+    if (retained) {
+      expected <- if (mode == "foreign") "foreign-owner" else token
+      expect_identical(readLines(env$.mergen_reservation_marker(reservation))[1], expected)
+      env$mergen_reservation_owner <- real_owner
+      expect_true(env$mergen_reservation_release(reservation, expected))
+    }
+    expect_length(list.files(env$mergen_io_path(paste0(parent, "/")),
+      pattern = "[.]q-q", all.files = TRUE), 0L)
+  }
 })
