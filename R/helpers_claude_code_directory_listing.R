@@ -108,20 +108,25 @@ cc_resolve_dir_display_name <- function(file_path, is_dir, user_id = NULL, idx_c
 }
 
 # Tek dizin öğesini Bilge Yolaç dizin gezgini sözleşmesine uygun listeye çevirir.
+# Tarayıcıya dönen `yol` her zaman MANTIKSAL kalır; uzun-yol öneki yalnız gerçek
+# dosya sistemi sondasında üretilir. Böylece bounded scanner `\\?\` biçimi
+# döndürse bile bu yazım sonraki gezinme isteğinin kullanıcı yolu olmaz.
 cc_normalize_dir_entry <- function(file_path, user_id = NULL, idx_cache = list()) {
   f_norm <- tryCatch(
     normalize_mcp_path(file_path, must_exist = FALSE),
     error = function(e) as.character(file_path)
   )
+  if (.Platform$OS.type == "windows" && exists("mergen_logical_path", mode = "function", inherits = TRUE))
+    f_norm <- mergen_logical_path(f_norm)
+  f_io <- if (exists("mergen_io_path", mode = "function", inherits = TRUE)) mergen_io_path(f_norm) else f_norm
 
-  bilgi <- tryCatch(file.info(f_norm), error = function(e) NULL)
+  bilgi <- tryCatch(file.info(f_io), error = function(e) NULL)
 
   klasor_mu <- tryCatch(isTRUE(bilgi$isdir[1]), error = function(e) FALSE)
-  if (is.null(bilgi) || is.na(klasor_mu)) {
-    klasor_mu <- tryCatch(
-      isTRUE(dir.exists(f_norm)) || isTRUE(fs::dir_exists(f_norm)),
-      error = function(e) FALSE
-    )
+  if (is.null(bilgi) || !isTRUE(klasor_mu)) {
+    base_dir <- tryCatch(isTRUE(dir.exists(f_io)), error = function(e) FALSE)
+    fs_dir <- if (base_dir) FALSE else tryCatch(isTRUE(fs::dir_exists(f_norm)), error = function(e) FALSE)
+    klasor_mu <- base_dir || fs_dir
   }
 
   boyut <- if (isTRUE(klasor_mu)) {
@@ -248,6 +253,12 @@ list_directory_contents <- function(path, max_items = 100L, user_id = NULL) {
   # listeleme_hatasi yalnızca GERÇEK hatada (sinirli$ok == FALSE) doludur;
   # max_entries kesmesi "" bırakır. Gerçek hata success = TRUE ile gizlenmez.
   basarisiz_mi <- nzchar(listeleme_hatasi)
+  resolved <- tryCatch(
+    normalize_mcp_path(calisan_dizin, must_exist = FALSE),
+    error = function(e) calisan_dizin
+  )
+  if (.Platform$OS.type == "windows" && exists("mergen_logical_path", mode = "function", inherits = TRUE))
+    resolved <- mergen_logical_path(resolved)
 
   list(
     success = !basarisiz_mi,
@@ -256,9 +267,6 @@ list_directory_contents <- function(path, max_items = 100L, user_id = NULL) {
     toplam = length(tum_ogeler),
     truncated = isTRUE(kesildi),
     truncated_reason = if (isTRUE(kesildi) && basarisiz_mi) listeleme_hatasi else "",
-    resolved_path = tryCatch(
-      normalize_mcp_path(calisan_dizin, must_exist = FALSE),
-      error = function(e) calisan_dizin
-    )
+    resolved_path = resolved
   )
 }
