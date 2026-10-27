@@ -273,3 +273,36 @@ test_that("geri yükleme toplam boyut bütçesi render'dan önce uygulanır", {
   expect_length(env$mergen_chat_storage_restore_messages(buyuk[1:5]), 5L)
   expect_identical(cagri, 5L)
 })
+
+test_that("geri yüklenen görsel mesajı kayıtlı-sohbet yolundan sahip köküyle karta çevrilir", {
+  env <- .kimlik_storage_env()
+  kok <- withr::local_tempdir()
+  withr::local_dir(kok)
+  dir.create(file.path("user_images", "7", "c1"), recursive = TRUE)
+  dir.create(file.path("user_images", "8", "c1"), recursive = TRUE)
+  png <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+  writeBin(png, file.path("user_images", "7", "c1", "kendi.png"))
+  writeBin(png, file.path("user_images", "8", "c1", "baskasi.png"))
+
+  kayit <- list(
+    list(type = "ai", content = "[GÖRSEL:user_images/7/c1/kendi.png] Çiçekli bahçe"),
+    list(type = "ai", content = "[GÖRSEL:user_images/8/c1/baskasi.png] Başkasının görseli")
+  )
+  sonuc <- env$mergen_chat_storage_restore_messages(kayit, user_id = 7L)
+  expect_length(sonuc, 2L)
+
+  # Kendi görseli kart olarak çizilir; işaretçi düz metin olarak görünmez.
+  expect_match(sonuc[[1]]$html_content, "generated-image-container", fixed = TRUE)
+  expect_match(sonuc[[1]]$html_content, "Çiçekli bahçe", fixed = TRUE)
+  expect_no_match(sonuc[[1]]$html_content, "Görsel dosyası bulunamadı", fixed = TRUE)
+  expect_no_match(sonuc[[1]]$html_content, "[GÖRSEL", fixed = TRUE)
+  expect_identical(sonuc[[1]]$content, kayit[[1]]$content)
+
+  # Başka kullanıcının yolu sahip kökü dışında kalır: dosya sunulmaz.
+  expect_match(sonuc[[2]]$html_content, "Görsel dosyası bulunamadı", fixed = TRUE)
+  expect_no_match(sonuc[[2]]$html_content, "data:image", fixed = TRUE)
+
+  # Kimlik verilmezse hiçbir görsel dosyası çözülmez (fail-closed).
+  kimliksiz <- env$mergen_chat_storage_restore_messages(kayit[1])
+  expect_match(kimliksiz[[1]]$html_content, "Görsel dosyası bulunamadı", fixed = TRUE)
+})

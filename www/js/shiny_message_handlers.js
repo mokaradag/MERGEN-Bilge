@@ -289,33 +289,9 @@ $(document).ready(function() {
     });
   });
 
-  window.addEventListener('beforeunload', function() {
-    const chatContainer = document.getElementById('chat_content_container');
-    // Sunucu bu oturum için sahip etiketi vermediyse tarayıcıya sohbet yazılmaz.
-    if (chatContainer && chatStorageOwner && !window.__mergenBrowserAuthCleared) {
-      const messages = chatContainer.querySelectorAll('.message-bubble');
-      if (messages.length > 0) {
-        const messageData = [];
-        messages.forEach(function(msg) {
-          const wrapper = msg.closest('[id^="message_wrapper_"]');
-          if (wrapper) {
-            const type = msg.classList.contains('user-message') ? 'user' : 'ai';
-            const content = normalizeMessageText(msg.textContent || '');
-
-            messageData.push({ type: type, content: content });
-          }
-        });
-
-        if (messageData.length > 0) {
-          try {
-            localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify({ v: 2, owner: chatStorageOwner, messages: messageData }));
-          } catch (e) {
-            console.warn('Chat kaydedilemedi:', e);
-          }
-        }
-      }
-    }
-  });
+  // Sayfa kapanışında DOM'dan sohbet kazınmaz: balon metni başlık/saat/düğme
+  // yazılarını içerir ve sunucunun her mesaj değişiminde gönderdiği kanonik
+  // kaydı (saveCurrentChat) bozardı. Tarayıcı kaydının tek yazıcısı sunucudur.
 
   setTimeout(function() {
     try {

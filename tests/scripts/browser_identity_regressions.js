@@ -235,14 +235,18 @@ for (const legacy of [JSON.stringify([{ id: 'x', type: 'ai', content: '<img src=
   local.setItem('mergen_bilge_jwt_token', jwt('A', 3600));
   vm.runInContext(ssoSource, context, { filename: 'sso_auth.js' });
   vm.runInContext(handlersSource, context, { filename: 'shiny_message_handlers.js' });
-  msgHandlers.get('saveCurrentChat')({ owner: 'etiketA', messages: [{ type: 'user', content: 'gizli soru' }] });
+  const kanonik = { type: 'user', content: 'gizli soru', timestamp: '10:42' };
+  msgHandlers.get('saveCurrentChat')({ owner: 'etiketA', messages: [kanonik] });
+  const kapanis = () => { if (listeners.beforeunload) listeners.beforeunload(); };
 
-  // Kontrol: çıkış yoksa kapanışta sahibe bağlı kayıt yazılır (mevcut davranış).
-  listeners.beforeunload();
-  assert.equal(JSON.parse(local.getItem('mergen_current_chat')).owner, 'etiketA');
+  // Kapanış sunucunun kanonik kaydını DOM balon metniyle (başlık/saat) ezmez.
+  bubble.textContent = 'Ayşe 10:42 Düzenle gizli soru';
+  kapanis();
+  assert.deepEqual(plain(JSON.parse(local.getItem('mergen_current_chat'))),
+                   { v: 2, owner: 'etiketA', messages: [kanonik] }, 'kapanış kanonik kaydı korumalı');
 
   vm.runInContext(logoutOnclick, context, { filename: 'logout_onclick.js' });
-  listeners.beforeunload();
+  kapanis();
   assert.equal(local.getItem('mergen_current_chat'), null, 'çıkıştan sonra beforeunload sohbeti geri yazmamalı');
   assert.equal(local.getItem('mergen_bilge_jwt_token'), null);
   msgHandlers.get('saveCurrentChat')({ owner: 'etiketA', messages: [{ type: 'user', content: 'gizli soru' }] });

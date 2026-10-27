@@ -34,7 +34,8 @@ mergen_chat_storage_payload <- function(messages) {
 mergen_chat_storage_restore_messages <- function(raw_messages,
                                                  max_messages = 200L,
                                                  max_chars = 200000L,
-                                                 max_total_chars = 2000000L) {
+                                                 max_total_chars = 2000000L,
+                                                 user_id = NULL) {
   if (!is.list(raw_messages) || length(raw_messages) == 0L ||
       length(raw_messages) > max_messages) {
     return(list())
@@ -62,7 +63,10 @@ mergen_chat_storage_restore_messages <- function(raw_messages,
     zaman <- if (is.character(zaman) && length(zaman) == 1L && !is.na(zaman) &&
                  isTRUE(validUTF8(zaman)) && nchar(zaman) <= 64L) zaman else ""
     mesaj_id <- sprintf("msg_restore_%.0f_%d", damga, i)
-    islenmis <- db_message_process_text_content(icerik, tur, mesaj_id)
+    # Görsel mesajları kayıtlı-sohbet okuyucusuyla aynı yoldan (sahip kökü
+    # denetimiyle) karta çevrilir; diğerleri güvenli metin render'ından geçer.
+    islenmis <- db_message_process_image_content(icerik, tur, mesaj_id, user_id = user_id) %||%
+      db_message_process_text_content(icerik, tur, mesaj_id)
     sonuc[[length(sonuc) + 1L]] <- list(
       id = mesaj_id, db_id = NULL, content = icerik,
       html_content = as.character(islenmis$html %||% ""),
@@ -129,7 +133,10 @@ storageObserversInit <- function(input, session, output, values, settings_data,
       return(invisible(NULL))
     }
 
-    geri_yuklenen <- mergen_chat_storage_restore_messages(loaded_data$messages)
+    # Sahip etiketi yalnızca doğrulanmış kimlikle üretildiği için user_id güvenilirdir.
+    geri_yuklenen <- mergen_chat_storage_restore_messages(
+      loaded_data$messages, user_id = session$userData$user_id
+    )
     if (length(geri_yuklenen) == 0) return(invisible(NULL))
     if (length(values$messages) == 0) {
 

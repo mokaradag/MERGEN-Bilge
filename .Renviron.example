@@ -595,13 +595,15 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 # MERGEN_DOCX_PDF_TIMEOUT_SEC=120
 #
 # --- DOCX metin okuma sınırları ---
-#   word/document.xml açılmış boyutu (MB) ve ayrıştırma öncesi öğe sayısı
-#   sınırı; aşan belge XML DOM kurulmadan reddedilir (sıkıştırma/düğüm bombası).
+#   word/document.xml açılmış boyutu (MB) ve ayrıştırma öncesi '<' sayısı
+#   sınırı (kapanış etiketleri de sayılır); aşan belge XML DOM kurulmadan
+#   reddedilir (sıkıştırma/düğüm bombası). Varsayılan '<' bütçesi, Word'ün
+#   yoğun tablo XML'inde bile boyut sınırından önce devreye girmeyecek kadardır.
 # MERGEN_DOCX_MAX_XML_MB=25
-# MERGEN_DOCX_MAX_XML_NODES=750000
+# MERGEN_DOCX_MAX_XML_NODES=2000000
 #
 # --- UX smoke harness'ı (varsayılan KAPALI; üretimde AÇMAYIN) ---
-#   www/smoke test sayfası gerçek uygulama eylemleri tetikler. /smoke/ yolu
+#   tests/smoke test sayfası gerçek uygulama eylemleri tetikler. /smoke/ yolu
 #   yalnızca bakımcı smoke koşusu için TRUE verildiğinde sunulur.
 # MERGEN_ENABLE_UX_SMOKE=false
 #

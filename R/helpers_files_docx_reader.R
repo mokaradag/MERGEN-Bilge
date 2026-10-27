@@ -8,16 +8,19 @@
 
 # DOCX içindeki word/document.xml'i SINIRLI okur. ZIP merkez dizinindeki beyan
 # edilen boyut önce denetlenir; ardından açma, beyan yanlış olsa bile en fazla
-# bütçe + 1 bayt üretir. Ayrıştırmadan ÖNCE öğe sayısı (yaklaşık '<' sayısı)
-# sınırlanır; böylece küçük ama milyonlarca düğüm taşıyan belge DOM kurulmadan
-# reddedilir. Sınırlar: MERGEN_DOCX_MAX_XML_MB ve MERGEN_DOCX_MAX_XML_NODES.
+# bütçe + 1 bayt üretir. Ayrıştırmadan ÖNCE '<' sayısı (kapanış etiketleri
+# dahil) sınırlanır; böylece küçük ama milyonlarca düğüm taşıyan belge DOM
+# kurulmadan reddedilir. Varsayılan '<' bütçesi, Word'ün yoğun tablo XML'inde
+# (~15 bayt/'<') boyut sınırından önce devreye girmez; yalnızca anormal
+# yoğunluktaki belgeyi eler. Sınırlar: MERGEN_DOCX_MAX_XML_MB ve
+# MERGEN_DOCX_MAX_XML_NODES.
 mergen_docx_read_document_xml <- function(path, max_xml_bytes = NULL, max_elements = NULL) {
   sinir <- function(ad, varsayilan) {
     deger <- suppressWarnings(as.numeric(Sys.getenv(ad, "")))
     if (length(deger) != 1L || !is.finite(deger) || deger <= 0) varsayilan else deger
   }
   max_xml_bytes <- max_xml_bytes %||% (sinir("MERGEN_DOCX_MAX_XML_MB", 25) * 1024 * 1024)
-  max_elements <- max_elements %||% sinir("MERGEN_DOCX_MAX_XML_NODES", 750000)
+  max_elements <- max_elements %||% sinir("MERGEN_DOCX_MAX_XML_NODES", 2000000)
 
   liste <- tryCatch(utils::unzip(path, list = TRUE), error = function(e) NULL)
   if (!is.data.frame(liste)) stop("DOCX arşivi okunamadı.", call. = FALSE)

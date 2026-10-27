@@ -6,7 +6,7 @@
 #           reddedilir; meşru Türkçe belge değişmeden okunur. Hem ortak dosya
 #           okuyucu (readFileContentToString) hem Bilge Yolaç çıkarıcısı aynı
 #           sınırlı okuyucudan geçer. Fikstürler tests/fixtures/docx altındadır
-#           (en büyüğü ~41 KB).
+#           (en büyüğü ~55 KB).
 # ==============================================================================
 
 .docx_env <- local({
@@ -58,6 +58,21 @@ test_that("patolojik DOCX, XML DOM kurulmadan reddedilir", {
     expect_error(env$extract_docx_text_for_claude(.docx_fikstur(v$dosya)), v$hata, fixed = TRUE,
                  info = v$dosya)
   }
+})
+
+test_that("Word tarzı yoğun tablo XML'i varsayılan öğe bütçesine takılmaz", {
+  env <- .docx_env()
+  withr::local_envvar(MERGEN_DOCX_MAX_XML_NODES = NA, MERGEN_DOCX_MAX_XML_MB = NA)
+  yol <- .docx_fikstur("yogun_tablo_gecerli.docx")
+  # ~11 MB XML, ~910 bin '<' (kapanış etiketleri dahil): boyut sınırının altında
+  # meşru, etiket yoğun belge (~12.5 bayt/'<') reddedilmemeli.
+  baglanti <- unz(yol, "word/document.xml", open = "rb")
+  baytlar <- readBin(baglanti, what = "raw", n = 25 * 1024 * 1024)
+  close(baglanti)
+  expect_gt(sum(baytlar == as.raw(0x3C)), 750000)
+  belge <- env$mergen_docx_read_document_xml(yol)
+  son <- xml2::xml_text(xml2::xml_find_first(belge, "/*/*/*[last()]"))
+  expect_identical(son, enc2utf8("Tablo sonu: ğüşıöç İ"))
 })
 
 test_that("merkez dizinde yalan beyan edilen boyut açma bütçesini aşamaz", {
