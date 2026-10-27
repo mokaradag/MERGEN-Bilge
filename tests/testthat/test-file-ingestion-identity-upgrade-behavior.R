@@ -6,6 +6,7 @@ test_that("zayıf terfi kanıtı güçlü hedef kimliğine yükselir", {
   env$`%||%` <- function(a, b) if (is.null(a)) b else a
   source(file.path(resolve_repo_root_for_tests(), "R/helpers_file_ingestion_identity.R"),
     local = env, encoding = "UTF-8")
+  env$resolve_readable_path <- base::identity
 
   dest <- withr::local_tempfile(fileext = ".bin")
   writeBin(as.raw(c(1, 2, 3, 4)), dest)
@@ -42,6 +43,7 @@ test_that("zayıf son kimlik kalıcı sahiplik açmaz", {
   env$`%||%` <- function(a, b) if (is.null(a)) b else a
   source(file.path(resolve_repo_root_for_tests(), "R/helpers_file_ingestion_identity.R"),
     local = env, encoding = "UTF-8")
+  env$resolve_readable_path <- base::identity
 
   dest <- withr::local_tempfile(fileext = ".bin")
   writeBin(as.raw(c(5, 6, 7, 8)), dest)
