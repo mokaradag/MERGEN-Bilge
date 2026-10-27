@@ -143,7 +143,7 @@ test_that("DTD yalnız prologda aranır: gövdedeki yorum/CDATA metni reddedilme
   testthat::local_mocked_bindings(read_xml = function(...) stop("DOM kurulmamalıydı"), .package = "xml2")
   expect_error(env$mergen_docx_read_document_xml(.docx_fikstur("dtd_yorum_hilesi.docx")), "DTD", fixed = TRUE)
   b <- function(x) charToRaw(enc2utf8(x))
-  expect_false(env$mergen_docx_prolog_has_dtd(b("﻿<?xml version='1.0'?>\n<!-- <!DOCTYPE --> <r/>")))
+  expect_false(env$mergen_docx_prolog_has_dtd(b("\ufeff<?xml version='1.0'?>\n<!-- <!DOCTYPE --> <r/>")))
   expect_true(env$mergen_docx_prolog_has_dtd(b("<?xml version='1.0'?><!--x--><!DOCTYPE r><r/>")))
   expect_true(env$mergen_docx_prolog_has_dtd(b("<!ELEMENT r ANY><r/>")))
 })
