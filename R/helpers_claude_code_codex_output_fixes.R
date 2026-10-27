@@ -130,10 +130,54 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
   guard_ok <- function() {
     !nzchar(active_guard %||% "") || isTRUE(file.exists(active_guard))
   }
-  # Onayli kok ile cozulmus ata AYNI cozumleme semantigiyle hesaplanir;
-  # aksi halde Windows 8.3 kisa adi uzun adla karsilastirilir (bkz.
-  # cc_output_sync_canonical_root).
-  approved_root <- cc_output_sync_canonical_root(as.character(plan$source_workdir %||% "")[1])
+  # Base R ve libuv aynı Windows uzun-yol yazımını her makinede desteklemiyor.
+  # Fiziksel çözümleme tek bir diyalekte bağlanmaz: önce mantıksal ve açık I/O
+  # yazımları base R ile, sonra aynı iki yazım fs/libuv ile denenir. Başarılı
+  # sonuç tekrar mantıksal biçime çevrilir; güvenlik karşılaştırmasına `\\?\`
+  # öneki hiçbir zaman kimlik parçası olarak girmez.
+  physical_path <- function(path) {
+    p <- as.character(path %||% "")[1]
+    if (is.na(p) || !nzchar(p)) return("")
+    logical <- if (.Platform$OS.type == "windows") mergen_logical_path(p) else p
+    io <- mergen_io_path(logical)
+    candidates <- unique(c(logical, io))
+    for (candidate in candidates) {
+      real <- try(normalizePath(candidate, winslash = "/", mustWork = TRUE), silent = TRUE)
+      if (!inherits(real, "try-error") && length(real) == 1L && !is.na(real) && nzchar(real))
+        return(.cc_scan_norm(mergen_logical_path(as.character(real))))
+    }
+    for (candidate in candidates) {
+      real <- try(fs::path_real(candidate), silent = TRUE)
+      if (!inherits(real, "try-error") && length(real) == 1L && !is.na(real) && nzchar(as.character(real)))
+        return(.cc_scan_norm(mergen_logical_path(as.character(real))))
+    }
+    ""
+  }
+  # Bağlantı sondası da aynı iki yazımı dener. Hiçbir sonda kesin FALSE
+  # üretemezse sonuç NA'dır ve çağıran kapalı-başarısız davranır; belirsizliği
+  # normal dosya saymak kök dışı junction/symlink kaçışına izin verebilirdi.
+  link_state <- function(path) {
+    p <- as.character(path %||% "")[1]
+    if (is.na(p) || !nzchar(p)) return(NA)
+    logical <- if (.Platform$OS.type == "windows") mergen_logical_path(p) else p
+    candidates <- unique(c(logical, mergen_io_path(logical)))
+    observed <- FALSE
+    for (candidate in candidates) {
+      probe <- try(fs::is_link(candidate), silent = TRUE)
+      if (inherits(probe, "try-error") || length(probe) != 1L || is.na(probe)) next
+      observed <- TRUE
+      if (isTRUE(probe)) return(TRUE)
+    }
+    reparse <- try(cc_path_is_reparse_link(logical), silent = TRUE)
+    if (!inherits(reparse, "try-error") && isTRUE(reparse)) return(TRUE)
+    if (observed) FALSE else NA
+  }
+
+  # Onaylı kök, kaynak, hedef atası ve hedefin kendisi AYNI fiziksel çözümleme
+  # semantiğini kullanır. Böylece 8.3 adları, mapped drive ve UNC uzun-yol
+  # biçimleri aynı güvenlik sınırında karşılaştırılır.
+  approved_root <- physical_path(cc_output_sync_canonical_root(
+    as.character(plan$source_workdir %||% "")[1]))
   approved_key <- .cc_scan_key(approved_root)
   results <- skipped
   recovered_parents <- character()
@@ -157,26 +201,17 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
       fail("Çalıştırma durduruldu; çıktı aktarılmadı")
       next
     }
-    # Kaynak mantıksal kalır; her dosya sistemi sondası aynı I/O yolunu kullanır.
     src_io <- mergen_io_path(src)
     if (!nzchar(src) || !file.exists(src_io) || dir.exists(src_io)) {
       fail("Çıktı kaynağı artık erişilemiyor")
       next
     }
-    output_root <- cc_output_sync_canonical_root(plan$output_root %||% "")
-    physical_root <- try(fs::path_real(mergen_io_path(output_root)), silent = TRUE)
-    output_root <- if (nzchar(output_root) && !inherits(physical_root, "try-error")) .cc_scan_norm(as.character(physical_root)) else ""
-    resolved_src <- tryCatch(
-      .cc_scan_norm(as.character(fs::path_real(src_io))),
-      error = function(e) ""
-    )
-    # Bağlantı tespiti taban ad karşılaştırmasıyla DEĞİL, ortak dizin düzeyli
-    # yardımcıyla yapılır; Türkçe adlarda Windows harf katlaması taban adı
-    # eşitsiz gösterip geçerli çıktıyı reddediyordu.
-    source_safe <- nzchar(output_root) && nzchar(resolved_src) &&
+    output_root <- physical_path(cc_output_sync_canonical_root(plan$output_root %||% ""))
+    resolved_src <- physical_path(src)
+    source_link <- link_state(src)
+    source_safe <- nzchar(output_root) && nzchar(resolved_src) && identical(source_link, FALSE) &&
       (identical(.cc_scan_key(resolved_src), .cc_scan_key(output_root)) ||
-         startsWith(.cc_scan_key(resolved_src), paste0(.cc_scan_key(output_root), "/"))) &&
-      !isTRUE(fs::is_link(src)) && !isTRUE(cc_path_is_reparse_link(src))
+         startsWith(.cc_scan_key(resolved_src), paste0(.cc_scan_key(output_root), "/")))
     if (!isTRUE(source_safe)) {
       fail("Çıktı kaynağı bağlantı/reparse-point veya onaylı output kökünün dışında")
       next
@@ -193,16 +228,12 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
 
     parent <- dirname(dest)
     ancestor <- parent
-    # Ebeveyn mantıksal kalır (kapsama/kurtarma); sondalar I/O yolunu kullanır.
     missing_dirs <- character()
     while (!dir.exists(mergen_io_path(ancestor)) && !identical(dirname(ancestor), ancestor)) {
       missing_dirs <- c(ancestor, missing_dirs)
       ancestor <- dirname(ancestor)
     }
-    resolved_ancestor <- tryCatch(
-      .cc_scan_norm(normalizePath(mergen_io_path(ancestor), winslash = "/", mustWork = TRUE)),
-      error = function(e) ""
-    )
+    resolved_ancestor <- physical_path(ancestor)
     ancestor_key <- .cc_scan_key(resolved_ancestor)
     if (!nzchar(approved_root) || !nzchar(resolved_ancestor) || !(
       identical(ancestor_key, approved_key) || startsWith(ancestor_key, paste0(approved_key, "/"))
@@ -210,8 +241,6 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
       fail("Hedef üst dizini onaylı kaynak kökün dışında")
       next
     }
-    # Eksik dizinler tek tek kurulur: R'ın özyinelemeli dir.create() önekli
-    # `\\?\UNC\` yolunu sunucu/paylaşım olarak ayrıştırıp ilk adımda düşer.
     for (missing_dir in missing_dirs) dir.create(mergen_io_path(missing_dir), showWarnings = FALSE)
     if (!dir.exists(mergen_io_path(parent))) {
       fail("Hedef dizin oluşturulamadı")
@@ -231,28 +260,29 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
     txn <- .cc_output_txn_paths(dest, dest_jeton)
     staging <- txn$staging
     backup <- txn$backup
-    had_dest <- isTRUE(file.exists(mergen_io_path(dest))) || isTRUE(dir.exists(mergen_io_path(dest))) || isTRUE(fs::is_link(dest))
+    dest_io <- mergen_io_path(dest)
+    dest_link <- link_state(dest)
+    # Bağlantı meta verisi kesin okunamıyorsa rezervasyon bırakılır ve hedefe
+    # dokunulmaz. Bu dal özellikle fs::is_link() istisnasının kilidi sızdırdığı
+    # eski davranışı kapatır.
+    if (is.na(dest_link)) {
+      mergen_reservation_release(txn$lock, dest_jeton)
+      fail("Hedef dosyanın bağlantı/reparse-point durumu doğrulanamadı")
+      next
+    }
+    had_dest <- isTRUE(file.exists(dest_io)) || isTRUE(dir.exists(dest_io)) || isTRUE(dest_link)
     if (had_dest) {
-      # Sys.readlink() Windows'ta HER ZAMAN NA döner ve nzchar(NA) TRUE'dur;
-      # tek başına kullanıldığında var olan her hedefi bağlantı sanıp aynı
-      # dosyanın yeniden üretildiği her çalıştırmayı bloke ederdi. Tespit
-      # ortak yardımcıda, dizin düzeyinde yapılır.
-      resolved_dest <- tryCatch(
-        .cc_scan_norm(normalizePath(mergen_io_path(dest), winslash = "/", mustWork = TRUE)),
-        error = function(e) ""
-      )
+      resolved_dest <- physical_path(dest)
       resolved_key <- .cc_scan_key(resolved_dest)
-      linked <- !nzchar(resolved_dest) || isTRUE(fs::is_link(dest)) || isTRUE(cc_path_is_reparse_link(dest))
       dest_safe <- nzchar(resolved_dest) && (
         identical(resolved_key, approved_key) || startsWith(resolved_key, paste0(approved_key, "/"))
       )
-      if (isTRUE(linked) || !isTRUE(dest_safe) || isTRUE(dir.exists(mergen_io_path(dest)))) {
+      if (isTRUE(dest_link) || !isTRUE(dest_safe) || isTRUE(dir.exists(dest_io))) {
         mergen_reservation_release(txn$lock, dest_jeton)
         fail("Hedef dosya bağlantı/reparse-point, dizin veya onaylı kökün dışında")
         next
       }
     }
-
 
     staged <- isTRUE(tryCatch(
       file.copy(mergen_io_path(src), mergen_io_path(staging), overwrite = FALSE, copy.mode = TRUE, copy.date = TRUE),
@@ -278,8 +308,6 @@ cc_apply_output_sync_plan <- function(plan, active_guard = NULL) {
       fail("Çalıştırma durduruldu; çıktı terfi ettirilmedi")
       next
     }
-    # Uzun kopyadan sonra sahiplik yeniden kanıtlanır; kilit devralındıysa
-    # hedefe ve başkasının yapıtlarına dokunulmaz.
     if (!isTRUE(mergen_reservation_touch(txn$lock, dest_jeton))) {
       unlink(mergen_io_path(staging), force = TRUE, expand = FALSE)
       mergen_reservation_release(txn$lock, dest_jeton)
@@ -518,108 +546,3 @@ cc_dispatch_run_output_processing <- function(ctx) {
   }
   invisible(TRUE)
 }
-
-# Explicit future bundles carry only the late-loaded functions used by that
-# worker. Keeping this list narrow avoids reintroducing expensive global scans.
-.cc_codex_add_named_worker_globals <- function(bundle, names, envir = globalenv()) {
-  for (name in unique(names)) {
-    value <- get0(name, envir = envir, inherits = TRUE)
-    if (!is.null(value)) bundle[[name]] <- value
-  }
-  bundle
-}
-
-.cc_codex_prepare_worker_names <- c(
-  ".cc_codex_original_mirror_directory_to_local_workspace",
-  ".cc_codex_original_cc_select_input_files",
-  ".cc_codex_original_cc_scan_directory_bounded",
-  ".cc_codex_original_prepare_claude_code_document_context",
-  ".cc_codex_original_cc_prepare_run_workspace",
-  ".cc_codex_path_key", ".cc_codex_guard_check", ".cc_codex_acquire_dir_lock",
-  "mergen_io_path", "mergen_logical_path",
-  "cc_scan_directory_bounded", "cc_select_input_files",
-  "mirror_directory_to_local_workspace", "prepare_claude_runtime_workdir",
-  "cc_claim_runtime_ownership", "cc_runtime_ownership_is",
-  "cc_scan_runtime_excluded_dirs", "deduplicate_claude_code_file_paths",
-  "cc_select_documents_for_request", "prepare_claude_code_document_context",
-  "cc_prepare_run_workspace", "snapshot_claude_code_workdir_files",
-  "cc_snapshot_run_output_area",
-  # Lease/temizlik kilidi worker'da da çözülebilmelidir (TOCTOU koruması).
-  ".cc_codex_reap_dir_lock", ".cc_codex_lock_owner_token",
-  ".cc_codex_touch_dir_lock", ".cc_codex_dir_lock_age",
-  ".CC_CODEX_REAPER_STALE_SEC", "CC_RUNTIME_LOCK_DIR_NAME",
-  "cc_runtime_cleanup_lock_dir", "cc_with_runtime_cleanup_lock",
-  # Bu liste GEÇİŞLİ bağımlılıkları GENİŞLETMEZ ve `dependency_mode = "explicit"`
-  # kullanıldığı için worker adları kendi global ortamında çözer. Kilit durumu
-  # ve adım adım silme yardımcıları eksik kaldığında worker
-  # `object '.CC_RUNTIME_LOCK_STATE' not found` ya da
-  # `could not find function "cc_runtime_unlink_stepwise"` ile düşüyor ve
-  # hazırlık, çalışma alanını geri kazanmak yerine başarısız oluyordu.
-  ".CC_RUNTIME_LOCK_STATE", "cc_runtime_cleanup_lock_heartbeat",
-  "cc_runtime_unlink_stepwise",
-  "cc_reclaim_orphaned_runtime_dirs", "mergen_pid_status", "mergen_owner_reclaimable",
-  "mergen_lock_owner_reclaimable", "mergen_reclaim_mutex",
-  "cc_bind_runtime_lease", "cc_runtime_lease_reclaimable", "cc_runtime_has_foreign_lease",
-  ".cc_write_runtime_lease", ".cc_read_runtime_lease"
-)
-
-.cc_codex_output_worker_names <- c(
-  "%||%",
-  ".cc_codex_original_cc_scan_directory_bounded",
-  ".cc_codex_original_cc_plan_output_sync",
-  ".cc_codex_original_cc_process_run_outputs",
-  ".cc_codex_path_key",
-  "cc_scan_directory_bounded", "cc_scan_runtime_excluded_dirs",
-  "deduplicate_claude_code_file_paths", "snapshot_claude_code_workdir_files",
-  "cc_snapshot_run_output_area", "cc_filter_download_candidates",
-  "cc_plan_output_sync", "cc_apply_output_sync_plan", "cc_process_run_outputs",
-  ".cc_output_txn_paths", ".cc_output_dest_lock", ".cc_output_recover_dest", ".cc_output_recover_parent",
-  ".cc_output_name_variants", ".cc_output_recovery_dest", ".cc_scan_key",
-  "mergen_reservation_token", "mergen_reservation_acquire", "mergen_reservation_takeover",
-  "mergen_reservation_release", "mergen_reservation_owner", ".mergen_reservation_marker",
-  "mergen_reservation_touch", "mergen_io_path", "mergen_logical_path",
-  ".mergen_reservation_remove_owned", "mergen_reservation_quarantine_path",
-  "mergen_lock_owner_reclaimable", "mergen_owner_reclaimable", "mergen_pid_status", "mergen_reclaim_mutex"
-)
-
-# Süreç başına ÖNBELLEK sözleşmesi korunur. Sertleştirme katmanı yalnızca
-# yüklenirken önbelleği geçersiz kılar (aşağıdaki NULL atamaları); sonraki
-# gönderimler `refresh = FALSE` ile önbellekten okur.
-#
-# REGRESYON: Bu sarmalayıcılar önceden koşulsuz `refresh = TRUE` çağırıyordu.
-# Böylece her Bilge Yolaç çalıştırması, future gönderilmeden ÖNCE ana Shiny
-# olay döngüsünde `worker_monitor_expand_function_globals()` /
-# `codetools::findGlobals()` özyinelemesini baştan çalıştırıyor ve açık worker
-# globals'ının önlemek için var olduğu oturumlar arası donmayı geri
-# getiriyordu.
-cc_run_prepare_worker_globals <- function(refresh = FALSE, envir = globalenv()) {
-  if (!isTRUE(refresh) && !is.null(.cc_prepare_worker_cache$globals)) {
-    return(.cc_prepare_worker_cache$globals)
-  }
-
-  bundle <- .cc_codex_original_cc_run_prepare_worker_globals(refresh = TRUE, envir = envir)
-  bundle <- .cc_codex_add_named_worker_globals(
-    bundle, .cc_codex_prepare_worker_names, envir
-  )
-  .cc_prepare_worker_cache$globals <- bundle
-  bundle
-}
-
-cc_run_output_worker_globals <- function(refresh = FALSE, envir = globalenv()) {
-  if (!isTRUE(refresh) && !is.null(.cc_completion_worker_cache$globals)) {
-    return(.cc_completion_worker_cache$globals)
-  }
-
-  bundle <- .cc_codex_original_cc_run_output_worker_globals(refresh = TRUE, envir = envir)
-  bundle <- .cc_codex_add_named_worker_globals(
-    bundle, .cc_codex_output_worker_names, envir
-  )
-  .cc_completion_worker_cache$globals <- bundle
-  bundle
-}
-
-# Geç yüklenen sertleştirme sürümleri, temel katman tarafından önceden
-# doldurulmuş paketleri geçersiz kılar; ilk gönderim paketi bir kez yeniden
-# kurar ve sonraki gönderimler önbelleği kullanır.
-.cc_prepare_worker_cache$globals <- NULL
-.cc_completion_worker_cache$globals <- NULL
