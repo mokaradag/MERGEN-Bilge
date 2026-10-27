@@ -28,10 +28,20 @@ file_ingestion_file_identity <- function(path) {
 
 file_ingestion_identity_matches <- function(actual, expected) {
   if (!is.data.frame(actual) || !is.data.frame(expected) || anyNA(actual) || anyNA(expected)) return(FALSE)
-  key <- attr(expected, "file_key")
+  expected_key <- attr(expected, "file_key")
   actual_key <- attr(actual, "file_key")
   attr(actual, "file_key") <- attr(expected, "file_key") <- NULL
-  identical(actual, expected) && (is.null(key) || identical(actual_key, key))
+  if (!identical(actual, expected)) return(FALSE)
+  if (is.null(expected_key)) return(TRUE)
+  guclu <- c("device_id", "inode")
+  zayif <- c("size", "modification_time")
+  expected_strong <- is.list(expected_key) && all(guclu %in% names(expected_key))
+  if (expected_strong) {
+    return(is.list(actual_key) && all(guclu %in% names(actual_key)) && identical(actual_key, expected_key))
+  }
+  is.list(expected_key) && is.list(actual_key) &&
+    all(zayif %in% names(expected_key)) && all(zayif %in% names(actual_key)) &&
+    identical(actual_key[zayif], expected_key[zayif])
 }
 
 file_ingestion_artifact_owned <- function(result, allow_deleting = TRUE, require_strong = FALSE) {
@@ -85,9 +95,26 @@ file_ingestion_read_owner <- function(path) {
   verified <- suppressWarnings(tryCatch(readRDS(paste0(marker, ".identity")), error = function(e) NULL))
   if (is.list(verified) && identical(verified$id, owner$id)) {
     if (identical(verified$state, "promoting")) {
-      key <- file_ingestion_physical_identity(path)
-      if (is.null(key) || !identical(key, verified$file_key)) return(owner)
-      owner$identity <- file_ingestion_file_identity(path)
+      identity <- file_ingestion_file_identity(path)
+      key <- attr(identity, "file_key")
+      proof <- verified$file_key
+      guclu <- c("device_id", "inode")
+      zayif <- c("size", "modification_time")
+      key_strong <- is.list(key) && all(guclu %in% names(key)) &&
+        !anyNA(unlist(key[guclu], use.names = FALSE))
+      proof_strong <- is.list(proof) && all(guclu %in% names(proof)) &&
+        !anyNA(unlist(proof[guclu], use.names = FALSE))
+      same <- if (proof_strong) {
+        key_strong && identical(key, proof)
+      } else {
+        is.list(proof) && is.list(key) && all(zayif %in% names(proof)) &&
+          all(zayif %in% names(key)) && identical(key[zayif], proof[zayif])
+      }
+      # Zayıf staging kanıtı terfi sürekliliğini doğrulayabilir; kalıcı sahiplik
+      # ancak hedefte güçlü kimlik okunabildiğinde açılır. Böylece rollback her
+      # zaman yeniden doğrulanabilir bir device/inode kanıtına dayanır.
+      if (!is.data.frame(identity) || anyNA(identity) || !key_strong || !same) return(owner)
+      owner$identity <- identity
     } else owner$identity <- verified$identity
     owner$state <- "claimed"
   }
@@ -160,9 +187,13 @@ file_ingestion_claim_artifact <- function(path, expected = file_ingestion_file_i
   id <- id %||% paste0(Sys.getpid(), "-", basename(tempfile("ingest_")))
   .file_store_with_index_lock({
     actual <- file_ingestion_file_identity(path)
+    actual_key <- attr(actual, "file_key")
+    guclu <- c("device_id", "inode")
+    strong <- is.list(actual_key) && all(guclu %in% names(actual_key)) &&
+      !anyNA(unlist(actual_key[guclu], use.names = FALSE))
     marker <- file_ingestion_owner_path(path)
     owner <- file_ingestion_read_owner(path)
-    if (is.null(attr(actual, "file_key")) ||
+    if (!strong ||
         (!is.null(supplied_id) && (!is.list(owner) || !identical(owner$id, supplied_id) ||
           !identical(owner$state, "claimed") ||
           !file_ingestion_identity_matches(actual, file_ingestion_file_identity(owner$identity)))) ||
@@ -230,8 +261,8 @@ file_ingestion_discard_unclaimed <- function(path, source, expected) {
 # stat edilebilirken açık `\\?\` yazımı libuv tarafından reddedilebiliyor;
 # GitHub Windows imajında ise tersi görülebiliyor. Bu yüzden aynı fiziksel yolun
 # mantıksal ve I/O yazımları sırayla denenir. fs iki yazımı da kimlikleyemiyorsa
-# base R boyut+mtime anahtarı karşılaştırma/claim için korunur; bu zayıf anahtar
-# `file_ingestion_artifact_owned()` içindeki güçlü silme kapısını geçemez.
+# base R boyut+mtime anahtarı yalnız terfi sürekliliği için korunur; kalıcı claim
+# ve silme/rollback güçlü device+inode kanıtı olmadan açılmaz.
 file_ingestion_physical_identity <- function(path) {
   p <- as.character(path %||% "")[1]
   if (is.na(p) || !nzchar(p)) return(NULL)
