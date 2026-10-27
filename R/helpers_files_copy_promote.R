@@ -116,10 +116,12 @@ mergen_copy_upload_staged <- function(datapath, final_dest, base_root,
   }
 
   if (!isTRUE(terfi_sonuc$ok)) {
-    # Yarıda kalan hedefi YALNIZCA bu çağrı oluşturmuş olabilir; EŞZAMANLI
-    # beliren hedef `yabanci` olarak işaretlenir ve DOKUNULMAZ.
+    # Yarıda kalan hedefi yalnız güçlü fiziksel kimlik hâlâ bu işleme aitse sil.
+    # Boyut+mtime fallback'i uzun yolu doğrulayabilir ama replacement silme
+    # yetkisi değildir; yabancı ya da kimliği belirsiz hedefe dokunulmaz.
     if (!isTRUE(terfi_sonuc$yabanci) && (is.null(transaction) ||
-        file_ingestion_artifact_owned(list(dest = hedef, artifact_id = transaction$id)))) temizle(hedef)
+        file_ingestion_artifact_owned(list(dest = hedef, artifact_id = transaction$id),
+                                      require_strong = TRUE))) temizle(hedef)
     temizle(staging)
     # Terfi olmadı: "terfi bekliyor" kanıtı geri almayı bekletmesin.
     if (!is.null(transaction)) unlink(paste0(file_ingestion_owner_path(hedef), ".identity"), force = TRUE)
