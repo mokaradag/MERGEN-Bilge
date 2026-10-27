@@ -1035,7 +1035,9 @@ test_that("uzun çıktı adı işlem yapıtlarının dosya adı sınırını aş
   expect_false(identical(txn, env$.cc_output_txn_paths(sub("x.txt$", "y.txt", long_dest), token)))
   # Uzun yol desteği olmayan Windows ana makinesi kalıcı hedefi temsil edemez.
   usable <- isTRUE(suppressWarnings(file.create(long_dest)))
-  skip_if(!usable && .Platform$OS.type == "windows" && nchar(long_dest) > 259L,
+  # Windows yol sınırı UTF-16 birimiyle ölçülür.
+  units <- length(iconv(enc2utf8(long_dest), "UTF-8", "UTF-16LE", toRaw = TRUE)[[1]]) / 2
+  skip_if(!usable && .Platform$OS.type == "windows" && units > 259L,
     "Host cannot represent this final-path fixture without Windows long-path support")
   expect_true(usable)
   unlink(long_dest)
