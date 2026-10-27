@@ -101,6 +101,9 @@ MERGEN_LOGOUT_URL=
 
 # Kullanıcı API anahtarlarını şifrelemek için 32+ karakterlik rastgele sır.
 # ÜRETİMDE mutlaka uzun, rastgele ve gizli bir değerle değiştirin.
+# Tarayıcıda saklanan son sohbetin hesap etiketi (HMAC) de bu sırdan türetilir.
+# Sır değiştirilirse kayıtlı API anahtarları yeniden girilmelidir ve tarayıcıdaki
+# son sohbet kopyaları geri yüklenmeden silinir; DB sohbet geçmişi etkilenmez.
 AI_KEYS_MASTER="change_this_to_a_long_random_secret_string"
 
 # Tek birincil yerel LLM uç noktası. (Eski ikincil LLM uç noktası kavramı

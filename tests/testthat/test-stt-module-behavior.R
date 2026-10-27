@@ -1032,3 +1032,103 @@ test_that("kimlik değişimi STT'nin açmadığı diyaloğu kapatmaz; iptal geci
     }
   )
 })
+
+test_that("kimlik düşünce kuyruktaki çeviri işi sesi STT ucuna göndermez", {
+  skip_if_not_installed("shiny")
+  # Worker yardımcısı: iptal işareti varsa dönüştürme/POST yapılmaz; POST'tan
+  # hemen önce de yeniden bakılır.
+  calisan <- new.env(parent = globalenv())
+  sys.source(file.path(resolve_repo_root_for_tests(), "R", "helpers_stt_transcription.R"),
+             envir = calisan, keep.source = FALSE)
+  post_sayisi <- 0L
+  isaret <- withr::local_tempfile()
+  testthat::local_mocked_bindings(POST = function(...) { post_sayisi <<- post_sayisi + 1L; NULL },
+                                  .package = "httr")
+  testthat::local_mocked_bindings(av_audio_convert = function(input, output, ...) {
+    file.create(isaret)  # dönüştürme sırasında kimlik düşer
+    writeBin(as.raw(rep(1L, 4000L)), output)
+    output
+  }, .package = "av")
+  ses <- base64enc::base64encode(as.raw(1:64))
+  expect_identical(calisan$mergen_stt_transcribe_chunk(ses, "http://stt.test/v1", "m", "k", iptal_dosyasi = isaret), "")
+  expect_identical(post_sayisi, 0L)
+  expect_identical(calisan$mergen_stt_transcribe_chunk(ses, "http://stt.test/v1", "m", "k", iptal_dosyasi = isaret), "")
+  expect_identical(post_sayisi, 0L)
+  unlink(isaret)
+  testthat::local_mocked_bindings(av_audio_convert = function(input, output, ...) {
+    writeBin(as.raw(rep(1L, 4000L)), output); output
+  }, .package = "av")
+  calisan$mergen_stt_transcribe_chunk(ses, "http://stt.test/v1", "m", "k", iptal_dosyasi = isaret)
+  expect_identical(post_sayisi, 1L)
+
+  # Modül: gönderilen işin işaret yolu sunucuda üretilir; kilit o dönemi iptal eder.
+  .stt_kimlik_kancalari_yukle()
+  withr::local_envvar(LOCAL_STT_API_KEY = "test-stt-anahtari", LOCAL_STT_ENDPOINT = "http://stt.test/v1")
+  yakalanan <- new.env()
+  vardi <- exists("tracked_future_promise", envir = .stt_env, inherits = FALSE)
+  eski <- if (vardi) get("tracked_future_promise", envir = .stt_env) else NULL
+  .stt_env$tracked_future_promise <- function(..., globals = list()) {
+    yakalanan$globals <- globals
+    promises::promise(function(resolve, reject) NULL)
+  }
+  withr::defer(if (vardi) assign("tracked_future_promise", eski, envir = .stt_env) else
+    rm("tracked_future_promise", envir = .stt_env))
+  # Worker globals listesi zorlanır: modülün başvurduğu gerçek yardımcı bağlanır.
+  .stt_env$mergen_stt_transcribe_chunk <- calisan$mergen_stt_transcribe_chunk
+  withr::defer(rm("mergen_stt_transcribe_chunk", envir = .stt_env))
+  ebeveyn <- .stt_yetkili_ebeveyn(7L)
+  shiny::testServer(
+    .stt_env$sttServer,
+    args = list(id = "stt", parent_session = ebeveyn, settings = .stt_settings()),
+    {
+      testthat::local_mocked_bindings(runjs = function(...) NULL, delay = function(ms, expr) expr,
+                                      .package = "shinyjs")
+      testthat::local_mocked_bindings(showModal = function(...) NULL, removeModal = function(...) NULL,
+                                      showNotification = function(...) NULL, .package = "shiny")
+      session$returned$start_session()
+      session$setInputs(audio_chunk = "ZHVtbXk=")
+      yol <- yakalanan$globals$is_iptal_dosyasi
+      expect_true(is.character(yol) && nzchar(yol))
+      expect_false(file.exists(yol))
+      ebeveyn$userData$auth_initialized <- FALSE
+      ebeveyn$userData$user_id <- 0L
+      get("mergen_session_owner_transition", envir = .stt_env, inherits = TRUE)(ebeveyn$userData, 7L, 0L)
+      session$flushReact()
+      expect_true(file.exists(yol))
+    }
+  )
+})
+
+test_that("kilitten sonra gelen geç 'Devam Et' kayıt kabulünü yeni açılış olmadan açmaz", {
+  skip_if_not_installed("shiny")
+  .stt_kimlik_kancalari_yukle()
+  sayac <- .stt_gonderim_sayaci()
+  withr::local_envvar(LOCAL_STT_API_KEY = "test-stt-anahtari", LOCAL_STT_ENDPOINT = "http://stt.test/v1")
+  ebeveyn <- .stt_yetkili_ebeveyn(7L)
+  gecis <- get("mergen_session_owner_transition", envir = .stt_env, inherits = TRUE)
+  shiny::testServer(
+    .stt_env$sttServer,
+    args = list(id = "stt", parent_session = ebeveyn, settings = .stt_settings()),
+    {
+      testthat::local_mocked_bindings(runjs = function(...) NULL, delay = function(ms, expr) expr,
+                                      .package = "shinyjs")
+      testthat::local_mocked_bindings(showModal = function(...) NULL, removeModal = function(...) NULL,
+                                      showNotification = function(...) NULL, .package = "shiny")
+      session$returned$start_session()
+      session$setInputs(toggle_record_btn = 1)  # Durdur
+      # Kimlik B'ye geçer (B yetkili); A'nın açılışından geç bir "Devam Et" gelir.
+      ebeveyn$userData$user_id <- 8L
+      gecis(ebeveyn$userData, 7L, 8L)
+      session$flushReact()
+      session$setInputs(toggle_record_btn = 2)
+      expect_false(isolate(rv$accept_chunks))
+      session$setInputs(audio_chunk = "ZHVtbXk=")
+      expect_identical(sayac$n, 0L)
+
+      # Yeni açılış normal akışı geri getirir.
+      session$returned$start_session()
+      session$setInputs(audio_chunk = "c2Vjb25k")
+      expect_identical(sayac$n, 1L)
+    }
+  )
+})

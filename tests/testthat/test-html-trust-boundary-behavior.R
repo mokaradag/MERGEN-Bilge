@@ -95,3 +95,28 @@ test_that("istemci HTML sink'leri model/kullanıcı metnini işaretleme olarak a
   expect_null(attr(sonuc, "status"), info = paste(sonuc, collapse = "\n"))
   expect_match(paste(sonuc, collapse = "\n"), "html sink regressions passed")
 })
+
+test_that("güvenli markdown kod bölgesini tek kez kaçışlar; ham HTML yine oluşamaz", {
+  env <- new.env(parent = globalenv())
+  sys.source(file.path(resolve_repo_root_for_tests(), "R", "helpers_markdown_safety.R"),
+             envir = env, keep.source = FALSE)
+  r <- env$render_safe_markdown_html
+  expect_match(r("`x <- 1`"), "<code>x &lt;- 1</code>", fixed = TRUE)
+  cit <- r("```r\nx <- 1\nif (a > b) y\n```")
+  expect_match(cit, "x &lt;- 1\nif (a &gt; b) y", fixed = TRUE)
+  expect_false(grepl("&amp;lt;|&amp;gt;", paste(r("`x <- 1`"), cit)))
+  # Kod içinde yazılmış varlık metni harfiyen görünür.
+  expect_match(r("`&lt;`"), "<code>&amp;lt;</code>", fixed = TRUE)
+
+  # Ham HTML ve işaret karakteri taklidi işaretleme üretmez.
+  isaret <- paste0(intToUtf8(0xE000L), "script", intToUtf8(0xE001L), "alert(1)")
+  for (girdi in c("<script>alert(1)</script>", "<img src=x onerror=alert(1)>", "`</code><b>x</b>`",
+                  isaret, "<https://x.test>")) {
+    html <- r(girdi)
+    etiketler <- regmatches(html, gregexpr("<[A-Za-z/][^>]*>", html, perl = TRUE))[[1]]
+    adlar <- unique(tolower(sub("^</?([A-Za-z0-9]+).*$", "\\1", etiketler)))
+    expect_true(all(adlar %in% c("p", "code", "pre", "strong", "em", "br")), info = html)
+    expect_false(grepl(intToUtf8(c(0xE000L)), html, fixed = TRUE))
+    expect_false(grepl(intToUtf8(c(0xE001L)), html, fixed = TRUE))
+  }
+})

@@ -78,7 +78,15 @@ sttServer <- function(id, parent_session, settings) {
     # modal yalnızca STT açtıysa kapatılır (başka diyaloglara dokunulmaz).
     stt_kilitli <- FALSE
     stt_modal_acik <- FALSE
+    # Kimlik dönemi iptal işareti: kilit, dönemin işaret dosyasını oluşturur;
+    # o dönemde kuyruğa giren çeviri işi ses göndermeden biter.
+    iptal_koku <- tempfile("stt_iptal_")
+    kimlik_donemi <- 0L
+    iptal_dosyasi <- function(donem) paste0(iptal_koku, "_", donem)
+    session$onSessionEnded(function() unlink(Sys.glob(paste0(iptal_koku, "_*"))))
     stt_kilitle <- function() {
+      try(file.create(iptal_dosyasi(kimlik_donemi)), silent = TRUE)
+      kimlik_donemi <<- kimlik_donemi + 1L
       stt_acilis_jetonu <<- stt_acilis_jetonu + 1L
       stt_kilitli <<- TRUE
       rv$is_recording <- FALSE
@@ -387,6 +395,8 @@ sttServer <- function(id, parent_session, settings) {
           showNotification("Sesli giriş için oturum kimliği doğrulanmalıdır.", type = "warning", duration = 6)
           return(invisible(NULL))
         }
+        # Kilitlenen açılış "Devam Et" ile canlanmaz; yeni açılış start_session() ister.
+        if (isTRUE(stt_kilitli)) return(invisible(NULL))
         # Duraklatma sırasında kullanıcı metin alanını elle düzenlemiş olabilir;
         # devam etmeden önce sunucu geçmişini görünen metinle eşitle. Duraklama
         # sırasında asenkron parça eklenmediği için metin alanı güvenilirdir.
@@ -489,6 +499,7 @@ sttServer <- function(id, parent_session, settings) {
       rv$expect_final_chunk <- FALSE
 
       dispatch_gen <- isolate(rv$transcribe_gen)
+      is_iptal_dosyasi <- iptal_dosyasi(kimlik_donemi)
       chunk_seq <- isolate(rv$next_chunk_seq)
       rv$next_chunk_seq <- chunk_seq + 1L
       rv$pending_stt_chunks <- isolate(rv$pending_stt_chunks) + 1L
@@ -504,7 +515,8 @@ sttServer <- function(id, parent_session, settings) {
       promise <- tryCatch(
       tracked_future_promise(
         task_fn = function() {
-          mergen_stt_transcribe_chunk(chunk_b64, api_url, api_model, api_key, stt_timeout)
+          mergen_stt_transcribe_chunk(chunk_b64, api_url, api_model, api_key, stt_timeout,
+                                      iptal_dosyasi = is_iptal_dosyasi)
         },
         task_type = "stt_transcribe",
         session_token = session$token,
@@ -515,7 +527,8 @@ sttServer <- function(id, parent_session, settings) {
           api_url = api_url,
           api_model = api_model,
           api_key = api_key,
-          stt_timeout = stt_timeout
+          stt_timeout = stt_timeout,
+          is_iptal_dosyasi = is_iptal_dosyasi
         )
       ),
       error = function(e) {

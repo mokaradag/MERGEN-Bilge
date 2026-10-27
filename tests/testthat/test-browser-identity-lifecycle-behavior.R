@@ -375,3 +375,66 @@ test_that("doğrulanmış kullanıcı sohbeti boşaltınca tarayıcı kaydı sil
     expect_false("clearCurrentChat" %in% turler())
   })
 })
+
+test_that("aynı oturumda A -> B değişiminde A'nın bellekteki sohbeti B etiketiyle yazılmaz", {
+  env <- .kimlik_storage_env()
+  withr::local_envvar(AI_KEYS_MASTER = "test-sir-kimlik")
+  gonderilen <- new.env()
+  gonderilen$liste <- list()
+  kayitlar <- function() Filter(function(x) identical(x$type, "saveCurrentChat"), gonderilen$liste)
+  shiny::testServer(.kimlik_sunucu(env, gonderilen), {
+    .kimlik_oturum_kur(session, 7L)
+    session$flushReact()
+    v <- session$userData$.values
+    v$messages <- list(list(id = "m1", type = "user", content = "A'nın sorusu", timestamp = ""))
+    session$flushReact()
+    a_etiketi <- env$mergen_chat_storage_owner(session)
+    expect_identical(kayitlar()[[1]]$message$owner, a_etiketi)
+
+    # Kimlik B olur; bellekteki sohbet (temizlenmemiş olsa bile) değişince B'ye yazılmaz.
+    gonderilen$liste <- list()
+    .kimlik_oturum_kur(session, 8L)
+    v$messages <- c(v$messages, list(list(id = "m2", type = "ai", content = "A'ya yanıt", timestamp = "")))
+    session$flushReact()
+    expect_length(kayitlar(), 0L)
+    expect_true("clearCurrentChat" %in% vapply(gonderilen$liste, `[[`, character(1), "type"))
+
+    # B yeni sohbete başlayınca kendi mesajları kendi etiketiyle kaydedilir.
+    v$messages <- list()
+    session$flushReact()
+    v$messages <- list(list(id = "m3", type = "user", content = "B'nin sorusu", timestamp = ""))
+    session$flushReact()
+    expect_identical(kayitlar()[[1]]$message$owner, env$mergen_chat_storage_owner(session))
+    expect_false(identical(kayitlar()[[1]]$message$owner, a_etiketi))
+    expect_identical(kayitlar()[[1]]$message$messages[[1]]$content, "B'nin sorusu")
+  })
+})
+
+test_that("tarayıcıdan geri yüklenen yanıtta işlevsiz geri bildirim düğmesi çizilmez", {
+  env <- .kimlik_storage_env()
+  withr::local_envvar(AI_KEYS_MASTER = "test-sir-kimlik")
+  env$eklenen <- character(0)
+  gonderilen <- new.env()
+  gonderilen$liste <- list()
+  shiny::testServer(.kimlik_sunucu(env, gonderilen), {
+    .kimlik_oturum_kur(session, 7L)
+    session$flushReact()
+    session$setInputs(load_chat_from_storage = list(
+      owner = env$mergen_chat_storage_owner(session),
+      messages = list(list(type = "user", content = "soru"), list(type = "ai", content = "yanıt"))
+    ))
+    session$flushReact()
+    msgs <- session$userData$.values$messages
+    expect_true(all(vapply(msgs, function(m) isTRUE(m$tarayicidan_geri_yuklendi), logical(1))))
+    html <- paste(env$eklenen, collapse = "\n")
+    expect_false(grepl("like_message", html, fixed = TRUE))
+    expect_false(grepl("dislike_message", html, fixed = TRUE))
+    expect_match(html, "copyRenderedMessageById", fixed = TRUE)
+  })
+  # Canlı (DB'ye bağlı) yanıt düğmeleri korur.
+  ayarlar <- list(enable_timestamps = TRUE, user_config = list(name = "Test", userId = 1L))
+  canli <- as.character(env$render_message_bubble_ui(
+    list(id = "m9", db_id = 3L, type = "ai", content = "x", html_content = "<p>x</p>", timestamp = ""), ayarlar))
+  expect_match(canli, "like_message", fixed = TRUE)
+  expect_match(canli, "dislike_message", fixed = TRUE)
+})

@@ -50,13 +50,25 @@ mergen_sanitize_markdown_links <- function(html) {
 render_safe_markdown_html <- function(content,
                                       hardbreaks = TRUE,
                                       extensions = c("strikethrough", "table")) {
-  safe_input <- mergen_escape_raw_html_for_markdown(content)
+  # Ham HTML oluşamaz: < ve > CommonMark'a özel kullanım alanı işaretleriyle
+  # verilir ve çıktının HER yerinde &lt;/&gt; olur. Varlık ön-kaçışından farklı
+  # olarak kod bölgelerinde çift kaçış (`x &amp;lt;- 1`) oluşmaz.
+  ac <- intToUtf8(0xE000L)
+  kapa <- intToUtf8(0xE001L)
+  safe_input <- if (is.null(content) || length(content) == 0L || is.na(content[1])) {
+    ""
+  } else {
+    enc2utf8(as.character(content[1]))
+  }
+  safe_input <- gsub(ac, "", gsub(kapa, "", safe_input, fixed = TRUE), fixed = TRUE)
+  safe_input <- gsub(">", kapa, gsub("<", ac, safe_input, fixed = TRUE), fixed = TRUE)
 
   html <- commonmark::markdown_html(
     safe_input,
     hardbreaks = hardbreaks,
     extensions = extensions
   )
+  html <- gsub(kapa, "&gt;", gsub(ac, "&lt;", html, fixed = TRUE), fixed = TRUE)
 
   mergen_sanitize_markdown_links(html)
 }

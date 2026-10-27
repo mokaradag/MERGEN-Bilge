@@ -131,3 +131,19 @@ test_that("bildirilen başka kodlama (EBCDIC) DTD'yi tarama dışında bırakıp
   expect_match(env$readFileContentToString(list(name = "x.docx", datapath = .docx_fikstur("ebcdic_dtd.docx"))),
                "Dosya okunurken bir hata", fixed = TRUE)
 })
+
+test_that("DTD yalnız prologda aranır: gövdedeki yorum/CDATA metni reddedilmez, prolog hilesi reddedilir", {
+  env <- .docx_env()
+  metin <- xml2::xml_text(env$mergen_docx_read_document_xml(.docx_fikstur("dtd_metni_govdede.docx")))
+  expect_identical(metin, enc2utf8("Örnek: <!DOCTYPE html> ğüş"))
+  expect_match(env$readFileContentToString(list(name = "x.docx", datapath = .docx_fikstur("dtd_metni_govdede.docx"))),
+               "<!DOCTYPE html>", fixed = TRUE)
+
+  # Prolog yorumundaki "<a" taramayı bitiremez; arkasındaki DTD DOM'dan önce reddedilir.
+  testthat::local_mocked_bindings(read_xml = function(...) stop("DOM kurulmamalıydı"), .package = "xml2")
+  expect_error(env$mergen_docx_read_document_xml(.docx_fikstur("dtd_yorum_hilesi.docx")), "DTD", fixed = TRUE)
+  b <- function(x) charToRaw(enc2utf8(x))
+  expect_false(env$mergen_docx_prolog_has_dtd(b("﻿<?xml version='1.0'?>\n<!-- <!DOCTYPE --> <r/>")))
+  expect_true(env$mergen_docx_prolog_has_dtd(b("<?xml version='1.0'?><!--x--><!DOCTYPE r><r/>")))
+  expect_true(env$mergen_docx_prolog_has_dtd(b("<!ELEMENT r ANY><r/>")))
+})

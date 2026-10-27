@@ -59,7 +59,7 @@ mergen_docx_read_document_xml <- function(path, max_xml_bytes = NULL, max_elemen
     stop("DOCX belge yapısı izin verilen öğe sayısını aşıyor.", call. = FALSE)
   }
   # OOXML parçaları DTD taşımaz; DTD varlık zinciri metin çıkarımında büyüyebilir.
-  if (length(grepRaw("<!DOCTYPE", baytlar, fixed = TRUE)) > 0L) {
+  if (isTRUE(mergen_docx_prolog_has_dtd(baytlar))) {
     stop("DOCX belge içeriği desteklenmeyen DTD bildirimi içeriyor.", call. = FALSE)
   }
 
@@ -67,4 +67,35 @@ mergen_docx_read_document_xml <- function(path, max_xml_bytes = NULL, max_elemen
   # IGNORE_ENC: denetlenen UTF-8 baytları, bildirimdeki başka bir kodlamayla
   # (ör. EBCDIC) yeniden yorumlanmaz; tarama ile ayrıştırıcı aynı baytı görür.
   xml2::read_xml(baytlar, encoding = "UTF-8", options = c("NOBLANKS", "NONET", "IGNORE_ENC"))
+}
+
+# DTD yalnızca prologda (kök öğeden önce) bulunabilir. Prolog sırayla taranır:
+# BOM, boşluk, <?...?> ve <!--...--> atlanır; başka her <! bildirimi DTD sayılıp
+# reddedilir. Kök öğeden sonraki yorum/CDATA içindeki "<!DOCTYPE" metni DTD
+# değildir. Yorum içindeki "<a" gibi metin taramayı erken bitiremez.
+mergen_docx_prolog_has_dtd <- function(baytlar) {
+  n <- length(baytlar)
+  bul <- function(desen, bas) {
+    if (bas > n) return(NA_integer_)
+    k <- grepRaw(desen, baytlar, offset = bas, fixed = TRUE)
+    if (length(k)) k[1] else NA_integer_
+  }
+  bosluk <- as.raw(c(0x20, 0x09, 0x0D, 0x0A))
+  i <- if (n >= 3L && identical(as.integer(baytlar[1:3]), c(239L, 187L, 191L))) 4L else 1L
+  repeat {
+    while (i <= n && baytlar[i] %in% bosluk) i <- i + 1L
+    if (i + 1L > n || baytlar[i] != as.raw(0x3C)) return(FALSE)
+    if (baytlar[i + 1L] == as.raw(0x3F)) {
+      k <- bul(charToRaw("?>"), i + 2L)
+      if (is.na(k)) return(FALSE)
+      i <- k + 2L
+    } else if (baytlar[i + 1L] == as.raw(0x21)) {
+      if (i + 3L > n || !identical(baytlar[(i + 2L):(i + 3L)], charToRaw("--"))) return(TRUE)
+      k <- bul(charToRaw("-->"), i + 4L)
+      if (is.na(k)) return(FALSE)
+      i <- k + 3L
+    } else {
+      return(FALSE)
+    }
+  }
 }

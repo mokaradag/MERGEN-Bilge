@@ -84,7 +84,8 @@ mergen_chat_storage_restore_messages <- function(raw_messages,
       id = mesaj_id, db_id = NULL, content = icerik,
       html_content = as.character(islenmis$html %||% ""),
       has_code = isTRUE(islenmis$has_code),
-      type = tur, timestamp = zaman, include_in_context = baglam
+      type = tur, timestamp = zaman, include_in_context = baglam,
+      tarayicidan_geri_yuklendi = TRUE
     )
   }
   sonuc
@@ -111,17 +112,26 @@ storageObserversInit <- function(input, session, output, values, settings_data,
   # etiketiyle ve en az veriyle. Kimlik yoksa tarayıcıya sohbet yazılmaz.
   # Doğrulanmış kullanıcı sohbeti boşalttığında (yeni sohbet) tarayıcı kaydı da
   # silinir; kimlik kaybında (sahip yok) aynı kullanıcının kurtarma kaydı kalır.
+  # Bellekteki sohbet ilk kaydedildiği sahibe bağlanır: aynı oturumda kimlik
+  # A -> B değişirse A'nın mesajları B'nin etiketiyle asla yazılmaz.
+  sohbet_sahibi <- NULL
   observeEvent(values$messages, {
     sahip <- mergen_chat_storage_owner(session)
-    if (is.null(sahip)) return(invisible(NULL))
-    if (length(values$messages) > 0) {
-      session$sendCustomMessage("saveCurrentChat", list(
-        owner = sahip,
-        messages = mergen_chat_storage_payload(values$messages)
-      ))
-    } else {
-      session$sendCustomMessage("clearCurrentChat", list())
+    if (length(values$messages) == 0) {
+      sohbet_sahibi <<- NULL
+      if (!is.null(sahip)) session$sendCustomMessage("clearCurrentChat", list())
+      return(invisible(NULL))
     }
+    if (is.null(sahip)) return(invisible(NULL))
+    if (is.null(sohbet_sahibi)) sohbet_sahibi <<- sahip
+    if (!identical(sohbet_sahibi, sahip)) {
+      session$sendCustomMessage("clearCurrentChat", list())
+      return(invisible(NULL))
+    }
+    session$sendCustomMessage("saveCurrentChat", list(
+      owner = sahip,
+      messages = mergen_chat_storage_payload(values$messages)
+    ))
   }, ignoreNULL = FALSE, ignoreInit = TRUE)
 
   # Tarayıcı kaydı kimlik hazır olana kadar bekletilir; kimlik geldiğinde ya da

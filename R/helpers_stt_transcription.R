@@ -18,9 +18,15 @@
 #' @param api_model STT model kimliği
 #' @param api_key Bearer API anahtarı
 #' @param timeout_sec HTTP zaman aşımı (saniye)
+#' @param iptal_dosyasi Varsa ses gönderilmez: kimlik düştükten sonra kuyrukta
+#'   bekleyen iş POST yapmadan biter (yol yalnızca sunucuda üretilir).
 #' @return Temizlenmiş metin ("" boş/başarısız durumlarda)
 mergen_stt_transcribe_chunk <- function(chunk_b64, api_url, api_model, api_key,
-                                        timeout_sec = 30) {
+                                        timeout_sec = 30, iptal_dosyasi = NULL) {
+  iptal_edildi <- function() {
+    !is.null(iptal_dosyasi) && nzchar(iptal_dosyasi) && file.exists(iptal_dosyasi)
+  }
+  if (iptal_edildi()) return("")
   if (is.null(chunk_b64) || !nzchar(chunk_b64) || !nzchar(api_url)) {
     return("")
   }
@@ -56,6 +62,9 @@ mergen_stt_transcribe_chunk <- function(chunk_b64, api_url, api_model, api_key,
   if (file.size(wav_file) < 2500) {
     return("")
   }
+
+  # Dönüştürme sürerken kimlik düşmüş olabilir: POST'tan hemen önce yeniden bakılır.
+  if (iptal_edildi()) return("")
 
   res <- tryCatch(
     httr::POST(
