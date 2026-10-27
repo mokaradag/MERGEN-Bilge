@@ -16,6 +16,7 @@
 
 # İzole kaynakta ortak I/O katmanı yoksa önceki base R davranışı korunur.
 if (!exists("mergen_io_path", mode = "function", inherits = TRUE)) mergen_io_path <- base::identity
+if (!exists("mergen_logical_path", mode = "function", inherits = TRUE)) mergen_logical_path <- base::identity
 
 # Windows yol sınırları UTF-16 birimleriyle, POSIX sınırları baytla ölçülür.
 mergen_artifact_path_units <- function(path) {
@@ -127,11 +128,16 @@ mergen_upload_lane_lock <- function(path, wait_sec = getOption("mergen.upload_la
 }
 
 # Değişebilir boyut/mtime yerine fiziksel dosya anahtarı; belirsizlikte yetki yok.
+# Windows API katmanları aynı uzun-yol yazımını desteklemeyebildiği için iki eş
+# yazım denenir; yalnız güçlü device/inode kanıtı silme/terfi yetkisi üretir.
 .mergen_promote_file_key <- function(path) {
-  info <- tryCatch(fs::file_info(mergen_io_path(path)), error = function(e) NULL)
-  if (is.null(info) || NROW(info) != 1L || !isTRUE(is.finite(info$device_id)) ||
-      !isTRUE(is.finite(info$inode) && info$inode > 0)) return(NULL)
-  as.list(info[c("device_id", "inode")])
+  logical <- if (.Platform$OS.type == "windows") mergen_logical_path(path) else path
+  for (candidate in unique(c(logical, mergen_io_path(logical)))) {
+    info <- tryCatch(fs::file_info(candidate), error = function(e) NULL)
+    if (!is.null(info) && NROW(info) == 1L && isTRUE(is.finite(info$device_id)) &&
+        isTRUE(is.finite(info$inode) && info$inode > 0)) return(as.list(info[c("device_id", "inode")]))
+  }
+  NULL
 }
 
 # Görünürlük deneme sayısını güvenli bir tam sayıya indirger (NA/Inf/metin ->
