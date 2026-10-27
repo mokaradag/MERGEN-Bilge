@@ -237,23 +237,6 @@ file_ingestion_physical_identity <- function(path) {
   list(size = as.character(info$size[1]), modification_time = as.character(info$mtime[1]))
 }
 
-# Özel terfi temizliği yalnız GÜÇLÜ fiziksel anahtarla yetkilenir. Yukarıdaki
-# zayıf boyut+mtime yedeği burada kullanılmaz: başarısız kopyada yabancı bir
-# dosyayı silme yetkisi üretmemelidir. Yalnız yol diyalekti farkı giderilir.
-.mergen_promote_file_key <- function(path) {
-  p <- as.character(path %||% "")[1]
-  if (is.na(p) || !nzchar(p)) return(NULL)
-  logical <- if (.Platform$OS.type == "windows") mergen_logical_path(p) else p
-  io <- mergen_io_path(logical)
-  for (candidate in unique(c(logical, io))) {
-    info <- tryCatch(fs::file_info(candidate), error = function(e) NULL)
-    if (is.null(info) || NROW(info) != 1L || !isTRUE(is.finite(info$device_id)) ||
-        !isTRUE(is.finite(info$inode) && info$inode > 0)) next
-    return(as.list(info[c("device_id", "inode")]))
-  }
-  NULL
-}
-
 file_ingestion_prepare_promotion <- function(staging, path, transaction) {
   key <- file_ingestion_physical_identity(staging)
   if (is.null(key)) stop("Staging dosya kimliği doğrulanamadı.")
