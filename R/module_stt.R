@@ -71,7 +71,11 @@ sttServer <- function(id, parent_session, settings) {
     # Kimlik kaybında/değişiminde kabul kilitlenir, uçuştaki sonuçlar ve kuyruk
     # düşer, kayıt penceresi kapanır: sonraki yetkili deneme start_session()
     # ile tarayıcı kaydedicisini baştan kurar (yarım kalmış "Devam Et" olmaz).
+    # Gecikmeli initSTT yalnızca kendi açılışına aittir; kilit ya da yeni açılış
+    # jetonu ilerletir, bayat geri çağrı başka sahibin modalında mikrofonu açmaz.
+    stt_acilis_jetonu <- 0L
     stt_kilitle <- function() {
+      stt_acilis_jetonu <<- stt_acilis_jetonu + 1L
       rv$is_recording <- FALSE
       rv$accept_chunks <- FALSE
       rv$transcribe_gen <- isolate(rv$transcribe_gen) + 1L
@@ -184,6 +188,8 @@ sttServer <- function(id, parent_session, settings) {
         showNotification("Sesli giriş için oturum kimliği doğrulanmalıdır.", type = "warning", duration = 6)
         return(invisible(FALSE))
       }
+      stt_acilis_jetonu <<- stt_acilis_jetonu + 1L
+      acilis_jetonu <- stt_acilis_jetonu
       rv$transcription_history <- ""
       rv$transcribe_gen <- isolate(rv$transcribe_gen) + 1L
       rv$is_recording <- TRUE
@@ -307,15 +313,17 @@ sttServer <- function(id, parent_session, settings) {
       # STT modalının açık olduğunu uygulama geneline bildir
       set_stt_modal_active_js(TRUE)
 
-      # JS Client'ı başlat
+      # JS Client'ı başlat (yalnızca bu açılış hâlâ geçerli ve kimlik yetkiliyse)
       shinyjs::delay(500, {
-        session$sendCustomMessage("initSTT", list(
-          canvasId = ns("visualizer_canvas"),
-          timerId = ns("stt_timer"),
-          dbId = ns("stt_db_indicator"),
-          nsPrefix = id,
-          accentColor = char_info$accent %||% "#7C4DFF"
-        ))
+        if (identical(acilis_jetonu, stt_acilis_jetonu) && stt_yetkili()) {
+          session$sendCustomMessage("initSTT", list(
+            canvasId = ns("visualizer_canvas"),
+            timerId = ns("stt_timer"),
+            dbId = ns("stt_db_indicator"),
+            nsPrefix = id,
+            accentColor = char_info$accent %||% "#7C4DFF"
+          ))
+        }
       })
     }
 

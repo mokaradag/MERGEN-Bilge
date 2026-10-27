@@ -51,6 +51,18 @@ source(
   invisible(TRUE)
 }
 
+# shinyjs::delay gibi ifadeyi ÇAĞIRAN çerçevede (start_session yereli) bekletir;
+# test geri çağrıları istediği anda (ör. kimlik değişiminden sonra) çalıştırır.
+.stt_gecikme_biriktir <- function(kayit) {
+  kayit$fns <- list()
+  function(ms, expr) {
+    ifade <- substitute(expr)
+    cerceve <- parent.frame()
+    kayit$fns[[length(kayit$fns) + 1L]] <- function() eval(ifade, cerceve)
+    invisible(NULL)
+  }
+}
+
 test_that("sttServer start_session ve final_text içeren liste döndürür", {
   skip_if_not_installed("shiny")
 
@@ -860,11 +872,11 @@ test_that("kimlik değişimi bekleyen onayı iptal eder; önceki sahibin metni y
     .stt_env$sttServer,
     args = list(id = "stt", parent_session = ebeveyn, settings = .stt_settings()),
     {
-      ertelenen <- list()
+      ertelenen_kayit <- new.env()
       testthat::local_mocked_bindings(
         runjs = function(...) NULL,
         # Onay sonrası bekleme süresi geri çağrısı kimlik değişiminden SONRA çalışsın.
-        delay = function(ms, expr) ertelenen[[length(ertelenen) + 1L]] <<- substitute(expr),
+        delay = .stt_gecikme_biriktir(ertelenen_kayit),
         .package = "shinyjs"
       )
       testthat::local_mocked_bindings(showModal = function(...) NULL, removeModal = function(...) NULL,
@@ -877,10 +889,61 @@ test_that("kimlik değişimi bekleyen onayı iptal eder; önceki sahibin metni y
       ebeveyn$userData$user_id <- 8L
       get("mergen_session_owner_transition", envir = .stt_env, inherits = TRUE)(ebeveyn$userData, 7L, 8L)
       session$flushReact()
-      for (ifade in ertelenen) eval(ifade, envir = environment(session$returned$start_session))
+      for (geri_cagri in ertelenen_kayit$fns) geri_cagri()
       session$flushReact()
 
       expect_identical(session$returned$final_text(), "")
+    }
+  )
+})
+
+test_that("kimlik değişiminden önce zamanlanan gecikmeli initSTT yeni sahibin modalında mikrofonu açmaz", {
+  skip_if_not_installed("shiny")
+  .stt_kimlik_kancalari_yukle()
+  ebeveyn <- .stt_yetkili_ebeveyn(7L)
+  gecis <- get("mergen_session_owner_transition", envir = .stt_env, inherits = TRUE)
+
+  shiny::testServer(
+    .stt_env$sttServer,
+    args = list(id = "stt", parent_session = ebeveyn, settings = .stt_settings()),
+    {
+      init_sayisi <- 0L
+      root <- .subset2(session, "parent")
+      root$sendCustomMessage <- function(type, message) {
+        if (identical(type, "initSTT")) init_sayisi <<- init_sayisi + 1L
+      }
+      ertelenen_kayit <- new.env()
+      testthat::local_mocked_bindings(runjs = function(...) NULL,
+                                      delay = .stt_gecikme_biriktir(ertelenen_kayit),
+                                      .package = "shinyjs")
+      testthat::local_mocked_bindings(showModal = function(...) NULL, removeModal = function(...) NULL,
+                                      showNotification = function(...) NULL, .package = "shiny")
+
+      # A modalı açar; initSTT henüz çalışmadan kimlik B'ye geçer, B yeni modal açar.
+      session$returned$start_session()
+      a_geri_cagri <- ertelenen_kayit$fns[[1]]
+      ebeveyn$userData$user_id <- 8L
+      ebeveyn$userData$kimlik_sahibi <- 8L
+      gecis(ebeveyn$userData, 7L, 8L)
+      session$flushReact()
+      session$returned$start_session()
+      b_geri_cagri <- ertelenen_kayit$fns[[2]]
+
+      # A'nın bayat geri çağrısı aynı canvas id'sine rağmen kaydediciyi başlatmaz.
+      a_geri_cagri()
+      expect_identical(init_sayisi, 0L)
+      b_geri_cagri()
+      expect_identical(init_sayisi, 1L)
+
+      # Kimlik tamamen düşerse bekleyen açılış da başlatılmaz.
+      session$returned$start_session()
+      c_geri_cagri <- ertelenen_kayit$fns[[3]]
+      ebeveyn$userData$auth_initialized <- FALSE
+      ebeveyn$userData$user_id <- 0L
+      gecis(ebeveyn$userData, 8L, 0L)
+      session$flushReact()
+      c_geri_cagri()
+      expect_identical(init_sayisi, 1L)
     }
   )
 })
