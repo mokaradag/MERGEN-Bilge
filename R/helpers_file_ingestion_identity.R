@@ -226,8 +226,8 @@ file_ingestion_physical_identity <- function(path) {
   logical <- if (.Platform$OS.type == "windows") mergen_logical_path(p) else p
   io <- mergen_io_path(logical)
   for (candidate in unique(c(logical, io))) {
-    info <- tryCatch(fs::file_info(candidate), error = function(e) NULL)
-    if (is.null(info) || NROW(info) != 1L || is.na(info$size) || is.na(info$modification_time)) next
+    info <- try(fs::file_info(candidate), silent = TRUE)
+    if (inherits(info, "try-error") || NROW(info) != 1L || is.na(info$size) || is.na(info$modification_time)) next
     alanlar <- if (is.finite(info$inode) && info$inode > 0) c("device_id", "inode", "size", "modification_time") else
       c("size", "modification_time")
     return(lapply(info[alanlar], as.character))
