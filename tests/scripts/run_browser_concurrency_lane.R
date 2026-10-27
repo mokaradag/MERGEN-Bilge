@@ -80,8 +80,8 @@ cfg <- list(
   # kosumu yoneten tek deger virtual_time_ms'tir ve kanitta o raporlanir.
   base_url = sub("/+$", "", bc_str("MERGEN_BROWSER_CONCURRENCY_BASE_URL", "http://127.0.0.1:8009/")),
   headless = bc_flag("MERGEN_BROWSER_CONCURRENCY_HEADLESS", TRUE),
-  # Hedef uygulama MERGEN_ENABLE_UX_SMOKE=true ile çalışmalı; harness açık
-  # başlatma ister (?autostart=1).
+  # Hedef uygulama MERGEN_ENABLE_UX_SMOKE=true ile calismali; harness acik
+  # baslatma ister (?autostart=1).
   target = bc_str("MERGEN_BROWSER_CONCURRENCY_TARGET", "/smoke/ux-smoke.html?autostart=1"),
   virtual_time_ms = max(10000L, bc_int("MERGEN_BROWSER_CONCURRENCY_VIRTUAL_TIME_MS", 120000L))
 )

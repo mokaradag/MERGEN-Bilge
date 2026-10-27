@@ -34,6 +34,16 @@ file_ingestion_shiny_uploads <- function(uploads, upload_root = tempdir()) {
   list(uploads = uploads[kabul, sutunlar, drop = FALSE], rejected = sum(!kabul))
 }
 
+# Yükleme gözlemcisi girişi: kapıdan geçmeyen satırlar kullanıcıya bildirilir
+# ve alım hattına yalnızca Shiny kaynaklı satırlar gider.
+file_ingestion_session_uploads <- function(uploads, session) {
+  yukleme <- file_ingestion_shiny_uploads(uploads)
+  if (yukleme$rejected > 0L && exists("showToast", mode = "function", inherits = TRUE)) {
+    showToast(session, "Yükleme kaynağı doğrulanamadı; dosya alınmadı.", "error")
+  }
+  yukleme$uploads
+}
+
 # Kabulden önce geçici kaynakları işe bağlar; büyük bayt kopyası yapmaz.
 file_ingestion_bind_sources <- function(job) {
   kaynaklar <- file.path(tempdir(), "mergen_ingest_sources", gsub("[^A-Za-z0-9_.-]", "_", job$id))

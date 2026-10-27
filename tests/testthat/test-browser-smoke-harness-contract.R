@@ -65,7 +65,7 @@
 }
 
 testthat::test_that("browser UX smoke harness gerçek UI anchor'larıyla hizalıdır", {
-  smoke_html <- .browser_smoke_read_text("www/smoke/ux-smoke.html")
+  smoke_html <- .browser_smoke_read_text("tests/smoke/ux-smoke.html")
   ui_text <- .browser_smoke_read_text("ui.R")
   welcome_text <- .browser_smoke_read_text("R/welcome_screen_modern.R")
   input_js <- .browser_smoke_read_text("www/js/input_handlers.js")

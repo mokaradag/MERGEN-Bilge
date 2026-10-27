@@ -226,7 +226,7 @@ $(document).ready(function() {
 
     // Browser smoke test seam:
     // Üretim UX davranışını değiştirmez; yalnızca mevcut handler'ları
-    // www/smoke/ux-smoke.html içinden sentetik olarak çağırmayı sağlar.
+    // tests/smoke/ux-smoke.html içinden sentetik olarak çağırmayı sağlar.
     window.MergenStreamingSmoke = {
         init: handleInitStreamingMessage,
         delta: handleStreamingDelta,

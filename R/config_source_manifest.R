@@ -191,7 +191,7 @@ source_manifest_sections <- list(
     "R/helpers_preview.R",
     "R/helpers_file_summary_capacity.R", "R/helpers_file_summary_queue.R", "R/helpers_file_summary_task.R", "R/helpers_file_pipeline.R",  # özet kapasite/kuyruk/görev pipeline'dan ÖNCE
     "R/helpers_files_path.R", "R/helpers_files_promote_probe.R", "R/helpers_files_promote_target.R", "R/helpers_files_staging_copy.R",  # sıra: yol -> yoklama -> terfi -> aşamalı kopya
-    "R/helpers_files_copy_promote.R",
+    "R/helpers_files_copy_promote.R", "R/helpers_files_docx_reader.R",  # sınırlı DOCX okuyucu helpers_files'tan ÖNCE
     "R/helpers_files.R",
     "R/helpers_file_ingestion_task.R",
     "R/helpers_file_ingestion_identity.R", "R/helpers_file_ingestion_worker.R",

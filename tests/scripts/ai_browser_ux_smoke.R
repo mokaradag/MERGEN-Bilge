@@ -51,7 +51,7 @@ find_repo_root <- function() {
   for (cand in candidates) {
     if (file.exists(file.path(cand, "app.R")) &&
         dir.exists(file.path(cand, "R")) &&
-        dir.exists(file.path(cand, "www", "smoke"))) {
+        dir.exists(file.path(cand, "tests", "smoke"))) {
       return(normalizePath(cand, winslash = "/", mustWork = TRUE))
     }
   }

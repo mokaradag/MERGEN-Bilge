@@ -817,15 +817,20 @@ test_that("kimlik kaybında kayıt kilitlenir ve sonraki parçalar gönderilmez"
                                       .package = "shinyjs")
       testthat::local_mocked_bindings(showModal = function(...) NULL, showNotification = function(...) NULL,
                                       .package = "shiny")
+      kapanan <- 0L
+      testthat::local_mocked_bindings(removeModal = function(...) kapanan <<- kapanan + 1L, .package = "shiny")
       session$returned$start_session()
       session$setInputs(audio_chunk = "ZHVtbXk=")
       expect_identical(sayac$n, 1L)
+      expect_identical(session$returned$final_text(), "")
 
       # Token süresi doldu: kanonik yetkisizleştirme kimliği düşürür.
       ebeveyn$userData$auth_initialized <- FALSE
       ebeveyn$userData$user_id <- 0L
       get("mergen_session_owner_transition", envir = .stt_env, inherits = TRUE)(ebeveyn$userData, 7L, 0L)
       session$flushReact()
+      # Kayıt penceresi kapanır; uçuştaki parça kuyruğu sıfırlanır.
+      expect_gte(kapanan, 1L)
       session$setInputs(audio_chunk = "c2Vjb25k")
       expect_identical(sayac$n, 1L)
 

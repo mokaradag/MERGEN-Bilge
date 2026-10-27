@@ -263,7 +263,7 @@ test_that("server-side markdown safety helper kaynak manifestinde doğru sırada
 })
 
 test_that("tehlikeli streaming fixture'ları statik ve browser smoke kapsamındadır", {
-  smoke_text <- .read_repo_text_streaming_markdown_safety("www/smoke/ux-smoke.html")
+  smoke_text <- .read_repo_text_streaming_markdown_safety("tests/smoke/ux-smoke.html")
   parser_text <- .read_repo_text_streaming_markdown_safety("www/js/markdown-parser.js")
 
   # Not: ux-smoke.html inline <script> içinde gerçek </script> yazılamaz;

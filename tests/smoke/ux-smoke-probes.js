@@ -1,5 +1,5 @@
 // ==============================================================================
-// Dosya Yolu: www/smoke/ux-smoke-probes.js
+// Dosya Yolu: tests/smoke/ux-smoke-probes.js
 // Açıklama:
 //   MERGEN UX smoke sayfası için küçük, üretime yüklenmeyen browser probe
 //   yardımcıları. Gerçek uygulama DOM'una yalnızca smoke harness içinden dokunur.

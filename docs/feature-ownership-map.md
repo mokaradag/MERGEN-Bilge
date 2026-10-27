@@ -52,7 +52,7 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   yapısal ayrım + promise zinciri davranışı: başarı/başarısız/durdurulmuş/
   reddedilmiş yollar, deterministik `promises`+`later` ile),
   `test-chat-runtime-*`.
-- **Smoke/kanıt:** `www/smoke/ux-smoke.html` (streaming init/delta/stale/finalize),
+- **Smoke/kanıt:** `tests/smoke/ux-smoke.html` (streaming init/delta/stale/finalize),
   VM evidence `browser_ux_smoke`.
 - **Bilinen risk / sıradaki hedef:** `serverInitChatRuntime`, `chat_simulate_streaming`
   (KARAR/erken-çıkış dalları), `sendMessageInit` (send_message erken-dönüş korumaları),
@@ -554,7 +554,7 @@ kimliğini gösterir (guard testleri ve odaklı doğrulama komutları orada da l
   (VERİ/DOĞRULAYICI ayrımı + bölümleme korunumu),
   `test-frontend-maintainability-ratchet.R`, `test-frontend-selector-contract.R`.
 - **Smoke/kanıt:** seam doctor (`tests/scripts/seam_doctor.R`), frontend complexity
-  doctor, `www/smoke/ux-smoke.html`.
+  doctor, `tests/smoke/ux-smoke.html`.
 - **Bilinen risk / sıradaki hedef:** varlık manifesti VERİ/DOĞRULAYICI/RENDER
   olarak üç dosyaya bölündü (`config_ui_asset_zones.R` deseni):
   `config_ui_assets.R` 690/17 → 425/1 (SADECE VERİ; sıranın TEK sahibi),

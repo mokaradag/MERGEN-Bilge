@@ -362,12 +362,7 @@ moduleServer(id, function(input, output, session) {
 	observeEvent(input$execute_bulk_upload, {
       req(input$bulk_upload)
 
-      # Yalnızca Shiny'nin bu oturuma verdiği yükleme kaynakları alınır.
-      yukleme <- file_ingestion_shiny_uploads(input$bulk_upload)
-      if (yukleme$rejected > 0L) {
-        showToast(session, "Yükleme kaynağı doğrulanamadı; dosya alınmadı.", "error")
-      }
-      files_df <- yukleme$uploads
+      files_df <- file_ingestion_session_uploads(input$bulk_upload, session)  # yalnızca Shiny kaynaklı
       shinyjs::reset(ns("bulk_upload"))
 	  shinyjs::runjs("$('#bulk_upload_div .progress').hide(); $('#bulk_upload_div .shiny-file-input-progress').hide();")
       session$sendCustomMessage('resetBulkUploadCaption', list())

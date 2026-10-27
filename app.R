@@ -87,22 +87,26 @@ safe_add_resource_path <- function(prefix, directory) {
   invisible(TRUE)
 }
 
-# www/smoke test harness'ı gerçek uygulama eylemleri (sohbet/istem) tetikler;
-# üretimde statik kaynak olarak sunulmaz. Yalnızca bakımcının smoke ortamında
-# açıkça MERGEN_ENABLE_UX_SMOKE=true vermesiyle kaydedilir.
+# UX smoke test harness'ı (tests/smoke) gerçek uygulama eylemleri tetikler.
+# www/ dışında tutulur; böylece hiçbir statik yol (img -> www takma adı ve
+# Windows'ta büyük/küçük harf varyantları dahil) onu sunamaz. Yalnızca bakımcı
+# smoke ortamında açıkça MERGEN_ENABLE_UX_SMOKE=true verildiğinde /smoke olur.
 mergen_ux_smoke_enabled <- function() {
   tolower(trimws(Sys.getenv("MERGEN_ENABLE_UX_SMOKE", ""))) %in% c("1", "true", "yes", "evet")
 }
 
-mergen_static_resource_subdirs <- function(subdirs, smoke_enabled = mergen_ux_smoke_enabled()) {
-  if (isTRUE(smoke_enabled)) subdirs else setdiff(subdirs, "smoke")
+mergen_register_ux_smoke_resource <- function(enabled = mergen_ux_smoke_enabled(),
+                                              directory = file.path("tests", "smoke")) {
+  if (!isTRUE(enabled) || !dir.exists(directory)) return(invisible(FALSE))
+  safe_add_resource_path("smoke", directory)
 }
 
 if (dir.exists("www")) {
-  for (subdir in mergen_static_resource_subdirs(list.dirs("www", recursive = FALSE, full.names = FALSE))) {
+  for (subdir in list.dirs("www", recursive = FALSE, full.names = FALSE)) {
     safe_add_resource_path(subdir, file.path("www", subdir))
   }
   safe_add_resource_path("img", "www")
+  mergen_register_ux_smoke_resource()
 } else {
   warning("www klasörü bulunamadı; statik kaynaklar kaydedilmedi.")
 }

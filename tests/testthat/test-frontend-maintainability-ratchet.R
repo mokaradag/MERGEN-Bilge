@@ -306,7 +306,7 @@ test_that("frontend bakım raporu top-risk özetini üretir", {
   expect_gt(nrow(top_risk_summary$highest_shiny_handler_js), 0L)
 
   smoke_assets <- top_risk_summary$smoke_only_assets
-  probe_row <- smoke_assets[smoke_assets$file == "www/smoke/ux-smoke-probes.js", , drop = FALSE]
+  probe_row <- smoke_assets[smoke_assets$file == "tests/smoke/ux-smoke-probes.js", , drop = FALSE]
 
   expect_equal(
     nrow(probe_row),

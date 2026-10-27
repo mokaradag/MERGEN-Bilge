@@ -118,13 +118,10 @@ chatInputObserversInit <- function(input, session, values, settings_data,
   observeEvent(input$file_upload, {
     req(input$file_upload)
     # Yalnızca Shiny'nin bu oturuma verdiği yükleme kaynakları alınır.
-    yukleme <- file_ingestion_shiny_uploads(input$file_upload)
-    if (yukleme$rejected > 0L) {
-      showToast(session, "Yükleme kaynağı doğrulanamadı; dosya alınmadı.", "error")
-    }
-    req(nrow(yukleme$uploads) > 0L)
+    yuklemeler <- file_ingestion_session_uploads(input$file_upload, session)
+    req(nrow(yuklemeler) > 0L)
     handle_file_upload_batch(
-      uploads_df             = yukleme$uploads,
+      uploads_df             = yuklemeler,
       current_user_id        = resolve_chat_input_user_id(),
       session                = session,
       settings_data          = settings_data,

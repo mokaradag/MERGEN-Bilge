@@ -254,3 +254,22 @@ test_that("geri yüklenen içerik sunucuda yeniden üretilir; istemci HTML'i ve 
     expect_match(html, "&lt;img", fixed = TRUE)
   })
 })
+
+test_that("geri yükleme toplam boyut bütçesi render'dan önce uygulanır", {
+  env <- .kimlik_storage_env()
+  cagri <- 0L
+  gercek <- env$db_message_process_text_content
+  env$db_message_process_text_content <- function(...) {
+    cagri <<- cagri + 1L
+    list(html = "<p>x</p>", has_code = FALSE)
+  }
+  withr::defer(env$db_message_process_text_content <- gercek)
+  # Tek tek geçerli (200 x 199.999) ama toplamda bütçeyi aşan doğrudan girdi.
+  parca <- strrep("a", 199999L)
+  buyuk <- rep(list(list(type = "user", content = parca)), 200L)
+  expect_length(env$mergen_chat_storage_restore_messages(buyuk), 0L)
+  expect_identical(cagri, 0L)
+  # Bütçe içindeki kayıt normal geri yüklenir.
+  expect_length(env$mergen_chat_storage_restore_messages(buyuk[1:5]), 5L)
+  expect_identical(cagri, 5L)
+})

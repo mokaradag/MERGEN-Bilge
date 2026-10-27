@@ -1086,7 +1086,9 @@
 
   (function initSmokeStart() {
     var startButton = document.getElementById("start-smoke");
-    if (/\/img\/smoke\/ux-smoke\.html$/.test(window.location.pathname || "")) {
+    // Savunma derinliği: harness www/ dışında olduğundan img takma yolu onu
+    // sunamaz; yine de bu yoldan (büyük/küçük harf fark etmeksizin) çalışmaz.
+    if (/\/img\/smoke\//i.test(window.location.pathname || "")) {
       statusEl.textContent = "UX smoke yalnızca kapılı /smoke/ yolundan çalıştırılabilir.";
       return;
     }

@@ -206,4 +206,47 @@ for (const legacy of [JSON.stringify([{ id: 'x', type: 'ai', content: '<img src=
   assert.equal(chatProfile.getItem('mergen_current_chat'), null);
 }
 
+// 9) Çıkış sonrası sayfa kapanırken (beforeunload) sohbet yeniden yazılmaz.
+(function logoutThenUnload() {
+  const local = storage();
+  const listeners = {};
+  const msgHandlers = new Map();
+  const bubble = { classList: { contains: c => c === 'user-message' }, textContent: 'gizli soru',
+                   closest: () => ({ id: 'message_wrapper_m1' }) };
+  const chat = { querySelectorAll: sel => (sel === '.message-bubble' ? [bubble] : []) };
+  const jq = () => new Proxy({}, { get: (t, k) => (k === 'ready' ? fn => fn() : () => jq()) });
+  const context = vm.createContext({
+    $: jq, jQuery: jq, console: { log() {}, warn() {}, error() {} }, JSON, Math, Date, Array, String, Uint8Array,
+    localStorage: local, sessionStorage: storage(),
+    location: { origin: 'https://mergen.test', pathname: '/bilge/', search: '', hash: '', replace() {}, reload() {} },
+    history: { replaceState() {} }, crypto: { getRandomValues: a => nodeCrypto.randomFillSync(a) },
+    atob: s => Buffer.from(s, 'base64').toString('binary'),
+    setTimeout: () => 1,
+    document: {
+      readyState: 'complete', documentElement: { classList: { add() {}, remove() {} } }, addEventListener() {},
+      getElementById: id => (id === 'chat_content_container' ? chat
+        : id === 'sso_module-sso_config_data' ? { textContent: JSON.stringify(SSO_CONFIG) } : null),
+      querySelector: () => null, querySelectorAll: () => []
+    },
+    Shiny: { addCustomMessageHandler: (n, fn) => msgHandlers.set(n, fn), setInputValue() {} }
+  });
+  context.window = context;
+  context.addEventListener = (n, fn) => { listeners[n] = fn; };
+  local.setItem('mergen_bilge_jwt_token', jwt('A', 3600));
+  vm.runInContext(ssoSource, context, { filename: 'sso_auth.js' });
+  vm.runInContext(handlersSource, context, { filename: 'shiny_message_handlers.js' });
+  msgHandlers.get('saveCurrentChat')({ owner: 'etiketA', messages: [{ type: 'user', content: 'gizli soru' }] });
+
+  // Kontrol: çıkış yoksa kapanışta sahibe bağlı kayıt yazılır (mevcut davranış).
+  listeners.beforeunload();
+  assert.equal(JSON.parse(local.getItem('mergen_current_chat')).owner, 'etiketA');
+
+  vm.runInContext(logoutOnclick, context, { filename: 'logout_onclick.js' });
+  listeners.beforeunload();
+  assert.equal(local.getItem('mergen_current_chat'), null, 'çıkıştan sonra beforeunload sohbeti geri yazmamalı');
+  assert.equal(local.getItem('mergen_bilge_jwt_token'), null);
+  msgHandlers.get('saveCurrentChat')({ owner: 'etiketA', messages: [{ type: 'user', content: 'gizli soru' }] });
+  assert.equal(local.getItem('mergen_current_chat'), null, 'çıkıştan sonra gelen kayıt isteği yok sayılmalı');
+})();
+
 console.log('browser identity regressions passed');

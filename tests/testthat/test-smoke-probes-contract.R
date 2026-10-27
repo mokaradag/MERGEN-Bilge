@@ -48,7 +48,7 @@
 }
 
 testthat::test_that("UX smoke probe script is loaded and called by browser harness", {
-  smoke_html <- .smoke_probes_read_text("www", "smoke", "ux-smoke.html")
+  smoke_html <- .smoke_probes_read_text("tests", "smoke", "ux-smoke.html")
 
   .smoke_probes_expect_all(
     smoke_html,
@@ -69,7 +69,7 @@ testthat::test_that("UX smoke probe script is loaded and called by browser harne
 })
 
 testthat::test_that("UX smoke probes cover navigation, video lifecycle and file display names", {
-  probes_js <- .smoke_probes_read_text("www", "smoke", "ux-smoke-probes.js")
+  probes_js <- .smoke_probes_read_text("tests", "smoke", "ux-smoke-probes.js")
 
   .smoke_probes_expect_all(
     probes_js,

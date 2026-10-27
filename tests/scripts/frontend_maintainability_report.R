@@ -289,7 +289,7 @@ light_theme_duplicate_selectors <- function(duplicate_data) {
 
 # ------------------------------------------------------------------------------
 # Hayalet (orphan) seçici taraması:
-# CSS'te stillenen bir sınıf, runtime kaynaklarının (R/, www/js, www/smoke,
+# CSS'te stillenen bir sınıf, runtime kaynaklarının (R/, www/js, tests/smoke,
 # kök R dosyaları) hiçbirinde geçmiyorsa o seçici DOM'da asla eşleşemez.
 # Eski 13 dosyalık açık tema zincirinin ~%46'sı böyle hayalet seçicilerden
 # oluşuyordu; bu tarama aynı desenin geri dönmesini görünür kılar ve ratchet
@@ -347,7 +347,7 @@ frontend_orphan_runtime_corpus <- function() {
   corpus_files <- c(
     list.files(file.path(repo_root, "R"), pattern = "\\.R$", full.names = TRUE, recursive = TRUE),
     list.files(file.path(repo_root, "www", "js"), pattern = "\\.js$", full.names = TRUE, recursive = TRUE),
-    list.files(file.path(repo_root, "www", "smoke"), pattern = "\\.(js|html)$", full.names = TRUE, recursive = TRUE),
+    list.files(file.path(repo_root, "tests", "smoke"), pattern = "\\.(js|html)$", full.names = TRUE, recursive = TRUE),
     file.path(repo_root, c("ui.R", "server.R", "global.R", "welcome_screen.R"))
   )
   corpus_files <- corpus_files[file.exists(corpus_files)]
@@ -527,8 +527,8 @@ frontend_top_duplicate_selectors <- function(data, n = 25L) {
 
 frontend_smoke_only_assets <- function() {
   smoke_paths <- c(
-    "www/smoke/ux-smoke.html",
-    "www/smoke/ux-smoke-probes.js"
+    "tests/smoke/ux-smoke.html",
+    "tests/smoke/ux-smoke-probes.js"
   )
 
   smoke_abs <- normalizePath(

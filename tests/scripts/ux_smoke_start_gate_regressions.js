@@ -11,7 +11,7 @@ const root = path.resolve(__dirname, '../..');
 
 // Harness'ın tek satır içi betiği, sabit açılış/kapanış işaretleri arasından
 // kesilir (kendi dosyamız; HTML ayrıştırma/filtreleme yapılmaz).
-const html = fs.readFileSync(path.join(root, 'www/smoke/ux-smoke.html'), 'utf8').replace(/\r\n/g, '\n');
+const html = fs.readFileSync(path.join(root, 'tests/smoke/ux-smoke.html'), 'utf8').replace(/\r\n/g, '\n');
 const OPEN = '<script>\n';
 const CLOSE = '\n</script>';
 const start = html.indexOf(OPEN);
@@ -68,9 +68,10 @@ assert.equal(p.nodes['start-smoke'].disabled, true);
 p = load('/bilge/smoke/ux-smoke.html', '?autostart=1');
 assert.ok(p.writes.length > 0);
 
-// 3) /img takma yolundan hiç çalışmaz (autostart olsa bile).
-for (const search of ['', '?autostart=1']) {
-  p = load('/bilge/img/smoke/ux-smoke.html', search);
+// 3) /img takma yolundan (harf varyantları dahil) hiç çalışmaz.
+for (const [yol, search] of [['/bilge/img/smoke/ux-smoke.html', ''], ['/bilge/img/smoke/ux-smoke.html', '?autostart=1'],
+                             ['/bilge/IMG/Smoke/UX-SMOKE.HTML', '?autostart=1']]) {
+  p = load(yol, search);
   p.click();
   assert.deepEqual(p.writes, []);
   assert.deepEqual(p.nodes['app-frame'].srcSet, []);

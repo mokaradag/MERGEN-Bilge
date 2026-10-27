@@ -250,7 +250,7 @@ $(document).ready(function() {
       payload = normalizeMessagePayload(payload) || {};
       var owner = typeof payload.owner === 'string' ? payload.owner : '';
       var messages = Array.isArray(payload.messages) ? payload.messages : [];
-      if (!owner) return;
+      if (!owner || window.__mergenBrowserAuthCleared) return;
       chatStorageOwner = owner;
       if (messages.length > 0) {
         localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify({ v: 2, owner: owner, messages: messages }));
@@ -292,7 +292,7 @@ $(document).ready(function() {
   window.addEventListener('beforeunload', function() {
     const chatContainer = document.getElementById('chat_content_container');
     // Sunucu bu oturum için sahip etiketi vermediyse tarayıcıya sohbet yazılmaz.
-    if (chatContainer && chatStorageOwner) {
+    if (chatContainer && chatStorageOwner && !window.__mergenBrowserAuthCleared) {
       const messages = chatContainer.querySelectorAll('.message-bubble');
       if (messages.length > 0) {
         const messageData = [];

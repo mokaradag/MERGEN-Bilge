@@ -208,7 +208,7 @@ mb_sidebar_controls_row <- function(show_logout = FALSE, logout_url = "") {
       # tarayıcı profilinin sonraki ziyareti çıkış yapan hesapla açılırdı.
       paste0(
         "try{if(typeof window.mergenClearBrowserAuthState==='function'){",
-        "window.mergenClearBrowserAuthState();}else{",
+        "window.mergenClearBrowserAuthState();}else{window.__mergenBrowserAuthCleared=true;",
         "localStorage.removeItem('mergen_bilge_jwt_token');",
         "localStorage.removeItem('mergen_current_chat');}",
         "}catch(e){console.warn('[MERGEN] Browser auth cleanup failed:',e);}",

@@ -33,11 +33,18 @@ mergen_chat_storage_payload <- function(messages) {
 # render sözleşmesiyle (db_message_process_text_content) yeniden üretilir.
 mergen_chat_storage_restore_messages <- function(raw_messages,
                                                  max_messages = 200L,
-                                                 max_chars = 200000L) {
+                                                 max_chars = 200000L,
+                                                 max_total_chars = 2000000L) {
   if (!is.list(raw_messages) || length(raw_messages) == 0L ||
       length(raw_messages) > max_messages) {
     return(list())
   }
+  # Toplam bütçe render'dan ÖNCE denetlenir: istemci girdiyi doğrudan gönderebilir.
+  toplam <- sum(vapply(raw_messages, function(m) {
+    icerik <- if (is.list(m)) m$content else NULL
+    if (is.character(icerik) && length(icerik) == 1L && !is.na(icerik)) nchar(icerik, type = "bytes") else 0
+  }, numeric(1)))
+  if (toplam > max_total_chars) return(list())
   damga <- floor(as.numeric(Sys.time()) * 1000)
   sonuc <- list()
   for (i in seq_along(raw_messages)) {

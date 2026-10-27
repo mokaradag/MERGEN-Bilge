@@ -12,6 +12,9 @@
   // SSO kapalıyken de tanımlıdır; kenar çubuğu çıkışı yerel modda da çalışır.
   // ===========================================================================
   window.mergenClearBrowserAuthState = function() {
+    // Çıkış sonrası yönlendirme sırasında (beforeunload) sohbet yeniden
+    // yazılmasın: bu sayfa ömrü boyunca tarayıcı sohbet kaydı kapatılır.
+    window.__mergenBrowserAuthCleared = true;
     try { localStorage.removeItem('mergen_bilge_jwt_token'); } catch (e) {}
     try { localStorage.removeItem('mergen_current_chat'); } catch (e) {}
     try { sessionStorage.removeItem('mergen_sso_login_state'); } catch (e) {}

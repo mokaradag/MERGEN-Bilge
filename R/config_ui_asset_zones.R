@@ -24,8 +24,8 @@
 #               bölgeye de atanmalıdır; aksi halde sözleşme testi düşer.
 #             - Manifest dışı ama runtime'da kullanılan (inline/tags$head)
 #               varlıklar ui_asset_unmanifested_ownership içinde sahiplenilir.
-#             - www/smoke/* dosyaları üretim manifestine ASLA eklenmez; burada
-#               yalnızca sahiplik kaydı tutulur.
+#             - UX smoke harness'ı www/ dışında (tests/smoke) tutulur; üretim
+#               manifestine ve hiçbir www statik yoluna ASLA girmez.
 #
 #           Koruyan sözleşme testleri:
 #             - tests/testthat/test-ui-asset-zones-contract.R
@@ -513,14 +513,6 @@ ui_asset_unmanifested_ownership <- list(
   "js/app_loading_media.js" = list(
     owner_seam = "kimlik_sso",
     reason = "R/module_app_loading.R başlangıç overlay'inde inline gömer."
-  ),
-  "smoke/ux-smoke.html" = list(
-    owner_seam = "frontend_varlik",
-    reason = "Smoke-only tarayıcı harness'ı; üretim manifestine eklenmez."
-  ),
-  "smoke/ux-smoke-probes.js" = list(
-    owner_seam = "frontend_varlik",
-    reason = "Smoke-only probe katmanı; üretim manifestine eklenmez."
   ),
   # optional_in_checkout = TRUE: dosya yalnızca on-prem VM çalışma kopyasında
   # bulunur (renv.lock provenance deseni). Cloud checkout'unda yokluğu hata

@@ -68,14 +68,18 @@ sttServer <- function(id, parent_session, settings) {
       isTRUE(!is.na(uid) && uid > 0L)
     }
 
-    # Kimlik kaybında/değişiminde kabul kilitlenir ve uçuştaki sonuçlar düşer.
+    # Kimlik kaybında/değişiminde kabul kilitlenir, uçuştaki sonuçlar ve kuyruk
+    # düşer, kayıt penceresi kapanır: sonraki yetkili deneme start_session()
+    # ile tarayıcı kaydedicisini baştan kurar (yarım kalmış "Devam Et" olmaz).
     stt_kilitle <- function() {
       rv$is_recording <- FALSE
       rv$accept_chunks <- FALSE
-      rv$expect_final_chunk <- FALSE
       rv$transcribe_gen <- isolate(rv$transcribe_gen) + 1L
+      reset_stt_queue()
       try(shinyjs::runjs(sprintf("window.STT_Client && window.STT_Client.stopAndCleanup('%s');", id)),
           silent = TRUE)
+      try(set_stt_modal_active_js(FALSE), silent = TRUE)
+      try(removeModal(session = session), silent = TRUE)
       invisible(NULL)
     }
 
