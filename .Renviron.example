@@ -594,6 +594,17 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #   Yanıt vermeyen LibreOffice süreci çağrıyı süresiz bloke ediyordu.
 # MERGEN_DOCX_PDF_TIMEOUT_SEC=120
 #
+# --- DOCX metin okuma sınırları ---
+#   word/document.xml açılmış boyutu (MB) ve ayrıştırma öncesi öğe sayısı
+#   sınırı; aşan belge XML DOM kurulmadan reddedilir (sıkıştırma/düğüm bombası).
+# MERGEN_DOCX_MAX_XML_MB=25
+# MERGEN_DOCX_MAX_XML_NODES=750000
+#
+# --- UX smoke harness'ı (varsayılan KAPALI; üretimde AÇMAYIN) ---
+#   www/smoke test sayfası gerçek uygulama eylemleri tetikler. /smoke/ yolu
+#   yalnızca bakımcı smoke koşusu için TRUE verildiğinde sunulur.
+# MERGEN_ENABLE_UX_SMOKE=false
+#
 # --- Tanılama (varsayılan KAPALI) ---
 #   Grep-dostu, sır-redakteli ilk-token/akış perf işaretleri için: MERGEN_PERF_LOG=1.
 # MERGEN_PERF_LOG=0

@@ -306,13 +306,15 @@ build_chartlab_message_static <- function(raw_text, message_id) {
   for (p in parts) {
     if (identical(p$kind, "text")) {
       if (nzchar(trimws(p$value))) {
+        # DB'den geri yüklenen model metni canlı yolla aynı güvenli markdown
+        # sözleşmesinden geçer; ham HTML burada da işaretleme olamaz.
         html_chunks <- append(
           html_chunks,
-          commonmark::markdown_html(
+          as.character(render_safe_markdown_html(
             p$value,
             hardbreaks = TRUE,
             extensions = c("strikethrough", "table")
-          )
+          ))
         )
       }
 

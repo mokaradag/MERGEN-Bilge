@@ -45,6 +45,7 @@
 <body>
   <div id="runner">
     <div id="status">UX smoke hazırlanıyor...</div>
+    <button type="button" id="start-smoke" disabled>UX smoke'u başlat</button>
     <div id="log"></div>
   </div>
   <iframe id="app-frame" title="MERGEN UX smoke target"></iframe>
@@ -1073,7 +1074,32 @@
     }
   }
 
-  run();
+  // Sayfa yüklemesi tek başına gerçek uygulama eylemi (istem, sohbet, depolama
+  // değişikliği) başlatmaz. Harness yalnızca sunucunun bakımcı kapısıyla
+  // (MERGEN_ENABLE_UX_SMOKE) kaydettiği /smoke/ yolundan çalışır; bakımcı
+  // "başlat" düğmesine basar ya da otomasyon koşucusu açıkça ?autostart=1 verir.
+  function startSmoke(startButton) {
+    if (startButton) startButton.disabled = true;
+    statusEl.textContent = "UX smoke çalışıyor...";
+    run();
+  }
+
+  (function initSmokeStart() {
+    var startButton = document.getElementById("start-smoke");
+    if (/\/img\/smoke\/ux-smoke\.html$/.test(window.location.pathname || "")) {
+      statusEl.textContent = "UX smoke yalnızca kapılı /smoke/ yolundan çalıştırılabilir.";
+      return;
+    }
+    if (new URLSearchParams(window.location.search || "").get("autostart") === "1") {
+      startSmoke(startButton);
+      return;
+    }
+    statusEl.textContent = "UX smoke hazır; başlatmak için düğmeye basın.";
+    if (startButton) {
+      startButton.disabled = false;
+      startButton.addEventListener("click", function () { startSmoke(startButton); });
+    }
+  })();
 })();
 </script>
 </body>

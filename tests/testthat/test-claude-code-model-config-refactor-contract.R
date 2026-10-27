@@ -160,7 +160,6 @@ test_that("Claude Code model/settings yardımcıları ayrı dosyaya taşınmış
     "escape_non_ascii",
     "ensure_utf8",
     "is_windows_unc_path",
-    "normalize_cmd_workdir",
     "build_processx_command",
     "parse_claude_code_json_output",
     "get_safe_claude_cli_workdir"

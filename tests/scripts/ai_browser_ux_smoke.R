@@ -129,7 +129,8 @@ if (isTRUE(use_external_app)) {
   url <- sub("/+$", "", external_base_url)
 }
 
-smoke_url <- sprintf("%s/smoke/ux-smoke.html", url)
+# Harness yalnızca açık başlatmayla çalışır; otomasyon bunu ?autostart=1 ile verir.
+smoke_url <- sprintf("%s/smoke/ux-smoke.html?autostart=1", url)
 
 cat("== MERGEN browser UX smoke ==\n")
 cat(sprintf("Repo root: %s\n", repo_root))
@@ -239,6 +240,7 @@ if (!isTRUE(use_external_app)) {
     "Sys.setenv(",
     "MERGEN_RUN_APP='false',",
     "MERGEN_DISABLE_FUTURES='true',",
+    "MERGEN_ENABLE_UX_SMOKE='true',",
     "TZ='UTC',",
     "LOCAL_LLM_ENDPOINT=ifelse(nzchar(Sys.getenv('LOCAL_LLM_ENDPOINT')), Sys.getenv('LOCAL_LLM_ENDPOINT'), 'http://test.local/v1'),",
     "DB_DSN=ifelse(nzchar(Sys.getenv('DB_DSN')), Sys.getenv('DB_DSN'), 'test-dsn'),",
@@ -269,6 +271,7 @@ if (!isTRUE(use_external_app)) {
   on.exit(cleanup(), add = TRUE)
 } else {
   cat(sprintf("Using externally running app: %s\n", url))
+  cat("NOTE: External app must run with MERGEN_ENABLE_UX_SMOKE=true to serve /smoke/.\n")
 }
 
 read_url <- function(target) {

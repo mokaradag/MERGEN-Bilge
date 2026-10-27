@@ -97,11 +97,8 @@ test_that("Claude Code process yardımcıları ayrı dosyaya taşınmıştır", 
     "escape_non_ascii",
     "ensure_utf8",
     "is_windows_unc_path",
-    "normalize_cmd_workdir",
-    "quote_windows_cmd_token",
-    "resolve_windows_cmd_path",
     "get_safe_processx_launch_workdir",
-    "build_windows_cmd_invocation_line",
+    "cc_resolve_windows_cli_shim",
     "build_processx_command",
     "parse_claude_code_json_output",
     "get_safe_claude_cli_workdir"
@@ -191,19 +188,6 @@ test_that("Claude Code process helper temel davranışları korunur", {
     )
   }
 
-  cmd_workdir <- test_env$normalize_cmd_workdir("C:/tmp/test")
-
-  expect_false(
-    grepl("/", cmd_workdir, fixed = TRUE),
-    info = "normalize_cmd_workdir() ileri slash karakterlerini Windows ayırıcısına çevirmelidir."
-  )
-
-  expect_match(
-    cmd_workdir,
-    "^C:\\\\+tmp\\\\+test$",
-    info = "normalize_cmd_workdir() sürücü ve yol bileşenlerini korumalıdır."
-  )
-
   tmp <- withr::local_tempdir()
   resolved <- test_env$get_safe_claude_cli_workdir(tmp)
 
@@ -224,28 +208,32 @@ test_that("Claude Code process helper temel davranışları korunur", {
   expect_equal(cmd$wd, tmp)
 })
 
-test_that("Windows .cmd çalıştırması processx'e problemli wd vermez", {
+test_that("Windows .cmd çalıştırması cmd.exe'ye düşmez ve UNC çalışma dizinini korur", {
   test_env <- .source_claude_code_process_for_test()
+  # Windows dalı Linux'ta da sınansın diye `.Platform` sourced ortamda bağlanır.
+  test_env$.Platform <- list(OS.type = "windows")
 
-  skip_if_not(.Platform$OS.type == "windows")
+  npm <- withr::local_tempdir()
+  hedef <- file.path(npm, "node_modules", "@anthropic-ai", "claude-code", "cli.js")
+  dir.create(dirname(hedef), recursive = TRUE)
+  writeLines("// cli", hedef)
+  writeLines(c("@ECHO off", "IF EXIST \"%dp0%\\node.exe\" (", "  SET \"_prog=%dp0%\\node.exe\"", ")",
+               "endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & \"%_prog%\"  \"%dp0%\\node_modules\\@anthropic-ai\\claude-code\\cli.js\" %*"),
+             file.path(npm, "claude.cmd"))
+  file.create(file.path(npm, "node.exe"))
 
   komut <- test_env$build_processx_command(
-    cli_path = "C:/ProgramData/npm/claude.cmd",
+    cli_path = file.path(npm, "claude.cmd"),
     args = c("--print", "--", "dosyaları incele"),
     workdir = "//rehisds/uygulamalar/Primavera/PY"
   )
 
-  komut_satiri <- paste(komut$args, collapse = " ")
-
-  expect_match(tolower(komut$command), "cmd\\.exe$")
-  expect_true(any(komut$args == "/c"))
-  expect_false(any(komut$args == "/s"))
-  expect_true(isTRUE(komut$windows_verbatim_args))
-  expect_match(komut_satiri, "pushd")
-  expect_match(komut_satiri, "call")
-  expect_false(grepl("\\\\\"", komut_satiri))
-  expect_false(test_env$is_windows_unc_path(komut$wd))
-  expect_true(dir.exists(komut$wd))
+  expect_false(grepl("cmd(\\.exe)?$", komut$command, ignore.case = TRUE))
+  expect_identical(basename(komut$command), "node.exe")
+  expect_identical(komut$args, c(normalizePath(hedef, winslash = "/"), "--print", "--", "dosyaları incele"))
+  expect_false(isTRUE(komut$windows_verbatim_args))
+  expect_false(any(komut$args %in% c("/c", "/d", "/s")))
+  expect_identical(komut$wd, "//rehisds/uygulamalar/Primavera/PY")
 })
 
 test_that("cc_workdir_windows_safe UNC ve ASCII dışı yolları reddeder", {

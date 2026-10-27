@@ -27,18 +27,26 @@
       warning: 'fa-exclamation-triangle',
       info: 'fa-info-circle'
     };
+    // Tür yalnızca desteklenen değerlerden biri olabilir; sınıf/ikon şablonuna
+    // serbest metin girmez.
+    if (!Object.prototype.hasOwnProperty.call(iconMap, type)) {
+      type = 'info';
+    }
     // Hata/uyarı bildirimleri için "alert" rolü daha güçlü seslendirme sağlar;
     // bilgi/başarı için "status" yeterlidir.
     const toastRole = (type === 'error' || type === 'warning') ? 'alert' : 'status';
+    // Şablon sabittir; mesaj veridir ve yalnızca .text() ile yazılır (HTML
+    // olarak ayrıştırılmaz).
     const toast = $(`
       <div id="${toastId}" class="toast toast-${type}" role="${toastRole}">
         <i class="fas ${iconMap[type]} toast-icon" aria-hidden="true"></i>
-        <span class="toast-message">${message}</span>
+        <span class="toast-message"></span>
         <button class="toast-close" aria-label="Bildirimi kapat" onclick="$('#${toastId}').remove()">
           <i class="fas fa-times" aria-hidden="true"></i>
         </button>
       </div>
     `);
+    toast.find('.toast-message').text(message == null ? '' : String(message));
     $('#toast-container').append(toast);
     setTimeout(() => {
       toast.addClass('hiding');

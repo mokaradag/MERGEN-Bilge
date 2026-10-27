@@ -55,10 +55,11 @@ create_akis_yardimcilari <- function(session, ns, rv) {
     if (!nzchar(tip)) return(invisible(NULL))
 
     if (tip == "text_delta") {
-      # Metin parçası - anlık olarak istemciye ilet
+      # Metin parçası - anlık olarak istemciye ilet. Düz metin gönderilir;
+      # HTML kaçışı tüm metin parçaları için tek yerde, istemci sink'inde yapılır.
       icerik <- parca$icerik %||% ""
       if (nzchar(icerik)) {
-        send_chunk("text_delta", htmltools::htmlEscape(icerik))
+        send_chunk("text_delta", icerik)
       }
 
     } else if (tip == "tool_input_delta") {

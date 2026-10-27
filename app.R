@@ -87,8 +87,19 @@ safe_add_resource_path <- function(prefix, directory) {
   invisible(TRUE)
 }
 
+# www/smoke test harness'ı gerçek uygulama eylemleri (sohbet/istem) tetikler;
+# üretimde statik kaynak olarak sunulmaz. Yalnızca bakımcının smoke ortamında
+# açıkça MERGEN_ENABLE_UX_SMOKE=true vermesiyle kaydedilir.
+mergen_ux_smoke_enabled <- function() {
+  tolower(trimws(Sys.getenv("MERGEN_ENABLE_UX_SMOKE", ""))) %in% c("1", "true", "yes", "evet")
+}
+
+mergen_static_resource_subdirs <- function(subdirs, smoke_enabled = mergen_ux_smoke_enabled()) {
+  if (isTRUE(smoke_enabled)) subdirs else setdiff(subdirs, "smoke")
+}
+
 if (dir.exists("www")) {
-  for (subdir in list.dirs("www", recursive = FALSE, full.names = FALSE)) {
+  for (subdir in mergen_static_resource_subdirs(list.dirs("www", recursive = FALSE, full.names = FALSE))) {
     safe_add_resource_path(subdir, file.path("www", subdir))
   }
   safe_add_resource_path("img", "www")

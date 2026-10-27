@@ -18,6 +18,15 @@ source(
 
 .stt_settings <- function() list(selected_character = "emre", font_size = "large")
 
+# STT yalnızca doğrulanmış oturum kimliğiyle çalışır; mevcut davranış testleri
+# kimliği hazır (giriş yapmış) bir kullanıcıyı modeller.
+.stt_yetkili_ebeveyn <- function(user_id = 7L) {
+  ud <- new.env()
+  ud$auth_initialized <- user_id > 0L
+  ud$user_id <- as.integer(user_id)
+  list(userData = ud)
+}
+
 # Kabul sınırı testleri için gönderimi ASKIDA tutar: parça worker'a gerçekten
 # gitmez, bu yüzden `pending_stt_chunks` sayacı deterministik kalır. Kayıt
 # `.stt_env` içinde gölgelenir ve test sonunda önceki hâline döndürülür.
@@ -45,7 +54,7 @@ test_that("sttServer start_session ve final_text içeren liste döndürür", {
 
   shiny::testServer(
     .stt_env$sttServer,
-    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    args = list(id = "stt", parent_session = .stt_yetkili_ebeveyn(), settings = .stt_settings()),
     {
       api <- session$returned
       expect_true(is.list(api))
@@ -66,7 +75,7 @@ test_that("start_session: modal-active 'true' yayını ve ns önekli initSTT mes
 
   shiny::testServer(
     .stt_env$sttServer,
-    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    args = list(id = "stt", parent_session = .stt_yetkili_ebeveyn(), settings = .stt_settings()),
     {
       root <- .subset2(session, "parent")
       root$sendCustomMessage <- function(type, message) kayit$msgs[[type]] <- message
@@ -105,7 +114,7 @@ test_that("accept_btn: kırpılmış metni final_text'e aktarır ve modal-active
 
   shiny::testServer(
     .stt_env$sttServer,
-    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    args = list(id = "stt", parent_session = .stt_yetkili_ebeveyn(), settings = .stt_settings()),
     {
       testthat::local_mocked_bindings(
         runjs = function(code, ...) kayit$codes <- c(kayit$codes, code),
@@ -133,7 +142,7 @@ test_that("dismiss_btn: final_text'i değiştirmez ama modal-active 'false' yay�
 
   shiny::testServer(
     .stt_env$sttServer,
-    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    args = list(id = "stt", parent_session = .stt_yetkili_ebeveyn(), settings = .stt_settings()),
     {
       testthat::local_mocked_bindings(
         runjs = function(code, ...) kayit$codes <- c(kayit$codes, code),
@@ -160,7 +169,7 @@ test_that("audio_chunk: kayıt kabul kapalıyken (kilit) STT çağrısı yapılm
 
   shiny::testServer(
     .stt_env$sttServer,
-    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    args = list(id = "stt", parent_session = .stt_yetkili_ebeveyn(), settings = .stt_settings()),
     {
       # POST çağrılırsa sayaç artar; kilit nedeniyle hiç çağrılmamalı.
       testthat::local_mocked_bindings(
@@ -184,7 +193,7 @@ test_that("toggle_record_btn (Durdur): transcribe_gen ve kuyruk sıfırlanmaz (u
 
   shiny::testServer(
     .stt_env$sttServer,
-    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    args = list(id = "stt", parent_session = .stt_yetkili_ebeveyn(), settings = .stt_settings()),
     {
       testthat::local_mocked_bindings(
         runjs = function(code, ...) invisible(NULL),
@@ -242,7 +251,7 @@ test_that("Durdur sonrası çözülen STT parçası geçmişe eklenir (düşür�
 
   shiny::testServer(
     .stt_env$sttServer,
-    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    args = list(id = "stt", parent_session = .stt_yetkili_ebeveyn(), settings = .stt_settings()),
     {
       testthat::local_mocked_bindings(
         runjs = function(code, ...) invisible(NULL),
@@ -301,7 +310,7 @@ test_that("Durdur sonrası kayıtçının gönderdiği TEK final parça kapıdan
 
   shiny::testServer(
     .stt_env$sttServer,
-    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    args = list(id = "stt", parent_session = .stt_yetkili_ebeveyn(), settings = .stt_settings()),
     {
       testthat::local_mocked_bindings(
         runjs = function(code, ...) invisible(NULL),
@@ -363,7 +372,7 @@ test_that("Onayla sonrası kayıtçının gönderdiği TEK final parça beklenip
 
   shiny::testServer(
     .stt_env$sttServer,
-    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    args = list(id = "stt", parent_session = .stt_yetkili_ebeveyn(), settings = .stt_settings()),
     {
       testthat::local_mocked_bindings(
         runjs = function(code, ...) invisible(NULL),
@@ -429,7 +438,7 @@ test_that("Elle düzenlenen metin, bekleyen bir STT parçası eklenirken korunur
 
   shiny::testServer(
     .stt_env$sttServer,
-    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    args = list(id = "stt", parent_session = .stt_yetkili_ebeveyn(), settings = .stt_settings()),
     {
       testthat::local_mocked_bindings(
         runjs = function(code, ...) invisible(NULL),
@@ -490,7 +499,7 @@ test_that("Ardışık hızlı parça çözümlerinde henüz yansımamış istemc
 
   shiny::testServer(
     .stt_env$sttServer,
-    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    args = list(id = "stt", parent_session = .stt_yetkili_ebeveyn(), settings = .stt_settings()),
     {
       testthat::local_mocked_bindings(
         runjs = function(code, ...) invisible(NULL),
@@ -544,7 +553,7 @@ test_that("audio_chunk: kabul açık olsa bile API anahtarı yoksa STT çağrıs
 
   shiny::testServer(
     .stt_env$sttServer,
-    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    args = list(id = "stt", parent_session = .stt_yetkili_ebeveyn(), settings = .stt_settings()),
     {
       # MockSession userData$ai_api_key NULL döndürmesin diye boş string ata.
       session$userData$ai_api_key <- ""
@@ -592,7 +601,7 @@ test_that("audio_chunk: boyut sınırını aşan parça worker'a gönderilmez", 
 
   shiny::testServer(
     .stt_env$sttServer,
-    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    args = list(id = "stt", parent_session = .stt_yetkili_ebeveyn(), settings = .stt_settings()),
     {
       # KABUL KAPISI AÇIK olmalı; aksi hâlde parça boyut denetimine hiç
       # ulaşmadan kilitte düşer ve sınır kaldırılsa bile test yeşil kalırdı.
@@ -628,7 +637,7 @@ test_that("audio_chunk: uçuştaki parça sınırına ulaşınca yeni parça kab
 
   shiny::testServer(
     .stt_env$sttServer,
-    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    args = list(id = "stt", parent_session = .stt_yetkili_ebeveyn(), settings = .stt_settings()),
     {
       rv$accept_chunks <- TRUE
       session$flushReact()
@@ -680,7 +689,7 @@ test_that("audio_chunk: senkron gönderim hatası sıra numarasında boşluk bı
 
   shiny::testServer(
     .stt_env$sttServer,
-    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    args = list(id = "stt", parent_session = .stt_yetkili_ebeveyn(), settings = .stt_settings()),
     {
       rv$accept_chunks <- TRUE
       session$flushReact()
@@ -730,11 +739,106 @@ test_that("audio_chunk: cok elemanli deger worker'a gonderilmez", {
 
   shiny::testServer(
     .stt_env$sttServer,
-    args = list(id = "stt", parent_session = NULL, settings = .stt_settings()),
+    args = list(id = "stt", parent_session = .stt_yetkili_ebeveyn(), settings = .stt_settings()),
     {
       session$setInputs(start_session = 1L)
       session$setInputs(audio_chunk = c("ZHVtbXk=", "ZHVtbXk="))
       expect_identical(kayit$dispatch, 0L)
+    }
+  )
+})
+
+# ------------------------------------------------------------------------------
+# Yetki: istemci kayıt durumu yetki değildir
+# ------------------------------------------------------------------------------
+.stt_kimlik_kancalari_yukle <- function() {
+  if (!exists("mergen_session_on_owner_change", envir = .stt_env, inherits = TRUE)) {
+    sys.source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
+               envir = .stt_env, keep.source = FALSE)
+  }
+}
+
+.stt_gonderim_sayaci <- function() {
+  sayac <- new.env()
+  sayac$n <- 0L
+  vardi <- exists("tracked_future_promise", envir = .stt_env, inherits = FALSE)
+  eski <- if (vardi) get("tracked_future_promise", envir = .stt_env) else NULL
+  .stt_env$tracked_future_promise <- function(...) {
+    sayac$n <- sayac$n + 1L
+    promises::promise(function(resolve, reject) NULL)
+  }
+  withr::defer({
+    if (isTRUE(vardi)) assign("tracked_future_promise", eski, envir = .stt_env)
+    else rm("tracked_future_promise", envir = .stt_env)
+  }, envir = parent.frame())
+  sayac
+}
+
+test_that("kimliği doğrulanmamış oturum istemci girdileriyle STT gönderimi yapamaz", {
+  skip_if_not_installed("shiny")
+  .stt_kimlik_kancalari_yukle()
+  sayac <- .stt_gonderim_sayaci()
+  withr::local_envvar(LOCAL_STT_API_KEY = "test-stt-anahtari", LOCAL_STT_ENDPOINT = "http://stt.test/v1")
+
+  for (ebeveyn in list(NULL, .stt_yetkili_ebeveyn(0L))) {
+    shiny::testServer(
+      .stt_env$sttServer,
+      args = list(id = "stt", parent_session = ebeveyn, settings = .stt_settings()),
+      {
+        testthat::local_mocked_bindings(runjs = function(...) NULL, delay = function(ms, expr) expr,
+                                        .package = "shinyjs")
+        testthat::local_mocked_bindings(showModal = function(...) NULL, showNotification = function(...) NULL,
+                                        .package = "shiny")
+        # Modal açma API'si kayıt kabulünü açmaz.
+        expect_false(isTRUE(session$returned$start_session()))
+        # İstemci toggle ile kaydı "açmaya" çalışır, ardından ses gönderir.
+        session$setInputs(toggle_record_btn = 1)
+        session$setInputs(audio_chunk = "ZHVtbXk=")
+        session$setInputs(toggle_record_btn = 2)
+        session$setInputs(audio_chunk = "c2Vjb25k")
+      }
+    )
+  }
+  expect_identical(sayac$n, 0L)
+})
+
+test_that("kimlik kaybında kayıt kilitlenir ve sonraki parçalar gönderilmez", {
+  skip_if_not_installed("shiny")
+  .stt_kimlik_kancalari_yukle()
+  sayac <- .stt_gonderim_sayaci()
+  withr::local_envvar(LOCAL_STT_API_KEY = "test-stt-anahtari", LOCAL_STT_ENDPOINT = "http://stt.test/v1")
+  ebeveyn <- .stt_yetkili_ebeveyn(7L)
+
+  shiny::testServer(
+    .stt_env$sttServer,
+    args = list(id = "stt", parent_session = ebeveyn, settings = .stt_settings()),
+    {
+      testthat::local_mocked_bindings(runjs = function(...) NULL, delay = function(ms, expr) expr,
+                                      .package = "shinyjs")
+      testthat::local_mocked_bindings(showModal = function(...) NULL, showNotification = function(...) NULL,
+                                      .package = "shiny")
+      session$returned$start_session()
+      session$setInputs(audio_chunk = "ZHVtbXk=")
+      expect_identical(sayac$n, 1L)
+
+      # Token süresi doldu: kanonik yetkisizleştirme kimliği düşürür.
+      ebeveyn$userData$auth_initialized <- FALSE
+      ebeveyn$userData$user_id <- 0L
+      get("mergen_session_owner_transition", envir = .stt_env, inherits = TRUE)(ebeveyn$userData, 7L, 0L)
+      session$flushReact()
+      session$setInputs(audio_chunk = "c2Vjb25k")
+      expect_identical(sayac$n, 1L)
+
+      # Kimlik geri gelse bile kilit kendiliğinden açılmaz; istemci parçası yine reddedilir.
+      ebeveyn$userData$auth_initialized <- TRUE
+      ebeveyn$userData$user_id <- 7L
+      session$setInputs(audio_chunk = "dGhpcmQ=")
+      expect_identical(sayac$n, 1L)
+
+      # Kullanıcı yeniden açınca normal akış sürer.
+      session$returned$start_session()
+      session$setInputs(audio_chunk = "Zm91cnRo")
+      expect_identical(sayac$n, 2L)
     }
   )
 })

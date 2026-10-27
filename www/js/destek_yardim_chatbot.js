@@ -34,18 +34,23 @@ function destekChatbotGonder(nsPrefix) {
  * @returns {string} HTML çıktısı
  */
 function destekChatbotFormatMessage(text) {
-  // Kod bloklarını işle (``` ile çevrili)
-  var formatted = text.replace(/```(\w*)\n?([\s\S]*?)```/g, function(match, lang, code) {
-    var langLabel = lang ? '<span class="destek-code-lang">' + lang + '</span>' : '';
-    return '<div class="destek-code-block">' +
+  // Model yanıtı veridir: kod blokları yer tutucuya alınır, kalan metnin TAMAMI
+  // kaçışlanır ve biçimlendirme yalnızca kaçışlı metin üzerinde çalışır.
+  var kodBloklari = [];
+  var formatted = String(text == null ? '' : text).replace(/```(\w*)\n?([\s\S]*?)```/g, function(match, lang, code) {
+    var langLabel = lang ? '<span class="destek-code-lang">' + destekEscapeHtml(lang) + '</span>' : '';
+    kodBloklari.push('<div class="destek-code-block">' +
       '<div class="destek-code-header">' + langLabel +
         '<button class="destek-code-copy-btn" onclick="destekChatbotCopyCode(this)" title="Kopyala">' +
           '<i class="fas fa-copy"></i>' +
         '</button>' +
       '</div>' +
       '<pre class="destek-code-pre"><code>' + destekEscapeHtml(code.trim()) + '</code></pre>' +
-    '</div>';
+    '</div>');
+    return '\u0000DESTEK_KOD_' + (kodBloklari.length - 1) + '\u0000';
   });
+
+  formatted = destekEscapeHtml(formatted);
 
   // Satır içi kod (`...`)
   formatted = formatted.replace(/`([^`]+)`/g, '<code class="destek-inline-code">$1</code>');
@@ -78,15 +83,23 @@ function destekChatbotFormatMessage(text) {
   formatted = formatted.replace(/<br>\s*(<h[34] class="destek-chat-heading">)/g, '$1');
   formatted = formatted.replace(/(<\/h[34]>)\s*<br>/g, '$1');
 
+  kodBloklari.forEach(function(blok, i) {
+    formatted = formatted.split('\u0000DESTEK_KOD_' + i + '\u0000').join(blok);
+  });
+
   return formatted;
 }
 
 /**
- * HTML özel karakterlerini escape et
+ * HTML özel karakterlerini escape et (ortak MergenMarkdownSafety tercih edilir)
  */
 function destekEscapeHtml(text) {
+  var safety = window.MergenMarkdownSafety;
+  if (safety && typeof safety.escapeHtml === 'function') {
+    return safety.escapeHtml(text);
+  }
   var div = document.createElement('div');
-  div.textContent = text;
+  div.textContent = text == null ? '' : String(text);
   return div.innerHTML;
 }
 

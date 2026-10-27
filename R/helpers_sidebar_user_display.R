@@ -203,7 +203,15 @@ mb_sidebar_controls_row <- function(show_logout = FALSE, logout_url = "") {
       # konsola logout işlemini yazar ve mevcut Shiny oturumunu kapatır.
       # Bu sayede kullanıcı redirect olduktan sonra Shiny oturumu da
       # gerçekten sonlandırılır (sızıntı önlenir, doğrulama mümkün olur).
+      # Yönlendirmeden ÖNCE tarayıcıdaki uygulama kimlik bilgisi (token) ve
+      # hesaba bağlı sohbet kaydı merkezi temizlikle silinir; aksi halde aynı
+      # tarayıcı profilinin sonraki ziyareti çıkış yapan hesapla açılırdı.
       paste0(
+        "try{if(typeof window.mergenClearBrowserAuthState==='function'){",
+        "window.mergenClearBrowserAuthState();}else{",
+        "localStorage.removeItem('mergen_bilge_jwt_token');",
+        "localStorage.removeItem('mergen_current_chat');}",
+        "}catch(e){console.warn('[MERGEN] Browser auth cleanup failed:',e);}",
         "try{if(window.Shiny&&window.Shiny.setInputValue){",
         "Shiny.setInputValue('mergen_sidebar_logout',new Date().getTime(),{priority:'event'});",
         "console.log('[MERGEN] Logout button clicked, redirecting to logout URL.');",

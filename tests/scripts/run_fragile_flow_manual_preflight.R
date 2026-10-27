@@ -139,7 +139,7 @@ local_steps <- list(
   L06 = "Refresh browser and verify files remain visible once.",
   L07 = "Fully restart app and verify files remain visible once.",
   L08 = "Load a saved chat and confirm TTS does not auto-play old AI messages.",
-  L09 = "Open /smoke/ux-smoke.html against the running app and confirm UX_SMOKE_DONE:PASS."
+  L09 = "Start the app with MERGEN_ENABLE_UX_SMOKE=true, open /smoke/ux-smoke.html, press start and confirm UX_SMOKE_DONE:PASS."
 )
 
 vm_sso_steps <- list(
@@ -161,7 +161,7 @@ vm_sso_steps <- list(
     "Run tests/scripts/run_vm_preflight_real.R with",
     "MERGEN_PREFLIGHT_CHECK_FILE_STORE=TRUE and confirm it completes."
   ),
-  V10 = "Open /smoke/ux-smoke.html on the VM app URL and confirm UX_SMOKE_DONE:PASS."
+  V10 = "In a maintenance window start the VM app with MERGEN_ENABLE_UX_SMOKE=true, open /smoke/ux-smoke.html, press start and confirm UX_SMOKE_DONE:PASS; restart without the flag afterwards."
 )
 
 cat("\nMERGEN fragile-flow manual preflight\n")

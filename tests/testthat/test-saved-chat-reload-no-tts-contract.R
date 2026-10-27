@@ -45,7 +45,9 @@
   # dosyası çok baytlı Türkçe metin taşır, dolayısıyla iki ofset AYRIŞIR ve
   # çıkarılan blok gözlemcinin BAŞINI atlayabilir; yeniden eklenmiş bir TTS
   # çağrısı bu statik testin gözünden kaçardı.
-  marker <- "observeEvent(input$load_chat_from_storage"
+  # Tarayıcı kaydı kimlik hazır olana kadar bekletilir; render eden gözlemci
+  # bekleyen kayıt + kimlik sinyaline bağlıdır.
+  marker <- "observeEvent(list(bekleyen_geri_yukleme(), kimlik_sinyali())"
   start <- regexpr(marker, text, fixed = TRUE)[[1]]
   testthat::expect_true(start > 0L, info = "load_chat_from_storage observer bulunamadı")
 
@@ -90,13 +92,17 @@ testthat::test_that("saved chat reload renders history without starting TTS play
 testthat::test_that("saved chat reload runtime smoke renders historical AI messages without TTS side effects", {
   testthat::skip_if_not_installed("shiny")
 
-  if (!exists("storageObserversInit", envir = globalenv(), mode = "function", inherits = TRUE)) {
+  # Geri yükleme, kayıtlı-sohbet yoluyla aynı güvenli render'ı ve oturum kimlik
+  # sinyalini kullanır; runtime'daki bağımlılıklar burada da yüklenir.
+  for (dosya in c("helpers_markdown_safety.R", "helpers_messaging.R",
+                  "helpers_user_session_identity.R", "server_observers_storage.R")) {
     source(
-      file.path(resolve_repo_root_for_tests(), "R", "server_observers_storage.R"),
+      file.path(resolve_repo_root_for_tests(), "R", dosya),
       encoding = "UTF-8",
       local = globalenv()
     )
   }
+  withr::local_envvar(AI_KEYS_MASTER = "test-master-key-saved-chat")
 
   restore_names <- c(
     "showToast",
@@ -194,12 +200,18 @@ testthat::test_that("saved chat reload runtime smoke renders historical AI messa
     session$userData$.values <- values
     session$userData$.chart_rebind_count <- function() chart_rebind_count
   }, {
+    # Kayıt yalnızca doğrulanmış sahibin etiketiyle geri yüklenir.
+    session$userData$auth_initialized <- TRUE
+    session$userData$user_id <- 7L
     historical_messages <- list(
-      list(
-        id = "old_ai_1",
-        type = "ai",
-        content = enc2utf8("Eski kayıtlı yanıt"),
-        has_code = FALSE
+      owner = mergen_chat_storage_owner(session),
+      messages = list(
+        list(
+          id = "old_ai_1",
+          type = "ai",
+          content = enc2utf8("Eski kayıtlı yanıt"),
+          has_code = FALSE
+        )
       )
     )
 
@@ -215,7 +227,9 @@ testthat::test_that("saved chat reload runtime smoke renders historical AI messa
     testthat::expect_equal(length(values$messages), 1L)
 
     if (length(values$messages) > 0L) {
-      testthat::expect_identical(values$messages[[1]]$id, "old_ai_1")
+      # Kimlik tarayıcıdan alınmaz; sunucuda üretilir.
+      testthat::expect_match(values$messages[[1]]$id, "^msg_restore_")
+      testthat::expect_identical(values$messages[[1]]$content, enc2utf8("Eski kayıtlı yanıt"))
     }
 
     testthat::expect_false(isTRUE(tts_called))

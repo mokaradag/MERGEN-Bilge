@@ -39,8 +39,9 @@ format_streaming_chunk_html <- function(parca) {
                 session_id = parca$session_id))
 
   } else if (tip == "raw_text") {
-    # Ham metin (JSON ayrıştırılamadı)
-    return(list(html = htmltools::htmlEscape(parca$icerik), tip = "raw_text"))
+    # Ham metin (JSON ayrıştırılamadı). text/result ile aynı sözleşme: düz
+    # metin gider, istemci tüm metin parçalarını ekrana basmadan önce kaçışlar.
+    return(list(html = parca$icerik, tip = "raw_text"))
 
   } else if (tip == "assistant") {
     # Asistan mesajı blokları

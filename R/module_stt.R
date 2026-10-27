@@ -57,6 +57,35 @@ sttServer <- function(id, parent_session, settings) {
 
     final_text <- reactiveVal("")
 
+    # YETKİ: istemcinin kayıt durumu (toggle/audio_chunk) yetki değildir. STT
+    # yalnızca canlı, doğrulanmış oturum kimliğiyle açılır ve her gönderimden
+    # önce yeniden denetlenir; kimlik süre dolumu/değişimiyle düşebilir.
+    kimlik_oturumu <- parent_session %||% session
+    stt_yetkili <- function() {
+      ud <- tryCatch(kimlik_oturumu$userData, error = function(e) NULL)
+      if (!is.environment(ud) || !isTRUE(ud$auth_initialized)) return(FALSE)
+      uid <- suppressWarnings(as.integer(as.character(ud$user_id %||% 0L)[1]))
+      isTRUE(!is.na(uid) && uid > 0L)
+    }
+
+    # Kimlik kaybında/değişiminde kabul kilitlenir ve uçuştaki sonuçlar düşer.
+    stt_kilitle <- function() {
+      rv$is_recording <- FALSE
+      rv$accept_chunks <- FALSE
+      rv$expect_final_chunk <- FALSE
+      rv$transcribe_gen <- isolate(rv$transcribe_gen) + 1L
+      try(shinyjs::runjs(sprintf("window.STT_Client && window.STT_Client.stopAndCleanup('%s');", id)),
+          silent = TRUE)
+      invisible(NULL)
+    }
+
+    if (exists("mergen_session_on_owner_change", mode = "function", inherits = TRUE)) {
+      kanca_kaldir <- mergen_session_on_owner_change(kimlik_oturumu, function(neden) {
+        shiny::isolate(stt_kilitle())
+      })
+      session$onSessionEnded(kanca_kaldir)
+    }
+
     # Biriktirilmiş metni metin alanına yazar (tek nokta).
     push_transcription <- function(value) {
       rv$transcription_history <- value
@@ -143,6 +172,11 @@ sttServer <- function(id, parent_session, settings) {
     }
 
     start_session <- function() {
+      if (!stt_yetkili()) {
+        stt_kilitle()
+        showNotification("Sesli giriş için oturum kimliği doğrulanmalıdır.", type = "warning", duration = 6)
+        return(invisible(FALSE))
+      }
       rv$transcription_history <- ""
       rv$transcribe_gen <- isolate(rv$transcribe_gen) + 1L
       rv$is_recording <- TRUE
@@ -316,6 +350,11 @@ sttServer <- function(id, parent_session, settings) {
         shinyjs::runjs(sprintf("$('.stt-visualizer-wrapper').addClass('paused-mode');"))
       } else {
         # --- BAŞLATMA İŞLEMİ (Devam Et) ---
+        if (!stt_yetkili()) {
+          stt_kilitle()
+          showNotification("Sesli giriş için oturum kimliği doğrulanmalıdır.", type = "warning", duration = 6)
+          return(invisible(NULL))
+        }
         # Duraklatma sırasında kullanıcı metin alanını elle düzenlemiş olabilir;
         # devam etmeden önce sunucu geçmişini görünen metinle eşitle. Duraklama
         # sırasında asenkron parça eklenmediği için metin alanı güvenilirdir.
@@ -339,6 +378,12 @@ sttServer <- function(id, parent_session, settings) {
 
     observeEvent(input$audio_chunk, {
       req(input$audio_chunk)
+
+      # Korumalı STT kimlik bilgisiyle gönderimden ÖNCE canlı kimlik şarttır.
+      if (!stt_yetkili()) {
+        stt_kilitle()
+        return(NULL)
+      }
 
       # KİLİT KONTROLÜ: Kayıt kapalıyken YENİ paketleri işleme. Tek istisna:
       # Durdur/Onayla sonrası kayıtçının stop() olayının gönderdiği TEK final

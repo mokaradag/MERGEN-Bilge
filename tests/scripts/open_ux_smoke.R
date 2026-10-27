@@ -36,9 +36,12 @@ if (is_env_true("MERGEN_SMOKE_FULL_QUICK_ACTIONS")) {
   smoke_url <- paste0(smoke_url, "?fullQuickActions=1")
 }
 
+cat("NOT: /smoke/ yolu yalnızca uygulama MERGEN_ENABLE_UX_SMOKE=true ile başlatıldığında sunulur.\n")
+cat("Sayfa açılınca 'UX smoke'u başlat' düğmesine basın; sayfa yüklemesi kendiliğinden işlem başlatmaz.\n\n")
+
 cat("UX smoke sayfası:\n", smoke_url, "\n\n", sep = "")
 cat("Önce uygulamanın çalıştığından emin olun. Örnek:\n")
-cat("Rscript -e \"shiny::runApp('.', host='127.0.0.1', port=3838, launch.browser=FALSE)\"\n\n")
+cat("Rscript -e \"Sys.setenv(MERGEN_ENABLE_UX_SMOKE='true'); source('app.R'); run_mergen_app(host='127.0.0.1', port=3838L, launch.browser=FALSE)\"\n\n")
 cat("Başarılı sonuç: UX_SMOKE_DONE:PASS\n")
 
 utils::browseURL(smoke_url)
