@@ -55,8 +55,15 @@ test_that("I/O yolu mutlak Windows bütçesini UTF-16 ile ölçer; ad ve kimlik 
   expect_true(startsWith(env$mergen_io_path(supplementary), "\\\\?\\"))
   posix <- paste0("/tmp/", strrep("p", 260L))
   if (.Platform$OS.type == "windows") {
-    drive <- substr(normalizePath(getwd(), winslash = "/"), 1L, 2L)
-    expect_identical(env$mergen_io_path(posix), chartr("/", "\\", paste0("//?/", drive, posix)))
+    # Kök-göreli Windows yolu yalnız sürücü kökünde değil, UNC çalışma
+    # dizininde de geçerlidir. Beklenti üretim yardımcısının kullandığı gerçek
+    # kökü (C: ya da //server/share) türetir; ilk iki karakteri "sürücü" sanmaz.
+    wd <- chartr("\\", "/", normalizePath(getwd(), winslash = "/"))
+    root <- sub("^([A-Za-z]:|//[^/]+/[^/]+).*$", "\\1", wd, perl = TRUE)
+    absolute <- paste0(root, posix)
+    expected <- if (startsWith(absolute, "//"))
+      paste0("//?/UNC/", substring(absolute, 3L)) else paste0("//?/", absolute)
+    expect_identical(env$mergen_io_path(posix), chartr("/", "\\", expected))
   } else {
     env$.Platform <- list(OS.type = "unix")
     expect_identical(env$mergen_io_path(posix), posix)
