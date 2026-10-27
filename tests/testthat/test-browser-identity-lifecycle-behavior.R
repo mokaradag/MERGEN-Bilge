@@ -138,8 +138,8 @@ test_that("tarayıcıya yalnızca düz alanlar yazılır ve yalnız doğrulanmı
     expect_length(kayit, 1L)
     yuk <- kayit[[1]]$message
     expect_identical(yuk$owner, env$mergen_chat_storage_owner(session))
-    expect_identical(names(yuk$messages[[1]]), c("type", "content", "timestamp"))
-    expect_false(grepl("gizli düşünce|<b>x</b>|99", jsonlite::toJSON(yuk, auto_unbox = TRUE)))
+    expect_identical(names(yuk$messages[[1]]), c("type", "content", "timestamp", "include_in_context"))
+    expect_false(grepl("gizli düşünce|<b>x</b>|99", jsonlite::toJSON(yuk$messages, auto_unbox = TRUE)))
   })
 })
 
@@ -223,7 +223,7 @@ test_that("geri yüklenen içerik sunucuda yeniden üretilir; istemci HTML'i ve 
              html_content = "<img src=x onerror=alert(1)>", reasoning_content = "<script>alert(1)</script>",
              db_id = 5L, timestamp = "<b>t</b>"),
         list(type = "user", content = "Soru <script>alert(1)</script>"),
-        list(type = "system", content = "yetkisiz tür"),
+        list(type = "arac", content = "yetkisiz tür"),
         list(type = "user", content = list("dizi")),
         list(type = "ai", content = c("iki", "öğe"))
       )
@@ -305,4 +305,73 @@ test_that("geri yüklenen görsel mesajı kayıtlı-sohbet yolundan sahip kökü
   # Kimlik verilmezse hiçbir görsel dosyası çözülmez (fail-closed).
   kimliksiz <- env$mergen_chat_storage_restore_messages(kayit[1])
   expect_match(kimliksiz[[1]]$html_content, "Görsel dosyası bulunamadı", fixed = TRUE)
+})
+
+test_that("kayıt geri yüklemenin kabul ettiği bütçeye sığan en yeni mesajlarla sınırlanır", {
+  env <- .kimlik_storage_env()
+  mesajlar <- lapply(seq_len(205), function(i) list(type = if (i %% 2) "user" else "ai",
+                                                     content = paste("mesaj", i), timestamp = ""))
+  yuk <- env$mergen_chat_storage_payload(mesajlar)
+  expect_length(yuk, 200L)
+  expect_identical(yuk[[200]]$content, "mesaj 205")
+  expect_identical(yuk[[1]]$content, "mesaj 6")
+  expect_length(env$mergen_chat_storage_restore_messages(yuk), 200L)
+
+  # Bayt bütçesi: en yeni mesajlar tutulur, toplam sınırı aşan eskiler düşer.
+  buyuk <- lapply(1:3, function(i) list(type = "user", content = strrep(letters[i], 900), timestamp = ""))
+  kirpilmis <- env$mergen_chat_storage_payload(buyuk, max_total_chars = 2000L)
+  expect_identical(vapply(kirpilmis, function(m) substr(m$content, 1, 1), character(1)), c("b", "c"))
+})
+
+test_that("sistem bildirimi ve bağlam dışı mesaj bayrağı kayıttan geri yüklemeye korunur", {
+  env <- .kimlik_storage_env()
+  yuk <- env$mergen_chat_storage_payload(list(
+    list(type = "system", content = "rapor.xlsx yüklendi.", html_content = "<b>x</b>", timestamp = "10:00"),
+    list(type = "ai", content = "Hızlı eylem tanıtımı", include_in_context = FALSE, timestamp = "10:01"),
+    list(type = "user", content = "soru", timestamp = "10:02")
+  ))
+  expect_identical(vapply(yuk, `[[`, character(1), "type"), c("system", "ai", "user"))
+  expect_identical(vapply(yuk, `[[`, logical(1), "include_in_context"), c(TRUE, FALSE, TRUE))
+
+  geri <- env$mergen_chat_storage_restore_messages(yuk)
+  expect_identical(vapply(geri, `[[`, character(1), "type"), c("system", "ai", "user"))
+  expect_identical(vapply(geri, `[[`, logical(1), "include_in_context"), c(TRUE, FALSE, TRUE))
+  expect_false(grepl("<b>x</b>", geri[[1]]$html_content, fixed = TRUE))
+
+  # İstemci bayrağı yalnız mantıksal tekil FALSE ise bağlam dışı sayılır.
+  for (bayrak in list("FALSE", 0L, c(FALSE, FALSE), NA, NULL)) {
+    tek <- env$mergen_chat_storage_restore_messages(list(list(type = "user", content = "x",
+                                                              include_in_context = bayrak)))
+    expect_true(tek[[1]]$include_in_context)
+  }
+})
+
+test_that("doğrulanmış kullanıcı sohbeti boşaltınca tarayıcı kaydı silinir; kimlik kaybında korunur", {
+  env <- .kimlik_storage_env()
+  withr::local_envvar(AI_KEYS_MASTER = "test-sir-kimlik")
+  gonderilen <- new.env()
+  gonderilen$liste <- list()
+  turler <- function() vapply(gonderilen$liste, `[[`, character(1), "type")
+  shiny::testServer(.kimlik_sunucu(env, gonderilen), {
+    .kimlik_oturum_kur(session, 7L)
+    session$flushReact()
+    v <- session$userData$.values
+    v$messages <- list(list(id = "m1", type = "user", content = "soru", timestamp = ""))
+    session$flushReact()
+    expect_identical(turler(), "saveCurrentChat")
+
+    # Yeni sohbet: kayıt silinir, eski sohbet sonraki açılışta geri gelmez.
+    v$messages <- list()
+    session$flushReact()
+    expect_identical(turler(), c("saveCurrentChat", "clearCurrentChat"))
+
+    # Token süresi doldu: sohbet bellekten boşalsa da aynı kullanıcının kaydı silinmez.
+    v$messages <- list(list(id = "m2", type = "user", content = "ikinci", timestamp = ""))
+    session$flushReact()
+    gonderilen$liste <- list()
+    session$userData$auth_initialized <- FALSE
+    v$messages <- list()
+    session$flushReact()
+    expect_false("clearCurrentChat" %in% turler())
+  })
 })

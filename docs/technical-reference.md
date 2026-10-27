@@ -439,6 +439,8 @@ Yerel geliştirme ortamında uygulama çalışırken smoke sayfasını açmak i�
 - `Sys.setenv(MERGEN_SMOKE_BASE_URL = "http://127.0.0.1:3838")`
 - `source("tests/scripts/open_ux_smoke.R", encoding = "UTF-8")`
 
+`/smoke/` yolu yalnızca uygulama `MERGEN_ENABLE_UX_SMOKE=true` ile başlatıldığında sunulur (varsayılan kapalı); sayfa açılınca **UX smoke'u başlat** düğmesine basılır, otomasyon koşucuları bunun yerine `?autostart=1` kullanır. VM/üretimde bu bayrak yalnızca planlı bir bakım penceresinde açılır, uygulama yeniden başlatılır ve smoke bitince bayrak kaldırılıp uygulama tekrar yeniden başlatılır.
+
 Üretim veya SSO/Keycloak yolu üzerinde smoke doğrulaması yapılacaksa sayfa aynı origin üzerinden açılmalıdır. Örneğin uygulama `/bilge` altında yayınlanıyorsa `/bilge/smoke/ux-smoke.html` kullanılmalıdır. Cross-origin Keycloak/login yönlendirmesi iframe içindeki app DOM’unun okunmasını engeller; bu durumda smoke hatası uygulama UX regresyonu değil, yanlış origin/yönlendirme problemidir.
 
 Bu browser smoke katmanı bilinçli olarak tek oturumlu ve hafif tutulmuştur. Sayfa uygulamayı bir kez iframe içinde açar, insan etkileşimi gerektiren Deep Space başlangıç ekranını smoke’a özel `localStorage` hazırlığıyla atlar, Ana Söyleşi hoş geldin ekranını doğrular, sentetik reasoning fixture’ını gerçek hızlı işlem/sohbet yan etkilerinden önce izole biçimde çalıştırır ve ardından hızlı işlem, sohbet girişi, medya, kayıtlı sohbet TTS davranışı ve konsol sağlığını kontrol eder. Smoke sonunda kendi değiştirdiği `localStorage` değerlerini geri yükler.

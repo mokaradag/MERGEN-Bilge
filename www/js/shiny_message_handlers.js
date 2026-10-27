@@ -243,7 +243,6 @@ $(document).ready(function() {
   // ({v, owner, messages}). Etiketi yalnızca sunucu üretir ve geri yüklemede
   // yalnızca sunucu karşılaştırır; sahipsiz/eski biçim kayıt hiç gönderilmez.
   var CHAT_STORAGE_KEY = 'mergen_current_chat';
-  var chatStorageOwner = null;
 
   Shiny.addCustomMessageHandler('saveCurrentChat', function(payload) {
     try {
@@ -251,7 +250,6 @@ $(document).ready(function() {
       var owner = typeof payload.owner === 'string' ? payload.owner : '';
       var messages = Array.isArray(payload.messages) ? payload.messages : [];
       if (!owner || window.__mergenBrowserAuthCleared) return;
-      chatStorageOwner = owner;
       if (messages.length > 0) {
         localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify({ v: 2, owner: owner, messages: messages }));
       }
@@ -261,7 +259,6 @@ $(document).ready(function() {
   });
 
   Shiny.addCustomMessageHandler('clearCurrentChat', function() {
-    chatStorageOwner = null;
     try {
       localStorage.removeItem(CHAT_STORAGE_KEY);
     } catch (e) {}

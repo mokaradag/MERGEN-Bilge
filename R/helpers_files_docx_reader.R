@@ -47,6 +47,10 @@ mergen_docx_read_document_xml <- function(path, max_xml_bytes = NULL, max_elemen
     if (bas[1] %in% c(254L, 255L)) baytlar <- baytlar[-(1:2)]
     baytlar <- iconv(list(baytlar), from = utf16, to = "UTF-8", toRaw = TRUE)[[1]]
     if (is.null(baytlar)) stop("DOCX belge kodlaması çözülemedi.", call. = FALSE)
+    # UTF-8 karşılığı büyüyebilir (ör. 2 baytlık UTF-16 -> 3 baytlık UTF-8).
+    if (length(baytlar) > max_xml_bytes) {
+      stop("DOCX belge içeriği izin verilen boyutu aşıyor.", call. = FALSE)
+    }
   }
   if (any(baytlar == as.raw(0L))) {
     stop("DOCX belge kodlaması desteklenmiyor.", call. = FALSE)
@@ -60,5 +64,7 @@ mergen_docx_read_document_xml <- function(path, max_xml_bytes = NULL, max_elemen
   }
 
   # NONET: dış varlık/DTD ağ erişimi yok; xml2 varsayılanı varlık genişletmez.
-  xml2::read_xml(baytlar, encoding = "UTF-8", options = c("NOBLANKS", "NONET"))
+  # IGNORE_ENC: denetlenen UTF-8 baytları, bildirimdeki başka bir kodlamayla
+  # (ör. EBCDIC) yeniden yorumlanmaz; tarama ile ayrıştırıcı aynı baytı görür.
+  xml2::read_xml(baytlar, encoding = "UTF-8", options = c("NOBLANKS", "NONET", "IGNORE_ENC"))
 }

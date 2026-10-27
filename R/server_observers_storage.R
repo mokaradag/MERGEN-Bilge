@@ -17,15 +17,24 @@ mergen_chat_storage_owner <- function(session, master = Sys.getenv("AI_KEYS_MAST
 }
 
 # Tarayıcıya yalnızca sohbeti yeniden kurmak için gereken düz alanlar gider;
-# HTML, kimlikler, akıl yürütme ve DB kimlikleri saklanmaz.
-mergen_chat_storage_payload <- function(messages) {
-  Filter(Negate(is.null), lapply(messages, function(msg) {
+# HTML, kimlikler, akıl yürütme ve DB kimlikleri saklanmaz. Kayıt, geri
+# yüklemenin kabul ettiği bütçeye sığan EN YENİ mesajlarla sınırlanır.
+mergen_chat_storage_payload <- function(messages, max_messages = 200L,
+                                        max_total_chars = 2000000L) {
+  kayit <- Filter(Negate(is.null), lapply(messages, function(msg) {
     tur <- as.character(msg$type %||% "")[1]
-    if (is.na(tur) || !tur %in% c("user", "ai", "assistant")) return(NULL)
+    if (is.na(tur) || !tur %in% c("user", "ai", "assistant", "system")) return(NULL)
     if (isTRUE(msg$is_streaming)) return(NULL)
     list(type = tur, content = as.character(msg$content %||% "")[1],
-         timestamp = as.character(msg$timestamp %||% "")[1])
+         timestamp = as.character(msg$timestamp %||% "")[1],
+         include_in_context = !isFALSE(msg$include_in_context))
   }))
+  if (length(kayit) > max_messages) kayit <- utils::tail(kayit, max_messages)
+  boyut <- vapply(kayit, function(m) {
+    if (is.na(m$content)) 0 else as.numeric(nchar(m$content, type = "bytes"))
+  }, numeric(1))
+  sigan <- rev(cumsum(rev(boyut))) <= max_total_chars
+  kayit[sigan]
 }
 
 # Tarayıcıdan gelen kayıt veridir: yalnızca doğrulanmış düz alanlar alınır,
@@ -54,11 +63,15 @@ mergen_chat_storage_restore_messages <- function(raw_messages,
     tur <- m$type
     icerik <- m$content
     if (!is.character(tur) || length(tur) != 1L || is.na(tur) ||
-        !tur %in% c("user", "ai", "assistant")) next
+        !tur %in% c("user", "ai", "assistant", "system")) next
     if (!is.character(icerik) || length(icerik) != 1L || is.na(icerik) ||
         !isTRUE(validUTF8(icerik)) || nchar(icerik) > max_chars ||
         !nzchar(trimws(icerik))) next
-    tur <- if (identical(tur, "user")) "user" else "ai"
+    if (identical(tur, "assistant")) tur <- "ai"
+    # Bağlam dışı tutulan mesaj (ör. hızlı eylem tanıtımı) yeniden yüklemede
+    # model bağlamına girmez; yalnız mantıksal tekil değer kabul edilir.
+    baglam <- m$include_in_context
+    baglam <- !(is.logical(baglam) && length(baglam) == 1L && isFALSE(baglam))
     zaman <- m$timestamp
     zaman <- if (is.character(zaman) && length(zaman) == 1L && !is.na(zaman) &&
                  isTRUE(validUTF8(zaman)) && nchar(zaman) <= 64L) zaman else ""
@@ -71,7 +84,7 @@ mergen_chat_storage_restore_messages <- function(raw_messages,
       id = mesaj_id, db_id = NULL, content = icerik,
       html_content = as.character(islenmis$html %||% ""),
       has_code = isTRUE(islenmis$has_code),
-      type = tur, timestamp = zaman, include_in_context = TRUE
+      type = tur, timestamp = zaman, include_in_context = baglam
     )
   }
   sonuc
@@ -96,15 +109,18 @@ storageObserversInit <- function(input, session, output, values, settings_data,
   
   # Mesajlar değiştiğinde localStorage'a kaydet: yalnızca doğrulanmış sahip
   # etiketiyle ve en az veriyle. Kimlik yoksa tarayıcıya sohbet yazılmaz.
+  # Doğrulanmış kullanıcı sohbeti boşalttığında (yeni sohbet) tarayıcı kaydı da
+  # silinir; kimlik kaybında (sahip yok) aynı kullanıcının kurtarma kaydı kalır.
   observeEvent(values$messages, {
+    sahip <- mergen_chat_storage_owner(session)
+    if (is.null(sahip)) return(invisible(NULL))
     if (length(values$messages) > 0) {
-      sahip <- mergen_chat_storage_owner(session)
-      if (!is.null(sahip)) {
-        session$sendCustomMessage("saveCurrentChat", list(
-          owner = sahip,
-          messages = mergen_chat_storage_payload(values$messages)
-        ))
-      }
+      session$sendCustomMessage("saveCurrentChat", list(
+        owner = sahip,
+        messages = mergen_chat_storage_payload(values$messages)
+      ))
+    } else {
+      session$sendCustomMessage("clearCurrentChat", list())
     }
   }, ignoreNULL = FALSE, ignoreInit = TRUE)
 

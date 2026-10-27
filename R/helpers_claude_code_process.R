@@ -233,23 +233,40 @@ cc_resolve_windows_cli_shim <- function(shim_path, max_bytes = 65536L) {
   }
   baytlar <- readBin(yol, what = "raw", n = boyut)
   metin <- rawToChar(baytlar[baytlar != as.raw(0L)])
-  hedefler <- regmatches(metin, gregexpr(
+  eslesme <- gregexpr(
     "\"%~?dp0%?[\\\\/]([^\"%*<>|\r\n]+\\.(js|cjs|mjs|exe))\"",
     metin, perl = TRUE, ignore.case = TRUE
-  ))[[1]]
-  if (!length(hedefler)) {
+  )[[1]]
+  cozulemedi <- function() {
     stop(
       "Bilge Yolaç CLI başlatıcısı (.cmd) çözümlenemedi; CLAUDE_CODE_CLI_PATH ",
       "ayarını cli.js veya claude.exe yoluna yönlendirin.",
       call. = FALSE
     )
   }
+  if (eslesme[1] < 0L) cozulemedi()
+  baslar <- as.integer(eslesme)
+  bitisler <- baslar + attr(eslesme, "match.length") - 1L
+  hedefler <- substring(metin, baslar, bitisler)
   # cmd-shim önce "%dp0%\\node.exe" varlığını sınar; çağrılan hedef son eşleşmedir.
-  hedefler <- hedefler[!grepl("[\\\\/]node\\.exe\"$", hedefler, ignore.case = TRUE)]
-  if (!length(hedefler)) {
+  secilen <- which(!grepl("[\\\\/]node\\.exe\"$", hedefler, ignore.case = TRUE))
+  if (!length(secilen)) {
     stop("Bilge Yolaç CLI başlatıcısının hedefi bulunamadı.", call. = FALSE)
   }
-  goreceli <- sub("^\"%~?dp0%?[\\\\/]", "", sub("\"$", "", hedefler[length(hedefler)]), perl = TRUE)
+  secilen <- secilen[length(secilen)]
+  # Hedefin satırında yorumlayıcıdan sonra ya da hedeften sonra sabit argüman
+  # (ör. node --require ./init.js) varsa düşürülmez: başlatıcı reddedilir.
+  satir_basi <- max(c(0L, gregexpr("\n", substr(metin, 1L, baslar[secilen] - 1L), fixed = TRUE)[[1]]))
+  once <- trimws(substr(metin, satir_basi + 1L, baslar[secilen] - 1L))
+  sonra <- trimws(sub("[\r\n].*$", "", substr(metin, bitisler[secilen] + 1L, nchar(metin))))
+  exe_hedef <- grepl("\\.exe\"$", hedefler[secilen], ignore.case = TRUE)
+  once_gecerli <- if (exe_hedef) {
+    grepl("(^|[&(@])$", once, perl = TRUE)
+  } else {
+    grepl("(\"%_prog%\"|node\\.exe\"|(^|[\\s&(@])node)$", once, perl = TRUE, ignore.case = TRUE)
+  }
+  if (!once_gecerli || !identical(sonra, "%*")) cozulemedi()
+  goreceli <- sub("^\"%~?dp0%?[\\\\/]", "", sub("\"$", "", hedefler[secilen]), perl = TRUE)
   hedef <- normalizePath(file.path(dirname(yol), gsub("\\", "/", goreceli, fixed = TRUE)),
                          winslash = "/", mustWork = FALSE)
   if (!file.exists(hedef) || dir.exists(hedef)) {

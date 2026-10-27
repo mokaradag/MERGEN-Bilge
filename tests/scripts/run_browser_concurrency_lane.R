@@ -66,6 +66,13 @@ bc_redact <- function(text) {
   gsub("(?i)bearer\\s+[A-Za-z0-9._~+/=-]{6,}", "Bearer <hidden>", out, perl = TRUE)
 }
 
+# Sonuc yalnizca islenmis #status metninden okunur; satir ici betik kaynagindaki
+# UX_SMOKE_DONE sabitleri (ve hic baslamamis sayfa) PASS sayilmaz.
+bc_rendered_status <- function(dom) {
+  m <- regmatches(dom, regexec("<div id=\"status\"[^>]*>([^<]*)</div>", dom, perl = TRUE))[[1]]
+  if (length(m) >= 2L) trimws(m[[2]]) else ""
+}
+
 # ------------------------------------------------------------------------------
 # Config + artifact.
 # ------------------------------------------------------------------------------
@@ -283,8 +290,9 @@ if (!isTRUE(cfg$enabled)) {
       } else ""
       elapsed_ms <- round((as.numeric(Sys.time()) - starts[i]) * 1000, 0)
 
-      passed <- grepl("UX_SMOKE_DONE:PASS", dom, fixed = TRUE)
-      failed <- grepl("UX_SMOKE_DONE:FAIL", dom, fixed = TRUE)
+      durum <- bc_rendered_status(dom)
+      passed <- identical(durum, "UX_SMOKE_DONE:PASS")
+      failed <- startsWith(durum, "UX_SMOKE_DONE:FAIL")
       ws_connected <- grepl("shiny|MERGEN|Bilge|MergenStreamingSmoke|mergen", dom, ignore.case = TRUE)
       status <- if (passed) "pass" else if (failed) "fail" else if (still_alive) "timeout" else "incomplete"
 

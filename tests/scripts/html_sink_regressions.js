@@ -171,6 +171,9 @@ function load(context, file) {
     // Kod bloğundaki satır sonları korunur (kopyalama tam kodu almalı).
     const formatted = env.context.destekChatbotFormatMessage('```r\na <- 1\nb <- 2\n```');
     assert.match(formatted, /a &lt;- 1\nb &lt;- 2/);
+    // Metindeki yer tutucu taklidi ikinci bir kod bloğu üretmez.
+    const taklit = env.context.destekChatbotFormatMessage('```js\nx\n```\n\u0000DESTEK_KOD_0\u0000');
+    assert.equal((taklit.match(/destek-code-block/g) || []).length, 1);
   }
 })();
 

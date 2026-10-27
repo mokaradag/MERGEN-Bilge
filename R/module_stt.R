@@ -74,19 +74,28 @@ sttServer <- function(id, parent_session, settings) {
     # Gecikmeli initSTT yalnızca kendi açılışına aittir; kilit ya da yeni açılış
     # jetonu ilerletir, bayat geri çağrı başka sahibin modalında mikrofonu açmaz.
     stt_acilis_jetonu <- 0L
+    # Kilitten sonra yeni açılışa kadar kuyrukta bekleyen onay yayınlanmaz;
+    # modal yalnızca STT açtıysa kapatılır (başka diyaloglara dokunulmaz).
+    stt_kilitli <- FALSE
+    stt_modal_acik <- FALSE
     stt_kilitle <- function() {
       stt_acilis_jetonu <<- stt_acilis_jetonu + 1L
+      stt_kilitli <<- TRUE
       rv$is_recording <- FALSE
       rv$accept_chunks <- FALSE
       rv$transcribe_gen <- isolate(rv$transcribe_gen) + 1L
       # Önceki sahibin metni ve bekleyen onayı yeni kimliğe taşınmaz; kuyruk
       # sıfırlaması accept_after_pending'i de kapatır (gecikmeli onay yayınlamaz).
       rv$transcription_history <- ""
+      final_text("")
       reset_stt_queue()
       try(shinyjs::runjs(sprintf("window.STT_Client && window.STT_Client.stopAndCleanup('%s');", id)),
           silent = TRUE)
-      try(set_stt_modal_active_js(FALSE), silent = TRUE)
-      try(removeModal(session = session), silent = TRUE)
+      if (isTRUE(stt_modal_acik)) {
+        stt_modal_acik <<- FALSE
+        try(set_stt_modal_active_js(FALSE), silent = TRUE)
+        try(removeModal(session = session), silent = TRUE)
+      }
       invisible(NULL)
     }
 
@@ -173,9 +182,15 @@ sttServer <- function(id, parent_session, settings) {
       # düzenlenmiş metin bu geçmişe yazılır; beklenen STT callback'leri de aynı
       # geçmişe append eder. Böylece textarea round-trip'i gecikse bile beklenen
       # son parçalar gönderilen metinden düşmez.
+      # Yayından hemen önce canlı kimlik yeniden denetlenir.
+      if (!stt_yetkili() || isTRUE(stt_kilitli)) {
+        stt_kilitle()
+        return(invisible(NULL))
+      }
       text_to_send <- trimws(as.character(isolate(rv$transcription_history) %||% "")[1])
       if (is.na(text_to_send)) text_to_send <- ""
       rv$accept_after_pending <- FALSE
+      stt_modal_acik <<- FALSE
       removeModal()
       if (nzchar(text_to_send)) {
         final_text(text_to_send)
@@ -190,6 +205,7 @@ sttServer <- function(id, parent_session, settings) {
       }
       stt_acilis_jetonu <<- stt_acilis_jetonu + 1L
       acilis_jetonu <- stt_acilis_jetonu
+      stt_kilitli <<- FALSE
       rv$transcription_history <- ""
       rv$transcribe_gen <- isolate(rv$transcribe_gen) + 1L
       rv$is_recording <- TRUE
@@ -311,6 +327,7 @@ sttServer <- function(id, parent_session, settings) {
       ))
 
       # STT modalının açık olduğunu uygulama geneline bildir
+      stt_modal_acik <<- TRUE
       set_stt_modal_active_js(TRUE)
 
       # JS Client'ı başlat (yalnızca bu açılış hâlâ geçerli ve kimlik yetkiliyse)
@@ -580,6 +597,12 @@ sttServer <- function(id, parent_session, settings) {
     })
 
     observeEvent(input$accept_btn, {
+      # Önceki sahibin kuyruktaki onayı kilitten sonra yeni kimlikle yayınlanmaz.
+      if (!stt_yetkili() || isTRUE(stt_kilitli)) {
+        stt_kilitle()
+        return(invisible(NULL))
+      }
+      kabul_jetonu <- stt_acilis_jetonu
       # STT modalı kapanıyor bilgisini uygulama geneline bildir
       set_stt_modal_active_js(FALSE)
 
@@ -610,13 +633,17 @@ sttServer <- function(id, parent_session, settings) {
       # engeller (idempotentlik).
       shinyjs::delay(STT_FINAL_CHUNK_GRACE_MS, {
         rv$expect_final_chunk <- FALSE
-        if (isTRUE(isolate(rv$accept_after_pending)) && isolate(rv$pending_stt_chunks) == 0L) {
+        if (identical(kabul_jetonu, stt_acilis_jetonu) &&
+            isTRUE(isolate(rv$accept_after_pending)) && isolate(rv$pending_stt_chunks) == 0L) {
           finish_accept()
         }
       })
     })
 
     observeEvent(input$dismiss_btn, {
+      # İptal bekleyen gecikmeli initSTT'yi de geçersiz kılar.
+      stt_acilis_jetonu <<- stt_acilis_jetonu + 1L
+      stt_modal_acik <<- FALSE
       # STT modalı kapanıyor bilgisini uygulama geneline bildir
       set_stt_modal_active_js(FALSE)
 

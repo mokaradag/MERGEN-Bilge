@@ -241,3 +241,20 @@ testthat::test_that("Browser eszamanlilik lane: etkin degilken/uygulamasiz GUVEN
   testthat::expect_equal(r2$status, 0L, info = srs_diag(r2))
   testthat::expect_true(grepl("SKIP", r2$stdout), info = srs_diag(r2))
 })
+
+# ------------------------------------------------------------------------------
+testthat::test_that("Tarayici esadizim hatti sonucu islenmis #status metninden okur", {
+  testthat::skip_if(is.null(srs_repo_root), "Repo koku bulunamadi.")
+  ifadeler <- parse(srs_script("run_browser_concurrency_lane.R"), keep.source = FALSE)
+  tanim <- Filter(function(e) is.call(e) && identical(as.character(e[[1]]), "<-") &&
+                    identical(as.character(e[[2]]), "bc_rendered_status"), as.list(ifadeler))
+  testthat::expect_length(tanim, 1L)
+  ortam <- new.env(parent = baseenv())
+  eval(tanim[[1]], ortam)
+  betik <- '<script>statusEl.textContent = "UX_SMOKE_DONE:PASS";</script>'
+  # Baslamamis sayfa: betik kaynagindaki sabit sonuc sayilmaz.
+  testthat::expect_identical(ortam$bc_rendered_status(paste0('<div id="status">Hazir</div>', betik)), "Hazir")
+  testthat::expect_identical(ortam$bc_rendered_status(paste0('<div id="status">UX_SMOKE_DONE:PASS</div>', betik)),
+                             "UX_SMOKE_DONE:PASS")
+  testthat::expect_identical(ortam$bc_rendered_status(betik), "")
+})

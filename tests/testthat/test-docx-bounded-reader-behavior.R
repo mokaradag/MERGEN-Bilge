@@ -112,3 +112,22 @@ test_that("UTF-16 belge denetimlerden önce UTF-8'e çevrilir; DTD UTF-16 ile gi
   expect_error(env$mergen_docx_read_document_xml(.docx_fikstur("utf32_desteklenmez.docx")),
                "kodlaması desteklenmiyor", fixed = TRUE)
 })
+
+test_that("UTF-8'e çevrilince büyüyen UTF-16 belge bayt sınırını aşamaz", {
+  env <- .docx_env()
+  yol <- .docx_fikstur("utf16_genisleyen.docx")
+  ham <- as.numeric(utils::unzip(yol, list = TRUE)$Length[2])
+  # Ham UTF-16 (6094 bayt) sınırın altında, UTF-8 karşılığı (9046 bayt) üstünde.
+  testthat::local_mocked_bindings(read_xml = function(...) stop("DOM kurulmamalıydı"), .package = "xml2")
+  expect_error(env$mergen_docx_read_document_xml(yol, max_xml_bytes = ham + 100),
+               "izin verilen boyutu", fixed = TRUE)
+})
+
+test_that("bildirilen başka kodlama (EBCDIC) DTD'yi tarama dışında bırakıp ayrıştırıcıya ulaştıramaz", {
+  env <- .docx_env()
+  sonuc <- tryCatch(xml2::xml_text(env$mergen_docx_read_document_xml(.docx_fikstur("ebcdic_dtd.docx"))),
+                    error = function(e) "reddedildi")
+  expect_identical(sonuc, "reddedildi")
+  expect_match(env$readFileContentToString(list(name = "x.docx", datapath = .docx_fikstur("ebcdic_dtd.docx"))),
+               "Dosya okunurken bir hata", fixed = TRUE)
+})

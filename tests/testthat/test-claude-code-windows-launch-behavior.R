@@ -33,7 +33,7 @@
   cli <- file.path(paket, "cli.js")
   writeLines(c(
     "const fs = require('fs');",
-    "fs.writeSync(1, JSON.stringify({ argv: process.argv.slice(2),",
+    "fs.writeSync(1, JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(),",
     "  sizinti: (process.env.ANTHROPIC_AUTH_TOKEN || '') }));"
   ), cli)
   shim <- switch(target,
@@ -87,7 +87,15 @@ test_that("npm .cmd betiği kabuksuz hedefine çözülür (modern, eski ve .exe 
 test_that("çözülemeyen .cmd betiği cmd.exe'ye düşmeden başlatmayı reddeder", {
   env <- .cc_launch_env("windows")
   dizin <- withr::local_tempdir()
-  for (icerik in list(c("@echo off", "powershell -c %*"), c("@echo off", "\"%dp0%\\yok\\cli.js\" %*"))) {
+  # Hedef bulunmayan, ya da yorumlayıcı/hedef sabit argümanı taşıyan (korunamayacak)
+  # betikler reddedilir.
+  dizin_hedef <- file.path(dizin, "node_modules", "pkg")
+  dir.create(dizin_hedef, recursive = TRUE)
+  file.create(file.path(dizin_hedef, "cli.js"))
+  hedef_yolu <- "\"%dp0%\\node_modules\\pkg\\cli.js\""
+  for (icerik in list(c("@echo off", "powershell -c %*"), c("@echo off", "\"%dp0%\\yok\\cli.js\" %*"),
+                      c("@echo off", paste0("\"%_prog%\" --require ./init.js ", hedef_yolu, " %*")),
+                      c("@echo off", paste0("\"%_prog%\" ", hedef_yolu, " --sabit %*")))) {
     writeLines(icerik, file.path(dizin, "claude.cmd"))
     expect_error(env$build_processx_command(file.path(dizin, "claude.cmd"), c("-p", "x")),
                  "Bilge Yola")
@@ -121,7 +129,9 @@ test_that("düşmanca istem metni CLI'ye harfiyen ulaşır ve ortamdan genişlem
   env$resolve_node_path <- function() normalizePath(node, winslash = "/")
   npm <- .cc_fake_npm(withr::local_tempdir(), "js")
   sir <- paste0("sk-test-", paste(sample(c(letters, 0:9), 24, TRUE), collapse = ""))
-  calisma <- withr::local_tempdir()
+  # Türkçe karakterli çalışma dizini cmd.exe olmadan gerçek süreç cwd'si olur.
+  calisma <- file.path(withr::local_tempdir(), enc2utf8("çalışma ğüşİ"))
+  dir.create(calisma)
 
   for (istem in .cc_hostile_prompts()) {
     argumanlar <- c("-p", "--output-format", "json", "--", istem)
@@ -135,10 +145,17 @@ test_that("düşmanca istem metni CLI'ye harfiyen ulaşır ve ortamdan genişlem
       windows_verbatim_args = isTRUE(komut$windows_verbatim_args)
     )
     proc$wait(20000)
+    if (proc$is_alive()) {
+      proc$kill()
+      fail(paste("CLI süreci zaman aşımına uğradı:", istem))
+      next
+    }
     expect_identical(proc$get_exit_status(), 0L, info = proc$read_all_error())
     cikti <- jsonlite::fromJSON(proc$read_all_output(), simplifyVector = FALSE)
     alinan <- unlist(cikti$argv)
     expect_identical(alinan, argumanlar, info = istem)
+    expect_identical(normalizePath(enc2native(cikti$cwd), winslash = "/"),
+                     normalizePath(calisma, winslash = "/"), info = istem)
     # Anahtar yalnızca ortamda bulunur; istem metnine genişlemez.
     expect_identical(cikti$sizinti, sir)
     expect_false(any(grepl(sir, alinan, fixed = TRUE)), info = istem)

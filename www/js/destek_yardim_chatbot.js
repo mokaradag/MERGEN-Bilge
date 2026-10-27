@@ -37,7 +37,8 @@ function destekChatbotFormatMessage(text) {
   // Model yanıtı veridir: kod blokları yer tutucuya alınır, kalan metnin TAMAMI
   // kaçışlanır ve biçimlendirme yalnızca kaçışlı metin üzerinde çalışır.
   var kodBloklari = [];
-  var formatted = String(text == null ? '' : text).replace(/```(\w*)\n?([\s\S]*?)```/g, function(match, lang, code) {
+  // NUL yer tutucu sınırlayıcıdır; metindeki NUL atılır, yer tutucu taklit edilemez.
+  var formatted = String(text == null ? '' : text).replace(/\u0000/g, '').replace(/```(\w*)\n?([\s\S]*?)```/g, function(match, lang, code) {
     var langLabel = lang ? '<span class="destek-code-lang">' + destekEscapeHtml(lang) + '</span>' : '';
     kodBloklari.push('<div class="destek-code-block">' +
       '<div class="destek-code-header">' + langLabel +

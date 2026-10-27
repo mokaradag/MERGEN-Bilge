@@ -923,7 +923,6 @@ test_that("kimlik değişiminden önce zamanlanan gecikmeli initSTT yeni sahibin
       session$returned$start_session()
       a_geri_cagri <- ertelenen_kayit$fns[[1]]
       ebeveyn$userData$user_id <- 8L
-      ebeveyn$userData$kimlik_sahibi <- 8L
       gecis(ebeveyn$userData, 7L, 8L)
       session$flushReact()
       session$returned$start_session()
@@ -944,6 +943,92 @@ test_that("kimlik değişiminden önce zamanlanan gecikmeli initSTT yeni sahibin
       session$flushReact()
       c_geri_cagri()
       expect_identical(init_sayisi, 1L)
+    }
+  )
+})
+
+test_that("kimlik değişiminden sonra kuyruktaki eski onay yeni kimlikle yayınlanmaz; aynı metin yeniden gönderilebilir", {
+  skip_if_not_installed("shiny")
+  .stt_kimlik_kancalari_yukle()
+  ebeveyn <- .stt_yetkili_ebeveyn(7L)
+  gecis <- get("mergen_session_owner_transition", envir = .stt_env, inherits = TRUE)
+
+  shiny::testServer(
+    .stt_env$sttServer,
+    args = list(id = "stt", parent_session = ebeveyn, settings = .stt_settings()),
+    {
+      testthat::local_mocked_bindings(runjs = function(...) NULL, delay = function(ms, expr) expr,
+                                      .package = "shinyjs")
+      testthat::local_mocked_bindings(showModal = function(...) NULL, removeModal = function(...) NULL,
+                                      showNotification = function(...) NULL, .package = "shiny")
+      # A metni onaylar ve yayınlar.
+      session$returned$start_session()
+      session$setInputs(transcribed_text = "merhaba")
+      session$setInputs(accept_btn = 1)
+      expect_identical(session$returned$final_text(), "merhaba")
+
+      # A modalı yeniden açar, metin yazar; onay işlenmeden kimlik B'ye geçer.
+      session$returned$start_session()
+      session$setInputs(transcribed_text = "A kullanıcısının gizli metni")
+      ebeveyn$userData$user_id <- 8L
+      gecis(ebeveyn$userData, 7L, 8L)
+      session$flushReact()
+      expect_identical(session$returned$final_text(), "")
+
+      # Kuyrukta kalan onay olayı B yetkili olsa da reddedilir.
+      session$setInputs(accept_btn = 2)
+      expect_identical(session$returned$final_text(), "")
+
+      # B yeni açılışla A'nın son metniyle aynı metni onaylarsa yayın tetiklenir.
+      session$returned$start_session()
+      session$setInputs(transcribed_text = "merhaba")
+      session$setInputs(accept_btn = 3)
+      expect_identical(session$returned$final_text(), "merhaba")
+    }
+  )
+})
+
+test_that("kimlik değişimi STT'nin açmadığı diyaloğu kapatmaz; iptal gecikmeli initSTT'yi geçersiz kılar", {
+  skip_if_not_installed("shiny")
+  .stt_kimlik_kancalari_yukle()
+  ebeveyn <- .stt_yetkili_ebeveyn(7L)
+  gecis <- get("mergen_session_owner_transition", envir = .stt_env, inherits = TRUE)
+
+  shiny::testServer(
+    .stt_env$sttServer,
+    args = list(id = "stt", parent_session = ebeveyn, settings = .stt_settings()),
+    {
+      init_sayisi <- 0L
+      root <- .subset2(session, "parent")
+      root$sendCustomMessage <- function(type, message) {
+        if (identical(type, "initSTT")) init_sayisi <<- init_sayisi + 1L
+      }
+      ertelenen_kayit <- new.env()
+      kapanan <- 0L
+      testthat::local_mocked_bindings(runjs = function(...) NULL,
+                                      delay = .stt_gecikme_biriktir(ertelenen_kayit),
+                                      .package = "shinyjs")
+      testthat::local_mocked_bindings(showModal = function(...) NULL,
+                                      removeModal = function(...) kapanan <<- kapanan + 1L,
+                                      showNotification = function(...) NULL, .package = "shiny")
+
+      # STT modalı hiç açılmadan kimlik değişir: başka modül diyaloğu kapanmaz.
+      ebeveyn$userData$user_id <- 8L
+      gecis(ebeveyn$userData, 7L, 8L)
+      session$flushReact()
+      expect_identical(kapanan, 0L)
+
+      # Açılış sonrası 500 ms dolmadan İptal: bekleyen initSTT mikrofonu açmaz.
+      session$returned$start_session()
+      session$setInputs(dismiss_btn = 1)
+      for (geri_cagri in ertelenen_kayit$fns) geri_cagri()
+      expect_identical(init_sayisi, 0L)
+      kapanan_iptal <- kapanan
+
+      # İptal sonrası kimlik değişimi kapanmış modalı yeniden kapatmaya çalışmaz.
+      gecis(ebeveyn$userData, 8L, 0L)
+      session$flushReact()
+      expect_identical(kapanan, kapanan_iptal)
     }
   )
 })

@@ -39,14 +39,14 @@ function jwt(sub, expOffset) {
 }
 
 // Tek bir sayfa yüklemesi: ön kapı betiği, ardından (yönlendirme yoksa) sso_auth.js.
-function visit(profile, tab, hash) {
-  const nav = { replaced: null, href: null, historyReplaced: false };
+function visit(profile, tab, hash, ssoHerZaman) {
+  const nav = { replaced: null, href: null, historyReplaced: false, replaceCount: 0 };
   const sent = [];
   const timers = [];
   const el = () => ({ style: {}, classList: { add() {}, remove() {} }, textContent: '' });
   const location = {
     origin: 'https://mergen.test', pathname: '/bilge/', search: '', hash: hash || '',
-    replace: u => { nav.replaced = u; },
+    replace: u => { nav.replaced = u; nav.replaceCount += 1; },
     reload: () => { nav.reloaded = true; },
     set href(u) { nav.href = u; }, get href() { return nav.href || ''; }
   };
@@ -70,7 +70,8 @@ function visit(profile, tab, hash) {
   });
   context.window = context;
   vm.runInContext(preflightSource, context, { filename: 'preflight.js' });
-  if (!nav.replaced) vm.runInContext(ssoSource, context, { filename: 'sso_auth.js' });
+  // ssoHerZaman: gezinme tamamlanmadan sso_auth.js'nin yine de yüklendiği durum.
+  if (!nav.replaced || ssoHerZaman) vm.runInContext(ssoSource, context, { filename: 'sso_auth.js' });
   return { nav, sent, context, timers };
 }
 
@@ -91,6 +92,15 @@ assert.ok(v.nav.replaced && v.nav.replaced.startsWith('https://kc.test/auth?'), 
 const state1 = stateOf(v.nav.replaced);
 assert.match(state1, /^[0-9a-f]{64}$/, 'state 32 bayt kriptografik rastgele olmalı');
 assert.equal(tab.session.getItem('mergen_sso_login_state'), state1);
+
+// 1b) Ön kapı yönlendirirken sso_auth.js yine yüklenirse ikinci yönlendirme
+// ve yeni state üretilmez; ön kapının URL'si ve state'i korunur.
+{
+  const tab1b = { session: storage() };
+  const v1b = visit({ local: storage() }, tab1b, '', true);
+  assert.equal(v1b.nav.replaceCount, 1, 'tek yönlendirme olmalı');
+  assert.equal(tab1b.session.getItem('mergen_sso_login_state'), stateOf(v1b.nav.replaced));
+}
 
 // 2) Eşleşen dönüş: token kabul edilir, state tüketilir, hash temizlenir.
 const userA = jwt('A', 3600);
@@ -237,6 +247,8 @@ for (const legacy of [JSON.stringify([{ id: 'x', type: 'ai', content: '<img src=
   vm.runInContext(handlersSource, context, { filename: 'shiny_message_handlers.js' });
   const kanonik = { type: 'user', content: 'gizli soru', timestamp: '10:42' };
   msgHandlers.get('saveCurrentChat')({ owner: 'etiketA', messages: [kanonik] });
+  // Sohbet kaydının tek yazıcısı sunucudur: kapanışta DOM kazıyan dinleyici yoktur.
+  assert.equal(listeners.beforeunload, undefined, 'sohbet kaydı için beforeunload dinleyicisi olmamalı');
   const kapanis = () => { if (listeners.beforeunload) listeners.beforeunload(); };
 
   // Kapanış sunucunun kanonik kaydını DOM balon metniyle (başlık/saat) ezmez.

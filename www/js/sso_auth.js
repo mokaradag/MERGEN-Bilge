@@ -213,6 +213,8 @@
 	}
 
 	function redirectToKeycloak() {
+	  // Ön kapı zaten yönlendiriyorsa ikinci bir giriş (ve yeni state) başlatılmaz.
+	  if (window.__mergenSsoPreflightRedirecting === true) return;
 	  // redirect_uri: Keycloak kimlik doğrulama sonrası kullanıcıyı geri yönlendirir.
 	  // Bu URL'nin Keycloak client ayarlarında "Valid Redirect URIs" listesinde
 	  // tam olarak kayıtlı olması gerekir (örn: https://sunucu-adresi/ veya * ile wildcard).
