@@ -546,3 +546,108 @@ cc_dispatch_run_output_processing <- function(ctx) {
   }
   invisible(TRUE)
 }
+
+# Explicit future bundles carry only the late-loaded functions used by that
+# worker. Keeping this list narrow avoids reintroducing expensive global scans.
+.cc_codex_add_named_worker_globals <- function(bundle, names, envir = globalenv()) {
+  for (name in unique(names)) {
+    value <- get0(name, envir = envir, inherits = TRUE)
+    if (!is.null(value)) bundle[[name]] <- value
+  }
+  bundle
+}
+
+.cc_codex_prepare_worker_names <- c(
+  ".cc_codex_original_mirror_directory_to_local_workspace",
+  ".cc_codex_original_cc_select_input_files",
+  ".cc_codex_original_cc_scan_directory_bounded",
+  ".cc_codex_original_prepare_claude_code_document_context",
+  ".cc_codex_original_cc_prepare_run_workspace",
+  ".cc_codex_path_key", ".cc_codex_guard_check", ".cc_codex_acquire_dir_lock",
+  "mergen_io_path", "mergen_logical_path",
+  "cc_scan_directory_bounded", "cc_select_input_files",
+  "mirror_directory_to_local_workspace", "prepare_claude_runtime_workdir",
+  "cc_claim_runtime_ownership", "cc_runtime_ownership_is",
+  "cc_scan_runtime_excluded_dirs", "deduplicate_claude_code_file_paths",
+  "cc_select_documents_for_request", "prepare_claude_code_document_context",
+  "cc_prepare_run_workspace", "snapshot_claude_code_workdir_files",
+  "cc_snapshot_run_output_area",
+  # Lease/temizlik kilidi worker'da da çözülebilmelidir (TOCTOU koruması).
+  ".cc_codex_reap_dir_lock", ".cc_codex_lock_owner_token",
+  ".cc_codex_touch_dir_lock", ".cc_codex_dir_lock_age",
+  ".CC_CODEX_REAPER_STALE_SEC", "CC_RUNTIME_LOCK_DIR_NAME",
+  "cc_runtime_cleanup_lock_dir", "cc_with_runtime_cleanup_lock",
+  # Bu liste GEÇİŞLİ bağımlılıkları GENİŞLETMEZ ve `dependency_mode = "explicit"`
+  # kullanıldığı için worker adları kendi global ortamında çözer. Kilit durumu
+  # ve adım adım silme yardımcıları eksik kaldığında worker
+  # `object '.CC_RUNTIME_LOCK_STATE' not found` ya da
+  # `could not find function "cc_runtime_unlink_stepwise"` ile düşüyor ve
+  # hazırlık, çalışma alanını geri kazanmak yerine başarısız oluyordu.
+  ".CC_RUNTIME_LOCK_STATE", "cc_runtime_cleanup_lock_heartbeat",
+  "cc_runtime_unlink_stepwise",
+  "cc_reclaim_orphaned_runtime_dirs", "mergen_pid_status", "mergen_owner_reclaimable",
+  "mergen_lock_owner_reclaimable", "mergen_reclaim_mutex",
+  "cc_bind_runtime_lease", "cc_runtime_lease_reclaimable", "cc_runtime_has_foreign_lease",
+  ".cc_write_runtime_lease", ".cc_read_runtime_lease"
+)
+
+.cc_codex_output_worker_names <- c(
+  "%||%",
+  ".cc_codex_original_cc_scan_directory_bounded",
+  ".cc_codex_original_cc_plan_output_sync",
+  ".cc_codex_original_cc_process_run_outputs",
+  ".cc_codex_path_key",
+  "cc_scan_directory_bounded", "cc_scan_runtime_excluded_dirs",
+  "deduplicate_claude_code_file_paths", "snapshot_claude_code_workdir_files",
+  "cc_snapshot_run_output_area", "cc_filter_download_candidates",
+  "cc_plan_output_sync", "cc_apply_output_sync_plan", "cc_process_run_outputs",
+  ".cc_output_txn_paths", ".cc_output_dest_lock", ".cc_output_recover_dest", ".cc_output_recover_parent",
+  ".cc_output_name_variants", ".cc_output_recovery_dest", ".cc_scan_key",
+  "mergen_reservation_token", "mergen_reservation_acquire", "mergen_reservation_takeover",
+  "mergen_reservation_release", "mergen_reservation_owner", ".mergen_reservation_marker",
+  "mergen_reservation_touch", "mergen_io_path", "mergen_logical_path",
+  ".mergen_reservation_remove_owned", "mergen_reservation_quarantine_path",
+  "mergen_lock_owner_reclaimable", "mergen_owner_reclaimable", "mergen_pid_status", "mergen_reclaim_mutex"
+)
+
+# Süreç başına ÖNBELLEK sözleşmesi korunur. Sertleştirme katmanı yalnızca
+# yüklenirken önbelleği geçersiz kılar (aşağıdaki NULL atamaları); sonraki
+# gönderimler `refresh = FALSE` ile önbellekten okur.
+#
+# REGRESYON: Bu sarmalayıcılar önceden koşulsuz `refresh = TRUE` çağırıyordu.
+# Böylece her Bilge Yolaç çalıştırması, future gönderilmeden ÖNCE ana Shiny
+# olay döngüsünde `worker_monitor_expand_function_globals()` /
+# `codetools::findGlobals()` özyinelemesini baştan çalıştırıyor ve açık worker
+# globals'ının önlemek için var olduğu oturumlar arası donmayı geri
+# getiriyordu.
+cc_run_prepare_worker_globals <- function(refresh = FALSE, envir = globalenv()) {
+  if (!isTRUE(refresh) && !is.null(.cc_prepare_worker_cache$globals)) {
+    return(.cc_prepare_worker_cache$globals)
+  }
+
+  bundle <- .cc_codex_original_cc_run_prepare_worker_globals(refresh = TRUE, envir = envir)
+  bundle <- .cc_codex_add_named_worker_globals(
+    bundle, .cc_codex_prepare_worker_names, envir
+  )
+  .cc_prepare_worker_cache$globals <- bundle
+  bundle
+}
+
+cc_run_output_worker_globals <- function(refresh = FALSE, envir = globalenv()) {
+  if (!isTRUE(refresh) && !is.null(.cc_completion_worker_cache$globals)) {
+    return(.cc_completion_worker_cache$globals)
+  }
+
+  bundle <- .cc_codex_original_cc_run_output_worker_globals(refresh = TRUE, envir = envir)
+  bundle <- .cc_codex_add_named_worker_globals(
+    bundle, .cc_codex_output_worker_names, envir
+  )
+  .cc_completion_worker_cache$globals <- bundle
+  bundle
+}
+
+# Geç yüklenen sertleştirme sürümleri, temel katman tarafından önceden
+# doldurulmuş paketleri geçersiz kılar; ilk gönderim paketi bir kez yeniden
+# kurar ve sonraki gönderimler önbelleği kullanır.
+.cc_prepare_worker_cache$globals <- NULL
+.cc_completion_worker_cache$globals <- NULL
