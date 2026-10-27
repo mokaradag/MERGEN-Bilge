@@ -186,7 +186,7 @@ test_that("eski biçim ve kimlik hazır değilken gelen kayıt güvenli işlenir
 
     # Kimlik aynı hesap olarak hazırlanınca bekleyen kayıt geri yüklenir.
     .kimlik_oturum_kur(session, 7L)
-    mergen_session_owner_transition(session$userData, 0L, 7L)
+    env$mergen_session_owner_transition(session$userData, 0L, 7L)
     session$flushReact()
     msgs <- session$userData$.values$messages
     expect_length(msgs, 1L)

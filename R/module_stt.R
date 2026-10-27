@@ -75,6 +75,9 @@ sttServer <- function(id, parent_session, settings) {
       rv$is_recording <- FALSE
       rv$accept_chunks <- FALSE
       rv$transcribe_gen <- isolate(rv$transcribe_gen) + 1L
+      # Önceki sahibin metni ve bekleyen onayı yeni kimliğe taşınmaz; kuyruk
+      # sıfırlaması accept_after_pending'i de kapatır (gecikmeli onay yayınlamaz).
+      rv$transcription_history <- ""
       reset_stt_queue()
       try(shinyjs::runjs(sprintf("window.STT_Client && window.STT_Client.stopAndCleanup('%s');", id)),
           silent = TRUE)

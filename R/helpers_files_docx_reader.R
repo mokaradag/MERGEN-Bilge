@@ -34,6 +34,20 @@ mergen_docx_read_document_xml <- function(path, max_xml_bytes = NULL, max_elemen
   if (length(baytlar) > max_xml_bytes) {
     stop("DOCX belge içeriği izin verilen boyutu aşıyor.", call. = FALSE)
   }
+  # UTF-16 belge (BOM ya da '<?' imzası) denetimlerden ÖNCE UTF-8'e çevrilir;
+  # aksi hâlde DTD/öğe taraması UTF-16 baytlarını görmez. Çeviriden sonra kalan
+  # NUL baytı UTF-8 XML'de geçersizdir (UCS-4 vb.): belge reddedilir.
+  bas <- as.integer(baytlar[seq_len(min(4L, length(baytlar)))])
+  utf16 <- if (identical(bas[1:2], c(255L, 254L)) || identical(bas, c(60L, 0L, 63L, 0L))) "UTF-16LE" else
+    if (identical(bas[1:2], c(254L, 255L)) || identical(bas, c(0L, 60L, 0L, 63L))) "UTF-16BE" else NULL
+  if (!is.null(utf16)) {
+    if (bas[1] %in% c(254L, 255L)) baytlar <- baytlar[-(1:2)]
+    baytlar <- iconv(list(baytlar), from = utf16, to = "UTF-8", toRaw = TRUE)[[1]]
+    if (is.null(baytlar)) stop("DOCX belge kodlaması çözülemedi.", call. = FALSE)
+  }
+  if (any(baytlar == as.raw(0L))) {
+    stop("DOCX belge kodlaması desteklenmiyor.", call. = FALSE)
+  }
   if (sum(baytlar == as.raw(0x3C)) > max_elements) {
     stop("DOCX belge yapısı izin verilen öğe sayısını aşıyor.", call. = FALSE)
   }
@@ -43,5 +57,5 @@ mergen_docx_read_document_xml <- function(path, max_xml_bytes = NULL, max_elemen
   }
 
   # NONET: dış varlık/DTD ağ erişimi yok; xml2 varsayılanı varlık genişletmez.
-  xml2::read_xml(baytlar, options = c("NOBLANKS", "NONET"))
+  xml2::read_xml(baytlar, encoding = "UTF-8", options = c("NOBLANKS", "NONET"))
 }

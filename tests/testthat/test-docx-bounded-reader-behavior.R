@@ -85,3 +85,15 @@ test_that("sınırlar ortam değişkeniyle ayarlanabilir; geçersiz değer güve
   expect_s3_class(env$mergen_docx_read_document_xml(.docx_fikstur("gecerli_turkce.docx")), "xml_document")
   expect_error(env$mergen_docx_read_document_xml(.docx_fikstur("boyut_bombasi.docx")), "izin verilen boyutu", fixed = TRUE)
 })
+
+test_that("UTF-16 belge denetimlerden önce UTF-8'e çevrilir; DTD UTF-16 ile gizlenemez", {
+  env <- .docx_env()
+  metin <- xml2::xml_text(env$mergen_docx_read_document_xml(.docx_fikstur("utf16_gecerli.docx")))
+  expect_identical(metin, enc2utf8("UTF-16 Türkçe ğüşıöç"))
+
+  testthat::local_mocked_bindings(read_xml = function(...) stop("DOM kurulmamalıydı"), .package = "xml2")
+  expect_error(env$mergen_docx_read_document_xml(.docx_fikstur("utf16_dtd_varlik.docx")), "DTD", fixed = TRUE)
+  # Çevrilemeyen çok baytlı kodlama (UCS-4) taramayı atlatamaz: reddedilir.
+  expect_error(env$mergen_docx_read_document_xml(.docx_fikstur("utf32_desteklenmez.docx")),
+               "kodlaması desteklenmiyor", fixed = TRUE)
+})

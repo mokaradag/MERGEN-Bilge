@@ -28,7 +28,10 @@ file_ingestion_shiny_uploads <- function(uploads, upload_root = tempdir()) {
       grepl("^[0-9A-Fa-f]{16,64}$", basename(is_dizini)) &&
       identical(kanonik(dirname(is_dizini)), kok) &&
       isTRUE(file.exists(yol)) && !isTRUE(dir.exists(yol)) &&
-      !nzchar(Sys.readlink(yol)) && !nzchar(Sys.readlink(is_dizini))
+      !nzchar(Sys.readlink(yol)) && !nzchar(Sys.readlink(is_dizini)) &&
+      # Windows bağlantı/junction noktaları Sys.readlink ile görünmez; çözülmüş
+      # gerçek hedef yine aynı iş dizininde olmalıdır.
+      identical(kanonik(dirname(kanonik(yol))), kanonik(is_dizini))
   }, logical(1))
 
   list(uploads = uploads[kabul, sutunlar, drop = FALSE], rejected = sum(!kabul))

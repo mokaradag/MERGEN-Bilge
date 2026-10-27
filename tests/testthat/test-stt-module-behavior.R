@@ -24,6 +24,8 @@ source(
   ud <- new.env()
   ud$auth_initialized <- user_id > 0L
   ud$user_id <- as.integer(user_id)
+  # Gerçek kimlik yazıcısı (write_identity) gibi oturum sahibini kaydeder.
+  if (user_id > 0L) ud$kimlik_sahibi <- as.integer(user_id)
   list(userData = ud)
 }
 
@@ -844,6 +846,41 @@ test_that("kimlik kaybında kayıt kilitlenir ve sonraki parçalar gönderilmez"
       session$returned$start_session()
       session$setInputs(audio_chunk = "Zm91cnRo")
       expect_identical(sayac$n, 2L)
+    }
+  )
+})
+
+test_that("kimlik değişimi bekleyen onayı iptal eder; önceki sahibin metni yayınlanmaz", {
+  skip_if_not_installed("shiny")
+  .stt_kimlik_kancalari_yukle()
+  .stt_askida_gonderim()
+  ebeveyn <- .stt_yetkili_ebeveyn(7L)
+
+  shiny::testServer(
+    .stt_env$sttServer,
+    args = list(id = "stt", parent_session = ebeveyn, settings = .stt_settings()),
+    {
+      ertelenen <- list()
+      testthat::local_mocked_bindings(
+        runjs = function(...) NULL,
+        # Onay sonrası bekleme süresi geri çağrısı kimlik değişiminden SONRA çalışsın.
+        delay = function(ms, expr) ertelenen[[length(ertelenen) + 1L]] <<- substitute(expr),
+        .package = "shinyjs"
+      )
+      testthat::local_mocked_bindings(showModal = function(...) NULL, removeModal = function(...) NULL,
+                                      showNotification = function(...) NULL, .package = "shiny")
+      session$returned$start_session()
+      session$setInputs(transcribed_text = "A kullanıcısının gizli metni")
+      session$setInputs(accept_btn = 1)
+
+      # Bekleme süresi dolmadan kimlik B'ye geçer.
+      ebeveyn$userData$user_id <- 8L
+      get("mergen_session_owner_transition", envir = .stt_env, inherits = TRUE)(ebeveyn$userData, 7L, 8L)
+      session$flushReact()
+      for (ifade in ertelenen) eval(ifade, envir = environment(session$returned$start_session))
+      session$flushReact()
+
+      expect_identical(session$returned$final_text(), "")
     }
   )
 })
