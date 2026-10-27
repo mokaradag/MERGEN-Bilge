@@ -239,10 +239,18 @@ file_ingestion_discard_unclaimed <- function(path, source, expected) {
   marker <- file_ingestion_owner_path(path)
   reserved <- .file_store_with_index_lock({
     owner <- file_ingestion_read_owner(path)
-    if (!identical(owner$state, "copying") && !isTRUE(attr(owner, "unreadable")) &&
-        file_ingestion_identity_matches(file_ingestion_file_identity(path), file_ingestion_file_identity(expected)) &&
-        (is.null(owner) || !file_ingestion_identity_matches(file_ingestion_file_identity(owner$identity), file_ingestion_file_identity(expected)))) {
-      file_ingestion_write_owner(list(id = id, identity = expected, state = "deleting",
+    actual <- file_ingestion_file_identity(path)
+    expected_identity <- file_ingestion_file_identity(expected)
+    actual_key <- attr(actual, "file_key")
+    guclu <- c("device_id", "inode")
+    strong <- is.list(actual_key) && all(guclu %in% names(actual_key)) &&
+      !anyNA(unlist(actual_key[guclu], use.names = FALSE))
+    if (!identical(owner$state, "copying") && !isTRUE(attr(owner, "unreadable")) && strong &&
+        file_ingestion_identity_matches(actual, expected_identity) &&
+        (is.null(owner) || !file_ingestion_identity_matches(file_ingestion_file_identity(owner$identity), expected_identity))) {
+      # Zayıf önceki doğrulama temizliği tetikleyebilir; silme yetkisi olarak
+      # daima yeniden okunan güçlü GÜNCEL kimlik saklanır.
+      file_ingestion_write_owner(list(id = id, identity = actual, state = "deleting",
         pid = Sys.getpid(), host = unname(Sys.info()[["nodename"]])), marker)
       TRUE
     } else FALSE
