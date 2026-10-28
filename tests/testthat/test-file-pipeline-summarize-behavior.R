@@ -140,8 +140,8 @@ test_that("gerçek okuyucunun reddettiği DOCX özet görevinde hata metni olara
   env$`%||%` <- function(x, y) if (is.null(x)) y else x
   env$path_exists_relaxed <- function(p) file.exists(p)
   env$resolve_readable_path <- function(p) p
-  sys.source(file.path(kok, "R", "helpers_files_docx_reader.R"), envir = env, keep.source = FALSE)
-  sys.source(file.path(kok, "R", "helpers_files.R"), envir = env, keep.source = FALSE)
+  safe_source(file.path(kok, "R", "helpers_files_docx_reader.R"), encoding = "UTF-8", envir = env)
+  safe_source(file.path(kok, "R", "helpers_files.R"), encoding = "UTF-8", envir = env)
   llm <- 0L
   env$summarize_file_with_llm <- function(...) { llm <<- llm + 1L; "özet" }
   bomba <- file.path(kok, "tests", "fixtures", "docx", "dugum_bombasi.docx")
