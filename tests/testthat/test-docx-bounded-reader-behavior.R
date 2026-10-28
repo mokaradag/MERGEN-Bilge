@@ -76,6 +76,17 @@ test_that("Word tarzı yoğun tablo XML'i varsayılan öğe bütçesine takılma
   expect_identical(son, enc2utf8("Tablo sonu: ğüşıöç İ"))
 })
 
+test_that("metin düğümündeki '=' karakterleri öznitelik sayılmaz", {
+  env <- .docx_env()
+  withr::local_envvar(MERGEN_DOCX_MAX_XML_NODES = NA, MERGEN_DOCX_MAX_XML_MB = NA)
+  # Tek <w:t> içinde 5000 '=' (öznitelik yok): öğe başı ve toplam öznitelik
+  # sınırının üstünde '=' taşısa da meşru belge reddedilmez.
+  yol <- .docx_fikstur("esittir_metni_gecerli.docx")
+  metin <- xml2::xml_text(env$mergen_docx_read_document_xml(yol, max_elements = 1000))
+  expect_identical(metin, paste0(strrep("=", 5000L), " x = y"))
+  expect_match(env$readFileContentToString(list(name = "x.docx", datapath = yol)), strrep("=", 5000L), fixed = TRUE)
+})
+
 test_that("merkez dizinde yalan beyan edilen boyut açma bütçesini aşamaz", {
   env <- .docx_env()
   yol <- .docx_fikstur("yalanci_boyut.docx")

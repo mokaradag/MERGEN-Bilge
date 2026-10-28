@@ -271,7 +271,7 @@ if (!isTRUE(use_external_app)) {
   on.exit(cleanup(), add = TRUE)
 } else {
   cat(sprintf("Using externally running app: %s\n", url))
-  cat("NOTE: External app must run with MERGEN_ENABLE_UX_SMOKE=true to serve /smoke/.\n")
+  cat("NOTE: External app must run with MERGEN_ENABLE_UX_SMOKE=true on a loopback host (MERGEN_HOST=127.0.0.1) to serve /smoke/.\n")
 }
 
 read_url <- function(target) {

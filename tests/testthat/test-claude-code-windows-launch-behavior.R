@@ -130,6 +130,18 @@ test_that("doğrudan cli.js başlatması PATH dışındaki node dizinini çocuk 
   ilk <- strsplit(unname(komut$env[[path_adi]]), ";", fixed = TRUE)[[1]][1]
   expect_identical(ilk, normalizePath(node_dizini, winslash = "\\"))
 
+  # PATH'te yalnız adı önek olan başka dizin (node-old) varsa yine eklenir;
+  # aynı dizin başka yazımla (/, büyük harf, sondaki ayraç) zaten varsa yinelenmez.
+  hedef <- normalizePath(node_dizini, winslash = "\\")
+  withr::with_envvar(c(PATH = paste0(hedef, "-old;C:\\Windows")), {
+    yol <- unname(env$build_processx_command(npm$cli, "x")$env[["PATH"]])
+    expect_identical(strsplit(yol, ";", fixed = TRUE)[[1]], c(hedef, paste0(hedef, "-old"), "C:\\Windows"))
+  })
+  withr::with_envvar(c(PATH = paste0(toupper(gsub("\\", "/", hedef, fixed = TRUE)), "/;C:\\Windows")), {
+    yol <- unname(env$build_processx_command(npm$cli, "x")$env[["PATH"]])
+    expect_length(strsplit(yol, ";", fixed = TRUE)[[1]], 2L)
+  })
+
   # Windows dışı platformda ortam devralınır (değiştirilmez).
   unix <- .cc_launch_env("unix")
   expect_null(unix$build_processx_command(npm$cli, "x")$env)

@@ -609,7 +609,9 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #
 # --- UX smoke harness'ı (varsayılan KAPALI; üretimde AÇMAYIN) ---
 #   tests/smoke test sayfası gerçek uygulama eylemleri tetikler. /smoke/ yolu
-#   yalnızca bakımcı smoke koşusu için TRUE verildiğinde sunulur.
+#   yalnızca bakımcı smoke koşusu için TRUE verildiğinde VE uygulama yalnız
+#   döngü adresini dinlerken (MERGEN_HOST=127.0.0.1) sunulur; tarayıcı aynı
+#   makinede açılır. 0.0.0.0 gibi ağ adresinde bayrak yok sayılır.
 # MERGEN_ENABLE_UX_SMOKE=false
 #
 # --- Tanılama (varsayılan KAPALI) ---

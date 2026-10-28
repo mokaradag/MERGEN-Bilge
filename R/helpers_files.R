@@ -171,7 +171,8 @@ dataframeToMarkdown <- function(df) {
 }
 
 # Bir dosyanın içeriğini metin olarak okur; Excel dosyaları için kompakt profil özeti üretir.
-readFileContentToString <- function(file_info) {
+# Okuma hatası metne çevrilir; `hata_metni = FALSE` hatayı korur (özet görevi için).
+readFileContentToString <- function(file_info, hata_metni = TRUE) {
   tryCatch({
     if (!path_exists_relaxed(file_info$datapath)) return("Hata: Dosya bulunamadı.")
 
@@ -223,6 +224,7 @@ readFileContentToString <- function(file_info) {
 
     content
   }, error = function(e) {
+    if (!isTRUE(hata_metni)) stop(e)
     paste("Dosya okunurken bir hata oluştu:", e$message)
   })
 }

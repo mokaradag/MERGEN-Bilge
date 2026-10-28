@@ -439,7 +439,7 @@ Yerel geliştirme ortamında uygulama çalışırken smoke sayfasını açmak i�
 - `Sys.setenv(MERGEN_SMOKE_BASE_URL = "http://127.0.0.1:3838")`
 - `source("tests/scripts/open_ux_smoke.R", encoding = "UTF-8")`
 
-`/smoke/` yolu yalnızca uygulama `MERGEN_ENABLE_UX_SMOKE=true` ile başlatıldığında sunulur (varsayılan kapalı); sayfa açılınca **UX smoke'u başlat** düğmesine basılır, otomasyon koşucuları bunun yerine `?autostart=1` kullanır. VM/üretimde bu bayrak yalnızca planlı bir bakım penceresinde açılır, uygulama yeniden başlatılır ve smoke bitince bayrak kaldırılıp uygulama tekrar yeniden başlatılır.
+`/smoke/` yolu yalnızca uygulama `MERGEN_ENABLE_UX_SMOKE=true` ile ve yalnız döngü adresini dinlerken (`MERGEN_HOST=127.0.0.1`; tarayıcı aynı makinede) başlatıldığında sunulur (varsayılan kapalı; ağ adresinde bayrak yok sayılır); sayfa açılınca **UX smoke'u başlat** düğmesine basılır, otomasyon koşucuları bunun yerine `?autostart=1` kullanır. VM/üretimde bu bayrak yalnızca planlı bir bakım penceresinde açılır, uygulama yeniden başlatılır ve smoke bitince bayrak kaldırılıp uygulama tekrar yeniden başlatılır.
 
 Üretim veya SSO/Keycloak yolu üzerinde smoke doğrulaması yapılacaksa sayfa aynı origin üzerinden açılmalıdır. Örneğin uygulama `/bilge` altında yayınlanıyorsa `/bilge/smoke/ux-smoke.html` kullanılmalıdır. Cross-origin Keycloak/login yönlendirmesi iframe içindeki app DOM’unun okunmasını engeller; bu durumda smoke hatası uygulama UX regresyonu değil, yanlış origin/yönlendirme problemidir.
 

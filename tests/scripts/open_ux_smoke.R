@@ -36,7 +36,7 @@ if (is_env_true("MERGEN_SMOKE_FULL_QUICK_ACTIONS")) {
   smoke_url <- paste0(smoke_url, "?fullQuickActions=1")
 }
 
-cat("NOT: /smoke/ yolu yalnızca uygulama MERGEN_ENABLE_UX_SMOKE=true ile başlatıldığında sunulur.\n")
+cat("NOT: /smoke/ yolu yalnızca uygulama MERGEN_ENABLE_UX_SMOKE=true ile ve döngü adresinde (127.0.0.1) başlatıldığında sunulur.\n")
 cat("Sayfa açılınca 'UX smoke'u başlat' düğmesine basın; sayfa yüklemesi kendiliğinden işlem başlatmaz.\n\n")
 
 cat("UX smoke sayfası:\n", smoke_url, "\n\n", sep = "")

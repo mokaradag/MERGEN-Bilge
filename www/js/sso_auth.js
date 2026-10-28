@@ -11,22 +11,33 @@
   // uygulama token'ı, hesaba bağlı sohbet kaydı ve bekleyen giriş durumu.
   // SSO kapalıyken de tanımlıdır; kenar çubuğu çıkışı yerel modda da çalışır.
   // ===========================================================================
-  window.mergenClearBrowserAuthState = function() {
+  var CIKIS_SINYALI = 'mergen_logout_signal';
+  function tarayiciKimliginiTemizle() {
     // Çıkış sonrası yönlendirme sırasında (beforeunload) sohbet yeniden
     // yazılmasın: bu sayfa ömrü boyunca tarayıcı sohbet kaydı kapatılır.
     window.__mergenBrowserAuthCleared = true;
     try { localStorage.removeItem('mergen_bilge_jwt_token'); } catch (e) {}
     try { localStorage.removeItem('mergen_current_chat'); } catch (e) {}
     try { sessionStorage.removeItem('mergen_sso_login_state'); } catch (e) {}
+  }
+
+  window.mergenClearBrowserAuthState = function() {
+    tarayiciKimliginiTemizle();
+    // Yalnız açık çıkış kardeş sekmelere bildirilir. Süre dolumunda token'ın
+    // silinmesi (clearStoredToken) çıkış değildir: kurtarma kaydı korunur.
+    try {
+      localStorage.setItem(CIKIS_SINYALI, String(Date.now()));
+      localStorage.removeItem(CIKIS_SINYALI);
+    } catch (e) {}
   };
 
-  // Başka sekmedeki çıkış paylaşılan token'ı siler; bu sekme de kaydı kapatır
-  // ve yeniden yüklenerek kendi Shiny oturumunu bırakır (yeniden giriş ister).
+  // Başka sekmedeki açık çıkış: bu sekme de kaydı kapatır ve yeniden yüklenerek
+  // kendi Shiny oturumunu bırakır (yeniden giriş ister).
   if (typeof window.addEventListener === 'function') {
     window.addEventListener('storage', function(e) {
-      if (!e || e.key !== 'mergen_bilge_jwt_token' || e.newValue !== null) return;
+      if (!e || e.key !== CIKIS_SINYALI || !e.newValue) return;
       if (window.__mergenBrowserAuthCleared === true) return;
-      window.mergenClearBrowserAuthState();
+      tarayiciKimliginiTemizle();
       try { window.location.reload(); } catch (err) {}
     });
   }

@@ -281,10 +281,17 @@ for (const legacy of [JSON.stringify([{ id: 'x', type: 'ai', content: '<img src=
   assert.equal(local.getItem('mergen_current_chat'), null, 'çıkıştan sonra gelen kayıt isteği yok sayılmalı');
 })();
 
-// 10) Açık kardeş sekme: A sekmesindeki çıkış, zaten açık B sekmesini de
-//     kapatır; B kaydı yeniden yazamaz ve yeniden yüklenerek oturumunu bırakır.
+// 10) Açık kardeş sekme: A'daki AÇIK çıkış, zaten açık B sekmesini de kapatır;
+//     B kaydı yeniden yazamaz ve yeniden yüklenerek oturumunu bırakır. Süre
+//     dolumunda token'ın silinmesi ise çıkış değildir: B'nin aynı kullanıcı
+//     kurtarma kaydı korunur. Olaylar paylaşılan depodaki gerçek yazımlardan
+//     üretilir ve tarayıcı gibi yalnız diğer sekmeye iletilir.
 (function siblingTabLogout() {
   const local = storage();
+  const olaylar = [];
+  const ham = { set: local.setItem, remove: local.removeItem };
+  local.setItem = (k, v) => { const eski = local.getItem(k); ham.set(k, v); if (eski !== String(v)) olaylar.push({ key: k, oldValue: eski, newValue: String(v) }); };
+  local.removeItem = k => { const eski = local.getItem(k); ham.remove(k); if (eski !== null) olaylar.push({ key: k, oldValue: eski, newValue: null }); };
   function sekme() {
     const listeners = {};
     const msgHandlers = new Map();
@@ -311,29 +318,50 @@ for (const legacy of [JSON.stringify([{ id: 'x', type: 'ai', content: '<img src=
     vm.runInContext(handlersSource, context, { filename: 'shiny_message_handlers.js' });
     return { context, listeners, msgHandlers, nav };
   }
+  const ilet = (hedef, bas) => olaylar.slice(bas).forEach(e => hedef.listeners.storage(e));
+  const kayit = JSON.stringify({ v: 2, owner: 'etiketA', messages: [{ type: 'user', content: 'A taslak' }] });
+
   const tokenA = jwt('A', 3600);
   local.setItem('mergen_bilge_jwt_token', tokenA);
-  const a = sekme();
+  local.setItem('mergen_current_chat', kayit);
   const b = sekme();
   assert.equal(typeof b.listeners.storage, 'function', 'kardeş sekme çıkışı dinlenmeli');
 
-  // İlgisiz anahtar ya da token yenilemesi sekmeyi kapatmaz.
-  b.listeners.storage({ key: 'mergen_current_chat', oldValue: '{}', newValue: null });
-  b.listeners.storage({ key: 'mergen_bilge_jwt_token', oldValue: tokenA, newValue: jwt('A', 7200) });
+  // Başka sekmede token yenilemesi sekmeyi kapatmaz.
+  let bas = olaylar.length;
+  local.setItem('mergen_bilge_jwt_token', jwt('A', 7200));
+  ilet(b, bas);
   assert.equal(b.nav.reloaded, 0);
-  assert.notEqual(b.context.__mergenBrowserAuthCleared, true);
 
-  // A çıkar; tarayıcı B'ye storage olayını iletir.
+  // Süre dolumu: C sekmesi süresi dolmuş token'la açılır ve onu siler. Bu çıkış
+  // değildir; B yeniden yüklenmez, aynı kullanıcı kurtarma kaydı korunur.
+  local.setItem('mergen_bilge_jwt_token', jwt('A', -60));
+  bas = olaylar.length;
+  sekme();
+  assert.equal(local.getItem('mergen_bilge_jwt_token'), null, 'süresi dolmuş token silinmeli');
+  assert.ok(olaylar.slice(bas).some(e => e.key === 'mergen_bilge_jwt_token' && e.newValue === null));
+  ilet(b, bas);
+  assert.equal(b.nav.reloaded, 0, 'süre dolumu kardeş sekmeyi kapatmamalı');
+  assert.notEqual(b.context.__mergenBrowserAuthCleared, true);
+  assert.equal(local.getItem('mergen_current_chat'), kayit, 'süre dolumunda kurtarma kaydı korunmalı');
+
+  // Açık çıkış: A kendi sekmesinde çıkar; B tarayıcının ilettiği olayları alır.
+  local.setItem('mergen_bilge_jwt_token', tokenA);
+  const a = sekme();
+  bas = olaylar.length;
   vm.runInContext(logoutOnclick, a.context, { filename: 'logout_onclick.js' });
   assert.equal(local.getItem('mergen_bilge_jwt_token'), null);
-  b.listeners.storage({ key: 'mergen_bilge_jwt_token', oldValue: tokenA, newValue: null });
+  assert.equal(local.getItem('mergen_logout_signal'), null, 'çıkış sinyali depoda kalmamalı');
+  ilet(b, bas);
   assert.equal(b.nav.reloaded, 1, 'B sekmesi oturumunu bırakmak için yeniden yüklenmeli');
   assert.equal(b.context.__mergenBrowserAuthCleared, true);
   b.msgHandlers.get('saveCurrentChat')({ owner: 'etiketA', messages: [{ type: 'user', content: 'B gizli' }] });
   assert.equal(local.getItem('mergen_current_chat'), null, 'B çıkıştan sonra sohbet kaydını yeniden yazmamalı');
-  // Tekrarlanan olay ikinci yeniden yüklemeyi tetiklemez.
-  b.listeners.storage({ key: 'mergen_bilge_jwt_token', oldValue: tokenA, newValue: null });
+  // Tekrarlanan olay ikinci yeniden yüklemeyi tetiklemez; B sinyali yeniden yaymaz.
+  bas = olaylar.length;
+  ilet(b, 0);
   assert.equal(b.nav.reloaded, 1);
+  assert.equal(olaylar.slice(bas).filter(e => e.key === 'mergen_logout_signal').length, 0);
 })();
 
 // 11) sso_auth.js yüklenmemişse kenar çubuğu yedeği de merkezi temizlikle aynı

@@ -62,12 +62,13 @@ mergen_docx_read_document_xml <- function(path, max_xml_bytes = NULL, max_elemen
   if (length(acilar) > max_elements) {
     stop("DOCX belge yapısı izin verilen öğe sayısını aşıyor.", call. = FALSE)
   }
-  # Öznitelik düğümleri '<' sayımına girmez. Öznitelik değeri '<' içeremez; bu
-  # yüzden bir öğenin öznitelikleri kendi '<'i ile sonraki '<' arasındadır ve
-  # oradaki '=' sayısı öznitelik sayısının üst sınırıdır. Toplam sınır DOM
-  # büyümesini, öğe başı sınır libxml2'nin öğe başına karesel öznitelik
-  # denetimini ayrıştırmadan önce keser.
-  esitler <- grepRaw(as.raw(0x3D), baytlar, fixed = TRUE, all = TRUE)
+  # Öznitelik düğümleri '<' sayımına girmez. Her öznitelik `ad S? = S? "değer"`
+  # biçimindedir: tırnaktan önce gelen '=' sayısı öznitelik sayısının üst
+  # sınırıdır; metin düğümündeki "====" gibi '=' sayılmaz. Öznitelik değeri '<'
+  # içeremez; bu yüzden bir öğenin öznitelikleri kendi '<'i ile sonraki '<'
+  # arasındadır. Toplam sınır DOM büyümesini, öğe başı sınır libxml2'nin öğe
+  # başına karesel öznitelik denetimini ayrıştırmadan önce keser.
+  esitler <- grepRaw("=[ \t\r\n]*[\"']", baytlar, all = TRUE)
   if (length(esitler) > max_elements ||
       (length(esitler) && max(tabulate(findInterval(esitler, acilar) + 1L)) > max_attributes_per_element)) {
     stop("DOCX belge yapısı izin verilen öznitelik sayısını aşıyor.", call. = FALSE)

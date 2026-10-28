@@ -299,9 +299,11 @@ cc_windows_child_env <- function(dizinler) {
   mevcut_path <- if (path_adi %in% names(env)) unname(env[[path_adi]]) else ""
   eklenecekler <- unique(Filter(nzchar, dizinler))
 
+  # Alt dize değil tam girdi karşılaştırılır (C:\node, C:\node-old'u kapsamaz).
+  girdi <- function(x) sub("[\\\\/]+$", "", tolower(gsub("/", "\\", trimws(x), fixed = TRUE)))
   yeni_path <- mevcut_path
   for (dizin in rev(eklenecekler)) {
-    if (!grepl(dizin, yeni_path, fixed = TRUE)) {
+    if (!girdi(dizin) %in% girdi(strsplit(yeni_path, ";", fixed = TRUE)[[1]])) {
       yeni_path <- if (nzchar(yeni_path)) paste(dizin, yeni_path, sep = ";") else dizin
     }
   }

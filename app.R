@@ -91,8 +91,12 @@ safe_add_resource_path <- function(prefix, directory) {
 # www/ dışında tutulur; böylece hiçbir statik yol (img -> www takma adı ve
 # Windows'ta büyük/küçük harf varyantları dahil) onu sunamaz. Yalnızca bakımcı
 # smoke ortamında açıkça MERGEN_ENABLE_UX_SMOKE=true verildiğinde /smoke olur.
-mergen_ux_smoke_enabled <- function() {
-  tolower(trimws(Sys.getenv("MERGEN_ENABLE_UX_SMOKE", ""))) %in% c("1", "true", "yes", "evet")
+# Ayrıca uygulama yalnız döngü (loopback) arayüzünü dinlemelidir: ağdaki hiçbir
+# istemci harness'a ulaşıp başka bir oturumda eylem başlatamaz.
+mergen_ux_smoke_enabled <- function(host = Sys.getenv("MERGEN_HOST", "0.0.0.0")) {
+  host <- tolower(trimws(as.character(host)[1]))
+  tolower(trimws(Sys.getenv("MERGEN_ENABLE_UX_SMOKE", ""))) %in% c("1", "true", "yes", "evet") &&
+    isTRUE(host %in% c("127.0.0.1", "localhost", "::1"))
 }
 
 mergen_register_ux_smoke_resource <- function(enabled = mergen_ux_smoke_enabled(),
@@ -242,6 +246,8 @@ run_mergen_app <- function(
   quiet = TRUE
 ) {
   validate_boot_state()
+  # /smoke kararı gerçek dinleme adresiyle yeniden verilir (ağ adresinde kalkar).
+  mergen_register_ux_smoke_resource(enabled = mergen_ux_smoke_enabled(host))
 
   port <- .normalize_mergen_port(port)
 

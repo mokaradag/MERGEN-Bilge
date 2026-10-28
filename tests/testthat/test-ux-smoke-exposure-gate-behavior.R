@@ -37,7 +37,7 @@ test_that("/smoke yolu yalnızca bakımcı kapısı açıkken kaydedilir", {
   if ("smoke" %in% names(shiny::resourcePaths())) shiny::removeResourcePath("smoke")
   withr::defer(if ("smoke" %in% names(shiny::resourcePaths())) shiny::removeResourcePath("smoke"))
 
-  withr::local_envvar(MERGEN_ENABLE_UX_SMOKE = NA)
+  withr::local_envvar(MERGEN_ENABLE_UX_SMOKE = NA, MERGEN_HOST = "127.0.0.1")
   expect_false(env$mergen_ux_smoke_enabled())
   expect_false(isTRUE(env$mergen_register_ux_smoke_resource()))
   expect_false("smoke" %in% names(shiny::resourcePaths()))
@@ -57,10 +57,53 @@ test_that("/smoke yolu yalnızca bakımcı kapısı açıkken kaydedilir", {
     expect_true(env$mergen_ux_smoke_enabled(), info = deger)
   }
 
+  # Bayrak açık olsa da ağ arayüzünü dinleyen uygulamada /smoke sunulmaz.
+  withr::local_envvar(MERGEN_ENABLE_UX_SMOKE = "true")
+  for (adres in c("0.0.0.0", "10.0.0.5", "::", "", "127.0.0.1.example")) {
+    expect_false(env$mergen_ux_smoke_enabled(adres), info = adres)
+  }
+  for (adres in c("127.0.0.1", "localhost", "::1", " LOCALHOST ")) {
+    expect_true(env$mergen_ux_smoke_enabled(adres), info = adres)
+  }
+  withr::local_envvar(MERGEN_HOST = NA)
+  expect_false(env$mergen_ux_smoke_enabled(), info = "varsayılan MERGEN_HOST 0.0.0.0")
+  expect_false(isTRUE(env$mergen_register_ux_smoke_resource()))
+  expect_false("smoke" %in% names(shiny::resourcePaths()))
+  withr::local_envvar(MERGEN_HOST = "127.0.0.1")
+  expect_true(isTRUE(env$mergen_register_ux_smoke_resource()))
+
   # Aynı süreçte kapı kapanınca önceki kayıt da kalkar.
   withr::local_envvar(MERGEN_ENABLE_UX_SMOKE = "false")
   expect_false(isTRUE(env$mergen_register_ux_smoke_resource()))
   expect_false("smoke" %in% names(shiny::resourcePaths()))
+})
+
+test_that("run_mergen_app /smoke kararını gerçek dinleme adresiyle yeniden verir", {
+  exprs <- parse_r_file_utf8(file.path(resolve_repo_root_for_tests(), "app.R"))
+  env <- .smoke_gate_app_env()
+  tanim <- Filter(function(e) is.call(e) && identical(e[[1]], as.name("<-")) &&
+                    identical(as.character(e[[2]]), "run_mergen_app"), exprs)
+  expect_length(tanim, 1L)
+  eval(tanim[[1]], env)
+  baslatilan <- list()
+  env$validate_boot_state <- function(...) invisible(TRUE)
+  env$create_mergen_app <- function() "uygulama"
+  env$.normalize_mergen_port <- function(port) as.integer(port)
+  testthat::local_mocked_bindings(runApp = function(app, host, port, ...) {
+    baslatilan[[length(baslatilan) + 1L]] <<- list(host = host, smoke = "smoke" %in% names(shiny::resourcePaths()))
+    invisible(NULL)
+  }, .package = "shiny")
+  withr::local_dir(resolve_repo_root_for_tests())
+  if ("smoke" %in% names(shiny::resourcePaths())) shiny::removeResourcePath("smoke")
+  withr::defer(if ("smoke" %in% names(shiny::resourcePaths())) shiny::removeResourcePath("smoke"))
+  withr::local_envvar(MERGEN_ENABLE_UX_SMOKE = "true", MERGEN_HOST = "127.0.0.1")
+
+  # Kaynak yüklemede açılmış eşleme, uygulama ağ adresinde başlatılınca kalkar.
+  expect_true(isTRUE(env$mergen_register_ux_smoke_resource()))
+  env$run_mergen_app(host = "0.0.0.0", port = 8009L, launch.browser = FALSE)
+  # Koşucular gibi döngü adresinde başlatılınca sunulur.
+  env$run_mergen_app(host = "127.0.0.1", port = 8009L, launch.browser = FALSE)
+  expect_identical(baslatilan, list(list(host = "0.0.0.0", smoke = FALSE), list(host = "127.0.0.1", smoke = TRUE)))
 })
 
 test_that("tarayıcı koşucusu sonucu işlenmiş #status metninden okur, betikteki sabitten değil", {

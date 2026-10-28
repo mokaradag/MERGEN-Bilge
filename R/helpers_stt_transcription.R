@@ -66,6 +66,8 @@ mergen_stt_transcribe_chunk <- function(chunk_b64, api_url, api_model, api_key,
   # Dönüştürme sürerken kimlik düşmüş olabilir: POST'tan hemen önce yeniden bakılır.
   if (iptal_edildi()) return("")
 
+  # Son denetimle POST arasındaki aralıkta gelen kilit de gözlenir: curl ilerleme
+  # geri çağrısı bağlantı ve yükleme boyunca işarete bakar; FALSE aktarımı keser.
   res <- tryCatch(
     httr::POST(
       url = api_url,
@@ -77,7 +79,8 @@ mergen_stt_transcribe_chunk <- function(chunk_b64, api_url, api_model, api_key,
         task = "transcribe"
       ),
       encode = "multipart",
-      httr::timeout(timeout_sec)
+      httr::timeout(timeout_sec),
+      httr::config(noprogress = 0L, progressfunction = function(down, up) !iptal_edildi())
     ),
     error = function(e) NULL
   )

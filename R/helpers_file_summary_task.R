@@ -76,7 +76,7 @@ file_summary_task_fn <- function(file_name_safe, dest_safe, settings_snapshot, s
     digest <- try(switch(file_ext,
       "xlsx" = , "xls" = build_excel_digest_json(dest_safe, top_levels = 12),
       substr(readFileContentToString(list(name = file_name_safe, datapath = dest_safe,
-                                          size = file.info(dest_safe)$size)), 1, 50000)
+                                          size = file.info(dest_safe)$size), hata_metni = FALSE), 1, 50000)
     ), silent = TRUE)
     if (inherits(digest, "try-error")) {
       stop(sprintf("Dosya içeriği okunamadı: %s", conditionMessage(attr(digest, "condition"))))

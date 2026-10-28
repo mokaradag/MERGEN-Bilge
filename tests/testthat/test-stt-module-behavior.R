@@ -1078,6 +1078,27 @@ test_that("kimlik düşünce kuyruktaki çeviri işi sesi STT ucuna göndermez",
   calisan$mergen_stt_transcribe_chunk(ses, "http://stt.test/v1", "m", "k", iptal_dosyasi = isaret)
   expect_identical(post_sayisi, 1L)
 
+  # Son denetimden SONRA, POST sürerken gelen kilit: POST'a verilen curl ilerleme
+  # kapısı işareti görür ve aktarımı keser (FALSE).
+  kapi <- new.env()
+  testthat::local_mocked_bindings(POST = function(...) {
+    post_sayisi <<- post_sayisi + 1L
+    ayar <- Filter(function(a) inherits(a, "request") && is.function(a$options$progressfunction), list(...))
+    kapi$sayi <- length(ayar)
+    kapi$once <- ayar[[1]]$options$progressfunction(0, 0)
+    file.create(isaret)
+    kapi$sonra <- ayar[[1]]$options$progressfunction(0, 100)
+    kapi$noprogress <- ayar[[1]]$options$noprogress
+    NULL
+  }, .package = "httr")
+  expect_identical(calisan$mergen_stt_transcribe_chunk(ses, "http://stt.test/v1", "m", "k", iptal_dosyasi = isaret), "")
+  expect_identical(post_sayisi, 2L)
+  expect_identical(kapi$sayi, 1L)
+  expect_identical(kapi$noprogress, 0L)
+  expect_true(kapi$once)
+  expect_false(kapi$sonra)
+  unlink(isaret)
+
   # Modül: gönderilen işin işaret yolu sunucuda üretilir; kilit o dönemi iptal eder.
   .stt_kimlik_kancalari_yukle()
   withr::local_envvar(LOCAL_STT_API_KEY = "test-stt-anahtari", LOCAL_STT_ENDPOINT = "http://stt.test/v1")
