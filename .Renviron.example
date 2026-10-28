@@ -599,9 +599,11 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 #
 # --- DOCX metin okuma sınırları ---
 #   word/document.xml açılmış boyutu (MB) ve ayrıştırma öncesi '<' sayısı
-#   sınırı (kapanış etiketleri de sayılır); aşan belge XML DOM kurulmadan
-#   reddedilir (sıkıştırma/düğüm bombası). Varsayılan '<' bütçesi, Word'ün
-#   yoğun tablo XML'inde bile boyut sınırından önce devreye girmeyecek kadardır.
+#   sınırı (kapanış etiketleri de sayılır; aynı sınır öznitelik '=' sayısına
+#   ayrıca uygulanır); aşan belge XML DOM kurulmadan reddedilir
+#   (sıkıştırma/düğüm bombası). Varsayılanlar 25 MB'ta ~13 bayt/'<' oranına
+#   denk gelir: daha yoğun tablo XML'i boyut sınırından önce düğüm sınırına
+#   takılabilir. MB'yi yükseltmek NODES yükseltilmeden kapasiteyi artırmaz.
 # MERGEN_DOCX_MAX_XML_MB=25
 # MERGEN_DOCX_MAX_XML_NODES=2000000
 #

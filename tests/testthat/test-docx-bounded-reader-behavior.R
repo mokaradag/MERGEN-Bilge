@@ -46,6 +46,7 @@ test_that("patolojik DOCX, XML DOM kurulmadan reddedilir", {
   vakalar <- list(
     list(dosya = "boyut_bombasi.docx", hata = "izin verilen boyutu"),
     list(dosya = "dugum_bombasi.docx", hata = "öğe sayısını"),
+    list(dosya = "oznitelik_bombasi.docx", hata = "öznitelik sayısını"),
     list(dosya = "dtd_varlik.docx", hata = "DTD")
   )
   for (v in vakalar) {
@@ -96,6 +97,12 @@ test_that("sınırlar ortam değişkeniyle ayarlanabilir; geçersiz değer güve
   env <- .docx_env()
   withr::local_envvar(MERGEN_DOCX_MAX_XML_NODES = "3")
   expect_error(env$mergen_docx_read_document_xml(.docx_fikstur("gecerli_turkce.docx")), "öğe sayısını", fixed = TRUE)
+  # Aynı düğüm bütçesi öznitelik ('=') sayısına ayrıca uygulanır: tek öğeli
+  # belge '<' sınırının altında kalsa da öznitelik sınırına takılır.
+  withr::local_envvar(MERGEN_DOCX_MAX_XML_NODES = "100")
+  expect_error(env$mergen_docx_read_document_xml(.docx_fikstur("oznitelik_bombasi.docx"), max_attributes_per_element = 1e6),
+               "öznitelik sayısını", fixed = TRUE)
+  expect_s3_class(env$mergen_docx_read_document_xml(.docx_fikstur("gecerli_turkce.docx")), "xml_document")
   withr::local_envvar(MERGEN_DOCX_MAX_XML_NODES = "Inf", MERGEN_DOCX_MAX_XML_MB = "-1")
   expect_s3_class(env$mergen_docx_read_document_xml(.docx_fikstur("gecerli_turkce.docx")), "xml_document")
   expect_error(env$mergen_docx_read_document_xml(.docx_fikstur("boyut_bombasi.docx")), "izin verilen boyutu", fixed = TRUE)
@@ -116,7 +123,9 @@ test_that("UTF-16 belge denetimlerden önce UTF-8'e çevrilir; DTD UTF-16 ile gi
 test_that("UTF-8'e çevrilince büyüyen UTF-16 belge bayt sınırını aşamaz", {
   env <- .docx_env()
   yol <- .docx_fikstur("utf16_genisleyen.docx")
-  ham <- as.numeric(utils::unzip(yol, list = TRUE)$Length[2])
+  liste <- utils::unzip(yol, list = TRUE)
+  ham <- as.numeric(liste$Length[liste$Name == "word/document.xml"])
+  expect_identical(ham, 6094)
   # Ham UTF-16 (6094 bayt) sınırın altında, UTF-8 karşılığı (9046 bayt) üstünde.
   testthat::local_mocked_bindings(read_xml = function(...) stop("DOM kurulmamalıydı"), .package = "xml2")
   expect_error(env$mergen_docx_read_document_xml(yol, max_xml_bytes = ham + 100),
@@ -125,9 +134,10 @@ test_that("UTF-8'e çevrilince büyüyen UTF-16 belge bayt sınırını aşamaz"
 
 test_that("bildirilen başka kodlama (EBCDIC) DTD'yi tarama dışında bırakıp ayrıştırıcıya ulaştıramaz", {
   env <- .docx_env()
-  sonuc <- tryCatch(xml2::xml_text(env$mergen_docx_read_document_xml(.docx_fikstur("ebcdic_dtd.docx"))),
-                    error = function(e) "reddedildi")
-  expect_identical(sonuc, "reddedildi")
+  # Bildirim yok sayılır (IGNORE_ENC): EBCDIC baytları UTF-8 olarak ayrıştırılır
+  # ve belge ayrıştırıcıda reddedilir; DTD içeriği hiçbir yoldan metne ulaşmaz.
+  expect_error(env$mergen_docx_read_document_xml(.docx_fikstur("ebcdic_dtd.docx")),
+               "Start tag expected", fixed = TRUE)
   expect_match(env$readFileContentToString(list(name = "x.docx", datapath = .docx_fikstur("ebcdic_dtd.docx"))),
                "Dosya okunurken bir hata", fixed = TRUE)
 })

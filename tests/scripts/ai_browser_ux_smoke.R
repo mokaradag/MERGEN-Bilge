@@ -448,17 +448,25 @@ if (!identical(result$status, 0L) &&
   result <- run_browser_dump("--headless")
 }
 
-combined_output <- paste(result$stdout, result$stderr, collapse = "\n")
+# Sonuç yalnızca işlenmiş #status metninden okunur: harness betiğinin kaynağı
+# ve günlük satırları da UX_SMOKE_DONE:PASS sabitini taşır; başlamamış ya da
+# FAIL ile biten sayfa bu sabit yüzünden geçmiş sayılmamalıdır.
+ux_smoke_rendered_status <- function(dom) {
+  m <- regmatches(dom, regexec("<div id=\"status\"[^>]*>([^<]*)</div>", dom, perl = TRUE))[[1]]
+  if (length(m) >= 2L) trimws(m[[2]]) else ""
+}
 
-if (grepl("UX_SMOKE_DONE:PASS", combined_output, fixed = TRUE)) {
-  cat("OK: UX_SMOKE_DONE:PASS found in headless browser DOM output.\n")
+smoke_status <- ux_smoke_rendered_status(result$stdout)
+
+if (identical(smoke_status, "UX_SMOKE_DONE:PASS")) {
+  cat("OK: rendered #status is UX_SMOKE_DONE:PASS.\n")
   quit(status = 0)
 }
 
-if (grepl("UX_SMOKE_DONE:FAIL", combined_output, fixed = TRUE)) {
-  cat("FAILED: UX_SMOKE_DONE:FAIL found in headless browser DOM output.\n")
+if (startsWith(smoke_status, "UX_SMOKE_DONE:FAIL")) {
+  cat(sprintf("FAILED: rendered #status is '%s'.\n", smoke_status))
 } else {
-  cat("FAILED: Browser ran but UX_SMOKE_DONE:PASS marker was not found.\n")
+  cat(sprintf("FAILED: rendered #status did not reach UX_SMOKE_DONE:PASS ('%s').\n", smoke_status))
 }
 
 cat(sprintf("Browser status: %d\n", result$status))

@@ -83,10 +83,25 @@ sttServer <- function(id, parent_session, settings) {
     iptal_koku <- tempfile("stt_iptal_")
     kimlik_donemi <- 0L
     iptal_dosyasi <- function(donem) paste0(iptal_koku, "_", donem)
-    session$onSessionEnded(function() unlink(Sys.glob(paste0(iptal_koku, "_*"))))
+    # Oturum bitince kuyruktaki işler de iptal edilir; işaretler, onları
+    # okuyabilecek son iş bittikten sonra silinir.
+    ucustaki_is <- 0L
+    oturum_bitti <- FALSE
+    iptal_isaretlerini_temizle <- function() {
+      if (isTRUE(oturum_bitti) && ucustaki_is == 0L) unlink(Sys.glob(paste0(iptal_koku, "_*")))
+    }
+    session$onSessionEnded(function() {
+      oturum_bitti <<- TRUE
+      if (ucustaki_is > 0L) try(file.create(iptal_dosyasi(kimlik_donemi)), silent = TRUE)
+      iptal_isaretlerini_temizle()
+    })
     stt_kilitle <- function() {
-      try(file.create(iptal_dosyasi(kimlik_donemi)), silent = TRUE)
-      kimlik_donemi <<- kimlik_donemi + 1L
+      # İşaret ve dönem yalnız kilide GİRİŞTE ilerler: kilitliyken yeni iş
+      # gönderilmez, tekrarlanan red her seferinde yeni işaret dosyası açmaz.
+      if (!isTRUE(stt_kilitli)) {
+        try(file.create(iptal_dosyasi(kimlik_donemi)), silent = TRUE)
+        kimlik_donemi <<- kimlik_donemi + 1L
+      }
       stt_acilis_jetonu <<- stt_acilis_jetonu + 1L
       stt_kilitli <<- TRUE
       rv$is_recording <- FALSE
@@ -565,6 +580,13 @@ sttServer <- function(id, parent_session, settings) {
         }
         return(NULL)
       }
+
+      # Uçuştaki iş sayılır: oturum bittiyse iptal işaretlerini son iş siler.
+      ucustaki_is <<- ucustaki_is + 1L
+      promise <- promises::finally(promise, function() {
+        ucustaki_is <<- ucustaki_is - 1L
+        iptal_isaretlerini_temizle()
+      })
 
       promise %...>% (function(clean_text) {
         # Yalnızca üretim (transcribe_gen) hâlâ aynıysa tamamlanma/sayaç

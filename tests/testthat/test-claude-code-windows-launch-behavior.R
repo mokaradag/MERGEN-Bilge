@@ -116,6 +116,25 @@ test_that("Windows komutu argüman vektörüdür; cmd.exe ve komut satırı birl
   expect_true(any(tolower(names(komut$env)) == "path"))
 })
 
+test_that("doğrudan cli.js başlatması PATH dışındaki node dizinini çocuk PATH'ine ekler", {
+  env <- .cc_launch_env("windows")
+  npm <- .cc_fake_npm(withr::local_tempdir(), "js")
+  node_dizini <- withr::local_tempdir()
+  file.create(file.path(node_dizini, "node.exe"))
+  withr::local_envvar(CLAUDE_CODE_NODE_PATH = file.path(node_dizini, "node.exe"))
+  komut <- env$build_processx_command(npm$cli, c("-p", "x"), workdir = "/rehisds/proje")
+  expect_identical(komut$command, normalizePath(file.path(node_dizini, "node.exe"), winslash = "/"))
+  expect_identical(komut$args, c(normalizePath(npm$cli, winslash = "/"), "-p", "x"))
+  expect_identical(komut$wd, "//rehisds/proje")
+  path_adi <- names(komut$env)[tolower(names(komut$env)) == "path"][1]
+  ilk <- strsplit(unname(komut$env[[path_adi]]), ";", fixed = TRUE)[[1]][1]
+  expect_identical(ilk, normalizePath(node_dizini, winslash = "\\"))
+
+  # Windows dışı platformda ortam devralınır (değiştirilmez).
+  unix <- .cc_launch_env("unix")
+  expect_null(unix$build_processx_command(npm$cli, "x")$env)
+})
+
 test_that("düşmanca istem metni CLI'ye harfiyen ulaşır ve ortamdan genişlemez", {
   skip_if_not_installed("processx")
   node <- Sys.which("node")

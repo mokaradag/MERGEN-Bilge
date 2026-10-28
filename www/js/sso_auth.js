@@ -20,6 +20,17 @@
     try { sessionStorage.removeItem('mergen_sso_login_state'); } catch (e) {}
   };
 
+  // Başka sekmedeki çıkış paylaşılan token'ı siler; bu sekme de kaydı kapatır
+  // ve yeniden yüklenerek kendi Shiny oturumunu bırakır (yeniden giriş ister).
+  if (typeof window.addEventListener === 'function') {
+    window.addEventListener('storage', function(e) {
+      if (!e || e.key !== 'mergen_bilge_jwt_token' || e.newValue !== null) return;
+      if (window.__mergenBrowserAuthCleared === true) return;
+      window.mergenClearBrowserAuthState();
+      try { window.location.reload(); } catch (err) {}
+    });
+  }
+
   // ===========================================================================
   // ANA BAŞLATMA - DOM hazır olduktan sonra çalışır
   // ===========================================================================
@@ -366,6 +377,9 @@
      * SSO kimlik doğrulama sürecini başlat
      */
     function initSSO() {
+      // Ön kapı zaten yönlendiriyorsa hash işlenmez: aksi hâlde onun bu
+      // yönlendirme için ürettiği state tüketilir ve dönüş eşleşmezdi.
+      if (window.__mergenSsoPreflightRedirecting === true) return;
       console.log('[SSO] initSSO başlatılıyor...');
 
       // 1. URL hash'inden token kontrol et (Keycloak'tan dönüş)

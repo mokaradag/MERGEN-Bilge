@@ -20,12 +20,16 @@ mergen_chat_storage_owner <- function(session, master = Sys.getenv("AI_KEYS_MAST
 # HTML, kimlikler, akıl yürütme ve DB kimlikleri saklanmaz. Kayıt, geri
 # yüklemenin kabul ettiği bütçeye sığan EN YENİ mesajlarla sınırlanır.
 mergen_chat_storage_payload <- function(messages, max_messages = 200L,
-                                        max_total_chars = 2000000L) {
+                                        max_total_chars = 2000000L, max_chars = 200000L) {
   kayit <- Filter(Negate(is.null), lapply(messages, function(msg) {
     tur <- as.character(msg$type %||% "")[1]
     if (is.na(tur) || !tur %in% c("user", "ai", "assistant", "system")) return(NULL)
     if (isTRUE(msg$is_streaming)) return(NULL)
-    list(type = tur, content = as.character(msg$content %||% "")[1],
+    # Geri yüklemenin tek mesaj sınırını aşan mesaj yazılmaz; aksi hâlde yer
+    # kaplar ve geri yüklemede sessizce düşerdi.
+    icerik <- as.character(msg$content %||% "")[1]
+    if (!isTRUE(nchar(icerik, allowNA = TRUE) <= max_chars)) return(NULL)
+    list(type = tur, content = icerik,
          timestamp = as.character(msg$timestamp %||% "")[1],
          include_in_context = !isFALSE(msg$include_in_context))
   }))
@@ -72,6 +76,9 @@ mergen_chat_storage_restore_messages <- function(raw_messages,
     # model bağlamına girmez; yalnız mantıksal tekil değer kabul edilir.
     baglam <- m$include_in_context
     baglam <- !(is.logical(baglam) && length(baglam) == 1L && isFALSE(baglam))
+    # Sahip etiketi kaydın sahibini doğrular, içeriğini değil: tarayıcıdan gelen
+    # "system" bildirimi görünür kalır ama model bağlamına asla girmez.
+    if (identical(tur, "system")) baglam <- FALSE
     zaman <- m$timestamp
     zaman <- if (is.character(zaman) && length(zaman) == 1L && !is.na(zaman) &&
                  isTRUE(validUTF8(zaman)) && nchar(zaman) <= 64L) zaman else ""

@@ -82,9 +82,20 @@ test_that("Bilge Yolaç metin parçaları düz metin olarak iletilir (kaçış t
     expect_identical(out$html, "a < b <i>", info = tip)
   }
 
-  akis <- paste(readLines(file.path(resolve_repo_root_for_tests(), "R", "module_claude_code_akis.R"),
-                          encoding = "UTF-8", warn = FALSE), collapse = "\n")
-  expect_false(grepl('send_chunk("text_delta", htmltools::htmlEscape', akis, fixed = TRUE))
+  # Modülün gerçek text_delta yolu: istemciye giden yük kaçışsız düz metindir.
+  akis_env <- new.env(parent = globalenv())
+  akis_env$`%||%` <- function(x, y) if (is.null(x)) y else x
+  sys.source(file.path(resolve_repo_root_for_tests(), "R", "module_claude_code_akis.R"),
+             envir = akis_env, keep.source = FALSE)
+  giden <- list()
+  oturum <- list(sendCustomMessage = function(type, message) giden[[length(giden) + 1L]] <<- list(type = type, message = message))
+  yardimci <- akis_env$create_akis_yardimcilari(oturum, function(x) paste0("cc-", x), new.env())
+  yardimci$send_parca(list(tip = "text_delta", icerik = "a < b <i> &amp;"),
+                      list(karakter_renk = "#000", karakter_adi = "Test", zaman_damgasi = "10:00"))
+  expect_length(giden, 1L)
+  expect_identical(giden[[1]]$type, "cc-stream-chunk")
+  expect_identical(giden[[1]]$message$chunkType, "text_delta")
+  expect_identical(giden[[1]]$message$html, "a < b <i> &amp;")
 })
 
 test_that("istemci HTML sink'leri model/kullanıcı metnini işaretleme olarak ayrıştırmaz", {

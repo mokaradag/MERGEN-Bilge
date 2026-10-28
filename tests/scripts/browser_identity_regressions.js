@@ -135,6 +135,17 @@ assert.equal(freshProfile.local.getItem('mergen_bilge_jwt_token'), null, 'eşle�
 assert.ok(v.nav.replaced && v.nav.replaced.startsWith('https://kc.test/auth?'), 'yeni giriş başlamalı');
 assert.notEqual(stateOf(v.nav.replaced), realState, 'her giriş yeni state almalı');
 assert.equal(v.sent.length, 0);
+//    Ön kapı eşleşmeyen dönüşte yönlendirirken sso_auth.js yine yüklenirse
+//    hash işlenmez: ön kapının yeni state'i tüketilmez, tek yönlendirme olur.
+{
+  const tab5b = { session: storage() };
+  const v5b = visit({ local: storage() }, tab5b, '#state=' + 'f'.repeat(64) + '&access_token=' + attacker, true);
+  assert.equal(v5b.nav.replaceCount, 1, 'tek yönlendirme olmalı');
+  assert.match(stateOf(v5b.nav.replaced), /^[0-9a-f]{64}$/);
+  assert.equal(tab5b.session.getItem('mergen_sso_login_state'), stateOf(v5b.nav.replaced),
+               'ön kapının state\'i dönüş için korunmalı');
+  assert.equal(v5b.sent.length, 0);
+}
 //    State tamamen eksikse de aynı sonuç.
 v = visit({ local: storage() }, { session: storage() }, '#access_token=' + attacker);
 assert.ok(v.nav.replaced, 'state\'siz dönüş yönlendirmeli');
@@ -196,6 +207,11 @@ assert.deepEqual(saved, { v: 2, owner: 'etiketA', messages: [{ type: 'user', con
 // Sahipsiz kaydetme isteği yok sayılır.
 h.msgHandlers.get('saveCurrentChat')({ messages: [{ type: 'user', content: 'x' }] });
 assert.equal(JSON.parse(chatProfile.getItem('mergen_current_chat')).owner, 'etiketA');
+// Sahipli ama boş kayıt (bütçeye sığan mesaj yok) eski kaydı bırakmaz.
+h.msgHandlers.get('saveCurrentChat')({ owner: 'etiketA', messages: [] });
+assert.equal(chatProfile.getItem('mergen_current_chat'), null, 'boş kayıt bayat sohbeti silmeli');
+h.msgHandlers.get('saveCurrentChat')({ owner: 'etiketA', messages: saved.messages });
+assert.deepEqual(JSON.parse(chatProfile.getItem('mergen_current_chat')), saved);
 
 // Kullanıcı B aynı profilde açılır: kayıt sunucuya sahip etiketiyle gider;
 // sunucu B'nin etiketiyle eşleştirmez ve silme ister.
@@ -263,6 +279,84 @@ for (const legacy of [JSON.stringify([{ id: 'x', type: 'ai', content: '<img src=
   assert.equal(local.getItem('mergen_bilge_jwt_token'), null);
   msgHandlers.get('saveCurrentChat')({ owner: 'etiketA', messages: [{ type: 'user', content: 'gizli soru' }] });
   assert.equal(local.getItem('mergen_current_chat'), null, 'çıkıştan sonra gelen kayıt isteği yok sayılmalı');
+})();
+
+// 10) Açık kardeş sekme: A sekmesindeki çıkış, zaten açık B sekmesini de
+//     kapatır; B kaydı yeniden yazamaz ve yeniden yüklenerek oturumunu bırakır.
+(function siblingTabLogout() {
+  const local = storage();
+  function sekme() {
+    const listeners = {};
+    const msgHandlers = new Map();
+    const nav = { reloaded: 0 };
+    const jq = () => new Proxy({}, { get: (t, k) => (k === 'ready' ? fn => fn() : () => jq()) });
+    const context = vm.createContext({
+      $: jq, jQuery: jq, console: { log() {}, warn() {}, error() {} }, JSON, Math, Date, Array, String, Uint8Array,
+      localStorage: local, sessionStorage: storage(),
+      location: { origin: 'https://mergen.test', pathname: '/bilge/', search: '', hash: '', replace() {},
+                  reload() { nav.reloaded += 1; } },
+      history: { replaceState() {} }, crypto: { getRandomValues: a => nodeCrypto.randomFillSync(a) },
+      atob: s => Buffer.from(s, 'base64').toString('binary'),
+      setTimeout: () => 1,
+      document: {
+        readyState: 'complete', documentElement: { classList: { add() {}, remove() {} } }, addEventListener() {},
+        getElementById: id => (id === 'sso_module-sso_config_data' ? { textContent: JSON.stringify(SSO_CONFIG) } : null),
+        querySelector: () => null, querySelectorAll: () => []
+      },
+      Shiny: { addCustomMessageHandler: (n, fn) => msgHandlers.set(n, fn), setInputValue() {} }
+    });
+    context.window = context;
+    context.addEventListener = (n, fn) => { listeners[n] = fn; };
+    vm.runInContext(ssoSource, context, { filename: 'sso_auth.js' });
+    vm.runInContext(handlersSource, context, { filename: 'shiny_message_handlers.js' });
+    return { context, listeners, msgHandlers, nav };
+  }
+  const tokenA = jwt('A', 3600);
+  local.setItem('mergen_bilge_jwt_token', tokenA);
+  const a = sekme();
+  const b = sekme();
+  assert.equal(typeof b.listeners.storage, 'function', 'kardeş sekme çıkışı dinlenmeli');
+
+  // İlgisiz anahtar ya da token yenilemesi sekmeyi kapatmaz.
+  b.listeners.storage({ key: 'mergen_current_chat', oldValue: '{}', newValue: null });
+  b.listeners.storage({ key: 'mergen_bilge_jwt_token', oldValue: tokenA, newValue: jwt('A', 7200) });
+  assert.equal(b.nav.reloaded, 0);
+  assert.notEqual(b.context.__mergenBrowserAuthCleared, true);
+
+  // A çıkar; tarayıcı B'ye storage olayını iletir.
+  vm.runInContext(logoutOnclick, a.context, { filename: 'logout_onclick.js' });
+  assert.equal(local.getItem('mergen_bilge_jwt_token'), null);
+  b.listeners.storage({ key: 'mergen_bilge_jwt_token', oldValue: tokenA, newValue: null });
+  assert.equal(b.nav.reloaded, 1, 'B sekmesi oturumunu bırakmak için yeniden yüklenmeli');
+  assert.equal(b.context.__mergenBrowserAuthCleared, true);
+  b.msgHandlers.get('saveCurrentChat')({ owner: 'etiketA', messages: [{ type: 'user', content: 'B gizli' }] });
+  assert.equal(local.getItem('mergen_current_chat'), null, 'B çıkıştan sonra sohbet kaydını yeniden yazmamalı');
+  // Tekrarlanan olay ikinci yeniden yüklemeyi tetiklemez.
+  b.listeners.storage({ key: 'mergen_bilge_jwt_token', oldValue: tokenA, newValue: null });
+  assert.equal(b.nav.reloaded, 1);
+})();
+
+// 11) sso_auth.js yüklenmemişse kenar çubuğu yedeği de merkezi temizlikle aynı
+//     anahtarları siler (bekleyen giriş state'i dahil).
+(function sidebarLogoutFallback() {
+  const local = storage();
+  const session = storage();
+  const nav = {};
+  local.setItem('mergen_bilge_jwt_token', jwt('A', 3600));
+  local.setItem('mergen_current_chat', '{}');
+  session.setItem('mergen_sso_login_state', 'a'.repeat(64));
+  const context = vm.createContext({
+    console: { log() {}, warn() {} }, Date, localStorage: local, sessionStorage: session,
+    setTimeout: fn => fn(), location: { set href(u) { nav.href = u; } }
+  });
+  context.window = context;
+  vm.runInContext(logoutOnclick, context, { filename: 'logout_onclick.js' });
+  assert.equal(context.mergenClearBrowserAuthState, undefined);
+  assert.equal(context.__mergenBrowserAuthCleared, true);
+  assert.equal(local.getItem('mergen_bilge_jwt_token'), null);
+  assert.equal(local.getItem('mergen_current_chat'), null);
+  assert.equal(session.getItem('mergen_sso_login_state'), null, 'yedek yol bekleyen giriş state\'ini silmeli');
+  assert.equal(nav.href, 'https://portal.test/cikis');
 })();
 
 console.log('browser identity regressions passed');

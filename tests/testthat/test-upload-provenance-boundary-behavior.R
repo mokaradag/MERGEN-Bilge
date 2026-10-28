@@ -104,6 +104,23 @@ test_that("Shiny iş dizinindeki sembolik bağ dışarıyı gösteremez", {
   expect_identical(nrow(env$file_ingestion_shiny_uploads(df)$uploads), 0L)
 })
 
+test_that("iş dizini adını taşıyan bağlantı noktası (junction/symlink) dışarıyı gösteremez", {
+  env <- .provenans_env()
+  dis <- withr::local_tempdir(tmpdir = dirname(tempdir()))  # yükleme kökü dışında
+  writeBin(charToRaw("dis"), file.path(dis, "0.txt"))
+  is_adi <- file.path(tempdir(), paste(rep("ab", 12), collapse = ""))
+  withr::defer(unlink(is_adi, recursive = FALSE))
+  olustu <- suppressWarnings(tryCatch(
+    if (.Platform$OS.type == "windows") Sys.junction(dis, is_adi) else file.symlink(dis, is_adi),
+    error = function(e) FALSE))
+  skip_if_not(isTRUE(olustu) && file.exists(file.path(is_adi, "0.txt")), "Bağlantı noktası oluşturulamıyor")
+  df <- data.frame(name = "x.txt", size = 3, type = "text/plain",
+                   datapath = file.path(is_adi, "0.txt"), stringsAsFactors = FALSE)
+  sonuc <- env$file_ingestion_shiny_uploads(df)
+  expect_identical(nrow(sonuc$uploads), 0L)
+  expect_identical(sonuc$rejected, 1L)
+})
+
 test_that("iki yükleme girişi de kaynak kapısından geçer", {
   oku <- function(yol) paste(readLines(file.path(resolve_repo_root_for_tests(), yol),
                                        encoding = "UTF-8", warn = FALSE), collapse = "\n")

@@ -243,7 +243,7 @@ testthat::test_that("Browser eszamanlilik lane: etkin degilken/uygulamasiz GUVEN
 })
 
 # ------------------------------------------------------------------------------
-testthat::test_that("Tarayici esadizim hatti sonucu islenmis #status metninden okur", {
+testthat::test_that("Tarayici eszamanlilik hatti sonucu islenmis #status metninden okur", {
   testthat::skip_if(is.null(srs_repo_root), "Repo koku bulunamadi.")
   ifadeler <- parse(srs_script("run_browser_concurrency_lane.R"), keep.source = FALSE)
   tanim <- Filter(function(e) is.call(e) && identical(as.character(e[[1]]), "<-") &&

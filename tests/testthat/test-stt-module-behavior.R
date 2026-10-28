@@ -858,6 +858,20 @@ test_that("kimlik kaybında kayıt kilitlenir ve sonraki parçalar gönderilmez"
       session$returned$start_session()
       session$setInputs(audio_chunk = "Zm91cnRo")
       expect_identical(sayac$n, 2L)
+
+      # Geçiş kancası çalışmadan kimlik düşerse (kabul hâlâ açıkken) parça
+      # handler'ın kendi canlı kimlik denetiminde reddedilir ve kayıt kilitlenir.
+      expect_true(isolate(rv$accept_chunks))
+      ebeveyn$userData$auth_initialized <- FALSE
+      ebeveyn$userData$user_id <- 0L
+      session$setInputs(audio_chunk = "bGl2ZQ==")
+      expect_identical(sayac$n, 2L)
+      expect_false(isolate(rv$accept_chunks))
+      # Kimlik geri gelse de kilitli açılış parça kabul etmez.
+      ebeveyn$userData$auth_initialized <- TRUE
+      ebeveyn$userData$user_id <- 7L
+      session$setInputs(audio_chunk = "c29ucmFr")
+      expect_identical(sayac$n, 2L)
     }
   )
 })
@@ -1035,6 +1049,9 @@ test_that("kimlik değişimi STT'nin açmadığı diyaloğu kapatmaz; iptal geci
 
 test_that("kimlik düşünce kuyruktaki çeviri işi sesi STT ucuna göndermez", {
   skip_if_not_installed("shiny")
+  skip_if_not_installed("av")
+  skip_if_not_installed("base64enc")
+  skip_if_not_installed("httr")
   # Worker yardımcısı: iptal işareti varsa dönüştürme/POST yapılmaz; POST'tan
   # hemen önce de yeniden bakılır.
   calisan <- new.env(parent = globalenv())
@@ -1095,6 +1112,74 @@ test_that("kimlik düşünce kuyruktaki çeviri işi sesi STT ucuna göndermez",
       get("mergen_session_owner_transition", envir = .stt_env, inherits = TRUE)(ebeveyn$userData, 7L, 0L)
       session$flushReact()
       expect_true(file.exists(yol))
+    }
+  )
+})
+
+test_that("oturum bitişi kuyruktaki işi iptal eder; işaretler son işle silinir, tekrarlanan red işaret açmaz", {
+  skip_if_not_installed("shiny")
+  .stt_kimlik_kancalari_yukle()
+  withr::local_envvar(LOCAL_STT_API_KEY = "test-stt-anahtari", LOCAL_STT_ENDPOINT = "http://stt.test/v1")
+  isler <- new.env()
+  isler$liste <- list()
+  vardi <- exists("tracked_future_promise", envir = .stt_env, inherits = FALSE)
+  eski <- if (vardi) get("tracked_future_promise", envir = .stt_env) else NULL
+  .stt_env$tracked_future_promise <- function(..., globals = list()) {
+    p <- promises::promise(function(resolve, reject) {
+      isler$liste[[length(isler$liste) + 1L]] <- list(yol = globals$is_iptal_dosyasi, coz = resolve)
+    })
+    p
+  }
+  withr::defer(if (vardi) assign("tracked_future_promise", eski, envir = .stt_env) else
+    rm("tracked_future_promise", envir = .stt_env))
+  .stt_env$mergen_stt_transcribe_chunk <- function(...) ""
+  withr::defer(rm("mergen_stt_transcribe_chunk", envir = .stt_env))
+  ebeveyn <- .stt_yetkili_ebeveyn(7L)
+  gecis <- get("mergen_session_owner_transition", envir = .stt_env, inherits = TRUE)
+  isaretler <-function() Sys.glob(paste0(sub("_[0-9]+$", "", isler$liste[[1]]$yol), "_*"))
+  shiny::testServer(
+    .stt_env$sttServer,
+    args = list(id = "stt", parent_session = ebeveyn, settings = .stt_settings()),
+    {
+      testthat::local_mocked_bindings(runjs = function(...) NULL, delay = function(ms, expr) expr,
+                                      .package = "shinyjs")
+      testthat::local_mocked_bindings(showModal = function(...) NULL, removeModal = function(...) NULL,
+                                      showNotification = function(...) NULL, .package = "shiny")
+      session$returned$start_session()
+      session$setInputs(audio_chunk = "ZHVtbXk=")
+      expect_length(isler$liste, 1L)
+
+      # Kimlik düşer: dönemin işareti bir kez oluşur; kilitliyken gelen her
+      # yetkisiz parça yeni işaret dosyası açmaz.
+      ebeveyn$userData$auth_initialized <- FALSE
+      ebeveyn$userData$user_id <- 0L
+      gecis(ebeveyn$userData, 7L, 0L)
+      session$flushReact()
+      for (i in 1:5) session$setInputs(audio_chunk = paste0("ZHVtbXk", i))
+      session$returned$start_session()
+      expect_identical(isaretler(), isler$liste[[1]]$yol)
+      expect_length(isler$liste, 1L)
+
+      # Yeni yetkili açılış yeni dönemde iş gönderir; oturum biterken bu iş de
+      # iptal edilir ve uçuşta iş varken işaretler silinmez.
+      ebeveyn$userData$auth_initialized <- TRUE
+      ebeveyn$userData$user_id <- 7L
+      gecis(ebeveyn$userData, 0L, 7L)
+      session$flushReact()
+      session$returned$start_session()
+      session$setInputs(audio_chunk = "ZHVtbXk=")
+      expect_length(isler$liste, 2L)
+      expect_false(file.exists(isler$liste[[2]]$yol))
+      session$close()
+      expect_true(file.exists(isler$liste[[2]]$yol))
+      expect_true(file.exists(isler$liste[[1]]$yol))
+
+      isler$liste[[1]]$coz("")
+      for (i in 1:5) later::run_now()
+      expect_true(file.exists(isler$liste[[2]]$yol))
+      isler$liste[[2]]$coz("")
+      for (i in 1:5) later::run_now()
+      expect_length(isaretler(), 0L)
     }
   )
 })

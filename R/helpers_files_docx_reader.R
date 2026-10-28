@@ -9,12 +9,14 @@
 # DOCX içindeki word/document.xml'i SINIRLI okur. ZIP merkez dizinindeki beyan
 # edilen boyut önce denetlenir; ardından açma, beyan yanlış olsa bile en fazla
 # bütçe + 1 bayt üretir. Ayrıştırmadan ÖNCE '<' sayısı (kapanış etiketleri
-# dahil) sınırlanır; böylece küçük ama milyonlarca düğüm taşıyan belge DOM
-# kurulmadan reddedilir. Varsayılan '<' bütçesi, Word'ün yoğun tablo XML'inde
-# (~15 bayt/'<') boyut sınırından önce devreye girmez; yalnızca anormal
-# yoğunluktaki belgeyi eler. Sınırlar: MERGEN_DOCX_MAX_XML_MB ve
-# MERGEN_DOCX_MAX_XML_NODES.
-mergen_docx_read_document_xml <- function(path, max_xml_bytes = NULL, max_elements = NULL) {
+# dahil) ve öznitelik ('=') sayısı sınırlanır; böylece küçük ama milyonlarca
+# düğüm taşıyan belge DOM kurulmadan reddedilir. Varsayılan '<' bütçesi 25
+# MB'ta ~13 bayt/'<' oranına denk gelir: daha yoğun (ör. kısa hücreli tablo)
+# belge boyut sınırından önce öğe bütçesine takılabilir. Sınırlar:
+# MERGEN_DOCX_MAX_XML_MB ve MERGEN_DOCX_MAX_XML_NODES (öğe ve öznitelik için
+# ayrı ayrı); yalnız boyut sınırını yükseltmek düğüm bütçesini büyütmez.
+mergen_docx_read_document_xml <- function(path, max_xml_bytes = NULL, max_elements = NULL,
+                                          max_attributes_per_element = 1000L) {
   sinir <- function(ad, varsayilan) {
     deger <- suppressWarnings(as.numeric(Sys.getenv(ad, "")))
     if (length(deger) != 1L || !is.finite(deger) || deger <= 0) varsayilan else deger
@@ -52,11 +54,23 @@ mergen_docx_read_document_xml <- function(path, max_xml_bytes = NULL, max_elemen
       stop("DOCX belge içeriği izin verilen boyutu aşıyor.", call. = FALSE)
     }
   }
-  if (any(baytlar == as.raw(0L))) {
+  # Bayt taramaları yalnız eşleşme konumlarını üretir (tam boy mantıksal vektör yok).
+  if (length(grepRaw(as.raw(0L), baytlar, fixed = TRUE))) {
     stop("DOCX belge kodlaması desteklenmiyor.", call. = FALSE)
   }
-  if (sum(baytlar == as.raw(0x3C)) > max_elements) {
+  acilar <- grepRaw(as.raw(0x3C), baytlar, fixed = TRUE, all = TRUE)
+  if (length(acilar) > max_elements) {
     stop("DOCX belge yapısı izin verilen öğe sayısını aşıyor.", call. = FALSE)
+  }
+  # Öznitelik düğümleri '<' sayımına girmez. Öznitelik değeri '<' içeremez; bu
+  # yüzden bir öğenin öznitelikleri kendi '<'i ile sonraki '<' arasındadır ve
+  # oradaki '=' sayısı öznitelik sayısının üst sınırıdır. Toplam sınır DOM
+  # büyümesini, öğe başı sınır libxml2'nin öğe başına karesel öznitelik
+  # denetimini ayrıştırmadan önce keser.
+  esitler <- grepRaw(as.raw(0x3D), baytlar, fixed = TRUE, all = TRUE)
+  if (length(esitler) > max_elements ||
+      (length(esitler) && max(tabulate(findInterval(esitler, acilar) + 1L)) > max_attributes_per_element)) {
+    stop("DOCX belge yapısı izin verilen öznitelik sayısını aşıyor.", call. = FALSE)
   }
   # OOXML parçaları DTD taşımaz; DTD varlık zinciri metin çıkarımında büyüyebilir.
   if (isTRUE(mergen_docx_prolog_has_dtd(baytlar))) {

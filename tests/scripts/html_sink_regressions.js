@@ -22,7 +22,8 @@ const HOSTILE = [
 // olay özniteliklerini görür.
 function tags(html) {
   const out = [];
-  const re = /<\/?([a-zA-Z][a-zA-Z0-9-]*)([^>]*)>?/g;
+  // Tırnaklı öznitelik değerindeki '>' etiketi erken bitiremez.
+  const re = /<\/?([a-zA-Z][a-zA-Z0-9-]*)((?:"[^"]*"|'[^']*'|[^'">])*)>?/g;
   let m;
   while ((m = re.exec(String(html))) !== null) out.push({ name: m[1].toLowerCase(), attrs: m[2] || '' });
   return out;
@@ -31,7 +32,8 @@ function tags(html) {
 function assertInert(html, allowed, allowedHandlers, label) {
   for (const t of tags(html)) {
     assert.ok(allowed.includes(t.name), label + ': beklenmeyen öğe <' + t.name + '> :: ' + html);
-    const handlers = t.attrs.match(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi) || [];
+    // Ayırıcı boşluk ya da '/' olabilir (<div/onmouseover=...> da etkindir).
+    const handlers = t.attrs.match(/[\s\/]on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi) || [];
     for (const h of handlers) {
       assert.ok(allowedHandlers.includes(h.trim()), label + ': beklenmeyen olay özniteliği ' + h + ' :: ' + html);
     }
@@ -230,8 +232,11 @@ function load(context, file) {
       env.context.showToast("'" + hostile + "' dosyası işlenemedi", type, 1000);
       const t = created[created.length - 1];
       assert.ok(!t.html.includes(hostile), 'mesaj şablona girmemeli');
-      // Tek olay özniteliği şablonun kendi kapatma düğmesidir.
-      assertInert(t.html, ['div', 'i', 'span', 'button'], [t.html.match(/onclick="[^"]*"/)[0]], 'toast');
+      // Tek olay özniteliği şablonun kendi kapatma düğmesidir; beklenen işleyici
+      // çıktıdan değil, şablonun sabit biçiminden kurulur.
+      const toastId = (t.html.match(/<div id="(toast_\d+)"/) || [])[1];
+      assert.ok(toastId, 'toast kimliği toast_<sayı> olmalı');
+      assertInert(t.html, ['div', 'i', 'span', 'button'], ["onclick=\"$('#" + toastId + "').remove()\""], 'toast');
       assert.deepEqual(t.texts, [['.toast-message', "'" + hostile + "' dosyası işlenemedi"]]);
       assert.match(t.html, /class="toast toast-(info|error|warning|success)"/);
       if (type.startsWith('"')) assert.match(t.html, /toast-info/);

@@ -289,6 +289,27 @@ cc_resolve_windows_cli_shim <- function(shim_path, max_bytes = 65536L) {
   list(command = node, prefix_args = hedef)
 }
 
+# Mevcut ortam değişkenlerini alır ve PATH/Path anahtarını yerinde günceller
+# (CLI'nin kendi alt süreçleri node/npm araçlarını bulabilsin).
+cc_windows_child_env <- function(dizinler) {
+  env <- Sys.getenv()
+  path_eslesmeleri <- which(tolower(names(env)) == "path")
+  path_adi <- if (length(path_eslesmeleri) > 0) names(env)[path_eslesmeleri[1]] else "PATH"
+
+  mevcut_path <- if (path_adi %in% names(env)) unname(env[[path_adi]]) else ""
+  eklenecekler <- unique(Filter(nzchar, dizinler))
+
+  yeni_path <- mevcut_path
+  for (dizin in rev(eklenecekler)) {
+    if (!grepl(dizin, yeni_path, fixed = TRUE)) {
+      yeni_path <- if (nzchar(yeni_path)) paste(dizin, yeni_path, sep = ";") else dizin
+    }
+  }
+
+  env[[path_adi]] <- yeni_path
+  env
+}
+
 # Tek eğik çizgili ağ yolu (/sunucu/pay) süreç çalışma dizini için UNC'ye çevrilir.
 cc_windows_launch_wd <- function(workdir) {
   if (is.null(workdir) || !nzchar(workdir)) return(workdir)
@@ -317,11 +338,13 @@ build_processx_command <- function(cli_path, args, workdir = NULL) {
     if (is.null(node)) {
       stop("Bilge Yolaç için node bulunamadı (CLAUDE_CODE_NODE_PATH).", call. = FALSE)
     }
+    windows <- .Platform$OS.type == "windows"
     return(list(
       command = node,
       args = c(normalizePath(cli_path, winslash = "/", mustWork = FALSE), args),
-      env = NULL,
-      wd = if (.Platform$OS.type == "windows") cc_windows_launch_wd(workdir) else workdir
+      # .cmd dalı gibi: PATH dışındaki node'un dizini CLI alt süreçlerine eklenir.
+      env = if (windows) cc_windows_child_env(normalizePath(dirname(node), winslash = "\\", mustWork = FALSE)) else NULL,
+      wd = if (windows) cc_windows_launch_wd(workdir) else workdir
     ))
   }
 
@@ -336,23 +359,7 @@ build_processx_command <- function(cli_path, args, workdir = NULL) {
       ""
     }
 
-    # Mevcut ortam değişkenlerini al ve PATH/Path anahtarını yerinde güncelle
-    # (CLI'nin kendi alt süreçleri node/npm araçlarını bulabilsin).
-    env <- Sys.getenv()
-    path_eslesmeleri <- which(tolower(names(env)) == "path")
-    path_adi <- if (length(path_eslesmeleri) > 0) names(env)[path_eslesmeleri[1]] else "PATH"
-
-    mevcut_path <- if (path_adi %in% names(env)) unname(env[[path_adi]]) else ""
-    eklenecekler <- unique(Filter(nzchar, c(npm_dizini, node_dizini)))
-
-    yeni_path <- mevcut_path
-    for (dizin in rev(eklenecekler)) {
-      if (!grepl(dizin, yeni_path, fixed = TRUE)) {
-        yeni_path <- if (nzchar(yeni_path)) paste(dizin, yeni_path, sep = ";") else dizin
-      }
-    }
-
-    env[[path_adi]] <- yeni_path
+    env <- cc_windows_child_env(c(npm_dizini, node_dizini))
 
     log_info(paste(
       CLAUDE_CODE_LOG_PREFIX,

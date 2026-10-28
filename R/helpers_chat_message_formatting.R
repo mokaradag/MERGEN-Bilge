@@ -201,7 +201,7 @@ db_message_process_image_content <- function(content_text, msg_type, message_id,
 
   image_match <- regmatches(
     content_text,
-    regexec("^\\[GÖRSEL:([^\\]]+)\\]\\s*(.*)", content_text, perl = TRUE)
+    regexec("^\\[GÖRSEL:([^\\]]+)\\]\\s*((?s).*)", content_text, perl = TRUE)
   )[[1]]
 
   if (length(image_match) == 3) {
@@ -216,7 +216,7 @@ db_message_process_image_content <- function(content_text, msg_type, message_id,
 
   old_match <- regmatches(
     content_text,
-    regexec("^\\[GÖRSEL\\]\\s*(.*)", content_text, perl = TRUE)
+    regexec("^\\[GÖRSEL\\]\\s*((?s).*)", content_text, perl = TRUE)
   )[[1]]
 
   image_description <- if (length(old_match) == 2) {

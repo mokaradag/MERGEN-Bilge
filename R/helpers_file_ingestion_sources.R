@@ -30,8 +30,9 @@ file_ingestion_shiny_uploads <- function(uploads, upload_root = tempdir()) {
       isTRUE(file.exists(yol)) && !isTRUE(dir.exists(yol)) &&
       !nzchar(Sys.readlink(yol)) && !nzchar(Sys.readlink(is_dizini)) &&
       # Windows bağlantı/junction noktaları Sys.readlink ile görünmez; çözülmüş
-      # gerçek hedef yine aynı iş dizininde olmalıdır.
-      identical(kanonik(dirname(kanonik(yol))), kanonik(is_dizini))
+      # gerçek hedef yine aynı iş dizininde, o dizin de yükleme kökünde olmalıdır.
+      identical(kanonik(dirname(kanonik(yol))), kanonik(is_dizini)) &&
+      identical(dirname(kanonik(is_dizini)), kok)
   }, logical(1))
 
   list(uploads = uploads[kabul, sutunlar, drop = FALSE], rejected = sum(!kabul))

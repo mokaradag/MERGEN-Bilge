@@ -97,7 +97,11 @@ mergen_ux_smoke_enabled <- function() {
 
 mergen_register_ux_smoke_resource <- function(enabled = mergen_ux_smoke_enabled(),
                                               directory = file.path("tests", "smoke")) {
-  if (!isTRUE(enabled) || !dir.exists(directory)) return(invisible(FALSE))
+  if (!isTRUE(enabled) || !dir.exists(directory)) {
+    # Kapı kapalıyken aynı süreçte daha önce açılmış /smoke eşlemesi de kalkar.
+    if ("smoke" %in% names(shiny::resourcePaths())) shiny::removeResourcePath("smoke")
+    return(invisible(FALSE))
+  }
   safe_add_resource_path("smoke", directory)
 }
 

@@ -56,6 +56,32 @@ test_that("/smoke yolu yalnızca bakımcı kapısı açıkken kaydedilir", {
     withr::local_envvar(MERGEN_ENABLE_UX_SMOKE = deger)
     expect_true(env$mergen_ux_smoke_enabled(), info = deger)
   }
+
+  # Aynı süreçte kapı kapanınca önceki kayıt da kalkar.
+  withr::local_envvar(MERGEN_ENABLE_UX_SMOKE = "false")
+  expect_false(isTRUE(env$mergen_register_ux_smoke_resource()))
+  expect_false("smoke" %in% names(shiny::resourcePaths()))
+})
+
+test_that("tarayıcı koşucusu sonucu işlenmiş #status metninden okur, betikteki sabitten değil", {
+  ifadeler <- parse_r_file_utf8(file.path(resolve_repo_root_for_tests(), "tests", "scripts", "ai_browser_ux_smoke.R"))
+  tanim <- Filter(function(e) is.call(e) && identical(e[[1]], as.name("<-")) &&
+                    identical(as.character(e[[2]]), "ux_smoke_rendered_status"), as.list(ifadeler))
+  expect_length(tanim, 1L)
+  ortam <- new.env(parent = baseenv())
+  eval(tanim[[1]], ortam)
+  betik <- '<script>statusEl.textContent = "UX_SMOKE_DONE:PASS";</script><div class="log">UX_SMOKE_DONE:PASS</div>'
+  # Başlamamış (autostart düşmüş) sayfa ve FAIL sonucu PASS sayılmaz.
+  expect_identical(ortam$ux_smoke_rendered_status(paste0('<div id="status">Hazır</div>', betik)), "Hazır")
+  expect_identical(ortam$ux_smoke_rendered_status(paste0('<div id="status">UX_SMOKE_DONE:FAIL 2</div>', betik)),
+                   "UX_SMOKE_DONE:FAIL 2")
+  expect_identical(ortam$ux_smoke_rendered_status(paste0('<div id="status">UX_SMOKE_DONE:PASS</div>', betik)),
+                   "UX_SMOKE_DONE:PASS")
+  expect_identical(ortam$ux_smoke_rendered_status(betik), "")
+  kosucu <- paste(readLines(file.path(resolve_repo_root_for_tests(), "tests", "scripts", "ai_browser_ux_smoke.R"),
+                            encoding = "UTF-8", warn = FALSE), collapse = "\n")
+  expect_match(kosucu, 'identical(smoke_status, "UX_SMOKE_DONE:PASS")', fixed = TRUE)
+  expect_false(grepl('grepl("UX_SMOKE_DONE:PASS", combined_output', kosucu, fixed = TRUE))
 })
 
 test_that("app.R smoke kaydını yalnızca kapı yardımcısı üzerinden yapar", {

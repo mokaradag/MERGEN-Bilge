@@ -250,9 +250,13 @@ $(document).ready(function() {
       var owner = typeof payload.owner === 'string' ? payload.owner : '';
       var messages = Array.isArray(payload.messages) ? payload.messages : [];
       if (!owner || window.__mergenBrowserAuthCleared) return;
-      if (messages.length > 0) {
-        localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify({ v: 2, owner: owner, messages: messages }));
+      // Kayda sığan mesaj kalmadıysa eski kayıt bırakılmaz (sonraki yüklemede
+      // bayat sohbet geri gelirdi).
+      if (messages.length === 0) {
+        localStorage.removeItem(CHAT_STORAGE_KEY);
+        return;
       }
+      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify({ v: 2, owner: owner, messages: messages }));
     } catch (e) {
       console.warn('Chat kaydedilemedi:', e);
     }
