@@ -14,7 +14,7 @@
   for (candidate in candidates) {
     if (file.exists(file.path(candidate, "app.R")) &&
         dir.exists(file.path(candidate, "tests", "scripts")) &&
-        dir.exists(file.path(candidate, "www", "smoke"))) {
+        dir.exists(file.path(candidate, "tests", "smoke"))) {
       return(candidate)
     }
   }

@@ -6,6 +6,43 @@
   'use strict';
 
   // ===========================================================================
+  // TARAYICI KİMLİK DURUMU TEMİZLİĞİ
+  // Tüm çıkış yolları (kenar çubuğu, ssoLogout) aynı temizliği kullanır:
+  // uygulama token'ı, hesaba bağlı sohbet kaydı ve bekleyen giriş durumu.
+  // SSO kapalıyken de tanımlıdır; kenar çubuğu çıkışı yerel modda da çalışır.
+  // ===========================================================================
+  var CIKIS_SINYALI = 'mergen_logout_signal';
+  function tarayiciKimliginiTemizle() {
+    // Çıkış sonrası yönlendirme sırasında (beforeunload) sohbet yeniden
+    // yazılmasın: bu sayfa ömrü boyunca tarayıcı sohbet kaydı kapatılır.
+    window.__mergenBrowserAuthCleared = true;
+    try { localStorage.removeItem('mergen_bilge_jwt_token'); } catch (e) {}
+    try { localStorage.removeItem('mergen_current_chat'); } catch (e) {}
+    try { sessionStorage.removeItem('mergen_sso_login_state'); } catch (e) {}
+  }
+
+  window.mergenClearBrowserAuthState = function() {
+    tarayiciKimliginiTemizle();
+    // Yalnız açık çıkış kardeş sekmelere bildirilir. Süre dolumunda token'ın
+    // silinmesi (clearStoredToken) çıkış değildir: kurtarma kaydı korunur.
+    try {
+      localStorage.setItem(CIKIS_SINYALI, String(Date.now()));
+      localStorage.removeItem(CIKIS_SINYALI);
+    } catch (e) {}
+  };
+
+  // Başka sekmedeki açık çıkış: bu sekme de kaydı kapatır ve yeniden yüklenerek
+  // kendi Shiny oturumunu bırakır (yeniden giriş ister).
+  if (typeof window.addEventListener === 'function') {
+    window.addEventListener('storage', function(e) {
+      if (!e || e.key !== CIKIS_SINYALI || !e.newValue) return;
+      if (window.__mergenBrowserAuthCleared === true) return;
+      tarayiciKimliginiTemizle();
+      try { window.location.reload(); } catch (err) {}
+    });
+  }
+
+  // ===========================================================================
   // ANA BAŞLATMA - DOM hazır olduktan sonra çalışır
   // ===========================================================================
   // ÖNEMLİ: Bu betik <head> içinde yüklenir ancak SSO yapılandırma verisi
@@ -58,22 +95,64 @@
     // ===========================================================================
 
     /**
-     * URL hash'inden access_token parametresini çıkar
-     * Keycloak implicit flow: #access_token=eyJ...&token_type=bearer&expires_in=300
+     * URL hash'indeki Keycloak dönüş parametrelerini çıkar
+     * Keycloak implicit flow: #state=...&access_token=eyJ...&token_type=bearer&expires_in=300
      */
-    function extractTokenFromHash() {
+    function extractCallbackFromHash() {
       var hash = window.location.hash;
-      if (!hash || hash.length < 2) return null;
+      if (!hash || hash.length < 2) return {};
 
       var params = {};
       hash.substring(1).split('&').forEach(function(part) {
         var kv = part.split('=');
         if (kv.length === 2) {
-          params[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1]);
+          try {
+            params[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1]);
+          } catch (e) {}
         }
       });
 
-      return params.access_token || null;
+      return params;
+    }
+
+    // =========================================================================
+    // GİRİŞ İŞLEMİ DURUMU (state)
+    // Her yönlendirme için tek kullanımlık, kriptografik rastgele bir değer bu
+    // sekmenin sessionStorage'ına yazılır ve Keycloak'a gönderilir. Dönüşte
+    // token yalnızca bekleyen değerle eşleşirse kabul edilir; değer ilk
+    // dönüşte tüketilir. İstenmemiş/eşleşmeyen/tekrar oynatılan dönüş token'ı
+    // kayıtlı oturumun yerine geçemez.
+    // =========================================================================
+    var LOGIN_STATE_KEY = 'mergen_sso_login_state';
+
+    function issueLoginState() {
+      var bytes = new Uint8Array(32);
+      window.crypto.getRandomValues(bytes);
+      var state = Array.prototype.map.call(bytes, function(b) {
+        return ('0' + b.toString(16)).slice(-2);
+      }).join('');
+      sessionStorage.setItem(LOGIN_STATE_KEY, state);
+      return state;
+    }
+
+    function consumeLoginState() {
+      var pending = null;
+      try {
+        pending = sessionStorage.getItem(LOGIN_STATE_KEY);
+        sessionStorage.removeItem(LOGIN_STATE_KEY);
+      } catch (e) {}
+      return pending;
+    }
+
+    function sameState(a, b) {
+      if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length || a.length < 32) {
+        return false;
+      }
+      var diff = 0;
+      for (var i = 0; i < a.length; i++) {
+        diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+      }
+      return diff === 0;
     }
 
     /**
@@ -156,6 +235,8 @@
 	}
 
 	function redirectToKeycloak() {
+	  // Ön kapı zaten yönlendiriyorsa ikinci bir giriş (ve yeni state) başlatılmaz.
+	  if (window.__mergenSsoPreflightRedirecting === true) return;
 	  // redirect_uri: Keycloak kimlik doğrulama sonrası kullanıcıyı geri yönlendirir.
 	  // Bu URL'nin Keycloak client ayarlarında "Valid Redirect URIs" listesinde
 	  // tam olarak kayıtlı olması gerekir (örn: https://sunucu-adresi/ veya * ile wildcard).
@@ -164,11 +245,21 @@
 	  if (!baseUrl.endsWith('/')) {
 		baseUrl = baseUrl + '/';
 	  }
+	  var state;
+	  try {
+		state = issueLoginState();
+	  } catch (e) {
+		// Güvenli durum üretilemiyorsa giriş başlatılmaz (fail-closed).
+		console.error('[SSO] Giriş durumu oluşturulamadı:', e);
+		showError('Güvenli giriş başlatılamadı. Lütfen tarayıcı depolamasına izin verip sayfayı yenileyiniz.');
+		return;
+	  }
 	  var authUrl = config.auth_endpoint +
 		'?client_id='     + encodeURIComponent(config.client_id) +
 		'&redirect_uri='  + encodeURIComponent(baseUrl) +
 		'&response_type=' + encodeURIComponent(config.response_type) +
-		'&scope='         + encodeURIComponent(config.scope);
+		'&scope='         + encodeURIComponent(config.scope) +
+		'&state='         + encodeURIComponent(state);
 
 	  console.log('[SSO] Keycloak\'a yönlendiriliyor:', authUrl);
 	  markSsoRedirecting(authUrl);
@@ -297,15 +388,27 @@
      * SSO kimlik doğrulama sürecini başlat
      */
     function initSSO() {
+      // Ön kapı zaten yönlendiriyorsa hash işlenmez: aksi hâlde onun bu
+      // yönlendirme için ürettiği state tüketilir ve dönüş eşleşmezdi.
+      if (window.__mergenSsoPreflightRedirecting === true) return;
       console.log('[SSO] initSSO başlatılıyor...');
 
       // 1. URL hash'inden token kontrol et (Keycloak'tan dönüş)
-      var hashToken = extractTokenFromHash();
-      if (hashToken) {
-        console.log('[SSO] URL hash\'inden token çıkarıldı');
+      var callback = extractCallbackFromHash();
+      var hashToken = null;
+      if (callback.access_token || callback.state) {
         // URL'den token'ı temizle (güvenlik için)
         history.replaceState(null, '', window.location.pathname + window.location.search);
-        storeToken(hashToken);
+        var pendingState = consumeLoginState();
+        if (callback.access_token && sameState(callback.state, pendingState)) {
+          console.log('[SSO] URL hash\'inden token çıkarıldı');
+          hashToken = callback.access_token;
+          storeToken(hashToken);
+        } else if (callback.access_token) {
+          // Bu sekmede başlatılmamış giriş dönüşü: token kullanılmaz, kayıtlı
+          // oturum (varsa) korunur; yoksa yeni bir giriş başlatılır.
+          console.warn('[SSO] Bekleyen giriş işlemiyle eşleşmeyen dönüş reddedildi');
+        }
       }
 
       // 2. Kayıtlı token'ı kontrol et
@@ -380,7 +483,7 @@
      * Hem yerel token'ı temizler hem Keycloak'tan çıkış yapar
      */
     window.ssoLogout = function() {
-      clearStoredToken();
+      window.mergenClearBrowserAuthState();
 
       if (config.logout_endpoint) {
         var baseUrl = window.location.origin + window.location.pathname;

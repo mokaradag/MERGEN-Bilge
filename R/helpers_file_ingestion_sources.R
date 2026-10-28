@@ -1,3 +1,53 @@
+# Tarayıcı yüklemesinin kaynağı yalnızca Shiny'nin BU oturuma verdiği yükleme
+# işidir. Shiny değeri sunucuda uploadInit/uploadEnd ile data.frame olarak kurar
+# (iş kimlikleri oturuma özeldir) ve dosyayı <kök>/<iş kimliği>/<sıra>.<uzantı>
+# düzenine yazar; istemcinin setInputValue ile gönderebildiği değer ise JSON
+# liste olarak gelir. Bu kaynağa uymayan satır bir dosya yolu iddiasıdır ve
+# reddedilir. Sunucu içi aktarımlar bu kapıdan geçmez.
+file_ingestion_shiny_uploads <- function(uploads, upload_root = tempdir()) {
+  sutunlar <- c("name", "size", "type", "datapath")
+  bos <- data.frame(name = character(), size = numeric(), type = character(),
+                    datapath = character(), stringsAsFactors = FALSE)
+  if (is.null(uploads)) return(list(uploads = bos, rejected = 0L))
+  if (!is.data.frame(uploads) || !all(sutunlar %in% names(uploads))) {
+    return(list(uploads = bos, rejected = max(1L, NROW(uploads))))
+  }
+  if (nrow(uploads) == 0L) return(list(uploads = bos, rejected = 0L))
+
+  windows <- identical(.Platform$OS.type, "windows")
+  kanonik <- function(yol) {
+    yol <- normalizePath(yol, winslash = "/", mustWork = FALSE)
+    if (windows) tolower(yol) else yol
+  }
+  kok <- kanonik(upload_root)
+  kabul <- vapply(seq_len(nrow(uploads)), function(i) {
+    yol <- uploads$datapath[i]
+    if (!is.character(yol) || length(yol) != 1L || is.na(yol) || !nzchar(yol)) return(FALSE)
+    is_dizini <- dirname(yol)
+    grepl("^[0-9]+(\\.[[:alnum:]]+)?$", basename(yol)) &&
+      grepl("^[0-9A-Fa-f]{16,64}$", basename(is_dizini)) &&
+      identical(kanonik(dirname(is_dizini)), kok) &&
+      isTRUE(file.exists(yol)) && !isTRUE(dir.exists(yol)) &&
+      !nzchar(Sys.readlink(yol)) && !nzchar(Sys.readlink(is_dizini)) &&
+      # Windows bağlantı/junction noktaları Sys.readlink ile görünmez; çözülmüş
+      # gerçek hedef yine aynı iş dizininde, o dizin de yükleme kökünde olmalıdır.
+      identical(kanonik(dirname(kanonik(yol))), kanonik(is_dizini)) &&
+      identical(dirname(kanonik(is_dizini)), kok)
+  }, logical(1))
+
+  list(uploads = uploads[kabul, sutunlar, drop = FALSE], rejected = sum(!kabul))
+}
+
+# Yükleme gözlemcisi girişi: kapıdan geçmeyen satırlar kullanıcıya bildirilir
+# ve alım hattına yalnızca Shiny kaynaklı satırlar gider.
+file_ingestion_session_uploads <- function(uploads, session) {
+  yukleme <- file_ingestion_shiny_uploads(uploads)
+  if (yukleme$rejected > 0L && exists("showToast", mode = "function", inherits = TRUE)) {
+    showToast(session, "Yükleme kaynağı doğrulanamadı; dosya alınmadı.", "error")
+  }
+  yukleme$uploads
+}
+
 # Kabulden önce geçici kaynakları işe bağlar; büyük bayt kopyası yapmaz.
 file_ingestion_bind_sources <- function(job) {
   kaynaklar <- file.path(tempdir(), "mergen_ingest_sources", gsub("[^A-Za-z0-9_.-]", "_", job$id))
@@ -9,7 +59,13 @@ file_ingestion_bind_sources <- function(job) {
       # Windows eksik dosyanın kısa yolunu çözemez; mevcut üst dizini sınırla.
       ust <- normalizePath(dirname(task$datapath), winslash = "/", mustWork = FALSE)
       if ((!identical(ust, gecici_kok) && !startsWith(ust, paste0(gecici_kok, "/"))) ||
-          file.exists(task$datapath)) return(task)
+          file.exists(task$datapath)) {
+        # Yükleme alanı dışındaki kaynak asla okunmaz/kopyalanmaz (fail-closed).
+        task$source_error <- "Yüklenen dosyanın kaynağı geçici yükleme alanında değil."
+        file_ingestion_controller_debug(job$controller, "ingest_source_outside_upload_root", task$source_error)
+        log_warn(task$source_error)
+        return(task)
+      }
     }
     bag <- file.path(kaynaklar, as.character(i))
     hazir <- identical(job$lease$sources, kaynaklar)

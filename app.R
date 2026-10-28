@@ -87,11 +87,34 @@ safe_add_resource_path <- function(prefix, directory) {
   invisible(TRUE)
 }
 
+# UX smoke test harness'ı (tests/smoke) gerçek uygulama eylemleri tetikler.
+# www/ dışında tutulur; böylece hiçbir statik yol (img -> www takma adı ve
+# Windows'ta büyük/küçük harf varyantları dahil) onu sunamaz. Yalnızca bakımcı
+# smoke ortamında açıkça MERGEN_ENABLE_UX_SMOKE=true verildiğinde /smoke olur.
+# Ayrıca uygulama yalnız döngü (loopback) arayüzünü dinlemelidir: ağdaki hiçbir
+# istemci harness'a ulaşıp başka bir oturumda eylem başlatamaz.
+mergen_ux_smoke_enabled <- function(host = Sys.getenv("MERGEN_HOST", "0.0.0.0")) {
+  host <- tolower(trimws(as.character(host)[1]))
+  tolower(trimws(Sys.getenv("MERGEN_ENABLE_UX_SMOKE", ""))) %in% c("1", "true", "yes", "evet") &&
+    isTRUE(host %in% c("127.0.0.1", "localhost", "::1"))
+}
+
+mergen_register_ux_smoke_resource <- function(enabled = mergen_ux_smoke_enabled(),
+                                              directory = file.path("tests", "smoke")) {
+  if (!isTRUE(enabled) || !dir.exists(directory)) {
+    # Kapı kapalıyken aynı süreçte daha önce açılmış /smoke eşlemesi de kalkar.
+    if ("smoke" %in% names(shiny::resourcePaths())) shiny::removeResourcePath("smoke")
+    return(invisible(FALSE))
+  }
+  safe_add_resource_path("smoke", directory)
+}
+
 if (dir.exists("www")) {
   for (subdir in list.dirs("www", recursive = FALSE, full.names = FALSE)) {
     safe_add_resource_path(subdir, file.path("www", subdir))
   }
   safe_add_resource_path("img", "www")
+  mergen_register_ux_smoke_resource()
 } else {
   warning("www klasörü bulunamadı; statik kaynaklar kaydedilmedi.")
 }
@@ -223,6 +246,8 @@ run_mergen_app <- function(
   quiet = TRUE
 ) {
   validate_boot_state()
+  # /smoke kararı gerçek dinleme adresiyle yeniden verilir (ağ adresinde kalkar).
+  mergen_register_ux_smoke_resource(enabled = mergen_ux_smoke_enabled(host))
 
   port <- .normalize_mergen_port(port)
 

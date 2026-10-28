@@ -104,8 +104,8 @@ ensure_utf8 <- function(metin) {
 
 # ------------------------------------------------------------------------------
 # WINDOWS .CMD UYUMLULUĞU
-# Windows'ta .cmd dosyaları cmd.exe üzerinden çalıştırılmalıdır.
-# processx bazı sunucu ortamlarında .cmd'yi doğrudan çalıştıramaz.
+# npm Windows'ta CLI'yi bir .cmd betiğiyle sarar. Bu betik cmd.exe ile
+# ÇALIŞTIRILMAZ: gerçek hedefi çözülüp argüman vektörüyle başlatılır.
 # ------------------------------------------------------------------------------
 
 # Tek eğik çizgiyle gelen Windows ağ yolu benzeri değer mi?
@@ -148,64 +148,6 @@ is_windows_unc_path <- function(path) {
 
   grepl("^//[^/]+/[^/]+", aday) ||
     is_windows_single_slash_network_path(aday)
-}
-
-# cmd.exe içinde kullanılacak çalışma dizinini Windows biçimine çevir
-normalize_cmd_workdir <- function(path) {
-  aday <- as.character(path %||% "")
-  if (!nzchar(aday)) return("")
-
-  aday <- gsub("/", "\\\\", aday, fixed = TRUE)
-
-  # Tek ters slash ile başlayan UNC benzeri yolu çift ters slash yap
-  if (grepl("^\\\\[^\\\\]", aday)) {
-    aday <- paste0("\\", aday)
-  }
-
-  aday
-}
-
-# cmd.exe /c tek satırında güvenli argüman tırnaklama
-quote_windows_cmd_token <- function(x) {
-  x <- as.character(x %||% "")[1]
-  if (is.na(x)) {
-    x <- ""
-  }
-
-  # Komut satırı tek satır olmalı; prompt içindeki satır kırılmaları cmd.exe
-  # ayrıştırmasını bozmasın.
-  x <- gsub("\r\n|\r|\n", " ", x, perl = TRUE)
-
-  # shQuote(type = "cmd") processx + cmd.exe /c kombinasyonunda bazen
-  # \"C:\...\claude.cmd\" üretir. cmd.exe bunu çalıştırılabilir yol değil,
-  # literal kaçış karakterli metin gibi yorumlayabilir.
-  paste0('"', gsub('"', '""', x, fixed = TRUE), '"')
-}
-
-# Windows cmd.exe yolunu güvenli şekilde çözer
-resolve_windows_cmd_path <- function() {
-  adaylar <- unique(Filter(nzchar, c(
-    Sys.getenv("ComSpec", ""),
-    file.path(Sys.getenv("SystemRoot", "C:/Windows"), "System32", "cmd.exe"),
-    Sys.which("cmd.exe"),
-    "C:/Windows/System32/cmd.exe",
-    "cmd.exe"
-  )))
-
-  for (aday in adaylar) {
-    aday <- as.character(aday)[1]
-    if (is.na(aday) || !nzchar(aday)) next
-
-    if (identical(tolower(aday), "cmd.exe")) {
-      return("cmd.exe")
-    }
-
-    if (file.exists(aday)) {
-      return(normalizePath(aday, winslash = "\\", mustWork = FALSE))
-    }
-  }
-
-  "cmd.exe"
 }
 
 # Bir adayın processx `wd` değeri olarak Windows'ta güvenli olup olmadığını söyler
@@ -278,68 +220,139 @@ get_safe_processx_launch_workdir <- function(preferred = NULL) {
   normalizePath(yedek, winslash = "/", mustWork = FALSE)
 }
 
-# cmd.exe içinde gerçek çalışma dizinine geçip .cmd dosyasını çalıştıracak satırı kurar
-build_windows_cmd_invocation_line <- function(cli_path, args, workdir = NULL) {
-  cli_cmd <- normalizePath(cli_path, winslash = "\\", mustWork = FALSE)
-
-  quoted_args <- vapply(
-    args,
-    quote_windows_cmd_token,
-    character(1),
-    USE.NAMES = FALSE
-  )
-
-  quoted_cli <- quote_windows_cmd_token(cli_cmd)
-
-  if (is.null(workdir) || !nzchar(workdir)) {
-    return(paste(
-      c("call", quoted_cli, quoted_args),
-      collapse = " "
-    ))
+# npm cmd-shim (.cmd) betiğinin çağırdığı gerçek hedefi çözer. Betik YALNIZCA
+# metin olarak okunur, asla çalıştırılmaz. npm kalıbı:
+#   "%dp0%\node_modules\@anthropic-ai\claude-code\cli.js" %*
+# Hedef JS ise node.exe (önce betiğin yanındaki, cmd-shim ile aynı) ile, yerel
+# .exe ise doğrudan başlatılır. Çözülemeyen betik için kabuğa düşülmez.
+cc_resolve_windows_cli_shim <- function(shim_path, max_bytes = 65536L) {
+  yol <- normalizePath(as.character(shim_path %||% "")[1], winslash = "/", mustWork = FALSE)
+  boyut <- suppressWarnings(file.info(yol)$size)
+  if (is.na(boyut) || boyut <= 0 || boyut > max_bytes) {
+    stop("Bilge Yolaç CLI başlatıcısı okunamadı: ", basename(yol), call. = FALSE)
+  }
+  baytlar <- readBin(yol, what = "raw", n = boyut)
+  metin <- rawToChar(baytlar[baytlar != as.raw(0L)])
+  eslesme <- gregexpr(
+    "\"%~?dp0%?[\\\\/]([^\"%*<>|\r\n]+\\.(js|cjs|mjs|exe))\"",
+    metin, perl = TRUE, ignore.case = TRUE
+  )[[1]]
+  cozulemedi <- function() {
+    stop(
+      "Bilge Yolaç CLI başlatıcısı (.cmd) çözümlenemedi; CLAUDE_CODE_CLI_PATH ",
+      "ayarını cli.js veya claude.exe yoluna yönlendirin.",
+      call. = FALSE
+    )
+  }
+  if (eslesme[1] < 0L) cozulemedi()
+  baslar <- as.integer(eslesme)
+  bitisler <- baslar + attr(eslesme, "match.length") - 1L
+  hedefler <- substring(metin, baslar, bitisler)
+  # cmd-shim önce "%dp0%\\node.exe" varlığını sınar; çağrılan hedef son eşleşmedir.
+  secilen <- which(!grepl("[\\\\/]node\\.exe\"$", hedefler, ignore.case = TRUE))
+  if (!length(secilen)) {
+    stop("Bilge Yolaç CLI başlatıcısının hedefi bulunamadı.", call. = FALSE)
+  }
+  secilen <- secilen[length(secilen)]
+  # Hedefin satırında yorumlayıcıdan sonra ya da hedeften sonra sabit argüman
+  # (ör. node --require ./init.js) varsa düşürülmez: başlatıcı reddedilir.
+  satir_basi <- max(c(0L, gregexpr("\n", substr(metin, 1L, baslar[secilen] - 1L), fixed = TRUE)[[1]]))
+  once <- trimws(substr(metin, satir_basi + 1L, baslar[secilen] - 1L))
+  sonra <- trimws(sub("[\r\n].*$", "", substr(metin, bitisler[secilen] + 1L, nchar(metin))))
+  exe_hedef <- grepl("\\.exe\"$", hedefler[secilen], ignore.case = TRUE)
+  once_gecerli <- if (exe_hedef) {
+    grepl("(^|[&(@])$", once, perl = TRUE)
+  } else {
+    grepl("(\"%_prog%\"|node\\.exe\"|(^|[\\s&(@])node)$", once, perl = TRUE, ignore.case = TRUE)
+  }
+  if (!once_gecerli || !identical(sonra, "%*")) cozulemedi()
+  goreceli <- sub("^\"%~?dp0%?[\\\\/]", "", sub("\"$", "", hedefler[secilen]), perl = TRUE)
+  hedef <- normalizePath(file.path(dirname(yol), gsub("\\", "/", goreceli, fixed = TRUE)),
+                         winslash = "/", mustWork = FALSE)
+  if (!file.exists(hedef) || dir.exists(hedef)) {
+    stop("Bilge Yolaç CLI hedefi bulunamadı: ", basename(hedef), call. = FALSE)
   }
 
-  hedef_dizin <- normalize_cmd_workdir(workdir)
-  quoted_workdir <- quote_windows_cmd_token(hedef_dizin)
-
-  if (is_windows_unc_path(workdir)) {
-    return(paste(
-      c(
-        "pushd",
-        quoted_workdir,
-        "&&",
-        "call",
-        quoted_cli,
-        quoted_args,
-        "&",
-        "popd"
-      ),
-      collapse = " "
-    ))
+  if (grepl("\\.exe$", hedef, ignore.case = TRUE)) {
+    return(list(command = hedef, prefix_args = character(0)))
   }
 
-  paste(
-    c(
-      "cd",
-      "/d",
-      quoted_workdir,
-      "&&",
-      "call",
-      quoted_cli,
-      quoted_args
-    ),
-    collapse = " "
-  )
+  yerel_node <- file.path(dirname(yol), "node.exe")
+  node <- if (file.exists(yerel_node)) {
+    normalizePath(yerel_node, winslash = "/", mustWork = FALSE)
+  } else {
+    resolve_node_path()
+  }
+  if (is.null(node)) {
+    stop("Bilge Yolaç için node.exe bulunamadı (CLAUDE_CODE_NODE_PATH).", call. = FALSE)
+  }
+  list(command = node, prefix_args = hedef)
+}
+
+# Mevcut ortam değişkenlerini alır ve PATH/Path anahtarını yerinde günceller
+# (CLI'nin kendi alt süreçleri node/npm araçlarını bulabilsin).
+cc_windows_child_env <- function(dizinler) {
+  env <- Sys.getenv()
+  path_eslesmeleri <- which(tolower(names(env)) == "path")
+  path_adi <- if (length(path_eslesmeleri) > 0) names(env)[path_eslesmeleri[1]] else "PATH"
+
+  mevcut_path <- if (path_adi %in% names(env)) unname(env[[path_adi]]) else ""
+  eklenecekler <- unique(Filter(nzchar, dizinler))
+
+  # Alt dize değil tam girdi karşılaştırılır (C:\node, C:\node-old'u kapsamaz).
+  girdi <- function(x) sub("[\\\\/]+$", "", tolower(gsub("/", "\\", trimws(x), fixed = TRUE)))
+  yeni_path <- mevcut_path
+  for (dizin in rev(eklenecekler)) {
+    if (!girdi(dizin) %in% girdi(strsplit(yeni_path, ";", fixed = TRUE)[[1]])) {
+      yeni_path <- if (nzchar(yeni_path)) paste(dizin, yeni_path, sep = ";") else dizin
+    }
+  }
+
+  env[[path_adi]] <- yeni_path
+  env
+}
+
+# Tek eğik çizgili ağ yolu (/sunucu/pay) süreç çalışma dizini için UNC'ye çevrilir.
+cc_windows_launch_wd <- function(workdir) {
+  if (is.null(workdir) || !nzchar(workdir)) return(workdir)
+  if (isTRUE(is_windows_single_slash_network_path(workdir))) {
+    return(paste0("/", gsub("\\", "/", workdir, fixed = TRUE)))
+  }
+  workdir
 }
 
 #' processx için komut ve argümanları hazırlar
-#' Windows'ta .cmd dosyalarını cmd.exe /c üzerinden sarar
+#'
+#' Çağıranın verdiği argümanlar (istem metni dâhil) HER ZAMAN ayrık bir argüman
+#' vektörü olarak süreç başlatıcıya gider; cmd.exe/kabuk komut satırına metin
+#' olarak gömülmez. Windows'ta .cmd/.bat npm betikleri cmd.exe yerine gerçek
+#' hedeflerine (node.exe + cli.js ya da claude.exe) çözülür; aksi hâlde istem
+#' içindeki %DEĞİŞKEN%, &, |, ^ gibi diziler kabukta yorumlanıp çocuk sürecin
+#' (API anahtarı taşıyan) ortamından genişleyebilirdi.
 #'
 #' @param cli_path CLI çalıştırılabilir dosya yolu
 #' @param args CLI argümanları
 #' @param workdir Çalışma dizini
 #' @return Liste: command, args, env, wd
 build_processx_command <- function(cli_path, args, workdir = NULL) {
-  if (.Platform$OS.type == "windows" && grepl("\\.cmd$", cli_path, ignore.case = TRUE)) {
+  if (grepl("\\.(c|m)?js$", cli_path, ignore.case = TRUE)) {
+    node <- resolve_node_path()
+    if (is.null(node)) {
+      stop("Bilge Yolaç için node bulunamadı (CLAUDE_CODE_NODE_PATH).", call. = FALSE)
+    }
+    windows <- .Platform$OS.type == "windows"
+    return(list(
+      command = node,
+      args = c(normalizePath(cli_path, winslash = "/", mustWork = FALSE), args),
+      # .cmd dalı gibi: PATH dışındaki node'un dizini CLI alt süreçlerine eklenir.
+      env = if (windows) cc_windows_child_env(normalizePath(dirname(node), winslash = "\\", mustWork = FALSE)) else NULL,
+      wd = if (windows) cc_windows_launch_wd(workdir) else workdir
+    ))
+  }
+
+  if (.Platform$OS.type == "windows" && grepl("\\.(cmd|bat)$", cli_path, ignore.case = TRUE)) {
+    hedef <- cc_resolve_windows_cli_shim(cli_path)
+
     npm_dizini <- normalizePath(dirname(cli_path), winslash = "\\", mustWork = FALSE)
     node_yolu <- resolve_node_path()
     node_dizini <- if (!is.null(node_yolu)) {
@@ -348,50 +361,23 @@ build_processx_command <- function(cli_path, args, workdir = NULL) {
       ""
     }
 
-    # Mevcut ortam değişkenlerini al ve PATH/Path anahtarını yerinde güncelle
-    env <- Sys.getenv()
-    path_eslesmeleri <- which(tolower(names(env)) == "path")
-    path_adi <- if (length(path_eslesmeleri) > 0) names(env)[path_eslesmeleri[1]] else "PATH"
+    env <- cc_windows_child_env(c(npm_dizini, node_dizini))
 
-    mevcut_path <- if (path_adi %in% names(env)) unname(env[[path_adi]]) else ""
-    eklenecekler <- unique(Filter(nzchar, c(npm_dizini, node_dizini)))
+    log_info(paste(
+      CLAUDE_CODE_LOG_PREFIX,
+      "Windows CLI betiği kabuksuz başlatılıyor:",
+      basename(hedef$command),
+      "Çalışma dizini:",
+      workdir %||% ""
+    ))
 
-    yeni_path <- mevcut_path
-    for (dizin in rev(eklenecekler)) {
-      if (!grepl(dizin, yeni_path, fixed = TRUE)) {
-        yeni_path <- if (nzchar(yeni_path)) paste(dizin, yeni_path, sep = ";") else dizin
-      }
-    }
-
-    env[[path_adi]] <- yeni_path
-
-    komut_satiri <- build_windows_cmd_invocation_line(
-      cli_path = cli_path,
-      args = args,
-      workdir = workdir
-    )
-
-    if (is_windows_unc_path(workdir)) {
-      log_info(paste(
-        CLAUDE_CODE_LOG_PREFIX,
-        "UNC/ağ çalışma dizini cmd.exe içinde pushd ile eşlendi:",
-        workdir
-      ))
-    } else {
-      log_info(paste(
-        CLAUDE_CODE_LOG_PREFIX,
-        "Windows .cmd çalıştırması güvenli yerel launch wd ile başlatılıyor. Gerçek çalışma dizini:",
-        workdir %||% ""
-      ))
-    }
-
-	return(list(
-	  command = resolve_windows_cmd_path(),
-	  args = c("/d", "/c", komut_satiri),
-	  env = env,
-	  wd = get_safe_processx_launch_workdir(),
-	  windows_verbatim_args = TRUE
-	))
+    return(list(
+      command = hedef$command,
+      args = c(hedef$prefix_args, args),
+      env = env,
+      wd = cc_windows_launch_wd(workdir),
+      windows_verbatim_args = FALSE
+    ))
   }
 
   list(command = cli_path, args = args, env = NULL, wd = workdir)

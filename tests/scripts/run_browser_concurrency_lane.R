@@ -66,6 +66,13 @@ bc_redact <- function(text) {
   gsub("(?i)bearer\\s+[A-Za-z0-9._~+/=-]{6,}", "Bearer <hidden>", out, perl = TRUE)
 }
 
+# Sonuc yalnizca islenmis #status metninden okunur; satir ici betik kaynagindaki
+# UX_SMOKE_DONE sabitleri (ve hic baslamamis sayfa) PASS sayilmaz.
+bc_rendered_status <- function(dom) {
+  m <- regmatches(dom, regexec("<div id=\"status\"[^>]*>([^<]*)</div>", dom, perl = TRUE))[[1]]
+  if (length(m) >= 2L) trimws(m[[2]]) else ""
+}
+
 # ------------------------------------------------------------------------------
 # Config + artifact.
 # ------------------------------------------------------------------------------
@@ -80,7 +87,9 @@ cfg <- list(
   # kosumu yoneten tek deger virtual_time_ms'tir ve kanitta o raporlanir.
   base_url = sub("/+$", "", bc_str("MERGEN_BROWSER_CONCURRENCY_BASE_URL", "http://127.0.0.1:8009/")),
   headless = bc_flag("MERGEN_BROWSER_CONCURRENCY_HEADLESS", TRUE),
-  target = bc_str("MERGEN_BROWSER_CONCURRENCY_TARGET", "/smoke/ux-smoke.html"),
+  # Hedef uygulama MERGEN_ENABLE_UX_SMOKE=true ve MERGEN_HOST=127.0.0.1 ile calismali; harness acik
+  # baslatma ister (?autostart=1).
+  target = bc_str("MERGEN_BROWSER_CONCURRENCY_TARGET", "/smoke/ux-smoke.html?autostart=1"),
   virtual_time_ms = max(10000L, bc_int("MERGEN_BROWSER_CONCURRENCY_VIRTUAL_TIME_MS", 120000L))
 )
 cap_applied <- cfg$users > cfg$max_users
@@ -281,8 +290,9 @@ if (!isTRUE(cfg$enabled)) {
       } else ""
       elapsed_ms <- round((as.numeric(Sys.time()) - starts[i]) * 1000, 0)
 
-      passed <- grepl("UX_SMOKE_DONE:PASS", dom, fixed = TRUE)
-      failed <- grepl("UX_SMOKE_DONE:FAIL", dom, fixed = TRUE)
+      durum <- bc_rendered_status(dom)
+      passed <- identical(durum, "UX_SMOKE_DONE:PASS")
+      failed <- startsWith(durum, "UX_SMOKE_DONE:FAIL")
       ws_connected <- grepl("shiny|MERGEN|Bilge|MergenStreamingSmoke|mergen", dom, ignore.case = TRUE)
       status <- if (passed) "pass" else if (failed) "fail" else if (still_alive) "timeout" else "incomplete"
 

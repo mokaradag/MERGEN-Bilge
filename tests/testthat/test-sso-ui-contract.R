@@ -100,6 +100,8 @@ testthat::test_that("ssoPreflightScriptUI SSO açıkken yönlendirme yapılandı
   testthat::expect_true(grepl("mergen-bilge", html, fixed = TRUE))
   testthat::expect_true(grepl("kc.ornek.local/auth", html, fixed = TRUE))
   testthat::expect_true(grepl("__mergenSsoPreflight", html, fixed = TRUE))
-  # extractTokenFromHash gibi yönlendirme yardımcıları yer almalı.
-  testthat::expect_true(grepl("extractTokenFromHash", html, fixed = TRUE))
+  # Hash ayrıştırma ve tek kullanımlık giriş durumu (state) yardımcıları yer almalı.
+  testthat::expect_true(grepl("extractHashParam", html, fixed = TRUE))
+  testthat::expect_true(grepl("'&state='", html, fixed = TRUE))
+  testthat::expect_true(grepl("mergen_sso_login_state", html, fixed = TRUE))
 })

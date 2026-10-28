@@ -133,3 +133,26 @@ test_that("özet görevi okuma hatasını özetlemez; durdurma dosyası LLM kap�
   expect_null(getOption("mergen.llm.stop_check"))
   unlink(dur)
 })
+
+test_that("gerçek okuyucunun reddettiği DOCX özet görevinde hata metni olarak özetlenmez", {
+  env <- .filePipelineSummEnv()
+  kok <- resolve_repo_root_for_tests()
+  env$`%||%` <- function(x, y) if (is.null(x)) y else x
+  env$path_exists_relaxed <- function(p) file.exists(p)
+  env$resolve_readable_path <- function(p) p
+  sys.source(file.path(kok, "R", "helpers_files_docx_reader.R"), envir = env, keep.source = FALSE)
+  sys.source(file.path(kok, "R", "helpers_files.R"), envir = env, keep.source = FALSE)
+  llm <- 0L
+  env$summarize_file_with_llm <- function(...) { llm <<- llm + 1L; "özet" }
+  bomba <- file.path(kok, "tests", "fixtures", "docx", "dugum_bombasi.docx")
+  gorev <- env$file_summary_task_fn("rapor.docx", bomba, list())
+  expect_error(gorev(), "Dosya içeriği okunamadı: DOCX belge yapısı izin verilen öğe sayısını aşıyor", fixed = TRUE)
+  expect_identical(llm, 0L)
+  # Görüntüleme çağıranları için sözleşme değişmez: hata metne çevrilir.
+  expect_match(env$readFileContentToString(list(name = "rapor.docx", datapath = bomba)),
+               "Dosya okunurken bir hata", fixed = TRUE)
+  # Meşru belge özetlenir.
+  gecerli <- env$file_summary_task_fn("belge.docx", file.path(kok, "tests", "fixtures", "docx", "gecerli_turkce.docx"), list())
+  expect_identical(gecerli()$summary, "özet")
+  expect_identical(llm, 1L)
+})

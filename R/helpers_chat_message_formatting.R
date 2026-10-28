@@ -190,6 +190,52 @@ db_message_process_text_content <- function(content_text, msg_type, message_id) 
 }
 
 # ------------------------------------------------------------------------------
+# `[GÖRSEL:<yol>] açıklama` biçimli asistan mesajını görsel kartına çevirir;
+# görsel mesajı değilse NULL döner. Yol, sahibin user_images kökünde çözülür.
+# ------------------------------------------------------------------------------
+db_message_process_image_content <- function(content_text, msg_type, message_id, user_id = NULL) {
+  if (!msg_type %in% c("ai", "assistant") ||
+      !grepl("^\\[GÖRSEL", content_text, perl = TRUE)) {
+    return(NULL)
+  }
+
+  image_match <- regmatches(
+    content_text,
+    regexec("^\\[GÖRSEL:([^\\]]+)\\]\\s*((?s).*)", content_text, perl = TRUE)
+  )[[1]]
+
+  if (length(image_match) == 3) {
+    image_html <- db_message_render_image_html(
+      image_path = image_match[2],
+      description = image_match[3],
+      message_id = message_id,
+      user_id = user_id
+    )
+    return(list(html = image_html, has_code = FALSE))
+  }
+
+  old_match <- regmatches(
+    content_text,
+    regexec("^\\[GÖRSEL\\]\\s*((?s).*)", content_text, perl = TRUE)
+  )[[1]]
+
+  image_description <- if (length(old_match) == 2) {
+    old_match[2]
+  } else {
+    content_text
+  }
+
+  styled_html <- sprintf(
+    '<div class="generated-image-container">
+       <div class="image-description"><p>%s</p></div>
+     </div>',
+    htmltools::htmlEscape(image_description)
+  )
+
+  list(html = styled_html, has_code = FALSE)
+}
+
+# ------------------------------------------------------------------------------
 # Tek bir DB mesaj satırını uygulama mesaj nesnesine dönüştürür.
 # ------------------------------------------------------------------------------
 db_message_format_row <- function(row, user_id = NULL) {
@@ -208,54 +254,16 @@ db_message_format_row <- function(row, user_id = NULL) {
 
   content_text <- trimws(content_text)
 
-  is_image_message <- grepl("^\\[GÖRSEL", content_text, perl = TRUE)
-
-  processed <- if (is_image_message && msg_type %in% c("ai", "assistant")) {
-    image_match <- regmatches(
-      content_text,
-      regexec("^\\[GÖRSEL:([^\\]]+)\\]\\s*(.*)", content_text, perl = TRUE)
-    )[[1]]
-
-    if (length(image_match) == 3) {
-      image_path <- image_match[2]
-      image_description <- image_match[3]
-
-      image_html <- db_message_render_image_html(
-        image_path = image_path,
-        description = image_description,
-        message_id = as.character(row$MessageID),
-        user_id = row$UserID %||% user_id
-      )
-
-      list(html = image_html, has_code = FALSE)
-    } else {
-      old_match <- regmatches(
-        content_text,
-        regexec("^\\[GÖRSEL\\]\\s*(.*)", content_text, perl = TRUE)
-      )[[1]]
-
-      image_description <- if (length(old_match) == 2) {
-        old_match[2]
-      } else {
-        content_text
-      }
-
-      styled_html <- sprintf(
-        '<div class="generated-image-container">
-           <div class="image-description"><p>%s</p></div>
-         </div>',
-        htmltools::htmlEscape(image_description)
-      )
-
-      list(html = styled_html, has_code = FALSE)
-    }
-  } else {
-    db_message_process_text_content(
-      content_text = content_text,
-      msg_type = msg_type,
-      message_id = as.character(row$MessageID)
-    )
-  }
+  processed <- db_message_process_image_content(
+    content_text = content_text,
+    msg_type = msg_type,
+    message_id = as.character(row$MessageID),
+    user_id = row$UserID %||% user_id
+  ) %||% db_message_process_text_content(
+    content_text = content_text,
+    msg_type = msg_type,
+    message_id = as.character(row$MessageID)
+  )
 
   timestamp_val <- row$MessageTimestamp
 

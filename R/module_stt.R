@@ -57,6 +57,78 @@ sttServer <- function(id, parent_session, settings) {
 
     final_text <- reactiveVal("")
 
+    # YETKİ: istemcinin kayıt durumu (toggle/audio_chunk) yetki değildir. STT
+    # yalnızca canlı, doğrulanmış oturum kimliğiyle açılır ve her gönderimden
+    # önce yeniden denetlenir; kimlik süre dolumu/değişimiyle düşebilir.
+    kimlik_oturumu <- parent_session %||% session
+    stt_yetkili <- function() {
+      ud <- tryCatch(kimlik_oturumu$userData, error = function(e) NULL)
+      if (!is.environment(ud) || !isTRUE(ud$auth_initialized)) return(FALSE)
+      uid <- suppressWarnings(as.integer(as.character(ud$user_id %||% 0L)[1]))
+      isTRUE(!is.na(uid) && uid > 0L)
+    }
+
+    # Kimlik kaybında/değişiminde kabul kilitlenir, uçuştaki sonuçlar ve kuyruk
+    # düşer, kayıt penceresi kapanır: sonraki yetkili deneme start_session()
+    # ile tarayıcı kaydedicisini baştan kurar (yarım kalmış "Devam Et" olmaz).
+    # Gecikmeli initSTT yalnızca kendi açılışına aittir; kilit ya da yeni açılış
+    # jetonu ilerletir, bayat geri çağrı başka sahibin modalında mikrofonu açmaz.
+    stt_acilis_jetonu <- 0L
+    # Kilitten sonra yeni açılışa kadar kuyrukta bekleyen onay yayınlanmaz;
+    # modal yalnızca STT açtıysa kapatılır (başka diyaloglara dokunulmaz).
+    stt_kilitli <- FALSE
+    stt_modal_acik <- FALSE
+    # Kimlik dönemi iptal işareti: kilit, dönemin işaret dosyasını oluşturur;
+    # o dönemde kuyruğa giren çeviri işi ses göndermeden biter.
+    iptal_koku <- tempfile("stt_iptal_")
+    kimlik_donemi <- 0L
+    iptal_dosyasi <- function(donem) paste0(iptal_koku, "_", donem)
+    # Oturum bitince kuyruktaki işler de iptal edilir; işaretler, onları
+    # okuyabilecek son iş bittikten sonra silinir.
+    ucustaki_is <- 0L
+    oturum_bitti <- FALSE
+    iptal_isaretlerini_temizle <- function() {
+      if (isTRUE(oturum_bitti) && ucustaki_is == 0L) unlink(Sys.glob(paste0(iptal_koku, "_*")))
+    }
+    session$onSessionEnded(function() {
+      oturum_bitti <<- TRUE
+      if (ucustaki_is > 0L) try(file.create(iptal_dosyasi(kimlik_donemi)), silent = TRUE)
+      iptal_isaretlerini_temizle()
+    })
+    stt_kilitle <- function() {
+      # İşaret ve dönem yalnız kilide GİRİŞTE ilerler: kilitliyken yeni iş
+      # gönderilmez, tekrarlanan red her seferinde yeni işaret dosyası açmaz.
+      if (!isTRUE(stt_kilitli)) {
+        try(file.create(iptal_dosyasi(kimlik_donemi)), silent = TRUE)
+        kimlik_donemi <<- kimlik_donemi + 1L
+      }
+      stt_acilis_jetonu <<- stt_acilis_jetonu + 1L
+      stt_kilitli <<- TRUE
+      rv$is_recording <- FALSE
+      rv$accept_chunks <- FALSE
+      rv$transcribe_gen <- isolate(rv$transcribe_gen) + 1L
+      # Önceki sahibin metni ve bekleyen onayı yeni kimliğe taşınmaz; kuyruk
+      # sıfırlaması accept_after_pending'i de kapatır (gecikmeli onay yayınlamaz).
+      rv$transcription_history <- ""
+      final_text("")
+      reset_stt_queue()
+      try(shinyjs::runjs(sprintf("window.STT_Client && window.STT_Client.stopAndCleanup('%s');", id)),
+          silent = TRUE)
+      if (isTRUE(stt_modal_acik)) {
+        stt_modal_acik <<- FALSE
+        try(set_stt_modal_active_js(FALSE), silent = TRUE)
+        try(removeModal(session = session), silent = TRUE)
+      }
+      invisible(NULL)
+    }
+
+    if (exists("mergen_session_on_owner_change", mode = "function", inherits = TRUE)) {
+      kanca_kaldir <- mergen_session_on_owner_change(kimlik_oturumu, function(neden) {
+        shiny::isolate(stt_kilitle())
+      })
+      session$onSessionEnded(kanca_kaldir)
+    }
+
     # Biriktirilmiş metni metin alanına yazar (tek nokta).
     push_transcription <- function(value) {
       rv$transcription_history <- value
@@ -133,9 +205,15 @@ sttServer <- function(id, parent_session, settings) {
       # düzenlenmiş metin bu geçmişe yazılır; beklenen STT callback'leri de aynı
       # geçmişe append eder. Böylece textarea round-trip'i gecikse bile beklenen
       # son parçalar gönderilen metinden düşmez.
+      # Yayından hemen önce canlı kimlik yeniden denetlenir.
+      if (!stt_yetkili() || isTRUE(stt_kilitli)) {
+        stt_kilitle()
+        return(invisible(NULL))
+      }
       text_to_send <- trimws(as.character(isolate(rv$transcription_history) %||% "")[1])
       if (is.na(text_to_send)) text_to_send <- ""
       rv$accept_after_pending <- FALSE
+      stt_modal_acik <<- FALSE
       removeModal()
       if (nzchar(text_to_send)) {
         final_text(text_to_send)
@@ -143,6 +221,14 @@ sttServer <- function(id, parent_session, settings) {
     }
 
     start_session <- function() {
+      if (!stt_yetkili()) {
+        stt_kilitle()
+        showNotification("Sesli giriş için oturum kimliği doğrulanmalıdır.", type = "warning", duration = 6)
+        return(invisible(FALSE))
+      }
+      stt_acilis_jetonu <<- stt_acilis_jetonu + 1L
+      acilis_jetonu <- stt_acilis_jetonu
+      stt_kilitli <<- FALSE
       rv$transcription_history <- ""
       rv$transcribe_gen <- isolate(rv$transcribe_gen) + 1L
       rv$is_recording <- TRUE
@@ -264,17 +350,20 @@ sttServer <- function(id, parent_session, settings) {
       ))
 
       # STT modalının açık olduğunu uygulama geneline bildir
+      stt_modal_acik <<- TRUE
       set_stt_modal_active_js(TRUE)
 
-      # JS Client'ı başlat
+      # JS Client'ı başlat (yalnızca bu açılış hâlâ geçerli ve kimlik yetkiliyse)
       shinyjs::delay(500, {
-        session$sendCustomMessage("initSTT", list(
-          canvasId = ns("visualizer_canvas"),
-          timerId = ns("stt_timer"),
-          dbId = ns("stt_db_indicator"),
-          nsPrefix = id,
-          accentColor = char_info$accent %||% "#7C4DFF"
-        ))
+        if (identical(acilis_jetonu, stt_acilis_jetonu) && stt_yetkili()) {
+          session$sendCustomMessage("initSTT", list(
+            canvasId = ns("visualizer_canvas"),
+            timerId = ns("stt_timer"),
+            dbId = ns("stt_db_indicator"),
+            nsPrefix = id,
+            accentColor = char_info$accent %||% "#7C4DFF"
+          ))
+        }
       })
     }
 
@@ -316,6 +405,13 @@ sttServer <- function(id, parent_session, settings) {
         shinyjs::runjs(sprintf("$('.stt-visualizer-wrapper').addClass('paused-mode');"))
       } else {
         # --- BAŞLATMA İŞLEMİ (Devam Et) ---
+        if (!stt_yetkili()) {
+          stt_kilitle()
+          showNotification("Sesli giriş için oturum kimliği doğrulanmalıdır.", type = "warning", duration = 6)
+          return(invisible(NULL))
+        }
+        # Kilitlenen açılış "Devam Et" ile canlanmaz; yeni açılış start_session() ister.
+        if (isTRUE(stt_kilitli)) return(invisible(NULL))
         # Duraklatma sırasında kullanıcı metin alanını elle düzenlemiş olabilir;
         # devam etmeden önce sunucu geçmişini görünen metinle eşitle. Duraklama
         # sırasında asenkron parça eklenmediği için metin alanı güvenilirdir.
@@ -339,6 +435,12 @@ sttServer <- function(id, parent_session, settings) {
 
     observeEvent(input$audio_chunk, {
       req(input$audio_chunk)
+
+      # Korumalı STT kimlik bilgisiyle gönderimden ÖNCE canlı kimlik şarttır.
+      if (!stt_yetkili()) {
+        stt_kilitle()
+        return(NULL)
+      }
 
       # KİLİT KONTROLÜ: Kayıt kapalıyken YENİ paketleri işleme. Tek istisna:
       # Durdur/Onayla sonrası kayıtçının stop() olayının gönderdiği TEK final
@@ -412,6 +514,7 @@ sttServer <- function(id, parent_session, settings) {
       rv$expect_final_chunk <- FALSE
 
       dispatch_gen <- isolate(rv$transcribe_gen)
+      is_iptal_dosyasi <- iptal_dosyasi(kimlik_donemi)
       chunk_seq <- isolate(rv$next_chunk_seq)
       rv$next_chunk_seq <- chunk_seq + 1L
       rv$pending_stt_chunks <- isolate(rv$pending_stt_chunks) + 1L
@@ -427,7 +530,8 @@ sttServer <- function(id, parent_session, settings) {
       promise <- tryCatch(
       tracked_future_promise(
         task_fn = function() {
-          mergen_stt_transcribe_chunk(chunk_b64, api_url, api_model, api_key, stt_timeout)
+          mergen_stt_transcribe_chunk(chunk_b64, api_url, api_model, api_key, stt_timeout,
+                                      iptal_dosyasi = is_iptal_dosyasi)
         },
         task_type = "stt_transcribe",
         session_token = session$token,
@@ -438,7 +542,8 @@ sttServer <- function(id, parent_session, settings) {
           api_url = api_url,
           api_model = api_model,
           api_key = api_key,
-          stt_timeout = stt_timeout
+          stt_timeout = stt_timeout,
+          is_iptal_dosyasi = is_iptal_dosyasi
         )
       ),
       error = function(e) {
@@ -475,6 +580,13 @@ sttServer <- function(id, parent_session, settings) {
         }
         return(NULL)
       }
+
+      # Uçuştaki iş sayılır: oturum bittiyse iptal işaretlerini son iş siler.
+      ucustaki_is <<- ucustaki_is + 1L
+      promise <- promises::finally(promise, function() {
+        ucustaki_is <<- ucustaki_is - 1L
+        iptal_isaretlerini_temizle()
+      })
 
       promise %...>% (function(clean_text) {
         # Yalnızca üretim (transcribe_gen) hâlâ aynıysa tamamlanma/sayaç
@@ -520,6 +632,12 @@ sttServer <- function(id, parent_session, settings) {
     })
 
     observeEvent(input$accept_btn, {
+      # Önceki sahibin kuyruktaki onayı kilitten sonra yeni kimlikle yayınlanmaz.
+      if (!stt_yetkili() || isTRUE(stt_kilitli)) {
+        stt_kilitle()
+        return(invisible(NULL))
+      }
+      kabul_jetonu <- stt_acilis_jetonu
       # STT modalı kapanıyor bilgisini uygulama geneline bildir
       set_stt_modal_active_js(FALSE)
 
@@ -550,13 +668,17 @@ sttServer <- function(id, parent_session, settings) {
       # engeller (idempotentlik).
       shinyjs::delay(STT_FINAL_CHUNK_GRACE_MS, {
         rv$expect_final_chunk <- FALSE
-        if (isTRUE(isolate(rv$accept_after_pending)) && isolate(rv$pending_stt_chunks) == 0L) {
+        if (identical(kabul_jetonu, stt_acilis_jetonu) &&
+            isTRUE(isolate(rv$accept_after_pending)) && isolate(rv$pending_stt_chunks) == 0L) {
           finish_accept()
         }
       })
     })
 
     observeEvent(input$dismiss_btn, {
+      # İptal bekleyen gecikmeli initSTT'yi de geçersiz kılar.
+      stt_acilis_jetonu <<- stt_acilis_jetonu + 1L
+      stt_modal_acik <<- FALSE
       # STT modalı kapanıyor bilgisini uygulama geneline bildir
       set_stt_modal_active_js(FALSE)
 

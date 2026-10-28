@@ -618,6 +618,16 @@
     return div.innerHTML;
   }
 
+  // Model/CLI metni veridir: ortak güvenli kaçış (MergenMarkdownSafety)
+  // tercih edilir; biçimlendirme yalnızca kaçışlı metin üzerinde çalışır.
+  function escapeModelText(text) {
+    var safety = window.MergenMarkdownSafety;
+    if (safety && typeof safety.escapeHtml === 'function') {
+      return safety.escapeHtml(text);
+    }
+    return escapeHtml(text);
+  }
+
   // ---------------------------------------------------------------------------
   // YARDIMCI: BASİT MARKDOWN -> HTML DÖNÜŞÜMÜ
   // Akış sırasında ham metni okunabilir HTML'e çevirir.
@@ -631,9 +641,12 @@
     var codeBlocks = [];
     text = text.replace(/```(\w*)\n([\s\S]*?)```/g, function(match, lang, code) {
       var idx = codeBlocks.length;
-      codeBlocks.push('<pre class="cc-code-block"><code>' + escapeHtml(code.trim()) + '</code></pre>');
+      codeBlocks.push('<pre class="cc-code-block"><code>' + escapeModelText(code.trim()) + '</code></pre>');
       return '___CODE_BLOCK_' + idx + '___';
     });
+
+    // Kod bloğu dışındaki ham HTML de etkisiz metne çevrilir.
+    text = escapeModelText(text);
 
     // Satır içi kod
     text = text.replace(/`([^`]+)`/g, '<code>$1</code>');

@@ -239,15 +239,33 @@ $(document).ready(function() {
   // NOT: Müzik işleyicileri (initMusicManager, toggleMusic, setMusicPlaylist, setMusicCharacter, setMusicVolume)
   // music_manager.js tarafından yönetilir. Burada tekrar tanımlamıyoruz.
 
-  Shiny.addCustomMessageHandler('saveCurrentChat', function(messages) {
+  // Tarayıcı sohbet kaydı sunucunun doğruladığı sahip etiketine bağlıdır
+  // ({v, owner, messages}). Etiketi yalnızca sunucu üretir ve geri yüklemede
+  // yalnızca sunucu karşılaştırır; sahipsiz/eski biçim kayıt hiç gönderilmez.
+  var CHAT_STORAGE_KEY = 'mergen_current_chat';
+
+  Shiny.addCustomMessageHandler('saveCurrentChat', function(payload) {
     try {
-      messages = normalizeMessagePayload(messages);
-      if (messages && messages.length > 0) {
-        localStorage.setItem('mergen_current_chat', JSON.stringify(messages));
+      payload = normalizeMessagePayload(payload) || {};
+      var owner = typeof payload.owner === 'string' ? payload.owner : '';
+      var messages = Array.isArray(payload.messages) ? payload.messages : [];
+      if (!owner || window.__mergenBrowserAuthCleared) return;
+      // Kayda sığan mesaj kalmadıysa eski kayıt bırakılmaz (sonraki yüklemede
+      // bayat sohbet geri gelirdi).
+      if (messages.length === 0) {
+        localStorage.removeItem(CHAT_STORAGE_KEY);
+        return;
       }
+      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify({ v: 2, owner: owner, messages: messages }));
     } catch (e) {
       console.warn('Chat kaydedilemedi:', e);
     }
+  });
+
+  Shiny.addCustomMessageHandler('clearCurrentChat', function() {
+    try {
+      localStorage.removeItem(CHAT_STORAGE_KEY);
+    } catch (e) {}
   });
 
   Shiny.addCustomMessageHandler('highlightSearchMatch', function(data) {
@@ -272,41 +290,23 @@ $(document).ready(function() {
     });
   });
 
-  window.addEventListener('beforeunload', function() {
-    const chatContainer = document.getElementById('chat_content_container');
-    if (chatContainer) {
-      const messages = chatContainer.querySelectorAll('.message-bubble');
-      if (messages.length > 0) {
-        const messageData = [];
-        messages.forEach(function(msg) {
-          const wrapper = msg.closest('[id^="message_wrapper_"]');
-          if (wrapper) {
-            const id = wrapper.id.replace('message_wrapper_', '');
-            const type = msg.classList.contains('user-message') ? 'user' : 'ai';
-            const content = normalizeMessageText(msg.textContent || '');
-            
-            messageData.push({ id: id, type: type, content: content });
-          }
-        });
-        
-        if (messageData.length > 0) {
-          try {
-            localStorage.setItem('mergen_current_chat', JSON.stringify(messageData));
-          } catch (e) {
-            console.warn('Chat kaydedilemedi:', e);
-          }
-        }
-      }
-    }
-  });
+  // Sayfa kapanışında DOM'dan sohbet kazınmaz: balon metni başlık/saat/düğme
+  // yazılarını içerir ve sunucunun her mesaj değişiminde gönderdiği kanonik
+  // kaydı (saveCurrentChat) bozardı. Tarayıcı kaydının tek yazıcısı sunucudur.
 
   setTimeout(function() {
     try {
       const savedChat = localStorage.getItem('mergen_current_chat');
       if (savedChat) {
-        const messages = normalizeMessagePayload(JSON.parse(savedChat));
-        if (messages && messages.length > 0) {
-          Shiny.setInputValue('load_chat_from_storage', messages, { priority: 'event' });
+        const kayit = normalizeMessagePayload(JSON.parse(savedChat));
+        const gecerli = kayit && !Array.isArray(kayit) && kayit.v === 2 &&
+          typeof kayit.owner === 'string' && kayit.owner &&
+          Array.isArray(kayit.messages) && kayit.messages.length > 0;
+        if (!gecerli) {
+          // Sahibe bağlı olmayan (eski biçim) kayıt geri yüklenmez.
+          localStorage.removeItem(CHAT_STORAGE_KEY);
+        } else {
+          Shiny.setInputValue('load_chat_from_storage', { owner: kayit.owner, messages: kayit.messages }, { priority: 'event' });
         }
       }
     } catch (e) {

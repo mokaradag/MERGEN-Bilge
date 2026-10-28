@@ -110,18 +110,42 @@ ssoPreflightScriptUI <- function() {
     return;
   }
 
-  function extractTokenFromHash() {
+  function extractHashParam(name) {
     var hash = window.location.hash || '';
     if (hash.length < 2) return null;
 
     var parts = hash.substring(1).split('&');
     for (var i = 0; i < parts.length; i++) {
       var kv = parts[i].split('=');
-      if (kv.length >= 2 && decodeURIComponent(kv[0]) === 'access_token') {
-        return decodeURIComponent(kv.slice(1).join('='));
-      }
+      try {
+        if (kv.length >= 2 && decodeURIComponent(kv[0]) === name) {
+          return decodeURIComponent(kv.slice(1).join('='));
+        }
+      } catch (e) {}
     }
     return null;
+  }
+
+  // Giriş işlemi durumu: sso_auth.js ile AYNI anahtar. Ön kapı yalnızca
+  // bekleyen değerle eşleşen dönüşü geçirir; tüketme sso_auth.js'tedir.
+  var LOGIN_STATE_KEY = 'mergen_sso_login_state';
+
+  function pendingLoginState() {
+    try {
+      return sessionStorage.getItem(LOGIN_STATE_KEY);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function issueLoginState() {
+    var bytes = new Uint8Array(32);
+    window.crypto.getRandomValues(bytes);
+    var state = Array.prototype.map.call(bytes, function(b) {
+      return ('0' + b.toString(16)).slice(-2);
+    }).join('');
+    sessionStorage.setItem(LOGIN_STATE_KEY, state);
+    return state;
   }
 
   function getStoredToken() {
@@ -170,13 +194,17 @@ ssoPreflightScriptUI <- function() {
       '?client_id='     + encodeURIComponent(config.client_id) +
       '&redirect_uri='  + encodeURIComponent(baseUrl) +
       '&response_type=' + encodeURIComponent(config.response_type || 'token') +
-      '&scope='         + encodeURIComponent(config.scope || 'openid');
+      '&scope='         + encodeURIComponent(config.scope || 'openid') +
+      '&state='         + encodeURIComponent(issueLoginState());
   }
 
-  // Keycloak dönüşünde hash içinde token varsa sayfayı başlat; token daha sonra
-  // www/js/sso_auth.js tarafından Shiny'ye iletilecek.
-  var hashToken = extractTokenFromHash();
-  if (hashToken) {
+  // Keycloak dönüşünde hash içinde bu sekmenin başlattığı girişe ait token
+  // varsa sayfayı başlat; token www/js/sso_auth.js tarafından doğrulanıp
+  // Shiny'ye iletilecek. Eşleşmeyen dönüş kayıtlı oturum kontrolüne düşer.
+  var hashToken = extractHashParam('access_token');
+  var hashState = extractHashParam('state');
+  var pendingState = pendingLoginState();
+  if (hashToken && hashState && pendingState && hashState === pendingState) {
     return;
   }
 
@@ -189,13 +217,22 @@ ssoPreflightScriptUI <- function() {
     clearStoredToken();
   }
 
+  // Güvenli giriş durumu üretilemezse ön kapı yönlendirmez; sso_auth.js
+  // kullanıcıya hatayı gösterir (fail-closed).
+  var authUrl;
+  try {
+    authUrl = buildAuthUrl();
+  } catch (e) {
+    return;
+  }
+
   // Bu ilk yetkisiz geçiştir. Shiny bağlantısı ve açılış yükleme ekranı
   // başlamadan önce Keycloak'a git.
   window.__mergenSsoPreflight.redirecting = true;
   window.__mergenSsoPreflightRedirecting = true;
   document.documentElement.classList.add('mergen-sso-preflight-redirect');
 
-  window.location.replace(buildAuthUrl());
+  window.location.replace(authUrl);
 })();"
   )))
 }

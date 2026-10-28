@@ -171,7 +171,8 @@ dataframeToMarkdown <- function(df) {
 }
 
 # Bir dosyanın içeriğini metin olarak okur; Excel dosyaları için kompakt profil özeti üretir.
-readFileContentToString <- function(file_info) {
+# Okuma hatası metne çevrilir; `hata_metni = FALSE` hatayı korur (özet görevi için).
+readFileContentToString <- function(file_info, hata_metni = TRUE) {
   tryCatch({
     if (!path_exists_relaxed(file_info$datapath)) return("Hata: Dosya bulunamadı.")
 
@@ -205,7 +206,7 @@ readFileContentToString <- function(file_info) {
         paste(pdftools::pdf_text(file_info$datapath), collapse = "\n\n--- Sayfa Sonu ---\n\n")
       },
       "docx" = {
-        doc_xml  <- xml2::read_xml(unz(file_info$datapath, "word/document.xml"))
+        doc_xml  <- mergen_docx_read_document_xml(file_info$datapath)
         xml_text <- xml2::xml_text(xml2::xml_find_all(doc_xml, ".//w:t"))
         paste(xml_text, collapse = " ")
       },
@@ -223,6 +224,7 @@ readFileContentToString <- function(file_info) {
 
     content
   }, error = function(e) {
+    if (!isTRUE(hata_metni)) stop(e)
     paste("Dosya okunurken bir hata oluştu:", e$message)
   })
 }

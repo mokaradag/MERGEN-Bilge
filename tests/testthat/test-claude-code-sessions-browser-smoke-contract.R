@@ -2,8 +2,8 @@
 # Dosya Yolu: tests/testthat/test-claude-code-sessions-browser-smoke-contract.R
 # Açıklama: Bilge Yolaç "Oturumlar" (kalıcı oturum) sayfası için tarayıcı
 #           seviyesindeki UX smoke kapsamını korur. Bu sözleşme testi, gerçek
-#           bir tarayıcı çalıştırmaz; www/smoke/ux-smoke.html ve
-#           www/smoke/ux-smoke-probes.js içindeki Oturumlar probe'unun VAR OLDUĞUNU
+#           bir tarayıcı çalıştırmaz; tests/smoke/ux-smoke.html ve
+#           tests/smoke/ux-smoke-probes.js içindeki Oturumlar probe'unun VAR OLDUĞUNU
 #           ve ana smoke dizisine BAĞLANDIĞINI, ayrıca korunan değişmezleri
 #           (Durum/Model filtresinde "Tümü" kalıcılığı, aktif <-> arşiv kart eylem
 #           yüzeyi, detay modalı kaydırma/max-height sözleşmesi, çift DOM id
@@ -60,7 +60,7 @@
 
 # ------------------------------------------------------------------------------
 test_that("ux-smoke.html Oturumlar probe'unu tanımlar ve ana diziye bağlar", {
-  smoke_html <- .ccs_smoke_read_text("www", "smoke", "ux-smoke.html")
+  smoke_html <- .ccs_smoke_read_text("tests", "smoke", "ux-smoke.html")
 
   .ccs_smoke_expect_all(
     smoke_html,
@@ -97,7 +97,7 @@ test_that("ux-smoke.html Oturumlar probe'unu tanımlar ve ana diziye bağlar", {
 })
 
 test_that("ux-smoke-probes.js Oturumlar filtre değişmezlerini gerçek tarayıcıda korur", {
-  probes_js <- .ccs_smoke_read_text("www", "smoke", "ux-smoke-probes.js")
+  probes_js <- .ccs_smoke_read_text("tests", "smoke", "ux-smoke-probes.js")
 
   .ccs_smoke_expect_all(
     probes_js,
@@ -147,7 +147,7 @@ test_that("ux-smoke-probes.js Oturumlar filtre değişmezlerini gerçek tarayıc
 })
 
 test_that("ux-smoke-probes.js aktif <-> arşiv kart eylem yüzeyini ve modalı korur", {
-  probes_js <- .ccs_smoke_read_text("www", "smoke", "ux-smoke-probes.js")
+  probes_js <- .ccs_smoke_read_text("tests", "smoke", "ux-smoke-probes.js")
 
   .ccs_smoke_expect_all(
     probes_js,

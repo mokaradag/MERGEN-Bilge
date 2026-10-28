@@ -100,7 +100,7 @@ run_claude_code_streaming <- function(prompt,
   tryCatch({
     log_info(paste(CLAUDE_CODE_LOG_PREFIX, "Akış modu ile CLI çalıştırılıyor"))
 
-    # Windows'ta .cmd dosyalarını cmd.exe üzerinden çalıştır
+    # Windows .cmd betiği kabuksuz, gerçek hedefiyle başlatılır
     komut <- build_processx_command(cli_path, args, workdir = workdir)
 
     # Etkin API anahtarı çalışma anında alt süreç ortamına enjekte edilir

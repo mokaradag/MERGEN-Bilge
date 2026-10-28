@@ -476,7 +476,8 @@ render_message_bubble_ui <- function(msg, settings, is_last_user_message = FALSE
             ),
             div(
               class = "message-actions",
-              tags$button(
+              # Tarayıcıdan geri yüklenen mesajın DB satırı yoktur: geri bildirim düğmesi çizilmez.
+              if (!isTRUE(msg$tarayicidan_geri_yuklendi)) tags$button(
                 id = paste0("like_", msg$id),
                 class = paste(
                   "btn btn-default message-action-btn like-btn",
@@ -487,7 +488,7 @@ render_message_bubble_ui <- function(msg, settings, is_last_user_message = FALSE
                 onclick = sprintf("Shiny.setInputValue('like_message', '%s', {priority: 'event'})", msg$id),
                 icon("thumbs-up")
               ),
-              tags$button(
+              if (!isTRUE(msg$tarayicidan_geri_yuklendi)) tags$button(
                 id = paste0("dislike_", msg$id),
                 class = paste(
                   "btn btn-default message-action-btn dislike-btn",

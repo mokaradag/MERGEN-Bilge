@@ -370,18 +370,39 @@ function destekUpdateFileList(nsPrefix, files) {
     var item = document.createElement('div');
     item.className = 'destek-file-item';
 
-    var sizeMB = (file.size / (1024 * 1024)).toFixed(2);
-    var truncName = file.name.length > 30 ? file.name.substring(0, 27) + '...' : file.name;
+    var sizeMB = (Number(file.size) / (1024 * 1024)).toFixed(2);
+    var ad = String(file.name == null ? '' : file.name);
+    var truncName = ad.length > 30 ? ad.substring(0, 27) + '...' : ad;
 
-    item.innerHTML =
-      '<i class="fas fa-file destek-file-item-icon"></i>' +
-      '<div class="destek-file-item-info">' +
-        '<div class="destek-file-item-name">' + truncName + '</div>' +
-        '<div class="destek-file-item-size">' + sizeMB + ' MB</div>' +
-      '</div>' +
-      '<button class="destek-file-item-remove" onclick="destekRemoveFile(\'' + nsPrefix + '\', ' + (index + 1) + ')" title="Kaldır">' +
-        '<i class="fas fa-xmark"></i>' +
-      '</button>';
+    // Dosya adı kullanıcı verisidir: işaretleme sabit kalır, ad yalnızca
+    // textContent ile yazılır (HTML olarak ayrıştırılmaz).
+    var icon = document.createElement('i');
+    icon.className = 'fas fa-file destek-file-item-icon';
+
+    var info = document.createElement('div');
+    info.className = 'destek-file-item-info';
+    var nameEl = document.createElement('div');
+    nameEl.className = 'destek-file-item-name';
+    nameEl.textContent = truncName;
+    var sizeEl = document.createElement('div');
+    sizeEl.className = 'destek-file-item-size';
+    sizeEl.textContent = sizeMB + ' MB';
+    info.appendChild(nameEl);
+    info.appendChild(sizeEl);
+
+    var removeBtn = document.createElement('button');
+    removeBtn.className = 'destek-file-item-remove';
+    removeBtn.title = 'Kaldır';
+    var removeIcon = document.createElement('i');
+    removeIcon.className = 'fas fa-xmark';
+    removeBtn.appendChild(removeIcon);
+    removeBtn.addEventListener('click', function() {
+      destekRemoveFile(nsPrefix, index + 1);
+    });
+
+    item.appendChild(icon);
+    item.appendChild(info);
+    item.appendChild(removeBtn);
 
     listContainer.appendChild(item);
   });

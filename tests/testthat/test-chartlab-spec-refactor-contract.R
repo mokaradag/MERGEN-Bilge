@@ -124,6 +124,12 @@ test_that("ChartLab agregasyon helper'ı mevcut motor davranışını korur", {
 })
 
 test_that("saved chat ChartLab HTML statik JS renderer yerine Shiny output kullanır", {
+  # Runtime'daki gibi güvenli markdown sözleşmesi ChartLab'dan önce yüklenir.
+  source(
+    file.path(.chartlab_refactor_repo_root(), "R", "helpers_markdown_safety.R"),
+    encoding = "UTF-8",
+    local = globalenv()
+  )
   source(
     file.path(.chartlab_refactor_repo_root(), "R", "helpers_chartlab_spec.R"),
     encoding = "UTF-8",

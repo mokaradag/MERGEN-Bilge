@@ -172,7 +172,7 @@ test_that("seam frontend bölgeleri tek kaynaktan türetilir", {
   )
 })
 
-test_that("smoke-only dosyalar üretim manifestine sızmaz ve sahiplidir", {
+test_that("smoke-only dosyalar üretim manifestine ve www statik ağacına sızmaz", {
   env <- .load_ui_asset_zones_env()
 
   manifest_assets <- c(env$ui_asset_all_css(), env$ui_asset_all_js())
@@ -185,12 +185,11 @@ test_that("smoke-only dosyalar üretim manifestine sızmaz ve sahiplidir", {
     info = "Smoke-only dosyalar üretim varlık manifestine eklenemez."
   )
 
-  unmanifested <- env$ui_asset_unmanifested_ownership
-
-  expect_true(
-    all(smoke_paths %in% names(unmanifested)),
-    info = "Smoke-only dosyalar manifest dışı sahiplik kaydında listelenmelidir."
-  )
+  # Harness www/ dışında (tests/smoke) tutulur; www sahiplik kaydında yer almaz.
+  expect_false(any(smoke_paths %in% names(env$ui_asset_unmanifested_ownership)))
+  root <- resolve_repo_root_for_tests()
+  expect_true(all(file.exists(file.path(root, "tests", smoke_paths))))
+  expect_false(any(file.exists(file.path(root, "www", smoke_paths))))
 })
 
 test_that("optional_in_checkout girdileri checkout'ta dosya yokken sorun bildirmez, zorunlu girdiler bildirir", {

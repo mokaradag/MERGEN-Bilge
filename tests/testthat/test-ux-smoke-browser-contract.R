@@ -1,6 +1,6 @@
 # ==============================================================================
 # Dosya Yolu: tests/testthat/test-ux-smoke-browser-contract.R
-# Açıklama: www/smoke/ux-smoke.html manuel browser smoke kapsamını korur.
+# Açıklama: tests/smoke/ux-smoke.html manuel browser smoke kapsamını korur.
 # ==============================================================================
 
 .ux_smoke_browser_read_text <- function(...) {
@@ -34,16 +34,16 @@
 
 test_that("UX smoke keeps media lifecycle and saved-chat TTS probes", {
   repo_root <- resolve_repo_root_for_tests()
-  smoke_path <- file.path(repo_root, "www", "smoke", "ux-smoke.html")
-  smoke_probe_path <- file.path(repo_root, "www", "smoke", "ux-smoke-probes.js")
+  smoke_path <- file.path(repo_root, "tests", "smoke", "ux-smoke.html")
+  smoke_probe_path <- file.path(repo_root, "tests", "smoke", "ux-smoke-probes.js")
 
   expect_true(file.exists(smoke_path))
   expect_true(file.exists(smoke_probe_path))
 
   smoke <- paste(
     c(
-      .ux_smoke_browser_read_text("www", "smoke", "ux-smoke.html"),
-      .ux_smoke_browser_read_text("www", "smoke", "ux-smoke-probes.js")
+      .ux_smoke_browser_read_text("tests", "smoke", "ux-smoke.html"),
+      .ux_smoke_browser_read_text("tests", "smoke", "ux-smoke-probes.js")
     ),
     collapse = "\n"
   )

@@ -85,7 +85,13 @@ run_claude_code <- function(prompt,
     session_id = session_id
   )
 
-	komut <- build_processx_command(cli_path, args, workdir = workdir)
+	# Başlatıcı çözülemezse (ör. tanınmayan .cmd betiği) kabuğa düşülmez; hata döner.
+	komut <- tryCatch(build_processx_command(cli_path, args, workdir = workdir),
+	                  error = function(e) e)
+	if (inherits(komut, "error")) {
+	  return(list(success = FALSE, output = "", error = conditionMessage(komut),
+	              duration = 0, tool_uses = list(), session_id = NULL))
+	}
 	komut$env <- cc_apply_runtime_api_key_env(komut$env, api_key)
 
 	tryCatch({

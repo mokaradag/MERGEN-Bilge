@@ -265,33 +265,11 @@ extract_excel_text_for_claude <- function(dosya_yolu,
 extract_docx_text_for_claude <- function(dosya_yolu,
                                          max_paragraf = 500L,
                                          max_karakter = 120000L) {
-  gecici_dizin <- file.path(
-    tempdir(),
-    paste0(
-      "claude_docx_",
-      format(Sys.time(), "%Y%m%d%H%M%S"),
-      "_",
-      sprintf("%06d", sample.int(999999L, 1))
-    )
+  # Açma ve ayrıştırma ortak sınırlı okuyucudan geçer (boyut/öğe bütçesi).
+  doc <- tryCatch(
+    mergen_docx_read_document_xml(dosya_yolu),
+    error = function(e) stop(paste("DOCX açılamadı:", conditionMessage(e)))
   )
-
-  dir.create(gecici_dizin, recursive = TRUE, showWarnings = FALSE)
-  on.exit(unlink(gecici_dizin, recursive = TRUE, force = TRUE), add = TRUE)
-
-  tryCatch(
-    utils::unzip(dosya_yolu, files = "word/document.xml", exdir = gecici_dizin),
-    error = function(e) {
-      stop(paste("DOCX açılamadı:", conditionMessage(e)))
-    }
-  )
-
-  xml_yolu <- file.path(gecici_dizin, "word", "document.xml")
-
-  if (!file.exists(xml_yolu)) {
-    stop("DOCX içindeki word/document.xml bulunamadı.")
-  }
-
-  doc <- xml2::read_xml(xml_yolu)
   ns <- xml2::xml_ns(doc)
 
   paragraflar <- xml2::xml_find_all(doc, ".//w:p", ns = ns)

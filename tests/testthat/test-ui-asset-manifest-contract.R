@@ -453,7 +453,9 @@ test_that("smoke-only UX probe dosyaları production manifestine eklenmez", {
     "smoke/ux-smoke-probes.js"
   )
 
-  expect_true(all(file.exists(file.path(root, "www", smoke_only_paths))))
+  # Harness www/ dışında tutulur (hiçbir www statik yolu onu sunamaz).
+  expect_true(all(file.exists(file.path(root, "tests", smoke_only_paths))))
+  expect_false(any(file.exists(file.path(root, "www", smoke_only_paths))))
 
   expect_equal(
     intersect(smoke_only_paths, all_manifest_paths),
@@ -463,7 +465,7 @@ test_that("smoke-only UX probe dosyaları production manifestine eklenmez", {
 
   expect_false(
     any(grepl("ux-smoke-probes\\.js$", all_manifest_paths, perl = TRUE)),
-    info = "www/smoke/ux-smoke-probes.js yalnızca /smoke/ux-smoke.html tarafından yüklenmelidir."
+    info = "tests/smoke/ux-smoke-probes.js yalnızca /smoke/ux-smoke.html tarafından yüklenmelidir."
   )
 
   expect_true("js/streaming_markdown_safety.js" %in% js_paths)

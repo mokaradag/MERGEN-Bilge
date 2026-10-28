@@ -115,7 +115,7 @@ testthat::test_that("frontend complexity doctor script and report expose top-ris
       "unmanifested_app_assets",
       "allowlisted_unmanifested_assets",
       "smoke_only_assets",
-      "www/smoke/ux-smoke-probes.js",
+      "tests/smoke/ux-smoke-probes.js",
       "attr(report, \"top_risk_summary\")"
     ),
     "Frontend maintainability report top-risk sözleşmesi eksik:"
@@ -201,7 +201,7 @@ testthat::test_that("frontend complexity doctor writes UTF-8 top-risk JSON artif
       "\"unmanifested_app_assets\"",
       "\"allowlisted_unmanifested_assets\"",
       "\"smoke_only_assets\"",
-      "\"www/smoke/ux-smoke-probes.js\"",
+      "\"tests/smoke/ux-smoke-probes.js\"",
       "\"manifest_listed\":false",
       "\"doctor_runs_runtime\":false",
       "\"doctor_runs_browser\":false",
@@ -254,7 +254,7 @@ testthat::test_that("frontend maintainability report returns top-risk summary da
   smoke_assets <- top_risk_summary$smoke_only_assets
 
   probe_row <- smoke_assets[
-    smoke_assets$file == "www/smoke/ux-smoke-probes.js",
+    smoke_assets$file == "tests/smoke/ux-smoke-probes.js",
     ,
     drop = FALSE
   ]

@@ -51,7 +51,7 @@ find_repo_root <- function() {
   for (cand in candidates) {
     if (file.exists(file.path(cand, "app.R")) &&
         dir.exists(file.path(cand, "R")) &&
-        dir.exists(file.path(cand, "www", "smoke"))) {
+        dir.exists(file.path(cand, "tests", "smoke"))) {
       return(normalizePath(cand, winslash = "/", mustWork = TRUE))
     }
   }
@@ -129,7 +129,8 @@ if (isTRUE(use_external_app)) {
   url <- sub("/+$", "", external_base_url)
 }
 
-smoke_url <- sprintf("%s/smoke/ux-smoke.html", url)
+# Harness yalnızca açık başlatmayla çalışır; otomasyon bunu ?autostart=1 ile verir.
+smoke_url <- sprintf("%s/smoke/ux-smoke.html?autostart=1", url)
 
 cat("== MERGEN browser UX smoke ==\n")
 cat(sprintf("Repo root: %s\n", repo_root))
@@ -239,6 +240,7 @@ if (!isTRUE(use_external_app)) {
     "Sys.setenv(",
     "MERGEN_RUN_APP='false',",
     "MERGEN_DISABLE_FUTURES='true',",
+    "MERGEN_ENABLE_UX_SMOKE='true',",
     "TZ='UTC',",
     "LOCAL_LLM_ENDPOINT=ifelse(nzchar(Sys.getenv('LOCAL_LLM_ENDPOINT')), Sys.getenv('LOCAL_LLM_ENDPOINT'), 'http://test.local/v1'),",
     "DB_DSN=ifelse(nzchar(Sys.getenv('DB_DSN')), Sys.getenv('DB_DSN'), 'test-dsn'),",
@@ -269,6 +271,7 @@ if (!isTRUE(use_external_app)) {
   on.exit(cleanup(), add = TRUE)
 } else {
   cat(sprintf("Using externally running app: %s\n", url))
+  cat("NOTE: External app must run with MERGEN_ENABLE_UX_SMOKE=true on a loopback host (MERGEN_HOST=127.0.0.1) to serve /smoke/.\n")
 }
 
 read_url <- function(target) {
@@ -445,17 +448,25 @@ if (!identical(result$status, 0L) &&
   result <- run_browser_dump("--headless")
 }
 
-combined_output <- paste(result$stdout, result$stderr, collapse = "\n")
+# Sonuç yalnızca işlenmiş #status metninden okunur: harness betiğinin kaynağı
+# ve günlük satırları da UX_SMOKE_DONE:PASS sabitini taşır; başlamamış ya da
+# FAIL ile biten sayfa bu sabit yüzünden geçmiş sayılmamalıdır.
+ux_smoke_rendered_status <- function(dom) {
+  m <- regmatches(dom, regexec("<div id=\"status\"[^>]*>([^<]*)</div>", dom, perl = TRUE))[[1]]
+  if (length(m) >= 2L) trimws(m[[2]]) else ""
+}
 
-if (grepl("UX_SMOKE_DONE:PASS", combined_output, fixed = TRUE)) {
-  cat("OK: UX_SMOKE_DONE:PASS found in headless browser DOM output.\n")
+smoke_status <- ux_smoke_rendered_status(result$stdout)
+
+if (identical(smoke_status, "UX_SMOKE_DONE:PASS")) {
+  cat("OK: rendered #status is UX_SMOKE_DONE:PASS.\n")
   quit(status = 0)
 }
 
-if (grepl("UX_SMOKE_DONE:FAIL", combined_output, fixed = TRUE)) {
-  cat("FAILED: UX_SMOKE_DONE:FAIL found in headless browser DOM output.\n")
+if (startsWith(smoke_status, "UX_SMOKE_DONE:FAIL")) {
+  cat(sprintf("FAILED: rendered #status is '%s'.\n", smoke_status))
 } else {
-  cat("FAILED: Browser ran but UX_SMOKE_DONE:PASS marker was not found.\n")
+  cat(sprintf("FAILED: rendered #status did not reach UX_SMOKE_DONE:PASS ('%s').\n", smoke_status))
 }
 
 cat(sprintf("Browser status: %d\n", result$status))

@@ -123,10 +123,11 @@ testthat::test_that("format_streaming_chunk_html parça tipine göre doğru dağ
   testthat::expect_null(format_streaming_chunk_html(NULL))
   testthat::expect_null(format_streaming_chunk_html(list(tip = "yok-tip", icerik = "x")))
 
-  # raw_text kaçışlanır.
+  # raw_text, text/result ile aynı biçimde düz metin taşır; kaçış istemci
+  # sink'inde (claude_code_streaming.js) tek yerde yapılır, çift kaçış olmaz.
   rt <- format_streaming_chunk_html(list(tip = "raw_text", icerik = "ham <b>"))
   testthat::expect_identical(rt$tip, "raw_text")
-  testthat::expect_identical(rt$html, "ham &lt;b&gt;")
+  testthat::expect_identical(rt$html, "ham <b>")
 
   # tool_use, format_live_tool_use_html'e devreder ve arac_id taşır.
   tu <- format_streaming_chunk_html(list(tip = "tool_use", arac_turu = "bash", komut = "ls", arac_id = "t1"))

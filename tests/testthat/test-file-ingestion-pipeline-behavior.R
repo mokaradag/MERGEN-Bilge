@@ -2364,9 +2364,12 @@ test_that("eksik Windows kısa yolunda var olan üst dizin kaynak kapsamını be
       expect_identical(logs, "ingest_source_link_error")
       expect_identical(links, 1L)
     } else {
-      expect_null(job$tasks[[1]]$source_error)
+      # Yükleme alanı dışına çözülen kaynak ASLA bağlanmaz/kopyalanmaz; görev
+      # kaynak hatasıyla reddedilir (önceden olduğu gibi işlenmeye bırakılmaz).
+      expect_match(job$tasks[[1]]$source_error, "geçici yükleme alanında değil", fixed = TRUE)
+      expect_identical(env$file_ingestion_execute_task(job$tasks[[1]])$code, "source_unavailable")
       expect_identical(job$tasks[[1]]$datapath, upload$datapath)
-      expect_identical(logs, character())
+      expect_identical(logs, "ingest_source_outside_upload_root")
       expect_identical(links, 0L)
     }
   })
