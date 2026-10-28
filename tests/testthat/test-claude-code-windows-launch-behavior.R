@@ -33,6 +33,8 @@
   cli <- file.path(paket, "cli.js")
   writeLines(c(
     "const fs = require('fs');",
+    "const hex = s => Buffer.from(s, 'utf8').toString('hex');",
+    "fs.writeSync(2, JSON.stringify({ argv: process.argv.slice(2).map(hex), cwd: hex(process.cwd()) }));",
     "fs.writeSync(1, JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(),",
     "  sizinti: (process.env.ANTHROPIC_AUTH_TOKEN || '') }));"
   ), cli)
@@ -58,6 +60,11 @@
   list(shim = file.path(dir, "claude.cmd"), cli = cli)
 }
 
+.cc_utf8_hex <- function(x) {
+  vapply(enc2utf8(x), function(s) paste(format(charToRaw(s)), collapse = ""),
+         character(1), USE.NAMES = FALSE)
+}
+
 .cc_hostile_prompts <- function() {
   c(
     "%ANTHROPIC_AUTH_TOKEN% %PATH% %COMSPEC%",
@@ -65,6 +72,7 @@
     "\"; echo kacis & \" ' `x` $(id) $HOME",
     "satır1\nsatır2\r\n%USERPROFILE%",
     paste0("T", intToUtf8(c(0x00FC, 0x0072, 0x006B, 0x00E7, 0x0065)), " \\\\sunucu\\pay\\ \"%~dp0\" %%"),
+    intToUtf8(c(0x011F, 0x015F, 0x0130, 0x0131, 0x00E7)),
     "C:\\Program Files\\ \\\" \\\\\" son\\"
   )
 }
@@ -164,6 +172,30 @@ test_that("düşmanca istem metni CLI'ye harfiyen ulaşır ve ortamdan genişlem
   calisma <- file.path(withr::local_tempdir(), enc2utf8("çalışma ğüşİ"))
   dir.create(calisma)
 
+  # ASCII argv/cwd ile yalnız çıktı çözücüsünü sına. Yereli değiştirmeden
+  # CP1254 dönüşümünü de üret: üretim ensure_utf8() bu metni zaten düzeltiyor.
+  bilinen <- enc2utf8("Türkçe çalışma ğüşİ")
+  kod <- paste0("const fs = require('fs'); const b = Buffer.from('", .cc_utf8_hex(bilinen),
+                "', 'hex'); fs.writeSync(1, b); fs.writeSync(2, b);")
+  ascii_wd <- if (.Platform$OS.type == "windows") paste0(Sys.getenv("SystemDrive"), "/") else "/"
+  expect_true(all(as.integer(charToRaw(ascii_wd)) < 128L))
+  for (kodlama in c("", "WINDOWS-1254", "UTF-8")) {
+    probe <- processx::process$new(node, c("-e", kod), wd = ascii_wd,
+                                  stdout = "|", stderr = "|", encoding = kodlama)
+    probe$wait(20000)
+    if (probe$is_alive()) {
+      probe$kill()
+      fail(paste("Çıktı çözücü süreci zaman aşımına uğradı:", kodlama))
+      next
+    }
+    expect_identical(probe$get_exit_status(), 0L)
+    for (metin in c(probe$read_all_output(), probe$read_all_error())) {
+      tani <- paste(kodlama, Encoding(metin), .cc_utf8_hex(metin), Sys.getlocale("LC_CTYPE"))
+      expect_identical(env$ensure_utf8(metin), bilinen, info = tani)
+      if (identical(kodlama, "UTF-8")) expect_identical(metin, bilinen, info = tani)
+    }
+  }
+
   for (istem in .cc_hostile_prompts()) {
     argumanlar <- c("-p", "--output-format", "json", "--", istem)
     komut <- env$build_processx_command(npm$shim, argumanlar, workdir = calisma)
@@ -173,6 +205,7 @@ test_that("düşmanca istem metni CLI'ye harfiyen ulaşır ve ortamdan genişlem
     proc <- processx::process$new(
       command = komut$command, args = komut$args, env = komut$env,
       wd = komut$wd %||% calisma, stdout = "|", stderr = "|",
+      encoding = "UTF-8",
       windows_verbatim_args = isTRUE(komut$windows_verbatim_args)
     )
     proc$wait(20000)
@@ -181,11 +214,19 @@ test_that("düşmanca istem metni CLI'ye harfiyen ulaşır ve ortamdan genişlem
       fail(paste("CLI süreci zaman aşımına uğradı:", istem))
       next
     }
-    expect_identical(proc$get_exit_status(), 0L, info = proc$read_all_error())
+    tani <- proc$read_all_error()
+    expect_identical(proc$get_exit_status(), 0L, info = tani)
+    # ASCII stderr, stdout'un Unicode çözücüsünden bağımsız olarak Node'un
+    # aldığı argv/cwd UTF-8 baytlarını kanıtlar.
+    expect_true(all(as.integer(charToRaw(tani)) < 128L))
+    baytlar <- jsonlite::fromJSON(tani)
+    expect_identical(baytlar$argv, .cc_utf8_hex(argumanlar), info = istem)
+    expect_identical(baytlar$cwd, .cc_utf8_hex(normalizePath(calisma, winslash = "\\")),
+                     info = istem)
     cikti <- jsonlite::fromJSON(proc$read_all_output(), simplifyVector = FALSE)
     alinan <- unlist(cikti$argv)
     expect_identical(alinan, argumanlar, info = istem)
-    expect_identical(normalizePath(enc2native(cikti$cwd), winslash = "/"),
+    expect_identical(normalizePath(cikti$cwd, winslash = "/"),
                      normalizePath(calisma, winslash = "/"), info = istem)
     # Anahtar yalnızca ortamda bulunur; istem metnine genişlemez.
     expect_identical(cikti$sizinti, sir)
