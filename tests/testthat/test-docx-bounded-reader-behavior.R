@@ -18,10 +18,9 @@
     env$`%||%` <- function(x, y) if (is.null(x)) y else x
     env$path_exists_relaxed <- function(p) file.exists(p)
     env$resolve_readable_path <- function(p) p
-    sys.source(file.path(root, "R", "helpers_files_docx_reader.R"), envir = env, keep.source = FALSE)
-    sys.source(file.path(root, "R", "helpers_files.R"), envir = env, keep.source = FALSE)
-    sys.source(file.path(root, "R", "helpers_claude_code_document_extractors.R"),
-               envir = env, keep.source = FALSE)
+    safe_source(file.path(root, "R", "helpers_files_docx_reader.R"), encoding = "UTF-8", envir = env)
+    safe_source(file.path(root, "R", "helpers_files.R"), encoding = "UTF-8", envir = env)
+    safe_source(file.path(root, "R", "helpers_claude_code_document_extractors.R"), encoding = "UTF-8", envir = env)
     env
   }
 })
