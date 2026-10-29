@@ -236,7 +236,9 @@
       (label || "app iframe") +
       " / Hedef: " +
       appTarget +
-      (lastError ? " / Son hata: " + lastError.message : "")
+      (lastError ? " / Son hata: " + lastError.message +
+        " / SSO etkinse ayrı smoke tarayıcı profilinde uygulamaya normal giriş yapın;" +
+        " pencerelerini kapatıp koşucuda MERGEN_BROWSER_UX_PROFILE_DIR ile aynı profili kullanın." : "")
     );
   }
 
@@ -280,7 +282,8 @@
       fail(
         "Iframe app yerine cross-origin SSO/Keycloak sayfasına yönlenmiş görünüyor. " +
         "Bu smoke harness iframe içindeki app DOM'unu okuyabilmek için aynı origin gerektirir. " +
-        "SSO VM üzerinde 127.0.0.1 yerine gerçek uygulama adresini MERGEN_SMOKE_BASE_URL ile kullanın. " +
+        "Ayrı smoke profilinde uygulamaya normal giriş yapın; pencerelerini kapatıp " +
+        "MERGEN_BROWSER_UX_PROFILE_DIR ile aynı profili kullanın. " +
         "Hedef: " + appTarget + " / Hata: " + (e && e.message ? e.message : String(e))
       );
       throw e;

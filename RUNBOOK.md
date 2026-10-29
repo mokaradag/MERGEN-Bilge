@@ -1000,6 +1000,54 @@ ile durdurup bu komutla yeniden başlatın. Bayrak uygulamanın çalıştığı
 kapalı değer geçici smoke ayarını geri alamaz. Gerçek dinleme adresi yine
 `127.0.0.1` olarak verilir.
 
+**SSO açıksa — ayrı smoke profilinde bir kez normal giriş yapın:**
+
+Koşucu varsayılan olarak boş, geçici Edge profili açar; günlük tarayıcınızdaki
+SSO oturumu bu profile taşınmaz. Giriş gerektiren iframe Keycloak'a yönlenince
+aynı-origin DOM erişimi kesilir. Window 1 açıkken Window 2'de:
+
+```powershell
+$smokeProfile = Join-Path $env:LOCALAPPDATA "MERGEN\BrowserUxSmoke"
+$edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+if (!(Test-Path $edge)) { $edge = "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe" }
+if (!(Test-Path $edge)) { throw "Microsoft Edge bulunamadi." }
+& $edge "--user-data-dir=$smokeProfile" --no-first-run --no-default-browser-check "http://127.0.0.1:28081/"
+```
+
+Açılan ayrı Edge penceresinde normal SSO girişini tamamlayın; uygulama aynı
+`http://127.0.0.1:28081/` adresine dönmeli ve açılmalıdır. Ardından bu ayrı
+profilin **tüm Edge pencerelerini kapatın**; headless koşucu aynı profili kullanır.
+Keycloak bu döngü adresinin callback'ini reddederse ilgili istemci için bu tam
+callback adresinin BT tarafından onaylanması gerekir; tarayıcı güvenliği veya
+uygulama kimlik doğrulaması kapatılmaz.
+
+Bu profil yalnız smoke için ayrıdır; günlük Edge profilinizi kullanmayın.
+Kimlik verisi içerebileceği için profili repoya/artifact'lara koymayın veya
+paylaşmayın. Oturum süresi dolduğunda aynı komutla normal girişi yenileyin.
+SSO kapalıysa profil hazırlığı gerekmez; profil ortam değişkenini tanımlamayın.
+
+**Window 2 — yalnız browser UX smoke ile hızlı kontrol:**
+
+Window 1 açık ve varsa SSO profilinin Edge pencereleri kapalı kalmalıdır.
+Aşağıdaki komut tam testthat veya diğer VM kapılarını çalıştırmaz:
+
+```powershell
+Set-Location "U:\Primavera\PYB\04 - Geliştirme\MERGEN Bilge"
+$rscript = "C:\Program Files\R\R-4.6.0\bin\Rscript.exe"
+if (!(Test-Path $rscript)) { $rscript = "C:\Program Files\R\R-4.6.0\bin\x64\Rscript.exe" }
+if (!(Test-Path $rscript)) { throw "R 4.6.0 Rscript.exe bulunamadi." }
+$env:MERGEN_BROWSER_UX_BASE_URL = "http://127.0.0.1:28081"
+# SSO icin yukarida hazirlanan ayri profil:
+$env:MERGEN_BROWSER_UX_PROFILE_DIR = Join-Path $env:LOCALAPPDATA "MERGEN\BrowserUxSmoke"
+& $rscript --vanilla tests/scripts/ai_browser_ux_smoke.R --require-browser
+Write-Host "Browser UX smoke exit code: $LASTEXITCODE"
+```
+
+Profil yalnız açık `MERGEN_BROWSER_UX_PROFILE_DIR` veya `--profile-dir` ile
+seçilir ve korunur; varsayılan geçici profil davranışı değişmez. Hazırlanmış
+profil için `MERGEN_BROWSER_UX_BASE_URL` zorunludur. Hazırlık/giriş bir PASS
+kanıtı değildir: koşucu yine gerçek `UX_SMOKE_DONE:PASS` sonucunu gerektirir.
+
 **Window 2 — mandatory browser proof ile tam evidence gate'i çalıştırın:**
 
 ```powershell
@@ -1024,6 +1072,8 @@ Remove-Item Env:\MERGEN_REQUIRE_BROWSER_UX_SMOKE -ErrorAction SilentlyContinue
   child process'ini başlatmak yerine zaten çalışan app'i test etmesini söyler.
 - `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true`, browser UX smoke'u bloklayıcı yapar.
 - Window 1'deki app evidence gate bitene kadar açık kalmalıdır.
+- SSO açıksa yukarıda hazırlanmış `MERGEN_BROWSER_UX_PROFILE_DIR` bu gate
+  koşusunda da tanımlı kalmalıdır; tarayıcının normal giriş akışı korunur.
 - Koşum bitince Window 1'de app'i `Ctrl+C` ile durdurun.
 
 #### Browser smoke davranışı

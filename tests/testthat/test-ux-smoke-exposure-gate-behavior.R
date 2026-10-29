@@ -241,3 +241,32 @@ test_that("runbook geçici Windows uygulamasında smoke kapısını yapılandır
   expect_true(.smoke_gate_app_env()$mergen_ux_smoke_enabled())
   expect_identical(kod[[calistir]][["host"]], "127.0.0.1")
 })
+
+test_that("smoke koşucusu açık hazırlanmış profili korur, varsayılan geçici profili temizler", {
+  ifadeler <- parse_r_file_utf8(file.path(resolve_repo_root_for_tests(), "tests", "scripts", "ai_browser_ux_smoke.R"))
+  ortam <- new.env(parent = baseenv())
+  for (e in ifadeler) {
+    if (is.call(e) && identical(e[[1]], as.name("<-")) &&
+        as.character(e[[2]]) %in% c("ux_smoke_browser_profile", "ux_smoke_cleanup_profile")) eval(e, ortam)
+  }
+  gecici <- ortam$ux_smoke_browser_profile()
+  expect_true(gecici$temporary)
+  expect_true(dir.exists(gecici$path))
+  ortam$ux_smoke_cleanup_profile(gecici)
+  expect_false(dir.exists(gecici$path))
+
+  yol <- file.path(withr::local_tempdir(), "smoke profil")
+  expect_error(ortam$ux_smoke_browser_profile(yol), "requires MERGEN_BROWSER_UX_BASE_URL", fixed = TRUE)
+  expect_false(dir.exists(yol))
+  hazir <- ortam$ux_smoke_browser_profile(yol, external_app = TRUE)
+  expect_false(hazir$temporary)
+  expect_identical(hazir$path, normalizePath(yol, winslash = "/"))
+  isaret <- file.path(yol, "sentinel")
+  writeLines("operator profile", isaret)
+  ortam$ux_smoke_cleanup_profile(hazir)
+  expect_true(file.exists(isaret))
+  dosya <- tempfile()
+  writeLines("not a directory", dosya)
+  withr::defer(unlink(dosya))
+  expect_error(ortam$ux_smoke_browser_profile(dosya, TRUE), "could not be created", fixed = TRUE)
+})

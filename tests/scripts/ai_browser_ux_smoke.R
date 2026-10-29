@@ -414,9 +414,34 @@ ux_smoke_rendered_status <- function(dom) {
 
 ux_smoke_check_harness()
 
-profile_dir <- tempfile("mergen-browser-profile-")
-dir.create(profile_dir, recursive = TRUE, showWarnings = FALSE)
-on.exit(unlink(profile_dir, recursive = TRUE, force = TRUE), add = TRUE)
+# SSO için yalnız bakımcının ayrı profilde normal girişle hazırladığı oturum
+# kullanılabilir. Varsayılan profil hâlâ geçicidir; token okunmaz/kopyalanmaz.
+ux_smoke_browser_profile <- function(requested = "", external_app = FALSE) {
+  persistent <- nzchar(trimws(requested))
+  if (persistent && !isTRUE(external_app)) {
+    stop("A prepared browser profile requires MERGEN_BROWSER_UX_BASE_URL.", call. = FALSE)
+  }
+  path <- if (persistent) requested else tempfile("mergen-browser-profile-")
+  if (!dir.exists(path) && !dir.create(path, recursive = TRUE, showWarnings = FALSE)) {
+    stop("Browser UX smoke profile directory could not be created.", call. = FALSE)
+  }
+  list(path = normalizePath(path, winslash = "/", mustWork = TRUE), temporary = !persistent)
+}
+
+ux_smoke_cleanup_profile <- function(profile) {
+  if (isTRUE(profile$temporary)) unlink(profile$path, recursive = TRUE, force = TRUE)
+  invisible(NULL)
+}
+
+browser_profile <- ux_smoke_browser_profile(
+  arg_value("--profile-dir", Sys.getenv("MERGEN_BROWSER_UX_PROFILE_DIR", "")),
+  external_app = use_external_app
+)
+profile_dir <- browser_profile$path
+on.exit(ux_smoke_cleanup_profile(browser_profile), add = TRUE)
+if (!browser_profile$temporary) {
+  cat("Using operator-prepared smoke profile. Close its interactive browser windows before this run.\n")
+}
 
 run_browser_dump <- function(headless_arg) {
   browser_args <- c(

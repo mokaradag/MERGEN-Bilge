@@ -103,7 +103,7 @@ testthat::test_that("browser UX smoke harness gerçek UI anchor'larıyla hizalı
 		"fullQuickActions tarayıcı modu VM smoke'ta atlandı",
 		"getFrameAccess",
 		"cross-origin SSO/Keycloak",
-		"MERGEN_SMOKE_BASE_URL",
+		"MERGEN_BROWSER_UX_PROFILE_DIR",
 		"waitForFrameAccessible",
 		"navigateFrameToApp",
 		"doc.body || doc.documentElement",
