@@ -198,10 +198,6 @@ $env:MERGEN_REQUIRE_BROWSER_UX_SMOKE = "true"
 & $rscript --vanilla tests/scripts/run_vm_evidence_gate.R
 ```
 
-Çalışan uygulama, aşağıdaki **external-app iki-pencere workflow** komutuyla
-`MERGEN_ENABLE_UX_SMOKE=true` verilerek yalnız döngü adresinde başlatılmalıdır.
-Bayrağı gate penceresinde ayarlamak, açık uygulamanın `/smoke/` kapısını açmaz.
-
 Geçerli release kanıtı sayılması için özet satırında `Toplam: 13 passed, 0 failed, 0 skipped` görülmeli ve hiçbir adım `FAILED` veya `SKIPPED` olmamalıdır. 17 Ekim 2026 koşumunda `full_testthat`, `maintainability_report`, `frontend_ratchet`, `seam_doctor`, `source_manifest_contracts`, `ui_asset_manifest_contracts`, `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight` ve diğer gate adımlarının tümü `PASSED` olmuştur.
 
 ### 7.7 Operasyonel soak / yük kapısı (dayanıklılık kanıtı)
@@ -983,7 +979,7 @@ Set-Location $repo
 $rscript = "C:\Program Files\R\R-4.6.0\bin\Rscript.exe"
 if (!(Test-Path $rscript)) { $rscript = "C:\Program Files\R\R-4.6.0\bin\x64\Rscript.exe" }
 
-& $rscript -e "if (file.exists('.Renviron')) readRenviron('.Renviron'); Sys.setenv(MERGEN_RUN_APP='false', MERGEN_DISABLE_FUTURES='true', MERGEN_HOST='127.0.0.1', TZ='UTC'); cat('START_APP_BOOT_TEST\n'); source('app.R', encoding='UTF-8'); Sys.setenv(MERGEN_ENABLE_UX_SMOKE='true'); cat('SOURCE_OK\n'); run_mergen_app(host='127.0.0.1', port=28081L, launch.browser=FALSE, quiet=FALSE)"
+& $rscript -e "if (file.exists('.Renviron')) readRenviron('.Renviron'); Sys.setenv(MERGEN_RUN_APP='false', MERGEN_DISABLE_FUTURES='true', TZ='UTC'); cat('START_APP_BOOT_TEST\n'); source('app.R', encoding='UTF-8'); cat('SOURCE_OK\n'); run_mergen_app(host='127.0.0.1', port=28081L, launch.browser=FALSE, quiet=FALSE)"
 ```
 
 Beklenen:
@@ -991,62 +987,6 @@ Beklenen:
 - Pencere açık kalır.
 - App `http://127.0.0.1:28081` üzerinde dinler.
 - Smoke sayfası `http://127.0.0.1:28081/smoke/ux-smoke.html` olur.
-
-Bu komut smoke bayrağını yalnız bu geçici uygulama sürecinde açar; `.Renviron`
-dosyasına eklemeyin. Önceden açık uygulama eski komutla başlatıldıysa `Ctrl+C`
-ile durdurup bu komutla yeniden başlatın. Bayrak uygulamanın çalıştığı
-**Window 1** sürecinde, `source('app.R')` sonrasında ve `run_mergen_app()`
-öncesinde ayarlanır; böylece başlangıçta yeniden okunan `.Renviron` içindeki
-kapalı değer geçici smoke ayarını geri alamaz. Gerçek dinleme adresi yine
-`127.0.0.1` olarak verilir.
-
-**SSO açıksa — ayrı smoke profilinde bir kez normal giriş yapın:**
-
-Koşucu varsayılan olarak boş, geçici Edge profili açar; günlük tarayıcınızdaki
-SSO oturumu bu profile taşınmaz. Giriş gerektiren iframe Keycloak'a yönlenince
-aynı-origin DOM erişimi kesilir. Window 1 açıkken Window 2'de:
-
-```powershell
-$smokeProfile = Join-Path $env:LOCALAPPDATA "MERGEN\BrowserUxSmoke"
-$edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
-if (!(Test-Path $edge)) { $edge = "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe" }
-if (!(Test-Path $edge)) { throw "Microsoft Edge bulunamadi." }
-& $edge "--user-data-dir=$smokeProfile" --no-first-run --no-default-browser-check "http://127.0.0.1:28081/"
-```
-
-Açılan ayrı Edge penceresinde normal SSO girişini tamamlayın; uygulama aynı
-`http://127.0.0.1:28081/` adresine dönmeli ve açılmalıdır. Ardından bu ayrı
-profilin **tüm Edge pencerelerini kapatın**; headless koşucu aynı profili kullanır.
-Keycloak bu döngü adresinin callback'ini reddederse ilgili istemci için bu tam
-callback adresinin BT tarafından onaylanması gerekir; tarayıcı güvenliği veya
-uygulama kimlik doğrulaması kapatılmaz.
-
-Bu profil yalnız smoke için ayrıdır; günlük Edge profilinizi kullanmayın.
-Kimlik verisi içerebileceği için profili repoya/artifact'lara koymayın veya
-paylaşmayın. Oturum süresi dolduğunda aynı komutla normal girişi yenileyin.
-SSO kapalıysa profil hazırlığı gerekmez; profil ortam değişkenini tanımlamayın.
-
-**Window 2 — yalnız browser UX smoke ile hızlı kontrol:**
-
-Window 1 açık ve varsa SSO profilinin Edge pencereleri kapalı kalmalıdır.
-Aşağıdaki komut tam testthat veya diğer VM kapılarını çalıştırmaz:
-
-```powershell
-Set-Location "U:\Primavera\PYB\04 - Geliştirme\MERGEN Bilge"
-$rscript = "C:\Program Files\R\R-4.6.0\bin\Rscript.exe"
-if (!(Test-Path $rscript)) { $rscript = "C:\Program Files\R\R-4.6.0\bin\x64\Rscript.exe" }
-if (!(Test-Path $rscript)) { throw "R 4.6.0 Rscript.exe bulunamadi." }
-$env:MERGEN_BROWSER_UX_BASE_URL = "http://127.0.0.1:28081"
-# SSO icin yukarida hazirlanan ayri profil:
-$env:MERGEN_BROWSER_UX_PROFILE_DIR = Join-Path $env:LOCALAPPDATA "MERGEN\BrowserUxSmoke"
-& $rscript --vanilla tests/scripts/ai_browser_ux_smoke.R --require-browser
-Write-Host "Browser UX smoke exit code: $LASTEXITCODE"
-```
-
-Profil yalnız açık `MERGEN_BROWSER_UX_PROFILE_DIR` veya `--profile-dir` ile
-seçilir ve korunur; varsayılan geçici profil davranışı değişmez. Hazırlanmış
-profil için `MERGEN_BROWSER_UX_BASE_URL` zorunludur. Hazırlık/giriş bir PASS
-kanıtı değildir: koşucu yine gerçek `UX_SMOKE_DONE:PASS` sonucunu gerektirir.
 
 **Window 2 — mandatory browser proof ile tam evidence gate'i çalıştırın:**
 
@@ -1072,8 +1012,6 @@ Remove-Item Env:\MERGEN_REQUIRE_BROWSER_UX_SMOKE -ErrorAction SilentlyContinue
   child process'ini başlatmak yerine zaten çalışan app'i test etmesini söyler.
 - `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true`, browser UX smoke'u bloklayıcı yapar.
 - Window 1'deki app evidence gate bitene kadar açık kalmalıdır.
-- SSO açıksa yukarıda hazırlanmış `MERGEN_BROWSER_UX_PROFILE_DIR` bu gate
-  koşusunda da tanımlı kalmalıdır; tarayıcının normal giriş akışı korunur.
 - Koşum bitince Window 1'de app'i `Ctrl+C` ile durdurun.
 
 #### Browser smoke davranışı
@@ -1082,9 +1020,6 @@ Remove-Item Env:\MERGEN_REQUIRE_BROWSER_UX_SMOKE -ErrorAction SilentlyContinue
 - `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` ile bloklayıcıdır ve `UX_SMOKE_DONE:PASS`
   üretmelidir.
 - `MERGEN_BROWSER_UX_BASE_URL` set edilmişse o base URL'de app önceden çalışıyor olmalıdır.
-- Runner tarayıcıyı açmadan `/smoke/ux-smoke.html` yanıtının gerçek harness olduğunu
-  doğrular. `UX smoke harness is unavailable` hatasında Window 1 uygulamasını
-  yukarıdaki komutla yeniden başlatın; ana sayfanın açılması tek başına yeterli değildir.
 - Elle çalışan background app normalde gerekli değildir; ancak kilitli Windows/VDI
   ortamlarında mandatory browser proof için önerilen VM-stable workflow budur.
 - `MERGEN_BROWSER_BIN` açıkça tanımlıysa require modu otomatik etkinleşir; kullanılamayan

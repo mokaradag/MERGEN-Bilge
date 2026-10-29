@@ -129,13 +129,27 @@ if (isTRUE(use_external_app)) {
   url <- sub("/+$", "", external_base_url)
 }
 
+ux_smoke_redact_external_url <- function(text, base_url = external_base_url) {
+  if (!nzchar(base_url) || length(text) == 0L) {
+    return(text)
+  }
+
+  clean_base_url <- sub("/+$", "", base_url)
+  gsub(clean_base_url, "<MERGEN_BROWSER_UX_BASE_URL>", as.character(text), fixed = TRUE)
+}
+
 # Harness yalnızca açık başlatmayla çalışır; otomasyon bunu ?autostart=1 ile verir.
 smoke_url <- sprintf("%s/smoke/ux-smoke.html?autostart=1", url)
+display_smoke_url <- if (isTRUE(use_external_app)) {
+  "<MERGEN_BROWSER_UX_BASE_URL>/smoke/ux-smoke.html?autostart=1"
+} else {
+  smoke_url
+}
 
 cat("== MERGEN browser UX smoke ==\n")
 cat(sprintf("Repo root: %s\n", repo_root))
 cat(sprintf("Port: %d\n", port))
-cat(sprintf("Smoke URL: %s\n", smoke_url))
+cat(sprintf("Smoke URL: %s\n", display_smoke_url))
 cat(sprintf("Timeout: %ds\n", timeout_seconds))
 cat(sprintf("Browser timeout: %ds\n", browser_timeout_seconds))
 cat(sprintf("Virtual time budget: %dms\n", virtual_time_budget_ms))
@@ -271,8 +285,12 @@ if (!isTRUE(use_external_app)) {
   }
   on.exit(cleanup(), add = TRUE)
 } else {
-  cat(sprintf("Using externally running app: %s\n", url))
-  cat("NOTE: External app must run with MERGEN_ENABLE_UX_SMOKE=true on a loopback host (MERGEN_HOST=127.0.0.1) to serve /smoke/.\n")
+  cat("Using externally running app: <MERGEN_BROWSER_UX_BASE_URL>\n")
+  cat(paste(
+    "NOTE: The approved browser-facing URL may be a reverse-proxy URL.",
+    "Its underlying Shiny app must be the smoke-enabled loopback instance",
+    "started with MERGEN_ENABLE_UX_SMOKE=true on the same application port.\n"
+  ))
 }
 
 read_url <- function(target) {
@@ -329,7 +347,7 @@ skip_or_fail_app_boot <- function(reason, status = NA_integer_) {
 
   cat(msg, "\n")
   cat("\n--- log tail ---\n")
-  cat(paste(tail_log(), collapse = "\n"))
+  cat(paste(ux_smoke_redact_external_url(tail_log()), collapse = "\n"))
   cat("\n--- end log tail ---\n")
 
   if (isTRUE(require_browser)) {
@@ -367,7 +385,7 @@ wait_for_app <- function() {
 
 	if (elapsed > timeout_seconds) {
 	  body_file <- file.path(artifact_dir, sprintf("last-http-body-%s.html", port))
-	  writeLines(last_body, body_file, useBytes = TRUE)
+	  writeLines(ux_smoke_redact_external_url(last_body), body_file, useBytes = TRUE)
 
 	  cat(sprintf("App boot wait failed after %ds.\n", timeout_seconds))
 	  cat(sprintf("Last HTTP body written to: %s\n", body_file))
@@ -396,11 +414,11 @@ ux_smoke_check_harness <- function() {
   }
 
   stop(paste(
-    "FAILED: UX smoke harness is unavailable at", smoke_url,
-    "Start/restart the app and set MERGEN_ENABLE_UX_SMOKE=true after source('app.R')",
-    "and before run_mergen_app(host='127.0.0.1', ...).",
-    "Set the flag in the app process; setting it only in the evidence gate shell",
-    "cannot enable /smoke/ in an already running app."
+    "FAILED: UX smoke harness is unavailable at", display_smoke_url,
+    "Start/restart the target Shiny app with MERGEN_ENABLE_UX_SMOKE=true after source('app.R')",
+    "and keep it loopback-bound (host 127.0.0.1).",
+    "If the browser uses an approved external SSO URL, its reverse proxy must route /smoke/",
+    "to that same smoke-enabled app."
   ), call. = FALSE)
 }
 
@@ -479,8 +497,8 @@ run_browser_dump <- function(headless_arg) {
   stdout <- result$stdout %||% ""
   stderr <- result$stderr %||% ""
 
-  writeLines(stdout, con = dom_file, useBytes = TRUE)
-  writeLines(stderr, con = stderr_file, useBytes = TRUE)
+  writeLines(ux_smoke_redact_external_url(stdout), con = dom_file, useBytes = TRUE)
+  writeLines(ux_smoke_redact_external_url(stderr), con = stderr_file, useBytes = TRUE)
 
   list(
     status = as.integer(result$status %||% 0L),
@@ -519,10 +537,10 @@ cat(sprintf("Browser status: %d\n", result$status))
 cat(sprintf("DOM artifact: %s\n", dom_file))
 cat(sprintf("Browser stderr artifact: %s\n", stderr_file))
 cat("\n--- browser stderr tail ---\n")
-stderr_lines <- strsplit(result$stderr %||% "", "\n", fixed = TRUE)[[1]]
+stderr_lines <- strsplit(ux_smoke_redact_external_url(result$stderr %||% ""), "\n", fixed = TRUE)[[1]]
 cat(paste(tail(stderr_lines, 80L), collapse = "\n"))
 cat("\n--- shiny log tail ---\n")
-cat(paste(tail_log(), collapse = "\n"))
+cat(paste(ux_smoke_redact_external_url(tail_log()), collapse = "\n"))
 cat("\n--- end tails ---\n")
 
 quit(status = 1)
