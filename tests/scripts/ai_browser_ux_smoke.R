@@ -61,6 +61,7 @@ find_repo_root <- function() {
 
 repo_root <- find_repo_root()
 setwd(repo_root)
+source("tests/scripts/helpers_browser_ux_profile.R", local = TRUE, encoding = "UTF-8")
 
 rscript <- file.path(R.home("bin"), "Rscript")
 if (.Platform$OS.type == "windows") {
@@ -457,7 +458,12 @@ ux_smoke_browser_profile <- function(requested = "", external_app = FALSE) {
   if (!dir.exists(path) && !dir.create(path, recursive = TRUE, showWarnings = FALSE)) {
     stop("Browser UX smoke profile directory could not be created.", call. = FALSE)
   }
-  list(path = normalizePath(path, winslash = "/", mustWork = TRUE), temporary = !persistent)
+  path <- normalizePath(path, winslash = "/", mustWork = TRUE)
+  if (persistent) {
+    path <- ux_smoke_profile_path(path, c(repo_root, artifact_dir,
+                                        Sys.getenv("MERGEN_EVIDENCE_ARTIFACT_DIR", "")))
+  }
+  list(path = path, temporary = !persistent)
 }
 
 ux_smoke_cleanup_profile <- function(profile) {

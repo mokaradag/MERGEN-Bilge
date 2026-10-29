@@ -44,6 +44,14 @@ vm_ux_read_prefix <- function(runtime_dir) {
 }
 
 vm_ux_start_app <- function(runtime_dir) {
+  # Normal launcher gibi ortam app.R'dan ONCE yuklenir; yerel auth'a dusulmez.
+  if (file.exists(".Renviron") && !isTRUE(readRenviron(".Renviron"))) {
+    stop("VM smoke configuration could not be loaded from .Renviron.", call. = FALSE)
+  }
+  sso <- chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", trimws(Sys.getenv("SSO_ENABLED", "")))
+  if (!sso %in% c("true", "t", "1", "yes", "on")) {
+    stop("Network VM smoke requires SSO_ENABLED=TRUE in the normal VM configuration.", call. = FALSE)
+  }
   # Kilit dizini atomik olusturulur; baska bir kosunun oneki ezilmez.
   dir.create(dirname(runtime_dir), recursive = TRUE, showWarnings = FALSE)
   if (!dir.create(runtime_dir, mode = "0700", showWarnings = FALSE)) {
@@ -53,6 +61,7 @@ vm_ux_start_app <- function(runtime_dir) {
   prefix <- vm_ux_new_prefix()
   Sys.setenv(MERGEN_RUN_APP = "false")
   source("app.R", encoding = "UTF-8", local = globalenv())
+  if (!isTRUE(SSO_ENABLED)) stop("Network VM smoke requires active application SSO.", call. = FALSE)
   # .Renviron yuklendikten sonra gecici opt-in; kalici dosyaya YAZILMAZ.
   Sys.setenv(MERGEN_ENABLE_UX_SMOKE = "true", MERGEN_ALLOW_NETWORK_UX_SMOKE = "true",
              MERGEN_UX_SMOKE_PATH = prefix, MERGEN_HOST = "0.0.0.0", MERGEN_PORT = "8009")
@@ -84,11 +93,9 @@ vm_ux_main <- function(args = commandArgs(trailingOnly = TRUE)) {
   if (!nzchar(profile) || !dir.exists(profile)) {
     stop("Prepare a dedicated Edge profile outside the repository; set MERGEN_BROWSER_UX_PROFILE_DIR and close its browser windows.", call. = FALSE)
   }
-  profile <- normalizePath(profile, winslash = "/", mustWork = TRUE)
-  repo <- normalizePath(".", winslash = "/", mustWork = TRUE)
-  if (identical(tolower(profile), tolower(repo)) || startsWith(tolower(profile), paste0(tolower(repo), "/"))) {
-    stop("The dedicated profile must be outside the repository and artifacts.", call. = FALSE)
-  }
+  source("tests/scripts/helpers_browser_ux_profile.R", local = TRUE, encoding = "UTF-8")
+  artifact_root <- Sys.getenv("MERGEN_EVIDENCE_ARTIFACT_DIR", "artifacts/ai-validation")
+  profile <- ux_smoke_profile_path(profile, c(".", artifact_root))
   # Hazir Edge profilini varsayilan Chrome ile acmaya calisma.
   if (.Platform$OS.type == "windows" && !nzchar(Sys.getenv("MERGEN_BROWSER_BIN", ""))) {
     edge <- file.path(c(Sys.getenv("PROGRAMFILES(X86)"), Sys.getenv("PROGRAMFILES"),
@@ -100,8 +107,9 @@ vm_ux_main <- function(args = commandArgs(trailingOnly = TRUE)) {
   Sys.setenv(MERGEN_UX_SMOKE_PATH = prefix, MERGEN_ALLOW_NETWORK_UX_SMOKE = "true",
              MERGEN_BROWSER_UX_BASE_URL = base)
   rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
-  artifact_dir <- file.path(Sys.getenv("MERGEN_EVIDENCE_ARTIFACT_DIR", "artifacts/ai-validation"), "browser-ux-smoke")
-  result <- processx::run(rscript, c("--vanilla", "tests/scripts/ai_browser_ux_smoke.R",
+  artifact_dir <- file.path(artifact_root, "browser-ux-smoke")
+  # Ortam zaten yuklendi; gecici onek/opt-in .Renviron ile ezilmez, .Rprofile acik kalir.
+  result <- processx::run(rscript, c("--no-environ", "tests/scripts/ai_browser_ux_smoke.R",
                                     "--require-browser", "--port", "8009", "--artifact-dir", artifact_dir),
                           echo = FALSE, error_on_status = FALSE, timeout = 420)
   cat(result$stdout, result$stderr, sep = "\n")

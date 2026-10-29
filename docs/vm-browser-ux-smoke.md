@@ -17,8 +17,10 @@ if (!(Test-Path $rscript)) {
     $rscript = "C:\Program Files\R\R-4.6.0\bin\x64\Rscript.exe"
 }
 if (!(Test-Path $rscript)) { throw "Rscript.exe bulunamadi." }
-& $rscript --vanilla tests/scripts/run_vm_browser_ux_smoke.R --start-app
+& $rscript tests/scripts/run_vm_browser_ux_smoke.R --start-app
 ```
+
+Komutu repo kökünden, normal launcher gibi `.Renviron` ve `.Rprofile` yüklemesi açık olarak çalıştırın; `--vanilla` / `--no-init-file` kullanmayın. Böylece projenin hazır `renv` kitaplığı ve normal paket yolları korunur. Koşucu ayrıca normal üretim R launcher'ı gibi repo `.Renviron` dosyasını `app.R` öncesinde yükler; `SSO_ENABLED=TRUE` yoksa veya uygulama SSO'yu etkinleştiremezse ağ dinleyicisini açmadan durur. Eksik SSO yapılandırmasını düzeltin; yerel kimlik doğrulamasına geçmeyin.
 
 Bu komut ön planda bekler; uygulama **0.0.0.0:8009** dinler. Window 1'i test süresince açık bırakın. Test başlatmadan uygulamanın boot işlemini bitirmesini bekleyin.
 
@@ -48,7 +50,7 @@ Ayrı profilde normal SSO girişini tamamlayın ve uygulamanın açıldığını
 Aynı Window 2'de:
 
 ```powershell
-& $rscript --vanilla tests/scripts/run_vm_browser_ux_smoke.R
+& $rscript tests/scripts/run_vm_browser_ux_smoke.R
 if ($LASTEXITCODE -ne 0) { throw "Browser UX smoke FAILED" }
 ```
 
@@ -59,13 +61,12 @@ Bu komut yalnız browser UX smoke çalıştırır. Yerel ön kontrol `http://127
 Window 1 açıkken, aynı Window 2'de:
 
 ```powershell
-Remove-Item Env:MERGEN_EVIDENCE_STEPS -ErrorAction SilentlyContinue
 $env:MERGEN_EVIDENCE_PROFILE = "vm"
-& $rscript --vanilla tests/scripts/run_vm_evidence_gate.R
+& $rscript tests/scripts/run_vm_evidence_gate.R --full
 if ($LASTEXITCODE -ne 0) { throw "VM evidence gate FAILED" }
 ```
 
-`MERGEN_BROWSER_UX_BASE_URL` ayarlıysa gate mevcut `browser_ux_smoke` adımında VM sarmalayıcısını kullanır ve browser zorunludur. Normal 13 adım korunur; tam kanıt için **13 passed, 0 failed, 0 skipped** gerekir. URL ayarlı değilse generic/cloud koşucu davranışı korunur.
+`MERGEN_BROWSER_UX_BASE_URL` ayarlıysa gate mevcut `browser_ux_smoke` adımında VM sarmalayıcısını kullanır ve browser zorunludur. `--full`, shell veya `.Renviron` içindeki `MERGEN_EVIDENCE_STEPS` filtresini bu koşum için yok sayar; dosya değiştirilmez. Filtreli geliştirici koşumları `--full` olmadan desteklenir. Normal 13 adım korunur; tam kanıt için **13 passed, 0 failed, 0 skipped** gerekir. URL ayarlı değilse generic/cloud koşucu davranışı korunur.
 
 ## Normal moda dönüş
 
@@ -73,7 +74,7 @@ Window 1'de **Ctrl+C** ile geçici uygulamayı durdurun. Ardından normal launch
 
 ```powershell
 Remove-Item Env:MERGEN_ENABLE_UX_SMOKE,Env:MERGEN_ALLOW_NETWORK_UX_SMOKE,Env:MERGEN_UX_SMOKE_PATH -ErrorAction SilentlyContinue
-& $rscript --vanilla run_mergen_prod.R
+& .\run_mergen_prod.bat
 ```
 
 Normal `.Renviron` yapılandırması `MERGEN_HOST=0.0.0.0`, `MERGEN_PORT=8009` olarak kalır; smoke opt-in/önek değerlerini `.Renviron` içine **eklemeyin**. Window 2'de çalışma URL'sini/profil seçimini temizleyin (hazırlanmış profil silinmez):

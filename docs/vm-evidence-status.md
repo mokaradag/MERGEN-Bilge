@@ -38,6 +38,8 @@ Süreler, 17 Ekim 2026 tarihli operatör ekran görüntüsünde görülen yakla�
 
 ## Browser UX smoke koşumu
 
+Aşağıdaki komutlar yalnız 17 Ekim koşumunun tarihsel kaydıdır; güncel başlatma talimatı değildir. Güncel 8009/SSO, geçici yol, handshake ve profil prosedürü için [VM browser UX smoke](vm-browser-ux-smoke.md) belgesini izleyin.
+
 Son başarılı gate, zaten çalışan uygulamaya external-app modunda bağlandı:
 
 ```powershell
@@ -47,7 +49,7 @@ $env:MERGEN_REQUIRE_BROWSER_UX_SMOKE = "true"
 & $rscript --vanilla tests/scripts/run_vm_evidence_gate.R
 ```
 
-`MERGEN_BROWSER_UX_BASE_URL` çalışmakta olan uygulamanın gerçek yerel URL'siyle eşleşmelidir. 17 Ekim 2026 koşumunda uygulama `28081` portunda çalışıyordu. Profil ayrıca zorlanmadı; gate çıktısında istenen/etkin profil `<auto>/vm` olarak raporlandı.
+O tarihli koşumda `MERGEN_BROWSER_UX_BASE_URL` çalışan uygulamanın yerel URL'siyle eşleşiyordu. 17 Ekim 2026 koşumunda uygulama `28081` portunda çalışıyordu. Profil ayrıca zorlanmadı; gate çıktısında istenen/etkin profil `<auto>/vm` olarak raporlandı.
 
 ## Bu koşum neyi kanıtlar?
 

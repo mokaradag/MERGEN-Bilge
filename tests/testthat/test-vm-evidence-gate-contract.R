@@ -403,6 +403,7 @@ test_that("zorunlu browser basarisizligi veya atlanmasi ust kapiyi dusurur", {
         as.character(e[[2]]) %in% definitions) eval(e, env)
   }
   env$profile_effective <- "cloud"
+  env$full_evidence <- FALSE
   env$cat <- function(...) invisible(NULL)
   env$evidence_redact_text <- identity
   env$evidence_json_path <- "test-evidence.json"
@@ -441,4 +442,41 @@ test_that("zorunlu browser basarisizligi veya atlanmasi ust kapiyi dusurur", {
   result <- list(ok = TRUE, detail = list(ux_smoke_pass_marker = TRUE))
   expect_identical(aggregate(), "passed")
   expect_no_error(eval(stop_branch[[1]], env))
+  env$full_evidence <- TRUE
+  expect_identical(aggregate(), "failed") # Cloud VM-only SKIP tam kanit olamaz.
+  env$profile_effective <- "vm"
+  expect_identical(aggregate(), "passed")
+  expect_true(all(vapply(env$step_results, function(r) r$required, logical(1))))
+  expect_true(all(vapply(env$step_results, function(r) identical(r$status, "passed"), logical(1))))
+  result <- list(ok = FALSE, skipped = TRUE)
+  expect_identical(aggregate(), "failed")
+})
+
+
+test_that("acik tam workflow kalici filtreyi yok sayar, gelistirici filtresi korunur", {
+  expressions <- parse(file = .evg_script_path, encoding = "UTF-8")
+  env <- new.env(parent = globalenv())
+  for (e in expressions) {
+    if (is.call(e) && identical(e[[1]], as.name("<-")) &&
+        identical(e[[2]], as.name("evidence_load_repo_renviron"))) eval(e, env)
+  }
+  path <- withr::local_tempfile()
+  writeLines("MERGEN_EVIDENCE_STEPS=browser_ux_smoke", path)
+  withr::local_envvar(MERGEN_EVIDENCE_STEPS = NA)
+  expect_true(env$evidence_load_repo_renviron(path))
+  expect_identical(Sys.getenv("MERGEN_EVIDENCE_STEPS"), "browser_ux_smoke")
+  args <- character()
+  env$commandArgs <- function(...) args
+  select <- function() {
+    for (e in expressions) {
+      if (is.call(e) && identical(e[[1]], as.name("<-")) &&
+          as.character(e[[2]]) %in% c("full_evidence", "steps_filter_raw", "steps_filter")) eval(e, env)
+    }
+    env$steps_filter
+  }
+  expect_identical(select(), "browser_ux_smoke")
+  args <- "--full"
+  expect_identical(select(), character())
+  expect_true(env$full_evidence)
+  expect_identical(readLines(path), "MERGEN_EVIDENCE_STEPS=browser_ux_smoke")
 })

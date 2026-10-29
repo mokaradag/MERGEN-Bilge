@@ -44,6 +44,7 @@
 #
 # Kullanim:
 #   Rscript tests/scripts/run_vm_evidence_gate.R
+#   Rscript tests/scripts/run_vm_evidence_gate.R --full
 #   MERGEN_EVIDENCE_PROFILE=vm Rscript tests/scripts/run_vm_evidence_gate.R
 #   MERGEN_EVIDENCE_STEPS=seam_doctor,renv_status Rscript tests/scripts/run_vm_evidence_gate.R
 #   bash tools/vm_evidence_gate.sh
@@ -198,7 +199,9 @@ profile_effective <- if (nzchar(profile_requested)) {
   "cloud"
 }
 
-steps_filter_raw <- trimws(Sys.getenv("MERGEN_EVIDENCE_STEPS", unset = ""))
+# Acik tam kosum, .Renviron/shell filtresinden bagimsiz 13 PASS ister.
+full_evidence <- "--full" %in% commandArgs(trailingOnly = TRUE)
+steps_filter_raw <- if (full_evidence) "" else trimws(Sys.getenv("MERGEN_EVIDENCE_STEPS", unset = ""))
 steps_filter <- if (nzchar(steps_filter_raw)) {
   trimws(strsplit(steps_filter_raw, ",", fixed = TRUE)[[1]])
 } else {
@@ -711,7 +714,7 @@ step_results <- list()
 for (spec in evidence_step_specs) {
   step_id <- spec$id
   browser_required <- identical(step_id, "browser_ux_smoke") && evidence_browser_required()
-  required <- profile_effective %in% spec$required_in || browser_required
+  required <- full_evidence || profile_effective %in% spec$required_in || browser_required
 
   if (length(steps_filter) > 0L && !(step_id %in% steps_filter)) {
     step_results[[step_id]] <- list(
@@ -726,7 +729,7 @@ for (spec in evidence_step_specs) {
   vm_only <- identical(spec$required_in, "vm")
   if (vm_only && identical(profile_effective, "cloud")) {
     step_results[[step_id]] <- list(
-      spec = spec, status = "skipped", required = FALSE,
+      spec = spec, status = "skipped", required = full_evidence,
       notes = "VM-yalniz kapi; cloud profilinde gerekceli SKIP.",
       detail = list(), log_file = NULL, duration_sec = 0
     )
@@ -793,6 +796,7 @@ evidence <- list(
   validation_execution_status = "ran_by_vm_evidence_gate",
   profile_requested = if (nzchar(profile_requested)) profile_requested else "<auto>",
   profile_effective = profile_effective,
+  full_workflow = full_evidence,
   overall_status = overall_status,
   secret_policy = "Ham ortam degeri yazilmaz; yalnizca present/nchar/value=<hidden> metadata.",
   git = list(

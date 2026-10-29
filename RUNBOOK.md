@@ -932,7 +932,7 @@ satırlarının temizliği gibi kapsamları otomatik olarak kanıtlamaz.
 
 #### Standart tam evidence gate komutu
 
-Repo kökünden tüm yapılandırılmış evidence adımlarını çalıştırmak için:
+Repo kökünden tam VM evidence workflow istemek için (browser hazırlığı aşağıdaki kanonik belgede):
 
 ```powershell
 $repo = "U:\Primavera\PYB\04 - Geliştirme\MERGEN Bilge"
@@ -941,14 +941,13 @@ Set-Location $repo
 $rscript = "C:\Program Files\R\R-4.6.0\bin\Rscript.exe"
 if (!(Test-Path $rscript)) { $rscript = "C:\Program Files\R\R-4.6.0\bin\x64\Rscript.exe" }
 
-Remove-Item Env:\MERGEN_EVIDENCE_STEPS -ErrorAction SilentlyContinue
-
-& $rscript --vanilla tests/scripts/run_vm_evidence_gate.R
+$env:MERGEN_EVIDENCE_PROFILE = "vm"
+& $rscript tests/scripts/run_vm_evidence_gate.R --full
 ```
 
-Bu komut tüm yapılandırılmış evidence adımlarını çalıştırır. Browser UX smoke zorunlu
-değilse ve ortam tarayıcı kanıtı üretemiyorsa yapılandırmaya bağlı olarak gerekçeli SKIP
-olabilir. Mandatory browser proof için aşağıdaki external-app workflow kullanılmalıdır.
+Bu komut kalıcı veya geçici adım filtresini yok sayar ve 13 adımın tamamında PASS ister;
+SKIP tam kanıt sayılmaz. Browser URL/profil/handshake hazırlığı için aşağıdaki kanonik
+VM workflow kullanılmalıdır. Bilinçli filtreli geliştirici koşumları `--full` olmadan desteklenir.
 
 Kanıt kanıt dizini her koşumda `artifacts/vm-evidence/<timestamp>/evidence.json` ve aynı
 dizin altında adım logları olarak yazılır. Adımlar temiz çocuk R oturumlarında koşulur;
@@ -958,66 +957,27 @@ Kapsam: `env_config`, `parse_sanity`, `app_boot_smoke`, `full_testthat`,
 `source_manifest_contracts`, `ui_asset_manifest_contracts`, `browser_ux_smoke`,
 `vm_preflight_real`, `db_encoding_preflight`, `renv_status`.
 
-#### Mandatory browser UX smoke: external-app iki-pencere workflow
+#### Mandatory browser UX smoke: kanonik VM workflow
 
-Kilitli Windows/VDI ortamlarında mandatory browser proof için VM-stable önerilen akış,
-uygulamayı ayrı bir PowerShell penceresinde açık tutup evidence gate'e çalışan app URL'ini
-vermektir.
+[Windows VM browser UX smoke](docs/vm-browser-ux-smoke.md) belgesindeki iki-pencere
+akışını izleyin. Window 1 normal yapılandırma ve proje kitaplığı yüklemesi açıkken
+`run_vm_browser_ux_smoke.R --start-app` ile **0.0.0.0:8009** üzerinde geçici uygulamayı
+başlatır; SSO etkin değilse başlatma durur. Window 2 aynı Windows hesabında onaylı
+SSO URL'sini `Read-Host` ile alır, repo/kanıt dizini dışında ayrı Edge profilinde normal
+girişi tamamlar ve profil pencerelerini kapatır. Geçici opt-in/192-bit yol öneki
+`.Renviron` dosyasına yazılmaz; kullanıcıya ait handshake üzerinden paylaşılır.
 
-**Window 1 — app'i başlatın ve açık bırakın:**
-
-```powershell
-$repo = "U:\Primavera\PYB\04 - Geliştirme\MERGEN Bilge"
-Set-Location $repo
-
-$rscript = "C:\Program Files\R\R-4.6.0\bin\Rscript.exe"
-if (!(Test-Path $rscript)) { $rscript = "C:\Program Files\R\R-4.6.0\bin\x64\Rscript.exe" }
-
-& $rscript -e "if (file.exists('.Renviron')) readRenviron('.Renviron'); Sys.setenv(MERGEN_RUN_APP='false', MERGEN_DISABLE_FUTURES='true', TZ='UTC'); cat('START_APP_BOOT_TEST\n'); source('app.R', encoding='UTF-8'); cat('SOURCE_OK\n'); run_mergen_app(host='127.0.0.1', port=28081L, launch.browser=FALSE, quiet=FALSE)"
-```
-
-Beklenen:
-
-- Pencere açık kalır.
-- App `http://127.0.0.1:28081` üzerinde dinler.
-- Smoke sayfası `http://127.0.0.1:28081/smoke/ux-smoke.html` olur.
-
-**Window 2 — mandatory browser proof ile tam evidence gate'i çalıştırın:**
-
-```powershell
-$repo = "U:\Primavera\PYB\04 - Geliştirme\MERGEN Bilge"
-Set-Location $repo
-
-$rscript = "C:\Program Files\R\R-4.6.0\bin\Rscript.exe"
-if (!(Test-Path $rscript)) { $rscript = "C:\Program Files\R\R-4.6.0\bin\x64\Rscript.exe" }
-
-Remove-Item Env:\MERGEN_EVIDENCE_STEPS -ErrorAction SilentlyContinue
-
-$env:MERGEN_BROWSER_UX_BASE_URL = "http://127.0.0.1:28081"
-$env:MERGEN_REQUIRE_BROWSER_UX_SMOKE = "true"
-
-& $rscript --vanilla tests/scripts/run_vm_evidence_gate.R
-
-Remove-Item Env:\MERGEN_BROWSER_UX_BASE_URL -ErrorAction SilentlyContinue
-Remove-Item Env:\MERGEN_REQUIRE_BROWSER_UX_SMOKE -ErrorAction SilentlyContinue
-```
-
-- `MERGEN_BROWSER_UX_BASE_URL`, `ai_browser_ux_smoke.R` betiğine kendi geçici Shiny
-  child process'ini başlatmak yerine zaten çalışan app'i test etmesini söyler.
-- `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true`, browser UX smoke'u bloklayıcı yapar.
-- Window 1'deki app evidence gate bitene kadar açık kalmalıdır.
-- Koşum bitince Window 1'de app'i `Ctrl+C` ile durdurun.
-
-#### Browser smoke davranışı
-
-- Varsayılan durumda browser UX smoke opsiyonel/non-blocking olabilir.
-- `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` ile bloklayıcıdır ve `UX_SMOKE_DONE:PASS`
-  üretmelidir.
-- `MERGEN_BROWSER_UX_BASE_URL` set edilmişse o base URL'de app önceden çalışıyor olmalıdır.
-- Elle çalışan background app normalde gerekli değildir; ancak kilitli Windows/VDI
-  ortamlarında mandatory browser proof için önerilen VM-stable workflow budur.
-- `MERGEN_BROWSER_BIN` açıkça tanımlıysa require modu otomatik etkinleşir; kullanılamayan
-  binary yolu erken hata verir.
+- Yalnız hızlı kontrol: `Rscript tests/scripts/run_vm_browser_ux_smoke.R`.
+- Tam VM kanıtı: aynı Window 2 ortamında `MERGEN_EVIDENCE_PROFILE=vm` ile
+  `Rscript tests/scripts/run_vm_evidence_gate.R --full`. Bu mod kalıcı/geçici
+  `MERGEN_EVIDENCE_STEPS` filtresini yok sayar ve **13 passed, 0 failed, 0 skipped** ister.
+- URL yapılandırıldığında gate mevcut `browser_ux_smoke` adımında VM koşucusunu seçer;
+  handshake, hazırlanmış Edge profili ve 8009 ön kontrolü zorunludur. Başarı yalnız
+  işlenmiş `#status` sonucunu doğrulayan `OK: rendered #status is UX_SMOKE_DONE:PASS.` ile kabul edilir.
+- `--full` olmadan bilinçli `MERGEN_EVIDENCE_STEPS` geliştirici filtresi korunur.
+  Browser açıkça istenmişse başarısızlık veya SKIP üst kapıyı yine düşürür.
+- Gate bitince Window 1'i Ctrl+C ile durdurun ve normal `run_mergen_prod.bat`
+  launcher'ına dönün. Tam profil hazırlığı, komutlar ve temizlik tek kanonik belgede yer alır.
 
 #### Full isolated testthat davranışı
 
@@ -1059,7 +1019,7 @@ Remove-Item Env:\MERGEN_TESTTHAT_END_INDEX -ErrorAction SilentlyContinue
 - Relative test path yok diyorsa PowerShell'in repo kökünde olduğunu doğrulayın.
 - External browser smoke “Could not connect to server” diyorsa Window 1'deki app gerçekten çalışmıyordur.
 - App boot eksik env var nedeniyle düşerse `.Renviron` yüklendiğini veya şu değişkenlerin tanımlı olduğunu kontrol edin: `LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`.
-- Tam gate amaçlanıyorsa `MERGEN_EVIDENCE_STEPS` set edilmiş bırakılmamalıdır.
+- Tam gate amaçlanıyorsa `--full` kullanın; `.Renviron` veya shell filtresi bu modda uygulanmaz.
 - `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` değişkenini niyetli değilseniz ad-hoc testthat koşumlarına sızdırmayın.
 
 Yapısal sözleşme: `tests/testthat/test-vm-evidence-gate-contract.R` (adım listesi,
@@ -1106,9 +1066,9 @@ Uygulama ayağa kalktıktan sonra **gerçekten hizmet verip vermediğini** doğr
    - `critical` durumda kritik bir kontrol varsa süreç **sıfırdan farklı** çıkış kodu döndürür.
    - Sırları redakte ederek özet basar; ham DSN/anahtar/token yazmaz.
    - Yapılandırma: `MERGEN_SMOKE_CRITICAL_IDS` (virgülle), `MERGEN_SMOKE_FAIL_ON_UNKNOWN=TRUE/FALSE`.
-2. **Tarayıcı duman testi:** uygulama köküyle aynı origin üzerinden `/smoke/ux-smoke.html`
-   açın; beklenen sonuç `UX_SMOKE_DONE:PASS`. SSO/Keycloak login route'u üzerinden ÇAPRAZ
-   origin ile açmayın.
+2. **Tarayıcı duman testi:** [VM browser UX smoke](docs/vm-browser-ux-smoke.md)
+   prosedürünü kullanın: 8009/SSO, geçici rastgele yol ve hazırlanmış Edge profili.
+   Beklenen sonuç işlenmiş `#status` içindeki `UX_SMOKE_DONE:PASS` değeridir.
 3. **Sağlık paneli:** "Sistem Durumu" sayfasında DB, LLM, depolama, SSO satırlarının
    yeşil/uygun olduğunu görsel doğrulayın.
 4. **Türkçe akış kontrolü:** bir sohbet açıp `Türkçe test: ç ğ ı İ ö ş ü` yazın;

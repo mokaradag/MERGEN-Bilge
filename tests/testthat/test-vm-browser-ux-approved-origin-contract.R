@@ -34,10 +34,19 @@ test_that("VM startup ayni 0.0.0.0:8009 topolojisini ve gercek ortam aktarimini 
   withr::local_envvar(MERGEN_ENABLE_UX_SMOKE = NA, MERGEN_ALLOW_NETWORK_UX_SMOKE = NA,
                      MERGEN_UX_SMOKE_PATH = NA, MERGEN_HOST = NA, MERGEN_PORT = NA,
                      MERGEN_RUN_APP = NA)
-  runtime <- file.path(withr::local_tempdir(), "run")
+  config <- withr::local_tempdir()
+  withr::local_dir(config)
+  writeLines(c("SSO_ENABLED=TRUE", "MERGEN_ENABLE_UX_SMOKE=false"), ".Renviron")
+  original_config <- readBin(".Renviron", "raw", file.info(".Renviron")$size)
+  withr::local_envvar(SSO_ENABLED = NA)
+  runtime <- file.path(config, "run")
   first <- NULL
   # source sonrasi .Renviron override'ina ragmen gecici opt-in sonradan verilir.
-  env$source <- function(...) Sys.setenv(MERGEN_ENABLE_UX_SMOKE = "false")
+  env$source <- function(...) {
+    expect_identical(Sys.getenv("SSO_ENABLED"), "TRUE")
+    env$SSO_ENABLED <- TRUE
+    Sys.setenv(MERGEN_ENABLE_UX_SMOKE = "false")
+  }
   env$run_mergen_app <- function(host, port, ...) {
     expect_identical(host, "0.0.0.0")
     expect_identical(port, 8009L)
@@ -48,6 +57,7 @@ test_that("VM startup ayni 0.0.0.0:8009 topolojisini ve gercek ortam aktarimini 
     expect_error(env$vm_ux_start_app(runtime), "already exists")
   }
   env$vm_ux_start_app(runtime)
+  expect_identical(readBin(".Renviron", "raw", file.info(".Renviron")$size), original_config)
   expect_false(dir.exists(runtime))
   expect_error(env$vm_ux_read_prefix(runtime), "No active smoke startup")
   env$run_mergen_app <- function(...) {
@@ -71,7 +81,7 @@ test_that("VM wrapper PASS icin rendered sonucu ister ve gecici env degerlerini 
   profile <- withr::local_tempdir()
   withr::local_envvar(MERGEN_BROWSER_UX_BASE_URL = "https://app.example.invalid/base",
                      MERGEN_BROWSER_UX_PROFILE_DIR = profile, MERGEN_UX_SMOKE_PATH = NA,
-                     MERGEN_ALLOW_NETWORK_UX_SMOKE = NA)
+                     MERGEN_ALLOW_NETWORK_UX_SMOKE = NA, MERGEN_BROWSER_BIN = "mock-edge")
   answer <- "OK: rendered #status is UX_SMOKE_DONE:PASS.\n"
   status <- 0L
   testthat::local_mocked_bindings(run = function(command, args, ...) {
@@ -79,6 +89,8 @@ test_that("VM wrapper PASS icin rendered sonucu ister ve gecici env degerlerini 
     expect_identical(Sys.getenv("MERGEN_ALLOW_NETWORK_UX_SMOKE"), "true")
     expect_false(any(grepl("app.example.invalid|__mergen_ux_", args)))
     expect_true("--require-browser" %in% args)
+    expect_false("--vanilla" %in% args)
+    expect_true("--no-environ" %in% args)
     list(status = status, stdout = answer, stderr = "")
   }, .package = "processx")
   expect_true(env$vm_ux_main(character()))
@@ -144,8 +156,72 @@ test_that("VM belge ve kaynaklarda onayli URL runtime girdisidir, sabit ag smoke
   expect_match(doc, "app.example.invalid", fixed = TRUE)
   expect_match(doc, "--start-app", fixed = TRUE)
   expect_false(grepl("/smoke/ux-smoke.html", runner, fixed = TRUE))
-  expect_false(grepl("readRenviron|write.*Renviron", runner))
+  expect_false(any(grepl("write.*[.]Renviron", strsplit(runner, "\n", fixed = TRUE)[[1]])))
+  expect_match(doc, "run_vm_evidence_gate.R --full", fixed = TRUE)
+  for (command in strsplit(doc, "\n", fixed = TRUE)[[1]]) {
+    if (startsWith(command, "& $rscript")) expect_false(grepl("--vanilla|--no-init-file|--no-environ", command))
+  }
+  runbook <- read_source_text_utf8(file.path(root, "RUNBOOK.md"))
+  technical <- read_source_text_utf8(file.path(root, "docs/technical-reference.md"))
+  expect_false(grepl("port=28081|127.0.0.1:28081|28081/smoke/", paste(runbook, technical)))
+  expect_match(runbook, "docs/vm-browser-ux-smoke.md", fixed = TRUE)
+  expect_match(technical, "vm-browser-ux-smoke.md", fixed = TRUE)
   for (url in regmatches(doc, gregexpr("https://[^`[:space:]]+", doc))[[1]]) {
     expect_match(url, "https://app.example.invalid", fixed = TRUE)
   }
+})
+
+
+test_that("network startup eksik veya kapali SSO ile app.R kaynaklamadan durur", {
+  env <- .vm_ux_functions()
+  withr::local_dir(withr::local_tempdir())
+  withr::local_envvar(SSO_ENABLED = NA)
+  runtime <- file.path(getwd(), "run")
+  env$source <- function(...) stop("app.R must not be sourced")
+  for (value in c(NA_character_, "FALSE", "", "invalid")) {
+    if (is.na(value)) unlink(".Renviron") else writeLines(paste0("SSO_ENABLED=", value), ".Renviron")
+    Sys.unsetenv("SSO_ENABLED")
+    expect_error(env$vm_ux_start_app(runtime), "requires SSO_ENABLED=TRUE", fixed = TRUE)
+    expect_false(dir.exists(runtime))
+  }
+  writeLines("SSO_ENABLED=TRUE", ".Renviron")
+  env$source <- function(...) { env$SSO_ENABLED <- FALSE }
+  expect_error(env$vm_ux_start_app(runtime), "requires active application SSO", fixed = TRUE)
+  expect_false(dir.exists(runtime))
+})
+
+test_that("normal Rscript startup proje profili ve SSO konfigurasyonunu korur", {
+  root <- resolve_repo_root_for_tests()
+  fixture <- withr::local_tempdir()
+  dir.create(file.path(fixture, "tests/scripts"), recursive = TRUE)
+  dir.create(file.path(fixture, "R"))
+  dir.create(file.path(fixture, "project-library"))
+  file.copy(file.path(root, "tests/scripts/run_vm_browser_ux_smoke.R"), file.path(fixture, "tests/scripts"))
+  file.copy(file.path(root, "R/config_sso.R"), file.path(fixture, "R"))
+  writeLines(c("SSO_ENABLED=TRUE", "SSO_KEYCLOAK_URL=https://sso.example.invalid",
+               "MERGEN_ENABLE_UX_SMOKE=false", "MERGEN_ALLOW_NETWORK_UX_SMOKE=false"), file.path(fixture, ".Renviron"))
+  writeLines('.libPaths(c("project-library", .libPaths()))', file.path(fixture, ".Rprofile"))
+  writeLines(c(
+    'log_info <- function(...) invisible(NULL)',
+    'source("R/config_sso.R", encoding = "UTF-8")',
+    'stopifnot(SSO_ENABLED, basename(.libPaths()[1]) == "project-library")',
+    'run_mergen_app <- function(host, port, ...) {',
+    '  stopifnot(host == "0.0.0.0", port == 8009L, SSO_ENABLED,',
+    '            Sys.getenv("MERGEN_ENABLE_UX_SMOKE") == "true",',
+    '            Sys.getenv("MERGEN_ALLOW_NETWORK_UX_SMOKE") == "true")',
+    '  writeLines("configured SSO startup", "startup-result.txt")',
+    '}'
+  ), file.path(fixture, "app.R"))
+  before <- readBin(file.path(fixture, ".Renviron"), "raw", 10000L)
+  rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
+  withr::local_envvar(LOCALAPPDATA = fixture,
+                     R_ENVIRON_USER = file.path(fixture, ".Renviron"),
+                     R_PROFILE_USER = file.path(fixture, ".Rprofile"))
+  withr::local_dir(fixture)
+  status <- system2(rscript, c("--encoding=UTF-8", "tests/scripts/run_vm_browser_ux_smoke.R", "--start-app"),
+                    stdout = "startup.stdout", stderr = "startup.stderr", timeout = 30)
+  expect_identical(status, 0L, info = paste(readLines("startup.stderr"), collapse = "\n"))
+  expect_identical(readLines(file.path(fixture, "startup-result.txt")), "configured SSO startup")
+  expect_identical(readBin(file.path(fixture, ".Renviron"), "raw", 10000L), before)
+  expect_false(dir.exists(file.path(fixture, "MERGEN/BrowserUxSmokeRun")))
 })

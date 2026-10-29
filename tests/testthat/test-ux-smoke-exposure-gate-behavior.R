@@ -225,6 +225,9 @@ test_that("smoke koşucusu açık hazırlanmış profili korur, varsayılan geç
     if (is.call(e) && identical(e[[1]], as.name("<-")) &&
         as.character(e[[2]]) %in% c("ux_smoke_browser_profile", "ux_smoke_cleanup_profile")) eval(e, ortam)
   }
+  source(file.path(resolve_repo_root_for_tests(), "tests/scripts/helpers_browser_ux_profile.R"), local = ortam)
+  ortam$repo_root <- withr::local_tempdir()
+  ortam$artifact_dir <- withr::local_tempdir()
   gecici <- ortam$ux_smoke_browser_profile()
   expect_true(gecici$temporary)
   expect_true(dir.exists(gecici$path))
@@ -237,6 +240,23 @@ test_that("smoke koşucusu açık hazırlanmış profili korur, varsayılan geç
   hazir <- ortam$ux_smoke_browser_profile(yol, external_app = TRUE)
   expect_false(hazir$temporary)
   expect_identical(hazir$path, normalizePath(yol, winslash = "/"))
+  for (root in c(ortam$repo_root, ortam$artifact_dir)) {
+    for (blocked in c(root, file.path(root, "profile"))) {
+      expect_error(ortam$ux_smoke_browser_profile(blocked, TRUE), "outside the repository and artifacts", fixed = TRUE)
+    }
+    expect_error(ortam$ux_smoke_browser_profile(file.path(root, "profile", "..", "profile"), TRUE),
+                 "outside the repository and artifacts", fixed = TRUE)
+  }
+  # Benzer onekli kardes dizin ve normalizasyon sonrasi dis yol kabul edilir.
+  sibling <- paste0(ortam$repo_root, "-external")
+  withr::defer(unlink(sibling, recursive = TRUE))
+  expect_false(ortam$ux_smoke_browser_profile(sibling, TRUE)$temporary)
+  expect_identical(ortam$ux_smoke_browser_profile(file.path(ortam$repo_root, "..", basename(sibling)), TRUE)$path,
+                   normalizePath(sibling, winslash = "/"))
+  expect_true(ortam$ux_smoke_path_within("C:\\REPO\\profile", "c:/repo/", windows = TRUE))
+  expect_true(ortam$ux_smoke_path_within("C:/Repo", "c:/repo", windows = TRUE))
+  expect_false(ortam$ux_smoke_path_within("C:/repo-external/profile", "c:/repo", windows = TRUE))
+  expect_false(ortam$ux_smoke_path_within("/Repo/profile", "/repo", windows = FALSE))
   isaret <- file.path(yol, "sentinel")
   writeLines("operator profile", isaret)
   ortam$ux_smoke_cleanup_profile(hazir)
