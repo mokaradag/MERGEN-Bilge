@@ -70,7 +70,7 @@ testthat::test_that("browser UX smoke runner is optional and dependency-light", 
     runner,
     c(
       "Dosya Yolu: tests/scripts/ai_browser_ux_smoke.R",
-      "/smoke/ux-smoke.html",
+      "%s/%s/ux-smoke.html?autostart=1",
       "MERGEN_BROWSER_BIN",
       "MERGEN_REQUIRE_BROWSER_UX_SMOKE",
       "--require-browser",

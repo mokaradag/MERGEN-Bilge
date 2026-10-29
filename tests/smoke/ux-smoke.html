@@ -189,20 +189,14 @@
     return false;
   }
 
-	function targetUrl() {
-	  var marker = "/smoke/ux-smoke.html";
-	  var href = window.location.href.split("?")[0].split("#")[0];
+  function targetUrl() {
+    // Dosya -> kaynak dizini -> uygulama kökü; önek adı bilinmez.
+    var appUrl = new URL("../", window.location.href);
+    appUrl.search = "";
+    appUrl.hash = "ux_smoke_target=" + Date.now();
+    return appUrl.toString();
+  }
 
-	  var appHref = href.indexOf(marker) >= 0
-		? href.substring(0, href.indexOf(marker))
-		: new URL("../", window.location.href).toString();
-
-	  // Do not send a query string to the Shiny/reverse-proxy route.
-	  // The hash changes the iframe URL for reload purposes but is not sent to the server.
-	  appHref = appHref.replace(/\/$/, "");
-	  return appHref + "#ux_smoke_target=" + Date.now();
-	}
-	
   async function waitForFrameAccessible(appTarget, label, timeoutMs) {
     var started = Date.now();
     var lastError = null;
@@ -1079,7 +1073,7 @@
 
   // Sayfa yüklemesi tek başına gerçek uygulama eylemi (istem, sohbet, depolama
   // değişikliği) başlatmaz. Harness yalnızca sunucunun bakımcı kapısıyla
-  // (MERGEN_ENABLE_UX_SMOKE) kaydettiği /smoke/ yolundan çalışır; bakımcı
+  // (MERGEN_ENABLE_UX_SMOKE) kaydettiği test yolundan çalışır; bakımcı
   // "başlat" düğmesine basar ya da otomasyon koşucusu açıkça ?autostart=1 verir.
   function startSmoke(startButton) {
     if (startButton) startButton.disabled = true;

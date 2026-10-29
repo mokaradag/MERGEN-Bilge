@@ -14,7 +14,7 @@
   env <- new.env(parent = globalenv())
   for (e in exprs) {
     if (is.call(e) && identical(e[[1]], as.name("<-")) &&
-        as.character(e[[2]]) %in% c("mergen_ux_smoke_enabled", "mergen_register_ux_smoke_resource",
+        as.character(e[[2]]) %in% c("mergen_ux_smoke_prefix", "mergen_ux_smoke_enabled", "mergen_register_ux_smoke_resource",
                                     "safe_add_resource_path")) {
       eval(e, env)
     }
@@ -37,7 +37,8 @@ test_that("/smoke yolu yalnızca bakımcı kapısı açıkken kaydedilir", {
   if ("smoke" %in% names(shiny::resourcePaths())) shiny::removeResourcePath("smoke")
   withr::defer(if ("smoke" %in% names(shiny::resourcePaths())) shiny::removeResourcePath("smoke"))
 
-  withr::local_envvar(MERGEN_ENABLE_UX_SMOKE = NA, MERGEN_HOST = "127.0.0.1")
+  withr::local_envvar(MERGEN_ENABLE_UX_SMOKE = NA, MERGEN_HOST = "127.0.0.1",
+                     MERGEN_UX_SMOKE_PATH = NA, MERGEN_ALLOW_NETWORK_UX_SMOKE = NA)
   expect_false(env$mergen_ux_smoke_enabled())
   expect_false(isTRUE(env$mergen_register_ux_smoke_resource()))
   expect_false("smoke" %in% names(shiny::resourcePaths()))
@@ -96,7 +97,8 @@ test_that("run_mergen_app /smoke kararını gerçek dinleme adresiyle yeniden ve
   withr::local_dir(resolve_repo_root_for_tests())
   if ("smoke" %in% names(shiny::resourcePaths())) shiny::removeResourcePath("smoke")
   withr::defer(if ("smoke" %in% names(shiny::resourcePaths())) shiny::removeResourcePath("smoke"))
-  withr::local_envvar(MERGEN_ENABLE_UX_SMOKE = "true", MERGEN_HOST = "127.0.0.1")
+  withr::local_envvar(MERGEN_ENABLE_UX_SMOKE = "true", MERGEN_HOST = "127.0.0.1",
+                     MERGEN_UX_SMOKE_PATH = NA, MERGEN_ALLOW_NETWORK_UX_SMOKE = NA)
 
   # Kaynak yüklemede açılmış eşleme, uygulama ağ adresinde başlatılınca kalkar.
   expect_true(isTRUE(env$mergen_register_ux_smoke_resource()))
@@ -104,6 +106,7 @@ test_that("run_mergen_app /smoke kararını gerçek dinleme adresiyle yeniden ve
   # Koşucular gibi döngü adresinde başlatılınca sunulur.
   env$run_mergen_app(host = "127.0.0.1", port = 8009L, launch.browser = FALSE)
   expect_identical(baslatilan, list(list(host = "0.0.0.0", smoke = FALSE), list(host = "127.0.0.1", smoke = TRUE)))
+  expect_false("smoke" %in% names(shiny::resourcePaths()), info = "runApp bitince kaynak kaldırılır")
 })
 
 test_that("tarayıcı koşucusu sonucu işlenmiş #status metninden okur, betikteki sabitten değil", {
@@ -148,7 +151,8 @@ test_that("otomatik tarayıcı koşucusu kapıyı açar ve açık başlatma iste
                                        warn = FALSE), collapse = "\n")
   kosucu <- oku("tests/scripts/ai_browser_ux_smoke.R")
   expect_match(kosucu, "MERGEN_ENABLE_UX_SMOKE='true'", fixed = TRUE)
-  expect_match(kosucu, "/smoke/ux-smoke.html?autostart=1", fixed = TRUE)
+  expect_match(kosucu, 'smoke_prefix <- "smoke"', fixed = TRUE)
+  expect_match(kosucu, '%s/%s/ux-smoke.html?autostart=1', fixed = TRUE)
   expect_match(oku("tests/scripts/run_browser_concurrency_lane.R"), "/smoke/ux-smoke.html?autostart=1", fixed = TRUE)
 })
 
@@ -162,7 +166,8 @@ test_that("tarayıcı ön kontrolü ana sayfayı veya eksik harness'ı kabul etm
       eval(e, ortam)
     }
   }
-  ortam$smoke_url <- "http://127.0.0.1:28081/smoke/ux-smoke.html?autostart=1"
+  ortam$preflight_smoke_url <- "http://127.0.0.1:28081/smoke/ux-smoke.html"
+  ortam$display_smoke_url <- "<test-smoke-url>"
   yanit <- read_source_text_utf8(file.path(root, "tests", "smoke", "ux-smoke.html"))
   istenen <- character(0)
   ortam$read_url <- function(target) {
@@ -170,7 +175,7 @@ test_that("tarayıcı ön kontrolü ana sayfayı veya eksik harness'ı kabul etm
     yanit
   }
   expect_true(ortam$ux_smoke_check_harness())
-  expect_identical(istenen, ortam$smoke_url)
+  expect_identical(istenen, ortam$preflight_smoke_url)
 
   # 404/boş yanıt, SSO/ana sayfa ve yalnız betikteki PASS sabiti kanıt değildir.
   for (gecersiz in c("", "<html><title>Not Found</title></html>",
@@ -213,35 +218,6 @@ test_that("koşucunun geçici uygulaması .Renviron kapalı değerinden sonra sm
   expect_identical(dinleme, list(host = "127.0.0.1", enabled = "true"))
 })
 
-test_that("runbook geçici Windows uygulamasında smoke kapısını yapılandırma sonrasında açar", {
-  root <- resolve_repo_root_for_tests()
-  satirlar <- strsplit(read_source_text_utf8(file.path(root, "RUNBOOK.md")), "\n", fixed = TRUE)[[1]]
-  onek <- '& $rscript -e "'
-  baslatma <- satirlar[startsWith(satirlar, onek) & grepl("run_mergen_app(", satirlar, fixed = TRUE)]
-  expect_length(baslatma, 1L)
-  kod <- parse(text = substr(baslatma, nchar(onek) + 1L, nchar(baslatma) - 1L), encoding = "UTF-8")
-  cagri <- function(ad) which(vapply(as.list(kod), function(e) {
-    is.call(e) && identical(e[[1]], as.name(ad))
-  }, logical(1)))
-  ayar <- cagri("Sys.setenv")
-  kaynak <- cagri("source")
-  calistir <- cagri("run_mergen_app")
-  expect_length(ayar, 2L)
-  expect_length(kaynak, 1L)
-  expect_length(calistir, 1L)
-  expect_lt(ayar[[1]], kaynak)
-  expect_gt(ayar[[2]], kaynak)
-  expect_lt(ayar[[2]], calistir)
-  withr::local_envvar(MERGEN_ENABLE_UX_SMOKE = NA, MERGEN_HOST = NA,
-                     MERGEN_RUN_APP = NA, MERGEN_DISABLE_FUTURES = NA, TZ = NA)
-  eval(kod[[ayar[[1]]]])
-  # app.R yapılandırması .Renviron'daki kapalı değeri yeniden yükleyebilir.
-  Sys.setenv(MERGEN_ENABLE_UX_SMOKE = "false")
-  eval(kod[[ayar[[2]]]])
-  expect_true(.smoke_gate_app_env()$mergen_ux_smoke_enabled())
-  expect_identical(kod[[calistir]][["host"]], "127.0.0.1")
-})
-
 test_that("smoke koşucusu açık hazırlanmış profili korur, varsayılan geçici profili temizler", {
   ifadeler <- parse_r_file_utf8(file.path(resolve_repo_root_for_tests(), "tests", "scripts", "ai_browser_ux_smoke.R"))
   ortam <- new.env(parent = baseenv())
@@ -269,4 +245,44 @@ test_that("smoke koşucusu açık hazırlanmış profili korur, varsayılan geç
   writeLines("not a directory", dosya)
   withr::defer(unlink(dosya))
   expect_error(ortam$ux_smoke_browser_profile(dosya, TRUE), "could not be created", fixed = TRUE)
+})
+
+test_that("ağ smoke yalnız iki opt-in ve geçerli koşu önekiyle sabit test dizinini sunar", {
+  env <- .smoke_gate_app_env()
+  withr::local_dir(resolve_repo_root_for_tests())
+  withr::local_envvar(MERGEN_ENABLE_UX_SMOKE = NA, MERGEN_HOST = "0.0.0.0",
+                     MERGEN_ALLOW_NETWORK_UX_SMOKE = NA, MERGEN_UX_SMOKE_PATH = NA)
+  withr::defer(env$mergen_register_ux_smoke_resource(FALSE))
+  prefix <- paste0("__mergen_ux_", paste(rep("ab", 24), collapse = ""))
+  expect_false(env$mergen_ux_smoke_enabled())
+  Sys.setenv(MERGEN_ENABLE_UX_SMOKE = "true")
+  expect_false(env$mergen_ux_smoke_enabled())
+  Sys.setenv(MERGEN_UX_SMOKE_PATH = prefix)
+  expect_false(env$mergen_ux_smoke_enabled())
+  Sys.setenv(MERGEN_ALLOW_NETWORK_UX_SMOKE = "true")
+  expect_true(env$mergen_ux_smoke_enabled())
+  expect_true(env$mergen_register_ux_smoke_resource())
+  expect_false("smoke" %in% names(shiny::resourcePaths()))
+  expect_identical(normalizePath(shiny::resourcePaths()[[prefix]], winslash = "/"),
+                   normalizePath("tests/smoke", winslash = "/"))
+  expect_false("directory" %in% names(formals(env$mergen_register_ux_smoke_resource)))
+  for (bad in c("", "/", "smoke", "www", "../tests/smoke", "/tmp", "a/b", "..",
+                paste0(prefix, "/"), paste0(prefix, "\n"), toupper(prefix),
+                paste(rep("a", 1000), collapse = ""))) {
+    Sys.setenv(MERGEN_UX_SMOKE_PATH = bad)
+    expect_false(env$mergen_ux_smoke_enabled(), info = bad)
+    expect_false(env$mergen_register_ux_smoke_resource())
+    expect_false(any(startsWith(as.character(names(shiny::resourcePaths())), "__mergen_ux_")))
+  }
+  Sys.setenv(MERGEN_UX_SMOKE_PATH = prefix)
+  expect_true(env$mergen_register_ux_smoke_resource())
+  next_prefix <- sub("ab$", "cd", prefix)
+  Sys.setenv(MERGEN_UX_SMOKE_PATH = next_prefix)
+  expect_true(env$mergen_register_ux_smoke_resource())
+  expect_false(prefix %in% names(shiny::resourcePaths()))
+  Sys.setenv(MERGEN_ENABLE_UX_SMOKE = "false")
+  expect_false(env$mergen_register_ux_smoke_resource())
+  expect_false(next_prefix %in% names(shiny::resourcePaths()))
+  expect_true(is.na(env$mergen_ux_smoke_prefix(c(prefix, prefix))))
+  expect_true(is.na(env$mergen_ux_smoke_prefix(NA_character_)))
 })

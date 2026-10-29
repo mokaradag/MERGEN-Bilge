@@ -190,13 +190,7 @@ MERGEN_REQUIRE_BROWSER_UX_SMOKE=true bash tools/ai_validate.sh full --boot-smoke
 
 17 Ekim 2026 tarihli son VM evidence gate koşumu başarılıdır: `Toplam: 13 passed, 0 failed, 0 skipped`. Son kanıt `artifacts/vm-evidence/20261017-061049/evidence.json` altında beklenir; genel düzen `artifacts/vm-evidence/<timestamp>/evidence.json` olarak kalır. Ayrıntılı son koşum kaydı için [`docs/vm-evidence-status.md`](docs/vm-evidence-status.md) izlenir.
 
-Son başarılı external-app koşumunda uygulama zaten `http://127.0.0.1:28081` üzerinde çalışırken gate şu ortamla koşturuldu:
-
-```powershell
-$env:MERGEN_BROWSER_UX_BASE_URL = "http://127.0.0.1:28081"
-$env:MERGEN_REQUIRE_BROWSER_UX_SMOKE = "true"
-& $rscript --vanilla tests/scripts/run_vm_evidence_gate.R
-```
+Windows VM browser UX smoke güncel akışı için [VM browser UX smoke](docs/vm-browser-ux-smoke.md) belgesini izleyin. Normal uygulama `0.0.0.0:8009` topolojisinde kalır. `run_vm_browser_ux_smoke.R --start-app` geçici opt-in ve rastgele test yolunu üretir; ikinci pencerede aynı betik argümansız yalnız browser smoke çalıştırır. `MERGEN_BROWSER_UX_BASE_URL` onaylı SSO URL'si olarak yalnız çalışma anında `Read-Host` ile alınır. Aynı ortamda tam gate mevcut `browser_ux_smoke` adımı üzerinden VM koşucusunu çağırır. Önceki tarihli kanıt yeni değişikliklerin Windows/SSO doğrulaması değildir.
 
 Geçerli release kanıtı sayılması için özet satırında `Toplam: 13 passed, 0 failed, 0 skipped` görülmeli ve hiçbir adım `FAILED` veya `SKIPPED` olmamalıdır. 17 Ekim 2026 koşumunda `full_testthat`, `maintainability_report`, `frontend_ratchet`, `seam_doctor`, `source_manifest_contracts`, `ui_asset_manifest_contracts`, `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight` ve diğer gate adımlarının tümü `PASSED` olmuştur.
 

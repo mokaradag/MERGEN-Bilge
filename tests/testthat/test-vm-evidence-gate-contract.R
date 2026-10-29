@@ -351,3 +351,37 @@ test_that("gecersiz profil degeri acik hata uretir (hafif davranis kontrolu)", {
 
   unlink(c(out_stdout_log, out_stderr_log, out_message_log, runner_file), force = TRUE)
 })
+test_that("browser adimi external ortamda VM kosucusunu secer, kaynak PASS sabiti kanit degildir", {
+  env <- new.env(parent = globalenv())
+  expressions <- parse(file = .evg_script_path, encoding = "UTF-8")
+  for (e in expressions) {
+    if (is.call(e) && identical(e[[1]], as.name("<-")) &&
+        as.character(e[[2]]) %in% c("run_step_browser_ux_smoke", "evidence_env_flag_true")) eval(e, env)
+  }
+  withr::local_envvar(MERGEN_BROWSER_UX_BASE_URL = NA, MERGEN_BROWSER_BIN = NA,
+                     MERGEN_REQUIRE_BROWSER_UX_SMOKE = NA)
+  log <- tempfile()
+  withr::defer(unlink(log))
+  selected <- NULL
+  env$run_step_simple_child <- function(step_id, body_lines, ...) {
+    selected <<- body_lines
+    list(ok = TRUE, log_file = log, detail = list())
+  }
+  env$evidence_read_text_file_safe <- function(path) paste(readLines(path, warn = FALSE), collapse = "\n")
+  writeLines("OK: rendered #status is UX_SMOKE_DONE:PASS.", log)
+  expect_true(env$run_step_browser_ux_smoke()$ok)
+  expect_match(selected, "tests/scripts/ai_browser_ux_smoke.R", fixed = TRUE)
+  Sys.setenv(MERGEN_BROWSER_UX_BASE_URL = "https://app.example.invalid/base")
+  expect_true(env$run_step_browser_ux_smoke()$ok)
+  expect_match(selected, "tests/scripts/run_vm_browser_ux_smoke.R", fixed = TRUE)
+  for (wrong in c("", "HTTP 200", "UX_SMOKE_DONE:PASS", "SKIP",
+                  "FAILED: rendered #status did not reach UX_SMOKE_DONE:PASS", "<script>UX_SMOKE_DONE:PASS</script>")) {
+    writeLines(wrong, log)
+    result <- env$run_step_browser_ux_smoke()
+    expect_false(result$ok)
+    expect_false(isTRUE(result$skipped))
+  }
+  Sys.unsetenv("MERGEN_BROWSER_UX_BASE_URL")
+  writeLines("SKIP: no browser", log)
+  expect_true(env$run_step_browser_ux_smoke()$skipped)
+})

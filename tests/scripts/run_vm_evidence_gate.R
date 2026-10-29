@@ -129,7 +129,8 @@ evidence_redact_text <- function(text) {
   sensitive_names <- c(
     "LOCAL_LLM_ENDPOINT", "LOCAL_LLM_API_KEY", "DB_DSN", "DB_PASSWORD",
     "AI_KEYS_MASTER", "SSO_KEYCLOAK_URL", "SSO_CLIENT_SECRET",
-    "MERGEN_DEFAULT_API_KEY", "MERGEN_BROWSER_BIN"
+    "MERGEN_DEFAULT_API_KEY", "MERGEN_BROWSER_BIN",
+    "MERGEN_BROWSER_UX_BASE_URL", "MERGEN_UX_SMOKE_PATH"
   )
 
   values <- Sys.getenv(sensitive_names, unset = "")
@@ -522,12 +523,14 @@ run_step_simple_child <- function(step_id, body_lines, extra_env = character(0))
 
 run_step_browser_ux_smoke <- function() {
   browser_bin_set <- nzchar(Sys.getenv("MERGEN_BROWSER_BIN", unset = ""))
-  require_browser <- browser_bin_set ||
+  vm_network <- nzchar(trimws(Sys.getenv("MERGEN_BROWSER_UX_BASE_URL", "")))
+  require_browser <- vm_network || browser_bin_set ||
     evidence_env_flag_true("MERGEN_REQUIRE_BROWSER_UX_SMOKE")
 
   res <- run_step_simple_child(
     "browser_ux_smoke",
-    "source('tests/scripts/ai_browser_ux_smoke.R', encoding = 'UTF-8')"
+    if (vm_network) "source('tests/scripts/run_vm_browser_ux_smoke.R', encoding = 'UTF-8')" else
+      "source('tests/scripts/ai_browser_ux_smoke.R', encoding = 'UTF-8')"
   )
 
   log_text <- evidence_read_text_file_safe(res$log_file)
@@ -536,7 +539,8 @@ run_step_browser_ux_smoke <- function() {
   # "passed" sayilir. Alt betik tarayici yokken exit 0 ile SKIP yazabilir;
   # bu durum kanit DEGILDIR ve "skipped" olarak siniflandirilir. Tarayici
   # zorunluysa SKIP de basarisizliktir.
-  smoke_pass_seen <- grepl("UX_SMOKE_DONE:PASS", log_text, fixed = TRUE)
+  smoke_pass_seen <- "OK: rendered #status is UX_SMOKE_DONE:PASS." %in%
+    trimws(strsplit(log_text, "\n", fixed = TRUE)[[1]])
   smoke_skip_seen <- grepl("SKIP", log_text, fixed = TRUE)
 
   if (isTRUE(res$ok) && !smoke_pass_seen) {
@@ -555,6 +559,7 @@ run_step_browser_ux_smoke <- function() {
     res$notes <- "Yerel tarayici binari yok; smoke SKIP (zorunlu degil)."
   }
 
+  res$detail$vm_network_runner <- vm_network
   res$detail$require_browser <- require_browser
   res$detail$browser_bin_set <- browser_bin_set
   res$detail$ux_smoke_pass_marker <- smoke_pass_seen

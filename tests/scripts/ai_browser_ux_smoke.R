@@ -135,16 +135,32 @@ ux_smoke_redact_external_url <- function(text, base_url = external_base_url) {
   }
 
   clean_base_url <- sub("/+$", "", base_url)
-  gsub(clean_base_url, "<MERGEN_BROWSER_UX_BASE_URL>", as.character(text), fixed = TRUE)
+  origin <- sub("^(https?://[^/]+).*$", "\\1", clean_base_url)
+  hostname <- sub(":[0-9]+$", "", sub("^https?://", "", origin))
+  out <- as.character(text)
+  for (value in unique(c(clean_base_url, origin, hostname,
+                         utils::URLencode(clean_base_url, reserved = TRUE)))) {
+    out <- gsub(value, "<MERGEN_BROWSER_UX_BASE_URL>", out, fixed = TRUE)
+  }
+  # Yönlendirme/SSO adresleri ve koşu öneki de artifact'a sızmaz.
+  out <- gsub("https?://[^[:space:]<>\"']+|https?%3[Aa]%2[Ff]%2[Ff][^[:space:]<>\"']+",
+              "<URL>", out, perl = TRUE)
+  gsub("__mergen_ux_[0-9a-f]{48}", "<UX_SMOKE_PATH>", out)
 }
 
-# Harness yalnızca açık başlatmayla çalışır; otomasyon bunu ?autostart=1 ile verir.
-smoke_url <- sprintf("%s/smoke/ux-smoke.html?autostart=1", url)
-display_smoke_url <- if (isTRUE(use_external_app)) {
-  "<MERGEN_BROWSER_UX_BASE_URL>/smoke/ux-smoke.html?autostart=1"
-} else {
-  smoke_url
+# Yerel koşucu /smoke uyumluluğunu korur; VM sarmalayıcısı rastgele öneki verir.
+smoke_prefix <- if (use_external_app) Sys.getenv("MERGEN_UX_SMOKE_PATH", "") else ""
+if (!nzchar(smoke_prefix)) smoke_prefix <- "smoke"
+if (!identical(smoke_prefix, "smoke") && !grepl("^__mergen_ux_[0-9a-f]{48}$", smoke_prefix)) {
+  stop("Invalid MERGEN_UX_SMOKE_PATH.", call. = FALSE)
 }
+smoke_url <- sprintf("%s/%s/ux-smoke.html?autostart=1", url, smoke_prefix)
+# Bu yerel ön kontrol bind zorunluluğu değildir; 0.0.0.0:8009 localhost'tan erişilir.
+preflight_base_url <- if (use_external_app && env_flag_true("MERGEN_ALLOW_NETWORK_UX_SMOKE")) {
+  "http://127.0.0.1:8009"
+} else url
+preflight_smoke_url <- sprintf("%s/%s/ux-smoke.html", preflight_base_url, smoke_prefix)
+display_smoke_url <- if (use_external_app) "<MERGEN_BROWSER_UX_BASE_URL>/<UX_SMOKE_PATH>/ux-smoke.html?autostart=1" else smoke_url
 
 cat("== MERGEN browser UX smoke ==\n")
 cat(sprintf("Repo root: %s\n", repo_root))
@@ -262,7 +278,7 @@ if (!isTRUE(use_external_app)) {
     ");",
     "cat('SHINY_UX_RUNNER_START\\n');",
     "source('app.R', encoding='UTF-8');",
-    "Sys.setenv(MERGEN_ENABLE_UX_SMOKE='true');",
+    "Sys.setenv(MERGEN_ENABLE_UX_SMOKE='true', MERGEN_UX_SMOKE_PATH='', MERGEN_ALLOW_NETWORK_UX_SMOKE='false');",
     "cat('SHINY_UX_RUNNER_BOOT_OK\\n');",
     sprintf(
       "run_mergen_app(host='127.0.0.1', port=%dL, launch.browser=FALSE, quiet=FALSE)",
@@ -288,8 +304,7 @@ if (!isTRUE(use_external_app)) {
   cat("Using externally running app: <MERGEN_BROWSER_UX_BASE_URL>\n")
   cat(paste(
     "NOTE: The approved browser-facing URL may be a reverse-proxy URL.",
-    "Its underlying Shiny app must be the smoke-enabled loopback instance",
-    "started with MERGEN_ENABLE_UX_SMOKE=true on the same application port.\n"
+    "For VM/network SSO use run_vm_browser_ux_smoke.R and its --start-app mode.\n"
   ))
 }
 
@@ -298,7 +313,7 @@ read_url <- function(target) {
 
   tryCatch(
     {
-      con <- url(target, open = "rb", blocking = TRUE)
+      con <- suppressWarnings(url(target, open = "rb", blocking = TRUE))
       raw <- readBin(con, what = "raw", n = 256 * 1024)
       if (length(raw) == 0L) {
         return("")
@@ -374,7 +389,7 @@ wait_for_app <- function() {
 	  )
 	}
 
-    body <- read_url(url)
+    body <- read_url(preflight_base_url)
     if (nzchar(body)) {
       last_body <<- body
 
@@ -407,7 +422,7 @@ if (!wait_for_app()) {
 # Ana sayfanın açılması kapılı /smoke/ yolunun sunulduğunu kanıtlamaz.
 # Tarayıcı başlamadan gerçek harness'ı doğrula; uygulamanın kapısını değiştirme.
 ux_smoke_check_harness <- function() {
-  body <- read_url(smoke_url)
+  body <- read_url(preflight_smoke_url)
   if (grepl("<title>MERGEN UX Smoke</title>", body, fixed = TRUE) &&
       nzchar(ux_smoke_rendered_status(body))) {
     return(invisible(TRUE))
@@ -416,9 +431,8 @@ ux_smoke_check_harness <- function() {
   stop(paste(
     "FAILED: UX smoke harness is unavailable at", display_smoke_url,
     "Start/restart the target Shiny app with MERGEN_ENABLE_UX_SMOKE=true after source('app.R')",
-    "and keep it loopback-bound (host 127.0.0.1).",
-    "If the browser uses an approved external SSO URL, its reverse proxy must route /smoke/",
-    "to that same smoke-enabled app."
+    "For an already running app on the VM, restart with run_vm_browser_ux_smoke.R --start-app.",
+    "That mode keeps 0.0.0.0:8009 and shares the per-run prefix locally."
   ), call. = FALSE)
 }
 
@@ -528,9 +542,9 @@ if (identical(smoke_status, "UX_SMOKE_DONE:PASS")) {
 }
 
 if (startsWith(smoke_status, "UX_SMOKE_DONE:FAIL")) {
-  cat(sprintf("FAILED: rendered #status is '%s'.\n", smoke_status))
+  cat(sprintf("FAILED: rendered #status is '%s'.\n", ux_smoke_redact_external_url(smoke_status)))
 } else {
-  cat(sprintf("FAILED: rendered #status did not reach UX_SMOKE_DONE:PASS ('%s').\n", smoke_status))
+  cat(sprintf("FAILED: rendered #status did not reach UX_SMOKE_DONE:PASS ('%s').\n", ux_smoke_redact_external_url(smoke_status)))
 }
 
 cat(sprintf("Browser status: %d\n", result$status))

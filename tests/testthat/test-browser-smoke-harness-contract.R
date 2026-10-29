@@ -98,7 +98,7 @@ testthat::test_that("browser UX smoke harness gerçek UI anchor'larıyla hizalı
 		".modern-welcome-neural-canvas",
 		"#dynamic-greeting-text",
 		".modern-welcome-action-btn",
-		"/smoke/ux-smoke.html",
+		'new URL("../", window.location.href)',
 		"isSsoEnabled",
 		"fullQuickActions tarayıcı modu VM smoke'ta atlandı",
 		"getFrameAccess",
@@ -141,7 +141,7 @@ testthat::test_that("browser UX smoke harness gerçek UI anchor'larıyla hizalı
 		"skip_intro",
 		"mergen_current_chat",
 		"intro görünürlüğü SSO production smoke'ta atlandı",
-		"#ux_smoke_target=",
+		"ux_smoke_target=",
 		"UX_SMOKE_DONE:PASS",
 		"UX_SMOKE_DONE:FAIL"
 	  ),

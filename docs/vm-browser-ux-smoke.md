@@ -1,100 +1,85 @@
 # Windows VM browser UX smoke
 
-Bu akış, SSO/Keycloak'ın yalnız onaylı dış uygulama adresinde çalıştığı Windows VM için gerçek browser UX smoke doğrulamasıdır. Browser-facing URL ile Shiny dinleme adresi bilinçli olarak ayrıdır: Shiny güvenlik için loopback'te kalır; tarayıcı ise normal reverse-proxy/SSO origin'ini kullanır.
+Shiny normal topolojide **0.0.0.0:8009** üzerinde kalır; Edge, kullanıcıların normalde kullandığı onaylı reverse-proxy/SSO URL'sine gider. Yerel `127.0.0.1:8009` yalnız ön kontroldür, bind zorunluluğu değildir. SSO, JWT/state, Keycloak ve tarayıcı güvenlik ayarları değişmez.
 
-Gerçek hostname veya kurum içi URL repoya yazılmaz; `MERGEN_BROWSER_UX_BASE_URL` yalnız VM PowerShell oturumunda verilir.
+Harness `tests/smoke/` altında kalır. Normal başlatmada hiçbir smoke yolu açılmaz. Ağda yalnız `MERGEN_ENABLE_UX_SMOKE=true`, `MERGEN_ALLOW_NETWORK_UX_SMOKE=true` ve `MERGEN_UX_SMOKE_PATH` birlikte geçerliyken kaynak kaydedilir. Önek tam olarak `__mergen_ux_` + 48 küçük hex karakteridir; koşucu bunu işletim sisteminin güvenli rastgele kaynağından 24 bayt (192 bit) ile üretir. Sabit `/smoke/` yalnız loopback yerel test uyumluluğudur. Rastgele yol yetkilendirme yerine geçmez: uygulamanın mevcut SSO/oturumu ve yetkileri kullanılmaya devam eder.
 
-## Güvenlik sınırı
+**Yaşam süresi:** Window 2 ortamı çalışan Window 1 sürecini değiştiremez. Bu nedenle normal uygulamayı durdurup aşağıdaki geçici smoke başlatmasını aynı `0.0.0.0:8009` üzerinde yapın. Koşucu `source('app.R')` sonrasında opt-in değerlerini uygular; `.Renviron` dosyasına hiçbir şey yazmaz. Önek yalnız kullanıcıya ait `%LOCALAPPDATA%\MERGEN\BrowserUxSmokeRun\prefix` dosyasında paylaşılır; URL veya kimlik bilgisi içermez. Aynı Windows hesabını kullanın. Süreç sona erince HTTP yolu kaybolur; normal çıkış/Ctrl+C yerel dosyayı da temizler. Zorla öldürmede kalan dizini, o smoke sürecinin durduğunu doğruladıktan sonra silin. Her yeni `--start-app` yeni önek üretir. Tek başlatma boyunca hızlı smoke ve tam gate aynı öneki kullanabilir.
 
-UX smoke harness `tests/smoke/` altında kalır ve normal `www/` statik ağacına taşınmaz. `/smoke/` varsayılan kapalıdır ve PR #731'in loopback kuralı korunur:
+## Window 1 — geçici smoke uygulaması
 
-- `MERGEN_ENABLE_UX_SMOKE=true` gerekir.
-- Shiny `127.0.0.1` üzerinde dinler.
-- SSO, JWT/state doğrulaması veya tarayıcı güvenliği kapatılmaz.
-- Test bitince uygulama normal ayarlarla yeniden başlatılır.
-
-## Window 1 — 8009 uygulamasını smoke-enabled loopback olarak başlatın
-
-Normal 8009 uygulamasını durdurun ve aynı portta geçici smoke-enabled instance'ı başlatın:
+Normal 8009 uygulamasını kendi konsolundan/normal işletim yöntemiyle durdurun. Mevcut proxy/SSO yapılandırmasını değiştirmeyin.
 
 ```powershell
-$repo = "U:\Primavera\PYB\04 - Geliştirme\MERGEN Bilge"
-Set-Location $repo
-
+Set-Location "<repo>"
 $rscript = "C:\Program Files\R\R-4.6.0\bin\Rscript.exe"
-if (!(Test-Path $rscript)) { $rscript = "C:\Program Files\R\R-4.6.0\bin\x64\Rscript.exe" }
-if (!(Test-Path $rscript)) { throw "R 4.6.0 Rscript.exe bulunamadi." }
-
-& $rscript -e "if (file.exists('.Renviron')) readRenviron('.Renviron'); Sys.setenv(MERGEN_RUN_APP='false', MERGEN_DISABLE_FUTURES='true', MERGEN_HOST='127.0.0.1', TZ='UTC'); source('app.R', encoding='UTF-8'); Sys.setenv(MERGEN_ENABLE_UX_SMOKE='true'); run_mergen_app(host='127.0.0.1', port=8009L, launch.browser=FALSE, quiet=FALSE)"
+if (!(Test-Path $rscript)) {
+    $rscript = "C:\Program Files\R\R-4.6.0\bin\x64\Rscript.exe"
+}
+if (!(Test-Path $rscript)) { throw "Rscript.exe bulunamadi." }
+& $rscript --vanilla tests/scripts/run_vm_browser_ux_smoke.R --start-app
 ```
 
-Bayrağın `source('app.R')` sonrasında verilmesi kasıtlıdır; başlangıç yapılandırmasının geçici smoke opt-in'ini geri yazmasını önler.
+Bu komut ön planda bekler; uygulama **0.0.0.0:8009** dinler. Window 1'i test süresince açık bırakın. Test başlatmadan uygulamanın boot işlemini bitirmesini bekleyin.
 
-Reverse proxy'nin normal dış uygulama yolunu bu aynı `127.0.0.1:8009` instance'ına yönlendirmesi gerekir. Böylece Shiny loopback'te kalırken tarayıcı ve Keycloak yalnız onaylı dış origin'i görür.
+## Window 2 — SSO için ayrı Edge profili
 
-## Window 2 — gerçek URL'yi yalnız çalışma ortamında girin
-
-Gerçek uygulama URL'sini source code, test, belge veya commit içine yazmayın:
+Gerçek hostname/URL repoya veya artifact'a yazılmaz. Her zaman çalışma anında alın; belge/test örneği yalnız `https://app.example.invalid/base` biçimindedir. Alt yol varsa base URL'ye ekleyin; sorgu/fragment eklemeyin.
 
 ```powershell
+Set-Location "<repo>"
+$rscript = "C:\Program Files\R\R-4.6.0\bin\Rscript.exe"
+if (!(Test-Path $rscript)) {
+    $rscript = "C:\Program Files\R\R-4.6.0\bin\x64\Rscript.exe"
+}
 $env:MERGEN_BROWSER_UX_BASE_URL = Read-Host "Approved MERGEN base URL"
-```
-
-Değer, kullanıcının normalde SSO ile açtığı tam base URL olmalıdır. Alt yol varsa dahil edilir. Örnek biçim yalnız şemayı göstermek içindir: `https://app.example.invalid/base`.
-
-Önce bu runtime URL altında smoke sayfasının ulaşıldığını doğrulayabilirsiniz:
-
-```powershell
-Invoke-WebRequest -UseBasicParsing ($env:MERGEN_BROWSER_UX_BASE_URL.TrimEnd('/') + '/smoke/ux-smoke.html')
-```
-
-404 alınırsa Window 1'in smoke-enabled instance olduğunu ve reverse proxy'nin `/smoke/` yolunu aynı 8009 instance'ına ilettiğini doğrulayın.
-
-## SSO için ayrı Edge profili hazırlayın
-
-```powershell
-$smokeProfile = Join-Path $env:LOCALAPPDATA "MERGEN\BrowserUxSmoke"
+$env:MERGEN_BROWSER_UX_PROFILE_DIR = Join-Path $env:LOCALAPPDATA "MERGEN\BrowserUxSmoke"
 $edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
 if (!(Test-Path $edge)) { $edge = "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe" }
 if (!(Test-Path $edge)) { throw "Microsoft Edge bulunamadi." }
-
-& $edge "--user-data-dir=$smokeProfile" --no-first-run --no-default-browser-check $env:MERGEN_BROWSER_UX_BASE_URL
+$env:MERGEN_BROWSER_BIN = $edge
+& $edge "--user-data-dir=$env:MERGEN_BROWSER_UX_PROFILE_DIR" --no-first-run --no-default-browser-check $env:MERGEN_BROWSER_UX_BASE_URL
 ```
 
-Açılan ayrı profilde normal SSO girişini tamamlayın ve uygulamanın aynı onaylı URL'ye döndüğünü doğrulayın. Sonra bu profile ait tüm Edge pencerelerini kapatın. Profil yalnız smoke içindir; repoya veya artifact'a koymayın.
+Ayrı profilde normal SSO girişini tamamlayın ve uygulamanın açıldığını doğrulayın. Sonra **bu profile ait bütün Edge pencerelerini kapatın**. Profil repo/artifact dışında kalmalıdır. Token/cookie okunmaz, kopyalanmaz veya enjekte edilmez. Oturum geçerliyse bu hazırlığı her seferinde tekrarlamak gerekmez; SSO sayfasında kalan smoke başarısızdır.
 
 ## Yalnız browser UX smoke — hızlı kontrol
 
+Aynı Window 2'de:
+
 ```powershell
-$repo = "U:\Primavera\PYB\04 - Geliştirme\MERGEN Bilge"
-Set-Location $repo
-
-$rscript = "C:\Program Files\R\R-4.6.0\bin\Rscript.exe"
-if (!(Test-Path $rscript)) { $rscript = "C:\Program Files\R\R-4.6.0\bin\x64\Rscript.exe" }
-if (!(Test-Path $rscript)) { throw "R 4.6.0 Rscript.exe bulunamadi." }
-
-$env:MERGEN_BROWSER_UX_BASE_URL = Read-Host "Approved MERGEN base URL"
-$env:MERGEN_BROWSER_UX_PROFILE_DIR = Join-Path $env:LOCALAPPDATA "MERGEN\BrowserUxSmoke"
-$env:MERGEN_REQUIRE_BROWSER_UX_SMOKE = "true"
-
-& $rscript --vanilla tests/scripts/ai_browser_ux_smoke.R --require-browser
-Write-Host "Browser UX smoke exit code: $LASTEXITCODE"
+& $rscript --vanilla tests/scripts/run_vm_browser_ux_smoke.R
+if ($LASTEXITCODE -ne 0) { throw "Browser UX smoke FAILED" }
 ```
 
-Başarılı koşum `OK: rendered #status is UX_SMOKE_DONE:PASS.` ve çıkış kodu `0` üretir.
-
-Koşucu gerçek base URL'yi çalışma sırasında kullanır ancak console/DOM/stderr artifact metinlerinde `<MERGEN_BROWSER_UX_BASE_URL>` olarak redakte eder.
+Bu komut yalnız browser UX smoke çalıştırır. Yerel ön kontrol `http://127.0.0.1:8009/<per-run-prefix>/ux-smoke.html` üzerindedir; headless Edge ise onaylı runtime base URL + aynı önek + `/ux-smoke.html?autostart=1` kullanır. Proxy mevcut base altındaki rastgele kaynak yolunu aynı 8009 uygulamasına iletmelidir. HTTP 200, harness kaynağı, SSO yönlendirmesi veya exit 0 kanıt değildir. Başarı yalnız **`OK: rendered #status is UX_SMOKE_DONE:PASS.`** ile bildirilir. URL'ler/önek DOM ve stderr artifact'larında redakte edilir.
 
 ## Tam VM evidence gate
 
-Aynı Window 1 açıkken ve hazırlanmış Edge profilinin pencereleri kapalıyken:
+Window 1 açıkken, aynı Window 2'de:
 
 ```powershell
-$env:MERGEN_BROWSER_UX_BASE_URL = Read-Host "Approved MERGEN base URL"
-$env:MERGEN_BROWSER_UX_PROFILE_DIR = Join-Path $env:LOCALAPPDATA "MERGEN\BrowserUxSmoke"
-$env:MERGEN_REQUIRE_BROWSER_UX_SMOKE = "true"
-
+Remove-Item Env:MERGEN_EVIDENCE_STEPS -ErrorAction SilentlyContinue
+$env:MERGEN_EVIDENCE_PROFILE = "vm"
 & $rscript --vanilla tests/scripts/run_vm_evidence_gate.R
+if ($LASTEXITCODE -ne 0) { throw "VM evidence gate FAILED" }
 ```
 
-Test bittikten sonra Window 1'i durdurun ve uygulamayı `MERGEN_ENABLE_UX_SMOKE` olmadan normal biçimde yeniden başlatın.
+`MERGEN_BROWSER_UX_BASE_URL` ayarlıysa gate mevcut `browser_ux_smoke` adımında VM sarmalayıcısını kullanır ve browser zorunludur. Normal 13 adım korunur; tam kanıt için **13 passed, 0 failed, 0 skipped** gerekir. URL ayarlı değilse generic/cloud koşucu davranışı korunur.
+
+## Normal moda dönüş
+
+Window 1'de **Ctrl+C** ile geçici uygulamayı durdurun. Ardından normal launcher'ı kullanın; örneğin aynı repo kökünde:
+
+```powershell
+Remove-Item Env:MERGEN_ENABLE_UX_SMOKE,Env:MERGEN_ALLOW_NETWORK_UX_SMOKE,Env:MERGEN_UX_SMOKE_PATH -ErrorAction SilentlyContinue
+& $rscript --vanilla run_mergen_prod.R
+```
+
+Normal `.Renviron` yapılandırması `MERGEN_HOST=0.0.0.0`, `MERGEN_PORT=8009` olarak kalır; smoke opt-in/önek değerlerini `.Renviron` içine **eklemeyin**. Window 2'de çalışma URL'sini/profil seçimini temizleyin (hazırlanmış profil silinmez):
+
+```powershell
+Remove-Item Env:MERGEN_BROWSER_UX_BASE_URL,Env:MERGEN_BROWSER_UX_PROFILE_DIR,Env:MERGEN_BROWSER_BIN,Env:MERGEN_EVIDENCE_PROFILE -ErrorAction SilentlyContinue
+```
+
+Zorla sonlandırma sonrası eski handshake varsa ve Window 1 artık çalışmıyorsa yalnız `Join-Path $env:LOCALAPPDATA "MERGEN\BrowserUxSmokeRun"` dizinini silin; hazırlanan `BrowserUxSmoke` profilini silmeyin.
