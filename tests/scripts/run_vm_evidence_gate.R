@@ -125,6 +125,13 @@ evidence_env_flag_true <- function(name, default = FALSE) {
   raw %in% c("true", "t", "1", "yes", "y")
 }
 
+# Tarayici gereksinimi hem cocuk runner hem ust kapi icin tek karardir.
+evidence_browser_required <- function() {
+  nzchar(trimws(Sys.getenv("MERGEN_BROWSER_UX_BASE_URL", ""))) ||
+    nzchar(Sys.getenv("MERGEN_BROWSER_BIN", "")) ||
+    evidence_env_flag_true("MERGEN_REQUIRE_BROWSER_UX_SMOKE")
+}
+
 evidence_redact_text <- function(text) {
   sensitive_names <- c(
     "LOCAL_LLM_ENDPOINT", "LOCAL_LLM_API_KEY", "DB_DSN", "DB_PASSWORD",
@@ -524,8 +531,7 @@ run_step_simple_child <- function(step_id, body_lines, extra_env = character(0))
 run_step_browser_ux_smoke <- function() {
   browser_bin_set <- nzchar(Sys.getenv("MERGEN_BROWSER_BIN", unset = ""))
   vm_network <- nzchar(trimws(Sys.getenv("MERGEN_BROWSER_UX_BASE_URL", "")))
-  require_browser <- vm_network || browser_bin_set ||
-    evidence_env_flag_true("MERGEN_REQUIRE_BROWSER_UX_SMOKE")
+  require_browser <- evidence_browser_required()
 
   res <- run_step_simple_child(
     "browser_ux_smoke",
@@ -704,11 +710,12 @@ step_results <- list()
 
 for (spec in evidence_step_specs) {
   step_id <- spec$id
-  required <- profile_effective %in% spec$required_in
+  browser_required <- identical(step_id, "browser_ux_smoke") && evidence_browser_required()
+  required <- profile_effective %in% spec$required_in || browser_required
 
   if (length(steps_filter) > 0L && !(step_id %in% steps_filter)) {
     step_results[[step_id]] <- list(
-      spec = spec, status = "skipped", required = FALSE,
+      spec = spec, status = "skipped", required = browser_required,
       notes = "MERGEN_EVIDENCE_STEPS filtresi disinda.",
       detail = list(), log_file = NULL, duration_sec = 0
     )
@@ -771,7 +778,7 @@ git_field <- function(args) {
 }
 
 failed_required <- vapply(step_results, function(r) {
-  identical(r$status, "failed") && isTRUE(r$required)
+  !identical(r$status, "passed") && isTRUE(r$required)
 }, logical(1))
 
 failed_optional <- vapply(step_results, function(r) {

@@ -356,7 +356,7 @@ test_that("browser adimi external ortamda VM kosucusunu secer, kaynak PASS sabit
   expressions <- parse(file = .evg_script_path, encoding = "UTF-8")
   for (e in expressions) {
     if (is.call(e) && identical(e[[1]], as.name("<-")) &&
-        as.character(e[[2]]) %in% c("run_step_browser_ux_smoke", "evidence_env_flag_true")) eval(e, env)
+        as.character(e[[2]]) %in% c("run_step_browser_ux_smoke", "evidence_env_flag_true", "evidence_browser_required")) eval(e, env)
   }
   withr::local_envvar(MERGEN_BROWSER_UX_BASE_URL = NA, MERGEN_BROWSER_BIN = NA,
                      MERGEN_REQUIRE_BROWSER_UX_SMOKE = NA)
@@ -384,4 +384,61 @@ test_that("browser adimi external ortamda VM kosucusunu secer, kaynak PASS sabit
   Sys.unsetenv("MERGEN_BROWSER_UX_BASE_URL")
   writeLines("SKIP: no browser", log)
   expect_true(env$run_step_browser_ux_smoke()$skipped)
+})
+
+test_that("zorunlu browser basarisizligi veya atlanmasi ust kapiyi dusurur", {
+  expressions <- parse(file = .evg_script_path, encoding = "UTF-8")
+  loop <- Filter(function(e) is.call(e) && identical(e[[1]], as.name("for")) &&
+                   identical(e[[2]], as.name("spec")), as.list(expressions))
+  expect_length(loop, 1L)
+  stop_branch <- Filter(function(e) is.call(e) && identical(e[[1]], as.name("if")) &&
+                          identical(e[[2]], quote(identical(overall_status, "failed"))), as.list(expressions))
+  expect_length(stop_branch, 1L)
+  withr::local_envvar(MERGEN_BROWSER_UX_BASE_URL = NA, MERGEN_BROWSER_BIN = NA,
+                     MERGEN_REQUIRE_BROWSER_UX_SMOKE = NA)
+  env <- new.env(parent = globalenv())
+  definitions <- c("%||%", "evidence_env_flag_true", "evidence_browser_required", "evidence_step_specs")
+  for (e in expressions) {
+    if (is.call(e) && identical(e[[1]], as.name("<-")) &&
+        as.character(e[[2]]) %in% definitions) eval(e, env)
+  }
+  env$profile_effective <- "cloud"
+  env$cat <- function(...) invisible(NULL)
+  env$evidence_redact_text <- identity
+  env$evidence_json_path <- "test-evidence.json"
+  result <- list(ok = FALSE, detail = list(ux_smoke_pass_marker = FALSE))
+  env$evidence_step_runners <- setNames(lapply(env$evidence_step_specs, function(spec) {
+    if (identical(spec$id, "browser_ux_smoke")) function() result else function() list(ok = TRUE)
+  }), vapply(env$evidence_step_specs, function(spec) spec$id, character(1)))
+  aggregate <- function(filter = character(0)) {
+    env$step_results <- list()
+    env$steps_filter <- filter
+    eval(loop[[1]], env)
+    for (e in expressions) {
+      if (is.call(e) && identical(e[[1]], as.name("<-")) &&
+          as.character(e[[2]]) %in% c("failed_required", "failed_optional", "overall_status")) eval(e, env)
+    }
+    expect_length(env$step_results, 13L)
+    env$overall_status
+  }
+  # Tarayici acikca istenmemisse opsiyonel davranis korunur.
+  expect_identical(aggregate(), "passed")
+  expect_false(env$step_results$browser_ux_smoke$required)
+  for (settings in list(c(MERGEN_REQUIRE_BROWSER_UX_SMOKE = "true"),
+                        c(MERGEN_BROWSER_BIN = "missing-browser"),
+                        c(MERGEN_BROWSER_UX_BASE_URL = "https://app.example.invalid/base"))) {
+    withr::with_envvar(settings, {
+      expect_identical(aggregate(), "failed")
+      expect_true(env$step_results$browser_ux_smoke$required)
+      expect_error(eval(stop_branch[[1]], env), "VM kanit kapisi basarisiz: browser_ux_smoke", fixed = TRUE)
+    })
+  }
+  Sys.setenv(MERGEN_REQUIRE_BROWSER_UX_SMOKE = "true")
+  result <- list(ok = FALSE, skipped = TRUE)
+  expect_identical(aggregate(), "failed")
+  expect_identical(aggregate("env_config"), "failed")
+  expect_identical(env$step_results$browser_ux_smoke$status, "skipped")
+  result <- list(ok = TRUE, detail = list(ux_smoke_pass_marker = TRUE))
+  expect_identical(aggregate(), "passed")
+  expect_no_error(eval(stop_branch[[1]], env))
 })
