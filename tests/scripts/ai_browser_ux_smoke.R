@@ -385,6 +385,29 @@ if (!wait_for_app()) {
   quit(status = 1)
 }
 
+# External-app modunda ana sayfanın erişilebilir olması tek başına yeterli değildir.
+# /smoke yolu uygulama BAŞLARKEN güvenlik kapısıyla kaydedilir; gate sürecinde
+# MERGEN_ENABLE_UX_SMOKE=true vermek zaten çalışan başka bir R sürecinin kaynak
+# yollarını sonradan değiştiremez. Tarayıcıyı 165 sn çalıştırmadan önce gerçek
+# harness'ın aynı origin üzerinde sunulduğunu doğrula.
+if (isTRUE(use_external_app)) {
+  external_smoke_body <- read_url(smoke_url)
+  harness_available <- nzchar(external_smoke_body) &&
+    grepl("<title>MERGEN UX Smoke</title>", external_smoke_body, fixed = TRUE) &&
+    grepl("id=\"status\"", external_smoke_body, fixed = TRUE)
+
+  if (!isTRUE(harness_available)) {
+    skip_or_fail_app_boot(
+      reason = paste(
+        "External app is reachable, but /smoke harness is not exposed.",
+        "Restart that app with MERGEN_ENABLE_UX_SMOKE=true and MERGEN_HOST=127.0.0.1 before running the evidence gate.",
+        "Setting MERGEN_ENABLE_UX_SMOKE only in the gate process cannot change an already-running app."
+      ),
+      status = NA_integer_
+    )
+  }
+}
+
 profile_dir <- tempfile("mergen-browser-profile-")
 dir.create(profile_dir, recursive = TRUE, showWarnings = FALSE)
 on.exit(unlink(profile_dir, recursive = TRUE, force = TRUE), add = TRUE)

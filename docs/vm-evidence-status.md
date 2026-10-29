@@ -38,7 +38,18 @@ Süreler, 17 Ekim 2026 tarihli operatör ekran görüntüsünde görülen yakla�
 
 ## Browser UX smoke koşumu
 
-Son başarılı gate, zaten çalışan uygulamaya external-app modunda bağlandı:
+17 Ekim'deki tarihsel başarılı gate, zaten çalışan uygulamaya external-app modunda bağlandı. Güncel güvenlik sözleşmesinde ise smoke harness `www/` dışında tutulur ve `/smoke` yolu **uygulama başlarken** yalnızca `MERGEN_ENABLE_UX_SMOKE=true` ve loopback host ile kaydedilir. Bu nedenle güncel `main` üzerinde external-app gate koşusundan önce hedef uygulama bu bakım ayarlarıyla yeniden başlatılmalıdır.
+
+Uygulamayı başlatan PowerShell oturumunda, uygulamayı başlatmadan/yeniden başlatmadan önce:
+
+```powershell
+$env:MERGEN_ENABLE_UX_SMOKE = "true"
+$env:MERGEN_HOST = "127.0.0.1"
+# Uygulamayı normal VM başlatma komutunuzla yeniden başlatın ve
+# http://127.0.0.1:28081 üzerinde dinlediğini doğrulayın.
+```
+
+Ardından ayrı gate oturumunda:
 
 ```powershell
 Remove-Item Env:\MERGEN_EVIDENCE_STEPS -ErrorAction SilentlyContinue
@@ -47,7 +58,11 @@ $env:MERGEN_REQUIRE_BROWSER_UX_SMOKE = "true"
 & $rscript --vanilla tests/scripts/run_vm_evidence_gate.R
 ```
 
-`MERGEN_BROWSER_UX_BASE_URL` çalışmakta olan uygulamanın gerçek yerel URL'siyle eşleşmelidir. 17 Ekim 2026 koşumunda uygulama `28081` portunda çalışıyordu. Profil ayrıca zorlanmadı; gate çıktısında istenen/etkin profil `<auto>/vm` olarak raporlandı.
+`MERGEN_ENABLE_UX_SMOKE=true` değerini yalnızca gate'i çalıştıran ikinci PowerShell oturumunda vermek yeterli değildir: zaten çalışan uygulama sürecinin kayıtlı Shiny resource path'lerini sonradan değiştiremez. `MERGEN_BROWSER_UX_BASE_URL` çalışmakta olan uygulamanın gerçek yerel URL'siyle eşleşmelidir.
+
+Smoke kanıtı bittikten sonra bakım kapısını açık bırakmayın: uygulamayı durdurun, `MERGEN_ENABLE_UX_SMOKE` değerini kaldırın/kapalıya alın ve normal üretim ayarlarıyla yeniden başlatın. `/smoke` yolunu sürekli açık hale getirmek veya ağ arayüzünde sunmak kabul edilen çözüm değildir.
+
+17 Ekim 2026 tarihsel koşumunda uygulama `28081` portunda çalışıyordu. Profil ayrıca zorlanmadı; gate çıktısında istenen/etkin profil `<auto>/vm` olarak raporlandı.
 
 ## Bu koşum neyi kanıtlar?
 

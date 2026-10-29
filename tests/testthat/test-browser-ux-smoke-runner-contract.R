@@ -92,7 +92,10 @@ testthat::test_that("browser UX smoke runner is optional and dependency-light", 
       "SKIP: Chrome/Chromium/Edge binary bulunamadı",
       "run_mergen_app(host='127.0.0.1'",
       "MERGEN_RUN_APP='false'",
-      "MERGEN_DISABLE_FUTURES='true'"
+      "MERGEN_DISABLE_FUTURES='true'",
+      "external_smoke_body <- read_url(smoke_url)",
+      "External app is reachable, but /smoke harness is not exposed.",
+      "Setting MERGEN_ENABLE_UX_SMOKE only in the gate process cannot change an already-running app."
     ),
     "Headless browser UX smoke runner sözleşmesi eksik:"
   )
