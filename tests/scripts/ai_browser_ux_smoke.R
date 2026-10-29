@@ -248,6 +248,7 @@ if (!isTRUE(use_external_app)) {
     ");",
     "cat('SHINY_UX_RUNNER_START\\n');",
     "source('app.R', encoding='UTF-8');",
+    "Sys.setenv(MERGEN_ENABLE_UX_SMOKE='true');",
     "cat('SHINY_UX_RUNNER_BOOT_OK\\n');",
     sprintf(
       "run_mergen_app(host='127.0.0.1', port=%dL, launch.browser=FALSE, quiet=FALSE)",
@@ -385,6 +386,34 @@ if (!wait_for_app()) {
   quit(status = 1)
 }
 
+# Ana sayfanın açılması kapılı /smoke/ yolunun sunulduğunu kanıtlamaz.
+# Tarayıcı başlamadan gerçek harness'ı doğrula; uygulamanın kapısını değiştirme.
+ux_smoke_check_harness <- function() {
+  body <- read_url(smoke_url)
+  if (grepl("<title>MERGEN UX Smoke</title>", body, fixed = TRUE) &&
+      nzchar(ux_smoke_rendered_status(body))) {
+    return(invisible(TRUE))
+  }
+
+  stop(paste(
+    "FAILED: UX smoke harness is unavailable at", smoke_url,
+    "Start/restart the app and set MERGEN_ENABLE_UX_SMOKE=true after source('app.R')",
+    "and before run_mergen_app(host='127.0.0.1', ...).",
+    "Set the flag in the app process; setting it only in the evidence gate shell",
+    "cannot enable /smoke/ in an already running app."
+  ), call. = FALSE)
+}
+
+# Sonuç yalnızca işlenmiş #status metninden okunur: harness betiğinin kaynağı
+# ve günlük satırları da UX_SMOKE_DONE:PASS sabitini taşır; başlamamış ya da
+# FAIL ile biten sayfa bu sabit yüzünden geçmiş sayılmamalıdır.
+ux_smoke_rendered_status <- function(dom) {
+  m <- regmatches(dom, regexec("<div id=\"status\"[^>]*>([^<]*)</div>", dom, perl = TRUE))[[1]]
+  if (length(m) >= 2L) trimws(m[[2]]) else ""
+}
+
+ux_smoke_check_harness()
+
 profile_dir <- tempfile("mergen-browser-profile-")
 dir.create(profile_dir, recursive = TRUE, showWarnings = FALSE)
 on.exit(unlink(profile_dir, recursive = TRUE, force = TRUE), add = TRUE)
@@ -446,14 +475,6 @@ if (!identical(result$status, 0L) &&
     grepl("headless=new|unknown|invalid|unrecognized", result$stderr, ignore.case = TRUE)) {
   cat("Retrying browser with legacy --headless flag.\n")
   result <- run_browser_dump("--headless")
-}
-
-# Sonuç yalnızca işlenmiş #status metninden okunur: harness betiğinin kaynağı
-# ve günlük satırları da UX_SMOKE_DONE:PASS sabitini taşır; başlamamış ya da
-# FAIL ile biten sayfa bu sabit yüzünden geçmiş sayılmamalıdır.
-ux_smoke_rendered_status <- function(dom) {
-  m <- regmatches(dom, regexec("<div id=\"status\"[^>]*>([^<]*)</div>", dom, perl = TRUE))[[1]]
-  if (length(m) >= 2L) trimws(m[[2]]) else ""
 }
 
 smoke_status <- ux_smoke_rendered_status(result$stdout)

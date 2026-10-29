@@ -198,6 +198,10 @@ $env:MERGEN_REQUIRE_BROWSER_UX_SMOKE = "true"
 & $rscript --vanilla tests/scripts/run_vm_evidence_gate.R
 ```
 
+Çalışan uygulama, aşağıdaki **external-app iki-pencere workflow** komutuyla
+`MERGEN_ENABLE_UX_SMOKE=true` verilerek yalnız döngü adresinde başlatılmalıdır.
+Bayrağı gate penceresinde ayarlamak, açık uygulamanın `/smoke/` kapısını açmaz.
+
 Geçerli release kanıtı sayılması için özet satırında `Toplam: 13 passed, 0 failed, 0 skipped` görülmeli ve hiçbir adım `FAILED` veya `SKIPPED` olmamalıdır. 17 Ekim 2026 koşumunda `full_testthat`, `maintainability_report`, `frontend_ratchet`, `seam_doctor`, `source_manifest_contracts`, `ui_asset_manifest_contracts`, `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight` ve diğer gate adımlarının tümü `PASSED` olmuştur.
 
 ### 7.7 Operasyonel soak / yük kapısı (dayanıklılık kanıtı)
@@ -979,7 +983,7 @@ Set-Location $repo
 $rscript = "C:\Program Files\R\R-4.6.0\bin\Rscript.exe"
 if (!(Test-Path $rscript)) { $rscript = "C:\Program Files\R\R-4.6.0\bin\x64\Rscript.exe" }
 
-& $rscript -e "if (file.exists('.Renviron')) readRenviron('.Renviron'); Sys.setenv(MERGEN_RUN_APP='false', MERGEN_DISABLE_FUTURES='true', TZ='UTC'); cat('START_APP_BOOT_TEST\n'); source('app.R', encoding='UTF-8'); cat('SOURCE_OK\n'); run_mergen_app(host='127.0.0.1', port=28081L, launch.browser=FALSE, quiet=FALSE)"
+& $rscript -e "if (file.exists('.Renviron')) readRenviron('.Renviron'); Sys.setenv(MERGEN_RUN_APP='false', MERGEN_DISABLE_FUTURES='true', MERGEN_HOST='127.0.0.1', TZ='UTC'); cat('START_APP_BOOT_TEST\n'); source('app.R', encoding='UTF-8'); Sys.setenv(MERGEN_ENABLE_UX_SMOKE='true'); cat('SOURCE_OK\n'); run_mergen_app(host='127.0.0.1', port=28081L, launch.browser=FALSE, quiet=FALSE)"
 ```
 
 Beklenen:
@@ -987,6 +991,14 @@ Beklenen:
 - Pencere açık kalır.
 - App `http://127.0.0.1:28081` üzerinde dinler.
 - Smoke sayfası `http://127.0.0.1:28081/smoke/ux-smoke.html` olur.
+
+Bu komut smoke bayrağını yalnız bu geçici uygulama sürecinde açar; `.Renviron`
+dosyasına eklemeyin. Önceden açık uygulama eski komutla başlatıldıysa `Ctrl+C`
+ile durdurup bu komutla yeniden başlatın. Bayrak uygulamanın çalıştığı
+**Window 1** sürecinde, `source('app.R')` sonrasında ve `run_mergen_app()`
+öncesinde ayarlanır; böylece başlangıçta yeniden okunan `.Renviron` içindeki
+kapalı değer geçici smoke ayarını geri alamaz. Gerçek dinleme adresi yine
+`127.0.0.1` olarak verilir.
 
 **Window 2 — mandatory browser proof ile tam evidence gate'i çalıştırın:**
 
@@ -1020,6 +1032,9 @@ Remove-Item Env:\MERGEN_REQUIRE_BROWSER_UX_SMOKE -ErrorAction SilentlyContinue
 - `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` ile bloklayıcıdır ve `UX_SMOKE_DONE:PASS`
   üretmelidir.
 - `MERGEN_BROWSER_UX_BASE_URL` set edilmişse o base URL'de app önceden çalışıyor olmalıdır.
+- Runner tarayıcıyı açmadan `/smoke/ux-smoke.html` yanıtının gerçek harness olduğunu
+  doğrular. `UX smoke harness is unavailable` hatasında Window 1 uygulamasını
+  yukarıdaki komutla yeniden başlatın; ana sayfanın açılması tek başına yeterli değildir.
 - Elle çalışan background app normalde gerekli değildir; ancak kilitli Windows/VDI
   ortamlarında mandatory browser proof için önerilen VM-stable workflow budur.
 - `MERGEN_BROWSER_BIN` açıkça tanımlıysa require modu otomatik etkinleşir; kullanılamayan

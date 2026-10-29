@@ -151,3 +151,93 @@ test_that("otomatik tarayıcı koşucusu kapıyı açar ve açık başlatma iste
   expect_match(kosucu, "/smoke/ux-smoke.html?autostart=1", fixed = TRUE)
   expect_match(oku("tests/scripts/run_browser_concurrency_lane.R"), "/smoke/ux-smoke.html?autostart=1", fixed = TRUE)
 })
+
+test_that("tarayıcı ön kontrolü ana sayfayı veya eksik harness'ı kabul etmez", {
+  root <- resolve_repo_root_for_tests()
+  ifadeler <- parse_r_file_utf8(file.path(root, "tests", "scripts", "ai_browser_ux_smoke.R"))
+  ortam <- new.env(parent = baseenv())
+  for (e in ifadeler) {
+    if (is.call(e) && identical(e[[1]], as.name("<-")) &&
+        as.character(e[[2]]) %in% c("ux_smoke_check_harness", "ux_smoke_rendered_status")) {
+      eval(e, ortam)
+    }
+  }
+  ortam$smoke_url <- "http://127.0.0.1:28081/smoke/ux-smoke.html?autostart=1"
+  yanit <- read_source_text_utf8(file.path(root, "tests", "smoke", "ux-smoke.html"))
+  istenen <- character(0)
+  ortam$read_url <- function(target) {
+    istenen <<- c(istenen, target)
+    yanit
+  }
+  expect_true(ortam$ux_smoke_check_harness())
+  expect_identical(istenen, ortam$smoke_url)
+
+  # 404/boş yanıt, SSO/ana sayfa ve yalnız betikteki PASS sabiti kanıt değildir.
+  for (gecersiz in c("", "<html><title>Not Found</title></html>",
+                    '<html><title>MERGEN Bilge</title><div id="status">Ready</div></html>',
+                    '<title>MERGEN UX Smoke</title><script>var s="UX_SMOKE_DONE:PASS";</script>')) {
+    yanit <- gecersiz
+    expect_error(ortam$ux_smoke_check_harness(), "FAILED: UX smoke harness is unavailable", fixed = TRUE)
+    expect_error(ortam$ux_smoke_check_harness(), "MERGEN_ENABLE_UX_SMOKE=true", fixed = TRUE)
+    expect_error(ortam$ux_smoke_check_harness(), "already running app", fixed = TRUE)
+  }
+
+  # Ön kontrol tarayıcı süreci/profilinden önce bloklamalıdır.
+  kontrol <- which(vapply(as.list(ifadeler), identical, logical(1), quote(ux_smoke_check_harness())))
+  profil <- which(vapply(as.list(ifadeler), function(e) {
+    is.call(e) && identical(e[[1]], as.name("<-")) && identical(e[[2]], as.name("profile_dir"))
+  }, logical(1)))
+  expect_length(kontrol, 1L)
+  expect_length(profil, 1L)
+  expect_lt(kontrol, profil)
+})
+
+test_that("koşucunun geçici uygulaması .Renviron kapalı değerinden sonra smoke bayrağını yeniler", {
+  ifadeler <- parse_r_file_utf8(file.path(resolve_repo_root_for_tests(), "tests", "scripts", "ai_browser_ux_smoke.R"))
+  dal <- Filter(function(e) is.call(e) && identical(e[[1]], as.name("if")) &&
+                  identical(e[[2]], quote(!isTRUE(use_external_app))), as.list(ifadeler))
+  expect_length(dal, 1L)
+  ortam <- new.env(parent = baseenv())
+  ortam$port <- 28081L
+  eval(dal[[1]][[3]][[2]], ortam)
+  withr::local_envvar(MERGEN_ENABLE_UX_SMOKE = NA, MERGEN_RUN_APP = NA,
+                     MERGEN_DISABLE_FUTURES = NA, LOCAL_LLM_ENDPOINT = NA,
+                     DB_DSN = NA, AI_KEYS_MASTER = NA, TZ = NA)
+  ortam$source <- function(...) Sys.setenv(MERGEN_ENABLE_UX_SMOKE = "false")
+  ortam$cat <- function(...) invisible(NULL)
+  dinleme <- NULL
+  ortam$run_mergen_app <- function(host, ...) {
+    dinleme <<- list(host = host, enabled = Sys.getenv("MERGEN_ENABLE_UX_SMOKE"))
+  }
+  eval(parse(text = ortam$expr), ortam)
+  expect_identical(dinleme, list(host = "127.0.0.1", enabled = "true"))
+})
+
+test_that("runbook geçici Windows uygulamasında smoke kapısını yapılandırma sonrasında açar", {
+  root <- resolve_repo_root_for_tests()
+  satirlar <- strsplit(read_source_text_utf8(file.path(root, "RUNBOOK.md")), "\n", fixed = TRUE)[[1]]
+  onek <- '& $rscript -e "'
+  baslatma <- satirlar[startsWith(satirlar, onek) & grepl("run_mergen_app(", satirlar, fixed = TRUE)]
+  expect_length(baslatma, 1L)
+  kod <- parse(text = substr(baslatma, nchar(onek) + 1L, nchar(baslatma) - 1L), encoding = "UTF-8")
+  cagri <- function(ad) which(vapply(as.list(kod), function(e) {
+    is.call(e) && identical(e[[1]], as.name(ad))
+  }, logical(1)))
+  ayar <- cagri("Sys.setenv")
+  kaynak <- cagri("source")
+  calistir <- cagri("run_mergen_app")
+  expect_length(ayar, 2L)
+  expect_length(kaynak, 1L)
+  expect_length(calistir, 1L)
+  expect_lt(ayar[[1]], kaynak)
+  expect_gt(ayar[[2]], kaynak)
+  expect_lt(ayar[[2]], calistir)
+  withr::local_envvar(MERGEN_ENABLE_UX_SMOKE = NA, MERGEN_HOST = NA,
+                     MERGEN_RUN_APP = NA, MERGEN_DISABLE_FUTURES = NA, TZ = NA)
+  eval(kod[[ayar[[1]]]])
+  # app.R yapılandırması .Renviron'daki kapalı değeri yeniden yükleyebilir.
+  Sys.setenv(MERGEN_ENABLE_UX_SMOKE = "false")
+  eval(kod[[ayar[[2]]]])
+  expect_true(.smoke_gate_app_env()$mergen_ux_smoke_enabled())
+  expect_identical(kod[[calistir]][["host"]], "127.0.0.1")
+})
