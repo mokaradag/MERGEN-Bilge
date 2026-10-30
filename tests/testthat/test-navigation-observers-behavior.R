@@ -133,6 +133,7 @@ testthat::test_that("smoke sohbetinden Yeni Söyleşi sonrası welcome sekme dö
   for (file in c("helpers_chat_runtime.R", "server_welcome_handlers.R", "server_observers_chat_ui.R")) {
     source(file.path(resolve_repo_root_for_tests(), "R", file), local = env, encoding = "UTF-8")
   }
+  rlang::local_bindings(file_store = list(), .env = globalenv())
   env$resolve_effective_user_id <- function(...) NA_integer_
   env$session_user_data_reset_lists <- function(...) invisible(NULL)
   env$showToast <- function(...) invisible(NULL)
@@ -174,6 +175,41 @@ testthat::test_that("smoke sohbetinden Yeni Söyleşi sonrası welcome sekme dö
       testthat::expect_identical(renders, 1L)
       testthat::expect_identical(refreshes, 1L)
       testthat::expect_true(session$userData$welcome_screen_attached)
+    })
+  }, runjs = function(...) invisible(NULL), delay = function(ms, expr) force(expr), .package = "shinyjs")
+})
+
+
+testthat::test_that("taze smoke oturumunun welcome navigasyonu diger oturumun dosya eslemelerini korur", {
+  env <- .source_navigation_for_test()
+  source(file.path(resolve_repo_root_for_tests(), "R/server_welcome_handlers.R"), local = env, encoding = "UTF-8")
+  other <- shiny::MockShinySession$new()
+  withr::defer(other$close())
+  other$userData$file_id <- "other-session-file"
+  mappings <- setNames(list(list(path = "other-session-report")), other$userData$file_id)
+  rlang::local_bindings(file_store = mappings, .env = globalenv())
+  env$resolve_effective_user_id <- function(...) NA_integer_
+  renders <- 0L
+  env$createWelcomeScreen <- function(...) {
+    renders <<- renders + 1L
+    shiny::div(class = "modern-welcome-root", "welcome")
+  }
+  env$createModernRecentChatsSection <- function(...) shiny::div(class = "modern-welcome-footer-section")
+  testthat::with_mocked_bindings({
+    shiny::testServer(function(input, output, session) {
+      values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list(), messages = list())
+      welcome <- env$welcomeHandlersInit(session, values, NULL, shiny::reactiveVal(list()), NULL, NA_integer_, NULL)
+      welcome$render_welcome_screen(list())
+      env$navigationObserversInit(input, session, values, welcome$render_welcome_screen)
+      session$userData$.smoke_values <- values
+    }, {
+      session$setInputs(tabs = "chat")
+      session$setInputs(tabs = "claude_code")
+      session$setInputs(tabs = "chat")
+      testthat::expect_true(session$userData$.smoke_values$show_welcome)
+      testthat::expect_identical(renders, 1L)
+      testthat::expect_identical(file_store, mappings)
+      testthat::expect_identical(file_store[[other$userData$file_id]]$path, "other-session-report")
     })
   }, runjs = function(...) invisible(NULL), delay = function(ms, expr) force(expr), .package = "shinyjs")
 })

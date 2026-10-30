@@ -280,6 +280,41 @@ test_that("smoke koşucusu açık hazırlanmış profili korur, varsayılan geç
   expect_true(file.exists(isaret), info = "onceden var olan gecici-yol cakismasi silinmez")
 })
 
+test_that("ayni uygulama ortami ikinci aktif smoke sahibini reddeder ve yalniz kendi kaydini temizler", {
+  env <- .smoke_gate_app_env()
+  exprs <- parse_r_file_utf8(file.path(resolve_repo_root_for_tests(), "app.R"))
+  eval(Filter(function(e) is.call(e) && identical(e[[1]], as.name("<-")) &&
+                identical(e[[2]], as.name("run_mergen_app")), as.list(exprs))[[1]], env)
+  env$validate_boot_state <- function(...) invisible(TRUE)
+  env$create_mergen_app <- function() "app"
+  env$.normalize_mergen_port <- as.integer
+  withr::local_dir(resolve_repo_root_for_tests())
+  a <- paste0("__mergen_ux_", strrep("12", 24))
+  b <- paste0("__mergen_ux_", strrep("34", 24))
+  withr::local_envvar(MERGEN_ENABLE_UX_SMOKE = "true", MERGEN_HOST = "0.0.0.0",
+                     MERGEN_ALLOW_NETWORK_UX_SMOKE = "true", MERGEN_UX_SMOKE_PATH = a)
+  withr::defer(for (prefix in c(a, b)) {
+    if (prefix %in% names(shiny::resourcePaths())) shiny::removeResourcePath(prefix)
+  })
+  # Kaynaklama kaydi ilk kosuya devredilir.
+  expect_true(env$mergen_register_ux_smoke_resource())
+  launches <- 0L
+  testthat::local_mocked_bindings(runApp = function(...) {
+    launches <<- launches + 1L
+    expect_true(a %in% names(shiny::resourcePaths()))
+    Sys.setenv(MERGEN_UX_SMOKE_PATH = b)
+    expect_error(env$run_mergen_app(launch.browser = FALSE), "already owned by another app run", fixed = TRUE)
+    expect_false(env$mergen_register_ux_smoke_resource(FALSE))
+    expect_false(env$mergen_register_ux_smoke_resource(FALSE, owner = new.env()))
+    expect_true(a %in% names(shiny::resourcePaths()))
+    expect_false(b %in% names(shiny::resourcePaths()))
+    stop("simulated app exit")
+  }, .package = "shiny")
+  expect_error(env$run_mergen_app(launch.browser = FALSE), "simulated app exit", fixed = TRUE)
+  expect_identical(launches, 1L)
+  expect_false(any(c(a, b) %in% names(shiny::resourcePaths())))
+})
+
 test_that("smoke kaynak temizligi baska uygulama veya prefix kaydina dokunmaz", {
   first <- .smoke_gate_app_env()
   second <- .smoke_gate_app_env()

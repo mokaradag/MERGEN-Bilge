@@ -939,10 +939,10 @@ pencerede hazır olmalıdır. Ardından aynı Window 2'de tam VM evidence workfl
 VM profili aşağıdaki komutta R başlangıcından **sonra**, yalnız çocuk R oturumunda
 seçilir. Böylece `.Renviron` / `Renviron.site` içindeki `MERGEN_EVIDENCE_PROFILE=cloud`
 seçimi bu VM koşumunu değiştiremez; ortam dosyaları düzenlenmez, normal `.Rprofile`
-ve proje kitaplığı yüklemesi korunur.
+ve proje kitaplığı yüklemesi korunur. Çocuk adımların R seçimi de aynı komutta çalışan R oturumunun `R.home('bin')` yolundan türetilir; eski `MERGEN_RSCRIPT_BIN` değeri bu koşumda kullanılmaz.
 
 ```powershell
-& $rscript -e "Sys.setenv(MERGEN_EVIDENCE_PROFILE='vm'); source('tests/scripts/run_vm_evidence_gate.R', encoding='UTF-8')" --full
+& $rscript -e "Sys.setenv(MERGEN_EVIDENCE_PROFILE='vm', MERGEN_RSCRIPT_BIN=file.path(R.home('bin'), 'Rscript.exe')); source('tests/scripts/run_vm_evidence_gate.R', encoding='UTF-8')" --full
 ```
 
 Bu komut kalıcı veya geçici adım filtresini yok sayar ve 13 adımın tamamında PASS ister;
@@ -1066,9 +1066,12 @@ Uygulama ayağa kalktıktan sonra **gerçekten hizmet verip vermediğini** doğr
    - `critical` durumda kritik bir kontrol varsa süreç **sıfırdan farklı** çıkış kodu döndürür.
    - Sırları redakte ederek özet basar; ham DSN/anahtar/token yazmaz.
    - Yapılandırma: `MERGEN_SMOKE_CRITICAL_IDS` (virgülle), `MERGEN_SMOKE_FAIL_ON_UNKNOWN=TRUE/FALSE`.
-2. **Tarayıcı duman testi:** [VM browser UX smoke](docs/vm-browser-ux-smoke.md)
-   prosedürünü kullanın: 8009/SSO, geçici rastgele yol ve hazırlanmış Edge profili.
-   Beklenen sonuç işlenmiş `#status` içindeki `UX_SMOKE_DONE:PASS` değeridir.
+2. **Geçici UX harness doğrulaması:** [VM browser UX smoke](docs/vm-browser-ux-smoke.md)
+   ayrı bakım prosedürüdür: normal uygulama durdurulur, 8009/SSO üzerinde geçici süreç
+   test edilir ve ardından normal launcher yeniden başlatılır. `UX_SMOKE_DONE:PASS`
+   yalnız geçici smoke sürecini doğrular; yeniden başlatılan üretim sürecini doğrulamaz.
+   Normal uygulama geçici smoke yolunu sunmamalıdır. Yeniden başlatmadan sonra 1, 3 ve
+   4. adımlardaki üretim sağlık/UI kontrollerini ayrıca uygulayın.
 3. **Sağlık paneli:** "Sistem Durumu" sayfasında DB, LLM, depolama, SSO satırlarının
    yeşil/uygun olduğunu görsel doğrulayın.
 4. **Türkçe akış kontrolü:** bir sohbet açıp `Türkçe test: ç ğ ı İ ö ş ü` yazın;

@@ -1,4 +1,4 @@
-// Aynı oturumdaki sohbetten gerçek Yeni Söyleşi eylemine, sonra sekme dönüşüne.
+// Taze welcome üzerinde sekme dönüşü ortak dosya eşlemelerini silmez.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -26,8 +26,10 @@ class Element {
   }
 }
 
-async function runCase(initialWelcome, brokenReset = false, replaceOnReturn = false) {
-  const state = { showWelcome: initialWelcome, active: 'chat', pending: null, resetCount: 0 };
+async function runCase(initialWelcome, replaceOnReturn = false) {
+  const state = { showWelcome: initialWelcome, active: 'chat', resetCount: 0 };
+  const otherSessionFiles = { report: 'other-session-file' };
+  let fileStore = otherSessionFiles;
   let welcome = initialWelcome ? new Element() : null;
   let video = { initCount: 1, destroyCount: 0, isInitialized: initialWelcome, hasContainer: initialWelcome };
   const body = new Element();
@@ -45,13 +47,7 @@ async function runCase(initialWelcome, brokenReset = false, replaceOnReturn = fa
     getElementById: id => id === 'new_chat_btn' ? { click() {
       actions.push('new_chat');
       state.resetCount++;
-      // Sunucu yanıtı aynı click yığınında değil, sonraki flush'ta gelir.
-      state.pending = () => {
-        if (brokenReset) return;
-        state.showWelcome = true;
-        welcome = new Element();
-        video = { initCount: 2, destroyCount: 1, isInitialized: true, hasContainer: true };
-      };
+      fileStore = {}; // Üretim New Chat ortak eşlemeleri kaybeder.
     } } : body.querySelector('#' + id),
     querySelector(selector) {
       const anchor = selector.match(/data-value='([^']+)'/);
@@ -82,12 +78,13 @@ async function runCase(initialWelcome, brokenReset = false, replaceOnReturn = fa
     assert: (condition, label) => { assert.ok(condition, label); labels.push(label); },
     pass: label => labels.push(label), wait: async () => {},
     waitFor: async (condition, label) => {
-      if (state.pending) { state.pending(); state.pending = null; }
       assert.ok(condition(), label); labels.push(label); return true;
     }
   });
-  assert.deepEqual(actions, ['new_chat', 'claude_code', 'chat']);
-  assert.equal(state.resetCount, 1);
+  assert.deepEqual(actions, ['claude_code', 'chat']);
+  assert.equal(state.resetCount, 0);
+  assert.equal(fileStore, otherSessionFiles);
+  assert.equal(fileStore.report, 'other-session-file');
   assert.equal(state.showWelcome, true);
   assert.ok(labels.includes('Ana Söyleşi dönüşü welcome video gereksiz destroy etmez'));
   assert.ok(labels.includes('Ana Söyleşi dönüşü welcome video gereksiz reinit etmez'));
@@ -95,10 +92,12 @@ async function runCase(initialWelcome, brokenReset = false, replaceOnReturn = fa
 }
 
 (async () => {
-  await runCase(false); // VM: quick-action/sohbet probe'larından sonra welcome yok.
-  await runCase(true); // Eski/gizli welcome DOM'u da yeni flush yerine kabul edilmez.
-  await assert.rejects(runCase(false, true), /Yeni Söyleşi welcome hazır/);
-  await assert.rejects(runCase(true, true), /Yeni Söyleşi welcome hazır/);
-  await assert.rejects(runCase(false, false, true), /welcome dönüşü/);
+  await runCase(true);
+  await assert.rejects(runCase(false), /taze welcome hazır/);
+  await assert.rejects(runCase(true, true), /welcome dönüşü/);
+  const html = fs.readFileSync(path.resolve(__dirname, '../smoke/ux-smoke.html'), 'utf8');
+  const run = html.slice(html.indexOf('  async function run()'));
+  assert.ok(run.indexOf('await testNavigationAndFileManagerSmoke(app)') < run.indexOf('await testOneQuickActionOnCurrentWelcome(app)'),
+            'navigation sohbet mutasyonlarından önce taze oturumda çalışmalı');
   console.log('ux smoke navigation regressions passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

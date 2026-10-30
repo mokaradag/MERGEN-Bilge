@@ -70,9 +70,15 @@ if (!(Test-Path $edge)) { $edge = "$env:ProgramFiles\Microsoft\Edge\Application\
 if (!(Test-Path $edge)) { throw "Microsoft Edge bulunamadi." }
 $env:MERGEN_BROWSER_BIN = $edge
 New-Item -ItemType Directory -Force -Path $env:MERGEN_BROWSER_UX_PROFILE_DIR | Out-Null
-& $rscript -e "source('tests/scripts/helpers_browser_ux_profile.R'); invisible(ux_smoke_profile_path(Sys.getenv('MERGEN_BROWSER_UX_PROFILE_DIR'), c('.', 'artifacts/ai-validation', Sys.getenv('MERGEN_EVIDENCE_ARTIFACT_DIR', '')))); ux_smoke_check_edge_policy()"
-if ($LASTEXITCODE -ne 0) { throw "Dedicated Edge profile location/policy check FAILED; no browser may be launched." }
-& $edge "--user-data-dir=$env:MERGEN_BROWSER_UX_PROFILE_DIR" --no-first-run --no-default-browser-check $env:MERGEN_BROWSER_UX_BASE_URL
+& {
+    $ErrorActionPreference = 'Stop'
+    & $rscript -e "source('tests/scripts/helpers_browser_ux_profile.R'); invisible(ux_smoke_profile_path(Sys.getenv('MERGEN_BROWSER_UX_PROFILE_DIR'), c('.', 'artifacts/ai-validation', Sys.getenv('MERGEN_EVIDENCE_ARTIFACT_DIR', '')))); ux_smoke_check_edge_policy()"
+    if ($LASTEXITCODE -eq 0) {
+        & $edge "--user-data-dir=$env:MERGEN_BROWSER_UX_PROFILE_DIR" --no-first-run --no-default-browser-check $env:MERGEN_BROWSER_UX_BASE_URL
+    } else {
+        throw "Dedicated Edge profile location/policy check FAILED; no browser may be launched."
+    }
+}
 ```
 
 Konum/ilke ön kontrolü başarılı olmadan Edge açmayın veya SSO girişi yapmayın. Ön kontrol repo kökü/altı, varsayılan artifact ağacı ve varsa `MERGEN_EVIDENCE_ARTIFACT_DIR` kökünü kanonik yollarla reddeder. Ayrı profilde normal SSO girişini tamamlayın ve uygulamanın açıldığını doğrulayın. `edge://version` içindeki Profile path değerinin seçilen `BrowserUxSmoke` dizininin altında olduğunu doğrulayın; farklıysa testi durdurun. Zorunlu `UserDataDir` ilkesi varsa koşucu Edge açmadan durur; ilkeyi veya varsayılan profili değiştirmeyin. Sonra **bu profile ait Edge sürecinden tamamen çıkın**: tüm pencereleri ve varsa bildirim alanındaki arka plan Edge oturumunu kapatın. Görev Yöneticisi komut satırı sütununda bu `--user-data-dir` ile çalışan süreç kalmadığını doğrulayın; diğer profillerin süreçlerini sonlandırmayın. Yalnız son pencerenin kapanması, arka plan modu açıkken yeterli değildir. Profil repo/artifact dışında kalmalıdır. Token/cookie okunmaz, kopyalanmaz veya enjekte edilmez. Oturum geçerliyse bu hazırlığı her seferinde tekrarlamak gerekmez; SSO sayfasında kalan smoke başarısızdır.
@@ -95,14 +101,16 @@ Window 1 açıkken, aynı Window 2'de:
 VM profili aşağıdaki komutta R başlangıcından **sonra**, yalnız çocuk R oturumunda
 seçilir. Böylece `.Renviron` / `Renviron.site` içindeki `MERGEN_EVIDENCE_PROFILE=cloud`
 seçimi bu VM koşumunu değiştiremez; ortam dosyaları düzenlenmez, normal `.Rprofile`
-ve proje kitaplığı yüklemesi korunur.
+ve proje kitaplığı yüklemesi korunur. Çocuk adımların R seçimi de aynı komutta çalışan R oturumunun `R.home('bin')` yolundan türetilir; eski `MERGEN_RSCRIPT_BIN` değeri bu koşumda kullanılmaz.
 
 ```powershell
-& $rscript -e "Sys.setenv(MERGEN_EVIDENCE_PROFILE='vm'); source('tests/scripts/run_vm_evidence_gate.R', encoding='UTF-8')" --full
+& $rscript -e "Sys.setenv(MERGEN_EVIDENCE_PROFILE='vm', MERGEN_RSCRIPT_BIN=file.path(R.home('bin'), 'Rscript.exe')); source('tests/scripts/run_vm_evidence_gate.R', encoding='UTF-8')" --full
 if ($LASTEXITCODE -ne 0) { throw "VM evidence gate FAILED" }
 ```
 
 `MERGEN_BROWSER_UX_BASE_URL` ayarlıysa gate mevcut `browser_ux_smoke` adımında VM sarmalayıcısını kullanır ve browser zorunludur. `--full`, shell veya `.Renviron` içindeki `MERGEN_EVIDENCE_STEPS` filtresini bu koşum için yok sayar; dosya değiştirilmez. Tam mod ayrıca testthat başlangıç/bitiş aralığını yalnız çocuk oturumunda temizler ve File Store roundtrip/kullanıcı izolasyonu kontrollerini zorunlu açar. İstenen browser adımı uzun testlerden önce çalışır; tam gate öncesinde profil oturumu eskimişse normal SSO girişini yenileyip Edge sürecinden tamamen çıkın. Filtreli geliştirici koşumları `--full` olmadan desteklenir. Normal 13 adım korunur; tam kanıt için **13 passed, 0 failed, 0 skipped** gerekir. URL ayarlı değilse generic/cloud koşucu davranışı korunur.
+
+`UX_SMOKE_DONE:PASS` yalnız geçici smoke sürecinin UX sonucudur; sonradan yeniden başlatılan üretim sürecini doğrulamaz.
 
 ## Normal moda dönüş
 
@@ -112,6 +120,8 @@ Window 1'de **Ctrl+C** ile geçici uygulamayı durdurun. Ardından normal launch
 Remove-Item Env:MERGEN_ENABLE_UX_SMOKE,Env:MERGEN_ALLOW_NETWORK_UX_SMOKE,Env:MERGEN_UX_SMOKE_PATH -ErrorAction SilentlyContinue
 & .\run_mergen_prod.bat
 ```
+
+Normal launcher yeniden başladıktan sonra üretim sağlık doğrulamasını `tests/scripts/run_post_deploy_smoke.R` ve çalışan uygulamanın Sistem Durumu paneliyle ayrıca yapın. Normal uygulama geçici smoke yolunu sunmamalıdır.
 
 Normal `.Renviron` yapılandırması `MERGEN_HOST=0.0.0.0`, `MERGEN_PORT=8009` olarak kalır; smoke opt-in/önek değerlerini `.Renviron` içine **eklemeyin**. Window 2'de çalışma URL'sini/profil seçimini temizleyin (hazırlanmış profil silinmez):
 

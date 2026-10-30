@@ -107,28 +107,27 @@
   function restoreSmokeStorage() {
     if (!originalSmokeStorage.captured) return;
 
+    var errors = [];
+    // Canlı iframe'in gecikmiş Shiny/timer yazıları geri yüklemeyi ezmesin.
     try {
-      // Canlı iframe'in gecikmiş Shiny/timer yazıları geri yüklemeyi ezmesin.
       if (frameEl.parentNode) frameEl.parentNode.removeChild(frameEl);
-      if (originalSmokeStorage.mergenSettings === null) {
-        localStorage.removeItem("mergen_settings");
-      } else {
-        localStorage.setItem("mergen_settings", originalSmokeStorage.mergenSettings);
-      }
-
-      if (originalSmokeStorage.currentChat === null) {
-        localStorage.removeItem("mergen_current_chat");
-      } else {
-        localStorage.setItem("mergen_current_chat", originalSmokeStorage.currentChat);
-      }
-      if (originalSmokeStorage.activeTab === null) {
-        localStorage.removeItem("mergen_active_tab");
-      } else {
-        localStorage.setItem("mergen_active_tab", originalSmokeStorage.activeTab);
-      }
-      originalSmokeStorage.captured = false;
     } catch (e) {
-      fail("Smoke localStorage geri yükleme başarısız: " + e.message);
+      errors.push("iframe: " + e.message);
+    }
+    [["mergen_settings", originalSmokeStorage.mergenSettings],
+     ["mergen_current_chat", originalSmokeStorage.currentChat],
+     ["mergen_active_tab", originalSmokeStorage.activeTab]].forEach(function(entry) {
+      try {
+        if (entry[1] === null) localStorage.removeItem(entry[0]);
+        else localStorage.setItem(entry[0], entry[1]);
+      } catch (e) {
+        errors.push(entry[0] + ": " + e.message);
+      }
+    });
+    if (errors.length) {
+      fail("Smoke localStorage geri yükleme başarısız: " + errors.join("; "));
+    } else {
+      originalSmokeStorage.captured = false;
     }
   }
 
@@ -1048,6 +1047,7 @@
     try {
       var app = await loadFreshApp("fresh welcome");
       await testWelcome(app);
+      await testNavigationAndFileManagerSmoke(app);
 
       // Reasoning testi sentetiktir; gerçek quick-action/chat yan etkileri
       // DOM'u değiştirmeden önce çalıştırılır.
@@ -1061,7 +1061,6 @@
       await testChatInput(app);
       await testStreamingLifecycle(app);
       await testMediaAndSavedChat(app);
-      await testNavigationAndFileManagerSmoke(app);
       await testBilgeYolacSessionsSurface(app);
 
       testConsoleNoise();

@@ -109,7 +109,12 @@ mergen_ux_smoke_enabled <- function(host = Sys.getenv("MERGEN_HOST", "0.0.0.0"))
 
 mergen_register_ux_smoke_resource <- local({
   owned <- NULL
-  function(enabled = mergen_ux_smoke_enabled()) {
+  function(enabled = mergen_ux_smoke_enabled(), owner = NULL) {
+    # Tek aktif koşu korunur; yabancı temizlik o koşunun kaydını silemez.
+    if (!is.null(owned$owner) && !identical(owned$owner, owner)) {
+      if (isTRUE(enabled)) stop("Smoke resource is already owned by another app run.", call. = FALSE)
+      return(invisible(FALSE))
+    }
     # Yalnız bu uygulamanın kaydı temizlenir; başka kaynaklar süpürülmez.
     if (!is.null(owned) && owned$prefix %in% names(shiny::resourcePaths()) &&
         identical(shiny::resourcePaths()[[owned$prefix]], owned$directory)) {
@@ -121,7 +126,7 @@ mergen_register_ux_smoke_resource <- local({
     if (!isTRUE(enabled) || is.na(prefix) || !dir.exists(directory)) return(invisible(FALSE))
     if (prefix %in% names(shiny::resourcePaths())) stop("Smoke resource prefix is already registered.", call. = FALSE)
     if (!isTRUE(safe_add_resource_path(prefix, directory))) return(invisible(FALSE))
-    owned <<- list(prefix = prefix, directory = shiny::resourcePaths()[[prefix]])
+    owned <<- list(prefix = prefix, directory = shiny::resourcePaths()[[prefix]], owner = owner)
     invisible(TRUE)
   }
 })
@@ -265,8 +270,9 @@ run_mergen_app <- function(
   validate_boot_state()
   # Smoke kararı gerçek dinleme adresiyle yeniden verilir; runApp bitince kapanır.
   register_smoke <- mergen_register_ux_smoke_resource
-  register_smoke(enabled = mergen_ux_smoke_enabled(host))
-  on.exit(register_smoke(enabled = FALSE), add = TRUE)
+  smoke_owner <- new.env(parent = emptyenv())
+  register_smoke(enabled = mergen_ux_smoke_enabled(host), owner = smoke_owner)
+  on.exit(register_smoke(enabled = FALSE, owner = smoke_owner), add = TRUE)
 
   port <- .normalize_mergen_port(port)
 

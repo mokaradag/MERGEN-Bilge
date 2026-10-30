@@ -36,13 +36,21 @@ test_that("belgedeki Edge on kontrolu login oncesinde repo ve tum artifact kokle
   root <- resolve_repo_root_for_tests()
   doc <- read_source_text_utf8(file.path(root, "docs/vm-browser-ux-smoke.md"))
   lines <- strsplit(doc, "\n", fixed = TRUE)[[1]]
-  command <- lines[startsWith(lines, '& $rscript -e "') & grepl("ux_smoke_profile_path", lines, fixed = TRUE)]
+  command <- lines[startsWith(trimws(lines), '& $rscript -e "') & grepl("ux_smoke_profile_path", lines, fixed = TRUE)]
   expect_length(command, 1L)
   check <- match(command, lines)
-  launch <- which(startsWith(lines, '& $edge "--user-data-dir='))
+  launch <- which(startsWith(trimws(lines), '& $edge "--user-data-dir='))
   expect_length(launch, 1L)
   expect_lt(check, launch)
-  expect_true(any(grepl("$LASTEXITCODE", lines[seq.int(check + 1L, launch - 1L)], fixed = TRUE)))
+  expect_identical(lines[[check - 2L]], "& {")
+  expect_identical(trimws(lines[[check - 1L]]), "$ErrorActionPreference = 'Stop'")
+  expect_identical(trimws(lines[[check + 1L]]), "if ($LASTEXITCODE -eq 0) {")
+  expect_identical(launch, check + 2L)
+  expect_identical(trimws(lines[[launch + 1L]]), "} else {")
+  expect_match(lines[[launch + 2L]], "throw", fixed = TRUE)
+  expect_identical(trimws(lines[[launch + 3L]]), "}")
+  expect_identical(lines[[launch + 4L]], "}")
+  command <- trimws(command)
   expr <- substr(command, nchar('& $rscript -e "') + 1L, nchar(command) - 1L)
   fixture <- withr::local_tempdir()
   repo <- file.path(fixture, "repo")
@@ -67,6 +75,24 @@ test_that("belgedeki Edge on kontrolu login oncesinde repo ve tum artifact kokle
     expect_identical(policies, 1L, info = "konum reddedilince sonraki adima gecilmez")
   }
   expect_true(dir.exists(profile))
+})
+
+test_that("VM oneki dogrudan OpenSSL'den 24 kriptografik bayt alir ve hatayi gizlemez", {
+  env <- .vm_ux_functions()
+  calls <- list()
+  bytes <- as.raw(c(0:15, 248:255))
+  testthat::local_mocked_bindings(rand_bytes = function(n) {
+    calls[[length(calls) + 1L]] <<- n
+    bytes
+  }, .package = "openssl")
+  expect_identical(env$vm_ux_new_prefix(),
+                   "__mergen_ux_000102030405060708090a0b0c0d0e0ff8f9fafbfcfdfeff")
+  bytes <- rev(bytes)
+  expect_identical(env$vm_ux_new_prefix(),
+                   "__mergen_ux_fffefdfcfbfaf9f80f0e0d0c0b0a09080706050403020100")
+  expect_identical(calls, list(24L, 24L))
+  testthat::local_mocked_bindings(rand_bytes = function(...) stop("rng unavailable"), .package = "openssl")
+  expect_error(env$vm_ux_new_prefix(), "rng unavailable", fixed = TRUE)
 })
 
 test_that("VM startup her kosuda yeni 192-bit onek uretir, URL guvenli kurulur", {
@@ -286,7 +312,7 @@ test_that("VM belge ve kaynaklarda onayli URL runtime girdisidir, sabit ag smoke
   for (guide in c(doc, runbook)) {
     expect_match(guide, "MERGEN_EVIDENCE_PROFILE=cloud", fixed = TRUE)
     expect_match(guide, "Renviron.site", fixed = TRUE)
-    expect_match(guide, "Sys.setenv(MERGEN_EVIDENCE_PROFILE='vm')", fixed = TRUE)
+    expect_match(guide, "Sys.setenv(MERGEN_EVIDENCE_PROFILE='vm', MERGEN_RSCRIPT_BIN=file.path(R.home('bin'), 'Rscript.exe'))", fixed = TRUE)
   }
   for (url in regmatches(doc, gregexpr("https://[^`[:space:]]+", doc))[[1]]) {
     expect_match(url, "https://app.example.invalid", fixed = TRUE)
@@ -306,7 +332,7 @@ test_that("VM komutu profili R baslangicindan sonra secer ve ortam dosyalarini k
   expr <- substr(command, nchar('& $rscript -e "') + 1L, nchar(command) - nchar('" --full'))
   # Gercek gate'in ortam yukleyicisi/profil karari; agir kanit adimlari kosulmaz.
   selected <- c("evidence_load_repo_renviron", "repo_renviron_loaded", "evidence_env_flag_true",
-                "profile_requested", "profile_effective", "full_evidence")
+                "profile_requested", "profile_effective", "full_evidence", "rscript_bin")
   gate <- Filter(function(e) is.call(e) && identical(e[[1]], as.name("<-")) &&
                    as.character(e[[2]]) %in% selected,
                  as.list(parse_r_file_utf8(file.path(root, "tests/scripts/run_vm_evidence_gate.R"))))
@@ -314,14 +340,14 @@ test_that("VM komutu profili R baslangicindan sonra secer ve ortam dosyalarini k
   withr::local_dir(fixture)
   dir.create("tests/scripts", recursive = TRUE)
   writeLines(c(unlist(lapply(gate, deparse)),
-               'stopifnot(profile_effective == "vm", full_evidence, isTRUE(getOption("vm.profile.loaded")))',
+               'stopifnot(profile_effective == "vm", full_evidence, isTRUE(getOption("vm.profile.loaded")), identical(rscript_bin, file.path(R.home("bin"), "Rscript.exe")))',
                'cat(profile_effective)'), "tests/scripts/run_vm_evidence_gate.R")
   user_env <- file.path(fixture, ".Renviron")
   site_env <- file.path(fixture, "Renviron.site")
   profile <- file.path(fixture, "fixture.Rprofile")
   writeLines("options(vm.profile.loaded = TRUE)", profile)
   writeLines(character(), site_env)
-  withr::local_envvar(MERGEN_EVIDENCE_PROFILE = "vm", R_ENVIRON_USER = user_env,
+  withr::local_envvar(MERGEN_EVIDENCE_PROFILE = "vm", MERGEN_RSCRIPT_BIN = "stale-shell-Rscript", R_ENVIRON_USER = user_env,
                      R_ENVIRON = site_env, R_PROFILE_USER = profile, R_PROFILE = profile)
   rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
   run_r <- function(expression, args = character()) {
@@ -330,8 +356,8 @@ test_that("VM komutu profili R baslangicindan sonra secer ve ortam dosyalarini k
     paste(out, collapse = "\n")
   }
   for (where in c("user", "site")) {
-    writeLines(if (where == "user") "MERGEN_EVIDENCE_PROFILE=cloud" else character(), user_env)
-    writeLines(if (where == "site") "MERGEN_EVIDENCE_PROFILE=cloud" else character(), site_env)
+    writeLines(if (where == "user") c("MERGEN_EVIDENCE_PROFILE=cloud", "MERGEN_RSCRIPT_BIN=stale-Rscript") else character(), user_env)
+    writeLines(if (where == "site") c("MERGEN_EVIDENCE_PROFILE=cloud", "MERGEN_RSCRIPT_BIN=stale-Rscript") else character(), site_env)
     before <- lapply(c(user_env, site_env), readLines)
     expect_identical(run_r("cat(Sys.getenv('MERGEN_EVIDENCE_PROFILE'))"), "cloud")
     expect_identical(run_r(expr, "--full"), "vm")
@@ -393,4 +419,14 @@ test_that("normal Rscript startup proje profili ve SSO konfigurasyonunu korur", 
   expect_identical(readLines(file.path(fixture, "startup-result.txt")), "configured SSO startup")
   expect_identical(readBin(file.path(fixture, ".Renviron"), "raw", 10000L), before)
   expect_false(dir.exists(file.path(fixture, "MERGEN/BrowserUxSmokeRun")))
+})
+
+test_that("gecici UX PASS yeniden baslatilan uretim surecinin kaniti sayilmaz", {
+  root <- resolve_repo_root_for_tests()
+  for (file in c("RUNBOOK.md", "docs/vm-browser-ux-smoke.md")) {
+    text <- read_source_text_utf8(file.path(root, file))
+    expect_match(text, "üretim sürecini doğrulamaz", fixed = TRUE)
+    expect_match(text, "Normal uygulama geçici smoke yolunu sunmamalıdır.", fixed = TRUE)
+    expect_match(text, "run_post_deploy_smoke.R", fixed = TRUE)
+  }
 })

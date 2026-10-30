@@ -145,4 +145,45 @@ p.context.storageContract.restoreSmokeStorage();
 assert.ok(p.context.storageContract.failures.some(message => message.includes('geri yükleme başarısız')),
           'iade hatası PASS yerine koşunun failure listesine girmeli');
 
+// Her anahtar hem set hem remove hatasında denenir; hata ancak tüm denemelerden sonra bildirilir.
+for (const existing of [false, true]) {
+  for (const broken of [0, 1, 2]) {
+    const keys = ['mergen_settings', 'mergen_current_chat', 'mergen_active_tab'];
+    const initial = existing ? keys.map(key => [key, key === 'mergen_settings' ? '{"custom":true}' : 'original:' + key]) : [];
+    const page = load('/smoke/ux-smoke.html', '', initial);
+    page.context.storageContract.prepareFreshAppStorage();
+    keys.forEach(key => page.store.set(key, 'smoke'));
+    const attempts = [];
+    const storage = page.context.localStorage;
+    for (const method of ['setItem', 'removeItem']) {
+      const original = storage[method];
+      storage[method] = (key, ...args) => {
+        assert.equal(page.context.storageContract.failures.length, 0, 'hata tüm denemelerden sonra bildirilir');
+        attempts.push(key);
+        if (key === keys[broken]) throw new Error('blocked:' + key);
+        return original(key, ...args);
+      };
+    }
+    page.context.storageContract.restoreSmokeStorage();
+    assert.deepEqual(attempts, keys);
+    keys.forEach((key, index) => {
+      assert.equal(page.store.get(key), index === broken ? 'smoke' : new Map(initial).get(key));
+    });
+    assert.equal(page.context.storageContract.failures.length, 1);
+    assert.match(page.context.storageContract.failures[0], new RegExp(keys[broken]));
+    storage.setItem = (key, value) => page.store.set(key, value);
+    storage.removeItem = key => page.store.delete(key);
+    page.listeners.beforeunload(); // Kaydedilen başlangıç verisi hata sonrası yeniden denenebilir.
+    assert.deepEqual(page.store, new Map(initial));
+  }
+}
+const failed = load('/smoke/ux-smoke.html', '', []);
+failed.context.storageContract.prepareFreshAppStorage();
+const attempted = [];
+failed.context.localStorage.removeItem = key => { attempted.push(key); throw new Error('blocked'); };
+failed.context.storageContract.restoreSmokeStorage();
+assert.equal(attempted.length, 3);
+assert.equal(failed.context.storageContract.failures.length, 1);
+for (const key of attempted) assert.ok(failed.context.storageContract.failures[0].includes(key));
+
 console.log('ux smoke start gate regressions passed');

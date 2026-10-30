@@ -274,21 +274,15 @@
       "WelcomeVideoPlayer smoke state API var"
     );
 
-    // Önceki quick-action/sohbet probe'ları show_welcome durumunu kapatır.
-    // Gerçek Yeni Söyleşi eylemiyle aynı oturumda welcome önkoşulunu kur.
-    var previousWelcome = doc.querySelector(".modern-welcome-root");
-    var newChatButton = doc.getElementById("new_chat_btn");
-    assert(!!newChatButton, "Navigation önkoşulu için Yeni Söyleşi düğmesi var");
-    if (!newChatButton) return;
-    newChatButton.click();
-
+    // Sohbet probe'larından önce taze welcome kullanılır; Yeni Söyleşi
+    // süreçteki diğer oturumların ortak dosya eşlemelerini temizleyebilir.
     if (!await waitFor(function() {
       var root = doc.querySelector(".modern-welcome-root");
       var video = videoApi && videoApi.getState ? videoApi.getState() : null;
-      return root && root !== previousWelcome && isVisible(root) &&
+      return root && isVisible(root) &&
         !doc.querySelector("#chat_content_container .message-bubble") &&
         video && video.isInitialized && video.hasContainer;
-    }, "Navigation önkoşulu: Yeni Söyleşi welcome hazır", 10000)) return;
+    }, "Navigation önkoşulu: taze welcome hazır", 10000)) return;
 
     var welcomeRoot = doc.querySelector(".modern-welcome-root");
     var beforeVideo = videoApi && videoApi.getState ? videoApi.getState() : null;
