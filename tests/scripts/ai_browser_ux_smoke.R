@@ -98,18 +98,12 @@ if (is.na(timeout_seconds) || timeout_seconds < 30L) {
   timeout_seconds <- 150L
 }
 
-virtual_time_budget_ms <- suppressWarnings(as.integer(
-  arg_value("--virtual-time-budget-ms", Sys.getenv("MERGEN_BROWSER_UX_VIRTUAL_TIME_MS", "120000"))
-))
-if (is.na(virtual_time_budget_ms) || virtual_time_budget_ms < 10000L) {
-  virtual_time_budget_ms <- 120000L
-}
-
+# Shiny/WebSocket işi gerçek sunucu saatindedir; sanal zaman kullanılmaz.
 browser_timeout_seconds <- suppressWarnings(as.integer(
-  arg_value("--browser-timeout", as.character(max(90L, ceiling(virtual_time_budget_ms / 1000) + 45L)))
+  arg_value("--browser-timeout", "165")
 ))
 if (is.na(browser_timeout_seconds) || browser_timeout_seconds < 30L) {
-  browser_timeout_seconds <- max(90L, ceiling(virtual_time_budget_ms / 1000) + 45L)
+  browser_timeout_seconds <- 165L
 }
 
 artifact_dir <- arg_value(
@@ -169,7 +163,6 @@ cat(sprintf("Port: %d\n", port))
 cat(sprintf("Smoke URL: %s\n", display_smoke_url))
 cat(sprintf("Timeout: %ds\n", timeout_seconds))
 cat(sprintf("Browser timeout: %ds\n", browser_timeout_seconds))
-cat(sprintf("Virtual time budget: %dms\n", virtual_time_budget_ms))
 cat(sprintf("Log: %s\n", log_file))
 cat(sprintf("DOM artifact: %s\n", dom_file))
 cat(sprintf("Require browser: %s\n", require_browser))
@@ -496,7 +489,7 @@ run_browser_dump <- function(headless_arg) {
     "--no-default-browser-check",
     "--autoplay-policy=no-user-gesture-required",
     paste0("--user-data-dir=", profile_dir),
-    paste0("--virtual-time-budget=", virtual_time_budget_ms),
+    paste0("--timeout=", (browser_timeout_seconds - 5L) * 1000L),
     "--dump-dom",
     smoke_url
   )

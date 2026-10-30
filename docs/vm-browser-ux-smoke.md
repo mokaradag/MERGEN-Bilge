@@ -94,6 +94,8 @@ if ($LASTEXITCODE -ne 0) { throw "Browser UX smoke FAILED" }
 
 Bu komut yalnız browser UX smoke çalıştırır. Yerel ön kontrol `http://127.0.0.1:8009/<per-run-prefix>/ux-smoke.html` üzerindedir; headless Edge ise onaylı runtime base URL + aynı önek + `/ux-smoke.html?autostart=1` kullanır. Proxy mevcut base altındaki rastgele kaynak yolunu aynı 8009 uygulamasına iletmelidir. HTTP 200, harness kaynağı, SSO yönlendirmesi veya exit 0 kanıt değildir. Başarı yalnız **`OK: rendered #status is UX_SMOKE_DONE:PASS.`** ile bildirilir. Ham DOM/HTTP gövdesi saklanmaz; DOM artifact'ı yalnız doğrulanmış PASS veya sabit başarısızlık özeti içerir. URL/önek, profil yolu ve runtime sırları tanı çıktılarında redakte edilir.
 
+Smoke beklemeleri gerçek geçen süreyi kullanır; sunucudaki Shiny/WebSocket başlangıcı sanal tarayıcı saatiyle hızlandırılmaz. Varsayılan browser süreç sınırı 165 saniye olarak kalır. Başlangıç önkoşulu sağlanmazsa koşu tek açık hata ile durur; bağımlı navigation/quick-action adımları çalıştırılmaz.
+
 ## Tam VM evidence gate
 
 Window 1 açıkken, aynı Window 2'de:

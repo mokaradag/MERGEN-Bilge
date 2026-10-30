@@ -61,6 +61,7 @@
   var failures = [];
   var consoleEvents = [];
   var shinyEvents = [];
+  var completionFrame = null;
   
   var originalSmokeStorage = {
     captured: false,
@@ -191,7 +192,8 @@
     var message = "Zaman aşımı: " + label + (lastError ? " / " + lastError.message : "");
 
     if (shouldFail) {
-      fail(message);
+      // Önkoşul sağlanmadıysa bağımlı adımlara devam edilmez.
+      throw new Error(message);
     } else {
       log("WARN: " + message, "pass");
     }
@@ -1088,7 +1090,18 @@
   function startSmoke(startButton) {
     if (startButton) startButton.disabled = true;
     statusEl.textContent = "UX smoke çalışıyor...";
-    run();
+    // Açık belge akışı load olayını sonuç yazılana dek bekletir. Böylece
+    // --dump-dom gerçek Shiny süresini sanal saatle hızlandırmadan bekler.
+    completionFrame = document.createElement("iframe");
+    completionFrame.hidden = true;
+    document.body.appendChild(completionFrame);
+    completionFrame.contentDocument.open();
+    completionFrame.contentDocument.write("<!doctype html><title>UX smoke completion</title>");
+    run().finally(function () {
+      completionFrame.contentDocument.close();
+      completionFrame.remove();
+      completionFrame = null;
+    });
   }
 
   (function initSmokeStart() {

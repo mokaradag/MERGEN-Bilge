@@ -281,9 +281,17 @@ testthat::test_that("Shiny handler ve smoke durum sözleşmeleri gerçek JavaScr
   node <- Sys.which("node")
   testthat::skip_if(!nzchar(node), "Node kullanılamıyor")
   for (script in c("shiny_message_handlers_contract_regressions.js",
-                   "ux_smoke_navigation_regressions.js", "ux_smoke_start_gate_regressions.js")) {
-    result <- system2(node, shQuote(file.path(.find_browser_smoke_repo_root(), "tests/scripts", script)),
-                      stdout = TRUE, stderr = TRUE)
+                   "ux_smoke_navigation_regressions.js", "ux_smoke_start_gate_regressions.js",
+                   "ux_smoke_startup_timing_regressions.js")) {
+    args <- shQuote(file.path(.find_browser_smoke_repo_root(), "tests/scripts", script))
+    if (identical(script, "ux_smoke_startup_timing_regressions.js")) {
+      browsers <- c(unname(Sys.which(c("google-chrome", "chromium", "msedge"))),
+                    file.path(Sys.getenv("PROGRAMFILES"), "Microsoft/Edge/Application/msedge.exe"),
+                    file.path(Sys.getenv("PROGRAMFILES(X86)"), "Microsoft/Edge/Application/msedge.exe"))
+      browsers <- browsers[nzchar(browsers) & file.exists(browsers)]
+      if (length(browsers)) args <- c(args, "--browser", shQuote(browsers[[1]]))
+    }
+    result <- system2(node, args, stdout = TRUE, stderr = TRUE)
     testthat::expect_null(attr(result, "status"), info = paste(result, collapse = "\n"))
     testthat::expect_match(paste(result, collapse = "\n"), "regressions passed", fixed = TRUE)
   }

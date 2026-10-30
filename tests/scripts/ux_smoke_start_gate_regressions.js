@@ -36,7 +36,8 @@ function load(pathname, search, initialStorage) {
   const nodes = { status: el('status'), log: el('log'), 'app-frame': el('app-frame'), 'start-smoke': el('start-smoke') };
   const context = vm.createContext({
     console: { log() {}, warn() {}, error() {} }, JSON, Date, Math, Promise, URL, URLSearchParams,
-    document: { getElementById: id => nodes[id] || null, createElement: () => el('x') },
+    document: { body: { appendChild() {} }, getElementById: id => nodes[id] || null,
+      createElement: () => Object.assign(el('x'), { contentDocument: { open() {}, write() {}, close() {} }, remove() {} }) },
     localStorage: {
       getItem: k => (store.has(k) ? store.get(k) : null),
       setItem: (k, v) => { writes.push(['set', k]); store.set(k, String(v)); },

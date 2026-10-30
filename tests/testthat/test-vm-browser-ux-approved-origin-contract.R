@@ -8,6 +8,37 @@
   env
 }
 
+# Win32 gerçek dosyayı çözünce kısa/uzun ad ve ayırıcı farkı kimlik değildir.
+.vm_ux_executable_identity <- function(path, windows = .Platform$OS.type == "windows",
+                                       canonicalize = normalizePath) {
+  value <- canonicalize(path, winslash = "/", mustWork = TRUE)
+  if (windows) tolower(value) else value
+}
+
+test_that("Rscript kimligi Windows ad takmalarini kabul eder, kurulum ve mimariyi ayirir", {
+  long <- "C:/Program Files/R/R-4.6.1/bin/x64/Rscript.exe"
+  short <- "C:/PROGRA~1/R/R-4.6.1/bin/x64/Rscript.exe"
+  spellings <- c(long, short, chartr("/", "\\", long), chartr("/", "\\", short),
+                 "C:/Program Files/R/R-4.6.1/bin/./x64/Rscript.exe")
+  # Windows dosya sistemi cozumunu yerel surucu gerektirmeden modelle.
+  canonicalize <- function(path, winslash, mustWork) {
+    expect_identical(winslash, "/")
+    expect_true(mustWork)
+    if (path %in% spellings) long else path
+  }
+  identity <- function(path) .vm_ux_executable_identity(path, TRUE, canonicalize)
+  for (path in spellings) expect_identical(identity(path), identity(long))
+  expect_identical(identity(toupper(long)), identity(long))
+  for (different in c("C:/Program Files/R/R-4.5.0/bin/x64/Rscript.exe",
+                      "C:/Program Files/R/R-4.6.1/bin/i386/Rscript.exe",
+                      "D:/Other/R-4.6.1/bin/x64/Rscript.exe")) {
+    expect_false(identical(identity(different), identity(long)))
+  }
+  active <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
+  expect_identical(.vm_ux_executable_identity(file.path(dirname(active), ".", basename(active))),
+                   .vm_ux_executable_identity(active))
+})
+
 test_that("belgedeki SSO on kontrolu uygulama durdurulmadan yapilir ve dosyayi degistirmez", {
   doc <- read_source_text_utf8(file.path(resolve_repo_root_for_tests(), "docs/vm-browser-ux-smoke.md"))
   lines <- strsplit(doc, "\n", fixed = TRUE)[[1]]
@@ -219,6 +250,8 @@ test_that("generic browser VM akisinda yerel preflight ve dis URL ayri kullanili
   browser_dom <- paste0('<div id="status">UX_SMOKE_DONE:PASS</div><a href="', base,
                        '/', prefix, '/x">x</a> https://private.example.invalid/redirect https://sso.example.invalid/auth')
   testthat::local_mocked_bindings(run = function(command, args, ...) {
+    expect_true("--timeout=160000" %in% args)
+    expect_false(any(startsWith(args, "--virtual-time-budget")))
     browser_url <<- tail(args, 1)
     browser_profile <<- sub("--user-data-dir=", "", args[startsWith(args, "--user-data-dir=")], fixed = TRUE)
     list(status = 0L, stdout = browser_dom,
@@ -330,6 +363,8 @@ test_that("VM komutu profili R baslangicindan sonra secer ve ortam dosyalarini k
   command <- guides[[1]][[1]]
   expect_true(endsWith(command, '" --full'))
   expr <- substr(command, nchar('& $rscript -e "') + 1L, nchar(command) - nchar('" --full'))
+  # Belge Windows komutudur; Linux cocugunda yalniz calistirilabilir son eki uyarlanir.
+  if (.Platform$OS.type != "windows") expr <- sub("'Rscript.exe'", "'Rscript'", expr, fixed = TRUE)
   # Gercek gate'in ortam yukleyicisi/profil karari; agir kanit adimlari kosulmaz.
   selected <- c("evidence_load_repo_renviron", "repo_renviron_loaded", "evidence_env_flag_true",
                 "profile_requested", "profile_effective", "full_evidence", "rscript_bin")
@@ -339,8 +374,10 @@ test_that("VM komutu profili R baslangicindan sonra secer ve ortam dosyalarini k
   fixture <- withr::local_tempdir()
   withr::local_dir(fixture)
   dir.create("tests/scripts", recursive = TRUE)
-  writeLines(c(unlist(lapply(gate, deparse)),
-               'stopifnot(profile_effective == "vm", full_evidence, isTRUE(getOption("vm.profile.loaded")), identical(rscript_bin, file.path(R.home("bin"), "Rscript.exe")))',
+  writeLines(c(paste(".vm_ux_executable_identity <-", paste(deparse(.vm_ux_executable_identity), collapse = "\n")),
+               unlist(lapply(gate, deparse)),
+               'active_rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")',
+               'stopifnot(profile_effective == "vm", full_evidence, isTRUE(getOption("vm.profile.loaded")), identical(.vm_ux_executable_identity(rscript_bin), .vm_ux_executable_identity(active_rscript)))',
                'cat(profile_effective)'), "tests/scripts/run_vm_evidence_gate.R")
   user_env <- file.path(fixture, ".Renviron")
   site_env <- file.path(fixture, "Renviron.site")
@@ -358,10 +395,10 @@ test_that("VM komutu profili R baslangicindan sonra secer ve ortam dosyalarini k
   for (where in c("user", "site")) {
     writeLines(if (where == "user") c("MERGEN_EVIDENCE_PROFILE=cloud", "MERGEN_RSCRIPT_BIN=stale-Rscript") else character(), user_env)
     writeLines(if (where == "site") c("MERGEN_EVIDENCE_PROFILE=cloud", "MERGEN_RSCRIPT_BIN=stale-Rscript") else character(), site_env)
-    before <- lapply(c(user_env, site_env), readLines)
+    before <- lapply(c(user_env, site_env), function(path) readBin(path, "raw", file.info(path)$size))
     expect_identical(run_r("cat(Sys.getenv('MERGEN_EVIDENCE_PROFILE'))"), "cloud")
     expect_identical(run_r(expr, "--full"), "vm")
-    expect_identical(lapply(c(user_env, site_env), readLines), before)
+    expect_identical(lapply(c(user_env, site_env), function(path) readBin(path, "raw", file.info(path)$size)), before)
   }
   expect_identical(Sys.getenv("MERGEN_EVIDENCE_PROFILE"), "vm")
 })
