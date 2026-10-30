@@ -932,15 +932,11 @@ satırlarının temizliği gibi kapsamları otomatik olarak kanıtlamaz.
 
 #### Standart tam evidence gate komutu
 
-Repo kökünden tam VM evidence workflow istemek için (browser hazırlığı aşağıdaki kanonik belgede):
+Önce [kanonik VM workflow](docs/vm-browser-ux-smoke.md) belgesinin Window 1/2 hazırlığını
+tamamlayın; üretim launcher'ıyla aynı R seçimini yapan `$rscript` ve browser ortamı o
+pencerede hazır olmalıdır. Ardından aynı Window 2'de tam VM evidence workflow isteyin:
 
 ```powershell
-$repo = "U:\Primavera\PYB\04 - Geliştirme\MERGEN Bilge"
-Set-Location $repo
-
-$rscript = "C:\Program Files\R\R-4.6.0\bin\Rscript.exe"
-if (!(Test-Path $rscript)) { $rscript = "C:\Program Files\R\R-4.6.0\bin\x64\Rscript.exe" }
-
 $env:MERGEN_EVIDENCE_PROFILE = "vm"
 & $rscript tests/scripts/run_vm_evidence_gate.R --full
 ```
@@ -964,12 +960,12 @@ akışını izleyin. Window 1 normal yapılandırma ve proje kitaplığı yükle
 `run_vm_browser_ux_smoke.R --start-app` ile **0.0.0.0:8009** üzerinde geçici uygulamayı
 başlatır; SSO etkin değilse başlatma durur. Window 2 aynı Windows hesabında onaylı
 SSO URL'sini `Read-Host` ile alır, repo/kanıt dizini dışında ayrı Edge profilinde normal
-girişi tamamlar ve profil pencerelerini kapatır. Geçici opt-in/192-bit yol öneki
+girişi tamamlar ve bu profilin Edge sürecinden tamamen çıkar. Geçici opt-in/192-bit yol öneki
 `.Renviron` dosyasına yazılmaz; kullanıcıya ait handshake üzerinden paylaşılır.
 
-- Yalnız hızlı kontrol: `Rscript tests/scripts/run_vm_browser_ux_smoke.R`.
+- Yalnız hızlı kontrol: aynı Window 2'de `& $rscript tests/scripts/run_vm_browser_ux_smoke.R`.
 - Tam VM kanıtı: aynı Window 2 ortamında `MERGEN_EVIDENCE_PROFILE=vm` ile
-  `Rscript tests/scripts/run_vm_evidence_gate.R --full`. Bu mod kalıcı/geçici
+  `& $rscript tests/scripts/run_vm_evidence_gate.R --full`. Bu mod kalıcı/geçici
   `MERGEN_EVIDENCE_STEPS` filtresini yok sayar ve **13 passed, 0 failed, 0 skipped** ister.
 - URL yapılandırıldığında gate mevcut `browser_ux_smoke` adımında VM koşucusunu seçer;
   handshake, hazırlanmış Edge profili ve 8009 ön kontrolü zorunludur. Başarı yalnız

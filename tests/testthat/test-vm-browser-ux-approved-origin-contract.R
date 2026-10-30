@@ -216,6 +216,11 @@ test_that("VM belge ve kaynaklarda onayli URL runtime girdisidir, sabit ag smoke
   technical <- read_source_text_utf8(file.path(root, "docs/technical-reference.md"))
   expect_false(grepl("port=28081|127.0.0.1:28081|28081/smoke/", paste(runbook, technical)))
   expect_match(runbook, "docs/vm-browser-ux-smoke.md", fixed = TRUE)
+  expect_match(runbook, "& $rscript tests/scripts/run_vm_browser_ux_smoke.R", fixed = TRUE)
+  expect_false(grepl("`Rscript tests/scripts/run_vm_browser_ux_smoke.R`", runbook, fixed = TRUE))
+  workflow <- strsplit(runbook, "#### Standart tam evidence gate komutu", fixed = TRUE)[[1]][[2]]
+  workflow <- strsplit(workflow, "#### Full isolated testthat davranışı", fixed = TRUE)[[1]][[1]]
+  expect_false(grepl("R-4.6.0", workflow, fixed = TRUE))
   expect_match(technical, "vm-browser-ux-smoke.md", fixed = TRUE)
   for (url in regmatches(doc, gregexpr("https://[^`[:space:]]+", doc))[[1]]) {
     expect_match(url, "https://app.example.invalid", fixed = TRUE)
