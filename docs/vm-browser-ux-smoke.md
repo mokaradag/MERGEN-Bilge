@@ -56,7 +56,7 @@ if (!$rscript -or !(Test-Path -LiteralPath $rscript -PathType Leaf)) {
 if (!$rscript) { $rscript = (Get-Command Rscript.exe -ErrorAction SilentlyContinue).Source }
 if (!$rscript) { throw "Rscript.exe bulunamadi." }
 $env:MERGEN_BROWSER_UX_BASE_URL = Read-Host "Approved MERGEN base URL"
-if ($env:MERGEN_BROWSER_UX_BASE_URL -notmatch '^https://') { throw "Network VM profile preparation requires HTTPS." }
+if (([uri]$env:MERGEN_BROWSER_UX_BASE_URL).Scheme -ne 'https') { throw "Network VM profile preparation requires HTTPS." }
 $env:MERGEN_BROWSER_UX_PROFILE_DIR = Join-Path $env:LOCALAPPDATA "MERGEN\BrowserUxSmoke"
 $edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
 if (!(Test-Path $edge)) { $edge = "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe" }
