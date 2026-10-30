@@ -289,10 +289,50 @@ testthat::test_that("Shiny handler ve smoke durum sözleşmeleri gerçek JavaScr
                     file.path(Sys.getenv("PROGRAMFILES"), "Microsoft/Edge/Application/msedge.exe"),
                     file.path(Sys.getenv("PROGRAMFILES(X86)"), "Microsoft/Edge/Application/msedge.exe"))
       browsers <- browsers[nzchar(browsers) & file.exists(browsers)]
-      if (length(browsers)) args <- c(args, "--browser", shQuote(browsers[[1]]))
+      if (length(browsers)) {
+        if (grepl("^msedge([.]exe)?$", basename(browsers[[1]]), ignore.case = TRUE)) {
+          policy <- new.env(parent = globalenv())
+          sys.source(file.path(.find_browser_smoke_repo_root(), "tests/scripts/helpers_browser_ux_profile.R"), envir = policy)
+          policy$ux_smoke_check_edge_policy()
+        }
+        args <- c(args, "--browser", shQuote(browsers[[1]]))
+      }
     }
     result <- system2(node, args, stdout = TRUE, stderr = TRUE)
     testthat::expect_null(attr(result, "status"), info = paste(result, collapse = "\n"))
     testthat::expect_match(paste(result, collapse = "\n"), "regressions passed", fixed = TRUE)
+  }
+})
+
+
+testthat::test_that("native Edge fixture ilke reddinde tarayici baslatmaz", {
+  root <- .find_browser_smoke_repo_root()
+  calls <- as.list(parse(file.path(root, "tests/testthat/test-browser-smoke-harness-contract.R")))
+  execution <- Filter(function(e) is.call(e) && length(e) >= 3L &&
+    is.character(e[[2]]) && identical(e[[2]], "Shiny handler ve smoke durum sözleşmeleri gerçek JavaScript ile çalışır"), calls)[[1]][[3]]
+  for (allowed in c(FALSE, TRUE)) {
+    env <- new.env(parent = environment())
+    checked <- 0L
+    native <- 0L
+    env$.find_browser_smoke_repo_root <- function() root
+    env$Sys.which <- function(x) if (identical(x, "node")) "mock-node" else c("", "", "/mock/msedge.exe")
+    env$file.exists <- function(x) x == "/mock/msedge.exe"
+    env$sys.source <- function(file, envir) {
+      testthat::expect_identical(file, file.path(root, "tests/scripts/helpers_browser_ux_profile.R"))
+      envir$ux_smoke_check_edge_policy <- function() {
+        checked <<- checked + 1L
+        if (!allowed) stop("policy blocked")
+      }
+    }
+    env$system2 <- function(command, args, ...) {
+      if ("--browser" %in% args) {
+        testthat::expect_identical(checked, 1L)
+        native <<- native + 1L
+      }
+      "regressions passed"
+    }
+    if (allowed) eval(execution, env) else testthat::expect_error(eval(execution, env), "policy blocked", fixed = TRUE)
+    testthat::expect_identical(checked, 1L)
+    testthat::expect_identical(native, as.integer(allowed))
   }
 })
