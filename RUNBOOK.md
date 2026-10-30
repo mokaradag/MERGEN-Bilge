@@ -936,9 +936,13 @@ satırlarının temizliği gibi kapsamları otomatik olarak kanıtlamaz.
 tamamlayın; üretim launcher'ıyla aynı R seçimini yapan `$rscript` ve browser ortamı o
 pencerede hazır olmalıdır. Ardından aynı Window 2'de tam VM evidence workflow isteyin:
 
+VM profili aşağıdaki komutta R başlangıcından **sonra**, yalnız çocuk R oturumunda
+seçilir. Böylece `.Renviron` / `Renviron.site` içindeki `MERGEN_EVIDENCE_PROFILE=cloud`
+seçimi bu VM koşumunu değiştiremez; ortam dosyaları düzenlenmez, normal `.Rprofile`
+ve proje kitaplığı yüklemesi korunur.
+
 ```powershell
-$env:MERGEN_EVIDENCE_PROFILE = "vm"
-& $rscript tests/scripts/run_vm_evidence_gate.R --full
+& $rscript -e "Sys.setenv(MERGEN_EVIDENCE_PROFILE='vm'); source('tests/scripts/run_vm_evidence_gate.R', encoding='UTF-8')" --full
 ```
 
 Bu komut kalıcı veya geçici adım filtresini yok sayar ve 13 adımın tamamında PASS ister;
@@ -965,7 +969,7 @@ girişi tamamlar ve bu profilin Edge sürecinden tamamen çıkar. Geçici opt-in
 
 - Yalnız hızlı kontrol: aynı Window 2'de `& $rscript tests/scripts/run_vm_browser_ux_smoke.R`.
 - Tam VM kanıtı: aynı Window 2 ortamında `MERGEN_EVIDENCE_PROFILE=vm` ile
-  `& $rscript tests/scripts/run_vm_evidence_gate.R --full`. Bu mod kalıcı/geçici
+  yukarıdaki R başlangıcı sonrası profil seçen `--full` komutunu kullanın. Bu mod kalıcı/geçici
   `MERGEN_EVIDENCE_STEPS` filtresini yok sayar ve **13 passed, 0 failed, 0 skipped** ister.
 - URL yapılandırıldığında gate mevcut `browser_ux_smoke` adımında VM koşucusunu seçer;
   handshake, hazırlanmış Edge profili ve 8009 ön kontrolü zorunludur. Başarı yalnız

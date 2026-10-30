@@ -202,7 +202,7 @@ test_that("VM belge ve kaynaklarda onayli URL runtime girdisidir, sabit ag smoke
   expect_match(doc, "--start-app", fixed = TRUE)
   expect_false(grepl("/smoke/ux-smoke.html", runner, fixed = TRUE))
   expect_false(any(grepl("write.*[.]Renviron", strsplit(runner, "\n", fixed = TRUE)[[1]])))
-  expect_match(doc, "run_vm_evidence_gate.R --full", fixed = TRUE)
+  expect_match(doc, "source('tests/scripts/run_vm_evidence_gate.R', encoding='UTF-8')", fixed = TRUE)
   expect_false(grepl("R-4.6.0", doc, fixed = TRUE))
   expect_match(doc, "$env:MERGEN_RSCRIPT", fixed = TRUE)
   expect_match(doc, "Get-Command Rscript.exe", fixed = TRUE)
@@ -222,9 +222,61 @@ test_that("VM belge ve kaynaklarda onayli URL runtime girdisidir, sabit ag smoke
   workflow <- strsplit(workflow, "#### Full isolated testthat davranışı", fixed = TRUE)[[1]][[1]]
   expect_false(grepl("R-4.6.0", workflow, fixed = TRUE))
   expect_match(technical, "vm-browser-ux-smoke.md", fixed = TRUE)
+  for (guide in c(doc, runbook)) {
+    expect_match(guide, "MERGEN_EVIDENCE_PROFILE=cloud", fixed = TRUE)
+    expect_match(guide, "Renviron.site", fixed = TRUE)
+    expect_match(guide, "Sys.setenv(MERGEN_EVIDENCE_PROFILE='vm')", fixed = TRUE)
+  }
   for (url in regmatches(doc, gregexpr("https://[^`[:space:]]+", doc))[[1]]) {
     expect_match(url, "https://app.example.invalid", fixed = TRUE)
   }
+})
+
+test_that("VM komutu profili R baslangicindan sonra secer ve ortam dosyalarini korur", {
+  root <- resolve_repo_root_for_tests()
+  guides <- lapply(c("docs/vm-browser-ux-smoke.md", "RUNBOOK.md"), function(path) {
+    lines <- strsplit(read_source_text_utf8(file.path(root, path)), "\n", fixed = TRUE)[[1]]
+    lines[startsWith(lines, '& $rscript -e "') & grepl("run_vm_evidence_gate.R", lines, fixed = TRUE)]
+  })
+  expect_length(guides[[1]], 1L)
+  expect_identical(guides[[1]], guides[[2]])
+  command <- guides[[1]][[1]]
+  expect_true(endsWith(command, '" --full'))
+  expr <- substr(command, nchar('& $rscript -e "') + 1L, nchar(command) - nchar('" --full'))
+  # Gercek gate'in ortam yukleyicisi/profil karari; agir kanit adimlari kosulmaz.
+  selected <- c("evidence_load_repo_renviron", "repo_renviron_loaded", "evidence_env_flag_true",
+                "profile_requested", "profile_effective", "full_evidence")
+  gate <- Filter(function(e) is.call(e) && identical(e[[1]], as.name("<-")) &&
+                   as.character(e[[2]]) %in% selected,
+                 as.list(parse_r_file_utf8(file.path(root, "tests/scripts/run_vm_evidence_gate.R"))))
+  fixture <- withr::local_tempdir()
+  withr::local_dir(fixture)
+  dir.create("tests/scripts", recursive = TRUE)
+  writeLines(c(unlist(lapply(gate, deparse)),
+               'stopifnot(profile_effective == "vm", full_evidence, isTRUE(getOption("vm.profile.loaded")))',
+               'cat(profile_effective)'), "tests/scripts/run_vm_evidence_gate.R")
+  user_env <- file.path(fixture, ".Renviron")
+  site_env <- file.path(fixture, "Renviron.site")
+  profile <- file.path(fixture, "fixture.Rprofile")
+  writeLines("options(vm.profile.loaded = TRUE)", profile)
+  writeLines(character(), site_env)
+  withr::local_envvar(MERGEN_EVIDENCE_PROFILE = "vm", R_ENVIRON_USER = user_env,
+                     R_ENVIRON = site_env, R_PROFILE_USER = profile, R_PROFILE = profile)
+  rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
+  run_r <- function(expression, args = character()) {
+    out <- system2(rscript, c("-e", shQuote(expression), args), stdout = TRUE, stderr = TRUE)
+    expect_null(attr(out, "status"))
+    paste(out, collapse = "\n")
+  }
+  for (where in c("user", "site")) {
+    writeLines(if (where == "user") "MERGEN_EVIDENCE_PROFILE=cloud" else character(), user_env)
+    writeLines(if (where == "site") "MERGEN_EVIDENCE_PROFILE=cloud" else character(), site_env)
+    before <- lapply(c(user_env, site_env), readLines)
+    expect_identical(run_r("cat(Sys.getenv('MERGEN_EVIDENCE_PROFILE'))"), "cloud")
+    expect_identical(run_r(expr, "--full"), "vm")
+    expect_identical(lapply(c(user_env, site_env), readLines), before)
+  }
+  expect_identical(Sys.getenv("MERGEN_EVIDENCE_PROFILE"), "vm")
 })
 
 

@@ -84,9 +84,13 @@ Bu komut yalnız browser UX smoke çalıştırır. Yerel ön kontrol `http://127
 
 Window 1 açıkken, aynı Window 2'de:
 
+VM profili aşağıdaki komutta R başlangıcından **sonra**, yalnız çocuk R oturumunda
+seçilir. Böylece `.Renviron` / `Renviron.site` içindeki `MERGEN_EVIDENCE_PROFILE=cloud`
+seçimi bu VM koşumunu değiştiremez; ortam dosyaları düzenlenmez, normal `.Rprofile`
+ve proje kitaplığı yüklemesi korunur.
+
 ```powershell
-$env:MERGEN_EVIDENCE_PROFILE = "vm"
-& $rscript tests/scripts/run_vm_evidence_gate.R --full
+& $rscript -e "Sys.setenv(MERGEN_EVIDENCE_PROFILE='vm'); source('tests/scripts/run_vm_evidence_gate.R', encoding='UTF-8')" --full
 if ($LASTEXITCODE -ne 0) { throw "VM evidence gate FAILED" }
 ```
 
@@ -104,7 +108,7 @@ Remove-Item Env:MERGEN_ENABLE_UX_SMOKE,Env:MERGEN_ALLOW_NETWORK_UX_SMOKE,Env:MER
 Normal `.Renviron` yapılandırması `MERGEN_HOST=0.0.0.0`, `MERGEN_PORT=8009` olarak kalır; smoke opt-in/önek değerlerini `.Renviron` içine **eklemeyin**. Window 2'de çalışma URL'sini/profil seçimini temizleyin (hazırlanmış profil silinmez):
 
 ```powershell
-Remove-Item Env:MERGEN_BROWSER_UX_BASE_URL,Env:MERGEN_BROWSER_UX_PROFILE_DIR,Env:MERGEN_BROWSER_BIN,Env:MERGEN_EVIDENCE_PROFILE -ErrorAction SilentlyContinue
+Remove-Item Env:MERGEN_BROWSER_UX_BASE_URL,Env:MERGEN_BROWSER_UX_PROFILE_DIR,Env:MERGEN_BROWSER_BIN -ErrorAction SilentlyContinue
 ```
 
 Zorla sonlandırma sonrası eski handshake varsa ve Window 1 artık çalışmıyorsa yalnız `Join-Path $env:LOCALAPPDATA "MERGEN\BrowserUxSmokeRun"` dizinini silin; hazırlanan `BrowserUxSmoke` profilini silmeyin.
