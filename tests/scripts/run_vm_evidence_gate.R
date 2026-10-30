@@ -138,11 +138,13 @@ evidence_redact_text <- function(text) {
     "LOCAL_LLM_ENDPOINT", "LOCAL_LLM_API_KEY", "DB_DSN", "DB_PASSWORD",
     "AI_KEYS_MASTER", "SSO_KEYCLOAK_URL", "SSO_CLIENT_SECRET",
     "MERGEN_DEFAULT_API_KEY", "MERGEN_BROWSER_BIN",
-    "MERGEN_BROWSER_UX_BASE_URL", "MERGEN_UX_SMOKE_PATH"
+    "MERGEN_BROWSER_UX_BASE_URL", "MERGEN_UX_SMOKE_PATH", "MERGEN_BROWSER_UX_PROFILE_DIR"
   )
 
   values <- Sys.getenv(sensitive_names, unset = "")
-  values <- unique(values[nzchar(values)])
+  values <- unique(values[nzchar(trimws(values))])
+  values <- unique(c(values, gsub("\\", "/", values, fixed = TRUE),
+                     vapply(values, function(v) encodeString(v, quote = ""), character(1))))
   values <- values[order(nchar(values), decreasing = TRUE)]
 
   out <- paste(as.character(text %||% ""), collapse = "\n")
@@ -611,6 +613,12 @@ run_step_renv_status <- function() {
   list(ok = ok, notes = notes, detail = detail, log_file = log_file, duration_sec = 0)
 }
 
+# Hazir SSO oturumu uzun suit boyunca bekletilmez; adim sayisi degismez.
+if (evidence_browser_required()) {
+  browser_index <- which(vapply(evidence_step_specs, function(spec) identical(spec$id, "browser_ux_smoke"), logical(1)))
+  evidence_step_specs <- c(evidence_step_specs[browser_index], evidence_step_specs[-browser_index])
+}
+
 evidence_step_runners <- list(
   env_config = run_step_env_config,
   parse_sanity = function() run_step_simple_child(
@@ -621,11 +629,13 @@ evidence_step_runners <- list(
     "app_boot_smoke",
     "source('tests/scripts/smoke_app_boot.R', encoding = 'UTF-8')"
   ),
-full_testthat = function() run_step_simple_child(
-  "full_testthat",
-  "source('tests/scripts/run_full_testthat_isolated.R', encoding = 'UTF-8')",
-  extra_env = c(TZ = "UTC")
-),
+  full_testthat = function() run_step_simple_child(
+    "full_testthat",
+    "source('tests/scripts/run_full_testthat_isolated.R', encoding = 'UTF-8')",
+    extra_env = c(TZ = "UTC", if (full_evidence) c(
+      MERGEN_TESTTHAT_START_INDEX = "", MERGEN_TESTTHAT_END_INDEX = ""
+    ))
+  ),
   maintainability_report = function() run_step_simple_child(
     "maintainability_report",
     c(
@@ -683,7 +693,8 @@ full_testthat = function() run_step_simple_child(
   browser_ux_smoke = run_step_browser_ux_smoke,
   vm_preflight_real = function() run_step_simple_child(
     "vm_preflight_real",
-    "source('tests/scripts/run_vm_preflight_real.R', encoding = 'UTF-8')"
+    "source('tests/scripts/run_vm_preflight_real.R', encoding = 'UTF-8')",
+    extra_env = if (full_evidence) c(MERGEN_PREFLIGHT_CHECK_FILE_STORE = "TRUE") else character(0)
   ),
   db_encoding_preflight = function() run_step_simple_child(
     "db_encoding_preflight",

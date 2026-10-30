@@ -27,6 +27,13 @@ test_that("VM startup her kosuda yeni 192-bit onek uretir, URL guvenli kurulur",
                 "https://app.example.invalid/base\n", "https://app.example.invalid\\base")) {
     expect_error(env$vm_ux_base_url(bad), "MERGEN_BROWSER_UX_BASE_URL")
   }
+  for (bad in c("http://app.example.invalid/base", "http://127.0.0.1.example.invalid",
+                "http://localhost.example.invalid", "https://[::1]:8009")) {
+    expect_error(env$vm_ux_base_url(bad), "MERGEN_BROWSER_UX_BASE_URL")
+  }
+  for (local in c("http://127.0.0.1:8009/base", "http://localhost:8009")) {
+    expect_identical(env$vm_ux_base_url(local), local)
+  }
 })
 
 test_that("VM startup ayni 0.0.0.0:8009 topolojisini ve gercek ortam aktarimini korur", {
@@ -121,11 +128,15 @@ test_that("generic browser VM akisinda yerel preflight ve dis URL ayri kullanili
   env$quit <- function(status) stop(structure(list(message = "runner exit", status = status), class = c("runner_exit", "error", "condition")))
   requests <- character()
   browser_url <- NULL
+  browser_profile <- NULL
+  browser_dom <- paste0('<div id="status">UX_SMOKE_DONE:PASS</div><a href="', base,
+                       '/', prefix, '/x">x</a> https://private.example.invalid/redirect https://sso.example.invalid/auth')
   testthat::local_mocked_bindings(run = function(command, args, ...) {
     browser_url <<- tail(args, 1)
-    list(status = 0L, stdout = paste0('<div id="status">UX_SMOKE_DONE:PASS</div><a href="', base,
-         '/', prefix, '/x">x</a> https://private.example.invalid/redirect https://sso.example.invalid/auth'),
-         stderr = paste(base, utils::URLencode(base, reserved = TRUE), prefix))
+    browser_profile <<- sub("--user-data-dir=", "", args[startsWith(args, "--user-data-dir=")], fixed = TRUE)
+    list(status = 0L, stdout = browser_dom,
+         stderr = paste(base, utils::URLencode(base, reserved = TRUE), prefix, browser_profile,
+                        chartr("/", "\\", browser_profile), encodeString(browser_profile, quote = "")))
   }, .package = "processx")
   expressions <- parse_r_file_utf8("tests/scripts/ai_browser_ux_smoke.R")
   run <- function() {
@@ -139,12 +150,46 @@ test_that("generic browser VM akisinda yerel preflight ve dis URL ayri kullanili
     }
   }
   result <- tryCatch(run(), runner_exit = function(e) e)
-  expect_identical(result$status, 0)
+  expect_identical(result$status, 0L)
   expect_identical(browser_url, paste0(base, "/", prefix, "/ux-smoke.html?autostart=1"))
   expect_identical(requests, c("http://127.0.0.1:8009", paste0("http://127.0.0.1:8009/", prefix, "/ux-smoke.html")))
   logs <- paste(vapply(list.files(artifact, full.names = TRUE), read_source_text_utf8, character(1)), collapse = "\n")
   expect_false(grepl("private.example.invalid|sso.example.invalid|__mergen_ux_[0-9a-f]{48}", logs))
   expect_match(logs, "<MERGEN_BROWSER_UX_BASE_URL>", fixed = TRUE)
+  expect_false(grepl(profile, logs, fixed = TRUE))
+  expect_true(dir.exists(profile))
+  # SSO formu ve hatta PASS statusu tasiyan hassas DOM hicbir zaman saklanmaz.
+  for (dom in c('<form><input type="hidden" name="session_code" value="flow-state-sentinel"></form>',
+                '<div id="status">UX_SMOKE_DONE:PASS</div><input name="state" value="flow-state-sentinel">')) {
+    browser_dom <- dom
+    Sys.unsetenv("MERGEN_BROWSER_UX_PROFILE_DIR")
+    result <- tryCatch(run(), runner_exit = function(e) e)
+    expect_identical(result$status, if (grepl('id="status"', dom, fixed = TRUE)) 0L else 1L)
+    expect_false(dir.exists(browser_profile), info = "gecici profil basari ve hata sonunda temizlenir")
+    logs <- paste(vapply(list.files(artifact, full.names = TRUE), read_source_text_utf8, character(1)), collapse = "\n")
+    expect_false(grepl("flow-state-sentinel|session_code|<input|<form", logs))
+    expect_false(grepl(browser_profile, logs, fixed = TRUE))
+  }
+})
+
+test_that("Edge profil ilkesi dogrulanamazsa tarayici kapali kalir, ilke degeri yazilmaz", {
+  env <- new.env(parent = globalenv())
+  source(file.path(resolve_repo_root_for_tests(), "tests/scripts/helpers_browser_ux_profile.R"), local = env)
+  answer <- list(status = 0L, stdout = "UX_SMOKE_EDGE_POLICY_OK\n", stderr = "")
+  testthat::local_mocked_bindings(run = function(command, args, ...) {
+    expect_identical(command, "powershell.exe")
+    script <- tail(args, 1)
+    for (token in c("UserDataDir", "LocalMachine", "CurrentUser", "Registry64", "Registry32", "GetValueNames")) {
+      expect_match(script, token, fixed = TRUE)
+    }
+    answer
+  }, .package = "processx")
+  expect_true(env$ux_smoke_check_edge_policy(windows = TRUE))
+  for (result in list(list(status = 2L, stdout = "sensitive-policy-value"),
+                      list(status = 3L, stdout = ""), list(status = 0L, stdout = ""))) {
+    answer <- result
+    expect_error(env$ux_smoke_check_edge_policy(windows = TRUE), "No browser was launched", fixed = TRUE)
+  }
 })
 
 test_that("VM belge ve kaynaklarda onayli URL runtime girdisidir, sabit ag smoke yolu yoktur", {
@@ -158,6 +203,12 @@ test_that("VM belge ve kaynaklarda onayli URL runtime girdisidir, sabit ag smoke
   expect_false(grepl("/smoke/ux-smoke.html", runner, fixed = TRUE))
   expect_false(any(grepl("write.*[.]Renviron", strsplit(runner, "\n", fixed = TRUE)[[1]])))
   expect_match(doc, "run_vm_evidence_gate.R --full", fixed = TRUE)
+  expect_false(grepl("R-4.6.0", doc, fixed = TRUE))
+  expect_match(doc, "$env:MERGEN_RSCRIPT", fixed = TRUE)
+  expect_match(doc, "Get-Command Rscript.exe", fixed = TRUE)
+  expect_match(doc, "UserDataDir", fixed = TRUE)
+  expect_match(doc, "Görev Yöneticisi", fixed = TRUE)
+  expect_match(doc, "ortam dosyaları shell değerlerini ezebilir", fixed = TRUE)
   for (command in strsplit(doc, "\n", fixed = TRUE)[[1]]) {
     if (startsWith(command, "& $rscript")) expect_false(grepl("--vanilla|--no-init-file|--no-environ", command))
   }

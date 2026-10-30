@@ -19,6 +19,10 @@ vm_ux_base_url <- function(value) {
       grepl("[[:cntrl:]]", value)) {
     stop("MERGEN_BROWSER_UX_BASE_URL must be the approved HTTP(S) application base URL (no credentials/query/fragment).", call. = FALSE)
   }
+  if (startsWith(value, "http://") &&
+      !grepl("^http://(127[.]0[.]0[.]1|localhost)(:[0-9]{1,5})?(/|$)", value)) {
+    stop("MERGEN_BROWSER_UX_BASE_URL requires HTTPS for network VM smoke.", call. = FALSE)
+  }
   sub("/+$", "", value)
 }
 
@@ -112,11 +116,12 @@ vm_ux_main <- function(args = commandArgs(trailingOnly = TRUE)) {
   result <- processx::run(rscript, c("--no-environ", "tests/scripts/ai_browser_ux_smoke.R",
                                     "--require-browser", "--port", "8009", "--artifact-dir", artifact_dir),
                           echo = FALSE, error_on_status = FALSE, timeout = 420)
-  cat(result$stdout, result$stderr, sep = "\n")
   lines <- trimws(strsplit(result$stdout, "\n", fixed = TRUE)[[1]])
   if (!identical(result$status, 0L) || !"OK: rendered #status is UX_SMOKE_DONE:PASS." %in% lines) {
     stop("VM browser UX smoke failed; rendered UX_SMOKE_DONE:PASS is required.", call. = FALSE)
   }
+  # Cocuk baslangic/tani ciktisi profil veya sir tasiyabilir; yalniz kanit satiri aktarilir.
+  cat("OK: rendered #status is UX_SMOKE_DONE:PASS.\n")
   invisible(TRUE)
 }
 

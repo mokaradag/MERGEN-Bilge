@@ -107,16 +107,24 @@ mergen_ux_smoke_enabled <- function(host = Sys.getenv("MERGEN_HOST", "0.0.0.0"))
     !identical(prefix, "smoke")
 }
 
-mergen_register_ux_smoke_resource <- function(enabled = mergen_ux_smoke_enabled()) {
-  # Önceki koşu/önek aynı süreçte de açık kalmaz. Kaynak dizini seçilemez.
-  paths <- as.character(names(shiny::resourcePaths()))
-  old <- paths[paths == "smoke" | startsWith(paths, "__mergen_ux_")]
-  for (prefix in old) shiny::removeResourcePath(prefix)
-  prefix <- mergen_ux_smoke_prefix()
-  directory <- file.path("tests", "smoke")
-  if (!isTRUE(enabled) || is.na(prefix) || !dir.exists(directory)) return(invisible(FALSE))
-  safe_add_resource_path(prefix, directory)
-}
+mergen_register_ux_smoke_resource <- local({
+  owned <- NULL
+  function(enabled = mergen_ux_smoke_enabled()) {
+    # Yalnız bu uygulamanın kaydı temizlenir; başka kaynaklar süpürülmez.
+    if (!is.null(owned) && owned$prefix %in% names(shiny::resourcePaths()) &&
+        identical(shiny::resourcePaths()[[owned$prefix]], owned$directory)) {
+      shiny::removeResourcePath(owned$prefix)
+    }
+    owned <<- NULL
+    prefix <- mergen_ux_smoke_prefix()
+    directory <- file.path("tests", "smoke")
+    if (!isTRUE(enabled) || is.na(prefix) || !dir.exists(directory)) return(invisible(FALSE))
+    if (prefix %in% names(shiny::resourcePaths())) stop("Smoke resource prefix is already registered.", call. = FALSE)
+    if (!isTRUE(safe_add_resource_path(prefix, directory))) return(invisible(FALSE))
+    owned <<- list(prefix = prefix, directory = shiny::resourcePaths()[[prefix]])
+    invisible(TRUE)
+  }
+})
 
 if (dir.exists("www")) {
   for (subdir in list.dirs("www", recursive = FALSE, full.names = FALSE)) {
@@ -256,8 +264,9 @@ run_mergen_app <- function(
 ) {
   validate_boot_state()
   # Smoke kararı gerçek dinleme adresiyle yeniden verilir; runApp bitince kapanır.
-  mergen_register_ux_smoke_resource(enabled = mergen_ux_smoke_enabled(host))
-  on.exit(mergen_register_ux_smoke_resource(enabled = FALSE), add = TRUE)
+  register_smoke <- mergen_register_ux_smoke_resource
+  register_smoke(enabled = mergen_ux_smoke_enabled(host))
+  on.exit(register_smoke(enabled = FALSE), add = TRUE)
 
   port <- .normalize_mergen_port(port)
 

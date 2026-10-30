@@ -62,6 +62,7 @@ find_repo_root <- function() {
 repo_root <- find_repo_root()
 setwd(repo_root)
 source("tests/scripts/helpers_browser_ux_profile.R", local = TRUE, encoding = "UTF-8")
+source("R/utils_log_redact.R", local = TRUE, encoding = "UTF-8")
 
 rscript <- file.path(R.home("bin"), "Rscript")
 if (.Platform$OS.type == "windows") {
@@ -131,9 +132,8 @@ if (isTRUE(use_external_app)) {
 }
 
 ux_smoke_redact_external_url <- function(text, base_url = external_base_url) {
-  if (!nzchar(base_url) || length(text) == 0L) {
-    return(text)
-  }
+  text <- ux_smoke_redact_profile(redact_sensitive_text(text))
+  if (!nzchar(base_url) || length(text) == 0L) return(text)
 
   clean_base_url <- sub("/+$", "", base_url)
   origin <- sub("^(https?://[^/]+).*$", "\\1", clean_base_url)
@@ -401,7 +401,7 @@ wait_for_app <- function() {
 
 	if (elapsed > timeout_seconds) {
 	  body_file <- file.path(artifact_dir, sprintf("last-http-body-%s.html", port))
-	  writeLines(ux_smoke_redact_external_url(last_body), body_file, useBytes = TRUE)
+	  writeLines("HTTP response omitted: no browser evidence.", body_file, useBytes = TRUE)
 
 	  cat(sprintf("App boot wait failed after %ds.\n", timeout_seconds))
 	  cat(sprintf("Last HTTP body written to: %s\n", body_file))
@@ -454,8 +454,11 @@ ux_smoke_browser_profile <- function(requested = "", external_app = FALSE) {
   if (persistent && !isTRUE(external_app)) {
     stop("A prepared browser profile requires MERGEN_BROWSER_UX_BASE_URL.", call. = FALSE)
   }
+  if (persistent && !dir.exists(requested)) {
+    stop("Prepared browser profile must be an existing directory outside the repository and artifacts.", call. = FALSE)
+  }
   path <- if (persistent) requested else tempfile("mergen-browser-profile-")
-  if (!dir.exists(path) && !dir.create(path, recursive = TRUE, showWarnings = FALSE)) {
+  if (!persistent && !dir.create(path, recursive = TRUE, showWarnings = FALSE)) {
     stop("Browser UX smoke profile directory could not be created.", call. = FALSE)
   }
   path <- normalizePath(path, winslash = "/", mustWork = TRUE)
@@ -471,12 +474,15 @@ ux_smoke_cleanup_profile <- function(profile) {
   invisible(NULL)
 }
 
+ux_smoke_run_browser <- function() {
 browser_profile <- ux_smoke_browser_profile(
   arg_value("--profile-dir", Sys.getenv("MERGEN_BROWSER_UX_PROFILE_DIR", "")),
   external_app = use_external_app
 )
 profile_dir <- browser_profile$path
+if (!is.null(px)) on.exit(cleanup(), add = TRUE)
 on.exit(ux_smoke_cleanup_profile(browser_profile), add = TRUE)
+if (grepl("^msedge([.]exe)?$", basename(browser_bin), ignore.case = TRUE)) ux_smoke_check_edge_policy()
 if (!browser_profile$temporary) {
   cat("Using operator-prepared smoke profile. Close its interactive browser windows before this run.\n")
 }
@@ -515,9 +521,12 @@ run_browser_dump <- function(headless_arg) {
   )
 
   stdout <- result$stdout %||% ""
-  stderr <- result$stderr %||% ""
+  stderr <- ux_smoke_redact_profile(result$stderr %||% "", profile_dir)
 
-  writeLines(ux_smoke_redact_external_url(stdout), con = dom_file, useBytes = TRUE)
+  # Ham DOM SSO formu/oturum verisi tasiyabilir; yalniz sonuc ozeti saklanir.
+  status <- ux_smoke_rendered_status(stdout)
+  evidence_status <- if (identical(status, "UX_SMOKE_DONE:PASS")) status else "UX_SMOKE_NOT_PASSED"
+  writeLines(paste0('<div id="status">', evidence_status, "</div>"), con = dom_file, useBytes = TRUE)
   writeLines(ux_smoke_redact_external_url(stderr), con = stderr_file, useBytes = TRUE)
 
   list(
@@ -544,13 +553,14 @@ smoke_status <- ux_smoke_rendered_status(result$stdout)
 
 if (identical(smoke_status, "UX_SMOKE_DONE:PASS")) {
   cat("OK: rendered #status is UX_SMOKE_DONE:PASS.\n")
-  quit(status = 0)
+  return(0L)
 }
 
+display_status <- if (startsWith(smoke_status, "UX_SMOKE_DONE:FAIL")) "UX_SMOKE_DONE:FAIL" else "UX_SMOKE_NOT_PASSED"
 if (startsWith(smoke_status, "UX_SMOKE_DONE:FAIL")) {
-  cat(sprintf("FAILED: rendered #status is '%s'.\n", ux_smoke_redact_external_url(smoke_status)))
+  cat(sprintf("FAILED: rendered #status is '%s'.\n", display_status))
 } else {
-  cat(sprintf("FAILED: rendered #status did not reach UX_SMOKE_DONE:PASS ('%s').\n", ux_smoke_redact_external_url(smoke_status)))
+  cat(sprintf("FAILED: rendered #status did not reach UX_SMOKE_DONE:PASS ('%s').\n", display_status))
 }
 
 cat(sprintf("Browser status: %d\n", result$status))
@@ -563,4 +573,7 @@ cat("\n--- shiny log tail ---\n")
 cat(paste(ux_smoke_redact_external_url(tail_log()), collapse = "\n"))
 cat("\n--- end tails ---\n")
 
-quit(status = 1)
+1L
+}
+
+quit(status = ux_smoke_run_browser())

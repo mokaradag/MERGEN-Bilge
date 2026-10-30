@@ -189,9 +189,7 @@ test_that("tarayıcı ön kontrolü ana sayfayı veya eksik harness'ı kabul etm
 
   # Ön kontrol tarayıcı süreci/profilinden önce bloklamalıdır.
   kontrol <- which(vapply(as.list(ifadeler), identical, logical(1), quote(ux_smoke_check_harness())))
-  profil <- which(vapply(as.list(ifadeler), function(e) {
-    is.call(e) && identical(e[[1]], as.name("<-")) && identical(e[[2]], as.name("profile_dir"))
-  }, logical(1)))
+  profil <- which(vapply(as.list(ifadeler), identical, logical(1), quote(quit(status = ux_smoke_run_browser()))))
   expect_length(kontrol, 1L)
   expect_length(profil, 1L)
   expect_lt(kontrol, profil)
@@ -207,7 +205,8 @@ test_that("koşucunun geçici uygulaması .Renviron kapalı değerinden sonra sm
   eval(dal[[1]][[3]][[2]], ortam)
   withr::local_envvar(MERGEN_ENABLE_UX_SMOKE = NA, MERGEN_RUN_APP = NA,
                      MERGEN_DISABLE_FUTURES = NA, LOCAL_LLM_ENDPOINT = NA,
-                     DB_DSN = NA, AI_KEYS_MASTER = NA, TZ = NA)
+                     DB_DSN = NA, AI_KEYS_MASTER = NA, TZ = NA,
+                     MERGEN_UX_SMOKE_PATH = NA, MERGEN_ALLOW_NETWORK_UX_SMOKE = NA)
   ortam$source <- function(...) Sys.setenv(MERGEN_ENABLE_UX_SMOKE = "false")
   ortam$cat <- function(...) invisible(NULL)
   dinleme <- NULL
@@ -237,19 +236,25 @@ test_that("smoke koşucusu açık hazırlanmış profili korur, varsayılan geç
   yol <- file.path(withr::local_tempdir(), "smoke profil")
   expect_error(ortam$ux_smoke_browser_profile(yol), "requires MERGEN_BROWSER_UX_BASE_URL", fixed = TRUE)
   expect_false(dir.exists(yol))
+  expect_error(ortam$ux_smoke_browser_profile(yol, TRUE), "must be an existing directory", fixed = TRUE)
+  expect_false(dir.exists(yol))
+  dir.create(yol)
   hazir <- ortam$ux_smoke_browser_profile(yol, external_app = TRUE)
   expect_false(hazir$temporary)
   expect_identical(hazir$path, normalizePath(yol, winslash = "/"))
   for (root in c(ortam$repo_root, ortam$artifact_dir)) {
-    for (blocked in c(root, file.path(root, "profile"))) {
+    for (blocked in c(root, file.path(root, "new-parent", "profile"))) {
       expect_error(ortam$ux_smoke_browser_profile(blocked, TRUE), "outside the repository and artifacts", fixed = TRUE)
     }
+    expect_false(dir.exists(file.path(root, "new-parent")))
+    expect_true(dir.exists(root))
     expect_error(ortam$ux_smoke_browser_profile(file.path(root, "profile", "..", "profile"), TRUE),
                  "outside the repository and artifacts", fixed = TRUE)
   }
   # Benzer onekli kardes dizin ve normalizasyon sonrasi dis yol kabul edilir.
   sibling <- paste0(ortam$repo_root, "-external")
   withr::defer(unlink(sibling, recursive = TRUE))
+  dir.create(sibling)
   expect_false(ortam$ux_smoke_browser_profile(sibling, TRUE)$temporary)
   expect_identical(ortam$ux_smoke_browser_profile(file.path(ortam$repo_root, "..", basename(sibling)), TRUE)$path,
                    normalizePath(sibling, winslash = "/"))
@@ -264,7 +269,43 @@ test_that("smoke koşucusu açık hazırlanmış profili korur, varsayılan geç
   dosya <- tempfile()
   writeLines("not a directory", dosya)
   withr::defer(unlink(dosya))
-  expect_error(ortam$ux_smoke_browser_profile(dosya, TRUE), "could not be created", fixed = TRUE)
+  expect_error(ortam$ux_smoke_browser_profile(dosya, TRUE), "must be an existing directory", fixed = TRUE)
+  expect_true(file.exists(dosya))
+  ortam$tempfile <- function(...) yol
+  expect_error(ortam$ux_smoke_browser_profile(), "could not be created", fixed = TRUE)
+  expect_true(file.exists(isaret), info = "onceden var olan gecici-yol cakismasi silinmez")
+})
+
+test_that("smoke kaynak temizligi baska uygulama veya prefix kaydina dokunmaz", {
+  first <- .smoke_gate_app_env()
+  second <- .smoke_gate_app_env()
+  withr::local_dir(resolve_repo_root_for_tests())
+  withr::local_envvar(MERGEN_ENABLE_UX_SMOKE = "true", MERGEN_HOST = "0.0.0.0",
+                     MERGEN_ALLOW_NETWORK_UX_SMOKE = "true", MERGEN_UX_SMOKE_PATH = NA)
+  a <- paste0("__mergen_ux_", strrep("ab", 24))
+  b <- paste0("__mergen_ux_", strrep("cd", 24))
+  unrelated <- "__mergen_ux_unrelated"
+  shiny::addResourcePath(unrelated, "tests/smoke")
+  withr::defer({
+    first$mergen_register_ux_smoke_resource(FALSE)
+    second$mergen_register_ux_smoke_resource(FALSE)
+    shiny::removeResourcePath(unrelated)
+  })
+  Sys.setenv(MERGEN_UX_SMOKE_PATH = a)
+  expect_true(first$mergen_register_ux_smoke_resource())
+  Sys.setenv(MERGEN_UX_SMOKE_PATH = b)
+  expect_true(second$mergen_register_ux_smoke_resource())
+  expect_true(all(c(a, b, unrelated) %in% names(shiny::resourcePaths())))
+  first$mergen_register_ux_smoke_resource(FALSE)
+  expect_false(a %in% names(shiny::resourcePaths()))
+  expect_true(all(c(b, unrelated) %in% names(shiny::resourcePaths())))
+  # Kayit ayni prefix ile baska sahibin dizinine donusmusse temizlenmez.
+  replacement <- withr::local_tempdir()
+  shiny::removeResourcePath(b)
+  shiny::addResourcePath(b, replacement)
+  withr::defer(shiny::removeResourcePath(b))
+  second$mergen_register_ux_smoke_resource(FALSE)
+  expect_identical(shiny::resourcePaths()[[b]], normalizePath(replacement, winslash = "/"))
 })
 
 test_that("ağ smoke yalnız iki opt-in ve geçerli koşu önekiyle sabit test dizinini sunar", {

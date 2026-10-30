@@ -480,3 +480,70 @@ test_that("acik tam workflow kalici filtreyi yok sayar, gelistirici filtresi kor
   expect_true(env$full_evidence)
   expect_identical(readLines(path), "MERGEN_EVIDENCE_STEPS=browser_ux_smoke")
 })
+
+test_that("tam kanit cocuklarinda test araligi kalkar ve File Store zorunludur", {
+  expressions <- parse(file = .evg_script_path, encoding = "UTF-8")
+  env <- new.env(parent = globalenv())
+  env$run_step_env_config <- env$run_step_browser_ux_smoke <- env$run_step_renv_status <- function() NULL
+  observed <- NULL
+  env$run_step_simple_child <- function(step_id, body_lines, extra_env = character()) {
+    observed <<- extra_env
+  }
+  for (e in expressions) {
+    if (is.call(e) && identical(e[[1]], as.name("<-")) &&
+        identical(e[[2]], as.name("evidence_step_runners"))) eval(e, env)
+  }
+  withr::local_envvar(MERGEN_TESTTHAT_START_INDEX = NA, MERGEN_TESTTHAT_END_INDEX = NA,
+                     MERGEN_PREFLIGHT_CHECK_FILE_STORE = NA)
+  config <- withr::local_tempfile()
+  writeLines(c("MERGEN_TESTTHAT_START_INDEX=2", "MERGEN_TESTTHAT_END_INDEX=3",
+               "MERGEN_PREFLIGHT_CHECK_FILE_STORE=FALSE"), config)
+  readRenviron(config)
+  for (full in c(FALSE, TRUE)) {
+    env$full_evidence <- full
+    env$evidence_step_runners$full_testthat()
+    if (full) {
+      expect_identical(observed[["MERGEN_TESTTHAT_START_INDEX"]], "")
+      expect_identical(observed[["MERGEN_TESTTHAT_END_INDEX"]], "")
+    } else expect_identical(observed, c(TZ = "UTC"))
+    env$evidence_step_runners$vm_preflight_real()
+    expect_identical(observed, if (full) c(MERGEN_PREFLIGHT_CHECK_FILE_STORE = "TRUE") else character())
+  }
+  expect_identical(Sys.getenv("MERGEN_TESTTHAT_START_INDEX"), "2")
+  expect_identical(Sys.getenv("MERGEN_TESTTHAT_END_INDEX"), "3")
+  expect_identical(Sys.getenv("MERGEN_PREFLIGHT_CHECK_FILE_STORE"), "FALSE")
+})
+
+test_that("istenen browser uzun testlerden once, 13 adim korunarak kosulur", {
+  expressions <- parse(file = .evg_script_path, encoding = "UTF-8")
+  env <- new.env(parent = globalenv())
+  env$evidence_browser_required <- function() TRUE
+  for (e in expressions) {
+    if (is.call(e) && identical(e[[1]], as.name("<-")) &&
+        identical(e[[2]], as.name("evidence_step_specs"))) eval(e, env)
+    if (is.call(e) && identical(e[[1]], as.name("if")) &&
+        identical(e[[2]], quote(evidence_browser_required()))) eval(e, env)
+  }
+  ids <- vapply(env$evidence_step_specs, function(spec) spec$id, character(1))
+  expect_length(ids, 13L)
+  expect_setequal(ids, .evg_expected_steps)
+  expect_identical(ids[[1]], "browser_ux_smoke")
+  expect_lt(match("browser_ux_smoke", ids), match("full_testthat", ids))
+})
+
+test_that("bosluk redaksiyonu PASS satirini veya JSON yapisini bozmaz", {
+  env <- new.env(parent = globalenv())
+  for (e in parse(file = .evg_script_path, encoding = "UTF-8")) {
+    if (is.call(e) && identical(e[[1]], as.name("<-")) &&
+        as.character(e[[2]]) %in% c("%||%", "evidence_redact_text")) eval(e, env)
+  }
+  withr::local_envvar(MERGEN_BROWSER_UX_BASE_URL = " \t ", MERGEN_UX_SMOKE_PATH = "\n",
+                     MERGEN_BROWSER_UX_PROFILE_DIR = "C:\\Users\\operator\\SmokeProfile")
+  marker <- "OK: rendered #status is UX_SMOKE_DONE:PASS."
+  expect_identical(env$evidence_redact_text(marker), marker)
+  json <- jsonlite::toJSON(list(status = marker, path = Sys.getenv("MERGEN_BROWSER_UX_PROFILE_DIR")), auto_unbox = TRUE, pretty = TRUE)
+  clean <- env$evidence_redact_text(json)
+  expect_true(jsonlite::validate(clean))
+  expect_identical(jsonlite::fromJSON(clean)$status, marker)
+  expect_false(grepl("operator|SmokeProfile", clean))
+})

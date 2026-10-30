@@ -69,13 +69,16 @@ p = load('/bilge/smoke/ux-smoke.html', '?autostart=1');
 assert.ok(p.writes.length > 0);
 
 // Koken ve alt yol korunur; smoke sorgusu iframe'e gitmez.
-for (const pathname of ['/smoke/ux-smoke.html', '/bilge/smoke/ux-smoke.html',
-                        '/base/nested/__mergen_ux_' + 'a1'.repeat(24) + '/ux-smoke.html']) {
+for (const [pathname, expectedRoot] of [
+  ['/smoke/ux-smoke.html', '/'],
+  ['/bilge/smoke/ux-smoke.html', '/bilge/'],
+  ['/base/nested/__mergen_ux_' + 'a1'.repeat(24) + '/ux-smoke.html', '/base/nested/']
+]) {
   const page = load(pathname, '?autostart=1&fullQuickActions=1');
   const targetCode = harness.slice(harness.indexOf('function targetUrl()'), harness.indexOf('async function waitForFrameAccessible'));
   const target = new URL(vm.runInNewContext('(' + targetCode.trim() + ')()', { window: { location: { href: 'https://mergen.test' + pathname + '?autostart=1#ignored' } }, URL, Date }));
   assert.equal(target.origin, 'https://mergen.test');
-  assert.equal(target.pathname, new URL('../', 'https://mergen.test' + pathname).pathname);
+  assert.equal(target.pathname, expectedRoot);
   assert.equal(target.search, '');
   assert.match(target.hash, /^#ux_smoke_target=/);
 }

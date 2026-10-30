@@ -8,15 +8,24 @@ Harness `tests/smoke/` altında kalır. Normal başlatmada hiçbir smoke yolu a�
 
 ## Window 1 — geçici smoke uygulaması
 
-Normal 8009 uygulamasını kendi konsolundan/normal işletim yöntemiyle durdurun. Mevcut proxy/SSO yapılandırmasını değiştirmeyin.
+Normal 8009 uygulamasını durdurmadan önce aşağıdaki Rscript seçimini doğrulayın. Sonra uygulamayı kendi konsolundan/normal işletim yöntemiyle durdurup `--start-app` komutunu çalıştırın. Mevcut proxy/SSO yapılandırmasını değiştirmeyin.
 
 ```powershell
 Set-Location "<repo>"
-$rscript = "C:\Program Files\R\R-4.6.0\bin\Rscript.exe"
-if (!(Test-Path $rscript)) {
-    $rscript = "C:\Program Files\R\R-4.6.0\bin\x64\Rscript.exe"
+# run_mergen_prod.bat ile aynı seçim: override, en yeni kurulu R, PATH.
+$rscript = $env:MERGEN_RSCRIPT
+if (!$rscript -or !(Test-Path -LiteralPath $rscript -PathType Leaf)) {
+    $rscript = Get-ChildItem 'C:\Program Files\R' -Directory -Filter 'R-*' -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            try {
+                $version = [version]($_.Name -replace '^R-', '')
+                $exe = Join-Path $_.FullName 'bin\Rscript.exe'
+                if (Test-Path -LiteralPath $exe -PathType Leaf) { [pscustomobject]@{ Version = $version; Path = $exe } }
+            } catch {}
+        } | Sort-Object Version -Descending | Select-Object -First 1 -ExpandProperty Path
 }
-if (!(Test-Path $rscript)) { throw "Rscript.exe bulunamadi." }
+if (!$rscript) { $rscript = (Get-Command Rscript.exe -ErrorAction SilentlyContinue).Source }
+if (!$rscript) { throw "Rscript.exe bulunamadi." }
 & $rscript tests/scripts/run_vm_browser_ux_smoke.R --start-app
 ```
 
@@ -26,24 +35,39 @@ Bu komut ön planda bekler; uygulama **0.0.0.0:8009** dinler. Window 1'i test s�
 
 ## Window 2 — SSO için ayrı Edge profili
 
-Gerçek hostname/URL repoya veya artifact'a yazılmaz. Her zaman çalışma anında alın; belge/test örneği yalnız `https://app.example.invalid/base` biçimindedir. Alt yol varsa base URL'ye ekleyin; sorgu/fragment eklemeyin.
+Gerçek hostname/URL repoya veya artifact'a yazılmaz. Her zaman çalışma anında alın; belge/test örneği yalnız `https://app.example.invalid/base` biçimindedir. Alt yol varsa base URL'ye ekleyin; sorgu/fragment eklemeyin. Ağ URL'si HTTPS olmalıdır; HTTP yalnız `localhost` ve `127.0.0.1` yerel testlerinde kabul edilir. IPv6 literal proxy adresleri bu VM prosedürünün desteklenen girdileri değildir.
+
+`MERGEN_BROWSER_UX_BASE_URL`, `MERGEN_BROWSER_UX_PROFILE_DIR` ve `MERGEN_BROWSER_BIN` yalnız Window 2 ortamında tanımlanır; `.Renviron` / `Renviron.site` dosyalarında bunların eski tanımlarını kaldırın. R başlangıcında ortam dosyaları shell değerlerini ezebilir; aksi halde Read-Host ile seçilen origin yerine eski origin test edilir. Normal uygulama/SSO ayarlarını koruyun.
 
 ```powershell
 Set-Location "<repo>"
-$rscript = "C:\Program Files\R\R-4.6.0\bin\Rscript.exe"
-if (!(Test-Path $rscript)) {
-    $rscript = "C:\Program Files\R\R-4.6.0\bin\x64\Rscript.exe"
+# run_mergen_prod.bat ile aynı seçim: override, en yeni kurulu R, PATH.
+$rscript = $env:MERGEN_RSCRIPT
+if (!$rscript -or !(Test-Path -LiteralPath $rscript -PathType Leaf)) {
+    $rscript = Get-ChildItem 'C:\Program Files\R' -Directory -Filter 'R-*' -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            try {
+                $version = [version]($_.Name -replace '^R-', '')
+                $exe = Join-Path $_.FullName 'bin\Rscript.exe'
+                if (Test-Path -LiteralPath $exe -PathType Leaf) { [pscustomobject]@{ Version = $version; Path = $exe } }
+            } catch {}
+        } | Sort-Object Version -Descending | Select-Object -First 1 -ExpandProperty Path
 }
+if (!$rscript) { $rscript = (Get-Command Rscript.exe -ErrorAction SilentlyContinue).Source }
+if (!$rscript) { throw "Rscript.exe bulunamadi." }
 $env:MERGEN_BROWSER_UX_BASE_URL = Read-Host "Approved MERGEN base URL"
+if ($env:MERGEN_BROWSER_UX_BASE_URL -notmatch '^https://') { throw "Network VM profile preparation requires HTTPS." }
 $env:MERGEN_BROWSER_UX_PROFILE_DIR = Join-Path $env:LOCALAPPDATA "MERGEN\BrowserUxSmoke"
 $edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
 if (!(Test-Path $edge)) { $edge = "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe" }
 if (!(Test-Path $edge)) { throw "Microsoft Edge bulunamadi." }
 $env:MERGEN_BROWSER_BIN = $edge
+& $rscript -e "source('tests/scripts/helpers_browser_ux_profile.R'); ux_smoke_check_edge_policy()"
+if ($LASTEXITCODE -ne 0) { throw "Dedicated Edge profile policy check FAILED" }
 & $edge "--user-data-dir=$env:MERGEN_BROWSER_UX_PROFILE_DIR" --no-first-run --no-default-browser-check $env:MERGEN_BROWSER_UX_BASE_URL
 ```
 
-Ayrı profilde normal SSO girişini tamamlayın ve uygulamanın açıldığını doğrulayın. Sonra **bu profile ait bütün Edge pencerelerini kapatın**. Profil repo/artifact dışında kalmalıdır. Token/cookie okunmaz, kopyalanmaz veya enjekte edilmez. Oturum geçerliyse bu hazırlığı her seferinde tekrarlamak gerekmez; SSO sayfasında kalan smoke başarısızdır.
+Ayrı profilde normal SSO girişini tamamlayın ve uygulamanın açıldığını doğrulayın. `edge://version` içindeki Profile path değerinin seçilen `BrowserUxSmoke` dizininin altında olduğunu doğrulayın; farklıysa testi durdurun. Zorunlu `UserDataDir` ilkesi varsa koşucu Edge açmadan durur; ilkeyi veya varsayılan profili değiştirmeyin. Sonra **bu profile ait Edge sürecinden tamamen çıkın**: tüm pencereleri ve varsa bildirim alanındaki arka plan Edge oturumunu kapatın. Görev Yöneticisi komut satırı sütununda bu `--user-data-dir` ile çalışan süreç kalmadığını doğrulayın; diğer profillerin süreçlerini sonlandırmayın. Yalnız son pencerenin kapanması, arka plan modu açıkken yeterli değildir. Profil repo/artifact dışında kalmalıdır. Token/cookie okunmaz, kopyalanmaz veya enjekte edilmez. Oturum geçerliyse bu hazırlığı her seferinde tekrarlamak gerekmez; SSO sayfasında kalan smoke başarısızdır.
 
 ## Yalnız browser UX smoke — hızlı kontrol
 
@@ -54,7 +78,7 @@ Aynı Window 2'de:
 if ($LASTEXITCODE -ne 0) { throw "Browser UX smoke FAILED" }
 ```
 
-Bu komut yalnız browser UX smoke çalıştırır. Yerel ön kontrol `http://127.0.0.1:8009/<per-run-prefix>/ux-smoke.html` üzerindedir; headless Edge ise onaylı runtime base URL + aynı önek + `/ux-smoke.html?autostart=1` kullanır. Proxy mevcut base altındaki rastgele kaynak yolunu aynı 8009 uygulamasına iletmelidir. HTTP 200, harness kaynağı, SSO yönlendirmesi veya exit 0 kanıt değildir. Başarı yalnız **`OK: rendered #status is UX_SMOKE_DONE:PASS.`** ile bildirilir. URL'ler/önek DOM ve stderr artifact'larında redakte edilir.
+Bu komut yalnız browser UX smoke çalıştırır. Yerel ön kontrol `http://127.0.0.1:8009/<per-run-prefix>/ux-smoke.html` üzerindedir; headless Edge ise onaylı runtime base URL + aynı önek + `/ux-smoke.html?autostart=1` kullanır. Proxy mevcut base altındaki rastgele kaynak yolunu aynı 8009 uygulamasına iletmelidir. HTTP 200, harness kaynağı, SSO yönlendirmesi veya exit 0 kanıt değildir. Başarı yalnız **`OK: rendered #status is UX_SMOKE_DONE:PASS.`** ile bildirilir. Ham DOM/HTTP gövdesi saklanmaz; DOM artifact'ı yalnız doğrulanmış PASS veya sabit başarısızlık özeti içerir. URL/önek, profil yolu ve runtime sırları tanı çıktılarında redakte edilir.
 
 ## Tam VM evidence gate
 
@@ -66,7 +90,7 @@ $env:MERGEN_EVIDENCE_PROFILE = "vm"
 if ($LASTEXITCODE -ne 0) { throw "VM evidence gate FAILED" }
 ```
 
-`MERGEN_BROWSER_UX_BASE_URL` ayarlıysa gate mevcut `browser_ux_smoke` adımında VM sarmalayıcısını kullanır ve browser zorunludur. `--full`, shell veya `.Renviron` içindeki `MERGEN_EVIDENCE_STEPS` filtresini bu koşum için yok sayar; dosya değiştirilmez. Filtreli geliştirici koşumları `--full` olmadan desteklenir. Normal 13 adım korunur; tam kanıt için **13 passed, 0 failed, 0 skipped** gerekir. URL ayarlı değilse generic/cloud koşucu davranışı korunur.
+`MERGEN_BROWSER_UX_BASE_URL` ayarlıysa gate mevcut `browser_ux_smoke` adımında VM sarmalayıcısını kullanır ve browser zorunludur. `--full`, shell veya `.Renviron` içindeki `MERGEN_EVIDENCE_STEPS` filtresini bu koşum için yok sayar; dosya değiştirilmez. Tam mod ayrıca testthat başlangıç/bitiş aralığını yalnız çocuk oturumunda temizler ve File Store roundtrip/kullanıcı izolasyonu kontrollerini zorunlu açar. İstenen browser adımı uzun testlerden önce çalışır; tam gate öncesinde profil oturumu eskimişse normal SSO girişini yenileyip Edge sürecinden tamamen çıkın. Filtreli geliştirici koşumları `--full` olmadan desteklenir. Normal 13 adım korunur; tam kanıt için **13 passed, 0 failed, 0 skipped** gerekir. URL ayarlı değilse generic/cloud koşucu davranışı korunur.
 
 ## Normal moda dönüş
 
