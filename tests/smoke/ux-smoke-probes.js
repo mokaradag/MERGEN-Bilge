@@ -274,6 +274,23 @@
       "WelcomeVideoPlayer smoke state API var"
     );
 
+    // Önceki quick-action/sohbet probe'ları show_welcome durumunu kapatır.
+    // Gerçek Yeni Söyleşi eylemiyle aynı oturumda welcome önkoşulunu kur.
+    var previousWelcome = doc.querySelector(".modern-welcome-root");
+    var newChatButton = doc.getElementById("new_chat_btn");
+    assert(!!newChatButton, "Navigation önkoşulu için Yeni Söyleşi düğmesi var");
+    if (!newChatButton) return;
+    newChatButton.click();
+
+    if (!await waitFor(function() {
+      var root = doc.querySelector(".modern-welcome-root");
+      var video = videoApi && videoApi.getState ? videoApi.getState() : null;
+      return root && root !== previousWelcome && isVisible(root) &&
+        !doc.querySelector("#chat_content_container .message-bubble") &&
+        video && video.isInitialized && video.hasContainer;
+    }, "Navigation önkoşulu: Yeni Söyleşi welcome hazır", 10000)) return;
+
+    var welcomeRoot = doc.querySelector(".modern-welcome-root");
     var beforeVideo = videoApi && videoApi.getState ? videoApi.getState() : null;
 
     assert(
@@ -316,7 +333,7 @@
     );
 
     await waitFor(function() {
-      return !!doc.querySelector(".modern-welcome-root");
+      return doc.querySelector(".modern-welcome-root") === welcomeRoot && isVisible(welcomeRoot);
     }, "Ana Söyleşi welcome dönüşü", 10000);
 
     await wait(250);
@@ -338,8 +355,7 @@
     var finalToolSnapshot = snapshotToolState(win);
 
     assert(
-      finalToolSnapshot.activePaneId === "shiny-tab-chat" ||
-        !!doc.querySelector(".modern-welcome-root"),
+      finalToolSnapshot.activePaneId === "shiny-tab-chat",
       "Ana Söyleşi dönüşü chat paneli aktif kalır"
     );
 

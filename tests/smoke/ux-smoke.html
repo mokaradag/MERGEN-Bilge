@@ -65,19 +65,20 @@
   var originalSmokeStorage = {
     captured: false,
     mergenSettings: null,
-    currentChat: null
+    currentChat: null,
+    activeTab: null
   };
 
   function captureSmokeStorageOnce() {
     if (originalSmokeStorage.captured) return;
 
-    originalSmokeStorage.captured = true;
-
     try {
       originalSmokeStorage.mergenSettings = localStorage.getItem("mergen_settings");
       originalSmokeStorage.currentChat = localStorage.getItem("mergen_current_chat");
+      originalSmokeStorage.activeTab = localStorage.getItem("mergen_active_tab");
+      originalSmokeStorage.captured = true;
     } catch (e) {
-      log("localStorage başlangıç durumu okunamadı: " + e.message, "fail");
+      throw new Error("localStorage başlangıç durumu okunamadı: " + e.message);
     }
   }
 
@@ -91,6 +92,8 @@
       // Browser smoke gerçek Ana Söyleşi welcome ekranını test eder.
       // Deep Space intro insan etkileşimi gerektirdiği için smoke sırasında atlanır.
       settings.skip_intro = true;
+      // Kalıcı profilin Hızlı Başlangıç/seçici tercihi video testini değiştirmesin.
+      settings.startup_lane = "rich_lane";
 
       localStorage.setItem("mergen_settings", JSON.stringify(settings));
 
@@ -105,6 +108,8 @@
     if (!originalSmokeStorage.captured) return;
 
     try {
+      // Canlı iframe'in gecikmiş Shiny/timer yazıları geri yüklemeyi ezmesin.
+      if (frameEl.parentNode) frameEl.parentNode.removeChild(frameEl);
       if (originalSmokeStorage.mergenSettings === null) {
         localStorage.removeItem("mergen_settings");
       } else {
@@ -116,8 +121,14 @@
       } else {
         localStorage.setItem("mergen_current_chat", originalSmokeStorage.currentChat);
       }
+      if (originalSmokeStorage.activeTab === null) {
+        localStorage.removeItem("mergen_active_tab");
+      } else {
+        localStorage.setItem("mergen_active_tab", originalSmokeStorage.activeTab);
+      }
+      originalSmokeStorage.captured = false;
     } catch (e) {
-      log("Smoke localStorage geri yükleme uyarısı: " + e.message, "fail");
+      fail("Smoke localStorage geri yükleme başarısız: " + e.message);
     }
   }
 

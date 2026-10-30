@@ -8,6 +8,67 @@
   env
 }
 
+test_that("belgedeki SSO on kontrolu uygulama durdurulmadan yapilir ve dosyayi degistirmez", {
+  doc <- read_source_text_utf8(file.path(resolve_repo_root_for_tests(), "docs/vm-browser-ux-smoke.md"))
+  lines <- strsplit(doc, "\n", fixed = TRUE)[[1]]
+  command <- lines[startsWith(lines, '& $rscript -e "') & grepl("SSO_ENABLED", lines, fixed = TRUE)]
+  expect_length(command, 1L)
+  expect_lt(match(command, lines), match("Ön kontrol başarılı olduktan sonra normal uygulamayı kendi konsolundan/normal işletim yöntemiyle durdurun. Aynı Window 1'de:", lines))
+  expect_match(doc, "SSO pre-stop check FAILED; keep the normal app running.", fixed = TRUE)
+  expr <- substr(command, nchar('& $rscript -e "') + 1L, nchar(command) - 1L)
+  config <- withr::local_tempdir()
+  withr::local_dir(config)
+  withr::local_envvar(SSO_ENABLED = NA)
+  expect_error(eval(parse(text = expr)), "SSO_ENABLED=TRUE is required")
+  for (value in c("FALSE", "", "TRUE")) {
+    writeLines(paste0("SSO_ENABLED=", value), ".Renviron")
+    before <- readBin(".Renviron", "raw", 10000L)
+    if (value == "TRUE") {
+      expect_output(eval(parse(text = expr)), "OK: SSO configuration enabled.", fixed = TRUE)
+    } else {
+      expect_error(eval(parse(text = expr)), "SSO_ENABLED=TRUE is required")
+    }
+    expect_identical(readBin(".Renviron", "raw", 10000L), before)
+  }
+})
+
+test_that("belgedeki Edge on kontrolu login oncesinde repo ve tum artifact koklerini reddeder", {
+  root <- resolve_repo_root_for_tests()
+  doc <- read_source_text_utf8(file.path(root, "docs/vm-browser-ux-smoke.md"))
+  lines <- strsplit(doc, "\n", fixed = TRUE)[[1]]
+  command <- lines[startsWith(lines, '& $rscript -e "') & grepl("ux_smoke_profile_path", lines, fixed = TRUE)]
+  expect_length(command, 1L)
+  check <- match(command, lines)
+  launch <- which(startsWith(lines, '& $edge "--user-data-dir='))
+  expect_length(launch, 1L)
+  expect_lt(check, launch)
+  expect_true(any(grepl("$LASTEXITCODE", lines[seq.int(check + 1L, launch - 1L)], fixed = TRUE)))
+  expr <- substr(command, nchar('& $rscript -e "') + 1L, nchar(command) - 1L)
+  fixture <- withr::local_tempdir()
+  repo <- file.path(fixture, "repo")
+  artifact <- file.path(fixture, "evidence")
+  profile <- file.path(fixture, "profile")
+  for (dir in c(repo, artifact, profile, file.path(repo, "artifacts/ai-validation"))) {
+    dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+  }
+  withr::local_dir(repo)
+  withr::local_envvar(MERGEN_EVIDENCE_ARTIFACT_DIR = artifact, MERGEN_BROWSER_UX_PROFILE_DIR = profile)
+  env <- new.env(parent = globalenv())
+  policies <- 0L
+  env$source <- function(file) {
+    sys.source(file.path(root, file), envir = env)
+    env$ux_smoke_check_edge_policy <- function() { policies <<- policies + 1L; invisible(TRUE) }
+  }
+  eval(parse(text = expr), env)
+  expect_identical(policies, 1L)
+  for (blocked in c(repo, file.path(repo, "artifacts/ai-validation"), artifact)) {
+    Sys.setenv(MERGEN_BROWSER_UX_PROFILE_DIR = blocked)
+    expect_error(eval(parse(text = expr), env), "must be outside the repository", fixed = TRUE)
+    expect_identical(policies, 1L, info = "konum reddedilince sonraki adima gecilmez")
+  }
+  expect_true(dir.exists(profile))
+})
+
 test_that("VM startup her kosuda yeni 192-bit onek uretir, URL guvenli kurulur", {
   env <- .vm_ux_functions()
   prefixes <- replicate(20, env$vm_ux_new_prefix())

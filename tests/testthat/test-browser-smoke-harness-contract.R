@@ -275,3 +275,16 @@ testthat::test_that("browser UX smoke harness gerçek UI anchor'larıyla hizalı
     "Reasoning browser smoke hedefleri eksik:"
   )
 })
+
+
+testthat::test_that("Shiny handler ve smoke durum sözleşmeleri gerçek JavaScript ile çalışır", {
+  node <- Sys.which("node")
+  testthat::skip_if(!nzchar(node), "Node kullanılamıyor")
+  for (script in c("shiny_message_handlers_contract_regressions.js",
+                   "ux_smoke_navigation_regressions.js", "ux_smoke_start_gate_regressions.js")) {
+    result <- system2(node, shQuote(file.path(.find_browser_smoke_repo_root(), "tests/scripts", script)),
+                      stdout = TRUE, stderr = TRUE)
+    testthat::expect_null(attr(result, "status"), info = paste(result, collapse = "\n"))
+    testthat::expect_match(paste(result, collapse = "\n"), "regressions passed", fixed = TRUE)
+  }
+})

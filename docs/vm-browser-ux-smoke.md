@@ -4,11 +4,11 @@ Shiny normal topolojide **0.0.0.0:8009** üzerinde kalır; Edge, kullanıcılar�
 
 Harness `tests/smoke/` altında kalır. Normal başlatmada hiçbir smoke yolu açılmaz. Ağda yalnız `MERGEN_ENABLE_UX_SMOKE=true`, `MERGEN_ALLOW_NETWORK_UX_SMOKE=true` ve `MERGEN_UX_SMOKE_PATH` birlikte geçerliyken kaynak kaydedilir. Önek tam olarak `__mergen_ux_` + 48 küçük hex karakteridir; koşucu bunu işletim sisteminin güvenli rastgele kaynağından 24 bayt (192 bit) ile üretir. Sabit `/smoke/` yalnız loopback yerel test uyumluluğudur. Rastgele yol yetkilendirme yerine geçmez: uygulamanın mevcut SSO/oturumu ve yetkileri kullanılmaya devam eder.
 
-**Yaşam süresi:** Window 2 ortamı çalışan Window 1 sürecini değiştiremez. Bu nedenle normal uygulamayı durdurup aşağıdaki geçici smoke başlatmasını aynı `0.0.0.0:8009` üzerinde yapın. Koşucu `source('app.R')` sonrasında opt-in değerlerini uygular; `.Renviron` dosyasına hiçbir şey yazmaz. Önek yalnız kullanıcıya ait `%LOCALAPPDATA%\MERGEN\BrowserUxSmokeRun\prefix` dosyasında paylaşılır; URL veya kimlik bilgisi içermez. Aynı Windows hesabını kullanın. Süreç sona erince HTTP yolu kaybolur; normal çıkış/Ctrl+C yerel dosyayı da temizler. Zorla öldürmede kalan dizini, o smoke sürecinin durduğunu doğruladıktan sonra silin. Her yeni `--start-app` yeni önek üretir. Tek başlatma boyunca hızlı smoke ve tam gate aynı öneki kullanabilir.
+**Yaşam süresi:** Window 2 ortamı çalışan Window 1 sürecini değiştiremez. Bu nedenle aşağıdaki ön kontroller başarılı olduktan sonra normal uygulamayı durdurup geçici smoke başlatmasını aynı `0.0.0.0:8009` üzerinde yapın. Koşucu `source('app.R')` sonrasında opt-in değerlerini uygular; `.Renviron` dosyasına hiçbir şey yazmaz. Önek yalnız kullanıcıya ait `%LOCALAPPDATA%\MERGEN\BrowserUxSmokeRun\prefix` dosyasında paylaşılır; URL veya kimlik bilgisi içermez. Aynı Windows hesabını kullanın. Süreç sona erince HTTP yolu kaybolur; normal çıkış/Ctrl+C yerel dosyayı da temizler. Zorla öldürmede kalan dizini, o smoke sürecinin durduğunu doğruladıktan sonra silin. Her yeni `--start-app` yeni önek üretir. Tek başlatma boyunca hızlı smoke ve tam gate aynı öneki kullanabilir.
 
 ## Window 1 — geçici smoke uygulaması
 
-Normal 8009 uygulamasını durdurmadan önce aşağıdaki Rscript seçimini doğrulayın. Sonra uygulamayı kendi konsolundan/normal işletim yöntemiyle durdurup `--start-app` komutunu çalıştırın. Mevcut proxy/SSO yapılandırmasını değiştirmeyin.
+Normal 8009 uygulamasını durdurmadan önce aşağıdaki Rscript seçimini ve SSO ön kontrolünü çalıştırın. Repo `.Renviron` dosyasında `SSO_ENABLED=TRUE` bulunmalıdır; eksikse normal SSO yapılandırmasını önce düzeltin. Ön kontrol başarısızken çalışan uygulamayı durdurmayın. Mevcut proxy/SSO yapılandırmasını değiştirmeyin.
 
 ```powershell
 Set-Location "<repo>"
@@ -26,6 +26,13 @@ if (!$rscript -or !(Test-Path -LiteralPath $rscript -PathType Leaf)) {
 }
 if (!$rscript) { $rscript = (Get-Command Rscript.exe -ErrorAction SilentlyContinue).Source }
 if (!$rscript) { throw "Rscript.exe bulunamadi." }
+& $rscript -e "if (file.exists('.Renviron') && !isTRUE(readRenviron('.Renviron'))) stop('Cannot load .Renviron'); if (!tolower(trimws(Sys.getenv('SSO_ENABLED', ''))) %in% c('true','t','1','yes','on')) stop('SSO_ENABLED=TRUE is required before stopping the app'); cat('OK: SSO configuration enabled.\n')"
+if ($LASTEXITCODE -ne 0) { throw "SSO pre-stop check FAILED; keep the normal app running." }
+```
+
+Ön kontrol başarılı olduktan sonra normal uygulamayı kendi konsolundan/normal işletim yöntemiyle durdurun. Aynı Window 1'de:
+
+```powershell
 & $rscript tests/scripts/run_vm_browser_ux_smoke.R --start-app
 ```
 
@@ -62,12 +69,13 @@ $edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
 if (!(Test-Path $edge)) { $edge = "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe" }
 if (!(Test-Path $edge)) { throw "Microsoft Edge bulunamadi." }
 $env:MERGEN_BROWSER_BIN = $edge
-& $rscript -e "source('tests/scripts/helpers_browser_ux_profile.R'); ux_smoke_check_edge_policy()"
-if ($LASTEXITCODE -ne 0) { throw "Dedicated Edge profile policy check FAILED" }
+New-Item -ItemType Directory -Force -Path $env:MERGEN_BROWSER_UX_PROFILE_DIR | Out-Null
+& $rscript -e "source('tests/scripts/helpers_browser_ux_profile.R'); invisible(ux_smoke_profile_path(Sys.getenv('MERGEN_BROWSER_UX_PROFILE_DIR'), c('.', 'artifacts/ai-validation', Sys.getenv('MERGEN_EVIDENCE_ARTIFACT_DIR', '')))); ux_smoke_check_edge_policy()"
+if ($LASTEXITCODE -ne 0) { throw "Dedicated Edge profile location/policy check FAILED; no browser may be launched." }
 & $edge "--user-data-dir=$env:MERGEN_BROWSER_UX_PROFILE_DIR" --no-first-run --no-default-browser-check $env:MERGEN_BROWSER_UX_BASE_URL
 ```
 
-Ayrı profilde normal SSO girişini tamamlayın ve uygulamanın açıldığını doğrulayın. `edge://version` içindeki Profile path değerinin seçilen `BrowserUxSmoke` dizininin altında olduğunu doğrulayın; farklıysa testi durdurun. Zorunlu `UserDataDir` ilkesi varsa koşucu Edge açmadan durur; ilkeyi veya varsayılan profili değiştirmeyin. Sonra **bu profile ait Edge sürecinden tamamen çıkın**: tüm pencereleri ve varsa bildirim alanındaki arka plan Edge oturumunu kapatın. Görev Yöneticisi komut satırı sütununda bu `--user-data-dir` ile çalışan süreç kalmadığını doğrulayın; diğer profillerin süreçlerini sonlandırmayın. Yalnız son pencerenin kapanması, arka plan modu açıkken yeterli değildir. Profil repo/artifact dışında kalmalıdır. Token/cookie okunmaz, kopyalanmaz veya enjekte edilmez. Oturum geçerliyse bu hazırlığı her seferinde tekrarlamak gerekmez; SSO sayfasında kalan smoke başarısızdır.
+Konum/ilke ön kontrolü başarılı olmadan Edge açmayın veya SSO girişi yapmayın. Ön kontrol repo kökü/altı, varsayılan artifact ağacı ve varsa `MERGEN_EVIDENCE_ARTIFACT_DIR` kökünü kanonik yollarla reddeder. Ayrı profilde normal SSO girişini tamamlayın ve uygulamanın açıldığını doğrulayın. `edge://version` içindeki Profile path değerinin seçilen `BrowserUxSmoke` dizininin altında olduğunu doğrulayın; farklıysa testi durdurun. Zorunlu `UserDataDir` ilkesi varsa koşucu Edge açmadan durur; ilkeyi veya varsayılan profili değiştirmeyin. Sonra **bu profile ait Edge sürecinden tamamen çıkın**: tüm pencereleri ve varsa bildirim alanındaki arka plan Edge oturumunu kapatın. Görev Yöneticisi komut satırı sütununda bu `--user-data-dir` ile çalışan süreç kalmadığını doğrulayın; diğer profillerin süreçlerini sonlandırmayın. Yalnız son pencerenin kapanması, arka plan modu açıkken yeterli değildir. Profil repo/artifact dışında kalmalıdır. Token/cookie okunmaz, kopyalanmaz veya enjekte edilmez. Oturum geçerliyse bu hazırlığı her seferinde tekrarlamak gerekmez; SSO sayfasında kalan smoke başarısızdır.
 
 ## Yalnız browser UX smoke — hızlı kontrol
 

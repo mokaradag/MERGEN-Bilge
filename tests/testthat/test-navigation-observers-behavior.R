@@ -127,3 +127,53 @@ testthat::test_that("chat sekmesi ama karşılama kapalıyken galeri/geçmiş si
   testthat::expect_false(grepl("image_gallery_module-refresh_gallery", blob, fixed = TRUE))
   testthat::expect_false(grepl("history_module-external_refresh_trigger", blob, fixed = TRUE))
 })
+
+testthat::test_that("smoke sohbetinden Yeni Söyleşi sonrası welcome sekme dönüşü tam render yapmaz", {
+  env <- .source_navigation_for_test()
+  for (file in c("helpers_chat_runtime.R", "server_welcome_handlers.R", "server_observers_chat_ui.R")) {
+    source(file.path(resolve_repo_root_for_tests(), "R", file), local = env, encoding = "UTF-8")
+  }
+  env$resolve_effective_user_id <- function(...) NA_integer_
+  env$session_user_data_reset_lists <- function(...) invisible(NULL)
+  env$showToast <- function(...) invisible(NULL)
+  for (name in c("pk_entity_context_clear", "mergen_pk_bump_chat_epoch", "mergen_pk_abandon_active_requests")) {
+    assign(name, function(...) invisible(NULL), env)
+  }
+  renders <- 0L
+  refreshes <- 0L
+  env$createWelcomeScreen <- function(...) {
+    renders <<- renders + 1L
+    shiny::div(class = "modern-welcome-root", "welcome")
+  }
+  env$createModernRecentChatsSection <- function(...) {
+    refreshes <<- refreshes + 1L
+    shiny::div(class = "modern-welcome-footer-section", "recent")
+  }
+  testthat::with_mocked_bindings({
+    shiny::testServer(function(input, output, session) {
+      values <- shiny::reactiveValues(show_welcome = FALSE, saved_chats = list(),
+                                      messages = list(list(type = "ai", content = "smoke")))
+      welcome <- env$welcomeHandlersInit(session, values, NULL, shiny::reactiveVal(list()), NULL, NA_integer_, NULL)
+      env$chatUIObserversInit(input, session, values, welcome$start_new_chat, function(...) NULL,
+                              welcome$render_welcome_screen)
+      env$navigationObserversInit(input, session, values, welcome$render_welcome_screen)
+      session$userData$.smoke_values <- values
+    }, {
+      session$setInputs(tabs = "chat")
+      session$setInputs(tabs = "claude_code")
+      session$setInputs(tabs = "chat")
+      testthat::expect_false(session$userData$.smoke_values$show_welcome)
+      testthat::expect_identical(renders, 0L)
+      session$setInputs(new_chat_btn = 1L)
+      testthat::expect_true(session$userData$.smoke_values$show_welcome)
+      testthat::expect_length(session$userData$.smoke_values$messages, 0L)
+      testthat::expect_identical(renders, 1L)
+      session$setInputs(tabs = "claude_code")
+      session$setInputs(tabs = "chat")
+      testthat::expect_true(session$userData$.smoke_values$show_welcome)
+      testthat::expect_identical(renders, 1L)
+      testthat::expect_identical(refreshes, 1L)
+      testthat::expect_true(session$userData$welcome_screen_attached)
+    })
+  }, runjs = function(...) invisible(NULL), delay = function(ms, expr) force(expr), .package = "shinyjs")
+})

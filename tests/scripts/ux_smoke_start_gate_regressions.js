@@ -21,9 +21,9 @@ const end = html.indexOf(CLOSE, start);
 assert.ok(end > start, 'harness betiği kapanışı bulunamadı');
 const harness = html.slice(start + OPEN.length, end);
 
-function load(pathname, search) {
+function load(pathname, search, initialStorage) {
   const writes = [];
-  const store = new Map([['mergen_current_chat', 'kullanıcı sohbeti'], ['mergen_settings', '{}']]);
+  const store = new Map(initialStorage || [['mergen_current_chat', 'kullanıcı sohbeti'], ['mergen_settings', '{}']]);
   const listeners = {};
   function el(id) {
     return {
@@ -43,12 +43,15 @@ function load(pathname, search) {
       removeItem: k => { writes.push(['remove', k]); store.delete(k); }
     },
     location: { href: 'https://mergen.test' + pathname + (search || ''), pathname, search: search || '', hash: '' },
-    addEventListener: () => {},
+    addEventListener: (name, fn) => { listeners[name] = fn; },
     setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {}
   });
   context.window = context;
-  vm.runInContext(harness, context, { filename: 'ux-smoke.html' });
-  return { nodes, writes, store, click: () => (listeners['start-smoke:click'] || []).forEach(fn => fn()) };
+  // Yalnız test bağlamına erişim; üretim harness'ına yeni dış API eklenmez.
+  const instrumented = harness.replace('var QUICK_ACTION_EXPECTATIONS = {',
+    'window.storageContract = { prepareFreshAppStorage, restoreSmokeStorage, failures }; var QUICK_ACTION_EXPECTATIONS = {');
+  vm.runInContext(instrumented, context, { filename: 'ux-smoke.html' });
+  return { nodes, writes, store, context, listeners, click: () => (listeners['start-smoke:click'] || []).forEach(fn => fn()) };
 }
 
 // 1) Kapılı yol, parametresiz: hiçbir eylem yok; düğme etkin.
@@ -96,5 +99,50 @@ for (const [yol, search] of [['/bilge/img/smoke/ux-smoke.html', ''], ['/bilge/im
 // 4) Başka sorgu parametreleri (ör. fullQuickActions) başlatma sayılmaz.
 p = load('/smoke/ux-smoke.html', '?fullQuickActions=1&autostart=0');
 assert.deepEqual(p.writes, []);
+
+// Kalıcı profil: eski sohbet/şerit tercihinden bağımsız welcome, sonra tam iade.
+for (const initial of [[], [
+  ['mergen_settings', JSON.stringify({ skip_intro: false, startup_lane: 'fast_lane', custom: 'tercih' })],
+  ['mergen_current_chat', 'önceki sohbet'], ['mergen_active_tab', 'history'],
+  ['mergen_bilge_jwt_token', 'synthetic-sso-sentinel'], ['unrelated', 'koru']
+]]) {
+  p = load('/smoke/ux-smoke.html', '', initial);
+  const snapshot = new Map(p.store);
+  p.context.storageContract.prepareFreshAppStorage();
+  const settings = JSON.parse(p.store.get('mergen_settings'));
+  assert.equal(settings.skip_intro, true);
+  assert.equal(settings.startup_lane, 'rich_lane');
+  assert.equal(p.store.has('mergen_current_chat'), false);
+  p.store.set('mergen_current_chat', 'smoke sohbeti');
+  p.store.set('mergen_active_tab', 'claude_code_sessions');
+  let active = true;
+  let lateWrite;
+  p.nodes['app-frame'].parentNode = { removeChild(frame) {
+    active = false;
+    frame.parentNode = null;
+    // İframe yok edilmeden önceki son lifecycle yazısı da iade edilmelidir.
+    p.store.set('mergen_settings', 'gecikmiş smoke ayarı');
+    lateWrite = () => { if (active) p.store.set('mergen_current_chat', 'gecikmiş sohbet'); };
+  } };
+  p.context.storageContract.restoreSmokeStorage();
+  assert.equal(active, false, 'iade canlı iframe yazarını önce durdurmalı');
+  lateWrite();
+  assert.deepEqual(p.store, snapshot, 'kullanıcı kaydı ve ilgisiz SSO/diğer anahtarlar korunmalı');
+  p.store.set('mergen_settings', 'smoke bittikten sonraki kullanıcı değişikliği');
+  p.listeners.beforeunload();
+  assert.equal(p.store.get('mergen_settings'), 'smoke bittikten sonraki kullanıcı değişikliği');
+}
+
+// Okuma/iade hataları gizli PASS üretemez ve özgün veriyi bozamaz.
+p = load('/smoke/ux-smoke.html', '');
+p.context.localStorage.getItem = () => { throw new Error('blocked storage'); };
+assert.throws(() => p.context.storageContract.prepareFreshAppStorage(), /başlangıç durumu okunamadı/);
+assert.deepEqual(p.writes, []);
+p = load('/smoke/ux-smoke.html', '');
+p.context.storageContract.prepareFreshAppStorage();
+p.context.localStorage.setItem = () => { throw new Error('blocked restore'); };
+p.context.storageContract.restoreSmokeStorage();
+assert.ok(p.context.storageContract.failures.some(message => message.includes('geri yükleme başarısız')),
+          'iade hatası PASS yerine koşunun failure listesine girmeli');
 
 console.log('ux smoke start gate regressions passed');
