@@ -243,13 +243,17 @@ test_that("smoke koşucusu açık hazırlanmış profili korur, varsayılan geç
   expect_false(hazir$temporary)
   expect_identical(hazir$path, normalizePath(yol, winslash = "/"))
   for (root in c(ortam$repo_root, ortam$artifact_dir)) {
-    for (blocked in c(root, file.path(root, "new-parent", "profile"))) {
-      expect_error(ortam$ux_smoke_browser_profile(blocked, TRUE), "outside the repository and artifacts", fixed = TRUE)
+    inside <- file.path(root, "profile")
+    expect_true(dir.create(inside))
+    for (blocked in c(root, inside, file.path(inside, "..", "profile"))) {
+      expect_error(ortam$ux_smoke_browser_profile(blocked, TRUE), "must be outside the repository", fixed = TRUE)
     }
+    expect_true(dir.exists(inside))
+    # Eksik yolun reddi, mevcut profilin kapsama denetiminden ayrıdır.
+    expect_error(ortam$ux_smoke_browser_profile(file.path(root, "new-parent", "profile"), TRUE),
+                 "must be an existing directory", fixed = TRUE)
     expect_false(dir.exists(file.path(root, "new-parent")))
     expect_true(dir.exists(root))
-    expect_error(ortam$ux_smoke_browser_profile(file.path(root, "profile", "..", "profile"), TRUE),
-                 "outside the repository and artifacts", fixed = TRUE)
   }
   # Benzer onekli kardes dizin ve normalizasyon sonrasi dis yol kabul edilir.
   sibling <- paste0(ortam$repo_root, "-external")
