@@ -94,6 +94,8 @@ async function startup(serverReadyAt) {
 async function nativeTiming(browser) {
   // Sunucu timer'ı renderer saatinden bağımsızdır; yalnız loopback fixture kullanılır.
   const delay = 5000;
+  // Soğuk Edge başlangıcı da VM koşucusunun 165 saniyelik sınırını kullanır.
+  const browserTimeout = 165000;
   const sockets = new Set();
   const timers = new Set();
   let legacy = false;
@@ -107,7 +109,7 @@ async function nativeTiming(browser) {
     if (req.url.startsWith('/bilge/smoke/ux-smoke.html')) {
       let page = fixture;
       if (legacy) {
-        // Eski runner: load kapısı yok, WebSocket işi sürerken sanal saat akar.
+        // Kapı yokken dump-dom, sunucu hazır olmadan çalışan sayfayı döndürür.
         const first = page.indexOf('    completionFrame = document.createElement("iframe");');
         const last = page.indexOf('\n    });', first) + '\n    });'.length;
         assert.ok(first > 0 && last > first);
@@ -132,6 +134,8 @@ async function nativeTiming(browser) {
     const accept = crypto.createHash('sha1').update(req.headers['sec-websocket-key'] +
       '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
     socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ' + accept + '\r\n\r\n');
+    // Negatif örnek hazır olmaz; sonuç sanal saatin tarayıcıya özgü hızına bağlı değildir.
+    if (legacy) return;
     const timer = setTimeout(() => {
       timers.delete(timer);
       if (!socket.destroyed) { served++; socket.write(Buffer.from([0x81, 1, 49])); }
@@ -144,8 +148,9 @@ async function nativeTiming(browser) {
     for (legacy of [true, false]) {
       const before = served;
       const args = ['--headless=new', '--disable-gpu', '--disable-dev-shm-usage',
-        '--no-first-run', '--no-default-browser-check', '--user-data-dir=' + profile, '--dump-dom',
-        legacy ? '--virtual-time-budget=120000' : '--timeout=12000',
+        '--no-first-run', '--no-default-browser-check',
+        '--user-data-dir=' + path.join(profile, legacy ? 'ungated' : 'gated'), '--dump-dom',
+        '--timeout=' + (browserTimeout - 5000),
         `http://127.0.0.1:${server.address().port}/bilge/smoke/ux-smoke.html?autostart=1`];
       if (process.platform === 'linux' && process.getuid() === 0) args.unshift('--no-sandbox');
       const output = await new Promise((resolve, reject) => {
@@ -153,17 +158,20 @@ async function nativeTiming(browser) {
         let stdout = '';
         child.stdout.on('data', chunk => { stdout += chunk; });
         child.stderr.resume();
-        const deadline = setTimeout(() => child.kill(), 17000);
-        child.on('error', reject);
+        let timedOut = false;
+        const deadline = setTimeout(() => { timedOut = true; child.kill(); }, browserTimeout);
+        child.on('error', error => { clearTimeout(deadline); reject(error); });
         child.on('close', (code, signal) => {
           clearTimeout(deadline);
-          if (code !== 0) reject(new Error('Native browser failed: ' + (signal || code)));
+          if (timedOut) reject(new Error('Native browser timed out after ' + browserTimeout + 'ms'));
+          else if (code !== 0) reject(new Error('Native browser failed: ' + (signal || code)));
           else resolve(stdout);
         });
       });
       const status = output.match(/<div id="status"[^>]*>([^<]*)<\/div>/)?.[1];
-      assert.equal(status, legacy ? 'UX_SMOKE_DONE:FAIL 1' : 'UX_SMOKE_DONE:PASS');
-      if (!legacy) assert.ok(served > before, 'PASS gerçek sunucu mesajını beklemeli');
+      assert.equal(status, legacy ? 'UX smoke çalışıyor...' : 'UX_SMOKE_DONE:PASS');
+      if (legacy) assert.equal(served, before, 'kapısız dump sunucu hazır olmadan dönmeli');
+      else assert.ok(served > before, 'PASS gerçek sunucu mesajını beklemeli');
       for (const timer of timers) clearTimeout(timer);
       timers.clear();
       for (const socket of sockets) socket.destroy();
@@ -186,7 +194,7 @@ async function nativeTiming(browser) {
   assert.equal(stranded.status, 'UX_SMOKE_DONE:FAIL 1', 'tek önkoşul hatası tek failure üretmeli');
   assert.deepEqual(stranded.dependents, [], 'welcome yokken navigation/quick-action/null zinciri çalışmamalı');
   assert.ok(stranded.now >= 60000 && stranded.now < 62000, 'aynı sonlu readiness bütçesi korunmalı');
-  console.log('ux smoke startup timing regressions passed');
+  console.log('ux smoke startup timing regressions passed (Türkçe: ğüşİıöç)');
   const browserArg = process.argv.indexOf('--browser');
   if (browserArg !== -1) await nativeTiming(process.argv[browserArg + 1]);
 })().catch(error => { console.error(error); process.exitCode = 1; });

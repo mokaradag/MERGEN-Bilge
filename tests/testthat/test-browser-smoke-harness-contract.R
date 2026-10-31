@@ -298,16 +298,21 @@ testthat::test_that("Shiny handler ve smoke durum sözleşmeleri gerçek JavaScr
         args <- c(args, "--browser", shQuote(browsers[[1]]))
       }
     }
-    result <- system2(node, args, stdout = TRUE, stderr = TRUE)
+    # Node boru çıktısı UTF-8'dir; CP1254 olarak yeniden kodlanmadan etiketlenir.
+    result <- mark_text_utf8(system2(node, args, stdout = TRUE, stderr = TRUE))
     testthat::expect_null(attr(result, "status"), info = paste(result, collapse = "\n"))
     testthat::expect_match(paste(result, collapse = "\n"), "regressions passed", fixed = TRUE)
+    if (identical(script, "ux_smoke_startup_timing_regressions.js")) {
+      testthat::expect_match(paste(result, collapse = "\n"),
+        intToUtf8(c(0x011F, 0x00FC, 0x015F, 0x0130, 0x0131, 0x00F6, 0x00E7)), fixed = TRUE)
+    }
   }
 })
 
 
 testthat::test_that("native Edge fixture ilke reddinde tarayici baslatmaz", {
   root <- .find_browser_smoke_repo_root()
-  calls <- as.list(parse(file.path(root, "tests/testthat/test-browser-smoke-harness-contract.R")))
+  calls <- as.list(parse_r_file_utf8(file.path(root, "tests/testthat/test-browser-smoke-harness-contract.R")))
   execution <- Filter(function(e) is.call(e) && length(e) >= 3L &&
     is.character(e[[2]]) && identical(e[[2]], "Shiny handler ve smoke durum sözleşmeleri gerçek JavaScript ile çalışır"), calls)[[1]][[3]]
   for (allowed in c(FALSE, TRUE)) {
@@ -329,7 +334,7 @@ testthat::test_that("native Edge fixture ilke reddinde tarayici baslatmaz", {
         testthat::expect_identical(checked, 1L)
         native <<- native + 1L
       }
-      "regressions passed"
+      paste0("regressions passed ", intToUtf8(c(0x011F, 0x00FC, 0x015F, 0x0130, 0x0131, 0x00F6, 0x00E7)))
     }
     if (allowed) eval(execution, env) else testthat::expect_error(eval(execution, env), "policy blocked", fixed = TRUE)
     testthat::expect_identical(checked, 1L)
