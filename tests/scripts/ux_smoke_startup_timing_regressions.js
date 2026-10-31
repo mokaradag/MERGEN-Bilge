@@ -106,24 +106,27 @@ function nativeStartupScript(missingWelcome) {
   return missing;
 }
 
-async function nativeTiming(browser) {
+async function nativeTiming(browser, diagnose = false) {
   // Sunucu timer'ı renderer saatinden bağımsızdır; yalnız loopback fixture kullanılır.
   const delay = 5000;
   // Soğuk Edge başlangıcı da VM koşucusunun 165 saniyelik sınırını kullanır.
-  const browserTimeout = 165000;
+  const browserTimeout = diagnose ? 20000 : 165000;
   const sockets = new Set();
   const timers = new Set();
   let missingWelcome = false;
   let served = 0;
+  let trace = null;
   const fixture = html.replace(script, nativeStartupScript(false));
   const missingFixture = html.replace(script, nativeStartupScript(true));
   const server = http.createServer((req, res) => {
+    if (trace) trace.requests++;
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     if (req.url.startsWith('/bilge/smoke/ux-smoke.html')) {
       res.end(missingWelcome ? missingFixture : fixture);
     } else if (req.url.startsWith('/bilge/smoke/ux-smoke-probes.js')) {
       res.end('');
     } else if (req.url.startsWith('/bilge/')) {
+      if (trace) trace.appRequests++;
       res.end(`<!doctype html><body><div id="welcome_fullscreen_container"></div>
         <div id="chat_content_container"></div><input id="user_input"><button id="send_stop_btn"></button>
         <script>window.Shiny={setInputValue:function(){}};
@@ -133,6 +136,7 @@ async function nativeTiming(browser) {
     } else { res.statusCode = 404; res.end(); }
   });
   server.on('upgrade', (req, socket) => {
+    if (trace) trace.websockets++;
     sockets.add(socket);
     socket.on('error', () => {});
     socket.on('close', () => sockets.delete(socket));
@@ -153,33 +157,63 @@ async function nativeTiming(browser) {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ux-timing-'));
   try {
-    for (missingWelcome of [true, false]) {
+    const cases = diagnose ? ['node-blank', 'missing-welcome', 'delayed-welcome'] :
+      ['missing-welcome', 'delayed-welcome'];
+    for (const label of cases) {
+      missingWelcome = label === 'missing-welcome';
       const before = served;
-      const label = missingWelcome ? 'missing-welcome' : 'delayed-welcome';
+      trace = { label, requests: 0, appRequests: 0, websockets: 0,
+        stdoutBytes: 0, stderrBytes: 0, exitSeen: false, closeSeen: false,
+        exitCode: null, exitBeforeTimeout: false, timedOut: false, renderedStatus: '' };
+      if (diagnose) console.log('BROWSER_PROBE_START ' + label);
       const caseProfile = path.join(profile, label);
+      trace.uncProfile = caseProfile.startsWith('\\\\') || caseProfile.startsWith('//');
       fs.mkdirSync(caseProfile);
       const args = ['--headless=new', '--disable-gpu', '--disable-dev-shm-usage',
         '--no-first-run', '--no-default-browser-check',
         '--user-data-dir=' + caseProfile, '--dump-dom',
         '--timeout=' + (browserTimeout - 5000),
-        `http://127.0.0.1:${server.address().port}/bilge/smoke/ux-smoke.html?autostart=1`];
+        label === 'node-blank' ? 'about:blank' :
+          `http://127.0.0.1:${server.address().port}/bilge/smoke/ux-smoke.html?autostart=1`];
       if (process.platform === 'linux' && process.getuid() === 0) args.unshift('--no-sandbox');
       const output = await new Promise((resolve, reject) => {
         const child = spawn(browser, args, { cwd: caseProfile, windowsHide: true,
           stdio: ['ignore', 'pipe', 'pipe'] });
         let stdout = '';
-        child.stdout.on('data', chunk => { stdout += chunk; });
-        child.stderr.resume();
+        child.stdout.setEncoding('utf8');
+        child.stdout.on('data', chunk => { stdout += chunk; trace.stdoutBytes += Buffer.byteLength(chunk); });
+        // Ham stderr, DOM veya profil yolu tanı çıktısına taşınmaz.
+        child.stderr.on('data', chunk => { trace.stderrBytes += chunk.length; });
+        child.on('exit', code => {
+          trace.exitSeen = true;
+          trace.exitCode = code;
+          trace.exitBeforeTimeout = !trace.timedOut;
+        });
         let timedOut = false;
-        const deadline = setTimeout(() => { timedOut = true; child.kill(); }, browserTimeout);
+        const deadline = setTimeout(() => {
+          timedOut = true;
+          trace.timedOut = true;
+          child.kill();
+          // Tanı, çıkmış bir sürecin alt süreçlerinde açık kalan boruyu da sınırlar.
+          if (diagnose) { child.stdout.destroy(); child.stderr.destroy(); }
+        }, browserTimeout);
         child.on('error', error => { clearTimeout(deadline); reject(error); });
         child.on('close', (code, signal) => {
           clearTimeout(deadline);
+          trace.closeSeen = true;
+          trace.renderedStatus = stdout.match(/<div id="status"[^>]*>([^<]*)<\/div>/)?.[1] || '';
+          trace.readySent = served > before;
+          if (diagnose || timedOut || code !== 0) console.log('BROWSER_PROBE_RESULT ' + JSON.stringify(trace));
           if (timedOut) reject(new Error('Native browser ' + label + ' timed out after ' + browserTimeout + 'ms'));
           else if (code !== 0) reject(new Error('Native browser ' + label + ' failed: ' + (signal || code)));
           else resolve(stdout);
         });
       });
+      if (label === 'node-blank') {
+        assert.match(output, /<html[\s>]/);
+        assert.ok(output.includes('</html>'), 'Node başlatması tam boş sayfa DOM döndürmeli');
+        continue;
+      }
       const status = output.match(/<div id="status"[^>]*>([^<]*)<\/div>/)?.[1];
       assert.equal(status, missingWelcome ? 'UX_SMOKE_DONE:FAIL 1' : 'UX_SMOKE_DONE:PASS');
       if (missingWelcome) assert.equal(served, before, 'welcome yokken PASS üretilemez');
@@ -192,8 +226,15 @@ async function nativeTiming(browser) {
   } finally {
     for (const timer of timers) clearTimeout(timer);
     for (const socket of sockets) socket.destroy();
+    server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));
-    fs.rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    try {
+      fs.rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    } catch (error) {
+      if (!diagnose) throw error;
+      console.log('BROWSER_PROBE_PROFILE_CLEANUP_FAILED');
+      process.exitCode = 1;
+    }
   }
 }
 
@@ -214,5 +255,5 @@ async function nativeTiming(browser) {
   assert.ok(nativeDelayed.now >= 5000);
   console.log('ux smoke startup timing regressions passed (Türkçe: ğüşİıöç)');
   const browserArg = process.argv.indexOf('--browser');
-  if (browserArg !== -1) await nativeTiming(process.argv[browserArg + 1]);
+  if (browserArg !== -1) await nativeTiming(process.argv[browserArg + 1], process.argv.includes('--diagnose'));
 })().catch(error => { console.error(error); process.exitCode = 1; });
