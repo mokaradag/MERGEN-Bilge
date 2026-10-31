@@ -17,7 +17,7 @@ local({
   if (!length(candidates)) stop("No browser binary was found.", call. = FALSE)
   browser <- normalizePath(candidates[[1]], winslash = "/", mustWork = TRUE)
   if (grepl("^msedge([.]exe)?$", basename(browser), ignore.case = TRUE)) ux_smoke_check_edge_policy()
-  cat("Node browser diagnostic: three phases, at most 20 seconds per phase.\n")
+  cat("Node browser diagnostic: 20-second capture limit per phase; bounded browser cleanup.\n")
   cat("The live app, port 8009, SSO and the prepared smoke profile are not used.\n")
   args <- c(shQuote(file.path(root, "tests/scripts/ux_smoke_startup_timing_regressions.js")),
             "--browser", shQuote(browser), "--diagnose")

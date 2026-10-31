@@ -282,6 +282,7 @@ testthat::test_that("Shiny handler ve smoke durum sözleşmeleri gerçek JavaScr
   testthat::skip_if(!nzchar(node), "Node kullanılamıyor")
   for (script in c("shiny_message_handlers_contract_regressions.js",
                    "ux_smoke_navigation_regressions.js", "ux_smoke_start_gate_regressions.js",
+                   "native_browser_dump_regressions.js",
                    "ux_smoke_startup_timing_regressions.js")) {
     args <- shQuote(file.path(.find_browser_smoke_repo_root(), "tests/scripts", script))
     if (identical(script, "ux_smoke_startup_timing_regressions.js")) {

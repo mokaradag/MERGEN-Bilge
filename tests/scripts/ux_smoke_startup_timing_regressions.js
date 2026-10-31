@@ -6,10 +6,12 @@ const vm = require('node:vm');
 const http = require('node:http');
 const crypto = require('node:crypto');
 const os = require('node:os');
-const { spawn } = require('node:child_process');
+const { nativeDumpStatus, runNativeBrowserDump } = require('./helpers_native_browser_dump');
 
 const html = fs.readFileSync(path.resolve(__dirname, '../smoke/ux-smoke.html'), 'utf8').replace(/\r\n/g, '\n');
 const script = html.slice(html.indexOf('<script>\n') + '<script>\n'.length, html.indexOf('\n</script>'));
+// DOM sonu, gömülü betiğin içindeki bir sabitle karıştırılamaz.
+assert.ok(!/<\/body>\s*<\/html>/.test(script));
 const pendingStatus = 'Yükleniyor: fresh welcome';
 
 async function startup(serverReadyAt, sourceScript = script) {
@@ -111,6 +113,8 @@ async function nativeTiming(browser, diagnose = false) {
   const delay = 5000;
   // Soğuk Edge başlangıcı da VM koşucusunun 165 saniyelik sınırını kullanır.
   const browserTimeout = diagnose ? 20000 : 165000;
+  // Beş saniyelik yerel fixture'ın DOM bütçesi, süreç sınırından ayrıdır.
+  const renderTimeout = 15000;
   const sockets = new Set();
   const timers = new Set();
   let missingWelcome = false;
@@ -172,49 +176,25 @@ async function nativeTiming(browser, diagnose = false) {
       const args = ['--headless=new', '--disable-gpu', '--disable-dev-shm-usage',
         '--no-first-run', '--no-default-browser-check',
         '--user-data-dir=' + caseProfile, '--dump-dom',
-        '--timeout=' + (browserTimeout - 5000),
+        '--timeout=' + renderTimeout,
         label === 'node-blank' ? 'about:blank' :
           `http://127.0.0.1:${server.address().port}/bilge/smoke/ux-smoke.html?autostart=1`];
       if (process.platform === 'linux' && process.getuid() === 0) args.unshift('--no-sandbox');
-      const output = await new Promise((resolve, reject) => {
-        const child = spawn(browser, args, { cwd: caseProfile, windowsHide: true,
-          stdio: ['ignore', 'pipe', 'pipe'] });
-        let stdout = '';
-        child.stdout.setEncoding('utf8');
-        child.stdout.on('data', chunk => { stdout += chunk; trace.stdoutBytes += Buffer.byteLength(chunk); });
-        // Ham stderr, DOM veya profil yolu tanı çıktısına taşınmaz.
-        child.stderr.on('data', chunk => { trace.stderrBytes += chunk.length; });
-        child.on('exit', code => {
-          trace.exitSeen = true;
-          trace.exitCode = code;
-          trace.exitBeforeTimeout = !trace.timedOut;
-        });
-        let timedOut = false;
-        const deadline = setTimeout(() => {
-          timedOut = true;
-          trace.timedOut = true;
-          child.kill();
-          // Tanı, çıkmış bir sürecin alt süreçlerinde açık kalan boruyu da sınırlar.
-          if (diagnose) { child.stdout.destroy(); child.stderr.destroy(); }
-        }, browserTimeout);
-        child.on('error', error => { clearTimeout(deadline); reject(error); });
-        child.on('close', (code, signal) => {
-          clearTimeout(deadline);
-          trace.closeSeen = true;
-          trace.renderedStatus = stdout.match(/<div id="status"[^>]*>([^<]*)<\/div>/)?.[1] || '';
-          trace.readySent = served > before;
-          if (diagnose || timedOut || code !== 0) console.log('BROWSER_PROBE_RESULT ' + JSON.stringify(trace));
-          if (timedOut) reject(new Error('Native browser ' + label + ' timed out after ' + browserTimeout + 'ms'));
-          else if (code !== 0) reject(new Error('Native browser ' + label + ' failed: ' + (signal || code)));
-          else resolve(stdout);
-        });
-      });
+      let output;
+      let failed = true;
+      try {
+        output = await runNativeBrowserDump(browser, args, { cwd: caseProfile, timeoutMs: browserTimeout, trace });
+        failed = false;
+      } finally {
+        trace.readySent = served > before;
+        if (diagnose || failed) console.log('BROWSER_PROBE_RESULT ' + JSON.stringify(trace));
+      }
       if (label === 'node-blank') {
         assert.match(output, /<html[\s>]/);
         assert.ok(output.includes('</html>'), 'Node başlatması tam boş sayfa DOM döndürmeli');
         continue;
       }
-      const status = output.match(/<div id="status"[^>]*>([^<]*)<\/div>/)?.[1];
+      const status = nativeDumpStatus(output);
       assert.equal(status, missingWelcome ? 'UX_SMOKE_DONE:FAIL 1' : 'UX_SMOKE_DONE:PASS');
       if (missingWelcome) assert.equal(served, before, 'welcome yokken PASS üretilemez');
       else assert.ok(served > before, 'PASS gerçek sunucu mesajını beklemeli');
