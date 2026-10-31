@@ -10,6 +10,7 @@ const { spawn } = require('node:child_process');
 
 const html = fs.readFileSync(path.resolve(__dirname, '../smoke/ux-smoke.html'), 'utf8').replace(/\r\n/g, '\n');
 const script = html.slice(html.indexOf('<script>\n') + '<script>\n'.length, html.indexOf('\n</script>'));
+const pendingStatus = 'Yükleniyor: fresh welcome';
 
 async function startup(serverReadyAt) {
   let now = 0;
@@ -69,6 +70,7 @@ async function startup(serverReadyAt) {
     'testMediaAndSavedChat', 'testBilgeYolacSessionsSurface', 'testConsoleNoise'];
   const stubs = tests.map(name => `${name} = function () { dependents.push('${name}'); };`).join('\n');
   vm.runInContext(script.replace('  function startSmoke(startButton) {', stubs + '\n  function startSmoke(startButton) {'), context);
+  assert.equal(nodes.status.textContent, pendingStatus, 'başlangıç etiketi loadFreshApp tarafından hemen güncellenir');
   assert.equal(barriers.length, 1, 'dump-dom için yerel load kapısı kurulmalı');
   assert.equal(barriers[0].hidden, true);
   assert.equal(barriers[0].blocked, true, 'Shiny/kabuk varlığı bitiş değildir');
@@ -169,7 +171,7 @@ async function nativeTiming(browser) {
         });
       });
       const status = output.match(/<div id="status"[^>]*>([^<]*)<\/div>/)?.[1];
-      assert.equal(status, legacy ? 'UX smoke çalışıyor...' : 'UX_SMOKE_DONE:PASS');
+      assert.equal(status, legacy ? pendingStatus : 'UX_SMOKE_DONE:PASS');
       if (legacy) assert.equal(served, before, 'kapısız dump sunucu hazır olmadan dönmeli');
       else assert.ok(served > before, 'PASS gerçek sunucu mesajını beklemeli');
       for (const timer of timers) clearTimeout(timer);
