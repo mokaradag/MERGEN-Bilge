@@ -72,6 +72,8 @@ admin_doc_registry <- function() {
       docs = list(
         belge("vm_evidence", "VM Kanıt Kapısı Durumu", "docs/vm-evidence-status.md",
               "Windows VM doğrulama kapısının son durumu."),
+        belge("vm_browser_ux", "Windows VM Tarayıcı UX Smoke", "docs/vm-browser-ux-smoke.md",
+              "Normal ağ topolojisinde geçici test yolu ve onaylı SSO profiliyle tarayıcı doğrulaması."),
         belge("soak_gate", "Soak / Yük Test Kapısı", "docs/operational-soak-gate.md",
               "Operasyonel yük ve dayanıklılık testi kapısı."),
         belge("performance_plan", "Performans İyileştirme Planı",

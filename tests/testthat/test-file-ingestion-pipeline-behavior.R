@@ -2920,23 +2920,28 @@ test_that("şerit çekişmesi tek zaman aşımında yüklemeyi düşürmez; kili
   skip_if_not_installed("callr")
   env <- .ingestionEnv()
   root <- withr::local_tempdir()
+  withr::local_options(list(mergen.upload_lock_dir = file.path(root, "locks"),
+    mergen.upload_lane_wait_sec = 10))
   target <- file.path(root, "hedef.txt")
   lock <- env$mergen_upload_mutex_path(target)
   # Tutucu süreç kilit dizinini oluşturmaz; test önceki testlere bağlı kalmaz.
   dir.create(dirname(lock), recursive = TRUE, showWarnings = FALSE)
   real <- get("mergen_reclaim_mutex", envir = env, inherits = TRUE)
-  calls <- 0L
-  env$mergen_reclaim_mutex <- function(path, timeout = 0, exclusive = TRUE) {
-    calls <<- calls + 1L
-    real(path, min(timeout, 200), exclusive)
-  }
-  # Başka süreç şeridi zaman aşımı diliminden uzun tutar; edinim beklenir.
-  holder <- callr::r_bg(function(lock, ready) {
+  session <- shiny::MockShinySession$new()
+  withr::defer(session$close())
+  release <- file.path(root, "release")
+  # Duvar saati yarışı yerine iki başarısız edinimden sonra tutucu bırakılır.
+  holder <- callr::r_bg(function(lock, ready, release) {
     guard <- filelock::lock(lock, timeout = 5000)
+    if (is.null(guard)) stop("Fixture lock holder could not acquire the lock.")
+    on.exit(filelock::unlock(guard), add = TRUE)
     writeLines("held", ready)
-    Sys.sleep(1.5)
-    filelock::unlock(guard)
-  }, args = list(lock = lock, ready = file.path(root, "ready")))
+    deadline <- Sys.time() + 30
+    while (!file.exists(release) && Sys.time() < deadline) Sys.sleep(0.05)
+    if (!file.exists(release)) stop("Fixture lock holder was not released.")
+    TRUE
+  }, args = list(lock = lock, ready = file.path(root, "ready"), release = release),
+    wd = root, user_profile = FALSE, system_profile = FALSE)
   withr::defer(try(holder$kill(), silent = TRUE))
   deadline <- Sys.time() + 20
   while (!file.exists(file.path(root, "ready")) && holder$is_alive() && Sys.time() < deadline) holder$poll_io(50)
@@ -2947,23 +2952,30 @@ test_that("şerit çekişmesi tek zaman aşımında yüklemeyi düşürmez; kili
     session_timeout <<- timeout
     NULL
   }
-  shiny::withReactiveDomain(shiny::MockShinySession$new(), {
+  shiny::withReactiveDomain(session, {
     expect_null(env$mergen_upload_lane_lock(target))
   })
   expect_identical(session_timeout, 0)
+  calls <- 0L
   env$mergen_reclaim_mutex <- function(path, timeout = 0, exclusive = TRUE) {
     calls <<- calls + 1L
-    real(path, min(timeout, 200), exclusive)
+    guard <- real(path, min(timeout, 200), exclusive)
+    if (calls == 2L) writeLines("release", release)
+    guard
   }
-  guard <- env$mergen_upload_lane_lock(target)
+  # RStudio'da açık uygulamanın reactive domain'i işçi testiyle paylaşılmaz.
+  guard <- shiny::withReactiveDomain(NULL, env$mergen_upload_lane_lock(target))
+  withr::defer(if (!is.null(guard)) filelock::unlock(guard))
   expect_false(is.null(guard))
   expect_gt(calls, 1L)
-  filelock::unlock(guard)
+  env$.mergen_upload_unlock(guard)
+  guard <- NULL
   holder$wait(5000)
+  expect_true(holder$get_result())
   # Boş şeritte sürekli edinme hatası bütçe boyunca beklenmez.
   env$mergen_reclaim_mutex <- function(...) NULL
   started <- Sys.time()
-  expect_null(env$mergen_upload_lane_lock(target))
+  expect_null(shiny::withReactiveDomain(NULL, env$mergen_upload_lane_lock(target)))
   expect_lt(as.numeric(difftime(Sys.time(), started, units = "secs")), 5)
 })
 

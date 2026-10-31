@@ -87,27 +87,49 @@ safe_add_resource_path <- function(prefix, directory) {
   invisible(TRUE)
 }
 
-# UX smoke test harness'ı (tests/smoke) gerçek uygulama eylemleri tetikler.
-# www/ dışında tutulur; böylece hiçbir statik yol (img -> www takma adı ve
-# Windows'ta büyük/küçük harf varyantları dahil) onu sunamaz. Yalnızca bakımcı
-# smoke ortamında açıkça MERGEN_ENABLE_UX_SMOKE=true verildiğinde /smoke olur.
-# Ayrıca uygulama yalnız döngü (loopback) arayüzünü dinlemelidir: ağdaki hiçbir
-# istemci harness'a ulaşıp başka bir oturumda eylem başlatamaz.
-mergen_ux_smoke_enabled <- function(host = Sys.getenv("MERGEN_HOST", "0.0.0.0")) {
-  host <- tolower(trimws(as.character(host)[1]))
-  tolower(trimws(Sys.getenv("MERGEN_ENABLE_UX_SMOKE", ""))) %in% c("1", "true", "yes", "evet") &&
-    isTRUE(host %in% c("127.0.0.1", "localhost", "::1"))
+# Harness www/ dışında kalır. Ağda yalnız iki açık opt-in ve koşuya özel
+# 192-bit rastgele önekle sunulur; SSO ve uygulama yetkileri değişmez.
+mergen_ux_smoke_prefix <- function(value = Sys.getenv("MERGEN_UX_SMOKE_PATH", "")) {
+  if (!is.character(value) || length(value) != 1L || is.na(value)) return(NA_character_)
+  if (identical(value, "")) return("smoke")  # yalnız loopback uyumluluğu
+  if (nchar(value, type = "bytes") != 60L || !grepl("^__mergen_ux_[0-9a-f]{48}$", value)) return(NA_character_)
+  value
 }
 
-mergen_register_ux_smoke_resource <- function(enabled = mergen_ux_smoke_enabled(),
-                                              directory = file.path("tests", "smoke")) {
-  if (!isTRUE(enabled) || !dir.exists(directory)) {
-    # Kapı kapalıyken aynı süreçte daha önce açılmış /smoke eşlemesi de kalkar.
-    if ("smoke" %in% names(shiny::resourcePaths())) shiny::removeResourcePath("smoke")
-    return(invisible(FALSE))
-  }
-  safe_add_resource_path("smoke", directory)
+mergen_ux_smoke_enabled <- function(host = Sys.getenv("MERGEN_HOST", "0.0.0.0")) {
+  if (!is.character(host) || length(host) != 1L || is.na(host)) return(FALSE)
+  host <- tolower(trimws(host))
+  prefix <- mergen_ux_smoke_prefix()
+  opt_in <- tolower(trimws(Sys.getenv("MERGEN_ENABLE_UX_SMOKE", ""))) %in% c("1", "true", "yes", "evet")
+  if (!opt_in || is.na(prefix) || !nzchar(host)) return(FALSE)
+  if (host %in% c("127.0.0.1", "localhost", "::1")) return(TRUE)
+  identical(tolower(Sys.getenv("MERGEN_ALLOW_NETWORK_UX_SMOKE", "")), "true") &&
+    !identical(prefix, "smoke")
 }
+
+mergen_register_ux_smoke_resource <- local({
+  owned <- NULL
+  function(enabled = mergen_ux_smoke_enabled(), owner = NULL) {
+    # Tek aktif koşu korunur; yabancı temizlik o koşunun kaydını silemez.
+    if (!is.null(owned$owner) && !identical(owned$owner, owner)) {
+      if (isTRUE(enabled)) stop("Smoke resource is already owned by another app run.", call. = FALSE)
+      return(invisible(FALSE))
+    }
+    # Yalnız bu uygulamanın kaydı temizlenir; başka kaynaklar süpürülmez.
+    if (!is.null(owned) && owned$prefix %in% names(shiny::resourcePaths()) &&
+        identical(shiny::resourcePaths()[[owned$prefix]], owned$directory)) {
+      shiny::removeResourcePath(owned$prefix)
+    }
+    owned <<- NULL
+    prefix <- mergen_ux_smoke_prefix()
+    directory <- file.path("tests", "smoke")
+    if (!isTRUE(enabled) || is.na(prefix) || !dir.exists(directory)) return(invisible(FALSE))
+    if (prefix %in% names(shiny::resourcePaths())) stop("Smoke resource prefix is already registered.", call. = FALSE)
+    if (!isTRUE(safe_add_resource_path(prefix, directory))) return(invisible(FALSE))
+    owned <<- list(prefix = prefix, directory = shiny::resourcePaths()[[prefix]], owner = owner)
+    invisible(TRUE)
+  }
+})
 
 if (dir.exists("www")) {
   for (subdir in list.dirs("www", recursive = FALSE, full.names = FALSE)) {
@@ -246,8 +268,11 @@ run_mergen_app <- function(
   quiet = TRUE
 ) {
   validate_boot_state()
-  # /smoke kararı gerçek dinleme adresiyle yeniden verilir (ağ adresinde kalkar).
-  mergen_register_ux_smoke_resource(enabled = mergen_ux_smoke_enabled(host))
+  # Smoke kararı gerçek dinleme adresiyle yeniden verilir; runApp bitince kapanır.
+  register_smoke <- mergen_register_ux_smoke_resource
+  smoke_owner <- new.env(parent = emptyenv())
+  register_smoke(enabled = mergen_ux_smoke_enabled(host), owner = smoke_owner)
+  on.exit(register_smoke(enabled = FALSE, owner = smoke_owner), add = TRUE)
 
   port <- .normalize_mergen_port(port)
 

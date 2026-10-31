@@ -161,7 +161,7 @@ vm_sso_steps <- list(
     "Run tests/scripts/run_vm_preflight_real.R with",
     "MERGEN_PREFLIGHT_CHECK_FILE_STORE=TRUE and confirm it completes."
   ),
-  V10 = "In a maintenance window start the VM app with MERGEN_ENABLE_UX_SMOKE=true and MERGEN_HOST=127.0.0.1, open /smoke/ux-smoke.html in a browser on the VM itself, press start and confirm UX_SMOKE_DONE:PASS; restart without the flag and with the normal MERGEN_HOST afterwards."
+  V10 = "In a maintenance window run tests/scripts/run_vm_browser_ux_smoke.R --start-app on normal 0.0.0.0:8009 (random test route); run the same script without arguments in Window 2 with the runtime approved SSO URL and dedicated Edge profile. Require rendered UX_SMOKE_DONE:PASS; stop and restart normally afterwards. See docs/vm-browser-ux-smoke.md."
 )
 
 cat("\nMERGEN fragile-flow manual preflight\n")

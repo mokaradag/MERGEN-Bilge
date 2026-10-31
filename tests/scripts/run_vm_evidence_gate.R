@@ -44,6 +44,7 @@
 #
 # Kullanim:
 #   Rscript tests/scripts/run_vm_evidence_gate.R
+#   Rscript tests/scripts/run_vm_evidence_gate.R --full
 #   MERGEN_EVIDENCE_PROFILE=vm Rscript tests/scripts/run_vm_evidence_gate.R
 #   MERGEN_EVIDENCE_STEPS=seam_doctor,renv_status Rscript tests/scripts/run_vm_evidence_gate.R
 #   bash tools/vm_evidence_gate.sh
@@ -125,15 +126,25 @@ evidence_env_flag_true <- function(name, default = FALSE) {
   raw %in% c("true", "t", "1", "yes", "y")
 }
 
+# Tarayici gereksinimi hem cocuk runner hem ust kapi icin tek karardir.
+evidence_browser_required <- function() {
+  nzchar(trimws(Sys.getenv("MERGEN_BROWSER_UX_BASE_URL", ""))) ||
+    nzchar(Sys.getenv("MERGEN_BROWSER_BIN", "")) ||
+    evidence_env_flag_true("MERGEN_REQUIRE_BROWSER_UX_SMOKE")
+}
+
 evidence_redact_text <- function(text) {
   sensitive_names <- c(
     "LOCAL_LLM_ENDPOINT", "LOCAL_LLM_API_KEY", "DB_DSN", "DB_PASSWORD",
     "AI_KEYS_MASTER", "SSO_KEYCLOAK_URL", "SSO_CLIENT_SECRET",
-    "MERGEN_DEFAULT_API_KEY", "MERGEN_BROWSER_BIN"
+    "MERGEN_DEFAULT_API_KEY", "MERGEN_BROWSER_BIN",
+    "MERGEN_BROWSER_UX_BASE_URL", "MERGEN_UX_SMOKE_PATH", "MERGEN_BROWSER_UX_PROFILE_DIR"
   )
 
   values <- Sys.getenv(sensitive_names, unset = "")
-  values <- unique(values[nzchar(values)])
+  values <- unique(values[nzchar(trimws(values))])
+  values <- unique(c(values, gsub("\\", "/", values, fixed = TRUE),
+                     vapply(values, function(v) encodeString(v, quote = ""), character(1))))
   values <- values[order(nchar(values), decreasing = TRUE)]
 
   out <- paste(as.character(text %||% ""), collapse = "\n")
@@ -190,7 +201,9 @@ profile_effective <- if (nzchar(profile_requested)) {
   "cloud"
 }
 
-steps_filter_raw <- trimws(Sys.getenv("MERGEN_EVIDENCE_STEPS", unset = ""))
+# Acik tam kosum, .Renviron/shell filtresinden bagimsiz 13 PASS ister.
+full_evidence <- "--full" %in% commandArgs(trailingOnly = TRUE)
+steps_filter_raw <- if (full_evidence) "" else trimws(Sys.getenv("MERGEN_EVIDENCE_STEPS", unset = ""))
 steps_filter <- if (nzchar(steps_filter_raw)) {
   trimws(strsplit(steps_filter_raw, ",", fixed = TRUE)[[1]])
 } else {
@@ -522,12 +535,13 @@ run_step_simple_child <- function(step_id, body_lines, extra_env = character(0))
 
 run_step_browser_ux_smoke <- function() {
   browser_bin_set <- nzchar(Sys.getenv("MERGEN_BROWSER_BIN", unset = ""))
-  require_browser <- browser_bin_set ||
-    evidence_env_flag_true("MERGEN_REQUIRE_BROWSER_UX_SMOKE")
+  vm_network <- nzchar(trimws(Sys.getenv("MERGEN_BROWSER_UX_BASE_URL", "")))
+  require_browser <- evidence_browser_required()
 
   res <- run_step_simple_child(
     "browser_ux_smoke",
-    "source('tests/scripts/ai_browser_ux_smoke.R', encoding = 'UTF-8')"
+    if (vm_network) "source('tests/scripts/run_vm_browser_ux_smoke.R', encoding = 'UTF-8')" else
+      "source('tests/scripts/ai_browser_ux_smoke.R', encoding = 'UTF-8')"
   )
 
   log_text <- evidence_read_text_file_safe(res$log_file)
@@ -536,7 +550,8 @@ run_step_browser_ux_smoke <- function() {
   # "passed" sayilir. Alt betik tarayici yokken exit 0 ile SKIP yazabilir;
   # bu durum kanit DEGILDIR ve "skipped" olarak siniflandirilir. Tarayici
   # zorunluysa SKIP de basarisizliktir.
-  smoke_pass_seen <- grepl("UX_SMOKE_DONE:PASS", log_text, fixed = TRUE)
+  smoke_pass_seen <- "OK: rendered #status is UX_SMOKE_DONE:PASS." %in%
+    trimws(strsplit(log_text, "\n", fixed = TRUE)[[1]])
   smoke_skip_seen <- grepl("SKIP", log_text, fixed = TRUE)
 
   if (isTRUE(res$ok) && !smoke_pass_seen) {
@@ -555,6 +570,7 @@ run_step_browser_ux_smoke <- function() {
     res$notes <- "Yerel tarayici binari yok; smoke SKIP (zorunlu degil)."
   }
 
+  res$detail$vm_network_runner <- vm_network
   res$detail$require_browser <- require_browser
   res$detail$browser_bin_set <- browser_bin_set
   res$detail$ux_smoke_pass_marker <- smoke_pass_seen
@@ -597,6 +613,12 @@ run_step_renv_status <- function() {
   list(ok = ok, notes = notes, detail = detail, log_file = log_file, duration_sec = 0)
 }
 
+# Hazir SSO oturumu uzun suit boyunca bekletilmez; adim sayisi degismez.
+if (evidence_browser_required()) {
+  browser_index <- which(vapply(evidence_step_specs, function(spec) identical(spec$id, "browser_ux_smoke"), logical(1)))
+  evidence_step_specs <- c(evidence_step_specs[browser_index], evidence_step_specs[-browser_index])
+}
+
 evidence_step_runners <- list(
   env_config = run_step_env_config,
   parse_sanity = function() run_step_simple_child(
@@ -607,11 +629,13 @@ evidence_step_runners <- list(
     "app_boot_smoke",
     "source('tests/scripts/smoke_app_boot.R', encoding = 'UTF-8')"
   ),
-full_testthat = function() run_step_simple_child(
-  "full_testthat",
-  "source('tests/scripts/run_full_testthat_isolated.R', encoding = 'UTF-8')",
-  extra_env = c(TZ = "UTC")
-),
+  full_testthat = function() run_step_simple_child(
+    "full_testthat",
+    "source('tests/scripts/run_full_testthat_isolated.R', encoding = 'UTF-8')",
+    extra_env = c(TZ = "UTC", if (full_evidence) c(
+      MERGEN_TESTTHAT_START_INDEX = "", MERGEN_TESTTHAT_END_INDEX = ""
+    ))
+  ),
   maintainability_report = function() run_step_simple_child(
     "maintainability_report",
     c(
@@ -669,7 +693,8 @@ full_testthat = function() run_step_simple_child(
   browser_ux_smoke = run_step_browser_ux_smoke,
   vm_preflight_real = function() run_step_simple_child(
     "vm_preflight_real",
-    "source('tests/scripts/run_vm_preflight_real.R', encoding = 'UTF-8')"
+    "source('tests/scripts/run_vm_preflight_real.R', encoding = 'UTF-8')",
+    extra_env = if (full_evidence) c(MERGEN_PREFLIGHT_CHECK_FILE_STORE = "TRUE") else character(0)
   ),
   db_encoding_preflight = function() run_step_simple_child(
     "db_encoding_preflight",
@@ -699,11 +724,12 @@ step_results <- list()
 
 for (spec in evidence_step_specs) {
   step_id <- spec$id
-  required <- profile_effective %in% spec$required_in
+  browser_required <- identical(step_id, "browser_ux_smoke") && evidence_browser_required()
+  required <- full_evidence || profile_effective %in% spec$required_in || browser_required
 
   if (length(steps_filter) > 0L && !(step_id %in% steps_filter)) {
     step_results[[step_id]] <- list(
-      spec = spec, status = "skipped", required = FALSE,
+      spec = spec, status = "skipped", required = browser_required,
       notes = "MERGEN_EVIDENCE_STEPS filtresi disinda.",
       detail = list(), log_file = NULL, duration_sec = 0
     )
@@ -714,7 +740,7 @@ for (spec in evidence_step_specs) {
   vm_only <- identical(spec$required_in, "vm")
   if (vm_only && identical(profile_effective, "cloud")) {
     step_results[[step_id]] <- list(
-      spec = spec, status = "skipped", required = FALSE,
+      spec = spec, status = "skipped", required = full_evidence,
       notes = "VM-yalniz kapi; cloud profilinde gerekceli SKIP.",
       detail = list(), log_file = NULL, duration_sec = 0
     )
@@ -766,7 +792,7 @@ git_field <- function(args) {
 }
 
 failed_required <- vapply(step_results, function(r) {
-  identical(r$status, "failed") && isTRUE(r$required)
+  !identical(r$status, "passed") && isTRUE(r$required)
 }, logical(1))
 
 failed_optional <- vapply(step_results, function(r) {
@@ -781,6 +807,7 @@ evidence <- list(
   validation_execution_status = "ran_by_vm_evidence_gate",
   profile_requested = if (nzchar(profile_requested)) profile_requested else "<auto>",
   profile_effective = profile_effective,
+  full_workflow = full_evidence,
   overall_status = overall_status,
   secret_policy = "Ham ortam degeri yazilmaz; yalnizca present/nchar/value=<hidden> metadata.",
   git = list(
