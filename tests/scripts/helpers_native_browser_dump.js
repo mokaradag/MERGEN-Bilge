@@ -10,12 +10,15 @@ function completeNativeDump(dom) {
 
 function runNativeBrowserDump(browser, args, { cwd, timeoutMs, trace, cleanupMs = 5000 }) {
   return new Promise((resolve, reject) => {
-    const child = spawn(browser, args, { cwd, windowsHide: true,
+    const windows = process.platform === 'win32';
+    const child = spawn(browser, args, { cwd, windowsHide: true, detached: !windows,
       stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let settled = false;
     let stoppedAfterDump = false;
     let cleanupTimer = null;
+    let treeStop = null;
+    let treeKiller = null;
     trace.dumpComplete = false;
     trace.stoppedAfterDump = false;
 
@@ -30,6 +33,7 @@ function runNativeBrowserDump(browser, args, { cwd, timeoutMs, trace, cleanupMs 
     const boundCleanup = () => {
       if (cleanupTimer) return;
       cleanupTimer = setTimeout(() => {
+        if (treeKiller) treeKiller.kill('SIGKILL');
         child.kill('SIGKILL');
         child.stdout.destroy();
         child.stderr.destroy();
@@ -37,9 +41,34 @@ function runNativeBrowserDump(browser, args, { cwd, timeoutMs, trace, cleanupMs 
         finish(new Error('Native browser ' + trace.label + ' cleanup timed out'));
       }, cleanupMs);
     };
+    const stopOwnedTree = () => {
+      if (treeStop) return treeStop;
+      const alive = child.exitCode === null && child.signalCode === null;
+      if (!windows) {
+        // Ayrı süreç grubu yalnız bu fixture'ın tarayıcı ağacını kapsar.
+        try {
+          process.kill(-child.pid, 'SIGKILL');
+          treeStop = Promise.resolve({ stopped: alive });
+        } catch (error) {
+          treeStop = Promise.resolve(error.code === 'ESRCH' ? { stopped: false } : { error });
+        }
+      } else if (!alive) {
+        treeStop = Promise.resolve({ stopped: false });
+      } else {
+        // Görüntü adına göre değil, yalnız başlatılan PID'nin ağacına göre durdur.
+        treeStop = new Promise(resolveStop => {
+          treeKiller = spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'],
+            { windowsHide: true, stdio: 'ignore' });
+          treeKiller.on('error', error => resolveStop({ error }));
+          treeKiller.on('close', code => resolveStop({ stopped: code === 0,
+            killFailed: code !== 0 }));
+        });
+      }
+      return treeStop;
+    };
     const deadline = setTimeout(() => {
       trace.timedOut = true;
-      child.kill('SIGKILL');
+      stopOwnedTree();
       child.stdout.destroy();
       child.stderr.destroy();
       boundCleanup();
@@ -53,14 +82,11 @@ function runNativeBrowserDump(browser, args, { cwd, timeoutMs, trace, cleanupMs 
       trace.dumpComplete = true;
       clearTimeout(deadline);
       boundCleanup();
-      // DOM tamamlandı; yalnız bu geçici profile ait başlatılan süreç durdurulur.
-      if (child.exitCode === null && child.signalCode === null) {
-        stoppedAfterDump = child.kill('SIGKILL');
+      // Tam DOM'dan sonra profil yazan alt süreçler de kapatılır.
+      stopOwnedTree().then(result => {
+        stoppedAfterDump = !!result.stopped;
         trace.stoppedAfterDump = stoppedAfterDump;
-      } else {
-        child.stdout.destroy();
-        child.stderr.destroy();
-      }
+      });
     });
     // Ham stderr veya profil yolu çıktıya taşınmaz.
     child.stderr.on('data', chunk => { trace.stderrBytes += chunk.length; });
@@ -72,10 +98,14 @@ function runNativeBrowserDump(browser, args, { cwd, timeoutMs, trace, cleanupMs 
       if (trace.dumpComplete) { child.stdout.destroy(); child.stderr.destroy(); }
     });
     child.on('error', error => finish(error));
-    child.on('close', (code, signal) => {
+    child.on('close', async (code, signal) => {
       trace.closeSeen = true;
+      const cleanup = treeStop ? await treeStop : {};
       if (trace.timedOut) return finish(new Error('Native browser ' + trace.label + ' timed out after ' + timeoutMs + 'ms'));
-      const ownedStop = stoppedAfterDump && code === null && signal === 'SIGKILL';
+      if (cleanup.error) return finish(cleanup.error);
+      // taskkill yarışında doğal, başarılı çıkış da kabul edilir.
+      if (cleanup.killFailed && code !== 0) return finish(new Error('Native browser ' + trace.label + ' tree cleanup failed'));
+      const ownedStop = stoppedAfterDump && (windows ? code === 1 && !signal : code === null && signal === 'SIGKILL');
       if (code !== 0 && !ownedStop) return finish(new Error('Native browser ' + trace.label + ' failed: ' + (signal || code)));
       if (!trace.dumpComplete) return finish(new Error('Native browser ' + trace.label + ' returned an incomplete DOM'));
       finish();

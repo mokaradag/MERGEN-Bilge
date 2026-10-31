@@ -1,5 +1,7 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const os = require('node:os');
+const path = require('node:path');
 const { nativeDumpStatus, completeNativeDump, runNativeBrowserDump } = require('./helpers_native_browser_dump');
 
 const page = status => '<html><body><div id="status">' + status + '</div></body></html>\n';
@@ -19,6 +21,32 @@ const run = (code, trace, timeoutMs = 10000) => runNativeBrowserDump(process.exe
     assert.equal(trace.timedOut, false);
     assert.equal(trace.exitSeen, true);
     assert.equal(trace.closeSeen, true);
+  }
+
+  // Tarayıcı kökü kapanınca geçici profile yazan alt süreç de durmalı.
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ux-tree-'));
+  const heartbeat = path.join(profile, 'heartbeat');
+  const pidFile = path.join(profile, 'writer-pid');
+  const writer = 'const fs=require("node:fs");let n=0;' +
+    'fs.writeFileSync(' + JSON.stringify(pidFile) + ',String(process.pid));' +
+    'const beat=()=>fs.writeFileSync(' + JSON.stringify(heartbeat) + ',String(++n));' +
+    'beat();process.send("ready");setInterval(beat,10);';
+  const parent = 'const {spawn}=require("node:child_process");' +
+    'const writer=spawn(process.execPath,["-e",' + JSON.stringify(writer) + '],' +
+    '{stdio:["ignore","ignore","ignore","ipc"]});' +
+    'writer.once("message",()=>process.stdout.write(' + JSON.stringify(page('UX_SMOKE_DONE:PASS')) + '));' +
+    'setInterval(()=>{},1000);';
+  try {
+    await run(parent, traceFor('tree'));
+    const before = fs.readFileSync(heartbeat, 'utf8');
+    await new Promise(resolve => setTimeout(resolve, 200));
+    assert.equal(fs.readFileSync(heartbeat, 'utf8'), before, 'alt süreç profil yazmayı sürdürmemeli');
+  } finally {
+    if (fs.existsSync(pidFile)) {
+      try { process.kill(Number(fs.readFileSync(pidFile, 'utf8')), 'SIGKILL'); }
+      catch (error) { if (error.code !== 'ESRCH') throw error; }
+    }
+    fs.rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 
   const partial = traceFor('partial');
