@@ -12,7 +12,7 @@ const html = fs.readFileSync(path.resolve(__dirname, '../smoke/ux-smoke.html'), 
 const script = html.slice(html.indexOf('<script>\n') + '<script>\n'.length, html.indexOf('\n</script>'));
 const pendingStatus = 'Yükleniyor: fresh welcome';
 
-async function startup(serverReadyAt) {
+async function startup(serverReadyAt, sourceScript = script) {
   let now = 0;
   let sequence = 0;
   const timers = [];
@@ -69,7 +69,7 @@ async function startup(serverReadyAt) {
     'testOneQuickActionOnCurrentWelcome', 'testChatInput', 'testStreamingLifecycle',
     'testMediaAndSavedChat', 'testBilgeYolacSessionsSurface', 'testConsoleNoise'];
   const stubs = tests.map(name => `${name} = function () { dependents.push('${name}'); };`).join('\n');
-  vm.runInContext(script.replace('  function startSmoke(startButton) {', stubs + '\n  function startSmoke(startButton) {'), context);
+  vm.runInContext(sourceScript.replace('  function startSmoke(startButton) {', stubs + '\n  function startSmoke(startButton) {'), context);
   assert.equal(nodes.status.textContent, pendingStatus, 'başlangıç etiketi loadFreshApp tarafından hemen güncellenir');
   assert.equal(barriers.length, 1, 'dump-dom için yerel load kapısı kurulmalı');
   assert.equal(barriers[0].hidden, true);
@@ -93,6 +93,19 @@ async function startup(serverReadyAt) {
   return { status: nodes.status.textContent, dependents, now };
 }
 
+function nativeStartupScript(missingWelcome) {
+  const begin = script.indexOf('      await testWelcome(app);');
+  const end = script.indexOf('      testConsoleNoise();', begin) + '      testConsoleNoise();'.length;
+  assert.ok(begin > 0 && end > begin);
+  const fixture = script.slice(0, begin) + script.slice(end);
+  if (!missingWelcome) return fixture;
+  // Negatif örnek de kapıyı korur ve sonlu bir FAIL sonucu üretir.
+  const missing = fixture.replace('}, "welcome veya chat görünümü hazır", 60000);',
+    '}, "welcome veya chat görünümü hazır", 1000);');
+  assert.notEqual(missing, fixture, 'yalnız yerel negatif örneğin bekleme bütçesi değişir');
+  return missing;
+}
+
 async function nativeTiming(browser) {
   // Sunucu timer'ı renderer saatinden bağımsızdır; yalnız loopback fixture kullanılır.
   const delay = 5000;
@@ -100,24 +113,14 @@ async function nativeTiming(browser) {
   const browserTimeout = 165000;
   const sockets = new Set();
   const timers = new Set();
-  let legacy = false;
+  let missingWelcome = false;
   let served = 0;
-  const begin = html.indexOf('      await testWelcome(app);');
-  const end = html.indexOf('      testConsoleNoise();', begin) + '      testConsoleNoise();'.length;
-  assert.ok(begin > 0 && end > begin);
-  const fixture = html.slice(0, begin) + html.slice(end);
+  const fixture = html.replace(script, nativeStartupScript(false));
+  const missingFixture = html.replace(script, nativeStartupScript(true));
   const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     if (req.url.startsWith('/bilge/smoke/ux-smoke.html')) {
-      let page = fixture;
-      if (legacy) {
-        // Kapı yokken dump-dom, sunucu hazır olmadan çalışan sayfayı döndürür.
-        const first = page.indexOf('    completionFrame = document.createElement("iframe");');
-        const last = page.indexOf('\n    });', first) + '\n    });'.length;
-        assert.ok(first > 0 && last > first);
-        page = page.slice(0, first) + '    run();' + page.slice(last);
-      }
-      res.end(page);
+      res.end(missingWelcome ? missingFixture : fixture);
     } else if (req.url.startsWith('/bilge/smoke/ux-smoke-probes.js')) {
       res.end('');
     } else if (req.url.startsWith('/bilge/')) {
@@ -136,27 +139,34 @@ async function nativeTiming(browser) {
     const accept = crypto.createHash('sha1').update(req.headers['sec-websocket-key'] +
       '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
     socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ' + accept + '\r\n\r\n');
-    // Negatif örnek hazır olmaz; sonuç sanal saatin tarayıcıya özgü hızına bağlı değildir.
-    if (legacy) return;
+    // Açık WebSocket veya tamamlanmamış sayfanın dump zamanına güvenilmez.
+    if (missingWelcome) { socket.end(Buffer.from([0x88, 0])); return; }
     const timer = setTimeout(() => {
       timers.delete(timer);
-      if (!socket.destroyed) { served++; socket.write(Buffer.from([0x81, 1, 49])); }
+      if (!socket.destroyed) {
+        served++;
+        socket.end(Buffer.from([0x81, 1, 49, 0x88, 0]));
+      }
     }, delay);
     timers.add(timer);
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ux-timing-'));
   try {
-    for (legacy of [true, false]) {
+    for (missingWelcome of [true, false]) {
       const before = served;
+      const label = missingWelcome ? 'missing-welcome' : 'delayed-welcome';
+      const caseProfile = path.join(profile, label);
+      fs.mkdirSync(caseProfile);
       const args = ['--headless=new', '--disable-gpu', '--disable-dev-shm-usage',
         '--no-first-run', '--no-default-browser-check',
-        '--user-data-dir=' + path.join(profile, legacy ? 'ungated' : 'gated'), '--dump-dom',
+        '--user-data-dir=' + caseProfile, '--dump-dom',
         '--timeout=' + (browserTimeout - 5000),
         `http://127.0.0.1:${server.address().port}/bilge/smoke/ux-smoke.html?autostart=1`];
       if (process.platform === 'linux' && process.getuid() === 0) args.unshift('--no-sandbox');
       const output = await new Promise((resolve, reject) => {
-        const child = spawn(browser, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+        const child = spawn(browser, args, { cwd: caseProfile, windowsHide: true,
+          stdio: ['ignore', 'pipe', 'pipe'] });
         let stdout = '';
         child.stdout.on('data', chunk => { stdout += chunk; });
         child.stderr.resume();
@@ -165,14 +175,14 @@ async function nativeTiming(browser) {
         child.on('error', error => { clearTimeout(deadline); reject(error); });
         child.on('close', (code, signal) => {
           clearTimeout(deadline);
-          if (timedOut) reject(new Error('Native browser timed out after ' + browserTimeout + 'ms'));
-          else if (code !== 0) reject(new Error('Native browser failed: ' + (signal || code)));
+          if (timedOut) reject(new Error('Native browser ' + label + ' timed out after ' + browserTimeout + 'ms'));
+          else if (code !== 0) reject(new Error('Native browser ' + label + ' failed: ' + (signal || code)));
           else resolve(stdout);
         });
       });
       const status = output.match(/<div id="status"[^>]*>([^<]*)<\/div>/)?.[1];
-      assert.equal(status, legacy ? pendingStatus : 'UX_SMOKE_DONE:PASS');
-      if (legacy) assert.equal(served, before, 'kapısız dump sunucu hazır olmadan dönmeli');
+      assert.equal(status, missingWelcome ? 'UX_SMOKE_DONE:FAIL 1' : 'UX_SMOKE_DONE:PASS');
+      if (missingWelcome) assert.equal(served, before, 'welcome yokken PASS üretilemez');
       else assert.ok(served > before, 'PASS gerçek sunucu mesajını beklemeli');
       for (const timer of timers) clearTimeout(timer);
       timers.clear();
@@ -196,6 +206,12 @@ async function nativeTiming(browser) {
   assert.equal(stranded.status, 'UX_SMOKE_DONE:FAIL 1', 'tek önkoşul hatası tek failure üretmeli');
   assert.deepEqual(stranded.dependents, [], 'welcome yokken navigation/quick-action/null zinciri çalışmamalı');
   assert.ok(stranded.now >= 60000 && stranded.now < 62000, 'aynı sonlu readiness bütçesi korunmalı');
+  const nativeMissing = await startup(Infinity, nativeStartupScript(true));
+  assert.equal(nativeMissing.status, 'UX_SMOKE_DONE:FAIL 1');
+  assert.ok(nativeMissing.now >= 1000 && nativeMissing.now < 3000, 'yerel negatif örnek sonlanmalı');
+  const nativeDelayed = await startup(5000, nativeStartupScript(false));
+  assert.equal(nativeDelayed.status, 'UX_SMOKE_DONE:PASS');
+  assert.ok(nativeDelayed.now >= 5000);
   console.log('ux smoke startup timing regressions passed (Türkçe: ğüşİıöç)');
   const browserArg = process.argv.indexOf('--browser');
   if (browserArg !== -1) await nativeTiming(process.argv[browserArg + 1]);
