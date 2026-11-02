@@ -435,7 +435,9 @@ test_that("normal Rscript startup proje profili ve SSO konfigurasyonunu korur", 
   dir.create(file.path(fixture, "R"))
   dir.create(file.path(fixture, "project-library"))
   file.copy(file.path(root, "tests/scripts/run_vm_browser_ux_smoke.R"), file.path(fixture, "tests/scripts"))
+  expect_true(file.copy(file.path(root, "tests/scripts/helpers_evidence_checkout.R"), file.path(fixture, "tests/scripts")))
   file.copy(file.path(root, "R/config_sso.R"), file.path(fixture, "R"))
+  writeLines(c("/startup.stdout", "/startup.stderr", "/startup-result.txt"), file.path(fixture, ".gitignore"))
   writeLines(c("SSO_ENABLED=TRUE", "SSO_KEYCLOAK_URL=https://sso.example.invalid",
                "MERGEN_ENABLE_UX_SMOKE=false", "MERGEN_ALLOW_NETWORK_UX_SMOKE=false"), file.path(fixture, ".Renviron"))
   writeLines('.libPaths(c("project-library", .libPaths()))', file.path(fixture, ".Rprofile"))
@@ -451,20 +453,32 @@ test_that("normal Rscript startup proje profili ve SSO konfigurasyonunu korur", 
     '}'
   ), file.path(fixture, "app.R"))
   processx::run("git", c("init", "--quiet"), wd = fixture)
+  processx::run("git", c("add", "."), wd = fixture)
   processx::run("git", c("-c", "user.name=Test", "-c", "user.email=test@example.invalid",
-                        "commit", "--quiet", "--allow-empty", "-m", "VM startup fixture"), wd = fixture)
+                        "commit", "--quiet", "-m", "VM startup fixture"), wd = fixture)
   before <- readBin(file.path(fixture, ".Renviron"), "raw", 10000L)
   rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
-  withr::local_envvar(LOCALAPPDATA = fixture,
+  runtime <- withr::local_tempdir()
+  withr::local_envvar(LOCALAPPDATA = runtime,
                      R_ENVIRON_USER = file.path(fixture, ".Renviron"),
                      R_PROFILE_USER = file.path(fixture, ".Rprofile"))
   withr::local_dir(fixture)
+  expect_identical(processx::run("git", c("status", "--porcelain"))$stdout, "")
   status <- system2(rscript, c("--encoding=UTF-8", "tests/scripts/run_vm_browser_ux_smoke.R", "--start-app"),
                     stdout = "startup.stdout", stderr = "startup.stderr", timeout = 30)
   expect_identical(status, 0L, info = paste(readLines("startup.stderr"), collapse = "\n"))
   expect_identical(readLines(file.path(fixture, "startup-result.txt")), "configured SSO startup")
   expect_identical(readBin(file.path(fixture, ".Renviron"), "raw", 10000L), before)
-  expect_false(dir.exists(file.path(fixture, "MERGEN/BrowserUxSmokeRun")))
+  expect_false(dir.exists(file.path(runtime, "MERGEN/BrowserUxSmokeRun")))
+  expect_identical(processx::run("git", c("status", "--porcelain"))$stdout, "")
+  unlink("startup-result.txt")
+  writeLines("kirli girdi", "dirty-checkout.txt")
+  status <- system2(rscript, c("--encoding=UTF-8", "tests/scripts/run_vm_browser_ux_smoke.R", "--start-app"),
+                    stdout = "startup.stdout", stderr = "startup.stderr", timeout = 30)
+  expect_identical(status, 1L)
+  expect_false(file.exists("startup-result.txt"))
+  expect_match(paste(readLines("startup.stderr"), collapse = "\n"), "clean startup Git HEAD", fixed = TRUE)
+  expect_false(dir.exists(file.path(runtime, "MERGEN/BrowserUxSmokeRun")))
 })
 
 test_that("gecici UX PASS yeniden baslatilan uretim surecinin kaniti sayilmaz", {
