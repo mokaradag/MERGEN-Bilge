@@ -63,6 +63,19 @@
   )
 }
 
+testthat::test_that("Windows browser scripts keep ASCII source and parse under local encodings", {
+  for (script in c("ai_browser_ux_smoke.R", "diagnose_browser_ux_fixture.R")) {
+    path <- file.path(.browser_runner_repo_root(), "tests", "scripts", script)
+    raw <- readBin(path, what = "raw", n = file.info(path)$size)
+    testthat::expect_true(all(as.integer(raw) <= 127L), info = script)
+    for (encoding in c("UTF-8", "WINDOWS-1254")) {
+      connection <- file(path, open = "rt", encoding = encoding)
+      tryCatch(testthat::expect_no_warning(parse(file = connection)),
+               finally = close(connection))
+    }
+  }
+})
+
 testthat::test_that("browser UX smoke runner is optional and dependency-light", {
   runner <- .browser_runner_read_text("tests", "scripts", "ai_browser_ux_smoke.R")
 
@@ -75,7 +88,7 @@ testthat::test_that("browser UX smoke runner is optional and dependency-light", 
       "MERGEN_REQUIRE_BROWSER_UX_SMOKE",
       "--require-browser",
       "browser_bin_explicit",
-      "MERGEN_BROWSER_BIN kullanılamıyor",
+      "MERGEN_BROWSER_BIN kullan\\u0131lam\\u0131yor",
       "processx::process$new",
       "processx::run",
       "google-chrome",
@@ -89,7 +102,7 @@ testthat::test_that("browser UX smoke runner is optional and dependency-light", 
       "--autoplay-policy=no-user-gesture-required",
       "UX_SMOKE_DONE:PASS",
       "UX_SMOKE_DONE:FAIL",
-      "SKIP: Chrome/Chromium/Edge binary bulunamadı",
+      "SKIP: Chrome/Chromium/Edge binary bulunamad\\u0131",
       "run_mergen_app(host='127.0.0.1'",
       "MERGEN_RUN_APP='false'",
       "MERGEN_DISABLE_FUTURES='true'"

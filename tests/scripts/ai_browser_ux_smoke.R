@@ -2,20 +2,20 @@
 
 # ==============================================================================
 # Dosya Yolu: tests/scripts/ai_browser_ux_smoke.R
-# Açıklama:
-#   MERGEN UX smoke harness'ını gerçek bir headless tarayıcıda çalıştırır.
-#   Chrome/Chromium/Edge yoksa varsayılan olarak SKIP olur; --require-browser
-#   veya MERGEN_REQUIRE_BROWSER_UX_SMOKE=true ile bloklayıcı yapılabilir.
+# Description:
+#   Runs the MERGEN UX smoke harness in a real headless browser.
+#   Missing Chrome/Chromium/Edge defaults to SKIP; --require-browser
+#   or MERGEN_REQUIRE_BROWSER_UX_SMOKE=true makes the check required.
 #
-#   Sıkılaştırılmış uygulama kuralı: MERGEN_BROWSER_BIN açıkça verilmişse
-#   ortam tarayıcı desteği BİLDİRMİŞ sayılır; bu durumda sessiz SKIP devre
-#   dışı kalır (require modu otomatik açılır) ve kullanılamayan bir
-#   MERGEN_BROWSER_BIN yolu geç processx hatası yerine erken ve açık bir
+#   An explicit MERGEN_BROWSER_BIN declares browser support:
+#   silent SKIP is disabled, require mode is enabled automatically,
+#   and an unavailable binary fails early with a clear error
+#   instead of a late processx failure for MERGEN_BROWSER_BIN.
 #   hata ile bloklar.
 #
 # Not:
 #   CDN, runtime download, chromote, Selenium, Playwright veya npm kullanmaz.
-#   Yalnızca yerelde zaten kurulu bir tarayıcı binary'sini processx ile çağırır.
+#   Uses processx to invoke an already installed local browser binary.
 # ==============================================================================
 
 options(warn = 1)
@@ -56,7 +56,7 @@ find_repo_root <- function() {
     }
   }
 
-  stop("Repo root bulunamadı. Bu betiği repo içinde çalıştırın.", call. = FALSE)
+  stop("Repo root bulunamad\u0131. Bu beti\u011fi repo i\u00e7inde \u00e7al\u0131\u015ft\u0131r\u0131n.", call. = FALSE)
 }
 
 repo_root <- find_repo_root()
@@ -74,12 +74,12 @@ if (!file.exists(rscript)) {
 }
 
 if (!nzchar(rscript) || !file.exists(rscript)) {
-  stop("Rscript bulunamadı.", call. = FALSE)
+  stop("Rscript bulunamad\u0131.", call. = FALSE)
 }
 
-# MERGEN_BROWSER_BIN açıkça ayarlanmışsa ortam tarayıcı desteği bildirmiştir;
-# sessiz SKIP bu durumda bir yanlış-yapılandırma tuzağı olur. Bu yüzden
-# explicit binary yapılandırması require modunu otomatik etkinleştirir.
+# An explicit MERGEN_BROWSER_BIN declares browser support;
+# silent SKIP would hide a configuration error, so explicit
+# binary configuration enables require mode automatically.
 browser_bin_env <- Sys.getenv("MERGEN_BROWSER_BIN", unset = "")
 browser_bin_explicit <- nzchar(browser_bin_env)
 
@@ -98,7 +98,7 @@ if (is.na(timeout_seconds) || timeout_seconds < 30L) {
   timeout_seconds <- 150L
 }
 
-# Shiny/WebSocket işi gerçek sunucu saatindedir; sanal zaman kullanılmaz.
+# Shiny/WebSocket work uses server wall time, not virtual time.
 browser_timeout_seconds <- suppressWarnings(as.integer(
   arg_value("--browser-timeout", "165")
 ))
@@ -137,20 +137,20 @@ ux_smoke_redact_external_url <- function(text, base_url = external_base_url) {
                          utils::URLencode(clean_base_url, reserved = TRUE)))) {
     out <- gsub(value, "<MERGEN_BROWSER_UX_BASE_URL>", out, fixed = TRUE)
   }
-  # Yönlendirme/SSO adresleri ve koşu öneki de artifact'a sızmaz.
+  # Redirect/SSO addresses and the run prefix stay out of artifacts.
   out <- gsub("https?://[^[:space:]<>\"']+|https?%3[Aa]%2[Ff]%2[Ff][^[:space:]<>\"']+",
               "<URL>", out, perl = TRUE)
   gsub("__mergen_ux_[0-9a-f]{48}", "<UX_SMOKE_PATH>", out)
 }
 
-# Yerel koşucu /smoke uyumluluğunu korur; VM sarmalayıcısı rastgele öneki verir.
+# Local runs keep /smoke compatibility; the VM wrapper supplies a random prefix.
 smoke_prefix <- if (use_external_app) Sys.getenv("MERGEN_UX_SMOKE_PATH", "") else ""
 if (!nzchar(smoke_prefix)) smoke_prefix <- "smoke"
 if (!identical(smoke_prefix, "smoke") && !grepl("^__mergen_ux_[0-9a-f]{48}$", smoke_prefix)) {
   stop("Invalid MERGEN_UX_SMOKE_PATH.", call. = FALSE)
 }
 smoke_url <- sprintf("%s/%s/ux-smoke.html?autostart=1", url, smoke_prefix)
-# Bu yerel ön kontrol bind zorunluluğu değildir; 0.0.0.0:8009 localhost'tan erişilir.
+# Local preflight is not a bind requirement; 0.0.0.0:8009 is reachable via localhost.
 preflight_base_url <- if (use_external_app && env_flag_true("MERGEN_ALLOW_NETWORK_UX_SMOKE")) {
   "http://127.0.0.1:8009"
 } else url
@@ -170,7 +170,7 @@ cat(sprintf("Explicit MERGEN_BROWSER_BIN: %s\n", browser_bin_explicit))
 
 if (!requireNamespace("processx", quietly = TRUE)) {
   stop(
-    "processx paketi gerekli. Önce Rscript tests/scripts/ci_install_packages.R çalıştırın.",
+    "processx paketi gerekli. \u00d6nce Rscript tests/scripts/ci_install_packages.R \u00e7al\u0131\u015ft\u0131r\u0131n.",
     call. = FALSE
   )
 }
@@ -178,8 +178,8 @@ if (!requireNamespace("processx", quietly = TRUE)) {
 find_browser_bin <- function() {
   env_bin <- Sys.getenv("MERGEN_BROWSER_BIN", unset = "")
   if (nzchar(env_bin)) {
-    # Açık yapılandırma doğrulanır: var olmayan/erişilemeyen bir binary geç
-    # ve kafa karıştırıcı bir processx hatası yerine erken ve net bloklar.
+    # Validate explicit configuration: missing or inaccessible binaries fail
+    # early and clearly instead of causing a confusing late processx error.
     resolved_bin <- env_bin
 
     if (!file.exists(resolved_bin)) {
@@ -189,7 +189,7 @@ find_browser_bin <- function() {
     if (!nzchar(resolved_bin) || !file.exists(resolved_bin)) {
       stop(
         sprintf(
-          "MERGEN_BROWSER_BIN kullanılamıyor (dosya veya PATH komutu bulunamadı): %s",
+          "MERGEN_BROWSER_BIN kullan\u0131lam\u0131yor (dosya veya PATH komutu bulunamad\u0131): %s",
           env_bin
         ),
         call. = FALSE
@@ -241,9 +241,9 @@ browser_bin <- find_browser_bin()
 
 if (!nzchar(browser_bin)) {
   msg <- paste(
-    "SKIP: Chrome/Chromium/Edge binary bulunamadı.",
-    "MERGEN_BROWSER_BIN ile tarayıcı yolu verilebilir.",
-    "Bu skip yalnızca gerçek browser UX smoke içindir; statik contract testleri çalışmaya devam eder."
+    "SKIP: Chrome/Chromium/Edge binary bulunamad\u0131.",
+    "MERGEN_BROWSER_BIN ile taray\u0131c\u0131 yolu verilebilir.",
+    "Bu skip yaln\u0131zca ger\u00e7ek browser UX smoke i\u00e7indir; statik contract testleri \u00e7al\u0131\u015fmaya devam eder."
   )
 
   cat(msg, "\n")
@@ -336,15 +336,15 @@ tail_log <- function(n = 120L) {
 
 skip_or_fail_app_boot <- function(reason, status = NA_integer_) {
   prefix <- if (isTRUE(require_browser)) {
-    "FAILED: Browser UX smoke uygulama HTTP boot aşamasında çalıştırılamadı."
+    "FAILED: Browser UX smoke uygulama HTTP boot a\u015famas\u0131nda \u00e7al\u0131\u015ft\u0131r\u0131lamad\u0131."
   } else {
-    "SKIP: Browser UX smoke uygulama HTTP boot aşamasında çalıştırılamadı."
+    "SKIP: Browser UX smoke uygulama HTTP boot a\u015famas\u0131nda \u00e7al\u0131\u015ft\u0131r\u0131lamad\u0131."
   }
 
   suffix <- if (isTRUE(require_browser)) {
-    "MERGEN_REQUIRE_BROWSER_UX_SMOKE=true olduğu için bu adım bloklayıcıdır."
+    "MERGEN_REQUIRE_BROWSER_UX_SMOKE=true oldu\u011fu i\u00e7in bu ad\u0131m bloklay\u0131c\u0131d\u0131r."
   } else {
-    "MERGEN_REQUIRE_BROWSER_UX_SMOKE=true değil; bu adım kanıt üretmeden atlanıyor."
+    "MERGEN_REQUIRE_BROWSER_UX_SMOKE=true de\u011fil; bu ad\u0131m kan\u0131t \u00fcretmeden atlan\u0131yor."
   }
 
   msg <- paste(
@@ -413,8 +413,8 @@ if (!wait_for_app()) {
   quit(status = 1)
 }
 
-# Ana sayfanın açılması kapılı /smoke/ yolunun sunulduğunu kanıtlamaz.
-# Tarayıcı başlamadan gerçek harness'ı doğrula; uygulamanın kapısını değiştirme.
+# An available home page does not prove that the gated /smoke/ route is served.
+# Verify the real harness before launching; do not change the app exposure gate.
 ux_smoke_check_harness <- function() {
   body <- read_url(preflight_smoke_url)
   if (grepl("<title>MERGEN UX Smoke</title>", body, fixed = TRUE) &&
@@ -430,9 +430,9 @@ ux_smoke_check_harness <- function() {
   ), call. = FALSE)
 }
 
-# Sonuç yalnızca işlenmiş #status metninden okunur: harness betiğinin kaynağı
-# ve günlük satırları da UX_SMOKE_DONE:PASS sabitini taşır; başlamamış ya da
-# FAIL ile biten sayfa bu sabit yüzünden geçmiş sayılmamalıdır.
+# Read only rendered #status text: harness source and logs also contain
+# the UX_SMOKE_DONE:PASS literal; an unstarted or failed page must not
+# pass merely because that literal exists in its source.
 ux_smoke_rendered_status <- function(dom) {
   m <- regmatches(dom, regexec("<div id=\"status\"[^>]*>([^<]*)</div>", dom, perl = TRUE))[[1]]
   if (length(m) >= 2L) trimws(m[[2]]) else ""
@@ -440,8 +440,8 @@ ux_smoke_rendered_status <- function(dom) {
 
 ux_smoke_check_harness()
 
-# SSO için yalnız bakımcının ayrı profilde normal girişle hazırladığı oturum
-# kullanılabilir. Varsayılan profil hâlâ geçicidir; token okunmaz/kopyalanmaz.
+# SSO may use only a session prepared by normal operator sign-in in a
+# dedicated profile. The default stays temporary; tokens are never read/copied.
 ux_smoke_browser_profile <- function(requested = "", external_app = FALSE) {
   persistent <- nzchar(trimws(requested))
   if (persistent && !isTRUE(external_app)) {

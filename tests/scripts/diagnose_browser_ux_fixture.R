@@ -1,4 +1,4 @@
-# Canlı uygulamadan bağımsız Node -> Edge ve yerel fixture tanısı.
+# Node -> Edge and local fixture diagnostics, independent of the live app.
 local({
   root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
   helper <- file.path(root, "tests/scripts/helpers_browser_ux_profile.R")
@@ -21,7 +21,7 @@ local({
   cat("The live app, port 8009, SSO and the prepared smoke profile are not used.\n")
   args <- c(shQuote(file.path(root, "tests/scripts/ux_smoke_startup_timing_regressions.js")),
             "--browser", shQuote(browser), "--diagnose")
-  # Asıl contract testiyle aynı system2 sınırı korunur; UTF-8 baytları çevrilmez.
+  # Keep the contract test system2 boundary; do not transcode UTF-8 bytes.
   result <- mark_text_utf8(system2(node, args, stdout = TRUE, stderr = TRUE))
   cat(paste(result, collapse = "\n"), "\n")
   status <- attr(result, "status")

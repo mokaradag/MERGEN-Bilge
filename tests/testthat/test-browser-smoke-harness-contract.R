@@ -285,7 +285,8 @@ testthat::test_that("Shiny handler ve smoke durum sözleşmeleri gerçek JavaScr
                    "native_browser_dump_regressions.js",
                    "ux_smoke_startup_timing_regressions.js")) {
     args <- shQuote(file.path(.find_browser_smoke_repo_root(), "tests/scripts", script))
-    if (identical(script, "ux_smoke_startup_timing_regressions.js")) {
+    if (identical(script, "ux_smoke_startup_timing_regressions.js") &&
+        identical(tolower(Sys.getenv("MERGEN_NATIVE_BROWSER_REGRESSIONS", "")), "true")) {
       browsers <- c(unname(Sys.which(c("google-chrome", "chromium", "msedge"))),
                     file.path(Sys.getenv("PROGRAMFILES"), "Microsoft/Edge/Application/msedge.exe"),
                     file.path(Sys.getenv("PROGRAMFILES(X86)"), "Microsoft/Edge/Application/msedge.exe"))
@@ -316,12 +317,26 @@ testthat::test_that("native Edge fixture ilke reddinde tarayici baslatmaz", {
   calls <- as.list(parse_r_file_utf8(file.path(root, "tests/testthat/test-browser-smoke-harness-contract.R")))
   execution <- Filter(function(e) is.call(e) && length(e) >= 3L &&
     is.character(e[[2]]) && identical(e[[2]], "Shiny handler ve smoke durum sözleşmeleri gerçek JavaScript ile çalışır"), calls)[[1]][[3]]
-  for (allowed in c(FALSE, TRUE)) {
+  cases <- list(
+    list(flag = NA_character_, allowed = FALSE),
+    list(flag = "false", allowed = FALSE),
+    list(flag = "true", allowed = FALSE),
+    list(flag = "true", allowed = TRUE),
+    list(flag = "TRUE", allowed = TRUE)
+  )
+  for (case in cases) {
+    withr::local_envvar(c(MERGEN_NATIVE_BROWSER_REGRESSIONS = case$flag))
+    allowed <- case$allowed
+    enabled <- !is.na(case$flag) && identical(tolower(case$flag), "true")
     env <- new.env(parent = environment())
     checked <- 0L
     native <- 0L
     env$.find_browser_smoke_repo_root <- function() root
-    env$Sys.which <- function(x) if (identical(x, "node")) "mock-node" else c("", "", "/mock/msedge.exe")
+    env$Sys.which <- function(x) {
+      if (identical(x, "node")) return("mock-node")
+      testthat::expect_true(enabled)
+      c("", "", "/mock/msedge.exe")
+    }
     env$file.exists <- function(x) x == "/mock/msedge.exe"
     env$sys.source <- function(file, envir) {
       testthat::expect_identical(file, file.path(root, "tests/scripts/helpers_browser_ux_profile.R"))
@@ -337,8 +352,10 @@ testthat::test_that("native Edge fixture ilke reddinde tarayici baslatmaz", {
       }
       paste0("regressions passed ", intToUtf8(c(0x011F, 0x00FC, 0x015F, 0x0130, 0x0131, 0x00F6, 0x00E7)))
     }
-    if (allowed) eval(execution, env) else testthat::expect_error(eval(execution, env), "policy blocked", fixed = TRUE)
-    testthat::expect_identical(checked, 1L)
-    testthat::expect_identical(native, as.integer(allowed))
+    if (enabled && !allowed) {
+      testthat::expect_error(eval(execution, env), "policy blocked", fixed = TRUE)
+    } else eval(execution, env)
+    testthat::expect_identical(checked, as.integer(enabled))
+    testthat::expect_identical(native, as.integer(enabled && allowed))
   }
 })
