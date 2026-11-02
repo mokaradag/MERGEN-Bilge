@@ -4,6 +4,10 @@ Shiny normal topolojide **0.0.0.0:8009** üzerinde kalır; Edge, kullanıcılar�
 
 Harness `tests/smoke/` altında kalır. Normal başlatmada hiçbir smoke yolu açılmaz. Ağda yalnız `MERGEN_ENABLE_UX_SMOKE=true`, `MERGEN_ALLOW_NETWORK_UX_SMOKE=true` ve `MERGEN_UX_SMOKE_PATH` birlikte geçerliyken kaynak kaydedilir. Önek tam olarak `__mergen_ux_` + 48 küçük hex karakteridir; koşucu bunu işletim sisteminin güvenli rastgele kaynağından 24 bayt (192 bit) ile üretir. Sabit `/smoke/` yalnız loopback yerel test uyumluluğudur. Rastgele yol yetkilendirme yerine geçmez: uygulamanın mevcut SSO/oturumu ve yetkileri kullanılmaya devam eder.
 
+## Son başarılı Windows VM doğrulaması
+
+31 Ekim 2026 tarihinde bu iki-pencere akışı gerçek Windows VM + onaylı reverse-proxy/SSO + ayrı Edge profili üzerinde tam evidence gate içinde başarıyla tamamlandı. Sonuç **`13 passed, 0 failed, 0 skipped`**; `browser_ux_smoke` adımı **PASSED (35.0 sn)** ve artifact `artifacts/vm-evidence/20261031-121259/evidence.json` olarak kaydedildi. Operatör ekran görüntüsü Git commit SHA'sını göstermediği için bu kayıt belirli bir commit'e atfedilmez. Tam adım dökümü ve kanıt sınırları için [`vm-evidence-status.md`](vm-evidence-status.md) belgesine bakın.
+
 **Yaşam süresi:** Window 2 ortamı çalışan Window 1 sürecini değiştiremez. Bu nedenle aşağıdaki ön kontroller başarılı olduktan sonra normal uygulamayı durdurup geçici smoke başlatmasını aynı `0.0.0.0:8009` üzerinde yapın. Koşucu `source('app.R')` sonrasında opt-in değerlerini uygular; `.Renviron` dosyasına hiçbir şey yazmaz. Önek yalnız kullanıcıya ait `%LOCALAPPDATA%\MERGEN\BrowserUxSmokeRun\prefix` dosyasında paylaşılır; URL veya kimlik bilgisi içermez. Aynı Windows hesabını kullanın. Süreç sona erince HTTP yolu kaybolur; normal çıkış/Ctrl+C yerel dosyayı da temizler. Zorla öldürmede kalan dizini, o smoke sürecinin durduğunu doğruladıktan sonra silin. Her yeni `--start-app` yeni önek üretir. Tek başlatma boyunca hızlı smoke ve tam gate aynı öneki kullanabilir.
 
 ## Window 1 — geçici smoke uygulaması
