@@ -4,52 +4,50 @@ Bu belge, MERGEN Bilge'nin en son **başarılı Windows VM evidence gate** koşu
 
 ## Son başarılı koşum
 
-- **Tarih:** 17 Ekim 2026
-- **Profil (istenen/etkin):** `<auto>/vm`
-- **Komut:** `Rscript --vanilla tests/scripts/run_vm_evidence_gate.R`
+- **Tarih:** 31 Ekim 2026
+- **Profil (istenen/etkin):** `vm/vm`
+- **Komut:** `run_vm_evidence_gate.R --full` (VM profili ve aynı R oturumu açıkça seçilerek)
 - **Sonuç:** `Toplam: 13 passed, 0 failed, 0 skipped`
-- **Artifact dizini:** `artifacts/vm-evidence/20261017-061049`
-- **Makine-okunur kanıt:** `artifacts/vm-evidence/20261017-061049/evidence.json`
-- **Browser external-app URL:** `http://127.0.0.1:28081`
-- **Browser smoke zorlaması:** `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true`
-- **Kayıt kaynağı:** 17 Ekim 2026 tarihli Windows VM konsol çıktısı ve operatör ekran görüntüsü
+- **Artifact dizini:** `artifacts/vm-evidence/20261031-121259`
+- **Makine-okunur kanıt:** `artifacts/vm-evidence/20261031-121259/evidence.json`
+- **Browser UX topolojisi:** normal **0.0.0.0:8009** uygulama topolojisi + onaylı reverse-proxy/SSO origin + ayrı Edge profili
+- **Kayıt kaynağı:** 31 Ekim 2026 tarihli Windows VM konsol çıktısı ve operatör ekran görüntüsü
 
-Koşum sonunda `OK: VM kanit kapisi basariyla tamamlandi.` mesajı alınmıştır. Ekran görüntüsü çalıştırılan Git commit SHA'sını göstermediğinden bu kayıt belirli bir commit'e atfedilmez. Bu yeniden doğrulama, normal RStudio `testthat` koşumundan ayrı olarak evidence gate'in dosya-izole çocuk `Rscript.exe` zincirinin de Windows VM üzerinde uçtan uca tamamlandığını gösterir.
+Koşum sonunda `OK: VM kanıt kapısı başarıyla tamamlandı.` mesajı alınmıştır. Ekran görüntüsü çalıştırılan Git commit SHA'sını göstermediğinden bu kayıt belirli bir commit'e atfedilmez. Bununla birlikte bu koşum, PR #737 ile tanımlanan güncel iki-pencere VM akışında browser UX smoke dahil 13 zorunlu adımın aynı Windows VM koşumunda başarısız veya atlanmış adım olmadan tamamlandığını gösterir.
 
 ## Geçen 13 adım
 
 | Adım | Sonuç | Koşum süresi |
 |---|---|---:|
+| `browser_ux_smoke` | PASSED | 35.0 sn |
 | `env_config` | PASSED | 0.0 sn |
-| `parse_sanity` | PASSED | 12.3 sn |
-| `app_boot_smoke` | PASSED | 59.8 sn |
-| `full_testthat` | PASSED | 4159.8 sn |
-| `maintainability_report` | PASSED | 9.8 sn |
-| `frontend_ratchet` | PASSED | 491.8 sn |
-| `seam_doctor` | PASSED | 1.2 sn |
-| `source_manifest_contracts` | PASSED | 8.2 sn |
-| `ui_asset_manifest_contracts` | PASSED | 6.6 sn |
-| `browser_ux_smoke` | PASSED | 171.3 sn |
-| `vm_preflight_real` | PASSED | 73.2 sn |
-| `db_encoding_preflight` | PASSED | 59.2 sn |
+| `parse_sanity` | PASSED | 11.6 sn |
+| `app_boot_smoke` | PASSED | 61.1 sn |
+| `full_testthat` | PASSED | 4507.9 sn |
+| `maintainability_report` | PASSED | 9.7 sn |
+| `frontend_ratchet` | PASSED | 488.9 sn |
+| `seam_doctor` | PASSED | 0.8 sn |
+| `source_manifest_contracts` | PASSED | 8.7 sn |
+| `ui_asset_manifest_contracts` | PASSED | 6.7 sn |
+| `vm_preflight_real` | PASSED | 79.3 sn |
+| `db_encoding_preflight` | PASSED | 59.4 sn |
 | `renv_status` | PASSED | 0.0 sn |
 
-Süreler, 17 Ekim 2026 tarihli operatör ekran görüntüsünde görülen yaklaşık koşum süreleridir; başka VM koşumlarında değişebilir.
+Süreler, 31 Ekim 2026 tarihli operatör ekran görüntüsünde görülen koşum süreleridir; başka VM koşumlarında değişebilir.
 
 ## Browser UX smoke koşumu
 
-Aşağıdaki komutlar yalnız 17 Ekim koşumunun tarihsel kaydıdır; güncel başlatma talimatı değildir. Güncel 8009/SSO, geçici yol, handshake ve profil prosedürü için [VM browser UX smoke](vm-browser-ux-smoke.md) belgesini izleyin.
+31 Ekim koşumu, PR #737'nin güncel normal-topoloji akışını kullanmıştır: Shiny **0.0.0.0:8009** üzerinde çalışır; browser kanıtı onaylı reverse-proxy/SSO origin üzerinden, repo/artifact ağacı dışında hazırlanmış ayrı Edge profiliyle alınır. Yerel `127.0.0.1:8009` yalnız ön kontroldür; bind gereksinimi değildir.
 
-Son başarılı gate, zaten çalışan uygulamaya external-app modunda bağlandı:
+Gerçek hostname, SSO URL'si, profil yolu, cookie/token veya başka kimlik bilgileri bu belgeye ya da artifact özetine yazılmaz. Güncel hazırlık, çalışma ve temizlik adımları için [VM browser UX smoke](vm-browser-ux-smoke.md) belgesini izleyin.
+
+Tam gate için kanonik komut biçimi:
 
 ```powershell
-Remove-Item Env:\MERGEN_EVIDENCE_STEPS -ErrorAction SilentlyContinue
-$env:MERGEN_BROWSER_UX_BASE_URL = "http://127.0.0.1:28081"
-$env:MERGEN_REQUIRE_BROWSER_UX_SMOKE = "true"
-& $rscript --vanilla tests/scripts/run_vm_evidence_gate.R
+& $rscript -e "Sys.setenv(MERGEN_EVIDENCE_PROFILE='vm', MERGEN_RSCRIPT_BIN=file.path(R.home('bin'), 'Rscript.exe')); source('tests/scripts/run_vm_evidence_gate.R', encoding='UTF-8')" --full
 ```
 
-O tarihli koşumda `MERGEN_BROWSER_UX_BASE_URL` çalışan uygulamanın yerel URL'siyle eşleşiyordu. 17 Ekim 2026 koşumunda uygulama `28081` portunda çalışıyordu. Profil ayrıca zorlanmadı; gate çıktısında istenen/etkin profil `<auto>/vm` olarak raporlandı.
+`--full`, adım filtresini yok sayar ve 13 adımın tamamında PASS ister. `browser_ux_smoke` yalnız HTTP erişilebilirliği, kaynak literal'i, SSO redirect'i, SKIP veya exit 0 ile geçmez; işlenmiş browser sonucu gerçek PASS olmalıdır.
 
 ## Bu koşum neyi kanıtlar?
 
@@ -59,12 +57,12 @@ Aynı Windows VM koşumunda aşağıdaki kapıların başarısız veya atlanmı�
 - tam dosya-izole `testthat` suite'i ve Windows çocuk `Rscript.exe` koşumu,
 - maintainability ve frontend ratchet kontrolleri,
 - seam doctor ile kaynak ve UI varlık sözleşmeleri,
-- zorunlu gerçek browser UX smoke,
+- normal **0.0.0.0:8009** + onaylı SSO/reverse-proxy yolu üzerinden zorunlu gerçek browser UX smoke,
 - gerçek VM preflight,
 - DB encoding preflight,
 - `renv` durum kontrolü.
 
-Bu sonuç, daha önce yalnızca evidence gate'in izole çocuk süreçlerinde görülen Windows/locale kaynaklı `exit=1033` sonlanmalarının son koşumda tekrarlanmadığını da operasyonel olarak doğrular; testlerin güvenlik veya doğruluk beklentileri gevşetilmeden gate tamamlanmıştır.
+Bu sonuç, PR #737'nin hedeflediği gerçek Windows VM + Keycloak/SSO + Edge evidence akışının artık başarıyla tamamlandığını operasyonel olarak doğrular; testlerin güvenlik, yetkilendirme, SSO veya doğruluk beklentileri gevşetilmeden gate tamamlanmıştır.
 
 ## Bu koşum neyi tek başına kanıtlamaz?
 
