@@ -4,7 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
 const { EventEmitter } = require('node:events');
-const { PassThrough } = require('node:stream');
+const { PassThrough, Writable } = require('node:stream');
 const { nativeDumpStatus, completeNativeDump, runNativeBrowserDump } = require('./helpers_native_browser_dump');
 
 const page = status => '<html><body><div id="status">' + status + '</div></body></html>\n';
@@ -16,7 +16,8 @@ const run = (code, trace, timeoutMs = 10000) => runNativeBrowserDump(process.exe
 async function windowsCleanupCase({ killCode = 1, rootCode = 1, signal = null,
   spawnError = false, hang = false, exited = false, complete = true,
   survivor = false, inspectionError = false, malformed = false, overflow = false,
-  reused = false, spawnedChild = false, unknownIdentity = false, orphanSurvives = true } = {}) {
+  reused = false, spawnedChild = false, unknownIdentity = false, orphanSurvives = true,
+  inspectorCloseCode = 0, emptyResponse = false, inspectorHangClose = false, fragmented = false } = {}) {
   const child = Object.assign(new EventEmitter(), { pid: 123, exitCode: null, signalCode: null,
     stdout: new PassThrough(), stderr: new PassThrough(), kill() {}, unref() {} });
   const closeRoot = () => {
@@ -27,6 +28,7 @@ async function windowsCleanupCase({ killCode = 1, rootCode = 1, signal = null,
   };
   let kills = 0;
   let inspections = 0;
+  let probes = 0;
   let orphanStopped = false;
   const initial = [
     { pid: 0, parent: 0, created: '' },
@@ -36,27 +38,49 @@ async function windowsCleanupCase({ killCode = 1, rootCode = 1, signal = null,
   ];
   const spawn = (command, args, options) => {
     if (command === 'powershell.exe') {
-      if (options.stdio === 'ignore') {
-        kills++;
-        assert.ok(args.at(-1).includes('$null=$p.Handle'), 'yetim surec kimligi acik tanitici uzerinden korunmali');
-        assert.ok(args.at(-1).includes('$identity.CreationDate.ToUniversalTime().Ticks.ToString() -eq $target.created'));
-        assert.ok(!args.at(-1).includes('StartTime'), 'kimlik olcumleri ayni CIM hassasiyetini kullanmali');
-        const killer = Object.assign(new EventEmitter(), { kill() {} });
-        setImmediate(() => { orphanStopped = !orphanSurvives; killer.emit('close', 0); });
-        return killer;
-      }
-      inspections++;
+      probes++;
       assert.ok(Array.from(args).includes('-NoProfile'));
+      assert.deepEqual(Array.from(options.stdio), ['pipe', 'pipe', 'ignore']);
+      assert.ok(args.at(-1).includes('$null=$p.Handle'), 'yetim süreç kimliği açık tanıtıcı üzerinden korunmalı');
+      assert.ok(args.at(-1).includes('$identity.CreationDate.ToUniversalTime().Ticks.ToString() -eq $target.created'));
+      assert.ok(!args.at(-1).includes('StartTime'), 'kimlik ölçümleri aynı CIM hassasiyetini kullanmalı');
       assert.ok(!args.at(-1).includes('CommandLine'), 'süreç sorgusu özel komut satırlarını okumamalı');
-      const probe = Object.assign(new EventEmitter(), { stdout: new PassThrough(), kill() {} });
-      const phase = inspections;
-      setImmediate(() => {
-        const remaining = survivor ? [initial[survivor === 'grandchild' ? 3 : 2]] : reused ? [{ ...initial[2], created: '999' }] :
-          spawnedChild ? [{ pid: 999, parent: 456, created: '400' }] : [];
-        const before = exited ? (survivor ? initial.slice(2) : []) : initial;
-        const rows = phase === 1 ? before : orphanStopped ? [] : remaining;
-        probe.stdout.write(overflow ? 'x'.repeat(1048577) : malformed ? 'invalid' : JSON.stringify(rows));
-        probe.emit('close', inspectionError === true || (inspectionError === 'after' && phase > 1) ? 1 : 0);
+      const probe = Object.assign(new EventEmitter(), { stdout: new PassThrough() });
+      let closed = false;
+      const close = code => { if (!closed) { closed = true; probe.emit('close', code); } };
+      const respond = value => {
+        const text = JSON.stringify(value) + '\r\n';
+        const split = fragmented ? Math.floor(text.length / 2) : text.length;
+        probe.stdout.write(text.slice(0, split));
+        if (fragmented) setImmediate(() => probe.stdout.write(text.slice(split)));
+      };
+      probe.kill = () => setImmediate(() => close(1));
+      probe.stdin = new Writable({ write(chunk, encoding, done) {
+        const request = JSON.parse(chunk.toString());
+        setImmediate(() => {
+          if (emptyResponse === true) return close(0);
+          if (request.action === 'stop') {
+            kills++;
+            assert.ok(request.rows.length && request.rows.every(row => row.created));
+            orphanStopped = !orphanSurvives;
+            respond({ stopped: false });
+            return;
+          }
+          assert.equal(request.action, 'snapshot');
+          inspections++;
+          if (emptyResponse === 'after' && inspections > 1) return close(0);
+          if (inspectionError === true || (inspectionError === 'after' && inspections > 1)) return close(1);
+          const remaining = survivor ? [initial[survivor === 'grandchild' ? 3 : 2]] : reused ? [{ ...initial[2], created: '999' }] :
+            spawnedChild ? [{ pid: 999, parent: 456, created: '400' }] : [];
+          const before = exited ? (survivor ? initial.slice(2) : []) : initial;
+          const rows = inspections === 1 ? before : orphanStopped ? [] : remaining;
+          if (overflow || malformed) probe.stdout.write(overflow ? 'x'.repeat(1048577) : 'invalid\n');
+          else respond({ rows });
+        });
+        done();
+      } });
+      probe.stdin.on('finish', () => {
+        if (!inspectorHangClose) setImmediate(() => close(inspectorCloseCode));
       });
       return probe;
     }
@@ -84,7 +108,7 @@ async function windowsCleanupCase({ killCode = 1, rootCode = 1, signal = null,
   const trace = traceFor('windows-race');
   const result = sandbox.module.exports.runNativeBrowserDump('edge', [],
     { cwd: os.tmpdir(), timeoutMs: 100, cleanupMs: 100, trace });
-  return { result, trace, kills: () => kills };
+  return { result, trace, kills: () => kills, probes: () => probes, inspections: () => inspections };
 }
 
 async function profileCleanupCase(failure, diagnose = false) {
@@ -129,6 +153,8 @@ async function profileCleanupCase(failure, diagnose = false) {
     const race = await windowsCleanupCase({ killCode });
     assert.equal(nativeDumpStatus(await race.result), 'UX_SMOKE_DONE:PASS');
     assert.equal(race.kills(), 1);
+    assert.equal(race.probes(), 1, 'ön ve son inceleme tek denetleyici kullanmalı');
+    assert.equal(race.inspections(), 2, 'başarılı taskkill son incelemeyi atlamamalı');
     assert.equal(race.trace.stoppedAfterDump, true);
   }
   // Kök 0 veya 1 ile kapansa da hayatta kalan alt süreç PASS olamaz.
@@ -162,6 +188,14 @@ async function profileCleanupCase(failure, diagnose = false) {
   const reusedPid = await windowsCleanupCase({ reused: true });
   await reusedPid.result;
   assert.equal(reusedPid.trace.stoppedAfterDump, true, 'yeniden kullanılan PID önceki sürecin yaşadığı anlamına gelmez');
+  await assert.rejects((await windowsCleanupCase({ inspectorCloseCode: 1 })).result, /process inspection/);
+  await assert.rejects((await windowsCleanupCase({ emptyResponse: true })).result, /process inspection/);
+  await assert.rejects((await windowsCleanupCase({ emptyResponse: 'after' })).result, /process inspection/);
+  await assert.rejects((await windowsCleanupCase({ inspectorHangClose: true })).result, /cleanup timed out \[inspector-close\]/);
+  await assert.rejects((await windowsCleanupCase({ spawnError: true, inspectorCloseCode: 1 })).result, /taskkill spawn failed/);
+  const fragmented = await windowsCleanupCase({ fragmented: true, survivor: true, orphanSurvives: false });
+  await fragmented.result;
+  assert.equal(fragmented.probes(), 1, 'parçalı yanıtlar ve yetim temizliği yeni denetleyici başlatmamalı');
   for (const [options, error] of [
     [{ spawnError: true }, /taskkill spawn failed/],
     [{ rootCode: 7 }, /tree cleanup failed/],

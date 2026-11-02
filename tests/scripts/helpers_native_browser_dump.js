@@ -35,6 +35,7 @@ function runNativeBrowserDump(browser, args, { cwd, timeoutMs, trace, cleanupMs 
     let cleanupTimer = null;
     let treeStop = null;
     let treeKiller = null;
+    let inspector = null;
     trace.dumpComplete = false;
     trace.stoppedAfterDump = false;
 
@@ -44,17 +45,20 @@ function runNativeBrowserDump(browser, args, { cwd, timeoutMs, trace, cleanupMs 
       clearTimeout(deadline);
       clearTimeout(cleanupTimer);
       trace.renderedStatus = nativeDumpStatus(stdout);
+      if (error && inspector) inspector.kill('SIGKILL');
       if (error) reject(error); else resolve(stdout);
     };
     const boundCleanup = () => {
       if (cleanupTimer) return;
       cleanupTimer = setTimeout(() => {
         if (treeKiller) treeKiller.kill('SIGKILL');
+        if (inspector) inspector.kill('SIGKILL');
         child.kill('SIGKILL');
         child.stdout.destroy();
         child.stderr.destroy();
         child.unref();
-        finish(new Error('Native browser ' + trace.label + ' cleanup timed out'));
+        finish(new Error('Native browser ' + trace.label + ' cleanup timed out' +
+          (trace.cleanupPhase ? ' [' + trace.cleanupPhase + ']' : '')));
       }, cleanupMs);
     };
     const stopOwnedTree = () => {
@@ -70,52 +74,84 @@ function runNativeBrowserDump(browser, args, { cwd, timeoutMs, trace, cleanupMs 
         }
       } else {
         // Kimlik anlık görüntüsü PID yeniden kullanımını ayırır; yol/komut okunmaz.
-        const snapshot = () => new Promise((resolveSnapshot, rejectSnapshot) => {
-          const script = "$ErrorActionPreference='Stop'; ConvertTo-Json -Compress -InputObject @(Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CreationDate | ForEach-Object { [pscustomobject]@{pid=[int64]$_.ProcessId;parent=[int64]$_.ParentProcessId;created=$(if ($null -eq $_.CreationDate) {''} else {$_.CreationDate.ToUniversalTime().Ticks.ToString()})} })";
-          const probe = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
-            { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
-          treeKiller = probe;
-          let data = '';
-          probe.stdout.on('data', chunk => {
-            if (Buffer.byteLength(data) + chunk.length > 1048576) {
-              probe.kill('SIGKILL');
-              rejectSnapshot(new Error('Native browser process inspection exceeded its limit'));
-            } else data += chunk.toString('utf8');
-          });
-          probe.on('error', () => rejectSnapshot(new Error('Native browser process inspection failed')));
-          probe.on('close', code => {
-            try {
-              if (code !== 0) throw new Error();
-              const rows = JSON.parse(data);
-              if (!Array.isArray(rows) || rows.length > 8192 || !rows.every(row => row &&
-                  Number.isSafeInteger(row.pid) && row.pid >= 0 && Number.isSafeInteger(row.parent) && row.parent >= 0 &&
-                  typeof row.created === 'string' && (row.created === '' || /^[0-9]+$/.test(row.created)))) throw new Error();
-              if (new Set(rows.map(row => row.pid)).size !== rows.length) throw new Error();
-              resolveSnapshot(rows);
-            } catch (_) { rejectSnapshot(new Error('Native browser process inspection failed')); }
-          });
+        let pending = null;
+        let inspectorClosed = false;
+        let inspectorFailure = null;
+        let closedInspector = Promise.resolve();
+        let data = '';
+        const inspectionError = () => new Error('Native browser process inspection failed');
+        const failInspection = error => {
+          inspectorFailure = inspectorFailure || error;
+          if (pending) { const request = pending; pending = null; request.reject(inspectorFailure); }
+        };
+        // Tek denetleyici, soğuk PowerShell başlatmalarını aynı temizlik bütçesine sığdırır.
+        const request = command => new Promise((resolveRequest, rejectRequest) => {
+          if (!inspector) {
+            const script = "$ErrorActionPreference='Stop'; try { while ($null -ne ($line=[Console]::ReadLine())) { " +
+              "$command=ConvertFrom-Json -InputObject $line; if ($command.action -eq 'snapshot') { " +
+              "$result=@{rows=@(Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CreationDate | ForEach-Object { [pscustomobject]@{pid=[int64]$_.ProcessId;parent=[int64]$_.ParentProcessId;created=$(if ($null -eq $_.CreationDate) {''} else {$_.CreationDate.ToUniversalTime().Ticks.ToString()})} })} " +
+              "} elseif ($command.action -eq 'stop') { foreach($target in $command.rows) { " +
+              "$p=Get-Process -Id $target.pid -ErrorAction SilentlyContinue; if ($null -eq $p) {continue}; try { " +
+              "$null=$p.Handle; $identity=Get-CimInstance Win32_Process -Filter ('ProcessId='+$target.pid) -Property CreationDate; " +
+              "if (!$p.HasExited -and $null -ne $identity -and $identity.CreationDate.ToUniversalTime().Ticks.ToString() -eq $target.created) {$p.Kill(); $p.WaitForExit()} " +
+              "} finally {$p.Dispose()} }; $result=@{stopped=$false} } else {exit 3}; " +
+              "Write-Output (ConvertTo-Json -Compress -Depth 4 -InputObject $result); [Console]::Out.Flush() }; exit 0 } catch {exit 3}";
+            inspector = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
+              { cwd, windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+            closedInspector = new Promise(resolveClose => inspector.on('close', code => {
+              inspectorClosed = true;
+              if (code !== 0 || pending) failInspection(inspectionError());
+              resolveClose();
+            }));
+            inspector.on('error', () => failInspection(inspectionError()));
+            inspector.stdin.on('error', () => failInspection(inspectionError()));
+            inspector.stdout.on('data', chunk => {
+              if (Buffer.byteLength(data) + chunk.length > 1048576) {
+                failInspection(new Error('Native browser process inspection exceeded its limit'));
+                inspector.kill('SIGKILL');
+                return;
+              }
+              data += chunk.toString('utf8');
+              const end = data.indexOf('\n');
+              if (end < 0) return;
+              try {
+                if (!pending || data.slice(end + 1).trim()) throw inspectionError();
+                const result = JSON.parse(data.slice(0, end));
+                data = '';
+                const current = pending; pending = null;
+                current.resolve(result);
+              } catch (_) { failInspection(inspectionError()); inspector.kill('SIGKILL'); }
+            });
+          }
+          if (inspectorFailure || inspectorClosed) return rejectRequest(inspectorFailure || inspectionError());
+          pending = { resolve: resolveRequest, reject: rejectRequest };
+          trace.cleanupPhase = command.action;
+          inspector.stdin.write(JSON.stringify(command) + '\n');
         });
+        const snapshot = async () => {
+          const result = await request({ action: 'snapshot' });
+          const rows = result && result.rows;
+          if (!Array.isArray(rows) || rows.length > 8192 || !rows.every(row => row &&
+              Number.isSafeInteger(row.pid) && row.pid >= 0 && Number.isSafeInteger(row.parent) && row.parent >= 0 &&
+              typeof row.created === 'string' && (row.created === '' || /^[0-9]+$/.test(row.created))) ||
+              new Set(rows.map(row => row.pid)).size !== rows.length) throw inspectionError();
+          return rows;
+        };
         const killTree = () => new Promise(resolveStop => {
+          trace.cleanupPhase = 'taskkill';
           treeKiller = spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'],
             { windowsHide: true, stdio: 'ignore' });
           treeKiller.on('error', error => resolveStop({ error }));
           treeKiller.on('close', code => resolveStop({ stopped: code === 0,
             killFailed: code !== 0, killIssued: true }));
         });
-        const stopOrphans = rows => new Promise(resolveStop => {
-          // Acik surec taniticisi, kimlik kontrolu ile sonlandirma arasinda PID devrini onler.
-          const identities = rows.map(row => '@{pid=' + row.pid + ';created="' + row.created + '"}').join(',');
-          const script = "$ErrorActionPreference='Stop'; $targets=@(" + identities + "); foreach($target in $targets) { " +
-            "$p=Get-Process -Id $target.pid -ErrorAction SilentlyContinue; if ($null -eq $p) {continue}; try { " +
-            "$null=$p.Handle; $identity=Get-CimInstance Win32_Process -Filter ('ProcessId='+$target.pid) -Property CreationDate; " +
-            "if (!$p.HasExited -and $null -ne $identity -and $identity.CreationDate.ToUniversalTime().Ticks.ToString() -eq $target.created) {$p.Kill()} " +
-            "} finally {$p.Dispose()} }";
-          treeKiller = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
-            { windowsHide: true, stdio: 'ignore' });
-          treeKiller.on('error', error => resolveStop({ error }));
-          treeKiller.on('close', code => resolveStop(code === 0 ? { stopped: false } :
-            { error: new Error('Native browser orphan cleanup failed') }));
-        });
+        const stopOrphans = async rows => {
+          try {
+            const result = await request({ action: 'stop', rows });
+            if (!result || result.stopped !== false) throw inspectionError();
+            return { stopped: false };
+          } catch (error) { return { error }; }
+        };
         treeStop = (async () => {
           try {
             const before = windowsOwnedProcesses(await snapshot(), [child.pid]);
@@ -147,7 +183,22 @@ function runNativeBrowserDump(browser, args, { cwd, timeoutMs, trace, cleanupMs 
           } catch (error) {
             return { error };
           }
-        })().catch(error => ({ error }));
+        })().then(async result => {
+          trace.cleanupPhase = 'inspector-close';
+          try {
+            if (inspector && !inspectorClosed) inspector.stdin.end();
+            await closedInspector;
+          } catch (error) {
+            if (inspector) inspector.kill('SIGKILL');
+            await closedInspector;
+            inspectorFailure = inspectorFailure || error;
+          }
+          inspector = null;
+          if (!result.error && !inspectorFailure && child.exitCode === null && child.signalCode === null) {
+            trace.cleanupPhase = 'root-close';
+          }
+          return result.error ? result : inspectorFailure ? { error: inspectorFailure } : result;
+        }).catch(error => ({ error }));
         treeStop.then(result => {
           if (!result.error || settled) return;
           // ChildProcess kendi Windows taniticisini kullanir; dogrulanmamis PID agaci oldurulmez.
