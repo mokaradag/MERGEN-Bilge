@@ -107,7 +107,8 @@ function runNativeBrowserDump(browser, args, { cwd, timeoutMs, trace, cleanupMs 
           const identities = rows.map(row => '@{pid=' + row.pid + ';created="' + row.created + '"}').join(',');
           const script = "$ErrorActionPreference='Stop'; $targets=@(" + identities + "); foreach($target in $targets) { " +
             "$p=Get-Process -Id $target.pid -ErrorAction SilentlyContinue; if ($null -eq $p) {continue}; try { " +
-            "$null=$p.Handle; if (!$p.HasExited -and $p.StartTime.ToUniversalTime().Ticks.ToString() -eq $target.created) {$p.Kill()} " +
+            "$null=$p.Handle; $identity=Get-CimInstance Win32_Process -Filter ('ProcessId='+$target.pid) -Property CreationDate; " +
+            "if (!$p.HasExited -and $null -ne $identity -and $identity.CreationDate.ToUniversalTime().Ticks.ToString() -eq $target.created) {$p.Kill()} " +
             "} finally {$p.Dispose()} }";
           treeKiller = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
             { windowsHide: true, stdio: 'ignore' });

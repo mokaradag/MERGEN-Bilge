@@ -39,7 +39,8 @@ async function windowsCleanupCase({ killCode = 1, rootCode = 1, signal = null,
       if (options.stdio === 'ignore') {
         kills++;
         assert.ok(args.at(-1).includes('$null=$p.Handle'), 'yetim surec kimligi acik tanitici uzerinden korunmali');
-        assert.ok(args.at(-1).includes('$p.StartTime.ToUniversalTime().Ticks.ToString() -eq $target.created'));
+        assert.ok(args.at(-1).includes('$identity.CreationDate.ToUniversalTime().Ticks.ToString() -eq $target.created'));
+        assert.ok(!args.at(-1).includes('StartTime'), 'kimlik olcumleri ayni CIM hassasiyetini kullanmali');
         const killer = Object.assign(new EventEmitter(), { kill() {} });
         setImmediate(() => { orphanStopped = !orphanSurvives; killer.emit('close', 0); });
         return killer;
@@ -204,10 +205,17 @@ async function profileCleanupCase(failure, diagnose = false) {
     'writer.once("message",()=>process.stdout.write(' + JSON.stringify(page('UX_SMOKE_DONE:PASS')) + '));' +
     'setInterval(()=>{},1000);';
   try {
-    await run(parent, traceFor('tree'));
-    const before = fs.readFileSync(heartbeat, 'utf8');
-    await new Promise(resolve => setTimeout(resolve, 200));
-    assert.equal(fs.readFileSync(heartbeat, 'utf8'), before, 'alt süreç profil yazmayı sürdürmemeli');
+    const naturalExit = parent.replace('process.stdout.write(' + JSON.stringify(page('UX_SMOKE_DONE:PASS')) + ')',
+      'process.stdout.write(' + JSON.stringify(page('UX_SMOKE_DONE:PASS')) + ',()=>process.exit(0))');
+    assert.notEqual(naturalExit, parent, 'dogal kok cikisi ayri bir olay sirasi olmali');
+    for (const code of [parent, naturalExit]) {
+      const trace = traceFor('tree');
+      await run(code, trace);
+      if (process.platform === 'win32' && code === naturalExit) assert.equal(trace.exitCode, 0);
+      const before = fs.readFileSync(heartbeat, 'utf8');
+      await new Promise(resolve => setTimeout(resolve, 200));
+      assert.equal(fs.readFileSync(heartbeat, 'utf8'), before, 'alt süreç profil yazmayı sürdürmemeli');
+    }
   } finally {
     if (fs.existsSync(pidFile)) {
       try { process.kill(Number(fs.readFileSync(pidFile, 'utf8')), 'SIGKILL'); }
