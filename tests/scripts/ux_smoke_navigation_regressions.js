@@ -91,13 +91,26 @@ async function runCase(initialWelcome, replaceOnReturn = false) {
   assert.ok(labels.includes('File Manager synthetic refresh sonrası Türkçe adı korur'));
 }
 
+function assertNavigationOrder(html) {
+  const runStart = html.indexOf('  async function run()');
+  assert.ok(runStart >= 0, 'run() tanımı bulunmalı');
+  const run = html.slice(runStart);
+  const navigationAt = run.indexOf('await testNavigationAndFileManagerSmoke(app)');
+  const quickActionAt = run.indexOf('await testOneQuickActionOnCurrentWelcome(app)');
+  assert.ok(navigationAt >= 0, 'navigation çağrısı bulunmalı');
+  assert.ok(quickActionAt >= 0, 'quick action çağrısı bulunmalı');
+  assert.ok(navigationAt < quickActionAt, 'navigation sohbet mutasyonlarından önce taze oturumda çalışmalı');
+}
+
 (async () => {
   await runCase(true);
   await assert.rejects(runCase(false), /taze welcome hazır/);
   await assert.rejects(runCase(true, true), /welcome dönüşü/);
   const html = fs.readFileSync(path.resolve(__dirname, '../smoke/ux-smoke.html'), 'utf8');
-  const run = html.slice(html.indexOf('  async function run()'));
-  assert.ok(run.indexOf('await testNavigationAndFileManagerSmoke(app)') < run.indexOf('await testOneQuickActionOnCurrentWelcome(app)'),
-            'navigation sohbet mutasyonlarından önce taze oturumda çalışmalı');
+  assertNavigationOrder(html);
+  for (const call of ['await testNavigationAndFileManagerSmoke(app)', 'await testOneQuickActionOnCurrentWelcome(app)']) {
+    assert.throws(() => assertNavigationOrder(html.replace(call, '')), /çağrısı bulunmalı/);
+  }
+  assert.throws(() => assertNavigationOrder(html.replace('  async function run()', '')), /run\(\) tanımı/);
   console.log('ux smoke navigation regressions passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

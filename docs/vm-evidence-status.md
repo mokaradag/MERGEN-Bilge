@@ -13,7 +13,7 @@ Bu belge, MERGEN Bilge'nin en son **başarılı Windows VM evidence gate** koşu
 - **Browser UX topolojisi:** normal **0.0.0.0:8009** uygulama topolojisi + onaylı reverse-proxy/SSO origin + ayrı Edge profili
 - **Kayıt kaynağı:** 31 Ekim 2026 tarihli Windows VM konsol çıktısı ve operatör ekran görüntüsü
 
-Koşum sonunda `OK: VM kanıt kapısı başarıyla tamamlandı.` mesajı alınmıştır. Ekran görüntüsü çalıştırılan Git commit SHA'sını göstermediğinden bu kayıt belirli bir commit'e atfedilmez. Bununla birlikte bu koşum, PR #737 ile tanımlanan güncel iki-pencere VM akışında browser UX smoke dahil 13 zorunlu adımın aynı Windows VM koşumunda başarısız veya atlanmış adım olmadan tamamlandığını gösterir.
+Koşum sonunda `OK: VM kanıt kapısı başarıyla tamamlandı.` mesajı alınmıştır. Ekran görüntüsü çalıştırılan Git commit SHA'sını göstermediğinden bu kayıt belirli bir commit'e atfedilmez. Bu tarihli operasyonel kanıt, yalnız 31 Ekim'de çalıştırılan kodda browser UX smoke dahil 13 zorunlu adımın aynı Windows VM koşumunda başarısız veya atlanmış adım olmadan tamamlandığını gösterir. Sonraki commit'lerin veya güncel HEAD'in aynı kod olduğunu kanıtlamaz; commit'e atfedilebilir yeni kanıt için VM koşumu tekrarlanmalıdır.
 
 ## Geçen 13 adım
 
@@ -37,7 +37,7 @@ Süreler, 31 Ekim 2026 tarihli operatör ekran görüntüsünde görülen koşum
 
 ## Browser UX smoke koşumu
 
-31 Ekim koşumu, PR #737'nin güncel normal-topoloji akışını kullanmıştır: Shiny **0.0.0.0:8009** üzerinde çalışır; browser kanıtı onaylı reverse-proxy/SSO origin üzerinden, repo/artifact ağacı dışında hazırlanmış ayrı Edge profiliyle alınır. Yerel `127.0.0.1:8009` yalnız ön kontroldür; bind gereksinimi değildir.
+31 Ekim koşumu, o gün çalıştırılan normal-topoloji akışını kullanmıştır: Shiny **0.0.0.0:8009** üzerinde çalışır; browser kanıtı onaylı reverse-proxy/SSO origin üzerinden, repo/artifact ağacı dışında hazırlanmış ayrı Edge profiliyle alınır. Yerel `127.0.0.1:8009` yalnız ön kontroldür; bind gereksinimi değildir.
 
 Gerçek hostname, SSO URL'si, profil yolu, cookie/token veya başka kimlik bilgileri bu belgeye ya da artifact özetine yazılmaz. Güncel hazırlık, çalışma ve temizlik adımları için [VM browser UX smoke](vm-browser-ux-smoke.md) belgesini izleyin.
 
@@ -62,7 +62,7 @@ Aynı Windows VM koşumunda aşağıdaki kapıların başarısız veya atlanmı�
 - DB encoding preflight,
 - `renv` durum kontrolü.
 
-Bu sonuç, PR #737'nin hedeflediği gerçek Windows VM + Keycloak/SSO + Edge evidence akışının artık başarıyla tamamlandığını operasyonel olarak doğrular; testlerin güvenlik, yetkilendirme, SSO veya doğruluk beklentileri gevşetilmeden gate tamamlanmıştır.
+Bu sonuç, 31 Ekim'de çalıştırılan kod için gerçek Windows VM + Keycloak/SSO + Edge akışının başarıyla tamamlandığına dair operasyonel kanıttır. Daha sonraki startup zamanlaması, completion frame ve çocuk süreç seçimi değişiklikleri dahil sonraki commit'ler için yeni VM koşumu gerekir.
 
 ## Bu koşum neyi tek başına kanıtlamaz?
 

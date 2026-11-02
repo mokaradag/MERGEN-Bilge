@@ -185,6 +185,8 @@ test_that("tarayıcı ön kontrolü ana sayfayı veya eksik harness'ı kabul etm
     expect_error(ortam$ux_smoke_check_harness(), "FAILED: UX smoke harness is unavailable", fixed = TRUE)
     expect_error(ortam$ux_smoke_check_harness(), "MERGEN_ENABLE_UX_SMOKE=true", fixed = TRUE)
     expect_error(ortam$ux_smoke_check_harness(), "already running app", fixed = TRUE)
+    expect_error(ortam$ux_smoke_check_harness(), "<test-smoke-url>. Start/restart", fixed = TRUE)
+    expect_error(ortam$ux_smoke_check_harness(), "source('app.R'). For an already running app", fixed = TRUE)
   }
 
   # Ön kontrol tarayıcı süreci/profilinden önce bloklamalıdır.
@@ -385,4 +387,27 @@ test_that("ağ smoke yalnız iki opt-in ve geçerli koşu önekiyle sabit test d
   expect_false(next_prefix %in% names(shiny::resourcePaths()))
   expect_true(is.na(env$mergen_ux_smoke_prefix(c(prefix, prefix))))
   expect_true(is.na(env$mergen_ux_smoke_prefix(NA_character_)))
+})
+
+
+test_that("aynı dizinin yeniden source kaydı sahipliği devralmaz veya yabancı kaydı temizlemez", {
+  withr::local_dir(resolve_repo_root_for_tests())
+  withr::local_envvar(MERGEN_ENABLE_UX_SMOKE = "true", MERGEN_HOST = "127.0.0.1", MERGEN_UX_SMOKE_PATH = "")
+  if ("smoke" %in% names(shiny::resourcePaths())) shiny::removeResourcePath("smoke")
+  withr::defer(if ("smoke" %in% names(shiny::resourcePaths())) shiny::removeResourcePath("smoke"))
+  first <- .smoke_gate_app_env()
+  expect_true(first$mergen_register_ux_smoke_resource())
+  directory <- shiny::resourcePaths()[["smoke"]]
+  second <- .smoke_gate_app_env()
+  expect_true(second$mergen_register_ux_smoke_resource())
+  expect_false(second$mergen_register_ux_smoke_resource(FALSE))
+  expect_identical(shiny::resourcePaths()[["smoke"]], directory)
+  expect_error(second$mergen_register_ux_smoke_resource(owner = new.env()), "already registered", fixed = TRUE)
+  expect_identical(shiny::resourcePaths()[["smoke"]], directory)
+  first$mergen_register_ux_smoke_resource(FALSE)
+  foreign <- withr::local_tempdir()
+  shiny::addResourcePath("smoke", foreign)
+  expect_error(second$mergen_register_ux_smoke_resource(), "already registered", fixed = TRUE)
+  second$mergen_register_ux_smoke_resource(FALSE)
+  expect_identical(shiny::resourcePaths()[["smoke"]], normalizePath(foreign, winslash = "/"))
 })

@@ -124,7 +124,13 @@ mergen_register_ux_smoke_resource <- local({
     prefix <- mergen_ux_smoke_prefix()
     directory <- file.path("tests", "smoke")
     if (!isTRUE(enabled) || is.na(prefix) || !dir.exists(directory)) return(invisible(FALSE))
-    if (prefix %in% names(shiny::resourcePaths())) stop("Smoke resource prefix is already registered.", call. = FALSE)
+    if (prefix %in% names(shiny::resourcePaths())) {
+      existing <- normalizePath(shiny::resourcePaths()[[prefix]], winslash = "/", mustWork = TRUE)
+      target <- normalizePath(directory, winslash = "/", mustWork = TRUE)
+      # Yeniden source etmek sahiplik vermez; koşucu yabancı kaydı devralamaz.
+      if (is.null(owner) && identical(existing, target)) return(invisible(TRUE))
+      stop("Smoke resource prefix is already registered.", call. = FALSE)
+    }
     if (!isTRUE(safe_add_resource_path(prefix, directory))) return(invisible(FALSE))
     owned <<- list(prefix = prefix, directory = shiny::resourcePaths()[[prefix]], owner = owner)
     invisible(TRUE)

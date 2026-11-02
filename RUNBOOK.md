@@ -1020,7 +1020,7 @@ Remove-Item Env:\MERGEN_TESTTHAT_END_INDEX -ErrorAction SilentlyContinue
 - Relative test path yok diyorsa PowerShell'in repo kökünde olduğunu doğrulayın.
 - External browser smoke “Could not connect to server” diyorsa Window 1'deki app gerçekten çalışmıyordur.
 - App boot eksik env var nedeniyle düşerse `.Renviron` yüklendiğini veya şu değişkenlerin tanımlı olduğunu kontrol edin: `LOCAL_LLM_ENDPOINT`, `DB_DSN`, `AI_KEYS_MASTER`.
-- Tam gate amaçlanıyorsa `--full` kullanın; `.Renviron` veya shell filtresi bu modda uygulanmaz.
+- Tam gate amaçlanıyorsa `--full` kullanın; yalnız `.Renviron` veya shell içindeki `MERGEN_EVIDENCE_STEPS` adım filtresi yok sayılır. `.Renviron` yüklenir; gerekli gerçek runtime yapılandırması sağlanmalıdır.
 - `MERGEN_REQUIRE_BROWSER_UX_SMOKE=true` değişkenini niyetli değilseniz ad-hoc testthat koşumlarına sızdırmayın.
 
 Yapısal sözleşme: `tests/testthat/test-vm-evidence-gate-contract.R` (adım listesi,

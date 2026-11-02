@@ -496,10 +496,6 @@ chat_start_new_chat <- function(session, values, saved_chats_data, session_files
     c("current_session_files", "file_summaries", "mcp_registry_snapshot")
   )
 
-  if (exists("file_store", where = .GlobalEnv)) {
-    file_store <<- list()
-  }
-
   if (!is.null(values$temp_files)) {
     for (tf in values$temp_files) {
       try(unlink(tf), silent = TRUE)

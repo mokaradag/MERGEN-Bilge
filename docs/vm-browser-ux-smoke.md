@@ -67,7 +67,6 @@ if (!$rscript -or !(Test-Path -LiteralPath $rscript -PathType Leaf)) {
 if (!$rscript) { $rscript = (Get-Command Rscript.exe -ErrorAction SilentlyContinue).Source }
 if (!$rscript) { throw "Rscript.exe bulunamadi." }
 $env:MERGEN_BROWSER_UX_BASE_URL = Read-Host "Approved MERGEN base URL"
-if (([uri]$env:MERGEN_BROWSER_UX_BASE_URL).Scheme -ne 'https') { throw "Network VM profile preparation requires HTTPS." }
 $env:MERGEN_BROWSER_UX_PROFILE_DIR = Join-Path $env:LOCALAPPDATA "MERGEN\BrowserUxSmoke"
 $edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
 if (!(Test-Path $edge)) { $edge = "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe" }
@@ -76,6 +75,7 @@ $env:MERGEN_BROWSER_BIN = $edge
 New-Item -ItemType Directory -Force -Path $env:MERGEN_BROWSER_UX_PROFILE_DIR | Out-Null
 & {
     $ErrorActionPreference = 'Stop'
+    if (([uri]$env:MERGEN_BROWSER_UX_BASE_URL).Scheme -ne 'https') { throw "Network VM profile preparation requires HTTPS." }
     & $rscript -e "source('tests/scripts/helpers_browser_ux_profile.R'); invisible(ux_smoke_profile_path(Sys.getenv('MERGEN_BROWSER_UX_PROFILE_DIR'), c('.', 'artifacts/ai-validation', Sys.getenv('MERGEN_EVIDENCE_ARTIFACT_DIR', '')))); ux_smoke_check_edge_policy()"
     if ($LASTEXITCODE -eq 0) {
         & $edge "--user-data-dir=$env:MERGEN_BROWSER_UX_PROFILE_DIR" --no-first-run --no-default-browser-check $env:MERGEN_BROWSER_UX_BASE_URL

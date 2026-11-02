@@ -423,8 +423,8 @@ ux_smoke_check_harness <- function() {
   }
 
   stop(paste(
-    "FAILED: UX smoke harness is unavailable at", display_smoke_url,
-    "Start/restart the target Shiny app with MERGEN_ENABLE_UX_SMOKE=true after source('app.R')",
+    "FAILED: UX smoke harness is unavailable at", paste0(display_smoke_url, "."),
+    "Start/restart the target Shiny app with MERGEN_ENABLE_UX_SMOKE=true after source('app.R').",
     "For an already running app on the VM, restart with run_vm_browser_ux_smoke.R --start-app.",
     "That mode keeps 0.0.0.0:8009 and shares the per-run prefix locally."
   ), call. = FALSE)

@@ -279,6 +279,9 @@ testthat::test_that("browser UX smoke harness gerçek UI anchor'larıyla hizalı
 
 testthat::test_that("Shiny handler ve smoke durum sözleşmeleri gerçek JavaScript ile çalışır", {
   node <- Sys.which("node")
+  if (!nzchar(node) && identical(tolower(Sys.getenv("MERGEN_NATIVE_BROWSER_REGRESSIONS", "")), "true")) {
+    stop("Native browser validation requested but Node is unavailable.", call. = FALSE)
+  }
   testthat::skip_if(!nzchar(node), "Node kullanılamıyor")
   for (script in c("shiny_message_handlers_contract_regressions.js",
                    "ux_smoke_navigation_regressions.js", "ux_smoke_start_gate_regressions.js",
@@ -291,6 +294,7 @@ testthat::test_that("Shiny handler ve smoke durum sözleşmeleri gerçek JavaScr
                     file.path(Sys.getenv("PROGRAMFILES"), "Microsoft/Edge/Application/msedge.exe"),
                     file.path(Sys.getenv("PROGRAMFILES(X86)"), "Microsoft/Edge/Application/msedge.exe"))
       browsers <- browsers[nzchar(browsers) & file.exists(browsers)]
+      if (!length(browsers)) stop("Native browser validation requested but no supported browser is available.", call. = FALSE)
       if (length(browsers)) {
         if (grepl("^msedge([.]exe)?$", basename(browsers[[1]]), ignore.case = TRUE)) {
           policy <- new.env(parent = globalenv())
@@ -322,7 +326,8 @@ testthat::test_that("native Edge fixture ilke reddinde tarayici baslatmaz", {
     list(flag = "false", allowed = FALSE),
     list(flag = "true", allowed = FALSE),
     list(flag = "true", allowed = TRUE),
-    list(flag = "TRUE", allowed = TRUE)
+    list(flag = "TRUE", allowed = TRUE),
+    list(flag = "true", allowed = TRUE, missing = TRUE)
   )
   for (case in cases) {
     withr::local_envvar(c(MERGEN_NATIVE_BROWSER_REGRESSIONS = case$flag))
@@ -335,9 +340,9 @@ testthat::test_that("native Edge fixture ilke reddinde tarayici baslatmaz", {
     env$Sys.which <- function(x) {
       if (identical(x, "node")) return("mock-node")
       testthat::expect_true(enabled)
-      c("", "", "/mock/msedge.exe")
+      if (isTRUE(case$missing)) c("", "", "") else c("", "", "/mock/msedge.exe")
     }
-    env$file.exists <- function(x) x == "/mock/msedge.exe"
+    env$file.exists <- function(x) !isTRUE(case$missing) & x == "/mock/msedge.exe"
     env$sys.source <- function(file, envir) {
       testthat::expect_identical(file, file.path(root, "tests/scripts/helpers_browser_ux_profile.R"))
       envir$ux_smoke_check_edge_policy <- function() {
@@ -352,10 +357,12 @@ testthat::test_that("native Edge fixture ilke reddinde tarayici baslatmaz", {
       }
       paste0("regressions passed ", intToUtf8(c(0x011F, 0x00FC, 0x015F, 0x0130, 0x0131, 0x00F6, 0x00E7)))
     }
-    if (enabled && !allowed) {
+    if (enabled && isTRUE(case$missing)) {
+      testthat::expect_error(eval(execution, env), "no supported browser is available", fixed = TRUE)
+    } else if (enabled && !allowed) {
       testthat::expect_error(eval(execution, env), "policy blocked", fixed = TRUE)
     } else eval(execution, env)
-    testthat::expect_identical(checked, as.integer(enabled))
-    testthat::expect_identical(native, as.integer(enabled && allowed))
+    testthat::expect_identical(checked, as.integer(enabled && !isTRUE(case$missing)))
+    testthat::expect_identical(native, as.integer(enabled && allowed && !isTRUE(case$missing)))
   }
 })

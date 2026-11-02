@@ -37,14 +37,33 @@ vm_ux_runtime_dir <- function() {
   file.path(local_app, "MERGEN", "BrowserUxSmokeRun")
 }
 
+vm_ux_revision <- function() {
+  revision <- suppressWarnings(system2("git", c("rev-parse", "--verify", "HEAD"), stdout = TRUE, stderr = FALSE))
+  if (!is.null(attr(revision, "status")) || length(revision) != 1L ||
+      !grepl("^[0-9a-f]{40}$", revision)) {
+    stop("Cannot establish startup Git HEAD; run from the repository checkout.", call. = FALSE)
+  }
+  unname(revision)
+}
+
 vm_ux_read_prefix <- function(runtime_dir) {
   path <- file.path(runtime_dir, "prefix")
-  if (!file.exists(path) || is.na(file.info(path)$size) || file.info(path)$size > 80L) {
+  if (!file.exists(path)) {
     stop("No active smoke startup. Stop the normal app, then run this script with --start-app in Window 1.", call. = FALSE)
   }
-  value <- readLines(path, warn = FALSE, n = 2L)
-  if (!vm_ux_prefix_valid(value)) stop("Invalid VM smoke handshake; restart --start-app.", call. = FALSE)
-  value
+  # Dosya degisse de okuma sinirlidir; sirlar yazilmaz.
+  bytes <- tryCatch(suppressWarnings(readBin(path, "raw", n = 129L)), error = function(e) raw())
+  if (length(bytes) > 128L || any(!as.integer(bytes) %in% c(10L, 48:57, 97:122, 95L))) {
+    stop("Invalid VM smoke handshake; restart --start-app.", call. = FALSE)
+  }
+  value <- strsplit(rawToChar(bytes), "\n", fixed = TRUE)[[1]]
+  if (length(value) != 2L || !vm_ux_prefix_valid(value[[1]]) || !grepl("^[0-9a-f]{40}$", value[[2]])) {
+    stop("Invalid VM smoke handshake; restart --start-app.", call. = FALSE)
+  }
+  if (!identical(value[[2]], vm_ux_revision())) {
+    stop("VM smoke revision differs from the checkout; restart --start-app in Window 1.", call. = FALSE)
+  }
+  value[[1]]
 }
 
 vm_ux_start_app <- function(runtime_dir) {
@@ -62,6 +81,7 @@ vm_ux_start_app <- function(runtime_dir) {
     stop("Smoke runtime directory already exists. Stop Window 1; remove only the stale BrowserUxSmokeRun directory, then retry.", call. = FALSE)
   }
   on.exit(unlink(runtime_dir, recursive = TRUE, force = TRUE), add = TRUE)
+  revision <- vm_ux_revision()
   prefix <- vm_ux_new_prefix()
   Sys.setenv(MERGEN_RUN_APP = "false")
   source("app.R", encoding = "UTF-8", local = globalenv())
@@ -69,7 +89,10 @@ vm_ux_start_app <- function(runtime_dir) {
   # .Renviron yuklendikten sonra gecici opt-in; kalici dosyaya YAZILMAZ.
   Sys.setenv(MERGEN_ENABLE_UX_SMOKE = "true", MERGEN_ALLOW_NETWORK_UX_SMOKE = "true",
              MERGEN_UX_SMOKE_PATH = prefix, MERGEN_HOST = "0.0.0.0", MERGEN_PORT = "8009")
-  writeLines(prefix, file.path(runtime_dir, "prefix"), useBytes = TRUE)
+  if (!identical(revision, vm_ux_revision())) {
+    stop("Checkout changed during startup; restart --start-app in Window 1.", call. = FALSE)
+  }
+  writeBin(charToRaw(paste0(prefix, "\n", revision, "\n")), file.path(runtime_dir, "prefix"))
   Sys.chmod(file.path(runtime_dir, "prefix"), mode = "0600")
   cat("Temporary smoke app: 0.0.0.0:8009. Keep this window open; run browser smoke in Window 2.\n")
   run_mergen_app(host = "0.0.0.0", port = 8009L, launch.browser = FALSE, quiet = FALSE)
@@ -119,6 +142,9 @@ vm_ux_main <- function(args = commandArgs(trailingOnly = TRUE)) {
   lines <- trimws(strsplit(result$stdout, "\n", fixed = TRUE)[[1]])
   if (!identical(result$status, 0L) || !"OK: rendered #status is UX_SMOKE_DONE:PASS." %in% lines) {
     stop("VM browser UX smoke failed; rendered UX_SMOKE_DONE:PASS is required.", call. = FALSE)
+  }
+  if (!identical(prefix, vm_ux_read_prefix(runtime_dir))) {
+    stop("VM smoke startup changed; restart --start-app in Window 1.", call. = FALSE)
   }
   # Cocuk baslangic/tani ciktisi profil veya sir tasiyabilir; yalniz kanit satiri aktarilir.
   cat("OK: rendered #status is UX_SMOKE_DONE:PASS.\n")

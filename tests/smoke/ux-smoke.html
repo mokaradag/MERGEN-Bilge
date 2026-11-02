@@ -552,6 +552,23 @@
   }
 
   async function testChatInput(app) {
+    var originalSetInputValue = app.win.Shiny.setInputValue;
+    // Enter dispatch testi sunucuya sentetik sohbet veya LLM işi göndermez.
+    app.win.Shiny.setInputValue = function (name, value, opts) {
+      if (name === "send_prompt_from_js") {
+        shinyEvents.push({ name: name, value: value, opts: opts || {} });
+        return;
+      }
+      return originalSetInputValue.apply(this, arguments);
+    };
+    try {
+      await testChatInputDispatch(app);
+    } finally {
+      app.win.Shiny.setInputValue = originalSetInputValue;
+    }
+  }
+
+  async function testChatInputDispatch(app) {
     var doc = app.doc;
     var input = doc.querySelector("#user_input");
     var sendButton = doc.querySelector("#send_stop_btn");
@@ -852,13 +869,33 @@
     win.mergenTTS.isPlaying = false;
     win.mergenTTS.currentAudio = null;
 
+    await testSavedChatRestore(app);
+  }
+
+  async function testSavedChatRestore(app) {
+    var win = app.win;
+    var doc = app.doc;
+    var saved;
+    await waitFor(function () {
+      try { saved = JSON.parse(win.localStorage.getItem("mergen_current_chat") || "null"); } catch (e) { saved = null; }
+      return saved && saved.v === 2 && typeof saved.owner === "string" && saved.owner.length > 0;
+    }, "sunucuya bağlı sohbet sahibi hazır", 15000);
+    var owner = saved.owner;
+    var newChat = doc.getElementById("new_chat_btn");
+    assert(!!newChat, "geri yükleme öncesi Yeni Söyleşi düğmesi var");
+    newChat.click();
+    await waitFor(function () {
+      return !win.localStorage.getItem("mergen_current_chat") &&
+        !doc.querySelector("#chat_content_container .message-bubble");
+    }, "geri yükleme öncesi sohbet boşaltıldı", 15000);
     var historicalMessages = [
-      { id: "old_ai_1", type: "ai", content: "Eski kayıtlı yanıt" }
+      { type: "ai", content: "Eski kayıtlı yanıt UX " + Date.now() }
     ];
+    var payload = { owner: owner, messages: historicalMessages };
 
     win.localStorage.setItem(
       "mergen_current_chat",
-      JSON.stringify(historicalMessages)
+      JSON.stringify({ v: 2, owner: owner, messages: historicalMessages })
     );
 
     shinyEvents = [];
@@ -866,13 +903,17 @@
     if (win.Shiny && typeof win.Shiny.setInputValue === "function") {
       win.Shiny.setInputValue(
         "load_chat_from_storage",
-        historicalMessages,
+        payload,
         { priority: "event" }
       );
     } else {
       fail("kayıtlı sohbet testi için Shiny bağlantısı bulunamadı");
     }
 
+    await waitFor(function () {
+      var restored = doc.querySelector("#chat_content_container .message-bubble");
+      return restored && restored.textContent.indexOf(historicalMessages[0].content) >= 0;
+    }, "kayıtlı sohbet tarihsel mesajı gerçekten geri yüklendi", 15000);
     await wait(1300);
 
     assert(

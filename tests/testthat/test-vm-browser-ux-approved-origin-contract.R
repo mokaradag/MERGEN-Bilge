@@ -73,8 +73,9 @@ test_that("belgedeki Edge on kontrolu login oncesinde repo ve tum artifact kokle
   launch <- which(startsWith(trimws(lines), '& $edge "--user-data-dir='))
   expect_length(launch, 1L)
   expect_lt(check, launch)
-  expect_identical(lines[[check - 2L]], "& {")
-  expect_identical(trimws(lines[[check - 1L]]), "$ErrorActionPreference = 'Stop'")
+  expect_identical(lines[[check - 3L]], "& {")
+  expect_identical(trimws(lines[[check - 2L]]), "$ErrorActionPreference = 'Stop'")
+  expect_match(lines[[check - 1L]], "if (([uri]$env:MERGEN_BROWSER_UX_BASE_URL).Scheme -ne 'https') { throw", fixed = TRUE)
   expect_identical(trimws(lines[[check + 1L]]), "if ($LASTEXITCODE -eq 0) {")
   expect_identical(launch, check + 2L)
   expect_identical(trimws(lines[[launch + 1L]]), "} else {")
@@ -165,6 +166,7 @@ test_that("VM startup ayni 0.0.0.0:8009 topolojisini ve gercek ortam aktarimini 
   original_config <- readBin(".Renviron", "raw", file.info(".Renviron")$size)
   withr::local_envvar(SSO_ENABLED = NA)
   runtime <- file.path(config, "run")
+  env$vm_ux_revision <- function() paste(rep("a", 40L), collapse = "")
   first <- NULL
   # source sonrasi .Renviron override'ina ragmen gecici opt-in sonradan verilir.
   env$source <- function(...) {
@@ -201,7 +203,7 @@ test_that("VM wrapper PASS icin rendered sonucu ister ve gecici env degerlerini 
   withr::local_dir(resolve_repo_root_for_tests())
   runtime <- withr::local_tempdir()
   prefix <- env$vm_ux_new_prefix()
-  writeLines(prefix, file.path(runtime, "prefix"))
+  writeBin(charToRaw(paste0(prefix, "\n", env$vm_ux_revision(), "\n")), file.path(runtime, "prefix"))
   env$vm_ux_runtime_dir <- function() runtime
   profile <- withr::local_tempdir()
   withr::local_envvar(MERGEN_BROWSER_UX_BASE_URL = "https://app.example.invalid/base",
@@ -406,6 +408,7 @@ test_that("VM komutu profili R baslangicindan sonra secer ve ortam dosyalarini k
 
 test_that("network startup eksik veya kapali SSO ile app.R kaynaklamadan durur", {
   env <- .vm_ux_functions()
+  env$vm_ux_revision <- function() strrep("a", 40L)
   withr::local_dir(withr::local_tempdir())
   withr::local_envvar(SSO_ENABLED = NA)
   runtime <- file.path(getwd(), "run")
@@ -444,6 +447,9 @@ test_that("normal Rscript startup proje profili ve SSO konfigurasyonunu korur", 
     '  writeLines("configured SSO startup", "startup-result.txt")',
     '}'
   ), file.path(fixture, "app.R"))
+  processx::run("git", c("init", "--quiet"), wd = fixture)
+  processx::run("git", c("-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                        "commit", "--quiet", "--allow-empty", "-m", "VM startup fixture"), wd = fixture)
   before <- readBin(file.path(fixture, ".Renviron"), "raw", 10000L)
   rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
   withr::local_envvar(LOCALAPPDATA = fixture,
@@ -466,4 +472,59 @@ test_that("gecici UX PASS yeniden baslatilan uretim surecinin kaniti sayilmaz", 
     expect_match(text, "Normal uygulama geçici smoke yolunu sunmamalıdır.", fixed = TRUE)
     expect_match(text, "run_post_deploy_smoke.R", fixed = TRUE)
   }
+})
+
+
+test_that("VM el sıkışması başlangıç revizyonuna bağlıdır ve bozuk kayıtlar kapalı kalır", {
+  env <- .vm_ux_functions()
+  runtime <- withr::local_tempdir()
+  prefix <- env$vm_ux_new_prefix()
+  revision <- strrep("a", 40L)
+  env$vm_ux_revision <- function() revision
+  path <- file.path(runtime, "prefix")
+  write <- function(value) writeBin(charToRaw(value), path)
+  record <- paste0(prefix, "\n", revision, "\n")
+  write(record)
+  expect_identical(env$vm_ux_read_prefix(runtime), prefix)
+  revision <- strrep("b", 40L)
+  expect_error(env$vm_ux_read_prefix(runtime), "restart --start-app in Window 1", fixed = TRUE)
+  revision <- strrep("a", 40L)
+  for (bad in c(prefix, paste0(prefix, "\ninvalid\n"), paste0(record, "extra\n"),
+                paste0(prefix, "\n", strrep("a", 41L)), strrep("a", 10000L))) {
+    write(bad)
+    expect_error(env$vm_ux_read_prefix(runtime), "Invalid VM smoke handshake", fixed = TRUE)
+  }
+  writeBin(as.raw(c(0L, 10L)), path)
+  expect_error(env$vm_ux_read_prefix(runtime), "Invalid VM smoke handshake", fixed = TRUE)
+})
+
+test_that("VM başlangıcı source sırasında değişen revizyonla el sıkışması yayımlamaz", {
+  env <- .vm_ux_functions()
+  config <- withr::local_tempdir()
+  withr::local_dir(config)
+  withr::local_envvar(SSO_ENABLED = "TRUE", MERGEN_RUN_APP = NA, MERGEN_ENABLE_UX_SMOKE = NA,
+                     MERGEN_ALLOW_NETWORK_UX_SMOKE = NA, MERGEN_UX_SMOKE_PATH = NA,
+                     MERGEN_HOST = NA, MERGEN_PORT = NA)
+  revision <- strrep("a", 40L)
+  env$vm_ux_revision <- function() revision
+  env$source <- function(...) { env$SSO_ENABLED <- TRUE; revision <<- strrep("b", 40L) }
+  env$run_mergen_app <- function(...) stop("uygulama başlamamalı")
+  runtime <- file.path(config, "run")
+  expect_error(env$vm_ux_start_app(runtime), "Checkout changed during startup", fixed = TRUE)
+  expect_false(dir.exists(runtime))
+})
+
+
+test_that("VM belgesi tarihli kanıtı güncel HEAD kanıtından ve adım filtresini ortamdan ayırır", {
+  root <- resolve_repo_root_for_tests()
+  for (file in c("README.md", "docs/vm-evidence-status.md")) {
+    text <- read_source_text_utf8(file.path(root, file))
+    expect_match(text, "31 Ekim 2026", fixed = TRUE)
+    expect_match(text, "13 passed, 0 failed, 0 skipped", fixed = TRUE)
+    expect_match(text, "güncel HEAD", fixed = TRUE)
+    expect_match(text, "VM koşumu tekrarlanmalıdır", fixed = TRUE)
+  }
+  text <- read_source_text_utf8(file.path(root, "RUNBOOK.md"))
+  expect_match(text, "yalnız `.Renviron` veya shell içindeki `MERGEN_EVIDENCE_STEPS` adım filtresi yok sayılır", fixed = TRUE)
+  expect_match(text, "`.Renviron` yüklenir; gerekli gerçek runtime yapılandırması sağlanmalıdır", fixed = TRUE)
 })

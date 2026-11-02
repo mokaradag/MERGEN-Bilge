@@ -7,8 +7,13 @@ local({
   source(file.path(root, "R/utils_text_encoding.R"), local = TRUE, encoding = "UTF-8")
   node <- unname(Sys.which("node"))
   if (!nzchar(node)) stop("Node is unavailable.", call. = FALSE)
-  candidates <- c(
-    Sys.getenv("MERGEN_BROWSER_BIN", ""),
+  explicit <- Sys.getenv("MERGEN_BROWSER_BIN", "")
+  resolved <- explicit
+  if (nzchar(explicit) && !file.exists(resolved)) resolved <- unname(Sys.which(explicit))
+  if (nzchar(explicit) && (!nzchar(resolved) || !file.exists(resolved) || dir.exists(resolved) || file.access(resolved, 1L) != 0L)) {
+    stop("MERGEN_BROWSER_BIN is not an available executable.", call. = FALSE)
+  }
+  candidates <- if (nzchar(explicit)) resolved else c(
     file.path(Sys.getenv("PROGRAMFILES(X86)"), "Microsoft/Edge/Application/msedge.exe"),
     file.path(Sys.getenv("PROGRAMFILES"), "Microsoft/Edge/Application/msedge.exe"),
     unname(Sys.which(c("msedge", "google-chrome", "chromium")))
@@ -26,4 +31,5 @@ local({
   cat(paste(result, collapse = "\n"), "\n")
   status <- attr(result, "status")
   cat("Node diagnostic exit status:", if (is.null(status)) 0L else status, "\n")
+  if (!is.null(status) && status != 0L) stop("Node browser diagnostic failed.", call. = FALSE)
 })

@@ -176,3 +176,53 @@ testthat::test_that("browser UX smoke runner is wired only through boot-smoke va
     info = "Browser UX smoke yalnızca --boot-smoke bloğunda çalıştırılmalıdır."
   )
 })
+
+testthat::test_that("tanılama açık tarayıcı seçimini ve Node hata durumunu korur", {
+  root <- .browser_runner_repo_root()
+  withr::local_dir(root)
+  rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
+  browser <- withr::local_tempfile(fileext = if (.Platform$OS.type == "windows") ".exe" else "")
+  file.copy(rscript, browser)
+  Sys.chmod(browser, mode = "0700")
+  discovery <- withr::local_tempdir()
+  withr::local_envvar(c(MERGEN_BROWSER_BIN = browser, PROGRAMFILES = discovery, "PROGRAMFILES(X86)" = discovery))
+  expressions <- parse_r_file_utf8(file.path(root, "tests/scripts/diagnose_browser_ux_fixture.R"))
+  env <- new.env(parent = globalenv())
+  env$Sys.which <- function(x) {
+    if (identical(x, "node")) "mock-node" else if (length(x) > 1L) rep(browser, length(x)) else ""
+  }
+  env$ux_smoke_check_edge_policy <- function(...) invisible(TRUE)
+  status <- 0L
+  calls <- 0L
+  env$system2 <- function(command, args, ...) {
+    calls <<- calls + 1L
+    testthat::expect_identical(command, "mock-node")
+    testthat::expect_true(shQuote(normalizePath(browser, winslash = "/")) %in% args)
+    if (status == 0L) "node ok" else structure("node failed", status = status)
+  }
+  testthat::expect_output(eval(expressions, env), "Node diagnostic exit status: 0", fixed = TRUE)
+  Sys.unsetenv("MERGEN_BROWSER_BIN")
+  testthat::expect_output(eval(expressions, env), "Node diagnostic exit status: 0", fixed = TRUE)
+  Sys.setenv(MERGEN_BROWSER_BIN = browser)
+  status <- 17L
+  testthat::expect_error(eval(expressions, env), "Node browser diagnostic failed", fixed = TRUE)
+  before <- calls
+  Sys.setenv(MERGEN_BROWSER_BIN = paste0(browser, "-missing"))
+  testthat::expect_error(eval(expressions, env), "MERGEN_BROWSER_BIN", fixed = TRUE)
+  testthat::expect_identical(calls, before)
+  Sys.setenv(MERGEN_BROWSER_BIN = dirname(browser))
+  testthat::expect_error(eval(expressions, env), "MERGEN_BROWSER_BIN", fixed = TRUE)
+
+  # Gerçek dış Rscript hata kodu, Node başarısızlığını çağırana taşır.
+  Sys.setenv(MERGEN_BROWSER_BIN = browser)
+  expression <- paste0(
+    "env <- new.env(parent=globalenv()); ",
+    "env$Sys.which <- function(x) 'mock-node'; ",
+    "env$system2 <- function(...) structure('node failed', status=17L); ",
+    "sys.source('tests/scripts/diagnose_browser_ux_fixture.R', envir=env)"
+  )
+  result <- processx::run(rscript, c("--vanilla", "-e", expression), wd = root, error_on_status = FALSE)
+  testthat::expect_gt(result$status, 0L)
+  testthat::expect_match(result$stdout, "Node diagnostic exit status: 17", fixed = TRUE)
+  testthat::expect_match(result$stderr, "Node browser diagnostic failed", fixed = TRUE)
+})
