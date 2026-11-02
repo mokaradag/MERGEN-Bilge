@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
-# Windows VM: normal 0.0.0.0:8009 + onayli SSO URL + kosuya ozel test yolu.
-# --start-app once ayri pencerede; varsayilan mod yalniz browser smoke calistirir.
-# ASCII: Windows source/Rscript yerel kod sayfasi ile de guvenli giris noktasi.
+# Windows VM: normal 0.0.0.0:8009 topology, approved SSO origin, per-run route.
+# Run --start-app in Window 1; the default mode runs browser smoke only.
+# ASCII operational source also supports the Windows local code page.
 
 vm_ux_prefix_valid <- function(value) {
   is.character(value) && length(value) == 1L && !is.na(value) && nchar(value, type = "bytes") == 60L &&
@@ -13,7 +13,7 @@ vm_ux_new_prefix <- function() {
 }
 
 vm_ux_base_url <- function(value) {
-  # Yalniz HTTP(S) origin + yol; kimlik bilgisi, sorgu, fragment kabul edilmez.
+  # Only HTTP(S) origin and path; reject credentials, queries and fragments.
   if (length(value) != 1L || is.na(value) ||
       !grepl("^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[^?#[:space:]\\\\]*)?$", value) ||
       grepl("[[:cntrl:]]", value)) {
@@ -51,7 +51,7 @@ vm_ux_read_prefix <- function(runtime_dir) {
   if (!file.exists(path)) {
     stop("No active smoke startup. Stop the normal app, then run this script with --start-app in Window 1.", call. = FALSE)
   }
-  # Dosya degisse de okuma sinirlidir; sirlar yazilmaz.
+  # Bound the actual read even if the file changes; never print private data.
   bytes <- tryCatch(suppressWarnings(readBin(path, "raw", n = 129L)), error = function(e) raw())
   if (length(bytes) > 128L || any(!as.integer(bytes) %in% c(10L, 48:57, 97:122, 95L))) {
     stop("Invalid VM smoke handshake; restart --start-app.", call. = FALSE)
@@ -67,7 +67,7 @@ vm_ux_read_prefix <- function(runtime_dir) {
 }
 
 vm_ux_start_app <- function(runtime_dir) {
-  # Normal launcher gibi ortam app.R'dan ONCE yuklenir; yerel auth'a dusulmez.
+  # Load the normal runtime configuration before app.R; retain real SSO.
   if (file.exists(".Renviron") && !isTRUE(readRenviron(".Renviron"))) {
     stop("VM smoke configuration could not be loaded from .Renviron.", call. = FALSE)
   }
@@ -75,7 +75,7 @@ vm_ux_start_app <- function(runtime_dir) {
   if (!sso %in% c("true", "t", "1", "yes", "on")) {
     stop("Network VM smoke requires SSO_ENABLED=TRUE in the normal VM configuration.", call. = FALSE)
   }
-  # Kilit dizini atomik olusturulur; baska bir kosunun oneki ezilmez.
+  # Create the lock directory atomically; never overwrite another run.
   dir.create(dirname(runtime_dir), recursive = TRUE, showWarnings = FALSE)
   if (!dir.create(runtime_dir, mode = "0700", showWarnings = FALSE)) {
     stop("Smoke runtime directory already exists. Stop Window 1; remove only the stale BrowserUxSmokeRun directory, then retry.", call. = FALSE)
@@ -86,7 +86,7 @@ vm_ux_start_app <- function(runtime_dir) {
   Sys.setenv(MERGEN_RUN_APP = "false")
   source("app.R", encoding = "UTF-8", local = globalenv())
   if (!isTRUE(SSO_ENABLED)) stop("Network VM smoke requires active application SSO.", call. = FALSE)
-  # .Renviron yuklendikten sonra gecici opt-in; kalici dosyaya YAZILMAZ.
+  # Apply temporary opt-ins after .Renviron; never persist them.
   Sys.setenv(MERGEN_ENABLE_UX_SMOKE = "true", MERGEN_ALLOW_NETWORK_UX_SMOKE = "true",
              MERGEN_UX_SMOKE_PATH = prefix, MERGEN_HOST = "0.0.0.0", MERGEN_PORT = "8009")
   if (!identical(revision, vm_ux_revision())) {
@@ -114,7 +114,7 @@ vm_ux_main <- function(args = commandArgs(trailingOnly = TRUE)) {
 
   base <- vm_ux_base_url(Sys.getenv("MERGEN_BROWSER_UX_BASE_URL", ""))
   prefix <- vm_ux_read_prefix(runtime_dir)
-  # URL kurulumu baslamadan dogrulanir; gercek URL/onek komut satirina yazilmaz.
+  # Validate before launch; keep the real URL and prefix off the command line.
   invisible(vm_ux_smoke_url(base, prefix))
   profile <- Sys.getenv("MERGEN_BROWSER_UX_PROFILE_DIR", "")
   if (!nzchar(profile) || !dir.exists(profile)) {
@@ -123,7 +123,7 @@ vm_ux_main <- function(args = commandArgs(trailingOnly = TRUE)) {
   source("tests/scripts/helpers_browser_ux_profile.R", local = TRUE, encoding = "UTF-8")
   artifact_root <- Sys.getenv("MERGEN_EVIDENCE_ARTIFACT_DIR", "artifacts/ai-validation")
   profile <- ux_smoke_profile_path(profile, c(".", artifact_root))
-  # Hazir Edge profilini varsayilan Chrome ile acmaya calisma.
+  # Use Edge for the prepared Edge profile.
   if (.Platform$OS.type == "windows" && !nzchar(Sys.getenv("MERGEN_BROWSER_BIN", ""))) {
     edge <- file.path(c(Sys.getenv("PROGRAMFILES(X86)"), Sys.getenv("PROGRAMFILES"),
                         Sys.getenv("LOCALAPPDATA")), "Microsoft", "Edge", "Application", "msedge.exe")
@@ -135,7 +135,7 @@ vm_ux_main <- function(args = commandArgs(trailingOnly = TRUE)) {
              MERGEN_BROWSER_UX_BASE_URL = base)
   rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
   artifact_dir <- file.path(artifact_root, "browser-ux-smoke")
-  # Ortam zaten yuklendi; gecici onek/opt-in .Renviron ile ezilmez, .Rprofile acik kalir.
+  # Keep .Rprofile active without reloading .Renviron over temporary opt-ins.
   result <- processx::run(rscript, c("--no-environ", "tests/scripts/ai_browser_ux_smoke.R",
                                     "--require-browser", "--port", "8009", "--artifact-dir", artifact_dir),
                           echo = FALSE, error_on_status = FALSE, timeout = 420)
@@ -146,7 +146,7 @@ vm_ux_main <- function(args = commandArgs(trailingOnly = TRUE)) {
   if (!identical(prefix, vm_ux_read_prefix(runtime_dir))) {
     stop("VM smoke startup changed; restart --start-app in Window 1.", call. = FALSE)
   }
-  # Cocuk baslangic/tani ciktisi profil veya sir tasiyabilir; yalniz kanit satiri aktarilir.
+  # Forward only the evidence marker; child diagnostics may contain private data.
   cat("OK: rendered #status is UX_SMOKE_DONE:PASS.\n")
   invisible(TRUE)
 }

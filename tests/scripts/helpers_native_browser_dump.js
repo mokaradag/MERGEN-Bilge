@@ -8,6 +8,22 @@ function completeNativeDump(dom) {
   return /<html[\s>]/.test(dom) && /<\/body>\s*<\/html>\s*$/.test(dom);
 }
 
+function windowsOwnedProcesses(rows, seeds) {
+  const byParent = new Map();
+  for (const row of rows) {
+    if (!byParent.has(row.parent)) byParent.set(row.parent, []);
+    byParent.get(row.parent).push(row.pid);
+  }
+  const ids = new Set(seeds);
+  const queue = Array.from(ids);
+  for (let i = 0; i < queue.length; i++) {
+    for (const pid of byParent.get(queue[i]) || []) {
+      if (!ids.has(pid)) { ids.add(pid); queue.push(pid); }
+    }
+  }
+  return rows.filter(row => ids.has(row.pid));
+}
+
 function runNativeBrowserDump(browser, args, { cwd, timeoutMs, trace, cleanupMs = 5000 }) {
   return new Promise((resolve, reject) => {
     const windows = process.platform === 'win32';
@@ -52,17 +68,64 @@ function runNativeBrowserDump(browser, args, { cwd, timeoutMs, trace, cleanupMs 
         } catch (error) {
           treeStop = Promise.resolve(error.code === 'ESRCH' ? { stopped: false } : { error });
         }
-      } else if (!alive) {
-        treeStop = Promise.resolve({ stopped: false });
       } else {
-        // Görüntü adına göre değil, yalnız başlatılan PID'nin ağacına göre durdur.
-        treeStop = new Promise(resolveStop => {
+        // Kimlik anlık görüntüsü PID yeniden kullanımını ayırır; yol/komut okunmaz.
+        const snapshot = () => new Promise((resolveSnapshot, rejectSnapshot) => {
+          const script = "$ErrorActionPreference='Stop'; ConvertTo-Json -Compress -InputObject @(Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CreationDate | ForEach-Object { [pscustomobject]@{pid=[int64]$_.ProcessId;parent=[int64]$_.ParentProcessId;created=$(if ($null -eq $_.CreationDate) {''} else {$_.CreationDate.ToUniversalTime().Ticks.ToString()})} })";
+          const probe = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
+            { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+          treeKiller = probe;
+          let data = '';
+          probe.stdout.on('data', chunk => {
+            if (Buffer.byteLength(data) + chunk.length > 1048576) {
+              probe.kill('SIGKILL');
+              rejectSnapshot(new Error('Native browser process inspection exceeded its limit'));
+            } else data += chunk.toString('utf8');
+          });
+          probe.on('error', () => rejectSnapshot(new Error('Native browser process inspection failed')));
+          probe.on('close', code => {
+            try {
+              if (code !== 0) throw new Error();
+              const rows = JSON.parse(data);
+              if (!Array.isArray(rows) || rows.length > 8192 || !rows.every(row => row &&
+                  Number.isSafeInteger(row.pid) && row.pid >= 0 && Number.isSafeInteger(row.parent) && row.parent >= 0 &&
+                  typeof row.created === 'string' && (row.created === '' || /^[0-9]+$/.test(row.created)))) throw new Error();
+              if (new Set(rows.map(row => row.pid)).size !== rows.length) throw new Error();
+              resolveSnapshot(rows);
+            } catch (_) { rejectSnapshot(new Error('Native browser process inspection failed')); }
+          });
+        });
+        const killTree = () => new Promise(resolveStop => {
           treeKiller = spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'],
             { windowsHide: true, stdio: 'ignore' });
           treeKiller.on('error', error => resolveStop({ error }));
           treeKiller.on('close', code => resolveStop({ stopped: code === 0,
             killFailed: code !== 0, killIssued: true }));
         });
+        treeStop = (async () => {
+          try {
+            const before = windowsOwnedProcesses(await snapshot(), [child.pid]);
+            if (settled) return {};
+            if (!before.every(row => row.created)) throw new Error('Native browser process ownership could not be verified');
+            const stillAlive = child.exitCode === null && child.signalCode === null;
+            if (stillAlive && !before.some(row => row.pid === child.pid)) {
+              throw new Error('Native browser process ownership could not be verified');
+            }
+            if (!stillAlive && before.length === 0) return { stopped: false, verified: true };
+            const result = stillAlive ? await killTree() : { stopped: false };
+            if (result.error || result.stopped) return result;
+            // Kısmi taskkill hatası yalnız bütün izlenen süreçler kapandıysa kabul edilir.
+            const known = new Map(before.map(row => [row.pid, row.created]));
+            const after = windowsOwnedProcesses(await snapshot(), [child.pid, ...known.keys()]);
+            if (after.some(row => !known.has(row.pid) || known.get(row.pid) === row.created || !row.created)) {
+              return { error: new Error('Native browser ' + trace.label + ' tree cleanup failed') };
+            }
+            return { ...result, verified: true };
+          } catch (error) {
+            if (!settled && child.exitCode === null && child.signalCode === null) await killTree();
+            return { error };
+          }
+        })().catch(error => ({ error }));
       }
       return treeStop;
     };
@@ -103,9 +166,10 @@ function runNativeBrowserDump(browser, args, { cwd, timeoutMs, trace, cleanupMs 
       const cleanup = treeStop ? await treeStop : {};
       if (trace.timedOut) return finish(new Error('Native browser ' + trace.label + ' timed out after ' + timeoutMs + 'ms'));
       if (cleanup.error) return finish(cleanup.error);
-      // Kapanmış alt süreçler taskkill sonucunu bozsa da /F kökü 1 ile kapatır.
-      const killedRoot = windows && trace.dumpComplete && cleanup.killIssued && code === 1 && !signal;
-      if (cleanup.killFailed && code !== 0 && !killedRoot) return finish(new Error('Native browser ' + trace.label + ' tree cleanup failed'));
+      // Kök çıkışı tek başına alt süreçlerin kapandığını kanıtlamaz.
+      const killedRoot = windows && trace.dumpComplete && cleanup.killIssued &&
+        (cleanup.stopped || cleanup.verified) && code === 1 && !signal;
+      if (cleanup.killFailed && (!cleanup.verified || (code !== 0 && !killedRoot))) return finish(new Error('Native browser ' + trace.label + ' tree cleanup failed'));
       const ownedStop = killedRoot || (stoppedAfterDump && (windows ? code === 1 && !signal : code === null && signal === 'SIGKILL'));
       trace.stoppedAfterDump = !!ownedStop;
       if (code !== 0 && !ownedStop) return finish(new Error('Native browser ' + trace.label + ' failed: ' + (signal || code)));

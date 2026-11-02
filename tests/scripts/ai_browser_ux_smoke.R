@@ -516,7 +516,7 @@ run_browser_dump <- function(headless_arg) {
   stdout <- result$stdout %||% ""
   stderr <- ux_smoke_redact_profile(result$stderr %||% "", profile_dir)
 
-  # Ham DOM SSO formu/oturum verisi tasiyabilir; yalniz sonuc ozeti saklanir.
+  # Raw DOM may contain SSO/session data; persist only the result summary.
   status <- ux_smoke_rendered_status(stdout)
   evidence_status <- if (identical(status, "UX_SMOKE_DONE:PASS")) status else "UX_SMOKE_NOT_PASSED"
   writeLines(paste0('<div id="status">', evidence_status, "</div>"), con = dom_file, useBytes = TRUE)

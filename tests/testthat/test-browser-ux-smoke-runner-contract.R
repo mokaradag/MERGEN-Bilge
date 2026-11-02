@@ -64,7 +64,7 @@
 }
 
 testthat::test_that("Windows browser scripts keep ASCII source and parse under local encodings", {
-  for (script in c("ai_browser_ux_smoke.R", "diagnose_browser_ux_fixture.R")) {
+  for (script in c("ai_browser_ux_smoke.R", "diagnose_browser_ux_fixture.R", "run_vm_browser_ux_smoke.R")) {
     path <- file.path(.browser_runner_repo_root(), "tests", "scripts", script)
     raw <- readBin(path, what = "raw", n = file.info(path)$size)
     testthat::expect_true(all(as.integer(raw) <= 127L), info = script)

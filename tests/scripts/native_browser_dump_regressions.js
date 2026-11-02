@@ -14,7 +14,9 @@ const run = (code, trace, timeoutMs = 10000) => runNativeBrowserDump(process.exe
   ['-e', code], { cwd: os.tmpdir(), timeoutMs, trace });
 
 async function windowsCleanupCase({ killCode = 1, rootCode = 1, signal = null,
-  spawnError = false, hang = false, exited = false, complete = true } = {}) {
+  spawnError = false, hang = false, exited = false, complete = true,
+  survivor = false, inspectionError = false, malformed = false, overflow = false,
+  reused = false, spawnedChild = false, unknownIdentity = false } = {}) {
   const child = Object.assign(new EventEmitter(), { pid: 123, exitCode: null, signalCode: null,
     stdout: new PassThrough(), stderr: new PassThrough(), kill() {}, unref() {} });
   const closeRoot = () => {
@@ -24,7 +26,30 @@ async function windowsCleanupCase({ killCode = 1, rootCode = 1, signal = null,
     child.emit('close', rootCode, signal);
   };
   let kills = 0;
+  let inspections = 0;
+  const initial = [
+    { pid: 0, parent: 0, created: '' },
+    { pid: 123, parent: 10, created: '100' },
+    { pid: 456, parent: 123, created: unknownIdentity ? '' : '200' },
+    { pid: 789, parent: 456, created: '300' }
+  ];
   const spawn = (command, args) => {
+    if (command === 'powershell.exe') {
+      inspections++;
+      assert.ok(Array.from(args).includes('-NoProfile'));
+      assert.ok(!args.at(-1).includes('CommandLine'), 'süreç sorgusu özel komut satırlarını okumamalı');
+      const probe = Object.assign(new EventEmitter(), { stdout: new PassThrough(), kill() {} });
+      const phase = inspections;
+      setImmediate(() => {
+        const remaining = survivor ? [initial[survivor === 'grandchild' ? 3 : 2]] : reused ? [{ ...initial[2], created: '999' }] :
+          spawnedChild ? [{ pid: 999, parent: 456, created: '400' }] : [];
+        const before = exited ? (survivor ? initial.slice(2) : []) : initial;
+        const rows = phase === 1 ? before : remaining;
+        probe.stdout.write(overflow ? 'x'.repeat(1048577) : malformed ? 'invalid' : JSON.stringify(rows));
+        probe.emit('close', inspectionError === true || (inspectionError === 'after' && phase > 1) ? 1 : 0);
+      });
+      return probe;
+    }
     if (command === 'taskkill.exe') {
       kills++;
       assert.deepEqual(Array.from(args), ['/PID', '123', '/T', '/F']);
@@ -96,6 +121,21 @@ async function profileCleanupCase(failure, diagnose = false) {
     assert.equal(race.kills(), 1);
     assert.equal(race.trace.stoppedAfterDump, true);
   }
+  // Kök 0 veya 1 ile kapansa da hayatta kalan alt süreç PASS olamaz.
+  for (const rootCode of [0, 1]) {
+    await assert.rejects((await windowsCleanupCase({ rootCode, survivor: true })).result, /tree cleanup failed/);
+  }
+  for (const rootCode of [0, 1]) {
+    await assert.rejects((await windowsCleanupCase({ exited: true, rootCode, survivor: true })).result, /tree cleanup failed/);
+  }
+  await assert.rejects((await windowsCleanupCase({ survivor: 'grandchild' })).result, /tree cleanup failed/);
+  await assert.rejects((await windowsCleanupCase({ spawnedChild: true })).result, /tree cleanup failed/);
+  for (const options of [{ inspectionError: true }, { inspectionError: 'after' }, { malformed: true }, { unknownIdentity: true }, { overflow: true }]) {
+    await assert.rejects((await windowsCleanupCase(options)).result, /process (inspection|ownership)/);
+  }
+  const reusedPid = await windowsCleanupCase({ reused: true });
+  await reusedPid.result;
+  assert.equal(reusedPid.trace.stoppedAfterDump, true, 'yeniden kullanılan PID önceki sürecin yaşadığı anlamına gelmez');
   for (const [options, error] of [
     [{ spawnError: true }, /taskkill spawn failed/],
     [{ rootCode: 7 }, /tree cleanup failed/],
