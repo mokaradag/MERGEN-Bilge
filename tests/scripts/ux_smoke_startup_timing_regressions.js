@@ -160,6 +160,7 @@ async function nativeTiming(browser, diagnose = false) {
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ux-timing-'));
+  let primaryError = null;
   try {
     const cases = diagnose ? ['node-blank', 'missing-welcome', 'delayed-welcome'] :
       ['missing-welcome', 'delayed-welcome'];
@@ -203,6 +204,8 @@ async function nativeTiming(browser, diagnose = false) {
       for (const socket of sockets) socket.destroy();
     }
     console.log('native browser startup timing regressions passed');
+  } catch (error) {
+    primaryError = error;
   } finally {
     for (const timer of timers) clearTimeout(timer);
     for (const socket of sockets) socket.destroy();
@@ -211,11 +214,14 @@ async function nativeTiming(browser, diagnose = false) {
     try {
       fs.rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     } catch (error) {
-      if (!diagnose) throw error;
-      console.log('BROWSER_PROBE_PROFILE_CLEANUP_FAILED');
-      process.exitCode = 1;
+      if (!diagnose && !primaryError) primaryError = error;
+      else {
+        console.log('BROWSER_PROBE_PROFILE_CLEANUP_FAILED');
+        process.exitCode = 1;
+      }
     }
   }
+  if (primaryError) throw primaryError;
 }
 
 (async () => {

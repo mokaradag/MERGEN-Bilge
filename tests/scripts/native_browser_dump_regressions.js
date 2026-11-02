@@ -2,6 +2,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const vm = require('node:vm');
+const { EventEmitter } = require('node:events');
+const { PassThrough } = require('node:stream');
 const { nativeDumpStatus, completeNativeDump, runNativeBrowserDump } = require('./helpers_native_browser_dump');
 
 const page = status => '<html><body><div id="status">' + status + '</div></body></html>\n';
@@ -10,7 +13,106 @@ const traceFor = label => ({ label, stdoutBytes: 0, stderrBytes: 0,
 const run = (code, trace, timeoutMs = 10000) => runNativeBrowserDump(process.execPath,
   ['-e', code], { cwd: os.tmpdir(), timeoutMs, trace });
 
+async function windowsCleanupCase({ killCode = 1, rootCode = 1, signal = null,
+  spawnError = false, hang = false, exited = false, complete = true } = {}) {
+  const child = Object.assign(new EventEmitter(), { pid: 123, exitCode: null, signalCode: null,
+    stdout: new PassThrough(), stderr: new PassThrough(), kill() {}, unref() {} });
+  const closeRoot = () => {
+    child.exitCode = rootCode;
+    child.signalCode = signal;
+    child.emit('exit', rootCode, signal);
+    child.emit('close', rootCode, signal);
+  };
+  let kills = 0;
+  const spawn = (command, args) => {
+    if (command === 'taskkill.exe') {
+      kills++;
+      assert.deepEqual(Array.from(args), ['/PID', '123', '/T', '/F']);
+      const killer = Object.assign(new EventEmitter(), { kill() {} });
+      setImmediate(() => {
+        if (spawnError) killer.emit('error', new Error('taskkill spawn failed'));
+        killer.emit('close', killCode);
+        if (!hang) closeRoot();
+      });
+      return killer;
+    }
+    setImmediate(() => {
+      if (exited) child.exitCode = rootCode;
+      child.stdout.write(complete ? page('UX_SMOKE_DONE:PASS') : '<html><body>partial');
+      if (exited) closeRoot();
+    });
+    return child;
+  };
+  const sandbox = { module: { exports: {} }, process: { platform: 'win32' }, Buffer,
+    setTimeout, clearTimeout, require: () => ({ spawn }) };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'helpers_native_browser_dump.js'), 'utf8'), sandbox);
+  const trace = traceFor('windows-race');
+  const result = sandbox.module.exports.runNativeBrowserDump('edge', [],
+    { cwd: os.tmpdir(), timeoutMs: 100, cleanupMs: 100, trace });
+  return { result, trace, kills: () => kills };
+}
+
+async function profileCleanupCase(failure, diagnose = false) {
+  const primary = new Error('browser failure');
+  const cleanup = new Error('profile removal failed');
+  const logs = [];
+  const server = Object.assign(new EventEmitter(), { listen(port, host, done) { done(); },
+    address: () => ({ port: 1 }), closeAllConnections() {}, close(done) { done(); } });
+  const mockProcess = { platform: 'win32', exitCode: 0 };
+  const source = fs.readFileSync(path.join(__dirname, 'ux_smoke_startup_timing_regressions.js'), 'utf8');
+  const timing = vm.runInNewContext(source.slice(0, source.lastIndexOf('\n(async () => {')) + '\nnativeTiming;', {
+    __dirname, Buffer, process: mockProcess, setTimeout: setImmediate, clearTimeout: clearImmediate,
+    console: { log: message => logs.push(message) },
+    require(id) {
+      if (id === 'node:http') return { createServer: () => server };
+      if (id === 'node:fs') return { ...fs, mkdtempSync: () => 'mock-profile', mkdirSync() {},
+        rmSync() { throw cleanup; } };
+      if (id === './helpers_native_browser_dump') return { nativeDumpStatus,
+        async runNativeBrowserDump(browser, args, { trace }) {
+          if (failure === 'browser') throw primary;
+          if (failure === 'assertion') return page('unexpected');
+          if (trace.label === 'delayed-welcome') {
+            const socket = Object.assign(new EventEmitter(), { write() {}, end() {}, destroy() {} });
+            server.emit('upgrade', { headers: { 'sec-websocket-key': 'fixture' } }, socket);
+            await new Promise(setImmediate);
+          }
+          return page(trace.label === 'missing-welcome' ? 'UX_SMOKE_DONE:FAIL 1' : 'UX_SMOKE_DONE:PASS');
+        } };
+      return require(id);
+    }
+  });
+  if (failure === 'browser') await assert.rejects(timing('edge', diagnose), error => error === primary);
+  else if (failure === 'assertion') await assert.rejects(timing('edge', diagnose), /unexpected/);
+  else if (diagnose) await timing('edge', diagnose);
+  else await assert.rejects(timing('edge'), error => error === cleanup);
+  assert.equal(logs.includes('BROWSER_PROBE_PROFILE_CLEANUP_FAILED'), !!failure || diagnose);
+}
+
 (async () => {
+  // Windows yarışı Linux'ta da gerçek helper olaylarıyla doğrulanır.
+  for (const killCode of [0, 1, 128]) {
+    const race = await windowsCleanupCase({ killCode });
+    assert.equal(nativeDumpStatus(await race.result), 'UX_SMOKE_DONE:PASS');
+    assert.equal(race.kills(), 1);
+    assert.equal(race.trace.stoppedAfterDump, true);
+  }
+  for (const [options, error] of [
+    [{ spawnError: true }, /taskkill spawn failed/],
+    [{ rootCode: 7 }, /tree cleanup failed/],
+    [{ killCode: 0, rootCode: 7 }, /failed: 7/],
+    [{ rootCode: null, signal: 'SIGKILL' }, /tree cleanup failed/],
+    [{ hang: true }, /cleanup timed out/],
+    [{ exited: true }, /failed: 1/],
+    [{ complete: false }, /timed out/]
+  ]) await assert.rejects((await windowsCleanupCase(options)).result, error);
+  const natural = await windowsCleanupCase({ exited: true, rootCode: 0 });
+  await natural.result;
+  assert.equal(natural.kills(), 0);
+  assert.equal(natural.trace.stoppedAfterDump, false);
+  for (const failure of ['browser', 'assertion', null]) await profileCleanupCase(failure);
+  await profileCleanupCase('browser', true);
+  await profileCleanupCase(null, true);
+
   // VM'deki durum: tam sonuç çıktıktan sonra tarayıcı süreci açık kalır.
   for (const status of ['UX_SMOKE_DONE:FAIL 1', 'UX_SMOKE_DONE:PASS']) {
     const trace = traceFor(status);

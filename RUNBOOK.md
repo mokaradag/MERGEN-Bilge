@@ -188,11 +188,11 @@ MERGEN_REQUIRE_BROWSER_UX_SMOKE=true bash tools/ai_validate.sh full --boot-smoke
 
 ### 7.6 VM evidence gate (güncel release kanıtı)
 
-17 Ekim 2026 tarihli son VM evidence gate koşumu başarılıdır: `Toplam: 13 passed, 0 failed, 0 skipped`. Son kanıt `artifacts/vm-evidence/20261017-061049/evidence.json` altında beklenir; genel düzen `artifacts/vm-evidence/<timestamp>/evidence.json` olarak kalır. Ayrıntılı son koşum kaydı için [`docs/vm-evidence-status.md`](docs/vm-evidence-status.md) izlenir.
+31 Ekim 2026 tarihli son VM evidence gate koşumu başarılıdır: `Toplam: 13 passed, 0 failed, 0 skipped`. Son kanıt `artifacts/vm-evidence/20261031-121259/evidence.json` altında kaydedilmiştir; genel düzen `artifacts/vm-evidence/<timestamp>/evidence.json` olarak kalır. Ayrıntılı son koşum kaydı için [`docs/vm-evidence-status.md`](docs/vm-evidence-status.md) izlenir.
 
 Windows VM browser UX smoke güncel akışı için [VM browser UX smoke](docs/vm-browser-ux-smoke.md) belgesini izleyin. Normal uygulama `0.0.0.0:8009` topolojisinde kalır. `run_vm_browser_ux_smoke.R --start-app` geçici opt-in ve rastgele test yolunu üretir; ikinci pencerede aynı betik argümansız yalnız browser smoke çalıştırır. `MERGEN_BROWSER_UX_BASE_URL` onaylı SSO URL'si olarak yalnız çalışma anında `Read-Host` ile alınır. Aynı ortamda tam gate mevcut `browser_ux_smoke` adımı üzerinden VM koşucusunu çağırır. Önceki tarihli kanıt yeni değişikliklerin Windows/SSO doğrulaması değildir.
 
-Geçerli release kanıtı sayılması için özet satırında `Toplam: 13 passed, 0 failed, 0 skipped` görülmeli ve hiçbir adım `FAILED` veya `SKIPPED` olmamalıdır. 17 Ekim 2026 koşumunda `full_testthat`, `maintainability_report`, `frontend_ratchet`, `seam_doctor`, `source_manifest_contracts`, `ui_asset_manifest_contracts`, `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight` ve diğer gate adımlarının tümü `PASSED` olmuştur.
+Geçerli release kanıtı sayılması için özet satırında `Toplam: 13 passed, 0 failed, 0 skipped` görülmeli ve hiçbir adım `FAILED` veya `SKIPPED` olmamalıdır. 31 Ekim 2026 koşumunda `full_testthat`, `maintainability_report`, `frontend_ratchet`, `seam_doctor`, `source_manifest_contracts`, `ui_asset_manifest_contracts`, `browser_ux_smoke`, `vm_preflight_real`, `db_encoding_preflight` ve diğer gate adımlarının tümü `PASSED` olmuştur.
 
 ### 7.7 Operasyonel soak / yük kapısı (dayanıklılık kanıtı)
 
@@ -913,7 +913,7 @@ operasyonu için normal tam koşum repo kökünden doğrudan Rscript ile çalı�
 
 #### Milestone: tam Windows VM evidence gate geçti
 
-2026-06-12 tarihinde Windows VM üzerinde tam evidence gate milestone'u kaydedildi; sonraki başarılı yeniden doğrulamalar 2026-06-15, 2026-07-21, 2026-07-26 ve 2026-07-28 tarihlerinde, en son başarılı yeniden doğrulama ise 2026-10-17 tarihinde alındı:
+2026-06-12 tarihinde Windows VM üzerinde tam evidence gate milestone'u kaydedildi; sonraki başarılı yeniden doğrulamalar 2026-06-15, 2026-07-21, 2026-07-26, 2026-07-28 ve 2026-10-17 tarihlerinde, en son başarılı yeniden doğrulama ise 2026-10-31 tarihinde uygulamayı çalıştıran Windows VM üzerinde alındı:
 
 - `Toplam: 13 passed, 0 failed, 0 skipped`
 - `full_testthat PASSED` — tam izole testthat suite geçti.
@@ -921,14 +921,15 @@ operasyonu için normal tam koşum repo kökünden doğrudan Rscript ile çalı�
 - `vm_preflight_real PASSED` — VM/SSO/DB/LLM üretim-benzeri preflight geçti.
 - `db_encoding_preflight PASSED` — transactional Türkçe DB encoding preflight geçti.
 - Önceki başarılı koşum örneği: `artifacts/vm-evidence/20260615-130127/evidence.json`.
-- En son başarılı koşum: `artifacts/vm-evidence/20261017-061049/evidence.json`.
+- Önceki 17 Ekim koşumu (tarihsel kanıt): `artifacts/vm-evidence/20261017-061049/evidence.json`.
+- En son başarılı koşum: `artifacts/vm-evidence/20261031-121259/evidence.json` (`vm/vm`; normal `0.0.0.0:8009` + onaylı reverse-proxy/SSO + ayrı Edge profili; `browser_ux_smoke PASSED`, 35.0 sn).
 
 Bu, MERGEN Bilge'nin on-prem Windows VM readiness/release doğrulaması için önemli bir
 kilometre taşıdır. Kanıt kapısı yalnızca `evidence.json` içinde `passed` görünen adımlar
 için kanıt sağlar; uzun süreli saha yükü, manuel kırılgan-akış QA'sı veya eski legacy DB
 satırlarının temizliği gibi kapsamları otomatik olarak kanıtlamaz.
 
-17 Ekim kaydı operatörün VM konsol ekran görüntüsüne dayanır; görüntü çalıştırılan Git commit SHA'sını içermez. Ayrıntılar için kanonik durum belgesine bakın.
+31 Ekim kaydı operatörün VM konsol çıktısı ve ekran görüntüsüne dayanır; görüntü çalıştırılan Git commit SHA'sını içermez. Bu tarihli VM kanıtı sonraki commit'lerin veya GitHub Actions koşumlarının geçtiği anlamına gelmez. Ayrıntılar için [kanonik durum belgesine](docs/vm-evidence-status.md) bakın.
 
 #### Standart tam evidence gate komutu
 
