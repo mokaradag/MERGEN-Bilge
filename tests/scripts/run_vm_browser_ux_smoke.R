@@ -38,12 +38,12 @@ vm_ux_runtime_dir <- function() {
 }
 
 vm_ux_revision <- function() {
-  revision <- suppressWarnings(system2("git", c("rev-parse", "--verify", "HEAD"), stdout = TRUE, stderr = FALSE))
-  if (!is.null(attr(revision, "status")) || length(revision) != 1L ||
-      !grepl("^[0-9a-f]{40}$", revision)) {
-    stop("Cannot establish startup Git HEAD; run from the repository checkout.", call. = FALSE)
+  source("tests/scripts/helpers_evidence_checkout.R", local = TRUE, encoding = "UTF-8")
+  checkout <- evidence_checkout_snapshot()
+  if (!evidence_checkout_matches(checkout, checkout)) {
+    stop("Cannot establish clean startup Git HEAD; run from a clean repository checkout.", call. = FALSE)
   }
-  unname(revision)
+  checkout$sha
 }
 
 vm_ux_read_prefix <- function(runtime_dir) {

@@ -16,7 +16,7 @@ const run = (code, trace, timeoutMs = 10000) => runNativeBrowserDump(process.exe
 async function windowsCleanupCase({ killCode = 1, rootCode = 1, signal = null,
   spawnError = false, hang = false, exited = false, complete = true,
   survivor = false, inspectionError = false, malformed = false, overflow = false,
-  reused = false, spawnedChild = false, unknownIdentity = false } = {}) {
+  reused = false, spawnedChild = false, unknownIdentity = false, orphanSurvives = true } = {}) {
   const child = Object.assign(new EventEmitter(), { pid: 123, exitCode: null, signalCode: null,
     stdout: new PassThrough(), stderr: new PassThrough(), kill() {}, unref() {} });
   const closeRoot = () => {
@@ -27,14 +27,23 @@ async function windowsCleanupCase({ killCode = 1, rootCode = 1, signal = null,
   };
   let kills = 0;
   let inspections = 0;
+  let orphanStopped = false;
   const initial = [
     { pid: 0, parent: 0, created: '' },
     { pid: 123, parent: 10, created: '100' },
     { pid: 456, parent: 123, created: unknownIdentity ? '' : '200' },
     { pid: 789, parent: 456, created: '300' }
   ];
-  const spawn = (command, args) => {
+  const spawn = (command, args, options) => {
     if (command === 'powershell.exe') {
+      if (options.stdio === 'ignore') {
+        kills++;
+        assert.ok(args.at(-1).includes('$null=$p.Handle'), 'yetim surec kimligi acik tanitici uzerinden korunmali');
+        assert.ok(args.at(-1).includes('$p.StartTime.ToUniversalTime().Ticks.ToString() -eq $target.created'));
+        const killer = Object.assign(new EventEmitter(), { kill() {} });
+        setImmediate(() => { orphanStopped = !orphanSurvives; killer.emit('close', 0); });
+        return killer;
+      }
       inspections++;
       assert.ok(Array.from(args).includes('-NoProfile'));
       assert.ok(!args.at(-1).includes('CommandLine'), 'süreç sorgusu özel komut satırlarını okumamalı');
@@ -44,7 +53,7 @@ async function windowsCleanupCase({ killCode = 1, rootCode = 1, signal = null,
         const remaining = survivor ? [initial[survivor === 'grandchild' ? 3 : 2]] : reused ? [{ ...initial[2], created: '999' }] :
           spawnedChild ? [{ pid: 999, parent: 456, created: '400' }] : [];
         const before = exited ? (survivor ? initial.slice(2) : []) : initial;
-        const rows = phase === 1 ? before : remaining;
+        const rows = phase === 1 ? before : orphanStopped ? [] : remaining;
         probe.stdout.write(overflow ? 'x'.repeat(1048577) : malformed ? 'invalid' : JSON.stringify(rows));
         probe.emit('close', inspectionError === true || (inspectionError === 'after' && phase > 1) ? 1 : 0);
       });
@@ -122,8 +131,12 @@ async function profileCleanupCase(failure, diagnose = false) {
     assert.equal(race.trace.stoppedAfterDump, true);
   }
   // Kök 0 veya 1 ile kapansa da hayatta kalan alt süreç PASS olamaz.
-  for (const rootCode of [0, 1]) {
-    await assert.rejects((await windowsCleanupCase({ rootCode, survivor: true })).result, /tree cleanup failed/);
+  for (const killCode of [0, 1, 128]) {
+    for (const rootCode of [0, 1]) {
+      for (const survivor of [true, 'grandchild']) {
+        await assert.rejects((await windowsCleanupCase({ killCode, rootCode, survivor })).result, /tree cleanup failed/);
+      }
+    }
   }
   for (const rootCode of [0, 1]) {
     await assert.rejects((await windowsCleanupCase({ exited: true, rootCode, survivor: true })).result, /tree cleanup failed/);
@@ -131,7 +144,19 @@ async function profileCleanupCase(failure, diagnose = false) {
   await assert.rejects((await windowsCleanupCase({ survivor: 'grandchild' })).result, /tree cleanup failed/);
   await assert.rejects((await windowsCleanupCase({ spawnedChild: true })).result, /tree cleanup failed/);
   for (const options of [{ inspectionError: true }, { inspectionError: 'after' }, { malformed: true }, { unknownIdentity: true }, { overflow: true }]) {
-    await assert.rejects((await windowsCleanupCase(options)).result, /process (inspection|ownership)/);
+    const failed = await windowsCleanupCase(options);
+    await assert.rejects(failed.result, /process (inspection|ownership)/);
+    assert.equal(failed.kills(), options.inspectionError === 'after' ? 1 : 0,
+      'kimlik incelemesi basarisizsa PID ile sonlandirma yapilmamali');
+  }
+  const orphaned = await windowsCleanupCase({ exited: true, rootCode: 0, survivor: true });
+  await assert.rejects(orphaned.result, /tree cleanup failed/);
+  assert.equal(orphaned.kills(), 1, 'kok cikinca bilinen yetimlerin temizligi denenmeli');
+  for (const exited of [false, true]) {
+    const cleaned = await windowsCleanupCase({ exited, rootCode: exited ? 0 : 1, killCode: 0,
+      survivor: true, orphanSurvives: false });
+    await cleaned.result;
+    assert.equal(cleaned.kills(), exited ? 1 : 2, 'dogrulanan yetim kapaninca ancak son inceleme PASS olmali');
   }
   const reusedPid = await windowsCleanupCase({ reused: true });
   await reusedPid.result;

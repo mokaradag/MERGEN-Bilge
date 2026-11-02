@@ -71,6 +71,9 @@ old_wd <- getwd()
 setwd(repo_root)
 on.exit(setwd(old_wd), add = TRUE)
 
+source("tests/scripts/helpers_evidence_checkout.R", local = TRUE, encoding = "UTF-8")
+checkout_before <- evidence_checkout_snapshot()
+
 # Repo .Renviron yukleyici: ana Rscript --vanilla ile calissa bile gercek VM
 # ortam degerleri cocuk oturumlara aktarilir. Mevcut shell/PowerShell
 # degiskenleri .Renviron degerlerine gore onceliklidir.
@@ -203,6 +206,9 @@ profile_effective <- if (nzchar(profile_requested)) {
 
 # Acik tam kosum, .Renviron/shell filtresinden bagimsiz 13 PASS ister.
 full_evidence <- "--full" %in% commandArgs(trailingOnly = TRUE)
+if (full_evidence && !evidence_checkout_matches(checkout_before, checkout_before)) {
+  stop("Tam kanit icin baslangic checkout'u temiz ve Git kimligi dogrulanabilir olmalidir.", call. = FALSE)
+}
 steps_filter_raw <- if (full_evidence) "" else trimws(Sys.getenv("MERGEN_EVIDENCE_STEPS", unset = ""))
 steps_filter <- if (nzchar(steps_filter_raw)) {
   trimws(strsplit(steps_filter_raw, ",", fixed = TRUE)[[1]])
@@ -799,7 +805,9 @@ failed_optional <- vapply(step_results, function(r) {
   identical(r$status, "failed") && !isTRUE(r$required)
 }, logical(1))
 
-overall_status <- if (any(failed_required)) "failed" else "passed"
+checkout_after <- evidence_checkout_snapshot()
+checkout_verified <- evidence_checkout_matches(checkout_before, checkout_after)
+overall_status <- if (any(failed_required) || (full_evidence && !checkout_verified)) "failed" else "passed"
 
 evidence <- list(
   gate = "run_vm_evidence_gate",
@@ -812,8 +820,11 @@ evidence <- list(
   secret_policy = "Ham ortam degeri yazilmaz; yalnizca present/nchar/value=<hidden> metadata.",
   git = list(
     branch = git_field(c("rev-parse", "--abbrev-ref", "HEAD")),
-    sha = git_field(c("rev-parse", "--short", "HEAD")),
-    dirty = nzchar(git_field(c("status", "--porcelain")))
+    sha = checkout_before$sha,
+    dirty = checkout_before$dirty | checkout_after$dirty,
+    before = checkout_before,
+    after = checkout_after,
+    commit_attributed = checkout_verified
   ),
   r_version = paste(R.version$major, R.version$minor, sep = "."),
   steps = lapply(names(step_results), function(step_id) {
@@ -839,7 +850,8 @@ evidence <- list(
   proof_boundary_notes = paste(
     "SKIP edilen adimlar kanit DEGILDIR. Cloud profili VM/SSO/DB/SQL Server",
     "Turkce kodlama/gercek tarayici kaniti uretmez; bu kapilar yalnizca",
-    "profile_effective=vm kosumunda ve ilgili adimlar passed oldugunda kanittir."
+    "profile_effective=vm kosumunda ve ilgili adimlar passed oldugunda kanittir.",
+    "Commit atfi ayrica git.commit_attributed=true, git.dirty=false ve ayni temiz baslangic/bitis SHA gerektirir."
   )
 )
 
@@ -873,7 +885,7 @@ if (any(failed_optional)) {
 if (identical(overall_status, "failed")) {
   stop(sprintf(
     "VM kanit kapisi basarisiz: %s. Ayrintilar: %s",
-    paste(names(step_results)[failed_required], collapse = ", "),
+    paste(c(names(step_results)[failed_required], if (full_evidence && !checkout_verified) "checkout_identity"), collapse = ", "),
     evidence_json_path
   ), call. = FALSE)
 }

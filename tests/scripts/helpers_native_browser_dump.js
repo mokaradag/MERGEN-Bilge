@@ -102,30 +102,60 @@ function runNativeBrowserDump(browser, args, { cwd, timeoutMs, trace, cleanupMs 
           treeKiller.on('close', code => resolveStop({ stopped: code === 0,
             killFailed: code !== 0, killIssued: true }));
         });
+        const stopOrphans = rows => new Promise(resolveStop => {
+          // Acik surec taniticisi, kimlik kontrolu ile sonlandirma arasinda PID devrini onler.
+          const identities = rows.map(row => '@{pid=' + row.pid + ';created="' + row.created + '"}').join(',');
+          const script = "$ErrorActionPreference='Stop'; $targets=@(" + identities + "); foreach($target in $targets) { " +
+            "$p=Get-Process -Id $target.pid -ErrorAction SilentlyContinue; if ($null -eq $p) {continue}; try { " +
+            "$null=$p.Handle; if (!$p.HasExited -and $p.StartTime.ToUniversalTime().Ticks.ToString() -eq $target.created) {$p.Kill()} " +
+            "} finally {$p.Dispose()} }";
+          treeKiller = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
+            { windowsHide: true, stdio: 'ignore' });
+          treeKiller.on('error', error => resolveStop({ error }));
+          treeKiller.on('close', code => resolveStop(code === 0 ? { stopped: false } :
+            { error: new Error('Native browser orphan cleanup failed') }));
+        });
         treeStop = (async () => {
           try {
             const before = windowsOwnedProcesses(await snapshot(), [child.pid]);
             if (settled) return {};
             if (!before.every(row => row.created)) throw new Error('Native browser process ownership could not be verified');
             const stillAlive = child.exitCode === null && child.signalCode === null;
+            if (!stillAlive && before.some(row => row.pid === child.pid)) {
+              throw new Error('Native browser process ownership could not be verified');
+            }
             if (stillAlive && !before.some(row => row.pid === child.pid)) {
               throw new Error('Native browser process ownership could not be verified');
             }
             if (!stillAlive && before.length === 0) return { stopped: false, verified: true };
-            const result = stillAlive ? await killTree() : { stopped: false };
-            if (result.error || result.stopped) return result;
-            // Kısmi taskkill hatası yalnız bütün izlenen süreçler kapandıysa kabul edilir.
+            const result = stillAlive ? await killTree() : await stopOrphans(before);
+            if (result.error) return result;
+            // Basarili taskkill dahil her sonlandirmada tum agac yeniden dogrulanir.
             const known = new Map(before.map(row => [row.pid, row.created]));
-            const after = windowsOwnedProcesses(await snapshot(), [child.pid, ...known.keys()]);
+            let after = windowsOwnedProcesses(await snapshot(), [child.pid, ...known.keys()]);
+            const survivors = after.filter(row => known.get(row.pid) === row.created && row.created);
+            if (stillAlive && survivors.length) {
+              const orphans = await stopOrphans(survivors);
+              if (orphans.error) return orphans;
+              after = windowsOwnedProcesses(await snapshot(), [child.pid, ...known.keys()]);
+            }
             if (after.some(row => !known.has(row.pid) || known.get(row.pid) === row.created || !row.created)) {
               return { error: new Error('Native browser ' + trace.label + ' tree cleanup failed') };
             }
             return { ...result, verified: true };
           } catch (error) {
-            if (!settled && child.exitCode === null && child.signalCode === null) await killTree();
             return { error };
           }
         })().catch(error => ({ error }));
+        treeStop.then(result => {
+          if (!result.error || settled) return;
+          // ChildProcess kendi Windows taniticisini kullanir; dogrulanmamis PID agaci oldurulmez.
+          child.kill('SIGKILL');
+          child.stdout.destroy();
+          child.stderr.destroy();
+          child.unref();
+          finish(result.error);
+        });
       }
       return treeStop;
     };

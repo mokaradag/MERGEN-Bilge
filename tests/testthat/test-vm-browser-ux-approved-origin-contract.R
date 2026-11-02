@@ -200,6 +200,7 @@ test_that("VM startup ayni 0.0.0.0:8009 topolojisini ve gercek ortam aktarimini 
 
 test_that("VM wrapper PASS icin rendered sonucu ister ve gecici env degerlerini geri alir", {
   env <- .vm_ux_functions()
+  env$vm_ux_revision <- function() strrep("a", 40L)
   withr::local_dir(resolve_repo_root_for_tests())
   runtime <- withr::local_tempdir()
   prefix <- env$vm_ux_new_prefix()
@@ -244,7 +245,8 @@ test_that("generic browser VM akisinda yerel preflight ve dis URL ayri kullanili
   withr::local_envvar(MERGEN_BROWSER_UX_BASE_URL = base, MERGEN_UX_SMOKE_PATH = prefix,
                      MERGEN_ALLOW_NETWORK_UX_SMOKE = "true", MERGEN_BROWSER_BIN = binary,
                      MERGEN_BROWSER_UX_PROFILE_DIR = profile)
-  env$commandArgs <- function(...) c("--artifact-dir", artifact, "--port", "8009")
+  port <- "8017"
+  env$commandArgs <- function(...) c("--artifact-dir", artifact, "--port", port)
   env$quit <- function(status) stop(structure(list(message = "runner exit", status = status), class = c("runner_exit", "error", "condition")))
   requests <- character()
   browser_url <- NULL
@@ -274,7 +276,8 @@ test_that("generic browser VM akisinda yerel preflight ve dis URL ayri kullanili
   result <- tryCatch(run(), runner_exit = function(e) e)
   expect_identical(result$status, 0L)
   expect_identical(browser_url, paste0(base, "/", prefix, "/ux-smoke.html?autostart=1"))
-  expect_identical(requests, c("http://127.0.0.1:8009", paste0("http://127.0.0.1:8009/", prefix, "/ux-smoke.html")))
+  expect_identical(requests, c("http://127.0.0.1:8017", paste0("http://127.0.0.1:8017/", prefix, "/ux-smoke.html")))
+  port <- "8009"
   logs <- paste(vapply(list.files(artifact, full.names = TRUE), read_source_text_utf8, character(1)), collapse = "\n")
   expect_false(grepl("private.example.invalid|sso.example.invalid|__mergen_ux_[0-9a-f]{48}", logs))
   expect_match(logs, "<MERGEN_BROWSER_UX_BASE_URL>", fixed = TRUE)
@@ -512,6 +515,20 @@ test_that("VM başlangıcı source sırasında değişen revizyonla el sıkışm
   runtime <- file.path(config, "run")
   expect_error(env$vm_ux_start_app(runtime), "Checkout changed during startup", fixed = TRUE)
   expect_false(dir.exists(runtime))
+})
+
+test_that("VM revizyonu kirli veya incelenemeyen checkout icin el sikismasi kabul etmez", {
+  withr::local_dir(resolve_repo_root_for_tests())
+  env <- .vm_ux_functions()
+  dirty <- character()
+  env$system2 <- function(command, args, ...) {
+    if (args[[1]] == "status") dirty else strrep("a", 40L)
+  }
+  expect_identical(env$vm_ux_revision(), strrep("a", 40L))
+  for (value in list(" M tracked.R", "?? untracked.R", structure(character(), status = 128L))) {
+    dirty <- value
+    expect_error(env$vm_ux_revision(), "clean startup Git HEAD", fixed = TRUE)
+  }
 })
 
 

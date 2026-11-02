@@ -12,7 +12,7 @@ Harness `tests/smoke/` altında kalır. Normal başlatmada hiçbir smoke yolu a�
 
 ## Window 1 — geçici smoke uygulaması
 
-Normal 8009 uygulamasını durdurmadan önce aşağıdaki Rscript seçimini ve SSO ön kontrolünü çalıştırın. Repo `.Renviron` dosyasında `SSO_ENABLED=TRUE` bulunmalıdır; eksikse normal SSO yapılandırmasını önce düzeltin. Ön kontrol başarısızken çalışan uygulamayı durdurmayın. Mevcut proxy/SSO yapılandırmasını değiştirmeyin.
+Normal 8009 uygulamasını durdurmadan önce beklenen tam `git rev-parse HEAD` değerini doğrulayın ve `git status --porcelain` çıktısının boş olduğunu kontrol edin; ardından aşağıdaki Rscript seçimini ve SSO ön kontrolünü çalıştırın. Başlangıç, el sıkışması ve tam gate aynı temiz checkout kimliğini gerektirir; gate sonunda SHA ve temizlik yeniden doğrulanır. Repo `.Renviron` dosyasında `SSO_ENABLED=TRUE` bulunmalıdır; eksikse normal SSO yapılandırmasını önce düzeltin. Ön kontrol başarısızken çalışan uygulamayı durdurmayın. Mevcut proxy/SSO yapılandırmasını değiştirmeyin.
 
 ```powershell
 Set-Location "<repo>"

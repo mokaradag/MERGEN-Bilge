@@ -152,7 +152,7 @@ if (!identical(smoke_prefix, "smoke") && !grepl("^__mergen_ux_[0-9a-f]{48}$", sm
 smoke_url <- sprintf("%s/%s/ux-smoke.html?autostart=1", url, smoke_prefix)
 # Local preflight is not a bind requirement; 0.0.0.0:8009 is reachable via localhost.
 preflight_base_url <- if (use_external_app && env_flag_true("MERGEN_ALLOW_NETWORK_UX_SMOKE")) {
-  "http://127.0.0.1:8009"
+  sprintf("http://127.0.0.1:%d", port)
 } else url
 preflight_smoke_url <- sprintf("%s/%s/ux-smoke.html", preflight_base_url, smoke_prefix)
 display_smoke_url <- if (use_external_app) "<MERGEN_BROWSER_UX_BASE_URL>/<UX_SMOKE_PATH>/ux-smoke.html?autostart=1" else smoke_url

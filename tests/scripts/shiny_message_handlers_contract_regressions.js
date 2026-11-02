@@ -94,6 +94,9 @@ async function testPromptIsolation() {
 async function testSavedRestore(mode) {
   const storage = new Map([['mergen_current_chat', JSON.stringify({ v: 2, owner: 'server-owner', messages: [{ type: 'ai', content: 'tanıtım' }] })]]);
   let bubble = { textContent: 'tanıtım' };
+  let rendered = false;
+  let renderDone;
+  const rendering = new Promise(resolve => { renderDone = resolve; });
   const labels = [];
   const win = {
     localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) },
@@ -103,7 +106,11 @@ async function testSavedRestore(mode) {
       if (mode === 'reject' || !payload || payload.owner !== 'server-owner' || !Array.isArray(payload.messages)) {
         storage.delete('mergen_current_chat'); return;
       }
-      if (mode === 'accept') bubble = { textContent: payload.messages[0].content };
+      if (mode === 'accept') setImmediate(() => {
+        bubble = { textContent: payload.messages[0].content };
+        rendered = true;
+        renderDone();
+      });
     } }
   };
   const doc = {
@@ -113,11 +120,15 @@ async function testSavedRestore(mode) {
   const c = vm.createContext({
     shinyEvents: [], Date, JSON, assert: (ok, label) => { assert.ok(ok, label); labels.push(label); },
     wait: async () => {}, fail: label => assert.fail(label),
-    waitFor: async (condition, label) => assert.ok(condition(), label)
+    waitFor: async (condition, label) => {
+      if (!condition() && mode === 'accept') await rendering;
+      assert.ok(condition(), label);
+    }
   });
   vm.runInContext(eventFunction + savedFunction, c);
   if (mode === 'accept') {
     await c.testSavedChatRestore({ win, doc });
+    assert.ok(rendered, 'smoke asenkron sunucu mesaji gorunmeden tamamlanmamali');
     assert.ok(labels.includes('kayıtlı sohbet yüklenince tarihsel TTS autoplay başlamaz'));
     const saved = JSON.parse(storage.get('mergen_current_chat'));
     assert.equal(saved.v, 2);

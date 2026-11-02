@@ -407,6 +407,10 @@ test_that("zorunlu browser basarisizligi veya atlanmasi ust kapiyi dusurur", {
   env$cat <- function(...) invisible(NULL)
   env$evidence_redact_text <- identity
   env$evidence_json_path <- "test-evidence.json"
+  source(file.path(.evg_repo_root, "tests/scripts/helpers_evidence_checkout.R"), local = env)
+  env$checkout_before <- list(sha = strrep("a", 40L), dirty = FALSE, verified = TRUE)
+  final_checkout <- env$checkout_before
+  env$evidence_checkout_snapshot <- function() final_checkout
   result <- list(ok = FALSE, detail = list(ux_smoke_pass_marker = FALSE))
   env$evidence_step_runners <- setNames(lapply(env$evidence_step_specs, function(spec) {
     if (identical(spec$id, "browser_ux_smoke")) function() result else function() list(ok = TRUE)
@@ -417,7 +421,7 @@ test_that("zorunlu browser basarisizligi veya atlanmasi ust kapiyi dusurur", {
     eval(loop[[1]], env)
     for (e in expressions) {
       if (is.call(e) && identical(e[[1]], as.name("<-")) &&
-          as.character(e[[2]]) %in% c("failed_required", "failed_optional", "overall_status")) eval(e, env)
+          as.character(e[[2]]) %in% c("failed_required", "failed_optional", "checkout_after", "checkout_verified", "overall_status")) eval(e, env)
     }
     expect_length(env$step_results, 13L)
     env$overall_status
@@ -448,8 +452,99 @@ test_that("zorunlu browser basarisizligi veya atlanmasi ust kapiyi dusurur", {
   expect_identical(aggregate(), "passed")
   expect_true(all(vapply(env$step_results, function(r) r$required, logical(1))))
   expect_true(all(vapply(env$step_results, function(r) identical(r$status, "passed"), logical(1))))
+  for (bad in list(list(sha = strrep("b", 40L), dirty = FALSE, verified = TRUE),
+                   list(sha = strrep("a", 40L), dirty = TRUE, verified = TRUE),
+                   list(sha = "", dirty = NA, verified = FALSE))) {
+    final_checkout <- bad
+    expect_identical(aggregate(), "failed")
+    expect_error(eval(stop_branch[[1]], env), "checkout_identity", fixed = TRUE)
+  }
+  final_checkout <- env$checkout_before
   result <- list(ok = FALSE, skipped = TRUE)
   expect_identical(aggregate(), "failed")
+})
+
+test_that("commit atfi temiz baslangic ve degismemis temiz bitis ister; Git hatasi kapali kalir", {
+  env <- new.env(parent = globalenv())
+  helper <- file.path(.evg_repo_root, "tests/scripts/helpers_evidence_checkout.R")
+  expect_true(all(as.integer(readBin(helper, "raw", file.info(helper)$size)) <= 127L))
+  source(helper, local = env)
+  repo <- withr::local_tempdir()
+  withr::local_dir(repo)
+  git <- function(args) {
+    out <- suppressWarnings(system2("git", args, stdout = TRUE, stderr = TRUE))
+    expect_true(is.null(attr(out, "status")), info = paste(out, collapse = "\n"))
+  }
+  git(c("init", "--quiet"))
+  writeLines("artifacts/", ".gitignore")
+  writeLines("ilk", "tracked.txt")
+  git(c("add", "."))
+  commit <- function() git(c("-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                             "commit", "--quiet", "-m", "test"))
+  commit()
+  before <- env$evidence_checkout_snapshot()
+  expect_identical(nchar(before$sha), 40L)
+  expect_true(env$evidence_checkout_matches(before, before))
+  dir.create("artifacts"); writeLines("log", "artifacts/ignored.txt")
+  expect_true(env$evidence_checkout_matches(before, env$evidence_checkout_snapshot()))
+  writeLines("degisti", "tracked.txt")
+  dirty <- env$evidence_checkout_snapshot()
+  expect_true(dirty$dirty)
+  expect_false(env$evidence_checkout_matches(before, dirty))
+  expect_false(env$evidence_checkout_matches(dirty, before))
+  git(c("add", "tracked.txt"))
+  expect_true(env$evidence_checkout_snapshot()$dirty)
+  commit()
+  expect_false(env$evidence_checkout_matches(before, env$evidence_checkout_snapshot()))
+  writeLines("ozel", "untracked.txt")
+  expect_true(env$evidence_checkout_snapshot()$dirty)
+  env$system2 <- function(command, args, ...) {
+    if (args[[1]] == "status") structure(character(), status = 128L) else before$sha
+  }
+  unknown <- env$evidence_checkout_snapshot()
+  expect_false(unknown$verified)
+  expect_true(is.na(unknown$dirty))
+  expect_false(env$evidence_checkout_matches(before, unknown))
+  calls <- 0L
+  env$system2 <- function(command, args, ...) {
+    if (args[[1]] == "status") return(character())
+    calls <<- calls + 1L
+    strrep(if (calls == 1L) "a" else "b", 40L)
+  }
+  expect_false(env$evidence_checkout_snapshot()$verified)
+})
+
+test_that("tam gate kirli baslangicta adimlari baslatmaz ve atif metadatasini ayni kimlikten yazar", {
+  expressions <- parse(file = .evg_script_path, encoding = "UTF-8")
+  env <- new.env(parent = globalenv())
+  source(file.path(.evg_repo_root, "tests/scripts/helpers_evidence_checkout.R"), local = env)
+  check <- Filter(function(e) is.call(e) && identical(e[[1]], as.name("if")) &&
+                    identical(e[[2]], quote(full_evidence && !evidence_checkout_matches(checkout_before, checkout_before))),
+                  as.list(expressions))
+  expect_length(check, 1L)
+  env$full_evidence <- TRUE
+  clean <- list(sha = strrep("a", 40L), dirty = FALSE, verified = TRUE)
+  env$checkout_before <- clean
+  expect_no_error(eval(check[[1]], env))
+  for (dirty in c(TRUE, NA)) {
+    env$checkout_before$dirty <- dirty
+    expect_error(eval(check[[1]], env), "baslangic checkout", fixed = TRUE)
+  }
+  env$checkout_before <- clean
+  env$checkout_after <- clean
+  env$checkout_verified <- TRUE
+  env$git_field <- function(...) "test-branch"
+  env$profile_requested <- env$profile_effective <- "vm"
+  env$overall_status <- "passed"
+  env$step_results <- list()
+  artifact <- Filter(function(e) is.call(e) && identical(e[[1]], as.name("<-")) &&
+                       identical(e[[2]], as.name("evidence")), as.list(expressions))
+  expect_length(artifact, 1L)
+  eval(artifact[[1]], env)
+  expect_identical(env$evidence$git$sha, clean$sha)
+  expect_false(env$evidence$git$dirty)
+  expect_true(env$evidence$git$commit_attributed)
+  expect_identical(env$evidence$git$before, env$evidence$git$after)
 })
 
 
