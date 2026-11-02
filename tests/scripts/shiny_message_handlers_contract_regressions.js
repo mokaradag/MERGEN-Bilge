@@ -95,8 +95,6 @@ async function testSavedRestore(mode) {
   const storage = new Map([['mergen_current_chat', JSON.stringify({ v: 2, owner: 'server-owner', messages: [{ type: 'ai', content: 'tanıtım' }] })]]);
   let bubble = { textContent: 'tanıtım' };
   let rendered = false;
-  let renderDone;
-  const rendering = new Promise(resolve => { renderDone = resolve; });
   const labels = [];
   const win = {
     localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) },
@@ -109,7 +107,6 @@ async function testSavedRestore(mode) {
       if (mode === 'accept') setImmediate(() => {
         bubble = { textContent: payload.messages[0].content };
         rendered = true;
-        renderDone();
       });
     } }
   };
@@ -121,7 +118,7 @@ async function testSavedRestore(mode) {
     shinyEvents: [], Date, JSON, assert: (ok, label) => { assert.ok(ok, label); labels.push(label); },
     wait: async () => {}, fail: label => assert.fail(label),
     waitFor: async (condition, label) => {
-      if (!condition() && mode === 'accept') await rendering;
+      if (!condition() && mode === 'accept') await new Promise(setImmediate);
       assert.ok(condition(), label);
     }
   });
