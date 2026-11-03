@@ -421,7 +421,8 @@ test_that("zorunlu browser basarisizligi veya atlanmasi ust kapiyi dusurur", {
     eval(loop[[1]], env)
     for (e in expressions) {
       if (is.call(e) && identical(e[[1]], as.name("<-")) &&
-          as.character(e[[2]]) %in% c("failed_required", "failed_optional", "checkout_after", "checkout_verified", "overall_status")) eval(e, env)
+          as.character(e[[2]]) %in% c("failed_required", "failed_optional", "checkout_after", "checkout_verified",
+                                      "checkout_identity_ok", "overall_status")) eval(e, env)
     }
     expect_length(env$step_results, 13L)
     env$overall_status
@@ -460,6 +461,22 @@ test_that("zorunlu browser basarisizligi veya atlanmasi ust kapiyi dusurur", {
     expect_error(eval(stop_branch[[1]], env), "checkout_identity", fixed = TRUE)
   }
   final_checkout <- env$checkout_before
+  # Kaynak ZIP'i: Git metadatasi olmamasi tek basina tam kosumu dusurmez.
+  zip <- list(sha = "", dirty = NA, verified = FALSE, available = FALSE)
+  env$checkout_before <- final_checkout <- zip
+  expect_identical(aggregate(), "passed")
+  expect_false(env$checkout_verified)
+  expect_no_error(eval(stop_branch[[1]], env))
+  # Kosum sirasinda Git kimligi belirirse eslesmeyen kimlik kapali kalir.
+  final_checkout <- list(sha = strrep("a", 40L), dirty = FALSE, verified = TRUE, available = TRUE)
+  expect_identical(aggregate(), "failed")
+  expect_error(eval(stop_branch[[1]], env), "checkout_identity", fixed = TRUE)
+  # Git metadatasi olmasa da gercek tarayici/adim hatasi PASS'e donusmez.
+  final_checkout <- zip
+  result <- list(ok = FALSE, detail = list(ux_smoke_pass_marker = FALSE))
+  expect_identical(aggregate(), "failed")
+  expect_error(eval(stop_branch[[1]], env), "browser_ux_smoke", fixed = TRUE)
+  env$checkout_before <- final_checkout <- list(sha = strrep("a", 40L), dirty = FALSE, verified = TRUE)
   result <- list(ok = FALSE, skipped = TRUE)
   expect_identical(aggregate(), "failed")
 })
@@ -471,6 +488,13 @@ test_that("commit atfi temiz baslangic ve degismemis temiz bitis ister; Git hata
   source(helper, local = env)
   repo <- withr::local_tempdir()
   withr::local_dir(repo)
+  # Gercek Git davranisi kaynak checkout'unda dogrulanir; ZIP dagitiminda git.exe zorunlu degildir.
+  if (!nzchar(Sys.which("git"))) {
+    if (!file.exists(file.path(.evg_repo_root, ".git"))) {
+      skip("Git metadata'si olmayan dagitim kopyasinda gercek Git atfi CI/source checkout'unda dogrulanir")
+    }
+    fail("git kullanilamiyor; commit atfi sozlesmesi dogrulanamadi")
+  }
   git <- function(args) {
     out <- suppressWarnings(system2("git", args, stdout = TRUE, stderr = TRUE))
     expect_true(is.null(attr(out, "status")), info = paste(out, collapse = "\n"))
@@ -514,22 +538,53 @@ test_that("commit atfi temiz baslangic ve degismemis temiz bitis ister; Git hata
   expect_false(env$evidence_checkout_snapshot()$verified)
 })
 
+test_that("git_deposu_olmayan_kaynak_paketinde_git_cagrilmaz_ve_commit_atfi_yapilmaz", {
+  env <- new.env(parent = globalenv())
+  source(file.path(.evg_repo_root, "tests/scripts/helpers_evidence_checkout.R"), local = env)
+  # Ust dizin bir Git deposu olsa bile ZIP agaci ona atfedilmez.
+  outer <- withr::local_tempdir()
+  dir.create(file.path(outer, ".git"))
+  zip_root <- file.path(outer, "MERGEN-Bilge-main")
+  dir.create(zip_root)
+  withr::local_dir(zip_root)
+  env$system2 <- function(...) stop("Git metadatasi yokken git cagrilmamali")
+  snapshot <- env$evidence_checkout_snapshot()
+  expect_false(snapshot$available)
+  expect_false(snapshot$verified)
+  expect_identical(snapshot$sha, "")
+  expect_true(is.na(snapshot$dirty))
+  expect_true(env$evidence_checkout_unavailable(snapshot))
+  expect_false(env$evidence_checkout_matches(snapshot, snapshot))
+  # .git varsa ama Git incelenemiyorsa bu "ZIP" sayilmaz; atif kapali kalir.
+  dir.create(".git")
+  env$system2 <- function(...) structure(character(), status = 127L)
+  broken <- env$evidence_checkout_snapshot()
+  expect_true(broken$available)
+  expect_false(broken$verified)
+  expect_false(env$evidence_checkout_unavailable(broken))
+})
+
 test_that("tam gate kirli baslangicta adimlari baslatmaz ve atif metadatasini ayni kimlikten yazar", {
   expressions <- parse(file = .evg_script_path, encoding = "UTF-8")
   env <- new.env(parent = globalenv())
   source(file.path(.evg_repo_root, "tests/scripts/helpers_evidence_checkout.R"), local = env)
   check <- Filter(function(e) is.call(e) && identical(e[[1]], as.name("if")) &&
-                    identical(e[[2]], quote(full_evidence && !evidence_checkout_matches(checkout_before, checkout_before))),
+                    identical(e[[2]], quote(full_evidence && !evidence_checkout_unavailable(checkout_before) &&
+                                              !evidence_checkout_matches(checkout_before, checkout_before))),
                   as.list(expressions))
   expect_length(check, 1L)
   env$full_evidence <- TRUE
-  clean <- list(sha = strrep("a", 40L), dirty = FALSE, verified = TRUE)
+  clean <- list(sha = strrep("a", 40L), dirty = FALSE, verified = TRUE, available = TRUE)
   env$checkout_before <- clean
   expect_no_error(eval(check[[1]], env))
+  # Git metadatasi varken kirli/incelenemeyen baslangic atif iddiasini reddeder.
   for (dirty in c(TRUE, NA)) {
     env$checkout_before$dirty <- dirty
     expect_error(eval(check[[1]], env), "baslangic checkout", fixed = TRUE)
   }
+  zip <- list(sha = "", dirty = NA, verified = FALSE, available = FALSE)
+  env$checkout_before <- zip
+  expect_no_error(eval(check[[1]], env))
   env$checkout_before <- clean
   env$checkout_after <- clean
   env$checkout_verified <- TRUE
@@ -544,6 +599,7 @@ test_that("tam gate kirli baslangicta adimlari baslatmaz ve atif metadatasini ay
   expect_identical(env$evidence$git$sha, clean$sha)
   expect_false(env$evidence$git$dirty)
   expect_true(env$evidence$git$commit_attributed)
+  expect_true(env$evidence$git$metadata_available)
   expect_identical(env$evidence$git$before, env$evidence$git$after)
   # Temiz SHA, tek adimlik gelistirici sonucunu tam kanita donusturmez.
   env$full_evidence <- FALSE
@@ -558,6 +614,19 @@ test_that("tam gate kirli baslangicta adimlari baslatmaz ve atif metadatasini ay
   expect_false(env$evidence$git$commit_attributed)
   expect_identical(env$evidence$git$before, clean)
   expect_identical(env$evidence$git$after, clean)
+  # Kaynak ZIP tam kosumu: adim sonucu yazilir, SHA/dal uydurulmaz, atif yoktur.
+  env$full_evidence <- TRUE
+  env$checkout_before <- env$checkout_after <- zip
+  env$checkout_verified <- FALSE
+  env$git_field <- function(...) stop("Git metadatasi yokken git cagrilmamali")
+  eval(artifact[[1]], env)
+  expect_identical(env$evidence$overall_status, "passed")
+  expect_true(env$evidence$full_workflow)
+  expect_false(env$evidence$git$metadata_available)
+  expect_false(env$evidence$git$commit_attributed)
+  expect_identical(env$evidence$git$sha, "")
+  expect_identical(env$evidence$git$branch, "")
+  expect_true(is.na(env$evidence$git$dirty))
 })
 
 

@@ -513,7 +513,8 @@ test_that("normal Rscript startup proje profili ve SSO konfigurasyonunu korur", 
   file.copy(file.path(root, "tests/scripts/run_vm_browser_ux_smoke.R"), file.path(fixture, "tests/scripts"))
   expect_true(file.copy(file.path(root, "tests/scripts/helpers_evidence_checkout.R"), file.path(fixture, "tests/scripts")))
   file.copy(file.path(root, "R/config_sso.R"), file.path(fixture, "R"))
-  writeLines(c("/startup.stdout", "/startup.stderr", "/startup-result.txt"), file.path(fixture, ".gitignore"))
+  writeLines(c("/startup.stdout", "/startup.stderr", "/startup-result.txt", "/startup-revision.txt"),
+             file.path(fixture, ".gitignore"))
   writeLines(c("SSO_ENABLED=TRUE", "SSO_KEYCLOAK_URL=https://sso.example.invalid",
                "MERGEN_ENABLE_UX_SMOKE=false", "MERGEN_ALLOW_NETWORK_UX_SMOKE=false"), file.path(fixture, ".Renviron"))
   writeLines('.libPaths(c("project-library", .libPaths()))', file.path(fixture, ".Rprofile"))
@@ -526,12 +527,11 @@ test_that("normal Rscript startup proje profili ve SSO konfigurasyonunu korur", 
     '            Sys.getenv("MERGEN_ENABLE_UX_SMOKE") == "true",',
     '            Sys.getenv("MERGEN_ALLOW_NETWORK_UX_SMOKE") == "true")',
     '  writeLines("configured SSO startup", "startup-result.txt")',
+    '  # El sikismasindaki atif alanini disaridan gozlemlemek icin kaydet.',
+    '  handshake <- file.path(Sys.getenv("LOCALAPPDATA"), "MERGEN", "BrowserUxSmokeRun", "prefix")',
+    '  writeLines(readLines(handshake)[[2]], "startup-revision.txt")',
     '}'
   ), file.path(fixture, "app.R"))
-  processx::run("git", c("init", "--quiet"), wd = fixture)
-  processx::run("git", c("add", "."), wd = fixture)
-  processx::run("git", c("-c", "user.name=Test", "-c", "user.email=test@example.invalid",
-                        "commit", "--quiet", "-m", "VM startup fixture"), wd = fixture)
   before <- readBin(file.path(fixture, ".Renviron"), "raw", 10000L)
   rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
   runtime <- withr::local_tempdir()
@@ -539,22 +539,37 @@ test_that("normal Rscript startup proje profili ve SSO konfigurasyonunu korur", 
                      R_ENVIRON_USER = file.path(fixture, ".Renviron"),
                      R_PROFILE_USER = file.path(fixture, ".Rprofile"))
   withr::local_dir(fixture)
+  start_app <- function() {
+    unlink(c("startup-result.txt", "startup-revision.txt"))
+    status <- system2(rscript, c("--encoding=UTF-8", "tests/scripts/run_vm_browser_ux_smoke.R", "--start-app"),
+                      stdout = "startup.stdout", stderr = "startup.stderr", timeout = 30)
+    expect_identical(status, 0L, info = paste(readLines("startup.stderr"), collapse = "\n"))
+    expect_identical(readLines("startup-result.txt"), "configured SSO startup")
+    expect_identical(readBin(file.path(fixture, ".Renviron"), "raw", 10000L), before)
+    expect_false(dir.exists(file.path(runtime, "MERGEN/BrowserUxSmokeRun")))
+    readLines("startup-revision.txt")
+  }
+  # GitHub kaynak ZIP'i: .git yokken uygulama normal topoloji ve SSO ile baslar, SHA uydurulmaz.
+  expect_false(file.exists(".git"))
+  expect_identical(start_app(), "unattributed")
+  if (!nzchar(Sys.which("git"))) {
+    if (!file.exists(file.path(root, ".git"))) {
+      skip("Git metadata'si olmayan dagitim kopyasinda Git atfi CI/source checkout'unda dogrulanir")
+    }
+    fail("git kullanilamiyor; dogrulanmis checkout atfi denetlenemedi")
+  }
+  processx::run("git", c("init", "--quiet"), wd = fixture)
+  processx::run("git", c("add", "."), wd = fixture)
+  processx::run("git", c("-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                        "commit", "--quiet", "-m", "VM startup fixture"), wd = fixture)
   expect_identical(processx::run("git", c("status", "--porcelain"))$stdout, "")
-  status <- system2(rscript, c("--encoding=UTF-8", "tests/scripts/run_vm_browser_ux_smoke.R", "--start-app"),
-                    stdout = "startup.stdout", stderr = "startup.stderr", timeout = 30)
-  expect_identical(status, 0L, info = paste(readLines("startup.stderr"), collapse = "\n"))
-  expect_identical(readLines(file.path(fixture, "startup-result.txt")), "configured SSO startup")
-  expect_identical(readBin(file.path(fixture, ".Renviron"), "raw", 10000L), before)
-  expect_false(dir.exists(file.path(runtime, "MERGEN/BrowserUxSmokeRun")))
+  # Dogrulanmis temiz checkout tam SHA'yi el sikismasina baglar.
+  head <- trimws(processx::run("git", c("rev-parse", "HEAD"))$stdout)
+  expect_identical(start_app(), head)
   expect_identical(processx::run("git", c("status", "--porcelain"))$stdout, "")
-  unlink("startup-result.txt")
+  # Kirli checkout uygulamayi engellemez; yalniz commit atfi dusurulur.
   writeLines("kirli girdi", "dirty-checkout.txt")
-  status <- system2(rscript, c("--encoding=UTF-8", "tests/scripts/run_vm_browser_ux_smoke.R", "--start-app"),
-                    stdout = "startup.stdout", stderr = "startup.stderr", timeout = 30)
-  expect_identical(status, 1L)
-  expect_false(file.exists("startup-result.txt"))
-  expect_match(paste(readLines("startup.stderr"), collapse = "\n"), "clean startup Git HEAD", fixed = TRUE)
-  expect_false(dir.exists(file.path(runtime, "MERGEN/BrowserUxSmokeRun")))
+  expect_identical(start_app(), "unattributed")
 })
 
 test_that("gecici UX PASS yeniden baslatilan uretim surecinin kaniti sayilmaz", {
@@ -589,6 +604,17 @@ test_that("VM el sıkışması başlangıç revizyonuna bağlıdır ve bozuk kay
   }
   writeBin(as.raw(c(0L, 10L)), path)
   expect_error(env$vm_ux_read_prefix(runtime), "Invalid VM smoke handshake", fixed = TRUE)
+  # Atifsiz (ZIP) baslangic yalniz yine atifsiz agacla eslesir; SHA iddiasiyla karismaz.
+  revision <- "unattributed"
+  write(paste0(prefix, "\nunattributed\n"))
+  expect_identical(env$vm_ux_read_prefix(runtime), prefix)
+  revision <- strrep("a", 40L)
+  expect_error(env$vm_ux_read_prefix(runtime), "restart --start-app in Window 1", fixed = TRUE)
+  revision <- "unattributed"
+  write(record)
+  expect_error(env$vm_ux_read_prefix(runtime), "restart --start-app in Window 1", fixed = TRUE)
+  write(paste0(prefix, "\nUNATTRIBUTED\n"))
+  expect_error(env$vm_ux_read_prefix(runtime), "Invalid VM smoke handshake", fixed = TRUE)
 })
 
 test_that("VM başlangıcı source sırasında değişen revizyonla el sıkışması yayımlamaz", {
@@ -607,17 +633,26 @@ test_that("VM başlangıcı source sırasında değişen revizyonla el sıkışm
   expect_false(dir.exists(runtime))
 })
 
-test_that("VM revizyonu kirli veya incelenemeyen checkout icin el sikismasi kabul etmez", {
-  withr::local_dir(resolve_repo_root_for_tests())
+test_that("VM revizyonu yalniz dogrulanmis temiz checkout icin SHA atfeder, digerlerinde baslatmayi engellemez", {
+  root <- resolve_repo_root_for_tests()
+  tree <- withr::local_tempdir()
+  dir.create(file.path(tree, "tests/scripts"), recursive = TRUE)
+  file.copy(file.path(root, "tests/scripts/helpers_evidence_checkout.R"), file.path(tree, "tests/scripts"))
   env <- .vm_ux_functions()
+  withr::local_dir(tree)
+  # Kaynak ZIP'i: .git yok, Git cagrilmaz, SHA uydurulmaz.
+  env$system2 <- function(...) stop("Git metadatasi yokken git cagrilmamali")
+  expect_identical(env$vm_ux_revision(), "unattributed")
+  dir.create(".git")
   dirty <- character()
   env$system2 <- function(command, args, ...) {
     if (args[[1]] == "status") dirty else strrep("a", 40L)
   }
   expect_identical(env$vm_ux_revision(), strrep("a", 40L))
+  # Kirli/incelenemeyen checkout calisir ama commit atfi tasimaz.
   for (value in list(" M tracked.R", "?? untracked.R", structure(character(), status = 128L))) {
     dirty <- value
-    expect_error(env$vm_ux_revision(), "clean startup Git HEAD", fixed = TRUE)
+    expect_identical(env$vm_ux_revision(), "unattributed")
   }
 })
 
@@ -634,4 +669,13 @@ test_that("VM belgesi tarihli kanıtı güncel HEAD kanıtından ve adım filtre
   text <- read_source_text_utf8(file.path(root, "RUNBOOK.md"))
   expect_match(text, "yalnız `.Renviron` veya shell içindeki `MERGEN_EVIDENCE_STEPS` adım filtresi yok sayılır", fixed = TRUE)
   expect_match(text, "`.Renviron` yüklenir; gerekli gerçek runtime yapılandırması sağlanmalıdır", fixed = TRUE)
+})
+
+test_that("belgeler kaynak ZIP akisini destekler ve commit atfini ayri tutar", {
+  root <- resolve_repo_root_for_tests()
+  for (file in c("RUNBOOK.md", "docs/vm-browser-ux-smoke.md", "docs/vm-evidence-status.md")) {
+    text <- read_source_text_utf8(file.path(root, file))
+    expect_match(text, "desteklenen VM test girdisidir", fixed = TRUE)
+    expect_match(text, "`git.commit_attributed = false`", fixed = TRUE)
+  }
 })

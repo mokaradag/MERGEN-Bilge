@@ -212,7 +212,9 @@ full_evidence <- {
   }
   "--full" %in% gate_args
 }
-if (full_evidence && !evidence_checkout_matches(checkout_before, checkout_before)) {
+# Git metadatasi varsa tam kosum atif iddiasidir; ZIP agaci atifsiz kosar.
+if (full_evidence && !evidence_checkout_unavailable(checkout_before) &&
+    !evidence_checkout_matches(checkout_before, checkout_before)) {
   stop("Tam kanit icin baslangic checkout'u temiz ve Git kimligi dogrulanabilir olmalidir.", call. = FALSE)
 }
 steps_filter_raw <- if (full_evidence) "" else trimws(Sys.getenv("MERGEN_EVIDENCE_STEPS", unset = ""))
@@ -813,7 +815,10 @@ failed_optional <- vapply(step_results, function(r) {
 
 checkout_after <- evidence_checkout_snapshot()
 checkout_verified <- evidence_checkout_matches(checkout_before, checkout_after)
-overall_status <- if (any(failed_required) || (full_evidence && !checkout_verified)) "failed" else "passed"
+# Iki uc da Git metadatasi tasimiyorsa kimlik atif disidir; karisik/eslesmeyen durum kapali kalir.
+checkout_identity_ok <- checkout_verified ||
+  (evidence_checkout_unavailable(checkout_before) && evidence_checkout_unavailable(checkout_after))
+overall_status <- if (any(failed_required) || (full_evidence && !checkout_identity_ok)) "failed" else "passed"
 
 evidence <- list(
   gate = "run_vm_evidence_gate",
@@ -825,7 +830,8 @@ evidence <- list(
   overall_status = overall_status,
   secret_policy = "Ham ortam degeri yazilmaz; yalnizca present/nchar/value=<hidden> metadata.",
   git = list(
-    branch = git_field(c("rev-parse", "--abbrev-ref", "HEAD")),
+    branch = if (evidence_checkout_unavailable(checkout_before)) "" else git_field(c("rev-parse", "--abbrev-ref", "HEAD")),
+    metadata_available = !evidence_checkout_unavailable(checkout_before),
     sha = checkout_before$sha,
     dirty = checkout_before$dirty | checkout_after$dirty,
     before = checkout_before,
@@ -857,7 +863,8 @@ evidence <- list(
     "SKIP edilen adimlar kanit DEGILDIR. Cloud profili VM/SSO/DB/SQL Server",
     "Turkce kodlama/gercek tarayici kaniti uretmez; bu kapilar yalnizca",
     "profile_effective=vm kosumunda ve ilgili adimlar passed oldugunda kanittir.",
-    "Commit atfi ayrica git.commit_attributed=true, git.dirty=false ve ayni temiz baslangic/bitis SHA gerektirir."
+    "Commit atfi ayrica git.commit_attributed=true, git.dirty=false ve ayni temiz baslangic/bitis SHA gerektirir.",
+    "Git metadatasi olmayan kaynak ZIP kosumu adim kanitidir; commit atfi tasimaz (git.metadata_available=false)."
   )
 )
 
@@ -891,7 +898,7 @@ if (any(failed_optional)) {
 if (identical(overall_status, "failed")) {
   stop(sprintf(
     "VM kanit kapisi basarisiz: %s. Ayrintilar: %s",
-    paste(c(names(step_results)[failed_required], if (full_evidence && !checkout_verified) "checkout_identity"), collapse = ", "),
+    paste(c(names(step_results)[failed_required], if (full_evidence && !checkout_identity_ok) "checkout_identity"), collapse = ", "),
     evidence_json_path
   ), call. = FALSE)
 }

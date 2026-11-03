@@ -37,13 +37,11 @@ vm_ux_runtime_dir <- function() {
   file.path(local_app, "MERGEN", "BrowserUxSmokeRun")
 }
 
+# Git kimligi yalniz atif icindir; ZIP/kirli agac calisir ama SHA iddia etmez.
 vm_ux_revision <- function() {
   source("tests/scripts/helpers_evidence_checkout.R", local = TRUE, encoding = "UTF-8")
   checkout <- evidence_checkout_snapshot()
-  if (!evidence_checkout_matches(checkout, checkout)) {
-    stop("Cannot establish clean startup Git HEAD; run from a clean repository checkout.", call. = FALSE)
-  }
-  checkout$sha
+  if (evidence_checkout_matches(checkout, checkout)) checkout$sha else "unattributed"
 }
 
 vm_ux_read_prefix <- function(runtime_dir) {
@@ -57,7 +55,8 @@ vm_ux_read_prefix <- function(runtime_dir) {
     stop("Invalid VM smoke handshake; restart --start-app.", call. = FALSE)
   }
   value <- strsplit(rawToChar(bytes), "\n", fixed = TRUE)[[1]]
-  if (length(value) != 2L || !vm_ux_prefix_valid(value[[1]]) || !grepl("^[0-9a-f]{40}$", value[[2]])) {
+  if (length(value) != 2L || !vm_ux_prefix_valid(value[[1]]) ||
+      !grepl("^([0-9a-f]{40}|unattributed)$", value[[2]])) {
     stop("Invalid VM smoke handshake; restart --start-app.", call. = FALSE)
   }
   if (!identical(value[[2]], vm_ux_revision())) {
