@@ -361,6 +361,7 @@ skip_or_fail_app_boot <- function(reason, status = NA_integer_) {
   cat("\n--- end log tail ---\n")
 
   if (isTRUE(require_browser)) {
+    cat("UX_SMOKE_FAILURE: app_unreachable\n")
     quit(status = 1)
   }
 
@@ -423,6 +424,7 @@ ux_smoke_check_harness <- function() {
     return(invisible(TRUE))
   }
 
+  cat("UX_SMOKE_FAILURE: harness_unavailable\n")
   stop(paste(
     "FAILED: UX smoke harness is unavailable at", paste0(display_smoke_url, "."),
     "Start/restart the target Shiny app with MERGEN_ENABLE_UX_SMOKE=true after source('app.R').",
@@ -437,6 +439,33 @@ ux_smoke_check_harness <- function() {
 ux_smoke_rendered_status <- function(dom) {
   m <- regmatches(dom, regexec("<div id=\"status\"[^>]*>([^<]*)</div>", dom, perl = TRUE))[[1]]
   if (length(m) >= 2L) trimws(m[[2]]) else ""
+}
+
+# VM sarmalayicisinin aktarabilecegi tek tani satiri: yalniz sabit sinif/alan
+# sozlugu ve sayilar; URL, onek, profil yolu, DOM veya stderr tasimaz.
+ux_smoke_failure_line <- function(result, smoke_status) {
+  stdout <- if (is.null(result$stdout)) "" else result$stdout
+  rendered <- if (identical(smoke_status, "UX_SMOKE_DONE:PASS")) "pass"
+    else if (startsWith(smoke_status, "UX_SMOKE_DONE:FAIL")) "fail"
+    else if (nzchar(smoke_status)) "incomplete"
+    else if (nzchar(trimws(stdout))) "missing" else "empty"
+  failure <- result$failure
+  if (is.null(failure)) {
+    failure <- if (!identical(result$status, 0L)) "browser_exit_nonzero" else switch(rendered,
+      fail = "rendered_status_fail", incomplete = "rendered_status_incomplete", "rendered_status_missing")
+  }
+  status <- suppressWarnings(as.integer(result$status))
+  fields <- c(failure, paste0("rendered=", rendered),
+              paste0("exit=", if (length(status) == 1L && !is.na(status)) status else "na"))
+  stage <- result$stage
+  if (length(stage) == 1L && !is.na(stage)) fields <- c(fields, paste0("adapter=", stage))
+  win32 <- result$win32
+  if (length(win32) == 1L && !is.na(win32)) fields <- c(fields, paste0("win32=", win32))
+  line <- paste0("UX_SMOKE_FAILURE: ", paste(fields, collapse = " "))
+  if (!grepl("^UX_SMOKE_FAILURE: [a-z_]{1,40}( [a-z0-9]{1,12}=-?[a-z0-9_]{1,24})*$", line)) {
+    line <- "UX_SMOKE_FAILURE: unclassified"
+  }
+  line
 }
 
 ux_smoke_check_harness()
@@ -510,10 +539,14 @@ run_browser_dump <- function(headless_arg) {
       timeout = browser_timeout_seconds
     ),
     error = function(e) {
+      owned <- inherits(e, "ux_smoke_owned_browser_error")
       list(
         status = 124L,
         stdout = "",
-        stderr = conditionMessage(e)
+        stderr = conditionMessage(e),
+        failure = if (owned) e$failure else "browser_launch_failed",
+        stage = if (owned) e$stage else NA_character_,
+        win32 = if (owned) e$win32 else NA_character_
       )
     }
   )
@@ -531,7 +564,10 @@ run_browser_dump <- function(headless_arg) {
     status = as.integer(result$status %||% 0L),
     stdout = stdout,
     stderr = stderr,
-    args = browser_args
+    args = browser_args,
+    failure = result$failure,
+    stage = result$stage %||% NA_character_,
+    win32 = result$win32 %||% NA_character_
   )
 }
 
@@ -541,7 +577,8 @@ run_browser_dump <- function(headless_arg) {
 
 result <- run_browser_dump("--headless=new")
 
-if (!identical(result$status, 0L) &&
+# Yalniz tarayicinin kendi hata ciktisi eski headless denemesini tetikler.
+if (is.null(result$failure) && !identical(result$status, 0L) &&
     grepl("headless=new|unknown|invalid|unrecognized", result$stderr, ignore.case = TRUE)) {
   cat("Retrying browser with legacy --headless flag.\n")
   result <- run_browser_dump("--headless")
@@ -563,6 +600,7 @@ if (startsWith(smoke_status, "UX_SMOKE_DONE:FAIL")) {
   cat(sprintf("FAILED: rendered #status did not reach UX_SMOKE_DONE:PASS ('%s').\n", display_status))
 }
 
+cat(ux_smoke_failure_line(result, smoke_status), "\n", sep = "")
 cat(sprintf("Browser status: %d\n", result$status))
 cat(sprintf("DOM artifact: %s\n", dom_file))
 cat(sprintf("Browser stderr artifact: %s\n", stderr_file))

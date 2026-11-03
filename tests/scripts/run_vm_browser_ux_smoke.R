@@ -140,6 +140,10 @@ vm_ux_main <- function(args = commandArgs(trailingOnly = TRUE)) {
                           echo = FALSE, error_on_status = FALSE, timeout = 420)
   lines <- trimws(strsplit(result$stdout, "\n", fixed = TRUE)[[1]])
   if (!identical(result$status, 0L) || !"OK: rendered #status is UX_SMOKE_DONE:PASS." %in% lines) {
+    # Yalniz sabit sozlukten olusan asama satiri aktarilir; ham cocuk ciktisi gizli kalir.
+    failure <- lines[nchar(lines) <= 160L &
+                       grepl("^UX_SMOKE_FAILURE: [a-z_]{1,40}( [a-z0-9]{1,12}=-?[a-z0-9_]{1,24})*$", lines)]
+    cat(if (length(failure)) failure[[length(failure)]] else "UX_SMOKE_FAILURE: unclassified", "\n", sep = "")
     stop("VM browser UX smoke failed; rendered UX_SMOKE_DONE:PASS is required.", call. = FALSE)
   }
   if (!identical(prefix, vm_ux_read_prefix(runtime_dir))) {

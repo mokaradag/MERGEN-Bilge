@@ -40,9 +40,17 @@ if (!(Test-Path -LiteralPath $edge -PathType Leaf)) { $edge = "$env:LOCALAPPDATA
 if (!(Test-Path -LiteralPath $edge -PathType Leaf)) { throw "Microsoft Edge bulunamadi." }
 & $rscript -e "if (file.exists('.Renviron') && !isTRUE(readRenviron('.Renviron'))) stop('Cannot load .Renviron'); if (!tolower(trimws(Sys.getenv('SSO_ENABLED', ''))) %in% c('true','t','1','yes','on')) stop('SSO_ENABLED=TRUE is required before stopping the app'); cat('OK: SSO configuration enabled.\n')"
 if ($LASTEXITCODE -ne 0) { throw "SSO pre-stop check FAILED; keep the normal app running." }
-& $rscript -e "source('tests/scripts/helpers_browser_ux_profile.R', encoding='UTF-8'); ux_smoke_check_edge_policy()"
-if ($LASTEXITCODE -ne 0) { throw "Edge policy pre-stop check FAILED; keep the normal app running." }
+$env:MERGEN_BROWSER_UX_PROFILE_DIR = Join-Path $env:LOCALAPPDATA "MERGEN\BrowserUxSmoke"
+New-Item -ItemType Directory -Force -Path $env:MERGEN_BROWSER_UX_PROFILE_DIR | Out-Null
+& $rscript -e "source('tests/scripts/helpers_browser_ux_profile.R'); invisible(ux_smoke_profile_path(Sys.getenv('MERGEN_BROWSER_UX_PROFILE_DIR'), c('.', 'artifacts/ai-validation', Sys.getenv('MERGEN_EVIDENCE_ARTIFACT_DIR', '')))); ux_smoke_check_edge_policy()"
+$profileCheck = $LASTEXITCODE
+Remove-Item Env:MERGEN_BROWSER_UX_PROFILE_DIR
+if ($profileCheck -ne 0) { throw "Edge profile location/policy pre-stop check FAILED; keep the normal app running." }
+& $rscript -e "source('tests/scripts/helpers_owned_browser.R'); ux_smoke_owned_browser_preflight()"
+if ($LASTEXITCODE -ne 0) { throw "Owned browser adapter pre-stop check FAILED; keep the normal app running." }
 ```
+
+Bu blok normal uygulama çalışırken belirleyici tüm önkoşulları doğrular: SSO yapılandırması, Edge yolu, ayrılmış profil dizininin repo/artifact kökleri dışında olması (dizin önce oluşturulur; konum kontrolü `mustWork = TRUE` kullanır), zorunlu `UserDataDir` ilkesi ve tarayıcı sahiplik adaptörü. Adaptör kontrolü tarayıcı açmadan zararsız bir R alt sürecini aynı PowerShell/özel Job Object yolundan geçirir; PowerShell dil modu, C# derlemesi, job atama/devam ettirme, stdout yakalama veya temizlik doğrulaması bu VM'de engelliyse burada durur. Profil/ilke kontrolü Window 2'de Edge açılmadan hemen önce tekrar yapılır.
 
 Ön kontrol başarılı olduktan sonra normal uygulamayı kendi konsolundan/normal işletim yöntemiyle durdurun. Aynı Window 1'de:
 
@@ -109,7 +117,7 @@ Aynı Window 2'de:
 if ($LASTEXITCODE -ne 0) { throw "Browser UX smoke FAILED" }
 ```
 
-Bu komut yalnız browser UX smoke çalıştırır. Yerel ön kontrol `http://127.0.0.1:8009/<per-run-prefix>/ux-smoke.html` üzerindedir; headless Edge ise onaylı runtime base URL + aynı önek + `/ux-smoke.html?autostart=1` kullanır. Proxy mevcut base altındaki rastgele kaynak yolunu aynı 8009 uygulamasına iletmelidir. HTTP 200, harness kaynağı, SSO yönlendirmesi veya exit 0 kanıt değildir. Başarı yalnız **`OK: rendered #status is UX_SMOKE_DONE:PASS.`** ile bildirilir. Ham DOM/HTTP gövdesi saklanmaz; DOM artifact'ı yalnız doğrulanmış PASS veya sabit başarısızlık özeti içerir. URL/önek, profil yolu ve runtime sırları tanı çıktılarında redakte edilir.
+Bu komut yalnız browser UX smoke çalıştırır. Yerel ön kontrol `http://127.0.0.1:8009/<per-run-prefix>/ux-smoke.html` üzerindedir; headless Edge ise onaylı runtime base URL + aynı önek + `/ux-smoke.html?autostart=1` kullanır. Proxy mevcut base altındaki rastgele kaynak yolunu aynı 8009 uygulamasına iletmelidir. HTTP 200, harness kaynağı, SSO yönlendirmesi veya exit 0 kanıt değildir. Başarı yalnız **`OK: rendered #status is UX_SMOKE_DONE:PASS.`** ile bildirilir. Başarısızlıkta sarmalayıcı ham çocuk çıktısını göstermez; yalnız sabit sözlükten oluşan tek bir `UX_SMOKE_FAILURE: <sınıf> rendered=<durum> exit=<kod> [adapter=<aşama>] [win32=<kod>]` satırı yazar (örneğin `browser_launch_failed`, `browser_cleanup_failed`, `browser_timeout`, `browser_exit_nonzero`, `rendered_status_fail`, `rendered_status_missing`, `harness_unavailable`). Bu satır URL, önek, profil yolu, DOM veya stderr içermez; hangi değişmezin bozulduğunu gösterir. Ham DOM/HTTP gövdesi saklanmaz; DOM artifact'ı yalnız doğrulanmış PASS veya sabit başarısızlık özeti içerir. URL/önek, profil yolu ve runtime sırları tanı çıktılarında redakte edilir.
 
 Smoke beklemeleri gerçek geçen süreyi kullanır; sunucudaki Shiny/WebSocket başlangıcı sanal tarayıcı saatiyle hızlandırılmaz. Varsayılan browser süreç sınırı 165 saniye olarak kalır. Başlangıç önkoşulu sağlanmazsa koşu tek açık hata ile durur; bağımlı navigation/quick-action adımları çalıştırılmaz.
 

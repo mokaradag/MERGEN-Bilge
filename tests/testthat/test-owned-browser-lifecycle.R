@@ -22,6 +22,38 @@ test_that("job verification failure rejects a rendered PASS and cleans the launc
   }
 })
 
+test_that("adaptor hatasi yalniz izinli asama ve Win32 koduyla siniflandirilir", {
+  env <- .owned_browser_env()
+  run_with <- function(status, stderr) {
+    child <- list(poll_io = function(...) NULL, read_output = function() "",
+      read_error = function() stderr, is_alive = function() FALSE,
+      read_all_output = function() "", read_all_error = function() "",
+      write_input = function(...) NULL, get_exit_status = function() status,
+      kill_tree = function() NULL)
+    tryCatch(env$ux_smoke_owned_browser_run("edge", character(), 10,
+      wd = resolve_repo_root_for_tests(), windows = TRUE, spawn = function(...) child),
+      ux_smoke_owned_browser_error = identity)
+  }
+  e <- run_with(125L, "Owned browser launch or cleanup could not be verified.\r\nMERGEN_OWNED_BROWSER_STAGE=assign win32=5\r\n")
+  expect_s3_class(e, "ux_smoke_owned_browser_error")
+  expect_identical(c(e$failure, e$stage, e$win32), c("browser_launch_failed", "assign", "5"))
+  expect_match(conditionMessage(e), "(stage=assign, win32=5)", fixed = TRUE)
+  e <- run_with(125L, "MERGEN_OWNED_BROWSER_STAGE=cleanup\n")
+  expect_identical(c(e$failure, e$stage), c("browser_cleanup_failed", "cleanup"))
+  expect_true(is.na(e$win32))
+  # Kisitli PowerShell dil modu ayri cikis koduyla bildirilir.
+  e <- run_with(126L, "")
+  expect_identical(c(e$failure, e$stage), c("browser_launch_failed", "language_mode"))
+  # Sozluk disi metin tasinmaz.
+  for (stderr in c("MERGEN_OWNED_BROWSER_STAGE=https://private.example.invalid", "D:/gizli-profil/BrowserUxSmoke", "")) {
+    e <- run_with(125L, stderr)
+    expect_identical(e$stage, "unknown")
+    expect_false(grepl("private|gizli", conditionMessage(e)))
+  }
+  e <- run_with(124L, "MERGEN_OWNED_BROWSER_STAGE=wait")
+  expect_identical(e$failure, "browser_timeout")
+})
+
 test_that("inspection errors retain the primary error when emergency cleanup fails", {
   env <- .owned_browser_env()
   child <- list(write_input = function(...) NULL,
@@ -70,6 +102,69 @@ test_that("production runner withholds PASS artifacts until profile cleanup succ
   env$ux_smoke_cleanup_profile <- function(...) invisible(NULL)
   expect_output(expect_identical(env$ux_smoke_run_browser(), 0L), "OK: rendered #status")
   expect_match(readLines(env$dom_file), "UX_SMOKE_DONE:PASS", fixed = TRUE)
+})
+
+test_that("tarayici basarisizligi izinli tek asama satiriyla siniflandirilir, PASS uretmez", {
+  root <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  expressions <- parse(file.path(root, "tests/scripts/ai_browser_ux_smoke.R"), encoding = "UTF-8")
+  for (e in expressions) {
+    if (is.call(e) && identical(e[[1]], as.name("<-")) && is.call(e[[3]]) &&
+        identical(e[[3]][[1]], as.name("function"))) eval(e, env)
+  }
+  source(file.path(root, "tests/scripts/helpers_owned_browser.R"), local = env, encoding = "UTF-8")
+  env$px <- NULL
+  env$dom_file <- withr::local_tempfile()
+  env$stderr_file <- withr::local_tempfile()
+  env$browser_bin <- "browser"
+  env$browser_timeout_seconds <- 30L
+  env$smoke_url <- "https://app.example.invalid/smoke"
+  env$use_external_app <- TRUE
+  env$arg_value <- function(name, default) default
+  env$ux_smoke_browser_profile <- function(...) list(path = "prepared", temporary = FALSE)
+  env$ux_smoke_redact_profile <- env$ux_smoke_redact_external_url <- function(text, ...) text
+  env$ux_smoke_cleanup_profile <- function(...) invisible(NULL)
+  env$tail_log <- function(...) character()
+  calls <- 0L
+  outcome <- NULL
+  env$ux_smoke_owned_browser_run <- function(...) {
+    calls <<- calls + 1L
+    if (is.function(outcome)) outcome() else outcome
+  }
+  page <- function(status) paste0('<html><body><div id="status">', status, '</div></body></html>')
+  classify <- function() {
+    calls <<- 0L
+    out <- capture.output(result <- env$ux_smoke_run_browser())
+    expect_identical(result, 1L)
+    expect_false(any(grepl("^OK: rendered", out)))
+    expect_match(readLines(env$dom_file), "UX_SMOKE_NOT_PASSED", fixed = TRUE)
+    grep("^UX_SMOKE_FAILURE: ", out, value = TRUE)
+  }
+  # Adaptor asamasi korunur; "unknown" iceren hata eski headless denemesini tetiklemez.
+  outcome <- function() stop(env$ux_smoke_owned_browser_error(
+    "Owned browser launch or cleanup failed (stage=unknown).", "browser_launch_failed", "assign", "5"))
+  expect_identical(classify(), "UX_SMOKE_FAILURE: browser_launch_failed rendered=empty exit=124 adapter=assign win32=5")
+  expect_identical(calls, 1L)
+  outcome <- function() stop(env$ux_smoke_owned_browser_error("Owned browser cleanup timed out.", "browser_cleanup_failed", "cleanup"))
+  expect_identical(classify(), "UX_SMOKE_FAILURE: browser_cleanup_failed rendered=empty exit=124 adapter=cleanup")
+  outcome <- function() stop(env$ux_smoke_owned_browser_error("Owned browser timed out.", "browser_timeout"))
+  expect_identical(classify(), "UX_SMOKE_FAILURE: browser_timeout rendered=empty exit=124")
+  # Tam PASS DOM'u olsa bile sifir-disi tarayici cikisi kabul edilmez.
+  outcome <- list(status = 3L, stdout = page("UX_SMOKE_DONE:PASS"), stderr = "")
+  expect_identical(classify(), "UX_SMOKE_FAILURE: browser_exit_nonzero rendered=pass exit=3")
+  outcome <- list(status = 0L, stdout = page("UX_SMOKE_DONE:FAIL quick action"), stderr = "")
+  expect_identical(classify(), "UX_SMOKE_FAILURE: rendered_status_fail rendered=fail exit=0")
+  outcome <- list(status = 0L, stdout = page("Yükleniyor: navigation"), stderr = "")
+  expect_identical(classify(), "UX_SMOKE_FAILURE: rendered_status_incomplete rendered=incomplete exit=0")
+  # SSO/proxy sayfasi gibi harness disi DOM ayri siniflanir.
+  outcome <- list(status = 0L, stdout = "<html><body><form id=\"kc-form-login\"></form></body></html>", stderr = "")
+  expect_identical(classify(), "UX_SMOKE_FAILURE: rendered_status_missing rendered=missing exit=0")
+  # Tarayicinin kendi bayrak hatasi eski headless denemesini korur.
+  outcome <- function() if (calls == 1L) list(status = 1L, stdout = "", stderr = "unknown --headless=new") else
+    list(status = 0L, stdout = page("UX_SMOKE_DONE:PASS"), stderr = "")
+  calls <- 0L
+  expect_output(expect_identical(env$ux_smoke_run_browser(), 0L), "OK: rendered #status")
+  expect_identical(calls, 2L)
 })
 
 test_that("Windows job contains orphan writers and preserves unrelated processes and profiles", {
@@ -122,4 +217,48 @@ test_that("Windows job contains orphan writers and preserves unrelated processes
   expect_identical(readLines(heartbeat), before)
   expect_true(unrelated$is_alive())
   expect_identical(readLines(marker), "retained")
+})
+
+test_that("Windows adaptoru Turkce ve bosluklu calisma dizininde DOM yakalar ve dogrulanmis temizlik yapar", {
+  skip_if(.Platform$OS.type != "windows", "Windows job object davranisi")
+  env <- .owned_browser_env()
+  root <- resolve_repo_root_for_tests()
+  # Gercek VM deposu gibi: ASCII disi karakter ve bosluk iceren calisma dizini.
+  wd <- file.path(withr::local_tempdir(), paste0("04 - Geli", intToUtf8(0x015f), "tirme"), "MERGEN Bilge")
+  dir.create(file.path(wd, "tests/scripts"), recursive = TRUE)
+  for (file in c("run_owned_browser.ps1", "helpers_browser_job.cs")) {
+    expect_true(file.copy(file.path(root, "tests/scripts", file), file.path(wd, "tests/scripts")))
+  }
+  rscript <- file.path(R.home("bin"), "Rscript.exe")
+  # Cocuk surec Unicode cwd icinde baslamissa goreli dosyayi bulur; cikti ASCII kalir.
+  probe <- paste0("cat(paste0('<html><body><div id=\"status\">', ",
+                  "if (file.exists('tests/scripts/helpers_browser_job.cs')) 'CWD_OK' else 'CWD_WRONG', ",
+                  "'</div></body></html>\\n'))")
+  result <- env$ux_smoke_owned_browser_run(rscript, c("--vanilla", "-e", probe), 30, wd = wd)
+  expect_identical(result$status, 0L, info = result$stderr)
+  expect_match(result$stdout, '<div id="status">CWD_OK</div>', fixed = TRUE)
+  withr::local_dir(wd)
+  expect_output(env$ux_smoke_owned_browser_preflight(wd = wd), "OK: owned browser adapter verified.", fixed = TRUE)
+})
+
+test_that("Windows adaptoru kisitli PowerShell dil modunu tarayici acmadan ayri asama olarak bildirir", {
+  skip_if(.Platform$OS.type != "windows", "PowerShell dil modu davranisi")
+  env <- .owned_browser_env()
+  root <- resolve_repo_root_for_tests()
+  launched <- file.path(withr::local_tempdir(), "launched")
+  rscript <- file.path(R.home("bin"), "Rscript.exe")
+  # AppLocker/WDAC'in uyguladigi kisitli modu ayni betigin onunde ayarla.
+  constrained <- function(command, args, ...) {
+    args[[length(args)]] <- paste0("$ExecutionContext.SessionState.LanguageMode = 'ConstrainedLanguage'\n",
+                                   args[[length(args)]])
+    processx::process$new(command, args, ...)
+  }
+  e <- tryCatch(env$ux_smoke_owned_browser_run(rscript,
+    c("--vanilla", "-e", sprintf("writeLines('x', '%s')", chartr("\\", "/", launched))), 30,
+    wd = root, spawn = constrained), ux_smoke_owned_browser_error = identity)
+  expect_s3_class(e, "ux_smoke_owned_browser_error")
+  expect_identical(c(e$failure, e$stage), c("browser_launch_failed", "language_mode"))
+  expect_false(file.exists(launched))
+  expect_error(env$ux_smoke_owned_browser_preflight(wd = root, run = function(...)
+    env$ux_smoke_owned_browser_run(..., spawn = constrained)), "stage=language_mode", fixed = TRUE)
 })

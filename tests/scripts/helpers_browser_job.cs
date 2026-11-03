@@ -54,6 +54,8 @@ public sealed class MergenBrowserJob : IDisposable {
 
     IntPtr job, root;
     public bool Stopped { get; private set; }
+    // Basarisiz adim adi; yalniz sabit ASCII asama adlari, arguman/yol yok.
+    public static string LastStage = "";
 
     static void Check(bool ok) { if (!ok) throw new Win32Exception(Marshal.GetLastWin32Error()); }
     static IntPtr Inherited(int id) {
@@ -78,23 +80,30 @@ public sealed class MergenBrowserJob : IDisposable {
         ProcessInfo pi = new ProcessInfo();
         IntPtr output = IntPtr.Zero, error = IntPtr.Zero;
         try {
+            LastStage = "create_job";
             job = CreateJobObject(IntPtr.Zero, null);
             Check(job != IntPtr.Zero);
+            LastStage = "job_limits";
             var limits = new ExtendedLimits();
             limits.Basic.Flags = 0x2000; // KILL_ON_JOB_CLOSE; breakaway izni verilmez.
             Check(SetInformationJobObject(job, 9, ref limits, Marshal.SizeOf(limits)));
+            LastStage = "std_handles";
             output = Inherited(-11); error = Inherited(-12);
             var si = new Startup();
             si.Size = (uint)Marshal.SizeOf(si);
             si.Flags = 0x101; si.Show = 0;
             si.Output = output; si.Error = error;
+            LastStage = "create_process";
             var command = new StringBuilder(Quote(executable));
             foreach (string arg in args) command.Append(' ').Append(Quote(arg));
             Check(CreateProcess(executable, command, IntPtr.Zero, IntPtr.Zero, true,
                 0x08000004, IntPtr.Zero, cwd, ref si, out pi)); // NO_WINDOW | SUSPENDED
             root = pi.Process;
+            LastStage = "assign";
             Check(AssignProcessToJobObject(job, root));
+            LastStage = "resume";
             Check(ResumeThread(pi.Thread) != 0xffffffff);
+            LastStage = "";
         } catch {
             // Atama basarisizsa henuz baslamamis kok kendi taniticisiyla kapanir.
             if (root != IntPtr.Zero) TerminateProcess(root, 1);

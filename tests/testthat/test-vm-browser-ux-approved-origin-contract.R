@@ -63,26 +63,46 @@ test_that("belgedeki SSO on kontrolu uygulama durdurulmadan yapilir ve dosyayi d
   }
 })
 
-test_that("belgedeki Edge ilkesi uretim durmadan ve login oncesinde denetlenir", {
+test_that("belgedeki profil konumu ve Edge ilkesi uretim durmadan ve login oncesinde denetlenir", {
   root <- resolve_repo_root_for_tests()
   doc <- read_source_text_utf8(file.path(root, "docs/vm-browser-ux-smoke.md"))
   lines <- strsplit(doc, "\n", fixed = TRUE)[[1]]
-  command <- lines[startsWith(lines, '& $rscript -e "') &
-                     grepl("ux_smoke_check_edge_policy()", lines, fixed = TRUE)]
-  expect_length(command, 1L)
-  check <- match(command, lines)
+  checks <- which(startsWith(trimws(lines), '& $rscript -e "') &
+                    grepl("ux_smoke_profile_path", lines, fixed = TRUE))
+  expect_length(checks, 2L)
   stop_app <- which(startsWith(lines, "Ön kontrol başarılı olduktan sonra normal uygulamayı"))
-  login_check <- which(grepl("ux_smoke_profile_path", lines, fixed = TRUE))
-  expect_lt(check, stop_app)
-  expect_lt(stop_app, login_check)
-  expect_match(lines[[check + 1L]], "Edge policy pre-stop check FAILED; keep the normal app running.", fixed = TRUE)
-  expect_match(lines[[login_check]], "ux_smoke_check_edge_policy()", fixed = TRUE)
+  expect_length(stop_app, 1L)
+  # Ayni konum+ilke kontrolu uretim durmadan once ve Edge login'den once kosar.
+  expect_lt(checks[[1]], stop_app)
+  expect_lt(stop_app, checks[[2]])
+  expect_identical(trimws(lines[[checks[[1]]]]), trimws(lines[[checks[[2]]]]))
+  expect_match(lines[[checks[[1]]]], "ux_smoke_check_edge_policy()", fixed = TRUE)
+  # Profil dizini mustWork=TRUE kontrolunden once ayni yerden tanimlanip olusturulur.
+  pre <- lines[seq_len(checks[[1]] - 1L)]
+  define <- which(pre == '$env:MERGEN_BROWSER_UX_PROFILE_DIR = Join-Path $env:LOCALAPPDATA "MERGEN\\BrowserUxSmoke"')
+  create <- which(pre == "New-Item -ItemType Directory -Force -Path $env:MERGEN_BROWSER_UX_PROFILE_DIR | Out-Null")
+  expect_length(define, 1L)
+  expect_identical(create, define + 1L)
+  expect_identical(checks[[1]], create + 1L)
+  expect_true('$env:MERGEN_BROWSER_UX_PROFILE_DIR = Join-Path $env:LOCALAPPDATA "MERGEN\\BrowserUxSmoke"' %in%
+                trimws(lines[checks[[1]]:checks[[2]]]))
+  expect_identical(lines[checks[[1]] + 1:3], c(
+    "$profileCheck = $LASTEXITCODE", "Remove-Item Env:MERGEN_BROWSER_UX_PROFILE_DIR",
+    'if ($profileCheck -ne 0) { throw "Edge profile location/policy pre-stop check FAILED; keep the normal app running." }'))
+  command <- trimws(lines[[checks[[1]]]])
   expr <- substr(command, nchar('& $rscript -e "') + 1L, nchar(command) - 1L)
+  fixture <- withr::local_tempdir()
+  repo <- file.path(fixture, "repo")
+  profile <- file.path(fixture, "BrowserUxSmoke")
+  dir.create(file.path(repo, "artifacts/ai-validation"), recursive = TRUE)
+  dir.create(profile)
+  withr::local_dir(repo)
+  withr::local_envvar(MERGEN_BROWSER_UX_PROFILE_DIR = profile, MERGEN_EVIDENCE_ARTIFACT_DIR = NA)
   env <- new.env(parent = globalenv())
   approved <- TRUE
   checked <- 0L
   env$source <- function(file, ...) {
-    base::source(file.path(root, file), local = env, encoding = "UTF-8")
+    sys.source(file.path(root, file), envir = env)
     env$ux_smoke_check_edge_policy <- function() {
       checked <<- checked + 1L
       if (!approved) stop("Edge policy denied")
@@ -93,6 +113,40 @@ test_that("belgedeki Edge ilkesi uretim durmadan ve login oncesinde denetlenir",
   approved <- FALSE
   expect_error(eval(parse(text = expr), env), "Edge policy denied", fixed = TRUE)
   expect_identical(checked, 2L)
+  # Repo icindeki profil uretim durmadan reddedilir; ilke adimina gecilmez.
+  Sys.setenv(MERGEN_BROWSER_UX_PROFILE_DIR = file.path(repo, "artifacts/ai-validation"))
+  expect_error(eval(parse(text = expr), env), "must be outside the repository", fixed = TRUE)
+  expect_identical(checked, 2L)
+  # Var olmayan profil mustWork=TRUE ile reddedilir; belge dizini once olusturur.
+  Sys.setenv(MERGEN_BROWSER_UX_PROFILE_DIR = file.path(fixture, "olusturulmadi"))
+  expect_error(suppressWarnings(eval(parse(text = expr), env)))
+  expect_identical(checked, 2L)
+})
+
+test_that("belgedeki tarayici sahiplik adaptoru uretim durmadan gercekten dogrulanir", {
+  root <- resolve_repo_root_for_tests()
+  lines <- strsplit(read_source_text_utf8(file.path(root, "docs/vm-browser-ux-smoke.md")), "\n", fixed = TRUE)[[1]]
+  command <- which(startsWith(lines, '& $rscript -e "') &
+                     grepl("ux_smoke_owned_browser_preflight()", lines, fixed = TRUE))
+  expect_length(command, 1L)
+  expect_lt(command, which(startsWith(lines, "Ön kontrol başarılı olduktan sonra normal uygulamayı")))
+  expect_identical(lines[[command + 1L]],
+    'if ($LASTEXITCODE -ne 0) { throw "Owned browser adapter pre-stop check FAILED; keep the normal app running." }')
+  expr <- substr(lines[[command]], nchar('& $rscript -e "') + 1L, nchar(lines[[command]]) - 1L)
+  withr::local_dir(root)
+  env <- new.env(parent = globalenv())
+  env$source <- function(file, ...) sys.source(file.path(root, file), envir = env)
+  # Gercek adaptor yolu (Windows'ta PowerShell + ozel job) tarayicisiz kosar.
+  expect_output(expect_true(eval(parse(text = expr), env)), "OK: owned browser adapter verified.", fixed = TRUE)
+  # Siniflandirilmis adaptor hatasi ve yakalanmayan cikti PASS sayilmaz.
+  expect_error(env$ux_smoke_owned_browser_preflight(run = function(...) stop(env$ux_smoke_owned_browser_error(
+    "Owned browser launch or cleanup failed (stage=assign, win32=5).", "browser_launch_failed", "assign", "5"))),
+    "adapter pre-stop check FAILED: Owned browser launch or cleanup failed (stage=assign, win32=5).", fixed = TRUE)
+  expect_error(env$ux_smoke_owned_browser_preflight(run = function(...) list(status = 0L, stdout = "", stderr = "")),
+               "probe output was not captured", fixed = TRUE)
+  expect_error(env$ux_smoke_owned_browser_preflight(run = function(...) list(
+    status = 3L, stdout = '<html><body><div id="status">OWNED_BROWSER_ADAPTER_OK</div></body></html>', stderr = "")),
+    "probe output was not captured", fixed = TRUE)
 })
 
 test_that("belgedeki Edge secimi kullanici kurulumunu bulur ve onceligi korur", {
@@ -137,7 +191,8 @@ test_that("belgedeki Edge on kontrolu login oncesinde repo ve tum artifact kokle
   root <- resolve_repo_root_for_tests()
   doc <- read_source_text_utf8(file.path(root, "docs/vm-browser-ux-smoke.md"))
   lines <- strsplit(doc, "\n", fixed = TRUE)[[1]]
-  command <- lines[startsWith(trimws(lines), '& $rscript -e "') & grepl("ux_smoke_profile_path", lines, fixed = TRUE)]
+  # Window 2 kopyasi Edge baslatma blogunun icindedir (Window 1 kopyasi ayri test edilir).
+  command <- lines[startsWith(lines, '    & $rscript -e "') & grepl("ux_smoke_profile_path", lines, fixed = TRUE)]
   expect_length(command, 1L)
   check <- match(command, lines)
   launch <- which(startsWith(trimws(lines), '& $edge "--user-data-dir='))
@@ -301,6 +356,27 @@ test_that("VM wrapper PASS icin rendered sonucu ister ve gecici env degerlerini 
   answer <- "OK: rendered #status is UX_SMOKE_DONE:PASS.\n"
   status <- 1L
   expect_error(env$vm_ux_main(character()), "rendered UX_SMOKE_DONE:PASS is required")
+  # Basarisiz asama tek izinli satirla aktarilir; ham cocuk ciktisi gizli kalir.
+  failure <- "UX_SMOKE_FAILURE: browser_launch_failed rendered=empty exit=124 adapter=assign win32=5"
+  answer <- paste(c("Smoke URL: https://app.example.invalid/base/__mergen_ux_x/ux-smoke.html",
+                    "Owned browser launch or cleanup failed (stage=assign, win32=5).", failure,
+                    "--- browser stderr tail ---", "D:/gizli-profil/MERGEN/BrowserUxSmoke"),
+                  collapse = "\n")
+  out <- capture.output(expect_error(env$vm_ux_main(character()), "rendered UX_SMOKE_DONE:PASS is required"))
+  expect_identical(out, failure)
+  # Sozluk disi deger (onek, yol, URL) tasiyan satir aktarilmaz.
+  for (forged in c(paste0("UX_SMOKE_FAILURE: browser_launch_failed adapter=", prefix),
+                   "UX_SMOKE_FAILURE: browser_launch_failed adapter=D:/gizli-profil",
+                   "UX_SMOKE_FAILURE: https://app.example.invalid/base",
+                   "UX_SMOKE_FAILURE: browser_launch_failed adapter=assign extra text")) {
+    answer <- forged
+    out <- capture.output(expect_error(env$vm_ux_main(character()), "rendered UX_SMOKE_DONE:PASS is required"))
+    expect_identical(out, "UX_SMOKE_FAILURE: unclassified")
+  }
+  # Siniflandirma basarisizligi asla PASS'e donusmez.
+  answer <- paste("OK: rendered #status is UX_SMOKE_DONE:PASS.", failure, sep = "\n")
+  status <- 1L
+  expect_output(expect_error(env$vm_ux_main(character()), "rendered UX_SMOKE_DONE:PASS is required"), failure, fixed = TRUE)
 })
 
 test_that("generic browser VM akisinda yerel preflight ve dis URL ayri kullanilir; artifact redakte edilir", {
