@@ -830,7 +830,7 @@ evidence <- list(
     dirty = checkout_before$dirty | checkout_after$dirty,
     before = checkout_before,
     after = checkout_after,
-    commit_attributed = checkout_verified
+    commit_attributed = isTRUE(full_evidence) && isTRUE(checkout_verified)
   ),
   r_version = paste(R.version$major, R.version$minor, sep = "."),
   steps = lapply(names(step_results), function(step_id) {

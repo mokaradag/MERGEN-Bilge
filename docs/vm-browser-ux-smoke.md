@@ -14,7 +14,7 @@ Harness `tests/smoke/` altında kalır. Normal başlatmada hiçbir smoke yolu a�
 
 Tam 13 adımlı gate için checkout'un `HEAD` ağacında commit edilmiş `renv.lock` bulunmalıdır (`git cat-file -e HEAD:renv.lock`). Bu PR'ın GitHub ağacı kilit içermez; mevcut kapılarla kilitsiz PR SHA'sı adına tam PASS üretilemez. Tam koşum, düzeltmeleri ve onaylı VM kilidini içeren temiz üretim checkout'unun gerçek SHA'sını doğrular. Kilit kopyalamak checkout'u kirletir; exclude/ignore ile gizlemeyin. Ayrıntılar: [kaynak SHA ve üretim kilidi sınırı](vm-evidence-status.md#kaynak-sha-ve-üretim-kilidi-sınırı).
 
-Normal 8009 uygulamasını durdurmadan önce beklenen tam `git rev-parse HEAD` değerini doğrulayın ve `git status --porcelain` çıktısının boş olduğunu kontrol edin; ardından aşağıdaki Rscript seçimini ve SSO ön kontrolünü çalıştırın. Başlangıç, el sıkışması ve tam gate aynı temiz checkout kimliğini gerektirir; gate sonunda SHA ve temizlik yeniden doğrulanır. Repo `.Renviron` dosyasında `SSO_ENABLED=TRUE` bulunmalıdır; eksikse normal SSO yapılandırmasını önce düzeltin. Ön kontrol başarısızken çalışan uygulamayı durdurmayın. Mevcut proxy/SSO yapılandırmasını değiştirmeyin.
+Normal 8009 uygulamasını durdurmadan önce beklenen tam `git rev-parse HEAD` değerini doğrulayın ve `git status --porcelain` çıktısının boş olduğunu kontrol edin; ardından aşağıdaki Rscript/Edge seçimini, SSO ve Edge ilke ön kontrollerini çalıştırın. Edge bulunamazsa veya zorunlu `UserDataDir` ilkesi varsa normal uygulamayı çalışır durumda bırakın. İlke kontrolü Window 2'de Edge açılmadan hemen önce tekrar yapılır. Başlangıç, el sıkışması ve tam gate aynı temiz checkout kimliğini gerektirir; gate sonunda SHA ve temizlik yeniden doğrulanır. Repo `.Renviron` dosyasında `SSO_ENABLED=TRUE` bulunmalıdır; eksikse normal SSO yapılandırmasını önce düzeltin. Ön kontrol başarısızken çalışan uygulamayı durdurmayın. Mevcut proxy/SSO yapılandırmasını değiştirmeyin.
 
 ```powershell
 Set-Location "<repo>"
@@ -32,8 +32,14 @@ if (!$rscript -or !(Test-Path -LiteralPath $rscript -PathType Leaf)) {
 }
 if (!$rscript) { $rscript = (Get-Command Rscript.exe -ErrorAction SilentlyContinue).Source }
 if (!$rscript) { throw "Rscript.exe bulunamadi." }
+$edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+if (!(Test-Path -LiteralPath $edge -PathType Leaf)) { $edge = "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe" }
+if (!(Test-Path -LiteralPath $edge -PathType Leaf)) { $edge = "$env:LOCALAPPDATA\Microsoft\Edge\Application\msedge.exe" }
+if (!(Test-Path -LiteralPath $edge -PathType Leaf)) { throw "Microsoft Edge bulunamadi." }
 & $rscript -e "if (file.exists('.Renviron') && !isTRUE(readRenviron('.Renviron'))) stop('Cannot load .Renviron'); if (!tolower(trimws(Sys.getenv('SSO_ENABLED', ''))) %in% c('true','t','1','yes','on')) stop('SSO_ENABLED=TRUE is required before stopping the app'); cat('OK: SSO configuration enabled.\n')"
 if ($LASTEXITCODE -ne 0) { throw "SSO pre-stop check FAILED; keep the normal app running." }
+& $rscript -e "source('tests/scripts/helpers_browser_ux_profile.R', encoding='UTF-8'); ux_smoke_check_edge_policy()"
+if ($LASTEXITCODE -ne 0) { throw "Edge policy pre-stop check FAILED; keep the normal app running." }
 ```
 
 Ön kontrol başarılı olduktan sonra normal uygulamayı kendi konsolundan/normal işletim yöntemiyle durdurun. Aynı Window 1'de:
@@ -73,8 +79,9 @@ if (!$rscript) { throw "Rscript.exe bulunamadi." }
 $env:MERGEN_BROWSER_UX_BASE_URL = Read-Host "Approved MERGEN base URL"
 $env:MERGEN_BROWSER_UX_PROFILE_DIR = Join-Path $env:LOCALAPPDATA "MERGEN\BrowserUxSmoke"
 $edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
-if (!(Test-Path $edge)) { $edge = "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe" }
-if (!(Test-Path $edge)) { throw "Microsoft Edge bulunamadi." }
+if (!(Test-Path -LiteralPath $edge -PathType Leaf)) { $edge = "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe" }
+if (!(Test-Path -LiteralPath $edge -PathType Leaf)) { $edge = "$env:LOCALAPPDATA\Microsoft\Edge\Application\msedge.exe" }
+if (!(Test-Path -LiteralPath $edge -PathType Leaf)) { throw "Microsoft Edge bulunamadi." }
 $env:MERGEN_BROWSER_BIN = $edge
 New-Item -ItemType Directory -Force -Path $env:MERGEN_BROWSER_UX_PROFILE_DIR | Out-Null
 & {

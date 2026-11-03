@@ -545,6 +545,19 @@ test_that("tam gate kirli baslangicta adimlari baslatmaz ve atif metadatasini ay
   expect_false(env$evidence$git$dirty)
   expect_true(env$evidence$git$commit_attributed)
   expect_identical(env$evidence$git$before, env$evidence$git$after)
+  # Temiz SHA, tek adimlik gelistirici sonucunu tam kanita donusturmez.
+  env$full_evidence <- FALSE
+  env$step_results <- list(seam_doctor = list(
+    status = "passed", required = TRUE, spec = list(label = "seam doctor"),
+    duration_sec = 0, notes = character(), detail = list()
+  ))
+  eval(artifact[[1]], env)
+  expect_identical(env$evidence$overall_status, "passed")
+  expect_identical(env$evidence$counts$passed, 1L)
+  expect_false(env$evidence$full_workflow)
+  expect_false(env$evidence$git$commit_attributed)
+  expect_identical(env$evidence$git$before, clean)
+  expect_identical(env$evidence$git$after, clean)
 })
 
 

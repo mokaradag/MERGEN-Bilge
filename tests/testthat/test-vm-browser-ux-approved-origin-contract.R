@@ -63,6 +63,73 @@ test_that("belgedeki SSO on kontrolu uygulama durdurulmadan yapilir ve dosyayi d
   }
 })
 
+test_that("belgedeki Edge ilkesi uretim durmadan ve login oncesinde denetlenir", {
+  root <- resolve_repo_root_for_tests()
+  doc <- read_source_text_utf8(file.path(root, "docs/vm-browser-ux-smoke.md"))
+  lines <- strsplit(doc, "\n", fixed = TRUE)[[1]]
+  command <- lines[startsWith(lines, '& $rscript -e "') &
+                     grepl("ux_smoke_check_edge_policy()", lines, fixed = TRUE)]
+  expect_length(command, 1L)
+  check <- match(command, lines)
+  stop_app <- which(startsWith(lines, "Ön kontrol başarılı olduktan sonra normal uygulamayı"))
+  login_check <- which(grepl("ux_smoke_profile_path", lines, fixed = TRUE))
+  expect_lt(check, stop_app)
+  expect_lt(stop_app, login_check)
+  expect_match(lines[[check + 1L]], "Edge policy pre-stop check FAILED; keep the normal app running.", fixed = TRUE)
+  expect_match(lines[[login_check]], "ux_smoke_check_edge_policy()", fixed = TRUE)
+  expr <- substr(command, nchar('& $rscript -e "') + 1L, nchar(command) - 1L)
+  env <- new.env(parent = globalenv())
+  approved <- TRUE
+  checked <- 0L
+  env$source <- function(file, ...) {
+    base::source(file.path(root, file), local = env, encoding = "UTF-8")
+    env$ux_smoke_check_edge_policy <- function() {
+      checked <<- checked + 1L
+      if (!approved) stop("Edge policy denied")
+      invisible(TRUE)
+    }
+  }
+  expect_true(eval(parse(text = expr), env))
+  approved <- FALSE
+  expect_error(eval(parse(text = expr), env), "Edge policy denied", fixed = TRUE)
+  expect_identical(checked, 2L)
+})
+
+test_that("belgedeki Edge secimi kullanici kurulumunu bulur ve onceligi korur", {
+  root <- resolve_repo_root_for_tests()
+  lines <- strsplit(read_source_text_utf8(file.path(root, "docs/vm-browser-ux-smoke.md")), "\n", fixed = TRUE)[[1]]
+  starts <- which(startsWith(lines, '$edge = "'))
+  ends <- which(lines == 'if (!(Test-Path -LiteralPath $edge -PathType Leaf)) { throw "Microsoft Edge bulunamadi." }')
+  expect_length(starts, 2L)
+  blocks <- lapply(starts, function(start) paste(lines[start:ends[ends >= start][[1]]], collapse = "\n"))
+  expect_identical(blocks[[1]], blocks[[2]])
+  expect_lt(starts[[1]], which(startsWith(lines, "Ön kontrol başarılı olduktan sonra normal uygulamayı")))
+  skip_if(.Platform$OS.type != "windows", "PowerShell Windows dosya yolu secimi")
+  fixture <- withr::local_tempdir()
+  roots <- file.path(fixture, c("x86", "system", "user"))
+  paths <- file.path(roots, "Microsoft", "Edge", "Application", "msedge.exe")
+  for (path in paths) dir.create(dirname(path), recursive = TRUE)
+  withr::local_envvar(c("ProgramFiles(x86)" = roots[[1]], ProgramFiles = roots[[2]],
+                       LOCALAPPDATA = roots[[3]], MERGEN_TEST_EXPECTED_EDGE = ""))
+  script <- paste("$ErrorActionPreference='Stop'", blocks[[1]],
+    "if ([IO.Path]::GetFullPath($edge) -ne [IO.Path]::GetFullPath($env:MERGEN_TEST_EXPECTED_EDGE)) { throw 'Wrong Edge candidate' }",
+    "Write-Output 'EDGE_LOOKUP_OK'", sep = "\n")
+  for (selected in c(1L, 2L, 3L, NA_integer_)) {
+    unlink(paths)
+    if (!is.na(selected)) invisible(file.create(paths[selected:3L]))
+    Sys.setenv(MERGEN_TEST_EXPECTED_EDGE = if (is.na(selected)) "" else paths[[selected]])
+    result <- processx::run("powershell.exe", c("-NoProfile", "-NonInteractive", "-Command", script),
+                           error_on_status = FALSE, timeout = 20)
+    if (is.na(selected)) {
+      expect_false(identical(result$status, 0L))
+      expect_match(result$stderr, "Microsoft Edge bulunamadi.", fixed = TRUE)
+    } else {
+      expect_identical(result$status, 0L, info = result$stderr)
+      expect_identical(trimws(result$stdout), "EDGE_LOOKUP_OK")
+    }
+  }
+})
+
 test_that("belgedeki Edge on kontrolu login oncesinde repo ve tum artifact koklerini reddeder", {
   root <- resolve_repo_root_for_tests()
   doc <- read_source_text_utf8(file.path(root, "docs/vm-browser-ux-smoke.md"))
