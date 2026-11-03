@@ -109,9 +109,12 @@ test_that("belgedeki Edge secimi kullanici kurulumunu bulur ve onceligi korur", 
   roots <- file.path(fixture, c("x86", "system", "user"))
   paths <- file.path(roots, "Microsoft", "Edge", "Application", "msedge.exe")
   for (path in paths) dir.create(dirname(path), recursive = TRUE)
-  withr::local_envvar(c("ProgramFiles(x86)" = roots[[1]], ProgramFiles = roots[[2]],
-                       LOCALAPPDATA = roots[[3]], MERGEN_TEST_EXPECTED_EDGE = ""))
-  script <- paste("$ErrorActionPreference='Stop'", blocks[[1]],
+  withr::local_envvar(c(MERGEN_TEST_EDGE_X86 = roots[[1]], MERGEN_TEST_EDGE_SYSTEM = roots[[2]],
+                       MERGEN_TEST_EDGE_USER = roots[[3]], MERGEN_TEST_EXPECTED_EDGE = ""))
+  # Windows sistem degiskenleri cocuk surecte, fixture girdilerinden acikca kurulur.
+  script <- paste("$ErrorActionPreference='Stop'",
+    "${env:ProgramFiles(x86)}=$env:MERGEN_TEST_EDGE_X86; $env:ProgramFiles=$env:MERGEN_TEST_EDGE_SYSTEM; $env:LOCALAPPDATA=$env:MERGEN_TEST_EDGE_USER",
+    blocks[[1]],
     "if ([IO.Path]::GetFullPath($edge) -ne [IO.Path]::GetFullPath($env:MERGEN_TEST_EXPECTED_EDGE)) { throw 'Wrong Edge candidate' }",
     "Write-Output 'EDGE_LOOKUP_OK'", sep = "\n")
   for (selected in c(1L, 2L, 3L, NA_integer_)) {
