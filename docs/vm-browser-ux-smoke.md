@@ -12,6 +12,8 @@ Harness `tests/smoke/` altında kalır. Normal başlatmada hiçbir smoke yolu a�
 
 ## Window 1 — geçici smoke uygulaması
 
+Tam 13 adımlı gate için checkout'un `HEAD` ağacında commit edilmiş `renv.lock` bulunmalıdır (`git cat-file -e HEAD:renv.lock`). Bu PR'ın GitHub ağacı kilit içermez; mevcut kapılarla kilitsiz PR SHA'sı adına tam PASS üretilemez. Tam koşum, düzeltmeleri ve onaylı VM kilidini içeren temiz üretim checkout'unun gerçek SHA'sını doğrular. Kilit kopyalamak checkout'u kirletir; exclude/ignore ile gizlemeyin. Ayrıntılar: [kaynak SHA ve üretim kilidi sınırı](vm-evidence-status.md#kaynak-sha-ve-üretim-kilidi-sınırı).
+
 Normal 8009 uygulamasını durdurmadan önce beklenen tam `git rev-parse HEAD` değerini doğrulayın ve `git status --porcelain` çıktısının boş olduğunu kontrol edin; ardından aşağıdaki Rscript seçimini ve SSO ön kontrolünü çalıştırın. Başlangıç, el sıkışması ve tam gate aynı temiz checkout kimliğini gerektirir; gate sonunda SHA ve temizlik yeniden doğrulanır. Repo `.Renviron` dosyasında `SSO_ENABLED=TRUE` bulunmalıdır; eksikse normal SSO yapılandırmasını önce düzeltin. Ön kontrol başarısızken çalışan uygulamayı durdurmayın. Mevcut proxy/SSO yapılandırmasını değiştirmeyin.
 
 ```powershell
@@ -43,6 +45,8 @@ if ($LASTEXITCODE -ne 0) { throw "SSO pre-stop check FAILED; keep the normal app
 Komutu repo kökünden, normal launcher gibi `.Renviron` ve `.Rprofile` yüklemesi açık olarak çalıştırın; `--vanilla` / `--no-init-file` kullanmayın. Böylece projenin hazır `renv` kitaplığı ve normal paket yolları korunur. Koşucu ayrıca normal üretim R launcher'ı gibi repo `.Renviron` dosyasını `app.R` öncesinde yükler; `SSO_ENABLED=TRUE` yoksa veya uygulama SSO'yu etkinleştiremezse ağ dinleyicisini açmadan durur. Eksik SSO yapılandırmasını düzeltin; yerel kimlik doğrulamasına geçmeyin.
 
 Bu komut ön planda bekler; uygulama **0.0.0.0:8009** dinler. Window 1'i test süresince açık bırakın. Test başlatmadan uygulamanın boot işlemini bitirmesini bekleyin.
+
+Windows koşucusu tarayıcıyı çalışmaya başlamadan özel Windows Job Object içine alır. Kök doğal olarak çıksa bile aynı job içindeki çocuk/torun ve arka plan süreçleri kapatılır; aktif süreç sayısının sıfır olduğu doğrulanmadan PASS verilmez. PID ile `taskkill` kullanılmaz. Windows'un yerleşik PowerShell/.NET bileşenleri kullanılır; VM'ye Node kurulması gerekmez. Job oluşturma/atama veya temizlik doğrulaması engellenirse koşum başarısız olur; hazırlanan SSO profili ve bu job dışında kalan süreçler korunur.
 
 ## Window 2 — SSO için ayrı Edge profili
 

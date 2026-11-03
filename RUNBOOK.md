@@ -933,6 +933,8 @@ satırlarının temizliği gibi kapsamları otomatik olarak kanıtlamaz.
 
 #### Standart tam evidence gate komutu
 
+Ön koşul: `HEAD` içinde commit edilmiş `renv.lock` bulunmalıdır (`git cat-file -e HEAD:renv.lock`) ve checkout temiz olmalıdır. Kilitsiz GitHub PR SHA'sı mevcut kapılarla tam VM PASS üretemez; düzeltmeleri ve onaylı VM kilidini içeren ayrı üretim checkout'u yalnız kendi gerçek SHA'sı için kanıt üretir. Kilit kopyalama/exclude ile atıf sağlanmaz. [Kanonik kaynak SHA/kilit açıklamasını](docs/vm-evidence-status.md#kaynak-sha-ve-üretim-kilidi-sınırı) izleyin.
+
 Önce [kanonik VM workflow](docs/vm-browser-ux-smoke.md) belgesinin Window 1/2 hazırlığını
 tamamlayın; üretim launcher'ıyla aynı R seçimini yapan `$rscript` ve browser ortamı o
 pencerede hazır olmalıdır. Ardından aynı Window 2'de tam VM evidence workflow isteyin:

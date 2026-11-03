@@ -205,7 +205,13 @@ profile_effective <- if (nzchar(profile_requested)) {
 }
 
 # Acik tam kosum, .Renviron/shell filtresinden bagimsiz 13 PASS ister.
-full_evidence <- "--full" %in% commandArgs(trailingOnly = TRUE)
+full_evidence <- {
+  gate_args <- commandArgs(trailingOnly = TRUE)
+  if (any(!gate_args %in% "--full")) {
+    stop("Unknown evidence gate argument. Only --full is supported.", call. = FALSE)
+  }
+  "--full" %in% gate_args
+}
 if (full_evidence && !evidence_checkout_matches(checkout_before, checkout_before)) {
   stop("Tam kanit icin baslangic checkout'u temiz ve Git kimligi dogrulanabilir olmalidir.", call. = FALSE)
 }

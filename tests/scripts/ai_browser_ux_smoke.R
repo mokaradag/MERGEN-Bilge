@@ -62,6 +62,7 @@ find_repo_root <- function() {
 repo_root <- find_repo_root()
 setwd(repo_root)
 source("tests/scripts/helpers_browser_ux_profile.R", local = TRUE, encoding = "UTF-8")
+source("tests/scripts/helpers_owned_browser.R", local = TRUE, encoding = "UTF-8")
 source("R/utils_log_redact.R", local = TRUE, encoding = "UTF-8")
 
 rscript <- file.path(R.home("bin"), "Rscript")
@@ -463,18 +464,24 @@ ux_smoke_browser_profile <- function(requested = "", external_app = FALSE) {
 }
 
 ux_smoke_cleanup_profile <- function(profile) {
-  if (isTRUE(profile$temporary)) unlink(profile$path, recursive = TRUE, force = TRUE)
+  if (isTRUE(profile$temporary)) {
+    unlink(profile$path, recursive = TRUE, force = TRUE)
+    if (dir.exists(profile$path)) stop("Temporary browser profile cleanup failed.", call. = FALSE)
+  }
   invisible(NULL)
 }
 
 ux_smoke_run_browser <- function() {
+writeLines('<div id="status">UX_SMOKE_NOT_PASSED</div>', con = dom_file, useBytes = TRUE)
 browser_profile <- ux_smoke_browser_profile(
   arg_value("--profile-dir", Sys.getenv("MERGEN_BROWSER_UX_PROFILE_DIR", "")),
   external_app = use_external_app
 )
 profile_dir <- browser_profile$path
 if (!is.null(px)) on.exit(cleanup(), add = TRUE)
-on.exit(ux_smoke_cleanup_profile(browser_profile), add = TRUE)
+on.exit(tryCatch(ux_smoke_cleanup_profile(browser_profile), error = function(e) {
+  cat("Browser profile cleanup failed during error handling.\n")
+}), add = TRUE)
 if (grepl("^msedge([.]exe)?$", basename(browser_bin), ignore.case = TRUE)) ux_smoke_check_edge_policy()
 if (!browser_profile$temporary) {
   cat("Using operator-prepared smoke profile. Close its interactive browser windows before this run.\n")
@@ -497,11 +504,9 @@ run_browser_dump <- function(headless_arg) {
   cat(sprintf("Running browser with %s\n", headless_arg))
 
   result <- tryCatch(
-    processx::run(
+    ux_smoke_owned_browser_run(
       command = browser_bin,
       args = browser_args,
-      echo = FALSE,
-      error_on_status = FALSE,
       timeout = browser_timeout_seconds
     ),
     error = function(e) {
@@ -518,7 +523,7 @@ run_browser_dump <- function(headless_arg) {
 
   # Raw DOM may contain SSO/session data; persist only the result summary.
   status <- ux_smoke_rendered_status(stdout)
-  evidence_status <- if (identical(status, "UX_SMOKE_DONE:PASS")) status else "UX_SMOKE_NOT_PASSED"
+  evidence_status <- "UX_SMOKE_NOT_PASSED"
   writeLines(paste0('<div id="status">', evidence_status, "</div>"), con = dom_file, useBytes = TRUE)
   writeLines(ux_smoke_redact_external_url(stderr), con = stderr_file, useBytes = TRUE)
 
@@ -542,9 +547,11 @@ if (!identical(result$status, 0L) &&
   result <- run_browser_dump("--headless")
 }
 
+ux_smoke_cleanup_profile(browser_profile)
 smoke_status <- ux_smoke_rendered_status(result$stdout)
 
-if (identical(smoke_status, "UX_SMOKE_DONE:PASS")) {
+if (identical(result$status, 0L) && identical(smoke_status, "UX_SMOKE_DONE:PASS")) {
+  writeLines('<div id="status">UX_SMOKE_DONE:PASS</div>', con = dom_file, useBytes = TRUE)
   cat("OK: rendered #status is UX_SMOKE_DONE:PASS.\n")
   return(0L)
 }

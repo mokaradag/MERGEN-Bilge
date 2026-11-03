@@ -576,6 +576,24 @@ test_that("acik tam workflow kalici filtreyi yok sayar, gelistirici filtresi kor
   expect_identical(readLines(path), "MERGEN_EVIDENCE_STEPS=browser_ux_smoke")
 })
 
+test_that("bilinmeyen gate argumani test araligiyla zayif kanit uretemez", {
+  withr::local_envvar(MERGEN_TESTTHAT_START_INDEX = "2", MERGEN_TESTTHAT_END_INDEX = "3")
+  expressions <- parse(file = .evg_script_path, encoding = "UTF-8")
+  selection <- Filter(function(e) is.call(e) && identical(e[[1]], as.name("<-")) &&
+                        identical(e[[2]], as.name("full_evidence")), expressions)[[1]]
+  env <- new.env(parent = globalenv())
+  for (args in list("--ful", "--FULL", "--full=true", c("--full", "--ful"))) {
+    env$commandArgs <- function(...) args
+    expect_error(eval(selection, env), "Only --full is supported", fixed = TRUE)
+  }
+  rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
+  result <- processx::run(rscript, c("--vanilla", .evg_script_path, "--ful"),
+                         wd = .evg_repo_root, error_on_status = FALSE)
+  expect_false(identical(result$status, 0L))
+  expect_match(result$stderr, "Only --full is supported", fixed = TRUE)
+  expect_false(grepl("VM kanit kapisi basariyla", result$stdout, fixed = TRUE))
+})
+
 test_that("tam kanit cocuklarinda test araligi kalkar ve File Store zorunludur", {
   expressions <- parse(file = .evg_script_path, encoding = "UTF-8")
   env <- new.env(parent = globalenv())
