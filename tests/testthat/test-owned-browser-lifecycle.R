@@ -17,7 +17,7 @@ test_that("job verification failure rejects a rendered PASS and cleans the launc
       write_input = function(...) NULL, get_exit_status = function() status,
       kill_tree = function() { killed <<- TRUE })
     expect_error(env$ux_smoke_owned_browser_run("edge", character(), 10,
-      windows = TRUE, spawn = function(...) child), "Owned browser")
+      wd = resolve_repo_root_for_tests(), windows = TRUE, spawn = function(...) child), "Owned browser")
     expect_true(killed)
   }
 })
@@ -28,7 +28,7 @@ test_that("inspection errors retain the primary error when emergency cleanup fai
     poll_io = function(...) stop("primary poll error"),
     kill_tree = function() stop("secondary cleanup error"))
   expect_error(env$ux_smoke_owned_browser_run("edge", character(), 10,
-    windows = TRUE, spawn = function(...) child), "primary poll error")
+    wd = resolve_repo_root_for_tests(), windows = TRUE, spawn = function(...) child), "primary poll error")
 })
 
 test_that("verified browser errors retain stderr for a clean legacy retry", {
@@ -38,7 +38,7 @@ test_that("verified browser errors retain stderr for a clean legacy retry", {
     read_all_output = function() "", read_all_error = function() "",
     write_input = function(...) NULL, get_exit_status = function() 1L)
   result <- env$ux_smoke_owned_browser_run("edge", character(), 10,
-    windows = TRUE, spawn = function(...) child)
+    wd = resolve_repo_root_for_tests(), windows = TRUE, spawn = function(...) child)
   expect_identical(result$status, 1L)
   expect_match(result$stderr, "unknown --headless=new", fixed = TRUE)
 })

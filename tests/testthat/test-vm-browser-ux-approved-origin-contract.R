@@ -253,7 +253,7 @@ test_that("generic browser VM akisinda yerel preflight ve dis URL ayri kullanili
   browser_profile <- NULL
   browser_dom <- paste0('<div id="status">UX_SMOKE_DONE:PASS</div><a href="', base,
                        '/', prefix, '/x">x</a> https://private.example.invalid/redirect https://sso.example.invalid/auth')
-  testthat::local_mocked_bindings(run = function(command, args, ...) {
+  browser_run <- function(command, args, ...) {
     expect_true("--timeout=160000" %in% args)
     expect_false(any(startsWith(args, "--virtual-time-budget")))
     browser_url <<- tail(args, 1)
@@ -261,7 +261,7 @@ test_that("generic browser VM akisinda yerel preflight ve dis URL ayri kullanili
     list(status = 0L, stdout = browser_dom,
          stderr = paste(base, utils::URLencode(base, reserved = TRUE), prefix, browser_profile,
                         chartr("/", "\\", browser_profile), encodeString(browser_profile, quote = "")))
-  }, .package = "processx")
+  }
   expressions <- parse_r_file_utf8("tests/scripts/ai_browser_ux_smoke.R")
   run <- function() {
     for (e in expressions) {
@@ -270,7 +270,13 @@ test_that("generic browser VM akisinda yerel preflight ve dis URL ayri kullanili
           requests <<- c(requests, target)
           '<title>MERGEN UX Smoke</title><div id="status">Ready</div>'
         }
-      } else eval(e, env)
+      } else {
+        # Surec isletimi ayri gercek job testinde; burada uretim adapter siniri sahtelenir.
+        if (is.call(e) && identical(e[[1]], as.name("quit"))) {
+          env$ux_smoke_owned_browser_run <- browser_run
+        }
+        eval(e, env)
+      }
     }
   }
   result <- tryCatch(run(), runner_exit = function(e) e)
