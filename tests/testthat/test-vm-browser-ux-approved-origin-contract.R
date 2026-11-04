@@ -132,6 +132,15 @@ test_that("belgedeki tarayici sahiplik adaptoru uretim durmadan gercekten dogrul
   expect_lt(command, which(startsWith(lines, "Ön kontrol başarılı olduktan sonra normal uygulamayı")))
   expect_identical(lines[[command + 1L]],
     'if ($LASTEXITCODE -ne 0) { throw "Owned browser adapter pre-stop check FAILED; keep the normal app running." }')
+  # Gercek Edge yasam dongusu kontrolu de uretim durmadan once ve basarisizlikta durdurucudur.
+  edge_check <- which(startsWith(lines, '& $rscript -e "') &
+                        grepl("ux_smoke_owned_browser_edge_preflight()", lines, fixed = TRUE))
+  expect_length(edge_check, 1L)
+  expect_identical(edge_check, command + 2L)
+  expect_lt(edge_check, which(startsWith(lines, "Ön kontrol başarılı olduktan sonra normal uygulamayı")))
+  expect_identical(lines[[edge_check + 1L]],
+    'if ($LASTEXITCODE -ne 0) { throw "Owned Edge lifecycle pre-stop check FAILED; keep the normal app running." }')
+  expect_match(lines[[edge_check]], "helpers_browser_ux_profile.R", fixed = TRUE)
   expr <- substr(lines[[command]], nchar('& $rscript -e "') + 1L, nchar(lines[[command]]) - 1L)
   withr::local_dir(root)
   env <- new.env(parent = globalenv())

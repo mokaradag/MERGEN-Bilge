@@ -44,6 +44,7 @@ async function windowsJobCase({ code = 0, hang = false, exited = false, complete
         setImmediate(() => {
           assert.equal(config.executable, 'edge');
           assert.deepEqual(config.args, ['unicode-\u011f', 'space and "quote"', 'tail\\']);
+          assert.equal(config.cleanupMs, 100);
           child.stdout.write(complete ? page('UX_SMOKE_DONE:PASS') : '<html><body>partial');
           if (exited) close();
         });
@@ -53,7 +54,7 @@ async function windowsJobCase({ code = 0, hang = false, exited = false, complete
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'helpers_native_browser_dump.js'), 'utf8'), sandbox);
   const trace = traceFor('windows-job');
   const result = sandbox.module.exports.runNativeBrowserDump('edge', ['unicode-\u011f', 'space and "quote"', 'tail\\'],
-    { cwd: os.tmpdir(), timeoutMs: 100, cleanupMs: 100, trace });
+    { cwd: os.tmpdir(), timeoutMs: 100, cleanupMs: 100, adapterCleanupMs: 100, trace });
   return { result, trace, stopped: () => stopped };
 }
 

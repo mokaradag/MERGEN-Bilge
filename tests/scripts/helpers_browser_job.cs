@@ -133,17 +133,35 @@ public sealed class MergenBrowserJob : IDisposable {
     }
     // Yalniz bu job'un sonlandirdigi kok bu kodla cikar; dogal cikis kodu korunur.
     public const uint OwnedStopCode = 0x4D474E53;
+    // Temizlik tanisi: yalniz sabit asama adi ve sayilar (kalan surec, gecen ms).
+    public string CleanupStage { get; private set; }
+    public uint CleanupActive { get; private set; }
+    public long CleanupMilliseconds { get; private set; }
     public void Stop(int milliseconds) {
-        Check(TerminateJobObject(job, OwnedStopCode));
         var timer = System.Diagnostics.Stopwatch.StartNew();
-        while (Active != 0) {
-            if (timer.ElapsedMilliseconds >= milliseconds) throw new TimeoutException();
+        CleanupStage = "terminate";
+        Check(TerminateJobObject(job, OwnedStopCode));
+        CleanupStage = "cleanup_wait";
+        while (true) {
+            CleanupActive = Active;
+            // Job sayaci kok taniticisi sinyallenmeden once sifirlanabilir; ikisi birlikte beklenir.
+            uint rootWait = WaitForSingleObject(root, 0);
+            Check(rootWait == 0 || rootWait == 258);
+            CleanupMilliseconds = timer.ElapsedMilliseconds;
+            if (CleanupActive == 0 && rootWait == 0) break;
+            if (CleanupMilliseconds >= milliseconds) throw new TimeoutException();
             Thread.Sleep(10);
+            // Sonlandirma sirasinda olusmakta olan torun job'a sonradan katilabilir; tekrar sonlandir.
+            CleanupStage = "terminate";
+            Check(TerminateJobObject(job, OwnedStopCode));
+            CleanupStage = "cleanup_wait";
         }
-        // Yaris yok: karar temizlik dogrulandiktan sonra kokun gercek cikis kodundan verilir.
-        int? code = ExitCode;
-        if (!code.HasValue) throw new TimeoutException();
-        Stopped = code.Value == unchecked((int)OwnedStopCode);
+        // Yaris yok: karar temizlik ve kok cikisi dogrulandiktan sonra gercek cikis kodundan verilir.
+        CleanupStage = "exit_code";
+        uint raw;
+        Check(GetExitCodeProcess(root, out raw));
+        Stopped = raw == OwnedStopCode;
+        CleanupStage = "";
     }
     public void Dispose() {
         if (job != IntPtr.Zero) { CloseHandle(job); job = IntPtr.Zero; }

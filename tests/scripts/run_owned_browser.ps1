@@ -8,7 +8,7 @@ try {
     # Gecersiz UTF-8 sessizce U+FFFD olmaz; bozuk yol 'input' asamasinda reddedilir.
     $inputReader = [IO.StreamReader]::new([Console]::OpenStandardInput(), [Text.UTF8Encoding]::new($false, $true))
     $config = ConvertFrom-Json -InputObject ($inputReader.ReadLine())
-    if (!$config.executable -or !$config.cwd -or !$config.jobSource) { throw 'Invalid launch' }
+    if (!$config.executable -or !$config.cwd -or !$config.jobSource -or [int]$config.cleanupMs -le 0) { throw 'Invalid launch' }
     $stage = 'compile'
     Add-Type -LiteralPath $config.jobSource
     $stage = 'launch'
@@ -25,7 +25,7 @@ try {
         Start-Sleep -Milliseconds 10
     }
     $stage = 'cleanup'
-    $job.Stop(5000)
+    $job.Stop([int]$config.cleanupMs)
     # Dogal hata cikisi, temiz agactan bagimsiz olarak hata kalir.
     if ($code -ne 124) {
         if ($job.Stopped) { $code = 0 } else { $code = $job.ExitCode }
@@ -36,12 +36,17 @@ try {
         $launchStage = [MergenBrowserJob]::LastStage
         if ($launchStage) { $stage = $launchStage }
     }
+    $detail = ''
+    if ($stage -eq 'cleanup' -and $null -ne $job -and $job.CleanupStage) {
+        $stage = $job.CleanupStage
+        $detail = ' active=' + [string]$job.CleanupActive + ' ms=' + [string]$job.CleanupMilliseconds
+    }
     $win32 = ''
     $inner = $_.Exception
     while ($null -ne $inner.InnerException) { $inner = $inner.InnerException }
     if ($inner -is [ComponentModel.Win32Exception]) { $win32 = ' win32=' + [string]$inner.NativeErrorCode }
     [Console]::Error.WriteLine('Owned browser launch or cleanup could not be verified.')
-    [Console]::Error.WriteLine('MERGEN_OWNED_BROWSER_STAGE=' + $stage + $win32)
+    [Console]::Error.WriteLine('MERGEN_OWNED_BROWSER_STAGE=' + $stage + $win32 + $detail)
     if ($code -ne 124) { $code = 125 }
 } finally {
     if ($null -ne $job) { $job.Dispose() }

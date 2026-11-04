@@ -445,6 +445,11 @@ ux_smoke_rendered_status <- function(dom) {
 # sozlugu ve sayilar; URL, onek, profil yolu, DOM veya stderr tasimaz.
 ux_smoke_failure_line <- function(result, smoke_status) {
   stdout <- if (is.null(result$stdout)) "" else result$stdout
+  # Adaptor hatasinda yakalanmis DOM, gercek isleme durumunu gosterir (PASS kaniti degildir).
+  if (!nzchar(stdout) && length(result$dom) == 1L && !is.na(result$dom) && nzchar(result$dom)) {
+    stdout <- result$dom
+    smoke_status <- ux_smoke_rendered_status(stdout)
+  }
   rendered <- if (identical(smoke_status, "UX_SMOKE_DONE:PASS")) "pass"
     else if (startsWith(smoke_status, "UX_SMOKE_DONE:FAIL")) "fail"
     else if (nzchar(smoke_status)) "incomplete"
@@ -461,6 +466,10 @@ ux_smoke_failure_line <- function(result, smoke_status) {
   if (length(stage) == 1L && !is.na(stage)) fields <- c(fields, paste0("adapter=", stage))
   win32 <- result$win32
   if (length(win32) == 1L && !is.na(win32)) fields <- c(fields, paste0("win32=", win32))
+  for (name in c("active", "ms")) {
+    value <- result[[name]]
+    if (length(value) == 1L && !is.na(value) && grepl("^[0-9]{1,9}$", value)) fields <- c(fields, paste0(name, "=", value))
+  }
   line <- paste0("UX_SMOKE_FAILURE: ", paste(fields, collapse = " "))
   if (!grepl("^UX_SMOKE_FAILURE: [a-z_]{1,40}( [a-z0-9]{1,12}=-?[a-z0-9_]{1,24})*$", line)) {
     line <- "UX_SMOKE_FAILURE: unclassified"
@@ -546,7 +555,11 @@ run_browser_dump <- function(headless_arg) {
         stderr = conditionMessage(e),
         failure = if (owned) e$failure else "browser_launch_failed",
         stage = if (owned) e$stage else NA_character_,
-        win32 = if (owned) e$win32 else NA_character_
+        win32 = if (owned) e$win32 else NA_character_,
+        active = if (owned) e$active else NA_character_,
+        ms = if (owned) e$ms else NA_character_,
+        # Yalniz siniflandirma icin; PASS hicbir zaman bu alandan uretilmez.
+        dom = if (owned) e$dom else ""
       )
     }
   )
@@ -567,7 +580,10 @@ run_browser_dump <- function(headless_arg) {
     args = browser_args,
     failure = result$failure,
     stage = result$stage %||% NA_character_,
-    win32 = result$win32 %||% NA_character_
+    win32 = result$win32 %||% NA_character_,
+    active = result$active %||% NA_character_,
+    ms = result$ms %||% NA_character_,
+    dom = result$dom %||% ""
   )
 }
 

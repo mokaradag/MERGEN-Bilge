@@ -48,9 +48,11 @@ Remove-Item Env:MERGEN_BROWSER_UX_PROFILE_DIR
 if ($profileCheck -ne 0) { throw "Edge profile location/policy pre-stop check FAILED; keep the normal app running." }
 & $rscript -e "source('tests/scripts/helpers_owned_browser.R'); ux_smoke_owned_browser_preflight()"
 if ($LASTEXITCODE -ne 0) { throw "Owned browser adapter pre-stop check FAILED; keep the normal app running." }
+& $rscript -e "source('tests/scripts/helpers_browser_ux_profile.R'); source('tests/scripts/helpers_owned_browser.R'); ux_smoke_owned_browser_edge_preflight()"
+if ($LASTEXITCODE -ne 0) { throw "Owned Edge lifecycle pre-stop check FAILED; keep the normal app running." }
 ```
 
-Bu blok normal uygulama çalışırken belirleyici tüm önkoşulları doğrular: SSO yapılandırması, Edge yolu, ayrılmış profil dizininin repo/artifact kökleri dışında olması (dizin önce oluşturulur; konum kontrolü `mustWork = TRUE` kullanır), zorunlu `UserDataDir` ilkesi ve tarayıcı sahiplik adaptörü. Adaptör kontrolü tarayıcı açmadan zararsız bir R alt sürecini aynı PowerShell/özel Job Object yolundan geçirir; PowerShell dil modu, C# derlemesi, job atama/devam ettirme, stdout yakalama veya temizlik doğrulaması bu VM'de engelliyse burada durur. Profil/ilke kontrolü Window 2'de Edge açılmadan hemen önce tekrar yapılır.
+Bu blok normal uygulama çalışırken belirleyici tüm önkoşulları doğrular: SSO yapılandırması, Edge yolu, ayrılmış profil dizininin repo/artifact kökleri dışında olması (dizin önce oluşturulur; konum kontrolü `mustWork = TRUE` kullanır), zorunlu `UserDataDir` ilkesi ve tarayıcı sahiplik adaptörü. Adaptör kontrolü tarayıcı açmadan zararsız bir R alt sürecini aynı PowerShell/özel Job Object yolundan geçirir; PowerShell dil modu, C# derlemesi, job atama/devam ettirme, stdout yakalama veya temizlik doğrulaması bu VM'de engelliyse burada durur. Son kontrol gerçek Edge'i aynı özel job içinde, geçici bir profil ve yerel bir dosya sayfasıyla headless çalıştırır; ağ, SSO veya hazırlanan `BrowserUxSmoke` profili kullanılmaz. DOM yakalanmalı, job'daki tüm Edge süreçlerinin kapandığı doğrulanmalı ve geçici profil silinebilmelidir. Temizlik başarısızsa hata yalnız sabit aşama adını, kalan süreç sayısını ve süreyi (`stage=cleanup_wait, active=<n>, ms=<n>`) bildirir. Profil/ilke kontrolü Window 2'de Edge açılmadan hemen önce tekrar yapılır.
 
 Ön kontrol başarılı olduktan sonra normal uygulamayı kendi konsolundan/normal işletim yöntemiyle durdurun. Aynı Window 1'de:
 

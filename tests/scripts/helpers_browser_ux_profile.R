@@ -29,7 +29,7 @@ ux_smoke_redact_profile <- function(text, profile = Sys.getenv("MERGEN_BROWSER_U
                      vapply(values, function(v) encodeString(v, quote = ""), character(1)),
                      vapply(values, utils::URLencode, character(1), reserved = TRUE)))
   for (value in values[order(nchar(values), decreasing = TRUE)]) {
-    # Windows yollari harf buyuklugune duyarsizdir; Edge yolu farkli harfle yazabilir.
+    # Windows yolları harf büyüklüğüne duyarsızdır; Edge yolu farklı harfle yazabilir.
     text <- if (windows) {
       gsub(gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", value, perl = TRUE), "<BROWSER_PROFILE>", text,
            perl = TRUE, ignore.case = TRUE)

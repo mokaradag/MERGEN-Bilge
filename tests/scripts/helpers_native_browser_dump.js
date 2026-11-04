@@ -10,7 +10,7 @@ function completeNativeDump(dom) {
   return /<html[\s>]/.test(dom) && /<\/body>\s*<\/html>\s*$/.test(dom);
 }
 
-function runNativeBrowserDump(browser, args, { cwd, timeoutMs, trace, cleanupMs = 5000 }) {
+function runNativeBrowserDump(browser, args, { cwd, timeoutMs, trace, cleanupMs = 5000, adapterCleanupMs = 5000 }) {
   return new Promise((resolve, reject) => {
     const windows = process.platform === 'win32';
     const child = windows
@@ -21,7 +21,7 @@ function runNativeBrowserDump(browser, args, { cwd, timeoutMs, trace, cleanupMs 
     if (windows) {
       child.stdin.on('error', () => {});
       child.stdin.write(JSON.stringify({ executable: browser, args, cwd, timeoutMs,
-        jobSource: path.join(__dirname, 'helpers_browser_job.cs') }) + '\n');
+        cleanupMs: adapterCleanupMs, jobSource: path.join(__dirname, 'helpers_browser_job.cs') }) + '\n');
     }
     let stdout = '';
     let settled = false;
@@ -48,7 +48,8 @@ function runNativeBrowserDump(browser, args, { cwd, timeoutMs, trace, cleanupMs 
         child.unref();
         finish(new Error('Native browser ' + trace.label + ' cleanup timed out' +
           (trace.cleanupPhase ? ' [' + trace.cleanupPhase + ']' : '')));
-      }, cleanupMs);
+      // Windows denetleyicisi adaptorun kendi dogrulama butcesini kesmez.
+      }, windows ? adapterCleanupMs + cleanupMs : cleanupMs);
     };
     const stopOwnedTree = () => {
       if (treeStop) return treeStop;

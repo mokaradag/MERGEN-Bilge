@@ -147,6 +147,12 @@ test_that("tarayici basarisizligi izinli tek asama satiriyla siniflandirilir, PA
   expect_identical(calls, 1L)
   outcome <- function() stop(env$ux_smoke_owned_browser_error("Owned browser cleanup timed out.", "browser_cleanup_failed", "cleanup"))
   expect_identical(classify(), "UX_SMOKE_FAILURE: browser_cleanup_failed rendered=empty exit=124 adapter=cleanup")
+  # Tam PASS DOM yakalanmis olsa da dogrulanmamis temizlik PASS uretmez; DOM durumu ve kalan surec raporlanir.
+  outcome <- function() stop(env$ux_smoke_owned_browser_error(
+    "Owned browser launch or cleanup failed (stage=cleanup_wait, active=3, ms=5004).", "browser_cleanup_failed",
+    "cleanup_wait", active = "3", ms = "5004", dom = page("UX_SMOKE_DONE:PASS")))
+  expect_identical(classify(),
+    "UX_SMOKE_FAILURE: browser_cleanup_failed rendered=pass exit=124 adapter=cleanup_wait active=3 ms=5004")
   outcome <- function() stop(env$ux_smoke_owned_browser_error("Owned browser timed out.", "browser_timeout"))
   expect_identical(classify(), "UX_SMOKE_FAILURE: browser_timeout rendered=empty exit=124")
   # Tam PASS DOM'u olsa bile sifir-disi tarayici cikisi kabul edilmez.
@@ -342,23 +348,133 @@ test_that("Windows job durdurmasi dogal hata cikisini korur, yalniz kendi sonlan
   skip_if(.Platform$OS.type != "windows", "Windows job object davranisi")
   root <- resolve_repo_root_for_tests()
   source <- chartr("/", "\\", file.path(root, "tests/scripts/helpers_browser_job.cs"))
-  cmd <- file.path(Sys.getenv("SystemRoot"), "System32", "cmd.exe")
+  rscript <- chartr("/", "\\", file.path(R.home("bin"), "Rscript.exe"))
+  # Torun surecler: canli kok, job icinde uzun yasayan iki alt R sureci baslatir.
+  # PowerShell tek tirnakli dizgede $ genisletilmez; R kodu cift tirnak kullanir.
+  tree <- 'p <- lapply(1:2, function(i) processx::process$new(file.path(R.home("bin"), "Rscript.exe"), c("--vanilla", "-e", "Sys.sleep(300)"), cleanup = FALSE)); Sys.sleep(300)'
   script <- paste(
     "$ErrorActionPreference='Stop'",
     sprintf("Add-Type -LiteralPath '%s'", source),
-    # Kok dogal olarak 7 ile cikar; sonra Stop cagrilir.
-    sprintf("$a=[MergenBrowserJob]::new('%s', [string[]]@('/d','/c','exit 7'), $env:TEMP)", cmd),
+    # Kok dogal olarak 7 ile cikar; Stop sonradan cagrilir ve dogal kod korunur.
+    sprintf("$a=[MergenBrowserJob]::new('%s', [string[]]@('--vanilla','-e','quit(status = 7L)'), $env:TEMP)", rscript),
     "while ($null -eq $a.ExitCode) { Start-Sleep -Milliseconds 10 }",
-    "$a.Stop(5000); Write-Output ('natural ' + $a.Stopped + ' ' + $a.ExitCode); $a.Dispose()",
-    # Canli kok job tarafindan sonlandirilir.
-    sprintf("$b=[MergenBrowserJob]::new('%s', [string[]]@('/d','/c','ping -n 30 127.0.0.1 > nul'), $env:TEMP)", cmd),
-    "Start-Sleep -Milliseconds 300",
-    "$b.Stop(5000); Write-Output ('live ' + $b.Stopped + ' ' + ($b.ExitCode -eq [int][MergenBrowserJob]::OwnedStopCode)); $b.Dispose()",
+    "$a.Stop(5000); Write-Output ('natural ' + $a.Stopped + ' ' + $a.ExitCode + ' ' + $a.Active); $a.Dispose()",
+    # Canli kok ve torunlari job tarafindan sonlandirilir; kok kodu job'un kendi kodudur.
+    sprintf("$b=[MergenBrowserJob]::new('%s', [string[]]@('--vanilla','-e','%s'), $env:TEMP)", rscript, tree),
+    "$w=[Diagnostics.Stopwatch]::StartNew(); while ($b.Active -lt 3 -and $w.ElapsedMilliseconds -lt 30000) { Start-Sleep -Milliseconds 50 }",
+    "$before=$b.Active",
+    "$b.Stop(5000); Write-Output ('live ' + $b.Stopped + ' ' + ($b.ExitCode -eq [int][MergenBrowserJob]::OwnedStopCode) + ' ' + $b.Active + ' ' + ($before -ge 3)); $b.Dispose()",
     sep = "\n")
   result <- processx::run("powershell.exe", c("-NoProfile", "-NonInteractive", "-Command", script),
-                          error_on_status = FALSE, timeout = 60)
+                          error_on_status = FALSE, timeout = 90)
   expect_identical(result$status, 0L, info = result$stderr)
   lines <- trimws(strsplit(result$stdout, "\n", fixed = TRUE)[[1]])
-  expect_true("natural False 7" %in% lines, info = result$stdout)
-  expect_true("live True True" %in% lines, info = result$stdout)
+  expect_true("natural False 7 0" %in% lines, info = result$stdout)
+  expect_true("live True True 0 True" %in% lines, info = result$stdout)
+})
+
+test_that("temizlik alt asamasi kalan surec sayisi ve sureyle izinli bicimde siniflandirilir", {
+  env <- .owned_browser_env()
+  run_with <- function(status, stderr, dom = '<html><body><div id="status">UX_SMOKE_DONE:PASS</div></body></html>\n') {
+    child <- list(poll_io = function(...) NULL, read_output = function() dom,
+      read_error = function() stderr, is_alive = function() FALSE,
+      read_all_output = function() "", read_all_error = function() "",
+      write_input = function(...) NULL, get_exit_status = function() status,
+      kill_tree = function() NULL)
+    tryCatch(env$ux_smoke_owned_browser_run("edge", character(), 10,
+      wd = resolve_repo_root_for_tests(), windows = TRUE, spawn = function(...) child),
+      ux_smoke_owned_browser_error = identity)
+  }
+  e <- run_with(125L, "Owned browser launch or cleanup could not be verified.\r\nMERGEN_OWNED_BROWSER_STAGE=cleanup_wait active=3 ms=5004\r\n")
+  expect_identical(c(e$failure, e$stage, e$active, e$ms), c("browser_cleanup_failed", "cleanup_wait", "3", "5004"))
+  expect_match(conditionMessage(e), "(stage=cleanup_wait, active=3, ms=5004)", fixed = TRUE)
+  # Yakalanan DOM yalniz siniflandirma icin hata nesnesinde tasinir.
+  expect_match(e$dom, "UX_SMOKE_DONE:PASS", fixed = TRUE)
+  e <- run_with(125L, "MERGEN_OWNED_BROWSER_STAGE=terminate win32=5 active=0 ms=1\n")
+  expect_identical(c(e$failure, e$stage, e$win32), c("browser_cleanup_failed", "terminate", "5"))
+  e <- run_with(125L, "MERGEN_OWNED_BROWSER_STAGE=exit_code active=0 ms=12\n")
+  expect_identical(e$failure, "browser_cleanup_failed")
+  # Sayi disi alanlar kabul edilmez.
+  e <- run_with(125L, "MERGEN_OWNED_BROWSER_STAGE=cleanup_wait active=C:/x ms=1\n")
+  expect_true(is.na(e$active))
+})
+
+test_that("denetleyici adaptorun dogrulama butcesini kesmez, sonsuz da beklemez", {
+  env <- .owned_browser_env()
+  verdict_after <- NULL
+  stopped_at <- NULL
+  child <- list(poll_io = function(...) Sys.sleep(0.02),
+    read_output = function() if (is.null(stopped_at)) '<html><body><div id="status">UX_SMOKE_DONE:PASS</div></body></html>\n' else "",
+    read_error = function() "",
+    is_alive = function() is.null(stopped_at) || proc.time()[["elapsed"]] - stopped_at < verdict_after,
+    read_all_output = function() "", read_all_error = function() "",
+    write_input = function(x) if (identical(x, "stop\n")) stopped_at <<- proc.time()[["elapsed"]],
+    get_exit_status = function() 0L, kill_tree = function() NULL)
+  # Adaptor 5 sn butcesinin sonunda (PowerShell cikisi dahil) karar verirse sonuc kabul edilir.
+  verdict_after <- env$ux_smoke_owned_browser_cleanup_ms / 1000 + 0.8
+  result <- env$ux_smoke_owned_browser_run("edge", character(), 30, wd = resolve_repo_root_for_tests(),
+                                           windows = TRUE, spawn = function(...) child)
+  expect_identical(result$status, 0L)
+  # Karar hic gelmezse denetleyici sinirli surede ayri asamayla durur.
+  stopped_at <- NULL
+  verdict_after <- Inf
+  e <- tryCatch(env$ux_smoke_owned_browser_run("edge", character(), 30, wd = resolve_repo_root_for_tests(),
+                                                windows = TRUE, spawn = function(...) child),
+                ux_smoke_owned_browser_error = identity)
+  expect_identical(c(e$failure, e$stage), c("browser_cleanup_failed", "cleanup_watchdog"))
+  expect_gte(as.numeric(e$ms), env$ux_smoke_owned_browser_cleanup_ms + 10000)
+})
+
+test_that("gercek Edge yasam dongusu on kontrolu gecici profil ve yerel sayfa kullanir", {
+  env <- .owned_browser_env()
+  order <- character()
+  seen <- NULL
+  env$ux_smoke_check_edge_policy <- function() { order <<- c(order, "policy"); invisible(TRUE) }
+  run <- function(command, args, timeout, wd) {
+    order <<- c(order, "run")
+    seen <<- list(command = command, args = args)
+    expect_true(file.exists(sub("^file:///", if (.Platform$OS.type == "windows") "" else "/",
+                                utils::URLdecode(tail(args, 1)))))
+    list(status = 0L, stdout = '<html><head></head><body><div id="status">OWNED_EDGE_OK</div></body></html>\n', stderr = "")
+  }
+  expect_output(env$ux_smoke_owned_browser_edge_preflight("C:/Edge/msedge.exe", run = run),
+                "OK: owned Edge lifecycle verified.", fixed = TRUE)
+  # Ilke denetimi tarayicidan once; profil gecici, sayfa yerel, ag/SSO yok.
+  expect_identical(order, c("policy", "run"))
+  profile <- sub("^--user-data-dir=", "", grep("^--user-data-dir=", seen$args, value = TRUE))
+  expect_match(basename(dirname(profile)), "^mergen-edge-preflight-")
+  expect_false(dir.exists(dirname(profile)))
+  expect_true(all(c("--headless=new", "--dump-dom") %in% seen$args))
+  expect_match(tail(seen$args, 1), "^file:///")
+  expect_false(any(grepl("https?://", seen$args)))
+  # Ilke reddi tarayici acilmadan durdurur.
+  order <- character()
+  env$ux_smoke_check_edge_policy <- function() stop("UserDataDir policy is set")
+  expect_error(env$ux_smoke_owned_browser_edge_preflight("C:/Edge/msedge.exe", run = run), "UserDataDir policy")
+  expect_identical(order, character())
+  env$ux_smoke_check_edge_policy <- function() invisible(TRUE)
+  # Temizlik hatasi ve yakalanmayan DOM PASS sayilmaz.
+  expect_error(env$ux_smoke_owned_browser_edge_preflight("C:/Edge/msedge.exe", run = function(...)
+    stop(env$ux_smoke_owned_browser_error("Owned browser launch or cleanup failed (stage=cleanup_wait, active=2, ms=5003).",
+                                          "browser_cleanup_failed", "cleanup_wait", active = "2", ms = "5003"))),
+    "Owned Edge pre-stop check FAILED: Owned browser launch or cleanup failed (stage=cleanup_wait, active=2, ms=5003).", fixed = TRUE)
+  expect_error(env$ux_smoke_owned_browser_edge_preflight("C:/Edge/msedge.exe", run = function(...)
+    list(status = 0L, stdout = "<html><body></body></html>", stderr = "")), "Edge DOM was not captured", fixed = TRUE)
+})
+
+test_that("Windows'ta gercek Edge ozel job icinde DOM uretir ve tum surecleri dogrulanmis bicimde kapanir", {
+  skip_if(.Platform$OS.type != "windows", "Gercek Edge job yasam dongusu")
+  edge <- file.path(c(Sys.getenv("PROGRAMFILES(X86)"), Sys.getenv("PROGRAMFILES")),
+                    "Microsoft", "Edge", "Application", "msedge.exe")
+  edge <- edge[file.exists(edge)]
+  skip_if(!length(edge), "Microsoft Edge kurulu degil")
+  env <- .owned_browser_env()
+  source(file.path(resolve_repo_root_for_tests(), "tests/scripts/helpers_browser_ux_profile.R"),
+         local = env, encoding = "UTF-8")
+  withr::local_dir(resolve_repo_root_for_tests())
+  # Ilgisiz bir surec job disinda kalir ve korunur.
+  unrelated <- processx::process$new(file.path(R.home("bin"), "Rscript.exe"), c("--vanilla", "-e", "Sys.sleep(300)"))
+  on.exit(unrelated$kill(), add = TRUE)
+  expect_output(env$ux_smoke_owned_browser_edge_preflight(edge[[1]]), "OK: owned Edge lifecycle verified.", fixed = TRUE)
+  expect_true(unrelated$is_alive())
 })
