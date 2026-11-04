@@ -259,8 +259,11 @@ test_that("Windows adaptörü kaynak dosyanın adından bağımsız UTF-8 metni 
   marker <- file.path(temp, "launched")
   rscript <- file.path(R.home("bin"), "Rscript.exe")
   probe <- "writeLines('started', commandArgs(TRUE)[[1]]); cat('<html><body><div id=\"status\">SOURCE_OK</div></body></html>\\n')"
-  config <- jsonlite::fromJSON(rawToChar(env$ux_smoke_owned_browser_payload(
-    rscript, c("--vanilla", "-e", probe, marker), root, 30)))
+  # Yük UTF-8 baytlarıdır; CP1254 R'de işaretsiz dizge Türkçe yolu bozardı.
+  payload <- rawToChar(env$ux_smoke_owned_browser_payload(
+    rscript, c("--vanilla", "-e", probe, marker), root, 30))
+  Encoding(payload) <- "UTF-8"
+  config <- jsonlite::fromJSON(payload)
   config$jobSource <- enc2utf8(source)
   input <- file.path(temp, "stdin.bin")
   writeBin(c(charToRaw(jsonlite::toJSON(config, auto_unbox = TRUE)), as.raw(10L)), input)
