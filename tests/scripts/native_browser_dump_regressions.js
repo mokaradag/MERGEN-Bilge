@@ -11,7 +11,9 @@ const { nativeDumpStatus, completeNativeDump, runNativeBrowserDump } = require('
 const page = status => '<html><body><div id="status">' + status + '</div></body></html>\n';
 const traceFor = label => ({ label, stdoutBytes: 0, stderrBytes: 0,
   timedOut: false, exitSeen: false, closeSeen: false, exitBeforeTimeout: false });
-const run = (code, trace, timeoutMs = 10000) => runNativeBrowserDump(process.execPath,
+// Windows'ta süre sınırı PowerShell başlangıcını ve C# derlemesini de kapsar;
+// tam paket yükünde yalnız 10 sn yetmez (R adaptör ön kontrolüyle aynı 60 sn).
+const run = (code, trace, timeoutMs = process.platform === 'win32' ? 60000 : 10000) => runNativeBrowserDump(process.execPath,
   ['-e', code], { cwd: os.tmpdir(), timeoutMs, trace });
 
 async function windowsJobCase({ code = 0, hang = false, exited = false, complete = true } = {}) {

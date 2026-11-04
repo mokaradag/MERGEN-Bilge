@@ -2289,7 +2289,10 @@ test_that("yavaş kopya kardeş hedefi engellemez ve devralma sahipliği çalama
   root <- withr::local_tempdir()
   env <- .ingestionEnv()
   repo <- resolve_repo_root_for_tests()
-  worker <- function(repo, root, name, slow) {
+  # Soğuk callr R başlangıcı (renv kitaplığı UNC paylaşımından) tam pakette yavaştır;
+  # bunlar olay bekleme üst sınırlarıdır, olay gelince döngü hemen biter.
+  cold_start_sec <- 120
+  worker <- function(repo, root, name, slow, release_sec) {
     env <- new.env(parent = globalenv())
     for (file in c("helpers_process_ownership.R", "utils_path_reservation.R",
                    "helpers_files_promote_probe.R", "helpers_files_promote_target.R"))
@@ -2304,7 +2307,7 @@ test_that("yavaş kopya kardeş hedefi engellemez ve devralma sahipliği çalama
         writeLines(c(readLines(marker, n = 1L), "host=uzak"), marker)
         Sys.setFileTime(marker, Sys.time() - 120)
         writeLines("kopya", file.path(root, "copying"))
-        deadline <- Sys.time() + 30
+        deadline <- Sys.time() + release_sec
         while (!file.exists(file.path(root, "release")) && Sys.time() < deadline) Sys.sleep(0.02)
         if (!file.exists(file.path(root, "release"))) stop("kopya kapısı açılmadı")
       }
@@ -2312,14 +2315,17 @@ test_that("yavaş kopya kardeş hedefi engellemez ve devralma sahipliği çalama
     }
     env$mergen_promote_staged_file(stage, file.path(root, name), file.exists)
   }
-  a <- callr::r_bg(worker, args = list(repo = repo, root = root, name = "a.txt", slow = TRUE))
+  # A'nın serbest bırakma kapısı, kendisinden önceki iki soğuk başlangıç beklemesinden uzundur.
+  a <- callr::r_bg(worker, args = list(repo = repo, root = root, name = "a.txt", slow = TRUE,
+                                       release_sec = 3 * cold_start_sec))
   withr::defer(try(a$kill(), silent = TRUE))
-  deadline <- Sys.time() + 15
+  deadline <- Sys.time() + cold_start_sec
   while (!file.exists(file.path(root, "copying")) && a$is_alive() && Sys.time() < deadline) a$poll_io(50)
   expect_true(file.exists(file.path(root, "copying")))
-  b <- callr::r_bg(worker, args = list(repo = repo, root = root, name = "b.txt", slow = FALSE))
+  b <- callr::r_bg(worker, args = list(repo = repo, root = root, name = "b.txt", slow = FALSE,
+                                       release_sec = 0))
   withr::defer(try(b$kill(), silent = TRUE))
-  b$wait(timeout = 10000)
+  b$wait(timeout = cold_start_sec * 1000)
   expect_true(b$get_result()$ok)
   expect_true(a$is_alive())
   reservation <- file.path(root, "a.txt.mergen-rsv")
