@@ -14,7 +14,7 @@ const traceFor = label => ({ label, stdoutBytes: 0, stderrBytes: 0,
 const run = (code, trace, timeoutMs = 10000) => runNativeBrowserDump(process.execPath,
   ['-e', code], { cwd: os.tmpdir(), timeoutMs, trace });
 
-async function windowsJobCase({ code = 0, hang = false, exited = false, complete = true } = {}) {
+async function windowsJobCase({ code = 0, hang = false, exited = false, complete = true, cleanupDelay = 0 } = {}) {
   const child = Object.assign(new EventEmitter(), { pid: 123, exitCode: null, signalCode: null,
     stdout: new PassThrough(), stderr: new PassThrough(), kill() {}, unref() {} });
   let stopped = false;
@@ -30,7 +30,7 @@ async function windowsJobCase({ code = 0, hang = false, exited = false, complete
     else {
       assert.equal(value, 'stop');
       stopped = true;
-      if (!hang) setImmediate(close);
+      if (!hang) setTimeout(close, cleanupDelay);
     }
     done();
   } });
@@ -100,6 +100,8 @@ async function profileCleanupCase(failure, diagnose = false) {
     await assert.rejects((await windowsJobCase({ code })).result, /failed:/);
   }
   await (await windowsJobCase()).result;
+  // Adaptör doğrulaması dış paydan uzun sürse de toplam bütçede tamamlanabilir.
+  await (await windowsJobCase({ cleanupDelay: 250 })).result;
   await (await windowsJobCase({ exited: true })).result;
   await assert.rejects((await windowsJobCase({ hang: true })).result, /cleanup timed out/);
   await assert.rejects((await windowsJobCase({ complete: false })).result, /timed out/);
