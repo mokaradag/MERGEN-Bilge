@@ -200,8 +200,9 @@ test_that("Windows job contains orphan writers and preserves unrelated processes
   on.exit(unrelated$kill(), add = TRUE)
   for (mode in c("natural", "live", "natural")) {
     unlink(heartbeat)
+    # Sinir PowerShell, C# derleme ve iki soguk Rscript baslangicini kapsar; DOM gelince biter.
     result <- env$ux_smoke_owned_browser_run(rscript,
-      c("--vanilla", parent, rscript, writer, heartbeat, mode), 20, wd = root)
+      c("--vanilla", parent, rscript, writer, heartbeat, mode), 60, wd = root)
     expect_identical(result$status, 0L)
     expect_match(result$stdout, "UX_SMOKE_DONE:PASS", fixed = TRUE)
     before <- readLines(heartbeat)
@@ -212,12 +213,15 @@ test_that("Windows job contains orphan writers and preserves unrelated processes
   }
   # Timeout temizligi ve sonraki kosum ayni hazir profille calisabilmeli.
   timeout_script <- file.path(temp, "timeout.R")
+  # Zaman asimi, torun yazici canliyken gelmelidir; yuk altinda soguk baslangic 5 sn'yi asabilir.
   writeLines(c('args <- commandArgs(TRUE)',
     'p <- processx::process$new(args[[1]], c("--vanilla", args[[2]], args[[3]]), cleanup = FALSE)',
+    'while (!file.exists(args[[3]])) Sys.sleep(0.02)',
     'Sys.sleep(300)'), timeout_script)
   unlink(heartbeat)
   expect_error(env$ux_smoke_owned_browser_run(rscript,
-    c("--vanilla", timeout_script, rscript, writer, heartbeat), 5, wd = root), "timed out")
+    c("--vanilla", timeout_script, rscript, writer, heartbeat), 30, wd = root), "timed out")
+  expect_true(file.exists(heartbeat))
   before <- readLines(heartbeat)
   Sys.sleep(0.2)
   expect_identical(readLines(heartbeat), before)
@@ -240,7 +244,7 @@ test_that("Windows adaptoru Turkce ve bosluklu calisma dizininde DOM yakalar ve 
   probe <- paste0("cat(paste0('<html><body><div id=\"status\">', ",
                   "if (file.exists('tests/scripts/helpers_browser_job.cs')) 'CWD_OK' else 'CWD_WRONG', ",
                   "'</div></body></html>\\n'))")
-  result <- env$ux_smoke_owned_browser_run(rscript, c("--vanilla", "-e", probe), 30, wd = wd)
+  result <- env$ux_smoke_owned_browser_run(rscript, c("--vanilla", "-e", probe), 60, wd = wd)
   expect_identical(result$status, 0L, info = result$stderr)
   expect_match(result$stdout, '<div id="status">CWD_OK</div>', fixed = TRUE)
   withr::local_dir(wd)
