@@ -334,7 +334,7 @@ test_that("VM wrapper PASS icin rendered sonucu ister ve gecici env degerlerini 
   profile <- withr::local_tempdir()
   withr::local_envvar(MERGEN_BROWSER_UX_BASE_URL = "https://app.example.invalid/base",
                      MERGEN_BROWSER_UX_PROFILE_DIR = profile, MERGEN_UX_SMOKE_PATH = NA,
-                     MERGEN_ALLOW_NETWORK_UX_SMOKE = NA, MERGEN_BROWSER_BIN = "mock-edge")
+                     MERGEN_ALLOW_NETWORK_UX_SMOKE = NA, MERGEN_BROWSER_BIN = "C:/mock/Edge/msedge.exe")
   answer <- "OK: rendered #status is UX_SMOKE_DONE:PASS.\n"
   status <- 0L
   testthat::local_mocked_bindings(run = function(command, args, ...) {
@@ -754,4 +754,35 @@ test_that("belgeler kaynak ZIP akisini destekler ve commit atfini ayri tutar", {
     expect_match(text, "desteklenen VM test girdisidir", fixed = TRUE)
     expect_match(text, "`git.commit_attributed = false`", fixed = TRUE)
   }
+})
+
+test_that("VM kosucusu Windows'ta hazir Edge profili icin yalniz msedge.exe kabul eder", {
+  env <- .vm_ux_functions()
+  for (bin in c("C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+                "C:\\Users\\x\\AppData\\Local\\Microsoft\\Edge\\Application\\MSEDGE.EXE")) {
+    expect_identical(env$vm_ux_require_edge(bin, windows = TRUE), bin)
+  }
+  # Eski/yanlis override Chrome'u secip Edge ilke denetimini atlayamaz.
+  for (bin in c("C:/Program Files/Google/Chrome/Application/chrome.exe", "chromium", "",
+                "C:/tools/msedge.exe.bak", "C:/msedge.exe/chrome.exe")) {
+    expect_error(env$vm_ux_require_edge(bin, windows = TRUE), "requires Microsoft Edge (msedge.exe)", fixed = TRUE)
+  }
+  # Windows disi yerel gelistirici kosumlari etkilenmez.
+  expect_identical(env$vm_ux_require_edge("/usr/bin/chromium", windows = FALSE), "/usr/bin/chromium")
+})
+
+test_that("Windows profil redaksiyonu harf buyuklugune duyarsiz ve yol karakterlerini harfiyen esler", {
+  env <- new.env(parent = globalenv())
+  source(file.path(resolve_repo_root_for_tests(), "tests/scripts/helpers_browser_ux_profile.R"),
+         local = env, encoding = "UTF-8")
+  withr::local_envvar(USERPROFILE = "", LOCALAPPDATA = "")
+  profile <- "C:\\Gizli\\Op.Er\\MERGEN\\BrowserUxSmoke (1)+[x]"
+  text <- paste("a", toupper(profile), "b", tolower(chartr("\\", "/", profile)), "c", profile)
+  # Edge yolu farkli harf buyuklugu veya ayiriciyla yazsa da sizmaz.
+  expect_identical(env$ux_smoke_redact_profile(text, profile, windows = TRUE),
+                   "a <BROWSER_PROFILE> b <BROWSER_PROFILE> c <BROWSER_PROFILE>")
+  # Nokta/parantez gibi karakterler regex olarak genisletilmez.
+  expect_identical(env$ux_smoke_redact_profile("C:\\Gizli\\OpXEr", profile, windows = TRUE), "C:\\Gizli\\OpXEr")
+  # Windows disinda yollar harf duyarli kalir.
+  expect_match(env$ux_smoke_redact_profile(text, profile, windows = FALSE), toupper(profile), fixed = TRUE)
 })

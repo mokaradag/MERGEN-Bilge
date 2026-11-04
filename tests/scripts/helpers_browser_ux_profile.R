@@ -21,14 +21,19 @@ ux_smoke_profile_path <- function(path, roots) {
   path
 }
 
-ux_smoke_redact_profile <- function(text, profile = Sys.getenv("MERGEN_BROWSER_UX_PROFILE_DIR", "")) {
+ux_smoke_redact_profile <- function(text, profile = Sys.getenv("MERGEN_BROWSER_UX_PROFILE_DIR", ""),
+                                    windows = .Platform$OS.type == "windows") {
   values <- c(profile, Sys.getenv(c("USERPROFILE", "LOCALAPPDATA"), ""))
   values <- values[nzchar(trimws(values))]
   values <- unique(c(values, chartr("\\", "/", values), chartr("/", "\\", values),
                      vapply(values, function(v) encodeString(v, quote = ""), character(1)),
                      vapply(values, utils::URLencode, character(1), reserved = TRUE)))
   for (value in values[order(nchar(values), decreasing = TRUE)]) {
-    text <- gsub(value, "<BROWSER_PROFILE>", text, fixed = TRUE)
+    # Windows yollari harf buyuklugune duyarsizdir; Edge yolu farkli harfle yazabilir.
+    text <- if (windows) {
+      gsub(gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", value, perl = TRUE), "<BROWSER_PROFILE>", text,
+           perl = TRUE, ignore.case = TRUE)
+    } else gsub(value, "<BROWSER_PROFILE>", text, fixed = TRUE)
   }
   text
 }

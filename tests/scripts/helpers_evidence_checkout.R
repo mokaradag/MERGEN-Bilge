@@ -27,6 +27,17 @@ evidence_checkout_matches <- function(before, after) {
     identical(before$sha, after$sha)
 }
 
+# Kosumun kullandigi dosya (or. renv.lock) commit'e ait mi? Izlenen dosya + temiz
+# checkout, calisan kopyanin HEAD ile ayni oldugunu gosterir. Yerel exclude ile
+# gizlenen/kopyalanan kilit izlenmedigi icin atif kapsamina girmez.
+evidence_checkout_file_committed <- function(path) {
+  if (!file.exists(".git")) return(FALSE)
+  out <- tryCatch(suppressWarnings(system2("git", c("ls-files", "--error-unmatch", "--", path),
+                                           stdout = TRUE, stderr = FALSE)),
+                  error = function(e) structure(character(), status = 127L))
+  is.null(attr(out, "status")) && identical(out, path)
+}
+
 # Git metadatasi hic yoksa kosum surer; yalniz commit atfi yapilamaz.
 evidence_checkout_unavailable <- function(snapshot) {
   identical(snapshot$available, FALSE)

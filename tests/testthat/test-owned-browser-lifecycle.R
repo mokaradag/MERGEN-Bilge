@@ -337,3 +337,28 @@ test_that("Windows adaptoru gecersiz UTF-8 girdiyi derlemeden once input asamasi
   expect_false(grepl("Geli", result$stderr, fixed = TRUE))
   expect_false(file.exists(launched))
 })
+
+test_that("Windows job durdurmasi dogal hata cikisini korur, yalniz kendi sonlandirmasini Stopped sayar", {
+  skip_if(.Platform$OS.type != "windows", "Windows job object davranisi")
+  root <- resolve_repo_root_for_tests()
+  source <- chartr("/", "\\", file.path(root, "tests/scripts/helpers_browser_job.cs"))
+  cmd <- file.path(Sys.getenv("SystemRoot"), "System32", "cmd.exe")
+  script <- paste(
+    "$ErrorActionPreference='Stop'",
+    sprintf("Add-Type -LiteralPath '%s'", source),
+    # Kok dogal olarak 7 ile cikar; sonra Stop cagrilir.
+    sprintf("$a=[MergenBrowserJob]::new('%s', [string[]]@('/d','/c','exit 7'), $env:TEMP)", cmd),
+    "while ($null -eq $a.ExitCode) { Start-Sleep -Milliseconds 10 }",
+    "$a.Stop(5000); Write-Output ('natural ' + $a.Stopped + ' ' + $a.ExitCode); $a.Dispose()",
+    # Canli kok job tarafindan sonlandirilir.
+    sprintf("$b=[MergenBrowserJob]::new('%s', [string[]]@('/d','/c','ping -n 30 127.0.0.1 > nul'), $env:TEMP)", cmd),
+    "Start-Sleep -Milliseconds 300",
+    "$b.Stop(5000); Write-Output ('live ' + $b.Stopped + ' ' + ($b.ExitCode -eq [int][MergenBrowserJob]::OwnedStopCode)); $b.Dispose()",
+    sep = "\n")
+  result <- processx::run("powershell.exe", c("-NoProfile", "-NonInteractive", "-Command", script),
+                          error_on_status = FALSE, timeout = 60)
+  expect_identical(result$status, 0L, info = result$stderr)
+  lines <- trimws(strsplit(result$stdout, "\n", fixed = TRUE)[[1]])
+  expect_true("natural False 7" %in% lines, info = result$stdout)
+  expect_true("live True True" %in% lines, info = result$stdout)
+})

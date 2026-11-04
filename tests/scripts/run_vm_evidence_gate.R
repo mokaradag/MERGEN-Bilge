@@ -814,7 +814,9 @@ failed_optional <- vapply(step_results, function(r) {
 }, logical(1))
 
 checkout_after <- evidence_checkout_snapshot()
-checkout_verified <- evidence_checkout_matches(checkout_before, checkout_after)
+# Atif, kosumun kullandigi kilidin de commit'te izlenmesini ister (exclude ile gizlenen kilit sayilmaz).
+lock_committed <- evidence_checkout_file_committed("renv.lock")
+checkout_verified <- evidence_checkout_matches(checkout_before, checkout_after) && lock_committed
 # Iki uc da Git metadatasi tasimiyorsa kimlik atif disidir; karisik/eslesmeyen durum kapali kalir.
 checkout_identity_ok <- checkout_verified ||
   (evidence_checkout_unavailable(checkout_before) && evidence_checkout_unavailable(checkout_after))

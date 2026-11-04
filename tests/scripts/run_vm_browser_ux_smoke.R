@@ -31,6 +31,15 @@ vm_ux_smoke_url <- function(base, prefix) {
   paste0(vm_ux_base_url(base), "/", prefix, "/ux-smoke.html?autostart=1")
 }
 
+# Hazir profil Edge'e aittir; baska tarayici hem oturumu kullanamaz hem de
+# yalniz msedge icin calisan UserDataDir ilke denetimini atlardi.
+vm_ux_require_edge <- function(bin, windows = .Platform$OS.type == "windows") {
+  if (windows && !grepl("^msedge[.]exe$", basename(chartr("\\", "/", bin)), ignore.case = TRUE)) {
+    stop("VM browser smoke requires Microsoft Edge (msedge.exe) for the prepared Edge profile; clear or fix MERGEN_BROWSER_BIN.", call. = FALSE)
+  }
+  invisible(bin)
+}
+
 vm_ux_runtime_dir <- function() {
   local_app <- Sys.getenv("LOCALAPPDATA", "")
   if (!nzchar(local_app)) stop("LOCALAPPDATA is required for the VM smoke handshake.", call. = FALSE)
@@ -130,6 +139,7 @@ vm_ux_main <- function(args = commandArgs(trailingOnly = TRUE)) {
     if (!length(edge)) stop("Microsoft Edge not found; set MERGEN_BROWSER_BIN explicitly.", call. = FALSE)
     Sys.setenv(MERGEN_BROWSER_BIN = edge[[1]])
   }
+  vm_ux_require_edge(Sys.getenv("MERGEN_BROWSER_BIN", ""))
   Sys.setenv(MERGEN_UX_SMOKE_PATH = prefix, MERGEN_ALLOW_NETWORK_UX_SMOKE = "true",
              MERGEN_BROWSER_UX_BASE_URL = base)
   rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")

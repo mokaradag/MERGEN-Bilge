@@ -16,6 +16,7 @@ local({
   candidates <- if (nzchar(explicit)) resolved else c(
     file.path(Sys.getenv("PROGRAMFILES(X86)"), "Microsoft/Edge/Application/msedge.exe"),
     file.path(Sys.getenv("PROGRAMFILES"), "Microsoft/Edge/Application/msedge.exe"),
+    file.path(Sys.getenv("LOCALAPPDATA"), "Microsoft/Edge/Application/msedge.exe"),
     unname(Sys.which(c("msedge", "google-chrome", "chromium")))
   )
   candidates <- candidates[nzchar(candidates) & file.exists(candidates)]

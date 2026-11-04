@@ -38,7 +38,7 @@ async function windowsJobCase({ code = 0, hang = false, exited = false, complete
     setTimeout, clearTimeout, require(id) {
       if (id !== 'node:child_process') return require(id);
       return { spawn(command, args, options) {
-        assert.equal(command, 'powershell.exe', 'PID ile taskkill kullanilmamali');
+        assert.equal(command, 'powershell.exe', 'PID ile taskkill kullanılmamalı');
         assert.ok(args.at(-1).includes('MergenBrowserJob'));
         assert.ok(args.includes('-Command'));
         setImmediate(() => {
@@ -94,7 +94,7 @@ async function profileCleanupCase(failure, diagnose = false) {
 }
 
 (async () => {
-  // Job kapanisi basarisizsa tam PASS DOM'u kabul edilmez.
+  // Job kapanışı başarısızsa tam PASS DOM'u kabul edilmez.
   for (const code of [1, 7, 124, 125]) {
     await assert.rejects((await windowsJobCase({ code })).result, /failed:/);
   }
@@ -133,7 +133,7 @@ async function profileCleanupCase(failure, diagnose = false) {
   try {
     const naturalExit = parent.replace('process.stdout.write(' + JSON.stringify(page('UX_SMOKE_DONE:PASS')) + ')',
       'process.stdout.write(' + JSON.stringify(page('UX_SMOKE_DONE:PASS')) + ',()=>process.exit(0))');
-    assert.notEqual(naturalExit, parent, 'dogal kok cikisi ayri bir olay sirasi olmali');
+    assert.notEqual(naturalExit, parent, 'doğal kök çıkışı ayrı bir olay sırası olmalı');
     const intermediate = 'const {spawn}=require("node:child_process");' +
       'const child=spawn(process.execPath,["-e",' + JSON.stringify(writer) + '],' +
       '{stdio:["ignore","ignore","ignore","ipc"]});' +
@@ -143,7 +143,7 @@ async function profileCleanupCase(failure, diagnose = false) {
       const trace = traceFor('tree');
       await run(code, trace);
       if (process.platform === 'win32' && code === naturalExit) assert.equal(trace.exitCode, 0);
-      assert.equal(unrelated.exitCode, null, 'job disindaki surec korunmali');
+      assert.equal(unrelated.exitCode, null, 'job dışındaki süreç korunmalı');
       const before = fs.readFileSync(heartbeat, 'utf8');
       await new Promise(resolve => setTimeout(resolve, 200));
       assert.equal(fs.readFileSync(heartbeat, 'utf8'), before, 'alt süreç profil yazmayı sürdürmemeli');

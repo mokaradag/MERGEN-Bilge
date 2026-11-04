@@ -292,7 +292,8 @@ testthat::test_that("Shiny handler ve smoke durum sözleşmeleri gerçek JavaScr
         identical(tolower(Sys.getenv("MERGEN_NATIVE_BROWSER_REGRESSIONS", "")), "true")) {
       browsers <- c(unname(Sys.which(c("google-chrome", "chromium", "msedge"))),
                     file.path(Sys.getenv("PROGRAMFILES"), "Microsoft/Edge/Application/msedge.exe"),
-                    file.path(Sys.getenv("PROGRAMFILES(X86)"), "Microsoft/Edge/Application/msedge.exe"))
+                    file.path(Sys.getenv("PROGRAMFILES(X86)"), "Microsoft/Edge/Application/msedge.exe"),
+                    file.path(Sys.getenv("LOCALAPPDATA"), "Microsoft/Edge/Application/msedge.exe"))
       browsers <- browsers[nzchar(browsers) & file.exists(browsers)]
       if (!length(browsers)) stop("Native browser validation requested but no supported browser is available.", call. = FALSE)
       if (length(browsers)) {

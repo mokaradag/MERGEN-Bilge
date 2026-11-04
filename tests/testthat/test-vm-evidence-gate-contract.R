@@ -411,6 +411,8 @@ test_that("zorunlu browser basarisizligi veya atlanmasi ust kapiyi dusurur", {
   env$checkout_before <- list(sha = strrep("a", 40L), dirty = FALSE, verified = TRUE)
   final_checkout <- env$checkout_before
   env$evidence_checkout_snapshot <- function() final_checkout
+  lock_in_head <- TRUE
+  env$evidence_checkout_file_committed <- function(path) { expect_identical(path, "renv.lock"); lock_in_head }
   result <- list(ok = FALSE, detail = list(ux_smoke_pass_marker = FALSE))
   env$evidence_step_runners <- setNames(lapply(env$evidence_step_specs, function(spec) {
     if (identical(spec$id, "browser_ux_smoke")) function() result else function() list(ok = TRUE)
@@ -421,7 +423,7 @@ test_that("zorunlu browser basarisizligi veya atlanmasi ust kapiyi dusurur", {
     eval(loop[[1]], env)
     for (e in expressions) {
       if (is.call(e) && identical(e[[1]], as.name("<-")) &&
-          as.character(e[[2]]) %in% c("failed_required", "failed_optional", "checkout_after", "checkout_verified",
+          as.character(e[[2]]) %in% c("failed_required", "failed_optional", "checkout_after", "lock_committed", "checkout_verified",
                                       "checkout_identity_ok", "overall_status")) eval(e, env)
     }
     expect_length(env$step_results, 13L)
@@ -461,6 +463,14 @@ test_that("zorunlu browser basarisizligi veya atlanmasi ust kapiyi dusurur", {
     expect_error(eval(stop_branch[[1]], env), "checkout_identity", fixed = TRUE)
   }
   final_checkout <- env$checkout_before
+  # Temiz ve ayni SHA olsa da commit'te izlenmeyen (exclude ile gizlenen) kilit atif almaz.
+  lock_in_head <- FALSE
+  expect_identical(aggregate(), "failed")
+  expect_false(env$checkout_verified)
+  expect_error(eval(stop_branch[[1]], env), "checkout_identity", fixed = TRUE)
+  lock_in_head <- TRUE
+  expect_identical(aggregate(), "passed")
+  expect_true(env$checkout_verified)
   # Kaynak ZIP'i: Git metadatasi olmamasi tek basina tam kosumu dusurmez.
   zip <- list(sha = "", dirty = NA, verified = FALSE, available = FALSE)
   env$checkout_before <- final_checkout <- zip
@@ -741,4 +751,42 @@ test_that("bosluk redaksiyonu PASS satirini veya JSON yapisini bozmaz", {
   expect_true(jsonlite::validate(clean))
   expect_identical(jsonlite::fromJSON(clean)$status, marker)
   expect_false(grepl("operator|SmokeProfile", clean))
+})
+
+test_that("exclude ile gizlenen kilit temiz gorunse de commit atfina girmez", {
+  if (!nzchar(Sys.which("git"))) {
+    if (!file.exists(file.path(.evg_repo_root, ".git"))) {
+      skip("Git metadata'si olmayan dagitim kopyasinda gercek Git atfi CI/source checkout'unda dogrulanir")
+    }
+    fail("git kullanilamiyor; kilit atfi sozlesmesi dogrulanamadi")
+  }
+  env <- new.env(parent = globalenv())
+  source(file.path(.evg_repo_root, "tests/scripts/helpers_evidence_checkout.R"), local = env)
+  repo <- withr::local_tempdir()
+  withr::local_dir(repo)
+  git <- function(args) {
+    out <- suppressWarnings(system2("git", args, stdout = TRUE, stderr = TRUE))
+    expect_true(is.null(attr(out, "status")), info = paste(out, collapse = "\n"))
+  }
+  git(c("init", "--quiet"))
+  writeLines("ilk", "tracked.txt")
+  git(c("add", "."))
+  git(c("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "test"))
+  # Kopyalanip yerel exclude ile gizlenen kilit: status temiz, ama HEAD'de yok.
+  cat("renv.lock\n", file = ".git/info/exclude", append = TRUE)
+  writeLines("{}", "renv.lock")
+  snapshot <- env$evidence_checkout_snapshot()
+  expect_true(env$evidence_checkout_matches(snapshot, snapshot))
+  expect_false(env$evidence_checkout_file_committed("renv.lock"))
+  # Commit edilmis kilit atif kapsamindadir.
+  writeLines("", ".git/info/exclude")
+  git(c("add", "renv.lock"))
+  git(c("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "lock"))
+  expect_true(env$evidence_checkout_file_committed("renv.lock"))
+  # Git metadatasi olmayan agacta git cagrilmaz.
+  zip <- withr::local_tempdir()
+  withr::local_dir(zip)
+  env$system2 <- function(...) stop("Git metadatasi yokken git cagrilmamali")
+  writeLines("{}", "renv.lock")
+  expect_false(env$evidence_checkout_file_committed("renv.lock"))
 })

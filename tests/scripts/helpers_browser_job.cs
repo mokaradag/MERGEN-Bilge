@@ -131,14 +131,19 @@ public sealed class MergenBrowserJob : IDisposable {
             return info.Active;
         }
     }
+    // Yalniz bu job'un sonlandirdigi kok bu kodla cikar; dogal cikis kodu korunur.
+    public const uint OwnedStopCode = 0x4D474E53;
     public void Stop(int milliseconds) {
-        Stopped = !ExitCode.HasValue;
-        Check(TerminateJobObject(job, 1));
+        Check(TerminateJobObject(job, OwnedStopCode));
         var timer = System.Diagnostics.Stopwatch.StartNew();
         while (Active != 0) {
             if (timer.ElapsedMilliseconds >= milliseconds) throw new TimeoutException();
             Thread.Sleep(10);
         }
+        // Yaris yok: karar temizlik dogrulandiktan sonra kokun gercek cikis kodundan verilir.
+        int? code = ExitCode;
+        if (!code.HasValue) throw new TimeoutException();
+        Stopped = code.Value == unchecked((int)OwnedStopCode);
     }
     public void Dispose() {
         if (job != IntPtr.Zero) { CloseHandle(job); job = IntPtr.Zero; }
