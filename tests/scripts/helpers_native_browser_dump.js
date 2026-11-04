@@ -48,7 +48,7 @@ function runNativeBrowserDump(browser, args, { cwd, timeoutMs, trace, cleanupMs 
         child.unref();
         finish(new Error('Native browser ' + trace.label + ' cleanup timed out' +
           (trace.cleanupPhase ? ' [' + trace.cleanupPhase + ']' : '')));
-      // Windows denetleyicisi adaptorun kendi dogrulama butcesini kesmez.
+      // Windows denetleyicisi adaptörün kendi doğrulama bütçesini kesmez.
       }, windows ? adapterCleanupMs + cleanupMs : cleanupMs);
     };
     const stopOwnedTree = () => {

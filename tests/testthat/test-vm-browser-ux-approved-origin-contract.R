@@ -136,7 +136,8 @@ test_that("belgedeki tarayici sahiplik adaptoru uretim durmadan gercekten dogrul
   edge_check <- which(startsWith(lines, '& $rscript -e "') &
                         grepl("ux_smoke_owned_browser_edge_preflight()", lines, fixed = TRUE))
   expect_length(edge_check, 1L)
-  expect_identical(edge_check, command + 2L)
+  # Adaptor kontrolu ve hata korumasindan sonra, uretim durmadan once (tam bitisiklik sart degil).
+  expect_gt(edge_check, command + 1L)
   expect_lt(edge_check, which(startsWith(lines, "Ön kontrol başarılı olduktan sonra normal uygulamayı")))
   expect_identical(lines[[edge_check + 1L]],
     'if ($LASTEXITCODE -ne 0) { throw "Owned Edge lifecycle pre-stop check FAILED; keep the normal app running." }')

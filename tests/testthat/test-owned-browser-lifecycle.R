@@ -464,7 +464,8 @@ test_that("gercek Edge yasam dongusu on kontrolu gecici profil ve yerel sayfa ku
 
 test_that("Windows'ta gercek Edge ozel job icinde DOM uretir ve tum surecleri dogrulanmis bicimde kapanir", {
   skip_if(.Platform$OS.type != "windows", "Gercek Edge job yasam dongusu")
-  edge <- file.path(c(Sys.getenv("PROGRAMFILES(X86)"), Sys.getenv("PROGRAMFILES")),
+  # Uretimle ayni aday listesi (kullaniciya ozel LOCALAPPDATA kurulumu dahil).
+  edge <- file.path(c(Sys.getenv("PROGRAMFILES(X86)"), Sys.getenv("PROGRAMFILES"), Sys.getenv("LOCALAPPDATA")),
                     "Microsoft", "Edge", "Application", "msedge.exe")
   edge <- edge[file.exists(edge)]
   skip_if(!length(edge), "Microsoft Edge kurulu degil")
@@ -475,6 +476,7 @@ test_that("Windows'ta gercek Edge ozel job icinde DOM uretir ve tum surecleri do
   # Ilgisiz bir surec job disinda kalir ve korunur.
   unrelated <- processx::process$new(file.path(R.home("bin"), "Rscript.exe"), c("--vanilla", "-e", "Sys.sleep(300)"))
   on.exit(unrelated$kill(), add = TRUE)
-  expect_output(env$ux_smoke_owned_browser_edge_preflight(edge[[1]]), "OK: owned Edge lifecycle verified.", fixed = TRUE)
+  # Bos aday ile on kontrolun kendi Edge kesfi kullanilir.
+  expect_output(env$ux_smoke_owned_browser_edge_preflight(), "OK: owned Edge lifecycle verified.", fixed = TRUE)
   expect_true(unrelated$is_alive())
 })
