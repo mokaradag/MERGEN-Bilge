@@ -5,7 +5,8 @@ $job = $null
 $code = 125
 $stage = 'input'
 try {
-    $inputReader = [IO.StreamReader]::new([Console]::OpenStandardInput(), [Text.UTF8Encoding]::new($false))
+    # Gecersiz UTF-8 sessizce U+FFFD olmaz; bozuk yol 'input' asamasinda reddedilir.
+    $inputReader = [IO.StreamReader]::new([Console]::OpenStandardInput(), [Text.UTF8Encoding]::new($false, $true))
     $config = ConvertFrom-Json -InputObject ($inputReader.ReadLine())
     if (!$config.executable -or !$config.cwd -or !$config.jobSource) { throw 'Invalid launch' }
     $stage = 'compile'

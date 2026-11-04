@@ -19,6 +19,18 @@ ux_smoke_owned_browser_error <- function(message, failure, stage = NA_character_
             list(message = message, call = NULL, failure = failure, stage = stage, win32 = win32))
 }
 
+# PowerShell girdisi UTF-8 okunur. CP1254 gibi yerel kod sayfasindaki getwd()
+# dizgeleri (or. "Gelistirme" icindeki s-cedilla) jsonlite tarafindan donusturulmeden
+# UTF-8 diye isaretlenir; bu nedenle tum alanlar once UTF-8'e cevrilir ve
+# processx'in yerel kodlama donusumunden kacinmak icin ham bayt yazilir.
+ux_smoke_owned_browser_payload <- function(command, args, wd, timeout) {
+  json <- jsonlite::toJSON(list(
+    executable = enc2utf8(command), args = as.list(enc2utf8(unname(as.character(args)))),
+    cwd = enc2utf8(wd), timeoutMs = timeout * 1000,
+    jobSource = enc2utf8(file.path(wd, "tests/scripts/helpers_browser_job.cs"))), auto_unbox = TRUE)
+  c(charToRaw(json), as.raw(10L))
+}
+
 ux_smoke_owned_browser_run <- function(command, args, timeout, wd = getwd(),
                                        windows = .Platform$OS.type == "windows",
                                        spawn = processx::process$new) {
@@ -36,10 +48,7 @@ ux_smoke_owned_browser_run <- function(command, args, timeout, wd = getwd(),
     cleanup_tree = TRUE, windows_hide_window = TRUE)
   done <- FALSE
   on.exit(if (!done) try(child$kill_tree(), silent = TRUE), add = TRUE)
-  if (windows) child$write_input(paste0(jsonlite::toJSON(
-    list(executable = command, args = unname(as.list(args)), cwd = wd,
-         timeoutMs = timeout * 1000,
-         jobSource = file.path(wd, "tests/scripts/helpers_browser_job.cs")), auto_unbox = TRUE), "\n"))
+  if (windows) child$write_input(ux_smoke_owned_browser_payload(command, args, wd, timeout))
   stdout <- stderr <- ""
   started <- proc.time()[["elapsed"]]
   stopping <- FALSE

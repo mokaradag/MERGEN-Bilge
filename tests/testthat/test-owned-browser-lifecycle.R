@@ -262,3 +262,78 @@ test_that("Windows adaptoru kisitli PowerShell dil modunu tarayici acmadan ayri 
   expect_error(env$ux_smoke_owned_browser_preflight(wd = root, run = function(...)
     env$ux_smoke_owned_browser_run(..., spawn = constrained)), "stage=language_mode", fixed = TRUE)
 })
+
+test_that("CP1254 benzeri yerel kod sayfasinda Turkce yol PowerShell adaptorune gecerli UTF-8 olarak gider", {
+  # Gercek VM: R yerel kodlamasi CP1254 (s-cedilla = 0xFE). Windows R alt sureci bu
+  # kodlamaya zorlanamaz; ayni bayt duzenine sahip Latin-5 locale'de R kosturulur.
+  skip_if(.Platform$OS.type == "windows", "Yerel kod sayfasi alt surecte Linux locale ile modellenir")
+  skip_if(!nzchar(Sys.which("localedef")), "localedef yok")
+  root <- resolve_repo_root_for_tests()
+  temp <- withr::local_tempdir()
+  locales <- file.path(temp, "locales")
+  dir.create(locales)
+  built <- processx::run("localedef", c("-i", "tr_TR", "-f", "ISO-8859-9", file.path(locales, "tr_TR.ISO-8859-9")),
+                         error_on_status = FALSE)
+  skip_if(!identical(built$status, 0L), "Latin-5 Turkce locale olusturulamadi")
+  out <- file.path(temp, "stdin.bin")
+  child <- file.path(temp, "child.R")
+  writeLines(c(
+    'args <- commandArgs(TRUE)',
+    'stopifnot(!isTRUE(l10n_info()[["UTF-8"]]))',
+    'source(file.path(args[[1]], "tests/scripts/helpers_owned_browser.R"))',
+    '# getwd() gibi yerel (isaretsiz) kodlu yol ve profil argumani',
+    'wd <- file.path(args[[2]], iconv("04 - Geli\\u015ftirme", "UTF-8", ""), "MERGEN Bilge")',
+    'stopifnot(Encoding(wd) == "unknown", as.raw(0xfe) %in% charToRaw(wd))',
+    'dir.create(file.path(wd, "tests/scripts"), recursive = TRUE)',
+    'file.copy(file.path(args[[1]], "tests/scripts/run_owned_browser.ps1"), file.path(wd, "tests/scripts"))',
+    'profile <- paste0("--user-data-dir=", iconv("C:/Kullan\\u0131c\\u0131/BrowserUxSmoke", "UTF-8", ""))',
+    'sent <- NULL',
+    'fake <- list(write_input = function(x) sent <<- x, poll_io = function(...) NULL,',
+    '  read_output = function() "<html><body></body></html>", read_error = function() "",',
+    '  is_alive = function() FALSE, read_all_output = function() "", read_all_error = function() "",',
+    '  get_exit_status = function() 0L, kill_tree = function() NULL)',
+    'res <- ux_smoke_owned_browser_run("C:/Edge/msedge.exe", c("--headless=new", profile), 10,',
+    '  wd = wd, windows = TRUE, spawn = function(...) fake)',
+    '# processx write_input ile ayni bayt donusumu (varsayilan yerel kodlama).',
+    'if (is.character(sent)) sent <- iconv(paste(sent, collapse = "\\n"), "", "", toRaw = TRUE)[[1]]',
+    'stopifnot(identical(res$status, 0L), is.raw(sent))',
+    'writeBin(sent, args[[3]])'), child)
+  result <- withr::with_envvar(c(LOCPATH = locales, LANG = "tr_TR.ISO-8859-9", LC_ALL = "tr_TR.ISO-8859-9"),
+    processx::run(file.path(R.home("bin"), "Rscript"), c("--vanilla", child, root, temp, out),
+                  error_on_status = FALSE))
+  expect_identical(result$status, 0L, info = paste(result$stdout, result$stderr))
+  bytes <- readBin(out, "raw", file.info(out)$size)
+  json <- rawToChar(bytes)
+  Encoding(json) <- "UTF-8"
+  # PowerShell [Text.UTF8Encoding] ile ayni: gecersiz bayt U+FFFD olur ve yol bozulur.
+  expect_true(validUTF8(json))
+  expect_false(as.raw(0xfe) %in% bytes)
+  expect_identical(tail(bytes, 1L), as.raw(10L))
+  config <- jsonlite::fromJSON(json)
+  turkish <- paste0("04 - Geli", intToUtf8(0x015f), "tirme/MERGEN Bilge")
+  expect_true(endsWith(config$cwd, turkish))
+  expect_true(endsWith(config$jobSource, paste0(turkish, "/tests/scripts/helpers_browser_job.cs")))
+  expect_identical(config$args[[2]], paste0("--user-data-dir=C:/Kullan", intToUtf8(0x0131), "c", intToUtf8(0x0131), "/BrowserUxSmoke"))
+  expect_identical(config$executable, "C:/Edge/msedge.exe")
+})
+
+test_that("Windows adaptoru gecersiz UTF-8 girdiyi derlemeden once input asamasinda reddeder", {
+  skip_if(.Platform$OS.type != "windows", "PowerShell UTF-8 girdi davranisi")
+  root <- resolve_repo_root_for_tests()
+  temp <- withr::local_tempdir()
+  launched <- file.path(temp, "launched")
+  # VM'deki bozuk yuk: CP1254 s-cedilla (0xFE) UTF-8 akisina ham olarak girmis.
+  payload <- c(charToRaw('{"executable":"C:/Windows/System32/cmd.exe","args":["/d","/c","type nul > '),
+               charToRaw(chartr("/", "\\", launched)), charToRaw('"],"cwd":"C:/Geli'), as.raw(0xfe),
+               charToRaw('tirme","timeoutMs":10000,"jobSource":"C:/Geli'), as.raw(0xfe),
+               charToRaw('tirme/helpers_browser_job.cs"}'), as.raw(10L))
+  input <- file.path(temp, "stdin.bin")
+  writeBin(payload, input)
+  script <- paste(readLines(file.path(root, "tests/scripts/run_owned_browser.ps1"), warn = FALSE), collapse = "\n")
+  result <- processx::run("powershell.exe", c("-NoProfile", "-NonInteractive", "-Command", script),
+                          stdin = input, error_on_status = FALSE, timeout = 60)
+  expect_identical(result$status, 125L, info = result$stderr)
+  expect_match(result$stderr, "MERGEN_OWNED_BROWSER_STAGE=input", fixed = TRUE)
+  expect_false(grepl("Geli", result$stderr, fixed = TRUE))
+  expect_false(file.exists(launched))
+})
