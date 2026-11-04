@@ -10,7 +10,9 @@ try {
     $config = ConvertFrom-Json -InputObject ($inputReader.ReadLine())
     if (!$config.executable -or !$config.cwd -or !$config.jobSource -or [int]$config.cleanupMs -le 0) { throw 'Invalid launch' }
     $stage = 'compile'
-    Add-Type -LiteralPath $config.jobSource
+    # UNC kaynak yolu derleyiciye verilmez; ayni kaynak UTF-8 metin olarak derlenir.
+    $jobSource = [IO.File]::ReadAllText([string]$config.jobSource, [Text.UTF8Encoding]::new($false, $true))
+    Add-Type -TypeDefinition $jobSource -Language CSharp
     $stage = 'launch'
     $job = [MergenBrowserJob]::new([string]$config.executable, [string[]]$config.args, [string]$config.cwd)
     $stage = 'wait'

@@ -247,6 +247,43 @@ test_that("Windows adaptoru Turkce ve bosluklu calisma dizininde DOM yakalar ve 
   expect_output(env$ux_smoke_owned_browser_preflight(wd = wd), "OK: owned browser adapter verified.", fixed = TRUE)
 })
 
+test_that("Windows adaptörü kaynak dosyanın adından bağımsız UTF-8 metni derler ve bozuk kaynakta süreç başlatmaz", {
+  skip_if(.Platform$OS.type != "windows", "Windows PowerShell derleme davranışı")
+  root <- resolve_repo_root_for_tests()
+  env <- .owned_browser_env()
+  temp <- file.path(withr::local_tempdir(), paste0("kaynak [", intToUtf8(0x015f), "]"))
+  dir.create(temp)
+  # Aynı C# içeriği farklı uzantıyla derlenir; dosya yolu derleyici girdisi olmaz.
+  source <- file.path(temp, "job-source.txt")
+  expect_true(file.copy(file.path(root, "tests/scripts/helpers_browser_job.cs"), source))
+  marker <- file.path(temp, "launched")
+  rscript <- file.path(R.home("bin"), "Rscript.exe")
+  probe <- "writeLines('started', commandArgs(TRUE)[[1]]); cat('<html><body><div id=\"status\">SOURCE_OK</div></body></html>\\n')"
+  config <- jsonlite::fromJSON(rawToChar(env$ux_smoke_owned_browser_payload(
+    rscript, c("--vanilla", "-e", probe, marker), root, 30)))
+  config$jobSource <- enc2utf8(source)
+  input <- file.path(temp, "stdin.bin")
+  writeBin(c(charToRaw(jsonlite::toJSON(config, auto_unbox = TRUE)), as.raw(10L)), input)
+  script <- paste(readLines(file.path(root, "tests/scripts/run_owned_browser.ps1"), warn = FALSE), collapse = "\n")
+  run <- function() processx::run("powershell.exe", c("-NoProfile", "-NonInteractive", "-Command", script),
+                                 stdin = input, wd = root, error_on_status = FALSE, timeout = 60)
+  result <- run()
+  expect_identical(result$status, 0L, info = result$stderr)
+  expect_match(result$stdout, '<div id="status">SOURCE_OK</div>', fixed = TRUE)
+  expect_identical(readLines(marker), "started")
+  # Derleme ve UTF-8 çözümleme hataları gizli kaynak/yol sızdırmadan kapalı kalır.
+  for (bytes in list(charToRaw("private-source-sentinel invalid C#"),
+                     c(charToRaw("// private-source-sentinel "), as.raw(0xfe)))) {
+    unlink(marker)
+    writeBin(bytes, source)
+    result <- run()
+    expect_identical(result$status, 125L)
+    expect_match(result$stderr, "MERGEN_OWNED_BROWSER_STAGE=compile", fixed = TRUE)
+    expect_false(grepl("private-source-sentinel|job-source|kaynak", result$stderr))
+    expect_false(file.exists(marker))
+  }
+})
+
 test_that("Windows adaptoru kisitli PowerShell dil modunu tarayici acmadan ayri asama olarak bildirir", {
   skip_if(.Platform$OS.type != "windows", "PowerShell dil modu davranisi")
   env <- .owned_browser_env()
@@ -354,7 +391,7 @@ test_that("Windows job durdurmasi dogal hata cikisini korur, yalniz kendi sonlan
   tree <- 'p <- lapply(1:2, function(i) processx::process$new(file.path(R.home("bin"), "Rscript.exe"), c("--vanilla", "-e", "Sys.sleep(300)"), cleanup = FALSE)); Sys.sleep(300)'
   script <- paste(
     "$ErrorActionPreference='Stop'",
-    sprintf("Add-Type -LiteralPath '%s'", source),
+    sprintf("Add-Type -TypeDefinition ([IO.File]::ReadAllText('%s', [Text.UTF8Encoding]::new($false, $true))) -Language CSharp", source),
     # Kok dogal olarak 7 ile cikar; Stop sonradan cagrilir ve dogal kod korunur.
     sprintf("$a=[MergenBrowserJob]::new('%s', [string[]]@('--vanilla','-e','quit(status = 7L)'), $env:TEMP)", rscript),
     "while ($null -eq $a.ExitCode) { Start-Sleep -Milliseconds 10 }",
