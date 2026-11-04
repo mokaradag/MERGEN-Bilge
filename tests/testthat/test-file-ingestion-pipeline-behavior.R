@@ -2289,33 +2289,11 @@ test_that("yavaş kopya kardeş hedefi engellemez ve devralma sahipliği çalama
   root <- withr::local_tempdir()
   env <- .ingestionEnv()
   repo <- resolve_repo_root_for_tests()
-  withr::local_options(list(mergen.upload_lock_dir = file.path(root, "locks")))
-  wait_marker <- function(child, marker, seconds) {
-    started <- proc.time()[["elapsed"]]
-    while (!file.exists(marker) && child$is_alive() &&
-           proc.time()[["elapsed"]] - started < seconds) {
-      child$poll_io(50)
-      child$read_output()
-      child$read_error()
-    }
-    # Erken çıkışta asıl işçi hatası kaybolmaz.
-    if (!child$is_alive()) child$get_result()
-    file.exists(marker)
-  }
   worker <- function(repo, root, name, slow) {
     env <- new.env(parent = globalenv())
     for (file in c("helpers_process_ownership.R", "utils_path_reservation.R",
                    "helpers_files_promote_probe.R", "helpers_files_promote_target.R"))
       source(file.path(repo, "R", file), encoding = "UTF-8", local = env)
-    options(mergen.upload_lock_dir = file.path(root, "locks"))
-    # Paket yükleme süresi kopyanın eşzamanlılık bütçesine dahil değildir.
-    for (package in c("filelock", "digest", "stringi", "fs", "shiny")) loadNamespace(package)
-    writeLines("hazır", file.path(root, paste0(name, ".ready")))
-    if (!slow) {
-      deadline <- proc.time()[["elapsed"]] + 90
-      while (!file.exists(file.path(root, "start-b")) && proc.time()[["elapsed"]] < deadline) Sys.sleep(0.02)
-      if (!file.exists(file.path(root, "start-b"))) stop("kardeş işçi kapısı açılmadı")
-    }
     stage <- file.path(root, paste0(name, ".stage"))
     writeLines(name, stage)
     env$file.link <- env$file.rename <- function(...) FALSE
@@ -2334,17 +2312,13 @@ test_that("yavaş kopya kardeş hedefi engellemez ve devralma sahipliği çalama
     }
     env$mergen_promote_staged_file(stage, file.path(root, name), file.exists)
   }
-  b <- callr::r_bg(worker, args = list(repo = repo, root = root, name = "b.txt", slow = FALSE),
-    wd = root, user_profile = FALSE, system_profile = FALSE)
-  withr::defer(try(b$kill(), silent = TRUE))
-  expect_true(wait_marker(b, file.path(root, "b.txt.ready"), 60))
-  a <- callr::r_bg(worker, args = list(repo = repo, root = root, name = "a.txt", slow = TRUE),
-    wd = root, user_profile = FALSE, system_profile = FALSE)
+  a <- callr::r_bg(worker, args = list(repo = repo, root = root, name = "a.txt", slow = TRUE))
   withr::defer(try(a$kill(), silent = TRUE))
-  # Soğuk R başlangıcı ayrı beklenir; kopya bariyeri yine 15 saniyedir.
-  expect_true(wait_marker(a, file.path(root, "a.txt.ready"), 60))
-  expect_true(wait_marker(a, file.path(root, "copying"), 15))
-  writeLines("başla", file.path(root, "start-b"))
+  deadline <- Sys.time() + 15
+  while (!file.exists(file.path(root, "copying")) && a$is_alive() && Sys.time() < deadline) a$poll_io(50)
+  expect_true(file.exists(file.path(root, "copying")))
+  b <- callr::r_bg(worker, args = list(repo = repo, root = root, name = "b.txt", slow = FALSE))
+  withr::defer(try(b$kill(), silent = TRUE))
   b$wait(timeout = 10000)
   expect_true(b$get_result()$ok)
   expect_true(a$is_alive())
