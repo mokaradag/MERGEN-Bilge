@@ -351,3 +351,442 @@ test_that("gecersiz profil degeri acik hata uretir (hafif davranis kontrolu)", {
 
   unlink(c(out_stdout_log, out_stderr_log, out_message_log, runner_file), force = TRUE)
 })
+test_that("browser adimi external ortamda VM kosucusunu secer, kaynak PASS sabiti kanit degildir", {
+  env <- new.env(parent = globalenv())
+  expressions <- parse(file = .evg_script_path, encoding = "UTF-8")
+  for (e in expressions) {
+    if (is.call(e) && identical(e[[1]], as.name("<-")) &&
+        as.character(e[[2]]) %in% c("run_step_browser_ux_smoke", "evidence_env_flag_true", "evidence_browser_required")) eval(e, env)
+  }
+  withr::local_envvar(MERGEN_BROWSER_UX_BASE_URL = NA, MERGEN_BROWSER_BIN = NA,
+                     MERGEN_REQUIRE_BROWSER_UX_SMOKE = NA)
+  log <- tempfile()
+  withr::defer(unlink(log))
+  selected <- NULL
+  env$run_step_simple_child <- function(step_id, body_lines, ...) {
+    selected <<- body_lines
+    list(ok = TRUE, log_file = log, detail = list())
+  }
+  env$evidence_read_text_file_safe <- function(path) paste(readLines(path, warn = FALSE), collapse = "\n")
+  writeLines("OK: rendered #status is UX_SMOKE_DONE:PASS.", log)
+  expect_true(env$run_step_browser_ux_smoke()$ok)
+  expect_match(selected, "tests/scripts/ai_browser_ux_smoke.R", fixed = TRUE)
+  Sys.setenv(MERGEN_BROWSER_UX_BASE_URL = "https://app.example.invalid/base")
+  expect_true(env$run_step_browser_ux_smoke()$ok)
+  expect_match(selected, "tests/scripts/run_vm_browser_ux_smoke.R", fixed = TRUE)
+  for (wrong in c("", "HTTP 200", "UX_SMOKE_DONE:PASS", "SKIP",
+                  "FAILED: rendered #status did not reach UX_SMOKE_DONE:PASS", "<script>UX_SMOKE_DONE:PASS</script>")) {
+    writeLines(wrong, log)
+    result <- env$run_step_browser_ux_smoke()
+    expect_false(result$ok)
+    expect_false(isTRUE(result$skipped))
+  }
+  Sys.unsetenv("MERGEN_BROWSER_UX_BASE_URL")
+  writeLines("SKIP: no browser", log)
+  expect_true(env$run_step_browser_ux_smoke()$skipped)
+})
+
+test_that("zorunlu browser basarisizligi veya atlanmasi ust kapiyi dusurur", {
+  expressions <- parse(file = .evg_script_path, encoding = "UTF-8")
+  loop <- Filter(function(e) is.call(e) && identical(e[[1]], as.name("for")) &&
+                   identical(e[[2]], as.name("spec")), as.list(expressions))
+  expect_length(loop, 1L)
+  stop_branch <- Filter(function(e) is.call(e) && identical(e[[1]], as.name("if")) &&
+                          identical(e[[2]], quote(identical(overall_status, "failed"))), as.list(expressions))
+  expect_length(stop_branch, 1L)
+  withr::local_envvar(MERGEN_BROWSER_UX_BASE_URL = NA, MERGEN_BROWSER_BIN = NA,
+                     MERGEN_REQUIRE_BROWSER_UX_SMOKE = NA)
+  env <- new.env(parent = globalenv())
+  definitions <- c("%||%", "evidence_env_flag_true", "evidence_browser_required", "evidence_step_specs")
+  for (e in expressions) {
+    if (is.call(e) && identical(e[[1]], as.name("<-")) &&
+        as.character(e[[2]]) %in% definitions) eval(e, env)
+  }
+  env$profile_effective <- "cloud"
+  env$full_evidence <- FALSE
+  env$cat <- function(...) invisible(NULL)
+  env$evidence_redact_text <- identity
+  env$evidence_json_path <- "test-evidence.json"
+  source(file.path(.evg_repo_root, "tests/scripts/helpers_evidence_checkout.R"), local = env)
+  env$checkout_before <- list(sha = strrep("a", 40L), dirty = FALSE, verified = TRUE)
+  final_checkout <- env$checkout_before
+  env$evidence_checkout_snapshot <- function() final_checkout
+  lock_in_head <- TRUE
+  env$evidence_checkout_file_committed <- function(path) { expect_identical(path, "renv.lock"); lock_in_head }
+  result <- list(ok = FALSE, detail = list(ux_smoke_pass_marker = FALSE))
+  env$evidence_step_runners <- setNames(lapply(env$evidence_step_specs, function(spec) {
+    if (identical(spec$id, "browser_ux_smoke")) function() result else function() list(ok = TRUE)
+  }), vapply(env$evidence_step_specs, function(spec) spec$id, character(1)))
+  aggregate <- function(filter = character(0)) {
+    env$step_results <- list()
+    env$steps_filter <- filter
+    eval(loop[[1]], env)
+    for (e in expressions) {
+      if (is.call(e) && identical(e[[1]], as.name("<-")) &&
+          as.character(e[[2]]) %in% c("failed_required", "failed_optional", "checkout_after", "lock_committed", "checkout_verified",
+                                      "checkout_identity_ok", "overall_status")) eval(e, env)
+    }
+    expect_length(env$step_results, 13L)
+    env$overall_status
+  }
+  # Tarayici acikca istenmemisse opsiyonel davranis korunur.
+  expect_identical(aggregate(), "passed")
+  expect_false(env$step_results$browser_ux_smoke$required)
+  for (settings in list(c(MERGEN_REQUIRE_BROWSER_UX_SMOKE = "true"),
+                        c(MERGEN_BROWSER_BIN = "missing-browser"),
+                        c(MERGEN_BROWSER_UX_BASE_URL = "https://app.example.invalid/base"))) {
+    withr::with_envvar(settings, {
+      expect_identical(aggregate(), "failed")
+      expect_true(env$step_results$browser_ux_smoke$required)
+      expect_error(eval(stop_branch[[1]], env), "VM kanit kapisi basarisiz: browser_ux_smoke", fixed = TRUE)
+    })
+  }
+  Sys.setenv(MERGEN_REQUIRE_BROWSER_UX_SMOKE = "true")
+  result <- list(ok = FALSE, skipped = TRUE)
+  expect_identical(aggregate(), "failed")
+  expect_identical(aggregate("env_config"), "failed")
+  expect_identical(env$step_results$browser_ux_smoke$status, "skipped")
+  result <- list(ok = TRUE, detail = list(ux_smoke_pass_marker = TRUE))
+  expect_identical(aggregate(), "passed")
+  expect_no_error(eval(stop_branch[[1]], env))
+  env$full_evidence <- TRUE
+  expect_identical(aggregate(), "failed") # Cloud VM-only SKIP tam kanit olamaz.
+  env$profile_effective <- "vm"
+  expect_identical(aggregate(), "passed")
+  expect_true(all(vapply(env$step_results, function(r) r$required, logical(1))))
+  expect_true(all(vapply(env$step_results, function(r) identical(r$status, "passed"), logical(1))))
+  for (bad in list(list(sha = strrep("b", 40L), dirty = FALSE, verified = TRUE),
+                   list(sha = strrep("a", 40L), dirty = TRUE, verified = TRUE),
+                   list(sha = "", dirty = NA, verified = FALSE))) {
+    final_checkout <- bad
+    expect_identical(aggregate(), "failed")
+    expect_error(eval(stop_branch[[1]], env), "checkout_identity", fixed = TRUE)
+  }
+  final_checkout <- env$checkout_before
+  # Temiz ve ayni SHA olsa da commit'te izlenmeyen (exclude ile gizlenen) kilit atif almaz.
+  lock_in_head <- FALSE
+  expect_identical(aggregate(), "failed")
+  expect_false(env$checkout_verified)
+  expect_error(eval(stop_branch[[1]], env), "checkout_identity", fixed = TRUE)
+  lock_in_head <- TRUE
+  expect_identical(aggregate(), "passed")
+  expect_true(env$checkout_verified)
+  # Kaynak ZIP'i: Git metadatasi olmamasi tek basina tam kosumu dusurmez.
+  zip <- list(sha = "", dirty = NA, verified = FALSE, available = FALSE)
+  env$checkout_before <- final_checkout <- zip
+  expect_identical(aggregate(), "passed")
+  expect_false(env$checkout_verified)
+  expect_no_error(eval(stop_branch[[1]], env))
+  # Kosum sirasinda Git kimligi belirirse eslesmeyen kimlik kapali kalir.
+  final_checkout <- list(sha = strrep("a", 40L), dirty = FALSE, verified = TRUE, available = TRUE)
+  expect_identical(aggregate(), "failed")
+  expect_error(eval(stop_branch[[1]], env), "checkout_identity", fixed = TRUE)
+  # Git metadatasi olmasa da gercek tarayici/adim hatasi PASS'e donusmez.
+  final_checkout <- zip
+  result <- list(ok = FALSE, detail = list(ux_smoke_pass_marker = FALSE))
+  expect_identical(aggregate(), "failed")
+  expect_error(eval(stop_branch[[1]], env), "browser_ux_smoke", fixed = TRUE)
+  env$checkout_before <- final_checkout <- list(sha = strrep("a", 40L), dirty = FALSE, verified = TRUE)
+  result <- list(ok = FALSE, skipped = TRUE)
+  expect_identical(aggregate(), "failed")
+})
+
+test_that("commit atfi temiz baslangic ve degismemis temiz bitis ister; Git hatasi kapali kalir", {
+  env <- new.env(parent = globalenv())
+  helper <- file.path(.evg_repo_root, "tests/scripts/helpers_evidence_checkout.R")
+  expect_true(all(as.integer(readBin(helper, "raw", file.info(helper)$size)) <= 127L))
+  source(helper, local = env)
+  repo <- withr::local_tempdir()
+  withr::local_dir(repo)
+  # Gercek Git davranisi kaynak checkout'unda dogrulanir; ZIP dagitiminda git.exe zorunlu degildir.
+  if (!nzchar(Sys.which("git"))) {
+    if (!file.exists(file.path(.evg_repo_root, ".git"))) {
+      skip("Git metadata'si olmayan dagitim kopyasinda gercek Git atfi CI/source checkout'unda dogrulanir")
+    }
+    fail("git kullanilamiyor; commit atfi sozlesmesi dogrulanamadi")
+  }
+  git <- function(args) {
+    out <- suppressWarnings(system2("git", args, stdout = TRUE, stderr = TRUE))
+    expect_true(is.null(attr(out, "status")), info = paste(out, collapse = "\n"))
+  }
+  git(c("init", "--quiet"))
+  writeLines("artifacts/", ".gitignore")
+  writeLines("ilk", "tracked.txt")
+  git(c("add", "."))
+  commit <- function() git(c("-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                             "commit", "--quiet", "-m", "test"))
+  commit()
+  before <- env$evidence_checkout_snapshot()
+  expect_identical(nchar(before$sha), 40L)
+  expect_true(env$evidence_checkout_matches(before, before))
+  dir.create("artifacts"); writeLines("log", "artifacts/ignored.txt")
+  expect_true(env$evidence_checkout_matches(before, env$evidence_checkout_snapshot()))
+  writeLines("degisti", "tracked.txt")
+  dirty <- env$evidence_checkout_snapshot()
+  expect_true(dirty$dirty)
+  expect_false(env$evidence_checkout_matches(before, dirty))
+  expect_false(env$evidence_checkout_matches(dirty, before))
+  git(c("add", "tracked.txt"))
+  expect_true(env$evidence_checkout_snapshot()$dirty)
+  commit()
+  expect_false(env$evidence_checkout_matches(before, env$evidence_checkout_snapshot()))
+  writeLines("ozel", "untracked.txt")
+  expect_true(env$evidence_checkout_snapshot()$dirty)
+  env$system2 <- function(command, args, ...) {
+    if (args[[1]] == "status") structure(character(), status = 128L) else before$sha
+  }
+  unknown <- env$evidence_checkout_snapshot()
+  expect_false(unknown$verified)
+  expect_true(is.na(unknown$dirty))
+  expect_false(env$evidence_checkout_matches(before, unknown))
+  calls <- 0L
+  env$system2 <- function(command, args, ...) {
+    if (args[[1]] == "status") return(character())
+    calls <<- calls + 1L
+    strrep(if (calls == 1L) "a" else "b", 40L)
+  }
+  expect_false(env$evidence_checkout_snapshot()$verified)
+})
+
+test_that("git_deposu_olmayan_kaynak_paketinde_git_cagrilmaz_ve_commit_atfi_yapilmaz", {
+  env <- new.env(parent = globalenv())
+  source(file.path(.evg_repo_root, "tests/scripts/helpers_evidence_checkout.R"), local = env)
+  # Ust dizin bir Git deposu olsa bile ZIP agaci ona atfedilmez.
+  outer <- withr::local_tempdir()
+  dir.create(file.path(outer, ".git"))
+  zip_root <- file.path(outer, "MERGEN-Bilge-main")
+  dir.create(zip_root)
+  withr::local_dir(zip_root)
+  env$system2 <- function(...) stop("Git metadatasi yokken git cagrilmamali")
+  snapshot <- env$evidence_checkout_snapshot()
+  expect_false(snapshot$available)
+  expect_false(snapshot$verified)
+  expect_identical(snapshot$sha, "")
+  expect_true(is.na(snapshot$dirty))
+  expect_true(env$evidence_checkout_unavailable(snapshot))
+  expect_false(env$evidence_checkout_matches(snapshot, snapshot))
+  # .git varsa ama Git incelenemiyorsa bu "ZIP" sayilmaz; atif kapali kalir.
+  dir.create(".git")
+  env$system2 <- function(...) structure(character(), status = 127L)
+  broken <- env$evidence_checkout_snapshot()
+  expect_true(broken$available)
+  expect_false(broken$verified)
+  expect_false(env$evidence_checkout_unavailable(broken))
+})
+
+test_that("tam gate kirli baslangicta adimlari baslatmaz ve atif metadatasini ayni kimlikten yazar", {
+  expressions <- parse(file = .evg_script_path, encoding = "UTF-8")
+  env <- new.env(parent = globalenv())
+  source(file.path(.evg_repo_root, "tests/scripts/helpers_evidence_checkout.R"), local = env)
+  check <- Filter(function(e) is.call(e) && identical(e[[1]], as.name("if")) &&
+                    identical(e[[2]], quote(full_evidence && !evidence_checkout_unavailable(checkout_before) &&
+                                              !evidence_checkout_matches(checkout_before, checkout_before))),
+                  as.list(expressions))
+  expect_length(check, 1L)
+  env$full_evidence <- TRUE
+  clean <- list(sha = strrep("a", 40L), dirty = FALSE, verified = TRUE, available = TRUE)
+  env$checkout_before <- clean
+  expect_no_error(eval(check[[1]], env))
+  # Git metadatasi varken kirli/incelenemeyen baslangic atif iddiasini reddeder.
+  for (dirty in c(TRUE, NA)) {
+    env$checkout_before$dirty <- dirty
+    expect_error(eval(check[[1]], env), "baslangic checkout", fixed = TRUE)
+  }
+  zip <- list(sha = "", dirty = NA, verified = FALSE, available = FALSE)
+  env$checkout_before <- zip
+  expect_no_error(eval(check[[1]], env))
+  env$checkout_before <- clean
+  env$checkout_after <- clean
+  env$checkout_verified <- TRUE
+  env$git_field <- function(...) "test-branch"
+  env$profile_requested <- env$profile_effective <- "vm"
+  env$overall_status <- "passed"
+  env$step_results <- list()
+  artifact <- Filter(function(e) is.call(e) && identical(e[[1]], as.name("<-")) &&
+                       identical(e[[2]], as.name("evidence")), as.list(expressions))
+  expect_length(artifact, 1L)
+  eval(artifact[[1]], env)
+  expect_identical(env$evidence$git$sha, clean$sha)
+  expect_false(env$evidence$git$dirty)
+  expect_true(env$evidence$git$commit_attributed)
+  expect_true(env$evidence$git$metadata_available)
+  expect_identical(env$evidence$git$before, env$evidence$git$after)
+  # Temiz SHA, tek adimlik gelistirici sonucunu tam kanita donusturmez.
+  env$full_evidence <- FALSE
+  env$step_results <- list(seam_doctor = list(
+    status = "passed", required = TRUE, spec = list(label = "seam doctor"),
+    duration_sec = 0, notes = character(), detail = list()
+  ))
+  eval(artifact[[1]], env)
+  expect_identical(env$evidence$overall_status, "passed")
+  expect_identical(env$evidence$counts$passed, 1L)
+  expect_false(env$evidence$full_workflow)
+  expect_false(env$evidence$git$commit_attributed)
+  expect_identical(env$evidence$git$before, clean)
+  expect_identical(env$evidence$git$after, clean)
+  # Kaynak ZIP tam kosumu: adim sonucu yazilir, SHA/dal uydurulmaz, atif yoktur.
+  env$full_evidence <- TRUE
+  env$checkout_before <- env$checkout_after <- zip
+  env$checkout_verified <- FALSE
+  env$git_field <- function(...) stop("Git metadatasi yokken git cagrilmamali")
+  eval(artifact[[1]], env)
+  expect_identical(env$evidence$overall_status, "passed")
+  expect_true(env$evidence$full_workflow)
+  expect_false(env$evidence$git$metadata_available)
+  expect_false(env$evidence$git$commit_attributed)
+  expect_identical(env$evidence$git$sha, "")
+  expect_identical(env$evidence$git$branch, "")
+  expect_true(is.na(env$evidence$git$dirty))
+})
+
+
+test_that("acik tam workflow kalici filtreyi yok sayar, gelistirici filtresi korunur", {
+  expressions <- parse(file = .evg_script_path, encoding = "UTF-8")
+  env <- new.env(parent = globalenv())
+  for (e in expressions) {
+    if (is.call(e) && identical(e[[1]], as.name("<-")) &&
+        identical(e[[2]], as.name("evidence_load_repo_renviron"))) eval(e, env)
+  }
+  path <- withr::local_tempfile()
+  writeLines("MERGEN_EVIDENCE_STEPS=browser_ux_smoke", path)
+  withr::local_envvar(MERGEN_EVIDENCE_STEPS = NA)
+  expect_true(env$evidence_load_repo_renviron(path))
+  expect_identical(Sys.getenv("MERGEN_EVIDENCE_STEPS"), "browser_ux_smoke")
+  args <- character()
+  env$commandArgs <- function(...) args
+  select <- function() {
+    for (e in expressions) {
+      if (is.call(e) && identical(e[[1]], as.name("<-")) &&
+          as.character(e[[2]]) %in% c("full_evidence", "steps_filter_raw", "steps_filter")) eval(e, env)
+    }
+    env$steps_filter
+  }
+  expect_identical(select(), "browser_ux_smoke")
+  args <- "--full"
+  expect_identical(select(), character())
+  expect_true(env$full_evidence)
+  expect_identical(readLines(path), "MERGEN_EVIDENCE_STEPS=browser_ux_smoke")
+})
+
+test_that("bilinmeyen gate argumani test araligiyla zayif kanit uretemez", {
+  withr::local_envvar(MERGEN_TESTTHAT_START_INDEX = "2", MERGEN_TESTTHAT_END_INDEX = "3")
+  expressions <- parse(file = .evg_script_path, encoding = "UTF-8")
+  selection <- Filter(function(e) is.call(e) && identical(e[[1]], as.name("<-")) &&
+                        identical(e[[2]], as.name("full_evidence")), expressions)[[1]]
+  env <- new.env(parent = globalenv())
+  for (args in list("--ful", "--FULL", "--full=true", c("--full", "--ful"))) {
+    env$commandArgs <- function(...) args
+    expect_error(eval(selection, env), "Only --full is supported", fixed = TRUE)
+  }
+  rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
+  result <- processx::run(rscript, c("--vanilla", .evg_script_path, "--ful"),
+                         wd = .evg_repo_root, error_on_status = FALSE)
+  expect_false(identical(result$status, 0L))
+  expect_match(result$stderr, "Only --full is supported", fixed = TRUE)
+  expect_false(grepl("VM kanit kapisi basariyla", result$stdout, fixed = TRUE))
+})
+
+test_that("tam kanit cocuklarinda test araligi kalkar ve File Store zorunludur", {
+  expressions <- parse(file = .evg_script_path, encoding = "UTF-8")
+  env <- new.env(parent = globalenv())
+  env$run_step_env_config <- env$run_step_browser_ux_smoke <- env$run_step_renv_status <- function() NULL
+  observed <- NULL
+  env$run_step_simple_child <- function(step_id, body_lines, extra_env = character()) {
+    observed <<- extra_env
+  }
+  for (e in expressions) {
+    if (is.call(e) && identical(e[[1]], as.name("<-")) &&
+        identical(e[[2]], as.name("evidence_step_runners"))) eval(e, env)
+  }
+  withr::local_envvar(MERGEN_TESTTHAT_START_INDEX = NA, MERGEN_TESTTHAT_END_INDEX = NA,
+                     MERGEN_PREFLIGHT_CHECK_FILE_STORE = NA)
+  config <- withr::local_tempfile()
+  writeLines(c("MERGEN_TESTTHAT_START_INDEX=2", "MERGEN_TESTTHAT_END_INDEX=3",
+               "MERGEN_PREFLIGHT_CHECK_FILE_STORE=FALSE"), config)
+  readRenviron(config)
+  for (full in c(FALSE, TRUE)) {
+    env$full_evidence <- full
+    env$evidence_step_runners$full_testthat()
+    if (full) {
+      expect_identical(observed[["MERGEN_TESTTHAT_START_INDEX"]], "")
+      expect_identical(observed[["MERGEN_TESTTHAT_END_INDEX"]], "")
+    } else expect_identical(observed, c(TZ = "UTC"))
+    env$evidence_step_runners$vm_preflight_real()
+    expect_identical(observed, if (full) c(MERGEN_PREFLIGHT_CHECK_FILE_STORE = "TRUE") else character())
+  }
+  expect_identical(Sys.getenv("MERGEN_TESTTHAT_START_INDEX"), "2")
+  expect_identical(Sys.getenv("MERGEN_TESTTHAT_END_INDEX"), "3")
+  expect_identical(Sys.getenv("MERGEN_PREFLIGHT_CHECK_FILE_STORE"), "FALSE")
+})
+
+test_that("istenen browser uzun testlerden once, 13 adim korunarak kosulur", {
+  expressions <- parse(file = .evg_script_path, encoding = "UTF-8")
+  env <- new.env(parent = globalenv())
+  env$evidence_browser_required <- function() TRUE
+  for (e in expressions) {
+    if (is.call(e) && identical(e[[1]], as.name("<-")) &&
+        identical(e[[2]], as.name("evidence_step_specs"))) eval(e, env)
+    if (is.call(e) && identical(e[[1]], as.name("if")) &&
+        identical(e[[2]], quote(evidence_browser_required()))) eval(e, env)
+  }
+  ids <- vapply(env$evidence_step_specs, function(spec) spec$id, character(1))
+  expect_length(ids, 13L)
+  expect_setequal(ids, .evg_expected_steps)
+  expect_identical(ids[[1]], "browser_ux_smoke")
+  expect_lt(match("browser_ux_smoke", ids), match("full_testthat", ids))
+})
+
+test_that("bosluk redaksiyonu PASS satirini veya JSON yapisini bozmaz", {
+  env <- new.env(parent = globalenv())
+  for (e in parse(file = .evg_script_path, encoding = "UTF-8")) {
+    if (is.call(e) && identical(e[[1]], as.name("<-")) &&
+        as.character(e[[2]]) %in% c("%||%", "evidence_redact_text")) eval(e, env)
+  }
+  withr::local_envvar(MERGEN_BROWSER_UX_BASE_URL = " \t ", MERGEN_UX_SMOKE_PATH = "\n",
+                     MERGEN_BROWSER_UX_PROFILE_DIR = "C:\\Users\\operator\\SmokeProfile")
+  marker <- "OK: rendered #status is UX_SMOKE_DONE:PASS."
+  expect_identical(env$evidence_redact_text(marker), marker)
+  json <- jsonlite::toJSON(list(status = marker, path = Sys.getenv("MERGEN_BROWSER_UX_PROFILE_DIR")), auto_unbox = TRUE, pretty = TRUE)
+  clean <- env$evidence_redact_text(json)
+  expect_true(jsonlite::validate(clean))
+  expect_identical(jsonlite::fromJSON(clean)$status, marker)
+  expect_false(grepl("operator|SmokeProfile", clean))
+})
+
+test_that("exclude ile gizlenen kilit temiz gorunse de commit atfina girmez", {
+  if (!nzchar(Sys.which("git"))) {
+    if (!file.exists(file.path(.evg_repo_root, ".git"))) {
+      skip("Git metadata'si olmayan dagitim kopyasinda gercek Git atfi CI/source checkout'unda dogrulanir")
+    }
+    fail("git kullanilamiyor; kilit atfi sozlesmesi dogrulanamadi")
+  }
+  env <- new.env(parent = globalenv())
+  source(file.path(.evg_repo_root, "tests/scripts/helpers_evidence_checkout.R"), local = env)
+  repo <- withr::local_tempdir()
+  withr::local_dir(repo)
+  git <- function(args) {
+    out <- suppressWarnings(system2("git", args, stdout = TRUE, stderr = TRUE))
+    expect_true(is.null(attr(out, "status")), info = paste(out, collapse = "\n"))
+  }
+  git(c("init", "--quiet"))
+  writeLines("ilk", "tracked.txt")
+  git(c("add", "."))
+  git(c("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "test"))
+  # Kopyalanip yerel exclude ile gizlenen kilit: status temiz, ama HEAD'de yok.
+  cat("renv.lock\n", file = ".git/info/exclude", append = TRUE)
+  writeLines("{}", "renv.lock")
+  snapshot <- env$evidence_checkout_snapshot()
+  expect_true(env$evidence_checkout_matches(snapshot, snapshot))
+  expect_false(env$evidence_checkout_file_committed("renv.lock"))
+  # Commit edilmis kilit atif kapsamindadir.
+  writeLines("", ".git/info/exclude")
+  git(c("add", "renv.lock"))
+  git(c("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "lock"))
+  expect_true(env$evidence_checkout_file_committed("renv.lock"))
+  # Git metadatasi olmayan agacta git cagrilmaz.
+  zip <- withr::local_tempdir()
+  withr::local_dir(zip)
+  env$system2 <- function(...) stop("Git metadatasi yokken git cagrilmamali")
+  writeLines("{}", "renv.lock")
+  expect_false(env$evidence_checkout_file_committed("renv.lock"))
+})

@@ -607,11 +607,14 @@ CODING_DEEP_HIGH_MODEL=<technical model name 2>
 # MERGEN_DOCX_MAX_XML_MB=25
 # MERGEN_DOCX_MAX_XML_NODES=2000000
 #
-# --- UX smoke harness'ı (varsayılan KAPALI; üretimde AÇMAYIN) ---
-#   tests/smoke test sayfası gerçek uygulama eylemleri tetikler. /smoke/ yolu
-#   yalnızca bakımcı smoke koşusu için TRUE verildiğinde VE uygulama yalnız
-#   döngü adresini dinlerken (MERGEN_HOST=127.0.0.1) sunulur; tarayıcı aynı
-#   makinede açılır. 0.0.0.0 gibi ağ adresinde bayrak yok sayılır.
+# --- UX smoke harness'ı (varsayılan KAPALI) ---
+#   Harness tests/smoke altında kalır; normal üretim başlatmasında sunulmaz.
+#   Loopback yerel testte MERGEN_ENABLE_UX_SMOKE=true yeterlidir.
+#   Geçici Windows VM ağ testi: tests/scripts/run_vm_browser_ux_smoke.R
+#   --start-app, 0.0.0.0:8009 üzerinde iki açık opt-in ve 192-bit rastgele
+#   MERGEN_UX_SMOKE_PATH üretir. Bu koşuya özel değerleri .Renviron'a YAZMAYIN.
+#   MERGEN_ALLOW_NETWORK_UX_SMOKE ve MERGEN_UX_SMOKE_PATH kalıcı ayar değildir.
+#   İşletim akışı: docs/vm-browser-ux-smoke.md
 # MERGEN_ENABLE_UX_SMOKE=false
 #
 # --- Tanılama (varsayılan KAPALI) ---

@@ -262,7 +262,7 @@ $(document).ready(function() {
     }
   });
 
-  Shiny.addCustomMessageHandler('clearCurrentChat', function() {
+  Shiny.addCustomMessageHandler('clearCurrentChat', function(data) {
     try {
       localStorage.removeItem(CHAT_STORAGE_KEY);
     } catch (e) {}

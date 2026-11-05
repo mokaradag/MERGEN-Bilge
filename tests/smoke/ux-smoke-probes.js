@@ -274,6 +274,17 @@
       "WelcomeVideoPlayer smoke state API var"
     );
 
+    // Sohbet probe'larından önce taze welcome kullanılır; Yeni Söyleşi
+    // süreçteki diğer oturumların ortak dosya eşlemelerini temizleyebilir.
+    if (!await waitFor(function() {
+      var root = doc.querySelector(".modern-welcome-root");
+      var video = videoApi && videoApi.getState ? videoApi.getState() : null;
+      return root && isVisible(root) &&
+        !doc.querySelector("#chat_content_container .message-bubble") &&
+        video && video.isInitialized && video.hasContainer;
+    }, "Navigation önkoşulu: taze welcome hazır", 10000)) return;
+
+    var welcomeRoot = doc.querySelector(".modern-welcome-root");
     var beforeVideo = videoApi && videoApi.getState ? videoApi.getState() : null;
 
     assert(
@@ -316,7 +327,7 @@
     );
 
     await waitFor(function() {
-      return !!doc.querySelector(".modern-welcome-root");
+      return doc.querySelector(".modern-welcome-root") === welcomeRoot && isVisible(welcomeRoot);
     }, "Ana Söyleşi welcome dönüşü", 10000);
 
     await wait(250);
@@ -338,8 +349,7 @@
     var finalToolSnapshot = snapshotToolState(win);
 
     assert(
-      finalToolSnapshot.activePaneId === "shiny-tab-chat" ||
-        !!doc.querySelector(".modern-welcome-root"),
+      finalToolSnapshot.activePaneId === "shiny-tab-chat",
       "Ana Söyleşi dönüşü chat paneli aktif kalır"
     );
 

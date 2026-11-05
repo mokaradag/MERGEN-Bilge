@@ -79,7 +79,7 @@ testthat::test_that("kayıt defteri beklenen grupları ve temel belgeleri içeri
     "RUNBOOK.md", "docs/dependency-locking.md", "RENV_LOCK_STATUS.md",
     "ai_rehber.md", "docs/release-notes.md", "docs/ortak-oturumlar.md",
     "docs/pk-phase3b-operator-runbook.md", "docs/speech-operator-runbook.md",
-    "docs/vm-evidence-status.md", "offline_asset_checklist.md"
+    "docs/vm-evidence-status.md", "docs/vm-browser-ux-smoke.md", "offline_asset_checklist.md"
   )
   testthat::expect_true(all(beklenen %in% files))
 })

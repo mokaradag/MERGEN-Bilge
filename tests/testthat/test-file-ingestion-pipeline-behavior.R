@@ -10,6 +10,11 @@
 #           yolları helper_load_file_store.R tarafından tempdir altına alınır.
 # ==============================================================================
 
+# Soğuk callr R başlangıcı (proje kitaplığı UNC paylaşımından) Windows VM'de
+# yavaştır. Bu sınır yalnız olay beklemelerinin üst sınırıdır; olay gelince
+# döngü hemen biter, eşzamanlılık doğrulamaları değişmez.
+.ingestion_cold_start_sec <- 120
+
 .ingestionEnv <- function() {
   env <- new.env(parent = globalenv())
   kok <- resolve_repo_root_for_tests()
@@ -2004,7 +2009,7 @@ test_that("dizin muteksi çekişmesi başka hedefin terfi ve devralmasını heme
     env$mergen_promote_staged_file(file.path(root, "stage"), file.path(root, "dest"), file.exists)
   }, args = list(repo = resolve_repo_root_for_tests(), root = root))
   withr::defer(try(child$kill(), silent = TRUE))
-  deadline <- Sys.time() + 20
+  deadline <- Sys.time() + .ingestion_cold_start_sec
   while (!file.exists(file.path(root, "waiting")) && child$is_alive() && Sys.time() < deadline)
     child$poll_io(50)
   expect_true(file.exists(file.path(root, "waiting")))
@@ -2162,7 +2167,7 @@ test_that("görünürlük bekleyişi dizin muteksini başka terfilerden saklamaz
       TRUE
     }, args = list(path = file.path(root, ".mergen-rsv.reclaim")))
     on.exit(try(child$kill(), silent = TRUE), add = TRUE)
-    child$wait(timeout = 10000)
+    child$wait(timeout = .ingestion_cold_start_sec * 1000)
     expect_true(child$get_result())
     TRUE
   }
@@ -2190,19 +2195,20 @@ test_that("iki gerçek indeks işçisi eşzamanlı eş adlı yüklemeye tek kabu
       result
     }
     payload <- worker_monitor_serialize_explicit_task(task, globals, c("fs", "digest", "jsonlite"))
-    callr::r_bg(function(payload, settings, root, i) {
+    callr::r_bg(function(payload, settings, root, i, barrier_sec) {
       options(settings)
       task <- unserialize(payload)
       list2env(as.list(environment(task), all.names = TRUE), envir = globalenv())
       writeLines("hazır", file.path(root, paste0("ready-", i)))
-      deadline <- Sys.time() + 20
+      deadline <- Sys.time() + barrier_sec
       while (!file.exists(file.path(root, "go")) && Sys.time() < deadline) Sys.sleep(0.01)
       if (!file.exists(file.path(root, "go"))) stop("test bariyeri açılmadı")
       task()
-    }, args = list(payload = payload, settings = index_options, root = root, i = i))
+    }, args = list(payload = payload, settings = index_options, root = root, i = i,
+                   barrier_sec = 2 * .ingestion_cold_start_sec))
   })
   withr::defer(lapply(children, function(child) try(child$kill(), silent = TRUE)))
-  deadline <- Sys.time() + 20
+  deadline <- Sys.time() + .ingestion_cold_start_sec
   while (length(list.files(root, pattern = "^ready-")) < 2L && Sys.time() < deadline)
     children[[1]]$poll_io(50)
   expect_length(list.files(root, pattern = "^ready-"), 2L)
@@ -2289,7 +2295,8 @@ test_that("yavaş kopya kardeş hedefi engellemez ve devralma sahipliği çalama
   root <- withr::local_tempdir()
   env <- .ingestionEnv()
   repo <- resolve_repo_root_for_tests()
-  worker <- function(repo, root, name, slow) {
+  cold_start_sec <- .ingestion_cold_start_sec
+  worker <- function(repo, root, name, slow, release_sec) {
     env <- new.env(parent = globalenv())
     for (file in c("helpers_process_ownership.R", "utils_path_reservation.R",
                    "helpers_files_promote_probe.R", "helpers_files_promote_target.R"))
@@ -2304,7 +2311,7 @@ test_that("yavaş kopya kardeş hedefi engellemez ve devralma sahipliği çalama
         writeLines(c(readLines(marker, n = 1L), "host=uzak"), marker)
         Sys.setFileTime(marker, Sys.time() - 120)
         writeLines("kopya", file.path(root, "copying"))
-        deadline <- Sys.time() + 30
+        deadline <- Sys.time() + release_sec
         while (!file.exists(file.path(root, "release")) && Sys.time() < deadline) Sys.sleep(0.02)
         if (!file.exists(file.path(root, "release"))) stop("kopya kapısı açılmadı")
       }
@@ -2312,14 +2319,17 @@ test_that("yavaş kopya kardeş hedefi engellemez ve devralma sahipliği çalama
     }
     env$mergen_promote_staged_file(stage, file.path(root, name), file.exists)
   }
-  a <- callr::r_bg(worker, args = list(repo = repo, root = root, name = "a.txt", slow = TRUE))
+  # A'nın serbest bırakma kapısı, kendisinden önceki iki soğuk başlangıç beklemesinden uzundur.
+  a <- callr::r_bg(worker, args = list(repo = repo, root = root, name = "a.txt", slow = TRUE,
+                                       release_sec = 3 * cold_start_sec))
   withr::defer(try(a$kill(), silent = TRUE))
-  deadline <- Sys.time() + 15
+  deadline <- Sys.time() + cold_start_sec
   while (!file.exists(file.path(root, "copying")) && a$is_alive() && Sys.time() < deadline) a$poll_io(50)
   expect_true(file.exists(file.path(root, "copying")))
-  b <- callr::r_bg(worker, args = list(repo = repo, root = root, name = "b.txt", slow = FALSE))
+  b <- callr::r_bg(worker, args = list(repo = repo, root = root, name = "b.txt", slow = FALSE,
+                                       release_sec = 0))
   withr::defer(try(b$kill(), silent = TRUE))
-  b$wait(timeout = 10000)
+  b$wait(timeout = cold_start_sec * 1000)
   expect_true(b$get_result()$ok)
   expect_true(a$is_alive())
   reservation <- file.path(root, "a.txt.mergen-rsv")
@@ -2920,25 +2930,30 @@ test_that("şerit çekişmesi tek zaman aşımında yüklemeyi düşürmez; kili
   skip_if_not_installed("callr")
   env <- .ingestionEnv()
   root <- withr::local_tempdir()
+  withr::local_options(list(mergen.upload_lock_dir = file.path(root, "locks"),
+    mergen.upload_lane_wait_sec = 10))
   target <- file.path(root, "hedef.txt")
   lock <- env$mergen_upload_mutex_path(target)
   # Tutucu süreç kilit dizinini oluşturmaz; test önceki testlere bağlı kalmaz.
   dir.create(dirname(lock), recursive = TRUE, showWarnings = FALSE)
   real <- get("mergen_reclaim_mutex", envir = env, inherits = TRUE)
-  calls <- 0L
-  env$mergen_reclaim_mutex <- function(path, timeout = 0, exclusive = TRUE) {
-    calls <<- calls + 1L
-    real(path, min(timeout, 200), exclusive)
-  }
-  # Başka süreç şeridi zaman aşımı diliminden uzun tutar; edinim beklenir.
-  holder <- callr::r_bg(function(lock, ready) {
+  session <- shiny::MockShinySession$new()
+  withr::defer(session$close())
+  release <- file.path(root, "release")
+  # Duvar saati yarışı yerine iki başarısız edinimden sonra tutucu bırakılır.
+  holder <- callr::r_bg(function(lock, ready, release) {
     guard <- filelock::lock(lock, timeout = 5000)
+    if (is.null(guard)) stop("Fixture lock holder could not acquire the lock.")
+    on.exit(filelock::unlock(guard), add = TRUE)
     writeLines("held", ready)
-    Sys.sleep(1.5)
-    filelock::unlock(guard)
-  }, args = list(lock = lock, ready = file.path(root, "ready")))
+    deadline <- Sys.time() + 30
+    while (!file.exists(release) && Sys.time() < deadline) Sys.sleep(0.05)
+    if (!file.exists(release)) stop("Fixture lock holder was not released.")
+    TRUE
+  }, args = list(lock = lock, ready = file.path(root, "ready"), release = release),
+    wd = root, user_profile = FALSE, system_profile = FALSE)
   withr::defer(try(holder$kill(), silent = TRUE))
-  deadline <- Sys.time() + 20
+  deadline <- Sys.time() + .ingestion_cold_start_sec
   while (!file.exists(file.path(root, "ready")) && holder$is_alive() && Sys.time() < deadline) holder$poll_io(50)
   expect_true(file.exists(file.path(root, "ready")))
   # Oturum içindeki çekişme sıfır zaman aşımıyla kapalı başarısız olur.
@@ -2947,23 +2962,30 @@ test_that("şerit çekişmesi tek zaman aşımında yüklemeyi düşürmez; kili
     session_timeout <<- timeout
     NULL
   }
-  shiny::withReactiveDomain(shiny::MockShinySession$new(), {
+  shiny::withReactiveDomain(session, {
     expect_null(env$mergen_upload_lane_lock(target))
   })
   expect_identical(session_timeout, 0)
+  calls <- 0L
   env$mergen_reclaim_mutex <- function(path, timeout = 0, exclusive = TRUE) {
     calls <<- calls + 1L
-    real(path, min(timeout, 200), exclusive)
+    guard <- real(path, min(timeout, 200), exclusive)
+    if (calls == 2L) writeLines("release", release)
+    guard
   }
-  guard <- env$mergen_upload_lane_lock(target)
+  # RStudio'da açık uygulamanın reactive domain'i işçi testiyle paylaşılmaz.
+  guard <- shiny::withReactiveDomain(NULL, env$mergen_upload_lane_lock(target))
+  withr::defer(if (!is.null(guard)) filelock::unlock(guard))
   expect_false(is.null(guard))
   expect_gt(calls, 1L)
-  filelock::unlock(guard)
+  env$.mergen_upload_unlock(guard)
+  guard <- NULL
   holder$wait(5000)
+  expect_true(holder$get_result())
   # Boş şeritte sürekli edinme hatası bütçe boyunca beklenmez.
   env$mergen_reclaim_mutex <- function(...) NULL
   started <- Sys.time()
-  expect_null(env$mergen_upload_lane_lock(target))
+  expect_null(shiny::withReactiveDomain(NULL, env$mergen_upload_lane_lock(target)))
   expect_lt(as.numeric(difftime(Sys.time(), started, units = "secs")), 5)
 })
 
@@ -3212,7 +3234,7 @@ test_that("harf takma adlarının hash rezervasyonları fiziksel üst dizinde d�
   for (mixed_link in c(FALSE, TRUE)) local({
   root <- withr::local_tempdir()
   # Dosya sistemi takma adları iki mantıksal hedefi tek fiziksel hedefe bağlar.
-  worker <- function(repo, root, label, mixed_link) {
+  worker <- function(repo, root, label, mixed_link, barrier_sec) {
     env <- new.env(parent = globalenv())
     for (name in c("helpers_process_ownership.R", "utils_path_reservation.R",
                    "helpers_files_promote_probe.R", "helpers_files_promote_target.R"))
@@ -3235,7 +3257,7 @@ test_that("harf takma adlarının hash rezervasyonları fiziksel üst dizinde d�
       if (identical(from, stage)) {
         if (label == "A") {
           writeLines("ready", file.path(root, "ready"))
-          deadline <- Sys.time() + 20
+          deadline <- Sys.time() + barrier_sec
           while (!file.exists(file.path(root, "go")) && Sys.time() < deadline) Sys.sleep(0.01)
           if (!file.exists(file.path(root, "go"))) stop("barrier timeout")
         }
@@ -3246,13 +3268,16 @@ test_that("harf takma adlarının hash rezervasyonları fiziksel üst dizinde d�
     visible <- function(path) file.exists(if (identical(path, logical_dest)) physical_dest else path)
     env$mergen_promote_staged_file(stage, logical_dest, visible)
   }
-  first <- callr::r_bg(worker, args = list(repo = resolve_repo_root_for_tests(), root = root, label = "A", mixed_link = mixed_link))
+  first <- callr::r_bg(worker, args = list(repo = resolve_repo_root_for_tests(), root = root, label = "A", mixed_link = mixed_link,
+                                           barrier_sec = 3 * .ingestion_cold_start_sec))
   withr::defer(try(first$kill(), silent = TRUE))
-  deadline <- Sys.time() + 20
+  deadline <- Sys.time() + .ingestion_cold_start_sec
   while (!file.exists(file.path(root, "ready")) && first$is_alive() && Sys.time() < deadline) first$poll_io(50)
   expect_true(file.exists(file.path(root, "ready")))
-  second <- callr::r_bg(worker, args = list(repo = resolve_repo_root_for_tests(), root = root, label = "B", mixed_link = mixed_link))
+  second <- callr::r_bg(worker, args = list(repo = resolve_repo_root_for_tests(), root = root, label = "B", mixed_link = mixed_link,
+                                            barrier_sec = 3 * .ingestion_cold_start_sec))
   withr::defer(try(second$kill(), silent = TRUE))
+  deadline <- Sys.time() + .ingestion_cold_start_sec
   while (!file.exists(file.path(root, "waiting-B")) && !file.exists(file.path(root, "physical.txt")) &&
       second$is_alive() && Sys.time() < deadline) second$poll_io(50)
   blocked <- file.exists(file.path(root, "waiting-B"))

@@ -61,23 +61,25 @@
   var failures = [];
   var consoleEvents = [];
   var shinyEvents = [];
+  var completionFrame = null;
   
   var originalSmokeStorage = {
     captured: false,
     mergenSettings: null,
-    currentChat: null
+    currentChat: null,
+    activeTab: null
   };
 
   function captureSmokeStorageOnce() {
     if (originalSmokeStorage.captured) return;
 
-    originalSmokeStorage.captured = true;
-
     try {
       originalSmokeStorage.mergenSettings = localStorage.getItem("mergen_settings");
       originalSmokeStorage.currentChat = localStorage.getItem("mergen_current_chat");
+      originalSmokeStorage.activeTab = localStorage.getItem("mergen_active_tab");
+      originalSmokeStorage.captured = true;
     } catch (e) {
-      log("localStorage başlangıç durumu okunamadı: " + e.message, "fail");
+      throw new Error("localStorage başlangıç durumu okunamadı: " + e.message);
     }
   }
 
@@ -91,6 +93,8 @@
       // Browser smoke gerçek Ana Söyleşi welcome ekranını test eder.
       // Deep Space intro insan etkileşimi gerektirdiği için smoke sırasında atlanır.
       settings.skip_intro = true;
+      // Kalıcı profilin Hızlı Başlangıç/seçici tercihi video testini değiştirmesin.
+      settings.startup_lane = "rich_lane";
 
       localStorage.setItem("mergen_settings", JSON.stringify(settings));
 
@@ -104,20 +108,27 @@
   function restoreSmokeStorage() {
     if (!originalSmokeStorage.captured) return;
 
+    var errors = [];
+    // Canlı iframe'in gecikmiş Shiny/timer yazıları geri yüklemeyi ezmesin.
     try {
-      if (originalSmokeStorage.mergenSettings === null) {
-        localStorage.removeItem("mergen_settings");
-      } else {
-        localStorage.setItem("mergen_settings", originalSmokeStorage.mergenSettings);
-      }
-
-      if (originalSmokeStorage.currentChat === null) {
-        localStorage.removeItem("mergen_current_chat");
-      } else {
-        localStorage.setItem("mergen_current_chat", originalSmokeStorage.currentChat);
-      }
+      if (frameEl.parentNode) frameEl.parentNode.removeChild(frameEl);
     } catch (e) {
-      log("Smoke localStorage geri yükleme uyarısı: " + e.message, "fail");
+      errors.push("iframe: " + e.message);
+    }
+    [["mergen_settings", originalSmokeStorage.mergenSettings],
+     ["mergen_current_chat", originalSmokeStorage.currentChat],
+     ["mergen_active_tab", originalSmokeStorage.activeTab]].forEach(function(entry) {
+      try {
+        if (entry[1] === null) localStorage.removeItem(entry[0]);
+        else localStorage.setItem(entry[0], entry[1]);
+      } catch (e) {
+        errors.push(entry[0] + ": " + e.message);
+      }
+    });
+    if (errors.length) {
+      fail("Smoke localStorage geri yükleme başarısız: " + errors.join("; "));
+    } else {
+      originalSmokeStorage.captured = false;
     }
   }
 
@@ -181,7 +192,8 @@
     var message = "Zaman aşımı: " + label + (lastError ? " / " + lastError.message : "");
 
     if (shouldFail) {
-      fail(message);
+      // Önkoşul sağlanmadıysa bağımlı adımlara devam edilmez.
+      throw new Error(message);
     } else {
       log("WARN: " + message, "pass");
     }
@@ -189,20 +201,14 @@
     return false;
   }
 
-	function targetUrl() {
-	  var marker = "/smoke/ux-smoke.html";
-	  var href = window.location.href.split("?")[0].split("#")[0];
+  function targetUrl() {
+    // Dosya -> kaynak dizini -> uygulama kökü; önek adı bilinmez.
+    var appUrl = new URL("../", window.location.href);
+    appUrl.search = "";
+    appUrl.hash = "ux_smoke_target=" + Date.now();
+    return appUrl.toString();
+  }
 
-	  var appHref = href.indexOf(marker) >= 0
-		? href.substring(0, href.indexOf(marker))
-		: new URL("../", window.location.href).toString();
-
-	  // Do not send a query string to the Shiny/reverse-proxy route.
-	  // The hash changes the iframe URL for reload purposes but is not sent to the server.
-	  appHref = appHref.replace(/\/$/, "");
-	  return appHref + "#ux_smoke_target=" + Date.now();
-	}
-	
   async function waitForFrameAccessible(appTarget, label, timeoutMs) {
     var started = Date.now();
     var lastError = null;
@@ -236,7 +242,9 @@
       (label || "app iframe") +
       " / Hedef: " +
       appTarget +
-      (lastError ? " / Son hata: " + lastError.message : "")
+      (lastError ? " / Son hata: " + lastError.message +
+        " / SSO etkinse ayrı smoke tarayıcı profilinde uygulamaya normal giriş yapın;" +
+        " pencerelerini kapatıp koşucuda MERGEN_BROWSER_UX_PROFILE_DIR ile aynı profili kullanın." : "")
     );
   }
 
@@ -280,7 +288,8 @@
       fail(
         "Iframe app yerine cross-origin SSO/Keycloak sayfasına yönlenmiş görünüyor. " +
         "Bu smoke harness iframe içindeki app DOM'unu okuyabilmek için aynı origin gerektirir. " +
-        "SSO VM üzerinde 127.0.0.1 yerine gerçek uygulama adresini MERGEN_SMOKE_BASE_URL ile kullanın. " +
+        "Ayrı smoke profilinde uygulamaya normal giriş yapın; pencerelerini kapatıp " +
+        "MERGEN_BROWSER_UX_PROFILE_DIR ile aynı profili kullanın. " +
         "Hedef: " + appTarget + " / Hata: " + (e && e.message ? e.message : String(e))
       );
       throw e;
@@ -543,6 +552,23 @@
   }
 
   async function testChatInput(app) {
+    var originalSetInputValue = app.win.Shiny.setInputValue;
+    // Enter dispatch testi sunucuya sentetik sohbet veya LLM işi göndermez.
+    app.win.Shiny.setInputValue = function (name, value, opts) {
+      if (name === "send_prompt_from_js") {
+        shinyEvents.push({ name: name, value: value, opts: opts || {} });
+        return;
+      }
+      return originalSetInputValue.apply(this, arguments);
+    };
+    try {
+      await testChatInputDispatch(app);
+    } finally {
+      app.win.Shiny.setInputValue = originalSetInputValue;
+    }
+  }
+
+  async function testChatInputDispatch(app) {
     var doc = app.doc;
     var input = doc.querySelector("#user_input");
     var sendButton = doc.querySelector("#send_stop_btn");
@@ -843,13 +869,33 @@
     win.mergenTTS.isPlaying = false;
     win.mergenTTS.currentAudio = null;
 
+    await testSavedChatRestore(app);
+  }
+
+  async function testSavedChatRestore(app) {
+    var win = app.win;
+    var doc = app.doc;
+    var saved;
+    await waitFor(function () {
+      try { saved = JSON.parse(win.localStorage.getItem("mergen_current_chat") || "null"); } catch (e) { saved = null; }
+      return saved && saved.v === 2 && typeof saved.owner === "string" && saved.owner.length > 0;
+    }, "sunucuya bağlı sohbet sahibi hazır", 15000);
+    var owner = saved.owner;
+    var newChat = doc.getElementById("new_chat_btn");
+    assert(!!newChat, "geri yükleme öncesi Yeni Söyleşi düğmesi var");
+    newChat.click();
+    await waitFor(function () {
+      return !win.localStorage.getItem("mergen_current_chat") &&
+        !doc.querySelector("#chat_content_container .message-bubble");
+    }, "geri yükleme öncesi sohbet boşaltıldı", 15000);
     var historicalMessages = [
-      { id: "old_ai_1", type: "ai", content: "Eski kayıtlı yanıt" }
+      { type: "ai", content: "Eski kayıtlı yanıt UX " + Date.now() }
     ];
+    var payload = { owner: owner, messages: historicalMessages };
 
     win.localStorage.setItem(
       "mergen_current_chat",
-      JSON.stringify(historicalMessages)
+      JSON.stringify({ v: 2, owner: owner, messages: historicalMessages })
     );
 
     shinyEvents = [];
@@ -857,13 +903,17 @@
     if (win.Shiny && typeof win.Shiny.setInputValue === "function") {
       win.Shiny.setInputValue(
         "load_chat_from_storage",
-        historicalMessages,
+        payload,
         { priority: "event" }
       );
     } else {
       fail("kayıtlı sohbet testi için Shiny bağlantısı bulunamadı");
     }
 
+    await waitFor(function () {
+      var restored = doc.querySelector("#chat_content_container .message-bubble");
+      return restored && restored.textContent.indexOf(historicalMessages[0].content) >= 0;
+    }, "kayıtlı sohbet tarihsel mesajı gerçekten geri yüklendi", 15000);
     await wait(1300);
 
     assert(
@@ -1040,6 +1090,7 @@
     try {
       var app = await loadFreshApp("fresh welcome");
       await testWelcome(app);
+      await testNavigationAndFileManagerSmoke(app);
 
       // Reasoning testi sentetiktir; gerçek quick-action/chat yan etkileri
       // DOM'u değiştirmeden önce çalıştırılır.
@@ -1053,7 +1104,6 @@
       await testChatInput(app);
       await testStreamingLifecycle(app);
       await testMediaAndSavedChat(app);
-      await testNavigationAndFileManagerSmoke(app);
       await testBilgeYolacSessionsSurface(app);
 
       testConsoleNoise();
@@ -1076,12 +1126,23 @@
 
   // Sayfa yüklemesi tek başına gerçek uygulama eylemi (istem, sohbet, depolama
   // değişikliği) başlatmaz. Harness yalnızca sunucunun bakımcı kapısıyla
-  // (MERGEN_ENABLE_UX_SMOKE) kaydettiği /smoke/ yolundan çalışır; bakımcı
+  // (MERGEN_ENABLE_UX_SMOKE) kaydettiği test yolundan çalışır; bakımcı
   // "başlat" düğmesine basar ya da otomasyon koşucusu açıkça ?autostart=1 verir.
   function startSmoke(startButton) {
     if (startButton) startButton.disabled = true;
     statusEl.textContent = "UX smoke çalışıyor...";
-    run();
+    // Açık belge akışı load olayını sonuç yazılana dek bekletir. Böylece
+    // --dump-dom gerçek Shiny süresini sanal saatle hızlandırmadan bekler.
+    completionFrame = document.createElement("iframe");
+    completionFrame.hidden = true;
+    document.body.appendChild(completionFrame);
+    completionFrame.contentDocument.open();
+    completionFrame.contentDocument.write("<!doctype html><title>UX smoke completion</title>");
+    run().finally(function () {
+      completionFrame.contentDocument.close();
+      completionFrame.remove();
+      completionFrame = null;
+    });
   }
 
   (function initSmokeStart() {
