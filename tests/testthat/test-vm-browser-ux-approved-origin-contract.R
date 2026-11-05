@@ -747,7 +747,7 @@ test_that("VM belgesi tarihli kanıtı güncel HEAD kanıtından ve adım filtre
   root <- resolve_repo_root_for_tests()
   for (file in c("README.md", "docs/vm-evidence-status.md")) {
     text <- read_source_text_utf8(file.path(root, file))
-    expect_match(text, "31 Ekim 2026", fixed = TRUE)
+    expect_match(text, "4 Kasım 2026", fixed = TRUE)
     expect_match(text, "13 passed, 0 failed, 0 skipped", fixed = TRUE)
     expect_match(text, "güncel HEAD", fixed = TRUE)
     expect_match(text, "VM koşumu tekrarlanmalıdır", fixed = TRUE)
