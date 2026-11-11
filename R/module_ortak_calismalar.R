@@ -229,7 +229,15 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
       shiny::showNotification(mesaj, type = tur, duration = 6)
     }
 
+    # Ortak Söyleşiler listesi önbelleği (kullanıcıya bağlı): sekme ziyareti en
+    # fazla 60 sn'de bir yeniler; kullanıcı eylemleri her zaman anında yeniler.
+    sohbet_onbellek <- new.env(parent = emptyenv())
     yenile <- function(neden = "manual") {
+      son <- sohbet_onbellek$zaman
+      if (identical(neden, "tab") && !is.null(son) && difftime(Sys.time(), son, units = "secs") < 60) {
+        return(invisible(neden))
+      }
+      sohbet_onbellek$df <- NULL
       liste_yenile(isolate(liste_yenile()) + 1L)
       invisible(neden)
     }
@@ -238,6 +246,17 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
       uid <- suppressWarnings(as.integer(current_user_id())[1])
       if (is.na(uid) || uid <= 0L) NA_integer_ else uid
     }
+
+    # Arka plan hazırlığı: liste önceden önbelleğe alınır; ilk ziyaret DB beklemez.
+    observeEvent(input$hazirla, {
+      uid <- gecerli_kullanici()
+      req(!is.na(uid))
+      hazir <- isTRUE(ortak_db_tablolar_hazir_mi())
+      df <- if (hazir) ortak_db_sohbet_listesi_onbellekten(sohbet_onbellek, uid) else NULL
+      isaretle <- session$userData$mergen_yonetim_hazir
+      if (is.function(isaretle)) isaretle("ortak_list_ready", "Ortak söyleşiler hazır",
+        detail = list(count = if (is.data.frame(df)) nrow(df) else 0L, available = hazir))
+    }, ignoreInit = TRUE)
 
     # Oda sunucusu bir kez bağlanır; hub yüzeyindeki dinamik oda UI'sine hizmet eder.
     oda <- ortakOturumRoomServer(
@@ -454,7 +473,7 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
       uid <- gecerli_kullanici()
       req(!is.na(uid))
       liste_olustur(
-        ortak_db_oturum_listesi(uid, kaynak_turu = "NormalSohbet"),
+        ortak_db_sohbet_listesi_onbellekten(sohbet_onbellek, uid),
         bos_mesaj = "Henüz ortak söyleşi yok."
       )
     })

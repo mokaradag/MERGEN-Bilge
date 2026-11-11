@@ -189,3 +189,69 @@ testthat::test_that("mergen_startup_chat_preview_promise explicit modda dar söz
   testthat::expect_identical(names(got$value), c("11", "12"))
   testthat::expect_identical(got$value[["11"]]$message_count, 3L)
 })
+
+testthat::test_that("tam liste modu (limit = NA) yalnızca özet SQL üreticisini ekler", {
+  .startup_preview_source_once()
+  if (!exists("db_chat_list_summary_query_sql", mode = "function", inherits = TRUE)) {
+    source(file.path(resolve_repo_root_for_tests(), "R", "helpers_db_chat_read_queries.R"),
+           encoding = "UTF-8", local = globalenv())
+  }
+
+  g <- mergen_startup_chat_preview_globals("42", limit = NA_integer_)
+  testthat::expect_setequal(
+    names(g),
+    c("startup_preview_user_id", "startup_preview_limit", "startup_preview_dsn",
+      "startup_preview_encoding", "startup_preview_name_encoding",
+      "db_chat_preview_fetch_raw", "db_chat_preview_query_sql",
+      "db_chat_list_summary_query_sql")
+  )
+  testthat::expect_true(is.na(g$startup_preview_limit))
+  # Ön izleme sözleşmesi tam liste eklemesinden etkilenmez.
+  testthat::expect_false("db_chat_list_summary_query_sql" %in%
+                           names(mergen_startup_chat_preview_globals("42", limit = 6L)))
+})
+
+testthat::test_that("tam söyleşi listesi explicit modda 'startup_saved_chats' olarak gönderilir", {
+  testthat::skip_if_not_installed("promises")
+  testthat::skip_if_not_installed("later")
+  .startup_preview_source_once()
+  if (!exists("db_chat_list_summary_query_sql", mode = "function", inherits = TRUE)) {
+    source(file.path(resolve_repo_root_for_tests(), "R", "helpers_db_chat_read_queries.R"),
+           encoding = "UTF-8", local = globalenv())
+  }
+
+  helper_env <- environment(mergen_startup_chat_preview_promise)
+  old_tracked <- get("tracked_future_promise", envir = helper_env, inherits = TRUE)
+  old_fetch <- get("db_chat_preview_fetch_raw", envir = helper_env, inherits = TRUE)
+  rec <- new.env(parent = emptyenv())
+  assign("tracked_future_promise", function(task_fn, task_type = "generic", session_token = NULL,
+                                            meta = list(), globals = NULL,
+                                            dependency_mode = c("auto", "explicit"), packages = NULL) {
+    rec$task_type <- task_type
+    rec$dependency_mode <- match.arg(dependency_mode)
+    rec$global_names <- names(globals %||% list())
+    promises::promise_resolve(task_fn())
+  }, envir = helper_env)
+  assign("db_chat_preview_fetch_raw", function(user_id, limit, dsn, encoding, name_encoding) {
+    rec$fetch_limit <- limit
+    .startup_preview_fixture_frame()
+  }, envir = helper_env)
+  on.exit({
+    assign("tracked_future_promise", old_tracked, envir = helper_env)
+    assign("db_chat_preview_fetch_raw", old_fetch, envir = helper_env)
+  }, add = TRUE)
+
+  p <- mergen_startup_chat_preview_promise(42L, limit = NA_integer_, session_token = "oturum-2")
+  got <- new.env(parent = emptyenv())
+  promises::then(p, onFulfilled = function(v) got$value <- v)
+  deadline <- Sys.time() + 5
+  while (is.null(got$value) && Sys.time() < deadline) later::run_now(timeoutSecs = 0.1)
+
+  testthat::expect_identical(rec$task_type, "startup_saved_chats")
+  testthat::expect_identical(rec$dependency_mode, "explicit")
+  testthat::expect_true("db_chat_list_summary_query_sql" %in% rec$global_names)
+  testthat::expect_true(is.na(rec$fetch_limit))
+  # Biçim load_chats_from_db(include_messages = FALSE) ile aynıdır.
+  testthat::expect_identical(names(got$value[["11"]]),
+                             c("title", "messages", "timestamp", "last_message_timestamp", "message_count"))
+})

@@ -66,8 +66,6 @@ savedChatsServer <- function(id, saved_chats) {
       load_chat_trigger(input$load_chat_id)
     }, ignoreInit = TRUE)
 
-    search_term_debounced <- reactiveVal()
-    search_timer <- reactiveTimer(300)
 	
 	    empty_meta <- function() {
       data.frame(
@@ -140,13 +138,10 @@ savedChatsServer <- function(id, saved_chats) {
       paste0(translated_month_names, " ", format(timestamps, "%Y"))
     }
 
+    # Arama doğrudan input$search_chats ile süzülür. Kullanılmayan bir değeri
+    # 300 ms'de bir örnekleyen sürekli zamanlayıcı (her oturumda boşta CPU) kaldırıldı.
     observeEvent(input$search_chats, {
-      search_timer()
       current_page(1)  # Reset to first page on search
-    })
-
-    observeEvent(search_timer(), {
-      search_term_debounced(input$search_chats)
     })
     
 	    observeEvent(saved_chats(), {

@@ -32,8 +32,10 @@ db_chat_preview_fetch_raw <- function(user_id,
     return(NULL)
   }
 
+  # NA limit = mesajsız tam söyleşi listesi (aynı biçim, TOP yok).
+  tam_liste <- length(limit) == 1L && is.na(limit)
   safe_limit <- suppressWarnings(as.integer(limit[1]))
-  if (is.na(safe_limit) || safe_limit <= 0L) {
+  if (!tam_liste && (is.na(safe_limit) || safe_limit <= 0L)) {
     safe_limit <- 6L
   }
 
@@ -59,7 +61,7 @@ db_chat_preview_fetch_raw <- function(user_id,
   query_started <- Sys.time()
   preview_data <- DBI::dbGetQuery(
     conn,
-    db_chat_preview_query_sql(safe_limit),
+    if (tam_liste) db_chat_list_summary_query_sql() else db_chat_preview_query_sql(safe_limit),
     params = list(safe_user_id)
   )
   query_ms <- as.numeric(difftime(Sys.time(), query_started, units = "secs")) * 1000
@@ -125,7 +127,7 @@ db_chat_preview_format_frame <- function(preview_data) {
 mergen_startup_chat_preview_globals <- function(user_id, limit = 6L) {
   default_dsn <- get0(".DEFAULT_DSN", ifnotfound = "TestConnection")
 
-  list(
+  sozlesme <- list(
     startup_preview_user_id = suppressWarnings(as.integer(user_id[1])),
     startup_preview_limit = suppressWarnings(as.integer(limit[1])),
     startup_preview_dsn = Sys.getenv("DB_DSN", default_dsn),
@@ -137,6 +139,11 @@ mergen_startup_chat_preview_globals <- function(user_id, limit = 6L) {
     db_chat_preview_fetch_raw = db_chat_preview_fetch_raw,
     db_chat_preview_query_sql = db_chat_preview_query_sql
   )
+  # Tam liste modu yalnızca özet SQL üreticisini ekler (oturum/bağlantı yok).
+  if (is.na(sozlesme$startup_preview_limit)) {
+    sozlesme$db_chat_list_summary_query_sql <- db_chat_list_summary_query_sql
+  }
+  sozlesme
 }
 
 # Hızlı Başlangıç ön izleme gönderimi: explicit modda tarama/serileştirme
@@ -165,7 +172,7 @@ mergen_startup_chat_preview_promise <- function(user_id,
         name_encoding = startup_preview_name_encoding
       )
     },
-    task_type = "startup_saved_chats_preview",
+    task_type = if (is.na(startup_preview_limit)) "startup_saved_chats" else "startup_saved_chats_preview",
     session_token = session_token,
     dependency_mode = "explicit",
     globals = preview_globals,

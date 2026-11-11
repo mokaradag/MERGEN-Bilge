@@ -18,7 +18,10 @@ bootReadinessInit <- function(session, required = NULL) {
     "saved_chats_preview_ready",
     "file_index_ready",
     "character_media_ready",
-    "welcome_client_ready"
+    "welcome_client_ready",
+    # Zengin Deneyim: dört Söyleşi Yönetimi sayfasının verisi hazır (veya
+    # kaynak kullanılamadığı dürüstçe bildirildi).
+    "management_pages_ready"
   )
 
   done <- character()
@@ -77,6 +80,14 @@ bootReadinessInit <- function(session, required = NULL) {
       session$sendCustomMessage("bootReadinessCheckpoint", payload),
       error = function(e) NULL
     )
+
+    # Söyleşi Yönetimi: dört sayfanın verisi gerçekten hazırsa toplu kontrol
+    # noktası bir kez işaretlenir (kaynak hatasında çağıran "kısmen" işaretler).
+    if (!"management_pages_ready" %in% done &&
+        all(c("saved_chats_full_loaded", "history_rows_ready",
+              "ortak_list_ready", "gallery_index_ready") %in% done)) {
+      mark("management_pages_ready", "Söyleşi Yönetimi sayfaları hazır")
+    }
 
     invisible(TRUE)
   }

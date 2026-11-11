@@ -642,3 +642,15 @@ ortak_db_oturum_listesi <- function(kullanici_id,
 
   .oo_db_restore_visible(sonuc, c("Baslik"))
 }
+
+# Oturum içi Ortak Söyleşiler listesi önbelleği (kullanıcıya bağlı). Önbellek
+# boşsa veya kimlik değiştiyse liste yeniden okunur; zaman damgası sekme
+# yenilemesinin seyreltilmesi için tutulur.
+ortak_db_sohbet_listesi_onbellekten <- function(onbellek, kullanici_id) {
+  if (is.null(onbellek$df) || !identical(onbellek$uid, kullanici_id)) {
+    onbellek$df <- ortak_db_oturum_listesi(kullanici_id, kaynak_turu = "NormalSohbet")
+    onbellek$uid <- kullanici_id
+    onbellek$zaman <- Sys.time()
+  }
+  onbellek$df
+}

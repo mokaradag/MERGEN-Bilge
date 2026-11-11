@@ -209,7 +209,10 @@ mergen_cancellable_worker_launch <- function(payload) {
     assign(".MERGEN_WORKER_DEADLINE", attr(payload, "mergen_deadline"), envir = globalenv())
     fn()
   }, args = list(payload = payload), supervise = TRUE,
-  stdout = NULL, stderr = NULL, user_profile = FALSE, system_profile = FALSE)
+  stdout = NULL, stderr = NULL, user_profile = FALSE, system_profile = FALSE,
+  # Her iş taze bir süreçte TEK KEZ çalışır; JIT derlemesi saf ek yüktür ve
+  # ilk akış parçasını her istemde ~0,3 sn geciktiriyordu.
+  env = c(callr::rcmd_safe_env(), R_ENABLE_JIT = "0"))
 }
 
 mergen_cancellable_worker_promise <- function(payload, current, timeout = 1800, priority = 0L,

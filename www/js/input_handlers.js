@@ -41,7 +41,9 @@ $(document).ready(function() {
   }
 
   function sendPromptFromInput(inputEl) {
-    if ($('#send_stop_btn').hasClass('stop-mode')) {
+    // İyimser bekleyen balon modülü (chat_pending_message.js) varsa kullanılır.
+    const bekleyen = window.MergenBekleyenIstem;
+    if ($('#send_stop_btn').hasClass('stop-mode') || (bekleyen && bekleyen.varMi())) {
       return false;
     }
 
@@ -62,17 +64,18 @@ $(document).ready(function() {
       return false;
     }
 
+    const istemKimligi = bekleyen ? bekleyen.ekle(promptText) : undefined;
+
     Shiny.setInputValue("send_prompt_from_js", {
       text: promptText,
-      nonce: Math.random()
+      nonce: Math.random(),
+      client_id: istemKimligi
     }, { priority: "event" });
 
     clearChatInput($input);
     $input.focus();
 
-    setTimeout(() => {
-        if (typeof window.scrollToBottom === 'function') window.scrollToBottom(true);
-    }, 50);
+    if (typeof window.scrollToBottom === 'function') window.scrollToBottom(true);
 
     return true;
   }

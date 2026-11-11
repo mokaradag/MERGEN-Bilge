@@ -41,7 +41,7 @@
 # ------------------------------------------------------------------------------
 # Varsayılan yapı
 # ------------------------------------------------------------------------------
-testthat::test_that("bootReadinessInit beklenen 5 zorunlu kontrol noktasını döndürür", {
+testthat::test_that("bootReadinessInit beklenen 6 zorunlu kontrol noktasını döndürür", {
   env <- .source_boot_readiness_for_test()
   sess <- .fake_boot_session()
   ctrl <- env$bootReadinessInit(sess)
@@ -49,7 +49,7 @@ testthat::test_that("bootReadinessInit beklenen 5 zorunlu kontrol noktasını d�
   testthat::expect_identical(
     ctrl$required,
     c("auth_ready", "saved_chats_preview_ready", "file_index_ready",
-      "character_media_ready", "welcome_client_ready")
+      "character_media_ready", "welcome_client_ready", "management_pages_ready")
   )
   # Henüz hiçbir nokta işaretlenmedi.
   testthat::expect_identical(ctrl$done(), character(0))
@@ -169,4 +169,29 @@ testthat::test_that("mark sayısal/karaktere zorlanabilir anahtarı karaktere ç
   testthat::expect_true(ctrl$mark(42))
   testthat::expect_identical(ctrl$done(), "42")
   testthat::expect_true(ctrl$is_ready())
+})
+
+testthat::test_that("dört Söyleşi Yönetimi sayfası hazır olunca toplu kontrol noktası bir kez işaretlenir", {
+  env <- .source_boot_readiness_for_test()
+  sess <- .fake_boot_session()
+  ctrl <- env$bootReadinessInit(sess)
+  for (k in c("auth_ready", "saved_chats_preview_ready", "file_index_ready",
+              "character_media_ready", "welcome_client_ready")) ctrl$mark(k)
+
+  for (k in c("saved_chats_full_loaded", "history_rows_ready", "ortak_list_ready")) ctrl$mark(k)
+  # Galeri hazır değilken zengin şerit açılışı hazır sayılmaz.
+  testthat::expect_false("management_pages_ready" %in% ctrl$done())
+  testthat::expect_false(ctrl$is_ready())
+
+  ctrl$mark("gallery_index_ready")
+  testthat::expect_true("management_pages_ready" %in% ctrl$done())
+  testthat::expect_true(ctrl$is_ready())
+  son <- sess$rec$msgs[[length(sess$rec$msgs)]]$message
+  testthat::expect_identical(son$key, "management_pages_ready")
+  testthat::expect_true(isTRUE(son$ready))
+
+  # Sonraki tekrarlar toplu anahtarı yeniden üretmez.
+  adet <- sum(ctrl$done() == "management_pages_ready")
+  ctrl$mark("gallery_index_ready")
+  testthat::expect_identical(sum(ctrl$done() == "management_pages_ready"), adet)
 })

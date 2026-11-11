@@ -126,6 +126,10 @@ imageGalleryServer <- function(id, current_user_id) {
       if (isTRUE(force)) {
         gallery_revision(gallery_revision() + 1)
       }
+      isaretle <- session$userData$mergen_yonetim_hazir
+      if (is.function(isaretle)) {
+        isaretle("gallery_index_ready", "Görsel galerisi dizini hazır", detail = list(count = nrow(scanned)))
+      }
       invisible(NULL)
     }
 
@@ -166,16 +170,12 @@ imageGalleryServer <- function(id, current_user_id) {
       refresh_gallery_cache()
     })
 
-    search_term_debounced <- reactiveVal("")
-    search_timer <- reactiveTimer(300)
+    # Arama terimi olay güdümlü 300 ms debounce ile uygulanır; her oturumda
+    # 300 ms'de bir sonsuza dek çalışan örnekleme zamanlayıcısı kaldırıldı.
+    search_term_debounced <- shiny::debounce(shiny::reactive(input$search_images %||% ""), 300)
 
     observeEvent(input$search_images, {
-      search_timer()
       current_page(1)
-    })
-
-    observeEvent(search_timer(), {
-      search_term_debounced(input$search_images %||% "")
     })
 
     # Arama: açıklama, dosya adı, ay etiketi ve sohbet başlığı üzerinden filtrele
@@ -247,7 +247,9 @@ imageGalleryServer <- function(id, current_user_id) {
       imgs <- paginated_images()
 
       # İlk tarama sürerken kullanıcı boş ekran yerine yükleme durumu görür.
-      if (isTRUE(gallery_loading()) && nrow(imgs) == 0) {
+      # Yükleme bayrağı yalnızca liste boşken okunur; aksi halde her sekme
+      # ziyaretindeki tarama tüm ızgarayı yeniden render ettiriyordu.
+      if (nrow(imgs) == 0 && isTRUE(gallery_loading())) {
         return(div(
           class = "mergen-loading-state",
           div(class = "mergen-loading-spinner"),
@@ -298,7 +300,9 @@ imageGalleryServer <- function(id, current_user_id) {
               class = "gallery-grid",
               lapply(seq_len(nrow(month_rows)), function(idx) {
                 row <- month_rows[idx, ]
-                img_b64 <- get_image_thumbnail_base64(row$file_path)
+                # Oturum kapsamlı URL: tam çözünürlüklü base64 gövdesi websocket'e
+                # gömülmez; tarayıcı görseli tembel ve paralel çeker.
+                img_b64 <- mergen_serve_image_data_url(row$file_path, session = session)
 
                 file_size_kb <- round(row$file_size / 1024, 1)
                 created_str <- format(row$created_at, "%d.%m.%Y %H:%M")
@@ -348,7 +352,8 @@ imageGalleryServer <- function(id, current_user_id) {
                         src = img_b64,
                         alt = if (nzchar(desc_text)) desc_text else row$filename,
                         class = "gallery-card-image",
-                        loading = "lazy"
+                        loading = "lazy",
+                        decoding = "async"
                       )
                     } else {
                       div(

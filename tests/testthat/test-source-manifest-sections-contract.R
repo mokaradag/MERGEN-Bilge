@@ -85,7 +85,9 @@
   # 13 -> 14 bilinçli güncelleme: otomatik kip bağımlılık önbelleği
   # (R/helpers_worker_dep_cache.R) worker monitor fonksiyon tavanı nedeniyle
   # ayrı dosyaya alındı; worker monitor'dan SONRA yüklenir.
-  foundation = list(first = "R/config_packages.R", last = "R/helpers_worker_cancellation.R", n = 17L),
+  # 17L -> 18L: R/helpers_worker_future_dispatch.R (future şeridi gönderim katmanı;
+  # helpers_worker_monitor.R 24 fonksiyon tavanında olduğu için ayrı dosya).
+  foundation = list(first = "R/config_packages.R", last = "R/helpers_worker_cancellation.R", n = 18L),
   # post_future_utils n = 9L -> 10L bilinçli güncelleme: hedef yolu sahiplik
   # jetonuyla rezerve eden ortak primitifler (R/utils_path_reservation.R)
   # atomik yazma ile aynı katmana eklendi; üç ayrı terfi yolu bu tek kaynağı
@@ -390,7 +392,9 @@
   # `helpers_pk_async_request_markers.R` bakım ratchet'i sınırında olduğu için
   # AYRI dosyaya çıkarıldı.
   # 20 -> 21: PR #719, R/helpers_pk_async_artifact.R ratchet bölünmesi.
-  server_handlers_send_message = list(first = "R/server_speech_assets_runtime.R", last = "R/server_send_message.R", n = 21L)
+  # 21L -> 22L: R/helpers_llm_true_streaming_task.R (SSE görev kapanışı
+  # fabrikası; helpers_llm_true_streaming_worker.R 80/1 bütçesi korunur).
+  server_handlers_send_message = list(first = "R/server_speech_assets_runtime.R", last = "R/server_send_message.R", n = 22L)
 )
 
 test_that("source_manifest_sections beklenen sırada ve adlarda bölümler içerir", {
@@ -770,7 +774,11 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # 522 -> 523: alım kaynağı bağlama, mevcut runtime ratchet bütçesinden ayrıldı.
   # 523L -> 524L bilinçli güncelleme: R/helpers_files_docx_reader.R (sınırlı
   # DOCX okuyucu) helpers_files.R satır bütçesi nedeniyle ayrı dosyaya alındı.
-  expect_equal(length(runtime), 524L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 524L -> 525L bilinçli güncelleme: R/helpers_worker_future_dispatch.R (future
+  # gönderim yükünü oturum grafiğinden arındırır; worker monitor bütçesi korunur).
+  # 525L -> 526L bilinçli güncelleme: R/helpers_llm_true_streaming_task.R
+  # (ratchet bölünmesi; streaming globals dosyasının bütçesi korunur).
+  expect_equal(length(runtime), 526L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

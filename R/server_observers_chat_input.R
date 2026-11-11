@@ -75,20 +75,34 @@ chatInputObserversInit <- function(input, session, values, settings_data,
   observeEvent(input$send_prompt_from_js, {
     req(input$send_prompt_from_js)
 
+    # İstemcinin iyimser (bekleyen) balonu yalnızca sunumdur; kabul/ret kararı
+    # burada verilir ve istemciye bildirilir. Kimlik yalnızca aynı istemciye
+    # geri yansıtılır; güvenli karakterlerle sınırlanır.
+    istem_kimligi <- as.character(input$send_prompt_from_js$client_id %||% "")[1]
+    if (is.na(istem_kimligi) || !grepl("^[A-Za-z0-9_-]{1,64}$", istem_kimligi)) istem_kimligi <- ""
+    istem_sonucu <- function(durum) {
+      if (nzchar(istem_kimligi)) {
+        session$sendCustomMessage("mergenIstemSonucu", list(client_id = istem_kimligi, durum = durum))
+      }
+    }
+
     if (!check_rate_limit(resolve_chat_input_user_id())) {
       showToast(session, "Çok fazla istek gönderdiniz. Lütfen biraz bekleyin.", "warning")
+      istem_sonucu("ret")
       return()
     }
 
     global_check <- check_global_rate_limit()
     if (!global_check$allowed) {
       showToast(session, global_check$message, "warning")
+      istem_sonucu("ret")
       return()
     }
 
     user_text <- trimws(input$send_prompt_from_js$text)
     if (nchar(user_text) > 20000) {
       showToast(session, "Mesaj çok uzun. Lütfen 20.000 karakterle sınırlayın.", "warning")
+      istem_sonucu("ret")
       return()
     }
 
@@ -105,7 +119,16 @@ chatInputObserversInit <- function(input, session, values, settings_data,
       error = function(e) invisible(NULL)
     )
 
-    send_message(input$send_prompt_from_js$text)
+    # Kabul ölçütü: send_message senkron bölümünde kullanıcı mesajı gerçekten
+    # eklendi mi (tüm erken ret yolları mesaj eklemeden döner).
+    onceki_sayi <- length(isolate(values$messages))
+    tryCatch(send_message(input$send_prompt_from_js$text), error = function(e) {
+      istem_sonucu("ret")
+      stop(e)
+    })
+    yeni_mesajlar <- isolate(values$messages)
+    eklenen <- if (length(yeni_mesajlar) > onceki_sayi) yeni_mesajlar[(onceki_sayi + 1L):length(yeni_mesajlar)] else list()
+    istem_sonucu(if (any(vapply(eklenen, function(m) identical(m$type, "user"), logical(1)))) "kabul" else "ret")
   })
 
   observeEvent(stop_generation(), {

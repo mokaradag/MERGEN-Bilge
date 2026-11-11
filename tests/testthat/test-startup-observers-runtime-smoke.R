@@ -6,9 +6,10 @@
 #              karşılama ekranının başlangıçta render edilmesi.
 #           2) Başlangıç şeridi yarış düzeltmesi: şerit çözülmeden hiçbir
 #              kayıtlı sohbet DB çağrısı başlamaz; Hızlı Başlangıç'ta tam
-#              liste açılışta YÜKLENMEZ ve ön izleme kritik yolu bloklamaz;
-#              tam liste Kayıtlı Söyleşiler/Geçmiş ilk açıldığında bir kez
-#              tembel yüklenir; zengin şerit davranışı korunur.
+#              liste açılışın kritik yolunda YÜKLENMEZ ve ön izleme kritik yolu
+#              bloklamaz; ön izleme uygulanınca tam liste arka planda bir kez
+#              yüklenir, yerel durum değiştiyse Kayıtlı Söyleşiler/Geçmiş ilk
+#              açıldığında tembel yüklenir; zengin şerit davranışı korunur.
 #           DB/LLM/tarayıcı gerekmez; DB yükleyiciler stub'lanır.
 # ==============================================================================
 
@@ -124,6 +125,15 @@
     promises::promise_resolve(result)
   }, envir = globalenv())
   assign("mergen_startup_chat_preview_promise", function(user_id, limit = 6L, session_token = NULL) {
+    # Tam liste (limit = NA) üretimde aynı dar worker'dan geçer; test kayıtları
+    # eski tam liste yolunun (load_chats_from_db + startup_saved_chats) aynısıdır.
+    if (length(limit) == 1L && is.na(limit)) {
+      return(get("tracked_future_promise", envir = globalenv())(
+        task_fn = function() get("load_chats_from_db", envir = globalenv())(user_id, include_messages = FALSE),
+        task_type = "startup_saved_chats",
+        session_token = session_token
+      ))
+    }
     if (isTRUE(rec$fail_preview_dispatch)) {
       stop("veritabanına ulaşılamadı (test)")
     }
@@ -242,6 +252,11 @@ testthat::test_that("hızlı şeritte ön izleme ilk çizimden sonra ısıtılı
   rec$preview_result <- list(
     "preview-chat" = list(title = "Ön izleme", message_count = 0L)
   )
+  # Tam liste gerçekte ön izlemeyi kapsar.
+  rec$full_result <- list(
+    "preview-chat" = list(title = "Ön izleme", message_count = 0L),
+    "older-chat" = list(title = "Eski söyleşi", message_count = 2L)
+  )
   stubs <- .with_startup_db_stubs(rec)
   on.exit(stubs$restore(), add = TRUE)
 
@@ -307,6 +322,15 @@ testthat::test_that("hızlı şeritte ön izleme ilk çizimden sonra ısıtılı
     )
     hydrated_marks <- Filter(function(e) identical(e$key, "saved_chats_preview_hydrated"), boot_ready$entries())
     testthat::expect_true(length(hydrated_marks) >= 1L)
+
+    # Ön izleme uygulandıktan sonra tam liste kullanıcı sayfayı açmadan,
+    # arka planda (işçi sarmalayıcısında) BİR KEZ yüklenir.
+    for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+    session$flushReact()
+    testthat::expect_identical(rec$full, 1L)
+    testthat::expect_true("startup_saved_chats" %in% rec$future_types)
+    testthat::expect_true(all(c("preview-chat", "older-chat") %in% names(session$userData$.values$saved_chats)))
+    testthat::expect_true("saved_chats_full_loaded" %in% boot_ready$keys())
 
     # Tekrarlanan istemci hazır sinyali ikinci bir gönderim başlatamaz.
     session$setInputs(welcome_client_ready = list(fast_lane = TRUE, timestamp = 2))
@@ -465,6 +489,8 @@ testthat::test_that("hızlı şeritte reddedilen ön izleme daha sonra yeniden d
   rec$preview_result <- list(
     "retry-preview" = list(title = "Yeniden Deneme", message_count = 0L)
   )
+  # Başarılı yeniden denemeden sonra arka plan tam listesi ön izlemeyi kapsar.
+  rec$full_result <- rec$preview_result
   stubs <- .with_startup_db_stubs(rec)
   on.exit(stubs$restore(), add = TRUE)
 

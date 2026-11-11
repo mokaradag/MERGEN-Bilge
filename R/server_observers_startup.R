@@ -63,6 +63,21 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  }
 	}, ignoreInit = TRUE)
 
+  # Söyleşi Yönetimi hazır-olma sözleşmesi: dört sayfanın verisi gerçekten
+  # hazırlandığında modüller kendi kontrol noktasını işaretler; toplu
+  # management_pages_ready anahtarını bootReadinessInit() üretir.
+  session$userData$mergen_yonetim_hazir <- mark_boot
+  # Sayfa hazırlığı, navigasyon gözlemcisiyle aynı desende modül girdileri
+  # üzerinden ve tarayıcı boştayken (düşük öncelik) tetiklenir.
+  yonetim_hazirla <- function() {
+    shinyjs::runjs(sprintf(paste0(
+      "(function(){var t=%s;var f=function(){['history_module-hazirla',",
+      "'image_gallery_module-refresh_gallery','ortak_calismalar_module-hazirla'].forEach(",
+      "function(id){Shiny.setInputValue(id,t,{priority:'event'});});};",
+      "if(window.requestIdleCallback){requestIdleCallback(f,{timeout:1500});}else{setTimeout(f,0);}})();"
+    ), as.numeric(Sys.time())))
+  }
+
   startup_state <- new.env(parent = emptyenv())
   startup_state$full_load_generation <- 0L
   startup_state$initial_saved_chats_status <- "idle"
@@ -213,6 +228,18 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		  cat("[STARTUP] Tam söyleşi yüklemesi başladı, geç kalan ön izleme atlandı\n")
 		  return(invisible(NULL))
 		}
+		# Ön izleme UYGULANDIKTAN sonra tam liste, kullanıcının sayfayı açmasını
+		# beklemeden arka planda (işçide) hazırlanır; bir sonraki döngü turunda
+		# başlatılır ki ön izleme çizimi önce gitsin. Yerel durum değiştiyse
+		# (kullanıcı söyleşiye başladıysa) tembel sekme yolu korunur.
+		arka_plan_tam_liste <- function() {
+		  later::later(function() {
+			tetikle <- startup_state$trigger_lazy_full_saved_chats_load
+			if (is.function(tetikle) && !session_closed()) {
+			  shiny::withReactiveDomain(session, shiny::isolate(tetikle("arka_plan")))
+			}
+		  }, 0)
+		}
 		shiny::isolate({
 		  if (!identical(values$saved_chats, preview_saved_chats_snapshot)) {
 			cat("[STARTUP] Kayıtlı sohbet durumu değişti, eski ön izleme atlandı\n")
@@ -236,6 +263,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			)
 		  }
 		})
+		arka_plan_tam_liste()
 		invisible(NULL)
 	  }
 
@@ -343,9 +371,10 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	}
 
 	# Tam söyleşi listesi (mesajsız) arka plan yükleyicisi. Hızlı Başlangıç'ta
-	# bu iş AÇILIŞTA çalıştırılmaz: Ana Söyleşi'ye ön izleme (6 söyleşi) ile
-	# inilir; tam liste kullanıcı Kayıtlı Söyleşiler / Söyleşi Geçmişi'ni ilk
-	# açtığında TEMBEL yüklenir. Zengin şeritte mevcut davranış korunur.
+	# bu iş açılışın kritik yolunda çalıştırılmaz: Ana Söyleşi'ye ön izleme
+	# (6 söyleşi) ile inilir; ön izleme uygulanınca tam liste arka planda
+	# (işçide) hazırlanır. Yerel durum değiştiyse Kayıtlı Söyleşiler / Söyleşi
+	# Geçmişi ilk açıldığında tembel yüklenir. Zengin şeritte açılışta yüklenir.
 	run_full_saved_chats_load <- function() {
 	  session$userData$saved_chats_full_pending <- FALSE
 
@@ -365,13 +394,14 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  startup_state$full_load_generation <- startup_state$full_load_generation + 1L
 	  full_load_generation <- startup_state$full_load_generation
 
-	  gonderim <- tryCatch(tracked_future_promise(
-		  task_fn = function() {
-			load_chats_from_db(run_user_id, include_messages = FALSE)
-		  },
-		  task_type = "startup_saved_chats",
-		  session_token = session$token
-		), error = function(e) promises::promise_reject(e))
+	  # Tam liste, ön izlemeyle AYNI dar açık (explicit) worker sözleşmesiyle
+	  # gönderilir (limit = NA): otomatik bağımlılık taraması ana olay döngüsünü
+	  # saniyelerce bloklamaz; biçim load_chats_from_db(include_messages = FALSE)
+	  # ile aynıdır.
+	  gonderim <- tryCatch(
+		mergen_startup_chat_preview_promise(run_user_id, limit = NA_integer_,
+		                                    session_token = session$token),
+		error = function(e) promises::promise_reject(e))
 	  session$userData$initial_saved_chats_promise <- promises::then(
 		  gonderim,
 		  onFulfilled = function(chats) {
@@ -399,8 +429,9 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			# bağlam dışı reaktif okuma hataları üretebilir.
 			shiny::isolate({
 			  values$saved_chats <- chats
+			  session$userData$saved_chats_full_loaded <- TRUE
 
-			  mark_boot(
+			  session$userData$mergen_yonetim_hazir(
 				"saved_chats_full_loaded",
 				"Tüm söyleşiler arka planda hazır",
 				detail = list(count = length(chats))
@@ -409,6 +440,8 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			  # Tam liste geldiğinde karşılama ekranını güncelle.
 			  refresh_welcome_if_needed(chats)
 			})
+			# Tam liste hazır: geçmiş/galeri/ortak sayfaları arka planda hazırlanır.
+			yonetim_hazirla()
 
 			NULL
 		  },
@@ -429,6 +462,10 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		  # Başarısızlıkta tembel yol yeniden deneyebilsin.
 		  startup_state$initial_saved_chats_status <- "deferred"
 		  session$userData$saved_chats_full_pending <- TRUE
+		  # Açılış asılı kalmaz; durum dürüstçe "kısmen" olarak bildirilir.
+		  mark_boot("management_pages_ready",
+		            "Söyleşi listesi yüklenemedi; sayfa açıldığında yeniden denenecek",
+		            detail = list(degraded = TRUE))
 		  warning(sprintf("[SERVER] Initial saved chat load failed: %s", conditionMessage(err)))
 		  NULL
 		}
@@ -455,7 +492,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	# Tembel tetikleyicinin anlık kontrolü ve observer yolu aynı idempotent
 	# koşulları kullanır; böylece şerit çözülmeden önce seçilmiş sekme kaçırılmaz.
 	trigger_lazy_full_saved_chats_load <- function(tab) {
-	  if (!identical(tab, "saved_chats") && !identical(tab, "history")) {
+	  if (length(tab) != 1L || !tab %in% c("saved_chats", "history", "arka_plan")) {
 		return(invisible(FALSE))
 	  }
 	  if (!isTRUE(session$userData$saved_chats_full_pending) ||
@@ -522,6 +559,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  startup_state$preview_hydration_started <- FALSE
 	  startup_state$preview_hydration_user_id <- NULL
 	  session$userData$saved_chats_full_pending <- FALSE
+	  session$userData$saved_chats_full_loaded <- FALSE
 	  # Yeni sahibin listesi boşsa önceki sahibin söyleşileri görünmez.
 	  values$saved_chats <- list()
 	  if (isTRUE(values$show_welcome)) render_welcome_screen(list(), replace_existing = TRUE)

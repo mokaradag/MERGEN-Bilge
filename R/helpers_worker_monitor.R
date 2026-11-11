@@ -481,14 +481,7 @@ tracked_future_promise <- function(task_fn,
         priority = if (auxiliary) 2L else if (identical(task_type, "llm_followups")) 1L else 0L,
         queue_timeout = queue_timeout %||% if (auxiliary) 30 else if (durable) timeout else 300,
         lane = if (durable) "durable" else "interactive", on_uncertain = on_uncertain)
-    } else promises::future_promise(
-      {
-        if (is.raw(task_fn)) task_fn <- unserialize(task_fn)
-        task_fn()
-      },
-      globals = promise_globals,
-      packages = future_packages
-    )
+    } else worker_monitor_future_promise(promise_globals, future_packages)
   }, error = function(e) {
     finish_worker_task(task_id)
     stop(e)

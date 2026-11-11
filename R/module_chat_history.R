@@ -509,11 +509,54 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
       showToast(session, "Geçmiş tablosu yenilendi.", "info")
     })
 
-	# Ana sekme değişikliğinde tabloyu yenile (parent session'dan gelen sinyal)
-    # NOT: Bu input, parent session tarafından doğrudan set edilir
+    # Dürüst hazır-olma: yalnızca tam söyleşi listesi yüklendikten sonra.
+    hazir_bildir <- function() {
+      isaretle <- session$userData$mergen_yonetim_hazir
+      if (is.function(isaretle) && isTRUE(session$userData$saved_chats_full_loaded)) {
+        isaretle("history_rows_ready", "Söyleşi geçmişi ilk sayfası hazır",
+                 detail = list(count = length(messages_cache())))
+      }
+    }
+    aralik_kimlikleri <- function() {
+      history_chat_ids_for_date_range(latest_chats(), history_normalize_date_range(isolate(input$date_range)))
+    }
+    isitma <- new.env(parent = emptyenv())
+
+    # Arka plan hazırlığı SINIRLIDIR: yalnızca en yeni 60 söyleşi (ilk sayfa
+    # için fazlasıyla yeterli) tek sorguda hazırlanır; tüm geçmiş her oturumda
+    # açılışta ısıtılmaz. Kalanı sayfa açıldığında partilerle doldurulur.
+    observeEvent(input$hazirla, {
+      ensure_history_cache(utils::head(aralik_kimlikleri(), 60L), latest_chats(), invalidate = TRUE)
+      hazir_bildir()
+    }, ignoreInit = TRUE)
+
+    # Sekme açılışı (parent session'dan gelen sinyal). Önbellek KORUNUR: yalnızca
+    # damgası değişen veya yeni söyleşiler çekilir. Eskiden her ziyaret önbelleği
+    # silip tüm geçmişi yeniden çekiyordu; tam yenileme yalnızca kullanıcının
+    # "Yenile"/"Bugün"/tarih eylemlerindedir.
     observeEvent(input$external_refresh_trigger, {
-      cat("[HISTORY] Dış tetikleyici ile yenileme başlatıldı\n")
-      refresh_history_cache(force = TRUE)
+      chats <- latest_chats()
+      eksik <- setdiff(aralik_kimlikleri(), names(messages_cache()))
+      # Çok sayıda eksik söyleşi küçük partilerle ısıtılır: olay döngüsü tek
+      # seferde uzun süre tutulmaz; hazır olan ilk sayfa hemen görünür ve tablo
+      # sonda bir kez yenilenir. Süren ısıtma yinelenmez.
+      if (length(eksik) > 60L) {
+        if (isTRUE(isitma$aktif)) return(invisible(NULL))
+        isitma$aktif <- TRUE
+        historyBackgroundWarm(
+          session, eksik, chats,
+          ensure_history_cache = function(parti, chats) ensure_history_cache(parti, chats, invalidate = FALSE),
+          batch_size = 60L, delay_sec = 0.05,
+          on_complete = function() {
+            isitma$aktif <- FALSE
+            trigger_refresh(shiny::isolate(trigger_refresh()) + 1)
+            hazir_bildir()
+          }
+        )
+      } else {
+        refresh_history_cache(force = FALSE)
+        hazir_bildir()
+      }
     }, ignoreInit = TRUE)
   })
 }

@@ -37,7 +37,7 @@ source_manifest_sections <- list(
     "R/helpers_index_page_cache.R",
     "R/helpers_app_http_routes.R",
     "R/utils_rate_limiter.R",
-    "R/helpers_worker_monitor.R", "R/helpers_worker_dep_cache.R", "R/helpers_process_ownership.R", "R/helpers_worker_cancellation.R"  # bağımlılık önbelleği monitor'dan SONRA
+    "R/helpers_worker_monitor.R", "R/helpers_worker_future_dispatch.R", "R/helpers_worker_dep_cache.R", "R/helpers_process_ownership.R", "R/helpers_worker_cancellation.R"  # bağımlılık önbelleği monitor'dan SONRA
   ),
 
   # post_future_utils: Future cluster SONRASI yardımcılar: yol/güvenli yol, yol
@@ -764,7 +764,7 @@ source_manifest_sections <- list(
     "R/server_handler_summarization.R",
     "R/server_handler_image_generation.R",
     "R/server_handler_langflow.R",
-    "R/helpers_llm_true_streaming_worker.R",
+    "R/helpers_llm_true_streaming_worker.R", "R/helpers_llm_true_streaming_task.R",  # globals -> görev kapanışı fabrikası
     "R/server_handler_true_streaming.R",
     "R/server_handler_streaming_tts.R",
     # Faz 6: PK gönderim katmanı; uygulama yardımcıları orkestratörden, ikisi de

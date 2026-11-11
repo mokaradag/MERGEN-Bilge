@@ -141,7 +141,7 @@ testthat::test_that("hazır-olma anahtar kümeleri şerit sözleşmeleriyle hiza
     sort(rich_keys),
     sort(c(
       "auth_ready", "saved_chats_preview_ready", "file_index_ready",
-      "character_media_ready", "welcome_client_ready"
+      "character_media_ready", "welcome_client_ready", "management_pages_ready"
     ))
   )
 })

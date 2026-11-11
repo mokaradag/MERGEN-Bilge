@@ -195,6 +195,10 @@ healthServer <- function(id, perf_tracker) {
     })
     observe({
       if (!isTRUE(yetki_durumu())) return()
+      # Sayfa görünür değilken sağlık probe'ları (DB, tam gc() vb.) yalnızca DNS
+      # takibi için zorla çalıştırılmaz; aksi halde her yönetici oturumu açılışta
+      # ve 2 dk'da bir tüm kullanıcıların paylaştığı olay döngüsünü blokluyordu.
+      if (!isFALSE(session$clientData[[paste0("output_", ns("health_tab_content"), "_hidden")]])) return()
       ilk <- initial_checks()
       son <- isolate(dns_checks()) %||% ilk
       if (any(son$value == "DNS bekleniyor", na.rm = TRUE) &&
