@@ -16,6 +16,22 @@ history_ids_needing_fetch <- function(chat_ids, chats, cache, stamp_fn) {
   }, logical(1), USE.NAMES = FALSE)]
 }
 
+# Önbellekten kayıt düşüren işlev üretir: yerinde içerik düzenlemesi (ör.
+# galeriden görsel silme mesaj metnini değiştirir) zaman/sayı damgasını
+# değiştirmediği için ilgili kayıtlar düşer ve sonraki ziyarette yeniden
+# okunur. chat_ids NULL ise tüm önbellek düşer.
+history_cache_dropper <- function(messages_cache) {
+  function(chat_ids = NULL) {
+    cache <- shiny::isolate(messages_cache())
+    dusur <- if (is.null(chat_ids)) names(cache) else intersect(names(cache), as.character(chat_ids))
+    if (length(dusur)) {
+      cache[dusur] <- NULL
+      messages_cache(cache)
+    }
+    invisible(length(dusur))
+  }
+}
+
 # Partiler later ile ertelenir. is_current() FALSE dönerse (önbellek
 # geçersiz kılındı, tarih aralığı/sahip değişti) parti İŞLENMEZ: eski bir
 # planın sonucu yeni önbelleğe yazılamaz. Bir partinin hatası zinciri kırmaz;

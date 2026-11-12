@@ -26,7 +26,8 @@ db_chat_preview_fetch_raw <- function(user_id,
                                       limit,
                                       dsn,
                                       encoding,
-                                      name_encoding) {
+                                      name_encoding,
+                                      login_timeout = NA_integer_) {
   safe_user_id <- suppressWarnings(as.integer(user_id[1]))
   if (is.na(safe_user_id) || safe_user_id <= 0L) {
     return(NULL)
@@ -54,12 +55,19 @@ db_chat_preview_fetch_raw <- function(user_id,
   }
 
   connect_started <- Sys.time()
-  conn <- DBI::dbConnect(
+  baglanti_args <- list(
     odbc::odbc(),
     dsn = as.character(dsn)[1],
     encoding = as.character(encoding)[1],
     name_encoding = as.character(name_encoding)[1]
   )
+  # get_connection() ile aynı login sınırı: yapılandırılmış süre varsa sürücüye
+  # iletilir; yoksa sürücü varsayılanı korunur (timeout HİÇ geçilmez).
+  login_timeout <- suppressWarnings(as.integer(login_timeout[1]))
+  if (length(login_timeout) == 1L && !is.na(login_timeout) && login_timeout >= 1L) {
+    baglanti_args$timeout <- login_timeout
+  }
+  conn <- do.call(DBI::dbConnect, baglanti_args)
   on.exit(try(DBI::dbDisconnect(conn), silent = TRUE), add = TRUE)
   connect_ms <- as.numeric(difftime(Sys.time(), connect_started, units = "secs")) * 1000
 
@@ -142,9 +150,11 @@ mergen_startup_chat_preview_limit <- function(limit) {
 }
 
 # Arka plan tam listesi gönderimden SONRA yerelde yapılan değişiklikleri ezmez:
-# gönderim anındaki anlık görüntüye göre yerelde eklenen/değişen söyleşiler
-# yerel hâliyle korunur (yeni olanlar başa), yerelde silinenler geri gelmez.
-# Yerel durum değişmediyse DB sonucu aynen uygulanır.
+# yerelde eklenen söyleşiler başa eklenir, yerelde silinenler geri gelmez.
+# DB'de de bulunan söyleşide yalnızca yerelde DEĞİŞEN alanlar uygulanır (ör. ad
+# değişimi DB'nin daha yeni sayı/zamanını ezmez); etkinliği yerelde ilerleyen
+# söyleşi başa taşınır. Yerel durum değişmediyse DB sonucu aynen uygulanır.
+# (Silme/Tümünü Temizle sonrası sonuç çağıran tarafından hiç uygulanmaz.)
 mergen_saved_chats_merge_newer <- function(db_chats, dispatch_snapshot, current) {
   db_chats <- db_chats %||% list()
   dispatch_snapshot <- dispatch_snapshot %||% list()
@@ -155,10 +165,31 @@ mergen_saved_chats_merge_newer <- function(db_chats, dispatch_snapshot, current)
   silinen <- setdiff(names(dispatch_snapshot), names(current))
   birlesik <- db_chats[setdiff(names(db_chats), silinen)]
   degisen <- Filter(function(k) !identical(current[[k]], dispatch_snapshot[[k]]), names(current))
+  etkin <- character()
   for (k in intersect(degisen, names(birlesik))) {
-    birlesik[[k]] <- current[[k]]
+    once <- dispatch_snapshot[[k]]
+    if (is.null(once)) {
+      birlesik[[k]] <- current[[k]]
+      next
+    }
+    for (alan in names(current[[k]])) {
+      if (!identical(current[[k]][[alan]], once[[alan]])) birlesik[[k]][alan] <- list(current[[k]][[alan]])
+    }
+    if (!identical(current[[k]]$last_message_timestamp, once$last_message_timestamp) ||
+        !identical(current[[k]]$message_count, once$message_count)) {
+      etkin <- c(etkin, k)
+    }
   }
-  c(current[setdiff(degisen, names(birlesik))], birlesik)
+  c(current[setdiff(degisen, names(birlesik))], birlesik[etkin], birlesik[setdiff(names(birlesik), etkin)])
+}
+
+# Yapılandırılmış DB login sınırı (MERGEN_DB_LOGIN_TIMEOUT_SEC); plan yoksa NA.
+mergen_startup_chat_preview_login_timeout <- function() {
+  plan <- tryCatch(
+    if (exists(".db_login_timeout_plan", mode = "function", inherits = TRUE)) .db_login_timeout_plan(Inf),
+    error = function(e) NULL
+  )
+  if (is.list(plan) && identical(plan$mode, "bounded")) as.integer(plan$timeout) else NA_integer_
 }
 
 # Açık worker-export sözleşmesi: yalnızca aşağıdaki adlar worker'a taşınır.
@@ -172,6 +203,9 @@ mergen_startup_chat_preview_globals <- function(user_id, limit = 6L) {
     startup_preview_limit = mergen_startup_chat_preview_limit(limit),
     startup_preview_dsn = Sys.getenv("DB_DSN", default_dsn),
     startup_preview_encoding = get0(".DEFAULT_DB_CLIENT_ENCODING", ifnotfound = "UTF-8"),
+    # get_connection() ile aynı login sınırı planı (ana süreçte çözülür; NA =
+    # sürücü varsayılanı).
+    startup_preview_login_timeout = mergen_startup_chat_preview_login_timeout(),
     startup_preview_name_encoding = get0(
       ".DEFAULT_DB_NAME_ENCODING",
       ifnotfound = get0(".DEFAULT_DB_CLIENT_ENCODING", ifnotfound = "UTF-8")
@@ -201,6 +235,7 @@ mergen_startup_chat_preview_promise <- function(user_id,
   startup_preview_dsn <- preview_globals$startup_preview_dsn
   startup_preview_encoding <- preview_globals$startup_preview_encoding
   startup_preview_name_encoding <- preview_globals$startup_preview_name_encoding
+  startup_preview_login_timeout <- preview_globals$startup_preview_login_timeout
 
   raw_promise <- tracked_future_promise(
     task_fn = function() {
@@ -209,7 +244,8 @@ mergen_startup_chat_preview_promise <- function(user_id,
         limit = startup_preview_limit,
         dsn = startup_preview_dsn,
         encoding = startup_preview_encoding,
-        name_encoding = startup_preview_name_encoding
+        name_encoding = startup_preview_name_encoding,
+        login_timeout = startup_preview_login_timeout
       )
     },
     task_type = if (is.na(startup_preview_limit)) "startup_saved_chats" else "startup_saved_chats_preview",

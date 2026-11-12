@@ -72,6 +72,10 @@ imageGalleryServer <- function(id, current_user_id) {
     gallery_revision <- reactiveVal(0)
     effective_user_id <- reactiveVal(coerce_user_id(resolve_current_user_id()))
     cached_images <- reactiveVal(empty_images_df())
+    # Önbellekteki satırların sahibi: kartlar (ve URL kayıtları) yalnızca bu sahip
+    # oturumun güncel sahibiyle aynıysa çizilir; A'nın yolları B'ye bağlanmaz.
+    galeri_sahibi <- new.env(parent = emptyenv())
+    galeri_sahibi$uid <- NA_integer_
 
     # TEMBEL galeri: görsel tarama + açıklama DB sorguları soğuk açılışta
     # ÇALIŞMAZ. Galeri, kullanıcı sayfayı ilk açtığında (navigasyon gözlemcisi
@@ -104,6 +108,7 @@ imageGalleryServer <- function(id, current_user_id) {
       effective_user_id(uid)
 
       if (is.na(uid) || uid <= 0) {
+        galeri_sahibi$uid <- NA_integer_
         cached_images(empty_images_df())
         # Kimlik yokken galeri hazırlanamaz; açılış bekletilmez, durum "kısmen"dir.
         isaretle <- session$userData$mergen_yonetim_hazir
@@ -114,6 +119,12 @@ imageGalleryServer <- function(id, current_user_id) {
         return(invisible(NULL))
       }
 
+      # Sahip değiştiyse önceki sahibin satırları taramadan ÖNCE düşer; tarama
+      # başarısız olsa da yeni sahibe eski sahibin görselleri gösterilmez.
+      if (!identical(galeri_sahibi$uid, uid)) {
+        cached_images(empty_images_df())
+        galeri_sahibi$uid <- uid
+      }
       tarama_baslangici <- Sys.time()
       scanned <- scan_user_images(uid)
       cat(sprintf(
@@ -183,6 +194,23 @@ imageGalleryServer <- function(id, current_user_id) {
       refresh_gallery_cache()
     })
 
+    # Aynı oturumda sahip değişince önceki sahibin kartları hemen kalkar; galeri
+    # etkinse yeni sahip için yeniden taranır.
+    if (exists("mergen_session_on_owner_change", mode = "function", inherits = TRUE)) {
+      mergen_session_on_owner_change(session, function(neden) {
+        galeri_sahibi$uid <- NA_integer_
+        cached_images(empty_images_df())
+        refresh_trigger(shiny::isolate(refresh_trigger()) + 1)
+      })
+    }
+
+    # Görsel silme mesaj metnini yerinde değiştirir (zaman/sayı damgası aynı
+    # kalır); Söyleşi Geçmişi önbelleğindeki ilgili kayıt düşürülür.
+    gecmis_onbellegini_dusur <- function(chat_ids = NULL) {
+      dusur <- session$userData$mergen_gecmis_onbellek_dusur
+      if (is.function(dusur)) try(dusur(chat_ids), silent = TRUE)
+    }
+
     # Arama terimi olay güdümlü 300 ms debounce ile uygulanır; her oturumda
     # 300 ms'de bir sonsuza dek çalışan örnekleme zamanlayıcısı kaldırıldı.
     search_term_debounced <- shiny::debounce(shiny::reactive(input$search_images %||% ""), 300)
@@ -198,6 +226,9 @@ imageGalleryServer <- function(id, current_user_id) {
       # aynı dosya listesinde bile ekranı bilinçli olarak tazeler.
       gallery_revision()
       imgs <- cached_images()
+      if (!identical(galeri_sahibi$uid, coerce_user_id(resolve_current_user_id()))) {
+        imgs <- empty_images_df()
+      }
       term <- search_term_debounced()
 
       if (nrow(imgs) == 0) return(imgs)
@@ -452,6 +483,7 @@ imageGalleryServer <- function(id, current_user_id) {
       if (success) {
         showToast(session, "Görsel silindi.", "warning")
         delete_image_trigger(list(file_path = info$file_path, chat_id = info$chat_id))
+        gecmis_onbellegini_dusur(info$chat_id)
         refresh_trigger(refresh_trigger() + 1)
       } else {
         showToast(session, "Görsel silinemedi.", "error")
@@ -478,6 +510,7 @@ imageGalleryServer <- function(id, current_user_id) {
     observeEvent(input$confirm_clear_all_images, {
       removeModal()
       deleted_count <- delete_all_user_images(effective_user_id())
+      gecmis_onbellegini_dusur()
       clear_all_trigger(clear_all_trigger() + 1)
       refresh_trigger(refresh_trigger() + 1)
       current_page(1)

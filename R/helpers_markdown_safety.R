@@ -144,7 +144,12 @@ mergen_generated_image_card_html <- function(message_id, img_src, description = 
     },
     error = function(e) NA
   )
-  as.character(uid %||% NA)[1]
+  # Kapalı-başarısız: çözülmemiş kimlik (NULL/NA/0/negatif/sayısal olmayan)
+  # geçerli görünen "0" ya da "NA" sahibine dönüşmez; NA kalır ve her istek 403 alır.
+  uid <- tryCatch(suppressWarnings(as.numeric(if (length(uid)) uid[[1]] else NA)),
+                  error = function(e) NA_real_)
+  if (length(uid) != 1L || is.na(uid) || !is.finite(uid) || uid <= 0) return(NA_character_)
+  format(uid, scientific = FALSE, trim = TRUE)
 }
 
 .mergen_register_image_data_obj <- function(session, local_path) {

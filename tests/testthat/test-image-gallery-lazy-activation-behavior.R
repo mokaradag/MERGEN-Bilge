@@ -85,7 +85,7 @@ testthat::test_that("galeri açılışta taranmaz; ilk sayfa açılışında bir
   ))
 })
 
-testthat::test_that("başlangıç hazırlığı galeriyi etkinleştirir; tarama hatası kontrol noktasını kısmen bildirir", {
+testthat::test_that("galeri sayfası açılınca tarama hatası kontrol noktasını kısmen bildirir", {
   testthat::skip_if_not_installed("shiny")
 
   scan_recorder <- new.env(parent = emptyenv())
@@ -107,7 +107,7 @@ testthat::test_that("başlangıç hazırlığı galeriyi etkinleştirir; tarama 
         isaretler[[length(isaretler) + 1L]] <<- list(key = key, detail = detail)
       }
       session$flushReact()
-      # yonetim_hazirla() ile aynı: navigasyon zaman damgası, kullanıcı tıklaması yok.
+      # Navigasyon gözlemcisiyle aynı: zaman damgası, kullanıcı tıklaması yok.
       session$setInputs(refresh_gallery = as.numeric(Sys.time()))
       for (i in seq_len(10L)) {
         later::run_now(timeoutSecs = 0.1, loop = loop)
@@ -119,6 +119,68 @@ testthat::test_that("başlangıç hazırlığı galeriyi etkinleştirir; tarama 
       testthat::expect_identical(isaretler[[1]]$key, "gallery_index_ready")
       testthat::expect_true(isTRUE(isaretler[[1]]$detail$degraded),
                             info = "başarısız tarama açılışı bekletmemeli ama 'hazır' da sayılmamalı")
+    }
+  ))
+})
+
+testthat::test_that("oturum sahibi değişince önceki sahibin galeri satırları yeni sahibe gösterilmez", {
+  testthat::skip_if_not_installed("shiny")
+
+  scan_recorder <- new.env(parent = emptyenv())
+  scan_recorder$count <- 0L
+  env <- .lazy_gallery_env(scan_recorder)
+  sahip <- new.env(parent = emptyenv())
+  sahip$uid <- 7L
+  env$scan_user_images <- function(uid) {
+    scan_recorder$count <- scan_recorder$count + 1L
+    if (!identical(uid, 7L)) stop("yeni sahibin klasörü okunamadı (test)")
+    data.frame(
+      file_path = "/gorseller/7/a.png", chat_id = "1", filename = "a.png",
+      created_at = as.POSIXct("2026-07-01 10:00:00", tz = "UTC"), file_size = 10,
+      month_key = "2026-07", month_label = "Temmuz 2026",
+      description = "", chat_title = "Söyleşi", stringsAsFactors = FALSE
+    )
+  }
+  loop <- later::create_loop(parent = NULL)
+  on.exit(later::destroy_loop(loop), add = TRUE)
+
+  later::with_loop(loop, shiny::testServer(
+    env$imageGalleryServer,
+    args = list(id = "ig", current_user_id = function() sahip$uid),
+    {
+      tara <- function(beklenen) {
+        for (i in seq_len(20L)) {
+          later::run_now(timeoutSecs = 0.1, loop = loop)
+          session$flushReact()
+          if (scan_recorder$count >= beklenen && !isTRUE(gallery_loading())) break
+        }
+      }
+      session$flushReact()
+      session$setInputs(refresh_gallery = as.numeric(Sys.time()))
+      tara(1L)
+      testthat::expect_identical(nrow(filtered_images()), 1L)
+
+      # Aynı oturum B'ye geçti, henüz tarama yok: yeniden hesaplanan liste
+      # A'nın satırlarını çizmez (oturum kapsamlı URL B'ye bağlanamaz).
+      sahip$uid <- 9L
+      gallery_revision(shiny::isolate(gallery_revision()) + 1)
+      testthat::expect_identical(nrow(filtered_images()), 0L)
+
+      # B için tarama başarısız olsa da A'nın satırları önbellekte kalmaz.
+      session$setInputs(refresh_gallery = as.numeric(Sys.time()) + 5)
+      tara(2L)
+      testthat::expect_identical(scan_recorder$count, 2L)
+      testthat::expect_identical(nrow(shiny::isolate(cached_images())), 0L)
+
+      # Sahip değişimi kancası önbelleği hemen boşaltır.
+      sahip$uid <- 7L
+      session$setInputs(refresh_gallery = as.numeric(Sys.time()) + 10)
+      tara(3L)
+      testthat::expect_identical(nrow(shiny::isolate(cached_images())), 1L)
+      kancalar <- as.list(session$userData$kimlik_kancalari, all.names = TRUE)
+      testthat::expect_true(length(kancalar) >= 1L)
+      for (fn in kancalar) fn("sahip_degisti")
+      testthat::expect_identical(nrow(shiny::isolate(cached_images())), 0L)
     }
   ))
 })

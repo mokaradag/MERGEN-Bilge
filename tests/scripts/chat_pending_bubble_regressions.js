@@ -3,10 +3,14 @@
 // üzerinde çalıştırılır. Sahte MutationObserver, üretim gözlemcisinin kayıtlı
 // hedefine ve seçeneklerine (childList/subtree) UYAR: yanlış düğümü izleyen ya
 // da childList olmadan kurulan bir gözlemci bu testlerde bildirim almaz.
+// Tarayıcıdaki gibi kayıtlar DOM değişikliği yığını bittikten sonra mikro
+// görevde toplu teslim edilir; doğrulamalar teslimi bekler (await teslim()).
 // Doğrulananlar: anında çizim, çift gönderim engeli, kimlik tabanlı kabul
 // (metin eşleşmesi karar vermez), asıl balondan önce gelen kabul, ret ve
 // taslağın korunması, gezinmede metnin kaybolmaması, bağlantı kopmasında
-// kabul edilmiş istemin geri yüklenmemesi, erişilebilir düğme durumu.
+// sonucu gelmemiş istemin (aynı metinli balon olsa da) geri yüklenmesi,
+// kabulün canlı bölgede duyurulması, gecikmeli asıl balonda kabul edilmiş
+// istemin kaybolmaması, erişilebilir düğme durumu.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -21,9 +25,12 @@ function notify(parent, added, removed) {
   observers.forEach(o => {
     if (!o.options || o.options.childList !== true) return;
     if (!(parent === o.target || (o.options.subtree === true && isInside(parent, o.target)))) return;
-    o.cb([{ type: 'childList', target: parent, addedNodes: added, removedNodes: removed }]);
+    o.kuyruk.push({ type: 'childList', target: parent, addedNodes: added, removedNodes: removed });
+    if (o.kuyruk.length === 1) queueMicrotask(() => { const kayitlar = o.kuyruk.splice(0); o.cb(kayitlar); });
   });
 }
+// Mikro görev kuyruğu boşalana dek bekler (gözlemci teslimi tamamlanır).
+const teslim = () => new Promise(r => setImmediate(r));
 
 // --- Küçük sahte DOM --------------------------------------------------------
 function el(tag, attrs = {}) {
@@ -130,7 +137,7 @@ const context = vm.createContext({
   setTimeout: fn => { timers.push(fn); return timers.length; },
   clearTimeout: id => { if (id) timers[id - 1] = null; },
   TextDecoder, Uint8Array,
-  MutationObserver: function (cb) { this.observe = (target, options) => observers.push({ cb, target, options }); },
+  MutationObserver: function (cb) { this.observe = (target, options) => observers.push({ cb, target, options, kuyruk: [] }); },
   Shiny: { setInputValue: (name, value) => sent.push({ name, value }), addCustomMessageHandler: (n, fn) => { shinyHandlers[n] = fn; } }
 });
 context.window = context;
@@ -156,6 +163,7 @@ const lastId = () => sent[sent.length - 1].value.client_id;
 const result = (id, durum, mesajId) => shinyHandlers.mergenIstemSonucu(Object.assign({ client_id: id, durum }, mesajId ? { mesaj_id: mesajId } : {}));
 const liveText = () => { const n = all(body, '.mergen-istem-canli-bolge')[0]; return n ? n.textContent : ''; };
 
+(async () => {
 // 0) Üretim gözlemcisi sohbet kabını childList + subtree ile izler.
 assert.equal(observers.length, 1);
 assert.equal(observers[0].target, chat);
@@ -196,12 +204,14 @@ input.value = '';
 
 // 3) Asıl balon: bekleyen balon aynı geri çağrıda gizlenir (çift balon yok), karar kimlikle verilir.
 const asil = serverBubble('901', 'Merhaba dünya, çğış?');
+await teslim();
 assert.equal(visibleUserBubbles().length, 1, 'çift kullanıcı balonu görünmemeli');
 assert.ok(!asil.querySelector('.message-bubble').classList.contains('animate-fadeIn'), 'asıl balon solmadan görünmeli');
 assert.equal(asil.querySelector('.message-bubble').style.animation, 'none');
 assert.ok(btn.classList.contains('mergen-istem-bekliyor'), 'metin eşleşmesi tek başına isteği sonuçlandırmamalı');
 result(id1, 'kabul', '901');
 assert.equal(pending().length, 0, 'kabulde bekleyen balon kaldırılmalı');
+assert.equal(liveText(), 'İstem gönderildi.', 'kabulde canlı bölge "gönderiliyor" durumunda kalmamalı');
 assert.ok(!btn.classList.contains('mergen-istem-bekliyor'));
 assert.equal(btn.querySelector('i').className, 'fa-solid fa-paper-plane');
 assert.equal(btn.getAttribute('aria-label'), 'Mesajı gönder', 'erişilebilir ad geri gelmeli');
@@ -238,6 +248,7 @@ result(idErken, 'kabul', '902');
 assert.equal(pending().length, 1, 'asıl balon gelmeden bekleyen balon kaybolmamalı');
 assert.ok(!btn.classList.contains('mergen-istem-bekliyor'), 'kabulden sonra gönderim kilidi kalkmalı');
 const asil902 = serverBubble('902', 'erken kabul');
+await teslim();
 assert.equal(pending().length, 0, 'kimlikli asıl balon gelince bekleyen balon kalkmalı');
 assert.equal(asil902.querySelector('.message-bubble').style.animation, 'none');
 
@@ -245,37 +256,47 @@ assert.equal(asil902.querySelector('.message-bubble').style.animation, 'none');
 sendClick('aynı metin');
 const idAyni = lastId();
 serverBubble('903', 'aynı metin');
+await teslim();
 assert.ok(btn.classList.contains('mergen-istem-bekliyor'), 'ilgisiz balon kilidi açmamalı');
 result(idAyni, 'kabul', '904');
 assert.equal(pending().length, 1);
 assert.equal(pending()[0].style.display, '', 'yanlış eşleşmede bekleyen balon yeniden görünmeli');
 serverBubble('904', 'aynı metin');
+await teslim();
 assert.equal(pending().length, 0);
 
 // 8) İlgisiz aynı metinli balondan sonra ret: metin yine geri yüklenir.
 sendClick('tekrar');
 serverBubble('905', 'tekrar');
+await teslim();
 result(lastId(), 'ret');
 assert.equal(input.value, 'tekrar', 'ilgisiz balon reddedilen metni yutmamalı');
 input.value = '';
 
-// 9) Bağlantı kopması: asıl balonu görülmemiş istem geri yüklenir; görülmüş olan yüklenmez.
+// 9) Bağlantı kopması: sonucu gelmemiş istem geri yüklenir ve belirsizlik bildirilir.
 sendClick('bağlantı kopacak');
 (handlers['shiny:disconnected|'] || []).forEach(fn => fn());
 assert.equal(pending().length, 0);
 assert.equal(input.value, 'bağlantı kopacak');
+assert.match(liveText(), /doğrulanamadı/);
 input.value = '';
-sendClick('kabul edildi ama onay kayboldu');
-serverBubble('906', 'kabul edildi ama onay kayboldu');
+// 9b) Aynı metinli (ilgisiz olabilecek) balon kabul kanıtı değildir: sonuç
+// gelmeden bağlantı koparsa istem yine kaybolmaz.
+sendClick('ilgisiz balon sonrası kopma');
+serverBubble('906', 'ilgisiz balon sonrası kopma');
+await teslim();
 (handlers['shiny:disconnected|'] || []).forEach(fn => fn());
 assert.equal(pending().length, 0);
-assert.equal(input.value, '', 'sunucunun eklediği istem geri yüklenip çoğaltılmamalı');
+assert.equal(input.value, 'ilgisiz balon sonrası kopma', 'metin eşleşmesi bağlantı kopmasında istemi yutmamalı');
+assert.ok(!btn.classList.contains('mergen-istem-bekliyor'));
+input.value = '';
 
 // 10) Kap başka bir akışla temizlenirse (Yeni Söyleşi) kilit kalkar ama geç gelen ret metni kaybettirmez.
 sendClick('yanıtsız kalacak');
 const idAyrilan = lastId();
 assert.equal(pending().length, 1);
 chat.children.slice().forEach(c => chat.removeChild(c));
+await teslim();
 assert.ok(!btn.classList.contains('mergen-istem-bekliyor'), 'temizlenen kapta bekleme durumu kalmamalı');
 assert.equal(input.value, '');
 input.value = 'yeni söyleşide ilk istem';
@@ -288,12 +309,18 @@ assert.ok(welcome.classList.contains('hidden') || welcome.children.length === 0,
 result(lastId(), 'ret');
 input.value = '';
 
-// 11) Kabul edilen ama asıl balonu hiç gelmeyen istem süre sonunda temizlenir.
+// 11) Kabul edilen istemin asıl balonu gecikirse istem kaybolmaz: süre sonunda
+// "gönderiliyor" durumundan çıkar, görünür kalır; asıl balon gelince kalkar.
 sendClick('balonsuz kabul');
 result(lastId(), 'kabul', '999');
 assert.equal(pending().length, 1);
 timers.splice(0).forEach(fn => fn && fn());
-assert.equal(pending().length, 0, 'yedek süre bekleyen balonu kaldırmalı');
+assert.equal(pending().length, 1, 'kabul edilmiş istem asıl balon gelmeden kaldırılmamalı');
+assert.equal(pending()[0].getAttribute('aria-busy'), null, 'süre sonunda meşgul durumu kalkmalı');
+assert.equal(pending()[0].querySelector('.message-time').textContent, '');
+serverBubble('999', 'balonsuz kabul');
+await teslim();
+assert.equal(pending().length, 0, 'asıl balon gelince bekleyen balon kalkmalı');
 
 // 12) Boş istem gönderilmez.
 input.value = '   ';
@@ -302,3 +329,4 @@ trigger('click', '#send_stop_btn', btn);
 assert.equal(sent.length, once);
 
 console.log('chat_pending_bubble_regressions: OK');
+})().catch(e => { console.error(e); process.exit(1); });

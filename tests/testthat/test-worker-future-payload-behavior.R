@@ -133,10 +133,38 @@ testthat::test_that("SSE görev kapanışı çağıranın çerçevesini tembel a
   testthat::expect_lt(length(serialize(kapanis, NULL)), 1e6)
 })
 
-testthat::test_that("tüm future görevleri promises'ın paylaşılan iş kuyruğunu kullanır", {
-  # Kuyruk her görevde yeniden oluşturulmaz: promises tekil kuyruğu döner, böylece
-  # eşzamanlılık sınırı görevler arasında korunur.
-  testthat::expect_identical(promises::future_promise_queue(), promises::future_promise_queue())
+testthat::test_that("tüm future görevleri üretim yolundan promises'ın paylaşılan iş kuyruğuna gönderilir", {
+  testthat::skip_if_not_installed("future")
+  eski_plan <- future::plan()
+  on.exit(future::plan(eski_plan), add = TRUE)
+  future::plan(future::sequential)
+  # Gerçek gönderim yardımcısı çalıştırılır; paylaşılan kuyruk erişimcisi sayaçlı
+  # bir kuyrukla değiştirilir. Görev başına ayrı kuyruk kuran ya da kuyruğu
+  # atlayan bir gönderim bu sayaçları artırmaz ve test başarısız olur.
+  erisim <- 0L
+  planlanan <- 0L
+  sahte_kuyruk <- list(schedule_work = function(fn) {
+    planlanan <<- planlanan + 1L
+    fn()
+  })
+  testthat::local_mocked_bindings(
+    future_promise_queue = function() {
+      erisim <<- erisim + 1L
+      sahte_kuyruk
+    },
+    .package = "promises"
+  )
+  durum <- new.env()
+  durum$degerler <- list()
+  for (i in 1:3) local({
+    j <- i
+    p <- worker_monitor_future_promise(list(task_fn = function() j), character(0))
+    promises::then(p, onFulfilled = function(v) durum$degerler[[length(durum$degerler) + 1L]] <- v)
+  })
+  .later_bosalt(function() length(durum$degerler) == 3L, sure = 5)
+  testthat::expect_identical(planlanan, 3L)
+  testthat::expect_identical(erisim, 3L)
+  testthat::expect_setequal(unlist(durum$degerler), 1:3)
 })
 
 testthat::test_that("yoklamada beklenmeyen hata promise'i asılı bırakmadan reddeder", {

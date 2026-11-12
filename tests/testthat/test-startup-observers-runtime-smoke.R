@@ -1268,3 +1268,114 @@ testthat::test_that("arka plan tam listesi geç gelince arada açılan ve siline
     testthat::expect_identical(son[["yeni"]]$title, "Yeni söyleşi çğış")
   })
 })
+
+testthat::test_that("tam liste uçuştayken silme ya da Tümünü Temizle sonrası eski DB görüntüsü uygulanmaz", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises")
+  testthat::skip_if_not_installed("later")
+  .startup_observers_source_once()
+
+  calistir <- function(yetkili_liste) {
+    rec <- new.env()
+    rec$defer_full_fulfillment <- TRUE
+    rec$preview_result <- list("p1" = list(title = "Ön izleme", message_count = 1L))
+    # Gönderimden sonra açılıp silinen "gecici" de DB görüntüsünde yer alır.
+    rec$full_result <- list(
+      "gecici" = list(title = "Açılıp silinen", message_count = 1L),
+      "p1" = list(title = "Ön izleme", message_count = 1L),
+      "eski" = list(title = "Eski söyleşi", message_count = 4L)
+    )
+    stubs <- .with_startup_db_stubs(rec)
+    on.exit(stubs$restore(), add = TRUE)
+    sonuc <- NULL
+    shiny::testServer(function(input, output, session) {
+      values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+      startupObserversInit(
+        input = input, session = session, values = values,
+        render_welcome_screen = function(...) invisible(NULL),
+        current_user_id = function() 42L, sso_state = NULL, boot_ready = NULL
+      )
+      session$userData$.values <- values
+    }, {
+      session$flushReact()
+      session$setInputs(startup_lane_resolved = list(lane = "fast_lane", source = "stored", ts = 1))
+      session$setInputs(welcome_client_ready = list(fast_lane = TRUE, timestamp = 1))
+      for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+      session$flushReact()
+      testthat::expect_true(is.function(rec$resolve_full))
+      # Silme/Tümünü Temizle gözlemcisiyle aynı: liste DB'den yetkili olarak
+      # yeniden kurulur ve yetkili sürüm artar.
+      session$userData$saved_chats_yetkili_surum <- 1L
+      session$userData$.values$saved_chats <- yetkili_liste
+      rec$resolve_full()
+      for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+      session$flushReact()
+      testthat::expect_true(isTRUE(session$userData$saved_chats_full_loaded))
+      sonuc <<- shiny::isolate(session$userData$.values$saved_chats)
+    })
+    sonuc
+  }
+
+  # Tümünü Temizle: hiçbir eski söyleşi (önizlemede olmayanlar dahil) geri gelmez.
+  testthat::expect_length(calistir(list()), 0L)
+  # Gönderimden sonra açılıp silinen söyleşi geri gelmez; yetkili liste korunur.
+  yetkili <- list("p1" = list(title = "Ön izleme", message_count = 1L),
+                  "eski" = list(title = "Eski söyleşi", message_count = 4L))
+  testthat::expect_identical(names(calistir(yetkili)), c("p1", "eski"))
+})
+
+testthat::test_that("önceki sahibin hazırlık süre sınırı yeni sahibin hazır-olmasını bozmaz; sahibe özgü anahtarlar sıfırlanır", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises")
+  testthat::skip_if_not_installed("later")
+  .startup_observers_source_once()
+  if (!exists("mergen_session_owner_transition", envir = globalenv(), mode = "function")) {
+    source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
+           encoding = "UTF-8", local = globalenv())
+  }
+  eski_secenek <- options(mergen.management_ready_deadline_secs = 0.1)
+  on.exit(options(eski_secenek), add = TRUE)
+
+  rec <- new.env()
+  rec$defer_full_fulfillment <- TRUE
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+  kimlik <- new.env()
+  kimlik$uid <- 7L
+  isaret <- new.env()
+  isaret$anahtarlar <- character()
+  isaret$sifirlanan <- character()
+  boot <- list(
+    mark = function(key, ...) invisible(TRUE),
+    mark_once = function(key, ...) { isaret$anahtarlar <- c(isaret$anahtarlar, key); invisible(TRUE) },
+    reset = function(keys) { isaret$sifirlanan <- c(isaret$sifirlanan, keys); invisible(TRUE) }
+  )
+
+  shiny::testServer(function(input, output, session) {
+    session$userData$kimlik_sahibi <- 7L
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startupObserversInit(
+      input = input, session = session, values = values,
+      render_welcome_screen = function(...) invisible(NULL),
+      current_user_id = function() kimlik$uid,
+      sso_state = NULL, boot_ready = boot
+    )
+  }, {
+    session$flushReact()
+    session$setInputs(startup_lane_resolved = list(lane = "rich_lane", source = "stored", ts = 1))
+    testthat::expect_identical(rec$full_user_ids, 7L)
+    # A'nın süre sınırı dolmadan sahip B'ye geçer; B'nin süresi uzundur.
+    options(mergen.management_ready_deadline_secs = 30)
+    kimlik$uid <- 8L
+    mergen_session_owner_transition(session$userData, 7L, 8L)
+    session$flushReact()
+    testthat::expect_true(all(c("history_rows_ready", "management_pages_ready") %in% isaret$sifirlanan))
+    son <- Sys.time() + 0.4
+    while (Sys.time() < son) later::run_now(timeoutSecs = 0.05)
+    testthat::expect_identical(tail(rec$full_user_ids, 1L), 8L)
+    testthat::expect_false("management_pages_ready" %in% isaret$anahtarlar,
+                           info = "A'nın eski süre sınırı B'yi 'kısmen' işaretlememeli")
+  })
+})

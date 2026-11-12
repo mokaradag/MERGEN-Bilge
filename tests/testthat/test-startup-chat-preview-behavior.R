@@ -82,6 +82,7 @@ testthat::test_that("mergen_startup_chat_preview_globals dar export sözleşmesi
       "startup_preview_limit",
       "startup_preview_dsn",
       "startup_preview_encoding",
+      "startup_preview_login_timeout",
       "startup_preview_name_encoding",
       "db_chat_preview_fetch_raw",
       "db_chat_preview_query_sql"
@@ -141,7 +142,7 @@ testthat::test_that("mergen_startup_chat_preview_promise explicit modda dar söz
     promises::promise_resolve(task_fn())
   }, envir = helper_env)
 
-  assign("db_chat_preview_fetch_raw", function(user_id, limit, dsn, encoding, name_encoding) {
+  assign("db_chat_preview_fetch_raw", function(user_id, limit, dsn, encoding, name_encoding, login_timeout = NA_integer_) {
     rec$fetch_user_id <- user_id
     rec$fetch_limit <- limit
     .startup_preview_fixture_frame()
@@ -165,6 +166,7 @@ testthat::test_that("mergen_startup_chat_preview_promise explicit modda dar söz
       "startup_preview_limit",
       "startup_preview_dsn",
       "startup_preview_encoding",
+      "startup_preview_login_timeout",
       "startup_preview_name_encoding",
       "db_chat_preview_fetch_raw",
       "db_chat_preview_query_sql"
@@ -201,7 +203,7 @@ testthat::test_that("tam liste modu (limit = NA) yalnızca özet SQL üreticisin
   testthat::expect_setequal(
     names(g),
     c("startup_preview_user_id", "startup_preview_limit", "startup_preview_dsn",
-      "startup_preview_encoding", "startup_preview_name_encoding",
+      "startup_preview_encoding", "startup_preview_login_timeout", "startup_preview_name_encoding",
       "db_chat_preview_fetch_raw", "db_chat_preview_query_sql",
       "db_chat_list_summary_query_sql")
   )
@@ -232,7 +234,7 @@ testthat::test_that("tam söyleşi listesi explicit modda 'startup_saved_chats' 
     rec$global_names <- names(globals %||% list())
     promises::promise_resolve(task_fn())
   }, envir = helper_env)
-  assign("db_chat_preview_fetch_raw", function(user_id, limit, dsn, encoding, name_encoding) {
+  assign("db_chat_preview_fetch_raw", function(user_id, limit, dsn, encoding, name_encoding, login_timeout = NA_integer_) {
     rec$fetch_limit <- limit
     .startup_preview_fixture_frame()
   }, envir = helper_env)
@@ -322,4 +324,63 @@ testthat::test_that("arka plan tam listesi gönderimden sonraki yerel değişikl
   testthat::expect_identical(birlesik[["9"]]$title, "Yeni söyleşi")
   testthat::expect_null(birlesik[["1"]])
   testthat::expect_identical(birlesik[["3"]]$title, "DB üç")
+})
+
+testthat::test_that("işçi DB okuması yapılandırılmış login sınırını get_connection() ile aynı biçimde taşır", {
+  eski <- Sys.getenv("MERGEN_DB_LOGIN_TIMEOUT_SEC", unset = NA)
+  on.exit(if (is.na(eski)) Sys.unsetenv("MERGEN_DB_LOGIN_TIMEOUT_SEC") else Sys.setenv(MERGEN_DB_LOGIN_TIMEOUT_SEC = eski), add = TRUE)
+  if (!exists(".db_login_timeout_plan", mode = "function")) {
+    source(file.path(resolve_repo_root_for_tests(), "R", "helpers_db_connection.R"),
+           encoding = "UTF-8", local = globalenv())
+  }
+  # Yapılandırılmamışsa sürücü varsayılanı korunur (NA: timeout geçilmez).
+  Sys.unsetenv("MERGEN_DB_LOGIN_TIMEOUT_SEC")
+  testthat::expect_true(is.na(mergen_startup_chat_preview_globals("42")$startup_preview_login_timeout))
+  # Yapılandırılmışsa skaler tamsayı olarak işçi sözleşmesine girer.
+  Sys.setenv(MERGEN_DB_LOGIN_TIMEOUT_SEC = "7")
+  g <- mergen_startup_chat_preview_globals("42", limit = NA_integer_)
+  testthat::expect_identical(g$startup_preview_login_timeout, 7L)
+
+  # İşçi tarafı: sınır dbConnect'e timeout olarak iletilir; NA'da hiç geçilmez.
+  testthat::skip_if_not_installed("DBI")
+  testthat::skip_if_not_installed("odbc")
+  yakalanan <- list()
+  testthat::local_mocked_bindings(
+    dbConnect = function(drv, ...) { yakalanan[[length(yakalanan) + 1L]] <<- list(...); stop("baglanti_kurulmadi_test") },
+    .package = "DBI"
+  )
+  testthat::expect_error(db_chat_preview_fetch_raw(42L, 6L, "DSN", "UTF-8", "UTF-8", login_timeout = 7L),
+                         "baglanti_kurulmadi_test")
+  testthat::expect_error(db_chat_preview_fetch_raw(42L, 6L, "DSN", "UTF-8", "UTF-8"), "baglanti_kurulmadi_test")
+  testthat::expect_identical(yakalanan[[1]]$timeout, 7L)
+  testthat::expect_null(yakalanan[[2]]$timeout)
+})
+
+testthat::test_that("yerel ad değişimi DB'nin daha yeni etkinlik bilgisini ezmez; yerelde etkinleşen söyleşi başa geçer", {
+  .startup_preview_source_once()
+  t0 <- as.POSIXct("2026-07-01 10:00:00", tz = "UTC")
+  t1 <- as.POSIXct("2026-07-01 11:00:00", tz = "UTC")
+  t2 <- as.POSIXct("2026-07-01 12:00:00", tz = "UTC")
+  anlik <- list(
+    "1" = list(title = "Bir", last_message_timestamp = t0, message_count = 2L),
+    "2" = list(title = "İki", last_message_timestamp = t0, message_count = 2L)
+  )
+  # Başka sekme "1"e mesaj ekledi: DB daha yeni sayı/zaman döndürür.
+  db <- list(
+    "1" = list(title = "Bir", last_message_timestamp = t1, message_count = 4L),
+    "2" = list(title = "İki", last_message_timestamp = t0, message_count = 2L),
+    "3" = list(title = "Üç", last_message_timestamp = t0, message_count = 1L)
+  )
+  # Bu sekmede "1" yeniden adlandırıldı, "2"ye yeni mesaj yazıldı.
+  simdiki <- anlik
+  simdiki[["1"]]$title <- "Yeni ad çğış"
+  simdiki[["2"]]$last_message_timestamp <- t2
+  simdiki[["2"]]$message_count <- 3L
+  birlesik <- mergen_saved_chats_merge_newer(db, anlik, simdiki)
+  testthat::expect_identical(birlesik[["1"]]$title, "Yeni ad çğış")
+  testthat::expect_identical(birlesik[["1"]]$message_count, 4L)
+  testthat::expect_identical(birlesik[["1"]]$last_message_timestamp, t1)
+  # Etkinliği yerelde ilerleyen söyleşi başa taşınır; ad değişimi sırayı değiştirmez.
+  testthat::expect_identical(names(birlesik), c("2", "1", "3"))
+  testthat::expect_identical(birlesik[["2"]]$message_count, 3L)
 })

@@ -541,7 +541,9 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     }
 
     delete_chat_from_db(chat_id, effective_user_id)
-    
+    # Liste DB'den yetkili olarak yeniden kurulur; süren arka plan tam listesi
+    # (silmeden önceki görüntü) bunu ezmesin diye yetkili sürüm artar.
+    session$userData$saved_chats_yetkili_surum <- (session$userData$saved_chats_yetkili_surum %||% 0L) + 1L
     values$saved_chats <- load_chats_from_db(effective_user_id, include_messages = FALSE)
     saved_chats_data$refresh()
     
@@ -635,6 +637,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       }
 
       clear_all_chats_from_db(effective_user_id)
+      session$userData$saved_chats_yetkili_surum <- (session$userData$saved_chats_yetkili_surum %||% 0L) + 1L
       values$saved_chats <- list()
       saved_chats_data$refresh()
       showToast(session, "Tüm söyleşiler temizlendi.", "warning")

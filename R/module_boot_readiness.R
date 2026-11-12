@@ -19,7 +19,7 @@ bootReadinessInit <- function(session, required = NULL) {
     "file_index_ready",
     "character_media_ready",
     "welcome_client_ready",
-    # Zengin Deneyim: dört Söyleşi Yönetimi sayfasının verisi hazır (veya
+    # Zengin Deneyim: Söyleşi Yönetimi sayfalarının verisi hazır (veya
     # kaynak kullanılamadığı dürüstçe bildirildi).
     "management_pages_ready"
   )
@@ -28,8 +28,9 @@ bootReadinessInit <- function(session, required = NULL) {
   # "Kısmen" tamamlanan (kaynak okunamadı/kullanılamıyor) kontrol noktaları;
   # toplu anahtar bunları "hazır" diye bildirmez.
   kismen <- character()
-  yonetim_alt <- c("saved_chats_full_loaded", "history_rows_ready",
-                   "ortak_list_ready", "gallery_index_ready")
+  # Görsel galerisi tembel kalır (tam tarama ana olay döngüsünde çalışır);
+  # açılış hazırlığı onu beklemez, galeri ilk açıldığında taranır.
+  yonetim_alt <- c("saved_chats_full_loaded", "history_rows_ready", "ortak_list_ready")
 
   # Soğuk açılış faz zamanlaması: her kontrol noktası, oturum başlangıcından
   # itibaren geçen süreyle loglanır. Böylece açılış süresinin hangi fazda
@@ -89,14 +90,20 @@ bootReadinessInit <- function(session, required = NULL) {
       error = function(e) NULL
     )
 
-    # Söyleşi Yönetimi: dört sayfa sonuçlanınca toplu kontrol noktası bir kez
-    # işaretlenir; herhangi biri kısmen sonuçlandıysa toplu durum da "kısmen"dir.
-    if (!"management_pages_ready" %in% done && all(yonetim_alt %in% done)) {
+    # Söyleşi Yönetimi: alt sayfalar sonuçlanınca toplu kontrol noktası
+    # işaretlenir; biri kısmen sonuçlandıysa toplu durum da "kısmen"dir. Kısmen
+    # (ör. zaman aşımı) bildirilmiş toplu durum, alt sayfalar sonradan başarıyla
+    # tamamlanınca "hazır"a döner.
+    toplu_kismen <- "management_pages_ready" %in% kismen
+    if ((!"management_pages_ready" %in% done || toplu_kismen) && all(yonetim_alt %in% done)) {
       eksik <- intersect(yonetim_alt, kismen)
       if (length(eksik)) {
-        mark("management_pages_ready", "Söyleşi Yönetimi sayfaları kısmen hazır",
-             detail = list(degraded = TRUE, kismen = eksik))
+        if (!toplu_kismen) {
+          mark("management_pages_ready", "Söyleşi Yönetimi sayfaları kısmen hazır",
+               detail = list(degraded = TRUE, kismen = eksik))
+        }
       } else {
+        sifirla("management_pages_ready")
         mark("management_pages_ready", "Söyleşi Yönetimi sayfaları hazır")
       }
     }
@@ -104,12 +111,24 @@ bootReadinessInit <- function(session, required = NULL) {
     invisible(TRUE)
   }
 
+  # Kontrol noktalarını yeniden bildirilebilir yapar (ör. oturum sahibi
+  # değişince sahibe özgü anahtarlar yeni sahip için baştan değerlendirilir).
+  sifirla <- function(keys) {
+    keys <- as.character(keys)
+    done <<- setdiff(done, keys)
+    kismen <<- setdiff(kismen, keys)
+    invisible(TRUE)
+  }
+
   # Tek seferlik işaretleme: sayfa yenilemeleri ve tekrarlayan taramalar aynı
-  # kontrol noktası için istemciye yinelenen bildirim göndermez; ilk sonuç
-  # (hazır ya da kısmen) korunur.
+  # kontrol noktası için istemciye yinelenen bildirim göndermez. Tek istisna
+  # toparlanmadır: "kısmen" kaydedilmiş bir anahtar sonraki başarılı sonuçla
+  # "hazır"a döner (başarısızlık başarının yerini almaz).
   mark_once <- function(key, label = key, pct = NULL, detail = NULL) {
     if (length(key) == 1L && as.character(key) %in% done) {
-      return(invisible(FALSE))
+      basarili <- !(is.list(detail) && (isTRUE(detail$degraded) || isFALSE(detail$available)))
+      if (!(basarili && as.character(key) %in% kismen)) return(invisible(FALSE))
+      sifirla(key)
     }
     mark(key, label = label, pct = pct, detail = detail)
   }
@@ -117,6 +136,7 @@ bootReadinessInit <- function(session, required = NULL) {
   list(
     mark = mark,
     mark_once = mark_once,
+    reset = sifirla,
     degraded = function() kismen,
     is_ready = function() all(required %in% done),
     done = function() done,

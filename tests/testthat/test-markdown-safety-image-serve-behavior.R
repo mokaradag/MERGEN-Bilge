@@ -124,6 +124,29 @@ testthat::test_that("sahip değişince önceki sahibin kayıtlı görsel URL'si 
   testthat::expect_identical(yeni$filter(yeni$data, list())$status, 200L)
 })
 
+testthat::test_that("çözülmemiş kimlikle kaydedilen görsel kimliksiz oturuma sunulmaz (kapalı-başarısız)", {
+  env <- .imageServeEnv()
+  png_path <- file.path(withr::local_tempdir(), "sahipsiz.png")
+  .writeTinyPng(png_path)
+  # NULL/NA/0/negatif/sayısal olmayan kimlikler geçerli görünen "0"/"NA" sahibine dönüşmez.
+  for (kimlik in list(NULL, NA, NA_integer_, 0L, -3L, "abc", "")) {
+    session <- .makeFilterCapturingSession(5L)
+    session$userData$user_id <- kimlik
+    testthat::expect_true(is.na(env$.mergen_image_session_owner(session)))
+    env$mergen_serve_image_data_url(png_path, session = session)
+    kayit <- session$register_calls[[1L]]
+    testthat::expect_true(is.na(kayit$data$owner))
+    # Kimlik hâlâ çözülmemişken de istek reddedilir (bayt sunulmaz).
+    testthat::expect_identical(kayit$filter(kayit$data, list())$status, 403L)
+  }
+  # Geçerli sahip kendi görselini almaya devam eder (yetkili erişim korunur).
+  session <- .makeFilterCapturingSession(5L)
+  testthat::expect_identical(env$.mergen_image_session_owner(session), "5")
+  env$mergen_serve_image_data_url(png_path, session = session)
+  kayit <- session$register_calls[[1L]]
+  testthat::expect_identical(kayit$filter(kayit$data, list())$status, 200L)
+})
+
 testthat::test_that("farklı klasörlerdeki aynı adlı görseller ayrı kayıtlarla sunulur", {
   env <- .imageServeEnv()
   kok <- withr::local_tempdir()

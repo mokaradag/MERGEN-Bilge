@@ -79,9 +79,16 @@ chatInputObserversInit <- function(input, session, values, settings_data,
   # sayılmaz (aksi halde istemci metni geri yükler ve yeniden gönderim mesajı
   # çoğaltır). Kabulde eklenen mesajın kimliği döner; istemci bekleyen balonu
   # metinle değil bu kimlikle eşler.
+  # Aynı istemci kimliğiyle yeniden teslim edilen istem ikinci kez işlenmez;
+  # ilk sonucu yeniden bildirilir. Oturum kapsamlı ve sınırlıdır (son 32 kimlik).
+  islenen_istemler <- list()
   istemi_isle <- function(istem) {
     istem_kimligi <- as.character(istem$client_id %||% "")[1]
     if (is.na(istem_kimligi) || !grepl("^[A-Za-z0-9_-]{1,64}$", istem_kimligi)) istem_kimligi <- ""
+    if (nzchar(istem_kimligi) && istem_kimligi %in% names(islenen_istemler)) {
+      try(session$sendCustomMessage("mergenIstemSonucu", islenen_istemler[[istem_kimligi]]), silent = TRUE)
+      return(invisible(NULL))
+    }
     kimlik <- function(m) as.character(m$id %||% "")[1]
     onceki <- isolate(values$messages)
     onceki_kimlikler <- vapply(onceki, kimlik, character(1))
@@ -96,6 +103,8 @@ chatInputObserversInit <- function(input, session, values, settings_data,
       }
       sonuc <- list(client_id = istem_kimligi, durum = if (length(eklenen)) "kabul" else "ret")
       if (length(eklenen)) sonuc$mesaj_id <- as.character(eklenen[[length(eklenen)]]$id %||% "")[1]
+      islenen_istemler[[istem_kimligi]] <<- sonuc
+      if (length(islenen_istemler) > 32L) islenen_istemler <<- utils::tail(islenen_istemler, 32L)
       try(session$sendCustomMessage("mergenIstemSonucu", sonuc), silent = TRUE)
     }, add = TRUE)
 
@@ -110,8 +119,11 @@ chatInputObserversInit <- function(input, session, values, settings_data,
       return(invisible(NULL))
     }
 
-    user_text <- trimws(istem$text)
-    if (nchar(user_text) > 20000) {
+    # Sınır kırpılmamış ham metne uygulanır: boşlukla şişirilmiş girdi sınırı
+    # aşamaz; send_message aynı doğrulanmış tek değeri alır.
+    ham_metin <- as.character(istem$text %||% "")[1]
+    if (is.na(ham_metin)) ham_metin <- ""
+    if (nchar(ham_metin) > 20000) {
       showToast(session, "Mesaj çok uzun. Lütfen 20.000 karakterle sınırlayın.", "warning")
       return(invisible(NULL))
     }
@@ -129,7 +141,7 @@ chatInputObserversInit <- function(input, session, values, settings_data,
       error = function(e) invisible(NULL)
     )
 
-    send_message(istem$text)
+    send_message(ham_metin)
     invisible(NULL)
   }
 

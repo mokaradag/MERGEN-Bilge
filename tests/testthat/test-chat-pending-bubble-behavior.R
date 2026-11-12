@@ -167,6 +167,37 @@ testthat::test_that("hız sınırı ve uzunluk retleri send_message çağırmada
   testthat::expect_identical(.istem_sonuclari(kayit2)[[1]]$message$durum, "ret")
 })
 
+testthat::test_that("aynı istemci kimliğiyle yeniden teslim edilen istem ikinci kez işlenmez, ilk sonuç yinelenir", {
+  testthat::skip_if_not_installed("shiny")
+  kayit <- .yeni_kayit()
+  env <- .istem_ortami(kayit)
+  shiny::testServer(.istem_sunucusu(env, kayit, mesaj_ekle = TRUE), {
+    session$setInputs(send_prompt_from_js = list(text = "tekrar teslim", nonce = 10, client_id = "istem_tekrar"))
+    session$setInputs(send_prompt_from_js = list(text = "tekrar teslim", nonce = 11, client_id = "istem_tekrar"))
+    # Farklı kimlikli yeni istem normal işlenir.
+    session$setInputs(send_prompt_from_js = list(text = "yeni istem", nonce = 12, client_id = "istem_yeni"))
+  })
+  testthat::expect_identical(kayit$gonderilen, c("tekrar teslim", "yeni istem"))
+  sonuc <- .istem_sonuclari(kayit)
+  testthat::expect_length(sonuc, 3L)
+  testthat::expect_identical(sonuc[[2]]$message, sonuc[[1]]$message)
+  testthat::expect_identical(sonuc[[1]]$message$durum, "kabul")
+})
+
+testthat::test_that("boşlukla şişirilmiş istem uzunluk sınırını aşamaz; sınır içindeki metin aynen gönderilir", {
+  testthat::skip_if_not_installed("shiny")
+  kayit <- .yeni_kayit()
+  env <- .istem_ortami(kayit)
+  shiny::testServer(.istem_sunucusu(env, kayit, mesaj_ekle = TRUE), {
+    session$setInputs(send_prompt_from_js = list(text = paste0("a", strrep(" ", 20005)), nonce = 20, client_id = "istem_bosluk"))
+    session$setInputs(send_prompt_from_js = list(text = "  sınır içinde çğış  ", nonce = 21, client_id = "istem_normal"))
+  })
+  testthat::expect_identical(kayit$gonderilen, "  sınır içinde çğış  ")
+  sonuc <- .istem_sonuclari(kayit)
+  testthat::expect_identical(sonuc[[1]]$message$durum, "ret")
+  testthat::expect_identical(sonuc[[2]]$message$durum, "kabul")
+})
+
 testthat::test_that("geçersiz istemci kimliği geri yansıtılmaz ama gönderim çalışır", {
   testthat::skip_if_not_installed("shiny")
   kayit <- new.env(); kayit$mesajlar <- list(); kayit$gonderilen <- character(); kayit$toast <- character()

@@ -264,6 +264,12 @@ Fix (`R/server_observers_startup.R` + `R/module_startup_lane.R` bridge):
 - Fast lane: the full list is never loaded at startup (lazy, once, on first Kayıtlı
   Söyleşiler / Söyleşi Geçmişi open); the 6-chat preview no longer blocks the critical
   path — it runs in a `tracked_future_promise` worker (`startup_saved_chats_preview`).
+  *Superseded (November 2026):* once the preview has been applied, the full list is
+  dispatched in the background on the same narrow explicit worker contract as the
+  preview; it is no longer deferred until a management page opens. The lazy tab
+  trigger remains the fallback when local saved-chat state changed before the
+  preview was applied or the background load failed. The fast-lane closing contract is unchanged, and
+  `saved_chats_full_loaded` is now logged when that background load completes.
 - Rich lane keeps the existing behavior (sync preview + background full load).
 - The lazy full load re-resolves the effective user id at run time; invalid ids never
   load. Clients without the lane API get a `legacy_no_api` rich_lane bridge signal so

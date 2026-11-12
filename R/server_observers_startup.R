@@ -63,17 +63,18 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  }
 	}, ignoreInit = TRUE)
 
-  # Söyleşi Yönetimi hazır-olma sözleşmesi: dört sayfanın verisi gerçekten
+  # Söyleşi Yönetimi hazır-olma sözleşmesi: sayfaların verisi gerçekten
   # hazırlandığında modüller kendi kontrol noktasını işaretler; toplu
   # management_pages_ready anahtarını bootReadinessInit() üretir.
   # Tek seferlik: tekrarlayan tarama/ziyaretler yinelenen bildirim üretmez.
   session$userData$mergen_yonetim_hazir <- if (is.function(boot_ready$mark_once)) boot_ready$mark_once else mark_boot
   # Sayfa hazırlığı, navigasyon gözlemcisiyle aynı desende modül girdileri
-  # üzerinden ve tarayıcı boştayken (düşük öncelik) tetiklenir.
+  # üzerinden ve tarayıcı boştayken (düşük öncelik) tetiklenir. Galeri burada
+  # taranmaz (tembel kalır): dizin taraması olay döngüsünü tutabilir.
   yonetim_hazirla <- function() {
     shinyjs::runjs(sprintf(paste0(
       "(function(){var t=%s;var f=function(){['history_module-hazirla',",
-      "'image_gallery_module-refresh_gallery','ortak_calismalar_module-hazirla'].forEach(",
+      "'ortak_calismalar_module-hazirla'].forEach(",
       "function(id){Shiny.setInputValue(id,t,{priority:'event'});});};",
       "if(window.requestIdleCallback){requestIdleCallback(f,{timeout:1500});}else{setTimeout(f,0);}})();"
     ), as.numeric(Sys.time())))
@@ -234,9 +235,13 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		# başlatılır ki ön izleme çizimi önce gitsin. Yerel durum değiştiyse
 		# (kullanıcı söyleşiye başladıysa) tembel sekme yolu korunur.
 		arka_plan_tam_liste <- function() {
+		  # Ertelenen tetik yalnızca planlandığı nesilde çalışır: arada sahip
+		  # değiştiyse yeni sahibin ön izlemesinden önce tam yükleme başlatmaz.
+		  planlanan_nesil <- startup_state$full_load_generation
 		  later::later(function() {
 			tetikle <- startup_state$trigger_lazy_full_saved_chats_load
-			if (is.function(tetikle) && !session_closed()) {
+			if (is.function(tetikle) && !session_closed() &&
+			    identical(startup_state$full_load_generation, planlanan_nesil)) {
 			  shiny::withReactiveDomain(session, shiny::isolate(tetikle("arka_plan")))
 			}
 		  }, 0)
@@ -406,12 +411,15 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  # Gönderim anındaki yerel durum: sonuç geldiğinde arada yerelde
 	  # eklenen/değişen/silinen söyleşiler eski DB görüntüsüyle ezilmez.
 	  gonderim_aninda <- shiny::isolate(values$saved_chats)
+	  # Silme/Tümünü Temizle listeyi DB'den yetkili olarak yeniden kurar ve bu
+	  # sürümü artırır; gönderimden sonra artmışsa eski DB görüntüsü uygulanmaz.
+	  gonderim_surumu <- session$userData$saved_chats_yetkili_surum %||% 0L
 	  # Asılı kalan bir DB sorgusu/işçi Söyleşi Yönetimi hazırlığını sonsuza dek
 	  # bekletmez: süre dolunca durum dürüstçe "kısmen" bildirilir (tek seferlik;
 	  # zamanında tamamlanırsa etkisizdir). Tam liste geç gelse de uygulanır.
 	  # Yalnızca Zengin Deneyim'de: Hızlı Başlangıç bu anahtarı beklemez.
 	  if (!isTRUE(fast_lane)) later::later(function() {
-		if (!session_closed()) {
+		if (!session_closed() && identical(startup_state$full_load_generation, full_load_generation)) {
 		  session$userData$mergen_yonetim_hazir("management_pages_ready",
 		    "Söyleşi Yönetimi hazırlığı zaman aşımına uğradı; sayfa açıldığında tamamlanacak",
 		    detail = list(degraded = TRUE, timeout = TRUE))
@@ -443,7 +451,11 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			# halde "Can't access reactive value 'authenticated'" gibi
 			# bağlam dışı reaktif okuma hataları üretebilir.
 			shiny::isolate({
-			  chats <- mergen_saved_chats_merge_newer(chats, gonderim_aninda, values$saved_chats)
+			  if (identical(session$userData$saved_chats_yetkili_surum %||% 0L, gonderim_surumu)) {
+				chats <- mergen_saved_chats_merge_newer(chats, gonderim_aninda, values$saved_chats)
+			  } else {
+				chats <- values$saved_chats %||% list()
+			  }
 			  values$saved_chats <- chats
 			  session$userData$saved_chats_full_loaded <- TRUE
 
@@ -576,6 +588,11 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  startup_state$preview_hydration_user_id <- NULL
 	  session$userData$saved_chats_full_pending <- FALSE
 	  session$userData$saved_chats_full_loaded <- FALSE
+	  # Sahibe özgü hazır-olma anahtarları yeni sahip için baştan bildirilir.
+	  if (is.function(boot_ready$reset)) {
+		boot_ready$reset(c("saved_chats_full_loaded", "history_rows_ready",
+		                   "ortak_list_ready", "management_pages_ready"))
+	  }
 	  # Yeni sahibin listesi boşsa önceki sahibin söyleşileri görünmez.
 	  values$saved_chats <- list()
 	  if (isTRUE(values$show_welcome)) render_welcome_screen(list(), replace_existing = TRUE)

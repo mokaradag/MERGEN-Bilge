@@ -12,9 +12,12 @@
 //   ret       -> balon kalkar, metin girdiye geri yüklenir (taslak korunur).
 //   ayrıldı   -> kap başka bir akışla temizlendi (Yeni Söyleşi/yükleme);
 //                kilit kalkar ama sonuç hâlâ beklenir (ret metni kaybolmaz).
+//   koptu     -> sonucu gelmemiş istemin akıbeti bilinemez (oturum yeniden
+//                bağlanmaz); metin girdiye geri yüklenir, asla otomatik
+//                gönderilmez.
 // Metin eşleşmesi yalnızca görsel bir ipucudur (çift balon titremesini
-// önlemek için bekleyen balonu gizler); kabul/ret kararı asla metinden
-// çıkarılmaz.
+// önlemek için bekleyen balonu gizler); kabul/ret ve bağlantı kopması kararı
+// asla metinden çıkarılmaz.
 
 $(document).ready(function() {
   const bekleyenIstemler = [];
@@ -164,7 +167,7 @@ $(document).ready(function() {
     if (typeof window.updateCharCounter === 'function') window.updateCharCounter();
   }
 
-  function reddet(kayit) {
+  function reddet(kayit, bildirim) {
     const ayniGorunum = !kayit.ayrildi;
     balonuKaldir(kayit);
     metniGeriYukle(kayit);
@@ -176,7 +179,7 @@ $(document).ready(function() {
       $karsilama.removeClass('hidden');
       $(sohbetKabi).hide();
     }
-    canliBildir('İstem gönderilemedi; metin giriş alanına geri yüklendi.');
+    canliBildir(bildirim || 'İstem gönderilemedi; metin giriş alanına geri yüklendi.');
   }
 
   function kabulBekleyeniBitir(kayit, dugum) {
@@ -186,7 +189,19 @@ $(document).ready(function() {
     balonuKaldir(kayit);
   }
 
+  // Asıl balon gecikirse kabul edilmiş istem kaybolmaz: bekleyen balon
+  // "gönderiliyor" durumundan çıkar, görünür kalır; asıl balon gelince kalkar.
+  function kabulGorunumunuTamamla(kayit) {
+    const el = kayit.el;
+    if (!el) return;
+    el.removeAttribute('aria-busy');
+    el.style.opacity = '';
+    const zaman = el.querySelector ? el.querySelector('.message-time') : null;
+    if (zaman) zaman.textContent = '';
+  }
+
   function kabulEt(kayit, mesajId) {
+    canliBildir('İstem gönderildi.');
     const dugum = mesajId && typeof document.getElementById === 'function'
       ? document.getElementById('message_wrapper_' + mesajId) : null;
     if (dugum || !mesajId || !kayit.el) {
@@ -199,7 +214,7 @@ $(document).ready(function() {
     kayit.el.style.display = '';
     kayit.mesajId = mesajId;
     kabulBekleyenler.push(kayit);
-    kayit.zamanlayici = setTimeout(function() { kabulBekleyeniBitir(kayit, null); }, KABUL_DUGUM_BEKLEME_MS);
+    kayit.zamanlayici = setTimeout(function() { kabulGorunumunuTamamla(kayit); }, KABUL_DUGUM_BEKLEME_MS);
   }
 
   const sohbetKabi = typeof document.getElementById === 'function' ? document.getElementById('chat_content_container') : null;
@@ -241,12 +256,14 @@ $(document).ready(function() {
     });
   }
 
-  // Bağlantı koptu: asıl balonu görülmüş (sunucunun kabul ettiği) istem geri
-  // yüklenmez; aksi halde yeniden gönderim mesajı çoğaltırdı.
+  // Bağlantı koptu: sonucu gelmemiş istemin kabul edilip edilmediği bilinemez.
+  // Aynı metinli bir balon kabul kanıtı sayılmaz; istem kaybolmasın diye metin
+  // girdiye geri yüklenir ve belirsizlik açıkça bildirilir (otomatik yeniden
+  // gönderim yok; kabul edilmişse yeniden yüklemede kayıtlı söyleşide görünür).
   $(document).on('shiny:disconnected', function() {
     bekleyenIstemler.slice().forEach(function(kayit) {
       listedenCikar(bekleyenIstemler, kayit);
-      if (kayit.sunucuDugumu) balonuKaldir(kayit); else reddet(kayit);
+      reddet(kayit, 'Bağlantı koptu; istemin iletilip iletilmediği doğrulanamadı. Metin giriş alanına geri yüklendi.');
     });
     dugmeDurumunuGuncelle();
   });
