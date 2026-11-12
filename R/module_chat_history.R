@@ -125,6 +125,7 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
     isitma$nesil <- 0L
     isitma$aktif <- FALSE
     isitma$planli <- character()
+    isitma$zincir <- character()
 
     stamp_for_chat <- function(chat_info) {
       stamp_obj <- chat_info$last_message_timestamp %||% chat_info$timestamp %||% NA
@@ -337,6 +338,7 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
       isitma$nesil <- isitma$nesil + 1L
       isitma$aktif <- FALSE
       isitma$planli <- character()
+      isitma$zincir <- character()
     }
 
     # Tek senkronizasyon girişi: en çok 60 eksik/bayat söyleşi eşzamanlı (tek
@@ -357,6 +359,10 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
       basarili <- TRUE
       isitma$aktif <- TRUE
       isitma$planli <- kalan
+      # Bu nesilde bir kez planlanan kimlikler zincire eklenir; tamamlanınca
+      # yalnızca zincirde olmayan (yeni gelen) söyleşiler yeniden planlanır.
+      # Zincir nesil içinde yalnızca büyüdüğü için tekrar döngüsü oluşmaz.
+      isitma$zincir <- union(isitma$zincir, kalan)
       nesil <- isitma$nesil
       historyBackgroundWarm(
         session, kalan, chats,
@@ -368,16 +374,22 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
         on_complete = function(tamam) {
           if (!identical(isitma$nesil, nesil)) return(invisible(NULL))
           isitma$aktif <- FALSE
-          biten <- isitma$planli
           isitma$planli <- character()
-          # Isıtma sırasında gelen yeni söyleşiler tek, sınırlı bir turda alınır;
-          # başarısız olanlar burada yeniden denenmez (döngüsel tekrar yok).
+          trigger_refresh(shiny::isolate(trigger_refresh()) + 1)
+          # Isıtma sırasında gelen yeni söyleşiler (sayısı ne olursa olsun) aynı
+          # sınırlı giriş üzerinden alınır; bu nesilde denenmiş (başarısız
+          # olanlar dahil) kimlikler yeniden planlanmaz.
           guncel <- shiny::isolate(latest_chats())
           yeni <- setdiff(history_ids_needing_fetch(aralik_kimlikleri(), guncel,
-                                                    shiny::isolate(messages_cache()), stamp_for_chat), biten)
-          if (length(yeni)) ensure_history_cache(utils::head(yeni, 60L), guncel, invalidate = FALSE)
-          trigger_refresh(shiny::isolate(trigger_refresh()) + 1)
-          if (is.function(on_done)) on_done(isTRUE(basarili) && isTRUE(tamam))
+                                                    shiny::isolate(messages_cache()), stamp_for_chat),
+                          isitma$zincir)
+          if (length(yeni)) {
+            history_sync(yeni, guncel, on_done = function(ok) {
+              if (is.function(on_done)) on_done(isTRUE(tamam) && isTRUE(ok))
+            })
+          } else if (is.function(on_done)) {
+            on_done(isTRUE(basarili) && isTRUE(tamam))
+          }
         }
       )
       invisible(basarili)

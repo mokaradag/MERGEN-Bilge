@@ -162,6 +162,10 @@ assert.equal(observers[0].target, chat);
 assert.equal(observers[0].options.childList, true);
 assert.equal(observers[0].options.subtree, true);
 
+// 0b) Canlı bölge ilk gönderimden ÖNCE (boş) hazırdır; aynı görevde oluşturulup doldurulmaz.
+assert.equal(all(body, '.mergen-istem-canli-bolge').length, 1, 'canlı bölge modül yüklenirken oluşturulmalı');
+assert.equal(liveText(), '');
+
 // 1) Enter: balon anında, istemci kimliğiyle gönderim; düğme erişilebilir bekleme durumunda.
 enter('Merhaba dünya, çğış?');
 assert.equal(sent.length, 1);
@@ -219,6 +223,12 @@ sendClick('ilk istem');
 input.value = 'yeni taslak';
 result(lastId(), 'ret');
 assert.equal(input.value, 'ilk istem\nyeni taslak', 'reddedilen istem ve taslak birlikte korunmalı');
+input.value = '';
+// 5b) Reddedilen istem taslağın alt dizesi olsa da yutulmaz (istem "a", taslak "taslak").
+sendClick('a');
+input.value = 'taslak';
+result(lastId(), 'ret');
+assert.equal(input.value, 'a\ntaslak', 'alt dize eşleşmesi reddedilen istemi kaybettirmemeli');
 input.value = '';
 
 // 6) Kabul asıl balondan ÖNCE gelirse bekleyen balon görünür kalır; balon gelince kalkar.

@@ -271,3 +271,40 @@ testthat::test_that("ad değişikliği geçmiş tablosunda güncel başlıkla g�
     testthat::expect_false("Söyleşi 1" %in% tablo$Chat_ID)
   })
 })
+
+testthat::test_that("ısıtma sırasında eklenen 60'tan fazla yeni söyleşi tamamlanınca sınırlı partilerle alınır", {
+  kayit <- .yeni_gecmis_kaydi()
+  env <- .gecmis_modul_ortami(kayit)
+  sohbetler <- shiny::reactiveVal(.gecmis_sohbetleri(130L))
+  shiny::testServer(env$historyServer,
+                    args = list(all_messages = sohbetler, current_user_id = function() 7L), {
+    session$flushReact()
+    session$setInputs(external_refresh_trigger = 1)    # 130 eksik: ısıtma planlandı
+    shiny::isolate(sohbetler(.gecmis_sohbetleri(200L))) # ısıtma sürerken 70 yeni söyleşi
+    session$flushReact()
+    for (i in 1:80) later::run_now(0.02)
+    session$flushReact()
+    testthat::expect_identical(length(messages_cache()), 200L)
+    testthat::expect_true(all(lengths(kayit$kimlikler) <= 60L))
+    # Her kimlik en fazla bir kez çekilir (tekrar döngüsü yok).
+    testthat::expect_identical(anyDuplicated(unlist(kayit$kimlikler)), 0L)
+  })
+})
+
+testthat::test_that("veritabanı kapalıyken ısıtma zinciri yeniden deneme döngüsüne girmez", {
+  kayit <- .yeni_gecmis_kaydi()
+  kayit$hata <- TRUE
+  env <- .gecmis_modul_ortami(kayit)
+  sohbetler <- shiny::reactiveVal(.gecmis_sohbetleri(130L))
+  shiny::testServer(env$historyServer,
+                    args = list(all_messages = sohbetler, current_user_id = function() 7L), {
+    session$flushReact()
+    session$setInputs(external_refresh_trigger = 1)
+    shiny::isolate(sohbetler(.gecmis_sohbetleri(200L)))
+    session$flushReact()
+    for (i in 1:120) later::run_now(0.02)
+    # 130 + 70 kimlik, her biri en fazla bir kez denenir (60'lık partiler).
+    testthat::expect_lte(kayit$cagri, 5L)
+    testthat::expect_length(messages_cache(), 0L)
+  })
+})

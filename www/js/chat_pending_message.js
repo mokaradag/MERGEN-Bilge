@@ -30,15 +30,17 @@ $(document).ready(function() {
   }
 
   // Ekran okuyucu bildirimi: meşgul balonun dışında, tek bir kibar canlı bölge.
+  // Bölge modül yüklenirken (boş) oluşturulur; aynı görevde oluşturulup
+  // doldurulan bir canlı bölgenin ilk duyurusu bazı ekran okuyucularda kaçar.
+  if (document.body && typeof document.createElement === 'function') {
+    canliBolge = document.createElement('div');
+    canliBolge.setAttribute('role', 'status');
+    canliBolge.setAttribute('aria-live', 'polite');
+    canliBolge.className = 'mergen-istem-canli-bolge';
+    canliBolge.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;';
+    document.body.appendChild(canliBolge);
+  }
   function canliBildir(metin) {
-    if (!canliBolge && document.body && typeof document.createElement === 'function') {
-      canliBolge = document.createElement('div');
-      canliBolge.setAttribute('role', 'status');
-      canliBolge.setAttribute('aria-live', 'polite');
-      canliBolge.className = 'mergen-istem-canli-bolge';
-      canliBolge.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;';
-      document.body.appendChild(canliBolge);
-    }
     if (canliBolge) canliBolge.textContent = metin;
   }
 
@@ -152,9 +154,11 @@ $(document).ready(function() {
   function metniGeriYukle(kayit) {
     const giris = typeof window.getMergenChatInputElement === 'function' ? window.getMergenChatInputElement() : null;
     if (!giris) return;
+    // Yalnızca taslak reddedilen istemle birebir aynıysa yeniden eklenmez; alt
+    // dize eşleşmesi (ör. istem "a", taslak "taslak") istemi yutmamalıdır.
     const mevcut = String(giris.value || '');
     if (!mevcut.trim()) giris.value = kayit.hamMetin;
-    else if (mevcut.indexOf(kayit.hamMetin) === -1) giris.value = kayit.hamMetin + '\n' + mevcut;
+    else if (mevcut.trim() !== String(kayit.hamMetin || '').trim()) giris.value = kayit.hamMetin + '\n' + mevcut;
     else return;
     if (typeof window.adjustTextareaHeight === 'function') window.adjustTextareaHeight(giris);
     if (typeof window.updateCharCounter === 'function') window.updateCharCounter();
