@@ -25,6 +25,11 @@ bootReadinessInit <- function(session, required = NULL) {
   )
 
   done <- character()
+  # "Kısmen" tamamlanan (kaynak okunamadı/kullanılamıyor) kontrol noktaları;
+  # toplu anahtar bunları "hazır" diye bildirmez.
+  kismen <- character()
+  yonetim_alt <- c("saved_chats_full_loaded", "history_rows_ready",
+                   "ortak_list_ready", "gallery_index_ready")
 
   # Soğuk açılış faz zamanlaması: her kontrol noktası, oturum başlangıcından
   # itibaren geçen süreyle loglanır. Böylece açılış süresinin hangi fazda
@@ -55,6 +60,9 @@ bootReadinessInit <- function(session, required = NULL) {
 
     if (!key %in% done) {
       done <<- c(done, key)
+      if (is.list(detail) && (isTRUE(detail$degraded) || isFALSE(detail$available))) {
+        kismen <<- c(kismen, key)
+      }
 
       elapsed_ms <- as.numeric(difftime(Sys.time(), boot_started_at, units = "secs")) * 1000
       deferred_flag <- isTRUE(is.list(detail) && isTRUE(detail$deferred))
@@ -81,19 +89,35 @@ bootReadinessInit <- function(session, required = NULL) {
       error = function(e) NULL
     )
 
-    # Söyleşi Yönetimi: dört sayfanın verisi gerçekten hazırsa toplu kontrol
-    # noktası bir kez işaretlenir (kaynak hatasında çağıran "kısmen" işaretler).
-    if (!"management_pages_ready" %in% done &&
-        all(c("saved_chats_full_loaded", "history_rows_ready",
-              "ortak_list_ready", "gallery_index_ready") %in% done)) {
-      mark("management_pages_ready", "Söyleşi Yönetimi sayfaları hazır")
+    # Söyleşi Yönetimi: dört sayfa sonuçlanınca toplu kontrol noktası bir kez
+    # işaretlenir; herhangi biri kısmen sonuçlandıysa toplu durum da "kısmen"dir.
+    if (!"management_pages_ready" %in% done && all(yonetim_alt %in% done)) {
+      eksik <- intersect(yonetim_alt, kismen)
+      if (length(eksik)) {
+        mark("management_pages_ready", "Söyleşi Yönetimi sayfaları kısmen hazır",
+             detail = list(degraded = TRUE, kismen = eksik))
+      } else {
+        mark("management_pages_ready", "Söyleşi Yönetimi sayfaları hazır")
+      }
     }
 
     invisible(TRUE)
   }
 
+  # Tek seferlik işaretleme: sayfa yenilemeleri ve tekrarlayan taramalar aynı
+  # kontrol noktası için istemciye yinelenen bildirim göndermez; ilk sonuç
+  # (hazır ya da kısmen) korunur.
+  mark_once <- function(key, label = key, pct = NULL, detail = NULL) {
+    if (length(key) == 1L && as.character(key) %in% done) {
+      return(invisible(FALSE))
+    }
+    mark(key, label = label, pct = pct, detail = detail)
+  }
+
   list(
     mark = mark,
+    mark_once = mark_once,
+    degraded = function() kismen,
     is_ready = function() all(required %in% done),
     done = function() done,
     required = required

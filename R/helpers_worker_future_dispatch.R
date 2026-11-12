@@ -33,9 +33,12 @@ worker_monitor_future_promise <- function(promise_globals, future_packages) {
     kuyruk$schedule_work(function() {
       is_promise <- promises::promise(function(cozul, reddet) {
         is_future <- .worker_monitor_future_baslat(promise_globals, future_packages)
+        # Yoklamadaki HER hata (yalnız FutureError değil) promise'i reddeder;
+        # aksi halde later geri çağrısından taşan hata işi sonsuza dek
+        # "bekliyor" bırakır ve izleme kaydı hiç kapanmazdı.
         yokla <- function() {
           bitti <- tryCatch(.worker_monitor_future_bitti(is_future),
-                            FutureError = function(e) { reddet(e); NA })
+                            error = function(e) { reddet(e); NA })
           if (is.na(bitti)) return(invisible(NULL))
           if (!isTRUE(bitti)) return(invisible(later::later(yokla, 0.1)))
           tryCatch(cozul(.worker_monitor_future_deger(is_future)),

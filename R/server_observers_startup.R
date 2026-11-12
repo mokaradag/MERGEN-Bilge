@@ -66,7 +66,8 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
   # Söyleşi Yönetimi hazır-olma sözleşmesi: dört sayfanın verisi gerçekten
   # hazırlandığında modüller kendi kontrol noktasını işaretler; toplu
   # management_pages_ready anahtarını bootReadinessInit() üretir.
-  session$userData$mergen_yonetim_hazir <- mark_boot
+  # Tek seferlik: tekrarlayan tarama/ziyaretler yinelenen bildirim üretmez.
+  session$userData$mergen_yonetim_hazir <- if (is.function(boot_ready$mark_once)) boot_ready$mark_once else mark_boot
   # Sayfa hazırlığı, navigasyon gözlemcisiyle aynı desende modül girdileri
   # üzerinden ve tarayıcı boştayken (düşük öncelik) tetiklenir.
   yonetim_hazirla <- function() {
@@ -402,6 +403,20 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		mergen_startup_chat_preview_promise(run_user_id, limit = NA_integer_,
 		                                    session_token = session$token),
 		error = function(e) promises::promise_reject(e))
+	  # Gönderim anındaki yerel durum: sonuç geldiğinde arada yerelde
+	  # eklenen/değişen/silinen söyleşiler eski DB görüntüsüyle ezilmez.
+	  gonderim_aninda <- shiny::isolate(values$saved_chats)
+	  # Asılı kalan bir DB sorgusu/işçi Söyleşi Yönetimi hazırlığını sonsuza dek
+	  # bekletmez: süre dolunca durum dürüstçe "kısmen" bildirilir (tek seferlik;
+	  # zamanında tamamlanırsa etkisizdir). Tam liste geç gelse de uygulanır.
+	  # Yalnızca Zengin Deneyim'de: Hızlı Başlangıç bu anahtarı beklemez.
+	  if (!isTRUE(fast_lane)) later::later(function() {
+		if (!session_closed()) {
+		  session$userData$mergen_yonetim_hazir("management_pages_ready",
+		    "Söyleşi Yönetimi hazırlığı zaman aşımına uğradı; sayfa açıldığında tamamlanacak",
+		    detail = list(degraded = TRUE, timeout = TRUE))
+		}
+	  }, delay = getOption("mergen.management_ready_deadline_secs", 20))
 	  session$userData$initial_saved_chats_promise <- promises::then(
 		  gonderim,
 		  onFulfilled = function(chats) {
@@ -428,6 +443,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			# halde "Can't access reactive value 'authenticated'" gibi
 			# bağlam dışı reaktif okuma hataları üretebilir.
 			shiny::isolate({
+			  chats <- mergen_saved_chats_merge_newer(chats, gonderim_aninda, values$saved_chats)
 			  values$saved_chats <- chats
 			  session$userData$saved_chats_full_loaded <- TRUE
 
@@ -463,7 +479,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		  startup_state$initial_saved_chats_status <- "deferred"
 		  session$userData$saved_chats_full_pending <- TRUE
 		  # Açılış asılı kalmaz; durum dürüstçe "kısmen" olarak bildirilir.
-		  mark_boot("management_pages_ready",
+		  session$userData$mergen_yonetim_hazir("management_pages_ready",
 		            "Söyleşi listesi yüklenemedi; sayfa açıldığında yeniden denenecek",
 		            detail = list(degraded = TRUE))
 		  warning(sprintf("[SERVER] Initial saved chat load failed: %s", conditionMessage(err)))

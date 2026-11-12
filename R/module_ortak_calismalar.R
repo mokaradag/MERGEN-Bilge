@@ -229,15 +229,12 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
       shiny::showNotification(mesaj, type = tur, duration = 6)
     }
 
-    # Ortak Söyleşiler listesi önbelleği (kullanıcıya bağlı): sekme ziyareti en
-    # fazla 60 sn'de bir yeniler; kullanıcı eylemleri her zaman anında yeniler.
+    # Ortak Söyleşiler önbelleği (kullanıcıya bağlı): sekme ziyareti yalnız bu
+    # listeyi en fazla 60 sn'de bir okur (süre getter'da); hub/davet/Bilge Yolaç
+    # listeleri her ziyarette yenilenir. Kullanıcı eylemleri önbelleği düşürür.
     sohbet_onbellek <- new.env(parent = emptyenv())
     yenile <- function(neden = "manual") {
-      son <- sohbet_onbellek$zaman
-      if (identical(neden, "tab") && !is.null(son) && difftime(Sys.time(), son, units = "secs") < 60) {
-        return(invisible(neden))
-      }
-      sohbet_onbellek$df <- NULL
+      if (!identical(neden, "tab")) sohbet_onbellek$df <- NULL
       liste_yenile(isolate(liste_yenile()) + 1L)
       invisible(neden)
     }
@@ -253,9 +250,11 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
       req(!is.na(uid))
       hazir <- isTRUE(ortak_db_tablolar_hazir_mi())
       df <- if (hazir) ortak_db_sohbet_listesi_onbellekten(sohbet_onbellek, uid) else NULL
+      okunamadi <- isTRUE(attr(df, "mergen_okuma_hatasi"))
       isaretle <- session$userData$mergen_yonetim_hazir
-      if (is.function(isaretle)) isaretle("ortak_list_ready", "Ortak söyleşiler hazır",
-        detail = list(count = if (is.data.frame(df)) nrow(df) else 0L, available = hazir))
+      if (is.function(isaretle)) isaretle("ortak_list_ready", if (hazir && !okunamadi) "Ortak söyleşiler hazır" else
+        "Ortak söyleşiler kısmen hazır", detail = list(count = if (is.data.frame(df)) nrow(df) else 0L,
+                                                         available = hazir, degraded = okunamadi))
     }, ignoreInit = TRUE)
 
     # Oda sunucusu bir kez bağlanır; hub yüzeyindeki dinamik oda UI'sine hizmet eder.

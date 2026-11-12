@@ -190,8 +190,52 @@ testthat::test_that("dört Söyleşi Yönetimi sayfası hazır olunca toplu kont
   testthat::expect_identical(son$key, "management_pages_ready")
   testthat::expect_true(isTRUE(son$ready))
 
-  # Sonraki tekrarlar toplu anahtarı yeniden üretmez.
-  adet <- sum(ctrl$done() == "management_pages_ready")
+  # Sonraki tekrarlar toplu anahtarı yeniden üretmez: istemciye giden
+  # management_pages_ready MESAJ sayısı da artmaz (done() benzersizliği yetmez).
+  toplu_mesaj <- function() sum(vapply(sess$rec$msgs, function(m) identical(m$message$key, "management_pages_ready"), logical(1)))
+  testthat::expect_identical(toplu_mesaj(), 1L)
   ctrl$mark("gallery_index_ready")
-  testthat::expect_identical(sum(ctrl$done() == "management_pages_ready"), adet)
+  ctrl$mark("history_rows_ready")
+  testthat::expect_identical(toplu_mesaj(), 1L)
+  testthat::expect_identical(sum(ctrl$done() == "management_pages_ready"), 1L)
+})
+
+testthat::test_that("mark_once aynı kontrol noktası için istemciye yinelenen bildirim göndermez", {
+  env <- .source_boot_readiness_for_test()
+  sess <- .fake_boot_session()
+  ctrl <- env$bootReadinessInit(sess, required = c("a", "b"))
+  testthat::expect_true(ctrl$mark_once("a", detail = list(count = 1L)))
+  testthat::expect_false(ctrl$mark_once("a", detail = list(count = 2L)))
+  testthat::expect_length(sess$rec$msgs, 1L)
+  testthat::expect_identical(sess$rec$msgs[[1]]$message$detail$count, 1L)
+})
+
+testthat::test_that("kısmen hazır alt sayfa toplu Söyleşi Yönetimi durumunu da kısmen yapar", {
+  env <- .source_boot_readiness_for_test()
+  sess <- .fake_boot_session()
+  ctrl <- env$bootReadinessInit(sess)
+  ctrl$mark("saved_chats_full_loaded")
+  ctrl$mark("history_rows_ready", detail = list(degraded = TRUE))
+  ctrl$mark("ortak_list_ready", detail = list(count = 0L, available = FALSE))
+  ctrl$mark("gallery_index_ready")
+  testthat::expect_true("management_pages_ready" %in% ctrl$done())
+  toplu <- Filter(function(m) identical(m$message$key, "management_pages_ready"), sess$rec$msgs)
+  testthat::expect_length(toplu, 1L)
+  testthat::expect_true(isTRUE(toplu[[1]]$message$detail$degraded))
+  testthat::expect_setequal(toplu[[1]]$message$detail$kismen, c("history_rows_ready", "ortak_list_ready"))
+  testthat::expect_match(toplu[[1]]$message$label, "kısmen", fixed = TRUE)
+  testthat::expect_true("management_pages_ready" %in% ctrl$degraded())
+})
+
+testthat::test_that("tüm alt sayfalar başarılıysa toplu durum kısmen değildir", {
+  env <- .source_boot_readiness_for_test()
+  sess <- .fake_boot_session()
+  ctrl <- env$bootReadinessInit(sess)
+  for (k in c("saved_chats_full_loaded", "history_rows_ready", "ortak_list_ready", "gallery_index_ready")) {
+    ctrl$mark(k, detail = list(count = 1L, available = TRUE))
+  }
+  toplu <- Filter(function(m) identical(m$message$key, "management_pages_ready"), sess$rec$msgs)
+  testthat::expect_length(toplu, 1L)
+  testthat::expect_false(isTRUE(toplu[[1]]$message$detail$degraded))
+  testthat::expect_length(ctrl$degraded(), 0L)
 })

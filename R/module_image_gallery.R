@@ -105,6 +105,12 @@ imageGalleryServer <- function(id, current_user_id) {
 
       if (is.na(uid) || uid <= 0) {
         cached_images(empty_images_df())
+        # Kimlik yokken galeri hazırlanamaz; açılış bekletilmez, durum "kısmen"dir.
+        isaretle <- session$userData$mergen_yonetim_hazir
+        if (is.function(isaretle)) {
+          isaretle("gallery_index_ready", "Görsel galerisi kullanılamıyor (kimlik yok)",
+                   detail = list(count = 0L, available = FALSE))
+        }
         return(invisible(NULL))
       }
 
@@ -156,6 +162,13 @@ imageGalleryServer <- function(id, current_user_id) {
               gallery_do_scan(force = force),
               error = function(e) {
                 cat(sprintf("[IMAGE_GALLERY] tarama hatası: %s\n", conditionMessage(e)))
+                # Başarısız tarama "hazır" sayılmaz ama açılışı da bekletmez:
+                # kontrol noktası "kısmen" (degraded) olarak bir kez bildirilir.
+                isaretle <- session$userData$mergen_yonetim_hazir
+                if (is.function(isaretle)) {
+                  isaretle("gallery_index_ready", "Görsel galerisi taranamadı; Yenile ile yeniden denenebilir",
+                           detail = list(count = 0L, degraded = TRUE))
+                }
               }
             )
             gallery_loading(FALSE)

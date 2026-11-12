@@ -38,3 +38,21 @@ testthat::test_that("öncü karakter metnin sonunda veya tek başına olduğunda
   testthat::expect_identical(decode_latin1_mojibake_once(.tr(0xC3)), .tr(0xC3))
   testthat::expect_identical(decode_win1252_mojibake_once(paste0("abc", .tr(0xC7))), paste0("abc", .tr(0xC7)))
 })
+
+testthat::test_that("olağan Türkçe metin karakter karakter eşleyici döngüsüne girmez", {
+  # Eşleyici çağrıları sayılır: hızlı yol kaldırılırsa (her karakter için
+  # eşleyici çalışırsa) çağrı sayısı metin uzunluğuna ulaşır ve test düşer.
+  sayac <- 0L
+  sayan <- function(cp) { sayac <<- sayac + 1L; unicode_to_latin1_byte(cp) }
+
+  calisma <- strrep(paste0(.tr(0xC7), "al", .tr(0x131, 0x15F), "ma "), 200)   # öncü + ASCII
+  testthat::expect_identical(.decode_mojibake_sequences_once(calisma, sayan), calisma)
+  testthat::expect_identical(sayac, 0L)
+
+  sayac <- 0L
+  ogretmen <- paste0(.tr(0xD6, 0x11F), "retmen ", .tr(0xFC, 0xE7, 0xFC), "nc", .tr(0xFC))
+  testthat::expect_identical(.decode_mojibake_sequences_once(ogretmen, sayan), ogretmen)
+  # Yalnızca yan yana ASCII dışı aday konumlar denetlenir (Öğ, üç, çü).
+  testthat::expect_lte(sayac, 3L)
+  testthat::expect_lt(sayac, length(utf8ToInt(ogretmen)))
+})

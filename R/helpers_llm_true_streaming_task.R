@@ -10,6 +10,12 @@
 
 mergen_true_streaming_task_fn <- function(chat_history_for_sse, settings_for_sse,
                                           stream_file_for_sse, stop_file_for_sse) {
+  # Argümanlar hemen değerlendirilir: kapanış çağıranın çerçevesine bağlı
+  # tembel argüman (promise) taşımaz; serileştirilen yük yalnızca veridir.
+  force(chat_history_for_sse)
+  force(settings_for_sse)
+  force(stream_file_for_sse)
+  force(stop_file_for_sse)
   function() {
     call_local_llm_sse_worker(
       chat_history = chat_history_for_sse,

@@ -72,38 +72,48 @@ chatInputObserversInit <- function(input, session, values, settings_data,
     }
   }, ignoreInit = TRUE)
 
-  observeEvent(input$send_prompt_from_js, {
-    req(input$send_prompt_from_js)
-
-    # İstemcinin iyimser (bekleyen) balonu yalnızca sunumdur; kabul/ret kararı
-    # burada verilir ve istemciye bildirilir. Kimlik yalnızca aynı istemciye
-    # geri yansıtılır; güvenli karakterlerle sınırlanır.
-    istem_kimligi <- as.character(input$send_prompt_from_js$client_id %||% "")[1]
+  # İstemcinin iyimser (bekleyen) balonu yalnızca sunumdur; kabul/ret kararı
+  # burada verilir. Sonuç, işleyicinin HER çıkış yolunda (erken ret, hata,
+  # normal dönüş) tam bir kez bildirilir. Kabul ölçütü bu çağrının kullanıcı
+  # mesajını gerçekten eklemesidir: mesaj eklendikten sonraki bir hata "ret"
+  # sayılmaz (aksi halde istemci metni geri yükler ve yeniden gönderim mesajı
+  # çoğaltır). Kabulde eklenen mesajın kimliği döner; istemci bekleyen balonu
+  # metinle değil bu kimlikle eşler.
+  istemi_isle <- function(istem) {
+    istem_kimligi <- as.character(istem$client_id %||% "")[1]
     if (is.na(istem_kimligi) || !grepl("^[A-Za-z0-9_-]{1,64}$", istem_kimligi)) istem_kimligi <- ""
-    istem_sonucu <- function(durum) {
-      if (nzchar(istem_kimligi)) {
-        session$sendCustomMessage("mergenIstemSonucu", list(client_id = istem_kimligi, durum = durum))
+    kimlik <- function(m) as.character(m$id %||% "")[1]
+    onceki <- isolate(values$messages)
+    onceki_kimlikler <- vapply(onceki, kimlik, character(1))
+    on.exit(if (nzchar(istem_kimligi)) {
+      simdiki <- isolate(values$messages)
+      # Kimlik tabanlı tespit; kimliksiz mesajlarda (eski/sahte yollar) konuma düşülür.
+      eklenen <- Filter(function(m) identical(m$type, "user") && nzchar(kimlik(m)) &&
+                          !(kimlik(m) %in% onceki_kimlikler), simdiki)
+      if (!length(eklenen) && length(simdiki) > length(onceki)) {
+        eklenen <- Filter(function(m) identical(m$type, "user") && !nzchar(kimlik(m)),
+                          simdiki[seq.int(length(onceki) + 1L, length(simdiki))])
       }
-    }
+      sonuc <- list(client_id = istem_kimligi, durum = if (length(eklenen)) "kabul" else "ret")
+      if (length(eklenen)) sonuc$mesaj_id <- as.character(eklenen[[length(eklenen)]]$id %||% "")[1]
+      try(session$sendCustomMessage("mergenIstemSonucu", sonuc), silent = TRUE)
+    }, add = TRUE)
 
     if (!check_rate_limit(resolve_chat_input_user_id())) {
       showToast(session, "Çok fazla istek gönderdiniz. Lütfen biraz bekleyin.", "warning")
-      istem_sonucu("ret")
-      return()
+      return(invisible(NULL))
     }
 
     global_check <- check_global_rate_limit()
     if (!global_check$allowed) {
       showToast(session, global_check$message, "warning")
-      istem_sonucu("ret")
-      return()
+      return(invisible(NULL))
     }
 
-    user_text <- trimws(input$send_prompt_from_js$text)
+    user_text <- trimws(istem$text)
     if (nchar(user_text) > 20000) {
       showToast(session, "Mesaj çok uzun. Lütfen 20.000 karakterle sınırlayın.", "warning")
-      istem_sonucu("ret")
-      return()
+      return(invisible(NULL))
     }
 
     # Kullanıcı gerçek bir prompt gönderdiğinde araç bağlamlı arka plan
@@ -119,16 +129,13 @@ chatInputObserversInit <- function(input, session, values, settings_data,
       error = function(e) invisible(NULL)
     )
 
-    # Kabul ölçütü: send_message senkron bölümünde kullanıcı mesajı gerçekten
-    # eklendi mi (tüm erken ret yolları mesaj eklemeden döner).
-    onceki_sayi <- length(isolate(values$messages))
-    tryCatch(send_message(input$send_prompt_from_js$text), error = function(e) {
-      istem_sonucu("ret")
-      stop(e)
-    })
-    yeni_mesajlar <- isolate(values$messages)
-    eklenen <- if (length(yeni_mesajlar) > onceki_sayi) yeni_mesajlar[(onceki_sayi + 1L):length(yeni_mesajlar)] else list()
-    istem_sonucu(if (any(vapply(eklenen, function(m) identical(m$type, "user"), logical(1)))) "kabul" else "ret")
+    send_message(istem$text)
+    invisible(NULL)
+  }
+
+  observeEvent(input$send_prompt_from_js, {
+    req(input$send_prompt_from_js)
+    istemi_isle(input$send_prompt_from_js)
   })
 
   observeEvent(stop_generation(), {

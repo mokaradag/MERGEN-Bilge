@@ -32,10 +32,15 @@ db_chat_preview_fetch_raw <- function(user_id,
     return(NULL)
   }
 
-  # NA limit = mesajsız tam söyleşi listesi (aynı biçim, TOP yok).
-  tam_liste <- length(limit) == 1L && is.na(limit)
+  # Yalnızca AÇIK NA sentineli (tek elemanlı sayısal/mantıksal NA, NaN değil)
+  # mesajsız tam söyleşi listesini seçer (aynı biçim, TOP yok). "abc", Inf,
+  # NULL gibi bozuk limitler sessizce sınırsız sorguya dönüşmez; 6'ya düşer.
+  # mergen_startup_chat_preview_limit() ile aynı kuraldır; işçi sözleşmesini
+  # genişletmemek için burada satır içi tutulur.
+  tam_liste <- length(limit) == 1L && (is.logical(limit) || is.numeric(limit)) &&
+    is.na(limit) && !is.nan(limit)
   safe_limit <- suppressWarnings(as.integer(limit[1]))
-  if (!tam_liste && (is.na(safe_limit) || safe_limit <= 0L)) {
+  if (!tam_liste && (length(safe_limit) != 1L || is.na(safe_limit) || safe_limit <= 0L)) {
     safe_limit <- 6L
   }
 
@@ -93,25 +98,29 @@ db_chat_preview_format_frame <- function(preview_data) {
     is.null(value) || length(value) == 0L || is.na(value[1])
   }
 
+  # Tam listede (binlerce satır) ana süreçte satır satır data.frame alt
+  # kümesi alınmaz; sütun vektörleri bir kez okunur, öğe erişimi O(1)'dir.
   chat_ids <- as.character(preview_data$ChatID)
-  formatted <- lapply(seq_len(nrow(preview_data)), function(i) {
-    row <- preview_data[i, ]
-
-    last_ts <- row$LastMessageTimestamp
+  n <- nrow(preview_data)
+  baslik_sutunu <- preview_data$ChatTitle
+  olusturma_sutunu <- preview_data$CreateTimestamp
+  son_sutunu <- preview_data$LastMessageTimestamp
+  sayi_sutunu <- suppressWarnings(as.integer(preview_data$MessageCount %||% rep(0L, n)))
+  formatted <- lapply(seq_len(n), function(i) {
+    last_ts <- son_sutunu[i]
     if (timestamp_missing(last_ts)) {
-      last_ts <- row$CreateTimestamp
+      last_ts <- olusturma_sutunu[i]
     }
 
-    msg_count <- row$MessageCount %||% 0L
-    msg_count <- suppressWarnings(as.integer(msg_count[1]))
-    if (is.na(msg_count)) {
+    msg_count <- sayi_sutunu[i]
+    if (length(msg_count) != 1L || is.na(msg_count)) {
       msg_count <- 0L
     }
 
     list(
-      title = row$ChatTitle,
+      title = baslik_sutunu[i],
       messages = NULL,
-      timestamp = row$CreateTimestamp,
+      timestamp = olusturma_sutunu[i],
       last_message_timestamp = last_ts,
       message_count = msg_count
     )
@@ -119,6 +128,37 @@ db_chat_preview_format_frame <- function(preview_data) {
 
   names(formatted) <- chat_ids
   formatted[chat_ids]
+}
+
+# Ön izleme limiti normalleştirici: tam liste YALNIZCA açık NA sentineliyle
+# seçilir; diğer tüm geçersiz değerler (NULL, "abc", Inf, NaN, <= 0) 6'ya döner.
+mergen_startup_chat_preview_limit <- function(limit) {
+  if (length(limit) == 1L && (is.logical(limit) || is.numeric(limit)) &&
+      is.na(limit) && !is.nan(limit)) {
+    return(NA_integer_)
+  }
+  sayi <- suppressWarnings(as.integer(limit[1]))
+  if (length(sayi) != 1L || is.na(sayi) || sayi <= 0L) 6L else sayi
+}
+
+# Arka plan tam listesi gönderimden SONRA yerelde yapılan değişiklikleri ezmez:
+# gönderim anındaki anlık görüntüye göre yerelde eklenen/değişen söyleşiler
+# yerel hâliyle korunur (yeni olanlar başa), yerelde silinenler geri gelmez.
+# Yerel durum değişmediyse DB sonucu aynen uygulanır.
+mergen_saved_chats_merge_newer <- function(db_chats, dispatch_snapshot, current) {
+  db_chats <- db_chats %||% list()
+  dispatch_snapshot <- dispatch_snapshot %||% list()
+  current <- current %||% list()
+  if (identical(current, dispatch_snapshot)) {
+    return(db_chats)
+  }
+  silinen <- setdiff(names(dispatch_snapshot), names(current))
+  birlesik <- db_chats[setdiff(names(db_chats), silinen)]
+  degisen <- Filter(function(k) !identical(current[[k]], dispatch_snapshot[[k]]), names(current))
+  for (k in intersect(degisen, names(birlesik))) {
+    birlesik[[k]] <- current[[k]]
+  }
+  c(current[setdiff(degisen, names(birlesik))], birlesik)
 }
 
 # Açık worker-export sözleşmesi: yalnızca aşağıdaki adlar worker'a taşınır.
@@ -129,7 +169,7 @@ mergen_startup_chat_preview_globals <- function(user_id, limit = 6L) {
 
   sozlesme <- list(
     startup_preview_user_id = suppressWarnings(as.integer(user_id[1])),
-    startup_preview_limit = suppressWarnings(as.integer(limit[1])),
+    startup_preview_limit = mergen_startup_chat_preview_limit(limit),
     startup_preview_dsn = Sys.getenv("DB_DSN", default_dsn),
     startup_preview_encoding = get0(".DEFAULT_DB_CLIENT_ENCODING", ifnotfound = "UTF-8"),
     startup_preview_name_encoding = get0(

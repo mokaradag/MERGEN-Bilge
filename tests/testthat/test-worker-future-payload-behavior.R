@@ -104,6 +104,56 @@ testthat::test_that("SSE görev kapanışı her istekte aynı gövde ve dar orta
   testthat::expect_setequal(ls(environment(a)), c("chat_history_for_sse", "settings_for_sse",
                                                   "stream_file_for_sse", "stop_file_for_sse"))
   testthat::expect_identical(parent.env(environment(a)), env)
+
+  # İşlevsiz bir kapanış (ör. function() NULL) bu testi geçemez: kapanış
+  # yakalanan argümanlarla gerçek SSE işçisini çağırmalıdır.
+  cagrilar <- list()
+  env$call_local_llm_sse_worker <- function(chat_history, current_settings, stream_file, stop_file) {
+    cagrilar[[length(cagrilar) + 1L]] <<- list(chat_history, current_settings, stream_file, stop_file)
+    "sse_sonucu"
+  }
+  testthat::expect_identical(a(), "sse_sonucu")
+  testthat::expect_identical(b(), "sse_sonucu")
+  testthat::expect_identical(cagrilar[[1]], list(list(1), list(model = "x"), "a.jsonl", "a.stop"))
+  testthat::expect_identical(cagrilar[[2]], list(list(2, 3), list(), "b.jsonl", "b.stop"))
+})
+
+testthat::test_that("SSE görev kapanışı çağıranın çerçevesini tembel argümanla taşımaz", {
+  env <- new.env(parent = globalenv())
+  sys.source(file.path(resolve_repo_root_for_tests(), "R", "helpers_llm_true_streaming_task.R"),
+             envir = env, keep.source = FALSE)
+  isleyici <- function() {
+    buyuk_oturum_nesnesi <- raw(20e6)
+    gecmis <- list("merhaba çğış")
+    env$mergen_true_streaming_task_fn(gecmis, list(), "s.jsonl", "s.stop")
+  }
+  kapanis <- isleyici()
+  # Argümanlar zorlandığı için serileştirilen kapanış işleyici çerçevesini
+  # (ve içindeki büyük nesneyi) içermez.
+  testthat::expect_lt(length(serialize(kapanis, NULL)), 1e6)
+})
+
+testthat::test_that("tüm future görevleri promises'ın paylaşılan iş kuyruğunu kullanır", {
+  # Kuyruk her görevde yeniden oluşturulmaz: promises tekil kuyruğu döner, böylece
+  # eşzamanlılık sınırı görevler arasında korunur.
+  testthat::expect_identical(promises::future_promise_queue(), promises::future_promise_queue())
+})
+
+testthat::test_that("yoklamada beklenmeyen hata promise'i asılı bırakmadan reddeder", {
+  testthat::skip_if_not_installed("future")
+  eski_plan <- future::plan()
+  on.exit(future::plan(eski_plan), add = TRUE)
+  future::plan(future::sequential)
+  eski_bitti <- .worker_monitor_future_bitti
+  on.exit(assign(".worker_monitor_future_bitti", eski_bitti, envir = globalenv()), add = TRUE)
+  assign(".worker_monitor_future_bitti", function(f) stop("beklenmeyen_yoklama_hatasi"), envir = globalenv())
+
+  durum <- new.env()
+  p <- worker_monitor_future_promise(list(task_fn = function() 9L), character(0))
+  promises::then(p, onFulfilled = function(v) durum$deger <- v,
+                 onRejected = function(e) durum$hata <- conditionMessage(e))
+  .later_bosalt(function() !is.null(durum$hata) || !is.null(durum$deger), sure = 5)
+  testthat::expect_match(durum$hata %||% "", "beklenmeyen_yoklama_hatasi")
 })
 
 testthat::test_that("future başlatıcı çağrı yığınını boşaltır ve hata promise'i reddeder", {

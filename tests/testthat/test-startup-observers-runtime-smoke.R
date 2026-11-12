@@ -350,6 +350,9 @@ testthat::test_that("hızlı şeritte istemci sinyali gelmezse güvenlik zamanla
   rec$preview_result <- list(
     "fallback-chat" = list(title = "Geri dönüş", message_count = 0L)
   )
+  # Arka plan tam listesi gerçekte ön izlemeyi kapsar; boş bir tam liste
+  # sonucu iddiayı zamanlamaya bağımlı kılıyordu.
+  rec$full_result <- rec$preview_result
   stubs <- .with_startup_db_stubs(rec)
   on.exit(stubs$restore(), add = TRUE)
 
@@ -1213,5 +1216,55 @@ test_that("tam liste gönderimi eşzamanlı hata atarsa yükleme yeniden deneneb
     for (i in 1:5) later::run_now(timeoutSecs = 0.05)
     session$flushReact()
     expect_identical(rec$full, 1L)
+  })
+})
+
+
+testthat::test_that("arka plan tam listesi geç gelince arada açılan ve silinen söyleşiler korunur", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises")
+  testthat::skip_if_not_installed("later")
+  .startup_observers_source_once()
+
+  rec <- new.env()
+  rec$defer_full_fulfillment <- TRUE
+  rec$preview_result <- list("p1" = list(title = "Ön izleme", message_count = 1L))
+  rec$full_result <- list(
+    "p1" = list(title = "Ön izleme", message_count = 1L),
+    "eski" = list(title = "Eski söyleşi", message_count = 4L)
+  )
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+
+  shiny::testServer(function(input, output, session) {
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startupObserversInit(
+      input = input, session = session, values = values,
+      render_welcome_screen = function(...) invisible(NULL),
+      current_user_id = function() 42L, sso_state = NULL, boot_ready = NULL
+    )
+    session$userData$.values <- values
+  }, {
+    session$flushReact()
+    session$setInputs(startup_lane_resolved = list(lane = "fast_lane", source = "stored", ts = 1))
+    session$setInputs(welcome_client_ready = list(fast_lane = TRUE, timestamp = 1))
+    for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+    session$flushReact()
+    testthat::expect_identical(rec$full, 1L)
+    testthat::expect_true(is.function(rec$resolve_full))
+
+    # Tam liste uçuştayken kullanıcı yeni bir söyleşi açtı.
+    yerel <- session$userData$.values$saved_chats
+    yerel[["yeni"]] <- list(title = "Yeni söyleşi çğış", message_count = 1L)
+    session$userData$.values$saved_chats <- yerel
+
+    rec$resolve_full()
+    for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+    session$flushReact()
+    son <- session$userData$.values$saved_chats
+    testthat::expect_true(all(c("yeni", "p1", "eski") %in% names(son)),
+                          info = "eski DB görüntüsü yeni söyleşiyi silmemeli")
+    testthat::expect_identical(son[["yeni"]]$title, "Yeni söyleşi çğış")
   })
 })

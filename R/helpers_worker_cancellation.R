@@ -211,8 +211,10 @@ mergen_cancellable_worker_launch <- function(payload) {
   }, args = list(payload = payload), supervise = TRUE,
   stdout = NULL, stderr = NULL, user_profile = FALSE, system_profile = FALSE,
   # Her iş taze bir süreçte TEK KEZ çalışır; JIT derlemesi saf ek yüktür ve
-  # ilk akış parçasını her istemde ~0,3 sn geciktiriyordu.
-  env = c(callr::rcmd_safe_env(), R_ENABLE_JIT = "0"))
+  # ilk akış parçasını her istemde ~0,3 sn geciktiriyordu. Operatör
+  # R_ENABLE_JIT verdiyse (ana süreçte olduğu gibi) ona uyulur.
+  env = c(callr::rcmd_safe_env(),
+          R_ENABLE_JIT = if (nzchar(Sys.getenv("R_ENABLE_JIT"))) Sys.getenv("R_ENABLE_JIT") else "0"))
 }
 
 mergen_cancellable_worker_promise <- function(payload, current, timeout = 1800, priority = 0L,

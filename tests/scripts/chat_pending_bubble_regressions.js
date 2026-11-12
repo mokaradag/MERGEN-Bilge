@@ -1,15 +1,29 @@
 // İyimser (bekleyen) istem balonu davranış regresyonları: gerçek
 // www/js/chat_pending_message.js + input_handlers.js küçük bir sahte DOM/jQuery
-// üzerinde çalıştırılır.
-// Doğrulananlar: anında çizim, çift gönderim engeli, asıl balon gelince aynı
-// mikro görevde kaldırma, ret durumunda metnin geri yüklenmesi, bekleme
-// sırasında düğme tıklamasının yutulması ve bağlantı kopmasında temizlik.
+// üzerinde çalıştırılır. Sahte MutationObserver, üretim gözlemcisinin kayıtlı
+// hedefine ve seçeneklerine (childList/subtree) UYAR: yanlış düğümü izleyen ya
+// da childList olmadan kurulan bir gözlemci bu testlerde bildirim almaz.
+// Doğrulananlar: anında çizim, çift gönderim engeli, kimlik tabanlı kabul
+// (metin eşleşmesi karar vermez), asıl balondan önce gelen kabul, ret ve
+// taslağın korunması, gezinmede metnin kaybolmaması, bağlantı kopmasında
+// kabul edilmiş istemin geri yüklenmemesi, erişilebilir düğme durumu.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const pendingSource = fs.readFileSync(path.resolve(__dirname, '../../www/js/chat_pending_message.js'), 'utf8');
 const source = fs.readFileSync(path.resolve(__dirname, '../../www/js/input_handlers.js'), 'utf8');
+
+// --- Seçeneklere uyan sahte MutationObserver --------------------------------
+const observers = [];
+function isInside(node, root) { let p = node; while (p) { if (p === root) return true; p = p.parentNode; } return false; }
+function notify(parent, added, removed) {
+  observers.forEach(o => {
+    if (!o.options || o.options.childList !== true) return;
+    if (!(parent === o.target || (o.options.subtree === true && isInside(parent, o.target)))) return;
+    o.cb([{ type: 'childList', target: parent, addedNodes: added, removedNodes: removed }]);
+  });
+}
 
 // --- Küçük sahte DOM --------------------------------------------------------
 function el(tag, attrs = {}) {
@@ -19,8 +33,8 @@ function el(tag, attrs = {}) {
     get id() { return this.attrs.id || ''; }, set id(v) { this.attrs.id = v; },
     get className() { return this.attrs.class || ''; }, set className(v) { this.attrs.class = v; },
     classList: null,
-    appendChild(c) { c.parentNode = this; this.children.push(c); return c; },
-    removeChild(c) { this.children = this.children.filter(x => x !== c); c.parentNode = null; return c; },
+    appendChild(c) { c.parentNode = this; this.children.push(c); notify(this, [c], []); return c; },
+    removeChild(c) { this.children = this.children.filter(x => x !== c); c.parentNode = null; notify(this, [], [c]); return c; },
     remove() { if (this.parentNode) this.parentNode.removeChild(this); },
     getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; },
     setAttribute(k, v) { this.attrs[k] = String(v); },
@@ -66,7 +80,7 @@ const chat = body.appendChild(el('div', { id: 'chat_content_container', class: '
 const welcome = body.appendChild(el('div', { id: 'welcome_fullscreen_container', class: 'welcome-fullscreen-wrapper' }));
 welcome.appendChild(el('div', { class: 'welcome-card' }));
 const input = body.appendChild(el('textarea', { id: 'user_input', class: 'chat-input' }));
-const btn = body.appendChild(el('button', { id: 'send_stop_btn' }));
+const btn = body.appendChild(el('button', { id: 'send_stop_btn', title: 'Gönder', 'aria-label': 'Mesajı gönder' }));
 btn.appendChild(el('i', { class: 'fa-solid fa-paper-plane' }));
 body.appendChild(el('div', { id: 'file_prompt_indicator_ui' }));
 
@@ -108,13 +122,15 @@ function trigger(evt, sel, target, extra = {}) {
   return e;
 }
 
-const observers = [];
 const sent = [];
 const shinyHandlers = {};
+const timers = [];
 const context = vm.createContext({
-  $, jQuery: $, document, console, setTimeout: () => 0, Date, Math, atob: s => Buffer.from(s, 'base64').toString('binary'),
+  $, jQuery: $, document, console, Date, Math, atob: s => Buffer.from(s, 'base64').toString('binary'),
+  setTimeout: fn => { timers.push(fn); return timers.length; },
+  clearTimeout: id => { if (id) timers[id - 1] = null; },
   TextDecoder, Uint8Array,
-  MutationObserver: function (cb) { this.observe = () => observers.push(cb); },
+  MutationObserver: function (cb) { this.observe = (target, options) => observers.push({ cb, target, options }); },
   Shiny: { setInputValue: (name, value) => sent.push({ name, value }), addCustomMessageHandler: (n, fn) => { shinyHandlers[n] = fn; } }
 });
 context.window = context;
@@ -127,15 +143,27 @@ function serverBubble(id, text) {
   const u = b.appendChild(el('div', { class: 'user-message' }));
   u.appendChild(el('div', { class: 'message-header' })).appendChild(el('div', { class: 'message-time' }));
   u.appendChild(el('div', { class: 'message-content', 'data-copy-b64': Buffer.from(text, 'utf8').toString('base64') }));
-  chat.appendChild(w);
-  observers.forEach(cb => cb([{ addedNodes: [w] }]));
+  chat.appendChild(w); // gözlemci yalnızca kayıtlı seçenekleri uygunsa bildirim alır
   return w;
 }
 const pending = () => all(chat, '.mergen-bekleyen-istem');
+const visibleUserBubbles = () => all(chat, '.user-message').filter(n => {
+  let p = n; while (p && p !== chat) { if (p.style && p.style.display === 'none') return false; p = p.parentNode; } return true;
+});
+const enter = text => { input.value = text; trigger('keyup', '#user_input, .chat-input, textarea[name="user_input"]', input, { key: 'Enter' }); };
+const sendClick = text => { input.value = text; trigger('click', '#send_stop_btn', btn); };
+const lastId = () => sent[sent.length - 1].value.client_id;
+const result = (id, durum, mesajId) => shinyHandlers.mergenIstemSonucu(Object.assign({ client_id: id, durum }, mesajId ? { mesaj_id: mesajId } : {}));
+const liveText = () => { const n = all(body, '.mergen-istem-canli-bolge')[0]; return n ? n.textContent : ''; };
 
-// 1) Enter: balon anında, istemci kimliğiyle gönderim, düğme bekleme durumunda.
-input.value = 'Merhaba dünya, çğış?';
-trigger('keyup', '#user_input, .chat-input, textarea[name="user_input"]', input, { key: 'Enter' });
+// 0) Üretim gözlemcisi sohbet kabını childList + subtree ile izler.
+assert.equal(observers.length, 1);
+assert.equal(observers[0].target, chat);
+assert.equal(observers[0].options.childList, true);
+assert.equal(observers[0].options.subtree, true);
+
+// 1) Enter: balon anında, istemci kimliğiyle gönderim; düğme erişilebilir bekleme durumunda.
+enter('Merhaba dünya, çğış?');
 assert.equal(sent.length, 1);
 assert.equal(sent[0].name, 'send_prompt_from_js');
 const id1 = sent[0].value.client_id;
@@ -145,62 +173,119 @@ assert.equal(pending()[0].querySelector('.message-content').textContent, 'Merhab
 assert.equal(pending()[0].querySelector('.message-bubble').style.animation, 'none', 'bekleyen balon solma animasyonuyla gizlenmemeli');
 assert.ok(welcome.classList.contains('hidden'), 'karşılama ekranı iyimser olarak gizlenmeli');
 assert.ok(btn.classList.contains('mergen-istem-bekliyor'));
-assert.equal(btn.querySelector('i').className, 'fa-solid fa-stop');
+assert.equal(btn.querySelector('i').className, 'fa-solid fa-spinner fa-spin', 'bekleme sırasında işlevsiz Durdur simgesi gösterilmemeli');
+assert.equal(btn.getAttribute('aria-label'), 'İstem gönderiliyor');
+assert.equal(btn.getAttribute('aria-disabled'), 'true');
+assert.equal(liveText(), 'İstem gönderiliyor…', 'canlı bölge gönderimi duyurmalı');
 assert.equal(input.value, '');
 
-// 2) Bekleme sırasında ikinci gönderim engellenir; düğme tıklaması yutulur.
-input.value = 'ikinci';
-trigger('keyup', '#user_input, .chat-input, textarea[name="user_input"]', input, { key: 'Enter' });
+// 2) Bekleme sırasında ikinci gönderim engellenir; düğme tıklaması (durdurma modunda bile) yutulur.
+enter('ikinci');
 assert.equal(sent.length, 1, 'bekleyen istem varken ikinci istem gönderilmemeli');
 assert.equal(input.value, 'ikinci', 'engellenen metin kaybolmamalı');
+btn.classList.add('stop-mode');
 let propagationStopped = false;
 captureClick.forEach(fn => fn({ target: btn.querySelector('i'), preventDefault() {}, stopPropagation() { propagationStopped = true; } }));
-assert.ok(propagationStopped, 'bekleme sırasında Durdur tıklaması sunucuya gitmemeli');
+assert.ok(propagationStopped, 'kabul bildirimi gelmeden Durdur tıklaması sunucuya gitmemeli');
+btn.classList.remove('stop-mode');
 input.value = '';
 
-// 3) Sunucunun asıl balonu: bekleyen balon aynı geri çağrıda kalkar, çift balon olmaz.
+// 3) Asıl balon: bekleyen balon aynı geri çağrıda gizlenir (çift balon yok), karar kimlikle verilir.
 const asil = serverBubble('901', 'Merhaba dünya, çğış?');
-assert.equal(pending().length, 0, 'asıl balon gelince bekleyen balon kaldırılmalı');
-assert.equal(all(chat, '.user-message').length, 1, 'çift kullanıcı balonu olmamalı');
+assert.equal(visibleUserBubbles().length, 1, 'çift kullanıcı balonu görünmemeli');
 assert.ok(!asil.querySelector('.message-bubble').classList.contains('animate-fadeIn'), 'asıl balon solmadan görünmeli');
-assert.equal(asil.querySelector('.message-bubble').style.animation, 'none', 'asıl balonun .message-bubble solması da kapatılmalı');
-shinyHandlers.mergenIstemSonucu({ client_id: id1, durum: 'kabul' });
+assert.equal(asil.querySelector('.message-bubble').style.animation, 'none');
+assert.ok(btn.classList.contains('mergen-istem-bekliyor'), 'metin eşleşmesi tek başına isteği sonuçlandırmamalı');
+result(id1, 'kabul', '901');
+assert.equal(pending().length, 0, 'kabulde bekleyen balon kaldırılmalı');
 assert.ok(!btn.classList.contains('mergen-istem-bekliyor'));
+assert.equal(btn.querySelector('i').className, 'fa-solid fa-paper-plane');
+assert.equal(btn.getAttribute('aria-label'), 'Mesajı gönder', 'erişilebilir ad geri gelmeli');
+assert.equal(btn.getAttribute('title'), 'Gönder');
+assert.equal(btn.getAttribute('aria-disabled'), null);
 
-// 4) Ret: balon kalkar, metin girdiye geri yüklenir, düğme eski hâline döner.
-input.value = 'reddedilecek istem';
-trigger('click', '#send_stop_btn', btn);
+// 4) Ret: balon kalkar, metin girdiye geri yüklenir.
+sendClick('reddedilecek istem');
 assert.equal(sent.length, 2);
 assert.equal(pending().length, 1);
-shinyHandlers.mergenIstemSonucu({ client_id: sent[1].value.client_id, durum: 'ret' });
+result(lastId(), 'ret');
 assert.equal(pending().length, 0);
 assert.equal(input.value, 'reddedilecek istem');
 assert.equal(btn.querySelector('i').className, 'fa-solid fa-paper-plane');
+assert.match(liveText(), /gönderilemedi/);
 
-// 5) Bağlantı koparsa bekleyen istem temizlenir ve metin kaybolmaz.
-input.value = 'bağlantı kopacak';
-trigger('click', '#send_stop_btn', btn);
+// 5) Bekleme sırasında yazılan taslak varken ret: iki metin de korunur.
+sendClick('ilk istem');
+input.value = 'yeni taslak';
+result(lastId(), 'ret');
+assert.equal(input.value, 'ilk istem\nyeni taslak', 'reddedilen istem ve taslak birlikte korunmalı');
+input.value = '';
+
+// 6) Kabul asıl balondan ÖNCE gelirse bekleyen balon görünür kalır; balon gelince kalkar.
+sendClick('erken kabul');
+const idErken = lastId();
+result(idErken, 'kabul', '902');
+assert.equal(pending().length, 1, 'asıl balon gelmeden bekleyen balon kaybolmamalı');
+assert.ok(!btn.classList.contains('mergen-istem-bekliyor'), 'kabulden sonra gönderim kilidi kalkmalı');
+const asil902 = serverBubble('902', 'erken kabul');
+assert.equal(pending().length, 0, 'kimlikli asıl balon gelince bekleyen balon kalkmalı');
+assert.equal(asil902.querySelector('.message-bubble').style.animation, 'none');
+
+// 7) Aynı metinli İLGİSİZ balon isteği sonuçlandırmaz; kabul doğru kimliği bekler.
+sendClick('aynı metin');
+const idAyni = lastId();
+serverBubble('903', 'aynı metin');
+assert.ok(btn.classList.contains('mergen-istem-bekliyor'), 'ilgisiz balon kilidi açmamalı');
+result(idAyni, 'kabul', '904');
 assert.equal(pending().length, 1);
+assert.equal(pending()[0].style.display, '', 'yanlış eşleşmede bekleyen balon yeniden görünmeli');
+serverBubble('904', 'aynı metin');
+assert.equal(pending().length, 0);
+
+// 8) İlgisiz aynı metinli balondan sonra ret: metin yine geri yüklenir.
+sendClick('tekrar');
+serverBubble('905', 'tekrar');
+result(lastId(), 'ret');
+assert.equal(input.value, 'tekrar', 'ilgisiz balon reddedilen metni yutmamalı');
+input.value = '';
+
+// 9) Bağlantı kopması: asıl balonu görülmemiş istem geri yüklenir; görülmüş olan yüklenmez.
+sendClick('bağlantı kopacak');
 (handlers['shiny:disconnected|'] || []).forEach(fn => fn());
 assert.equal(pending().length, 0);
 assert.equal(input.value, 'bağlantı kopacak');
+input.value = '';
+sendClick('kabul edildi ama onay kayboldu');
+serverBubble('906', 'kabul edildi ama onay kayboldu');
+(handlers['shiny:disconnected|'] || []).forEach(fn => fn());
+assert.equal(pending().length, 0);
+assert.equal(input.value, '', 'sunucunun eklediği istem geri yüklenip çoğaltılmamalı');
 
-// 6) Kap başka bir akışla temizlenirse (Yeni Söyleşi) bekleyen kayıt düşer ve
-//    gönderim kilitli kalmaz (ör. UX smoke send_prompt_from_js'i yakaladığında).
-input.value = 'yanıtsız kalacak';
-trigger('click', '#send_stop_btn', btn);
+// 10) Kap başka bir akışla temizlenirse (Yeni Söyleşi) kilit kalkar ama geç gelen ret metni kaybettirmez.
+sendClick('yanıtsız kalacak');
+const idAyrilan = lastId();
 assert.equal(pending().length, 1);
-const silinen = pending()[0];
-chat.removeChild(silinen);
-observers.forEach(cb => cb([{ addedNodes: [], removedNodes: [silinen] }]));
+chat.children.slice().forEach(c => chat.removeChild(c));
 assert.ok(!btn.classList.contains('mergen-istem-bekliyor'), 'temizlenen kapta bekleme durumu kalmamalı');
+assert.equal(input.value, '');
 input.value = 'yeni söyleşide ilk istem';
 const oncekiGonderim = sent.length;
 trigger('click', '#send_stop_btn', btn);
 assert.equal(sent.length, oncekiGonderim + 1, 'kap temizlendikten sonra gönderim kilitlenmemeli');
-shinyHandlers.mergenIstemSonucu({ client_id: sent[sent.length - 1].value.client_id, durum: 'ret' });
+result(idAyrilan, 'ret');
+assert.equal(input.value, 'yanıtsız kalacak', 'gezinmeden sonra gelen ret metni geri yüklemeli');
+assert.ok(welcome.classList.contains('hidden') || welcome.children.length === 0, 'gezinmeden sonra karşılama geri getirilmemeli');
+result(lastId(), 'ret');
+input.value = '';
 
-// 7) Boş istem gönderilmez.
+// 11) Kabul edilen ama asıl balonu hiç gelmeyen istem süre sonunda temizlenir.
+sendClick('balonsuz kabul');
+result(lastId(), 'kabul', '999');
+assert.equal(pending().length, 1);
+timers.splice(0).forEach(fn => fn && fn());
+assert.equal(pending().length, 0, 'yedek süre bekleyen balonu kaldırmalı');
+
+// 12) Boş istem gönderilmez.
 input.value = '   ';
 const once = sent.length;
 trigger('click', '#send_stop_btn', btn);

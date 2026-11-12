@@ -255,3 +255,71 @@ testthat::test_that("tam söyleşi listesi explicit modda 'startup_saved_chats' 
   testthat::expect_identical(names(got$value[["11"]]),
                              c("title", "messages", "timestamp", "last_message_timestamp", "message_count"))
 })
+
+# Gerçek db_chat_preview_fetch_raw çalıştırılır; yalnızca DB sınırı (DBI)
+# taklit edilir. Böylece limit -> SQL seçimi dalı doğrudan sınanır.
+.preview_fetch_sql <- function(limit) {
+  .startup_preview_source_once()
+  if (!exists("db_chat_list_summary_query_sql", mode = "function", inherits = TRUE)) {
+    source(file.path(resolve_repo_root_for_tests(), "R", "helpers_db_chat_read_queries.R"),
+           encoding = "UTF-8", local = globalenv())
+  }
+  yakalanan <- new.env(parent = emptyenv())
+  testthat::local_mocked_bindings(
+    dbConnect = function(drv, ...) structure(list(), class = "sahte_baglanti"),
+    dbDisconnect = function(conn, ...) invisible(TRUE),
+    dbGetQuery = function(conn, statement, ...) {
+      yakalanan$sql <- statement
+      .startup_preview_fixture_frame()
+    },
+    .package = "DBI"
+  )
+  db_chat_preview_fetch_raw(42L, limit = limit, dsn = "TestConnection",
+                            encoding = "UTF-8", name_encoding = "UTF-8")
+  yakalanan$sql
+}
+
+testthat::test_that("gerçek getirici açık NA sentinelinde özet SQL'i, diğerlerinde ön izleme SQL'ini seçer", {
+  testthat::skip_if_not_installed("DBI")
+  testthat::skip_if_not_installed("odbc")
+  testthat::expect_identical(.preview_fetch_sql(NA_integer_), db_chat_list_summary_query_sql())
+  testthat::expect_identical(.preview_fetch_sql(NA), db_chat_list_summary_query_sql())
+  testthat::expect_identical(.preview_fetch_sql(6L), db_chat_preview_query_sql(6L))
+  testthat::expect_identical(.preview_fetch_sql(10L), db_chat_preview_query_sql(10L))
+  # Bozuk limitler sessizce sınırsız tam liste sorgusuna dönüşmez.
+  for (bozuk in list("abc", Inf, NaN, 0L, -3L, NULL, NA_character_, c(1L, 2L))) {
+    testthat::expect_identical(.preview_fetch_sql(bozuk), db_chat_preview_query_sql(
+      if (identical(bozuk, c(1L, 2L))) 1L else 6L), info = paste(deparse(bozuk), collapse = ""))
+  }
+})
+
+testthat::test_that("limit normalleştirici yalnızca açık NA'yı tam liste sayar", {
+  .startup_preview_source_once()
+  testthat::expect_true(is.na(mergen_startup_chat_preview_limit(NA_integer_)))
+  testthat::expect_true(is.na(mergen_startup_chat_preview_limit(NA)))
+  testthat::expect_identical(mergen_startup_chat_preview_limit(6L), 6L)
+  for (bozuk in list("abc", Inf, NaN, 0L, -1L, NULL, NA_character_, "NA")) {
+    testthat::expect_identical(mergen_startup_chat_preview_limit(bozuk), 6L,
+                               info = paste(deparse(bozuk), collapse = ""))
+  }
+  # NULL limit gönderim öncesinde hata vermez; ön izleme sözleşmesiyle gider.
+  g <- mergen_startup_chat_preview_globals("42", limit = NULL)
+  testthat::expect_identical(g$startup_preview_limit, 6L)
+  testthat::expect_false("db_chat_list_summary_query_sql" %in% names(g))
+})
+
+testthat::test_that("arka plan tam listesi gönderimden sonraki yerel değişiklikleri ezmez", {
+  .startup_preview_source_once()
+  db <- list("1" = list(title = "DB bir"), "2" = list(title = "DB iki"), "3" = list(title = "DB üç"))
+  anlik <- list("1" = list(title = "Önizleme bir"), "2" = list(title = "Önizleme iki"))
+  # Yerel durum değişmediyse DB sonucu aynen uygulanır.
+  testthat::expect_identical(mergen_saved_chats_merge_newer(db, anlik, anlik), db)
+  # Gönderimden sonra: "2" yeniden adlandırıldı, "9" yeni açıldı, "1" silindi.
+  simdiki <- list("2" = list(title = "Yeni ad çğış"), "9" = list(title = "Yeni söyleşi"))
+  birlesik <- mergen_saved_chats_merge_newer(db, anlik, simdiki)
+  testthat::expect_identical(names(birlesik), c("9", "2", "3"))
+  testthat::expect_identical(birlesik[["2"]]$title, "Yeni ad çğış")
+  testthat::expect_identical(birlesik[["9"]]$title, "Yeni söyleşi")
+  testthat::expect_null(birlesik[["1"]])
+  testthat::expect_identical(birlesik[["3"]]$title, "DB üç")
+})

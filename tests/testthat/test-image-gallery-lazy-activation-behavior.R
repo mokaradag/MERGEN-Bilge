@@ -84,3 +84,41 @@ testthat::test_that("galeri açılışta taranmaz; ilk sayfa açılışında bir
     }
   ))
 })
+
+testthat::test_that("başlangıç hazırlığı galeriyi etkinleştirir; tarama hatası kontrol noktasını kısmen bildirir", {
+  testthat::skip_if_not_installed("shiny")
+
+  scan_recorder <- new.env(parent = emptyenv())
+  scan_recorder$count <- 0L
+  env <- .lazy_gallery_env(scan_recorder)
+  env$scan_user_images <- function(uid) {
+    scan_recorder$count <- scan_recorder$count + 1L
+    stop("görsel klasörü okunamadı (test)")
+  }
+  isaretler <- list()
+  loop <- later::create_loop(parent = NULL)
+  on.exit(later::destroy_loop(loop), add = TRUE)
+
+  later::with_loop(loop, shiny::testServer(
+    env$imageGalleryServer,
+    args = list(id = "ig", current_user_id = function() 7L),
+    {
+      session$userData$mergen_yonetim_hazir <- function(key, label = key, detail = NULL, ...) {
+        isaretler[[length(isaretler) + 1L]] <<- list(key = key, detail = detail)
+      }
+      session$flushReact()
+      # yonetim_hazirla() ile aynı: navigasyon zaman damgası, kullanıcı tıklaması yok.
+      session$setInputs(refresh_gallery = as.numeric(Sys.time()))
+      for (i in seq_len(10L)) {
+        later::run_now(timeoutSecs = 0.1, loop = loop)
+        session$flushReact()
+        if (length(isaretler)) break
+      }
+      testthat::expect_identical(scan_recorder$count, 1L)
+      testthat::expect_length(isaretler, 1L)
+      testthat::expect_identical(isaretler[[1]]$key, "gallery_index_ready")
+      testthat::expect_true(isTRUE(isaretler[[1]]$detail$degraded),
+                            info = "başarısız tarama açılışı bekletmemeli ama 'hazır' da sayılmamalı")
+    }
+  ))
+})

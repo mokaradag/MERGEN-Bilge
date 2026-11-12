@@ -2,8 +2,10 @@
 # Dosya Yolu: tests/testthat/test-chat-pending-bubble-behavior.R
 # Açıklama: İyimser (bekleyen) istem balonu sözleşmesi. İstemci istemi sunucu
 #           turunu beklemeden çizer; sunucu her istem için "kabul"/"ret"
-#           kararını istemci kimliğiyle geri bildirir. Kabul ölçütü kullanıcı
-#           mesajının gerçekten eklenmesidir; hız sınırı/uzunluk/erken ret
+#           kararını istemci kimliğiyle, işleyicinin HER çıkış yolunda tam bir
+#           kez bildirir. Kabul ölçütü kullanıcı mesajının gerçekten
+#           eklenmesidir (mesaj eklendikten sonraki hata "ret" değildir) ve
+#           kabulde eklenen mesajın kimliği döner; hız sınırı/uzunluk/erken ret
 #           yolları "ret" döner ve send_message çağrılmaz. İstemci davranışı
 #           gerçek input_handlers.js ile Node üzerinde doğrulanır.
 # ==============================================================================
@@ -22,9 +24,9 @@
   env
 }
 
-.istem_sunucusu <- function(env, kayit, mesaj_ekle) {
+.istem_sunucusu <- function(env, kayit, mesaj_ekle, gonder = NULL) {
   function(input, output, session) {
-    values <- shiny::reactiveValues(messages = list(), is_sending = FALSE, typing = FALSE)
+    values <- shiny::reactiveValues(messages = kayit$onceki %||% list(), is_sending = FALSE, typing = FALSE)
     yakalayan <- list(
       sendCustomMessage = function(type, message) {
         kayit$mesajlar[[length(kayit$mesajlar) + 1L]] <- list(type = type, message = message)
@@ -37,8 +39,10 @@
       reset_chat_state = function() NULL,
       send_message = function(text) {
         kayit$gonderilen <- c(kayit$gonderilen, text)
+        if (is.function(gonder)) return(gonder(text, values))
         if (isTRUE(mesaj_ekle)) {
-          values$messages <- append(shiny::isolate(values$messages), list(list(type = "user", content = text)))
+          values$messages <- append(shiny::isolate(values$messages),
+                                    list(list(id = "msg_42", type = "user", content = text)))
         }
       },
       current_user_id = 7L, file_manager_data = NULL, session_files = shiny::reactiveVal(list()),
@@ -62,7 +66,76 @@ testthat::test_that("kabul edilen istem istemci kimliğiyle 'kabul' olarak bildi
   sonuc <- .istem_sonuclari(kayit)
   testthat::expect_identical(kayit$gonderilen, "Merhaba çğış")
   testthat::expect_length(sonuc, 1L)
-  testthat::expect_identical(sonuc[[1]]$message, list(client_id = "istem_abc_1", durum = "kabul"))
+  testthat::expect_identical(sonuc[[1]]$message,
+                             list(client_id = "istem_abc_1", durum = "kabul", mesaj_id = "msg_42"))
+})
+
+.gozlemci_hatalari <- function(expr) {
+  hatalar <- character()
+  withCallingHandlers(
+    tryCatch(expr, error = function(e) hatalar <<- c(hatalar, conditionMessage(e))),
+    warning = function(w) {
+      hatalar <<- c(hatalar, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+  hatalar
+}
+
+.yeni_kayit <- function() {
+  kayit <- new.env(); kayit$mesajlar <- list(); kayit$gonderilen <- character(); kayit$toast <- character()
+  kayit
+}
+
+testthat::test_that("mesaj eklendikten sonra hata veren gönderim 'ret' değil 'kabul' bildirilir", {
+  testthat::skip_if_not_installed("shiny")
+  kayit <- .yeni_kayit()
+  env <- .istem_ortami(kayit)
+  # Önceden var olan mesaj, kimlik tabanlı tespitin eski mesajı saymadığını da doğrular.
+  kayit$onceki <- list(list(id = "msg_1", type = "user", content = "eski"))
+  gonder <- function(text, values) {
+    values$messages <- append(shiny::isolate(values$messages),
+                              list(list(id = "msg_7", type = "user", content = text)))
+    stop("model hazırlığı başarısız (test)")
+  }
+  hata <- .gozlemci_hatalari(shiny::testServer(.istem_sunucusu(env, kayit, mesaj_ekle = FALSE, gonder = gonder), {
+    session$setInputs(send_prompt_from_js = list(text = "eklendi sonra hata", nonce = 6, client_id = "istem_hata_1"))
+  }))
+  sonuc <- .istem_sonuclari(kayit)
+  testthat::expect_length(sonuc, 1L)
+  testthat::expect_identical(sonuc[[1]]$message$durum, "kabul")
+  testthat::expect_identical(sonuc[[1]]$message$mesaj_id, "msg_7")
+  # Hata yutulmaz; yukarı taşınır.
+  testthat::expect_true(any(grepl("model hazırlığı başarısız", hata, fixed = TRUE)))
+})
+
+testthat::test_that("mesaj eklemeden hata veren gönderim tam bir kez 'ret' bildirir", {
+  testthat::skip_if_not_installed("shiny")
+  kayit <- .yeni_kayit()
+  env <- .istem_ortami(kayit)
+  gonder <- function(text, values) stop("erken hata (test)")
+  hata <- .gozlemci_hatalari(shiny::testServer(.istem_sunucusu(env, kayit, mesaj_ekle = FALSE, gonder = gonder), {
+    session$setInputs(send_prompt_from_js = list(text = "erken hata", nonce = 7, client_id = "istem_hata_2"))
+  }))
+  testthat::expect_true(any(grepl("erken hata", hata, fixed = TRUE)))
+  sonuc <- .istem_sonuclari(kayit)
+  testthat::expect_length(sonuc, 1L)
+  testthat::expect_identical(sonuc[[1]]$message, list(client_id = "istem_hata_2", durum = "ret"))
+})
+
+testthat::test_that("hız sınırı denetimi hata verse bile istem sonucu bildirilir (kilit kalmaz)", {
+  testthat::skip_if_not_installed("shiny")
+  kayit <- .yeni_kayit()
+  env <- .istem_ortami(kayit)
+  env$check_rate_limit <- function(...) stop("hız sınırı deposu okunamadı (test)")
+  hata <- .gozlemci_hatalari(shiny::testServer(.istem_sunucusu(env, kayit, mesaj_ekle = TRUE), {
+    session$setInputs(send_prompt_from_js = list(text = "kilit", nonce = 8, client_id = "istem_hata_3"))
+  }))
+  testthat::expect_true(any(grepl("hız sınırı deposu", hata, fixed = TRUE)))
+  testthat::expect_length(kayit$gonderilen, 0L)
+  sonuc <- .istem_sonuclari(kayit)
+  testthat::expect_length(sonuc, 1L)
+  testthat::expect_identical(sonuc[[1]]$message$durum, "ret")
 })
 
 testthat::test_that("mesaj eklemeden dönen gönderim 'ret' olarak bildirilir", {

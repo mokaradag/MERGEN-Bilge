@@ -573,6 +573,8 @@ ortak_db_oturum_listesi <- function(kullanici_id,
                                     sadece_davetler = FALSE,
                                     conn = NULL) {
   bos <- data.frame()
+  # Okuma hatası, geçerli boş listeden ayırt edilebilsin diye işaretlenir.
+  bos_hata <- structure(data.frame(), mergen_okuma_hatasi = TRUE)
 
   kullanici_id <- .oo_db_pos_int(kullanici_id)
   if (is.na(kullanici_id)) {
@@ -581,7 +583,7 @@ ortak_db_oturum_listesi <- function(kullanici_id,
 
   handle <- .oo_db_try(.oo_db_acquire(conn), fallback = NULL)
   if (is.null(handle)) {
-    return(bos)
+    return(bos_hata)
   }
   on.exit(.oo_db_release(handle), add = TRUE)
 
@@ -637,20 +639,33 @@ ortak_db_oturum_listesi <- function(kullanici_id,
       df
     }
   },
-  fallback = bos,
+  fallback = bos_hata,
   uyari = "Ortak oturum listesi okunamadı:")
 
-  .oo_db_restore_visible(sonuc, c("Baslik"))
+  okuma_hatasi <- isTRUE(attr(sonuc, "mergen_okuma_hatasi"))
+  sonuc <- .oo_db_restore_visible(sonuc, c("Baslik"))
+  if (okuma_hatasi) attr(sonuc, "mergen_okuma_hatasi") <- TRUE
+  sonuc
 }
 
 # Oturum içi Ortak Söyleşiler listesi önbelleği (kullanıcıya bağlı). Önbellek
-# boşsa veya kimlik değiştiyse liste yeniden okunur; zaman damgası sekme
-# yenilemesinin seyreltilmesi için tutulur.
-ortak_db_sohbet_listesi_onbellekten <- function(onbellek, kullanici_id) {
-  if (is.null(onbellek$df) || !identical(onbellek$uid, kullanici_id)) {
-    onbellek$df <- ortak_db_oturum_listesi(kullanici_id, kaynak_turu = "NormalSohbet")
+# boşsa, kimlik değiştiyse ya da ttl_sn'den eskiyse liste yeniden okunur.
+# Okuma hatası (geçici DB sorunu) taze ve geçerli bir boş liste olarak
+# önbelleğe ALINMAZ; bir sonraki istek yeniden dener.
+ortak_db_sohbet_listesi_onbellekten <- function(onbellek, kullanici_id, ttl_sn = 60) {
+  son <- onbellek$zaman
+  if (!is.null(onbellek$df) && identical(onbellek$uid, kullanici_id) && !is.null(son) &&
+      as.numeric(difftime(Sys.time(), son, units = "secs")) < ttl_sn) {
+    return(onbellek$df)
+  }
+  df <- ortak_db_oturum_listesi(kullanici_id, kaynak_turu = "NormalSohbet")
+  if (isTRUE(attr(df, "mergen_okuma_hatasi"))) {
+    onbellek$df <- NULL
+    onbellek$zaman <- NULL
+  } else {
+    onbellek$df <- df
     onbellek$uid <- kullanici_id
     onbellek$zaman <- Sys.time()
   }
-  onbellek$df
+  df
 }
