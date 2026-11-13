@@ -271,6 +271,10 @@ Fix (`R/server_observers_startup.R` + `R/module_startup_lane.R` bridge):
   preview was applied or the background load failed. The fast-lane closing contract is unchanged, and
   `saved_chats_full_loaded` is now logged when that background load completes.
 - Rich lane keeps the existing behavior (sync preview + background full load).
+  Its `management_pages_ready` checkpoint covers only data prepared off the event
+  loop: the full list and the first Söyleşi Geçmişi page (both read in workers with a
+  bounded query budget, `mergen.startup_db_query_timeout_secs`, default 60 s). Görsel
+  Galerisi and Ortak Söyleşiler stay lazy (first visit) and are named in `detail$tembel`.
 - The lazy full load re-resolves the effective user id at run time; invalid ids never
   load. Clients without the lane API get a `legacy_no_api` rich_lane bridge signal so
   the gate can never deadlock. Fast-lane closing contract unchanged

@@ -19,15 +19,76 @@
 #           ile yapılır. Böylece merkezi encoding sözleşmesi değişmeden kalır.
 # ==============================================================================
 
+# İşçi tarafı SINIRLI ham DB okuması (açık işçi sözleşmeleri ortak kullanır).
+# Asılı kalan bir sorgu işçiyi süresiz tutmaz: query_timeout verildiğinde
+# bağlantı + sorgu toplam süresi setTimeLimit ile sınırlanır, sürücü kesilebilir
+# (interruptible) açılır ve kilit beklemesi LOCK_TIMEOUT ile aynı bütçeye
+# bağlanır (helpers_ai_expert_greeting_topic.R deseni). Süre dolunca okuma hata
+# verir; promise reddedilir ve işçi serbest kalır. Bağlantı her yolda kapanır.
+mergen_bounded_db_fetch_raw <- function(sql, params, dsn, encoding, name_encoding,
+                                        login_timeout = NA_integer_,
+                                        query_timeout = NA_real_) {
+  if (is.null(dsn) || !nzchar(as.character(dsn)[1])) {
+    stop("mergen_bounded_db_fetch_raw: DSN bulunamadı.", call. = FALSE)
+  }
+  if (!requireNamespace("DBI", quietly = TRUE) ||
+      !requireNamespace("odbc", quietly = TRUE)) {
+    stop("mergen_bounded_db_fetch_raw: 'DBI' ve 'odbc' paketleri gereklidir.", call. = FALSE)
+  }
+
+  sure_sn <- suppressWarnings(as.numeric(query_timeout[1]))
+  sinirli <- length(sure_sn) == 1L && is.finite(sure_sn) && sure_sn > 0
+  if (sinirli) {
+    # Önce kaydedilir, önce çalışır: bağlantı kapatma süre sınırına takılmaz.
+    setTimeLimit(elapsed = sure_sn, transient = TRUE)
+    on.exit(setTimeLimit(elapsed = Inf), add = TRUE)
+  }
+
+  connect_started <- Sys.time()
+  baglanti_args <- list(
+    odbc::odbc(),
+    dsn = as.character(dsn)[1],
+    encoding = as.character(encoding)[1],
+    name_encoding = as.character(name_encoding)[1]
+  )
+  # get_connection() ile aynı login sınırı: yapılandırılmış süre varsa sürücüye
+  # iletilir; yoksa sürücü varsayılanı korunur (timeout HİÇ geçilmez).
+  login_timeout <- suppressWarnings(as.integer(login_timeout[1]))
+  if (length(login_timeout) == 1L && !is.na(login_timeout) && login_timeout >= 1L) {
+    baglanti_args$timeout <- login_timeout
+  }
+  if (sinirli) baglanti_args$interruptible <- TRUE
+  conn <- do.call(DBI::dbConnect, baglanti_args)
+  on.exit(try(DBI::dbDisconnect(conn), silent = TRUE), add = TRUE)
+  connect_ms <- as.numeric(difftime(Sys.time(), connect_started, units = "secs")) * 1000
+  if (sinirli) {
+    # SQL Server üst sınırı (ms) aşılmaz; tam sayı taşması NA üretmez.
+    kilit_ms <- as.integer(min(sure_sn, 2147483) * 1000)
+    try(DBI::dbExecute(conn, sprintf("SET LOCK_TIMEOUT %d", kilit_ms)), silent = TRUE)
+  }
+
+  query_started <- Sys.time()
+  veri <- DBI::dbGetQuery(conn, sql, params = params)
+  query_ms <- as.numeric(difftime(Sys.time(), query_started, units = "secs")) * 1000
+
+  attr(veri, "mergen_preview_perf") <- list(
+    connect_ms = connect_ms,
+    query_ms = query_ms
+  )
+
+  veri
+}
+
 # İşçi tarafı ham ön izleme sorgusu. Bağımlılık sözleşmesi bilinçli olarak
-# dardır: DBI + odbc + db_chat_preview_query_sql. Bağlantı her yolda kapatılır.
+# dardır: DBI + odbc + SQL üreticileri + mergen_bounded_db_fetch_raw.
 # Kullanıcı kimliği geçersizse bağlantı hiç açılmaz.
 db_chat_preview_fetch_raw <- function(user_id,
                                       limit,
                                       dsn,
                                       encoding,
                                       name_encoding,
-                                      login_timeout = NA_integer_) {
+                                      login_timeout = NA_integer_,
+                                      query_timeout = NA_real_) {
   safe_user_id <- suppressWarnings(as.integer(user_id[1]))
   if (is.na(safe_user_id) || safe_user_id <= 0L) {
     return(NULL)
@@ -49,42 +110,12 @@ db_chat_preview_fetch_raw <- function(user_id,
     stop("db_chat_preview_fetch_raw: DSN bulunamadı.", call. = FALSE)
   }
 
-  if (!requireNamespace("DBI", quietly = TRUE) ||
-      !requireNamespace("odbc", quietly = TRUE)) {
-    stop("db_chat_preview_fetch_raw: 'DBI' ve 'odbc' paketleri gereklidir.", call. = FALSE)
-  }
-
-  connect_started <- Sys.time()
-  baglanti_args <- list(
-    odbc::odbc(),
-    dsn = as.character(dsn)[1],
-    encoding = as.character(encoding)[1],
-    name_encoding = as.character(name_encoding)[1]
-  )
-  # get_connection() ile aynı login sınırı: yapılandırılmış süre varsa sürücüye
-  # iletilir; yoksa sürücü varsayılanı korunur (timeout HİÇ geçilmez).
-  login_timeout <- suppressWarnings(as.integer(login_timeout[1]))
-  if (length(login_timeout) == 1L && !is.na(login_timeout) && login_timeout >= 1L) {
-    baglanti_args$timeout <- login_timeout
-  }
-  conn <- do.call(DBI::dbConnect, baglanti_args)
-  on.exit(try(DBI::dbDisconnect(conn), silent = TRUE), add = TRUE)
-  connect_ms <- as.numeric(difftime(Sys.time(), connect_started, units = "secs")) * 1000
-
-  query_started <- Sys.time()
-  preview_data <- DBI::dbGetQuery(
-    conn,
+  mergen_bounded_db_fetch_raw(
     if (tam_liste) db_chat_list_summary_query_sql() else db_chat_preview_query_sql(safe_limit),
-    params = list(safe_user_id)
+    params = list(safe_user_id),
+    dsn = dsn, encoding = encoding, name_encoding = name_encoding,
+    login_timeout = login_timeout, query_timeout = query_timeout
   )
-  query_ms <- as.numeric(difftime(Sys.time(), query_started, units = "secs")) * 1000
-
-  attr(preview_data, "mergen_preview_perf") <- list(
-    connect_ms = connect_ms,
-    query_ms = query_ms
-  )
-
-  preview_data
 }
 
 # Ana süreç tarafı: ham ön izleme çerçevesini görünür-metin normalizasyonundan
@@ -154,6 +185,10 @@ mergen_startup_chat_preview_limit <- function(limit) {
 # DB'de de bulunan söyleşide yalnızca yerelde DEĞİŞEN alanlar uygulanır (ör. ad
 # değişimi DB'nin daha yeni sayı/zamanını ezmez); etkinliği yerelde ilerleyen
 # söyleşi başa taşınır. Yerel durum değişmediyse DB sonucu aynen uygulanır.
+# Gönderim anında var olup DB sonucunda olmayan söyleşi (başka oturumda
+# silindi) yerel değişikliği olsa da geri getirilmez; yalnızca gönderimden
+# SONRA yerelde açılan söyleşiler korunur. DB'de etkinliği (mesaj sayısı)
+# yereldekinden ileride olan söyleşide etkinlik alanları DB'den kalır.
 # (Silme/Tümünü Temizle sonrası sonuç çağıran tarafından hiç uygulanmaz.)
 mergen_saved_chats_merge_newer <- function(db_chats, dispatch_snapshot, current) {
   db_chats <- db_chats %||% list()
@@ -165,6 +200,8 @@ mergen_saved_chats_merge_newer <- function(db_chats, dispatch_snapshot, current)
   silinen <- setdiff(names(dispatch_snapshot), names(current))
   birlesik <- db_chats[setdiff(names(db_chats), silinen)]
   degisen <- Filter(function(k) !identical(current[[k]], dispatch_snapshot[[k]]), names(current))
+  etkinlik_alanlari <- c("last_message_timestamp", "message_count")
+  sayi <- function(x) suppressWarnings(as.integer(x %||% NA_integer_)[1])
   etkin <- character()
   for (k in intersect(degisen, names(birlesik))) {
     once <- dispatch_snapshot[[k]]
@@ -172,15 +209,20 @@ mergen_saved_chats_merge_newer <- function(db_chats, dispatch_snapshot, current)
       birlesik[[k]] <- current[[k]]
       next
     }
+    # Başka oturum daha sonra mesaj eklediyse DB'nin sayı/zaman çifti daha yenidir.
+    db_daha_yeni <- isTRUE(sayi(birlesik[[k]]$message_count) > sayi(current[[k]]$message_count))
     for (alan in names(current[[k]])) {
+      if (db_daha_yeni && alan %in% etkinlik_alanlari) next
       if (!identical(current[[k]][[alan]], once[[alan]])) birlesik[[k]][alan] <- list(current[[k]][[alan]])
     }
-    if (!identical(current[[k]]$last_message_timestamp, once$last_message_timestamp) ||
-        !identical(current[[k]]$message_count, once$message_count)) {
+    if (!db_daha_yeni &&
+        (!identical(current[[k]]$last_message_timestamp, once$last_message_timestamp) ||
+         !identical(current[[k]]$message_count, once$message_count))) {
       etkin <- c(etkin, k)
     }
   }
-  c(current[setdiff(degisen, names(birlesik))], birlesik[etkin], birlesik[setdiff(names(birlesik), etkin)])
+  yerel_yeni <- setdiff(setdiff(degisen, names(birlesik)), names(dispatch_snapshot))
+  c(current[yerel_yeni], birlesik[etkin], birlesik[setdiff(names(birlesik), etkin)])
 }
 
 # Yapılandırılmış DB login sınırı (MERGEN_DB_LOGIN_TIMEOUT_SEC); plan yoksa NA.
@@ -192,26 +234,43 @@ mergen_startup_chat_preview_login_timeout <- function() {
   if (is.list(plan) && identical(plan$mode, "bounded")) as.integer(plan$timeout) else NA_integer_
 }
 
+# Açılış DB işçilerinin ortak skaler yapılandırması (ana süreçte çözülür).
+# Sorgu süre bütçesi işçinin asılı bir sorguda süresiz tutulmasını önler;
+# mergen.startup_db_query_timeout_secs ile ayarlanabilir (varsayılan 60 sn).
+mergen_startup_db_worker_config <- function() {
+  default_dsn <- get0(".DEFAULT_DSN", ifnotfound = "TestConnection")
+  sure <- suppressWarnings(as.numeric(getOption("mergen.startup_db_query_timeout_secs", 60))[1])
+  if (length(sure) != 1L || !is.finite(sure) || sure <= 0) sure <- 60
+  list(
+    dsn = Sys.getenv("DB_DSN", default_dsn),
+    encoding = get0(".DEFAULT_DB_CLIENT_ENCODING", ifnotfound = "UTF-8"),
+    name_encoding = get0(
+      ".DEFAULT_DB_NAME_ENCODING",
+      ifnotfound = get0(".DEFAULT_DB_CLIENT_ENCODING", ifnotfound = "UTF-8")
+    ),
+    # get_connection() ile aynı login sınırı planı (NA = sürücü varsayılanı).
+    login_timeout = mergen_startup_chat_preview_login_timeout(),
+    query_timeout = sure
+  )
+}
+
 # Açık worker-export sözleşmesi: yalnızca aşağıdaki adlar worker'a taşınır.
 # Bu listeye oturum/reaktif nesne, bağlantı ya da geniş yardımcı zinciri
 # EKLENMEZ; sözleşme test-startup-chat-preview-behavior.R ile kilitlidir.
 mergen_startup_chat_preview_globals <- function(user_id, limit = 6L) {
-  default_dsn <- get0(".DEFAULT_DSN", ifnotfound = "TestConnection")
+  yapilandirma <- mergen_startup_db_worker_config()
 
   sozlesme <- list(
     startup_preview_user_id = suppressWarnings(as.integer(user_id[1])),
     startup_preview_limit = mergen_startup_chat_preview_limit(limit),
-    startup_preview_dsn = Sys.getenv("DB_DSN", default_dsn),
-    startup_preview_encoding = get0(".DEFAULT_DB_CLIENT_ENCODING", ifnotfound = "UTF-8"),
-    # get_connection() ile aynı login sınırı planı (ana süreçte çözülür; NA =
-    # sürücü varsayılanı).
-    startup_preview_login_timeout = mergen_startup_chat_preview_login_timeout(),
-    startup_preview_name_encoding = get0(
-      ".DEFAULT_DB_NAME_ENCODING",
-      ifnotfound = get0(".DEFAULT_DB_CLIENT_ENCODING", ifnotfound = "UTF-8")
-    ),
+    startup_preview_dsn = yapilandirma$dsn,
+    startup_preview_encoding = yapilandirma$encoding,
+    startup_preview_login_timeout = yapilandirma$login_timeout,
+    startup_preview_query_timeout = yapilandirma$query_timeout,
+    startup_preview_name_encoding = yapilandirma$name_encoding,
     db_chat_preview_fetch_raw = db_chat_preview_fetch_raw,
-    db_chat_preview_query_sql = db_chat_preview_query_sql
+    db_chat_preview_query_sql = db_chat_preview_query_sql,
+    mergen_bounded_db_fetch_raw = mergen_bounded_db_fetch_raw
   )
   # Tam liste modu yalnızca özet SQL üreticisini ekler (oturum/bağlantı yok).
   if (is.na(sozlesme$startup_preview_limit)) {
@@ -220,9 +279,33 @@ mergen_startup_chat_preview_globals <- function(user_id, limit = 6L) {
   sozlesme
 }
 
+# Büyük tam listede normalizasyon + biçimlendirme olay döngüsünü tek geri
+# çağrıda tutmaz: dilim satırlık parçalar ayrı döngü turlarında işlenir (diğer
+# oturumlar arada ilerler). Normalizasyon değer başınadır; dilimleme sonucu
+# değiştirmez. Küçük listeler (ön izleme) doğrudan biçimlendirilir.
+mergen_startup_chat_preview_format_staged <- function(raw_frame, dilim = 500L) {
+  n <- if (is.data.frame(raw_frame)) nrow(raw_frame) else 0L
+  if (n <= dilim) {
+    return(db_chat_preview_format_frame(raw_frame))
+  }
+  promises::promise(function(resolve, reject) {
+    parcalar <- list()
+    bas <- 1L
+    adim <- function() {
+      tryCatch({
+        son <- min(n, bas + dilim - 1L)
+        parcalar[[length(parcalar) + 1L]] <<- db_chat_preview_format_frame(raw_frame[bas:son, , drop = FALSE])
+        bas <<- son + 1L
+        if (bas > n) resolve(do.call(c, parcalar)) else later::later(adim, 0)
+      }, error = function(e) reject(e))
+    }
+    adim()
+  })
+}
+
 # Hızlı Başlangıç ön izleme gönderimi: explicit modda tarama/serileştirme
-# maliyeti olmadan worker'a gider; 6 satırlık sonuç ana süreçte normalize
-# edilip biçimlendirilir. Dönen promise biçimlendirilmiş listeyi çözer.
+# maliyeti olmadan worker'a gider; sonuç ana süreçte normalize edilip
+# biçimlendirilir (tam listede dilimlerle). Dönen promise listeyi çözer.
 mergen_startup_chat_preview_promise <- function(user_id,
                                                 limit = 6L,
                                                 session_token = NULL) {
@@ -236,6 +319,7 @@ mergen_startup_chat_preview_promise <- function(user_id,
   startup_preview_encoding <- preview_globals$startup_preview_encoding
   startup_preview_name_encoding <- preview_globals$startup_preview_name_encoding
   startup_preview_login_timeout <- preview_globals$startup_preview_login_timeout
+  startup_preview_query_timeout <- preview_globals$startup_preview_query_timeout
 
   raw_promise <- tracked_future_promise(
     task_fn = function() {
@@ -245,7 +329,8 @@ mergen_startup_chat_preview_promise <- function(user_id,
         dsn = startup_preview_dsn,
         encoding = startup_preview_encoding,
         name_encoding = startup_preview_name_encoding,
-        login_timeout = startup_preview_login_timeout
+        login_timeout = startup_preview_login_timeout,
+        query_timeout = startup_preview_query_timeout
       )
     },
     task_type = if (is.na(startup_preview_limit)) "startup_saved_chats" else "startup_saved_chats_preview",
@@ -265,6 +350,6 @@ mergen_startup_chat_preview_promise <- function(user_id,
         if (is.data.frame(raw_frame)) nrow(raw_frame) else 0L
       ))
     }
-    db_chat_preview_format_frame(raw_frame)
+    mergen_startup_chat_preview_format_staged(raw_frame)
   })
 }

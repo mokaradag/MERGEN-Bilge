@@ -68,13 +68,13 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
   # management_pages_ready anahtarını bootReadinessInit() üretir.
   # Tek seferlik: tekrarlayan tarama/ziyaretler yinelenen bildirim üretmez.
   session$userData$mergen_yonetim_hazir <- if (is.function(boot_ready$mark_once)) boot_ready$mark_once else mark_boot
-  # Sayfa hazırlığı, navigasyon gözlemcisiyle aynı desende modül girdileri
-  # üzerinden ve tarayıcı boştayken (düşük öncelik) tetiklenir. Galeri burada
-  # taranmaz (tembel kalır): dizin taraması olay döngüsünü tutabilir.
+  # Sayfa hazırlığı, navigasyon gözlemcisiyle aynı desende modül girdisi
+  # üzerinden ve tarayıcı boştayken (düşük öncelik) tetiklenir. Yalnızca geçmiş
+  # ilk sayfası hazırlanır (DB okuması işçide). Galeri ve Ortak Söyleşiler
+  # burada okunmaz (ilk ziyarette): eşzamanlı okumaları olay döngüsünü tutardı.
   yonetim_hazirla <- function() {
     shinyjs::runjs(sprintf(paste0(
-      "(function(){var t=%s;var f=function(){['history_module-hazirla',",
-      "'ortak_calismalar_module-hazirla'].forEach(",
+      "(function(){var t=%s;var f=function(){['history_module-hazirla'].forEach(",
       "function(id){Shiny.setInputValue(id,t,{priority:'event'});});};",
       "if(window.requestIdleCallback){requestIdleCallback(f,{timeout:1500});}else{setTimeout(f,0);}})();"
     ), as.numeric(Sys.time())))
@@ -390,6 +390,14 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		startup_state$initial_saved_chats_status <- "deferred"
 		session$userData$saved_chats_full_pending <- TRUE
 		cat("[STARTUP] Tam söyleşi yüklemesi: geçerli kullanıcı kimliği yok, ertelendi\n")
+		# Zengin Deneyim kimliksiz sonsuza dek beklemez: durum "kısmen" bildirilir.
+		# Bu yalnızca açılış göstergesidir, veri erişimi açmaz (her okuma kimliği
+		# yeniden doğrular). Kimlik gelince sahip yenilemesi anahtarları sıfırlar.
+		if (!isTRUE(fast_lane)) {
+		  session$userData$mergen_yonetim_hazir("management_pages_ready",
+		    "Kullanıcı kimliği bekleniyor; Söyleşi Yönetimi kimlik doğrulanınca hazırlanacak",
+		    detail = list(degraded = TRUE, identity = FALSE))
+		}
 		return(invisible(NULL))
 	  }
 
@@ -468,7 +476,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			  # Tam liste geldiğinde karşılama ekranını güncelle.
 			  refresh_welcome_if_needed(chats)
 			})
-			# Tam liste hazır: geçmiş/galeri/ortak sayfaları arka planda hazırlanır.
+			# Tam liste hazır: geçmiş ilk sayfası arka planda (işçide) hazırlanır.
 			yonetim_hazirla()
 
 			NULL
@@ -494,7 +502,11 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		  session$userData$mergen_yonetim_hazir("management_pages_ready",
 		            "Söyleşi listesi yüklenemedi; sayfa açıldığında yeniden denenecek",
 		            detail = list(degraded = TRUE))
-		  warning(sprintf("[SERVER] Initial saved chat load failed: %s", conditionMessage(err)))
+		  # Sürücü hatası DSN/sunucu adı taşıyabilir; günlüğe maskelenmiş yazılır.
+		  hata_metni <- if (exists("redacted_condition_message", mode = "function")) {
+			redacted_condition_message(err)
+		  } else "(ayrıntı gizlendi)"
+		  warning(sprintf("[SERVER] Initial saved chat load failed: %s", hata_metni))
 		  NULL
 		}
 	  )
@@ -591,7 +603,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  # Sahibe özgü hazır-olma anahtarları yeni sahip için baştan bildirilir.
 	  if (is.function(boot_ready$reset)) {
 		boot_ready$reset(c("saved_chats_full_loaded", "history_rows_ready",
-		                   "ortak_list_ready", "management_pages_ready"))
+		                   "management_pages_ready"))
 	  }
 	  # Yeni sahibin listesi boşsa önceki sahibin söyleşileri görünmez.
 	  values$saved_chats <- list()

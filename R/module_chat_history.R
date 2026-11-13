@@ -130,6 +130,10 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
     # Isıtma sürerken gelen senkronizasyonların hazır-olma geri çağrıları;
     # zincir tamamlanınca nihai sonuçla çağrılır (erken "hazır" bildirilmez).
     isitma$bekleyenler <- list()
+    # Geçmiş etkinleştirildi mi (sekme ziyareti/yenileme/hazırlık): önbellek
+    # uzunluğundan ayrı tutulur; başarısız okuma önbelleği boşaltsa da liste
+    # değişince senkronizasyon sürer (açık sayfa boş kalmaz).
+    isitma$etkin <- FALSE
 
     stamp_for_chat <- function(chat_info) {
       stamp_obj <- chat_info$last_message_timestamp %||% chat_info$timestamp %||% NA
@@ -357,10 +361,17 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
     # partiler tabloyu yeniden çizmez, yayın sonda tek seferdir. Isıtma
     # sürerken yeni gelen (planlanmamış) söyleşiler en çok 60'lık tek turda alınır.
     history_sync <- function(chat_ids, chats, on_done = NULL) {
+      isitma$etkin <- TRUE
       gerekli <- history_ids_needing_fetch(chat_ids, chats, shiny::isolate(messages_cache()), stamp_for_chat)
       if (isTRUE(isitma$aktif)) gerekli <- setdiff(gerekli, isitma$planli)
       if (length(gerekli) <= 60L || isTRUE(isitma$aktif)) {
-        basarili <- ensure_history_cache(utils::head(gerekli, 60L), chats, invalidate = TRUE)
+        parti <- utils::head(gerekli, 60L)
+        # Isıtma sürerken denenen kimlikler de zincire damgasıyla yazılır: aynı
+        # damgayla başarısız olan, zincir bitince bu nesilde yeniden planlanmaz.
+        if (isTRUE(isitma$aktif) && length(parti)) {
+          isitma$zincir[parti] <- history_stamps(parti, chats, stamp_for_chat)
+        }
+        basarili <- ensure_history_cache(parti, chats, invalidate = TRUE)
         if (is.function(on_done)) {
           # Isıtma sürüyorsa planlı partiler henüz yazılmamış olabilir: sonuç
           # zincir tamamlanınca bildirilir.
@@ -381,12 +392,14 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
       # yalnızca zincirde olmayan ya da damgası o zamandan beri DEĞİŞEN
       # söyleşiler yeniden planlanır. Aynı damgayla başarısız olan yeniden
       # denenmez: damga yalnızca gerçek etkinlikle değiştiği için döngü oluşmaz.
-      isitma$zincir[kalan] <- vapply(kalan, function(id) stamp_for_chat(chats[[id]]), character(1))
+      isitma$zincir[kalan] <- history_stamps(kalan, chats, stamp_for_chat)
       nesil <- isitma$nesil
       historyBackgroundWarm(
         session, kalan, chats,
         ensure_history_cache = function(parti, chats) {
-          ensure_history_cache(parti, shiny::isolate(latest_chats()), invalidate = FALSE)
+          # Planlandıktan sonra etkin tarih aralığından çıkan söyleşi okunmaz.
+          ensure_history_cache(intersect(parti, aralik_kimlikleri()), shiny::isolate(latest_chats()),
+                               invalidate = FALSE)
         },
         batch_size = 60L, delay_sec = 0.05,
         is_current = function() identical(isitma$nesil, nesil),
@@ -406,13 +419,17 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
           yeni <- adaylar[vapply(adaylar, function(id) {
             !identical(unname(isitma$zincir[id]), stamp_for_chat(guncel[[id]]))
           }, logical(1))]
-          if (length(yeni)) {
-            history_sync(yeni, guncel, on_done = function(ok) {
-              for (fn in bekleyenler) fn(isTRUE(tamam) && isTRUE(ok))
-            })
-          } else {
-            for (fn in bekleyenler) fn(isTRUE(basarili) && isTRUE(tamam))
+          # Sonuç eski partilerin bayrağından değil, GÜNCEL gerekli kayıtlardan
+          # türetilir: başarısız partideki söyleşi damgası değişip yeniden
+          # başarıyla okunduysa hazır-olma "kısmen" kalmaz; aynı damgayla
+          # okunamayan söyleşi önbellekte eksik kaldığı için "kısmen"dir.
+          gereken <- union(kalan, yeni)
+          bitir <- function(ok = TRUE) {
+            son <- history_all_cached(intersect(gereken, aralik_kimlikleri()), shiny::isolate(latest_chats()),
+                                      shiny::isolate(messages_cache()), stamp_for_chat)
+            for (fn in bekleyenler) fn(son)
           }
+          if (length(yeni)) history_sync(yeni, guncel, on_done = bitir) else bitir()
         }
       )
       invisible(basarili)
@@ -480,7 +497,7 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
 
       # Geçmiş sekmesi henüz açılmadıysa başlangıçta ağır ön yükleme yapma.
       # Kullanıcı geçmişi ilk kez açtığında veya elle yenilediğinde doldurulacak.
-      if (length(messages_cache()) > 0) {
+      if (isTRUE(isitma$etkin) || length(messages_cache()) > 0) {
         refresh_history_cache(
           chats = chats,
           force = FALSE,
@@ -634,23 +651,35 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
     }
 
     # Yerinde içerik düzenlemesi (galeriden görsel silme) damgayı değiştirmez;
-    # ilgili kayıtlar düşer ve sonraki ziyarette yeniden okunur.
-    session$userData$mergen_gecmis_onbellek_dusur <- history_cache_dropper(messages_cache)
+    # ilgili kayıtlar düşer ve tablo yeniden yayınlanır (silinmiş görselin
+    # alıntısı tabloda kalmaz). Düşen söyleşiler sonraki ziyarette okunur.
+    session$userData$mergen_gecmis_onbellek_dusur <- history_cache_dropper(messages_cache, yayin_sayaci = trigger_refresh)
 
     # Sahip değişiminde eski sahibin önbelleği ve süren planı düşer.
     if (exists("mergen_session_on_owner_change", mode = "function", inherits = TRUE)) {
       mergen_session_on_owner_change(session, function(neden) {
         gecersiz_kil()
+        isitma$etkin <- FALSE
         messages_cache(list())
       })
     }
 
-    # Arka plan hazırlığı SINIRLIDIR: yalnızca en yeni 60 söyleşi (ilk sayfa
-    # için fazlasıyla yeterli) tek sorguda hazırlanır; tüm geçmiş her oturumda
-    # açılışta ısıtılmaz. Kalanı sayfa açıldığında partilerle doldurulur.
+    # Arka plan hazırlığı SINIRLIDIR ve olay döngüsünü tutmaz: yalnızca en yeni
+    # 60 söyleşinin eksik/bayat satırları mevcut açık işçi sınırında tek
+    # sorguyla okunur (DB beklemesi ana süreçte olmaz, süre bütçelidir). Sonuç,
+    # gönderimdeki önbellek nesli ve sahip hâlâ geçerliyse gönderim anındaki
+    # damgalarla yazılır; damgası arada değişen söyleşi sonraki ziyarette
+    # yeniden okunur. Kimlik yoksa okuma yapılmaz, durum "kısmen" bildirilir.
     observeEvent(input$hazirla, {
-      basarili <- ensure_history_cache(utils::head(aralik_kimlikleri(), 60L), latest_chats(), invalidate = TRUE)
-      hazir_bildir(basarili)
+      chats <- latest_chats()
+      ids <- history_ids_needing_fetch(utils::head(aralik_kimlikleri(), 60L), chats,
+                                       messages_cache(), stamp_for_chat)
+      if (!length(ids)) return(hazir_bildir(TRUE))
+      history_prepare_rows_async(session, ids, history_stamps(ids, chats, stamp_for_chat),
+                                 uid = resolve_current_user_id(), isitma = isitma,
+                                 resolve_uid = resolve_current_user_id, messages_cache = messages_cache,
+                                 yayin_sayaci = trigger_refresh, bildir = hazir_bildir)
+      invisible(NULL)
     }, ignoreInit = TRUE)
 
     # Sekme açılışı (parent session'dan gelen sinyal). Önbellek KORUNUR: yalnızca

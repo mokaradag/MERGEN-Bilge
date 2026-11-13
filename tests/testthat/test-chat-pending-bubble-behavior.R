@@ -41,8 +41,11 @@
         kayit$gonderilen <- c(kayit$gonderilen, text)
         if (is.function(gonder)) return(gonder(text, values))
         if (isTRUE(mesaj_ekle)) {
+          # Her sahte mesajın kimliği benzersizdir (ilki msg_42): yeni ekleme
+          # kimlik tabanlı tespitle ayırt edilir.
+          kayit$sayac <- (kayit$sayac %||% 41L) + 1L
           values$messages <- append(shiny::isolate(values$messages),
-                                    list(list(id = "msg_42", type = "user", content = text)))
+                                    list(list(id = paste0("msg_", kayit$sayac), type = "user", content = text)))
         }
       },
       current_user_id = 7L, file_manager_data = NULL, session_files = shiny::reactiveVal(list()),
@@ -182,6 +185,10 @@ testthat::test_that("aynı istemci kimliğiyle yeniden teslim edilen istem ikinc
   testthat::expect_length(sonuc, 3L)
   testthat::expect_identical(sonuc[[2]]$message, sonuc[[1]]$message)
   testthat::expect_identical(sonuc[[1]]$message$durum, "kabul")
+  # Yeni kimlikli istem de kabul edilir ve kendi (farklı) mesaj kimliğini alır.
+  testthat::expect_identical(sonuc[[3]]$message$client_id, "istem_yeni")
+  testthat::expect_identical(sonuc[[3]]$message$durum, "kabul")
+  testthat::expect_false(identical(sonuc[[3]]$message$mesaj_id, sonuc[[1]]$message$mesaj_id))
 })
 
 testthat::test_that("boşlukla şişirilmiş istem uzunluk sınırını aşamaz; sınır içindeki metin aynen gönderilir", {
@@ -196,6 +203,7 @@ testthat::test_that("boşlukla şişirilmiş istem uzunluk sınırını aşamaz;
   sonuc <- .istem_sonuclari(kayit)
   testthat::expect_identical(sonuc[[1]]$message$durum, "ret")
   testthat::expect_identical(sonuc[[2]]$message$durum, "kabul")
+  testthat::expect_identical(sonuc[[2]]$message$mesaj_id, "msg_42")
 })
 
 testthat::test_that("geçersiz istemci kimliği geri yansıtılmaz ama gönderim çalışır", {

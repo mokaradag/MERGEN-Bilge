@@ -32,6 +32,10 @@ if (requireNamespace("shiny", quietly = TRUE)) {
     )
   }
   kok <- resolve_repo_root_for_tests()
+  # Sahip değişimi kancası (mergen_session_on_owner_change) fikstürde açıkça
+  # yüklenir: test, önceki dosyaların globalenv'e bıraktığı yardımcılara
+  # dayanmaz; tek başına çalıştırıldığında da aynı sonucu verir.
+  source(file.path(kok, "R", "helpers_user_session_identity.R"), encoding = "UTF-8", local = env)
   source(file.path(kok, "R", "module_image_gallery.R"), encoding = "UTF-8", local = env)
   env
 }

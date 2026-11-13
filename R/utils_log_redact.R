@@ -360,3 +360,14 @@ redact_connection_identifiers <- function(x) {
     perl = TRUE
   )
 }
+
+#' Hata koşulunun günlüğe yazılabilir (maskelenmiş) metni
+#'
+#' Sürücü/ODBC hataları DSN, sunucu ya da kullanıcı adı taşıyabilir; metin
+#' `redact_connection_identifiers()` sınırından geçirilir. Maskeleme
+#' uygulanamazsa ham metin YAZILMAZ, genel bir ifade döner.
+redacted_condition_message <- function(e) {
+  ham <- tryCatch(conditionMessage(e), error = function(x) "")
+  temiz <- tryCatch(redact_connection_identifiers(ham), error = function(x) NULL)
+  if (is.character(temiz) && length(temiz) == 1L && !is.na(temiz)) temiz else "(ayrıntı gizlendi)"
+}

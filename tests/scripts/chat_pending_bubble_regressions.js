@@ -322,6 +322,53 @@ serverBubble('999', 'balonsuz kabul');
 await teslim();
 assert.equal(pending().length, 0, 'asıl balon gelince bekleyen balon kalkmalı');
 
+// 11b) Bağlantı açıkken sonuç hiç gelmezse (kayıp olay) gönderim sonsuza dek
+// kilitli kalmaz: süre sonunda kilit kalkar, metin belirsizlik bildirimiyle geri
+// yüklenir ve istem OTOMATİK yeniden gönderilmez.
+sendClick('kayıp olay');
+const idKayip = lastId();
+const kayipOncesi = sent.length;
+timers.splice(0).forEach(fn => fn && fn());
+assert.equal(pending().length, 0, 'zaman aşımında bekleyen balon kalkmalı');
+assert.ok(!btn.classList.contains('mergen-istem-bekliyor'), 'zaman aşımında gönderim kilidi kalkmalı');
+assert.equal(input.value, 'kayıp olay', 'zaman aşımında metin geri yüklenmeli');
+assert.match(liveText(), /doğrulanamadı/);
+assert.equal(sent.length, kayipOncesi, 'belirsiz istem otomatik yeniden gönderilmemeli');
+// Geç gelen kabul: değişmemiş geri yüklenmiş metin girdiden kalkar (ikinci gönderim olmaz).
+result(idKayip, 'kabul', '1001');
+assert.equal(input.value, '', 'geç kabul geri yüklenen metni kaldırmalı');
+assert.equal(liveText(), 'Gecikmeli istem iletildi.');
+// Kullanıcı metni değiştirdiyse geç kabul taslağa dokunmaz; geç ret de metni çoğaltmaz.
+sendClick('kayıp iki');
+const idKayip2 = lastId();
+timers.splice(0).forEach(fn => fn && fn());
+input.value = 'kayıp iki düzenlendi';
+result(idKayip2, 'kabul', '1002');
+assert.equal(input.value, 'kayıp iki düzenlendi', 'değiştirilmiş taslak korunmalı');
+sendClick('kayıp üç');
+const idKayip3 = lastId();
+timers.splice(0).forEach(fn => fn && fn());
+result(idKayip3, 'ret');
+assert.equal(input.value, 'kayıp üç', 'geç ret metni ikinci kez eklememeli');
+input.value = '';
+
+// 11c) Ayrılmış eski istem (A) tamamlanınca hâlâ gönderilen yeni istemin (B)
+// durumu "gönderildi" diye duyurulmaz.
+sendClick('eski istem A');
+const idA = lastId();
+chat.children.slice().forEach(c => chat.removeChild(c));
+await teslim();
+sendClick('yeni istem B');
+const idB = lastId();
+result(idA, 'kabul', '1003');
+assert.equal(liveText(), 'İstem gönderiliyor…', 'B beklerken A kabulü durumu değiştirmemeli');
+assert.ok(btn.classList.contains('mergen-istem-bekliyor'));
+result(idB, 'kabul', '1004');
+assert.equal(liveText(), 'İstem gönderildi.');
+timers.splice(0);
+chat.children.slice().forEach(c => chat.removeChild(c));
+await teslim();
+
 // 12) Boş istem gönderilmez.
 input.value = '   ';
 const once = sent.length;

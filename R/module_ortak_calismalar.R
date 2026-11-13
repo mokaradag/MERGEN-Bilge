@@ -244,18 +244,14 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
       if (is.na(uid) || uid <= 0L) NA_integer_ else uid
     }
 
-    # Arka plan hazırlığı: liste önceden önbelleğe alınır; ilk ziyaret DB beklemez.
-    observeEvent(input$hazirla, {
-      uid <- gecerli_kullanici()
-      req(!is.na(uid))
-      hazir <- isTRUE(ortak_db_tablolar_hazir_mi())
-      df <- if (hazir) ortak_db_sohbet_listesi_onbellekten(sohbet_onbellek, uid) else NULL
-      okunamadi <- isTRUE(attr(df, "mergen_okuma_hatasi"))
-      isaretle <- session$userData$mergen_yonetim_hazir
-      if (is.function(isaretle)) isaretle("ortak_list_ready", if (hazir && !okunamadi) "Ortak söyleşiler hazır" else
-        "Ortak söyleşiler kısmen hazır", detail = list(count = if (is.data.frame(df)) nrow(df) else 0L,
-                                                         available = hazir, degraded = okunamadi))
-    }, ignoreInit = TRUE)
+    # Ortak Söyleşiler listesi açılışta hazırlanmaz: tablo probları ve liste
+    # sorgusu eşzamanlıdır, açılışta çalıştırılması ana olay döngüsünü (tüm
+    # oturumlar) tutardı. Liste ilk ziyarette okunur ve 60 sn önbellekte kalır.
+    # Sayfalardaki "Yenile" düğmeleri önbelleği düşürüp listeyi yeniden okur.
+    for (yenile_sayfasi in c("hub", "sohbet", "bilge_yolac")) local({
+      dugme <- paste0("yenile_", yenile_sayfasi)
+      observeEvent(input[[dugme]], yenile("manual"), ignoreInit = TRUE)
+    })
 
     # Oda sunucusu bir kez bağlanır; hub yüzeyindeki dinamik oda UI'sine hizmet eder.
     oda <- ortakOturumRoomServer(

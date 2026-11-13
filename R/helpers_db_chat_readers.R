@@ -435,7 +435,10 @@ load_chat_messages_batch <- function(chat_ids, user_id = NULL) {
 }
 
 # Lightweight history fetch: return paired user/assistant rows per chat
-load_history_rows_batch <- function(chat_ids, user_id = NULL) {
+# result: işçide (açık sözleşmeyle) okunmuş ham çerçeve verilirse DB'ye
+# gidilmez, yalnızca aynı normalizasyon + biçimlendirme uygulanır (tek
+# biçimlendirici; açılış hazırlığı module_chat_history_background.R).
+load_history_rows_batch <- function(chat_ids, user_id = NULL, result = NULL) {
   if (is.null(chat_ids) || length(chat_ids) == 0) {
     return(list())
   }
@@ -458,21 +461,23 @@ load_history_rows_batch <- function(chat_ids, user_id = NULL) {
     return(list())
   }
 
-  safe_user_id <- suppressWarnings(as.integer(user_id[1]))
+  if (is.null(result)) {
+    safe_user_id <- suppressWarnings(as.integer(user_id[1]))
 
-  conn_info <- get_connection()
-  conn <- conn_info$conn
-  on.exit(release_connection(conn_info))
+    conn_info <- get_connection()
+    conn <- conn_info$conn
+    on.exit(release_connection(conn_info))
 
-  query <- db_history_rows_query_sql(placeholder, scoped = TRUE)
+    query <- db_history_rows_query_sql(placeholder, scoped = TRUE)
 
-  param_values <- c(param_values, list(safe_user_id))
+    param_values <- c(param_values, list(safe_user_id))
 
-  result <- dbGetQuery(
-    conn,
-    query,
-    params = normalize_db_params(param_values)
-  )
+    result <- dbGetQuery(
+      conn,
+      query,
+      params = normalize_db_params(param_values)
+    )
+  }
 
   if (exists("normalize_db_read_visible_frame", mode = "function", inherits = TRUE)) {
     result <- normalize_db_read_visible_frame(result, repair_mojibake = TRUE)

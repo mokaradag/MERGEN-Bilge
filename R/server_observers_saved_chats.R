@@ -542,9 +542,22 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
 
     delete_chat_from_db(chat_id, effective_user_id)
     # Liste DB'den yetkili olarak yeniden kurulur; süren arka plan tam listesi
-    # (silmeden önceki görüntü) bunu ezmesin diye yetkili sürüm artar.
-    session$userData$saved_chats_yetkili_surum <- (session$userData$saved_chats_yetkili_surum %||% 0L) + 1L
-    values$saved_chats <- load_chats_from_db(effective_user_id, include_messages = FALSE)
+    # (silmeden önceki görüntü) bunu ezmesin diye yetkili sürüm YALNIZCA bu
+    # yeniden kurulum başarılıysa artar. Yeniden okuma başarısızsa silinen
+    # söyleşi yerelden kalkar; yerel liste (ör. 6'lık ön izleme) yetkili tam
+    # liste sayılmaz ve süren tam liste birleştirmeyle uygulanır (yerelde
+    # silinen söyleşi orada da geri gelmez).
+    yeniden <- tryCatch(load_chats_from_db(effective_user_id, include_messages = FALSE),
+                        error = function(e) NULL)
+    if (is.list(yeniden)) {
+      session$userData$saved_chats_yetkili_surum <- (session$userData$saved_chats_yetkili_surum %||% 0L) + 1L
+      values$saved_chats <- yeniden
+    } else {
+      yerel <- values$saved_chats %||% list()
+      yerel[[as.character(chat_id)]] <- NULL
+      values$saved_chats <- yerel
+      cat("[SAVED_CHATS] Silme sonrası liste DB'den yeniden okunamadı; silinen söyleşi yerelden kaldırıldı\n")
+    }
     saved_chats_data$refresh()
     
     # Eğer mevcut sohbet silindiyse, Ana Söyleşi sayfasını sıfırla

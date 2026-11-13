@@ -31,7 +31,11 @@
   }
 
   eski_plan <- future::plan()
-  kume <- parallelly::makeClusterPSOCK(1L, outfile = NULL)
+  # Ölçüm yalnızca SOCK0node gönderimini sarar: useXDR = FALSE açıkça verilir
+  # (parallelly.makeNodePSOCK.useXDR seçeneği ortamda TRUE olsa da düğüm türü
+  # sabit kalır; test ortamdan bağımsız ve belirlenimcidir).
+  kume <- parallelly::makeClusterPSOCK(1L, outfile = NULL, useXDR = FALSE)
+  testthat::expect_s3_class(kume[[1]], "SOCK0node")
   on.exit({
     ata(asil)
     future::plan(eski_plan)

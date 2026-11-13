@@ -28,9 +28,16 @@ bootReadinessInit <- function(session, required = NULL) {
   # "Kısmen" tamamlanan (kaynak okunamadı/kullanılamıyor) kontrol noktaları;
   # toplu anahtar bunları "hazır" diye bildirmez.
   kismen <- character()
-  # Görsel galerisi tembel kalır (tam tarama ana olay döngüsünde çalışır);
-  # açılış hazırlığı onu beklemez, galeri ilk açıldığında taranır.
-  yonetim_alt <- c("saved_chats_full_loaded", "history_rows_ready", "ortak_list_ready")
+  # Toplu anahtarın KAPSAMI: açılışta olay döngüsünü tutmadan hazırlanabilen
+  # veriler, yani tam söyleşi listesi (Kayıtlı Söyleşiler) ve Söyleşi Geçmişi
+  # ilk sayfası (ikisi de işçide okunur). Görsel Galerisi ve Ortak Söyleşiler
+  # bilinçli olarak TEMBELDİR (eşzamanlı tarama/sorgu): ilk ziyarette hazırlanır
+  # ve bu anahtar onları "hazır" diye bildirmez (detail$tembel).
+  yonetim_alt <- c("saved_chats_full_loaded", "history_rows_ready")
+  yonetim_tembel <- c("gallery_index_ready", "ortak_list_ready")
+  # Son bildirilen "kısmen" toplu durumun eksik alt anahtarları; eksik küme
+  # değişince (ör. biri toparlandı) toplu bildirim güncellenir.
+  toplu_eksik <- NULL
 
   # Soğuk açılış faz zamanlaması: her kontrol noktası, oturum başlangıcından
   # itibaren geçen süreyle loglanır. Böylece açılış süresinin hangi fazda
@@ -98,13 +105,16 @@ bootReadinessInit <- function(session, required = NULL) {
     if ((!"management_pages_ready" %in% done || toplu_kismen) && all(yonetim_alt %in% done)) {
       eksik <- intersect(yonetim_alt, kismen)
       if (length(eksik)) {
-        if (!toplu_kismen) {
-          mark("management_pages_ready", "Söyleşi Yönetimi sayfaları kısmen hazır",
-               detail = list(degraded = TRUE, kismen = eksik))
+        if (!toplu_kismen || !identical(eksik, toplu_eksik)) {
+          sifirla("management_pages_ready")
+          toplu_eksik <<- eksik
+          mark("management_pages_ready", "Söyleşi Yönetimi verisi kısmen hazır",
+               detail = list(degraded = TRUE, kismen = eksik, tembel = yonetim_tembel))
         }
       } else {
         sifirla("management_pages_ready")
-        mark("management_pages_ready", "Söyleşi Yönetimi sayfaları hazır")
+        mark("management_pages_ready", "Söyleşi Yönetimi verisi hazır",
+             detail = list(tembel = yonetim_tembel))
       }
     }
 
@@ -117,6 +127,7 @@ bootReadinessInit <- function(session, required = NULL) {
     keys <- as.character(keys)
     done <<- setdiff(done, keys)
     kismen <<- setdiff(kismen, keys)
+    if ("management_pages_ready" %in% keys) toplu_eksik <<- NULL
     invisible(TRUE)
   }
 

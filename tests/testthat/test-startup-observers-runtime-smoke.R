@@ -1379,3 +1379,46 @@ testthat::test_that("önceki sahibin hazırlık süre sınırı yeni sahibin haz
                            info = "A'nın eski süre sınırı B'yi 'kısmen' işaretlememeli")
   })
 })
+
+testthat::test_that("zengin şeritte tam liste başlarken kimlik düşerse Söyleşi Yönetimi sonsuza dek beklemez, erişim açılmaz", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises")
+  .startup_observers_source_once()
+
+  rec <- new.env()
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+  kimlik <- new.env()
+  kimlik$uid <- 42L
+  # Senkron ön izleme sırasında kimlik düşer (ör. SSO oturumu sona erdi).
+  assign("load_chats_preview_from_db", function(...) {
+    rec$preview <- rec$preview + 1L
+    kimlik$uid <- 0L
+    list()
+  }, envir = globalenv())
+  boot <- .make_boot_ready_recorder()
+
+  shiny::testServer(function(input, output, session) {
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startupObserversInit(
+      input = input, session = session, values = values,
+      render_welcome_screen = function(...) invisible(NULL),
+      current_user_id = function() kimlik$uid, sso_state = NULL, boot_ready = boot
+    )
+    session$userData$.values <- values
+  }, {
+    session$flushReact()
+    session$setInputs(startup_lane_resolved = list(lane = "rich_lane", source = "stored", ts = 1))
+    testthat::expect_identical(rec$preview, 1L)
+    # Kimliksiz tam liste gönderilmez (veri erişimi yok).
+    testthat::expect_identical(rec$full, 0L)
+    testthat::expect_length(shiny::isolate(session$userData$.values$saved_chats), 0L)
+    # Toplu anahtar "kısmen" bildirilir: zengin açılış kimlik beklerken asılı kalmaz.
+    yonetim <- Filter(function(e) identical(e$key, "management_pages_ready"), boot$entries())
+    testthat::expect_length(yonetim, 1L)
+    testthat::expect_true(isTRUE(yonetim[[1]]$detail$degraded))
+    testthat::expect_false(isTRUE(yonetim[[1]]$detail$identity))
+    testthat::expect_true(isTRUE(session$userData$saved_chats_full_pending))
+  })
+})
