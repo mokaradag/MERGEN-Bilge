@@ -379,10 +379,12 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
         basarili <- ensure_history_cache(parti, chats, invalidate = TRUE)
         if (is.function(on_done)) {
           # Isıtma sürüyorsa planlı partiler henüz yazılmamış olabilir: sonuç
-          # zincir tamamlanınca bildirilir.
+          # zincir tamamlanınca YALNIZCA güncel önbellek durumundan bildirilir
+          # (aynı damgayla başarısız okuma orada zaten eksik görünür; sonradan
+          # toparlanan okuma eski hatayla "kısmen" bildirilmez).
           if (isTRUE(isitma$aktif)) {
             isitma$bekleyenler <- c(isitma$bekleyenler,
-                                    list(function(tamam) on_done(isTRUE(basarili) && isTRUE(tamam))))
+                                    list(function(tamam) on_done(isTRUE(tamam))))
           } else {
             on_done(basarili)
           }

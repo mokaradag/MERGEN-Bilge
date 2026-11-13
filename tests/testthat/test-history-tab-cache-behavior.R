@@ -749,6 +749,37 @@ testthat::test_that("130+ söyleşi ısıtılırken araya giren okunamayan yeni 
   }))
 })
 
+testthat::test_that("ısıtma sırasında önce okunamayıp sonra toparlanan söyleşi bekleyen geri çağrılara çelişkili sonuç vermez", {
+  kayit <- .yeni_gecmis_kaydi()
+  kayit$basarisiz <- "131"
+  env <- .gecmis_modul_ortami(kayit)
+  sohbetler <- shiny::reactiveVal(.gecmis_sohbetleri(130L))
+  later::with_temp_loop(shiny::testServer(env$historyServer,
+                    args = list(all_messages = sohbetler, current_user_id = function() 7L), {
+    session$userData$saved_chats_full_loaded <- TRUE
+    session$userData$mergen_yonetim_hazir <- .isaretleyici(kayit)
+    session$flushReact()
+    session$setInputs(external_refresh_trigger = 1)    # 130 eksik: ısıtma başladı
+    shiny::isolate(sohbetler(.gecmis_sohbetleri(131L)))
+    session$flushReact()                               # "131" anlık okuması başarısız
+    testthat::expect_false("131" %in% names(messages_cache()))
+    testthat::expect_true(isTRUE(isitma$aktif), info = "toparlanma ısıtma SÜRERKEN olmalı")
+    # "131" yeni mesaj aldı (damga değişti) ve artık okunabiliyor.
+    kayit$basarisiz <- character()
+    yeni <- .gecmis_sohbetleri(131L)
+    yeni[["131"]]$last_message_timestamp <- as.POSIXct("2026-07-02 09:00:00", tz = "UTC")
+    shiny::isolate(sohbetler(yeni))
+    session$flushReact()
+    testthat::expect_identical(sum(unlist(kayit$kimlikler) == "131"), 2L)
+    .zincir_bitene_dek(session)
+    testthat::expect_identical(length(messages_cache()), 131L)
+    testthat::expect_gte(length(kayit$detay), 2L)
+    # Tüm bekleyen geri çağrılar aynı (güncel) sonucu alır: hiçbiri "kısmen" değildir.
+    testthat::expect_false(any(vapply(kayit$detay, function(d) isTRUE(d$degraded), logical(1))),
+                           info = "toparlanan okuma eski hata nedeniyle kısmen bildirilmemeli")
+  }))
+})
+
 testthat::test_that("geçmiş işçi okuması dar açık sözleşmeyle gönderilir; geçersiz kimlikte işçiye gidilmez", {
   testthat::skip_if_not_installed("promises")
   testthat::skip_if_not_installed("later")
