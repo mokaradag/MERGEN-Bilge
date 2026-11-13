@@ -460,7 +460,8 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			# bağlam dışı reaktif okuma hataları üretebilir.
 			shiny::isolate({
 			  if (identical(session$userData$saved_chats_yetkili_surum %||% 0L, gonderim_surumu)) {
-				chats <- mergen_saved_chats_merge_newer(chats, gonderim_aninda, values$saved_chats)
+				chats <- mergen_saved_chats_merge_newer(chats, gonderim_aninda, values$saved_chats,
+				                                        silinenler = session$userData$saved_chats_silinenler)
 			  } else {
 				chats <- values$saved_chats %||% list()
 			  }

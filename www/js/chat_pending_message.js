@@ -18,7 +18,8 @@
 //   zaman aşımı -> bağlantı açıkken sonuç sınırlı süre içinde gelmezse (olay
 //                kayboldu) kilit kalkar, metin belirsiz-teslim bildirimiyle
 //                girdiye geri yüklenir; asla otomatik gönderilmez. Geç gelen
-//                "kabul" geri yüklenen metni (değişmediyse) girdiden kaldırır.
+//                "kabul" (istemci kimliğiyle) asıl balon mesaj kimliğiyle
+//                DOM'a gelince yalnızca geri yüklenen istem bölümünü kaldırır.
 // Metin eşleşmesi yalnızca görsel bir ipucudur (çift balon titremesini
 // önlemek için bekleyen balonu gizler); kabul/ret ve bağlantı kopması kararı
 // asla metinden çıkarılmaz.
@@ -161,19 +162,53 @@ $(document).ready(function() {
     if (i >= 0) liste.splice(i, 1);
   }
 
+  function girisAlani() {
+    return typeof window.getMergenChatInputElement === 'function' ? window.getMergenChatInputElement() : null;
+  }
+
+  function girisiYenile(giris) {
+    if (typeof window.adjustTextareaHeight === 'function') window.adjustTextareaHeight(giris);
+    if (typeof window.updateCharCounter === 'function') window.updateCharCounter();
+  }
+
   // Ret/bağlantı kopması: metin kaybolmaz. Bekleme sırasında yazılmış bir
   // taslak varsa üzerine yazılmaz; reddedilen istem taslağın önüne eklenir.
+  // Geri yüklemenin tam sonucu kayda yazılır (geriYukleme): geç kabulde
+  // yalnızca eklenen istem bölümü kaldırılır, taslak korunur.
   function metniGeriYukle(kayit) {
-    const giris = typeof window.getMergenChatInputElement === 'function' ? window.getMergenChatInputElement() : null;
+    const giris = girisAlani();
     if (!giris) return;
     // Yalnızca taslak reddedilen istemle birebir aynıysa yeniden eklenmez; alt
     // dize eşleşmesi (ör. istem "a", taslak "taslak") istemi yutmamalıdır.
     const mevcut = String(giris.value || '');
-    if (!mevcut.trim()) giris.value = kayit.hamMetin;
-    else if (mevcut.trim() !== String(kayit.hamMetin || '').trim()) giris.value = kayit.hamMetin + '\n' + mevcut;
+    if (!mevcut.trim()) {
+      giris.value = kayit.hamMetin;
+      kayit.geriYukleme = { deger: giris.value, kalan: '', onEk: null };
+    } else if (mevcut.trim() !== String(kayit.hamMetin || '').trim()) {
+      const onEk = kayit.hamMetin + '\n';
+      giris.value = onEk + mevcut;
+      kayit.geriYukleme = { deger: giris.value, kalan: mevcut, onEk: onEk };
+    } else {
+      kayit.geriYukleme = { deger: mevcut, kalan: '', onEk: null };
+      return;
+    }
+    girisiYenile(giris);
+  }
+
+  // Geç kabul uzlaştırması (asıl balon DOM'dayken çağrılır): girdi geri
+  // yüklendiği gibiyse yalnızca istem bölümü kalkar; taslağın önüne eklenen
+  // istem öneki aynen duruyorsa taslaktaki sonraki düzenlemeler korunarak
+  // önek kaldırılır. Kullanıcı istemi düzenlediyse girdiye dokunulmaz.
+  function geriYuklemeyiUzlastir(kayit) {
+    const yukleme = kayit.geriYukleme;
+    kayit.geriYukleme = null;
+    const giris = girisAlani();
+    if (!yukleme || !giris) return;
+    const mevcut = String(giris.value || '');
+    if (mevcut === yukleme.deger) giris.value = yukleme.kalan;
+    else if (yukleme.onEk && mevcut.indexOf(yukleme.onEk) === 0) giris.value = mevcut.slice(yukleme.onEk.length);
     else return;
-    if (typeof window.adjustTextareaHeight === 'function') window.adjustTextareaHeight(giris);
-    if (typeof window.updateCharCounter === 'function') window.updateCharCounter();
+    girisiYenile(giris);
   }
 
   function reddet(kayit, bildirim) {
@@ -196,6 +231,8 @@ $(document).ready(function() {
     if (kayit.zamanlayici) clearTimeout(kayit.zamanlayici);
     if (dugum) solmayiKapat(dugum);
     balonuKaldir(kayit);
+    // Geç kabulde geri yüklenen metin ancak asıl balon görünürken kalkar.
+    if (dugum && kayit.geriYukleme) geriYuklemeyiUzlastir(kayit);
   }
 
   // Asıl balon gecikirse kabul edilmiş istem kaybolmaz: bekleyen balon
@@ -268,20 +305,26 @@ $(document).ready(function() {
   }
 
   // Zaman aşımından sonra gelen sonuç: "ret" için metin zaten geri yüklendi.
-  // "Kabul"de geri yüklenen metin kullanıcı değiştirmediyse girdiden kalkar
-  // (yanlışlıkla ikinci kez gönderilmesin); asıl balon sunucudan gelir.
+  // "Kabul" istemci kimliğiyle eşlenir ve mevcut kabul yaşam döngüsünden
+  // (kabulBekleyenler) geçer: geri yüklenen istem, sunucunun verdiği mesaj
+  // kimlikli asıl balon DOM'da görünene dek girdide kalır (istem hiçbir anda
+  // görünmez olmaz); balon gelince yalnızca geri yüklenen istem bölümü kalkar.
   function gecSonucuIsle(veri) {
     const i = zamanAsimlari.findIndex(function(b) { return b.id === (veri && veri.client_id); });
     if (i < 0) return;
     const kayit = zamanAsimlari.splice(i, 1)[0];
     if (veri.durum !== 'kabul') return;
-    const giris = typeof window.getMergenChatInputElement === 'function' ? window.getMergenChatInputElement() : null;
-    if (giris && String(giris.value || '').trim() === String(kayit.hamMetin || '').trim()) {
-      giris.value = '';
-      if (typeof window.adjustTextareaHeight === 'function') window.adjustTextareaHeight(giris);
-      if (typeof window.updateCharCounter === 'function') window.updateCharCounter();
-    }
     if (!kilitliMi()) canliBildir('Gecikmeli istem iletildi.');
+    const mesajId = String(veri.mesaj_id || '');
+    if (!mesajId || !kayit.geriYukleme) return;
+    const dugum = typeof document.getElementById === 'function'
+      ? document.getElementById('message_wrapper_' + mesajId) : null;
+    if (dugum) { geriYuklemeyiUzlastir(kayit); return; }
+    kayit.mesajId = mesajId;
+    kabulBekleyenler.push(kayit);
+    // Asıl balonu hiç gelmeyen geç kabuller sınırlı tutulur (metin girdide kalır).
+    const gecler = kabulBekleyenler.filter(function(b) { return b.geriYukleme && !b.el; });
+    if (gecler.length > 8) listedenCikar(kabulBekleyenler, gecler[0]);
   }
 
   function sonucZamanAsimi(kayit) {

@@ -406,6 +406,12 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
     # --- Liste görünümleri -----------------------------------------------------
 
     liste_olustur <- function(df, arsivde = FALSE, bos_mesaj = "Henüz ortak oturum yok.") {
+      # Okuma hatası "liste boş" sayılmaz: ayrıntı gösterilmeden hata durumu
+      # ve mevcut "Yenile" ile yeniden deneme yolu bildirilir.
+      if (isTRUE(attr(df, "mergen_okuma_hatasi"))) {
+        return(div(class = "oo-bos-durum oo-bos-liste oo-okuma-hatasi", role = "alert", icon("circle-exclamation"),
+                   p("Liste şu anda okunamadı. Lütfen “Yenile” düğmesiyle yeniden deneyin.")))
+      }
       if (!is.data.frame(df) || nrow(df) == 0L) {
         return(div(class = "oo-bos-durum oo-bos-liste", icon("users"), p(bos_mesaj)))
       }

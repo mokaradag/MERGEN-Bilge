@@ -40,9 +40,10 @@
                                                      Soru = "Türkçe soru çğış", Cevap = "Yanıt"))
       }), as.character(chat_ids)))
     }
+    soru <- if (is.null(kayit$etiket)) "Türkçe soru çğış" else kayit$etiket
     stats::setNames(lapply(chat_ids, function(id) list(list(
       Chat_ID = paste("Söyleşi", id), Tarih = "01.07.2026 - 10:00",
-      Soru = "Türkçe soru çğış", Cevap = "Yanıt"
+      Soru = soru, Cevap = "Yanıt"
     ))), as.character(chat_ids))
   }
   # Açılış hazırlığı işçi sınırından geçer: sahte işçi sonucu bir sonraki
@@ -523,7 +524,13 @@ testthat::test_that("başarısız partideki söyleşi yeni damgasıyla başarıy
     session$setInputs(external_refresh_trigger = 1)
     son <- Sys.time() + 5
     while (kayit$cagri < 1L && Sys.time() < son) later::run_now(0.02, all = FALSE)
+    # Ara durum gerçekten kuruldu: ilk parti koştu, "5" denendi ve okunamadı,
+    # aynı partideki diğer söyleşiler yazıldı; ısıtma hâlâ sürüyor.
+    testthat::expect_identical(kayit$cagri, 1L, info = "ilk parti süre içinde çalışmalı")
+    testthat::expect_true("5" %in% kayit$kimlikler[[1]])
     testthat::expect_false("5" %in% names(shiny::isolate(messages_cache())))
+    testthat::expect_true("1" %in% names(shiny::isolate(messages_cache())))
+    testthat::expect_true(isTRUE(isitma$aktif), info = "değişim ısıtma SÜRERKEN olmalı")
     # "5" yeni mesaj aldı (damga değişti) ve artık okunabiliyor.
     kayit$basarisiz <- character()
     yeni <- shiny::isolate(sohbetler())
@@ -532,6 +539,8 @@ testthat::test_that("başarısız partideki söyleşi yeni damgasıyla başarıy
     session$flushReact()
     .zincir_bitene_dek(session)
     testthat::expect_identical(messages_cache()[["5"]]$stamp, stamp_for_chat(yeni[["5"]]))
+    # Başarısız okuma ve yeni damgayla yeniden deneme: "5" tam iki kez okundu.
+    testthat::expect_identical(sum(unlist(kayit$kimlikler) == "5"), 2L)
     son_detay <- kayit$detay[[length(kayit$detay)]]
     testthat::expect_false(isTRUE(son_detay$degraded), info = "güncel kayıtlar tamamsa durum 'hazır' olmalı")
   }))
@@ -563,6 +572,10 @@ testthat::test_that("planlandıktan sonra tarih aralığından çıkan söyleşi
     session$setInputs(date_range = c("2026-06-01", "2026-07-31"))   # 130 eksik: ısıtma
     son <- Sys.time() + 5
     while (kayit$cagri < 1L && Sys.time() < son) later::run_now(0.02, all = FALSE)
+    # Ara durum: yalnızca ilk parti koştu; "100" henüz okunmadı ve planlı.
+    testthat::expect_identical(kayit$cagri, 1L, info = "ilk parti süre içinde çalışmalı")
+    testthat::expect_false("100" %in% kayit$kimlikler[[1]])
+    testthat::expect_true("100" %in% isitma$planli)
     # "100" ikinci partide planlı; aralık dışına taşınır (etkinlik 2026-09).
     yeni <- shiny::isolate(sohbetler())
     yeni[["100"]]$last_message_timestamp <- as.POSIXct("2026-09-15 09:00:00", tz = "UTC")
@@ -571,6 +584,168 @@ testthat::test_that("planlandıktan sonra tarih aralığından çıkan söyleşi
     .zincir_bitene_dek(session)
     testthat::expect_false("100" %in% unlist(kayit$kimlikler))
     testthat::expect_false("100" %in% names(messages_cache()))
+    # Kalan partiler yine de koştu (zincir kesilmedi).
+    testthat::expect_gte(kayit$cagri, 2L)
+  }))
+})
+
+# Hazırlık işçisinin tamamlanma anını test denetler: sonuç ancak elle
+# çözüldüğünde (resolve) ve döngü koşunca uygulanır.
+.elle_cozulen_isci <- function(env, kayit) {
+  kayit$cozumler <- list()
+  env$history_rows_worker_promise <- function(chat_ids, user_id, session_token = NULL) {
+    kayit$isci <- c(kayit$isci, list(as.character(chat_ids)))
+    promises::promise(function(resolve, reject) {
+      kayit$cozumler[[length(kayit$cozumler) + 1L]] <- list(resolve = resolve, ids = as.character(chat_ids))
+    })
+  }
+}
+
+.surum_satirlari <- function(ids, etiket) {
+  stats::setNames(lapply(ids, function(id) list(list(
+    Chat_ID = paste("Söyleşi", id), Tarih = "01.07.2026 - 10:00", Soru = etiket, Cevap = "Yanıt"
+  ))), ids)
+}
+
+testthat::test_that("geç tamamlanan açılış hazırlığı daha yeni eşzamanlı okumanın önbelleğini ezmez", {
+  kayit <- .yeni_gecmis_kaydi()
+  env <- .gecmis_modul_ortami(kayit)
+  .elle_cozulen_isci(env, kayit)
+  sohbetler <- shiny::reactiveVal(.gecmis_sohbetleri(3L))
+  later::with_temp_loop(shiny::testServer(env$historyServer,
+                    args = list(all_messages = sohbetler, current_user_id = function() 7L), {
+    session$userData$saved_chats_full_loaded <- TRUE
+    session$userData$mergen_yonetim_hazir <- .isaretleyici(kayit)
+    session$flushReact()
+    session$setInputs(hazirla = 1)                     # A sürümü işçide okunuyor
+    testthat::expect_length(kayit$cozumler, 1L)
+    # Hazırlık sürerken "2" yeni mesaj aldı; sekme açılınca B eşzamanlı okunur.
+    yeni <- shiny::isolate(sohbetler())
+    yeni[["2"]]$last_message_timestamp <- as.POSIXct("2026-07-02 09:00:00", tz = "UTC")
+    yeni[["2"]]$message_count <- 2L
+    shiny::isolate(sohbetler(yeni))
+    session$flushReact()
+    kayit$etiket <- "B sürümü"
+    session$setInputs(external_refresh_trigger = 1)
+    testthat::expect_identical(messages_cache()[["2"]]$rows[[1]]$Soru, "B sürümü")
+    # Eski A sonucu şimdi gelir: B korunmalı, damga güncel kalmalı.
+    kayit$cozumler[[1]]$resolve(.surum_satirlari(kayit$cozumler[[1]]$ids, "A sürümü"))
+    .zincir_bitene_dek(session)
+    testthat::expect_identical(messages_cache()[["2"]]$rows[[1]]$Soru, "B sürümü",
+                               info = "eski eşzamansız sonuç yeni önbellek kaydını ezmemeli")
+    testthat::expect_identical(messages_cache()[["2"]]$stamp, stamp_for_chat(yeni[["2"]]))
+    # Hazırlık sonucu son bildirimde "hazır": tüm kimlikler önbellekte.
+    testthat::expect_false(isTRUE(kayit$detay[[length(kayit$detay)]]$degraded))
+  }))
+
+  # Ters sıra: hazırlık önce tamamlanır (A), sonra damga değişir ve B okunur.
+  kayit <- .yeni_gecmis_kaydi()
+  env <- .gecmis_modul_ortami(kayit)
+  .elle_cozulen_isci(env, kayit)
+  sohbetler <- shiny::reactiveVal(.gecmis_sohbetleri(3L))
+  later::with_temp_loop(shiny::testServer(env$historyServer,
+                    args = list(all_messages = sohbetler, current_user_id = function() 7L), {
+    session$flushReact()
+    session$setInputs(hazirla = 1)
+    kayit$cozumler[[1]]$resolve(.surum_satirlari(kayit$cozumler[[1]]$ids, "A sürümü"))
+    .zincir_bitene_dek(session)
+    testthat::expect_identical(messages_cache()[["2"]]$rows[[1]]$Soru, "A sürümü")
+    yeni <- shiny::isolate(sohbetler())
+    yeni[["2"]]$last_message_timestamp <- as.POSIXct("2026-07-02 09:00:00", tz = "UTC")
+    kayit$etiket <- "B sürümü"
+    shiny::isolate(sohbetler(yeni))
+    session$flushReact()
+    testthat::expect_identical(messages_cache()[["2"]]$rows[[1]]$Soru, "B sürümü")
+    testthat::expect_identical(messages_cache()[["1"]]$rows[[1]]$Soru, "A sürümü")
+  }))
+})
+
+testthat::test_that("görsel silme düşürmesi uçuştaki hazırlık okumasının silinmiş satırları geri yazmasını engeller", {
+  kayit <- .yeni_gecmis_kaydi()
+  env <- .gecmis_modul_ortami(kayit)
+  .elle_cozulen_isci(env, kayit)
+  later::with_temp_loop(shiny::testServer(env$historyServer,
+                    args = list(all_messages = shiny::reactive(.gecmis_sohbetleri(3L)), current_user_id = function() 7L), {
+    session$userData$saved_chats_full_loaded <- TRUE
+    session$userData$mergen_yonetim_hazir <- .isaretleyici(kayit)
+    session$flushReact()
+    session$setInputs(hazirla = 1)
+    # "2" henüz önbellekte YOK; görsel silindi ve düşürme çağrıldı.
+    testthat::expect_false("2" %in% names(messages_cache()))
+    session$userData$mergen_gecmis_onbellek_dusur("2")
+    kayit$cozumler[[1]]$resolve(.surum_satirlari(kayit$cozumler[[1]]$ids, "[Görsel: silinen.png]"))
+    .zincir_bitene_dek(session)
+    testthat::expect_false("2" %in% names(messages_cache()),
+                           info = "silinmiş görsel alıntısı önbelleğe geri yazılmamalı")
+    testthat::expect_setequal(names(messages_cache()), c("1", "3"))
+    # Düşürülen söyleşi okunmadığı için durum dürüstçe "kısmen".
+    testthat::expect_true(isTRUE(kayit$detay[[length(kayit$detay)]]$degraded))
+    # Sonraki ziyaret yalnızca düşen söyleşiyi güncel içerikle okur.
+    session$setInputs(external_refresh_trigger = 1)
+    testthat::expect_identical(kayit$kimlikler[[length(kayit$kimlikler)]], "2")
+  }))
+
+  # Tüm görseller silindi (kimliksiz düşürme): uçuştaki sonuç hiçbir söyleşiye yazılmaz.
+  kayit <- .yeni_gecmis_kaydi()
+  env <- .gecmis_modul_ortami(kayit)
+  .elle_cozulen_isci(env, kayit)
+  later::with_temp_loop(shiny::testServer(env$historyServer,
+                    args = list(all_messages = shiny::reactive(.gecmis_sohbetleri(3L)), current_user_id = function() 7L), {
+    session$flushReact()
+    session$setInputs(hazirla = 1)
+    session$userData$mergen_gecmis_onbellek_dusur()
+    kayit$cozumler[[1]]$resolve(.surum_satirlari(kayit$cozumler[[1]]$ids, "[Görsel: silinen.png]"))
+    .zincir_bitene_dek(session)
+    testthat::expect_length(messages_cache(), 0L)
+  }))
+})
+
+testthat::test_that("görsel silme düşürmesi ilgisiz arka plan ısıtmasını iptal etmez", {
+  kayit <- .yeni_gecmis_kaydi()
+  env <- .gecmis_modul_ortami(kayit)
+  later::with_temp_loop(shiny::testServer(env$historyServer,
+                    args = list(all_messages = shiny::reactive(.gecmis_sohbetleri(130L)), current_user_id = function() 7L), {
+    session$flushReact()
+    session$setInputs(external_refresh_trigger = 1)    # 130 eksik: 3 parti planlandı
+    son <- Sys.time() + 5
+    while (kayit$cagri < 1L && Sys.time() < son) later::run_now(0.02, all = FALSE)
+    testthat::expect_identical(kayit$cagri, 1L, info = "ilk parti süre içinde çalışmalı")
+    nesil <- isitma$nesil
+    session$userData$mergen_gecmis_onbellek_dusur("5")
+    testthat::expect_identical(isitma$nesil, nesil)
+    .zincir_bitene_dek(session)
+    testthat::expect_identical(kayit$cagri, 3L, info = "kalan partiler koşmalı")
+    testthat::expect_identical(length(messages_cache()), 129L)
+    testthat::expect_false("5" %in% names(messages_cache()))
+  }))
+})
+
+testthat::test_that("130+ söyleşi ısıtılırken araya giren okunamayan yeni söyleşi hazır-olmayı yanlışlıkla 'tam' bildirtmez", {
+  kayit <- .yeni_gecmis_kaydi()
+  kayit$basarisiz <- "131"
+  env <- .gecmis_modul_ortami(kayit)
+  sohbetler <- shiny::reactiveVal(.gecmis_sohbetleri(130L))
+  later::with_temp_loop(shiny::testServer(env$historyServer,
+                    args = list(all_messages = sohbetler, current_user_id = function() 7L), {
+    session$userData$saved_chats_full_loaded <- TRUE
+    session$userData$mergen_yonetim_hazir <- .isaretleyici(kayit)
+    session$flushReact()
+    session$setInputs(external_refresh_trigger = 1)    # 130 eksik: ısıtma başladı
+    testthat::expect_true(isTRUE(isitma$aktif))
+    # Isıtma sürerken yeni söyleşi geldi; anlık okuması başarısız.
+    shiny::isolate(sohbetler(.gecmis_sohbetleri(131L)))
+    session$flushReact()
+    testthat::expect_true("131" %in% unlist(kayit$kimlikler), info = "yeni söyleşi ısıtma sırasında denenmeli")
+    testthat::expect_false("history_rows_ready" %in% kayit$isaret, info = "ısıtma bitmeden hazır bildirilmemeli")
+    .zincir_bitene_dek(session)
+    testthat::expect_identical(length(messages_cache()), 130L)
+    testthat::expect_false("131" %in% names(messages_cache()))
+    testthat::expect_true("history_rows_ready" %in% kayit$isaret)
+    # Hiçbir bildirim "tam" demez: okunamayan söyleşi tüm geri çağrılarda kısmen sayılır.
+    testthat::expect_true(all(vapply(kayit$detay, function(d) isTRUE(d$degraded), logical(1))),
+                          info = "başarısız okuma varken çelişkili 'hazır' bildirimi olmamalı")
+    # Aynı damgayla yeniden deneme döngüsü yok.
+    testthat::expect_identical(sum(unlist(kayit$kimlikler) == "131"), 1L)
   }))
 })
 

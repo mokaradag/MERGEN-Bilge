@@ -540,7 +540,15 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       return()
     }
 
-    delete_chat_from_db(chat_id, effective_user_id)
+    silinen_satir <- delete_chat_from_db(chat_id, effective_user_id)
+    # Gerçekleşen silme (etkilenen satır > 0) yeniden okumanın sonucundan
+    # BAĞIMSIZ işaretlenir: süren arka plan tam listesi, gönderimden sonra
+    # oluşturulmuş olsa da silinen söyleşiyi geri getiremez. Satır
+    # etkilenmediyse (silinmedi) işaret konmaz.
+    if (isTRUE(suppressWarnings(as.numeric(silinen_satir)[1]) > 0)) {
+      session$userData$saved_chats_silinenler <- union(session$userData$saved_chats_silinenler %||% character(),
+                                                       as.character(chat_id))
+    }
     # Liste DB'den yetkili olarak yeniden kurulur; süren arka plan tam listesi
     # (silmeden önceki görüntü) bunu ezmesin diye yetkili sürüm YALNIZCA bu
     # yeniden kurulum başarılıysa artar. Yeniden okuma başarısızsa silinen

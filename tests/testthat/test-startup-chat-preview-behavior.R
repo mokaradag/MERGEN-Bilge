@@ -424,6 +424,25 @@ testthat::test_that("yerelde mesaj eklenen söyleşide başka oturumun daha yeni
   testthat::expect_identical(birlesik[["1"]]$title, "Bir yeni ad")
 })
 
+testthat::test_that("gönderimden sonra açılıp silinen söyleşi arka plan tam listesiyle geri gelmez", {
+  .startup_preview_source_once()
+  anlik <- list("1" = list(title = "Bir"), "2" = list(title = "İki"))
+  # "7" gönderimden SONRA açıldı, işçi sonucuna girdi, sonuç uygulanmadan silindi
+  # (yeniden okuma başarısız: yetkili sürüm artmadı). Yerel durum anlık görüntüyle aynı.
+  db <- list("7" = list(title = "Silinen çğış"), "1" = list(title = "Bir"), "2" = list(title = "İki"))
+  birlesik <- mergen_saved_chats_merge_newer(db, anlik, anlik, silinenler = "7")
+  testthat::expect_null(birlesik[["7"]], info = "aynı yerel durum kısayolu silineni geri getirmemeli")
+  testthat::expect_identical(names(birlesik), c("1", "2"))
+  # Yerelde başka değişiklik de varsa (yeni "9", ad değişimi) silinen yine dönmez.
+  simdiki <- list("9" = list(title = "Yeni söyleşi"), "1" = list(title = "Yeni ad"), "2" = list(title = "İki"))
+  birlesik <- mergen_saved_chats_merge_newer(db, anlik, simdiki, silinenler = "7")
+  testthat::expect_null(birlesik[["7"]], info = "anlık görüntüde olmayan silinen söyleşi geri gelmemeli")
+  testthat::expect_identical(names(birlesik), c("9", "1", "2"))
+  testthat::expect_identical(birlesik[["1"]]$title, "Yeni ad")
+  # İşaret yoksa davranış değişmez (DB'deki söyleşi korunur).
+  testthat::expect_identical(names(mergen_saved_chats_merge_newer(db, anlik, anlik)), c("7", "1", "2"))
+})
+
 testthat::test_that("büyük tam liste dilimlerle biçimlendirilir; sonuç tek seferlik biçimlendirmeyle aynıdır", {
   testthat::skip_if_not_installed("promises")
   testthat::skip_if_not_installed("later")

@@ -18,7 +18,7 @@
   env$showToast <- function(session, message, ...) kayit$toast <- c(kayit$toast, message)
   env$delete_chat_from_db <- function(chat_id, user_id) {
     kayit$silinen <- c(kayit$silinen, chat_id)
-    invisible(1L)
+    invisible(if (is.null(kayit$etkilenen)) 1L else kayit$etkilenen)
   }
   env$load_chats_from_db <- function(user_id, include_messages = TRUE) {
     if (isTRUE(kayit$okuma_hatasi)) stop("veritabanı geçici olarak yok (test)")
@@ -62,6 +62,23 @@ testthat::test_that("silme sonrası yeniden okuma başarısızsa söyleşi yerel
     # Yetkili sürüm artmaz: süren tam liste atılmaz, birleştirmeyle uygulanır.
     testthat::expect_null(session$userData$saved_chats_yetkili_surum)
     testthat::expect_identical(kayit$yenileme, 1L)
+    # Gerçekleşen silme yeniden okumadan bağımsız işaretlenir (geri gelmez).
+    testthat::expect_identical(session$userData$saved_chats_silinenler, "1")
+  })
+})
+
+testthat::test_that("DB'de satır etkilenmeyen (gerçekleşmeyen) silme silindi olarak işaretlenmez", {
+  kayit <- new.env()
+  kayit$okuma_hatasi <- TRUE
+  kayit$etkilenen <- 0L
+  env <- .silme_ortami(kayit)
+  baslangic <- list("1" = list(title = "Bir"), "2" = list(title = "İki çğış"))
+  shiny::testServer(.silme_sunucusu(env, kayit, baslangic), {
+    session$flushReact()
+    session$userData$.sil("1")
+    session$flushReact()
+    testthat::expect_identical(kayit$silinen, "1")
+    testthat::expect_null(session$userData$saved_chats_silinenler)
   })
 })
 

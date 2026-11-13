@@ -134,6 +134,9 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
     # uzunluğundan ayrı tutulur; başarısız okuma önbelleği boşaltsa da liste
     # değişince senkronizasyon sürer (açık sayfa boş kalmaz).
     isitma$etkin <- FALSE
+    # Söyleşi başına önbellek yazım sürümü (history_touch): eşzamansız
+    # hazırlık, gönderimden sonra yazılan/düşürülen söyleşinin üzerine yazamaz.
+    isitma$surum <- integer()
 
     stamp_for_chat <- function(chat_info) {
       stamp_obj <- chat_info$last_message_timestamp %||% chat_info$timestamp %||% NA
@@ -336,6 +339,8 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
             stamp = stamp_map[[chat_id]]
           )
         }
+        # Okunan ya da okunamayıp düşen her kayıt yeni sürümdür.
+        history_touch(isitma, to_fetch)
       }
 
       messages_cache(cache)
@@ -419,13 +424,14 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
           yeni <- adaylar[vapply(adaylar, function(id) {
             !identical(unname(isitma$zincir[id]), stamp_for_chat(guncel[[id]]))
           }, logical(1))]
-          # Sonuç eski partilerin bayrağından değil, GÜNCEL gerekli kayıtlardan
-          # türetilir: başarısız partideki söyleşi damgası değişip yeniden
-          # başarıyla okunduysa hazır-olma "kısmen" kalmaz; aynı damgayla
-          # okunamayan söyleşi önbellekte eksik kaldığı için "kısmen"dir.
-          gereken <- union(kalan, yeni)
+          # Sonuç eski partilerin bayrağından değil, etkin aralıktaki GEREKLİ
+          # TÜM kimliklerin güncel önbellek durumundan türetilir: planlı,
+          # ısıtma sırasında denenmiş (başarısız olanlar dahil) ve yeni
+          # söyleşiler birlikte değerlendirilir. Damgası değişip yeniden okunan
+          # "hazır"dır; aynı damgayla okunamayan eksik kaldığı için "kısmen"dir.
+          # Bekleyen geri çağrılar aynı sonucu alır (çelişkili bildirim olmaz).
           bitir <- function(ok = TRUE) {
-            son <- history_all_cached(intersect(gereken, aralik_kimlikleri()), shiny::isolate(latest_chats()),
+            son <- history_all_cached(aralik_kimlikleri(), shiny::isolate(latest_chats()),
                                       shiny::isolate(messages_cache()), stamp_for_chat)
             for (fn in bekleyenler) fn(son)
           }
@@ -653,7 +659,10 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
     # Yerinde içerik düzenlemesi (galeriden görsel silme) damgayı değiştirmez;
     # ilgili kayıtlar düşer ve tablo yeniden yayınlanır (silinmiş görselin
     # alıntısı tabloda kalmaz). Düşen söyleşiler sonraki ziyarette okunur.
-    session$userData$mergen_gecmis_onbellek_dusur <- history_cache_dropper(messages_cache, yayin_sayaci = trigger_refresh)
+    # Düşürme, önbellekte olmasa da söyleşinin sürümünü artırır: uçuştaki
+    # hazırlık okuması düşürülen satırları geri yazamaz; ısıtma nesli korunur.
+    session$userData$mergen_gecmis_onbellek_dusur <- history_cache_dropper(messages_cache, yayin_sayaci = trigger_refresh,
+                                                                           isitma = isitma)
 
     # Sahip değişiminde eski sahibin önbelleği ve süren planı düşer.
     if (exists("mergen_session_on_owner_change", mode = "function", inherits = TRUE)) {

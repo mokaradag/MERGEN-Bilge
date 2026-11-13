@@ -21,8 +21,15 @@ history_ids_needing_fetch <- function(chat_ids, chats, cache, stamp_fn) {
 # değiştirmediği için ilgili kayıtlar düşer. yayin_sayaci (reactiveVal)
 # verilmişse artırılır: açık geçmiş tablosu yeniden yayınlanır ve silinmiş
 # görselin alıntısı tabloda kalmaz. chat_ids NULL ise tüm önbellek düşer.
-history_cache_dropper <- function(messages_cache, yayin_sayaci = NULL) {
+# isitma verilmişse her çağrı (söyleşi önbellekte olmasa da) ilgili sürümü
+# artırır (kimliksizse tüm söyleşilerinkini): süren eşzamansız hazırlığın eski
+# sonucu düşürülen söyleşiye yazılamaz; ısıtma nesline dokunulmaz.
+history_cache_dropper <- function(messages_cache, yayin_sayaci = NULL, isitma = NULL) {
   function(chat_ids = NULL) {
+    if (is.environment(isitma)) {
+      if (is.null(chat_ids)) isitma$tum_dusurme <- (isitma$tum_dusurme %||% 0L) + 1L
+      else history_touch(isitma, chat_ids)
+    }
     cache <- shiny::isolate(messages_cache())
     dusur <- if (is.null(chat_ids)) names(cache) else intersect(names(cache), as.character(chat_ids))
     if (length(dusur)) {
@@ -32,6 +39,26 @@ history_cache_dropper <- function(messages_cache, yayin_sayaci = NULL) {
     }
     invisible(length(dusur))
   }
+}
+
+# Söyleşi başına önbellek yazım sürümü: eşzamanlı okuma her yazımda/silmede
+# ve önbellek düşürme her çağrıda ilgili kimliğin sürümünü artırır. Süren
+# eşzamansız hazırlık yalnızca gönderimden beri sürümü değişmeyen kimlikleri
+# yazar (daha yeni önbellek kaydı ya da düşürme eski sonuçla ezilmez). Isıtma
+# nesline dokunmaz: ilgisiz arka plan ısıtması iptal edilmez.
+history_touch <- function(isitma, chat_ids) {
+  ids <- unique(as.character(chat_ids %||% character()))
+  ids <- ids[!is.na(ids) & nzchar(ids)]
+  if (length(ids)) isitma$surum[ids] <- history_versions(isitma, ids, tum = FALSE) + 1L
+  invisible(NULL)
+}
+
+# tum = TRUE: kimliksiz (tümü) düşürme sayacı da eklenir; o artınca tüm
+# söyleşilerin sürümü değişmiş sayılır.
+history_versions <- function(isitma, chat_ids, tum = TRUE) {
+  surum <- unname(isitma$surum[as.character(chat_ids)])
+  surum[is.na(surum)] <- 0L
+  if (isTRUE(tum)) surum + (isitma$tum_dusurme %||% 0L) else surum
 }
 
 # Kimlik -> damga eşlemesi (verilen sırayla, adlı karakter vektörü).
@@ -87,11 +114,16 @@ history_rows_worker_promise <- function(chat_ids, user_id, session_token = NULL)
 
 # Açılış hazırlığı: eksik kimlikler işçide okunur, sonuç yalnızca gönderimdeki
 # önbellek nesli ve sahip hâlâ geçerliyse gönderim anındaki damgalarla yazılır
-# (eski sonuç yeni sahibe/nesle yazılamaz). Sonuç bildir(TRUE/FALSE) ile tam
-# bir kez bildirilir; okuma hatası günlüğe maskelenmiş yazılır.
+# (eski sonuç yeni sahibe/nesle yazılamaz). Gönderimden beri eşzamanlı okuma
+# ya da düşürmeyle sürümü değişen söyleşi YAZILMAZ: daha yeni kayıt korunur,
+# düşürülen (ör. silinmiş görsel alıntılı) satırlar geri gelmez. Sonuç
+# bildir(TRUE/FALSE) ile tam bir kez bildirilir: her kimlik ya bu sonuçla ya da
+# daha yeni bir okumayla önbellekteyse "hazır"dır. Okuma hatası günlüğe
+# maskelenmiş yazılır.
 history_prepare_rows_async <- function(session, ids, damgalar, uid, isitma, resolve_uid,
                                        messages_cache, yayin_sayaci, bildir) {
   nesil <- isitma$nesil
+  surumler <- history_versions(isitma, ids)
   gecerli <- function() !isTRUE(session$isClosed()) && identical(isitma$nesil, nesil) &&
     identical(shiny::isolate(resolve_uid()), uid)
   okuma <- tryCatch(history_rows_worker_promise(ids, uid, session$token),
@@ -100,15 +132,19 @@ history_prepare_rows_async <- function(session, ids, damgalar, uid, isitma, reso
     if (!gecerli()) return(NULL)
     shiny::isolate({
       cache <- messages_cache()
-      okunan <- intersect(ids, names(sonuc))
+      degismeyen <- ids[history_versions(isitma, ids) == surumler]
+      okunan <- intersect(degismeyen, names(sonuc))
       for (id in okunan) {
         cache[[id]] <- list(rows = if (is.list(sonuc[[id]])) sonuc[[id]] else list(),
                             stamp = damgalar[[id]])
       }
+      history_touch(isitma, okunan)
       messages_cache(cache)
       isitma$etkin <- TRUE
       yayin_sayaci(yayin_sayaci() + 1)
-      bildir(length(okunan) == length(ids))
+      yenisi_var <- setdiff(ids, degismeyen)
+      bildir(all(ids %in% okunan |
+                   (ids %in% yenisi_var & vapply(ids, function(id) !is.null(cache[[id]]), logical(1)))))
     })
     NULL
   }, onRejected = function(e) {

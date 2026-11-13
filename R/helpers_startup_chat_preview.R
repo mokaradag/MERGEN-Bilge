@@ -190,8 +190,12 @@ mergen_startup_chat_preview_limit <- function(limit) {
 # SONRA yerelde açılan söyleşiler korunur. DB'de etkinliği (mesaj sayısı)
 # yereldekinden ileride olan söyleşide etkinlik alanları DB'den kalır.
 # (Silme/Tümünü Temizle sonrası sonuç çağıran tarafından hiç uygulanmaz.)
-mergen_saved_chats_merge_newer <- function(db_chats, dispatch_snapshot, current) {
+# silinenler: bu oturumda DB'de gerçekten silinen kimlikler (anlık görüntüde
+# olmasalar da); DB sonucundan her durumda önce çıkarılır, kısayol dahil.
+mergen_saved_chats_merge_newer <- function(db_chats, dispatch_snapshot, current, silinenler = character()) {
   db_chats <- db_chats %||% list()
+  silinenler <- as.character(silinenler %||% character())
+  if (length(silinenler) && length(names(db_chats))) db_chats <- db_chats[!(names(db_chats) %in% silinenler)]
   dispatch_snapshot <- dispatch_snapshot %||% list()
   current <- current %||% list()
   if (identical(current, dispatch_snapshot)) {

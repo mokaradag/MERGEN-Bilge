@@ -334,16 +334,57 @@ assert.ok(!btn.classList.contains('mergen-istem-bekliyor'), 'zaman aşımında g
 assert.equal(input.value, 'kayıp olay', 'zaman aşımında metin geri yüklenmeli');
 assert.match(liveText(), /doğrulanamadı/);
 assert.equal(sent.length, kayipOncesi, 'belirsiz istem otomatik yeniden gönderilmemeli');
-// Geç gelen kabul: değişmemiş geri yüklenmiş metin girdiden kalkar (ikinci gönderim olmaz).
+// Geç gelen kabul: asıl balon gelmeden geri yüklenen istem girdiden kalkmaz
+// (istem hiçbir anda görünmez olmaz); kimlikli asıl balon gelince kalkar.
 result(idKayip, 'kabul', '1001');
-assert.equal(input.value, '', 'geç kabul geri yüklenen metni kaldırmalı');
+assert.equal(input.value, 'kayıp olay', 'asıl balon yokken geç kabul girdideki istemi kaldırmamalı');
 assert.equal(liveText(), 'Gecikmeli istem iletildi.');
-// Kullanıcı metni değiştirdiyse geç kabul taslağa dokunmaz; geç ret de metni çoğaltmaz.
+serverBubble('1000', 'kayıp olay');   // aynı metinli ilgisiz balon karar vermez
+await teslim();
+assert.equal(input.value, 'kayıp olay', 'metin eşleşmesi geç kabulü uzlaştırmamalı');
+serverBubble('1001', 'kayıp olay');
+await teslim();
+assert.equal(input.value, '', 'kimlikli asıl balon gelince geri yüklenen istem kalkmalı (ikinci gönderim olmaz)');
+// Asıl balon geç kabulden ÖNCE DOM'daysa istem hemen kalkar.
+sendClick('önce balon');
+const idOnce = lastId();
+timers.splice(0).forEach(fn => fn && fn());
+assert.equal(input.value, 'önce balon');
+serverBubble('1010', 'önce balon');
+await teslim();
+result(idOnce, 'kabul', '1010');
+assert.equal(input.value, '', 'asıl balon varken geç kabul istemi hemen kaldırmalı');
+// Taslak B varken zaman aşımı "A\nB" geri yükler; geç kabulde yalnızca A kalkar.
+sendClick('istem A');
+const idTaslak = lastId();
+input.value = 'taslak B';
+timers.splice(0).forEach(fn => fn && fn());
+assert.equal(input.value, 'istem A\ntaslak B');
+result(idTaslak, 'kabul', '1011');
+assert.equal(input.value, 'istem A\ntaslak B', 'asıl balon gelmeden taslakla birlikte istem korunmalı');
+serverBubble('1011', 'istem A');
+await teslim();
+assert.equal(input.value, 'taslak B', 'geç kabul yalnızca kabul edilen istemi kaldırmalı, taslağı korumalı');
+// Geri yüklemeden sonra taslak düzenlenmişse (önek aynen duruyor) düzenleme korunur.
+input.value = '';
+sendClick('istem C');
+const idDuzen = lastId();
+input.value = 'taslak D';
+timers.splice(0).forEach(fn => fn && fn());
+input.value = 'istem C\ntaslak D ve ek';
+result(idDuzen, 'kabul', '1012');
+serverBubble('1012', 'istem C');
+await teslim();
+assert.equal(input.value, 'taslak D ve ek', 'taslağın sonraki düzenlemeleri korunmalı');
+input.value = '';
+// Kullanıcı istemi değiştirdiyse geç kabul girdiye dokunmaz; geç ret de metni çoğaltmaz.
 sendClick('kayıp iki');
 const idKayip2 = lastId();
 timers.splice(0).forEach(fn => fn && fn());
 input.value = 'kayıp iki düzenlendi';
 result(idKayip2, 'kabul', '1002');
+serverBubble('1002', 'kayıp iki');
+await teslim();
 assert.equal(input.value, 'kayıp iki düzenlendi', 'değiştirilmiş taslak korunmalı');
 sendClick('kayıp üç');
 const idKayip3 = lastId();

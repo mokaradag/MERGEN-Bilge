@@ -1269,6 +1269,54 @@ testthat::test_that("arka plan tam listesi geç gelince arada açılan ve siline
   })
 })
 
+testthat::test_that("tam liste uçuştayken açılıp silinen söyleşi yeniden okuma başarısız olsa da geri gelmez", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises")
+  testthat::skip_if_not_installed("later")
+  .startup_observers_source_once()
+
+  rec <- new.env()
+  rec$defer_full_fulfillment <- TRUE
+  rec$preview_result <- list("p1" = list(title = "Ön izleme", message_count = 1L))
+  # "gecici" gönderimden SONRA açıldı ve işçinin DB görüntüsüne girdi.
+  rec$full_result <- list(
+    "gecici" = list(title = "Açılıp silinen çğış", message_count = 1L),
+    "p1" = list(title = "Ön izleme", message_count = 1L),
+    "eski" = list(title = "Eski söyleşi", message_count = 4L)
+  )
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+
+  shiny::testServer(function(input, output, session) {
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startupObserversInit(
+      input = input, session = session, values = values,
+      render_welcome_screen = function(...) invisible(NULL),
+      current_user_id = function() 42L, sso_state = NULL, boot_ready = NULL
+    )
+    session$userData$.values <- values
+  }, {
+    session$flushReact()
+    session$setInputs(startup_lane_resolved = list(lane = "fast_lane", source = "stored", ts = 1))
+    session$setInputs(welcome_client_ready = list(fast_lane = TRUE, timestamp = 1))
+    for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+    session$flushReact()
+    testthat::expect_true(is.function(rec$resolve_full))
+    # Silme gözlemcisinin yeniden okuma BAŞARISIZ yolu: söyleşi DB'de silindi
+    # (işaretlendi), yerelden kalktı; yetkili sürüm ARTMADI. Yerel liste
+    # gönderim anındaki görüntüyle birebir aynı kaldı.
+    session$userData$saved_chats_silinenler <- "gecici"
+    testthat::expect_null(session$userData$saved_chats_yetkili_surum)
+    rec$resolve_full()
+    for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+    session$flushReact()
+    son <- shiny::isolate(session$userData$.values$saved_chats)
+    testthat::expect_false("gecici" %in% names(son), info = "silinen söyleşi eski DB görüntüsüyle geri gelmemeli")
+    testthat::expect_true(all(c("p1", "eski") %in% names(son)), info = "diğer söyleşiler korunmalı")
+  })
+})
+
 testthat::test_that("tam liste uçuştayken silme ya da Tümünü Temizle sonrası eski DB görüntüsü uygulanmaz", {
   testthat::skip_if_not_installed("shiny")
   testthat::skip_if_not_installed("shinyjs")
