@@ -410,6 +410,32 @@ timers.splice(0);
 chat.children.slice().forEach(c => chat.removeChild(c));
 await teslim();
 
+// 11d) Örtüşen geri yüklemeler bağımsız uzlaştırılır: ayrılan A ve sonraki B,
+// taslak D varken zaman aşımına uğrar ("B\nA\nD"). A'nın asıl balonu önce gelse
+// de kabul edilen A girdide kalmaz; B de kalkınca yalnızca taslak D kalır.
+input.value = '';
+sendClick('örtüşen A');
+const idOrtusenA = lastId();
+chat.children.slice().forEach(c => chat.removeChild(c));
+await teslim();
+sendClick('örtüşen B');
+const idOrtusenB = lastId();
+input.value = 'taslak D';
+timers.splice(0).forEach(fn => fn && fn());
+assert.equal(input.value, 'örtüşen B\nörtüşen A\ntaslak D');
+result(idOrtusenA, 'kabul', '1020');
+serverBubble('1020', 'örtüşen A');
+await teslim();
+assert.equal(input.value, 'örtüşen B\nörtüşen A\ntaslak D', 'önde başka bölüm varken girdiye dokunulmamalı');
+result(idOrtusenB, 'kabul', '1021');
+serverBubble('1021', 'örtüşen B');
+await teslim();
+assert.equal(input.value, 'taslak D', 'kabul edilen örtüşen istemler girdide kalmamalı, taslak korunmalı');
+timers.splice(0);
+chat.children.slice().forEach(c => chat.removeChild(c));
+await teslim();
+input.value = '';
+
 // 12) Boş istem gönderilmez.
 input.value = '   ';
 const once = sent.length;

@@ -199,15 +199,39 @@ $(document).ready(function() {
   // yüklendiği gibiyse yalnızca istem bölümü kalkar; taslağın önüne eklenen
   // istem öneki aynen duruyorsa taslaktaki sonraki düzenlemeler korunarak
   // önek kaldırılır. Kullanıcı istemi düzenlediyse girdiye dokunulmaz.
+  // Örtüşen geri yüklemeler (B, A'nın önüne eklendi) bağımsız uzlaştırılır: önde
+  // başka geri yüklenmiş bölüm varken eşleşmeyen kayıt düşmez, o bölüm kalkınca
+  // yeniden denenir. Kayıt yalnızca kendi bölümü girdide durdukça tutulur.
+  const bekleyenUzlastirmalar = [];
+  function uzlastirmayiDene(yukleme, giris) {
+    const mevcut = String(giris.value || '');
+    if (mevcut === yukleme.deger) giris.value = yukleme.kalan;
+    else if (yukleme.onEk && mevcut.indexOf(yukleme.onEk) === 0) giris.value = mevcut.slice(yukleme.onEk.length);
+    else return false;
+    return true;
+  }
+  function bolumGiriste(yukleme, giris) {
+    return String(giris.value || '').indexOf(yukleme.onEk || yukleme.deger) >= 0;
+  }
   function geriYuklemeyiUzlastir(kayit) {
     const yukleme = kayit.geriYukleme;
     kayit.geriYukleme = null;
     const giris = girisAlani();
     if (!yukleme || !giris) return;
-    const mevcut = String(giris.value || '');
-    if (mevcut === yukleme.deger) giris.value = yukleme.kalan;
-    else if (yukleme.onEk && mevcut.indexOf(yukleme.onEk) === 0) giris.value = mevcut.slice(yukleme.onEk.length);
-    else return;
+    if (!uzlastirmayiDene(yukleme, giris)) {
+      if (bolumGiriste(yukleme, giris)) {
+        bekleyenUzlastirmalar.push(yukleme);
+        if (bekleyenUzlastirmalar.length > 8) bekleyenUzlastirmalar.shift();
+      }
+      return;
+    }
+    // Bir bölüm kalktı: arkasında bekleyen kabul edilmiş bölümler yeniden denenir.
+    for (let i = 0; i < bekleyenUzlastirmalar.length;) {
+      const bekleyen = bekleyenUzlastirmalar[i];
+      if (uzlastirmayiDene(bekleyen, giris)) { bekleyenUzlastirmalar.splice(i, 1); i = 0; }
+      else if (!bolumGiriste(bekleyen, giris)) bekleyenUzlastirmalar.splice(i, 1);
+      else i++;
+    }
     girisiYenile(giris);
   }
 

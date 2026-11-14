@@ -689,7 +689,8 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
       history_prepare_rows_async(session, ids, history_stamps(ids, chats, stamp_for_chat),
                                  uid = resolve_current_user_id(), isitma = isitma,
                                  resolve_uid = resolve_current_user_id, messages_cache = messages_cache,
-                                 yayin_sayaci = trigger_refresh, bildir = hazir_bildir)
+                                 yayin_sayaci = trigger_refresh, bildir = hazir_bildir,
+                                 guncel_sohbetler = latest_chats, damga_fn = stamp_for_chat)
       invisible(NULL)
     }, ignoreInit = TRUE)
 

@@ -120,8 +120,12 @@ history_rows_worker_promise <- function(chat_ids, user_id, session_token = NULL)
 # bildir(TRUE/FALSE) ile tam bir kez bildirilir: her kimlik ya bu sonuçla ya da
 # daha yeni bir okumayla önbellekteyse "hazır"dır. Okuma hatası günlüğe
 # maskelenmiş yazılır.
+# guncel_sohbetler() + damga_fn: sonuç geldiğinde söyleşilerin GÜNCEL damgaları.
+# Hazırlık sürerken damgası değişen (yeni mesaj alan) söyleşi eski damgayla
+# yazılmaz ve "hazır" sayılmaz; güncel damgalı kaydı yoksa durum "kısmen"dir.
 history_prepare_rows_async <- function(session, ids, damgalar, uid, isitma, resolve_uid,
-                                       messages_cache, yayin_sayaci, bildir) {
+                                       messages_cache, yayin_sayaci, bildir,
+                                       guncel_sohbetler = NULL, damga_fn = NULL) {
   nesil <- isitma$nesil
   surumler <- history_versions(isitma, ids)
   gecerli <- function() !isTRUE(session$isClosed()) && identical(isitma$nesil, nesil) &&
@@ -132,7 +136,11 @@ history_prepare_rows_async <- function(session, ids, damgalar, uid, isitma, reso
     if (!gecerli()) return(NULL)
     shiny::isolate({
       cache <- messages_cache()
-      degismeyen <- ids[history_versions(isitma, ids) == surumler]
+      simdiki <- if (is.function(guncel_sohbetler) && is.function(damga_fn)) {
+        history_stamps(ids, guncel_sohbetler(), damga_fn)
+      } else damgalar[ids]
+      damga_ayni <- vapply(ids, function(id) identical(simdiki[[id]], damgalar[[id]]), logical(1))
+      degismeyen <- ids[history_versions(isitma, ids) == surumler & damga_ayni]
       okunan <- intersect(degismeyen, names(sonuc))
       for (id in okunan) {
         cache[[id]] <- list(rows = if (is.list(sonuc[[id]])) sonuc[[id]] else list(),
@@ -144,7 +152,9 @@ history_prepare_rows_async <- function(session, ids, damgalar, uid, isitma, reso
       yayin_sayaci(yayin_sayaci() + 1)
       yenisi_var <- setdiff(ids, degismeyen)
       bildir(all(ids %in% okunan |
-                   (ids %in% yenisi_var & vapply(ids, function(id) !is.null(cache[[id]]), logical(1)))))
+                   (ids %in% yenisi_var & vapply(ids, function(id) {
+                     !is.null(cache[[id]]) && identical(cache[[id]]$stamp, simdiki[[id]])
+                   }, logical(1)))))
     })
     NULL
   }, onRejected = function(e) {
