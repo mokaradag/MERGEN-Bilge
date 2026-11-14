@@ -76,6 +76,13 @@ imageGalleryServer <- function(id, current_user_id) {
     # oturumun güncel sahibiyle aynıysa çizilir; A'nın yolları B'ye bağlanmaz.
     galeri_sahibi <- new.env(parent = emptyenv())
     galeri_sahibi$uid <- NA_integer_
+    # Görsel URL sahibi oturum kimliğinden çözülür; kimlik sonradan
+    # yayımlanınca (0 -> A) kartlar yeniden çizilip URL'ler o sahiple kaydedilir.
+    kimlik_sinyali <- if (exists("mergen_session_identity_signal", mode = "function", inherits = TRUE)) {
+      mergen_session_identity_signal(session)
+    } else {
+      function() 0L
+    }
 
     # TEMBEL galeri: görsel tarama + açıklama DB sorguları soğuk açılışta
     # ÇALIŞMAZ. Galeri, kullanıcı sayfayı ilk açtığında (navigasyon gözlemcisi
@@ -225,6 +232,7 @@ imageGalleryServer <- function(id, current_user_id) {
       # kullanıcının açık Yenile tıklaması ise gallery_revision üzerinden
       # aynı dosya listesinde bile ekranı bilinçli olarak tazeler.
       gallery_revision()
+      kimlik_sinyali()
       imgs <- cached_images()
       if (!identical(galeri_sahibi$uid, coerce_user_id(resolve_current_user_id()))) {
         imgs <- empty_images_df()

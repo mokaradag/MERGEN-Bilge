@@ -89,7 +89,12 @@ chatInputObserversInit <- function(input, session, values, settings_data,
       try(session$sendCustomMessage("mergenIstemSonucu", islenen_istemler[[istem_kimligi]]), silent = TRUE)
       return(invisible(NULL))
     }
-    kimlik <- function(m) as.character(m$id %||% "")[1]
+    # Kaydı başarısız mesajın kimliği character(0)/NA olabilir: "" sayılır ki
+    # iki eksik kimlik eşleşip eklenen mesaj "ret" sanılmasın; konuma düşülür.
+    kimlik <- function(m) {
+      id <- as.character(m$id %||% "")[1]
+      if (is.na(id)) "" else id
+    }
     onceki <- isolate(values$messages)
     onceki_kimlikler <- vapply(onceki, kimlik, character(1))
     on.exit(if (nzchar(istem_kimligi)) {
@@ -102,7 +107,8 @@ chatInputObserversInit <- function(input, session, values, settings_data,
                           simdiki[seq.int(length(onceki) + 1L, length(simdiki))])
       }
       sonuc <- list(client_id = istem_kimligi, durum = if (length(eklenen)) "kabul" else "ret")
-      if (length(eklenen)) sonuc$mesaj_id <- as.character(eklenen[[length(eklenen)]]$id %||% "")[1]
+      son_kimlik <- if (length(eklenen)) kimlik(eklenen[[length(eklenen)]]) else ""
+      if (nzchar(son_kimlik)) sonuc$mesaj_id <- son_kimlik
       islenen_istemler[[istem_kimligi]] <<- sonuc
       if (length(islenen_istemler) > 32L) islenen_istemler <<- utils::tail(islenen_istemler, 32L)
       try(session$sendCustomMessage("mergenIstemSonucu", sonuc), silent = TRUE)

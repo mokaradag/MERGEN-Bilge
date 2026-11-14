@@ -485,19 +485,25 @@ testthat::test_that("asılı kalan işçi sorgusu süre bütçesinde hata verir,
     dbExecute = function(conn, statement, ...) { yakalanan$execute <- statement; 0L },
     dbGetQuery = function(conn, statement, ...) {
       # Asılı sorgu benzetimi: R kesme denetim noktalarında ilerleyen meşgul bekleme.
+      yakalanan$sorgu_basladi <- TRUE
       bas <- Sys.time()
       while (as.numeric(difftime(Sys.time(), bas, units = "secs")) < 10) sum(seq_len(10))
+      yakalanan$sorgu_bitti <- TRUE
       data.frame()
     },
     .package = "DBI"
   )
   bas <- Sys.time()
+  # Tanı iletisi R diline göre çevrilir; iddia ileti metnine değil davranışa
+  # bakar: sorgu başladı, bitmeden kesildi ve süre bütçesine yakın hata verdi.
   testthat::expect_error(
     mergen_bounded_db_fetch_raw("SELECT 1", list(), dsn = "DSN", encoding = "UTF-8",
                                 name_encoding = "UTF-8", query_timeout = 0.5),
-    "elapsed time limit"
+    class = "error"
   )
   testthat::expect_lt(as.numeric(difftime(Sys.time(), bas, units = "secs")), 5)
+  testthat::expect_true(isTRUE(yakalanan$sorgu_basladi))
+  testthat::expect_null(yakalanan$sorgu_bitti)
   testthat::expect_true(isTRUE(yakalanan$kapandi))
   testthat::expect_true(isTRUE(yakalanan$args$interruptible))
   testthat::expect_identical(yakalanan$execute, "SET LOCK_TIMEOUT 500")
@@ -510,4 +516,77 @@ testthat::test_that("asılı kalan işçi sorgusu süre bütçesinde hata verir,
   mergen_bounded_db_fetch_raw("SELECT 1", list(), dsn = "DSN", encoding = "UTF-8", name_encoding = "UTF-8")
   testthat::expect_null(yakalanan$args$interruptible)
   testthat::expect_null(yakalanan$execute)
+})
+
+testthat::test_that("LOCK_TIMEOUT kurulumu süre bütçesini tüketirse ana sorgu sınırsız çalışmaz", {
+  testthat::skip_if_not_installed("DBI")
+  testthat::skip_if_not_installed("odbc")
+  .startup_preview_source_once()
+  yakalanan <- new.env(parent = emptyenv())
+  mesgul <- function(sn) {
+    bas <- Sys.time()
+    while (as.numeric(difftime(Sys.time(), bas, units = "secs")) < sn) sum(seq_len(10))
+  }
+  testthat::local_mocked_bindings(
+    dbConnect = function(drv, ...) structure(list(), class = "sahte_baglanti"),
+    dbDisconnect = function(conn, ...) { yakalanan$kapandi <- TRUE; invisible(TRUE) },
+    # Kurulum deyimi bütçeden uzun asılı kalır; R sınırı siler ve hata verir.
+    dbExecute = function(conn, statement, ...) { mesgul(10); 0L },
+    dbGetQuery = function(conn, statement, ...) {
+      yakalanan$sorgu_basladi <- TRUE
+      mesgul(3)
+      yakalanan$sorgu_bitti <- TRUE
+      data.frame(x = 1L)
+    },
+    .package = "DBI"
+  )
+  bas <- Sys.time()
+  testthat::expect_error(
+    mergen_bounded_db_fetch_raw("SELECT 1", list(), dsn = "DSN", encoding = "UTF-8",
+                                name_encoding = "UTF-8", query_timeout = 0.4),
+    class = "error"
+  )
+  # Kusurlu sürümde kurulum hatası yutulur ve sorgu 3 sn sınırsız koşardı.
+  testthat::expect_lt(as.numeric(difftime(Sys.time(), bas, units = "secs")), 2.5)
+  testthat::expect_null(yakalanan$sorgu_bitti)
+  testthat::expect_true(isTRUE(yakalanan$kapandi))
+  # Süre sınırı çağrı sonrasına sızmaz.
+  testthat::expect_silent(mesgul(0.6))
+})
+
+testthat::test_that("zaman aşımı olmayan LOCK_TIMEOUT kurulum hatası ölümcül değildir, sorgu kalan bütçeyle sınırlı koşar", {
+  testthat::skip_if_not_installed("DBI")
+  testthat::skip_if_not_installed("odbc")
+  .startup_preview_source_once()
+  yakalanan <- new.env(parent = emptyenv())
+  testthat::local_mocked_bindings(
+    dbConnect = function(drv, ...) structure(list(), class = "sahte_baglanti"),
+    dbDisconnect = function(conn, ...) { yakalanan$kapandi <- TRUE; invisible(TRUE) },
+    dbExecute = function(conn, statement, ...) stop("sürücü SET deyimini desteklemiyor (test)"),
+    dbGetQuery = function(conn, statement, ...) data.frame(ChatID = 1L),
+    .package = "DBI"
+  )
+  veri <- mergen_bounded_db_fetch_raw("SELECT 1", list(), dsn = "DSN", encoding = "UTF-8",
+                                      name_encoding = "UTF-8", query_timeout = 5)
+  testthat::expect_identical(veri$ChatID, 1L)
+  testthat::expect_true(isTRUE(yakalanan$kapandi))
+
+  # Kurulum hatasından sonra da sorgu kalan bütçeyle sınırlıdır.
+  testthat::local_mocked_bindings(
+    dbGetQuery = function(conn, statement, ...) {
+      bas <- Sys.time()
+      while (as.numeric(difftime(Sys.time(), bas, units = "secs")) < 3) sum(seq_len(10))
+      yakalanan$sorgu_bitti <- TRUE
+      data.frame()
+    },
+    .package = "DBI"
+  )
+  bas <- Sys.time()
+  testthat::expect_error(
+    mergen_bounded_db_fetch_raw("SELECT 1", list(), dsn = "DSN", encoding = "UTF-8",
+                                name_encoding = "UTF-8", query_timeout = 0.4),
+    class = "error"
+  )
+  testthat::expect_lt(as.numeric(difftime(Sys.time(), bas, units = "secs")), 2.5)
+  testthat::expect_null(yakalanan$sorgu_bitti)
 })

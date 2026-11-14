@@ -170,6 +170,36 @@ testthat::test_that("hız sınırı ve uzunluk retleri send_message çağırmada
   testthat::expect_identical(.istem_sonuclari(kayit2)[[1]]$message$durum, "ret")
 })
 
+testthat::test_that("kaydı başarısız (kimliği boş/NA) ardışık mesajlar 'ret' sanılmaz; mesaj_id NA gönderilmez", {
+  testthat::skip_if_not_installed("shiny")
+  kayit <- .yeni_kayit()
+  env <- .istem_ortami(kayit)
+  # Önceki kaydı başarısız mesaj: save_message_safely NULL döndüğünde chat_add_message
+  # kimliği character(0) olarak saklar.
+  kayit$onceki <- list(list(id = character(0), type = "user", content = "eski"))
+  kimlikler <- list(character(0), NA_character_, NULL)
+  gonder <- function(text, values) {
+    kayit$sayac <- (kayit$sayac %||% 0L) + 1L
+    mesaj <- list(type = "user", content = text)
+    mesaj["id"] <- list(kimlikler[[kayit$sayac]])
+    values$messages <- append(shiny::isolate(values$messages), list(mesaj))
+  }
+  shiny::testServer(.istem_sunucusu(env, kayit, mesaj_ekle = FALSE, gonder = gonder), {
+    session$setInputs(send_prompt_from_js = list(text = "birinci", nonce = 20, client_id = "istem_kayitsiz_1"))
+    session$setInputs(send_prompt_from_js = list(text = "ikinci", nonce = 21, client_id = "istem_kayitsiz_2"))
+    session$setInputs(send_prompt_from_js = list(text = "üçüncü", nonce = 22, client_id = "istem_kayitsiz_3"))
+  })
+  sonuc <- .istem_sonuclari(kayit)
+  testthat::expect_length(sonuc, 3L)
+  for (i in seq_along(sonuc)) {
+    testthat::expect_identical(sonuc[[i]]$message,
+                               list(client_id = paste0("istem_kayitsiz_", i), durum = "kabul"),
+                               info = "eklenen mesaj kabul edilmeli; boş kimlik mesaj_id olarak gönderilmemeli")
+  }
+  # Kabul edilen istem geri yüklenmediği için yeniden gönderimle çoğalmaz.
+  testthat::expect_identical(kayit$gonderilen, c("birinci", "ikinci", "üçüncü"))
+})
+
 testthat::test_that("aynı istemci kimliğiyle yeniden teslim edilen istem ikinci kez işlenmez, ilk sonuç yinelenir", {
   testthat::skip_if_not_installed("shiny")
   kayit <- .yeni_kayit()

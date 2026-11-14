@@ -42,6 +42,7 @@ mergen_bounded_db_fetch_raw <- function(sql, params, dsn, encoding, name_encodin
     # Önce kaydedilir, önce çalışır: bağlantı kapatma süre sınırına takılmaz.
     setTimeLimit(elapsed = sure_sn, transient = TRUE)
     on.exit(setTimeLimit(elapsed = Inf), add = TRUE)
+    butce_baslangici <- proc.time()[["elapsed"]]
   }
 
   connect_started <- Sys.time()
@@ -64,7 +65,19 @@ mergen_bounded_db_fetch_raw <- function(sql, params, dsn, encoding, name_encodin
   if (sinirli) {
     # SQL Server üst sınırı (ms) aşılmaz; tam sayı taşması NA üretmez.
     kilit_ms <- as.integer(min(sure_sn, 2147483) * 1000)
-    try(DBI::dbExecute(conn, sprintf("SET LOCK_TIMEOUT %d", kilit_ms)), silent = TRUE)
+    kurulum <- try(DBI::dbExecute(conn, sprintf("SET LOCK_TIMEOUT %d", kilit_ms)), silent = TRUE)
+    # R süre sınırı dolunca sınırı silip hata verir; yakalanan kurulum hatası ana
+    # sorguyu sınırsız bırakmasın diye kalan bütçe (ileti metnine bakmadan)
+    # yeniden uygulanır. Bütçe bittiyse sorgu hiç başlamaz; diğer kurulum
+    # hataları ölümcül değildir.
+    kalan_sn <- sure_sn - (proc.time()[["elapsed"]] - butce_baslangici)
+    if (!is.finite(kalan_sn) || kalan_sn <= 0) {
+      if (inherits(kurulum, "try-error") && inherits(attr(kurulum, "condition"), "condition")) {
+        stop(attr(kurulum, "condition"))
+      }
+      stop("mergen_bounded_db_fetch_raw: sorgu süre bütçesi kurulumda tükendi.", call. = FALSE)
+    }
+    setTimeLimit(elapsed = kalan_sn, transient = TRUE)
   }
 
   query_started <- Sys.time()
