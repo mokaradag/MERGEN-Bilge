@@ -133,13 +133,35 @@ mergen_generated_image_card_html <- function(message_id, img_src, description = 
 # böylece tekrarlı render'larda handler birikmesi önlenir. Kayıtlı filtre dosyayı
 # her istekte taze okuduğu için dosya içeriği değişse bile doğru bayt sunulur.
 # ------------------------------------------------------------------------------
+# Oturumun o anki sahibi (kanonik kullanıcı kimliği). Görsel kaydı bu sahibe
+# bağlanır ve her istekte yeniden doğrulanır.
+.mergen_image_session_owner <- function(session) {
+  uid <- tryCatch(
+    if (exists("resolve_effective_user_id", mode = "function", inherits = TRUE)) {
+      resolve_effective_user_id(session = session)
+    } else {
+      session$userData$user_id
+    },
+    error = function(e) NA
+  )
+  # Kapalı-başarısız: çözülmemiş kimlik (NULL/NA/0/negatif/sayısal olmayan)
+  # geçerli görünen "0" ya da "NA" sahibine dönüşmez; NA kalır ve her istek 403 alır.
+  uid <- tryCatch(suppressWarnings(as.numeric(if (length(uid)) uid[[1]] else NA)),
+                  error = function(e) NA_real_)
+  if (length(uid) != 1L || is.na(uid) || !is.finite(uid) || uid <= 0) return(NA_character_)
+  format(uid, scientific = FALSE, trim = TRUE)
+}
+
 .mergen_register_image_data_obj <- function(session, local_path) {
   norm_path <- normalizePath(local_path, winslash = "/", mustWork = FALSE)
+  # Önbellek anahtarı sahip + yoldur: sahip değişince eski URL yeniden kullanılmaz.
+  sahip <- .mergen_image_session_owner(session)
+  cache_key <- paste0(sahip, "|", norm_path)
 
   cache <- session$userData$mergen_image_url_cache
   if (is.null(cache)) cache <- list()
-  if (!is.null(cache[[norm_path]]) && nzchar(cache[[norm_path]])) {
-    return(cache[[norm_path]])
+  if (!is.null(cache[[cache_key]]) && nzchar(cache[[cache_key]])) {
+    return(cache[[cache_key]])
   }
 
   ext <- tolower(tools::file_ext(local_path))
@@ -154,12 +176,26 @@ mergen_generated_image_card_html <- function(message_id, img_src, description = 
     "image/png"
   )
 
-  obj_name <- paste0("mergen_img_", gsub("[^a-zA-Z0-9]", "_", basename(local_path)))
+  # Kayıt adı oturum içinde benzersizdir. Dosya adından türetilen ad, farklı
+  # klasörlerdeki aynı adlı görsellerde önceki kaydın işleyicisini eziyor ve
+  # iki kart aynı görseli gösteriyordu.
+  sira <- (session$userData$mergen_image_url_seq %||% 0L) + 1L
+  session$userData$mergen_image_url_seq <- sira
+  obj_name <- paste0("mergen_img_", sira)
 
   url <- session$registerDataObj(
     name = obj_name,
-    data = list(path = norm_path, ctype = content_type),
+    data = list(path = norm_path, ctype = content_type, owner = sahip),
     filterFunc = function(data, req) {
+      # Aynı Shiny oturumunda sahip değiştiyse (SSO kimlik geçişi) önceki
+      # sahibin kayıtlı URL'leri artık sunulmaz (kapalı-başarısız).
+      if (is.na(data$owner) || !identical(.mergen_image_session_owner(session), data$owner)) {
+        return(shiny::httpResponse(
+          status = 403L,
+          content_type = "text/plain; charset=UTF-8",
+          content = "Erisim reddedildi"
+        ))
+      }
       fpath <- data$path
       if (!file.exists(fpath)) {
         return(shiny::httpResponse(
@@ -177,7 +213,7 @@ mergen_generated_image_card_html <- function(message_id, img_src, description = 
     }
   )
 
-  cache[[norm_path]] <- url
+  cache[[cache_key]] <- url
   session$userData$mergen_image_url_cache <- cache
   url
 }

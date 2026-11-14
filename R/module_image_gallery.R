@@ -72,6 +72,17 @@ imageGalleryServer <- function(id, current_user_id) {
     gallery_revision <- reactiveVal(0)
     effective_user_id <- reactiveVal(coerce_user_id(resolve_current_user_id()))
     cached_images <- reactiveVal(empty_images_df())
+    # Önbellekteki satırların sahibi: kartlar (ve URL kayıtları) yalnızca bu sahip
+    # oturumun güncel sahibiyle aynıysa çizilir; A'nın yolları B'ye bağlanmaz.
+    galeri_sahibi <- new.env(parent = emptyenv())
+    galeri_sahibi$uid <- NA_integer_
+    # Görsel URL sahibi oturum kimliğinden çözülür; kimlik sonradan
+    # yayımlanınca (0 -> A) kartlar yeniden çizilip URL'ler o sahiple kaydedilir.
+    kimlik_sinyali <- if (exists("mergen_session_identity_signal", mode = "function", inherits = TRUE)) {
+      mergen_session_identity_signal(session)
+    } else {
+      function() 0L
+    }
 
     # TEMBEL galeri: görsel tarama + açıklama DB sorguları soğuk açılışta
     # ÇALIŞMAZ. Galeri, kullanıcı sayfayı ilk açtığında (navigasyon gözlemcisi
@@ -104,10 +115,23 @@ imageGalleryServer <- function(id, current_user_id) {
       effective_user_id(uid)
 
       if (is.na(uid) || uid <= 0) {
+        galeri_sahibi$uid <- NA_integer_
         cached_images(empty_images_df())
+        # Kimlik yokken galeri hazırlanamaz; açılış bekletilmez, durum "kısmen"dir.
+        isaretle <- session$userData$mergen_yonetim_hazir
+        if (is.function(isaretle)) {
+          isaretle("gallery_index_ready", "Görsel galerisi kullanılamıyor (kimlik yok)",
+                   detail = list(count = 0L, available = FALSE))
+        }
         return(invisible(NULL))
       }
 
+      # Sahip değiştiyse önceki sahibin satırları taramadan ÖNCE düşer; tarama
+      # başarısız olsa da yeni sahibe eski sahibin görselleri gösterilmez.
+      if (!identical(galeri_sahibi$uid, uid)) {
+        cached_images(empty_images_df())
+        galeri_sahibi$uid <- uid
+      }
       tarama_baslangici <- Sys.time()
       scanned <- scan_user_images(uid)
       cat(sprintf(
@@ -125,6 +149,10 @@ imageGalleryServer <- function(id, current_user_id) {
       }
       if (isTRUE(force)) {
         gallery_revision(gallery_revision() + 1)
+      }
+      isaretle <- session$userData$mergen_yonetim_hazir
+      if (is.function(isaretle)) {
+        isaretle("gallery_index_ready", "Görsel galerisi dizini hazır", detail = list(count = nrow(scanned)))
       }
       invisible(NULL)
     }
@@ -152,6 +180,13 @@ imageGalleryServer <- function(id, current_user_id) {
               gallery_do_scan(force = force),
               error = function(e) {
                 cat(sprintf("[IMAGE_GALLERY] tarama hatası: %s\n", conditionMessage(e)))
+                # Başarısız tarama "hazır" sayılmaz ama açılışı da bekletmez:
+                # kontrol noktası "kısmen" (degraded) olarak bir kez bildirilir.
+                isaretle <- session$userData$mergen_yonetim_hazir
+                if (is.function(isaretle)) {
+                  isaretle("gallery_index_ready", "Görsel galerisi taranamadı; Yenile ile yeniden denenebilir",
+                           detail = list(count = 0L, degraded = TRUE))
+                }
               }
             )
             gallery_loading(FALSE)
@@ -166,16 +201,29 @@ imageGalleryServer <- function(id, current_user_id) {
       refresh_gallery_cache()
     })
 
-    search_term_debounced <- reactiveVal("")
-    search_timer <- reactiveTimer(300)
+    # Aynı oturumda sahip değişince önceki sahibin kartları hemen kalkar; galeri
+    # etkinse yeni sahip için yeniden taranır.
+    if (exists("mergen_session_on_owner_change", mode = "function", inherits = TRUE)) {
+      mergen_session_on_owner_change(session, function(neden) {
+        galeri_sahibi$uid <- NA_integer_
+        cached_images(empty_images_df())
+        refresh_trigger(shiny::isolate(refresh_trigger()) + 1)
+      })
+    }
+
+    # Görsel silme mesaj metnini yerinde değiştirir (zaman/sayı damgası aynı
+    # kalır); Söyleşi Geçmişi önbelleğindeki ilgili kayıt düşürülür.
+    gecmis_onbellegini_dusur <- function(chat_ids = NULL) {
+      dusur <- session$userData$mergen_gecmis_onbellek_dusur
+      if (is.function(dusur)) try(dusur(chat_ids), silent = TRUE)
+    }
+
+    # Arama terimi olay güdümlü 300 ms debounce ile uygulanır; her oturumda
+    # 300 ms'de bir sonsuza dek çalışan örnekleme zamanlayıcısı kaldırıldı.
+    search_term_debounced <- shiny::debounce(shiny::reactive(input$search_images %||% ""), 300)
 
     observeEvent(input$search_images, {
-      search_timer()
       current_page(1)
-    })
-
-    observeEvent(search_timer(), {
-      search_term_debounced(input$search_images %||% "")
     })
 
     # Arama: açıklama, dosya adı, ay etiketi ve sohbet başlığı üzerinden filtrele
@@ -184,7 +232,11 @@ imageGalleryServer <- function(id, current_user_id) {
       # kullanıcının açık Yenile tıklaması ise gallery_revision üzerinden
       # aynı dosya listesinde bile ekranı bilinçli olarak tazeler.
       gallery_revision()
+      kimlik_sinyali()
       imgs <- cached_images()
+      if (!identical(galeri_sahibi$uid, coerce_user_id(resolve_current_user_id()))) {
+        imgs <- empty_images_df()
+      }
       term <- search_term_debounced()
 
       if (nrow(imgs) == 0) return(imgs)
@@ -247,7 +299,9 @@ imageGalleryServer <- function(id, current_user_id) {
       imgs <- paginated_images()
 
       # İlk tarama sürerken kullanıcı boş ekran yerine yükleme durumu görür.
-      if (isTRUE(gallery_loading()) && nrow(imgs) == 0) {
+      # Yükleme bayrağı yalnızca liste boşken okunur; aksi halde her sekme
+      # ziyaretindeki tarama tüm ızgarayı yeniden render ettiriyordu.
+      if (nrow(imgs) == 0 && isTRUE(gallery_loading())) {
         return(div(
           class = "mergen-loading-state",
           div(class = "mergen-loading-spinner"),
@@ -298,7 +352,9 @@ imageGalleryServer <- function(id, current_user_id) {
               class = "gallery-grid",
               lapply(seq_len(nrow(month_rows)), function(idx) {
                 row <- month_rows[idx, ]
-                img_b64 <- get_image_thumbnail_base64(row$file_path)
+                # Oturum kapsamlı URL: tam çözünürlüklü base64 gövdesi websocket'e
+                # gömülmez; tarayıcı görseli tembel ve paralel çeker.
+                img_b64 <- mergen_serve_image_data_url(row$file_path, session = session)
 
                 file_size_kb <- round(row$file_size / 1024, 1)
                 created_str <- format(row$created_at, "%d.%m.%Y %H:%M")
@@ -348,7 +404,8 @@ imageGalleryServer <- function(id, current_user_id) {
                         src = img_b64,
                         alt = if (nzchar(desc_text)) desc_text else row$filename,
                         class = "gallery-card-image",
-                        loading = "lazy"
+                        loading = "lazy",
+                        decoding = "async"
                       )
                     } else {
                       div(
@@ -434,6 +491,7 @@ imageGalleryServer <- function(id, current_user_id) {
       if (success) {
         showToast(session, "Görsel silindi.", "warning")
         delete_image_trigger(list(file_path = info$file_path, chat_id = info$chat_id))
+        gecmis_onbellegini_dusur(info$chat_id)
         refresh_trigger(refresh_trigger() + 1)
       } else {
         showToast(session, "Görsel silinemedi.", "error")
@@ -460,6 +518,7 @@ imageGalleryServer <- function(id, current_user_id) {
     observeEvent(input$confirm_clear_all_images, {
       removeModal()
       deleted_count <- delete_all_user_images(effective_user_id())
+      gecmis_onbellegini_dusur()
       clear_all_trigger(clear_all_trigger() + 1)
       refresh_trigger(refresh_trigger() + 1)
       current_page(1)

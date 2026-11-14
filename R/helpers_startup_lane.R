@@ -125,6 +125,7 @@ mergen_rich_lane_required_boot_keys <- function() {
     "saved_chats_preview_ready",
     "file_index_ready",
     "character_media_ready",
-    "welcome_client_ready"
+    "welcome_client_ready",
+    "management_pages_ready"
   )
 }

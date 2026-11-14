@@ -26,6 +26,14 @@ if (length(missing_boot_files) > 0) {
   ))
 }
 
+# Ana uygulama sürecinde R JIT derleyicisi kapatılır; operatör R_ENABLE_JIT ile
+# açıkça seviye verdiyse ona uyulur. Binlerce uygulama kapanışı yeni süreçteki
+# ilk oturumda derleniyor ve ilk kullanıcıyı ~15 sn bekletiyordu; ölçümde sıcak
+# etkileşimler JIT kapalıyken yavaşlamadı. Kalıcı PSOCK işçileri etkilenmez.
+if (!nzchar(Sys.getenv("R_ENABLE_JIT"))) {
+  invisible(compiler::enableJIT(0))
+}
+
 boot_step <- function(step_name, expr) {
   tryCatch(
     force(expr),
@@ -262,6 +270,10 @@ create_mergen_app <- function() {
           cat("[STARTUP] UYARI: Dosya özeti bağımlılık ısıtması hata verdi:",
               conditionMessage(attr(isindi, "condition")), "\n")
         }
+      }
+      # İlk istemin gerçek SSE bağımlılık taraması da oturumlar gelmeden ısıtılır.
+      if (exists("mergen_true_streaming_warm_dependencies", mode = "function", inherits = TRUE)) {
+        try(mergen_true_streaming_warm_dependencies(), silent = TRUE)
       }
     }
   )

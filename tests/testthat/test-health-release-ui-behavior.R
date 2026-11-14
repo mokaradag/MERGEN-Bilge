@@ -363,6 +363,46 @@ testthat::test_that("bekleyen DNS tamamlanınca yalnız uç nokta satırı yenil
   })
 })
 
+testthat::test_that("DNS beklenirken gizlenen sağlık sayfası yeniden açılınca DNS takibi sürer", {
+  env <- .healthModuleServerEnv()
+  probe <- 0L
+  dns <- new.env(); dns$hazir <- FALSE
+  satir <- function(deger) data.frame(id = "llm.endpoint", label = "LLM",
+    status = "ok", severity = 0L, value = deger, detail = "", duration_ms = 1,
+    checked_at = "", remediation = "", stringsAsFactors = FALSE)
+  env$health_collect_checks <- function(...) satir("DNS bekleniyor")
+  # DNS çözümlemesi sayfa gizliyken tamamlanır.
+  env$health_check_llm_endpoint <- function(...) {
+    probe <<- probe + 1L
+    satir(if (isTRUE(dns$hazir)) "HTTP 200" else "DNS bekleniyor")
+  }
+  shiny::testServer(env$healthServer, args = list(perf_tracker = NULL), {
+    gizli_anahtar <- paste0("output_", session$ns("health_tab_content"), "_hidden")
+    gorunurluk <- shiny::reactiveValues()
+    gorunurluk[[gizli_anahtar]] <- FALSE
+    kok_oturum <- session$rootScope()  # vekil oturum atamaya kapalıdır; kök oturuma yazılır
+    kok_oturum$clientData <- gorunurluk
+    session$userData$user_config <- list(auth_level = "ADMIN")
+    # İlk çizim görünürken olur, ardından sayfa DNS tamamlanmadan gizlenir.
+    session$setInputs(health_tabs = "overview")
+    gorunurluk[[gizli_anahtar]] <- TRUE
+    session$flushReact()
+    oncesi <- probe
+    # 4 sn'lik takip penceresi sayfa gizliyken dolar; gizliyken probe çalışmaz.
+    Sys.sleep(4.2)
+    session$elapse(5000)
+    testthat::expect_identical(probe, oncesi)
+    dns$hazir <- TRUE
+    # Sayfa yeniden açıldı: DNS takibi yeniden başlar ve uç nokta tamamlanır.
+    gorunurluk[[gizli_anahtar]] <- FALSE
+    session$flushReact()
+    session$elapse(300)
+    session$flushReact()
+    testthat::expect_gt(probe, oncesi)
+    testthat::expect_identical(checks_data()$value, "HTTP 200")
+  })
+})
+
 testthat::test_that("healthServer yönetici olmayan oturuma sekme içeriği ve varlık verisi vermez", {
   env <- .healthModuleServerEnv()
   sayac <- new.env(parent = emptyenv())

@@ -193,10 +193,25 @@ healthServer <- function(id, perf_tracker) {
       ilk <- initial_checks()
       dns_checks() %||% ilk
     })
+    dns_gizli_kaldi <- FALSE
     observe({
       if (!isTRUE(yetki_durumu())) return()
+      # Sayfa görünür değilken sağlık probe'ları (DB, tam gc() vb.) yalnızca DNS
+      # takibi için zorla çalıştırılmaz; aksi halde her yönetici oturumu açılışta
+      # ve 2 dk'da bir tüm kullanıcıların paylaştığı olay döngüsünü blokluyordu.
+      if (!isFALSE(session$clientData[[paste0("output_", ns("health_tab_content"), "_hidden")]])) {
+        dns_gizli_kaldi <<- TRUE
+        return()
+      }
       ilk <- initial_checks()
       son <- isolate(dns_checks()) %||% ilk
+      # Sayfa DNS beklenirken gizlenip 4 sn'lik pencereden sonra yeniden
+      # açıldıysa takip yeniden başlar; aksi halde uç nokta bir sonraki
+      # 2 dk'lık yenilemeye kadar "DNS bekleniyor" olarak kalıyordu.
+      if (isTRUE(dns_gizli_kaldi)) {
+        dns_gizli_kaldi <<- FALSE
+        if (any(son$value == "DNS bekleniyor", na.rm = TRUE)) dns_started <<- as.numeric(Sys.time())
+      }
       if (any(son$value == "DNS bekleniyor", na.rm = TRUE) &&
           as.numeric(Sys.time()) - dns_started < 4) {
         invalidateLater(250, session)

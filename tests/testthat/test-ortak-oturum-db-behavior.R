@@ -757,3 +757,46 @@ test_that("aktif olmayan ortak oturum yeni kullanıcı yazısı, YZ kilidi ve da
     conn = conn
   ))
 })
+
+test_that("ortak liste okuma hatası geçerli boş listeden ayırt edilir", {
+  bos_conn <- DBI::dbConnect(RSQLite::SQLite(), tempfile(fileext = ".sqlite"))
+  on.exit(DBI::dbDisconnect(bos_conn), add = TRUE)
+  # Tablo yok: sorgu başarısız -> boş ama "okuma hatası" işaretli.
+  hatali <- ortak_db_oturum_listesi(1L, conn = bos_conn)
+  expect_equal(nrow(hatali), 0L)
+  expect_true(isTRUE(attr(hatali, "mergen_okuma_hatasi")))
+
+  conn <- DBI::dbConnect(RSQLite::SQLite(), tempfile(fileext = ".sqlite"))
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+  .oo_test_create_schema(conn)
+  gecerli_bos <- ortak_db_oturum_listesi(1L, conn = conn)
+  expect_equal(nrow(gecerli_bos), 0L)
+  expect_false(isTRUE(attr(gecerli_bos, "mergen_okuma_hatasi")))
+})
+
+test_that("ortak söyleşi önbelleği hatayı önbelleğe almaz ve süresi dolunca yeniden okur", {
+  eski <- get("ortak_db_oturum_listesi", envir = globalenv())
+  on.exit(assign("ortak_db_oturum_listesi", eski, envir = globalenv()), add = TRUE)
+  durum <- new.env(); durum$cagri <- 0L; durum$hata <- TRUE
+  assign("ortak_db_oturum_listesi", function(kullanici_id, kaynak_turu = NULL, ...) {
+    durum$cagri <- durum$cagri + 1L
+    if (isTRUE(durum$hata)) return(structure(data.frame(), mergen_okuma_hatasi = TRUE))
+    data.frame(OrtakOturumID = 1L, Baslik = "Ortak çğış", stringsAsFactors = FALSE)
+  }, envir = globalenv())
+
+  onbellek <- new.env(parent = emptyenv())
+  ilk <- ortak_db_sohbet_listesi_onbellekten(onbellek, 7L)
+  expect_equal(nrow(ilk), 0L)
+  expect_null(onbellek$df)          # geçici hata taze boş sonuç olarak saklanmaz
+  durum$hata <- FALSE
+  ikinci <- ortak_db_sohbet_listesi_onbellekten(onbellek, 7L)
+  expect_equal(durum$cagri, 2L)     # hata sonrası hemen yeniden denendi
+  expect_equal(nrow(ikinci), 1L)
+  ortak_db_sohbet_listesi_onbellekten(onbellek, 7L)
+  expect_equal(durum$cagri, 2L)     # taze önbellek isabeti
+  onbellek$zaman <- Sys.time() - 120
+  ortak_db_sohbet_listesi_onbellekten(onbellek, 7L)
+  expect_equal(durum$cagri, 3L)     # süresi dolan önbellek yeniden okunur
+  ortak_db_sohbet_listesi_onbellekten(onbellek, 8L)
+  expect_equal(durum$cagri, 4L)     # kimlik değişince yeniden okunur
+})

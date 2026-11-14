@@ -464,14 +464,9 @@ handle_true_streaming_mode <- function(ctx) {
   ))
 
   sse_promise <- tryCatch(tracked_future_promise(
-    task_fn = function() {
-      call_local_llm_sse_worker(
-        chat_history = chat_history_for_sse,
-        current_settings = settings_for_sse,
-        stream_file = stream_file_for_sse,
-        stop_file = stop_file_for_sse
-      )
-    },
+    task_fn = mergen_true_streaming_task_fn(
+      chat_history_for_sse, settings_for_sse, stream_file_for_sse, stop_file_for_sse
+    ),
     task_type = "llm_true_streaming",
     cancel_check = mergen_stream_worker_guard(ctx, stream_env),
     session_token = session$token,
@@ -526,7 +521,11 @@ handle_true_streaming_mode <- function(ctx) {
       return(invisible(NULL))
     }
     req(!isTRUE(stream_env$finalized))
-    invalidateLater(stream_env$current_poll_interval_ms %||% poll_interval_ms, session)
+    # Yoklama eşzamanlı etkileşimli iş sayısıyla ölçeklenir (tek akışta profil
+    # aralığı aynen; N işte ~N kat seyrek, en çok 250 ms): tek döngü doymaz.
+    yuk <- tryCatch(length(.mergen_cancellable_live_jobs("interactive")), error = function(e) 1L)
+    aralik <- stream_env$current_poll_interval_ms %||% poll_interval_ms
+    invalidateLater(max(aralik, min(250L, aralik * max(1L, yuk))), session)
 
     if (isTRUE(stop_generation()) && !file.exists(stream_env$stop_file)) {
       file.create(stream_env$stop_file)

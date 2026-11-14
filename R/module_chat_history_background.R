@@ -1,13 +1,183 @@
 # R/module_chat_history_background.R
 # Açıklama: Söyleşi geçmişini görünür ilk bölümden sonra küçük partilerle ısıtır.
 
+# Önbellekte eksik ya da damgası değişmiş (bayat) söyleşi kimlikleri, verilen
+# sırayla. Başarısız okumalar önbelleğe hiç yazılmadığı için burada "eksik"
+# görünür ve yeniden denenir; başarıyla okunmuş BOŞ geçmiş damga eşleştikçe
+# isabettir (her ziyarette yeniden sorgulanmaz).
+history_ids_needing_fetch <- function(chat_ids, chats, cache, stamp_fn) {
+  ids <- setdiff(as.character(chat_ids %||% character()), "current_chat")
+  ids <- ids[!is.na(ids) & nzchar(ids)]
+  ids[vapply(ids, function(id) {
+    info <- chats[[id]]
+    if (is.null(info)) return(FALSE)
+    onbellek <- cache[[id]]
+    is.null(onbellek) || !identical(onbellek$stamp, stamp_fn(info))
+  }, logical(1), USE.NAMES = FALSE)]
+}
+
+# Önbellekten kayıt düşüren işlev üretir: yerinde içerik düzenlemesi (ör.
+# galeriden görsel silme mesaj metnini değiştirir) zaman/sayı damgasını
+# değiştirmediği için ilgili kayıtlar düşer. yayin_sayaci (reactiveVal)
+# verilmişse artırılır: açık geçmiş tablosu yeniden yayınlanır ve silinmiş
+# görselin alıntısı tabloda kalmaz. chat_ids NULL ise tüm önbellek düşer.
+# isitma verilmişse her çağrı (söyleşi önbellekte olmasa da) ilgili sürümü
+# artırır (kimliksizse tüm söyleşilerinkini): süren eşzamansız hazırlığın eski
+# sonucu düşürülen söyleşiye yazılamaz; ısıtma nesline dokunulmaz.
+history_cache_dropper <- function(messages_cache, yayin_sayaci = NULL, isitma = NULL) {
+  function(chat_ids = NULL) {
+    if (is.environment(isitma)) {
+      if (is.null(chat_ids)) isitma$tum_dusurme <- (isitma$tum_dusurme %||% 0L) + 1L
+      else history_touch(isitma, chat_ids)
+    }
+    cache <- shiny::isolate(messages_cache())
+    dusur <- if (is.null(chat_ids)) names(cache) else intersect(names(cache), as.character(chat_ids))
+    if (length(dusur)) {
+      cache[dusur] <- NULL
+      messages_cache(cache)
+      if (is.function(yayin_sayaci)) yayin_sayaci(shiny::isolate(yayin_sayaci()) + 1)
+    }
+    invisible(length(dusur))
+  }
+}
+
+# Söyleşi başına önbellek yazım sürümü: eşzamanlı okuma her yazımda/silmede
+# ve önbellek düşürme her çağrıda ilgili kimliğin sürümünü artırır. Süren
+# eşzamansız hazırlık yalnızca gönderimden beri sürümü değişmeyen kimlikleri
+# yazar (daha yeni önbellek kaydı ya da düşürme eski sonuçla ezilmez). Isıtma
+# nesline dokunmaz: ilgisiz arka plan ısıtması iptal edilmez.
+history_touch <- function(isitma, chat_ids) {
+  ids <- unique(as.character(chat_ids %||% character()))
+  ids <- ids[!is.na(ids) & nzchar(ids)]
+  if (length(ids)) isitma$surum[ids] <- history_versions(isitma, ids, tum = FALSE) + 1L
+  invisible(NULL)
+}
+
+# tum = TRUE: kimliksiz (tümü) düşürme sayacı da eklenir; o artınca tüm
+# söyleşilerin sürümü değişmiş sayılır.
+history_versions <- function(isitma, chat_ids, tum = TRUE) {
+  surum <- unname(isitma$surum[as.character(chat_ids)])
+  surum[is.na(surum)] <- 0L
+  if (isTRUE(tum)) surum + (isitma$tum_dusurme %||% 0L) else surum
+}
+
+# Kimlik -> damga eşlemesi (verilen sırayla, adlı karakter vektörü).
+history_stamps <- function(chat_ids, chats, stamp_fn) {
+  vapply(chat_ids, function(id) stamp_fn(chats[[id]]), character(1))
+}
+
+# Verilen kimliklerin tümü güncel damgalarıyla önbellekte mi?
+history_all_cached <- function(chat_ids, chats, cache, stamp_fn) {
+  !length(history_ids_needing_fetch(chat_ids, chats, cache, stamp_fn))
+}
+
+# Açılış hazırlığı için geçmiş satırlarını mevcut açık (explicit) işçi
+# sınırında okur: DB beklemesi ana olay döngüsünde olmaz ve sorgu süre
+# bütçesiyle sınırlıdır (mergen_bounded_db_fetch_raw). İşçiye yalnızca SQL
+# metni, tam sayı parametreler ve skaler yapılandırma gider; normalizasyon ve
+# biçimlendirme ana süreçte tek biçimlendiriciyle yapılır. Kimlik yetkisi SQL
+# içindedir (c.UserID = ? ve IsDeleted = 0).
+history_rows_worker_promise <- function(chat_ids, user_id, session_token = NULL) {
+  ids <- unique(as.character(chat_ids %||% character()))
+  ids <- ids[!is.na(ids) & nzchar(ids)]
+  sayisal <- suppressWarnings(as.integer(ids))
+  uid <- suppressWarnings(as.integer(user_id[1]))
+  if (!length(ids) || anyNA(sayisal) || length(uid) != 1L || is.na(uid) || uid <= 0L) {
+    return(promises::promise_reject(simpleError("Geçmiş hazırlığı için geçerli kimlik yok.")))
+  }
+  yapilandirma <- mergen_startup_db_worker_config()
+  gecmis_sql <- db_history_rows_query_sql(paste(rep("?", length(ids)), collapse = ", "), scoped = TRUE)
+  gecmis_parametreler <- c(as.list(sayisal), list(uid))
+  gecmis_dsn <- yapilandirma$dsn
+  gecmis_kodlama <- yapilandirma$encoding
+  gecmis_ad_kodlama <- yapilandirma$name_encoding
+  gecmis_login <- yapilandirma$login_timeout
+  gecmis_sure <- yapilandirma$query_timeout
+  ham <- tracked_future_promise(
+    task_fn = function() {
+      mergen_bounded_db_fetch_raw(gecmis_sql, gecmis_parametreler, gecmis_dsn, gecmis_kodlama,
+                                  gecmis_ad_kodlama, gecmis_login, gecmis_sure)
+    },
+    task_type = "history_rows_prepare",
+    session_token = session_token,
+    dependency_mode = "explicit",
+    globals = list(
+      gecmis_sql = gecmis_sql, gecmis_parametreler = gecmis_parametreler,
+      gecmis_dsn = gecmis_dsn, gecmis_kodlama = gecmis_kodlama,
+      gecmis_ad_kodlama = gecmis_ad_kodlama, gecmis_login = gecmis_login,
+      gecmis_sure = gecmis_sure, mergen_bounded_db_fetch_raw = mergen_bounded_db_fetch_raw
+    ),
+    packages = c("DBI")
+  )
+  promises::then(ham, onFulfilled = function(cerceve) load_history_rows_batch(ids, user_id = uid, result = cerceve))
+}
+
+# Açılış hazırlığı: eksik kimlikler işçide okunur, sonuç yalnızca gönderimdeki
+# önbellek nesli ve sahip hâlâ geçerliyse gönderim anındaki damgalarla yazılır
+# (eski sonuç yeni sahibe/nesle yazılamaz). Gönderimden beri eşzamanlı okuma
+# ya da düşürmeyle sürümü değişen söyleşi YAZILMAZ: daha yeni kayıt korunur,
+# düşürülen (ör. silinmiş görsel alıntılı) satırlar geri gelmez. Sonuç
+# bildir(TRUE/FALSE) ile tam bir kez bildirilir: her kimlik ya bu sonuçla ya da
+# daha yeni bir okumayla önbellekteyse "hazır"dır. Okuma hatası günlüğe
+# maskelenmiş yazılır.
+# guncel_sohbetler() + damga_fn: sonuç geldiğinde söyleşilerin GÜNCEL damgaları.
+# Hazırlık sürerken damgası değişen (yeni mesaj alan) söyleşi eski damgayla
+# yazılmaz ve "hazır" sayılmaz; güncel damgalı kaydı yoksa durum "kısmen"dir.
+history_prepare_rows_async <- function(session, ids, damgalar, uid, isitma, resolve_uid,
+                                       messages_cache, yayin_sayaci, bildir,
+                                       guncel_sohbetler = NULL, damga_fn = NULL) {
+  nesil <- isitma$nesil
+  surumler <- history_versions(isitma, ids)
+  gecerli <- function() !isTRUE(session$isClosed()) && identical(isitma$nesil, nesil) &&
+    identical(shiny::isolate(resolve_uid()), uid)
+  okuma <- tryCatch(history_rows_worker_promise(ids, uid, session$token),
+                    error = function(e) promises::promise_reject(e))
+  promises::then(okuma, onFulfilled = function(sonuc) {
+    if (!gecerli()) return(NULL)
+    shiny::isolate({
+      cache <- messages_cache()
+      simdiki <- if (is.function(guncel_sohbetler) && is.function(damga_fn)) {
+        history_stamps(ids, guncel_sohbetler(), damga_fn)
+      } else damgalar[ids]
+      damga_ayni <- vapply(ids, function(id) identical(simdiki[[id]], damgalar[[id]]), logical(1))
+      degismeyen <- ids[history_versions(isitma, ids) == surumler & damga_ayni]
+      okunan <- intersect(degismeyen, names(sonuc))
+      for (id in okunan) {
+        cache[[id]] <- list(rows = if (is.list(sonuc[[id]])) sonuc[[id]] else list(),
+                            stamp = damgalar[[id]])
+      }
+      history_touch(isitma, okunan)
+      messages_cache(cache)
+      isitma$etkin <- TRUE
+      yayin_sayaci(yayin_sayaci() + 1)
+      yenisi_var <- setdiff(ids, degismeyen)
+      bildir(all(ids %in% okunan |
+                   (ids %in% yenisi_var & vapply(ids, function(id) {
+                     !is.null(cache[[id]]) && identical(cache[[id]]$stamp, simdiki[[id]])
+                   }, logical(1)))))
+    })
+    NULL
+  }, onRejected = function(e) {
+    if (!gecerli()) return(NULL)
+    cat(sprintf("[HISTORY] açılış hazırlığı okunamadı: %s\n", redacted_condition_message(e)))
+    shiny::isolate(bildir(FALSE))
+    NULL
+  })
+}
+
+# Partiler later ile ertelenir. is_current() FALSE dönerse (önbellek
+# geçersiz kılındı, tarih aralığı/sahip değişti) parti İŞLENMEZ: eski bir
+# planın sonucu yeni önbelleğe yazılamaz. Bir partinin hatası zinciri kırmaz;
+# on_complete her durumda tam bir kez çağrılır ve (argüman alıyorsa) tüm
+# güncel partilerin başarılı olup olmadığını alır.
 historyBackgroundWarm <- function(session, chat_ids, chats, ensure_history_cache,
                                   batch_size = 120L, delay_sec = 0.35,
-                                  on_complete = NULL) {
+                                  on_complete = NULL, is_current = NULL) {
   if (!length(chat_ids)) return(invisible(NULL))
 
   batches <- split(chat_ids, ceiling(seq_along(chat_ids) / batch_size))
   remaining <- length(batches)
+  basarili <- TRUE
 
   for (i in seq_along(batches)) {
     local({
@@ -18,11 +188,20 @@ historyBackgroundWarm <- function(session, chat_ids, chats, ensure_history_cache
         if (!session$isClosed()) {
           shiny::withReactiveDomain(session, {
             shiny::isolate({
-              ensure_history_cache(batch, chats)
+              guncel <- !is.function(is_current) || isTRUE(is_current())
+              if (guncel) {
+                sonuc <- tryCatch(ensure_history_cache(batch, chats), error = function(e) {
+                  cat(sprintf("[HISTORY] arka plan partisi okunamadı: %s\n", redacted_condition_message(e)))
+                  FALSE
+                })
+                if (isFALSE(sonuc)) basarili <<- FALSE
+              } else {
+                basarili <<- FALSE
+              }
               remaining <<- remaining - 1L
 
               if (remaining <= 0L && is.function(on_complete)) {
-                on_complete()
+                if (length(formals(on_complete))) on_complete(basarili) else on_complete()
               }
             })
           })
