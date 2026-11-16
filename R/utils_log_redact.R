@@ -351,6 +351,24 @@ redact_connection_identifiers <- function(x) {
     perl = TRUE
   )
 
+  # TIRNAKLI DEĞER: `DSN="PrivateProd"`, `Server='host'`, `PWD='abc'` da
+  # maskelenir. Aşağıdaki çıplak-değer sınıfı tırnağı dışladığı için tırnaklı
+  # değer olduğu gibi kalıyordu; genel redaktörün 6 karakter eşiği (yanlış
+  # pozitif önleme sözleşmesi) bu LOG katmanında uygulanmaz, kısa tırnaklı
+  # sırlar (token/secret/api anahtarı dahil) da maskelenir.
+  tirnakli_anahtarlar <- paste(c(.REDACT_CONN_KEYS, "api[_-]?key", "apikey", "x-api-key", "token",
+                                 "access[_-]?token", "refresh[_-]?token", "secret", "client[_-]?secret"),
+                               collapse = "|")
+  for (tirnak in c("\"", "'")) {
+    metin <- gsub(
+      paste0("(?i)(^|[;{(\\[,\\s])(", tirnakli_anahtarlar, ")(\\s*[:=]\\s*)", tirnak,
+             "(?!<redacted>", tirnak, ")[^", tirnak, "\\r\\n]*", tirnak),
+      paste0("\\1\\2\\3", tirnak, "<redacted>", tirnak),
+      metin,
+      perl = TRUE
+    )
+  }
+
   gsub(
     # Zaten maskelenmiş ya da süslü parantezli değerler İKİNCİ KEZ işlenmez.
     paste0("(?i)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS,

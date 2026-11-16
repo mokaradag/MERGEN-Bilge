@@ -364,6 +364,18 @@ testthat::test_that("işçi DB okuması yapılandırılmış login sınırını 
   testthat::expect_error(db_chat_preview_fetch_raw(42L, 6L, "DSN", "UTF-8", "UTF-8"), "baglanti_kurulmadi_test")
   testthat::expect_identical(yakalanan[[1]]$timeout, 7L)
   testthat::expect_null(yakalanan[[2]]$timeout)
+
+  # Bütçeli okumada bağlantı denemesi bütçeyi aşamaz: login sınırı yoksa bütçe
+  # iletilir; yapılandırılmış sınır bütçeden büyükse bütçeye indirilir.
+  testthat::expect_error(db_chat_preview_fetch_raw(42L, 6L, "DSN", "UTF-8", "UTF-8", query_timeout = 5),
+                         "baglanti_kurulmadi_test")
+  testthat::expect_error(db_chat_preview_fetch_raw(42L, 6L, "DSN", "UTF-8", "UTF-8", login_timeout = 7L,
+                                                   query_timeout = 4.2), "baglanti_kurulmadi_test")
+  testthat::expect_error(db_chat_preview_fetch_raw(42L, 6L, "DSN", "UTF-8", "UTF-8", login_timeout = 3L,
+                                                   query_timeout = 5), "baglanti_kurulmadi_test")
+  testthat::expect_identical(yakalanan[[3]]$timeout, 5L)
+  testthat::expect_identical(yakalanan[[4]]$timeout, 5L)
+  testthat::expect_identical(yakalanan[[5]]$timeout, 3L)
 })
 
 testthat::test_that("yerel ad değişimi DB'nin daha yeni etkinlik bilgisini ezmez; yerelde etkinleşen söyleşi başa geçer", {

@@ -86,3 +86,23 @@ test_that("mevcut password= ve Bearer redaksiyonu bozulmaz", {
   out_bearer <- redact_sensitive_text(paste0("Authorization: Bearer ", paste0("abc", "123", "def", "456")))
   expect_true(grepl("Bearer <redacted>", out_bearer, fixed = TRUE))
 })
+test_that("log sınırı tırnaklı bağlantı tanımlayıcılarını ve kısa tırnaklı sırları maskeler", {
+  ozel_dsn <- paste0("Ozel", "Uretim")
+  ic_sunucu <- paste0("ic-", "sunucu")
+  kisa <- paste0("a", "b", "c")
+  for (tirnak in c("\"", "'")) {
+    q <- function(x) paste0(tirnak, x, tirnak)
+    ileti <- paste0("DSN=", q(ozel_dsn), ";Server=", q(ic_sunucu), ";PWD=", q(kisa))
+    out <- redacted_condition_message(simpleError(ileti))
+    expect_false(grepl(ozel_dsn, out, fixed = TRUE))
+    expect_false(grepl(ic_sunucu, out, fixed = TRUE))
+    expect_false(grepl(paste0("=", q(kisa)), out, fixed = TRUE))
+    expect_true(grepl(paste0("DSN=", q("<redacted>")), out, fixed = TRUE))
+    expect_true(grepl(paste0("PWD=", q("<redacted>")), out, fixed = TRUE))
+    out_token <- redact_connection_identifiers(paste0("token: ", q(kisa)))
+    expect_false(grepl(kisa, out_token, fixed = TRUE))
+  }
+  # Anahtarı olmayan tırnaklı Türkçe metin (tanı bağlamı) korunur.
+  tani <- "Çalışma tablosu \"Söyleşi\" bulunamadı"
+  expect_identical(redacted_condition_message(simpleError(tani)), tani)
+})

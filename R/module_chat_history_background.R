@@ -71,6 +71,17 @@ history_all_cached <- function(chat_ids, chats, cache, stamp_fn) {
   !length(history_ids_needing_fetch(chat_ids, chats, cache, stamp_fn))
 }
 
+# Hazırlık sonucunu bildiren işlev: sonuç gönderilen kimliklerden değil,
+# GÜNCEL ilk sayfanın (en yeni 60 söyleşi) önbellek durumundan türetilir.
+# Arada eklenen söyleşi eksikse "kısmen", silinen söyleşi eksik sayılmaz.
+history_first_page_notifier <- function(bildir, kimlikler_fn, guncel_sohbetler, messages_cache,
+                                        stamp_fn, sayfa = 60L) {
+  function(...) {
+    bildir(history_all_cached(utils::head(kimlikler_fn(), sayfa), shiny::isolate(guncel_sohbetler()),
+                              shiny::isolate(messages_cache()), stamp_fn))
+  }
+}
+
 # Açılış hazırlığı için geçmiş satırlarını mevcut açık (explicit) işçi
 # sınırında okur: DB beklemesi ana olay döngüsünde olmaz ve sorgu süre
 # bütçesiyle sınırlıdır (mergen_bounded_db_fetch_raw). İşçiye yalnızca SQL
@@ -148,7 +159,9 @@ history_prepare_rows_async <- function(session, ids, damgalar, uid, isitma, reso
       }
       history_touch(isitma, okunan)
       messages_cache(cache)
-      isitma$etkin <- TRUE
+      # Arka plan hazırlığı sayfa etkinleştirmesi DEĞİLDİR (isitma$etkin'e
+      # dokunulmaz): geçmiş açılmadıkça liste değişimleri olay döngüsünde
+      # eşzamanlı okuma tetiklemez; bayat kayıtlar ilk ziyarette yenilenir.
       yayin_sayaci(yayin_sayaci() + 1)
       yenisi_var <- setdiff(ids, degismeyen)
       bildir(all(ids %in% okunan |

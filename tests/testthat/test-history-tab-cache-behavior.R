@@ -653,10 +653,87 @@ testthat::test_that("geç tamamlanan açılış hazırlığı daha yeni eşzaman
     yeni <- shiny::isolate(sohbetler())
     yeni[["2"]]$last_message_timestamp <- as.POSIXct("2026-07-02 09:00:00", tz = "UTC")
     kayit$etiket <- "B sürümü"
+    cagri_once <- kayit$cagri
     shiny::isolate(sohbetler(yeni))
     session$flushReact()
+    # Arka plan hazırlığı sayfa etkinleştirmesi değildir: geçmiş açılmadan liste
+    # değişimi olay döngüsünde eşzamanlı okuma yapmaz.
+    testthat::expect_identical(kayit$cagri, cagri_once)
+    # Sayfa açılınca yalnız damgası değişen söyleşi güncel sürümüyle okunur.
+    session$setInputs(external_refresh_trigger = 1)
     testthat::expect_identical(messages_cache()[["2"]]$rows[[1]]$Soru, "B sürümü")
     testthat::expect_identical(messages_cache()[["1"]]$rows[[1]]$Soru, "A sürümü")
+    testthat::expect_identical(utils::tail(kayit$kimlikler, 1L)[[1]], "2")
+  }))
+})
+
+testthat::test_that("hazırlık sürerken eklenen söyleşi eksikse hazır-olma 'kısmen'dir; silinen söyleşi eksik sayılmaz", {
+  # Eklenen söyleşi: gönderilen kimlikler önbellekte olsa da güncel ilk sayfa eksik.
+  kayit <- .yeni_gecmis_kaydi()
+  env <- .gecmis_modul_ortami(kayit)
+  .elle_cozulen_isci(env, kayit)
+  sohbetler <- shiny::reactiveVal(.gecmis_sohbetleri(3L))
+  later::with_temp_loop(shiny::testServer(env$historyServer,
+                    args = list(all_messages = sohbetler, current_user_id = function() 7L), {
+    session$userData$saved_chats_full_loaded <- TRUE
+    session$userData$mergen_yonetim_hazir <- .isaretleyici(kayit)
+    session$flushReact()
+    session$setInputs(hazirla = 1)
+    yeni <- c(list("9" = list(title = "Yeni", timestamp = as.POSIXct("2026-07-03 10:00:00", tz = "UTC"),
+                              last_message_timestamp = as.POSIXct("2026-07-03 10:00:00", tz = "UTC"))),
+              shiny::isolate(sohbetler()))
+    shiny::isolate(sohbetler(yeni))
+    session$flushReact()
+    kayit$cozumler[[1]]$resolve(.surum_satirlari(kayit$cozumler[[1]]$ids, "A sürümü"))
+    .zincir_bitene_dek(session)
+    testthat::expect_true(isTRUE(kayit$detay[[length(kayit$detay)]]$degraded),
+                          info = "yeni söyleşi önbellekte yokken ilk sayfa 'hazır' bildirilmemeli")
+    # Sayfa açılınca yeni söyleşi okunur ve durum 'hazır'a döner.
+    session$setInputs(external_refresh_trigger = 1)
+    .zincir_bitene_dek(session)
+    testthat::expect_false(isTRUE(kayit$detay[[length(kayit$detay)]]$degraded))
+  }))
+
+  # Silinen söyleşi: okunmamış sayılmaz; kalanlar önbellekteyse durum 'hazır'.
+  kayit <- .yeni_gecmis_kaydi()
+  env <- .gecmis_modul_ortami(kayit)
+  .elle_cozulen_isci(env, kayit)
+  sohbetler <- shiny::reactiveVal(.gecmis_sohbetleri(3L))
+  later::with_temp_loop(shiny::testServer(env$historyServer,
+                    args = list(all_messages = sohbetler, current_user_id = function() 7L), {
+    session$userData$saved_chats_full_loaded <- TRUE
+    session$userData$mergen_yonetim_hazir <- .isaretleyici(kayit)
+    session$flushReact()
+    session$setInputs(hazirla = 1)
+    kalan <- shiny::isolate(sohbetler())
+    kalan[["2"]] <- NULL
+    shiny::isolate(sohbetler(kalan))
+    session$flushReact()
+    kayit$cozumler[[1]]$resolve(.surum_satirlari(setdiff(kayit$cozumler[[1]]$ids, "2"), "A sürümü"))
+    .zincir_bitene_dek(session)
+    testthat::expect_false(isTRUE(kayit$detay[[length(kayit$detay)]]$degraded),
+                           info = "silinen söyleşi hazır-olmayı 'kısmen' bırakmamalı")
+  }))
+})
+
+testthat::test_that("önceki tam liste nesline ait ertelenmiş hazırlık tetiği yok sayılır", {
+  kayit <- .yeni_gecmis_kaydi()
+  env <- .gecmis_modul_ortami(kayit)
+  later::with_temp_loop(shiny::testServer(env$historyServer,
+                    args = list(all_messages = shiny::reactive(.gecmis_sohbetleri(3L)), current_user_id = function() 7L), {
+    nesil <- new.env(); nesil$guncel <- 4L
+    session$userData$mergen_gecmis_hazirla_gecerli <- function(t) identical(as.integer(t), nesil$guncel)
+    session$userData$saved_chats_full_loaded <- TRUE
+    session$userData$mergen_yonetim_hazir <- .isaretleyici(kayit)
+    session$flushReact()
+    session$setInputs(hazirla = 3)                     # önceki sahibin tetiği
+    .zincir_bitene_dek(session)
+    testthat::expect_length(kayit$isci, 0L)
+    testthat::expect_length(kayit$isaret, 0L)
+    session$setInputs(hazirla = 4)                     # güncel nesil
+    .zincir_bitene_dek(session)
+    testthat::expect_length(kayit$isci, 1L)
+    testthat::expect_true("history_rows_ready" %in% kayit$isaret)
   }))
 })
 

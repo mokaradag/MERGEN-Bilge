@@ -58,6 +58,13 @@ mergen_bounded_db_fetch_raw <- function(sql, params, dsn, encoding, name_encodin
   if (length(login_timeout) == 1L && !is.na(login_timeout) && login_timeout >= 1L) {
     baglanti_args$timeout <- login_timeout
   }
+  # Bütçeli okumada bağlantı denemesi de bütçeye dahildir: setTimeLimit yerel
+  # (native) bağlanma çağrısını kesemez; login sınırı bütçeyi aşamaz,
+  # yapılandırılmamışsa bütçe login sınırı olarak iletilir (en az 1 sn).
+  if (sinirli) {
+    butce_login <- max(1L, as.integer(min(ceiling(sure_sn), 2147483L)))
+    baglanti_args$timeout <- if (is.null(baglanti_args$timeout)) butce_login else min(baglanti_args$timeout, butce_login)
+  }
   if (sinirli) baglanti_args$interruptible <- TRUE
   conn <- do.call(DBI::dbConnect, baglanti_args)
   on.exit(try(DBI::dbDisconnect(conn), silent = TRUE), add = TRUE)

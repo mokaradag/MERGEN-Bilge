@@ -129,3 +129,16 @@ mergen_rich_lane_required_boot_keys <- function() {
     "management_pages_ready"
   )
 }
+
+#' Geçmiş hazırlık tetiği doğrulayıcısı
+#' @description Boşta çalışan hazırlık tetiği tam liste yüklemesinin neslini
+#'   taşır; yalnızca güncel nesle ait tetik geçerlidir (sahip değişimi nesli
+#'   artırır, önceki sahibin ertelenmiş tetiği reddedilir).
+#' @param guncel_nesil Güncel nesli döndüren işlev.
+#' @return Tetik değerini alıp TRUE/FALSE döndüren işlev.
+mergen_startup_history_trigger_validator <- function(guncel_nesil) {
+  function(tetik) {
+    nesil <- suppressWarnings(as.integer(tetik)[1])
+    length(nesil) == 1L && !is.na(nesil) && identical(nesil, as.integer(guncel_nesil()))
+  }
+}

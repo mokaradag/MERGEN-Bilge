@@ -1414,14 +1414,27 @@ testthat::test_that("önceki sahibin hazırlık süre sınırı yeni sahibin haz
     session$flushReact()
     session$setInputs(startup_lane_resolved = list(lane = "rich_lane", source = "stored", ts = 1))
     testthat::expect_identical(rec$full_user_ids, 7L)
+    # Geçmiş hazırlık tetiği yalnızca güncel tam liste nesline aitse geçerlidir.
+    gecerli_tetik <- session$userData$mergen_gecmis_hazirla_gecerli
+    testthat::expect_true(is.function(gecerli_tetik))
+    testthat::expect_true(gecerli_tetik(1L))
+    testthat::expect_false(gecerli_tetik("abc"))
     # A'nın süre sınırı dolmadan sahip B'ye geçer; B'nin süresi uzundur.
     options(mergen.management_ready_deadline_secs = 30)
     kimlik$uid <- 8L
     mergen_session_owner_transition(session$userData, 7L, 8L)
     session$flushReact()
     testthat::expect_true(all(c("history_rows_ready", "management_pages_ready") %in% isaret$sifirlanan))
-    son <- Sys.time() + 0.4
-    while (Sys.time() < son) later::run_now(timeoutSecs = 0.05)
+    testthat::expect_false(gecerli_tetik(1L), info = "A'nın ertelenmiş hazırlık tetiği B için geçersiz olmalı")
+    # A'nın 0,1 sn'lik süre sınırı geri çağrısı gerçekten çalışana dek (yakında
+    # bekleyen later işi kalmayana dek, süre sınırlı) beklenir; yalnızca geçen
+    # süreye güvenilmez. B'nin 30 sn'lik geri çağrısı bu pencerenin dışındadır.
+    son <- Sys.time() + 10
+    repeat {
+      later::run_now(timeoutSecs = 0.05)
+      if (later::next_op_secs() > 5 || Sys.time() >= son) break
+    }
+    testthat::expect_gt(later::next_op_secs(), 5)
     testthat::expect_identical(tail(rec$full_user_ids, 1L), 8L)
     testthat::expect_false("management_pages_ready" %in% isaret$anahtarlar,
                            info = "A'nın eski süre sınırı B'yi 'kısmen' işaretlememeli")

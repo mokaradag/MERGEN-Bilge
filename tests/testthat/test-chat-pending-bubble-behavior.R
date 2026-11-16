@@ -10,6 +10,12 @@
 #           gerçek input_handlers.js ile Node üzerinde doğrulanır.
 # ==============================================================================
 
+# Gözlemci fabrikası observeEvent/req/isolate'i niteleyicisiz kullanır: dosya
+# tek başına çalıştırıldığında da Shiny ekli olur (diğer dosyalara dayanılmaz).
+if (requireNamespace("shiny", quietly = TRUE)) {
+  suppressMessages(library(shiny))
+}
+
 .istem_ortami <- function(kayit, hiz_siniri_gecer = TRUE, mesaj_ekle = TRUE) {
   env <- new.env(parent = globalenv())
   env$`%||%` <- function(a, b) if (is.null(a)) b else a
@@ -245,6 +251,67 @@ testthat::test_that("geçersiz istemci kimliği geri yansıtılmaz ama gönderim
   })
   testthat::expect_identical(kayit$gonderilen, "kimliksiz")
   testthat::expect_length(.istem_sonuclari(kayit), 0L)
+})
+
+testthat::test_that("oturum sahibi değişince istemciye bekleyen istemleri sıfırlama bildirimi gider ve kimlik önbelleği temizlenir", {
+  testthat::skip_if_not_installed("shiny")
+  kayit <- .yeni_kayit()
+  env <- .istem_ortami(kayit)
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
+         encoding = "UTF-8", local = env)
+  shiny::testServer(.istem_sunucusu(env, kayit, mesaj_ekle = TRUE), {
+    session$userData$kimlik_sahibi <- 7L
+    session$setInputs(send_prompt_from_js = list(text = "A istemi", nonce = 30, client_id = "istem_sahip"))
+    env$mergen_session_owner_transition(session$userData, 7L, 8L)
+    # Aynı istemci kimliği yeni sahipte önceki sahibin sonucunu yinelemez; yeniden işlenir.
+    session$setInputs(send_prompt_from_js = list(text = "B istemi", nonce = 31, client_id = "istem_sahip"))
+  })
+  sifirla <- Filter(function(m) identical(m$type, "mergenBekleyenIstemSifirla"), kayit$mesajlar)
+  testthat::expect_length(sifirla, 1L)
+  testthat::expect_identical(sifirla[[1]]$message$neden, "sahip_degisti")
+  testthat::expect_identical(kayit$gonderilen, c("A istemi", "B istemi"))
+})
+
+testthat::test_that("mesaj kaydı DB'ye yazılamasa da kullanıcı balonu yerel kimlikle çizilir; kimlik boş kalmaz", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("shinyjs")
+  env <- new.env(parent = globalenv())
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_chat_runtime.R"), encoding = "UTF-8", local = env)
+  cizim <- new.env()
+  env$format_timestamp <- function(...) "10:00"
+  env$process_message_content <- function(content, type) list(html = content, has_code = FALSE)
+  env$save_message_safely <- function(...) NULL   # DB yazımı başarısız (hata fırlatmaz)
+  env$normalize_character_id <- function(x) x
+  env$get_character_record <- function(x) NULL
+  env$render_message_bubble_ui <- function(msg, settings, is_last_user_message, ...) {
+    cizim$id <- msg$id
+    cizim$son <- is_last_user_message
+    shiny::div(id = paste0("message_wrapper_", msg$id))
+  }
+  env$insertUI <- function(...) { cizim$eklendi <- TRUE; invisible(NULL) }
+  env$removeUI <- function(...) invisible(NULL)
+  env$showToast <- function(...) invisible(NULL)
+  testthat::local_mocked_bindings(runjs = function(...) invisible(NULL), .package = "shinyjs")
+  values <- new.env()
+  values$messages <- list(); values$current_chat_id <- "5"; values$show_welcome <- FALSE; values$saved_chats <- list()
+  ayarlar <- new.env(); ayarlar$selected_character <- NULL
+  oturum <- list(userData = new.env())
+
+  mesaj <- env$chat_add_message(oturum, values, ayarlar, output = NULL, content = "Merhaba çğış",
+                                type = "user", current_user_id = 7L)
+  testthat::expect_true(is.character(mesaj$id) && length(mesaj$id) == 1L && grepl("^msg_", mesaj$id))
+  testthat::expect_null(mesaj$db_id)
+  testthat::expect_identical(cizim$id, mesaj$id)
+  testthat::expect_true(isTRUE(cizim$son))
+  testthat::expect_true(isTRUE(cizim$eklendi), info = "asıl balon DOM'a eklenmeli (kabul eşlenebilir)")
+  testthat::expect_identical(values$messages[[1]]$id, mesaj$id)
+
+  # Başarılı kayıtta DB kimliği kullanılır.
+  env$save_message_safely <- function(...) 123L
+  mesaj2 <- env$chat_add_message(oturum, values, ayarlar, output = NULL, content = "ikinci",
+                                 type = "user", current_user_id = 7L)
+  testthat::expect_identical(mesaj2$id, "123")
+  testthat::expect_identical(mesaj2$db_id, 123L)
 })
 
 testthat::test_that("bekleyen istem balonu istemci davranışı gerçek JavaScript ile korunur", {

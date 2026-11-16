@@ -233,13 +233,129 @@ testthat::test_that("oturum kimliği galeri çizildikten sonra yayımlanınca ka
 
       # Kimlik yayımlanır (write_identity ile aynı geçiş: 0 -> 7, sinyal artar).
       session$userData$user_id <- 7L
-      mergen_session_owner_transition(session$userData, 0L, 7L)
+      env$mergen_session_owner_transition(session$userData, 0L, 7L)
       session$flushReact()
       sonraki <- output$gallery_content
       testthat::expect_identical(utils::tail(kayitlar, 1L), "7")
       testthat::expect_false(identical(sonraki$html, ilk$html))
       # Yayımlama yeniden tarama gerektirmez; yalnızca kartlar yeniden kaydedilir.
       testthat::expect_identical(scan_recorder$count, 1L)
+    }
+  ))
+})
+
+.gallery_tek_satir <- function(uid) {
+  data.frame(
+    file_path = paste0("/gorseller/", uid, "/a.png"), chat_id = "1", filename = "a.png",
+    created_at = as.POSIXct("2026-07-01 10:00:00", tz = "UTC"), file_size = 10,
+    month_key = "2026-07", month_label = "Temmuz 2026",
+    description = "", chat_title = "Söyleşi", stringsAsFactors = FALSE
+  )
+}
+
+testthat::test_that("galeri kimliksiz açıldıysa kimlik sonradan yayımlanınca yeni sahip için taranır", {
+  testthat::skip_if_not_installed("shiny")
+
+  scan_recorder <- new.env(parent = emptyenv())
+  scan_recorder$count <- 0L
+  env <- .lazy_gallery_env(scan_recorder)
+  kimlik <- new.env(parent = emptyenv())
+  kimlik$uid <- NA_integer_
+  env$scan_user_images <- function(uid) {
+    scan_recorder$count <- scan_recorder$count + 1L
+    .gallery_tek_satir(uid)
+  }
+  loop <- later::create_loop(parent = NULL)
+  on.exit(later::destroy_loop(loop), add = TRUE)
+
+  later::with_loop(loop, shiny::testServer(
+    env$imageGalleryServer,
+    args = list(id = "ig", current_user_id = function() kimlik$uid),
+    {
+      bekle <- function(kosul) {
+        for (i in seq_len(20L)) {
+          later::run_now(timeoutSecs = 0.1, loop = loop)
+          session$flushReact()
+          if (isTRUE(kosul()) && !isTRUE(gallery_loading())) break
+        }
+      }
+      session$flushReact()
+      session$setInputs(refresh_gallery = as.numeric(Sys.time()))
+      bekle(function() !isTRUE(gallery_loading()))
+      # Kimlik yok: tarama yapılmaz, galeri boştur.
+      testthat::expect_identical(scan_recorder$count, 0L)
+      testthat::expect_identical(nrow(filtered_images()), 0L)
+
+      # Kimlik yayımlanır (0 -> 7): sahip kancası çalışmaz, yalnız sinyal artar.
+      kimlik$uid <- 7L
+      env$mergen_session_owner_transition(session$userData, 0L, 7L)
+      session$flushReact()
+      bekle(function() scan_recorder$count >= 1L)
+      testthat::expect_identical(scan_recorder$count, 1L)
+      testthat::expect_identical(nrow(filtered_images()), 1L,
+                                 info = "galeri sekmeyi yeniden açmadan yeni sahibin görsellerini göstermeli")
+    }
+  ))
+})
+
+testthat::test_that("sahip değiştikten sonra gelen silme onayı önceki sahibin kimliğiyle silmez", {
+  testthat::skip_if_not_installed("shiny")
+
+  scan_recorder <- new.env(parent = emptyenv())
+  scan_recorder$count <- 0L
+  env <- .lazy_gallery_env(scan_recorder)
+  kimlik <- new.env(parent = emptyenv())
+  kimlik$uid <- 7L
+  silinen <- new.env(parent = emptyenv())
+  silinen$tek <- list()
+  silinen$tum <- list()
+  env$scan_user_images <- function(uid) {
+    scan_recorder$count <- scan_recorder$count + 1L
+    .gallery_tek_satir(uid)
+  }
+  env$delete_single_image <- function(file_path, user_id, chat_id) {
+    silinen$tek[[length(silinen$tek) + 1L]] <- user_id
+    TRUE
+  }
+  env$delete_all_user_images <- function(user_id) {
+    silinen$tum[[length(silinen$tum) + 1L]] <- user_id
+    1L
+  }
+  loop <- later::create_loop(parent = NULL)
+  on.exit(later::destroy_loop(loop), add = TRUE)
+
+  later::with_loop(loop, shiny::testServer(
+    env$imageGalleryServer,
+    args = list(id = "ig", current_user_id = function() kimlik$uid),
+    {
+      tara <- function(beklenen) {
+        for (i in seq_len(20L)) {
+          later::run_now(timeoutSecs = 0.1, loop = loop)
+          session$flushReact()
+          if (scan_recorder$count >= beklenen && !isTRUE(gallery_loading())) break
+        }
+      }
+      session$userData$kimlik_sahibi <- 7L
+      session$flushReact()
+      session$setInputs(refresh_gallery = as.numeric(Sys.time()))
+      tara(1L)
+      session$setInputs(delete_image_request = list(file_path = "/gorseller/7/a.png", chat_id = "1",
+                                                    filename = "a.png"))
+
+      # Onay penceresi açıkken oturum 8'e geçer; yeni tarama henüz bitmedi.
+      kimlik$uid <- 8L
+      env$mergen_session_owner_transition(session$userData, 7L, 8L)
+      session$setInputs(confirm_delete_image = 1)
+      session$setInputs(confirm_clear_all_images = 1)
+      testthat::expect_length(silinen$tek, 0L)
+      testthat::expect_length(silinen$tum, 0L)
+
+      # Yeni sahip için tarama tamamlanınca silme yeni sahibin kimliğiyle yapılır.
+      tara(2L)
+      session$setInputs(delete_image_request = list(file_path = "/gorseller/8/a.png", chat_id = "1",
+                                                    filename = "a.png"))
+      session$setInputs(confirm_delete_image = 2)
+      testthat::expect_identical(silinen$tek, list(8L))
     }
   ))
 })

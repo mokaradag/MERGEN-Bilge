@@ -35,6 +35,10 @@ $(document).ready(function() {
   const zamanAsimlari = [];
   let dugmeOnceki = null;
   let canliBolge = null;
+  // Girdi gönderim nesli: her gönderim girdiyi tüketir (temizler). Geri yükleme
+  // kaydı yapıldığı nesle bağlıdır; arada başka gönderim olduysa geri yüklenen
+  // metin o gönderimle tüketilmiştir ve geç kabul yeni taslağa dokunmaz.
+  let girisNesli = 0;
 
   function istemMetniCoz(b64) {
     try {
@@ -183,13 +187,13 @@ $(document).ready(function() {
     const mevcut = String(giris.value || '');
     if (!mevcut.trim()) {
       giris.value = kayit.hamMetin;
-      kayit.geriYukleme = { deger: giris.value, kalan: '', onEk: null };
+      kayit.geriYukleme = { deger: giris.value, kalan: '', onEk: null, nesil: girisNesli };
     } else if (mevcut.trim() !== String(kayit.hamMetin || '').trim()) {
       const onEk = kayit.hamMetin + '\n';
       giris.value = onEk + mevcut;
-      kayit.geriYukleme = { deger: giris.value, kalan: mevcut, onEk: onEk };
+      kayit.geriYukleme = { deger: giris.value, kalan: mevcut, onEk: onEk, nesil: girisNesli };
     } else {
-      kayit.geriYukleme = { deger: mevcut, kalan: '', onEk: null };
+      kayit.geriYukleme = { deger: mevcut, kalan: '', onEk: null, nesil: girisNesli };
       return;
     }
     girisiYenile(giris);
@@ -204,6 +208,7 @@ $(document).ready(function() {
   // yeniden denenir. Kayıt yalnızca kendi bölümü girdide durdukça tutulur.
   const bekleyenUzlastirmalar = [];
   function uzlastirmayiDene(yukleme, giris) {
+    if (yukleme.nesil !== girisNesli) return false;
     const mevcut = String(giris.value || '');
     if (mevcut === yukleme.deger) giris.value = yukleme.kalan;
     else if (yukleme.onEk && mevcut.indexOf(yukleme.onEk) === 0) giris.value = mevcut.slice(yukleme.onEk.length);
@@ -211,13 +216,22 @@ $(document).ready(function() {
     return true;
   }
   function bolumGiriste(yukleme, giris) {
-    return String(giris.value || '').indexOf(yukleme.onEk || yukleme.deger) >= 0;
+    return yukleme.nesil === girisNesli && String(giris.value || '').indexOf(yukleme.onEk || yukleme.deger) >= 0;
+  }
+  // Aynı metinli, sonucu hâlâ beklenen (zaman aşımına uğramış) başka bir istem
+  // aynı geri yüklemenin ortak sahibidir: bu kabul o metni kaldırmaz; diğer
+  // istem geç "ret" alırsa metni yeniden gönderilebilir kalır.
+  function baskaSahipVar(kayit, yukleme) {
+    return zamanAsimlari.some(function(b) {
+      return b !== kayit && b.geriYukleme && b.geriYukleme.nesil === yukleme.nesil && b.metin === kayit.metin;
+    });
   }
   function geriYuklemeyiUzlastir(kayit) {
     const yukleme = kayit.geriYukleme;
     kayit.geriYukleme = null;
     const giris = girisAlani();
-    if (!yukleme || !giris) return;
+    // Geri yüklemeden sonra başka bir gönderim girdiyi tükettiyse uzlaştırılmaz.
+    if (!yukleme || !giris || yukleme.nesil !== girisNesli || baskaSahipVar(kayit, yukleme)) return;
     if (!uzlastirmayiDene(yukleme, giris)) {
       if (bolumGiriste(yukleme, giris)) {
         bekleyenUzlastirmalar.push(yukleme);
@@ -326,6 +340,31 @@ $(document).ready(function() {
       if (veri.durum === 'kabul') kabulEt(kayit, String(veri.mesaj_id || '')); else reddet(kayit);
       dugmeDurumunuGuncelle();
     });
+    // Oturum sahibi değişti: önceki sahibin sonuçlanmamış istemleri metni geri
+    // yüklenmeden düşer; daha önce geri yüklenmiş (hâlâ bu nesle ait) istem
+    // bölümleri girdiden kaldırılır. Yeni sahip eski sahibin istemini görmez.
+    Shiny.addCustomMessageHandler('mergenBekleyenIstemSifirla', function() {
+      const giris = girisAlani();
+      const yuklemeler = bekleyenUzlastirmalar.splice(0);
+      bekleyenIstemler.splice(0).concat(kabulBekleyenler.splice(0), zamanAsimlari.splice(0)).forEach(function(kayit) {
+        if (kayit.sonucZamanlayici) clearTimeout(kayit.sonucZamanlayici);
+        if (kayit.zamanlayici) clearTimeout(kayit.zamanlayici);
+        balonuKaldir(kayit);
+        if (kayit.geriYukleme) yuklemeler.push(kayit.geriYukleme);
+        kayit.geriYukleme = null;
+      });
+      if (giris) {
+        let ilerledi = true;
+        while (ilerledi && yuklemeler.length) {
+          ilerledi = false;
+          for (let i = 0; i < yuklemeler.length; i++) {
+            if (uzlastirmayiDene(yuklemeler[i], giris)) { yuklemeler.splice(i, 1); ilerledi = true; break; }
+          }
+        }
+        girisiYenile(giris);
+      }
+      dugmeDurumunuGuncelle();
+    });
   }
 
   // Zaman aşımından sonra gelen sonuç: "ret" için metin zaten geri yüklendi.
@@ -387,6 +426,8 @@ $(document).ready(function() {
   window.MergenBekleyenIstem = {
     varMi: kilitliMi,
     ekle: function(hamMetin) {
+      // Gönderim girdiyi tüketir: önceki geri yüklemeler artık uzlaştırılmaz.
+      girisNesli += 1;
       const istemKimligi = 'istem_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
       const gosterilecek = hamMetin.trim() || 'Seçili dosyaların özeti istendi.';
       const kayit = { id: istemKimligi, metin: gosterilecek, hamMetin: hamMetin, el: null,

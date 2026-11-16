@@ -54,11 +54,24 @@
 }
 
 testthat::test_that("meşgul işçi varken kuyruktaki işin geri çağrı grafiği işçiye gönderilmez", {
+  basladi <- tempfile("isci_basladi_")
+  serbest <- tempfile("isci_serbest_")
+  on.exit(unlink(c(basladi, serbest)), add = TRUE)
   olcum <- .gelecek_yuk_olcumu(function() {
     durum <- new.env()
-    # 1) Tek işçiyi meşgul et.
-    tracked_future_promise(function() { Sys.sleep(1); 1L },
-                           task_type = "test_mesgul", dependency_mode = "explicit")
+    # 1) Tek işçiyi meşgul et: iş başladığını dosyayla bildirir ve serbest
+    #    bırakma işareti gelene dek (süre sınırlı) bekler. Süreye değil açık
+    #    sinyallere dayanır; açık sözleşme yalnızca iki yolu taşır.
+    mesgul_is <- function() {
+      file.create(basladi_yolu)
+      son <- Sys.time() + 30
+      while (!file.exists(serbest_yolu) && Sys.time() < son) Sys.sleep(0.02)
+      1L
+    }
+    tracked_future_promise(mesgul_is, task_type = "test_mesgul", dependency_mode = "explicit",
+                           globals = list(basladi_yolu = basladi, serbest_yolu = serbest))
+    .later_bosalt(function() file.exists(basladi))
+    testthat::expect_true(file.exists(basladi), info = "meşgul iş işçide başlamış olmalı")
     # 2) İşçi doluyken ikinci iş; then geri çağrısı büyük bir nesneyi yakalar
     #    (gerçek uygulamada oturum/reaktif grafik).
     oturum_benzeri <- function() {
@@ -68,6 +81,11 @@ testthat::test_that("meşgul işçi varken kuyruktaki işin geri çağrı grafi�
       promises::then(p, function(v) { length(buyuk); durum$deger <- v })
     }
     oturum_benzeri()
+    # İkinci iş kuyrukta bekler (tek işçi meşgul); örtüşme kanıtlanmadan
+    # meşgul iş serbest bırakılmaz.
+    .later_bosalt(function() FALSE, sure = 0.3)
+    testthat::expect_null(durum$deger, label = "meşgul işçi varken ikinci işin sonucu")
+    file.create(serbest)
     .later_bosalt(function() !is.null(durum$deger))
     durum$deger
   })

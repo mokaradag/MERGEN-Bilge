@@ -82,6 +82,15 @@ chatInputObserversInit <- function(input, session, values, settings_data,
   # Aynı istemci kimliğiyle yeniden teslim edilen istem ikinci kez işlenmez;
   # ilk sonucu yeniden bildirilir. Oturum kapsamlı ve sınırlıdır (son 32 kimlik).
   islenen_istemler <- list()
+  # Aynı oturumda sahip değişince (ya da kimlik/yetki düşünce) önceki sahibin
+  # sonuçlanmamış istemleri istemcide metni geri yüklenmeden düşer; yeni
+  # sahibin girdisine eski sahibin istemi taşınmaz. Kimlik önbelleği sıfırlanır.
+  if (exists("mergen_session_on_owner_change", mode = "function", inherits = TRUE)) {
+    mergen_session_on_owner_change(session, function(neden) {
+      islenen_istemler <<- list()
+      try(session$sendCustomMessage("mergenBekleyenIstemSifirla", list(neden = neden)), silent = TRUE)
+    })
+  }
   istemi_isle <- function(istem) {
     istem_kimligi <- as.character(istem$client_id %||% "")[1]
     if (is.na(istem_kimligi) || !grepl("^[A-Za-z0-9_-]{1,64}$", istem_kimligi)) istem_kimligi <- ""

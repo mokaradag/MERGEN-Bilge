@@ -72,16 +72,22 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
   # üzerinden ve tarayıcı boştayken (düşük öncelik) tetiklenir. Yalnızca geçmiş
   # ilk sayfası hazırlanır (DB okuması işçide). Galeri ve Ortak Söyleşiler
   # burada okunmaz (ilk ziyarette): eşzamanlı okumaları olay döngüsünü tutardı.
-  yonetim_hazirla <- function() {
+  # Tetik değeri tam liste yüklemesinin neslidir; geçmiş modülü yalnızca güncel
+  # nesle ait tetiği kabul eder (sahip değişimi nesli artırır).
+  yonetim_hazirla <- function(nesil) {
     shinyjs::runjs(sprintf(paste0(
-      "(function(){var t=%s;var f=function(){['history_module-hazirla'].forEach(",
+      "(function(){var t=%d;var f=function(){['history_module-hazirla'].forEach(",
       "function(id){Shiny.setInputValue(id,t,{priority:'event'});});};",
       "if(window.requestIdleCallback){requestIdleCallback(f,{timeout:1500});}else{setTimeout(f,0);}})();"
-    ), as.numeric(Sys.time())))
+    ), as.integer(nesil)))
   }
 
   startup_state <- new.env(parent = emptyenv())
   startup_state$full_load_generation <- 0L
+  # Geçmiş hazırlık tetiği yalnızca güncel tam liste nesline aitse geçerlidir.
+  session$userData$mergen_gecmis_hazirla_gecerli <- mergen_startup_history_trigger_validator(
+    function() startup_state$full_load_generation
+  )
   startup_state$initial_saved_chats_status <- "idle"
   startup_state$lane_wait_registered <- FALSE
   startup_state$full_saved_chats_load_started <- FALSE
@@ -478,7 +484,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			  refresh_welcome_if_needed(chats)
 			})
 			# Tam liste hazır: geçmiş ilk sayfası arka planda (işçide) hazırlanır.
-			yonetim_hazirla()
+			yonetim_hazirla(full_load_generation)
 
 			NULL
 		  },

@@ -92,10 +92,15 @@ chat_add_message <- function(session, values, settings_data, output,
         )
       }
 		new_db_id <- save_message_safely(values$current_chat_id, msg_to_persist, current_user_id)
-		new_message$db_id <- new_db_id
-		new_message$id <- as.character(new_db_id)
+		# Kayıt başarısızsa (NULL/NA) yerel kimlik korunur: boş kimlik balon
+		# çizimini bozuyor ve istemci kabul edilen istemi eşleyemiyordu.
+		kayit_kimligi <- suppressWarnings(as.character(new_db_id)[1])
+		if (length(new_db_id) == 1L && !is.na(kayit_kimligi) && nzchar(kayit_kimligi)) {
+		  new_message$db_id <- new_db_id
+		  new_message$id <- kayit_kimligi
+		}
 
-		if (!is.null(new_message$reasoning_content) &&
+		if (!is.null(new_message$db_id) && !is.null(new_message$reasoning_content) &&
 			exists("update_message_reasoning_content", mode = "function", inherits = TRUE)) {
 		  try(update_message_reasoning_content(new_db_id, new_message$reasoning_content), silent = TRUE)
 		}
@@ -110,8 +115,8 @@ chat_add_message <- function(session, values, settings_data, output,
     chat_store_message_in_saved_chats(values, new_message)
   }
 
-  is_last_user_msg <- (new_message$type == "user" && length(values$messages) > 0 &&
-                         tail(values$messages, 1)[[1]]$id == new_message$id)
+  is_last_user_msg <- (identical(new_message$type, "user") && length(values$messages) > 0 &&
+                         identical(as.character(tail(values$messages, 1)[[1]]$id), as.character(new_message$id)))
 
   selected_char_id <- normalize_character_id(isolate(settings_data$selected_character))
   character_data <- get_character_record(selected_char_id)

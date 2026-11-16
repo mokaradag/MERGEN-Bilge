@@ -211,6 +211,28 @@ imageGalleryServer <- function(id, current_user_id) {
       })
     }
 
+    # Kimlik sonradan yayımlanırsa (0 -> A) sahip kancası çalışmaz; etkin galeride
+    # önbellek bu sahibe ait değilse yeni sahip için tarama istenir.
+    observeEvent(kimlik_sinyali(), {
+      uid <- coerce_user_id(resolve_current_user_id())
+      if (isTRUE(gallery_activated()) && !is.na(uid) && uid > 0 && !identical(galeri_sahibi$uid, uid)) {
+        refresh_trigger(shiny::isolate(refresh_trigger()) + 1)
+      }
+    }, ignoreInit = TRUE)
+
+    # Silme onayı anındaki sahip: oturumun güncel sahibi, görüntülenen satırların
+    # sahibiyle aynı olmalıdır. Sahip değiştiyse (henüz yeniden taranmadıysa)
+    # önceki sahibin kimliğiyle silme yapılmaz (kapalı-başarısız).
+    silme_sahibi <- function() {
+      uid <- coerce_user_id(resolve_current_user_id())
+      if (is.na(uid) || uid <= 0 || !identical(galeri_sahibi$uid, uid)) return(NA_integer_)
+      uid
+    }
+    silme_reddedildi <- function() {
+      showToast(session, "Oturum kimliği değişti; galeri yenileniyor. Lütfen yeniden deneyin.", "warning")
+      refresh_trigger(shiny::isolate(refresh_trigger()) + 1)
+    }
+
     # Görsel silme mesaj metnini yerinde değiştirir (zaman/sayı damgası aynı
     # kalır); Söyleşi Geçmişi önbelleğindeki ilgili kayıt düşürülür.
     gecmis_onbellegini_dusur <- function(chat_ids = NULL) {
@@ -486,8 +508,10 @@ imageGalleryServer <- function(id, current_user_id) {
       info <- input$delete_image_request
       removeModal()
       req(info$file_path)
+      sahip <- silme_sahibi()
+      if (is.na(sahip)) return(silme_reddedildi())
 
-      success <- delete_single_image(info$file_path, effective_user_id(), info$chat_id)
+      success <- delete_single_image(info$file_path, sahip, info$chat_id)
       if (success) {
         showToast(session, "Görsel silindi.", "warning")
         delete_image_trigger(list(file_path = info$file_path, chat_id = info$chat_id))
@@ -517,7 +541,9 @@ imageGalleryServer <- function(id, current_user_id) {
 
     observeEvent(input$confirm_clear_all_images, {
       removeModal()
-      deleted_count <- delete_all_user_images(effective_user_id())
+      sahip <- silme_sahibi()
+      if (is.na(sahip)) return(silme_reddedildi())
+      deleted_count <- delete_all_user_images(sahip)
       gecmis_onbellegini_dusur()
       clear_all_trigger(clear_all_trigger() + 1)
       refresh_trigger(refresh_trigger() + 1)

@@ -450,6 +450,8 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
         date_range %||% shiny::isolate(input$date_range)
       )
       chat_ids <- history_chat_ids_for_date_range(chats, active_date_range)
+      # Kullanıcı eylemi (Yenile/Bugün/tarih) ya da etkin sayfanın senkronu.
+      isitma$etkin <- TRUE
 
       if (isTRUE(force)) {
         gecersiz_kil()
@@ -505,7 +507,8 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
 
       # Geçmiş sekmesi henüz açılmadıysa başlangıçta ağır ön yükleme yapma.
       # Kullanıcı geçmişi ilk kez açtığında veya elle yenilediğinde doldurulacak.
-      if (isTRUE(isitma$etkin) || length(messages_cache()) > 0) {
+      # Arka plan hazırlığının doldurduğu önbellek etkinleştirme sayılmaz.
+      if (isTRUE(isitma$etkin)) {
         refresh_history_cache(
           chats = chats,
           force = FALSE,
@@ -681,7 +684,13 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
     # gönderimdeki önbellek nesli ve sahip hâlâ geçerliyse gönderim anındaki
     # damgalarla yazılır; damgası arada değişen söyleşi sonraki ziyarette
     # yeniden okunur. Kimlik yoksa okuma yapılmaz, durum "kısmen" bildirilir.
+    # Hazırlık tetiği açılışın tam liste neslini taşır; önceki sahibe/yüklemeye
+    # ait ertelenmiş (boşta çalışan) tetik yeni sahip için hazırlık başlatmaz.
+    # Sonuç, gönderilen kimliklerden değil GÜNCEL ilk 60 söyleşiden türetilir:
+    # arada eklenen söyleşi eksikse "kısmen", silinen söyleşi eksik sayılmaz.
     observeEvent(input$hazirla, {
+      gecerli_tetik <- session$userData$mergen_gecmis_hazirla_gecerli
+      if (is.function(gecerli_tetik) && !isTRUE(gecerli_tetik(input$hazirla))) return(invisible(NULL))
       chats <- latest_chats()
       ids <- history_ids_needing_fetch(utils::head(aralik_kimlikleri(), 60L), chats,
                                        messages_cache(), stamp_for_chat)
@@ -689,7 +698,9 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
       history_prepare_rows_async(session, ids, history_stamps(ids, chats, stamp_for_chat),
                                  uid = resolve_current_user_id(), isitma = isitma,
                                  resolve_uid = resolve_current_user_id, messages_cache = messages_cache,
-                                 yayin_sayaci = trigger_refresh, bildir = hazir_bildir,
+                                 yayin_sayaci = trigger_refresh,
+                                 bildir = history_first_page_notifier(hazir_bildir, aralik_kimlikleri, latest_chats,
+                                                                      messages_cache, stamp_for_chat),
                                  guncel_sohbetler = latest_chats, damga_fn = stamp_for_chat)
       invisible(NULL)
     }, ignoreInit = TRUE)
