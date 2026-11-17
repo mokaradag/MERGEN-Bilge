@@ -323,3 +323,28 @@ testthat::test_that("bekleyen istem balonu istemci davranışı gerçek JavaScri
   testthat::expect_identical(as.integer(durum), 0L, info = paste(out, collapse = "\n"))
   testthat::expect_true(any(grepl("chat_pending_bubble_regressions: OK", out, fixed = TRUE)))
 })
+
+testthat::test_that("uzun söyleşide kabul tespiti doğru kalır: yalnız yeni kimlikli kullanıcı mesajı kabul sayılır", {
+  testthat::skip_if_not_installed("shiny")
+  kayit <- .yeni_kayit()
+  # 4000 mesajlık geçmiş: kimlikli kullanıcı/yanıt mesajları ve kimliksiz eski kayıtlar.
+  kayit$onceki <- lapply(seq_len(4000L), function(i) {
+    list(id = if (i %% 10L == 0L) NA_character_ else paste0("eski_", i),
+         type = if (i %% 2L == 1L) "user" else "ai", content = "geçmiş")
+  })
+  env <- .istem_ortami(kayit)
+  # Gönderim, geçmişteki bir kullanıcı mesajını (aynı kimlik) yeniden ekler: yeni değil.
+  tekrar <- function(text, values) {
+    values$messages <- append(shiny::isolate(values$messages), list(kayit$onceki[[1]]))
+  }
+  shiny::testServer(.istem_sunucusu(env, kayit, mesaj_ekle = TRUE, gonder = tekrar), {
+    session$setInputs(send_prompt_from_js = list(text = "eski kimlik", nonce = 1, client_id = "istem_uzun_1"))
+  })
+  shiny::testServer(.istem_sunucusu(env, kayit, mesaj_ekle = TRUE), {
+    session$setInputs(send_prompt_from_js = list(text = "yeni çğış", nonce = 2, client_id = "istem_uzun_2"))
+  })
+  sonuc <- .istem_sonuclari(kayit)
+  testthat::expect_identical(sonuc[[1]]$message$durum, "ret")
+  testthat::expect_identical(sonuc[[2]]$message,
+                             list(client_id = "istem_uzun_2", durum = "kabul", mesaj_id = "msg_42"))
+})

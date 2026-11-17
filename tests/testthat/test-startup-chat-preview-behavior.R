@@ -75,29 +75,28 @@ testthat::test_that("mergen_startup_chat_preview_globals dar export sözleşmesi
   g <- mergen_startup_chat_preview_globals("42", limit = "6")
 
   # Sözleşme: yalnızca bu adlar worker'a taşınır; oturum/reaktif nesne yok.
+  # SQL ana süreçte seçilir; tek fonksiyon global'i sınırlı okumadır.
   testthat::expect_setequal(
     names(g),
     c(
       "startup_preview_user_id",
       "startup_preview_limit",
+      "startup_preview_sql",
       "startup_preview_dsn",
       "startup_preview_encoding",
       "startup_preview_login_timeout",
       "startup_preview_query_timeout",
       "startup_preview_name_encoding",
-      "db_chat_preview_fetch_raw",
-      "db_chat_preview_query_sql",
       "mergen_bounded_db_fetch_raw"
     )
   )
   testthat::expect_identical(g$startup_preview_user_id, 42L)
   testthat::expect_identical(g$startup_preview_limit, 6L)
-  testthat::expect_true(is.function(g$db_chat_preview_fetch_raw))
-  testthat::expect_true(is.function(g$db_chat_preview_query_sql))
+  testthat::expect_identical(g$startup_preview_sql, db_chat_preview_query_sql(6L))
+  testthat::expect_true(is.function(g$mergen_bounded_db_fetch_raw))
 
   # Değer globalleri skalerdır; fonksiyon dışı hiçbir öğe ortam/bağlantı taşımaz.
-  deger_adlari <- setdiff(names(g), c("db_chat_preview_fetch_raw", "db_chat_preview_query_sql",
-                                      "mergen_bounded_db_fetch_raw"))
+  deger_adlari <- setdiff(names(g), "mergen_bounded_db_fetch_raw")
   for (nm in deger_adlari) {
     testthat::expect_true(is.atomic(g[[nm]]) && length(g[[nm]]) == 1L, label = nm)
   }
@@ -124,7 +123,7 @@ testthat::test_that("mergen_startup_chat_preview_promise explicit modda dar söz
 
   helper_env <- environment(mergen_startup_chat_preview_promise)
   old_tracked <- get("tracked_future_promise", envir = helper_env, inherits = TRUE)
-  old_fetch <- get("db_chat_preview_fetch_raw", envir = helper_env, inherits = TRUE)
+  old_fetch <- get("mergen_bounded_db_fetch_raw", envir = helper_env, inherits = TRUE)
 
   rec <- new.env(parent = emptyenv())
 
@@ -145,17 +144,17 @@ testthat::test_that("mergen_startup_chat_preview_promise explicit modda dar söz
     promises::promise_resolve(task_fn())
   }, envir = helper_env)
 
-  assign("db_chat_preview_fetch_raw", function(user_id, limit, dsn, encoding, name_encoding,
-                                               login_timeout = NA_integer_, query_timeout = NA_real_) {
-    rec$fetch_user_id <- user_id
+  assign("mergen_bounded_db_fetch_raw", function(sql, params, dsn, encoding, name_encoding,
+                                                 login_timeout = NA_integer_, query_timeout = NA_real_) {
+    rec$fetch_sql <- sql
+    rec$fetch_params <- params
     rec$fetch_query_timeout <- query_timeout
-    rec$fetch_limit <- limit
     .startup_preview_fixture_frame()
   }, envir = helper_env)
 
   on.exit({
     assign("tracked_future_promise", old_tracked, envir = helper_env)
-    assign("db_chat_preview_fetch_raw", old_fetch, envir = helper_env)
+    assign("mergen_bounded_db_fetch_raw", old_fetch, envir = helper_env)
   }, add = TRUE)
 
   p <- mergen_startup_chat_preview_promise(42L, limit = 6L, session_token = "oturum-1")
@@ -169,18 +168,17 @@ testthat::test_that("mergen_startup_chat_preview_promise explicit modda dar söz
     sort(c(
       "startup_preview_user_id",
       "startup_preview_limit",
+      "startup_preview_sql",
       "startup_preview_dsn",
       "startup_preview_encoding",
       "startup_preview_login_timeout",
       "startup_preview_query_timeout",
       "startup_preview_name_encoding",
-      "db_chat_preview_fetch_raw",
-      "db_chat_preview_query_sql",
       "mergen_bounded_db_fetch_raw"
     ))
   )
-  testthat::expect_identical(rec$fetch_user_id, 42L)
-  testthat::expect_identical(rec$fetch_limit, 6L)
+  testthat::expect_identical(rec$fetch_sql, db_chat_preview_query_sql(6L))
+  testthat::expect_identical(rec$fetch_params, list(42L))
   # İşçi okuması her zaman sonlu bir sorgu süre bütçesi taşır.
   testthat::expect_true(is.finite(rec$fetch_query_timeout) && rec$fetch_query_timeout > 0)
 
@@ -199,41 +197,38 @@ testthat::test_that("mergen_startup_chat_preview_promise explicit modda dar söz
   testthat::expect_null(got$error)
   testthat::expect_identical(names(got$value), c("11", "12"))
   testthat::expect_identical(got$value[["11"]]$message_count, 3L)
+
+  # Geçersiz kullanıcıda görev bağlantı açmadan NULL döner (boş liste).
+  rec$fetch_sql <- NULL
+  p0 <- mergen_startup_chat_preview_promise(0L, limit = 6L, session_token = "oturum-1")
+  got0 <- new.env(parent = emptyenv())
+  promises::then(p0, onFulfilled = function(v) got0$value <- list(v))
+  deadline <- Sys.time() + 5
+  while (is.null(got0$value) && Sys.time() < deadline) later::run_now(timeoutSecs = 0.1)
+  testthat::expect_null(rec$fetch_sql)
+  testthat::expect_identical(got0$value[[1]], list())
 })
 
-testthat::test_that("tam liste modu (limit = NA) yalnızca özet SQL üreticisini ekler", {
+testthat::test_that("tam liste modu (limit = NA) aynı dar sözleşmeyle özet SQL'i gönderir", {
   .startup_preview_source_once()
-  if (!exists("db_chat_list_summary_query_sql", mode = "function", inherits = TRUE)) {
-    source(file.path(resolve_repo_root_for_tests(), "R", "helpers_db_chat_read_queries.R"),
-           encoding = "UTF-8", local = globalenv())
-  }
 
   g <- mergen_startup_chat_preview_globals("42", limit = NA_integer_)
-  testthat::expect_setequal(
-    names(g),
-    c("startup_preview_user_id", "startup_preview_limit", "startup_preview_dsn",
-      "startup_preview_encoding", "startup_preview_login_timeout", "startup_preview_query_timeout",
-      "startup_preview_name_encoding", "db_chat_preview_fetch_raw", "db_chat_preview_query_sql",
-      "mergen_bounded_db_fetch_raw", "db_chat_list_summary_query_sql")
-  )
+  testthat::expect_setequal(names(g), names(mergen_startup_chat_preview_globals("42", limit = 6L)))
   testthat::expect_true(is.na(g$startup_preview_limit))
-  # Ön izleme sözleşmesi tam liste eklemesinden etkilenmez.
-  testthat::expect_false("db_chat_list_summary_query_sql" %in%
-                           names(mergen_startup_chat_preview_globals("42", limit = 6L)))
+  testthat::expect_identical(g$startup_preview_sql, db_chat_list_summary_query_sql())
+  # Ön izleme sözleşmesi tam liste SQL'ini taşımaz.
+  testthat::expect_identical(mergen_startup_chat_preview_globals("42", limit = 6L)$startup_preview_sql,
+                             db_chat_preview_query_sql(6L))
 })
 
 testthat::test_that("tam söyleşi listesi explicit modda 'startup_saved_chats' olarak gönderilir", {
   testthat::skip_if_not_installed("promises")
   testthat::skip_if_not_installed("later")
   .startup_preview_source_once()
-  if (!exists("db_chat_list_summary_query_sql", mode = "function", inherits = TRUE)) {
-    source(file.path(resolve_repo_root_for_tests(), "R", "helpers_db_chat_read_queries.R"),
-           encoding = "UTF-8", local = globalenv())
-  }
 
   helper_env <- environment(mergen_startup_chat_preview_promise)
   old_tracked <- get("tracked_future_promise", envir = helper_env, inherits = TRUE)
-  old_fetch <- get("db_chat_preview_fetch_raw", envir = helper_env, inherits = TRUE)
+  old_fetch <- get("mergen_bounded_db_fetch_raw", envir = helper_env, inherits = TRUE)
   rec <- new.env(parent = emptyenv())
   assign("tracked_future_promise", function(task_fn, task_type = "generic", session_token = NULL,
                                             meta = list(), globals = NULL,
@@ -243,14 +238,14 @@ testthat::test_that("tam söyleşi listesi explicit modda 'startup_saved_chats' 
     rec$global_names <- names(globals %||% list())
     promises::promise_resolve(task_fn())
   }, envir = helper_env)
-  assign("db_chat_preview_fetch_raw", function(user_id, limit, dsn, encoding, name_encoding,
-                                               login_timeout = NA_integer_, query_timeout = NA_real_) {
-    rec$fetch_limit <- limit
+  assign("mergen_bounded_db_fetch_raw", function(sql, params, dsn, encoding, name_encoding,
+                                                 login_timeout = NA_integer_, query_timeout = NA_real_) {
+    rec$fetch_sql <- sql
     .startup_preview_fixture_frame()
   }, envir = helper_env)
   on.exit({
     assign("tracked_future_promise", old_tracked, envir = helper_env)
-    assign("db_chat_preview_fetch_raw", old_fetch, envir = helper_env)
+    assign("mergen_bounded_db_fetch_raw", old_fetch, envir = helper_env)
   }, add = TRUE)
 
   p <- mergen_startup_chat_preview_promise(42L, limit = NA_integer_, session_token = "oturum-2")
@@ -261,11 +256,46 @@ testthat::test_that("tam söyleşi listesi explicit modda 'startup_saved_chats' 
 
   testthat::expect_identical(rec$task_type, "startup_saved_chats")
   testthat::expect_identical(rec$dependency_mode, "explicit")
-  testthat::expect_true("db_chat_list_summary_query_sql" %in% rec$global_names)
-  testthat::expect_true(is.na(rec$fetch_limit))
+  testthat::expect_true("startup_preview_sql" %in% rec$global_names)
+  testthat::expect_identical(rec$fetch_sql, db_chat_list_summary_query_sql())
   # Biçim load_chats_from_db(include_messages = FALSE) ile aynıdır.
   testthat::expect_identical(names(got$value[["11"]]),
                              c("title", "messages", "timestamp", "last_message_timestamp", "message_count"))
+})
+
+# Açılış işçi görevi, uygulama fonksiyonları YÜKLÜ OLMAYAN temiz bir R
+# sürecinde (yalnızca açık globals, globalenv'e kopyalama yok) çalışabilmelidir:
+# sözleşme future/callr'ın örtük globalenv kopyalamasına dayanmaz; iç içe
+# uygulama fonksiyonu araması böyle bir süreçte "could not find function" verirdi.
+testthat::test_that("açılış ön izleme görevi uygulama kodu yüklü olmayan temiz süreçte çalışır", {
+  testthat::skip_if_not_installed("callr")
+  testthat::skip_if_not_installed("DBI")
+  testthat::skip_if_not_installed("odbc")
+  .startup_preview_source_once()
+
+  helper_env <- environment(mergen_startup_chat_preview_promise)
+  old_tracked <- get("tracked_future_promise", envir = helper_env, inherits = TRUE)
+  yakalanan <- new.env(parent = emptyenv())
+  assign("tracked_future_promise", function(task_fn, globals = NULL, packages = NULL, ...) {
+    # Gerçek açık sözleşme serileştiricisiyle işçi yükü üretilir.
+    yakalanan$yuk <- c(yakalanan$yuk, list(worker_monitor_serialize_explicit_task(task_fn, globals, packages)))
+    promises::promise_resolve(NULL)
+  }, envir = helper_env)
+  on.exit(assign("tracked_future_promise", old_tracked, envir = helper_env), add = TRUE)
+
+  mergen_startup_chat_preview_promise(0L, limit = 6L)
+  mergen_startup_chat_preview_promise(42L, limit = NA_integer_)
+  calistir <- function(yuk) callr::r(function(yuk) {
+    # globalenv'e hiçbir şey kopyalanmaz: yalnızca görev ortamı görülür.
+    tryCatch(list(deger = unserialize(yuk)()), error = function(e) list(hata = conditionMessage(e)))
+  }, args = list(yuk = yuk))
+  # Geçersiz kullanıcı: bağlantı açılmadan NULL.
+  testthat::expect_identical(calistir(yakalanan$yuk[[1]]), list(deger = NULL))
+  # Geçerli kullanıcı: görev DB katmanına ulaşır (sahte DSN bağlanamaz);
+  # hiçbir uygulama fonksiyonu eksik kalmaz.
+  sonuc <- calistir(yakalanan$yuk[[2]])
+  testthat::expect_false(is.null(sonuc$hata))
+  testthat::expect_false(grepl("could not find function|bulunamad", sonuc$hata), info = sonuc$hata)
 })
 
 # Gerçek db_chat_preview_fetch_raw çalıştırılır; yalnızca DB sınırı (DBI)
@@ -317,7 +347,7 @@ testthat::test_that("limit normalleştirici yalnızca açık NA'yı tam liste sa
   # NULL limit gönderim öncesinde hata vermez; ön izleme sözleşmesiyle gider.
   g <- mergen_startup_chat_preview_globals("42", limit = NULL)
   testthat::expect_identical(g$startup_preview_limit, 6L)
-  testthat::expect_false("db_chat_list_summary_query_sql" %in% names(g))
+  testthat::expect_identical(g$startup_preview_sql, db_chat_preview_query_sql(6L))
 })
 
 testthat::test_that("arka plan tam listesi gönderimden sonraki yerel değişiklikleri ezmez", {
@@ -434,6 +464,29 @@ testthat::test_that("yerelde mesaj eklenen söyleşide başka oturumun daha yeni
   testthat::expect_identical(birlesik[["1"]]$last_message_timestamp, t2)
   # İlgisiz yerel değişiklik (ad) korunur.
   testthat::expect_identical(birlesik[["1"]]$title, "Bir yeni ad")
+})
+
+testthat::test_that("gönderimden sonra açılan söyleşide başka oturumun daha yeni DB etkinliği korunur", {
+  .startup_preview_source_once()
+  t1 <- as.POSIXct("2026-07-01 11:00:00", tz = "UTC")
+  t2 <- as.POSIXct("2026-07-01 12:00:00", tz = "UTC")
+  anlik <- list("1" = list(title = "Bir", last_message_timestamp = t1, message_count = 2L))
+  # "7" gönderimden SONRA bu sekmede açıldı (anlık görüntüde yok); başka sekme
+  # DB okumasından önce ona bir mesaj daha ekledi.
+  simdiki <- c(list("7" = list(title = "Yeni çğış", last_message_timestamp = t1, message_count = 1L)), anlik)
+  db <- list("7" = list(title = "Yeni çğış", last_message_timestamp = t2, message_count = 2L),
+             "1" = list(title = "Bir", last_message_timestamp = t1, message_count = 2L))
+  birlesik <- mergen_saved_chats_merge_newer(db, anlik, simdiki)
+  testthat::expect_identical(birlesik[["7"]]$message_count, 2L)
+  testthat::expect_identical(birlesik[["7"]]$last_message_timestamp, t2)
+  testthat::expect_identical(birlesik[["7"]]$title, "Yeni çğış")
+  # DB daha yeni değilse yerel girdi aynen uygulanır (ör. yerel yeniden adlandırma).
+  simdiki[["7"]]$title <- "Yerel ad"
+  db[["7"]]$message_count <- 1L
+  db[["7"]]$last_message_timestamp <- t1
+  birlesik <- mergen_saved_chats_merge_newer(db, anlik, simdiki)
+  testthat::expect_identical(birlesik[["7"]], simdiki[["7"]])
+  testthat::expect_identical(names(birlesik), c("7", "1"))
 })
 
 testthat::test_that("gönderimden sonra açılıp silinen söyleşi arka plan tam listesiyle geri gelmez", {
@@ -601,4 +654,80 @@ testthat::test_that("zaman aşımı olmayan LOCK_TIMEOUT kurulum hatası ölümc
   )
   testthat::expect_lt(as.numeric(difftime(Sys.time(), bas, units = "secs")), 2.5)
   testthat::expect_null(yakalanan$sorgu_bitti)
+})
+
+# Başarılı bütçeli okuma sonrasında da süre sınırı aynı işçi sürecindeki
+# ilgisiz işe sızmaz. (Hata yolundaki denetimler bunu kanıtlamaz: R süre
+# sınırı dolduğunda sınırı kendisi siler.)
+testthat::test_that("başarılı bütçeli okumadan sonra süre sınırı sonraki işe sızmaz", {
+  testthat::skip_if_not_installed("DBI")
+  testthat::skip_if_not_installed("odbc")
+  .startup_preview_source_once()
+  testthat::local_mocked_bindings(
+    dbConnect = function(drv, ...) structure(list(), class = "sahte_baglanti"),
+    dbDisconnect = function(conn, ...) invisible(TRUE),
+    dbExecute = function(conn, statement, ...) 0L,
+    dbGetQuery = function(conn, statement, ...) data.frame(x = 1L),
+    .package = "DBI"
+  )
+  veri <- mergen_bounded_db_fetch_raw("SELECT 1", list(), dsn = "DSN", encoding = "UTF-8",
+                                      name_encoding = "UTF-8", query_timeout = 0.3)
+  testthat::expect_identical(veri$x, 1L)
+  # Bütçeden (0,3 sn) uzun ilgisiz iş hata vermeden tamamlanır.
+  testthat::expect_silent({
+    t <- Sys.time()
+    while (as.numeric(difftime(Sys.time(), t, units = "secs")) < 0.8) sum(1:10)
+  })
+})
+
+# odbc 1.7'de parametreli (bind) yürütme kesilemez; bütçeli okuma tam sayı
+# parametreleri güvenli SQL sabitine çevirip kesilebilir doğrudan yürütmeyi
+# kullanır. Bütçesiz okuma parametre bağlamayı korur.
+testthat::test_that("bütçeli okuma tam sayı parametreleri doğrudan yürütmeye çevirir, diğer türleri reddeder", {
+  testthat::skip_if_not_installed("DBI")
+  testthat::skip_if_not_installed("odbc")
+  .startup_preview_source_once()
+  yakalanan <- new.env(parent = emptyenv())
+  yakalanan$baglanti <- 0L
+  testthat::local_mocked_bindings(
+    dbConnect = function(drv, ...) {
+      yakalanan$baglanti <- yakalanan$baglanti + 1L
+      yakalanan$args <- list(...)
+      structure(list(), class = "sahte_baglanti")
+    },
+    dbDisconnect = function(conn, ...) invisible(TRUE),
+    dbExecute = function(conn, statement, ...) 0L,
+    dbGetQuery = function(conn, statement, params = NULL, ...) {
+      yakalanan$sql <- statement
+      yakalanan$params <- params
+      data.frame(x = 1L)
+    },
+    .package = "DBI"
+  )
+  sql <- "SELECT c.ChatID FROM MB_Chats c WHERE c.ChatID IN (?, ?) AND c.UserID = ? AND c.ChatTitle <> '?'"
+  mergen_bounded_db_fetch_raw(sql, list(5L, 6, 42L), dsn = "DSN", encoding = "UTF-8",
+                              name_encoding = "UTF-8", query_timeout = 5)
+  testthat::expect_null(yakalanan$params)
+  testthat::expect_identical(
+    yakalanan$sql,
+    "SELECT c.ChatID FROM MB_Chats c WHERE c.ChatID IN (5, 6) AND c.UserID = 42 AND c.ChatTitle <> '?'"
+  )
+  testthat::expect_true(isTRUE(yakalanan$args$interruptible))
+
+  # Tam sayı olmayan parametre bütçesiz yürütülmez; bağlantı hiç açılmaz.
+  onceki <- yakalanan$baglanti
+  for (bozuk in list(list("42"), list(4.5), list(NA_integer_), list(c(1L, 2L)), list(1e12))) {
+    testthat::expect_error(
+      mergen_bounded_db_fetch_raw(sql, bozuk, dsn = "DSN", encoding = "UTF-8",
+                                  name_encoding = "UTF-8", query_timeout = 5),
+      "tam sayı", info = paste(deparse(bozuk), collapse = "")
+    )
+  }
+  testthat::expect_identical(yakalanan$baglanti, onceki)
+
+  # Bütçe yoksa parametre bağlama aynen korunur.
+  mergen_bounded_db_fetch_raw("SELECT 1 WHERE 1 = ?", list(1L), dsn = "DSN", encoding = "UTF-8",
+                              name_encoding = "UTF-8")
+  testthat::expect_identical(yakalanan$params, list(1L))
+  testthat::expect_identical(yakalanan$sql, "SELECT 1 WHERE 1 = ?")
 })

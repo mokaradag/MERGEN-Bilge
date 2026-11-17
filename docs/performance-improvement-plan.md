@@ -175,13 +175,17 @@ Architecture chosen (all additive, Rich Lane untouched):
    (`worker_monitor_detect_task_deps`, `worker_monitor_expand_function_globals`) so a
    test can prove explicit mode never calls them.
 2. **Lean startup preview worker** (`R/helpers_startup_chat_preview.R`, new; in the
-   `database` manifest section). `db_chat_preview_fetch_raw()` runs on the worker with
-   a **narrow contract** (DBI/odbc + the pure `db_chat_preview_query_sql` only; opens
-   its own connection, closes on every path, never runs if the user id is invalid).
+   `database` manifest section). The worker runs only `mergen_bounded_db_fetch_raw()`
+   with a **narrow contract** (DBI/odbc; the SQL text is selected in the main process,
+   so no nested app-function lookup happens on the worker; opens its own connection,
+   closes on every path, never runs if the user id is invalid). With a query budget,
+   validated integer parameters are inlined via `DBI::sqlInterpolate()` so odbc's
+   interruptible direct execution (SQLCancel) enforces the budget; odbc 1.7's bound
+   (parameterized) execution path cannot be interrupted.
    Turkish visible-text normalization stays in the **main** process
    (`db_chat_preview_format_frame()`, byte-aligned with `load_chats_preview_from_db`'s
    list shape) so the central encoding contract is untouched. `mergen_startup_chat_preview_promise()`
-   dispatches via explicit mode with a 7-symbol export set.
+   dispatches via explicit mode with a 9-symbol export set (one function, scalars).
 3. **Preview hydration deferred past first render** (`R/server_observers_startup.R`).
    Fast lane now marks `saved_chats_preview_ready` as `deferred=TRUE` *immediately*
    and starts the real dispatch only on `input$welcome_client_ready` (idempotent; a

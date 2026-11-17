@@ -25,7 +25,11 @@ testthat::test_that("Ortak Söyleşiler 'Yenile' düğmesi önbelleği atlayıp 
     onbellek$df
   }
   env$ortak_db_oturum_listesi <- function(...) data.frame()
-  env$ortak_db_tablolar_hazir_mi <- function(...) FALSE
+  # Tablolar kurulu: okuma yolu sınanır; kalp atışı/bildirim DB çağrıları taklittir.
+  env$ortak_db_tablolar_hazir_mi <- function(...) TRUE
+  env$ortak_db_kalp_atisi <- function(...) invisible(NULL)
+  env$ortak_db_bakim_temizlik <- function(...) invisible(NULL)
+  env$ortak_db_bildirimlerim <- function(...) data.frame()
   env$ortakOturumRoomServer <- function(...) list()
   env$ortak_canli_durum_oturum_temizligi_bagla <- function(...) invisible(NULL)
   env$liste_olustur <- function(df, ...) shiny::tags$div(paste(nrow(df), "satır"))
@@ -73,7 +77,11 @@ testthat::test_that("Ortak Söyleşiler okuma hatası boş liste gibi gösterilm
     data.frame()
   }
   env$ortak_db_oturum_listesi <- function(...) data.frame()
-  env$ortak_db_tablolar_hazir_mi <- function(...) FALSE
+  # Tablolar kurulu: okuma yolu sınanır; kalp atışı/bildirim DB çağrıları taklittir.
+  env$ortak_db_tablolar_hazir_mi <- function(...) TRUE
+  env$ortak_db_kalp_atisi <- function(...) invisible(NULL)
+  env$ortak_db_bakim_temizlik <- function(...) invisible(NULL)
+  env$ortak_db_bildirimlerim <- function(...) data.frame()
   env$ortakOturumRoomServer <- function(...) list()
   env$ortak_canli_durum_oturum_temizligi_bagla <- function(...) invisible(NULL)
   html <- function(x) paste(as.character(x$html), collapse = "")
@@ -94,5 +102,46 @@ testthat::test_that("Ortak Söyleşiler okuma hatası boş liste gibi gösterilm
     testthat::expect_identical(kayit$okuma, 2L)
     testthat::expect_match(sonra, "Henüz ortak söyleşi yok", fixed = TRUE)
     testthat::expect_false(grepl("okunamadı", sonra, fixed = TRUE))
+  })
+})
+
+testthat::test_that("MB_Ortak* tabloları kurulmamışken listeler okuma hatası yerine kurulum yönlendirmesi gösterir", {
+  testthat::skip_if_not_installed("shiny")
+  paketler <- new.env(parent = globalenv())
+  list2env(mget(getNamespaceExports("shiny"), envir = asNamespace("shiny"), inherits = TRUE), envir = paketler)
+  env <- new.env(parent = paketler)
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  kok <- resolve_repo_root_for_tests()
+  source(file.path(kok, "R", "module_ortak_calismalar.R"), encoding = "UTF-8", local = env)
+  kayit <- new.env()
+  kayit$okuma <- 0L
+  kayit$hazir <- FALSE
+  # Tablo yokken sorgu başarısız olur ve işaretli hata çerçevesi dönerdi.
+  okuma <- function(...) {
+    kayit$okuma <- kayit$okuma + 1L
+    if (isTRUE(kayit$hazir)) data.frame() else structure(data.frame(), mergen_okuma_hatasi = TRUE)
+  }
+  env$ortak_db_oturum_listesi <- okuma
+  env$ortak_db_sohbet_listesi_onbellekten <- function(onbellek, kullanici_id, ...) okuma()
+  env$ortak_db_tablolar_hazir_mi <- function(...) kayit$hazir
+  env$ortak_db_kalp_atisi <- function(...) invisible(NULL)
+  env$ortak_db_bakim_temizlik <- function(...) invisible(NULL)
+  env$ortak_db_bildirimlerim <- function(...) data.frame()
+  env$ortakOturumRoomServer <- function(...) list()
+  env$ortak_canli_durum_oturum_temizligi_bagla <- function(...) invisible(NULL)
+  html <- function(x) paste(as.character(x$html), collapse = "")
+  shiny::testServer(env$ortakCalismalarServer, args = list(current_user_id = function() 7L), {
+    session$flushReact()
+    for (cikti in list(html(output$liste_sohbet), html(output$liste_bilge_yolac), html(output$liste_hub))) {
+      testthat::expect_match(cikti, "henüz kurulmamış", fixed = TRUE)
+      testthat::expect_false(grepl("okunamadı", cikti, fixed = TRUE))
+    }
+    testthat::expect_identical(kayit$okuma, 0L)
+    # Tablolar kurulunca gerçek okuma yapılır ve doğrulanmış boş sonuç gösterilir.
+    kayit$hazir <- TRUE
+    session$setInputs(yenile_sohbet = 1)
+    sonra <- html(output$liste_sohbet)
+    testthat::expect_match(sonra, "Henüz ortak söyleşi yok", fixed = TRUE)
+    testthat::expect_gt(kayit$okuma, 0L)
   })
 })

@@ -7,13 +7,13 @@
 #           taraması (.GlobalEnv üzerinde getGlobalsAndPackages + özyinelemeli
 #           findGlobals) uygulama büyüdükçe saniyeler sürer ve ana olay
 #           döngüsünü SENKRON bloklar (Windows VM'de ölçülen ~9-14 sn açılış
-#           duraklaması). Bu dosya, ön izleme sorgusunu yalnızca 2 fonksiyon +
+#           duraklaması). Bu dosya, ön izleme sorgusunu yalnızca 1 fonksiyon +
 #           skaler değerlerden oluşan AÇIK (explicit) worker-export
 #           sözleşmesiyle gönderir; tarama ve oturum-ortamı serileştirmesi
 #           tamamen atlanır (bkz. helpers_llm_true_streaming_worker.R deseni).
 #
-#           Katman ayrımı: db_chat_preview_fetch_raw() worker'da çalışır ve
-#           yalnızca DBI/odbc + saf SQL üreticisine bağımlıdır; Türkçe metin
+#           Katman ayrımı: worker yalnızca mergen_bounded_db_fetch_raw()
+#           çalıştırır (DBI/odbc); SQL ana süreçte seçilir; Türkçe metin
 #           normalizasyonu (normalize_db_read_visible_frame zinciri) worker'a
 #           taşınmaz, 6 satır için ANA süreçte db_chat_preview_format_frame()
 #           ile yapılır. Böylece merkezi encoding sözleşmesi değişmeden kalır.
@@ -38,6 +38,22 @@ mergen_bounded_db_fetch_raw <- function(sql, params, dsn, encoding, name_encodin
 
   sure_sn <- suppressWarnings(as.numeric(query_timeout[1]))
   sinirli <- length(sure_sn) == 1L && is.finite(sure_sn) && sure_sn > 0
+  if (sinirli && length(params)) {
+    # odbc 1.7: parametreli (bind) yürütme ana iş parçacığında eşzamanlıdır ve
+    # süre sınırıyla kesilemez; bütçe yalnızca doğrudan (immediate) kesilebilir
+    # yürütmede SQLCancel ile uygulanır. Bu yüzden yalnızca doğrulanmış tam sayı
+    # parametreler güvenli SQL sabitine çevrilir; başka tür bütçesiz
+    # yürütülmez (kapalı-başarısız).
+    tam_sayi <- vapply(params, function(x) {
+      length(x) == 1L && is.numeric(x) && is.finite(x) && x == trunc(x) &&
+        abs(x) <= .Machine$integer.max
+    }, logical(1))
+    if (!all(tam_sayi)) {
+      stop("mergen_bounded_db_fetch_raw: bütçeli okuma yalnızca tam sayı parametre kabul eder.", call. = FALSE)
+    }
+    sql <- as.character(DBI::sqlInterpolate(DBI::ANSI(), sql, .dots = lapply(params, as.integer)))
+    params <- NULL
+  }
   if (sinirli) {
     # Önce kaydedilir, önce çalışır: bağlantı kapatma süre sınırına takılmaz.
     setTimeLimit(elapsed = sure_sn, transient = TRUE)
@@ -99,9 +115,19 @@ mergen_bounded_db_fetch_raw <- function(sql, params, dsn, encoding, name_encodin
   veri
 }
 
-# İşçi tarafı ham ön izleme sorgusu. Bağımlılık sözleşmesi bilinçli olarak
-# dardır: DBI + odbc + SQL üreticileri + mergen_bounded_db_fetch_raw.
-# Kullanıcı kimliği geçersizse bağlantı hiç açılmaz.
+# Ana süreç tarafı SQL seçimi: tam liste YALNIZCA açık NA sentineliyle (özet
+# SQL, TOP yok); diğer tüm limitler mergen_startup_chat_preview_limit() kuralıyla
+# ön izleme SQL'ine düşer. İşçiye yalnızca hazır SQL metni gider.
+mergen_startup_chat_preview_sql <- function(limit) {
+  safe_limit <- mergen_startup_chat_preview_limit(limit)
+  if (is.na(safe_limit)) db_chat_list_summary_query_sql() else db_chat_preview_query_sql(safe_limit)
+}
+
+# Ham ön izleme okuması (ana süreçte ya da tam uygulama yüklü bağlamda).
+# Kullanıcı kimliği geçersizse bağlantı hiç açılmaz. Açılış işçi görevi bunu
+# KULLANMAZ: iç içe arama işçide future/callr'ın globals'ı globalenv'e örtük
+# kopyalamasına dayanırdı; görev SQL'i ana süreçte seçip
+# mergen_bounded_db_fetch_raw'ı doğrudan çağırır (sözleşme kendine yeterlidir).
 db_chat_preview_fetch_raw <- function(user_id,
                                       limit,
                                       dsn,
@@ -114,24 +140,12 @@ db_chat_preview_fetch_raw <- function(user_id,
     return(NULL)
   }
 
-  # Yalnızca AÇIK NA sentineli (tek elemanlı sayısal/mantıksal NA, NaN değil)
-  # mesajsız tam söyleşi listesini seçer (aynı biçim, TOP yok). "abc", Inf,
-  # NULL gibi bozuk limitler sessizce sınırsız sorguya dönüşmez; 6'ya düşer.
-  # mergen_startup_chat_preview_limit() ile aynı kuraldır; işçi sözleşmesini
-  # genişletmemek için burada satır içi tutulur.
-  tam_liste <- length(limit) == 1L && (is.logical(limit) || is.numeric(limit)) &&
-    is.na(limit) && !is.nan(limit)
-  safe_limit <- suppressWarnings(as.integer(limit[1]))
-  if (!tam_liste && (length(safe_limit) != 1L || is.na(safe_limit) || safe_limit <= 0L)) {
-    safe_limit <- 6L
-  }
-
   if (is.null(dsn) || !nzchar(as.character(dsn)[1])) {
     stop("db_chat_preview_fetch_raw: DSN bulunamadı.", call. = FALSE)
   }
 
   mergen_bounded_db_fetch_raw(
-    if (tam_liste) db_chat_list_summary_query_sql() else db_chat_preview_query_sql(safe_limit),
+    mergen_startup_chat_preview_sql(limit),
     params = list(safe_user_id),
     dsn = dsn, encoding = encoding, name_encoding = name_encoding,
     login_timeout = login_timeout, query_timeout = query_timeout
@@ -229,12 +243,16 @@ mergen_saved_chats_merge_newer <- function(db_chats, dispatch_snapshot, current,
   etkin <- character()
   for (k in intersect(degisen, names(birlesik))) {
     once <- dispatch_snapshot[[k]]
-    if (is.null(once)) {
-      birlesik[[k]] <- current[[k]]
-      next
-    }
     # Başka oturum daha sonra mesaj eklediyse DB'nin sayı/zaman çifti daha yenidir.
     db_daha_yeni <- isTRUE(sayi(birlesik[[k]]$message_count) > sayi(current[[k]]$message_count))
+    if (is.null(once)) {
+      # Gönderimden sonra açılan söyleşi: yerel girdi esas alınır, ancak DB'deki
+      # daha ileri etkinlik (sayı/zaman) eski yerel anlık görüntüyle ezilmez.
+      yerel <- current[[k]]
+      if (db_daha_yeni) for (alan in etkinlik_alanlari) yerel[alan] <- list(birlesik[[k]][[alan]])
+      birlesik[[k]] <- yerel
+      next
+    }
     for (alan in names(current[[k]])) {
       if (db_daha_yeni && alan %in% etkinlik_alanlari) next
       if (!identical(current[[k]][[alan]], once[[alan]])) birlesik[[k]][alan] <- list(current[[k]][[alan]])
@@ -280,27 +298,24 @@ mergen_startup_db_worker_config <- function() {
 
 # Açık worker-export sözleşmesi: yalnızca aşağıdaki adlar worker'a taşınır.
 # Bu listeye oturum/reaktif nesne, bağlantı ya da geniş yardımcı zinciri
-# EKLENMEZ; sözleşme test-startup-chat-preview-behavior.R ile kilitlidir.
+# EKLENMEZ. Tek fonksiyon global'i (mergen_bounded_db_fetch_raw) yalnızca
+# base/DBI/odbc'ye bağlıdır; SQL ana süreçte seçilip metin olarak gider.
+# Sözleşme test-startup-chat-preview-behavior.R ile kilitlidir.
 mergen_startup_chat_preview_globals <- function(user_id, limit = 6L) {
   yapilandirma <- mergen_startup_db_worker_config()
+  safe_limit <- mergen_startup_chat_preview_limit(limit)
 
-  sozlesme <- list(
+  list(
     startup_preview_user_id = suppressWarnings(as.integer(user_id[1])),
-    startup_preview_limit = mergen_startup_chat_preview_limit(limit),
+    startup_preview_limit = safe_limit,
+    startup_preview_sql = mergen_startup_chat_preview_sql(safe_limit),
     startup_preview_dsn = yapilandirma$dsn,
     startup_preview_encoding = yapilandirma$encoding,
     startup_preview_login_timeout = yapilandirma$login_timeout,
     startup_preview_query_timeout = yapilandirma$query_timeout,
     startup_preview_name_encoding = yapilandirma$name_encoding,
-    db_chat_preview_fetch_raw = db_chat_preview_fetch_raw,
-    db_chat_preview_query_sql = db_chat_preview_query_sql,
     mergen_bounded_db_fetch_raw = mergen_bounded_db_fetch_raw
   )
-  # Tam liste modu yalnızca özet SQL üreticisini ekler (oturum/bağlantı yok).
-  if (is.na(sozlesme$startup_preview_limit)) {
-    sozlesme$db_chat_list_summary_query_sql <- db_chat_list_summary_query_sql
-  }
-  sozlesme
 }
 
 # Büyük tam listede normalizasyon + biçimlendirme olay döngüsünü tek geri
@@ -339,6 +354,7 @@ mergen_startup_chat_preview_promise <- function(user_id,
   # task_fn'i doğrudan çalıştırabilmesi için kapanışta da görünür tutulur.
   startup_preview_user_id <- preview_globals$startup_preview_user_id
   startup_preview_limit <- preview_globals$startup_preview_limit
+  startup_preview_sql <- preview_globals$startup_preview_sql
   startup_preview_dsn <- preview_globals$startup_preview_dsn
   startup_preview_encoding <- preview_globals$startup_preview_encoding
   startup_preview_name_encoding <- preview_globals$startup_preview_name_encoding
@@ -347,9 +363,14 @@ mergen_startup_chat_preview_promise <- function(user_id,
 
   raw_promise <- tracked_future_promise(
     task_fn = function() {
-      db_chat_preview_fetch_raw(
-        user_id = startup_preview_user_id,
-        limit = startup_preview_limit,
+      # Geçersiz kimlikte bağlantı hiç açılmaz.
+      if (length(startup_preview_user_id) != 1L || is.na(startup_preview_user_id) ||
+          startup_preview_user_id <= 0L) {
+        return(NULL)
+      }
+      mergen_bounded_db_fetch_raw(
+        startup_preview_sql,
+        params = list(startup_preview_user_id),
         dsn = startup_preview_dsn,
         encoding = startup_preview_encoding,
         name_encoding = startup_preview_name_encoding,

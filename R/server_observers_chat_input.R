@@ -109,8 +109,11 @@ chatInputObserversInit <- function(input, session, values, settings_data,
     on.exit(if (nzchar(istem_kimligi)) {
       simdiki <- isolate(values$messages)
       # Kimlik tabanlı tespit; kimliksiz mesajlarda (eski/sahte yollar) konuma düşülür.
-      eklenen <- Filter(function(m) identical(m$type, "user") && nzchar(kimlik(m)) &&
-                          !(kimlik(m) %in% onceki_kimlikler), simdiki)
+      # Kimlikler bir kez çıkarılır ve tek vektörel üyelik testi yapılır: uzun
+      # söyleşide mesaj başına önceki kimlik kümesinin yeniden taranması önlenir.
+      simdiki_kimlikler <- vapply(simdiki, kimlik, character(1))
+      kullanici <- vapply(simdiki, function(m) identical(m$type, "user"), logical(1))
+      eklenen <- simdiki[kullanici & nzchar(simdiki_kimlikler) & !(simdiki_kimlikler %in% onceki_kimlikler)]
       if (!length(eklenen) && length(simdiki) > length(onceki)) {
         eklenen <- Filter(function(m) identical(m$type, "user") && !nzchar(kimlik(m)),
                           simdiki[seq.int(length(onceki) + 1L, length(simdiki))])

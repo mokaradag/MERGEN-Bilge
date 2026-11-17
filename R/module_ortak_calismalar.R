@@ -405,6 +405,10 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
 
     # --- Liste görünümleri -----------------------------------------------------
 
+    # MB_Ortak* tabloları kurulmamışsa (kademeli kurulum) listeler okuma hatası yerine kurulum yönlendirir.
+    tablo_yok_durumu <- function() div(class = "oo-bos-durum oo-tablo-yok", icon("database"),
+      p("Ortak Oturum tabloları henüz kurulmamış. Kurulum: docs/sql/2026-07-ortak-oturumlar.sql (DBA/operatör)." ))
+
     liste_olustur <- function(df, arsivde = FALSE, bos_mesaj = "Henüz ortak oturum yok.") {
       # Okuma hatası "liste boş" sayılmaz: ayrıntı gösterilmeden hata durumu
       # ve mevcut "Yenile" ile yeniden deneme yolu bildirilir.
@@ -437,13 +441,7 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
         return(div(class = "oo-bos-durum", p("Kimlik doğrulaması tamamlanıyor...")))
       }
 
-      if (!ortak_db_tablolar_hazir_mi()) {
-        return(div(
-          class = "oo-bos-durum oo-tablo-yok",
-          icon("database"),
-          p("Ortak Oturum tabloları henüz kurulmamış. Kurulum: docs/sql/2026-07-ortak-oturumlar.sql (DBA/operatör)." )
-        ))
-      }
+      if (!ortak_db_tablolar_hazir_mi()) return(tablo_yok_durumu())
 
       filtre <- as.character(input$hub_filtre %||% "Tümü")[1]
 
@@ -473,6 +471,7 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
       liste_yenile()
       uid <- gecerli_kullanici()
       req(!is.na(uid))
+      if (!ortak_db_tablolar_hazir_mi()) return(tablo_yok_durumu())
       liste_olustur(
         ortak_db_sohbet_listesi_onbellekten(sohbet_onbellek, uid),
         bos_mesaj = "Henüz ortak söyleşi yok."
@@ -483,6 +482,7 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
       liste_yenile()
       uid <- gecerli_kullanici()
       req(!is.na(uid))
+      if (!ortak_db_tablolar_hazir_mi()) return(tablo_yok_durumu())
       liste_olustur(
         ortak_db_oturum_listesi(uid, kaynak_turu = "BilgeYolaç"),
         bos_mesaj = "Henüz ortak Bilge Yolaç oturumu yok."

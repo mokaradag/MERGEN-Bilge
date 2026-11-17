@@ -203,6 +203,13 @@ healthServer <- function(id, perf_tracker) {
         dns_gizli_kaldi <<- TRUE
         return()
       }
+      # Çevrimiçi sekmesi sağlık sonuçlarını kullanmaz (yalnız bellek-içi defter):
+      # içerik görünür olsa da probe'lar yalnızca DNS takibi için çalıştırılmaz;
+      # başka sekmeye dönülünce takip görünürlük dönüşündeki gibi yeniden başlar.
+      if (identical(input$health_tabs, "presence")) {
+        dns_gizli_kaldi <<- TRUE
+        return()
+      }
       ilk <- initial_checks()
       son <- isolate(dns_checks()) %||% ilk
       # Sayfa DNS beklenirken gizlenip 4 sn'lik pencereden sonra yeniden

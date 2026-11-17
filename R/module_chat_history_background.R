@@ -120,7 +120,33 @@ history_rows_worker_promise <- function(chat_ids, user_id, session_token = NULL)
     ),
     packages = c("DBI")
   )
-  promises::then(ham, onFulfilled = function(cerceve) load_history_rows_batch(ids, user_id = uid, result = cerceve))
+  promises::then(ham, onFulfilled = function(cerceve) history_rows_format_staged(ids, uid, cerceve))
+}
+
+# Büyük geçmiş sonucu (söyleşi sayısı satır sayısını sınırlamaz) ana olay
+# döngüsünü tek geri çağrıda tutmaz: satırlar dilim satırlık parçalarla ayrı
+# döngü turlarında aynı biçimlendiriciden geçer, arada diğer oturumlar ilerler.
+# Biçimlendirme satır başınadır ve SQL sırası (ChatID, sıra) korunur; parçalara
+# bölünen söyleşinin satırları sırayla birleştirilir. Sonuç tek seferlikle aynıdır.
+history_rows_format_staged <- function(ids, uid, cerceve, dilim = 500L) {
+  n <- if (is.data.frame(cerceve)) nrow(cerceve) else 0L
+  if (n <= dilim) return(load_history_rows_batch(ids, user_id = uid, result = cerceve))
+  promises::promise(function(resolve, reject) {
+    sonuc <- stats::setNames(rep(list(list()), length(ids)), ids)
+    bas <- 1L
+    adim <- function() {
+      tryCatch({
+        son <- min(n, bas + dilim - 1L)
+        parca <- cerceve[bas:son, , drop = FALSE]
+        bicimli <- load_history_rows_batch(intersect(ids, as.character(parca$ChatID)),
+                                           user_id = uid, result = parca)
+        for (k in names(bicimli)) sonuc[[k]] <<- c(sonuc[[k]], bicimli[[k]])
+        bas <<- son + 1L
+        if (bas > n) resolve(sonuc) else later::later(adim, 0)
+      }, error = function(e) reject(e))
+    }
+    adim()
+  })
 }
 
 # Açılış hazırlığı: eksik kimlikler işçide okunur, sonuç yalnızca gönderimdeki

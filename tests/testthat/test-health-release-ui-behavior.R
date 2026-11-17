@@ -403,6 +403,37 @@ testthat::test_that("DNS beklenirken gizlenen sağlık sayfası yeniden açılı
   })
 })
 
+testthat::test_that("Çevrimiçi sekmesi görünürken DNS gözlemcisi sağlık probe'larını çalıştırmaz", {
+  env <- .healthModuleServerEnv()
+  toplam <- 0L
+  satir <- function(deger) data.frame(id = "llm.endpoint", label = "LLM",
+    status = "ok", severity = 0L, value = deger, detail = "", duration_ms = 1,
+    checked_at = "", remediation = "", stringsAsFactors = FALSE)
+  env$health_collect_checks <- function(...) {
+    toplam <<- toplam + 1L
+    satir("Hazır")
+  }
+  env$mb_presence_snapshot <- function(...) list(metrics = list(), users = NULL)
+  shiny::testServer(env$healthServer, args = list(perf_tracker = NULL), {
+    gizli_anahtar <- paste0("output_", session$ns("health_tab_content"), "_hidden")
+    gorunurluk <- shiny::reactiveValues()
+    gorunurluk[[gizli_anahtar]] <- FALSE
+    kok_oturum <- session$rootScope()  # vekil oturum atamaya kapalıdır; kök oturuma yazılır
+    kok_oturum$clientData <- gorunurluk
+    session$userData$user_config <- list(auth_level = "ADMIN")
+    session$setInputs(health_tabs = "presence")
+    session$flushReact()
+    # 2 dk'lık otomatik yenileme de Çevrimiçi sekmesinde probe çalıştırmaz.
+    session$elapse(121000)
+    session$flushReact()
+    testthat::expect_identical(toplam, 0L)
+    # Sağlık sekmesine dönülünce kontroller çalışır.
+    session$setInputs(health_tabs = "overview")
+    session$flushReact()
+    testthat::expect_gt(toplam, 0L)
+  })
+})
+
 testthat::test_that("healthServer yönetici olmayan oturuma sekme içeriği ve varlık verisi vermez", {
   env <- .healthModuleServerEnv()
   sayac <- new.env(parent = emptyenv())

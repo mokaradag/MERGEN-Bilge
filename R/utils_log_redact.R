@@ -356,24 +356,48 @@ redact_connection_identifiers <- function(x) {
   # değer olduğu gibi kalıyordu; genel redaktörün 6 karakter eşiği (yanlış
   # pozitif önleme sözleşmesi) bu LOG katmanında uygulanmaz, kısa tırnaklı
   # sırlar (token/secret/api anahtarı dahil) da maskelenir.
-  tirnakli_anahtarlar <- paste(c(.REDACT_CONN_KEYS, "api[_-]?key", "apikey", "x-api-key", "token",
-                                 "access[_-]?token", "refresh[_-]?token", "secret", "client[_-]?secret"),
-                               collapse = "|")
+  #
+  # Tek anahtar biçimi tüm geçişlerde ortaktır: anahtar JSON'daki gibi
+  # tırnaklı olabilir (`{"token":"..."}`, `{"PWD":"..."}`); tırnak karakteri
+  # sınır sayılır ve anahtarı kapatan tırnak isteğe bağlıdır. Değer kaçışlı
+  # tırnak (`\"`) içerebilir; kapanmamış tırnaklı değer (kesilmiş tanı:
+  # `PWD='abc`) satır sonuna kadar maskelenir.
+  sir_anahtarlari <- paste(c("password", "passwd", "pwd", "api[_-]?key", "apikey", "x-api-key", "token",
+                             "access[_-]?token", "refresh[_-]?token", "secret", "client[_-]?secret"),
+                           collapse = "|")
+  tirnakli_anahtarlar <- paste(c(.REDACT_CONN_KEYS, sir_anahtarlari), collapse = "|")
+  anahtar_onu <- "(?i)(^|[;{(\\[,\\s\"'])("
+  anahtar_sonu <- ")([\"']?)(\\s*[:=]\\s*)"
   for (tirnak in c("\"", "'")) {
+    deger <- paste0("(?!<redacted>", tirnak, ")(?:[^", tirnak, "\\\\\\r\\n]|\\\\.)*")
     metin <- gsub(
-      paste0("(?i)(^|[;{(\\[,\\s])(", tirnakli_anahtarlar, ")(\\s*[:=]\\s*)", tirnak,
-             "(?!<redacted>", tirnak, ")[^", tirnak, "\\r\\n]*", tirnak),
-      paste0("\\1\\2\\3", tirnak, "<redacted>", tirnak),
+      paste0(anahtar_onu, tirnakli_anahtarlar, anahtar_sonu, tirnak, deger, tirnak),
+      paste0("\\1\\2\\3\\4", tirnak, "<redacted>", tirnak),
+      metin,
+      perl = TRUE
+    )
+    # Kapanmamış tırnak: `(?m)` ile çok satırlı tanının ORTASINDAKİ satır da kapsanır.
+    metin <- gsub(
+      paste0("(?m)", anahtar_onu, tirnakli_anahtarlar, anahtar_sonu, tirnak, deger, "$"),
+      paste0("\\1\\2\\3\\4", tirnak, "<redacted>"),
       metin,
       perl = TRUE
     )
   }
 
-  gsub(
-    # Zaten maskelenmiş ya da süslü parantezli değerler İKİNCİ KEZ işlenmez.
+  # Zaten maskelenmiş ya da süslü parantezli değerler İKİNCİ KEZ işlenmez.
+  metin <- gsub(
     paste0("(?i)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS,
            ")(\\s*=\\s*)(?!<redacted>)(?!\\{)[^;,}\\])\\s\"']+"),
     "\\1\\2\\3<redacted>",
+    metin,
+    perl = TRUE
+  )
+  # Çıplak SIR değerleri (`secret=abcde`, `"token": 12345`) uzunluktan bağımsız
+  # maskelenir; genel redaktörün eşiği değişmez, bu yalnızca log katmanıdır.
+  gsub(
+    paste0(anahtar_onu, sir_anahtarlari, anahtar_sonu, "(?!<redacted>)(?![{\"'])[^;,}\\])\\s\"']+"),
+    "\\1\\2\\3\\4<redacted>",
     metin,
     perl = TRUE
   )

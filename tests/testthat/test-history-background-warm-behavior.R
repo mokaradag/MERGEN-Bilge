@@ -131,3 +131,45 @@ testthat::test_that("historyBackgroundWarm tek partilik küçük listede de çal
   testthat::expect_length(rec$batches, 1L)
   testthat::expect_identical(rec$batches[[1]], c("x", "y"))
 })
+
+# Söyleşi sayısı satır sayısını sınırlamaz: büyük geçmiş sonucu tek geri
+# çağrıda biçimlendirilmez, satır dilimleriyle ayrı döngü turlarında işlenir.
+# Sonuç (söyleşi içi sıra dahil) tek seferlik biçimlendirmeyle aynıdır.
+testthat::test_that("büyük geçmiş sonucu satır dilimleriyle aşamalı biçimlendirilir, sonuç değişmez", {
+  testthat::skip_if_not_installed("promises")
+  testthat::skip_if_not_installed("later")
+  env <- .source_history_bg_for_test()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_db_chat_readers.R"),
+         encoding = "UTF-8", local = env)
+  satir <- function(chat, n) data.frame(
+    ChatID = rep(chat, n), ChatTitle = rep(paste("Başlık", chat, "çğış"), n),
+    MessageTimestamp = as.POSIXct("2026-07-01 10:00:00", tz = "UTC") + seq_len(n),
+    Soru = paste0("soru ", chat, "-", seq_len(n)), Cevap = paste0("yanıt ", chat, "-", seq_len(n)),
+    PairOrder = seq_len(n), stringsAsFactors = FALSE)
+  cerceve <- rbind(satir(3L, 700L), satir(5L, 20L), satir(8L, 600L))
+  ids <- c("8", "3", "5", "9")
+  beklenen <- env$load_history_rows_batch(ids, user_id = 42L, result = cerceve)
+
+  gercek <- env$load_history_rows_batch
+  cagrilar <- integer()
+  env$load_history_rows_batch <- function(chat_ids, user_id = NULL, result = NULL) {
+    cagrilar <<- c(cagrilar, nrow(result))
+    gercek(chat_ids, user_id = user_id, result = result)
+  }
+  p <- env$history_rows_format_staged(ids, 42L, cerceve)
+  testthat::expect_true(promises::is.promise(p))
+  # İlk dilimden sonra kalan iş ayrı döngü turlarına bırakılır.
+  testthat::expect_identical(cagrilar, 500L)
+  sonuc <- NULL
+  promises::then(p, onFulfilled = function(v) sonuc <<- v)
+  bitis <- Sys.time() + 5
+  while (is.null(sonuc) && Sys.time() < bitis) later::run_now(0.05)
+
+  testthat::expect_true(all(cagrilar <= 500L))
+  testthat::expect_identical(sum(cagrilar), nrow(cerceve))
+  testthat::expect_identical(sonuc, beklenen)
+  testthat::expect_identical(sonuc[["9"]], list())
+  # Küçük sonuç doğrudan (promise olmadan) biçimlendirilir.
+  testthat::expect_identical(env$history_rows_format_staged(ids, 42L, satir(5L, 20L)),
+                             gercek(ids, user_id = 42L, result = satir(5L, 20L)))
+})

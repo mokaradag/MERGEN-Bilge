@@ -26,14 +26,6 @@ if (length(missing_boot_files) > 0) {
   ))
 }
 
-# Ana uygulama sürecinde R JIT derleyicisi kapatılır; operatör R_ENABLE_JIT ile
-# açıkça seviye verdiyse ona uyulur. Binlerce uygulama kapanışı yeni süreçteki
-# ilk oturumda derleniyor ve ilk kullanıcıyı ~15 sn bekletiyordu; ölçümde sıcak
-# etkileşimler JIT kapalıyken yavaşlamadı. Kalıcı PSOCK işçileri etkilenmez.
-if (!nzchar(Sys.getenv("R_ENABLE_JIT"))) {
-  invisible(compiler::enableJIT(0))
-}
-
 boot_step <- function(step_name, expr) {
   tryCatch(
     force(expr),
@@ -273,7 +265,15 @@ create_mergen_app <- function() {
       }
       # İlk istemin gerçek SSE bağımlılık taraması da oturumlar gelmeden ısıtılır.
       if (exists("mergen_true_streaming_warm_dependencies", mode = "function", inherits = TRUE)) {
-        try(mergen_true_streaming_warm_dependencies(), silent = TRUE)
+        sse_isindi <- try(mergen_true_streaming_warm_dependencies(), silent = TRUE)
+        if (inherits(sse_isindi, "try-error")) {
+          # Tanı metni log maskeleme sınırından geçer; maskeleme yoksa ham metin yazılmaz.
+          cat("[STARTUP] UYARI: SSE bağımlılık ısıtması hata verdi:",
+              if (exists("redacted_condition_message", mode = "function", inherits = TRUE))
+                redacted_condition_message(attr(sse_isindi, "condition")) else "(ayrıntı gizlendi)", "\n")
+        } else if (!isTRUE(sse_isindi)) {
+          cat("[STARTUP] UYARI: SSE bağımlılık ısıtması tamamlanmadı; ilk istem taramayı kendisi yapacak.\n")
+        }
       }
     }
   )
@@ -286,6 +286,16 @@ run_mergen_app <- function(
   quiet = TRUE
 ) {
   validate_boot_state()
+  # Ana uygulama sürecinde R JIT derleyicisi YALNIZCA bu üretim başlatma yolunda
+  # kapatılır; app.R'yi kaynak olarak yükleyen test/araç süreçleri etkilenmez ve
+  # runApp bitince önceki seviye geri yüklenir. Operatör R_ENABLE_JIT ile seviye
+  # verdiyse ona uyulur. Binlerce uygulama kapanışı yeni süreçteki ilk oturumda
+  # derleniyor ve ilk kullanıcıyı ~15 sn bekletiyordu; ölçümde sıcak etkileşimler
+  # JIT kapalıyken yavaşlamadı. Kalıcı PSOCK işçileri etkilenmez.
+  if (!nzchar(Sys.getenv("R_ENABLE_JIT"))) {
+    onceki_jit <- compiler::enableJIT(0)
+    on.exit(compiler::enableJIT(onceki_jit), add = TRUE)
+  }
   # Smoke kararı gerçek dinleme adresiyle yeniden verilir; runApp bitince kapanır.
   register_smoke <- mergen_register_ux_smoke_resource
   smoke_owner <- new.env(parent = emptyenv())

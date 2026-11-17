@@ -56,6 +56,31 @@ load_app_entrypoint_for_tests <- local({
   }
 })
 
+# Bu test dosyadaki İLK yüklemeyi ölçer: app.R kaynak olarak yüklenirken
+# (test/araç süreci) JIT seviyesi değişmemelidir; JIT yalnızca üretim başlatma
+# yolunda (run_mergen_app) kapatılır ve runApp bitince geri yüklenir.
+test_that("app.R kaynak yüklemesi JIT seviyesini değiştirmez; üretim başlatması kapatıp geri yükler", {
+  withr::local_envvar(R_ENABLE_JIT = NA)
+  onceki <- compiler::enableJIT(3)
+  withr::defer(compiler::enableJIT(onceki))
+  load_app_entrypoint_for_tests()
+  expect_equal(compiler::enableJIT(-1), 3)
+
+  calisirken <- NULL
+  testthat::local_mocked_bindings(
+    runApp = function(...) { calisirken <<- compiler::enableJIT(-1); invisible("ok") },
+    .package = "shiny"
+  )
+  run_mergen_app(host = "127.0.0.1", port = 8009L, launch.browser = FALSE, quiet = TRUE)
+  expect_equal(calisirken, 0)
+  expect_equal(compiler::enableJIT(-1), 3)
+
+  # Operatör R_ENABLE_JIT verdiyse başlatma seviyeye dokunmaz.
+  withr::local_envvar(R_ENABLE_JIT = "3")
+  run_mergen_app(host = "127.0.0.1", port = 8009L, launch.browser = FALSE, quiet = TRUE)
+  expect_equal(calisirken, 3)
+})
+
 test_that("app.R boot helperlari tanimlanir ve shiny.appobj uretilir", {
   load_app_entrypoint_for_tests()
 
@@ -155,4 +180,36 @@ test_that("run_mergen_app gecersiz portta 8009 fallback kullanir", {
   expect_true("shiny.appobj" %in% captured$app_class)
   expect_false(captured$launch_browser)
   expect_true(captured$quiet)
+})
+# Açılışta SSE bağımlılık ısıtması başarısız ya da eksik kalırsa sessiz geçilmez;
+# tanı maskelenmiş olarak loglanır ve açılış durmaz.
+test_that("SSE bağımlılık ısıtması başarısız ya da eksikse açılış uyarısı maskeli loglanır", {
+  load_app_entrypoint_for_tests()
+  adlar <- c("mb_presence_initialize", "init_db_pool_once", "close_db_pool_once",
+             "file_summary_warm_dependencies", "mergen_true_streaming_warm_dependencies")
+  onceki <- lapply(adlar, function(ad) get0(ad, envir = globalenv(), inherits = FALSE))
+  names(onceki) <- adlar
+  withr::defer(for (ad in adlar) {
+    if (is.null(onceki[[ad]])) suppressWarnings(rm(list = ad, envir = globalenv())) else assign(ad, onceki[[ad]], envir = globalenv())
+  })
+  assign("mb_presence_initialize", function() invisible(NULL), envir = globalenv())
+  assign("init_db_pool_once", function(...) invisible(NULL), envir = globalenv())
+  assign("close_db_pool_once", NULL, envir = globalenv())
+  assign("file_summary_warm_dependencies", function() invisible(TRUE), envir = globalenv())
+
+  app <- create_mergen_app()
+  assign("mergen_true_streaming_warm_dependencies", function() invisible(FALSE), envir = globalenv())
+  eksik <- paste(capture.output(app$onStart()), collapse = "\n")
+  expect_match(eksik, "SSE bağımlılık ısıtması tamamlanmadı", fixed = TRUE)
+
+  gizli <- paste0("gi", "zli")
+  assign("mergen_true_streaming_warm_dependencies", function() stop(paste0("tarama hatası PWD='", gizli, "'")),
+         envir = globalenv())
+  hata <- paste(capture.output(expect_no_error(app$onStart())), collapse = "\n")
+  expect_match(hata, "SSE bağımlılık ısıtması hata verdi", fixed = TRUE)
+  expect_false(grepl(gizli, hata, fixed = TRUE))
+
+  assign("mergen_true_streaming_warm_dependencies", function() invisible(TRUE), envir = globalenv())
+  tamam <- paste(capture.output(app$onStart()), collapse = "\n")
+  expect_false(grepl("SSE bağımlılık", tamam, fixed = TRUE))
 })

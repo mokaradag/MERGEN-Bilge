@@ -106,3 +106,42 @@ test_that("log sınırı tırnaklı bağlantı tanımlayıcılarını ve kısa t
   tani <- "Çalışma tablosu \"Söyleşi\" bulunamadı"
   expect_identical(redacted_condition_message(simpleError(tani)), tani)
 })
+
+test_that("log sınırı JSON-tırnaklı anahtarları, kısa çıplak sırları ve kapanmamış tırnaklı değerleri maskeler", {
+  sentetik <- paste0("sentetik", "-", "jeton", "-42")
+  kisa <- paste0("ab", "cde")
+  pw <- paste0("a", "bc")
+  # JSON biçiminde tırnaklı anahtar (her iki tırnak türü).
+  for (girdi in c(paste0("{\"token\":\"", sentetik, "\"}"), paste0("{\"PWD\":\"", pw, "\"}"),
+                  paste0("{'client_secret': '", kisa, "'}"), paste0("{\"token\": ", "12345", "}"))) {
+    out <- redacted_condition_message(simpleError(girdi))
+    expect_false(grepl(sentetik, out, fixed = TRUE), info = girdi)
+    expect_false(grepl(paste0("\"", pw, "\""), out, fixed = TRUE), info = girdi)
+    expect_false(grepl(kisa, out, fixed = TRUE), info = girdi)
+    expect_false(grepl("12345", out, fixed = TRUE), info = girdi)
+    expect_true(grepl("<redacted>", out, fixed = TRUE), info = girdi)
+  }
+  # Kısa çıplak sırlar (genel redaktörün 6 karakter eşiği bu katmanda yok).
+  for (anahtar in c("secret", "token", "api_key", "x-api-key", "client_secret")) {
+    for (ayrac in c("=", ": ")) {
+      out <- redacted_condition_message(simpleError(paste0(anahtar, ayrac, kisa)))
+      expect_identical(out, paste0(anahtar, ayrac, "<redacted>"))
+    }
+  }
+  # Genel redaktörün eşiği değişmez (yalnızca log katmanı genişledi).
+  expect_identical(redact_sensitive_text(paste0("secret=", kisa)), paste0("secret=", kisa))
+  # Kesilmiş tanıda kapanmamış tırnaklı değer satır sonuna kadar maskelenir.
+  expect_identical(redacted_condition_message(simpleError(paste0("PWD='", pw))), "PWD='<redacted>")
+  cok_satir <- redacted_condition_message(simpleError(paste0("bağlanamadı: PWD=\"", pw, "\nsonraki satır korunur")))
+  expect_false(grepl(pw, cok_satir, fixed = TRUE))
+  expect_true(grepl("sonraki satır korunur", cok_satir, fixed = TRUE))
+  # Kaçışlı tırnak içeren değerin kuyruğu sızmaz.
+  expect_identical(redact_connection_identifiers(paste0("api_key=\"ab\\\"", kisa, "\"")), "api_key=\"<redacted>\"")
+  # Karışık biçim: süslü, tırnaklı ve çıplak değerler birlikte; sözcük içi anahtar korunur.
+  karisik <- redacted_condition_message(simpleError(paste0(
+    "Driver={ODBC Driver 17};Server='ic-", "sunucu';Pwd={A}}B}; mytoken=", kisa)))
+  expect_identical(karisik, paste0("Driver={<redacted>};Server='<redacted>';Pwd={<redacted>}; mytoken=", kisa))
+  # Anahtarsız Türkçe tanı bağlamı ve "Database:" düzyazısı korunur.
+  expect_identical(redacted_condition_message(simpleError("Database: bağlantı başarısız")),
+                   "Database: bağlantı başarısız")
+})

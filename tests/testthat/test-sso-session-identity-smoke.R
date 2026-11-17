@@ -313,3 +313,65 @@ testthat::test_that("başarısız ikinci kullanıcı kurulumu önceki kimliği t
     testthat::expect_null(identity$user_config_rv())
   })
 })
+# SSO yetkisizleşmesi (module_sso.R yetkisizlestir) session$userData'yı
+# eşzamanlı temizler ve sahip geçişini çağırır. Sağlayıcının yedek kimliği de
+# AYNI yolda düşmelidir: sonraki gözlemci turu beklenirse galeri silme gibi
+# korumalı işlemler resolve_effective_user_id üzerinden eski kimliği alıyordu.
+testthat::test_that("SSO yetkisizleşmesi sağlayıcı yedek kimliğini gözlemci turu beklemeden düşürür", {
+  testthat::skip_if_not_installed("shiny")
+
+  resolve_identity_fn <- function(sso_claims = NULL) {
+    list(username = sso_claims$username, full_name = sso_claims$username,
+         first_name = sso_claims$username, last_name = "", sicil = NULL, email = NULL,
+         auth_level = "USER", sektor = NULL, department = NULL, mudurluk = NULL,
+         masraf_yeri_kodu = NULL, auth_source = "keycloak")
+  }
+
+  shiny::testServer(function(input, output, session) {
+    sso_state <- shiny::reactiveValues(authenticated = FALSE, user_claims = NULL)
+    identity <- serverInitUserSession(
+      session = session,
+      session_cache = list(setup_user_session = function(uid) tempfile("kayip_cache_")),
+      sso_state = sso_state,
+      base_user_config = list(icon = "user", auth_level = "USER"),
+      sso_enabled = TRUE,
+      resolve_identity_fn = resolve_identity_fn,
+      get_or_create_user_fn = function(username, sso_claims = NULL) {
+        if (identical(username, "birinci.kullanici")) 11L else 22L
+      }
+    )
+    session$userData$.sso_state <- sso_state
+    session$userData$.identity <- identity
+  }, {
+    identity <- session$userData$.identity
+    sso_state <- session$userData$.sso_state
+    session$flushReact()
+    sso_state$user_claims <- list(username = "birinci.kullanici")
+    sso_state$authenticated <- TRUE
+    session$flushReact()
+    testthat::expect_identical(identity$current_user_id_provider(), 11L)
+
+    # yetkisizlestir() ile aynı eşzamanlı adımlar; flushReact ÇAĞRILMAZ.
+    sso_state$authenticated <- FALSE
+    eski_uid <- session$userData$user_id
+    session$userData$user_id <- 0L
+    session$userData$auth_initialized <- FALSE
+    mergen_session_owner_transition(session$userData, eski_uid, 0L)
+
+    testthat::expect_identical(identity$get_current_user_id_snapshot(), 0L)
+    testthat::expect_identical(identity$current_user_id_provider(), 0L)
+    testthat::expect_identical(
+      resolve_effective_user_id(session = session, current_user_id = identity$current_user_id_provider),
+      0L
+    )
+    testthat::expect_false(identity$is_auth_ready())
+
+    # Meşru yeniden kimlik doğrulama (başka hesap) yeni kimliği kurar.
+    session$flushReact()
+    sso_state$user_claims <- list(username = "ikinci.kullanici")
+    sso_state$authenticated <- TRUE
+    session$flushReact()
+    testthat::expect_identical(identity$current_user_id_provider(), 22L)
+    testthat::expect_true(identity$is_auth_ready())
+  })
+})
