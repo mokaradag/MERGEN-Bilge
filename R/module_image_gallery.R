@@ -544,7 +544,10 @@ imageGalleryServer <- function(id, current_user_id) {
       sahip <- silme_sahibi()
       if (is.na(sahip)) return(silme_reddedildi())
       deleted_count <- delete_all_user_images(sahip)
-      gecmis_onbellegini_dusur()
+      # Yalnızca mesajı değişen söyleşilerin geçmiş kaydı düşer; hiçbiri
+      # değişmediyse önbellek korunur (ilgisiz söyleşiler yeniden okunmaz).
+      etkilenen <- as.character(attr(deleted_count, "chat_ids") %||% character())
+      if (length(etkilenen)) gecmis_onbellegini_dusur(etkilenen)
       clear_all_trigger(clear_all_trigger() + 1)
       refresh_trigger(refresh_trigger() + 1)
       current_page(1)

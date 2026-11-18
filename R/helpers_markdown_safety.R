@@ -136,20 +136,50 @@ mergen_generated_image_card_html <- function(message_id, img_src, description = 
 # Oturumun o anki sahibi (kanonik kullanıcı kimliği). Görsel kaydı bu sahibe
 # bağlanır ve her istekte yeniden doğrulanır.
 .mergen_image_session_owner <- function(session) {
-  uid <- tryCatch(
-    if (exists("resolve_effective_user_id", mode = "function", inherits = TRUE)) {
-      resolve_effective_user_id(session = session)
-    } else {
-      session$userData$user_id
-    },
-    error = function(e) NA
-  )
+  # Yalnızca kanonik çözümleyici kullanılır; yokluğu çözülmemiş sahip sayılır.
+  # Yerel sayısal dönüşüm `TRUE` ve `c(1L, 2L)` girdilerini "1" sahibine
+  # çeviriyor, 1 numaralı kullanıcının görselini 403 yerine sunabiliyordu.
+  if (!exists("resolve_effective_user_id", mode = "function", inherits = TRUE)) {
+    return(NA_character_)
+  }
+  uid <- tryCatch(resolve_effective_user_id(session = session), error = function(e) 0L)
   # Kapalı-başarısız: çözülmemiş kimlik (NULL/NA/0/negatif/sayısal olmayan)
   # geçerli görünen "0" ya da "NA" sahibine dönüşmez; NA kalır ve her istek 403 alır.
-  uid <- tryCatch(suppressWarnings(as.numeric(if (length(uid)) uid[[1]] else NA)),
-                  error = function(e) NA_real_)
-  if (length(uid) != 1L || is.na(uid) || !is.finite(uid) || uid <= 0) return(NA_character_)
+  if (!is.numeric(uid) || length(uid) != 1L || is.na(uid) || uid <= 0) return(NA_character_)
   format(uid, scientific = FALSE, trim = TRUE)
+}
+
+# Kayıtlı URL'nin istek filtresi. Ayrı fabrikada üretilir: filtre yalnızca
+# `session`'ı yakalar. Kayıt fonksiyonunun çerçevesinde üretilen kapanış o anki
+# URL önbelleğini de tutuyor, N görsel kaydı 1..N uzunluğunda önbellek
+# kopyalarını oturum boyunca bellekte bırakıyordu.
+.mergen_image_filter_factory <- function(session) {
+  force(session)
+  function(data, req) {
+    # Aynı Shiny oturumunda sahip değiştiyse (SSO kimlik geçişi) ya da oturum
+    # kimliğini yitirdiyse önceki sahibin kayıtlı URL'leri artık sunulmaz.
+    if (is.na(data$owner) || !identical(.mergen_image_session_owner(session), data$owner)) {
+      return(shiny::httpResponse(
+        status = 403L,
+        content_type = "text/plain; charset=UTF-8",
+        content = "Erisim reddedildi"
+      ))
+    }
+    fpath <- data$path
+    if (!file.exists(fpath)) {
+      return(shiny::httpResponse(
+        status = 404L,
+        content_type = "text/plain; charset=UTF-8",
+        content = "Gorsel bulunamadi"
+      ))
+    }
+    raw_bytes <- readBin(fpath, "raw", file.info(fpath)$size)
+    shiny::httpResponse(
+      status = 200L,
+      content_type = data$ctype,
+      content = raw_bytes
+    )
+  }
 }
 
 .mergen_register_image_data_obj <- function(session, local_path) {
@@ -186,31 +216,7 @@ mergen_generated_image_card_html <- function(message_id, img_src, description = 
   url <- session$registerDataObj(
     name = obj_name,
     data = list(path = norm_path, ctype = content_type, owner = sahip),
-    filterFunc = function(data, req) {
-      # Aynı Shiny oturumunda sahip değiştiyse (SSO kimlik geçişi) önceki
-      # sahibin kayıtlı URL'leri artık sunulmaz (kapalı-başarısız).
-      if (is.na(data$owner) || !identical(.mergen_image_session_owner(session), data$owner)) {
-        return(shiny::httpResponse(
-          status = 403L,
-          content_type = "text/plain; charset=UTF-8",
-          content = "Erisim reddedildi"
-        ))
-      }
-      fpath <- data$path
-      if (!file.exists(fpath)) {
-        return(shiny::httpResponse(
-          status = 404L,
-          content_type = "text/plain; charset=UTF-8",
-          content = "Gorsel bulunamadi"
-        ))
-      }
-      raw_bytes <- readBin(fpath, "raw", file.info(fpath)$size)
-      shiny::httpResponse(
-        status = 200L,
-        content_type = data$ctype,
-        content = raw_bytes
-      )
-    }
+    filterFunc = .mergen_image_filter_factory(session)
   )
 
   cache[[cache_key]] <- url

@@ -104,7 +104,28 @@ mergen_bounded_db_fetch_raw <- function(sql, params, dsn, encoding, name_encodin
   }
 
   query_started <- Sys.time()
-  veri <- DBI::dbGetQuery(conn, sql, params = params)
+  veri <- if (sinirli) {
+    # SINIR: SQLCancel yalnızca doğrudan YÜRÜTMEYİ kesilebilir kılar; odbc 1.7
+    # satırları ayrı (yerel) getirme çağrılarıyla alır ve sürücüde bekleyen tek
+    # bir getirme çağrısı R süre sınırını o çağrı dönene dek denetleyemez. Bu
+    # nedenle satırlar sınırlı parçalarla getirilir: süre sınırı parçalar
+    # arasında denetlenir, aşım en çok tek parçanın süresiyle sınırlıdır. Bu
+    # uçtan uca katı bir son tarih DEĞİLDİR (bkz. docs/performance-improvement-plan.md).
+    parcali_getir <- function() {
+      sonuc_kumesi <- DBI::dbSendQuery(conn, sql)
+      on.exit(try(DBI::dbClearResult(sonuc_kumesi), silent = TRUE))
+      parcalar <- list()
+      repeat {
+        parca <- DBI::dbFetch(sonuc_kumesi, n = 1000L)
+        parcalar[[length(parcalar) + 1L]] <- parca
+        if (isTRUE(DBI::dbHasCompleted(sonuc_kumesi)) || !NROW(parca)) break
+      }
+      if (length(parcalar) == 1L) parcalar[[1L]] else do.call(rbind, parcalar)
+    }
+    parcali_getir()
+  } else {
+    DBI::dbGetQuery(conn, sql, params = params)
+  }
   query_ms <- as.numeric(difftime(Sys.time(), query_started, units = "secs")) * 1000
 
   attr(veri, "mergen_preview_perf") <- list(
@@ -241,21 +262,45 @@ mergen_saved_chats_merge_newer <- function(db_chats, dispatch_snapshot, current,
   etkinlik_alanlari <- c("last_message_timestamp", "message_count")
   sayi <- function(x) suppressWarnings(as.integer(x %||% NA_integer_)[1])
   etkin <- character()
+  eksik <- function(x) is.null(x) || length(x) == 0L || is.na(x[1])
   for (k in intersect(degisen, names(birlesik))) {
     once <- dispatch_snapshot[[k]]
+    db_sayi <- sayi(birlesik[[k]]$message_count)
+    yerel_sayi <- sayi(current[[k]]$message_count)
     # Başka oturum daha sonra mesaj eklediyse DB'nin sayı/zaman çifti daha yenidir.
-    db_daha_yeni <- isTRUE(sayi(birlesik[[k]]$message_count) > sayi(current[[k]]$message_count))
+    db_daha_yeni <- isTRUE(db_sayi > yerel_sayi)
     if (is.null(once)) {
-      # Gönderimden sonra açılan söyleşi: yerel girdi esas alınır, ancak DB'deki
-      # daha ileri etkinlik (sayı/zaman) eski yerel anlık görüntüyle ezilmez.
-      yerel <- current[[k]]
-      if (db_daha_yeni) for (alan in etkinlik_alanlari) yerel[alan] <- list(birlesik[[k]][[alan]])
-      birlesik[[k]] <- yerel
+      # Gönderimden sonra yerelde açılan/hidrate edilen söyleşi: DB girdisi
+      # TABAN kalır (detay okuyucu etkinlik zamanı taşımaz; eksik alan DB'nin
+      # zamanını silmez). Yerel etkinlik DB'yi geçtiyse etkinlik alanları yerelden
+      # gelir ve söyleşi başa taşınır; açık yerel düzenlemeler (ad) uygulanır.
+      yerel_ileride <- isTRUE(yerel_sayi > db_sayi)
+      taban <- birlesik[[k]]
+      for (alan in names(current[[k]])) {
+        deger <- current[[k]][[alan]]
+        if (eksik(deger) || (alan %in% etkinlik_alanlari && !yerel_ileride)) next
+        taban[alan] <- list(deger)
+      }
+      if (yerel_ileride) etkin <- c(etkin, k)
+      # Yerelde mesaj yazıldı ve DB de ayrıca okundu: eşit sayı içerik eşitliği
+      # değildir (başka sekmenin mesajı eksik olabilir). Önbellek korunur, yeniden
+      # açılışta kapsamlı bir yeniden okuma istenir.
+      yerel_zaman <- current[[k]]$last_message_timestamp
+      if (!eksik(yerel_zaman) && !identical(yerel_zaman, birlesik[[k]]$last_message_timestamp)) {
+        taban$transkript_yenile <- TRUE
+      }
+      birlesik[[k]] <- taban
       next
     }
     for (alan in names(current[[k]])) {
       if (db_daha_yeni && alan %in% etkinlik_alanlari) next
       if (!identical(current[[k]][[alan]], once[[alan]])) birlesik[[k]][alan] <- list(current[[k]][[alan]])
+    }
+    # Gönderimden sonra hem DB hem yerel etkinlik ilerlediyse transkript iki
+    # kaynağın birleşimidir; sayı eşitliği tam olduğunu kanıtlamaz.
+    once_sayi <- sayi(once$message_count)
+    if (isTRUE(db_sayi > once_sayi) && isTRUE(yerel_sayi > once_sayi)) {
+      birlesik[[k]]$transkript_yenile <- TRUE
     }
     if (!db_daha_yeni &&
         (!identical(current[[k]]$last_message_timestamp, once$last_message_timestamp) ||

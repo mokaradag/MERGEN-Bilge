@@ -205,3 +205,57 @@ testthat::test_that(".mergen_register_image_data_obj içerik türünü uzantıya
                                info = sprintf("uzantı eşlemesi: %s", ad))
   }
 })
+
+testthat::test_that("çıkıştan sonra daha önce bayt sunan URL 403 alır; geçersiz sahip türleri reddedilir", {
+  env <- .imageServeEnv()
+  png_path <- file.path(withr::local_tempdir(), "cikis.png")
+  .writeTinyPng(png_path)
+  session <- .makeFilterCapturingSession(5L)
+  env$mergen_serve_image_data_url(png_path, session = session)
+  kayit <- session$register_calls[[1L]]
+  testthat::expect_identical(kayit$filter(kayit$data, list())$status, 200L)
+  # Çıkış: aynı kayıt verisiyle gelen istek artık reddedilir.
+  session$userData$user_id <- 0L
+  testthat::expect_identical(kayit$filter(kayit$data, list())$status, 403L)
+  # Mantıksal ve çok öğeli kimlik "1" sahibine dönüşmez; 1 numaralı kullanıcının URL'si sunulmaz.
+  session1 <- .makeFilterCapturingSession(1L)
+  env$mergen_serve_image_data_url(png_path, session = session1)
+  kayit1 <- session1$register_calls[[1L]]
+  for (kimlik in list(TRUE, c(1L, 2L), 1.5)) {
+    session1$userData$user_id <- kimlik
+    testthat::expect_true(is.na(env$.mergen_image_session_owner(session1)))
+    testthat::expect_identical(kayit1$filter(kayit1$data, list())$status, 403L)
+  }
+})
+
+testthat::test_that("kanonik çözümleyici yoksa sahip çözülmemiş sayılır ve URL 403 döner", {
+  env <- new.env(parent = baseenv())
+  sys.source(file.path(resolve_repo_root_for_tests(), "R", "helpers_markdown_safety.R"),
+             envir = env, keep.source = FALSE)
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  png_path <- file.path(withr::local_tempdir(), "cozumleyicisiz.png")
+  .writeTinyPng(png_path)
+  session <- .makeFilterCapturingSession(1L)
+  testthat::expect_true(is.na(env$.mergen_image_session_owner(session)))
+  url <- env$mergen_serve_image_data_url(png_path, session = session)
+  # Base64'e düşülmez: kayıtlı URL döner ve istek reddedilir.
+  testthat::expect_match(url, "^session/test/dataobj/")
+  kayit <- session$register_calls[[1L]]
+  testthat::expect_identical(kayit$filter(kayit$data, list())$status, 403L)
+})
+
+testthat::test_that("görsel filtresi URL önbelleğinin kopyasını tutmaz", {
+  env <- .imageServeEnv()
+  dizin <- withr::local_tempdir()
+  session <- .makeFilterCapturingSession(5L)
+  for (i in 1:3) {
+    yol <- file.path(dizin, sprintf("g%d.png", i))
+    .writeTinyPng(yol)
+    env$mergen_serve_image_data_url(yol, session = session)
+  }
+  for (kayit in session$register_calls) {
+    kapsam <- environment(kayit$filter)
+    testthat::expect_false(exists("cache", envir = kapsam, inherits = FALSE))
+    testthat::expect_identical(sort(ls(kapsam, all.names = TRUE)), "session")
+  }
+})

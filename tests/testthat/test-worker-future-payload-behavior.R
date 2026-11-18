@@ -178,9 +178,12 @@ testthat::test_that("tüm future görevleri üretim yolundan promises'ın payla�
   )
   durum <- new.env()
   durum$degerler <- list()
+  # Görevler gerçek giriş noktasından (tracked_future_promise, açık mod, iptal
+  # denetimi yok) gönderilir: yönlendirme paylaşılan kuyruğu atlarsa sayaç artmaz.
   for (i in 1:3) local({
     j <- i
-    p <- worker_monitor_future_promise(list(task_fn = function() j), character(0))
+    p <- tracked_future_promise(function() j, task_type = "kuyruk_testi",
+                                dependency_mode = "explicit", globals = list(j = j))
     promises::then(p, onFulfilled = function(v) durum$degerler[[length(durum$degerler) + 1L]] <- v)
   })
   .later_bosalt(function() length(durum$degerler) == 3L, sure = 5)
@@ -196,7 +199,13 @@ testthat::test_that("yoklamada beklenmeyen hata promise'i asılı bırakmadan re
   future::plan(future::sequential)
   eski_bitti <- .worker_monitor_future_bitti
   on.exit(assign(".worker_monitor_future_bitti", eski_bitti, envir = globalenv()), add = TRUE)
-  assign(".worker_monitor_future_bitti", function(f) stop("beklenmeyen_yoklama_hatasi"), envir = globalenv())
+  # İlk yoklama (promise kurucusu içinde) FALSE döner; hata PLANLANMIŞ ikinci
+  # yoklamada yükselir: kurucunun kendi reddi testi yeşil tutamaz.
+  yoklama <- 0L
+  assign(".worker_monitor_future_bitti", function(f) {
+    yoklama <<- yoklama + 1L
+    if (yoklama == 1L) FALSE else stop("beklenmeyen_yoklama_hatasi")
+  }, envir = globalenv())
 
   durum <- new.env()
   p <- worker_monitor_future_promise(list(task_fn = function() 9L), character(0))
@@ -204,6 +213,37 @@ testthat::test_that("yoklamada beklenmeyen hata promise'i asılı bırakmadan re
                  onRejected = function(e) durum$hata <- conditionMessage(e))
   .later_bosalt(function() !is.null(durum$hata) || !is.null(durum$deger), sure = 5)
   testthat::expect_match(durum$hata %||% "", "beklenmeyen_yoklama_hatasi")
+  testthat::expect_gte(yoklama, 2L)
+})
+
+testthat::test_that("kuyrukta beklerken geçersizleşen iş işçiye başlatılmaz ve promise reddedilir", {
+  testthat::skip_if_not_installed("future")
+  baslatma <- 0L
+  eski_baslat <- .worker_monitor_future_baslat
+  on.exit(assign(".worker_monitor_future_baslat", eski_baslat, envir = globalenv()), add = TRUE)
+  assign(".worker_monitor_future_baslat", function(...) { baslatma <<- baslatma + 1L; stop("başlatılmamalıydı") },
+         envir = globalenv())
+  sahte_kuyruk <- list(schedule_work = function(fn) fn())
+  testthat::local_mocked_bindings(future_promise_queue = function() sahte_kuyruk, .package = "promises")
+  durum <- new.env()
+  # İzleme defterinde kaydı olmayan (oturum temizliğiyle silinmiş) görev başlatılmaz.
+  p <- worker_monitor_future_promise(list(task_fn = function() 1L), character(0), gorev_kimligi = "kaydi_silinmis_gorev")
+  promises::then(p, onFulfilled = function(v) durum$deger <- v, onRejected = function(e) durum$hata <- conditionMessage(e))
+  .later_bosalt(function() !is.null(durum$hata) || !is.null(durum$deger), sure = 5)
+  testthat::expect_identical(baslatma, 0L)
+  testthat::expect_match(durum$hata %||% "", "geçersizleşti")
+  # Oturum temizliği izleme kaydını silince tracked_future_promise işi başlatmaz.
+  testthat::local_mocked_bindings(future_promise_queue = function() list(schedule_work = function(fn) {
+    cleanup_worker_tasks_for_session("kapanan_oturum")
+    fn()
+  }), .package = "promises")
+  durum2 <- new.env()
+  p2 <- tracked_future_promise(function() 1L, task_type = "kapanan_oturum_testi", session_token = "kapanan_oturum",
+                               dependency_mode = "explicit", globals = list())
+  promises::then(p2, onFulfilled = function(v) durum2$deger <- v, onRejected = function(e) durum2$hata <- conditionMessage(e))
+  .later_bosalt(function() !is.null(durum2$hata) || !is.null(durum2$deger), sure = 5)
+  testthat::expect_identical(baslatma, 0L)
+  testthat::expect_false(is.null(durum2$hata))
 })
 
 testthat::test_that("future başlatıcı çağrı yığınını boşaltır ve hata promise'i reddeder", {
@@ -222,4 +262,50 @@ testthat::test_that("future başlatıcı çağrı yığınını boşaltır ve ha
                  onRejected = function(e) durum$hata <- conditionMessage(e))
   .later_bosalt(function() !is.null(durum$hata) || !is.null(durum$deger), sure = 5)
   testthat::expect_match(durum$hata, "kasitli_hata")
+})
+
+testthat::test_that("otomatik modda görsel oluşturma kapanışı işleyici bağlamını (ctx) taşımaz", {
+  env <- new.env(parent = globalenv())
+  sys.source(file.path(resolve_repo_root_for_tests(), "R", "server_handler_image_generation.R"),
+             envir = env, keep.source = FALSE)
+  isleyici <- function() {
+    # Gerçek işleyicideki gibi büyük oturum bağlamı çerçevededir.
+    ctx <- list(session = raw(20e6), values = new.env())
+    env$mergen_image_generation_task_fn("istem çğış", "anahtar", "1024x1024", "hd", 7L, "42")
+  }
+  gorev <- isleyici()
+  testthat::expect_setequal(ls(environment(gorev)),
+                            c("prompt", "api_key", "size", "quality", "user_id", "chat_id"))
+  testthat::expect_false(exists("ctx", envir = environment(gorev), inherits = FALSE))
+  testthat::expect_lt(length(serialize(gorev, NULL)), 1e6)
+  # Otomatik bağımlılık taraması kapanışın gerçekten kullandığı yardımcıyı bulur.
+  env$generate_image <- function(...) list(...)
+  if (exists("worker_monitor_detect_task_deps", mode = "function")) {
+    bagimliliklar <- worker_monitor_detect_task_deps(gorev)
+    testthat::expect_true("generate_image" %in% names(bagimliliklar$globals))
+    testthat::expect_false("ctx" %in% names(bagimliliklar$globals))
+  }
+  sonuc <- gorev()
+  testthat::expect_identical(sonuc$prompt, "istem çğış")
+  testthat::expect_identical(sonuc$user_id, 7L)
+  testthat::expect_identical(sonuc$chat_id, "42")
+})
+
+testthat::test_that("SSE ısıtması yalnızca bağımlılık önbelleği gerçekten doldurulduysa başarılı sayılır", {
+  env <- new.env(parent = globalenv())
+  sys.source(file.path(resolve_repo_root_for_tests(), "R", "helpers_llm_true_streaming_task.R"),
+             envir = env, keep.source = FALSE)
+  env$mergen_true_streaming_worker_globals <- function(...) list(x = 1)
+  kayit <- new.env()
+  kayit$onbellek <- NULL
+  env$worker_monitor_auto_globals <- function(task_type, task_fn, promise_globals) list(ok = TRUE)
+  env$worker_monitor_dep_cache_get <- function(task_type, task_fn, promise_globals) kayit$onbellek
+  # Tarama başarılı ama kayıt reddedildi (önbellek boş): ısıtma başarısızdır.
+  testthat::expect_false(env$mergen_true_streaming_warm_dependencies())
+  # Kayıt oluştu: ısıtma başarılıdır.
+  kayit$onbellek <- list(packages = character())
+  testthat::expect_true(env$mergen_true_streaming_warm_dependencies())
+  # Tarama başarısızsa önbellek sorulmadan başarısızdır.
+  env$worker_monitor_auto_globals <- function(...) list(ok = FALSE)
+  testthat::expect_false(env$mergen_true_streaming_warm_dependencies())
 })

@@ -180,8 +180,14 @@ Architecture chosen (all additive, Rich Lane untouched):
    so no nested app-function lookup happens on the worker; opens its own connection,
    closes on every path, never runs if the user id is invalid). With a query budget,
    validated integer parameters are inlined via `DBI::sqlInterpolate()` so odbc's
-   interruptible direct execution (SQLCancel) enforces the budget; odbc 1.7's bound
-   (parameterized) execution path cannot be interrupted.
+   interruptible direct execution (SQLCancel) bounds statement *execution*; odbc 1.7's
+   bound (parameterized) execution path cannot be interrupted. **Limitation:** this is
+   not a hard end-to-end deadline for the whole read. odbc fetches rows separately
+   from execution, and a native fetch call that is waiting on the driver cannot check
+   R's elapsed limit until it returns. Budgeted reads therefore fetch in bounded
+   chunks (`dbSendQuery()` + `dbFetch(n = 1000)`), so the limit is re-checked between
+   chunks and an overrun is bounded by one chunk — unless the driver itself stalls
+   inside a single fetch, which only the driver/network timeout can end.
    Turkish visible-text normalization stays in the **main** process
    (`db_chat_preview_format_frame()`, byte-aligned with `load_chats_preview_from_db`'s
    list shape) so the central encoding contract is untouched. `mergen_startup_chat_preview_promise()`
@@ -293,7 +299,9 @@ recent commits). `tests/testthat/helper_bootstrap.R` now pins the test run to
 
 Validation (cloud): startup smoke/lane/contract/source-manifest/production/boot-welcome
 suites 0 fail / 0 warn; parse sanity 935 files OK. VM re-check: fast-lane
-`[STARTUP PERF]` must show `saved_chats_full_loaded` only as `deferred=TRUE`.
+`[STARTUP PERF]` must show the deferral as `saved_chats_full_deferred deferred=TRUE`
+and, separately, `saved_chats_full_loaded deferred=FALSE` only after the background
+full list actually completed; the overlay must close without waiting for either.
 
 ### 2026-07-04 — Cold-start critical path + interaction hotspots (single instance, single port)
 

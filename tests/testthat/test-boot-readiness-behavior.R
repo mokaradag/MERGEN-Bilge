@@ -269,7 +269,13 @@ testthat::test_that("reset sahibe özgü anahtarları yeni sahip için yeniden b
   for (k in c("saved_chats_full_loaded", "history_rows_ready")) ctrl$mark_once(k)
   testthat::expect_true("management_pages_ready" %in% ctrl$done())
   ctrl$reset(c("saved_chats_full_loaded", "history_rows_ready", "management_pages_ready"))
-  testthat::expect_false(any(c("history_rows_ready", "management_pages_ready") %in% ctrl$done()))
+  # Üç anahtar da düşer: önceki sahibin Kayıtlı Söyleşiler işareti yeni sahibin
+  # Geçmiş işaretiyle birleşip toplu anahtarı erken bildiremez.
+  testthat::expect_false(any(c("saved_chats_full_loaded", "history_rows_ready", "management_pages_ready")
+                             %in% ctrl$done()))
+  ctrl$mark_once("history_rows_ready")
+  testthat::expect_false("management_pages_ready" %in% ctrl$done())
+  ctrl$reset(c("saved_chats_full_loaded", "history_rows_ready", "management_pages_ready"))
   # Yeni sahibin sonucu (kısmen) bildirilebilir; önceki sahibin "hazır"ı korunmaz.
   testthat::expect_true(ctrl$mark_once("history_rows_ready", detail = list(degraded = TRUE)))
   testthat::expect_true("history_rows_ready" %in% ctrl$degraded())
@@ -293,4 +299,21 @@ testthat::test_that("kısmen toplu durumun eksik alt anahtarları değişince to
   adet <- length(toplu())
   ctrl$mark("history_rows_ready", detail = list(degraded = TRUE))
   testthat::expect_identical(length(toplu()), adet)
+})
+
+testthat::test_that("hazır bildirimi kısmen tamamlanan zorunlu noktaları istemciye taşır", {
+  env <- .source_boot_readiness_for_test()
+  sess <- .fake_boot_session()
+  ctrl <- env$bootReadinessInit(sess, required = c("auth_ready", "management_pages_ready"))
+  ctrl$mark_once("management_pages_ready", detail = list(degraded = TRUE, timeout = TRUE))
+  ctrl$mark_once("auth_ready")
+  son <- sess$rec$msgs[[length(sess$rec$msgs)]]$message
+  testthat::expect_true(isTRUE(son$ready))
+  # İstemci niteliksiz "Hazır" yerine kısmi durumu gösterebilsin.
+  testthat::expect_identical(son$kismen, "management_pages_ready")
+  # Tam hazır açılışta liste boştur.
+  sess2 <- .fake_boot_session()
+  ctrl2 <- env$bootReadinessInit(sess2, required = c("auth_ready"))
+  ctrl2$mark_once("auth_ready")
+  testthat::expect_length(sess2$rec$msgs[[length(sess2$rec$msgs)]]$message$kismen, 0L)
 })

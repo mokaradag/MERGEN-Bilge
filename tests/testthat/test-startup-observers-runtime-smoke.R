@@ -1483,3 +1483,130 @@ testthat::test_that("zengin şeritte tam liste başlarken kimlik düşerse Söyl
     testthat::expect_true(isTRUE(session$userData$saved_chats_full_pending))
   })
 })
+
+testthat::test_that("yükleme sürerken açılan sayfa için başarısız tam liste bir kez yeniden denenir, süren hata döngüye girmez", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("later")
+  testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises")
+  .startup_observers_source_once()
+
+  rec <- new.env()
+  rec$reject_full <- TRUE
+  rec$defer_full_rejection <- TRUE
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+
+  shiny::testServer(function(input, output, session) {
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startupObserversInit(
+      input = input, session = session, values = values,
+      render_welcome_screen = function(...) invisible(NULL),
+      current_user_id = function() 42L, sso_state = NULL, boot_ready = NULL
+    )
+  }, {
+    session$flushReact()
+    session$setInputs(startup_lane_resolved = list(lane = "fast_lane", source = "stored", ts = 1))
+    session$setInputs(tabs = "saved_chats")
+    testthat::expect_identical(rec$full, 1L)
+    # Yükleme sürerken sayfaya yeniden gelinir: tetik atlanır ama ziyaret hatırlanır.
+    session$setInputs(tabs = "chat")
+    session$setInputs(tabs = "saved_chats")
+    testthat::expect_identical(rec$full, 1L)
+    reddet <- function() {
+      rec$reject_full_now()
+      for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+    }
+    testthat::expect_warning(reddet(), "Initial saved chat load failed")
+    testthat::expect_identical(rec$full, 2L)
+    # Yeniden deneme de başarısız: yeni ziyaret olmadan üçüncü deneme yapılmaz.
+    testthat::expect_warning(reddet(), "Initial saved chat load failed")
+    testthat::expect_identical(rec$full, 2L)
+    testthat::expect_true(isTRUE(session$userData$saved_chats_full_pending))
+  })
+})
+
+testthat::test_that("zengin şeritte sahip değişimi kimliksiz kalırsa Söyleşi Yönetimi kısmen olarak yayımlanır", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("later")
+  testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises")
+  .startup_observers_source_once()
+  if (!exists("mergen_session_owner_transition", envir = globalenv(), mode = "function")) {
+    source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
+           encoding = "UTF-8", local = globalenv())
+  }
+  rec <- new.env()
+  rec$full_result <- list("a-chat" = list(title = "A söyleşisi", message_count = 1L))
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+  boot <- .make_boot_ready_recorder()
+  kimlik <- new.env()
+  kimlik$uid <- 7L
+  shiny::testServer(function(input, output, session) {
+    session$userData$kimlik_sahibi <- 7L
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startupObserversInit(
+      input = input, session = session, values = values,
+      render_welcome_screen = function(...) invisible(NULL),
+      current_user_id = function() kimlik$uid, sso_state = NULL, boot_ready = boot
+    )
+  }, {
+    session$flushReact()
+    session$setInputs(startup_lane_resolved = list(lane = "rich_lane", source = "stored", ts = 1))
+    for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+    kimliksiz <- function() Filter(function(e) identical(e$key, "management_pages_ready") &&
+                                     identical(e$detail$identity, FALSE), boot$entries())
+    testthat::expect_length(kimliksiz(), 0L)
+    kimlik$uid <- 0L
+    mergen_session_owner_transition(session$userData, 7L, 0L)
+    session$flushReact()
+    testthat::expect_length(kimliksiz(), 1L)
+    testthat::expect_true(isTRUE(kimliksiz()[[1]]$detail$degraded))
+    testthat::expect_identical(rec$full, 1L)
+  })
+})
+
+testthat::test_that("kimlik düşüp aynı kullanıcı dönse de eski nesle ait ön izleme uygulanmaz ve tam liste planlamaz", {
+  testthat::skip_if_not_installed("shiny")
+  testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises")
+  testthat::skip_if_not_installed("later")
+  .startup_observers_source_once()
+  if (!exists("mergen_session_owner_transition", envir = globalenv(), mode = "function")) {
+    source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
+           encoding = "UTF-8", local = globalenv())
+  }
+  rec <- new.env()
+  rec$defer_preview_fulfillment <- TRUE
+  rec$preview_result <- list("eski-on-izleme" = list(title = "Eski ön izleme", message_count = 1L))
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+  kimlik <- new.env(); kimlik$uid <- 7L
+  shiny::testServer(function(input, output, session) {
+    session$userData$kimlik_sahibi <- 7L
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startupObserversInit(input = input, session = session, values = values,
+                         render_welcome_screen = function(...) invisible(NULL),
+                         current_user_id = function() kimlik$uid, sso_state = NULL, boot_ready = NULL)
+    session$userData$.values <- values
+  }, {
+    session$flushReact()
+    session$setInputs(startup_lane_resolved = list(lane = "fast_lane", source = "stored", ts = 1))
+    session$setInputs(welcome_client_ready = list(fast_lane = TRUE, timestamp = 1))
+    eski_coz <- rec$resolve_preview
+    # Kimlik düşer ve AYNI kullanıcı geri döner (kimlik ve boş liste yeniden eşleşir).
+    kimlik$uid <- 0L
+    mergen_session_owner_transition(session$userData, 7L, 0L)
+    session$flushReact()
+    kimlik$uid <- 7L
+    mergen_session_owner_transition(session$userData, 0L, 7L)
+    session$flushReact()
+    tam_once <- rec$full
+    eski_coz()
+    for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+    session$flushReact()
+    testthat::expect_false("eski-on-izleme" %in% names(shiny::isolate(session$userData$.values$saved_chats)))
+    testthat::expect_identical(rec$full, tam_once)
+  })
+})

@@ -16,13 +16,16 @@ testthat::test_that("Ortak Söyleşiler 'Yenile' düğmesi önbelleği atlayıp 
   source(file.path(kok, "R", "module_ortak_calismalar.R"), encoding = "UTF-8", local = env)
   kayit <- new.env()
   kayit$okuma <- 0L
-  # Gerçek önbellek yardımcısı; DB okuması sayılır.
-  env$ortak_db_sohbet_listesi_onbellekten <- function(onbellek, kullanici_id, ttl_sn = 60) {
-    if (!is.null(onbellek$df) && identical(onbellek$uid, kullanici_id)) return(onbellek$df)
+  # Üretimdeki önbellek yardımcısı; yalnızca DB liste okuması taklittir ve her
+  # okuma ayırt edici bir satır döndürür (gösterilen verinin tazeliği görülür).
+  env$ortak_db_sohbet_listesi_onbellekten <- local({
+    yardimci_env <- new.env(parent = env)
+    source(file.path(kok, "R", "helpers_ortak_oturum_db.R"), encoding = "UTF-8", local = yardimci_env)
+    yardimci_env$ortak_db_sohbet_listesi_onbellekten
+  })
+  environment(env$ortak_db_sohbet_listesi_onbellekten)$ortak_db_oturum_listesi <- function(...) {
     kayit$okuma <- kayit$okuma + 1L
-    onbellek$df <- data.frame(Baslik = "Ortak çğış")
-    onbellek$uid <- kullanici_id
-    onbellek$df
+    data.frame(Baslik = paste("Ortak çğış okuma", kayit$okuma), stringsAsFactors = FALSE)
   }
   env$ortak_db_oturum_listesi <- function(...) data.frame()
   # Tablolar kurulu: okuma yolu sınanır; kalp atışı/bildirim DB çağrıları taklittir.
@@ -32,23 +35,24 @@ testthat::test_that("Ortak Söyleşiler 'Yenile' düğmesi önbelleği atlayıp 
   env$ortak_db_bildirimlerim <- function(...) data.frame()
   env$ortakOturumRoomServer <- function(...) list()
   env$ortak_canli_durum_oturum_temizligi_bagla <- function(...) invisible(NULL)
-  env$liste_olustur <- function(df, ...) shiny::tags$div(paste(nrow(df), "satır"))
+  env$liste_olustur <- function(df, ...) shiny::tags$div(paste(df$Baslik, collapse = "|"))
+  html <- function(x) paste(as.character(x$html), collapse = "")
   shiny::testServer(env$ortakCalismalarServer, args = list(current_user_id = function() 7L), {
     session$flushReact()
-    output$liste_sohbet
+    testthat::expect_match(html(output$liste_sohbet), "okuma 1", fixed = TRUE)
     testthat::expect_identical(kayit$okuma, 1L)
-    # Sekme ziyaretleri önbelleği korur.
+    # Sekme ziyaretleri üretim önbelleğinden aynı veriyi gösterir.
     yenile("tab")
     session$flushReact()
-    output$liste_sohbet
+    testthat::expect_match(html(output$liste_sohbet), "okuma 1", fixed = TRUE)
     testthat::expect_identical(kayit$okuma, 1L)
-    # "Yenile" (sohbet sayfası) önbelleği düşürür ve yeniden okutur.
+    # "Yenile" (sohbet sayfası) önbelleği düşürür ve TAZE veriyi gösterir.
     session$setInputs(yenile_sohbet = 1)
-    output$liste_sohbet
+    testthat::expect_match(html(output$liste_sohbet), "okuma 2", fixed = TRUE)
     testthat::expect_identical(kayit$okuma, 2L)
     # Hub sayfasındaki düğme de aynı yenilemeyi yapar.
     session$setInputs(yenile_hub = 1)
-    output$liste_sohbet
+    testthat::expect_match(html(output$liste_sohbet), "okuma 3", fixed = TRUE)
     testthat::expect_identical(kayit$okuma, 3L)
   })
 })
@@ -94,6 +98,8 @@ testthat::test_that("Ortak Söyleşiler okuma hatası boş liste gibi gösterilm
     testthat::expect_false(grepl("Henüz ortak söyleşi yok", ilk, fixed = TRUE),
                            info = "okuma hatası 'boş liste' mesajıyla gösterilmemeli")
     testthat::expect_false(grepl("ornek_dsn", ilk, fixed = TRUE))
+    # Yenile'den ÖNCE: başarısız okuma önbellekte değildir.
+    testthat::expect_null(sohbet_onbellek$df)
     # Başarısız okuma önbelleğe alınmadığı için Yenile DB'yi yeniden okur ve
     # doğrulanmış boş sonuç bu kez boş liste mesajıyla gösterilir.
     kayit$hata <- FALSE
@@ -143,5 +149,112 @@ testthat::test_that("MB_Ortak* tabloları kurulmamışken listeler okuma hatası
     sonra <- html(output$liste_sohbet)
     testthat::expect_match(sonra, "Henüz ortak söyleşi yok", fixed = TRUE)
     testthat::expect_gt(kayit$okuma, 0L)
+  })
+})
+
+testthat::test_that("olumsuz tablo sonucu önbellekteyken Yenile tabloları yeniden yoklar; geçici yoklama hatası kurulum mesajı göstermez", {
+  testthat::skip_if_not_installed("shiny")
+  paketler <- new.env(parent = globalenv())
+  list2env(mget(getNamespaceExports("shiny"), envir = asNamespace("shiny"), inherits = TRUE), envir = paketler)
+  env <- new.env(parent = paketler)
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  kok <- resolve_repo_root_for_tests()
+  source(file.path(kok, "R", "module_ortak_calismalar.R"), encoding = "UTF-8", local = env)
+  # Üretimdeki tablo yoklaması ve olumsuz önbelleği; yalnızca bağlantı ve tablo varlığı taklittir.
+  yardimci <- new.env(parent = env)
+  source(file.path(kok, "R", "helpers_ortak_oturum_db.R"), encoding = "UTF-8", local = yardimci)
+  kayit <- new.env()
+  kayit$hazir <- FALSE
+  kayit$baglanti_hatasi <- FALSE
+  kayit$yoklama <- 0L
+  yardimci$.oo_db_acquire <- function(conn = NULL) {
+    if (isTRUE(kayit$baglanti_hatasi)) stop("veritabanına ulaşılamadı (test)")
+    list(conn = "sahte")
+  }
+  yardimci$.oo_db_release <- function(...) invisible(NULL)
+  yardimci$.oo_db_log_warn <- function(...) invisible(NULL)
+  testthat::local_mocked_bindings(dbExistsTable = function(conn, name, ...) {
+    kayit$yoklama <- kayit$yoklama + 1L
+    isTRUE(kayit$hazir)
+  }, .package = "DBI")
+  for (ad in c("ortak_db_tablolar_hazir_mi", "ortak_db_tablo_prob_hatasi_mi",
+               "ortak_db_tablo_olumsuz_onbellegini_temizle")) {
+    env[[ad]] <- yardimci[[ad]]
+  }
+  env$ortak_db_oturum_listesi <- function(...) data.frame()
+  env$ortak_db_sohbet_listesi_onbellekten <- function(...) data.frame()
+  env$ortak_db_kalp_atisi <- function(...) invisible(NULL)
+  env$ortak_db_bakim_temizlik <- function(...) invisible(NULL)
+  env$ortak_db_bildirimlerim <- function(...) data.frame()
+  env$ortakOturumRoomServer <- function(...) list()
+  env$ortak_canli_durum_oturum_temizligi_bagla <- function(...) invisible(NULL)
+  html <- function(x) paste(as.character(x$html), collapse = "")
+  shiny::testServer(env$ortakCalismalarServer, args = list(current_user_id = function() 7L), {
+    session$flushReact()
+    testthat::expect_match(html(output$liste_sohbet), "henüz kurulmamış", fixed = TRUE)
+    # Tablolar kuruldu; sekme ziyareti 60 sn'lik olumsuz sonucu korur (yoklama yok).
+    kayit$hazir <- TRUE
+    yoklama_once <- kayit$yoklama
+    yenile("tab")
+    session$flushReact()
+    testthat::expect_match(html(output$liste_sohbet), "henüz kurulmamış", fixed = TRUE)
+    testthat::expect_identical(kayit$yoklama, yoklama_once)
+    # "Yenile" olumsuz sonucu düşürür: tablolar hemen görülür ve liste okunur.
+    session$setInputs(yenile_sohbet = 1)
+    testthat::expect_match(html(output$liste_sohbet), "Henüz ortak söyleşi yok", fixed = TRUE)
+  })
+
+  # Geçici bağlantı hatası: kurulum yönlendirmesi değil yeniden deneme durumu;
+  # hata önbelleğe alınmaz, DB toparlanınca ilk yenilemede liste gelir.
+  yardimci$ortak_db_reset_availability_cache()
+  kayit$baglanti_hatasi <- TRUE
+  shiny::testServer(env$ortakCalismalarServer, args = list(current_user_id = function() 7L), {
+    session$flushReact()
+    ilk <- html(output$liste_sohbet)
+    testthat::expect_match(ilk, "okunamadı", fixed = TRUE)
+    testthat::expect_false(grepl("henüz kurulmamış", ilk, fixed = TRUE))
+    kayit$baglanti_hatasi <- FALSE
+    yenile("tab")
+    session$flushReact()
+    testthat::expect_match(html(output$liste_sohbet), "Henüz ortak söyleşi yok", fixed = TRUE)
+  })
+})
+
+testthat::test_that("Ortak Söyleşiler önbelleği oturum sahibi değişince (kimlik kaybı) düşer", {
+  testthat::skip_if_not_installed("shiny")
+  paketler <- new.env(parent = globalenv())
+  list2env(mget(getNamespaceExports("shiny"), envir = asNamespace("shiny"), inherits = TRUE), envir = paketler)
+  env <- new.env(parent = paketler)
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  kok <- resolve_repo_root_for_tests()
+  source(file.path(kok, "R", "helpers_user_session_identity.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "module_ortak_calismalar.R"), encoding = "UTF-8", local = env)
+  kayit <- new.env(); kayit$okuma <- 0L
+  env$ortak_db_sohbet_listesi_onbellekten <- function(onbellek, kullanici_id, ttl_sn = 60) {
+    if (!is.null(onbellek$df) && identical(onbellek$uid, kullanici_id)) return(onbellek$df)
+    kayit$okuma <- kayit$okuma + 1L
+    onbellek$df <- data.frame(Baslik = paste("oda", kayit$okuma)); onbellek$uid <- kullanici_id
+    onbellek$df
+  }
+  env$ortak_db_oturum_listesi <- function(...) data.frame()
+  env$ortak_db_tablolar_hazir_mi <- function(...) TRUE
+  env$ortak_db_kalp_atisi <- function(...) invisible(NULL)
+  env$ortak_db_bakim_temizlik <- function(...) invisible(NULL)
+  env$ortak_db_bildirimlerim <- function(...) data.frame()
+  env$ortakOturumRoomServer <- function(...) list()
+  env$ortak_canli_durum_oturum_temizligi_bagla <- function(...) invisible(NULL)
+  env$liste_olustur <- function(df, ...) shiny::tags$div(paste(df$Baslik, collapse = "|"))
+  shiny::testServer(env$ortakCalismalarServer, args = list(current_user_id = function() 7L), {
+    session$flushReact()
+    output$liste_sohbet
+    testthat::expect_identical(kayit$okuma, 1L)
+    # Kimlik düştü ve aynı kullanıcı geri geldi: çıkış öncesi liste yeniden kullanılmaz.
+    env$mergen_session_owner_transition(session$userData, 7L, 0L)
+    env$mergen_session_owner_transition(session$userData, 0L, 7L)
+    testthat::expect_null(sohbet_onbellek$df)
+    yenile("tab")
+    session$flushReact()
+    output$liste_sohbet
+    testthat::expect_identical(kayit$okuma, 2L)
   })
 })

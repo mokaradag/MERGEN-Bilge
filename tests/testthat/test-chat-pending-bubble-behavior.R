@@ -348,3 +348,25 @@ testthat::test_that("uzun söyleşide kabul tespiti doğru kalır: yalnız yeni 
   testthat::expect_identical(sonuc[[2]]$message,
                              list(client_id = "istem_uzun_2", durum = "kabul", mesaj_id = "msg_42"))
 })
+
+testthat::test_that("nesne olmayan istem yükü alan erişiminden önce reddedilir; boş metinli dosya istemi kabul edilir", {
+  testthat::skip_if_not_installed("shiny")
+  kayit <- .yeni_kayit()
+  env <- .istem_ortami(kayit, hiz_siniri_gecer = FALSE)
+  hatalar <- .gozlemci_hatalari(shiny::testServer(.istem_sunucusu(env, kayit, mesaj_ekle = TRUE), {
+    # Skaler ve adsız liste yükleri oturumu kapatacak hata üretmez, işlenmez.
+    session$setInputs(send_prompt_from_js = "biçimsiz")
+    session$setInputs(send_prompt_from_js = list("adsız"))
+  }))
+  testthat::expect_length(hatalar, 0L)
+  testthat::expect_length(.istem_sonuclari(kayit), 0L)
+  testthat::expect_length(kayit$gonderilen, 0L)
+  # Boş metinli nesne (yalnız dosya istemi) olağan yoldan geçer.
+  kayit2 <- .yeni_kayit()
+  env2 <- .istem_ortami(kayit2)
+  shiny::testServer(.istem_sunucusu(env2, kayit2, mesaj_ekle = TRUE), {
+    session$setInputs(send_prompt_from_js = list(text = "", nonce = 30, client_id = "istem_dosya_1"))
+  })
+  testthat::expect_identical(kayit2$gonderilen, "")
+  testthat::expect_identical(.istem_sonuclari(kayit2)[[1]]$message$durum, "kabul")
+})

@@ -112,7 +112,8 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     }
     
     # Son silinen sohbeti yüklemeye çalışıyorsa engelle
-    if (identical(chat_id, last_deleted_chat_id())) {
+    if (identical(chat_id, last_deleted_chat_id()) ||
+        identical(as.character(mergen_canonical_user_id(chat_id)), last_deleted_chat_id())) {
       cat(sprintf("[SAVED_CHATS] Silinen sohbet yüklenmeye çalışıldı, engellendi: %s\n", chat_id))
       last_deleted_chat_id(NULL)  # Bayrağı sıfırla
       return()
@@ -171,7 +172,9 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
         (m$type %||% "") %in% c("ai", "assistant")
       }, logical(1)))
       
+      # transkript_yenile: açılış birleştirmesi önbelleğin eksik olabileceğini işaretledi.
       needs_hydrate <- is.null(msgs) || !is.list(msgs) || stored_len == 0 ||
+        isTRUE(chat_to_load$transkript_yenile) ||
         (!is.na(expected_len) && expected_len > stored_len) ||
         (has_user && !has_ai)
     }
@@ -523,16 +526,23 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
   
   # Sohbet silme observer'ı
   observeEvent(saved_chats_data$delete_chat_id(), {
-    chat_id <- saved_chats_data$delete_chat_id()
-    req(chat_id)
-    
+    req(saved_chats_data$delete_chat_id())
+    # KANONİK KİMLİK: DB silmesi "007"yi 7 olarak siler; işaret, yerel kaldırma
+    # ve etkin söyleşi eşleşmesi de aynı kanonik dizgeyi kullanır (aksi halde
+    # "7" anahtarlı kart ve süren tam listedeki "7" girdisi kalıyordu).
+    kanonik_id <- mergen_canonical_user_id(saved_chats_data$delete_chat_id())
+    req(kanonik_id > 0L)
+    chat_id <- as.character(kanonik_id)
+
     # Silinen sohbeti işaretle (yanlış yüklemeyi engellemek için)
     last_deleted_chat_id(chat_id)
     
     cat(sprintf("[SAVED_CHATS] Sohbet siliniyor: %s\n", chat_id))
     
     # Mevcut sohbet mi siliniyor kontrol et
-    current_chat_deleted <- identical(as.character(values$current_chat_id), as.character(chat_id))
+    etkin_id <- values$current_chat_id
+    current_chat_deleted <- length(etkin_id) == 1L &&
+      identical(as.character(mergen_canonical_user_id(etkin_id)), chat_id)
     
     effective_user_id <- resolve_current_user_id()
     if (is.na(effective_user_id) || effective_user_id <= 0) {
@@ -545,9 +555,10 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     # BAĞIMSIZ işaretlenir: süren arka plan tam listesi, gönderimden sonra
     # oluşturulmuş olsa da silinen söyleşiyi geri getiremez. Satır
     # etkilenmediyse (silinmedi) işaret konmaz.
-    if (isTRUE(suppressWarnings(as.numeric(silinen_satir)[1]) > 0)) {
+    silme_onayli <- isTRUE(suppressWarnings(as.numeric(silinen_satir)[1]) > 0)
+    if (silme_onayli) {
       session$userData$saved_chats_silinenler <- union(session$userData$saved_chats_silinenler %||% character(),
-                                                       as.character(chat_id))
+                                                       chat_id)
     }
     # Liste DB'den yetkili olarak yeniden kurulur; süren arka plan tam listesi
     # (silmeden önceki görüntü) bunu ezmesin diye yetkili sürüm YALNIZCA bu
@@ -560,14 +571,22 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     if (is.list(yeniden)) {
       session$userData$saved_chats_yetkili_surum <- (session$userData$saved_chats_yetkili_surum %||% 0L) + 1L
       values$saved_chats <- yeniden
-    } else {
+      # Yetkili liste söyleşiyi hâlâ içeriyorsa silme gerçekleşmemiştir.
+      silme_onayli <- silme_onayli || is.null(yeniden[[chat_id]])
+    } else if (silme_onayli) {
       yerel <- values$saved_chats %||% list()
-      yerel[[as.character(chat_id)]] <- NULL
+      yerel[[chat_id]] <- NULL
       values$saved_chats <- yerel
       cat("[SAVED_CHATS] Silme sonrası liste DB'den yeniden okunamadı; silinen söyleşi yerelden kaldırıldı\n")
     }
     saved_chats_data$refresh()
-    
+    # Doğrulanmamış silmede yerel durum (kart, açık söyleşi) korunur.
+    if (!silme_onayli) {
+      cat("[SAVED_CHATS] Silme doğrulanamadı; yerel durum korundu\n")
+      showToast(session, "Söyleşinin silindiği doğrulanamadı. Lütfen tekrar deneyin.", "warning")
+      return()
+    }
+
     # Eğer mevcut sohbet silindiyse, Ana Söyleşi sayfasını sıfırla
     if (current_chat_deleted) {
       cat("[SAVED_CHATS] Mevcut sohbet silindi, welcome ekranına dönülüyor\n")

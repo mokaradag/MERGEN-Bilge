@@ -288,11 +288,16 @@ mergen_build_runtime_error_record <- function(error,
 
 #' Bağlantı tanımlayıcılarını da maskele (log sınırı için)
 #'
-#' Önce genel `redact_sensitive_text()` uygulanır, ardından bağlantı
-#' tanımlayıcı DEĞERLERİ maskelenir. Yalnızca LOG yolunda çağrılır; kullanıcıya
+#' Önce tırnaklı değerler, sonra genel `redact_sensitive_text()`, ardından
+#' bağlantı tanımlayıcı DEĞERLERİ maskelenir. Yalnızca LOG yolunda çağrılır; kullanıcıya
 #' dönen metinler için `pk_safe_error_message()` zaten genel mesaja düşer.
 redact_connection_identifiers <- function(x) {
-  metin <- tryCatch(redact_sensitive_text(x), error = function(e) NULL)
+  # TIRNAKLI DEĞERLER GENEL REDAKTÖRDEN ÖNCE işlenir: genel redaktör kaçışlı
+  # tırnağı (`\"`) kapanış sayıp `"<redacted>"kuyruk"` üretiyor, kuyruk da
+  # sonraki geçişlerde maskelenmeden kalıyordu.
+  on_isle <- tryCatch(.redact_quoted_log_values(x), error = function(e) NULL)
+  if (is.null(on_isle) && !is.null(x)) return("<redaksiyon uygulanamadi>")
+  metin <- tryCatch(redact_sensitive_text(on_isle), error = function(e) NULL)
   if (is.null(metin)) return("<redaksiyon uygulanamadi>")
   if (!is.character(metin) || length(metin) == 0L) return(metin)
 
@@ -345,45 +350,11 @@ redact_connection_identifiers <- function(x) {
   # ODBC tanısında parola kuyruğu kalıcı loga yazılırdı.
   metin <- gsub(
     paste0("(?im)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS,
-           ")(\\s*=\\s*)\\{(?:[^{}\r\n]|\\}\\})*$"),
+           ")(\\s*=\\s*)\\{(?:[^{}\r\n]|\\}\\})*(?=\r|\n|\\z)"),
     "\\1\\2\\3{<redacted>}",
     metin,
     perl = TRUE
   )
-
-  # TIRNAKLI DEĞER: `DSN="PrivateProd"`, `Server='host'`, `PWD='abc'` da
-  # maskelenir. Aşağıdaki çıplak-değer sınıfı tırnağı dışladığı için tırnaklı
-  # değer olduğu gibi kalıyordu; genel redaktörün 6 karakter eşiği (yanlış
-  # pozitif önleme sözleşmesi) bu LOG katmanında uygulanmaz, kısa tırnaklı
-  # sırlar (token/secret/api anahtarı dahil) da maskelenir.
-  #
-  # Tek anahtar biçimi tüm geçişlerde ortaktır: anahtar JSON'daki gibi
-  # tırnaklı olabilir (`{"token":"..."}`, `{"PWD":"..."}`); tırnak karakteri
-  # sınır sayılır ve anahtarı kapatan tırnak isteğe bağlıdır. Değer kaçışlı
-  # tırnak (`\"`) içerebilir; kapanmamış tırnaklı değer (kesilmiş tanı:
-  # `PWD='abc`) satır sonuna kadar maskelenir.
-  sir_anahtarlari <- paste(c("password", "passwd", "pwd", "api[_-]?key", "apikey", "x-api-key", "token",
-                             "access[_-]?token", "refresh[_-]?token", "secret", "client[_-]?secret"),
-                           collapse = "|")
-  tirnakli_anahtarlar <- paste(c(.REDACT_CONN_KEYS, sir_anahtarlari), collapse = "|")
-  anahtar_onu <- "(?i)(^|[;{(\\[,\\s\"'])("
-  anahtar_sonu <- ")([\"']?)(\\s*[:=]\\s*)"
-  for (tirnak in c("\"", "'")) {
-    deger <- paste0("(?!<redacted>", tirnak, ")(?:[^", tirnak, "\\\\\\r\\n]|\\\\.)*")
-    metin <- gsub(
-      paste0(anahtar_onu, tirnakli_anahtarlar, anahtar_sonu, tirnak, deger, tirnak),
-      paste0("\\1\\2\\3\\4", tirnak, "<redacted>", tirnak),
-      metin,
-      perl = TRUE
-    )
-    # Kapanmamış tırnak: `(?m)` ile çok satırlı tanının ORTASINDAKİ satır da kapsanır.
-    metin <- gsub(
-      paste0("(?m)", anahtar_onu, tirnakli_anahtarlar, anahtar_sonu, tirnak, deger, "$"),
-      paste0("\\1\\2\\3\\4", tirnak, "<redacted>"),
-      metin,
-      perl = TRUE
-    )
-  }
 
   # Zaten maskelenmiş ya da süslü parantezli değerler İKİNCİ KEZ işlenmez.
   metin <- gsub(
@@ -393,14 +364,80 @@ redact_connection_identifiers <- function(x) {
     metin,
     perl = TRUE
   )
+  # JSON-tırnaklı bağlantı anahtarının çıplak değeri (`{"uid":12345}`) de
+  # maskelenir. İki nokta yalnızca anahtar TIRNAKLIYKEN kabul edilir; düzyazıdaki
+  # `Database: bağlantı başarısız` tanı bağlamı korunur.
+  metin <- gsub(
+    paste0("(?i)(^|[;{(\\[,\\s])([\"'])(", .REDACT_CONN_KEYS,
+           ")\\2(\\s*[:=]\\s*)(?!<redacted>)(?![{\"'])[^;,}\\])\\s\"']+"),
+    "\\1\\2\\3\\2\\4<redacted>",
+    metin,
+    perl = TRUE
+  )
+  # Authorization başlığı: şema korunur, kimlik bilgisi UZUNLUKTAN BAĞIMSIZ satır
+  # sonuna kadar maskelenir (`Basic YTpi` genel redaktörün 6 karakter eşiğinin
+  # altında kalıyordu; Digest parametreleri virgül/boşluk içerir).
+  metin <- gsub(
+    paste0(.REDACT_LOG_KEY_ONU, "((?:proxy-)?authorization)", .REDACT_LOG_KEY_SONU,
+           "(?=\\S)(?![{\"'])(?>((?:Bearer|Basic|Digest|Negotiate|NTLM|Token)\\s+)?)(?!<redacted>)[^\\r\\n\"']+"),
+    "\\1\\2\\3\\4\\5<redacted>",
+    metin,
+    perl = TRUE
+  )
   # Çıplak SIR değerleri (`secret=abcde`, `"token": 12345`) uzunluktan bağımsız
   # maskelenir; genel redaktörün eşiği değişmez, bu yalnızca log katmanıdır.
   gsub(
-    paste0(anahtar_onu, sir_anahtarlari, anahtar_sonu, "(?!<redacted>)(?![{\"'])[^;,}\\])\\s\"']+"),
+    paste0(.REDACT_LOG_KEY_ONU, "(", .REDACT_LOG_SECRET_KEYS, ")", .REDACT_LOG_KEY_SONU,
+           "(?!<redacted>)(?![{\"'])[^;,}\\])\\s\"']+"),
     "\\1\\2\\3\\4<redacted>",
     metin,
     perl = TRUE
   )
+}
+
+# Log katmanının SIR anahtarları. Genel redaktör listesine ek olarak camelCase
+# kimlik alanları (`authToken`, `idToken`) da kapsanır; sözcük içi anahtar
+# (`mytoken`) için önek sınırı korunur.
+.REDACT_LOG_SECRET_KEYS <- paste(
+  c("password", "passwd", "pwd", "api[_-]?key", "apikey", "x-api-key", "token",
+    "access[_-]?token", "refresh[_-]?token", "auth[_-]?token", "id[_-]?token",
+    "session[_-]?token", "bearer[_-]?token", "secret", "client[_-]?secret"),
+  collapse = "|"
+)
+# Ortak anahtar sözdizimi: anahtar JSON'daki gibi tırnaklı olabilir; tırnak
+# karakteri sınır sayılır, anahtarı kapatan tırnak isteğe bağlıdır.
+.REDACT_LOG_KEY_ONU <- "(?i)(^|[;{(\\[,\\s\"'])"
+.REDACT_LOG_KEY_SONU <- "([\"']?)(\\s*[:=]\\s*)"
+
+#' Tırnaklı kimlik/bağlantı değerlerini kaçış belirsizliğinde KAPALI maskele
+#'
+#' `DSN="Ozel"`, `PWD='abc'`, `{"authToken":"..."}` gibi değerler uzunluktan
+#' bağımsız maskelenir. Değerin İLK tırnağından önce ters bölü varsa (`\'`)
+#' kaçış mı, değerin sonundaki düz ters bölü mü olduğu bilinemez
+#' (`Server='db\';PWD='abcde'`). Bu durumda satırdaki SON tırnağa kadar her şey
+#' maskelenir: sonraki anahtar yutulsa bile değeri de maskenin içinde kalır.
+#' Kapanmamış değer (kesilmiş tanı) CR/LF ya da metin sonuna kadar maskelenir;
+#' satır sonu karakteri tüketilmez, sonraki satır korunur.
+.redact_quoted_log_values <- function(x) {
+  if (is.null(x)) return(x)
+  if (!is.character(x)) x <- tryCatch(as.character(x), error = function(e) "")
+  anahtarlar <- paste(c(.REDACT_CONN_KEYS, .REDACT_LOG_SECRET_KEYS,
+                        "(?:proxy-)?authorization"), collapse = "|")
+  onek <- paste0(.REDACT_LOG_KEY_ONU, "(", anahtarlar, ")", .REDACT_LOG_KEY_SONU)
+  # Çıplak ODBC parola değeri boşluk içerebilir (`PWD=abc ikinci;UID=x`): değer
+  # noktalı virgül ya da satır sonuna dek maskelenir; sonraki alan ayrıca işlenir.
+  x <- gsub("(?i)(^|[;{(\\[,\\s])(pwd|password|passwd)(\\s*=\\s*)(?!<redacted>)(?![{\"'\\s])[^;\r\n]+",
+            "\\1\\2\\3<redacted>", x, perl = TRUE)
+  for (q in c("\"", "'")) {
+    belirsiz <- paste0(q, "(?=[^", q, "\r\n]*(?<=\\\\)", q, ")[^\r\n]*", q)
+    kapali <- paste0(q, "(?!<redacted>", q, ")[^", q, "\r\n]*", q)
+    acik <- paste0(q, "(?!<redacted>)[^", q, "\r\n]*(?=\r|\n|\\z)")
+    yerine <- paste0("\\1\\2\\3\\4", q, "<redacted>")
+    x <- gsub(paste0(onek, belirsiz), paste0(yerine, q), x, perl = TRUE)
+    x <- gsub(paste0(onek, kapali), paste0(yerine, q), x, perl = TRUE)
+    x <- gsub(paste0(onek, acik), yerine, x, perl = TRUE)
+  }
+  x
 }
 
 #' Hata koşulunun günlüğe yazılabilir (maskelenmiş) metni
@@ -412,4 +449,17 @@ redacted_condition_message <- function(e) {
   ham <- tryCatch(conditionMessage(e), error = function(x) "")
   temiz <- tryCatch(redact_connection_identifiers(ham), error = function(x) NULL)
   if (is.character(temiz) && length(temiz) == 1L && !is.na(temiz)) temiz else "(ayrıntı gizlendi)"
+}
+
+# DB okuma hatasının günlüğe yazılabilir özeti. Bütçeli okumalar doğrulanmış
+# kimlikleri SQL metnine gömer ve sürücü tanısı deyimi içerebilir; bağlantı
+# maskelemesinin ardından deyim gövdesi (sürücünün "<SQL>" eki ya da ilk SQL
+# anahtar sözcüğünden sonrası) atılır, yalnızca hata sınıflaması kalır.
+mergen_db_error_log_summary <- function(e) {
+  sinif <- tryCatch(class(e)[1], error = function(x) "error")
+  metin <- if (exists("redacted_condition_message", mode = "function", inherits = TRUE)) {
+    redacted_condition_message(e)
+  } else "(ayrıntı gizlendi)"
+  metin <- sub("(?s)(<SQL>|\\b(SELECT|WITH|INSERT|UPDATE|DELETE|EXEC|MERGE)\\b).*$", "<SQL gizlendi>", metin, perl = TRUE)
+  sprintf("[%s] %s", sinif, substr(metin, 1L, 300L))
 }

@@ -167,3 +167,19 @@ testthat::test_that("zengin şerit anahtarları module_boot_readiness varsayıla
     env$mergen_rich_lane_required_boot_keys()
   )
 })
+
+testthat::test_that("geçmiş hazırlık tetiği yalnızca tek, sonlu, tam sayı değerli güncel nesli kabul eder", {
+  if (!exists("mergen_startup_history_trigger_validator", mode = "function")) {
+    source(file.path(resolve_repo_root_for_tests(), "R", "helpers_startup_lane.R"),
+           encoding = "UTF-8", local = globalenv())
+  }
+  dogrula <- mergen_startup_history_trigger_validator(function() 2L)
+  testthat::expect_true(dogrula(2))
+  testthat::expect_true(dogrula(2L))
+  testthat::expect_true(dogrula(list(2)))
+  # Kesirli değer kırpılıp eşleşmez; iç içe/çok öğeli girdi hata vermeden reddedilir.
+  for (bozuk in list(2.5, list(list(1, 2)), list(c(2, 3)), c(2, 2), NA, Inf, "2", NULL, TRUE)) {
+    testthat::expect_false(dogrula(bozuk), info = paste(deparse(bozuk), collapse = ""))
+  }
+  testthat::expect_false(dogrula(3))
+})

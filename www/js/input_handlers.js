@@ -33,6 +33,11 @@ $(document).ready(function() {
     if (typeof window.updateCharCounter === 'function') {
       window.updateCharCounter();
     }
+    // Programatik değişiklik (Escape, gönderim sonrası temizleme) 'input' olayı
+    // yaymaz; geri yüklenen istem sahipliği burada uzlaştırılır.
+    if (window.MergenBekleyenIstem && typeof window.MergenBekleyenIstem.girdiDegisti === 'function') {
+      window.MergenBekleyenIstem.girdiDegisti();
+    }
   }
 
   function clearChatInput($input) {

@@ -75,10 +75,22 @@ test_that("app.R kaynak yüklemesi JIT seviyesini değiştirmez; üretim başlat
   expect_equal(calisirken, 0)
   expect_equal(compiler::enableJIT(-1), 3)
 
-  # Operatör R_ENABLE_JIT verdiyse başlatma seviyeye dokunmaz.
+  # Operatör R_ENABLE_JIT verdiyse o seviye uygulanır.
   withr::local_envvar(R_ENABLE_JIT = "3")
   run_mergen_app(host = "127.0.0.1", port = 8009L, launch.browser = FALSE, quiet = TRUE)
   expect_equal(calisirken, 3)
+
+  # Başlatıcı .Renviron'u JIT başladıktan SONRA okuyup "0" verdiyse süreç önceki
+  # seviyede (3) kalmaz: seviye uygulanır ve çıkışta geri yüklenir.
+  withr::local_envvar(R_ENABLE_JIT = "0")
+  run_mergen_app(host = "127.0.0.1", port = 8009L, launch.browser = FALSE, quiet = TRUE)
+  expect_equal(calisirken, 0)
+  expect_equal(compiler::enableJIT(-1), 3)
+  # Geçersiz değer ölçülen varsayılana (0) düşer.
+  withr::local_envvar(R_ENABLE_JIT = "yanlis")
+  run_mergen_app(host = "127.0.0.1", port = 8009L, launch.browser = FALSE, quiet = TRUE)
+  expect_equal(calisirken, 0)
+  expect_equal(compiler::enableJIT(-1), 3)
 })
 
 test_that("app.R boot helperlari tanimlanir ve shiny.appobj uretilir", {
@@ -208,6 +220,9 @@ test_that("SSE bağımlılık ısıtması başarısız ya da eksikse açılış 
   hata <- paste(capture.output(expect_no_error(app$onStart())), collapse = "\n")
   expect_match(hata, "SSE bağımlılık ısıtması hata verdi", fixed = TRUE)
   expect_false(grepl(gizli, hata, fixed = TRUE))
+  # Maskeleyici gerçekten çalıştı: tanı bağlamı korunur, yalnız değer maskelenir
+  # (genel "(ayrıntı gizlendi)" yedeği bu iddiayı geçemez).
+  expect_match(hata, "tarama hatası PWD='<redacted>'", fixed = TRUE)
 
   assign("mergen_true_streaming_warm_dependencies", function() invisible(TRUE), envir = globalenv())
   tamam <- paste(capture.output(app$onStart()), collapse = "\n")

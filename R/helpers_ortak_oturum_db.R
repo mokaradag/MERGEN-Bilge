@@ -42,6 +42,18 @@
   })
 }
 
+# Son tablo yoklaması bağlantı/kontrol hatasıyla mı sonuçlandı (eksik tablo
+# değil)? olumsuzu_temizle = TRUE: kullanıcının "Yenile" isteğinde yalnızca
+# OLUMSUZ tablo sonucu düşer (tablolar 60 sn içinde kurulduysa hemen yeniden
+# yoklanır); olumlu sonuç korunur.
+ortak_db_tablo_prob_hatasi_mi <- function(olumsuzu_temizle = FALSE) {
+  if (isTRUE(olumsuzu_temizle) && !isTRUE(.oo_db_state$available)) {
+    .oo_db_state$available <- NULL
+    .oo_db_state$checked_at <- NULL
+  }
+  isTRUE(.oo_db_state$probe_hatasi)
+}
+
 ortak_db_reset_availability_cache <- function() {
   .oo_db_state$available <- NULL
   .oo_db_state$checked_at <- NULL
@@ -242,6 +254,11 @@ ortak_db_reset_availability_cache <- function() {
 }
 
 #' Ortak Oturum tabloları erişilebilir mi? (TRUE kalıcı, FALSE 60 sn önbellek)
+#'
+#' Yalnızca DOĞRULANMIŞ eksik tablo olumsuz önbelleğe alınır. Bağlantı ya da
+#' kontrol hatası (geçici DB sorunu) önbelleğe alınmaz ve
+#' `ortak_db_tablo_prob_hatasi_mi()` ile ayrıca bildirilir: arayüz kurulum
+#' yönlendirmesi yerine yeniden deneme durumunu gösterir, sonraki istek yeniden yoklar.
 ortak_db_tablolar_hazir_mi <- function(conn = NULL, force_refresh = FALSE) {
   cached <- .oo_db_state$available
 
@@ -263,7 +280,7 @@ ortak_db_tablolar_hazir_mi <- function(conn = NULL, force_refresh = FALSE) {
     uyari = "Ortak Oturum tabloları için DB bağlantısı alınamadı:"
   )
 
-  ok <- FALSE
+  ok <- NA
 
   if (!is.null(handle)) {
     on.exit(.oo_db_release(handle), add = TRUE)
@@ -291,10 +308,15 @@ ortak_db_tablolar_hazir_mi <- function(conn = NULL, force_refresh = FALSE) {
         logical(1)
       ))
     },
-    fallback = FALSE,
+    fallback = NA,
     uyari = "Ortak Oturum tabloları kontrol edilemedi:")
   }
 
+  if (length(ok) != 1L || is.na(ok)) {
+    .oo_db_state$probe_hatasi <- TRUE
+    return(FALSE)
+  }
+  .oo_db_state$probe_hatasi <- FALSE
   .oo_db_state$available <- isTRUE(ok)
   .oo_db_state$checked_at <- Sys.time()
 
@@ -654,8 +676,10 @@ ortak_db_oturum_listesi <- function(kullanici_id,
 # önbelleğe ALINMAZ; bir sonraki istek yeniden dener.
 ortak_db_sohbet_listesi_onbellekten <- function(onbellek, kullanici_id, ttl_sn = 60) {
   son <- onbellek$zaman
-  if (!is.null(onbellek$df) && identical(onbellek$uid, kullanici_id) && !is.null(son) &&
-      as.numeric(difftime(Sys.time(), son, units = "secs")) < ttl_sn) {
+  # Sistem saati geri alınırsa yaş negatif olur; negatif yaş süresi dolmuş sayılır.
+  yas <- if (is.null(son)) NA_real_ else as.numeric(difftime(Sys.time(), son, units = "secs"))
+  if (!is.null(onbellek$df) && identical(onbellek$uid, kullanici_id) &&
+      !is.na(yas) && yas >= 0 && yas < ttl_sn) {
     return(onbellek$df)
   }
   df <- ortak_db_oturum_listesi(kullanici_id, kaynak_turu = "NormalSohbet")

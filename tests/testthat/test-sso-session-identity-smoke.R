@@ -122,6 +122,9 @@ testthat::test_that("SSO placeholder user_id=0 gerçek kimliğe canlı geçer", 
       base_user_config = list(icon = "user", auth_level = "USER"),
       sso_enabled = TRUE,
       resolve_identity_fn = resolve_identity_fn,
+      # Profil DB okuması da saplanır: çalıştırıcıda havuz/DSN olsa bile test
+      # yalnızca fikstür taleplerini kullanır (çevrimdışı ve deterministik).
+      get_user_profile_fn = function(...) NULL,
       get_or_create_user_fn = get_or_create_user_fn,
       touch_session_fn = touch_session_fn
     )
@@ -203,6 +206,9 @@ testthat::test_that("aynı kullanıcı için düşürülen yetki oturuma yansır
       base_user_config = list(icon = "user", auth_level = "USER"),
       sso_enabled = TRUE,
       resolve_identity_fn = resolve_identity_fn,
+      # Profil DB okuması da saplanır: çalıştırıcıda havuz/DSN olsa bile test
+      # yalnızca fikstür taleplerini kullanır (çevrimdışı ve deterministik).
+      get_user_profile_fn = function(...) NULL,
       get_or_create_user_fn = get_or_create_user_fn
     )
 
@@ -280,6 +286,9 @@ testthat::test_that("başarısız ikinci kullanıcı kurulumu önceki kimliği t
       base_user_config = list(icon = "user", auth_level = "USER"),
       sso_enabled = TRUE,
       resolve_identity_fn = resolve_identity_fn,
+      # Profil DB okuması da saplanır: çalıştırıcıda havuz/DSN olsa bile test
+      # yalnızca fikstür taleplerini kullanır (çevrimdışı ve deterministik).
+      get_user_profile_fn = function(...) NULL,
       get_or_create_user_fn = get_or_create_user_fn
     )
 
@@ -336,6 +345,9 @@ testthat::test_that("SSO yetkisizleşmesi sağlayıcı yedek kimliğini gözlemc
       base_user_config = list(icon = "user", auth_level = "USER"),
       sso_enabled = TRUE,
       resolve_identity_fn = resolve_identity_fn,
+      # Profil DB okuması da saplanır: çalıştırıcıda havuz/DSN olsa bile test
+      # yalnızca fikstür taleplerini kullanır (çevrimdışı ve deterministik).
+      get_user_profile_fn = function(...) NULL,
       get_or_create_user_fn = function(username, sso_claims = NULL) {
         if (identical(username, "birinci.kullanici")) 11L else 22L
       }

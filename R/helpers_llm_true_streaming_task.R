@@ -27,14 +27,18 @@ mergen_true_streaming_task_fn <- function(chat_history_for_sse, settings_for_sse
 }
 
 # Açılışta (oturumlar gelmeden) gerçek SSE görevinin bağımlılık taramasını ısıtır.
+# Sonuç YALNIZCA önbellek kaydı gerçekten oluştuysa TRUE'dur: tarama başarılı
+# olsa da kayıt reddedilebilir (ör. sağlayıcısı olmayan bağımlılık); bu durumda
+# ilk istem taramayı olay döngüsünde yeniden yapacağı için ısıtma başarısızdır.
 mergen_true_streaming_warm_dependencies <- function() {
   if (!exists("worker_monitor_auto_globals", mode = "function", inherits = TRUE)) {
     return(invisible(FALSE))
   }
-  sonuc <- worker_monitor_auto_globals(
-    "llm_true_streaming",
-    mergen_true_streaming_task_fn(list(), list(), "", ""),
-    mergen_true_streaming_worker_globals(list(), list(), "", "")
-  )
-  invisible(isTRUE(sonuc$ok))
+  gorev <- mergen_true_streaming_task_fn(list(), list(), "", "")
+  globaller <- mergen_true_streaming_worker_globals(list(), list(), "", "")
+  sonuc <- worker_monitor_auto_globals("llm_true_streaming", gorev, globaller)
+  if (!isTRUE(sonuc$ok) || !exists("worker_monitor_dep_cache_get", mode = "function", inherits = TRUE)) {
+    return(invisible(FALSE))
+  }
+  invisible(!is.null(worker_monitor_dep_cache_get("llm_true_streaming", gorev, globaller)))
 }

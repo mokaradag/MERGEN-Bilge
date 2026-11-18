@@ -92,6 +92,9 @@ chatInputObserversInit <- function(input, session, values, settings_data,
     })
   }
   istemi_isle <- function(istem) {
+    # Nesne (adlandırılmış liste) olmayan yük alan erişiminde hata verip oturumu
+    # kapatabilirdi; reddedilir. Boş metinli nesne (yalnız dosya istemi) geçerlidir.
+    if (!is.list(istem) || is.null(names(istem))) return(invisible(NULL))
     istem_kimligi <- as.character(istem$client_id %||% "")[1]
     if (is.na(istem_kimligi) || !grepl("^[A-Za-z0-9_-]{1,64}$", istem_kimligi)) istem_kimligi <- ""
     if (nzchar(istem_kimligi) && istem_kimligi %in% names(islenen_istemler)) {

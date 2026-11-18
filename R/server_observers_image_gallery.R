@@ -75,7 +75,9 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
       msgs <- chat_to_load$messages
       stored_len <- if (is.list(msgs)) length(msgs) else 0L
       expected_len <- as.integer(chat_to_load$message_count %||% stored_len)
+      # transkript_yenile: açılış birleştirmesi önbelleğin eksik olabileceğini işaretledi.
       needs_hydrate <- is.null(msgs) || !is.list(msgs) || stored_len == 0 ||
+        isTRUE(chat_to_load$transkript_yenile) ||
         (!is.na(expected_len) && expected_len > stored_len)
     }
 

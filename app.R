@@ -292,10 +292,16 @@ run_mergen_app <- function(
   # verdiyse ona uyulur. Binlerce uygulama kapanışı yeni süreçteki ilk oturumda
   # derleniyor ve ilk kullanıcıyı ~15 sn bekletiyordu; ölçümde sıcak etkileşimler
   # JIT kapalıyken yavaşlamadı. Kalıcı PSOCK işçileri etkilenmez.
-  if (!nzchar(Sys.getenv("R_ENABLE_JIT"))) {
-    onceki_jit <- compiler::enableJIT(0)
-    on.exit(compiler::enableJIT(onceki_jit), add = TRUE)
+  # Seviye her zaman BURADA uygulanır: üretim başlatıcısı depo .Renviron'unu R
+  # JIT'i başlattıktan sonra okuyabilir; ortamda "0" olsa da süreç önceki
+  # seviyede (çoğunlukla 3) kalıyordu. Geçersiz değer ölçülen varsayılana (0) düşer.
+  jit_metni <- Sys.getenv("R_ENABLE_JIT")
+  jit_seviyesi <- if (nzchar(jit_metni)) suppressWarnings(as.integer(jit_metni)) else 0L
+  if (length(jit_seviyesi) != 1L || is.na(jit_seviyesi) || jit_seviyesi < 0L || jit_seviyesi > 3L) {
+    jit_seviyesi <- 0L
   }
+  onceki_jit <- compiler::enableJIT(jit_seviyesi)
+  on.exit(compiler::enableJIT(onceki_jit), add = TRUE)
   # Smoke kararı gerçek dinleme adresiyle yeniden verilir; runApp bitince kapanır.
   register_smoke <- mergen_register_ux_smoke_resource
   smoke_owner <- new.env(parent = emptyenv())

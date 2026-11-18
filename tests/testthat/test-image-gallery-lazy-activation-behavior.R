@@ -21,6 +21,11 @@ if (requireNamespace("shiny", quietly = TRUE)) {
     if (is.function(current_user_id)) current_user_id() else current_user_id
   }
   env$showToast <- function(...) invisible(TRUE)
+  # Varsayılan URL saplaması: kartlar gerçekten çizilir ve çıktı hangi sahibin
+  # dosyasını gösterdiğini taşır (eksik yardımcı render hatasını gizlemez).
+  env$mergen_serve_image_data_url <- function(local_path, session) {
+    paste0("session/test/dataobj/", basename(dirname(local_path)), "_", basename(local_path))
+  }
   env$scan_user_images <- function(uid) {
     scan_recorder$count <- scan_recorder$count + 1L
     data.frame(
@@ -163,12 +168,16 @@ testthat::test_that("oturum sahibi değişince önceki sahibin galeri satırlar�
       session$setInputs(refresh_gallery = as.numeric(Sys.time()))
       tara(1L)
       testthat::expect_identical(nrow(filtered_images()), 1L)
+      # Yetkili çıktı gerçekten çizilir ve A'nın kartını içerir.
+      testthat::expect_true(grepl("dataobj/7_a.png", output$gallery_content$html, fixed = TRUE))
 
       # Aynı oturum B'ye geçti, henüz tarama yok: yeniden hesaplanan liste
       # A'nın satırlarını çizmez (oturum kapsamlı URL B'ye bağlanamaz).
       sahip$uid <- 9L
       gallery_revision(shiny::isolate(gallery_revision()) + 1)
       testthat::expect_identical(nrow(filtered_images()), 0L)
+      session$flushReact()
+      testthat::expect_false(grepl("dataobj/7_a.png", output$gallery_content$html, fixed = TRUE))
 
       # B için tarama başarısız olsa da A'nın satırları önbellekte kalmaz.
       session$setInputs(refresh_gallery = as.numeric(Sys.time()) + 5)
@@ -356,6 +365,40 @@ testthat::test_that("sahip değiştikten sonra gelen silme onayı önceki sahibi
                                                     filename = "a.png"))
       session$setInputs(confirm_delete_image = 2)
       testthat::expect_identical(silinen$tek, list(8L))
+    }
+  ))
+})
+
+testthat::test_that("toplu görsel silme yalnızca mesajı değişen söyleşilerin geçmiş kaydını düşürür", {
+  testthat::skip_if_not_installed("shiny")
+  scan_recorder <- new.env(parent = emptyenv())
+  scan_recorder$count <- 0L
+  env <- .lazy_gallery_env(scan_recorder)
+  env$scan_user_images <- function(uid) { scan_recorder$count <- scan_recorder$count + 1L; .gallery_tek_satir(uid) }
+  etkilenen <- c("1", "3")
+  env$delete_all_user_images <- function(user_id) structure(2L, chat_ids = etkilenen)
+  dusurulen <- list()
+  loop <- later::create_loop(parent = NULL)
+  on.exit(later::destroy_loop(loop), add = TRUE)
+  later::with_loop(loop, shiny::testServer(
+    env$imageGalleryServer,
+    args = list(id = "ig", current_user_id = function() 7L),
+    {
+      session$userData$kimlik_sahibi <- 7L
+      session$userData$mergen_gecmis_onbellek_dusur <- function(chat_ids = NULL) {
+        dusurulen[[length(dusurulen) + 1L]] <<- chat_ids
+      }
+      session$flushReact()
+      session$setInputs(refresh_gallery = as.numeric(Sys.time()))
+      for (i in seq_len(20L)) { later::run_now(timeoutSecs = 0.1, loop = loop); session$flushReact()
+        if (scan_recorder$count >= 1L && !isTRUE(gallery_loading())) break }
+      session$setInputs(confirm_clear_all_images = 1)
+      testthat::expect_length(dusurulen, 1L)
+      testthat::expect_identical(dusurulen[[1]], c("1", "3"))
+      # Hiçbir söyleşi değişmediyse (görsel yoktu) geçmiş önbelleği korunur.
+      etkilenen <<- character()
+      session$setInputs(confirm_clear_all_images = 2)
+      testthat::expect_length(dusurulen, 1L)
     }
   ))
 })

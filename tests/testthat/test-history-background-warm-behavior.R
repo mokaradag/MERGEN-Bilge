@@ -162,8 +162,15 @@ testthat::test_that("büyük geçmiş sonucu satır dilimleriyle aşamalı biçi
   testthat::expect_identical(cagrilar, 500L)
   sonuc <- NULL
   promises::then(p, onFulfilled = function(v) sonuc <<- v)
+  # Döngü her yoklamada EN ÇOK bir geri çağrı çalıştırır: her geri çağrı en çok
+  # bir dilim biçimlendirmelidir (iki dilim arka arkaya işlenmez).
   bitis <- Sys.time() + 5
-  while (is.null(sonuc) && Sys.time() < bitis) later::run_now(0.05)
+  while (is.null(sonuc) && Sys.time() < bitis) {
+    once <- length(cagrilar)
+    later::run_now(0.05, all = FALSE)
+    testthat::expect_lte(length(cagrilar) - once, 1L)
+  }
+  testthat::expect_identical(cagrilar, c(500L, 500L, 320L))
 
   testthat::expect_true(all(cagrilar <= 500L))
   testthat::expect_identical(sum(cagrilar), nrow(cerceve))
@@ -172,4 +179,50 @@ testthat::test_that("büyük geçmiş sonucu satır dilimleriyle aşamalı biçi
   # Küçük sonuç doğrudan (promise olmadan) biçimlendirilir.
   testthat::expect_identical(env$history_rows_format_staged(ids, 42L, satir(5L, 20L)),
                              gercek(ids, user_id = 42L, result = satir(5L, 20L)))
+})
+
+testthat::test_that("geçmiş hazırlığı bayatlayınca kalan dilimler biçimlendirilmez ve söz NULL ile kapanır", {
+  testthat::skip_if_not_installed("promises")
+  testthat::skip_if_not_installed("later")
+  env <- .source_history_bg_for_test()
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_db_chat_readers.R"),
+         encoding = "UTF-8", local = env)
+  cerceve <- data.frame(
+    ChatID = rep(3L, 1600L), ChatTitle = "Başlık çğış",
+    MessageTimestamp = as.POSIXct("2026-07-01 10:00:00", tz = "UTC") + seq_len(1600L),
+    Soru = "soru", Cevap = "yanıt", PairOrder = seq_len(1600L), stringsAsFactors = FALSE)
+  gercek <- env$load_history_rows_batch
+  cagrilar <- integer()
+  env$load_history_rows_batch <- function(chat_ids, user_id = NULL, result = NULL) {
+    cagrilar <<- c(cagrilar, nrow(result))
+    gercek(chat_ids, user_id = user_id, result = result)
+  }
+  gecerli_mi <- TRUE
+  p <- env$history_rows_format_staged("3", 42L, cerceve, gecerli = function() gecerli_mi)
+  testthat::expect_identical(cagrilar, 500L)
+  # Sahip değişti: kalan üç dilim olay döngüsünde işlenmez.
+  gecerli_mi <- FALSE
+  sonuc <- "bekleniyor"
+  promises::then(p, onFulfilled = function(v) sonuc <<- v)
+  bitis <- Sys.time() + 5
+  while (identical(sonuc, "bekleniyor") && Sys.time() < bitis) later::run_now(0.05)
+  testthat::expect_null(sonuc)
+  testthat::expect_identical(cagrilar, 500L)
+})
+
+testthat::test_that("yeniden doğrulama yalnızca ilk sayfanın yaşlı kayıtlarını bayat işaretler", {
+  env <- .source_history_bg_for_test()
+  simdi <- as.POSIXct("2026-07-01 12:00:00", tz = "UTC")
+  kayit <- function(okuma) list(rows = list(list(Soru = "s")), stamp = "d", okuma = okuma)
+  onbellek <- list("1" = kayit(simdi - 120), "2" = kayit(simdi - 5), "3" = kayit(simdi + 300),
+                   "4" = list(rows = list(), stamp = "d"), "5" = kayit(simdi - 999))
+  sonuc <- env$history_mark_stale_for_revalidation(onbellek, c("1", "2", "3", "4"), 60, simdi = simdi)
+  # Yaşlı, saati geri alınmış (gelecekte) ve okuma zamanı olmayan kayıtlar bayat; satırlar korunur.
+  testthat::expect_null(sonuc[["1"]]$stamp)
+  testthat::expect_null(sonuc[["3"]]$stamp)
+  testthat::expect_null(sonuc[["4"]]$stamp)
+  testthat::expect_length(sonuc[["1"]]$rows, 1L)
+  # Taze kayıt ve ilk sayfa dışındaki kayıt dokunulmaz.
+  testthat::expect_identical(sonuc[["2"]]$stamp, "d")
+  testthat::expect_identical(sonuc[["5"]]$stamp, "d")
 })

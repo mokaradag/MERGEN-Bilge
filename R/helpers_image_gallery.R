@@ -402,6 +402,9 @@ delete_all_user_images <- function(user_id) {
   }
 
   cat(sprintf("[IMAGE_GALLERY] Toplam %d görsel silindi (kullanıcı: %s)\n", deleted_count, user_id))
+  # Mesajı yerinde güncellenen söyleşiler çağırana bildirilir: Söyleşi Geçmişi
+  # önbelleğinden yalnızca bunlar düşürülür (sayı sözleşmesi değişmez).
+  attr(deleted_count, "chat_ids") <- as.character(unique_chats)
   return(deleted_count)
 }
 

@@ -138,7 +138,14 @@ mergen_rich_lane_required_boot_keys <- function() {
 #' @return Tetik değerini alıp TRUE/FALSE döndüren işlev.
 mergen_startup_history_trigger_validator <- function(guncel_nesil) {
   function(tetik) {
-    nesil <- suppressWarnings(as.integer(tetik)[1])
-    length(nesil) == 1L && !is.na(nesil) && identical(nesil, as.integer(guncel_nesil()))
+    # Tek, sonlu, tam sayı değerli sayı zorunludur: iç içe liste dönüşümde hata
+    # verip oturumu kapatıyordu, kesirli değer (2.5) kırpılıp nesil 2 ile eşleşiyordu.
+    if (is.list(tetik) && length(tetik) == 1L) tetik <- tetik[[1]]
+    if (!is.numeric(tetik) || length(tetik) != 1L || is.na(tetik) || !is.finite(tetik) ||
+        tetik != trunc(tetik)) {
+      return(FALSE)
+    }
+    guncel <- tryCatch(as.integer(guncel_nesil()), error = function(e) NA_integer_)
+    length(guncel) == 1L && !is.na(guncel) && tetik == guncel
   }
 }

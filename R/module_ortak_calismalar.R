@@ -229,12 +229,14 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
       shiny::showNotification(mesaj, type = tur, duration = 6)
     }
 
-    # Ortak Söyleşiler önbelleği (kullanıcıya bağlı): sekme ziyareti yalnız bu
-    # listeyi en fazla 60 sn'de bir okur (süre getter'da); hub/davet/Bilge Yolaç
-    # listeleri her ziyarette yenilenir. Kullanıcı eylemleri önbelleği düşürür.
+    # Ortak Söyleşiler önbelleği (kullanıcıya bağlı, en fazla 60 sn); hub/davet/Bilge
+    # Yolaç listeleri her ziyarette yenilenir. Kullanıcı eylemleri önbelleği düşürür.
     sohbet_onbellek <- new.env(parent = emptyenv())
+    # Kimlik düşüp aynı oturumda dönünce çıkış öncesi liste TTL içinde kullanılmaz.
+    if (exists("mergen_session_on_owner_change", mode = "function")) mergen_session_on_owner_change(session, function(neden) rm(list = ls(sohbet_onbellek), envir = sohbet_onbellek))
     yenile <- function(neden = "manual") {
-      if (!identical(neden, "tab")) sohbet_onbellek$df <- NULL
+      # Kullanıcı eylemi listeyi düşürür; "Yenile" 60 sn'lik olumsuz tablo sonucunu beklemez.
+      if (!identical(neden, "tab")) { sohbet_onbellek$df <- NULL; if (exists("ortak_db_tablo_prob_hatasi_mi", mode = "function")) ortak_db_tablo_prob_hatasi_mi(TRUE) }
       liste_yenile(isolate(liste_yenile()) + 1L)
       invisible(neden)
     }
@@ -405,17 +407,16 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
 
     # --- Liste görünümleri -----------------------------------------------------
 
-    # MB_Ortak* tabloları kurulmamışsa (kademeli kurulum) listeler okuma hatası yerine kurulum yönlendirir.
-    tablo_yok_durumu <- function() div(class = "oo-bos-durum oo-tablo-yok", icon("database"),
+    # Kurulum yönlendirmesi yalnızca DOĞRULANMIŞ eksik tabloda; geçici yoklama hatası yeniden deneme gösterir.
+    tablo_yok_durumu <- function() if (exists("ortak_db_tablo_prob_hatasi_mi", mode = "function") && ortak_db_tablo_prob_hatasi_mi()) okuma_hatasi_durumu() else
+      div(class = "oo-bos-durum oo-tablo-yok", icon("database"),
       p("Ortak Oturum tabloları henüz kurulmamış. Kurulum: docs/sql/2026-07-ortak-oturumlar.sql (DBA/operatör)." ))
 
+    okuma_hatasi_durumu <- function() div(class = "oo-bos-durum oo-bos-liste oo-okuma-hatasi", role = "alert",
+      icon("circle-exclamation"), p("Liste şu anda okunamadı. Lütfen “Yenile” düğmesiyle yeniden deneyin."))
     liste_olustur <- function(df, arsivde = FALSE, bos_mesaj = "Henüz ortak oturum yok.") {
-      # Okuma hatası "liste boş" sayılmaz: ayrıntı gösterilmeden hata durumu
-      # ve mevcut "Yenile" ile yeniden deneme yolu bildirilir.
-      if (isTRUE(attr(df, "mergen_okuma_hatasi"))) {
-        return(div(class = "oo-bos-durum oo-bos-liste oo-okuma-hatasi", role = "alert", icon("circle-exclamation"),
-                   p("Liste şu anda okunamadı. Lütfen “Yenile” düğmesiyle yeniden deneyin.")))
-      }
+      # Okuma hatası "liste boş" sayılmaz: ayrıntısız hata durumu ve "Yenile" ile yeniden deneme.
+      if (isTRUE(attr(df, "mergen_okuma_hatasi"))) return(okuma_hatasi_durumu())
       if (!is.data.frame(df) || nrow(df) == 0L) {
         return(div(class = "oo-bos-durum oo-bos-liste", icon("users"), p(bos_mesaj)))
       }

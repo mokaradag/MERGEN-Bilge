@@ -287,3 +287,28 @@ testthat::test_that("periyodik gözlemci gerçekten tetiklenir (bindEvent(invali
     testthat::expect_true(session$returned$authenticated)
   })
 })
+
+testthat::test_that("üretim yetkisizleştirme yolu sahip geçişini eşzamanlı çağırır ve kimliği düşürür", {
+  env <- .ssoAuthServerEnv(
+    validate_fn = function(token) list(valid = FALSE, error = "Süresi dolmuş", payload = NULL)
+  )
+  gecisler <- list()
+  # Sağlayıcının yedek kimliği bu geçiş yolunda düşer (bkz. test-sso-session-identity-smoke.R).
+  env$mergen_session_owner_transition <- function(user_data, eski, yeni) {
+    gecisler[[length(gecisler) + 1L]] <<- list(eski = eski, yeni = yeni, uid = user_data$user_id)
+    invisible(TRUE)
+  }
+  shiny::testServer(env$ssoAuthServer, args = list(), {
+    .ssoCaptureMessages(session)
+    session$userData$user_id <- 11L
+    session$userData$auth_initialized <- TRUE
+    session$setInputs(sso_jwt_token = "__prime__")
+    session$setInputs(sso_jwt_token = "suresi.dolmus.jwt")
+    testthat::expect_length(gecisler, 1L)
+    testthat::expect_identical(gecisler[[1]]$eski, 11L)
+    testthat::expect_identical(gecisler[[1]]$yeni, 0L)
+    # Geçiş çağrıldığında oturum kimliği zaten düşmüştür.
+    testthat::expect_identical(gecisler[[1]]$uid, 0L)
+    testthat::expect_false(isTRUE(session$userData$auth_initialized))
+  })
+})

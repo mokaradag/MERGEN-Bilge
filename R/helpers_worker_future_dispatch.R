@@ -27,10 +27,19 @@
 .worker_monitor_future_bitti <- function(f) future::resolved(f, timeout = 0)
 .worker_monitor_future_deger <- function(f) future::value(f, signal = TRUE)
 
-worker_monitor_future_promise <- function(promise_globals, future_packages) {
+# gorev_kimligi: iş kuyruktan çıkıp işçiye başlamadan HEMEN önce izleme kaydı
+# sorulur. Kuyrukta beklerken oturumu kapanan (kaydı temizlenen) iş başlatılmaz:
+# kapanmış sekmenin tam SQL okuması diğer oturumların işçisini işgal etmez.
+worker_monitor_future_promise <- function(promise_globals, future_packages, gorev_kimligi = NULL) {
   kuyruk <- promises::future_promise_queue()
   promises::promise(function(resolve, reject) {
     kuyruk$schedule_work(function() {
+      if (!is.null(gorev_kimligi) &&
+          !exists(as.character(gorev_kimligi)[1], envir = init_worker_monitor()$tasks, inherits = FALSE)) {
+        atlanan <- promises::promise_reject(simpleError("İş başlamadan geçersizleşti (oturum kapandı); işçiye gönderilmedi."))
+        resolve(atlanan)
+        return(promises::promise_resolve(NULL))
+      }
       is_promise <- promises::promise(function(cozul, reddet) {
         is_future <- .worker_monitor_future_baslat(promise_globals, future_packages)
         # Yoklamadaki HER hata (yalnız FutureError değil) promise'i reddeder;

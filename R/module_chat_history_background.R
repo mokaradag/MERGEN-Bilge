@@ -88,7 +88,7 @@ history_first_page_notifier <- function(bildir, kimlikler_fn, guncel_sohbetler, 
 # metni, tam sayı parametreler ve skaler yapılandırma gider; normalizasyon ve
 # biçimlendirme ana süreçte tek biçimlendiriciyle yapılır. Kimlik yetkisi SQL
 # içindedir (c.UserID = ? ve IsDeleted = 0).
-history_rows_worker_promise <- function(chat_ids, user_id, session_token = NULL) {
+history_rows_worker_promise <- function(chat_ids, user_id, session_token = NULL, gecerli = NULL) {
   ids <- unique(as.character(chat_ids %||% character()))
   ids <- ids[!is.na(ids) & nzchar(ids)]
   sayisal <- suppressWarnings(as.integer(ids))
@@ -120,7 +120,47 @@ history_rows_worker_promise <- function(chat_ids, user_id, session_token = NULL)
     ),
     packages = c("DBI")
   )
-  promises::then(ham, onFulfilled = function(cerceve) history_rows_format_staged(ids, uid, cerceve))
+  promises::then(ham, onFulfilled = function(cerceve) history_rows_format_staged(ids, uid, cerceve, gecerli = gecerli))
+}
+
+# Yeniden doğrulama: verilen kimliklerin okuma zamanı `ttl_sn`'den eski (ya da
+# saat geri alındığı için gelecekte/eksik) kayıtlarının damgası düşürülür;
+# satırlar korunur, senkronizasyon onları yeniden okur. Taze kayıtlar dokunulmaz.
+history_mark_stale_for_revalidation <- function(cache, ids, ttl_sn = 60, simdi = Sys.time()) {
+  ttl <- suppressWarnings(as.numeric(ttl_sn)[1])
+  if (!length(cache) || !length(ids) || length(ttl) != 1L || is.na(ttl)) return(cache)
+  for (id in intersect(as.character(ids), names(cache))) {
+    kayit <- cache[[id]]
+    if (identical(id, "current_chat") || is.null(kayit) || is.null(kayit$stamp)) next
+    yas <- if (inherits(kayit$okuma, "POSIXt")) as.numeric(difftime(simdi, kayit$okuma, units = "secs")) else NA_real_
+    if (is.na(yas) || yas < 0 || yas > ttl) {
+      kayit["stamp"] <- list(NULL)
+      cache[[id]] <- kayit
+    }
+  }
+  cache
+}
+
+# Elle yenilemenin bitiş bildirimi: hazır-olmayı yayımlar ve kullanıcıya
+# sonucu (tam/kısmen) yeni satırlar yayımlandıktan sonra gösterir.
+history_refresh_notifier <- function(session, hazir_bildir, bildir_toast) {
+  function(basarili = TRUE) {
+    hazir_bildir(basarili)
+    if (isTRUE(basarili)) bildir_toast(session, "Geçmiş tablosu yenilendi.", "info")
+    else bildir_toast(session, "Geçmiş tablosu kısmen yenilendi; okunamayan söyleşiler yeniden denenecek.", "warning")
+  }
+}
+
+# Geçmiş hazırlığı günlüğü: paylaşılan logger (dosya + redaksiyon hattı)
+# kullanılır; logger yüklenmemiş izole bağlamda konsola düşer.
+.history_log_warn <- function(msg) {
+  if (exists("log_warn", mode = "function", inherits = TRUE)) {
+    # logger glue çözümlemesine takılmaması için süslü parantezler temizlenir.
+    log_warn(gsub("[{}]", "", msg))
+  } else {
+    cat(msg, "\n", sep = "")
+  }
+  invisible(NULL)
 }
 
 # Büyük geçmiş sonucu (söyleşi sayısı satır sayısını sınırlamaz) ana olay
@@ -128,21 +168,33 @@ history_rows_worker_promise <- function(chat_ids, user_id, session_token = NULL)
 # döngü turlarında aynı biçimlendiriciden geçer, arada diğer oturumlar ilerler.
 # Biçimlendirme satır başınadır ve SQL sırası (ChatID, sıra) korunur; parçalara
 # bölünen söyleşinin satırları sırayla birleştirilir. Sonuç tek seferlikle aynıdır.
-history_rows_format_staged <- function(ids, uid, cerceve, dilim = 500L) {
+# gecerli(): istek hâlâ güncel mi (sahip/nesil). Her dilimden önce sorulur;
+# bayatlayan istemin kalan dilimleri olay döngüsünde biçimlendirilmez, söz
+# NULL ile kapanır ve hazır-olma yayımlanmaz (çağıran geçerliliği yeniden denetler).
+history_rows_format_staged <- function(ids, uid, cerceve, dilim = 500L, gecerli = NULL) {
   n <- if (is.data.frame(cerceve)) nrow(cerceve) else 0L
   if (n <= dilim) return(load_history_rows_batch(ids, user_id = uid, result = cerceve))
   promises::promise(function(resolve, reject) {
-    sonuc <- stats::setNames(rep(list(list()), length(ids)), ids)
+    # Söyleşi başına dilim parçaları tutulur ve sonda TEK kez birleştirilir:
+    # her dilimde birikmiş listeyi c() ile yeniden kurmak 100.000 satırlık
+    # söyleşide olay döngüsünde milyonlarca öğe kopyalıyordu.
+    parcalar <- stats::setNames(rep(list(list()), length(ids)), ids)
     bas <- 1L
     adim <- function() {
+      if (is.function(gecerli) && !isTRUE(gecerli())) {
+        resolve(NULL)
+        return(invisible(NULL))
+      }
       tryCatch({
         son <- min(n, bas + dilim - 1L)
         parca <- cerceve[bas:son, , drop = FALSE]
         bicimli <- load_history_rows_batch(intersect(ids, as.character(parca$ChatID)),
                                            user_id = uid, result = parca)
-        for (k in names(bicimli)) sonuc[[k]] <<- c(sonuc[[k]], bicimli[[k]])
+        for (k in names(bicimli)) parcalar[[k]][[length(parcalar[[k]]) + 1L]] <<- bicimli[[k]]
         bas <<- son + 1L
-        if (bas > n) resolve(sonuc) else later::later(adim, 0)
+        if (bas > n) {
+          resolve(lapply(parcalar, function(p) if (length(p)) do.call(c, p) else list()))
+        } else later::later(adim, 0)
       }, error = function(e) reject(e))
     }
     adim()
@@ -167,7 +219,7 @@ history_prepare_rows_async <- function(session, ids, damgalar, uid, isitma, reso
   surumler <- history_versions(isitma, ids)
   gecerli <- function() !isTRUE(session$isClosed()) && identical(isitma$nesil, nesil) &&
     identical(shiny::isolate(resolve_uid()), uid)
-  okuma <- tryCatch(history_rows_worker_promise(ids, uid, session$token),
+  okuma <- tryCatch(history_rows_worker_promise(ids, uid, session$token, gecerli = gecerli),
                     error = function(e) promises::promise_reject(e))
   promises::then(okuma, onFulfilled = function(sonuc) {
     if (!gecerli()) return(NULL)
@@ -179,9 +231,10 @@ history_prepare_rows_async <- function(session, ids, damgalar, uid, isitma, reso
       damga_ayni <- vapply(ids, function(id) identical(simdiki[[id]], damgalar[[id]]), logical(1))
       degismeyen <- ids[history_versions(isitma, ids) == surumler & damga_ayni]
       okunan <- intersect(degismeyen, names(sonuc))
+      okuma_zamani <- Sys.time()
       for (id in okunan) {
         cache[[id]] <- list(rows = if (is.list(sonuc[[id]])) sonuc[[id]] else list(),
-                            stamp = damgalar[[id]])
+                            stamp = damgalar[[id]], okuma = okuma_zamani)
       }
       history_touch(isitma, okunan)
       messages_cache(cache)
@@ -198,7 +251,7 @@ history_prepare_rows_async <- function(session, ids, damgalar, uid, isitma, reso
     NULL
   }, onRejected = function(e) {
     if (!gecerli()) return(NULL)
-    cat(sprintf("[HISTORY] açılış hazırlığı okunamadı: %s\n", redacted_condition_message(e)))
+    .history_log_warn(sprintf("[HISTORY] açılış hazırlığı okunamadı: %s", mergen_db_error_log_summary(e)))
     shiny::isolate(bildir(FALSE))
     NULL
   })
@@ -230,7 +283,7 @@ historyBackgroundWarm <- function(session, chat_ids, chats, ensure_history_cache
               guncel <- !is.function(is_current) || isTRUE(is_current())
               if (guncel) {
                 sonuc <- tryCatch(ensure_history_cache(batch, chats), error = function(e) {
-                  cat(sprintf("[HISTORY] arka plan partisi okunamadı: %s\n", redacted_condition_message(e)))
+                  .history_log_warn(sprintf("[HISTORY] arka plan partisi okunamadı: %s", mergen_db_error_log_summary(e)))
                   FALSE
                 })
                 if (isFALSE(sonuc)) basarili <<- FALSE

@@ -93,8 +93,13 @@ body.appendChild(el('div', { id: 'file_prompt_indicator_ui' }));
 
 const captureClick = [];
 const inputListeners = [];
-// Kullanıcı yazması: değer değişir ve tarayıcıdaki gibi 'input' olayı yayılır.
-const userType = text => { input.value = text; inputListeners.forEach(fn => fn({ target: input })); };
+// Kullanıcı yazması: değer değişir, imleç düzenlemenin sonunda kalır ve
+// tarayıcıdaki gibi 'input' olayı yayılır (imleç verilmezse metnin sonundadır).
+const userType = (text, imlec) => {
+  input.value = text;
+  input.selectionEnd = imlec === undefined ? text.length : imlec;
+  inputListeners.forEach(fn => fn({ target: input }));
+};
 const document = {
   body, readyState: 'complete',
   getElementById: id => all(body, '#' + id)[0] || null,
@@ -138,9 +143,12 @@ function trigger(evt, sel, target, extra = {}) {
 const sent = [];
 const shinyHandlers = {};
 const timers = [];
+// Sanal saat: zamanlayıcının süresi saklanır; ilerlet() yalnızca süresi dolanları çalıştırır.
+let saat = 0;
+const ilerlet = ms => { saat += ms; timers.forEach((fn, i) => { if (fn && fn.bitis <= saat) { timers[i] = null; fn(); } }); };
 const context = vm.createContext({
   $, jQuery: $, document, console, Date, Math, atob: s => Buffer.from(s, 'base64').toString('binary'),
-  setTimeout: fn => { timers.push(fn); return timers.length; },
+  setTimeout: (fn, ms) => { fn.bitis = saat + (ms || 0); timers.push(fn); return timers.length; },
   clearTimeout: id => { if (id) timers[id - 1] = null; },
   TextDecoder, Uint8Array,
   MutationObserver: function (cb) { this.observe = (target, options) => observers.push({ cb, target, options, kuyruk: [] }); },
@@ -184,6 +192,7 @@ assert.equal(liveText(), '');
 enter('Merhaba dünya, çğış?');
 assert.equal(sent.length, 1);
 assert.equal(sent[0].name, 'send_prompt_from_js');
+assert.equal(sent[0].value.text, 'Merhaba dünya, çğış?', 'Enter yazılan istemi göndermeli');
 const id1 = sent[0].value.client_id;
 assert.match(id1, /^[A-Za-z0-9_-]{1,64}$/);
 assert.equal(pending().length, 1, 'bekleyen balon hemen çizilmeli');
@@ -212,11 +221,14 @@ input.value = '';
 const asil = serverBubble('901', 'Merhaba dünya, çğış?');
 await teslim();
 assert.equal(visibleUserBubbles().length, 1, 'çift kullanıcı balonu görünmemeli');
+assert.ok(isInside(visibleUserBubbles()[0], asil), 'görünen tek balon sunucunun asıl balonu olmalı');
 assert.ok(!asil.querySelector('.message-bubble').classList.contains('animate-fadeIn'), 'asıl balon solmadan görünmeli');
 assert.equal(asil.querySelector('.message-bubble').style.animation, 'none');
 assert.ok(btn.classList.contains('mergen-istem-bekliyor'), 'metin eşleşmesi tek başına isteği sonuçlandırmamalı');
 result(id1, 'kabul', '901');
 assert.equal(pending().length, 0, 'kabulde bekleyen balon kaldırılmalı');
+assert.equal(visibleUserBubbles().length, 1);
+assert.ok(isInside(visibleUserBubbles()[0], asil), 'kabulden sonra istem asıl balonda görünür kalmalı');
 assert.equal(liveText(), 'İstem gönderildi.', 'kabulde canlı bölge "gönderiliyor" durumunda kalmamalı');
 assert.ok(!btn.classList.contains('mergen-istem-bekliyor'));
 assert.equal(btn.querySelector('i').className, 'fa-solid fa-paper-plane');
@@ -334,7 +346,13 @@ assert.equal(pending().length, 0, 'asıl balon gelince bekleyen balon kalkmalı'
 sendClick('kayıp olay');
 const idKayip = lastId();
 const kayipOncesi = sent.length;
-timers.splice(0).forEach(fn => fn && fn());
+// Süre dolmadan (59,999 sn) istem bekler; tam 60 sn'de zaman aşımı olur.
+ilerlet(59999);
+assert.equal(pending().length, 1, 'sonuç süresi dolmadan bekleyen balon kalmalı');
+assert.ok(btn.classList.contains('mergen-istem-bekliyor'), 'süre dolmadan gönderim kilitli kalmalı');
+assert.equal(input.value, '', 'süre dolmadan metin geri yüklenmemeli');
+ilerlet(1);
+timers.splice(0);
 assert.equal(pending().length, 0, 'zaman aşımında bekleyen balon kalkmalı');
 assert.ok(!btn.classList.contains('mergen-istem-bekliyor'), 'zaman aşımında gönderim kilidi kalkmalı');
 assert.equal(input.value, 'kayıp olay', 'zaman aşımında metin geri yüklenmeli');
@@ -377,7 +395,7 @@ sendClick('istem C');
 const idDuzen = lastId();
 input.value = 'taslak D';
 timers.splice(0).forEach(fn => fn && fn());
-input.value = 'istem C\ntaslak D ve ek';
+userType('istem C\ntaslak D ve ek');
 result(idDuzen, 'kabul', '1012');
 serverBubble('1012', 'istem C');
 await teslim();
@@ -537,6 +555,15 @@ serverBubble('1037', 'sıra A');
 await teslim();
 result(idSiraB, 'ret');
 assert.equal(input.value, 'sıra B\ntaslak D', 'kabul sonra ret: yalnızca A kalkmalı');
+// Yeniden gönderim dokunulmamış girdiyi gönderir: A tekrar gitmez.
+const yenidenGonder = () => {
+  const once = sent.length;
+  trigger('click', '#send_stop_btn', btn);
+  assert.equal(sent.length, once + 1, 'yeniden gönderim tek istek göndermeli');
+  assert.equal(sent[sent.length - 1].value.text, 'sıra B\ntaslak D', 'yeniden gönderim yalnızca B ve taslağı taşımalı');
+  result(lastId(), 'ret');
+};
+yenidenGonder();
 await temizle();
 [idSiraA, idSiraB] = await ortusenIkiIstem();
 result(idSiraB, 'ret');
@@ -544,6 +571,7 @@ result(idSiraA, 'kabul', '1038');
 serverBubble('1038', 'sıra A');
 await teslim();
 assert.equal(input.value, 'sıra B\ntaslak D', 'ret sonra kabul: yalnızca A kalkmalı');
+yenidenGonder();
 await temizle();
 
 // 11e4) Kullanıcı geri yüklenen bölümü silip aynı metni yeniden yazarsa
@@ -613,6 +641,9 @@ const idSahipRet = lastId();
 input.value = 'taslak';
 result(idSahipRet, 'ret');
 assert.equal(input.value, 'A reddedilen\ntaslak');
+// Sıfırlama, ret bölümü bir taslağın önündeyken hemen uygulanır: yalnızca taslak kalır.
+shinyHandlers.mergenBekleyenIstemSifirla({ neden: 'sahip_degisti' });
+assert.equal(input.value, 'taslak', 'reddedilen istem taslağın önündeyken sahip değişince kalkmalı');
 sendClick('A kopan');
 input.value = 'taslak';
 (handlers['shiny:disconnected|'] || []).forEach(fn => fn());
@@ -629,6 +660,119 @@ timers.splice(0);
 chat.children.slice().forEach(c => chat.removeChild(c));
 await teslim();
 input.value = '';
+
+
+// 11i) Özdeş iki bölümden ÜSTTEKİ (B) silinir: kalan bölüm A'ya aittir; A'nın
+// geç kabulü yalnızca taslağı bırakır. Alttaki (A) silinirse A kabulü dokunmaz.
+[idAyniA, idAyniB] = await ayniMetinIkiIstem('taslak D');
+userType('aynı metin\ntaslak D', 0);
+result(idAyniA, 'kabul', '1060');
+serverBubble('1060', 'aynı metin');
+await teslim();
+assert.equal(input.value, 'taslak D', "üstteki özdeş bölüm silinince A'nın kabulü yalnızca taslağı bırakmalı");
+result(idAyniB, 'ret');
+assert.equal(input.value, 'taslak D');
+await temizle();
+[idAyniA, idAyniB] = await ayniMetinIkiIstem('taslak D');
+userType('aynı metin\ntaslak D', 'aynı metin\n'.length);
+result(idAyniA, 'kabul', '1061');
+serverBubble('1061', 'aynı metin');
+await teslim();
+assert.equal(input.value, 'aynı metin\ntaslak D', "silinen A'nın kabulü B'nin bölümünü kaldırmamalı");
+result(idAyniB, 'kabul', '1062');
+serverBubble('1062', 'aynı metin');
+await teslim();
+assert.equal(input.value, 'taslak D');
+await temizle();
+
+// 11j) Boş girdiye geri yüklenen istemin altına ayrı satırda taslak eklenir:
+// istemin sahipliği korunur, geç kabulde yalnızca taslak kalır.
+sendClick('son bölüm');
+const idSonBolum = lastId();
+timers.splice(0).forEach(fn => fn && fn());
+assert.equal(input.value, 'son bölüm');
+userType('son bölüm\n');
+userType('son bölüm\ntaslak');
+result(idSonBolum, 'kabul', '1063');
+serverBubble('1063', 'son bölüm');
+await teslim();
+assert.equal(input.value, 'taslak', 'ayrı satırdaki taslak kabul edilen istemi girdide bırakmamalı');
+await temizle();
+
+// 11k) Escape girdiyi temizlerse sahiplik düşer: aynı metin yapıştırılsa da geç
+// kabul yeni taslağı silmez.
+sendClick('escape istemi');
+const idEscape = lastId();
+timers.splice(0).forEach(fn => fn && fn());
+assert.equal(input.value, 'escape istemi');
+trigger('keyup', '#user_input, .chat-input, textarea[name="user_input"]', input, { key: 'Escape' });
+assert.equal(input.value, '');
+userType('escape istemi');
+result(idEscape, 'kabul', '1064');
+serverBubble('1064', 'escape istemi');
+await teslim();
+assert.equal(input.value, 'escape istemi', 'Escape sonrası yapıştırılan özdeş taslak silinmemeli');
+await temizle();
+
+// 11l) Kullanıcının düzenlediği geri yükleme bölümü sahip sıfırlamasında kalkar;
+// ilgisiz taslak korunur.
+sendClick('gizli istem');
+const idGizli = lastId();
+input.value = 'taslak';
+result(idGizli, 'ret');
+assert.equal(input.value, 'gizli istem\ntaslak');
+userType('gizli istem düzeltildi\ntaslak', 'gizli istem düzeltildi'.length);
+shinyHandlers.mergenBekleyenIstemSifirla({ neden: 'sahip_degisti' });
+assert.equal(input.value, 'taslak', 'düzenlenmiş önceki sahip istemi sahip değişince kalkmalı');
+await temizle();
+
+// 11m) 16'dan fazla geri yükleme bölümü: hiçbirinin sahipliği düşmez, sahip
+// sıfırlaması hepsini kaldırır.
+const cokluKimlikler = [];
+for (let i = 1; i <= 17; i++) {
+  sendClick('çoklu ret ' + i);
+  cokluKimlikler.push(lastId());
+  chat.children.slice().forEach(c => chat.removeChild(c));
+  await teslim();
+}
+input.value = 'taslak';
+cokluKimlikler.forEach(id => result(id, 'ret'));
+assert.equal(input.value.split('\n').length, 18);
+assert.ok(input.value.startsWith('çoklu ret 17\n') && input.value.endsWith('çoklu ret 1\ntaslak'));
+shinyHandlers.mergenBekleyenIstemSifirla({ neden: 'sahip_degisti' });
+assert.equal(input.value, 'taslak', 'en eski geri yükleme de sahip değişince kalkmalı');
+await temizle();
+
+// 11n) Ayrılmış eski istem (A) reddedilirken yeni istem (B) gönderiliyorsa
+// bildirim önceki isteme ait olduğunu söyler ve B'nin gönderim durumu sürer.
+sendClick('eski ret A');
+const idEskiRet = lastId();
+chat.children.slice().forEach(c => chat.removeChild(c));
+await teslim();
+sendClick('yeni B');
+const idYeniB = lastId();
+result(idEskiRet, 'ret');
+assert.match(liveText(), /^Önceki istem: /);
+assert.match(liveText(), /Yeni istem gönderiliyor…$/);
+assert.ok(btn.classList.contains('mergen-istem-bekliyor'), "B'nin gönderim kilidi sürmeli");
+result(idYeniB, 'ret');
+assert.equal(liveText(), 'İstem gönderilemedi; metin giriş alanına geri yüklendi.', 'tek bekleyen istemde olağan bildirim korunmalı');
+await temizle();
+
+// 11o) Yalnız dosya istemi (metin yok) reddedilir: "metin geri yüklendi"
+// denmez; ek temizlendiyse yeniden eklenmesi istenir.
+const ekAlani = all(body, '#file_prompt_indicator_ui')[0];
+ekAlani.appendChild(el('div', { class: 'file-chip' }));
+input.value = '';
+trigger('click', '#send_stop_btn', btn);
+const idDosya = lastId();
+assert.equal(sent[sent.length - 1].value.text, '');
+ekAlani.children.slice().forEach(c => ekAlani.removeChild(c));
+result(idDosya, 'ret');
+assert.equal(input.value, '');
+assert.doesNotMatch(liveText(), /metin giriş alanına geri yüklendi/);
+assert.match(liveText(), /dosyayı yeniden ekleyip/);
+await temizle();
 
 // 12) Boş istem gönderilmez.
 input.value = '   ';

@@ -174,11 +174,9 @@ healthServer <- function(id, perf_tracker) {
       # Sağlık kontrolleri DB/endpoint probe içerebildiği için otomatik yenileme seyrek tutulur.
       if (!isTRUE(yetki_durumu())) return()
       invalidateLater(120000)
-      isolate({
-        health_refresh_trigger(health_refresh_trigger() + 1)
-        health_last_update(format(Sys.time(), "%d.%m.%Y %H:%M:%S"))
-        send_health_timestamp()
-      })
+      # Zaman damgası burada değil, kontroller GERÇEKTEN toplandığında güncellenir
+      # (Çevrimiçi sekmesinde ya da sayfa gizliyken tetik toplama yapmaz).
+      isolate(health_refresh_trigger(health_refresh_trigger() + 1))
     })
 
     dns_checks <- reactiveVal(NULL)
@@ -187,7 +185,11 @@ healthServer <- function(id, perf_tracker) {
       health_refresh_trigger()
       dns_started <<- as.numeric(Sys.time())
       dns_checks(NULL)
-      health_collect_checks(perf_tracker = perf_tracker, include_slow = TRUE)
+      sonuc <- health_collect_checks(perf_tracker = perf_tracker, include_slow = TRUE)
+      # Gösterilen zaman, sonuçların ölçüldüğü andır.
+      health_last_update(format(Sys.time(), "%d.%m.%Y %H:%M:%S"))
+      send_health_timestamp()
+      sonuc
     })
     checks_data <- reactive({
       ilk <- initial_checks()
@@ -284,14 +286,14 @@ healthServer <- function(id, perf_tracker) {
       checks <- checks_data()
 
       switch(tab,
-        overview = health_overview_ui(checks, health_last_update()),
+        overview = health_overview_ui(checks, isolate(health_last_update())),
         connectivity = health_connectivity_ui(checks),
         storage = health_storage_ui(checks),
         runtime = health_runtime_ui(checks, worker_health_html()),
         security = health_security_ui(checks),
         diagnostics = health_diagnostics_ui(checks),
         release = health_release_ui(release_evidence_data(), ns = ns),
-        health_overview_ui(checks, health_last_update())
+        health_overview_ui(checks, isolate(health_last_update()))
       )
     })
 
@@ -314,8 +316,6 @@ healthServer <- function(id, perf_tracker) {
       session$sendCustomMessage("removeHealthTooltips", list())
       shinyjs::runjs("$('.tooltip').remove();")
       health_refresh_trigger(health_refresh_trigger() + 1)
-      health_last_update(format(Sys.time(), "%d.%m.%Y %H:%M:%S"))
-      send_health_timestamp()
       session$sendCustomMessage("initHealthTooltips", list())
       showToast(session, "Sistem durumu güncellendi", "success")
     })

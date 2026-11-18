@@ -283,19 +283,27 @@ testthat::test_that("açılış ön izleme görevi uygulama kodu yüklü olmayan
   }, envir = helper_env)
   on.exit(assign("tracked_future_promise", old_tracked, envir = helper_env), add = TRUE)
 
+  # Yapılandırılmış bir DSN'e (geliştirici/üretim) asla gidilmez: globaller
+  # kasıtlı olarak var olmayan bir DSN ile kurulur.
+  withr::local_envvar(DB_DSN = "mergen_test_olmayan_dsn")
   mergen_startup_chat_preview_promise(0L, limit = 6L)
   mergen_startup_chat_preview_promise(42L, limit = NA_integer_)
   calistir <- function(yuk) callr::r(function(yuk) {
+    # Çocuk süreçte DB sınırı (DBI::dbConnect) taklit edilir: serileştirilmiş
+    # görev bağlantı çağrısına ulaşırsa benzersiz bir koşul yükselir.
+    loadNamespace("DBI")
+    utils::assignInNamespace("dbConnect", function(drv, ...) {
+      stop(sprintf("sahte_dbconnect_cagrildi dsn=%s", list(...)$dsn))
+    }, ns = "DBI")
     # globalenv'e hiçbir şey kopyalanmaz: yalnızca görev ortamı görülür.
     tryCatch(list(deger = unserialize(yuk)()), error = function(e) list(hata = conditionMessage(e)))
   }, args = list(yuk = yuk))
-  # Geçersiz kullanıcı: bağlantı açılmadan NULL.
+  # Geçersiz kullanıcı: bağlantı (taklit) hiç çağrılmadan NULL.
   testthat::expect_identical(calistir(yakalanan$yuk[[1]]), list(deger = NULL))
-  # Geçerli kullanıcı: görev DB katmanına ulaşır (sahte DSN bağlanamaz);
-  # hiçbir uygulama fonksiyonu eksik kalmaz.
+  # Geçerli kullanıcı: gerçek serileştirilmiş görev ve SQL hazırlığı bağlantı
+  # çağrısına ulaşır; hiçbir uygulama fonksiyonu eksik kalmaz.
   sonuc <- calistir(yakalanan$yuk[[2]])
-  testthat::expect_false(is.null(sonuc$hata))
-  testthat::expect_false(grepl("could not find function|bulunamad", sonuc$hata), info = sonuc$hata)
+  testthat::expect_identical(sonuc$hata, "sahte_dbconnect_cagrildi dsn=mergen_test_olmayan_dsn")
 })
 
 # Gerçek db_chat_preview_fetch_raw çalıştırılır; yalnızca DB sınırı (DBI)
@@ -521,23 +529,64 @@ testthat::test_that("büyük tam liste dilimlerle biçimlendirilir; sonuç tek s
     stringsAsFactors = FALSE
   )
   beklenen <- db_chat_preview_format_frame(cerceve)
+  # Biçimlendirici çağrıları (satır sayısı) kaydedilir: kanıt döngü turu sayısı
+  # değil, her turda gerçekten kaç satırın biçimlendirildiğidir.
+  asil_bicimlendirici <- db_chat_preview_format_frame
+  bicimlenen <- integer()
+  assign("db_chat_preview_format_frame", function(frame) {
+    bicimlenen <<- c(bicimlenen, nrow(frame))
+    asil_bicimlendirici(frame)
+  }, envir = globalenv())
+  on.exit(assign("db_chat_preview_format_frame", asil_bicimlendirici, envir = globalenv()), add = TRUE)
   sonuc <- NULL
-  tur <- 0L
   later::with_temp_loop({
     # Dilimler oluşturulduğu (geçici) döngüye planlanır.
     p <- mergen_startup_chat_preview_format_staged(cerceve, dilim = 500L)
     testthat::expect_true(promises::is.promise(p))
+    # Döngü ilerlemeden yalnızca ilk dilim biçimlendirilmiştir.
+    testthat::expect_identical(bicimlenen, 500L)
     promises::then(p, function(v) sonuc <<- v)
     son <- Sys.time() + 5
-    while (is.null(sonuc) && Sys.time() < son) { tur <- tur + 1L; later::run_now(0.02, all = FALSE) }
+    while (is.null(sonuc) && Sys.time() < son) {
+      once <- length(bicimlenen)
+      later::run_now(0.02, all = FALSE)
+      # Her döngü turu en çok bir dilim biçimlendirir.
+      testthat::expect_lte(length(bicimlenen) - once, 1L)
+    }
   })
   testthat::expect_identical(sonuc, beklenen)
-  # 3 dilim: ilki hemen, kalan ikisi ayrı döngü turlarında (olay döngüsü arada serbest).
-  testthat::expect_gte(tur, 2L)
+  # Kalan 500 ve 203 satır ayrı turlarda biçimlendirildi.
+  testthat::expect_identical(bicimlenen, c(500L, 500L, 203L))
   # Küçük liste (ön izleme) doğrudan biçimlendirilir.
   testthat::expect_identical(mergen_startup_chat_preview_format_staged(cerceve[1:6, ]),
                              db_chat_preview_format_frame(cerceve[1:6, ]))
 })
+
+# Bütçeli okuma satırları parçalı getirir (dbSendQuery + dbFetch). Bu yardımcı
+# DB sınırını taklit eder: uret(statement) ilk dbFetch çağrısında (R kesme
+# denetim noktalarıyla) çalışır; sonuç kümesi temizlenince kaydedilir.
+.sahte_parcali_sorgu <- function(uret, kayit = new.env(parent = emptyenv())) {
+  list(
+    dbSendQuery = function(conn, statement, ...) {
+      kayit$sql <- statement
+      kayit$bitti <- FALSE
+      structure(list(), class = "sahte_sonuc")
+    },
+    dbFetch = function(res, n = -1, ...) {
+      kayit$getirme <- c(kayit$getirme, n)
+      if (isTRUE(kayit$bitti)) return(data.frame())
+      kayit$bitti <- TRUE
+      uret(kayit$sql)
+    },
+    dbHasCompleted = function(res, ...) isTRUE(kayit$bitti),
+    dbClearResult = function(res, ...) { kayit$temizlendi <- TRUE; invisible(TRUE) }
+  )
+}
+.parcali_sorgu_bagla <- function(uret, kayit = new.env(parent = emptyenv()), env = parent.frame()) {
+  do.call(testthat::local_mocked_bindings,
+          c(.sahte_parcali_sorgu(uret, kayit), list(.package = "DBI", .env = env)))
+  invisible(kayit)
+}
 
 testthat::test_that("asılı kalan işçi sorgusu süre bütçesinde hata verir, bağlantı kapanır, kilit beklemesi sınırlanır", {
   testthat::skip_if_not_installed("DBI")
@@ -548,16 +597,16 @@ testthat::test_that("asılı kalan işçi sorgusu süre bütçesinde hata verir,
     dbConnect = function(drv, ...) { yakalanan$args <- list(...); structure(list(), class = "sahte_baglanti") },
     dbDisconnect = function(conn, ...) { yakalanan$kapandi <- TRUE; invisible(TRUE) },
     dbExecute = function(conn, statement, ...) { yakalanan$execute <- statement; 0L },
-    dbGetQuery = function(conn, statement, ...) {
-      # Asılı sorgu benzetimi: R kesme denetim noktalarında ilerleyen meşgul bekleme.
-      yakalanan$sorgu_basladi <- TRUE
-      bas <- Sys.time()
-      while (as.numeric(difftime(Sys.time(), bas, units = "secs")) < 10) sum(seq_len(10))
-      yakalanan$sorgu_bitti <- TRUE
-      data.frame()
-    },
     .package = "DBI"
   )
+  sorgu <- .parcali_sorgu_bagla(function(sql) {
+    # Asılı sorgu benzetimi: R kesme denetim noktalarında ilerleyen meşgul bekleme.
+    yakalanan$sorgu_basladi <- TRUE
+    bas <- Sys.time()
+    while (as.numeric(difftime(Sys.time(), bas, units = "secs")) < 10) sum(seq_len(10))
+    yakalanan$sorgu_bitti <- TRUE
+    data.frame()
+  })
   bas <- Sys.time()
   # Tanı iletisi R diline göre çevrilir; iddia ileti metnine değil davranışa
   # bakar: sorgu başladı, bitmeden kesildi ve süre bütçesine yakın hata verdi.
@@ -570,6 +619,8 @@ testthat::test_that("asılı kalan işçi sorgusu süre bütçesinde hata verir,
   testthat::expect_true(isTRUE(yakalanan$sorgu_basladi))
   testthat::expect_null(yakalanan$sorgu_bitti)
   testthat::expect_true(isTRUE(yakalanan$kapandi))
+  # Kesilen getirmenin sonuç kümesi de temizlenir.
+  testthat::expect_true(isTRUE(sorgu$temizlendi))
   testthat::expect_true(isTRUE(yakalanan$args$interruptible))
   testthat::expect_identical(yakalanan$execute, "SET LOCK_TIMEOUT 500")
   # Süre sınırı çağrı sonrasına sızmaz.
@@ -597,14 +648,14 @@ testthat::test_that("LOCK_TIMEOUT kurulumu süre bütçesini tüketirse ana sorg
     dbDisconnect = function(conn, ...) { yakalanan$kapandi <- TRUE; invisible(TRUE) },
     # Kurulum deyimi bütçeden uzun asılı kalır; R sınırı siler ve hata verir.
     dbExecute = function(conn, statement, ...) { mesgul(10); 0L },
-    dbGetQuery = function(conn, statement, ...) {
-      yakalanan$sorgu_basladi <- TRUE
-      mesgul(3)
-      yakalanan$sorgu_bitti <- TRUE
-      data.frame(x = 1L)
-    },
     .package = "DBI"
   )
+  .parcali_sorgu_bagla(function(sql) {
+    yakalanan$sorgu_basladi <- TRUE
+    mesgul(3)
+    yakalanan$sorgu_bitti <- TRUE
+    data.frame(x = 1L)
+  })
   bas <- Sys.time()
   testthat::expect_error(
     mergen_bounded_db_fetch_raw("SELECT 1", list(), dsn = "DSN", encoding = "UTF-8",
@@ -628,32 +679,39 @@ testthat::test_that("zaman aşımı olmayan LOCK_TIMEOUT kurulum hatası ölümc
     dbConnect = function(drv, ...) structure(list(), class = "sahte_baglanti"),
     dbDisconnect = function(conn, ...) { yakalanan$kapandi <- TRUE; invisible(TRUE) },
     dbExecute = function(conn, statement, ...) stop("sürücü SET deyimini desteklemiyor (test)"),
-    dbGetQuery = function(conn, statement, ...) data.frame(ChatID = 1L),
     .package = "DBI"
   )
+  .parcali_sorgu_bagla(function(sql) data.frame(ChatID = 1L))
   veri <- mergen_bounded_db_fetch_raw("SELECT 1", list(), dsn = "DSN", encoding = "UTF-8",
                                       name_encoding = "UTF-8", query_timeout = 5)
   testthat::expect_identical(veri$ChatID, 1L)
   testthat::expect_true(isTRUE(yakalanan$kapandi))
 
-  # Kurulum hatasından sonra da sorgu kalan bütçeyle sınırlıdır.
+  # Kurulum hatasından sonra sorgu TAZE değil KALAN bütçeyle sınırlıdır: kurulum
+  # 0,35 sn tüketip hata verir; 0,5 sn süren sorgu 0,6 sn'lik taze bütçeyle
+  # tamamlanırdı, kalan (~0,25 sn) bütçeyle kesilir.
+  mesgul <- function(sn) { b <- Sys.time(); while (as.numeric(difftime(Sys.time(), b, units = "secs")) < sn) sum(seq_len(10)) }
   testthat::local_mocked_bindings(
-    dbGetQuery = function(conn, statement, ...) {
-      bas <- Sys.time()
-      while (as.numeric(difftime(Sys.time(), bas, units = "secs")) < 3) sum(seq_len(10))
-      yakalanan$sorgu_bitti <- TRUE
-      data.frame()
-    },
+    dbExecute = function(conn, statement, ...) { mesgul(0.35); stop("sürücü SET deyimini desteklemiyor (test)") },
     .package = "DBI"
   )
+  yakalanan$sorgu_basladi <- NULL
+  .parcali_sorgu_bagla(function(sql) {
+    yakalanan$sorgu_basladi <- TRUE
+    mesgul(0.5)
+    yakalanan$sorgu_bitti <- TRUE
+    data.frame()
+  })
   bas <- Sys.time()
   testthat::expect_error(
     mergen_bounded_db_fetch_raw("SELECT 1", list(), dsn = "DSN", encoding = "UTF-8",
-                                name_encoding = "UTF-8", query_timeout = 0.4),
+                                name_encoding = "UTF-8", query_timeout = 0.6),
     class = "error"
   )
-  testthat::expect_lt(as.numeric(difftime(Sys.time(), bas, units = "secs")), 2.5)
+  # Sorgu başladı (erken ret değil) ama kalan bütçede kesildi.
+  testthat::expect_true(isTRUE(yakalanan$sorgu_basladi))
   testthat::expect_null(yakalanan$sorgu_bitti)
+  testthat::expect_lt(as.numeric(difftime(Sys.time(), bas, units = "secs")), 0.8)
 })
 
 # Başarılı bütçeli okuma sonrasında da süre sınırı aynı işçi sürecindeki
@@ -667,9 +725,9 @@ testthat::test_that("başarılı bütçeli okumadan sonra süre sınırı sonrak
     dbConnect = function(drv, ...) structure(list(), class = "sahte_baglanti"),
     dbDisconnect = function(conn, ...) invisible(TRUE),
     dbExecute = function(conn, statement, ...) 0L,
-    dbGetQuery = function(conn, statement, ...) data.frame(x = 1L),
     .package = "DBI"
   )
+  .parcali_sorgu_bagla(function(sql) data.frame(x = 1L))
   veri <- mergen_bounded_db_fetch_raw("SELECT 1", list(), dsn = "DSN", encoding = "UTF-8",
                                       name_encoding = "UTF-8", query_timeout = 0.3)
   testthat::expect_identical(veri$x, 1L)
@@ -697,6 +755,7 @@ testthat::test_that("bütçeli okuma tam sayı parametreleri doğrudan yürütme
     },
     dbDisconnect = function(conn, ...) invisible(TRUE),
     dbExecute = function(conn, statement, ...) 0L,
+    # Bütçesiz yol parametre bağlamayı korur (dbGetQuery); bütçeli yol parçalı getirir.
     dbGetQuery = function(conn, statement, params = NULL, ...) {
       yakalanan$sql <- statement
       yakalanan$params <- params
@@ -704,6 +763,11 @@ testthat::test_that("bütçeli okuma tam sayı parametreleri doğrudan yürütme
     },
     .package = "DBI"
   )
+  .parcali_sorgu_bagla(function(sql) {
+    yakalanan$sql <- sql
+    yakalanan$params <- NULL
+    data.frame(x = 1L)
+  })
   sql <- "SELECT c.ChatID FROM MB_Chats c WHERE c.ChatID IN (?, ?) AND c.UserID = ? AND c.ChatTitle <> '?'"
   mergen_bounded_db_fetch_raw(sql, list(5L, 6, 42L), dsn = "DSN", encoding = "UTF-8",
                               name_encoding = "UTF-8", query_timeout = 5)
@@ -730,4 +794,107 @@ testthat::test_that("bütçeli okuma tam sayı parametreleri doğrudan yürütme
                               name_encoding = "UTF-8")
   testthat::expect_identical(yakalanan$params, list(1L))
   testthat::expect_identical(yakalanan$sql, "SELECT 1 WHERE 1 = ?")
+})
+
+testthat::test_that("gönderimden sonra açılan söyleşi: DB etkinlik zamanı korunur, yerel ilerleme sırayı değiştirir, eşit sayı yeniden okuma işaretler", {
+  .startup_preview_source_once()
+  t0 <- as.POSIXct("2026-07-01 09:00:00", tz = "UTC")
+  t1 <- as.POSIXct("2026-07-01 11:00:00", tz = "UTC")
+  t2 <- as.POSIXct("2026-07-01 12:00:00", tz = "UTC")
+  anlik <- list("2" = list(title = "İki", last_message_timestamp = t1, message_count = 1L))
+  db <- list("2" = list(title = "İki", last_message_timestamp = t1, message_count = 1L),
+             "5" = list(title = "Eski", last_message_timestamp = t0, message_count = 2L))
+  # İçerik aramasından açılan eski söyleşi: detay okuyucu etkinlik zamanı taşımaz.
+  mesajlar <- list(list(type = "user", content = "çğış"), list(type = "ai", content = "yanıt"))
+  hidrate <- c(anlik, list("5" = list(title = "Eski", messages = mesajlar, message_count = 2L)))
+  birlesik <- mergen_saved_chats_merge_newer(db, anlik, hidrate)
+  testthat::expect_identical(birlesik[["5"]]$last_message_timestamp, t0)
+  testthat::expect_identical(birlesik[["5"]]$messages, mesajlar)
+  testthat::expect_null(birlesik[["5"]]$transkript_yenile)
+  testthat::expect_identical(names(birlesik), c("2", "5"))
+  # Yerelde yeni mesaj (sayı DB'yi geçti): en yeni etkinlik başa taşınır.
+  ileride <- hidrate
+  ileride[["5"]]$messages <- c(mesajlar, list(list(type = "user", content = "yeni")))
+  ileride[["5"]]$message_count <- 3L
+  ileride[["5"]]$last_message_timestamp <- t2
+  birlesik <- mergen_saved_chats_merge_newer(db, anlik, ileride)
+  testthat::expect_identical(names(birlesik), c("5", "2"))
+  testthat::expect_identical(birlesik[["5"]]$message_count, 3L)
+  testthat::expect_identical(birlesik[["5"]]$last_message_timestamp, t2)
+  # DB daha yeniyse DB'nin etkinliği kalır.
+  db_yeni <- db
+  db_yeni[["5"]]$message_count <- 4L
+  db_yeni[["5"]]$last_message_timestamp <- t2 + 60
+  birlesik <- mergen_saved_chats_merge_newer(db_yeni, anlik, ileride)
+  testthat::expect_identical(birlesik[["5"]]$message_count, 4L)
+  testthat::expect_identical(names(birlesik), c("2", "5"))
+  # Eşit sayı ama farklı son mesaj zamanı: önbellek korunur, yeniden açılışta okuma istenir.
+  db_esit <- db
+  db_esit[["5"]]$message_count <- 3L
+  db_esit[["5"]]$last_message_timestamp <- t1 + 30
+  birlesik <- mergen_saved_chats_merge_newer(db_esit, anlik, ileride)
+  testthat::expect_true(isTRUE(birlesik[["5"]]$transkript_yenile))
+  testthat::expect_identical(length(birlesik[["5"]]$messages), 3L)
+})
+
+testthat::test_that("anlık görüntüdeki söyleşide hem DB hem yerel etkinlik ilerlediyse transkript yeniden okunmak üzere işaretlenir", {
+  .startup_preview_source_once()
+  t0 <- as.POSIXct("2026-07-01 10:00:00", tz = "UTC")
+  iki <- list(list(type = "user", content = "a"), list(type = "ai", content = "b"))
+  anlik <- list("1" = list(title = "Bir", messages = iki, last_message_timestamp = t0, message_count = 2L))
+  # Başka sekme X'i, bu sekme Y'yi kaydetti: sayılar eşit (3) ama içerik farklı.
+  simdiki <- anlik
+  simdiki[["1"]]$messages <- c(iki, list(list(type = "user", content = "Y")))
+  simdiki[["1"]]$message_count <- 3L
+  simdiki[["1"]]$last_message_timestamp <- t0 + 120
+  db <- list("1" = list(title = "Bir", last_message_timestamp = t0 + 60, message_count = 3L))
+  birlesik <- mergen_saved_chats_merge_newer(db, anlik, simdiki)
+  testthat::expect_true(isTRUE(birlesik[["1"]]$transkript_yenile))
+  # Yalnızca yerel ilerlediyse (DB okuması eski) işaret konmaz.
+  db_eski <- list("1" = list(title = "Bir", last_message_timestamp = t0, message_count = 2L))
+  testthat::expect_null(mergen_saved_chats_merge_newer(db_eski, anlik, simdiki)[["1"]]$transkript_yenile)
+})
+
+testthat::test_that("bütçeli okuma satırları parçalı getirir; süre sınırı parçalar arasında denetlenir", {
+  testthat::skip_if_not_installed("DBI")
+  testthat::skip_if_not_installed("odbc")
+  .startup_preview_source_once()
+  kayit <- new.env(parent = emptyenv())
+  parca_sayisi <- 3L
+  mesgul <- function(sn) { bas <- Sys.time(); while (as.numeric(difftime(Sys.time(), bas, units = "secs")) < sn) sum(1:10) }
+  bekleme <- 0
+  testthat::local_mocked_bindings(
+    dbConnect = function(drv, ...) structure(list(), class = "sahte_baglanti"),
+    dbDisconnect = function(conn, ...) invisible(TRUE),
+    dbExecute = function(conn, statement, ...) 0L,
+    dbSendQuery = function(conn, statement, ...) { kayit$verilen <- 0L; structure(list(), class = "sahte_sonuc") },
+    # Her getirme çağrısı ayrı bir parça döndürür (yerel getirme benzetimi).
+    dbFetch = function(res, n = -1, ...) {
+      kayit$n <- c(kayit$n, n)
+      kayit$verilen <- kayit$verilen + 1L
+      mesgul(bekleme)
+      data.frame(ChatID = kayit$verilen)
+    },
+    dbHasCompleted = function(res, ...) kayit$verilen >= parca_sayisi,
+    dbClearResult = function(res, ...) { kayit$temizlendi <- TRUE; invisible(TRUE) },
+    .package = "DBI"
+  )
+  veri <- mergen_bounded_db_fetch_raw("SELECT 1", list(), dsn = "DSN", encoding = "UTF-8",
+                                      name_encoding = "UTF-8", query_timeout = 5)
+  testthat::expect_identical(veri$ChatID, 1:3)
+  testthat::expect_true(all(kayit$n == 1000L))
+  testthat::expect_true(isTRUE(kayit$temizlendi))
+  # Her parça 0,3 sn sürer; 0,5 sn bütçe üçüncü parçadan önce aşılır ve okuma durur.
+  kayit$n <- NULL
+  kayit$temizlendi <- NULL
+  bekleme <- 0.3
+  bas <- Sys.time()
+  testthat::expect_error(
+    mergen_bounded_db_fetch_raw("SELECT 1", list(), dsn = "DSN", encoding = "UTF-8",
+                                name_encoding = "UTF-8", query_timeout = 0.5),
+    class = "error"
+  )
+  testthat::expect_lt(as.numeric(difftime(Sys.time(), bas, units = "secs")), 0.95)
+  testthat::expect_lt(kayit$verilen, parca_sayisi)
+  testthat::expect_true(isTRUE(kayit$temizlendi))
 })

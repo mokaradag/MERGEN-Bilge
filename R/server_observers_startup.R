@@ -123,6 +123,17 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 
 	if (is.na(effective_user_id) || effective_user_id <= 0) {
 	  cat("[STARTUP] Geçerli kullanıcı kimliği yok, kayıtlı sohbet yüklemesi atlandı\n")
+	  # Sahip değişimi anahtarı sıfırladıktan sonra kimlik yoksa Zengin Deneyim
+	  # beklemede kalmaz; run_full_saved_chats_load() ile aynı "kısmen" durumu
+	  # yayımlanır (Hızlı Başlangıç bu anahtarı beklemez).
+	  serit <- shiny::isolate(input$startup_lane_resolved)
+	  if (!is.null(serit) &&
+	      !isTRUE(mergen_startup_lane_is_fast(if (is.list(serit)) serit$lane else serit)) &&
+	      is.function(session$userData$mergen_yonetim_hazir)) {
+		session$userData$mergen_yonetim_hazir("management_pages_ready",
+		  "Kullanıcı kimliği bekleniyor; Söyleşi Yönetimi kimlik doğrulanınca hazırlanacak",
+		  detail = list(degraded = TRUE, identity = FALSE))
+	  }
 	  return(invisible(NULL))
 	}
 
@@ -209,9 +220,16 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		detail = list(deferred = TRUE)
 	  )
 
-	  hydrate_preview_chats <- function(chats, dispatched_hydration_user_id) {
+	  hydrate_preview_chats <- function(chats, dispatched_hydration_user_id, dispatched_nesil = NULL) {
 		# Kapanan oturumun geç kalan callback'i durum değiştiremez.
 		if (session_closed()) {
+		  return(invisible(NULL))
+		}
+		# Gönderimdeki nesil geçerli değilse (arada sahip değişti; kimlik düşüp
+		# AYNI kullanıcı geri dönse bile) sonuç uygulanmaz, yeniden deneme durumu
+		# ve tam liste planı yalnızca o nesle aitse değişir.
+		if (!is.null(dispatched_nesil) && !identical(startup_state$full_load_generation, dispatched_nesil)) {
+		  cat("[STARTUP] Ön izleme nesli değişti, geç kalan sonuç atlandı\n")
 		  return(invisible(NULL))
 		}
 		# Worker gönderildikten sonra kimlik değişmişse (SSO yenileme, oturum
@@ -297,6 +315,8 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		}
 		startup_state$preview_hydration_started <- TRUE
 		startup_state$preview_hydration_user_id <- hydration_user_id
+		hydration_nesil <- startup_state$full_load_generation
+		startup_state$preview_hydration_nesil <- hydration_nesil
 
 		dispatch_started <- Sys.time()
 		preview_promise <- tryCatch({
@@ -337,15 +357,17 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		session$userData$initial_saved_chats_preview_promise <- promises::then(
 		  preview_promise,
 		  onFulfilled = function(chats) {
-			hydrate_preview_chats(chats, hydration_user_id)
+			hydrate_preview_chats(chats, hydration_user_id, hydration_nesil)
 			NULL
 		  },
 		  onRejected = function(err) {
-			if (identical(startup_state$preview_hydration_user_id, hydration_user_id)) {
+			# Yeniden deneme durumu yalnızca bu gönderimin nesline aitse sıfırlanır.
+			if (identical(startup_state$preview_hydration_user_id, hydration_user_id) &&
+			    identical(startup_state$preview_hydration_nesil, hydration_nesil)) {
 			  startup_state$preview_hydration_started <- FALSE
 			  startup_state$preview_hydration_user_id <- NULL
 			}
-			warning(sprintf("[SERVER] Preview chat load failed: %s", conditionMessage(err)))
+			warning(sprintf("[SERVER] Preview chat load failed: %s", (if (exists("mergen_db_error_log_summary", mode = "function")) mergen_db_error_log_summary(err) else "(ayrıntı gizlendi)")))
 			NULL
 		  }
 		)
@@ -375,7 +397,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  preview_chats <- tryCatch(
 		load_chats_preview_from_db(effective_user_id, limit = 6L),
 		error = function(e) {
-		  warning(sprintf("[SERVER] Preview chat load failed: %s", conditionMessage(e)))
+		  warning(sprintf("[SERVER] Preview chat load failed: %s", (if (exists("mergen_db_error_log_summary", mode = "function")) mergen_db_error_log_summary(e) else "(ayrıntı gizlendi)")))
 		  list()
 		}
 	  )
@@ -456,6 +478,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			  return(NULL)
 			}
 			startup_state$initial_saved_chats_status <- "done"
+			startup_state$yukleme_sirasinda_ziyaret <- FALSE
 
 			chats <- chats %||% list()
 
@@ -510,10 +533,21 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		            "Söyleşi listesi yüklenemedi; sayfa açıldığında yeniden denenecek",
 		            detail = list(degraded = TRUE))
 		  # Sürücü hatası DSN/sunucu adı taşıyabilir; günlüğe maskelenmiş yazılır.
-		  hata_metni <- if (exists("redacted_condition_message", mode = "function")) {
-			redacted_condition_message(err)
-		  } else "(ayrıntı gizlendi)"
-		  warning(sprintf("[SERVER] Initial saved chat load failed: %s", hata_metni))
+		  # Sürücü tanısı DSN ve (gömülü kimlikli) SQL taşıyabilir: maskelenmiş
+		  # özet yazılır, deyim gövdesi atılır.
+		  warning(sprintf("[SERVER] Initial saved chat load failed: %s", (if (exists("mergen_db_error_log_summary", mode = "function")) mergen_db_error_log_summary(err) else "(ayrıntı gizlendi)")))
+		  # Yükleme sürerken açılan yönetim sayfası tetiği atlanmıştı: o ziyaret
+		  # için TEK yeniden deneme yapılır (süren hata sonsuz denemeye dönmez;
+		  # yeniden deneme sırasında yeni ziyaret işaretlenmez).
+		  if (isTRUE(startup_state$yukleme_sirasinda_ziyaret)) {
+			startup_state$yukleme_sirasinda_ziyaret <- FALSE
+			acik_sekme <- shiny::isolate(input$tabs)
+			tetikle <- startup_state$trigger_lazy_full_saved_chats_load
+			if (is.function(tetikle) && length(acik_sekme) == 1L &&
+			    acik_sekme %in% c("saved_chats", "history")) {
+			  shiny::withReactiveDomain(session, shiny::isolate(tetikle(acik_sekme)))
+			}
+		  }
 		  NULL
 		}
 	  )
@@ -544,6 +578,11 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  }
 	  if (!isTRUE(session$userData$saved_chats_full_pending) ||
 		  !identical(startup_state$initial_saved_chats_status, "deferred")) {
+		# Arka plan yüklemesi sürerken açılan sayfa hatırlanır: yükleme başarısız
+		# olursa bu ziyaret için bir kez yeniden denenir.
+		if (identical(startup_state$initial_saved_chats_status, "loading") && tab != "arka_plan") {
+		  startup_state$yukleme_sirasinda_ziyaret <- TRUE
+		}
 		return(invisible(FALSE))
 	  }
 
@@ -603,6 +642,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  startup_state$kimlik_bekleniyor <- is.na(uid) || uid <= 0
 	  startup_state$initial_saved_chats_status <- "idle"
 	  startup_state$full_saved_chats_load_started <- FALSE
+	  startup_state$yukleme_sirasinda_ziyaret <- FALSE
 	  startup_state$preview_hydration_started <- FALSE
 	  startup_state$preview_hydration_user_id <- NULL
 	  session$userData$saved_chats_full_pending <- FALSE

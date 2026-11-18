@@ -87,6 +87,9 @@ bootReadinessInit <- function(session, required = NULL) {
       detail = detail,
       required_done = intersect(done, required),
       required_total = length(required),
+      # Kısmen (degraded) tamamlanan zorunlu noktalar: istemci kapanışta
+      # niteliksiz "Hazır" yerine kısmi durumu gösterir.
+      kismen = intersect(kismen, required),
       ready = all(required %in% done)
     )
 

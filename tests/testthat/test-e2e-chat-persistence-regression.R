@@ -314,7 +314,8 @@ test_that("runtime files keep saved chat, history and gallery race contracts wir
 
   required_history_patterns <- c(
     "observeEvent(input$external_refresh_trigger",
-    "refresh_history_cache(force = TRUE)",
+    # Elle yenileme tam yenileme yapar; başarı satırlar yayımlanınca bildirilir.
+    "refresh_history_cache(force = TRUE, on_done = history_refresh_notifier(",
     "load_history_rows_batch(",
     "user_id = resolve_current_user_id()"
   )

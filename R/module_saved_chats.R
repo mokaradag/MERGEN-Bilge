@@ -82,6 +82,7 @@ savedChatsServer <- function(id, saved_chats) {
     }
 
     cached_meta <- reactiveVal(empty_meta())
+    zaman_onbellegi <- new.env(hash = TRUE, parent = emptyenv())
 
     # Saat dilimi sabiti - DB'deki zaman damgaları Istanbul zamanında saklanır
     TARGET_TZ <- "Europe/Istanbul"
@@ -154,10 +155,24 @@ savedChatsServer <- function(id, saved_chats) {
 
       ids <- names(chats)
       titles <- vapply(chats, function(chat) chat$title %||% "Söyleşi", character(1))
-      timestamps <- vapply(chats, function(chat) {
-        raw <- chat$last_message_timestamp %||% chat$timestamp
-        as.numeric(parse_timestamp(raw))
+      # Zaman damgası söyleşi başına önbellekten okunur: arka planda yayımlanan
+      # binlerce söyleşilik listede tek bir mesaj (sayfa gizliyken de) tüm
+      # damgaları yeniden ayrıştırmaz; yalnızca ham değeri değişen söyleşi
+      # ayrıştırılır. Silinen söyleşilerin kayıtları yeni önbelleğe taşınmaz.
+      onceki <- zaman_onbellegi
+      yeni_onbellek <- new.env(hash = TRUE, parent = emptyenv())
+      timestamps <- vapply(seq_along(chats), function(i) {
+        raw <- chats[[i]]$last_message_timestamp %||% chats[[i]]$timestamp
+        anahtar <- ids[[i]]
+        gecerli_anahtar <- !is.na(anahtar) && nzchar(anahtar)
+        kayit <- if (gecerli_anahtar) get0(anahtar, envir = onceki, inherits = FALSE) else NULL
+        if (is.null(kayit) || !identical(kayit$ham, raw)) {
+          kayit <- list(ham = raw, sayi = as.numeric(parse_timestamp(raw)))
+        }
+        if (gecerli_anahtar) assign(anahtar, kayit, envir = yeni_onbellek)
+        kayit$sayi
       }, numeric(1))
+      zaman_onbellegi <<- yeni_onbellek
 
       timestamps <- as.POSIXct(timestamps, origin = "1970-01-01", tz = TARGET_TZ)
 

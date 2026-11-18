@@ -90,6 +90,8 @@
   var stageIndex = -1;
   var finished = false;
   var pendingFinishUntilLaneResolved = false;
+  // Sunucunun kısmi hazır bildirimi kapanış etiketini belirler (niteliksiz "Hazır" değil).
+  var kapanisEtiketi = null;
   var fadeStarted = false;
   var ssoActive = false;
   var skipIntro = false;
@@ -328,8 +330,24 @@
 
       setStage(msg.key);
 
+      // Zengin açılışta yalnızca Söyleşi Yönetimi hazırlığı bekleniyorsa
+      // kullanıcı neyin beklendiğini görür (önceki aşama etiketi kalmaz).
+      var tamam = [].concat(msg.required_done || []);
+      var kismen = [].concat(msg.kismen || []);
+      if (msg.ready !== true && !isFastLane() && statusText &&
+          tamam.indexOf("management_pages_ready") < 0 &&
+          typeof msg.required_total === "number" && tamam.length === msg.required_total - 1) {
+        lastStageLabel = "Söyleşi Yönetimi verisi hazırlanıyor";
+        statusText.textContent = lastStageLabel;
+      }
+
       if (msg.ready === true) {
         setStage("ready");
+        // Kısmen hazır (ör. hazırlık süre sınırı) niteliksiz "Hazır" gösterilmez.
+        var etiket = kismen.length === 0 ? "Hazır" :
+          (kismen.indexOf("management_pages_ready") >= 0 ?
+            "Hazır — Söyleşi Yönetimi verisi arka planda tamamlanıyor" : "Kısmen hazır");
+        kapanisEtiketi = etiket;
         window.setTimeout(function () {
           finish({ deferForLane: true });
         }, 260);
@@ -381,7 +399,7 @@
     finished = true;
     overlay.classList.add("alo-complete");
     if (statusText) {
-      statusText.textContent = "Hazır";
+      statusText.textContent = kapanisEtiketi || "Hazır";
     }
     // Giriş atlandıysa (veya Hızlı Başlangıç şeridi aktifse) derin uzay intro
     // müziği karşılama ekranına devretmeden burada yumuşakça durdurulur.

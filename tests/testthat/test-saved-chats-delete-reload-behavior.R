@@ -95,3 +95,40 @@ testthat::test_that("silme sonrası yeniden okuma başarılıysa liste DB'den ku
     testthat::expect_identical(session$userData$saved_chats_yetkili_surum, 1L)
   })
 })
+
+testthat::test_that("kanonik olmayan kimlikle silme işaret, yerel kaldırma ve etkin söyleşi için aynı kanonik kimliği kullanır", {
+  kayit <- new.env()
+  kayit$okuma_hatasi <- TRUE
+  env <- .silme_ortami(kayit)
+  baslangic <- list("7" = list(title = "Yedi çğış"), "2" = list(title = "İki"))
+  shiny::testServer(.silme_sunucusu(env, kayit, baslangic), {
+    session$flushReact()
+    session$userData$.values$current_chat_id <- 7L
+    session$userData$.sil("007")
+    session$flushReact()
+    testthat::expect_identical(kayit$silinen, "7")
+    testthat::expect_identical(session$userData$saved_chats_silinenler, "7")
+    testthat::expect_identical(names(shiny::isolate(session$userData$.values$saved_chats)), "2")
+    # Etkin söyleşi kanonik eşleşmeyle silindi sayılır ve sıfırlanır.
+    testthat::expect_null(shiny::isolate(session$userData$.values$current_chat_id))
+  })
+})
+
+testthat::test_that("doğrulanmamış silmede yeniden okuma da başarısızsa kart ve açık söyleşi korunur", {
+  kayit <- new.env()
+  kayit$okuma_hatasi <- TRUE
+  kayit$etkilenen <- 0L
+  env <- .silme_ortami(kayit)
+  baslangic <- list("1" = list(title = "Bir"), "2" = list(title = "İki çğış"))
+  shiny::testServer(.silme_sunucusu(env, kayit, baslangic), {
+    session$flushReact()
+    session$userData$.values$current_chat_id <- "1"
+    session$userData$.values$messages <- list(list(type = "user", content = "çğış"))
+    session$userData$.sil("1")
+    session$flushReact()
+    testthat::expect_identical(names(shiny::isolate(session$userData$.values$saved_chats)), c("1", "2"))
+    testthat::expect_identical(shiny::isolate(session$userData$.values$current_chat_id), "1")
+    testthat::expect_length(shiny::isolate(session$userData$.values$messages), 1L)
+    testthat::expect_true(any(grepl("doğrulanamadı", kayit$toast, fixed = TRUE)))
+  })
+})
