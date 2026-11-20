@@ -168,8 +168,9 @@ test_that("log sınırı kaçış belirsizliğinde, camelCase jetonlarda, CRLF'd
   expect_false(grepl(pw, out, fixed = TRUE))
   expect_false(grepl("db", out, fixed = TRUE))
   # Ters bölü içeren sunucu adı (HOST\INSTANCE) ve komşu alan maskelenir.
-  out <- redacted_condition_message(simpleError("Server='HOST\\INST';Database='x'"))
+  out <- redacted_condition_message(simpleError("Server='HOST\\INST';Database='GizliVeritabani'"))
   expect_false(grepl("HOST", out, fixed = TRUE))
+  expect_false(grepl("GizliVeritabani", out, fixed = TRUE))
   # authToken / idToken JSON alanları maskelenir; sözcük içi `mytoken` korunur.
   for (anahtar in c("authToken", "idToken", "auth_token")) {
     out <- redacted_condition_message(simpleError(paste0("{\"", anahtar, "\":\"", pw, "\"}")))
@@ -220,4 +221,37 @@ test_that("tanı ters bölüyle biten kapanmamış tırnaklı parolada kesilse d
   pw <- paste0("ab", "c")
   out <- redacted_condition_message(simpleError(paste0("hata PWD='", pw, "\\")))
   expect_identical(out, "hata PWD='<redacted>")
+})
+
+test_that("Bearer tilda kuyruğu, Digest parametreleri, kaçışlı kesilmiş tırnak, boşluklu DSN ve küçük harfli SQL maskelenir", {
+  .redact_env_yalit()
+  kuyruk <- paste0("gizli", "Kuyruk99")
+  # RFC 6750 Bearer '~' karakterinden sonraki kuyruk kısmen açıkta kalmaz.
+  out_bearer <- redacted_condition_message(simpleError(paste0("Authorization: Bearer abcdef~", kuyruk)))
+  expect_identical(out_bearer, "Authorization: Bearer <redacted>")
+  expect_false(grepl(kuyruk, out_bearer, fixed = TRUE))
+
+  # Digest başlığındaki tırnaklı tüm parametreler maskelenir.
+  out_digest <- redacted_condition_message(simpleError(
+    paste0("Authorization: Digest username=\"demo\", realm=\"ic\", response=\"", kuyruk, "\"")
+  ))
+  expect_identical(out_digest, "Authorization: Digest <redacted>")
+  expect_false(grepl("demo", out_digest, fixed = TRUE))
+  expect_false(grepl(kuyruk, out_digest, fixed = TRUE))
+
+  # Kaçışlı tırnaktan sonra kapanış olmadan kesilen değer satır sonuna dek maskelenir.
+  out_kesik <- redacted_condition_message(simpleError(
+    paste0("api_key=\"abcdef\\\"", kuyruk, "\nsonraki satır korunur")
+  ))
+  expect_false(grepl(kuyruk, out_kesik, fixed = TRUE))
+  expect_true(grepl("sonraki satır korunur", out_kesik, fixed = TRUE))
+
+  # Noktalı virgülle ayrılan boşluklu ODBC DSN değeri bütünüyle maskelenir.
+  out_dsn <- redacted_condition_message(simpleError("DSN=Ozel Raporlama;UID=demo_kullanici"))
+  expect_identical(out_dsn, "DSN=<redacted>;UID=<redacted>")
+
+  # <SQL> etiketi olmadan küçük harfli SQL deyimi de özetten çıkarılır.
+  ozet_kucuk <- mergen_db_error_log_summary(simpleError("nanodbc: hata select id from MB_Chats where UserID = 4242"))
+  expect_false(grepl("4242", ozet_kucuk, fixed = TRUE))
+  expect_match(ozet_kucuk, "<SQL gizlendi>", fixed = TRUE)
 })

@@ -58,7 +58,17 @@ $(document).ready(function() {
   }
 
   function kilitliMi() {
-    return bekleyenIstemler.some(function(b) { return !b.ayrildi; });
+    for (let i = 0; i < bekleyenIstemler.length; i++) {
+      if (!bekleyenIstemler[i].ayrildi) return true;
+    }
+    for (let i = 0; i < kabulBekleyenler.length; i++) {
+      const b = kabulBekleyenler[i];
+      if (!b.gec || b.sureDoldu) continue;
+      for (let j = 0; j < geriYuklemeler.length; j++) {
+        if (geriYuklemeler[j].id === b.id && !geriYuklemeler[j].duzenlendi) return true;
+      }
+    }
+    return false;
   }
 
   // Düğme bekleme durumu: Durdur simgesi GÖSTERİLMEZ (tıklama yutulurken
@@ -184,6 +194,34 @@ $(document).ready(function() {
   // tutulur; sayı sınırı yoktur (her kayıt girdideki gerçek metne karşılık gelir).
   const geriYuklemeler = [];
   let sonDeger = '';
+  let oncekiSecim = null;
+
+  function ekImzasi() {
+    const ek = document.querySelector('#file_prompt_indicator_ui');
+    if (!ek || !ek.children || !ek.children.length) return '';
+    const dogrudan = String(ek.textContent || '').trim();
+    if (dogrudan) return dogrudan;
+    const parcalar = [];
+    for (let i = 0; i < ek.children.length; i++) {
+      parcalar.push(String((ek.children[i] && ek.children[i].textContent) || '').trim());
+    }
+    return parcalar.join('|').trim();
+  }
+
+  function sahipsizleriBudala() {
+    const canli = {};
+    for (let i = 0; i < geriYuklemeler.length; i++) canli[geriYuklemeler[i].id] = true;
+    const sahipsizZa = [];
+    for (let i = 0; i < zamanAsimlari.length; i++) {
+      if (!canli[zamanAsimlari[i].id]) sahipsizZa.push(zamanAsimlari[i]);
+    }
+    while (sahipsizZa.length > 8) listedenCikar(zamanAsimlari, sahipsizZa.shift());
+    const sahipsizGec = [];
+    for (let i = 0; i < kabulBekleyenler.length; i++) {
+      if (kabulBekleyenler[i].gec && !canli[kabulBekleyenler[i].id]) sahipsizGec.push(kabulBekleyenler[i]);
+    }
+    while (sahipsizGec.length > 8) listedenCikar(kabulBekleyenler, sahipsizGec.shift());
+  }
 
   // Eski ve yeni değer arasındaki tek düzenleme bölgesi. İmleç biliniyorsa
   // imleçten sonraki metin değişmemiş sonek sayılır (silinen özdeş satırın
@@ -214,8 +252,18 @@ $(document).ready(function() {
     if (!giris) return;
     const yeni = String(giris.value || '');
     const eski = sonDeger;
+    const secim = oncekiSecim;
+    oncekiSecim = null;
     sonDeger = yeni;
     if (yeni === eski || !geriYuklemeler.length) return;
+    // Tüm girdi seçilip değiştirildiyse (Ctrl+A + yapıştır/yaz) eski geri
+    // yükleme sahipliği tamamen düşer; yeni taslak önceki isteğe bağlanmaz.
+    if (secim && eski.length > 0 && secim.uzunluk === eski.length &&
+        secim.bas === 0 && secim.son === eski.length) {
+      geriYuklemeler.length = 0;
+      sahipsizleriBudala();
+      return;
+    }
     const d = duzenlemeBolgesi(eski, yeni, imlec);
     const fark = yeni.length - eski.length;
     const ekleme = d.bas === d.eskiSon;
@@ -241,9 +289,11 @@ $(document).ready(function() {
       if (son <= bas) { geriYuklemeler.splice(i, 1); continue; }
       b.bas = bas;
       b.son = son;
-      b.duzenlendi = true;
+      // Düzenleme geri alınıp özgün metne dönüldüyse geç kabul yine uzlaştırabilir.
+      b.duzenlendi = (typeof b.ozgun === 'string') ? (yeni.slice(bas, son) !== b.ozgun) : true;
       i++;
     }
+    sahipsizleriBudala();
   }
 
   // Seçilen sahiplerin bölümleri aralıklarıyla kesilir; diğer bölümler ve
@@ -255,6 +305,8 @@ $(document).ready(function() {
     const secilen = geriYuklemeler.filter(secici);
     if (!secilen.length) return;
     const deger = sonDeger;
+    const secBas = typeof giris.selectionStart === 'number' ? giris.selectionStart : null;
+    const secSon = typeof giris.selectionEnd === 'number' ? giris.selectionEnd : null;
     const kalanlar = geriYuklemeler.filter(function(b) { return secilen.indexOf(b) < 0; });
     const araliklar = secilen.map(function(b) {
       let bas = b.bas;
@@ -293,6 +345,10 @@ $(document).ready(function() {
     });
     giris.value = yeni;
     sonDeger = yeni;
+    if (secBas !== null && secSon !== null && typeof giris.setSelectionRange === 'function') {
+      try { giris.setSelectionRange(esle(secBas), esle(secSon)); } catch (e) {}
+    }
+    sahipsizleriBudala();
     girisiYenile(giris);
   }
 
@@ -306,10 +362,12 @@ $(document).ready(function() {
     if (!giris || !ham.trim()) return false;
     bolumleriEsitle();
     const mevcut = sonDeger;
+    const secBas = typeof giris.selectionStart === 'number' ? giris.selectionStart : null;
+    const secSon = typeof giris.selectionEnd === 'number' ? giris.selectionEnd : null;
     if (!mevcut.trim()) {
       geriYuklemeler.length = 0;
       giris.value = ham;
-      geriYuklemeler.unshift({ id: kayit.id, bas: 0, son: ham.length, duzenlendi: false });
+      geriYuklemeler.unshift({ id: kayit.id, bas: 0, son: ham.length, duzenlendi: false, ozgun: ham });
     } else if (mevcut.trim() === ham.trim() && !geriYuklemeler.length) {
       // Bağımsız yazılmış özdeş taslak: hiçbir şey eklenmez, sahiplik de alınmaz.
       return true;
@@ -317,7 +375,10 @@ $(document).ready(function() {
       const ek = ham + '\n';
       giris.value = ek + mevcut;
       geriYuklemeler.forEach(function(b) { b.bas += ek.length; b.son += ek.length; });
-      geriYuklemeler.unshift({ id: kayit.id, bas: 0, son: ek.length, duzenlendi: false });
+      geriYuklemeler.unshift({ id: kayit.id, bas: 0, son: ek.length, duzenlendi: false, ozgun: ek });
+      if (secBas !== null && secSon !== null && typeof giris.setSelectionRange === 'function') {
+        try { giris.setSelectionRange(secBas + ek.length, secSon + ek.length); } catch (e) {}
+      }
     }
     sonDeger = String(giris.value || '');
     girisiYenile(giris);
@@ -344,12 +405,15 @@ $(document).ready(function() {
     }
     let metin = bildirim || 'İstem gönderilemedi; metin giriş alanına geri yüklendi.';
     // Yalnız dosya istemi (metin yok): metin geri yüklendi denmez. Dosya eki
-    // bu arada temizlendiyse (ör. Yeni Söyleşi) yeniden eklenmesi istenir.
+    // değiştiyse farklı dosyayı özgün dosya gibi duyurmaz, doğrulama ister.
     if (!geriYuklendi && !String(kayit.hamMetin || '').trim()) {
       const ek = document.querySelector('#file_prompt_indicator_ui');
       const ekVar = !!(ek && ek.children && ek.children.length > 0);
+      const ayniEk = ekVar && (!kayit.ekImzasi || ekImzasi() === kayit.ekImzasi);
       metin = 'Dosya istemi gönderilemedi ya da iletildiği doğrulanamadı. ' +
-        (ekVar ? 'Dosya eki hâlâ seçili; tekrar gönderebilirsiniz.' : 'Lütfen dosyayı yeniden ekleyip tekrar deneyin.');
+        (ayniEk ? 'Dosya eki hâlâ seçili; tekrar gönderebilirsiniz.'
+          : (ekVar ? 'Seçili dosya eki değişmiş olabilir; göndermeden önce dosya seçimini kontrol edin.'
+            : 'Lütfen dosyayı yeniden ekleyip tekrar deneyin.'));
     }
     // Daha yeni bir istem hâlâ gönderiliyorsa onun durumu silinmez: bildirim
     // önceki isteme ait olduğunu belirtir ve süren gönderimi yeniden duyurur.
@@ -363,6 +427,7 @@ $(document).ready(function() {
     balonuKaldir(kayit);
     // Geç kabulde geri yüklenen metin ancak asıl balon görünürken kalkar.
     if (dugum && kayit.gec) geriYuklemeyiUzlastir(kayit);
+    dugmeDurumunuGuncelle();
   }
 
   // Asıl balon gecikirse kabul edilmiş istem kaybolmaz: bekleyen balon
@@ -445,6 +510,7 @@ $(document).ready(function() {
       // Düzenlenmiş bölümler de kaldırılır; ilgisiz taslak aynen kalır.
       bolumleriKaldir(function() { return true; });
       geriYuklemeler.length = 0;
+      canliBildir('');
       dugmeDurumunuGuncelle();
     });
   }
@@ -468,18 +534,22 @@ $(document).ready(function() {
     if (dugum) { geriYuklemeyiUzlastir(kayit); return; }
     kayit.mesajId = mesajId;
     kayit.gec = true;
+    kayit.sureDoldu = false;
     kabulBekleyenler.push(kayit);
-    // Asıl balonu hiç gelmeyen geç kabuller sınırlı tutulur (metin girdide kalır).
-    const gecler = kabulBekleyenler.filter(function(b) { return b.gec; });
-    if (gecler.length > 8) listedenCikar(kabulBekleyenler, gecler[0]);
+    kayit.zamanlayici = setTimeout(function() {
+      kayit.sureDoldu = true;
+      dugmeDurumunuGuncelle();
+    }, KABUL_DUGUM_BEKLEME_MS);
+    dugmeDurumunuGuncelle();
+    sahipsizleriBudala();
   }
 
   function sonucZamanAsimi(kayit) {
     if (bekleyenIstemler.indexOf(kayit) < 0) return;
     listedenCikar(bekleyenIstemler, kayit);
     zamanAsimlari.push(kayit);
-    if (zamanAsimlari.length > 8) zamanAsimlari.shift();
     reddet(kayit, 'İstemin iletilip iletilmediği doğrulanamadı; metin giriş alanına geri yüklendi. Göndermeden önce söyleşiyi kontrol edin.');
+    sahipsizleriBudala();
     dugmeDurumunuGuncelle();
   }
 
@@ -508,6 +578,17 @@ $(document).ready(function() {
     }
   }, true);
 
+  // Kullanıcı düzenlemesi öncesi seçimi kaydet: tüm girdinin değiştirilmesi
+  // (Ctrl+A + yapıştır/yaz) eski geri yükleme sahipliğini düşürür.
+  if (typeof document.addEventListener === 'function') document.addEventListener('beforeinput', function(e) {
+    if (!e.target || e.target !== girisAlani()) return;
+    oncekiSecim = {
+      bas: typeof e.target.selectionStart === 'number' ? e.target.selectionStart : -1,
+      son: typeof e.target.selectionEnd === 'number' ? e.target.selectionEnd : -1,
+      uzunluk: String(e.target.value || '').length
+    };
+  }, true);
+
   // Kullanıcı düzenlemesi bölüm aralıklarına imleç konumuyla uygulanır: silinen
   // bölümün sahipliği düşer, aynı metin sonradan yeniden yazılsa da geç kabul
   // onu silmez; düzenlenen bölüm sahip sıfırlamasına dek izlenir.
@@ -525,10 +606,11 @@ $(document).ready(function() {
     ekle: function(hamMetin) {
       // Gönderim girdiyi tüketir: önceki geri yüklemelerin sahipliği biter.
       geriYuklemeler.length = 0;
+      sahipsizleriBudala();
       const istemKimligi = 'istem_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
       const gosterilecek = hamMetin.trim() || 'Seçili dosyaların özeti istendi.';
       const kayit = { id: istemKimligi, metin: gosterilecek, hamMetin: hamMetin, el: null,
-                      karsilamaGizlendi: false, ayrildi: false, sunucuDugumu: null };
+                      karsilamaGizlendi: false, ayrildi: false, sunucuDugumu: null, ekImzasi: ekImzasi() };
       const kap = sohbetKabi;
       if (kap && typeof document.createElement === 'function') {
         const $karsilama = $('#welcome_fullscreen_container');

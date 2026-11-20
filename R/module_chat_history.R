@@ -339,7 +339,8 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
           cache[[chat_id]] <- list(
             rows = if (is.list(pairs)) pairs else list(),
             stamp = stamp_map[[chat_id]],
-            okuma = okuma_zamani
+            okuma = okuma_zamani,
+            liste_baslik = chats[[chat_id]]$title %||% NULL
           )
         }
         # Yalnızca BAŞARILI yazım ve gerçekten düşen eski kayıt yeni sürümdür.
@@ -370,26 +371,26 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
     # Hiçbir gözlemci olay döngüsünde sınırsız eşzamanlı SQL çalıştıramaz; ara
     # partiler tabloyu yeniden çizmez, yayın sonda tek seferdir. Isıtma
     # sürerken yeni gelen (planlanmamış) söyleşiler en çok 60'lık tek turda alınır.
-    history_sync <- function(chat_ids, chats, on_done = NULL) {
+    history_sync <- function(chat_ids, chats, on_done = NULL, date_range = NULL) {
       isitma$etkin <- TRUE
+      etkin_aralik <- history_normalize_date_range(date_range)
       gerekli <- history_ids_needing_fetch(chat_ids, chats, shiny::isolate(messages_cache()), stamp_for_chat)
-      if (isTRUE(isitma$aktif)) gerekli <- setdiff(gerekli, isitma$planli)
+      if (isTRUE(isitma$aktif)) {
+        gerekli <- setdiff(gerekli, isitma$planli)
+        if (length(gerekli)) {
+          gerekli_damga <- history_stamps(gerekli, chats, stamp_for_chat)
+          gerekli <- gerekli[is.na(isitma$zincir[gerekli]) | unname(isitma$zincir[gerekli]) != unname(gerekli_damga)]
+        }
+      }
       if (length(gerekli) <= 60L || isTRUE(isitma$aktif)) {
         parti <- utils::head(gerekli, 60L)
-        # Isıtma sürerken denenen kimlikler de zincire damgasıyla yazılır: aynı
-        # damgayla başarısız olan, zincir bitince bu nesilde yeniden planlanmaz.
         if (isTRUE(isitma$aktif) && length(parti)) {
           isitma$zincir[parti] <- history_stamps(parti, chats, stamp_for_chat)
         }
         basarili <- ensure_history_cache(parti, chats, invalidate = TRUE)
         if (is.function(on_done)) {
-          # Isıtma sürüyorsa planlı partiler henüz yazılmamış olabilir: sonuç
-          # zincir tamamlanınca YALNIZCA güncel önbellek durumundan bildirilir
-          # (aynı damgayla başarısız okuma orada zaten eksik görünür; sonradan
-          # toparlanan okuma eski hatayla "kısmen" bildirilmez).
           if (isTRUE(isitma$aktif)) {
-            isitma$bekleyenler <- c(isitma$bekleyenler,
-                                    list(function(tamam) on_done(isTRUE(tamam))))
+            isitma$bekleyenler <- c(isitma$bekleyenler, list(on_done))
           } else {
             on_done(basarili)
           }
@@ -400,20 +401,14 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
       basarili <- TRUE
       isitma$aktif <- TRUE
       isitma$planli <- kalan
-      # Planlanan kimlikler planlandıkları damgayla zincire yazılır; tamamlanınca
-      # yalnızca zincirde olmayan ya da damgası o zamandan beri DEĞİŞEN
-      # söyleşiler yeniden planlanır. Aynı damgayla başarısız olan yeniden
-      # denenmez: damga yalnızca gerçek etkinlikle değiştiği için döngü oluşmaz.
-      isitma$zincir[kalan] <- history_stamps(kalan, chats, stamp_for_chat)
+      isitma$zincir <- history_stamps(kalan, chats, stamp_for_chat)
       nesil <- isitma$nesil
       historyBackgroundWarm(
         session, kalan, chats,
         ensure_history_cache = function(parti, chats) {
-          # Planlandıktan sonra etkin tarih aralığından çıkan söyleşi okunmaz.
-          # Zincire, partinin GERÇEKTEN okunduğu anlık görüntünün damgası
-          # yazılır: aynı damgayla başarısız okuma zincir sonunda yeniden denenmez.
           guncel <- shiny::isolate(latest_chats())
-          okunacak <- intersect(parti, aralik_kimlikleri())
+          havuz <- if (!is.null(etkin_aralik)) history_chat_ids_for_date_range(guncel, etkin_aralik) else aralik_kimlikleri()
+          okunacak <- intersect(parti, havuz)
           if (length(okunacak)) isitma$zincir[okunacak] <- history_stamps(okunacak, guncel, stamp_for_chat)
           ensure_history_cache(okunacak, guncel, invalidate = FALSE)
         },
@@ -426,27 +421,20 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
           bekleyenler <- c(if (is.function(on_done)) list(on_done), isitma$bekleyenler)
           isitma$bekleyenler <- list()
           trigger_refresh(shiny::isolate(trigger_refresh()) + 1)
-          # Isıtma sırasında gelen yeni ya da damgası değişen söyleşiler (sayısı
-          # ne olursa olsun) aynı sınırlı giriş üzerinden alınır; bu nesilde aynı
-          # damgayla denenmiş (başarısız olanlar dahil) kimlikler yeniden planlanmaz.
           guncel <- shiny::isolate(latest_chats())
-          adaylar <- history_ids_needing_fetch(aralik_kimlikleri(), guncel,
-                                               shiny::isolate(messages_cache()), stamp_for_chat)
-          yeni <- adaylar[vapply(adaylar, function(id) {
-            !identical(unname(isitma$zincir[id]), stamp_for_chat(guncel[[id]]))
-          }, logical(1))]
-          # Sonuç eski partilerin bayrağından değil, etkin aralıktaki GEREKLİ
-          # TÜM kimliklerin güncel önbellek durumundan türetilir: planlı,
-          # ısıtma sırasında denenmiş (başarısız olanlar dahil) ve yeni
-          # söyleşiler birlikte değerlendirilir. Damgası değişip yeniden okunan
-          # "hazır"dır; aynı damgayla okunamayan eksik kaldığı için "kısmen"dir.
-          # Bekleyen geri çağrılar aynı sonucu alır (çelişkili bildirim olmaz).
+          havuz <- if (!is.null(etkin_aralik)) history_chat_ids_for_date_range(guncel, etkin_aralik) else aralik_kimlikleri()
+          adaylar <- history_ids_needing_fetch(havuz, guncel, shiny::isolate(messages_cache()), stamp_for_chat)
+          yeni <- if (length(adaylar)) {
+            aday_damga <- history_stamps(adaylar, guncel, stamp_for_chat)
+            adaylar[is.na(isitma$zincir[adaylar]) | unname(isitma$zincir[adaylar]) != unname(aday_damga)]
+          } else character()
           bitir <- function(ok = TRUE) {
-            son <- history_all_cached(aralik_kimlikleri(), shiny::isolate(latest_chats()),
-                                      shiny::isolate(messages_cache()), stamp_for_chat)
-            for (fn in bekleyenler) fn(son)
+            guncel_son <- shiny::isolate(latest_chats())
+            son_havuz <- if (!is.null(etkin_aralik)) history_chat_ids_for_date_range(guncel_son, etkin_aralik) else aralik_kimlikleri()
+            son <- history_all_cached(son_havuz, guncel_son, shiny::isolate(messages_cache()), stamp_for_chat)
+            for (fn in bekleyenler) fn(isTRUE(son))
           }
-          if (length(yeni)) history_sync(yeni, guncel, on_done = bitir) else bitir()
+          if (length(yeni)) history_sync(yeni, guncel, on_done = bitir, date_range = etkin_aralik) else bitir()
         }
       )
       invisible(basarili)
@@ -488,10 +476,11 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
 
       # Zorla yenileme süren ısıtmayı geçersiz kılar; hazır-olma bu senkronizasyonun
       # sonucuyla bildirilir (bekleyen geri çağrılar düşmüş olur).
-      history_sync(chat_ids, chats, on_done = on_done)
+      history_sync(chat_ids, chats, on_done = on_done, date_range = active_date_range)
     }
 
-    # Bugün düğmesi: yerel tarih alanlarını istemci tarafında günceller.
+    # Bugün düğmesi: yerel tarih alanlarını istemci tarafında günceller;
+    # bildirim partiler tamamlandıktan sonra gösterilir.
     observeEvent(input$today_filter, {
       today <- Sys.Date()
       today_value <- format(today, "%Y-%m-%d")
@@ -508,10 +497,13 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
       refresh_history_cache(
         chats = latest_chats(),
         force = TRUE,
-        date_range = c(today, today)
+        date_range = c(today, today),
+        on_done = history_refresh_notifier(
+          session, hazir_bildir, showToast,
+          tam_mesaj = "Bugünün kayıtları gösteriliyor.",
+          kismen_mesaj = "Bugünün kayıtları kısmen yüklendi; okunamayanlar yeniden denenecek."
+        )
       )
-
-      showToast(session, "Bugünün kayıtları gösteriliyor.", "info")
     })
 	
     observeEvent(all_messages(), {
@@ -560,9 +552,11 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
         cached <- cache[[chat_id]]
         if (!is.null(cached) && length(cached$rows) > 0) {
           satirlar <- cached$rows
-          # Başlık okuma anındaki değil güncel listedeki başlıktır (ad değişimi).
+          # Liste başlığı yalnızca okuma sonrasındaki yerel değişiklikte uygulanır;
+          # Yenile ile DB'den gelen taze başlık eski oturum başlığıyla ezilmez.
           baslik <- chats[[chat_id]]$title
-          if (is.character(baslik) && length(baslik) == 1L && !is.na(baslik) && nzchar(baslik)) {
+          liste_degisti <- is.null(cached$liste_baslik) || !identical(baslik, cached$liste_baslik)
+          if (isTRUE(liste_degisti) && is.character(baslik) && length(baslik) == 1L && !is.na(baslik) && nzchar(baslik)) {
             satirlar <- lapply(satirlar, function(r) { r$Chat_ID <- baslik; r })
           }
           history_list <- c(history_list, satirlar)
@@ -698,10 +692,14 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
                                                                            isitma = isitma)
 
     # Sahip değişiminde eski sahibin önbelleği ve süren planı düşer.
+    # Sekme hâlâ açıksa yeni sahibin listesi gelince senkronizasyon etkin kalır.
     if (exists("mergen_session_on_owner_change", mode = "function", inherits = TRUE)) {
       mergen_session_on_owner_change(session, function(neden) {
         gecersiz_kil()
-        isitma$etkin <- FALSE
+        acik_sekme <- try(shiny::isolate(session$rootScope()$input$tabs), silent = TRUE)
+        if (!identical(acik_sekme, "history")) {
+          isitma$etkin <- FALSE
+        }
         messages_cache(list())
       })
     }
@@ -738,14 +736,17 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
     # çekilir (ilk 60 eşzamanlı, kalanı partilerle). Tam yenileme yalnızca
     # kullanıcının "Yenile"/"Bugün"/tarih eylemlerindedir.
     # Başka oturumdaki yerinde içerik düzenlemesi (galeriden görsel silme)
-    # damgayı değiştirmez; sekme açılışında ilk sayfanın (en çok 60) yaşlı
-    # kayıtları SINIRLI biçimde yeniden doğrulanır. Taze kayıtlar (ör. açılış
-    # hazırlığı) ve ilk sayfa dışındakiler korunur; satırlar okuma bitene dek görünür.
+    # damgayı değiştirmez; sekme açılışında ilk sayfanın (en çok 60) planlı
+    # olmayan yaşlı kayıtları ısıtma sürerken bile yeniden doğrulanır.
     observeEvent(input$external_refresh_trigger, {
       kimlikler <- aralik_kimlikleri()
-      if (!isTRUE(isitma$aktif)) {
+      dogrulanacak <- setdiff(
+        utils::head(kimlikler, 60L),
+        if (isTRUE(isitma$aktif)) isitma$planli else character()
+      )
+      if (length(dogrulanacak)) {
         messages_cache(history_mark_stale_for_revalidation(
-          shiny::isolate(messages_cache()), utils::head(kimlikler, 60L),
+          shiny::isolate(messages_cache()), dogrulanacak,
           getOption("mergen.history_revalidate_secs", 60)))
       }
       history_sync(kimlikler, latest_chats(), on_done = hazir_bildir)

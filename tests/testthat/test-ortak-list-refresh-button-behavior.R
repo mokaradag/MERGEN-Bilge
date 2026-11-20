@@ -248,13 +248,41 @@ testthat::test_that("Ortak Söyleşiler önbelleği oturum sahibi değişince (k
     session$flushReact()
     output$liste_sohbet
     testthat::expect_identical(kayit$okuma, 1L)
-    # Kimlik düştü ve aynı kullanıcı geri geldi: çıkış öncesi liste yeniden kullanılmaz.
+    # Kimlik düştü ve aynı kullanıcı geri geldi: çıkış öncesi liste yeniden kullanılmaz
+    # ve liste_yenile anında artarak açık sekmedeki eski sahibin listesini temizler.
+    onceki_yenile <- shiny::isolate(liste_yenile())
     env$mergen_session_owner_transition(session$userData, 7L, 0L)
+    testthat::expect_gt(shiny::isolate(liste_yenile()), onceki_yenile)
     env$mergen_session_owner_transition(session$userData, 0L, 7L)
     testthat::expect_null(sohbet_onbellek$df)
-    yenile("tab")
     session$flushReact()
     output$liste_sohbet
     testthat::expect_identical(kayit$okuma, 2L)
   })
+})
+
+testthat::test_that("başarısız tablo probu eski olumsuz önbelleği temizler ve otomatik yoklamada geri çekilir", {
+  kok <- resolve_repo_root_for_tests()
+  yardimci <- new.env(parent = globalenv())
+  yardimci$`%||%` <- function(a, b) if (is.null(a)) b else a
+  source(file.path(kok, "R", "helpers_ortak_oturum_db.R"), encoding = "UTF-8", local = yardimci)
+  sayac <- 0L
+  yardimci$.oo_db_acquire <- function(conn = NULL, tx = FALSE) {
+    sayac <<- sayac + 1L
+    stop("DB geçici olarak erişilemez (test)")
+  }
+  # Eski doğrulanmış olumsuz önbellek kurulu olsun.
+  yardimci$.oo_db_state$available <- FALSE
+  yardimci$.oo_db_state$checked_at <- Sys.time()
+  # Zorunlu prob başarısız olunca eski FALSE önbelleği düşer ve geri çekilme başlar.
+  testthat::expect_false(yardimci$ortak_db_tablolar_hazir_mi(force_refresh = TRUE))
+  testthat::expect_identical(sayac, 1L)
+  testthat::expect_null(yardimci$.oo_db_state$available)
+  testthat::expect_true(yardimci$ortak_db_tablo_prob_hatasi_mi())
+  # Otomatik yoklama geri çekilme penceresinde DB'ye tekrar gitmez.
+  testthat::expect_false(yardimci$ortak_db_tablolar_hazir_mi(force_refresh = FALSE, otomatik_yoklama = TRUE))
+  testthat::expect_identical(sayac, 1L)
+  # Etkileşimli/zorunlu yenileme geri çekilmeyi aşarak yeniden yoklar.
+  testthat::expect_false(yardimci$ortak_db_tablolar_hazir_mi(force_refresh = TRUE))
+  testthat::expect_identical(sayac, 2L)
 })

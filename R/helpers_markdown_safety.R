@@ -206,12 +206,17 @@ mergen_generated_image_card_html <- function(message_id, img_src, description = 
     "image/png"
   )
 
-  # Kayıt adı oturum içinde benzersizdir. Dosya adından türetilen ad, farklı
-  # klasörlerdeki aynı adlı görsellerde önceki kaydın işleyicisini eziyor ve
-  # iki kart aynı görseli gösteriyordu.
-  sira <- (session$userData$mergen_image_url_seq %||% 0L) + 1L
-  session$userData$mergen_image_url_seq <- sira
-  obj_name <- paste0("mergen_img_", sira)
+  # Kayıt adı oturum içinde hem benzersiz hem tahmin edilemezdir. Ardışık adlar
+  # aynı oturumun başka görsellerinin tahmin edilmesine yol açabileceğinden
+  # kriptografik rastgele belirteç kullanılır.
+  rastgele <- if (requireNamespace("openssl", quietly = TRUE)) {
+    paste(sprintf("%02x", as.integer(openssl::rand_bytes(16L))), collapse = "")
+  } else if (requireNamespace("uuid", quietly = TRUE)) {
+    gsub("-", "", uuid::UUIDgenerate(), fixed = TRUE)
+  } else {
+    sprintf("%08x%08x", sample.int(.Machine$integer.max, 1L), sample.int(.Machine$integer.max, 1L))
+  }
+  obj_name <- paste0("mergen_img_", rastgele)
 
   url <- session$registerDataObj(
     name = obj_name,

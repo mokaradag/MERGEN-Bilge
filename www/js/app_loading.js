@@ -301,8 +301,13 @@
     }
     setTarget(pct);
     if (statusText) {
+      if (stageLabelTimer) {
+        window.clearTimeout(stageLabelTimer);
+        stageLabelTimer = null;
+      }
       statusText.classList.add("alo-status-fade");
-      window.setTimeout(function () {
+      stageLabelTimer = window.setTimeout(function () {
+        stageLabelTimer = null;
         lastStageLabel = STAGES[idx].label;
         statusText.textContent = STAGES[idx].label;
         statusText.classList.remove("alo-status-fade");
@@ -310,6 +315,9 @@
     }
     maybeFinishFastLane();
   }
+
+  var stageLabelTimer = null;
+  var richFinishTimer = null;
 
   // Server tarafı boot kontrol noktası mesajlarını dinle. İlerleme tamamen
   // bu mesajlarla sürülür; ekran ancak ready=true geldiğinde kapanır.
@@ -328,27 +336,45 @@
       // Her gerçek kontrol noktası ilerleme etkinliği sayılır (stall gözcüsü).
       markProgress();
 
+      // Hazır-olma geri çekildiyse (ör. sahip değişimi) bekleyen gecikmeli kapanış iptal edilir.
+      if (msg.ready !== true && richFinishTimer) {
+        window.clearTimeout(richFinishTimer);
+        richFinishTimer = null;
+        kapanisEtiketi = null;
+      }
+
       setStage(msg.key);
 
       // Zengin açılışta yalnızca Söyleşi Yönetimi hazırlığı bekleniyorsa
-      // kullanıcı neyin beklendiğini görür (önceki aşama etiketi kalmaz).
+      // kullanıcı neyin beklendiğini görür; bekleyen aşama zamanlayıcısı iptal edilir.
       var tamam = [].concat(msg.required_done || []);
       var kismen = [].concat(msg.kismen || []);
       if (msg.ready !== true && !isFastLane() && statusText &&
           tamam.indexOf("management_pages_ready") < 0 &&
           typeof msg.required_total === "number" && tamam.length === msg.required_total - 1) {
+        if (stageLabelTimer) {
+          window.clearTimeout(stageLabelTimer);
+          stageLabelTimer = null;
+        }
+        statusText.classList.remove("alo-status-fade");
         lastStageLabel = "Söyleşi Yönetimi verisi hazırlanıyor";
         statusText.textContent = lastStageLabel;
       }
 
       if (msg.ready === true) {
         setStage("ready");
-        // Kısmen hazır (ör. hazırlık süre sınırı) niteliksiz "Hazır" gösterilmez.
+        // Kısmen hazır (ör. okuma hatası ya da süre sınırı) niteliksiz "Hazır"
+        // veya kesin arka plan tamamlanma sözü göstermez.
         var etiket = kismen.length === 0 ? "Hazır" :
           (kismen.indexOf("management_pages_ready") >= 0 ?
-            "Hazır — Söyleşi Yönetimi verisi arka planda tamamlanıyor" : "Kısmen hazır");
+            "Kısmen hazır — Söyleşi Yönetimi sayfa açıldığında tamamlanacak" : "Kısmen hazır");
         kapanisEtiketi = etiket;
-        window.setTimeout(function () {
+        if (richFinishTimer) {
+          window.clearTimeout(richFinishTimer);
+          richFinishTimer = null;
+        }
+        richFinishTimer = window.setTimeout(function () {
+          richFinishTimer = null;
           finish({ deferForLane: true });
         }, 260);
       }

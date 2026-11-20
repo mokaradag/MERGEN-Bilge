@@ -244,7 +244,7 @@ testthat::test_that("kanonik çözümleyici yoksa sahip çözülmemiş sayılır
   testthat::expect_identical(kayit$filter(kayit$data, list())$status, 403L)
 })
 
-testthat::test_that("görsel filtresi URL önbelleğinin kopyasını tutmaz", {
+testthat::test_that("görsel filtresi URL önbelleğinin kopyasını tutmaz ve kayıt adları tahmin edilemezdir", {
   env <- .imageServeEnv()
   dizin <- withr::local_tempdir()
   session <- .makeFilterCapturingSession(5L)
@@ -252,6 +252,13 @@ testthat::test_that("görsel filtresi URL önbelleğinin kopyasını tutmaz", {
     yol <- file.path(dizin, sprintf("g%d.png", i))
     .writeTinyPng(yol)
     env$mergen_serve_image_data_url(yol, session = session)
+  }
+  testthat::expect_length(session$register_calls, 3L)
+  adlar <- vapply(session$register_calls, function(k) k$name, character(1))
+  testthat::expect_identical(length(unique(adlar)), 3L)
+  for (ad in adlar) {
+    testthat::expect_false(grepl("^mergen_img_[0-9]+$", ad))
+    testthat::expect_match(ad, "^mergen_img_[0-9a-f]{16,}$")
   }
   for (kayit in session$register_calls) {
     kapsam <- environment(kayit$filter)

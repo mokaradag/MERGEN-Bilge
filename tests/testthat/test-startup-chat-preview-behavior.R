@@ -898,3 +898,81 @@ testthat::test_that("bütçeli okuma satırları parçalı getirir; süre sını
   testthat::expect_lt(kayit$verilen, parca_sayisi)
   testthat::expect_true(isTRUE(kayit$temizlendi))
 })
+
+testthat::test_that("hidrate edilen söyleşi daha yeni DB başlığını ezmez, silinmişse geri gelmez ve eşit etkinlikte DB sırasını korur", {
+  t1 <- as.POSIXct("2026-11-18 10:00:00", tz = "UTC")
+  t2 <- as.POSIXct("2026-11-18 11:00:00", tz = "UTC")
+  t3 <- as.POSIXct("2026-11-18 12:00:00", tz = "UTC")
+
+  # 1) Başka sekmede yeniden adlandırılan ve burada yalnızca hidrate edilen söyleşi:
+  #    DB başlığı korunur, hidrate edilmiş mesajlar da saklanır.
+  anlik <- list("1" = list(title = "İlk", message_count = 2L, last_message_timestamp = t1))
+  guncel <- list(
+    "1" = list(title = "İlk", message_count = 2L, last_message_timestamp = t1),
+    "9" = list(title = "Eski Başlık", messages = list(list(type = "user", content = "m")),
+               message_count = 1L, last_message_timestamp = t1, hidrate_edildi = TRUE),
+    "10" = list(title = "Silinmiş Hidrate", messages = list(list(type = "user", content = "x")),
+                message_count = 1L, last_message_timestamp = t1, hidrate_edildi = TRUE),
+    "11" = list(title = "Yerelde Yeni Oluşturulan", messages = list(list(type = "user", content = "y")),
+                message_count = 1L, last_message_timestamp = t3)
+  )
+  db_liste <- list(
+    "2" = list(title = "Daha Yeni", message_count = 5L, last_message_timestamp = t3),
+    "9" = list(title = "Yeni DB Başlığı", message_count = 1L, last_message_timestamp = t1),
+    "1" = list(title = "İlk", message_count = 2L, last_message_timestamp = t1)
+  )
+  birlesik <- mergen_saved_chats_merge_newer(db_liste, anlik, guncel)
+  testthat::expect_identical(birlesik[["9"]]$title, "Yeni DB Başlığı")
+  testthat::expect_length(birlesik[["9"]]$messages, 1L)
+  testthat::expect_false("10" %in% names(birlesik))
+  testthat::expect_true("11" %in% names(birlesik))
+
+  # 2) DB yerel güncellemeyi zaten içeriyorsa (eşit sayı ve eşit zaman) DB sırası korunur.
+  anlik2 <- list("5" = list(title = "Beş", message_count = 1L, last_message_timestamp = t1))
+  guncel2 <- list("5" = list(title = "Beş", message_count = 2L, last_message_timestamp = t2))
+  db2 <- list(
+    "8" = list(title = "Sekiz", message_count = 3L, last_message_timestamp = t3),
+    "5" = list(title = "Beş", message_count = 2L, last_message_timestamp = t2)
+  )
+  birlesik2 <- mergen_saved_chats_merge_newer(db2, anlik2, guncel2)
+  testthat::expect_identical(names(birlesik2), c("8", "5"))
+})
+
+testthat::test_that("aşamalı biçimlendirme istek geçersizleşince kalan dilimleri işlemeden durur", {
+  testthat::skip_if_not_installed("promises")
+  testthat::skip_if_not_installed("later")
+  cerceve <- data.frame(
+    ChatID = 1:1200,
+    ChatTitle = paste("Söyleşi", 1:1200),
+    CreateTimestamp = rep(as.POSIXct("2026-11-18 10:00:00", tz = "UTC"), 1200),
+    LastMessageTimestamp = rep(as.POSIXct("2026-11-18 10:00:00", tz = "UTC"), 1200),
+    MessageCount = rep(1L, 1200),
+    stringsAsFactors = FALSE
+  )
+  gecerli <- TRUE
+  dilim_sayisi <- 0L
+  eski_fmt <- get("db_chat_preview_format_frame", envir = globalenv())
+  on.exit(assign("db_chat_preview_format_frame", eski_fmt, envir = globalenv()), add = TRUE)
+  assign("db_chat_preview_format_frame", function(df) {
+    dilim_sayisi <<- dilim_sayisi + 1L
+    gecerli <<- FALSE
+    eski_fmt(df)
+  }, envir = globalenv())
+  sonuc <- "bekliyor"
+  loop <- later::create_loop(parent = NULL)
+  on.exit(later::destroy_loop(loop), add = TRUE)
+  later::with_loop(loop, {
+    p <- mergen_startup_chat_preview_format_staged(cerceve, dilim = 500L, gecerli_mi = function() gecerli)
+    promises::then(p, onFulfilled = function(v) sonuc <<- v)
+    for (i in 1:10) later::run_now(timeoutSecs = 0.05, loop = loop)
+  })
+  testthat::expect_null(sonuc)
+  testthat::expect_identical(dilim_sayisi, 1L)
+})
+
+testthat::test_that("mergen_startup_async_worker_ready sequential planda FALSE döner", {
+  testthat::skip_if_not_installed("future")
+  eski_plan <- future::plan(future::sequential)
+  on.exit(future::plan(eski_plan), add = TRUE)
+  testthat::expect_false(mergen_startup_async_worker_ready())
+})

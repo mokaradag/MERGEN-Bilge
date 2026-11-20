@@ -259,18 +259,29 @@ ortak_db_reset_availability_cache <- function() {
 #' kontrol hatası (geçici DB sorunu) önbelleğe alınmaz ve
 #' `ortak_db_tablo_prob_hatasi_mi()` ile ayrıca bildirilir: arayüz kurulum
 #' yönlendirmesi yerine yeniden deneme durumunu gösterir, sonraki istek yeniden yoklar.
-ortak_db_tablolar_hazir_mi <- function(conn = NULL, force_refresh = FALSE) {
+ortak_db_tablolar_hazir_mi <- function(conn = NULL, force_refresh = FALSE, otomatik_yoklama = FALSE) {
   cached <- .oo_db_state$available
 
-  if (!isTRUE(force_refresh) && !is.null(cached)) {
-    if (isTRUE(cached)) {
-      return(TRUE)
-    }
+  if (!isTRUE(force_refresh)) {
+    if (!is.null(cached)) {
+      if (isTRUE(cached)) {
+        return(TRUE)
+      }
 
-    checked_at <- .oo_db_state$checked_at
-    if (!is.null(checked_at) &&
-        as.numeric(difftime(Sys.time(), checked_at, units = "secs")) < 60) {
-      return(FALSE)
+      checked_at <- .oo_db_state$checked_at
+      if (!is.null(checked_at) &&
+          as.numeric(difftime(Sys.time(), checked_at, units = "secs")) < 60) {
+        return(FALSE)
+      }
+    } else if (isTRUE(otomatik_yoklama) && isTRUE(.oo_db_state$probe_hatasi) &&
+               !is.null(.oo_db_state$probe_hata_zamani)) {
+      # DB erişilemezken her oturumun 20-30 sn'lik otomatik yoklaması ana olay
+      # döngüsünü art arda eşzamanlı probla bloklamaz; kısa geri çekilme uygulanır.
+      geri_cekilme <- suppressWarnings(as.numeric(getOption("mergen.ortak_db_probe_backoff_secs", 15))[1])
+      if (length(geri_cekilme) == 1L && is.finite(geri_cekilme) && geri_cekilme > 0 &&
+          as.numeric(difftime(Sys.time(), .oo_db_state$probe_hata_zamani, units = "secs")) < geri_cekilme) {
+        return(FALSE)
+      }
     }
   }
 
@@ -313,10 +324,16 @@ ortak_db_tablolar_hazir_mi <- function(conn = NULL, force_refresh = FALSE) {
   }
 
   if (length(ok) != 1L || is.na(ok)) {
+    # Prob başarısız olduysa eski doğrulanmış olumsuz önbellek temizlenir;
+    # böylece DB düzelince sıradan çağrı eski FALSE sonucuna takılmaz.
+    .oo_db_state$available <- NULL
+    .oo_db_state$checked_at <- NULL
     .oo_db_state$probe_hatasi <- TRUE
+    .oo_db_state$probe_hata_zamani <- Sys.time()
     return(FALSE)
   }
   .oo_db_state$probe_hatasi <- FALSE
+  .oo_db_state$probe_hata_zamani <- NULL
   .oo_db_state$available <- isTRUE(ok)
   .oo_db_state$checked_at <- Sys.time()
 

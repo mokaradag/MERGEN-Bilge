@@ -56,7 +56,8 @@
     "load_chats_preview_from_db",
     "load_chats_from_db",
     "tracked_future_promise",
-    "mergen_startup_chat_preview_promise"
+    "mergen_startup_chat_preview_promise",
+    "mergen_startup_async_worker_ready"
   )
   had <- vapply(names, exists, logical(1), envir = globalenv(), inherits = FALSE)
   old <- lapply(names, function(nm) {
@@ -124,10 +125,13 @@
     }
     promises::promise_resolve(result)
   }, envir = globalenv())
-  assign("mergen_startup_chat_preview_promise", function(user_id, limit = 6L, session_token = NULL) {
-    # Tam liste (limit = NA) üretimde aynı dar worker'dan geçer; test kayıtları
-    # eski tam liste yolunun (load_chats_from_db + startup_saved_chats) aynısıdır.
-    if (length(limit) == 1L && is.na(limit)) {
+  assign("mergen_startup_async_worker_ready", function() {
+    isTRUE(if (is.null(rec$async_worker_ready)) TRUE else rec$async_worker_ready)
+  }, envir = globalenv())
+  assign("mergen_startup_chat_preview_promise", function(user_id, limit = 6L, session_token = NULL, gecerli_mi = NULL) {
+    # Tam liste (yalnızca açık NA sentineli; NaN reddedilir) üretimde aynı dar
+    # worker'dan geçer; test kayıtları eski tam liste yolunun aynısıdır.
+    if (length(limit) == 1L && (is.logical(limit) || is.numeric(limit)) && is.na(limit) && !is.nan(limit)) {
       return(get("tracked_future_promise", envir = globalenv())(
         task_fn = function() get("load_chats_from_db", envir = globalenv())(user_id, include_messages = FALSE),
         task_type = "startup_saved_chats",
@@ -160,7 +164,7 @@
   }, envir = globalenv())
 
   list(restore = function() {
-    for (nm in names) {
+    for (nm in c(names, "mergen_startup_async_worker_ready")) {
       if (isTRUE(had[[nm]])) {
         assign(nm, old[[nm]], envir = globalenv())
       } else if (exists(nm, envir = globalenv(), inherits = FALSE)) {

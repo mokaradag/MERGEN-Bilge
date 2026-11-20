@@ -375,9 +375,12 @@ delete_all_user_images <- function(user_id) {
     })
   }
 
-  # Silinen görsellerin mesajlarını güncelle
+  # Silinen görsellerin mesajlarını güncelle; yalnızca gerçekten değişenler izlenir
+  guncellenen_soylesiler <- character(0)
   for (cid in unique_chats) {
-    update_messages_after_bulk_deletion(cid)
+    if (isTRUE(update_messages_after_bulk_deletion(cid))) {
+      guncellenen_soylesiler <- c(guncellenen_soylesiler, as.character(cid))
+    }
   }
 
   # Boş klasörleri temizle
@@ -404,7 +407,7 @@ delete_all_user_images <- function(user_id) {
   cat(sprintf("[IMAGE_GALLERY] Toplam %d görsel silindi (kullanıcı: %s)\n", deleted_count, user_id))
   # Mesajı yerinde güncellenen söyleşiler çağırana bildirilir: Söyleşi Geçmişi
   # önbelleğinden yalnızca bunlar düşürülür (sayı sözleşmesi değişmez).
-  attr(deleted_count, "chat_ids") <- as.character(unique_chats)
+  attr(deleted_count, "chat_ids") <- guncellenen_soylesiler
   return(deleted_count)
 }
 
@@ -486,10 +489,12 @@ update_message_after_image_deletion <- function(image_path, chat_id) {
 #' Toplu silme sonrası sohbetteki tüm görsel mesajlarını güncelle
 #' @param chat_id Sohbet ID
 update_messages_after_bulk_deletion <- function(chat_id) {
-  if (is.na(chat_id) || is.null(chat_id)) return(invisible(NULL))
+  if (is.na(chat_id) || is.null(chat_id)) return(invisible(FALSE))
 
   chat_id_int <- suppressWarnings(as.integer(chat_id))
-  if (is.na(chat_id_int)) return(invisible(NULL))
+  if (is.na(chat_id_int)) return(invisible(FALSE))
+
+  degisti <- FALSE
 
   tryCatch({
     conn_info <- get_connection()
@@ -562,6 +567,7 @@ update_messages_after_bulk_deletion <- function(chat_id) {
                   list(new_content, rows$MessageID[j])
                 )
               )
+              degisti <- TRUE
             }
           }
         }
@@ -571,7 +577,7 @@ update_messages_after_bulk_deletion <- function(chat_id) {
     cat("[IMAGE_GALLERY] Toplu mesaj güncelleme hatası:", e$message, "\n")
   })
 
-  invisible(NULL)
+  invisible(degisti)
 }
 
 #' Görsel dosya yolundan sohbet başlığını bul

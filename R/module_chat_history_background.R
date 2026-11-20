@@ -106,8 +106,10 @@ history_rows_worker_promise <- function(chat_ids, user_id, session_token = NULL,
   gecmis_sure <- yapilandirma$query_timeout
   ham <- tracked_future_promise(
     task_fn = function() {
-      mergen_bounded_db_fetch_raw(gecmis_sql, gecmis_parametreler, gecmis_dsn, gecmis_kodlama,
-                                  gecmis_ad_kodlama, gecmis_login, gecmis_sure)
+      veri <- mergen_bounded_db_fetch_raw(gecmis_sql, gecmis_parametreler, gecmis_dsn, gecmis_kodlama,
+                                          gecmis_ad_kodlama, gecmis_login, gecmis_sure)
+      attr(veri, "mergen_okuma_zamani") <- Sys.time()
+      veri
     },
     task_type = "history_rows_prepare",
     session_token = session_token,
@@ -143,11 +145,13 @@ history_mark_stale_for_revalidation <- function(cache, ids, ttl_sn = 60, simdi =
 
 # Elle yenilemenin bitiş bildirimi: hazır-olmayı yayımlar ve kullanıcıya
 # sonucu (tam/kısmen) yeni satırlar yayımlandıktan sonra gösterir.
-history_refresh_notifier <- function(session, hazir_bildir, bildir_toast) {
+history_refresh_notifier <- function(session, hazir_bildir, bildir_toast,
+                                     tam_mesaj = "Geçmiş tablosu yenilendi.",
+                                     kismen_mesaj = "Geçmiş tablosu kısmen yenilendi; okunamayan söyleşiler yeniden denenecek.") {
   function(basarili = TRUE) {
     hazir_bildir(basarili)
-    if (isTRUE(basarili)) bildir_toast(session, "Geçmiş tablosu yenilendi.", "info")
-    else bildir_toast(session, "Geçmiş tablosu kısmen yenilendi; okunamayan söyleşiler yeniden denenecek.", "warning")
+    if (isTRUE(basarili)) bildir_toast(session, tam_mesaj, "info")
+    else bildir_toast(session, kismen_mesaj, "warning")
   }
 }
 
@@ -172,12 +176,14 @@ history_refresh_notifier <- function(session, hazir_bildir, bildir_toast) {
 # bayatlayan istemin kalan dilimleri olay döngüsünde biçimlendirilmez, söz
 # NULL ile kapanır ve hazır-olma yayımlanmaz (çağıran geçerliliği yeniden denetler).
 history_rows_format_staged <- function(ids, uid, cerceve, dilim = 500L, gecerli = NULL) {
+  okuma_zamani <- attr(cerceve, "mergen_okuma_zamani")
   n <- if (is.data.frame(cerceve)) nrow(cerceve) else 0L
-  if (n <= dilim) return(load_history_rows_batch(ids, user_id = uid, result = cerceve))
+  if (n <= dilim) {
+    sonuc <- load_history_rows_batch(ids, user_id = uid, result = cerceve)
+    if (inherits(okuma_zamani, "POSIXt") && is.list(sonuc)) attr(sonuc, "mergen_okuma_zamani") <- okuma_zamani
+    return(sonuc)
+  }
   promises::promise(function(resolve, reject) {
-    # Söyleşi başına dilim parçaları tutulur ve sonda TEK kez birleştirilir:
-    # her dilimde birikmiş listeyi c() ile yeniden kurmak 100.000 satırlık
-    # söyleşide olay döngüsünde milyonlarca öğe kopyalıyordu.
     parcalar <- stats::setNames(rep(list(list()), length(ids)), ids)
     bas <- 1L
     adim <- function() {
@@ -193,7 +199,9 @@ history_rows_format_staged <- function(ids, uid, cerceve, dilim = 500L, gecerli 
         for (k in names(bicimli)) parcalar[[k]][[length(parcalar[[k]]) + 1L]] <<- bicimli[[k]]
         bas <<- son + 1L
         if (bas > n) {
-          resolve(lapply(parcalar, function(p) if (length(p)) do.call(c, p) else list()))
+          tam <- lapply(parcalar, function(p) if (length(p)) do.call(c, p) else list())
+          if (inherits(okuma_zamani, "POSIXt")) attr(tam, "mergen_okuma_zamani") <- okuma_zamani
+          resolve(tam)
         } else later::later(adim, 0)
       }, error = function(e) reject(e))
     }
@@ -231,7 +239,10 @@ history_prepare_rows_async <- function(session, ids, damgalar, uid, isitma, reso
       damga_ayni <- vapply(ids, function(id) identical(simdiki[[id]], damgalar[[id]]), logical(1))
       degismeyen <- ids[history_versions(isitma, ids) == surumler & damga_ayni]
       okunan <- intersect(degismeyen, names(sonuc))
-      okuma_zamani <- Sys.time()
+      # TTL işçi DB okuma anından başlar; uzun kuyruk/yayın gecikmesi eski
+      # alıntıyı taze göstermez.
+      okuma_zamani <- attr(sonuc, "mergen_okuma_zamani")
+      if (!inherits(okuma_zamani, "POSIXt")) okuma_zamani <- Sys.time()
       for (id in okunan) {
         cache[[id]] <- list(rows = if (is.list(sonuc[[id]])) sonuc[[id]] else list(),
                             stamp = damgalar[[id]], okuma = okuma_zamani)
@@ -257,50 +268,50 @@ history_prepare_rows_async <- function(session, ids, damgalar, uid, isitma, reso
   })
 }
 
-# Partiler later ile ertelenir. is_current() FALSE dönerse (önbellek
-# geçersiz kılındı, tarih aralığı/sahip değişti) parti İŞLENMEZ: eski bir
-# planın sonucu yeni önbelleğe yazılamaz. Bir partinin hatası zinciri kırmaz;
-# on_complete her durumda tam bir kez çağrılır ve (argüman alıyorsa) tüm
-# güncel partilerin başarılı olup olmadığını alır.
+# Partiler later ile zincirlenerek ertelenir: her parti TAMAMLANDIKTAN sonra
+# sonraki parti delay_sec ile planlanır; böylece uzun süren bir parti kalan
+# partilerin tümünü aynı olay döngüsü turunda art arda koşturmaz.
+# is_current() FALSE dönerse (önbellek geçersiz kılındı, tarih aralığı/sahip
+# değişti) kalan partiler İŞLENMEZ ve planlanmaz. Bir partinin hatası zinciri
+# kırmaz; on_complete her durumda tam bir kez çağrılır.
 historyBackgroundWarm <- function(session, chat_ids, chats, ensure_history_cache,
                                   batch_size = 120L, delay_sec = 0.35,
                                   on_complete = NULL, is_current = NULL) {
   if (!length(chat_ids)) return(invisible(NULL))
 
   batches <- split(chat_ids, ceiling(seq_along(chat_ids) / batch_size))
-  remaining <- length(batches)
+  toplam <- length(batches)
   basarili <- TRUE
 
-  for (i in seq_along(batches)) {
-    local({
-      batch <- batches[[i]]
-      wait <- i * delay_sec
-
-      later::later(function() {
-        if (!session$isClosed()) {
-          shiny::withReactiveDomain(session, {
-            shiny::isolate({
-              guncel <- !is.function(is_current) || isTRUE(is_current())
-              if (guncel) {
-                sonuc <- tryCatch(ensure_history_cache(batch, chats), error = function(e) {
-                  .history_log_warn(sprintf("[HISTORY] arka plan partisi okunamadı: %s", mergen_db_error_log_summary(e)))
-                  FALSE
-                })
-                if (isFALSE(sonuc)) basarili <<- FALSE
-              } else {
-                basarili <<- FALSE
-              }
-              remaining <<- remaining - 1L
-
-              if (remaining <= 0L && is.function(on_complete)) {
-                if (length(formals(on_complete))) on_complete(basarili) else on_complete()
-              }
-            })
+  planla <- function(idx) {
+    later::later(function() {
+      if (isTRUE(session$isClosed())) return(invisible(NULL))
+      shiny::withReactiveDomain(session, {
+        shiny::isolate({
+          guncel <- !is.function(is_current) || isTRUE(is_current())
+          if (!guncel) {
+            basarili <<- FALSE
+            if (is.function(on_complete)) {
+              if (length(formals(on_complete))) on_complete(basarili) else on_complete()
+            }
+            return(invisible(NULL))
+          }
+          sonuc <- tryCatch(ensure_history_cache(batches[[idx]], chats), error = function(e) {
+            .history_log_warn(sprintf("[HISTORY] arka plan partisi okunamadı: %s", mergen_db_error_log_summary(e)))
+            FALSE
           })
-        }
-      }, delay = wait)
-    })
+          if (isFALSE(sonuc)) basarili <<- FALSE
+
+          if (idx < toplam) {
+            planla(idx + 1L)
+          } else if (is.function(on_complete)) {
+            if (length(formals(on_complete))) on_complete(basarili) else on_complete()
+          }
+        })
+      })
+    }, delay = delay_sec)
   }
 
+  planla(1L)
   invisible(TRUE)
 }

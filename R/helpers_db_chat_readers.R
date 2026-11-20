@@ -303,15 +303,30 @@ load_chat_messages_from_db <- function(chat_id, user_id = NULL) {
   }
 
   if (nrow(chat_df) == 0) {
-    return(list(title = NULL, timestamp = NULL, messages = list(), message_count = 0L))
+    return(list(
+      title = NULL,
+      timestamp = NULL,
+      last_message_timestamp = NULL,
+      messages = list(),
+      message_count = 0L,
+      kayit_bulunamadi = TRUE
+    ))
   }
 
   messages_df <- chat_df[!is.na(chat_df$MessageID), , drop = FALSE]
   messages <- if (nrow(messages_df) > 0) format_chat_messages(messages_df, user_id = safe_user_id) else list()
+  last_msg_time <- if (nrow(messages_df) > 0 &&
+                       "MessageTimestamp" %in% names(messages_df) &&
+                       any(!is.na(messages_df$MessageTimestamp))) {
+    max(messages_df$MessageTimestamp, na.rm = TRUE)
+  } else {
+    chat_df$CreateTimestamp[1]
+  }
 
   list(
     title = chat_df$ChatTitle[1],
     timestamp = chat_df$CreateTimestamp[1],
+    last_message_timestamp = last_msg_time,
     messages = messages,
     message_count = length(messages)
   )

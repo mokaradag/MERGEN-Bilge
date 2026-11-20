@@ -214,7 +214,10 @@ mergen_cancellable_worker_launch <- function(payload) {
   # ilk akış parçasını her istemde ~0,3 sn geciktiriyordu. Operatör
   # R_ENABLE_JIT verdiyse (ana süreçte olduğu gibi) ona uyulur.
   env = c(callr::rcmd_safe_env(),
-          R_ENABLE_JIT = if (nzchar(Sys.getenv("R_ENABLE_JIT"))) Sys.getenv("R_ENABLE_JIT") else "0"))
+          R_ENABLE_JIT = {
+            jit_m <- trimws(Sys.getenv("R_ENABLE_JIT", ""))
+            if (jit_m %in% c("0", "1", "2", "3")) jit_m else "0"
+          }))
 }
 
 mergen_cancellable_worker_promise <- function(payload, current, timeout = 1800, priority = 0L,

@@ -232,8 +232,8 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
     # Ortak Söyleşiler önbelleği (kullanıcıya bağlı, en fazla 60 sn); hub/davet/Bilge
     # Yolaç listeleri her ziyarette yenilenir. Kullanıcı eylemleri önbelleği düşürür.
     sohbet_onbellek <- new.env(parent = emptyenv())
-    # Kimlik düşüp aynı oturumda dönünce çıkış öncesi liste TTL içinde kullanılmaz.
-    if (exists("mergen_session_on_owner_change", mode = "function")) mergen_session_on_owner_change(session, function(neden) rm(list = ls(sohbet_onbellek), envir = sohbet_onbellek))
+    # Kimlik düşüp dönünce/sahip değişince önbellek temizlenir ve liste anında yenilenir.
+    if (exists("mergen_session_on_owner_change", mode = "function")) mergen_session_on_owner_change(session, function(neden) { rm(list = ls(sohbet_onbellek), envir = sohbet_onbellek); liste_yenile(isolate(liste_yenile()) + 1L) })
     yenile <- function(neden = "manual") {
       # Kullanıcı eylemi listeyi düşürür; "Yenile" 60 sn'lik olumsuz tablo sonucunu beklemez.
       if (!identical(neden, "tab")) { sohbet_onbellek$df <- NULL; if (exists("ortak_db_tablo_prob_hatasi_mi", mode = "function")) ortak_db_tablo_prob_hatasi_mi(TRUE) }
@@ -273,7 +273,7 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
 
     observeEvent(input$canli_kalp_atisi, {
       uid <- gecerli_kullanici()
-      if (is.na(uid) || !ortak_db_tablolar_hazir_mi()) {
+      if (is.na(uid) || !ortak_db_tablolar_hazir_mi(otomatik_yoklama = TRUE)) {
         return(invisible(NULL))
       }
 
@@ -306,7 +306,7 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
       invalidateLater(20000, session)
 
       uid <- gecerli_kullanici()
-      if (is.na(uid) || !ortak_db_tablolar_hazir_mi()) {
+      if (is.na(uid) || !ortak_db_tablolar_hazir_mi(otomatik_yoklama = TRUE)) {
         return(invisible(NULL))
       }
 

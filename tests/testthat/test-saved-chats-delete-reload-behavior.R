@@ -130,5 +130,7 @@ testthat::test_that("doğrulanmamış silmede yeniden okuma da başarısızsa ka
     testthat::expect_identical(shiny::isolate(session$userData$.values$current_chat_id), "1")
     testthat::expect_length(shiny::isolate(session$userData$.values$messages), 1L)
     testthat::expect_true(any(grepl("doğrulanamadı", kayit$toast, fixed = TRUE)))
+    # Doğrulanmamış silme last_deleted_chat_id'yi işaretlemez: korunan kart tekrar tıklanabilir.
+    testthat::expect_null(session$userData$saved_chats_silinenler)
   })
 })

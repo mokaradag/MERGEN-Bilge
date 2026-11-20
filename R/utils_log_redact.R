@@ -356,6 +356,15 @@ redact_connection_identifiers <- function(x) {
     perl = TRUE
   )
 
+  # Noktalı virgülle ayrılan boşluklu ODBC tanımlayıcıları (ör. DSN=Ozel Rapor;UID=x)
+  # alan ayırıcısına kadar eksiksiz maskelenir.
+  metin <- gsub(
+    paste0("(?i)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS,
+           ")(\\s*=\\s*)(?!<redacted>)(?!\\{)[^;,}\\])\\r\\n\"'<>]+(?=;)"),
+    "\\1\\2\\3<redacted>",
+    metin,
+    perl = TRUE
+  )
   # Zaten maskelenmiş ya da süslü parantezli değerler İKİNCİ KEZ işlenmez.
   metin <- gsub(
     paste0("(?i)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS,
@@ -374,12 +383,11 @@ redact_connection_identifiers <- function(x) {
     metin,
     perl = TRUE
   )
-  # Authorization başlığı: şema korunur, kimlik bilgisi UZUNLUKTAN BAĞIMSIZ satır
-  # sonuna kadar maskelenir (`Basic YTpi` genel redaktörün 6 karakter eşiğinin
-  # altında kalıyordu; Digest parametreleri virgül/boşluk içerir).
+  # Authorization başlığı (ön geçişin yakalamadığı biçimler için yedek): şema
+  # korunur, kimlik bilgisi satır sonuna kadar maskelenir.
   metin <- gsub(
     paste0(.REDACT_LOG_KEY_ONU, "((?:proxy-)?authorization)", .REDACT_LOG_KEY_SONU,
-           "(?=\\S)(?![{\"'])(?>((?:Bearer|Basic|Digest|Negotiate|NTLM|Token)\\s+)?)(?!<redacted>)[^\\r\\n\"']+"),
+           "(?=\\S)(?![{\"'])(?>((?:Bearer|Basic|Digest|Negotiate|NTLM|Token)\\s+)?)(?!<redacted>)[^\\r\\n]+"),
     "\\1\\2\\3\\4\\5<redacted>",
     metin,
     perl = TRUE
@@ -414,8 +422,8 @@ redact_connection_identifiers <- function(x) {
 #' `DSN="Ozel"`, `PWD='abc'`, `{"authToken":"..."}` gibi değerler uzunluktan
 #' bağımsız maskelenir. Değerin İLK tırnağından önce ters bölü varsa (`\'`)
 #' kaçış mı, değerin sonundaki düz ters bölü mü olduğu bilinemez
-#' (`Server='db\';PWD='abcde'`). Bu durumda satırdaki SON tırnağa kadar her şey
-#' maskelenir: sonraki anahtar yutulsa bile değeri de maskenin içinde kalır.
+#' (`Server='db\';PWD='abcde'`). Bu durumda satırdaki SON kaçışsız tırnağa kadar,
+#' kapanış tırnağı yoksa satır sonuna kadar her şey maskelenir.
 #' Kapanmamış değer (kesilmiş tanı) CR/LF ya da metin sonuna kadar maskelenir;
 #' satır sonu karakteri tüketilmez, sonraki satır korunur.
 .redact_quoted_log_values <- function(x) {
@@ -424,16 +432,28 @@ redact_connection_identifiers <- function(x) {
   anahtarlar <- paste(c(.REDACT_CONN_KEYS, .REDACT_LOG_SECRET_KEYS,
                         "(?:proxy-)?authorization"), collapse = "|")
   onek <- paste0(.REDACT_LOG_KEY_ONU, "(", anahtarlar, ")", .REDACT_LOG_KEY_SONU)
+  # Ham HTTP Authorization başlığı genel redaktörden ÖNCE satır sonuna kadar
+  # maskelenir: RFC 6750 `~` karakteri veya Digest tırnaklı parametreleri
+  # (`username="...", response="..."`) kısmen açıkta kalmaz.
+  x <- gsub(
+    paste0(.REDACT_LOG_KEY_ONU, "((?:proxy-)?authorization)(\\s*[:=]\\s*)",
+           "(?=\\S)(?![{\"'])(?>((?:Bearer|Basic|Digest|Negotiate|NTLM|Token)\\s+)?)(?!<redacted>)[^\\r\\n]+"),
+    "\\1\\2\\3\\4<redacted>",
+    x,
+    perl = TRUE
+  )
   # Çıplak ODBC parola değeri boşluk içerebilir (`PWD=abc ikinci;UID=x`): değer
   # noktalı virgül ya da satır sonuna dek maskelenir; sonraki alan ayrıca işlenir.
   x <- gsub("(?i)(^|[;{(\\[,\\s])(pwd|password|passwd)(\\s*=\\s*)(?!<redacted>)(?![{\"'\\s])[^;\r\n]+",
             "\\1\\2\\3<redacted>", x, perl = TRUE)
   for (q in c("\"", "'")) {
-    belirsiz <- paste0(q, "(?=[^", q, "\r\n]*(?<=\\\\)", q, ")[^\r\n]*", q)
+    belirsiz_kapali <- paste0(q, "(?=[^", q, "\r\n]*(?<=\\\\)", q, ")[^\r\n]*(?<!\\\\)", q)
+    belirsiz_acik <- paste0(q, "(?=[^", q, "\r\n]*(?<=\\\\)", q, ")[^\r\n]*(?=\r|\n|\\z)")
     kapali <- paste0(q, "(?!<redacted>", q, ")[^", q, "\r\n]*", q)
     acik <- paste0(q, "(?!<redacted>)[^", q, "\r\n]*(?=\r|\n|\\z)")
     yerine <- paste0("\\1\\2\\3\\4", q, "<redacted>")
-    x <- gsub(paste0(onek, belirsiz), paste0(yerine, q), x, perl = TRUE)
+    x <- gsub(paste0(onek, belirsiz_kapali), paste0(yerine, q), x, perl = TRUE)
+    x <- gsub(paste0(onek, belirsiz_acik), yerine, x, perl = TRUE)
     x <- gsub(paste0(onek, kapali), paste0(yerine, q), x, perl = TRUE)
     x <- gsub(paste0(onek, acik), yerine, x, perl = TRUE)
   }
@@ -460,6 +480,6 @@ mergen_db_error_log_summary <- function(e) {
   metin <- if (exists("redacted_condition_message", mode = "function", inherits = TRUE)) {
     redacted_condition_message(e)
   } else "(ayrıntı gizlendi)"
-  metin <- sub("(?s)(<SQL>|\\b(SELECT|WITH|INSERT|UPDATE|DELETE|EXEC|MERGE)\\b).*$", "<SQL gizlendi>", metin, perl = TRUE)
+  metin <- sub("(?is)(<SQL>|\\b(SELECT|WITH|INSERT|UPDATE|DELETE|EXEC|MERGE)\\b).*$", "<SQL gizlendi>", metin, perl = TRUE)
   sprintf("[%s] %s", sinif, substr(metin, 1L, 300L))
 }

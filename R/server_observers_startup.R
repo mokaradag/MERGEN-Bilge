@@ -122,6 +122,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
     effective_user_id <- resolve_current_user_id()
 
 	if (is.na(effective_user_id) || effective_user_id <= 0) {
+	  startup_state$kimlik_bekleniyor <- TRUE
 	  cat("[STARTUP] Geçerli kullanıcı kimliği yok, kayıtlı sohbet yüklemesi atlandı\n")
 	  # Sahip değişimi anahtarı sıfırladıktan sonra kimlik yoksa Zengin Deneyim
 	  # beklemede kalmaz; run_full_saved_chats_load() ile aynı "kısmen" durumu
@@ -259,6 +260,12 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		# başlatılır ki ön izleme çizimi önce gitsin. Yerel durum değiştiyse
 		# (kullanıcı söyleşiye başladıysa) tembel sekme yolu korunur.
 		arka_plan_tam_liste <- function() {
+		  # İşçi havuzu yoksa (sequential geri dönüş) otomatik tam liste okuması
+		  # ana olay döngüsünü bloklamasın diye yönetim sekmesi ziyaretine bırakılır.
+		  if (exists("mergen_startup_async_worker_ready", mode = "function", inherits = TRUE) &&
+		      !isTRUE(mergen_startup_async_worker_ready())) {
+			return(invisible(NULL))
+		  }
 		  # Ertelenen tetik yalnızca planlandığı nesilde çalışır: arada sahip
 		  # değiştiyse yeni sahibin ön izlemesinden önce tam yükleme başlatmaz.
 		  planlanan_nesil <- startup_state$full_load_generation
@@ -388,7 +395,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		  later::later(function() {
 			startup_state$preview_fallback_pending <- FALSE
 			calistir <- startup_state$run_preview_hydration
-			if (is.function(calistir)) tryCatch(calistir("fallback_timer"), error = function(e) NULL)
+			if (is.function(calistir)) try(calistir("fallback_timer"), silent = TRUE)
 		  }, delay = fallback_secs)
 		}
 	  }
@@ -440,10 +447,24 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  # gönderilir (limit = NA): otomatik bağımlılık taraması ana olay döngüsünü
 	  # saniyelerce bloklamaz; biçim load_chats_from_db(include_messages = FALSE)
 	  # ile aynıdır.
-	  gonderim <- tryCatch(
-		mergen_startup_chat_preview_promise(run_user_id, limit = NA_integer_,
-		                                    session_token = session$token),
-		error = function(e) promises::promise_reject(e))
+	  gonderim_gecerli <- function() !session_closed() &&
+		identical(startup_state$full_load_generation, full_load_generation)
+	  gonderim <- tryCatch({
+		if ("gecerli_mi" %in% names(formals(mergen_startup_chat_preview_promise))) {
+		  mergen_startup_chat_preview_promise(
+			run_user_id,
+			limit = NA_integer_,
+			session_token = session$token,
+			gecerli_mi = gonderim_gecerli
+		  )
+		} else {
+		  mergen_startup_chat_preview_promise(
+			run_user_id,
+			limit = NA_integer_,
+			session_token = session$token
+		  )
+		}
+	  }, error = function(e) promises::promise_reject(e))
 	  # Gönderim anındaki yerel durum: sonuç geldiğinde arada yerelde
 	  # eklenen/değişen/silinen söyleşiler eski DB görüntüsüyle ezilmez.
 	  gonderim_aninda <- shiny::isolate(values$saved_chats)
@@ -503,8 +524,9 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 				detail = list(count = length(chats))
 			  )
 
-			  # Tam liste geldiğinde karşılama ekranını güncelle.
-			  refresh_welcome_if_needed(chats)
+			  # Tam liste geldiğinde karşılama ekranını güncelle; olası çizim
+			  # hatası geçmiş hazırlığını ve başarı akışını kesintiye uğratmaz.
+			  try(refresh_welcome_if_needed(chats), silent = TRUE)
 			})
 			# Tam liste hazır: geçmiş ilk sayfası arka planda (işçide) hazırlanır.
 			yonetim_hazirla(full_load_generation)
@@ -532,10 +554,11 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		  session$userData$mergen_yonetim_hazir("management_pages_ready",
 		            "Söyleşi listesi yüklenemedi; sayfa açıldığında yeniden denenecek",
 		            detail = list(degraded = TRUE))
-		  # Sürücü hatası DSN/sunucu adı taşıyabilir; günlüğe maskelenmiş yazılır.
 		  # Sürücü tanısı DSN ve (gömülü kimlikli) SQL taşıyabilir: maskelenmiş
-		  # özet yazılır, deyim gövdesi atılır.
-		  warning(sprintf("[SERVER] Initial saved chat load failed: %s", (if (exists("mergen_db_error_log_summary", mode = "function")) mergen_db_error_log_summary(err) else "(ayrıntı gizlendi)")))
+		  # özet yazılır; try(..., silent = TRUE) options(warn = 2) altında bile
+		  # sekme yeniden denemesinin kesilmesini önler.
+		  try(warning(sprintf("[SERVER] Initial saved chat load failed: %s",
+		              (if (exists("mergen_db_error_log_summary", mode = "function")) mergen_db_error_log_summary(err) else "(ayrıntı gizlendi)"))), silent = TRUE)
 		  # Yükleme sürerken açılan yönetim sayfası tetiği atlanmıştı: o ziyaret
 		  # için TEK yeniden deneme yapılır (süren hata sonsuz denemeye dönmez;
 		  # yeniden deneme sırasında yeni ziyaret işaretlenmez).
@@ -647,10 +670,17 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  startup_state$preview_hydration_user_id <- NULL
 	  session$userData$saved_chats_full_pending <- FALSE
 	  session$userData$saved_chats_full_loaded <- FALSE
-	  # Sahibe özgü hazır-olma anahtarları yeni sahip için baştan bildirilir.
+	  # Sahibe özgü hazır-olma anahtarları yeni sahip için baştan bildirilir;
+	  # kimlik düştüyse kimliğe bağlı ön koşullar da temizlenir ki Zengin Deneyim
+	  # kimlik yokken hazır görünmesin.
 	  if (is.function(boot_ready$reset)) {
-		boot_ready$reset(c("saved_chats_full_loaded", "history_rows_ready",
-		                   "management_pages_ready"))
+		sifirlanacak <- c("saved_chats_full_loaded", "history_rows_ready",
+		                  "management_pages_ready")
+		if (isTRUE(startup_state$kimlik_bekleniyor)) {
+		  sifirlanacak <- c("auth_ready", "saved_chats_preview_ready",
+		                    "saved_chats_preview_hydrated", sifirlanacak)
+		}
+		boot_ready$reset(sifirlanacak)
 	  }
 	  # Yeni sahibin listesi boşsa önceki sahibin söyleşileri görünmez.
 	  values$saved_chats <- list()

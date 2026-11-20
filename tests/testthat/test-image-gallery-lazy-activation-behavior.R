@@ -386,19 +386,85 @@ testthat::test_that("toplu görsel silme yalnızca mesajı değişen söyleşile
     {
       session$userData$kimlik_sahibi <- 7L
       session$userData$mergen_gecmis_onbellek_dusur <- function(chat_ids = NULL) {
-        dusurulen[[length(dusurulen) + 1L]] <<- chat_ids
+        dusurulen[[length(dusurulen) + 1L]] <<- list(ids = chat_ids)
       }
       session$flushReact()
       session$setInputs(refresh_gallery = as.numeric(Sys.time()))
       for (i in seq_len(20L)) { later::run_now(timeoutSecs = 0.1, loop = loop); session$flushReact()
         if (scan_recorder$count >= 1L && !isTRUE(gallery_loading())) break }
+      session$setInputs(clear_all_images = 1)
       session$setInputs(confirm_clear_all_images = 1)
       testthat::expect_length(dusurulen, 1L)
-      testthat::expect_identical(dusurulen[[1]], c("1", "3"))
+      testthat::expect_identical(dusurulen[[1]]$ids, c("1", "3"))
       # Hiçbir söyleşi değişmediyse (görsel yoktu) geçmiş önbelleği korunur.
       etkilenen <<- character()
+      session$setInputs(clear_all_images = 2)
       session$setInputs(confirm_clear_all_images = 2)
       testthat::expect_length(dusurulen, 1L)
+    }
+  ))
+})
+
+testthat::test_that("onay penceresi açıldıktan sonra sahip değişip tarama bitse de eski onay yeni sahibin görselini silemez", {
+  testthat::skip_if_not_installed("shiny")
+  scan_recorder <- new.env(parent = emptyenv())
+  scan_recorder$count <- 0L
+  env <- .lazy_gallery_env(scan_recorder)
+  env$scan_user_images <- function(uid) { scan_recorder$count <- scan_recorder$count + 1L; .gallery_tek_satir(uid) }
+  silinen_sahipler <- integer(0)
+  env$delete_all_user_images <- function(user_id) { silinen_sahipler <<- c(silinen_sahipler, as.integer(user_id)); 1L }
+  aktif_uid <- 7L
+  loop <- later::create_loop(parent = NULL)
+  on.exit(later::destroy_loop(loop), add = TRUE)
+  later::with_loop(loop, shiny::testServer(
+    env$imageGalleryServer,
+    args = list(id = "ig", current_user_id = function() aktif_uid),
+    {
+      session$userData$kimlik_sahibi <- 7L
+      session$flushReact()
+      session$setInputs(refresh_gallery = as.numeric(Sys.time()))
+      for (i in seq_len(20L)) { later::run_now(timeoutSecs = 0.1, loop = loop); session$flushReact()
+        if (scan_recorder$count >= 1L && !isTRUE(gallery_loading())) break }
+      # Sahip 7 onay penceresini açar.
+      session$setInputs(clear_all_images = 1)
+      # Sahip 9'a geçer ve 9'un taraması tamamlanır.
+      aktif_uid <<- 9L
+      session$userData$kimlik_sahibi <- 9L
+      for (cb in session$userData$.owner_hooks) cb("owner_switch")
+      for (i in seq_len(20L)) { later::run_now(timeoutSecs = 0.1, loop = loop); session$flushReact()
+        if (scan_recorder$count >= 2L && !isTRUE(gallery_loading())) break }
+      # Sahip 7'nin açık kalan penceresinden gelen onay reddedilmelidir.
+      session$setInputs(confirm_clear_all_images = 1)
+      testthat::expect_length(silinen_sahipler, 0L)
+    }
+  ))
+})
+
+testthat::test_that("bağımsız görsel silme (chat_id NULL) tüm geçmiş önbelleğini sıfırlamaz", {
+  testthat::skip_if_not_installed("shiny")
+  scan_recorder <- new.env(parent = emptyenv())
+  scan_recorder$count <- 0L
+  env <- .lazy_gallery_env(scan_recorder)
+  env$scan_user_images <- function(uid) { scan_recorder$count <- scan_recorder$count + 1L; .gallery_tek_satir(uid) }
+  env$delete_single_image <- function(path, uid, chat_id) TRUE
+  dusurulen <- list()
+  loop <- later::create_loop(parent = NULL)
+  on.exit(later::destroy_loop(loop), add = TRUE)
+  later::with_loop(loop, shiny::testServer(
+    env$imageGalleryServer,
+    args = list(id = "ig", current_user_id = function() 7L),
+    {
+      session$userData$kimlik_sahibi <- 7L
+      session$userData$mergen_gecmis_onbellek_dusur <- function(chat_ids = NULL) {
+        dusurulen[[length(dusurulen) + 1L]] <<- list(ids = chat_ids)
+      }
+      session$flushReact()
+      session$setInputs(refresh_gallery = as.numeric(Sys.time()))
+      for (i in seq_len(20L)) { later::run_now(timeoutSecs = 0.1, loop = loop); session$flushReact()
+        if (scan_recorder$count >= 1L && !isTRUE(gallery_loading())) break }
+      session$setInputs(delete_image_request = list(file_path = "user_images/7/tek.png", filename = "tek.png", chat_id = NULL))
+      session$setInputs(confirm_delete_image = 1)
+      testthat::expect_length(dusurulen, 0L)
     }
   ))
 })

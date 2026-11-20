@@ -179,6 +179,9 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
         (has_user && !has_ai)
     }
     
+    yenileme_istendi <- !is.null(chat_to_load) && isTRUE(chat_to_load$transkript_yenile)
+    yenileme_basarisiz <- FALSE
+
     if (isTRUE(needs_hydrate)) {
       detail <- tryCatch(
         load_chat_messages_from_db(
@@ -190,7 +193,25 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
           NULL
         }
       )
-      if (!is.null(detail)) {
+      if (is.null(detail)) {
+        if (isTRUE(yenileme_istendi)) {
+          # Zorunlu yenileme başarısız: bayrak sonraki açılış için korunur.
+          yenileme_basarisiz <- TRUE
+        }
+      } else if (isTRUE(detail$kayit_bulunamadi) ||
+                 (is.null(detail$title) && is.null(detail$timestamp))) {
+        # Söyleşi başka oturumda silinmiş: eski önbellek düşürülür, başarı bildirilmez.
+        saved_copy <- values$saved_chats %||% list()
+        saved_copy[[chat_id]] <- NULL
+        values$saved_chats <- saved_copy
+        chat_to_load <- NULL
+        showToast(session, "Bu söyleşi artık mevcut değil veya silinmiş.", "warning")
+      } else {
+        if ((is.null(detail$last_message_timestamp) || is.na(detail$last_message_timestamp)) &&
+            !is.null(chat_to_load) && !is.null(chat_to_load$last_message_timestamp)) {
+          detail$last_message_timestamp <- chat_to_load$last_message_timestamp
+        }
+        detail$hidrate_edildi <- TRUE
         chat_to_load <- detail
         saved_copy <- values$saved_chats
         saved_copy[[chat_id]] <- chat_to_load
@@ -483,13 +504,18 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       shinyjs::runjs("if (typeof window.scrollToBottom === 'function') window.scrollToBottom(false);")
     })
     # Başarı toast'ı, son mesaj balonu DOM'da GERÇEKTEN görünene dek bekletilir;
-    # içerik ekranda belirmeden "yüklendi" denmez.
+    # içerik ekranda belirmeden "yüklendi" denmez. Zorunlu yenileme başarısız
+    # olduysa önbellek gösterildiği açıkça bildirilir.
     son_mesaj_id <- if (length(values$messages) > 0) {
       values$messages[[length(values$messages)]]$id
     } else {
       NULL
     }
-    mergen_show_chat_loaded_toast(session, chat_to_load$title, son_mesaj_id)
+    if (isTRUE(yenileme_basarisiz)) {
+      showToast(session, "Söyleşi güncel içerikle yenilenemedi; önbellekteki kayıt gösteriliyor.", "warning")
+    } else {
+      mergen_show_chat_loaded_toast(session, chat_to_load$title, son_mesaj_id)
+    }
     cat(sprintf(
       "[CHAT PERF] Kayıtlı söyleşi yüklendi - chat_id=%s, mesaj=%d, %.0f ms\n",
       chat_id, length(values$messages),
@@ -534,9 +560,6 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     req(kanonik_id > 0L)
     chat_id <- as.character(kanonik_id)
 
-    # Silinen sohbeti işaretle (yanlış yüklemeyi engellemek için)
-    last_deleted_chat_id(chat_id)
-    
     cat(sprintf("[SAVED_CHATS] Sohbet siliniyor: %s\n", chat_id))
     
     # Mevcut sohbet mi siliniyor kontrol et
@@ -580,12 +603,16 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       cat("[SAVED_CHATS] Silme sonrası liste DB'den yeniden okunamadı; silinen söyleşi yerelden kaldırıldı\n")
     }
     saved_chats_data$refresh()
-    # Doğrulanmamış silmede yerel durum (kart, açık söyleşi) korunur.
+    # Doğrulanmamış silmede yerel durum (kart, açık söyleşi) korunur ve
+    # last_deleted_chat_id işaretlenmez ki korunan kart yeniden açılabilsin.
     if (!silme_onayli) {
       cat("[SAVED_CHATS] Silme doğrulanamadı; yerel durum korundu\n")
       showToast(session, "Söyleşinin silindiği doğrulanamadı. Lütfen tekrar deneyin.", "warning")
       return()
     }
+
+    # Yalnızca doğrulanmış silmeden sonra eski açma tıklamaları engellenir.
+    last_deleted_chat_id(chat_id)
 
     # Eğer mevcut sohbet silindiyse, Ana Söyleşi sayfasını sıfırla
     if (current_chat_deleted) {

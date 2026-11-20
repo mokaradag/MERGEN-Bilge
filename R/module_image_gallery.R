@@ -201,11 +201,18 @@ imageGalleryServer <- function(id, current_user_id) {
       refresh_gallery_cache()
     })
 
+    # Silme onay penceresini açan sahip kimliği; sahip değişiminde sıfırlanır.
+    onay_sahibi <- new.env(parent = emptyenv())
+    onay_sahibi$tekil <- NA_integer_
+    onay_sahibi$tumu <- NA_integer_
+
     # Aynı oturumda sahip değişince önceki sahibin kartları hemen kalkar; galeri
     # etkinse yeni sahip için yeniden taranır.
     if (exists("mergen_session_on_owner_change", mode = "function", inherits = TRUE)) {
       mergen_session_on_owner_change(session, function(neden) {
         galeri_sahibi$uid <- NA_integer_
+        onay_sahibi$tekil <- NA_integer_
+        onay_sahibi$tumu <- NA_integer_
         cached_images(empty_images_df())
         refresh_trigger(shiny::isolate(refresh_trigger()) + 1)
       })
@@ -490,6 +497,9 @@ imageGalleryServer <- function(id, current_user_id) {
 
     observeEvent(input$delete_image_request, {
       req(input$delete_image_request)
+      acan_sahip <- silme_sahibi()
+      if (is.na(acan_sahip)) return(silme_reddedildi())
+      onay_sahibi$tekil <- acan_sahip
       info <- input$delete_image_request
       fname <- info$filename %||% "Bu görsel"
 
@@ -508,14 +518,21 @@ imageGalleryServer <- function(id, current_user_id) {
       info <- input$delete_image_request
       removeModal()
       req(info$file_path)
+      beklenen <- onay_sahibi$tekil
+      onay_sahibi$tekil <- NA_integer_
       sahip <- silme_sahibi()
-      if (is.na(sahip)) return(silme_reddedildi())
+      if (is.na(sahip) || is.na(beklenen) || !identical(sahip, beklenen)) return(silme_reddedildi())
 
       success <- delete_single_image(info$file_path, sahip, info$chat_id)
       if (success) {
         showToast(session, "Görsel silindi.", "warning")
         delete_image_trigger(list(file_path = info$file_path, chat_id = info$chat_id))
-        gecmis_onbellegini_dusur(info$chat_id)
+        # Yalnızca bir söyleşiye bağlı görsel silindiyse o söyleşinin geçmiş
+        # önbelleği düşürülür; bağımsız görselde tüm önbellek sıfırlanmaz.
+        silinen_cid <- as.character(info$chat_id %||% "")[1]
+        if (!is.na(silinen_cid) && nzchar(silinen_cid)) {
+          gecmis_onbellegini_dusur(silinen_cid)
+        }
         refresh_trigger(refresh_trigger() + 1)
       } else {
         showToast(session, "Görsel silinemedi.", "error")
@@ -525,6 +542,9 @@ imageGalleryServer <- function(id, current_user_id) {
     observeEvent(input$clear_all_images, {
       imgs <- filtered_images()
       if (nrow(imgs) > 0) {
+        acan_sahip <- silme_sahibi()
+        if (is.na(acan_sahip)) return(silme_reddedildi())
+        onay_sahibi$tumu <- acan_sahip
         showModal(modalDialog(
           title = "Tüm Görselleri Sil",
           sprintf("Toplam %d görselinizi silmek istediğinizden emin misiniz? Bu işlem geri alınamaz. İlgili söyleşilerdeki mesajlarda görsellerin silindiği belirtilecektir.", nrow(cached_images())),
@@ -541,8 +561,10 @@ imageGalleryServer <- function(id, current_user_id) {
 
     observeEvent(input$confirm_clear_all_images, {
       removeModal()
+      beklenen <- onay_sahibi$tumu
+      onay_sahibi$tumu <- NA_integer_
       sahip <- silme_sahibi()
-      if (is.na(sahip)) return(silme_reddedildi())
+      if (is.na(sahip) || is.na(beklenen) || !identical(sahip, beklenen)) return(silme_reddedildi())
       deleted_count <- delete_all_user_images(sahip)
       # Yalnızca mesajı değişen söyleşilerin geçmiş kaydı düşer; hiçbiri
       # değişmediyse önbellek korunur (ilgisiz söyleşiler yeniden okunmaz).

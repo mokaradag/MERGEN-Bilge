@@ -93,7 +93,19 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
           NULL
         }
       )
-      if (!is.null(detail) && detail$message_count > 0) {
+      if (!is.null(detail) && (isTRUE(detail$kayit_bulunamadi) ||
+          (is.null(detail$title) && is.null(detail$timestamp)))) {
+        # Söyleşi başka oturumda silinmiş; eski önbellek kaydı temizlenir.
+        saved_copy <- values$saved_chats %||% list()
+        saved_copy[[chat_id]] <- NULL
+        values$saved_chats <- saved_copy
+        chat_to_load <- NULL
+      } else if (!is.null(detail) && (detail$message_count > 0 || !is.null(detail$title))) {
+        if ((is.null(detail$last_message_timestamp) || is.na(detail$last_message_timestamp)) &&
+            !is.null(chat_to_load) && !is.null(chat_to_load$last_message_timestamp)) {
+          detail$last_message_timestamp <- chat_to_load$last_message_timestamp
+        }
+        detail$hidrate_edildi <- TRUE
         chat_to_load <- detail
         saved_copy <- values$saved_chats
         saved_copy[[chat_id]] <- chat_to_load

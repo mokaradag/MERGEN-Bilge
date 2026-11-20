@@ -149,6 +149,7 @@ savedChatsServer <- function(id, saved_chats) {
       chats <- saved_chats()
 
       if (is.null(chats) || length(chats) == 0) {
+        zaman_onbellegi <<- new.env(hash = TRUE, parent = emptyenv())
         cached_meta(empty_meta())
         return()
       }
@@ -163,6 +164,12 @@ savedChatsServer <- function(id, saved_chats) {
       yeni_onbellek <- new.env(hash = TRUE, parent = emptyenv())
       timestamps <- vapply(seq_along(chats), function(i) {
         raw <- chats[[i]]$last_message_timestamp %||% chats[[i]]$timestamp
+        ham_eksik <- is.null(raw) || length(raw) == 0L || is.na(raw[1]) ||
+          (is.character(raw) && !nzchar(trimws(raw[1])))
+        if (ham_eksik) {
+          # Eksik zaman damgasında Sys.time() geri dönüşü önbelleklenmez.
+          return(as.numeric(parse_timestamp(raw)))
+        }
         anahtar <- ids[[i]]
         gecerli_anahtar <- !is.na(anahtar) && nzchar(anahtar)
         kayit <- if (gecerli_anahtar) get0(anahtar, envir = onceki, inherits = FALSE) else NULL

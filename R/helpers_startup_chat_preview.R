@@ -267,26 +267,32 @@ mergen_saved_chats_merge_newer <- function(db_chats, dispatch_snapshot, current,
     once <- dispatch_snapshot[[k]]
     db_sayi <- sayi(birlesik[[k]]$message_count)
     yerel_sayi <- sayi(current[[k]]$message_count)
+    yerel_hidrate <- isTRUE(current[[k]]$hidrate_edildi) && !isTRUE(current[[k]]$baslik_yerel_degisti)
     # Başka oturum daha sonra mesaj eklediyse DB'nin sayı/zaman çifti daha yenidir.
     db_daha_yeni <- isTRUE(db_sayi > yerel_sayi)
+    yerel_zaman <- current[[k]]$last_message_timestamp
+    db_zaman <- birlesik[[k]]$last_message_timestamp
+    yerel_zaman_daha_yeni <- !eksik(yerel_zaman) && !eksik(db_zaman) &&
+      isTRUE(suppressWarnings(as.numeric(yerel_zaman)[1] > as.numeric(db_zaman)[1]))
+    yerel_ileride <- isTRUE(yerel_sayi > db_sayi) ||
+      (isTRUE(yerel_sayi == db_sayi) && yerel_zaman_daha_yeni)
     if (is.null(once)) {
       # Gönderimden sonra yerelde açılan/hidrate edilen söyleşi: DB girdisi
-      # TABAN kalır (detay okuyucu etkinlik zamanı taşımaz; eksik alan DB'nin
-      # zamanını silmez). Yerel etkinlik DB'yi geçtiyse etkinlik alanları yerelden
-      # gelir ve söyleşi başa taşınır; açık yerel düzenlemeler (ad) uygulanır.
-      yerel_ileride <- isTRUE(yerel_sayi > db_sayi)
+      # TABAN kalır (detay okuyucu etkinlik zamanı taşımayabilir; eksik alan
+      # DB'nin zamanını silmez). Yalnızca hidrasyon sonucu önbelleklenen başlık
+      # DB'nin daha yeni başlığını ezmez; yerel etkinlik DB'yi geçtiyse başa taşınır.
       taban <- birlesik[[k]]
       for (alan in names(current[[k]])) {
         deger <- current[[k]][[alan]]
         if (eksik(deger) || (alan %in% etkinlik_alanlari && !yerel_ileride)) next
+        if (identical(alan, "title") && yerel_hidrate) next
         taban[alan] <- list(deger)
       }
       if (yerel_ileride) etkin <- c(etkin, k)
       # Yerelde mesaj yazıldı ve DB de ayrıca okundu: eşit sayı içerik eşitliği
       # değildir (başka sekmenin mesajı eksik olabilir). Önbellek korunur, yeniden
       # açılışta kapsamlı bir yeniden okuma istenir.
-      yerel_zaman <- current[[k]]$last_message_timestamp
-      if (!eksik(yerel_zaman) && !identical(yerel_zaman, birlesik[[k]]$last_message_timestamp)) {
+      if (!eksik(yerel_zaman) && !identical(yerel_zaman, db_zaman)) {
         taban$transkript_yenile <- TRUE
       }
       birlesik[[k]] <- taban
@@ -294,6 +300,7 @@ mergen_saved_chats_merge_newer <- function(db_chats, dispatch_snapshot, current,
     }
     for (alan in names(current[[k]])) {
       if (db_daha_yeni && alan %in% etkinlik_alanlari) next
+      if (identical(alan, "title") && yerel_hidrate) next
       if (!identical(current[[k]][[alan]], once[[alan]])) birlesik[[k]][alan] <- list(current[[k]][[alan]])
     }
     # Gönderimden sonra hem DB hem yerel etkinlik ilerlediyse transkript iki
@@ -302,14 +309,28 @@ mergen_saved_chats_merge_newer <- function(db_chats, dispatch_snapshot, current,
     if (isTRUE(db_sayi > once_sayi) && isTRUE(yerel_sayi > once_sayi)) {
       birlesik[[k]]$transkript_yenile <- TRUE
     }
-    if (!db_daha_yeni &&
-        (!identical(current[[k]]$last_message_timestamp, once$last_message_timestamp) ||
-         !identical(current[[k]]$message_count, once$message_count))) {
+    # DB bu oturumun güncellemesini zaten içeriyorsa DB sırası korunur; yalnızca
+    # yerel etkinlik DB'nin önündeyse söyleşi başa taşınır.
+    if (yerel_ileride) {
       etkin <- c(etkin, k)
     }
   }
-  yerel_yeni <- setdiff(setdiff(degisen, names(birlesik)), names(dispatch_snapshot))
+  # Yalnızca gönderimden SONRA yerelde oluşturulan söyleşiler korunur; başka
+  # oturumda silinmiş ama bu oturumda yalnızca hidrate edilmiş kayıt geri gelmez.
+  yerel_yeni <- Filter(
+    function(k) !isTRUE(current[[k]]$hidrate_edildi),
+    setdiff(setdiff(degisen, names(birlesik)), names(dispatch_snapshot))
+  )
   c(current[yerel_yeni], birlesik[etkin], birlesik[setdiff(names(birlesik), etkin)])
+}
+
+# Aktif future planının eşzamansız işçi destekleyip desteklemediğini bildirir.
+# MERGEN_DISABLE_FUTURES veya PSOCK başlatma hatasında plan sequential olur;
+# otomatik arka plan tam liste okuması ana olay döngüsünü bloklamasın diye
+# yalnızca işçi planı etkinken çalışır (kullanıcı sekme ziyareti etkilenmez).
+mergen_startup_async_worker_ready <- function() {
+  if (!requireNamespace("future", quietly = TRUE)) return(FALSE)
+  !inherits(tryCatch(future::plan("next"), error = function(e) NULL), "sequential")
 }
 
 # Yapılandırılmış DB login sınırı (MERGEN_DB_LOGIN_TIMEOUT_SEC); plan yoksa NA.
@@ -367,7 +388,12 @@ mergen_startup_chat_preview_globals <- function(user_id, limit = 6L) {
 # çağrıda tutmaz: dilim satırlık parçalar ayrı döngü turlarında işlenir (diğer
 # oturumlar arada ilerler). Normalizasyon değer başınadır; dilimleme sonucu
 # değiştirmez. Küçük listeler (ön izleme) doğrudan biçimlendirilir.
-mergen_startup_chat_preview_format_staged <- function(raw_frame, dilim = 500L) {
+# gecerli_mi: oturum kapandığında veya nesil eskidiğinde kalan dilimler
+# işlenmeden durdurulur.
+mergen_startup_chat_preview_format_staged <- function(raw_frame, dilim = 500L, gecerli_mi = NULL) {
+  if (is.function(gecerli_mi) && !isTRUE(gecerli_mi())) {
+    return(NULL)
+  }
   n <- if (is.data.frame(raw_frame)) nrow(raw_frame) else 0L
   if (n <= dilim) {
     return(db_chat_preview_format_frame(raw_frame))
@@ -377,6 +403,9 @@ mergen_startup_chat_preview_format_staged <- function(raw_frame, dilim = 500L) {
     bas <- 1L
     adim <- function() {
       tryCatch({
+        if (is.function(gecerli_mi) && !isTRUE(gecerli_mi())) {
+          return(resolve(NULL))
+        }
         son <- min(n, bas + dilim - 1L)
         parcalar[[length(parcalar) + 1L]] <<- db_chat_preview_format_frame(raw_frame[bas:son, , drop = FALSE])
         bas <<- son + 1L
@@ -392,7 +421,8 @@ mergen_startup_chat_preview_format_staged <- function(raw_frame, dilim = 500L) {
 # biçimlendirilir (tam listede dilimlerle). Dönen promise listeyi çözer.
 mergen_startup_chat_preview_promise <- function(user_id,
                                                 limit = 6L,
-                                                session_token = NULL) {
+                                                session_token = NULL,
+                                                gecerli_mi = NULL) {
   preview_globals <- mergen_startup_chat_preview_globals(user_id, limit = limit)
 
   # Yerel kopyalar test stub'larının (env yeniden bağlamayan senkron sarmalayıcı)
@@ -440,6 +470,6 @@ mergen_startup_chat_preview_promise <- function(user_id,
         if (is.data.frame(raw_frame)) nrow(raw_frame) else 0L
       ))
     }
-    mergen_startup_chat_preview_format_staged(raw_frame)
+    mergen_startup_chat_preview_format_staged(raw_frame, gecerli_mi = gecerli_mi)
   })
 }

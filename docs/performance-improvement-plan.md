@@ -179,9 +179,10 @@ Architecture chosen (all additive, Rich Lane untouched):
    with a **narrow contract** (DBI/odbc; the SQL text is selected in the main process,
    so no nested app-function lookup happens on the worker; opens its own connection,
    closes on every path, never runs if the user id is invalid). With a query budget,
-   validated integer parameters are inlined via `DBI::sqlInterpolate()` so odbc's
-   interruptible direct execution (SQLCancel) bounds statement *execution*; odbc 1.7's
-   bound (parameterized) execution path cannot be interrupted. **Limitation:** this is
+   validated integer parameters are inlined via `DBI::sqlInterpolate()` and executed
+   through `DBI::dbSendQuery(conn, sql)` without bound parameters, so odbc 1.7's
+   interruptible prepared-and-execute wrapper (SQLCancel) bounds statement *execution*;
+   odbc 1.7's bound (parameterized) execution path cannot be interrupted. **Limitation:** this is
    not a hard end-to-end deadline for the whole read. odbc fetches rows separately
    from execution, and a native fetch call that is waiting on the driver cannot check
    R's elapsed limit until it returns. Budgeted reads therefore fetch in bounded
@@ -282,9 +283,15 @@ Fix (`R/server_observers_startup.R` + `R/module_startup_lane.R` bridge):
   `saved_chats_full_loaded` is now logged when that background load completes.
 - Rich lane keeps the existing behavior (sync preview + background full load).
   Its `management_pages_ready` checkpoint covers only data prepared off the event
-  loop: the full list and the first Söyleşi Geçmişi page (both read in workers with a
-  bounded query budget, `mergen.startup_db_query_timeout_secs`, default 60 s). Görsel
-  Galerisi and Ortak Söyleşiler stay lazy (first visit) and are named in `detail$tembel`.
+  loop: the full list and missing Söyleşi Geçmişi rows for up to the latest 60
+  eligible conversations in activity order (not a guarantee of the first displayed
+  History table page, which sorts question-and-answer rows by prompt date on visit;
+  both reads run in workers with a bounded query budget,
+  `mergen.startup_db_query_timeout_secs`, default 60 s). On a normal aggregate
+  completion, Görsel Galerisi and Ortak Söyleşiler stay lazy (first visit) and are
+  named in `detail$tembel`. If the full-list worker fails or times out, startup
+  emits `management_pages_ready` with `detail$degraded = TRUE` (without
+  `detail$tembel`) so the overlay closes honestly instead of hanging.
 - The lazy full load re-resolves the effective user id at run time; invalid ids never
   load. Clients without the lane API get a `legacy_no_api` rich_lane bridge signal so
   the gate can never deadlock. Fast-lane closing contract unchanged
@@ -299,9 +306,10 @@ recent commits). `tests/testthat/helper_bootstrap.R` now pins the test run to
 
 Validation (cloud): startup smoke/lane/contract/source-manifest/production/boot-welcome
 suites 0 fail / 0 warn; parse sanity 935 files OK. VM re-check: fast-lane
-`[STARTUP PERF]` must show the deferral as `saved_chats_full_deferred deferred=TRUE`
-and, separately, `saved_chats_full_loaded deferred=FALSE` only after the background
-full list actually completed; the overlay must close without waiting for either.
+`[STARTUP PERF]` must show the deferral as `saved_chats_full_deferred deferred=TRUE`;
+when the background full-list load succeeds (or after the lazy tab fallback runs on
+failure), `saved_chats_full_loaded deferred=FALSE` is logged separately. The overlay
+must close without waiting for either.
 
 ### 2026-07-04 — Cold-start critical path + interaction hotspots (single instance, single port)
 
