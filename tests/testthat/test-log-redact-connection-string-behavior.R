@@ -255,3 +255,31 @@ test_that("Bearer tilda kuyruğu, Digest parametreleri, kaçışlı kesilmiş t�
   expect_false(grepl("4242", ozet_kucuk, fixed = TRUE))
   expect_match(ozet_kucuk, "<SQL gizlendi>", fixed = TRUE)
 })
+
+test_that("noktalı virgülsüz son ODBC tanımlayıcısı ve çift ayırıcılı tırnaklı sırlar bütünüyle maskelenir", {
+  .redact_env_yalit()
+  # Noktalı virgülsüz son boşluklu ODBC tanımlayıcısı tam maskelenir.
+  out_son <- redacted_condition_message(simpleError("UID=sample;DSN=Synthetic Reporting"))
+  expect_identical(out_son, "UID=<redacted>;DSN=<redacted>")
+  expect_false(grepl("Reporting", out_son, fixed = TRUE))
+
+  # Aynı satırdaki tanı düzyazısı (`: `, ` - `) korunur.
+  out_tani <- redacted_condition_message(simpleError("UID=sample;DSN=Synthetic Reporting: login failed"))
+  expect_identical(out_tani, "UID=<redacted>;DSN=<redacted>: login failed")
+  out_duz <- redacted_condition_message(simpleError("DSN=my_dsn failed to connect"))
+  expect_identical(out_duz, "DSN=<redacted> failed to connect")
+
+  # Çift tırnak ayırıcılı ('' ve "") sırlar komşu alanları tüketmeden maskelenir.
+  parca <- paste0("sonek", "77")
+  out_tek <- redacted_condition_message(simpleError(paste0("PWD='ab''", parca, "';UID='demo'")))
+  expect_identical(out_tek, "PWD='<redacted>';UID='<redacted>'")
+  expect_false(grepl(parca, out_tek, fixed = TRUE))
+
+  out_cift <- redacted_condition_message(simpleError(paste0("PWD=\"ab\"\"", parca, "\"; note=\"korunur\"")))
+  expect_identical(out_cift, "PWD=\"<redacted>\"; note=\"korunur\"")
+  expect_false(grepl(parca, out_cift, fixed = TRUE))
+
+  # Kesilmiş (kapanmamış) çift ayırıcılı değer satır sonuna dek maskelenir.
+  out_kesik <- redacted_condition_message(simpleError(paste0("PWD='ab''", parca, "\nsonraki satır")))
+  expect_identical(out_kesik, "PWD='<redacted>\nsonraki satır")
+})

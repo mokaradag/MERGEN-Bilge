@@ -244,19 +244,24 @@ testthat::test_that("Ortak Söyleşiler önbelleği oturum sahibi değişince (k
   env$ortakOturumRoomServer <- function(...) list()
   env$ortak_canli_durum_oturum_temizligi_bagla <- function(...) invisible(NULL)
   env$liste_olustur <- function(df, ...) shiny::tags$div(paste(df$Baslik, collapse = "|"))
-  shiny::testServer(env$ortakCalismalarServer, args = list(current_user_id = function() 7L), {
+  aktif_uid <- 7L
+  shiny::testServer(env$ortakCalismalarServer, args = list(current_user_id = function() aktif_uid), {
     session$flushReact()
     output$liste_sohbet
     testthat::expect_identical(kayit$okuma, 1L)
-    # Kimlik düştü ve aynı kullanıcı geri geldi: çıkış öncesi liste yeniden kullanılmaz
-    # ve liste_yenile anında artarak açık sekmedeki eski sahibin listesini temizler.
+    # Kimlik düştü: liste kimlik kaybı sırasında çizilip req() ile temizlenir.
     onceki_yenile <- shiny::isolate(liste_yenile())
+    aktif_uid <<- 0L
     env$mergen_session_owner_transition(session$userData, 7L, 0L)
     testthat::expect_gt(shiny::isolate(liste_yenile()), onceki_yenile)
+    session$flushReact()
+    testthat::expect_error(output$liste_sohbet, class = "shiny.silent.error")
+    # Aynı kullanıcı geri döndüğünde sahip kancası tetiklenmese de kimlik sinyali listeyi yeniden çizer.
+    aktif_uid <<- 7L
     env$mergen_session_owner_transition(session$userData, 0L, 7L)
     testthat::expect_null(sohbet_onbellek$df)
     session$flushReact()
-    output$liste_sohbet
+    testthat::expect_false(is.null(output$liste_sohbet))
     testthat::expect_identical(kayit$okuma, 2L)
   })
 })

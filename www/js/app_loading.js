@@ -336,10 +336,14 @@
       // Her gerçek kontrol noktası ilerleme etkinliği sayılır (stall gözcüsü).
       markProgress();
 
-      // Hazır-olma geri çekildiyse (ör. sahip değişimi) bekleyen gecikmeli kapanış iptal edilir.
-      if (msg.ready !== true && richFinishTimer) {
-        window.clearTimeout(richFinishTimer);
-        richFinishTimer = null;
+      // Hazır-olma geri çekildiyse (ör. sahip değişimi) bekleyen veya şerit seçimine
+      // ertelenmiş kapanış ve kapanış etiketi iptal edilir.
+      if (msg.ready !== true && (richFinishTimer || pendingFinishUntilLaneResolved)) {
+        if (richFinishTimer) {
+          window.clearTimeout(richFinishTimer);
+          richFinishTimer = null;
+        }
+        pendingFinishUntilLaneResolved = false;
         kapanisEtiketi = null;
       }
 
@@ -423,8 +427,13 @@
     }
     if (finished) return;
     finished = true;
+    if (stageLabelTimer) {
+      window.clearTimeout(stageLabelTimer);
+      stageLabelTimer = null;
+    }
     overlay.classList.add("alo-complete");
     if (statusText) {
+      statusText.classList.remove("alo-status-fade");
       statusText.textContent = kapanisEtiketi || "Hazır";
     }
     // Giriş atlandıysa (veya Hızlı Başlangıç şeridi aktifse) derin uzay intro

@@ -429,10 +429,11 @@ testthat::test_that("onay penceresi açıldıktan sonra sahip değişip tarama b
       session$setInputs(clear_all_images = 1)
       # Sahip 9'a geçer ve 9'un taraması tamamlanır.
       aktif_uid <<- 9L
-      session$userData$kimlik_sahibi <- 9L
-      for (cb in session$userData$.owner_hooks) cb("owner_switch")
+      env$mergen_session_owner_transition(session$userData, 7L, 9L)
       for (i in seq_len(20L)) { later::run_now(timeoutSecs = 0.1, loop = loop); session$flushReact()
         if (scan_recorder$count >= 2L && !isTRUE(gallery_loading())) break }
+      testthat::expect_gte(scan_recorder$count, 2L)
+      testthat::expect_identical(galeri_sahibi$uid, 9L)
       # Sahip 7'nin açık kalan penceresinden gelen onay reddedilmelidir.
       session$setInputs(confirm_clear_all_images = 1)
       testthat::expect_length(silinen_sahipler, 0L)

@@ -48,6 +48,7 @@
   }
   # Açılış hazırlığı işçi sınırından geçer: sahte işçi sonucu bir sonraki
   # döngü turunda (eşzamansız) aynı sahte okuyucudan üretir.
+  env$mergen_startup_async_worker_ready <- function() TRUE
   env$history_rows_worker_promise <- function(chat_ids, user_id, session_token = NULL, ...) {
     kayit$isci <- c(kayit$isci, list(as.character(chat_ids)))
     promises::promise(function(resolve, reject) {
@@ -349,14 +350,21 @@ testthat::test_that("veritabanı kapalıyken ısıtma zinciri yeniden deneme dö
   sohbetler <- shiny::reactiveVal(.gecmis_sohbetleri(130L))
   later::with_temp_loop(shiny::testServer(env$historyServer,
                     args = list(all_messages = sohbetler, current_user_id = function() 7L), {
+    session$userData$saved_chats_full_loaded <- TRUE
+    session$userData$mergen_yonetim_hazir <- .isaretleyici(kayit)
     session$flushReact()
     session$setInputs(external_refresh_trigger = 1)
     shiny::isolate(sohbetler(.gecmis_sohbetleri(200L)))
     session$flushReact()
     .zincir_bitene_dek(session)
-    # 130 + 70 kimlik, her biri en fazla bir kez denenir (60'lık partiler).
+    # 130 + 70 kimliğin her biri tam bir kez denenir (0 okuma geçmez, döngü yok).
+    denenen <- unlist(kayit$kimlikler)
+    testthat::expect_setequal(denenen, as.character(1:200))
+    testthat::expect_identical(anyDuplicated(denenen), 0L)
     testthat::expect_lte(kayit$cagri, 5L)
     testthat::expect_length(messages_cache(), 0L)
+    testthat::expect_true("history_rows_ready" %in% kayit$isaret)
+    testthat::expect_true(isTRUE(utils::tail(kayit$detay, 1)[[1]]$degraded))
   }))
 })
 
@@ -1076,9 +1084,10 @@ testthat::test_that("sekme açılışı ilk sayfanın yaşlı kayıtlarını yen
     testthat::expect_identical(kayit$cagri, 1L)
     # Başka oturum alıntıyı yerinde değiştirdi (damga aynı); kayıtlar yaşlandı.
     kayit$etiket <- "güncel alıntı çğış"
-    withr::local_options(mergen.history_revalidate_secs = 0)
-    Sys.sleep(0.01)
-    session$setInputs(external_refresh_trigger = 3)
+    withr::with_options(list(mergen.history_revalidate_secs = 0), {
+      Sys.sleep(0.01)
+      session$setInputs(external_refresh_trigger = 3)
+    })
     testthat::expect_identical(kayit$cagri, 2L)
     testthat::expect_setequal(kayit$kimlikler[[2]], c("1", "2", "3"))
     testthat::expect_true(all(filtered_history()$Soru == "güncel alıntı çğış"))
@@ -1110,5 +1119,82 @@ testthat::test_that("başarısız sekme okuması süren açılış hazırlığı
     # Sahip ve damga değişmedi: hazırlığın başarılı sonucu yazılır.
     testthat::expect_setequal(names(messages_cache()), c("1", "2"))
     testthat::expect_identical(messages_cache()[["1"]]$rows[[1]]$Soru, "hazırlık sorusu")
+  }))
+})
+
+testthat::test_that("260 söyleşilik kesintide takip partisi deneme defterini korur ve kısmi tamamlanır", {
+  kayit <- .yeni_gecmis_kaydi()
+  kayit$hata <- TRUE
+  env <- .gecmis_modul_ortami(kayit)
+  sohbetler <- shiny::reactiveVal(.gecmis_sohbetleri(130L))
+  later::with_temp_loop(shiny::testServer(env$historyServer,
+                    args = list(all_messages = sohbetler, current_user_id = function() 7L), {
+    session$userData$saved_chats_full_loaded <- TRUE
+    session$userData$mergen_yonetim_hazir <- .isaretleyici(kayit)
+    session$flushReact()
+    session$setInputs(external_refresh_trigger = 1)
+    # Isıtma sürerken 130 yeni söyleşi daha gelir (toplam 260).
+    shiny::isolate(sohbetler(.gecmis_sohbetleri(260L)))
+    session$flushReact()
+    .zincir_bitene_dek(session)
+    denenen <- unlist(kayit$kimlikler)
+    testthat::expect_setequal(denenen, as.character(1:260))
+    testthat::expect_identical(anyDuplicated(denenen), 0L)
+    testthat::expect_length(messages_cache(), 0L)
+    testthat::expect_true("history_rows_ready" %in% kayit$isaret)
+    testthat::expect_true(isTRUE(utils::tail(kayit$detay, 1)[[1]]$degraded))
+  }))
+})
+
+testthat::test_that("işçi hazır değilken otomatik hazirla DB okuması başlatmaz, kısmen hazır bildirir", {
+  testthat::skip_if_not_installed("future")
+  eski_plan <- future::plan(future::sequential)
+  on.exit(future::plan(eski_plan), add = TRUE)
+  kayit <- .yeni_gecmis_kaydi()
+  env <- .gecmis_modul_ortami(kayit)
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_startup_chat_preview.R"),
+         encoding = "UTF-8", local = env)
+  later::with_temp_loop(shiny::testServer(env$historyServer,
+                    args = list(all_messages = shiny::reactive(.gecmis_sohbetleri(2L)), current_user_id = function() 7L), {
+    session$userData$saved_chats_full_loaded <- TRUE
+    session$userData$mergen_yonetim_hazir <- .isaretleyici(kayit)
+    session$flushReact()
+    session$setInputs(hazirla = 1)
+    .zincir_bitene_dek(session)
+    # Sequential planda otomatik hazırlık DB'ye gitmez, kısmen hazır sinyali verir.
+    testthat::expect_identical(kayit$cagri, 0L)
+    testthat::expect_length(kayit$isci, 0L)
+    testthat::expect_true("history_rows_ready" %in% kayit$isaret)
+    testthat::expect_true(isTRUE(utils::tail(kayit$detay, 1)[[1]]$degraded))
+    # İlk sekme ziyareti normal çalışmaya devam eder.
+    session$setInputs(external_refresh_trigger = 1)
+    testthat::expect_identical(kayit$cagri, 1L)
+    testthat::expect_setequal(names(messages_cache()), c("1", "2"))
+  }))
+})
+
+testthat::test_that("açılış işçisi liste_baslik tabanını saklar: yeni DB başlığı korunur, sonraki yerel ad değişimi yansır", {
+  kayit <- .yeni_gecmis_kaydi()
+  env <- .gecmis_modul_ortami(kayit)
+  env$mergen_startup_async_worker_ready <- function() TRUE
+  env$history_rows_worker_promise <- function(chat_ids, user_id, session_token = NULL, ...) {
+    promises::promise_resolve(stats::setNames(lapply(chat_ids, function(id) list(list(
+      Chat_ID = "DB Yeni Başlık", Tarih = "01.07.2026 - 10:00", Soru = "Soru", Cevap = "Yanıt"))),
+      chat_ids))
+  }
+  sohbetler <- shiny::reactiveVal(.gecmis_sohbetleri(1L))
+  later::with_temp_loop(shiny::testServer(env$historyServer,
+                    args = list(all_messages = sohbetler, current_user_id = function() 7L), {
+    session$flushReact()
+    session$setInputs(hazirla = 1)
+    .zincir_bitene_dek(session)
+    # Yerel liste başlığı değişmedi -> DB'den gelen yeni başlık korunur.
+    testthat::expect_identical(filtered_history()$Chat_ID[1], "DB Yeni Başlık")
+    # Gönderim sonrası yerel yeniden adlandırma -> yeni yerel başlık görünür.
+    guncel <- shiny::isolate(sohbetler())
+    guncel[["1"]]$title <- "Yerel Ad"
+    shiny::isolate(sohbetler(guncel))
+    session$flushReact()
+    testthat::expect_identical(filtered_history()$Chat_ID[1], "Yerel Ad")
   }))
 })

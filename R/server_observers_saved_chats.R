@@ -181,44 +181,48 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     
     yenileme_istendi <- !is.null(chat_to_load) && isTRUE(chat_to_load$transkript_yenile)
     yenileme_basarisiz <- FALSE
+    kimlik_cozulmedi <- FALSE
 
     if (isTRUE(needs_hydrate)) {
-      detail <- tryCatch(
-        load_chat_messages_from_db(
-          chat_id,
-          user_id = resolve_current_user_id()
-        ),
-        error = function(e) {
-          warning(sprintf("Failed to load chat %s messages: %s", chat_id, e$message))
-          NULL
-        }
-      )
-      if (is.null(detail)) {
-        if (isTRUE(yenileme_istendi)) {
-          # Zorunlu yenileme başarısız: bayrak sonraki açılış için korunur.
-          yenileme_basarisiz <- TRUE
-        }
-      } else if (isTRUE(detail$kayit_bulunamadi) ||
-                 (is.null(detail$title) && is.null(detail$timestamp))) {
-        # Söyleşi başka oturumda silinmiş: eski önbellek düşürülür, başarı bildirilmez.
-        saved_copy <- values$saved_chats %||% list()
-        saved_copy[[chat_id]] <- NULL
-        values$saved_chats <- saved_copy
-        chat_to_load <- NULL
-        showToast(session, "Bu söyleşi artık mevcut değil veya silinmiş.", "warning")
+      etkin_uid <- suppressWarnings(as.integer(resolve_current_user_id())[1])
+      if (is.na(etkin_uid) || etkin_uid <= 0L) {
+        # Kimlik henüz çözülmedi: önbellek silinmez, silinmiş uyarısı verilmez.
+        kimlik_cozulmedi <- TRUE
+        if (isTRUE(yenileme_istendi)) yenileme_basarisiz <- TRUE
       } else {
-        if ((is.null(detail$last_message_timestamp) || is.na(detail$last_message_timestamp)) &&
-            !is.null(chat_to_load) && !is.null(chat_to_load$last_message_timestamp)) {
-          detail$last_message_timestamp <- chat_to_load$last_message_timestamp
+        detail <- tryCatch(
+          load_chat_messages_from_db(chat_id, user_id = etkin_uid),
+          error = function(e) {
+            warning(sprintf("Failed to load chat %s messages: %s", chat_id, e$message))
+            NULL
+          }
+        )
+        if (is.null(detail)) {
+          if (isTRUE(yenileme_istendi)) yenileme_basarisiz <- TRUE
+        } else if (isTRUE(detail$kayit_bulunamadi)) {
+          # Söyleşi başka oturumda silinmiş: açık DB kanıtıyla önbellek düşürülür.
+          saved_copy <- values$saved_chats %||% list()
+          saved_copy[[chat_id]] <- NULL
+          values$saved_chats <- saved_copy
+          chat_to_load <- NULL
+          showToast(session, "Bu söyleşi artık mevcut değil veya silinmiş.", "warning")
+        } else if (isTRUE(detail$message_count > 0) || !is.null(detail$title) || !is.null(detail$timestamp)) {
+          chat_to_load <- if (exists("mergen_chat_reconcile_hydrated_detail", mode = "function", inherits = TRUE)) {
+            mergen_chat_reconcile_hydrated_detail(detail, chat_to_load)
+          } else { detail$hidrate_edildi <- TRUE; detail$transkript_yenile <- NULL; detail }
+          saved_copy <- values$saved_chats %||% list()
+          saved_copy[[chat_id]] <- chat_to_load
+          values$saved_chats <- saved_copy
         }
-        detail$hidrate_edildi <- TRUE
-        chat_to_load <- detail
-        saved_copy <- values$saved_chats
-        saved_copy[[chat_id]] <- chat_to_load
-        values$saved_chats <- saved_copy
       }
     }
     
+    if (isTRUE(kimlik_cozulmedi)) {
+      showToast(session, "Oturum kimliği henüz hazır değil; lütfen kısa süre sonra tekrar deneyin.", "warning")
+      load_chat_in_progress(FALSE)
+      return()
+    }
+
     # Sohbet bulunamazsa çık
     if (is.null(chat_to_load)) {
       cat(sprintf("[SAVED_CHATS] Sohbet bulunamadı: %s\n", chat_id))
@@ -511,7 +515,9 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     } else {
       NULL
     }
-    if (isTRUE(yenileme_basarisiz)) {
+    if (isTRUE(kimlik_cozulmedi)) {
+      showToast(session, "Oturum kimliği henüz hazır değil; önbellekteki kayıt gösteriliyor.", "warning")
+    } else if (isTRUE(yenileme_basarisiz)) {
       showToast(session, "Söyleşi güncel içerikle yenilenemedi; önbellekteki kayıt gösteriliyor.", "warning")
     } else {
       mergen_show_chat_loaded_toast(session, chat_to_load$title, son_mesaj_id)

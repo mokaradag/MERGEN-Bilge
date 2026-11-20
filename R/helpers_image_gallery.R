@@ -489,10 +489,10 @@ update_message_after_image_deletion <- function(image_path, chat_id) {
 #' Toplu silme sonrası sohbetteki tüm görsel mesajlarını güncelle
 #' @param chat_id Sohbet ID
 update_messages_after_bulk_deletion <- function(chat_id) {
-  if (is.na(chat_id) || is.null(chat_id)) return(invisible(FALSE))
+  if (is.null(chat_id) || length(chat_id) != 1L || is.na(chat_id)) return(invisible(NULL))
 
   chat_id_int <- suppressWarnings(as.integer(chat_id))
-  if (is.na(chat_id_int)) return(invisible(FALSE))
+  if (is.na(chat_id_int)) return(invisible(NULL))
 
   degisti <- FALSE
 

@@ -222,7 +222,8 @@ history_rows_format_staged <- function(ids, uid, cerceve, dilim = 500L, gecerli 
 # yazılmaz ve "hazır" sayılmaz; güncel damgalı kaydı yoksa durum "kısmen"dir.
 history_prepare_rows_async <- function(session, ids, damgalar, uid, isitma, resolve_uid,
                                        messages_cache, yayin_sayaci, bildir,
-                                       guncel_sohbetler = NULL, damga_fn = NULL) {
+                                       guncel_sohbetler = NULL, damga_fn = NULL,
+                                       liste_basliklar = NULL) {
   nesil <- isitma$nesil
   surumler <- history_versions(isitma, ids)
   gecerli <- function() !isTRUE(session$isClosed()) && identical(isitma$nesil, nesil) &&
@@ -245,7 +246,8 @@ history_prepare_rows_async <- function(session, ids, damgalar, uid, isitma, reso
       if (!inherits(okuma_zamani, "POSIXt")) okuma_zamani <- Sys.time()
       for (id in okunan) {
         cache[[id]] <- list(rows = if (is.list(sonuc[[id]])) sonuc[[id]] else list(),
-                            stamp = damgalar[[id]], okuma = okuma_zamani)
+                            stamp = damgalar[[id]], okuma = okuma_zamani,
+                            liste_baslik = if (is.list(liste_basliklar)) liste_basliklar[[id]] else NULL)
       }
       history_touch(isitma, okunan)
       messages_cache(cache)

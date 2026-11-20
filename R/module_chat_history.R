@@ -371,7 +371,7 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
     # Hiçbir gözlemci olay döngüsünde sınırsız eşzamanlı SQL çalıştıramaz; ara
     # partiler tabloyu yeniden çizmez, yayın sonda tek seferdir. Isıtma
     # sürerken yeni gelen (planlanmamış) söyleşiler en çok 60'lık tek turda alınır.
-    history_sync <- function(chat_ids, chats, on_done = NULL, date_range = NULL) {
+    history_sync <- function(chat_ids, chats, on_done = NULL, date_range = NULL, devam = FALSE) {
       isitma$etkin <- TRUE
       etkin_aralik <- history_normalize_date_range(date_range)
       gerekli <- history_ids_needing_fetch(chat_ids, chats, shiny::isolate(messages_cache()), stamp_for_chat)
@@ -384,7 +384,7 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
       }
       if (length(gerekli) <= 60L || isTRUE(isitma$aktif)) {
         parti <- utils::head(gerekli, 60L)
-        if (isTRUE(isitma$aktif) && length(parti)) {
+        if ((isTRUE(isitma$aktif) || isTRUE(devam)) && length(parti)) {
           isitma$zincir[parti] <- history_stamps(parti, chats, stamp_for_chat)
         }
         basarili <- ensure_history_cache(parti, chats, invalidate = TRUE)
@@ -401,7 +401,11 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
       basarili <- TRUE
       isitma$aktif <- TRUE
       isitma$planli <- kalan
-      isitma$zincir <- history_stamps(kalan, chats, stamp_for_chat)
+      if (isTRUE(devam)) {
+        isitma$zincir[kalan] <- history_stamps(kalan, chats, stamp_for_chat)
+      } else {
+        isitma$zincir <- history_stamps(kalan, chats, stamp_for_chat)
+      }
       nesil <- isitma$nesil
       historyBackgroundWarm(
         session, kalan, chats,
@@ -429,12 +433,13 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
             adaylar[is.na(isitma$zincir[adaylar]) | unname(isitma$zincir[adaylar]) != unname(aday_damga)]
           } else character()
           bitir <- function(ok = TRUE) {
+            isitma$zincir <- character()
             guncel_son <- shiny::isolate(latest_chats())
             son_havuz <- if (!is.null(etkin_aralik)) history_chat_ids_for_date_range(guncel_son, etkin_aralik) else aralik_kimlikleri()
             son <- history_all_cached(son_havuz, guncel_son, shiny::isolate(messages_cache()), stamp_for_chat)
             for (fn in bekleyenler) fn(isTRUE(son))
           }
-          if (length(yeni)) history_sync(yeni, guncel, on_done = bitir, date_range = etkin_aralik) else bitir()
+          if (length(yeni)) history_sync(yeni, guncel, on_done = bitir, date_range = etkin_aralik, devam = TRUE) else bitir()
         }
       )
       invisible(basarili)
@@ -721,13 +726,21 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
       ids <- history_ids_needing_fetch(utils::head(aralik_kimlikleri(), 60L), chats,
                                        messages_cache(), stamp_for_chat)
       if (!length(ids)) return(hazir_bildir(TRUE))
+      # İşçi hazır değilse (sequential yedek) otomatik hazırlık olay döngüsünü
+      # bloklamaz; hazır-olma dürüstçe kısmen kapanır, ilk sekme ziyareti korunur.
+      if (exists("mergen_startup_async_worker_ready", mode = "function", inherits = TRUE) &&
+          !isTRUE(mergen_startup_async_worker_ready())) {
+        return(hazir_bildir(FALSE))
+      }
+      liste_basliklar <- stats::setNames(lapply(ids, function(id) chats[[id]]$title %||% NULL), ids)
       history_prepare_rows_async(session, ids, history_stamps(ids, chats, stamp_for_chat),
                                  uid = resolve_current_user_id(), isitma = isitma,
                                  resolve_uid = resolve_current_user_id, messages_cache = messages_cache,
                                  yayin_sayaci = trigger_refresh,
                                  bildir = history_first_page_notifier(hazir_bildir, aralik_kimlikleri, latest_chats,
                                                                       messages_cache, stamp_for_chat),
-                                 guncel_sohbetler = latest_chats, damga_fn = stamp_for_chat)
+                                 guncel_sohbetler = latest_chats, damga_fn = stamp_for_chat,
+                                 liste_basliklar = liste_basliklar)
       invisible(NULL)
     }, ignoreInit = TRUE)
 

@@ -74,8 +74,92 @@ testthat::test_that("update_messages_after_bulk_deletion geçersiz chat_id'de DB
   testthat::expect_null(env$update_messages_after_bulk_deletion(NULL))
   testthat::expect_null(env$update_messages_after_bulk_deletion("abc"))   # sayıya çevrilemez
   testthat::expect_null(env$update_messages_after_bulk_deletion(NA_integer_))
+  testthat::expect_null(env$update_messages_after_bulk_deletion(character(0)))
+  testthat::expect_null(env$update_messages_after_bulk_deletion(integer(0)))
+  testthat::expect_null(env$update_messages_after_bulk_deletion(c(1L, 2L)))
 
   testthat::expect_identical(rec$conn_calls, 0L)
+})
+
+testthat::test_that("update_messages_after_bulk_deletion geçerli girdide değişim durumunu ve kısmi güncellemeyi doğru bildirir", {
+  env <- new.env(parent = globalenv())
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_image_gallery.R"),
+         encoding = "UTF-8", local = env)
+  env$normalize_db_params <- function(x) x
+  env$get_connection <- function() list(conn = structure(list(), class = "sahte_conn"))
+  env$release_connection <- function(info) invisible(NULL)
+
+  # 1) Değişen mesaj yok -> FALSE
+  withr::with_tempdir({
+    mevcut_dosya <- file.path(getwd(), "mevcut.png")
+    writeBin(raw(1), mevcut_dosya)
+    testthat::local_mocked_bindings(
+      dbGetQuery = function(conn, query, params = NULL) {
+        data.frame(MessageID = 10L, MessageContent = paste0("[GÖRSEL:", mevcut_dosya, "] açıklama"),
+                   stringsAsFactors = FALSE)
+      },
+      dbExecute = function(...) stop("güncelleme çağrılmamalıydı"),
+      .package = "DBI"
+    )
+    testthat::expect_false(env$update_messages_after_bulk_deletion(42L))
+  })
+
+  # 2) Silinen görsel -> TRUE
+  exec_say <- 0L
+  testthat::local_mocked_bindings(
+    dbGetQuery = function(conn, query, params = NULL) {
+      data.frame(MessageID = 11L, MessageContent = "[GÖRSEL:/yok/silindi.png] açıklama",
+                 stringsAsFactors = FALSE)
+    },
+    dbExecute = function(conn, query, params = NULL) { exec_say <<- exec_say + 1L; 1L },
+    .package = "DBI"
+  )
+  testthat::expect_true(env$update_messages_after_bulk_deletion("42"))
+  testthat::expect_identical(exec_say, 1L)
+
+  # 3) Kısmi güncelleme (ilk mesaj güncellenir, ikinci DB hatası verir) -> TRUE
+  exec_say <- 0L
+  testthat::local_mocked_bindings(
+    dbGetQuery = function(conn, query, params = NULL) {
+      data.frame(MessageID = c(11L, 12L),
+                 MessageContent = c("[GÖRSEL:/yok/a.png] a", "[GÖRSEL:/yok/b.png] b"),
+                 stringsAsFactors = FALSE)
+    },
+    dbExecute = function(conn, query, params = NULL) {
+      exec_say <<- exec_say + 1L
+      if (exec_say == 2L) stop("ikinci satırda geçici DB hatası")
+      1L
+    },
+    .package = "DBI"
+  )
+  testthat::expect_true(env$update_messages_after_bulk_deletion(42L))
+
+  # 4) İlk sorgu DB hatası -> FALSE
+  env$get_connection <- function() stop("DB erişilemez")
+  testthat::expect_false(env$update_messages_after_bulk_deletion(42L))
+})
+
+testthat::test_that("delete_all_user_images yalnızca mesajı gerçekten değişen söyleşileri bildirir", {
+  env <- new.env(parent = globalenv())
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_image_gallery.R"),
+         encoding = "UTF-8", local = env)
+  withr::with_tempdir({
+    f1 <- file.path(getwd(), "a.png"); writeBin(raw(1), f1)
+    f2 <- file.path(getwd(), "b.png"); writeBin(raw(1), f2)
+    f3 <- file.path(getwd(), "c.png"); writeBin(raw(1), f3)
+    env$scan_user_images <- function(uid) {
+      data.frame(file_path = c(f1, f2, f3), chat_id = c("10", "20", "gecersiz"),
+                 stringsAsFactors = FALSE)
+    }
+    env$update_messages_after_bulk_deletion <- function(cid) {
+      if (identical(cid, "10")) return(TRUE)
+      if (identical(cid, "20")) return(FALSE)
+      NULL
+    }
+    silinen <- env$delete_all_user_images(7L)
+    testthat::expect_identical(as.integer(silinen), 3L)
+    testthat::expect_identical(attr(silinen, "chat_ids"), "10")
+  })
 })
 
 test_that("yeni mesaj balonu önceki sahibin ayar kimliğini kullanmaz", {

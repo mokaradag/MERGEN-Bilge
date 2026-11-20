@@ -365,6 +365,16 @@ redact_connection_identifiers <- function(x) {
     metin,
     perl = TRUE
   )
+  # Noktalı virgüllü ODBC dizesinin son alanındaki boşluklu tanımlayıcı
+  # (sonunda `;` olmasa da) dize sonuna/yapısal ayırıcıya/tanı ayrımına kadar
+  # maskelenir; aynı satırdaki sıradan tanı düzyazısı (`: `, ` - `) korunur.
+  metin <- gsub(
+    paste0("(?im)(;\\s*)(", .REDACT_CONN_KEYS,
+           ")(\\s*=\\s*)(?!<redacted>)(?!\\{)(?:(?![;,}\\])\\r\\n\"'<>]|:\\s|\\s+-\\s+).)+"),
+    "\\1\\2\\3<redacted>",
+    metin,
+    perl = TRUE
+  )
   # Zaten maskelenmiş ya da süslü parantezli değerler İKİNCİ KEZ işlenmez.
   metin <- gsub(
     paste0("(?i)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS,
@@ -449,8 +459,9 @@ redact_connection_identifiers <- function(x) {
   for (q in c("\"", "'")) {
     belirsiz_kapali <- paste0(q, "(?=[^", q, "\r\n]*(?<=\\\\)", q, ")[^\r\n]*(?<!\\\\)", q)
     belirsiz_acik <- paste0(q, "(?=[^", q, "\r\n]*(?<=\\\\)", q, ")[^\r\n]*(?=\r|\n|\\z)")
-    kapali <- paste0(q, "(?!<redacted>", q, ")[^", q, "\r\n]*", q)
-    acik <- paste0(q, "(?!<redacted>)[^", q, "\r\n]*(?=\r|\n|\\z)")
+    # Çift ayırıcı ('' veya "") değer içi kaçış sayılır; komşu alan tüketilmez.
+    kapali <- paste0(q, "(?!<redacted>", q, ")(?>(?:[^", q, "\r\n]|", q, q, ")*)", q)
+    acik <- paste0(q, "(?!<redacted>)(?>(?:[^", q, "\r\n]|", q, q, ")*)(?=\r|\n|\\z)")
     yerine <- paste0("\\1\\2\\3\\4", q, "<redacted>")
     x <- gsub(paste0(onek, belirsiz_kapali), paste0(yerine, q), x, perl = TRUE)
     x <- gsub(paste0(onek, belirsiz_acik), yerine, x, perl = TRUE)

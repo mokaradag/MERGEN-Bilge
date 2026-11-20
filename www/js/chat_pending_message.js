@@ -311,7 +311,7 @@ $(document).ready(function() {
     const araliklar = secilen.map(function(b) {
       let bas = b.bas;
       let son = b.son;
-      if (deger[son - 1] !== '\n') {
+      if (b.ayirici || deger[son - 1] !== '\n') {
         const sonrakiBolum = kalanlar.some(function(k) { return k.bas <= son && son < k.son; });
         if (deger[son] === '\n' && !sonrakiBolum) son++;
         else if (son === deger.length && bas > 0 && deger[bas - 1] === '\n') bas--;
@@ -367,15 +367,17 @@ $(document).ready(function() {
     if (!mevcut.trim()) {
       geriYuklemeler.length = 0;
       giris.value = ham;
-      geriYuklemeler.unshift({ id: kayit.id, bas: 0, son: ham.length, duzenlendi: false, ozgun: ham });
+      geriYuklemeler.unshift({ id: kayit.id, bas: 0, son: ham.length, duzenlendi: false, ozgun: ham, ayirici: false });
     } else if (mevcut.trim() === ham.trim() && !geriYuklemeler.length) {
       // Bağımsız yazılmış özdeş taslak: hiçbir şey eklenmez, sahiplik de alınmaz.
       return true;
     } else {
+      // Ayırıcı satır sonu istem aralığına katılmaz: sınırda yeni satır ekleme
+      // ilgisiz taslağı isteme bağlamaz; kaldırmada ayırıcı ayrı temizlenir.
       const ek = ham + '\n';
       giris.value = ek + mevcut;
       geriYuklemeler.forEach(function(b) { b.bas += ek.length; b.son += ek.length; });
-      geriYuklemeler.unshift({ id: kayit.id, bas: 0, son: ek.length, duzenlendi: false, ozgun: ek });
+      geriYuklemeler.unshift({ id: kayit.id, bas: 0, son: ham.length, duzenlendi: false, ozgun: ham, ayirici: true });
       if (secBas !== null && secSon !== null && typeof giris.setSelectionRange === 'function') {
         try { giris.setSelectionRange(secBas + ek.length, secSon + ek.length); } catch (e) {}
       }
@@ -404,15 +406,15 @@ $(document).ready(function() {
       $(sohbetKabi).hide();
     }
     let metin = bildirim || 'İstem gönderilemedi; metin giriş alanına geri yüklendi.';
-    // Yalnız dosya istemi (metin yok): metin geri yüklendi denmez. Dosya eki
-    // değiştiyse farklı dosyayı özgün dosya gibi duyurmaz, doğrulama ister.
+    // Yalnız dosya istemi (metin yok): görünen ad dosya kimliğini kanıtlamaz
+    // (aynı adlı yeni dosya seçilmiş olabilir); özgün ek kesinmiş gibi duyurulmaz.
     if (!geriYuklendi && !String(kayit.hamMetin || '').trim()) {
       const ek = document.querySelector('#file_prompt_indicator_ui');
       const ekVar = !!(ek && ek.children && ek.children.length > 0);
-      const ayniEk = ekVar && (!kayit.ekImzasi || ekImzasi() === kayit.ekImzasi);
+      const adDegisti = ekVar && !!kayit.ekImzasi && ekImzasi() !== kayit.ekImzasi;
       metin = 'Dosya istemi gönderilemedi ya da iletildiği doğrulanamadı. ' +
-        (ayniEk ? 'Dosya eki hâlâ seçili; tekrar gönderebilirsiniz.'
-          : (ekVar ? 'Seçili dosya eki değişmiş olabilir; göndermeden önce dosya seçimini kontrol edin.'
+        (adDegisti ? 'Seçili dosya eki değişmiş olabilir; göndermeden önce dosya seçimini kontrol edin.'
+          : (ekVar ? 'Göndermeden önce seçili dosya ekini kontrol edip tekrar deneyin.'
             : 'Lütfen dosyayı yeniden ekleyip tekrar deneyin.'));
     }
     // Daha yeni bir istem hâlâ gönderiliyorsa onun durumu silinmez: bildirim
@@ -596,13 +598,14 @@ $(document).ready(function() {
     if (!e.target || e.target !== girisAlani()) return;
     const imlec = typeof e.target.selectionEnd === 'number' ? e.target.selectionEnd : undefined;
     bolumleriEsitle(imlec);
+    dugmeDurumunuGuncelle();
   }, true);
 
   window.MergenBekleyenIstem = {
     varMi: kilitliMi,
     // Girdi programatik olarak değiştiğinde (Escape ile temizleme gibi; 'input'
-    // olayı yayılmaz) bölüm sahipliği hemen uzlaştırılır.
-    girdiDegisti: function() { bolumleriEsitle(); },
+    // olayı yayılmaz) bölüm sahipliği ve düğme kilidi hemen uzlaştırılır.
+    girdiDegisti: function() { bolumleriEsitle(); dugmeDurumunuGuncelle(); },
     ekle: function(hamMetin) {
       // Gönderim girdiyi tüketir: önceki geri yüklemelerin sahipliği biter.
       geriYuklemeler.length = 0;

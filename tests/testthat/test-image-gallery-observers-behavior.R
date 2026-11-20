@@ -122,3 +122,37 @@ testthat::test_that("navigate_to_chat geçerli ama bulunamayan kimlikte DB'den y
   # Geçerli sayısal kimlik -> en az bir DB yükleme denemesi yapılmalı.
   testthat::expect_true(fix$rec$db_calls >= 1L)
 })
+
+testthat::test_that("navigate_to_chat çözülmemiş kimlikte (0) DB okumaz ve önbellekteki söyleşiyi silmez", {
+  fix <- .source_gallery_obs_for_test(load_in_progress = FALSE)
+  env <- fix$env; rec <- fix$rec
+  onbellek <- list("5" = list(title = "Kayıtlı Söyleşi", messages = list(), message_count = 1L, transkript_yenile = TRUE))
+  shiny::testServer(function(input, output, session) {
+    nav <- shiny::reactiveVal(NULL)
+    lock <- shiny::reactiveVal(FALSE)
+    values <- shiny::reactiveValues(saved_chats = onbellek)
+    env$imageGalleryObserversInit(
+      input = input, session = session, values = values,
+      settings_data = list(),
+      gallery_data = list(
+        navigate_to_chat = nav,
+        delete_image = shiny::reactiveVal(NULL),
+        clear_all_images = shiny::reactiveVal(NULL)
+      ),
+      saved_chats_data = list(),
+      current_user_id = 0L,
+      load_chat_in_progress = lock
+    )
+    nav(list(chat_id = "6"))
+    nav(list(chat_id = "5"))
+    rec$values <- values
+  }, {
+    session$flushReact()
+    rec$kalan <- names(shiny::isolate(rec$values$saved_chats))
+    rec$bayrak <- shiny::isolate(rec$values$saved_chats[["5"]]$transkript_yenile)
+  })
+  testthat::expect_identical(rec$db_calls, 0L)
+  testthat::expect_identical(rec$kalan, "5")
+  testthat::expect_true(isTRUE(rec$bayrak))
+  testthat::expect_false(any(grepl("artık mevcut değil veya silinmiş", .toast_msgs(rec), fixed = TRUE)))
+})

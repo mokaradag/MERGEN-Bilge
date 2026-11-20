@@ -469,7 +469,7 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
     })
 
     output$liste_sohbet <- renderUI({
-      liste_yenile()
+      liste_yenile(); if (exists("mergen_session_identity_signal", mode = "function")) mergen_session_identity_signal(session)()
       uid <- gecerli_kullanici()
       req(!is.na(uid))
       if (!ortak_db_tablolar_hazir_mi()) return(tablo_yok_durumu())

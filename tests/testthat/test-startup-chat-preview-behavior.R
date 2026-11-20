@@ -976,3 +976,54 @@ testthat::test_that("mergen_startup_async_worker_ready sequential planda FALSE d
   on.exit(future::plan(eski_plan), add = TRUE)
   testthat::expect_false(mergen_startup_async_worker_ready())
 })
+
+testthat::test_that("yerel etkinlik artışı daha yeni DB söyleşisinin önüne geçip 60. söyleşiyi dışlamaz", {
+  base_ts <- as.POSIXct("2026-11-18 10:00:00", tz = "UTC")
+  db_chats <- stats::setNames(lapply(1:61, function(i) {
+    list(title = paste("Söyleşi", i), message_count = 2L,
+         last_message_timestamp = base_ts + (62 - i) * 60)
+  }), as.character(1:61))
+  # 61. söyleşi en eski (ts = base + 60 sn); yerelde +10 sn ilerler (hâlâ 1..60'tan eski).
+  dispatch_snapshot <- db_chats
+  current <- db_chats
+  current[["61"]]$message_count <- 3L
+  current[["61"]]$last_message_timestamp <- base_ts + 70
+  birlesik <- mergen_saved_chats_merge_newer(db_chats, dispatch_snapshot, current)
+  ilk_60 <- utils::head(names(birlesik), 60L)
+  testthat::expect_true("60" %in% ilk_60)
+  testthat::expect_false("61" %in% ilk_60)
+  testthat::expect_identical(names(birlesik)[61L], "61")
+})
+
+testthat::test_that("mergen_chat_reconcile_hydrated_detail kayıtsız yerel mesajları DB satırlarıyla uzlaştırır", {
+  fmt_env <- new.env(parent = globalenv())
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_chat_message_formatting.R"),
+         encoding = "UTF-8", local = fmt_env)
+  onceki <- list(
+    title = "Eski Başlık",
+    last_message_timestamp = as.POSIXct("2026-11-18 10:05:00", tz = "UTC"),
+    transkript_yenile = TRUE,
+    messages = list(
+      list(id = "10", db_id = 10L, type = "user", content = "kayıtlı"),
+      list(id = "msg_yerel_1", db_id = NULL, type = "user", content = "kaydedilemeyen taslak")
+    ),
+    message_count = 2L
+  )
+  detail <- list(
+    title = "Güncel Başlık",
+    timestamp = as.POSIXct("2026-11-18 10:00:00", tz = "UTC"),
+    last_message_timestamp = NULL,
+    messages = list(
+      list(id = "10", db_id = 10L, type = "user", content = "kayıtlı"),
+      list(id = "11", db_id = 11L, type = "ai", content = "diğer oturum yanıtı")
+    ),
+    message_count = 2L
+  )
+  sonuc <- fmt_env$mergen_chat_reconcile_hydrated_detail(detail, onceki)
+  testthat::expect_identical(length(sonuc$messages), 3L)
+  testthat::expect_identical(sonuc$message_count, 3L)
+  testthat::expect_identical(sonuc$messages[[3]]$id, "msg_yerel_1")
+  testthat::expect_true(isTRUE(sonuc$hidrate_edildi))
+  testthat::expect_null(sonuc$transkript_yenile)
+  testthat::expect_identical(sonuc$last_message_timestamp, onceki$last_message_timestamp)
+})

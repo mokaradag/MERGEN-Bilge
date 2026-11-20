@@ -321,7 +321,18 @@ mergen_saved_chats_merge_newer <- function(db_chats, dispatch_snapshot, current,
     function(k) !isTRUE(current[[k]]$hidrate_edildi),
     setdiff(setdiff(degisen, names(birlesik)), names(dispatch_snapshot))
   )
-  c(current[yerel_yeni], birlesik[etkin], birlesik[setdiff(names(birlesik), etkin)])
+  sonuc <- c(current[yerel_yeni], birlesik[etkin], birlesik[setdiff(names(birlesik), etkin)])
+  if (length(sonuc) > 1L && (length(yerel_yeni) > 0L || length(etkin) > 0L)) {
+    ts_deger <- vapply(sonuc, function(s) {
+      d <- if (!eksik(s$last_message_timestamp)) s$last_message_timestamp else s$timestamp
+      if (eksik(d)) return(-Inf)
+      v <- if (inherits(d, "POSIXt") || is.numeric(d)) suppressWarnings(as.numeric(d)[1])
+           else suppressWarnings(as.numeric(as.POSIXct(as.character(d)[1], tz = "UTC")))
+      if (is.finite(v)) v else -Inf
+    }, numeric(1))
+    if (any(is.finite(ts_deger))) sonuc <- sonuc[order(-ts_deger, seq_along(sonuc))]
+  }
+  sonuc
 }
 
 # Aktif future planının eşzamansız işçi destekleyip desteklemediğini bildirir.

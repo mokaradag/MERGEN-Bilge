@@ -814,7 +814,7 @@ assert.equal(liveText(), '', 'sahip sıfırlamasında canlı bölge temizlenmeli
 await temizle();
 
 // 11r) Yalnız dosya isteminde başka bir dosya seçiliyse eski dosya seçiliymiş
-// gibi duyurulmaz; doğrulama istenir.
+// gibi duyurulmaz; doğrulama istenir. Aynı adlı yeni dosyada da doğrulama istenir.
 const chipA = el('div', { class: 'file-chip' });
 chipA.textContent = 'A.pdf';
 ekAlani.appendChild(chipA);
@@ -828,6 +828,67 @@ ekAlani.appendChild(chipB);
 result(idDosyaDegisti, 'ret');
 assert.match(liveText(), /değişmiş olabilir/);
 ekAlani.children.slice().forEach(c => ekAlani.removeChild(c));
+const chipA2 = el('div', { class: 'file-chip' });
+chipA2.textContent = 'A.pdf';
+ekAlani.appendChild(chipA2);
+input.value = '';
+trigger('click', '#send_stop_btn', btn);
+const idAyniAd = lastId();
+result(idAyniAd, 'ret');
+assert.match(liveText(), /kontrol edip tekrar deneyin/, 'aynı dosya adı özgün dosya kanıtı sayılmamalı');
+assert.doesNotMatch(liveText(), /hâlâ seçili/);
+ekAlani.children.slice().forEach(c => ekAlani.removeChild(c));
+await temizle();
+
+// 11s) Ayırıcı sınırının her iki yanına yeni satır eklendiğinde ilgisiz taslak
+// geri yüklenen isteme katılmaz; geç kabul ve sahip sıfırlaması B\nD bırakır.
+for (const senaryo of ['sonra', 'once']) {
+  for (const temizlemeTuru of ['gecKabul', 'sifirla']) {
+    sendClick('A');
+    const idSinir = lastId();
+    userType('D');
+    ilerlet(60000);
+    assert.equal(input.value, 'A\nD');
+    if (senaryo === 'sonra') {
+      // A'dan hemen sonra (imleç 1 -> 3) \nB yapıştırılır -> A\nB\nD
+      userType('A\nB\nD', 3);
+    } else {
+      // \n sonrasına, D'den önce (imleç 2 -> 4) B\n yapıştırılır -> A\nB\nD
+      userType('A\nB\nD', 4);
+    }
+    if (temizlemeTuru === 'gecKabul') {
+      result(idSinir, 'kabul', 'msg_sinir_' + senaryo);
+      const dugum = el('div', { id: 'message_wrapper_msg_sinir_' + senaryo });
+      chat.appendChild(dugum);
+      await teslim();
+    } else {
+      shinyHandlers.mergenBekleyenIstemSifirla({ neden: 'sahip_degisti' });
+    }
+    assert.equal(input.value, 'B\nD', senaryo + '/' + temizlemeTuru + ' sonrasında B\\nD kalmalı');
+    await temizle();
+  }
+}
+
+// 11t) Geç kabul kilidi sürerken geri yüklenen metin düzenlenip/silindiğinde
+// düğme kilidi input olayında ve programatik girdiDegisti() çağrısında hemen açılır.
+sendClick('kilitli istem');
+const idKilitInput = lastId();
+ilerlet(60000);
+result(idKilitInput, 'kabul', 'msg_kilit_input');
+assert.ok(btn.classList.contains('mergen-istem-bekliyor'), 'asıl balon yokken düğme kilitli olmalı');
+userType('kilitli istem düzenlendi');
+assert.ok(!btn.classList.contains('mergen-istem-bekliyor'), 'input düzenlemesi düğme kilidini hemen açmalı');
+assert.equal(btn.getAttribute('aria-disabled'), null);
+await temizle();
+
+sendClick('programatik kilit');
+const idKilitProg = lastId();
+ilerlet(60000);
+result(idKilitProg, 'kabul', 'msg_kilit_prog');
+assert.ok(btn.classList.contains('mergen-istem-bekliyor'), 'programatik testte önce kilitli olmalı');
+input.value = '';
+context.window.MergenBekleyenIstem.girdiDegisti();
+assert.ok(!btn.classList.contains('mergen-istem-bekliyor'), 'girdiDegisti() düğme kilidini hemen açmalı');
 await temizle();
 
 // 12) Boş istem gönderilmez.

@@ -323,3 +323,34 @@ format_chat_messages <- function(chat_df, user_id = NULL) {
     db_message_format_row(chat_df[i, , drop = FALSE], user_id = user_id)
   })
 }
+
+# DB'den okunan söyleşi detayını yerel önbellekteki kayıtsız (db_id = NULL)
+# mesajlarla uzlaştırır; Kayıtlı Söyleşiler ve Görsel Galerisi tek sözleşme kullanır.
+mergen_chat_reconcile_hydrated_detail <- function(detail, chat_to_load = NULL) {
+  if (!is.list(detail)) return(detail)
+  db_msgs <- if (is.list(detail$messages)) detail$messages else list()
+  onceki_msgs <- if (is.list(chat_to_load) && is.list(chat_to_load$messages)) chat_to_load$messages else list()
+  if (length(onceki_msgs) > 0L) {
+    db_ids <- vapply(db_msgs, function(m) as.character(m$id %||% "")[1], character(1))
+    kayitsiz <- Filter(function(m) {
+      if (!is.list(m)) return(FALSE)
+      db_id <- m$db_id
+      if (!is.null(db_id) && length(db_id) > 0L && !is.na(db_id[1]) && nzchar(trimws(as.character(db_id[1])))) return(FALSE)
+      mid <- suppressWarnings(as.character(m$id %||% "")[1])
+      if (nzchar(mid) && mid %in% db_ids) return(FALSE)
+      if ("db_id" %in% names(m)) return(TRUE)
+      nzchar(mid) && is.na(suppressWarnings(as.integer(mid)))
+    }, onceki_msgs)
+    if (length(kayitsiz) > 0L) {
+      detail$messages <- c(db_msgs, kayitsiz)
+      detail$message_count <- length(detail$messages)
+    }
+  }
+  if ((is.null(detail$last_message_timestamp) || is.na(detail$last_message_timestamp)) &&
+      is.list(chat_to_load) && !is.null(chat_to_load$last_message_timestamp)) {
+    detail$last_message_timestamp <- chat_to_load$last_message_timestamp
+  }
+  detail$hidrate_edildi <- TRUE
+  detail$transkript_yenile <- NULL
+  detail
+}
