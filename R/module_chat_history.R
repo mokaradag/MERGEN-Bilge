@@ -489,6 +489,8 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
     observeEvent(input$today_filter, {
       today <- Sys.Date()
       today_value <- format(today, "%Y-%m-%d")
+      # İstemcinin aralık yankısı (priority: event) ikinci yenileme başlatmaz.
+      isitma$bugun_yankisi <- c(today, today)
 
       session$sendCustomMessage(
         type = "history-date-range-set",
@@ -514,6 +516,8 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
     observeEvent(all_messages(), {
       chats <- all_messages() %||% list()
       latest_chats(chats)
+      # Okumadan sonra yerelde değişen liste başlığı kalıcı işaretlenir.
+      messages_cache(history_mark_local_titles(shiny::isolate(messages_cache()), chats))
 
       # Geçmiş sekmesi henüz açılmadıysa başlangıçta ağır ön yükleme yapma.
       # Kullanıcı geçmişi ilk kez açtığında veya elle yenilediğinde doldurulacak.
@@ -529,6 +533,12 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
 
     observeEvent(input$date_range, {
       active_date_range <- history_normalize_date_range(input$date_range)
+      # Bugün yankısı bir kez onay olarak tüketilir; elle seçim yenilemeye devam eder.
+      yanki <- isitma$bugun_yankisi
+      isitma$bugun_yankisi <- NULL
+      if (length(yanki) == 2L && length(active_date_range) == 2L && all(active_date_range == yanki)) {
+        return(invisible(NULL))
+      }
       req(!is.null(active_date_range))
       # Sayfa yüklenirken istemcinin gönderdiği ilk aralık geçmişi ETKİNLEŞTİRMEZ:
       # okuma kullanıcı Geçmiş'i açınca ya da yenileme isteyince yapılır.
@@ -560,7 +570,8 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
           # Liste başlığı yalnızca okuma sonrasındaki yerel değişiklikte uygulanır;
           # Yenile ile DB'den gelen taze başlık eski oturum başlığıyla ezilmez.
           baslik <- chats[[chat_id]]$title
-          liste_degisti <- is.null(cached$liste_baslik) || !identical(baslik, cached$liste_baslik)
+          liste_degisti <- isTRUE(cached$baslik_yerel) || is.null(cached$liste_baslik) ||
+            !identical(baslik, cached$liste_baslik)
           if (isTRUE(liste_degisti) && is.character(baslik) && length(baslik) == 1L && !is.na(baslik) && nzchar(baslik)) {
             satirlar <- lapply(satirlar, function(r) { r$Chat_ID <- baslik; r })
           }
@@ -683,14 +694,18 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
     # Aralık uygunluğu liste ya da tarih aralığı değişene dek önbellekte kalır:
     # binlerce söyleşide her ısıtma partisi tüm etkinlik tarihlerini yeniden
     # değerlendirmez. Partiler yine güncel sonuçla kesiştirilir.
+    # Kimlikler etkinliğe göre (yeni önce) sıralı: "en yeni 60" seçiminin tüm
+    # kullanıcıları aynı sırayı görür; konumu değişmeden etkinleşen söyleşi kalmaz.
     aralik_reaktif <- shiny::reactive({
-      history_chat_ids_for_date_range(latest_chats(), history_normalize_date_range(input$date_range))
+      sohbetler <- latest_chats()
+      history_ids_by_activity(
+        history_chat_ids_for_date_range(sohbetler, history_normalize_date_range(input$date_range)), sohbetler)
     })
     aralik_kimlikleri <- function() shiny::isolate(aralik_reaktif())
 
     # Yerinde içerik düzenlemesi (galeriden görsel silme) damgayı değiştirmez;
     # ilgili kayıtlar düşer ve tablo yeniden yayınlanır (silinmiş görselin
-    # alıntısı tabloda kalmaz). Düşen söyleşiler sonraki ziyarette okunur.
+    # alıntısı tabloda kalmaz). Düşen söyleşiler süren zincirde ya da sonraki ziyarette okunur.
     # Düşürme, önbellekte olmasa da söyleşinin sürümünü artırır: uçuştaki
     # hazırlık okuması düşürülen satırları geri yazamaz; ısıtma nesli korunur.
     session$userData$mergen_gecmis_onbellek_dusur <- history_cache_dropper(messages_cache, yayin_sayaci = trigger_refresh,
@@ -758,9 +773,13 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
         if (isTRUE(isitma$aktif)) isitma$planli else character()
       )
       if (length(dogrulanacak)) {
-        messages_cache(history_mark_stale_for_revalidation(
+        yenilenecek <- history_mark_stale_for_revalidation(
           shiny::isolate(messages_cache()), dogrulanacak,
-          getOption("mergen.history_revalidate_secs", 60)))
+          getOption("mergen.history_revalidate_secs", 60))
+        # Yalnızca damgası GERÇEKTEN düşürülen kayıtlar yeniden okunabilir olur.
+        history_allow_reread(isitma, attr(yenilenecek, "temizlenen"))
+        attr(yenilenecek, "temizlenen") <- NULL
+        messages_cache(yenilenecek)
       }
       history_sync(kimlikler, latest_chats(), on_done = hazir_bildir)
     }, ignoreInit = TRUE)

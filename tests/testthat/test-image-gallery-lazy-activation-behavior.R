@@ -376,7 +376,11 @@ testthat::test_that("toplu görsel silme yalnızca mesajı değişen söyleşile
   env <- .lazy_gallery_env(scan_recorder)
   env$scan_user_images <- function(uid) { scan_recorder$count <- scan_recorder$count + 1L; .gallery_tek_satir(uid) }
   etkilenen <- c("1", "3")
-  env$delete_all_user_images <- function(user_id) structure(2L, chat_ids = etkilenen)
+  silme_cagrisi <- 0L
+  env$delete_all_user_images <- function(user_id) {
+    silme_cagrisi <<- silme_cagrisi + 1L
+    structure(2L, chat_ids = etkilenen)
+  }
   dusurulen <- list()
   loop <- later::create_loop(parent = NULL)
   on.exit(later::destroy_loop(loop), add = TRUE)
@@ -400,6 +404,8 @@ testthat::test_that("toplu görsel silme yalnızca mesajı değişen söyleşile
       etkilenen <<- character()
       session$setInputs(clear_all_images = 2)
       session$setInputs(confirm_clear_all_images = 2)
+      # İkinci onay silmeye gerçekten ulaştı ama söyleşi değişmediği için düşürme yok.
+      testthat::expect_identical(silme_cagrisi, 2L)
       testthat::expect_length(dusurulen, 1L)
     }
   ))
@@ -447,7 +453,11 @@ testthat::test_that("bağımsız görsel silme (chat_id NULL) tüm geçmiş önb
   scan_recorder$count <- 0L
   env <- .lazy_gallery_env(scan_recorder)
   env$scan_user_images <- function(uid) { scan_recorder$count <- scan_recorder$count + 1L; .gallery_tek_satir(uid) }
-  env$delete_single_image <- function(path, uid, chat_id) TRUE
+  tekil <- list()
+  env$delete_single_image <- function(path, uid, chat_id) {
+    tekil[[length(tekil) + 1L]] <<- list(path = path, uid = uid, chat_id = chat_id)
+    TRUE
+  }
   dusurulen <- list()
   loop <- later::create_loop(parent = NULL)
   on.exit(later::destroy_loop(loop), add = TRUE)
@@ -465,6 +475,11 @@ testthat::test_that("bağımsız görsel silme (chat_id NULL) tüm geçmiş önb
         if (scan_recorder$count >= 1L && !isTRUE(gallery_loading())) break }
       session$setInputs(delete_image_request = list(file_path = "user_images/7/tek.png", filename = "tek.png", chat_id = NULL))
       session$setInputs(confirm_delete_image = 1)
+      # Silme gerçekten yapıldı (doğru yol/sahip, söyleşisiz) ve geçmiş önbelleği korundu.
+      testthat::expect_length(tekil, 1L)
+      testthat::expect_identical(tekil[[1]]$path, "user_images/7/tek.png")
+      testthat::expect_identical(as.integer(tekil[[1]]$uid), 7L)
+      testthat::expect_null(tekil[[1]]$chat_id)
       testthat::expect_length(dusurulen, 0L)
     }
   ))

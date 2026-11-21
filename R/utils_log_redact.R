@@ -457,14 +457,24 @@ redact_connection_identifiers <- function(x) {
   x <- gsub("(?i)(^|[;{(\\[,\\s])(pwd|password|passwd)(\\s*=\\s*)(?!<redacted>)(?![{\"'\\s])[^;\r\n]+",
             "\\1\\2\\3<redacted>", x, perl = TRUE)
   for (q in c("\"", "'")) {
-    belirsiz_kapali <- paste0(q, "(?=[^", q, "\r\n]*(?<=\\\\)", q, ")[^\r\n]*(?<!\\\\)", q)
-    belirsiz_acik <- paste0(q, "(?=[^", q, "\r\n]*(?<=\\\\)", q, ")[^\r\n]*(?=\r|\n|\\z)")
+    # Belirsizlik taraması çift ayırıcıyı ('' / "") kapalı kalıpla AYNI biçimde
+    # değer içi kaçış sayar: `"ab""cd\"kuyruk"` gibi değerde sonraki ters bölülü
+    # tırnak gözden kaçmaz ve kuyruk açıkta kalmaz. Kapanış tırnağı ters bölülü
+    # tırnaktan SONRA aranır; yoksa değer satır sonuna dek (açık kalıp) maskelenir.
+    belirsiz_kapali <- paste0(q, "(?:[^", q, "\r\n]|", q, q, ")*(?<=\\\\)", q, "[^\r\n]*(?<!\\\\)", q)
+    belirsiz_acik <- paste0(q, "(?=(?:[^", q, "\r\n]|", q, q, ")*(?<=\\\\)", q, ")[^\r\n]*(?=\r|\n|\\z)")
+    # Değer içinde çift ayırıcının hemen ardından alan ayırıcı (`"abc"";UID="x"`)
+    # geliyorsa sınır belirsizdir: çift ayırıcı kaçış mı, kapanış + boş değer mi
+    # bilinemez. Kapalı-başarısız: değer satır sonuna dek maskelenir (sonraki
+    # aynı tırnaklı alanın değeri açıkta kalmaz).
+    belirsiz_cift <- paste0(q, "(?=(?:[^", q, "\r\n]|", q, q, ")*?", q, q, "\\s*[;,])[^\r\n]*(?=\r|\n|\\z)")
     # Çift ayırıcı ('' veya "") değer içi kaçış sayılır; komşu alan tüketilmez.
     kapali <- paste0(q, "(?!<redacted>", q, ")(?>(?:[^", q, "\r\n]|", q, q, ")*)", q)
     acik <- paste0(q, "(?!<redacted>)(?>(?:[^", q, "\r\n]|", q, q, ")*)(?=\r|\n|\\z)")
     yerine <- paste0("\\1\\2\\3\\4", q, "<redacted>")
     x <- gsub(paste0(onek, belirsiz_kapali), paste0(yerine, q), x, perl = TRUE)
     x <- gsub(paste0(onek, belirsiz_acik), yerine, x, perl = TRUE)
+    x <- gsub(paste0(onek, belirsiz_cift), yerine, x, perl = TRUE)
     x <- gsub(paste0(onek, kapali), paste0(yerine, q), x, perl = TRUE)
     x <- gsub(paste0(onek, acik), yerine, x, perl = TRUE)
   }

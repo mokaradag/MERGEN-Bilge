@@ -279,7 +279,12 @@ Fix (`R/server_observers_startup.R` + `R/module_startup_lane.R` bridge):
   dispatched in the background on the same narrow explicit worker contract as the
   preview; it is no longer deferred until a management page opens. The lazy tab
   trigger remains the fallback when local saved-chat state changed before the
-  preview was applied or the background load failed. The fast-lane closing contract is unchanged, and
+  preview was applied, the background load failed, or no asynchronous worker is
+  available (sequential `future` plan, e.g. `MERGEN_DISABLE_FUTURES` or a failed
+  PSOCK start — also when the plan lookup itself fails). In that last case the
+  automatic full-list read is skipped so it never blocks the event loop; a VM check
+  then shows `saved_chats_full_deferred` without `saved_chats_full_loaded` until the
+  operator opens Kayıtlı Söyleşiler or Söyleşi Geçmişi. The fast-lane closing contract is unchanged, and
   `saved_chats_full_loaded` is now logged when that background load completes.
 - Rich lane keeps the existing behavior (sync preview + background full load).
   Its `management_pages_ready` checkpoint covers only data prepared off the event
@@ -292,6 +297,14 @@ Fix (`R/server_observers_startup.R` + `R/module_startup_lane.R` bridge):
   named in `detail$tembel`. If the full-list worker fails or times out, startup
   emits `management_pages_ready` with `detail$degraded = TRUE` (without
   `detail$tembel`) so the overlay closes honestly instead of hanging.
+  The readiness deadline is a separate, shorter setting:
+  `mergen.management_ready_deadline_secs` (default 20 s). When it elapses before
+  the management data is ready (for example the full list loaded in 8 s but the
+  History preparation is still pending), startup reports partial readiness
+  (`detail$timeout = TRUE`) and closes the overlay; the deadline does **not**
+  cancel the pending read, which keeps its own 60 s DB query budget and is applied
+  if it completes later. The overlay's partial label states that management data
+  is not yet complete; it does not promise completion on page open.
 - The lazy full load re-resolves the effective user id at run time; invalid ids never
   load. Clients without the lane API get a `legacy_no_api` rich_lane bridge signal so
   the gate can never deadlock. Fast-lane closing contract unchanged

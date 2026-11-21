@@ -291,7 +291,8 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			  "Son konuşmalar hazır",
 			  detail = list(count = length(chats))
 			)
-			refresh_welcome_if_needed(chats)
+			# Çizim hatası tam liste planlamasını (aşağıda) engellemez.
+			try(refresh_welcome_if_needed(chats), silent = TRUE)
 		  } else {
 			mark_boot(
 			  "saved_chats_preview_hydrated",
@@ -408,6 +409,12 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		  list()
 		}
 	  )
+	  # Okuma sonrası kimlik yeniden doğrulanır: değiştiyse (ya da düştüyse) önceki
+	  # sahibin satırları yayımlanmaz.
+	  if (!identical(suppressWarnings(as.integer(resolve_current_user_id())[1]),
+	                 suppressWarnings(as.integer(effective_user_id)[1]))) {
+		preview_chats <- list()
+	  }
 	  apply_preview_chats(preview_chats)
 	}
 
@@ -478,7 +485,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  if (!isTRUE(fast_lane)) later::later(function() {
 		if (!session_closed() && identical(startup_state$full_load_generation, full_load_generation)) {
 		  session$userData$mergen_yonetim_hazir("management_pages_ready",
-		    "Söyleşi Yönetimi hazırlığı zaman aşımına uğradı; sayfa açıldığında tamamlanacak",
+		    "Söyleşi Yönetimi hazırlığı süre sınırını aştı; veri arka planda yüklenmeye devam ediyor",
 		    detail = list(degraded = TRUE, timeout = TRUE))
 		}
 	  }, delay = getOption("mergen.management_ready_deadline_secs", 20))
@@ -511,7 +518,8 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			shiny::isolate({
 			  if (identical(session$userData$saved_chats_yetkili_surum %||% 0L, gonderim_surumu)) {
 				chats <- mergen_saved_chats_merge_newer(chats, gonderim_aninda, values$saved_chats,
-				                                        silinenler = session$userData$saved_chats_silinenler)
+				                                        silinenler = session$userData$saved_chats_silinenler,
+				                                        db_okuma_zamani = attr(chats, "mergen_okuma_zamani"))
 			  } else {
 				chats <- values$saved_chats %||% list()
 			  }

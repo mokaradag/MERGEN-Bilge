@@ -74,3 +74,28 @@ testthat::test_that("tek söyleşideki yeni mesaj tüm listenin zaman damgaları
     testthat::expect_identical(cached_meta()$message_count[[1]], 2L)
   })
 })
+
+testthat::test_that("doğrulanamayan silmenin aynı söyleşi için yeniden onayı silme gözlemcisini yeniden tetikler", {
+  testthat::skip_if_not_installed("shiny")
+  paketler <- new.env(parent = globalenv())
+  list2env(mget(getNamespaceExports("shiny"), envir = asNamespace("shiny"), inherits = TRUE), envir = paketler)
+  env <- new.env(parent = paketler)
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  env$showToast <- function(...) invisible(NULL)
+  source(file.path(resolve_repo_root_for_tests(), "R", "module_saved_chats.R"), encoding = "UTF-8", local = env)
+  zaman <- as.POSIXct("2026-07-01 10:00:00", tz = "UTC")
+  sohbetler <- list("7" = list(title = "Yedi", timestamp = zaman, last_message_timestamp = zaman, message_count = 1L))
+  tetik <- new.env(); tetik$sayi <- 0L
+  shiny::testServer(function(input, output, session) {
+    donen <- env$savedChatsServer("kayitli", saved_chats = shiny::reactive(sohbetler))
+    shiny::observeEvent(donen$delete_chat_id(), tetik$sayi <- tetik$sayi + 1L, ignoreNULL = TRUE)
+  }, {
+    session$flushReact()
+    session$setInputs(`kayitli-delete_chat_request` = "7", `kayitli-confirm_delete_chat` = 1)
+    session$flushReact()
+    # Kart korundu (silme doğrulanamadı); kullanıcı aynı söyleşiyi yeniden siler.
+    session$setInputs(`kayitli-confirm_delete_chat` = 2)
+    session$flushReact()
+  })
+  testthat::expect_identical(tetik$sayi, 2L)
+})

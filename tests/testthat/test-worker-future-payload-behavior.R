@@ -246,6 +246,38 @@ testthat::test_that("kuyrukta beklerken geçersizleşen iş işçiye başlatılm
   testthat::expect_false(is.null(durum2$hata))
 })
 
+testthat::test_that("kuyrukta beklerken eskiyen iş (başlangıç yüklemi FALSE) işçiye başlatılmaz; izleme kaydı kapanır", {
+  testthat::skip_if_not_installed("future")
+  baslatma <- 0L
+  eski_baslat <- .worker_monitor_future_baslat
+  on.exit(assign(".worker_monitor_future_baslat", eski_baslat, envir = globalenv()), add = TRUE)
+  assign(".worker_monitor_future_baslat", function(...) { baslatma <<- baslatma + 1L; stop("başlatılmamalıydı") },
+         envir = globalenv())
+  # Yüklem iş kuyruktan çıkarken sorulur: gönderimde geçerli, çıkışta eskimiş.
+  gecerli <- TRUE
+  testthat::local_mocked_bindings(future_promise_queue = function() list(schedule_work = function(fn) {
+    gecerli <<- FALSE
+    fn()
+  }), .package = "promises")
+  durum <- new.env()
+  p <- tracked_future_promise(function() 1L, task_type = "eskiyen_gecmis_testi", session_token = "acik_oturum",
+                              dependency_mode = "explicit", globals = list(), start_check = function() gecerli)
+  promises::then(p, onFulfilled = function(v) durum$deger <- v, onRejected = function(e) durum$hata <- conditionMessage(e))
+  .later_bosalt(function() !is.null(durum$hata) || !is.null(durum$deger), sure = 5)
+  testthat::expect_identical(baslatma, 0L)
+  testthat::expect_match(durum$hata %||% "", "eskidi")
+  kalan <- Filter(function(t) identical(t$task_type, "eskiyen_gecmis_testi"), as.list(init_worker_monitor()$tasks))
+  testthat::expect_length(kalan, 0L)
+  # Yüklem hata verirse de iş başlatılmaz (kapalı-başarısız).
+  durum2 <- new.env()
+  p2 <- worker_monitor_future_promise(list(task_fn = function() 1L), character(0),
+                                      baslangic_gecerli = function() stop("yüklem hatası"))
+  promises::then(p2, onFulfilled = function(v) durum2$deger <- v, onRejected = function(e) durum2$hata <- conditionMessage(e))
+  .later_bosalt(function() !is.null(durum2$hata) || !is.null(durum2$deger), sure = 5)
+  testthat::expect_identical(baslatma, 0L)
+  testthat::expect_false(is.null(durum2$hata))
+})
+
 testthat::test_that("future başlatıcı çağrı yığınını boşaltır ve hata promise'i reddeder", {
   testthat::skip_if_not_installed("future")
   eski_plan <- future::plan()

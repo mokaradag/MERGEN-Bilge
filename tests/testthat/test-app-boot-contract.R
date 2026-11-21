@@ -86,7 +86,9 @@ test_that("app.R kaynak yüklemesi JIT seviyesini değiştirmez; üretim başlat
   run_mergen_app(host = "127.0.0.1", port = 8009L, launch.browser = FALSE, quiet = TRUE)
   expect_equal(calisirken, 0)
   expect_equal(compiler::enableJIT(-1), 3)
-  # Geçersiz değer ölçülen varsayılana (0) düşer.
+  # Geçersiz değer ölçülen varsayılana (0) düşer. Önceki çağrının değeri
+  # sıfırlanır: iddia bu çağrının uygulamayı gerçekten başlatmasını gerektirir.
+  calisirken <- NA_real_
   withr::local_envvar(R_ENABLE_JIT = "yanlis")
   run_mergen_app(host = "127.0.0.1", port = 8009L, launch.browser = FALSE, quiet = TRUE)
   expect_equal(calisirken, 0)

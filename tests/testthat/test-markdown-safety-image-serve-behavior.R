@@ -256,8 +256,9 @@ testthat::test_that("görsel filtresi URL önbelleğinin kopyasını tutmaz ve k
   testthat::expect_length(session$register_calls, 3L)
   adlar <- vapply(session$register_calls, function(k) k$name, character(1))
   testthat::expect_identical(length(unique(adlar)), 3L)
+  # Rastgele onaltılık belirteç yalnız rakamlardan da oluşabilir; biçim ve
+  # benzersizlik doğrulanır (salt rakam reddi rastgele başarısızlık üretirdi).
   for (ad in adlar) {
-    testthat::expect_false(grepl("^mergen_img_[0-9]+$", ad))
     testthat::expect_match(ad, "^mergen_img_[0-9a-f]{16,}$")
   }
   for (kayit in session$register_calls) {

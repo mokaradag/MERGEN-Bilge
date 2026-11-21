@@ -428,6 +428,9 @@ savedChatsServer <- function(id, saved_chats) {
     observeEvent(input$confirm_delete_chat, {
       chat_id <- input$delete_chat_request
       removeModal()
+      # Her onay yeni bir olaydır: doğrulanamayan silmenin aynı kimlikle yeniden
+      # denenmesi, özdeş reactiveVal yazımı yutulmasın diye önce sıfırlanır.
+      delete_chat_trigger(NULL)
       delete_chat_trigger(chat_id)
       showToast(session, "Söyleşi silindi.", "warning")
     })

@@ -165,6 +165,7 @@ testthat::test_that("hız sınırı ve uzunluk retleri send_message çağırmada
     session$setInputs(send_prompt_from_js = list(text = "hızlı", nonce = 3, client_id = "istem_hiz"))
   })
   testthat::expect_length(kayit$gonderilen, 0L)
+  testthat::expect_length(.istem_sonuclari(kayit), 1L)
   testthat::expect_identical(.istem_sonuclari(kayit)[[1]]$message$durum, "ret")
 
   kayit2 <- new.env(); kayit2$mesajlar <- list(); kayit2$gonderilen <- character(); kayit2$toast <- character()
@@ -173,6 +174,7 @@ testthat::test_that("hız sınırı ve uzunluk retleri send_message çağırmada
     session$setInputs(send_prompt_from_js = list(text = strrep("a", 20001), nonce = 4, client_id = "istem_uzun"))
   })
   testthat::expect_length(kayit2$gonderilen, 0L)
+  testthat::expect_length(.istem_sonuclari(kayit2), 1L)
   testthat::expect_identical(.istem_sonuclari(kayit2)[[1]]$message$durum, "ret")
 })
 
@@ -263,13 +265,39 @@ testthat::test_that("oturum sahibi değişince istemciye bekleyen istemleri sıf
     session$userData$kimlik_sahibi <- 7L
     session$setInputs(send_prompt_from_js = list(text = "A istemi", nonce = 30, client_id = "istem_sahip"))
     env$mergen_session_owner_transition(session$userData, 7L, 8L)
+    # Önceki sahip altında yazılıp sıfırlamadan önce yola çıkmış istem (nesil
+    # yok/eski) yeni sahip adına işlenmez.
+    session$setInputs(send_prompt_from_js = list(text = "A gecikmiş", nonce = 32, client_id = "istem_eski_nesil",
+                                                 sahip_nesli = 0L))
     # Aynı istemci kimliği yeni sahipte önceki sahibin sonucunu yinelemez; yeniden işlenir.
-    session$setInputs(send_prompt_from_js = list(text = "B istemi", nonce = 31, client_id = "istem_sahip"))
+    session$setInputs(send_prompt_from_js = list(text = "B istemi", nonce = 31, client_id = "istem_sahip",
+                                                 sahip_nesli = 1L))
+    # Nesil bildirmeyen istemci (bekleyen istem modülü yüklenemedi) kalıcı olarak engellenmez.
+    session$setInputs(send_prompt_from_js = list(text = "modülsüz istem", nonce = 33))
   })
   sifirla <- Filter(function(m) identical(m$type, "mergenBekleyenIstemSifirla"), kayit$mesajlar)
   testthat::expect_length(sifirla, 1L)
   testthat::expect_identical(sifirla[[1]]$message$neden, "sahip_degisti")
-  testthat::expect_identical(kayit$gonderilen, c("A istemi", "B istemi"))
+  testthat::expect_identical(sifirla[[1]]$message$nesil, 1L)
+  testthat::expect_identical(kayit$gonderilen, c("A istemi", "B istemi", "modülsüz istem"))
+  eski <- Filter(function(m) identical(m$message$client_id, "istem_eski_nesil"), .istem_sonuclari(kayit))
+  testthat::expect_length(eski, 1L)
+  testthat::expect_identical(eski[[1]]$message$durum, "ret")
+})
+
+testthat::test_that("istem alanları tam adla okunur: client_id_hint önbellekteki sonucu yinelemez", {
+  testthat::skip_if_not_installed("shiny")
+  kayit <- .yeni_kayit()
+  env <- .istem_ortami(kayit)
+  shiny::testServer(.istem_sunucusu(env, kayit, mesaj_ekle = TRUE), {
+    session$setInputs(send_prompt_from_js = list(text = "ilk", nonce = 40, client_id = "istem_a"))
+    # Kısmi ad eşleşmesi kimlik sayılmaz: istem kendi metniyle işlenir.
+    session$setInputs(send_prompt_from_js = list(text = "ikinci", nonce = 41, client_id_hint = "istem_a"))
+    # Çok elemanlı kimlik geçersizdir: önbellek anahtarı olamaz.
+    session$setInputs(send_prompt_from_js = list(text = "üçüncü", nonce = 42, client_id = c("istem_a", "x")))
+  })
+  testthat::expect_identical(kayit$gonderilen, c("ilk", "ikinci", "üçüncü"))
+  testthat::expect_length(.istem_sonuclari(kayit), 1L)
 })
 
 testthat::test_that("mesaj kaydı DB'ye yazılamasa da kullanıcı balonu yerel kimlikle çizilir; kimlik boş kalmaz", {
@@ -352,7 +380,8 @@ testthat::test_that("uzun söyleşide kabul tespiti doğru kalır: yalnız yeni 
 testthat::test_that("nesne olmayan istem yükü alan erişiminden önce reddedilir; boş metinli dosya istemi kabul edilir", {
   testthat::skip_if_not_installed("shiny")
   kayit <- .yeni_kayit()
-  env <- .istem_ortami(kayit, hiz_siniri_gecer = FALSE)
+  # Hız sınırı geçer: koruma kaldırılırsa adsız liste send_message'a ulaşır ve test düşer.
+  env <- .istem_ortami(kayit, hiz_siniri_gecer = TRUE)
   hatalar <- .gozlemci_hatalari(shiny::testServer(.istem_sunucusu(env, kayit, mesaj_ekle = TRUE), {
     # Skaler ve adsız liste yükleri oturumu kapatacak hata üretmez, işlenmez.
     session$setInputs(send_prompt_from_js = "biçimsiz")

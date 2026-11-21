@@ -121,9 +121,9 @@ source_manifest_sections <- list(
     "R/helpers_chat_message_formatting.R",
     "R/helpers_db_chat_read_queries.R",
     "R/helpers_db_chat_readers.R",
-    # Hızlı Başlangıç "Son Konuşmalar" ön izlemesi: dar bağımlılık sözleşmeli
-    # (explicit worker-export) ham sorgu + ana süreç biçimlendirme katmanı.
-    "R/helpers_startup_chat_preview.R",
+    # "Son Konuşmalar" ön izlemesi (dar explicit worker-export ham sorgu + ana
+    # süreç biçimlendirme) ve ana süreç tam liste birleştirmesi/silinenler kümesi.
+    "R/helpers_startup_chat_preview.R", "R/helpers_saved_chats_merge.R",
     "R/helpers_db_chat_mutations.R",
     "R/helpers_db_feedback.R",
     # Bilge Yolaç kalıcı oturum katmanı: SAF sorgu/başlık/kısaltma yardımcıları
@@ -504,7 +504,7 @@ source_manifest_sections <- list(
   # module_chat: Sohbet modülleri: geçmiş, kayıtlı söyleşiler, mesaj/sohbet
   # arama, takip soruları, sohbet eylemleri, dışa aktarma ve geri bildirim.
   module_chat = c(
-    "R/module_chat_history_background.R",
+    "R/module_chat_history_background.R", "R/module_chat_history_cache_policy.R",
     "R/module_chat_history.R",
     "R/module_saved_chats.R",
     "R/module_message_search.R",

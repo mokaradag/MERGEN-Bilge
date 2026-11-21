@@ -308,8 +308,11 @@
       statusText.classList.add("alo-status-fade");
       stageLabelTimer = window.setTimeout(function () {
         stageLabelTimer = null;
-        lastStageLabel = STAGES[idx].label;
-        statusText.textContent = STAGES[idx].label;
+        // Hazır aşaması kapanış etiketini kullanır: kısmen hazır sonuç önce
+        // niteliksiz "Hazır" olarak görünmez.
+        var etiket = (STAGES[idx].key === "ready" && kapanisEtiketi) ? kapanisEtiketi : STAGES[idx].label;
+        lastStageLabel = etiket;
+        statusText.textContent = etiket;
         statusText.classList.remove("alo-status-fade");
       }, 200);
     }
@@ -318,6 +321,10 @@
 
   var stageLabelTimer = null;
   var richFinishTimer = null;
+  // Şerit seçimi çözülünce kuyruğa alınan kapanış; hazır-olma geri çekilirse iptal edilir.
+  var laneFinishTimer = null;
+  // "Söyleşi Yönetimi verisi hazırlanıyor" etiketi gösteriliyor mu?
+  var yonetimEtiketiGosteriliyor = false;
 
   // Server tarafı boot kontrol noktası mesajlarını dinle. İlerleme tamamen
   // bu mesajlarla sürülür; ekran ancak ready=true geldiğinde kapanır.
@@ -338,10 +345,14 @@
 
       // Hazır-olma geri çekildiyse (ör. sahip değişimi) bekleyen veya şerit seçimine
       // ertelenmiş kapanış ve kapanış etiketi iptal edilir.
-      if (msg.ready !== true && (richFinishTimer || pendingFinishUntilLaneResolved)) {
+      if (msg.ready !== true && (richFinishTimer || laneFinishTimer || pendingFinishUntilLaneResolved)) {
         if (richFinishTimer) {
           window.clearTimeout(richFinishTimer);
           richFinishTimer = null;
+        }
+        if (laneFinishTimer) {
+          window.clearTimeout(laneFinishTimer);
+          laneFinishTimer = null;
         }
         pendingFinishUntilLaneResolved = false;
         kapanisEtiketi = null;
@@ -353,9 +364,10 @@
       // kullanıcı neyin beklendiğini görür; bekleyen aşama zamanlayıcısı iptal edilir.
       var tamam = [].concat(msg.required_done || []);
       var kismen = [].concat(msg.kismen || []);
-      if (msg.ready !== true && !isFastLane() && statusText &&
+      var yonetimBekleniyor = msg.ready !== true && !isFastLane() &&
           tamam.indexOf("management_pages_ready") < 0 &&
-          typeof msg.required_total === "number" && tamam.length === msg.required_total - 1) {
+          typeof msg.required_total === "number" && tamam.length === msg.required_total - 1;
+      if (yonetimBekleniyor && statusText) {
         if (stageLabelTimer) {
           window.clearTimeout(stageLabelTimer);
           stageLabelTimer = null;
@@ -363,16 +375,25 @@
         statusText.classList.remove("alo-status-fade");
         lastStageLabel = "Söyleşi Yönetimi verisi hazırlanıyor";
         statusText.textContent = lastStageLabel;
+        yonetimEtiketiGosteriliyor = true;
+      } else if (yonetimEtiketiGosteriliyor && msg.ready !== true && statusText) {
+        // Koşul artık geçerli değil (ör. kimlik kaybı): bekleme etiketi güncel
+        // aşamanın etiketiyle değiştirilir; hazırlık sürüyormuş gibi görünmez.
+        yonetimEtiketiGosteriliyor = false;
+        lastStageLabel = (stageIndex >= 0 && STAGES[stageIndex]) ? STAGES[stageIndex].label : "Başlatılıyor";
+        statusText.textContent = lastStageLabel;
       }
 
       if (msg.ready === true) {
-        setStage("ready");
+        yonetimEtiketiGosteriliyor = false;
         // Kısmen hazır (ör. okuma hatası ya da süre sınırı) niteliksiz "Hazır"
-        // veya kesin arka plan tamamlanma sözü göstermez.
+        // veya kesin tamamlanma/kurtarma sözü göstermez. Etiket hazır aşaması
+        // çizilmeden ÖNCE belirlenir.
         var etiket = kismen.length === 0 ? "Hazır" :
           (kismen.indexOf("management_pages_ready") >= 0 ?
-            "Kısmen hazır — Söyleşi Yönetimi sayfa açıldığında tamamlanacak" : "Kısmen hazır");
+            "Kısmen hazır — Söyleşi Yönetimi verisi henüz tamamlanmadı" : "Kısmen hazır");
         kapanisEtiketi = etiket;
+        setStage("ready");
         if (richFinishTimer) {
           window.clearTimeout(richFinishTimer);
           richFinishTimer = null;
@@ -395,7 +416,11 @@
       maybeFinishFastLane();
       if (pendingFinishUntilLaneResolved) {
         pendingFinishUntilLaneResolved = false;
-        window.setTimeout(finish, 0);
+        if (laneFinishTimer) window.clearTimeout(laneFinishTimer);
+        laneFinishTimer = window.setTimeout(function () {
+          laneFinishTimer = null;
+          finish();
+        }, 0);
       }
     });
   }

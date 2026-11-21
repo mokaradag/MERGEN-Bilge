@@ -271,6 +271,8 @@ testthat::test_that("başarısız tablo probu eski olumsuz önbelleği temizler 
   yardimci <- new.env(parent = globalenv())
   yardimci$`%||%` <- function(a, b) if (is.null(a)) b else a
   source(file.path(kok, "R", "helpers_ortak_oturum_db.R"), encoding = "UTF-8", local = yardimci)
+  # Geri çekilme süresi test içinde pozitif sabitlenir (ortam ayarından bağımsız).
+  withr::local_options(mergen.ortak_db_probe_backoff_secs = 30)
   sayac <- 0L
   yardimci$.oo_db_acquire <- function(conn = NULL, tx = FALSE) {
     sayac <<- sayac + 1L

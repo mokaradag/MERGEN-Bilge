@@ -25,9 +25,12 @@
 # (interruptible) açılır ve kilit beklemesi LOCK_TIMEOUT ile aynı bütçeye
 # bağlanır (helpers_ai_expert_greeting_topic.R deseni). Süre dolunca okuma hata
 # verir; promise reddedilir ve işçi serbest kalır. Bağlantı her yolda kapanır.
+# saat: bütçe muhasebesinin saati (geçen sn); varsayılan proc.time. Testler
+# zamanlayıcı duraklamasından bağımsız denetim için sanal saat verebilir.
 mergen_bounded_db_fetch_raw <- function(sql, params, dsn, encoding, name_encoding,
                                         login_timeout = NA_integer_,
-                                        query_timeout = NA_real_) {
+                                        query_timeout = NA_real_,
+                                        saat = function() proc.time()[["elapsed"]]) {
   if (is.null(dsn) || !nzchar(as.character(dsn)[1])) {
     stop("mergen_bounded_db_fetch_raw: DSN bulunamadı.", call. = FALSE)
   }
@@ -58,7 +61,7 @@ mergen_bounded_db_fetch_raw <- function(sql, params, dsn, encoding, name_encodin
     # Önce kaydedilir, önce çalışır: bağlantı kapatma süre sınırına takılmaz.
     setTimeLimit(elapsed = sure_sn, transient = TRUE)
     on.exit(setTimeLimit(elapsed = Inf), add = TRUE)
-    butce_baslangici <- proc.time()[["elapsed"]]
+    butce_baslangici <- saat()
   }
 
   connect_started <- Sys.time()
@@ -93,7 +96,7 @@ mergen_bounded_db_fetch_raw <- function(sql, params, dsn, encoding, name_encodin
     # sorguyu sınırsız bırakmasın diye kalan bütçe (ileti metnine bakmadan)
     # yeniden uygulanır. Bütçe bittiyse sorgu hiç başlamaz; diğer kurulum
     # hataları ölümcül değildir.
-    kalan_sn <- sure_sn - (proc.time()[["elapsed"]] - butce_baslangici)
+    kalan_sn <- sure_sn - (saat() - butce_baslangici)
     if (!is.finite(kalan_sn) || kalan_sn <= 0) {
       if (inherits(kurulum, "try-error") && inherits(attr(kurulum, "condition"), "condition")) {
         stop(attr(kurulum, "condition"))
@@ -111,12 +114,22 @@ mergen_bounded_db_fetch_raw <- function(sql, params, dsn, encoding, name_encodin
     # nedenle satırlar sınırlı parçalarla getirilir: süre sınırı parçalar
     # arasında denetlenir, aşım en çok tek parçanın süresiyle sınırlıdır. Bu
     # uçtan uca katı bir son tarih DEĞİLDİR (bkz. docs/performance-improvement-plan.md).
+    # Bütçe her parçadan ÖNCE ve döndükten hemen SONRA (son parça dahil)
+    # denetlenir: süresi dolmuş okuma yeni bir yerel getirme başlatmaz ve
+    # olağan temizlik yolundan (on.exit) hatayla çıkar.
+    butce_denetle <- function() {
+      if ((saat() - butce_baslangici) >= sure_sn) {
+        stop("mergen_bounded_db_fetch_raw: sorgu süre bütçesi satır getirme sırasında tükendi.", call. = FALSE)
+      }
+    }
     parcali_getir <- function() {
       sonuc_kumesi <- DBI::dbSendQuery(conn, sql)
       on.exit(try(DBI::dbClearResult(sonuc_kumesi), silent = TRUE))
       parcalar <- list()
       repeat {
+        butce_denetle()
         parca <- DBI::dbFetch(sonuc_kumesi, n = 1000L)
+        butce_denetle()
         parcalar[[length(parcalar) + 1L]] <- parca
         if (isTRUE(DBI::dbHasCompleted(sonuc_kumesi)) || !NROW(parca)) break
       }
@@ -128,9 +141,12 @@ mergen_bounded_db_fetch_raw <- function(sql, params, dsn, encoding, name_encodin
   }
   query_ms <- as.numeric(difftime(Sys.time(), query_started, units = "secs")) * 1000
 
+  # sorgu_baslangici: okumanın başladığı an (epoch sn); tam liste birleştirmesi
+  # hidrasyonla gelen alanların bu okumadan taze olup olmadığını buna göre seçer.
   attr(veri, "mergen_preview_perf") <- list(
     connect_ms = connect_ms,
-    query_ms = query_ms
+    query_ms = query_ms,
+    sorgu_baslangici = as.numeric(query_started)
   )
 
   veri
@@ -235,113 +251,16 @@ mergen_startup_chat_preview_limit <- function(limit) {
   if (length(sayi) != 1L || is.na(sayi) || sayi <= 0L) 6L else sayi
 }
 
-# Arka plan tam listesi gönderimden SONRA yerelde yapılan değişiklikleri ezmez:
-# yerelde eklenen söyleşiler başa eklenir, yerelde silinenler geri gelmez.
-# DB'de de bulunan söyleşide yalnızca yerelde DEĞİŞEN alanlar uygulanır (ör. ad
-# değişimi DB'nin daha yeni sayı/zamanını ezmez); etkinliği yerelde ilerleyen
-# söyleşi başa taşınır. Yerel durum değişmediyse DB sonucu aynen uygulanır.
-# Gönderim anında var olup DB sonucunda olmayan söyleşi (başka oturumda
-# silindi) yerel değişikliği olsa da geri getirilmez; yalnızca gönderimden
-# SONRA yerelde açılan söyleşiler korunur. DB'de etkinliği (mesaj sayısı)
-# yereldekinden ileride olan söyleşide etkinlik alanları DB'den kalır.
-# (Silme/Tümünü Temizle sonrası sonuç çağıran tarafından hiç uygulanmaz.)
-# silinenler: bu oturumda DB'de gerçekten silinen kimlikler (anlık görüntüde
-# olmasalar da); DB sonucundan her durumda önce çıkarılır, kısayol dahil.
-mergen_saved_chats_merge_newer <- function(db_chats, dispatch_snapshot, current, silinenler = character()) {
-  db_chats <- db_chats %||% list()
-  silinenler <- as.character(silinenler %||% character())
-  if (length(silinenler) && length(names(db_chats))) db_chats <- db_chats[!(names(db_chats) %in% silinenler)]
-  dispatch_snapshot <- dispatch_snapshot %||% list()
-  current <- current %||% list()
-  if (identical(current, dispatch_snapshot)) {
-    return(db_chats)
-  }
-  silinen <- setdiff(names(dispatch_snapshot), names(current))
-  birlesik <- db_chats[setdiff(names(db_chats), silinen)]
-  degisen <- Filter(function(k) !identical(current[[k]], dispatch_snapshot[[k]]), names(current))
-  etkinlik_alanlari <- c("last_message_timestamp", "message_count")
-  sayi <- function(x) suppressWarnings(as.integer(x %||% NA_integer_)[1])
-  etkin <- character()
-  eksik <- function(x) is.null(x) || length(x) == 0L || is.na(x[1])
-  for (k in intersect(degisen, names(birlesik))) {
-    once <- dispatch_snapshot[[k]]
-    db_sayi <- sayi(birlesik[[k]]$message_count)
-    yerel_sayi <- sayi(current[[k]]$message_count)
-    yerel_hidrate <- isTRUE(current[[k]]$hidrate_edildi) && !isTRUE(current[[k]]$baslik_yerel_degisti)
-    # Başka oturum daha sonra mesaj eklediyse DB'nin sayı/zaman çifti daha yenidir.
-    db_daha_yeni <- isTRUE(db_sayi > yerel_sayi)
-    yerel_zaman <- current[[k]]$last_message_timestamp
-    db_zaman <- birlesik[[k]]$last_message_timestamp
-    yerel_zaman_daha_yeni <- !eksik(yerel_zaman) && !eksik(db_zaman) &&
-      isTRUE(suppressWarnings(as.numeric(yerel_zaman)[1] > as.numeric(db_zaman)[1]))
-    yerel_ileride <- isTRUE(yerel_sayi > db_sayi) ||
-      (isTRUE(yerel_sayi == db_sayi) && yerel_zaman_daha_yeni)
-    if (is.null(once)) {
-      # Gönderimden sonra yerelde açılan/hidrate edilen söyleşi: DB girdisi
-      # TABAN kalır (detay okuyucu etkinlik zamanı taşımayabilir; eksik alan
-      # DB'nin zamanını silmez). Yalnızca hidrasyon sonucu önbelleklenen başlık
-      # DB'nin daha yeni başlığını ezmez; yerel etkinlik DB'yi geçtiyse başa taşınır.
-      taban <- birlesik[[k]]
-      for (alan in names(current[[k]])) {
-        deger <- current[[k]][[alan]]
-        if (eksik(deger) || (alan %in% etkinlik_alanlari && !yerel_ileride)) next
-        if (identical(alan, "title") && yerel_hidrate) next
-        taban[alan] <- list(deger)
-      }
-      if (yerel_ileride) etkin <- c(etkin, k)
-      # Yerelde mesaj yazıldı ve DB de ayrıca okundu: eşit sayı içerik eşitliği
-      # değildir (başka sekmenin mesajı eksik olabilir). Önbellek korunur, yeniden
-      # açılışta kapsamlı bir yeniden okuma istenir.
-      if (!eksik(yerel_zaman) && !identical(yerel_zaman, db_zaman)) {
-        taban$transkript_yenile <- TRUE
-      }
-      birlesik[[k]] <- taban
-      next
-    }
-    for (alan in names(current[[k]])) {
-      if (db_daha_yeni && alan %in% etkinlik_alanlari) next
-      if (identical(alan, "title") && yerel_hidrate) next
-      if (!identical(current[[k]][[alan]], once[[alan]])) birlesik[[k]][alan] <- list(current[[k]][[alan]])
-    }
-    # Gönderimden sonra hem DB hem yerel etkinlik ilerlediyse transkript iki
-    # kaynağın birleşimidir; sayı eşitliği tam olduğunu kanıtlamaz.
-    once_sayi <- sayi(once$message_count)
-    if (isTRUE(db_sayi > once_sayi) && isTRUE(yerel_sayi > once_sayi)) {
-      birlesik[[k]]$transkript_yenile <- TRUE
-    }
-    # DB bu oturumun güncellemesini zaten içeriyorsa DB sırası korunur; yalnızca
-    # yerel etkinlik DB'nin önündeyse söyleşi başa taşınır.
-    if (yerel_ileride) {
-      etkin <- c(etkin, k)
-    }
-  }
-  # Yalnızca gönderimden SONRA yerelde oluşturulan söyleşiler korunur; başka
-  # oturumda silinmiş ama bu oturumda yalnızca hidrate edilmiş kayıt geri gelmez.
-  yerel_yeni <- Filter(
-    function(k) !isTRUE(current[[k]]$hidrate_edildi),
-    setdiff(setdiff(degisen, names(birlesik)), names(dispatch_snapshot))
-  )
-  sonuc <- c(current[yerel_yeni], birlesik[etkin], birlesik[setdiff(names(birlesik), etkin)])
-  if (length(sonuc) > 1L && (length(yerel_yeni) > 0L || length(etkin) > 0L)) {
-    ts_deger <- vapply(sonuc, function(s) {
-      d <- if (!eksik(s$last_message_timestamp)) s$last_message_timestamp else s$timestamp
-      if (eksik(d)) return(-Inf)
-      v <- if (inherits(d, "POSIXt") || is.numeric(d)) suppressWarnings(as.numeric(d)[1])
-           else suppressWarnings(as.numeric(as.POSIXct(as.character(d)[1], tz = "UTC")))
-      if (is.finite(v)) v else -Inf
-    }, numeric(1))
-    if (any(is.finite(ts_deger))) sonuc <- sonuc[order(-ts_deger, seq_along(sonuc))]
-  }
-  sonuc
-}
-
 # Aktif future planının eşzamansız işçi destekleyip desteklemediğini bildirir.
 # MERGEN_DISABLE_FUTURES veya PSOCK başlatma hatasında plan sequential olur;
 # otomatik arka plan tam liste okuması ana olay döngüsünü bloklamasın diye
 # yalnızca işçi planı etkinken çalışır (kullanıcı sekme ziyareti etkilenmez).
+# Plan sorgusu hata verirse işçi DOĞRULANAMAMIŞ sayılır (FALSE): yalnızca
+# doğrulanmış eşzamansız plan TRUE döner.
 mergen_startup_async_worker_ready <- function() {
   if (!requireNamespace("future", quietly = TRUE)) return(FALSE)
-  !inherits(tryCatch(future::plan("next"), error = function(e) NULL), "sequential")
+  plan <- tryCatch(future::plan("next"), error = function(e) NULL)
+  !is.null(plan) && !inherits(plan, c("sequential", "uniprocess"))
 }
 
 # Yapılandırılmış DB login sınırı (MERGEN_DB_LOGIN_TIMEOUT_SEC); plan yoksa NA.
@@ -481,6 +400,14 @@ mergen_startup_chat_preview_promise <- function(user_id,
         if (is.data.frame(raw_frame)) nrow(raw_frame) else 0L
       ))
     }
-    mergen_startup_chat_preview_format_staged(raw_frame, gecerli_mi = gecerli_mi)
+    # DB okumasının anı biçimlendirilmiş listeye taşınır (birleştirme tazelik
+    # karşılaştırması için); kademeli biçimlendirmede promise sonucuna eklenir.
+    okuma_zamani <- if (is.list(perf)) perf$sorgu_baslangici else NULL
+    zaman_ekle <- function(liste) {
+      if (is.list(liste) && length(okuma_zamani)) attr(liste, "mergen_okuma_zamani") <- okuma_zamani
+      liste
+    }
+    bicimli <- mergen_startup_chat_preview_format_staged(raw_frame, gecerli_mi = gecerli_mi)
+    if (promises::is.promise(bicimli)) promises::then(bicimli, zaman_ekle) else zaman_ekle(bicimli)
   })
 }

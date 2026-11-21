@@ -542,7 +542,9 @@ testthat::test_that("sağlık zaman damgası kontrollerin gerçekten toplandığ
   satir <- data.frame(id = "db", label = "DB", status = "ok", severity = 0L, value = "Hazır",
                       detail = "", duration_ms = 1, checked_at = "", remediation = "",
                       stringsAsFactors = FALSE)
-  env$health_collect_checks <- function(...) satir
+  # Toplama 5 sn sürer (sanal saat ilerler): toplamadan ÖNCE alınan damga
+  # toplama sonrası andan ayırt edilir.
+  env$health_collect_checks <- function(...) { saat$t <- saat$t + 5; satir }
   env$mb_presence_snapshot <- function(...) list(metrics = list(), users = NULL)
   shiny::testServer(env$healthServer, args = list(perf_tracker = NULL), {
     gizli_anahtar <- paste0("output_", session$ns("health_tab_content"), "_hidden")
@@ -553,18 +555,18 @@ testthat::test_that("sağlık zaman damgası kontrollerin gerçekten toplandığ
     session$userData$user_config <- list(auth_level = "ADMIN")
     session$setInputs(health_tabs = "overview")
     output$health_tab_content
-    testthat::expect_identical(health_last_update(), "01.07.2026 10:00:00")
+    testthat::expect_identical(health_last_update(), "01.07.2026 10:00:05")
     # Çevrimiçi sekmesinde 2 dk'lık tetik toplama yapmaz: damga ilerlemez.
     session$setInputs(health_tabs = "presence")
     saat$t <- saat$t + 120
     session$elapse(121000)
     output$health_tab_content
-    testthat::expect_identical(health_last_update(), "01.07.2026 10:00:00")
+    testthat::expect_identical(health_last_update(), "01.07.2026 10:00:05")
     # Bir dakika sonra Genel Bakış'a dönülünce ertelenen toplama yapılır ve
     # damga bu ölçümün anını gösterir.
     saat$t <- saat$t + 60
     session$setInputs(health_tabs = "overview")
     output$health_tab_content
-    testthat::expect_identical(health_last_update(), "01.07.2026 10:03:00")
+    testthat::expect_identical(health_last_update(), "01.07.2026 10:03:10")
   })
 })

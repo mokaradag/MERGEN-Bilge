@@ -85,18 +85,29 @@ chatInputObserversInit <- function(input, session, values, settings_data,
   # Aynı oturumda sahip değişince (ya da kimlik/yetki düşünce) önceki sahibin
   # sonuçlanmamış istemleri istemcide metni geri yüklenmeden düşer; yeni
   # sahibin girdisine eski sahibin istemi taşınmaz. Kimlik önbelleği sıfırlanır.
+  # Sıfırlama bildirimi yeni kimlik neslini taşır; istemci sonraki istemlere
+  # bu nesli ekler. Nesli eski olan istem (önceki sahip altında yazılıp
+  # sıfırlamadan önce yola çıkmış) send_message'a ulaşmadan reddedilir.
+  kimlik_nesli <- function() {
+    n <- suppressWarnings(as.integer(tryCatch(session$userData$kimlik_nesli, error = function(e) NULL) %||% 0L)[1])
+    if (is.na(n)) 0L else n
+  }
   if (exists("mergen_session_on_owner_change", mode = "function", inherits = TRUE)) {
     mergen_session_on_owner_change(session, function(neden) {
       islenen_istemler <<- list()
-      try(session$sendCustomMessage("mergenBekleyenIstemSifirla", list(neden = neden)), silent = TRUE)
+      try(session$sendCustomMessage("mergenBekleyenIstemSifirla", list(neden = neden, nesil = kimlik_nesli())), silent = TRUE)
     })
   }
   istemi_isle <- function(istem) {
     # Nesne (adlandırılmış liste) olmayan yük alan erişiminde hata verip oturumu
     # kapatabilirdi; reddedilir. Boş metinli nesne (yalnız dosya istemi) geçerlidir.
     if (!is.list(istem) || is.null(names(istem))) return(invisible(NULL))
-    istem_kimligi <- as.character(istem$client_id %||% "")[1]
-    if (is.na(istem_kimligi) || !grepl("^[A-Za-z0-9_-]{1,64}$", istem_kimligi)) istem_kimligi <- ""
+    # Alanlar TAM adla okunur: `$` kısmi eşleşmesi (ör. client_id_hint) başka
+    # bir istemin önbellekteki sonucunu yinelemesin. Yalnız tek, eksiksiz metin
+    # kimlik sayılır.
+    istem_kimligi <- istem[["client_id", exact = TRUE]]
+    if (!is.character(istem_kimligi) || length(istem_kimligi) != 1L || is.na(istem_kimligi) ||
+        !grepl("^[A-Za-z0-9_-]{1,64}$", istem_kimligi)) istem_kimligi <- ""
     if (nzchar(istem_kimligi) && istem_kimligi %in% names(islenen_istemler)) {
       try(session$sendCustomMessage("mergenIstemSonucu", islenen_istemler[[istem_kimligi]]), silent = TRUE)
       return(invisible(NULL))
@@ -129,6 +140,19 @@ chatInputObserversInit <- function(input, session, values, settings_data,
       try(session$sendCustomMessage("mergenIstemSonucu", sonuc), silent = TRUE)
     }, add = TRUE)
 
+    # Önceki sahibin nesliyle yazılmış istem yeni sahip adına işlenmez ("ret";
+    # istemci sıfırlamada bu istemi zaten metni geri yüklemeden düşürmüştür).
+    # Nesil yalnızca istemci bildirdiyse denetlenir: bekleyen istem modülü
+    # yüklenemeyen istemci kalıcı olarak gönderemez hâle gelmez.
+    ham_nesil <- istem[["sahip_nesli", exact = TRUE]]
+    if (!is.null(ham_nesil)) {
+      istem_nesli <- tryCatch(suppressWarnings(as.integer(ham_nesil)[1]), error = function(e) NA_integer_)
+      if (length(istem_nesli) != 1L || is.na(istem_nesli)) istem_nesli <- 0L
+      if (istem_nesli < kimlik_nesli()) {
+        return(invisible(NULL))
+      }
+    }
+
     if (!check_rate_limit(resolve_chat_input_user_id())) {
       showToast(session, "Çok fazla istek gönderdiniz. Lütfen biraz bekleyin.", "warning")
       return(invisible(NULL))
@@ -142,7 +166,7 @@ chatInputObserversInit <- function(input, session, values, settings_data,
 
     # Sınır kırpılmamış ham metne uygulanır: boşlukla şişirilmiş girdi sınırı
     # aşamaz; send_message aynı doğrulanmış tek değeri alır.
-    ham_metin <- as.character(istem$text %||% "")[1]
+    ham_metin <- as.character(istem[["text", exact = TRUE]] %||% "")[1]
     if (is.na(ham_metin)) ham_metin <- ""
     if (nchar(ham_metin) > 20000) {
       showToast(session, "Mesaj çok uzun. Lütfen 20.000 karakterle sınırlayın.", "warning")

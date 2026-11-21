@@ -395,6 +395,8 @@ worker_monitor_serialize_explicit_task <- function(task_fn, promise_globals, pac
 #     çerçeve zincirinin worker'a serileştirilmesini önlemek için verilen
 #     globals'ı içeren izole bir ortama yeniden bağlanır. Açılış kritik
 #     yolundaki görevler bu modu kullanmalıdır (bkz. CLAUDE.md 8A).
+# start_check: future şeridinde iş kuyruktan çıkarken sorulan isteğe bağlı
+#   yüklem; FALSE dönerse eskimiş iş işçiye gönderilmeden reddedilir.
 tracked_future_promise <- function(task_fn,
                                    task_type = "generic",
                                    session_token = NULL,
@@ -405,7 +407,8 @@ tracked_future_promise <- function(task_fn,
                                    cancel_check = NULL,
                                    execution_timeout = NULL,
                                    queue_timeout = NULL,
-                                   on_uncertain = NULL) {
+                                   on_uncertain = NULL,
+                                   start_check = NULL) {
   if (!is.function(task_fn)) {
     stop("tracked_future_promise() için 'task_fn' bir fonksiyon olmalıdır.")
   }
@@ -481,7 +484,8 @@ tracked_future_promise <- function(task_fn,
         priority = if (auxiliary) 2L else if (identical(task_type, "llm_followups")) 1L else 0L,
         queue_timeout = queue_timeout %||% if (auxiliary) 30 else if (durable) timeout else 300,
         lane = if (durable) "durable" else "interactive", on_uncertain = on_uncertain)
-    } else worker_monitor_future_promise(promise_globals, future_packages, gorev_kimligi = task_id)
+    } else worker_monitor_future_promise(promise_globals, future_packages, gorev_kimligi = task_id,
+                                         baslangic_gecerli = start_check)
   }, error = function(e) {
     finish_worker_task(task_id)
     stop(e)

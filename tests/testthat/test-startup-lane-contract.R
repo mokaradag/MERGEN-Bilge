@@ -511,3 +511,14 @@ testthat::test_that("şerit yardımcıları manifest ve varlık sahipliğinde ka
   report_txt <- .read_repo_text_startup_lane("tests/scripts/frontend_maintainability_report.R")
   testthat::expect_true(.startup_lane_has(report_txt, '"www/js/app_loading_lane.js"'))
 })
+
+testthat::test_that("açılış katmanı kısmi hazır-olmayı dürüst etiketler ve geri çekilen hazır-olmada kapanmaz (gerçek JavaScript)", {
+  node <- Sys.which("node")
+  testthat::skip_if(!nzchar(node), "Node kullanılamıyor")
+  script <- file.path(resolve_repo_root_for_tests(), "tests", "scripts", "app_loading_readiness_regressions.js")
+  out <- suppressWarnings(system2(node, shQuote(script), stdout = TRUE, stderr = TRUE))
+  durum <- attr(out, "status")
+  if (is.null(durum)) durum <- 0L
+  testthat::expect_identical(as.integer(durum), 0L, info = paste(out, collapse = "\n"))
+  testthat::expect_true(any(grepl("app_loading_readiness_regressions: OK", out, fixed = TRUE)))
+})

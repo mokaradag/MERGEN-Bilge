@@ -127,7 +127,10 @@
   # 16L -> 17L bilinçli güncelleme: Hızlı Başlangıç "Son Konuşmalar" ön izleme
   # worker katmanı (R/helpers_startup_chat_preview.R) helpers_db_chat_readers.R
   # sonrası, helpers_db_chat_mutations.R öncesi eklendi.
-  database = list(first = "R/helpers_db_unicode_escape.R", last = "R/helpers_database.R", n = 17L),
+  # 17L -> 18L bilinçli güncelleme: kayıtlı söyleşi tam liste birleştirmesi
+  # (R/helpers_saved_chats_merge.R) helpers_startup_chat_preview.R'den ayrıldı
+  # (25 fonksiyon cırcırı); ön izleme dosyasından hemen sonra yüklenir.
+  database = list(first = "R/helpers_db_unicode_escape.R", last = "R/helpers_database.R", n = 18L),
   # Faz 3a: sorgu metadata sözleşmesi. Türkçe katlama yardımcısı + sözlük/
   # doğrulayıcı + erişimci yardımcıları, ardından dört veri katmanı
   # (iskelet -> üretilen -> küre edilmiş -> yerel alias) ve birleştirici;
@@ -313,7 +316,10 @@
   # 41 -> 42.
   claude_code_helpers = list(first = "R/helpers_claude_code_user_guard.R", last = "R/helpers_claude_code_codex_output_fixes.R", n = 45L),
   llm_pipeline = list(first = "R/helpers_llm_tool_formatters.R", last = "R/helpers_llm_worker.R", n = 11L),
-  module_chat = list(first = "R/module_chat_history_background.R", last = "R/module_feedback.R", n = 9L),
+  # 9L -> 10L bilinçli güncelleme: geçmiş önbellek politikası yardımcıları
+  # (R/module_chat_history_cache_policy.R) arka plan dosyasından ayrıldı
+  # (25 fonksiyon cırcırı); module_chat_history.R'den önce yüklenir.
+  module_chat = list(first = "R/module_chat_history_background.R", last = "R/module_feedback.R", n = 10L),
   module_files_media = list(first = "R/module_file_manager_ui.R", last = "R/module_summarization.R", n = 8L),
   module_settings_api_key = list(first = "R/module_settings_kisisel.R", last = "R/module_api_key.R", n = 7L),
   # 6L -> 7L bilinçli güncelleme: STT ses parçası çevirisi SAF worker-güvenli
@@ -778,7 +784,10 @@ test_that("bölümlenmiş manifest tekrar içermez ve tüm dosyalar repoda mevcu
   # gönderim yükünü oturum grafiğinden arındırır; worker monitor bütçesi korunur).
   # 525L -> 526L bilinçli güncelleme: R/helpers_llm_true_streaming_task.R
   # (ratchet bölünmesi; streaming globals dosyasının bütçesi korunur).
-  expect_equal(length(runtime), 526L, info = "Toplam kaynak sayısı beklenenden farklı.")
+  # 526L -> 528L bilinçli güncelleme: R/helpers_saved_chats_merge.R ve
+  # R/module_chat_history_cache_policy.R 25 fonksiyon cırcırı nedeniyle
+  # helpers_startup_chat_preview.R ve module_chat_history_background.R'den ayrıldı.
+  expect_equal(length(runtime), 528L, info = "Toplam kaynak sayısı beklenenden farklı.")
 
   duplicate_paths <- unique(runtime[duplicated(runtime)])
   duplicate_r_paths <- duplicate_paths[grepl("^R/", duplicate_paths)]

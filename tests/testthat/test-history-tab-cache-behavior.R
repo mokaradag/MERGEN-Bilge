@@ -22,9 +22,13 @@
   env <- new.env(parent = paketler)
   env$`%||%` <- function(a, b) if (is.null(a)) b else a
   env$`%>%` <- get("%>%", envir = asNamespace("magrittr"))
+  # Yeniden doğrulama süresi geliştirici ortamından bağımsızdır: her test bu
+  # fikstürle 1 saatlik TTL'de başlar; süre testleri kendi değerini verir.
+  withr::local_options(mergen.history_revalidate_secs = 3600, .local_envir = parent.frame())
   kok <- resolve_repo_root_for_tests()
   # Okuma hataları günlüğe maskeleme sınırından (utils_log_redact.R) yazılır.
-  for (f in c("utils_log_redact.R", "module_chat_history.R", "module_chat_history_background.R")) {
+  for (f in c("utils_log_redact.R", "module_chat_history.R", "module_chat_history_background.R",
+              "module_chat_history_cache_policy.R")) {
     source(file.path(kok, "R", f), encoding = "UTF-8", local = env)
   }
   env$showToast <- function(...) invisible(NULL)
@@ -688,6 +692,30 @@ testthat::test_that("geç tamamlanan açılış hazırlığı daha yeni eşzaman
   }))
 })
 
+testthat::test_that("damga değişmese de eski hazırlık sonucu daha yeni eşzamanlı okumayı ezmez (sürüm koruması)", {
+  kayit <- .yeni_gecmis_kaydi()
+  env <- .gecmis_modul_ortami(kayit)
+  .elle_cozulen_isci(env, kayit)
+  sohbetler <- shiny::reactiveVal(.gecmis_sohbetleri(3L))
+  later::with_temp_loop(shiny::testServer(env$historyServer,
+                    args = list(all_messages = sohbetler, current_user_id = function() 7L), {
+    session$userData$saved_chats_full_loaded <- TRUE
+    session$userData$mergen_yonetim_hazir <- .isaretleyici(kayit)
+    session$flushReact()
+    session$setInputs(hazirla = 1)                     # A sürümü işçide okunuyor
+    damga <- stamp_for_chat(shiny::isolate(sohbetler())[["2"]])
+    # Damga ve nesil değişmeden sekme açılır; B eşzamanlı okunur.
+    kayit$etiket <- "B sürümü"
+    session$setInputs(external_refresh_trigger = 1)
+    testthat::expect_identical(messages_cache()[["2"]]$rows[[1]]$Soru, "B sürümü")
+    kayit$cozumler[[1]]$resolve(.surum_satirlari(kayit$cozumler[[1]]$ids, "A sürümü"))
+    .zincir_bitene_dek(session)
+    # Yalnız sürüm karşılaştırması eski A'yı reddedebilir (damga aynı).
+    testthat::expect_identical(messages_cache()[["2"]]$rows[[1]]$Soru, "B sürümü")
+    testthat::expect_identical(messages_cache()[["2"]]$stamp, damga)
+  }))
+})
+
 testthat::test_that("hazırlık sürerken eklenen söyleşi eksikse hazır-olma 'kısmen'dir; silinen söyleşi eksik sayılmaz", {
   # Eklenen söyleşi: gönderilen kimlikler önbellekte olsa da güncel ilk sayfa eksik.
   kayit <- .yeni_gecmis_kaydi()
@@ -730,10 +758,14 @@ testthat::test_that("hazırlık sürerken eklenen söyleşi eksikse hazır-olma 
     kalan[["2"]] <- NULL
     shiny::isolate(sohbetler(kalan))
     session$flushReact()
-    kayit$cozumler[[1]]$resolve(.surum_satirlari(setdiff(kayit$cozumler[[1]]$ids, "2"), "A sürümü"))
+    # İşçi "2"yi silinmeden önce okumuştu: sonucu "2"nin satırlarını da taşır.
+    kayit$cozumler[[1]]$resolve(.surum_satirlari(kayit$cozumler[[1]]$ids, "A sürümü"))
     .zincir_bitene_dek(session)
     testthat::expect_false(isTRUE(kayit$detay[[length(kayit$detay)]]$degraded),
                            info = "silinen söyleşi hazır-olmayı 'kısmen' bırakmamalı")
+    # Damga denetimi silinen söyleşiyi önbellekten uzak tutar.
+    testthat::expect_false("2" %in% names(messages_cache()))
+    testthat::expect_setequal(names(messages_cache()), c("1", "3"))
   }))
 })
 
@@ -847,9 +879,12 @@ testthat::test_that("görsel silme düşürmesi ilgisiz arka plan ısıtmasını
     session$userData$mergen_gecmis_onbellek_dusur("5")
     testthat::expect_identical(isitma$nesil, nesil)
     .zincir_bitene_dek(session)
-    testthat::expect_identical(kayit$cagri, 3L, info = "kalan partiler koşmalı")
-    testthat::expect_identical(length(messages_cache()), 129L)
-    testthat::expect_false("5" %in% names(messages_cache()))
+    # Kalan partiler koşar; açıkça düşürülen "5" aynı zincirin sonunda yeniden
+    # okunur (sayfa açıkken eksik kalmaz) — tek ek okuma, yalnızca "5".
+    testthat::expect_identical(kayit$cagri, 4L, info = "kalan partiler ve düşen söyleşinin yeniden okuması koşmalı")
+    testthat::expect_identical(kayit$kimlikler[[length(kayit$kimlikler)]], "5")
+    testthat::expect_identical(length(messages_cache()), 130L)
+    testthat::expect_true("5" %in% names(messages_cache()))
   }))
 })
 
@@ -942,6 +977,7 @@ testthat::test_that("geçmiş işçi okuması dar açık sözleşmeyle gönderil
     rec$task_type <- task_type
     rec$mode <- match.arg(dependency_mode)
     rec$globals <- globals
+    rec$task_fn <- task_fn
     promises::promise_resolve(data.frame(ChatID = 3L))
   }
   sonuc <- NULL
@@ -963,6 +999,22 @@ testthat::test_that("geçmiş işçi okuması dar açık sözleşmeyle gönderil
     testthat::expect_true(is.atomic(rec$globals[[nm]]) || is.list(rec$globals[[nm]]), label = nm)
     testthat::expect_false(is.environment(rec$globals[[nm]]), label = nm)
   }
+  # Görev kapanışı YALNIZCA bildirilen globals'tan kurulan ortamda çalışır (işçideki
+  # gibi); eksik ya da yanlış adlı bağlama burada hata verir. DB okuyucu taklit edilir.
+  isci_ortami <- list2env(rec$globals, parent = baseenv())
+  isci_ortami$mergen_bounded_db_fetch_raw <- function(sql, params, dsn, encoding, name_encoding,
+                                                      login_timeout, query_timeout, ...) {
+    rec$okuma <- list(sql = sql, params = params, dsn = dsn, query_timeout = query_timeout)
+    data.frame(ChatID = 3L)
+  }
+  gorev <- rec$task_fn
+  environment(gorev) <- isci_ortami
+  isci_sonucu <- gorev()
+  testthat::expect_identical(isci_sonucu$ChatID, 3L)
+  testthat::expect_true(inherits(attr(isci_sonucu, "mergen_okuma_zamani"), "POSIXt"))
+  testthat::expect_identical(rec$okuma$sql, rec$globals$gecmis_sql)
+  testthat::expect_identical(rec$okuma$params, list(3L, 4L, 7L))
+  testthat::expect_identical(rec$okuma$query_timeout, rec$globals$gecmis_sure)
   # Biçimlendirme tek okuyucuda: ham çerçeve DB'siz yoluyla aynı kimlik ve kullanıcıyla verilir.
   testthat::expect_identical(sonuc$ids, c("3", "4"))
   testthat::expect_identical(sonuc$uid, 7L)
@@ -1005,6 +1057,8 @@ testthat::test_that("geçmiş okuma hatası günlüğe bağlantı ayrıntısı m
   testthat::expect_match(gunluk, "açılış hazırlığı okunamadı", fixed = TRUE)
   testthat::expect_false(grepl("ornek_dsn|ornek_kullanici|ornek_parola", gunluk))
   testthat::expect_false(grepl("açılış hazırlığı okunamadı", paste(cikti, collapse = "\n"), fixed = TRUE))
+  # Konsola da (ham koşul dahil) bağlantı tanımlayıcısı yazılmaz.
+  testthat::expect_false(grepl("ornek_dsn|ornek_kullanici|ornek_parola", paste(cikti, collapse = "\n")))
 })
 
 testthat::test_that("işçide okunmuş ham geçmiş çerçevesi DB'ye gitmeden aynı biçimlendiriciden geçer; kimlik koruması sürer", {
@@ -1060,61 +1114,75 @@ testthat::test_that("Yenile sıfırlamayı hemen yayımlar, başarıyı yeni sat
     .zincir_bitene_dek(session)
     testthat::expect_identical(nrow(filtered_history()), 130L)
     kayit$etiket <- "yenilenmiş soru"
+    # Bildirim anındaki yayın sayacı kaydedilir: başarı son yayından SONRA gelmeli.
+    kayit$toast_sayac <- numeric()
+    env$showToast <- function(session, message, ...) {
+      kayit$toast <- c(kayit$toast, message)
+      kayit$toast_sayac <- c(kayit$toast_sayac, shiny::isolate(trigger_refresh()))
+    }
     session$setInputs(refresh_history = 1)
+    bekleme_sayaci <- shiny::isolate(trigger_refresh())
     # Partili yenileme sürüyor: eski görüntü "güncel" gösterilmez, başarı henüz duyurulmaz.
     testthat::expect_identical(nrow(filtered_history()), 0L)
     testthat::expect_false(any(kayit$toast == "Geçmiş tablosu yenilendi."))
     .zincir_bitene_dek(session)
     testthat::expect_identical(sum(kayit$toast == "Geçmiş tablosu yenilendi."), 1L)
+    testthat::expect_gt(kayit$toast_sayac[kayit$toast == "Geçmiş tablosu yenilendi."], bekleme_sayaci)
     testthat::expect_identical(nrow(filtered_history()), 130L)
     testthat::expect_true(all(filtered_history()$Soru == "yenilenmiş soru"))
   }))
 })
 
-testthat::test_that("sekme açılışı ilk sayfanın yaşlı kayıtlarını yeniden doğrular; taze kayıtları okumaz", {
+testthat::test_that("sekme açılışı yalnızca ilk 60 söyleşinin süresi dolmuş kayıtlarını yeniden doğrular", {
   kayit <- .yeni_gecmis_kaydi()
   env <- .gecmis_modul_ortami(kayit)
   later::with_temp_loop(shiny::testServer(env$historyServer,
-                    args = list(all_messages = shiny::reactive(.gecmis_sohbetleri(3L)), current_user_id = function() 7L), {
+                    args = list(all_messages = shiny::reactive(.gecmis_sohbetleri(70L)), current_user_id = function() 7L), {
     session$flushReact()
     session$setInputs(external_refresh_trigger = 1)
-    testthat::expect_identical(kayit$cagri, 1L)
+    .zincir_bitene_dek(session)
+    testthat::expect_length(messages_cache(), 70L)
+    onceki <- kayit$cagri
     # Taze kayıtlar: ikinci ziyaret DB'ye gitmez.
     session$setInputs(external_refresh_trigger = 2)
-    testthat::expect_identical(kayit$cagri, 1L)
-    # Başka oturum alıntıyı yerinde değiştirdi (damga aynı); kayıtlar yaşlandı.
+    testthat::expect_identical(kayit$cagri, onceki)
+    # Okuma zamanları açıkça verilir (uyku yok): "1" ilk 60'ta ve süresi dolmuş,
+    # "2" taze, "70" süresi dolmuş ama ilk 60'ın dışında.
+    onbellek <- messages_cache()
+    onbellek[["1"]]$okuma <- Sys.time() - 7200
+    onbellek[["2"]]$okuma <- Sys.time() - 5
+    onbellek[["70"]]$okuma <- Sys.time() - 7200
+    messages_cache(onbellek)
+    # Başka oturum alıntıyı yerinde değiştirdi (damga aynı).
     kayit$etiket <- "güncel alıntı çğış"
-    withr::with_options(list(mergen.history_revalidate_secs = 0), {
-      Sys.sleep(0.01)
-      session$setInputs(external_refresh_trigger = 3)
-    })
-    testthat::expect_identical(kayit$cagri, 2L)
-    testthat::expect_setequal(kayit$kimlikler[[2]], c("1", "2", "3"))
-    testthat::expect_true(all(filtered_history()$Soru == "güncel alıntı çğış"))
+    session$setInputs(external_refresh_trigger = 3)
+    testthat::expect_identical(kayit$cagri, onceki + 1L)
+    testthat::expect_identical(kayit$kimlikler[[length(kayit$kimlikler)]], "1")
+    testthat::expect_identical(messages_cache()[["1"]]$rows[[1]]$Soru, "güncel alıntı çğış")
+    testthat::expect_false(identical(messages_cache()[["70"]]$rows[[1]]$Soru, "güncel alıntı çğış"))
   }))
 })
 
 testthat::test_that("başarısız sekme okuması süren açılış hazırlığının başarılı sonucunu attırmaz", {
   kayit <- .yeni_gecmis_kaydi()
   env <- .gecmis_modul_ortami(kayit)
-  # Hazırlık işçisi DB hatasından bağımsız başarılı sonuç döndürür (bir sonraki turda).
-  env$history_rows_worker_promise <- function(chat_ids, user_id, session_token = NULL, ...) {
-    promises::promise(function(resolve, reject) later::later(function() {
-      resolve(stats::setNames(lapply(chat_ids, function(id) list(list(
-        Chat_ID = paste("Söyleşi", id), Tarih = "01.07.2026 - 10:00", Soru = "hazırlık sorusu", Cevap = "Yanıt"))),
-        chat_ids))
-    }, 0.2))
-  }
+  # Hazırlık işçisi elle çözülür: sekme okuması işçi bitmeden kesin olarak gözlenir.
+  .elle_cozulen_isci(env, kayit)
   later::with_temp_loop(shiny::testServer(env$historyServer,
                     args = list(all_messages = shiny::reactive(.gecmis_sohbetleri(2L)), current_user_id = function() 7L), {
     session$userData$saved_chats_full_loaded <- TRUE
     session$userData$mergen_yonetim_hazir <- .isaretleyici(kayit)
     session$flushReact()
     session$setInputs(hazirla = 1)
+    testthat::expect_length(kayit$cozumler, 1L)
     # Hazırlık sürerken kullanıcı Geçmiş'i açar; eşzamanlı okuma başarısız olur.
     kayit$hata <- TRUE
     session$setInputs(external_refresh_trigger = 1)
+    # Sekme okuması gerçekten iki eksik söyleşi için denendi ve başarısız oldu.
+    testthat::expect_identical(kayit$cagri, 1L)
+    testthat::expect_setequal(kayit$kimlikler[[1]], c("1", "2"))
     testthat::expect_length(messages_cache(), 0L)
+    kayit$cozumler[[1]]$resolve(.surum_satirlari(kayit$cozumler[[1]]$ids, "hazırlık sorusu"))
     .zincir_bitene_dek(session)
     # Sahip ve damga değişmedi: hazırlığın başarılı sonucu yazılır.
     testthat::expect_setequal(names(messages_cache()), c("1", "2"))
@@ -1196,5 +1264,62 @@ testthat::test_that("açılış işçisi liste_baslik tabanını saklar: yeni DB
     shiny::isolate(sohbetler(guncel))
     session$flushReact()
     testthat::expect_identical(filtered_history()$Chat_ID[1], "Yerel Ad")
+  }))
+})
+
+testthat::test_that("Bugün yenilemesi istemcinin aralık yankısıyla yeniden başlamaz; bildirim tam bir kez gelir", {
+  kayit <- .yeni_gecmis_kaydi()
+  env <- .gecmis_modul_ortami(kayit)
+  kayit$toast <- character()
+  env$showToast <- function(session, message, ...) kayit$toast <- c(kayit$toast, message)
+  bugun <- Sys.time()
+  sohbetler <- stats::setNames(lapply(seq_len(130L), function(i) list(
+    title = paste("Söyleşi", i), timestamp = bugun, last_message_timestamp = bugun
+  )), as.character(seq_len(130L)))
+  gun <- format(Sys.Date(), "%Y-%m-%d")
+  later::with_temp_loop(shiny::testServer(env$historyServer,
+                    args = list(all_messages = shiny::reactive(sohbetler), current_user_id = function() 7L), {
+    session$flushReact()
+    session$setInputs(today_filter = 1)
+    nesil <- isitma$nesil
+    # İstemci aralığı (priority: event) her tıklamada geri gönderir.
+    session$setInputs(date_range = c(gun, gun))
+    testthat::expect_identical(isitma$nesil, nesil, info = "yankı süren yenilemeyi geçersiz kılmamalı")
+    .zincir_bitene_dek(session)
+    testthat::expect_identical(sum(kayit$toast == "Bugünün kayıtları gösteriliyor."), 1L)
+    testthat::expect_identical(kayit$cagri, 3L, info = "130 söyleşi tek yenilemede üç partiyle okunmalı")
+    # Elle yapılan tarih seçimi (yankı değil) yine zorla yenileme başlatır.
+    dun <- format(Sys.Date() - 1, "%Y-%m-%d")
+    session$setInputs(date_range = c(dun, gun))
+    testthat::expect_false(identical(isitma$nesil, nesil))
+  }))
+})
+
+testthat::test_that("yeniden doğrulamanın damgasını düşürdüğü kayıt süren ısıtmada yeniden okunur", {
+  kayit <- .yeni_gecmis_kaydi()
+  env <- .gecmis_modul_ortami(kayit)
+  sohbetler <- shiny::reactiveVal(.gecmis_sohbetleri(130L))
+  eski_ttl <- options(mergen.history_revalidate_secs = 3600)
+  on.exit(options(eski_ttl), add = TRUE)
+  later::with_temp_loop(shiny::testServer(env$historyServer,
+                    args = list(all_messages = sohbetler, current_user_id = function() 7L), {
+    session$flushReact()
+    session$setInputs(external_refresh_trigger = 1)   # 130 eksik: partili ısıtma
+    son <- Sys.time() + 5
+    while (kayit$cagri < 1L && Sys.time() < son) later::run_now(0.02, all = FALSE)
+    testthat::expect_true(isTRUE(isitma$aktif))
+    # Isıtma sürerken gelen (planlanmamış) yeni söyleşi etkin yoldan doğrudan okunur.
+    zaman <- as.POSIXct("2026-07-01 10:00:00", tz = "UTC")
+    sohbetler(c(list("131" = list(title = "Yeni", timestamp = zaman, last_message_timestamp = zaman)),
+                sohbetler()))
+    session$flushReact()
+    testthat::expect_true("131" %in% unlist(kayit$kimlikler))
+    onceki_cagri <- length(kayit$kimlikler)
+    # TTL dolmuş sayılır: yeni sekme ziyareti "131"in damgasını düşürür.
+    options(mergen.history_revalidate_secs = -1)
+    session$setInputs(external_refresh_trigger = 2)
+    yeni_okumalar <- unlist(kayit$kimlikler[-seq_len(onceki_cagri)])
+    testthat::expect_true("131" %in% yeni_okumalar, info = "damgası düşürülen kayıt yeniden okunmalı")
+    .zincir_bitene_dek(session)
   }))
 })

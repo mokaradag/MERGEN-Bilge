@@ -71,10 +71,13 @@ $(document).ready(function() {
 
     const istemKimligi = bekleyen ? bekleyen.ekle(promptText) : undefined;
 
+    // sahip_nesli: istemin yazıldığı oturum sahibi nesli; sunucu eski nesilli
+    // istemi yeni sahip adına işlemez.
     Shiny.setInputValue("send_prompt_from_js", {
       text: promptText,
       nonce: Math.random(),
-      client_id: istemKimligi
+      client_id: istemKimligi,
+      sahip_nesli: bekleyen && typeof bekleyen.sahipNesli === 'function' ? bekleyen.sahipNesli() : undefined
     }, { priority: "event" });
 
     clearChatInput($input);

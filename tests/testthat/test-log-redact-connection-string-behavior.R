@@ -283,3 +283,34 @@ test_that("noktalı virgülsüz son ODBC tanımlayıcısı ve çift ayırıcıl�
   out_kesik <- redacted_condition_message(simpleError(paste0("PWD='ab''", parca, "\nsonraki satır")))
   expect_identical(out_kesik, "PWD='<redacted>\nsonraki satır")
 })
+
+test_that("çift ayırıcı ve sonraki ters bölülü ayırıcı birlikteyse tırnaklı değerin tamamı maskelenir", {
+  parca <- "kuyruk42"
+  # Çift tırnak: "ab""cd\"kuyruk42" -> belirsizlik taraması çift ayırıcıyı atlar.
+  out_cift <- redacted_condition_message(simpleError(paste0("api_key=\"ab\"\"cd\\\"", parca, "\" ve sonrası")))
+  expect_false(grepl(parca, out_cift, fixed = TRUE))
+  expect_false(grepl("cd", out_cift, fixed = TRUE))
+  expect_identical(out_cift, "api_key=\"<redacted>\" ve sonrası")
+  # Tek tırnak: aynı sözleşme; komşu alan ayrıca maskelenir.
+  out_tek <- redacted_condition_message(simpleError(paste0("PWD='a''b\\'", parca, "';UID=x")))
+  expect_false(grepl(parca, out_tek, fixed = TRUE))
+  expect_identical(out_tek, "PWD='<redacted>';UID=<redacted>")
+  # Kapanmamış değer satır sonuna dek maskelenir; sonraki satır korunur.
+  out_kesik <- redacted_condition_message(simpleError(paste0("token=\"ab\"\"cd\\\"", parca, "\nsonraki satır")))
+  expect_false(grepl(parca, out_kesik, fixed = TRUE))
+  expect_true(grepl("\nsonraki satır", out_kesik, fixed = TRUE))
+})
+
+test_that("çift kapanış ayırıcısının ardından gelen aynı tırnaklı alanın değeri açıkta kalmaz", {
+  gizli <- "gizli99"
+  out_cift <- redacted_condition_message(simpleError(paste0("PWD=\"abc\"\";UID=\"", gizli, "\"")))
+  expect_false(grepl(gizli, out_cift, fixed = TRUE))
+  expect_identical(out_cift, "PWD=\"<redacted>")
+  # Tek tırnak; maskeleme satır sonunda biter, sonraki satır korunur.
+  out_tek <- redacted_condition_message(simpleError(paste0("PWD='abc'';UID='", gizli, "' son\nikinci satır")))
+  expect_false(grepl(gizli, out_tek, fixed = TRUE))
+  expect_identical(out_tek, "PWD='<redacted>\nikinci satır")
+  # Belirsiz olmayan çift ayırıcı (değer içi kaçış + gerçek kapanış) aşırı maskelenmez.
+  expect_identical(redacted_condition_message(simpleError("PWD=\"ab\"\"cd\";UID=\"x9\"")),
+                   "PWD=\"<redacted>\";UID=\"<redacted>\"")
+})

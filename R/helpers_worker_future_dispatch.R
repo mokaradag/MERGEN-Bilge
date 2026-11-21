@@ -30,7 +30,11 @@
 # gorev_kimligi: iş kuyruktan çıkıp işçiye başlamadan HEMEN önce izleme kaydı
 # sorulur. Kuyrukta beklerken oturumu kapanan (kaydı temizlenen) iş başlatılmaz:
 # kapanmış sekmenin tam SQL okuması diğer oturumların işçisini işgal etmez.
-worker_monitor_future_promise <- function(promise_globals, future_packages, gorev_kimligi = NULL) {
+# baslangic_gecerli: aynı anda sorulan isteğe bağlı yüklem; FALSE (ya da hata)
+# dönerse kuyrukta beklerken geçersizleşen iş (ör. Yenile ile eskiyen geçmiş
+# okuması) işçiye gönderilmez, aynı ret/temizlik yolundan çıkar.
+worker_monitor_future_promise <- function(promise_globals, future_packages, gorev_kimligi = NULL,
+                                          baslangic_gecerli = NULL) {
   kuyruk <- promises::future_promise_queue()
   promises::promise(function(resolve, reject) {
     kuyruk$schedule_work(function() {
@@ -38,6 +42,11 @@ worker_monitor_future_promise <- function(promise_globals, future_packages, gore
           !exists(as.character(gorev_kimligi)[1], envir = init_worker_monitor()$tasks, inherits = FALSE)) {
         atlanan <- promises::promise_reject(simpleError("İş başlamadan geçersizleşti (oturum kapandı); işçiye gönderilmedi."))
         resolve(atlanan)
+        return(promises::promise_resolve(NULL))
+      }
+      if (is.function(baslangic_gecerli) &&
+          !isTRUE(tryCatch(baslangic_gecerli(), error = function(e) FALSE))) {
+        resolve(promises::promise_reject(simpleError("İş başlamadan geçersizleşti (eskidi); işçiye gönderilmedi.")))
         return(promises::promise_resolve(NULL))
       }
       is_promise <- promises::promise(function(cozul, reddet) {

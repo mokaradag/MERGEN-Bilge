@@ -35,6 +35,8 @@ history_cache_dropper <- function(messages_cache, yayin_sayaci = NULL, isitma = 
     if (length(dusur)) {
       cache[dusur] <- NULL
       messages_cache(cache)
+      # Açık düşürme süren zincirde yeniden okumaya izin verir.
+      history_allow_reread(isitma, dusur)
       if (is.function(yayin_sayaci)) yayin_sayaci(shiny::isolate(yayin_sayaci()) + 1)
     }
     invisible(length(dusur))
@@ -113,6 +115,8 @@ history_rows_worker_promise <- function(chat_ids, user_id, session_token = NULL,
     },
     task_type = "history_rows_prepare",
     session_token = session_token,
+    # Kuyrukta beklerken eskiyen (nesil/sahip değişen) okuma işçiye başlamaz.
+    start_check = gecerli,
     dependency_mode = "explicit",
     globals = list(
       gecmis_sql = gecmis_sql, gecmis_parametreler = gecmis_parametreler,
@@ -123,24 +127,6 @@ history_rows_worker_promise <- function(chat_ids, user_id, session_token = NULL,
     packages = c("DBI")
   )
   promises::then(ham, onFulfilled = function(cerceve) history_rows_format_staged(ids, uid, cerceve, gecerli = gecerli))
-}
-
-# Yeniden doğrulama: verilen kimliklerin okuma zamanı `ttl_sn`'den eski (ya da
-# saat geri alındığı için gelecekte/eksik) kayıtlarının damgası düşürülür;
-# satırlar korunur, senkronizasyon onları yeniden okur. Taze kayıtlar dokunulmaz.
-history_mark_stale_for_revalidation <- function(cache, ids, ttl_sn = 60, simdi = Sys.time()) {
-  ttl <- suppressWarnings(as.numeric(ttl_sn)[1])
-  if (!length(cache) || !length(ids) || length(ttl) != 1L || is.na(ttl)) return(cache)
-  for (id in intersect(as.character(ids), names(cache))) {
-    kayit <- cache[[id]]
-    if (identical(id, "current_chat") || is.null(kayit) || is.null(kayit$stamp)) next
-    yas <- if (inherits(kayit$okuma, "POSIXt")) as.numeric(difftime(simdi, kayit$okuma, units = "secs")) else NA_real_
-    if (is.na(yas) || yas < 0 || yas > ttl) {
-      kayit["stamp"] <- list(NULL)
-      cache[[id]] <- kayit
-    }
-  }
-  cache
 }
 
 # Elle yenilemenin bitiş bildirimi: hazır-olmayı yayımlar ve kullanıcıya

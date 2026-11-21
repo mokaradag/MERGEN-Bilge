@@ -89,7 +89,8 @@ testthat::test_that("update_messages_after_bulk_deletion geçerli girdide deği�
   env$get_connection <- function() list(conn = structure(list(), class = "sahte_conn"))
   env$release_connection <- function(info) invisible(NULL)
 
-  # 1) Değişen mesaj yok -> FALSE
+  # 1) Değişen mesaj yok -> FALSE; güncelleme HİÇ denenmez.
+  guncelleme_cagrisi <- 0L
   withr::with_tempdir({
     mevcut_dosya <- file.path(getwd(), "mevcut.png")
     writeBin(raw(1), mevcut_dosya)
@@ -98,11 +99,15 @@ testthat::test_that("update_messages_after_bulk_deletion geçerli girdide deği�
         data.frame(MessageID = 10L, MessageContent = paste0("[GÖRSEL:", mevcut_dosya, "] açıklama"),
                    stringsAsFactors = FALSE)
       },
-      dbExecute = function(...) stop("güncelleme çağrılmamalıydı"),
+      dbExecute = function(...) {
+        guncelleme_cagrisi <<- guncelleme_cagrisi + 1L
+        stop("güncelleme çağrılmamalıydı")
+      },
       .package = "DBI"
     )
     testthat::expect_false(env$update_messages_after_bulk_deletion(42L))
   })
+  testthat::expect_identical(guncelleme_cagrisi, 0L)
 
   # 2) Silinen görsel -> TRUE
   exec_say <- 0L
@@ -127,12 +132,16 @@ testthat::test_that("update_messages_after_bulk_deletion geçerli girdide deği�
     },
     dbExecute = function(conn, query, params = NULL) {
       exec_say <<- exec_say + 1L
+      denenen <<- c(denenen, as.integer(params[[length(params)]]))
       if (exec_say == 2L) stop("ikinci satırda geçici DB hatası")
       1L
     },
     .package = "DBI"
   )
+  denenen <- integer()
   testthat::expect_true(env$update_messages_after_bulk_deletion(42L))
+  # İkinci satır da sırasıyla denendi (ilk başarıda durulmadı).
+  testthat::expect_identical(denenen, c(11L, 12L))
 
   # 4) İlk sorgu DB hatası -> FALSE
   env$get_connection <- function() stop("DB erişilemez")

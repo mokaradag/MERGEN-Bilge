@@ -21,6 +21,9 @@
     encoding = "UTF-8",
     local = env
   )
+  # Önbellek politikası yardımcıları ayrı dosyadadır (manifestte hemen sonra).
+  source(file.path(resolve_repo_root_for_tests(), "R", "module_chat_history_cache_policy.R"),
+         encoding = "UTF-8", local = env)
   env
 }
 
@@ -213,16 +216,54 @@ testthat::test_that("geçmiş hazırlığı bayatlayınca kalan dilimler biçiml
 testthat::test_that("yeniden doğrulama yalnızca ilk sayfanın yaşlı kayıtlarını bayat işaretler", {
   env <- .source_history_bg_for_test()
   simdi <- as.POSIXct("2026-07-01 12:00:00", tz = "UTC")
-  kayit <- function(okuma) list(rows = list(list(Soru = "s")), stamp = "d", okuma = okuma)
-  onbellek <- list("1" = kayit(simdi - 120), "2" = kayit(simdi - 5), "3" = kayit(simdi + 300),
-                   "4" = list(rows = list(), stamp = "d"), "5" = kayit(simdi - 999))
+  kayit <- function(okuma, soru = "s") list(rows = list(list(Soru = soru)), stamp = "d", okuma = okuma)
+  onbellek <- list("1" = kayit(simdi - 120, "bir"), "2" = kayit(simdi - 5), "3" = kayit(simdi + 300, "üç"),
+                   "4" = list(rows = list(list(Soru = "dört")), stamp = "d"), "5" = kayit(simdi - 999))
   sonuc <- env$history_mark_stale_for_revalidation(onbellek, c("1", "2", "3", "4"), 60, simdi = simdi)
-  # Yaşlı, saati geri alınmış (gelecekte) ve okuma zamanı olmayan kayıtlar bayat; satırlar korunur.
-  testthat::expect_null(sonuc[["1"]]$stamp)
-  testthat::expect_null(sonuc[["3"]]$stamp)
-  testthat::expect_null(sonuc[["4"]]$stamp)
-  testthat::expect_length(sonuc[["1"]]$rows, 1L)
+  # Yaşlı, saati geri alınmış (gelecekte) ve okuma zamanı olmayan kayıtlar bayat;
+  # satırların her biri aynen korunur.
+  for (id in c("1", "3", "4")) {
+    testthat::expect_null(sonuc[[id]]$stamp)
+    testthat::expect_identical(sonuc[[id]]$rows, onbellek[[id]]$rows, info = id)
+  }
+  # Yalnızca damgası gerçekten düşürülenler bildirilir.
+  testthat::expect_identical(attr(sonuc, "temizlenen"), c("1", "3", "4"))
   # Taze kayıt ve ilk sayfa dışındaki kayıt dokunulmaz.
   testthat::expect_identical(sonuc[["2"]]$stamp, "d")
   testthat::expect_identical(sonuc[["5"]]$stamp, "d")
+})
+
+testthat::test_that("açık geçersizleştirme aynı zincirde yeniden okumaya izin verir; diğer denemeler korunur", {
+  env <- .source_history_bg_for_test()
+  isitma <- new.env()
+  isitma$zincir <- c("1" = "d1", "2" = "d2", "3" = "d3")
+  isitma$planli <- c("2", "3")
+  env$history_allow_reread(isitma, c("2", "9"))
+  testthat::expect_identical(isitma$zincir, c("1" = "d1", "3" = "d3"))
+  testthat::expect_identical(isitma$planli, "3")
+  env$history_allow_reread(isitma, character())
+  testthat::expect_identical(names(isitma$zincir), c("1", "3"))
+})
+
+testthat::test_that("okumadan sonra değişen liste başlığı özgün değerine dönse de yerel işaretli kalır", {
+  env <- .source_history_bg_for_test()
+  onbellek <- list("1" = list(rows = list(), liste_baslik = "Eski"), "2" = list(rows = list(), liste_baslik = "Aynı"))
+  sohbetler <- list("1" = list(title = "Yeni"), "2" = list(title = "Aynı"))
+  sonuc <- env$history_mark_local_titles(onbellek, sohbetler)
+  testthat::expect_true(isTRUE(sonuc[["1"]]$baslik_yerel))
+  testthat::expect_null(sonuc[["2"]]$baslik_yerel)
+  sohbetler[["1"]]$title <- "Eski"
+  testthat::expect_true(isTRUE(env$history_mark_local_titles(sonuc, sohbetler)[["1"]]$baslik_yerel))
+  # Değişiklik yoksa önbellek aynen döner (gereksiz yayın olmaz).
+  testthat::expect_identical(env$history_mark_local_titles(onbellek[2], sohbetler[2]), onbellek[2])
+})
+
+testthat::test_that("en yeni söyleşi seçimi liste konumuna değil etkinliğe göre yapılır; eşitlikte sıra korunur", {
+  env <- .source_history_bg_for_test()
+  z <- as.POSIXct("2026-07-01 10:00:00", tz = "UTC")
+  sohbetler <- list("1" = list(last_message_timestamp = z), "2" = list(last_message_timestamp = z),
+                    "61" = list(last_message_timestamp = z + 3600), "9" = list(timestamp = z - 60),
+                    "x" = list())
+  testthat::expect_identical(env$history_ids_by_activity(names(sohbetler), sohbetler), c("61", "1", "2", "9", "x"))
+  testthat::expect_identical(env$history_ids_by_activity("5", list()), "5")
 })

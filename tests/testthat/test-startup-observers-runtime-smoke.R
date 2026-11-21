@@ -132,6 +132,10 @@
     # Tam liste (yalnızca açık NA sentineli; NaN reddedilir) üretimde aynı dar
     # worker'dan geçer; test kayıtları eski tam liste yolunun aynısıdır.
     if (length(limit) == 1L && (is.logical(limit) || is.numeric(limit)) && is.na(limit) && !is.nan(limit)) {
+      # Geçerlilik yüklemi ve gönderim anındaki yerel durum kaydedilir.
+      rec$gecerli_mi <- gecerli_mi
+      rec$gecerli_gonderimde <- if (is.function(gecerli_mi)) isTRUE(gecerli_mi()) else NA
+      if (is.function(rec$tam_gonderimde)) rec$tam_gonderimde()
       return(get("tracked_future_promise", envir = globalenv())(
         task_fn = function() get("load_chats_from_db", envir = globalenv())(user_id, include_messages = FALSE),
         task_type = "startup_saved_chats",
@@ -281,6 +285,7 @@ testthat::test_that("hızlı şeritte ön izleme ilk çizimden sonra ısıtılı
   }, {
     session$flushReact()
 
+    rec$tam_gonderimde <- function() rec$gonderimdeki <- names(shiny::isolate(session$userData$.values$saved_chats))
     # Şerit çözülmeden HİÇBİR kayıtlı sohbet DB çağrısı başlamaz (yarış düzeltmesi).
     testthat::expect_identical(rec$preview, 0L)
     testthat::expect_identical(rec$full, 0L)
@@ -332,6 +337,11 @@ testthat::test_that("hızlı şeritte ön izleme ilk çizimden sonra ısıtılı
     for (i in 1:5) later::run_now(timeoutSecs = 0.05)
     session$flushReact()
     testthat::expect_identical(rec$full, 1L)
+    # Tam liste ön izleme UYGULANDIKTAN sonra gönderildi (gönderim anında yalnız
+    # ön izleme söyleşisi vardı) ve geçerlilik yüklemi gönderimde doğruydu.
+    testthat::expect_identical(rec$gonderimdeki, "preview-chat")
+    testthat::expect_true(is.function(rec$gecerli_mi))
+    testthat::expect_true(isTRUE(rec$gecerli_gonderimde))
     testthat::expect_true("startup_saved_chats" %in% rec$future_types)
     testthat::expect_true(all(c("preview-chat", "older-chat") %in% names(session$userData$.values$saved_chats)))
     testthat::expect_true("saved_chats_full_loaded" %in% boot_ready$keys())
@@ -1456,11 +1466,12 @@ testthat::test_that("zengin şeritte tam liste başlarken kimlik düşerse Söyl
   on.exit(stubs$restore(), add = TRUE)
   kimlik <- new.env()
   kimlik$uid <- 42L
-  # Senkron ön izleme sırasında kimlik düşer (ör. SSO oturumu sona erdi).
+  # Senkron ön izleme sırasında kimlik düşer (ör. SSO oturumu sona erdi); okuma
+  # önceki sahibin (42) tanınabilir satırını döndürür.
   assign("load_chats_preview_from_db", function(...) {
     rec$preview <- rec$preview + 1L
     kimlik$uid <- 0L
-    list()
+    list("4242" = list(title = "Önceki sahibin söyleşisi çğış", message_count = 1L))
   }, envir = globalenv())
   boot <- .make_boot_ready_recorder()
 
@@ -1476,7 +1487,8 @@ testthat::test_that("zengin şeritte tam liste başlarken kimlik düşerse Söyl
     session$flushReact()
     session$setInputs(startup_lane_resolved = list(lane = "rich_lane", source = "stored", ts = 1))
     testthat::expect_identical(rec$preview, 1L)
-    # Kimliksiz tam liste gönderilmez (veri erişimi yok).
+    # Kimliksiz tam liste gönderilmez (veri erişimi yok); önceki sahibin ön izleme
+    # satırı da kimlik düştükten sonra yayımlanmaz.
     testthat::expect_identical(rec$full, 0L)
     testthat::expect_length(shiny::isolate(session$userData$.values$saved_chats), 0L)
     # Toplu anahtar "kısmen" bildirilir: zengin açılış kimlik beklerken asılı kalmaz.

@@ -324,33 +324,99 @@ format_chat_messages <- function(chat_df, user_id = NULL) {
   })
 }
 
+# Etkinlik zamanını karşılaştırılabilir saniyeye çevirir (geçersizse NA).
+# DB sürücüsü İstanbul duvar saatini UTC etiketiyle döndürür: UTC/GMT etiketli
+# POSIXt değer saat yüzünden İstanbul saati olarak yeniden yorumlanır (Kayıtlı
+# Söyleşiler'deki parse_timestamp sözleşmesi). Etiketsiz POSIXt (Sys.time())
+# gerçek andır ve olduğu gibi kalır; metin değerler İstanbul saati sayılır.
+mergen_chat_activity_seconds <- function(value, tz = "Europe/Istanbul") {
+  if (is.null(value) || length(value) == 0L) return(NA_real_)
+  value <- value[1]
+  if (inherits(value, "POSIXt")) {
+    if (is.na(value)) return(NA_real_)
+    bolge <- attr(value, "tzone")
+    if (length(bolge) && toupper(as.character(bolge[1])) %in% c("UTC", "GMT")) {
+      return(as.numeric(as.POSIXct(format(value, "%Y-%m-%d %H:%M:%S", tz = "UTC"), tz = tz)))
+    }
+    return(as.numeric(value))
+  }
+  if (inherits(value, "Date")) return(as.numeric(as.POSIXct(format(value), tz = tz)))
+  if (is.numeric(value)) return(if (is.finite(value)) as.numeric(value) else NA_real_)
+  metin <- as.character(value)
+  if (is.na(metin) || !nzchar(metin)) return(NA_real_)
+  for (bicim in c("%Y-%m-%d %H:%M:%OS", "%Y-%m-%d %H:%M", "%d.%m.%Y - %H:%M", "%Y-%m-%d")) {
+    zaman <- suppressWarnings(as.POSIXct(metin, format = bicim, tz = tz))
+    if (!is.na(zaman)) return(as.numeric(zaman))
+  }
+  NA_real_
+}
+
+# Yerel mesaj DB'ye kaydedilmemiş mi (db_id yok ve DB kimlikleri arasında değil)?
+mergen_chat_message_unsaved <- function(m, db_ids = character()) {
+  if (!is.list(m)) return(FALSE)
+  db_id <- m$db_id
+  if (!is.null(db_id) && length(db_id) > 0L && !is.na(db_id[1]) && nzchar(trimws(as.character(db_id[1])))) return(FALSE)
+  mid <- suppressWarnings(as.character(m$id %||% "")[1])
+  if (is.na(mid)) mid <- ""
+  if (nzchar(mid) && mid %in% db_ids) return(FALSE)
+  if ("db_id" %in% names(m)) return(TRUE)
+  nzchar(mid) && is.na(suppressWarnings(as.integer(mid)))
+}
+
 # DB'den okunan söyleşi detayını yerel önbellekteki kayıtsız (db_id = NULL)
 # mesajlarla uzlaştırır; Kayıtlı Söyleşiler ve Görsel Galerisi tek sözleşme kullanır.
+# Kayıtsız mesaj oturumdaki KONUMUNU korur: yerel listede kendisinden sonra
+# gelen ilk kayıtlı mesajın hemen önüne yerleşir; ardında kayıtlı mesaj yoksa
+# (gerçekten sondaysa) sona eklenir. Kaydı başarısız kullanıcı istemi
+# kaydedilmiş yanıtın önünde kalır; DB sırası (eşit zamanlar dahil) değişmez. Kayıtsız mesaj korunursa
+# etkinlik zamanı iki adayın daha yenisidir. hidrate_zamani: bu okumanın anı.
 mergen_chat_reconcile_hydrated_detail <- function(detail, chat_to_load = NULL) {
   if (!is.list(detail)) return(detail)
   db_msgs <- if (is.list(detail$messages)) detail$messages else list()
   onceki_msgs <- if (is.list(chat_to_load) && is.list(chat_to_load$messages)) chat_to_load$messages else list()
+  kayitsiz_var <- FALSE
   if (length(onceki_msgs) > 0L) {
     db_ids <- vapply(db_msgs, function(m) as.character(m$id %||% "")[1], character(1))
-    kayitsiz <- Filter(function(m) {
-      if (!is.list(m)) return(FALSE)
-      db_id <- m$db_id
-      if (!is.null(db_id) && length(db_id) > 0L && !is.na(db_id[1]) && nzchar(trimws(as.character(db_id[1])))) return(FALSE)
-      mid <- suppressWarnings(as.character(m$id %||% "")[1])
-      if (nzchar(mid) && mid %in% db_ids) return(FALSE)
-      if ("db_id" %in% names(m)) return(TRUE)
-      nzchar(mid) && is.na(suppressWarnings(as.integer(mid)))
-    }, onceki_msgs)
-    if (length(kayitsiz) > 0L) {
-      detail$messages <- c(db_msgs, kayitsiz)
+    db_ids[is.na(db_ids)] <- ""
+    # Yerel mesajın DB karşılığının anahtarı (yoksa NA).
+    db_anahtari <- function(m) {
+      d <- if (is.list(m)) m$db_id else NULL
+      aday <- if (!is.null(d) && length(d) > 0L && !is.na(d[1])) trimws(as.character(d[1])) else ""
+      if (!nzchar(aday)) aday <- suppressWarnings(as.character(m$id %||% "")[1])
+      if (!is.na(aday) && nzchar(aday) && aday %in% db_ids) aday else NA_character_
+    }
+    anahtarlar <- vapply(onceki_msgs, db_anahtari, character(1))
+    kayitsiz_mi <- vapply(onceki_msgs, mergen_chat_message_unsaved, logical(1), db_ids = db_ids)
+    if (any(kayitsiz_mi)) {
+      kayitsiz_var <- TRUE
+      once <- list(); sona <- list()
+      for (i in which(kayitsiz_mi)) {
+        sonraki_k <- utils::head(stats::na.omit(anahtarlar[seq.int(i, length(anahtarlar))]), 1L)
+        if (length(sonraki_k)) {
+          once[[sonraki_k]] <- c(once[[sonraki_k]], list(onceki_msgs[[i]]))
+        } else {
+          sona <- c(sona, list(onceki_msgs[[i]]))
+        }
+      }
+      birlesik <- list()
+      for (j in seq_along(db_msgs)) {
+        k <- db_ids[[j]]
+        birlesik <- c(birlesik, if (nzchar(k)) once[[k]], list(db_msgs[[j]]))
+        if (nzchar(k)) once[[k]] <- NULL
+      }
+      detail$messages <- c(birlesik, sona)
       detail$message_count <- length(detail$messages)
     }
   }
-  if ((is.null(detail$last_message_timestamp) || is.na(detail$last_message_timestamp)) &&
-      is.list(chat_to_load) && !is.null(chat_to_load$last_message_timestamp)) {
-    detail$last_message_timestamp <- chat_to_load$last_message_timestamp
+  yerel_zaman <- if (is.list(chat_to_load)) chat_to_load$last_message_timestamp else NULL
+  db_zaman <- detail$last_message_timestamp
+  db_eksik <- is.null(db_zaman) || length(db_zaman) == 0L || is.na(db_zaman[1])
+  if (!is.null(yerel_zaman) && (db_eksik || (kayitsiz_var && isTRUE(
+      mergen_chat_activity_seconds(yerel_zaman) > mergen_chat_activity_seconds(db_zaman))))) {
+    detail$last_message_timestamp <- yerel_zaman
   }
   detail$hidrate_edildi <- TRUE
+  detail$hidrate_zamani <- as.numeric(Sys.time())
   detail$transkript_yenile <- NULL
   detail
 }

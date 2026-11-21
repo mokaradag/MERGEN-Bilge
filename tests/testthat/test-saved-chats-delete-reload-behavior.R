@@ -134,3 +134,86 @@ testthat::test_that("doğrulanmamış silmede yeniden okuma da başarısızsa ka
     testthat::expect_null(session$userData$saved_chats_silinenler)
   })
 })
+
+.yukleme_sunucusu <- function(env, kayit, baslangic, etkin = "baska") {
+  function(input, output, session) {
+    values <- shiny::reactiveValues(saved_chats = baslangic, current_chat_id = etkin,
+                                    messages = list(list(id = "m1", type = "user", content = "açık")),
+                                    show_welcome = FALSE)
+    yuklenecek <- shiny::reactiveVal(NULL)
+    env$savedChatsObserversInit(
+      input = input, output = output, session = session, values = values, settings_data = list(),
+      saved_chats_data = list(
+        load_chat_id = yuklenecek, delete_chat_id = shiny::reactiveVal(NULL),
+        clear_all_chats_trigger = shiny::reactiveVal(0L),
+        refresh = function() kayit$yenileme <- (kayit$yenileme %||% 0L) + 1L
+      ),
+      current_user_id = 7L, load_chat_in_progress = shiny::reactiveVal(FALSE)
+    )
+    session$userData$.values <- values
+    session$userData$.yukle <- yuklenecek
+  }
+}
+
+testthat::test_that("hidrasyonda kaydı bulunamayan açık söyleşi silinenlere yazılır ve Ana Söyleşi sıfırlanır", {
+  kayit <- new.env()
+  env <- .silme_ortami(kayit)
+  env$load_chat_messages_from_db <- function(chat_id, user_id) list(kayit_bulunamadi = TRUE)
+  baslangic <- list("7" = list(title = "Yedi", transkript_yenile = TRUE,
+                               messages = list(list(id = "m1", type = "user", content = "açık"))),
+                    "2" = list(title = "İki"))
+  shiny::testServer(.yukleme_sunucusu(env, kayit, baslangic, etkin = 7L), {
+    session$flushReact()
+    session$userData$.yukle("007")
+    session$flushReact()
+    testthat::expect_identical(session$userData$saved_chats_silinenler, "7")
+    testthat::expect_null(shiny::isolate(session$userData$.values$current_chat_id))
+    testthat::expect_length(shiny::isolate(session$userData$.values$messages), 0L)
+    testthat::expect_true(any(grepl("artık mevcut değil", kayit$toast)))
+  })
+})
+
+testthat::test_that("hidrasyonda kaydı bulunamayan başka söyleşi açık söyleşiyi değiştirmez", {
+  kayit <- new.env()
+  env <- .silme_ortami(kayit)
+  env$load_chat_messages_from_db <- function(chat_id, user_id) list(kayit_bulunamadi = TRUE)
+  baslangic <- list("5" = list(title = "Beş", transkript_yenile = TRUE), "7" = list(title = "Yedi"))
+  shiny::testServer(.yukleme_sunucusu(env, kayit, baslangic, etkin = 7L), {
+    session$flushReact()
+    session$userData$.yukle("5")
+    session$flushReact()
+    testthat::expect_identical(session$userData$saved_chats_silinenler, "5")
+    testthat::expect_identical(shiny::isolate(session$userData$.values$current_chat_id), 7L)
+    testthat::expect_length(shiny::isolate(session$userData$.values$messages), 1L)
+  })
+})
+
+testthat::test_that("başarısız hidrasyon okuması silinenlere yazılmaz ve uyarıda bağlantı kimliği görünmez", {
+  kayit <- new.env()
+  env <- .silme_ortami(kayit)
+  env$load_chat_messages_from_db <- function(chat_id, user_id) {
+    stop("[Microsoft][ODBC] Login failed; DSN=GizliKaynak;UID=gizli_kullanici;PWD=sir123")
+  }
+  # Üretimdeki maskeleme yardımcısı kullanılır (yedek yol değil).
+  source(file.path(resolve_repo_root_for_tests(), "R", "utils_log_redact.R"), encoding = "UTF-8", local = env)
+  testthat::expect_true(exists("mergen_db_error_log_summary", envir = env, inherits = FALSE))
+  # Önbellekte olmayan söyleşi: okuma hatasında açılmaz, açık söyleşi değişmez.
+  baslangic <- list("9" = list(title = "Dokuz"))
+  uyarilar <- character()
+  withCallingHandlers({
+    shiny::testServer(.yukleme_sunucusu(env, kayit, baslangic, etkin = 9L), {
+      session$flushReact()
+      session$userData$.yukle("5")
+      session$flushReact()
+      testthat::expect_null(session$userData$saved_chats_silinenler)
+      testthat::expect_identical(shiny::isolate(session$userData$.values$current_chat_id), 9L)
+      testthat::expect_identical(names(shiny::isolate(session$userData$.values$saved_chats)), "9")
+    })
+  }, warning = function(w) {
+    uyarilar <<- c(uyarilar, conditionMessage(w))
+    invokeRestart("muffleWarning")
+  })
+  hidrasyon <- grep("Failed to load chat", uyarilar, value = TRUE)
+  testthat::expect_length(hidrasyon, 1L)
+  testthat::expect_false(any(grepl("GizliKaynak|gizli_kullanici|sir123", hidrasyon)))
+})
