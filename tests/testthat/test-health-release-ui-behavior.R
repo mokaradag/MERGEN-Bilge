@@ -293,7 +293,8 @@ testthat::test_that("health_release_ui koşu seçici tam artifact yolunu sızdı
     "R/module_health_runtime.R",
     "R/module_health_security.R",
     "R/module_health_diagnostics.R",
-    "R/module_health_release.R"
+    "R/module_health_release.R",
+    "R/module_health_presence.R"
   )) {
     source(file.path(kok, dosya), encoding = "UTF-8", local = env)
   }
@@ -360,6 +361,89 @@ testthat::test_that("bekleyen DNS tamamlanınca yalnız uç nokta satırı yenil
     session$elapse(1000)
     testthat::expect_identical(toplam, 1L)
     testthat::expect_identical(probe, 2L)
+  })
+})
+
+testthat::test_that("DNS beklenirken gizlenen sağlık sayfası yeniden açılınca DNS takibi sürer", {
+  env <- .healthModuleServerEnv()
+  probe <- 0L
+  dns <- new.env(); dns$hazir <- FALSE
+  satir <- function(deger) data.frame(id = "llm.endpoint", label = "LLM",
+    status = "ok", severity = 0L, value = deger, detail = "", duration_ms = 1,
+    checked_at = "", remediation = "", stringsAsFactors = FALSE)
+  env$health_collect_checks <- function(...) satir("DNS bekleniyor")
+  # Denetlenen saat: 4 sn'lik DNS penceresi duvar saati beklenmeden aşılır.
+  saat <- new.env(); saat$t <- as.POSIXct("2026-07-01 10:00:00", tz = "UTC")
+  env$Sys.time <- function() saat$t
+  # DNS çözümlemesi sayfa gizliyken tamamlanır.
+  env$health_check_llm_endpoint <- function(...) {
+    probe <<- probe + 1L
+    satir(if (isTRUE(dns$hazir)) "HTTP 200" else "DNS bekleniyor")
+  }
+  shiny::testServer(env$healthServer, args = list(perf_tracker = NULL), {
+    gizli_anahtar <- paste0("output_", session$ns("health_tab_content"), "_hidden")
+    gorunurluk <- shiny::reactiveValues()
+    gorunurluk[[gizli_anahtar]] <- FALSE
+    kok_oturum <- session$rootScope()  # vekil oturum atamaya kapalıdır; kök oturuma yazılır
+    kok_oturum$clientData <- gorunurluk
+    session$userData$user_config <- list(auth_level = "ADMIN")
+    # İlk çizim görünürken olur; sayaç sayfa GİZLENMEDEN önce alınır.
+    session$setInputs(health_tabs = "overview")
+    oncesi <- probe
+    gorunurluk[[gizli_anahtar]] <- TRUE
+    session$flushReact()
+    # Gizleme turunda ve 4 sn'lik pencere İÇİNDEKİ bir tikte probe çalışmaz.
+    testthat::expect_identical(probe, oncesi)
+    saat$t <- saat$t + 0.3
+    session$elapse(300)
+    testthat::expect_identical(probe, oncesi)
+    # Pencere sayfa gizliyken dolar (denetlenen saat); yine probe yok.
+    saat$t <- saat$t + 5
+    session$elapse(5000)
+    testthat::expect_identical(probe, oncesi)
+    dns$hazir <- TRUE
+    # Sayfa yeniden açıldı: DNS takibi yeniden başlar ve uç nokta tamamlanır.
+    gorunurluk[[gizli_anahtar]] <- FALSE
+    session$flushReact()
+    session$elapse(300)
+    session$flushReact()
+    testthat::expect_gt(probe, oncesi)
+    testthat::expect_identical(checks_data()$value, "HTTP 200")
+  })
+})
+
+testthat::test_that("Çevrimiçi sekmesi görünürken DNS gözlemcisi sağlık probe'larını çalıştırmaz", {
+  env <- .healthModuleServerEnv()
+  toplam <- 0L
+  satir <- function(deger) data.frame(id = "llm.endpoint", label = "LLM",
+    status = "ok", severity = 0L, value = deger, detail = "", duration_ms = 1,
+    checked_at = "", remediation = "", stringsAsFactors = FALSE)
+  env$health_collect_checks <- function(...) {
+    toplam <<- toplam + 1L
+    satir("Hazır")
+  }
+  env$mb_presence_snapshot <- function(...) list(metrics = list(), users = NULL)
+  shiny::testServer(env$healthServer, args = list(perf_tracker = NULL), {
+    gizli_anahtar <- paste0("output_", session$ns("health_tab_content"), "_hidden")
+    gorunurluk <- shiny::reactiveValues()
+    gorunurluk[[gizli_anahtar]] <- FALSE
+    kok_oturum <- session$rootScope()  # vekil oturum atamaya kapalıdır; kök oturuma yazılır
+    kok_oturum$clientData <- gorunurluk
+    session$userData$user_config <- list(auth_level = "ADMIN")
+    session$setInputs(health_tabs = "presence")
+    session$flushReact()
+    # Çıktı Çevrimiçi sekmesindeyken gerçekten okunur: çizim yolu da probe çalıştırmaz.
+    testthat::expect_false(is.null(output$health_tab_content))
+    testthat::expect_identical(toplam, 0L)
+    # 2 dk'lık otomatik yenileme de Çevrimiçi sekmesinde probe çalıştırmaz.
+    session$elapse(121000)
+    session$flushReact()
+    testthat::expect_false(is.null(output$health_tab_content))
+    testthat::expect_identical(toplam, 0L)
+    # Sağlık sekmesine dönülünce kontroller çalışır.
+    session$setInputs(health_tabs = "overview")
+    session$flushReact()
+    testthat::expect_gt(toplam, 0L)
   })
 })
 
@@ -448,5 +532,41 @@ testthat::test_that("kimlik sinyali ve Çevrimiçi yenilemesi tooltip'leri yenid
     session$elapse(30001)
     session$flushReact()
     testthat::expect_true("initHealthTooltips" %in% mesajlar)
+  })
+})
+
+testthat::test_that("sağlık zaman damgası kontrollerin gerçekten toplandığı anı gösterir", {
+  env <- .healthModuleServerEnv()
+  saat <- new.env(); saat$t <- as.POSIXct("2026-07-01 10:00:00", tz = "UTC")
+  env$Sys.time <- function() saat$t
+  satir <- data.frame(id = "db", label = "DB", status = "ok", severity = 0L, value = "Hazır",
+                      detail = "", duration_ms = 1, checked_at = "", remediation = "",
+                      stringsAsFactors = FALSE)
+  # Toplama 5 sn sürer (sanal saat ilerler): toplamadan ÖNCE alınan damga
+  # toplama sonrası andan ayırt edilir.
+  env$health_collect_checks <- function(...) { saat$t <- saat$t + 5; satir }
+  env$mb_presence_snapshot <- function(...) list(metrics = list(), users = NULL)
+  shiny::testServer(env$healthServer, args = list(perf_tracker = NULL), {
+    gizli_anahtar <- paste0("output_", session$ns("health_tab_content"), "_hidden")
+    gorunurluk <- shiny::reactiveValues()
+    gorunurluk[[gizli_anahtar]] <- FALSE
+    kok_oturum <- session$rootScope()  # vekil oturum atamaya kapalıdır; kök oturuma yazılır
+    kok_oturum$clientData <- gorunurluk
+    session$userData$user_config <- list(auth_level = "ADMIN")
+    session$setInputs(health_tabs = "overview")
+    output$health_tab_content
+    testthat::expect_identical(health_last_update(), "01.07.2026 10:00:05")
+    # Çevrimiçi sekmesinde 2 dk'lık tetik toplama yapmaz: damga ilerlemez.
+    session$setInputs(health_tabs = "presence")
+    saat$t <- saat$t + 120
+    session$elapse(121000)
+    output$health_tab_content
+    testthat::expect_identical(health_last_update(), "01.07.2026 10:00:05")
+    # Bir dakika sonra Genel Bakış'a dönülünce ertelenen toplama yapılır ve
+    # damga bu ölçümün anını gösterir.
+    saat$t <- saat$t + 60
+    session$setInputs(health_tabs = "overview")
+    output$health_tab_content
+    testthat::expect_identical(health_last_update(), "01.07.2026 10:03:10")
   })
 })

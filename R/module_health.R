@@ -174,11 +174,9 @@ healthServer <- function(id, perf_tracker) {
       # Sağlık kontrolleri DB/endpoint probe içerebildiği için otomatik yenileme seyrek tutulur.
       if (!isTRUE(yetki_durumu())) return()
       invalidateLater(120000)
-      isolate({
-        health_refresh_trigger(health_refresh_trigger() + 1)
-        health_last_update(format(Sys.time(), "%d.%m.%Y %H:%M:%S"))
-        send_health_timestamp()
-      })
+      # Zaman damgası burada değil, kontroller GERÇEKTEN toplandığında güncellenir
+      # (Çevrimiçi sekmesinde ya da sayfa gizliyken tetik toplama yapmaz).
+      isolate(health_refresh_trigger(health_refresh_trigger() + 1))
     })
 
     dns_checks <- reactiveVal(NULL)
@@ -187,16 +185,42 @@ healthServer <- function(id, perf_tracker) {
       health_refresh_trigger()
       dns_started <<- as.numeric(Sys.time())
       dns_checks(NULL)
-      health_collect_checks(perf_tracker = perf_tracker, include_slow = TRUE)
+      sonuc <- health_collect_checks(perf_tracker = perf_tracker, include_slow = TRUE)
+      # Gösterilen zaman, sonuçların ölçüldüğü andır.
+      health_last_update(format(Sys.time(), "%d.%m.%Y %H:%M:%S"))
+      send_health_timestamp()
+      sonuc
     })
     checks_data <- reactive({
       ilk <- initial_checks()
       dns_checks() %||% ilk
     })
+    dns_gizli_kaldi <- FALSE
     observe({
       if (!isTRUE(yetki_durumu())) return()
+      # Sayfa görünür değilken sağlık probe'ları (DB, tam gc() vb.) yalnızca DNS
+      # takibi için zorla çalıştırılmaz; aksi halde her yönetici oturumu açılışta
+      # ve 2 dk'da bir tüm kullanıcıların paylaştığı olay döngüsünü blokluyordu.
+      if (!isFALSE(session$clientData[[paste0("output_", ns("health_tab_content"), "_hidden")]])) {
+        dns_gizli_kaldi <<- TRUE
+        return()
+      }
+      # Çevrimiçi sekmesi sağlık sonuçlarını kullanmaz (yalnız bellek-içi defter):
+      # içerik görünür olsa da probe'lar yalnızca DNS takibi için çalıştırılmaz;
+      # başka sekmeye dönülünce takip görünürlük dönüşündeki gibi yeniden başlar.
+      if (identical(input$health_tabs, "presence")) {
+        dns_gizli_kaldi <<- TRUE
+        return()
+      }
       ilk <- initial_checks()
       son <- isolate(dns_checks()) %||% ilk
+      # Sayfa DNS beklenirken gizlenip 4 sn'lik pencereden sonra yeniden
+      # açıldıysa takip yeniden başlar; aksi halde uç nokta bir sonraki
+      # 2 dk'lık yenilemeye kadar "DNS bekleniyor" olarak kalıyordu.
+      if (isTRUE(dns_gizli_kaldi)) {
+        dns_gizli_kaldi <<- FALSE
+        if (any(son$value == "DNS bekleniyor", na.rm = TRUE)) dns_started <<- as.numeric(Sys.time())
+      }
       if (any(son$value == "DNS bekleniyor", na.rm = TRUE) &&
           as.numeric(Sys.time()) - dns_started < 4) {
         invalidateLater(250, session)
@@ -262,14 +286,14 @@ healthServer <- function(id, perf_tracker) {
       checks <- checks_data()
 
       switch(tab,
-        overview = health_overview_ui(checks, health_last_update()),
+        overview = health_overview_ui(checks, isolate(health_last_update())),
         connectivity = health_connectivity_ui(checks),
         storage = health_storage_ui(checks),
         runtime = health_runtime_ui(checks, worker_health_html()),
         security = health_security_ui(checks),
         diagnostics = health_diagnostics_ui(checks),
         release = health_release_ui(release_evidence_data(), ns = ns),
-        health_overview_ui(checks, health_last_update())
+        health_overview_ui(checks, isolate(health_last_update()))
       )
     })
 
@@ -292,8 +316,6 @@ healthServer <- function(id, perf_tracker) {
       session$sendCustomMessage("removeHealthTooltips", list())
       shinyjs::runjs("$('.tooltip').remove();")
       health_refresh_trigger(health_refresh_trigger() + 1)
-      health_last_update(format(Sys.time(), "%d.%m.%Y %H:%M:%S"))
-      send_health_timestamp()
       session$sendCustomMessage("initHealthTooltips", list())
       showToast(session, "Sistem durumu güncellendi", "success")
     })

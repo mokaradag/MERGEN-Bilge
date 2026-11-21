@@ -37,7 +37,7 @@ source_manifest_sections <- list(
     "R/helpers_index_page_cache.R",
     "R/helpers_app_http_routes.R",
     "R/utils_rate_limiter.R",
-    "R/helpers_worker_monitor.R", "R/helpers_worker_dep_cache.R", "R/helpers_process_ownership.R", "R/helpers_worker_cancellation.R"  # bağımlılık önbelleği monitor'dan SONRA
+    "R/helpers_worker_monitor.R", "R/helpers_worker_future_dispatch.R", "R/helpers_worker_dep_cache.R", "R/helpers_process_ownership.R", "R/helpers_worker_cancellation.R"  # bağımlılık önbelleği monitor'dan SONRA
   ),
 
   # post_future_utils: Future cluster SONRASI yardımcılar: yol/güvenli yol, yol
@@ -121,9 +121,9 @@ source_manifest_sections <- list(
     "R/helpers_chat_message_formatting.R",
     "R/helpers_db_chat_read_queries.R",
     "R/helpers_db_chat_readers.R",
-    # Hızlı Başlangıç "Son Konuşmalar" ön izlemesi: dar bağımlılık sözleşmeli
-    # (explicit worker-export) ham sorgu + ana süreç biçimlendirme katmanı.
-    "R/helpers_startup_chat_preview.R",
+    # "Son Konuşmalar" ön izlemesi (dar explicit worker-export ham sorgu + ana
+    # süreç biçimlendirme) ve ana süreç tam liste birleştirmesi/silinenler kümesi.
+    "R/helpers_startup_chat_preview.R", "R/helpers_saved_chats_merge.R",
     "R/helpers_db_chat_mutations.R",
     "R/helpers_db_feedback.R",
     # Bilge Yolaç kalıcı oturum katmanı: SAF sorgu/başlık/kısaltma yardımcıları
@@ -504,7 +504,7 @@ source_manifest_sections <- list(
   # module_chat: Sohbet modülleri: geçmiş, kayıtlı söyleşiler, mesaj/sohbet
   # arama, takip soruları, sohbet eylemleri, dışa aktarma ve geri bildirim.
   module_chat = c(
-    "R/module_chat_history_background.R",
+    "R/module_chat_history_background.R", "R/module_chat_history_cache_policy.R",
     "R/module_chat_history.R",
     "R/module_saved_chats.R",
     "R/module_message_search.R",
@@ -764,7 +764,7 @@ source_manifest_sections <- list(
     "R/server_handler_summarization.R",
     "R/server_handler_image_generation.R",
     "R/server_handler_langflow.R",
-    "R/helpers_llm_true_streaming_worker.R",
+    "R/helpers_llm_true_streaming_worker.R", "R/helpers_llm_true_streaming_task.R",  # globals -> görev kapanışı fabrikası
     "R/server_handler_true_streaming.R",
     "R/server_handler_streaming_tts.R",
     # Faz 6: PK gönderim katmanı; uygulama yardımcıları orkestratörden, ikisi de

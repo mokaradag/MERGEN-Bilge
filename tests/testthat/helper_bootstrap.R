@@ -137,6 +137,7 @@ source(file.path(repo_root_for_tests, "R", "helpers_mailto_encoding.R"), encodin
 # gibi yardımcılar downstream helper'lar ve testler tarafından kullanılır.
 source(file.path(repo_root_for_tests, "R", "config_characters.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_worker_monitor.R"), encoding = "UTF-8", local = .test_global)
+source(file.path(repo_root_for_tests, "R", "helpers_worker_future_dispatch.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_worker_dep_cache.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_process_ownership.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_preview_cache.R"), encoding = "UTF-8", local = .test_global)
@@ -153,6 +154,7 @@ source(file.path(repo_root_for_tests, "R", "helpers_chat_message_formatting.R"),
 source(file.path(repo_root_for_tests, "R", "helpers_db_chat_read_queries.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_db_chat_readers.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_startup_chat_preview.R"), encoding = "UTF-8", local = .test_global)
+source(file.path(repo_root_for_tests, "R", "helpers_saved_chats_merge.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_db_chat_mutations.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "helpers_database.R"), encoding = "UTF-8", local = .test_global)
 source(file.path(repo_root_for_tests, "R", "utils_file_index.R"), encoding = "UTF-8", local = .test_global)

@@ -15,6 +15,23 @@ mergen_resolve_image_api_key <- function(session) {
   )
 }
 
+# Görsel oluşturma işçi görevi fabrikası. Kapanış yalnızca kullandığı skaler
+# değerleri taşır: işleyici çerçevesinde üretilen kapanış ortamıyla birlikte
+# `ctx`'i (oturum, reaktif değerler) otomatik modda işçiye serileştiriyordu.
+mergen_image_generation_task_fn <- function(prompt, api_key, size, quality, user_id, chat_id) {
+  force(prompt); force(api_key); force(size); force(quality); force(user_id); force(chat_id)
+  function() {
+    generate_image(
+      prompt = prompt,
+      api_key = api_key,
+      size = size,
+      quality = quality,
+      user_id = user_id,
+      chat_id = chat_id
+    )
+  }
+}
+
 # Görsel oluşturma modunu işle
 # ctx: mesaj gönderme bağlamındaki tüm gerekli değişkenleri içeren liste
 # Döndürür: TRUE (işlendi ve erken dönüş yapılmalı)
@@ -91,16 +108,14 @@ handle_image_generation_mode <- function(ctx) {
   }
 
 	tracked_future_promise(
-	  task_fn = function() {
-		generate_image(
-		  prompt = user_prompt_local,
-		  api_key = api_key_local,
-		  size = image_size_local,
-		  quality = image_quality_local,
-		  user_id = current_user_id_local,
-		  chat_id = current_chat_id_local
-		)
-	  },
+	  task_fn = mergen_image_generation_task_fn(
+		prompt = user_prompt_local,
+		api_key = api_key_local,
+		size = image_size_local,
+		quality = image_quality_local,
+		user_id = current_user_id_local,
+		chat_id = current_chat_id_local
+	  ),
 	  task_type = "image_generation",
 	  session_token = ctx$session$token,
 	  meta = list(

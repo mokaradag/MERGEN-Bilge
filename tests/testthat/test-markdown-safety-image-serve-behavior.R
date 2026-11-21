@@ -84,11 +84,87 @@ testthat::test_that("mergen_serve_image_data_url aktif oturumda session-scoped U
   testthat::expect_identical(url2, url1)
   testthat::expect_length(session$register_calls, 1L)
 
-  # Cache, kullanıcı oturum verisinde normalize yol anahtarıyla durur
+  # Cache, kullanıcı oturum verisinde sahip + normalize yol anahtarıyla durur
   cache <- session$userData$mergen_image_url_cache
   testthat::expect_true(is.list(cache))
   norm_key <- normalizePath(png_path, winslash = "/", mustWork = FALSE)
-  testthat::expect_identical(cache[[norm_key]], url1)
+  sahip <- env$.mergen_image_session_owner(session)
+  testthat::expect_identical(cache[[paste0(sahip, "|", norm_key)]], url1)
+})
+
+# filterFunc'ı da yakalayan sahte oturum: kayıtlı URL'ye gelen isteği taklit eder.
+.makeFilterCapturingSession <- function(user_id) {
+  session <- .makeFakeImageSession(register_fn = function(name, data, filterFunc) {
+    session$register_calls[[length(session$register_calls) + 1L]] <-
+      list(name = name, data = data, filter = filterFunc)
+    paste0("session/test/dataobj/", name)
+  })
+  session$userData$user_id <- user_id
+  session
+}
+
+testthat::test_that("sahip değişince önceki sahibin kayıtlı görsel URL'si sunulmaz", {
+  env <- .imageServeEnv()
+  png_path <- file.path(withr::local_tempdir(), "sahibe_ait.png")
+  .writeTinyPng(png_path)
+  session <- .makeFilterCapturingSession(5L)
+
+  env$mergen_serve_image_data_url(png_path, session = session)
+  kayit <- session$register_calls[[1L]]
+  testthat::expect_identical(kayit$filter(kayit$data, list())$status, 200L)
+
+  # Aynı Shiny oturumu başka kullanıcıya geçti: eski URL reddedilir.
+  session$userData$user_id <- 9L
+  testthat::expect_identical(kayit$filter(kayit$data, list())$status, 403L)
+
+  # Yeni sahip aynı yol için eski URL'yi önbellekten almaz; yeni kayıt açılır.
+  env$mergen_serve_image_data_url(png_path, session = session)
+  testthat::expect_length(session$register_calls, 2L)
+  yeni <- session$register_calls[[2L]]
+  testthat::expect_identical(yeni$filter(yeni$data, list())$status, 200L)
+})
+
+testthat::test_that("çözülmemiş kimlikle kaydedilen görsel kimliksiz oturuma sunulmaz (kapalı-başarısız)", {
+  env <- .imageServeEnv()
+  png_path <- file.path(withr::local_tempdir(), "sahipsiz.png")
+  .writeTinyPng(png_path)
+  # NULL/NA/0/negatif/sayısal olmayan kimlikler geçerli görünen "0"/"NA" sahibine dönüşmez.
+  for (kimlik in list(NULL, NA, NA_integer_, 0L, -3L, "abc", "")) {
+    session <- .makeFilterCapturingSession(5L)
+    session$userData$user_id <- kimlik
+    testthat::expect_true(is.na(env$.mergen_image_session_owner(session)))
+    env$mergen_serve_image_data_url(png_path, session = session)
+    kayit <- session$register_calls[[1L]]
+    testthat::expect_true(is.na(kayit$data$owner))
+    # Kimlik hâlâ çözülmemişken de istek reddedilir (bayt sunulmaz).
+    testthat::expect_identical(kayit$filter(kayit$data, list())$status, 403L)
+  }
+  # Geçerli sahip kendi görselini almaya devam eder (yetkili erişim korunur).
+  session <- .makeFilterCapturingSession(5L)
+  testthat::expect_identical(env$.mergen_image_session_owner(session), "5")
+  env$mergen_serve_image_data_url(png_path, session = session)
+  kayit <- session$register_calls[[1L]]
+  testthat::expect_identical(kayit$filter(kayit$data, list())$status, 200L)
+})
+
+testthat::test_that("farklı klasörlerdeki aynı adlı görseller ayrı kayıtlarla sunulur", {
+  env <- .imageServeEnv()
+  kok <- withr::local_tempdir()
+  dir.create(file.path(kok, "a")); dir.create(file.path(kok, "b"))
+  yol_a <- file.path(kok, "a", "gorsel.png"); yol_b <- file.path(kok, "b", "gorsel.png")
+  .writeTinyPng(yol_a)
+  writeBin(as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x01)), yol_b)
+  session <- .makeFilterCapturingSession(5L)
+
+  url_a <- env$mergen_serve_image_data_url(yol_a, session = session)
+  url_b <- env$mergen_serve_image_data_url(yol_b, session = session)
+  testthat::expect_false(identical(url_a, url_b))
+  adlar <- vapply(session$register_calls, function(k) k$name, character(1))
+  testthat::expect_identical(length(unique(adlar)), 2L)
+  # Her kayıt kendi dosyasının baytlarını sunar.
+  govdeler <- lapply(session$register_calls, function(k) k$filter(k$data, list())$content)
+  testthat::expect_identical(govdeler[[1]], readBin(yol_a, "raw", file.info(yol_a)$size))
+  testthat::expect_identical(govdeler[[2]], readBin(yol_b, "raw", file.info(yol_b)$size))
 })
 
 testthat::test_that("mergen_serve_image_data_url kayıt hatasında base64 yedeğine düşer", {
@@ -127,5 +203,67 @@ testthat::test_that(".mergen_register_image_data_obj içerik türünü uzantıya
     kayit <- session$register_calls[[1L]]
     testthat::expect_identical(kayit$data$ctype, beklenenler[[ad]],
                                info = sprintf("uzantı eşlemesi: %s", ad))
+  }
+})
+
+testthat::test_that("çıkıştan sonra daha önce bayt sunan URL 403 alır; geçersiz sahip türleri reddedilir", {
+  env <- .imageServeEnv()
+  png_path <- file.path(withr::local_tempdir(), "cikis.png")
+  .writeTinyPng(png_path)
+  session <- .makeFilterCapturingSession(5L)
+  env$mergen_serve_image_data_url(png_path, session = session)
+  kayit <- session$register_calls[[1L]]
+  testthat::expect_identical(kayit$filter(kayit$data, list())$status, 200L)
+  # Çıkış: aynı kayıt verisiyle gelen istek artık reddedilir.
+  session$userData$user_id <- 0L
+  testthat::expect_identical(kayit$filter(kayit$data, list())$status, 403L)
+  # Mantıksal ve çok öğeli kimlik "1" sahibine dönüşmez; 1 numaralı kullanıcının URL'si sunulmaz.
+  session1 <- .makeFilterCapturingSession(1L)
+  env$mergen_serve_image_data_url(png_path, session = session1)
+  kayit1 <- session1$register_calls[[1L]]
+  for (kimlik in list(TRUE, c(1L, 2L), 1.5)) {
+    session1$userData$user_id <- kimlik
+    testthat::expect_true(is.na(env$.mergen_image_session_owner(session1)))
+    testthat::expect_identical(kayit1$filter(kayit1$data, list())$status, 403L)
+  }
+})
+
+testthat::test_that("kanonik çözümleyici yoksa sahip çözülmemiş sayılır ve URL 403 döner", {
+  env <- new.env(parent = baseenv())
+  sys.source(file.path(resolve_repo_root_for_tests(), "R", "helpers_markdown_safety.R"),
+             envir = env, keep.source = FALSE)
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  png_path <- file.path(withr::local_tempdir(), "cozumleyicisiz.png")
+  .writeTinyPng(png_path)
+  session <- .makeFilterCapturingSession(1L)
+  testthat::expect_true(is.na(env$.mergen_image_session_owner(session)))
+  url <- env$mergen_serve_image_data_url(png_path, session = session)
+  # Base64'e düşülmez: kayıtlı URL döner ve istek reddedilir.
+  testthat::expect_match(url, "^session/test/dataobj/")
+  kayit <- session$register_calls[[1L]]
+  testthat::expect_identical(kayit$filter(kayit$data, list())$status, 403L)
+})
+
+testthat::test_that("görsel filtresi URL önbelleğinin kopyasını tutmaz ve kayıt adları tahmin edilemezdir", {
+  env <- .imageServeEnv()
+  dizin <- withr::local_tempdir()
+  session <- .makeFilterCapturingSession(5L)
+  for (i in 1:3) {
+    yol <- file.path(dizin, sprintf("g%d.png", i))
+    .writeTinyPng(yol)
+    env$mergen_serve_image_data_url(yol, session = session)
+  }
+  testthat::expect_length(session$register_calls, 3L)
+  adlar <- vapply(session$register_calls, function(k) k$name, character(1))
+  testthat::expect_identical(length(unique(adlar)), 3L)
+  # Rastgele onaltılık belirteç yalnız rakamlardan da oluşabilir; biçim ve
+  # benzersizlik doğrulanır (salt rakam reddi rastgele başarısızlık üretirdi).
+  for (ad in adlar) {
+    testthat::expect_match(ad, "^mergen_img_[0-9a-f]{16,}$")
+  }
+  for (kayit in session$register_calls) {
+    kapsam <- environment(kayit$filter)
+    testthat::expect_false(exists("cache", envir = kapsam, inherits = FALSE))
+    testthat::expect_identical(sort(ls(kapsam, all.names = TRUE)), "session")
   }
 })

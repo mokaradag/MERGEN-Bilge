@@ -125,6 +125,27 @@ mergen_rich_lane_required_boot_keys <- function() {
     "saved_chats_preview_ready",
     "file_index_ready",
     "character_media_ready",
-    "welcome_client_ready"
+    "welcome_client_ready",
+    "management_pages_ready"
   )
+}
+
+#' Geçmiş hazırlık tetiği doğrulayıcısı
+#' @description Boşta çalışan hazırlık tetiği tam liste yüklemesinin neslini
+#'   taşır; yalnızca güncel nesle ait tetik geçerlidir (sahip değişimi nesli
+#'   artırır, önceki sahibin ertelenmiş tetiği reddedilir).
+#' @param guncel_nesil Güncel nesli döndüren işlev.
+#' @return Tetik değerini alıp TRUE/FALSE döndüren işlev.
+mergen_startup_history_trigger_validator <- function(guncel_nesil) {
+  function(tetik) {
+    # Tek, sonlu, tam sayı değerli sayı zorunludur: iç içe liste dönüşümde hata
+    # verip oturumu kapatıyordu, kesirli değer (2.5) kırpılıp nesil 2 ile eşleşiyordu.
+    if (is.list(tetik) && length(tetik) == 1L) tetik <- tetik[[1]]
+    if (!is.numeric(tetik) || length(tetik) != 1L || is.na(tetik) || !is.finite(tetik) ||
+        tetik != trunc(tetik)) {
+      return(FALSE)
+    }
+    guncel <- tryCatch(as.integer(guncel_nesil()), error = function(e) NA_integer_)
+    length(guncel) == 1L && !is.na(guncel) && tetik == guncel
+  }
 }

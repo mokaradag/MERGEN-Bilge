@@ -71,6 +71,19 @@ serverInitUserSession <- function(session,
     current_user_id_ref = function() current_user_id
   )
 
+  # Kimlik kaybı (ör. SSO yetkisizleşmesi) session$userData temizliğiyle AYNI
+  # eşzamanlı yolda sağlayıcının yedek kimliğini de düşürür; aksi hâlde sonraki
+  # gözlemci turuna dek resolve_effective_user_id eski kimliğe geri dönüyordu.
+  if (exists("mergen_session_on_owner_change", mode = "function", inherits = TRUE)) {
+    mergen_session_on_owner_change(session, function(neden) {
+      if (!identical(neden, "kimlik_kaybi")) return(invisible(NULL))
+      set_current_user_id(0L)
+      auth_ready <<- FALSE
+      try(user_config_rv(NULL), silent = TRUE)
+      invisible(NULL)
+    })
+  }
+
   setup_user_identity <- function(user_identity, user_id, sso_active, auth_source) {
     uid <- set_current_user_id(user_id)
 

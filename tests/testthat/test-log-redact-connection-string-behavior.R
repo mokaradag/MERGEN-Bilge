@@ -34,6 +34,14 @@ source(
   local = globalenv()
 )
 
+# Geliştiricinin ortamındaki gerçek ya da sahte kimlik bilgisi değişkenleri
+# (ör. DB_PASSWORD) literal değer redaktörüyle sonuçları değiştirmesin diye
+# test süresince kaldırılır ve sonunda geri yüklenir.
+.redact_env_yalit <- function(env = parent.frame()) {
+  adlar <- .redact_env_var_names()
+  withr::local_envvar(stats::setNames(rep(NA_character_, length(adlar)), adlar), .local_envir = env)
+}
+
 # Sır-benzeri değer kaynakta literal olarak durmasın diye runtime üretilir.
 .redact_conn_secret <- paste0("S3", "cretValue", "123")
 
@@ -85,4 +93,224 @@ test_that("mevcut password= ve Bearer redaksiyonu bozulmaz", {
 
   out_bearer <- redact_sensitive_text(paste0("Authorization: Bearer ", paste0("abc", "123", "def", "456")))
   expect_true(grepl("Bearer <redacted>", out_bearer, fixed = TRUE))
+})
+test_that("log sınırı tırnaklı bağlantı tanımlayıcılarını ve kısa tırnaklı sırları maskeler", {
+  ozel_dsn <- paste0("Ozel", "Uretim")
+  ic_sunucu <- paste0("ic-", "sunucu")
+  kisa <- paste0("a", "b", "c")
+  for (tirnak in c("\"", "'")) {
+    q <- function(x) paste0(tirnak, x, tirnak)
+    ileti <- paste0("DSN=", q(ozel_dsn), ";Server=", q(ic_sunucu), ";PWD=", q(kisa))
+    out <- redacted_condition_message(simpleError(ileti))
+    expect_false(grepl(ozel_dsn, out, fixed = TRUE))
+    expect_false(grepl(ic_sunucu, out, fixed = TRUE))
+    expect_false(grepl(paste0("=", q(kisa)), out, fixed = TRUE))
+    expect_true(grepl(paste0("DSN=", q("<redacted>")), out, fixed = TRUE))
+    expect_true(grepl(paste0("PWD=", q("<redacted>")), out, fixed = TRUE))
+    out_token <- redact_connection_identifiers(paste0("token: ", q(kisa)))
+    expect_false(grepl(kisa, out_token, fixed = TRUE))
+  }
+  # Anahtarı olmayan tırnaklı Türkçe metin (tanı bağlamı) korunur.
+  tani <- "Çalışma tablosu \"Söyleşi\" bulunamadı"
+  expect_identical(redacted_condition_message(simpleError(tani)), tani)
+})
+
+test_that("log sınırı JSON-tırnaklı anahtarları, kısa çıplak sırları ve kapanmamış tırnaklı değerleri maskeler", {
+  .redact_env_yalit()
+  sentetik <- paste0("sentetik", "-", "jeton", "-42")
+  kisa <- paste0("ab", "cde")
+  pw <- paste0("a", "bc")
+  # JSON biçiminde tırnaklı anahtar (her iki tırnak türü).
+  for (girdi in c(paste0("{\"token\":\"", sentetik, "\"}"), paste0("{\"PWD\":\"", pw, "\"}"),
+                  paste0("{'client_secret': '", kisa, "'}"), paste0("{\"token\": ", "12345", "}"))) {
+    out <- redacted_condition_message(simpleError(girdi))
+    expect_false(grepl(sentetik, out, fixed = TRUE), info = girdi)
+    expect_false(grepl(paste0("\"", pw, "\""), out, fixed = TRUE), info = girdi)
+    expect_false(grepl(kisa, out, fixed = TRUE), info = girdi)
+    expect_false(grepl("12345", out, fixed = TRUE), info = girdi)
+    expect_true(grepl("<redacted>", out, fixed = TRUE), info = girdi)
+  }
+  # Kısa çıplak sırlar (genel redaktörün 6 karakter eşiği bu katmanda yok).
+  for (anahtar in c("secret", "token", "api_key", "x-api-key", "client_secret")) {
+    for (ayrac in c("=", ": ")) {
+      out <- redacted_condition_message(simpleError(paste0(anahtar, ayrac, kisa)))
+      expect_identical(out, paste0(anahtar, ayrac, "<redacted>"))
+    }
+  }
+  # Genel redaktörün eşiği değişmez (yalnızca log katmanı genişledi).
+  expect_identical(redact_sensitive_text(paste0("secret=", kisa)), paste0("secret=", kisa))
+  # Kesilmiş tanıda kapanmamış tırnaklı değer satır sonuna kadar maskelenir.
+  expect_identical(redacted_condition_message(simpleError(paste0("PWD='", pw))), "PWD='<redacted>")
+  cok_satir <- redacted_condition_message(simpleError(paste0("bağlanamadı: PWD=\"", pw, "\nsonraki satır korunur")))
+  expect_false(grepl(pw, cok_satir, fixed = TRUE))
+  expect_true(grepl("sonraki satır korunur", cok_satir, fixed = TRUE))
+  # Kaçışlı tırnak içeren değerin kuyruğu sızmaz.
+  expect_identical(redact_connection_identifiers(paste0("api_key=\"ab\\\"", kisa, "\"")), "api_key=\"<redacted>\"")
+  # Karışık biçim: süslü, tırnaklı ve çıplak değerler birlikte; sözcük içi anahtar korunur.
+  karisik <- redacted_condition_message(simpleError(paste0(
+    "Driver={ODBC Driver 17};Server='ic-", "sunucu';Pwd={A}}B}; mytoken=", kisa)))
+  expect_identical(karisik, paste0("Driver={<redacted>};Server='<redacted>';Pwd={<redacted>}; mytoken=", kisa))
+  # Anahtarsız Türkçe tanı bağlamı ve "Database:" düzyazısı korunur.
+  expect_identical(redacted_condition_message(simpleError("Database: bağlantı başarısız")),
+                   "Database: bağlantı başarısız")
+})
+
+test_that("log sınırı kaçış belirsizliğinde, camelCase jetonlarda, CRLF'de ve kısa Authorization'da kapalı maskeler", {
+  .redact_env_yalit()
+  kuyruk <- paste0("kuy", "ruk42")
+  pw <- paste0("ab", "cde")
+  kisa <- paste0("YT", "pi")
+  # Genel redaktörden önce işlenir: kaçışlı tırnaktan önce 6+ karakter olsa da kuyruk sızmaz.
+  out <- redacted_condition_message(simpleError(paste0("api_key=\"abcdef\\\"", kuyruk, "\"")))
+  expect_false(grepl(kuyruk, out, fixed = TRUE))
+  # Düz ters bölü sonraki anahtarın değerini açığa çıkarmaz (iki alan da maskede kalır).
+  out <- redacted_condition_message(simpleError(paste0("Server='db\\';PWD='", pw, "'")))
+  expect_false(grepl(pw, out, fixed = TRUE))
+  expect_false(grepl("db", out, fixed = TRUE))
+  # Ters bölü içeren sunucu adı (HOST\INSTANCE) ve komşu alan maskelenir.
+  out <- redacted_condition_message(simpleError("Server='HOST\\INST';Database='GizliVeritabani'"))
+  expect_false(grepl("HOST", out, fixed = TRUE))
+  expect_false(grepl("GizliVeritabani", out, fixed = TRUE))
+  # authToken / idToken JSON alanları maskelenir; sözcük içi `mytoken` korunur.
+  for (anahtar in c("authToken", "idToken", "auth_token")) {
+    out <- redacted_condition_message(simpleError(paste0("{\"", anahtar, "\":\"", pw, "\"}")))
+    expect_identical(out, paste0("{\"", anahtar, "\":\"<redacted>\"}"), info = anahtar)
+  }
+  # Kapanmamış tırnaklı değer CRLF'den önce maskelenir, sonraki satır korunur.
+  out <- redacted_condition_message(simpleError(paste0("PWD='", pw, "\r\nsonraki satır")))
+  expect_identical(out, "PWD='<redacted>\r\nsonraki satır")
+  out <- redacted_condition_message(simpleError(paste0("Pwd={", pw, "\r\nsonraki satır")))
+  expect_false(grepl(pw, out, fixed = TRUE))
+  expect_true(grepl("\r\nsonraki satır", out, fixed = TRUE))
+  # Tırnaklı bağlantı anahtarının çıplak değeri maskelenir; `UID=` biçimi de korunur.
+  expect_identical(redacted_condition_message(simpleError("{\"uid\":12345}")), "{\"uid\":<redacted>}")
+  expect_identical(redacted_condition_message(simpleError("UID=12345;x")), "UID=<redacted>;x")
+  # Kısa Authorization kimlik bilgisi şema korunarak maskelenir.
+  for (sema in c("Basic", "Bearer")) {
+    out <- redacted_condition_message(simpleError(paste0("Authorization: ", sema, " ", kisa)))
+    expect_identical(out, paste0("Authorization: ", sema, " <redacted>"), info = sema)
+  }
+  out <- redacted_condition_message(simpleError(paste0("{\"Authorization\":\"Basic ", kisa, "\"}")))
+  expect_false(grepl(kisa, out, fixed = TRUE))
+  # Genel redaktörün kısa değer sözleşmesi değişmez.
+  expect_identical(redact_sensitive_text(paste0("Authorization: Basic ", kisa)),
+                   paste0("Authorization: Basic ", kisa))
+})
+
+test_that("boşluk içeren çıplak ODBC parolası tümüyle maskelenir; DB hata özeti SQL gövdesini atar", {
+  .redact_env_yalit()
+  ikinci <- paste0("ikinci", "kelime")
+  out <- redacted_condition_message(simpleError(paste0("PWD=abc ", ikinci, ";UID=test;Server=x")))
+  expect_false(grepl(ikinci, out, fixed = TRUE))
+  expect_identical(out, "PWD=<redacted>;UID=<redacted>;Server=<redacted>")
+  # Sürücü tanısındaki SQL (gömülü hesap kimliğiyle) günlük özetine girmez.
+  hata <- simpleError(paste0("nanodbc: 42000 [SQL Server] Invalid column DSN=ozel <SQL> ",
+                             "'SELECT c.ChatID FROM MB_Chats c WHERE c.UserID = 4242'"))
+  ozet <- mergen_db_error_log_summary(hata)
+  expect_false(grepl("4242", ozet, fixed = TRUE))
+  expect_false(grepl("ozel", ozet, fixed = TRUE))
+  expect_match(ozet, "<SQL gizlendi>", fixed = TRUE)
+  expect_match(ozet, "^\\[simpleError\\] nanodbc: 42000")
+  # SQL'siz tanı bağlamı korunur.
+  expect_identical(mergen_db_error_log_summary(simpleError("Login timeout expired")),
+                   "[simpleError] Login timeout expired")
+})
+
+test_that("tanı ters bölüyle biten kapanmamış tırnaklı parolada kesilse de değer maskelenir", {
+  .redact_env_yalit()
+  pw <- paste0("ab", "c")
+  out <- redacted_condition_message(simpleError(paste0("hata PWD='", pw, "\\")))
+  expect_identical(out, "hata PWD='<redacted>")
+})
+
+test_that("Bearer tilda kuyruğu, Digest parametreleri, kaçışlı kesilmiş tırnak, boşluklu DSN ve küçük harfli SQL maskelenir", {
+  .redact_env_yalit()
+  kuyruk <- paste0("gizli", "Kuyruk99")
+  # RFC 6750 Bearer '~' karakterinden sonraki kuyruk kısmen açıkta kalmaz.
+  out_bearer <- redacted_condition_message(simpleError(paste0("Authorization: Bearer abcdef~", kuyruk)))
+  expect_identical(out_bearer, "Authorization: Bearer <redacted>")
+  expect_false(grepl(kuyruk, out_bearer, fixed = TRUE))
+
+  # Digest başlığındaki tırnaklı tüm parametreler maskelenir.
+  out_digest <- redacted_condition_message(simpleError(
+    paste0("Authorization: Digest username=\"demo\", realm=\"ic\", response=\"", kuyruk, "\"")
+  ))
+  expect_identical(out_digest, "Authorization: Digest <redacted>")
+  expect_false(grepl("demo", out_digest, fixed = TRUE))
+  expect_false(grepl(kuyruk, out_digest, fixed = TRUE))
+
+  # Kaçışlı tırnaktan sonra kapanış olmadan kesilen değer satır sonuna dek maskelenir.
+  out_kesik <- redacted_condition_message(simpleError(
+    paste0("api_key=\"abcdef\\\"", kuyruk, "\nsonraki satır korunur")
+  ))
+  expect_false(grepl(kuyruk, out_kesik, fixed = TRUE))
+  expect_true(grepl("sonraki satır korunur", out_kesik, fixed = TRUE))
+
+  # Noktalı virgülle ayrılan boşluklu ODBC DSN değeri bütünüyle maskelenir.
+  out_dsn <- redacted_condition_message(simpleError("DSN=Ozel Raporlama;UID=demo_kullanici"))
+  expect_identical(out_dsn, "DSN=<redacted>;UID=<redacted>")
+
+  # <SQL> etiketi olmadan küçük harfli SQL deyimi de özetten çıkarılır.
+  ozet_kucuk <- mergen_db_error_log_summary(simpleError("nanodbc: hata select id from MB_Chats where UserID = 4242"))
+  expect_false(grepl("4242", ozet_kucuk, fixed = TRUE))
+  expect_match(ozet_kucuk, "<SQL gizlendi>", fixed = TRUE)
+})
+
+test_that("noktalı virgülsüz son ODBC tanımlayıcısı ve çift ayırıcılı tırnaklı sırlar bütünüyle maskelenir", {
+  .redact_env_yalit()
+  # Noktalı virgülsüz son boşluklu ODBC tanımlayıcısı tam maskelenir.
+  out_son <- redacted_condition_message(simpleError("UID=sample;DSN=Synthetic Reporting"))
+  expect_identical(out_son, "UID=<redacted>;DSN=<redacted>")
+  expect_false(grepl("Reporting", out_son, fixed = TRUE))
+
+  # Aynı satırdaki tanı düzyazısı (`: `, ` - `) korunur.
+  out_tani <- redacted_condition_message(simpleError("UID=sample;DSN=Synthetic Reporting: login failed"))
+  expect_identical(out_tani, "UID=<redacted>;DSN=<redacted>: login failed")
+  out_duz <- redacted_condition_message(simpleError("DSN=my_dsn failed to connect"))
+  expect_identical(out_duz, "DSN=<redacted> failed to connect")
+
+  # Çift tırnak ayırıcılı ('' ve "") sırlar komşu alanları tüketmeden maskelenir.
+  parca <- paste0("sonek", "77")
+  out_tek <- redacted_condition_message(simpleError(paste0("PWD='ab''", parca, "';UID='demo'")))
+  expect_identical(out_tek, "PWD='<redacted>';UID='<redacted>'")
+  expect_false(grepl(parca, out_tek, fixed = TRUE))
+
+  out_cift <- redacted_condition_message(simpleError(paste0("PWD=\"ab\"\"", parca, "\"; note=\"korunur\"")))
+  expect_identical(out_cift, "PWD=\"<redacted>\"; note=\"korunur\"")
+  expect_false(grepl(parca, out_cift, fixed = TRUE))
+
+  # Kesilmiş (kapanmamış) çift ayırıcılı değer satır sonuna dek maskelenir.
+  out_kesik <- redacted_condition_message(simpleError(paste0("PWD='ab''", parca, "\nsonraki satır")))
+  expect_identical(out_kesik, "PWD='<redacted>\nsonraki satır")
+})
+
+test_that("çift ayırıcı ve sonraki ters bölülü ayırıcı birlikteyse tırnaklı değerin tamamı maskelenir", {
+  parca <- "kuyruk42"
+  # Çift tırnak: "ab""cd\"kuyruk42" -> belirsizlik taraması çift ayırıcıyı atlar.
+  out_cift <- redacted_condition_message(simpleError(paste0("api_key=\"ab\"\"cd\\\"", parca, "\" ve sonrası")))
+  expect_false(grepl(parca, out_cift, fixed = TRUE))
+  expect_false(grepl("cd", out_cift, fixed = TRUE))
+  expect_identical(out_cift, "api_key=\"<redacted>\" ve sonrası")
+  # Tek tırnak: aynı sözleşme; komşu alan ayrıca maskelenir.
+  out_tek <- redacted_condition_message(simpleError(paste0("PWD='a''b\\'", parca, "';UID=x")))
+  expect_false(grepl(parca, out_tek, fixed = TRUE))
+  expect_identical(out_tek, "PWD='<redacted>';UID=<redacted>")
+  # Kapanmamış değer satır sonuna dek maskelenir; sonraki satır korunur.
+  out_kesik <- redacted_condition_message(simpleError(paste0("token=\"ab\"\"cd\\\"", parca, "\nsonraki satır")))
+  expect_false(grepl(parca, out_kesik, fixed = TRUE))
+  expect_true(grepl("\nsonraki satır", out_kesik, fixed = TRUE))
+})
+
+test_that("çift kapanış ayırıcısının ardından gelen aynı tırnaklı alanın değeri açıkta kalmaz", {
+  gizli <- "gizli99"
+  out_cift <- redacted_condition_message(simpleError(paste0("PWD=\"abc\"\";UID=\"", gizli, "\"")))
+  expect_false(grepl(gizli, out_cift, fixed = TRUE))
+  expect_identical(out_cift, "PWD=\"<redacted>")
+  # Tek tırnak; maskeleme satır sonunda biter, sonraki satır korunur.
+  out_tek <- redacted_condition_message(simpleError(paste0("PWD='abc'';UID='", gizli, "' son\nikinci satır")))
+  expect_false(grepl(gizli, out_tek, fixed = TRUE))
+  expect_identical(out_tek, "PWD='<redacted>\nikinci satır")
+  # Belirsiz olmayan çift ayırıcı (değer içi kaçış + gerçek kapanış) aşırı maskelenmez.
+  expect_identical(redacted_condition_message(simpleError("PWD=\"ab\"\"cd\";UID=\"x9\"")),
+                   "PWD=\"<redacted>\";UID=\"<redacted>\"")
 })

@@ -33,6 +33,11 @@ $(document).ready(function() {
     if (typeof window.updateCharCounter === 'function') {
       window.updateCharCounter();
     }
+    // Programatik değişiklik (Escape, gönderim sonrası temizleme) 'input' olayı
+    // yaymaz; geri yüklenen istem sahipliği burada uzlaştırılır.
+    if (window.MergenBekleyenIstem && typeof window.MergenBekleyenIstem.girdiDegisti === 'function') {
+      window.MergenBekleyenIstem.girdiDegisti();
+    }
   }
 
   function clearChatInput($input) {
@@ -41,7 +46,9 @@ $(document).ready(function() {
   }
 
   function sendPromptFromInput(inputEl) {
-    if ($('#send_stop_btn').hasClass('stop-mode')) {
+    // İyimser bekleyen balon modülü (chat_pending_message.js) varsa kullanılır.
+    const bekleyen = window.MergenBekleyenIstem;
+    if ($('#send_stop_btn').hasClass('stop-mode') || (bekleyen && bekleyen.varMi())) {
       return false;
     }
 
@@ -62,17 +69,21 @@ $(document).ready(function() {
       return false;
     }
 
+    const istemKimligi = bekleyen ? bekleyen.ekle(promptText) : undefined;
+
+    // sahip_nesli: istemin yazıldığı oturum sahibi nesli; sunucu eski nesilli
+    // istemi yeni sahip adına işlemez.
     Shiny.setInputValue("send_prompt_from_js", {
       text: promptText,
-      nonce: Math.random()
+      nonce: Math.random(),
+      client_id: istemKimligi,
+      sahip_nesli: bekleyen && typeof bekleyen.sahipNesli === 'function' ? bekleyen.sahipNesli() : undefined
     }, { priority: "event" });
 
     clearChatInput($input);
     $input.focus();
 
-    setTimeout(() => {
-        if (typeof window.scrollToBottom === 'function') window.scrollToBottom(true);
-    }, 50);
+    if (typeof window.scrollToBottom === 'function') window.scrollToBottom(true);
 
     return true;
   }

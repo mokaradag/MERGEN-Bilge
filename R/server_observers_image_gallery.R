@@ -21,6 +21,32 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     uid
   }
 
+  # Yükleniyor görünümü YIKICI değildir: mevcut transkript ve karşılama yalnızca
+  # gizlenir. Söyleşi açılamazsa (bulunamadı/okuma hatası) önceki görünüm geri
+  # gelir; görünüm ile values$messages ayrışmaz. Başarı yolu kabı zaten boşaltır.
+  galeri_yukleme_goster <- function() {
+    shinyjs::runjs("
+      var $w = $('#welcome_fullscreen_container'), $k = $('#chat_content_container');
+      $w.attr('data-mergen-galeri-karsilama', $w.hasClass('hidden') ? 'gizli' : 'gorunur').addClass('hidden');
+      $k.attr('data-mergen-galeri-kap', $k.css('display') === 'none' ? 'gizli' : 'gorunur');
+      $k.children().filter(function() { return this.style.display !== 'none'; })
+        .attr('data-mergen-galeri-gizli', '1').hide();
+      $k.show().css('display','block')
+        .append('<div class=\"chat-loading-state image-gallery-chat-loading\"><i class=\"fas fa-spinner fa-spin\"></i><span>Söyleşi yükleniyor...</span></div>');
+    ")
+  }
+  galeri_yukleme_geri_al <- function() {
+    shinyjs::runjs("
+      var $w = $('#welcome_fullscreen_container'), $k = $('#chat_content_container');
+      $k.children('.image-gallery-chat-loading').remove();
+      $k.children('[data-mergen-galeri-gizli]').removeAttr('data-mergen-galeri-gizli').show();
+      if ($k.attr('data-mergen-galeri-kap') === 'gizli') $k.hide();
+      if ($w.attr('data-mergen-galeri-karsilama') === 'gorunur') $w.removeClass('hidden');
+      $k.removeAttr('data-mergen-galeri-kap');
+      $w.removeAttr('data-mergen-galeri-karsilama');
+    ")
+  }
+
   # Görsele tıklandığında ilgili söyleşiye yönlendir
   observeEvent(gallery_data$navigate_to_chat(), {
     info <- gallery_data$navigate_to_chat()
@@ -51,21 +77,6 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     load_chat_in_progress(TRUE)
     yukleme_baslangici <- Sys.time()
 
-    # Kullanıcıya anında geri bildirim ver: DB hidrasyonu veya uzun mesaj render'ı
-    # bitmeden sohbet sekmesine geçip hafif bir yükleniyor durumunu göster.
-    if (exists("updateTabItems", mode = "function", inherits = TRUE)) {
-      updateTabItems(session, "tabs", "chat")
-    } else if (requireNamespace("shinydashboard", quietly = TRUE)) {
-      shinydashboard::updateTabItems(session, "tabs", "chat")
-    }
-    shinyjs::runjs("
-      $('#welcome_fullscreen_container').addClass('hidden').empty();
-      $('#chat_content_container')
-        .show()
-        .css('display','block')
-        .html('<div class=\"chat-loading-state image-gallery-chat-loading\"><i class=\"fas fa-spinner fa-spin\"></i><span>Söyleşi yükleniyor...</span></div>');
-    ")
-
     # Önce mevcut önbelleğe bak
     chat_to_load <- values$saved_chats[[chat_id]]
 
@@ -75,31 +86,72 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
       msgs <- chat_to_load$messages
       stored_len <- if (is.list(msgs)) length(msgs) else 0L
       expected_len <- as.integer(chat_to_load$message_count %||% stored_len)
+      # transkript_yenile: açılış birleştirmesi önbelleğin eksik olabileceğini işaretledi.
       needs_hydrate <- is.null(msgs) || !is.list(msgs) || stored_len == 0 ||
+        isTRUE(chat_to_load$transkript_yenile) ||
         (!is.na(expected_len) && expected_len > stored_len)
     }
+
+    yenileme_istendi <- !is.null(chat_to_load) && isTRUE(chat_to_load$transkript_yenile)
+    yenileme_basarisiz <- FALSE
+    etkin_uid <- suppressWarnings(as.integer(resolve_runtime_user_id())[1])
+
+    # Kimlik henüz çözülmediyse görünüme dokunulmadan çıkılır: sekme/transkript
+    # değişmez, önbellek silinmez, silinmiş uyarısı verilmez.
+    if (isTRUE(needs_hydrate) && (is.na(etkin_uid) || etkin_uid <= 0L)) {
+      showToast(session, "Oturum kimliği henüz hazır değil; lütfen kısa süre sonra tekrar deneyin.", "warning")
+      load_chat_in_progress(FALSE)
+      return()
+    }
+
+    # Kullanıcıya anında geri bildirim: DB hidrasyonu veya uzun mesaj render'ı
+    # bitmeden sohbet sekmesine geçilir ve hafif bir yükleniyor durumu gösterilir.
+    if (exists("updateTabItems", mode = "function", inherits = TRUE)) {
+      updateTabItems(session, "tabs", "chat")
+    } else if (requireNamespace("shinydashboard", quietly = TRUE)) {
+      shinydashboard::updateTabItems(session, "tabs", "chat")
+    }
+    galeri_yukleme_goster()
 
     # Önbellekte yoksa veya mesajlar yüklenmemişse veritabanından yükle
     if (isTRUE(needs_hydrate)) {
       detail <- tryCatch(
         load_chat_messages_from_db(
           chat_id_int,
-          user_id = resolve_runtime_user_id()
+          user_id = etkin_uid
         ),
         error = function(e) {
-          warning(sprintf("[IMAGE_GALLERY] Söyleşi yüklenemedi (ChatID: %s): %s", chat_id, e$message))
+          # Sürücü tanısı DSN/sunucu/kullanıcı taşıyabilir: maskelenmiş özet yazılır.
+          warning(sprintf("[IMAGE_GALLERY] Söyleşi yüklenemedi (ChatID: %s): %s", chat_id,
+                          if (exists("mergen_db_error_log_summary", mode = "function", inherits = TRUE))
+                            mergen_db_error_log_summary(e) else class(e)[1]))
           NULL
         }
       )
-      if (!is.null(detail) && detail$message_count > 0) {
-        chat_to_load <- detail
-        saved_copy <- values$saved_chats
+      if (is.null(detail)) {
+        if (isTRUE(yenileme_istendi)) yenileme_basarisiz <- TRUE
+      } else if (isTRUE(detail$kayit_bulunamadi)) {
+        # Söyleşi başka oturumda silinmiş: açık DB kanıtıyla önbellek temizlenir.
+        saved_copy <- values$saved_chats %||% list()
+        saved_copy[[chat_id]] <- NULL
+        values$saved_chats <- saved_copy
+        # Doğrulanmış yokluk silinenler kümesine yazılır: süren tam liste geri getiremez.
+        if (exists("mergen_saved_chats_mark_deleted", mode = "function", inherits = TRUE)) {
+          mergen_saved_chats_mark_deleted(session, chat_id)
+        }
+        chat_to_load <- NULL
+      } else if (isTRUE(detail$message_count > 0) || !is.null(detail$title) || !is.null(detail$timestamp)) {
+        chat_to_load <- if (exists("mergen_chat_reconcile_hydrated_detail", mode = "function", inherits = TRUE)) {
+          mergen_chat_reconcile_hydrated_detail(detail, chat_to_load)
+        } else { detail$hidrate_edildi <- TRUE; detail$transkript_yenile <- NULL; detail }
+        saved_copy <- values$saved_chats %||% list()
         saved_copy[[chat_id]] <- chat_to_load
         values$saved_chats <- saved_copy
       }
     }
 
     if (is.null(chat_to_load)) {
+      galeri_yukleme_geri_al()
       showToast(session, "Bu söyleşi artık mevcut değil veya silinmiş.", "error")
       load_chat_in_progress(FALSE)
       return()
@@ -257,13 +309,20 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     } else {
       shinyjs::runjs("setTimeout(function() { scrollToBottom(false); }, 80);")
     }
-    # Başarı toast'ı, son mesaj balonu DOM'da GERÇEKTEN görünene dek bekletilir.
+    # Başarı toast'ı, son mesaj balonu DOM'da GERÇEKTEN görünene dek bekletilir;
+    # zorunlu yenileme başarısız olduysa önbellek gösterildiği açıkça bildirilir.
     son_mesaj_id <- if (length(values$messages) > 0) {
       values$messages[[length(values$messages)]]$id
     } else {
       NULL
     }
-    mergen_show_chat_loaded_toast(session, chat_title, son_mesaj_id)
+    if (isTRUE(kimlik_cozulmedi)) {
+      showToast(session, "Oturum kimliği henüz hazır değil; önbellekteki kayıt gösteriliyor.", "warning")
+    } else if (isTRUE(yenileme_basarisiz)) {
+      showToast(session, "Söyleşi güncel içerikle yenilenemedi; önbellekteki kayıt gösteriliyor.", "warning")
+    } else {
+      mergen_show_chat_loaded_toast(session, chat_title, son_mesaj_id)
+    }
     cat(sprintf(
       "[CHAT PERF] Galeriden söyleşi yüklendi - chat_id=%s, mesaj=%d, %.0f ms\n",
       chat_id, length(values$messages),

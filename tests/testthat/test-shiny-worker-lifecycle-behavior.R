@@ -19,6 +19,8 @@ test_that("geç SSE sonucu yeni isteği, sohbeti veya sahibi değiştirmez", {
     env$get_characters_data <- function() NULL
     env$format_timestamp <- function() "zaman"
     env$mergen_true_streaming_worker_globals <- function(...) list()
+    # Görev kapanışı fabrikası: test, işleyici çerçevesindeki stream_env'e erişir.
+    env$mergen_true_streaming_task_fn <- function(...) { stream_env <- get("stream_env", envir = parent.frame()); function() NULL }
     env$log_info <- env$log_warn <- function(...) NULL
     rec <- new.env()
     rec$resets <- 0L
@@ -398,6 +400,8 @@ test_that("SSE açık Stop kısmi yanıtı saklar ve gönderim kaynaklarını b�
   env$get_characters_data <- function() NULL
   env$format_timestamp <- function() "zaman"
   env$mergen_true_streaming_worker_globals <- function(...) list()
+  # Görev kapanışı fabrikası: test, işleyici çerçevesindeki stream_env'e erişir.
+  env$mergen_true_streaming_task_fn <- function(...) { stream_env <- get("stream_env", envir = parent.frame()); function() NULL }
   env$log_info <- env$log_warn <- env$log_ai_usage <- env$mergen_log_chat_perf_summary <- function(...) NULL
   env$mb_api_key_invalidate_send_cache_on_auth_error <- function(...) NULL
   env$build_chartlab_message <- function(...) list(found = FALSE)
@@ -457,6 +461,8 @@ test_that("Stop'tan önce biten SSE işçisi sonradan yoklansa da tam yanıtı y
     env$get_characters_data <- function() NULL
     env$format_timestamp <- function() "zaman"
     env$mergen_true_streaming_worker_globals <- function(...) list()
+    # Görev kapanışı fabrikası: test, işleyici çerçevesindeki stream_env'e erişir.
+    env$mergen_true_streaming_task_fn <- function(...) { stream_env <- get("stream_env", envir = parent.frame()); function() NULL }
     env$log_info <- env$log_warn <- env$log_ai_usage <- env$mergen_log_chat_perf_summary <- function(...) NULL
     env$mb_api_key_invalidate_send_cache_on_auth_error <- function(...) NULL
     env$build_chartlab_message <- function(...) list(found = FALSE)

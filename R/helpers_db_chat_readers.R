@@ -303,15 +303,30 @@ load_chat_messages_from_db <- function(chat_id, user_id = NULL) {
   }
 
   if (nrow(chat_df) == 0) {
-    return(list(title = NULL, timestamp = NULL, messages = list(), message_count = 0L))
+    return(list(
+      title = NULL,
+      timestamp = NULL,
+      last_message_timestamp = NULL,
+      messages = list(),
+      message_count = 0L,
+      kayit_bulunamadi = TRUE
+    ))
   }
 
   messages_df <- chat_df[!is.na(chat_df$MessageID), , drop = FALSE]
   messages <- if (nrow(messages_df) > 0) format_chat_messages(messages_df, user_id = safe_user_id) else list()
+  last_msg_time <- if (nrow(messages_df) > 0 &&
+                       "MessageTimestamp" %in% names(messages_df) &&
+                       any(!is.na(messages_df$MessageTimestamp))) {
+    max(messages_df$MessageTimestamp, na.rm = TRUE)
+  } else {
+    chat_df$CreateTimestamp[1]
+  }
 
   list(
     title = chat_df$ChatTitle[1],
     timestamp = chat_df$CreateTimestamp[1],
+    last_message_timestamp = last_msg_time,
     messages = messages,
     message_count = length(messages)
   )
@@ -435,7 +450,10 @@ load_chat_messages_batch <- function(chat_ids, user_id = NULL) {
 }
 
 # Lightweight history fetch: return paired user/assistant rows per chat
-load_history_rows_batch <- function(chat_ids, user_id = NULL) {
+# result: işçide (açık sözleşmeyle) okunmuş ham çerçeve verilirse DB'ye
+# gidilmez, yalnızca aynı normalizasyon + biçimlendirme uygulanır (tek
+# biçimlendirici; açılış hazırlığı module_chat_history_background.R).
+load_history_rows_batch <- function(chat_ids, user_id = NULL, result = NULL) {
   if (is.null(chat_ids) || length(chat_ids) == 0) {
     return(list())
   }
@@ -458,21 +476,23 @@ load_history_rows_batch <- function(chat_ids, user_id = NULL) {
     return(list())
   }
 
-  safe_user_id <- suppressWarnings(as.integer(user_id[1]))
+  if (is.null(result)) {
+    safe_user_id <- suppressWarnings(as.integer(user_id[1]))
 
-  conn_info <- get_connection()
-  conn <- conn_info$conn
-  on.exit(release_connection(conn_info))
+    conn_info <- get_connection()
+    conn <- conn_info$conn
+    on.exit(release_connection(conn_info))
 
-  query <- db_history_rows_query_sql(placeholder, scoped = TRUE)
+    query <- db_history_rows_query_sql(placeholder, scoped = TRUE)
 
-  param_values <- c(param_values, list(safe_user_id))
+    param_values <- c(param_values, list(safe_user_id))
 
-  result <- dbGetQuery(
-    conn,
-    query,
-    params = normalize_db_params(param_values)
-  )
+    result <- dbGetQuery(
+      conn,
+      query,
+      params = normalize_db_params(param_values)
+    )
+  }
 
   if (exists("normalize_db_read_visible_frame", mode = "function", inherits = TRUE)) {
     result <- normalize_db_read_visible_frame(result, repair_mojibake = TRUE)

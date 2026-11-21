@@ -90,6 +90,8 @@
   var stageIndex = -1;
   var finished = false;
   var pendingFinishUntilLaneResolved = false;
+  // Sunucunun kısmi hazır bildirimi kapanış etiketini belirler (niteliksiz "Hazır" değil).
+  var kapanisEtiketi = null;
   var fadeStarted = false;
   var ssoActive = false;
   var skipIntro = false;
@@ -299,15 +301,30 @@
     }
     setTarget(pct);
     if (statusText) {
+      if (stageLabelTimer) {
+        window.clearTimeout(stageLabelTimer);
+        stageLabelTimer = null;
+      }
       statusText.classList.add("alo-status-fade");
-      window.setTimeout(function () {
-        lastStageLabel = STAGES[idx].label;
-        statusText.textContent = STAGES[idx].label;
+      stageLabelTimer = window.setTimeout(function () {
+        stageLabelTimer = null;
+        // Hazır aşaması kapanış etiketini kullanır: kısmen hazır sonuç önce
+        // niteliksiz "Hazır" olarak görünmez.
+        var etiket = (STAGES[idx].key === "ready" && kapanisEtiketi) ? kapanisEtiketi : STAGES[idx].label;
+        lastStageLabel = etiket;
+        statusText.textContent = etiket;
         statusText.classList.remove("alo-status-fade");
       }, 200);
     }
     maybeFinishFastLane();
   }
+
+  var stageLabelTimer = null;
+  var richFinishTimer = null;
+  // Şerit seçimi çözülünce kuyruğa alınan kapanış; hazır-olma geri çekilirse iptal edilir.
+  var laneFinishTimer = null;
+  // "Söyleşi Yönetimi verisi hazırlanıyor" etiketi gösteriliyor mu?
+  var yonetimEtiketiGosteriliyor = false;
 
   // Server tarafı boot kontrol noktası mesajlarını dinle. İlerleme tamamen
   // bu mesajlarla sürülür; ekran ancak ready=true geldiğinde kapanır.
@@ -326,11 +343,63 @@
       // Her gerçek kontrol noktası ilerleme etkinliği sayılır (stall gözcüsü).
       markProgress();
 
+      // Hazır-olma geri çekildiyse (ör. sahip değişimi) bekleyen veya şerit seçimine
+      // ertelenmiş kapanış ve kapanış etiketi iptal edilir.
+      if (msg.ready !== true && (richFinishTimer || laneFinishTimer || pendingFinishUntilLaneResolved)) {
+        if (richFinishTimer) {
+          window.clearTimeout(richFinishTimer);
+          richFinishTimer = null;
+        }
+        if (laneFinishTimer) {
+          window.clearTimeout(laneFinishTimer);
+          laneFinishTimer = null;
+        }
+        pendingFinishUntilLaneResolved = false;
+        kapanisEtiketi = null;
+      }
+
       setStage(msg.key);
 
+      // Zengin açılışta yalnızca Söyleşi Yönetimi hazırlığı bekleniyorsa
+      // kullanıcı neyin beklendiğini görür; bekleyen aşama zamanlayıcısı iptal edilir.
+      var tamam = [].concat(msg.required_done || []);
+      var kismen = [].concat(msg.kismen || []);
+      var yonetimBekleniyor = msg.ready !== true && !isFastLane() &&
+          tamam.indexOf("management_pages_ready") < 0 &&
+          typeof msg.required_total === "number" && tamam.length === msg.required_total - 1;
+      if (yonetimBekleniyor && statusText) {
+        if (stageLabelTimer) {
+          window.clearTimeout(stageLabelTimer);
+          stageLabelTimer = null;
+        }
+        statusText.classList.remove("alo-status-fade");
+        lastStageLabel = "Söyleşi Yönetimi verisi hazırlanıyor";
+        statusText.textContent = lastStageLabel;
+        yonetimEtiketiGosteriliyor = true;
+      } else if (yonetimEtiketiGosteriliyor && msg.ready !== true && statusText) {
+        // Koşul artık geçerli değil (ör. kimlik kaybı): bekleme etiketi güncel
+        // aşamanın etiketiyle değiştirilir; hazırlık sürüyormuş gibi görünmez.
+        yonetimEtiketiGosteriliyor = false;
+        lastStageLabel = (stageIndex >= 0 && STAGES[stageIndex]) ? STAGES[stageIndex].label : "Başlatılıyor";
+        statusText.textContent = lastStageLabel;
+      }
+
       if (msg.ready === true) {
+        yonetimEtiketiGosteriliyor = false;
+        // Kısmen hazır (ör. okuma hatası ya da süre sınırı) niteliksiz "Hazır"
+        // veya kesin tamamlanma/kurtarma sözü göstermez. Etiket hazır aşaması
+        // çizilmeden ÖNCE belirlenir.
+        var etiket = kismen.length === 0 ? "Hazır" :
+          (kismen.indexOf("management_pages_ready") >= 0 ?
+            "Kısmen hazır — Söyleşi Yönetimi verisi henüz tamamlanmadı" : "Kısmen hazır");
+        kapanisEtiketi = etiket;
         setStage("ready");
-        window.setTimeout(function () {
+        if (richFinishTimer) {
+          window.clearTimeout(richFinishTimer);
+          richFinishTimer = null;
+        }
+        richFinishTimer = window.setTimeout(function () {
+          richFinishTimer = null;
           finish({ deferForLane: true });
         }, 260);
       }
@@ -347,7 +416,11 @@
       maybeFinishFastLane();
       if (pendingFinishUntilLaneResolved) {
         pendingFinishUntilLaneResolved = false;
-        window.setTimeout(finish, 0);
+        if (laneFinishTimer) window.clearTimeout(laneFinishTimer);
+        laneFinishTimer = window.setTimeout(function () {
+          laneFinishTimer = null;
+          finish();
+        }, 0);
       }
     });
   }
@@ -379,9 +452,14 @@
     }
     if (finished) return;
     finished = true;
+    if (stageLabelTimer) {
+      window.clearTimeout(stageLabelTimer);
+      stageLabelTimer = null;
+    }
     overlay.classList.add("alo-complete");
     if (statusText) {
-      statusText.textContent = "Hazır";
+      statusText.classList.remove("alo-status-fade");
+      statusText.textContent = kapanisEtiketi || "Hazır";
     }
     // Giriş atlandıysa (veya Hızlı Başlangıç şeridi aktifse) derin uzay intro
     // müziği karşılama ekranına devretmeden burada yumuşakça durdurulur.

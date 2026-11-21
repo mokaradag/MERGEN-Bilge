@@ -66,8 +66,6 @@ savedChatsServer <- function(id, saved_chats) {
       load_chat_trigger(input$load_chat_id)
     }, ignoreInit = TRUE)
 
-    search_term_debounced <- reactiveVal()
-    search_timer <- reactiveTimer(300)
 	
 	    empty_meta <- function() {
       data.frame(
@@ -84,6 +82,7 @@ savedChatsServer <- function(id, saved_chats) {
     }
 
     cached_meta <- reactiveVal(empty_meta())
+    zaman_onbellegi <- new.env(hash = TRUE, parent = emptyenv())
 
     # Saat dilimi sabiti - DB'deki zaman damgaları Istanbul zamanında saklanır
     TARGET_TZ <- "Europe/Istanbul"
@@ -140,29 +139,47 @@ savedChatsServer <- function(id, saved_chats) {
       paste0(translated_month_names, " ", format(timestamps, "%Y"))
     }
 
+    # Arama doğrudan input$search_chats ile süzülür. Kullanılmayan bir değeri
+    # 300 ms'de bir örnekleyen sürekli zamanlayıcı (her oturumda boşta CPU) kaldırıldı.
     observeEvent(input$search_chats, {
-      search_timer()
       current_page(1)  # Reset to first page on search
-    })
-
-    observeEvent(search_timer(), {
-      search_term_debounced(input$search_chats)
     })
     
 	    observeEvent(saved_chats(), {
       chats <- saved_chats()
 
       if (is.null(chats) || length(chats) == 0) {
+        zaman_onbellegi <<- new.env(hash = TRUE, parent = emptyenv())
         cached_meta(empty_meta())
         return()
       }
 
       ids <- names(chats)
       titles <- vapply(chats, function(chat) chat$title %||% "Söyleşi", character(1))
-      timestamps <- vapply(chats, function(chat) {
-        raw <- chat$last_message_timestamp %||% chat$timestamp
-        as.numeric(parse_timestamp(raw))
+      # Zaman damgası söyleşi başına önbellekten okunur: arka planda yayımlanan
+      # binlerce söyleşilik listede tek bir mesaj (sayfa gizliyken de) tüm
+      # damgaları yeniden ayrıştırmaz; yalnızca ham değeri değişen söyleşi
+      # ayrıştırılır. Silinen söyleşilerin kayıtları yeni önbelleğe taşınmaz.
+      onceki <- zaman_onbellegi
+      yeni_onbellek <- new.env(hash = TRUE, parent = emptyenv())
+      timestamps <- vapply(seq_along(chats), function(i) {
+        raw <- chats[[i]]$last_message_timestamp %||% chats[[i]]$timestamp
+        ham_eksik <- is.null(raw) || length(raw) == 0L || is.na(raw[1]) ||
+          (is.character(raw) && !nzchar(trimws(raw[1])))
+        if (ham_eksik) {
+          # Eksik zaman damgasında Sys.time() geri dönüşü önbelleklenmez.
+          return(as.numeric(parse_timestamp(raw)))
+        }
+        anahtar <- ids[[i]]
+        gecerli_anahtar <- !is.na(anahtar) && nzchar(anahtar)
+        kayit <- if (gecerli_anahtar) get0(anahtar, envir = onceki, inherits = FALSE) else NULL
+        if (is.null(kayit) || !identical(kayit$ham, raw)) {
+          kayit <- list(ham = raw, sayi = as.numeric(parse_timestamp(raw)))
+        }
+        if (gecerli_anahtar) assign(anahtar, kayit, envir = yeni_onbellek)
+        kayit$sayi
       }, numeric(1))
+      zaman_onbellegi <<- yeni_onbellek
 
       timestamps <- as.POSIXct(timestamps, origin = "1970-01-01", tz = TARGET_TZ)
 
@@ -411,6 +428,9 @@ savedChatsServer <- function(id, saved_chats) {
     observeEvent(input$confirm_delete_chat, {
       chat_id <- input$delete_chat_request
       removeModal()
+      # Her onay yeni bir olaydır: doğrulanamayan silmenin aynı kimlikle yeniden
+      # denenmesi, özdeş reactiveVal yazımı yutulmasın diye önce sıfırlanır.
+      delete_chat_trigger(NULL)
       delete_chat_trigger(chat_id)
       showToast(session, "Söyleşi silindi.", "warning")
     })
