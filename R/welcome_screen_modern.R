@@ -124,7 +124,9 @@ create_modern_preview_button <- function(chat_data) {
   )
 }
 
-createModernRecentChatsSection <- function(saved_chats) {
+# Karşılamada görünen "Son Konuşmalar" öğeleri (kimlik, başlık, özet, zaman).
+# Çizimden ayrı tutulur: görünür dilim değişmediyse yeniden çizim atlanabilir.
+mergen_welcome_recent_items <- function(saved_chats) {
 
   resolve_recent_chat_timestamp <- function(chat) {
     stamp <- chat$last_message_timestamp %||% chat$timestamp %||% NA
@@ -192,6 +194,11 @@ createModernRecentChatsSection <- function(saved_chats) {
       )
     }
   }
+  preview_chats
+}
+
+createModernRecentChatsSection <- function(saved_chats) {
+  preview_chats <- mergen_welcome_recent_items(saved_chats)
 
   if (length(preview_chats) > 0) {
     div(

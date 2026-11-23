@@ -207,10 +207,6 @@ $(document).ready(function() {
   // Kayıtlar kullanıcı tüketene (gönderim), silene ya da sahip sıfırlanana dek
   // tutulur; sayı sınırı yoktur (her kayıt girdideki gerçek metne karşılık gelir).
   const geriYuklemeler = [];
-  // Bu sahip için girdiye geri yüklenen istem metinleri (sınırlı). Sahiplik
-  // kanıtı DEĞİLDİR; yalnızca sahip sıfırlamasında izlenmeyen kopyaları (ör.
-  // tüm girdi değişiminden sonra Geri Al ile dönen metin) temizlemek içindir.
-  const sahipMetinleri = [];
   // Kullanıcı düzenlemesiyle silinen (ya da tamamen değiştirilen) bölümler:
   // yalnızca tarayıcının Geri Al işlemi metni AYNI konuma geri getirirse
   // sahiplik geri verilir; bağımsız yeniden yazılan metin sahiplenilmez.
@@ -363,7 +359,25 @@ $(document).ready(function() {
       i++;
     }
     if (geriAl) geriAlSahipliginiDondur(yeni);
+    // Her karakter en çok bir isteğe aittir: çakışan bölümler kalıcı olarak
+    // "çakıştı" sayılır, geç kabul onları kaldırmaz (sahip sıfırlaması kaldırır).
+    for (let a = 0; a < geriYuklemeler.length; a++) {
+      for (let c = a + 1; c < geriYuklemeler.length; c++) {
+        const x = geriYuklemeler[a];
+        const y = geriYuklemeler[c];
+        if (x.bas < y.son && y.bas < x.son) { x.cakisti = true; y.cakisti = true; }
+      }
+    }
     sahipsizleriBudala();
+    // Geri Al ile dönen, kabul edilmiş ve özgün hâlindeki bölüm hemen kalkar
+    // (geç kabul uzlaştırmasıyla aynı kural: düzenlenmemiş, çakışmamış bölüm).
+    if (geriAl) {
+      const kabulKimlikleri = [];
+      for (let k = 0; k < geriYuklemeler.length; k++) {
+        if (geriYuklemeler[k].kabulEdildi) kabulKimlikleri.push(geriYuklemeler[k].id);
+      }
+      for (let k = 0; k < kabulKimlikleri.length; k++) geriYuklemeyiUzlastir({ id: kabulKimlikleri[k] });
+    }
   }
 
   // Seçilen sahiplerin bölümleri aralıklarıyla kesilir; diğer bölümler ve
@@ -454,46 +468,30 @@ $(document).ready(function() {
       }
     }
     sonDeger = String(giris.value || '');
-    sahipMetinleri.push(ham);
-    if (sahipMetinleri.length > 64) sahipMetinleri.shift();
     girisiYenile(giris);
     return true;
   }
 
-  // Sahip sıfırlaması: izlenmeyen önceki sahip istem kopyaları da girdiden
-  // kalkar (ayırıcı satır sonuyla birlikte). Değer her durumda programatik
-  // atanır; tarayıcının yerel Geri Al yığını önceki metni geri getiremez.
-  function sahipMetinleriniTemizle() {
+  // Sahip sıfırlaması yalnızca SAHİPLİĞİ KANITLI metni kaldırır (izlenen
+  // bölümler; Geri Al ile aynı konuma dönen bölüm de izlenir). Metin eşitliği
+  // sahiplik kanıtı değildir: bağımsız yazılan özdeş metin korunur. Değer
+  // programatik yeniden atanır; tarayıcının yerel Geri Al yığını önceki
+  // sahibin silinmiş metnini geri getiremez.
+  function geriAlYigininiKes() {
     const giris = girisAlani();
-    const metinler = sahipMetinleri.splice(0);
     if (!giris) return;
-    let deger = String(giris.value || '');
-    // En uzun metin önce: kısa bir istem daha uzun olanın parçasını bırakmaz.
-    while (metinler.length) {
-      let en = 0;
-      for (let k = 1; k < metinler.length; k++) if (metinler[k].length > metinler[en].length) en = k;
-      const m = metinler.splice(en, 1)[0];
-      if (!m.trim()) continue;
-      let i = deger.indexOf(m);
-      while (i >= 0) {
-        let bas = i;
-        let son = i + m.length;
-        if (deger[son] === '\n') son++;
-        else if (bas > 0 && deger[bas - 1] === '\n') bas--;
-        deger = deger.slice(0, bas) + deger.slice(son);
-        i = deger.indexOf(m);
-      }
-    }
+    const deger = String(giris.value || '');
     giris.value = deger;
     sonDeger = deger;
     girisiYenile(giris);
   }
 
   // Geç kabul (asıl balon DOM'dayken): yalnızca bu isteğin DÜZENLENMEMİŞ bölümü
-  // kalkar; kullanıcının düzenlediği bölüm onun taslağı olarak kalır.
+  // kalkar; kullanıcının düzenlediği ya da başka istekle çakışan bölüm kalır.
   function geriYuklemeyiUzlastir(kayit) {
-    bolumleriKaldir(function(b) { return b.id === kayit.id && !b.duzenlendi; });
+    bolumleriKaldir(function(b) { return b.id === kayit.id && !b.duzenlendi && !b.cakisti; });
   }
+
 
   // gizliTut: sonucu belirsiz (zaman aşımı) istemin balonu kaldırılmaz, gizli
   // görünüm çapası olarak kapta kalır. Kap temizlenirse (Yeni Söyleşi/yükleme)
@@ -606,6 +604,8 @@ $(document).ready(function() {
         const icerik = dugum.querySelector('.user-message .message-content[data-copy-b64]');
         if (!icerik) return;
         const metin = (istemMetniCoz(icerik.getAttribute('data-copy-b64')) || '').trim();
+        // Teslimden önce eklenip kaldırılan (kopuk) düğüm görsel eşleşme sayılmaz.
+        if (!kaptaMi(dugum)) return;
         const kayit = bekleyenIstemler.find(function(b) { return !b.ayrildi && !b.sunucuDugumu && b.metin === metin; });
         if (!kayit) return;
         // Görsel ipucu: çift balon görünmesin diye bekleyen balon gizlenir; karar sunucudan gelir.
@@ -614,6 +614,15 @@ $(document).ready(function() {
         if (kayit.el) kayit.el.style.display = 'none';
       });
     });
+    // Görsel eşleşmesi kaptan ayrılan bekleyen istem yeniden görünür olur
+    // (sonuç gelene dek istem kaybolmaz; kilit sonuca kadar sürer).
+    for (let i = 0; i < bekleyenIstemler.length; i++) {
+      const b = bekleyenIstemler[i];
+      if (b.sunucuDugumu && !kaptaMi(b.sunucuDugumu)) {
+        b.sunucuDugumu = null;
+        if (b.el) b.el.style.display = '';
+      }
+    }
     if (degisti) dugmeDurumunuGuncelle();
   }).observe(sohbetKabi, { childList: true, subtree: true });
 
@@ -634,6 +643,18 @@ $(document).ready(function() {
     Shiny.addCustomMessageHandler('mergenBekleyenIstemSifirla', function(veri) {
       const nesil = Number(veri && veri.nesil);
       if (Number.isInteger(nesil) && nesil > sahipNesli) sahipNesli = nesil;
+      // Aynı kullanıcının yetki kapsamı değişti (sahip aynı): eski kapsamla
+      // yola çıkan istem sunucuda işlenmez; metni ret gibi geri yüklenir ve
+      // açıkça bildirilir. Önceki geri yüklemeler ve taslak kullanıcının kalır.
+      if (veri && veri.neden === 'yetki_degisti') {
+        const yetkiBekleyenleri = bekleyenIstemler.splice(0);
+        for (let i = 0; i < yetkiBekleyenleri.length; i++) {
+          if (yetkiBekleyenleri[i].sonucZamanlayici) clearTimeout(yetkiBekleyenleri[i].sonucZamanlayici);
+          reddet(yetkiBekleyenleri[i], 'Oturum yetkileri güncellendi; istem gönderilmedi, metin giriş alanına geri yüklendi.');
+        }
+        dugmeDurumunuGuncelle();
+        return;
+      }
       bekleyenIstemler.splice(0).concat(kabulBekleyenler.splice(0), zamanAsimlari.splice(0)).forEach(function(kayit) {
         if (kayit.sonucZamanlayici) clearTimeout(kayit.sonucZamanlayici);
         if (kayit.zamanlayici) clearTimeout(kayit.zamanlayici);
@@ -643,7 +664,7 @@ $(document).ready(function() {
       bolumleriKaldir(function() { return true; });
       geriYuklemeler.length = 0;
       silinenBolumler.length = 0;
-      sahipMetinleriniTemizle();
+      geriAlYigininiKes();
       canliBildir('');
       dugmeDurumunuGuncelle();
     });
@@ -661,19 +682,27 @@ $(document).ready(function() {
     const kayit = zamanAsimlari.splice(i, 1)[0];
     if (veri.durum !== 'kabul') { balonuKaldir(kayit); return; }
     if (!kilitliMi()) canliBildir('Gecikmeli istem iletildi.');
+    // Kabul edilen isteğin bölümleri (silinmiş olsalar da) işaretlenir: Geri Al
+    // bölümü özgün hâliyle geri getirirse hemen kaldırılır, yeniden gönderilmez.
+    for (let k = 0; k < geriYuklemeler.length; k++) if (geriYuklemeler[k].id === kayit.id) geriYuklemeler[k].kabulEdildi = true;
+    for (let k = 0; k < silinenBolumler.length; k++) {
+      if (silinenBolumler[k].kayit && silinenBolumler[k].kayit.id === kayit.id) silinenBolumler[k].kayit.kabulEdildi = true;
+    }
     geriYuklemeyiUzlastir(kayit);
     const mesajId = String(veri.mesaj_id || '');
     const dugum = mesajId && typeof document.getElementById === 'function'
       ? document.getElementById('message_wrapper_' + mesajId) : null;
     const ayniGorunum = !!(kayit.el && sohbetKabi && kayit.el.parentNode === sohbetKabi);
+    // Zaman aşımı karşılamayı geri getirdiyse ve görünüm değişmediyse söyleşi
+    // kabı yeniden gösterilir (asıl balon zaten kaptaysa da kabul görünür olur).
+    if (ayniGorunum && kayit.karsilamaGeriGeldi) {
+      $('#welcome_fullscreen_container').addClass('hidden');
+      $(sohbetKabi).show();
+    }
     if (dugum || !mesajId || !ayniGorunum) {
       if (dugum) solmayiKapat(dugum);
       balonuKaldir(kayit);
       return;
-    }
-    if (kayit.karsilamaGeriGeldi) {
-      $('#welcome_fullscreen_container').addClass('hidden');
-      $(sohbetKabi).show();
     }
     kayit.el.style.display = '';
     kabulGorunumunuTamamla(kayit);

@@ -32,11 +32,16 @@ history_cache_dropper <- function(messages_cache, yayin_sayaci = NULL, isitma = 
     }
     cache <- shiny::isolate(messages_cache())
     dusur <- if (is.null(chat_ids)) names(cache) else intersect(names(cache), as.character(chat_ids))
+    # Açık düşürme süren zincirde yeniden okumaya izin verir; önbellekte
+    # olmayan (ör. okuması başarısız) istenen kimlikler de dahildir. Tümünü
+    # düşürmede etkin zincirin izlediği kimlikler de eklenir.
+    yeniden <- if (is.null(chat_ids)) {
+      union(names(cache), if (is.environment(isitma)) names(isitma$zincir) else character())
+    } else as.character(chat_ids)
+    history_allow_reread(isitma, yeniden)
     if (length(dusur)) {
       cache[dusur] <- NULL
       messages_cache(cache)
-      # Açık düşürme süren zincirde yeniden okumaya izin verir.
-      history_allow_reread(isitma, dusur)
       if (is.function(yayin_sayaci)) yayin_sayaci(shiny::isolate(yayin_sayaci()) + 1)
     }
     invisible(length(dusur))
@@ -108,9 +113,11 @@ history_rows_worker_promise <- function(chat_ids, user_id, session_token = NULL,
   gecmis_sure <- yapilandirma$query_timeout
   ham <- tracked_future_promise(
     task_fn = function() {
+      # TTL okuma BAŞLANGICINDAN ölçülür: uzun okuma eski alıntıyı taze göstermez.
+      okuma_baslangici <- Sys.time()
       veri <- mergen_bounded_db_fetch_raw(gecmis_sql, gecmis_parametreler, gecmis_dsn, gecmis_kodlama,
                                           gecmis_ad_kodlama, gecmis_login, gecmis_sure)
-      attr(veri, "mergen_okuma_zamani") <- Sys.time()
+      attr(veri, "mergen_okuma_zamani") <- okuma_baslangici
       veri
     },
     task_type = "history_rows_prepare",
@@ -220,8 +227,9 @@ history_prepare_rows_async <- function(session, ids, damgalar, uid, isitma, reso
     if (!gecerli()) return(NULL)
     shiny::isolate({
       cache <- messages_cache()
-      simdiki <- if (is.function(guncel_sohbetler) && is.function(damga_fn)) {
-        history_stamps(ids, guncel_sohbetler(), damga_fn)
+      guncel_liste <- if (is.function(guncel_sohbetler)) guncel_sohbetler() else NULL
+      simdiki <- if (is.list(guncel_liste) && is.function(damga_fn)) {
+        history_stamps(ids, guncel_liste, damga_fn)
       } else damgalar[ids]
       damga_ayni <- vapply(ids, function(id) identical(simdiki[[id]], damgalar[[id]]), logical(1))
       degismeyen <- ids[history_versions(isitma, ids) == surumler & damga_ayni]
@@ -231,9 +239,17 @@ history_prepare_rows_async <- function(session, ids, damgalar, uid, isitma, reso
       okuma_zamani <- attr(sonuc, "mergen_okuma_zamani")
       if (!inherits(okuma_zamani, "POSIXt")) okuma_zamani <- Sys.time()
       for (id in okunan) {
-        cache[[id]] <- list(rows = if (is.list(sonuc[[id]])) sonuc[[id]] else list(),
-                            stamp = damgalar[[id]], okuma = okuma_zamani,
-                            liste_baslik = if (is.list(liste_basliklar)) liste_basliklar[[id]] else NULL)
+        gonderim_basligi <- if (is.list(liste_basliklar)) liste_basliklar[[id]] else NULL
+        kayit <- list(rows = if (is.list(sonuc[[id]])) sonuc[[id]] else list(),
+                      stamp = damgalar[[id]], okuma = okuma_zamani,
+                      liste_baslik = gonderim_basligi)
+        # Gönderimden sonra yerelde yeniden adlandırma: kalıcı yerel başlık
+        # işareti konur (başlık özgün değerine dönse de DB başlığı gösterilmez).
+        if (is.list(liste_basliklar) && is.list(guncel_liste) && !is.null(guncel_liste[[id]]) &&
+            !identical(guncel_liste[[id]]$title, gonderim_basligi)) {
+          kayit$baslik_yerel <- TRUE
+        }
+        cache[[id]] <- kayit
       }
       history_touch(isitma, okunan)
       messages_cache(cache)

@@ -210,6 +210,9 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	  # bu durum değişmediyse ön izlemeyi uygulayabilir; yerel sohbet ekleme/güncelleme
 	  # daha yeni durumu temsil eder ve hiçbir zaman eski ön izlemeyle ezilmez.
 	  preview_saved_chats_snapshot <- shiny::isolate(values$saved_chats)
+	  # Silme/Tümünü Temizle yetkili sürümü artırır: değer eşitliği (ör. boş
+	  # liste) ön izlemenin hâlâ geçerli olduğunu kanıtlamaz.
+	  preview_saved_chats_surum <- session$userData$saved_chats_yetkili_surum %||% 0L
 
 	  # Dürüst kontrol noktası: ön izleme Hızlı Başlangıç kapanış sözleşmesinin
 	  # parçası değildir ve HEMEN ertelenmiş olarak işaretlenir. Gerçek ısıtma
@@ -278,7 +281,8 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 		  }, 0)
 		}
 		shiny::isolate({
-		  if (!identical(values$saved_chats, preview_saved_chats_snapshot)) {
+		  if (!identical(values$saved_chats, preview_saved_chats_snapshot) ||
+		      !identical(session$userData$saved_chats_yetkili_surum %||% 0L, preview_saved_chats_surum)) {
 			cat("[STARTUP] Kayıtlı sohbet durumu değişti, eski ön izleme atlandı\n")
 			return(invisible(NULL))
 		  }
@@ -523,6 +527,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			  } else {
 				chats <- values$saved_chats %||% list()
 			  }
+			  onceki_gorunur <- try(mergen_welcome_recent_items(values$saved_chats), silent = TRUE)
 			  values$saved_chats <- chats
 			  session$userData$saved_chats_full_loaded <- TRUE
 
@@ -532,12 +537,18 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 				detail = list(count = length(chats))
 			  )
 
-			  # Tam liste geldiğinde karşılama ekranını güncelle; olası çizim
-			  # hatası geçmiş hazırlığını ve başarı akışını kesintiye uğratmaz.
-			  try(refresh_welcome_if_needed(chats), silent = TRUE)
+			  # Karşılama yalnızca görünen "Son Konuşmalar" dilimi değiştiyse yeniden
+			  # çizilir (animasyonlar boşuna yeniden başlatılmaz); olası çizim hatası
+			  # geçmiş hazırlığını ve başarı akışını kesintiye uğratmaz.
+			  yeni_gorunur <- try(mergen_welcome_recent_items(chats), silent = TRUE)
+			  if (inherits(onceki_gorunur, "try-error") || !identical(onceki_gorunur, yeni_gorunur)) {
+				try(refresh_welcome_if_needed(chats), silent = TRUE)
+			  }
 			})
 			# Tam liste hazır: geçmiş ilk sayfası arka planda (işçide) hazırlanır.
-			yonetim_hazirla(full_load_generation)
+			# Hızlı Başlangıç bu hazırlığı beklemez; paylaşılan işçi kuyruğu spekülatif
+			# okumayla doldurulmaz, geçmiş sekme ziyaretinde hazırlanır.
+			if (!isTRUE(fast_lane)) yonetim_hazirla(full_load_generation)
 
 			NULL
 		  },

@@ -432,7 +432,7 @@ savedChatsServer <- function(id, saved_chats) {
       # denenmesi, özdeş reactiveVal yazımı yutulmasın diye önce sıfırlanır.
       delete_chat_trigger(NULL)
       delete_chat_trigger(chat_id)
-      showToast(session, "Söyleşi silindi.", "warning")
+      # Başarı bildirimi silme doğrulandıktan sonra sunucu gözlemcisinden gelir.
     })
     
     observeEvent(input$clear_all_chats, {

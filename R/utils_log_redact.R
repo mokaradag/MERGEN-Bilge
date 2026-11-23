@@ -297,6 +297,11 @@ redact_connection_identifiers <- function(x) {
   # sonraki geçişlerde maskelenmeden kalıyordu.
   on_isle <- tryCatch(.redact_quoted_log_values(x), error = function(e) NULL)
   if (is.null(on_isle) && !is.null(x)) return("<redaksiyon uygulanamadi>")
+  # Bağımsız Bearer kimlik bilgisi RFC 6750 b64token karakterlerinin TAMAMIYLA
+  # (`~` dahil) genel redaktörden önce maskelenir; kuyruk açıkta kalmaz.
+  if (is.character(on_isle)) {
+    on_isle <- gsub("(?i)(?<![A-Za-z0-9_])(Bearer\\s+)[A-Za-z0-9._~+/-]+=*", "\\1<redacted>", on_isle, perl = TRUE)
+  }
   metin <- tryCatch(redact_sensitive_text(on_isle), error = function(e) NULL)
   if (is.null(metin)) return("<redaksiyon uygulanamadi>")
   if (!is.character(metin) || length(metin) == 0L) return(metin)
@@ -330,7 +335,8 @@ redact_connection_identifiers <- function(x) {
     # DEĞER SINIFI SATIR SONUNU KAPSAMAZ (PR #705 inceleme, P3): yukarıdaki
     # `redact_sensitive_text()` geçişiyle AYNI gerekçe -- kapanmamış bir küme
     # sonraki satırların kapanışına kadar her şeyi yutup tanı bağlamını siliyordu.
-    paste0("(?i)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS,
+    # Sır anahtarları (`auth_token={...}`, `authToken={...}`) da kapsanır.
+    paste0("(?i)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS, "|", .REDACT_LOG_SECRET_KEYS,
            ")(\\s*=\\s*)\\{(?>(?:[^{}\\r\\n]|\\}\\})*)\\}"),
     "\\1\\2\\3{<redacted>}",
     metin,
@@ -349,7 +355,7 @@ redact_connection_identifiers <- function(x) {
   # `[^{}]` yüzünden ilk `}` karakterinde durup HİÇ eşleşmiyordu: kesilmiş bir
   # ODBC tanısında parola kuyruğu kalıcı loga yazılırdı.
   metin <- gsub(
-    paste0("(?im)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS,
+    paste0("(?im)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS, "|", .REDACT_LOG_SECRET_KEYS,
            ")(\\s*=\\s*)\\{(?:[^{}\r\n]|\\}\\})*(?=\r|\n|\\z)"),
     "\\1\\2\\3{<redacted>}",
     metin,
@@ -366,11 +372,20 @@ redact_connection_identifiers <- function(x) {
     perl = TRUE
   )
   # Noktalı virgüllü ODBC dizesinin son alanındaki boşluklu tanımlayıcı
-  # (sonunda `;` olmasa da) dize sonuna/yapısal ayırıcıya/tanı ayrımına kadar
-  # maskelenir; aynı satırdaki sıradan tanı düzyazısı (`: `, ` - `) korunur.
+  # (sonunda `;` olmasa da) satır sonuna ya da yapısal ayırıcıya kadar
+  # maskelenir. Değer içinde ` - ` ya da `: ` olabilir (ör. `DSN=Ozel - Bordro`);
+  # alan sınırı bilinmediğinden tanı düzyazısı uğruna değer açıkta bırakılmaz.
   metin <- gsub(
     paste0("(?im)(;\\s*)(", .REDACT_CONN_KEYS,
-           ")(\\s*=\\s*)(?!<redacted>)(?!\\{)(?:(?![;,}\\])\\r\\n\"'<>]|:\\s|\\s+-\\s+).)+"),
+           ")(\\s*=\\s*)(?!<redacted>)(?!\\{)[^;,}\\])\\r\\n\"'<>]+"),
+    "\\1\\2\\3<redacted>",
+    metin,
+    perl = TRUE
+  )
+  # Tek alanlı `DSN=` değeri (noktalı virgülsüz) de bütün olarak maskelenir:
+  # DSN adı boşluk içerebilir ve kısmi ad loga yazılmaz.
+  metin <- gsub(
+    "(?im)(^|[;{(\\[,\\s])(dsn)(\\s*=\\s*)(?!\\{)[^;,}\\])\\r\\n\"'<>]*[^;,}\\])\\r\\n\"'<>\\s]",
     "\\1\\2\\3<redacted>",
     metin,
     perl = TRUE
@@ -404,9 +419,11 @@ redact_connection_identifiers <- function(x) {
   )
   # Çıplak SIR değerleri (`secret=abcde`, `"token": 12345`) uzunluktan bağımsız
   # maskelenir; genel redaktörün eşiği değişmez, bu yalnızca log katmanıdır.
+  # Genel geçişin başını maskelediği değerin kuyruğu (`<redacted>&kuyruk`) da
+  # bütünüyle maskelenir; zaten maskeli değer değişmez.
   gsub(
     paste0(.REDACT_LOG_KEY_ONU, "(", .REDACT_LOG_SECRET_KEYS, ")", .REDACT_LOG_KEY_SONU,
-           "(?!<redacted>)(?![{\"'])[^;,}\\])\\s\"']+"),
+           "(?![{\"'])[^;,}\\])\\s\"']+"),
     "\\1\\2\\3\\4<redacted>",
     metin,
     perl = TRUE

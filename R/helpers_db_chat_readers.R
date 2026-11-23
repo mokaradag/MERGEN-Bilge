@@ -289,6 +289,9 @@ load_chat_messages_from_db <- function(chat_id, user_id = NULL) {
 
   query_params <- normalize_db_params(list(chat_param, safe_user_id))
 
+  # Okumanın BAŞLANGIÇ anı: başlık tazeliği biçimlendirmenin bitişiyle değil
+  # sorgunun başlangıcıyla karşılaştırılır (bkz. mergen_saved_chats_merge_newer).
+  okuma_baslangici <- as.numeric(Sys.time())
   chat_df <- safe_select_messages_with_reasoning(
     conn,
     query_with_reasoning,
@@ -328,7 +331,8 @@ load_chat_messages_from_db <- function(chat_id, user_id = NULL) {
     timestamp = chat_df$CreateTimestamp[1],
     last_message_timestamp = last_msg_time,
     messages = messages,
-    message_count = length(messages)
+    message_count = length(messages),
+    okuma_baslangici = okuma_baslangici
   )
 }
 

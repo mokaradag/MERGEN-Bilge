@@ -75,6 +75,12 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     }
 
     load_chat_in_progress(TRUE)
+    # Kilit her çıkış yolunda (hata dahil) bırakılır; başarıda gecikmeli
+    # geri çağrıya devredilir.
+    kilit_devredildi <- FALSE
+    on.exit({
+      if (!isTRUE(kilit_devredildi)) try(load_chat_in_progress(FALSE), silent = TRUE)
+    }, add = TRUE)
     yukleme_baslangici <- Sys.time()
 
     # Önce mevcut önbelleğe bak
@@ -94,7 +100,11 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
 
     yenileme_istendi <- !is.null(chat_to_load) && isTRUE(chat_to_load$transkript_yenile)
     yenileme_basarisiz <- FALSE
+    okuma_hatasi <- FALSE
     etkin_uid <- suppressWarnings(as.integer(resolve_runtime_user_id())[1])
+    # Hidrasyon gerekmeyen önbellek kaydı kimlik çözülmeden de gösterilebilir;
+    # bu durumda kullanıcı açıkça uyarılır.
+    kimlik_cozulmedi <- !isTRUE(needs_hydrate) && (is.na(etkin_uid) || etkin_uid <= 0L)
 
     # Kimlik henüz çözülmediyse görünüme dokunulmadan çıkılır: sekme/transkript
     # değişmez, önbellek silinmez, silinmiş uyarısı verilmez.
@@ -129,7 +139,15 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
         }
       )
       if (is.null(detail)) {
-        if (isTRUE(yenileme_istendi)) yenileme_basarisiz <- TRUE
+        # Okuma hatası: gösterilecek önbellek transkripti varsa uyarıyla gösterilir;
+        # yoksa önceki görünüm geri yüklenir (boş söyleşi "yüklendi" sayılmaz).
+        onbellek_mesajlari <- if (is.list(chat_to_load$messages)) chat_to_load$messages else list()
+        if (length(onbellek_mesajlari) > 0L) {
+          yenileme_basarisiz <- TRUE
+        } else {
+          chat_to_load <- NULL
+          okuma_hatasi <- TRUE
+        }
       } else if (isTRUE(detail$kayit_bulunamadi)) {
         # Söyleşi başka oturumda silinmiş: açık DB kanıtıyla önbellek temizlenir.
         saved_copy <- values$saved_chats %||% list()
@@ -152,7 +170,11 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
 
     if (is.null(chat_to_load)) {
       galeri_yukleme_geri_al()
-      showToast(session, "Bu söyleşi artık mevcut değil veya silinmiş.", "error")
+      if (isTRUE(okuma_hatasi)) {
+        showToast(session, "Söyleşi şu anda okunamadı; lütfen kısa süre sonra tekrar deneyin.", "error")
+      } else {
+        showToast(session, "Bu söyleşi artık mevcut değil veya silinmiş.", "error")
+      }
       load_chat_in_progress(FALSE)
       return()
     }
@@ -329,6 +351,7 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
       as.numeric(difftime(Sys.time(), yukleme_baslangici, units = "secs")) * 1000
     ))
     shinyjs::delay(120, { load_chat_in_progress(FALSE) })
+    kilit_devredildi <- TRUE
   })
 
   # Tekil görsel silindikten sonra ilgili söyleşinin önbelleğini yenile

@@ -118,3 +118,43 @@ testthat::test_that("guard yolu mevcut sohbet kimliğini değiştirmez", {
   # Anahtar-yok dalı yalnızca uyarı ekler; current_chat_id'ye dokunmamalı.
   testthat::expect_identical(fix$values$current_chat_id, "chat-1")
 })
+
+# Görsel isteği sürerken etkin söyleşi silinir/sıfırlanırsa (istek kimliği
+# değişmese de) sonuç sıfırlanan görünüme ya da sonradan açılan başka söyleşiye
+# eklenmez; gönderme durumu serbest bırakılır.
+testthat::test_that("görsel sonucu söyleşi sıfırlandıktan sonra gelirse mesaj eklenmez, durum serbest bırakılır", {
+  testthat::skip_if_not_installed("promises")
+  testthat::skip_if_not_installed("later")
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  kok <- resolve_repo_root_for_tests()
+  source(file.path(kok, "R", "helpers_async_result_guard.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "server_handler_image_generation.R"), encoding = "UTF-8", local = env)
+  env$mergen_resolve_image_api_key <- function(...) "anahtar"
+  env$removeUI <- env$insertUI <- env$showToast <- env$log_debug <- function(...) NULL
+  env$render_generated_image_html <- function(...) "<img>"
+  cozumle <- NULL
+  env$tracked_future_promise <- function(...) promises::promise(function(resolve, reject) cozumle <<- resolve)
+  env$`%...>%` <- promises::`%...>%`
+  env$`%...!%` <- promises::`%...!%`
+  testthat::local_mocked_bindings(runjs = function(...) NULL, .package = "shinyjs")
+  mesajlar <- list(); sifirlama <- 0L
+  values <- new.env(); values$current_chat_id <- 9L; values$typing <- TRUE
+  ud <- new.env()
+  later::with_temp_loop({
+    env$handle_image_generation_mode(list(
+      input = list(), settings_data = list(), values = values,
+      session = list(token = "gorsel-test", userData = ud), current_user_id = 7, user_message_text = "kedi",
+      add_message_fn = function(content, type, html = NULL) mesajlar[[length(mesajlar) + 1L]] <<- content,
+      reset_chat_state_fn = function() sifirlama <<- sifirlama + 1L
+    ))
+    # Etkin söyleşi silindi: kimlik düşer, kaydedilmemiş söyleşi nesli artar.
+    values$current_chat_id <- NULL
+    ud$pk_unsaved_chat_epoch <- 1L
+    cozumle(list(success = TRUE, local_path = "x.png"))
+    for (i in seq_len(50L)) { if (later::loop_empty()) break; later::run_now(timeout = 0) }
+  })
+  testthat::expect_length(mesajlar, 0L)
+  testthat::expect_identical(sifirlama, 1L)
+  testthat::expect_false(isTRUE(values$typing))
+})

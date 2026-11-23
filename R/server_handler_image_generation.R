@@ -106,6 +106,11 @@ handle_image_generation_mode <- function(ctx) {
     }
     !mergen_is_current_request(active_request_id_local, req_id_local, stop_generation_local)
   }
+  # Söyleşi sahipliği: istek sürerken söyleşi silinir/sıfırlanır ya da başka
+  # söyleşi açılırsa sonuç o görünüme eklenmez (görsel galeride kalır).
+  sohbet_sahibi <- tryCatch(mergen_chat_owner_guard(ctx$session, ctx$values),
+                            error = function(e) function() TRUE)
+  sohbet_degisti <- function() !isTRUE(tryCatch(sohbet_sahibi(), error = function(e) TRUE))
 
 	tracked_future_promise(
 	  task_fn = mergen_image_generation_task_fn(
@@ -126,6 +131,12 @@ handle_image_generation_mode <- function(ctx) {
     # Bayat sonuç: kullanıcı durdurup yeni istek başlattıysa hiçbir UI
     # mutasyonu yapma. Görsel zaten galeriye kaydedildiği için kaybolmaz.
     if (isTRUE(is_stale_image_request())) {
+      return(invisible(NULL))
+    }
+    if (isTRUE(sohbet_degisti())) {
+      # İstek hâlâ etkin: gönderme durumu serbest bırakılır, mesaj eklenmez.
+      ctx$values$typing <- FALSE
+      ctx$reset_chat_state_fn()
       return(invisible(NULL))
     }
 
@@ -156,6 +167,11 @@ handle_image_generation_mode <- function(ctx) {
   }) %...!% (function(err) {
     # Bayat hata sonucu da yeni isteğin durumunu etkilememeli.
     if (isTRUE(is_stale_image_request())) {
+      return(invisible(NULL))
+    }
+    if (isTRUE(sohbet_degisti())) {
+      ctx$values$typing <- FALSE
+      ctx$reset_chat_state_fn()
       return(invisible(NULL))
     }
 

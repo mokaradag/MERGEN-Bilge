@@ -170,6 +170,8 @@ testthat::test_that("hidrasyonda kaydı bulunamayan açık söyleşi silinenlere
     testthat::expect_null(shiny::isolate(session$userData$.values$current_chat_id))
     testthat::expect_length(shiny::isolate(session$userData$.values$messages), 0L)
     testthat::expect_true(any(grepl("artık mevcut değil", kayit$toast)))
+    # Kanonik anahtar ("7") önbellekten kalkar; ilgisiz kart korunur.
+    testthat::expect_identical(names(shiny::isolate(session$userData$.values$saved_chats)), "2")
   })
 })
 
@@ -216,4 +218,61 @@ testthat::test_that("başarısız hidrasyon okuması silinenlere yazılmaz ve uy
   hidrasyon <- grep("Failed to load chat", uyarilar, value = TRUE)
   testthat::expect_length(hidrasyon, 1L)
   testthat::expect_false(any(grepl("GizliKaynak|gizli_kullanici|sir123", hidrasyon)))
+})
+
+testthat::test_that("başarılı silme yeniden kurulumu kalan söyleşilerin kayıtsız mesajlarını korur ve başarıyı doğrulamadan sonra bildirir", {
+  kayit <- new.env()
+  env <- .silme_ortami(kayit)
+  kayit$db_listesi <- list("2" = list(title = "İki", message_count = 1L))
+  kayitsiz <- list(id = "yerel_1", db_id = NULL, type = "user", content = "kaydedilemeyen istem")
+  baslangic <- list("1" = list(title = "Bir"),
+                    "2" = list(title = "İki", message_count = 2L,
+                               messages = list(list(id = "11", db_id = 11L, type = "user", content = "kayıtlı"), kayitsiz)))
+  shiny::testServer(.silme_sunucusu(env, kayit, baslangic), {
+    session$flushReact()
+    session$userData$.sil("1")
+    session$flushReact()
+    sonuc <- shiny::isolate(session$userData$.values$saved_chats)
+    testthat::expect_identical(names(sonuc), "2")
+    testthat::expect_length(sonuc[["2"]]$messages, 2L)
+    testthat::expect_identical(sonuc[["2"]]$messages[[2]]$content, "kaydedilemeyen istem")
+    testthat::expect_true(isTRUE(sonuc[["2"]]$transkript_yenile))
+    testthat::expect_true("Söyleşi silindi." %in% kayit$toast)
+  })
+})
+
+testthat::test_that("silme DB hatası oturumu kapatmaz; doğrulanamayan silme başarı bildirmez", {
+  kayit <- new.env()
+  env <- .silme_ortami(kayit)
+  env$delete_chat_from_db <- function(chat_id, user_id) stop("[ODBC] bağlantı koptu; UID=gizli_kullanici")
+  kayit$db_listesi <- list("1" = list(title = "Bir"), "2" = list(title = "İki"))
+  baslangic <- kayit$db_listesi
+  uyarilar <- character()
+  withCallingHandlers({
+    shiny::testServer(.silme_sunucusu(env, kayit, baslangic), {
+      session$flushReact()
+      session$userData$.sil("1")
+      session$flushReact()
+      testthat::expect_identical(names(shiny::isolate(session$userData$.values$saved_chats)), c("1", "2"))
+      testthat::expect_null(session$userData$saved_chats_silinenler)
+    })
+  }, warning = function(w) { uyarilar <<- c(uyarilar, conditionMessage(w)); invokeRestart("muffleWarning") })
+  testthat::expect_true(any(grepl("silindiği doğrulanamadı", kayit$toast)))
+  testthat::expect_false("Söyleşi silindi." %in% kayit$toast)
+  testthat::expect_false(any(grepl("gizli_kullanici", uyarilar)))
+})
+
+testthat::test_that("özet önbellekteki söyleşinin detay okuması başarısızsa boş söyleşi açılmaz ve hata bildirilir", {
+  kayit <- new.env()
+  env <- .silme_ortami(kayit)
+  env$load_chat_messages_from_db <- function(chat_id, user_id) stop("okuma_hatasi_test")
+  baslangic <- list("5" = list(title = "Beş", message_count = 4L), "9" = list(title = "Dokuz"))
+  suppressWarnings(shiny::testServer(.yukleme_sunucusu(env, kayit, baslangic, etkin = 9L), {
+    session$flushReact()
+    session$userData$.yukle("5")
+    session$flushReact()
+    testthat::expect_identical(shiny::isolate(session$userData$.values$current_chat_id), 9L)
+    testthat::expect_length(shiny::isolate(session$userData$.values$messages), 1L)
+  }))
+  testthat::expect_true(any(grepl("şu anda okunamadı", kayit$toast)))
 })

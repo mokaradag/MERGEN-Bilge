@@ -351,6 +351,50 @@ mergen_chat_activity_seconds <- function(value, tz = "Europe/Istanbul") {
   NA_real_
 }
 
+# Vektörel sürüm: mergen_chat_activity_seconds ile aynı sonuçları toplu
+# dönüşümle üretir (her öğe için ayrı format/strptime çağrısı yapılmaz).
+mergen_chat_activity_seconds_vec <- function(degerler, tz = "Europe/Istanbul") {
+  n <- length(degerler)
+  sonuc <- rep(NA_real_, n)
+  if (!n) return(sonuc)
+  tur <- character(n); ham <- rep(NA_real_, n); metin <- rep(NA_character_, n)
+  for (i in seq_len(n)) {
+    v <- degerler[[i]]
+    if (is.null(v) || length(v) == 0L) next
+    if (inherits(v, "POSIXt")) {
+      v1 <- as.numeric(as.POSIXct(v[1]))
+      if (is.na(v1)) next
+      bolge <- attr(v, "tzone")
+      utc <- length(bolge) && toupper(as.character(bolge[1])) %in% c("UTC", "GMT")
+      tur[i] <- if (utc) "utc" else "sayi"; ham[i] <- v1
+    } else if (is.numeric(v) && !inherits(v, "Date")) {
+      if (is.finite(v[1])) { tur[i] <- "sayi"; ham[i] <- as.numeric(v[1]) }
+    } else if (is.character(v) || is.factor(v)) {
+      m <- as.character(v[1])
+      if (!is.na(m) && nzchar(m)) { tur[i] <- "metin"; metin[i] <- m }
+    } else {
+      tur[i] <- "tekil"
+    }
+  }
+  sayi <- tur == "sayi"
+  sonuc[sayi] <- ham[sayi]
+  utc <- which(tur == "utc")
+  if (length(utc)) {
+    duvar <- format(as.POSIXct(ham[utc], origin = "1970-01-01", tz = "UTC"), "%Y-%m-%d %H:%M:%S", tz = "UTC")
+    sonuc[utc] <- as.numeric(as.POSIXct(duvar, tz = tz))
+  }
+  kalan <- which(tur == "metin")
+  for (bicim in c("%Y-%m-%d %H:%M:%OS", "%Y-%m-%d %H:%M", "%d.%m.%Y - %H:%M", "%Y-%m-%d")) {
+    if (!length(kalan)) break
+    zaman <- as.numeric(suppressWarnings(as.POSIXct(metin[kalan], format = bicim, tz = tz)))
+    tamam <- !is.na(zaman)
+    sonuc[kalan[tamam]] <- zaman[tamam]
+    kalan <- kalan[!tamam]
+  }
+  for (i in which(tur == "tekil")) sonuc[i] <- mergen_chat_activity_seconds(degerler[[i]], tz = tz)
+  sonuc
+}
+
 # Yerel mesaj DB'ye kaydedilmemiş mi (db_id yok ve DB kimlikleri arasında değil)?
 mergen_chat_message_unsaved <- function(m, db_ids = character()) {
   if (!is.list(m)) return(FALSE)
@@ -369,7 +413,8 @@ mergen_chat_message_unsaved <- function(m, db_ids = character()) {
 # gelen ilk kayıtlı mesajın hemen önüne yerleşir; ardında kayıtlı mesaj yoksa
 # (gerçekten sondaysa) sona eklenir. Kaydı başarısız kullanıcı istemi
 # kaydedilmiş yanıtın önünde kalır; DB sırası (eşit zamanlar dahil) değişmez. Kayıtsız mesaj korunursa
-# etkinlik zamanı iki adayın daha yenisidir. hidrate_zamani: bu okumanın anı.
+# etkinlik zamanı iki adayın daha yenisidir. hidrate_zamani: bu okumanın
+# BAŞLANGIÇ anı (okuyucu bildirdiyse); biçimlendirme süresi tazelik sayılmaz.
 mergen_chat_reconcile_hydrated_detail <- function(detail, chat_to_load = NULL) {
   if (!is.list(detail)) return(detail)
   db_msgs <- if (is.list(detail$messages)) detail$messages else list()
@@ -398,13 +443,17 @@ mergen_chat_reconcile_hydrated_detail <- function(detail, chat_to_load = NULL) {
           sona <- c(sona, list(onceki_msgs[[i]]))
         }
       }
-      birlesik <- list()
+      # DB mesajı başına bir parça toplanır ve tek seferde düzleştirilir: uzun
+      # transkriptte her adımda büyüyen listenin kopyalanması (karesel) önlenir.
+      parcalar <- vector("list", length(db_msgs))
       for (j in seq_along(db_msgs)) {
         k <- db_ids[[j]]
-        birlesik <- c(birlesik, if (nzchar(k)) once[[k]], list(db_msgs[[j]]))
-        if (nzchar(k)) once[[k]] <- NULL
+        onunde <- if (nzchar(k)) once[[k]] else NULL
+        parcalar[[j]] <- c(onunde, list(db_msgs[[j]]))
+        if (!is.null(onunde)) once[[k]] <- NULL
       }
-      detail$messages <- c(birlesik, sona)
+      birlesik <- unlist(parcalar, recursive = FALSE)
+      detail$messages <- c(birlesik %||% list(), sona)
       detail$message_count <- length(detail$messages)
     }
   }
@@ -416,7 +465,9 @@ mergen_chat_reconcile_hydrated_detail <- function(detail, chat_to_load = NULL) {
     detail$last_message_timestamp <- yerel_zaman
   }
   detail$hidrate_edildi <- TRUE
-  detail$hidrate_zamani <- as.numeric(Sys.time())
+  okuma_sn <- suppressWarnings(as.numeric(detail$okuma_baslangici %||% NA_real_)[1])
+  detail$hidrate_zamani <- if (length(okuma_sn) == 1L && is.finite(okuma_sn)) okuma_sn else as.numeric(Sys.time())
+  detail$okuma_baslangici <- NULL
   detail$transkript_yenile <- NULL
   detail
 }

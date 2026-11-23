@@ -111,9 +111,9 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       return()
     }
     
+    chat_id <- mergen_saved_chats_canonical_key(chat_id)  # arama/silme/mezar taşı tek kanonik anahtar ("007" -> "7")
     # Son silinen sohbeti yüklemeye çalışıyorsa engelle
-    if (identical(chat_id, last_deleted_chat_id()) ||
-        identical(as.character(mergen_canonical_user_id(chat_id)), last_deleted_chat_id())) {
+    if (identical(chat_id, last_deleted_chat_id())) {
       cat(sprintf("[SAVED_CHATS] Silinen sohbet yüklenmeye çalışıldı, engellendi: %s\n", chat_id))
       last_deleted_chat_id(NULL)  # Bayrağı sıfırla
       return()
@@ -201,7 +201,9 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
           }
         )
         if (is.null(detail)) {
-          if (isTRUE(yenileme_istendi)) yenileme_basarisiz <- TRUE
+          # Okuma hatası: önbellek transkripti uyarıyla gösterilir; yoksa mevcut söyleşi açık kalır.
+          if (!mergen_saved_chats_has_transcript(chat_to_load)) chat_to_load <- NULL
+          if (is.null(chat_to_load)) showToast(session, "Söyleşi şu anda okunamadı; lütfen kısa süre sonra tekrar deneyin.", "error") else yenileme_basarisiz <- TRUE
         } else if (isTRUE(detail$kayit_bulunamadi)) {
           # Söyleşi başka oturumda silinmiş: açık DB kanıtıyla önbellek düşürülür,
           # silinenler kümesine yazılır (süren tam liste geri getiremez) ve açık
@@ -522,9 +524,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     } else {
       NULL
     }
-    if (isTRUE(kimlik_cozulmedi)) {
-      showToast(session, "Oturum kimliği henüz hazır değil; önbellekteki kayıt gösteriliyor.", "warning")
-    } else if (isTRUE(yenileme_basarisiz)) {
+    if (isTRUE(yenileme_basarisiz)) {  # çözülmemiş kimlik yukarıda erken döner
       showToast(session, "Söyleşi güncel içerikle yenilenemedi; önbellekteki kayıt gösteriliyor.", "warning")
     } else {
       mergen_show_chat_loaded_toast(session, chat_to_load$title, son_mesaj_id)
@@ -662,7 +662,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       return()
     }
 
-    silinen_satir <- delete_chat_from_db(chat_id, effective_user_id)
+    silinen_satir <- mergen_saved_chats_delete_rows(delete_chat_from_db, chat_id, effective_user_id)
     # Gerçekleşen silme (etkilenen satır > 0) yeniden okumanın sonucundan
     # BAĞIMSIZ işaretlenir: süren arka plan tam listesi, gönderimden sonra
     # oluşturulmuş olsa da silinen söyleşiyi geri getiremez. Satır
@@ -679,7 +679,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
                         error = function(e) NULL)
     if (is.list(yeniden)) {
       session$userData$saved_chats_yetkili_surum <- (session$userData$saved_chats_yetkili_surum %||% 0L) + 1L
-      values$saved_chats <- yeniden
+      values$saved_chats <- mergen_saved_chats_carry_unsaved(yeniden, values$saved_chats %||% list())  # kayıtsız mesajlar korunur
       # Yetkili liste söyleşiyi hâlâ içeriyorsa silme gerçekleşmemiştir.
       silme_onayli <- silme_onayli || is.null(yeniden[[chat_id]])
     } else if (silme_onayli) {
@@ -699,6 +699,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
 
     # Yalnızca doğrulanmış silmeden sonra eski açma tıklamaları engellenir.
     last_deleted_chat_id(chat_id)
+    showToast(session, "Söyleşi silindi.", "warning")
 
     # Eğer mevcut sohbet silindiyse, Ana Söyleşi sayfasını sıfırla
     if (current_chat_deleted) {

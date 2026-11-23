@@ -169,11 +169,10 @@ testthat::test_that("zengin şerit anahtarları module_boot_readiness varsayıla
 })
 
 testthat::test_that("geçmiş hazırlık tetiği yalnızca tek, sonlu, tam sayı değerli güncel nesli kabul eder", {
-  if (!exists("mergen_startup_history_trigger_validator", mode = "function")) {
-    source(file.path(resolve_repo_root_for_tests(), "R", "helpers_startup_lane.R"),
-           encoding = "UTF-8", local = globalenv())
-  }
-  dogrula <- mergen_startup_history_trigger_validator(function() 2L)
+  # Doğrulayıcı güncel çalışma kopyasından taze ortama kaynaklanır (oturumda
+  # önceden yüklenmiş eski tanım kullanılmaz, globalenv'e bağlama yazılmaz).
+  env <- .source_startup_lane_for_test()
+  dogrula <- env$mergen_startup_history_trigger_validator(function() 2L)
   testthat::expect_true(dogrula(2))
   testthat::expect_true(dogrula(2L))
   testthat::expect_true(dogrula(list(2)))

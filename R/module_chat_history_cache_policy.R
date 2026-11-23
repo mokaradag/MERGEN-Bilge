@@ -11,11 +11,12 @@
 history_ids_by_activity <- function(chat_ids, chats) {
   ids <- as.character(chat_ids %||% character())
   if (length(ids) < 2L) return(ids)
-  zaman <- vapply(ids, function(id) {
+  # Zamanlar toplu dönüştürülür (olay döngüsünde öğe başına ayrıştırma yok).
+  zaman <- mergen_chat_activity_seconds_vec(lapply(ids, function(id) {
     s <- chats[[id]]
-    v <- mergen_chat_activity_seconds(s$last_message_timestamp %||% s$timestamp)
-    if (is.finite(v)) v else -Inf
-  }, numeric(1))
+    s$last_message_timestamp %||% s$timestamp
+  }))
+  zaman[!is.finite(zaman)] <- -Inf
   ids[order(-zaman, seq_along(ids))]
 }
 

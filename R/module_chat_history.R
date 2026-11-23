@@ -449,9 +449,8 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
                                       on_done = hazir_bildir) {
       chats <- chats %||% list()
 
-      active_date_range <- history_normalize_date_range(
-        date_range %||% shiny::isolate(input$date_range)
-      )
+      # Bugün yankısı beklenirken bekleyen Bugün aralığı etkindir (yankı yalnızca onaydır).
+      active_date_range <- history_normalize_date_range(date_range %||% isitma$bugun_yankisi %||% shiny::isolate(input$date_range))
       chat_ids <- history_chat_ids_for_date_range(chats, active_date_range)
       # Kullanıcı eylemi (Yenile/Bugün/tarih) ya da etkin sayfanın senkronu.
       isitma$etkin <- TRUE
@@ -526,7 +525,7 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
         refresh_history_cache(
           chats = chats,
           force = FALSE,
-          date_range = history_normalize_date_range(shiny::isolate(input$date_range))
+          date_range = history_normalize_date_range(isitma$bugun_yankisi %||% shiny::isolate(input$date_range))
         )
       }
     }, ignoreNULL = FALSE, priority = 1)
@@ -752,9 +751,9 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
                                  uid = resolve_current_user_id(), isitma = isitma,
                                  resolve_uid = resolve_current_user_id, messages_cache = messages_cache,
                                  yayin_sayaci = trigger_refresh,
-                                 bildir = history_first_page_notifier(hazir_bildir, aralik_kimlikleri, latest_chats,
+                                 bildir = history_first_page_notifier(hazir_bildir, aralik_kimlikleri, all_messages,
                                                                       messages_cache, stamp_for_chat),
-                                 guncel_sohbetler = latest_chats, damga_fn = stamp_for_chat,
+                                 guncel_sohbetler = all_messages, damga_fn = stamp_for_chat,  # yetkili liste (kopya eski kalabilir)
                                  liste_basliklar = liste_basliklar)
       invisible(NULL)
     }, ignoreInit = TRUE)
@@ -781,7 +780,9 @@ historyServer <- function(id, all_messages, current_user_id = NULL) {
         attr(yenilenecek, "temizlenen") <- NULL
         messages_cache(yenilenecek)
       }
-      history_sync(kimlikler, latest_chats(), on_done = hazir_bildir)
+      # Hazır-olma kapsamı en yeni 60 söyleşidir (eski söyleşi hatası onu düşürmez).
+      history_sync(kimlikler, latest_chats(), on_done = history_first_page_notifier(
+        hazir_bildir, aralik_kimlikleri, all_messages, messages_cache, stamp_for_chat))
     }, ignoreInit = TRUE)
   })
 }

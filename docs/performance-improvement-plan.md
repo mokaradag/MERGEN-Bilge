@@ -286,22 +286,37 @@ Fix (`R/server_observers_startup.R` + `R/module_startup_lane.R` bridge):
   then shows `saved_chats_full_deferred` without `saved_chats_full_loaded` until the
   operator opens Kayıtlı Söyleşiler or Söyleşi Geçmişi. The fast-lane closing contract is unchanged, and
   `saved_chats_full_loaded` is now logged when that background load completes.
+  The fast lane does not start the Söyleşi Geçmişi row preparation after the
+  background full list: nothing in that lane waits for `history_rows_ready`, so
+  the shared worker queue is not filled with speculative history reads; History
+  rows are read on the first History visit. A queued full-list read whose owner
+  or load generation changed is dropped before it takes a worker slot.
 - Rich lane keeps the existing behavior (sync preview + background full load).
   Its `management_pages_ready` checkpoint covers only data prepared off the event
   loop: the full list and missing Söyleşi Geçmişi rows for up to the latest 60
   eligible conversations in activity order (not a guarantee of the first displayed
-  History table page, which sorts question-and-answer rows by prompt date on visit;
-  both reads run in workers with a bounded query budget,
-  `mergen.startup_db_query_timeout_secs`, default 60 s). On a normal aggregate
+  History table page, which sorts question-and-answer rows by prompt date on visit).
+  With an asynchronous worker backend both reads run in workers with a bounded
+  query budget (`mergen.startup_db_query_timeout_secs`, default 60 s). With the
+  sequential fallback (`MERGEN_DISABLE_FUTURES=true` or a failed PSOCK start) the
+  rich-lane full-list read still runs, but on the Shiny process itself, and the
+  automatic History preparation is skipped (readiness is reported as partial;
+  rows are read on the first History visit). On a normal aggregate
   completion, Görsel Galerisi and Ortak Söyleşiler stay lazy (first visit) and are
   named in `detail$tembel`. If the full-list worker fails or times out, startup
   emits `management_pages_ready` with `detail$degraded = TRUE` (without
-  `detail$tembel`) so the overlay closes honestly instead of hanging.
+  `detail$tembel`) so the overlay can close honestly instead of hanging; it
+  closes only once the other required checkpoints (for example character media)
+  are also complete.
   The readiness deadline is a separate, shorter setting:
   `mergen.management_ready_deadline_secs` (default 20 s). When it elapses before
   the management data is ready (for example the full list loaded in 8 s but the
   History preparation is still pending), startup reports partial readiness
-  (`detail$timeout = TRUE`) and closes the overlay; the deadline does **not**
+  (`detail$timeout = TRUE`); the overlay closes once the other required
+  checkpoints are complete. The deadline and the worker-based reads apply only
+  when an asynchronous worker backend is active: under the sequential fallback a
+  long full-list read holds the event loop, so the partial-readiness signal can
+  arrive later than the deadline. The deadline does **not**
   cancel the pending read, which keeps its own 60 s DB query budget and is applied
   if it completes later. The overlay's partial label states that management data
   is not yet complete; it does not promise completion on page open.

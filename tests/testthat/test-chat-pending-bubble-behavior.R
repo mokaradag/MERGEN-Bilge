@@ -399,3 +399,27 @@ testthat::test_that("nesne olmayan istem yükü alan erişiminden önce reddedil
   testthat::expect_identical(kayit2$gonderilen, "")
   testthat::expect_identical(.istem_sonuclari(kayit2)[[1]]$message$durum, "kabul")
 })
+
+testthat::test_that("eski nesil istemin reddi güncel neslin önbelleğine yazılmaz; güncel kabul eski isteme yinelenmez", {
+  testthat::skip_if_not_installed("shiny")
+  kayit <- .yeni_kayit()
+  env <- .istem_ortami(kayit)
+  source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
+         encoding = "UTF-8", local = env)
+  shiny::testServer(.istem_sunucusu(env, kayit, mesaj_ekle = TRUE), {
+    session$userData$kimlik_sahibi <- 7L
+    env$mergen_session_owner_transition(session$userData, 7L, 8L)      # nesil 1
+    # Sıfırlamadan sonra gelen eski nesil teslimi (kimlik X) reddedilir...
+    session$setInputs(send_prompt_from_js = list(text = "eski", nonce = 40, client_id = "istem_x", sahip_nesli = 0L))
+    # ...ama aynı kimliği kullanan güncel nesil istemi o redle yanıtlanmaz.
+    session$setInputs(send_prompt_from_js = list(text = "güncel", nonce = 41, client_id = "istem_x", sahip_nesli = 1L))
+    # Ters sıra: güncel kabulden sonra aynı kimlikli eski teslim kabul almaz.
+    session$setInputs(send_prompt_from_js = list(text = "eski tekrar", nonce = 42, client_id = "istem_x", sahip_nesli = 0L))
+    # Güncel nesilde yinelenen teslim hâlâ önbellekten yanıtlanır (ikinci gönderim yok).
+    session$setInputs(send_prompt_from_js = list(text = "güncel", nonce = 43, client_id = "istem_x", sahip_nesli = 1L))
+  })
+  testthat::expect_identical(kayit$gonderilen, "güncel")
+  durumlar <- vapply(Filter(function(m) identical(m$message$client_id, "istem_x"), .istem_sonuclari(kayit)),
+                     function(m) m$message$durum, character(1))
+  testthat::expect_identical(durumlar, c("ret", "kabul", "ret", "kabul"))
+})

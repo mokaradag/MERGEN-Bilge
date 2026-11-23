@@ -302,6 +302,9 @@ testthat::test_that("tarih aralığı değişince eski nesle ait ertelenmiş par
     session$flushReact()
     session$setInputs(external_refresh_trigger = 1)    # 130 eksik: 3 parti planlandı
     testthat::expect_identical(kayit$cagri, 0L)
+    # İptal edilecek bir ısıtma gerçekten planlandı.
+    testthat::expect_true(isTRUE(isitma$aktif))
+    testthat::expect_true(length(isitma$planli) > 0L)
     # Hiçbir söyleşiyi kapsamayan aralık: önbellek temizlenir, nesil değişir.
     session$setInputs(date_range = c("2020-01-01", "2020-01-31"))
     .zincir_bitene_dek(session)
@@ -904,8 +907,12 @@ testthat::test_that("130+ söyleşi ısıtılırken araya giren okunamayan yeni 
     session$flushReact()
     session$setInputs(external_refresh_trigger = 1)    # 130 eksik: ısıtma başladı
     testthat::expect_true(isTRUE(isitma$aktif))
-    # Isıtma sürerken yeni söyleşi geldi; anlık okuması başarısız.
-    shiny::isolate(sohbetler(.gecmis_sohbetleri(131L)))
+    # Isıtma sürerken yeni söyleşi geldi (en yeni etkinlik: hazır-olma kapsamı
+    # olan en yeni 60 söyleşinin içindedir); anlık okuması başarısız.
+    yeni_zaman <- as.POSIXct("2026-07-01 11:00:00", tz = "UTC")
+    shiny::isolate(sohbetler(c(.gecmis_sohbetleri(130L),
+                               list("131" = list(title = "Söyleşi 131", timestamp = yeni_zaman,
+                                                 last_message_timestamp = yeni_zaman)))))
     session$flushReact()
     testthat::expect_true("131" %in% unlist(kayit$kimlikler), info = "yeni söyleşi ısıtma sırasında denenmeli")
     testthat::expect_false("history_rows_ready" %in% kayit$isaret, info = "ısıtma bitmeden hazır bildirilmemeli")
@@ -1005,6 +1012,8 @@ testthat::test_that("geçmiş işçi okuması dar açık sözleşmeyle gönderil
   isci_ortami$mergen_bounded_db_fetch_raw <- function(sql, params, dsn, encoding, name_encoding,
                                                       login_timeout, query_timeout, ...) {
     rec$okuma <- list(sql = sql, params = params, dsn = dsn, query_timeout = query_timeout)
+    rec$okuma_cagri_ani <- Sys.time()
+    Sys.sleep(0.05)
     data.frame(ChatID = 3L)
   }
   gorev <- rec$task_fn
@@ -1012,6 +1021,8 @@ testthat::test_that("geçmiş işçi okuması dar açık sözleşmeyle gönderil
   isci_sonucu <- gorev()
   testthat::expect_identical(isci_sonucu$ChatID, 3L)
   testthat::expect_true(inherits(attr(isci_sonucu, "mergen_okuma_zamani"), "POSIXt"))
+  # TTL okumanın BAŞLANGICINDAN ölçülür: damga okuma çağrısından sonra olamaz.
+  testthat::expect_true(attr(isci_sonucu, "mergen_okuma_zamani") <= rec$okuma_cagri_ani)
   testthat::expect_identical(rec$okuma$sql, rec$globals$gecmis_sql)
   testthat::expect_identical(rec$okuma$params, list(3L, 4L, 7L))
   testthat::expect_identical(rec$okuma$query_timeout, rec$globals$gecmis_sure)
@@ -1044,7 +1055,9 @@ testthat::test_that("geçmiş okuma hatası günlüğe bağlantı ayrıntısı m
   # Hata paylaşılan logger'a (log_warn) gider; konsola ham cat() yazılmaz.
   logger_kayitlari <- character()
   env$log_warn <- function(msg, ...) logger_kayitlari <<- c(logger_kayitlari, msg)
-  cikti <- utils::capture.output(later::with_temp_loop(shiny::testServer(env$historyServer,
+  # message() akışı (stderr) da kaydedilir: capture.output yalnız stdout'u yakalar.
+  mesaj_akisi <- character()
+  cikti <- withCallingHandlers(utils::capture.output(later::with_temp_loop(shiny::testServer(env$historyServer,
                     args = list(all_messages = shiny::reactive(.gecmis_sohbetleri(2L)), current_user_id = function() 7L), {
     session$userData$saved_chats_full_loaded <- TRUE
     session$userData$mergen_yonetim_hazir <- .isaretleyici(kayit)
@@ -1052,7 +1065,11 @@ testthat::test_that("geçmiş okuma hatası günlüğe bağlantı ayrıntısı m
     session$setInputs(hazirla = 1)
     .zincir_bitene_dek(session)
     testthat::expect_true(isTRUE(kayit$detay[[length(kayit$detay)]]$degraded))
-  })))
+  }))), message = function(m) {
+    mesaj_akisi <<- c(mesaj_akisi, conditionMessage(m))
+    invokeRestart("muffleMessage")
+  })
+  testthat::expect_false(grepl("ornek_dsn|ornek_kullanici|ornek_parola", paste(mesaj_akisi, collapse = "\n")))
   gunluk <- paste(logger_kayitlari, collapse = "\n")
   testthat::expect_match(gunluk, "açılış hazırlığı okunamadı", fixed = TRUE)
   testthat::expect_false(grepl("ornek_dsn|ornek_kullanici|ornek_parola", gunluk))
@@ -1272,11 +1289,14 @@ testthat::test_that("Bugün yenilemesi istemcinin aralık yankısıyla yeniden b
   env <- .gecmis_modul_ortami(kayit)
   kayit$toast <- character()
   env$showToast <- function(session, message, ...) kayit$toast <- c(kayit$toast, message)
-  bugun <- Sys.time()
+  # Sabit gün: duvar saatine (gece yarısı/UTC farkı) bağlı değildir.
+  sabit_gun <- as.Date("2026-07-01")
+  env$Sys.Date <- function() sabit_gun
+  bugun <- as.POSIXct("2026-07-01 12:00:00", tz = "UTC")
   sohbetler <- stats::setNames(lapply(seq_len(130L), function(i) list(
     title = paste("Söyleşi", i), timestamp = bugun, last_message_timestamp = bugun
   )), as.character(seq_len(130L)))
-  gun <- format(Sys.Date(), "%Y-%m-%d")
+  gun <- format(sabit_gun, "%Y-%m-%d")
   later::with_temp_loop(shiny::testServer(env$historyServer,
                     args = list(all_messages = shiny::reactive(sohbetler), current_user_id = function() 7L), {
     session$flushReact()
@@ -1289,7 +1309,7 @@ testthat::test_that("Bugün yenilemesi istemcinin aralık yankısıyla yeniden b
     testthat::expect_identical(sum(kayit$toast == "Bugünün kayıtları gösteriliyor."), 1L)
     testthat::expect_identical(kayit$cagri, 3L, info = "130 söyleşi tek yenilemede üç partiyle okunmalı")
     # Elle yapılan tarih seçimi (yankı değil) yine zorla yenileme başlatır.
-    dun <- format(Sys.Date() - 1, "%Y-%m-%d")
+    dun <- format(sabit_gun - 1, "%Y-%m-%d")
     session$setInputs(date_range = c(dun, gun))
     testthat::expect_false(identical(isitma$nesil, nesil))
   }))
@@ -1321,5 +1341,123 @@ testthat::test_that("yeniden doğrulamanın damgasını düşürdüğü kayıt s
     yeni_okumalar <- unlist(kayit$kimlikler[-seq_len(onceki_cagri)])
     testthat::expect_true("131" %in% yeni_okumalar, info = "damgası düşürülen kayıt yeniden okunmalı")
     .zincir_bitene_dek(session)
+  }))
+})
+
+testthat::test_that("Bugün aralığı tarayıcı yankısı gelene dek etkindir: araya giren liste güncellemesi bugünün satırlarını budamaz", {
+  kayit <- .yeni_gecmis_kaydi()
+  env <- .gecmis_modul_ortami(kayit)
+  sabit_gun <- as.Date("2026-07-01")
+  env$Sys.Date <- function() sabit_gun
+  zaman <- as.POSIXct("2026-07-01 12:00:00", tz = "UTC")
+  sohbetler <- shiny::reactiveVal(stats::setNames(lapply(1:3, function(i) list(
+    title = paste("Söyleşi", i), timestamp = zaman, last_message_timestamp = zaman)), as.character(1:3)))
+  gun <- format(sabit_gun, "%Y-%m-%d"); dun <- format(sabit_gun - 1, "%Y-%m-%d")
+  later::with_temp_loop(shiny::testServer(env$historyServer,
+                    args = list(all_messages = sohbetler, current_user_id = function() 7L), {
+    session$flushReact()
+    session$setInputs(external_refresh_trigger = 1)
+    .zincir_bitene_dek(session)
+    session$setInputs(date_range = c(dun, dun))      # dün: bugünün satırları aralık dışı
+    .zincir_bitene_dek(session)
+    testthat::expect_length(messages_cache(), 0L)
+    session$setInputs(today_filter = 1)
+    .zincir_bitene_dek(session)
+    testthat::expect_length(messages_cache(), 3L)
+    # Yankıdan ÖNCE liste güncellenir (ör. arka plan tam listesi).
+    guncel <- shiny::isolate(sohbetler()); guncel[["1"]]$title <- "Yeni ad"
+    shiny::isolate(sohbetler(guncel))
+    session$flushReact()
+    .zincir_bitene_dek(session)
+    testthat::expect_length(messages_cache(), 3L)
+    # Yankı yalnızca onaydır; tablo bugünün satırlarını gösterir.
+    session$setInputs(date_range = c(gun, gun))
+    .zincir_bitene_dek(session)
+    testthat::expect_identical(nrow(filtered_history()), 3L)
+  }))
+})
+
+testthat::test_that("açık geçersizleştirme önbellekte olmayan söyleşinin ısıtma denemesini de düşürür", {
+  testthat::skip_if_not_installed("shiny")
+  kok <- resolve_repo_root_for_tests()
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  for (f in c("module_chat_history_background.R", "module_chat_history_cache_policy.R")) {
+    source(file.path(kok, "R", f), encoding = "UTF-8", local = env)
+  }
+  isitma <- new.env()
+  isitma$zincir <- c("7" = "damga7", "8" = "damga8", "9" = "damga9")
+  isitma$planli <- c("7", "9")
+  isitma$surum <- integer()
+  onbellek <- shiny::reactiveVal(list("9" = list(rows = list(), stamp = "damga9")))
+  yayin <- shiny::reactiveVal(0)
+  dusur <- env$history_cache_dropper(onbellek, yayin_sayaci = yayin, isitma = isitma)
+  shiny::isolate(dusur("7"))
+  testthat::expect_false("7" %in% names(isitma$zincir))
+  testthat::expect_false("7" %in% isitma$planli)
+  testthat::expect_identical(shiny::isolate(yayin()), 0, info = "kaldırılan satır yoksa yayın sayacı artmaz")
+  # Tümünü düşürme etkin zincirin izlediği kimlikleri de yeniden okunabilir yapar.
+  shiny::isolate(dusur(NULL))
+  testthat::expect_length(isitma$zincir, 0L)
+  testthat::expect_identical(shiny::isolate(yayin()), 1)
+})
+
+testthat::test_that("sekme senkronu hazır-olmayı en yeni 60 söyleşiden ölçer; daha eski söyleşinin okunamaması onu düşürmez", {
+  kayit <- .yeni_gecmis_kaydi()
+  kayit$basarisiz <- "61"      # etkinlik sırasında 61. (kapsam dışı) söyleşi
+  env <- .gecmis_modul_ortami(kayit)
+  taban <- as.POSIXct("2026-07-01 10:00:00", tz = "UTC")
+  sohbetler <- stats::setNames(lapply(1:61, function(i) list(
+    title = paste("Söyleşi", i), timestamp = taban - i * 60, last_message_timestamp = taban - i * 60)),
+    as.character(1:61))
+  later::with_temp_loop(shiny::testServer(env$historyServer,
+                    args = list(all_messages = shiny::reactive(sohbetler), current_user_id = function() 7L), {
+    session$userData$saved_chats_full_loaded <- TRUE
+    session$userData$mergen_yonetim_hazir <- .isaretleyici(kayit)
+    session$flushReact()
+    session$setInputs(external_refresh_trigger = 1)
+    .zincir_bitene_dek(session)
+    testthat::expect_false("61" %in% names(messages_cache()))
+    testthat::expect_true("history_rows_ready" %in% kayit$isaret)
+    testthat::expect_false(isTRUE(kayit$detay[[length(kayit$detay)]]$degraded))
+  }))
+  # Kapsam içindeki söyleşi okunamazsa durum yine "kısmen"dir.
+  kayit2 <- .yeni_gecmis_kaydi()
+  kayit2$basarisiz <- "1"
+  env2 <- .gecmis_modul_ortami(kayit2)
+  later::with_temp_loop(shiny::testServer(env2$historyServer,
+                    args = list(all_messages = shiny::reactive(sohbetler), current_user_id = function() 7L), {
+    session$userData$saved_chats_full_loaded <- TRUE
+    session$userData$mergen_yonetim_hazir <- .isaretleyici(kayit2)
+    session$flushReact()
+    session$setInputs(external_refresh_trigger = 1)
+    .zincir_bitene_dek(session)
+    testthat::expect_true(isTRUE(kayit2$detay[[length(kayit2$detay)]]$degraded))
+  }))
+})
+
+testthat::test_that("işçi sonucu yayımlanmadan önce yerelde yeniden adlandırılan söyleşi özgün ada dönse de DB başlığı gösterilmez", {
+  kayit <- .yeni_gecmis_kaydi()
+  env <- .gecmis_modul_ortami(kayit)
+  env$history_rows_worker_promise <- function(chat_ids, user_id, session_token = NULL, ...) {
+    promises::promise(function(resolve, reject) later::later(function() {
+      resolve(stats::setNames(lapply(chat_ids, function(id) list(list(
+        Chat_ID = "DB Başlığı Z", Tarih = "01.07.2026 - 10:00", Soru = "Soru", Cevap = "Yanıt"))), chat_ids))
+    }, 0))
+  }
+  sohbetler <- shiny::reactiveVal(.gecmis_sohbetleri(1L))
+  later::with_temp_loop(shiny::testServer(env$historyServer,
+                    args = list(all_messages = sohbetler, current_user_id = function() 7L), {
+    session$flushReact()
+    session$setInputs(hazirla = 1)
+    # Sonuç yayımlanmadan önce yerel yeniden adlandırma (önbellek kaydı henüz yok).
+    guncel <- shiny::isolate(sohbetler()); guncel[["1"]]$title <- "Yerel B"
+    shiny::isolate(sohbetler(guncel)); session$flushReact()
+    .zincir_bitene_dek(session)
+    testthat::expect_true(isTRUE(messages_cache()[["1"]]$baslik_yerel))
+    # Özgün ada geri dönülür: tablo güncel liste başlığını gösterir.
+    guncel[["1"]]$title <- "Söyleşi 1"
+    shiny::isolate(sohbetler(guncel)); session$flushReact()
+    testthat::expect_identical(filtered_history()$Chat_ID[1], "Söyleşi 1")
   }))
 })

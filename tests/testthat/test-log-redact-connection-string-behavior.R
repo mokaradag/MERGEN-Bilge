@@ -263,11 +263,12 @@ test_that("noktalı virgülsüz son ODBC tanımlayıcısı ve çift ayırıcıl�
   expect_identical(out_son, "UID=<redacted>;DSN=<redacted>")
   expect_false(grepl("Reporting", out_son, fixed = TRUE))
 
-  # Aynı satırdaki tanı düzyazısı (`: `, ` - `) korunur.
+  # DSN adı `: ` ya da ` - ` içerebilir; alan sınırı bilinmediğinden değer satır
+  # sonuna dek maskelenir (tanı düzyazısı uğruna kısmi ad loga yazılmaz).
   out_tani <- redacted_condition_message(simpleError("UID=sample;DSN=Synthetic Reporting: login failed"))
-  expect_identical(out_tani, "UID=<redacted>;DSN=<redacted>: login failed")
+  expect_identical(out_tani, "UID=<redacted>;DSN=<redacted>")
   out_duz <- redacted_condition_message(simpleError("DSN=my_dsn failed to connect"))
-  expect_identical(out_duz, "DSN=<redacted> failed to connect")
+  expect_identical(out_duz, "DSN=<redacted>")
 
   # Çift tırnak ayırıcılı ('' ve "") sırlar komşu alanları tüketmeden maskelenir.
   parca <- paste0("sonek", "77")
@@ -313,4 +314,41 @@ test_that("çift kapanış ayırıcısının ardından gelen aynı tırnaklı al
   # Belirsiz olmayan çift ayırıcı (değer içi kaçış + gerçek kapanış) aşırı maskelenmez.
   expect_identical(redacted_condition_message(simpleError("PWD=\"ab\"\"cd\";UID=\"x9\"")),
                    "PWD=\"<redacted>\";UID=\"<redacted>\"")
+})
+
+test_that("log maskelemesi bileşik sır anahtarlarını, süslü değerleri, Bearer kuyruğunu ve ayraçlı DSN adlarını sızdırmaz", {
+  .redact_env_yalit()
+  kuyruk <- paste0("tail", "42")
+  out_kuyruk <- redacted_condition_message(simpleError(paste0("client_secret=abcdef&", kuyruk)))
+  expect_identical(out_kuyruk, "client_secret=<redacted>")
+  expect_false(grepl(kuyruk, out_kuyruk, fixed = TRUE))
+
+  # Tek alanlı DSN (noktalı virgülsüz) bütün olarak maskelenir.
+  expect_identical(redacted_condition_message(simpleError("DSN=Synthetic Reporting")), "DSN=<redacted>")
+  # Ayraçlı (` - `, `: `) son alan değeri kısmen açıkta kalmaz.
+  for (ayrac in c(" - ", ": ")) {
+    out <- redacted_condition_message(simpleError(paste0("UID=sample;DSN=Synthetic", ayrac, "Payroll")))
+    expect_identical(out, "UID=<redacted>;DSN=<redacted>")
+    expect_false(grepl("Payroll", out, fixed = TRUE))
+  }
+
+  # Süslü değerli bileşik sır anahtarları (camelCase ve alt çizgili).
+  for (anahtar in c("auth_token", "authToken", "idToken", "sessionToken", "bearerToken")) {
+    out <- redacted_condition_message(simpleError(paste0(anahtar, "={synthetic-42}")))
+    expect_identical(out, paste0(anahtar, "={<redacted>}"))
+  }
+  expect_identical(redacted_condition_message(simpleError("authToken={ab}}cd}")), "authToken={<redacted>}")
+
+  # Bağımsız Bearer kimlik bilgisi `~` dahil bütünüyle maskelenir.
+  out_bearer <- redacted_condition_message(simpleError("request failed: Bearer abcdef~ghi="))
+  expect_identical(out_bearer, "request failed: Bearer <redacted>")
+  expect_false(grepl("ghi", out_bearer, fixed = TRUE))
+
+  # Sızıntı hiçbir akışa (stdout / message) yazılmaz.
+  mesajlar <- character()
+  cikti <- withCallingHandlers(
+    utils::capture.output(print(redacted_condition_message(simpleError("UID=sample;DSN=Gizli - Bordro")))),
+    message = function(m) { mesajlar <<- c(mesajlar, conditionMessage(m)); invokeRestart("muffleMessage") }
+  )
+  expect_false(any(grepl("Bordro|Gizli|sample", c(cikti, mesajlar))))
 })

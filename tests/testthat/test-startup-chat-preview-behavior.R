@@ -133,8 +133,9 @@ testthat::test_that("mergen_startup_chat_preview_promise explicit modda dar söz
                                             meta = list(),
                                             globals = NULL,
                                             dependency_mode = c("auto", "explicit"),
-                                            packages = NULL) {
+                                            packages = NULL, start_check = NULL) {
     rec$task_type <- task_type
+    rec$start_check <- start_check
     rec$session_token <- session_token
     rec$dependency_mode <- match.arg(dependency_mode)
     rec$global_names <- sort(names(globals %||% list()))
@@ -232,8 +233,10 @@ testthat::test_that("tam söyleşi listesi explicit modda 'startup_saved_chats' 
   rec <- new.env(parent = emptyenv())
   assign("tracked_future_promise", function(task_fn, task_type = "generic", session_token = NULL,
                                             meta = list(), globals = NULL,
-                                            dependency_mode = c("auto", "explicit"), packages = NULL) {
+                                            dependency_mode = c("auto", "explicit"), packages = NULL,
+                                            start_check = NULL) {
     rec$task_type <- task_type
+    rec$start_check <- start_check
     rec$dependency_mode <- match.arg(dependency_mode)
     rec$global_names <- names(globals %||% list())
     promises::promise_resolve(task_fn())
@@ -248,7 +251,13 @@ testthat::test_that("tam söyleşi listesi explicit modda 'startup_saved_chats' 
     assign("mergen_bounded_db_fetch_raw", old_fetch, envir = helper_env)
   }, add = TRUE)
 
-  p <- mergen_startup_chat_preview_promise(42L, limit = NA_integer_, session_token = "oturum-2")
+  # Nesil yüklemi kuyruktan çıkış denetimi (start_check) olarak da iletilir:
+  # eskiyen tam liste okuması işçi yuvası almadan düşer.
+  gecerli_durum <- new.env(parent = emptyenv()); gecerli_durum$deger <- TRUE
+  gecerli <- function() gecerli_durum$deger
+  p <- mergen_startup_chat_preview_promise(42L, limit = NA_integer_, session_token = "oturum-2",
+                                           gecerli_mi = gecerli)
+  testthat::expect_identical(rec$start_check, gecerli)
   got <- new.env(parent = emptyenv())
   promises::then(p, onFulfilled = function(v) got$value <- v)
   deadline <- Sys.time() + 5
@@ -304,6 +313,33 @@ testthat::test_that("açılış ön izleme görevi uygulama kodu yüklü olmayan
   # çağrısına ulaşır; hiçbir uygulama fonksiyonu eksik kalmaz.
   sonuc <- calistir(yakalanan$yuk[[2]])
   testthat::expect_identical(sonuc$hata, "sahte_dbconnect_cagrildi dsn=mergen_test_olmayan_dsn")
+
+  # Bağlantının ÖTESİ de temiz süreçte çalışır: sorgu, parçalı getirme ve
+  # temizlik çağrıları (çevrimdışı taklitlerle) eksik yardımcı olmadan tamamlanır.
+  tam <- callr::r(function(yuk) {
+    loadNamespace("DBI")
+    durum <- new.env()
+    degistir <- function(ad, fn) utils::assignInNamespace(ad, fn, ns = "DBI")
+    degistir("dbConnect", function(drv, ...) structure(list(), class = "sahte_baglanti"))
+    degistir("dbDisconnect", function(conn, ...) { durum$kapandi <- TRUE; invisible(TRUE) })
+    degistir("dbExecute", function(conn, statement, ...) 0L)
+    degistir("dbSendQuery", function(conn, statement, ...) { durum$sql <- statement; structure(list(), class = "sahte_sonuc") })
+    degistir("dbFetch", function(res, n = -1, ...) {
+      if (isTRUE(durum$bitti)) return(data.frame())
+      durum$bitti <- TRUE
+      data.frame(ChatID = 11L, ChatTitle = "Başlık")
+    })
+    degistir("dbHasCompleted", function(res, ...) isTRUE(durum$bitti))
+    degistir("dbClearResult", function(res, ...) { durum$temizlendi <- TRUE; invisible(TRUE) })
+    sonuc <- tryCatch(list(deger = unserialize(yuk)()), error = function(e) list(hata = conditionMessage(e)))
+    c(sonuc, list(kapandi = isTRUE(durum$kapandi), temizlendi = isTRUE(durum$temizlendi),
+                  sql_var = is.character(durum$sql)))
+  }, args = list(yuk = yakalanan$yuk[[2]]))
+  testthat::expect_null(tam$hata)
+  testthat::expect_identical(tam$deger$ChatID, 11L)
+  testthat::expect_true(tam$kapandi)
+  testthat::expect_true(tam$temizlendi)
+  testthat::expect_true(tam$sql_var)
 })
 
 # Gerçek db_chat_preview_fetch_raw çalıştırılır; yalnızca DB sınırı (DBI)
@@ -404,7 +440,8 @@ testthat::test_that("işçi DB okuması yapılandırılmış login sınırını 
   testthat::expect_null(yakalanan[[2]]$timeout)
 
   # Bütçeli okumada bağlantı denemesi bütçeyi aşamaz: login sınırı yoksa bütçe
-  # iletilir; yapılandırılmış sınır bütçeden büyükse bütçeye indirilir.
+  # iletilir; yapılandırılmış sınır bütçeden büyükse bütçeye indirilir. Kesirli
+  # bütçe aşağı yuvarlanır (4.2 sn -> 4 sn): login bütçeyi aşamaz.
   testthat::expect_error(db_chat_preview_fetch_raw(42L, 6L, "DSN", "UTF-8", "UTF-8", query_timeout = 5),
                          "baglanti_kurulmadi_test")
   testthat::expect_error(db_chat_preview_fetch_raw(42L, 6L, "DSN", "UTF-8", "UTF-8", login_timeout = 7L,
@@ -412,7 +449,7 @@ testthat::test_that("işçi DB okuması yapılandırılmış login sınırını 
   testthat::expect_error(db_chat_preview_fetch_raw(42L, 6L, "DSN", "UTF-8", "UTF-8", login_timeout = 3L,
                                                    query_timeout = 5), "baglanti_kurulmadi_test")
   testthat::expect_identical(yakalanan[[3]]$timeout, 5L)
-  testthat::expect_identical(yakalanan[[4]]$timeout, 5L)
+  testthat::expect_identical(yakalanan[[4]]$timeout, 4L)
   testthat::expect_identical(yakalanan[[5]]$timeout, 3L)
 })
 
@@ -569,6 +606,8 @@ testthat::test_that("büyük tam liste dilimlerle biçimlendirilir; sonuç tek s
   list(
     dbSendQuery = function(conn, statement, ...) {
       kayit$sql <- statement
+      # Üretim sınırına ulaşan ek bağımsız değişkenler (ör. params) kaydedilir.
+      kayit$gonderim_args <- list(...)
       kayit$bitti <- FALSE
       structure(list(), class = "sahte_sonuc")
     },
@@ -812,14 +851,23 @@ testthat::test_that("başarılı bütçeli okumadan sonra süre sınırı sonrak
     .package = "DBI"
   )
   .parcali_sorgu_bagla(function(sql) data.frame(x = 1L))
+  # setTimeLimit çağrıları kaydedilir (gerçek davranış korunur); saniye altı
+  # son tarih kullanılmaz, test yük duraklamalarından etkilenmez.
+  fn_ortami <- environment(mergen_bounded_db_fetch_raw)
+  testthat::expect_false(exists("setTimeLimit", envir = fn_ortami, inherits = FALSE))
+  cagrilar <- list()
+  assign("setTimeLimit", function(...) {
+    cagrilar[[length(cagrilar) + 1L]] <<- list(...)
+    base::setTimeLimit(...)
+  }, envir = fn_ortami)
+  on.exit(rm("setTimeLimit", envir = fn_ortami), add = TRUE)
   veri <- mergen_bounded_db_fetch_raw("SELECT 1", list(), dsn = "DSN", encoding = "UTF-8",
-                                      name_encoding = "UTF-8", query_timeout = 0.3)
+                                      name_encoding = "UTF-8", query_timeout = 30)
   testthat::expect_identical(veri$x, 1L)
-  # Bütçeden (0,3 sn) uzun ilgisiz iş hata vermeden tamamlanır.
-  testthat::expect_silent({
-    t <- Sys.time()
-    while (as.numeric(difftime(Sys.time(), t, units = "secs")) < 0.8) sum(1:10)
-  })
+  sureler <- vapply(cagrilar, function(c) as.numeric(c$elapsed %||% NA_real_), numeric(1))
+  testthat::expect_true(any(is.finite(sureler)), info = "bütçeli okuma sonlu süre sınırı kurmalı")
+  # Başarılı okumanın son çağrısı sınırı kaldırır: sonraki ilgisiz işe sızmaz.
+  testthat::expect_identical(utils::tail(sureler, 1L), Inf)
 })
 
 # odbc 1.7'de parametreli (bind) yürütme kesilemez; bütçeli okuma tam sayı
@@ -847,15 +895,16 @@ testthat::test_that("bütçeli okuma tam sayı parametreleri doğrudan yürütme
     },
     .package = "DBI"
   )
-  .parcali_sorgu_bagla(function(sql) {
+  gonderim <- .parcali_sorgu_bagla(function(sql) {
     yakalanan$sql <- sql
-    yakalanan$params <- NULL
     data.frame(x = 1L)
   })
   sql <- "SELECT c.ChatID FROM MB_Chats c WHERE c.ChatID IN (?, ?) AND c.UserID = ? AND c.ChatTitle <> '?'"
   mergen_bounded_db_fetch_raw(sql, list(5L, 6, 42L), dsn = "DSN", encoding = "UTF-8",
                               name_encoding = "UTF-8", query_timeout = 5)
-  testthat::expect_null(yakalanan$params)
+  # DBI::dbSendQuery sınırına hiçbir bağlama listesi (params) ulaşmaz.
+  testthat::expect_null(gonderim$gonderim_args$params)
+  testthat::expect_length(gonderim$gonderim_args, 0L)
   testthat::expect_identical(
     yakalanan$sql,
     "SELECT c.ChatID FROM MB_Chats c WHERE c.ChatID IN (5, 6) AND c.UserID = 42 AND c.ChatTitle <> '?'"

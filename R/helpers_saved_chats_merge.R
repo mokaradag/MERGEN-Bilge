@@ -106,11 +106,12 @@ mergen_saved_chats_merge_newer <- function(db_chats, dispatch_snapshot, current,
   if (length(sonuc) > 1L && (length(yerel_yeni) > 0L || length(etkin) > 0L)) {
     # SQL ile aynı sıra: etkinlik zamanı, sonra oluşturma zamanı (yeni önce);
     # ikisi de eşitse girdi sırası korunur.
-    anahtar <- function(x) { v <- mergen_chat_activity_seconds(x); if (is.finite(v)) v else -Inf }
-    ts_deger <- vapply(sonuc, function(s) {
-      anahtar(if (!eksik(s$last_message_timestamp)) s$last_message_timestamp else s$timestamp)
-    }, numeric(1))
-    olusturma <- vapply(sonuc, function(s) anahtar(s$timestamp), numeric(1))
+    # Anahtarlar toplu dönüştürülür (öğe başına ayrıştırma yapılmaz).
+    anahtar <- function(x) { v <- mergen_chat_activity_seconds_vec(x); v[!is.finite(v)] <- -Inf; v }
+    ts_deger <- anahtar(lapply(sonuc, function(s) {
+      if (!eksik(s$last_message_timestamp)) s$last_message_timestamp else s$timestamp
+    }))
+    olusturma <- anahtar(lapply(sonuc, function(s) s$timestamp))
     if (any(is.finite(ts_deger))) sonuc <- sonuc[order(-ts_deger, -olusturma, seq_along(sonuc))]
   }
   mergen_saved_chats_carry_unsaved(sonuc, current)
@@ -122,10 +123,18 @@ mergen_saved_chats_merge_newer <- function(db_chats, dispatch_snapshot, current,
 mergen_saved_chats_carry_unsaved <- function(sonuc, current) {
   for (k in intersect(names(sonuc), names(current))) {
     yerel <- current[[k]]$messages
-    if (!is.list(yerel) || !length(yerel) || identical(sonuc[[k]]$messages, yerel)) next
+    if (!is.list(yerel) || !length(yerel)) next
     if (!any(vapply(yerel, mergen_chat_message_unsaved, logical(1)))) next
-    sonuc[[k]]$messages <- yerel
+    # Eşitlik yalnızca kopyayı atlar; yeniden okuma işareti her durumda konur.
+    if (!identical(sonuc[[k]]$messages, yerel)) sonuc[[k]]$messages <- yerel
     sonuc[[k]]$transkript_yenile <- TRUE
+    # Kayıtsız yerel mesaj DB'nin son etkinliğinden yeniyse etkinlik zamanı korunur.
+    yerel_zaman <- current[[k]]$last_message_timestamp
+    yerel_sn <- mergen_chat_activity_seconds(yerel_zaman)
+    db_sn <- mergen_chat_activity_seconds(sonuc[[k]]$last_message_timestamp)
+    if (is.finite(yerel_sn) && (!is.finite(db_sn) || yerel_sn > db_sn)) {
+      sonuc[[k]]$last_message_timestamp <- yerel_zaman
+    }
   }
   sonuc
 }
@@ -139,6 +148,28 @@ mergen_saved_chats_mark_deleted <- function(session, chat_id) {
   if (!is.environment(ud) || !isTRUE(kimlik > 0L)) return(invisible(FALSE))
   ud$saved_chats_silinenler <- union(ud$saved_chats_silinenler %||% character(), as.character(kimlik))
   invisible(TRUE)
+}
+
+# Önbellek anahtarı kanonik kimliktir ("007" -> "7"); kimlik olmayan değer aynen döner.
+mergen_saved_chats_canonical_key <- function(chat_id) {
+  kimlik <- mergen_canonical_user_id(chat_id)
+  if (isTRUE(kimlik > 0L)) as.character(kimlik) else chat_id
+}
+
+# Okuma hatasında gösterilebilecek (boş olmayan) önbellek transkripti var mı?
+mergen_saved_chats_has_transcript <- function(chat) {
+  is.list(chat) && is.list(chat$messages) && length(chat$messages) > 0L
+}
+
+# Silme DB hatası oturumu kapatmaz: maskelenmiş uyarı yazılır ve NA döner
+# (çağıran doğrulanamayan silme yoluna düşer).
+mergen_saved_chats_delete_rows <- function(delete_fn, chat_id, user_id) {
+  tryCatch(delete_fn(chat_id, user_id), error = function(e) {
+    warning(sprintf("[SAVED_CHATS] Söyleşi silinemedi (ChatID: %s): %s", chat_id,
+                    if (exists("mergen_db_error_log_summary", mode = "function", inherits = TRUE))
+                      mergen_db_error_log_summary(e) else class(e)[1]))
+    NA_integer_
+  })
 }
 
 # Etkin söyleşi kimliği verilen söyleşiyle kanonik olarak aynı mı ("007" = "7")?

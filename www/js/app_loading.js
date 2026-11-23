@@ -344,7 +344,24 @@
       markProgress();
 
       // Hazır-olma geri çekildiyse (ör. sahip değişimi) bekleyen veya şerit seçimine
-      // ertelenmiş kapanış ve kapanış etiketi iptal edilir.
+      // ertelenmiş kapanış ve kapanış etiketi iptal edilir. Bekleyen ya da
+      // görünen "hazır" etiketi de geri alınır: hazır olmayan durumda "Hazır"
+      // yazmaz (aşama monoton olduğundan setStage bunu değiştiremez).
+      var hazirAsamasinda = !finished && stageIndex >= 0 && STAGES[stageIndex] &&
+          STAGES[stageIndex].key === "ready";
+      if (msg.ready !== true && hazirAsamasinda) {
+        if (stageLabelTimer) {
+          window.clearTimeout(stageLabelTimer);
+          stageLabelTimer = null;
+        }
+        if (statusText) {
+          var gelenAsama = null;
+          for (var s = 0; s < STAGES.length; s++) if (STAGES[s].key === msg.key) gelenAsama = STAGES[s];
+          statusText.classList.remove("alo-status-fade");
+          lastStageLabel = (gelenAsama && gelenAsama.key !== "ready") ? gelenAsama.label : "Hazırlık sürüyor";
+          statusText.textContent = lastStageLabel;
+        }
+      }
       if (msg.ready !== true && (richFinishTimer || laneFinishTimer || pendingFinishUntilLaneResolved)) {
         if (richFinishTimer) {
           window.clearTimeout(richFinishTimer);
@@ -393,6 +410,17 @@
           (kismen.indexOf("management_pages_ready") >= 0 ?
             "Kısmen hazır — Söyleşi Yönetimi verisi henüz tamamlanmadı" : "Kısmen hazır");
         kapanisEtiketi = etiket;
+        // Geri çekilmeden sonra yeniden hazır: aşama zaten "ready" olduğundan
+        // setStage etiketi yazmaz; etiket doğrudan yayımlanır.
+        if (hazirAsamasinda && statusText) {
+          if (stageLabelTimer) {
+            window.clearTimeout(stageLabelTimer);
+            stageLabelTimer = null;
+          }
+          statusText.classList.remove("alo-status-fade");
+          lastStageLabel = etiket;
+          statusText.textContent = etiket;
+        }
         setStage("ready");
         if (richFinishTimer) {
           window.clearTimeout(richFinishTimer);

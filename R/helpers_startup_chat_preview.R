@@ -79,9 +79,11 @@ mergen_bounded_db_fetch_raw <- function(sql, params, dsn, encoding, name_encodin
   }
   # Bütçeli okumada bağlantı denemesi de bütçeye dahildir: setTimeLimit yerel
   # (native) bağlanma çağrısını kesemez; login sınırı bütçeyi aşamaz,
-  # yapılandırılmamışsa bütçe login sınırı olarak iletilir (en az 1 sn).
+  # yapılandırılmamışsa bütçe login sınırı olarak iletilir. Saniye aşağı
+  # yuvarlanır (4.2 sn -> 4 sn; bütçe aşılmaz); 0 sürücüde "sınırsız" demek
+  # olduğundan alt sınır 1 sn'dir (1 sn altı bütçe politikası ayrıca belirlenir).
   if (sinirli) {
-    butce_login <- max(1L, as.integer(min(ceiling(sure_sn), 2147483L)))
+    butce_login <- max(1L, as.integer(min(floor(sure_sn), 2147483L)))
     baglanti_args$timeout <- if (is.null(baglanti_args$timeout)) butce_login else min(baglanti_args$timeout, butce_login)
   }
   if (sinirli) baglanti_args$interruptible <- TRUE
@@ -387,7 +389,9 @@ mergen_startup_chat_preview_promise <- function(user_id,
     session_token = session_token,
     dependency_mode = "explicit",
     globals = preview_globals,
-    packages = c("DBI")
+    packages = c("DBI"),
+    # Kuyrukta eskiyen (sahip/nesil değişmiş) okuma işçi yuvası almadan düşer.
+    start_check = if (is.function(gecerli_mi)) gecerli_mi else NULL
   )
 
   promises::then(raw_promise, onFulfilled = function(raw_frame) {

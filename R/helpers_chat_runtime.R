@@ -192,8 +192,29 @@ chat_store_message_in_saved_chats <- function(values, message) {
     existing_messages <- list()
   }
 
+  # Aynı yerel kimlikli kayıt (ör. ilk kaydı başarısız olup SSE yeniden
+  # denemesinde kaydedilen istem) yerinde güncellenir; ikinci kopya eklenmez.
+  mesaj_kimligi <- suppressWarnings(as.character(message$id %||% "")[1])
+  mevcut_sira <- if (!is.na(mesaj_kimligi) && nzchar(mesaj_kimligi) && length(existing_messages)) {
+    which(vapply(existing_messages, function(m) {
+      identical(suppressWarnings(as.character(m$id %||% "")[1]), mesaj_kimligi)
+    }, logical(1)))
+  } else integer()
+  if (length(mevcut_sira)) {
+    existing_messages[[mevcut_sira[1]]] <- message
+    entry$messages <- existing_messages
+    saved_chats_copy[[chat_key]] <- entry
+    values$saved_chats <- saved_chats_copy
+    return(invisible(NULL))
+  }
+
+  # Önbellek transkripti eksikse (ör. silme sonrası özet liste) sayı uzunluğa
+  # indirgenmez; aksi halde yeniden açılışta eksik transkript tam sanılırdı.
+  onceki_sayi <- suppressWarnings(as.integer(entry$message_count %||% 0L)[1])
+  if (is.na(onceki_sayi)) onceki_sayi <- 0L
+  eksik_onbellek <- onceki_sayi > length(existing_messages)
   entry$messages <- append(existing_messages, list(message))
-  entry$message_count <- length(entry$messages)
+  entry$message_count <- if (eksik_onbellek) onceki_sayi + 1L else length(entry$messages)
   entry$last_message_timestamp <- Sys.time()
 
   if (is.null(entry$timestamp) || is.na(entry$timestamp)) {

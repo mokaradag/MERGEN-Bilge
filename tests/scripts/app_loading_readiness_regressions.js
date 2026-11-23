@@ -89,6 +89,18 @@ assert.equal(durumMetni.textContent, 'Söyleşi Yönetimi verisi hazırlanıyor'
 kontrol({ key: 'auth_ready', required_done: ['connect'], required_total: 3 });
 assert.equal(durumMetni.textContent, 'Kimlik doğrulandı', 'koşul kalkınca bekleme etiketi değişmeli');
 
+// 1b) Hazır-olma, hazır aşamasının 200 ms'lik etiket zamanlayıcısı dolmadan geri
+// çekilir: bekleyen "Hazır" etiketi yazılmaz, hazır olmayan durum gösterilir.
+serit.secimGerekli = true;
+kontrol({ key: 'management_pages_ready', ready: true, kismen: [],
+          required_done: ['connect', 'auth_ready', 'management_pages_ready'], required_total: 3 });
+ilerlet(100);
+kontrol({ key: 'auth_ready', ready: false, required_done: ['connect'], required_total: 3 });
+ilerlet(400);
+assert.notEqual(durumMetni.textContent, 'Hazır', 'geri çekilen hazır-olmada Hazır yazılmamalı');
+assert.equal(durumMetni.textContent, 'Kimlik doğrulandı', 'geri çekilmede hazır olmayan durum gösterilmeli');
+assert.equal(kapandi(), false);
+
 // 2) Kısmen hazır: hazır aşaması hiçbir anda niteliksiz "Hazır" göstermez ve
 // Söyleşi Yönetimi etiketi sayfa açılışında tamamlanma sözü vermez.
 // Şerit seçimi bekleniyor: kapanış seçim çözülene dek ertelenir.
@@ -110,12 +122,20 @@ seritCozuldu();
 kontrol({ key: 'auth_ready', ready: false, required_done: ['connect'], required_total: 3 });
 ilerlet(1000);
 assert.equal(kapandi(), false, 'geri çekilen hazır-olma kuyruktaki kapanışı iptal etmeli');
+assert.equal(durumMetni.textContent, 'Kimlik doğrulandı', 'görünen kısmen hazır etiketi geri çekilmede kalkmalı');
 
-// 4) Tam hazır: etiket "Hazır" ve katman kapanır.
+// 4) Tam hazır: etiket "Hazır", katman kapanır, erime sonunda gizlenir ve
+// kabuk kapısı bırakılır (yalnızca tamamlanmanın başlaması yetmez).
+let kapiBirakma = 0;
+pencere.MergenBootShellGate = { release: () => { kapiBirakma += 1; } };
 kontrol({ key: 'management_pages_ready', ready: true, kismen: [],
           required_done: ['connect', 'auth_ready', 'management_pages_ready'], required_total: 3 });
 ilerlet(1000);
 assert.equal(kapandi(), true);
 assert.equal(durumMetni.textContent, 'Hazır');
+ilerlet(15000);
+assert.ok(katman.classList.contains('app-loading-hidden'), 'katman erimeye başlamalı');
+assert.equal(katman.style.display, 'none', 'katman erime sonunda gizlenmeli');
+assert.ok(kapiBirakma >= 1, 'kabuk kapısı bırakılmalı');
 
 console.log('app_loading_readiness_regressions: OK');

@@ -107,11 +107,11 @@ testthat::test_that("navigate_to_chat yükleme sürerken 'lütfen bekleyin' der 
 # ------------------------------------------------------------------------------
 # Bulunamayan söyleşi
 # ------------------------------------------------------------------------------
-testthat::test_that("navigate_to_chat önbellekte/DB'de yoksa 'artık mevcut değil' der ve kilidi bırakır", {
-  fix <- .source_gallery_obs_for_test(load_in_progress = FALSE)  # DB stub NULL döner
+testthat::test_that("navigate_to_chat okuma hatasında önbellek yoksa okuma hatası bildirir, silindi demez ve kilidi bırakır", {
+  fix <- .source_gallery_obs_for_test(load_in_progress = FALSE)  # DB stub NULL döner (okuma hatası)
   .drive_navigate(fix, list(chat_id = "6"), list(chat_id = "5"), saved_chats = list())
-  testthat::expect_true(any(grepl("artık mevcut değil veya silinmiş",
-                                  .toast_msgs(fix$rec), fixed = TRUE)))
+  testthat::expect_true(any(grepl("şu anda okunamadı", .toast_msgs(fix$rec), fixed = TRUE)))
+  testthat::expect_false(any(grepl("artık mevcut değil veya silinmiş", .toast_msgs(fix$rec), fixed = TRUE)))
   # Yükleme kilidi tekrar serbest bırakılmalı.
   testthat::expect_false(fix$rec$lock_snapshot)
 })
@@ -201,4 +201,75 @@ testthat::test_that("navigate_to_chat bulunamayan söyleşide yükleniyor görü
   testthat::expect_length(rec$kalan, 0L)
   testthat::expect_false(isTRUE(rec$kilit))
   testthat::expect_identical(rec$silinenler, "5")
+})
+
+# Başarılı galeri yönlendirmesi tanımsız değişkenle düşmez: söyleşi açılır,
+# başarı bildirimi gösterilir ve yükleme kilidi gecikmeli geri çağrıyla bırakılır.
+.galeri_basari_calistir <- function(saved_chats, db_impl, kimlik = 7L) {
+  fix <- .source_gallery_obs_for_test(load_in_progress = FALSE, db_impl = db_impl)
+  env <- fix$env; rec <- fix$rec
+  rec$gecikmeler <- 0L; rec$basari <- 0L
+  env$updateTabItems <- function(...) invisible(NULL)
+  env$load_feedback_from_db <- function(...) list(liked = character(), disliked = character())
+  env$normalize_character_id <- function(x) x %||% ""
+  env$get_characters_data <- function() NULL
+  env$render_message_bubble_ui <- function(msg, ...) shiny::div(msg$content %||% "")
+  env$resolve_runtime_user_id <- function() kimlik
+  env$mergen_show_chat_loaded_toast <- function(...) rec$basari <- rec$basari + 1L
+  testthat::local_mocked_bindings(
+    runjs = function(code) invisible(NULL),
+    delay = function(ms, expr) { rec$gecikmeler <- rec$gecikmeler + 1L; force(expr) },
+    .package = "shinyjs"
+  )
+  shiny::testServer(function(input, output, session) {
+    nav <- shiny::reactiveVal(NULL)
+    lock <- shiny::reactiveVal(FALSE)
+    values <- shiny::reactiveValues(saved_chats = saved_chats, messages = list())
+    env$imageGalleryObserversInit(
+      input = input, session = session, values = values,
+      settings_data = shiny::reactiveValues(selected_character = NULL),
+      gallery_data = list(navigate_to_chat = nav, delete_image = shiny::reactiveVal(NULL),
+                          clear_all_images = shiny::reactiveVal(NULL)),
+      saved_chats_data = list(), current_user_id = kimlik, load_chat_in_progress = lock
+    )
+    nav(list(chat_id = "6")); nav(list(chat_id = "5"))
+    rec$values <- values; rec$lock <- lock
+  }, {
+    session$flushReact()
+    rec$kilit <- shiny::isolate(rec$lock())
+    rec$acik <- shiny::isolate(rec$values$current_chat_id)
+    rec$mesaj_sayisi <- length(shiny::isolate(rec$values$messages))
+  })
+  rec
+}
+
+testthat::test_that("navigate_to_chat başarılı yüklemede oturumu düşürmez, başarı bildirir ve kilidi bırakır", {
+  mesajlar <- list(list(id = "1", type = "user", content = "merhaba"),
+                   list(id = "2", type = "ai", content = "selam"))
+  rec <- .galeri_basari_calistir(
+    saved_chats = list("5" = list(title = "Görsel", messages = mesajlar, message_count = 2L)),
+    db_impl = function(...) stop("hidrasyon beklenmiyordu")
+  )
+  testthat::expect_identical(rec$acik, 5L)
+  testthat::expect_identical(rec$mesaj_sayisi, 2L)
+  testthat::expect_identical(rec$basari, 1L)
+  testthat::expect_true(rec$gecikmeler >= 1L)
+  testthat::expect_false(isTRUE(rec$kilit))
+})
+
+testthat::test_that("navigate_to_chat özet önbellekte okuma hatası boş söyleşiyi 'yüklendi' diye açmaz", {
+  uyarilar <- character()
+  rec <- withCallingHandlers(
+    .galeri_basari_calistir(
+      saved_chats = list("5" = list(title = "Özet", messages = NULL, message_count = 4L)),
+      db_impl = function(...) stop("okuma_hatasi_test")
+    ),
+    warning = function(w) { uyarilar <<- c(uyarilar, conditionMessage(w)); invokeRestart("muffleWarning") }
+  )
+  # Okuma hatası günlüğe tam bir kez yazılır.
+  testthat::expect_identical(sum(grepl("Söyleşi yüklenemedi (ChatID: 5)", uyarilar, fixed = TRUE)), 1L)
+  testthat::expect_null(rec$acik)
+  testthat::expect_identical(rec$basari, 0L)
+  testthat::expect_true(any(grepl("şu anda okunamadı", .toast_msgs(rec), fixed = TRUE)))
+  testthat::expect_false(isTRUE(rec$kilit))
 })

@@ -108,6 +108,27 @@ chatInputObserversInit <- function(input, session, values, settings_data,
     istem_kimligi <- istem[["client_id", exact = TRUE]]
     if (!is.character(istem_kimligi) || length(istem_kimligi) != 1L || is.na(istem_kimligi) ||
         !grepl("^[A-Za-z0-9_-]{1,64}$", istem_kimligi)) istem_kimligi <- ""
+
+    # Önceki sahibin nesliyle yazılmış istem yeni sahip adına işlenmez ve
+    # sonuç önbelleğine HİÇ dokunmaz: nesil, önbellek yinelemesinden ÖNCE
+    # denetlenir. Eski istemin reddi güncel neslin önbelleğine yazılmaz (aynı
+    # kimliği yeniden kullanan güncel istem bu redle yanıtlanmaz) ve güncel
+    # neslin önbellekteki kabulü eski isteme yinelenmez. Nesil yalnızca istemci
+    # bildirdiyse denetlenir: bekleyen istem modülü yüklenemeyen istemci kalıcı
+    # olarak gönderemez hâle gelmez.
+    ham_nesil <- istem[["sahip_nesli", exact = TRUE]]
+    if (!is.null(ham_nesil)) {
+      istem_nesli <- tryCatch(suppressWarnings(as.integer(ham_nesil)[1]), error = function(e) NA_integer_)
+      if (length(istem_nesli) != 1L || is.na(istem_nesli)) istem_nesli <- 0L
+      if (istem_nesli < kimlik_nesli()) {
+        if (nzchar(istem_kimligi)) {
+          try(session$sendCustomMessage("mergenIstemSonucu", list(client_id = istem_kimligi, durum = "ret")),
+              silent = TRUE)
+        }
+        return(invisible(NULL))
+      }
+    }
+
     if (nzchar(istem_kimligi) && istem_kimligi %in% names(islenen_istemler)) {
       try(session$sendCustomMessage("mergenIstemSonucu", islenen_istemler[[istem_kimligi]]), silent = TRUE)
       return(invisible(NULL))
@@ -139,19 +160,6 @@ chatInputObserversInit <- function(input, session, values, settings_data,
       if (length(islenen_istemler) > 32L) islenen_istemler <<- utils::tail(islenen_istemler, 32L)
       try(session$sendCustomMessage("mergenIstemSonucu", sonuc), silent = TRUE)
     }, add = TRUE)
-
-    # Önceki sahibin nesliyle yazılmış istem yeni sahip adına işlenmez ("ret";
-    # istemci sıfırlamada bu istemi zaten metni geri yüklemeden düşürmüştür).
-    # Nesil yalnızca istemci bildirdiyse denetlenir: bekleyen istem modülü
-    # yüklenemeyen istemci kalıcı olarak gönderemez hâle gelmez.
-    ham_nesil <- istem[["sahip_nesli", exact = TRUE]]
-    if (!is.null(ham_nesil)) {
-      istem_nesli <- tryCatch(suppressWarnings(as.integer(ham_nesil)[1]), error = function(e) NA_integer_)
-      if (length(istem_nesli) != 1L || is.na(istem_nesli)) istem_nesli <- 0L
-      if (istem_nesli < kimlik_nesli()) {
-        return(invisible(NULL))
-      }
-    }
 
     if (!check_rate_limit(resolve_chat_input_user_id())) {
       showToast(session, "Çok fazla istek gönderdiniz. Lütfen biraz bekleyin.", "warning")

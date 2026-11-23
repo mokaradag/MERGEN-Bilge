@@ -1283,7 +1283,7 @@ testthat::test_that("arka plan tam listesi geç gelince arada açılan ve siline
   })
 })
 
-testthat::test_that("tam liste uçuştayken açılıp silinen söyleşi yeniden okuma başarısız olsa da geri gelmez", {
+testthat::test_that("bekleyen tam liste, uçuş sırasında üretim yoluyla işaretlenen silinmiş söyleşiyi geri getirmez", {
   testthat::skip_if_not_installed("shiny")
   testthat::skip_if_not_installed("shinyjs")
   testthat::skip_if_not_installed("promises")
@@ -1293,9 +1293,9 @@ testthat::test_that("tam liste uçuştayken açılıp silinen söyleşi yeniden 
   rec <- new.env()
   rec$defer_full_fulfillment <- TRUE
   rec$preview_result <- list("p1" = list(title = "Ön izleme", message_count = 1L))
-  # "gecici" gönderimden SONRA açıldı ve işçinin DB görüntüsüne girdi.
+  # "77" gönderimden SONRA açıldı ve işçinin DB görüntüsüne girdi.
   rec$full_result <- list(
-    "gecici" = list(title = "Açılıp silinen çğış", message_count = 1L),
+    "77" = list(title = "Açılıp silinen çğış", message_count = 1L),
     "p1" = list(title = "Ön izleme", message_count = 1L),
     "eski" = list(title = "Eski söyleşi", message_count = 4L)
   )
@@ -1317,16 +1317,18 @@ testthat::test_that("tam liste uçuştayken açılıp silinen söyleşi yeniden 
     for (i in 1:5) later::run_now(timeoutSecs = 0.05)
     session$flushReact()
     testthat::expect_true(is.function(rec$resolve_full))
-    # Silme gözlemcisinin yeniden okuma BAŞARISIZ yolu: söyleşi DB'de silindi
-    # (işaretlendi), yerelden kalktı; yetkili sürüm ARTMADI. Yerel liste
-    # gönderim anındaki görüntüyle birebir aynı kaldı.
-    session$userData$saved_chats_silinenler <- "gecici"
+    # Uçuş sırasında silme doğrulandı: işaret üretimdeki yoldan yazılır
+    # (mergen_saved_chats_mark_deleted); yetkili sürüm ARTMADI (yeniden okuma
+    # başarısız yolu). Silme gözlemcisinin işaret yazımı ayrıca
+    # test-saved-chats-delete-reload-behavior.R içinde sınanır.
+    testthat::expect_true(mergen_saved_chats_mark_deleted(session, "77"))
+    testthat::expect_identical(session$userData$saved_chats_silinenler, "77")
     testthat::expect_null(session$userData$saved_chats_yetkili_surum)
     rec$resolve_full()
     for (i in 1:5) later::run_now(timeoutSecs = 0.05)
     session$flushReact()
     son <- shiny::isolate(session$userData$.values$saved_chats)
-    testthat::expect_false("gecici" %in% names(son), info = "silinen söyleşi eski DB görüntüsüyle geri gelmemeli")
+    testthat::expect_false("77" %in% names(son), info = "silinen söyleşi eski DB görüntüsüyle geri gelmemeli")
     testthat::expect_true(all(c("p1", "eski") %in% names(son)), info = "diğer söyleşiler korunmalı")
   })
 })
@@ -1495,7 +1497,8 @@ testthat::test_that("zengin şeritte tam liste başlarken kimlik düşerse Söyl
     yonetim <- Filter(function(e) identical(e$key, "management_pages_ready"), boot$entries())
     testthat::expect_length(yonetim, 1L)
     testthat::expect_true(isTRUE(yonetim[[1]]$detail$degraded))
-    testthat::expect_false(isTRUE(yonetim[[1]]$detail$identity))
+    # Kimlik kaybı işareti açık FALSE değeridir (eksik alan kabul edilmez).
+    testthat::expect_identical(yonetim[[1]]$detail$identity, FALSE)
     testthat::expect_true(isTRUE(session$userData$saved_chats_full_pending))
   })
 })
@@ -1611,6 +1614,9 @@ testthat::test_that("kimlik düşüp aynı kullanıcı dönse de eski nesle ait 
     session$setInputs(startup_lane_resolved = list(lane = "fast_lane", source = "stored", ts = 1))
     session$setInputs(welcome_client_ready = list(fast_lane = TRUE, timestamp = 1))
     eski_coz <- rec$resolve_preview
+    # Yeni neslin (yerine geçen) ön izlemesi ayırt edilebilir başlık taşır.
+    rec$preview_result <- list("yeni-on-izleme" = list(title = "Yeni ön izleme", message_count = 1L))
+    rec$full_result <- rec$preview_result
     # Kimlik düşer ve AYNI kullanıcı geri döner (kimlik ve boş liste yeniden eşleşir).
     kimlik$uid <- 0L
     mergen_session_owner_transition(session$userData, 7L, 0L)
@@ -1624,5 +1630,120 @@ testthat::test_that("kimlik düşüp aynı kullanıcı dönse de eski nesle ait 
     session$flushReact()
     testthat::expect_false("eski-on-izleme" %in% names(shiny::isolate(session$userData$.values$saved_chats)))
     testthat::expect_identical(rec$full, tam_once)
+    # Yerine geçen ön izleme kimlik dönünce uygulanır ve tam bir tam liste başlatır.
+    yeni_coz <- rec$resolve_preview
+    testthat::expect_false(identical(yeni_coz, eski_coz), info = "kimlik dönünce yeni ön izleme gönderilmeli")
+    yeni_coz()
+    for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+    session$flushReact()
+    testthat::expect_true("yeni-on-izleme" %in% names(shiny::isolate(session$userData$.values$saved_chats)))
+    testthat::expect_identical(rec$full, tam_once + 1L)
+  })
+})
+
+# Hızlı şerit tam listesi: karşılama yalnızca görünen "Son Konuşmalar" dilimi
+# değiştiyse yeniden çizilir; geçmiş satır hazırlığı (yonetim_hazirla) bu
+# şeritte başlatılmaz (paylaşılan işçi kuyruğu spekülatif okumayla dolmaz).
+.hizli_serit_tam_liste_senaryosu <- function(tam_liste) {
+  .startup_observers_source_once()
+  # Görünen dilim karşılaştırması üretimdeki karşılama yardımcısını kullanır
+  # (çalışma zamanında kaynak manifestiyle yüklenir).
+  if (!exists("mergen_welcome_recent_items", envir = globalenv(), mode = "function")) {
+    source(file.path(resolve_repo_root_for_tests(), "R", "welcome_screen_modern.R"),
+           encoding = "UTF-8", local = globalenv())
+  }
+  zaman <- function(saat) as.POSIXct(sprintf("2026-07-01 %02d:00:00", saat), tz = "UTC")
+  rec <- new.env()
+  rec$preview_result <- list(
+    "p1" = list(title = "Bir", message_count = 1L, last_message_timestamp = zaman(10)),
+    "p2" = list(title = "İki", message_count = 1L, last_message_timestamp = zaman(9)),
+    "p3" = list(title = "Üç", message_count = 1L, last_message_timestamp = zaman(8)))
+  rec$full_result <- tam_liste(rec$preview_result, zaman)
+  rec$defer_full_fulfillment <- TRUE
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+  js <- character()
+  testthat::local_mocked_bindings(runjs = function(code) js <<- c(js, code), .package = "shinyjs")
+  sonuc <- new.env()
+  shiny::testServer(function(input, output, session) {
+    cizim <- 0L
+    session$userData$deep_space_dismissed <- TRUE
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startupObserversInit(input = input, session = session, values = values,
+                         render_welcome_screen = function(...) { cizim <<- cizim + 1L; invisible(NULL) },
+                         current_user_id = function() 42L, sso_state = NULL, boot_ready = NULL)
+    session$userData$.values <- values
+    session$userData$.cizim <- function() cizim
+  }, {
+    session$flushReact()
+    session$setInputs(startup_lane_resolved = list(lane = "fast_lane", source = "stored", ts = 1))
+    session$setInputs(welcome_client_ready = list(fast_lane = TRUE, timestamp = 1))
+    for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+    session$flushReact()
+    testthat::expect_true(is.function(rec$resolve_full), info = "ön izlemeden sonra tam liste gönderilmeli")
+    sonuc$once <- session$userData$.cizim()
+    rec$resolve_full()
+    for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+    session$flushReact()
+    sonuc$sonra <- session$userData$.cizim()
+    sonuc$tam_yuklendi <- isTRUE(session$userData$saved_chats_full_loaded)
+    sonuc$adlar <- names(shiny::isolate(session$userData$.values$saved_chats))
+  })
+  sonuc$js <- js
+  sonuc
+}
+
+testthat::test_that("hızlı şerit tam listesi görünen dilim aynıysa karşılamayı yeniden çizmez ve geçmiş hazırlığını başlatmaz", {
+  testthat::skip_if_not_installed("shiny"); testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises"); testthat::skip_if_not_installed("later")
+  sonuc <- .hizli_serit_tam_liste_senaryosu(function(on_izleme, zaman) {
+    c(on_izleme, list("eski" = list(title = "Eski", message_count = 3L, last_message_timestamp = zaman(1))))
+  })
+  testthat::expect_true(sonuc$tam_yuklendi)
+  testthat::expect_true("eski" %in% sonuc$adlar)
+  testthat::expect_identical(sonuc$sonra, sonuc$once, info = "görünen dilim değişmediyse yeniden çizim olmamalı")
+  testthat::expect_false(any(grepl("history_module-hazirla", sonuc$js, fixed = TRUE)),
+                         info = "hızlı şeritte geçmiş hazırlığı başlatılmamalı")
+})
+
+testthat::test_that("hızlı şerit tam listesi görünen dilimi değiştirirse karşılama bir kez yeniden çizilir", {
+  testthat::skip_if_not_installed("shiny"); testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises"); testthat::skip_if_not_installed("later")
+  sonuc <- .hizli_serit_tam_liste_senaryosu(function(on_izleme, zaman) {
+    c(list("yeni" = list(title = "Daha yeni", message_count = 1L, last_message_timestamp = zaman(11))), on_izleme)
+  })
+  testthat::expect_true(sonuc$tam_yuklendi)
+  testthat::expect_identical(sonuc$sonra, sonuc$once + 1L)
+})
+
+testthat::test_that("Tümünü Temizle sonrası (değer eşit olsa da) gecikmiş ön izleme silinen söyleşileri geri getirmez", {
+  testthat::skip_if_not_installed("shiny"); testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises"); testthat::skip_if_not_installed("later")
+  .startup_observers_source_once()
+  rec <- new.env()
+  rec$defer_preview_fulfillment <- TRUE
+  rec$preview_result <- list("silinen" = list(title = "Silinen", message_count = 1L))
+  # Arka plan tam listesi devre dışı: sonuç yalnızca ön izleme kararını gösterir.
+  rec$async_worker_ready <- FALSE
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+  shiny::testServer(function(input, output, session) {
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startupObserversInit(input = input, session = session, values = values,
+                         render_welcome_screen = function(...) invisible(NULL),
+                         current_user_id = function() 42L, sso_state = NULL, boot_ready = NULL)
+    session$userData$.values <- values
+  }, {
+    session$flushReact()
+    session$setInputs(startup_lane_resolved = list(lane = "fast_lane", source = "stored", ts = 1))
+    session$setInputs(welcome_client_ready = list(fast_lane = TRUE, timestamp = 1))
+    testthat::expect_true(is.function(rec$resolve_preview))
+    # Gönderim yapıldı, söyleşi oluştu, Tümünü Temizle listeyi yeniden boşalttı:
+    # değer gönderimdeki görüntüye eşit, ama yetkili sürüm arttı.
+    session$userData$saved_chats_yetkili_surum <- 1L
+    rec$resolve_preview()
+    for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+    session$flushReact()
+    testthat::expect_length(shiny::isolate(session$userData$.values$saved_chats), 0L)
   })
 })

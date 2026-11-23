@@ -396,7 +396,9 @@ worker_monitor_serialize_explicit_task <- function(task_fn, promise_globals, pac
 #     globals'ı içeren izole bir ortama yeniden bağlanır. Açılış kritik
 #     yolundaki görevler bu modu kullanmalıdır (bkz. CLAUDE.md 8A).
 # start_check: future şeridinde iş kuyruktan çıkarken sorulan isteğe bağlı
-#   yüklem; FALSE dönerse eskimiş iş işçiye gönderilmeden reddedilir.
+#   yüklem; FALSE dönerse eskimiş iş işçiye gönderilmeden reddedilir. Yalnızca
+#   future şeridinde geçerlidir; cancel_check ile birlikte verilmesi reddedilir
+#   (callr şeridinde sessizce yok sayılmasın diye).
 tracked_future_promise <- function(task_fn,
                                    task_type = "generic",
                                    session_token = NULL,
@@ -411,6 +413,9 @@ tracked_future_promise <- function(task_fn,
                                    start_check = NULL) {
   if (!is.function(task_fn)) {
     stop("tracked_future_promise() için 'task_fn' bir fonksiyon olmalıdır.")
+  }
+  if (is.function(cancel_check) && !is.null(start_check)) {
+    stop("tracked_future_promise(): 'start_check' yalnızca future şeridinde desteklenir; 'cancel_check' ile birlikte verilemez.")
   }
 
   dependency_mode <- match.arg(dependency_mode)
