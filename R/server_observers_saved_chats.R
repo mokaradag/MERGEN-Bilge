@@ -581,7 +581,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     # uyguluyor ve YANLIŞ bir PK analizi üretebiliyordu. Nesil sayacı da
     # artırılır: kaydedilmemiş sohbetler `NULL` kimliği PAYLAŞIR (bkz.
     # `chat_reset_state()` ile AYNI sözleşme).
-    for (.pk_fn in c("pk_entity_context_clear", "mergen_pk_bump_chat_epoch")) {
+    for (.pk_fn in c("pk_entity_context_clear", "mergen_pk_bump_chat_epoch", "mergen_saved_chats_stop_active_request")) {
       if (exists(.pk_fn, mode = "function", inherits = TRUE)) {
         try(get(.pk_fn, mode = "function")(session), silent = TRUE)
       }
@@ -734,7 +734,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
 
         # D11 varlık bağlamı ve nesil sayacı da sıfırlanır (tek silme ile AYNI
         # sözleşme; bkz. yukarıdaki gerekçe).
-        for (.pk_fn in c("pk_entity_context_clear", "mergen_pk_bump_chat_epoch")) {
+        for (.pk_fn in c("pk_entity_context_clear", "mergen_pk_bump_chat_epoch", "mergen_saved_chats_stop_active_request")) {
           if (exists(.pk_fn, mode = "function", inherits = TRUE)) {
             try(get(.pk_fn, mode = "function")(session), silent = TRUE)
           }

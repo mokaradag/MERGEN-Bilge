@@ -101,6 +101,16 @@ assert.notEqual(durumMetni.textContent, 'Hazır', 'geri çekilen hazır-olmada H
 assert.equal(durumMetni.textContent, 'Kimlik doğrulandı', 'geri çekilmede hazır olmayan durum gösterilmeli');
 assert.equal(kapandi(), false);
 
+// 1c) Geri çekilmeden sonra önce yalnızca Söyleşi Yönetimi eksik (bekleme
+// etiketi), sonra başka bir kontrol noktası da eksik: "Hazır" geri yazılmaz.
+kontrol({ key: 'auth_ready', ready: false, required_done: ['connect', 'auth_ready'], required_total: 3 });
+assert.equal(durumMetni.textContent, 'Söyleşi Yönetimi verisi hazırlanıyor');
+kontrol({ key: 'auth_ready', ready: false, required_done: ['connect'], required_total: 3 });
+ilerlet(400);
+assert.notEqual(durumMetni.textContent, 'Hazır', 'ikinci geri çekilmede Hazır geri yazılmamalı');
+assert.equal(durumMetni.textContent, 'Kimlik doğrulandı');
+assert.equal(kapandi(), false);
+
 // 2) Kısmen hazır: hazır aşaması hiçbir anda niteliksiz "Hazır" göstermez ve
 // Söyleşi Yönetimi etiketi sayfa açılışında tamamlanma sözü vermez.
 // Şerit seçimi bekleniyor: kapanış seçim çözülene dek ertelenir.

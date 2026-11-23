@@ -172,6 +172,15 @@ mergen_saved_chats_delete_rows <- function(delete_fn, chat_id, user_id) {
   })
 }
 
+# Etkin söyleşi silinince/temizlenince süren istek (ör. görsel) durdurulur:
+# sahibi kalmayan istek gönderimi kilitli tutmaz, geç sonucu uygulanmaz.
+# Durdurma yolu sohbet girdisi gözlemcisinin Durdur düğmesiyle aynıdır.
+mergen_saved_chats_stop_active_request <- function(session) {
+  durdur <- tryCatch(session$userData$mergen_etkin_istegi_durdur, error = function(e) NULL)
+  if (is.function(durdur)) durdur()
+  invisible(NULL)
+}
+
 # Etkin söyleşi kimliği verilen söyleşiyle kanonik olarak aynı mı ("007" = "7")?
 mergen_saved_chats_is_active <- function(etkin_id, chat_id) {
   etkin <- mergen_canonical_user_id(if (length(etkin_id) == 1L) as.character(etkin_id) else NULL)

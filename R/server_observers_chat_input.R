@@ -35,11 +35,11 @@ chatInputObserversInit <- function(input, session, values, settings_data,
     uid
   }
 
-  observeEvent(input$send_stop_btn, {
-    session$sendCustomMessage("stopTTSPlayback", list(reason = "stop_button"))
-
+  # Etkin isteği durdurur (Durdur düğmesi ve etkin söyleşi silindiğinde aynı yol):
+  # istek kimliği döner, stop_generation gözlemcisi gönderme durumunu bırakır.
+  etkin_istegi_durdur <- function() {
     if (isTRUE(values$is_sending) || isTRUE(values$typing)) {
-      cat("[STOP_BUTTON] Kullanıcı durdurma istedi\n")
+      cat("[STOP_BUTTON] Etkin istek durduruluyor\n")
 
       # Faz 6 (§5.10): İPTAL İŞÇİYE ULAŞMALIDIR. Geri çağrıyı atmak (aşağıdaki
       # active_request_id değişimi) işçiyi ÇALIŞMAYA DEVAM ETTİRİR; DB
@@ -70,6 +70,13 @@ chatInputObserversInit <- function(input, session, values, settings_data,
       stop_generation(TRUE)
       active_request_id(paste0("cancelled_", as.numeric(Sys.time())))
     }
+    invisible(NULL)
+  }
+  session$userData$mergen_etkin_istegi_durdur <- etkin_istegi_durdur
+
+  observeEvent(input$send_stop_btn, {
+    session$sendCustomMessage("stopTTSPlayback", list(reason = "stop_button"))
+    etkin_istegi_durdur()
   }, ignoreInit = TRUE)
 
   # İstemcinin iyimser (bekleyen) balonu yalnızca sunumdur; kabul/ret kararı

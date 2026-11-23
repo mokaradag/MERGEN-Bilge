@@ -349,16 +349,17 @@
       // yazmaz (aşama monoton olduğundan setStage bunu değiştiremez).
       var hazirAsamasinda = !finished && stageIndex >= 0 && STAGES[stageIndex] &&
           STAGES[stageIndex].key === "ready";
+      var gelenAsama = null;
+      for (var s = 0; s < STAGES.length; s++) if (STAGES[s].key === msg.key) gelenAsama = STAGES[s];
+      var hazirOlmayanEtiket = (gelenAsama && gelenAsama.key !== "ready") ? gelenAsama.label : "Hazırlık sürüyor";
       if (msg.ready !== true && hazirAsamasinda) {
         if (stageLabelTimer) {
           window.clearTimeout(stageLabelTimer);
           stageLabelTimer = null;
         }
         if (statusText) {
-          var gelenAsama = null;
-          for (var s = 0; s < STAGES.length; s++) if (STAGES[s].key === msg.key) gelenAsama = STAGES[s];
           statusText.classList.remove("alo-status-fade");
-          lastStageLabel = (gelenAsama && gelenAsama.key !== "ready") ? gelenAsama.label : "Hazırlık sürüyor";
+          lastStageLabel = hazirOlmayanEtiket;
           statusText.textContent = lastStageLabel;
         }
       }
@@ -396,8 +397,10 @@
       } else if (yonetimEtiketiGosteriliyor && msg.ready !== true && statusText) {
         // Koşul artık geçerli değil (ör. kimlik kaybı): bekleme etiketi güncel
         // aşamanın etiketiyle değiştirilir; hazırlık sürüyormuş gibi görünmez.
+        // Aşama "ready" ise hazır etiketi geri yazılmaz (hazır-olma geri çekildi).
         yonetimEtiketiGosteriliyor = false;
-        lastStageLabel = (stageIndex >= 0 && STAGES[stageIndex]) ? STAGES[stageIndex].label : "Başlatılıyor";
+        lastStageLabel = !(stageIndex >= 0 && STAGES[stageIndex]) ? "Başlatılıyor" :
+          (STAGES[stageIndex].key === "ready" ? hazirOlmayanEtiket : STAGES[stageIndex].label);
         statusText.textContent = lastStageLabel;
       }
 

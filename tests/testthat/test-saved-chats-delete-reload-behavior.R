@@ -276,3 +276,20 @@ testthat::test_that("özet önbellekteki söyleşinin detay okuması başarısı
   }))
   testthat::expect_true(any(grepl("şu anda okunamadı", kayit$toast)))
 })
+
+testthat::test_that("etkin söyleşi silinince süren istek oturumdaki durdurma yoluyla bırakılır", {
+  kayit <- new.env()
+  env <- .silme_ortami(kayit)
+  kayit$db_listesi <- list("2" = list(title = "İki"))
+  shiny::testServer(function(input, output, session) {
+    .silme_sunucusu(env, kayit, list("1" = list(title = "Bir"), "2" = list(title = "İki")))(input, output, session)
+    session$userData$.values$current_chat_id <- "1"
+    session$userData$mergen_etkin_istegi_durdur <- function() kayit$durdur <- (kayit$durdur %||% 0L) + 1L
+  }, {
+    session$flushReact()
+    session$userData$.sil("1")
+    session$flushReact()
+    testthat::expect_identical(kayit$durdur, 1L)
+    testthat::expect_null(shiny::isolate(session$userData$.values$current_chat_id))
+  })
+})
