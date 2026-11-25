@@ -244,6 +244,10 @@ imageGalleryServer <- function(id, current_user_id) {
     # dahil) onay hiçbir şey silmez ve açık pencereyi kapatmaz.
     onay_penceresi_ac <- function(tur, sahip, bilgi = NULL) {
       onay_sahibi$sayac <- onay_sahibi$sayac + 1L
+      # Tek modal açıktır: yeni pencere (diğer türde olsa da) önceki pencerenin
+      # belirtecini geçersiz kılar; yolda kalan eski onay açık pencereyi etkilemez.
+      onay_sahibi$tekil <- NULL
+      onay_sahibi$tumu <- NULL
       belirtec <- sprintf("%s-%d", tur, onay_sahibi$sayac)
       onay_sahibi[[tur]] <- list(sahip = sahip, belirtec = belirtec, bilgi = bilgi)
       tags$button(if (identical(tur, "tumu")) "Evet, Tümünü Sil" else "Evet, Sil",

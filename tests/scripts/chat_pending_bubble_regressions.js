@@ -1236,6 +1236,36 @@ result(idIlgisiz, 'kabul', 'msg_ilgisiz_geri_al');
 assert.equal(input.value, 'A\nD ye', 'ilgisiz Geri Al bağımsız yazılan metni sahiplendirmemeli');
 await temizle();
 
+// 14a2) Silinen bölüm bağımsız olarak yeniden yapıştırılır, sonra eklenen "x"
+// Geri Al ile kaldırılır: girdi silme öncesi değere birebir dönse de geri alınan
+// düzenleme silme değildir; bağımsız metin sahiplenilmez ve geç kabul onu silmez.
+sendClick('A');
+const idYapistir = lastId();
+userType('D');
+ilerlet(60000);
+assert.equal(input.value, 'A\nD');
+userType('D', 0);                                   // A ve ayırıcı silinir
+userType('A\nD', 2);                               // aynı metin bağımsız yapıştırılır
+userType('A\nDx');                                 // sona "x" eklenir
+userType('A\nD', 3, 'historyUndo');               // yalnızca "x" geri alınır
+result(idYapistir, 'kabul', 'msg_yapistir_geri_al');
+assert.equal(input.value, 'A\nD', 'sonraki düzenlemenin geri alınması bağımsız metni sahiplendirmemeli');
+await temizle();
+
+// 14a3) Denetim: silmeden sonra yazılan "x" ve ardından silmenin kendisi Geri Al
+// ile geri alınırsa sahiplik geri gelir; geç kabul onaylanmış istemi kaldırır.
+sendClick('A');
+const idIkiAdim = lastId();
+userType('D');
+ilerlet(60000);
+userType('D', 0);                                   // A silinir
+userType('Dx');                                     // "x" yazılır
+userType('D', 1, 'historyUndo');                    // "x" geri alınır
+userType('A\nD', 2, 'historyUndo');               // silme geri alınır
+result(idIkiAdim, 'kabul', 'msg_iki_adim');
+assert.equal(input.value, 'D', 'silmenin kendisi geri alınınca kabul edilmiş istem kaldırılmalı');
+await temizle();
+
 // 14b) Tek düzenleme sekizden fazla bölümü silse de doğrudan Geri Al hepsinin
 // sahipliğini geri getirir; geç kabuller onları kaldırır (yeniden gönderilmez).
 const topluKimlikler = [];

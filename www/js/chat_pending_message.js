@@ -207,16 +207,18 @@ $(document).ready(function() {
   // Kayıtlar kullanıcı tüketene (gönderim), silene ya da sahip sıfırlanana dek
   // tutulur; sayı sınırı yoktur (her kayıt girdideki gerçek metne karşılık gelir).
   const geriYuklemeler = [];
-  // İzlenen bölüm silen kullanıcı düzenlemeleri: düzenlemeden ÖNCEKİ tam değer
-  // ve o andaki bölüm sahipliğinin kopyası. Tarayıcının Geri Al işlemi hedef
-  // aralık bildirmez; sahiplik YALNIZCA Geri Al girdiyi bu değerlerden birine
-  // BİREBİR döndürürse (silmenin doğrudan geri alınması) geri verilir. Aynı
-  // konumda aynı metnin bulunması kanıt sayılmaz. Programatik değişiklik
-  // (geri yükleme, kaldırma, gönderim) yerel Geri Al geçmişiyle eşleşmeyi
-  // bozduğundan kayıtları siler. Sınır aşılırsa en eski silmenin sahipliği düşer
-  // (bölüm kullanıcının metni olarak kalır; sahip sıfırlaması zaten tüm girdiyi temizler).
-  const silmeKayitlari = [];
-  const SILME_KAYDI_SINIRI = 64;
+  // Kullanıcı düzenleme yığını (tarayıcının Geri Al geçmişinin aynası): her
+  // değer değiştiren kullanıcı düzenlemesi, düzenlemeden ÖNCEKİ tam değer ve o
+  // andaki bölüm sahipliğinin kopyasıyla eklenir. Geri Al hedef aralık bildirmez;
+  // geri alınan düzenleme, yığının tepesinden itibaren önceki değeri yeni değere
+  // BİREBİR eşit olan ilk kayıttır ve sahiplik o düzenlemeden önceki hâline döner.
+  // Böylece yalnızca silmenin kendisi geri alındığında sahiplik geri gelir;
+  // silmeden sonra bağımsız yapıştırılan aynı metin, daha sonraki bir düzenlemenin
+  // geri alınmasıyla sahiplenilmez. Programatik değişiklik (geri yükleme, kaldırma,
+  // gönderim) ya da eşleşmeyen Geri Al yığını siler. Sınır aşılırsa en eski kayıt
+  // düşer (yalnızca o kadar geriye sahiplik dönmez; sahip sıfırlaması tüm girdiyi temizler).
+  const duzenlemeYigini = [];
+  const DUZENLEME_YIGINI_SINIRI = 100;
   // Geç kabul edilmiş istek kimlikleri: Geri Al ile özgün hâliyle dönen bölümleri
   // hemen kaldırılır (onaylanmış istem yeniden gönderilmez).
   let kabulEdilenler = {};
@@ -242,9 +244,9 @@ $(document).ready(function() {
   function sahipsizleriBudala() {
     const canli = {};
     for (let i = 0; i < geriYuklemeler.length; i++) canli[geriYuklemeler[i].id] = true;
-    // Geri Al ile dönebilecek (silme kaydındaki) bölümlerin istekleri de canlıdır.
-    for (let i = 0; i < silmeKayitlari.length; i++) {
-      for (let k = 0; k < silmeKayitlari[i].bolumler.length; k++) canli[silmeKayitlari[i].bolumler[k].id] = true;
+    // Geri Al ile dönebilecek (düzenleme yığınındaki) bölümlerin istekleri de canlıdır.
+    for (let i = 0; i < duzenlemeYigini.length; i++) {
+      for (let k = 0; k < duzenlemeYigini[i].bolumler.length; k++) canli[duzenlemeYigini[i].bolumler[k].id] = true;
     }
     const sahipsizZa = [];
     for (let i = 0; i < zamanAsimlari.length; i++) {
@@ -296,13 +298,14 @@ $(document).ready(function() {
     return { bas: bas, eskiSon: son, yeniSon: bas + eklenenUzunluk, eklenen: yeni.slice(bas, bas + eklenenUzunluk), secimli: true };
   }
 
-  // Geri Al girdiyi bir silme kaydının ÖNCEKİ değerine birebir döndürdüyse o
-  // andaki sahiplik aynen geri gelir (sonraki kayıtlar da geri alınmıştır).
-  // Geç kabul edilmiş, düzenlenmemiş ve çakışmamış bölüm hemen kaldırılır.
+  // Geri alınan düzenleme: yığının tepesinden itibaren önceki değeri yeni değere
+  // birebir eşit olan ilk kayıt (ondan sonrakiler de geri alınmıştır). Sahiplik
+  // o düzenlemeden önceki hâline döner; geç kabul edilmiş, düzenlenmemiş ve
+  // çakışmamış bölüm hemen kaldırılır. Eşleşme yoksa yığın silinir (eşleşme bozuldu).
   function geriAlSahipliginiDondur(yeni) {
-    for (let i = silmeKayitlari.length - 1; i >= 0; i--) {
-      if (silmeKayitlari[i].eski !== yeni) continue;
-      const kayit = silmeKayitlari.splice(i)[0];
+    for (let i = duzenlemeYigini.length - 1; i >= 0; i--) {
+      if (duzenlemeYigini[i].eski !== yeni) continue;
+      const kayit = duzenlemeYigini.splice(i)[0];
       geriYuklemeler.length = 0;
       const kabuller = [];
       for (let k = 0; k < kayit.bolumler.length; k++) {
@@ -312,6 +315,7 @@ $(document).ready(function() {
       for (let k = 0; k < kabuller.length; k++) geriYuklemeyiUzlastir({ id: kabuller[k] });
       return true;
     }
+    duzenlemeYigini.length = 0;
     return false;
   }
 
@@ -326,7 +330,8 @@ $(document).ready(function() {
     oncekiSecim = null;
     sonDeger = yeni;
     const geriAl = girdiTuru === 'historyUndo';
-    if (!geriYuklemeler.length && !(geriAl && silmeKayitlari.length)) return;
+    // İzlenen bölüm ve geri alınabilecek kayıt yoksa izlenecek sahiplik yoktur.
+    if (!geriYuklemeler.length && !duzenlemeYigini.length) return;
     if (geriAl && geriAlSahipliginiDondur(yeni)) return;
     // Seçili metnin değiştirilmesi (aynı metnin yapıştırılması dahil) değer
     // değişmese bile işlenir: seçimin TAMAMEN kapsadığı bölümün sahipliği düşer.
@@ -337,12 +342,16 @@ $(document).ready(function() {
     const ekleme = d.bas === d.eskiSon;
     const oncekiBolumler = [];
     for (let k = 0; k < geriYuklemeler.length; k++) oncekiBolumler.push(Object.assign({}, geriYuklemeler[k]));
-    let silindi = false;
+    // Her kullanıcı düzenlemesi (Geri Al değil) yığına eklenir: daha sonraki bir
+    // düzenlemenin geri alınması silmenin geri alınması sanılmaz.
+    if (!geriAl) {
+      duzenlemeYigini.push({ eski: eski, bolumler: oncekiBolumler });
+      while (duzenlemeYigini.length > DUZENLEME_YIGINI_SINIRI) duzenlemeYigini.shift();
+    }
     for (let i = 0; i < geriYuklemeler.length;) {
       const b = geriYuklemeler[i];
       if (d.secimli && d.bas <= b.bas && d.eskiSon >= b.son) {
         // Seçimle tamamen değiştirilen bölüm: eklenen metin sahiplenilmez.
-        silindi = true;
         geriYuklemeler.splice(i, 1);
         continue;
       }
@@ -363,18 +372,12 @@ $(document).ready(function() {
       }
       const bas = Math.min(b.bas, d.bas);
       const son = Math.max(b.son + fark, d.yeniSon);
-      if (son <= bas) { silindi = true; geriYuklemeler.splice(i, 1); continue; }
+      if (son <= bas) { geriYuklemeler.splice(i, 1); continue; }
       b.bas = bas;
       b.son = son;
       // Düzenleme geri alınıp özgün metne dönüldüyse geç kabul yine uzlaştırabilir.
       b.duzenlendi = (typeof b.ozgun === 'string') ? (yeni.slice(bas, son) !== b.ozgun) : true;
       i++;
-    }
-    // Bölüm silen düzenleme (tek düzenleme birden çok bölüm silse de) önceki
-    // değer ve sahiplikle kaydedilir; doğrudan Geri Al hepsini geri getirir.
-    if (silindi) {
-      silmeKayitlari.push({ eski: eski, bolumler: oncekiBolumler });
-      while (silmeKayitlari.length > SILME_KAYDI_SINIRI) silmeKayitlari.shift();
     }
     // Her karakter en çok bir isteğe aittir: çakışan bölümler kalıcı olarak
     // "çakıştı" sayılır, geç kabul onları kaldırmaz (sahip sıfırlaması kaldırır).
@@ -440,7 +443,7 @@ $(document).ready(function() {
     });
     giris.value = yeni;
     sonDeger = yeni;
-    silmeKayitlari.length = 0;
+    duzenlemeYigini.length = 0;
     if (secBas !== null && secSon !== null && typeof giris.setSelectionRange === 'function') {
       try { giris.setSelectionRange(esle(secBas), esle(secSon)); } catch (e) {}
     }
@@ -480,7 +483,7 @@ $(document).ready(function() {
       }
     }
     sonDeger = String(giris.value || '');
-    silmeKayitlari.length = 0;
+    duzenlemeYigini.length = 0;
     girisiYenile(giris);
     return true;
   }
@@ -668,7 +671,7 @@ $(document).ready(function() {
         balonuKaldir(kayit);
       });
       geriYuklemeler.length = 0;
-      silmeKayitlari.length = 0;
+      duzenlemeYigini.length = 0;
       kabulEdilenler = {};
       geriAlEngeli = true;
       const giris = girisAlani();
@@ -788,7 +791,7 @@ $(document).ready(function() {
     ekle: function(hamMetin) {
       // Gönderim girdiyi tüketir: önceki geri yüklemelerin sahipliği biter.
       geriYuklemeler.length = 0;
-      silmeKayitlari.length = 0;
+      duzenlemeYigini.length = 0;
       kabulEdilenler = {};
       sahipsizleriBudala();
       const istemKimligi = 'istem_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);

@@ -533,3 +533,37 @@ testthat::test_that("aynı galeri kartına yeniden tıklamak yeni bir yönlendir
     }
   ))
 })
+
+testthat::test_that("diğer türde onay penceresi açılınca önceki pencerenin yoldaki onayı hiçbir şey silmez", {
+  testthat::skip_if_not_installed("shiny")
+  scan_recorder <- new.env(parent = emptyenv())
+  scan_recorder$count <- 0L
+  env <- .lazy_gallery_env(scan_recorder)
+  env$scan_user_images <- function(uid) { scan_recorder$count <- scan_recorder$count + 1L; .gallery_tek_satir(uid) }
+  toplu <- 0L; tekil <- 0L
+  env$delete_all_user_images <- function(user_id) { toplu <<- toplu + 1L; 1L }
+  env$delete_single_image <- function(path, uid, chat_id) { tekil <<- tekil + 1L; TRUE }
+  loop <- later::create_loop(parent = NULL)
+  on.exit(later::destroy_loop(loop), add = TRUE)
+  later::with_loop(loop, shiny::testServer(
+    env$imageGalleryServer,
+    args = list(id = "ig", current_user_id = function() 7L),
+    {
+      session$userData$kimlik_sahibi <- 7L
+      session$flushReact()
+      session$setInputs(refresh_gallery = as.numeric(Sys.time()))
+      for (i in seq_len(20L)) { later::run_now(timeoutSecs = 0.1, loop = loop); session$flushReact()
+        if (scan_recorder$count >= 1L && !isTRUE(gallery_loading())) break }
+      # Toplu pencere açılır; onayı yoldayken tekil silme penceresi onun yerini alır.
+      session$setInputs(clear_all_images = 1)
+      toplu_belirtec <- onay_sahibi$tumu$belirtec
+      session$setInputs(delete_image_request = list(file_path = "/gorseller/7/a.png", chat_id = "1", filename = "a.png"))
+      session$setInputs(confirm_clear_all_images = toplu_belirtec)
+      testthat::expect_identical(toplu, 0L)
+      # Açık (tekil) pencere etkilenmez ve kendi onayıyla çalışır.
+      testthat::expect_false(is.null(onay_sahibi$tekil))
+      session$setInputs(confirm_delete_image = onay_sahibi$tekil$belirtec)
+      testthat::expect_identical(tekil, 1L)
+    }
+  ))
+})

@@ -330,3 +330,16 @@ testthat::test_that("beğeni durumu okunamasa da galeriden söyleşi açılır",
   testthat::expect_identical(rec$acik, 5L)
   testthat::expect_identical(rec$basari, 1L)
 })
+
+testthat::test_that("hidrasyon ve beğeni okuması birlikte başarısız olsa da önbellek transkripti uyarıyla açılır", {
+  mesajlar <- list(list(id = "1", type = "user", content = "soru"), list(id = "2", type = "ai", content = "yanıt"))
+  rec <- suppressWarnings(.galeri_basari_calistir(
+    saved_chats = list("5" = list(title = "Önbellek", messages = mesajlar, message_count = 2L, transkript_yenile = TRUE)),
+    db_impl = function(...) stop("hidrasyon okunamadı (test)"),
+    geri_bildirim = function(...) stop("geri bildirim tablosu okunamadı (test)")
+  ))
+  testthat::expect_identical(rec$acik, 5L)
+  testthat::expect_identical(rec$mesaj_sayisi, 2L)
+  testthat::expect_true(any(grepl("önbellekteki kayıt gösteriliyor", .toast_msgs(rec), fixed = TRUE)))
+  testthat::expect_identical(utils::tail(rec$sekmeler, 1L), "chat")
+})
