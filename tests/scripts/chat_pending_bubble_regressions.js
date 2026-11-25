@@ -153,14 +153,33 @@ function trigger(evt, sel, target, extra = {}) {
 
 const sent = [];
 const shinyHandlers = {};
-const timers = [];
-// Sanal saat: zamanlayıcının süresi saklanır; ilerlet() yalnızca süresi dolanları çalıştırır.
+// Sanal saat: zamanlayıcılar benzersiz kimlikle tutulur (kimlik yeniden
+// kullanılmaz; eski kimliğin iptali yeni zamanlayıcıyı etkilemez). Süresi
+// dolanlar bitiş sırasıyla çalışır ve her geri çağrıdan HEMEN önce hâlâ kayıtlı
+// mı denetlenir: boşaltma sırasında başka bir geri çağrının iptal ettiği
+// zamanlayıcı çalışmaz (tarayıcıdaki gibi).
+const timers = new Map();
+let sonrakiZamanlayici = 1;
 let saat = 0;
-const ilerlet = ms => { saat += ms; timers.forEach((fn, i) => { if (fn && fn.bitis <= saat) { timers[i] = null; fn(); } }); };
+const suresiDolanlariCalistir = sinir => {
+  const sira = [...timers.entries()].filter(([, t]) => t.bitis <= sinir)
+    .sort((a, b) => (a[1].bitis - b[1].bitis) || (a[0] - b[0]));
+  for (const [id] of sira) {
+    const t = timers.get(id);
+    if (!t) continue;
+    timers.delete(id);
+    t.fn();
+  }
+};
+const ilerlet = ms => { saat += ms; suresiDolanlariCalistir(saat); };
+// Bekleyen tüm zamanlayıcıları (yalnızca o anda kayıtlı olanları) çalıştırır.
+const tumZamanlayicilariCalistir = () => suresiDolanlariCalistir(Infinity);
+// Bekleyen zamanlayıcıları çalıştırmadan atar.
+const zamanlayicilariAt = () => timers.clear();
 const context = vm.createContext({
   $, jQuery: $, document, console, Date, Math, atob: s => Buffer.from(s, 'base64').toString('binary'),
-  setTimeout: (fn, ms) => { fn.bitis = saat + (ms || 0); timers.push(fn); return timers.length; },
-  clearTimeout: id => { if (id) timers[id - 1] = null; },
+  setTimeout: (fn, ms) => { const id = sonrakiZamanlayici++; timers.set(id, { fn, bitis: saat + (ms || 0) }); return id; },
+  clearTimeout: id => { timers.delete(id); },
   TextDecoder, Uint8Array,
   MutationObserver: function (cb) { this.observe = (target, options) => observers.push({ cb, target, options, kuyruk: [] }); },
   // Gerçek Shiny gibi: işleyici tam bir parametre bildirmezse kayıt hata verir.
@@ -280,7 +299,7 @@ input.value = '';
 sendClick('erken kabul');
 const idErken = lastId();
 result(idErken, 'kabul', '902');
-assert.equal(pending().length, 1, 'asıl balon gelmeden bekleyen balon kaybolmamalı');
+assert.equal(gorunurBekleyen().length, 1, 'asıl balon gelmeden kabul edilmiş balon GÖRÜNÜR kalmalı');
 assert.ok(!btn.classList.contains('mergen-istem-bekliyor'), 'kabulden sonra gönderim kilidi kalkmalı');
 const asil902 = serverBubble('902', 'erken kabul');
 await teslim();
@@ -294,8 +313,7 @@ serverBubble('903', 'aynı metin');
 await teslim();
 assert.ok(btn.classList.contains('mergen-istem-bekliyor'), 'ilgisiz balon kilidi açmamalı');
 result(idAyni, 'kabul', '904');
-assert.equal(pending().length, 1);
-assert.equal(pending()[0].style.display, '', 'yanlış eşleşmede bekleyen balon yeniden görünmeli');
+assert.equal(gorunurBekleyen().length, 1, 'yanlış eşleşmede bekleyen balon yeniden görünmeli');
 serverBubble('904', 'aynı metin');
 await teslim();
 assert.equal(pending().length, 0);
@@ -371,7 +389,7 @@ assert.equal(pending().length, 1, 'sonuç süresi dolmadan bekleyen balon kalmal
 assert.ok(btn.classList.contains('mergen-istem-bekliyor'), 'süre dolmadan gönderim kilitli kalmalı');
 assert.equal(input.value, '', 'süre dolmadan metin geri yüklenmemeli');
 ilerlet(1);
-timers.splice(0);
+zamanlayicilariAt();
 assert.equal(gorunurBekleyen().length, 0, 'zaman aşımında bekleyen balon görünmemeli');
 assert.equal(pending().length, 1, 'zaman aşımında gizli görünüm çapası kapta kalmalı');
 assert.ok(!btn.classList.contains('mergen-istem-bekliyor'), 'zaman aşımında gönderim kilidi kalkmalı');
@@ -397,7 +415,7 @@ assert.equal(input.value, '', 'asıl balon geldikten sonra girdi boş kalmalı (
 // Asıl balon geç kabulden ÖNCE DOM'daysa istem hemen kalkar.
 sendClick('önce balon');
 const idOnce = lastId();
-timers.splice(0).forEach(fn => fn && fn());
+tumZamanlayicilariCalistir();
 assert.equal(input.value, 'önce balon');
 serverBubble('1010', 'önce balon');
 await teslim();
@@ -408,7 +426,7 @@ assert.equal(input.value, '', 'asıl balon varken geç kabul istemi hemen kaldı
 sendClick('istem A');
 const idTaslak = lastId();
 input.value = 'taslak B';
-timers.splice(0).forEach(fn => fn && fn());
+tumZamanlayicilariCalistir();
 assert.equal(input.value, 'istem A\ntaslak B');
 result(idTaslak, 'kabul', '1011');
 assert.equal(input.value, 'taslak B', 'geç kabul yalnızca kabul edilen istemi kaldırmalı, taslağı korumalı');
@@ -421,7 +439,7 @@ input.value = '';
 sendClick('istem C');
 const idDuzen = lastId();
 input.value = 'taslak D';
-timers.splice(0).forEach(fn => fn && fn());
+tumZamanlayicilariCalistir();
 userType('istem C\ntaslak D ve ek');
 result(idDuzen, 'kabul', '1012');
 serverBubble('1012', 'istem C');
@@ -431,7 +449,7 @@ input.value = '';
 // Kullanıcı istemi değiştirdiyse geç kabul girdiye dokunmaz; geç ret de metni çoğaltmaz.
 sendClick('kayıp iki');
 const idKayip2 = lastId();
-timers.splice(0).forEach(fn => fn && fn());
+tumZamanlayicilariCalistir();
 input.value = 'kayıp iki düzenlendi';
 result(idKayip2, 'kabul', '1002');
 serverBubble('1002', 'kayıp iki');
@@ -439,7 +457,7 @@ await teslim();
 assert.equal(input.value, 'kayıp iki düzenlendi', 'değiştirilmiş taslak korunmalı');
 sendClick('kayıp üç');
 const idKayip3 = lastId();
-timers.splice(0).forEach(fn => fn && fn());
+tumZamanlayicilariCalistir();
 result(idKayip3, 'ret');
 assert.equal(input.value, 'kayıp üç', 'geç ret metni ikinci kez eklememeli');
 input.value = '';
@@ -457,7 +475,7 @@ assert.equal(liveText(), 'İstem gönderiliyor…', 'B beklerken A kabulü durum
 assert.ok(btn.classList.contains('mergen-istem-bekliyor'));
 result(idB, 'kabul', '1004');
 assert.equal(liveText(), 'İstem gönderildi.');
-timers.splice(0);
+zamanlayicilariAt();
 chat.children.slice().forEach(c => chat.removeChild(c));
 await teslim();
 
@@ -472,7 +490,7 @@ await teslim();
 sendClick('örtüşen B');
 const idOrtusenB = lastId();
 input.value = 'taslak D';
-timers.splice(0).forEach(fn => fn && fn());
+tumZamanlayicilariCalistir();
 assert.equal(input.value, 'örtüşen B\nörtüşen A\ntaslak D');
 result(idOrtusenA, 'kabul', '1020');
 serverBubble('1020', 'örtüşen A');
@@ -482,7 +500,7 @@ result(idOrtusenB, 'kabul', '1021');
 serverBubble('1021', 'örtüşen B');
 await teslim();
 assert.equal(input.value, 'taslak D', 'kabul edilen örtüşen istemler girdide kalmamalı, taslak korunmalı');
-timers.splice(0);
+zamanlayicilariAt();
 chat.children.slice().forEach(c => chat.removeChild(c));
 await teslim();
 input.value = '';
@@ -500,12 +518,12 @@ const ayniMetinIkiIstem = async (taslak) => {
   sendClick('aynı metin');
   const b = lastId();
   if (taslak) input.value = taslak;
-  timers.splice(0).forEach(fn => fn && fn());
+  tumZamanlayicilariCalistir();
   assert.equal(input.value, 'aynı metin\naynı metin' + (taslak ? '\n' + taslak : ''), 'özdeş istemler ayrı bölümlerle geri yüklenmeli');
   return [a, b];
 };
 const temizle = async () => {
-  timers.splice(0);
+  zamanlayicilariAt();
   chat.children.slice().forEach(c => chat.removeChild(c));
   await teslim();
   input.value = '';
@@ -553,7 +571,7 @@ await temizle();
 sendClick('özdeş taslak');
 const idOzdes = lastId();
 input.value = 'özdeş taslak';
-timers.splice(0).forEach(fn => fn && fn());
+tumZamanlayicilariCalistir();
 assert.equal(input.value, 'özdeş taslak', 'özdeş taslak yinelenmemeli');
 result(idOzdes, 'kabul', '1036');
 serverBubble('1036', 'özdeş taslak');
@@ -572,7 +590,7 @@ const ortusenIkiIstem = async () => {
   sendClick('sıra B');
   const b = lastId();
   input.value = 'taslak D';
-  timers.splice(0).forEach(fn => fn && fn());
+  tumZamanlayicilariCalistir();
   assert.equal(input.value, 'sıra B\nsıra A\ntaslak D');
   return [a, b];
 };
@@ -605,7 +623,7 @@ await temizle();
 // sahiplik düşmüştür: geç kabul yeniden yazılan metne dokunmaz.
 sendClick('silinip yazılan');
 const idSilinen = lastId();
-timers.splice(0).forEach(fn => fn && fn());
+tumZamanlayicilariCalistir();
 userType('');
 userType('silinip yazılan');
 result(idSilinen, 'kabul', '1039');
@@ -619,7 +637,7 @@ await temizle();
 sendClick('istem E');
 const idNesil = lastId();
 input.value = 'eski';
-timers.splice(0).forEach(fn => fn && fn());
+tumZamanlayicilariCalistir();
 assert.equal(input.value, 'istem E\neski');
 sendClick(input.value);                // geri yüklenen metin gönderimle tüketilir
 const idTuketen = lastId();
@@ -629,61 +647,62 @@ serverBubble('1040', 'istem E');
 await teslim();
 assert.equal(input.value, 'istem E\nyeni', 'tüketilmiş geri yükleme yeni taslağı değiştirmemeli');
 result(idTuketen, 'kabul', '1041');
-timers.splice(0);
+zamanlayicilariAt();
 chat.children.slice().forEach(c => chat.removeChild(c));
 await teslim();
 input.value = '';
 
 // 11g) Oturum sahibi değişince önceki sahibin bekleyen istemi metni geri
-// yüklenmeden düşer, kilit kalkar; zaman aşımıyla geri yüklenmiş istemi de
-// girdiden kalkar ve sonradan gelen sonuç girdiye bir şey yazmaz.
+// yüklenmeden düşer, kilit kalkar; girdi KAPALI-BAŞARISIZ olarak tümüyle
+// temizlenir (önceki kimlikle yazılmış taslak dahil) ve sonradan gelen sonuç
+// girdiye bir şey yazmaz.
 assert.equal(typeof shinyHandlers.mergenBekleyenIstemSifirla, 'function');
 sendClick('A sahibinin istemi');
 const idSahipA = lastId();
 shinyHandlers.mergenBekleyenIstemSifirla({ neden: 'sahip_degisti' });
 assert.equal(pending().length, 0, 'sahip değişince bekleyen balon kalkmalı');
 assert.ok(!btn.classList.contains('mergen-istem-bekliyor'), 'sahip değişince gönderim kilidi kalkmalı');
-timers.splice(0).forEach(fn => fn && fn());
+tumZamanlayicilariCalistir();
 assert.equal(input.value, '', 'önceki sahibin istemi zaman aşımında geri yüklenmemeli');
 result(idSahipA, 'ret');
 assert.equal(input.value, '', 'önceki sahibin geç reddi metni geri yüklememeli');
 sendClick('A zaman aşımı');
 const idSahipA2 = lastId();
 input.value = 'B taslağı';
-timers.splice(0).forEach(fn => fn && fn());
+tumZamanlayicilariCalistir();
 assert.equal(input.value, 'A zaman aşımı\nB taslağı');
 shinyHandlers.mergenBekleyenIstemSifirla({ neden: 'sahip_degisti' });
-assert.equal(input.value, 'B taslağı', 'önceki sahibin geri yüklenen istemi girdiden kalkmalı');
+assert.equal(input.value, '', 'sahip değişince girdi (geri yükleme ve taslak) tümüyle temizlenmeli');
+input.value = 'yeni sahip taslağı';
 result(idSahipA2, 'kabul', '1050');
 serverBubble('1050', 'A zaman aşımı');
 await teslim();
-assert.equal(input.value, 'B taslağı');
+assert.equal(input.value, 'yeni sahip taslağı', 'önceki sahibin geç kabulü yeni sahibin girdisine dokunmamalı');
 chat.children.slice().forEach(c => chat.removeChild(c));
 await teslim();
 input.value = '';
-// 11h) Doğrudan ret ve bağlantı kopmasıyla geri yüklenen metin (izleme kaydı
-// kalmamış olsa da) sahip sıfırlamasında girdiden kalkar; taslak korunur.
+// 11h) Doğrudan ret ve bağlantı kopmasıyla geri yüklenen metin sahip
+// sıfırlamasında girdiden kalkar (girdi tümüyle temizlenir).
 sendClick('A reddedilen');
 const idSahipRet = lastId();
 input.value = 'taslak';
 result(idSahipRet, 'ret');
 assert.equal(input.value, 'A reddedilen\ntaslak');
-// Sıfırlama, ret bölümü bir taslağın önündeyken hemen uygulanır: yalnızca taslak kalır.
 shinyHandlers.mergenBekleyenIstemSifirla({ neden: 'sahip_degisti' });
-assert.equal(input.value, 'taslak', 'reddedilen istem taslağın önündeyken sahip değişince kalkmalı');
+assert.equal(input.value, '', 'reddedilen istem ve taslak sahip değişince kalkmalı');
 sendClick('A kopan');
 input.value = 'taslak';
 (handlers['shiny:disconnected|'] || []).forEach(fn => fn());
 assert.equal(input.value, 'A kopan\ntaslak');
 shinyHandlers.mergenBekleyenIstemSifirla({ neden: 'sahip_degisti' });
-assert.equal(input.value, 'taslak', 'kopma sonrası geri yüklenen istem sahip değişince kalkmalı');
+assert.equal(input.value, '', 'kopma sonrası geri yüklenen istem sahip değişince kalkmalı');
 sendClick('A yalnız ret');
 const idYalnizRet = lastId();
 result(idYalnizRet, 'ret');
 assert.equal(input.value, 'A yalnız ret');
 shinyHandlers.mergenBekleyenIstemSifirla({ neden: 'sahip_degisti' });
 assert.equal(input.value, '', 'reddedilen istemin geri yüklenen metni sahip değişince kalkmalı');
-timers.splice(0);
+zamanlayicilariAt();
 chat.children.slice().forEach(c => chat.removeChild(c));
 await teslim();
 input.value = '';
@@ -716,7 +735,7 @@ await temizle();
 // istemin sahipliği korunur, geç kabulde yalnızca taslak kalır.
 sendClick('son bölüm');
 const idSonBolum = lastId();
-timers.splice(0).forEach(fn => fn && fn());
+tumZamanlayicilariCalistir();
 assert.equal(input.value, 'son bölüm');
 userType('son bölüm\n');
 userType('son bölüm\ntaslak');
@@ -730,7 +749,7 @@ await temizle();
 // kabul yeni taslağı silmez.
 sendClick('escape istemi');
 const idEscape = lastId();
-timers.splice(0).forEach(fn => fn && fn());
+tumZamanlayicilariCalistir();
 assert.equal(input.value, 'escape istemi');
 trigger('keyup', '#user_input, .chat-input, textarea[name="user_input"]', input, { key: 'Escape' });
 assert.equal(input.value, '');
@@ -741,8 +760,7 @@ await teslim();
 assert.equal(input.value, 'escape istemi', 'Escape sonrası yapıştırılan özdeş taslak silinmemeli');
 await temizle();
 
-// 11l) Kullanıcının düzenlediği geri yükleme bölümü sahip sıfırlamasında kalkar;
-// ilgisiz taslak korunur.
+// 11l) Kullanıcının düzenlediği geri yükleme bölümü de sahip sıfırlamasında kalkar.
 sendClick('gizli istem');
 const idGizli = lastId();
 input.value = 'taslak';
@@ -750,7 +768,7 @@ result(idGizli, 'ret');
 assert.equal(input.value, 'gizli istem\ntaslak');
 userType('gizli istem düzeltildi\ntaslak', 'gizli istem düzeltildi'.length);
 shinyHandlers.mergenBekleyenIstemSifirla({ neden: 'sahip_degisti' });
-assert.equal(input.value, 'taslak', 'düzenlenmiş önceki sahip istemi sahip değişince kalkmalı');
+assert.equal(input.value, '', 'düzenlenmiş önceki sahip istemi sahip değişince kalkmalı');
 await temizle();
 
 // 11m) 16'dan fazla geri yükleme bölümü: hiçbirinin sahipliği düşmez, sahip
@@ -767,7 +785,7 @@ cokluKimlikler.forEach(id => result(id, 'ret'));
 assert.equal(input.value.split('\n').length, 18);
 assert.ok(input.value.startsWith('çoklu ret 17\n') && input.value.endsWith('çoklu ret 1\ntaslak'));
 shinyHandlers.mergenBekleyenIstemSifirla({ neden: 'sahip_degisti' });
-assert.equal(input.value, 'taslak', 'en eski geri yükleme de sahip değişince kalkmalı');
+assert.equal(input.value, '', 'en eski geri yükleme de sahip değişince kalkmalı');
 await temizle();
 
 // 11n) Ayrılmış eski istem (A) reddedilirken yeni istem (B) gönderiliyorsa
@@ -812,18 +830,18 @@ for (let i = 1; i <= 10; i++) {
   await teslim();
 }
 ilerlet(60000);
-assert.ok(input.value.includes('za istem 1'), 'ilk zaman aşımı metni girdide olmalı');
+// Satırlar birebir karşılaştırılır ("za istem 1" alt dizesi "za istem 10" ile karışmaz).
+const zaSatirlari = n => Array.from({ length: n }, (_, i) => 'za istem ' + (10 - i));
+assert.deepEqual(input.value.split('\n'), zaSatirlari(10), 'on zaman aşımı metni girdide birebir olmalı');
 result(zaKimlikler[0], 'kabul', 'msg_za_1');
-assert.ok(!input.value.split('\n').includes('za istem 1'), 'ilk istem geç kabulle hemen kaldırılmalı');
-assert.ok(input.value.split('\n').includes('za istem 2'), 'diğer belirsiz istemler girdide kalmalı');
+assert.deepEqual(input.value.split('\n'), zaSatirlari(9), 'yalnızca ilk istem geç kabulle kaldırılmalı');
 assert.ok(!btn.classList.contains('mergen-istem-bekliyor'), 'geç kabul gönderimi kilitlememeli');
 assert.equal(gorunurBekleyen().length, 0, 'değişen görünüme kabul edilmiş balon çizilmemeli');
 await temizle();
 
 // 11q) Tüm girdi seçilip (beforeinput) değiştirildiğinde eski geri yükleme
-// sahipliği düşer: sahip sıfırlaması yeni taslağı silmez. Yeni metin önceki
-// sahibin isteminin birebir kopyasını içerse de (sahipliği kanıtlanamaz,
-// kullanıcı yazmıştır) korunur: metin eşitliği sahiplik kanıtı değildir.
+// sahipliği düşer: geç kabul yeni taslağı silmez (metin eşitliği sahiplik
+// kanıtı değildir). Sahip sıfırlaması ise kapalı-başarısızdır: girdiyi tümüyle temizler.
 sendClick('eski A');
 const idTamDegisim = lastId();
 result(idTamDegisim, 'ret');
@@ -832,18 +850,21 @@ input.selectionStart = 0;
 input.selectionEnd = input.value.length;
 beforeinputListeners.forEach(fn => fn({ target: input }));
 userType('yeni yapıştırılan taslak');
+result(idTamDegisim, 'kabul', 'msg_tam_degisim');
+assert.equal(input.value, 'yeni yapıştırılan taslak', 'tüm girdi değişimi sonrası yeni taslak geç kabulde korunmalı');
 shinyHandlers.mergenBekleyenIstemSifirla({ neden: 'sahip_degisti' });
-assert.equal(input.value, 'yeni yapıştırılan taslak', 'tüm girdi değişimi sonrası yeni taslak korunmalı');
+assert.equal(input.value, '', 'sahip sıfırlaması girdiyi tümüyle temizlemeli');
 assert.equal(liveText(), '', 'sahip sıfırlamasında canlı bölge temizlenmeli');
 await temizle();
 sendClick('eski B');
-result(lastId(), 'ret');
+const idEskiB = lastId();
+ilerlet(60000);
 input.selectionStart = 0;
 input.selectionEnd = input.value.length;
 beforeinputListeners.forEach(fn => fn({ target: input }));
 userType('eski B\nyeni yapıştırılan taslak');
-shinyHandlers.mergenBekleyenIstemSifirla({ neden: 'sahip_degisti' });
-assert.equal(input.value, 'eski B\nyeni yapıştırılan taslak', 'bağımsız yazılan özdeş metin sıfırlamada korunmalı');
+result(idEskiB, 'kabul', 'msg_eski_b');
+assert.equal(input.value, 'eski B\nyeni yapıştırılan taslak', 'bağımsız yazılan özdeş metin geç kabulde korunmalı');
 await temizle();
 
 // 11r) Yalnız dosya isteminde başka bir dosya seçiliyse eski dosya seçiliymiş
@@ -879,9 +900,9 @@ ekAlani.children.slice().forEach(c => ekAlani.removeChild(c));
 await temizle();
 
 // 11s) Ayırıcı sınırının her iki yanına yeni satır eklendiğinde ilgisiz taslak
-// geri yüklenen isteme katılmaz; geç kabul ve sahip sıfırlaması B\nD bırakır.
+// geri yüklenen isteme katılmaz; geç kabul B\nD bırakır.
 for (const senaryo of ['sonra', 'once']) {
-  for (const temizlemeTuru of ['gecKabul', 'sifirla']) {
+  for (const temizlemeTuru of ['gecKabul']) {
     sendClick('A');
     const idSinir = lastId();
     userType('D');
@@ -935,8 +956,8 @@ assert.ok(!btn.classList.contains('mergen-istem-bekliyor'));
 await temizle();
 
 // 11u) Tüm girdi değişiminden sonra Geri Al ile dönen (artık izlenmeyen)
-// önceki sahip istemi de sahip sıfırlamasında girdiden kalkar; sonradan
-// yazılan taslak korunur.
+// önceki sahip istemi de sahip sıfırlamasında girdiden kalkar (girdi tümüyle
+// temizlenir) ve sıfırlamadan sonra Geri Al/Yinele engellenir.
 sendClick('gizli A istemi');
 const idGeriAl = lastId();
 result(idGeriAl, 'ret');
@@ -948,7 +969,15 @@ userType('yeni metin');
 userType('gizli A istemi', undefined, 'historyUndo');   // Geri Al
 userType('gizli A istemi\nB taslağı');
 shinyHandlers.mergenBekleyenIstemSifirla({ neden: 'sahip_degisti' });
-assert.equal(input.value, 'B taslağı', 'Geri Al ile dönen önceki sahip istemi sıfırlamada kalkmalı');
+assert.equal(input.value, '', 'Geri Al ile dönen önceki sahip istemi sıfırlamada kalkmalı');
+for (const tur of ['historyUndo', 'historyRedo']) {
+  let engellendi = false;
+  beforeinputListeners.forEach(fn => fn({ target: input, inputType: tur, preventDefault: () => { engellendi = true; } }));
+  assert.ok(engellendi, tur + ' sahip değişiminden sonra engellenmeli (yerel geçmiş önceki metni taşır)');
+}
+let yazimEngellendi = false;
+beforeinputListeners.forEach(fn => fn({ target: input, inputType: 'insertText', preventDefault: () => { yazimEngellendi = true; } }));
+assert.ok(!yazimEngellendi, 'olağan yazım engellenmemeli');
 await temizle();
 
 // 11v) Seçili bölümün üzerine yapıştırma seçime göre konumlanır: geri
@@ -976,8 +1005,8 @@ assert.equal(input.value, 'aynı yapıştırma', 'tüm seçim üzerine aynı met
 await temizle();
 
 // 11v2) Seçim geri yüklenen bölümü TAMAMEN kapsayıp taslağa taşarsa yazılan
-// metin sahiplenilmez: sahip sıfırlaması ve geç kabul yazılanı silmez.
-for (const temizleme of ['sifirla', 'gecKabul']) {
+// metin sahiplenilmez: geç kabul yazılanı silmez.
+for (const temizleme of ['gecKabul']) {
   sendClick('A');
   const idTasan = lastId();
   userType('DX');
@@ -985,8 +1014,7 @@ for (const temizleme of ['sifirla', 'gecKabul']) {
   assert.equal(input.value, 'A\nDX');
   seciliYapistir(0, 3, 'B');                 // "A\nD" seçilip B yazılır -> "BX"
   assert.equal(input.value, 'BX');
-  if (temizleme === 'sifirla') shinyHandlers.mergenBekleyenIstemSifirla({ neden: 'sahip_degisti' });
-  else result(idTasan, 'kabul', 'msg_tasan');
+  result(idTasan, 'kabul', 'msg_tasan');
   assert.equal(input.value, 'BX', temizleme + ': taşan seçimle yazılan metin korunmalı');
   await temizle();
 }
@@ -1021,8 +1049,8 @@ sendClick('kopuk düğüm');
 const idKopuk = lastId();
 result(idKopuk, 'kabul', 'msg_kopuk');
 assert.equal(gorunurBekleyen().length, 1);
-const kopuk = el('div', { id: 'message_wrapper_msg_kopuk' });
-chat.appendChild(kopuk);
+// Tam bir asıl balon eklenip teslimden önce kaldırılır (tek fark bağlı olmaması).
+const kopuk = serverBubble('msg_kopuk', 'kopuk düğüm');
 chat.removeChild(kopuk);
 await teslim();
 assert.equal(gorunurBekleyen().length, 1, 'kopmuş eşleşme kabul edilmiş balonu kaldırmamalı');
@@ -1058,6 +1086,7 @@ const ikinciOncesi = sent.length;
 sendClick('ikinci istem');
 assert.equal(sent.length, ikinciOncesi + 1, 'ikinci tıklama yeni bir istem göndermeli');
 assert.equal(sent[sent.length - 1].value.sahip_nesli, 7, 'nesil geriye gitmemeli');
+result(lastId(), 'kabul', 'msg_ikinci_istem');
 await temizle();
 
 // 11aa) Kilit açılırken sunucunun bu arada koyduğu düğme etiketi ezilmez.
@@ -1072,44 +1101,49 @@ btn.setAttribute('title', 'Gönder');
 btn.setAttribute('aria-label', 'Mesajı gönder');
 await temizle();
 
-// 13a) Sahip sıfırlaması yalnızca izlenen bölümü kaldırır: reddedilen "a"
-// taslak "taslak" içindeki "a" harflerini silmez (alt dize sahiplik değildir).
+// 13a) Geç kabul yalnızca izlenen bölümü kaldırır: kabul edilen "a" taslak
+// "taslak" içindeki "a" harflerini silmez (alt dize sahiplik değildir).
 sendClick('a');
 const idAltDize = lastId();
 input.value = 'taslak';
-result(idAltDize, 'ret');
+ilerlet(60000);
 assert.equal(input.value, 'a\ntaslak');
-shinyHandlers.mergenBekleyenIstemSifirla({ neden: 'sahip_degisti' });
-assert.equal(input.value, 'taslak', 'sahip sıfırlaması ilgisiz taslağı bozmamalı');
+result(idAltDize, 'kabul', 'msg_alt_dize');
+assert.equal(input.value, 'taslak', 'geç kabul ilgisiz taslağı bozmamalı');
 await temizle();
 sendClick('merhaba');
 const idOnek = lastId();
-result(idOnek, 'ret');
+ilerlet(60000);
 userType('merhaba\nmerhaba dünya');
-shinyHandlers.mergenBekleyenIstemSifirla({ neden: 'sahip_degisti' });
+result(idOnek, 'kabul', 'msg_onek');
 assert.equal(input.value, 'merhaba dünya', 'bağımsız yazılan önekli metin korunmalı');
 await temizle();
 
 // 13b) Aynı kullanıcının yetki değişimi uçuştaki istemi ret gibi geri yükler,
-// açıkça bildirir; taslak ve önceki geri yüklemeler korunur, yeni nesil uygulanır.
+// açıkça bildirir; taslak ve İZLENEN önceki geri yüklemeler korunur, yeni nesil
+// uygulanır. Önceki istem (A) görünüm değişiminde ayrılır, yeni istem (B)
+// beklerken reddedilir; A'nın izlenen bölümü yetki sıfırlamasında silinmez.
 sendClick('önceki ret');
-result(lastId(), 'ret');
-assert.equal(input.value, 'önceki ret');
-input.value = '';
+const idOncekiRet = lastId();
+chat.children.slice().forEach(c => chat.removeChild(c));
+await teslim();
 sendClick('uçuştaki istem');
 const idYetki = lastId();
-input.value = 'taslak Y';
+result(idOncekiRet, 'ret');
+assert.equal(input.value, 'önceki ret');
+userType('önceki ret\ntaslak Y');
 shinyHandlers.mergenBekleyenIstemSifirla({ neden: 'yetki_degisti', nesil: 9 });
-assert.equal(input.value, 'uçuştaki istem\ntaslak Y', 'yetki değişiminde uçuştaki istem geri yüklenmeli');
+assert.equal(input.value, 'uçuştaki istem\nönceki ret\ntaslak Y', 'yetki değişiminde uçuştaki istem geri yüklenmeli, önceki geri yükleme ve taslak korunmalı');
 assert.equal(pending().length, 0);
 assert.ok(!btn.classList.contains('mergen-istem-bekliyor'), 'yetki değişiminde kilit kalkmalı');
 assert.match(liveText(), /yetkileri güncellendi/, 'yetki değişimi açıkça bildirilmeli');
 result(idYetki, 'ret');
-assert.equal(input.value, 'uçuştaki istem\ntaslak Y', 'eski neslin geç reddi girdiyi değiştirmemeli');
+assert.equal(input.value, 'uçuştaki istem\nönceki ret\ntaslak Y', 'eski neslin geç reddi girdiyi değiştirmemeli');
 const yetkiOncesi = sent.length;
 trigger('click', '#send_stop_btn', btn);
 assert.equal(sent.length, yetkiOncesi + 1);
 assert.equal(sent[sent.length - 1].value.sahip_nesli, 9, 'yeni nesil sonraki isteme uygulanmalı');
+assert.equal(sent[sent.length - 1].value.text, 'uçuştaki istem\nönceki ret\ntaslak Y', 'iki istem ve taslak yeniden denenebilmeli');
 await temizle();
 
 // 13c) Teslimden önce eklenip kaldırılan özdeş metinli düğüm bekleyen balonu
@@ -1176,7 +1210,7 @@ await teslim();
 sendClick('abc');
 const idAbc = lastId();
 input.value = 'D';
-timers.splice(0).forEach(fn => fn && fn());
+tumZamanlayicilariCalistir();
 assert.equal(input.value, 'abc\ncde\nD');
 seciliYapistir(2, 5, 'c');
 assert.equal(input.value, 'abcde\nD');
@@ -1185,7 +1219,104 @@ assert.equal(input.value, 'abcde\nD', 'çakışan bölümün geç kabulü diğer
 result(idCde, 'kabul', 'msg_cakisma_cde');
 assert.equal(input.value, 'abcde\nD');
 shinyHandlers.mergenBekleyenIstemSifirla({ neden: 'sahip_degisti' });
-assert.equal(input.value, 'D', 'sahip sıfırlaması çakışan bölümleri yine kaldırmalı');
+assert.equal(input.value, '', 'sahip sıfırlaması çakışan bölümleri de (girdiyi tümüyle) kaldırmalı');
+await temizle();
+
+// 14a) İlgisiz Geri Al, silinmiş bölümün metni aynı konumda dursa da sahipliği
+// geri vermez: sahiplik yalnızca girdi silmeden önceki değere birebir dönerse gelir.
+sendClick('A');
+const idIlgisiz = lastId();
+userType('D');
+ilerlet(60000);
+assert.equal(input.value, 'A\nD');
+userType('D', 0);                                  // A ve ayırıcı silinir
+userType('A\nD yeni');                             // bağımsız yazım: aynı konumda "A"
+userType('A\nD ye', 6, 'historyUndo');            // ilgisiz Geri Al: "A" aynı konumda ama değer farklı
+result(idIlgisiz, 'kabul', 'msg_ilgisiz_geri_al');
+assert.equal(input.value, 'A\nD ye', 'ilgisiz Geri Al bağımsız yazılan metni sahiplendirmemeli');
+await temizle();
+
+// 14b) Tek düzenleme sekizden fazla bölümü silse de doğrudan Geri Al hepsinin
+// sahipliğini geri getirir; geç kabuller onları kaldırır (yeniden gönderilmez).
+const topluKimlikler = [];
+for (let i = 1; i <= 10; i++) {
+  sendClick('toplu ' + i);
+  topluKimlikler.push(lastId());
+  chat.children.slice().forEach(c => chat.removeChild(c));
+  await teslim();
+}
+input.value = 'taslak';
+ilerlet(60000);
+const topluOnce = input.value;
+assert.equal(topluOnce.split('\n').length, 11);
+input.selectionStart = 0;
+input.selectionEnd = topluOnce.length - 'taslak'.length;
+beforeinputListeners.forEach(fn => fn({ target: input }));
+userType('taslak', 0);                              // on bölüm tek seçimle silinir
+userType(topluOnce, topluOnce.length - 'taslak'.length, 'historyUndo');
+topluKimlikler.forEach((id, i) => result(id, 'kabul', 'msg_toplu_' + i));
+assert.equal(input.value, 'taslak', 'Geri Al ile dönen tüm kabul edilmiş bölümler kaldırılmalı');
+await temizle();
+
+// 14c) Gizli zaman aşımı çapası karşılamanın geri gelmesini engellemez: yalnız
+// görünür içerik etkin söyleşi sayılır.
+welcome.classList.remove('hidden');
+chat.style.display = '';
+sendClick('çapa A');
+const idCapaA = lastId();
+ilerlet(60000);
+assert.ok(!welcome.classList.contains('hidden'), 'ilk zaman aşımı karşılamayı geri getirmeli');
+input.value = '';
+sendClick('çapa B');
+assert.ok(welcome.classList.contains('hidden'));
+ilerlet(60000);
+assert.ok(!welcome.classList.contains('hidden'), "A'nın gizli çapası B'nin zaman aşımında karşılamayı engellememeli");
+input.value = '';
+sendClick('çapa C');
+result(lastId(), 'ret');
+assert.ok(!welcome.classList.contains('hidden'), 'ret de gizli çapalara rağmen karşılamayı geri getirmeli');
+// Görünür mesaj varken karşılama geri gelmez.
+input.value = '';
+const gorunurMesaj = serverBubble('msg_gorunur', 'görünür');
+await teslim();
+sendClick('çapa D');
+result(lastId(), 'ret');
+assert.ok(welcome.classList.contains('hidden'), 'görünür mesaj varken karşılama geri gelmemeli');
+chat.removeChild(gorunurMesaj);
+result(idCapaA, 'ret');
+welcome.classList.add('hidden');
+chat.style.display = '';
+await temizle();
+
+// 14d) Kesilen son bölümün önündeki satır sonu başka bir bölüme aitse korunur.
+sendClick('B');
+const idSonB = lastId();
+chat.children.slice().forEach(c => chat.removeChild(c));
+await teslim();
+sendClick('A');
+const idOnA = lastId();
+ilerlet(60000);
+assert.equal(input.value, 'A\nB');
+userType('A\n\nB', 2);                            // A'nın sonuna satır sonu eklenir (A'ya katılır)
+userType('A\n\nB', 2);
+result(idSonB, 'kabul', 'msg_son_b');
+assert.equal(input.value, 'A\n', "B kesilirken A'ya ait satır sonu silinmemeli");
+result(idOnA, 'ret');
+await temizle();
+
+// 14e) Yalnızca boşlukta farklı olan reddedilen istem taslağa yutulmaz; birebir
+// aynı bağımsız taslakta ise yinelenmez.
+sendClick('  girintili\tistem  ');
+const idBosluk = lastId();
+input.value = 'girintili\tistem';
+result(idBosluk, 'ret');
+assert.equal(input.value, '  girintili\tistem  \ngirintili\tistem', 'boşluk farkı olan istem geri yüklenmeli');
+await temizle();
+sendClick('aynı taslak');
+const idAyniTaslak = lastId();
+input.value = 'aynı taslak';
+result(idAyniTaslak, 'ret');
+assert.equal(input.value, 'aynı taslak', 'birebir aynı bağımsız taslak yinelenmemeli');
 await temizle();
 
 // 12) Boş istem gönderilmez.

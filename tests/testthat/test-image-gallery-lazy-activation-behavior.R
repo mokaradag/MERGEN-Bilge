@@ -248,6 +248,14 @@ testthat::test_that("oturum kimliği galeri çizildikten sonra yayımlanınca ka
       testthat::expect_identical(utils::tail(kayitlar, 1L), "7")
       testthat::expect_false(identical(sonraki$html, ilk$html))
       # Yayımlama yeniden tarama gerektirmez; yalnızca kartlar yeniden kaydedilir.
+      # Kuyruğa alınmış (henüz çalışmamış) bir tarama da yoktur: yükleme durumu
+      # kapalı kalır ve gecikmeli tarama süresi geçse de sayaç artmaz.
+      testthat::expect_false(isTRUE(gallery_loading()))
+      for (i in seq_len(10L)) {
+        later::run_now(timeoutSecs = 0.1, loop = loop)
+        session$flushReact()
+      }
+      testthat::expect_false(isTRUE(gallery_loading()))
       testthat::expect_identical(scan_recorder$count, 1L)
     }
   ))
@@ -350,12 +358,13 @@ testthat::test_that("sahip değiştikten sonra gelen silme onayı önceki sahibi
       tara(1L)
       session$setInputs(delete_image_request = list(file_path = "/gorseller/7/a.png", chat_id = "1",
                                                     filename = "a.png"))
+      eski_belirtec <- onay_sahibi$tekil$belirtec
 
       # Onay penceresi açıkken oturum 8'e geçer; yeni tarama henüz bitmedi.
       kimlik$uid <- 8L
       env$mergen_session_owner_transition(session$userData, 7L, 8L)
-      session$setInputs(confirm_delete_image = 1)
-      session$setInputs(confirm_clear_all_images = 1)
+      session$setInputs(confirm_delete_image = eski_belirtec)
+      session$setInputs(confirm_clear_all_images = "tumu-1")
       testthat::expect_length(silinen$tek, 0L)
       testthat::expect_length(silinen$tum, 0L)
 
@@ -363,7 +372,7 @@ testthat::test_that("sahip değiştikten sonra gelen silme onayı önceki sahibi
       tara(2L)
       session$setInputs(delete_image_request = list(file_path = "/gorseller/8/a.png", chat_id = "1",
                                                     filename = "a.png"))
-      session$setInputs(confirm_delete_image = 2)
+      session$setInputs(confirm_delete_image = onay_sahibi$tekil$belirtec)
       testthat::expect_identical(silinen$tek, list(8L))
     }
   ))
@@ -397,13 +406,13 @@ testthat::test_that("toplu görsel silme yalnızca mesajı değişen söyleşile
       for (i in seq_len(20L)) { later::run_now(timeoutSecs = 0.1, loop = loop); session$flushReact()
         if (scan_recorder$count >= 1L && !isTRUE(gallery_loading())) break }
       session$setInputs(clear_all_images = 1)
-      session$setInputs(confirm_clear_all_images = 1)
+      session$setInputs(confirm_clear_all_images = onay_sahibi$tumu$belirtec)
       testthat::expect_length(dusurulen, 1L)
       testthat::expect_identical(dusurulen[[1]]$ids, c("1", "3"))
       # Hiçbir söyleşi değişmediyse (görsel yoktu) geçmiş önbelleği korunur.
       etkilenen <<- character()
       session$setInputs(clear_all_images = 2)
-      session$setInputs(confirm_clear_all_images = 2)
+      session$setInputs(confirm_clear_all_images = onay_sahibi$tumu$belirtec)
       # İkinci onay silmeye gerçekten ulaştı ama söyleşi değişmediği için düşürme yok.
       testthat::expect_identical(silme_cagrisi, 2L)
       testthat::expect_length(dusurulen, 1L)
@@ -433,6 +442,7 @@ testthat::test_that("onay penceresi açıldıktan sonra sahip değişip tarama b
         if (scan_recorder$count >= 1L && !isTRUE(gallery_loading())) break }
       # Sahip 7 onay penceresini açar.
       session$setInputs(clear_all_images = 1)
+      eski_belirtec <- onay_sahibi$tumu$belirtec
       # Sahip 9'a geçer ve 9'un taraması tamamlanır.
       aktif_uid <<- 9L
       env$mergen_session_owner_transition(session$userData, 7L, 9L)
@@ -441,8 +451,20 @@ testthat::test_that("onay penceresi açıldıktan sonra sahip değişip tarama b
       testthat::expect_gte(scan_recorder$count, 2L)
       testthat::expect_identical(galeri_sahibi$uid, 9L)
       # Sahip 7'nin açık kalan penceresinden gelen onay reddedilmelidir.
-      session$setInputs(confirm_clear_all_images = 1)
+      session$setInputs(confirm_clear_all_images = eski_belirtec)
       testthat::expect_length(silinen_sahipler, 0L)
+      # Yeni sahip pencereyi açtıktan SONRA işlenen eski onay da yeni sahibin
+      # görsellerini silemez (pencere örneği belirteçle bağlıdır).
+      session$setInputs(clear_all_images = 2)
+      yeni_belirtec <- onay_sahibi$tumu$belirtec
+      session$setInputs(confirm_clear_all_images = eski_belirtec)
+      testthat::expect_length(silinen_sahipler, 0L)
+      testthat::expect_identical(onay_sahibi$tumu$belirtec, yeni_belirtec)
+      # Açık pencerenin kendi onayı geçerlidir ve yalnızca bir kez kullanılabilir.
+      session$setInputs(confirm_clear_all_images = yeni_belirtec)
+      testthat::expect_identical(silinen_sahipler, 9L)
+      session$setInputs(confirm_clear_all_images = paste0(yeni_belirtec, ""))
+      testthat::expect_identical(silinen_sahipler, 9L)
     }
   ))
 })
@@ -474,13 +496,40 @@ testthat::test_that("bağımsız görsel silme (chat_id NULL) tüm geçmiş önb
       for (i in seq_len(20L)) { later::run_now(timeoutSecs = 0.1, loop = loop); session$flushReact()
         if (scan_recorder$count >= 1L && !isTRUE(gallery_loading())) break }
       session$setInputs(delete_image_request = list(file_path = "user_images/7/tek.png", filename = "tek.png", chat_id = NULL))
-      session$setInputs(confirm_delete_image = 1)
+      session$setInputs(confirm_delete_image = onay_sahibi$tekil$belirtec)
       # Silme gerçekten yapıldı (doğru yol/sahip, söyleşisiz) ve geçmiş önbelleği korundu.
       testthat::expect_length(tekil, 1L)
       testthat::expect_identical(tekil[[1]]$path, "user_images/7/tek.png")
       testthat::expect_identical(as.integer(tekil[[1]]$uid), 7L)
       testthat::expect_null(tekil[[1]]$chat_id)
       testthat::expect_length(dusurulen, 0L)
+    }
+  ))
+})
+
+testthat::test_that("aynı galeri kartına yeniden tıklamak yeni bir yönlendirme olayı üretir", {
+  testthat::skip_if_not_installed("shiny")
+  scan_recorder <- new.env(parent = emptyenv())
+  scan_recorder$count <- 0L
+  env <- .lazy_gallery_env(scan_recorder)
+  loop <- later::create_loop(parent = NULL)
+  on.exit(later::destroy_loop(loop), add = TRUE)
+  later::with_loop(loop, shiny::testServer(
+    env$imageGalleryServer,
+    args = list(id = "ig", current_user_id = function() 7L),
+    {
+      olaylar <- list()
+      shiny::observeEvent(navigate_to_chat_trigger(), {
+        olaylar[[length(olaylar) + 1L]] <<- navigate_to_chat_trigger()
+      })
+      kart <- list(chat_id = "5", file_path = "user_images/7/a.png")
+      session$setInputs(navigate_to_chat = kart)
+      session$flushReact()
+      # Başarısız okuma sonrası aynı karta tekrar tıklama (aynı yük).
+      session$setInputs(navigate_to_chat = kart)
+      session$flushReact()
+      testthat::expect_length(olaylar, 2L)
+      testthat::expect_identical(olaylar[[2]], kart)
     }
   ))
 })

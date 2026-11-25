@@ -202,15 +202,28 @@ $(document).ready(function() {
   // metinli iki bölümden hangisinin silindiği metinden çıkarılmaz).
   //   - Bölüm tamamen silinirse kaydı düşer (yeniden yazılan metin sahiplenilmez).
   //   - Bölüm düzenlenirse kaydı DÜZENLENDİ olarak kalır: geç kabul onu silmez
-  //     (kullanıcının düzenlemesi korunur) ama sahip sıfırlaması kaldırır.
+  //     (kullanıcının düzenlemesi korunur).
   //   - Bölümün dışındaki düzenleme (ayrı satırda taslak) sahipliği etkilemez.
   // Kayıtlar kullanıcı tüketene (gönderim), silene ya da sahip sıfırlanana dek
   // tutulur; sayı sınırı yoktur (her kayıt girdideki gerçek metne karşılık gelir).
   const geriYuklemeler = [];
-  // Kullanıcı düzenlemesiyle silinen (ya da tamamen değiştirilen) bölümler:
-  // yalnızca tarayıcının Geri Al işlemi metni AYNI konuma geri getirirse
-  // sahiplik geri verilir; bağımsız yeniden yazılan metin sahiplenilmez.
-  const silinenBolumler = [];
+  // İzlenen bölüm silen kullanıcı düzenlemeleri: düzenlemeden ÖNCEKİ tam değer
+  // ve o andaki bölüm sahipliğinin kopyası. Tarayıcının Geri Al işlemi hedef
+  // aralık bildirmez; sahiplik YALNIZCA Geri Al girdiyi bu değerlerden birine
+  // BİREBİR döndürürse (silmenin doğrudan geri alınması) geri verilir. Aynı
+  // konumda aynı metnin bulunması kanıt sayılmaz. Programatik değişiklik
+  // (geri yükleme, kaldırma, gönderim) yerel Geri Al geçmişiyle eşleşmeyi
+  // bozduğundan kayıtları siler. Sınır aşılırsa en eski silmenin sahipliği düşer
+  // (bölüm kullanıcının metni olarak kalır; sahip sıfırlaması zaten tüm girdiyi temizler).
+  const silmeKayitlari = [];
+  const SILME_KAYDI_SINIRI = 64;
+  // Geç kabul edilmiş istek kimlikleri: Geri Al ile özgün hâliyle dönen bölümleri
+  // hemen kaldırılır (onaylanmış istem yeniden gönderilmez).
+  let kabulEdilenler = {};
+  // Sahip değişiminden sonra girdinin yerel Geri Al/Yinele geçmişi önceki kimliğin
+  // metnini taşıyabilir (tarayıcı programatik atamayla geçmişi silmez): bu sayfa
+  // ömrü boyunca girdide Geri Al/Yinele engellenir.
+  let geriAlEngeli = false;
   let sonDeger = '';
   let oncekiSecim = null;
 
@@ -229,6 +242,10 @@ $(document).ready(function() {
   function sahipsizleriBudala() {
     const canli = {};
     for (let i = 0; i < geriYuklemeler.length; i++) canli[geriYuklemeler[i].id] = true;
+    // Geri Al ile dönebilecek (silme kaydındaki) bölümlerin istekleri de canlıdır.
+    for (let i = 0; i < silmeKayitlari.length; i++) {
+      for (let k = 0; k < silmeKayitlari[i].bolumler.length; k++) canli[silmeKayitlari[i].bolumler[k].id] = true;
+    }
     const sahipsizZa = [];
     for (let i = 0; i < zamanAsimlari.length; i++) {
       if (!canli[zamanAsimlari[i].id]) sahipsizZa.push(zamanAsimlari[i]);
@@ -279,32 +296,23 @@ $(document).ready(function() {
     return { bas: bas, eskiSon: son, yeniSon: bas + eklenenUzunluk, eklenen: yeni.slice(bas, bas + eklenenUzunluk), secimli: true };
   }
 
-  function bolumuSilineneEkle(b, eski) {
-    silinenBolumler.push({ kayit: b, bas: b.bas, metin: eski.slice(b.bas, b.son) });
-    while (silinenBolumler.length > 8) silinenBolumler.shift();
-  }
-
-  // Geri Al: silinen bölüm metni aynı konumda yeniden belirdiyse ve canlı bir
-  // bölümle çakışmıyorsa özgün sahipliğiyle geri gelir.
+  // Geri Al girdiyi bir silme kaydının ÖNCEKİ değerine birebir döndürdüyse o
+  // andaki sahiplik aynen geri gelir (sonraki kayıtlar da geri alınmıştır).
+  // Geç kabul edilmiş, düzenlenmemiş ve çakışmamış bölüm hemen kaldırılır.
   function geriAlSahipliginiDondur(yeni) {
-    for (let i = silinenBolumler.length - 1; i >= 0; i--) {
-      const r = silinenBolumler[i];
-      const son = r.bas + r.metin.length;
-      if (!r.metin || yeni.slice(r.bas, son) !== r.metin) continue;
-      let yer = 0;
-      let cakisma = false;
-      for (let k = 0; k < geriYuklemeler.length; k++) {
-        const b = geriYuklemeler[k];
-        if (b.bas < son && r.bas < b.son) cakisma = true;
-        if (b.bas < r.bas) yer = k + 1;
+    for (let i = silmeKayitlari.length - 1; i >= 0; i--) {
+      if (silmeKayitlari[i].eski !== yeni) continue;
+      const kayit = silmeKayitlari.splice(i)[0];
+      geriYuklemeler.length = 0;
+      const kabuller = [];
+      for (let k = 0; k < kayit.bolumler.length; k++) {
+        geriYuklemeler.push(Object.assign({}, kayit.bolumler[k]));
+        if (kabulEdilenler[kayit.bolumler[k].id]) kabuller.push(kayit.bolumler[k].id);
       }
-      if (cakisma) continue;
-      silinenBolumler.splice(i, 1);
-      r.kayit.bas = r.bas;
-      r.kayit.son = son;
-      r.kayit.duzenlendi = (typeof r.kayit.ozgun === 'string') ? (r.metin !== r.kayit.ozgun) : true;
-      geriYuklemeler.splice(yer, 0, r.kayit);
+      for (let k = 0; k < kabuller.length; k++) geriYuklemeyiUzlastir({ id: kabuller[k] });
+      return true;
     }
+    return false;
   }
 
   // Girdinin bilinen son değerinden bu yana yapılan değişikliği bölümlere uygular.
@@ -318,7 +326,8 @@ $(document).ready(function() {
     oncekiSecim = null;
     sonDeger = yeni;
     const geriAl = girdiTuru === 'historyUndo';
-    if (!geriYuklemeler.length && !(geriAl && silinenBolumler.length)) return;
+    if (!geriYuklemeler.length && !(geriAl && silmeKayitlari.length)) return;
+    if (geriAl && geriAlSahipliginiDondur(yeni)) return;
     // Seçili metnin değiştirilmesi (aynı metnin yapıştırılması dahil) değer
     // değişmese bile işlenir: seçimin TAMAMEN kapsadığı bölümün sahipliği düşer.
     const sd = geriAl ? null : secimBolgesi(eski, yeni, secim);
@@ -326,11 +335,14 @@ $(document).ready(function() {
     const d = sd || duzenlemeBolgesi(eski, yeni, imlec);
     const fark = yeni.length - eski.length;
     const ekleme = d.bas === d.eskiSon;
+    const oncekiBolumler = [];
+    for (let k = 0; k < geriYuklemeler.length; k++) oncekiBolumler.push(Object.assign({}, geriYuklemeler[k]));
+    let silindi = false;
     for (let i = 0; i < geriYuklemeler.length;) {
       const b = geriYuklemeler[i];
       if (d.secimli && d.bas <= b.bas && d.eskiSon >= b.son) {
         // Seçimle tamamen değiştirilen bölüm: eklenen metin sahiplenilmez.
-        bolumuSilineneEkle(b, eski);
+        silindi = true;
         geriYuklemeler.splice(i, 1);
         continue;
       }
@@ -351,14 +363,19 @@ $(document).ready(function() {
       }
       const bas = Math.min(b.bas, d.bas);
       const son = Math.max(b.son + fark, d.yeniSon);
-      if (son <= bas) { bolumuSilineneEkle(b, eski); geriYuklemeler.splice(i, 1); continue; }
+      if (son <= bas) { silindi = true; geriYuklemeler.splice(i, 1); continue; }
       b.bas = bas;
       b.son = son;
       // Düzenleme geri alınıp özgün metne dönüldüyse geç kabul yine uzlaştırabilir.
       b.duzenlendi = (typeof b.ozgun === 'string') ? (yeni.slice(bas, son) !== b.ozgun) : true;
       i++;
     }
-    if (geriAl) geriAlSahipliginiDondur(yeni);
+    // Bölüm silen düzenleme (tek düzenleme birden çok bölüm silse de) önceki
+    // değer ve sahiplikle kaydedilir; doğrudan Geri Al hepsini geri getirir.
+    if (silindi) {
+      silmeKayitlari.push({ eski: eski, bolumler: oncekiBolumler });
+      while (silmeKayitlari.length > SILME_KAYDI_SINIRI) silmeKayitlari.shift();
+    }
     // Her karakter en çok bir isteğe aittir: çakışan bölümler kalıcı olarak
     // "çakıştı" sayılır, geç kabul onları kaldırmaz (sahip sıfırlaması kaldırır).
     for (let a = 0; a < geriYuklemeler.length; a++) {
@@ -369,15 +386,6 @@ $(document).ready(function() {
       }
     }
     sahipsizleriBudala();
-    // Geri Al ile dönen, kabul edilmiş ve özgün hâlindeki bölüm hemen kalkar
-    // (geç kabul uzlaştırmasıyla aynı kural: düzenlenmemiş, çakışmamış bölüm).
-    if (geriAl) {
-      const kabulKimlikleri = [];
-      for (let k = 0; k < geriYuklemeler.length; k++) {
-        if (geriYuklemeler[k].kabulEdildi) kabulKimlikleri.push(geriYuklemeler[k].id);
-      }
-      for (let k = 0; k < kabulKimlikleri.length; k++) geriYuklemeyiUzlastir({ id: kabulKimlikleri[k] });
-    }
   }
 
   // Seçilen sahiplerin bölümleri aralıklarıyla kesilir; diğer bölümler ve
@@ -397,8 +405,11 @@ $(document).ready(function() {
       let son = b.son;
       if (b.ayirici || deger[son - 1] !== '\n') {
         const sonrakiBolum = kalanlar.some(function(k) { return k.bas <= son && son < k.son; });
+        // Önceki satır sonu yalnızca kalan hiçbir bölüme ait değilse kesilir.
+        let oncekiSahipli = false;
+        for (let k = 0; k < kalanlar.length; k++) if (kalanlar[k].bas <= bas - 1 && bas - 1 < kalanlar[k].son) oncekiSahipli = true;
         if (deger[son] === '\n' && !sonrakiBolum) son++;
-        else if (son === deger.length && bas > 0 && deger[bas - 1] === '\n') bas--;
+        else if (son === deger.length && bas > 0 && deger[bas - 1] === '\n' && !oncekiSahipli) bas--;
       }
       return [bas, son];
     }).sort(function(x, y) { return x[0] - y[0]; });
@@ -429,6 +440,7 @@ $(document).ready(function() {
     });
     giris.value = yeni;
     sonDeger = yeni;
+    silmeKayitlari.length = 0;
     if (secBas !== null && secSon !== null && typeof giris.setSelectionRange === 'function') {
       try { giris.setSelectionRange(esle(secBas), esle(secSon)); } catch (e) {}
     }
@@ -450,11 +462,11 @@ $(document).ready(function() {
     const secSon = typeof giris.selectionEnd === 'number' ? giris.selectionEnd : null;
     if (!mevcut.trim()) {
       geriYuklemeler.length = 0;
-      silinenBolumler.length = 0;
       giris.value = ham;
       geriYuklemeler.unshift({ id: kayit.id, bas: 0, son: ham.length, duzenlendi: false, ozgun: ham, ayirici: false });
-    } else if (mevcut.trim() === ham.trim() && !geriYuklemeler.length) {
-      // Bağımsız yazılmış özdeş taslak: hiçbir şey eklenmez, sahiplik de alınmaz.
+    } else if (mevcut === ham && !geriYuklemeler.length) {
+      // BİREBİR aynı bağımsız taslak: hiçbir şey eklenmez, sahiplik de alınmaz.
+      // Yalnızca boşlukta farklı olan istem geri yüklenir (biçim kaybolmaz).
       return true;
     } else {
       // Ayırıcı satır sonu istem aralığına katılmaz: sınırda yeni satır ekleme
@@ -468,22 +480,9 @@ $(document).ready(function() {
       }
     }
     sonDeger = String(giris.value || '');
+    silmeKayitlari.length = 0;
     girisiYenile(giris);
     return true;
-  }
-
-  // Sahip sıfırlaması yalnızca SAHİPLİĞİ KANITLI metni kaldırır (izlenen
-  // bölümler; Geri Al ile aynı konuma dönen bölüm de izlenir). Metin eşitliği
-  // sahiplik kanıtı değildir: bağımsız yazılan özdeş metin korunur. Değer
-  // programatik yeniden atanır; tarayıcının yerel Geri Al yığını önceki
-  // sahibin silinmiş metnini geri getiremez.
-  function geriAlYigininiKes() {
-    const giris = girisAlani();
-    if (!giris) return;
-    const deger = String(giris.value || '');
-    giris.value = deger;
-    sonDeger = deger;
-    girisiYenile(giris);
   }
 
   // Geç kabul (asıl balon DOM'dayken): yalnızca bu isteğin DÜZENLENMEMİŞ bölümü
@@ -508,8 +507,14 @@ $(document).ready(function() {
     // Karşılama yalnızca görünüm hâlâ aynıysa (kapta başka balon yoksa) geri gelir;
     // kullanıcı bu arada bir söyleşi açtıysa etkin söyleşi gizlenmez.
     const $karsilama = $('#welcome_fullscreen_container');
+    // Gizli zaman aşımı çapaları (önceki istemlerin) görünür içerik sayılmaz;
+    // görünür mesaj ya da balon varsa etkin söyleşi gizlenmez.
     let kapBos = !!sohbetKabi;
-    for (let k = 0; kapBos && k < sohbetKabi.children.length; k++) kapBos = sohbetKabi.children[k] === kayit.el;
+    for (let k = 0; kapBos && k < sohbetKabi.children.length; k++) {
+      const c = sohbetKabi.children[k];
+      kapBos = c === kayit.el || !!(c.classList && c.classList.contains('mergen-bekleyen-istem') &&
+        c.style && c.style.display === 'none');
+    }
     if (ayniGorunum && kayit.karsilamaGizlendi && kapBos &&
         $karsilama.children().length > 0) {
       kayit.karsilamaGeriGeldi = true;
@@ -635,11 +640,13 @@ $(document).ready(function() {
       if (veri.durum === 'kabul') kabulEt(kayit, String(veri.mesaj_id || '')); else reddet(kayit);
       dugmeDurumunuGuncelle();
     });
-    // Oturum sahibi değişti: önceki sahibin sonuçlanmamış istemleri metni geri
-    // yüklenmeden düşer; daha önce geri yüklenmiş (zaman aşımı, ret ya da
-    // kopma) istem bölümleri girdiden kaldırılır. Yeni sahip eski sahibin
-    // istemini görmez. Shiny işleyicinin tek parametre bildirmesini zorunlu
-    // kılar (aksi halde kayıt hata verir ve modülün geri kalanı yüklenmez).
+    // Oturum sahibi değişti ya da kimlik düştü: önceki sahibin sonuçlanmamış
+    // istemleri metni geri yüklenmeden düşer. Girdideki HER metin önceki kimliğe
+    // ait olabilir (izlenmeyen Geri Al dönüşü ya da o kimlikle yazılmış taslak
+    // dahil); KAPALI-BAŞARISIZ olarak girdi tümüyle temizlenir ve yerel Geri
+    // Al/Yinele geçmişi bu sayfa ömrü boyunca engellenir. Yeni sahip eski
+    // sahibin metnini görmez. Shiny işleyicinin tek parametre bildirmesini
+    // zorunlu kılar (aksi halde kayıt hata verir ve modülün geri kalanı yüklenmez).
     Shiny.addCustomMessageHandler('mergenBekleyenIstemSifirla', function(veri) {
       const nesil = Number(veri && veri.nesil);
       if (Number.isInteger(nesil) && nesil > sahipNesli) sahipNesli = nesil;
@@ -660,11 +667,16 @@ $(document).ready(function() {
         if (kayit.zamanlayici) clearTimeout(kayit.zamanlayici);
         balonuKaldir(kayit);
       });
-      // Düzenlenmiş bölümler de kaldırılır; ilgisiz taslak aynen kalır.
-      bolumleriKaldir(function() { return true; });
       geriYuklemeler.length = 0;
-      silinenBolumler.length = 0;
-      geriAlYigininiKes();
+      silmeKayitlari.length = 0;
+      kabulEdilenler = {};
+      geriAlEngeli = true;
+      const giris = girisAlani();
+      if (giris) {
+        giris.value = '';
+        sonDeger = '';
+        girisiYenile(giris);
+      }
       canliBildir('');
       dugmeDurumunuGuncelle();
     });
@@ -682,12 +694,9 @@ $(document).ready(function() {
     const kayit = zamanAsimlari.splice(i, 1)[0];
     if (veri.durum !== 'kabul') { balonuKaldir(kayit); return; }
     if (!kilitliMi()) canliBildir('Gecikmeli istem iletildi.');
-    // Kabul edilen isteğin bölümleri (silinmiş olsalar da) işaretlenir: Geri Al
-    // bölümü özgün hâliyle geri getirirse hemen kaldırılır, yeniden gönderilmez.
-    for (let k = 0; k < geriYuklemeler.length; k++) if (geriYuklemeler[k].id === kayit.id) geriYuklemeler[k].kabulEdildi = true;
-    for (let k = 0; k < silinenBolumler.length; k++) {
-      if (silinenBolumler[k].kayit && silinenBolumler[k].kayit.id === kayit.id) silinenBolumler[k].kayit.kabulEdildi = true;
-    }
+    // Kabul edilen istek hatırlanır: silinmiş bölümü Geri Al ile özgün hâliyle
+    // dönerse hemen kaldırılır, yeniden gönderilmez.
+    kabulEdilenler[kayit.id] = true;
     geriYuklemeyiUzlastir(kayit);
     const mesajId = String(veri.mesaj_id || '');
     const dugum = mesajId && typeof document.getElementById === 'function'
@@ -745,9 +754,14 @@ $(document).ready(function() {
   }, true);
 
   // Kullanıcı düzenlemesi öncesi seçimi kaydet: tüm girdinin değiştirilmesi
-  // (Ctrl+A + yapıştır/yaz) eski geri yükleme sahipliğini düşürür.
+  // (Ctrl+A + yapıştır/yaz) eski geri yükleme sahipliğini düşürür. Sahip
+  // değişiminden sonra girdide Geri Al/Yinele engellenir.
   if (typeof document.addEventListener === 'function') document.addEventListener('beforeinput', function(e) {
     if (!e.target || e.target !== girisAlani()) return;
+    if (geriAlEngeli && (e.inputType === 'historyUndo' || e.inputType === 'historyRedo')) {
+      if (typeof e.preventDefault === 'function') e.preventDefault();
+      return;
+    }
     oncekiSecim = {
       bas: typeof e.target.selectionStart === 'number' ? e.target.selectionStart : -1,
       son: typeof e.target.selectionEnd === 'number' ? e.target.selectionEnd : -1,
@@ -774,7 +788,8 @@ $(document).ready(function() {
     ekle: function(hamMetin) {
       // Gönderim girdiyi tüketir: önceki geri yüklemelerin sahipliği biter.
       geriYuklemeler.length = 0;
-      silinenBolumler.length = 0;
+      silmeKayitlari.length = 0;
+      kabulEdilenler = {};
       sahipsizleriBudala();
       const istemKimligi = 'istem_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
       const gosterilecek = hamMetin.trim() || 'Seçili dosyaların özeti istendi.';

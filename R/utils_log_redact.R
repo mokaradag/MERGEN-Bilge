@@ -300,7 +300,8 @@ redact_connection_identifiers <- function(x) {
   # Bağımsız Bearer kimlik bilgisi RFC 6750 b64token karakterlerinin TAMAMIYLA
   # (`~` dahil) genel redaktörden önce maskelenir; kuyruk açıkta kalmaz.
   if (is.character(on_isle)) {
-    on_isle <- gsub("(?i)(?<![A-Za-z0-9_])(Bearer\\s+)[A-Za-z0-9._~+/-]+=*", "\\1<redacted>", on_isle, perl = TRUE)
+    # Şemadan sonra yalnızca YATAY boşluk: boş kimlik bilgisinde sonraki satır yutulmaz.
+    on_isle <- gsub("(?i)(?<![A-Za-z0-9_])(Bearer[ \\t]+)[A-Za-z0-9._~+/-]+=*", "\\1<redacted>", on_isle, perl = TRUE)
   }
   metin <- tryCatch(redact_sensitive_text(on_isle), error = function(e) NULL)
   if (is.null(metin)) return("<redaksiyon uygulanamadi>")
@@ -337,7 +338,7 @@ redact_connection_identifiers <- function(x) {
     # sonraki satırların kapanışına kadar her şeyi yutup tanı bağlamını siliyordu.
     # Sır anahtarları (`auth_token={...}`, `authToken={...}`) da kapsanır.
     paste0("(?i)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS, "|", .REDACT_LOG_SECRET_KEYS,
-           ")(\\s*=\\s*)\\{(?>(?:[^{}\\r\\n]|\\}\\})*)\\}"),
+           ")(\\s*=\\s*)\\{(?>(?:[^}\\r\\n]|\\}\\})*)\\}"),
     "\\1\\2\\3{<redacted>}",
     metin,
     perl = TRUE
@@ -356,11 +357,15 @@ redact_connection_identifiers <- function(x) {
   # ODBC tanısında parola kuyruğu kalıcı loga yazılırdı.
   metin <- gsub(
     paste0("(?im)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS, "|", .REDACT_LOG_SECRET_KEYS,
-           ")(\\s*=\\s*)\\{(?:[^{}\r\n]|\\}\\})*(?=\r|\n|\\z)"),
+           ")(\\s*=\\s*)\\{(?:[^}\r\n]|\\}\\})*(?=\r|\n|\\z)"),
     "\\1\\2\\3{<redacted>}",
     metin,
     perl = TRUE
   )
+
+  # Kapanmış süslü değerin hemen ardından ayırıcısız kuyruk gelirse (geçersiz
+  # `DSN={Ozel{Ad}Kuyruk}` gibi) kuyruk da maskelenir: değerin parçası açıkta kalmaz.
+  metin <- gsub("\\{<redacted>\\}[^;,\\s)\\]]+", "{<redacted>}", metin, perl = TRUE)
 
   # Noktalı virgülle ayrılan boşluklu ODBC tanımlayıcıları (ör. DSN=Ozel Rapor;UID=x)
   # alan ayırıcısına kadar eksiksiz maskelenir.
@@ -382,10 +387,12 @@ redact_connection_identifiers <- function(x) {
     metin,
     perl = TRUE
   )
-  # Tek alanlı `DSN=` değeri (noktalı virgülsüz) de bütün olarak maskelenir:
-  # DSN adı boşluk içerebilir ve kısmi ad loga yazılmaz.
+  # Tek alanlı (noktalı virgülsüz) bağlantı tanımlayıcısı da bütün olarak
+  # maskelenir: DSN/sunucu/veritabanı adı boşluk içerebilir ve kısmi ad loga
+  # yazılmaz (`Database=Ozel Rapor` -> `Database=<redacted>`).
   metin <- gsub(
-    "(?im)(^|[;{(\\[,\\s])(dsn)(\\s*=\\s*)(?!\\{)[^;,}\\])\\r\\n\"'<>]*[^;,}\\])\\r\\n\"'<>\\s]",
+    paste0("(?im)(^|[;{(\\[,\\s])(", .REDACT_CONN_KEYS,
+           ")(\\s*=\\s*)(?!\\{)[^;,}\\])\\r\\n\"'<>]*[^;,}\\])\\r\\n\"'<>\\s]"),
     "\\1\\2\\3<redacted>",
     metin,
     perl = TRUE
@@ -411,8 +418,8 @@ redact_connection_identifiers <- function(x) {
   # Authorization başlığı (ön geçişin yakalamadığı biçimler için yedek): şema
   # korunur, kimlik bilgisi satır sonuna kadar maskelenir.
   metin <- gsub(
-    paste0(.REDACT_LOG_KEY_ONU, "((?:proxy-)?authorization)", .REDACT_LOG_KEY_SONU,
-           "(?=\\S)(?![{\"'])(?>((?:Bearer|Basic|Digest|Negotiate|NTLM|Token)\\s+)?)(?!<redacted>)[^\\r\\n]+"),
+    paste0(.REDACT_LOG_KEY_ONU, "((?:proxy-)?authorization)([\"']?)([ \\t]*[:=][ \\t]*)",
+           "(?=\\S)(?![{\"'])(?>((?:Bearer|Basic|Digest|Negotiate|NTLM|Token)[ \\t]+)?)(?!<redacted>)[^\\r\\n]+"),
     "\\1\\2\\3\\4\\5<redacted>",
     metin,
     perl = TRUE
@@ -463,8 +470,8 @@ redact_connection_identifiers <- function(x) {
   # maskelenir: RFC 6750 `~` karakteri veya Digest tırnaklı parametreleri
   # (`username="...", response="..."`) kısmen açıkta kalmaz.
   x <- gsub(
-    paste0(.REDACT_LOG_KEY_ONU, "((?:proxy-)?authorization)(\\s*[:=]\\s*)",
-           "(?=\\S)(?![{\"'])(?>((?:Bearer|Basic|Digest|Negotiate|NTLM|Token)\\s+)?)(?!<redacted>)[^\\r\\n]+"),
+    paste0(.REDACT_LOG_KEY_ONU, "((?:proxy-)?authorization)([ \\t]*[:=][ \\t]*)",
+           "(?=\\S)(?![{\"'])(?>((?:Bearer|Basic|Digest|Negotiate|NTLM|Token)[ \\t]+)?)(?!<redacted>)[^\\r\\n]+"),
     "\\1\\2\\3\\4<redacted>",
     x,
     perl = TRUE
@@ -520,4 +527,14 @@ mergen_db_error_log_summary <- function(e) {
   } else "(ayrıntı gizlendi)"
   metin <- sub("(?is)(<SQL>|\\b(SELECT|WITH|INSERT|UPDATE|DELETE|EXEC|MERGE)\\b).*$", "<SQL gizlendi>", metin, perl = TRUE)
   sprintf("[%s] %s", sinif, substr(metin, 1L, 300L))
+}
+
+# DB hatasını maskelenmiş özetle uyarı olarak yazar. Uyarı hataya çevrilirse
+# (options(warn = 2)) çağıranın kurtarma yolu kesilmez; metin stderr'e düşer.
+mergen_db_error_warn <- function(etiket, e) {
+  metin <- sprintf("%s: %s", etiket, mergen_db_error_log_summary(e))
+  sonuc <- try(warning(metin, call. = FALSE), silent = TRUE)
+  if (inherits(sonuc, "try-error")) try(cat(metin, "
+", file = stderr()), silent = TRUE)
+  invisible(NULL)
 }

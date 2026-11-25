@@ -92,6 +92,10 @@
   var pendingFinishUntilLaneResolved = false;
   // Sunucunun kısmi hazır bildirimi kapanış etiketini belirler (niteliksiz "Hazır" değil).
   var kapanisEtiketi = null;
+  // Süren kapanış sunucu hazır-olmasından mı başladı? Yalnızca bu kapanış,
+  // kabuk kapısı bırakılmadan önce gelen geri çekilmeyle iptal edilebilir
+  // (SSO hatası, gözcü ve Hızlı Başlangıç kapanışları hazır-olmaya bağlı değildir).
+  var kapanisHazirOlmaya = false;
   var fadeStarted = false;
   var ssoActive = false;
   var skipIntro = false;
@@ -343,6 +347,18 @@
       // Her gerçek kontrol noktası ilerleme etkinliği sayılır (stall gözcüsü).
       markProgress();
 
+      // Hazır-olmayla başlayan kapanış henüz kabuk kapısını bırakmadıysa geri
+      // çekilen hazır-olma tamamlanmayı iptal eder: katman açık kalır, etiket
+      // hazır olmayan duruma döner; sonraki geçerli hazır bildirimi kapanışı
+      // yeniden başlatır. Kapı bırakıldıktan (erime başladıktan) sonra geri dönülmez.
+      var kapanisSuruyor = finished && !fadeStarted;
+      if (msg.ready !== true && kapanisSuruyor && kapanisHazirOlmaya) {
+        finished = false;
+        kapanisHazirOlmaya = false;
+        kapanisSuruyor = false;
+        overlay.classList.remove("alo-complete");
+      }
+
       // Hazır-olma geri çekildiyse (ör. sahip değişimi) bekleyen veya şerit seçimine
       // ertelenmiş kapanış ve kapanış etiketi iptal edilir. Bekleyen ya da
       // görünen "hazır" etiketi de geri alınır: hazır olmayan durumda "Hazır"
@@ -352,6 +368,9 @@
       var gelenAsama = null;
       for (var s = 0; s < STAGES.length; s++) if (STAGES[s].key === msg.key) gelenAsama = STAGES[s];
       var hazirOlmayanEtiket = (gelenAsama && gelenAsama.key !== "ready") ? gelenAsama.label : "Hazırlık sürüyor";
+      // Bekleme etiketi kalkınca güncel engel bilinmiyorsa nötr etiket gösterilir:
+      // tamamlanmış (en ileri) aşamanın etiketi etkin durum gibi geri yazılmaz.
+      var notrEtiket = "Hazırlık sürüyor";
       if (msg.ready !== true && hazirAsamasinda) {
         if (stageLabelTimer) {
           window.clearTimeout(stageLabelTimer);
@@ -399,8 +418,7 @@
         // aşamanın etiketiyle değiştirilir; hazırlık sürüyormuş gibi görünmez.
         // Aşama "ready" ise hazır etiketi geri yazılmaz (hazır-olma geri çekildi).
         yonetimEtiketiGosteriliyor = false;
-        lastStageLabel = !(stageIndex >= 0 && STAGES[stageIndex]) ? "Başlatılıyor" :
-          (STAGES[stageIndex].key === "ready" ? hazirOlmayanEtiket : STAGES[stageIndex].label);
+        lastStageLabel = !(stageIndex >= 0 && STAGES[stageIndex]) ? "Başlatılıyor" : notrEtiket;
         statusText.textContent = lastStageLabel;
       }
 
@@ -414,8 +432,10 @@
             "Kısmen hazır — Söyleşi Yönetimi verisi henüz tamamlanmadı" : "Kısmen hazır");
         kapanisEtiketi = etiket;
         // Geri çekilmeden sonra yeniden hazır: aşama zaten "ready" olduğundan
-        // setStage etiketi yazmaz; etiket doğrudan yayımlanır.
-        if (hazirAsamasinda && statusText) {
+        // setStage etiketi yazmaz; etiket doğrudan yayımlanır. Kapanış sürerken
+        // gelen toparlanma (kısmen -> tam) görünen etiketi animasyonu yeniden
+        // başlatmadan günceller.
+        if ((hazirAsamasinda || kapanisSuruyor) && statusText) {
           if (stageLabelTimer) {
             window.clearTimeout(stageLabelTimer);
             stageLabelTimer = null;
@@ -450,7 +470,7 @@
         if (laneFinishTimer) window.clearTimeout(laneFinishTimer);
         laneFinishTimer = window.setTimeout(function () {
           laneFinishTimer = null;
-          finish();
+          finish({ hazirOlmaya: true });
         }, 0);
       }
     });
@@ -483,6 +503,8 @@
     }
     if (finished) return;
     finished = true;
+    // Şerit ertelemeli kapanış yalnızca sunucu hazır-olmasından başlar.
+    kapanisHazirOlmaya = opts.hazirOlmaya === true || opts.deferForLane === true;
     if (stageLabelTimer) {
       window.clearTimeout(stageLabelTimer);
       stageLabelTimer = null;
@@ -504,7 +526,9 @@
     // İlerleme kesin olarak %100'e sürülür; ekran yalnızca yedigen tamamen
     // dolduktan sonra progressFrame içinden eritilir.
     setTarget(100);
-    if (rafId === null && displayPct < targetPct) {
+    // Gösterge zaten %100'deyse de (iptal edilen kapanıştan sonra yeniden hazır)
+    // bir kare planlanır; erime yalnızca progressFrame içinden başlar.
+    if (rafId === null) {
       rafId = window.requestAnimationFrame(progressFrame);
     }
   }
@@ -514,7 +538,7 @@
   function startSsoWatch() {
     var ssoTimer = window.setInterval(function () {
       if (finished) {
-        window.clearInterval(ssoTimer);
+        if (fadeStarted) window.clearInterval(ssoTimer);
         return;
       }
       var ssoErr = document.getElementById("sso_module-sso_error");
@@ -646,8 +670,10 @@
   // çalışma görünür kılınır.
   var waitingDots = 0;
   var waitingTimer = window.setInterval(function () {
+    // Kapanış geri alınabilir (hazır-olma geri çekilirse): zamanlayıcılar ancak
+    // erime başlayınca (geri dönüşsüz) durur; kapanış sürerken yalnızca beklenir.
     if (finished) {
-      window.clearInterval(waitingTimer);
+      if (fadeStarted) window.clearInterval(waitingTimer);
       return;
     }
     if (!statusText || laneSelectorOpen()) return;
@@ -691,8 +717,10 @@
   var HARD_CAP_MS = 180000;
   var watchdogStart = Date.now();
   var watchdogTimer = window.setInterval(function () {
+    // Gözcü iptal edilen bir kapanıştan sonra da çalışmaya devam eder: katman
+    // hiçbir koşulda kalıcı olarak açık kalmaz (son çare kapanışı iptal edilemez).
     if (finished) {
-      window.clearInterval(watchdogTimer);
+      if (fadeStarted) window.clearInterval(watchdogTimer);
       return;
     }
     // İlk açılış şerit seçicisi açıkken kullanıcı karar veriyordur; gözcü

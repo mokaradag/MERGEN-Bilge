@@ -205,12 +205,13 @@ testthat::test_that("navigate_to_chat bulunamayan söyleşide yükleniyor görü
 
 # Başarılı galeri yönlendirmesi tanımsız değişkenle düşmez: söyleşi açılır,
 # başarı bildirimi gösterilir ve yükleme kilidi gecikmeli geri çağrıyla bırakılır.
-.galeri_basari_calistir <- function(saved_chats, db_impl, kimlik = 7L) {
+.galeri_basari_calistir <- function(saved_chats, db_impl, kimlik = 7L, etkin = NULL, sifirla = NULL,
+                                    geri_bildirim = function(...) list(liked = character(), disliked = character())) {
   fix <- .source_gallery_obs_for_test(load_in_progress = FALSE, db_impl = db_impl)
   env <- fix$env; rec <- fix$rec
-  rec$gecikmeler <- 0L; rec$basari <- 0L
-  env$updateTabItems <- function(...) invisible(NULL)
-  env$load_feedback_from_db <- function(...) list(liked = character(), disliked = character())
+  rec$gecikmeler <- 0L; rec$basari <- 0L; rec$bekleyen <- list(); rec$sekmeler <- character(); rec$sifirlama <- 0L
+  env$updateTabItems <- function(session, inputId, selected) rec$sekmeler <- c(rec$sekmeler, selected)
+  env$load_feedback_from_db <- geri_bildirim
   env$normalize_character_id <- function(x) x %||% ""
   env$get_characters_data <- function() NULL
   env$render_message_bubble_ui <- function(msg, ...) shiny::div(msg$content %||% "")
@@ -218,13 +219,22 @@ testthat::test_that("navigate_to_chat bulunamayan söyleşide yükleniyor görü
   env$mergen_show_chat_loaded_toast <- function(...) rec$basari <- rec$basari + 1L
   testthat::local_mocked_bindings(
     runjs = function(code) invisible(NULL),
-    delay = function(ms, expr) { rec$gecikmeler <- rec$gecikmeler + 1L; force(expr) },
+    # Gecikmeli geri çağrı satır içinde çalıştırılmaz; test onu açıkça tetikler.
+    delay = function(ms, expr) {
+      rec$gecikmeler <- rec$gecikmeler + 1L
+      rec$bekleyen[[length(rec$bekleyen) + 1L]] <- list(ifade = substitute(expr), ortam = parent.frame())
+      invisible(NULL)
+    },
     .package = "shinyjs"
   )
   shiny::testServer(function(input, output, session) {
     nav <- shiny::reactiveVal(NULL)
     lock <- shiny::reactiveVal(FALSE)
-    values <- shiny::reactiveValues(saved_chats = saved_chats, messages = list())
+    values <- shiny::reactiveValues(saved_chats = saved_chats, messages = list(), current_chat_id = etkin)
+    if (is.function(sifirla)) session$userData$mergen_etkin_sohbeti_sifirla <- function() {
+      rec$sifirlama <- rec$sifirlama + 1L
+      sifirla(values)
+    }
     env$imageGalleryObserversInit(
       input = input, session = session, values = values,
       settings_data = shiny::reactiveValues(selected_character = NULL),
@@ -239,6 +249,9 @@ testthat::test_that("navigate_to_chat bulunamayan söyleşide yükleniyor görü
     rec$kilit <- shiny::isolate(rec$lock())
     rec$acik <- shiny::isolate(rec$values$current_chat_id)
     rec$mesaj_sayisi <- length(shiny::isolate(rec$values$messages))
+    # Bekleyen gecikmeli geri çağrılar (kilit bırakma) şimdi çalıştırılır.
+    for (g in rec$bekleyen) shiny::isolate(eval(g$ifade, envir = g$ortam))
+    rec$kilit_sonra <- shiny::isolate(rec$lock())
   })
   rec
 }
@@ -254,7 +267,12 @@ testthat::test_that("navigate_to_chat başarılı yüklemede oturumu düşürmez
   testthat::expect_identical(rec$mesaj_sayisi, 2L)
   testthat::expect_identical(rec$basari, 1L)
   testthat::expect_true(rec$gecikmeler >= 1L)
-  testthat::expect_false(isTRUE(rec$kilit))
+  # Kilit gözlemci dönerken hâlâ tutulur (çift tıklama emilir); gecikmeli geri
+  # çağrı çalışınca bırakılır.
+  testthat::expect_true(isTRUE(rec$kilit))
+  testthat::expect_false(isTRUE(rec$kilit_sonra))
+  # Başarılı yüklemede Ana Söyleşi'de kalınır.
+  testthat::expect_identical(utils::tail(rec$sekmeler, 1L), "chat")
 })
 
 testthat::test_that("navigate_to_chat özet önbellekte okuma hatası boş söyleşiyi 'yüklendi' diye açmaz", {
@@ -272,4 +290,43 @@ testthat::test_that("navigate_to_chat özet önbellekte okuma hatası boş söyl
   testthat::expect_identical(rec$basari, 0L)
   testthat::expect_true(any(grepl("şu anda okunamadı", .toast_msgs(rec), fixed = TRUE)))
   testthat::expect_false(isTRUE(rec$kilit))
+  # Söyleşi açılamadı: kullanıcı kaynak sekme olan Görsel Galerisi'ne döner.
+  testthat::expect_identical(rec$sekmeler, c("chat", "image_gallery"))
+})
+
+testthat::test_that("okuma hatası uyarısı hataya çevrilse de (warn = 2) önbellek kurtarma yolu kesilmez", {
+  eski <- options(warn = 2); on.exit(options(eski), add = TRUE)
+  mesajlar <- list(list(id = "1", type = "user", content = "soru"), list(id = "2", type = "ai", content = "yanıt"))
+  rec <- .galeri_basari_calistir(
+    saved_chats = list("5" = list(title = "Önbellek", messages = mesajlar, message_count = 2L, transkript_yenile = TRUE)),
+    db_impl = function(...) stop("okuma_hatasi_test")
+  )
+  testthat::expect_identical(rec$acik, 5L)
+  testthat::expect_identical(rec$mesaj_sayisi, 2L)
+  testthat::expect_true(any(grepl("önbellekteki kayıt gösteriliyor", .toast_msgs(rec), fixed = TRUE)))
+})
+
+testthat::test_that("DB silindiğini doğruladığında açık söyleşi ortak yoldan sıfırlanır; başka söyleşi açıksa dokunulmaz", {
+  sifirla <- function(values) { values$current_chat_id <- NULL; values$messages <- list() }
+  rec <- .galeri_basari_calistir(saved_chats = list(), db_impl = function(...) list(kayit_bulunamadi = TRUE),
+                                 etkin = "5", sifirla = sifirla)
+  testthat::expect_identical(rec$sifirlama, 1L)
+  testthat::expect_null(rec$acik)
+  testthat::expect_true(any(grepl("artık mevcut değil", .toast_msgs(rec), fixed = TRUE)))
+  testthat::expect_identical(rec$sekmeler, c("chat", "image_gallery"))
+  rec2 <- .galeri_basari_calistir(saved_chats = list(), db_impl = function(...) list(kayit_bulunamadi = TRUE),
+                                  etkin = "9", sifirla = sifirla)
+  testthat::expect_identical(rec2$sifirlama, 0L)
+  testthat::expect_identical(rec2$acik, "9")
+})
+
+testthat::test_that("beğeni durumu okunamasa da galeriden söyleşi açılır", {
+  mesajlar <- list(list(id = "1", type = "user", content = "soru"), list(id = "2", type = "ai", content = "yanıt"))
+  rec <- suppressWarnings(.galeri_basari_calistir(
+    saved_chats = list("5" = list(title = "Görsel", messages = mesajlar, message_count = 2L)),
+    db_impl = function(...) stop("hidrasyon beklenmiyordu"),
+    geri_bildirim = function(...) stop("geri bildirim tablosu okunamadı (test)")
+  ))
+  testthat::expect_identical(rec$acik, 5L)
+  testthat::expect_identical(rec$basari, 1L)
 })

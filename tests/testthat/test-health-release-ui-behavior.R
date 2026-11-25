@@ -547,6 +547,16 @@ testthat::test_that("sağlık zaman damgası kontrollerin gerçekten toplandığ
   env$health_collect_checks <- function(...) { saat$t <- saat$t + 5; satir }
   env$mb_presence_snapshot <- function(...) list(metrics = list(), users = NULL)
   shiny::testServer(env$healthServer, args = list(perf_tracker = NULL), {
+    # Ölçüm yapılmadan önce zaman yoktur ve başlığa zaman gönderilmez
+    # (oturum başlangıcı ölçüm anı olarak gösterilmez).
+    zaman_mesajlari <- list()
+    kok <- session$rootScope()
+    ozgun_gonder <- kok$sendCustomMessage
+    kok$sendCustomMessage <- function(type, message) {
+      if (identical(type, "updateHealthTimestamp")) zaman_mesajlari[[length(zaman_mesajlari) + 1L]] <<- message
+      ozgun_gonder(type, message)
+    }
+    testthat::expect_null(health_last_update())
     gizli_anahtar <- paste0("output_", session$ns("health_tab_content"), "_hidden")
     gorunurluk <- shiny::reactiveValues()
     gorunurluk[[gizli_anahtar]] <- FALSE
@@ -556,6 +566,8 @@ testthat::test_that("sağlık zaman damgası kontrollerin gerçekten toplandığ
     session$setInputs(health_tabs = "overview")
     output$health_tab_content
     testthat::expect_identical(health_last_update(), "01.07.2026 10:00:05")
+    testthat::expect_true(length(zaman_mesajlari) >= 1L)
+    testthat::expect_identical(zaman_mesajlari[[1]]$time, "01.07.2026 10:00:05")
     # Çevrimiçi sekmesinde 2 dk'lık tetik toplama yapmaz: damga ilerlemez.
     session$setInputs(health_tabs = "presence")
     saat$t <- saat$t + 120
@@ -568,5 +580,10 @@ testthat::test_that("sağlık zaman damgası kontrollerin gerçekten toplandığ
     session$setInputs(health_tabs = "overview")
     output$health_tab_content
     testthat::expect_identical(health_last_update(), "01.07.2026 10:03:10")
+    # Başlığa giden her zaman damgası gerçek bir ölçüm anıdır (oturum
+    # başlangıcı ya da boş değer gönderilmez).
+    testthat::expect_true(length(zaman_mesajlari) >= 1L)
+    zamanlar <- vapply(zaman_mesajlari, function(m) as.character(m$time %||% NA_character_), character(1))
+    testthat::expect_true(all(zamanlar %in% c("01.07.2026 10:00:05", "01.07.2026 10:03:10")))
   })
 })

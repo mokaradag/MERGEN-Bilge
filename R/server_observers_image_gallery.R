@@ -116,11 +116,23 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
 
     # Kullanıcıya anında geri bildirim: DB hidrasyonu veya uzun mesaj render'ı
     # bitmeden sohbet sekmesine geçilir ve hafif bir yükleniyor durumu gösterilir.
-    if (exists("updateTabItems", mode = "function", inherits = TRUE)) {
-      updateTabItems(session, "tabs", "chat")
-    } else if (requireNamespace("shinydashboard", quietly = TRUE)) {
-      shinydashboard::updateTabItems(session, "tabs", "chat")
+    # Söyleşi açılamazsa (ya da işleyici erken çıkarsa) kaynak sekme ve önceki
+    # görünüm geri gelir; yalnızca transkript çizildiğinde Ana Söyleşi'de kalınır.
+    kaynak_sekme <- as.character(tryCatch(shiny::isolate(input$tabs), error = function(e) NULL) %||% "image_gallery")[1]
+    if (is.na(kaynak_sekme) || !nzchar(kaynak_sekme) || identical(kaynak_sekme, "chat")) kaynak_sekme <- "image_gallery"
+    sekme_sec <- function(sekme) {
+      if (exists("updateTabItems", mode = "function", inherits = TRUE)) {
+        updateTabItems(session, "tabs", sekme)
+      } else if (requireNamespace("shinydashboard", quietly = TRUE)) {
+        shinydashboard::updateTabItems(session, "tabs", sekme)
+      }
     }
+    gorunum_tamam <- FALSE
+    on.exit(if (!isTRUE(gorunum_tamam)) {
+      try(galeri_yukleme_geri_al(), silent = TRUE)
+      try(sekme_sec(kaynak_sekme), silent = TRUE)
+    }, add = TRUE)
+    sekme_sec("chat")
     galeri_yukleme_goster()
 
     # Önbellekte yoksa veya mesajlar yüklenmemişse veritabanından yükle
@@ -131,10 +143,9 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
           user_id = etkin_uid
         ),
         error = function(e) {
-          # Sürücü tanısı DSN/sunucu/kullanıcı taşıyabilir: maskelenmiş özet yazılır.
-          warning(sprintf("[IMAGE_GALLERY] Söyleşi yüklenemedi (ChatID: %s): %s", chat_id,
-                          if (exists("mergen_db_error_log_summary", mode = "function", inherits = TRUE))
-                            mergen_db_error_log_summary(e) else class(e)[1]))
+          # Sürücü tanısı DSN/sunucu/kullanıcı taşıyabilir: maskelenmiş özet yazılır;
+          # uyarı hataya çevrilse de önbellek kurtarma yolu kesilmez.
+          mergen_saved_chats_warn(sprintf("[IMAGE_GALLERY] Söyleşi yüklenemedi (ChatID: %s)", chat_id), e)
           NULL
         }
       )
@@ -157,6 +168,10 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
         if (exists("mergen_saved_chats_mark_deleted", mode = "function", inherits = TRUE)) {
           mergen_saved_chats_mark_deleted(session, chat_id)
         }
+        # Silinen söyleşi açıksa Ana Söyleşi, Kayıtlı Söyleşiler'deki tek sıfırlama
+        # yoluyla temizlenir; başka bir söyleşi açıksa ona dokunulmaz.
+        sifirla <- session$userData$mergen_etkin_sohbeti_sifirla
+        if (is.function(sifirla) && mergen_saved_chats_is_active(values$current_chat_id, chat_id)) sifirla()
         chat_to_load <- NULL
       } else if (isTRUE(detail$message_count > 0) || !is.null(detail$title) || !is.null(detail$timestamp)) {
         chat_to_load <- if (exists("mergen_chat_reconcile_hydrated_detail", mode = "function", inherits = TRUE)) {
@@ -169,7 +184,7 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
     }
 
     if (is.null(chat_to_load)) {
-      galeri_yukleme_geri_al()
+      # Görünüm ve kaynak sekme on.exit içinde geri yüklenir.
       if (isTRUE(okuma_hatasi)) {
         showToast(session, "Söyleşi şu anda okunamadı; lütfen kısa süre sonra tekrar deneyin.", "error")
       } else {
@@ -194,9 +209,10 @@ imageGalleryObserversInit <- function(input, session, values, settings_data,
       $('#chat_content_container').show().empty();
     ")
 
-    # Mesajları ve durum bilgisini yükle
+    # Mesajları ve durum bilgisini yükle (görünüm artık bu söyleşiye aittir).
+    gorunum_tamam <- TRUE
     values$messages <- chat_to_load$messages %||% list()
-	all_feedback <- load_feedback_from_db(resolve_runtime_user_id())
+    all_feedback <- mergen_saved_chats_load_feedback(resolve_runtime_user_id(), load_feedback_from_db)
     values$liked_messages <- all_feedback$liked
     values$disliked_messages <- all_feedback$disliked
     values$current_chat_id <- chat_id_int

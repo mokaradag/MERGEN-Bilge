@@ -87,11 +87,15 @@ testthat::test_that("hidrasyon uzlaştırması uzun transkriptte DB sırasını 
   db <- lapply(seq_len(n), function(i) list(id = as.character(i), type = if (i %% 2) "user" else "ai", content = paste("m", i)))
   kayitsiz <- list(id = "yerel_x", db_id = NULL, type = "user", content = "kayıtsız")
   yerel <- c(db[1:10], list(kayitsiz), db[11:12])
-  baslangic <- proc.time()[["elapsed"]]
+  # Yapısal karmaşıklık denetimi (duvar saatine bağlı değil): uzlaştırma mesaj
+  # başına DB kimliklerini yeniden tarayan tekil yardımcıyı hiç çağırmaz.
+  tekil_cagri <- 0L
+  ozgun <- env$mergen_chat_message_unsaved
+  env$mergen_chat_message_unsaved <- function(...) { tekil_cagri <<- tekil_cagri + 1L; ozgun(...) }
   sonuc <- env$mergen_chat_reconcile_hydrated_detail(
     list(title = "Uzun", messages = db, message_count = n, okuma_baslangici = 1000),
     list(messages = yerel))
-  sure <- proc.time()[["elapsed"]] - baslangic
+  testthat::expect_identical(tekil_cagri, 0L)
   kimlikler <- vapply(sonuc$messages, function(m) m$id, character(1))
   testthat::expect_identical(length(kimlikler), n + 1L)
   testthat::expect_identical(kimlikler[11], "yerel_x")
@@ -99,7 +103,42 @@ testthat::test_that("hidrasyon uzlaştırması uzun transkriptte DB sırasını 
   # Hidrasyon zamanı okumanın başlangıcıdır; geçici alan önbelleğe taşınmaz.
   testthat::expect_identical(sonuc$hidrate_zamani, 1000)
   testthat::expect_null(sonuc$okuma_baslangici)
-  testthat::expect_lt(sure, 5)
+})
+
+testthat::test_that("uzlaştırma aynı çapadaki kayıtsız mesajların sırasını, yinelenen DB kimliğini ve kuyruğu korur", {
+  env <- .onbellek_ortami()
+  m <- function(id, ...) list(id = id, type = "user", content = id, ...)
+  db <- list(m("1"), m("2"), m("2"), m("3"))
+  yerel <- list(m("a", db_id = NULL), m("1"), m("b", db_id = NULL), m("c", db_id = NULL), m("2"), m("3"),
+                m("z", db_id = NULL), m("y"))
+  sonuc <- env$mergen_chat_reconcile_hydrated_detail(list(messages = db), list(messages = yerel))
+  kimlikler <- vapply(sonuc$messages, function(x) x$id, character(1))
+  # "y" kimliği ne DB'de ne kayıtsız (sayısal değil ama db_id alanı yok) -> ad tabanlı kural:
+  # sayısal olmayan kimlik kayıtsız sayılır ve kuyruğa eklenir.
+  testthat::expect_identical(kimlikler, c("a", "1", "b", "c", "2", "2", "3", "z", "y"))
+  testthat::expect_identical(sonuc$message_count, 9L)
+  # Tekil yardımcıyla aynı kayıtsızlık kararı.
+  karar <- vapply(yerel, env$mergen_chat_message_unsaved, logical(1),
+                  db_ids = vapply(db, function(x) x$id, character(1)))
+  testthat::expect_identical(karar, c(TRUE, FALSE, TRUE, TRUE, FALSE, FALSE, TRUE, TRUE))
+})
+
+testthat::test_that("etkinlik zamanı yalnızca desteklenen biçimin tamamı eşleşirse çözülür", {
+  env <- .onbellek_ortami()
+  for (tz in c("UTC", "Europe/Istanbul")) withr::with_envvar(c(TZ = tz), {
+    gecersiz <- list("2026-11-20 25:00", "2026-11-20 10:00 fazlalık", "2026-11-20xyz", "20.11.2026 - 10:30 ek",
+                     "2026-11-20 10:61")
+    for (g in gecersiz) {
+      testthat::expect_true(is.na(env$mergen_chat_activity_seconds(g)), info = g)
+    }
+    testthat::expect_true(all(is.na(env$mergen_chat_activity_seconds_vec(gecersiz))))
+    gecerli <- list("2026-11-20 10:00:05.250", "2026-11-20T10:00:05", "2026-11-20 10:00", "20.11.2026 - 10:30",
+                    "2026-11-20")
+    beklenen <- as.numeric(as.POSIXct(c("2026-11-20 10:00:05.25", "2026-11-20 10:00:05", "2026-11-20 10:00:00",
+                                        "2026-11-20 10:30:00", "2026-11-20 00:00:00"), tz = "Europe/Istanbul"))
+    testthat::expect_equal(env$mergen_chat_activity_seconds_vec(gecerli), beklenen, info = tz)
+    testthat::expect_equal(vapply(gecerli, env$mergen_chat_activity_seconds, numeric(1)), beklenen, info = tz)
+  })
 })
 
 testthat::test_that("vektörel etkinlik zamanı tekil dönüştürücüyle aynı sonucu verir", {

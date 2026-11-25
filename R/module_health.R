@@ -142,10 +142,14 @@ healthServer <- function(id, perf_tracker) {
     ns <- session$ns
 
     health_refresh_trigger <- reactiveVal(0)
-    health_last_update <- reactiveVal(format(Sys.time(), "%d.%m.%Y %H:%M:%S"))
+    # Ölçüm yapılmadan zaman gösterilmez: oturum başlangıcı ölçüm anı değildir.
+    # Değer yalnızca kontroller gerçekten toplanınca yazılır; o zamana dek başlık
+    # ve genel bakış "ölçülmedi" durumunu ("--" / "—") gösterir.
+    health_last_update <- reactiveVal(NULL)
 
     send_health_timestamp <- function() {
       current_time <- isolate(health_last_update())
+      if (is.null(current_time)) return(invisible(NULL))
       payload <- list(id = ns("last_update_time"), time = current_time)
       session$sendCustomMessage("updateHealthTimestamp", payload)
       session$sendCustomMessage("updateAdminTimestamp", payload)

@@ -295,6 +295,9 @@ testthat::test_that("açılış ön izleme görevi uygulama kodu yüklü olmayan
   # Yapılandırılmış bir DSN'e (geliştirici/üretim) asla gidilmez: globaller
   # kasıtlı olarak var olmayan bir DSN ile kurulur.
   withr::local_envvar(DB_DSN = "mergen_test_olmayan_dsn")
+  # Serileştirilen görev geliştirici oturumunun bütçesini devralmaz: cömert,
+  # sonlu bir sorgu bütçesi her iki yük yakalanmadan önce yerel olarak ayarlanır.
+  withr::local_options(mergen.startup_db_query_timeout_secs = 30)
   mergen_startup_chat_preview_promise(0L, limit = 6L)
   mergen_startup_chat_preview_promise(42L, limit = NA_integer_)
   calistir <- function(yuk) callr::r(function(yuk) {
@@ -451,7 +454,21 @@ testthat::test_that("işçi DB okuması yapılandırılmış login sınırını 
   testthat::expect_identical(yakalanan[[3]]$timeout, 5L)
   testthat::expect_identical(yakalanan[[4]]$timeout, 4L)
   testthat::expect_identical(yakalanan[[5]]$timeout, 3L)
+  # Login sınırı yapılandırılmamışsa tavan tüm sorgu bütçesi değil varsayılan
+  # login sınırıdır (get_connection ile aynı politika, değer eşitliği kilitli).
+  testthat::expect_error(db_chat_preview_fetch_raw(42L, 6L, "DSN", "UTF-8", "UTF-8", query_timeout = 120),
+                         "baglanti_kurulmadi_test")
+  testthat::expect_identical(yakalanan[[6]]$timeout, 30L)
+  testthat::expect_identical(formals(mergen_bounded_db_fetch_raw)$varsayilan_login,
+                             get(".DB_DEFAULT_LOGIN_TIMEOUT_SEC", envir = .GlobalEnv, inherits = TRUE))
+  # 1 sn altı bütçe: sürücü saniye çözünürlüğünde ve 0 "sınırsız" olduğundan
+  # login sınırı bilinçli olarak 1 sn'dir (sınırsız ya da 0 geçilmez).
+  testthat::expect_error(db_chat_preview_fetch_raw(42L, 6L, "DSN", "UTF-8", "UTF-8", query_timeout = 0.5),
+                         "baglanti_kurulmadi_test")
+  testthat::expect_identical(yakalanan[[7]]$timeout, 1L)
+  testthat::expect_true(isTRUE(yakalanan[[7]]$interruptible))
 })
+
 
 testthat::test_that("yerel ad değişimi DB'nin daha yeni etkinlik bilgisini ezmez; yerelde etkinleşen söyleşi başa geçer", {
   .startup_preview_source_once()
@@ -958,9 +975,12 @@ testthat::test_that("gönderimden sonra açılan söyleşi: DB etkinlik zamanı 
   db_yeni <- db
   db_yeni[["5"]]$message_count <- 4L
   db_yeni[["5"]]$last_message_timestamp <- t2 + 60
+  # Gerçekçi DB sırası: SQL etkinliğe göre sıralar, daha yeni "5" önce gelir.
+  db_yeni <- db_yeni[c("5", "2")]
   birlesik <- mergen_saved_chats_merge_newer(db_yeni, anlik, ileride)
   testthat::expect_identical(birlesik[["5"]]$message_count, 4L)
-  testthat::expect_identical(names(birlesik), c("2", "5"))
+  testthat::expect_identical(birlesik[["5"]]$last_message_timestamp, t2 + 60)
+  testthat::expect_identical(names(birlesik), c("5", "2"))
   # Eşit sayı ama farklı son mesaj zamanı: önbellek korunur, yeniden açılışta okuma istenir.
   db_esit <- db
   db_esit[["5"]]$message_count <- 3L
@@ -1017,18 +1037,21 @@ testthat::test_that("bütçeli okuma satırları parçalı getirir; süre sını
   testthat::expect_identical(veri$ChatID, 1:3)
   testthat::expect_true(all(kayit$n == 1000L))
   testthat::expect_true(isTRUE(kayit$temizlendi))
-  # Her parça 0,3 sn sürer; 0,5 sn bütçe üçüncü parçadan önce aşılır ve okuma durur.
+  # Her parça (sanal saatte) 0,3 sn sürer; 0,5 sn bütçe ikinci parçadan sonra
+  # aşılır: üçüncü getirme başlamaz, sonuç kümesi temizlenir. Bütçe muhasebesi
+  # enjekte edilen saatle yapılır (koşucu duraklamasına bağlı değildir); R'nin
+  # gerçek süre kesmesi ayrı testte sınanır.
   kayit$n <- NULL
   kayit$temizlendi <- NULL
-  bekleme <- 0.3
-  bas <- Sys.time()
+  sanal <- new.env(parent = emptyenv())
+  sanal$t <- 0
+  mesgul <- function(sn) sanal$t <- sanal$t + 0.3
   testthat::expect_error(
     mergen_bounded_db_fetch_raw("SELECT 1", list(), dsn = "DSN", encoding = "UTF-8",
-                                name_encoding = "UTF-8", query_timeout = 0.5),
-    class = "error"
+                                name_encoding = "UTF-8", query_timeout = 0.5, saat = function() sanal$t),
+    "satır getirme sırasında tükendi"
   )
-  testthat::expect_lt(as.numeric(difftime(Sys.time(), bas, units = "secs")), 0.95)
-  testthat::expect_lt(kayit$verilen, parca_sayisi)
+  testthat::expect_identical(kayit$verilen, 2L)
   testthat::expect_true(isTRUE(kayit$temizlendi))
 })
 
@@ -1218,11 +1241,16 @@ testthat::test_that("sayılar eşitken daha yeni DB zamanı korunur; yerel trans
   t1 <- as.POSIXct("2026-07-01 10:01:00", tz = "UTC")
   t2 <- as.POSIXct("2026-07-01 10:02:00", tz = "UTC")
   anlik <- list("1" = list(title = "Bir", last_message_timestamp = t0, message_count = 2L))
-  simdiki <- list("1" = list(title = "Bir", last_message_timestamp = t1, message_count = 3L))
+  onbellek <- list(list(id = "1", db_id = 1L, type = "user", content = "önbellek a"),
+                   list(id = "2", db_id = 2L, type = "ai", content = "önbellek b"),
+                   list(id = "3", db_id = 3L, type = "user", content = "önbellek c"))
+  simdiki <- list("1" = list(title = "Bir", last_message_timestamp = t1, message_count = 3L, messages = onbellek))
   db <- list("1" = list(title = "Bir", last_message_timestamp = t2, message_count = 3L))
   birlesik <- mergen_saved_chats_merge_newer(db, anlik, simdiki)
   testthat::expect_identical(birlesik[["1"]]$last_message_timestamp, t2)
   testthat::expect_true(isTRUE(birlesik[["1"]]$transkript_yenile))
+  # DB zamanı kazansa da ayırt edilebilir önbellek transkripti korunur.
+  testthat::expect_identical(birlesik[["1"]]$messages, onbellek)
   # Yerel zaman daha yeniyse yerel etkinlik kalır.
   db[["1"]]$last_message_timestamp <- t0 + 30
   birlesik <- mergen_saved_chats_merge_newer(db, anlik, simdiki)
@@ -1290,4 +1318,74 @@ testthat::test_that("doğrulanmış yokluk kanonik kimlikle silinenler kümesine
   testthat::expect_true(mergen_saved_chats_is_active(7L, "007"))
   testthat::expect_false(mergen_saved_chats_is_active(NULL, "7"))
   testthat::expect_false(mergen_saved_chats_is_active(8L, "7"))
+})
+
+testthat::test_that("tam liste okuması sürerken yerelde oluşturulup açılan söyleşi korunur; yalnız açılan ya da okumadan önce oluşturulan silinmiş söyleşi geri gelmez", {
+  .startup_preview_source_once()
+  t0 <- as.POSIXct("2026-07-01 10:00:00", tz = "UTC")
+  okuma_basi <- 1000
+  anlik <- list("1" = list(title = "Bir", last_message_timestamp = t0, message_count = 1L))
+  db <- list("1" = list(title = "Bir", last_message_timestamp = t0, message_count = 1L))
+  attr(db, "mergen_okuma_zamani") <- okuma_basi
+  mesaj <- list(list(id = "11", db_id = 11L, type = "user", content = "yeni"))
+  # Okuma başladıktan SONRA yerelde oluşturuldu, sonra açıldı (hidrate edildi).
+  yerel_yeni <- list(title = "Yeni", timestamp = Sys.time(), messages = mesaj, message_count = 1L,
+                     hidrate_edildi = TRUE, yerel_olusturuldu = okuma_basi + 5)
+  # Yalnızca açılmış (hidrate) eski söyleşi: başka oturumda silinmiş.
+  yalniz_acilan <- list(title = "Açılan", messages = mesaj, message_count = 1L, hidrate_edildi = TRUE)
+  # Okumadan ÖNCE yerelde oluşturulmuş: okuma onu görmeliydi; yoksa silinmiştir.
+  once_olusan <- list(title = "Önce", messages = mesaj, message_count = 1L, yerel_olusturuldu = okuma_basi - 5)
+  simdiki <- c(anlik, list("2" = yerel_yeni, "3" = yalniz_acilan, "4" = once_olusan))
+  birlesik <- mergen_saved_chats_merge_newer(db, anlik, simdiki, db_okuma_zamani = attr(db, "mergen_okuma_zamani"))
+  testthat::expect_true("2" %in% names(birlesik), info = "yerelde oluşturulup açılan söyleşi düşmemeli")
+  testthat::expect_false("3" %in% names(birlesik), info = "yalnızca açılan silinmiş söyleşi geri gelmemeli")
+  testthat::expect_false("4" %in% names(birlesik), info = "okumadan önce oluşturulmuş eksik söyleşi silinmiş sayılmalı")
+  # Okuma zamanı bilinmiyorsa yerelde oluşturulan söyleşi korunur (kaybetmemek için).
+  birlesik2 <- mergen_saved_chats_merge_newer(db, anlik, simdiki)
+  testthat::expect_true(all(c("2", "4") %in% names(birlesik2)))
+})
+
+testthat::test_that("yerelde oluşturma anı mesaj deposunda konur ve hidrasyon uzlaştırmasında korunur", {
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  kok <- resolve_repo_root_for_tests()
+  for (f in c("helpers_chat_message_formatting.R", "helpers_saved_chats_merge.R", "helpers_chat_runtime.R")) {
+    sys.source(file.path(kok, "R", f), envir = env, keep.source = FALSE)
+  }
+  values <- new.env()
+  values$current_chat_id <- 77L
+  values$saved_chats <- list("5" = list(title = "Var olan", messages = list(), message_count = 0L))
+  env$chat_store_message_in_saved_chats(values, list(id = "1", db_id = 1L, type = "user", content = "ilk"))
+  testthat::expect_true(is.numeric(values$saved_chats[["77"]]$yerel_olusturuldu))
+  values$current_chat_id <- 5L
+  env$chat_store_message_in_saved_chats(values, list(id = "2", db_id = 2L, type = "user", content = "devam"))
+  testthat::expect_null(values$saved_chats[["5"]]$yerel_olusturuldu)
+  detay <- list(title = "Yeni", messages = list(list(id = "1", type = "user", content = "ilk")), message_count = 1L)
+  uzlasan <- env$mergen_chat_reconcile_hydrated_detail(detay, values$saved_chats[["77"]])
+  testthat::expect_identical(uzlasan$yerel_olusturuldu, values$saved_chats[["77"]]$yerel_olusturuldu)
+  testthat::expect_true(isTRUE(uzlasan$hidrate_edildi))
+})
+
+testthat::test_that("bağlantı kurulumu bütçeyi sanal saatte tükettiyse oturum kurulumu ve sorgu hiç gönderilmez", {
+  testthat::skip_if_not_installed("DBI")
+  testthat::skip_if_not_installed("odbc")
+  .startup_preview_source_once()
+  yakalanan <- new.env(parent = emptyenv())
+  sanal <- new.env(parent = emptyenv())
+  sanal$t <- 0
+  testthat::local_mocked_bindings(
+    dbConnect = function(drv, ...) { sanal$t <- sanal$t + 0.7; structure(list(), class = "sahte_baglanti") },
+    dbDisconnect = function(conn, ...) { yakalanan$kapandi <- TRUE; invisible(TRUE) },
+    dbExecute = function(conn, statement, ...) { yakalanan$execute <- statement; 0L },
+    .package = "DBI"
+  )
+  sorgu <- .parcali_sorgu_bagla(function(sql) data.frame(x = 1L))
+  testthat::expect_error(
+    mergen_bounded_db_fetch_raw("SELECT 1", list(), dsn = "DSN", encoding = "UTF-8",
+                                name_encoding = "UTF-8", query_timeout = 0.6, saat = function() sanal$t),
+    "bağlantı kurulumunda tükendi"
+  )
+  testthat::expect_null(yakalanan$execute)
+  testthat::expect_null(sorgu$sql)
+  testthat::expect_true(isTRUE(yakalanan$kapandi))
 })

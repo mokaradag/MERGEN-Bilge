@@ -97,9 +97,16 @@ mergen_saved_chats_merge_newer <- function(db_chats, dispatch_snapshot, current,
     }
   }
   # Yalnızca gönderimden SONRA yerelde oluşturulan söyleşiler korunur; başka
-  # oturumda silinmiş ama bu oturumda yalnızca hidrate edilmiş kayıt geri gelmez.
+  # oturumda silinmiş ama bu oturumda yalnızca hidrate edilmiş (açılmış) kayıt
+  # geri gelmez. Oluşturma kaynak kanıtlıdır (yerel_olusturuldu = yerel oluşturma
+  # anı): yerelde oluşturulup sonra açılan söyleşi de korunur; ancak DB okuması
+  # oluşturmadan SONRA başladıysa listede olmaması silme kanıtıdır (geri gelmez).
+  yerel_olusturma <- function(k) {
+    an <- suppressWarnings(as.numeric(current[[k]]$yerel_olusturuldu %||% NA_real_)[1])
+    is.finite(an) && !isTRUE(an < okuma_sn)
+  }
   yerel_yeni <- Filter(
-    function(k) !isTRUE(current[[k]]$hidrate_edildi),
+    function(k) yerel_olusturma(k) || (is.null(current[[k]]$yerel_olusturuldu) && !isTRUE(current[[k]]$hidrate_edildi)),
     setdiff(setdiff(degisen, names(birlesik)), names(dispatch_snapshot))
   )
   sonuc <- c(current[yerel_yeni], birlesik[etkin], birlesik[setdiff(names(birlesik), etkin)])
@@ -150,6 +157,15 @@ mergen_saved_chats_mark_deleted <- function(session, chat_id) {
   invisible(TRUE)
 }
 
+# Oturumun silinenler kümesindeki söyleşiler listeden çıkarılır (ön izleme ve
+# tam liste aynı kuralı kullanır: doğrulanmış silme geri getirilmez).
+mergen_saved_chats_drop_deleted <- function(chats, session) {
+  silinenler <- tryCatch(as.character(session$userData$saved_chats_silinenler %||% character()),
+                         error = function(e) character())
+  if (!length(silinenler) || !length(names(chats))) return(chats)
+  chats[!(names(chats) %in% silinenler)]
+}
+
 # Önbellek anahtarı kanonik kimliktir ("007" -> "7"); kimlik olmayan değer aynen döner.
 mergen_saved_chats_canonical_key <- function(chat_id) {
   kimlik <- mergen_canonical_user_id(chat_id)
@@ -161,14 +177,30 @@ mergen_saved_chats_has_transcript <- function(chat) {
   is.list(chat) && is.list(chat$messages) && length(chat$messages) > 0L
 }
 
+# Maskelenmiş, fırlatmayan DB uyarısı (log katmanı yüklenmemiş yalıtık testte
+# yalnızca hata sınıfı yazılır).
+mergen_saved_chats_warn <- function(etiket, e) {
+  if (exists("mergen_db_error_warn", mode = "function", inherits = TRUE)) return(mergen_db_error_warn(etiket, e))
+  try(warning(sprintf("%s: %s", etiket, class(e)[1]), call. = FALSE), silent = TRUE)
+  invisible(NULL)
+}
+
 # Silme DB hatası oturumu kapatmaz: maskelenmiş uyarı yazılır ve NA döner
 # (çağıran doğrulanamayan silme yoluna düşer).
 mergen_saved_chats_delete_rows <- function(delete_fn, chat_id, user_id) {
   tryCatch(delete_fn(chat_id, user_id), error = function(e) {
-    warning(sprintf("[SAVED_CHATS] Söyleşi silinemedi (ChatID: %s): %s", chat_id,
-                    if (exists("mergen_db_error_log_summary", mode = "function", inherits = TRUE))
-                      mergen_db_error_log_summary(e) else class(e)[1]))
+    mergen_saved_chats_warn(sprintf("[SAVED_CHATS] Söyleşi silinemedi (ChatID: %s)", chat_id), e)
     NA_integer_
+  })
+}
+
+# Beğeni durumu söyleşi açılışında okunur; okuma hatası açılışı kesmez (Kayıtlı
+# Söyleşiler ve Görsel Galerisi ortak yolu): beğeni durumu boş kalır, uyarı yazılır.
+# oku: çağıranın çözdüğü okuyucu (varsayılan load_feedback_from_db).
+mergen_saved_chats_load_feedback <- function(user_id, oku = load_feedback_from_db) {
+  tryCatch(oku(user_id), error = function(e) {
+    mergen_saved_chats_warn("[SAVED_CHATS] Beğeni durumu okunamadı", e)
+    list(liked = character(0), disliked = character(0))
   })
 }
 

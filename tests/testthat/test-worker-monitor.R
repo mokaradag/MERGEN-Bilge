@@ -205,10 +205,14 @@ test_that("start_check cancel_check ile birlikte verilirse açıkça reddedilir"
   sys.source(file.path(resolve_repo_root_for_tests(), "R", "helpers_worker_monitor.R"), envir = env,
              keep.source = FALSE)
   once <- get_worker_monitor_info()$active_jobs
+  # Kayıt yolu casusla izlenir: reddedilen çağrı hiçbir işi kaydetmeye ulaşmaz.
+  kayit_cagrisi <- 0L
+  env$register_worker_task <- function(...) { kayit_cagrisi <<- kayit_cagrisi + 1L; invisible(NULL) }
   expect_error(
     env$tracked_future_promise(function() 1, task_type = "unit", cancel_check = function() FALSE,
                                start_check = function() TRUE),
     "start_check"
   )
+  expect_identical(kayit_cagrisi, 0L)
   expect_identical(get_worker_monitor_info()$active_jobs, once)
 })

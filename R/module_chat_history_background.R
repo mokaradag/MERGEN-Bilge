@@ -78,17 +78,6 @@ history_all_cached <- function(chat_ids, chats, cache, stamp_fn) {
   !length(history_ids_needing_fetch(chat_ids, chats, cache, stamp_fn))
 }
 
-# Hazırlık sonucunu bildiren işlev: sonuç gönderilen kimliklerden değil,
-# GÜNCEL ilk sayfanın (en yeni 60 söyleşi) önbellek durumundan türetilir.
-# Arada eklenen söyleşi eksikse "kısmen", silinen söyleşi eksik sayılmaz.
-history_first_page_notifier <- function(bildir, kimlikler_fn, guncel_sohbetler, messages_cache,
-                                        stamp_fn, sayfa = 60L) {
-  function(...) {
-    bildir(history_all_cached(utils::head(kimlikler_fn(), sayfa), shiny::isolate(guncel_sohbetler()),
-                              shiny::isolate(messages_cache()), stamp_fn))
-  }
-}
-
 # Açılış hazırlığı için geçmiş satırlarını mevcut açık (explicit) işçi
 # sınırında okur: DB beklemesi ana olay döngüsünde olmaz ve sorgu süre
 # bütçesiyle sınırlıdır (mergen_bounded_db_fetch_raw). İşçiye yalnızca SQL
@@ -219,6 +208,7 @@ history_prepare_rows_async <- function(session, ids, damgalar, uid, isitma, reso
                                        liste_basliklar = NULL) {
   nesil <- isitma$nesil
   surumler <- history_versions(isitma, ids)
+  baslik_surumleri <- isitma$baslik_surum %||% integer()
   gecerli <- function() !isTRUE(session$isClosed()) && identical(isitma$nesil, nesil) &&
     identical(shiny::isolate(resolve_uid()), uid)
   okuma <- tryCatch(history_rows_worker_promise(ids, uid, session$token, gecerli = gecerli),
@@ -243,10 +233,12 @@ history_prepare_rows_async <- function(session, ids, damgalar, uid, isitma, reso
         kayit <- list(rows = if (is.list(sonuc[[id]])) sonuc[[id]] else list(),
                       stamp = damgalar[[id]], okuma = okuma_zamani,
                       liste_baslik = gonderim_basligi)
-        # Gönderimden sonra yerelde yeniden adlandırma: kalıcı yerel başlık
-        # işareti konur (başlık özgün değerine dönse de DB başlığı gösterilmez).
-        if (is.list(liste_basliklar) && is.list(guncel_liste) && !is.null(guncel_liste[[id]]) &&
-            !identical(guncel_liste[[id]]$title, gonderim_basligi)) {
+        # Gönderimden sonra yerelde yeniden adlandırma (başlık sürümü değişti ya
+        # da başlık farklı): kalıcı yerel başlık işareti konur; ad özgün değerine
+        # dönse de (A -> B -> A) DB'nin okuduğu başlık gösterilmez.
+        surum_degisti <- !identical(unname((isitma$baslik_surum %||% integer())[id]), unname(baslik_surumleri[id]))
+        if (surum_degisti || (is.list(liste_basliklar) && is.list(guncel_liste) && !is.null(guncel_liste[[id]]) &&
+            !identical(guncel_liste[[id]]$title, gonderim_basligi))) {
           kayit$baslik_yerel <- TRUE
         }
         cache[[id]] <- kayit

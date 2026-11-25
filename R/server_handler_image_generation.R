@@ -108,9 +108,21 @@ handle_image_generation_mode <- function(ctx) {
   }
   # Söyleşi sahipliği: istek sürerken söyleşi silinir/sıfırlanır ya da başka
   # söyleşi açılırsa sonuç o görünüme eklenmez (görsel galeride kalır).
+  # Sahiplik denetimi hata verirse KAPALI-BAŞARISIZ: söyleşi değişmiş sayılır.
   sohbet_sahibi <- tryCatch(mergen_chat_owner_guard(ctx$session, ctx$values),
-                            error = function(e) function() TRUE)
-  sohbet_degisti <- function() !isTRUE(tryCatch(sohbet_sahibi(), error = function(e) TRUE))
+                            error = function(e) function() FALSE)
+  sohbet_degisti <- function() !isTRUE(tryCatch(sohbet_sahibi(), error = function(e) FALSE))
+  # Sahipsiz sonuç: gönderme durumu yalnızca oturum hâlâ açıksa serbest bırakılır
+  # (kapanmış oturumda UI/girdi temizliği yapılmaz).
+  sahipsiz_sonucu_birak <- function() {
+    kapali <- is.function(ctx$session$isClosed) &&
+      tryCatch(isTRUE(ctx$session$isClosed()), error = function(e) TRUE)
+    if (!kapali) {
+      ctx$values$typing <- FALSE
+      try(ctx$reset_chat_state_fn(), silent = TRUE)
+    }
+    invisible(NULL)
+  }
 
 	tracked_future_promise(
 	  task_fn = mergen_image_generation_task_fn(
@@ -135,9 +147,7 @@ handle_image_generation_mode <- function(ctx) {
     }
     if (isTRUE(sohbet_degisti())) {
       # İstek hâlâ etkin: gönderme durumu serbest bırakılır, mesaj eklenmez.
-      ctx$values$typing <- FALSE
-      ctx$reset_chat_state_fn()
-      return(invisible(NULL))
+      return(sahipsiz_sonucu_birak())
     }
 
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
@@ -169,11 +179,7 @@ handle_image_generation_mode <- function(ctx) {
     if (isTRUE(is_stale_image_request())) {
       return(invisible(NULL))
     }
-    if (isTRUE(sohbet_degisti())) {
-      ctx$values$typing <- FALSE
-      ctx$reset_chat_state_fn()
-      return(invisible(NULL))
-    }
+    if (isTRUE(sohbet_degisti())) return(sahipsiz_sonucu_birak())
 
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
     ctx$values$typing <- FALSE

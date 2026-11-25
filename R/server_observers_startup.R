@@ -182,7 +182,7 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	}
 
 	apply_preview_chats <- function(preview_chats, deferred = FALSE) {
-	  preview_chats <- preview_chats %||% list()
+	  preview_chats <- mergen_saved_chats_drop_deleted(preview_chats %||% list(), session)
 	  if (length(preview_chats) > 0) {
 		values$saved_chats <- preview_chats
 		mark_boot(
@@ -287,7 +287,8 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			return(invisible(NULL))
 		  }
 
-		  chats <- chats %||% list()
+		  # Ön izleme gönderildikten sonra doğrulanmış silmeler geri getirilmez.
+		  chats <- mergen_saved_chats_drop_deleted(chats %||% list(), session)
 		  if (length(chats) > 0) {
 			values$saved_chats <- chats
 			mark_boot(
@@ -527,7 +528,10 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			  } else {
 				chats <- values$saved_chats %||% list()
 			  }
-			  onceki_gorunur <- try(mergen_welcome_recent_items(values$saved_chats), silent = TRUE)
+			  # Görünür "Son Konuşmalar" dilimi yalnızca karşılama gerçekten görünürken
+			  # hesaplanır; gizli karşılama için tüm liste sıralanmaz.
+			  karsilama_gorunur <- isTRUE(values$show_welcome) && isTRUE(session$userData$deep_space_dismissed)
+			  onceki_gorunur <- if (karsilama_gorunur) try(mergen_welcome_recent_items(values$saved_chats), silent = TRUE)
 			  values$saved_chats <- chats
 			  session$userData$saved_chats_full_loaded <- TRUE
 
@@ -540,8 +544,8 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 			  # Karşılama yalnızca görünen "Son Konuşmalar" dilimi değiştiyse yeniden
 			  # çizilir (animasyonlar boşuna yeniden başlatılmaz); olası çizim hatası
 			  # geçmiş hazırlığını ve başarı akışını kesintiye uğratmaz.
-			  yeni_gorunur <- try(mergen_welcome_recent_items(chats), silent = TRUE)
-			  if (inherits(onceki_gorunur, "try-error") || !identical(onceki_gorunur, yeni_gorunur)) {
+			  yeni_gorunur <- if (karsilama_gorunur) try(mergen_welcome_recent_items(chats), silent = TRUE)
+			  if (karsilama_gorunur && (inherits(onceki_gorunur, "try-error") || !identical(onceki_gorunur, yeni_gorunur))) {
 				try(refresh_welcome_if_needed(chats), silent = TRUE)
 			  }
 			})
@@ -665,6 +669,9 @@ startupObserversInit <- function(input, session, values, render_welcome_screen,
 	sahip_yenileme <- shiny::reactiveVal(0L)
 	if (exists("mergen_session_on_owner_change", mode = "function")) {
 	  mergen_session_on_owner_change(session, function(neden) {
+		# Silinenler kümesi önceki sahibe aittir: yeni sahibin aynı kimlikli
+		# söyleşisi tam listeden gizlenmez.
+		session$userData$saved_chats_silinenler <- character()
 		startup_state$full_load_generation <- startup_state$full_load_generation + 1L
 		sahip_yenileme(shiny::isolate(sahip_yenileme()) + 1L)
 	  })

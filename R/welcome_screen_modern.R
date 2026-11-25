@@ -128,34 +128,17 @@ create_modern_preview_button <- function(chat_data) {
 # Çizimden ayrı tutulur: görünür dilim değişmediyse yeniden çizim atlanabilir.
 mergen_welcome_recent_items <- function(saved_chats) {
 
-  resolve_recent_chat_timestamp <- function(chat) {
-    stamp <- chat$last_message_timestamp %||% chat$timestamp %||% NA
+  # Etkinlik zamanı ortak dönüştürücüyle tek saat düzlemine çevrilir: ODBC'nin
+  # UTC etiketli İstanbul duvar saati ile yerel Sys.time() anı tutarlı sıralanır
+  # (eksik son mesaj zamanında oluşturma zamanı kullanılır).
+  eksik <- function(x) is.null(x) || length(x) == 0L || (length(x) == 1L && is.na(x))
+  etkinlik <- function(chat) if (!eksik(chat$last_message_timestamp)) chat$last_message_timestamp else chat$timestamp
 
-    if (inherits(stamp, "POSIXt")) {
-      return(as.POSIXct(stamp))
-    }
-
-    if (is.character(stamp) && nzchar(stamp)) {
-      parsed <- suppressWarnings(as.POSIXct(stamp, tz = "UTC"))
-      if (!is.na(parsed)) {
-        return(parsed)
-      }
-    }
-
-    as.POSIXct(NA)
-  }
-
-  recent_chats <- if (length(saved_chats) > 0) {
-    sorted_chats <- Filter(Negate(is.null), saved_chats)
-    if (length(sorted_chats) > 0) {
-      timestamps <- sapply(sorted_chats, resolve_recent_chat_timestamp)
-      sorted_chats[order(timestamps, decreasing = TRUE, na.last = TRUE)]
-    } else {
-      list()
-    }
-  } else {
-    list()
-  }
+  sorted_chats <- Filter(Negate(is.null), saved_chats %||% list())
+  saniyeler <- if (length(sorted_chats) > 0L) mergen_chat_activity_seconds_vec(lapply(sorted_chats, etkinlik)) else numeric()
+  sira <- order(-ifelse(is.finite(saniyeler), saniyeler, -Inf), seq_along(saniyeler))
+  recent_chats <- sorted_chats[sira]
+  saniyeler <- saniyeler[sira]
 
   preview_chats <- list()
 
@@ -177,14 +160,10 @@ mergen_welcome_recent_items <- function(saved_chats) {
         }
       }
 
-      time_text <- tryCatch({
-        recent_stamp <- resolve_recent_chat_timestamp(chat)
-        if (inherits(recent_stamp, "POSIXt") && !is.na(recent_stamp)) {
-          format(recent_stamp, "%d.%m.%Y")
-        } else {
-          "..."
-        }
-      }, error = function(e) "...")
+      # Tarih İstanbul saatinde gösterilir (oturum saat diliminden bağımsız).
+      time_text <- if (is.finite(saniyeler[i])) {
+        format(as.POSIXct(saniyeler[i], origin = "1970-01-01", tz = "Europe/Istanbul"), "%d.%m.%Y", tz = "Europe/Istanbul")
+      } else "..."
 
       preview_chats[[i]] <- list(
         id = chat_id,

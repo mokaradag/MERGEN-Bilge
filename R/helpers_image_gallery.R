@@ -501,7 +501,9 @@ update_messages_after_bulk_deletion <- function(chat_id) {
     conn <- conn_info$conn
     on.exit(release_connection(conn_info))
 
-    query <- "SELECT MessageID, MessageContent FROM MB_Messages WHERE ChatID = ? AND MessageContent LIKE '[GÖRSEL:%'"
+    # `[` SQL Server LIKE kalıbında karakter kümesi açar; meta veri sorgusuyla
+    # aynı biçimde kaçırılır (kaçırılmazsa hiçbir görsel mesajı eşleşmez).
+    query <- "SELECT MessageID, MessageContent FROM MB_Messages WHERE ChatID = ? AND MessageContent LIKE '\\[GÖRSEL:%' ESCAPE '\\'"
 
     rows <- DBI::dbGetQuery(
       conn,
@@ -560,21 +562,25 @@ update_messages_after_bulk_deletion <- function(chat_id) {
 
               update_q <- "UPDATE MB_Messages SET MessageContent = ? WHERE MessageID = ?"
 
-              DBI::dbExecute(
+              etkilenen <- DBI::dbExecute(
                 conn,
                 update_q,
                 params = normalize_db_params(
                   list(new_content, rows$MessageID[j])
                 )
               )
-              degisti <- TRUE
+              # Yalnızca satır gerçekten güncellendiyse değişim sayılır; önceki
+              # başarı sonraki sıfır satırlı/başarısız güncellemeyle silinmez.
+              if (isTRUE(suppressWarnings(as.numeric(etkilenen)[1]) > 0)) degisti <- TRUE
             }
           }
         }
       }
     }
   }, error = function(e) {
-    cat("[IMAGE_GALLERY] Toplu mesaj güncelleme hatası:", e$message, "\n")
+    cat("[IMAGE_GALLERY] Toplu mesaj güncelleme hatası:",
+        if (exists("mergen_db_error_log_summary", mode = "function", inherits = TRUE))
+          mergen_db_error_log_summary(e) else class(e)[1], "\n")
   })
 
   invisible(degisti)

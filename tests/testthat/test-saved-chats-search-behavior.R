@@ -99,3 +99,51 @@ testthat::test_that("doğrulanamayan silmenin aynı söyleşi için yeniden onay
   })
   testthat::expect_identical(tetik$sayi, 2L)
 })
+
+testthat::test_that("aynı kayıtlı söyleşi kartına yeniden tıklamak yeni bir yükleme olayı üretir", {
+  testthat::skip_if_not_installed("shiny")
+  paketler <- new.env(parent = globalenv())
+  list2env(mget(getNamespaceExports("shiny"), envir = asNamespace("shiny"), inherits = TRUE), envir = paketler)
+  env <- new.env(parent = paketler)
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  source(file.path(resolve_repo_root_for_tests(), "R", "module_saved_chats.R"), encoding = "UTF-8", local = env)
+  shiny::testServer(env$savedChatsServer, args = list(saved_chats = shiny::reactive(list())), {
+    yuklenen <- character()
+    shiny::observeEvent(load_chat_trigger(), { yuklenen <<- c(yuklenen, load_chat_trigger()) })
+    # Gerçek oturumdaki ilk flush (ignoreInit'in yuttuğu başlangıç çalışması).
+    session$flushReact()
+    session$setInputs(load_chat_id = "7")
+    session$flushReact()
+    # Okuma başarısız olduktan sonra kullanıcı aynı karta yeniden tıklar.
+    session$setInputs(load_chat_id = "7")
+    session$flushReact()
+    testthat::expect_identical(yuklenen, c("7", "7"))
+  })
+})
+
+testthat::test_that("Kayıtlı Söyleşiler ODBC duvar saati ile yerel anı aynı düzlemde sıralar", {
+  testthat::skip_if_not_installed("shiny")
+  paketler <- new.env(parent = globalenv())
+  list2env(mget(getNamespaceExports("shiny"), envir = asNamespace("shiny"), inherits = TRUE), envir = paketler)
+  env <- new.env(parent = paketler)
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  kok <- resolve_repo_root_for_tests()
+  sys.source(file.path(kok, "R", "helpers_chat_message_formatting.R"), envir = env, keep.source = FALSE)
+  source(file.path(kok, "R", "module_saved_chats.R"), encoding = "UTF-8", local = env)
+  for (tz in c("UTC", "Europe/Istanbul")) withr::with_envvar(c(TZ = tz), {
+    sohbetler <- list(
+      # DB: İstanbul 12:00 (UTC etiketli) = 09:00Z.
+      "1" = list(title = "DB", last_message_timestamp = as.POSIXct("2026-11-20 12:00:00", tz = "UTC"), message_count = 1L),
+      # Yerel Sys.time() benzeri an: 10:00Z (İstanbul 13:00).
+      "2" = list(title = "Yerel", message_count = 1L,
+                 last_message_timestamp = structure(as.numeric(as.POSIXct("2026-11-20 10:00:00", tz = "UTC")),
+                                                    class = c("POSIXct", "POSIXt")))
+    )
+    shiny::testServer(env$savedChatsServer, args = list(saved_chats = shiny::reactive(sohbetler)), {
+      session$flushReact()
+      meta <- filtered_saved_chats()
+      testthat::expect_identical(meta$chat_id, c("2", "1"), info = tz)
+      testthat::expect_identical(format(meta$timestamp, "%H:%M", tz = "Europe/Istanbul"), c("13:00", "12:00"), info = tz)
+    })
+  })
+})

@@ -159,20 +159,24 @@ testthat::test_that("büyük geçmiş sonucu satır dilimleriyle aşamalı biçi
     cagrilar <<- c(cagrilar, nrow(result))
     gercek(chat_ids, user_id = user_id, result = result)
   }
-  p <- env$history_rows_format_staged(ids, 42L, cerceve)
-  testthat::expect_true(promises::is.promise(p))
-  # İlk dilimden sonra kalan iş ayrı döngü turlarına bırakılır.
-  testthat::expect_identical(cagrilar, 500L)
   sonuc <- NULL
-  promises::then(p, onFulfilled = function(v) sonuc <<- v)
-  # Döngü her yoklamada EN ÇOK bir geri çağrı çalıştırır: her geri çağrı en çok
-  # bir dilim biçimlendirmelidir (iki dilim arka arkaya işlenmez).
-  bitis <- Sys.time() + 5
-  while (is.null(sonuc) && Sys.time() < bitis) {
-    once <- length(cagrilar)
-    later::run_now(0.05, all = FALSE)
-    testthat::expect_lte(length(cagrilar) - once, 1L)
-  }
+  # Geçici döngü: paylaşılan döngüde önceki testlerden kalan geri çağrılar
+  # adım sayımını bozamaz; söz, kayıt ve yoklama aynı yalıtık döngüdedir.
+  later::with_temp_loop({
+    p <- env$history_rows_format_staged(ids, 42L, cerceve)
+    testthat::expect_true(promises::is.promise(p))
+    # İlk dilimden sonra kalan iş ayrı döngü turlarına bırakılır.
+    testthat::expect_identical(cagrilar, 500L)
+    promises::then(p, onFulfilled = function(v) sonuc <<- v)
+    # Döngü her yoklamada EN ÇOK bir geri çağrı çalıştırır: her geri çağrı en çok
+    # bir dilim biçimlendirmelidir (iki dilim arka arkaya işlenmez).
+    bitis <- Sys.time() + 5
+    while (is.null(sonuc) && Sys.time() < bitis) {
+      once <- length(cagrilar)
+      later::run_now(0.05, all = FALSE)
+      testthat::expect_lte(length(cagrilar) - once, 1L)
+    }
+  })
   testthat::expect_identical(cagrilar, c(500L, 500L, 320L))
 
   testthat::expect_true(all(cagrilar <= 500L))
@@ -201,14 +205,17 @@ testthat::test_that("geçmiş hazırlığı bayatlayınca kalan dilimler biçiml
     gercek(chat_ids, user_id = user_id, result = result)
   }
   gecerli_mi <- TRUE
-  p <- env$history_rows_format_staged("3", 42L, cerceve, gecerli = function() gecerli_mi)
-  testthat::expect_identical(cagrilar, 500L)
-  # Sahip değişti: kalan üç dilim olay döngüsünde işlenmez.
-  gecerli_mi <- FALSE
   sonuc <- "bekleniyor"
-  promises::then(p, onFulfilled = function(v) sonuc <<- v)
-  bitis <- Sys.time() + 5
-  while (identical(sonuc, "bekleniyor") && Sys.time() < bitis) later::run_now(0.05)
+  # Geçici döngü: paylaşılan döngüdeki ilgisiz geri çağrılar sonucu etkilemez.
+  later::with_temp_loop({
+    p <- env$history_rows_format_staged("3", 42L, cerceve, gecerli = function() gecerli_mi)
+    testthat::expect_identical(cagrilar, 500L)
+    # Sahip değişti: kalan üç dilim olay döngüsünde işlenmez.
+    gecerli_mi <- FALSE
+    promises::then(p, onFulfilled = function(v) sonuc <<- v)
+    bitis <- Sys.time() + 5
+    while (identical(sonuc, "bekleniyor") && Sys.time() < bitis) later::run_now(0.05)
+  })
   testthat::expect_null(sonuc)
   testthat::expect_identical(cagrilar, 500L)
 })
@@ -233,14 +240,15 @@ testthat::test_that("yeniden doğrulama yalnızca ilk sayfanın yaşlı kayıtla
   testthat::expect_identical(sonuc[["5"]]$stamp, "d")
 })
 
-testthat::test_that("açık geçersizleştirme aynı zincirde yeniden okumaya izin verir; diğer denemeler korunur", {
+testthat::test_that("açık geçersizleştirme aynı zincirde yeniden okumaya izin verir; diğer denemeler ve planlı kuyruk korunur", {
   env <- .source_history_bg_for_test()
   isitma <- new.env()
   isitma$zincir <- c("1" = "d1", "2" = "d2", "3" = "d3")
   isitma$planli <- c("2", "3")
   env$history_allow_reread(isitma, c("2", "9"))
   testthat::expect_identical(isitma$zincir, c("1" = "d1", "3" = "d3"))
-  testthat::expect_identical(isitma$planli, "3")
+  # Henüz denenmemiş (planlı) kimlik kuyrukta kalır: kendi partisi okur, çift okuma olmaz.
+  testthat::expect_identical(isitma$planli, c("2", "3"))
   env$history_allow_reread(isitma, character())
   testthat::expect_identical(names(isitma$zincir), c("1", "3"))
 })

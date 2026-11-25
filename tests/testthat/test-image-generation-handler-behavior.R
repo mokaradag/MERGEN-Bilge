@@ -158,3 +158,77 @@ testthat::test_that("görsel sonucu söyleşi sıfırlandıktan sonra gelirse me
   testthat::expect_identical(sifirlama, 1L)
   testthat::expect_false(isTRUE(values$typing))
 })
+
+# Sahipsiz sonuç senaryoları için ortak kurulum: sonuç sözü elle çözülür.
+.gorsel_sahiplik_kur <- function(values, ud, oturum_kapali = FALSE, sahip_hatasi = FALSE) {
+  env <- new.env(parent = globalenv())
+  env$`%||%` <- function(a, b) if (is.null(a)) b else a
+  kok <- resolve_repo_root_for_tests()
+  source(file.path(kok, "R", "helpers_async_result_guard.R"), encoding = "UTF-8", local = env)
+  source(file.path(kok, "R", "server_handler_image_generation.R"), encoding = "UTF-8", local = env)
+  if (isTRUE(sahip_hatasi)) env$mergen_chat_owner_guard <- function(...) function() stop("sahiplik denetimi hatası (test)")
+  env$mergen_resolve_image_api_key <- function(...) "anahtar"
+  env$removeUI <- env$insertUI <- env$showToast <- env$log_debug <- function(...) NULL
+  env$render_generated_image_html <- function(...) "<img>"
+  kayit <- new.env(); kayit$mesajlar <- list(); kayit$sifirlama <- 0L
+  env$tracked_future_promise <- function(...) promises::promise(function(resolve, reject) kayit$cozumle <- resolve)
+  env$`%...>%` <- promises::`%...>%`
+  env$`%...!%` <- promises::`%...!%`
+  kayit$calistir <- function() env$handle_image_generation_mode(list(
+    input = list(), settings_data = list(), values = values,
+    session = list(token = "gorsel-test", userData = ud, isClosed = function() oturum_kapali),
+    current_user_id = 7, user_message_text = "kedi",
+    add_message_fn = function(content, type, html = NULL) kayit$mesajlar[[length(kayit$mesajlar) + 1L]] <- content,
+    reset_chat_state_fn = function() kayit$sifirlama <- kayit$sifirlama + 1L
+  ))
+  kayit
+}
+
+testthat::test_that("kayıtsız söyleşide yalnızca nesil ilerlerse bayat görsel sonucu reddedilir", {
+  testthat::skip_if_not_installed("promises")
+  values <- new.env(); values$current_chat_id <- NULL; values$typing <- TRUE
+  ud <- new.env(); ud$pk_unsaved_chat_epoch <- 0L
+  testthat::local_mocked_bindings(runjs = function(...) NULL, .package = "shinyjs")
+  later::with_temp_loop({
+    kayit <- .gorsel_sahiplik_kur(values, ud)
+    kayit$calistir()
+    # Söyleşi kimliği (NULL), kullanıcı ve istek değişmeden yalnızca nesil artar.
+    ud$pk_unsaved_chat_epoch <- 1L
+    kayit$cozumle(list(success = TRUE, local_path = "x.png"))
+    for (i in seq_len(50L)) { if (later::loop_empty()) break; later::run_now(timeout = 0) }
+  })
+  testthat::expect_length(kayit$mesajlar, 0L)
+  testthat::expect_null(values$current_chat_id)
+  testthat::expect_identical(kayit$sifirlama, 1L)
+})
+
+testthat::test_that("sahiplik denetimi hata verirse görsel sonucu eklenmez (kapalı-başarısız)", {
+  testthat::skip_if_not_installed("promises")
+  values <- new.env(); values$current_chat_id <- 9L; values$typing <- TRUE
+  ud <- new.env()
+  testthat::local_mocked_bindings(runjs = function(...) NULL, .package = "shinyjs")
+  later::with_temp_loop({
+    kayit <- .gorsel_sahiplik_kur(values, ud, sahip_hatasi = TRUE)
+    kayit$calistir()
+    kayit$cozumle(list(success = TRUE, local_path = "x.png"))
+    for (i in seq_len(50L)) { if (later::loop_empty()) break; later::run_now(timeout = 0) }
+  })
+  testthat::expect_length(kayit$mesajlar, 0L)
+  testthat::expect_identical(kayit$sifirlama, 1L)
+  testthat::expect_false(isTRUE(values$typing))
+})
+
+testthat::test_that("oturum kapandıktan sonra gelen sahipsiz görsel sonucu UI sıfırlaması yapmaz", {
+  testthat::skip_if_not_installed("promises")
+  values <- new.env(); values$current_chat_id <- 9L; values$typing <- TRUE
+  ud <- new.env()
+  testthat::local_mocked_bindings(runjs = function(...) NULL, .package = "shinyjs")
+  later::with_temp_loop({
+    kayit <- .gorsel_sahiplik_kur(values, ud, oturum_kapali = TRUE, sahip_hatasi = TRUE)
+    kayit$calistir()
+    kayit$cozumle(list(success = TRUE, local_path = "x.png"))
+    for (i in seq_len(50L)) { if (later::loop_empty()) break; later::run_now(timeout = 0) }
+  })
+  testthat::expect_length(kayit$mesajlar, 0L)
+  testthat::expect_identical(kayit$sifirlama, 0L)
+})

@@ -27,10 +27,14 @@
 # verir; promise reddedilir ve işçi serbest kalır. Bağlantı her yolda kapanır.
 # saat: bütçe muhasebesinin saati (geçen sn); varsayılan proc.time. Testler
 # zamanlayıcı duraklamasından bağımsız denetim için sanal saat verebilir.
+# varsayilan_login: bütçeli okumada login sınırı yapılandırılmamışsa kullanılan
+# tavan (helpers_db_connection.R .DB_DEFAULT_LOGIN_TIMEOUT_SEC ile aynı; işçi
+# yükü kendine yeterli kalsın diye değer olarak taşınır, testle eşitliği kilitli).
 mergen_bounded_db_fetch_raw <- function(sql, params, dsn, encoding, name_encoding,
                                         login_timeout = NA_integer_,
                                         query_timeout = NA_real_,
-                                        saat = function() proc.time()[["elapsed"]]) {
+                                        saat = function() proc.time()[["elapsed"]],
+                                        varsayilan_login = 30L) {
   if (is.null(dsn) || !nzchar(as.character(dsn)[1])) {
     stop("mergen_bounded_db_fetch_raw: DSN bulunamadı.", call. = FALSE)
   }
@@ -78,18 +82,28 @@ mergen_bounded_db_fetch_raw <- function(sql, params, dsn, encoding, name_encodin
     baglanti_args$timeout <- login_timeout
   }
   # Bütçeli okumada bağlantı denemesi de bütçeye dahildir: setTimeLimit yerel
-  # (native) bağlanma çağrısını kesemez; login sınırı bütçeyi aşamaz,
-  # yapılandırılmamışsa bütçe login sınırı olarak iletilir. Saniye aşağı
-  # yuvarlanır (4.2 sn -> 4 sn; bütçe aşılmaz); 0 sürücüde "sınırsız" demek
-  # olduğundan alt sınır 1 sn'dir (1 sn altı bütçe politikası ayrıca belirlenir).
+  # (native) bağlanma çağrısını kesemez; login sınırı bütçeyi aşamaz. Tavan
+  # yapılandırılmış sınır, yoksa varsayılan login sınırıdır (tüm sorgu bütçesi
+  # değil). Saniye aşağı yuvarlanır (4.2 sn -> 4 sn; bütçe aşılmaz). Sürücü
+  # saniye çözünürlüğündedir ve 0 "sınırsız" demektir: 1 sn altı bütçede login
+  # sınırı BİLİNÇLİ olarak 1 sn'dir (bağlanma bütçeyi en çok 1 sn'den az aşabilir;
+  # bağlantı sonrası kalan bütçe ayrıca denetlenir ve sorgu süre sınırıyla koşar).
   if (sinirli) {
     butce_login <- max(1L, as.integer(min(floor(sure_sn), 2147483L)))
-    baglanti_args$timeout <- if (is.null(baglanti_args$timeout)) butce_login else min(baglanti_args$timeout, butce_login)
+    # İşçi yükü kendine yeterlidir: `%||%` gibi dış yardımcılara dayanılmaz.
+    tavan <- if (is.null(baglanti_args$timeout)) suppressWarnings(as.integer(varsayilan_login[1])) else baglanti_args$timeout
+    if (length(tavan) != 1L || is.na(tavan) || tavan < 1L) tavan <- butce_login
+    baglanti_args$timeout <- min(tavan, butce_login)
   }
   if (sinirli) baglanti_args$interruptible <- TRUE
   conn <- do.call(DBI::dbConnect, baglanti_args)
   on.exit(try(DBI::dbDisconnect(conn), silent = TRUE), add = TRUE)
   connect_ms <- as.numeric(difftime(Sys.time(), connect_started, units = "secs")) * 1000
+  # Bağlantı kurulumu bütçeyi tükettiyse oturum kurulumu (SET LOCK_TIMEOUT) dahil
+  # hiçbir deyim gönderilmez; bağlantı on.exit ile kapanır.
+  if (sinirli && (saat() - butce_baslangici) >= sure_sn) {
+    stop("mergen_bounded_db_fetch_raw: sorgu süre bütçesi bağlantı kurulumunda tükendi.", call. = FALSE)
+  }
   if (sinirli) {
     # SQL Server üst sınırı (ms) aşılmaz; tam sayı taşması NA üretmez.
     kilit_ms <- as.integer(min(sure_sn, 2147483) * 1000)

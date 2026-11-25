@@ -344,11 +344,27 @@ mergen_chat_activity_seconds <- function(value, tz = "Europe/Istanbul") {
   if (is.numeric(value)) return(if (is.finite(value)) as.numeric(value) else NA_real_)
   metin <- as.character(value)
   if (is.na(metin) || !nzchar(metin)) return(NA_real_)
-  for (bicim in c("%Y-%m-%d %H:%M:%OS", "%Y-%m-%d %H:%M", "%d.%m.%Y - %H:%M", "%Y-%m-%d")) {
-    zaman <- suppressWarnings(as.POSIXct(metin, format = bicim, tz = tz))
-    if (!is.na(zaman)) return(as.numeric(zaman))
+  mergen_chat_activity_text_seconds(metin, tz)
+}
+
+# Metin etkinlik zamanları (vektörel). Değer yalnızca desteklenen biçimin
+# TAMAMIYLA eşleşirse çözülür: strptime sondaki fazlalığı yok saydığı için
+# "2026-01-02 25:00" ya da "2026-01-02 bozuk" tarih öneki gece yarısı sayılırdı.
+# ISO "T" ayırıcısı boşluk sayılır; geçersiz değer NA döner.
+mergen_chat_activity_text_seconds <- function(metin, tz = "Europe/Istanbul") {
+  sonuc <- rep(NA_real_, length(metin))
+  metin <- sub("^(\\d{4}-\\d{1,2}-\\d{1,2})T", "\\1 ", trimws(as.character(metin)), perl = TRUE)
+  bicimler <- list(
+    c("%Y-%m-%d %H:%M:%OS", "^\\d{4}-\\d{1,2}-\\d{1,2} \\d{1,2}:\\d{1,2}:\\d{1,2}(\\.\\d+)?$"),
+    c("%Y-%m-%d %H:%M", "^\\d{4}-\\d{1,2}-\\d{1,2} \\d{1,2}:\\d{1,2}$"),
+    c("%d.%m.%Y - %H:%M", "^\\d{1,2}\\.\\d{1,2}\\.\\d{4} - \\d{1,2}:\\d{1,2}$"),
+    c("%Y-%m-%d", "^\\d{4}-\\d{1,2}-\\d{1,2}$")
+  )
+  for (b in bicimler) {
+    i <- which(!is.na(metin) & grepl(b[2], metin, perl = TRUE))
+    if (length(i)) sonuc[i] <- as.numeric(suppressWarnings(as.POSIXct(metin[i], format = b[1], tz = tz)))
   }
-  NA_real_
+  sonuc
 }
 
 # Vektörel sürüm: mergen_chat_activity_seconds ile aynı sonuçları toplu
@@ -384,13 +400,7 @@ mergen_chat_activity_seconds_vec <- function(degerler, tz = "Europe/Istanbul") {
     sonuc[utc] <- as.numeric(as.POSIXct(duvar, tz = tz))
   }
   kalan <- which(tur == "metin")
-  for (bicim in c("%Y-%m-%d %H:%M:%OS", "%Y-%m-%d %H:%M", "%d.%m.%Y - %H:%M", "%Y-%m-%d")) {
-    if (!length(kalan)) break
-    zaman <- as.numeric(suppressWarnings(as.POSIXct(metin[kalan], format = bicim, tz = tz)))
-    tamam <- !is.na(zaman)
-    sonuc[kalan[tamam]] <- zaman[tamam]
-    kalan <- kalan[!tamam]
-  }
+  if (length(kalan)) sonuc[kalan] <- mergen_chat_activity_text_seconds(metin[kalan], tz)
   for (i in which(tur == "tekil")) sonuc[i] <- mergen_chat_activity_seconds(degerler[[i]], tz = tz)
   sonuc
 }
@@ -423,34 +433,47 @@ mergen_chat_reconcile_hydrated_detail <- function(detail, chat_to_load = NULL) {
   if (length(onceki_msgs) > 0L) {
     db_ids <- vapply(db_msgs, function(m) as.character(m$id %||% "")[1], character(1))
     db_ids[is.na(db_ids)] <- ""
-    # Yerel mesajın DB karşılığının anahtarı (yoksa NA).
-    db_anahtari <- function(m) {
+    # Yerel mesajların DB anahtarları ve kayıtsızlık durumu tek vektörel üyelik
+    # testiyle bulunur (mergen_chat_message_unsaved ile aynı kurallar); mesaj
+    # başına DB kimliklerinin yeniden taranması (n x m) önlenir.
+    liste_mi <- vapply(onceki_msgs, is.list, logical(1))
+    aday_db <- vapply(onceki_msgs, function(m) {
       d <- if (is.list(m)) m$db_id else NULL
-      aday <- if (!is.null(d) && length(d) > 0L && !is.na(d[1])) trimws(as.character(d[1])) else ""
-      if (!nzchar(aday)) aday <- suppressWarnings(as.character(m$id %||% "")[1])
-      if (!is.na(aday) && nzchar(aday) && aday %in% db_ids) aday else NA_character_
-    }
-    anahtarlar <- vapply(onceki_msgs, db_anahtari, character(1))
-    kayitsiz_mi <- vapply(onceki_msgs, mergen_chat_message_unsaved, logical(1), db_ids = db_ids)
+      v <- if (!is.null(d) && length(d) > 0L && !is.na(d[1])) trimws(as.character(d[1])) else ""
+      if (is.na(v)) "" else v
+    }, character(1))
+    aday_id <- vapply(onceki_msgs, function(m) {
+      v <- if (is.list(m)) suppressWarnings(as.character(m$id %||% "")[1]) else ""
+      if (length(v) != 1L || is.na(v)) "" else v
+    }, character(1))
+    alan_var <- vapply(onceki_msgs, function(m) is.list(m) && "db_id" %in% names(m), logical(1))
+    aday <- ifelse(nzchar(aday_db), aday_db, aday_id)
+    db_de <- nzchar(aday) & aday %in% db_ids
+    anahtarlar <- ifelse(db_de, aday, NA_character_)
+    kayitsiz_mi <- liste_mi & !nzchar(aday_db) & !(nzchar(aday_id) & aday_id %in% db_ids) &
+      (alan_var | (nzchar(aday_id) & is.na(suppressWarnings(as.integer(aday_id)))))
     if (any(kayitsiz_mi)) {
       kayitsiz_var <- TRUE
-      once <- list(); sona <- list()
-      for (i in which(kayitsiz_mi)) {
-        sonraki_k <- utils::head(stats::na.omit(anahtarlar[seq.int(i, length(anahtarlar))]), 1L)
-        if (length(sonraki_k)) {
-          once[[sonraki_k]] <- c(once[[sonraki_k]], list(onceki_msgs[[i]]))
-        } else {
-          sona <- c(sona, list(onceki_msgs[[i]]))
-        }
+      # Tek ters geçiş: her mesajdan sonra gelen ilk kayıtlı mesajın anahtarı.
+      sonraki <- rep(NA_character_, length(onceki_msgs))
+      son <- NA_character_
+      for (i in rev(seq_along(onceki_msgs))) {
+        if (!is.na(anahtarlar[i])) son <- anahtarlar[i]
+        sonraki[i] <- son
       }
-      # DB mesajı başına bir parça toplanır ve tek seferde düzleştirilir: uzun
-      # transkriptte her adımda büyüyen listenin kopyalanması (karesel) önlenir.
+      idx <- which(kayitsiz_mi)
+      grup <- sonraki[idx]
+      cipali <- !is.na(grup)
+      # Aynı çapaya düşen kayıtsız mesajlar yerel sıralarıyla gruplanır.
+      once <- if (any(cipali)) split(onceki_msgs[idx[cipali]], factor(grup[cipali], levels = unique(grup[cipali]))) else list()
+      sona <- onceki_msgs[idx[!cipali]]
+      # DB mesajı başına bir parça toplanır ve tek seferde düzleştirilir; yinelenen
+      # DB kimliğinde grup yalnızca ilk geçişin önüne yerleşir.
+      konum <- match(db_ids, names(once))
+      konum[duplicated(db_ids) | !nzchar(db_ids)] <- NA_integer_
       parcalar <- vector("list", length(db_msgs))
       for (j in seq_along(db_msgs)) {
-        k <- db_ids[[j]]
-        onunde <- if (nzchar(k)) once[[k]] else NULL
-        parcalar[[j]] <- c(onunde, list(db_msgs[[j]]))
-        if (!is.null(onunde)) once[[k]] <- NULL
+        parcalar[[j]] <- if (is.na(konum[j])) list(db_msgs[[j]]) else c(once[[konum[j]]], list(db_msgs[[j]]))
       }
       birlesik <- unlist(parcalar, recursive = FALSE)
       detail$messages <- c(birlesik %||% list(), sona)
@@ -465,6 +488,8 @@ mergen_chat_reconcile_hydrated_detail <- function(detail, chat_to_load = NULL) {
     detail$last_message_timestamp <- yerel_zaman
   }
   detail$hidrate_edildi <- TRUE
+  # Yerelde oluşturulma işareti hidrasyonda kaybolmaz (birleştirme onu korur).
+  if (is.list(chat_to_load) && !is.null(chat_to_load$yerel_olusturuldu)) detail$yerel_olusturuldu <- chat_to_load$yerel_olusturuldu
   okuma_sn <- suppressWarnings(as.numeric(detail$okuma_baslangici %||% NA_real_)[1])
   detail$hidrate_zamani <- if (length(okuma_sn) == 1L && is.finite(okuma_sn)) okuma_sn else as.numeric(Sys.time())
   detail$okuma_baslangici <- NULL

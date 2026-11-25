@@ -148,7 +148,30 @@ chatInputObserversInit <- function(input, session, values, settings_data,
     }
     onceki <- isolate(values$messages)
     onceki_kimlikler <- vapply(onceki, kimlik, character(1))
+    # ERKEN KABUL: send_message kullanıcı mesajını ekleyip durdurma kipine geçince
+    # bu kanca çağrılır ve "kabul" HEMEN iletilir (özel mesaj websocket'e flush
+    # beklemeden yazılır). Böylece uzun süren eşzamanlı analiz istemci zaman
+    # aşımını tetikleyip kayıtlı istemi girdiye geri yüklemez. Kabul kesindir;
+    # çıkıştaki bildirim yinelenmez.
+    erken_kabul <- NULL
+    if (nzchar(istem_kimligi)) {
+      session$userData$mergen_istem_kabul_bildir <- function(mesaj) {
+        if (!is.null(erken_kabul)) return(invisible(NULL))
+        sonuc <- list(client_id = istem_kimligi, durum = "kabul")
+        mid <- if (is.list(mesaj)) kimlik(mesaj) else ""
+        if (nzchar(mid)) sonuc$mesaj_id <- mid
+        erken_kabul <<- sonuc
+        try(session$sendCustomMessage("mergenIstemSonucu", sonuc), silent = TRUE)
+        invisible(NULL)
+      }
+    }
     on.exit(if (nzchar(istem_kimligi)) {
+      session$userData$mergen_istem_kabul_bildir <- NULL
+      if (!is.null(erken_kabul)) {
+        islenen_istemler[[istem_kimligi]] <<- erken_kabul
+        if (length(islenen_istemler) > 32L) islenen_istemler <<- utils::tail(islenen_istemler, 32L)
+        return(invisible(NULL))
+      }
       simdiki <- isolate(values$messages)
       # Kimlik tabanlı tespit; kimliksiz mesajlarda (eski/sahte yollar) konuma düşülür.
       # Kimlikler bir kez çıkarılır ve tek vektörel üyelik testi yapılır: uzun

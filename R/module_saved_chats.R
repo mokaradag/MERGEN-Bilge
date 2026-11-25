@@ -63,6 +63,10 @@ savedChatsServer <- function(id, saved_chats) {
     observeEvent(input$load_chat_id, {
       # Sohbet kartı tıklamasını doğrudan reactiveVal'e aktar.
       # eventReactive gecikmesi/önceki değer riski olmadan güncel ID taşınır.
+      # Her tıklama yeni bir olaydır: reactiveVal aynı değeri yuttuğu için önce
+      # sıfırlanır; aynı karta yeniden tıklamak (ör. başarısız okuma sonrası)
+      # yeni bir yükleme başlatır.
+      load_chat_trigger(NULL)
       load_chat_trigger(input$load_chat_id)
     }, ignoreInit = TRUE)
 
@@ -89,11 +93,14 @@ savedChatsServer <- function(id, saved_chats) {
 
     parse_timestamp <- function(value) {
       if (inherits(value, "POSIXt")) {
-        # DB sürücüsü (ODBC) zaman damgasını UTC olarak döndürebilir,
-        # ancak DB'deki gerçek değer Istanbul zamanıdır.
-        # Saat yüzü değerini Istanbul olarak yeniden yorumla (dönüştürme yapmadan).
-        clock_str <- format(value, "%Y-%m-%d %H:%M:%S")
-        return(as.POSIXct(clock_str, tz = TARGET_TZ))
+        # Ortak etkinlik dönüştürücüsü: ODBC'nin UTC etiketli değeri İstanbul
+        # duvar saati olarak yeniden yorumlanır; yerel Sys.time() gerçek andır ve
+        # olduğu gibi kalır (sıralama anahtarı tüm ekranlarla aynı düzlemde).
+        sn <- if (exists("mergen_chat_activity_seconds", mode = "function", inherits = TRUE)) {
+          mergen_chat_activity_seconds(value)
+        } else as.numeric(as.POSIXct(format(value, "%Y-%m-%d %H:%M:%S"), tz = TARGET_TZ))
+        # Eksik (NA) an önceki gibi NA kalır (Sys.time() geri dönüşüne düşmez).
+        return(if (is.finite(sn)) as.POSIXct(sn, origin = "1970-01-01", tz = TARGET_TZ) else as.POSIXct(NA_character_, tz = TARGET_TZ))
       }
       if (is.numeric(value)) {
         return(as.POSIXct(value, origin = "1970-01-01", tz = TARGET_TZ))

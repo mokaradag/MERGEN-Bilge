@@ -179,11 +179,16 @@ chat_store_message_in_saved_chats <- function(values, message) {
 
   entry <- saved_chats_copy[[chat_key]]
   if (is.null(entry)) {
+    # Söyleşi bu oturumda yerel listeye ilk kez mesajla girer: yerel oluşturma
+    # ANI (uygulama saati, saniye) kaynak kanıtı olarak saklanır ve hidrasyondan
+    # sonra da korunur. Süren tam liste okuması bu andan SONRA başladıysa
+    # söyleşiyi içermesi gerekirdi; önce başladıysa listede olmaması silme kanıtı değildir.
     entry <- list(
       title = NULL,
       timestamp = Sys.time(),
       messages = list(),
-      message_count = 0L
+      message_count = 0L,
+      yerel_olusturuldu = as.numeric(Sys.time())
     )
   }
 

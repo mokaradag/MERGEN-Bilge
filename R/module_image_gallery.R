@@ -201,18 +201,18 @@ imageGalleryServer <- function(id, current_user_id) {
       refresh_gallery_cache()
     })
 
-    # Silme onay penceresini açan sahip kimliği; sahip değişiminde sıfırlanır.
+    # Açık silme onay penceresi (tür başına tek örnek): açan sahip, tek kullanımlık
+    # belirteç ve (tekil silmede) açılıştaki görsel. Sahip değişiminde düşer.
     onay_sahibi <- new.env(parent = emptyenv())
-    onay_sahibi$tekil <- NA_integer_
-    onay_sahibi$tumu <- NA_integer_
+    onay_sahibi$sayac <- 0L
 
     # Aynı oturumda sahip değişince önceki sahibin kartları hemen kalkar; galeri
     # etkinse yeni sahip için yeniden taranır.
     if (exists("mergen_session_on_owner_change", mode = "function", inherits = TRUE)) {
       mergen_session_on_owner_change(session, function(neden) {
         galeri_sahibi$uid <- NA_integer_
-        onay_sahibi$tekil <- NA_integer_
-        onay_sahibi$tumu <- NA_integer_
+        onay_sahibi$tekil <- NULL
+        onay_sahibi$tumu <- NULL
         cached_images(empty_images_df())
         refresh_trigger(shiny::isolate(refresh_trigger()) + 1)
       })
@@ -238,6 +238,25 @@ imageGalleryServer <- function(id, current_user_id) {
     silme_reddedildi <- function() {
       showToast(session, "Oturum kimliği değişti; galeri yenileniyor. Lütfen yeniden deneyin.", "warning")
       refresh_trigger(shiny::isolate(refresh_trigger()) + 1)
+    }
+    # Onay yalnızca O AN açık pencerenin belirteciyle gelirse işlenir: değiştirilen
+    # ya da sahip değişiminde geçersizleşen pencereden gelen (zaten yolda olan
+    # dahil) onay hiçbir şey silmez ve açık pencereyi kapatmaz.
+    onay_penceresi_ac <- function(tur, sahip, bilgi = NULL) {
+      onay_sahibi$sayac <- onay_sahibi$sayac + 1L
+      belirtec <- sprintf("%s-%d", tur, onay_sahibi$sayac)
+      onay_sahibi[[tur]] <- list(sahip = sahip, belirtec = belirtec, bilgi = bilgi)
+      tags$button(if (identical(tur, "tumu")) "Evet, Tümünü Sil" else "Evet, Sil",
+                  type = "button", class = "btn btn-default btn-modern btn-danger",
+                  onclick = sprintf("Shiny.setInputValue('%s', '%s', {priority: 'event'});",
+                                    ns(paste0("confirm_", if (identical(tur, "tumu")) "clear_all_images" else "delete_image")),
+                                    belirtec))
+    }
+    onay_penceresini_tuket <- function(tur, gelen) {
+      kayit <- onay_sahibi[[tur]]
+      if (!is.list(kayit) || !identical(as.character(gelen %||% "")[1], kayit$belirtec)) return(NULL)
+      onay_sahibi[[tur]] <- NULL
+      kayit
     }
 
     # Görsel silme mesaj metnini yerinde değiştirir (zaman/sayı damgası aynı
@@ -499,7 +518,6 @@ imageGalleryServer <- function(id, current_user_id) {
       req(input$delete_image_request)
       acan_sahip <- silme_sahibi()
       if (is.na(acan_sahip)) return(silme_reddedildi())
-      onay_sahibi$tekil <- acan_sahip
       info <- input$delete_image_request
       fname <- info$filename %||% "Bu görsel"
 
@@ -507,7 +525,7 @@ imageGalleryServer <- function(id, current_user_id) {
         title = "Görseli Sil",
         paste0("'", fname, "' görselini silmek istediğinizden emin misiniz? İlgili söyleşideki mesajda görselin silindiği belirtilecektir."),
         footer = tagList(
-          actionButton(ns("confirm_delete_image"), "Evet, Sil", class = "btn-modern btn-danger"),
+          onay_penceresi_ac("tekil", acan_sahip, info),
           tags$button("İptal", type = "button", class = "btn-modern btn-success", `data-dismiss` = "modal", `data-bs-dismiss` = "modal")
         ),
         easyClose = TRUE
@@ -515,13 +533,14 @@ imageGalleryServer <- function(id, current_user_id) {
     })
 
     observeEvent(input$confirm_delete_image, {
-      info <- input$delete_image_request
+      kayit <- onay_penceresini_tuket("tekil", input$confirm_delete_image)
+      if (is.null(kayit)) return(invisible(NULL))
       removeModal()
+      # Silinecek görsel onay penceresinin açıldığı istekten alınır.
+      info <- kayit$bilgi
       req(info$file_path)
-      beklenen <- onay_sahibi$tekil
-      onay_sahibi$tekil <- NA_integer_
       sahip <- silme_sahibi()
-      if (is.na(sahip) || is.na(beklenen) || !identical(sahip, beklenen)) return(silme_reddedildi())
+      if (is.na(sahip) || !identical(sahip, kayit$sahip)) return(silme_reddedildi())
 
       success <- delete_single_image(info$file_path, sahip, info$chat_id)
       if (success) {
@@ -544,12 +563,11 @@ imageGalleryServer <- function(id, current_user_id) {
       if (nrow(imgs) > 0) {
         acan_sahip <- silme_sahibi()
         if (is.na(acan_sahip)) return(silme_reddedildi())
-        onay_sahibi$tumu <- acan_sahip
         showModal(modalDialog(
           title = "Tüm Görselleri Sil",
           sprintf("Toplam %d görselinizi silmek istediğinizden emin misiniz? Bu işlem geri alınamaz. İlgili söyleşilerdeki mesajlarda görsellerin silindiği belirtilecektir.", nrow(cached_images())),
           footer = tagList(
-            actionButton(ns("confirm_clear_all_images"), "Evet, Tümünü Sil", class = "btn-modern btn-danger"),
+            onay_penceresi_ac("tumu", acan_sahip),
             tags$button("İptal", type = "button", class = "btn-modern btn-success", `data-dismiss` = "modal", `data-bs-dismiss` = "modal")
           ),
           easyClose = TRUE
@@ -560,11 +578,11 @@ imageGalleryServer <- function(id, current_user_id) {
     })
 
     observeEvent(input$confirm_clear_all_images, {
+      kayit <- onay_penceresini_tuket("tumu", input$confirm_clear_all_images)
+      if (is.null(kayit)) return(invisible(NULL))
       removeModal()
-      beklenen <- onay_sahibi$tumu
-      onay_sahibi$tumu <- NA_integer_
       sahip <- silme_sahibi()
-      if (is.na(sahip) || is.na(beklenen) || !identical(sahip, beklenen)) return(silme_reddedildi())
+      if (is.na(sahip) || !identical(sahip, kayit$sahip)) return(silme_reddedildi())
       deleted_count <- delete_all_user_images(sahip)
       # Yalnızca mesajı değişen söyleşilerin geçmiş kaydı düşer; hiçbiri
       # değişmediyse önbellek korunur (ilgisiz söyleşiler yeniden okunmaz).
@@ -578,6 +596,8 @@ imageGalleryServer <- function(id, current_user_id) {
 
     observeEvent(input$navigate_to_chat, {
       req(input$navigate_to_chat)
+      # Aynı karta yeniden tıklama da yeni olaydır (reactiveVal aynı değeri yutar).
+      navigate_to_chat_trigger(NULL)
       navigate_to_chat_trigger(input$navigate_to_chat)
     })
 

@@ -164,7 +164,11 @@ testthat::test_that("stop button observer clears sending/typing UI state without
 # kilidi isteğin bitmesi beklenmeden kalkar.
 testthat::test_that("oturuma kayıtlı durdurma yolu Durdur düğmesiyle aynı biçimde etkin isteği bırakır", {
   testthat::skip_if_not_installed("shiny")
-  env <- new.env(parent = globalenv())
+  # Shiny ekli olmasa da gözlemci fabrikasının niteleyicisiz bağlamaları
+  # (observeEvent vb.) bulunur: ortamın üstü Shiny dışa aktarımlarıdır.
+  paketler <- new.env(parent = globalenv())
+  list2env(mget(getNamespaceExports("shiny"), envir = asNamespace("shiny"), inherits = TRUE), envir = paketler)
+  env <- new.env(parent = paketler)
   env$showToast <- function(...) invisible(TRUE)
   sys.source(file.path(repo_root_chat_input_stop, "R", "server_observers_chat_input.R"), envir = env,
              keep.source = FALSE)

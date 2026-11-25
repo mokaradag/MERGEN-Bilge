@@ -226,7 +226,8 @@ testthat::test_that("aynı istemci kimliğiyle yeniden teslim edilen istem ikinc
   # Yeni kimlikli istem de kabul edilir ve kendi (farklı) mesaj kimliğini alır.
   testthat::expect_identical(sonuc[[3]]$message$client_id, "istem_yeni")
   testthat::expect_identical(sonuc[[3]]$message$durum, "kabul")
-  testthat::expect_false(identical(sonuc[[3]]$message$mesaj_id, sonuc[[1]]$message$mesaj_id))
+  testthat::expect_identical(sonuc[[1]]$message$mesaj_id, "msg_42")
+  testthat::expect_identical(sonuc[[3]]$message$mesaj_id, "msg_43")
 })
 
 testthat::test_that("boşlukla şişirilmiş istem uzunluk sınırını aşamaz; sınır içindeki metin aynen gönderilir", {
@@ -346,7 +347,10 @@ testthat::test_that("bekleyen istem balonu istemci davranışı gerçek JavaScri
   node <- Sys.which("node")
   testthat::skip_if(!nzchar(node), "Node kullanılamıyor")
   script <- file.path(resolve_repo_root_for_tests(), "tests", "scripts", "chat_pending_bubble_regressions.js")
-  out <- suppressWarnings(system2(node, shQuote(script), stdout = TRUE, stderr = TRUE))
+  # Devralınan NODE_OPTIONS (ör. --inspect) test sürecini askıda bırakmasın;
+  # sonlu süre aşılırsa çıkış durumu sıfırdan farklıdır ve test başarısız olur.
+  out <- withr::with_envvar(c(NODE_OPTIONS = NA), suppressWarnings(
+    system2(node, shQuote(script), stdout = TRUE, stderr = TRUE, timeout = 120)))
   durum <- attr(out, "status") %||% 0L
   testthat::expect_identical(as.integer(durum), 0L, info = paste(out, collapse = "\n"))
   testthat::expect_true(any(grepl("chat_pending_bubble_regressions: OK", out, fixed = TRUE)))
@@ -422,4 +426,41 @@ testthat::test_that("eski nesil istemin reddi güncel neslin önbelleğine yazı
   durumlar <- vapply(Filter(function(m) identical(m$message$client_id, "istem_x"), .istem_sonuclari(kayit)),
                      function(m) m$message$durum, character(1))
   testthat::expect_identical(durumlar, c("ret", "kabul", "ret", "kabul"))
+})
+
+testthat::test_that("kabul, kullanıcı mesajı eklenince eşzamanlı analiz bitmeden tam bir kez iletilir", {
+  testthat::skip_if_not_installed("shiny")
+  kayit <- new.env(); kayit$mesajlar <- list(); kayit$gonderilen <- character(); kayit$toast <- character()
+  env <- .istem_ortami(kayit)
+  # send_message: mesajı ekler, kancayı çağırır, ardından "uzun analiz" sürer
+  # (bu noktada istemciye giden sonuçlar kaydedilir) ve sonunda hata verse de
+  # kabul geri alınmaz.
+  gonder <- function(text, values) {
+    msg <- list(id = "msg_77", type = "user", content = text)
+    values$messages <- append(shiny::isolate(values$messages), list(msg))
+    kanca <- kayit$oturum_verisi$mergen_istem_kabul_bildir
+    testthat::expect_true(is.function(kanca))
+    kanca(msg)
+    kanca(msg)  # yinelenen çağrı ikinci bildirim üretmez
+    kayit$analiz_sirasinda <- length(.istem_sonuclari(kayit))
+    stop("analiz sonradan başarısız (test)")
+  }
+  shiny::testServer(function(input, output, session) {
+    kayit$oturum_verisi <- session$userData
+    .istem_sunucusu(env, kayit, mesaj_ekle = TRUE, gonder = gonder)(input, output, session)
+  }, {
+    try(session$setInputs(send_prompt_from_js = list(text = "uzun analiz", nonce = 1, client_id = "istem_uzun_1")),
+        silent = TRUE)
+    # Kanca istem işlendikten sonra oturumda kalmaz (başka gönderime sızmaz).
+    testthat::expect_null(session$userData$mergen_istem_kabul_bildir)
+    # Aynı kimlikle yeniden teslim, önbellekteki kabulü yineler; yeniden işlemez.
+    session$setInputs(send_prompt_from_js = list(text = "uzun analiz", nonce = 2, client_id = "istem_uzun_1"))
+  })
+  sonuc <- .istem_sonuclari(kayit)
+  testthat::expect_identical(kayit$analiz_sirasinda, 1L)
+  testthat::expect_identical(kayit$gonderilen, "uzun analiz")
+  testthat::expect_length(sonuc, 2L)
+  beklenen <- list(client_id = "istem_uzun_1", durum = "kabul", mesaj_id = "msg_77")
+  testthat::expect_identical(sonuc[[1]]$message, beklenen)
+  testthat::expect_identical(sonuc[[2]]$message, beklenen)
 })

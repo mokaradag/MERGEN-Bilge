@@ -28,6 +28,9 @@ bootReadinessInit <- function(session, required = NULL) {
   # "Kısmen" tamamlanan (kaynak okunamadı/kullanılamıyor) kontrol noktaları;
   # toplu anahtar bunları "hazır" diye bildirmez.
   kismen <- character()
+  # Kaydı zaman aşımıyla "kısmen" olan anahtarlar (süren iş henüz sonuçlanmadı):
+  # sonradan gelen kesin hata bu kaydın yerini alabilir.
+  zaman_asimi <- character()
   # Toplu anahtarın KAPSAMI: açılışta olay döngüsünü tutmadan hazırlanabilen
   # veriler, yani tam söyleşi listesi (Kayıtlı Söyleşiler) ve Söyleşi Geçmişi
   # ilk sayfası (ikisi de işçide okunur). Görsel Galerisi ve Ortak Söyleşiler
@@ -71,6 +74,7 @@ bootReadinessInit <- function(session, required = NULL) {
       if (is.list(detail) && (isTRUE(detail$degraded) || isFALSE(detail$available))) {
         kismen <<- c(kismen, key)
       }
+      if (is.list(detail) && isTRUE(detail$timeout)) zaman_asimi <<- union(zaman_asimi, key)
 
       elapsed_ms <- as.numeric(difftime(Sys.time(), boot_started_at, units = "secs")) * 1000
       deferred_flag <- isTRUE(is.list(detail) && isTRUE(detail$deferred))
@@ -130,18 +134,24 @@ bootReadinessInit <- function(session, required = NULL) {
     keys <- as.character(keys)
     done <<- setdiff(done, keys)
     kismen <<- setdiff(kismen, keys)
+    zaman_asimi <<- setdiff(zaman_asimi, keys)
     if ("management_pages_ready" %in% keys) toplu_eksik <<- NULL
     invisible(TRUE)
   }
 
   # Tek seferlik işaretleme: sayfa yenilemeleri ve tekrarlayan taramalar aynı
-  # kontrol noktası için istemciye yinelenen bildirim göndermez. Tek istisna
-  # toparlanmadır: "kısmen" kaydedilmiş bir anahtar sonraki başarılı sonuçla
-  # "hazır"a döner (başarısızlık başarının yerini almaz).
+  # kontrol noktası için istemciye yinelenen bildirim göndermez. İzinli geçişler:
+  #   - toparlanma: "kısmen" kayıt sonraki başarılı sonuçla "hazır"a döner;
+  #   - kesin hata: zaman aşımıyla "kısmen" kayıt (iş sürüyordu) sonradan gelen
+  #     kesin hatayla güncellenir (etiket "arka planda sürüyor" demeye devam etmez).
+  # Başarısızlık başarının, geç zaman aşımı da kayıtlı hata/başarının yerini almaz;
+  # aynı kesin hata yinelenmez.
   mark_once <- function(key, label = key, pct = NULL, detail = NULL) {
     if (length(key) == 1L && as.character(key) %in% done) {
       basarili <- !(is.list(detail) && (isTRUE(detail$degraded) || isFALSE(detail$available)))
-      if (!(basarili && as.character(key) %in% kismen)) return(invisible(FALSE))
+      kesin_hata <- !basarili && !(is.list(detail) && isTRUE(detail$timeout)) &&
+        as.character(key) %in% zaman_asimi
+      if (!((basarili && as.character(key) %in% kismen) || kesin_hata)) return(invisible(FALSE))
       sifirla(key)
     }
     mark(key, label = label, pct = pct, detail = detail)

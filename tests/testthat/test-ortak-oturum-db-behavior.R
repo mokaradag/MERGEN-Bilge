@@ -813,3 +813,13 @@ test_that("ortak söyleşi önbelleği hatayı önbelleğe almaz ve süresi dolu
   ortak_db_sohbet_listesi_onbellekten(onbellek, 8L)
   expect_equal(durum$cagri, 5L)
 })
+
+test_that("önbellek sıfırlaması prob hatası durumunu ve geri çekilmeyi de temizler", {
+  ortak_db_reset_availability_cache()
+  .oo_db_state$probe_hatasi <- TRUE
+  .oo_db_state$probe_hata_zamani <- Sys.time()
+  expect_true(ortak_db_tablo_prob_hatasi_mi())
+  ortak_db_reset_availability_cache()
+  expect_false(isTRUE(ortak_db_tablo_prob_hatasi_mi()))
+  expect_null(.oo_db_state$probe_hata_zamani)
+})

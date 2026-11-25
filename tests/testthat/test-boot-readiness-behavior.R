@@ -317,3 +317,28 @@ testthat::test_that("hazır bildirimi kısmen tamamlanan zorunlu noktaları iste
   ctrl2$mark_once("auth_ready")
   testthat::expect_length(sess2$rec$msgs[[length(sess2$rec$msgs)]]$message$kismen, 0L)
 })
+
+testthat::test_that("zaman aşımıyla kısmen işaretlenen kontrol noktası sonradan gelen kesin hatayla güncellenir; geç zaman aşımı kayıtlı sonucu ezmez", {
+  gonderilen <- list()
+  oturum <- list(sendCustomMessage = function(type, message) gonderilen[[length(gonderilen) + 1L]] <<- message)
+  br <- .source_boot_readiness_for_test()$bootReadinessInit(oturum, required = c("management_pages_ready"))
+  son <- function() gonderilen[[length(gonderilen)]]
+  br$mark_once("management_pages_ready", "Arka planda sürüyor", detail = list(degraded = TRUE, timeout = TRUE))
+  testthat::expect_identical(son()$label, "Arka planda sürüyor")
+  # Kesin hata zaman aşımı kaydının yerini alır.
+  br$mark_once("management_pages_ready", "Söyleşi listesi yüklenemedi", detail = list(degraded = TRUE))
+  testthat::expect_identical(son()$label, "Söyleşi listesi yüklenemedi")
+  sayi <- length(gonderilen)
+  # Aynı kesin hata yinelenmez; geç zaman aşımı kayıtlı hatayı ezmez.
+  br$mark_once("management_pages_ready", "Söyleşi listesi yüklenemedi", detail = list(degraded = TRUE))
+  br$mark_once("management_pages_ready", "Arka planda sürüyor", detail = list(degraded = TRUE, timeout = TRUE))
+  testthat::expect_identical(length(gonderilen), sayi)
+  # Toparlanma: başarı kısmen kaydın yerini alır; ardından geç zaman aşımı ve hata başarıyı ezmez.
+  br$mark_once("management_pages_ready", "Hazır")
+  testthat::expect_identical(son()$label, "Hazır")
+  testthat::expect_identical(son()$kismen, character())
+  sayi <- length(gonderilen)
+  br$mark_once("management_pages_ready", "Arka planda sürüyor", detail = list(degraded = TRUE, timeout = TRUE))
+  br$mark_once("management_pages_ready", "Söyleşi listesi yüklenemedi", detail = list(degraded = TRUE))
+  testthat::expect_identical(length(gonderilen), sayi)
+})

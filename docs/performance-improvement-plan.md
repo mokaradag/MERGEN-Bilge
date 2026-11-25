@@ -300,8 +300,10 @@ Fix (`R/server_observers_startup.R` + `R/module_startup_lane.R` bridge):
   query budget (`mergen.startup_db_query_timeout_secs`, default 60 s). With the
   sequential fallback (`MERGEN_DISABLE_FUTURES=true` or a failed PSOCK start) the
   rich-lane full-list read still runs, but on the Shiny process itself, and the
-  automatic History preparation is skipped (readiness is reported as partial;
-  rows are read on the first History visit). On a normal aggregate
+  automatic History preparation is skipped: History readiness is reported as
+  partial only when eligible rows among the latest 60 conversations still need
+  to be fetched (when none need fetching, readiness is normal); the missing rows
+  are read on the first History visit. On a normal aggregate
   completion, Görsel Galerisi and Ortak Söyleşiler stay lazy (first visit) and are
   named in `detail$tembel`. If the full-list worker fails or times out, startup
   emits `management_pages_ready` with `detail$degraded = TRUE` (without
@@ -313,10 +315,18 @@ Fix (`R/server_observers_startup.R` + `R/module_startup_lane.R` bridge):
   the management data is ready (for example the full list loaded in 8 s but the
   History preparation is still pending), startup reports partial readiness
   (`detail$timeout = TRUE`); the overlay closes once the other required
-  checkpoints are complete. The deadline and the worker-based reads apply only
-  when an asynchronous worker backend is active: under the sequential fallback a
-  long full-list read holds the event loop, so the partial-readiness signal can
-  arrive later than the deadline. The deadline does **not**
+  checkpoints are complete. The deadline timer is armed for the rich lane in both
+  worker and sequential modes; only the reads themselves depend on an
+  asynchronous worker backend. The timer is registered after the full-list
+  dispatch returns, so it cannot bound time spent inside a sequential (blocking)
+  dispatch, and while a blocking read holds the Shiny event loop its callback is
+  delayed until the loop resumes; the timer never interrupts a read. A
+  `detail$timeout = TRUE` checkpoint that arrives later than the configured
+  deadline therefore indicates a blocked event loop (for example the sequential
+  fallback), not that a worker was active, and is not by itself a configuration
+  error. If management data is already complete when the timer fires, it
+  publishes nothing; a later terminal failure replaces the timeout label and a
+  later success recovers it to ready. The deadline does **not**
   cancel the pending read, which keeps its own 60 s DB query budget and is applied
   if it completes later. The overlay's partial label states that management data
   is not yet complete; it does not promise completion on page open.

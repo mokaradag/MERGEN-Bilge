@@ -1542,6 +1542,17 @@ testthat::test_that("yükleme sürerken açılan sayfa için başarısız tam li
     testthat::expect_warning(reddet(), "Initial saved chat load failed")
     testthat::expect_identical(rec$full, 2L)
     testthat::expect_true(isTRUE(session$userData$saved_chats_full_pending))
+    # İki hatadan sonra toparlanma kalıcı olarak kapanmaz: kaynak düzelir, kullanıcı
+    # sayfadan çıkıp yeniden açar ve üçüncü deneme tam listeyi uygular.
+    rec$reject_full <- FALSE
+    rec$full_result <- list("toparlandi" = list(title = "Toparlandı", message_count = 1L))
+    session$setInputs(tabs = "chat")
+    session$setInputs(tabs = "saved_chats")
+    for (i in 1:5) later::run_now(timeoutSecs = 0.05)
+    session$flushReact()
+    testthat::expect_identical(rec$full, 3L)
+    testthat::expect_true("toparlandi" %in% names(shiny::isolate(values$saved_chats)))
+    testthat::expect_false(isTRUE(session$userData$saved_chats_full_pending))
   })
 })
 
@@ -1714,6 +1725,105 @@ testthat::test_that("hızlı şerit tam listesi görünen dilimi değiştirirse 
   })
   testthat::expect_true(sonuc$tam_yuklendi)
   testthat::expect_identical(sonuc$sonra, sonuc$once + 1L)
+  testthat::expect_false(any(grepl("history_module-hazirla", sonuc$js, fixed = TRUE)),
+                         info = "karşılamanın yeniden çizimi geçmiş hazırlığını başlatmamalı")
+})
+
+# Ön izleme sözünün devamı (hidrasyon kararı) sınırlı bir sürede gerçekten
+# tamamlanana dek döngü çalıştırılır; söz yoksa, reddedilirse ya da süre
+# dolarsa test başarısız olur (geçen döngü turu tamamlanma kanıtı sayılmaz).
+.on_izleme_sozunu_bekle <- function(session, sure = 5) {
+  soz <- session$userData$initial_saved_chats_preview_promise
+  testthat::expect_true(promises::is.promise(soz), info = "ön izleme sözü saklanmalı")
+  if (!promises::is.promise(soz)) return(invisible(FALSE))
+  durum <- new.env(); durum$bitti <- FALSE; durum$hata <- NULL
+  promises::then(soz, onFulfilled = function(...) durum$bitti <- TRUE,
+                 onRejected = function(e) { durum$hata <- conditionMessage(e); durum$bitti <- TRUE })
+  son <- Sys.time() + sure
+  while (!isTRUE(durum$bitti) && Sys.time() < son) later::run_now(timeoutSecs = 0.05)
+  testthat::expect_true(isTRUE(durum$bitti), info = "ön izleme sözü süre içinde tamamlanmalı")
+  testthat::expect_null(durum$hata)
+  session$flushReact()
+  invisible(isTRUE(durum$bitti))
+}
+
+# Tümünü Temizle/silme senaryoları için ortak gecikmiş ön izleme düzeneği.
+.gecikmis_on_izleme <- function(rec, kurulum) {
+  shiny::testServer(function(input, output, session) {
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startupObserversInit(input = input, session = session, values = values,
+                         render_welcome_screen = function(...) invisible(NULL),
+                         current_user_id = function() 42L, sso_state = NULL, boot_ready = NULL)
+    session$userData$.values <- values
+  }, {
+    session$flushReact()
+    session$setInputs(startup_lane_resolved = list(lane = "fast_lane", source = "stored", ts = 1))
+    session$setInputs(welcome_client_ready = list(fast_lane = TRUE, timestamp = 1))
+    testthat::expect_true(is.function(rec$resolve_preview))
+    kurulum(session)
+    rec$resolve_preview()
+    .on_izleme_sozunu_bekle(session)
+    rec$adlar <- names(shiny::isolate(session$userData$.values$saved_chats))
+    rec$silinenler <- session$userData$saved_chats_silinenler
+  })
+  rec
+}
+
+.gecikmis_on_izleme_rec <- function() {
+  rec <- new.env()
+  rec$defer_preview_fulfillment <- TRUE
+  rec$preview_result <- list("silinen" = list(title = "Silinen", message_count = 1L),
+                             "kalan" = list(title = "Kalan", message_count = 1L))
+  rec$async_worker_ready <- FALSE
+  rec
+}
+
+testthat::test_that("gecikmiş ön izleme (denetim): durum değişmediyse söyleşiler yayımlanır", {
+  testthat::skip_if_not_installed("shiny"); testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises"); testthat::skip_if_not_installed("later")
+  .startup_observers_source_once()
+  rec <- .gecikmis_on_izleme_rec()
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+  .gecikmis_on_izleme(rec, function(session) invisible(NULL))
+  testthat::expect_setequal(rec$adlar, c("silinen", "kalan"))
+})
+
+testthat::test_that("gecikmiş ön izleme doğrulanmış silinen söyleşiyi geri getirmez", {
+  testthat::skip_if_not_installed("shiny"); testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises"); testthat::skip_if_not_installed("later")
+  .startup_observers_source_once()
+  rec <- .gecikmis_on_izleme_rec()
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+  # Galeri hidrasyonu söyleşinin DB'de olmadığını doğruladı (yerel listeye dokunmadan).
+  .gecikmis_on_izleme(rec, function(session) session$userData$saved_chats_silinenler <- "silinen")
+  testthat::expect_identical(rec$adlar, "kalan")
+})
+
+testthat::test_that("oturum sahibi değişince önceki sahibin silinenler kümesi temizlenir", {
+  testthat::skip_if_not_installed("shiny"); testthat::skip_if_not_installed("shinyjs")
+  testthat::skip_if_not_installed("promises"); testthat::skip_if_not_installed("later")
+  .startup_observers_source_once()
+  if (!exists("mergen_session_owner_transition", envir = globalenv(), mode = "function")) {
+    source(file.path(resolve_repo_root_for_tests(), "R", "helpers_user_session_identity.R"),
+           encoding = "UTF-8", local = globalenv())
+  }
+  rec <- .gecikmis_on_izleme_rec()
+  stubs <- .with_startup_db_stubs(rec)
+  on.exit(stubs$restore(), add = TRUE)
+  shiny::testServer(function(input, output, session) {
+    session$userData$kimlik_sahibi <- 42L
+    values <- shiny::reactiveValues(show_welcome = TRUE, saved_chats = list())
+    startupObserversInit(input = input, session = session, values = values,
+                         render_welcome_screen = function(...) invisible(NULL),
+                         current_user_id = function() 42L, sso_state = NULL, boot_ready = NULL)
+  }, {
+    session$flushReact()
+    session$userData$saved_chats_silinenler <- c("7", "9")
+    mergen_session_owner_transition(session$userData, 42L, 43L)
+    testthat::expect_identical(session$userData$saved_chats_silinenler, character())
+  })
 })
 
 testthat::test_that("Tümünü Temizle sonrası (değer eşit olsa da) gecikmiş ön izleme silinen söyleşileri geri getirmez", {
@@ -1742,8 +1852,7 @@ testthat::test_that("Tümünü Temizle sonrası (değer eşit olsa da) gecikmiş
     # değer gönderimdeki görüntüye eşit, ama yetkili sürüm arttı.
     session$userData$saved_chats_yetkili_surum <- 1L
     rec$resolve_preview()
-    for (i in 1:5) later::run_now(timeoutSecs = 0.05)
-    session$flushReact()
+    .on_izleme_sozunu_bekle(session)
     testthat::expect_length(shiny::isolate(session$userData$.values$saved_chats), 0L)
   })
 })

@@ -172,13 +172,20 @@ testthat::test_that("geçmiş hazırlık tetiği yalnızca tek, sonlu, tam sayı
   # Doğrulayıcı güncel çalışma kopyasından taze ortama kaynaklanır (oturumda
   # önceden yüklenmiş eski tanım kullanılmaz, globalenv'e bağlama yazılmaz).
   env <- .source_startup_lane_for_test()
-  dogrula <- env$mergen_startup_history_trigger_validator(function() 2L)
+  # Değişebilen nesil sağlayıcı: doğrulayıcı nesli her çağrıda güncel okur.
+  nesil <- 2L
+  dogrula <- env$mergen_startup_history_trigger_validator(function() nesil)
   testthat::expect_true(dogrula(2))
   testthat::expect_true(dogrula(2L))
+  # Düz tek değerli liste kabul edilir; iç içe tek değer reddedilir.
   testthat::expect_true(dogrula(list(2)))
   # Kesirli değer kırpılıp eşleşmez; iç içe/çok öğeli girdi hata vermeden reddedilir.
-  for (bozuk in list(2.5, list(list(1, 2)), list(c(2, 3)), c(2, 2), NA, Inf, "2", NULL, TRUE)) {
+  for (bozuk in list(2.5, list(list(2)), list(list(1, 2)), list(c(2, 3)), c(2, 2), NA, Inf, "2", NULL, TRUE)) {
     testthat::expect_false(dogrula(bozuk), info = paste(deparse(bozuk), collapse = ""))
   }
   testthat::expect_false(dogrula(3))
+  # Nesil ilerleyince aynı doğrulayıcı eski nesli reddeder, yenisini kabul eder.
+  nesil <- 3L
+  testthat::expect_false(dogrula(2L))
+  testthat::expect_true(dogrula(3L))
 })

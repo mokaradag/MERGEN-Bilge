@@ -109,10 +109,16 @@ testthat::test_that("update_messages_after_bulk_deletion geçerli girdide deği�
   })
   testthat::expect_identical(guncelleme_cagrisi, 0L)
 
-  # 2) Silinen görsel -> TRUE
+  # 2) Silinen görsel -> TRUE. Sahte sorgu SQL Server LIKE anlamını taklit eder:
+  # `[` kaçırılmamışsa karakter kümesi sayılır ve hiçbir satır eşleşmez.
   exec_say <- 0L
+  sorgular <- character()
   testthat::local_mocked_bindings(
     dbGetQuery = function(conn, query, params = NULL) {
+      sorgular <<- c(sorgular, query)
+      if (!grepl("LIKE '\\[GÖRSEL:%' ESCAPE '\\'", query, fixed = TRUE)) {
+        return(data.frame(MessageID = integer(), MessageContent = character(), stringsAsFactors = FALSE))
+      }
       data.frame(MessageID = 11L, MessageContent = "[GÖRSEL:/yok/silindi.png] açıklama",
                  stringsAsFactors = FALSE)
     },
@@ -121,6 +127,31 @@ testthat::test_that("update_messages_after_bulk_deletion geçerli girdide deği�
   )
   testthat::expect_true(env$update_messages_after_bulk_deletion("42"))
   testthat::expect_identical(exec_say, 1L)
+  testthat::expect_length(sorgular, 1L)
+
+  # 2b) Güncelleme sıfır satır etkilediyse değişim bildirilmez.
+  testthat::local_mocked_bindings(
+    dbGetQuery = function(conn, query, params = NULL) {
+      data.frame(MessageID = 11L, MessageContent = "[GÖRSEL:/yok/silindi.png] açıklama",
+                 stringsAsFactors = FALSE)
+    },
+    dbExecute = function(conn, query, params = NULL) 0L,
+    .package = "DBI"
+  )
+  testthat::expect_false(env$update_messages_after_bulk_deletion("42"))
+
+  # 2c) İlk güncelleme bir satır etkiledi, ikincisi sıfır: önceki başarı korunur.
+  sira <- 0L
+  testthat::local_mocked_bindings(
+    dbGetQuery = function(conn, query, params = NULL) {
+      data.frame(MessageID = c(11L, 12L),
+                 MessageContent = c("[GÖRSEL:/yok/a.png] a", "[GÖRSEL:/yok/b.png] b"),
+                 stringsAsFactors = FALSE)
+    },
+    dbExecute = function(conn, query, params = NULL) { sira <<- sira + 1L; if (sira == 1L) 1L else 0L },
+    .package = "DBI"
+  )
+  testthat::expect_true(env$update_messages_after_bulk_deletion("42"))
 
   # 3) Kısmi güncelleme (ilk mesaj güncellenir, ikinci DB hatası verir) -> TRUE
   exec_say <- 0L
@@ -142,6 +173,21 @@ testthat::test_that("update_messages_after_bulk_deletion geçerli girdide deği�
   testthat::expect_true(env$update_messages_after_bulk_deletion(42L))
   # İkinci satır da sırasıyla denendi (ilk başarıda durulmadı).
   testthat::expect_identical(denenen, c(11L, 12L))
+
+  # 3b) Sıfır satırlı güncellemenin ardından hata: değişim bildirilmez.
+  testthat::local_mocked_bindings(
+    dbGetQuery = function(conn, query, params = NULL) {
+      data.frame(MessageID = c(11L, 12L),
+                 MessageContent = c("[GÖRSEL:/yok/a.png] a", "[GÖRSEL:/yok/b.png] b"),
+                 stringsAsFactors = FALSE)
+    },
+    dbExecute = function(conn, query, params = NULL) {
+      if (identical(as.integer(params[[length(params)]]), 12L)) stop("geçici DB hatası")
+      0L
+    },
+    .package = "DBI"
+  )
+  testthat::expect_false(env$update_messages_after_bulk_deletion(42L))
 
   # 4) İlk sorgu DB hatası -> FALSE
   env$get_connection <- function() stop("DB erişilemez")

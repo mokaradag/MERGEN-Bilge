@@ -516,7 +516,9 @@ testthat::test_that("açılış katmanı kısmi hazır-olmayı dürüst etiketle
   node <- Sys.which("node")
   testthat::skip_if(!nzchar(node), "Node kullanılamıyor")
   script <- file.path(resolve_repo_root_for_tests(), "tests", "scripts", "app_loading_readiness_regressions.js")
-  out <- suppressWarnings(system2(node, shQuote(script), stdout = TRUE, stderr = TRUE))
+  # Devralınan NODE_OPTIONS süreci askıda bırakmasın; sonlu süre aşımı testi düşürür.
+  out <- withr::with_envvar(c(NODE_OPTIONS = NA), suppressWarnings(
+    system2(node, shQuote(script), stdout = TRUE, stderr = TRUE, timeout = 120)))
   durum <- attr(out, "status")
   if (is.null(durum)) durum <- 0L
   testthat::expect_identical(as.integer(durum), 0L, info = paste(out, collapse = "\n"))

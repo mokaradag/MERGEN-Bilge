@@ -352,3 +352,44 @@ test_that("log maskelemesi bileşik sır anahtarlarını, süslü değerleri, Be
   )
   expect_false(any(grepl("Bordro|Gizli|sample", c(cikti, mesajlar))))
 })
+
+test_that("süslü değer içteki `{` karakteriyle de bütünüyle maskelenir (kapalı, kaçışlı ve kapanmamış)", {
+  gizli <- paste0("sent", "etik", "Gizli")
+  cikti <- redacted_condition_message(simpleError(paste0(
+    "DSN={Ozel{", gizli, "}Kuyruk};UID={kul{1};auth_token={tok{", gizli, "}")))
+  expect_identical(cikti, "DSN={<redacted>};UID={<redacted>};auth_token={<redacted>}")
+  expect_identical(redacted_condition_message(simpleError(paste0("authToken={sol{", gizli, "}"))),
+                   "authToken={<redacted>}")
+  # Kaçışlı `}}` değer içinde kalır; kapanmamış değer satır sonuna dek maskelenir.
+  expect_identical(redacted_condition_message(simpleError(paste0("Pwd={a{b}}", gizli, "};UID=x\nsonraki satır"))),
+                   "Pwd={<redacted>};UID=<redacted>\nsonraki satır")
+  expect_identical(redacted_condition_message(simpleError(paste0("auth_token={ab{", gizli, "\nikinci satır"))),
+                   "auth_token={<redacted>}\nikinci satır")
+  expect_false(grepl(gizli, cikti, fixed = TRUE))
+})
+
+test_that("Authorization başlığı boş kimlik bilgisinde sonraki log satırını yutmaz", {
+  expect_identical(redact_connection_identifiers("Authorization: Bearer\nNext-Line: ok"),
+                   "Authorization: <redacted>\nNext-Line: ok")
+  expect_identical(redact_connection_identifiers("Authorization:\nNext-Line: ok"), "Authorization:\nNext-Line: ok")
+  tok <- paste0("abc", "~def")
+  expect_identical(redact_connection_identifiers(paste0("Authorization: Bearer ", tok, "\nNext: ok")),
+                   "Authorization: Bearer <redacted>\nNext: ok")
+})
+
+test_that("tek alanlı bağlantı tanımlayıcısı boşluklu değerde de bütünüyle maskelenir", {
+  expect_identical(redacted_condition_message(simpleError("Database=Ozel Rapor Veri")), "Database=<redacted>")
+  expect_identical(redacted_condition_message(simpleError("Server=corp sql 01")), "Server=<redacted>")
+  expect_identical(redacted_condition_message(simpleError("hata: UID=ali veli")), "hata: UID=<redacted>")
+  # Anahtarsız düzyazı ve iki noktalı tanı bağlamı korunur.
+  expect_identical(redacted_condition_message(simpleError("Database: bağlantı başarısız")),
+                   "Database: bağlantı başarısız")
+})
+
+test_that("maskelenmiş DB uyarısı warn = 2 altında da fırlatmaz ve ham kimliği yazmaz", {
+  eski <- options(warn = 2); on.exit(options(eski), add = TRUE)
+  hata <- simpleError("Login failed; DSN=GizliKaynak;UID=gizli_kullanici")
+  yazilan <- utils::capture.output(expect_no_error(mergen_db_error_warn("[TEST] okuma", hata)), type = "message")
+  expect_true(any(grepl("[TEST] okuma", yazilan, fixed = TRUE)))
+  expect_false(any(grepl("GizliKaynak|gizli_kullanici", yazilan)))
+})

@@ -21,15 +21,52 @@ history_ids_by_activity <- function(chat_ids, chats) {
 }
 
 # Açık geçersizleştirme (önbellekten düşürme ya da TTL yeniden doğrulaması)
-# aynı ısıtma zincirinde yeniden okumaya izin verir: deneme kimliği (zincir
-# damgası) ve plan üyeliği düşer. Damgası değişmeyen BAŞARISIZ okuma bu yoldan
-# geçmez; aynı damgada döngüye girmez.
+# aynı ısıtma zincirinde yeniden okumaya izin verir: yalnızca deneme damgası
+# (zincir) düşer. Planlı kuyruk korunur: henüz denenmemiş kimliği kendi partisi
+# zaten okur (çift okuma olmaz); denenmiş kimlik kuyrukta değildir ve damgası
+# düşünce yeniden okunur. Damgası değişmeyen BAŞARISIZ okuma bu yoldan geçmez;
+# aynı damgada döngüye girmez.
 history_allow_reread <- function(isitma, chat_ids) {
   ids <- as.character(chat_ids %||% character())
   if (!is.environment(isitma) || !length(ids)) return(invisible(NULL))
   isitma$zincir <- isitma$zincir[setdiff(names(isitma$zincir), ids)]
-  isitma$planli <- setdiff(isitma$planli, ids)
   invisible(NULL)
+}
+
+# Isıtma zinciri boyunca uygun kimlik havuzu, liste anlık görüntüsü ve etkin
+# aralık değişmedikçe bir kez hesaplanır: binlerce söyleşide her parti tüm
+# listeyi yeniden süzmez. Aralık yoksa sayfanın (önbellekli) aralık kimlikleri
+# kullanılır. aralik_suz: modülün tarih aralığı süzgeci (liste, aralık) -> kimlikler.
+history_pool_memo <- function(etkin_aralik, aralik_kimlikleri, aralik_suz) {
+  bellek <- new.env(parent = emptyenv())
+  function(guncel) {
+    if (is.null(etkin_aralik)) return(aralik_kimlikleri())
+    if (!isTRUE(bellek$hazir) || !identical(bellek$liste, guncel)) {
+      bellek$liste <- guncel
+      bellek$ids <- aralik_suz(guncel, etkin_aralik)
+      bellek$hazir <- TRUE
+    }
+    bellek$ids
+  }
+}
+
+# Söyleşi başına başlık sürümü: önceki ve yeni listede başlığı değişen her
+# söyleşinin sayacı artar (önbellek kaydı olmasa da). Arka plan okuması gönderim
+# anındaki sürümü saklar; sürüm değiştiyse ad özgün değerine dönse de yerel sayılır.
+history_title_revisions <- function(onceki, yeni, surumler = integer()) {
+  surumler <- surumler %||% integer()
+  ortak <- intersect(names(onceki %||% list()), names(yeni %||% list()))
+  if (!length(ortak) || identical(onceki, yeni)) return(surumler)
+  baslik <- function(liste) vapply(ortak, function(id) {
+    b <- liste[[id]]$title
+    if (is.character(b) && length(b) == 1L && !is.na(b)) b else ""
+  }, character(1), USE.NAMES = FALSE)
+  degisen <- ortak[baslik(onceki) != baslik(yeni)]
+  if (!length(degisen)) return(surumler)
+  eski <- unname(surumler[degisen])
+  eski[is.na(eski)] <- 0L
+  surumler[degisen] <- as.integer(eski + 1L)
+  surumler
 }
 
 # Önbellekteki satırların liste başlığı okumadan sonra yerelde değiştiyse

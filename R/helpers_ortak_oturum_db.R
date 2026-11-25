@@ -59,6 +59,9 @@ ortak_db_reset_availability_cache <- function() {
   .oo_db_state$checked_at <- NULL
   .oo_db_state$persona_col <- NULL
   .oo_db_state$table_columns <- NULL
+  # Prob hatası durumu da sıfırlanır: sıfırlama sonrası geri çekilme beklenmez.
+  .oo_db_state$probe_hatasi <- NULL
+  .oo_db_state$probe_hata_zamani <- NULL
   invisible(NULL)
 }
 

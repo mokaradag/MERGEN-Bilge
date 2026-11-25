@@ -293,3 +293,114 @@ testthat::test_that("etkin söyleşi silinince süren istek oturumdaki durdurma 
     testthat::expect_null(shiny::isolate(session$userData$.values$current_chat_id))
   })
 })
+
+testthat::test_that("sıfırlamanın gecikmeli karşılama adımları söyleşi açıldıktan sonra çalışmaz", {
+  kayit <- new.env()
+  env <- .silme_ortami(kayit)
+  kayit$db_listesi <- list("2" = list(title = "İki"))
+  bekleyen <- list()
+  testthat::local_mocked_bindings(
+    delay = function(ms, expr) {
+      bekleyen[[length(bekleyen) + 1L]] <<- list(ifade = substitute(expr), ortam = parent.frame())
+      invisible(NULL)
+    },
+    .package = "shinyjs"
+  )
+  env$createWelcomeScreen <- function(...) shiny::div()
+  env$insertUI <- function(...) kayit$ekleme <- (kayit$ekleme %||% 0L) + 1L
+  env$removeUI <- function(...) invisible(NULL)
+  shiny::testServer(function(input, output, session) {
+    .silme_sunucusu(env, kayit, list("1" = list(title = "Bir"), "2" = list(title = "İki")))(input, output, session)
+    session$userData$.values$current_chat_id <- "1"
+  }, {
+    session$flushReact()
+    session$userData$.sil("1")
+    session$flushReact()
+    testthat::expect_true(is.function(session$userData$mergen_etkin_sohbeti_sifirla))
+    testthat::expect_length(bekleyen, 1L)
+    # Gecikme dolmadan kullanıcı bir söyleşi açar: karşılama artık etkin değil.
+    session$userData$.values$show_welcome <- FALSE
+    shiny::isolate(eval(bekleyen[[1]]$ifade, envir = bekleyen[[1]]$ortam))
+    testthat::expect_null(kayit$ekleme)
+    # Karşılama hâlâ etkinse aynı adım işaretlemeyi ekler ve sonraki adımı kurar.
+    session$userData$.values$show_welcome <- TRUE
+    shiny::isolate(eval(bekleyen[[1]]$ifade, envir = bekleyen[[1]]$ortam))
+    testthat::expect_identical(kayit$ekleme, 1L)
+    testthat::expect_length(bekleyen, 2L)
+    # Yeni bir sıfırlama başladıysa eski sıfırlamanın adımı yine çalışmaz.
+    session$userData$mergen_etkin_sohbeti_sifirla()
+    eski_sayi <- kayit$ekleme
+    shiny::isolate(eval(bekleyen[[1]]$ifade, envir = bekleyen[[1]]$ortam))
+    testthat::expect_identical(kayit$ekleme, eski_sayi)
+  })
+})
+
+testthat::test_that("Tümünü Temizle etkin söyleşiyi tek silmeyle aynı sıfırlama yoluyla bırakır", {
+  kayit <- new.env()
+  env <- .silme_ortami(kayit)
+  env$clear_all_chats_from_db <- function(user_id) invisible(2L)
+  testthat::local_mocked_bindings(delay = function(ms, expr) invisible(NULL), .package = "shinyjs")
+  temizle <- NULL
+  shiny::testServer(function(input, output, session) {
+    values <- shiny::reactiveValues(saved_chats = list("1" = list(title = "Bir")), current_chat_id = "1",
+                                    messages = list(list(id = "m1")), show_welcome = FALSE)
+    temizle <<- shiny::reactiveVal(0L)
+    env$savedChatsObserversInit(
+      input = input, output = output, session = session, values = values, settings_data = list(),
+      saved_chats_data = list(load_chat_id = shiny::reactiveVal(NULL), delete_chat_id = shiny::reactiveVal(NULL),
+                              clear_all_chats_trigger = temizle, refresh = function() invisible(NULL)),
+      current_user_id = 7L, load_chat_in_progress = shiny::reactiveVal(FALSE)
+    )
+    session$userData$.values <- values
+    session$userData$mergen_etkin_istegi_durdur <- function() kayit$durdur <- (kayit$durdur %||% 0L) + 1L
+  }, {
+    session$flushReact()
+    temizle(1L)
+    session$flushReact()
+    testthat::expect_identical(kayit$durdur, 1L)
+    testthat::expect_null(shiny::isolate(session$userData$.values$current_chat_id))
+    testthat::expect_true(shiny::isolate(session$userData$.values$show_welcome))
+    testthat::expect_length(shiny::isolate(session$userData$.values$messages), 0L)
+  })
+})
+
+testthat::test_that("beğeni durumu okunamasa da kayıtlı söyleşi açılır", {
+  kayit <- new.env()
+  env <- .silme_ortami(kayit)
+  env$load_feedback_from_db <- function(user_id) stop("geri bildirim tablosu okunamadı (test)")
+  env$render_message_bubble_ui <- function(...) shiny::div()
+  testthat::local_mocked_bindings(delay = function(ms, expr) invisible(NULL), runjs = function(...) invisible(NULL),
+                                  .package = "shinyjs")
+  baslangic <- list("5" = list(title = "Beş", message_count = 2L,
+                               messages = list(list(id = "1", type = "user", content = "soru"),
+                                               list(id = "2", type = "ai", content = "yanıt"))))
+  suppressWarnings(shiny::testServer(.yukleme_sunucusu(env, kayit, baslangic, etkin = 9L), {
+    session$flushReact()
+    session$userData$.yukle("5")
+    session$flushReact()
+    testthat::expect_identical(shiny::isolate(session$userData$.values$current_chat_id), "5")
+    testthat::expect_length(shiny::isolate(session$userData$.values$messages), 2L)
+    testthat::expect_identical(shiny::isolate(session$userData$.values$liked_messages), character(0))
+  }))
+})
+
+testthat::test_that("doğrulanmamış silmede yeniden okunan özet liste hedefin önbellek transkriptini ezmez", {
+  kayit <- new.env()
+  kayit$etkilenen <- 0L
+  mesajlar <- list(list(id = "1", db_id = 1L, type = "user", content = "önbellek"),
+                   list(id = "2", db_id = 2L, type = "ai", content = "yanıt"))
+  kayit$db_listesi <- list("1" = list(title = "Bir", message_count = 2L), "2" = list(title = "İki DB"))
+  env <- .silme_ortami(kayit)
+  baslangic <- list("1" = list(title = "Bir", message_count = 2L, messages = mesajlar), "2" = list(title = "İki"))
+  shiny::testServer(.silme_sunucusu(env, kayit, baslangic), {
+    session$flushReact()
+    session$userData$.sil("1")
+    session$flushReact()
+    liste <- shiny::isolate(session$userData$.values$saved_chats)
+    # Hedef hâlâ listede: önbellek transkripti korunur; diğer kayıtlar yetkili özetten gelir.
+    testthat::expect_identical(liste[["1"]]$messages, mesajlar)
+    testthat::expect_identical(liste[["2"]]$title, "İki DB")
+    testthat::expect_identical(session$userData$saved_chats_yetkili_surum, 1L)
+    testthat::expect_true(any(grepl("doğrulanamadı", kayit$toast, fixed = TRUE)))
+  })
+})
