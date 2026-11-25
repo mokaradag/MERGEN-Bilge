@@ -35,11 +35,11 @@ chatInputObserversInit <- function(input, session, values, settings_data,
     uid
   }
 
-  observeEvent(input$send_stop_btn, {
-    session$sendCustomMessage("stopTTSPlayback", list(reason = "stop_button"))
-
+  # Etkin isteği durdurur (Durdur düğmesi ve etkin söyleşi silindiğinde aynı yol):
+  # istek kimliği döner, stop_generation gözlemcisi gönderme durumunu bırakır.
+  etkin_istegi_durdur <- function() {
     if (isTRUE(values$is_sending) || isTRUE(values$typing)) {
-      cat("[STOP_BUTTON] Kullanıcı durdurma istedi\n")
+      cat("[STOP_BUTTON] Etkin istek durduruluyor\n")
 
       # Faz 6 (§5.10): İPTAL İŞÇİYE ULAŞMALIDIR. Geri çağrıyı atmak (aşağıdaki
       # active_request_id değişimi) işçiyi ÇALIŞMAYA DEVAM ETTİRİR; DB
@@ -70,26 +70,145 @@ chatInputObserversInit <- function(input, session, values, settings_data,
       stop_generation(TRUE)
       active_request_id(paste0("cancelled_", as.numeric(Sys.time())))
     }
+    invisible(NULL)
+  }
+  session$userData$mergen_etkin_istegi_durdur <- etkin_istegi_durdur
+
+  observeEvent(input$send_stop_btn, {
+    session$sendCustomMessage("stopTTSPlayback", list(reason = "stop_button"))
+    etkin_istegi_durdur()
   }, ignoreInit = TRUE)
 
-  observeEvent(input$send_prompt_from_js, {
-    req(input$send_prompt_from_js)
+  # İstemcinin iyimser (bekleyen) balonu yalnızca sunumdur; kabul/ret kararı
+  # burada verilir. Sonuç, işleyicinin HER çıkış yolunda (erken ret, hata,
+  # normal dönüş) tam bir kez bildirilir. Kabul ölçütü bu çağrının kullanıcı
+  # mesajını gerçekten eklemesidir: mesaj eklendikten sonraki bir hata "ret"
+  # sayılmaz (aksi halde istemci metni geri yükler ve yeniden gönderim mesajı
+  # çoğaltır). Kabulde eklenen mesajın kimliği döner; istemci bekleyen balonu
+  # metinle değil bu kimlikle eşler.
+  # Aynı istemci kimliğiyle yeniden teslim edilen istem ikinci kez işlenmez;
+  # ilk sonucu yeniden bildirilir. Oturum kapsamlı ve sınırlıdır (son 32 kimlik).
+  islenen_istemler <- list()
+  # Aynı oturumda sahip değişince (ya da kimlik/yetki düşünce) önceki sahibin
+  # sonuçlanmamış istemleri istemcide metni geri yüklenmeden düşer; yeni
+  # sahibin girdisine eski sahibin istemi taşınmaz. Kimlik önbelleği sıfırlanır.
+  # Sıfırlama bildirimi yeni kimlik neslini taşır; istemci sonraki istemlere
+  # bu nesli ekler. Nesli eski olan istem (önceki sahip altında yazılıp
+  # sıfırlamadan önce yola çıkmış) send_message'a ulaşmadan reddedilir.
+  kimlik_nesli <- function() {
+    n <- suppressWarnings(as.integer(tryCatch(session$userData$kimlik_nesli, error = function(e) NULL) %||% 0L)[1])
+    if (is.na(n)) 0L else n
+  }
+  if (exists("mergen_session_on_owner_change", mode = "function", inherits = TRUE)) {
+    mergen_session_on_owner_change(session, function(neden) {
+      islenen_istemler <<- list()
+      try(session$sendCustomMessage("mergenBekleyenIstemSifirla", list(neden = neden, nesil = kimlik_nesli())), silent = TRUE)
+    })
+  }
+  istemi_isle <- function(istem) {
+    # Nesne (adlandırılmış liste) olmayan yük alan erişiminde hata verip oturumu
+    # kapatabilirdi; reddedilir. Boş metinli nesne (yalnız dosya istemi) geçerlidir.
+    if (!is.list(istem) || is.null(names(istem))) return(invisible(NULL))
+    # Alanlar TAM adla okunur: `$` kısmi eşleşmesi (ör. client_id_hint) başka
+    # bir istemin önbellekteki sonucunu yinelemesin. Yalnız tek, eksiksiz metin
+    # kimlik sayılır.
+    istem_kimligi <- istem[["client_id", exact = TRUE]]
+    if (!is.character(istem_kimligi) || length(istem_kimligi) != 1L || is.na(istem_kimligi) ||
+        !grepl("^[A-Za-z0-9_-]{1,64}$", istem_kimligi)) istem_kimligi <- ""
+
+    # Önceki sahibin nesliyle yazılmış istem yeni sahip adına işlenmez ve
+    # sonuç önbelleğine HİÇ dokunmaz: nesil, önbellek yinelemesinden ÖNCE
+    # denetlenir. Eski istemin reddi güncel neslin önbelleğine yazılmaz (aynı
+    # kimliği yeniden kullanan güncel istem bu redle yanıtlanmaz) ve güncel
+    # neslin önbellekteki kabulü eski isteme yinelenmez. Nesil yalnızca istemci
+    # bildirdiyse denetlenir: bekleyen istem modülü yüklenemeyen istemci kalıcı
+    # olarak gönderemez hâle gelmez.
+    ham_nesil <- istem[["sahip_nesli", exact = TRUE]]
+    if (!is.null(ham_nesil)) {
+      istem_nesli <- tryCatch(suppressWarnings(as.integer(ham_nesil)[1]), error = function(e) NA_integer_)
+      if (length(istem_nesli) != 1L || is.na(istem_nesli)) istem_nesli <- 0L
+      if (istem_nesli < kimlik_nesli()) {
+        if (nzchar(istem_kimligi)) {
+          try(session$sendCustomMessage("mergenIstemSonucu", list(client_id = istem_kimligi, durum = "ret")),
+              silent = TRUE)
+        }
+        return(invisible(NULL))
+      }
+    }
+
+    if (nzchar(istem_kimligi) && istem_kimligi %in% names(islenen_istemler)) {
+      try(session$sendCustomMessage("mergenIstemSonucu", islenen_istemler[[istem_kimligi]]), silent = TRUE)
+      return(invisible(NULL))
+    }
+    # Kaydı başarısız mesajın kimliği character(0)/NA olabilir: "" sayılır ki
+    # iki eksik kimlik eşleşip eklenen mesaj "ret" sanılmasın; konuma düşülür.
+    kimlik <- function(m) {
+      id <- as.character(m$id %||% "")[1]
+      if (is.na(id)) "" else id
+    }
+    onceki <- isolate(values$messages)
+    onceki_kimlikler <- vapply(onceki, kimlik, character(1))
+    # ERKEN KABUL: send_message kullanıcı mesajını ekleyip durdurma kipine geçince
+    # bu kanca çağrılır ve "kabul" HEMEN iletilir (özel mesaj websocket'e flush
+    # beklemeden yazılır). Böylece uzun süren eşzamanlı analiz istemci zaman
+    # aşımını tetikleyip kayıtlı istemi girdiye geri yüklemez. Kabul kesindir;
+    # çıkıştaki bildirim yinelenmez.
+    erken_kabul <- NULL
+    if (nzchar(istem_kimligi)) {
+      session$userData$mergen_istem_kabul_bildir <- function(mesaj) {
+        if (!is.null(erken_kabul)) return(invisible(NULL))
+        sonuc <- list(client_id = istem_kimligi, durum = "kabul")
+        mid <- if (is.list(mesaj)) kimlik(mesaj) else ""
+        if (nzchar(mid)) sonuc$mesaj_id <- mid
+        erken_kabul <<- sonuc
+        try(session$sendCustomMessage("mergenIstemSonucu", sonuc), silent = TRUE)
+        invisible(NULL)
+      }
+    }
+    on.exit(if (nzchar(istem_kimligi)) {
+      session$userData$mergen_istem_kabul_bildir <- NULL
+      if (!is.null(erken_kabul)) {
+        islenen_istemler[[istem_kimligi]] <<- erken_kabul
+        if (length(islenen_istemler) > 32L) islenen_istemler <<- utils::tail(islenen_istemler, 32L)
+        return(invisible(NULL))
+      }
+      simdiki <- isolate(values$messages)
+      # Kimlik tabanlı tespit; kimliksiz mesajlarda (eski/sahte yollar) konuma düşülür.
+      # Kimlikler bir kez çıkarılır ve tek vektörel üyelik testi yapılır: uzun
+      # söyleşide mesaj başına önceki kimlik kümesinin yeniden taranması önlenir.
+      simdiki_kimlikler <- vapply(simdiki, kimlik, character(1))
+      kullanici <- vapply(simdiki, function(m) identical(m$type, "user"), logical(1))
+      eklenen <- simdiki[kullanici & nzchar(simdiki_kimlikler) & !(simdiki_kimlikler %in% onceki_kimlikler)]
+      if (!length(eklenen) && length(simdiki) > length(onceki)) {
+        eklenen <- Filter(function(m) identical(m$type, "user") && !nzchar(kimlik(m)),
+                          simdiki[seq.int(length(onceki) + 1L, length(simdiki))])
+      }
+      sonuc <- list(client_id = istem_kimligi, durum = if (length(eklenen)) "kabul" else "ret")
+      son_kimlik <- if (length(eklenen)) kimlik(eklenen[[length(eklenen)]]) else ""
+      if (nzchar(son_kimlik)) sonuc$mesaj_id <- son_kimlik
+      islenen_istemler[[istem_kimligi]] <<- sonuc
+      if (length(islenen_istemler) > 32L) islenen_istemler <<- utils::tail(islenen_istemler, 32L)
+      try(session$sendCustomMessage("mergenIstemSonucu", sonuc), silent = TRUE)
+    }, add = TRUE)
 
     if (!check_rate_limit(resolve_chat_input_user_id())) {
       showToast(session, "Çok fazla istek gönderdiniz. Lütfen biraz bekleyin.", "warning")
-      return()
+      return(invisible(NULL))
     }
 
     global_check <- check_global_rate_limit()
     if (!global_check$allowed) {
       showToast(session, global_check$message, "warning")
-      return()
+      return(invisible(NULL))
     }
 
-    user_text <- trimws(input$send_prompt_from_js$text)
-    if (nchar(user_text) > 20000) {
+    # Sınır kırpılmamış ham metne uygulanır: boşlukla şişirilmiş girdi sınırı
+    # aşamaz; send_message aynı doğrulanmış tek değeri alır.
+    ham_metin <- as.character(istem[["text", exact = TRUE]] %||% "")[1]
+    if (is.na(ham_metin)) ham_metin <- ""
+    if (nchar(ham_metin) > 20000) {
       showToast(session, "Mesaj çok uzun. Lütfen 20.000 karakterle sınırlayın.", "warning")
-      return()
+      return(invisible(NULL))
     }
 
     # Kullanıcı gerçek bir prompt gönderdiğinde araç bağlamlı arka plan
@@ -105,7 +224,13 @@ chatInputObserversInit <- function(input, session, values, settings_data,
       error = function(e) invisible(NULL)
     )
 
-    send_message(input$send_prompt_from_js$text)
+    send_message(ham_metin)
+    invisible(NULL)
+  }
+
+  observeEvent(input$send_prompt_from_js, {
+    req(input$send_prompt_from_js)
+    istemi_isle(input$send_prompt_from_js)
   })
 
   observeEvent(stop_generation(), {

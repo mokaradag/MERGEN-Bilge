@@ -82,7 +82,21 @@ unicode_to_latin1_byte <- function(codepoint) {
 
   # Ucuz ön denetim: mojibake öncü baytı (0xC2-0xF4) yalnızca U+00C2-U+00F4
   # (Â..ô) karakterlerinden gelir; metinde hiç yoksa döngüye girilmez.
-  if (!any(codepoints >= 0xC2L & codepoints <= 0xF4L)) {
+  ondeki <- codepoints >= 0xC2L & codepoints <= 0xF4L
+  if (!any(ondeki)) {
+    return(text)
+  }
+  # Çözülecek her dizi, öncü karakterin HEMEN ardından devam baytına (0x80-0xBF)
+  # eşlenen bir karakter gerektirir. Bu yalnızca aday konumlarda aynı eşleyiciyle
+  # denetlenir; olağan Türkçe metin ("Çalışma", "Öğretmen", "üçüncü") devam
+  # baytı üretmediği için karakter karakter döngüye girmeden aynen döner.
+  n <- length(codepoints)
+  aday <- if (n < 2L) integer(0) else which(ondeki[-n] & codepoints[-1L] >= 0x80L) + 1L
+  if (!length(aday)) {
+    return(text)
+  }
+  devam <- vapply(codepoints[aday], byte_mapper, integer(1), USE.NAMES = FALSE)
+  if (!any(devam >= 0x80L & devam <= 0xBFL, na.rm = TRUE)) {
     return(text)
   }
 

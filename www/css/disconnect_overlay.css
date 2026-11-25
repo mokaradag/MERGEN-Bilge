@@ -13,9 +13,13 @@
   align-items: center;
   text-align: center;
   color: white;
+  /* Arka plan tıklamayı yutmaz: kopma sonrası girdiye geri yüklenen istem
+     seçilip kopyalanabilir; yalnızca mesaj kutusu etkileşimlidir. */
+  pointer-events: none;
 }
 
 .disconnect-message {
+  pointer-events: auto;
   padding: 40px;
   border-radius: 16px;
   background: var(--background-light);

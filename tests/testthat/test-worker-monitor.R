@@ -197,3 +197,22 @@ test_that("bağımsız iptal ve geri alma işleri Future kapasitesini tüketmiş
   expect_identical(info$active_jobs, before$active_jobs)
   expect_identical(info$cleanup_pool$active_jobs, before$cleanup_pool$active_jobs + 1L)
 })
+
+# start_check yalnızca future şeridinde desteklenir: callr (iptal edilebilir)
+# şeridinde sessizce yok sayılmak yerine açıkça reddedilir; hiçbir iş kaydedilmez.
+test_that("start_check cancel_check ile birlikte verilirse açıkça reddedilir", {
+  env <- new.env(parent = globalenv())
+  sys.source(file.path(resolve_repo_root_for_tests(), "R", "helpers_worker_monitor.R"), envir = env,
+             keep.source = FALSE)
+  once <- get_worker_monitor_info()$active_jobs
+  # Kayıt yolu casusla izlenir: reddedilen çağrı hiçbir işi kaydetmeye ulaşmaz.
+  kayit_cagrisi <- 0L
+  env$register_worker_task <- function(...) { kayit_cagrisi <<- kayit_cagrisi + 1L; invisible(NULL) }
+  expect_error(
+    env$tracked_future_promise(function() 1, task_type = "unit", cancel_check = function() FALSE,
+                               start_check = function() TRUE),
+    "start_check"
+  )
+  expect_identical(kayit_cagrisi, 0L)
+  expect_identical(get_worker_monitor_info()$active_jobs, once)
+})

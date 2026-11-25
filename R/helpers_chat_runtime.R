@@ -92,10 +92,15 @@ chat_add_message <- function(session, values, settings_data, output,
         )
       }
 		new_db_id <- save_message_safely(values$current_chat_id, msg_to_persist, current_user_id)
-		new_message$db_id <- new_db_id
-		new_message$id <- as.character(new_db_id)
+		# Kayıt başarısızsa (NULL/NA) yerel kimlik korunur: boş kimlik balon
+		# çizimini bozuyor ve istemci kabul edilen istemi eşleyemiyordu.
+		kayit_kimligi <- suppressWarnings(as.character(new_db_id)[1])
+		if (length(new_db_id) == 1L && !is.na(kayit_kimligi) && nzchar(kayit_kimligi)) {
+		  new_message$db_id <- new_db_id
+		  new_message$id <- kayit_kimligi
+		}
 
-		if (!is.null(new_message$reasoning_content) &&
+		if (!is.null(new_message$db_id) && !is.null(new_message$reasoning_content) &&
 			exists("update_message_reasoning_content", mode = "function", inherits = TRUE)) {
 		  try(update_message_reasoning_content(new_db_id, new_message$reasoning_content), silent = TRUE)
 		}
@@ -110,8 +115,8 @@ chat_add_message <- function(session, values, settings_data, output,
     chat_store_message_in_saved_chats(values, new_message)
   }
 
-  is_last_user_msg <- (new_message$type == "user" && length(values$messages) > 0 &&
-                         tail(values$messages, 1)[[1]]$id == new_message$id)
+  is_last_user_msg <- (identical(new_message$type, "user") && length(values$messages) > 0 &&
+                         identical(as.character(tail(values$messages, 1)[[1]]$id), as.character(new_message$id)))
 
   selected_char_id <- normalize_character_id(isolate(settings_data$selected_character))
   character_data <- get_character_record(selected_char_id)
@@ -174,11 +179,16 @@ chat_store_message_in_saved_chats <- function(values, message) {
 
   entry <- saved_chats_copy[[chat_key]]
   if (is.null(entry)) {
+    # Söyleşi bu oturumda yerel listeye ilk kez mesajla girer: yerel oluşturma
+    # ANI (uygulama saati, saniye) kaynak kanıtı olarak saklanır ve hidrasyondan
+    # sonra da korunur. Süren tam liste okuması bu andan SONRA başladıysa
+    # söyleşiyi içermesi gerekirdi; önce başladıysa listede olmaması silme kanıtı değildir.
     entry <- list(
       title = NULL,
       timestamp = Sys.time(),
       messages = list(),
-      message_count = 0L
+      message_count = 0L,
+      yerel_olusturuldu = as.numeric(Sys.time())
     )
   }
 
@@ -187,8 +197,29 @@ chat_store_message_in_saved_chats <- function(values, message) {
     existing_messages <- list()
   }
 
+  # Aynı yerel kimlikli kayıt (ör. ilk kaydı başarısız olup SSE yeniden
+  # denemesinde kaydedilen istem) yerinde güncellenir; ikinci kopya eklenmez.
+  mesaj_kimligi <- suppressWarnings(as.character(message$id %||% "")[1])
+  mevcut_sira <- if (!is.na(mesaj_kimligi) && nzchar(mesaj_kimligi) && length(existing_messages)) {
+    which(vapply(existing_messages, function(m) {
+      identical(suppressWarnings(as.character(m$id %||% "")[1]), mesaj_kimligi)
+    }, logical(1)))
+  } else integer()
+  if (length(mevcut_sira)) {
+    existing_messages[[mevcut_sira[1]]] <- message
+    entry$messages <- existing_messages
+    saved_chats_copy[[chat_key]] <- entry
+    values$saved_chats <- saved_chats_copy
+    return(invisible(NULL))
+  }
+
+  # Önbellek transkripti eksikse (ör. silme sonrası özet liste) sayı uzunluğa
+  # indirgenmez; aksi halde yeniden açılışta eksik transkript tam sanılırdı.
+  onceki_sayi <- suppressWarnings(as.integer(entry$message_count %||% 0L)[1])
+  if (is.na(onceki_sayi)) onceki_sayi <- 0L
+  eksik_onbellek <- onceki_sayi > length(existing_messages)
   entry$messages <- append(existing_messages, list(message))
-  entry$message_count <- length(entry$messages)
+  entry$message_count <- if (eksik_onbellek) onceki_sayi + 1L else length(entry$messages)
   entry$last_message_timestamp <- Sys.time()
 
   if (is.null(entry$timestamp) || is.na(entry$timestamp)) {

@@ -133,13 +133,65 @@ mergen_generated_image_card_html <- function(message_id, img_src, description = 
 # böylece tekrarlı render'larda handler birikmesi önlenir. Kayıtlı filtre dosyayı
 # her istekte taze okuduğu için dosya içeriği değişse bile doğru bayt sunulur.
 # ------------------------------------------------------------------------------
+# Oturumun o anki sahibi (kanonik kullanıcı kimliği). Görsel kaydı bu sahibe
+# bağlanır ve her istekte yeniden doğrulanır.
+.mergen_image_session_owner <- function(session) {
+  # Yalnızca kanonik çözümleyici kullanılır; yokluğu çözülmemiş sahip sayılır.
+  # Yerel sayısal dönüşüm `TRUE` ve `c(1L, 2L)` girdilerini "1" sahibine
+  # çeviriyor, 1 numaralı kullanıcının görselini 403 yerine sunabiliyordu.
+  if (!exists("resolve_effective_user_id", mode = "function", inherits = TRUE)) {
+    return(NA_character_)
+  }
+  uid <- tryCatch(resolve_effective_user_id(session = session), error = function(e) 0L)
+  # Kapalı-başarısız: çözülmemiş kimlik (NULL/NA/0/negatif/sayısal olmayan)
+  # geçerli görünen "0" ya da "NA" sahibine dönüşmez; NA kalır ve her istek 403 alır.
+  if (!is.numeric(uid) || length(uid) != 1L || is.na(uid) || uid <= 0) return(NA_character_)
+  format(uid, scientific = FALSE, trim = TRUE)
+}
+
+# Kayıtlı URL'nin istek filtresi. Ayrı fabrikada üretilir: filtre yalnızca
+# `session`'ı yakalar. Kayıt fonksiyonunun çerçevesinde üretilen kapanış o anki
+# URL önbelleğini de tutuyor, N görsel kaydı 1..N uzunluğunda önbellek
+# kopyalarını oturum boyunca bellekte bırakıyordu.
+.mergen_image_filter_factory <- function(session) {
+  force(session)
+  function(data, req) {
+    # Aynı Shiny oturumunda sahip değiştiyse (SSO kimlik geçişi) ya da oturum
+    # kimliğini yitirdiyse önceki sahibin kayıtlı URL'leri artık sunulmaz.
+    if (is.na(data$owner) || !identical(.mergen_image_session_owner(session), data$owner)) {
+      return(shiny::httpResponse(
+        status = 403L,
+        content_type = "text/plain; charset=UTF-8",
+        content = "Erisim reddedildi"
+      ))
+    }
+    fpath <- data$path
+    if (!file.exists(fpath)) {
+      return(shiny::httpResponse(
+        status = 404L,
+        content_type = "text/plain; charset=UTF-8",
+        content = "Gorsel bulunamadi"
+      ))
+    }
+    raw_bytes <- readBin(fpath, "raw", file.info(fpath)$size)
+    shiny::httpResponse(
+      status = 200L,
+      content_type = data$ctype,
+      content = raw_bytes
+    )
+  }
+}
+
 .mergen_register_image_data_obj <- function(session, local_path) {
   norm_path <- normalizePath(local_path, winslash = "/", mustWork = FALSE)
+  # Önbellek anahtarı sahip + yoldur: sahip değişince eski URL yeniden kullanılmaz.
+  sahip <- .mergen_image_session_owner(session)
+  cache_key <- paste0(sahip, "|", norm_path)
 
   cache <- session$userData$mergen_image_url_cache
   if (is.null(cache)) cache <- list()
-  if (!is.null(cache[[norm_path]]) && nzchar(cache[[norm_path]])) {
-    return(cache[[norm_path]])
+  if (!is.null(cache[[cache_key]]) && nzchar(cache[[cache_key]])) {
+    return(cache[[cache_key]])
   }
 
   ext <- tolower(tools::file_ext(local_path))
@@ -154,30 +206,25 @@ mergen_generated_image_card_html <- function(message_id, img_src, description = 
     "image/png"
   )
 
-  obj_name <- paste0("mergen_img_", gsub("[^a-zA-Z0-9]", "_", basename(local_path)))
+  # Kayıt adı oturum içinde hem benzersiz hem tahmin edilemezdir. Ardışık adlar
+  # aynı oturumun başka görsellerinin tahmin edilmesine yol açabileceğinden
+  # kriptografik rastgele belirteç kullanılır.
+  rastgele <- if (requireNamespace("openssl", quietly = TRUE)) {
+    paste(sprintf("%02x", as.integer(openssl::rand_bytes(16L))), collapse = "")
+  } else if (requireNamespace("uuid", quietly = TRUE)) {
+    gsub("-", "", uuid::UUIDgenerate(), fixed = TRUE)
+  } else {
+    sprintf("%08x%08x", sample.int(.Machine$integer.max, 1L), sample.int(.Machine$integer.max, 1L))
+  }
+  obj_name <- paste0("mergen_img_", rastgele)
 
   url <- session$registerDataObj(
     name = obj_name,
-    data = list(path = norm_path, ctype = content_type),
-    filterFunc = function(data, req) {
-      fpath <- data$path
-      if (!file.exists(fpath)) {
-        return(shiny::httpResponse(
-          status = 404L,
-          content_type = "text/plain; charset=UTF-8",
-          content = "Gorsel bulunamadi"
-        ))
-      }
-      raw_bytes <- readBin(fpath, "raw", file.info(fpath)$size)
-      shiny::httpResponse(
-        status = 200L,
-        content_type = data$ctype,
-        content = raw_bytes
-      )
-    }
+    data = list(path = norm_path, ctype = content_type, owner = sahip),
+    filterFunc = .mergen_image_filter_factory(session)
   )
 
-  cache[[norm_path]] <- url
+  cache[[cache_key]] <- url
   session$userData$mergen_image_url_cache <- cache
   url
 }

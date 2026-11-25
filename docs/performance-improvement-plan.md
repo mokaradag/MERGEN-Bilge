@@ -175,13 +175,24 @@ Architecture chosen (all additive, Rich Lane untouched):
    (`worker_monitor_detect_task_deps`, `worker_monitor_expand_function_globals`) so a
    test can prove explicit mode never calls them.
 2. **Lean startup preview worker** (`R/helpers_startup_chat_preview.R`, new; in the
-   `database` manifest section). `db_chat_preview_fetch_raw()` runs on the worker with
-   a **narrow contract** (DBI/odbc + the pure `db_chat_preview_query_sql` only; opens
-   its own connection, closes on every path, never runs if the user id is invalid).
+   `database` manifest section). The worker runs only `mergen_bounded_db_fetch_raw()`
+   with a **narrow contract** (DBI/odbc; the SQL text is selected in the main process,
+   so no nested app-function lookup happens on the worker; opens its own connection,
+   closes on every path, never runs if the user id is invalid). With a query budget,
+   validated integer parameters are inlined via `DBI::sqlInterpolate()` and executed
+   through `DBI::dbSendQuery(conn, sql)` without bound parameters, so odbc 1.7's
+   interruptible prepared-and-execute wrapper (SQLCancel) bounds statement *execution*;
+   odbc 1.7's bound (parameterized) execution path cannot be interrupted. **Limitation:** this is
+   not a hard end-to-end deadline for the whole read. odbc fetches rows separately
+   from execution, and a native fetch call that is waiting on the driver cannot check
+   R's elapsed limit until it returns. Budgeted reads therefore fetch in bounded
+   chunks (`dbSendQuery()` + `dbFetch(n = 1000)`), so the limit is re-checked between
+   chunks and an overrun is bounded by one chunk — unless the driver itself stalls
+   inside a single fetch, which only the driver/network timeout can end.
    Turkish visible-text normalization stays in the **main** process
    (`db_chat_preview_format_frame()`, byte-aligned with `load_chats_preview_from_db`'s
    list shape) so the central encoding contract is untouched. `mergen_startup_chat_preview_promise()`
-   dispatches via explicit mode with a 7-symbol export set.
+   dispatches via explicit mode with a 9-symbol export set (one function, scalars).
 3. **Preview hydration deferred past first render** (`R/server_observers_startup.R`).
    Fast lane now marks `saved_chats_preview_ready` as `deferred=TRUE` *immediately*
    and starts the real dispatch only on `input$welcome_client_ready` (idempotent; a
@@ -264,7 +275,61 @@ Fix (`R/server_observers_startup.R` + `R/module_startup_lane.R` bridge):
 - Fast lane: the full list is never loaded at startup (lazy, once, on first Kayıtlı
   Söyleşiler / Söyleşi Geçmişi open); the 6-chat preview no longer blocks the critical
   path — it runs in a `tracked_future_promise` worker (`startup_saved_chats_preview`).
+  *Superseded (November 2026):* once the preview has been applied, the full list is
+  dispatched in the background on the same narrow explicit worker contract as the
+  preview; it is no longer deferred until a management page opens. The lazy tab
+  trigger remains the fallback when local saved-chat state changed before the
+  preview was applied, the background load failed, or no asynchronous worker is
+  available (sequential `future` plan, e.g. `MERGEN_DISABLE_FUTURES` or a failed
+  PSOCK start — also when the plan lookup itself fails). In that last case the
+  automatic full-list read is skipped so it never blocks the event loop; a VM check
+  then shows `saved_chats_full_deferred` without `saved_chats_full_loaded` until the
+  operator opens Kayıtlı Söyleşiler or Söyleşi Geçmişi. The fast-lane closing contract is unchanged, and
+  `saved_chats_full_loaded` is now logged when that background load completes.
+  The fast lane does not start the Söyleşi Geçmişi row preparation after the
+  background full list: nothing in that lane waits for `history_rows_ready`, so
+  the shared worker queue is not filled with speculative history reads; History
+  rows are read on the first History visit. A queued full-list read whose owner
+  or load generation changed is dropped before it takes a worker slot.
 - Rich lane keeps the existing behavior (sync preview + background full load).
+  Its `management_pages_ready` checkpoint covers only data prepared off the event
+  loop: the full list and missing Söyleşi Geçmişi rows for up to the latest 60
+  eligible conversations in activity order (not a guarantee of the first displayed
+  History table page, which sorts question-and-answer rows by prompt date on visit).
+  With an asynchronous worker backend both reads run in workers with a bounded
+  query budget (`mergen.startup_db_query_timeout_secs`, default 60 s). With the
+  sequential fallback (`MERGEN_DISABLE_FUTURES=true` or a failed PSOCK start) the
+  rich-lane full-list read still runs, but on the Shiny process itself, and the
+  automatic History preparation is skipped: History readiness is reported as
+  partial only when eligible rows among the latest 60 conversations still need
+  to be fetched (when none need fetching, readiness is normal); the missing rows
+  are read on the first History visit. On a normal aggregate
+  completion, Görsel Galerisi and Ortak Söyleşiler stay lazy (first visit) and are
+  named in `detail$tembel`. If the full-list worker fails or times out, startup
+  emits `management_pages_ready` with `detail$degraded = TRUE` (without
+  `detail$tembel`) so the overlay can close honestly instead of hanging; it
+  closes only once the other required checkpoints (for example character media)
+  are also complete.
+  The readiness deadline is a separate, shorter setting:
+  `mergen.management_ready_deadline_secs` (default 20 s). When it elapses before
+  the management data is ready (for example the full list loaded in 8 s but the
+  History preparation is still pending), startup reports partial readiness
+  (`detail$timeout = TRUE`); the overlay closes once the other required
+  checkpoints are complete. The deadline timer is armed for the rich lane in both
+  worker and sequential modes; only the reads themselves depend on an
+  asynchronous worker backend. The timer is registered after the full-list
+  dispatch returns, so it cannot bound time spent inside a sequential (blocking)
+  dispatch, and while a blocking read holds the Shiny event loop its callback is
+  delayed until the loop resumes; the timer never interrupts a read. A
+  `detail$timeout = TRUE` checkpoint that arrives later than the configured
+  deadline therefore indicates a blocked event loop (for example the sequential
+  fallback), not that a worker was active, and is not by itself a configuration
+  error. If management data is already complete when the timer fires, it
+  publishes nothing; a later terminal failure replaces the timeout label and a
+  later success recovers it to ready. The deadline does **not**
+  cancel the pending read, which keeps its own 60 s DB query budget and is applied
+  if it completes later. The overlay's partial label states that management data
+  is not yet complete; it does not promise completion on page open.
 - The lazy full load re-resolves the effective user id at run time; invalid ids never
   load. Clients without the lane API get a `legacy_no_api` rich_lane bridge signal so
   the gate can never deadlock. Fast-lane closing contract unchanged
@@ -279,7 +344,10 @@ recent commits). `tests/testthat/helper_bootstrap.R` now pins the test run to
 
 Validation (cloud): startup smoke/lane/contract/source-manifest/production/boot-welcome
 suites 0 fail / 0 warn; parse sanity 935 files OK. VM re-check: fast-lane
-`[STARTUP PERF]` must show `saved_chats_full_loaded` only as `deferred=TRUE`.
+`[STARTUP PERF]` must show the deferral as `saved_chats_full_deferred deferred=TRUE`;
+when the background full-list load succeeds (or after the lazy tab fallback runs on
+failure), `saved_chats_full_loaded deferred=FALSE` is logged separately. The overlay
+must close without waiting for either.
 
 ### 2026-07-04 — Cold-start critical path + interaction hotspots (single instance, single port)
 

@@ -222,9 +222,9 @@ sendMessageInit <- function(
     # Durdur butonunu göster
     shinyjs::runjs("$('#send_stop_btn i').attr('class', 'fa-solid fa-stop');")
     shinyjs::runjs("$('#send_stop_btn').addClass('stop-mode');")
-    # Erişilebilirlik: durdur moduna geçişte görsel ipucunun yanı sıra ekran
-    # okuyucu etiketi (aria-label) de güncellenir.
+    # Erişilebilirlik: durdur kipinde ekran okuyucu etiketi (aria-label) de güncellenir.
     shinyjs::runjs("$('#send_stop_btn').attr('title', 'Durdur').attr('aria-label', 'Üretimi durdur');")
+    if (is.function(session$userData$mergen_istem_kabul_bildir)) session$userData$mergen_istem_kabul_bildir(user_prompt_msg)  # kabul, eşzamanlı analizden ÖNCE iletilir
 
     values$is_sending <- TRUE
     # Slotu asenkron yaşam döngüsüne devret (artık cleanup/abort + TTL bırakır).

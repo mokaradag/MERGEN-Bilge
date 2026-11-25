@@ -209,6 +209,7 @@ ui_asset_ownership_zones <- list(
       "css/citation_styles.css"
     ),
     js = c(
+      "js/chat_pending_message.js",
       "js/input_handlers.js",
       "js/button_busy_ack.js",
       "js/code-collapse.js",

@@ -757,3 +757,69 @@ test_that("aktif olmayan ortak oturum yeni kullanıcı yazısı, YZ kilidi ve da
     conn = conn
   ))
 })
+
+test_that("ortak liste okuma hatası geçerli boş listeden ayırt edilir", {
+  bos_conn <- DBI::dbConnect(RSQLite::SQLite(), tempfile(fileext = ".sqlite"))
+  on.exit(DBI::dbDisconnect(bos_conn), add = TRUE)
+  # Tablo yok: sorgu başarısız -> boş ama "okuma hatası" işaretli.
+  hatali <- ortak_db_oturum_listesi(1L, conn = bos_conn)
+  expect_equal(nrow(hatali), 0L)
+  expect_true(isTRUE(attr(hatali, "mergen_okuma_hatasi")))
+
+  conn <- DBI::dbConnect(RSQLite::SQLite(), tempfile(fileext = ".sqlite"))
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
+  .oo_test_create_schema(conn)
+  gecerli_bos <- ortak_db_oturum_listesi(1L, conn = conn)
+  expect_equal(nrow(gecerli_bos), 0L)
+  expect_false(isTRUE(attr(gecerli_bos, "mergen_okuma_hatasi")))
+})
+
+test_that("ortak söyleşi önbelleği hatayı önbelleğe almaz ve süresi dolunca yeniden okur", {
+  eski <- get("ortak_db_oturum_listesi", envir = globalenv())
+  on.exit(assign("ortak_db_oturum_listesi", eski, envir = globalenv()), add = TRUE)
+  durum <- new.env(); durum$cagri <- 0L; durum$hata <- TRUE
+  durum$istenen <- integer()
+  assign("ortak_db_oturum_listesi", function(kullanici_id, kaynak_turu = NULL, ...) {
+    durum$cagri <- durum$cagri + 1L
+    durum$istenen <- c(durum$istenen, as.integer(kullanici_id))
+    if (isTRUE(durum$hata)) return(structure(data.frame(), mergen_okuma_hatasi = TRUE))
+    # Her kullanıcı için ayırt edici satır: kimlik karışması içerikten görülür.
+    data.frame(OrtakOturumID = as.integer(kullanici_id), Baslik = paste("Ortak çğış", kullanici_id),
+               stringsAsFactors = FALSE)
+  }, envir = globalenv())
+
+  onbellek <- new.env(parent = emptyenv())
+  ilk <- ortak_db_sohbet_listesi_onbellekten(onbellek, 7L)
+  expect_equal(nrow(ilk), 0L)
+  expect_null(onbellek$df)          # geçici hata taze boş sonuç olarak saklanmaz
+  durum$hata <- FALSE
+  ikinci <- ortak_db_sohbet_listesi_onbellekten(onbellek, 7L)
+  expect_equal(durum$cagri, 2L)     # hata sonrası hemen yeniden denendi
+  expect_equal(nrow(ikinci), 1L)
+  ortak_db_sohbet_listesi_onbellekten(onbellek, 7L)
+  expect_equal(durum$cagri, 2L)     # taze önbellek isabeti
+  onbellek$zaman <- Sys.time() - 120
+  ortak_db_sohbet_listesi_onbellekten(onbellek, 7L)
+  expect_equal(durum$cagri, 3L)     # süresi dolan önbellek yeniden okunur
+  sekizin <- ortak_db_sohbet_listesi_onbellekten(onbellek, 8L)
+  expect_equal(durum$cagri, 4L)     # kimlik değişince yeniden okunur
+  # Okuma yeni kullanıcı için yapılır ve yeni kullanıcının satırı döner.
+  expect_identical(utils::tail(durum$istenen, 1L), 8L)
+  expect_identical(sekizin$Baslik, "Ortak çğış 8")
+  expect_identical(ortak_db_sohbet_listesi_onbellekten(onbellek, 8L)$OrtakOturumID, 8L)
+  expect_equal(durum$cagri, 4L)
+  # Sistem saati geri alındı (okuma zamanı gelecekte): önbellek süresi dolmuş sayılır.
+  onbellek$zaman <- Sys.time() + 300
+  ortak_db_sohbet_listesi_onbellekten(onbellek, 8L)
+  expect_equal(durum$cagri, 5L)
+})
+
+test_that("önbellek sıfırlaması prob hatası durumunu ve geri çekilmeyi de temizler", {
+  ortak_db_reset_availability_cache()
+  .oo_db_state$probe_hatasi <- TRUE
+  .oo_db_state$probe_hata_zamani <- Sys.time()
+  expect_true(ortak_db_tablo_prob_hatasi_mi())
+  ortak_db_reset_availability_cache()
+  expect_false(isTRUE(ortak_db_tablo_prob_hatasi_mi()))
+  expect_null(.oo_db_state$probe_hata_zamani)
+})

@@ -375,9 +375,12 @@ delete_all_user_images <- function(user_id) {
     })
   }
 
-  # Silinen görsellerin mesajlarını güncelle
+  # Silinen görsellerin mesajlarını güncelle; yalnızca gerçekten değişenler izlenir
+  guncellenen_soylesiler <- character(0)
   for (cid in unique_chats) {
-    update_messages_after_bulk_deletion(cid)
+    if (isTRUE(update_messages_after_bulk_deletion(cid))) {
+      guncellenen_soylesiler <- c(guncellenen_soylesiler, as.character(cid))
+    }
   }
 
   # Boş klasörleri temizle
@@ -402,6 +405,9 @@ delete_all_user_images <- function(user_id) {
   }
 
   cat(sprintf("[IMAGE_GALLERY] Toplam %d görsel silindi (kullanıcı: %s)\n", deleted_count, user_id))
+  # Mesajı yerinde güncellenen söyleşiler çağırana bildirilir: Söyleşi Geçmişi
+  # önbelleğinden yalnızca bunlar düşürülür (sayı sözleşmesi değişmez).
+  attr(deleted_count, "chat_ids") <- guncellenen_soylesiler
   return(deleted_count)
 }
 
@@ -483,17 +489,21 @@ update_message_after_image_deletion <- function(image_path, chat_id) {
 #' Toplu silme sonrası sohbetteki tüm görsel mesajlarını güncelle
 #' @param chat_id Sohbet ID
 update_messages_after_bulk_deletion <- function(chat_id) {
-  if (is.na(chat_id) || is.null(chat_id)) return(invisible(NULL))
+  if (is.null(chat_id) || length(chat_id) != 1L || is.na(chat_id)) return(invisible(NULL))
 
   chat_id_int <- suppressWarnings(as.integer(chat_id))
   if (is.na(chat_id_int)) return(invisible(NULL))
+
+  degisti <- FALSE
 
   tryCatch({
     conn_info <- get_connection()
     conn <- conn_info$conn
     on.exit(release_connection(conn_info))
 
-    query <- "SELECT MessageID, MessageContent FROM MB_Messages WHERE ChatID = ? AND MessageContent LIKE '[GÖRSEL:%'"
+    # `[` SQL Server LIKE kalıbında karakter kümesi açar; meta veri sorgusuyla
+    # aynı biçimde kaçırılır (kaçırılmazsa hiçbir görsel mesajı eşleşmez).
+    query <- "SELECT MessageID, MessageContent FROM MB_Messages WHERE ChatID = ? AND MessageContent LIKE '\\[GÖRSEL:%' ESCAPE '\\'"
 
     rows <- DBI::dbGetQuery(
       conn,
@@ -552,23 +562,28 @@ update_messages_after_bulk_deletion <- function(chat_id) {
 
               update_q <- "UPDATE MB_Messages SET MessageContent = ? WHERE MessageID = ?"
 
-              DBI::dbExecute(
+              etkilenen <- DBI::dbExecute(
                 conn,
                 update_q,
                 params = normalize_db_params(
                   list(new_content, rows$MessageID[j])
                 )
               )
+              # Yalnızca satır gerçekten güncellendiyse değişim sayılır; önceki
+              # başarı sonraki sıfır satırlı/başarısız güncellemeyle silinmez.
+              if (isTRUE(suppressWarnings(as.numeric(etkilenen)[1]) > 0)) degisti <- TRUE
             }
           }
         }
       }
     }
   }, error = function(e) {
-    cat("[IMAGE_GALLERY] Toplu mesaj güncelleme hatası:", e$message, "\n")
+    cat("[IMAGE_GALLERY] Toplu mesaj güncelleme hatası:",
+        if (exists("mergen_db_error_log_summary", mode = "function", inherits = TRUE))
+          mergen_db_error_log_summary(e) else class(e)[1], "\n")
   })
 
-  invisible(NULL)
+  invisible(degisti)
 }
 
 #' Görsel dosya yolundan sohbet başlığını bul

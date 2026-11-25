@@ -15,6 +15,23 @@ mergen_resolve_image_api_key <- function(session) {
   )
 }
 
+# Görsel oluşturma işçi görevi fabrikası. Kapanış yalnızca kullandığı skaler
+# değerleri taşır: işleyici çerçevesinde üretilen kapanış ortamıyla birlikte
+# `ctx`'i (oturum, reaktif değerler) otomatik modda işçiye serileştiriyordu.
+mergen_image_generation_task_fn <- function(prompt, api_key, size, quality, user_id, chat_id) {
+  force(prompt); force(api_key); force(size); force(quality); force(user_id); force(chat_id)
+  function() {
+    generate_image(
+      prompt = prompt,
+      api_key = api_key,
+      size = size,
+      quality = quality,
+      user_id = user_id,
+      chat_id = chat_id
+    )
+  }
+}
+
 # Görsel oluşturma modunu işle
 # ctx: mesaj gönderme bağlamındaki tüm gerekli değişkenleri içeren liste
 # Döndürür: TRUE (işlendi ve erken dönüş yapılmalı)
@@ -89,18 +106,33 @@ handle_image_generation_mode <- function(ctx) {
     }
     !mergen_is_current_request(active_request_id_local, req_id_local, stop_generation_local)
   }
+  # Söyleşi sahipliği: istek sürerken söyleşi silinir/sıfırlanır ya da başka
+  # söyleşi açılırsa sonuç o görünüme eklenmez (görsel galeride kalır).
+  # Sahiplik denetimi hata verirse KAPALI-BAŞARISIZ: söyleşi değişmiş sayılır.
+  sohbet_sahibi <- tryCatch(mergen_chat_owner_guard(ctx$session, ctx$values),
+                            error = function(e) function() FALSE)
+  sohbet_degisti <- function() !isTRUE(tryCatch(sohbet_sahibi(), error = function(e) FALSE))
+  # Sahipsiz sonuç: gönderme durumu yalnızca oturum hâlâ açıksa serbest bırakılır
+  # (kapanmış oturumda UI/girdi temizliği yapılmaz).
+  sahipsiz_sonucu_birak <- function() {
+    kapali <- is.function(ctx$session$isClosed) &&
+      tryCatch(isTRUE(ctx$session$isClosed()), error = function(e) TRUE)
+    if (!kapali) {
+      ctx$values$typing <- FALSE
+      try(ctx$reset_chat_state_fn(), silent = TRUE)
+    }
+    invisible(NULL)
+  }
 
 	tracked_future_promise(
-	  task_fn = function() {
-		generate_image(
-		  prompt = user_prompt_local,
-		  api_key = api_key_local,
-		  size = image_size_local,
-		  quality = image_quality_local,
-		  user_id = current_user_id_local,
-		  chat_id = current_chat_id_local
-		)
-	  },
+	  task_fn = mergen_image_generation_task_fn(
+		prompt = user_prompt_local,
+		api_key = api_key_local,
+		size = image_size_local,
+		quality = image_quality_local,
+		user_id = current_user_id_local,
+		chat_id = current_chat_id_local
+	  ),
 	  task_type = "image_generation",
 	  session_token = ctx$session$token,
 	  meta = list(
@@ -112,6 +144,10 @@ handle_image_generation_mode <- function(ctx) {
     # mutasyonu yapma. Görsel zaten galeriye kaydedildiği için kaybolmaz.
     if (isTRUE(is_stale_image_request())) {
       return(invisible(NULL))
+    }
+    if (isTRUE(sohbet_degisti())) {
+      # İstek hâlâ etkin: gönderme durumu serbest bırakılır, mesaj eklenmez.
+      return(sahipsiz_sonucu_birak())
     }
 
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
@@ -143,6 +179,7 @@ handle_image_generation_mode <- function(ctx) {
     if (isTRUE(is_stale_image_request())) {
       return(invisible(NULL))
     }
+    if (isTRUE(sohbet_degisti())) return(sahipsiz_sonucu_birak())
 
     removeUI(selector = "#typing-animation-wrapper", immediate = TRUE)
     ctx$values$typing <- FALSE

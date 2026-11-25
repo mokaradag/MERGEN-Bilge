@@ -159,3 +159,45 @@ testthat::test_that("stop button observer clears sending/typing UI state without
     testthat::expect_true(any(grepl("Yanıt oluşturma durduruldu", toast_messages, fixed = TRUE)))
   })
 })
+# Etkin söyleşi silindiğinde/temizlendiğinde Kayıtlı Söyleşiler gözlemcisi aynı
+# durdurma yolunu oturum üzerinden çağırır: istek kimliği döner ve gönderim
+# kilidi isteğin bitmesi beklenmeden kalkar.
+testthat::test_that("oturuma kayıtlı durdurma yolu Durdur düğmesiyle aynı biçimde etkin isteği bırakır", {
+  testthat::skip_if_not_installed("shiny")
+  # Shiny ekli olmasa da gözlemci fabrikasının niteleyicisiz bağlamaları
+  # (observeEvent vb.) bulunur: ortamın üstü Shiny dışa aktarımlarıdır.
+  paketler <- new.env(parent = globalenv())
+  list2env(mget(getNamespaceExports("shiny"), envir = asNamespace("shiny"), inherits = TRUE), envir = paketler)
+  env <- new.env(parent = paketler)
+  env$showToast <- function(...) invisible(TRUE)
+  sys.source(file.path(repo_root_chat_input_stop, "R", "server_observers_chat_input.R"), envir = env,
+             keep.source = FALSE)
+  sys.source(file.path(repo_root_chat_input_stop, "R", "helpers_saved_chats_merge.R"), envir = env,
+             keep.source = FALSE)
+  shiny::testServer(function(input, output, session) {
+    values <- shiny::reactiveValues(is_sending = TRUE, typing = TRUE)
+    stop_generation <- shiny::reactiveVal(FALSE)
+    active_request_id <- shiny::reactiveVal("req_gorsel")
+    env$chatInputObserversInit(
+      input = input, session = session, values = values, settings_data = shiny::reactiveValues(),
+      stop_generation = stop_generation, active_request_id = active_request_id,
+      reset_chat_state = function() { values$is_sending <- FALSE; values$typing <- FALSE },
+      send_message = function(...) stop("çağrılmamalı"), current_user_id = function() 4242L,
+      file_manager_data = list(), session_files = shiny::reactiveVal(list()),
+      file_to_add = shiny::reactiveVal(NULL),
+      stt_data = list(start_session = function() invisible(TRUE), final_text = shiny::reactiveVal(""))
+    )
+    session$userData$.values <- values
+    session$userData$.stop <- stop_generation
+    session$userData$.aktif <- active_request_id
+  }, {
+    session$flushReact()
+    testthat::expect_true(is.function(session$userData$mergen_etkin_istegi_durdur))
+    env$mergen_saved_chats_stop_active_request(session)
+    session$flushReact()
+    testthat::expect_true(isTRUE(session$userData$.stop()))
+    testthat::expect_match(session$userData$.aktif(), "^cancelled_")
+    testthat::expect_false(isTRUE(session$userData$.values$is_sending))
+    testthat::expect_false(isTRUE(session$userData$.values$typing))
+  })
+})

@@ -229,7 +229,14 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
       shiny::showNotification(mesaj, type = tur, duration = 6)
     }
 
+    # Ortak Söyleşiler önbelleği (kullanıcıya bağlı, en fazla 60 sn); hub/davet/Bilge
+    # Yolaç listeleri her ziyarette yenilenir. Kullanıcı eylemleri önbelleği düşürür.
+    sohbet_onbellek <- new.env(parent = emptyenv())
+    # Kimlik düşüp dönünce/sahip değişince önbellek temizlenir ve liste anında yenilenir.
+    if (exists("mergen_session_on_owner_change", mode = "function")) mergen_session_on_owner_change(session, function(neden) { rm(list = ls(sohbet_onbellek), envir = sohbet_onbellek); liste_yenile(isolate(liste_yenile()) + 1L) })
     yenile <- function(neden = "manual") {
+      # Kullanıcı eylemi listeyi düşürür; "Yenile" 60 sn'lik olumsuz tablo sonucunu beklemez.
+      if (!identical(neden, "tab")) { sohbet_onbellek$df <- NULL; if (exists("ortak_db_tablo_prob_hatasi_mi", mode = "function")) ortak_db_tablo_prob_hatasi_mi(TRUE) }
       liste_yenile(isolate(liste_yenile()) + 1L)
       invisible(neden)
     }
@@ -238,6 +245,15 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
       uid <- suppressWarnings(as.integer(current_user_id())[1])
       if (is.na(uid) || uid <= 0L) NA_integer_ else uid
     }
+
+    # Ortak Söyleşiler listesi açılışta hazırlanmaz: tablo probları ve liste
+    # sorgusu eşzamanlıdır, açılışta çalıştırılması ana olay döngüsünü (tüm
+    # oturumlar) tutardı. Liste ilk ziyarette okunur ve 60 sn önbellekte kalır.
+    # Sayfalardaki "Yenile" düğmeleri önbelleği düşürüp listeyi yeniden okur.
+    for (yenile_sayfasi in c("hub", "sohbet", "bilge_yolac")) local({
+      dugme <- paste0("yenile_", yenile_sayfasi)
+      observeEvent(input[[dugme]], yenile("manual"), ignoreInit = TRUE)
+    })
 
     # Oda sunucusu bir kez bağlanır; hub yüzeyindeki dinamik oda UI'sine hizmet eder.
     oda <- ortakOturumRoomServer(
@@ -257,7 +273,7 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
 
     observeEvent(input$canli_kalp_atisi, {
       uid <- gecerli_kullanici()
-      if (is.na(uid) || !ortak_db_tablolar_hazir_mi()) {
+      if (is.na(uid) || !ortak_db_tablolar_hazir_mi(otomatik_yoklama = TRUE)) {
         return(invisible(NULL))
       }
 
@@ -290,7 +306,7 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
       invalidateLater(20000, session)
 
       uid <- gecerli_kullanici()
-      if (is.na(uid) || !ortak_db_tablolar_hazir_mi()) {
+      if (is.na(uid) || !ortak_db_tablolar_hazir_mi(otomatik_yoklama = TRUE)) {
         return(invisible(NULL))
       }
 
@@ -391,7 +407,16 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
 
     # --- Liste görünümleri -----------------------------------------------------
 
+    # Kurulum yönlendirmesi yalnızca DOĞRULANMIŞ eksik tabloda; geçici yoklama hatası yeniden deneme gösterir.
+    tablo_yok_durumu <- function() if (exists("ortak_db_tablo_prob_hatasi_mi", mode = "function") && ortak_db_tablo_prob_hatasi_mi()) okuma_hatasi_durumu() else
+      div(class = "oo-bos-durum oo-tablo-yok", icon("database"),
+      p("Ortak Oturum tabloları henüz kurulmamış. Kurulum: docs/sql/2026-07-ortak-oturumlar.sql (DBA/operatör)." ))
+
+    okuma_hatasi_durumu <- function() div(class = "oo-bos-durum oo-bos-liste oo-okuma-hatasi", role = "alert",
+      icon("circle-exclamation"), p("Liste şu anda okunamadı. Lütfen “Yenile” düğmesiyle yeniden deneyin."))
     liste_olustur <- function(df, arsivde = FALSE, bos_mesaj = "Henüz ortak oturum yok.") {
+      # Okuma hatası "liste boş" sayılmaz: ayrıntısız hata durumu ve "Yenile" ile yeniden deneme.
+      if (isTRUE(attr(df, "mergen_okuma_hatasi"))) return(okuma_hatasi_durumu())
       if (!is.data.frame(df) || nrow(df) == 0L) {
         return(div(class = "oo-bos-durum oo-bos-liste", icon("users"), p(bos_mesaj)))
       }
@@ -417,13 +442,7 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
         return(div(class = "oo-bos-durum", p("Kimlik doğrulaması tamamlanıyor...")))
       }
 
-      if (!ortak_db_tablolar_hazir_mi()) {
-        return(div(
-          class = "oo-bos-durum oo-tablo-yok",
-          icon("database"),
-          p("Ortak Oturum tabloları henüz kurulmamış. Kurulum: docs/sql/2026-07-ortak-oturumlar.sql (DBA/operatör)." )
-        ))
-      }
+      if (!ortak_db_tablolar_hazir_mi()) return(tablo_yok_durumu())
 
       filtre <- as.character(input$hub_filtre %||% "Tümü")[1]
 
@@ -450,11 +469,12 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
     })
 
     output$liste_sohbet <- renderUI({
-      liste_yenile()
+      liste_yenile(); if (exists("mergen_session_identity_signal", mode = "function")) mergen_session_identity_signal(session)()
       uid <- gecerli_kullanici()
       req(!is.na(uid))
+      if (!ortak_db_tablolar_hazir_mi()) return(tablo_yok_durumu())
       liste_olustur(
-        ortak_db_oturum_listesi(uid, kaynak_turu = "NormalSohbet"),
+        ortak_db_sohbet_listesi_onbellekten(sohbet_onbellek, uid),
         bos_mesaj = "Henüz ortak söyleşi yok."
       )
     })
@@ -463,6 +483,7 @@ ortakCalismalarServer <- function(id, current_user_id, parent_session = NULL) {
       liste_yenile()
       uid <- gecerli_kullanici()
       req(!is.na(uid))
+      if (!ortak_db_tablolar_hazir_mi()) return(tablo_yok_durumu())
       liste_olustur(
         ortak_db_oturum_listesi(uid, kaynak_turu = "BilgeYolaç"),
         bos_mesaj = "Henüz ortak Bilge Yolaç oturumu yok."

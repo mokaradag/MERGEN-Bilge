@@ -42,11 +42,26 @@
   })
 }
 
+# Son tablo yoklaması bağlantı/kontrol hatasıyla mı sonuçlandı (eksik tablo
+# değil)? olumsuzu_temizle = TRUE: kullanıcının "Yenile" isteğinde yalnızca
+# OLUMSUZ tablo sonucu düşer (tablolar 60 sn içinde kurulduysa hemen yeniden
+# yoklanır); olumlu sonuç korunur.
+ortak_db_tablo_prob_hatasi_mi <- function(olumsuzu_temizle = FALSE) {
+  if (isTRUE(olumsuzu_temizle) && !isTRUE(.oo_db_state$available)) {
+    .oo_db_state$available <- NULL
+    .oo_db_state$checked_at <- NULL
+  }
+  isTRUE(.oo_db_state$probe_hatasi)
+}
+
 ortak_db_reset_availability_cache <- function() {
   .oo_db_state$available <- NULL
   .oo_db_state$checked_at <- NULL
   .oo_db_state$persona_col <- NULL
   .oo_db_state$table_columns <- NULL
+  # Prob hatası durumu da sıfırlanır: sıfırlama sonrası geri çekilme beklenmez.
+  .oo_db_state$probe_hatasi <- NULL
+  .oo_db_state$probe_hata_zamani <- NULL
   invisible(NULL)
 }
 
@@ -242,18 +257,34 @@ ortak_db_reset_availability_cache <- function() {
 }
 
 #' Ortak Oturum tabloları erişilebilir mi? (TRUE kalıcı, FALSE 60 sn önbellek)
-ortak_db_tablolar_hazir_mi <- function(conn = NULL, force_refresh = FALSE) {
+#'
+#' Yalnızca DOĞRULANMIŞ eksik tablo olumsuz önbelleğe alınır. Bağlantı ya da
+#' kontrol hatası (geçici DB sorunu) önbelleğe alınmaz ve
+#' `ortak_db_tablo_prob_hatasi_mi()` ile ayrıca bildirilir: arayüz kurulum
+#' yönlendirmesi yerine yeniden deneme durumunu gösterir, sonraki istek yeniden yoklar.
+ortak_db_tablolar_hazir_mi <- function(conn = NULL, force_refresh = FALSE, otomatik_yoklama = FALSE) {
   cached <- .oo_db_state$available
 
-  if (!isTRUE(force_refresh) && !is.null(cached)) {
-    if (isTRUE(cached)) {
-      return(TRUE)
-    }
+  if (!isTRUE(force_refresh)) {
+    if (!is.null(cached)) {
+      if (isTRUE(cached)) {
+        return(TRUE)
+      }
 
-    checked_at <- .oo_db_state$checked_at
-    if (!is.null(checked_at) &&
-        as.numeric(difftime(Sys.time(), checked_at, units = "secs")) < 60) {
-      return(FALSE)
+      checked_at <- .oo_db_state$checked_at
+      if (!is.null(checked_at) &&
+          as.numeric(difftime(Sys.time(), checked_at, units = "secs")) < 60) {
+        return(FALSE)
+      }
+    } else if (isTRUE(otomatik_yoklama) && isTRUE(.oo_db_state$probe_hatasi) &&
+               !is.null(.oo_db_state$probe_hata_zamani)) {
+      # DB erişilemezken her oturumun 20-30 sn'lik otomatik yoklaması ana olay
+      # döngüsünü art arda eşzamanlı probla bloklamaz; kısa geri çekilme uygulanır.
+      geri_cekilme <- suppressWarnings(as.numeric(getOption("mergen.ortak_db_probe_backoff_secs", 15))[1])
+      if (length(geri_cekilme) == 1L && is.finite(geri_cekilme) && geri_cekilme > 0 &&
+          as.numeric(difftime(Sys.time(), .oo_db_state$probe_hata_zamani, units = "secs")) < geri_cekilme) {
+        return(FALSE)
+      }
     }
   }
 
@@ -263,7 +294,7 @@ ortak_db_tablolar_hazir_mi <- function(conn = NULL, force_refresh = FALSE) {
     uyari = "Ortak Oturum tabloları için DB bağlantısı alınamadı:"
   )
 
-  ok <- FALSE
+  ok <- NA
 
   if (!is.null(handle)) {
     on.exit(.oo_db_release(handle), add = TRUE)
@@ -291,10 +322,21 @@ ortak_db_tablolar_hazir_mi <- function(conn = NULL, force_refresh = FALSE) {
         logical(1)
       ))
     },
-    fallback = FALSE,
+    fallback = NA,
     uyari = "Ortak Oturum tabloları kontrol edilemedi:")
   }
 
+  if (length(ok) != 1L || is.na(ok)) {
+    # Prob başarısız olduysa eski doğrulanmış olumsuz önbellek temizlenir;
+    # böylece DB düzelince sıradan çağrı eski FALSE sonucuna takılmaz.
+    .oo_db_state$available <- NULL
+    .oo_db_state$checked_at <- NULL
+    .oo_db_state$probe_hatasi <- TRUE
+    .oo_db_state$probe_hata_zamani <- Sys.time()
+    return(FALSE)
+  }
+  .oo_db_state$probe_hatasi <- FALSE
+  .oo_db_state$probe_hata_zamani <- NULL
   .oo_db_state$available <- isTRUE(ok)
   .oo_db_state$checked_at <- Sys.time()
 
@@ -573,6 +615,8 @@ ortak_db_oturum_listesi <- function(kullanici_id,
                                     sadece_davetler = FALSE,
                                     conn = NULL) {
   bos <- data.frame()
+  # Okuma hatası, geçerli boş listeden ayırt edilebilsin diye işaretlenir.
+  bos_hata <- structure(data.frame(), mergen_okuma_hatasi = TRUE)
 
   kullanici_id <- .oo_db_pos_int(kullanici_id)
   if (is.na(kullanici_id)) {
@@ -581,7 +625,7 @@ ortak_db_oturum_listesi <- function(kullanici_id,
 
   handle <- .oo_db_try(.oo_db_acquire(conn), fallback = NULL)
   if (is.null(handle)) {
-    return(bos)
+    return(bos_hata)
   }
   on.exit(.oo_db_release(handle), add = TRUE)
 
@@ -637,8 +681,35 @@ ortak_db_oturum_listesi <- function(kullanici_id,
       df
     }
   },
-  fallback = bos,
+  fallback = bos_hata,
   uyari = "Ortak oturum listesi okunamadı:")
 
-  .oo_db_restore_visible(sonuc, c("Baslik"))
+  okuma_hatasi <- isTRUE(attr(sonuc, "mergen_okuma_hatasi"))
+  sonuc <- .oo_db_restore_visible(sonuc, c("Baslik"))
+  if (okuma_hatasi) attr(sonuc, "mergen_okuma_hatasi") <- TRUE
+  sonuc
+}
+
+# Oturum içi Ortak Söyleşiler listesi önbelleği (kullanıcıya bağlı). Önbellek
+# boşsa, kimlik değiştiyse ya da ttl_sn'den eskiyse liste yeniden okunur.
+# Okuma hatası (geçici DB sorunu) taze ve geçerli bir boş liste olarak
+# önbelleğe ALINMAZ; bir sonraki istek yeniden dener.
+ortak_db_sohbet_listesi_onbellekten <- function(onbellek, kullanici_id, ttl_sn = 60) {
+  son <- onbellek$zaman
+  # Sistem saati geri alınırsa yaş negatif olur; negatif yaş süresi dolmuş sayılır.
+  yas <- if (is.null(son)) NA_real_ else as.numeric(difftime(Sys.time(), son, units = "secs"))
+  if (!is.null(onbellek$df) && identical(onbellek$uid, kullanici_id) &&
+      !is.na(yas) && yas >= 0 && yas < ttl_sn) {
+    return(onbellek$df)
+  }
+  df <- ortak_db_oturum_listesi(kullanici_id, kaynak_turu = "NormalSohbet")
+  if (isTRUE(attr(df, "mergen_okuma_hatasi"))) {
+    onbellek$df <- NULL
+    onbellek$zaman <- NULL
+  } else {
+    onbellek$df <- df
+    onbellek$uid <- kullanici_id
+    onbellek$zaman <- Sys.time()
+  }
+  df
 }

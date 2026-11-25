@@ -111,6 +111,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       return()
     }
     
+    chat_id <- mergen_saved_chats_canonical_key(chat_id)  # arama/silme/mezar taşı tek kanonik anahtar ("007" -> "7")
     # Son silinen sohbeti yüklemeye çalışıyorsa engelle
     if (identical(chat_id, last_deleted_chat_id())) {
       cat(sprintf("[SAVED_CHATS] Silinen sohbet yüklenmeye çalışıldı, engellendi: %s\n", chat_id))
@@ -171,30 +172,61 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
         (m$type %||% "") %in% c("ai", "assistant")
       }, logical(1)))
       
+      # transkript_yenile: açılış birleştirmesi önbelleğin eksik olabileceğini işaretledi.
       needs_hydrate <- is.null(msgs) || !is.list(msgs) || stored_len == 0 ||
+        isTRUE(chat_to_load$transkript_yenile) ||
         (!is.na(expected_len) && expected_len > stored_len) ||
         (has_user && !has_ai)
     }
     
+    yenileme_istendi <- !is.null(chat_to_load) && isTRUE(chat_to_load$transkript_yenile)
+    yenileme_basarisiz <- FALSE
+    kimlik_cozulmedi <- FALSE
+
     if (isTRUE(needs_hydrate)) {
-      detail <- tryCatch(
-        load_chat_messages_from_db(
-          chat_id,
-          user_id = resolve_current_user_id()
-        ),
-        error = function(e) {
-          warning(sprintf("Failed to load chat %s messages: %s", chat_id, e$message))
+      etkin_uid <- suppressWarnings(as.integer(resolve_current_user_id())[1])
+      if (is.na(etkin_uid) || etkin_uid <= 0L) {
+        # Kimlik henüz çözülmedi: önbellek silinmez, silinmiş uyarısı verilmez.
+        kimlik_cozulmedi <- TRUE
+        if (isTRUE(yenileme_istendi)) yenileme_basarisiz <- TRUE
+      } else {
+        # Sürücü tanısı DSN/sunucu/kullanıcı taşıyabilir: maskelenmiş, fırlatmayan özet yazılır.
+        detail <- tryCatch(load_chat_messages_from_db(chat_id, user_id = etkin_uid), error = function(e) {
+          mergen_saved_chats_warn(sprintf("Failed to load chat %s messages", chat_id), e)
           NULL
+        })
+        if (is.null(detail)) {
+          # Okuma hatası: önbellek transkripti uyarıyla gösterilir; yoksa mevcut söyleşi açık kalır.
+          if (!mergen_saved_chats_has_transcript(chat_to_load)) chat_to_load <- NULL
+          if (is.null(chat_to_load)) showToast(session, "Söyleşi şu anda okunamadı; lütfen kısa süre sonra tekrar deneyin.", "error") else yenileme_basarisiz <- TRUE
+        } else if (isTRUE(detail$kayit_bulunamadi)) {
+          # Söyleşi başka oturumda silinmiş: açık DB kanıtıyla önbellek düşürülür,
+          # silinenler kümesine yazılır (süren tam liste geri getiremez) ve açık
+          # söyleşiyse Ana Söyleşi sıfırlanır.
+          saved_copy <- values$saved_chats %||% list()
+          saved_copy[[chat_id]] <- NULL
+          values$saved_chats <- saved_copy
+          mergen_saved_chats_mark_deleted(session, chat_id)
+          if (mergen_saved_chats_is_active(values$current_chat_id, chat_id)) etkin_sohbeti_sifirla()
+          chat_to_load <- NULL
+          showToast(session, "Bu söyleşi artık mevcut değil veya silinmiş.", "warning")
+        } else if (isTRUE(detail$message_count > 0) || !is.null(detail$title) || !is.null(detail$timestamp)) {
+          chat_to_load <- if (exists("mergen_chat_reconcile_hydrated_detail", mode = "function", inherits = TRUE)) {
+            mergen_chat_reconcile_hydrated_detail(detail, chat_to_load)
+          } else { detail$hidrate_edildi <- TRUE; detail$transkript_yenile <- NULL; detail }
+          saved_copy <- values$saved_chats %||% list()
+          saved_copy[[chat_id]] <- chat_to_load
+          values$saved_chats <- saved_copy
         }
-      )
-      if (!is.null(detail)) {
-        chat_to_load <- detail
-        saved_copy <- values$saved_chats
-        saved_copy[[chat_id]] <- chat_to_load
-        values$saved_chats <- saved_copy
       }
     }
     
+    if (isTRUE(kimlik_cozulmedi)) {
+      showToast(session, "Oturum kimliği henüz hazır değil; lütfen kısa süre sonra tekrar deneyin.", "warning")
+      load_chat_in_progress(FALSE)
+      return()
+    }
+
     # Sohbet bulunamazsa çık
     if (is.null(chat_to_load)) {
       cat(sprintf("[SAVED_CHATS] Sohbet bulunamadı: %s\n", chat_id))
@@ -233,7 +265,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
     }
 	
     effective_user_id <- resolve_current_user_id()
-    all_feedback <- load_feedback_from_db(effective_user_id)
+    all_feedback <- mergen_saved_chats_load_feedback(effective_user_id, load_feedback_from_db)
     values$liked_messages <- all_feedback$liked
     values$disliked_messages <- all_feedback$disliked
     # Faz 6 (§5.10): başka bir sohbete geçildiğinde, sonucu ZATEN atılacak bir
@@ -480,13 +512,18 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       shinyjs::runjs("if (typeof window.scrollToBottom === 'function') window.scrollToBottom(false);")
     })
     # Başarı toast'ı, son mesaj balonu DOM'da GERÇEKTEN görünene dek bekletilir;
-    # içerik ekranda belirmeden "yüklendi" denmez.
+    # içerik ekranda belirmeden "yüklendi" denmez. Zorunlu yenileme başarısız
+    # olduysa önbellek gösterildiği açıkça bildirilir.
     son_mesaj_id <- if (length(values$messages) > 0) {
       values$messages[[length(values$messages)]]$id
     } else {
       NULL
     }
-    mergen_show_chat_loaded_toast(session, chat_to_load$title, son_mesaj_id)
+    if (isTRUE(yenileme_basarisiz)) {  # çözülmemiş kimlik yukarıda erken döner
+      showToast(session, "Söyleşi güncel içerikle yenilenemedi; önbellekteki kayıt gösteriliyor.", "warning")
+    } else {
+      mergen_show_chat_loaded_toast(session, chat_to_load$title, son_mesaj_id)
+    }
     cat(sprintf(
       "[CHAT PERF] Kayıtlı söyleşi yüklendi - chat_id=%s, mesaj=%d, %.0f ms\n",
       chat_id, length(values$messages),
@@ -521,18 +558,102 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
   # Sohbet Silme ve Temizleme
   # -------------------------------------------------------------------------
   
+  # Etkin söyleşi ortadan kalktığında (doğrulanmış silme ya da hidrasyonda
+  # kaydın bulunamaması) Ana Söyleşi tek bir yoldan sıfırlanır.
+  sifirlama_nesli <- 0L
+  etkin_sohbeti_sifirla <- function() {
+    # ETKİN PK İSTEĞİ ÖNCE TERK EDİLİR. Sohbet silindiğinde isteğin sahibi
+    # ortadan kalkar; işçi ve gönderme durumu ETKİN kalırsa geç dönen sonuç
+    # ARTIK BAŞKA bir sohbete uygulanmaya çalışılır ve gönder düğmesi
+    # DURDURMA kipinde kilitli kalırdı.
+    if (exists("mergen_pk_abandon_active_requests", mode = "function", inherits = TRUE)) {
+      try(mergen_pk_abandon_active_requests(session, release = FALSE), silent = TRUE)
+    }
+
+    # D11 SOHBET KAPSAMLI VARLIK BAĞLAMI DA DÜŞÜRÜLÜR (PR #705 inceleme, P2):
+    # etkin sohbet kimliği sıfırlanıyor ama `pk_entity_prior_context` oturumda
+    # KALIYORDU; kullanıcı silmeden sonra kaydedilmemiş bir söyleşiye
+    # geçtiğinde varlık çözümlemesi SİLİNMİŞ sohbetin kanonik öznesini
+    # uyguluyor ve YANLIŞ bir PK analizi üretebiliyordu. Nesil sayacı da
+    # artırılır: kaydedilmemiş sohbetler `NULL` kimliği PAYLAŞIR (bkz.
+    # `chat_reset_state()` ile AYNI sözleşme).
+    for (.pk_fn in c("pk_entity_context_clear", "mergen_pk_bump_chat_epoch", "mergen_saved_chats_stop_active_request")) {
+      if (exists(.pk_fn, mode = "function", inherits = TRUE)) {
+        try(get(.pk_fn, mode = "function")(session), silent = TRUE)
+      }
+    }
+
+    # Sohbet durumunu sıfırla
+    values$messages <- list()
+    values$current_chat_id <- NULL
+    values$show_welcome <- TRUE
+      
+    # Eski animasyonları temizle
+    shinyjs::runjs("
+      if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
+        window.WelcomeVideoPlayer.destroy();
+      }
+      if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
+        window.WelcomeNeuralNetwork.destroy();
+      }
+  		if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
+        window.WelcomeGreeting.destroy();
+      }
+      if(window.WelcomePersonalGreeting && window.WelcomePersonalGreeting.destroy) {
+        window.WelcomePersonalGreeting.destroy();
+      }
+    
+      // Mevcut sohbet içeriğini temizle
+      $('#chat_content_container').empty().hide();
+    
+      // Welcome container'ı hazırla
+      $('#welcome_fullscreen_container').empty().removeClass('hidden').show();
+    ")
+      
+    removeUI(selector = "#chat_content_container > *", multiple = TRUE, immediate = TRUE)
+    removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)
+      
+    # Welcome ekranını yeniden render et ve animasyonları başlat. Her gecikmeli
+    # adım yalnızca bu sıfırlama hâlâ en yenisiyse ve karşılama etkinse uygulanır:
+    # bu arada söyleşi açıldıysa (ya da yeni sıfırlama başladıysa) eski geri çağrı
+    # işaretleme eklemez, animasyon başlatmaz.
+    sifirlama_nesli <<- sifirlama_nesli + 1L
+    nesil <- sifirlama_nesli
+    karsilama_etkin <- function() identical(nesil, sifirlama_nesli) && isTRUE(shiny::isolate(values$show_welcome))
+    shinyjs::delay(150, if (karsilama_etkin()) {
+      insertUI(
+        selector = "#welcome_fullscreen_container",
+        where = "beforeEnd",
+        ui = createWelcomeScreen(values$saved_chats),
+        immediate = TRUE
+      )
+      shinyjs::delay(100, if (karsilama_etkin()) {
+        session$sendCustomMessage("initModernWelcome", list())
+        shinyjs::delay(400, if (karsilama_etkin()) {
+          session$sendCustomMessage("initPersonalGreeting", list(
+            first_name = resolve_user_first_name(default = "")
+          ))
+        })
+      })
+    })
+  }
+  # Görsel Galerisi silinmiş etkin söyleşiyi aynı yoldan sıfırlar.
+  session$userData$mergen_etkin_sohbeti_sifirla <- etkin_sohbeti_sifirla
+
   # Sohbet silme observer'ı
   observeEvent(saved_chats_data$delete_chat_id(), {
-    chat_id <- saved_chats_data$delete_chat_id()
-    req(chat_id)
-    
-    # Silinen sohbeti işaretle (yanlış yüklemeyi engellemek için)
-    last_deleted_chat_id(chat_id)
-    
+    req(saved_chats_data$delete_chat_id())
+    # KANONİK KİMLİK: DB silmesi "007"yi 7 olarak siler; işaret, yerel kaldırma
+    # ve etkin söyleşi eşleşmesi de aynı kanonik dizgeyi kullanır (aksi halde
+    # "7" anahtarlı kart ve süren tam listedeki "7" girdisi kalıyordu).
+    kanonik_id <- mergen_canonical_user_id(saved_chats_data$delete_chat_id())
+    req(kanonik_id > 0L)
+    chat_id <- as.character(kanonik_id)
+
     cat(sprintf("[SAVED_CHATS] Sohbet siliniyor: %s\n", chat_id))
     
     # Mevcut sohbet mi siliniyor kontrol et
-    current_chat_deleted <- identical(as.character(values$current_chat_id), as.character(chat_id))
+    current_chat_deleted <- mergen_saved_chats_is_active(values$current_chat_id, chat_id)
     
     effective_user_id <- resolve_current_user_id()
     if (is.na(effective_user_id) || effective_user_id <= 0) {
@@ -540,88 +661,52 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       return()
     }
 
-    delete_chat_from_db(chat_id, effective_user_id)
-    
-    values$saved_chats <- load_chats_from_db(effective_user_id, include_messages = FALSE)
+    silinen_satir <- mergen_saved_chats_delete_rows(delete_chat_from_db, chat_id, effective_user_id)
+    # Gerçekleşen silme (etkilenen satır > 0) yeniden okumanın sonucundan
+    # BAĞIMSIZ işaretlenir: süren arka plan tam listesi, gönderimden sonra
+    # oluşturulmuş olsa da silinen söyleşiyi geri getiremez. Satır
+    # etkilenmediyse (silinmedi) işaret konmaz.
+    silme_onayli <- isTRUE(suppressWarnings(as.numeric(silinen_satir)[1]) > 0)
+    if (silme_onayli) mergen_saved_chats_mark_deleted(session, chat_id)
+    # Liste DB'den yetkili olarak yeniden kurulur; süren arka plan tam listesi
+    # (silmeden önceki görüntü) bunu ezmesin diye yetkili sürüm YALNIZCA bu
+    # yeniden kurulum başarılıysa artar. Yeniden okuma başarısızsa silinen
+    # söyleşi yerelden kalkar; yerel liste (ör. 6'lık ön izleme) yetkili tam
+    # liste sayılmaz ve süren tam liste birleştirmeyle uygulanır (yerelde
+    # silinen söyleşi orada da geri gelmez).
+    yeniden <- tryCatch(load_chats_from_db(effective_user_id, include_messages = FALSE),
+                        error = function(e) NULL)
+    if (is.list(yeniden)) {
+      session$userData$saved_chats_yetkili_surum <- (session$userData$saved_chats_yetkili_surum %||% 0L) + 1L
+      # Yetkili liste söyleşiyi hâlâ içeriyorsa silme gerçekleşmemiştir: korunan
+      # kartın önbellek transkripti özet satırla değiştirilmez.
+      onceki <- values$saved_chats %||% list()
+      if (!is.null(yeniden[[chat_id]]) && !silme_onayli && !is.null(onceki[[chat_id]])) yeniden[[chat_id]] <- onceki[[chat_id]]
+      values$saved_chats <- mergen_saved_chats_carry_unsaved(yeniden, onceki)  # kayıtsız mesajlar korunur
+      silme_onayli <- silme_onayli || is.null(yeniden[[chat_id]])
+    } else if (silme_onayli) {
+      yerel <- values$saved_chats %||% list()
+      yerel[[chat_id]] <- NULL
+      values$saved_chats <- yerel
+      cat("[SAVED_CHATS] Silme sonrası liste DB'den yeniden okunamadı; silinen söyleşi yerelden kaldırıldı\n")
+    }
     saved_chats_data$refresh()
-    
+    # Doğrulanmamış silmede yerel durum (kart, açık söyleşi) korunur ve
+    # last_deleted_chat_id işaretlenmez ki korunan kart yeniden açılabilsin.
+    if (!silme_onayli) {
+      cat("[SAVED_CHATS] Silme doğrulanamadı; yerel durum korundu\n")
+      showToast(session, "Söyleşinin silindiği doğrulanamadı. Lütfen tekrar deneyin.", "warning")
+      return()
+    }
+
+    # Yalnızca doğrulanmış silmeden sonra eski açma tıklamaları engellenir.
+    last_deleted_chat_id(chat_id)
+    showToast(session, "Söyleşi silindi.", "warning")
+
     # Eğer mevcut sohbet silindiyse, Ana Söyleşi sayfasını sıfırla
     if (current_chat_deleted) {
       cat("[SAVED_CHATS] Mevcut sohbet silindi, welcome ekranına dönülüyor\n")
-
-      # ETKİN PK İSTEĞİ ÖNCE TERK EDİLİR. Sohbet silindiğinde isteğin sahibi
-      # ortadan kalkar; işçi ve gönderme durumu ETKİN kalırsa geç dönen sonuç
-      # ARTIK BAŞKA bir sohbete uygulanmaya çalışılır ve gönder düğmesi
-      # DURDURMA kipinde kilitli kalırdı.
-      if (exists("mergen_pk_abandon_active_requests", mode = "function", inherits = TRUE)) {
-        try(mergen_pk_abandon_active_requests(session, release = FALSE), silent = TRUE)
-      }
-
-      # D11 SOHBET KAPSAMLI VARLIK BAĞLAMI DA DÜŞÜRÜLÜR (PR #705 inceleme, P2):
-      # etkin sohbet kimliği sıfırlanıyor ama `pk_entity_prior_context` oturumda
-      # KALIYORDU; kullanıcı silmeden sonra kaydedilmemiş bir söyleşiye
-      # geçtiğinde varlık çözümlemesi SİLİNMİŞ sohbetin kanonik öznesini
-      # uyguluyor ve YANLIŞ bir PK analizi üretebiliyordu. Nesil sayacı da
-      # artırılır: kaydedilmemiş sohbetler `NULL` kimliği PAYLAŞIR (bkz.
-      # `chat_reset_state()` ile AYNI sözleşme).
-      for (.pk_fn in c("pk_entity_context_clear", "mergen_pk_bump_chat_epoch")) {
-        if (exists(.pk_fn, mode = "function", inherits = TRUE)) {
-          try(get(.pk_fn, mode = "function")(session), silent = TRUE)
-        }
-      }
-
-      # Sohbet durumunu sıfırla
-      values$messages <- list()
-      values$current_chat_id <- NULL
-      values$show_welcome <- TRUE
-      
-      # Eski animasyonları temizle
-      shinyjs::runjs("
-        if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
-          window.WelcomeVideoPlayer.destroy();
-        }
-        if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
-          window.WelcomeNeuralNetwork.destroy();
-        }
-		if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
-          window.WelcomeGreeting.destroy();
-        }
-        if(window.WelcomePersonalGreeting && window.WelcomePersonalGreeting.destroy) {
-          window.WelcomePersonalGreeting.destroy();
-        }
-        
-        // Mevcut sohbet içeriğini temizle
-        $('#chat_content_container').empty().hide();
-        
-        // Welcome container'ı hazırla
-        $('#welcome_fullscreen_container').empty().removeClass('hidden').show();
-      ")
-      
-      removeUI(selector = "#chat_content_container > *", multiple = TRUE, immediate = TRUE)
-      removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)
-      
-      # Welcome ekranını yeniden render et ve animasyonları başlat
-      shinyjs::delay(150, {
-        # Welcome ekranı UI'ını ekle
-        insertUI(
-          selector = "#welcome_fullscreen_container",
-          where = "beforeEnd",
-          ui = createWelcomeScreen(values$saved_chats),
-          immediate = TRUE
-        )
-        
-        # Animasyonları başlat
-        shinyjs::delay(100, {
-          session$sendCustomMessage("initModernWelcome", list())
-          
-          # Kişiselleştirilmiş karşılama animasyonunu başlat
-          shinyjs::delay(400, {
-            session$sendCustomMessage("initPersonalGreeting", list(
-              first_name = resolve_user_first_name(default = "")
-            ))
-          })
-        })
-      })
+      etkin_sohbeti_sifirla()
     }
   }, ignoreInit = TRUE)
   
@@ -635,6 +720,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       }
 
       clear_all_chats_from_db(effective_user_id)
+      session$userData$saved_chats_yetkili_surum <- (session$userData$saved_chats_yetkili_surum %||% 0L) + 1L
       values$saved_chats <- list()
       saved_chats_data$refresh()
       showToast(session, "Tüm söyleşiler temizlendi.", "warning")
@@ -643,70 +729,7 @@ savedChatsObserversInit <- function(input, output, session, values, settings_dat
       if (!is.null(values$current_chat_id) || length(values$messages) > 0) {
         cat("[SAVED_CHATS] Tüm söyleşiler silindi, welcome ekranına dönülüyor\n")
 
-        # ETKİN PK İSTEĞİ ÖNCE TERK EDİLİR (tek silme ile AYNI sözleşme).
-        if (exists("mergen_pk_abandon_active_requests", mode = "function", inherits = TRUE)) {
-          try(mergen_pk_abandon_active_requests(session, release = FALSE), silent = TRUE)
-        }
-
-        # D11 varlık bağlamı ve nesil sayacı da sıfırlanır (tek silme ile AYNI
-        # sözleşme; bkz. yukarıdaki gerekçe).
-        for (.pk_fn in c("pk_entity_context_clear", "mergen_pk_bump_chat_epoch")) {
-          if (exists(.pk_fn, mode = "function", inherits = TRUE)) {
-            try(get(.pk_fn, mode = "function")(session), silent = TRUE)
-          }
-        }
-
-        # Sohbet durumunu sıfırla
-        values$messages <- list()
-        values$current_chat_id <- NULL
-        values$show_welcome <- TRUE
-        
-        # Eski animasyonları temizle
-        shinyjs::runjs("
-          if(window.WelcomeVideoPlayer && window.WelcomeVideoPlayer.destroy) {
-            window.WelcomeVideoPlayer.destroy();
-          }
-          if(window.WelcomeNeuralNetwork && window.WelcomeNeuralNetwork.destroy) {
-            window.WelcomeNeuralNetwork.destroy();
-          }
-		  if(window.WelcomeGreeting && window.WelcomeGreeting.destroy) {
-            window.WelcomeGreeting.destroy();
-          }
-          if(window.WelcomePersonalGreeting && window.WelcomePersonalGreeting.destroy) {
-            window.WelcomePersonalGreeting.destroy();
-          }
-          
-          // Mevcut sohbet içeriğini temizle
-          $('#chat_content_container').empty().hide();
-          
-          // Welcome container'ı hazırla
-          $('#welcome_fullscreen_container').empty().removeClass('hidden').show();
-        ")
-        
-        removeUI(selector = "#chat_content_container > *", multiple = TRUE, immediate = TRUE)
-        removeUI(selector = "#welcome_fullscreen_container > *", multiple = TRUE, immediate = TRUE)
-        
-        # Welcome ekranını yeniden render et ve animasyonları başlat (boş liste ile)
-        shinyjs::delay(150, {
-          insertUI(
-            selector = "#welcome_fullscreen_container",
-            where = "beforeEnd",
-            ui = createWelcomeScreen(list()),  # Boş liste - tüm sohbetler silindi
-            immediate = TRUE
-          )
-          
-          # Animasyonları başlat
-          shinyjs::delay(100, {
-            session$sendCustomMessage("initModernWelcome", list())
-            
-            # Kişiselleştirilmiş karşılama animasyonunu başlat
-            shinyjs::delay(400, {
-				session$sendCustomMessage("initPersonalGreeting", list(
-				  first_name = resolve_user_first_name(default = "")
-				))
-            })
-          })
-        })
+        etkin_sohbeti_sifirla()
       }
     }
   }, ignoreInit = TRUE)

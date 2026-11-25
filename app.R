@@ -263,6 +263,18 @@ create_mergen_app <- function() {
               conditionMessage(attr(isindi, "condition")), "\n")
         }
       }
+      # İlk istemin gerçek SSE bağımlılık taraması da oturumlar gelmeden ısıtılır.
+      if (exists("mergen_true_streaming_warm_dependencies", mode = "function", inherits = TRUE)) {
+        sse_isindi <- try(mergen_true_streaming_warm_dependencies(), silent = TRUE)
+        if (inherits(sse_isindi, "try-error")) {
+          # Tanı metni log maskeleme sınırından geçer; maskeleme yoksa ham metin yazılmaz.
+          cat("[STARTUP] UYARI: SSE bağımlılık ısıtması hata verdi:",
+              if (exists("redacted_condition_message", mode = "function", inherits = TRUE))
+                redacted_condition_message(attr(sse_isindi, "condition")) else "(ayrıntı gizlendi)", "\n")
+        } else if (!isTRUE(sse_isindi)) {
+          cat("[STARTUP] UYARI: SSE bağımlılık ısıtması tamamlanmadı; ilk istem taramayı kendisi yapacak.\n")
+        }
+      }
     }
   )
 }
@@ -274,6 +286,19 @@ run_mergen_app <- function(
   quiet = TRUE
 ) {
   validate_boot_state()
+  # Ana uygulama sürecinde R JIT derleyicisi YALNIZCA bu üretim başlatma yolunda
+  # kapatılır; app.R'yi kaynak olarak yükleyen test/araç süreçleri etkilenmez ve
+  # runApp bitince önceki seviye geri yüklenir. Operatör R_ENABLE_JIT ile seviye
+  # verdiyse ona uyulur. Binlerce uygulama kapanışı yeni süreçteki ilk oturumda
+  # derleniyor ve ilk kullanıcıyı ~15 sn bekletiyordu; ölçümde sıcak etkileşimler
+  # JIT kapalıyken yavaşlamadı. Kalıcı PSOCK işçileri etkilenmez.
+  # Seviye her zaman BURADA uygulanır: üretim başlatıcısı depo .Renviron'unu R
+  # JIT'i başlattıktan sonra okuyabilir; ortamda "0" olsa da süreç önceki
+  # seviyede (çoğunlukla 3) kalıyordu. Geçersiz değer ölçülen varsayılana (0) düşer.
+  jit_metni <- trimws(Sys.getenv("R_ENABLE_JIT", ""))
+  jit_seviyesi <- if (jit_metni %in% c("0", "1", "2", "3")) as.integer(jit_metni) else 0L
+  onceki_jit <- compiler::enableJIT(jit_seviyesi)
+  on.exit(compiler::enableJIT(onceki_jit), add = TRUE)
   # Smoke kararı gerçek dinleme adresiyle yeniden verilir; runApp bitince kapanır.
   register_smoke <- mergen_register_ux_smoke_resource
   smoke_owner <- new.env(parent = emptyenv())
